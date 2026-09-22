@@ -431,7 +431,8 @@ struct RunScenario: AsyncParsableCommand {
                         port: port, udid: udid, physical: physical, engine: engine,
                         deviceName: deviceName)
                     if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
-                        expected: expected, status: preflightStatus) {
+                        expected: expected, status: preflightStatus,
+                        remedy: BridgeIdentityCheck.runLaneRemedy) {
                         throw DriverError.bridgeIdentityMismatch(detail)
                     }
                 }

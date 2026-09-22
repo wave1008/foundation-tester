@@ -32,7 +32,9 @@
 //   {"cmd":"refresh"}                                   操作は行わず観測のみ
 //   {"cmd":"frame"}                                     スクリーンショットのみ取得(AXツリーは取らない)
 // 壊れた行(JSON でない、cmd が無い)は stderr に1行ログして無視する(他の常駐 api コマンドと同じ
-// 「安全側で無視する」方針)。
+// 「安全側で無視する」方針)。**cmd は読めたが他の引数の型が違う行は無視しない** ——
+// {"kind":"actionResult","ok":false,"error":"<引数> must be …"} を1行返す(無応答のまま
+// 拡張の SERVE_REQUEST_TIMEOUT を待たせて serve ごと再起動させない)。
 //
 // イベント(serve → stdout、1行1JSON。診断は stderr のみ):
 //   refresh 以外のコマンドはまず
@@ -70,9 +72,16 @@
 // (emitObservation)時に検知すると LiveBridgeAutoStarter がブリッジを自動起動し、起動状況を
 // エラー文言に付記する(詳細は LiveBridgeAutoStarter.swift)。自動フレーム(emitFrame)は状況
 // 付記のみで起動はトリガーしない。serve 起動時に /status の protocolVersion を確認し、
-// 旧ビルドのブリッジは自動で再起動する。
+// 旧ビルドのブリッジは自動で再起動する。**resolve が返した宛先は udid で本人確認する**
+// (FTCore.BridgeIdentityCheck。実地: 別デバイスの生きたブリッジを掴んで操作を撃ち、版差を
+// 理由に止めて建て直した実害がある)。**`--port` を明示していれば**不一致は
+// bridgeIdentityMismatch で断つ(利用者が決めた宛先を勝手に変えない)。**既定ポートへの
+// フォールバックなら**断らない —— `BridgeDiscovery.scan` でその udid のポートへ乗り換えるか、
+// 見つからなければ別の台のブリッジには触れず空きポートを充てて自動起動へ回す(でないと、
+// 自動起動が想定している「ブリッジ未着手の台を既定ポートで開く」場面そのものが塞がれる)。
 
 import ArgumentParser
+import FTAndroid
 import FTBridgeClient
 import Foundation
 import FTCore
@@ -111,7 +120,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // SERVE_REQUEST_TIMEOUT_MS(20秒)にして、通常は拡張の kill→respawn を先に効かせる。
         ResidentProcessGuard.startCommandWatchdog(maxSeconds: 30, logLabel: "live serve")
 
-        var (driver, port) = try await makeLiveDriver()
+        var (driver, port, ownAppBundleID) = try await makeLiveDriver()
         let starter = makeAutoStarter(port: port)
         // セッションを「今 前面にあるもの」へ追従させる(LiveSessionFollower)。**iOS だけ**の補正で、
         // Android は木がアクティブウィンドウ・タップが画面座標なので何もしなくても画面に追従する
@@ -148,11 +157,17 @@ struct ApiLiveServe: AsyncParsableCommand {
         defer { for source in signalSources { source.cancel() } }
 
         for await line in lines {
+            // JSON でない・cmd が無い(型も含む)行だけをここで無視する。cmd さえ読めれば
+            // ApiLiveServeCommand の側で他の引数の型違いを decodeError として持ち帰り、
+            // handle が actionResult(ok:false)で答える(黙って無応答のまま拡張の
+            // SERVE_REQUEST_TIMEOUT を待たせない)
             guard let data = line.data(using: .utf8),
-                  let command = try? JSONDecoder().decode(ApiLiveServeCommand.self, from: data) else {
+                  let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let cmd = object["cmd"] as? String else {
                 logStderr("Ignored a line in an unknown format: \(line)")
                 continue
             }
+            let command = ApiLiveServeCommand(cmd: cmd, raw: object)
             ResidentProcessGuard.noteCommandStart()
             // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ。
             // usb: host はループバックのままだが establish が新たに token を記録している ——
@@ -162,7 +177,8 @@ struct ApiLiveServe: AsyncParsableCommand {
                 driver = BridgeClient(endpoint: endpoint)
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
-            await handle(command: command, driver: driver, starter: starter, follower: follower)
+            await handle(command: command, driver: driver, starter: starter, follower: follower,
+                        ownAppBundleID: ownAppBundleID)
             ResidentProcessGuard.noteCommandEnd()
         }
     }
@@ -175,41 +191,135 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// そのまま使う(MCP の ft_* と同じ構成。二つ目の実装を書かない)。
     ///
     /// in-app が居ない(指定ポートが XCUITest・Android)ときは従来どおり単独で使う。
-    /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す
-    private func makeLiveDriver() async throws -> (AppDriver, UInt16) {
+    /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す。3つ目の戻り値は
+    /// hybrid のとき in-app が住んでいる own app の bundleID(launchGuard が own app への
+    /// launch/activate を素通しするのに使う。hybrid でなければ nil)
+    ///
+    /// **resolve が返した宛先は udid で本人確認する**(FTCore.BridgeIdentityCheck。実地 L1:
+    /// 既定ポートに別デバイスの生きたブリッジが居るのを見逃し、操作を撃ち・版差を理由に止めて
+    /// 建て直した)。**`--port` を明示したか既定へのフォールバックかで扱いを分ける**
+    /// (`BridgeDiscovery` の既存の切り分け「port: を明示した呼び出しでは探索しない」の裏返し。
+    /// `driverOptions.port == nil` = 利用者は宛先を決めていない):
+    /// ①明示 かつ 不一致 → 断る(利用者が決めた宛先を勝手に変えない)/
+    /// ②フォールバック かつ 不一致 → `BridgeDiscovery.scan` からその udid のポートを探し、
+    /// 見つかれば乗り換える / ③見つからなければ**別の台のブリッジは掴んだままにしない** ——
+    /// 空きポートを充てて「まだ居ない」の形(接続拒否)に落とし、自動起動
+    /// (LiveBridgeAutoStarter)に委ねる。ここが無いと、自動起動が想定している
+    /// まさにその場面(ブリッジ未着手の台を既定ポートで開く)が塞がれる
+    private func makeLiveDriver() async throws -> (AppDriver, UInt16, String?) {
         guard driverOptions.resolvedPlatform == "ios" else {
-            return (try await driverOptions.makeDriver(), driverOptions.resolvedPort)
+            return (try await driverOptions.makeDriver(), driverOptions.resolvedPort, nil)
         }
+        let repoRoot = try? RepoRoot.find()
         // **autoStart:false**(= 走査までで止める)。serve は常駐で、拡張は応答が無いと
         // kill→respawn するため、起動時に build-for-testing(分単位)でブロックしてはいけない。
         // hybrid は in-app と XCUITest を両方張るので走査だけで必ず見つかる。
         // 見つからないのは engine=inapp 単独のときで、そのときは理由を stderr に出して素通しする
         let resolution = await XCUIBridgeResolver.resolve(
-            preferred: driverOptions.resolvedPort, repoRoot: try? RepoRoot.find(), autoStart: false,
+            preferred: driverOptions.resolvedPort, repoRoot: repoRoot, autoStart: false,
             logger: { message in
                 ConsoleOut.err("[live serve] " + message)
             })
+        let physical = udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false
+        guard let udid else {
+            return try await composeDriver(resolution: resolution, physical: physical, repoRoot: repoRoot)
+        }
+        // resolve は preferred ポートを疎通・engine だけで採る(別デバイスでも疎通すれば
+        // そのまま返す)。ここで本人確認してから使う(以後の checkAndRestartIfStale も
+        // この確認を経た宛先にしか触れない)
+        let isInAppOnly = resolution.inApp?.endpoint.port == resolution.endpoint.port
+        guard let mismatch = await Self.identityMismatch(
+            endpoint: resolution.endpoint, requestedUDID: udid, physical: physical, isInApp: isInAppOnly
+        ) else {
+            return try await composeDriver(resolution: resolution, physical: physical, repoRoot: repoRoot)
+        }
+        guard driverOptions.port == nil else {
+            // 利用者が --port で決めた宛先。勝手に変えず断る
+            throw DriverError.bridgeIdentityMismatch(mismatch)
+        }
+        // 既定ポートへのフォールバック。まず udid が生きているポートを探し、見つかれば乗り換える
+        let found = await BridgeDiscovery.scan(excluding: driverOptions.resolvedPort, repoRoot: repoRoot)
+        if let match = found.first(where: { $0.udid == udid }) {
+            logStderr("\(mismatch) — switching to port \(match.port) for \(udid)")
+            let rerouted = await XCUIBridgeResolver.resolve(
+                preferred: match.port, repoRoot: repoRoot, autoStart: false,
+                logger: { message in ConsoleOut.err("[live serve] " + message) })
+            return try await composeDriver(resolution: rerouted, physical: physical, repoRoot: repoRoot)
+        }
+        // この台のブリッジはまだ無い。既定ポートは別デバイスが使っているので**触らず**、
+        // 空きポートへ自動起動を回す(そのポートは何も応答しないので、最初の操作が
+        // bridgeConnectionRefused を撃ち、既存の接続拒否経路がそのまま面倒を見る)
+        logStderr("\(mismatch) — no existing bridge for \(udid); auto-starting on a free port instead")
+        guard let repoRoot else { throw DriverError.bridgeIdentityMismatch(mismatch) }
+        // **採番は `ProvisionLock` の内側で撃つ**(同時に走る供給・自動起動と同じ空きポートを
+        // 選ばない = `ProvisionLockStartupPathsSyncTests` が集合を固定する経路の1つ)。
+        // **これは予約ではない** —— ここではまだ `.pid` を書けないので、起動までに埋まったら
+        // `LiveBridgeAutoStarter` が占有者を名指しして諦める(ポートを固定で持つため逃がせない)
+        let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
+        await provisionLock?.acquire()
+        let picked = XCUIBridgeResolver.freePort(
+            repoRoot: repoRoot, occupied: Set(found.map(\.port)).union([driverOptions.resolvedPort]))
+        provisionLock?.release()
+        guard let freePort = picked else {
+            throw DriverError.bridgeIdentityMismatch(mismatch)
+        }
+        let placeholder = BridgeClient(endpoint: BridgeEndpoint.load(port: freePort, repoRoot: repoRoot))
+        return (placeholder, freePort, nil)
+    }
+
+    /// resolve(または乗り換え後の resolve)の結果から実際に使うドライバを組み立てる。
+    /// hybrid の in-app 側(別ポート)はここで初めて本人確認する——xcuitest 側だけでは検分できない
+    private func composeDriver(
+        resolution: XCUIBridgeResolver.Resolution, physical: Bool, repoRoot: URL?
+    ) async throws -> (AppDriver, UInt16, String?) {
         let xcui = BridgeClient(endpoint: resolution.endpoint)
         // in-app が居て、かつ振り替え先(XCUITest)が別に取れているときだけ組む。
         // 同じ宛先しか無い = XCUITest が見つからなかった場合は、in-app 単独では home も
         // appSwitcher も撃てないので XCUITest 側(= そのまま)に寄せる
         guard let inApp = resolution.inApp, inApp.endpoint.port != resolution.endpoint.port,
-              let repoRoot = try? RepoRoot.find(), let udid else {
-            return (xcui, resolution.endpoint.port)
+              let repoRoot, let udid else {
+            return (xcui, resolution.endpoint.port, nil)
+        }
+        // hybrid の in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない
+        if let mismatch = await Self.identityMismatch(
+            endpoint: inApp.endpoint, requestedUDID: udid, physical: physical, isInApp: true) {
+            throw DriverError.bridgeIdentityMismatch(mismatch)
         }
         let inAppDriver = InAppDriver(repoRoot: repoRoot, udid: udid, port: inApp.endpoint.port)
         // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(MCP と同じ理由:
         // activate/attached 状態を1本にしないと余計な activate が挟まる)
         let attach = AppAttachDriver(port: resolution.endpoint.port, host: resolution.endpoint.host,
-                                     bundleID: inApp.bundleID,
-                                     physicalUDID: SimulatorCatalog.isPhysical(udid: udid) == true ? udid : nil)
+                                     bundleID: inApp.bundleID, physicalUDID: physical ? udid : nil)
         ConsoleOut.err("[live serve] own app \(inApp.bundleID) is driven in-app (DOM);"
                        + " other apps and home/appSwitcher go through XCUITest (port \(resolution.endpoint.port))")
         // **合成は HybridDriverComposition の1箇所**(MCP の ft_* と同じ形。二つ目の実装を書かない)
         let driver = HybridDriverComposition.inAppFirst(
             inApp: inAppDriver, attach: attach, foreignApp: xcui, bundleID: inApp.bundleID)
         // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で建て直せない)
-        return (driver, resolution.endpoint.port)
+        return (driver, resolution.endpoint.port, inApp.bundleID)
+    }
+
+    /// endpoint が本当に `requestedUDID` の台か確かめる(判定は run 側4経路と同じ
+    /// FTCore.BridgeIdentityCheck の1箇所。二つ目の実装を書かない)。無応答(まだ居ない)は
+    /// nil(素通し)——その形は後続の接続拒否経路(LiveBridgeAutoStarter)が担う。
+    /// **throw しない** —— 不一致をどう扱うか(断るか・乗り換えるか)は呼び出し元が
+    /// `--port` の明示有無で決めるため、ここは事実(mismatch の説明)を返すだけ
+    private static func identityMismatch(
+        endpoint: BridgeEndpoint, requestedUDID: String, physical: Bool, isInApp: Bool
+    ) async -> String? {
+        guard let status = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 3)
+            .status(timeout: 3) else { return nil }
+        let expected = BridgeIdentityCheck.Expected(
+            port: endpoint.port, udid: requestedUDID, physical: physical,
+            engine: isInApp ? "inapp" : "xcuitest")
+        // **対処は run のレーンと違う** —— ここで直すのは宛先の指定で、レーンの建て直しではない
+        if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
+            expected: expected, status: status,
+            remedy: "Point --port at this device's bridge, or omit --port and let the tools find it"
+                + " (they start one when the device has none).") {
+            return detail
+        }
+        return nil
     }
 
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
@@ -243,8 +353,14 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
     private func handle(
         command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?,
-        follower: LiveSessionFollower?
+        follower: LiveSessionFollower?, ownAppBundleID: String?
     ) async {
+        if let decodeError = command.decodeError {
+            // cmd は読めたが他の引数の型が違う行。JSON でない/cmd が無い(黙殺)とは分け、
+            // actionResult だけで答えて終える(frame/refresh も含め全コマンド共通の応答経路)
+            emitLine(ApiLiveActionResultEvent(ok: false, error: decodeError, app: follower?.sessionTarget))
+            return
+        }
         if command.cmd == "frame" {
             // 自動画面更新は `/screenshot`(XCUIScreen = 画面そのもの)だけなのでセッションに依らない。
             // ここで追従させると、利用者が何もしていない間もセッションを動かすことになる
@@ -253,7 +369,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
         if command.cmd != "refresh" {
             do {
-                try await perform(command: command, driver: driver, follower: follower)
+                try await perform(command: command, driver: driver, follower: follower,
+                                  ownAppBundleID: ownAppBundleID)
                 emitLine(ApiLiveActionResultEvent(ok: true, error: nil, app: follower?.sessionTarget))
             } catch {
                 let message = await annotated(error, starter: starter, triggering: true)
@@ -298,10 +415,58 @@ struct ApiLiveServe: AsyncParsableCommand {
          "back", "appSwitcher", "home"].contains(cmd)
     }
 
+    /// launch/activate の前に確かめる(門は InstalledAppCheck.launchGuard の1箇所。MCP の
+    /// ft_launch と同じ判定・文言だけ呼び手ごと)。未インストールのまま
+    /// `XCUIApplication.launch()` を撃つとランナーが約60秒でハングして自壊する(実測 L2)。
+    /// own app(hybrid で in-app が既に繋がっているアプリ)への launch/activate は素通しする ——
+    /// in-app は XCUITest を経由せず、繋がっている時点でインストール済みが確定している
+    private func launchGuard(bundle: String, driver: AppDriver, ownAppBundleID: String?) async throws {
+        guard bundle != ownAppBundleID else { return }
+        let isAndroid = driverOptions.resolvedPlatform == "android"
+        let verdict: InstalledAppCheck.InstallVerdict
+        if isAndroid {
+            if let android = driver as? AndroidDriver, let installed = android.isInstalled(bundleID: bundle) {
+                verdict = installed ? .installed : .notInstalled
+            } else {
+                verdict = .unknown("adb")
+            }
+        } else if let udid {
+            // 実機は simctl ではなく devicectl(§19.3 M8 と同じ切り分け。simctl に実機の udid を
+            // 渡すと的外れな失敗になる)
+            if SimulatorCatalog.isPhysical(udid: udid) == true {
+                if let apps = try? IOSPhysicalAppCatalog.apps(udid: udid) {
+                    verdict = apps.contains { $0.id == bundle } ? .installed : .notInstalled
+                } else {
+                    verdict = .unknown("devicectl could not list installed apps")
+                }
+            } else {
+                verdict = InstalledAppCheck.simulatorInstallVerdict(udid: udid, bundleID: bundle)
+            }
+        } else {
+            verdict = .unknown("no udid to check installation with")
+        }
+        switch InstalledAppCheck.launchGuard(
+            verdict: verdict, isAndroid: isAndroid, engine: isAndroid ? nil : "xcuitest", bundleID: bundle) {
+        case .allow:
+            return
+        case .refuse(.notInstalled):
+            throw ServeCommandError.invalidArguments(
+                "\(bundle) is not installed on this device."
+                + " Install it first with {\"cmd\":\"install\",\"path\":\"<.app or .apk>\"},"
+                + " or check the bundle ID.")
+        case .refuse(.unknown(let reason)):
+            throw ServeCommandError.invalidArguments(
+                "could not verify whether \(bundle) is installed (\(reason))."
+                + " Launching a missing app can hang the XCUITest bridge and force it to"
+                + " self-terminate — retry once the device is less busy, install it first,"
+                + " or double-check the bundle ID.")
+        }
+    }
+
     /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
     /// (呼び出し元 handle が actionResult の ok:false として拾う)
     private func perform(command: ApiLiveServeCommand, driver: AppDriver,
-                         follower: LiveSessionFollower?) async throws {
+                         follower: LiveSessionFollower?, ownAppBundleID: String?) async throws {
         if Self.followsFrontmost(command.cmd) { await follower?.follow(driver: driver) }
         switch command.cmd {
         case "tap":
@@ -376,15 +541,17 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             try await driver.press(x: x, y: y, duration: duration)
         case "launch":
-            guard let bundle = command.bundle else {
-                throw ServeCommandError.invalidArguments("launch requires bundle")
+            guard let bundle = command.bundle, !bundle.isEmpty else {
+                throw ServeCommandError.invalidArguments("launch requires a non-empty bundle")
             }
+            try await launchGuard(bundle: bundle, driver: driver, ownAppBundleID: ownAppBundleID)
             try await driver.launch(bundleID: bundle)
             follower?.noteSessionChanged(to: bundle)
         case "activate":
-            guard let bundle = command.bundle else {
-                throw ServeCommandError.invalidArguments("activate requires bundle")
+            guard let bundle = command.bundle, !bundle.isEmpty else {
+                throw ServeCommandError.invalidArguments("activate requires a non-empty bundle")
             }
+            try await launchGuard(bundle: bundle, driver: driver, ownAppBundleID: ownAppBundleID)
             try await driver.activate(bundleID: bundle)
             follower?.noteSessionChanged(to: bundle)
         case "appSwitcher":
@@ -547,9 +714,16 @@ private func emitLine<T: Encodable>(_ value: T) {
 // MARK: - stdin コマンド
 
 /// stdin から受け取る1コマンド分(NDJSON 1行)。cmd 以外は全コマンド共通のオプショナルとし、
-/// 必須引数の欠落は perform(command:driver:) がコマンド種別毎に判定する(JSON自体が壊れている
-/// 行だけを無視し、フィールド欠落は actionResult の ok:false として1件だけ失敗させるため)
-private struct ApiLiveServeCommand: Decodable {
+/// 必須引数の欠落は perform(command:driver:) がコマンド種別毎に判定する(フィールド欠落は
+/// actionResult の ok:false として1件だけ失敗させるため)。
+///
+/// **JSONDecoder ではなく [String: Any] から手で組む**: 型付き Decodable だと1フィールドでも
+/// 型が違うと decode 全体が失敗し、cmd さえ読めていた行も「JSON でない」行と見分けが付かず
+/// 無応答のまま黙殺していた(実地 L3: `{"cmd":"pinch","scale":"2"}` が無反応 → 拡張の
+/// SERVE_REQUEST_TIMEOUT で serve ごと再起動)。ここでは cmd 以外の型違いを decodeError に
+/// 残し、handle が actionResult(ok:false)で答える。
+/// **private ではない**(テストが `@testable import fleetest` で直接組み立てて検査するため)
+struct ApiLiveServeCommand {
     let cmd: String
     let ref: Int?
     let x: Double?
@@ -565,6 +739,69 @@ private struct ApiLiveServeCommand: Decodable {
     let press: Double?
     let duration: Double?
     let scale: Double?
+    /// 型違いの引数のうち1件目の説明(無ければ nil)。cmd 自体はこの型を作れている時点で読めている
+    let decodeError: String?
+
+    init(cmd: String, raw: [String: Any]) {
+        self.cmd = cmd
+        var error: String?
+        ref = Self.intField(raw, "ref", error: &error)
+        x = Self.doubleField(raw, "x", error: &error)
+        y = Self.doubleField(raw, "y", error: &error)
+        text = Self.stringField(raw, "text", error: &error)
+        direction = Self.stringField(raw, "direction", error: &error)
+        bundle = Self.stringField(raw, "bundle", error: &error)
+        path = Self.stringField(raw, "path", error: &error)
+        fromX = Self.doubleField(raw, "fromX", error: &error)
+        fromY = Self.doubleField(raw, "fromY", error: &error)
+        toX = Self.doubleField(raw, "toX", error: &error)
+        toY = Self.doubleField(raw, "toY", error: &error)
+        press = Self.doubleField(raw, "press", error: &error)
+        duration = Self.doubleField(raw, "duration", error: &error)
+        scale = Self.doubleField(raw, "scale", error: &error)
+        decodeError = error
+    }
+
+    /// 型違いの1件目だけを残す(複数同時に違っても最初の1つで足りる)。
+    /// 文言は MCP(MCPServer.intArgument/doubleArgument)と揃える(2026-09-22 L3)
+    private static func intField(_ raw: [String: Any], _ key: String, error: inout String?) -> Int? {
+        guard let value = raw[key] else { return nil }
+        if let number = value as? Int { return number }
+        if error == nil { error = typeError(key: key, value: value, expected: "an integer", numeric: true) }
+        return nil
+    }
+
+    private static func doubleField(_ raw: [String: Any], _ key: String, error: inout String?) -> Double? {
+        guard let value = raw[key] else { return nil }
+        if let number = value as? Double { return number }
+        if let number = value as? Int { return Double(number) }  // {"scale":2} のような整数値も通す
+        if error == nil { error = typeError(key: key, value: value, expected: "a number", numeric: true) }
+        return nil
+    }
+
+    private static func stringField(_ raw: [String: Any], _ key: String, error: inout String?) -> String? {
+        guard let value = raw[key] else { return nil }
+        if let string = value as? String { return string }
+        if error == nil { error = typeError(key: key, value: value, expected: "a string", numeric: false) }
+        return nil
+    }
+
+    private static func typeError(key: String, value: Any, expected: String, numeric: Bool) -> String {
+        let hint = numeric ? "a JSON number, not a quoted string" : "a JSON string, not a number"
+        return "\(key) must be \(expected) (got \(describeValue(value))) — pass \(hint)"
+    }
+
+    /// MCPServer.describeArgumentValue と同じ書式(型が分かる形。文字列 "8" と数値 8 を見分ける)
+    private static func describeValue(_ value: Any) -> String {
+        switch value {
+        case let value as String: return "the string \"\(value)\""
+        case let value as Bool: return "the boolean \(value)"
+        case is [Any]: return "an array"
+        case is [String: Any]: return "an object"
+        case is NSNull: return "null"
+        default: return "\(value)"
+        }
+    }
 }
 
 // MARK: - JSON 出力(イベント)

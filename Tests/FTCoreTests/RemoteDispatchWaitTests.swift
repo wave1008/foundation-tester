@@ -61,7 +61,7 @@ final class DispatchWaitStatusTests: XCTestCase {
         XCTAssertEqual(
             status().queuedLine,
             "==> queued for the dispatch lock on m1max.local — position 2 of 3,"
-            + " held by started by ci (from mbp, pid 1) at 2026-09-21T00:00:00Z — waiting up to 600s")
+            + " started by ci (from mbp, pid 1) at 2026-09-21T00:00:00Z — waiting up to 600s")
     }
 
     /// 保持者が読めなかったときは**保持者の句ごと落とす** —— 「holder unknown」と書くと、
@@ -82,7 +82,7 @@ final class DispatchWaitStatusTests: XCTestCase {
         XCTAssertEqual(
             status(limitSeconds: nil).queuedLine,
             "==> queued for the dispatch lock on m1max.local — position 2 of 3,"
-            + " held by started by ci (from mbp, pid 1) at 2026-09-21T00:00:00Z")
+            + " started by ci (from mbp, pid 1) at 2026-09-21T00:00:00Z")
         XCTAssertEqual(status(elapsedSeconds: 60, limitSeconds: nil).stillQueuedLine,
                        "==> still queued on m1max.local (position 2 of 3, 60s)")
     }

@@ -1290,7 +1290,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     // 答えたのが別の台のブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
                     if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
                         expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
-                        status: status) {
+                        status: status, remedy: BridgeIdentityCheck.runLaneRemedy) {
                         return .hijacked(detail: detail)
                     }
                     return .ok

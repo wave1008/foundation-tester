@@ -1033,22 +1033,17 @@ extension MCPServer {
             + " (Android: the package name)."
     }
 
-    /// **ft_launch の門(純粋関数)**。nil = 撃ってよい・非 nil = その文言で断る。
-    ///
-    /// `.unknown` を撃ってよいのは Android(未インストールの `launch` はランナーを道連れにしない)と
-    /// iOS の in-app エンジン(`XCUIApplication.launch()` を経由しない)だけ —— **hybrid・エンジン
-    /// 不明(nil)は XCUITest 経路へ落ちうるので危険側**として断つ。springboard は
-    /// `handleLaunch` が launch せず参照するだけなので門を通らない
+    /// **ft_launch の門**。nil = 撃ってよい・非 nil = その文言で断る。判定そのものは
+    /// `InstalledAppCheck.launchGuard`(ライブ操作の launch/activate と共有する唯一の定義元)へ
+    /// 委ね、ここは MCP 向けの文言(ft_install を指す等)を組むだけ
     static func launchGuardDecision(
         verdict: InstalledAppCheck.InstallVerdict, isAndroid: Bool, engine: String?, bundleID: String
     ) -> String? {
-        guard bundleID != "com.apple.springboard" else { return nil }
-        switch verdict {
-        case .installed: return nil
-        case .notInstalled: return notInstalledMessage(bundleID: bundleID)
-        case .unknown(let reason):
-            guard !isAndroid, engine != "inapp" else { return nil }
-            return uncheckedLaunchRefusal(bundleID: bundleID, reason: reason)
+        switch InstalledAppCheck.launchGuard(
+            verdict: verdict, isAndroid: isAndroid, engine: engine, bundleID: bundleID) {
+        case .allow: return nil
+        case .refuse(.notInstalled): return notInstalledMessage(bundleID: bundleID)
+        case .refuse(.unknown(let reason)): return uncheckedLaunchRefusal(bundleID: bundleID, reason: reason)
         }
     }
 

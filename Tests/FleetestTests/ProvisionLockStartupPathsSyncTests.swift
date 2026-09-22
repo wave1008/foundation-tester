@@ -12,6 +12,9 @@ final class ProvisionLockStartupPathsSyncTests: XCTestCase {
         "Sources/FTBridgeClient/BridgeProvisioner.swift",
         "Sources/FTBridgeClient/XCUIBridgeResolver.swift",
         "Sources/fleetest/LiveBridgeAutoStarter.swift",
+        // ライブ操作が「要求された台のブリッジがどこにも無い」ときに空きポートを選ぶ経路
+        // (選ぶだけで起動はしない = 予約ではないが、**同時に同じポートを選ばない**ためにロックを通す)
+        "Sources/fleetest/ApiLiveCommand.swift",
     ]
 
     private func repoRoot() -> URL {

@@ -49,6 +49,29 @@ enum ApiRunMachineFanout {
         logStderr("==> profile \"\(profileName)\" spans \(groups.count) machines: \(machineList)"
             + " — building \(project.name) locally to split the scenarios")
 
+        // 束ね鍵はここで1回だけ発行する(理由は下の DispatchTicketIssuer と同じ箇所)。
+        // ビルドより前に採る —— 待機列のチケット(下)にも使うので、build 分だけ epoch が
+        // 遅れないようにする
+        let runGroup = RunRecorder.makeRunGroupID()
+        // dispatch.lock の待機チケットも**ここで1回だけ**採る(DispatchTicketIssuer の宣言。
+        // 機械ごとに採り直すと前後関係が機械によって食い違い、2つの run が互いに相手の機械を
+        // 待つ)。**プロセス環境へも書く**(`FT_DISPATCH_TICKET`。子と同じ綴り・同じ資格で自分自身にも
+        // 効かせる)—— 下のローカル先取りと、あとで `DispatchPrelock` が local を取り直すときの
+        // 両方が、この早い epoch のチケットを引く。書かずに後で採り直すと、build 中に列へ並んだ
+        // 別 run のチケットのほうが早い epoch になり、build を終えて戻ってきた自分が FIFO で
+        // 追い越される
+        let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
+        setenv(DispatchTicket.environmentKey, ticket.environmentValue, 1)
+        // **この Mac のロックを、ビルド/一覧取得より前に取る**(DeviceMachineRunner.run と同じ
+        // 理由・同じ位置。ユーザー決定 2026-09-21「1つのマシンで同時に複数の run は走らせない」)。
+        // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
+        // 関わらず必ず手放す(下)。全順序どおりの本取得は `DispatchPrelock` が local を含めて
+        // 改めて行う(§18.10「循環待ちを構造的に作れない」= local だけ順序の外に出さない)。
+        // api run に --force-lock は無い
+        var localLock = try LocalDispatchLock(
+            runGroup: runGroup, waitLock: options.waitLock, log: { logStderr($0) }).acquire()
+        defer { localLock?.release() }
+
         // 割り当てを決めるにはシナリオ一覧が要る(DeviceMachineRunner.run と同じ理由。ここで1回だけ
         // ローカルビルドする。ローカルの子には --skip-build を渡す = 下の buildChildArgs 参照)
         try ScenarioHost.build(project: project) { logStderr($0) }
@@ -91,35 +114,38 @@ enum ApiRunMachineFanout {
             logStderr("    \(group.machineLabel): \(ids.count) scenario(s) on \(group.deviceNames.count) device(s)")
         }
 
+        // 配分が確定したら、build 直列化のために先取りしたロックは**local に配られたかどうかに
+        // 関わらず**必ず手放す(下の DispatchPrelock が local を含めて全順序どおり取り直すため。
+        // 手放さずに残すと local だけ順序の外に出た「取得済み」扱いになり、循環待ちを作れる形へ戻る)
+        localLock?.release()
+        localLock = nil
+
         // 手元の台の二重使用は runStarted と子の起動より前に断る(単機の api run の拒否と同じ形 =
         // NDJSON を1行も出さず stderr + 非0。ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
-        // **dispatch.lock より手前なのは意図** —— これは読み取りだけの先読みで、どのロックも
-        // 取る前に断るためにここに置く(取ってから降りると他人を待たせた挙句に何も走らない)。
-        // 取得そのものの上下は「マシンの門(dispatch.lock)→ 台の門(run-lease)」
-        // = FTBridgeClient/RunLeaseGuard.swift の冒頭
+        // **dispatch.lock より手前なのは意図** —— 読み取りだけの先読みで、どのロックも取る前に
+        // 断るためにここに置く(取ってから降りると他人を待たせた挙句に何も走らない)。上の
+        // localLock は既に手放し済みなので、ここでは何も持っていない。取得そのものの上下は
+        // 「マシンの門(dispatch.lock)→ 台の門(run-lease)」= FTBridgeClient/RunLeaseGuard.swift の冒頭
         if let local = active.first(where: { $0.group.machine == nil }) {
             let ids = Set(local.ids)
             try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(
                 project: project, profileName: profileName, setOverrides: options.setOverrides,
                 localDeviceNames: local.group.deviceNames,
-                localScenarios: selected.filter { ids.contains($0.id) }, broadcast: false)
+                localScenarios: selected.filter { ids.contains($0.id) }, broadcast: false,
+                waitLock: options.waitLock, log: { logStderr($0) })
         }
 
         // total は対象外を除いた本数(単機の ApiRunCommand と同じ: スキップは runStarted に数えない)
         writeLine(encode(ApiRunStartedEvent(total: selected.count - notApplicable.count)))
 
         let binary = FleetRunner.selfBinaryPath()
-        // 束ね鍵はここで1回だけ発行する(理由は DeviceMachineRunner.run の同じ箇所)
-        let runGroup = RunRecorder.makeRunGroupID()
-        // dispatch.lock の待機チケットも**ここで1回だけ**採って全ての子へ同じ値を配る
-        // (DispatchTicketIssuer の宣言。機械ごとに採り直すと前後関係が機械によって食い違い、
-        // 2つの run が互いに相手の機械を待つ)
-        let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
-        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock)。
-        // 並列に取りに行くと、2つの run が互いに相手の機械を待つ形を作れる
+        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock。local も
+        // 他の機械と同じ扱いで、上で発行し環境へ書いたチケットを引く。並列に取りに行くと、
+        // 2つの run が互いに相手の機械を待つ形を作れる)
         let prelock = DispatchPrelock(actions: DispatchPrelock.live(
             project: project, remoteDir: options.remoteDir, forceLock: false,
-            waitLock: options.waitLock, runGroup: runGroup, mode: .apiRun, log: { logStderr($0) }))
+            waitLock: options.waitLock, runGroup: runGroup, mode: .apiRun,
+            log: { logStderr($0) }))
         defer { prelock.releaseAll() }
         prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
             active.map { $0.group.machineLabel }))

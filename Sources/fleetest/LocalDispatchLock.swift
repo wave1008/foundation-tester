@@ -149,7 +149,6 @@ final class LocalDispatchLock {
         defer { relay.stop() }
 
         var elapsed = 0
-        var autoReleaseTried = false
         while true {
             let result = try shell(RemoteDispatchQueue.enqueueAndTryAcquireCommand(
                 home: home, ticket: ticket, info: info))
@@ -172,10 +171,10 @@ final class LocalDispatchLock {
                 holder = h
             }
             // 先頭なのに取れなかった = 誰かが掴んでいる。**自分の死んだ run のロックなら回収する**
-            // (1回だけ試す —— 他人のロックは何周しても答えが変わらない)
-            if case .held = outcome, !autoReleaseTried {
-                autoReleaseTried = true
-                if autoReleaseOurDeadLock() { continue }
+            // (毎周試す —— 待ち始めた時点では保持者が生きているのが普通なので、待っている間に
+            // 保持者が死ぬことがある。判定は pid の生死だけなので毎周撃っても安い)
+            if case .held = outcome, autoReleaseOurDeadLock() {
+                continue
             }
             let status = DispatchWaitStatus(
                 target: Self.targetLabel, position: position, total: total, holder: holder,

@@ -210,6 +210,29 @@ final class LocalDispatchLockTests: XCTestCase {
                        lines.joined(separator: "\n"))
     }
 
+    /// **D2 回帰**: 待ち始めた時点では保持者が生きているのが普通(すぐ死んでいるのは異常)。
+    /// 数周待ってから保持者が死ぬ形では、**1回しか試さない実装だと最初の生存確認で終わり、
+    /// 死んだ後も回収されないまま `--wait-lock` の上限まで待って断られる**。毎周試すことで
+    /// 保持者が死んだ周から取得できることを固定する
+    func testADeadLockDiscoveredMidWaitIsReclaimed() throws {
+        _ = try lock(pid: 4242).acquire()  // 解放せずに落ちた run を模す(issuer/host は既定 = alice/mac-a)
+        var aliveChecks = 0
+        var slept = 0
+        let waiting = lock(pid: 7777, issuer: "alice", issuerHost: "mac-a", waitLock: 600,
+                           pidAlive: { pid in
+                               aliveChecks += 1
+                               // 3周目の判定で初めて死んだことにする(1・2周目はまだ生きている)
+                               return !(pid == 4242 && aliveChecks >= 3)
+                           },
+                           sleepSeconds: { _ in slept += 1 })
+        let holder = try XCTUnwrap(try waiting.acquire())
+        defer { holder.release() }
+        XCTAssertGreaterThanOrEqual(aliveChecks, 3, "毎周判定していない(1回で打ち切られている)")
+        XCTAssertEqual(slept, 2, "死んだと分かった周では sleep せず即座に回収するはず")
+        XCTAssertTrue(lines.contains { $0.contains("auto-releasing a stale dispatch lock on this Mac") },
+                      lines.joined(separator: "\n"))
+    }
+
     /// **他人がこの Mac へディスパッチして置いたロックは、pid が死んでいても外さない** ——
     /// 発行元が別の機械なので、その pid の生死はここからは確かめられない
     func testALockLeftByADispatchFromAnotherMacIsNeverReclaimed() throws {

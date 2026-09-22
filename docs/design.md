@@ -2927,8 +2927,10 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     整定待ちでブリッジのスレッドを数十秒ブロックする(外部ログで実測 33.7s)。/status が返らなくても
     **カーネルは accept する**ので、待受があるうちは乗り換えず「今は忙しい・少し待て」を返す。
     ここを緩めると、自動採用が防ぐはずの**別デバイスへの取り違えを自分で作る**
-  - **未インストールのアプリを launch させない**(`MCPServer.installedState`。2026-08-06)。
-    `XCUIApplication.launch()` が未インストールで失敗すると、その issue は main queue 上
+  - **未インストールのアプリを launch させない**(`MCPServer.installedVerdict` が判定材料を集め、
+    可否そのものは `FTBridgeClient.InstalledAppCheck.launchGuard` の1箇所へ委ねる —— 2026-08-06。
+    **2026-09-22 にライブ操作(`api live serve` の launch/activate)と共有する形へ統合**、詳細は
+    §13.3)。`XCUIApplication.launch()` が未インストールで失敗すると、その issue は main queue 上
     (テストのスタック外)で記録されるため**ランナーごと落ちる** —— `requireLiveApp` が防いでいるのと
     同じ経路で、対処も同じ「XCUI に触れる前に弾く」。実測: 遊休ブリッジへ直接
     `POST /session {"bundleID":"<未インストール>"}` を投げると、無応答(待受のみ)を約5秒挟んで
@@ -4526,6 +4528,62 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
   `ScenarioRunnerMain` が BridgeClient をラップ。udid 供給元は ProfileWorkerFactory / MCPServer
 - 教訓: 当初「2ランナー競合」を凍結の主犯と推定したが、本番構成の通し run で監視中シムに
   第2ランナーが共存しても凍結しないことを確認。主犯は「未導入 app の launch」
+
+### 13.3 ライブ操作(`api live serve`)の宛先決定と門(2026-09-22)
+
+ライブ操作パネルは常駐 CLI(`ApiLiveServe`。プロトコルは `Sources/fleetest/ApiLiveCommand.swift`
+冒頭)で、run / MCP とは別に自分でブリッジへ繋ぎに行く。§13.1/13.2 と同じ「相乗り・未導入 launch」の
+危険がここにも及ぶことが実地で分かったので、判定は既存の1箇所へ寄せた。
+
+**(a) 宛先の本人確認**: `XCUIBridgeResolver.resolve` が返した宛先は `FTCore.BridgeIdentityCheck`
+(F8b・2026-09-15。run 側の `RunOrchestrator.bridgeUnreachable` 再プローブと同じ判定)で `--udid` と
+突き合わせる(hybrid の in-app 側は別ポート = 別ブリッジなので `composeDriver` がそちらも別に
+確認する)。以前ライブ操作にはこの確認が無く、実害が出た(実地 2026-09-22): `api live serve
+--udid <台A>` を `--port` なしで起こすと既定 8123 に居た**別の台のブリッジ**を掴み、
+`actionResult.app` が別の台で動いていたアプリを返した(操作もそちらへ飛んだ)。さらに
+`LiveBridgeAutoStarter.checkAndRestartIfStale` がその**別の台のブリッジを「旧版」として止め、
+台A の udid で同じポートに建て直そうとした** —— 健全なブリッジが2本消えた。
+
+不一致の扱いは**`--port` の明示/既定で分ける**(`DriverOptions.port` は `UInt16?` なので区別できる。
+`BridgeDiscovery` の「`port:` を明示した呼び出しでは探索しない —— 宛先を利用者が決めているため」と
+同じ切り分け):
+
+- **`--port` 明示** → 断る(`DriverError.bridgeIdentityMismatch`。利用者が決めた宛先を勝手に変えない)
+- **既定 8123 へのフォールバック** → 断らない。`BridgeDiscovery.scan` の `Found.udid` からその udid の
+  ポートを探して乗り換え、見つからなければ**占有中の既定ポートには触れず**
+  `XCUIBridgeResolver.freePort`(F8 と同じ台帳を見る採番。ライブ操作向けに public 化)で
+  空きポートへ向け、最初の操作で自然に接続拒否 → `LiveBridgeAutoStarter` が新しいブリッジを建てる。
+  **なぜ断ってはいけないか**: 拡張は port が分かるときだけ `--port` を渡す
+  (`vscode-fleetest/src/liveModel.ts` の `buildDeviceArgs`)ので、**ブリッジのまだ無い台をライブ操作で
+  開く**場面では必ず既定にフォールバックする。そこで断ると、自動起動が想定しているまさにその場面で
+  ライブ操作が開けなくなる
+- `checkAndRestartIfStale`(§12.2 の自己修復と同系統だが、ライブ操作の宛先だけを見る)も
+  **本人確認が取れた相手にだけ**版差の再起動を掛ける
+
+**(b) launch / activate の門**: 判定は `FTBridgeClient.InstalledAppCheck.launchGuard` の1箇所で、
+**MCP の `ft_launch`(判定材料は `installedVerdict` が集めて渡す)とライブ操作が共有**する
+(「判定は1箇所・文言は呼び手ごと」)。**2026-09-22 まで MCP の `MCPServer.launchGuardDecision` は
+同じ判定をこの関数の中に別実装で持っていた** —— 今は関数名はそのままに中身を
+`InstalledAppCheck.launchGuard` への委譲へ差し替え、MCP 向けの文言(ft_install を指す等)を
+組むだけにした。以前ライブ操作には門が無く、`{"cmd":"activate","bundle":""}` や
+`{"cmd":"launch","bundle":"no.such.app.live"}` で**そのコマンドが30秒刺さり、
+"A single command stalled for over 30s — force-quitting (command watchdog)" で serve が落ち、
+再起動時に健全なランナーまで掃除して建て直しになった**(実地 2026-09-22。`XCUIApplication` は
+実在しない bundleID で返ってこない)。素通ししてよいのは Android と in-app エンジン(ランナーが
+死なない経路)だけで、`com.apple.springboard` は門の外 —— §13.2/MCP と同じ切り分け
+(`InstalledAppCheck.launchGuard`)。own app(hybrid で in-app が既に繋がっているアプリ)への
+launch/activate はライブ操作側で門より前に素通しする(in-app は XCUITest を経由しないので
+未導入検査そのものが要らない)。
+
+**(c) NDJSON の型違いは黙殺しない**: プロトコルは「壊れた行(JSON でない・`cmd` が無い)は stderr に
+1行ログして無視する」だが、**`cmd` が読めて値の型だけが違う行は黙殺しない** ——
+`{"kind":"actionResult","ok":false,"error":"<欄> must be …"}` を返す(文言は MCP の
+`intArgument`/`doubleArgument` と揃える)。以前は `ApiLiveServeCommand` を型付き `Decodable` で
+組んでいたため1フィールドでも型が違うと decode 全体が失敗し、`cmd` さえ読めていた行も「JSON で
+ない」行と見分けが付かず無応答のまま黙殺していた(実地 2026-09-22: `{"cmd":"pinch","scale":"2"}`
+が無反応 → 拡張の `SERVE_REQUEST_TIMEOUT` で serve ごと再起動。原因は stderr にしか出ない)。
+対策は `[String: Any]` から手で組み、cmd 以外の型違いを1件目だけ `decodeError` に残して
+`handle` が `actionResult(ok:false)` で答える形にした。
 
 ## 14. 実行結果のファイルベース DB(2026-07-17)
 

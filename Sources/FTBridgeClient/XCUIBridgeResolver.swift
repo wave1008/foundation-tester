@@ -230,8 +230,11 @@ public enum XCUIBridgeResolver {
     /// in-app ブリッジは pid ファイルを持たない(dylib 注入)ため、pid だけ見ると
     /// in-app が待受中のポートを空きと誤判定してポート衝突を起こす。iproxy-<port>.pid は
     /// bridge-<port>.pid とは別の台帳なので、生きていれば別途弾く(F8: 見ずに空き扱いすると
-    /// 後段の PortHolder.stopIfOwnedBridge が実機のトンネルを巻き込む前提の穴を作る)
-    static func freePort(repoRoot: URL, occupied: Set<UInt16>) -> UInt16? {
+    /// 後段の PortHolder.stopIfOwnedBridge が実機のトンネルを巻き込む前提の穴を作る)。
+    /// **public**: api live serve が「既定ポートが別デバイスに奪われており、その台の
+    /// ブリッジがまだ無い」ときに、奪われた台へ触れず別の空きポートへ自動起動を回す
+    /// (ApiLiveCommand.makeLiveDriver)
+    public static func freePort(repoRoot: URL, occupied: Set<UInt16>) -> UInt16? {
         portRange.first { port in
             !occupied.contains(port)
                 && !FileManager.default.fileExists(

@@ -52,26 +52,42 @@ public enum BridgeIdentityCheck {
     /// ② status.udid が無いとき: 期待が実機なのに status.engine=="inapp"(実機に in-app は無い=
     ///    相手はシミュレータ) → mismatch。期待エンジンと status.engine の inapp/非inapp が
     ///    食い違う(どちらの向きも) → mismatch
-    public static func verdict(expected: Expected, status: StatusResponse) -> Verdict {
+    /// `remedy` は**呼び手ごとの対処文**(run は「レーンを建て直す」・ライブ操作は「宛先を直す」で
+    /// 対処が違う)。**既定値を置かない** —— 新しい呼び手が渡し忘れたらコンパイルで止める
+    /// (CLAUDE.md「共有するのは判定であって文言ではない」)
+    public static func verdict(expected: Expected, status: StatusResponse,
+                               remedy: String) -> Verdict {
         if let statusUDID = status.udid, let expectedUDID = expected.udid {
-            return statusUDID == expectedUDID ? .ok : .mismatch(detail: detail(expected: expected, status: status))
+            return statusUDID == expectedUDID
+                ? .ok : .mismatch(detail: detail(expected: expected, status: status, remedy: remedy))
         }
         if status.udid == nil {
             if expected.physical, status.engine == "inapp" {
-                return .mismatch(detail: detail(expected: expected, status: status))
+                return .mismatch(detail: detail(expected: expected, status: status, remedy: remedy))
             }
             let expectedEngine = expected.engine ?? "xcuitest"
             if let statusEngine = status.engine, (statusEngine == "inapp") != (expectedEngine == "inapp") {
-                return .mismatch(detail: detail(expected: expected, status: status))
+                return .mismatch(detail: detail(expected: expected, status: status, remedy: remedy))
             }
         }
         return .ok
     }
 
-    private static func detail(expected: Expected, status: StatusResponse) -> String {
+    /// **事実だけ**を並べ、対処は `remedy` に任せる
+    private static func detail(expected: Expected, status: StatusResponse, remedy: String) -> String {
         let expectedID = expected.udid ?? expected.deviceName ?? "unknown"
         return "the bridge on port \(expected.port) now belongs to another device: \(status.device)"
             + " (engine \(status.engine ?? "unknown"), udid \(status.udid ?? "unknown"))"
-            + " — expected \(expectedID). The lane's port was taken over; the worker must be re-provisioned"
+            + " — expected \(expectedID). \(remedy)"
     }
+
+    /// **detail が要らない呼び手用**(文言を作らないので `remedy` も要らない。判定は `verdict` の1箇所)
+    public static func matches(expected: Expected, status: StatusResponse) -> Bool {
+        if case .mismatch = verdict(expected: expected, status: status, remedy: "") { return false }
+        return true
+    }
+
+    /// run のレーン(4経路が共有する対処文。**ここが定義元**)
+    public static let runLaneRemedy =
+        "The lane's port was taken over; the worker must be re-provisioned"
 }

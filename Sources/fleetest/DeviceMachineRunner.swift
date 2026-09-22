@@ -91,6 +91,28 @@ enum DeviceMachineRunner {
         FleetRunner.log("==> profile \"\(profileName)\" spans \(groups.count) machines:"
             + " \(machineList) — building \(project.name) locally to split the scenarios")
 
+        // 機械ごとに別々の run になるので、ここで1回だけ束ね鍵を発行して全員へ配る
+        // (FTCore.RunMetaRecord.runGroup。子が自分で作ると束にならない)。ビルドより前に採る ——
+        // 待機列のチケット(下)にも使うので、build 分だけ epoch が遅れないようにする
+        let runGroup = RunRecorder.makeRunGroupID()
+        // dispatch.lock の待機チケットも**ここで1回だけ**採る(DispatchTicketIssuer の宣言。
+        // 機械ごとに採り直すと前後関係が機械によって食い違う)。**プロセス環境へも書く**
+        // (`FT_DISPATCH_TICKET`。子と同じ綴り・同じ資格で自分自身にも効かせる) —— 下のローカル
+        // 先取りと、あとで `DispatchPrelock` が local を取り直すときの両方が、この早い epoch の
+        // チケットを引く。書かずに後で採り直すと、build 中に列へ並んだ別 run のチケットのほうが
+        // 早い epoch になり、build を終えて戻ってきた自分が FIFO で追い越される
+        let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
+        setenv(DispatchTicket.environmentKey, ticket.environmentValue, 1)
+        // **この Mac のロックを、ビルド/一覧取得より前に取る**(ユーザー決定 2026-09-21
+        // 「1つのマシンで同時に複数の run は走らせない」・規律③「取るのは run の入口」)。
+        // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
+        // 関わらず必ず手放す(下)。全順序どおりの本取得は `DispatchPrelock` が local を含めて
+        // 改めて行う(§18.10「循環待ちを構造的に作れない」= local だけ順序の外に出さない)
+        var localLock = try LocalDispatchLock(
+            runGroup: runGroup, waitLock: waitLock, forceLock: forceLock,
+            log: { FleetRunner.log($0) }).acquire()
+        defer { localLock?.release() }
+
         // 割り当てを決めるにはシナリオ一覧が要る(--split と同じ理由でローカルで1回ビルドする)
         try ScenarioHost.build(project: project, log: { FleetRunner.log($0) })
         // 機械分担の run に dry-run は無い(dry-run は手元の run 経路で先に畳まれる)
@@ -152,25 +174,27 @@ enum DeviceMachineRunner {
             }
         }
 
+        // 配分が確定したら、build 直列化のために先取りしたロックは**local に配られたかどうかに
+        // 関わらず**必ず手放す(下の DispatchPrelock が local を含めて全順序どおり取り直すため。
+        // 手放さずに残すと local だけ順序の外に出た「取得済み」扱いになり、循環待ちを作れる形へ戻る)
+        localLock?.release()
+        localLock = nil
+
         // 手元の台の二重使用は**どの機械へも配る前に**断る(ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
-        // **dispatch.lock より手前なのは意図**(読み取りだけの先読み。理由と上下関係は
-        // FTBridgeClient/RunLeaseGuard.swift の冒頭)
+        // **dispatch.lock より手前なのは意図**(読み取りだけの先読み。上の localLock は既に
+        // 手放し済みなので、ここでは何も持っていない。理由は FTBridgeClient/RunLeaseGuard.swift の冒頭)
         if let local = active.first(where: { $0.1.machine == nil }) {
             let ids = Set(local.2)
             try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(
                 project: project, profileName: profileName, setOverrides: setOverrides,
                 localDeviceNames: local.1.deviceNames,
-                localScenarios: selected.filter { ids.contains($0.id) }, broadcast: broadcast)
+                localScenarios: selected.filter { ids.contains($0.id) }, broadcast: broadcast,
+                waitLock: waitLock, log: { FleetRunner.log($0) })
         }
 
         let binary = FleetRunner.selfBinaryPath()
-        // 機械ごとに別々の run になるので、ここで1回だけ束ね鍵を発行して全員へ配る
-        // (FTCore.RunMetaRecord.runGroup。子が自分で作ると束にならない)
-        let runGroup = RunRecorder.makeRunGroupID()
-        // dispatch.lock の待機チケットも**ここで1回だけ**採って全ての子へ同じ値を配る
-        // (DispatchTicketIssuer の宣言。機械ごとに採り直すと前後関係が機械によって食い違う)
-        let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
-        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock)
+        // **親が機械の全順序どおりに1台ずつ取り切ってから子を起こす**(DispatchPrelock。local も
+        // 他の機械と同じ扱いで、上で発行し環境へ書いたチケットを引く)
         let prelock = DispatchPrelock(actions: DispatchPrelock.live(
             project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
             runGroup: runGroup, mode: .cliRun, log: { FleetRunner.log($0) }))

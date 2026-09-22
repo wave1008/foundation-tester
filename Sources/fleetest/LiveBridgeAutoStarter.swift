@@ -79,6 +79,15 @@ actor LiveBridgeAutoStarter {
         let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
                                   timeoutSeconds: 3)
         guard let status = try? await client.status() else { return }
+        // **自分の台にだけ効かせる**(F8b 型・実地 L1: このポートが版差のせいで古く見えても、
+        // 疎通した相手が別デバイスなら止めない——他人のブリッジを版で止めて建て直していた実害。
+        // 判定は run 側4経路と同じ FTCore.BridgeIdentityCheck の1箇所)
+        let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: physical, engine: nil)
+        if !BridgeIdentityCheck.matches(expected: expected, status: status) {
+            logStderr("port \(port) is answering for a different device — leaving its bridge alone"
+                + " (requested udid: \(udid))")
+            return
+        }
         if status.ready && status.protocolVersion == BridgeAPI.bridgeProtocolVersion { return }
         guard case .idle = state else { return }
         state = .starting

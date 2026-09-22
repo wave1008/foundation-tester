@@ -83,6 +83,39 @@ public enum InstalledAppCheck {
             + " and the app is installed on some of them")
     }
 
+    /// **launch/activate する前に確かめる門(純粋関数)**。MCP(ft_launch)とライブ操作
+    /// (api live serve の launch/activate)の2経路が共有する唯一の判定元 ——
+    /// **共有するのは判定だけで文言は呼び手ごとに持つ**(CLAUDE.md「判定は1箇所」)。
+    ///
+    /// `.unknown` を撃ってよいのは Android(未インストールの launch はランナーを道連れにしない)と
+    /// iOS の in-app エンジン(`XCUIApplication.launch()` を経由しない)だけ —— それ以外
+    /// (xcuitest・hybrid・エンジン不明)は危険側として断つ: 未インストールのまま
+    /// `XCUIApplication.launch()` を撃つと XCUI が issue を main queue で記録してランナーごと
+    /// 落とし、ハンドラは 60 秒でタイムアウトしてブリッジが自壊する(実測)。
+    /// springboard は呼び出し元が launch せず参照するだけなので門の外
+    public enum LaunchGuardVerdict: Equatable {
+        case allow
+        case refuse(LaunchRefusalReason)
+    }
+
+    public enum LaunchRefusalReason: Equatable {
+        case notInstalled
+        case unknown(String)
+    }
+
+    public static func launchGuard(
+        verdict: InstallVerdict, isAndroid: Bool, engine: String?, bundleID: String
+    ) -> LaunchGuardVerdict {
+        guard bundleID != "com.apple.springboard" else { return .allow }
+        switch verdict {
+        case .installed: return .allow
+        case .notInstalled: return .refuse(.notInstalled)
+        case .unknown(let reason):
+            guard !isAndroid, engine != "inapp" else { return .allow }
+            return .refuse(.unknown(reason))
+        }
+    }
+
     /// インストール直後に呼ぶと次回以降の深比較をスキップできる(呼ばなくても初回深比較で自己回復)
     public static func recordInstalled(udid: String, bundleID: String, appPath: String) {
         guard let fingerprint = sourceFingerprint(appPath: appPath) else { return }

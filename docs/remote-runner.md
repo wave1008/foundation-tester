@@ -895,6 +895,32 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
   `remote clean`(デバイスも止まる)か
   手動削除しか無くなる**(実際に詰まった)。純粋にローカルだけの実行のときだけ打ち間違いとして拒否する
 
+### 複数機械 fan-out はビルドをロックの外に置かない(2026-09-22)
+
+以前は「シナリオ一覧を得るためのビルド → 機械ごとの配分 → dispatch.lock 取得」の順で、
+**ロックを取るまでの数十秒(ビルドに変更があれば分単位)が dispatch.lock の外にあった**
+(`DeviceMachineRunner.run` / `ApiRunMachineFanout.run`。実測 2026-09-22: run 開始 07:32:09 →
+「building … to split the scenarios」→ 配分が出たのが 07:32:34(25 秒)→ そこで初めて
+ロックを取りに行く)。効きが3つ: ①占有表示(`monitorLock` / `remote status` の LOCK 欄)が
+数十秒〜数分「空き」のまま ②規律③「`swift build` も重い負荷なので直列化する」が防ごうとした
+当のもの(重いビルドの並行)が起きる ③§18.9 の FIFO の待機列の順序が実質「ビルドが終わった順」に
+なり、先に打った run が後から打った run に追い越される。
+
+**配分にはシナリオ一覧が要る**という構造上の依存(冒頭のフリート実行の説明のとおり)は残るので、
+取得を2段に分けた:
+
+1. **待機列のチケットを `ScenarioHost.build` より前に発行し、`setenv(DispatchTicket.environmentKey, …)`
+   でプロセスの環境へ書き込む**(`DispatchTicketIssuer.issue`)。ここが FIFO の公平性を担う。
+   **発行だけでは効かない** —— 取得側(`RemoteDispatchQueue.resolveTicket(environment:)`)は
+   環境変数を見て採るので、書かなければビルド中に取得側が `Date()` で採り直し、その間に列へ
+   並んだ別 run に追い越される
+2. **手元(`local`)の dispatch.lock だけをビルドの前に先取りし、配分が確定したら
+   (local に配られたかどうかに関わらず)無条件で解放する**(`DeviceMachineRunner.run` /
+   `ApiRunMachineFanout.run` の一時ロック)。これは「ビルドという重い負荷の直列化」だけのための
+   一時的な先取りで、下記(§18.10)の全順序取得とは別物 —— 手放さずに残すと local だけ
+   「取得済み」のまま順序の外に出て、下の循環待ちを合成できる形に戻る
+3. **本取得は `DispatchPrelock` が local を含めて全順序どおり行う**(変更なし。§18.10)
+
 ### 中継・回収時のパス書き換え(手元のルートに対応するのは workDir)
 
 リモートの子が出す絶対パス(NDJSON の `reportPath`・JUnit の `report:`/`worker:`・フックのログ)は
@@ -1983,11 +2009,33 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   `sweepRefusal` で丸ごと断る。MCP のセッションは別の文言で名指しする)。lease はツールのルートに
   あるので、**ランナー機で直接打った run も写る**。`remote clean` の掃討は `--ignore-lock` を
   `--force` として運ぶ
+- **`bridge down`(`--port` / `--all`)も同じ規律だが、判定材料が無いときの倒し方は逆**
+  (`BridgeDownRefusal.unresponsiveButBoundRefusal`。2026-09-22)。走査(`BridgeDiscovery.scan`)に
+  載らないポート(= `/status` が返らない)は従来「宛先が引けない → 通す」だったが、**「応答しない」を
+  「死んでいる」と読まない**規律(docs/design.md の `BridgeDiscovery.isBound` と同じ)がここには
+  効いていなかった ——
+  駆動中の XCUITest ブリッジは操作の間 `/status` を返さない(quiescence 待ちで数十秒ブロックする)ので、
+  走査漏れを無条件に「通す」へ倒すと**いちばん使用中のときだけ門が開く**という逆向きの穴になる。
+  実地 2026-09-22 の対照: 走査に載ったポートへの `bridge down --port` は
+  `refusing to stop: … is being driven by an MCP session (fleetest-mcp pid …)` で正しく拒否した一方、
+  **同時刻に走査へ載らなかったポート(MCP が操作中)は一言も言わずに停止**し、そのセッションは
+  以後 "no running bridge" しか返さなくなった(ブリッジを建て直すまで回復しない)。
+  今の形: 走査に載らないポートは**待受**(`BridgeDiscovery.isBound`)を見て、待受しているなら断る
+  (`--port`/`--all` の両経路。押し切るのは `--force` だけ)。待受も無ければ従来どおり通す
+  (固まったブリッジを止める手段は奪わない)
 - **順番待ちは GUI からも**: `api run --wait-lock`(`run` と対等になった。
   `RunCommandFlagParityTests` の run 専用表から外れた)+ 設定 `fleetest.remoteWaitLock`
   (M2 の時点では既定 0 = 待たない。**§18.9 で既定 3600 秒へ変えた** = FIFO の待機列が入り、
   待つことが順番の保証になったため)。**奪う口(`--force-lock`)は GUI に出さない** —— 走っているかもしれない
   他人の run を殺せる導線を作らない(§5 の決定を維持)
+- **台の lease(run-lease)の先読み拒否も `--wait-lock` を尊重する**(2026-09-22。
+  `ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`。§13 の「dispatch.lock と run-lease の
+  上下」で述べた先読みそのもの)。**この機械は1マシン1 run を保証している**ので、走っている run が
+  終われば台の lease は必ず空く(dispatch.lock と違って「待てば必ず解消する」)。以前は
+  `--wait-lock 300` を渡しても1秒も待たずに `refusing to start: already in use by another
+  fleetest run …` で落ち、連続実行の後発が dispatch.lock の FIFO の待機列にも並べなかった
+  (実測 2026-09-22)。今は `LocalDeviceLeaseWaitPolicy.decide`(`WaitLockPolling` と同じ刻み)で
+  待ってから再判定し、上限に達したら従来と同じ文言で断る
 - **孤児 hooks はディスパッチ開始時に横断で代行**(`FTRemote.RemoteHooksReap`。1 ssh で
   `users/*/work` と旧 `work` を回る)。**ロックを取った直後に撃つ**ので生きている run の
   hooks は触らない(加えて `hooks reap` 自身が pid の生死で判定する)。`remote clean` も
@@ -2095,6 +2143,18 @@ FIFO の待機列を置いた。**ロックの原子性は `mkdir` のまま**�
   **部分列でも一貫性は保たれる**。印を渡さないので失敗の文言も JUnit の扱いも従来のまま
 - **子へ `--wait-lock` を渡さない** —— 待つのは親の役目になった。渡すと、親が上限まで待って
   取れなかった機械で**子がもう一度同じ上限を払う**(既定 3600 秒なら最悪 2 時間)
+- **local を全順序の外へ出さない**(実装の途中で危うく壊れかけた)。「手元はビルド前の一時ロックで
+  もう取ってあるから、`DispatchPrelock` では local だけ取り直しを飛ばす」という形
+  (`preacquiredLocal` 相当)を入れかけたが、これは全順序の保証をそのまま壊す —— Mac X で
+  複数機械 run(X + M1Max)を起こすと X を先取りして M1Max を UUID 順で待つ、のに対し**同時に**
+  M1Max で複数機械 run(M1Max + X)を起こすと M1Max を先取りして X を待つ、で互いに待つ形が
+  作れてしまう(`--wait-lock` 付きならどちらも上限まで待って共倒れになる)。`DispatchPrelock.live`
+  の `acquire` クロージャのコメントが最初からこの形を警告していた(「手元だけ順序の外へ出すと、
+  A が手元を握って M1Max を待ち、B が M1Max を握って手元を待つ形が作れる」)。守るのは2つ:
+  **①ビルド直列化のための一時ロック(前項)は必ず解放してから `acquireInOrder` に入る**
+  (local に配られたかどうかを見ずに無条件で解放する)/ **②local 分岐から取得を飛ばす return を
+  足さない**(`DispatchPrelock.live` の `acquire` は local も他の機械と同じく毎回取得を試みる)。
+  `Tests/FleetestTests/DispatchLockBeforeBuildOrderingTests.swift` がソース走査でこの2つを固定する
 - **親が死んだときのロックは従来どおり回収される**: info.json の pid は**親の pid** になるので、
   既存の「自分の死んだディスパッチを次の run が自動回収する」(ランナー上でその run が生きていない
   ことの確認込み)がそのまま効く。親は取得の前に `InterruptRelay.observing` を張る(SIGINT で

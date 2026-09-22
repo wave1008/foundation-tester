@@ -365,7 +365,7 @@ extension MCPServer {
                     + " does not run (one approval should not be able to reach data-wiping commands)"
                     + " — \(alternative)")
             }
-            throw MCPError("\"\(command)\" is a \(info.category) DSL command — ft_batch only runs"
+            throw MCPError("\"\(command)\" is a DSL command in the \(info.category) category — ft_batch only runs"
                 + " operation/scroll commands. " + batchCategoryGuidance(info.category))
         }
         guard let builder = batchStepBuilders[command] else {

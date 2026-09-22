@@ -14,12 +14,12 @@ final class BridgeIdentityCheckTests: XCTestCase {
 
     func testMatchingUDIDIsOK() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: "SIM-1", physical: false, engine: "xcuitest")
-        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(udid: "SIM-1")), .ok)
+        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(udid: "SIM-1"), remedy: "REMEDY"), .ok)
     }
 
     func testDifferingUDIDIsMismatch() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: "SIM-1", physical: false, engine: "xcuitest")
-        guard case .mismatch = BridgeIdentityCheck.verdict(expected: expected, status: status(udid: "SIM-2")) else {
+        guard case .mismatch = BridgeIdentityCheck.verdict(expected: expected, status: status(udid: "SIM-2"), remedy: "REMEDY") else {
             return XCTFail("別 UDID は mismatch のはず")
         }
     }
@@ -29,7 +29,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
     func testNoStatusUDIDPhysicalExpectedButEngineInappIsMismatch() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: "PHYSICAL-SE3", physical: true, engine: nil)
         guard case .mismatch = BridgeIdentityCheck.verdict(
-            expected: expected, status: status(engine: "inapp", udid: nil)) else {
+            expected: expected, status: status(engine: "inapp", udid: nil), remedy: "REMEDY") else {
             return XCTFail("実機期待で engine=inapp は mismatch のはず(実機に in-app は無い)")
         }
     }
@@ -37,7 +37,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
     func testNoStatusUDIDExpectedXcuitestButEngineInappIsMismatch() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: nil, physical: false, engine: "xcuitest")
         guard case .mismatch = BridgeIdentityCheck.verdict(
-            expected: expected, status: status(engine: "inapp", udid: nil)) else {
+            expected: expected, status: status(engine: "inapp", udid: nil), remedy: "REMEDY") else {
             return XCTFail("xcuitest 期待で engine=inapp は mismatch のはず")
         }
     }
@@ -46,7 +46,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
     func testNoStatusUDIDExpectedInappButEngineXcuitestIsMismatch() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: nil, physical: false, engine: "inapp")
         guard case .mismatch = BridgeIdentityCheck.verdict(
-            expected: expected, status: status(engine: "xcuitest", udid: nil)) else {
+            expected: expected, status: status(engine: "xcuitest", udid: nil), remedy: "REMEDY") else {
             return XCTFail("inapp 期待で engine=xcuitest は mismatch のはず")
         }
     }
@@ -55,20 +55,20 @@ final class BridgeIdentityCheckTests: XCTestCase {
     func testNoMaterialIsOK() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: nil, physical: true, engine: nil)
         XCTAssertEqual(
-            BridgeIdentityCheck.verdict(expected: expected, status: status(engine: nil, udid: nil)), .ok)
+            BridgeIdentityCheck.verdict(expected: expected, status: status(engine: nil, udid: nil), remedy: "REMEDY"), .ok)
     }
 
     /// status に udid が無く、engine も同じ分類(どちらも非 inapp)なら ok
     func testNoStatusUDIDMatchingEngineClassIsOK() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: nil, physical: true, engine: nil)
         XCTAssertEqual(
-            BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "xcuitest", udid: nil)), .ok)
+            BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "xcuitest", udid: nil), remedy: "REMEDY"), .ok)
     }
 
     /// status に udid はあるが expected 側が udid を持たない(--udid 未指定)ときは判断できないので通す
     func testStatusUDIDWithoutExpectedUDIDIsOK() {
         let expected = BridgeIdentityCheck.Expected(port: 8138, udid: nil, physical: false, engine: "xcuitest")
-        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(udid: "SIM-9")), .ok)
+        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(udid: "SIM-9"), remedy: "REMEDY"), .ok)
     }
 
     // MARK: - DriverError への写像(壊れたら落ちることの確認: bridgeIdentityMismatch を
@@ -89,15 +89,15 @@ final class BridgeIdentityCheckTests: XCTestCase {
         XCTAssertEqual(expected.udid, "SIM-1")
         XCTAssertEqual(expected.port, 8124)
         XCTAssertFalse(expected.physical)
-        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "xcuitest")), .ok)
+        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "xcuitest"), remedy: "REMEDY"), .ok)
     }
 
     func testExpectedForConnectionProbedAtItsOwnPortKeepsTheConnectionEngine() {
         let connection = DriverConnection(platform: "ios", port: 8138, engine: "inapp", udid: "SIM-1")
         let expected = BridgeIdentityCheck.expected(for: connection, probedPort: 8138)
         XCTAssertEqual(expected.engine, "inapp")
-        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "inapp")), .ok)
-        guard case .mismatch = BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "xcuitest")) else {
+        XCTAssertEqual(BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "inapp"), remedy: "REMEDY"), .ok)
+        guard case .mismatch = BridgeIdentityCheck.verdict(expected: expected, status: status(engine: "xcuitest"), remedy: "REMEDY") else {
             return XCTFail("in-app 期待のポートに xcuitest ランナーが答えたら mismatch のはず")
         }
     }
@@ -108,7 +108,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
                                           udid: "00008110-000260242EEB801E", physical: true, host: "127.0.0.1")
         let expected = BridgeIdentityCheck.expected(for: connection, probedPort: 8138)
         guard case .mismatch = BridgeIdentityCheck.verdict(
-            expected: expected, status: status(device: "iPhone 17 Pro(iOS 27.0)-01", engine: "inapp")) else {
+            expected: expected, status: status(device: "iPhone 17 Pro(iOS 27.0)-01", engine: "inapp"), remedy: "REMEDY") else {
             return XCTFail("実機期待のポートに in-app ブリッジが答えたら mismatch のはず")
         }
     }

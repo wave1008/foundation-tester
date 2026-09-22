@@ -20,7 +20,8 @@ final class ApiDeviceUpDirectTests: XCTestCase {
     func testBuildsAPhysicalSpecForAConnectedDevice() throws {
         let spec = try ApiDeviceUpDirectSpec.physicalIOSSpec(
             udid: "00008110-000260242EEB801E",
-            devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: true)])
+            devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: true)],
+            simulators: [])
         XCTAssertEqual(spec.name, "iPhone SE3")
         XCTAssertEqual(spec.udid, "00008110-000260242EEB801E")
         XCTAssertTrue(spec.isPhysical)
@@ -34,7 +35,7 @@ final class ApiDeviceUpDirectTests: XCTestCase {
         XCTAssertThrowsError(try ApiDeviceUpDirectSpec.physicalIOSSpec(
             udid: "00008110-000805001188201E",
             devices: [device(udid: "00008110-000805001188201E", name: "iPhone snb", connected: false)],
-            probe: { _ in false }))
+            simulators: [], probe: { _ in false }))
     }
 
     /// **一覧の「未接続」だけで拒否しない**: 有線で待機中の端末は CoreDevice がトンネルを畳むので
@@ -44,7 +45,7 @@ final class ApiDeviceUpDirectTests: XCTestCase {
         let spec = try ApiDeviceUpDirectSpec.physicalIOSSpec(
             udid: "00008110-000260242EEB801E",
             devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: false)],
-            probe: { _ in true })
+            simulators: [], probe: { _ in true })
         XCTAssertEqual(spec.name, "iPhone SE3")
         XCTAssertTrue(spec.isPhysical)
     }
@@ -55,7 +56,7 @@ final class ApiDeviceUpDirectTests: XCTestCase {
         _ = try ApiDeviceUpDirectSpec.physicalIOSSpec(
             udid: "00008110-000260242EEB801E",
             devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: true)],
-            probe: { probed.append($0); return true })
+            simulators: [], probe: { probed.append($0); return true })
         XCTAssertEqual(probed, [])
     }
 
@@ -63,7 +64,7 @@ final class ApiDeviceUpDirectTests: XCTestCase {
         XCTAssertThrowsError(try ApiDeviceUpDirectSpec.physicalIOSSpec(
             udid: "00008110-999999999999999E",
             devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: true)],
-            probe: { _ in true }))
+            simulators: [], probe: { _ in true }))
     }
 
     /// devicectl の Identifier 列(ハードウェア UDID とは別の UUID)で指定されても引ける
@@ -73,8 +74,23 @@ final class ApiDeviceUpDirectTests: XCTestCase {
             udid: "2DBFD3DF-21FE-5C6C-9F5D-1210BF80726B",
             devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: true,
                              identifier: "2DBFD3DF-21FE-5C6C-9F5D-1210BF80726B")],
-            probe: { _ in true })
+            simulators: [], probe: { _ in true })
         // spec には**ハードウェア UDID** を入れる(xcodebuild の -destination id= が受けるのはこちら)
         XCTAssertEqual(spec.udid, "00008110-000260242EEB801E")
+    }
+    /// **シミュレータの UDID を渡されたら、そう名指しして断る** —— `--udid` は実機専用の口で、
+    /// stop-device の `--udid` は逆にシミュレータ専用。実機の一覧だけを並べると取り違えに気付けない
+    func testNamesTheSimulatorWhenTheUdidIsOne() {
+        XCTAssertThrowsError(try ApiDeviceUpDirectSpec.physicalIOSSpec(
+            udid: "2A7FBD43-4A72-44DA-AB95-EED23B1B3B6D",
+            devices: [device(udid: "00008110-000260242EEB801E", name: "iPhone SE3", connected: true)],
+            simulators: [SimDeviceInfo(udid: "2A7FBD43-4A72-44DA-AB95-EED23B1B3B6D",
+                                       name: "iPhone 17 Pro(iOS 27.0)-09", os: "iOS 27.0", booted: true)],
+            probe: { _ in true })) { error in
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("is a simulator"), message)
+            XCTAssertTrue(message.contains("iPhone 17 Pro(iOS 27.0)-09"), message)
+            XCTAssertTrue(message.contains("--name"), message)
+        }
     }
 }

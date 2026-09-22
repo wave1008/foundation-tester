@@ -62,7 +62,9 @@ public struct DispatchWaitStatus: Equatable, Sendable {
     /// 待ち始めた1行(初回だけ)
     public var queuedLine: String {
         var line = "==> queued for the dispatch lock on \(target) — position \(position) of \(total)"
-        if let holder { line += ", held by \(RemoteDispatchLock.holderSummary(holder))" }
+        // **`held by` を前置しない** —— `holderSummary` は "started by …" の形で返す
+        // (`heldMessage` / `alignHeldMessage` / `HostOccupancy` は括弧の中に入れるので前置が要らない)
+        if let holder { line += ", \(RemoteDispatchLock.holderSummary(holder))" }
         if let limitSeconds { line += " — waiting up to \(limitSeconds)s" }
         return line
     }

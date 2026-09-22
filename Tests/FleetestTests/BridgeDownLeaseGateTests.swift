@@ -83,6 +83,41 @@ final class BridgeDownLeaseGateTests: XCTestCase {
             force: false, runHolderPID: { _ in nil }, mcpHolderPID: { _ in nil }, selfPID: 100))
     }
 
+    // MARK: - 応答しないが待受しているポート(忙しいブリッジ)
+
+    /// **鍵が引けないときに黙って止めない** —— /status が返らないのは「死んでいる」だけでなく
+    /// 「駆動中で忙しい」でも起きる。後者を素通しすると走っている MCP / run を無言で壊す
+    func testRefusesPortsThatListenButDidNotAnswer() {
+        guard let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
+            ports: [8153], force: false, isBound: { $0 == 8153 }) else {
+            return XCTFail("待受しているポートは断るべき")
+        }
+        XCTAssertTrue(refusal.contains("8153"), refusal)
+        XCTAssertTrue(refusal.contains("--force"), refusal)
+    }
+
+    /// 待受もしていない = 止めるものが無い。ここで断ると**回復手段を奪う**ので通す
+    func testDoesNotRefusePortsThatAreNotEvenListening() {
+        XCTAssertNil(BridgeDownRefusal.unresponsiveButBoundRefusal(
+            ports: [8153], force: false, isBound: { _ in false }))
+    }
+
+    /// `--force` は押し切れる(固まったブリッジを止める唯一の口を残す)
+    func testForcePassesThrough() {
+        XCTAssertNil(BridgeDownRefusal.unresponsiveButBoundRefusal(
+            ports: [8153], force: true, isBound: { _ in true }))
+    }
+
+    /// 複数ポート(--all)は待受しているものだけを名指しする
+    func testNamesOnlyTheListeningPorts() {
+        guard let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
+            ports: [8123, 8153, 8154], force: false, isBound: { $0 != 8123 }) else {
+            return XCTFail("待受しているポートは断るべき")
+        }
+        XCTAssertFalse(refusal.contains("8123"), refusal)
+        XCTAssertTrue(refusal.contains("8153, 8154"), refusal)
+    }
+
     // MARK: - 配線(CLI 側が判定を素通りさせていないか)
 
     func testDownImplementationCallsTheLeaseGate() throws {
@@ -103,7 +138,12 @@ final class BridgeDownLeaseGateTests: XCTestCase {
                        "android と --port の2経路が DeviceBooter.deviceInUseRefusal を通す")
         XCTAssertEqual(body.components(separatedBy: "BridgeDownRefusal.decide(").count - 1, 1,
                        "--all の経路は BridgeDownRefusal.decide を通す")
-        XCTAssertEqual(body.components(separatedBy: "throw ExitCode(1)").count - 1, 3,
-                       "3経路とも、保持者が居るときは止めずに exit 1 で抜ける")
+        XCTAssertEqual(body.components(separatedBy: "throw ExitCode(1)").count - 1, 5,
+                       "3経路の保持者チェック + iOS の2経路の「応答しないが待受している」チェック")
+        // **応答しないポートを素通しさせない門も本数で固定する** —— `--port` と `--all` の
+        // どちらから消えても、もう片方の呼び出しが残って素通りする
+        XCTAssertEqual(
+            body.components(separatedBy: "BridgeDownRefusal.unresponsiveButBoundRefusal(").count - 1, 2,
+            "--port と --all の2経路が「応答しないが待受している」チェックを通す")
     }
 }

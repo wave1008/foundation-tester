@@ -32,6 +32,26 @@ enum BridgeDownRefusal {
         return combine(run: runRefusal, mcp: mcpRefusal)
     }
 
+    /// scan に載らなかった(= /status が返らなかった)ポートの扱い。
+    /// **待受しているのに応答しない = 忙しい**(XCUITest はアプリを駆動している間 /status を返さず、
+    /// quiescence 待ちで数十秒ブロックする)。鍵(udid)が引けないので lease も照合できず、
+    /// そのまま通すと**駆動中のセッションを黙って壊す**(2026-09-22 の負荷テストで実測: MCP が
+    /// 操作中のブリッジが `bridge down --port` で無言のまま止まり、そのセッションは
+    /// 「no running bridge」しか返さなくなった)。**止めずに断り、`--force` を案内する**。
+    /// 待受もしていないポートは「止めるものが無い」ので従来どおり通す(回復手段を奪わない)
+    static func unresponsiveButBoundRefusal(ports: [UInt16], force: Bool,
+                                            isBound: (UInt16) -> Bool) -> String? {
+        guard !force else { return nil }
+        let busy = ports.filter(isBound)
+        guard !busy.isEmpty else { return nil }
+        let list = busy.map(String.init).joined(separator: ", ")
+        return "refusing to stop: port \(list) "
+            + (busy.count == 1 ? "is" : "are")
+            + " listening but did not answer /status — most likely busy driving the app"
+            + " (XCUITest does not answer while it runs a request), and stopping now would break"
+            + " whatever is driving it. Wait for it to go idle, or pass --force to stop it anyway."
+    }
+
     private static func combine(run: String?, mcp: String?) -> String? {
         let heading = DeviceBooter.sweepRefusalHeading
         func body(_ text: String) -> String {

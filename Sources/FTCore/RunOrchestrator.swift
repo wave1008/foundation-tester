@@ -1192,7 +1192,7 @@ public final class RunOrchestrator {
                 if worker.platform == "ios", let port = worker.connection.port,
                    case .mismatch(let detail) = BridgeIdentityCheck.verdict(
                        expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
-                       status: status) {
+                       status: status, remedy: BridgeIdentityCheck.runLaneRemedy) {
                     return .hijacked(detail: detail)
                 }
                 return .ok

@@ -146,7 +146,9 @@ final class DispatchPrelock {
     /// **手元(`local`)も他の機械と同じ扱い**で、`LocalDispatchLock` が同じコマンド・同じ待機列を
     /// `/bin/sh -c` で撃つ(ユーザー決定 2026-09-21「1つのマシンで同時に複数の run は走らせない」)。
     /// 手元だけ順序の外へ出すと、**A が手元を握って M1Max を待ち、B が M1Max を握って手元を待つ**
-    /// 形が作れる(手元も全順序の1要素でなければ循環は消えない)
+    /// 形が作れる(手元も全順序の1要素でなければ循環は消えない)。**local を「取得済み」扱いにして
+    /// ここで取り直しを飛ばす口を作らない** —— 手元だけ全順序の外へ出す形そのものになり、
+    /// 上と同じ循環待ちを合成できてしまう(docs/remote-runner.md §18.10)
     static func live(project: TestProject, remoteDir: String?, forceLock: Bool, waitLock: Int?,
                      runGroup: String?, mode: RemoteDispatchMode,
                      log: @escaping (String) -> Void) -> Actions {

@@ -9,6 +9,16 @@ import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTRemote  // WaitLockPolling(rejectIfLocalDevicesLeasedBeforeDispatch の --wait-lock)
+
+/// `rejectIfLocalDevicesLeasedBeforeDispatch` の「待つか即断るか」だけを切り出した純粋関数
+/// (I/O 無し。dispatch.lock の待機と刻みを共有するため新しい定数は作らない)
+enum LocalDeviceLeaseWaitPolicy {
+    static func decide(elapsedSeconds: Int, waitLock: Int?) -> WaitLockPolling.Decision {
+        guard let waitLock else { return .giveUp }
+        return WaitLockPolling.decide(elapsedSeconds: elapsedSeconds, limitSeconds: waitLock)
+    }
+}
 
 enum ProfileRunner {
 
@@ -84,11 +94,19 @@ enum ProfileRunner {
     /// 手元の子の拒否より先にリモートの子がロックを取り、断られた run の半分が走って同時刻の
     /// 別 run のリモート分を丸ごと弾いていた(2026-09-17 負荷テスト M12)。
     /// 判定材料が揃わない(プロファイル解決の失敗等)ときは何もしない = 手元の子の判定に任せる。
-    /// DeviceMachineRunner と ApiRunMachineFanout の2経路から呼ぶ
+    /// DeviceMachineRunner と ApiRunMachineFanout の2経路から呼ぶ。
+    ///
+    /// **`waitLock` があれば、この機械の dispatch.lock と同じ刻み(`WaitLockPolling`)で
+    /// 待ってから再判定する**(この機械は dispatch.lock で1マシン1 run を守っているので、
+    /// 走行中の run が終われば台の lease は必ず空く = 待てば必ず解消する)。無ければ即座に断る
+    /// (`LocalDeviceLeaseWaitPolicy.decide`)。上限に達しても空かなければ今と同じ文言で断る
     static func rejectIfLocalDevicesLeasedBeforeDispatch(
         project: TestProject, profileName: String, setOverrides: [String: RunProfileSetValue],
         localDeviceNames: [String], localScenarios: [ScenarioInfo], broadcast: Bool,
-        leaseStateDir: URL? = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+        waitLock: Int? = nil,
+        leaseStateDir: URL? = (try? RepoRoot.find())?.appendingPathComponent(".fleetest"),
+        log: (String) -> Void = { _ in },
+        sleepSeconds: (Int) -> Void = { Thread.sleep(forTimeInterval: Double($0)) }
     ) throws {
         guard let leaseStateDir, !localScenarios.isEmpty,
               let resolvedAll = try? ProfileResolver.resolve(
@@ -101,11 +119,24 @@ enum ProfileRunner {
             full, iosScenarios: localScenarios.filter { $0.platform != "android" }.count,
             androidScenarios: localScenarios.filter { $0.platform != "ios" }.count,
             trim: !broadcast, leaseStateDir: leaseStateDir)
-        do {
-            try rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: leaseStateDir)
-        } catch {
-            throw ProfileWorkerFactory.InstallError(message: error.localizedDescription
-                + " Nothing was dispatched to the other machines of this profile.")
+        var elapsed = 0
+        while true {
+            do {
+                try rejectIfDevicesLeasedBeforePreparation(resolved: resolved, leaseStateDir: leaseStateDir)
+                return
+            } catch {
+                guard LocalDeviceLeaseWaitPolicy.decide(elapsedSeconds: elapsed, waitLock: waitLock)
+                    == .retry else {
+                    throw ProfileWorkerFactory.InstallError(message: error.localizedDescription
+                        + " Nothing was dispatched to the other machines of this profile.")
+                }
+            }
+            if WaitLockPolling.shouldLogProgress(elapsedSeconds: elapsed) {
+                log("==> waiting for the local device(s) to free up before dispatching to the"
+                    + " other machines of this profile (\(elapsed)s elapsed, --wait-lock \(waitLock!)s)...")
+            }
+            sleepSeconds(WaitLockPolling.pollIntervalSeconds)
+            elapsed += WaitLockPolling.pollIntervalSeconds
         }
     }
 
@@ -571,7 +602,7 @@ enum ProfileRunner {
                     // 答えたのが別の台のブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
                     if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
                         expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
-                        status: status) {
+                        status: status, remedy: BridgeIdentityCheck.runLaneRemedy) {
                         return .hijacked(detail: detail)
                     }
                     return .ok

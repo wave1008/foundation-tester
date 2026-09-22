@@ -344,7 +344,14 @@
   の全部がここを通る。押し切るのは CLI の `--force` だけ)。**門は CLI の口にだけ置く** ——
   `BridgeLauncher.stop()` / `stopAll()` は供給と古いブリッジの掃除からも呼ばれるので、
   あちらに足すと run が建てられなくなる。**宛先が引けないときは通す**(無応答のブリッジを
-  止められないと回復手段が無くなる)。`bridge down --all` の判定は `BridgeDownRefusal.decide`
+  止められないと回復手段が無くなる)**が、「応答しない」を「死んでいる」と読まない** ——
+  駆動中の XCUITest は操作の間 /status を返さない(quiescence 待ちで数十秒ブロックする実測がある)ので、
+  **走査に載らないポートは待受(`BridgeDiscovery.isBound`)を見て、待受しているなら断る**
+  (`BridgeDownRefusal.unresponsiveButBoundRefusal`。`--port` / `--all` の両経路。押し切るのは `--force`)。
+  鍵(udid)が引けない = lease も照合できないので、**いちばん使用中のときだけ門が開く**という
+  逆向きの穴になっていた(実地 2026-09-22: MCP が操作中のブリッジが無言で止まり、そのセッションは
+  「no running bridge」しか返さなくなった → maintainer-notes §42.5)。待受も無ければ従来どおり通す
+  (固まったブリッジを止める手段を奪わない)。`bridge down --all` の判定は `BridgeDownRefusal.decide`
   (純粋関数。文言は `DeviceBooter` の既存関数から組み立て、新しい文言を作らない)
   **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease か MCP の印が1本でもあれば
   掃討ごと断る**(`DeviceBooter.sweepRefusal`。判定はリモートへ分散する前。`--force` は子へ、
@@ -359,15 +366,29 @@
   **①置き場を `<base>` の下に戻さない**(守るのはマシンの資源 = デバイス・ポート。base が2つあると
   ロックが割れるのに取り合う相手は同じ)/ **②ローカルの取得もコマンド文字列を書かない**
   (`RemoteDispatchQueue` が作る同じシェル片を `/bin/sh -c` で撃つ)/ **③取るのは run の入口**
-  (ビルドにもデバイスにも触る前。`swift build` も重い負荷なので直列化する。**dry-run は取らない**)/
+  (ビルドにもデバイスにも触る前。`swift build` も重い負荷なので直列化する。**dry-run は取らない**)——
+  **複数機械 fan-out は配分にシナリオ一覧が要る**ので、`DeviceMachineRunner` / `ApiRunMachineFanout` は
+  **①チケットを `ScenarioHost.build` より前に発行して `setenv` で確定**(発行だけでは効かない ——
+  取得側は `resolveTicket(environment:)` で環境を見るので、書かないと取得時の `Date()` で
+  採り直され、build 中に並んだ別 run に追い越される)**②ローカルのロックを build の前に先取りし、
+  配分が確定したら local に配られたかに関わらず無条件で解放**する(build を直列化するための
+  一時的な先取り)。**本取得は `DispatchPrelock` が local を含めて全順序どおり**行う/
   **④ローカルのロックの回収は pid だけ**(リモートの pgrep はローカル run を見つけられず、掛けると
-  死んだロックが永久に残る。同じ機械の pid は確定できるので**リモートより強い**判定)/
+  死んだロックが永久に残る。同じ機械の pid は確定できるので**リモートより強い**判定)。
+  **回収は待機の毎周試す** —— 1回だけにすると、待ち始めた時点では保持者が生きているのが普通なので
+  その1回はほぼ必ず空振りし、**そのあと保持者が死んでも二度と試さない**(実地 2026-09-22:
+  run の親を SIGKILL した後、待っている run が上限まで待ち続けた)。
+  「他人のロックは何周しても答えが変わらない」は他人のロックには正しいが、**自分のロックは
+  待っている間に保持者が死ぬ = 答えが変わる**(→ maintainer-notes §42.1・§42.2)/
   **⑤ランナー機で自壊させない** —— ディスパッチ先の `run --runner local` は向こうから見れば手元の
   run なので、`RemoteShell.remoteRunCommand` が `FT_DISPATCH_LOCK_HELD='local'` を export して
   二重取得を止める(**`remoteExecCommand` には置かない** = exec はロックを取らない)/
   **⑥run-lease(台ごと)は残す** —— MCP の印と `start-device` 等は dispatch.lock を取らないので、
   台ごとの調停はあちらでしか成立しない。順序は「マシンの門 → 台の門」だが、**fan-out の
-  `rejectIfLocalDevicesLeasedBeforeDispatch` だけは手前**(読み取りの先読み = どのロックも取る前に断る)
+  `rejectIfLocalDevicesLeasedBeforeDispatch` だけは手前**(読み取りの先読み = どのロックも取る前に断る)。
+  **`--wait-lock` が渡されていれば、この先読みも待ってから再判定する**(`WaitLockPolling` の同じ刻み。
+  1マシン1 run が保証されている = 走っている run が終われば台の lease は**必ず**空くので、
+  待たずに断ると連続実行の後発が待機列に並べないまま落ちる。→ maintainer-notes §42.4)
 - **順番待ちは FIFO の待機列**(docs/remote-runner.md §18.9。`FTRemote.RemoteDispatchQueue`):
   `dispatch.lock` の**手前**に `~/.fleetest/dispatch.queue/<13桁epoch>~<issuer>~<group>` を置き、
   **先頭のチケットの持ち主だけが `mkdir` を撃つ**(ロックの原子性は mkdir のまま)。
@@ -391,7 +412,11 @@
   **③印(`FT_DISPATCH_LOCK_HELD`)は真偽値でなく ssh 宛先**(環境変数は子孫へ継がれるので、
   真偽値だと別の宛先の子まで取得を飛ばして誰もロックを持たない)/ **④子は取得と解放の両方を
   スキップする**(取得だけ飛ばすと子の defer が親のロックを消し、解放だけ飛ばすと子が親を待って詰む)/
-  **⑤子へ `--wait-lock` を渡さない**(待つのは親。渡すと親が待ち切った上限を子がもう一度払う)。
+  **⑤子へ `--wait-lock` を渡さない**(待つのは親。渡すと親が待ち切った上限を子がもう一度払う)/
+  **⑥local を全順序の外へ出さない**(→ maintainer-notes §42.3) —— 「手元はもう取ってあるから飛ばす」という口を作ると、
+  **A が手元を握って M1Max を待ち、B が M1Max を握って手元を待つ**形が作れて①〜②の保証が消える
+  (build 前の先取りは**必ず解放してから** `acquireInOrder` に入る。`DispatchPrelock` の local 分岐から
+  取得を飛ばす return を足さない = `DispatchLockBeforeBuildOrderingTests` が走査で固定)。
   **取れなかった機械は飛ばす**(部分列でも順序の一貫性は保たれる)・**印が無ければ子が自分で取る**
   ので単発 run は無改造。**緑の run では1度も実行されない**ので、差し替え口に偽のランナー群を
   注入した単体と、**順序付けが無い形で確定的にデッドロックする陽性対照**を対で置く
@@ -821,7 +846,14 @@
   FTCore に1つ ②文言は呼び手ごとに持つ**。**呼び手は中核を呼んで写すだけ**にする。中核は `TapTargetGeometry.advisoryKind` /
   `FTCore.SimilarLabels` / `FTCore.BackEffect` / `FTCore.SnapshotTruncation.remedy` /
   `TapTargetGeometry.offscreenScrollGateCentre`。**天井まで来ていたら「上げろ」と言わない**。
-  **FM に訊いて答えが無かったステップは `visibility-guard-skipped`** を立てる
+  **FM に訊いて答えが無かったステップは `visibility-guard-skipped`** を立てる。
+  **判定に文言を埋め込んだら、呼び手が増えた日に他人の対処文が出る** ——
+  `BridgeIdentityCheck.verdict` は「レーンの port が奪われた・worker を建て直せ」という
+  **run 向けの対処文を detail に持っていた**ため、ライブ操作に共有した瞬間に
+  「lane / worker」の無い文脈でその文が出た(2026-09-22 のレビュー)。**対処文は `remedy` として
+  呼び手が渡す**(既定値を置かない = 新しい呼び手の渡し忘れをコンパイルで止める。run の4経路が
+  共有する文は `BridgeIdentityCheck.runLaneRemedy` の1箇所)。**detail が要らない呼び手には
+  `matches(expected:status:)`** を使わせる(文言を作らないので remedy も要らない)
 - **チェック状態は `FTCore.CheckStateReading`(a11y の4値)と `FTCore.CheckStateClassifier`(見本画像の
   画像分類。Shirates Vision の移植)の2つだけが読む**。画像分類の学習・推論は `FTCore.VisionClassifier` の
   1箇所で、`imageIs`(DefaultClassifier)と共有する。value は型で絞って読む(バッジの "1" を読まない)。
@@ -920,7 +952,15 @@
   `ft_launch` の門(`MCPServer.launchGuardDecision`)は DSL の `LaunchPreflightDriver` と同じく
   **「確かめられないなら撃たない」**側に倒す(在否は udid で引く =
   `InstalledAppCheck.simulatorInstallVerdict(udid:)`。**素通しでよいのは Android と in-app
-  エンジンだけ** = ランナーが死なない経路。`com.apple.springboard` は launch しないので門の外)
+  エンジンだけ** = ランナーが死なない経路。`com.apple.springboard` は launch しないので門の外)。
+  **判定は `InstalledAppCheck.launchGuard` の1箇所で、MCP の `ft_launch` と
+  ライブ操作(`api live serve` の `launch` / `activate`)が共有する** —— ライブ操作に門が無かったため、
+  空文字列や端末に無い bundleID を渡すと**そのコマンドが 30 秒刺さって watchdog が serve を
+  force-quit し、健全なブリッジまで建て直しになった**(T1 と同じ型の掃討漏れ → maintainer-notes §42.7)。
+  **ライブ操作の NDJSON は型違いを黙殺しない** —— `cmd` が読めた行は
+  `{"kind":"actionResult","ok":false,"error":"<欄> must be …"}` を返す(文言は MCP の
+  `intArgument`/`doubleArgument` と同じ)。黙殺すると拡張は応答を待って固まり、serve の再起動に至る。
+  JSON でない行・`cmd` の無い行だけが従来どおり黙殺の対象
 - **木だけから決まる注記は `Sources/fleetest-mcp/NoteCatalog.swift` が唯一の定義元**
   (`NoteCoverageTests` のソース走査が検出)。目録にすると3つ手に入る: **発火の全数計測** /
   **鍵ごとの黙らせ**(`FT_MCP_NOTES_OFF=<鍵,…|all>`)/ **出力バイトの回帰ゲート**。
@@ -992,8 +1032,13 @@
   ②`PortHolder.stopIfOwnedBridge` が iproxy を止めるのは台帳 `.device` の UDID が供給中の台と
   一致するときだけ(`ownerUDID:` を必ず渡す。渡さなければ `.foreign`)③**接続先の同一性は
   `FTCore.BridgeIdentityCheck` で確かめる**(シナリオ実行プロセスの事前確認と、ホストの
-  `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked` の 2 箇所。bundle ID が同じ別の台は
-  /status の udid / engine でしか見分けられない)④ワークスペースのステージ先は
+  `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked`、**ライブ操作(`api live serve`)の
+  宛先決定と `LiveBridgeAutoStarter.checkAndRestartIfStale`**。bundle ID が同じ別の台は
+  /status の udid / engine でしか見分けられない)。**ライブ操作は `--udid` の明示/既定で扱いを分ける** ——
+  `--port` を明示されたら不一致は断る / **既定ポートへのフォールバックなら断らずにその udid の
+  ポートを探し、無ければ空きポートへ向けて自動起動に委ねる**(拡張は port が分かるときだけ
+  `--port` を渡すので、**ブリッジのまだ無い台を開く場面**で既定 8123 に居る別の台を掴んでいた。
+  ここで断ると、自動起動が想定しているその場面でライブ操作が開けなくなる → maintainer-notes §42.6)④ワークスペースのステージ先は
   `WorkspaceAppStaging.installPath(declared:)` = 宣言文字列の名前空間(絶対パスから導かない)
 - **録画ありの run は供給段階で「端末側に残った録画セッション」を解く**(`HostRecordingProbe` →
   `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・台は外さない・不明は撃たない)。
@@ -1125,8 +1170,10 @@
   印を両方数える。止めると他プロセスの run を壊すが、版の違うブリッジを駆動している事実は
   黙らない)。仕分けは `BridgeToolchainLedger.decide` の1箇所 → maintainer-notes §3.8。
   採番は `ProvisionLock` の内側でだけ行う
-  (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` の3経路。
-  `ProvisionLockStartupPathsSyncTests`)。拡張の孤児掃除(`orphanSweep.ts`)は配信
+  (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` / **`ApiLiveCommand`**(要求された台の
+  ブリッジがどこにも無いとき空きポートを充てる)の4経路。`ProvisionLockStartupPathsSyncTests` が
+  集合を固定する。**ライブ操作の1件は「選ぶだけで起動しない」= 予約ではない**ので、
+  起動までに埋まったら `LiveBridgeAutoStarter` が占有者を名指しして諦める)。拡張の孤児掃除(`orphanSweep.ts`)は配信
   (`api device-stream`・`fleetest-*stream` / `devicepoll`)も対象。**殺すのは PPID=1 かつ環境に
   `FT_PARENT_PID` を持つもの(= 拡張 / fleetest が起こしたもの)だけ** —— 手で `nohup` した同名の
   プロセスはコマンド文字列では区別できないので、所有の印で絞る(Codex 指摘 2026-09-05)

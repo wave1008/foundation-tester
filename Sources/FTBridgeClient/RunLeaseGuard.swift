@@ -13,7 +13,9 @@
 //   先に台を掴みに行く(供給は Wipe Data・再起動など取り返しのつかない準備を含む)。
 //   **例外は fan-out の事前判定**(`ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`)——
 //   あれは読み取りだけの先読みで、**どのロックも取る前に**断るためにわざと手前に置いてある
-//   (取ってから断ると、他人を待たせた挙句に自分が降りることになる)。
+//   (取ってから断ると、他人を待たせた挙句に自分が降りることになる)。**build 直列化のための
+//   ローカルの一時的な先取り**(`DeviceMachineRunner`/`ApiRunMachineFanout`)はこの判定より前に
+//   済んでおり、判定の時点では何も持っていない(取得の全順序は `DispatchPrelock` の1箇所のまま)。
 //
 // 判定は conflicts(pure function)に切り出し、鮮度判定(RunLease.holderPID)だけを呼び出し側が
 // 注入する。呼び出し側(ProfileRunner.run / ApiRunCommand)は、workers を構築し終えて

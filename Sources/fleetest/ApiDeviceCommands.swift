@@ -95,7 +95,8 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
         }
         do {
             let devices = try IOSPhysicalDeviceCatalog.devices()
-            let spec = try ApiDeviceUpDirectSpec.physicalIOSSpec(udid: udid, devices: devices)
+            let spec = try ApiDeviceUpDirectSpec.physicalIOSSpec(
+                udid: udid, devices: devices, simulators: (try? SimulatorCatalog.devices()) ?? [])
             let root = try RepoRoot.find()
             _ = try await BridgeProvisioner(repoRoot: root)
                 .provision(devices: [(spec.name, spec)], log: log)
@@ -113,9 +114,24 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
 /// 到達性の判定は `IOSPhysicalDeviceCatalog.confirmedConnected` に委ねる(判定は1箇所)。
 /// probe を渡さなければ実際の devicectl 問い合わせを使う —— それ以外に I/O は持たない
 enum ApiDeviceUpDirectSpec {
+    /// `--udid` に**シミュレータ**の UDID を渡されたときの断り。実機の一覧だけを並べると
+    /// 「繋がっていないのか / 種類を間違えたのか」が読み手に分からない(stop-device の `--udid` は
+    /// 逆にシミュレータ専用なので、同じ文字列が2つの口で逆の意味を持つ)
+    struct WrongDeviceKindError: Error, LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
     static func physicalIOSSpec(udid: String, devices: [IOSPhysicalDeviceInfo],
+                                simulators: [SimDeviceInfo],
                                 probe: ((String) -> Bool)? = nil) throws -> DeviceSpec {
         guard let device = devices.first(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) else {
+            if let sim = simulators.first(where: { $0.udid == udid }) {
+                throw WrongDeviceKindError(message:
+                    "\(udid) is a simulator (\(sim.name)), and --udid takes a connected physical"
+                    + " device. Start a simulator by the name it has in the run profiles:"
+                    + " fleetest api start-device --name \"\(sim.name)\"")
+            }
             throw IOSPhysicalDeviceCatalogError.notFound(udid: udid, available: devices)
         }
         guard IOSPhysicalDeviceCatalog.confirmedConnected(
@@ -602,8 +618,15 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
             }
         case .udid(let udid):
             let simCatalog = (try? SimulatorCatalog.devices()) ?? []
-            let spec = ApiDeviceDownDirectSpec.iosSpec(udid: udid, simCatalog: simCatalog)
-            try await Self.runDirect(spec: spec, platform: "ios", repoRoot: try? RepoRoot.find(), force: force)
+            let physical = (try? IOSPhysicalDeviceCatalog.devices()) ?? []
+            switch ApiDeviceDownDirectSpec.iosSpec(udid: udid, simCatalog: simCatalog,
+                                                   physicalDevices: physical) {
+            case .success(let spec):
+                try await Self.runDirect(spec: spec, platform: "ios",
+                                         repoRoot: try? RepoRoot.find(), force: force)
+            case .failure(let message):
+                try Self.emitDirectFailure(message)
+            }
         case .serial(let serial):
             let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
             let connected = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
@@ -672,10 +695,23 @@ enum ApiDeviceDownDirectSpec {
     }
 
     /// simCatalog に udid が一致すればシミュレータ名を表示名にする。一致しなければ udid をそのまま使う
-    /// (未登録シミュレータが simctl 一覧から既に消えている場合の保険)
-    static func iosSpec(udid: String, simCatalog: [SimDeviceInfo]) -> DeviceSpec {
-        let name = simCatalog.first(where: { $0.udid == udid })?.name ?? udid
-        return DeviceSpec(name: name, udid: udid)
+    /// (未登録シミュレータが simctl 一覧から既に消えている場合の保険)。
+    /// **接続中の実機の UDID を渡されたら断る** —— そのまま通すと simctl が
+    /// 「no simulator with that UDID」と言い、**渡したものが実機だった**ことを誰も言わない
+    /// (`start-device --udid` は逆に実機専用。同じ文字列が2つの口で逆の意味を持つ)
+    static func iosSpec(udid: String, simCatalog: [SimDeviceInfo],
+                        physicalDevices: [IOSPhysicalDeviceInfo]) -> SpecResult {
+        if let sim = simCatalog.first(where: { $0.udid == udid }) {
+            return .success(DeviceSpec(name: sim.name, udid: udid))
+        }
+        if let device = physicalDevices.first(where: {
+            $0.udid == udid || $0.deviceCtlIdentifier == udid
+        }) {
+            return .failure("\(udid) is a connected physical device (\(device.name)), not a simulator"
+                + " — stop-device shuts down simulators and emulators only. To stop driving it,"
+                + " stop its bridge: fleetest bridge down --port <its port>")
+        }
+        return .success(DeviceSpec(name: udid, udid: udid))
     }
 
     /// runningAVDs(serial -> canonical AVD ID)から解決する。エミュレータに無ければ

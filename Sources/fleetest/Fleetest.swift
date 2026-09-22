@@ -796,18 +796,39 @@ struct Bridge: AsyncParsableCommand {
                     ConsoleOut.out("❌ \(refusal)")
                     throw ExitCode(1)
                 }
+                // **応答しなかったポートは「死んでいる」とは限らない** —— 駆動中の XCUITest は
+                // /status を返さないので、走査に載らないまま止めると run / MCP を無言で壊す
+                // (実地 2026-09-22)。待受しているものだけ断る(待受も無ければ通す = 回復手段を残す)
+                if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
+                    ports: BridgeDiscovery.portRange.filter { candidate in
+                        !found.contains(where: { $0.port == candidate })
+                    },
+                    force: force,
+                    isBound: { BridgeDiscovery.isBound(port: $0, repoRoot: root) }) {
+                    ConsoleOut.out("❌ \(refusal)")
+                    throw ExitCode(1)
+                }
                 let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)
                 ConsoleOut.out(stopped.isEmpty
                       ? "No bridges are running"
                       : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")
             } else {
-                // 対象ポートが引けない(応答なし等)ときは素通りする(既存の stopRefusal と同じ
-                // 規律 —— 止められないと回復手段が無くなる)
                 let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: root)
-                if let target = found.first(where: { $0.port == port }),
-                   let refusal = DeviceBooter.deviceInUseRefusal(
-                       deviceName: target.device, keys: target.udid.map { [$0] } ?? [],
-                       force: force, leaseStateDir: leaseStateDir) {
+                if let target = found.first(where: { $0.port == port }) {
+                    if let refusal = DeviceBooter.deviceInUseRefusal(
+                        deviceName: target.device, keys: target.udid.map { [$0] } ?? [],
+                        force: force, leaseStateDir: leaseStateDir) {
+                        ConsoleOut.out("❌ \(refusal)")
+                        throw ExitCode(1)
+                    }
+                // **走査に載らなかったポートを「引けないから通す」に倒さない** —— 応答が無いのは
+                // 死んでいるときだけでなく**駆動中で忙しい**ときも起きる(XCUITest は操作中 /status を
+                // 返さない)。鍵(udid)が引けないので lease も照合できず、そのまま止めると走っている
+                // run / MCP セッションを無言で壊す(実地 2026-09-22)。待受しているなら断り、
+                // 待受も無ければ従来どおり通す(固まったブリッジを止める手段を奪わない)
+                } else if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
+                    ports: [port], force: force,
+                    isBound: { BridgeDiscovery.isBound(port: $0, repoRoot: root) }) {
                     ConsoleOut.out("❌ \(refusal)")
                     throw ExitCode(1)
                 }

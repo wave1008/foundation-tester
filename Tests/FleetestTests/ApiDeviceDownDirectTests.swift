@@ -44,15 +44,30 @@ final class ApiDeviceDownDirectTests: XCTestCase {
 
     func testIosSpecUsesSimulatorNameWhenResolvable() {
         let catalog = [SimDeviceInfo(udid: "ABCD-1234", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)]
-        let spec = ApiDeviceDownDirectSpec.iosSpec(udid: "ABCD-1234", simCatalog: catalog)
-        XCTAssertEqual(spec.name, "iPhone 17 Pro")
-        XCTAssertEqual(spec.udid, "ABCD-1234")
+        XCTAssertEqual(
+            ApiDeviceDownDirectSpec.iosSpec(udid: "ABCD-1234", simCatalog: catalog,
+                                            physicalDevices: []),
+            .success(DeviceSpec(name: "iPhone 17 Pro", udid: "ABCD-1234")))
     }
 
     func testIosSpecFallsBackToUdidWhenUnresolvable() {
-        let spec = ApiDeviceDownDirectSpec.iosSpec(udid: "ABCD-1234", simCatalog: [])
-        XCTAssertEqual(spec.name, "ABCD-1234")
-        XCTAssertEqual(spec.udid, "ABCD-1234")
+        XCTAssertEqual(
+            ApiDeviceDownDirectSpec.iosSpec(udid: "ABCD-1234", simCatalog: [], physicalDevices: []),
+            .success(DeviceSpec(name: "ABCD-1234", udid: "ABCD-1234")))
+    }
+
+    /// **実機の UDID を渡されたら、そう名指しして断る** —— 通すと simctl が
+    /// 「no simulator with that UDID」と言い、渡したものが実機だったことを誰も言わない
+    func testIosSpecNamesThePhysicalDeviceWhenTheUdidIsOne() {
+        let physical = [IOSPhysicalDeviceInfo(
+            udid: "00008110-000260242EEB801E", name: "iPhone SE3", os: "iOS 26.6",
+            connected: true, transport: "wired", deviceCtlIdentifier: nil)]
+        guard case .failure(let message) = ApiDeviceDownDirectSpec.iosSpec(
+            udid: "00008110-000260242EEB801E", simCatalog: [], physicalDevices: physical) else {
+            return XCTFail("実機の UDID は断るべき")
+        }
+        XCTAssertTrue(message.contains("is a connected physical device"), message)
+        XCTAssertTrue(message.contains("iPhone SE3"), message)
     }
 
     // MARK: - ApiDeviceDownDirectSpec.androidSpec
