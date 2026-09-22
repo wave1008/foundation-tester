@@ -944,6 +944,21 @@
   利用者からの見え方は `Descriptors.swift` の `@_exported import FTCore` が保っている。
   **ただし FTCore の名指し(`TapTargetGeometry.describe` 等)は「どれの話か」を短く言うためのもので、
   セレクタとして貼れる保証はしない** —— 貼れる形が要るなら `SelectorNaming` を通す
+- **引数の値域は `FTCore.ArgumentBounds` の1箇所**(MCP の `intArgument`/`doubleArgument`/
+  `stringArgument` と、ライブ操作の `intField`/`doubleField`/`stringField` が同じ表を引く)。
+  守る規律3つ: **①値域を持たない引数も `.unbounded` で表に載せる**(載せ忘れと「縛らないと決めた」を
+  区別する。`ArgumentBoundsTests` がスキーマの数値プロパティ全数との包含を等号で固定)/
+  **②検査は読む場所ではなく `MCPServer.call` の入口で全数**(`timeout` のように条件付きでしか
+  読まれない欄は、読まれない回に 0/負が通って「効いた」と誤解させる)/ **③`ft_batch` の DSL 行も
+  同じ表を通す**(あちらは `intArgument` を経由しない)。必須の文字列は空文字・空白のみを断る
+  (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2
+- **「応答しない」を busy と死で分けるのは所要時間**(`BridgeDiscovery.probeStatus` の4値)。
+  健全 = HTTP 応答が返る(**ステータスコードで判定しない** —— 実機はトークン不一致の 401 を返す)/
+  **固まった転送**(ブリッジが消えて iproxy だけ残る)= connect は通るのに応答無しで即切れる /
+  本当に busy = 上限まで保持 / 不在 = connect が即 拒否。**固まりには `bridge up` を勧める**
+  (「2本目を起動させる」懸念は生きたブリッジがある前提なので成立しない)。
+  **in-app/hybrid には固まりの文言を出さない**(あちらは前面から外れただけのことが多い)。
+  **`.pid` の生死では捕まらない** —— xcodebuild は生きたまま待ち続ける → maintainer-notes §44.1
 - **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**
   → maintainer-notes §5。**ただし同じ判定をそのまま強い挙動へ流用しない**。探索ロジックは
   **MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)。
@@ -1260,6 +1275,12 @@
 - **罠**: 拡張と webview の**両バンドルに入る .ts**(runReducer.ts/runLaneModel.ts 等。webview の import 連鎖で混入)は、vscode を引き込む `i18n/index.ts` を import できない(webview ビルドが壊れる)。vscode 非依存の別ランタイム `src/i18n/strings/lane.ts`(`tLane`/`setLaneLocale`、locale は両バンドルが注入)を使う。両バンドル共有の文字列を新たに i18n 化するときも同じ制約。
 - **module-level の表示 const 禁止**(import 時=initI18n 前に "ja" で固定される)。関数化する。
 - package.json の contributes(コマンド名・設定説明)だけは別系統: `%key%` + `package.nls.json`(英)/`package.nls.ja.json`(日)で **VSCode 表示言語連動**(fleetest.language ではない)。両 nls はキー集合一致。
+- **CLI(`fleetest`)の表示文字列は英語だけ**(ユーザー決定 2026-07-30。切替機構は入れない)。
+  コメント・docs・SKILL.md・拡張 UI は日本語のまま。**`Sources/` の文字列リテラル**は
+  `CLIEnglishStringsScanTests` が走査し、日本語を正しく持つファイルだけを理由付きの表で通す
+  (ステップ説明の日英生成・日本語入力の照合表・FM の `@Guide`・生成物・受け手の Package.swift へ
+  書くマーカー)。**中黒 `・` を日本語と数えない**(英語の出力でも箇条書きに使う)
+  → maintainer-notes §44.3
 - 検証は `test/i18n.test.mjs`(辞書パリティ・**残存日本語の AST 走査**[HTML コメントは除外]・webview/lane キー存在・nls 整合)。正当に日本語を残す文字列(非表示の内部 throw 等)は同ファイルの `RESIDUAL_ALLOWLIST` に登録。
 - `fleetest.language` 変更は各 webview パネル(Monitor/HealReview。Dashboard・ライブ操作はモニターのタブ)の `relocalize()` が
   `webview.html` を再代入して即時反映する(`extension.ts` が呼ぶ `languageChangeHandler.ts` の

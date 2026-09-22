@@ -1910,3 +1910,74 @@ run ボードも供給フェーズの run を `phase: "preparing"` で正しく�
 3. **利用者の直感を実験の順序に使う** —— 「C を使うプロセス」「直近の修正」という2つの助言が、
    webview(JS)を掘り続けていた向きを**プロセス単位の計測**へ変えた。仮説を外した回数より、
    **測る対象を変えた回数**が効いた
+
+## 44. 実機のブリッジが固まると「busy」と言い続けて出口を塞いでいた(2026-09-22 3回目の負荷テスト)
+
+1時間の負荷テスト(フリート run 36 本 + 実機4台の MCP 8,000 呼び出し + 同一端末へのライブ操作)。
+
+### 44.1 固まったブリッジを busy と誤って帰属し、回復手段を勧めない
+
+実機 iPhone SE3 の XCUITest ランナーが落ち、**USB の転送役(iproxy)だけがポートを握ったまま**に
+なった。この状態で MCP の全ツールが 10 分以上こう返し続けた:
+
+> a bridge … is listening on port 8152 but did not answer /status within the scan window —
+> **it may be busy** … **Retry in a moment**; `fleetest bridge up` … would start a second one on this device.
+
+事実は busy ではなくブリッジの消失で、**唯一の出口である `bridge up` を名指しで禁じていた**。
+実際に `bridge up` を撃つと残骸の iproxy を掃除し、原因(`Unlock iPhone SE3 to Continue` =
+端末の画面ロック)まで正しく言う —— **同じツールの別の口は答えを知っていた**。
+2026-09-21 の T1・2026-09-22 の B1 と同じ「袋小路」の3例目。
+
+**分けるものは所要時間**(実測): 健全 = HTTP 応答が返る(トークン不一致の 401 も「生きている」の
+証拠なので**ステータスコードで判定しない**)/ 固まった転送 = connect は 0.5ms で通り、
+応答が1バイトも来ないまま **2.5ms で切れる** / 本当に busy な XCUITest = **上限まで保持する** /
+不在 = connect が即 拒否。`BridgeDiscovery.probeStatus` が `answered / timedOut / transportFailed /
+notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWedgedHint` が
+「転送だけ残っている」事実 + 典型原因(画面ロック・USB/ネットワーク圏外)+ 完成した `bridge up`
+コマンドを出す。**in-app/hybrid には wedged の文言を出さない**(あちらは `bridge up` で建てる物では
+なく、前面から外れただけのことが多い)。
+
+**`bridgeOwnerAlive`(欠陥④)では捕まらない** —— このとき `.pid` が指す `xcodebuild` は生きたまま
+「Run Destination Preflight: Waiting for the destination to become ready」を回していた。
+
+陽性対照は `iproxy <port> 9999 -u <udid>` を素で立てるだけで作れる(受け側の居ないポートへ転送する =
+同じ指紋になる)。
+
+### 44.2 引数の値域・空文字が検査されていなかった
+
+`lastN` の範囲検査だけが 2026-09-22 に個別に入り、**同じ型が掃討されていなかった**。実地で通った
+もの: `maxElements: 0 / -5 / 999999`(黙って無視)・`maxSwipes: -3`・`lines: -10`・
+`sinceSeconds: -1000`(「No log lines in the last **-1000s**」)・`maxWidth: 0`・`quality: 0 / 5`・
+`holdSeconds: -3`(しかも「`tap(x:, y:, holdSeconds: -3)` と書ける」と DSL 行を提案する)・
+`durationSeconds: -1`・`radius: -50`(**黙って画面全体のピンチに化ける** = §41 の危険をそのまま踏む)・
+`bundleId: ""`(「Error:  is not installed on this device」と主語が空のまま端末まで往復)・
+`url: "" / "   "`・`packagePath: ""`・`id: ""`。
+
+値域は **`FTCore.ArgumentBounds` の1箇所**に置き、MCP(`intArgument`/`doubleArgument`/
+`stringArgument`)とライブ操作(`intField`/`doubleField`/`stringField`)の**両方が同じ表を引く**。
+守る規律3つ: **①値域を持たない引数も `.unbounded` で表に載せる**(載せ忘れと「検討して縛らないと
+決めた」を区別する。`ArgumentBoundsTests` がスキーマの数値プロパティ全数との包含を固定)/
+**②検査は読む場所ではなく `call` の入口で全数**(`timeout` のように**条件付きでしか読まれない欄**は、
+読まれない回に 0/負が通って「効いた」と誤解させる)/ **③`ft_batch` の DSL 行も同じ表を通す**
+(あちらは `intArgument` を経由しないので、`holdSeconds: -1` がシナリオ行として書けてしまっていた)。
+
+### 44.3 CLI の表示文字列に日本語が戻っていた
+
+ユーザー決定(2026-07-30)の「CLI は英語のみ」が `Sources/FTAndroid/AndroidWebViewUpdate.swift` で
+崩れ、`fleetest run` のログへ日本語が5行出ていた(この負荷テストで 11 回)。ほかに
+`PhysicalSafariInspector`(`ConsoleOut.err`)と `BridgeSourceSet` の Error 文言。
+コンパイルでは落ちないので `CLIEnglishStringsScanTests` が走査で落とす —— **日本語を正しく持つ
+ファイルは理由付きで表へ載せる**(ステップ説明の日英生成・日本語入力の照合表・FM の `@Guide`・
+生成物・受け手の Package.swift へ書くマーカー)。**中黒 `・` を日本語と数えない**(英語の出力でも
+箇条書きに使っている)。
+
+### 44.4 直さなかったもの
+
+- **Android の木が読めないとき生の Java 例外が出る**: `ft_navigate appSwitcher` の直後に
+  `getRootInActiveWindow()` が null になり(Pixel 3a / Android 12 で 13〜37 秒)、
+  `java.lang.IllegalStateException: cannot read the UI tree of the active window` が対処無しで返る。
+  **直すならブリッジ側に専用の status/コード**が要る(ホストで文言一致に頼ると書式を変えた瞬間に
+  静かに壊れる = CLAUDE.md の禁じ手)ので、Android ブリッジの版上げとセットで行う。
+- **`ft_scroll_to` の失敗文の先頭行が注記**(`Error: note: search took 14.7s (3 swipe(s)).`)で、
+  何が失敗したかが2行目。注記の順序は `sheetNote` について意図的に決めてあるので、
+  足し引きは `Scripts/mcp-bench.sh` の手数で決める(印象で動かさない)。
