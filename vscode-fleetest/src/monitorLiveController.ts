@@ -92,6 +92,14 @@ const SERVE_REQUEST_TIMEOUT_MS = 20000;
  * 超えたら自動再起動を止め、serveUnavailableMessage() を出す(デバイス選び直し=rebind で解除)。 */
 const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
 
+/** デバイス切り替えの再バインド(rebindServeProcess の stop→start)が終わるのを待つ上限(ms)。
+ * 旧 serve は SIGTERM を無視するので、停止は stdin EOF か killServeProcess の2秒後 SIGKILL まで
+ * 掛かり、その間 serveProcess は未設定になる。この窓のコマンドを待たずに断ると、利用者が
+ * **たった今選び直したデバイス**に対して「起動していません。デバイスを選び直してください」を出す
+ * ことになる(案内どおり選び直しても同じ再バインドなので同じ文言が出る)。2秒の停止 + close→spawn
+ * の余裕。超えたら従来どおり断る(本当に立ち上がらない場合の固まりを作らない)。 */
+const SERVE_REBIND_WAIT_MS = 6000;
+
 /** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
  * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
 const FRAME_IDLE_RETRY_MS = 500;
@@ -199,6 +207,9 @@ export class MonitorLiveController implements vscode.Disposable {
    * 完了した時点の最新の serveDevice を使って起動する(restartMonitorProcess と同じ
    * 「最終的に最新設定が勝つ」方式)。 */
   private serveRestartPending = false;
+  /** 再バインドの完了(新しい serveProcess が立つ/起動しないと確定する)を待っている呼び出し手。
+   * rebindServeProcess の startLatest が全件起こす(awaitServeRebind の doc 参照)。 */
+  private serveReadyWaiters: Array<() => void> = [];
   /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/停止時に必ずクリアする。 */
   private serveRestartTimer: ReturnType<typeof setTimeout> | undefined;
   /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
@@ -698,12 +709,52 @@ export class MonitorLiveController implements vscode.Disposable {
       if (target) {
         this.startServeProcess(target);
       }
+      // 起動できた場合もできなかった場合も待ち手を解放する(起動しなかった回を待たせ続けない)。
+      this.wakeServeReadyWaiters();
     };
     if (!proc) {
       startLatest();
       return;
     }
     proc.once("close", startLatest);
+  }
+
+  /** 再バインド完了を待っている呼び出し手を全件起こす(startLatest の終端から1回だけ)。 */
+  private wakeServeReadyWaiters(): void {
+    if (this.serveReadyWaiters.length === 0) {
+      return;
+    }
+    const waiters = this.serveReadyWaiters;
+    this.serveReadyWaiters = [];
+    for (const wake of waiters) {
+      wake();
+    }
+  }
+
+  /**
+   * 再バインド中(serveRestartPending)なら、新しい serve が立つまで待たせる。デバイスを選んだ
+   * 直後の snapshot/操作はこの窓に必ず入るため、待たずに serveUnavailableMessage() を返すと
+   * 「常駐プロセスが起動していません。デバイスを選び直してください」が数秒だけ出て、その後
+   * 何事もなく画面が出る = 利用者に対処のしようが無い誤報になる(2026-09-23)。
+   * 再バインド中でないとき(本当に居ない・諦めた)は待たず、従来どおり即座に断る。
+   */
+  private awaitServeRebind(): Promise<void> {
+    if (!this.serveRestartPending) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const wake = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(wake, SERVE_REBIND_WAIT_MS);
+      this.serveReadyWaiters.push(wake);
+    });
   }
 
   private startServeProcess(device: LiveDeviceRef): void {
@@ -924,13 +975,15 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /** command を serve の stdin へ送り、対応する応答(actionResult[refresh以外]+snapshot)が
-   * 揃うまで待つ。serve が起動していなければ CLI を呼ばずに即座にエラー結果を返す。
+   * 揃うまで待つ。再バインド中なら新しい serve が立つのを待ち(awaitServeRebind)、それでも
+   * 起動していなければ CLI を呼ばずに即座にエラー結果を返す。
    * enqueueServeSend で直列化する(実体は sendServeCommandNow)。 */
   private sendServeCommand(command: LiveServeCommand): Promise<ServeRequestOutcome> {
     return this.enqueueServeSend(() => this.sendServeCommandNow(command));
   }
 
-  private sendServeCommandNow(command: LiveServeCommand): Promise<ServeRequestOutcome> {
+  private async sendServeCommandNow(command: LiveServeCommand): Promise<ServeRequestOutcome> {
+    await this.awaitServeRebind();
     const proc = this.serveProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       const message = serveUnavailableMessage();
@@ -959,13 +1012,15 @@ export class MonitorLiveController implements vscode.Disposable {
     });
   }
 
-  /** 画像のみの frame コマンドを送る(自動リフレッシュ用)。serve が起動していなければ CLI を呼ばずに
-   * 即座にエラー結果を返す(sendServeCommandNow と同じ文言)。enqueueServeSend で直列化する。 */
+  /** 画像のみの frame コマンドを送る(自動リフレッシュ用)。再バインド中なら待ち、それでも serve が
+   * 起動していなければ CLI を呼ばずに即座にエラー結果を返す(sendServeCommandNow と同じ文言)。
+   * enqueueServeSend で直列化する。 */
   private sendServeFrame(): Promise<LiveFrameResult> {
     return this.enqueueServeSend(() => this.sendServeFrameNow());
   }
 
-  private sendServeFrameNow(): Promise<LiveFrameResult> {
+  private async sendServeFrameNow(): Promise<LiveFrameResult> {
+    await this.awaitServeRebind();
     const proc = this.serveProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return Promise.resolve({
