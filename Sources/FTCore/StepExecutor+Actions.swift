@@ -475,15 +475,14 @@ extension StepExecutor {
         // pressEnter もロケータを持たない(フォーカス中の入力欄への Enter 押下)ので、type(ref: nil)
         // と同じ理由でロケータ解決を挟まない。409(inapp が Compose 以外の入力欄/フォーカス無しで
         // 出す。InAppBridge.handlePressEnter 参照)は type のロケータ版と同じ形で
-        // typeDriver(xcuitest)へフォールバックする
+        // typeDriver(xcuitest)へフォールバックする(判定は DriverError.isTextInputFallback)
         if action == "pressEnter" {
             let focusNote = try await awaitFocusBeforeKeyInput("pressEnter", phase: &phase)
             let start = clock.now
             do {
                 try await driver.pressEnter()
             } catch {
-                guard case DriverError.badResponse(let code, _) = error, code == 409,
-                      let td = typeDriver else { throw error }
+                guard DriverError.isTextInputFallback(error), let td = typeDriver else { throw error }
                 try await td.pressEnter()
                 phase.actionMs += Self.ms(clock.now - start)
                 return StepOutcome(status: .passed,
@@ -1175,9 +1174,9 @@ extension StepExecutor {
                 }
             } catch {
                 // 409 = inapp が非 UIKit 入力欄で first responder を張れない兆候。type は要素個別の
-                // フォーカス有無に依存する一時的競合なので、press/swipe と違い 501 化しない。
-                guard case DriverError.badResponse(let code, _) = error, code == 409,
-                      let td = typeDriver else { throw error }
+                // フォーカス有無に依存する一時的競合なので、press/swipe と違い 501 化しない
+                // (判定は DriverError.isTextInputFallback)。
+                guard DriverError.isTextInputFallback(error), let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
                 // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
@@ -1496,18 +1495,6 @@ extension StepExecutor {
         return true
     }
 
-    /// clearInput のフォールバック判定: 409(in-app の対象なし/フォーカス無し。type の 409 と同じ
-    /// 一時的競合)、422(XCUITest ランナーの同じ事情。**あちらは 409 を使えない** —
-    /// SessionRecoveryDriver がセッション消失と断定するため。BridgeRouter.handleClear 参照)、
-    /// または isEngineIncapable(このエンジンでは未対応)なら typeDriver へ回してよい
-    private static func isClearInputFallback(_ error: Error) -> Bool {
-        if DriverError.isEngineIncapable(error) { return true }
-        if case DriverError.badResponse(let status, _) = error, status == 409 || status == 422 {
-            return true
-        }
-        return false
-    }
-
     /// typeDriver で clearInput を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
     /// 取り直す(typeViaTypeDriver と同じ理由)。解決できなければ false(呼び出し側で再スロー)。
     private func clearViaTypeDriver(_ td: AppDriver, step: FlowStep,
@@ -1544,7 +1531,7 @@ extension StepExecutor {
         do {
             try await driver.clearInput(ref: nil)
         } catch {
-            guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
+            guard DriverError.isClearInputFallback(error), let td = typeDriver else { throw error }
             try await td.clearInput(ref: nil)
             phase.actionMs += Self.ms(clock.now - start)
             if let focusedBefore,
@@ -1603,7 +1590,7 @@ extension StepExecutor {
             }
             return .cleared(driverFallback: nil)
         } catch {
-            guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
+            guard DriverError.isClearInputFallback(error), let td = typeDriver else { throw error }
             guard try await clearViaTypeDriver(td, step: step, phase: &phase) else { throw error }
             // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
             // 規則が無いと将来の変更で無検証の穴が復活する)

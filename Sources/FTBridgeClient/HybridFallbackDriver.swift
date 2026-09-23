@@ -60,15 +60,28 @@ public final class HybridFallbackDriver: AppDriver {
         self.foreignApp = foreignApp
     }
 
-    /// primary を試し、**このエンジンでは不可(501 / ルート不明 404)のときだけ** fallback へ回す。
-    /// 409 は含めない(一時的競合。理由は DriverError.isEngineIncapable)
-    private func withFallback<T>(_ operation: (AppDriver) async throws -> T) async throws -> T {
-        try await withFallbackTracking(operation).value
+    /// 入力系(pressEnter・type(ref: nil))が fallback へ回る条件。**isEngineIncapable も含む** ——
+    /// この3操作は元々 withFallback 経由で 501/ルート不明404 を拾っていたので、409 を足すときに
+    /// そちらを落とすと後退になる(DSL 側の同じ判定が 409 だけを見るのは、あちらが 501 を
+    /// hideKeyboard と同じ経路で別に扱うため)
+    private static let textInputFallbackWorthy: (Error) -> Bool = {
+        DriverError.isEngineIncapable($0) || DriverError.isTextInputFallback($0)
+    }
+
+    /// primary を試し、`isFallbackWorthy` が true を返した失敗のときだけ fallback へ回す。
+    /// **既定は「このエンジンでは不可(501 / ルート不明 404)」だけ**で、409(一時的競合)は含めない ——
+    /// 入力系(pressEnter・type/clearInput の ref なし)だけが判定を明示して 409 も回す
+    private func withFallback<T>(
+        isFallbackWorthy: (Error) -> Bool = DriverError.isEngineIncapable,
+        _ operation: (AppDriver) async throws -> T
+    ) async throws -> T {
+        try await withFallbackTracking(isFallbackWorthy: isFallbackWorthy, operation).value
     }
 
     /// withFallback と同じ振り分けで、**実際に操作を受けたドライバ**も返す(swipe の端申告など
     /// 「直前の操作を受けた側」に紐づく読み出しのため)
     private func withFallbackTracking<T>(
+        isFallbackWorthy: (Error) -> Bool = DriverError.isEngineIncapable,
         _ operation: (AppDriver) async throws -> T
     ) async throws -> (value: T, performer: AppDriver) {
         // 背面化中・別アプリを見ている間は primary を撃たない
@@ -80,7 +93,7 @@ public final class HybridFallbackDriver: AppDriver {
             fallbackNote = nil
             return (result, primary)
         } catch {
-            guard DriverError.isEngineIncapable(error) else { throw error }
+            guard isFallbackWorthy(error) else { throw error }
             let result = try await operation(fallback)
             fallbackNote = "fell back to XCUITest"
             return (result, fallback)
@@ -163,22 +176,33 @@ public final class HybridFallbackDriver: AppDriver {
         try await withFallback { try await $0.openAppSwitcher() }
         appBackgrounded = true
     }
+    /// **409 では回さない**(DSL 側 StepExecutor+Actions のコメント参照。hideKeyboard は
+    /// isEngineIncapable(501/ルート不明404)だけを見る = このエンジンでは原理的に無理なとき限定)
     public func hideKeyboard() async throws {
         try await withFallback { try await $0.hideKeyboard() }
     }
+    /// 409(一時的競合)でも回す(条件と理由は textInputFallbackWorthy)
     public func pressEnter() async throws {
-        try await withFallback { try await $0.pressEnter() }
+        try await withFallback(isFallbackWorthy: Self.textInputFallbackWorthy) { try await $0.pressEnter() }
     }
 
-    /// ref なし(フォーカス中の要素)だけ回す。ref ありは primary 限定
+    /// ref なし(フォーカス中の要素)だけ回す。ref ありは primary 限定 ——
+    /// ref はブリッジごとに別名前空間で、in-app で採った ref を XCUITest へ渡すと別要素を操作する
+    /// (DSL 側は typeViaTypeDriver で typeDriver の snapshot から ref を取り直すが、この層には
+    /// その手段が無い)。ref なしは 409(一時的競合)でも回す(pressEnter と同じ判定)
     public func type(ref: Int?, text: String) async throws {
         guard ref == nil else { return try await active.type(ref: ref, text: text) }
-        try await withFallback { try await $0.type(ref: nil, text: text) }
+        try await withFallback(isFallbackWorthy: Self.textInputFallbackWorthy) { try await $0.type(ref: nil, text: text) }
     }
 
+    /// ref なしは DriverError.isClearInputFallback(409 + 422 + isEngineIncapable)で回す ——
+    /// 422 は XCUITest ランナーが同じ事情を表すときに使う status(あちらは 409 を使えない)。
+    /// ref ありは primary 限定(type(ref:) と同じ理由)
     public func clearInput(ref: Int?) async throws {
         guard ref == nil else { return try await active.clearInput(ref: ref) }
-        try await withFallback { try await $0.clearInput(ref: nil) }
+        try await withFallback(isFallbackWorthy: DriverError.isClearInputFallback) {
+            try await $0.clearInput(ref: nil)
+        }
     }
 
     /// **ref を渡さずに回す**: in-app は長押しを持たない(501)ので、primary の snapshot で

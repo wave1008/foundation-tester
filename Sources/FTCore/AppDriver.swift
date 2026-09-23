@@ -361,6 +361,30 @@ public enum DriverError: Error, LocalizedError {
         return status == 422 && body.hasPrefix(AndroidBridgeErrorPrefix.noActiveWindowRoot)
     }
 
+    /// 入力系(pressEnter・type(ref: nil))が一時的競合で失敗したか = 別ドライバ(XCUITest)へ
+    /// 回してよいか。**409 だけ**(in-app が非 UIKit 入力欄(Compose/Flutter 等)で first responder を
+    /// 張れない兆候。type は要素個別のフォーカス有無に依存する一時的競合であって、
+    /// isEngineIncapable が表す「このエンジンでは原理的に無理」とは事情が違う ——
+    /// hideKeyboard が 409 でなく isEngineIncapable で判定する理由もこの区別から来る)
+    public static func isTextInputFallback(_ error: Error) -> Bool {
+        guard let driverError = error as? DriverError,
+              case .badResponse(let status, _) = driverError else { return false }
+        return status == 409
+    }
+
+    /// clearInput(ref なし)のフォールバック判定: 409(isTextInputFallback と同じ、in-app の対象なし/
+    /// フォーカス無しという一時的競合)、422(XCUITest ランナー側で同じ事情を表す status。
+    /// **あちらは 409 を使えない** —— SessionRecoveryDriver が 409 をセッション消失と断定するため。
+    /// BridgeRouter.handleClear 参照)、または isEngineIncapable(このエンジンでは未対応)。
+    /// **isTextInputFallback とは別関数にする** —— 対象 status の集合が type/pressEnter と違うので、
+    /// 1つに畳むと呼び出し側が clearInput 専用の 422 を type にも誤って許してしまいかねない
+    public static func isClearInputFallback(_ error: Error) -> Bool {
+        if isEngineIncapable(error) { return true }
+        guard let driverError = error as? DriverError,
+              case .badResponse(let status, _) = driverError else { return false }
+        return status == 409 || status == 422
+    }
+
     /// URLError のうち、接続そのものが成立しなかったことが確実なものだけを true とする
     /// (タイムアウト・キャンセル等、届いた可能性が残るものは false = 安全のためリトライしない)。
     /// .networkConnectionLost は接続確立後の切断でも出る=届いて処理された可能性が残るため含めない

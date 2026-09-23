@@ -151,8 +151,14 @@ final class HybridFallbackDriverTests: XCTestCase {
 
     private static let notCapable = DriverError.badResponse(
         status: 501, body: "cannot run on the in-app engine")
-    /// 一時的競合。**フォールバックしてはいけない**(理由は DriverError.isEngineIncapable)
+    /// 一時的競合。**tap/swipe/hideKeyboard 等(既定の判定)はフォールバックしてはいけない**
+    /// (理由は DriverError.isEngineIncapable)が、pressEnter/type(ref:nil)/clearInput(ref:nil)
+    /// は回してよい(DriverError.isTextInputFallback)
     private static let conflict = DriverError.badResponse(status: 409, body: "no key window")
+    /// clearInput 専用の追加ステータス。XCUITest ランナー自身が同じ一時的競合を表すときの
+    /// status(あちらは 409 を使えない。DriverError.isClearInputFallback 参照)
+    private static let sessionLossConflict = DriverError.badResponse(
+        status: 422, body: "cannot verify session")
 
     override func setUp() {
         super.setUp()
@@ -406,5 +412,67 @@ final class HybridFallbackDriverTests: XCTestCase {
 
         XCTAssertEqual(driver.reachedEdgeOnLastSwipe, true)
         XCTAssertEqual(log.entries, ["inapp.swipe"])
+    }
+
+    // MARK: - 入力系(pressEnter/type/clearInput の ref なし)は 409 でも回す
+    // **DSL 側(StepExecutor+Actions)と同じ判定を通す**: 片方だけが回ると、同じ hybrid 構成の
+    // 同じ操作がシナリオでは通り MCP/ライブ操作では落ちる
+
+    /// pressEnter / type(ref: nil) / clearInput(ref: nil) は 409(一時的競合)でも回す
+    func testTextInputOperationsFallBackOn409() async throws {
+        primary.errors = ["pressEnter": Self.conflict, "type": Self.conflict,
+                          "clearInput": Self.conflict]
+
+        try await driver.pressEnter()
+        try await driver.type(ref: nil, text: "x")
+        try await driver.clearInput(ref: nil)
+
+        XCTAssertEqual(log.entries, ["inapp.pressEnter", "xcui.pressEnter",
+                                     "inapp.type(ref:nil)", "xcui.type(ref:nil)",
+                                     "inapp.clearInput(ref:nil)", "xcui.clearInput(ref:nil)"])
+    }
+
+    /// clearInput(ref: nil) だけは 422 でも回す(type/pressEnter は対象外。
+    /// DriverError.isClearInputFallback が isTextInputFallback と別関数な理由そのもの)
+    func testClearInputAlsoFallsBackOn422() async throws {
+        primary.errors = ["clearInput": Self.sessionLossConflict]
+
+        try await driver.clearInput(ref: nil)
+
+        XCTAssertEqual(log.entries, ["inapp.clearInput(ref:nil)", "xcui.clearInput(ref:nil)"])
+    }
+
+    /// **既定の判定を共有する 14 操作は 409 では回さない**(退行検出: 409 を withFallback の
+    /// 既定へ入れると、tap/swipe や、とくに DSL 側が明示的に 409 では回さないと決めている
+    /// hideKeyboard まで巻き込む)
+    func testSharedFallbackOperationsDoNotFallBackOn409() async {
+        primary.errors = ["tap": Self.conflict, "swipe": Self.conflict, "hideKeyboard": Self.conflict]
+
+        for operation in [{ try await self.driver.tap(x: 1, y: 2) },
+                          { try await self.driver.swipe(.up) },
+                          { try await self.driver.hideKeyboard() }] {
+            do {
+                try await operation()
+                XCTFail("409 はそのまま伝播するはず")
+            } catch {}
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("xcui.") },
+                       "tap/swipe/hideKeyboard を 409 で回してはいけない: \(log.entries)")
+    }
+
+    /// **ref ありの type/clearInput は 409 でも primary 限定のまま**(ref はブリッジごとに
+    /// 別名前空間なので、回すと無関係な要素を操作する)
+    func testRefBasedTextInputOperationsDoNotFallBackOn409() async {
+        primary.errors = ["type": Self.conflict, "clearInput": Self.conflict]
+
+        for operation in [{ try await self.driver.type(ref: 3, text: "x") },
+                          { try await self.driver.clearInput(ref: 3) }] {
+            do {
+                try await operation()
+                XCTFail("409 はそのまま伝播するはず")
+            } catch {}
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("xcui.") },
+                       "ref ありの type/clearInput を回してはいけない: \(log.entries)")
     }
 }
