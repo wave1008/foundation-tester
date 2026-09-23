@@ -683,3 +683,50 @@ test("ループするアニメーションでは上限で打ち切って出す",
   sendToWebview(SNAPSHOT);
   assert.equal(boxes(document).length, ELEMENTS.length, "打ち切ったら最新の木で描くこと");
 });
+
+// ---- 遅い台(リモート・実機 = 1操作に数秒)。静定(700ms)も打ち切り(2800ms)も操作の最中に鳴る ----
+// 実地 2026-09-24(M1Ultra 経由の iPhone wave): busy 中に鳴ったタイマーが諦めて再予約せず、
+// 操作の結果が失敗(木が来ない)だと枠が永久に出ず、トグルを入れ直しても撮り直しが飛ばなかった
+
+test("遅い台: 操作が失敗して木が来なくても、busy が明けたら撮り直して枠を出す", async (t) => {
+  const { window, document, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT); await settle(QUIET_MS + 150); sendToWebview(SNAPSHOT); // 静定済み
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(boxes(document).length, ELEMENTS.length, "前提: 出ている");
+
+  sendToWebview({ type: "live", message: { type: "busy", busy: true } });
+  await settle(CAP_MS + 400); // 静定も打ち切りも busy 中に鳴る
+  const during = liveMessages().filter((m) => m.type === "refreshSnapshot").length;
+  sendToWebview({ type: "live", message: { type: "actionError", message: "x" } });
+  sendToWebview({ type: "live", message: { type: "busy", busy: false } });
+  await settle(QUIET_MS + 300);
+  assert.ok(liveMessages().filter((m) => m.type === "refreshSnapshot").length > during,
+    "busy が明けたら撮り直しを要求すること(諦めて黙らない)");
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "届いた木で描くこと");
+});
+
+test("遅い台: 枠を消したまま予約も無い状態で ON にしたら撮り直す", async (t) => {
+  const { window, document, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT); await settle(QUIET_MS + 150); sendToWebview(SNAPSHOT);
+  // OFF のまま操作 → 失敗。枠の状態は stale・予約は無い
+  sendToWebview({ type: "live", message: { type: "busy", busy: true } });
+  await settle(CAP_MS + 400);
+  sendToWebview({ type: "live", message: { type: "actionError", message: "x" } });
+  sendToWebview({ type: "live", message: { type: "busy", busy: false } });
+  await settle(QUIET_MS + 300);
+  const before = liveMessages().filter((m) => m.type === "refreshSnapshot").length;
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle(QUIET_MS + 300);
+  assert.ok(liveMessages().filter((m) => m.type === "refreshSnapshot").length > before,
+    "ON にしたら撮り直しを要求すること(黙ったまま何も出ない形にしない)");
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length);
+});

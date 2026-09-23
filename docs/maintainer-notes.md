@@ -2248,14 +2248,21 @@ iPhone SE3 のブリッジを iPhone wave のものとして掴んだ(返った�
 iPhone wave(M1Ultra・YouTube)で `frontmost app is com.google.ios.youtube`・要素 43 件を確認。
 **この Mac に USB で繋いだ実機でも同じ**(リモート固有ではない)。
 
-### 47.6 直さず記録したもの
+### 47.6 ホームボタン機ではアプリスイッチャーの窓が常に「触れる」(ブリッジ v124)
 
-- **SE3(ホームボタン機・iOS 26)で `/systemui/covering` が誤判定する**: 設定アプリが前面なのに
-  `SBSwitcherWindow:Main` を `isHittable` と答える(iPhone wave / iOS 26.6.2 では false)。真の間は
-  前面アプリを探さないので、SE3 のライブ操作では 47.5 を入れてもアプリの要素が取れない。判定は
-  ブリッジ側(`BridgeRouter.handleSystemUICovering`。目印はシミュレータ iPhone 17 Pro で測った)。
-  直すには「窓が存在して触れる」以外の識別(開いたスイッチャーはカードを持つ等)を実機で測ってから、
-  版上げ + `--ios-xcuitest`
+SE3(ホームボタン機・iOS 26)は設定アプリが前面でも `SBSwitcherWindow:Main` を `isHittable` と答え、
+`/systemui/covering` が常に true → 前面追従が走らず、47.5 を入れても設定の木が読めなかった
+(Face ID 機の iPhone wave・シミュレータは false)。カードの**有無**でも切れない —— SE3 は閉じていても
+前面アプリ(設定)のカード `card:com.apple.Preferences:…` が**窓いっぱい(375×667)・hittable** のまま
+1 枚残る(スイッチャーの窓がアプリの面を抱えている形)。開いているスイッチャーのカードは縮んで並ぶ
+(シミュレータ実測 281×612 × 5 枚)ので、**窓より小さいカードがあるときだけ**覆い
+(`BridgeAPI.appSwitcherCardIsShrunken`。1pt の許容は端数)。
+確認: SE3 設定前面 → false / シミュレータ `POST /appswitcher` → true → `/home` → false。
+**診断は応答の marker に載せて読んだ**(スナップショットは窓いっぱいのカードを出さないので、
+木を見ても「カードは無い」と誤読する)。
+**ホームボタン機ではブリッジからスイッチャーを開けない**(422)ので、開いた側の対照はシミュレータで取った。
+
+### 47.7 直さず記録したもの
 - **モニターから iPhone wave を起動すると、ブリッジが SE3 と同じ 8123 に建つ**(02:15 のログ。
   `start-device` が「8123 の残骸」として wave 向け iproxy を止め、同じポートに建て直した)
 - 他の機械の台では、この Mac のファイルを使う操作(アプリプロファイルからのインストール等)は失敗する

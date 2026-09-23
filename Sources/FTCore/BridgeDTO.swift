@@ -420,7 +420,11 @@ public enum BridgeAPI {
     /// 422 when it went away mid-clear (a web view reloading its content); touching the vanished element recorded XCTest
     /// failures and the runner tore down on the third one. The runner's test also stops recording XCUI failures as test
     /// failures (they are logged): a single recorded failure was enough to tear the runner down with the bridge.
-    public static let bridgeProtocolVersion = 123
+    /// v124 (XCUITest runner only): `GET /systemui/covering` no longer reports the app switcher as covering merely because
+    /// `SBSwitcherWindow` exists and is hittable — it also requires an app card (`card:<bundle>…`) inside the window.
+    /// A home-button iPhone (SE3, iOS 26) answers hittable for that window while an app is in front, so a stale runner
+    /// keeps telling Live Control the screen is covered and the session never follows the app in front.
+    public static let bridgeProtocolVersion = 124
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -490,6 +494,26 @@ public enum BridgeAPI {
     public static let systemUICoveringMarkers: [String] = [
         "cc-brightness-slider", "cc-volume-slider", "SBCoverSheetWindow", "SBSwitcherWindow",
     ]
+    /// `systemUICoveringMarkers` のうちアプリスイッチャーの窓。**この窓だけは「触れる」では足りず、
+    /// 中にカード(`appSwitcherCardPrefix`)が載っているときだけ覆いと見る**(BridgeRouter.handleSystemUICovering。
+    /// ホームボタン機はアプリが前面でも窓を isHittable と答える。実測 2026-09-24 iPhone SE3)
+    public static let appSwitcherMarkerPrefix = "SBSwitcherWindow"
+    /// スイッチャーのアプリのカードの identifier(`card:<bundle>:sceneID:<bundle>-default`)。
+    /// 実測 2026-09-24: 開いているとき(iPhone 17 Pro / iOS 27.0 シミュレータ)は縮んだカードが並ぶ
+    /// (281×612 が 5 枚)。閉じたあと、Face ID 機・シミュレータの窓には 1 枚も残らないが、
+    /// **ホームボタン機(iPhone SE3 / iOS 26)は前面アプリのカードが窓いっぱい(375×667)のまま 1 枚残り、
+    /// isHittable も true** —— だから有無では切れず、`appSwitcherCardIsShrunken` で切る
+    public static let appSwitcherCardPrefix = "card:"
+
+    /// スイッチャーの窓が**本当に開いている**ことの判定(BridgeRouter.handleSystemUICovering):
+    /// カードが窓より縮んでいるときだけ true。窓いっぱいのカードは「前面アプリの面をスイッチャーの窓が
+    /// 抱えている」形(ホームボタン機の平常時)で、覆いではない。1pt の許容は端数(SE3 は整数、
+    /// シミュレータは 1/3pt 刻み)のため
+    public static func appSwitcherCardIsShrunken(cardWidth: Double, cardHeight: Double,
+                                                 windowWidth: Double, windowHeight: Double) -> Bool {
+        guard cardWidth > 0, cardHeight > 0 else { return false }
+        return cardWidth < windowWidth - 1 || cardHeight < windowHeight - 1
+    }
 
     public static func isHomeButtonPhoneScreen(width: Double, height: Double) -> Bool {
         guard width > 0, height > 0 else { return false }

@@ -438,18 +438,26 @@ function deferBoxesUntilSettled() {
   clearBoxes();            // 届くまで描かない(boxesStale)
   scheduleSettleRefresh(); // 絵が止まったら撮り直す(動いている間は先送りされる)
   cancelBoxesSettleCap();
+  armBoxesSettleCap(BOXES_SETTLE_CAP_MS);
+}
+// **busy 中に鳴ったら諦めずに待ち直す**(遅い台 = リモート・実機は1操作に数秒かかり、静定も打ち切りも
+// 必ず busy 中に鳴る)。諦めると、操作の結果が失敗(木が来ない)だった回は枠が永久に出ず、
+// トグルを入れ直しても撮り直しが飛ばなかった(実地 2026-09-24: M1Ultra 経由の iPhone wave)
+function armBoxesSettleCap(delayMs) {
   boxesSettleCapTimer = setTimeout(() => {
     boxesSettleCapTimer = null;
-    if (!showBoxes || !boxesStale || busy) { return; } // 既に描けた/操作中(結果の木が引き直す)
+    if (!showBoxes || !boxesStale) { return; } // 既に描けた
+    if (busy) { armBoxesSettleCap(SETTLE_REFRESH_MS); return; } // 操作中。結果の木が来なくても次で撃つ
     settleRefreshRequested = true; // 画面を変えない観測 = 次の applySnapshot で再予約しない
     post({ type: 'refreshSnapshot' });
-  }, BOXES_SETTLE_CAP_MS);
+  }, delayMs);
 }
 function scheduleSettleRefresh() {
   cancelSettleRefresh();
   settleRefreshTimer = setTimeout(() => {
     settleRefreshTimer = null;
-    if (busy || !lastScreen) { return; } // 別の操作が走っているならその結果が絵を持ってくる
+    if (!lastScreen) { return; }
+    if (busy) { scheduleSettleRefresh(); return; } // 操作中は待ち直す(結果の木が来れば予約は引き直される)
     settleRefreshRequested = true;
     post({ type: 'refreshSnapshot' });
   }, SETTLE_REFRESH_MS);
@@ -852,7 +860,9 @@ showBoxesToggle.addEventListener('change', () => {
   hideHover();
   // **撮り直しの予約が残っている = 絵が動いた(動いている)**。その木はもう画面と合わないので
   // 静定を待つ(deferBoxesUntilSettled)。予約が無ければ既に静定しているので即描く。
-  if (showBoxes && settleRefreshTimer !== null) {
+  // **枠を消したまま(boxesStale)で予約も無い**ときも撮り直しへ —— 失敗した操作のあとはこの形になり、
+  // ON にしても renderBoxes が stale で何も描かず、黙ったままだった
+  if (showBoxes && (settleRefreshTimer !== null || boxesStale)) {
     deferBoxesUntilSettled();
   } else if (!showBoxes) {
     cancelBoxesSettleCap();

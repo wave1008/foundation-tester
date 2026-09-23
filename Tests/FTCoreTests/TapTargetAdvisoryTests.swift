@@ -104,7 +104,8 @@ final class TapTargetAdvisoryTests: XCTestCase {
     /// 空にする・localize される名前を混ぜる退行を落とす。
     /// `SBSwitcherWindow` は 2026-09-22 に追加(iPhone 17 Pro / iOS 27.0 のシミュレータで測定)——
     /// **識別子は `SBSwitcherWindow:Main`** なので前方一致で引き、**閉じたあとも残る**ので
-    /// `.exists` ではなく `.isHittable` まで見る(BridgeRouter.handleSystemUICovering)
+    /// `.exists` ではなく `.isHittable` まで見る。さらに**ホームボタン機は閉じていても isHittable**
+    /// なので、この窓だけは**縮んだ**カード(`appSwitcherCardIsShrunken`)の有無で切る(BridgeRouter.handleSystemUICovering)
     func testSystemUICoveringMarkersAreTheMeasuredSet() {
         let markers = BridgeAPI.systemUICoveringMarkers
         XCTAssertEqual(Set(markers),
@@ -114,6 +115,23 @@ final class TapTargetAdvisoryTests: XCTestCase {
         // **ローカライズされる名前を混ぜない**(同時に出る mode-おやすみモード 等)
         XCTAssertTrue(markers.allSatisfy { $0.allSatisfy { $0.isASCII } },
                       "ASCII 以外 = ローカライズされる名前が混ざっている: \(markers)")
+    }
+
+    /// アプリスイッチャーが**本当に開いている**判定 = 窓より縮んだカードがあること。
+    /// 実測 2026-09-24: 開(シミュレータ)= 281×612 のカードが 402×874 の窓に / 閉(SE3・ホームボタン機)=
+    /// 前面アプリのカードが 375×667 の窓いっぱいで hittable のまま残る。有無で切ると SE3 で常に覆い
+    func testAppSwitcherIsOpenOnlyWhenACardIsShrunken() {
+        XCTAssertTrue(BridgeAPI.appSwitcherCardIsShrunken(cardWidth: 281.4, cardHeight: 611.8,
+                                                            windowWidth: 402, windowHeight: 874), "開いている")
+        XCTAssertFalse(BridgeAPI.appSwitcherCardIsShrunken(cardWidth: 375, cardHeight: 667,
+                                                             windowWidth: 375, windowHeight: 667),
+                       "窓いっぱいのカード = 前面アプリの面(SE3 の平常時)")
+        XCTAssertFalse(BridgeAPI.appSwitcherCardIsShrunken(cardWidth: 402, cardHeight: 873.6667,
+                                                             windowWidth: 402, windowHeight: 874),
+                       "1pt 未満の端数は同じ大きさ")
+        XCTAssertFalse(BridgeAPI.appSwitcherCardIsShrunken(cardWidth: 0, cardHeight: 0,
+                                                             windowWidth: 375, windowHeight: 667),
+                       "枠の無いカードは根拠にしない")
     }
 
     /// **ホームボタン機の判定**(`ft_navigate appSwitcher` がどのジェスチャを撃つかを決める)。

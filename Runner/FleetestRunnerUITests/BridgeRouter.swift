@@ -396,7 +396,28 @@ final class BridgeRouter {
         guard match.exists, match.isHittable else {
             return .json(SystemUICoveringResponse(covering: false))
         }
-        return .json(SystemUICoveringResponse(covering: true, marker: match.identifier))
+        let marker = match.identifier
+        // **アプリスイッチャーは「触れる窓」だけでは足りない** —— ホームボタン機(実測 2026-09-24:
+        // iPhone SE3 / iOS 26)は設定アプリが前面でも `SBSwitcherWindow:Main` を isHittable と答え、
+        // 前面アプリのカードが窓いっぱいのまま 1 枚載っている(Face ID 機・シミュレータは窓が
+        // hittable でなく、閉じるとカードも消える)。開いているスイッチャーのカードは縮んで並ぶので、
+        // **窓より小さいカードがあるときだけ**覆い(BridgeAPI.appSwitcherCardIsShrunken)。
+        // 誤って true にするとライブ操作の前面追従が止まり、前面のアプリの木が一度も読めない
+        if marker.hasPrefix(BridgeAPI.appSwitcherMarkerPrefix) {
+            let window = match.frame
+            let cards = match.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH %@", BridgeAPI.appSwitcherCardPrefix))
+            // 枚数は開いているアプリの数(数枚〜十数枚)。frame の照会は 1 枚ずつ往復するので上限を置く
+            let shrunken = cards.allElementsBoundByIndex.prefix(16).contains { card in
+                let f = card.frame
+                return BridgeAPI.appSwitcherCardIsShrunken(cardWidth: f.width, cardHeight: f.height,
+                                                           windowWidth: window.width, windowHeight: window.height)
+            }
+            guard shrunken else {
+                return .json(SystemUICoveringResponse(covering: false))
+            }
+        }
+        return .json(SystemUICoveringResponse(covering: true, marker: marker))
     }
 
     private func handleSystemUISnapshot(_ request: BridgeHTTPServer.Request) throws
