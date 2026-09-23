@@ -72,6 +72,17 @@ export const webviewMonitorAStrings = {
   // shuttingDown/startingBridge の言い換え専用。
   "wvMonitor.tile.stoppingBridge": { ja: "ブリッジを停止中", en: "Stopping bridge" },
   "wvMonitor.tile.startingBridge": { ja: "ブリッジを起動中", en: "Starting bridge" },
+  // 実機の起動で人の操作を待っている間(deviceAction)。タイルは幅が狭いので短く、対処はツールチップと通知へ
+  "wvMonitor.tile.unlockDevice": { ja: "ロック解除待ち", en: "Waiting for unlock" },
+  "wvMonitor.tile.unlockDeviceTip": {
+    ja: "端末がロックされているためブリッジを起動できません。端末のロックを解除してください(解除されると起動を続けます)。自動ロックは「なし」にしておくことを勧めます",
+    en: "The device is locked, so the bridge cannot be launched. Unlock the device (the start continues once it is unlocked). Setting Auto-Lock to Never is recommended",
+  },
+  "wvMonitor.tile.approveAutomation": { ja: "認証待ち", en: "Approve on device" },
+  "wvMonitor.tile.approveAutomationTip": {
+    ja: "端末に UI 自動化の許可を求める認証画面(Touch ID / パスコード)が出ています。端末で認証してください。認証しないとブリッジの起動は打ち切られます",
+    en: "The device is asking to allow UI automation (Touch ID / passcode). Authenticate on the device; otherwise the bridge start is abandoned",
+  },
   "wvMonitor.tile.remoteUnobservable": {
     ja: "{machine}\n状態不明",
     en: "{machine}\nunknown",

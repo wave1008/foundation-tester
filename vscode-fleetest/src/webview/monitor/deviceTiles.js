@@ -405,6 +405,7 @@ function createTile(device) {
     healthWatchPhase: undefined,
     // wipeStatus の直近 phase('done'/未受信は undefined)。device.state に関わらず表示に反映する。
     wipePhase: undefined,
+    deviceAction: null,
     // ストリーム描画 ack(streamRendered)の直近送信時刻(ms)。2秒スロットリング用
     // (受け手側 noteStreamRendered は冪等なので多重送信は無害だがスパムを避ける)。
     streamAckAt: 0,
@@ -472,6 +473,8 @@ function renderFrame(entry) {
   const cancellingUp = offline && entry.upCancelRequested && entry.opBusy?.op === 'up';
   const physicalBridgeStarting = isPhysical && offline
     && (entry.opBusy?.op === 'up' || !!entry.awaitingStateAfterUp);
+  // 起動中のうち、端末の前で人の操作を待っている間(CLI の deviceAction。applyDeviceAction)
+  const awaitingAction = physicalBridgeStarting ? entry.deviceAction : null;
   // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
   // 作り直している最中に、消える前の画面を映し続けることになる —— しかも down と違って
   // 状態が offline へ倒れるとは限らない(止めずに終わる台もある)ので、放っておくと
@@ -513,6 +516,10 @@ function renderFrame(entry) {
     // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
     entry.placeholderEl.title = wiping
       ? t('wvMonitor.tile.wipingTip')
+      : awaitingAction === 'unlock'
+      ? t('wvMonitor.tile.unlockDeviceTip')
+      : awaitingAction === 'approveAutomation'
+      ? t('wvMonitor.tile.approveAutomationTip')
       : monitorPaused
       ? t('wvMonitor.tile.monitorPausedTip')
       : streamUnavailable
@@ -537,6 +544,10 @@ function renderFrame(entry) {
         ? (isPhysical ? t('wvMonitor.tile.stoppingBridge') : t('wvMonitor.tile.shuttingDown'))
         : cancellingUp
           ? t('wvMonitor.tile.cancellingStart')
+        : awaitingAction === 'unlock'
+          ? t('wvMonitor.tile.unlockDevice')
+        : awaitingAction === 'approveAutomation'
+          ? t('wvMonitor.tile.approveAutomation')
         : physicalBridgeStarting
           ? t('wvMonitor.tile.startingBridge')
           : waitingUp
@@ -1676,6 +1687,8 @@ export function applyDeviceOpBusy(message) {
   }
   if (entry.opBusy?.op !== 'up') {
     entry.upCancelRequested = false;
+    // 起動が終われば(成否を問わず)人の操作待ちも終わっている。CLI が落ちて action:null が来なくても残さない
+    entry.deviceAction = null;
   }
   // 新しい操作が始まったら失敗の記憶は捨てる(次の操作の判断を縛らない)
   if (entry.opBusy) {
@@ -1764,7 +1777,18 @@ export function applyDeviceOpFailed(message) {
   // **印を消すだけでは足りない** —— この直後に届くジョブ終了(op:null)を
   // applyDeviceOpBusy が受けて awaitingStateAfterUp を立て直すので、失敗を覚えて立てさせない
   entry.lastOpFailed = true;
+  entry.deviceAction = null;
   renderMeta(entry);
+  renderFrame(entry);
+}
+
+export function applyDeviceAction(message) {
+  const entry = findTileByName(message.name, message.machine);
+  if (!entry) {
+    return;
+  }
+  entry.deviceAction = message.action === 'unlock' || message.action === 'approveAutomation'
+    ? message.action : null;
   renderFrame(entry);
 }
 

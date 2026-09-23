@@ -45,7 +45,28 @@ export interface DeviceOpFinishedEvent {
   readonly signingLogPath?: string;
 }
 
-export type DeviceOpEvent = DeviceOpLogEvent | DeviceOpWipeStatusEvent | DeviceOpFinishedEvent;
+/** 実機の起動で人の操作を待っている間(start-device / start-all-devices)。action は
+ * "unlock"(画面ロック)/ "approveAutomation"(UI 自動化の承認プロンプト = Touch ID / パスコード)/
+ * null(待ちが終わった)。非 null の後に必ず null が来る。
+ * 同期相手: Sources/fleetest/ApiDeviceCommands.swift の ApiDeviceActionEvent・
+ * Sources/FTBridgeClient/DeviceUserAction.swift(raw 値)。
+ * start-all-devices では name/machine でタイルを引く(リモート分は親が machine を入れて中継する) */
+export type DeviceUserAction = "unlock" | "approveAutomation";
+
+export interface DeviceOpActionEvent {
+  readonly kind: "deviceAction";
+  readonly name: string;
+  readonly machine?: string | null;
+  readonly action: DeviceUserAction | null;
+}
+
+export type DeviceOpEvent = DeviceOpLogEvent | DeviceOpWipeStatusEvent | DeviceOpActionEvent | DeviceOpFinishedEvent;
+
+function isDeviceActionRecord(value: Record<string, unknown>): boolean {
+  return typeof value.name === "string"
+    && (value.action === null || value.action === "unlock" || value.action === "approveAutomation")
+    && (value.machine === undefined || value.machine === null || typeof value.machine === "string");
+}
 
 /** value が DeviceOpEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。 */
 export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
@@ -58,6 +79,8 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
     case "wipeStatus":
       return value.phase === "stopping" || value.phase === "rebooting"
         || value.phase === "done" || value.phase === "failed";
+    case "deviceAction":
+      return isDeviceActionRecord(value);
     case "finished":
       return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string")
         && (value.signingProblems === undefined
@@ -88,6 +111,7 @@ export type DevicesUpEvent =
   // 移し替える。Sources/fleetest/RemoteDeviceFanout.swift machineStamped と対)。
   // 親の finished は ok:true のまま来る = これを見ないとその機械の失敗が無音になる
   | { readonly kind: "machineFailed"; readonly machine: string; readonly error: string }
+  | DeviceOpActionEvent
   | { readonly kind: "finished"; readonly ok: boolean; readonly error: string | null };
 
 /** value が DevicesUpEvent として扱ってよいか判定する(isDeviceOpEvent と同じ方針)。 */
@@ -104,6 +128,8 @@ export function isDevicesUpEvent(value: unknown): value is DevicesUpEvent {
       return typeof value.name === "string" && typeof value.platform === "string";
     case "machineFailed":
       return typeof value.machine === "string" && value.machine !== "" && typeof value.error === "string";
+    case "deviceAction":
+      return isDeviceActionRecord(value);
     case "finished":
       return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
     default:

@@ -459,6 +459,15 @@ export type MonitorToWebviewMessage =
       readonly machine?: string;
       readonly phase: "stopping" | "rebooting" | "done" | "failed";
     }
+  // 実機の起動で人の操作を待っている間(start-device / start-all-devices の deviceAction)。タイルの
+  // 「ブリッジを起動中」を「ロック解除待ち」/「認証待ち」に差し替える(null で戻す)。
+  // 起動操作の終了(deviceOpBusy op:null)・失敗でも webview が畳む
+  | {
+      readonly type: "deviceAction";
+      readonly name: string;
+      readonly machine?: string;
+      readonly action: "unlock" | "approveAutomation" | null;
+    }
   // ---- 録画タブ ---------------------------------------------------------------------------
   // セッション一覧(recordingsStore.ts が TestProjects/<current>/results/runs/*/*/recordings/index.json を
   // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。projects/current はプロジェクト

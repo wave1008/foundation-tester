@@ -53,15 +53,20 @@ public enum IOSPhysicalDeviceLock {
     /// 待ちきれなくても throw しない —— 起動を試みて既存の締切と診断に委ねる
     /// (ここで落とすと、解除が間に合った端末まで殺すことになる)
     /// `probe` / `pollInterval` は差し替え口(テストが端末抜きで周回を回すため。既定は実機を訊く)
+    /// `waiting` は待ちの出入り(true = ロックを見て待ち始めた / false = 待ちを抜けた。理由を問わず
+    /// 必ず対で来る)。log の文言は OUTPUT にしか届かないので、タイルへ出す呼び手はこちらを使う
     @discardableResult
     public static func waitForUnlock(udid: String, deviceName: String, timeout: TimeInterval,
                                      log: (String) -> Void,
+                                     waiting: (Bool) -> Void = { _ in },
                                      pollInterval: TimeInterval = pollIntervalSeconds,
                                      probe: (String) -> State = { query(udid: $0) }) async -> State {
         var state = probe(udid)
         guard state == .locked else { return state }
         log("⏳ \(deviceName) is locked — unlock it now. The runner cannot be launched on a locked "
             + "device (it keeps the device awake once it is up).")
+        waiting(true)
+        defer { waiting(false) }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             // **中断は待ちを抜ける**: try? で握ると Ctrl+C 後に刻みが 0 になり、

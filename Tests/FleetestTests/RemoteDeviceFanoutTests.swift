@@ -29,9 +29,17 @@ final class RemoteDeviceFanoutTests: XCTestCase {
     }
 
     /// 対象の集合を等号で固定する(per-device の種別を足したら machine を入れ忘れないため)
-    func testPerDeviceKindsAreExactlyTheThreeLifecycleEvents() {
+    func testPerDeviceKindsAreExactlyTheLifecycleEventsAndDeviceAction() {
         XCTAssertEqual(RemoteDeviceFanout.deviceKinds,
-                       ["deviceStopping", "deviceStarting", "deviceFinished"])
+                       ["deviceStopping", "deviceStarting", "deviceFinished", "deviceAction"])
+    }
+
+    /// 実機で人の操作を待つ行も1台ぶんの行 = machine を入れる(入れないと同名の手元のタイルに出る)
+    func testStampsMachineOnDeviceAction() {
+        let line = #"{"action":"unlock","kind":"deviceAction","machine":null,"name":"iPhone SE3"}"#
+        let object = decoded(RemoteDeviceFanout.machineStamped(line: line, machine: "M1Max"))
+        XCTAssertEqual(object["machine"] as? String, "M1Max")
+        XCTAssertEqual(object["action"] as? String, "unlock")
     }
 
     /// machine キーごと欠けている行(旧い子)にも入れる

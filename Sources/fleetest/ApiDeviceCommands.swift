@@ -70,7 +70,10 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
             // 「起動済み(ブリッジ未接続)」のままになる)
             if platform == "ios" {
                 let root = try RepoRoot.find()
-                _ = try await BridgeProvisioner(repoRoot: root)
+                let machine = MachineDispatch.normalize(deviceMachine)
+                _ = try await BridgeProvisioner(repoRoot: root, userAction: { name, action in
+                    ApiDeviceEventEmitter.emit(ApiDeviceActionEvent(name: name, machine: machine, action: action))
+                })
                     .provision(devices: [(spec.name, spec)], log: log)
             }
             // **Android 実機も同じ理由でブリッジを起こす** —— 実機に「起動」は無いので
@@ -98,7 +101,9 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
             let spec = try ApiDeviceUpDirectSpec.physicalIOSSpec(
                 udid: udid, devices: devices, simulators: (try? SimulatorCatalog.devices()) ?? [])
             let root = try RepoRoot.find()
-            _ = try await BridgeProvisioner(repoRoot: root)
+            _ = try await BridgeProvisioner(repoRoot: root, userAction: { name, action in
+                ApiDeviceEventEmitter.emit(ApiDeviceActionEvent(name: name, machine: nil, action: action))
+            })
                 .provision(devices: [(spec.name, spec)], log: log)
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
         } catch {
@@ -316,6 +321,10 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
                     ApiDeviceEventEmitter.emit(
                         ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: name, platform: platform,
                                                    machine: MachineDispatch.normalize(deviceMachine)))
+                },
+                userAction: { name, action in
+                    ApiDeviceEventEmitter.emit(ApiDeviceActionEvent(
+                        name: name, machine: MachineDispatch.normalize(deviceMachine), action: action))
                 })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
             // **手元の台が1台以上あって0台も起動できなかったときだけ ok:false**(部分失敗は従来どおり
@@ -893,6 +902,29 @@ private struct ApiDeviceLogEvent: Encodable {
 private struct ApiDeviceWipeStatusEvent: Encodable {
     let kind = "wipeStatus"
     let phase: String
+}
+
+/// 実機の起動で人の操作を待っている間(start-device / start-all-devices。BridgeProvisioner.userAction 由来)。
+/// action = "unlock"(画面ロック)/ "approveAutomation"(UI 自動化の承認プロンプト)/ null(待ちが終わった)。
+/// 非 null の後に必ず null が来る。拡張はタイルと VSCode の通知で促す(log は OUTPUT にしか届かず、
+/// タイルが「ブリッジを起動中」のまま待って落ちていた)。
+/// 対向: vscode-fleetest/src/monitorDeviceLifecycle.ts の DeviceOpActionEvent。
+/// machine はタイル特定用(手元は null。ApiDevicesUpLifecycleEvent と同じ)
+private struct ApiDeviceActionEvent: Encodable {
+    let kind = "deviceAction"
+    let name: String
+    let machine: String?
+    let action: DeviceUserAction?
+
+    private enum CodingKeys: String, CodingKey { case kind, name, machine, action }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(name, forKey: .name)
+        try container.encode(machine, forKey: .machine)
+        try container.encode(action?.rawValue, forKey: .action)
+    }
 }
 
 /// start-all-devices の per-device 進捗(kind: "deviceStarting" / "deviceFinished")。

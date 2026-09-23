@@ -83,7 +83,8 @@ public enum IOSDeviceTransport {
     public static func establish(port: UInt16, deviceUDID: String, repoRoot: URL,
                                  wired: Bool, token: String?,
                                  timeoutSeconds: TimeInterval = 180,
-                                 log: @escaping (String) -> Void = { _ in }) async throws -> BridgeEndpoint {
+                                 log: @escaping (String) -> Void = { _ in },
+                                 approvalPending: @escaping (Bool) -> Void = { _ in }) async throws -> BridgeEndpoint {
         let endpoint: BridgeEndpoint
         switch kind(wired: wired) {
         case .lan:
@@ -94,7 +95,8 @@ public enum IOSDeviceTransport {
                 : "transport lan (the device is not on USB; connecting over USB cuts a round trip from 48ms to 5ms)")
             endpoint = BridgeEndpoint(
                 host: try await waitForAnnouncedAddress(
-                    port: port, repoRoot: repoRoot, timeoutSeconds: timeoutSeconds, log: log),
+                    port: port, repoRoot: repoRoot, timeoutSeconds: timeoutSeconds, log: log,
+                    approvalPending: approvalPending),
                 port: port, token: token)
         case .usb:
             // **usb もトークンを載せる**: 認証を要求するのはブリッジ側(実機は 0.0.0.0 に bind
@@ -133,10 +135,13 @@ public enum IOSDeviceTransport {
     /// 実機は build/install/launch を挟むためシミュレータより遅い(既定 180s)
     static func waitForAnnouncedAddress(port: UInt16, repoRoot: URL,
                                         timeoutSeconds: TimeInterval,
-                                        log: @escaping (String) -> Void = { _ in }) async throws -> String {
+                                        log: @escaping (String) -> Void = { _ in },
+                                        approvalPending: @escaping (Bool) -> Void = { _ in }) async throws -> String {
         let logURL = repoRoot.appendingPathComponent(".fleetest/bridge-\(port).log")
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         var blocker: String?
+        let approval = AutomationApprovalTracker(notify: approvalPending, log: log)
+        defer { approval.finish() }
         while Date() < deadline {
             // **キャンセルで抜ける**: 呼び手(ProfileWorkerFactory.buildWorker)は期限付きの
             // TaskGroup で包んで cancelAll するが、`try? Task.sleep` は取り消しを握りつぶすので、
@@ -151,6 +156,7 @@ public enum IOSDeviceTransport {
                 throw IOSDeviceTransportError.runnerFailed(
                     port: port, reason: reason, logPath: logURL.path)
             }
+            approval.observe(log: text)
             // 進行を止めているだけ(解消すれば xcodebuild は続行する)条件は throw せず 1 回だけ知らせる。
             // 端末ロックはここに来る = 黙って 180 秒待つのをやめ、その場で解除を促す
             if let detected = blockingCondition(inLog: text), detected != blocker {
@@ -159,8 +165,25 @@ public enum IOSDeviceTransport {
             }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
+        if blocker == nil, approval.pending {
+            blocker = AutomationApprovalTracker.notApprovedReason
+        }
         throw IOSDeviceTransportError.addressNotAnnounced(
             port: port, logPath: logURL.path, blocker: blocker)
+    }
+
+    /// XCTest のランナープロセスが立ち上がった印(ランナー自身が出す)。ここから
+    /// `BridgeStartupWait.suiteStartedMarker` までの間に XCTest が UI 自動化を有効にする
+    static let runnerProcessStartedMarker = "] Running tests..."
+
+    /// 端末に UI 自動化の承認プロンプトが出うる区間か(ランナーは起動したがテスト本体がまだ・
+    /// 失敗もしていない)。**時間では決めない** —— プロンプトが出ていない端末では数秒で抜けるだけ。
+    /// 実測(iPhone SE3・2026-09-24): この区間で Touch ID の画面が出て、承認しないと 60 秒で
+    /// `Timed out while enabling automation mode`
+    static func awaitingAutomationApproval(inLog text: String) -> Bool {
+        text.contains(runnerProcessStartedMarker)
+            && !text.contains(BridgeStartupWait.suiteStartedMarker)
+            && runnerFailureReason(inLog: text) == nil
     }
 
     /// 「失敗ではないが進まない」条件。解消されれば xcodebuild はそのまま続行するので throw しない。

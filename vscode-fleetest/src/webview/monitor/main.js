@@ -31,6 +31,7 @@ import {
   applyBridgeWatch,
   applyHealthWatch,
   applyWipeStatus,
+  applyDeviceAction,
 } from './deviceTiles.js';
 import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility } from './laneLog.js';
@@ -172,6 +173,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'wipeStatus':
       applyWipeStatus(message);
+      break;
+    case 'deviceAction':
+      applyDeviceAction(message);
       break;
     case 'deviceOpFailed':
       // 先読みの印を捨ててから知らせる(捨てないと「起動中」表示のまま操作不能になる)

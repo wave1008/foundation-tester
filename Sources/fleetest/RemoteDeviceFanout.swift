@@ -135,7 +135,7 @@ enum RemoteDeviceFanout {
     ///   stdout から消える。log 行にすると受け手は OUTPUT にしか出せずバナーが無音になる。
     ///   対向: vscode-fleetest/src/monitorDeviceLifecycle.ts の DevicesUpEvent)
     /// **読めない行・想定外の形はそのまま流す**(RemoteMonitorFanout.machineScoped と同じ方針)
-    static let deviceKinds: Set<String> = ["deviceStopping", "deviceStarting", "deviceFinished"]
+    static let deviceKinds: Set<String> = ["deviceStopping", "deviceStarting", "deviceFinished", "deviceAction"]
 
     static func machineStamped(line: String, machine: String) -> String? {
         guard let data = line.data(using: .utf8),

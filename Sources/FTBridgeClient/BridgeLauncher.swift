@@ -932,7 +932,8 @@ public struct BridgeLauncher {
     @discardableResult
     public func waitUntilReady(timeout: TimeInterval = BridgeLauncher.startupTimeoutSeconds,
                                endpoint: BridgeEndpoint? = nil,
-                               log: @escaping (String) -> Void = { _ in }) async throws -> StatusResponse {
+                               log: @escaping (String) -> Void = { _ in },
+                               approvalPending: @escaping (Bool) -> Void = { _ in }) async throws -> StatusResponse {
         let client = BridgeClient(endpoint: endpoint ?? BridgeEndpoint(port: port))
         // 締切は固定でなく進み具合で延びる(BridgeStartupWait)。伸びる根拠はログのサイズ
         let launchedAt = Date()
@@ -943,6 +944,9 @@ public struct BridgeLauncher {
         var announcedExtension = false
         var lastError: Error?
         var blocker: String?
+        // 実機の UI 自動化の承認待ち(USB はここだけがログを読む。LAN は宣言待ちの側で済んでいる)
+        let approval = AutomationApprovalTracker(notify: approvalPending, log: log)
+        defer { approval.finish() }
         /// 実機の診断。LAN は宛先解決(waitForAnnouncedAddress)側でも同じ判定をするが、
         /// **USB はそこを通らない**ため、ここで見ないと端末ロック・証明書未信頼が原因不明の
         /// タイムアウトになる(実害)。判定の知識は IOSDeviceTransport の 2 関数に集約。
@@ -1001,6 +1005,7 @@ public struct BridgeLauncher {
                 if suiteStartedAt == nil, text.contains(BridgeStartupWait.suiteStartedMarker) {
                     suiteStartedAt = Date()
                 }
+                if physical { approval.observe(log: text) }
             }
             if !runnerAppSeen, !physical, Self.runnerAppIsRunning(udid: device) {
                 runnerAppSeen = true
@@ -1028,6 +1033,9 @@ public struct BridgeLauncher {
         // (ロック中の deviceprep エラーは実測でそう。2026-07-25)。ループ内の読み取りだけでは
         // 「network connection was lost で 180 秒後にタイムアウト」という無情報な失敗になる
         blocker = try physicalDiagnosis() ?? blocker
+        if blocker == nil, approval.pending {
+            blocker = AutomationApprovalTracker.notApprovedReason
+        }
         if let blocker {
             throw IOSDeviceTransportError.addressNotAnnounced(
                 port: port, logPath: logPath.path, blocker: blocker)

@@ -40,6 +40,7 @@ import {
 import { type MachineLock, isConfirmedHeld, sweepRefusalDetail } from "./machineLockModel";
 import { LOCAL_MACHINE_KEY } from "./runBoardModel";
 import { NdjsonParser } from "./ndjson";
+import { DeviceActionNotices } from "./monitorDeviceActionNotice";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { formatBytesAuto } from "./retentionModel";
 import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
@@ -294,6 +295,9 @@ export class MonitorDeviceOps {
    * monitorModel.ts 側(vscode 非依存・単体テスト対象)。
    */
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
+  /** 実機の起動で人の操作(ロック解除・UI 自動化の承認)を促す通知。タイルの文言だけでは気付かれない */
+  private readonly deviceActionNotices = new DeviceActionNotices(
+    (line) => this.deps.outputChannel.appendLine(line));
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
   private creatingDevice = false;
   /** delete-device の多重実行ガード(identifier 単位)。行ごとに独立して走らせるため creatingDevice と
@@ -865,6 +869,10 @@ export class MonitorDeviceOps {
               { name: value.name, machine: value.machine ?? undefined });
             this.deps.post({ type: "deviceOpBusy", name: value.name, machine: value.machine ?? undefined, op: "up", status: "running" });
             break;
+          case "deviceAction":
+            this.deps.post({ type: "deviceAction", name: value.name, machine: value.machine ?? undefined, action: value.action });
+            this.deviceActionNotices.update(value.name, value.machine ?? undefined, value.action);
+            break;
           case "deviceFinished":
             started.delete(startedKey(value.name, value.machine ?? undefined));
             if (kind === "down") {
@@ -914,6 +922,7 @@ export class MonitorDeviceOps {
       // (正常終了なら deviceFinished 済みでこの Set は空 = 無害な no-op)。
       for (const { name, machine } of started.values()) {
         this.deps.post({ type: "deviceOpBusy", name, machine, op: null, status: null });
+        this.deviceActionNotices.release(name, machine);
       }
       started.clear();
       this.deps.outputChannel.appendLine(
@@ -1235,6 +1244,10 @@ export class MonitorDeviceOps {
         }
         if (value.kind === "log") {
           this.deps.outputChannel.appendLine(`[${MonitorDeviceOps.deviceOpCommandName(op)} ${name}] ${value.message}`);
+        } else if (value.kind === "deviceAction") {
+          // タイルは起動を頼んだ名前で引く(--udid 直指定では CLI 側の名前が端末名になりうる)
+          this.deps.post({ type: "deviceAction", name, machine, action: value.action });
+          this.deviceActionNotices.update(name, machine, value.action);
         } else if (value.kind === "wipeStatus") {
           // run 開始時の自動 Wipe と同じタイル表示を使う(footer の「Wipe: 停止中/再起動中」)。
           // **machine も載せる** —— 名前だけだと同名の手元タイルが書き換わる
@@ -1290,6 +1303,8 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       stdoutParser.end();
       stderrParser.end();
+      // action:null を出さずに終わった(クラッシュ・kill・取り消し)ときに通知を残さない
+      this.deviceActionNotices.release(name, machine);
       this.deps.outputChannel.appendLine(
         t("deviceOps.log.deviceOpClosed", {
           command: MonitorDeviceOps.deviceOpCommandName(op), name, attemptLabel, exitCode: String(exitCode),

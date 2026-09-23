@@ -46,7 +46,8 @@ public enum DeviceBooter {
         log: @escaping @Sendable (String) -> Void,
         deviceStopping: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceStarting: @escaping @Sendable (String, String) -> Void = { _, _ in },
-        deviceFinished: @escaping @Sendable (String, String) -> Void = { _, _ in }
+        deviceFinished: @escaping @Sendable (String, String) -> Void = { _, _ in },
+        userAction: (@Sendable (String, DeviceUserAction?) -> Void)? = nil
     ) async -> [BootOutcome] {
         // iOS(軽い)を先頭に、Android(重い)を後ろに並べた早い者勝ちキュー。各プラットフォーム内は
         // name 昇順に整列してモニタータイルの表示順(左→右)と起動順を一致させる(表示規則の同期相手:
@@ -77,7 +78,7 @@ public enum DeviceBooter {
                             let failure = await bootItem(item, repoRoot: repoRoot,
                                            log: log, deviceStopping: deviceStopping,
                                            deviceStarting: deviceStarting,
-                                           deviceFinished: deviceFinished)
+                                           deviceFinished: deviceFinished, userAction: userAction)
                             await outcomes.record(BootOutcome(
                                 name: item.spec.name, platform: item.platform, failure: failure))
                         }
@@ -91,7 +92,7 @@ public enum DeviceBooter {
                         let failure = await bootItem(item, repoRoot: repoRoot,
                                        log: log, deviceStopping: deviceStopping,
                                        deviceStarting: deviceStarting,
-                                       deviceFinished: deviceFinished)
+                                       deviceFinished: deviceFinished, userAction: userAction)
                         await outcomes.record(BootOutcome(
                             name: item.spec.name, platform: item.platform, failure: failure))
                     }
@@ -539,7 +540,8 @@ public enum DeviceBooter {
         log: @escaping @Sendable (String) -> Void,
         deviceStopping: @escaping @Sendable (String, String) -> Void,
         deviceStarting: @escaping @Sendable (String, String) -> Void,
-        deviceFinished: @escaping @Sendable (String, String) -> Void
+        deviceFinished: @escaping @Sendable (String, String) -> Void,
+        userAction: (@Sendable (String, DeviceUserAction?) -> Void)?
     ) async -> String? {
         let spec = item.spec
         var failure: String?
@@ -567,7 +569,7 @@ public enum DeviceBooter {
                 // 稼働中ブリッジは provision() が再利用するので起動済みデバイスでも安全。
                 // 複数ワーカーの provision() 同時実行はその内部の ProvisionLock(flock)が
                 // 直列化する(同一プロセス内の別 fd 同士でも排他が効く。ProvisionLockTests 参照)
-                _ = try await BridgeProvisioner(repoRoot: repoRoot)
+                _ = try await BridgeProvisioner(repoRoot: repoRoot, userAction: userAction)
                     .provision(devices: [(spec.name, spec)], log: log)
             }
         } catch {

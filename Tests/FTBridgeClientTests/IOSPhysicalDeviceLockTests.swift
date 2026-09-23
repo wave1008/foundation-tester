@@ -50,14 +50,33 @@ final class IOSPhysicalDeviceLockWaitTests: XCTestCase {
 
     private func wait(_ states: [IOSPhysicalDeviceLock.State],
                       timeout: TimeInterval = 5) async
-        -> (state: IOSPhysicalDeviceLock.State, log: [String]) {
+        -> (state: IOSPhysicalDeviceLock.State, log: [String], waiting: [Bool]) {
         var remaining = states
         var lines: [String] = []
+        var waiting: [Bool] = []
         let state = await IOSPhysicalDeviceLock.waitForUnlock(
             udid: "u", deviceName: "iPhone x", timeout: timeout,
-            log: { lines.append($0) }, pollInterval: 0.01,
+            log: { lines.append($0) }, waiting: { waiting.append($0) }, pollInterval: 0.01,
             probe: { _ in remaining.isEmpty ? .locked : remaining.removeFirst() })
-        return (state, lines)
+        return (state, lines, waiting)
+    }
+
+    /// **待ちの出入りは必ず対**(タイルの「ロックを解除」が抜けた後も残らない)。抜け方を問わない
+    func testWaitingIsReportedAsAPairWhateverEndsTheWait() async {
+        for states: [IOSPhysicalDeviceLock.State] in [[.locked, .unlocked], [.locked, .unknown]] {
+            let result = await wait(states)
+            XCTAssertEqual(result.waiting, [true, false], "\(states)")
+        }
+        let timedOut = await wait([.locked], timeout: 0.05)
+        XCTAssertEqual(timedOut.waiting, [true, false])
+    }
+
+    /// 解除済み・読めないときは待たない = 何も言わない(タイルは「ブリッジを起動中」のまま)
+    func testNoWaitingWhenNotLocked() async {
+        for state: IOSPhysicalDeviceLock.State in [.unlocked, .unknown] {
+            let result = await wait([state])
+            XCTAssertEqual(result.waiting, [], "\(state)")
+        }
     }
 
     func testReturnsImmediatelyWhenAlreadyUnlocked() async {

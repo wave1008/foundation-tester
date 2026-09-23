@@ -325,15 +325,21 @@ public struct BridgeProvisioner {
     let repoRoot: URL
     /// 稼働ブリッジのスキャン・自動採番の範囲(既定: 8123〜8154)
     let portRange: ClosedRange<UInt16>
+    /// 実機の起動で人の操作を待っている間(デバイス名, やること。nil = 待ちが終わった)。
+    /// モニターのタイルと通知へ出す `api start-device` / `start-all-devices` だけが渡す
+    /// (run はログがそのまま実行ログビューに出る)
+    let userAction: (@Sendable (String, DeviceUserAction?) -> Void)?
 
     /// run-lease / MCP の印 / RunnerSlownessStore が共有する棚
     var fleetestStateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
 
     public init(repoRoot: URL,
                 portRange: ClosedRange<UInt16> =
-                    BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31)) {
+                    BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31),
+                userAction: (@Sendable (String, DeviceUserAction?) -> Void)? = nil) {
         self.repoRoot = repoRoot
         self.portRange = portRange
+        self.userAction = userAction
     }
 
     /// 1 デバイス・1 エンジン分の供給プラン。planBridge(副作用なし・await なし)が確定し、
@@ -1386,7 +1392,8 @@ public struct BridgeProvisioner {
                     let state = await IOSPhysicalDeviceLock.waitForUnlock(
                         udid: sim.udid, deviceName: name,
                         timeout: BridgeLauncher.startupTimeoutSeconds,
-                        log: { log("\(name): \($0)") })
+                        log: { log("\(name): \($0)") },
+                        waiting: { userAction?(name, $0 ? .unlock : nil) })
                     // **ロックのままなら撃たない**: 起動しても deviceprep に拒否され、締切ぶん
                     // (もう 180 秒)待ってから同じ理由で落ちるだけ。unknown は促していないので通す
                     if state == .locked {
@@ -1421,7 +1428,8 @@ public struct BridgeProvisioner {
                     do {
                         endpoint = try await IOSDeviceTransport.establish(
                             port: port, deviceUDID: sim.udid, repoRoot: repoRoot,
-                            wired: sim.wired, token: launcher.bridgeToken, log: { log("\(name): \($0)") })
+                            wired: sim.wired, token: launcher.bridgeToken, log: { log("\(name): \($0)") },
+                            approvalPending: { userAction?(name, $0 ? .approveAutomation : nil) })
                     } catch {
                         // 到達手段が確立できなくても xcodebuild は実機で走り続ける。止めないと
                         // 失敗のたびに常駐ランナーとポートが実機に溜まる(実測で 5 本残った)
@@ -1432,7 +1440,8 @@ public struct BridgeProvisioner {
                 }
                 do {
                     try await launcher.waitUntilReady(endpoint: endpoint,
-                                                      log: { log("\(name): \($0)") })
+                                                      log: { log("\(name): \($0)") },
+                                                      approvalPending: { userAction?(name, $0 ? .approveAutomation : nil) })
                 } catch let error as LauncherError {
                     guard case .portInUse = error else {
                         try? launcher.stop()

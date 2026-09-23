@@ -399,6 +399,27 @@ export const deviceOpsStrings = {
       "(on Android the first boot rebuilds and takes minutes).",
   },
   "deviceOps.wipeConfirmButton": { ja: "Wipe Data", en: "Wipe Data" },
+  // 実機の起動で人の操作を待つ間(monitorDeviceActionNotice.ts)。待ちが終わると通知は自動で消える
+  "deviceOps.unlockDeviceNotice": {
+    ja: "{name} がロックされています。端末のロックを解除してください(解除するとブリッジの起動を続けます)",
+    en: "{name} is locked. Unlock the device to continue starting the bridge",
+  },
+  "deviceOps.log.deviceActionNotified": {
+    ja: "[通知] {message}",
+    en: "[notification] {message}",
+  },
+  "deviceOps.approveAutomationNotice": {
+    ja: "{name} に表示されている認証画面(Touch ID / パスコード)で認証してください。UI 自動化の許可で、認証しないとブリッジの起動は打ち切られます",
+    en: "Authenticate on {name} (Touch ID / passcode) to allow UI automation. Without it the bridge start is abandoned",
+  },
+  "deviceOps.approveAutomationNoticeRemote": {
+    ja: "{machine} の {name} に表示されている認証画面(Touch ID / パスコード)で認証してください。UI 自動化の許可で、認証しないとブリッジの起動は打ち切られます",
+    en: "Authenticate on {name} on {machine} (Touch ID / passcode) to allow UI automation. Without it the bridge start is abandoned",
+  },
+  "deviceOps.unlockDeviceNoticeRemote": {
+    ja: "{machine} の {name} がロックされています。端末のロックを解除してください(解除するとブリッジの起動を続けます)",
+    en: "{name} on {machine} is locked. Unlock the device to continue starting the bridge",
+  },
   "deviceOps.wipeStarted": {
     ja: "Wipe Dataを実行しました。進捗状況は「デバイスモニター」タブで確認できます。",
     en: "Wipe Data started. You can follow it on the Device Monitor tab.",
