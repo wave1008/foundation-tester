@@ -2191,3 +2191,71 @@ in-app ブリッジまで 8 ポート分「固まり」として並んだ(実測
 - **固まり(`transportFailed`)の文言が実機前提**(「画面ロック・USB/Wi-Fi 圏外」)。
   シミュレータにも同じ文が出るが、注記の足し引きは `Scripts/mcp-bench.sh` の手数で決める規律に従い
   印象では動かさない
+
+## 47. 他の機械に繋がった実機のライブ操作が「開けない・別の台が映る・要素が出ない」を順に踏んだ(2026-09-24)
+
+iPhone wave(実機。この Mac とは Wi-Fi、M1Ultra とは USB)をタイル右クリックの「ライブ操作」で
+開こうとして、1晩で5つの穴を順に踏んだ。**どれも単体では黙って前の状態を出し続ける**型で、
+利用者からは「iPhone wave の画面が出ない」の1文にしか見えない。
+
+### 47.1 前の台の絵・デコーダを捨てていなかった(拡張 0.1.211)
+
+Android → iOS 実機へ切り替えると Android の画面が残った。iOS 実機に simstream(シミュレータ専用)を
+起こしていたため新しい絵が来ず、その間にデコード待ちだった Android のフレームが描けて canvas を前面に
+戻していた。直し: ①iOS 実機の映像はポーリングへ直行 ②台を切り替えたらデコーダも捨てる
+(`clearSnapshot` で `disposeLiveH264`)③右クリックで別の台を開いた時点で前の静止画を消す。
+
+### 47.2 実機のブリッジは udid を名乗らない → 既定ポートの別の実機を「自分」と読んだ
+
+`/status` の udid が nil のとき `BridgeIdentityCheck` は「エンジン一致 = 一致」に倒れ、8123 に居た
+iPhone SE3 のブリッジを iPhone wave のものとして掴んだ(返った画面は 750×1334 = SE3)。
+`bridge status` が udid を出せるのは台帳 `.device` から読むためで、本人確認だけがこの補完を
+通していなかった。直し: `BridgeDiscovery.statusForIdentityCheck`(申告が無いときだけ記録で補う)を
+ライブ操作の2か所(宛先確認・`checkAndRestartIfStale`)に通す。**run 側の4か所は未対応**
+(その台のために採番したポートを見る経路。実機のレーンが別の実機に奪われても気付かない = 沈黙型)。
+
+### 47.3 自動のフレーム取得は自動起動を撃たない
+
+ブリッジ未起動(booted)の台を開くと「接続できません」のまま何も始まらなかった。serve の自動起動の
+引き金は観測・操作の接続拒否だけで、`frame` は受動的な観測として起動を撃たない(設計どおり)。
+直し: booted の台へ切り替えたら観測を1回撃つ(`requestOpenObservation`。切り替えが必ず通る
+`ensureServeProcess` から)。**busy 中に届いた選択・観測は busy が解けた時点で消化する** ——
+`pendingSelectId` を拾うのが `refreshDevices` 後の `applyDevices` だけだったので、画面取得の最中に
+届いた右クリックは黙って捨てられていた。
+
+### 47.4 押せる「ライブ操作」が他の機械のタイルだけだった
+
+同じ実機が Wi-Fi 越しに別の Mac からも見えるとき、モニターは USB 側(M1Ultra)のタイルだけを残す。
+その台はこの Mac の list-devices に居ないので、`openDevice` は黙って前の台(先頭の停止中シミュレータ)を
+出し続けた。**計測(OUTPUT に `[live DIAG]`)で初めて id が `ios:M1Ultra/iPhone wave` だと分かった**
+—— 推測で3回外したあと。ユーザー決定: **その機械で動かす**(Wi-Fi でこの Mac から2本目のランナーを
+立てると1台に2本になり両方落ちる)。直し: serve を `fleetest remote exec <machine> -- api live serve` で
+向こうに起こす。右クリックの `openLiveForDevice` が machine・udid を運び、一覧の取り直しで足し戻す。
+配信は張らず serve の frame で取る。一覧に無い台はバナーで言う。
+
+**副産物**: `remote exec` の到達確認の ssh(`echo $HOME`)が **stdin を読んで本番の子の最初の
+コマンドを捨てていた**(`-n` で直した。`RemoteExecStdinTests`)。さらに、この `-n` を変異テストで
+外したあと**手元のバイナリを作り直さず**に「試して」と言い、利用者が「応答がタイムアウト」を踏んだ
+(→ memory `rebuild-after-mutation-testing` 3回目)。
+
+### 47.5 実機では前面のアプリを探せなかった
+
+画面は YouTube なのに要素が SpringBoard のもの。前面追従(`LiveSessionFollower`)は起動中アプリを
+`simctl spawn <udid> launchctl list` で採る = 実機では候補が空 → springboard のまま。直し: 実機は
+`devicectl device info processes`(実行ファイルのパス)× `apps --include-all-apps`(bundle ID と `url`)で採る
+(`IOSPhysicalRunningApps`。0.6 秒前後)。前面の判定は従来どおり `/appstate` で「除外してちょうど1つ」。
+実測(SE3・設定アプリ表示中): 候補 14 件のうち前面と答えたのは Preferences と SpringBoard だけ。
+iPhone wave(M1Ultra・YouTube)で `frontmost app is com.google.ios.youtube`・要素 43 件を確認。
+**この Mac に USB で繋いだ実機でも同じ**(リモート固有ではない)。
+
+### 47.6 直さず記録したもの
+
+- **SE3(ホームボタン機・iOS 26)で `/systemui/covering` が誤判定する**: 設定アプリが前面なのに
+  `SBSwitcherWindow:Main` を `isHittable` と答える(iPhone wave / iOS 26.6.2 では false)。真の間は
+  前面アプリを探さないので、SE3 のライブ操作では 47.5 を入れてもアプリの要素が取れない。判定は
+  ブリッジ側(`BridgeRouter.handleSystemUICovering`。目印はシミュレータ iPhone 17 Pro で測った)。
+  直すには「窓が存在して触れる」以外の識別(開いたスイッチャーはカードを持つ等)を実機で測ってから、
+  版上げ + `--ios-xcuitest`
+- **モニターから iPhone wave を起動すると、ブリッジが SE3 と同じ 8123 に建つ**(02:15 のログ。
+  `start-device` が「8123 の残骸」として wave 向け iproxy を止め、同じポートに建て直した)
+- 他の機械の台では、この Mac のファイルを使う操作(アプリプロファイルからのインストール等)は失敗する

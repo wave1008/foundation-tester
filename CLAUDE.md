@@ -797,6 +797,16 @@
   注記で必ず言う)/ **②起動時にも1行出す**(`coordinate pinch: available` —— 消えたことが
   run を待たずに分かる)/ **③completion ブロックは引数を宣言しない**(実際は先頭に BOOL が来るので
   `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)
+- **ライブ操作は他の機械の台も開ける**(ユーザー決定 2026-09-24「その機械で動かす」): serve を
+  `fleetest remote exec <machine> -- api live serve` で**向こうに**起こす(同じ実機が Wi-Fi 越しにこの Mac から
+  見えても、USB で握っている機械のランナーと2本にしない)。右クリックの `openLiveForDevice` が machine・udid を
+  運び、一覧は取り直しても足し戻す(`remoteOptions`)。配信は張らず serve の frame で取る。
+  **stdin で命令を受ける子を `remote exec` で起こすとき、到達確認の ssh は `-n`**(読むと最初の命令を捨てる)。
+  **ブリッジ未起動(booted)の台へ切り替えたら観測を1回撃つ**(`requestOpenObservation`。自動のフレーム取得は
+  自動起動を撃たない)。**前面追従の候補はシミュレータ = `launchctl list` / 実機 = devicectl の
+  processes × apps(`IOSPhysicalRunningApps`)** —— 片方だけ変えない。**本人確認へ渡す `/status` は
+  `BridgeDiscovery.statusForIdentityCheck` で udid を補う**(実機のランナーは名乗らない = 補わないと
+  既定ポートの別の実機を「自分」と読む)→ maintainer-notes §47
 - **前面にあると観測しただけの相手へ、画面を動かす操作を撃たない**。セッションの向け直しは
   `AppDriver.attach`(前面確認だけ・非破壊)で、**activate は使わない** —— Spotlight のような
   SpringBoard の拡張を activate すると**ホーム画面が描画を失って真っ黒になり**、自アプリなら
