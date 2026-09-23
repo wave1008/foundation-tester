@@ -3756,6 +3756,11 @@ targeting = bundletool にしか決められない。feature module を足した
     `allEmulatorSerials()` を引いた残り(= 実機の serial)へ個別に `AndroidDriver.stopBridge()`
     を撃つ。**この掃討は以前 `skipPhysical: true` で実機のブリッジを素通りしていたが、
     それでは「全て終了」を押しても実機のブリッジが残るため 2026-09-08 に false へ改めた**
+  **モニターの「全て終了」は、拡張が自分のライブ操作の serve を畳んで(終了 = 台の印
+  `.fleetest/mcp-<鍵>.lease` が消えるまで待って)から撃つ**(`LiveTabHost.suspendServeForSweep`。
+  掃討はどの機械のぶんもキューが空いてから `resumeServeAfterSweep` で立て直す)—— ライブ操作も
+  MCP と同じ印を書くので、畳まないと全掃討は sweepRefusal で丸ごと断られ、プロファイル指定でも
+  その台だけ残る(実地 2026-09-24 → maintainer-notes §48)。
   **ブリッジの起動・停止は `fleetest run`・モニタータイルの右クリックメニュー・上記の一括起動・
   一括停止** が担う(ラベルは「ブリッジを起動/停止」)。`bridge down --all` も同じく実機のブリッジを含めて
   止める(明示コマンドなので元から対象)

@@ -1298,7 +1298,12 @@ export class MonitorPanelController implements vscode.Disposable {
         return;
       }
     }
+    // 自分のライブ操作の台の印は自分で畳んでから撃つ(印が1本でもあると全掃討は丸ごと断られ、
+    // プロファイル指定でもその台だけ「MCP session が駆動中」で残る)。掃討が終わったら立て直す
+    await this.live.suspendServeForSweep();
     this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "down" });
+    await this.deviceOps.whenLifecycleQueueIdle();
+    this.live.resumeServeAfterSweep();
   }
 
   private sendInitialState(): void {

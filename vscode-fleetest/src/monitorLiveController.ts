@@ -102,6 +102,11 @@ const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
  * の余裕。超えたら従来どおり断る(本当に立ち上がらない場合の固まりを作らない)。 */
 const SERVE_REBIND_WAIT_MS = 6000;
 
+/** 「全て終了」の前に serve を畳むときの close 待ちの上限(ms)。killServeProcess は stdin EOF +
+ * SIGTERM を送り 2 秒後に SIGKILL へ上げるので、その 2 秒 + 余裕。上限に当たっても掃討へ進む
+ * (印が残っていても持ち主の pid は死んでいる = CLI は生きた印としては数えない)。 */
+const SERVE_SWEEP_STOP_WAIT_MS = 2500;
+
 /** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
  * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
 const FRAME_IDLE_RETRY_MS = 500;
@@ -233,6 +238,10 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 自動再起動を諦めた状態。true の間は close イベントで再起動をスケジュールしない
    * (rebindServeProcess でリセットされる。詳細はファイル冒頭のコメント参照)。 */
   private serveGaveUp = false;
+  /** 「全て終了」(suspendServeForSweep)で畳んでから resumeServeAfterSweep までの間 true。
+   * この間は startServeProcess が起動しない(掃討の途中で serve が立ち直り、台の印を書き戻して
+   * 掃討に断られる・掃討中のブリッジと取り合う、を作らない)。 */
+  private serveSuspendedForSweep = false;
   /** 送信中(応答待ち)の serve リクエスト。同時に1件のみ(enqueueServeSend で直列化されるため)。 */
   private pendingServeRequest: PendingServeRequest | undefined;
   /** serve への送信を直列化するチェーン(自動フレームとユーザー操作の pending 競合を防ぐ)。 */
@@ -824,6 +833,9 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   private startServeProcess(device: LiveDeviceRef): void {
+    if (this.serveSuspendedForSweep) {
+      return;
+    }
     if (this.serveRestartTimer) {
       clearTimeout(this.serveRestartTimer);
       this.serveRestartTimer = undefined;
@@ -913,6 +925,55 @@ export class MonitorLiveController implements vscode.Disposable {
         this.startServeProcess(this.serveDevice);
       }
     }, 5000);
+  }
+
+  /**
+   * 「全て終了」の直前に呼ぶ。serve を止めて終了(close)まで待つ —— serve は終了時に自分の台の印
+   * (`.fleetest/mcp-<鍵>.lease`。Sources/fleetest/LiveDeviceLease.swift)を消すので、これで
+   * 全掃討(`devices down` の sweepRefusal)がこの印で丸ごと断られなくなる。掴んだままだと
+   * 「MCP session が駆動中」と名指しされて何も止まらない(実地 2026-09-24)。
+   * 他の機械の台(remote exec 越しの serve)も同じに畳む: 掃討はその機械へも分散し、向こうの印は
+   * 向こうの serve が stdin EOF で消す(こちらで待つのは手元の子の close まで)。
+   * resumeServeAfterSweep が呼ばれるまで serve は起動しない。
+   */
+  async suspendServeForSweep(): Promise<void> {
+    this.serveSuspendedForSweep = true;
+    if (this.serveRestartTimer) {
+      clearTimeout(this.serveRestartTimer);
+      this.serveRestartTimer = undefined;
+    }
+    const proc = this.serveProcess;
+    this.serveProcess = undefined;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = (): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(done, SERVE_SWEEP_STOP_WAIT_MS);
+      proc.once("close", done);
+      this.killServeProcess(proc);
+    });
+  }
+
+  /** 「全て終了」が終わったら呼ぶ。起動の抑止を解き、パネル再オープンと同じ経路
+   * (refreshDevices → applyDevices → ensureServeProcessForSelection)で serve を立て直す
+   * (選んでいた台が落ちた・ブリッジが消えた後の扱いをそちらに任せる)。 */
+  resumeServeAfterSweep(): void {
+    if (!this.serveSuspendedForSweep) {
+      return;
+    }
+    this.serveSuspendedForSweep = false;
+    if (this.liveTabVisible) {
+      void this.refreshDevices();
+    }
   }
 
   /** 実行中の serve プロセスがあれば止めて(this.serveProcess も即座に未設定に戻す)、参照を

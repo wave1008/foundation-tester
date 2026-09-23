@@ -359,6 +359,9 @@
   **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease か MCP の印が1本でもあれば
   掃討ごと断る**(`DeviceBooter.sweepRefusal`。判定はリモートへ分散する前。`--force` は子へ、
   `remote clean --ignore-lock` は `--force` として運ぶ)→ maintainer-notes §25。
+  **モニターの「全て終了」は拡張が自分のライブ操作の serve を畳んで印が消えてから撃つ**
+  (`LiveTabHost.suspendServeForSweep` → 掃討 → `resumeServeAfterSweep`。ライブ操作も MCP と同じ印を
+  書くので、畳まないと全掃討がその印で丸ごと断られ何も止まらない → maintainer-notes §48)。
   **奪う口(`--force-lock` / `--force`)を GUI に出さない**。
   **ssh 越しのコマンドにグロブを書かない**(相手は zsh。`for w in <マッチ無し>` は**シェルごと
   落ちて後続の文が全部消える**)—— 一覧は `find … 2>/dev/null` で作る → maintainer-notes §3.5

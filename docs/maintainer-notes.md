@@ -2266,3 +2266,27 @@ SE3(ホームボタン機・iOS 26)は設定アプリが前面でも `SBSwitcher
 - **モニターから iPhone wave を起動すると、ブリッジが SE3 と同じ 8123 に建つ**(02:15 のログ。
   `start-device` が「8123 の残骸」として wave 向け iproxy を止め、同じポートに建て直した)
 - 他の機械の台では、この Mac のファイルを使う操作(アプリプロファイルからのインストール等)は失敗する
+
+## 48. ライブ操作タブを開いたまま「全て終了」を押すと何も止まらなかった(2026-09-24)
+
+9/22 の B5 でライブ操作(`api live serve`)も MCP と同じ台の印(`.fleetest/mcp-<鍵>.lease`)を
+書くようにした結果、実行プロファイル未選択の「全て終了」= 全掃討 `devices down` が
+`DeviceBooter.sweepRefusal` でその印を拾い、丸ごと断るようになった。拡張側の押す前の門
+(`bulkDownGate`)は run-lease(`inRun`)しか見ないので素通りし、CLI の exit 1 の後に
+非モーダルのトーストが1つ出るだけ。しかもその枠は「実行中のテストがあるため」・詳細は
+「an MCP session is driving iPhone (fleetest-mcp pid …)」で、テストも MCP も動いていない利用者には
+自分のライブ操作タブに結び付かない。同じ門を通る `bridge down --port 8131` で実データ確認
+(持ち主 pid = `api live serve --udid <実機>`)。
+
+直し: **印の持ち主は拡張自身の子プロセスなので、拡張が自分で畳んでから撃つ**
+(`MonitorLiveController.suspendServeForSweep` → enqueue → `whenLifecycleQueueIdle` →
+`resumeServeAfterSweep`)。serve は終了時に自分の印を消す(`LiveDeviceLease.release`)ので、
+close を待てば印は無い。守る形3つ: **①close の待ち手を登録してから止める**(先に止めると
+取り逃がす)/ **②畳んでいる間は `startServeProcess` の先頭で起動を抑止する**(再バインド・
+5 秒後の自動再起動のどちらも通る1箇所。抑止しないと掃討の途中で立ち直って印を書き戻す)/
+**③立て直しは `refreshDevices` の既存経路**(選んでいた台が落ちた後の扱いを新設しない)。
+プロファイル指定の一括停止でも畳む(畳まないとその台だけ「MCP session が駆動中」で残る)。
+CLI の規律④(印を読んで断る)は変えていない —— 他プロセス(fleetest-mcp・別ウィンドウ)の印は
+従来どおり断る。**残した穴**: 拒否トーストの枠「実行中のテストがあるため」と CLI の
+「fleetest-mcp」の名指しは、run 以外の印では事実と違う(直すなら印にライブ操作 / MCP の区別を持たせる)。
+

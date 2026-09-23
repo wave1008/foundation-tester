@@ -188,6 +188,16 @@ export class LiveTabHost implements vscode.Disposable {
     this.live.fallbackToMjpeg();
   }
 
+  /** 「全て終了」の前後(monitorPanel.ts の confirmThenBulkDown)。理由は
+   * MonitorLiveController.suspendServeForSweep の doc。 */
+  suspendServeForSweep(): Promise<void> {
+    return this.live.suspendServeForSweep();
+  }
+
+  resumeServeAfterSweep(): void {
+    this.live.resumeServeAfterSweep();
+  }
+
   /** モニターの webview パネルが破棄された(close/再作成前)ときに呼ぶ。コントローラ自体は
    * MonitorPanelController と同じ寿命で残り続ける(deviceStream.dispose() と同じ規律)。 */
   stopProcesses(): void {
