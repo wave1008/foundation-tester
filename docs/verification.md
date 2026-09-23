@@ -1933,7 +1933,7 @@ DiagnosticReports)に触るテストをプロセス並列で走らせると偽�
   非表示中に届く `devices` が `--tile-image-h` を潰すのが原因で、**全ユニットテストが緑のまま**
   残っていた。jsdom では表示中も非表示中も 0 で区別が付かなかったため
 - **併せて**: レイアウト計算そのものは DOM 非依存の純関数へ切り出して単体テストする
-  (`tileFitModel.js` ⇔ `tileFitModel.test.mjs`)。DOM 側テストは「実測して純関数へ渡す配線」だけ見る
+  (`paneLayoutModel.js` ⇔ `paneLayoutModel.test.mjs`)。DOM 側テストは「実測して純関数へ渡す配線」だけ見る
 
 ## 排他は TSan で見る(2026-07-29)
 
@@ -3431,7 +3431,7 @@ curl -s -X POST http://127.0.0.1:<port>/session -d '{"bundleID":"com.example.non
 無応答(**待受は継続**)が約5秒 → 10秒以内にランナーのプロセスが消え、待受も消える。
 原因は `XCUIApplication.launch()` の失敗 issue が main queue 上で記録されること(`requireLiveApp`
 のコメントにある無限再帰と同じ経路)。対処も同じで、**XCUI に触れる前にホスト側で弾く**
-(`MCPServer.installedState`)。
+(`MCPServer.installedVerdict`(判定そのものは `InstalledAppCheck.launchGuard`))。
 
 **この実験は「応答しないが生きている」状態の witness でもある** —— 上の約5秒間、`/status` は
 返らないのにポートは待受している。ブリッジ探索が「応答なし=死」と読むと、この隙に

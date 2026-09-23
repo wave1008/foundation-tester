@@ -41,7 +41,8 @@ public struct FTSelector {
     public let text: String
     public let primary: FlowLocator
     public let fallbacks: [FlowLocator]
-    /// 型付きセレクタ(Sel)が組み立てたもの。**実行時の構文検証を通さない**印
+    /// 利用者がセレクタ式として書いたものではない(型付きセレクタ Sel / 画像の飾りの名前)印。
+    /// **実行時の構文検証を通さない**
     /// (綴り誤りはコンパイラが捕まえているので防波堤が要らない。加えて、ラベルに `>>` 等の
     /// 予約文字が入ると serialize→再パースで別物になり得るのを避ける。FTRuntime.perform 参照)
     public let structured: Bool
@@ -49,8 +50,10 @@ public struct FTSelector {
     /// structured は構文検証を通さないので、**代わりにこれが唯一の防波堤**になる
     public let structuredError: String?
 
-    // public: Sel.ftSelector(FTDSL)がここから直に組み立てる(型付きセレクタは validationError を
-    // 通らないので、この経路以外に structured=true を作る場所が無い)
+    // public: 利用者の書いたセレクタ式ではないものを組み立てる2経路がここを通る ——
+    // ①`Sel.ftSelector`(FTDSL。型付きセレクタは綴りをコンパイラが見るので validationError を通さない)
+    // ②`FTElement.placeholderSelector`(FTDSL。画像で掴めなかったときの飾りの名前。
+    //   構文検証に掛けると、利用者が書いてもいない文字列を「セレクタの誤り」として名指しする)
     public init(text: String, primary: FlowLocator, fallbacks: [FlowLocator], structured: Bool = false,
                 structuredError: String? = nil) {
         self.text = text

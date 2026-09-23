@@ -2020,8 +2020,13 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   `refusing to stop: … is being driven by an MCP session (fleetest-mcp pid …)` で正しく拒否した一方、
   **同時刻に走査へ載らなかったポート(MCP が操作中)は一言も言わずに停止**し、そのセッションは
   以後 "no running bridge" しか返さなくなった(ブリッジを建て直すまで回復しない)。
-  今の形: 走査に載らないポートは**待受**(`BridgeDiscovery.isBound`)を見て、待受しているなら断る
-  (`--port`/`--all` の両経路。押し切るのは `--force` だけ)。待受も無ければ従来どおり通す
+  今の形: 走査に載らないポートは `BridgeDiscovery.probeStatus` の**4値**で見て、断るのは
+  **本当に busy(`.timedOut` = 上限まで応答を保持)のときだけ**(`--port`/`--all` の両経路。
+  押し切るのは `--force` だけ。複数ポートは `probeStatuses` で並列に撃つ)。
+  **「固まった転送」(`.transportFailed` = ブリッジが死んで iproxy だけがポートを握る)は断らない**
+  —— 止めることが唯一の回復手段なのに「待て」と言い続ける袋小路になる(実地 2026-09-23。
+  2026-09-22 の初版は `isBound` だけを見ていたのでここを busy と読んでいた。
+  docs/maintainer-notes.md §44.1・§46.4)。待受も無ければ(`.notBound`)従来どおり通す
   (固まったブリッジを止める手段は奪わない)
 - **順番待ちは GUI からも**: `api run --wait-lock`(`run` と対等になった。
   `RunCommandFlagParityTests` の run 専用表から外れた)+ 設定 `fleetest.remoteWaitLock`

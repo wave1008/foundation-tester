@@ -417,6 +417,8 @@ public struct BridgeLauncher {
     /// 参照されない残骸になる。マッチはこのポート専用の xctestrun ファイル名
     /// (FleetestRunner-<port>.xctestrun。ポートごとに別ファイルなので他ポートは誤爆しない)を
     /// コマンドラインに含む xcodebuild のみ対象にする。
+    /// **ただしファイル名はポートしか持たない** —— 同じポートに居る別デバイスのランナーは
+    /// `RunnerDestination` で除く(肯定的に別デバイスと読めた回だけ。下の分岐)。
     func killOrphanRunners() {
         let xctestrunPath = derivedDataPath
             .appendingPathComponent("Build/Products/FleetestRunner-\(port).xctestrun").path

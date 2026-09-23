@@ -126,6 +126,17 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         XCTAssertTrue(branch.contains("PortHolder.isHeldByAnotherDevice("),
                       "**別のデバイスが握っていると読めたときだけ**掴むのをやめること"
                       + " —— 単なる待受で断ると、自分の busy なブリッジを見捨てて2本目を立てる")
+        // **占有者をローカルのプロセスから読めるのはループバックの宛先だけ**。実機の LAN bind は
+        // 向こうの機械のポートなので、同じ番号でこちらが見つけるのは無関係なプロセス
+        XCTAssertTrue(branch.contains("resolution.endpoint.isLoopback"),
+                      "LAN 宛先(実機の FT_BIND_ALL)にローカルの lsof の答えを当てないこと"
+                      + " —— 読めない相手を根拠に宛先を変えてはいけない")
+        guard let loopbackIndex = branch.range(of: "resolution.endpoint.isLoopback"),
+              let holderIndex = branch.range(of: "PortHolder.isHeldByAnotherDevice(") else {
+            return XCTFail("無応答分岐の形が変わった — テストを見直すこと")
+        }
+        XCTAssertTrue(loopbackIndex.upperBound < holderIndex.lowerBound,
+                      "ループバックかを先に見ること(LAN 宛先では lsof を撃たない)")
     }
 
     /// hybrid の in-app 側(別ポート)も本人確認する——xcuitest 側だけでは検分できない

@@ -736,13 +736,19 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
 - **宛先は入口で1つに畳む**(`MCPServer.foldingUDIDIntoPort`。2026-08-10)。`udid` は
   `call(tool:args:)` で `port` へ解決してから配る。**機ごとの記憶は `engineKey` で引く**
   (`lastSnapshots` / `launchedBundleIDs` / `uiFrameworkHints` / `connections` /
-  `pendingWarnings` / `udids` / `engines` の7つ)が、`engineKey` は生の引数しか見ないので、
-  畳まないと udid で指した機が全部 `port=nil` の同じキーへ落ちる。
+  `pendingWarnings` / `udids` / `engines` / `rememberedSnapshotFilters` の8つ)が、`engineKey` は
+  生の引数しか見ないので、畳まないと udid で指した機が全部 `port=nil` の同じキーへ落ちる。
   実測した3症状(すべて同じ根): ft_status が `@ port …` を出さない / allowVersionSkew の
   警告が出ない / 機A に Preferences・機B に Maps を launch した後、機A への ft_open_url が
   com.apple.Maps へ配ると申告する(Android では intent の宛先なので実際に誤配送する)。
   **新しい宛先の指し方を足すときは、ここで畳めているかを必ず見る** ——
   ドライバのキャッシュだけ直しても記憶の側は揃わない。
+  **畳むのは宛先(`udid`/`port`/`serial`)を取るツールだけ**(`toolAcceptsDeviceTarget` の分岐
+  1箇所。2026-09-23)—— 畳み込みは `udid` → `port` の解決にブリッジ走査を撃つので、居なければ
+  「no running bridge」で落ちる。1台を駆動している呼び手は `udid` を毎回添えるため、
+  ブリッジが死んだ瞬間に `ft_list_devices` / `ft_doctor` のような**宛先を取らない一覧・診断まで
+  道連れ**になり、その文面が案内する `ft_list_devices` 自身が同じエラーを返す袋小路になっていた
+  (maintainer-notes §46.5。集合は `DeviceIndependentToolsIgnoreTargetTests` が等号で固定する)。
   **セッション内デバイス記憶も同じ入口で畳む**(`MCPServer.foldInRememberedDevice`。2026-08-12)——
   当初 `driver(_:)` 内で適用していたが、キャッシュキーと `engineKey` が生の引数を見るため
   「明示切替後の省略呼び出しが旧デバイスのキャッシュ済みドライバを引く」
@@ -2878,13 +2884,25 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     しない**(`dragFallbackLatched`。共有すると drag の 501 だけで全 swipe が XCUITest 実スワイプ化し、
     バウンス由来の flake を持ち込む)。空打ちは補助なので両経路の失敗はステップの失敗にしない
   - `swipe` / `press`: 既存の申告+事後キャッチ(上記 2〜3)。判定だけ共通化した
+
+  **入力系(`pressEnter` / `type(ref: nil)` / `clearInput(ref: nil)`)だけは別の判定で 409 も回す**
+  (`DriverError.isTextInputFallback` = 409 / `isClearInputFallback` = 409 + 422 + isEngineIncapable。
+  422 は XCUITest ランナーが同じ事情に使う status —— あちらは 409 を使えない(§4.3))。
+  **DSL(`StepExecutor`)と `HybridFallbackDriver`(MCP・ライブ操作)が同じ判定を通る** ——
+  2026-09-23 まで DSL 側だけがインラインで持っていたため、**同じ hybrid 構成の同じ操作が
+  シナリオでは通るのに `ft_type` / `ft_press_enter` / `ft_clear_input` では 409 で落ちた**
+  (maintainer-notes §45.1)。**`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を
+  含む 14 操作と共有で、409 を既定に入れると全部を巻き込む(hideKeyboard は「409 では回さない」と
+  決めている)。**`ref` ありは回さない** —— ref はブリッジごとに別名前空間で、この層には
+  取り直す手段が無い(DSL は `typeViaTypeDriver` が typeDriver 側の snapshot で取り直す)
 - **MCP(`ft_*`)は実行プロファイルのエンジンに追従する**(2026-08-04 ユーザー決定。
   それ以前は「live / MCP は in-app を使わない」= 常に XCUITest だった)。
   **揃える理由は探索と実行で見えるものを一致させること**: snapshot の内容もジェスチャの成否も
   エンジンで変わるため、揃えないと「MCP では動いたのにシナリオでは落ちる」(およびその逆)が起きる。
   - 旧決定の根拠だった「`StepExecutor` を通らないので `home`/`drag`/座標 `press` が素の 501 になる」は
     **`HybridFallbackDriver` が埋めた**: in-app が原理的に不可な操作(501 / ルート不明 404)だけを
-    attach 済み XCUITest へ回す。**ref を使う操作は回さない**(ref はブリッジごとに別名前空間で、
+    attach 済み XCUITest へ回す(**入力系の 409 だけは別判定で回す**。前の節の
+    `DriverError.isTextInputFallback`)。**ref を使う操作は回さない**(ref はブリッジごとに別名前空間で、
     渡すと無関係な要素を操作する)。唯一 `press(ref:)` だけは primary の snapshot で
     **座標へ畳んでから**回す
   - 合成は実行側(`ScenarioRunnerMain`)と同じ形:
@@ -4588,6 +4606,20 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
   (`vscode-fleetest/src/liveModel.ts` の `buildDeviceArgs`)ので、**ブリッジのまだ無い台をライブ操作で
   開く**場面では必ず既定にフォールバックする。そこで断ると、自動起動が想定しているまさにその場面で
   ライブ操作が開けなくなる
+- **応答が無いとき(`PortIdentity.silent`)は「この台のブリッジ」と読まない**(2026-09-23 に
+  3値化。それまでは `/status` が答えなければ nil = 一致に畳んでいた)。ただし **busy は正常**
+  —— 駆動中の XCUITest は `/status` に答えないので、単に「待受している」を根拠に他人扱いすると、
+  自分の busy なブリッジを見捨てて同じ台に2本目のランナーを立ててしまう。判定は
+  `/status` の代わりに**プロセスの実体**(`PortHolder.isHeldByAnotherDevice`。lsof → ps の
+  コマンド行に出る UDID)で行い、**肯定的に別のデバイスと読めたときだけ**上の不一致と同じ扱いに
+  落とす。**占有者を読めるのはループバックの宛先だけ**(`endpoint.isLoopback`)—— 実機の LAN bind
+  (`FT_BIND_ALL`)は向こうの機械のポートなので、こちらの lsof が同じ番号で見つけるのは無関係な
+  プロセス。読めない相手を根拠に宛先を変えない。畳んだままだと、別の台のブリッジが居るポートを宛先に採り、その後の自動起動が
+  そこへ自分のブリッジを立てて**占有者の生きたランナーを残骸として殺す**
+  (実地 2026-09-23: 既定ポート 8123 で実機2台が殺し合った。maintainer-notes §46.1/§46.3)。
+  `--port` 明示の宛先は従来どおり素通し(利用者の指定を勝手に変えない)で、hybrid の in-app 側
+  (`composeDriver`)も素通し —— in-app は背面へ回ると答えないので、ここで断ると通常の遷移で
+  serve が開けなくなる
 - `checkAndRestartIfStale`(§12.2 の自己修復と同系統だが、ライブ操作の宛先だけを見る)も
   **本人確認が取れた相手にだけ**版差の再起動を掛ける
 
@@ -4677,7 +4709,9 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 - 集計は `Sources/FTCore/RunResultsQuery.swift` の純関数に集約(閾値定数も同ファイル冒頭)。
   CLI(`fleetest results list/summary/flaky/trend/devices/slow/insights`)と
   拡張向け `fleetest api results`(1 行 JSON)の両方がこれを使う
-- ダッシュボード: `vscode-fleetest/src/dashboardPanel.ts` + `src/webview/dashboard/`。
+- ダッシュボード: デバイスモニターの「ダッシュボード」タブ
+  (`vscode-fleetest/src/monitorDashboardController.ts` + `src/webview/dashboard/`。
+  単独パネル `dashboardPanel.ts` は 2026-09-01 にこのタブへ統合して撤去した)。
   ペイロード契約は `ApiResultsCommand.swift` ⇔ `dashboardModel.ts` で同期
 - スキーマ進化: 全ファイルに schemaVersion。フィールド追加は Optional でバージョン据え置き、
   読み側は自分より新しい version をスキップ。既存ファイルの書き換えマイグレーションは

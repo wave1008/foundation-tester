@@ -473,7 +473,11 @@ struct Doctor: AsyncParsableCommand {
         // **残っているのがトンネルだけのポート**を足す。判定は**プロセスの実体**で行う ——
         // 応答の速さ(`probeStatus`)で決めると、駆動中で /status に答えないだけの in-app
         // ブリッジまで「固まり」として並べてしまう(実測: run 中に 8 ポートが誤って並んだ)
-        for port in silentPorts where PortHolder.isHeldByTunnelOnly(port: port) {
+        // **待受を先に見る**(非ブロッキング connect)—— 占有者の照合は lsof + ps で1ポート
+        // あたり約 0.2 秒。誰も待受していないポートにトンネルは居ないので、ここで落とす。
+        // **宛先はループバック固定**(`repoRoot: nil`)= iproxy が張るのはそこだけ
+        for port in silentPorts where BridgeDiscovery.isBound(port: port, repoRoot: nil)
+            && PortHolder.isHeldByTunnelOnly(port: port) {
             findings.append("   - port \(port) — only a USB tunnel (iproxy) is holding this port;"
                 + " its bridge is gone (a dead runner leaves this behind, and the port then looks"
                 + " occupied to everything else). Run `fleetest bridge down --port \(port)`")

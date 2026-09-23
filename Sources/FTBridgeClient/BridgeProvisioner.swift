@@ -193,14 +193,6 @@ enum StaleLedgerSweep {
         return stale
     }
 
-    /// `.fleetest/iproxy-<port>.pid`(実機 USB トンネル。IOSDeviceTransport.startIproxy が書く)の
-    /// 掃除。**bridge-<port>.* とは別の台帳**で、上の decide/ここまでのループには乗らない —— 生死を
-    /// 確かめる呼び手(IOSDeviceTransport.isIproxyRunning)は実際にそのポート・UDID を使う run
-    /// でしか呼ばれないため、物理デバイスを使わない run を挟むと死んだ pid がいつまでも残る
-    /// (F27 実測: iproxy-8136/8138/8150.pid が死んだ pid のまま残留)。**UDID は見ない**
-    /// (どの UDID 向けだったかに関わらず死んでいれば消す。生きていれば別 UDID 向けでも
-    /// 触らない = isIproxyRunning が実際に使う際の張り替えに任せる)。生存判定は pid だけ
-    /// (ProcessLiveness.isAlive。素の kill(pid,0) は禁止)
     /// **起動しきれないまま生き続けているランナーを止める**。
     /// 起動した側のプロセスが消えると(拡張は応答の無い `api live serve` を kill→respawn する)、
     /// `xcodebuild` は**宛先が用意できるのを永久に待つ**("Run Destination Preflight: Waiting for
@@ -253,13 +245,26 @@ enum StaleLedgerSweep {
         for port in portRange {
             let pidPath = stateDir.appendingPathComponent("bridge-\(port).pid")
             let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)
+            // **待受を先に見る**(非ブロッキング connect。誰も居なければトンネルも居ない)——
+            // 占有者の照合は lsof + ps で**1ポートあたり約 0.2 秒**かかり、窓の 32 ポートを
+            // 素で撃つと**この掃除だけで約 6 秒**。ここは ProvisionLock の内側(供給の入口)なので、
+            // 待たせるのは自分の run ではなく**次にポートを採りたい別プロセス**になる
             guard !FileManager.default.fileExists(atPath: pidPath.path),
                   !FileManager.default.fileExists(atPath: inappPath.path),
+                  BridgeDiscovery.isBound(port: port, repoRoot: nil),
                   PortHolder.stopTunnelHolder(port: port) else { continue }
             log("🔧 stopped a leftover USB tunnel on port \(port) (its bridge is gone)")
         }
     }
 
+    /// `.fleetest/iproxy-<port>.pid`(実機 USB トンネル。IOSDeviceTransport.startIproxy が書く)の
+    /// 掃除。**bridge-<port>.* とは別の台帳**で、上の decide/ここまでのループには乗らない —— 生死を
+    /// 確かめる呼び手(IOSDeviceTransport.isIproxyRunning)は実際にそのポート・UDID を使う run
+    /// でしか呼ばれないため、物理デバイスを使わない run を挟むと死んだ pid がいつまでも残る
+    /// (F27 実測: iproxy-8136/8138/8150.pid が死んだ pid のまま残留)。**UDID は見ない**
+    /// (どの UDID 向けだったかに関わらず死んでいれば消す。生きていれば別 UDID 向けでも
+    /// 触らない = isIproxyRunning が実際に使う際の張り替えに任せる)。生存判定は pid だけ
+    /// (ProcessLiveness.isAlive。素の kill(pid,0) は禁止)
     static func sweepIproxyPidFiles(stateDir: URL) {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return }
@@ -584,7 +589,9 @@ public struct BridgeProvisioner {
     /// .pid はこれまでどおり BridgeLauncher.sweepStalePidFiles(TTL 自主終了の ps 照合)に委ねる。
     /// ここではそれに加えて、対応する実体が消えた .inapp(LISTEN 実体なし)・.endpoint/.device
     /// (対になる .pid が無い = 実機ランナー不在)・.toolchain(BridgeToolchainLedger。ポートが
-    /// 死んでいれば一緒に消す)・iproxy-<port>.pid(死んだ実機トンネル)を掃除する。.pid の掃除を
+    /// 死んでいれば一緒に消す)・iproxy-<port>.pid(死んだ実機トンネル)・**台帳を持たないまま
+    /// ポートを握っているトンネル**(sweepTunnelOnlyPorts)・**起動しきれないランナー**
+    /// (sweepStuckStartingRunners)を掃除する。.pid の掃除を
     /// 先に済ませてから残った台帳を見るので、StaleLedgerSweep.decide への pidAlive は
     /// 「.pid が今も存在するか」で代用できる(死んだ分は直前の sweepStalePidFiles で既に消えている)
     static func sweepStaleLedgers(repoRoot: URL) {

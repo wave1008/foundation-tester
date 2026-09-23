@@ -257,8 +257,11 @@ struct ApiLiveServe: AsyncParsableCommand {
             // 読めたときだけ**掴むのをやめる。決めつけて進むと、この後の自動起動がそのポートへ
             // 自分のブリッジを立て、占有者の生きたランナーを残骸として殺す
             // (実地 2026-09-23: ブリッジを失った実機2台が既定ポート 8123 で殺し合った)。
-            // 利用者が --port で決めた宛先は従来どおり進む(指定を勝手に変えない)
-            guard driverOptions.port == nil,
+            // 利用者が --port で決めた宛先は従来どおり進む(指定を勝手に変えない)。
+            // **占有者を読めるのはループバックの宛先だけ** —— 実機の LAN bind は向こうの機械の
+            // ポートなので、こちらの lsof が同じ番号で見つけるのは無関係なプロセス。
+            // 読めない相手を根拠に宛先を変えない(§18.7「不明と空きを混ぜない」の同型)
+            guard driverOptions.port == nil, resolution.endpoint.isLoopback,
                   PortHolder.isHeldByAnotherDevice(port: resolution.endpoint.port, udid: udid) else {
                 return try await composeDriver(resolution: resolution, physical: physical,
                                                repoRoot: repoRoot)
