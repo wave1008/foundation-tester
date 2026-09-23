@@ -117,3 +117,36 @@ test("空きエリアの右クリックはどのタイルにも印を付けな�
   rightClick(window, document.getElementById("grid"));
   assert.equal(marked(document).length, 0, "対象のデバイスが無いメニューでは印を残さないこと");
 });
+
+function previews(document) {
+  return [...document.querySelectorAll("#preview-grid .lane-preview")].filter((el) => el.style.display !== "none");
+}
+
+// 選択した台は グリッドビューにも拡大表示(.lane-preview)が出る。どちらを右クリックしても
+// 同じデバイスのメニューなので、印も両方に付ける。
+test("選択した台はタイルと拡大表示の両方に印が付く(どちらを右クリックしても)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  const [first] = tiles(document);
+  // jsdom は矩形が 0 でクリックの当たり判定が効かないので、メニューの「このデバイスのみ選択」で選ぶ
+  rightClick(window, first);
+  document.getElementById("device-op-menu-select-only").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const [preview] = previews(document);
+  assert.ok(preview, "前提: 選択した台の拡大表示が出ている");
+  assert.equal(preview.classList.contains("menu-target"), false, "前提: 付いていない");
+
+  rightClick(window, first);
+  assert.deepEqual(marked(document), [first], "タイルに付くこと");
+  assert.ok(preview.classList.contains("menu-target"), "タイルの右クリックで拡大表示にも付くこと");
+
+  document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  assert.equal(preview.classList.contains("menu-target"), false, "閉じたら拡大表示からも解くこと");
+
+  rightClick(window, preview);
+  assert.deepEqual(marked(document), [first], "拡大表示の右クリックでタイルにも付くこと");
+  assert.ok(preview.classList.contains("menu-target"), "拡大表示に付くこと");
+
+  rightClick(window, tiles(document)[1]);
+  assert.equal(preview.classList.contains("menu-target"), false, "別の台へ移ったら拡大表示から解くこと");
+});

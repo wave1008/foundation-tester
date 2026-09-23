@@ -1058,11 +1058,12 @@ html.select-all-guard * {
   border-width: 2px;
   padding: 7px;
 }
-/* 右クリックのコンテキストメニューを出している間だけ、対象のタイルに付く印(deviceTiles.js の
-   openDeviceOpMenu/closeDeviceOpMenu)。チェックボックスの選択(.selected)とは別物なので枠の色では
+/* 右クリックのコンテキストメニューを出している間だけ、対象のタイルとグリッドビューの拡大表示に
+   付く印(deviceTiles.js の setMenuTargetTile)。チェックボックスの選択(.selected)とは別物なので枠の色では
    なく outline + 背景で出す。**outline を使うのはレイアウトを動かさないため**(border を太らせると
    タイルの寸法が変わり、並びが1台ぶんずれて見える)。 */
-.tile.menu-target {
+.tile.menu-target,
+.lane-preview.menu-target {
   outline: 2px solid var(--vscode-focusBorder, #007acc);
   outline-offset: -1px;
   background-color: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.10));

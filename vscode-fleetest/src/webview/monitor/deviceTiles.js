@@ -829,18 +829,28 @@ onMachineEnablementChanged(() => {
 
 // 「開いているか」は entry では判定できない —— 空きエリアの右クリックでは entry が無いまま開く。
 let deviceOpMenuOpen = false;
-/** コンテキストメニューの対象として印を付けているタイル(.menu-target)。**メニューを出している間だけ**
- * (ユーザー決定 2026-09-23)。チェックボックスの選択(.selected)とは別の印で、entry を握らず要素を
- * 握るのは、タイルが作り直されても外し忘れが残らないようにするため。 */
-let menuTargetTile = null;
+/** コンテキストメニューの対象として印(.menu-target)を付けている要素 = ラインビューのタイルと、
+ * 選択中ならグリッドビューの拡大表示(.lane-preview)。どちらで右クリックしても両方に付ける。
+ * **メニューを出している間だけ**(ユーザー決定 2026-09-23)。チェックボックスの選択(.selected)とは
+ * 別の印で、entry を握らず要素を握るのは、タイルが作り直されても外し忘れが残らないようにするため。 */
+let menuTargetEls = [];
 function setMenuTargetTile(entry) {
-  const next = entry ? entry.tile : null;
-  if (menuTargetTile && menuTargetTile !== next) {
-    menuTargetTile.classList.remove('menu-target');
+  const next = [];
+  if (entry) {
+    next.push(entry.tile);
+    const mirror = deviceMirrors.get(entry.device.id);
+    if (mirror) {
+      next.push(mirror.wrapEl);
+    }
   }
-  menuTargetTile = next;
-  if (menuTargetTile) {
-    menuTargetTile.classList.add('menu-target');
+  for (const el of menuTargetEls) {
+    if (!next.includes(el)) {
+      el.classList.remove('menu-target');
+    }
+  }
+  menuTargetEls = next;
+  for (const el of menuTargetEls) {
+    el.classList.add('menu-target');
   }
 }
 
