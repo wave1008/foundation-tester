@@ -265,6 +265,56 @@ export type LiveServeCommand =
   | { readonly cmd: "launch"; readonly bundle: string }
   | { readonly cmd: "install"; readonly path: string };
 
+/** 操作記録の右列に出す、**同じ操作を MCP で撃つときのコマンド**(`ft_tap {"x":120,"y":340}` の形)。
+ * ツール名と引数名は Sources/fleetest-mcp/MCPServer+ToolDefs.swift と対(片方だけ変えない)。
+ * **要素番号(ref)は座標に畳む** —— ref はスナップショットごとの採番で、ライブ操作の serve と MCP の
+ * ft_snapshot は別プロセスなので同じ番号が同じ要素を指さない。座標(スナップショットの枠と同じ
+ * pt / px)ならそのまま撃てる。枠を引けない ref は ref のまま出す(黙って落とさない)。
+ * 観測だけの refresh / frame は操作ではないので nil。 */
+export function mcpCommandForServeCommand(
+  command: LiveServeCommand,
+  elements: readonly LiveElement[],
+): string | undefined {
+  const n = (value: number): number => Math.round(value * 10) / 10;
+  const line = (tool: string, args: Record<string, unknown>): string => `${tool} ${JSON.stringify(args)}`;
+  switch (command.cmd) {
+    case "tap": {
+      if ("ref" in command) {
+        const element = elements.find((e) => e.ref === command.ref);
+        return element
+          ? line("ft_tap", { x: n(element.frame.x + element.frame.width / 2), y: n(element.frame.y + element.frame.height / 2) })
+          : line("ft_tap", { ref: command.ref });
+      }
+      return line("ft_tap", { x: n(command.x), y: n(command.y) });
+    }
+    case "type":
+      return line("ft_type", { text: command.text });
+    case "drag":
+      return line("ft_drag", {
+        fromX: n(command.fromX), fromY: n(command.fromY), toX: n(command.toX), toY: n(command.toY),
+        durationSeconds: n(command.duration),
+      });
+    case "press":
+      return line("ft_long_press", { x: n(command.x), y: n(command.y), holdSeconds: n(command.duration) });
+    case "doubleTap":
+      return line("ft_double_tap", { x: n(command.x), y: n(command.y) });
+    case "pinch":
+      return line("ft_pinch", { scale: n(command.scale), durationSeconds: n(command.duration) });
+    case "home":
+    case "appSwitcher":
+      return line("ft_navigate", { target: command.cmd });
+    case "terminate":
+      return line("ft_terminate", {});
+    case "launch":
+      return line("ft_launch", { bundleId: command.bundle });
+    case "install":
+      return line("ft_install", { packagePath: command.path });
+    case "refresh":
+    case "frame":
+      return undefined;
+  }
+}
+
 /** serve の stdin へ書き込む1行(末尾改行付き)を組み立てる。 */
 export function serializeLiveServeCommand(command: LiveServeCommand): string {
   return `${JSON.stringify(command)}\n`;
@@ -806,7 +856,8 @@ export type LiveToWebviewMessage =
   // テキスト入力欄をタップした直後に「入力するテキスト」欄へフォーカスを移す指示(受け手: liveTab.js)。
   | { readonly type: "focusTypeInput" }
   // 「操作記録」1行(レコーディング機能とは無関係。受け手: liveTab.js の operationLog ハンドラ)。
-  | { readonly type: "operationLog"; readonly label: string; readonly ok: boolean };
+  // mcp: 同じ操作を MCP で撃つコマンド(mcpCommandForServeCommand)。テスト実行由来の行(injectTestStep)には無い
+  | { readonly type: "operationLog"; readonly label: string; readonly ok: boolean; readonly mcp?: string };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {

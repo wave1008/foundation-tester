@@ -310,6 +310,10 @@ export const webviewMonitorAStrings = {
 
   "wvMonitor.live.stateConnected": { ja: "接続済み", en: "Connected" },
   "wvMonitor.live.stateUnknown": { ja: "状態不明(未確認)", en: "Unknown (unconfirmed)" },
+  "wvMonitor.live.oplogMcpCopy": { ja: "クリックでコピー", en: "Click to copy" },
+  "wvMonitor.live.oplogColOperation": { ja: "操作", en: "Operation" },
+  "wvMonitor.live.oplogColMcp": { ja: "MCP コマンド", en: "MCP command" },
+  "wvMonitor.live.oplogColResize": { ja: "ドラッグで操作列の幅を変更", en: "Drag to resize the operation column" },
   "wvMonitor.live.processing": { ja: "処理中...", en: "Processing..." },
   "wvMonitor.live.notConnectedWarning": { ja: "⚠ 接続されていません", en: "⚠ Not connected" },
   "wvMonitor.live.noAppProfile": { ja: "(アプリプロファイルなし)", en: "(No app profile)" },

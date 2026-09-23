@@ -2896,23 +2896,75 @@ input[type="radio"]:focus-visible {
   font-size: 11px;
 }
 #panel-live .oplog-list {
+  --oplog-label-width: 220px; /* 操作列の幅。liveTab.js の DEFAULT_OPLOG_LABEL_WIDTH と揃えること(ドラッグで上書き) */
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto; /* 縦に加えて横にも(MCP 列は省略せず、行の幅は中身で決まる) */
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 3px;
 }
-#panel-live .oplog-row {
+/* 3列: 時刻(固定 = 等幅 8 文字)/ 操作(ドラッグで幅を決める・中で省略)/ MCP のコマンド(中身の幅のまま =
+   はみ出したぶんは一覧の横スクロール)。3列とも幅が行に依らないので、行ごとに列がずれない */
+#panel-live .oplog-row,
+#panel-live .oplog-head {
+  display: grid;
+  grid-template-columns: 8ch var(--oplog-label-width) max-content;
+  column-gap: 10px;
+  align-items: baseline;
+  width: max-content;
+  min-width: 100%;
   padding: 2px 6px;
+  box-sizing: border-box;
   font-family: var(--vscode-editor-font-family, monospace);
   font-size: 11px;
   white-space: nowrap;
+}
+#panel-live .oplog-row .oplog-label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 #panel-live .oplog-row .oplog-time {
   color: var(--vscode-descriptionForeground);
-  margin-right: 6px;
+}
+#panel-live .oplog-row .oplog-mcp {
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+}
+#panel-live .oplog-row .oplog-mcp:empty { cursor: default; }
+/* 見出し行: 縦スクロールしても上に留まる(横には行と一緒に動く = 列がずれない) */
+#panel-live .oplog-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+}
+#panel-live .oplog-head .oplog-label { position: relative; }
+/* 操作列の右端の境目。当たりは 8px 幅・見た目は中央の 1px 線 */
+#panel-live .oplog-col-resizer {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  right: -9px;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+#panel-live .oplog-col-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: var(--vscode-widget-border, var(--vscode-panel-border));
+}
+#panel-live .oplog-col-resizer:hover::after,
+#panel-live .oplog-col-resizer.dragging::after {
+  background: var(--vscode-focusBorder, #007acc);
+  width: 2px;
+  left: 3px;
 }
 #panel-live .oplog-row.failed .oplog-label {
   color: var(--vscode-errorForeground, #f14c4c);

@@ -44,6 +44,7 @@ import {
   devicesToOptions,
   FALLBACK_DEVICE_ID,
   fallbackDeviceOption,
+  mcpCommandForServeCommand,
   hitTestElement,
   isTextInputElement,
   type LiveActionResult,
@@ -337,8 +338,8 @@ export class MonitorLiveController implements vscode.Disposable {
 
   /** 「操作記録」1行を webview へ送る(対向: liveTab.js の operationLog ハンドラ)。
    * 全ユーザー操作(tap/swipe/type/press/home/appSwitcher)の成否をここへ流す。 */
-  private postOperationLog(label: string, ok: boolean): void {
-    this.post({ type: "operationLog", label, ok });
+  private postOperationLog(label: string, ok: boolean, mcp?: string): void {
+    this.post({ type: "operationLog", label, ok, ...(mcp !== undefined ? { mcp } : {}) });
   }
 
   /** テスト実行(RunEventBus の step)由来の操作を「操作記録」へ流す。section=action のみ・
@@ -1396,13 +1397,15 @@ export class MonitorLiveController implements vscode.Disposable {
       return false;
     }
     this.setBusy(true);
+    // 要素一覧は sendServeCommand の観測で入れ替わるので、送る前の(利用者が見ていた)木で引く
+    const mcp = mcpCommandForServeCommand(command, this.lastElements);
     try {
       this.ensureServeProcess(device);
       const { action, snapshot } = await this.sendServeCommand(command);
       if (action && !action.ok) {
         this.postActionError(action.error);
         if (options?.logLabel) {
-          this.postOperationLog(options.logLabel, false);
+          this.postOperationLog(options.logLabel, false, mcp);
         }
         return false;
       }
@@ -1417,7 +1420,7 @@ export class MonitorLiveController implements vscode.Disposable {
         this.recordedSteps.push(recordStep);
       }
       if (options?.logLabel) {
-        this.postOperationLog(options.logLabel, true);
+        this.postOperationLog(options.logLabel, true, mcp);
       }
       if (options?.silentObservation) {
         return true;  // action は成功。観測は反映も表示もしない(直後の launch が画面を出す)

@@ -897,7 +897,68 @@ function renderElements() {
 
 const OPLOG_MAX_ROWS = 200; // DOM/メモリ肥大防止。超えたら最古行から捨てる
 function pad2(n) { return n < 10 ? '0' + n : '' + n; }
-function appendOperationLog(label, ok) {
+// 行は「時刻 / 操作 / MCP のコマンド」の3列(grid は CSS の .oplog-row / .oplog-head)。MCP 列は同じ操作を
+// ft_* で撃つ形(host の mcpCommandForServeCommand)で、**クリックでコピー**する(貼って使うもの)。
+// テスト実行由来の行には無い(空のまま = 列は揃える)。
+// **一覧は左右にもスクロールする**(MCP 列は省略しない = 行の幅は中身で決まり、.oplog-list が overflow:auto)。
+// 操作列の幅は見出し行(.oplog-head)の境目をドラッグして変える(--oplog-label-width。vscode.setState に永続化)
+const MIN_OPLOG_LABEL_WIDTH = 60; // px。操作列を潰し切らない下限
+const DEFAULT_OPLOG_LABEL_WIDTH = 220; // px。CSS の --oplog-label-width の既定と揃えること
+let oplogLabelWidth =
+  typeof persistedState.liveOplogLabelWidth === 'number' && persistedState.liveOplogLabelWidth >= MIN_OPLOG_LABEL_WIDTH
+    ? persistedState.liveOplogLabelWidth
+    : DEFAULT_OPLOG_LABEL_WIDTH;
+function applyOplogLabelWidth(width) {
+  oplogLabelWidth = Math.max(MIN_OPLOG_LABEL_WIDTH, Math.round(width));
+  oplogList.style.setProperty('--oplog-label-width', oplogLabelWidth + 'px');
+}
+// 見出し行は一覧の中に置く(外に置くと横スクロールで列がずれる)。クリア・行数の上限では消さない
+const oplogHead = document.createElement('div');
+oplogHead.className = 'oplog-head';
+{
+  const timeHead = document.createElement('span');
+  timeHead.className = 'oplog-time';
+  const labelHead = document.createElement('span');
+  labelHead.className = 'oplog-label';
+  labelHead.textContent = t('wvMonitor.live.oplogColOperation');
+  const resizer = document.createElement('span');
+  resizer.className = 'oplog-col-resizer';
+  resizer.title = t('wvMonitor.live.oplogColResize');
+  labelHead.appendChild(resizer);
+  const mcpHead = document.createElement('span');
+  mcpHead.className = 'oplog-mcp';
+  mcpHead.textContent = t('wvMonitor.live.oplogColMcp');
+  oplogHead.append(timeHead, labelHead, mcpHead);
+  let resizePointerId = null;
+  let resizeStartX = 0;
+  let resizeStartWidth = 0;
+  resizer.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) { return; }
+    resizePointerId = event.pointerId;
+    resizeStartX = event.clientX;
+    resizeStartWidth = oplogLabelWidth;
+    resizer.setPointerCapture(event.pointerId);
+    resizer.classList.add('dragging');
+    event.preventDefault();
+  });
+  resizer.addEventListener('pointermove', (event) => {
+    if (resizePointerId !== event.pointerId) { return; }
+    applyOplogLabelWidth(resizeStartWidth + (event.clientX - resizeStartX));
+  });
+  const endResize = (event) => {
+    if (resizePointerId !== event.pointerId) { return; }
+    resizePointerId = null;
+    resizer.classList.remove('dragging');
+    resizer.releasePointerCapture(event.pointerId);
+    vscode.setState(Object.assign({}, vscode.getState(), { liveOplogLabelWidth: oplogLabelWidth }));
+  };
+  resizer.addEventListener('pointerup', endResize);
+  resizer.addEventListener('pointercancel', endResize);
+}
+oplogList.appendChild(oplogHead);
+applyOplogLabelWidth(oplogLabelWidth);
+
+function appendOperationLog(label, ok, mcp) {
   const row = document.createElement('div');
   row.className = ok ? 'oplog-row' : 'oplog-row failed';
   const now = new Date();
@@ -907,15 +968,27 @@ function appendOperationLog(label, ok) {
   const text = document.createElement('span');
   text.className = 'oplog-label';
   text.textContent = (ok ? '' : '✗ ') + label;
+  const command = document.createElement('span');
+  command.className = 'oplog-mcp';
+  if (mcp) {
+    command.textContent = mcp;
+    command.title = mcp + '\n' + t('wvMonitor.live.oplogMcpCopy');
+    command.addEventListener('click', () => { vscode.postMessage({ type: 'copyText', text: mcp }); });
+  }
   row.appendChild(time);
   row.appendChild(text);
+  row.appendChild(command);
   oplogList.appendChild(row);
-  while (oplogList.childElementCount > OPLOG_MAX_ROWS) {
-    oplogList.removeChild(oplogList.firstChild);
+  // 見出し行(.oplog-head)は数えない・消さない
+  const rows = oplogList.querySelectorAll('.oplog-row');
+  for (let i = 0; i < rows.length - OPLOG_MAX_ROWS; i++) {
+    rows[i].remove();
   }
   oplogList.scrollTop = oplogList.scrollHeight; // 最新行を見せる
 }
-oplogClearBtn.addEventListener('click', () => { oplogList.innerHTML = ''; });
+oplogClearBtn.addEventListener('click', () => {
+  for (const row of oplogList.querySelectorAll('.oplog-row')) { row.remove(); }
+});
 
 // ---- 操作ボタン ------------------------------------------------------------------
 
@@ -1085,7 +1158,7 @@ export function applyLiveMessage(message) {
       typeTextInput.select();
       break;
     case 'operationLog':
-      appendOperationLog(message.label, !!message.ok);
+      appendOperationLog(message.label, !!message.ok, typeof message.mcp === 'string' ? message.mcp : '');
       break;
     default:
       break;

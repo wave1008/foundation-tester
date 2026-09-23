@@ -33,6 +33,7 @@ import {
   parseLiveSnapshotResult,
   parseListDevicesResult,
   pointFromClick,
+  mcpCommandForServeCommand,
   remoteDeviceOption,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
@@ -1062,4 +1063,39 @@ test("sameLiveDeviceRef: 同じ udid でも機械が違えば別の台(serve を
   assert.equal(sameLiveDeviceRef(base, { ...base }), true);
   assert.equal(sameLiveDeviceRef(base, { ...base, machine: "M1Ultra" }), false);
   assert.equal(sameLiveDeviceRef({ ...base, machine: "M1Ultra" }, { ...base, machine: "M1Ultra" }), true);
+});
+
+// ---- 操作記録の MCP 列(mcpCommandForServeCommand) ----
+// ツール名・引数名は Sources/fleetest-mcp/MCPServer+ToolDefs.swift と対
+
+const ELEMENTS = [
+  { ref: 3, type: "button", identifier: "btn_go", label: "Go", value: null, placeholder: null,
+    enabled: true, frame: { x: 100, y: 200, width: 40, height: 20 }, depth: 1 },
+];
+
+test("mcpCommandForServeCommand: 操作ごとに ft_* とその引数へ写す", () => {
+  const f = (command) => mcpCommandForServeCommand(command, ELEMENTS);
+  assert.equal(f({ cmd: "tap", x: 12.34, y: 56.78 }), 'ft_tap {"x":12.3,"y":56.8}');
+  assert.equal(f({ cmd: "type", text: "hello", ref: null }), 'ft_type {"text":"hello"}');
+  assert.equal(f({ cmd: "drag", fromX: 10, fromY: 400, toX: 10, toY: 100, press: 0, duration: 0.55 }),
+    'ft_drag {"fromX":10,"fromY":400,"toX":10,"toY":100,"durationSeconds":0.6}');
+  assert.equal(f({ cmd: "press", x: 1, y: 2, duration: 1.5 }), 'ft_long_press {"x":1,"y":2,"holdSeconds":1.5}');
+  assert.equal(f({ cmd: "doubleTap", x: 1, y: 2 }), 'ft_double_tap {"x":1,"y":2}');
+  assert.equal(f({ cmd: "pinch", scale: 2, duration: 0.5 }), 'ft_pinch {"scale":2,"durationSeconds":0.5}');
+  assert.equal(f({ cmd: "home" }), 'ft_navigate {"target":"home"}');
+  assert.equal(f({ cmd: "appSwitcher" }), 'ft_navigate {"target":"appSwitcher"}');
+  assert.equal(f({ cmd: "terminate" }), "ft_terminate {}");
+  assert.equal(f({ cmd: "launch", bundle: "com.example.app" }), 'ft_launch {"bundleId":"com.example.app"}');
+  assert.equal(f({ cmd: "install", path: "/tmp/App.app" }), 'ft_install {"packagePath":"/tmp/App.app"}');
+});
+
+// ref はスナップショットごとの採番で MCP の ft_snapshot と一致しないので、要素の枠の中心(座標)に畳む
+test("mcpCommandForServeCommand: 要素番号のタップは枠の中心の座標に畳む(引けなければ ref のまま)", () => {
+  assert.equal(mcpCommandForServeCommand({ cmd: "tap", ref: 3 }, ELEMENTS), 'ft_tap {"x":120,"y":210}');
+  assert.equal(mcpCommandForServeCommand({ cmd: "tap", ref: 99 }, ELEMENTS), 'ft_tap {"ref":99}');
+});
+
+test("mcpCommandForServeCommand: 観測だけ(refresh / frame)は操作ではないので出さない", () => {
+  assert.equal(mcpCommandForServeCommand({ cmd: "refresh" }, ELEMENTS), undefined);
+  assert.equal(mcpCommandForServeCommand({ cmd: "frame" }, ELEMENTS), undefined);
 });
