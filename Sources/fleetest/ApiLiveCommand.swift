@@ -44,9 +44,11 @@
 //     {"kind":"snapshot","ok":true,"error":null,"platform":"ios"|"android",
 //      "screen":{"width":..,"height":..},"image":"<base64 JPEG>",
 //      "elements":[{"ref":..,"type":"..","label":..|null,"identifier":..|null,"value":..|null,
-//                    "frame":{"x":..,"y":..,"width":..,"height":..}}, ...]}
+//                    "frame":{"x":..,"y":..,"width":..,"height":..}}, ...],
+//      "notes":[<String>, ...]}   観測そのものへの注記(鮮度警告等。FTCore.StaleFrameDetector。
+//                                 無ければ空配列。elements と違い null にしない)
 //     {"kind":"snapshot","ok":false,"error":"<説明>","platform":null,"screen":null,"image":null,
-//      "elements":null}
+//      "elements":null,"notes":[]}
 //   を出す(操作後の追加waitは無し。ブリッジの操作応答=UI整定済みのため)。
 //   refresh はこの観測イベント1行だけを出す(actionResult は出さない)。
 //   frame は {"kind":"frame","ok":..,"error":..,"image":"<base64 JPEG>"|null} の1行だけを出す
@@ -135,6 +137,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             platform: driverOptions.resolvedPlatform, udid: udid,
             explicitAndroidSerial: driverOptions.serial, log: { logStderr($0) })
         deviceLease?.refresh()
+        // serve は1プロセスが1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる
+        let staleFrameTracker = LiveStaleFrameTracker()
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
         let reader = Thread {
@@ -184,7 +188,8 @@ struct ApiLiveServe: AsyncParsableCommand {
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
             await handle(command: command, driver: driver, starter: starter, follower: follower,
-                        ownAppBundleID: ownAppBundleID, deviceLease: deviceLease)
+                        ownAppBundleID: ownAppBundleID, deviceLease: deviceLease, port: port,
+                        staleFrameTracker: staleFrameTracker)
             ResidentProcessGuard.noteCommandEnd()
         }
         // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていない台を他プロセスが
@@ -362,7 +367,8 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
     private func handle(
         command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?,
-        follower: LiveSessionFollower?, ownAppBundleID: String?, deviceLease: LiveDeviceLease?
+        follower: LiveSessionFollower?, ownAppBundleID: String?, deviceLease: LiveDeviceLease?,
+        port: UInt16, staleFrameTracker: LiveStaleFrameTracker
     ) async {
         // **コマンドが通るたびに台の印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
         // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する——駆動している事実に変わりはない)
@@ -376,7 +382,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         if command.cmd == "frame" {
             // 自動画面更新は `/screenshot`(XCUIScreen = 画面そのもの)だけなのでセッションに依らない。
             // ここで追従させると、利用者が何もしていない間もセッションを動かすことになる
-            await emitFrame(driver: driver, starter: starter)
+            await emitFrame(driver: driver, starter: starter, port: port)
             return
         }
         if command.cmd != "refresh" {
@@ -385,27 +391,79 @@ struct ApiLiveServe: AsyncParsableCommand {
                                   ownAppBundleID: ownAppBundleID)
                 emitLine(ApiLiveActionResultEvent(ok: true, error: nil, app: follower?.sessionTarget))
             } catch {
-                let message = await annotated(error, starter: starter, triggering: true)
+                let message = await annotated(error, starter: starter, triggering: true, port: port)
                 emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget))
             }
         }
         // **観測の直前にもう一度追従させる**: 直前の操作で前面が変わっている(ホームへ戻った・
         // 別のアプリが出た)ことがあり、古いセッションのまま撮ると画面ではなく最後の状態が載る
         await follower?.follow(driver: driver)
-        await emitObservation(driver: driver, starter: starter, follower: follower)
+        await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
+                              staleFrameTracker: staleFrameTracker)
     }
 
     /// error が DriverError.bridgeConnectionRefused のときだけ starter のサフィックスを連結する
     /// (bridgeUnreachable やタイムアウトでは連結しない=生きているブリッジとの二重起動を防ぐ)。
     /// triggering: true なら noteConnectionRefused(起動トリガーあり)、false なら
-    /// statusSuffix(起動トリガーなし。emitFrame は受動的観測のため)
+    /// statusSuffix(起動トリガーなし。emitFrame は受動的観測のため)。
+    ///
+    /// **この triggering の区別が効くのは bridgeConnectionRefused だけ**。以下の2つは
+    /// 起動トリガーを持たない事実の注記なので、emitFrame(triggering:false)からも同じだけ付く:
+    /// - `DriverError.isNoReadableWindow` = Android の一時的な a11y 根欠落(422)。放置で自然回復する
+    /// - `DriverError.bridgeUnreachable`(iOS xcuitest のみ)= `BridgeDiscovery.probeStatus` で
+    ///   「固まり(transportFailed)」と「busy(timedOut)」を見分けてから出口を変える
+    ///   (混ぜて「待て」を言い続けたのが docs/maintainer-notes.md §44.1 のバグ)。
+    ///   **失敗パスでだけ撃つ**(annotated は catch 節からしか呼ばれない = 成功パスへの往復は増えない)
     private func annotated(
-        _ error: Error, starter: LiveBridgeAutoStarter?, triggering: Bool
+        _ error: Error, starter: LiveBridgeAutoStarter?, triggering: Bool, port: UInt16
     ) async -> String {
         var message = error.localizedDescription
-        guard let starter, case DriverError.bridgeConnectionRefused = error else { return message }
-        message += triggering ? await starter.noteConnectionRefused() : await starter.statusSuffix()
+        if let starter, case DriverError.bridgeConnectionRefused = error {
+            message += triggering ? await starter.noteConnectionRefused() : await starter.statusSuffix()
+            return message
+        }
+        if DriverError.isNoReadableWindow(error) {
+            return message + Self.noReadableWindowHint
+        }
+        if case DriverError.bridgeUnreachable(let context, _) = error, context.engine == .iosXCUITest {
+            let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: try? RepoRoot.find())
+            message += Self.bridgeUnreachableHint(probe: probe)
+        }
         return message
+    }
+
+    /// Android の「アクティブウィンドウの a11y 根が無い」422(`DriverError.isNoReadableWindow`)の
+    /// 人間向けヒント。事実は MCP の `noReadableWindowHint`(MCPServer+Dispatch.swift)と同じ
+    /// (一時的なデバイス側の状態・アプリやツールの不具合ではない・13〜37秒で自然回復・前面へ
+    /// 戻すと早い)——判定は共有し、文言だけライブ操作の利用者向けに書き直す(ft_navigate/ft_launch
+    /// という MCP 専用の呼び方はしない)
+    static let noReadableWindowHint =
+        " This is a temporary device-side condition, not an app or tool problem — it clears on its"
+        + " own (usually within 13-37s). Doing the exact same thing again immediately will most"
+        + " likely fail the same way, so wait a few seconds first. Bringing the app back to the"
+        + " foreground (send it Home, then reopen it) tends to clear it faster."
+
+    /// `BridgeDiscovery.probeStatus` の結果ごとの文言(純粋関数)。**固まり(transportFailed)と
+    /// busy(timedOut)で対処が逆になる**のが要点 —— 固まりは建て直しが要り、busy は待てば直る。
+    /// この2つを混ぜて「待て」と言い続けたのが過去のバグ(docs/maintainer-notes.md §44.1)
+    static func bridgeUnreachableHint(probe: BridgeDiscovery.StatusProbe) -> String {
+        switch probe {
+        case .transportFailed:
+            return " The device stopped responding, and the connection dropped almost immediately"
+                + " rather than timing out — the bridge process itself is gone; only its transport is"
+                + " still holding the port (on a physical device this typically happens when the"
+                + " screen locks, or it leaves USB/Wi-Fi range). This will not recover on its own:"
+                + " run `fleetest bridge up` for this device, then try again."
+        case .timedOut:
+            return " The device is still connected and busy (for example, waiting for the screen to"
+                + " settle can take tens of seconds) — this is not a dropped connection. Wait a"
+                + " moment and try again."
+        case .notBound:
+            return " Nothing is listening on this device's bridge port anymore. Run"
+                + " `fleetest bridge up` for this device, then try again."
+        case .answered:
+            return " The bridge answered just now — the earlier failure looks transient. Try again."
+        }
     }
 
     /// ref から要素を引く(doubleTap / pinch が対象の座標・identifier を採るため)。
@@ -638,9 +696,12 @@ struct ApiLiveServe: AsyncParsableCommand {
 
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
     /// (ApiMonitorCommand.swift の MonitorImage を共有利用する)。refresh(ユーザーの「更新」
-    /// ボタン)はこの経路しか通らないため、ここでの自動起動トリガーは必須
+    /// ボタン)はこの経路しか通らないため、ここでの自動起動トリガーは必須。
+    /// **鮮度判定(StaleFrameDetector)はここだけ**——絵と木の両方を撮るのはこの経路だけで、
+    /// emitFrame は絵だけなので判定できない
     private func emitObservation(driver: AppDriver, starter: LiveBridgeAutoStarter?,
-                                 follower: LiveSessionFollower?) async {
+                                 follower: LiveSessionFollower?, port: UInt16,
+                                 staleFrameTracker: LiveStaleFrameTracker) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
@@ -649,29 +710,31 @@ struct ApiLiveServe: AsyncParsableCommand {
                 ApiLiveElement(ref: $0.ref, type: $0.type, label: $0.label,
                                identifier: $0.identifier, value: $0.value, frame: $0.frame)
             }
+            let notes = await staleFrameTracker.staleNotes(png: png, elements: snap.elements)
             emitLine(ApiLiveSnapshotEvent(
                 ok: true, error: nil,
                 platform: driverOptions.resolvedPlatform,
                 screen: ApiLiveScreenSize(width: snap.screen.width, height: snap.screen.height),
-                image: jpeg.data.base64EncodedString(), elements: elements))
+                image: jpeg.data.base64EncodedString(), elements: elements, notes: notes))
         } catch {
-            let message = await annotated(error, starter: starter, triggering: true)
+            let message = await annotated(error, starter: starter, triggering: true, port: port)
             emitLine(ApiLiveSnapshotEvent(
                 ok: false, error: message,
-                platform: nil, screen: nil, image: nil, elements: nil))
+                platform: nil, screen: nil, image: nil, elements: nil, notes: []))
         }
     }
 
     /// スクリーンショットのみの観測イベント(kind:"frame")。自動画面更新用に AX スナップショット
-    /// を省いて軽量化している(要素一覧は更新されない)。自動フレームは受動的観測のため起動は
-    /// トリガーせず、既知の状態(starting/failed)があれば付記するだけ
-    private func emitFrame(driver: AppDriver, starter: LiveBridgeAutoStarter?) async {
+    /// を省いて軽量化している(要素一覧は更新されない=鮮度判定に要る木が無いので撃たない)。
+    /// 自動フレームは受動的観測のため起動はトリガーせず、既知の状態(starting/failed)があれば
+    /// 付記するだけ
+    private func emitFrame(driver: AppDriver, starter: LiveBridgeAutoStarter?, port: UInt16) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
             emitLine(ApiLiveFrameEvent(ok: true, error: nil, image: jpeg.data.base64EncodedString()))
         } catch {
-            let message = await annotated(error, starter: starter, triggering: false)
+            let message = await annotated(error, starter: starter, triggering: false, port: port)
             emitLine(ApiLiveFrameEvent(ok: false, error: message, image: nil))
         }
     }
@@ -699,6 +762,26 @@ struct ApiLiveServe: AsyncParsableCommand {
 
     private func logStderr(_ message: String) {
         ConsoleOut.err("[live serve] " + message)
+    }
+}
+
+/// emitObservation が撮る絵(PNG)と木を FTCore.StaleFrameDetector へ渡し、直前の記録と比べる
+/// (二つ目の判定は書かない。契約は StaleFrameDetector.swift のコメント参照)。serve は1プロセスが
+/// 1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる。
+/// **not private**(テストが `@testable import fleetest` で直接呼ぶため)
+actor LiveStaleFrameTracker {
+    private var previous: StaleFrameDetector.Record? = nil
+
+    /// isStale なら利用者向けの注記を1件だけ返す(無ければ空配列)。呼ぶたびに記録を今回分へ
+    /// 更新する(StaleFrameDetector.judge と同じ契約 = 同じ凍結フレームへの注記は最初の1回だけ)
+    func staleNotes(png: Data, elements: [ElementInfo]) -> [String] {
+        let (record, isStale) = StaleFrameDetector.judge(png: png, elements: elements, previous: previous)
+        previous = record
+        guard isStale else { return [] }
+        return ["this screenshot may be stale: the element tree changed since the previous"
+            + " observation, but the image is byte-identical to the previous one — the display may"
+            + " be frozen on an old frame. Don't trust what's on screen from this image alone;"
+            + " interact again (or refresh) and see whether the picture actually changes."]
     }
 }
 
@@ -873,7 +956,8 @@ extension ApiLiveServe {
 }
 
 /// snapshot(観測)イベント。ok:true 時は platform/screen/image/elements が必ず埋まり、ok:false 時は
-/// それらが null になる
+/// それらが null になる。**notes は elements と違い null にしない**(注記が無い回は常に空配列 ——
+/// 拡張側に「無い」と「まだ知らない」を区別させない)
 private struct ApiLiveSnapshotEvent: Encodable {
     let kind = "snapshot"
     let ok: Bool
@@ -882,9 +966,10 @@ private struct ApiLiveSnapshotEvent: Encodable {
     let screen: ApiLiveScreenSize?
     let image: String?
     let elements: [ApiLiveElement]?
+    let notes: [String]
 
     private enum CodingKeys: String, CodingKey {
-        case kind, ok, error, platform, screen, image, elements
+        case kind, ok, error, platform, screen, image, elements, notes
     }
 
     func encode(to encoder: Encoder) throws {
@@ -896,6 +981,7 @@ private struct ApiLiveSnapshotEvent: Encodable {
         try container.encode(screen, forKey: .screen)
         try container.encode(image, forKey: .image)
         try container.encode(elements, forKey: .elements)
+        try container.encode(notes, forKey: .notes)
     }
 }
 

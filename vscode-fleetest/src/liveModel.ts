@@ -125,6 +125,9 @@ export interface LiveSnapshot {
   readonly screen: LiveSize;
   readonly image: string;
   readonly elements: readonly LiveElement[];
+  /** 観測そのものへの注記(鮮度警告等。契約: ApiLiveCommand.swift 冒頭・FTCore.StaleFrameDetector)。
+   * 注記が無い回も常に空配列(CLI 側は null にしない)。 */
+  readonly notes: readonly string[];
 }
 
 export interface LiveOkResult {
@@ -181,7 +184,9 @@ export function isLiveSnapshot(value: unknown): value is LiveSnapshot {
     typeof value.screen.height === "number" &&
     typeof value.image === "string" &&
     Array.isArray(value.elements) &&
-    value.elements.every(isLiveElement)
+    value.elements.every(isLiveElement) &&
+    Array.isArray(value.notes) &&
+    value.notes.every((note) => typeof note === "string")
   );
 }
 
@@ -301,6 +306,7 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
             screen: result.screen,
             image: result.image,
             elements: result.elements,
+            notes: result.notes,
           }
         : { ok: false, error: result.error },
     };
@@ -739,6 +745,7 @@ export type LiveToWebviewMessage =
       readonly screen: LiveSize;
       readonly image: string;
       readonly elements: readonly LiveElementView[];
+      readonly notes: readonly string[];
     }
   | { readonly type: "frame"; readonly image: string }
   /** 直前のデバイスのスナップショット(画面サイズ・要素一覧)を捨てさせる。デバイスを
@@ -780,6 +787,7 @@ export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage 
       line: formatElementLine(element),
       frameText: formatElementFrame(element.frame),
     })),
+    notes: snapshot.notes,
   };
 }
 

@@ -389,6 +389,9 @@ function renderLivePanel(): string {
     </div>
     <div id="live-banner" class="banner"></div>
     <div id="live-action-error"><span id="live-action-error-text"></span><button id="live-action-error-close" type="button" title="${t("panels.live.dismissError")}" aria-label="${t("panels.live.dismissError")}">×</button></div>
+    <!-- CLI(ApiLiveCommand.swift)の snapshot.notes(鮮度警告等)。エラーと見分けが付くよう
+         action-error とは別要素・警告色にする。本文は CLI が英語で作るので訳さない(枠のラベルのみ訳す)。 -->
+    <div id="live-stale-notice"><span id="live-stale-notice-label">${t("panels.live.staleNoticeLabel")}</span> <span id="live-stale-notice-text"></span></div>
 
     <div class="content">
       <div class="screenshot-pane" id="live-screenshot-pane">

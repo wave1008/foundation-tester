@@ -146,6 +146,7 @@ test("parseLiveSnapshotResult: 成功形(ok:true)をそのまま返す", () => {
     elements: [
       { ref: 1, type: "Button", label: "ログイン", identifier: null, value: null, frame: { x: 0, y: 0, width: 10, height: 10 } },
     ],
+    notes: [],
   };
   assert.deepEqual(parseLiveSnapshotResult(value), value);
 });
@@ -156,7 +157,7 @@ test("parseLiveSnapshotResult: 失敗形(ok:false)をそのまま返す", () => 
 });
 
 test("parseLiveSnapshotResult: platform が ios/android 以外なら undefined", () => {
-  const value = { ok: true, platform: "windows", screen: { width: 1, height: 1 }, image: "A", elements: [] };
+  const value = { ok: true, platform: "windows", screen: { width: 1, height: 1 }, image: "A", elements: [], notes: [] };
   assert.equal(parseLiveSnapshotResult(value), undefined);
 });
 
@@ -167,6 +168,7 @@ test("parseLiveSnapshotResult: elements の frame が欠落していれば undef
     screen: { width: 1, height: 1 },
     image: "A",
     elements: [{ ref: 1, type: "Button", label: null, identifier: null, value: null }],
+    notes: [],
   };
   assert.equal(parseLiveSnapshotResult(value), undefined);
 });
@@ -174,6 +176,28 @@ test("parseLiveSnapshotResult: elements の frame が欠落していれば undef
 test("parseLiveSnapshotResult: 何にも一致しない値は undefined", () => {
   assert.equal(parseLiveSnapshotResult({ foo: "bar" }), undefined);
   assert.equal(parseLiveSnapshotResult(null), undefined);
+});
+
+// ---- isLiveSnapshot: notes の検証(欄の新設。後方互換の読み替えを置かない方針) ----
+
+test("parseLiveSnapshotResult: notes に鮮度警告の本文が入っていれば保持する", () => {
+  const value = {
+    ok: true,
+    platform: "ios",
+    screen: { width: 402, height: 874 },
+    image: "AAAA",
+    elements: [],
+    notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+  };
+  assert.deepEqual(parseLiveSnapshotResult(value), value);
+});
+
+test("parseLiveSnapshotResult: notes が欠落/null/要素が非文字列なら undefined", () => {
+  const base = { ok: true, platform: "ios", screen: { width: 1, height: 1 }, image: "A", elements: [] };
+  assert.equal(parseLiveSnapshotResult(base), undefined, "notes 欠落");
+  assert.equal(parseLiveSnapshotResult({ ...base, notes: null }), undefined, "notes が null");
+  assert.equal(parseLiveSnapshotResult({ ...base, notes: "warning" }), undefined, "notes が配列でない");
+  assert.equal(parseLiveSnapshotResult({ ...base, notes: [1] }), undefined, "notes の要素が非文字列");
 });
 
 // ---- parseLiveActionResult ----
@@ -270,15 +294,53 @@ test("parseLiveServeEvent: kind=snapshot の成功/失敗を判別する", () =>
     screen: { width: 402, height: 874 },
     image: "AAAA",
     elements: [],
+    notes: [],
   };
   assert.deepEqual(parseLiveServeEvent(success), {
     kind: "snapshot",
-    result: { ok: true, platform: "ios", screen: { width: 402, height: 874 }, image: "AAAA", elements: [] },
+    result: { ok: true, platform: "ios", screen: { width: 402, height: 874 }, image: "AAAA", elements: [], notes: [] },
   });
   assert.deepEqual(parseLiveServeEvent({ kind: "snapshot", ok: false, error: "接続できません" }), {
     kind: "snapshot",
     result: { ok: false, error: "接続できません" },
   });
+});
+
+test("parseLiveServeEvent: kind=snapshot は notes(鮮度警告)を落とさない", () => {
+  const withNote = {
+    kind: "snapshot",
+    ok: true,
+    platform: "ios",
+    screen: { width: 402, height: 874 },
+    image: "AAAA",
+    elements: [],
+    notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+  };
+  assert.deepEqual(parseLiveServeEvent(withNote), {
+    kind: "snapshot",
+    result: {
+      ok: true,
+      platform: "ios",
+      screen: { width: 402, height: 874 },
+      image: "AAAA",
+      elements: [],
+      notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+    },
+  });
+});
+
+test("parseLiveServeEvent: kind=snapshot は notes 欠落なら undefined(後方互換の読み替えを置かない)", () => {
+  assert.equal(
+    parseLiveServeEvent({
+      kind: "snapshot",
+      ok: true,
+      platform: "ios",
+      screen: { width: 402, height: 874 },
+      image: "AAAA",
+      elements: [],
+    }),
+    undefined,
+  );
 });
 
 test("parseLiveServeEvent: kind=frame の成功/失敗/欠落を判別する", () => {
@@ -652,6 +714,7 @@ test("toSnapshotMessage: elements に formatElementLine と同じ line フィー
         frame: { x: 20, y: 780, width: 362, height: 48 },
       },
     ],
+    notes: [],
   };
   const message = toSnapshotMessage(snapshot);
   assert.equal(message.type, "snapshot");
@@ -664,6 +727,22 @@ test("toSnapshotMessage: elements に formatElementLine と同じ line フィー
   assert.equal(message.elements[0].frameText, "(20,780 362x48)");
   // 元の frame 情報も保持していること(ホバー枠オーバーレイに必要)
   assert.deepEqual(message.elements[0].frame, { x: 20, y: 780, width: 362, height: 48 });
+  assert.deepEqual(message.notes, []);
+});
+
+test("toSnapshotMessage: notes(鮮度警告)をそのまま webview メッセージへ運ぶ", () => {
+  const snapshot = {
+    ok: true,
+    platform: "ios",
+    screen: { width: 402, height: 874 },
+    image: "AAAA",
+    elements: [],
+    notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+  };
+  const message = toSnapshotMessage(snapshot);
+  assert.deepEqual(message.notes, [
+    "this screenshot may be stale: the element tree changed since the previous observation",
+  ]);
 });
 
 // ---- isLiveFromWebviewMessage ----

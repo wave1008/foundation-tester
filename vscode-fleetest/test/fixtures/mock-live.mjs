@@ -73,6 +73,7 @@ if (command === "list-devices") {
         kind: "snapshot",
         ok: false,
         error: "mock-live: --fail-all 指定によりスナップショット取得に失敗しました",
+        notes: [],
       });
       return;
     }
@@ -101,6 +102,7 @@ if (command === "list-devices") {
           frame: { x: 20, y: 200, width: 362, height: 44 },
         },
       ],
+      notes: [],
     });
   }
 

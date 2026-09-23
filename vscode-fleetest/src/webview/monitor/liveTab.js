@@ -43,6 +43,8 @@ const typeTextInput = document.getElementById('live-type-text');
 const actionError = document.getElementById('live-action-error');
 const actionErrorText = document.getElementById('live-action-error-text');
 const actionErrorClose = document.getElementById('live-action-error-close');
+const staleNotice = document.getElementById('live-stale-notice');
+const staleNoticeText = document.getElementById('live-stale-notice-text');
 const showBoxesToggle = document.getElementById('live-show-boxes');
 const elementsList = document.getElementById('live-elements-list');
 const oplogList = document.getElementById('live-oplog-list');
@@ -184,6 +186,18 @@ function showActionError(text) {
 // **利用者が消せる口** —— 自動で消えるのは host が復帰を検知した接続系の文言だけで、
 // ブリッジ接続拒否のように serve が返す文言は次の失敗で上書きされるまで残る。
 actionErrorClose.addEventListener('click', () => showActionError(''));
+
+// snapshot.notes(鮮度警告等。エラーではないので actionError とは別枠)。閉じる口は無く、
+// 次の観測で notes が空になれば自動で消える(applySnapshot/clearSnapshot から呼ぶ)。
+function showStaleNotice(notes) {
+  if (!notes || notes.length === 0) {
+    staleNotice.classList.remove('visible');
+    staleNoticeText.textContent = '';
+    return;
+  }
+  staleNoticeText.textContent = notes.join('\n');
+  staleNotice.classList.add('visible');
+}
 
 // ---- デバイス選択 ---------------------------------------------------------------
 
@@ -485,6 +499,7 @@ function clearSnapshot() {
   autoSnapshotRequested = false;
   hideHover();
   renderElements();
+  showStaleNotice([]); // 前のデバイスの鮮度警告を持ち越さない
 }
 
 function applySnapshot(message) {
@@ -492,6 +507,7 @@ function applySnapshot(message) {
   lastElements = message.elements;
   boxesStale = false; // 新しい木が来たので描いてよい
   autoSnapshotRequested = false;
+  showStaleNotice(message.notes);
   // 届いた一枚絵は**操作の結果そのもの**(host は tap のあとに撮って返す)。配信より新しいので
   // 常に前面へ出す —— 配信は静止画面でエンコードを止めるため、出さずに待つと次のキーフレームが
   // 来るまで古い絵が残る(実測 10 秒超。simstream の MaxKeyFrameIntervalDuration は 4 秒だが、

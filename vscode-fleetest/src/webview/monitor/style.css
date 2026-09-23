@@ -2744,6 +2744,21 @@ input[type="radio"]:focus-visible {
   opacity: 0.8;
 }
 #live-action-error-close:hover { opacity: 1; }
+/* action-error と同じ行の作法(flex row・pre-wrap)だが警告色にしてエラーと見分けを付ける
+   (#live-device-warning と同じトークン)。閉じるボタンは無い(次の観測で notes が空なら自動で消える)。 */
+#live-stale-notice {
+  flex: 0 0 auto;
+  display: none;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+  white-space: pre-wrap;
+  gap: 4px;
+  align-items: flex-start;
+}
+#live-stale-notice.visible { display: flex; }
+#live-stale-notice-label { flex: 0 0 auto; }
+#live-stale-notice-text { flex: 1 1 auto; min-width: 0; }
 /* 「アプリを起動」の右に並ぶトグル。ラベルと箱を1行に収める(ツールバーの gap で間が空く)。 */
 #panel-live .elements-header-toggle {
   display: flex;
