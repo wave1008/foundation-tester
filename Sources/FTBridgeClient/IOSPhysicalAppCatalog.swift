@@ -17,11 +17,20 @@ public enum IOSPhysicalAppCatalog {
         public let id: String
         public let name: String
         public let isUser: Bool
+        /// インストール先(`file:///private/var/containers/Bundle/Application/<UUID>/<Name>.app/`)。
+        /// 起動中プロセスの実行ファイルのパスと突き合わせて「どのアプリのプロセスか」を引くのに使う
+        /// (IOSPhysicalRunningApps)。devicectl が返さなければ nil
+        public let url: String?
 
         public init(id: String, name: String, isUser: Bool) {
+            self.init(id: id, name: name, isUser: isUser, url: nil)
+        }
+
+        public init(id: String, name: String, isUser: Bool, url: String?) {
             self.id = id
             self.name = name
             self.isUser = isUser
+            self.url = url
         }
     }
 
@@ -68,7 +77,8 @@ public enum IOSPhysicalAppCatalog {
         }
         let entries = apps.compactMap { entry -> App? in
             guard let id = entry["bundleIdentifier"] as? String else { return nil }
-            return App(id: id, name: (entry["name"] as? String) ?? id, isUser: !isSystemApp(id))
+            return App(id: id, name: (entry["name"] as? String) ?? id, isUser: !isSystemApp(id),
+                       url: entry["url"] as? String)
         }
         return entries.sorted { lhs, rhs in
             if lhs.isUser != rhs.isUser { return lhs.isUser }

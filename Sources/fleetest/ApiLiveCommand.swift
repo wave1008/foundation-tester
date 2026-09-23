@@ -127,7 +127,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         // セッションを「今 前面にあるもの」へ追従させる(LiveSessionFollower)。**iOS だけ**の補正で、
         // Android は木がアクティブウィンドウ・タップが画面座標なので何もしなくても画面に追従する
         let follower = driverOptions.resolvedPlatform == "ios"
-            ? LiveSessionFollower(udid: udid, log: { logStderr($0) }) : nil
+            ? LiveSessionFollower(udid: udid, physical: udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false,
+                                  log: { logStderr($0) }) : nil
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
         }

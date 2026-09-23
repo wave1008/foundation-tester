@@ -1,7 +1,8 @@
 // ライブ操作で「今 前面にあるアプリ」を決める純粋ロジック。
 //
 // **XCTest に前面アプリを返す API は無い**ので、次の2つを掛け合わせて採る:
-//   ① 起動中アプリの bundle ID(ホスト: `simctl spawn <udid> launchctl list` の UIKitApplication 行)
+//   ① 起動中アプリの bundle ID(ホスト: シミュレータは `simctl spawn <udid> launchctl list` の
+//      UIKitApplication 行、実機は devicectl の processes × apps = IOSPhysicalRunningApps)
 //   ② それぞれが前面か(ブリッジ: `POST /appstate` = XCUIApplication.state。公開 API)
 // ②単独では決まらない —— **SpringBoard は system shell で常に前面と答える**(実測 2026-09-22:
 // 設定アプリを開いた状態で springboard / Preferences の両方が true、他の起動中 9 アプリは false)。
@@ -45,12 +46,16 @@ enum FrontmostApp {
     /// 起動中アプリの一覧(`launchctl list` の出力全体)から、前面かを聞く候補を作る。
     /// 重複を畳み、聞いても無駄なものを落とす。**順序は入力のまま**(安定して同じ順で聞く)。
     static func candidates(launchctlOutput: String) -> [String] {
+        candidates(runningBundleIDs: launchctlOutput
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .compactMap { bundleID(fromLaunchctlLine: String($0)) })
+    }
+
+    /// 起動中アプリの bundle ID の列(実機: IOSPhysicalRunningApps)から候補を作る。規則は上と同じ
+    static func candidates(runningBundleIDs: [String]) -> [String] {
         var seen = Set<String>()
         var result: [String] = []
-        for line in launchctlOutput.split(separator: "\n", omittingEmptySubsequences: true) {
-            guard let bundleID = bundleID(fromLaunchctlLine: String(line)),
-                  !isExcluded(bundleID), seen.insert(bundleID).inserted
-            else { continue }
+        for bundleID in runningBundleIDs where !isExcluded(bundleID) && seen.insert(bundleID).inserted {
             result.append(bundleID)
         }
         return result

@@ -356,8 +356,44 @@ extension LiveSessionFollowerTests {
     func testFrontmostSearchHasABudget() throws {
         let source = try followerSource()
         XCTAssertTrue(source.contains("frontmostSearchBudgetSeconds"), "締切の定数があること")
-        let loop = try XCTUnwrap(source.range(of: "for bundleID in FrontmostApp.candidates"))
+        let loop = try XCTUnwrap(source.range(of: "for bundleID in candidates {"))
         let after = String(source[loop.upperBound...].prefix(300))
         XCTAssertTrue(after.contains("Date() >= deadline"), "1件ごとに締切を見ること: \(after)")
+    }
+
+    // MARK: - 実機の前面アプリ(devicectl 経由)
+
+    /// 実機に simctl は撃てない(候補が空 = 前面のアプリを見ていても springboard のまま = アプリの要素が
+    /// 1つも取れない。実地 2026-09-24: M1Ultra の iPhone wave で YouTube)。実機は devicectl の
+    /// processes × apps(IOSPhysicalRunningApps)で候補を採り、同じ「ちょうど1つ」の規則に通す。
+    /// デバイスが要る配線なのでソース走査で固定する
+    func testPhysicalDevicesEnumerateRunningAppsThroughDevicectl() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let follower = try String(contentsOf: root.appendingPathComponent("Sources/fleetest/LiveSessionFollower.swift"),
+                                  encoding: .utf8)
+        guard let search = follower.range(of: "private func frontmostApp(driver: AppDriver) async -> String? {") else {
+            return XCTFail("frontmostApp が見当たらない — テストを見直すこと")
+        }
+        let body = follower[search.upperBound...]
+        XCTAssertTrue(body.contains("if physical {"), "実機で分岐すること")
+        XCTAssertTrue(body.contains("IOSPhysicalRunningApps.running(udid: udid, apps: apps)"),
+                      "実機は devicectl の processes × apps で候補を採ること")
+        XCTAssertTrue(body.contains("FrontmostApp.candidates(launchctlOutput: listing.output)"),
+                      "シミュレータは従来どおり launchctl で採ること")
+        let command = try String(contentsOf: root.appendingPathComponent("Sources/fleetest/ApiLiveCommand.swift"),
+                                 encoding: .utf8)
+        XCTAssertTrue(command.contains("LiveSessionFollower(udid: udid, physical: udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false,"),
+                      "serve は実機かを SimulatorCatalog.isPhysical で解いて follower へ渡すこと")
+    }
+
+    func testRunningBundleIDCandidatesApplyTheSameExclusions() {
+        XCTAssertEqual(
+            FrontmostApp.candidates(runningBundleIDs: [
+                "com.apple.springboard", "com.google.ios.youtube", "com.apple.chrono.WidgetRenderer-Default",
+                "com.google.ios.youtube", "io.github.x.xctrunner", "com.apple.Preferences",
+            ]),
+            ["com.google.ios.youtube", "com.apple.Preferences"],
+            "除外(SpringBoard・ランナー・裏方)と重複を落とし、順序は入力のまま")
     }
 }

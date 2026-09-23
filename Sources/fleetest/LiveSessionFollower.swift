@@ -59,12 +59,19 @@ final class LiveSessionFollower {
     /// 直近に見つけた前面アプリ(preferred 以外)。次回はこれを1回聞くだけで済ませる。
     private var lastFrontmost: String?
 
-    /// 起動中アプリを列挙するための simctl の宛先。nil = 列挙しない(実機・未指定)
+    /// 起動中アプリを列挙するための宛先(シミュレータ: simctl / 実機: devicectl)。nil = 列挙しない
     private let udid: String?
+    /// 実機か(ApiLiveCommand が SimulatorCatalog.isPhysical で1回だけ解く)。列挙の口が違う ——
+    /// 実機に simctl を撃つと失敗して候補が空 = 前面のアプリを見ていても springboard を向いたままになり、
+    /// **アプリの要素が1つも取れない**(実地 2026-09-24: M1Ultra の iPhone wave で YouTube を表示中)
+    private let physical: Bool
+    /// 実機のインストール済みアプリ(bundle ID と url)。滅多に変わらないので最初の探索で1回だけ採る
+    private var physicalApps: [IOSPhysicalAppCatalog.App]?
     private let log: (String) -> Void
 
-    init(udid: String?, log: @escaping (String) -> Void) {
+    init(udid: String?, physical: Bool, log: @escaping (String) -> Void) {
         self.udid = udid
+        self.physical = physical
         self.log = log
     }
 
@@ -141,15 +148,36 @@ final class LiveSessionFollower {
         }
         lastFrontmost = nil
         guard let udid else { return nil }
-        guard let listing = try? Shell.run(
-            ["xcrun", "simctl", "spawn", udid, "launchctl", "list"], timeout: 10), listing.status == 0
-        else { return nil }
+        let candidates: [String]
+        if physical {
+            if physicalApps == nil {
+                do {
+                    physicalApps = try IOSPhysicalAppCatalog.apps(udid: udid)
+                } catch {
+                    // 失敗しても投げない(springboard へ倒す)が、黙ると「なぜアプリの要素が出ないか」を
+                    // 追えないので1行残す。次の探索でもう一度採る(nil のまま)
+                    log("could not list the installed apps of \(udid) — falling back to springboard: \(error.localizedDescription)")
+                    return nil
+                }
+            }
+            guard let apps = physicalApps else { return nil }
+            let running = IOSPhysicalRunningApps.running(udid: udid, apps: apps)
+            if running.isEmpty {
+                log("devicectl listed no running app on \(udid) — falling back to springboard")
+            }
+            candidates = FrontmostApp.candidates(runningBundleIDs: running)
+        } else {
+            guard let listing = try? Shell.run(
+                ["xcrun", "simctl", "spawn", udid, "launchctl", "list"], timeout: 10), listing.status == 0
+            else { return nil }
+            candidates = FrontmostApp.candidates(launchctlOutput: listing.output)
+        }
         // **探索に締切を置く** —— 1件あたりの問い合わせは普通ミリ秒だが、画面の状態によっては
         // 極端に遅くなる(実測 2026-09-22)。ライブ操作は人間の操作なので、待たせるくらいなら
         // 「見つからなかった」(= springboard へ倒す)ほうがよい。尽きたら打ち切る
         let deadline = Date().addingTimeInterval(Self.frontmostSearchBudgetSeconds)
         var foreground: [String] = []
-        for bundleID in FrontmostApp.candidates(launchctlOutput: listing.output) {
+        for bundleID in candidates {
             if Date() >= deadline {
                 log("frontmost search hit its budget — falling back to springboard")
                 return nil
