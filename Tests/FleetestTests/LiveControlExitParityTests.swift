@@ -20,6 +20,8 @@ final class LiveControlExitParityTests: XCTestCase {
         "isNoReadableWindow",
         // 画面が凍結して古いフレームを返し続けている(絵を信じてはいけない)
         "StaleFrameDetector",
+        // XCTest の a11y サーバが一時的に落ちている(環境要因。数秒で戻る)
+        "isAccessibilityTemporarilyDown",
     ]
 
     /// **コメントを落としてから走査する** —— 判定の名前は doc コメントにも書かれているので、

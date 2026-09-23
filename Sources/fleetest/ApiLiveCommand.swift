@@ -242,10 +242,29 @@ struct ApiLiveServe: AsyncParsableCommand {
         // そのまま返す)。ここで本人確認してから使う(以後の checkAndRestartIfStale も
         // この確認を経た宛先にしか触れない)
         let isInAppOnly = resolution.inApp?.endpoint.port == resolution.endpoint.port
-        guard let mismatch = await Self.identityMismatch(
-            endpoint: resolution.endpoint, requestedUDID: udid, physical: physical, isInApp: isInAppOnly
-        ) else {
+        let identity = await Self.portIdentity(
+            endpoint: resolution.endpoint, requestedUDID: udid, physical: physical, isInApp: isInAppOnly)
+        let mismatch: String
+        switch identity {
+        case .mine:
             return try await composeDriver(resolution: resolution, physical: physical, repoRoot: repoRoot)
+        case .mismatch(let detail):
+            mismatch = detail
+        case .silent:
+            // **応答が無いことを「この台のブリッジ」と読まない**(§18.7「不明と空きを混ぜない」の同型)。
+            // ただし **busy は正常**(XCUITest は駆動中 /status に答えない)なので、
+            // `/status` の代わりに**プロセスの実体**で占有者を見る —— **肯定的に別のデバイスと
+            // 読めたときだけ**掴むのをやめる。決めつけて進むと、この後の自動起動がそのポートへ
+            // 自分のブリッジを立て、占有者の生きたランナーを残骸として殺す
+            // (実地 2026-09-23: ブリッジを失った実機2台が既定ポート 8123 で殺し合った)。
+            // 利用者が --port で決めた宛先は従来どおり進む(指定を勝手に変えない)
+            guard driverOptions.port == nil,
+                  PortHolder.isHeldByAnotherDevice(port: resolution.endpoint.port, udid: udid) else {
+                return try await composeDriver(resolution: resolution, physical: physical,
+                                               repoRoot: repoRoot)
+            }
+            mismatch = "port \(resolution.endpoint.port) did not answer /status and is held by"
+                + " another device's process, so it is not the bridge of \(udid)"
         }
         guard driverOptions.port == nil else {
             // 利用者が --port で決めた宛先。勝手に変えず断る
@@ -294,10 +313,12 @@ struct ApiLiveServe: AsyncParsableCommand {
               let repoRoot, let udid else {
             return (xcui, resolution.endpoint.port, nil)
         }
-        // hybrid の in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない
-        if let mismatch = await Self.identityMismatch(
+        // hybrid の in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない。
+        // 無応答(.silent)は従来どおり素通し —— in-app は背面へ回ると答えないので、ここで断ると
+        // 通常の遷移で serve が開けなくなる
+        if case .mismatch(let detail) = await Self.portIdentity(
             endpoint: inApp.endpoint, requestedUDID: udid, physical: physical, isInApp: true) {
-            throw DriverError.bridgeIdentityMismatch(mismatch)
+            throw DriverError.bridgeIdentityMismatch(detail)
         }
         let inAppDriver = InAppDriver(repoRoot: repoRoot, udid: udid, port: inApp.endpoint.port)
         // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(MCP と同じ理由:
@@ -313,16 +334,27 @@ struct ApiLiveServe: AsyncParsableCommand {
         return (driver, resolution.endpoint.port, inApp.bundleID)
     }
 
-    /// endpoint が本当に `requestedUDID` の台か確かめる(判定は run 側4経路と同じ
-    /// FTCore.BridgeIdentityCheck の1箇所。二つ目の実装を書かない)。無応答(まだ居ない)は
-    /// nil(素通し)——その形は後続の接続拒否経路(LiveBridgeAutoStarter)が担う。
+    /// endpoint が本当に `requestedUDID` の台か(判定は run 側4経路と同じ
+    /// FTCore.BridgeIdentityCheck の1箇所。二つ目の実装を書かない)。
     /// **throw しない** —— 不一致をどう扱うか(断るか・乗り換えるか)は呼び出し元が
-    /// `--port` の明示有無で決めるため、ここは事実(mismatch の説明)を返すだけ
-    private static func identityMismatch(
+    /// `--port` の明示有無で決めるため、ここは事実だけを返す。
+    /// **「応答しない」は第3の値**(`.silent`)にする —— nil(= 一致)に畳むと、待受している
+    /// 他デバイスのブリッジを自分の宛先として掴み、自動起動がその占有者を残骸として殺す
+    enum PortIdentity: Equatable {
+        /// 応答し、この台のブリッジだった
+        case mine
+        /// 応答したが別の台だった(detail は利用者向けの説明)
+        case mismatch(String)
+        /// 応答しない(不在か、駆動中で答えられない)。どちらかは呼び手が
+        /// `PortHolder.isHeldByAnotherDevice`(プロセスの実体)で分ける
+        case silent
+    }
+
+    private static func portIdentity(
         endpoint: BridgeEndpoint, requestedUDID: String, physical: Bool, isInApp: Bool
-    ) async -> String? {
+    ) async -> PortIdentity {
         guard let status = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 3)
-            .status(timeout: 3) else { return nil }
+            .status(timeout: 3) else { return .silent }
         let expected = BridgeIdentityCheck.Expected(
             port: endpoint.port, udid: requestedUDID, physical: physical,
             engine: isInApp ? "inapp" : "xcuitest")
@@ -331,9 +363,9 @@ struct ApiLiveServe: AsyncParsableCommand {
             expected: expected, status: status,
             remedy: "Point --port at this device's bridge, or omit --port and let the tools find it"
                 + " (they start one when the device has none).") {
-            return detail
+            return .mismatch(detail)
         }
-        return nil
+        return .mine
     }
 
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
@@ -425,6 +457,9 @@ struct ApiLiveServe: AsyncParsableCommand {
         if DriverError.isNoReadableWindow(error) {
             return message + Self.noReadableWindowHint
         }
+        if SessionRecoveryDriver.isAccessibilityTemporarilyDown(error) {
+            return message + Self.accessibilityOutageHint
+        }
         if case DriverError.bridgeUnreachable(let context, _) = error, context.engine == .iosXCUITest {
             let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: try? RepoRoot.find())
             message += Self.bridgeUnreachableHint(probe: probe)
@@ -442,6 +477,15 @@ struct ApiLiveServe: AsyncParsableCommand {
         + " own (usually within 13-37s). Doing the exact same thing again immediately will most"
         + " likely fail the same way, so wait a few seconds first. Bringing the app back to the"
         + " foreground (send it Home, then reopen it) tends to clear it faster."
+
+    /// XCTest の a11y サーバが一時的に落ちている(500 + kAXErrorAPIDisabled)ときの人間向けヒント。
+    /// 判定は `SessionRecoveryDriver.isAccessibilityTemporarilyDown`(run の再キューと同じ1箇所)で、
+    /// 文言だけライブ操作の利用者向けに持つ。読みは既に数秒ぶん撃ち直した後なので、
+    /// できるのは「少し待つ」だけ —— これが無いと生の XCTest のエラーだけが画面に出る
+    static let accessibilityOutageHint =
+        " The device's accessibility server is momentarily down — an environment fault, not a"
+        + " problem with the app or this tool. The read was already retried for a few seconds."
+        + " Wait a moment and try again; if it keeps happening, restart the simulator/device."
 
     /// `BridgeDiscovery.probeStatus` の結果ごとの文言(純粋関数)。**固まり(transportFailed)と
     /// busy(timedOut)で対処が逆になる**のが要点 —— 固まりは建て直しが要り、busy は待てば直る。

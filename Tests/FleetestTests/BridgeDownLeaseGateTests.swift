@@ -4,6 +4,7 @@
 // (--port は `DeviceBooter.deviceInUseRefusal` をそのまま使うので、ここでは単体扱いも
 // decide に1要素の targets を渡して確かめる)。
 
+import FTBridgeClient
 import XCTest
 @testable import fleetest
 import FTAndroid
@@ -89,7 +90,8 @@ final class BridgeDownLeaseGateTests: XCTestCase {
     /// 「駆動中で忙しい」でも起きる。後者を素通しすると走っている MCP / run を無言で壊す
     func testRefusesPortsThatListenButDidNotAnswer() {
         guard let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
-            ports: [8153], force: false, isBound: { $0 == 8153 }) else {
+            ports: [8153], force: false,
+            probe: { $0 == 8153 ? .timedOut : .notBound }) else {
             return XCTFail("待受しているポートは断るべき")
         }
         XCTAssertTrue(refusal.contains("8153"), refusal)
@@ -99,19 +101,34 @@ final class BridgeDownLeaseGateTests: XCTestCase {
     /// 待受もしていない = 止めるものが無い。ここで断ると**回復手段を奪う**ので通す
     func testDoesNotRefusePortsThatAreNotEvenListening() {
         XCTAssertNil(BridgeDownRefusal.unresponsiveButBoundRefusal(
-            ports: [8153], force: false, isBound: { _ in false }))
+            ports: [8153], force: false, probe: { _ in .notBound }))
+    }
+
+    /// **固まった転送(ブリッジは死に、iproxy だけがポートを握っている)は断らない** ——
+    /// 止めることが唯一の回復手段なのに「待て」と言い続けると袋小路になる
+    /// (実地 2026-09-23: 画面ロックで死んだ実機のトンネルが握ったポートを延々と断っていた)
+    func testDoesNotRefuseAWedgedTransport() {
+        XCTAssertNil(BridgeDownRefusal.unresponsiveButBoundRefusal(
+            ports: [8153], force: false, probe: { _ in .transportFailed }))
+    }
+
+    /// 応答したポートはこの門の対象外(保持者の照合は別の門が担う)
+    func testDoesNotRefuseAnsweringPorts() {
+        XCTAssertNil(BridgeDownRefusal.unresponsiveButBoundRefusal(
+            ports: [8153], force: false, probe: { _ in .answered }))
     }
 
     /// `--force` は押し切れる(固まったブリッジを止める唯一の口を残す)
     func testForcePassesThrough() {
         XCTAssertNil(BridgeDownRefusal.unresponsiveButBoundRefusal(
-            ports: [8153], force: true, isBound: { _ in true }))
+            ports: [8153], force: true, probe: { _ in .timedOut }))
     }
 
     /// 複数ポート(--all)は待受しているものだけを名指しする
     func testNamesOnlyTheListeningPorts() {
         guard let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
-            ports: [8123, 8153, 8154], force: false, isBound: { $0 != 8123 }) else {
+            ports: [8123, 8153, 8154], force: false,
+            probe: { $0 == 8123 ? .notBound : .timedOut }) else {
             return XCTFail("待受しているポートは断るべき")
         }
         XCTAssertFalse(refusal.contains("8123"), refusal)

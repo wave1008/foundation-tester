@@ -61,3 +61,24 @@ final class ApiLiveConnectionHintTextTests: XCTestCase {
         XCTAssertTrue(hint.lowercased().contains("foreground"), hint)
     }
 }
+
+/// a11y サーバの一時的な停止(500 + kAXErrorAPIDisabled)の出口。
+/// run は同じ判定で結果を捨てて振り直すが、MCP とライブ操作は人・エージェントが次の一手を
+/// 打つ場なので**環境要因であることと「待って再試行」**を言う(実地 2026-09-23 の負荷テスト:
+/// 生の `Error Domain=com.apple.dt.xctest.automation-support.error Code=8 …` だけが返っていた)。
+final class ApiLiveAccessibilityOutageHintTests: XCTestCase {
+
+    func testHintSaysItIsAnEnvironmentFaultAndToWait() {
+        let hint = ApiLiveServe.accessibilityOutageHint
+        XCTAssertTrue(hint.contains("environment"), hint)
+        XCTAssertTrue(hint.lowercased().contains("wait"), hint)
+        // **アプリの不具合と読ませない**(run の分類と同じ立場)
+        XCTAssertTrue(hint.contains("not a"), hint)
+    }
+
+    /// 判定は共有・文言は呼び手ごと: MCP の文言をそのまま写していない
+    func testWordingIsNotTheMCPOne() {
+        XCTAssertFalse(ApiLiveServe.accessibilityOutageHint.contains("ft_"),
+                       "ライブ操作の文言に MCP のツール名を混ぜない")
+    }
+}

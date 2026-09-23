@@ -21,6 +21,53 @@ public enum PortHolder {
         lookup(port: port).map { "pid \($0.pid): \($0.command)" }
     }
 
+    /// そのポートを握っているのが**実機の USB トンネル(iproxy)だけ**か。
+    /// ブリッジが死んでもトンネルは残るので、この形のポートは誰から見ても「使用中」に見えるのに
+    /// 誰も駆動できない(doctor がこれを見落として「異常なし」と言っていた。実地 2026-09-23)。
+    /// **プロセスの実体で判定する** —— 応答の速さ(`probeStatus`)で決めると、駆動中で答えない
+    /// だけの in-app ブリッジまで拾う
+    public static func isHeldByTunnelOnly(port: UInt16) -> Bool {
+        guard let (_, command) = lookup(port: port) else { return false }
+        return commandIsIproxyForPort(command, port: port)
+    }
+
+    /// ポートを握っているのが**トンネルだけ**なら止める(`isHeldByTunnelOnly` と同じ判定)。
+    /// 戻り値は止めたか。**名指しで `bridge down --port N` された経路からだけ**呼ぶ ——
+    /// 台帳を辿る通常の停止(`IOSDeviceTransport.stopIproxy`)で足りるときはそちらが先に効く
+    public static func stopTunnelHolder(port: UInt16) -> Bool {
+        guard let (pid, command) = lookup(port: port),
+              commandIsIproxyForPort(command, port: port) else { return false }
+        terminateThenKill(pid: pid)
+        return true
+    }
+
+    /// `/status` が答えないポートの占有者が**別のデバイスのもの**か(プロセスの実体から読む)。
+    /// **肯定的に別デバイスと読めたときだけ** true —— 占有者が読めない・識別子が出てこない形は
+    /// false(= 自分のブリッジが駆動中で答えられないだけ、という従来の扱い)。
+    ///
+    /// 用途はライブ操作の宛先決定: 既定ポートが「待受しているが答えない」とき、
+    /// **自分の busy なブリッジ**なら待てばよく、**別のデバイスのもの**なら掴んではいけない
+    /// (掴むと自動起動がそのポートへ自分のブリッジを立て、占有者を残骸として殺す)
+    public static func isHeldByAnotherDevice(port: UInt16, udid: String) -> Bool {
+        guard let listener = describe(port: port) else { return false }
+        let tokens = RunnerDestination.udidTokens(inCommand: listener)
+        guard !tokens.isEmpty else { return false }
+        return !tokens.contains { $0.caseInsensitiveCompare(udid) == .orderedSame }
+    }
+
+    /// 記録された in-app ブリッジ(`.inapp`)から見て、**今そのポートを握っているのが別のデバイスか**。
+    /// 判定は**肯定的に別のシミュレータと読めたときだけ** true —— 実機の in-app(ポートを握るのは
+    /// iproxy)や、形の分からない占有者は false(= 従来どおり「生きている」側)に倒す。
+    ///
+    /// これが要るのは、台帳の生死を「誰かが待受しているか」だけで決めていたため:
+    /// 別のデバイスのブリッジがそのポートを取ると、**古い `.inapp` が生き続け**、供給が
+    /// 「別アプリに注入された in-app ブリッジ」と読んで**無関係なデバイスのアプリを terminate** する
+    /// (実地 2026-09-23 の負荷テスト)
+    public static func listenerIsAnotherSimulator(listener: String, recordedUDID: String) -> Bool {
+        guard listener.contains("/CoreSimulator/Devices/") else { return false }
+        return !listener.contains("/CoreSimulator/Devices/\(recordedUDID)/")
+    }
+
     /// lsof → ps で LISTEN しているプロセスを引く。lsof が見つけた直後に死んだ等は nil
     private static func lookup(port: UInt16) -> (pid: Int32, command: String)? {
         guard let lsof = try? Shell.run(["lsof", "-nP", "-tiTCP:\(port)", "-sTCP:LISTEN"]),
@@ -66,7 +113,9 @@ public enum PortHolder {
     /// それ以外(.foreign)は kill しない。
     /// - ownerUDID: 呼び手が「今回このポートに供給しようとしているデバイス」の UDID を分かって
     ///   いれば渡す。既定 nil = iproxy 分岐は常に .foreign(確認できない資産は殺さない安全側)。
-    ///   in-app/xcodebuild 分岐の判定には使わない(記録済みの .inapp/xctestrun パス一致で足りる)
+    ///   xcodebuild 分岐では**肯定的に別デバイスと読めた回だけ** .foreign へ倒す
+    ///   (RunnerDestination。xctestrun のファイル名はポートしか持たないので、同じポートに居る
+    ///   別デバイスの生きたランナーを残骸として殺していた)。in-app 分岐では使わない
     public static func stopIfOwnedBridge(port: UInt16, stateDir: URL,
                                          derivedDataPath: URL,
                                          ownerUDID: String? = nil) -> PortHolderOutcome {
@@ -90,6 +139,12 @@ public enum PortHolder {
         let xctestrunPath = derivedDataPath
             .appendingPathComponent("Build/Products/FleetestRunner-\(port).xctestrun").path
         if command.contains("xcodebuild"), command.contains(xctestrunPath) {
+            // **別のデバイスのランナーは残骸ではない**(killOrphanRunners と同じ判定)。
+            // 照合できるのは呼び手が宛先を知っているときだけなので、ownerUDID が無ければ従来どおり
+            if let ownerUDID, let other = RunnerDestination.belongsToOtherDevice(
+                command: command, ourDevice: ownerUDID) {
+                return .foreign(description: "another device's xcuitest runner (udid \(other))")
+            }
             terminateThenKill(pid: pid)
             return waitForRelease(port: port, description: description)
         }

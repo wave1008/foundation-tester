@@ -53,7 +53,14 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .noFreePort(let scanned):
-            return "no free port (scanned \(scanned.lowerBound)-\(scanned.upperBound))"
+            // **次の一手を添える** —— この失敗は run ごと落とすのに、「何が塞いでいるか」も
+            // 「どう空けるか」も言っていなかった(実地 2026-09-23 の負荷テスト: フル編成 +
+            // MCP のセッション + 実機のトンネルで 32 ポートが埋まり、`--broadcast` が全滅した)。
+            // 窓は1台あたり最大2本(in-app + xcuitest)なので、台数が増えると普通に届く
+            return "no free port (scanned \(scanned.lowerBound)-\(scanned.upperBound));"
+                + " every port in the bridge window is taken (a device can hold two: in-app and"
+                + " xcuitest). `fleetest bridge status` lists them, `fleetest doctor` names"
+                + " leftovers whose bridge is gone, and `fleetest bridge down --port <n>` frees one"
         case .notReady(let port, let underlying):
             // localizedDescription を使う。素の enum を補間すると
             // addressNotAnnounced(port: 8133, logPath: "...", blocker: Optional("..."))
@@ -194,6 +201,65 @@ enum StaleLedgerSweep {
     /// (どの UDID 向けだったかに関わらず死んでいれば消す。生きていれば別 UDID 向けでも
     /// 触らない = isIproxyRunning が実際に使う際の張り替えに任せる)。生存判定は pid だけ
     /// (ProcessLiveness.isAlive。素の kill(pid,0) は禁止)
+    /// **起動しきれないまま生き続けているランナーを止める**。
+    /// 起動した側のプロセスが消えると(拡張は応答の無い `api live serve` を kill→respawn する)、
+    /// `xcodebuild` は**宛先が用意できるのを永久に待つ**("Run Destination Preflight: Waiting for
+    /// the destination to become ready")。ロックされた実機のように二度と用意できない宛先だと、
+    /// 試行のたびに1本ずつ積み上がり、ポート・DerivedData・CPU を握ったまま誰も片付けない
+    /// (実地 2026-09-23 の負荷テスト: 同じ実機向けのランナーが **10 本**溜まり、
+    /// トンネルの残骸と合わせて採番の窓 32 ポートを埋め尽くした)。
+    ///
+    /// 判定は既存の `StartingRunnerVerdict.decide` をそのまま使う(二つ目の実装を書かない):
+    /// **待受していない**(= まだ何も提供していない)かつ **生存が起動予算を超えている**かつ
+    /// **起動ログが予算ぶん伸びていない**ときだけ止める —— 起動中のブリッジはログが伸び続けるので
+    /// 巻き込まない。**busy なブリッジは待受している**ので最初の条件で外れる
+    static func sweepStuckStartingRunners(repoRoot: URL, log: (String) -> Void = { _ in }) {
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return }
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "pid" {
+            guard let port = UInt16(entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: "")),
+                let pidText = try? String(contentsOf: entry, encoding: .utf8),
+                let pid = Int32(pidText.trimmingCharacters(in: .whitespacesAndNewlines)),
+                BridgeLauncher.isOurRunner(pid: pid, port: port),
+                !BridgeDiscovery.isBound(port: port, repoRoot: repoRoot) else { continue }
+            // physical は DerivedData の別だけで決まる(stop() は kind で分岐しない)ので false でよい
+            let launcher = BridgeLauncher(repoRoot: repoRoot, port: port, physical: false)
+            guard StartingRunnerVerdict.decide(
+                elapsed: launcher.runnerElapsed(), quietFor: launcher.logQuietFor(),
+                budget: BridgeLauncher.startupTimeoutSeconds) == .restart else { continue }
+            guard BridgeLauncher.reapRunnerProcess(pid: pid) else { continue }
+            try? FileManager.default.removeItem(at: entry)
+            log("🔧 stopped a runner on port \(port) that never became ready"
+                + " (it was still waiting for its destination)")
+        }
+    }
+
+    /// **ブリッジを失ったトンネルを止める**(`iproxy-<port>.pid` の掃除とは別物)。
+    /// 実機の起動が途中で落ちる・起動した側のプロセスが kill される(拡張は応答の無い
+    /// `api live serve` を kill→respawn する)と、**トンネルだけがポートを握ったまま残る**。
+    /// 台帳も残らない形があり(`stopIproxy` は pid ファイルを消してからでも殺し損ねる)、
+    /// そうなると誰も片付けられないまま採番の窓(32 ポート)を1つずつ食い潰す ——
+    /// 実地 2026-09-23 の負荷テストで窓が埋まり `--broadcast` が `no free port` で全滅した。
+    ///
+    /// 対象は**ブリッジの台帳が1つも無いポートで、占有者がトンネルだけ**のとき
+    /// (`PortHolder.isHeldByTunnelOnly`)。起動中のブリッジは `.pid` を**トンネルより先に**
+    /// 書く(`executeBridge` / `LiveBridgeAutoStarter.launchBridge` とも startDetached → establish の順)
+    /// ので、進行中の起動を巻き込まない
+    static func sweepTunnelOnlyPorts(portRange: ClosedRange<UInt16>, stateDir: URL,
+                                     log: (String) -> Void = { _ in }) {
+        for port in portRange {
+            let pidPath = stateDir.appendingPathComponent("bridge-\(port).pid")
+            let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)
+            guard !FileManager.default.fileExists(atPath: pidPath.path),
+                  !FileManager.default.fileExists(atPath: inappPath.path),
+                  PortHolder.stopTunnelHolder(port: port) else { continue }
+            log("🔧 stopped a leftover USB tunnel on port \(port) (its bridge is gone)")
+        }
+    }
+
     static func sweepIproxyPidFiles(stateDir: URL) {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return }
@@ -526,6 +592,14 @@ public struct BridgeProvisioner {
         BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
         BridgeLauncher.sweepOrphanResultBundles(repoRoot: repoRoot)
         StaleLedgerSweep.sweepIproxyPidFiles(stateDir: stateDir)
+        // **ブリッジを失ったトンネル**も同じ入口で片付ける(残すと採番の窓を食い潰す)。
+        // 静的メソッドなので窓は既定の走査範囲を使う(呼び手の portRange は採番用の絞り込み)
+        StaleLedgerSweep.sweepTunnelOnlyPorts(portRange: BridgeDiscovery.portRange,
+                                              stateDir: stateDir,
+                                              log: { ConsoleOut.err($0) })
+        // **起動しきれないランナー**も同じ入口で(残すとポートと CPU を握ったまま積み上がる)
+        StaleLedgerSweep.sweepStuckStartingRunners(repoRoot: repoRoot,
+                                                   log: { ConsoleOut.err($0) })
 
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return }
@@ -551,7 +625,16 @@ public struct BridgeProvisioner {
             // .pid だけのポートは sweepStalePidFiles が既に判定済み(何もすることが無い)
             guard hasInApp || hasEndpoint || hasDevice || hasToolchain else { continue }
 
-            let inappListening = hasInApp && PortHolder.describe(port: port) != nil
+            // **「誰かが待受している」だけでは in-app ブリッジの生存と言えない** ——
+            // 別のデバイスのブリッジがこのポートを取っていると古い `.inapp` が生き続け、
+            // 供給が「別アプリに注入された in-app ブリッジ」と読んで無関係なデバイスのアプリを
+            // terminate する(実地 2026-09-23)。**肯定的に別のシミュレータと読めた回だけ**外す
+            let inappListener = hasInApp ? PortHolder.describe(port: port) : nil
+            let inappListening = inappListener.map { listener in
+                InAppBridgeState.read(at: inappPath).map {
+                    !PortHolder.listenerIsAnotherSimulator(listener: listener, recordedUDID: $0.udid)
+                } ?? true
+            } ?? false
             let stale = StaleLedgerSweep.decide(.init(
                 hasPid: hasPid, pidAlive: hasPid,
                 hasInApp: hasInApp, inappListening: inappListening,

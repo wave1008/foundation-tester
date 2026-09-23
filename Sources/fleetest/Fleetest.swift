@@ -413,9 +413,14 @@ struct Doctor: AsyncParsableCommand {
         let stateDir = root.appendingPathComponent(".fleetest")
         var findings: [String] = []
         var reaped: [String] = []
+        // 応答しなかったポート。**「答えない = 何も居ない」ではない** —— ブリッジが死んで
+        // 転送役(実機なら iproxy)だけがポートを握っている形は /status に答えないので、
+        // この走査からは丸ごと消えて「異常なし」と報告されていた(実地 2026-09-23 の負荷テスト:
+        // 画面ロックで死んだ実機のトンネルが採番範囲のポートを握ったまま、doctor は緑だった)
+        var silentPorts: [UInt16] = []
         for port in BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31) {
             guard let status = BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
-            else { continue }
+            else { silentPorts.append(port); continue }
             let pidPath = stateDir.appendingPathComponent("bridge-\(port).pid")
             let inAppPath = InAppBridgeState.url(stateDir: stateDir, port: port)
             let hasPid = FileManager.default.fileExists(atPath: pidPath.path)
@@ -464,6 +469,14 @@ struct Doctor: AsyncParsableCommand {
                     + "Kill the process from `lsof -ti :\(port)`; on iOS also run "
                     + "`xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner`")
             }
+        }
+        // **残っているのがトンネルだけのポート**を足す。判定は**プロセスの実体**で行う ——
+        // 応答の速さ(`probeStatus`)で決めると、駆動中で /status に答えないだけの in-app
+        // ブリッジまで「固まり」として並べてしまう(実測: run 中に 8 ポートが誤って並んだ)
+        for port in silentPorts where PortHolder.isHeldByTunnelOnly(port: port) {
+            findings.append("   - port \(port) — only a USB tunnel (iproxy) is holding this port;"
+                + " its bridge is gone (a dead runner leaves this behind, and the port then looks"
+                + " occupied to everything else). Run `fleetest bridge down --port \(port)`")
         }
         if !reaped.isEmpty {
             ConsoleOut.out("✂️ Stopped bridges that will not be reused:")
@@ -799,12 +812,14 @@ struct Bridge: AsyncParsableCommand {
                 // **応答しなかったポートは「死んでいる」とは限らない** —— 駆動中の XCUITest は
                 // /status を返さないので、走査に載らないまま止めると run / MCP を無言で壊す
                 // (実地 2026-09-22)。待受しているものだけ断る(待受も無ければ通す = 回復手段を残す)
+                let silentPorts = BridgeDiscovery.portRange.filter { candidate in
+                    !found.contains(where: { $0.port == candidate })
+                }
+                // **busy と「固まった転送」を分ける**ので isBound では足りない(§44.1 の4値)
+                let silentProbes = await BridgeDiscovery.probeStatuses(ports: silentPorts, repoRoot: root)
                 if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
-                    ports: BridgeDiscovery.portRange.filter { candidate in
-                        !found.contains(where: { $0.port == candidate })
-                    },
-                    force: force,
-                    isBound: { BridgeDiscovery.isBound(port: $0, repoRoot: root) }) {
+                    ports: silentPorts, force: force,
+                    probe: { silentProbes[$0] ?? .notBound }) {
                     ConsoleOut.out("❌ \(refusal)")
                     throw ExitCode(1)
                 }
@@ -826,11 +841,13 @@ struct Bridge: AsyncParsableCommand {
                 // 返さない)。鍵(udid)が引けないので lease も照合できず、そのまま止めると走っている
                 // run / MCP セッションを無言で壊す(実地 2026-09-22)。待受しているなら断り、
                 // 待受も無ければ従来どおり通す(固まったブリッジを止める手段を奪わない)
-                } else if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
-                    ports: [port], force: force,
-                    isBound: { BridgeDiscovery.isBound(port: $0, repoRoot: root) }) {
-                    ConsoleOut.out("❌ \(refusal)")
-                    throw ExitCode(1)
+                } else {
+                    let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: root)
+                    if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
+                        ports: [port], force: force, probe: { _ in probe }) {
+                        ConsoleOut.out("❌ \(refusal)")
+                        throw ExitCode(1)
+                    }
                 }
                 // physical は stop() が見ない(kind を知らない経路からも止められるよう、
                 // stop() 側が条件分岐しない宣言をしている)ので false でよい

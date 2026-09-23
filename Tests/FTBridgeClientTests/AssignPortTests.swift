@@ -96,6 +96,14 @@ final class AssignPortTests: XCTestCase {
             guard case BridgeProvisionerError.noFreePort = error else {
                 return XCTFail("noFreePort を期待: \(error)")
             }
+            // **次の一手を添える** —— この失敗は run ごと落とすのに、何が塞いでいるかも
+            // どう空けるかも言っていなかった(実地 2026-09-23: フル編成 + MCP + 実機の
+            // トンネルで窓が埋まり `--broadcast` が全滅)
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("8123-8125"), message)
+            XCTAssertTrue(message.contains("bridge status"), message)
+            XCTAssertTrue(message.contains("doctor"), message)
+            XCTAssertTrue(message.contains("bridge down --port"), message)
         }
     }
 

@@ -27,8 +27,8 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         guard let resolveRange = code.range(of: "XCUIBridgeResolver.resolve(") else {
             return XCTFail("XCUIBridgeResolver.resolve が見当たらない")
         }
-        guard let verifyRange = code.range(of: "Self.identityMismatch(") else {
-            return XCTFail("BridgeIdentityCheck による本人確認(identityMismatch)を呼んでいない"
+        guard let verifyRange = code.range(of: "Self.portIdentity(") else {
+            return XCTFail("BridgeIdentityCheck による本人確認(portIdentity)を呼んでいない"
                 + " — 別デバイスの生きたブリッジを黙って掴んで操作を撃つ(実地 L1)")
         }
         XCTAssertTrue(resolveRange.upperBound < verifyRange.lowerBound,
@@ -45,9 +45,9 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
     /// **`--port` 明示時は断る**: 利用者が決めた宛先を勝手に変えない
     func testExplicitPortMismatchIsRefused() throws {
         let code = try source("Sources/fleetest/ApiLiveCommand.swift")
-        guard let identityRange = code.range(of: "guard let mismatch = await Self.identityMismatch(")
+        guard let identityRange = code.range(of: "let identity = await Self.portIdentity(")
         else {
-            return XCTFail("identityMismatch の呼び出しが見当たらない")
+            return XCTFail("portIdentity の呼び出しが見当たらない")
         }
         guard let portGuardRange = code.range(
             of: "guard driverOptions.port == nil else {", range: identityRange.upperBound..<code.endIndex)
@@ -107,6 +107,25 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
                       "occupied 集合に既定ポート自身も入れること")
         XCTAssertTrue(freePortCall.contains("found.map"),
                       "occupied 集合に scan で見つかった生きているポートも入れること")
+    }
+
+    /// **無応答を「一致」に畳まない**(実地 2026-09-23): 既定ポートへのフォールバックで、
+    /// 誰かが待受しているのに /status が答えないポートは、この台のブリッジと決めつけない。
+    /// 決めつけると自動起動がそのポートへ自分のブリッジを立て、占有者の生きたランナーを
+    /// 残骸として殺す(ブリッジを失った実機2台が既定ポート 8123 で殺し合った)
+    func testSilentPortIsNotClaimedOnTheFallbackPort() throws {
+        let code = try source("Sources/fleetest/ApiLiveCommand.swift")
+        XCTAssertTrue(code.contains("case silent"),
+                      "応答しないポートを第3の値として持つこと(nil に畳むと「一致」と読まれる)")
+        guard let silentRange = code.range(of: "case .silent:") else {
+            return XCTFail("無応答の分岐が無い")
+        }
+        let branch = String(code[silentRange.upperBound...].prefix(900))
+        XCTAssertTrue(branch.contains("driverOptions.port == nil"),
+                      "--port 明示時は従来どおり進むこと(駆動中の busy は正常)")
+        XCTAssertTrue(branch.contains("PortHolder.isHeldByAnotherDevice("),
+                      "**別のデバイスが握っていると読めたときだけ**掴むのをやめること"
+                      + " —— 単なる待受で断ると、自分の busy なブリッジを見捨てて2本目を立てる")
     }
 
     /// hybrid の in-app 側(別ポート)も本人確認する——xcuitest 側だけでは検分できない

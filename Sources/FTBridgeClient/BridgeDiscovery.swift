@@ -160,6 +160,24 @@ public enum BridgeDiscovery {
             ? .transportFailed : .timedOut
     }
 
+    /// 複数ポートの `probeStatus` を**並列に**撃つ(1ポートずつ直列に撃つと、上限 2 秒 × ポート数を
+    /// 払う)。呼び手(`bridge down` の門)は純粋関数へ結果だけを渡したいので、ここで表にして返す
+    public static func probeStatuses(
+        ports: [UInt16], repoRoot: URL?, timeoutSeconds: Double = 2
+    ) async -> [UInt16: StatusProbe] {
+        await withTaskGroup(of: (UInt16, StatusProbe).self) { group in
+            for port in ports {
+                group.addTask {
+                    (port, await probeStatus(port: port, repoRoot: repoRoot,
+                                             timeoutSeconds: timeoutSeconds))
+                }
+            }
+            var result: [UInt16: StatusProbe] = [:]
+            for await (port, probe) in group { result[port] = probe }
+            return result
+        }
+    }
+
     /// 範囲を並列に走査して応答した全ポートを返す
     public static func scan(excluding preferred: UInt16, repoRoot: URL?) async -> [Found] {
         await withTaskGroup(of: Found?.self) { group in

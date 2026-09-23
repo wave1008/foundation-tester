@@ -346,8 +346,11 @@
   あちらに足すと run が建てられなくなる。**宛先が引けないときは通す**(無応答のブリッジを
   止められないと回復手段が無くなる)**が、「応答しない」を「死んでいる」と読まない** ——
   駆動中の XCUITest は操作の間 /status を返さない(quiescence 待ちで数十秒ブロックする実測がある)ので、
-  **走査に載らないポートは待受(`BridgeDiscovery.isBound`)を見て、待受しているなら断る**
-  (`BridgeDownRefusal.unresponsiveButBoundRefusal`。`--port` / `--all` の両経路。押し切るのは `--force`)。
+  **走査に載らないポートは `BridgeDiscovery.probeStatus` の4値で見て、断るのは本当に busy
+  (`.timedOut`)のときだけ**(`BridgeDownRefusal.unresponsiveButBoundRefusal`。`--port` / `--all` の
+  両経路。押し切るのは `--force`)。**「固まった転送」(`.transportFailed` = ブリッジが死んで
+  iproxy だけがポートを握る)は断らない** —— 止めることが唯一の回復手段なのに「待て」と言い続ける
+  袋小路になる(実地 2026-09-23 → maintainer-notes §46.4)。複数ポートは `probeStatuses` で並列に撃つ。
   鍵(udid)が引けない = lease も照合できないので、**いちばん使用中のときだけ門が開く**という
   逆向きの穴になっていた(実地 2026-09-22: MCP が操作中のブリッジが無言で止まり、そのセッションは
   「no running bridge」しか返さなくなった → maintainer-notes §42.5)。待受も無ければ従来どおり通す
@@ -889,7 +892,12 @@
   **findImages もラベルの見本を全部使う**(Shirates は1枚 = shirates-parity.md の差分)。特徴量は計算の回数だけが
   費用(大きさ・並列で変わらない)なので、候補の特徴量は走査の中で使い回し(`FindImage.CandidatePrints`)、
   見本の特徴量は `TemplatePrintStore`(`<project>/.fleetest/vision/template-prints.json`)に永続化する ——
-  **中身の sha256 と OS の版で差分更新・書くのは門を通った特徴量だけ・門で落ちたら消す**(docs/performance-tuning.md §3.30)
+  **中身の sha256 と OS の版で差分更新・書くのは門を通った特徴量だけ・門で落ちたら消す**(docs/performance-tuning.md §3.30)。
+  **掴めなかったときの「飾りの名前」(`<image "…": not found>`)は利用者が書いたセレクタではないので
+  構文検証に掛けない**(`FTElement.placeholderSelector` の `structured: true`)—— 掛けると連鎖した
+  アサーションが `invalid selector syntax` で落ち、**書いた本人のセレクタを誤って名指し**する。
+  dry-run は画像を探せないので必ずこの形になり、**画像で探す手を含むプロジェクトは dry-run が丸ごと赤**
+  になっていた(実地 2026-09-23 → maintainer-notes §46.6)
 - **in-app のスクリーンショットは、自前描画(`isSelfRendered`)で木が絵より先に進んでいる間は撮らない**
   (`InAppRenderCatchUp`・v117)。操作を起こす2経路(`tapByRef` / `performSettlingIfMoved`)が直前に画素と木の
   指紋を控え、`/screenshot` は**木が変わったのに画素が控えのままの間だけ**待つ。**遷移の完了は待たない**
@@ -970,6 +978,12 @@
   **ライブ操作の文言は人間向け**(拡張の UI を触っている人が読む)なので、MCP のエージェント向けの
   文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
   `notes` 欄と ProtocolVersion、拡張の表示まで通す
+- **宛先(udid/serial/port)を取らない MCP ツールで宛先を解決しない**(`toolAcceptsDeviceTarget` の
+  分岐1箇所)。畳み込み(`foldingUDIDIntoPort`)はブリッジ走査を撃ち、居なければ落ちるので、
+  1台を駆動している呼び手(`udid` を毎回添える)はブリッジが死んだ瞬間に**一覧・診断のツールまで
+  道連れ**になり、文面が案内する `ft_list_devices` 自身が同じエラーを返す袋小路になる
+  (実地 2026-09-23 → maintainer-notes §46.5)。集合は
+  `DeviceIndependentToolsIgnoreTargetTests` が等号で固定する
 - **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**
   → maintainer-notes §5。**ただし同じ判定をそのまま強い挙動へ流用しない**。探索ロジックは
   **MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)。
@@ -1216,7 +1230,15 @@
   数えると、背面に回った in-app ブリッジ(TCP 受付・HTTP 無応答)が掴んだポートを「空き」と
   採番して新しい注入が衝突する(全シミュレータは loopback を共有 = ポートは台を跨いで一意)。
   `PortHolder.stopIfOwnedBridge` / `describe` と `StaleBridgeStop.decide` が定義元。
-  **失敗は占有者を名指しして落とす**
+  **失敗は占有者を名指しして落とす**。
+  **ポートだけで「自分の残骸」と決めない** —— `FleetestRunner-<port>.xctestrun` も `.inapp` も
+  ポートしか持たないので、同じポートに居る**別デバイスの生きたブリッジ**を殺す/生かす判断に化ける
+  (実地 2026-09-23: 既定ポートへ倒れた実機2台が互いのランナーを殺し合い、MCP が駆動中の
+  シミュレータも巻き添えになった)。**宛先のデバイスを混ぜて、肯定的に別デバイスと読めた回だけ
+  手を引く**(`RunnerDestination` / `PortHolder.listenerIsAnotherSimulator` /
+  `PortHolder.isHeldByAnotherDevice`)—— 「分からないから残す」に倒すと本物の残骸が永久に
+  ポートを塞ぐ。**busy は正常**(駆動中の XCUITest は /status に答えない)なので、
+  単に「待受している」を根拠に他人扱いしない → maintainer-notes §46
 - **回復のたびに label(ポート)は変わる**。回復を注入するときは**その時点のワーカー一覧を渡す**
   (`BlankWorkerTriage` の `recover` は第2引数)。最初の一覧を捕まえたままだと2回目の試行で
   新しい label を引けず、`frozen devices have no iOS simulator udid` で必ず失敗する

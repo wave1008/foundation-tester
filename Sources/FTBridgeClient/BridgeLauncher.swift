@@ -428,6 +428,15 @@ public struct BridgeLauncher {
             let command = trimmed[trimmed.index(after: spaceIdx)...]
             guard command.contains("xcodebuild"), command.contains(xctestrunPath),
                   let pid = Int32(trimmed[..<spaceIdx]) else { continue }
+            // **同じポートに居る「別のデバイスの」ランナーは残骸ではない**(RunnerDestination)。
+            // xctestrun のファイル名はポートしか持たないので、ブリッジを失った2台が同じ既定ポートへ
+            // 倒れると互いの生きたランナーを殺し合う(実地 2026-09-23 の負荷テスト)
+            if let other = RunnerDestination.belongsToOtherDevice(
+                command: String(command), ourDevice: device) {
+                ConsoleOut.err("→ port \(port) is running another device's xcuitest runner"
+                    + " (udid \(other)) — leaving it alone")
+                continue
+            }
             pids.append(pid)
         }
         guard !pids.isEmpty else { return }
@@ -461,6 +470,15 @@ public struct BridgeLauncher {
                 if let status = Self.probeForeignBridge(port: port) {
                     throw LauncherError.notOwnedByThisRepo(
                         port: port, device: status.device, protocolVersion: status.protocolVersion)
+                }
+                // **トンネルだけが残っている**(ブリッジは死に、実機の iproxy がポートを握ったまま)。
+                // 台帳(`iproxy-<port>.pid`)が既に消えているとここまで来るが、「起動していません」は
+                // 事実と食い違う —— このポートを名指しで止めに来た呼び手にとっては、その残骸こそが
+                // 止めたいもの(doctor の案内先もここ。実地 2026-09-23 → maintainer-notes §46)
+                if PortHolder.stopTunnelHolder(port: port) {
+                    ConsoleOut.err("stopped the leftover USB tunnel holding port \(port)"
+                        + " (its bridge was already gone)")
+                    return
                 }
                 throw LauncherError.notRunning(port: port)
             }

@@ -277,13 +277,22 @@ extension MCPServer {
         // (実測: 機A に Preferences・機B に Maps を launch した後、機A への
         //  ft_open_url が com.apple.Maps へ配ると申告した。Android では intent の
         //  宛先そのものなので、同じ機の中で別アプリへ実際に配送される)。
-        // 入口で畳めば 35 箇所の呼び出しを触らずに全部が揃う
+        // 入口で畳めば 35 箇所の呼び出しを触らずに全部が揃う。
+        // **宛先を取らないツールでは畳まない**(`toolAcceptsDeviceTarget`)—— 畳み込みは
+        // udid → port の解決にブリッジ走査を撃ち、居なければ「no running bridge」で落ちる。
+        // 端末を1つ駆動している呼び手は `udid` を毎回添えるので、ブリッジが死んだ瞬間に
+        // **一覧・診断のツールまで道連れ**になり、文面が案内する `ft_list_devices` 自身が
+        // 同じエラーを返す袋小路になっていた(実地 2026-09-23 の負荷テスト)
         let folded: [String: Any]
-        do {
-            folded = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
-        } catch {
-            let hint = await connectionLostHint(error, args: args)
-            throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
+        if Self.toolAcceptsDeviceTarget(tool) {
+            do {
+                folded = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
+            } catch {
+                let hint = await connectionLostHint(error, args: args)
+                throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
+            }
+        } else {
+            folded = Self.strippingSelectorQuotes(args)
         }
         // **セッション記憶の適用も同じ入口で畳む**: driver(_:) の内部(キャッシュ参照・
         // engineKey 計算より後)で適用すると、省略呼び出しは常に `direct:ios:0:` の生キーで
@@ -327,6 +336,7 @@ extension MCPServer {
                 + Self.setTextRefusedHint(tool: tool, args: resolved,
                                           message: error.localizedDescription)
                 + Self.noReadableWindowHint(error)
+                + Self.accessibilityOutageHint(error)
                 + (runNote.map { " " + $0 } ?? "")
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
@@ -416,6 +426,21 @@ extension MCPServer {
             + " most likely return this same error, so wait a few seconds first. Bringing the app"
             + " back to the foreground tends to clear it faster: ft_navigate target: \"home\", or"
             + " ft_launch."
+    }
+
+    /// XCTest の a11y サーバが一時的に落ちている(500 + kAXErrorAPIDisabled)ときの対処。
+    /// **判定は `SessionRecoveryDriver.isAccessibilityTemporarilyDown` の1箇所**(run の
+    /// 再キューと同じ判定)・文言はここだけ。`SessionRecoveryDriver` が 1/2/3 秒の間隔で
+    /// 読みを撃ち直した**後**に出るので、呼び手にできるのは「数秒おいてから」だけ。
+    /// これが無いと生の `Error Domain=com.apple.dt.xctest.automation-support.error Code=8 …` が
+    /// そのまま返り、run では「環境要因」と分かっている事象を呼び手が**アプリの不具合**と
+    /// 読み違える(実地 2026-09-23 の負荷テスト)
+    static func accessibilityOutageHint(_ error: Error) -> String {
+        guard SessionRecoveryDriver.isAccessibilityTemporarilyDown(error) else { return "" }
+        return " The device's accessibility server is momentarily down (kAXErrorAPIDisabled) —"
+            + " this is an environment fault, not an app or tool bug, and the reads were already"
+            + " retried for a few seconds. It usually clears within seconds: wait, then try again."
+            + " If every call keeps failing this way, restart the simulator/device."
     }
 
     /// セレクタ引数の両端の引用符を入口で剥がす(2026-08-12 の実アプリ監査)。

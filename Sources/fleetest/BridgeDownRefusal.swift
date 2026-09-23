@@ -6,6 +6,7 @@
 // DeviceBooter 側の既存文言を使い回し、ここでは新しい文言を作らない。
 
 import FTAndroid
+import FTBridgeClient
 
 enum BridgeDownRefusal {
     static func decide(
@@ -38,11 +39,19 @@ enum BridgeDownRefusal {
     /// そのまま通すと**駆動中のセッションを黙って壊す**(2026-09-22 の負荷テストで実測: MCP が
     /// 操作中のブリッジが `bridge down --port` で無言のまま止まり、そのセッションは
     /// 「no running bridge」しか返さなくなった)。**止めずに断り、`--force` を案内する**。
-    /// 待受もしていないポートは「止めるものが無い」ので従来どおり通す(回復手段を奪わない)
-    static func unresponsiveButBoundRefusal(ports: [UInt16], force: Bool,
-                                            isBound: (UInt16) -> Bool) -> String? {
+    ///
+    /// **ただし「忙しい」と「固まった転送」を混ぜない**(docs/maintainer-notes.md §44.1 と同じ判定を
+    /// この口にも通す): ブリッジが死んで iproxy だけがポートを握っている形は、connect は通るのに
+    /// 即座に切れる(`.transportFailed`)。これを busy と読むと**止めることが唯一の回復手段なのに
+    /// 「待て」と言い続ける**袋小路になる(実地 2026-09-23 の負荷テスト: 画面ロックで死んだ実機の
+    /// トンネルが握ったポートを `bridge down --port` が延々と断った)。
+    /// 待受もしていないポート(`.notBound`)は「止めるものが無い」ので従来どおり通す
+    static func unresponsiveButBoundRefusal(
+        ports: [UInt16], force: Bool,
+        probe: (UInt16) -> BridgeDiscovery.StatusProbe
+    ) -> String? {
         guard !force else { return nil }
-        let busy = ports.filter(isBound)
+        let busy = ports.filter { probe($0) == .timedOut }
         guard !busy.isEmpty else { return nil }
         let list = busy.map(String.init).joined(separator: ", ")
         return "refusing to stop: port \(list) "

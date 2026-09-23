@@ -2047,3 +2047,147 @@ run(DSL)は別扱い —— あちらは失敗をレポートへ残して自動�
   でしか出力に合流しない**。Android がマスク欄への追記を 422 で断るケースは、まさにその注記が
   当たる条件と一致するのに一次情報だけが届く。失敗経路で注記を運ぶ形(`.failed` の文言に足すか
   `StepNote` にするか。`throw` 経由だと `execution error: ` の形が変わる)の設計が要る
+
+## 46. ポートの同一性を見ずに他人のブリッジを殺していた(2026-09-23 の3時間負荷テスト)
+
+構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini の4機)+ **実機 4 台(iPhone 13 /
+iPhone SE3 / Pixel 4a / Pixel 3a)と仮想機 2 台を MCP で並行駆動** + ライブ操作の張り替え反復
++ CLI/api 面のファズ。MCP 約 2.4 万呼び出し・fleet run 27 本・ライブ 2.4 千コマンドで6件見つけた。
+
+**途中で iPhone 2 台が画面ロックし、ランナーが死んだ**(`Unlock iPhone SE3 to Continue`)。
+ツールの文言は正しく、以降は仮想機へ振り替えて継続した —— が、**その死んだ実機のトンネルが
+握ったポート**が以下の連鎖の発火点になった。
+
+### 46.1 残骸ランナーの照合がポートだけで、別デバイスの生きたブリッジを殺していた(最重要)
+
+`BridgeLauncher.killOrphanRunners` と `PortHolder.stopIfOwnedBridge` は
+`FleetestRunner-<port>.xctestrun` のパス一致だけで「自分の残骸」と決めていた。**ファイル名は
+ポートしか持たない**ので、同じ種別(実機どうし・シミュレータどうしで DerivedData が同じ)の
+別デバイスが同じポートに居ると、**駆動中のブリッジを残骸として SIGTERM→SIGKILL する**。
+
+実地の形: ブリッジを失った実機 2 台がどちらも既定ポート 8123 へ倒れ、
+`→ Cleaned up leftover runner(s) on port 8123` で互いを殺し合った。同じ形で、MCP が駆動中だった
+シミュレータのブリッジも巻き添えになった(その MCP セッションは以後「no running bridge」しか
+返せなくなる = 袋小路)。
+
+直し: `FTBridgeClient.RunnerDestination` がコマンド行の `-destination …,id=<udid>` を読み、
+**肯定的に別デバイスと読めた回だけ**殺さない(宛先が読めない・こちらが名前指定のときは従来どおり
+止める —— 「分からないから残す」に倒すと本物の残骸が永久にポートを塞ぐ)。
+
+### 46.2 `.inapp` 台帳の生死を「誰かが待受しているか」だけで決めていた
+
+`StaleLedgerSweep` の `inappListening` は `PortHolder.describe(port:) != nil`、つまり
+**占有者が誰かを見ていなかった**。別のデバイスのブリッジがそのポートを取ると古い `.inapp` が
+生き残り、供給が「別アプリに注入された in-app ブリッジ」と読んで
+`InAppBridgeState.terminateAndRemove` → **無関係なデバイスのアプリを simctl terminate** する。
+直し: `PortHolder.listenerIsAnotherSimulator`(CoreSimulator のパスに別の UDID が出たときだけ true。
+実機の in-app は iproxy が握るので形が違う = 従来どおり「生きている」側)。
+
+### 46.3 ライブ操作が「応答しないポート」を自分の台のものと決めつけていた
+
+`ApiLiveCommand.identityMismatch` は `/status` が答えないと nil(= 一致)を返していた。
+既定ポートへのフォールバックでこれに当たると、**別のデバイスのブリッジが居るポートを宛先に採り**、
+その後の自動起動がそこへ自分のブリッジを立てて占有者を殺す(46.1 の発火経路)。
+直し: 戻り値を3値(`.mine` / `.mismatch` / `.silent`)にし、`.silent` は
+**プロセスの実体で占有者を見る**(`PortHolder.isHeldByAnotherDevice`)。
+**busy は正常**(XCUITest は駆動中 `/status` に答えない)なので、**肯定的に別デバイスと読めた
+ときだけ**掴むのをやめる —— 単に「待受している」で断ると、自分の busy なブリッジを見捨てて
+同じ台に 2 本目のランナーを立ててしまう(先代が蹴り出される)。
+
+### 46.4 `bridge down` が「固まった転送」を busy と誤って帰属していた(§44.1 の残り)
+
+`BridgeDownRefusal.unresponsiveButBoundRefusal` は `isBound` だけを見て「待受しているのに
+答えない = 忙しい」と決めていた。画面ロックで死んだ実機のトンネルが握ったポートに対して
+**「待て、`--force` で押し切れ」と言い続ける** —— 止めることが唯一の回復手段なのに断る袋小路。
+直し: §44.1 と同じ `BridgeDiscovery.probeStatus` の4値を通し、断るのは `.timedOut`(本当に busy)
+だけ。`.transportFailed`(固まり)は止めさせる。並列プローブは
+`BridgeDiscovery.probeStatuses`(1ポートずつ直列に撃つと上限 2 秒 × ポート数を払う)。
+
+### 46.5 宛先を取らない MCP ツールが udid で道連れになっていた
+
+`call` は**ツールを問わず** `foldingUDIDIntoPort` を通していたので、`ft_list_devices` /
+`ft_list_projects` / `ft_dsl_commands` / `ft_list_scenarios` / `ft_dry_run` /
+`ft_draft_scenario` / `ft_doctor` の7つが、`udid` を添えるだけで
+「no running bridge is on udid …」で落ちた。**文面が案内する `ft_list_devices` 自身が同じ
+エラーを返す**ので、1台を駆動していた呼び手(udid を毎回添える)はブリッジが死んだ瞬間に
+一覧も診断も失う。直し: `toolAcceptsDeviceTarget(tool)` のときだけ畳む。
+
+### 46.6 画像で掴めなかった要素の「飾りの名前」を構文検証に掛けていた
+
+`findImage` / `existImage` は見つからないと `<image "[Switch]": not found>` というラベルの
+`FTElement` を返す。これは**利用者が書いたセレクタではない**のに `FTSelector.label` 経由で
+実行前の構文検証に掛かり、連鎖したアサーション(`findImage("[Switch]").idIs("sw_notify")`)が
+`invalid selector syntax: a clause starting with '<' …` で落ちていた。
+**dry-run は画像を探せないので必ずこの形になる** —— つまり画像で探す手を含むシナリオを1本でも
+持つプロジェクトは**dry-run が丸ごと赤**で、シナリオ作成の中間ゲート(コンパイル → dry-run →
+デバイス実行)が死んでいた。直し: プレースホルダは `structured: true`(構文検証を通さない印)で組む。
+
+### 46.7 a11y サーバの一時停止(kAXErrorAPIDisabled)の出口が run にしか無かった
+
+run は同じ事象を「a transient accessibility fault」として結果を捨てて振り直す
+(`RunOrchestrator`)。MCP とライブ操作は `SessionRecoveryDriver` が数秒ぶん読みを撃ち直すが、
+**尽きたら生の `Error Domain=com.apple.dt.xctest.automation-support.error Code=8 …` だけ**が返り、
+呼び手にはアプリの不具合と区別が付かない。判定(`isAccessibilityTemporarilyDown`)は共有のまま、
+文言を両方へ配った(`LiveControlExitParityTests` の表に載せた = §45 の規律どおり)。
+
+### 46.9 死んだ実機ブリッジのトンネルを誰も片付けられなかった
+
+画面ロックで実機のランナーが死んだ後、**iproxy だけが採番範囲のポートを握ったまま**残った。
+この状態は3つの口すべてで詰んでいた: `doctor` は `/status` に答えたポートしか見ないので
+**「✅ No unmanaged or stale bridges」**と言い、`bridge down --port N` は台帳
+(`iproxy-<port>.pid`)が消えていると **「the bridge is not running」**で何もせず、
+`bridge up` は「port N is in use by another bridge」と言って別のポートへ逃げるだけだった
+(= ポートが1つずつ食い潰される)。
+
+直し: **判定はプロセスの実体で**(`PortHolder.isHeldByTunnelOnly`)—— doctor はそのポートを
+名指しして `bridge down --port N` を案内し、`BridgeLauncher.stop()` は台帳が無くても
+トンネルだけの占有者を止める(`PortHolder.stopTunnelHolder`)。
+**応答の速さ(`probeStatus`)で決めない** —— 最初そうしたら、駆動中で `/status` に答えないだけの
+in-app ブリッジまで 8 ポート分「固まり」として並んだ(実測)。「答えないこと」は状態を1つに
+決めない、という §44.1 の裏返しがここにも要る。
+
+### 46.10 ブリッジを失ったトンネルが採番の窓を食い潰す
+
+実機のブリッジ起動が途中で落ちる(画面ロック)・起動した側のプロセスが kill される
+(拡張は応答の無い `api live serve` を kill→respawn する)と、**iproxy のトンネルだけが
+ポートを握ったまま残る**。台帳すら残らない形がある(`stopIproxy` は pid ファイルを消してからでも
+殺し損ねる)ので、誰も片付けられない。**窓は 8123-8154 の 32 ポート**で、1台が最大2本
+(in-app + xcuitest)使うため、残骸が数本乗るだけで埋まる —— 実地では埋まり切って
+`--broadcast` が **`no free port`** で 8 台とも全滅した。
+
+直し2つ: **①供給の入口で掃除する**(`StaleLedgerSweep.sweepTunnelOnlyPorts`。
+台帳が1つも無いポートで占有者がトンネルだけのときに止める。起動中のブリッジは `.pid` を
+トンネルより**先に**書くので進行中の起動を巻き込まない)/ **②`no free port` に次の一手を添える**
+(何が塞いでいるか = `bridge status`・残骸の名指し = `doctor`・空け方 = `bridge down --port`)。
+
+### 46.11 起動しきれないランナーが永久に待ち続けて積み上がる(最重要のリソース漏れ)
+
+ロックされた実機のように**二度と用意できない宛先**に対して `xcodebuild test-without-building` を
+撃つと、"Run Destination Preflight: Waiting for the destination to become ready" のまま
+**永久に待つ**。起動した側(`api live serve` の自動起動)は拡張に kill→respawn されるので、
+その detached タスクごと消え、**誰も止めない**。実地では同じ実機向けのランナーが **10 本**
+(+ トンネルの残骸)積み上がり、ポート・DerivedData・CPU を握ったまま採番の窓を埋め尽くした。
+
+直し: 供給の入口で `StaleLedgerSweep.sweepStuckStartingRunners` —— **判定は既存の
+`StartingRunnerVerdict.decide` をそのまま使う**(待受していない + 生存が起動予算超え +
+起動ログが予算ぶん伸びていない)。起動中のブリッジはログが伸び続け、busy なブリッジは
+待受しているので、どちらも巻き込まない。実地確認: 1 run の供給で**トンネル 1 本 +
+ランナー 9 本**を回収し、その run は緑のまま完走した。
+
+### 46.8 直さず記録したもの
+
+- **MCP セッションは iOS のランナーが死ぬと自力で戻れない**(「`fleetest bridge up` を打て」と
+  正しく案内はする)。ライブ操作は `LiveBridgeAutoStarter` が建て直すので、ここは非対称のまま。
+  負荷下ではランナーが 10 分前後で `Restarting after unexpected exit, crash, or test timeout` で
+  死ぬことがある(`handlerTimeout` の自壊ではない = ログに `self-terminating` は無い)
+- **Android の `ft_launch` が失敗したときの文言が事実だけ**(「the app never came to the
+  foreground: <pkg>」)。**今どのパッケージが前面か**はブリッジが既に持っているので添えられるが、
+  ブリッジの版上げを伴うので負荷テスト中には入れない
+- **ロックされた実機への `launch` が 90 秒以上返らない**(ライブ操作。ブリッジが生きていて
+  端末だけロックされている間)。供給には `BridgeProvisionerError.deviceLocked` があるので
+  「ロックされている」という事実は取れるはずだが、ライブ操作・MCP の launch 経路は待ち続ける。
+  再現には「生きたブリッジ + ロックした実機」が要る(負荷テスト中はブリッジごと死んでいて
+  再現できなかった)
+- **固まり(`transportFailed`)の文言が実機前提**(「画面ロック・USB/Wi-Fi 圏外」)。
+  シミュレータにも同じ文が出るが、注記の足し引きは `Scripts/mcp-bench.sh` の手数で決める規律に従い
+  印象では動かさない

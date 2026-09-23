@@ -42,7 +42,7 @@ public final class SessionRecoveryDriver: AppDriver {
     /// **同時刻に全レーンで一斉に出る**(2026-08-04 00:55:29〜34 に6件・2026-08-01 にも7件の塊。
     /// 19件すべてクラスタ)ので**環境要因**で、数秒で復旧する。
     /// アプリ側の問題ではないため、失敗として返すと調査が明後日の方向へ行く
-    static func isAccessibilityTemporarilyDown(_ error: Error) -> Bool {
+    public static func isAccessibilityTemporarilyDown(_ error: Error) -> Bool {
         guard case DriverError.badResponse(let status, let body) = error, status == 500 else {
             return false
         }

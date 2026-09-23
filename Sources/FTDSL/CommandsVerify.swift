@@ -847,11 +847,27 @@ public struct FTElement {
     /// findImage / findImages の結果。セレクタは書ける形があればそれ(チェーンした検証が
     /// 取り直すときに使う)、無ければ実在しないラベル(= 取り直すと必ず落ちる。lastElement の空要素と同じ)
     init(imageMatch: FindImage.Match?, imageLabel: String) {
+        // 見つからなかった / セレクタを書けなかったときの**飾りの名前**。利用者が書いた
+        // セレクタ式ではないので、**実行前の構文検証には掛けない**(structured = その印)——
+        // 掛けると連鎖したアサーションが「invalid selector syntax」になり、
+        // **書いた本人のセレクタの誤りだと誤って名指しする**。dry-run では画像を探せないので
+        // 必ずこの形になり、findImage/existImage を含むシナリオの dry-run が丸ごと赤くなっていた
+        // (実地 2026-09-23 の負荷テスト)
         self.selector = imageMatch?.selector.map(FTSelector.parse)
-            ?? FTSelector.label("<image \"\(imageLabel)\": \(imageMatch == nil ? "not found" : "no writable selector")>")
+            ?? FTElement.placeholderSelector(
+                imageLabel: imageLabel,
+                reason: imageMatch == nil ? "not found" : "no writable selector")
         self.matched = imageMatch?.element
         self.imageLabel = imageLabel
         self.imageFrame = imageMatch?.visibleFrame
+    }
+
+    /// 画像で掴めなかった要素の飾りの名前。`structured: true` = 構文検証を通さない印
+    /// (この文字列は利用者が書いたものではない)
+    static func placeholderSelector(imageLabel: String, reason: String) -> FTSelector {
+        let text = "<image \"\(imageLabel)\": \(reason)>"
+        return FTSelector(text: text, primary: FlowLocator(label: text), fallbacks: [],
+                          structured: true)
     }
 
     /// 掴んだ要素をタップする。**findImage / findImages で掴んだ要素は、見つけた枠の中心を座標で叩く**
