@@ -113,6 +113,16 @@ let liveStallSent = false;
 // 途中で撃ち、長くすると追随が遅れる。
 // 尽きたとき: 画面が動かないまま内容だけ変わる場合は追随しない(一覧の「更新」で撮り直す)。
 const SETTLE_REFRESH_MS = 700;
+// 「バウンディングボックスを表示」を ON にしたときに静定を待つ上限(ms)。
+// **ループするアニメーションの画面は何秒待っても静まらない**ので必ず打ち切る —— DSL の整定
+// (Sources/FTCore/StepExecutor+Settle.swift・SettleMotion.swift)と同じ考え方で、あちらも
+// 基本予算 scrollSettleMaxPolls=6 周を超えて回すのは**減速が続いている間だけ**、絶対上限
+// scrollSettleMaxDeceleratingPolls=24 周(= 4 倍)で必ず抜ける(等速で動き続けるアニメーションを
+// 待つと毎回上限まで待つことになるため)。webview が毎周見られるのは「絵が動いたか」だけで
+// 減速かどうかの判定材料(木の変位)が無いので、借りるのは**この 4 倍だけ**。
+// 尽きたとき: 打ち切って最新の木で描く(動いている画面の枠を出さないより、止まらない画面で
+// 永久に出ないほうが害が大きい)。
+const BOXES_SETTLE_CAP_MS = SETTLE_REFRESH_MS * 4;
 // 要素の枠を画像に重ねて出すか(「バウンディングボックスを表示」)。vscode.setState に永続化。
 let showBoxes = persistedState.liveShowBoxes === true;
 // 枠を消してから**次の木が届くまで**は描き直さない。fitScreenshot も枠を引き直すので、
@@ -120,6 +130,12 @@ let showBoxes = persistedState.liveShowBoxes === true;
 // (実害 2026-09-22: タスクスイッチャーを出すと直前の画面の枠が出たまま残った)。
 let boxesStale = false;
 let settleRefreshTimer = null;
+// ON にした直後の静定待ちの打ち切りタイマー(BOXES_SETTLE_CAP_MS)。待っていない間は null。
+let boxesSettleCapTimer = null;
+// 静定待ち中(deferBoxesUntilSettled が立て、静定後の木か打ち切りで畳む)。**操作の直後に返る木で
+// 描かない**ための印 —— あの木はまだ慣性で動いている最中のことがあり、描くと中間の座標で一度出て
+// 止まってからもう一度出る(2026-09-23 の実害: 設定画面のスクロール)。
+let boxesAwaitSettle = false;
 // 撮り直しとして要求した snapshot か(その結果でまた仕掛けると静止画面で撮り続ける)。
 let settleRefreshRequested = false;
 
@@ -140,7 +156,7 @@ function setBusy(value) {
   //
   // **撮り直し(scheduleSettleRefresh)の間は消さない** —— あれは画面を変えない観測で、
   // 消すと遷移後に「出る → 消える → 出る」とちらつく(2026-09-22)
-  if (value && !settleRefreshRequested) { clearBoxes(); }
+  if (value && !settleRefreshRequested) { deferBoxesUntilSettled(); }
   // 「レコーディング開始」も busy を見る(updateRecordButton が updateProfileActionButtons を呼ぶ)
   updateRecordButton();
 }
@@ -401,6 +417,32 @@ function cancelSettleRefresh() {
     settleRefreshTimer = null;
   }
 }
+
+function cancelBoxesSettleCap() {
+  if (boxesSettleCapTimer !== null) {
+    clearTimeout(boxesSettleCapTimer);
+    boxesSettleCapTimer = null;
+  }
+}
+
+/** 枠を出すのは画面が静定してからにする(ユーザー決定 2026-09-23)。手元の木は最後に観測した
+ * 時点のものなので、絵がまだ動いている間に描くと**前の画面の位置に枠が出る**。
+ * 静定 = 絵が SETTLE_REFRESH_MS 動かないこと(scheduleSettleRefresh の予約は絵が動くたびに
+ * 先送りされる)。止まったら撮り直しが届き、applySnapshot が boxesStale を落として描く。
+ * **ループするアニメーションは静定しない**ので BOXES_SETTLE_CAP_MS で打ち切り、その時点の
+ * 最新の木で描く(定数の doc 参照)。 */
+function deferBoxesUntilSettled() {
+  boxesAwaitSettle = true;
+  clearBoxes();            // 届くまで描かない(boxesStale)
+  scheduleSettleRefresh(); // 絵が止まったら撮り直す(動いている間は先送りされる)
+  cancelBoxesSettleCap();
+  boxesSettleCapTimer = setTimeout(() => {
+    boxesSettleCapTimer = null;
+    if (!showBoxes || !boxesStale || busy) { return; } // 既に描けた/操作中(結果の木が引き直す)
+    settleRefreshRequested = true; // 画面を変えない観測 = 次の applySnapshot で再予約しない
+    post({ type: 'refreshSnapshot' });
+  }, BOXES_SETTLE_CAP_MS);
+}
 function scheduleSettleRefresh() {
   cancelSettleRefresh();
   settleRefreshTimer = setTimeout(() => {
@@ -518,6 +560,8 @@ function frameToDisplayRect(frame, screen, display) {
 function clearSnapshot() {
   clearBoxes(); // 消してから stale にする(先に stale だけ立てると overlay が空にならない)
   cancelSettleRefresh();
+  cancelBoxesSettleCap();
+  boxesAwaitSettle = false;
   settleRefreshRequested = false;
   lastScreen = null;
   lastElements = [];
@@ -531,7 +575,13 @@ function clearSnapshot() {
 function applySnapshot(message) {
   lastScreen = message.screen;
   lastElements = message.elements;
-  boxesStale = false; // 新しい木が来たので描いてよい
+  // 枠を描いてよいのは**静定してから観測した木**だけ(boxesAwaitSettle の doc)。待っていない
+  // (操作もトグルも挟んでいない)ときは従来どおり届いた木で描く。
+  if (settleRefreshRequested || !boxesAwaitSettle) {
+    boxesStale = false;
+    boxesAwaitSettle = false;
+    cancelBoxesSettleCap();
+  }
   autoSnapshotRequested = false;
   showStaleNotice(message.notes);
   // 届いた一枚絵は**操作の結果そのもの**(host は tap のあとに撮って返す)。配信より新しいので
@@ -757,13 +807,15 @@ function clearBoxes() {
 }
 
 function renderBoxes() {
+  // 行の見た目(赤枠を出すか)は CSS 側で分ける。**状態は一覧に持たせる** —— 行ごとに
+  // クラスを出し分けると、描き直しのたびに全行へ付け替えることになる。
+  // **「枠が実際に出ているか」と一致させる**(boxesStale の間は出ていない) —— 枠が無いのに
+  // 行だけ赤いと何と対応しているのか分からない(style.css の .boxes-on の doc)
+  elementsList.classList.toggle('boxes-on', showBoxes && !boxesStale);
   // 消した後は次の木を待つ(fitScreenshot からの引き直しで古い枠を蘇らせない)
   if (boxesStale) { return; }
   boxByRef.clear();
   hotBox.remove();
-  // 行の見た目(赤枠を出すか)は CSS 側で分ける。**状態は一覧に持たせる** —— 行ごとに
-  // クラスを出し分けると、描き直しのたびに全行へ付け替えることになる
-  elementsList.classList.toggle('boxes-on', showBoxes);
   if (!showBoxes || !lastScreen || lastElements.length === 0) {
     boxesOverlay.classList.remove('visible');
     boxesOverlay.replaceChildren();
@@ -796,6 +848,14 @@ showBoxesToggle.addEventListener('change', () => {
   // ホバー中に切り替えると、行ホバーの出し先(単一枠 ⇄ hot)が入れ替わる。両方畳んでから引き直す
   setHot(null, false);
   hideHover();
+  // **撮り直しの予約が残っている = 絵が動いた(動いている)**。その木はもう画面と合わないので
+  // 静定を待つ(deferBoxesUntilSettled)。予約が無ければ既に静定しているので即描く。
+  if (showBoxes && settleRefreshTimer !== null) {
+    deferBoxesUntilSettled();
+  } else if (!showBoxes) {
+    cancelBoxesSettleCap();
+    boxesAwaitSettle = false;
+  }
   renderBoxes();
 });
 

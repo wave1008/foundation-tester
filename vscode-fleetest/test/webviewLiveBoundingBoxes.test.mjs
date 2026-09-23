@@ -151,7 +151,7 @@ test("トグルが『アプリを起動』の右にある", (t) => {
   assert.equal(document.getElementById("live-show-boxes").checked, false, "既定は OFF");
 });
 
-test("ON で全要素の枠を出し、OFF で消す", (t) => {
+test("ON で全要素の枠を出し、OFF で消す", async (t) => {
   const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
@@ -161,6 +161,11 @@ test("ON で全要素の枠を出し、OFF で消す", (t) => {
   const checkbox = document.getElementById("live-show-boxes");
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  // ON にした時点では**まだ静定していない**(snapshot の直後は撮り直しの予約が残る)ので出さない。
+  // 静定してから届いた木で描く(「静定するまで出さない」の節を参照)
+  assert.equal(boxes(document).length, 0, "静定するまでは出さないこと");
+  await settle(QUIET_MS + 150); // 絵が止まった → 撮り直しが飛ぶ
+  sendToWebview(SNAPSHOT);      // その結果 = 静定後の木
 
   const drawn = boxes(document);
   assert.equal(drawn.length, ELEMENTS.length, "要素の数だけ枠を出すこと");
@@ -407,7 +412,7 @@ test("トグル OFF: 画像上のホバーで行は光るが、赤枠は付け�
 });
 
 // ON のときだけ赤枠の条件が付く(見た目の出し分けは CSS 側)。
-test("トグル ON: 一覧に赤枠の条件(.boxes-on)が付く", (t) => {
+test("トグル ON: 一覧に赤枠の条件(.boxes-on)が付く", async (t) => {
   const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
@@ -418,8 +423,12 @@ test("トグル ON: 一覧に赤枠の条件(.boxes-on)が付く", (t) => {
   const checkbox = document.getElementById("live-show-boxes");
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.ok(!list.classList.contains("boxes-on"),
+            "**枠が実際に出ているときだけ**付くこと(静定待ちの間は枠が無い)");
+  await settle(QUIET_MS + 150);
+  sendToWebview(SNAPSHOT);
 
-  assert.ok(list.classList.contains("boxes-on"), "ON で付くこと");
+  assert.ok(list.classList.contains("boxes-on"), "枠が出たら付くこと");
 
   checkbox.checked = false;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
@@ -481,7 +490,7 @@ test("強調は最前面に重ねた別の枠で、元の枠は変えない", (t
 
 // 操作を撃ったら画面が変わる。**その前に枠を消す**(ユーザー決定 2026-09-22) —— 古い木から
 // 描いた枠が新しい画面の上に残ると、合っていない位置を指してしまう。
-test("操作を撃ったら(busy)枠を消し、結果が届いたら引き直す", (t) => {
+test("操作を撃ったら(busy)枠を消し、静定後の木で引き直す", async (t) => {
   const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
@@ -502,10 +511,15 @@ test("操作を撃ったら(busy)枠を消し、結果が届いたら引き直�
     "要素一覧は消さないこと(読んでいる最中に行が消えると追えない)",
   );
 
-  // 操作の結果(新しい木)が届いたら引き直す
+  // **操作の結果として返る木では引き直さない** —— スクロールの慣性で動いている最中のことがあり、
+  // 描くと中間の座標で一度出て、止まってからもう一度出る(2026-09-23 の実害: 設定画面)
   sendToWebview({ type: "live", message: { type: "busy", busy: false } });
   sendToWebview(SNAPSHOT);
-  assert.equal(boxes(document).length, ELEMENTS.length, "結果が届いたら引き直すこと");
+  assert.equal(boxes(document).length, 0, "操作の直後に返る木では引き直さないこと");
+
+  await settle(QUIET_MS + 150);
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "静定後の木で引き直すこと");
 });
 
 // 撮り直し(操作後に画面が止まってから1回撮る)は**画面を変えない観測**なので、枠を消さない。
@@ -535,7 +549,7 @@ test("撮り直しの間は枠を消さない(ちらつかせない)", async (t)
 // 枠を消したあと、**次の木が届くまでは描き直さない**。fitScreenshot も枠を引き直すので、
 // これが無いと画像のサイズが変わった拍子(タスクスイッチャーのように絵が大きく変わるとき)に
 // 古い木の枠が復活する(実害 2026-09-22)。
-test("消したあとは、画像サイズが変わっても古い枠を復活させない", (t) => {
+test("消したあとは、画像サイズが変わっても古い枠を復活させない", async (t) => {
   const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
@@ -559,8 +573,113 @@ test("消したあとは、画像サイズが変わっても古い枠を復活�
 
   assert.equal(boxes(document).length, 0, "古い木の枠を復活させないこと");
 
-  // 新しい木が届いたら描く
+  // 静定後の木が届いたら描く
   sendToWebview({ type: "live", message: { type: "busy", busy: false } });
+  await settle(QUIET_MS + 150);
   sendToWebview(SNAPSHOT);
-  assert.equal(boxes(document).length, ELEMENTS.length, "新しい木では描くこと");
+  assert.equal(boxes(document).length, ELEMENTS.length, "静定後の木では描くこと");
+});
+
+// ---- 静定するまで出さない(ユーザー決定 2026-09-23) --------------------------------------
+// 手元の木は最後に観測した時点のものなので、絵がまだ動いている間に描くと前の画面の位置に枠が出る。
+// **考え方は DSL の整定と揃える**(Sources/FTCore/StepExecutor+Settle.swift・SettleMotion.swift):
+// 静まるまで待つが、**等速で動き続けるアニメーションは待っても止まらない**ので必ず上限で打ち切る。
+
+const settle = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** liveTab.js の SETTLE_REFRESH_MS / BOXES_SETTLE_CAP_MS(= 4 倍)。**production の定数を
+ * import せず実測の刻みで書く**(同じ値を共有すると両方一緒にずれても落ちない)。 */
+const QUIET_MS = 700;
+const CAP_MS = 2800;
+
+/** 絵が動いた合図(h264 の 1 チャンク)。デコーダは 1 枚も出さないフェイクなので、
+ * 静止画(img)が前面のまま = 枠の座標系はハーネスの rect スタブのままになる。 */
+function sendChunk(window) {
+  window.VideoDecoder = window.VideoDecoder || class {
+    static isConfigSupported() { return Promise.resolve({ supported: true }); }
+    constructor() {}
+    configure() {}
+    decode() {}   // 1 枚も出さない = canvas へは切り替わらない
+    close() {}
+  };
+  window.EncodedVideoChunk = window.EncodedVideoChunk || class {
+    constructor(init) { Object.assign(this, init); }
+  };
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: {
+      type: "liveH264Chunk", keyframe: false, width: 400, height: 800,
+      data: new Uint8Array([0, 0, 1, 0x41, 0x9a]),
+    },
+  }));
+}
+
+test("静定してから ON にしたら待たずに出す", async (t) => {
+  const { window, document, sendToWebview } = createWebview();
+  t.after(() => window.close());
+
+  // snapshot の直後は撮り直しの予約が残る。予約が撃たれて**その結果が届いた**時点が静定
+  sendToWebview(SNAPSHOT);
+  await settle(QUIET_MS + 150);
+  sendToWebview(SNAPSHOT); // 撮り直しの結果(これ以上の予約はしない)
+
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  assert.equal(boxes(document).length, ELEMENTS.length, "静定済みなら即座に出すこと");
+});
+
+test("絵が動いている間は出さず、止まって木が届いたら出す", async (t) => {
+  const { window, document, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+
+  sendToWebview(SNAPSHOT);
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+  assert.equal(boxes(document).length, 0, "前提: 静定待ち");
+
+  // 絵が動き続けている間は撮り直しの予約が先送りされる = 枠も出ない
+  for (let i = 0; i < 3; i += 1) {
+    sendChunk(window);
+    await settle(300);
+  }
+  assert.equal(boxes(document).length, 0, "動いている間は出さないこと");
+
+  // **待っている間に届いた木でも描かない** —— 操作の結果として返る木は、まだ動いている最中の
+  // 座標を持っている(これで描くと中間の位置に一度出てしまう)
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, 0, "静定前に届いた木では描かないこと");
+
+  // 止まった → 撮り直しが飛び、その木で描く
+  await settle(QUIET_MS + 150);
+  assert.ok(
+    liveMessages().some((m) => m.type === "refreshSnapshot"),
+    "静定したら撮り直しを要求すること",
+  );
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "届いた木で描くこと");
+});
+
+test("ループするアニメーションでは上限で打ち切って出す", async (t) => {
+  const { window, document, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+
+  sendToWebview(SNAPSHOT);
+  const checkbox = document.getElementById("live-show-boxes");
+  checkbox.checked = true;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  // 止まらない画面(= 静定の根拠が永久に来ない)。上限を跨ぐまで絵を動かし続ける
+  const deadline = Date.now() + CAP_MS + 400;
+  while (Date.now() < deadline) {
+    sendChunk(window);
+    await settle(250);
+  }
+
+  assert.ok(
+    liveMessages().some((m) => m.type === "refreshSnapshot"),
+    "静定しなくても上限で撮り直しを要求すること(永久に出ないまま待たない)",
+  );
+  sendToWebview(SNAPSHOT);
+  assert.equal(boxes(document).length, ELEMENTS.length, "打ち切ったら最新の木で描くこと");
 });
