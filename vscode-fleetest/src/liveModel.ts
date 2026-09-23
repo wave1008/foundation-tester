@@ -638,6 +638,9 @@ export interface LiveDeviceRef {
   readonly port: number | null;
   readonly serial: string | null;
   readonly udid: string | null;
+  /** その台が居る機械(登録簿の machine)。省略 = この Mac。あれば serve を
+   * `fleetest remote exec <machine> -- api live serve` で**向こうで**起こす(monitorLiveController.ts) */
+  readonly machine?: string;
 }
 
 /** udid は含めない(--udid は monitorLiveController.ts が `api live serve` 呼び出し時に個別に付与する)。 */
@@ -655,7 +658,8 @@ export function buildDeviceArgs(device: LiveDeviceRef): string[] {
 
 /** デバイス参照の同一性判定(liveTabHost.ts の serve 再バインド要否判定に使う)。 */
 export function sameLiveDeviceRef(a: LiveDeviceRef, b: LiveDeviceRef): boolean {
-  return a.platform === b.platform && a.port === b.port && a.serial === b.serial && a.udid === b.udid;
+  return a.platform === b.platform && a.port === b.port && a.serial === b.serial && a.udid === b.udid
+    && a.machine === b.machine;
 }
 
 /** fleetest.platform/port/serial 設定から作る「設定のデバイス」フォールバックの元データ。 */
@@ -693,6 +697,29 @@ export interface LiveDeviceOption {
   /** 映像の供給元の選択に使う(monitorLiveController.ts の updateLiveFrameSource)。フォールバックは
    * 実体が分からないので virtual(従来の既定)。 */
   readonly kind: LiveDeviceKind;
+  /** LiveDeviceRef.machine と同じ。list-devices(この Mac)由来は常に省略 */
+  readonly machine?: string;
+}
+
+/** 他の機械の台(モニターのタイル)をライブ操作の選択肢にする。id はモニターのタイル id
+ * (`<platform>:<machine>/<name>`)のまま —— タイル右クリックの openDevice がこの id で引く。
+ * **port は渡さない**: 向こうの serve が udid で自分のブリッジを探す(既定ポートの本人確認 →
+ * 走査 → 無ければ空きポートで自動起動。ApiLiveCommand.makeLiveDriver)。 */
+export function remoteDeviceOption(source: {
+  readonly id: string;
+  readonly name: string;
+  readonly platform: LivePlatform;
+  readonly state: LiveDeviceOptionState;
+  readonly udid: string | null;
+  readonly serial: string | null;
+  readonly kind: LiveDeviceKind;
+  readonly machine: string;
+}): LiveDeviceOption {
+  return {
+    id: source.id, name: source.name, platform: source.platform, state: source.state,
+    detail: "", port: null, serial: source.serial, udid: source.udid, kind: source.kind,
+    machine: source.machine,
+  };
 }
 
 /** id はデバイス名(machines プロファイル検証で ios/android 横断の一意性が保証済み)を使うため、

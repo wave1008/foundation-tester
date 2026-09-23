@@ -572,6 +572,17 @@ test("isMonitorFromWebviewMessage: openLiveForDevice は id(非空文字列)が�
   assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: 1 }), false);
 });
 
+// 他の機械のタイルは開くのに要る属性を remote で運ぶ(LiveTabHost.openForDevice → registerRemoteDevice)
+test("isMonitorFromWebviewMessage: openLiveForDevice の remote は機械名・名前・platform・state・kind が揃うときだけ通す", () => {
+  const remote = { machine: "M1Ultra", name: "iPhone wave", platform: "ios", state: "connected", kind: "physical", udid: "U" };
+  assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: "ios:M1Ultra/iPhone wave", remote }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: "x", remote: { ...remote, machine: "" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: "x", remote: { ...remote, platform: "tvos" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: "x", remote: { ...remote, state: "weird" } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: "x", remote: { ...remote, udid: 1 } }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "openLiveForDevice", id: "x", remote: "M1Ultra" }), false);
+});
+
 test("isMonitorFromWebviewMessage: selectProfile は profile(string、空文字も可)があれば true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "selectProfile", profile: "profileA" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "selectProfile", profile: "" }), true);

@@ -33,6 +33,7 @@ import {
   parseLiveSnapshotResult,
   parseListDevicesResult,
   pointFromClick,
+  remoteDeviceOption,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
   stepDescriptionToOperationLabel,
@@ -1042,3 +1043,23 @@ test(
     assert.equal(exitCode, 0, "接続失敗しても常駐は継続し、stdin EOF でクリーンに(exit 0 で)終了すること");
   },
 );
+
+// ---- 他の機械の台(remoteDeviceOption / sameLiveDeviceRef の machine) ----
+
+test("remoteDeviceOption: タイル id と machine を保ち、port は渡さない(向こうの serve が udid で探す)", () => {
+  const option = remoteDeviceOption({
+    id: "ios:M1Ultra/iPhone wave", name: "iPhone wave", platform: "ios", state: "connected",
+    udid: "00008130-001819863E60001C", serial: null, kind: "physical", machine: "M1Ultra",
+  });
+  assert.equal(option.id, "ios:M1Ultra/iPhone wave");
+  assert.equal(option.machine, "M1Ultra");
+  assert.equal(option.port, null);
+  assert.equal(option.udid, "00008130-001819863E60001C");
+});
+
+test("sameLiveDeviceRef: 同じ udid でも機械が違えば別の台(serve を張り替える)", () => {
+  const base = { platform: "ios", port: null, serial: null, udid: "U" };
+  assert.equal(sameLiveDeviceRef(base, { ...base }), true);
+  assert.equal(sameLiveDeviceRef(base, { ...base, machine: "M1Ultra" }), false);
+  assert.equal(sameLiveDeviceRef({ ...base, machine: "M1Ultra" }, { ...base, machine: "M1Ultra" }), true);
+});

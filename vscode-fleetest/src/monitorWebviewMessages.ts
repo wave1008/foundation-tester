@@ -626,7 +626,21 @@ export type MonitorFromWebviewMessage =
     }
   // デバイスタイル右クリック「ライブ操作」: 「ライブ操作」タブへ切り替えて id のデバイスを
   // 選択させる(受け手: monitorPanel.ts → LiveTabHost の openForDevice)。
-  | { readonly type: "openLiveForDevice"; readonly id: string }
+  // remote: **他の機械のタイル**のときだけ付く(その台はこの Mac の list-devices に居ないので、
+  // 開くのに要る属性をタイルから運ぶ。LiveTabHost.openForDevice → registerRemoteDevice)
+  | {
+      readonly type: "openLiveForDevice";
+      readonly id: string;
+      readonly remote?: {
+        readonly machine: string;
+        readonly name: string;
+        readonly platform: MonitorPlatform;
+        readonly state: MonitorDevice["state"];
+        readonly kind: MonitorDevice["kind"];
+        readonly udid?: string;
+        readonly serial?: string;
+      };
+    }
   // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
   // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
   // machine: そのデバイスが居る機械(手元は省略)。**名前だけで受けない** —— リモートの
@@ -1042,7 +1056,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (value.registered === undefined || typeof value.registered === "boolean")
       );
     case "openLiveForDevice":
-      return typeof value.id === "string" && value.id !== "";
+      return typeof value.id === "string" && value.id !== "" && (value.remote === undefined || isLiveRemoteTarget(value.remote));
     case "copyText":
       return typeof value.text === "string" && value.text !== "";
     case "deviceRestartGpu":
@@ -1287,4 +1301,17 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     default:
       return false;
   }
+}
+
+function isLiveRemoteTarget(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.machine === "string" && value.machine !== "" &&
+    typeof value.name === "string" && value.name !== "" &&
+    (value.platform === "ios" || value.platform === "android") &&
+    (value.state === "connected" || value.state === "booted" || value.state === "offline" || value.state === "unknown") &&
+    (value.kind === "virtual" || value.kind === "physical") &&
+    (value.udid === undefined || typeof value.udid === "string") &&
+    (value.serial === undefined || typeof value.serial === "string")
+  );
 }

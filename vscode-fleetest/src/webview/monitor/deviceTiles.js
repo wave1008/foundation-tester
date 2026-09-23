@@ -887,11 +887,13 @@ function openDeviceOpMenu(entry, clientX, clientY, { selectAllOnly = false } = {
   // GPU再起動は実行プロファイルへの記載前提(name 解決)のため未登録では出さない
   // (起動/停止項目は renderDeviceOpMenuItem 側、ライブ操作は下で個別に扱う)。
   const unregistered = entry.device.registered === false;
-  // ライブ操作はブリッジ接続済み(state==='connected')でのみ機能する(liveTab.js の「接続されていません」
-  // 警告と対)。未登録でも connected なら udid/serial 直指定でブリッジ自動起動が効く
-  // (ApiListDevicesCommand の registered:false・ApiLiveCommand --udid 自動起動)ため、
-  // registered と同条件(state のみ)で出す。
-  deviceOpMenuLiveBtn.style.display = entry.device.state === 'connected' ? '' : 'none';
+  // state は connected に加えて **iOS の booted**(台は起動済み・ブリッジ未接続)も出す —— 開けば
+  // ライブ操作が観測を撃ち、serve がブリッジを自動起動する(monitorLiveController.requestOpenObservation。
+  // 自動起動は iOS の --udid 経路だけ)。未登録でも udid/serial 直指定で動くので registered は見ない。
+  // **他の機械の台も出す**(serve をその機械で起こす。openLiveForDevice の remote)
+  const liveOpenable = entry.device.state === 'connected'
+    || (entry.device.state === 'booted' && entry.device.platform === 'ios');
+  deviceOpMenuLiveBtn.style.display = liveOpenable ? '' : 'none';
   // 「GPUで再起動」は CPU 描画フォールバック中(CPU バッジ)の Android タイルでのみ意味を持つ。
   // 起動/停止のライフサイクル操作中(opBusy)は再起動を積んでも enqueueRestart が無視するため出さない。
   deviceOpMenuGpuBtn.style.display =
@@ -1281,7 +1283,18 @@ deviceOpMenuLiveBtn.addEventListener('click', (event) => {
   if (!deviceOpMenuEntry) {
     return;
   }
-  vscode.postMessage({ type: 'openLiveForDevice', id: deviceOpMenuEntry.device.id });
+  const device = deviceOpMenuEntry.device;
+  // 他の機械の台はこの Mac の list-devices に居ないので、開くのに要る属性を運ぶ
+  // (契約: monitorWebviewMessages.ts の openLiveForDevice)
+  const remote = device.machine
+    ? {
+        machine: device.machine, name: device.name, platform: device.platform, state: device.state,
+        kind: device.kind === 'physical' ? 'physical' : 'virtual',
+        ...(device.udid ? { udid: device.udid } : {}),
+        ...(device.serial ? { serial: device.serial } : {}),
+      }
+    : undefined;
+  vscode.postMessage({ type: 'openLiveForDevice', id: device.id, ...(remote ? { remote } : {}) });
   closeDeviceOpMenu();
 });
 

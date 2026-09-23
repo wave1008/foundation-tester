@@ -42,6 +42,7 @@ import {
   buildDeviceArgs,
   describeElementShort,
   devicesToOptions,
+  FALLBACK_DEVICE_ID,
   fallbackDeviceOption,
   hitTestElement,
   isTextInputElement,
@@ -162,9 +163,18 @@ interface PendingServeRequest {
 
 export class MonitorLiveController implements vscode.Disposable {
   private devices: LiveDeviceOption[] = [];
+  /** タイル右クリックで開いた**他の機械の台**(registerRemoteDevice)。list-devices はこの Mac の台しか
+   * 返さないので、一覧を取り直すたびに applyDevices がここから足し戻す(足さないと選択が消えて
+   * 先頭の台へ戻る)。 */
+  private readonly remoteOptions = new Map<string, LiveDeviceOption>();
   private selectedDeviceId: string | undefined;
-  /** openDevice 用: 次の applyDevices で優先選択する id(消費したら undefined に戻す)。 */
+  /** openDevice 用: 次の applyDevices で優先選択する id(消費したら undefined に戻す)。
+   * **busy が解けた時点でも消化する**(setBusy)—— busy の原因が refreshDevices でない(画面取得・
+   * 操作の最中)と applyDevices が来ず、右クリックの「ライブ操作」が黙って捨てられていた。 */
   private pendingSelectId: string | undefined;
+  /** booted の台へ切り替えたときの観測1回(requestOpenObservation)。busy の間は撃てない
+   * (refreshSnapshot は busy なら何もしない)ので、ここに控えて setBusy(false) で撃つ。 */
+  private openObservationPending = false;
   /** preferPlatform 用: Run Test 自動オープン(liveTabHost.ts)が「実行中シナリオの platform」を渡す。
    * 選択中デバイスの platform がこれと食い違う間、applyDevices/preferPlatform は一覧の先頭から
    * この platform のデバイスを探して自動選択する。ユーザーが手動で選び直したら(selectDevice/
@@ -293,6 +303,36 @@ export class MonitorLiveController implements vscode.Disposable {
   private setBusy(busy: boolean): void {
     this.busy = busy;
     this.post({ type: "busy", busy });
+    if (busy) {
+      return;
+    }
+    const pendingId = this.pendingSelectId;
+    if (pendingId !== undefined) {
+      this.pendingSelectId = undefined;
+      void this.openDevice(pendingId);
+      return;
+    }
+    if (this.openObservationPending) {
+      this.openObservationPending = false;
+      void this.refreshSnapshot();
+    }
+  }
+
+  /** **booted(台は起動済み・ブリッジ未接続)の台へ切り替えたら観測を1回撃つ**。serve の自動起動
+   * (LiveBridgeAutoStarter)の引き金は観測・操作の接続拒否だけで、自動のフレーム取得(frame)は
+   * 受動的な観測として起動を撃たない(ApiLiveCommand.emitFrame)。撃たないと、ブリッジの無い台
+   * (実機では普通)を開いても「接続できません」のまま何も始まらない(実地 2026-09-24: iPhone wave)。
+   * 切り替えの全経路(openDevice / selectDevice / applyDevices / preferPlatform)が通る
+   * ensureServeProcess から呼ぶ。offline は撃たない(台そのものが起きていない = start-device の役目) */
+  private requestOpenObservation(): void {
+    if (this.selectedOption()?.state !== "booted") {
+      return;
+    }
+    if (this.busy) {
+      this.openObservationPending = true;
+      return;
+    }
+    void this.refreshSnapshot();
   }
 
   /** 「操作記録」1行を webview へ送る(対向: liveTab.js の operationLog ハンドラ)。
@@ -398,7 +438,8 @@ export class MonitorLiveController implements vscode.Disposable {
   private currentDeviceRef(): LiveDeviceRef | undefined {
     const option = this.devices.find((device) => device.id === this.selectedDeviceId);
     return option
-      ? { platform: option.platform, port: option.port, serial: option.serial, udid: option.udid }
+      ? { platform: option.platform, port: option.port, serial: option.serial, udid: option.udid,
+          machine: option.machine }
       : undefined;
   }
 
@@ -439,8 +480,9 @@ export class MonitorLiveController implements vscode.Disposable {
 
   /** pendingSelectId(openDevice 由来)があればそれを優先選択する。無ければ直前の選択が新しい
    * 一覧にも存在するとき維持し、それ以外は先頭を選択する。 */
-  private applyDevices(options: LiveDeviceOption[], bannerMessage: string | undefined): void {
+  private applyDevices(listed: LiveDeviceOption[], bannerMessage: string | undefined): void {
     this.handleConnectionOk();
+    const options = [...listed.filter((o) => !this.remoteOptions.has(o.id)), ...this.remoteOptions.values()];
     this.devices = options;
     const pending = this.pendingSelectId;
     this.pendingSelectId = undefined;
@@ -614,6 +656,18 @@ export class MonitorLiveController implements vscode.Disposable {
    * openForDevice → 「ライブ操作」タブの liveTab.js openLiveDevice)。
    * id はモニターと共通の `platform:name`(Swift 側 MonitorTarget.id と devicesToOptions が同形式)。
    * 一覧に無ければ取得し直してから選択し、接続済みなら snapshot まで自動取得する。 */
+  /** タイル右クリック(liveTabHost.ts の openForDevice)で開く**他の機械の台**を選択肢に加える。
+   * 続く openDevice が一覧を取り直さずにこの id で選べるよう、this.devices にもすぐ入れる */
+  registerRemoteDevice(option: LiveDeviceOption): void {
+    this.remoteOptions.set(option.id, option);
+    const index = this.devices.findIndex((device) => device.id === option.id);
+    if (index >= 0) {
+      this.devices[index] = option;
+    } else {
+      this.devices.push(option);
+    }
+  }
+
   private async openDevice(id: string): Promise<void> {
     if (this.busy) {
       // 進行中の refreshDevices があれば、その applyDevices がこの id を優先選択する。
@@ -629,9 +683,16 @@ export class MonitorLiveController implements vscode.Disposable {
       await this.refreshDevices();
     }
     if (this.selectedDeviceId !== id) {
-      return; // 一覧取得失敗(フォールバック)や消えたデバイス。banner は refreshDevices 側で表示済み。
+      // 一覧取得失敗(フォールバック)は refreshDevices が banner を出し済み。取れた一覧に居ないのは
+      // **他の機械の台**(モニターのタイル id が `ios:<machine>/<name>`)か消えた台 —— 黙ると前の台の
+      // 画面が出続け、開いたつもりの台と違う画面になる(実地 2026-09-24: M1Ultra の iPhone wave)
+      if (this.devices.every((device) => device.id !== id) && this.devices[0]?.id !== FALLBACK_DEVICE_ID) {
+        this.post({ type: "banner", message: t("live.deviceNotOpenable", { id }) });
+      }
+      return;
     }
     const selected = this.devices.find((device) => device.id === id);
+    // booted は切り替えの時点で requestOpenObservation が撃つ(ここで撃つと二重になる)
     if (selected?.state === "connected") {
       await this.refreshSnapshot();
     }
@@ -665,10 +726,14 @@ export class MonitorLiveController implements vscode.Disposable {
     if (this.serveProcess && bound && sameLiveDeviceRef(bound, device)) {
       return;
     }
-    if (!bound || !sameLiveDeviceRef(bound, device)) {
+    const switched = !bound || !sameLiveDeviceRef(bound, device);
+    if (switched) {
       this.clearSnapshotCache();
     }
     this.rebindServeProcess(device);
+    if (switched) {
+      this.requestOpenObservation();
+    }
   }
 
   /** 直前のデバイスのスナップショット(画面サイズ・要素一覧)を捨てる。デバイスを切り替えた
@@ -763,10 +828,14 @@ export class MonitorLiveController implements vscode.Disposable {
       this.serveRestartTimer = undefined;
     }
     const config = this.deps.getConfig();
-    const args = ["api", "live", "serve", ...buildDeviceArgs(device)];
+    const serveArgs = ["api", "live", "serve", ...buildDeviceArgs(device)];
     if (device.platform === "ios" && device.udid) {
-      args.push("--udid", device.udid);
+      serveArgs.push("--udid", device.udid);
     }
+    // 他の機械の台は**向こうで** serve を起こす(その台を USB で握っているのはその機械。この Mac から
+    // Wi-Fi で2本目のランナーを立てると1台に2本になり両方落ちる)。NDJSON は ssh の stdin/stdout を
+    // そのまま通る(remote exec の到達確認は -n で stdin を読まない = RemoteSetupCommand.swift)
+    const args = device.machine ? ["remote", "exec", device.machine, "--", ...serveArgs] : serveArgs;
     let proc: ServeProcess;
     try {
       proc = spawn(config.binaryPath, args, {
@@ -1108,8 +1177,11 @@ export class MonitorLiveController implements vscode.Disposable {
     // 「invalid UDID」で即終了し、再起動を繰り返す間はポーリングも止まる = 前の台の絵が残って見えた。
     // モニターのタイルと同じ規則: monitorDeviceStreamController.ts)。ポーリング(serve の frame)へ直行する
     const physical = this.selectedOption()?.kind === "physical";
+    // 他の機械の台も配信は張らない(simstream/androidstream はこの Mac の台しか映せない)。ポーリング
+    // (serve の frame)は serve ごと向こうで動くのでそのまま使える
+    const remote = device?.machine !== undefined;
     if (!pollingForced && this.liveTabVisible && config.iosStreamEnabled && device?.platform === "ios" && device.udid
-        && !physical) {
+        && !physical && !remote) {
       const simStreamPath = resolveSimStream(config);
       if (simStreamPath) {
         this.clearFrameTimer();
@@ -1129,7 +1201,8 @@ export class MonitorLiveController implements vscode.Disposable {
       this.liveTabVisible &&
       config.androidStreamEnabled &&
       device?.platform === "android" &&
-      device.serial
+      device.serial &&
+      !remote
     ) {
       const androidStreamPath = resolveAndroidStream(config);
       const adbPath = androidStreamPath ? resolveAdb() : undefined;

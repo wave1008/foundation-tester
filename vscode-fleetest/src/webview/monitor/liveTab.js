@@ -228,7 +228,9 @@ function applyDevices(devices, selectedId) {
   for (const d of devices) {
     const opt = document.createElement('option');
     opt.value = d.id;
-    opt.textContent = d.name + '(' + d.platform + ') - ' + (STATE_LABEL[d.state] || d.state);
+    // 他の機械の台は機械名も出す(同じ名前の台がこの Mac にも居ることがある)
+    opt.textContent = d.name + '(' + d.platform + (d.machine ? ' / ' + d.machine : '') + ') - '
+      + (STATE_LABEL[d.state] || d.state);
     deviceSelect.appendChild(opt);
   }
   if (selectedId) { deviceSelect.value = selectedId; }

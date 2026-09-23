@@ -16,12 +16,14 @@ import type * as vscode from "vscode";
 import type { FleetestCli } from "./cli";
 import type { FleetestConfig } from "./config";
 import type { LiveDeps } from "./liveDeps";
-import type { LiveFromWebviewMessage } from "./liveModel";
+import { type LiveFromWebviewMessage, remoteDeviceOption } from "./liveModel";
 import type { LiveRunTarget } from "./liveRunTarget";
 import { MonitorLiveController } from "./monitorLiveController";
-import type { MonitorToWebviewMessage } from "./monitorWebviewMessages";
+import type { MonitorFromWebviewMessage, MonitorToWebviewMessage } from "./monitorWebviewMessages";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import type { FleetestTestTree } from "./testTree";
+
+type OpenLiveRemoteTarget = NonNullable<Extract<MonitorFromWebviewMessage, { type: "openLiveForDevice" }>["remote"]>;
 
 /** MonitorPanelController からの窓口(MonitorPanelDeps と同じ、必要なものだけを束ねる狭い形)。 */
 export interface LiveTabHostDeps {
@@ -145,8 +147,14 @@ export class LiveTabHost implements vscode.Disposable {
     }
   }
 
-  /** デバイスタイル右クリック「ライブ操作」。 */
-  openForDevice(id: string): void {
+  /** デバイスタイル右クリック「ライブ操作」。remote は他の機械のタイルのときだけ(monitorWebviewMessages.ts)。 */
+  openForDevice(id: string, remote?: OpenLiveRemoteTarget): void {
+    if (remote) {
+      this.live.registerRemoteDevice(remoteDeviceOption({
+        id, name: remote.name, platform: remote.platform, state: remote.state, kind: remote.kind,
+        udid: remote.udid ?? null, serial: remote.serial ?? null, machine: remote.machine,
+      }));
+    }
     const alreadyOpen = this.deps.isPanelOpen();
     this.deps.showTab("live");
     if (alreadyOpen) {
