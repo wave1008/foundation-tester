@@ -173,3 +173,43 @@ test("img へ正式に戻ったら、img の実寸で縦横比を取り直す", 
 
   assert.equal(tileAspect(document), "2.0000", "img 表示に戻ったら img の比率");
 });
+
+// 逆向き: **配信ヘルパーが落ちている**(host の streamStopped。畳み・全破棄・タブ非表示)なら、
+// 次のキーフレームは来ないので、ポーリング由来のフレームで canvas を降ろさなければならない。
+// 実害(2026-09-23): ライブ操作で操作した画面がデバイスモニターに反映されず、前の画像が残った ——
+// 配信を畳んだ台の絵の出所はポーリングだけなのに、タイルは最後に復号した canvas を出したまま
+// ポーリングのフレームを隠れた img へ入れ続けていた。
+test("配信が落ちた後のポーリングフレームは canvas を降ろして静止画に戻す", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window);
+  await sendKeyframeAndAwaitH264(window);
+
+  post(window, { type: "streamStopped", device: "android:Emu 1" });
+  assert.ok(
+    tileMedia(document).canvas.classList.contains("visible"),
+    "知らせだけでは降ろさない(まだ1枚も静止画が無い台を「接続中」にしないため)",
+  );
+
+  post(window, { type: "frame", device: "android:Emu 1", jpegBase64: "AAAA", width: 400, height: 800 });
+
+  const after = tileMedia(document);
+  assert.ok(!after.canvas.classList.contains("visible"), "canvas を降ろすこと");
+  assert.ok(!after.img.classList.contains("h264-hidden"), "ポーリングのフレームを表に出すこと");
+});
+
+test("配信が戻れば(新しいキーフレーム)ポーリングの安全弁で降ろさない状態に戻る", async (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window);
+  await sendKeyframeAndAwaitH264(window);
+
+  post(window, { type: "streamStopped", device: "android:Emu 1" });
+  await sendKeyframeAndAwaitH264(window); // 新しい配信が始まった
+  post(window, { type: "frame", device: "android:Emu 1", jpegBase64: "AAAA", width: 400, height: 800 });
+
+  assert.ok(
+    tileMedia(document).canvas.classList.contains("visible"),
+    "落ちた印はキーフレームで解けること(生きている配信を安全弁1枚で降ろさない既存の規律へ戻る)",
+  );
+});

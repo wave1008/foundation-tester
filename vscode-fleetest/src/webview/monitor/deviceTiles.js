@@ -412,6 +412,8 @@ function createTile(device) {
     // (キーフレーム到着でどちらもリセット=ヘルパー再起動1世代につき最大1回送る)。
     h264DeltasBeforeKey: 0,
     h264StallSent: false,
+    // host が配信ヘルパーを落としたら true(applyStreamStopped)。次のフレームで canvas を降ろす。
+    h264Stale: false,
     // h264 描画中(canvas 表示・img 非表示)かどうか。canvasEl/h264Renderer は初回 h264Chunk で遅延生成。
     // h264ErrorSent は codecError 送信済み(以後 applyH264Chunk を無視、frame 復帰待ち)のガード。
     canvasEl: null,
@@ -816,8 +818,23 @@ onMachineEnablementChanged(() => {
 
 // 「開いているか」は entry では判定できない —— 空きエリアの右クリックでは entry が無いまま開く。
 let deviceOpMenuOpen = false;
+/** コンテキストメニューの対象として印を付けているタイル(.menu-target)。**メニューを出している間だけ**
+ * (ユーザー決定 2026-09-23)。チェックボックスの選択(.selected)とは別の印で、entry を握らず要素を
+ * 握るのは、タイルが作り直されても外し忘れが残らないようにするため。 */
+let menuTargetTile = null;
+function setMenuTargetTile(entry) {
+  const next = entry ? entry.tile : null;
+  if (menuTargetTile && menuTargetTile !== next) {
+    menuTargetTile.classList.remove('menu-target');
+  }
+  menuTargetTile = next;
+  if (menuTargetTile) {
+    menuTargetTile.classList.add('menu-target');
+  }
+}
 
 export function closeDeviceOpMenu() {
+  setMenuTargetTile(null); // 項目の選択・外を押す・Escape・スクロール等、閉じる経路は全部ここを通る
   if (!deviceOpMenuOpen) {
     return;
   }
@@ -830,6 +847,7 @@ export function closeDeviceOpMenu() {
 function openDeviceOpMenu(entry, clientX, clientY, { selectAllOnly = false } = {}) {
   deviceOpMenuEntry = entry;
   deviceOpMenuOpen = true;
+  setMenuTargetTile(entry); // どのデバイスに対するメニューかを見せる(空きエリアの右クリックは entry=null)
   renderSelectionMenuItems();
   deviceOpMenuDeselectAllBtn.style.display = selectAllOnly ? 'none' : '';
   deviceOpMenuSelectOnlyBtn.style.display = entry ? '' : 'none';
@@ -1511,7 +1529,11 @@ export function applyFrame(message) {
   // h264 が健全な間も安全弁として遅れて1枚だけ届き得るため(monitorDeviceStreamController.ts
   // 冒頭コメント「受信後の安全弁として残る」)、それだけでは破棄しない —— 破棄すると次の
   // キーフレーム到達まで表示が止まる(これが毎サイクル起き得ていた)。
-  if (entry.usingH264 && message.stream) {
+  // **h264Stale のときはポーリング由来でも破棄する** —— 配信ヘルパーが落ちている(host の
+  // streamStopped)なら次のキーフレームは来ないので、破棄しないとタイルは最後に復号した絵のまま
+  // 止まる。生きている配信を毎サイクルのポーリング1枚で破棄しない、という既存の規律は
+  // h264Stale が false の間そのまま効く。
+  if (entry.usingH264 && (message.stream || entry.h264Stale)) {
     disposeH264(entry);
   }
   // message.width/height はここでは使わない(アスペクト比は img の load で実寸から決める)。
@@ -1559,11 +1581,23 @@ export function applyStreamUnavailable(message) {
   renderFrame(entry);
 }
 
+/** host が配信ヘルパーを落とした(畳み・破棄・パネル非表示)。**ここでは破棄しない** ——
+ * まだ1枚もポーリングのフレームを受けていない台で破棄すると、絵を出せず「接続中」へ落ちる。
+ * 印だけ立て、次に届いたフレームで applyFrame が入れ替える。契約: monitorWebviewMessages.ts。 */
+export function applyStreamStopped(message) {
+  const entry = tiles.get(message.device);
+  if (!entry) {
+    return;
+  }
+  entry.h264Stale = true;
+}
+
 export function applyH264Chunk(message) {
   const entry = tiles.get(message.device);
   if (!entry || entry.h264ErrorSent) {
     return;
   }
+  entry.h264Stale = false; // 新しい配信が始まった(落ちた印を解く)
   // デコーダはキーフレームから始まる必要がある。初期キーフレームを取り逃した世代(webview 準備前に
   // 送信済み等)はデルタしか届かず永久に描画できないため、ホストにヘルパー再起動を頼む
   if (message.keyframe) {

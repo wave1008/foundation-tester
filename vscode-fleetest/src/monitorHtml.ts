@@ -394,7 +394,8 @@ function renderLivePanel(): string {
     <div id="live-stale-notice"><span id="live-stale-notice-label">${t("panels.live.staleNoticeLabel")}</span> <span id="live-stale-notice-text"></span></div>
 
     <div class="content">
-      <div class="screenshot-pane" id="live-screenshot-pane">
+      <!-- awaiting-image: 絵が1枚も来ていない間(placeholder 表示中)のレイアウト。liveTab.js の hidePlaceholder が外す -->
+      <div class="screenshot-pane awaiting-image" id="live-screenshot-pane">
         <!-- 画像スロット。内容フィットで画像実寸に縮み pane 上端に付く。liveTab.js の fitScreenshot が
              pane 実測高から actions/gap を引いた残りを #live-screenshot の max-height に反映する。 -->
         <div class="screenshot-frame" id="live-screenshot-frame">

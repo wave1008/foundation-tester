@@ -1058,6 +1058,15 @@ html.select-all-guard * {
   border-width: 2px;
   padding: 7px;
 }
+/* 右クリックのコンテキストメニューを出している間だけ、対象のタイルに付く印(deviceTiles.js の
+   openDeviceOpMenu/closeDeviceOpMenu)。チェックボックスの選択(.selected)とは別物なので枠の色では
+   なく outline + 背景で出す。**outline を使うのはレイアウトを動かさないため**(border を太らせると
+   タイルの寸法が変わり、並びが1台ぶんずれて見える)。 */
+.tile.menu-target {
+  outline: 2px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -1px;
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.10));
+}
 /* width:0 + min-width:100%: ヘッダー/フッターの固有幅(バッジ等)がタイル幅を
    決めないようにする。無いとタイルが画像より広がり並ぶ台数が減る。 */
 /* **タイルの幅は画面(.frame-wrap)だけで決める** —— この3つは中身が長くても幅を押し広げない
@@ -2686,8 +2695,23 @@ input[type="radio"]:focus-visible {
   fill: var(--vscode-focusBorder, #007acc);
   opacity: 0.5;
 }
+/* 絵が1枚も来ていない間(placeholder 表示中)は、枠を左右にも伸ばしてペインの残り幅を使う
+   (高さは fitScreenshot が入れる)。絵が出た時点で liveTab.js の hidePlaceholder がこのクラスを
+   外し、以降は既定どおりペインが絵の実寸にハグする(要素一覧が絵の直後へ左寄せで並ぶ)。
+   スプリッターで手動幅があるときは fitScreenshot が付けるインラインの flex/max-width が勝つ。 */
+#panel-live .screenshot-pane.awaiting-image { flex: 1 1 auto; }
+#panel-live .screenshot-pane.awaiting-image .screenshot-wrap { width: 100%; }
+#panel-live .screenshot-pane.awaiting-image #live-screenshot-placeholder { width: 100%; max-width: none; }
+
+/* 絵が来るまでの代替表示。**高さは liveTab.js の fitScreenshot が絵と同じ maxH を入れる** ——
+   中身の高さに任せると縦に縮んだ箱になり、最初のフレームが届いた瞬間にペイン全体のレイアウトが
+   組み直る。box-sizing:border-box は入れられた高さをパディング込みで守るため(flex で中央寄せ)。 */
 #live-screenshot-placeholder {
-  padding: 60px 30px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
   text-align: center;
   color: var(--vscode-descriptionForeground);
   font-size: 13px;

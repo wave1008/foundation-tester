@@ -434,9 +434,18 @@ export class MonitorDeviceStreamController {
     this.reapply(); // restartDevice と同様に即座に mjpeg で張り直す(次の applyDevices を待たない)
   }
 
-  private disposeDevice(deviceId: string): void {
+  /** パイプラインを1本落として webview へも知らせる(streamStopped)。**知らせるのが要点** ——
+   * 落としたことを伝えないと、タイルは最後に復号した h264 の絵を出したままポーリングのフレームを
+   * 隠れた img へ入れ続ける(= 前の画像が残る)。畳んだ台の絵の出所はポーリングだけなので、
+   * 落とす3経路(個別破棄・全破棄・非表示)が全部ここを通る。 */
+  private dropPipeline(deviceId: string): void {
     this.pipelines.get(deviceId)?.pipeline.dispose();
     this.pipelines.delete(deviceId);
+    this.deps.post({ type: "streamStopped", device: deviceId });
+  }
+
+  private disposeDevice(deviceId: string): void {
+    this.dropPipeline(deviceId);
     if (this.streamingDeviceIds.delete(deviceId)) {
       this.syncSuppressFrames();
     }
@@ -446,8 +455,7 @@ export class MonitorDeviceStreamController {
     // disposeDevice を都度呼ぶと streamingDeviceIds が変化するたび syncSuppressFrames が走り
     // スパムになるため、集合操作をここで直接行いループ後に1回だけ同期する。
     for (const deviceId of [...this.pipelines.keys()]) {
-      this.pipelines.get(deviceId)?.pipeline.dispose();
-      this.pipelines.delete(deviceId);
+      this.dropPipeline(deviceId);
       this.streamingDeviceIds.delete(deviceId);
     }
     this.syncSuppressFramesNow();
@@ -512,8 +520,7 @@ export class MonitorDeviceStreamController {
    * 無駄は送った先の拡張ホスト側)。抑止中も monitor は凍結の探りを間隔を落として続ける(観測は止めない) */
   private hideAll(): void {
     for (const deviceId of [...this.pipelines.keys()]) {
-      this.pipelines.get(deviceId)?.pipeline.dispose();
-      this.pipelines.delete(deviceId);
+      this.dropPipeline(deviceId);
       this.streamingDeviceIds.delete(deviceId);
     }
     if (this.suppressSyncTimer) {

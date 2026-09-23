@@ -12,7 +12,7 @@ import { btnUp, btnDown, btnRestart, btnRunTests } from './domRefs.js';
 import {
   applyDevices,
   applyFrame,
-  applyH264Chunk, applyStreamUnavailable,
+  applyH264Chunk, applyStreamUnavailable, applyStreamStopped,
   applyDeviceError,
   showBanner,
   hideBanner,
@@ -104,6 +104,10 @@ window.addEventListener('message', (event) => {
       break;
     case 'h264Chunk':
       applyH264Chunk(message);
+      break;
+    // 契約: { type:'streamStopped', device }(配信ヘルパーを落とした。次のフレームで canvas を降ろす)
+    case 'streamStopped':
+      applyStreamStopped(message);
       break;
     // 契約: { type:'streamUnavailable', device, unavailable }
     // (monitorDeviceStreamController.ts が配信を諦めたとき true)

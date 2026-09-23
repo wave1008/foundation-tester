@@ -221,6 +221,10 @@ function applyDevices(devices, selectedId) {
 
 deviceSelect.addEventListener('change', () => {
   updateDeviceWarning();
+  // 前のデバイスの絵・木をその場で捨てる(host の clearSnapshot を待つと、serve の張り替えが
+  // 終わるまで前のデバイスの画面が出たままになる)。disposeLiveH264 より先: あちらは src が
+  // 残っていると一枚絵を前面へ戻す。
+  clearSnapshot();
   // デバイス切替=新しい配信セッション。前デバイスの codecError 済みガードを引きずらない。
   disposeLiveH264();
   liveH264ErrorSent = false;
@@ -363,15 +367,32 @@ function activeScreenEl() {
 // 1枚も描けず、タップのたびに映像が数秒止まる)。
 // **撮り直しの予約はここでは落とさない** —— 配信が描けても持っているのは絵だけで、木は
 // 操作時のものから動かない(アラートが出ても要素一覧・枠が前の画面のままだった)。
+/** 絵を前面に出す2経路(showStill/showCanvas)の共通後始末。placeholder を隠すだけでなく
+ * 「絵が来るまで」のレイアウト(awaiting-image: 枠を左右いっぱいに伸ばす)も解く。 */
+function hidePlaceholder() {
+  screenshotPlaceholder.style.display = 'none';
+  screenshotPane.classList.remove('awaiting-image');
+}
+/** hidePlaceholder の逆。**前のデバイスの絵を捨てて** placeholder の状態へ戻す(clearSnapshot)。
+ * src を消すのが要点 —— 残すと切り替え後も前のデバイスの画面が出たままになり、しかも lastScreen は
+ * 捨てられているのでポインタ操作は無反応(=生きた画面に見える静止画)になる。 */
+function showPlaceholder() {
+  screenshot.classList.remove('visible');
+  liveCanvas.classList.remove('visible');
+  screenshot.removeAttribute('src');
+  screenshotPlaceholder.style.display = '';
+  screenshotPane.classList.add('awaiting-image');
+  fitScreenshot();
+}
 function showStill() {
   liveCanvas.classList.remove('visible');
   screenshot.classList.add('visible');
-  screenshotPlaceholder.style.display = 'none';
+  hidePlaceholder();
 }
 function showCanvas() {
   screenshot.classList.remove('visible');
   liveCanvas.classList.add('visible');
-  screenshotPlaceholder.style.display = 'none';
+  hidePlaceholder();
 }
 
 function cancelSettleRefresh() {
@@ -405,6 +426,10 @@ function fitScreenshot() {
   // (実害 2026-09-22: セッションがウィジェットの裏方を向いて screen が 349x565 になり、
   //  0.46 の絵が 0.618 へ横に膨らんだ)。**絵の比は常に正しい**ので、こちらを信じる。
   // screen は pane の幅を決めるためだけに使う(下)。
+  // 絵がまだ無い間の placeholder も絵と同じ高さまで伸ばす(CSS は box-sizing:border-box)。
+  // 中身の高さのままだと縦に縮んだ箱で待つことになり、最初のフレームが届いた瞬間に
+  // ペインの高さが変わってレイアウトが組み直る。
+  screenshotPlaceholder.style.height = maxH + 'px';
   const aspect = displayAspect(lastScreen, naturalSize(activeScreenEl()));
   const widthCap = screenPaneWidth != null ? screenPaneWidth - SCREENSHOT_WRAP_BORDER : undefined;
   const size = fitScreenSize(aspect, maxH, widthCap);
@@ -500,6 +525,7 @@ function clearSnapshot() {
   hideHover();
   renderElements();
   showStaleNotice([]); // 前のデバイスの鮮度警告を持ち越さない
+  showPlaceholder();   // 前のデバイスの絵も捨てる(showPlaceholder の doc)
 }
 
 function applySnapshot(message) {

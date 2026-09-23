@@ -51,9 +51,10 @@ async function waitForArgv(dir, name, timeoutMs = 3000) {
   return undefined;
 }
 
-/** MonitorDeviceStreamController に渡す最小 fake deps。writeMonitorControl を記録する。 */
+/** MonitorDeviceStreamController に渡す最小 fake deps。writeMonitorControl と post を記録する。 */
 function makeDeps(binaryPath) {
   const controls = [];
+  const posts = [];
   const deps = {
     workspaceRoot: WORKSPACE_ROOT,
     outputChannel: { appendLine() {} },
@@ -68,7 +69,7 @@ function makeDeps(binaryPath) {
     }),
     isPollingMode: () => false,
     isShowStreamDuringRun: () => false,
-    post: () => {},
+    post: (message) => posts.push(message),
     writeMonitorControl: (cmd) => controls.push(cmd),
     isDeviceStreaming: () => false,
     getStreamingDeviceIds: () => [],
@@ -78,7 +79,7 @@ function makeDeps(binaryPath) {
     notifyProjectDeviceCatalogChanged: () => {},
     openGeneratedDocument: () => {},
   };
-  return { deps, controls };
+  return { deps, controls, posts };
 }
 
 const iosDevice = {
@@ -650,4 +651,67 @@ test("非表示の間は全台を抑止し、再表示で配信の集合(直後�
     controller.setVisible(false);
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// 配信ヘルパーを落としたら webview へ知らせる(streamStopped)。**知らせないとタイルは最後に復号した
+// h264 の絵のまま止まる** —— あちらは配信中、ポーリングのフレームを隠れた img にしか入れないため
+// (受け手側の挙動は webviewTileStreamStalePoll.test.mjs)。畳み(対象から外れた)・全破棄・
+// パネル/タブ非表示の3経路とも落とすので、3つとも知らせる必要がある。
+// 実害(2026-09-23): ライブ操作で操作した画面がデバイスモニターに反映されず前の画像が残った。
+test("配信ヘルパーを落とす3経路とも webview へ streamStopped を送る", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir();
+
+  // ① 対象から外れた(一覧から消えた)= applyDevices の破棄ループ
+  {
+    const { deps, posts } = makeDeps(binaryPath);
+    const controller = new MonitorDeviceStreamController(deps);
+    try {
+      controller.applyDevices([iosDevice]);
+      posts.length = 0;
+      controller.applyDevices([]);
+      assert.deepEqual(
+        posts.filter((m) => m.type === "streamStopped").map((m) => m.device),
+        [iosDevice.id],
+        "畳んだ台を知らせること",
+      );
+    } finally {
+      controller.setVisible(false);
+    }
+  }
+
+  // ② 全破棄(モニター再起動)
+  {
+    const { deps, posts } = makeDeps(binaryPath);
+    const controller = new MonitorDeviceStreamController(deps);
+    try {
+      controller.applyDevices([iosDevice]);
+      posts.length = 0;
+      controller.restartAllStreams();
+      assert.ok(
+        posts.some((m) => m.type === "streamStopped" && m.device === iosDevice.id),
+        "全破棄でも知らせること",
+      );
+    } finally {
+      controller.setVisible(false);
+    }
+  }
+
+  // ③ パネル/タブ非表示(hideAll)
+  {
+    const { deps, posts } = makeDeps(binaryPath);
+    const controller = new MonitorDeviceStreamController(deps);
+    try {
+      controller.applyDevices([iosDevice]);
+      posts.length = 0;
+      controller.setVisible(false);
+      assert.ok(
+        posts.some((m) => m.type === "streamStopped" && m.device === iosDevice.id),
+        "非表示で畳むときも知らせること",
+      );
+    } finally {
+      controller.setVisible(false);
+    }
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
 });
