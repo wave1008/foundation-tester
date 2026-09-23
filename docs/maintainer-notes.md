@@ -1987,3 +1987,63 @@ notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWe
 - **`ft_scroll_to` の失敗文の先頭行が注記**(`Error: note: search took 14.7s (3 swipe(s)).`)で、
   何が失敗したかが2行目。注記の順序は `sheetNote` について意図的に決めてあるので、
   足し引きは `Scripts/mcp-bench.sh` の手数で決める(印象で動かさない)。
+
+## 45. 失敗の出口が MCP にしか配線されていなかった(2026-09-23 の掃討)
+
+**発端**: 負荷テスト3回で同じ型が3回続けて出た —— T1(`ft_launch` が未インストールの bundleID で
+ブリッジごと自壊)・B1(死んだブリッジに気づけず同じエラーを返し続ける。§43.2)・§44.1(固まった
+ブリッジを busy と誤って帰属し、正しい出口を名指しで禁止した)。3回とも個別に直したが、
+**同じ型が3回続けて出るのは個別の不具合ではない**ので、型として掃討した。
+
+**棚卸し**: ブリッジ3実装が返すエラー応答を全数(XCUITest 34 / in-app 35 / Android 33 = 102 件)、
+ホストの3経路(MCP・ライブ操作・DSL)と突き合わせた。
+
+**構造**: 判定は FTCore / FTBridgeClient に置いて共有されているのに、**それを呼んで利用者への
+出口にするのは MCP だけ**だった。
+
+| 判定 | MCP | ライブ操作 |
+|---|---|---|
+| `BridgeDiscovery.probeStatus`(固まり / busy / 不在の4値) | 6 | **0** |
+| `DriverError.isNoReadableWindow`(Android の木が読めない) | 2 | **0** |
+| `FTCore.StaleFrameDetector`(絵が古い) | 9 | **0** |
+
+3回とも MCP にだけ足して直したので、**ライブ操作には一度も届いていなかった**。あちらは人間が
+拡張の UI で画面を見ながら触る経路なので、一次情報だけだと「壊れた」と判断してパネルを閉じる・
+ブリッジを落とす、という袋小路の行動を誘う。
+
+### 45.1 直した4件
+
+- **HYB-1(呼び手で成否が変わる)**: テキスト入力系の 409 を、DSL は XCUITest へ回すのに
+  `HybridFallbackDriver` は回さなかった —— 同じ hybrid 構成の同じ操作が、シナリオなら通り
+  `ft_type` / `ft_press_enter` / `ft_clear_input` では落ちる。判定を
+  `DriverError.isTextInputFallback` / `isClearInputFallback` として FTCore へ出し、両方が呼ぶ。
+  **`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を含む 14 操作と共有で、
+  409 を既定に入れると全部を巻き込む(とくに hideKeyboard は DSL が明示的に「409 では回さない」と
+  決めている)。**ref ありは回さない** —— ref はブリッジごとに別名前空間で、この層には変換手段が無い
+- **LIVE-1/2/3**: ライブ操作が上の表の3判定を呼び、人間向けの文言で出口を出す。LIVE-3 の注記は
+  `notes` 欄(snapshot イベント)で運ぶので **ProtocolVersion を +1** し、拡張側も読んで表示する
+  (**CLI 側だけ直しても受け手には届かない**)
+
+### 45.2 規律
+
+**利用者が次の一手を打つ経路は MCP とライブ操作の2つ**。判定を足したら**両方へ配線する**。
+run(DSL)は別扱い —— あちらは失敗をレポートへ残して自動回復する経路で、人がその場で次の一手を
+打つ場ではない。`LiveControlExitParityTests` が集合を等号で固定する。
+**走査はコメントを落としてから行う** —— 判定の名前は doc コメントにも出るので、素のまま検索すると
+**配線を消してもコメントだけで通る**(変異で実際に素通りした)。
+
+### 45.3 直さなかったもの
+
+- **素通し約 60 件の文言**: ブリッジの応答の多くは一次情報しか返さないが、「もっと分かりやすく
+  言えたはず」は無限に出るので、注記の足し引きは `Scripts/mcp-bench.sh` の手数で決める。
+  今回は**構造的な欠陥**(呼び手で挙動が変わる・判定があるのに呼ばない)だけに絞った
+- **Android の 503(UiAutomation dead)の再試行タイミング**: 本文の "retry the step" 自体は誤りでない
+  (ブリッジが exit → 次の呼び出しが connection-refused → `withBridge` が再プロビジョニング)。
+  `scheduleExit` の遅延と再試行の間隔が噛み合うかは実測が要る
+- **Android の総括 catch に残る生の Java 例外**: §44.4 で `handleSnapshot` だけを直したが、
+  `BridgeRouter.handle` の総括 catch は今も `String.valueOf(e)` を返す。ブリッジの版上げを伴う
+- **TYPE-1: ツールが答えを持っているのに失敗時だけ捨てる**: `type` は撃つ前に「この欄は既に値を
+  持つ / マスク欄なので追記になる」を知っている(`existingValueNote`)のに、その注記は**成功経路
+  でしか出力に合流しない**。Android がマスク欄への追記を 422 で断るケースは、まさにその注記が
+  当たる条件と一致するのに一次情報だけが届く。失敗経路で注記を運ぶ形(`.failed` の文言に足すか
+  `StepNote` にするか。`throw` 経由だと `execution error: ` の形が変わる)の設計が要る
