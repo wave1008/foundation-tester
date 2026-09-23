@@ -218,6 +218,20 @@ public enum BridgeDiscovery {
         reported ?? recorded ?? matchedByName
     }
 
+    /// 本人確認(`FTCore.BridgeIdentityCheck`)に渡す前の status。**申告が無いときだけ**記録で udid を
+    /// 補う(規則は `resolveUDID`)。補わずに渡すと、実機の XCUITest ランナー(udid を申告しない)は
+    /// 「udid 不明・エンジン一致 = 一致」に倒れ、**既定ポートに居る別の実機のブリッジを自分のものとして
+    /// 掴む**(実地 2026-09-24: iPhone wave のライブ操作に 8123 の iPhone SE3 の画面が出た)
+    public static func statusForIdentityCheck(_ status: StatusResponse, port: UInt16, repoRoot: URL?) -> StatusResponse {
+        guard status.udid == nil,
+              let recorded = repoRoot.flatMap({ BridgeDeviceRecord.load(port: port, repoRoot: $0) }) else {
+            return status
+        }
+        var filled = status
+        filled.udid = resolveUDID(reported: nil, recorded: recorded)
+        return filled
+    }
+
     // MARK: - 文言(1箇所に置く。呼び出し側は throw / ログに載せるだけ)
 
     public static func adoptedNote(preferred: UInt16, found: Found) -> String {

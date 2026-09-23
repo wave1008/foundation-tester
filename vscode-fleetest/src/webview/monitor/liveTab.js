@@ -1023,7 +1023,12 @@ export function applyLiveMessage(message) {
       applySnapshot(message);
       break;
     case 'clearSnapshot':
+      // host がデバイスを切り替えた。前の台のデコーダも捨てる —— 残すと、デコード待ちだった
+      // 前の台のフレームが描けた時点で onFrameRendered が canvas を前面へ戻し、新しい台の絵が
+      // 来るまで(来なければずっと)前の台の画面が出たままになる
       clearSnapshot();
+      disposeLiveH264();
+      liveH264ErrorSent = false;
       break;
     case 'frame':
       disposeLiveH264(); // mjpeg フォールバック復帰(codecError 後、host が frame 送信に切替えた場合)
@@ -1107,6 +1112,11 @@ export function setLiveVisible(visible) {
 
 /** デバイスタイル右クリック「ライブ操作」(受信元: deviceTiles.js → liveTabHost.ts → ここ)。 */
 export function openLiveDevice(id) {
+  // 別の台へ移るなら前の台の絵・木をその場で捨てる(セレクトの change と同じ)。捨てずに
+  // disposeLiveH264 を呼ぶと、残った src(前の台の静止画)を前面へ戻してしまう
+  if (deviceSelect.value !== id) {
+    clearSnapshot();
+  }
   disposeLiveH264();
   liveH264ErrorSent = false;
   post({ type: 'openDevice', id });

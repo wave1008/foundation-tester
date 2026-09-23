@@ -161,8 +161,15 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
     /// (他人のブリッジを版差だけを理由に止めない)
     func testCheckAndRestartIfStaleVerifiesIdentityBeforeRestarting() throws {
         let code = try source("Sources/fleetest/LiveBridgeAutoStarter.swift")
-        guard let statusRange = code.range(of: "guard let status = try? await client.status()") else {
+        guard let reportedRange = code.range(of: "guard let reported = try? await client.status()") else {
             return XCTFail("status の取得箇所が変わった — テストを見直すこと")
+        }
+        // 実機は udid を申告しないので、記録で補ってから本人確認する(実地 2026-09-24)
+        guard let statusRange = code.range(
+            of: "let status = BridgeDiscovery.statusForIdentityCheck(reported,",
+            range: reportedRange.upperBound..<code.endIndex) else {
+            return XCTFail("本人確認の前に statusForIdentityCheck で udid を補っていない"
+                + " — 既定ポートに居る別の実機のブリッジを自分のものとして扱う")
         }
         guard let identityRange = code.range(
             of: "BridgeIdentityCheck.matches(expected: expected, status: status)") else {

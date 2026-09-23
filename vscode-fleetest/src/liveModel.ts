@@ -690,6 +690,9 @@ export interface LiveDeviceOption {
   readonly port: number | null;
   readonly serial: string | null;
   readonly udid: string | null;
+  /** 映像の供給元の選択に使う(monitorLiveController.ts の updateLiveFrameSource)。フォールバックは
+   * 実体が分からないので virtual(従来の既定)。 */
+  readonly kind: LiveDeviceKind;
 }
 
 /** id はデバイス名(machines プロファイル検証で ios/android 横断の一意性が保証済み)を使うため、
@@ -704,6 +707,7 @@ export function devicesToOptions(devices: readonly LiveDevice[]): LiveDeviceOpti
     port: device.port,
     serial: device.serial,
     udid: device.udid,
+    kind: device.kind,
   }));
 }
 
@@ -720,6 +724,7 @@ export function fallbackDeviceOption(source: FallbackDeviceSource): LiveDeviceOp
     port: ref.port,
     serial: ref.serial,
     udid: ref.udid,
+    kind: "virtual",
   };
 }
 

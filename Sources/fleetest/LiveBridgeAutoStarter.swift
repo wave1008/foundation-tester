@@ -78,7 +78,8 @@ actor LiveBridgeAutoStarter {
         // establish が残した宛先(host・token)をそのまま問う(記録が無ければループバック・token 無し)
         let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot),
                                   timeoutSeconds: 3)
-        guard let status = try? await client.status() else { return }
+        guard let reported = try? await client.status() else { return }
+        let status = BridgeDiscovery.statusForIdentityCheck(reported, port: port, repoRoot: repoRoot)
         // **自分の台にだけ効かせる**(F8b 型・実地 L1: このポートが版差のせいで古く見えても、
         // 疎通した相手が別デバイスなら止めない——他人のブリッジを版で止めて建て直していた実害。
         // 判定は run 側4経路と同じ FTCore.BridgeIdentityCheck の1箇所)

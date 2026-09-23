@@ -1104,7 +1104,12 @@ export class MonitorLiveController implements vscode.Disposable {
     const codec: "mjpeg" | "h264" = this.liveMjpegFallback ? "mjpeg" : config.streamCodec;
     const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
 
-    if (!pollingForced && this.liveTabVisible && config.iosStreamEnabled && device?.platform === "ios" && device.udid) {
+    // **iOS 実機は simstream を使わない**(CoreSimulator の私有 API = シミュレータ専用。実機の UDID は
+    // 「invalid UDID」で即終了し、再起動を繰り返す間はポーリングも止まる = 前の台の絵が残って見えた。
+    // モニターのタイルと同じ規則: monitorDeviceStreamController.ts)。ポーリング(serve の frame)へ直行する
+    const physical = this.selectedOption()?.kind === "physical";
+    if (!pollingForced && this.liveTabVisible && config.iosStreamEnabled && device?.platform === "ios" && device.udid
+        && !physical) {
       const simStreamPath = resolveSimStream(config);
       if (simStreamPath) {
         this.clearFrameTimer();

@@ -356,8 +356,10 @@ struct ApiLiveServe: AsyncParsableCommand {
     private static func portIdentity(
         endpoint: BridgeEndpoint, requestedUDID: String, physical: Bool, isInApp: Bool
     ) async -> PortIdentity {
-        guard let status = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 3)
+        guard let reported = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 3)
             .status(timeout: 3) else { return .silent }
+        let status = BridgeDiscovery.statusForIdentityCheck(
+            reported, port: endpoint.port, repoRoot: try? RepoRoot.find())
         let expected = BridgeIdentityCheck.Expected(
             port: endpoint.port, udid: requestedUDID, physical: physical,
             engine: isInApp ? "inapp" : "xcuitest")

@@ -678,6 +678,7 @@ test("fallbackDeviceOption: id=FALLBACK_DEVICE_ID・state=unknown で組み立�
   assert.equal(option.port, 8100);
   assert.equal(option.serial, null);
   assert.equal(option.udid, null, "フォールバックデバイスは udid を解決できないため常に null");
+  assert.equal(option.kind, "virtual", "実体が分からないので従来どおり virtual(配信を試す側)");
 });
 
 // ---- devicesToOptions ----
@@ -694,6 +695,15 @@ test("devicesToOptions: platform:name の id を付けて変換する", () => {
   assert.equal(options[1].id, "android:エミュ1");
   assert.equal(options[1].state, "offline");
   assert.equal(options[1].udid, null);
+});
+
+// 映像の供給元の選択(iOS 実機は simstream を使わない)が kind を見るので、落とさず運ぶこと
+test("devicesToOptions: kind をそのまま運ぶ", () => {
+  const options = devicesToOptions([
+    { name: "実機", platform: "ios", state: "booted", detail: "", port: null, serial: null, udid: "00008130-001819863E60001C", kind: "physical" },
+    { name: "シミュ", platform: "ios", state: "connected", detail: "", port: 8127, serial: null, udid: "AAAA", kind: "virtual" },
+  ]);
+  assert.deepEqual(options.map((o) => o.kind), ["physical", "virtual"]);
 });
 
 // ---- toSnapshotMessage ----

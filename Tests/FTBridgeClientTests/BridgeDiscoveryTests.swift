@@ -8,6 +8,7 @@
 
 import XCTest
 @testable import FTBridgeClient
+import FTCore
 
 final class BridgeDiscoveryTests: XCTestCase {
 
@@ -101,6 +102,69 @@ final class BridgeDiscoveryTests: XCTestCase {
                      "記録が無ければ特定できない(= 記録を書くことが実機対応の前提)")
         XCTAssertEqual(BridgeDiscovery.resolveUDID(reported: nil, recorded: "00008130-0018",
                                                    matchedByName: nil), "00008130-0018")
+    }
+
+    // MARK: - 本人確認へ渡す status(statusForIdentityCheck)
+    //
+    // 実地 2026-09-24: 実機の XCUITest ランナーは udid を申告しないので、補わずに
+    // BridgeIdentityCheck へ渡すと「一致」に倒れ、iPhone wave のライブ操作が既定ポート 8123 の
+    // iPhone SE3 のブリッジを掴んで SE3 の画面を出した。
+
+    private let wave = "00008130-001819863E60001C"
+    private let se3 = "00008110-000260242EEB801E"
+
+    private func tempRepoRoot() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("statusForIdentityCheck-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    private func physicalStatus(udid: String?) -> StatusResponse {
+        var status = StatusResponse(ready: true, device: "iPhone", osVersion: "27.0", sessionBundleID: nil)
+        status.engine = "xcuitest"
+        status.udid = udid
+        return status
+    }
+
+    func testUnreportedUDIDIsFilledFromTheRecordSoAnotherPhysicalBridgeIsRejected() throws {
+        let root = try tempRepoRoot()
+        BridgeDeviceRecord.persist(udid: se3, port: 8123, repoRoot: root)
+        let status = BridgeDiscovery.statusForIdentityCheck(physicalStatus(udid: nil), port: 8123, repoRoot: root)
+        XCTAssertEqual(status.udid, se3, "申告が無ければ記録で補う")
+        let expected = BridgeIdentityCheck.Expected(port: 8123, udid: wave, physical: true, engine: "xcuitest")
+        XCTAssertFalse(BridgeIdentityCheck.matches(expected: expected, status: status),
+                       "記録が別の実機なら、そのブリッジを自分のものとして掴まない")
+        let own = BridgeIdentityCheck.Expected(port: 8123, udid: se3, physical: true, engine: "xcuitest")
+        XCTAssertTrue(BridgeIdentityCheck.matches(expected: own, status: status), "記録が自分なら一致")
+    }
+
+    func testReportedUDIDWinsOverTheRecord() throws {
+        let root = try tempRepoRoot()
+        BridgeDeviceRecord.persist(udid: se3, port: 8123, repoRoot: root)
+        let status = BridgeDiscovery.statusForIdentityCheck(physicalStatus(udid: "SIM-UDID"), port: 8123, repoRoot: root)
+        XCTAssertEqual(status.udid, "SIM-UDID", "申告があれば記録で上書きしない")
+    }
+
+    func testNoRecordLeavesTheStatusAsReported() throws {
+        let root = try tempRepoRoot()
+        XCTAssertNil(BridgeDiscovery.statusForIdentityCheck(physicalStatus(udid: nil), port: 8123, repoRoot: root).udid)
+        XCTAssertNil(BridgeDiscovery.statusForIdentityCheck(physicalStatus(udid: nil), port: 8123, repoRoot: nil).udid)
+    }
+
+    /// ライブ操作の本人確認2か所が補完を通すこと(通さないと上の3本が緑のまま実害が戻る)
+    func testLiveIdentityChecksFillTheUDIDFromTheRecord() throws {
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest")
+        for file in ["ApiLiveCommand.swift", "LiveBridgeAutoStarter.swift"] {
+            let code = try String(contentsOf: sources.appendingPathComponent(file), encoding: .utf8)
+                .split(separator: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+                .joined(separator: "\n")
+            XCTAssertTrue(code.contains("BridgeDiscovery.statusForIdentityCheck("),
+                          "\(file) は本人確認の前に statusForIdentityCheck を通すこと")
+        }
     }
 
     /// 文言はそのまま利用者(エージェント)への指示になる。**次の一手が書かれていること**
