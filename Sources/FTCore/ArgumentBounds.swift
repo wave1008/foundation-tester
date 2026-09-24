@@ -27,15 +27,11 @@ public enum ArgumentBounds {
         public static let unbounded = Bound()
     }
 
-    /// hold/gesture 系(holdSeconds・durationSeconds・duration・press)の上限(秒)。
-    /// **Android は注入層で長押し/press を常に 10 秒に丸める**(FTAndroid/AndroidDriver.swift
-    /// `press(x:y:duration:)` の `min(max(ms,300),10000)` と AndroidRunner の
-    /// `InputInjector.java` `Math.min(Math.max(durationSeconds, 0), 10)` の2層)。これより
-    /// 大きい値を渡すと Android は黙って 10 秒で切って「done」を返す(false success)一方、
-    /// iOS の XCUITest ランナーは丸めず `press(forDuration:)` へそのまま渡すので、その秒数ぶん
-    /// ランナーを占有する(host の HTTP タイムアウトも `interactionTimeout + duration` で連動)。
-    /// 揃えるため両 OS とも同じ 10 秒で断る
-    public static let maxGestureSeconds: Double = 10
+    /// hold/gesture 系(holdSeconds・durationSeconds・duration・press)と `maxGestureSeconds` の
+    /// **表での**上限は絶対上限 `BridgeAPI.gestureSecondsCeiling`(60)。1回の呼び出しで実際に許すのは
+    /// 既定 `BridgeAPI.defaultMaxGestureSeconds`(10)か、渡された `maxGestureSeconds` まで ——
+    /// その相互検査は `gestureCapViolation`(表の単独検査では書けない)
+    private static let gestureSecondsCeiling = BridgeAPI.gestureSecondsCeiling
 
     /// 引数名 → 値域。**値域を持たない引数も `.unbounded` で必ず載せる** ——
     /// スキーマの数値プロパティ全部がここに載っていることを `ArgumentBoundsTests` が
@@ -54,10 +50,11 @@ public enum ArgumentBounds {
         "lastN": Bound(min: 1),
         "maxWidth": Bound(min: 1),
         "quality": Bound(min: 0, minExclusive: true, max: 1),
-        "holdSeconds": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
-        "durationSeconds": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
-        "duration": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
-        "press": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
+        "holdSeconds": Bound(min: 0, minExclusive: true, max: gestureSecondsCeiling),
+        "durationSeconds": Bound(min: 0, minExclusive: true, max: gestureSecondsCeiling),
+        "duration": Bound(min: 0, minExclusive: true, max: gestureSecondsCeiling),
+        "press": Bound(min: 0, minExclusive: true, max: gestureSecondsCeiling),
+        "maxGestureSeconds": Bound(min: 0, minExclusive: true, max: gestureSecondsCeiling),
         "radius": Bound(min: 0, minExclusive: true),
         "scale": Bound(min: 0, minExclusive: true),
         "port": Bound(min: 1, max: 65535),
@@ -119,6 +116,34 @@ public enum ArgumentBounds {
         guard mustNotBeEmpty.contains(key) else { return nil }
         guard value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
         return "\(key) must not be empty"
+    }
+
+    /// hold/gesture 系の秒数引数(holdSeconds/durationSeconds/duration/press)が
+    /// `maxGestureSeconds`(省略時は既定 `BridgeAPI.defaultMaxGestureSeconds` = 10 秒)を
+    /// 超えていないかの**相互検査**(単独の `violation` は型/絶対上限のスキーマ検査しかできない)。
+    /// **MCPServer.call の入口(`checkArgumentBounds` の隣)と、ライブ操作(`ApiLiveServeCommand.init`)
+    /// の両方から呼ぶ**。中身は `BridgeAPI` の2関数(唯一の定義元)を呼ぶだけ
+    public static let gestureSecondsKeys: Set<String> = ["holdSeconds", "durationSeconds", "duration", "press"]
+
+    public static func gestureCapViolation(_ args: [String: Any]) -> String? {
+        func numeric(_ key: String) -> Double? {
+            switch args[key] {
+            case let intValue as Int: return Double(intValue)
+            case let doubleValue as Double: return doubleValue
+            default: return nil
+            }
+        }
+        if let override = numeric("maxGestureSeconds"),
+           let violation = BridgeAPI.maxGestureSecondsViolation(override) {
+            return violation
+        }
+        let cap = numeric("maxGestureSeconds") ?? BridgeAPI.defaultMaxGestureSeconds
+        for key in gestureSecondsKeys {
+            guard let seconds = numeric(key),
+                  let violation = BridgeAPI.gestureSecondsViolation(subject: key, seconds: seconds, cap: cap) else { continue }
+            return violation
+        }
+        return nil
     }
 
     /// 整数値は小数点無しで出す("got 0" であって "got 0.0" ではない)。

@@ -85,6 +85,14 @@ extension MCPServer {
             + " were dropped by the limit — on a dense web page the dropped ones are the body text,"
             + " and scrolling will never bring them back",
     ]
+    /// press/drag/pinch が共有する秒数上限の上書き口(既定 `BridgeAPI.defaultMaxGestureSeconds`・
+    /// 最大 `BridgeAPI.gestureSecondsCeiling`)
+    static let maxGestureSecondsProperty: [String: Any] = [
+        "type": "number",
+        "description": "Raise the \(Int(BridgeAPI.defaultMaxGestureSeconds))-second cap on the"
+            + " duration/hold-time argument above for THIS call only"
+            + " (up to \(Int(BridgeAPI.gestureSecondsCeiling))s)",
+    ]
     /// 共通引数の詳細。**各ツールのプロパティ説明は短文に留め、ニュアンスはここに1本化する**
     /// (initialize の instructions で1回だけ渡る。プロパティ側に書くと全ツールへ複製され、
     /// 毎セッションのコンテキスト費用になる —— 2026-08-10 のスキーマ痩身)
@@ -460,6 +468,7 @@ extension MCPServer {
             "dx": ["type": "number", "description": "Horizontal travel from the start point (pass this or toX, not both)"],
             "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (pass this or toY, not both)"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
+            "maxGestureSeconds": maxGestureSecondsProperty,
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
@@ -482,6 +491,7 @@ extension MCPServer {
                 + "(default: 22% of the screen's short side, clamped to stay on screen)"],
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
+            "maxGestureSeconds": maxGestureSecondsProperty,
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
@@ -500,6 +510,7 @@ extension MCPServer {
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "holdSeconds": ["type": "number", "description": "Hold time in seconds (default 1.0; "
                 + "same vocabulary as the DSL's tap(holdSeconds:))"],
+            "maxGestureSeconds": maxGestureSecondsProperty,
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,

@@ -38,7 +38,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, waitSeconds:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ。**`ft_batch`・MCP の `ft_long_press`・ライブ操作では 10 秒まで** —— Android の注入は 10 秒で打ち切り、iOS の XCUITest ランナーは長い押下で塞がって落ちる。シナリオの DSL は縛らない)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
+| `tap(sel, holdSeconds: 0, maxGestureSeconds:waitSeconds:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**秒数の上限は既定 10 秒・`maxGestureSeconds:` でこの1コマンドだけ最大 60 秒まで上書きできる**(ユーザー決定 2026-09-24。方針の判定はホスト側 = StepExecutor / MCP・ライブ操作の入口。ランナーと Android の注入層は 60 秒を絶対上限として最後に断る — 桁外れの秒数を素通しすると、シミュレータの testmanagerd が合成列を作り続けて肥大化するため)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `select(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列", replace: false)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む) |
@@ -48,13 +48,13 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `clearInput()` | フォーカス中の入力欄を空にする |
 | `clearInput(sel, waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31。**末尾・途中の空白の欠落も検出できない**ので、空白が意味を持つ値は `textIs` で別途確かめる) |
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**)。iOS の XCUITest では縦向きは `XCUIApplication.swipeUp()` 等、**横向きは点→点のドラッグに合成する**(実機の横向きでは `swipeUp()` 系が1pt も動かないため。2026-08-31 実測) |
-| `tap(x:y:holdSeconds: 0)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app エンジンは見えない物を撃たない**: 画面外とソフトキーボードの上の点は失敗にする(in-app はキーを押せない。キーボードの下へは `pressEnter` で閉じてから)。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
-| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px) |
-| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ) |
-| `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5)` | 対象の中心から**比率**で指を動かす(**斜め可**。両方を非 0 にすると対角)。比率は対象の幅・高さに対する割合で、符号は指の向き。セレクタ省略 = 画面全体 |
+| `tap(x:y:holdSeconds: 0, maxGestureSeconds:)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し(秒数の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き)。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app エンジンは見えない物を撃たない**: 画面外とソフトキーボードの上の点は失敗にする(in-app はキーを押せない。キーボードの下へは `pressEnter` で閉じてから)。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
+| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:)` | 対象の中心から**比率**で指を動かす(**斜め可**。両方を非 0 にすると対角)。比率は対象の幅・高さに対する割合で、符号は指の向き。セレクタ省略 = 画面全体。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
 | `doubleTap(sel?)` | ダブルタップ。セレクタ省略 = 画面中心。**`tap` を2回書いても代用できない**(往復で OS のダブルタップ判定時間を超える) |
-| `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ |
-| `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5)` | 2本指を閉じる = **縮小**。`scale` は 0 より大きく 1 未満のみ |
+| `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を閉じる = **縮小**。`scale` は 0 より大きく 1 未満のみ。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
 
 ### まだ触れない画面を叩かない(`tap` は操作可能になるまで待つ)
 
@@ -193,7 +193,7 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 | `findImage(label, threshold:aspectRatioTolerance:waitSeconds:scroll:maxSwipes:)`  | **画像で要素を掴む**(Shirates Vision の移植・`Sources/FTCore/FindImage.swift`)。テンプレートは DefaultClassifier の見本(ラベルが `label` で**終わる**フォルダ・自 OS の `@i`/`@a` を先に試す)。a11y 要素を枠で切り出し、見本と**アスペクト比が許容幅に入る**要素だけを近い順に Vision の画像特徴量の距離で比べ、最も近い1件が `threshold`(既定 0.15)以下なら掴む。超えたらその1件を DefaultClassifier に掛け、短いラベルが一致し、**かつ**確信度が `threshold` 以下かそのラベルの見本のどれかとの距離が `threshold` 以下なら掴む(Shirates の `classifyFull` と同じ。ラベル一致だけでは採らない = 分類器は見本のどれかのラベルを必ず答えるので、無関係な画像にも探しているラベルを返しうる。`StepExecutor.classificationConfirmed`)。**見つからなくても失敗せず空要素**(`select` と同じ)。**`timeout` の既定は 0**(今の画面を1回だけ見る・実行プロファイルの defaultTimeout に従わない。`FindImage.defaultWaitSeconds`。待つのは `existImage` の側)。テンプレートが無い・許容幅が 0 < t ≤ 0.5 の外・scrollFrame 不解決・**Vision の縮退**(照合1回につき一様な白の特徴量を1つ作り、見本との距離が 0 なら「何も見分けられない」として失敗。2026-09-19 に3 SUT の別プロセスで同時に全候補が距離 0 になり最初の候補を叩いた。`FindImage.isDegenerate`)だけ失敗(**半端な異常**も同じ扱い: 照合のたびに見本を取り直し、控えと距離 0.0001 を超えてずれたら失敗。健全なら 4 機 1,200 回とも距離 0 = `FindImage.isConsistent`。所要は照合1回につき特徴量1枚ぶん増える)。記録の括弧書きに距離(見つからなければ最も近い距離)と比べた候補数が出る。**文字だけが違う同じ形の行は距離 0.08〜0.15 で並び既定の閾値では取り違える**(`threshold` を絞る。E2E-iOS 20 の S0030)。所要は docs/performance-tuning.md §3.30。`lastElement` を差し替える |
 | `existImage(label, threshold:aspectRatioTolerance:waitSeconds:scroll:maxSwipes:)`  | **画像が画面にあることの検証**(Shirates Vision の移植)。**探索は `findImage` と同じ1本**(`StepExecutor.executeFindImage`)で、違いは**見つからなければ失敗**(`failureKind` = `not-found`)することと、**`timeout` の既定が実行プロファイルの defaultTimeout**(`exist` と同じ。出るまで撮り直す。`scroll:` 指定時は位置ごとに1回)であることだけ。失敗の文言に最も近かった距離と閾値が出て、判定に使ったスクリーンショットをレポートのステップ行に添える(`StepOutcome.evidenceImage`)。アサーションとして数える(`FlowStep.isVerification`)。見つけた要素を返し `lastElement` を差し替える。**文言の距離は撮り直し・スクロールの全周回の最小**で、添えるスクリーンショットは最後の1枚。スクリーンショットが画像として読めなかったときは `the screenshot could not be read` と言い分ける(「似た形の要素が無い」と混ぜない)。**待っている間は間隔を倍々に広げながら照合を繰り返す**(`PollBackoff` = 0.1 秒から最大 1 秒。既定の 5 秒で 7 回ほど。1回 = スクリーンショット + 候補数ぶんの特徴量。docs/performance-tuning.md §3.30)。`scroll: .noScroll` なら `withScroll*` の中でも送らない |
 | `findImages(label, threshold:aspectRatioTolerance:)` | `threshold` 未満(`nil` = 絞らない)を距離の小さい順に `[FTElement]` で返す。ラベルの見本を全部使い、同じ要素は距離の小さいほうで1つに畳む(Shirates は1枚だけ)・**待たない・スクロールしない**。`lastElement` は差し替えない |
-| `element.tap(holdSeconds:)` | 掴んだ要素をタップ。**findImage / findImages で掴んだ要素は見つけた枠(画面に見えている部分)の中心を座標で叩く**(セレクタで引き直さない)・空の画像要素は失敗。それ以外は `tap(sel)` と同じ |
+| `element.tap(holdSeconds:, maxGestureSeconds:)` | 掴んだ要素をタップ。**findImage / findImages で掴んだ要素は見つけた枠(画面に見えている部分)の中心を座標で叩く**(セレクタで引き直さない)・空の画像要素は失敗。それ以外は `tap(sel)` と同じ(秒数の上限も既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで同じ) |
 
 **スクロールの指定は `scroll:` だけ**です(ユーザー決定 2026-09-19)。`tap` / `type` / `clearInput` / `select` /
 `exist` / `notExist` / `findImage` / `existImage` の `scroll:` に、向き(`.down` / `.up` / `.right` / `.left`)か
@@ -269,9 +269,9 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 | コマンド | 説明 |
 |---|---|
-| `flickCenterToTop/Bottom/Left/Right(scrollFrame:durationSeconds: 0.25 repeat: 1 intervalSeconds: 0.3)` | 画面(または `scrollFrame`)の中央を起点に4方向へ払う |
-| `flickLeftToRight/RightToLeft(scrollFrame:startMarginRatio:durationSeconds: 0.25 repeat: 1 intervalSeconds: 0.3)` | 端から端へ横方向。`startMarginRatio` 省略時は `scrollRight` 等と同じ既定(実測値 0.2) |
-| `flickBottomToTop/TopToBottom(scrollFrame:startMarginRatio:durationSeconds: 0.25 repeat: 1 intervalSeconds: 0.3)` | 端から端へ縦方向 |
+| `flickCenterToTop/Bottom/Left/Right(scrollFrame:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` | 画面(または `scrollFrame`)の中央を起点に4方向へ払う。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `flickLeftToRight/RightToLeft(scrollFrame:startMarginRatio:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` | 端から端へ横方向。`startMarginRatio` 省略時は `scrollRight` 等と同じ既定(実測値 0.2)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `flickBottomToTop/TopToBottom(scrollFrame:startMarginRatio:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` | 端から端へ縦方向。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
 
 - `scrollableElement` 引数は無い(`scrollFrame` のセレクタ式で足りる)
 - Shirates の `flickAndGo*` 一族(画面遷移トリガ)・要素基点の `TestElement.flickTo*`/`flickOut*` は未実装(docs/shirates-parity.md)

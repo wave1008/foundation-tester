@@ -477,7 +477,8 @@ enum BatchStepResolver {
     static let doubleKeys: Set<String> = [
         // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ
         // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
-        "holdSeconds", "waitSeconds", "scale", "durationSeconds", "dxRatio", "dyRatio", "x", "y",
+        "holdSeconds", "waitSeconds", "scale", "durationSeconds", "maxGestureSeconds",
+        "dxRatio", "dyRatio", "x", "y",
     ]
     static let boolKeys: Set<String> = ["replace"]
 

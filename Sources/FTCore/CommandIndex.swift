@@ -91,15 +91,17 @@ public enum DSLCommandIndex {
 
         // MARK: operation
         .init("tap", "operation",
-              "tap(selector, holdSeconds:, waitSeconds:, scroll:, maxSwipes:, containerInference:)",
+              "tap(selector, holdSeconds:, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:, containerInference:)",
               // **座標形はオーバーロードなので別項目にできない**(索引は関数名で一意。
               // signature 文字列は BatchArgSpecTable が位置引数名を導出するのにも使うので触らない)
-              "Taps an element. holdSeconds greater than 0 makes it a long press. "
-                + "There is also tap(x:, y:, holdSeconds:) for raw coordinates — iOS pt / Android px, "
-                + "the same system as the snapshot frames. Prefer a selector: coordinates hit "
-                + "something else as soon as the layout moves, and they are for screens where the "
-                + "app publishes nothing to select. Also chains as element.tap(holdSeconds:): an element "
-                + "grabbed by findImage/findImages is tapped at the centre of the found frame.",
+              "Taps an element. holdSeconds greater than 0 makes it a long press, capped at 10s by "
+                + "default — pass maxGestureSeconds: (up to 60) to allow longer. "
+                + "There is also tap(x:, y:, holdSeconds:, maxGestureSeconds:) for raw coordinates — "
+                + "iOS pt / Android px, the same system as the snapshot frames. Prefer a selector: "
+                + "coordinates hit something else as soon as the layout moves, and they are for screens "
+                + "where the app publishes nothing to select. Also chains as "
+                + "element.tap(holdSeconds:, maxGestureSeconds:): an element grabbed by "
+                + "findImage/findImages is tapped at the centre of the found frame.",
               chainable: true),
         .init("select", "operation", "select(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
@@ -131,21 +133,29 @@ public enum DSLCommandIndex {
               "Rotates the app UI to that orientation. Reverted automatically to "
                   + "the original orientation at the end of the scenario."),
         .init("swipePointToPoint", "operation",
-              "swipePointToPoint(startX:startY:endX:endY:durationSeconds:)",
-              "Drags between two coordinates (iOS = pt / Android = px)."),
+              "swipePointToPoint(startX:startY:endX:endY:durationSeconds:maxGestureSeconds:)",
+              "Drags between two coordinates (iOS = pt / Android = px). durationSeconds is capped at "
+                  + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("swipeBy", "operation",
-              "swipeBy(selector?, dxRatio:, dyRatio:, durationSeconds:, waitSeconds:)",
+              "swipeBy(selector?, dxRatio:, dyRatio:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Drags from the center of the target by a ratio of its size. Diagonal is allowed "
-                  + "(both ratios non-zero). No selector = the whole screen."),
+                  + "(both ratios non-zero). No selector = the whole screen. durationSeconds is capped "
+                  + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("doubleTap", "operation", "doubleTap(selector?, waitSeconds:)",
               "Double-taps. No selector = the center of the screen."),
-        .init("pinchOut", "operation", "pinchOut(selector?, scale:, durationSeconds:, waitSeconds:)",
-              "Pinches open (zoom in). scale must be > 1. No selector = the whole screen."),
-        .init("pinchIn", "operation", "pinchIn(selector?, scale:, durationSeconds:, waitSeconds:)",
-              "Pinches closed (zoom out). scale must be between 0 and 1."),
+        .init("pinchOut", "operation",
+              "pinchOut(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "Pinches open (zoom in). scale must be > 1. No selector = the whole screen. "
+                  + "durationSeconds is capped at 10s by default — pass maxGestureSeconds: "
+                  + "(up to 60) to allow longer."),
+        .init("pinchIn", "operation",
+              "pinchIn(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "Pinches closed (zoom out). scale must be between 0 and 1. durationSeconds is capped "
+                  + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("swipeElementToElement", "operation",
-              "swipeElementToElement(from, to, durationSeconds:, waitSeconds:)",
-              "Drags from one element to another. Only the start point is healed."),
+              "swipeElementToElement(from, to, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
+              "Drags from one element to another. Only the start point is healed. durationSeconds is "
+                  + "capped at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
 
         // MARK: scroll
         .init("scrollTo", "scroll",
@@ -194,29 +204,41 @@ public enum DSLCommandIndex {
 
         // MARK: flick
         .init("flickCenterToTop", "flick",
-              "flickCenterToTop(scrollFrame:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the center towards the top edge."),
+              "flickCenterToTop(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "One fast stroke from the center towards the top edge. durationSeconds is capped at 10s "
+                  + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToBottom", "flick",
-              "flickCenterToBottom(scrollFrame:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the center towards the bottom edge."),
+              "flickCenterToBottom(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "One fast stroke from the center towards the bottom edge. durationSeconds is capped at "
+                  + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToLeft", "flick",
-              "flickCenterToLeft(scrollFrame:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the center towards the left edge."),
+              "flickCenterToLeft(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "One fast stroke from the center towards the left edge. durationSeconds is capped at 10s "
+                  + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToRight", "flick",
-              "flickCenterToRight(scrollFrame:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the center towards the right edge."),
+              "flickCenterToRight(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "One fast stroke from the center towards the right edge. durationSeconds is capped at "
+                  + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickLeftToRight", "flick",
-              "flickLeftToRight(scrollFrame:, startMarginRatio:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the left edge to the right edge."),
+              "flickLeftToRight(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
+                  + " repeat:, intervalSeconds:)",
+              "One fast stroke from the left edge to the right edge. durationSeconds is capped at 10s "
+                  + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickRightToLeft", "flick",
-              "flickRightToLeft(scrollFrame:, startMarginRatio:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the right edge to the left edge."),
+              "flickRightToLeft(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
+                  + " repeat:, intervalSeconds:)",
+              "One fast stroke from the right edge to the left edge. durationSeconds is capped at 10s "
+                  + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickBottomToTop", "flick",
-              "flickBottomToTop(scrollFrame:, startMarginRatio:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the bottom edge to the top edge."),
+              "flickBottomToTop(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
+                  + " repeat:, intervalSeconds:)",
+              "One fast stroke from the bottom edge to the top edge. durationSeconds is capped at 10s "
+                  + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickTopToBottom", "flick",
-              "flickTopToBottom(scrollFrame:, startMarginRatio:, durationSeconds:, repeat:, intervalSeconds:)",
-              "One fast stroke from the top edge to the bottom edge."),
+              "flickTopToBottom(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
+                  + " repeat:, intervalSeconds:)",
+              "One fast stroke from the top edge to the bottom edge. durationSeconds is capped at 10s "
+                  + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
 
         // MARK: existence
         .init("exist", "existence", "exist(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)",

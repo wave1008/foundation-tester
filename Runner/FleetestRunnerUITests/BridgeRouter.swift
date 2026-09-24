@@ -476,7 +476,7 @@ final class BridgeRouter {
     /// `/drag` の SpringBoard 版(tapAppIcon のページ送り)
     private func handleSystemUIDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        return performDrag(req, in: systemUIAnchor())
+        return try performDrag(req, in: systemUIAnchor())
     }
 
     /// `/swipe` の SpringBoard 版(tapAppIcon が座標を作れなかったときの退避先)。
@@ -1086,6 +1086,26 @@ final class BridgeRouter {
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = try requireForegroundAppForGesture()
+        // 所要が長くなりうるのは velocity 指定時だけ(未指定は XCTest の既定速度)。距離は path の
+        // 2点間、無ければ画面の長辺(既定の swipe は画面の外へ出ない = 上から見積もる)。
+        // **`app.frame` を使わない** —— XCUI の問い合わせになり、scrollToEdge の毎回に往復が1回増える
+        if let rawVelocity = req.velocity {
+            guard rawVelocity.isFinite, rawVelocity > 0 else {
+                throw BridgeError(400, "velocity must be positive and finite (got \(rawVelocity))")
+            }
+            let distance: Double
+            if let path = req.path {
+                distance = hypot(path.toX - path.fromX, path.toY - path.fromY)
+            } else {
+                let screen = UIScreen.main.bounds.size
+                distance = Double(max(screen.width, screen.height))
+            }
+            if let violation = BridgeAPI.gestureDurationViolation("swipe",
+                                                                   seconds: 0.05 + distance / rawVelocity,
+                                                                   cap: BridgeAPI.gestureSecondsCeiling) {
+                throw BridgeError(400, violation)
+            }
+        }
         // velocity(points/sec)はホストが用途に応じて送る(scrollToEdge だけ。契約は
         // FTCore/BridgeDTO の FTSwipeIntent)。**`?? .default` で4分岐に畳まないこと**:
         // XCUIGestureVelocityDefault の実体は -10 というセンチネル値で、実速度は XCTest 内部が
@@ -1180,15 +1200,23 @@ final class BridgeRouter {
     /// velocity=距離÷移動時間で「ゆっくりドラッグ(慣性なし)〜フリック」を再現する
     private func handleDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        return performDrag(req, in: try requireForegroundAppForGesture())
+        return try performDrag(req, in: try requireForegroundAppForGesture())
     }
 
     /// ドラッグの実体。**`/systemui/drag` と共有する**(原点にするアプリだけが違う)
-    private func performDrag(_ req: DragRequest, in app: XCUIApplication)
+    private func performDrag(_ req: DragRequest, in app: XCUIApplication) throws
         -> BridgeHTTPServer.Response {
+        guard req.fromX.isFinite, req.fromY.isFinite, req.toX.isFinite, req.toY.isFinite else {
+            throw BridgeError(400, "drag coordinates must be finite (got fromX=\(req.fromX)"
+                + " fromY=\(req.fromY) toX=\(req.toX) toY=\(req.toY))")
+        }
         let from = coordinate(app, CGPoint(x: req.fromX, y: req.fromY))
         let to = coordinate(app, CGPoint(x: req.toX, y: req.toY))
         let press = max(req.press ?? 0.05, 0.05)
+        if let violation = BridgeAPI.gestureDurationViolation("drag", seconds: press,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
         guard let requestedDuration = req.duration else {
             from.press(forDuration: press, thenDragTo: to)
             return .json(OKResponse())
@@ -1197,6 +1225,12 @@ final class BridgeRouter {
         let duration = max(requestedDuration, 0.05)
         // velocity の単位は pt/秒。極端値はクランプ(0除算・非現実的な速度の防止)
         let velocity = max(10.0, min(distance / duration, 5000.0))
+        // クランプ後の velocity で実際の所要を見積もる(requestedDuration は上限クランプが無いため、
+        // これを検査しないと distance が大きいときに velocity 5000 クランプ越しでも長時間になる)
+        if let violation = BridgeAPI.gestureDurationViolation("drag", seconds: press + distance / velocity,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
         // **thenHoldForDuration に正の値を渡しても慣性は消えない**(2026-08-02 実測。
         // 指を保持するだけでイベントが出ず velocity 計算が更新されない)。0 のままにすること
         from.press(forDuration: press, thenDragTo: to,
@@ -1249,6 +1283,12 @@ final class BridgeRouter {
             }
         }
         let duration = max(req.durationSeconds ?? 0.5, 0.05)
+        // requestedDuration 自体は下限クランプしか無い(座標ピンチへそのまま渡る)ので、
+        // ここで先に断る
+        if let violation = BridgeAPI.gestureDurationViolation("pinch", seconds: duration,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
         // **領域が来ていて座標ピンチが使えるならそちら**(理由は CoordinatePinch)。
         // XCUIElement のピンチは指の位置を選べず、縮小では枠の端から閉じるのでパンに化ける
         if let frame = req.frame, CoordinatePinch.isAvailable {
@@ -1263,6 +1303,13 @@ final class BridgeRouter {
         }
         // 拡大は正・縮小は負の velocity。極端値は避ける(0.1〜10 scale/秒)
         let magnitude = min(max(abs(req.scale - 1) / duration, 0.1), 10)
+        // `magnitude` の下限クランプ(0.1)が実際の所要を `duration` から引き離す(scale が
+        // 大きいほど `abs(scale-1)/magnitude` が伸びる)ので、渡す velocity から逆算した
+        // 見積もりで検査する
+        if let violation = BridgeAPI.gestureDurationViolation("pinch", seconds: abs(req.scale - 1) / magnitude,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
         target.pinch(withScale: CGFloat(req.scale),
                      velocity: req.scale > 1 ? magnitude : -magnitude)
         return .json(OKResponse(note: note))
@@ -1351,6 +1398,10 @@ final class BridgeRouter {
 
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
+        if let violation = BridgeAPI.gestureDurationViolation("press", seconds: req.duration,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         try FastInput.with(req.fast) {

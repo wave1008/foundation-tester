@@ -25,8 +25,10 @@ final class InputInjector {
 
     static void press(UiAutomation ua, double x, double y, double durationSeconds) {
         // 過大値/NaN で単スレッドの accept スレッドを長時間ブロックしブリッジが無応答になるのを防ぐため
-        // 0〜10s にクランプ(iOS 側 handlePress と同契約)。
-        double clamped = Double.isFinite(durationSeconds) ? Math.min(Math.max(durationSeconds, 0), 10) : 0;
+        // 0〜60s にクランプ(iOS 側 gestureDurationViolation の cap = BridgeAPI.gestureSecondsCeiling
+        // と同じ絶対上限)。**方針の判定(既定10秒・maxGestureSeconds での上書き)はホスト側が持つ** ——
+        // 丸め先を絶対上限より低くすると、上書きした長押しがこの層だけ短く切れて誤った成功になる。
+        double clamped = Double.isFinite(durationSeconds) ? Math.min(Math.max(durationSeconds, 0), 60) : 0;
         long downTime = SystemClock.uptimeMillis();
         inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, x, y));
         SystemClock.sleep((long) (clamped * 1000));

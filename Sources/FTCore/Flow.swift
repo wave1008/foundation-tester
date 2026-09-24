@@ -51,6 +51,10 @@ public struct FlowStep: Codable, Sendable {
     /// tap の長押し秒数(nil / 0 = 通常タップ)。既定と同じなら nil のまま置く
     /// (生成コード・JSON を既定ケースで太らせないため)。swipeElementToElement では移動時間(秒)
     public var duration: Double?
+    /// `duration` の上限をこのステップだけ引き上げる(nil = 既定 `BridgeAPI.defaultMaxGestureSeconds`
+    /// = 10 秒。最大 `BridgeAPI.gestureSecondsCeiling` = 60 秒)。
+    /// DSL の `maxGestureSeconds:` 引数がそのまま入る。`duration` を持たないステップでは無視される
+    public var maxGestureSeconds: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
     /// テキスト比較を**厳密に**行う(一切正規化しない)。DSL の `strict: true`。
@@ -153,6 +157,7 @@ public struct FlowStep: Codable, Sendable {
                 text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Double? = nil, maxSwipes: Int? = nil,
                 duration: Double? = nil,
+                maxGestureSeconds: Double? = nil,
                 expectedCount: Int? = nil,
                 note: String? = nil, occlusionGuard: Bool? = nil,
                 containerInference: Bool? = nil,
@@ -189,11 +194,30 @@ public struct FlowStep: Codable, Sendable {
         self.timeout = timeout
         self.maxSwipes = maxSwipes
         self.duration = duration
+        self.maxGestureSeconds = maxGestureSeconds
         self.expectedCount = expectedCount
         self.note = note
         self.occlusionGuard = occlusionGuard
         self.containerInference = containerInference
         self.replace = replace
+    }
+
+    /// `duration` が `maxGestureSeconds`(省略時は既定 `BridgeAPI.defaultMaxGestureSeconds` = 10 秒)を
+    /// 超えていないかの唯一の判定。**デバイスに触る前に呼ぶ唯一の場所**:
+    /// `StepExecutor.executeAction` の入口(FlowStep 経由の全アクション)と、FlowStep を経由しない
+    /// 座標コマンド(DSL の `tap(x:y:holdSeconds:)` / `swipePointToPoint`)の両方がここを呼ぶ。
+    /// `duration` が nil(通常タップ等、既定のまま)は検査しない。判定は `BridgeAPI` の2関数
+    /// (唯一の定義元)を呼ぶだけ —— 「判定は1箇所に置く」を守るための薄いラッパー
+    public static func gestureDurationViolation(action: String, duration: Double?,
+                                                maxGestureSeconds: Double?) -> String? {
+        if let maxGestureSeconds, let violation = BridgeAPI.maxGestureSecondsViolation(maxGestureSeconds) {
+            return violation
+        }
+        guard let duration else { return nil }
+        let cap = maxGestureSeconds ?? BridgeAPI.defaultMaxGestureSeconds
+        // 主語は DSL で書いた引数名(tap の長押しは holdSeconds・他は durationSeconds)+ コマンド名
+        let argument = action == "tap" || action == "press" ? "holdSeconds" : "durationSeconds"
+        return BridgeAPI.gestureSecondsViolation(subject: "\(argument) of \(action)", seconds: duration, cap: cap)
     }
 }
 

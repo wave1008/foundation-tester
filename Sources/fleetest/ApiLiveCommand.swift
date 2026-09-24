@@ -12,13 +12,15 @@
 //   {"cmd":"hideKeyboard"}                              フォーカス中の入力のソフトキーボードを閉じる
 //                                                        (**Android のみ**。iOS は 501 で、閉じるのは pressEnter)
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
-//   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>}
-//                                                       **斜めのパンはこれで撃つ**(両軸を動かす)
+//   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>,
+//    "maxGestureSeconds":<秒省略可>}                    **斜めのパンはこれで撃つ**(両軸を動かす)
 //   {"cmd":"doubleTap","ref":<Int>} / {"cmd":"doubleTap","x":..,"y":..}
-//   {"cmd":"pinch","scale":<Double>,"ref":<Int省略可>,"duration":<秒省略可>}
+//   {"cmd":"pinch","scale":<Double>,"ref":<Int省略可>,"duration":<秒省略可>,"maxGestureSeconds":<秒省略可>}
 //                                                       ref 省略 = 画面全体。scale>1 拡大 / <1 縮小
 //                                                        2点間ドラッグ(座標はpt。press=押下静止時間、duration=移動時間)
-//   {"cmd":"press","x":<Double>,"y":<Double>,"duration":<秒>}  座標ロングプレス
+//   {"cmd":"press","x":<Double>,"y":<Double>,"duration":<秒>,"maxGestureSeconds":<秒省略可>}  座標ロングプレス
+//                                                       press/drag/pinch の秒数は既定 10 秒が上限。
+//                                                       maxGestureSeconds でこの1回だけ最大60秒まで上げられる
 //   {"cmd":"launch","bundle":<String>}                  bundle ID / パッケージ名を起動
 //   {"cmd":"activate","bundle":<String>}               状態を保持したまま前面切替(未起動なら起動)
 //   {"cmd":"appSwitcher"}                               アプリスイッチャー(タスク一覧)を開く
@@ -944,6 +946,9 @@ struct ApiLiveServeCommand {
     let press: Double?
     let duration: Double?
     let scale: Double?
+    /// press/drag/pinch の秒数上限をこの1回だけ引き上げる(nil = 既定
+    /// `BridgeAPI.defaultMaxGestureSeconds` = 10 秒。最大 `BridgeAPI.gestureSecondsCeiling` = 60 秒)
+    let maxGestureSeconds: Double?
     /// 型違いの引数のうち1件目の説明(無ければ nil)。cmd 自体はこの型を作れている時点で読めている
     let decodeError: String?
 
@@ -964,6 +969,12 @@ struct ApiLiveServeCommand {
         press = Self.doubleField(raw, "press", error: &error)
         duration = Self.doubleField(raw, "duration", error: &error)
         scale = Self.doubleField(raw, "scale", error: &error)
+        maxGestureSeconds = Self.doubleField(raw, "maxGestureSeconds", error: &error)
+        // **秒数の相互検査は値域(doubleField)の隣**(MCPServer.call と同じ入口の粒度。
+        // ArgumentBounds.gestureCapViolation は BridgeAPI の2関数を呼ぶだけ)
+        if error == nil, let violation = ArgumentBounds.gestureCapViolation(raw) {
+            error = violation
+        }
         decodeError = error
     }
 

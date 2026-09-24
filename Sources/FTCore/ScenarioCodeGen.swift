@@ -149,11 +149,16 @@ public enum ScenarioCodeGen {
                 return "select(\(literal(selector))\(timeoutArg(step)))"
             case "tap":
                 let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
+                // **holdSeconds が無いのに maxGestureSeconds だけ出さない**(意味を持たない —
+                // duration が nil の tap は検査されないので、上書きの上限も無関係)
+                let cap = step.duration != nil
+                    ? (step.maxGestureSeconds.map { ", maxGestureSeconds: \(FTSeconds.format($0))" } ?? "")
+                    : ""
                 // 座標タップ(locator を持たない tap)。**セレクタがあるときは常にそちらを出す**
                 if step.locator == nil, let x = step.x, let y = step.y {
-                    return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold))"
+                    return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold)\(cap))"
                 }
-                return "tap(\(literal(selector))\(hold))"
+                return "tap(\(literal(selector))\(hold)\(cap))"
             case "type":
                 let replaceArg = step.replace == true ? ", replace: true" : ""
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。
@@ -182,7 +187,8 @@ public enum ScenarioCodeGen {
                 return "openURL(\(literal(step.text ?? "")))"
             case "press":
                 // 長押しは tap の holdSeconds 引数で表す(DSL に別コマンドは無い)
-                return "tap(\(literal(selector)), holdSeconds: \(FTSeconds.format(step.duration ?? 1.0)))"
+                let pressCap = step.maxGestureSeconds.map { ", maxGestureSeconds: \(FTSeconds.format($0))" } ?? ""
+                return "tap(\(literal(selector)), holdSeconds: \(FTSeconds.format(step.duration ?? 1.0))\(pressCap))"
             case "clearInput":
                 if step.locator == nil {
                     return "clearInput()"
@@ -200,6 +206,9 @@ public enum ScenarioCodeGen {
                 }
                 if let duration = step.duration {
                     args.append("durationSeconds: \(FTSeconds.format(duration))")
+                    if let cap = step.maxGestureSeconds {
+                        args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
+                    }
                 }
                 return "\(action)(\(args.joined(separator: ", ")))"
             case "swipeBy":
@@ -208,6 +217,9 @@ public enum ScenarioCodeGen {
                 args.append("dyRatio: \(FTSeconds.format(step.dyRatio ?? 0))")
                 if let duration = step.duration {
                     args.append("durationSeconds: \(FTSeconds.format(duration))")
+                    if let cap = step.maxGestureSeconds {
+                        args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
+                    }
                 }
                 return "swipeBy(\(args.joined(separator: ", ")))"
             case "swipeElementToElement":
@@ -215,6 +227,9 @@ public enum ScenarioCodeGen {
                 var args = [literal(selector), literal(FTSelector.serialize(primary: endLocator, fallbacks: []))]
                 if let duration = step.duration {
                     args.append("durationSeconds: \(FTSeconds.format(duration))")
+                    if let cap = step.maxGestureSeconds {
+                        args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
+                    }
                 }
                 return "swipeElementToElement(\(args.joined(separator: ", ")))"
             case "scroll":

@@ -293,6 +293,11 @@ extension MCPServer {
         // —— 条件付きでしか読まれない欄(`timeout` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
         try Self.checkArgumentBounds(args)
+        // **秒数の相互検査は値域の隣**(seconds ≤ maxGestureSeconds(省略時は既定10秒)。
+        // 単独の checkArgumentBounds は型/絶対上限(60秒)のスキーマ検査しかできない)
+        if let violation = ArgumentBounds.gestureCapViolation(args) {
+            throw MCPError(violation)
+        }
         if let violation = Self.targetExclusivityViolation(tool: tool, args: args) {
             throw MCPError(violation)
         }
@@ -1629,7 +1634,8 @@ extension MCPServer {
             recordInteraction(action: scale > 1 ? "pinchOut" : "pinchIn",
                               resolvedRef: pinchResolvedRef, args: args,
                               coordinate: pinchCoordinate,
-                              duration: pinchDuration == 0.5 ? nil : pinchDuration, scale: scale)
+                              duration: pinchDuration == 0.5 ? nil : pinchDuration,
+                              maxGestureSeconds: try Self.doubleArgument(args, "maxGestureSeconds"), scale: scale)
             return text("pinch x\(scale) done.\(pinchSelector)"
                 // **「小さくなる」とだけ言わない**(2026-08-06 実測): 指が対象の内側に収まる分だけ
                 // 小さくなることもあれば、慣性で大きくもなる(scale 2.0 の要求で累積 3.9 倍)
@@ -1655,13 +1661,15 @@ extension MCPServer {
             }
             let pressDriver = try await driver(args)
             let pressDuration = try Self.doubleArgument(args, "holdSeconds") ?? 1.0
+            let pressCap = try Self.doubleArgument(args, "maxGestureSeconds")
             if let ref = try Self.intArgument(args, "ref") {
                 let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
                 // pressTarget.ref はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
                 try await pressDriver.press(ref: nativeRef(pressTarget.ref, args: args),
                                             duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: pressTarget.ref, args: args,
-                                  duration: pressDuration)
+                                  duration: pressDuration,
+                                  maxGestureSeconds: pressCap)
                 return text("press [\(ref)] done.\(pressTarget.note)"
                     + reproductionNote(resolvedRef: pressTarget.ref, args: args)
                     + Self.changedHint(args)
@@ -1676,11 +1684,14 @@ extension MCPServer {
                     engine: engines[Self.engineKey(args)]) { throw offscreen }
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
                 recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
-                                  duration: pressDuration)
+                                  duration: pressDuration,
+                                  maxGestureSeconds: pressCap)
                 return text("press (\(x), \(y)) done." + keyboardCoordinateWarning(x: x, y: y, args: args)
                     + once("coordinateHoldReproductionNote",
-                    full: Self.coordinateHoldReproductionNote(holdSeconds: pressDuration),
-                    short: Self.coordinateHoldReproductionNoteShort(holdSeconds: pressDuration))
+                    full: Self.coordinateHoldReproductionNote(
+                        holdSeconds: pressDuration, maxGestureSeconds: pressCap),
+                    short: Self.coordinateHoldReproductionNoteShort(
+                        holdSeconds: pressDuration, maxGestureSeconds: pressCap))
                     + Self.changedHint(args)
                     + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
             }
@@ -2031,14 +2042,19 @@ extension MCPServer {
         " (writable as swipePointToPoint — see the first note)"
 
     /// 長押しの座標形は `tap(x:, y:, holdSeconds:)` —— **holdSeconds を省くとただの tap になる**ので、
-    /// tap の note をそのまま出すと holdSeconds が消えたシナリオ行が書かれる
-    static func coordinateHoldReproductionNote(holdSeconds: Double) -> String {
-        " (writable as tap(x:, y:, holdSeconds: \(FTSeconds.format(holdSeconds))) — fine while"
+    /// tap の note をそのまま出すと holdSeconds が消えたシナリオ行が書かれる。**maxGestureSeconds を
+    /// 上書きしていたら同じく落とさない** —— 落とすと既定10秒を超える長押しが書き写した先で断られる
+    static func coordinateHoldReproductionNote(holdSeconds: Double, maxGestureSeconds: Double? = nil) -> String {
+        " (writable as tap(x:, y:, holdSeconds: \(FTSeconds.format(holdSeconds))\(Self.maxGestureSecondsArgSuffix(maxGestureSeconds))) — fine while"
             + " exploring, but replace it with a selector before keeping it in a scenario:"
             + " a layout change makes it hit something else)"
     }
-    static func coordinateHoldReproductionNoteShort(holdSeconds: Double) -> String {
-        " (writable as tap(x:, y:, holdSeconds: \(FTSeconds.format(holdSeconds))) — see the first note)"
+    static func coordinateHoldReproductionNoteShort(holdSeconds: Double, maxGestureSeconds: Double? = nil) -> String {
+        " (writable as tap(x:, y:, holdSeconds: \(FTSeconds.format(holdSeconds))\(Self.maxGestureSecondsArgSuffix(maxGestureSeconds))) — see the first note)"
+    }
+    /// `, maxGestureSeconds: X` の断片(無ければ空文字)。座標形の複数の reproduction note が共有する
+    static func maxGestureSecondsArgSuffix(_ value: Double?) -> String {
+        value.map { ", maxGestureSeconds: \(FTSeconds.format($0))" } ?? ""
     }
 
     /// 溜まっているプロファイル警告を先頭に付けて1度だけ吐き出す

@@ -850,10 +850,15 @@ public final class AndroidDriver: AppDriver {
     /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
     /// adb input swipe フォールバック(どちらも snapshot と同じピクセル座標)。
     /// gRPC はゲスト内 app_process 起動(~300ms/回)が無くステップ列が高速。
-    /// pressSeconds は対応がなく未使用。durationSeconds を duration(ms)へ変換し 50〜10000ms にクランプ。
+    /// pressSeconds は対応がなく未使用。durationSeconds を duration(ms)へ変換し
+    /// 50〜60000ms(= `BridgeAPI.gestureSecondsCeiling`)にクランプ。**方針の判定
+    /// (既定10秒・maxGestureSeconds での上書き)はホスト側の StepExecutor / ArgumentBounds が持つ**
+    /// ので、ここは絶対上限の最後の砦(丸め先が絶対上限より低いと、上書きした長押しがここで
+    /// 短く切られて誤った成功になる → maintainer-notes §49.1)。
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
-        let durationMs = min(max(Int((durationSeconds * 1000).rounded()), 50), 10000)
+        let durationMs = min(max(Int((durationSeconds * 1000).rounded()), 50),
+                             Int(BridgeAPI.gestureSecondsCeiling * 1000))
         if let serial, await EmulatorControl.drag(serial: serial,
                                       fromX: Int32(fromX.rounded()), fromY: Int32(fromY.rounded()),
                                       toX: Int32(toX.rounded()), toY: Int32(toY.rounded()),
@@ -882,8 +887,10 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// 座標ロングプレス。gRPC タッチ(down→保持→up)優先・同一点 input swipe フォールバック。
+    /// クランプは `drag` と同じ 60000ms(絶対上限)が最後の砦
     public func press(x: Double, y: Double, duration: Double) async throws {
-        let durationMs = min(max(Int((duration * 1000).rounded()), 300), 10000)
+        let durationMs = min(max(Int((duration * 1000).rounded()), 300),
+                             Int(BridgeAPI.gestureSecondsCeiling * 1000))
         if let serial, await EmulatorControl.longPress(serial: serial, x: Int32(x.rounded()),
                                            y: Int32(y.rounded()), durationMs: durationMs) {
             return

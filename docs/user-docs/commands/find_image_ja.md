@@ -11,7 +11,7 @@ id もラベルも持たないアイコンのように、セレクタで指せ�
 | `findImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | 見本画像に最も近い要素を1つ掴みます。見つからなくても失敗せず、空の要素を返します(`.isEmpty` で分岐します)。既定では今の画面を1回だけ見ます(`waitSeconds` 既定 0)。出るのを待つときは `waitSeconds` に秒数を渡します。 |
 | `findImages(label, threshold:, aspectRatioTolerance:)` | `threshold` を下回る要素を、近い順にすべて返します(`[FTElement]`)。今の画面を1回だけ見ます(待たない・スクロールしない)。`threshold: nil` なら絞りません。 |
 | `existImage(label, threshold:, aspectRatioTolerance:, waitSeconds:, scroll:, maxSwipes:)` | 見本画像が画面にあることを検証します(Shirates の Vision 版の `existImage` の移植)。探し方は `findImage` と同じで、**見つからなければ失敗**します。見つけた要素を返します。`waitSeconds` を省くと、実行プロファイルの既定の待ち時間まで、出るのを待ちます(`exist` と同じ)。 |
-| `element.tap(holdSeconds:)` | 掴んだ要素をタップします。`findImage` / `findImages` で掴んだ要素は、見つけた枠の中心を座標でタップします。 |
+| `element.tap(holdSeconds:, maxGestureSeconds:)` | 掴んだ要素をタップします。`findImage` / `findImages` で掴んだ要素は、見つけた枠の中心を座標でタップします。`holdSeconds` を 0 より大きくすると長押しになります(上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。 |
 
 ## 探し方
 

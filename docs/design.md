@@ -401,6 +401,14 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
+**ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`)の上限は2層**:
+方針(既定 10 秒・コマンドの `maxGestureSeconds` で最大 60 秒)は**ホスト側**(`FlowStep.gestureDurationViolation` /
+`ArgumentBounds.gestureCapViolation`)がデバイスに触る前に断り、**ブリッジは絶対上限 60 秒
+(`BridgeAPI.gestureSecondsCeiling`)だけ**を持つ —— XCUITest は見積もり所要が超えたら合成前に 400、
+Android は 60 秒に丸める。ブリッジに方針を持たせないのは、要求ごとの上限を運ぶ欄を作らずに済むため。
+XCUITest で絶対上限を外せない理由は maintainer-notes §49.1(桁外れの秒数で `testmanagerd` が合成列を
+作り続けて数百 GB に膨らむ)。
+
 `/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(iOS に実装手段が無い。
 §10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
 戻るキーで実現するのでルートを持たない。

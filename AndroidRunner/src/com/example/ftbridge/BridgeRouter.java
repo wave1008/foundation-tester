@@ -425,8 +425,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             startSpan = maxSpan;
             endSpan = Math.max(maxSpan * scale, 16);
         }
+        // 0〜60s にクランプ(InputInjector.press と同じ絶対上限 = BridgeAPI.gestureSecondsCeiling。
+        // 方針の判定(既定10秒・maxGestureSeconds での上書き)はホスト側が持つので、ここは最後の砦)
         long durationMs = Math.min(Math.max(
-                (long) (body.optDouble("durationSeconds", 0.5) * 1000), 50), 10000);
+                (long) (body.optDouble("durationSeconds", 0.5) * 1000), 50), 60000);
         InputInjector.pinch(ua(), left + width / 2, top + height / 2, startSpan, endSpan, durationMs);
         settle();
         return ok();

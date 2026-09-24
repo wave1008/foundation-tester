@@ -52,9 +52,12 @@ extension MCPServer {
     }
 
     static let batchStepBuilders: [String: BatchStepBuilder] = [
-        "tap": BatchStepBuilder(keys: ["selector", "holdSeconds", "waitSeconds", "x", "y"]) { raw in
+        "tap": BatchStepBuilder(
+            keys: ["selector", "holdSeconds", "maxGestureSeconds", "waitSeconds", "x", "y"]
+        ) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
             let duration = hold == FlowStep.defaultTapHoldSeconds ? nil : hold
+            let maxGestureSeconds = raw["maxGestureSeconds"] as? Double
             // **座標タップは受ける**。DSL の `tap(x:y:)` があり `ScenarioCodeGen` が 1:1 で
             // 書き出せるので、「通ったバッチはシナリオ行になる」契約は保たれる。
             // **セレクタと併記されたら拒否する**(黙ってどちらかを選ぶと、読み手は自分が何を
@@ -64,7 +67,8 @@ extension MCPServer {
                     throw MCPError("tap takes either a selector or x/y, not both —"
                         + " drop one (a selector survives a layout change, coordinates do not)")
                 }
-                let step = FlowStep(action: "tap", duration: duration, x: x, y: y)
+                let step = FlowStep(action: "tap", duration: duration,
+                                    maxGestureSeconds: maxGestureSeconds, x: x, y: y)
                 return (step, "tap (\(FTSeconds.format(x)), \(FTSeconds.format(y)))")
             }
             if raw["x"] != nil || raw["y"] != nil {
@@ -74,7 +78,7 @@ extension MCPServer {
             let step = FlowStep(action: "tap", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector),
                                 timeout: raw["waitSeconds"] as? Double,
-                                duration: duration)
+                                duration: duration, maxGestureSeconds: maxGestureSeconds)
             return (step, "tap \"\(selector.text)\"")
         },
         "select": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
@@ -135,14 +139,18 @@ extension MCPServer {
                                 timeout: raw["waitSeconds"] as? Double)
             return (step, selector.map { "doubleTap \"\($0.text)\"" } ?? "doubleTap")
         },
-        "pinchOut": BatchStepBuilder(keys: ["selector", "scale", "durationSeconds", "waitSeconds"]) {
+        "pinchOut": BatchStepBuilder(
+            keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
+        ) {
             batchPinchStep("pinchOut", defaultScale: FlowStep.defaultPinchOutScale, raw: $0)
         },
-        "pinchIn": BatchStepBuilder(keys: ["selector", "scale", "durationSeconds", "waitSeconds"]) {
+        "pinchIn": BatchStepBuilder(
+            keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
+        ) {
             batchPinchStep("pinchIn", defaultScale: FlowStep.defaultPinchInScale, raw: $0)
         },
         "swipeBy": BatchStepBuilder(
-            keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "waitSeconds"]
+            keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
         ) { raw in
             guard let dxRatio = raw["dxRatio"] as? Double, let dyRatio = raw["dyRatio"] as? Double else {
                 throw MCPError("swipeBy requires dxRatio and dyRatio")
@@ -153,12 +161,13 @@ extension MCPServer {
                                 fallbacks: selector.flatMap(batchFallbacks),
                                 timeout: raw["waitSeconds"] as? Double,
                                 duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
+                                maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
                                 dxRatio: dxRatio, dyRatio: dyRatio)
             let target = selector.map { " \"\($0.text)\"" } ?? ""
             return (step, "swipeBy\(target) (\(dxRatio), \(dyRatio))")
         },
         "swipeElementToElement": BatchStepBuilder(
-            keys: ["selector", "to", "durationSeconds"]
+            keys: ["selector", "to", "durationSeconds", "maxGestureSeconds"]
         ) { raw in
             let from = try requiredBatchSelector(raw, command: "swipeElementToElement")
             guard let toText = raw["to"] as? String, !toText.isEmpty else {
@@ -168,7 +177,8 @@ extension MCPServer {
             let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultSwipeDurationSeconds
             let step = FlowStep(action: "swipeElementToElement", locator: from.primary,
                                 fallbacks: batchFallbacks(from), endLocator: to.primary,
-                                duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration)
+                                duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
+                                maxGestureSeconds: raw["maxGestureSeconds"] as? Double)
             return (step, "swipeElementToElement \"\(from.text)\" → \"\(to.text)\"")
         },
         "scrollTo": BatchStepBuilder(
@@ -240,6 +250,7 @@ extension MCPServer {
                             fallbacks: selector.flatMap(batchFallbacks),
                             timeout: raw["waitSeconds"] as? Double,
                             duration: duration == FlowStep.defaultPinchDurationSeconds ? nil : duration,
+                            maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
                             scale: scale)
         let target = selector.map { " \"\($0.text)\"" } ?? ""
         return (step, "\(action)\(target) x\(scale)")
@@ -384,6 +395,11 @@ extension MCPServer {
         // 足さない)—— DSL 行は MCPServer.intArgument/doubleArgument を経由しないので、
         // 型が合っていても 0/負のような無意味な値(`holdSeconds: -1` 等)がそのまま通っていた
         try Self.checkBatchArgumentBounds(raw, command: command)
+        // 秒数の相互検査(seconds ≤ maxGestureSeconds(省略時は既定10秒))は値域の隣。
+        // checkBatchArgumentBounds は型/絶対上限(60秒)のスキーマ検査しかできない
+        if let violation = ArgumentBounds.gestureCapViolation(raw) {
+            throw MCPError("\(command): \(violation)")
+        }
         if let ref = raw["ref"] as? Int {
             var withoutRef = raw
             withoutRef["ref"] = nil

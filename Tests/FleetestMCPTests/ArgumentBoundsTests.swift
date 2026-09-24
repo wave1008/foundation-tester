@@ -102,20 +102,76 @@ final class ArgumentBoundsTests: XCTestCase {
         }
     }
 
-    /// hold/gesture 系(holdSeconds/durationSeconds/duration/press)は10秒を超えると断る。
-    /// リテラルの 10 / 10.5 を書く(production の `maxGestureSeconds` を期待値に流用しない ——
-    /// 定数を書き換えても壊れないテストになってしまう)
-    func testGestureDurationKeysRejectAboveTenSeconds() {
+    /// hold/gesture 系(holdSeconds/durationSeconds/duration/press)の**スキーマ上の**上限は
+    /// 60秒(`gestureSecondsCeiling`)。**60秒を超えると断る**(型/絶対上限のスキーマ検査は
+    /// `ArgumentBounds.violation` の役目。既定 10 秒との相互検査は `gestureCapViolation` —
+    /// 下の `testGestureCapViolation*`)。リテラルの 60 / 60.5 を書く(production の定数を
+    /// 期待値に流用しない —— 定数を書き換えても壊れないテストになってしまう)
+    func testGestureDurationKeysRejectAboveSixtySeconds() {
         for key in ["holdSeconds", "durationSeconds", "duration", "press"] {
-            let message = ArgumentBounds.violation(key, 10.5)
-            XCTAssertNotNil(message, "\(key)=10.5 は断られるはず")
+            let message = ArgumentBounds.violation(key, 60.5)
+            XCTAssertNotNil(message, "\(key)=60.5 は断られるはず")
             XCTAssertTrue(message?.contains(key) == true, message ?? "nil")
         }
     }
 
-    func testGestureDurationKeysAcceptTenSeconds() {
+    func testGestureDurationKeysAcceptUpToSixtySeconds() {
         for key in ["holdSeconds", "durationSeconds", "duration", "press"] {
-            XCTAssertNil(ArgumentBounds.violation(key, 10), "\(key)=10 は境界内のはず")
+            XCTAssertNil(ArgumentBounds.violation(key, 60), "\(key)=60 は境界内のはず")
+        }
+    }
+
+    // MARK: - gestureCapViolation(既定10秒 / maxGestureSeconds の相互検査)
+
+    /// 上書きが無ければ既定 10 秒が上限(リテラル 10 / 10.5)
+    func testGestureCapViolationRejectsAboveDefaultTenWithoutOverride() {
+        for key in ["holdSeconds", "durationSeconds", "duration", "press"] {
+            let message = ArgumentBounds.gestureCapViolation([key: 10.5])
+            XCTAssertNotNil(message, "\(key)=10.5(上書き無し)は断られるはず")
+            XCTAssertTrue(message?.contains("maxGestureSeconds") == true, message ?? "nil")
+        }
+    }
+
+    func testGestureCapViolationAcceptsUpToDefaultTenWithoutOverride() {
+        for key in ["holdSeconds", "durationSeconds", "duration", "press"] {
+            XCTAssertNil(ArgumentBounds.gestureCapViolation([key: 10.0]))
+        }
+    }
+
+    /// maxGestureSeconds を添えれば、その値までは通る(リテラル 30 / 40)
+    func testGestureCapViolationHonoursTheOverride() {
+        XCTAssertNil(ArgumentBounds.gestureCapViolation(["holdSeconds": 30.0, "maxGestureSeconds": 40.0]))
+        let message = ArgumentBounds.gestureCapViolation(["holdSeconds": 45.0, "maxGestureSeconds": 40.0])
+        XCTAssertNotNil(message, "上書き値(40)を超えたら断られるはず")
+    }
+
+    /// 上書き値そのものが 60 を超えたら断る(リテラル 61)
+    func testGestureCapViolationRejectsOverrideAboveCeiling() {
+        let message = ArgumentBounds.gestureCapViolation(["maxGestureSeconds": 61.0])
+        XCTAssertNotNil(message)
+        XCTAssertTrue(message?.contains("maxGestureSeconds") == true, message ?? "nil")
+    }
+
+    func testGestureCapViolationAcceptsCeilingOverride() {
+        XCTAssertNil(ArgumentBounds.gestureCapViolation(["holdSeconds": 60.0, "maxGestureSeconds": 60.0]))
+    }
+
+    /// キーが1つも無い/秒数を持たない引数だけなら常に nil
+    func testGestureCapViolationIgnoresUnrelatedArgs() {
+        XCTAssertNil(ArgumentBounds.gestureCapViolation(["ref": 1]))
+        XCTAssertNil(ArgumentBounds.gestureCapViolation([:]))
+    }
+
+    /// **実物の呼び口**: 上書き無しの `ft_long_press holdSeconds: 10.5` はスキーマ上は
+    /// 60 秒まで許すが、既定 10 秒の相互検査で断られる
+    func testLongPressAboveDefaultCapWithoutOverrideIsRejected() async {
+        do {
+            _ = try await server.call(tool: "ft_long_press",
+                                      args: ["x": 10.0, "y": 10.0, "holdSeconds": 10.5])
+            XCTFail("holdSeconds 10.5(上書き無し)が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("maxGestureSeconds"),
+                          error.localizedDescription)
         }
     }
 

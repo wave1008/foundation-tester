@@ -2330,7 +2330,35 @@ Pixel 4a、仮想機 sim09 / sim10 / emulator-5554)+ ライブ操作ファズ3�
 iOS ランナーは `press(forDuration: 1e9)` をそのまま撃ち、XCTest が3回リトライ → 次の操作が
 `Timed out while synthesizing event` → XCTest がランナーを再起動して 0 tests で終わり、
 **ブリッジが死んだ**(シミュレータ・実機 SE3 とも)。上限は Android の注入上限と同じ 10 秒
-(`ArgumentBounds.maxGestureSeconds`)。**DSL の `tap(holdSeconds:)` は縛っていない**(利用者が書く値)。
+(当時の `ArgumentBounds.maxGestureSeconds`)。**DSL の `tap(holdSeconds:)` は縛っていなかった**(利用者が書く値
+→ 追記参照。今はホストが断る)。
+
+**追記(2026-09-24 午後)**: 入口(MCP/ライブ操作)だけの上限では DSL 等の経路が塞がらないままだった。
+負荷テストで `press duration: 1e9` を撃つと、iOS の XCUITest ランナーは(死なずに)**3秒で
+`{"ok":true}` を返す**一方、シミュレータ内の `testmanagerd` が 1e9 秒ぶんの合成タッチ列
+(`RCPSyntheticEventStream moveToPoints`)を作り続け、約15MB/秒で膨張した。sim10 / iPhone 17 の
+2台(= 1e9 が testmanagerd まで届いた台)が数時間で 170GB / 283GB に達し Mac のメモリを食い潰した
+一方、手前で 409/422 で断られた sim09 は 12MB のまま(= 断れれば実害ゼロ)。**ランナーを止めても
+testmanagerd は残る** —— 止めるには testmanagerd 自体を kill するしかない。
+**10 秒は危険の閾値ではない**(10 秒・20 秒の長押しは所要どおり返り testmanagerd は横ばい = 実測)。
+Android と揃える値として選んだ(ユーザー決定: 20 秒超の長押しは不要)。`ok` が返ったのは
+`FleetestBridgeTests.record(_:)` が XCTest の失敗をログへ流すだけで、`handlePress` が合成の失敗を知らないため。
+直し: ランナーが合成タッチを XCTest へ渡す前に見積もり所要を計算して断る(press はそのまま・
+drag は press+distance/velocity(クランプ後)・swipe は velocity 指定時だけ distance/velocity・
+pinch は durationSeconds と、要素ピンチ枝の abs(scale-1)/magnitude(クランプ後)の両方)。
+定数は下の「夕」の追記で `BridgeAPI.defaultMaxGestureSeconds`(10)/ `gestureSecondsCeiling`(60)の2つに分けた。
+
+**追記(2026-09-24 夕)**: 10 秒固定は安全側だが、正当に長い長押し・スワイプ・ピンチを書けなく
+していた。ユーザー決定: **既定は 10 秒のまま・コマンドの `maxGestureSeconds:` 引数でその1回だけ
+最大 60 秒(`BridgeAPI.gestureSecondsCeiling`)まで上書きできる**。方針の判定(既定10・上書き
+上限60)は**ホスト側**に置く(`FlowStep.gestureDurationViolation` = DSL の `StepExecutor` 入口/
+`ArgumentBounds.gestureCapViolation` = MCP・ライブ操作の入口)。**ランナー(iOS)は要求ごとの
+上書き値を受け取らない** —— 常に `gestureSecondsCeiling`(絶対上限)で断るだけにし、方針の判断は
+ホストに寄せた(ランナーに2つ目の閾値ロジックを持たせない)。
+**Android も丸め先を 10 秒から 60 秒(ceiling)へ上げた**: 10 秒のままだと、上書きした長押し
+(例: 30 秒)が Android だけ注入層で黙って 10 秒に切られ「done」を返す**誤った成功**になる(丸め先は
+ホストの絶対上限と一致させる)。Android ブリッジは v71(旧ブリッジを再利用させないため)。
+エミュレータで 15 秒の長押しが 15.5 秒続くことを確認した。
 
 ### 49.2 「接続が即切れる」を「ブリッジ消失」と断定していた —— シミュレータに転送役は居ない
 

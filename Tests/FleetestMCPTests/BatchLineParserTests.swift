@@ -248,7 +248,7 @@ final class BatchLineParserTests: XCTestCase {
             let message = (error as? BatchStepResolver.ResolveError)?.message ?? "\(error)"
             XCTAssertTrue(message.contains("\"containerInference:\""), message)
             XCTAssertTrue(message.contains("does not support"), message)
-            XCTAssertTrue(message.contains("selector, holdSeconds, waitSeconds"), message)
+            XCTAssertTrue(message.contains("selector, holdSeconds, maxGestureSeconds, waitSeconds"), message)
         }
     }
 

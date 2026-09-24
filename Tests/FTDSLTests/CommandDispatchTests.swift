@@ -175,6 +175,26 @@ final class CommandDispatchTests: XCTestCase {
                        "DSL の holdSeconds がドライバまで届いていない")
     }
 
+    /// `maxGestureSeconds:` を添えれば、既定 10 秒を超える holdSeconds も
+    /// FlowStep.maxGestureSeconds を経由してそのままドライバへ届くこと(StepExecutor の
+    /// 入口で断られない)
+    func testTapHoldSecondsWithMaxGestureSecondsReachesDriver() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { tap("#cleanup", holdSeconds: 30, maxGestureSeconds: 30) }
+            }
+        }
+
+        XCTAssertEqual(driver.pressed.map(\.duration), [30],
+                       "maxGestureSeconds を添えた holdSeconds がドライバまで届いていない")
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
     /// 型付きセレクタが文字列版と同じ要素を実際に解決すること(等価性は SelTests、発火はここ)
     func testTypedSelectorResolvesSameElement() {
         let driver = RecordingDriver()
@@ -1187,6 +1207,31 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(driver.dragCalls.count, 1)
         XCTAssertEqual(driver.dragCalls[0].durationSeconds, 0.5, accuracy: 0.001)
         XCTAssertEqual(driver.dragCalls[0].toX, 400, accuracy: 0.001)
+    }
+
+    /// `swipePointToPoint` は FlowStep/StepExecutor を経由しない(`performCustom` から直接
+    /// driver.drag を呼ぶ)ので、`maxGestureSeconds:` の検査もそこで自前に行う
+    /// (`Commands.swift` の doc 参照)。既定 10 秒を超える durationSeconds が
+    /// maxGestureSeconds を添えてドライバへ届くことを固定する
+    func testSwipePointToPointDurationSecondsWithMaxGestureSecondsReachesDriver() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    swipePointToPoint(startX: 10, startY: 20, endX: 30, endY: 40,
+                                      durationSeconds: 30, maxGestureSeconds: 30)
+                }
+            }
+        }
+
+        XCTAssertEqual(driver.dragCalls.count, 1)
+        XCTAssertEqual(driver.dragCalls[0].durationSeconds, 30, accuracy: 0.001,
+                       "maxGestureSeconds を添えた durationSeconds がドライバまで届いていない")
+        XCTAssertTrue(core.finalRecord.passed)
     }
 
     // MARK: - tapAppIcon

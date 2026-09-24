@@ -9,6 +9,13 @@ extension StepExecutor {
     func executeAction(_ action: String, step: FlowStep,
                                fingerprint: LocatorFingerprint? = nil,
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        // **デバイスに触る前に、入口1箇所で**ジェスチャの秒数を検査する(FlowStep.duration を
+        // 使う action 全部: tap の長押し・flick・pinchOut/pinchIn・swipeBy・swipeElementToElement)。
+        // duration が nil(既定のまま)は検査しない
+        if let violation = FlowStep.gestureDurationViolation(
+            action: action, duration: step.duration, maxGestureSeconds: step.maxGestureSeconds) {
+            return StepOutcome(status: .failed(violation))
+        }
         let clock = ContinuousClock()
         cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
         // 直前の操作の記録は**次の操作が画面を変えるまで**有効(検証は画面を変えないので消さない)。

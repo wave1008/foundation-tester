@@ -172,7 +172,8 @@ extension MCPServer {
     func recordInteraction(action: String, resolvedRef: Int?, args: [String: Any],
                            text: String? = nil, direction: String? = nil,
                            coordinate: (x: Double, y: Double)? = nil,
-                           duration: Double? = nil, scale: Double? = nil,
+                           duration: Double? = nil, maxGestureSeconds: Double? = nil,
+                           scale: Double? = nil,
                            replace: Bool = false) {
         // tap → type の間に別の操作が入ったら「叩いた欄へ入れる」意図ではない(DSL と同じ規律)
         if action != "tap", action != "type" { lastTapTargets[Self.engineKey(args)] = nil }
@@ -209,6 +210,7 @@ extension MCPServer {
         if action == "tap", selector == nil, let coordinate {
             var step = FlowStep(action: "tap", x: coordinate.x, y: coordinate.y)
             step.duration = duration
+            step.maxGestureSeconds = maxGestureSeconds
             step.note = "coordinates — replace with a selector before keeping this;"
                 + " a layout change makes it hit something else"
             recordAction(InteractionLog.Entry(step: step, unresolved: nil,
@@ -225,8 +227,10 @@ extension MCPServer {
         step.text = text
         step.direction = direction
         // 実際に撃った値を残す(落とすと draft が既定値で再生成され、3秒の長押しが
-        // 1秒に化けたシナリオが黙って出る)
+        // 1秒に化けたシナリオが黙って出る)。maxGestureSeconds も同じ理由 —— 落とすと
+        // 既定10秒を超える長押し/ピンチが再生成後に再現不能な(検査で断られる)シナリオになる
         step.duration = duration
+        step.maxGestureSeconds = maxGestureSeconds
         step.scale = scale
         step.replace = replace ? true : nil
         // **下書きの本文にも格付けを残す**(2026-08-10 の掃討): 注記と ft_tap の戻り値だけに

@@ -159,6 +159,27 @@ final class MCPRoundTripTests: XCTestCase {
         XCTAssertTrue(draft.contains("holdSeconds: 3"), draft)
     }
 
+    /// **`maxGestureSeconds` も撃った値**(2026-09-24。上の holdSeconds と同型の実害):
+    /// 落とすと draft が既定10秒の上限で再生成され、上書きで許した30秒の長押しが
+    /// 検査で断られるシナリオが黙って出る
+    func testPressMaxGestureSecondsReachesTheDraft() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_long_press",
+                                  args: ["ref": 1, "holdSeconds": 30.0, "maxGestureSeconds": 30.0])
+        let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertTrue(draft.contains("holdSeconds: 30, maxGestureSeconds: 30"), draft)
+    }
+
+    /// pinch も同じ経路(`recordInteraction` の duration/maxGestureSeconds)を通ること
+    func testPinchMaxGestureSecondsReachesTheDraft() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(
+            tool: "ft_pinch",
+            args: ["ref": 1, "scale": 3.0, "durationSeconds": 30.0, "maxGestureSeconds": 30.0])
+        let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertTrue(draft.contains("durationSeconds: 30, maxGestureSeconds: 30"), draft)
+    }
+
     func testDoubleTapAndPinchAreRecordedForTheDraft() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_double_tap", args: ["ref": 1])

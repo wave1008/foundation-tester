@@ -870,4 +870,72 @@ extension StepExecutorTests {
         }
     }
 
+    // MARK: - ジェスチャの秒数上限(maxGestureSeconds。executeAction の入口で断る)
+
+    /// 上書き無しで既定 10 秒を超えたら**デバイスに触る前に**失敗すること(log.entries が空 = snapshot も
+    /// 撃たれていない。CLAUDE.md「tap は対象が操作可能になるまで待ってから撃つ」より前の門)
+    func testGestureDurationAboveDefaultCapFailsBeforeTouchingDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_long"), duration: 10.5)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let reason) = outcome.status else {
+            XCTFail("10.5秒(上書き無し)は失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(reason.contains("maxGestureSeconds"), reason)
+        XCTAssertTrue(log.entries.isEmpty, "デバイスへ一度も触れていないはず: \(log.entries)")
+    }
+
+    /// `maxGestureSeconds:` を添えれば、その値までは通ってドライバへ届くこと
+    func testGestureDurationWithinOverrideCapReachesDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false)
+        var step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_long"), duration: 30)
+        step.maxGestureSeconds = 30
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("上書き(30)の範囲内なので成功するはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(primary.lastPressDuration, 30)
+    }
+
+    /// 上書き値そのものが絶対上限(60)を超えたら、これも**デバイスに触る前に**失敗すること
+    func testMaxGestureSecondsAboveCeilingFailsBeforeTouchingDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false)
+        var step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_long"), duration: 5)
+        step.maxGestureSeconds = 61
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let reason) = outcome.status else {
+            XCTFail("maxGestureSeconds=61 は失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(reason.contains("maxGestureSeconds"), reason)
+        XCTAssertTrue(log.entries.isEmpty, "デバイスへ一度も触れていないはず: \(log.entries)")
+    }
+
+    /// duration が nil(通常タップ)なら maxGestureSeconds の有無に関わらず検査しない
+    func testOrdinaryTapWithoutDurationIsNotGestureChecked() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_ordinary")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_ordinary"))
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("通常タップは検査対象外のはず"); return
+        }
+    }
+
 }

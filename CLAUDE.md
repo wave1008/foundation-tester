@@ -977,8 +977,15 @@
   **②検査は読む場所ではなく `MCPServer.call` の入口で全数**(`timeout` のように条件付きでしか
   読まれない欄は、読まれない回に 0/負が通って「効いた」と誤解させる)/ **③`ft_batch` の DSL 行も
   同じ表を通す**(あちらは `intArgument` を経由しない)。必須の文字列は空文字・空白のみを断る
-  (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2。**長押し・ジェスチャの秒数は 10 秒まで**
-  (`maxGestureSeconds` = Android の注入上限。超えると Android は黙って丸め、iOS はランナーが死ぬ → §49.1)。
+  (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2。**長押し・ジェスチャの秒数は
+  既定 10 秒まで、コマンドの `maxGestureSeconds:` 引数でその1回だけ最大 60 秒まで上書きできる**
+  (ユーザー決定 2026-09-24)。**方針の判定(既定10・上書き上限60)はホスト側**(DSL は
+  `StepExecutor.executeAction` の入口 = `FlowStep.gestureDurationViolation`・MCP/ライブ操作は
+  `ArgumentBounds.gestureCapViolation`)。**定義元は `BridgeAPI.defaultMaxGestureSeconds` /
+  `BridgeAPI.gestureSecondsCeiling`**。
+  **ランナー(iOS)と Android の注入層は 60 秒(ceiling)を絶対上限として最後に断る**
+  (要求ごとの上書きは受け取らない・ホストの門をどちらも通らない経路の最後の砦。超過は
+  testmanagerd が合成列を作り続けて肥大化する → maintainer-notes §49.1)。
   **同じ的を指す引数の併用(ref と x/y 等)は入口で断る**(`targetExclusivityViolation`)
 - **「応答しない」を busy と死で分けるのは所要時間**(`BridgeDiscovery.probeStatus` の4値)。
   健全 = HTTP 応答が返る(**ステータスコードで判定しない** —— 実機はトークン不一致の 401 を返す)/

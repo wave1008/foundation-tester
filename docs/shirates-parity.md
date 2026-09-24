@@ -42,6 +42,13 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 ---
 
+**`maxGestureSeconds:` は fleetest 独自の引数**(🟢・ユーザー決定 2026-09-24。Shirates に対応する
+引数は無い)。秒数を取る全コマンド(`tap(holdSeconds:)` / `tap(x:y:holdSeconds:)` /
+`swipePointToPoint` / `swipeBy` / `swipeElementToElement` / `pinchOut` / `pinchIn` /
+`flickCenterToTop` ほか flick 8種)に付いており、既定の秒数上限(10 秒)をそのコマンド1回だけ
+最大 60 秒まで上げる。シミュレータの testmanagerd が桁外れの秒数で肥大化する実害
+(maintainer-notes §49.1)を受けて、既定を低く抑えたぶんの逃げ道として追加した。
+
 ## 要素の選択・タップ
 
 | Shirates | fleetest | |

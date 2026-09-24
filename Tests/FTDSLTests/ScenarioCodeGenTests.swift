@@ -51,6 +51,52 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(both.contains("x:"), both)
     }
 
+    /// `maxGestureSeconds` を落とすと、既定10秒を超える長押し/ジェスチャが再生成後に
+    /// 検査で断られる(実際に撃った値を残すのと同じ理由。tap/press/swipeBy/pinchOut/pinchIn/
+    /// swipeElementToElement の全部を1本ずつ固定する)
+    func testMaxGestureSecondsIsEmittedAlongsideDuration() {
+        var tap = FlowStep(action: "tap", locator: FlowLocator(id: "btn"), duration: 30)
+        tap.maxGestureSeconds = 30
+        XCTAssertTrue(render([tap]).contains("tap(\"#btn\", holdSeconds: 30, maxGestureSeconds: 30)"),
+                     render([tap]))
+
+        var coordinateTap = FlowStep(action: "tap", duration: 30, x: 10, y: 20)
+        coordinateTap.maxGestureSeconds = 30
+        XCTAssertTrue(render([coordinateTap])
+            .contains("tap(x: 10, y: 20, holdSeconds: 30, maxGestureSeconds: 30)"), render([coordinateTap]))
+
+        var press = FlowStep(action: "press", locator: FlowLocator(id: "btn"), duration: 30)
+        press.maxGestureSeconds = 30
+        XCTAssertTrue(render([press]).contains("holdSeconds: 30, maxGestureSeconds: 30"), render([press]))
+
+        var pinch = FlowStep(action: "pinchOut", locator: FlowLocator(id: "map"),
+                             duration: 30, scale: 2)
+        pinch.maxGestureSeconds = 45
+        XCTAssertTrue(render([pinch]).contains("durationSeconds: 30, maxGestureSeconds: 45"), render([pinch]))
+
+        var swipeBy = FlowStep(action: "swipeBy", locator: FlowLocator(id: "map"),
+                               duration: 30, dxRatio: 0.5, dyRatio: 0.5)
+        swipeBy.maxGestureSeconds = 45
+        XCTAssertTrue(render([swipeBy]).contains("durationSeconds: 30, maxGestureSeconds: 45"),
+                     render([swipeBy]))
+
+        var swipeE2E = FlowStep(action: "swipeElementToElement", locator: FlowLocator(id: "a"),
+                                endLocator: FlowLocator(id: "b"), duration: 30)
+        swipeE2E.maxGestureSeconds = 45
+        XCTAssertTrue(render([swipeE2E]).contains("durationSeconds: 30, maxGestureSeconds: 45"),
+                     render([swipeE2E]))
+    }
+
+    /// duration が無い(既定のまま)のタップに maxGestureSeconds だけ付いていても出さない
+    /// (holdSeconds が無ければ maxGestureSeconds は無意味 = StepExecutor も検査しない)
+    func testMaxGestureSecondsWithoutDurationIsOmitted() {
+        var step = FlowStep(action: "tap", locator: FlowLocator(id: "btn"))
+        step.maxGestureSeconds = 30
+        let rendered = render([step])
+        XCTAssertTrue(rendered.contains("tap(\"#btn\")"), rendered)
+        XCTAssertFalse(rendered.contains("maxGestureSeconds"), rendered)
+    }
+
     /// **ライブ操作パネルの録画が生成に届くこと**。ここが nil を返すと、記録した操作が
     /// 黙って生成コードから落ちる(パネルは 2026-08-04 からダブルタップ・ピンチを記録する)
     func testMapGesturesAreGenerated() {

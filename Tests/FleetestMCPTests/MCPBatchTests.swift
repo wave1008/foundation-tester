@@ -83,6 +83,30 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "弾いた手はドライバへ触れないこと")
     }
 
+    /// `maxGestureSeconds:` 付きの座標長押しがバッチを通ってドライバへ届くこと(既定 10 秒を
+    /// 超える holdSeconds を上書きで許す形。CLAUDE.md「ft_batch は DSL の行を受けるので、索引の
+    /// signature を変えたら batchStepBuilders のキーも同時に変える」の実地確認)
+    func testCoordinateTapWithHoldSecondsAndMaxGestureSecondsRunsInABatch() async throws {
+        let text = body(try await server.call(
+            tool: "ft_batch", args: steps("tap x: 10 y: 20 holdSeconds: 30 maxGestureSeconds: 30")))
+        XCTAssertFalse(text.contains("FAILED"), text)
+        XCTAssertTrue(driver.calls.contains { $0 == "press(x:10.0,y:20.0,duration:30.0)" },
+                     "\(driver.calls)")
+    }
+
+    /// 上書き無しで既定 10 秒を超えたら、デバイスに触れる前にバッチごと拒否すること
+    func testCoordinateTapHoldSecondsAboveDefaultCapWithoutOverrideIsRejected() async {
+        do {
+            _ = try await server.call(tool: "ft_batch",
+                                      args: steps("tap x: 10 y: 20 holdSeconds: 10.5"))
+            XCTFail("holdSeconds 10.5(上書き無し)の batch 行が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("maxGestureSeconds"),
+                          error.localizedDescription)
+        }
+        XCTAssertEqual(driver.calls, [], "弾いた手はドライバへ触れないこと")
+    }
+
     /// 片方だけの指定は「どこを撃つのか」が決まらないので拒否(黙って中心を撃たない)
     func testCoordinateTapNeedsBothAxes() async {
         do {

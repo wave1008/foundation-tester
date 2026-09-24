@@ -875,9 +875,11 @@ public struct FTElement {
     /// 古い座標を叩く)。空の画像要素は叩かずに失敗する。それ以外は `tap(セレクタ)` と同じ
     /// (セレクタから引き直す)
     public func tap(holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
+                    maxGestureSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
         guard let imageLabel else {
-            tapImpl(selector, holdSeconds: holdSeconds, waitSeconds: nil, scroll: nil,
+            tapImpl(selector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
+                    waitSeconds: nil, scroll: nil,
                     maxSwipes: FlowStep.defaultMaxSwipes, containerInference: nil, file: file, line: line)
             return
         }
@@ -890,7 +892,7 @@ public struct FTElement {
         }
         let x = imageFrame.x + imageFrame.width / 2
         let y = imageFrame.y + imageFrame.height / 2
-        coordinateTap(x: x, y: y, holdSeconds: holdSeconds,
+        coordinateTap(x: x, y: y, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
                       description: "tap image \"\(imageLabel)\" (\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))",
                       file: file, line: line)
     }

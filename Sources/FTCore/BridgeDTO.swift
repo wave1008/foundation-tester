@@ -424,7 +424,12 @@ public enum BridgeAPI {
     /// `SBSwitcherWindow` exists and is hittable — it also requires an app card (`card:<bundle>…`) inside the window.
     /// A home-button iPhone (SE3, iOS 26) answers hittable for that window while an app is in front, so a stale runner
     /// keeps telling Live Control the screen is covered and the session never follows the app in front.
-    public static let bridgeProtocolVersion = 124
+    /// v125 (XCUITest runner only): `/press`, `/drag`, `/swipe` and `/pinch` now refuse (400) a gesture whose
+    /// estimated real-world duration exceeds `gestureDurationViolation`'s cap **before** handing it to XCTest.
+    /// A `press` with `duration: 1e9` used to answer `ok` in ~3s while the simulator's `testmanagerd` kept
+    /// building the synthetic event stream at ~15MB/s, growing to 170–280GB over hours (measured 2026-09-24;
+    /// killing the runner does not stop it — see maintainer-notes §49.1). A stale runner keeps accepting it.
+    public static let bridgeProtocolVersion = 125
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -576,6 +581,71 @@ public enum BridgeAPI {
             diff |= a ^ b
         }
         return diff == 0
+    }
+
+    /// press/drag/swipe/pinch が iOS で XCTest に合成させる時間の**既定**上限(秒)。Android の
+    /// 従来の注入丸め(10 秒)と同じ値。**唯一の定義元**(`ArgumentBounds.numeric` の
+    /// holdSeconds/durationSeconds/duration/press はこれを既定として参照する)。
+    /// コマンドの `maxGestureSeconds:` 引数で1コマンドだけ `gestureSecondsCeiling` まで上書きできる
+    /// (ユーザー決定 2026-09-24)。根拠は `gestureSecondsCeiling` のコメント参照
+    public static let defaultMaxGestureSeconds: Double = 10
+
+    /// `maxGestureSeconds:` で上書きできる**絶対上限**(秒)。ランナー(iOS)と Android の注入層が
+    /// 最後の砦として断るのもこの値 —— ホスト側(StepExecutor / ArgumentBounds)の門をどちらも
+    /// 通らない経路(DSL からランナーへ直接・ライブ操作)が残っていても、ここで必ず止まる。
+    /// 根拠: これを超えて素通しすると、シミュレータ内の testmanagerd が合成タッチ列
+    /// (RCPSyntheticEventStream)を作り続けて約15MB/秒で肥大化する(実測 2026-09-24: press
+    /// duration=1e9 でランナーは3秒で ok を返すが testmanagerd は残り続け、数時間で170〜280GB。
+    /// 止めるには testmanagerd 自体を kill するしかない。→ maintainer-notes §49.1)
+    public static let gestureSecondsCeiling: Double = 60
+
+    /// ジェスチャの見積もり所要(秒)が `cap` を超えるか、非有限・負か。
+    /// **XCUITest ランナーが合成タッチを送る前に呼ぶ**(BridgeRouter の press/drag/swipe/pinch。
+    /// `cap` は常に `gestureSecondsCeiling` を渡す —— ランナーは要求ごとの上書き値を受け取らず、
+    /// 方針の判定(既定 10 秒・上書き上限 60 秒)はホスト側(StepExecutor / ArgumentBounds)が持つ。
+    /// ランナー自身が断るのは、DSL からランナーへ直接届く経路がホストの門を通らないため)。
+    /// **cap が `gestureSecondsCeiling` 未満のときだけ**「`maxGestureSeconds:` で上書きできる」と
+    /// 案内する(ちょうど絶対上限のときはもう上げようが無い)。違反なら英語の文言、OK なら nil
+    public static func gestureDurationViolation(_ what: String, seconds: Double, cap: Double) -> String? {
+        gestureSecondsViolation(subject: "\(what) duration", seconds: seconds, cap: cap)
+    }
+
+    /// 同じ判定を**利用者が渡した引数の名前**で言う版(MCP・ライブ操作・DSL = ホスト側の門)。
+    /// `subject` は文言の主語そのもの(`holdSeconds` / `holdSeconds of tap` 等)。
+    /// 引数名に " duration" を足すと「holdSeconds duration」になるので `gestureDurationViolation` と分ける
+    public static func gestureSecondsViolation(subject: String, seconds: Double, cap: Double) -> String? {
+        guard seconds.isFinite, seconds >= 0 else {
+            return "\(subject) must be a finite, non-negative number of seconds"
+                + " (got \(gestureSecondsFormat(seconds)))"
+        }
+        guard seconds <= cap else {
+            let base = "\(subject) must be \(gestureSecondsFormat(cap)) seconds or"
+                + " less (got \(gestureSecondsFormat(seconds)))"
+            guard cap < gestureSecondsCeiling else { return base }
+            return base + "; pass maxGestureSeconds: (up to \(gestureSecondsFormat(gestureSecondsCeiling)))"
+                + " to allow longer"
+        }
+        return nil
+    }
+
+    /// `maxGestureSeconds:` の上書き値そのものの検査(非有限・0以下・`gestureSecondsCeiling` 超を断る)。
+    /// **唯一の定義元**(`ArgumentBounds` の入口・DSL の StepExecutor 入口が両方これを呼ぶ)
+    public static func maxGestureSecondsViolation(_ value: Double) -> String? {
+        guard value.isFinite, value > 0 else {
+            return "maxGestureSeconds must be a finite, positive number of seconds"
+                + " (got \(gestureSecondsFormat(value)))"
+        }
+        guard value <= gestureSecondsCeiling else {
+            return "maxGestureSeconds must be \(gestureSecondsFormat(gestureSecondsCeiling))"
+                + " seconds or less (got \(gestureSecondsFormat(value)))"
+        }
+        return nil
+    }
+
+    /// "got 10" であって "got 10.0" ではなく、桁外れの値でも `Int` へ変換して trap しない
+    /// (`ArgumentBounds.format` と同種だが独立: あちらは値域違反、こちらは秒数の見積もり)
+    private static func gestureSecondsFormat(_ value: Double) -> String {
+        String(format: "%g", value)
     }
 }
 
