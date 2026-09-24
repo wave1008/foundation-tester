@@ -445,6 +445,13 @@ enum ProfileRunner {
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { ConsoleOut.out($0) }
         workers = triage.workers
+        // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
+        // `adb reboot` を撃つ)。観測だけはここで通す —— 実機の判定は `.darkScreenPhysical`
+        // (非確定)なので除外も回復も起きず、警告1行だけが出る。
+        // **`api run` はワーカーが混在リストなので既存の1本で両 OS を見ている**が、こちらは
+        // iOS レーンが別関数なので Android 側にも要る(片方だけだと `fleetest run` の実機が
+        // 無観測のまま。`PhysicalDarkScreenWiringTests` が両経路の配線を固定する)
+        await BlankWorkerTriage.observePhysicalScreens(workers) { ConsoleOut.out($0) }
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
                 message: "no usable devices (every Android device went blank)")

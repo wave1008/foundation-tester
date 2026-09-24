@@ -12,8 +12,11 @@ import UniformTypeIdentifiers
 import FTTestSupport
 @testable import FTCore
 
-/// 呼ばれない前提のドライバ(このテストはスクショを引数で差し替えるため)
+/// 判定に要らない口は呼ばれない前提のドライバ。**スクショだけは差し替えられる** ——
+/// `excludeBlankScreenWorkers` 経由の経路はドライバから撮るので、既定の空 Data のままだと
+/// 「デコード不能 = 健全」で素通りし、暗い実機の経路を1度も踏まないテストになる
 private struct UnusedDriver: AppDriver {
+    var shot: Data = Data()
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
     }
@@ -31,29 +34,80 @@ private struct UnusedDriver: AppDriver {
     func type(ref: Int?, text: String) async throws {}
     func swipe(_ direction: FTSwipeDirection) async throws {}
     func press(ref: Int, duration: Double) async throws {}
-    func screenshot() async throws -> Data { Data() }
+    func screenshot() async throws -> Data { shot }
     func terminate() async throws {}
 }
 
 final class BlankWorkerTriageTests: XCTestCase {
 
     private func worker(_ label: String, platform: String = "ios",
-                        physical: Bool = false) -> RunWorker {
-        RunWorker(label: label, platform: platform, driver: UnusedDriver(),
+                        physical: Bool = false, shot: Data = Data()) -> RunWorker {
+        RunWorker(label: label, platform: platform, driver: UnusedDriver(shot: shot),
                   connection: DriverConnection(platform: platform, physical: physical),
                   logicalName: label)
     }
 
     // MARK: - 対象の選び方
 
-    /// **iOS の仮想デバイスだけ**。Android は修復つきの自前トリアージが既にあるので二重に撃たない。
-    /// 実機は「画面が消灯しているだけ」を凍結と誤断する
-    func testOnlyVirtualIOSWorkersAreCandidates() {
+    /// **iOS の仮想デバイス + 両 OS の実機**。Android の仮想デバイスだけは修復つきの自前
+    /// トリアージが既にあるので二重に撃たない。実機は修復手段が無いのでこちらで観測する
+    /// (誤断しないのは判定側の担保 = `.darkScreenPhysical` が非確定。下のテスト)
+    func testCandidatesAreVirtualIOSAndEveryPhysicalDevice() {
         XCTAssertTrue(BlankWorkerTriage.isCandidate(worker("sim")))
         XCTAssertFalse(BlankWorkerTriage.isCandidate(worker("emu", platform: "android")),
-                       "Android は自前のトリアージ(修復つき)が担当する")
-        XCTAssertFalse(BlankWorkerTriage.isCandidate(worker("iphone", physical: true)),
-                       "実機は消灯を凍結と誤断する")
+                       "Android の仮想デバイスは自前のトリアージ(修復つき)が担当する")
+        XCTAssertTrue(BlankWorkerTriage.isCandidate(worker("iphone", physical: true)),
+                      "実機は修復を持たないこちらで観測する")
+        XCTAssertTrue(BlankWorkerTriage.isCandidate(worker("pixel", platform: "android",
+                                                          physical: true)),
+                      "Android 実機もこちら(あちらは仮想デバイスだけを見る)")
+    }
+
+    /// **実機の一様フレームは確定させない**。消灯が同じ絵を出すので、確定させると
+    /// 夜間に寝ているだけの端末を凍結として除外・回復しようとする(除外の元の理由)
+    func testPhysicalDarkScreenIsWarnedButNeverConfirmed() async {
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "00008130-DEAD",
+            screenshot: { Self.blankPNG },
+            physical: true,
+            environment: [:])
+        XCTAssertEqual(verdict.evidence, [.darkScreenPhysical])
+        XCTAssertTrue(verdict.isSuspected, "警告としては出る")
+        XCTAssertFalse(verdict.isFrozen, "確定させない = 除外も回復も撃たれない")
+
+        // 同じ観測でも仮想デバイスなら確定する(対照)
+        let virtual = await BlankWorkerTriage.observedVerdict(
+            key: "SIM-UDID", screenshot: { Self.blankPNG }, environment: [:])
+        XCTAssertTrue(virtual.isFrozen)
+    }
+
+    /// **実機には nudge を撃たない**(渡されても呼ばない)。画面を変える入力は端末の状態を
+    /// 変えてしまうので、実機に「無害な入力」は無い
+    func testPhysicalDeviceIsNeverNudged() async {
+        var nudged = false
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "serial-1",
+            screenshot: { Self.blankPNG },
+            nudge: { nudged = true; return Self.contentPNG },
+            physical: true,
+            environment: [:])
+        XCTAssertFalse(nudged, "実機では能動プローブを撃たない")
+        XCTAssertEqual(verdict.evidence, [.darkScreenPhysical])
+    }
+
+    /// 暗い実機が混じっても**レーンから外れない**(警告までのスコープ)。
+    /// 対照として同じ絵の仮想デバイスは外れることまで見る —— 片方だけだと
+    /// 「そもそも blank と判定していない」テストと区別が付かない
+    func testDarkPhysicalDeviceIsNotExcluded() async {
+        let virtual = await BlankWorkerTriage.excludeBlankScreenWorkers(
+            [worker("sim", shot: Self.blankPNG)], environment: [:], log: { _ in })
+        XCTAssertEqual(virtual.excluded, ["sim"], "同じ絵でも仮想デバイスは確定して外れる")
+
+        let workers = [worker("iphone", physical: true, shot: Self.blankPNG)]
+        let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
+            workers, environment: [:], log: { _ in })
+        XCTAssertEqual(result.excluded, [], "実機は外さない")
+        XCTAssertEqual(result.workers.map(\.label), ["iphone"])
     }
 
     // MARK: - 恒常 blank の判定

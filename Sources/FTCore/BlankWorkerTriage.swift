@@ -54,11 +54,15 @@ public enum BlankWorkerTriage {
         return Result(workers: kept, excluded: excluded)
     }
 
-    /// 対象にするワーカーか。**iOS の仮想デバイスだけ**:
-    ///   - Android は自前のトリアージ(修復つき)が既にある = 二重に撃たない
-    ///   - 実機は「画面が消灯しているだけ」を凍結と誤断する(Android 側と同じ理由)
+    /// 対象にするワーカーか。**iOS の仮想デバイス + 両 OS の実機**:
+    ///   - Android の**仮想デバイス**だけは自前のトリアージ(修復つき)が既にある
+    ///     (`ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers`)= 二重に撃たない
+    ///   - **実機は両 OS ともここで見る**。あちらは修復(sleep/wake・guest reboot)まで行うが、
+    ///     実機に撃ってよい修復が無いので、修復を持たないこちらで観測だけする。
+    ///     判定は `.darkScreenPhysical`(非確定)に落ちるので**除外も回復も撃たれない**
     public static func isCandidate(_ worker: RunWorker) -> Bool {
-        worker.platform == "ios" && !worker.connection.physical
+        if worker.connection.physical { return true }
+        return worker.platform == "ios"
     }
 
     /// 恒常 blank かを判定する(`samples` 回続けて一様フレームなら blank)。
@@ -93,24 +97,29 @@ public enum BlankWorkerTriage {
     ///   - 「本物の wedge」= 入力しても戻らない
     /// 2026-08-11 の実測では、黒かった5台のうち本物は1台だけだった。この判別だけが全問正解した。
     /// `nudge` を渡さない呼び出しは従来どおり(一様が続けば凍結)。
+    /// `physical` のときは **`nudge` を撃たない**(渡されていても無視する)—— 実機で画面を変える
+    /// 入力は端末の状態を変えてしまう(前面アプリが替わる・消灯中の端末が点く)ので、
+    /// 「無害な入力」が存在しない。能動プローブを持てない代わりに判定を確定させない
+    /// (`.darkScreenPhysical`)ことで釣り合いを取る
     public static func observedVerdict(
         key: String?,
         screenshot: () async -> Data?,
         nudge: (() async -> Data?)? = nil,
+        physical: Bool = false,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> FrozenVerdict {
         if FrozenInjection.isInjected(key: key, environment: environment) {
             return FrozenVerdict([.injected])
         }
         guard await isPersistentlyBlank(screenshot: screenshot) else {
-            return FrozenVerdict.observe(uniformBlank: false)
+            return FrozenVerdict.observe(uniformBlank: false, physical: physical)
         }
-        if let nudge, let after = await nudge(),
+        if !physical, let nudge, let after = await nudge(),
            !BlankFrameDetector.isUniformBlank(pngData: after) {
             // 入力で描画が戻った = 凍結ではない(拍動では区別できなかった側)
             return FrozenVerdict.observe(uniformBlank: false)
         }
-        return FrozenVerdict.observe(uniformBlank: true)
+        return FrozenVerdict.observe(uniformBlank: true, physical: physical)
     }
 
     /// 凍結したワーカーの label と根拠(並列判定)。健全機は1サンプルで即返るので、
@@ -130,6 +139,7 @@ public enum BlankWorkerTriage {
                         key: deviceKey(worker),
                         screenshot: { try? await worker.driver.screenshot() },
                         nudge: nudge.map { probe in { await probe(worker) } },
+                        physical: worker.connection.physical,
                         environment: environment)
                     return (worker.label, verdict)
                 }
@@ -147,6 +157,43 @@ public enum BlankWorkerTriage {
     /// **確定した**凍結ワーカーの label 一覧(疑いだけの機は含めない)
     public static func frozenLabels(_ workers: [RunWorker]) async -> [String] {
         await frozenVerdicts(workers).filter { $0.value.isFrozen }.map(\.key)
+    }
+
+    /// 確定していない根拠を警告として出す(除外・回復は撃たない)。
+    /// **実機は「暗い」しか言わない** —— 消灯と wedge を分ける材料が無いのに frozen を名乗ると、
+    /// 持ち主は端末が壊れたと読んで復旧手順を探しに行く(たいていは消灯しているだけ)
+    private static func warnSuspected(_ verdicts: [String: FrozenVerdict],
+                                      log: @escaping @Sendable (String) -> Void) {
+        for (label, verdict) in verdicts.filter({ $0.value.isSuspected }).sorted(by: { $0.key < $1.key }) {
+            if verdict.evidence.contains(.darkScreenPhysical) {
+                log("⚠️ \(label): the physical device's screen is dark"
+                    + " — it may simply be asleep, so the run does not treat it as frozen."
+                    + " If the run fails on this lane, wake the device and check it by hand")
+            } else {
+                log("⚠️ \(label): a frozen-screen signal fired [\(verdict.summary)]"
+                    + " — not treating it as frozen (this signal is not confirmed yet)")
+            }
+        }
+    }
+
+    /// **観測だけ**する口(除外も回復も公表もしない)。実機は判定が `.darkScreenPhysical` =
+    /// 非確定にしかならないので、`excludeBlankScreenWorkers` を呼ぶと「除外しない除外処理」に
+    /// なって読み手を惑わせ、**iOS 供給口の本数を数えている既存の配線テスト
+    /// (`BlankWorkerRecoveryWiringTests` / `HostRecordingProbeTests`)にも数えられてしまう**。
+    /// 呼ぶのは「あちらのトリアージが実機を対象外にしている」Android ワーカーの経路だけでよい
+    /// (`api run` はワーカーが混在リストなので既存の1本で両 OS を拾う)。
+    ///
+    /// **公表(DeviceFrozenStore)はしない** —— `syncStore` は clearAll してから自分が見た台だけを
+    /// publish するので、後続の iOS レーンの公表と潰し合う。モニターは自分の受動観測から
+    /// 同じ根拠を組み立てるので、ここで公表しなくてもタイルの答えは変わらない
+    public static func observePhysicalScreens(
+        _ workers: [RunWorker],
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        log: @escaping @Sendable (String) -> Void
+    ) async {
+        let physical = workers.filter(\.connection.physical)
+        guard !physical.isEmpty else { return }
+        warnSuspected(await frozenVerdicts(physical, environment: environment), log: log)
     }
 
     /// 回復を試みる回数の上限。**2回**: 1回で戻らない個体はもう1回でも戻らないことが多く、
@@ -205,10 +252,7 @@ public enum BlankWorkerTriage {
         // その間ずっと「異常なし」を出す = 見えるようにした意味が無い)
         syncStore(verdicts, of: current, stateDir: stateDir)
         // **確定していない根拠は警告だけ**(新しい検知は拒否でなく警告から始める規律)
-        for (label, verdict) in verdicts.filter({ $0.value.isSuspected }).sorted(by: { $0.key < $1.key }) {
-            log("⚠️ \(label): a frozen-screen signal fired [\(verdict.summary)]"
-                + " — not treating it as frozen (this signal is not confirmed yet)")
-        }
+        warnSuspected(verdicts, log: log)
         // **注入(陽性対照)は公表だけで、回復も除外もしない** —— 実体は健全なので
         // simctl shutdown/boot を撃つと対照実験のたびにフリートを再起動することになる
         var blankLabels = verdicts

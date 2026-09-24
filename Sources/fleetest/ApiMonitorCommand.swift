@@ -365,7 +365,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     : nil
                 let frozenVerdict = Self.frozenVerdict(
                     id: state.target.id, key: leaseKey,
-                    debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun)
+                    debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun,
+                    physical: state.target.spec.isPhysical)
                 // 他の発行者がこの台を配信中か。控えは機械グローバル(~/.fleetest/streams)なので
                 // **手元でも読む** —— 台が居る機械の上で走るこのプロセスの $HOME が答えを持つ
                 let leasedByOther = StreamLease.heldByOther(
@@ -1055,10 +1056,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return state.androidSerial.map { .android(serial: $0) }
     }
 
+    /// `physical` は自前の受動観測(debounce)の写し先を決めるためだけに要る。
+    /// **実機の一様フレームは消灯でも出る**ので `.uniformBlank`(確定)にしてはいけない ——
+    /// ここを分けないと、夜間に消灯しているだけの実機がタイルで ❄️ になる。
+    /// 写し方の規則は `FrozenVerdict.observe(uniformBlank:injected:physical:)` の1箇所
+    /// (run 前トリアージと同じものを通す = 同じ台について答えが食い違わない)
     static func frozenVerdict(id: String, key: String?,
                               debounce: MonitorFrozenDebounce,
                               stateDir: URL?,
                               inRun: Bool = false,
+                              physical: Bool = false,
                               environment: [String: String] = ProcessInfo.processInfo.environment,
                               now: Date = Date()) -> FrozenVerdict {
         let published = stateDir.flatMap { dir in
@@ -1071,7 +1078,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 受動観測では分けられない(docs/verification.md)。run 中に本物が起きれば
         // run 側の能動プローブが published(DeviceFrozenStore)経由でここへ届く。
         // 注入(陽性対照)と published は run 中も残す
-        let own = inRun ? .healthy : debounce.verdict(id: id)
+        let own = inRun ? .healthy : debounce.verdict(id: id, physical: physical)
         return own.merged(with: published).merged(with: injected)
     }
 
@@ -1535,8 +1542,9 @@ struct MonitorFrozenDebounce {
 
     /// 確定状態を**根拠つき**で返す(唯一の読み口)。真偽値ではなく FTCore.FrozenVerdict を
     /// 配ることで、run 側の判定(DeviceFrozenStore)と同じ型で合流できる
-    func verdict(id: String) -> FrozenVerdict {
-        confirmedIDs.contains(id) ? FrozenVerdict([.uniformBlank]) : .healthy
+    /// `physical` の写し分けは `FrozenVerdict.observe` に委ねる(真偽値を自前で分岐しない)
+    func verdict(id: String, physical: Bool = false) -> FrozenVerdict {
+        FrozenVerdict.observe(uniformBlank: confirmedIDs.contains(id), physical: physical)
     }
 
     /// デバイスの記憶を破棄(接続断・デバイス消滅のとき呼ぶ)。

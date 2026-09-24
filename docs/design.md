@@ -967,7 +967,9 @@ iOS ブリッジと区別なく扱える。
 - **共通コア13 + locale/settle の15エンドポイント**: §4.3 の共通コア(status/session/snapshot/
   tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/terminate)に `POST /locale`・
   `POST /settle` を加えた15エンドポイントを話す(iOS 固有の drag/appswitcher/home/hidekeyboard/
-  appstate/rotate は未実装)
+  appstate/rotate は**ブリッジのエンドポイントとしては持たない**。**機能が無いという意味ではない**
+  —— drag / home / hideKeyboard / rotate は `AndroidDriver` がホスト側で adb・注入器を使って
+  実装している)
   ため、共通コア部分はホスト側の `FTBridgeClient` 相当のクライアントコードを流用できる
 - **操作応答 = a11y 静穏後**: 各操作 API は注入後、対象パッケージの a11y イベントが
   一定時間静まるまで応答を保留する(QuietWaiter)。固定 sleep をやめてイベント駆動にした
@@ -2573,7 +2575,16 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   分けられなかった)。**Android 側は 1.5s×2 の恒常 blank のみで nudge を持たない**
   (`AndroidHealthProbe.isPersistentlyBlank`。修復手段が sleep/wake で軽いぶん短い窓のまま。
   iOS と同じ窓+nudge へ揃えるかは未判断)。
-  健全機は1サンプルで返る = 正常時の固定費はスクショ1枚。**実機は対象外**(消灯を凍結と誤断する)
+  健全機は1サンプルで返る = 正常時の固定費はスクショ1枚。
+  **実機は両 OS とも対象だが、判定を確定させない**(2026-09-25)。実機は**消灯が同じ絵を出す**
+  うえ、画面を変える入力は端末の状態を変えるので `nudge` を撃てない = 消灯と wedge を分ける
+  材料が無い。そこで根拠を別ケース `FrozenEvidence.darkScreenPhysical`(`isConclusive=false`)へ
+  写し、**警告だけ出して除外も回復も撃たない**。写す場所は
+  `FrozenVerdict.observe(uniformBlank:injected:physical:)` の1箇所で、run 前トリアージと
+  モニターが同じ規則を通る —— モニター側にこの写しが無かった頃は、**夜間に消灯しているだけの
+  実機がタイルで ❄️ になり得た**(run 側だけ実機を除外していたため片側にしか手当てが無かった)。
+  **確定させたいなら「消灯ではない」と言える材料(端末側の display state)を先に足すこと**。
+  絵だけでは永久に分けられない
 - **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
   実行プロファイルの `containerInference` / DSL の `tap(containerInference:)`・`withoutContainerInference { }`。
   実装は `StepExecutor.execute` 冒頭の `Self.containerInferenceEnabled && (step.containerInference ?? 既定)` 1式)。

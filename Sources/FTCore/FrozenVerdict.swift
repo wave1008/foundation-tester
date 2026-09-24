@@ -21,6 +21,13 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
     case inputNotLanding
     /// 陽性対照の注入(`FrozenInjection`)。検知経路を端から端まで通すためだけに使う
     case injected
+    /// **実機の画面が一様(暗い)**。仮想デバイスの `uniformBlank` と**別のケースにする**のは、
+    /// 実機では「消灯している」という**正常な状態が同じ絵を出す**ため。受動観測では
+    /// 消灯と wedge を原理的に分けられず、実機には能動プローブ(`nudge`)を撃てない
+    /// (画面を変える入力は端末の状態を変える)。よって**確定させない = 警告どまり**にする。
+    /// これが無かった頃、run 前トリアージもモニターも実機を丸ごと除外していた
+    /// (= 実機の異常は何も見えなかった)
+    case darkScreenPhysical
 
     /// **単独で凍結と断じてよい根拠か**。**新しい根拠を警告から入れるときの分岐点はここ** ——
     /// false にすると `isSuspected` 経由の警告(BlankWorkerTriage のログ)だけが出て、
@@ -29,6 +36,9 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
     public var isConclusive: Bool {
         switch self {
         case .uniformBlank, .inputNotLanding, .injected: return true
+        // 消灯との区別が付かないので断じない。**確定させるには「消灯ではない」と言える
+        // 材料(端末側の display state)を先に足すこと** —— 絵だけでは永久に分けられない
+        case .darkScreenPhysical: return false
         }
     }
 
@@ -38,6 +48,7 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
         case .uniformBlank: return "uniform-blank"
         case .inputNotLanding: return "input-not-landing"
         case .injected: return "injected"
+        case .darkScreenPhysical: return "dark-screen-physical"
         }
     }
 }
@@ -95,10 +106,16 @@ public struct FrozenVerdict: Codable, Sendable, Equatable {
     // MARK: - 観測から判定を組み立てる(run 前トリアージとモニターの共通規則)
 
     /// 1台ぶんの観測から判定を組み立てる。**run 前トリアージもモニターもここを通す**。
-    /// 判定材料を足したくなったらファイル冒頭の罠(拍動は使えない)を先に読むこと
-    public static func observe(uniformBlank: Bool, injected: Bool = false) -> FrozenVerdict {
+    /// 判定材料を足したくなったらファイル冒頭の罠(拍動は使えない)を先に読むこと。
+    ///
+    /// `physical` は**同じ観測(一様な絵)を別の根拠へ写すため**だけに要る —— 実機は消灯が
+    /// 同じ絵を出すので `.darkScreenPhysical`(非確定)へ落とす。呼び手が真偽値を自前で
+    /// 分岐すると、run 側とモニター側で写し方がズレる(この型が唯一の定義元である理由と同じ)
+    public static func observe(uniformBlank: Bool, injected: Bool = false,
+                               physical: Bool = false) -> FrozenVerdict {
         if injected { return FrozenVerdict([.injected]) }
-        return FrozenVerdict(uniformBlank ? [.uniformBlank] : [])
+        guard uniformBlank else { return FrozenVerdict([]) }
+        return FrozenVerdict([physical ? .darkScreenPhysical : .uniformBlank])
     }
 }
 
