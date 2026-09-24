@@ -2284,7 +2284,8 @@ com.apple.Accessibility AssistiveTouchEnabled` は値は入るが `assistivetouc
 利用者が手で有効にする前提になり、メニューは SpringBoard ではなく `com.apple.accessibility.AccessibilityUIServer`
 の窓なので、その bundle へ attach して読む必要がある。**やるなら SE3 で「有効化 → attach → 木 → タップ →
 covering」を通してから**。今回は SE3 の CoreDevice 経路が詰まっていて(`devicectl` が 60〜170 秒無応答・
-ランナーの install が `Failed to read socket ID from device`)測れなかった。
+ランナーの install が `Failed to read socket ID from device`)測れなかった。(→ §50.4: 端末側の起動だけが止まる状態で、
+**手で再起動すると直る**)
 
 計測に使った実装(`HomeButton.swift`・`/appswitcher?variant=`)は**捨てた**(効かない経路を製品に残さない)。
 
@@ -2416,3 +2417,53 @@ iPhone 15 Pro(iOS 26.6.2)では UI 自動化の承認プロンプトに答えな
 
 **仕様と判断したもの**: build 前の先取りロックを手放した隙に後発の run が手元を取る(§42.3 の代償)。
 **手元の赤は全部この Mac の Vision / ANE の不調**(`画像で要素を探す` / `チェック状態`)で、他3機は緑。
+
+
+## 50. ジェスチャの指の置き方をホストへ寄せた回に分かったこと(2026-09-24)
+
+`gesture` / `ft_gesture` の追加(v126)と、ピンチの指の置き方を `FTCore.PinchGesture` へ集約・
+XCUITest の `/doubletap` を独立した2タッチに変えた回(v127)。探りのシナリオ(一時ファイル)で対照を取った。
+
+### 50.1 Compose は XCTest の合成タッチをダブルタップとして数えない
+
+以前の docs は「XCTest の `doubleTap()` は2打の間隔が 0ms なので Compose が2打目を捨てる」と書いていたが、
+**推測で、誤りだった**。独立した2タッチ(接触 0.05〜0.08 秒・2回目は 0.1 / 0.25 秒後)にしても CMP は
+`double=0`(シミュレータの ios-xcuitest・hybrid の XCUITest 回し・実機 SE3 の全部)。in-app の合成タッチだけが届く。
+**XCUITest 側の打ち方を調整して Compose を通そうとしない**(間隔は効かない)。実機の Compose アプリには
+ダブルタップの手段が無い → 利用者向け docs は拡大の確認を `pinchOut` へ誘導している。
+
+### 50.2 E2E-RN のダブルタップは JS の時計判定で間欠になる
+
+独立した2タッチは RN に届くが、この SUT は PanResponder が JS スレッドの `Date.now()` で「300ms 以内に離す・
+350ms 以内に2回」を判定するので、XCUITest 経由では 8 回中 3 回 `double=0`(直前の単タップ・ピンチ・端末に依らない)。
+**間隔を詰めると逆に全滅する**(接触 0.05 秒・2回目 0.1 秒後)= 調整で安定させられる性質ではない。
+**探り1回の緑(V2)で「RN 対応済み」と docs に書きかけ、E2E で2本とも落ちた** —— 間欠する経路は1回の緑を
+根拠にしない。E2E-RN 04 の doubleTap は `android {}` のまま(iOS のダブルタップは E2E-iOS / E2E-Flutter が担う)。
+
+### 50.3 ピンチの置き方が4箇所に割れ、Flutter の対象なしピンチが開かなかった
+
+置き方を持っていたのは ホストの `PinchRegion.closingTouchPoints`・XCUITest ランナー・Android・in-app の4箇所。
+iOS では `PinchRegion.area` が横長の細い領域を渡す(長辺に指を置く前提)のに、in-app は**短辺の 90%** まで
+開く規則だったので、hybrid の Flutter で `pinchOut()`(対象なし)がほとんど開かず `zoom=-` のままだった。
+E2E-Flutter はピンチを `android {}` に閉じていたので隠れていた(探りで初めて出た)。
+直し: 置き方は `PinchGesture`(iOS / Android の規則を OS ごとに1つ)、**ブリッジは `PinchRequest.fingers` を
+再生するだけ**。規則を OS で分けたのは意図(Android は領域の短辺から幅を決める = 狭い領域を渡さない)で、
+1つに畳まない。ブリッジに規則を戻さないことは `PinchRegionTests` / `BridgeRouterGuardsJavaSyncTests` の走査が守る。
+
+### 50.4 実機の「起動だけが止まる」状態は、手で再起動すると直る
+
+`Failed to read socket ID from device`(下位は EAGAIN)で XCUITest ランナーが起動しない。SE3(手元)と
+iPhone 13(M1Ultra)の2台で同時に出た。ロック解除では直らない。切り分け(SE3):
+`devicectl device info details` = 1 秒で成功 / `devicectl device install app` = 1 秒で成功 /
+`devicectl device process launch <bundle>` = **120 秒無応答**。接続・インストールは生きていて、
+**端末側のプロセス起動だけが止まっている**。`xcrun devicectl device reboot` は「Full reboot requested」と
+返すが**実際には再起動しない**(撃ち直さない)。**手で再起動すると直った**(直後の process launch = 1 秒)。
+原因は特定していない(2台とも同じ日の負荷テストで使った端末)。ブリッジの建て直し・リトライでは直らないので、
+この症状を見たら process launch で1回確かめてから手での再起動を依頼する。
+
+### 50.5 witness は「壊れても通る形」を対照で潰す
+
+連続ジェスチャの witness(マップ画面の `drag=<n>`)は、最初「1本指の折れ線 = `drag=1`」と「タップ = `drag=0`」
+だけを見ていた。これは**カウンタが常に 1 で止まる壊れ方でも通る**ので、連続と分割を見分けている証拠にならない。
+同じ折れ線を2回に分けて撃つ = `drag=2` の場面を足して判別になった(全 SUT・両 OS で緑)。
+

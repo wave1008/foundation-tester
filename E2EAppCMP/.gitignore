@@ -3,6 +3,8 @@ build/
 local.properties
 dist/
 iosApp/build/
+# 実機用(scripts/build-ios-device.sh)。シミュレータ版と DerivedData を分けてある
+iosApp/build-device/
 iosApp/iosApp.xcodeproj/
 # xcodegen が project.yml の info.properties から毎ビルド上書きする生成物。
 # **直接編集しても次のビルドで消える** — 追加するキーは project.yml 側へ書く。

@@ -297,6 +297,14 @@ for sut in $SUTS; do
       if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp"; then
         echo "→ SUT cmp(iOS)を再ビルドします..."; "$APP/scripts/build-ios.sh"
       fi
+      # 実機用も揃える(ios-native と同じ扱い: 実機用を一度も作っていない機械では作らない = 署名の Team ID が要る。
+      # 失敗は警告だけでスイートの合否は変えない)
+      if [ "$RUN_IOS" = 1 ] && [ -e "$APP/dist/ios-device/FTE2E.app" ] \
+          && needs_rebuild "$APP/dist/ios-device/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp/iosApp"; then
+        echo "→ SUT cmp(iOS 実機用)を再ビルドします..."
+        "$APP/scripts/build-ios-device.sh" \
+          || echo "⚠️ 実機用の再ビルドに失敗しました(E2EAppCMP/scripts/build-ios-device.sh)。実機では古いアプリのまま走ります"
+      fi
       if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src"; then
         echo "→ SUT cmp(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
       fi
