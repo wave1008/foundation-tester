@@ -297,26 +297,64 @@ extension MCPServer {
     /// DSL コマンド索引(`fleetest api dsl-commands` と同じ出典 = Sources/FTCore/CommandIndex.swift)。
     /// **既定は名前と署名だけ**にする: 全 136 件の要約まで返すと 15KB 級になり、
     /// 「どのコマンドがあるか」を知りたいだけの呼び出しでコンテキストを食う。
-    /// 要約が要るときは name / category で絞る
-    func dslCommands(_ args: [String: Any]) -> [[String: Any]] {
+    /// 要約が要るときは name / category で絞る。
+    ///
+    /// `project:` を渡す(または省略時に単一/既定プロジェクトへ解決できる)と、そのプロジェクトの
+    /// scenarios/ を `ProjectCommandIndex` で走査し、`@FTCommand` 付きヘルパーも索引へ足す
+    /// (`[project: file:line]` で出典を示す)。**明示的に project を渡して解決できなかったときだけ
+    /// throw する** —— 省略時に複数プロジェクトで曖昧・プロジェクト未作成のときは、このツールの
+    /// 主目的(組み込みコマンドの索引)が壊れないよう黙って組み込みだけを返す
+    func dslCommands(_ args: [String: Any]) throws -> [[String: Any]] {
         let category = args["category"] as? String
         let name = args["name"] as? String
         var commands = DSLCommandIndex.all
         if let category { commands = commands.filter { $0.category == category } }
         if let name { commands = commands.filter { $0.name == name } }
-        guard !commands.isEmpty else {
-            let categories = Set(DSLCommandIndex.all.map(\.category)).sorted()
-            return text("no command matched. Categories: \(categories.joined(separator: ", "))."
+
+        let requestedProject = args["project"] as? String
+        var projectCommands: [ProjectCommandEntry] = []
+        var projectWarnings: [String] = []
+        do {
+            let project = try ScenarioHost.project(named: requestedProject)
+            let scan = ProjectCommandIndex.scan(project: project)
+            projectCommands = scan.commands
+            projectWarnings = scan.warnings
+        } catch {
+            if requestedProject != nil { throw error }
+        }
+        if let category, category != "project" { projectCommands = [] }
+        if let name { projectCommands = projectCommands.filter { $0.name == name } }
+
+        guard !commands.isEmpty || !projectCommands.isEmpty else {
+            var categories = Set(DSLCommandIndex.all.map(\.category))
+            if requestedProject != nil { categories.insert("project") }
+            return text("no command matched. Categories: \(categories.sorted().joined(separator: ", "))."
                 + " A name that is not in this index does not exist (it will not compile)")
         }
         let detailed = name != nil || category != nil
-        let lines = commands.map { command in
+        var lines = commands.map { command in
             detailed ? "\(command.signature) — \(command.summary)" : command.signature
         }
-        let header = detailed
-            ? "\(commands.count) command(s)"
-            : "\(commands.count) commands (pass category: or name: for summaries)."
+        lines += projectCommands.map { entry in
+            // receiver == "FTElement" は select(...).name(...) の形で呼べる —— シグネチャ自体には
+            // 埋め込まず(JSON 側は receiver を別欄で持つ)、テキスト表示のときだけここで組み立てる
+            let call = entry.receiver == "FTElement" ? "select(...).\(entry.signature)" : entry.signature
+            let displayed = detailed ? "\(call) — \(entry.summary)" : call
+            return "\(displayed) [project: \(entry.file):\(entry.line)]"
+        }
+        var header = detailed
+            ? "\(commands.count + projectCommands.count) command(s)"
+            : "\(commands.count + projectCommands.count) commands (pass category: or name: for summaries)."
                 + " Chain-only: \(DSLCommandIndex.chainOnlyNames.sorted().joined(separator: ", "))"
-        return text(([header] + lines).joined(separator: "\n"))
+        if !projectCommands.isEmpty {
+            header += ". \(projectCommands.count) from the project (marked [project: file:line]) —"
+                + " these are real, written by the project itself; ft_batch cannot run them"
+                + " (write them into the scenario instead)"
+        }
+        var body = ([header] + lines).joined(separator: "\n")
+        if !projectWarnings.isEmpty {
+            body += "\n\nWarnings:\n" + projectWarnings.joined(separator: "\n")
+        }
+        return text(body)
     }
 }

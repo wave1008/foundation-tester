@@ -160,6 +160,11 @@
 - **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`fleetest api dsl-commands` が出す)。
   **コマンドを足す/消す/改名したら索引も直す**(`CommandIndexSyncTests` が Commands.swift /
   CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)
+- **利用者が scenarios/ に書いた `@FTCommand("summary")` 付き関数(FTDSL の空展開マーカー)は
+  `fleetest api dsl-commands --project` / MCP `ft_dsl_commands` の索引に `origin: "project"` で載る**。
+  出典は `Sources/FTCore/ProjectCommandIndex.swift`(ソーステキストを直接読む純粋な走査。デバイス・
+  ビルド非依存)—— `CommandIndexSyncTests` 等の組み込み同期テストはこちらを対象にしない(走査対象は
+  ユーザーのシナリオファイルで、リポジトリには実例を置かない)
 - **スクロールの指定は各コマンドの `scroll:` 引数だけ**(ユーザー決定 2026-09-19)。向き(`.down` 等)か
   `.noScroll`(`withScroll*` の中でもこの1コマンドだけ送らない)。**関数名で指定する別名
   (`*WithScrollDown/Up/Right/Left`・`*WithoutScroll`)は1つも置かない・再提案しない** —— 別名は族ごとに

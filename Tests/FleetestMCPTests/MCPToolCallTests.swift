@@ -386,6 +386,24 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "索引はデバイスに触らない")
     }
 
+    /// `project:` に実在するプロジェクトを渡すと、そこに `@FTCommand` が1つも無くても
+    /// エラーにならず組み込みだけを返す(このリポジトリの TestProjects/* はユーザー資産なので
+    /// テストからは書き込まず、実在する空の状態のまま渡すだけ)。デバイスには触らない
+    func testDslCommandsAcceptsARealProjectWithNoFTCommandEntries() async throws {
+        let content = try await server.call(tool: "ft_dsl_commands", args: ["project": "E2E-CMP"])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertFalse(text.contains("[project:"), text.prefix(200).description)
+        XCTAssertFalse(text.contains("Warnings:"), text)
+        XCTAssertEqual(driver.calls, [], "索引はデバイスに触らない")
+    }
+
+    /// 存在しないプロジェクト名を**明示的に**渡したときだけ throw する(省略時に複数プロジェクトの
+    /// 曖昧さへ黙って倒れる経路と違い、名指しした以上は解決失敗を隠さない)
+    func testDslCommandsThrowsOnAnExplicitUnknownProject() async {
+        await assertThrows("ft_dsl_commands", ["project": "no-such-project-xyz"])
+        XCTAssertEqual(driver.calls, [])
+    }
+
     func testDragRequiresAllCoordinates() async {
         await assertThrows("ft_drag", ["fromX": 1.0, "fromY": 2.0])
         XCTAssertEqual(driver.calls, [])

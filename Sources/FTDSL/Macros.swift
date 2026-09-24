@@ -42,6 +42,18 @@ public macro Test(_ title: String = "", platform: String? = nil) =
 public macro Deleted(_ comment: String = "") =
     #externalMacro(module: "FTDSLMacros", type: "DeletedMacro")
 
+/// scenarios/ 配下に書いたヘルパー関数(トップレベルの素の関数、または `extension FTElement` の
+/// メソッド)に付けると、`fleetest api dsl-commands` / MCP の `ft_dsl_commands` の索引に載る
+/// (名前・シグネチャ・summary・定義位置)。マーカーであり展開は何も生成しない —— 走査は
+/// ソーステキストを直接読む純粋な処理(Sources/FTCore/ProjectCommandIndex.swift)で行う。
+///
+/// `extension FTElement` のメソッドは索引上 `select(...).name(...)` の形で呼べることが分かる。
+/// `private`/`fileprivate` を付けた関数は他ファイル(シナリオ)から呼べないため索引には載らず、
+/// 代わりに警告になる。
+@attached(peer)
+public macro FTCommand(_ summary: String) =
+    #externalMacro(module: "FTDSLMacros", type: "FTCommandMacro")
+
 /// 実装中(未完成)マーカー。テストクラスまたは @Test メソッドに付与する。
 /// 一括実行から除外されるが、完全一致 ID の明示指定なら実行できる(実装しながら個別に回す運用)。
 /// 出来上がったらアノテーションを外せば通常のシナリオに戻る。

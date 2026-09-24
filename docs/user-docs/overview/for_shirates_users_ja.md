@@ -53,7 +53,7 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 | `dontExistImage` / `canFindImage` / `imageContains`(画像テンプレートマッチングの検証) | [`findImage`](../commands/find_image_ja.md) の戻り値を `.isEmpty` で見る、または `screenLooksLike("説明文")`(FM マルチモーダル視覚検証)。`findImage*` / `findImages` / `existImage*` / [`imageIs`](../commands/image_assertion_ja.md) は同名である |
 | `tapWithoutScroll` / `existWithoutScroll` / `selectWithoutScroll` / `existImageWithoutScroll` | 各コマンドに `scroll: .noScroll` を渡す(`exist(sel, scroll: .noScroll)`)。ブロックごと打ち消すなら `withoutScroll { }` |
 | `tapWithScrollDown` / `existWithScrollUp` / `selectWithScrollLeft` / `findImageWithScrollDown` など(`*WithScroll*`) | 各コマンドに `scroll:` を渡す(`tap(sel, scroll: .down)` / `existImage(label, scroll: .down)`)。スクロールの指定は `scroll:` 引数だけです |
-| `macro` | 素の Swift 関数 |
+| `macro` | 素の Swift 関数。`@FTCommand("説明")` を付けると DSL コマンド索引(`ft_dsl_commands`)に載り、エージェントが見つけて再利用できる —— [独自コマンド](../testclass/custom_commands_ja.md) |
 | `manual` / `knownIssue` | 無い —— 失敗したコマンドは必ずシナリオを中断する。失敗を「想定内」として黙らせる逃げ道は無い |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | 無い —— OS 限定のテストは `@TestClass(platform:)` / `@Test(platform:)` を使う |
 | データセット(`account` / `app` / `data` / `dataPattern`) | Swift のリテラル・定数をシナリオに直接書く |

@@ -1447,7 +1447,7 @@ extension MCPServer {
             return text(try draftScenario(args))
 
         case "ft_dsl_commands":
-            return dslCommands(args)
+            return try dslCommands(args)
 
         case "ft_double_tap":
             // **座標へ畳んでから撃つ**: ref はブリッジごとに別名前空間で、501 で別ドライバへ

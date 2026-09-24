@@ -43,6 +43,7 @@ needs no changes ([details](overview/about.md)).
 - [Creating a TestClass](testclass/creating_testclass.md)
 - [Select and assert](testclass/select_and_assert.md)
 - [Test code structure](testclass/testcode_structure.md)
+- [Custom commands](testclass/custom_commands.md)
 - [Test result files](testclass/test_result_files.md)
 
 ### Selector

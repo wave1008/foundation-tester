@@ -435,9 +435,17 @@ extension MCPServer {
         ], scope: .none),
         tool("ft_dsl_commands", "List the Swift DSL commands with their signatures — the source of truth for "
             + "writing scenarios. Call it before writing code so you do not invent commands. "
-            + "Without arguments it returns names and signatures only", [
-            "category": ["type": "string", "description": "Only this category (operation/scroll/existence/text/value/app/control/…)"],
+            + "Without arguments it returns names and signatures only. Also lists the project's own "
+            + "helper functions marked @FTCommand(\"summary\") in scenarios/ (extension FTElement "
+            + "methods included, called as select(...).name(...)) — marked [project: file:line] in "
+            + "the reply. These are real functions written by the project: prefer them when they fit "
+            + "the flow, they encode the team's own conventions. They run only inside a scenario "
+            + ".swift, not as MCP operations", [
+            "category": ["type": "string", "description": "Only this category (operation/scroll/existence/text/value/app/control/…/project)"],
             "name": ["type": "string", "description": "Only this command, with its full summary"],
+            "project": ["type": "string", "description": "Scan this project's scenarios/ for "
+                + "@FTCommand helpers (defaults to the only project in TestProjects/, or the "
+                + "default project, when there is one to default to)"],
         ], scope: .none),
         tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). Two ft_tap calls do not work "
             + "(the round trip exceeds the OS double-tap window). Pass profile: on iOS — without it these "

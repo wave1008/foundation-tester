@@ -214,7 +214,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `procedure` | 同名(1ステップとして記録) | ✅ |
 | `@Deleted` | 同名マクロ | ✅ |
 | `describe` / `caption` / `comment` / `target` / `output` / `codeblock` | `scene` の説明文に集約 | 🟡 |
-| `macro` | Swift の関数 | ➖ **Swift の関数で足りる**(手順のまとまりは `group("名") { }` が記録側を担う)。独自のマクロ機構は間接参照が増えるだけ |
+| `macro` | Swift の関数 + `@FTCommand` | 🟡 **コード生成は無い**(手順のまとまりは `group("名") { }` が記録側を担う)。`@FTCommand("説明")` を付けると `fleetest api dsl-commands` / `ft_dsl_commands` の索引に `[project: file:line]` 付きで載り、MCP/エージェントが実在を確認したうえで使える(独自のマクロ機構は間接参照が増えるだけなので入れない) |
 | `silent` / `info` / `warn` | — | ➖ **ログの出し分けは持たない**。レポートに残るのは**ステップ**で、任意の情報行を足せると「検証していないのに書いてある」記録が増える |
 | `manual` / `knownIssue` | — | ➖ **入れない**(生成側が赤を黙らせる逃げ道になり、「失敗はシナリオ全体を中断」の規律と衝突する) |
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | — | ➖ 運用の話でコード生成の能力と無関係(**`@TestClass(platform:)` / `@Test(platform:)` はこれとは別物** —— 赤を黙らせる逃げ道ではなく、既にある platform 軸の粒度を細かくしたもの) |
