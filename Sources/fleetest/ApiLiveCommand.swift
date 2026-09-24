@@ -33,8 +33,11 @@
 //   {"cmd":"frame"}                                     スクリーンショットのみ取得(AXツリーは取らない)
 // 壊れた行(JSON でない、cmd が無い)は stderr に1行ログして無視する(他の常駐 api コマンドと同じ
 // 「安全側で無視する」方針)。**cmd は読めたが他の引数の型が違う行は無視しない** ——
-// {"kind":"actionResult","ok":false,"error":"<引数> must be …"} を1行返す(無応答のまま
-// 拡張の SERVE_REQUEST_TIMEOUT を待たせて serve ごと再起動させない)。
+// 操作は行わず、その cmd が正常なときと同じ終端イベントで答える(無応答のまま拡張の
+// SERVE_REQUEST_TIMEOUT を待たせて serve ごと再起動させない): frame は
+// {"kind":"frame","ok":false,"error":"<引数> must be …"} の1行だけ(actionResult は出さない)。
+// それ以外は {"kind":"actionResult","ok":false,"error":"<引数> must be …"} に続けて観測イベント
+// (snapshot)を出す。
 //
 // イベント(serve → stdout、1行1JSON。診断は stderr のみ):
 //   refresh 以外のコマンドはまず
@@ -413,8 +416,20 @@ struct ApiLiveServe: AsyncParsableCommand {
         deviceLease?.refresh()
         if let decodeError = command.decodeError {
             // cmd は読めたが他の引数の型が違う行。JSON でない/cmd が無い(黙殺)とは分け、
-            // actionResult だけで答えて終える(frame/refresh も含め全コマンド共通の応答経路)
+            // 操作は行わず、その cmd が正常なときと同じ終端イベントで答える —— 拡張は
+            // actionResult/frame の後に来るイベント(snapshot または frame そのもの)で初めて
+            // リクエストを解決するため、そこを省くと20秒の SERVE_REQUEST_TIMEOUT で serve ごと
+            // 再起動される(実地: launch/pinch/tap の型違い行がこれで無応答のまま再起動を誘発した)。
+            // frame は frame イベント1行だけ(actionResult は出さない=通常の frame 経路と同形)。
+            // それ以外は actionResult(ok:false) に続けて観測イベントを出す(通常経路と同形)
+            if command.cmd == "frame" {
+                emitLine(ApiLiveFrameEvent(ok: false, error: decodeError, image: nil))
+                return
+            }
             emitLine(ApiLiveActionResultEvent(ok: false, error: decodeError, app: follower?.sessionTarget))
+            await follower?.follow(driver: driver)
+            await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
+                                  staleFrameTracker: staleFrameTracker)
             return
         }
         if command.cmd == "frame" {
@@ -445,13 +460,17 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// triggering: true なら noteConnectionRefused(起動トリガーあり)、false なら
     /// statusSuffix(起動トリガーなし。emitFrame は受動的観測のため)。
     ///
-    /// **この triggering の区別が効くのは bridgeConnectionRefused だけ**。以下の2つは
-    /// 起動トリガーを持たない事実の注記なので、emitFrame(triggering:false)からも同じだけ付く:
+    /// **triggering の区別が効くのは bridgeConnectionRefused と bridgeUnreachable の2つ**。
+    /// 以下の1つは起動トリガーを持たない事実の注記なので、emitFrame(triggering:false)からも
+    /// 同じだけ付く:
     /// - `DriverError.isNoReadableWindow` = Android の一時的な a11y 根欠落(422)。放置で自然回復する
-    /// - `DriverError.bridgeUnreachable`(iOS xcuitest のみ)= `BridgeDiscovery.probeStatus` で
-    ///   「固まり(transportFailed)」と「busy(timedOut)」を見分けてから出口を変える
-    ///   (混ぜて「待て」を言い続けたのが docs/maintainer-notes.md §44.1 のバグ)。
-    ///   **失敗パスでだけ撃つ**(annotated は catch 節からしか呼ばれない = 成功パスへの往復は増えない)
+    ///
+    /// `DriverError.bridgeUnreachable`(iOS xcuitest のみ)は `BridgeUnreachableGuidance.decide` の
+    /// 1箇所で starter の状態も加味して出口を決める(純粋関数 = デバイス無しでテストできる)。
+    /// **starter が starting/failed の間は probe の中身を見ない** ——
+    /// 実地: 実機の起動待ち中に probe が transportFailed を返し、「起動中です(自然に直ります)」の
+    /// 直後に「自然には直りません: bridge up してください」という矛盾した案内を出した。
+    /// **失敗パスでだけ撃つ**(annotated は catch 節からしか呼ばれない = 成功パスへの往復は増えない)
     private func annotated(
         _ error: Error, starter: LiveBridgeAutoStarter?, triggering: Bool, port: UInt16
     ) async -> String {
@@ -468,9 +487,41 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
         if case DriverError.bridgeUnreachable(let context, _) = error, context.engine == .iosXCUITest {
             let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: try? RepoRoot.find())
-            message += Self.bridgeUnreachableHint(probe: probe)
+            let starterIsIdle = await starter?.isIdle ?? true
+            switch BridgeUnreachableGuidance.decide(
+                probe: probe, hasStarter: starter != nil, starterIsIdle: starterIsIdle,
+                triggering: triggering) {
+            case .useStarterSuffix:
+                message += await starter?.statusSuffix() ?? Self.bridgeUnreachableHint(probe: probe)
+            case .triggerStarter:
+                message += await starter?.noteConnectionRefused() ?? Self.bridgeUnreachableHint(probe: probe)
+            case .probeHint:
+                message += Self.bridgeUnreachableHint(probe: probe)
+            }
         }
         return message
+    }
+
+    /// starter の有無・状態と probe の結果から、bridgeUnreachable の失敗にどの文言を足すか決める
+    /// (純粋関数。BridgeUnreachableGuidanceTests がデバイス無しで全分岐を固定する)。
+    enum BridgeUnreachableGuidance: Equatable {
+        /// starter が非 idle(starting/failed)—— probe の中身を問わず starter の状態を使う
+        /// (probe が transportFailed でも、進行中の自動起動と矛盾する「自然には直らない」を出さない)
+        case useStarterSuffix
+        /// starter が idle・能動経路(triggering)・probe がブリッジ消失(transportFailed/notBound)
+        /// —— bridgeConnectionRefused と同じ状況なので同じ起動トリガーへ倒す
+        case triggerStarter
+        /// 上記のどちらでもない(starter が無い/busy/応答あり/受動経路) —— 従来どおり probe のヒント
+        case probeHint
+
+        static func decide(
+            probe: BridgeDiscovery.StatusProbe, hasStarter: Bool, starterIsIdle: Bool, triggering: Bool
+        ) -> Self {
+            guard hasStarter else { return .probeHint }
+            guard starterIsIdle else { return .useStarterSuffix }
+            guard triggering, probe == .transportFailed || probe == .notBound else { return .probeHint }
+            return .triggerStarter
+        }
     }
 
     /// Android の「アクティブウィンドウの a11y 根が無い」422(`DriverError.isNoReadableWindow`)の
@@ -803,11 +854,20 @@ struct ApiLiveServe: AsyncParsableCommand {
                                              follower: LiveSessionFollower?) async throws -> SnapshotResponse {
         do {
             return try await driver.snapshot()
-        } catch DriverError.badResponse(let status, _) where status == 409 || status == 422 {
+        } catch DriverError.badResponse(let status, _)
+                    where (status == 409 || status == 422) && Self.usesSpringboardFallback(platform: driverOptions.resolvedPlatform) {
             try await driver.launch(bundleID: LiveSessionTarget.springboard)
             follower?.noteSessionChanged(to: LiveSessionTarget.springboard)
             return try await driver.snapshot()
         }
+    }
+
+    /// **springboard への退避は iOS だけ**。Android の 422 は「アクティブウィンドウの a11y 根が無い」
+    /// (`DriverError.isNoReadableWindow`。アプリスイッチャー表示中などで普通に起きる)で、そこへ
+    /// `com.apple.springboard` の launch を撃つと 500「cannot launch the app」に化け、元の事実と
+    /// 自然回復の案内(noReadableWindowHint)が消えていた(実地 2026-09-24・Pixel 3a)
+    static func usesSpringboardFallback(platform: String) -> Bool {
+        platform == "ios"
     }
 
     private func logStderr(_ message: String) {

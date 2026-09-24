@@ -215,7 +215,7 @@ public enum DeviceBooter {
         deviceName: String, keys: [String], force: Bool, mcpHolderPID: (String) -> Int32?
     ) -> String? {
         guard !force, let pid = keys.lazy.compactMap(mcpHolderPID).first else { return nil }
-        return "refusing to stop: \(deviceName) is being driven by an MCP session (fleetest-mcp pid \(pid))."
+        return "refusing to stop: \(deviceName) is being driven by an MCP session (pid \(pid))."
             + " Finish that session or point it at another device, or pass --force to stop it anyway."
     }
 
@@ -258,7 +258,7 @@ public enum DeviceBooter {
     /// 見出しを含まない本文だけ(sweepRefusal(force:leaseStateDir:…) が run 側と1つの見出しへ束ねる)
     private static func mcpSweepRefusalBody(holders: [(device: String, pid: Int32)], force: Bool) -> String? {
         guard !force, !holders.isEmpty else { return nil }
-        let list = holders.map { "\($0.device) (fleetest-mcp pid \($0.pid))" }.joined(separator: ", ")
+        let list = holders.map { "\($0.device) (pid \($0.pid))" }.joined(separator: ", ")
         return "an MCP session is driving \(list)."
             + " Finish that session, or pass --force to stop it anyway."
     }

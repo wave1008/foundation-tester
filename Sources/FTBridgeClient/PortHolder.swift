@@ -31,6 +31,13 @@ public enum PortHolder {
         return commandIsIproxyForPort(command, port: port)
     }
 
+    /// `describe` の有無と `isHeldByTunnelOnly` を1回の lsof/ps で両方返す
+    /// (`BridgeDiscovery.probeStatus` が `.transportFailed` の再分類に使う。別々に呼ぶと lsof を2回払う)
+    static func listenerFacts(port: UInt16) -> (exists: Bool, isTunnelOnly: Bool) {
+        guard let (_, command) = lookup(port: port) else { return (exists: false, isTunnelOnly: false) }
+        return (exists: true, isTunnelOnly: commandIsIproxyForPort(command, port: port))
+    }
+
     /// ポートを握っているのが**トンネルだけ**なら止める(`isHeldByTunnelOnly` と同じ判定)。
     /// 戻り値は止めたか。**名指しで `bridge down --port N` された経路からだけ**呼ぶ ——
     /// 台帳を辿る通常の停止(`IOSDeviceTransport.stopIproxy`)で足りるときはそちらが先に効く
@@ -39,6 +46,26 @@ public enum PortHolder {
               commandIsIproxyForPort(command, port: port) else { return false }
         terminateThenKill(pid: pid)
         return true
+    }
+
+    /// 応答しないポートの listener 記述からデバイスの udid を読む純粋関数。シミュレータの
+    /// XCUITest ランナーは `-destination …,id=<UDID>` を、iproxy トンネルは `-u <UDID>` を持つ ——
+    /// **2つ目のパーサは書かず** `RunnerDestination.udidTokens` を再利用する。複数の識別子が
+    /// 出てきても最初の1つだけを使う(そのポートの持ち主は1台のはず)。listener が居ない・
+    /// 識別子が読めない形は nil(= 「分からないから断らない」に倒す。呼び手はこの場合、
+    /// lease を照合できないまま従来どおり止めてよい)
+    static func udidFromListener(_ listener: String?) -> String? {
+        listener.flatMap { RunnerDestination.udidTokens(inCommand: $0).first }
+    }
+
+    /// `udidFromListener` の I/O ラッパー(lsof/ps → 純粋関数)。`bridge down` の口が呼ぶ。
+    /// **トンネルだけが握るポート(ブリッジは死んでいる)は nil** —— 印を照合して断ると、
+    /// 止めることが唯一の回復手段なのに「使用中」と言い続ける袋小路になる(maintainer-notes §46.4)
+    public static func deviceUDID(fromListenerOn port: UInt16) -> String? {
+        guard let (_, command) = lookup(port: port), !commandIsIproxyForPort(command, port: port) else {
+            return nil
+        }
+        return udidFromListener(command)
     }
 
     /// `/status` が答えないポートの占有者が**別のデバイスのもの**か(プロセスの実体から読む)。

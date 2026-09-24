@@ -246,6 +246,37 @@ extension MCPServer {
         }
     }
 
+    /// 「対象の指し方」が複数ある引数は、各 case が `if let ref = … else if let x,y = …` の順で
+    /// 見るため、両方渡すと後発の枝が黙って捨てられる(実測: `ft_tap {ref:1, x:1, y:1}` →
+    /// "tap [1] done." — x/y は一度も読まれない。`ft_drag` は `toX ?? fromX + dx` の形なので
+    /// `toX`/`dx` を両方渡すと `dx` が同じ理由で消える)。CLAUDE.md「指定したのに黙って効かない
+    /// 形を作らない」。表は tool → 「同じ的を指す鍵グループ」の配列(1ツールに複数の
+    /// チェック軸がありうる = ft_drag の from 側と to 側)。**片方だけの指定(x のみ等)は対象外**
+    /// (「ref or x/y is required」が別途断る)
+    static let exclusiveArgumentGroups: [String: [[[String]]]] = [
+        "ft_tap": [[["ref"], ["x", "y"]]],
+        "ft_double_tap": [[["ref"], ["x", "y"]]],
+        "ft_long_press": [[["ref"], ["x", "y"]]],
+        "ft_pinch": [[["ref"], ["x", "y"]]],
+        "ft_drag": [
+            [["fromRef"], ["fromX", "fromY"]],
+            [["toX"], ["dx"]],
+            [["toY"], ["dy"]],
+        ],
+    ]
+
+    /// 違反なら文言、無ければ nil。`checkArgumentBounds` の直後(デバイス/ブリッジに触る前)で呼ぶ
+    static func targetExclusivityViolation(tool: String, args: [String: Any]) -> String? {
+        guard let checks = exclusiveArgumentGroups[tool] else { return nil }
+        for groups in checks {
+            let populated = groups.filter { keys in keys.contains { args[$0] != nil } }
+            guard populated.count > 1 else { continue }
+            let phrase = groups.map { $0.joined(separator: "/") }.joined(separator: " or ")
+            return "\(tool) takes either \(phrase), not both"
+        }
+        return nil
+    }
+
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         let tool = Self.canonicalToolName(tool)
         // **未知のツール名はここで断る**(デバイスを触るより前)。この後の
@@ -262,6 +293,9 @@ extension MCPServer {
         // —— 条件付きでしか読まれない欄(`timeout` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
         try Self.checkArgumentBounds(args)
+        if let violation = Self.targetExclusivityViolation(tool: tool, args: args) {
+            throw MCPError(violation)
+        }
         // profile と udid/port/serial の併用は**畳む前に**断る(udid の畳み込みはブリッジ走査を撃つ)
         if Self.toolAcceptsDeviceTarget(tool), let refusal = Self.profileWithExplicitTargetRefusal(args) {
             throw MCPError(refusal)

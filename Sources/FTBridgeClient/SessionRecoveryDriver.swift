@@ -278,7 +278,9 @@ public final class SessionRecoveryDriver: AppDriver {
             + (recovered
                ? "The session was re-established; the next step recovers. "
                : "There is nothing to re-establish the session against (not launched, or already terminated). "
-                 + "A launchApp is needed first. ")
-            + "This step is not retried because its ref (an element number from the previous snapshot) is now invalid")
+                 + "Launch the app first (DSL: launchApp / MCP: ft_launch <bundleId>). ")
+            // DSL と MCP の両方がこの層を通る(呼び方は両方を併記する)。ref 無しの操作
+            // (フォーカス中の欄への type / clearInput)もここへ来るので「its ref」と言い切らない
+            + "This step is not retried: whatever it targeted was read from the lost session's tree")
     }
 }

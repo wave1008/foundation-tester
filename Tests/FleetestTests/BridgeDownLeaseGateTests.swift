@@ -149,18 +149,27 @@ final class BridgeDownLeaseGateTests: XCTestCase {
               let nextStruct = code.range(of: "\n    struct ", range: downRange.upperBound..<code.endIndex)
         else { return XCTFail("struct Down が見つからない") }
         let body = code[downRange.upperBound..<nextStruct.lowerBound]
-        // **本数で固定する** —— 「1回でも呼んでいれば合格」にすると、3経路のうち1つから
-        // 門が消えても別の経路の呼び出しが残って素通りする(android と --port が同じ関数を呼ぶ)
-        XCTAssertEqual(body.components(separatedBy: "DeviceBooter.deviceInUseRefusal(").count - 1, 2,
-                       "android と --port の2経路が DeviceBooter.deviceInUseRefusal を通す")
+        // **本数で固定する** —— 「1回でも呼んでいれば合格」にすると、4経路のうち1つから
+        // 門が消えても別の経路の呼び出しが残って素通りする(android・--port(応答した台)・
+        // --port(応答しないが listener から udid が読めた台)が同じ関数を呼ぶ。B5)
+        XCTAssertEqual(body.components(separatedBy: "DeviceBooter.deviceInUseRefusal(").count - 1, 3,
+                       "android・--port(応答あり)・--port(応答なしだが udid が読めた)の3経路が"
+                       + " DeviceBooter.deviceInUseRefusal を通す")
         XCTAssertEqual(body.components(separatedBy: "BridgeDownRefusal.decide(").count - 1, 1,
-                       "--all の経路は BridgeDownRefusal.decide を通す")
-        XCTAssertEqual(body.components(separatedBy: "throw ExitCode(1)").count - 1, 5,
-                       "3経路の保持者チェック + iOS の2経路の「応答しないが待受している」チェック")
+                       "--all の経路は BridgeDownRefusal.decide を通す"
+                       + "(応答しないが udid が読めた台の targets も同じ1回に合流する。B5)")
+        XCTAssertEqual(body.components(separatedBy: "throw ExitCode(1)").count - 1, 6,
+                       "3経路の保持者チェック + iOS の2経路の「応答しないが待受している」チェック"
+                       + " + --port の「応答しないが udid が読めた」チェック(B5)")
         // **応答しないポートを素通しさせない門も本数で固定する** —— `--port` と `--all` の
         // どちらから消えても、もう片方の呼び出しが残って素通りする
         XCTAssertEqual(
             body.components(separatedBy: "BridgeDownRefusal.unresponsiveButBoundRefusal(").count - 1, 2,
             "--port と --all の2経路が「応答しないが待受している」チェックを通す")
+        // **応答しないポートの listener から udid を読む経路も本数で固定する**(B5。--port と --all の
+        // どちらから消えても、もう片方の呼び出しが残って素通りする)
+        XCTAssertEqual(
+            body.components(separatedBy: "PortHolder.deviceUDID(fromListenerOn:").count - 1, 2,
+            "--port と --all の2経路が listener からの udid 抽出を通す")
     }
 }

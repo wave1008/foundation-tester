@@ -32,7 +32,10 @@ public enum ProcessExitWait {
     }
 }
 
-public enum ShellError: Error, CustomStringConvertible {
+/// **LocalizedError も名乗る** —— 名乗らないと `error.localizedDescription` が
+/// 「The operation couldn’t be completed. (FTCore.ShellError error 0.)」になり、どのコマンドが
+/// 何秒で切られたかが呼び手のログから消える
+public enum ShellError: Error, CustomStringConvertible, LocalizedError {
     /// timeout 指定付き run で期限超過し子を kill した(wedge した adb/simctl 等)。
     case timedOut(args: [String], seconds: Double)
     public var description: String {
@@ -41,6 +44,7 @@ public enum ShellError: Error, CustomStringConvertible {
             return "the command timed out after \(seconds)s (killed): \(args.joined(separator: " "))"
         }
     }
+    public var errorDescription: String? { description }
 }
 
 /// パイプの読み取りを**中断できる**形で持つ(`readDataToEndOfFile` は EOF まで戻らない)。

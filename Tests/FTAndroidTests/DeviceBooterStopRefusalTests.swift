@@ -190,7 +190,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
     func testMCPStopRefusalNamesTheSessionNotARun() throws {
         let message = try XCTUnwrap(DeviceBooter.mcpStopRefusal(
             deviceName: "iPhone 17", keys: ["U1"], force: false, mcpHolderPID: { _ in 4242 }))
-        XCTAssertTrue(message.contains("iPhone 17 is being driven by an MCP session (fleetest-mcp pid 4242)"), message)
+        XCTAssertTrue(message.contains("iPhone 17 is being driven by an MCP session (pid 4242)"), message)
         XCTAssertFalse(message.contains("fleetest run"), "run が使用中とは言わない: \(message)")
         XCTAssertTrue(message.contains("--force"), message)
         XCTAssertNil(DeviceBooter.mcpStopRefusal(
@@ -216,7 +216,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
 
         XCTAssertEqual(stopped.value, ["iPhone-Free"])
         let failure = outcomes.first { $0.name == "iPhone-MCP" }?.failure ?? ""
-        XCTAssertTrue(failure.contains("MCP session (fleetest-mcp pid \(mcpHolder))"), failure)
+        XCTAssertTrue(failure.contains("MCP session (pid \(mcpHolder))"), failure)
     }
 
     /// 全掃討も MCP の印を読む。run-lease と両方あれば両方を名指しする
@@ -226,7 +226,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         MCPDeviceLease.write(stateDir: dir, key: "UDID-MCP", pid: mcpHolder)
         let mcpOnly = try XCTUnwrap(DeviceBooter.sweepRefusal(
             force: false, leaseStateDir: dir, simulatorNames: { ["UDID-MCP": "iPhone 17"] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
-        XCTAssertTrue(mcpOnly.contains("an MCP session is driving iPhone 17 [UDID-MCP] (fleetest-mcp pid \(mcpHolder))"),
+        XCTAssertTrue(mcpOnly.contains("an MCP session is driving iPhone 17 [UDID-MCP] (pid \(mcpHolder))"),
                       mcpOnly)
         XCTAssertNil(DeviceBooter.sweepRefusal(force: true, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
 
@@ -234,7 +234,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         let both = try XCTUnwrap(DeviceBooter.sweepRefusal(
             force: false, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
         XCTAssertTrue(both.contains("UDID-RUN (held by pid \(getppid()))"), both)
-        XCTAssertTrue(both.contains("UDID-MCP (fleetest-mcp pid \(mcpHolder))"), both)
+        XCTAssertTrue(both.contains("UDID-MCP (pid \(mcpHolder))"), both)
         // 2026-09-20 実測: 見出し「refusing to shut everything down」は run/MCP 両方が
         // 使用中でも1回だけ(以前は各半分が見出し込みの完成文を持ち、単純連結で2回出ていた)
         XCTAssertEqual(both.components(separatedBy: "refusing to shut everything down").count - 1, 1, both)

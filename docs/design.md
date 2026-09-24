@@ -4651,7 +4651,10 @@ launch/activate はライブ操作側で門より前に素通しする(in-app �
 ない」行と見分けが付かず無応答のまま黙殺していた(実地 2026-09-22: `{"cmd":"pinch","scale":"2"}`
 が無反応 → 拡張の `SERVE_REQUEST_TIMEOUT` で serve ごと再起動。原因は stderr にしか出ない)。
 対策は `[String: Any]` から手で組み、cmd 以外の型違いを1件目だけ `decodeError` に残して
-`handle` が `actionResult(ok:false)` で答える形にした。
+`handle` が `actionResult(ok:false)` で答える形にした。**答えは正常時と同じ終端イベントまで出す**
+(frame は `frame(ok:false)` の1行だけ、他は `actionResult(ok:false)` → 観測 = snapshot。操作は撃たない)。
+拡張は actionResult を保持して次の snapshot/frame で要求を解決するので、actionResult だけで終えると
+結局 20 秒待って serve を建て直す(実地 2026-09-24。maintainer-notes §49.6)。
 
 ## 14. 実行結果のファイルベース DB(2026-07-17)
 

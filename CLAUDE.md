@@ -809,7 +809,12 @@
   自動起動を撃たない)。**前面追従の候補はシミュレータ = `launchctl list` / 実機 = devicectl の
   processes × apps(`IOSPhysicalRunningApps`)** —— 片方だけ変えない。**本人確認へ渡す `/status` は
   `BridgeDiscovery.statusForIdentityCheck` で udid を補う**(実機のランナーは名乗らない = 補わないと
-  既定ポートの別の実機を「自分」と読む)→ maintainer-notes §47
+  既定ポートの別の実機を「自分」と読む)→ maintainer-notes §47。
+  **1コマンドの中で撃つ外部呼び出しの timeout は command watchdog(30 秒)より十分短く**し、失敗は控えて
+  毎コマンド撃ち直さない(`DevicectlBackoff`)—— watchdog が serve を殺すたびに自動起動が走る。
+  **実機に2本目のランナーを立てない**(ライブ操作の自動起動 `LiveBridgeAutoStarter.launchBridge` が、同じ実機を
+  宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中の台を
+  待って引き取るので門は置かない)→ maintainer-notes §49.4
 - **前面にあると観測しただけの相手へ、画面を動かす操作を撃たない**。セッションの向け直しは
   `AppDriver.attach`(前面確認だけ・非破壊)で、**activate は使わない** —— Spotlight のような
   SpringBoard の拡張を activate すると**ホーム画面が描画を失って真っ黒になり**、自アプリなら
@@ -972,14 +977,19 @@
   **②検査は読む場所ではなく `MCPServer.call` の入口で全数**(`timeout` のように条件付きでしか
   読まれない欄は、読まれない回に 0/負が通って「効いた」と誤解させる)/ **③`ft_batch` の DSL 行も
   同じ表を通す**(あちらは `intArgument` を経由しない)。必須の文字列は空文字・空白のみを断る
-  (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2
+  (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2。**長押し・ジェスチャの秒数は 10 秒まで**
+  (`maxGestureSeconds` = Android の注入上限。超えると Android は黙って丸め、iOS はランナーが死ぬ → §49.1)。
+  **同じ的を指す引数の併用(ref と x/y 等)は入口で断る**(`targetExclusivityViolation`)
 - **「応答しない」を busy と死で分けるのは所要時間**(`BridgeDiscovery.probeStatus` の4値)。
   健全 = HTTP 応答が返る(**ステータスコードで判定しない** —— 実機はトークン不一致の 401 を返す)/
   **固まった転送**(ブリッジが消えて iproxy だけ残る)= connect は通るのに応答無しで即切れる /
   本当に busy = 上限まで保持 / 不在 = connect が即 拒否。**固まりには `bridge up` を勧める**
   (「2本目を起動させる」懸念は生きたブリッジがある前提なので成立しない)。
   **in-app/hybrid には固まりの文言を出さない**(あちらは前面から外れただけのことが多い)。
-  **`.pid` の生死では捕まらない** —— xcodebuild は生きたまま待ち続ける → maintainer-notes §44.1
+  **`.pid` の生死では捕まらない** —— xcodebuild は生きたまま待ち続ける → maintainer-notes §44.1。
+  **所要時間だけで「消えた」と言わない** —— 塞がったシミュレータのランナーも backlog が溢れて即切れる
+  (シミュレータに転送役は居ない)。ループバックで待受の実体が iproxy でなければ busy(`resolveTransportFailure`)
+  → maintainer-notes §49.2
 - **失敗の「出口」(次の一手)を配る経路は MCP とライブ操作の2つ**。判定(`BridgeDiscovery.probeStatus` /
   `DriverError.isNoReadableWindow` / `FTCore.StaleFrameDetector` 等)は FTCore・FTBridgeClient に1つ置いて
   共有するが、**それを呼んで文言にするのは呼び手ごと** —— **片方にだけ配線すると、同じ状況で一方は

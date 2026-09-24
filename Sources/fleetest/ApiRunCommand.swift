@@ -325,7 +325,12 @@ struct ApiRunCommand: AsyncParsableCommand {
             if exitCode != 0 { throw ExitCode(exitCode) }
             return
         }
-        if let dispatch = try resolveEffectiveDispatchTarget(
+        // **dry-run は送らない**(RemoteDispatchGate の宣言・`fleetest run` と同じ扱い = 注記して
+        // ローカルで検証する)。2実装で同じ打鍵の可否を揃える
+        if dryRun, runner != nil {
+            ConsoleOut.err("ℹ️ --dry-run touches no device, so --runner is not used"
+                  + " (the scenarios are validated locally, from the same source the remote would run)")
+        } else if let dispatch = try resolveEffectiveDispatchTarget(
         explicitTarget: runner, profile: profile, project: project,
             requireProfileMachine: !dryRun) {
             try await dispatchToRemoteHost(dispatch, project: testProject)
@@ -855,9 +860,6 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         if pauseOnStart {
             throw ValidationError("--pause-on-start is not supported with --runner")
-        }
-        if dryRun {
-            throw ValidationError("--dry-run is not supported with --runner")
         }
         // 拒否 or 注記の分岐は FTRemote.RemoteDispatchFlagPolicy に委譲(欠陥1)。VSCode 拡張は
         // 設定 fleetest.buildBeforeRun: false のとき常に --skip-build を送るため、実行プロファイル

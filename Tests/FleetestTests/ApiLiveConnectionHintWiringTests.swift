@@ -94,4 +94,61 @@ final class ApiLiveConnectionHintWiringTests: XCTestCase {
                        "BridgeDiscovery.probeStatus の呼び出しが1箇所(annotated)だけであること"
                        + " —— 増えていたら成功パスへ漏れていないか確認すること")
     }
+
+    /// LIVE-3: bridgeUnreachable は starter の状態(isIdle)も見て、probe を丸めた文言との
+    /// 選択を `BridgeUnreachableGuidance.decide` に委ねること(二つ目の判定をここに書かない)。
+    /// 文言の分岐そのものは BridgeUnreachableGuidanceTests(純粋関数)が固定する
+    func testAnnotatedConsultsTheStarterBeforeChoosingTheProbeHint() throws {
+        let code = try source()
+        let start = try annotatedRange(code)
+        guard let caseRange = code.range(
+            of: "case DriverError.bridgeUnreachable(let context, _) = error,"
+                + " context.engine == .iosXCUITest",
+            range: start.upperBound..<code.endIndex) else {
+            return XCTFail("bridgeUnreachable の分岐が見当たらない")
+        }
+        guard let isIdleRange = code.range(
+            of: "starter?.isIdle", range: caseRange.upperBound..<code.endIndex) else {
+            return XCTFail("annotated が starter.isIdle を見ていない"
+                + "(starting/failed 中に probe だけで判定すると、実機の起動待ち中に"
+                + " 『自然には直りません』という矛盾した案内が出る)")
+        }
+        guard let decideRange = code.range(
+            of: "BridgeUnreachableGuidance.decide(", range: isIdleRange.upperBound..<code.endIndex)
+        else {
+            return XCTFail("annotated が BridgeUnreachableGuidance.decide を通していない")
+        }
+        XCTAssertTrue(caseRange.upperBound < isIdleRange.lowerBound)
+        XCTAssertTrue(isIdleRange.upperBound < decideRange.lowerBound)
+    }
+
+    /// decide の3分岐それぞれが正しい呼び先を使うこと(useStarterSuffix→statusSuffix、
+    /// triggerStarter→noteConnectionRefused、probeHint→bridgeUnreachableHint)。
+    /// switch の case 名で区切って各ブロックの中身を確かめる(brace 対応の素朴な走査)
+    func testEachGuidanceCaseUsesItsOwnResponse() throws {
+        let code = try source()
+        let start = try annotatedRange(code)
+        guard let switchRange = code.range(
+            of: "switch BridgeUnreachableGuidance.decide(", range: start.upperBound..<code.endIndex)
+        else {
+            return XCTFail("annotated が BridgeUnreachableGuidance.decide の switch を持っていない")
+        }
+        guard let useStarterRange = code.range(
+            of: "case .useStarterSuffix:", range: switchRange.upperBound..<code.endIndex),
+              let triggerRange = code.range(
+            of: "case .triggerStarter:", range: useStarterRange.upperBound..<code.endIndex),
+              let probeHintRange = code.range(
+            of: "case .probeHint:", range: triggerRange.upperBound..<code.endIndex) else {
+            return XCTFail("switch の3 case(useStarterSuffix/triggerStarter/probeHint)が揃っていない")
+        }
+        let useStarterBody = String(code[useStarterRange.upperBound..<triggerRange.lowerBound])
+        let triggerBody = String(code[triggerRange.upperBound..<probeHintRange.lowerBound])
+        XCTAssertTrue(useStarterBody.contains("starter?.statusSuffix()"),
+                      "useStarterSuffix は starter.statusSuffix() を使うこと(probe のヒントより優先)")
+        XCTAssertFalse(useStarterBody.contains("noteConnectionRefused"),
+                       "useStarterSuffix で起動をトリガーしない(starter は既に starting/failed)")
+        XCTAssertTrue(triggerBody.contains("starter?.noteConnectionRefused()"),
+                      "triggerStarter は noteConnectionRefused() で起動をトリガーすること"
+                      + "(bridgeConnectionRefused と同じ経路)")
+    }
 }

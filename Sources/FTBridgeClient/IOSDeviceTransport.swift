@@ -172,6 +172,9 @@ public enum IOSDeviceTransport {
             port: port, logPath: logURL.path, blocker: blocker)
     }
 
+    /// 承認が通っていないランナーが UI 操作のたびにログへ出す XCTest の文言(runnerFailureReason が拾う)
+    static let notAuthorizedMarker = "Not authorized for performing UI testing actions"
+
     /// XCTest のランナープロセスが立ち上がった印(ランナー自身が出す)。ここから
     /// `BridgeStartupWait.suiteStartedMarker` までの間に XCTest が UI 自動化を有効にする
     static let runnerProcessStartedMarker = "] Running tests..."
@@ -220,6 +223,15 @@ public enum IOSDeviceTransport {
         if text.contains("Developer Mode disabled") {
             return "Developer Mode is off on the device. "
                 + "On the iPhone, turn on Settings → Privacy & Security → Developer Mode"
+        }
+        if text.contains(notAuthorizedMarker) {
+            // **スイートは承認なしでも始まることがある**(実測 iPhone 15 Pro / iOS 26.6.2・2026-09-24):
+            // 承認待ちの区間(runner 起動〜suiteStarted)を抜けて ready を名乗るのに、UI 操作は全部
+            // この文言で断られ、約 100 秒後にランナーごと落ちる。ready の判定は /status だけなので、
+            // waitUntilReady が ready 直後に1回撃つ操作(screenshot)でしか表に出ない
+            return "the UI-automation prompt on the iPhone (Touch ID / passcode) was not approved, so the"
+                + " runner cannot touch the screen (\"\(notAuthorizedMarker)\"). Unlock the iPhone, start"
+                + " the bridge again and authenticate on the device while the prompt is shown"
         }
         if text.contains("Timed out while enabling automation mode") {
             // ランナーは起動したが端末側が UI 自動化モードに入らない。実測(iPhone SE3 /

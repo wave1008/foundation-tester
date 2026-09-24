@@ -102,6 +102,23 @@ final class ArgumentBoundsTests: XCTestCase {
         }
     }
 
+    /// hold/gesture 系(holdSeconds/durationSeconds/duration/press)は10秒を超えると断る。
+    /// リテラルの 10 / 10.5 を書く(production の `maxGestureSeconds` を期待値に流用しない ——
+    /// 定数を書き換えても壊れないテストになってしまう)
+    func testGestureDurationKeysRejectAboveTenSeconds() {
+        for key in ["holdSeconds", "durationSeconds", "duration", "press"] {
+            let message = ArgumentBounds.violation(key, 10.5)
+            XCTAssertNotNil(message, "\(key)=10.5 は断られるはず")
+            XCTAssertTrue(message?.contains(key) == true, message ?? "nil")
+        }
+    }
+
+    func testGestureDurationKeysAcceptTenSeconds() {
+        for key in ["holdSeconds", "durationSeconds", "duration", "press"] {
+            XCTAssertNil(ArgumentBounds.violation(key, 10), "\(key)=10 は境界内のはず")
+        }
+    }
+
     func testUnboundedKeysNeverViolate() {
         for key in ["ref", "fromRef", "x", "y", "dx", "dy", "fromX", "fromY", "toX", "toY"] {
             XCTAssertNil(ArgumentBounds.violation(key, -999_999))
@@ -193,6 +210,18 @@ final class ArgumentBoundsTests: XCTestCase {
             _ = try await server.call(tool: "ft_long_press",
                                       args: ["x": 10.0, "y": 20.0, "holdSeconds": -3.0])
             XCTFail("holdSeconds -3 が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("holdSeconds"), error.localizedDescription)
+        }
+    }
+
+    /// 実地: `ft_long_press {x:10,y:10,holdSeconds:1e9}` が Android で "done" を返していた
+    /// (両層が press を 10 秒に丸めて実行するだけで、要求どおりの秒数は撃てていない)
+    func testLongPressHugeHoldSecondsIsRejected() async {
+        do {
+            _ = try await server.call(tool: "ft_long_press",
+                                      args: ["x": 10.0, "y": 10.0, "holdSeconds": 1_000_000_000.0])
+            XCTFail("holdSeconds 1e9 が通った")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("holdSeconds"), error.localizedDescription)
         }

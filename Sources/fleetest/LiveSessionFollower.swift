@@ -42,6 +42,20 @@ enum LiveSessionTarget {
     }
 }
 
+/// devicectl(実機の apps/processes 列挙)の back-off 判定だけを持つ純粋ロジック。「詰まった
+/// devicectl は1コマンド分の損失で済ませる、毎コマンドの損失にしない」——実地(M1Ultra):
+/// devicectl が詰まり、apps/processes 双方のタイムアウトを毎コマンド払って command watchdog
+/// (30秒。`ResidentProcessGuard.startCommandWatchdog`)に引っかかり続け、serve が毎分
+/// 再起動していた(再起動のたびに自動起動が別ブリッジを追加で立てていた)
+enum DevicectlBackoff {
+    /// 直近の失敗/タイムアウト(lastFailureAt)から backoffSeconds 以内なら true
+    /// (= devicectl を呼ばず springboard へ倒す。呼び手はログも出さない)
+    static func isActive(lastFailureAt: Date?, now: Date, backoffSeconds: TimeInterval) -> Bool {
+        guard let lastFailureAt else { return false }
+        return now.timeIntervalSince(lastFailureAt) < backoffSeconds
+    }
+}
+
 /// ランナーのセッションを「今 前面にあるもの」へ追従させる。状態はこの型だけが書き換える
 final class LiveSessionFollower {
     /// パネルが駆動しているアプリ。nil = まだ選んでいない(= 画面にあるものを触るだけ)
@@ -56,8 +70,20 @@ final class LiveSessionFollower {
     /// 尽きたら springboard へ倒す(木は読めるので操作は続けられる)。
     private static let frontmostSearchBudgetSeconds: TimeInterval = 3
 
+    /// devicectl(apps/processes)1回あたりの上限[秒]。実測 ~0.6秒/回
+    /// (IOSPhysicalRunningApps.swift 冒頭のコメント参照)なので通常は届かないが、詰まったとき
+    /// 両呼び出し(apps + processes)が上限まで待っても、1コマンドの所要が拡張の
+    /// SERVE_REQUEST_TIMEOUT(20秒)・command watchdog(30秒)の十分内側に収まるようにする
+    private static let physicalDevicectlTimeoutSeconds: TimeInterval = 5
+    /// devicectl が失敗/タイムアウトしてから、次に呼び直すまでの猶予[秒]。command watchdog と
+    /// 同じ 30 秒(根拠は DevicectlBackoff のコメント参照)
+    private static let devicectlBackoffSeconds: TimeInterval = 30
+
     /// 直近に見つけた前面アプリ(preferred 以外)。次回はこれを1回聞くだけで済ませる。
     private var lastFrontmost: String?
+    /// 直近に devicectl(apps/processes のどちらか)が失敗/タイムアウトした時刻。
+    /// nil = 一度も失敗していない。DevicectlBackoff.isActive の入力
+    private var lastDevicectlFailureAt: Date?
 
     /// 起動中アプリを列挙するための宛先(シミュレータ: simctl / 実機: devicectl)。nil = 列挙しない
     private let udid: String?
@@ -150,18 +176,31 @@ final class LiveSessionFollower {
         guard let udid else { return nil }
         let candidates: [String]
         if physical {
+            // **back-off 中は devicectl に触らない**(呼ぶだけ無駄・ログも出さない) ——
+            // 詰まった devicectl は apps/processes どちらも同じ 5 秒 timeout を毎回払うので、
+            // back-off が無いと毎コマンド 10 秒前後を捨てて command watchdog(30秒)に迫る
+            guard !DevicectlBackoff.isActive(lastFailureAt: lastDevicectlFailureAt, now: Date(),
+                                             backoffSeconds: Self.devicectlBackoffSeconds) else {
+                return nil
+            }
             if physicalApps == nil {
                 do {
-                    physicalApps = try IOSPhysicalAppCatalog.apps(udid: udid)
+                    physicalApps = try IOSPhysicalAppCatalog.apps(
+                        udid: udid, timeout: Self.physicalDevicectlTimeoutSeconds)
                 } catch {
-                    // 失敗しても投げない(springboard へ倒す)が、黙ると「なぜアプリの要素が出ないか」を
-                    // 追えないので1行残す。次の探索でもう一度採る(nil のまま)
-                    log("could not list the installed apps of \(udid) — falling back to springboard: \(error.localizedDescription)")
+                    noteDevicectlFailure(action: "list the installed apps of", udid: udid, error: error)
                     return nil
                 }
             }
             guard let apps = physicalApps else { return nil }
-            let running = IOSPhysicalRunningApps.running(udid: udid, apps: apps)
+            let running: [String]
+            do {
+                running = try IOSPhysicalRunningApps.running(
+                    udid: udid, apps: apps, timeout: Self.physicalDevicectlTimeoutSeconds)
+            } catch {
+                noteDevicectlFailure(action: "list the running apps of", udid: udid, error: error)
+                return nil
+            }
             if running.isEmpty {
                 log("devicectl listed no running app on \(udid) — falling back to springboard")
             }
@@ -190,6 +229,16 @@ final class LiveSessionFollower {
         lastFrontmost = picked
         if let picked { log("frontmost app is \(picked)") }
         return picked
+    }
+
+    /// devicectl(apps/processes)の失敗/タイムアウトを記録し、back-off 窓を開始する。
+    /// **ログはここでだけ出す** —— 以後 back-off が切れるまでの呼び出しは冒頭の
+    /// DevicectlBackoff.isActive で早期 return するので、同じ失敗を毎コマンド言わずに済む
+    private func noteDevicectlFailure(action: String, udid: String, error: Error) {
+        lastDevicectlFailureAt = Date()
+        log("could not \(action) \(udid) — backing off devicectl for"
+            + " \(Int(Self.devicectlBackoffSeconds))s and falling back to springboard:"
+            + " \(error.localizedDescription)")
     }
 
     /// **セッションのアプリを対象に撃つ破壊的な操作**(terminate / clearAppData)の前に、

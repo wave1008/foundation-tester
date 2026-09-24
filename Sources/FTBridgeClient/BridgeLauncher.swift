@@ -412,6 +412,40 @@ public struct BridgeLauncher {
         return output
     }
 
+    /// `ps -axo pid=,command=` の出力から、**この実機を宛先に持ち・別ポートの**ランナー(xcodebuild)を拾う
+    /// (純粋関数)。ポートは `FleetestRunner-<port>.xctestrun` から読む(読めない行は数えない)
+    public static func runnersOnDevice(psOutput: String, device: String,
+                                excludingPort: UInt16) -> [(pid: Int32, port: UInt16)] {
+        psOutput.split(separator: "\n").compactMap { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let spaceIdx = trimmed.firstIndex(of: " "),
+                  let pid = Int32(trimmed[..<spaceIdx]) else { return nil }
+            let command = String(trimmed[trimmed.index(after: spaceIdx)...])
+            guard command.contains("xcodebuild"), command.contains("test-without-building"),
+                  let destination = RunnerDestination.udid(inCommand: command),
+                  destination.caseInsensitiveCompare(device) == .orderedSame,
+                  let range = command.range(of: #"FleetestRunner-(\d+)\.xctestrun"#, options: .regularExpression),
+                  let otherPort = UInt16(command[range].dropFirst("FleetestRunner-".count).prefix { $0.isNumber }),
+                  otherPort != excludingPort else { return nil }
+            return (pid, otherPort)
+        }
+    }
+
+    /// ready 直後の実機ランナーへ screenshot を1回撃ち、ログに認可エラーが出たらその理由を返す。
+    /// 画像は認可が無くても返るのでログでしか分からない。ログは xcodebuild 経由で遅れて届くので
+    /// 1 秒おいてもう1回だけ読む(届かなければ従来どおり ready = 見逃しは退行ではない)
+    private func unauthorizedAfterReady(client: BridgeClient) async -> String? {
+        _ = try? await client.screenshot()
+        for attempt in 0..<2 {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: 1_000_000_000) }
+            if let text = try? String(contentsOf: logPath, encoding: .utf8),
+               text.contains(IOSDeviceTransport.notAuthorizedMarker) {
+                return IOSDeviceTransport.runnerFailureReason(inLog: text)
+            }
+        }
+        return nil
+    }
+
     /// HTTP サーバだけ死んで親 xcodebuild が残留するケースの後始末。起動前に走らせないと
     /// pid ファイルが新プロセスの PID で上書きされ、旧プロセスがどの pid ファイルからも
     /// 参照されない残骸になる。マッチはこのポート専用の xctestrun ファイル名
@@ -969,6 +1003,12 @@ public struct BridgeLauncher {
             do {
                 let status = try await client.status()
                 if status.ready {
+                    // **実機は ready の後に1回だけ UI 操作を撃って認可を確かめる**(理由は
+                    // IOSDeviceTransport.notAuthorizedMarker)。/status は XCTest の認可と無関係に答える
+                    if physical, let reason = await unauthorizedAfterReady(client: client) {
+                        throw IOSDeviceTransportError.runnerFailed(
+                            port: port, reason: reason, logPath: logPath.path)
+                    }
                     enableReduceMotion()
                     keepSoftwareKeyboardShown()
                     return status
@@ -1208,6 +1248,8 @@ public enum LauncherError: Error, LocalizedError {
     /// 運ぶ** —— CLI は英語で案内を出し、拡張は同じ判定から**自分の言語で**案内を組み立てる
     /// (CLAUDE.md「共有するのは判定であって文言ではない」)。生のビルドログはファイルへ
     case codeSigningIncomplete(problems: [XcodeSigningProblem], logPath: String?)
+    /// この実機には別ポートのランナーが既に居る(起動途中を含む)。2本目は立てない
+    case deviceRunnerElsewhere(device: String, port: UInt16, pid: Int32)
 
     public var errorDescription: String? {
         switch self {
@@ -1250,6 +1292,11 @@ public enum LauncherError: Error, LocalizedError {
                 + " (the Team ID is the OU of the signing certificate — check with `security find-certificate -c "
                 + "\"Apple Development: <you>\" -p | openssl x509 -noout -subject`; "
                 + "the value in parentheses from `security find-identity` is a certificate ID, not a Team ID)"
+        case .deviceRunnerElsewhere(let device, let port, let pid):
+            return "physical device \(device) already has an xcuitest runner (still starting, or running) on"
+                + " port \(port) (xcodebuild pid \(pid)). A device runs one runner at a time — a second one"
+                + " kills the first. Use port \(port) once it is ready, or stop it first with"
+                + " `fleetest bridge down --port \(port)`"
         }
     }
 }

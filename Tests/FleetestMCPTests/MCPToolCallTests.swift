@@ -486,10 +486,16 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["snapshot", "tap(x:12.5,y:34.0)"])
     }
 
-    /// ref と x/y の両方が来たら ref を優先する(座標は snapshot 依存で古くなりうる)
-    func testTapPrefersRefOverCoordinates() async throws {
-        _ = try await server.call(tool: "ft_tap", args: ["ref": 7, "x": 1.0, "y": 2.0])
-        XCTAssertEqual(driver.calls, ["tap(ref:7)"])
+    /// ref と x/y の両方が来たら断る(以前は ref を優先して x/y を黙って捨てていた —— B2)
+    func testTapRefusesRefAndCoordinatesTogether() async throws {
+        do {
+            _ = try await server.call(tool: "ft_tap", args: ["ref": 7, "x": 1.0, "y": 2.0])
+            XCTFail("ref と x/y の併用が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("either ref or x/y, not both"),
+                          error.localizedDescription)
+        }
+        XCTAssertTrue(driver.calls.isEmpty, "デバイスに触れる前に断るはず: \(driver.calls)")
     }
 
     func testTypeWithRef() async throws {

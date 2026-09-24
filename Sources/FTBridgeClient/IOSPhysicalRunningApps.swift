@@ -11,19 +11,37 @@ import FTCore
 import Foundation
 
 public enum IOSPhysicalRunningApps {
-    /// 起動中アプリの bundle ID(順序は processes の出力順・重複なし)。devicectl が失敗すれば空。
-    /// **apps は呼び手が控えを渡す**(インストール済みの一覧は滅多に変わらないので毎回払わない)
-    public static func running(udid: String, apps: [IOSPhysicalAppCatalog.App]) -> [String] {
+    public enum IOSPhysicalRunningAppsError: Error, LocalizedError, Equatable {
+        case devicectlFailed(udid: String, detail: String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .devicectlFailed(let udid, let detail):
+                return "xcrun devicectl device info processes failed for physical iOS device"
+                    + " \(udid): \(detail)"
+            }
+        }
+    }
+
+    /// 起動中アプリの bundle ID(順序は processes の出力順・重複なし)。**devicectl 自体の失敗/
+    /// タイムアウトは投げる**(呼び手 LiveSessionFollower が back-off の起点にするため)。
+    /// JSON が読めても該当プロセスが1つも無いのは正常系(空配列を返す。ホーム画面等)。
+    /// **apps は呼び手が控えを渡す**(インストール済みの一覧は滅多に変わらないので毎回払わない)。
+    /// **timeout の既定 30 は変えない**(他の呼び手はこの秒数を前提にしている)
+    public static func running(
+        udid: String, apps: [IOSPhysicalAppCatalog.App], timeout: Double = 30
+    ) throws -> [String] {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-devicectl-processes-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: outputURL) }
-        guard let result = try? Shell.run(
-                ["xcrun", "devicectl", "device", "info", "processes", "--device", udid,
-                 "--json-output", outputURL.path], timeout: 30),
-              result.status == 0,
-              let data = try? Data(contentsOf: outputURL),
+        let result = try Shell.run(
+            ["xcrun", "devicectl", "device", "info", "processes", "--device", udid,
+             "--json-output", outputURL.path], timeout: timeout)
+        guard result.status == 0, let data = try? Data(contentsOf: outputURL),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return [] }
+        else {
+            throw IOSPhysicalRunningAppsError.devicectlFailed(udid: udid, detail: result.tail)
+        }
         return bundleIDs(apps: apps, processesJSON: json)
     }
 

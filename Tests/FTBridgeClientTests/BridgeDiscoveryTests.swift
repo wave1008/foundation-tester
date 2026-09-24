@@ -167,6 +167,59 @@ final class BridgeDiscoveryTests: XCTestCase {
         }
     }
 
+    // MARK: - transportFailed の再分類(resolveTransportFailure。B4)
+    //
+    // 実地 2026-09-22: 忙しい XCUITest(pid は生きたままアプリの quiescence 待ちで数十秒
+    // ブロック)の listen backlog が溢れると、他クライアントの connect は即座に切れ、
+    // 固まった実機の iproxy と同じ指紋(`.transportFailed`)になる。loopback(シミュレータ)側は
+    // listener の実体を確かめ、iproxy トンネルでないと分かったときだけ `.timedOut`(busy)へ倒す。
+
+    /// timedOut はそもそも再分類の対象外(他の入力に関わらず変わらない)
+    func testResolveTransportFailureLeavesTimedOutUnchanged() {
+        XCTAssertEqual(
+            BridgeDiscovery.resolveTransportFailure(
+                classification: .timedOut, isLoopback: true,
+                listenerExists: true, listenerIsTunnelOnly: false),
+            .timedOut)
+    }
+
+    /// LAN(実機を Wi-Fi 越しに叩く)は再分類の対象外 —— 実測は固まった実機の iproxy でだけ取った
+    func testResolveTransportFailureLeavesLANUnchanged() {
+        XCTAssertEqual(
+            BridgeDiscovery.resolveTransportFailure(
+                classification: .transportFailed, isLoopback: false,
+                listenerExists: true, listenerIsTunnelOnly: false),
+            .transportFailed)
+    }
+
+    /// listener を確認できなかった(lsof が拾えない等)は「わからないから消えたことにする」に
+    /// 倒さない —— 元の分類のまま残す
+    func testResolveTransportFailureLeavesUnconfirmedListenerUnchanged() {
+        XCTAssertEqual(
+            BridgeDiscovery.resolveTransportFailure(
+                classification: .transportFailed, isLoopback: true,
+                listenerExists: false, listenerIsTunnelOnly: false),
+            .transportFailed)
+    }
+
+    /// listener が iproxy トンネルだった(本物の固まった転送)はそのまま残す
+    func testResolveTransportFailureLeavesATunnelOnlyListenerUnchanged() {
+        XCTAssertEqual(
+            BridgeDiscovery.resolveTransportFailure(
+                classification: .transportFailed, isLoopback: true,
+                listenerExists: true, listenerIsTunnelOnly: true),
+            .transportFailed)
+    }
+
+    /// loopback + listener あり + トンネルでない、と**肯定的に**読めたときだけ busy へ読み替える
+    func testResolveTransportFailureReclassifiesABusySimulatorRunnerAsTimedOut() {
+        XCTAssertEqual(
+            BridgeDiscovery.resolveTransportFailure(
+                classification: .transportFailed, isLoopback: true,
+                listenerExists: true, listenerIsTunnelOnly: false),
+            .timedOut)
+    }
+
     /// 文言はそのまま利用者(エージェント)への指示になる。**次の一手が書かれていること**
     func testMessagesCarryPortsDevicesAndTheNextStep() {
         let adopted = BridgeDiscovery.adoptedNote(preferred: 8123, found: found(8124))

@@ -377,8 +377,10 @@ extension LiveSessionFollowerTests {
         }
         let body = follower[search.upperBound...]
         XCTAssertTrue(body.contains("if physical {"), "実機で分岐すること")
-        XCTAssertTrue(body.contains("IOSPhysicalRunningApps.running(udid: udid, apps: apps)"),
+        XCTAssertTrue(body.contains("IOSPhysicalRunningApps.running("),
                       "実機は devicectl の processes × apps で候補を採ること")
+        XCTAssertTrue(body.contains("udid: udid, apps: apps, timeout: Self.physicalDevicectlTimeoutSeconds"),
+                      "毎コマンド撃つので短い timeout を渡すこと")
         XCTAssertTrue(body.contains("FrontmostApp.candidates(launchctlOutput: listing.output)"),
                       "シミュレータは従来どおり launchctl で採ること")
         let command = try String(contentsOf: root.appendingPathComponent("Sources/fleetest/ApiLiveCommand.swift"),
@@ -395,5 +397,137 @@ extension LiveSessionFollowerTests {
             ]),
             ["com.google.ios.youtube", "com.apple.Preferences"],
             "除外(SpringBoard・ランナー・裏方)と重複を落とし、順序は入力のまま")
+    }
+}
+
+/// L-C: 実機で devicectl(apps/processes)が詰まると、back-off が無いと**毎コマンド**
+/// apps/processes 双方の timeout を払い続け、command watchdog(30秒)に引っかかって serve が
+/// 毎分再起動していた(M1Ultra 実地)。`DevicectlBackoff.isActive` は純粋関数なのでデバイス無しで
+/// 全分岐を当て、follower 側の配線(短い timeout・失敗のたびの back-off 開始・back-off 中は
+/// devicectl に触らない)はソース走査で固定する。
+extension LiveSessionFollowerTests {
+
+    // MARK: - DevicectlBackoff(純粋関数)
+
+    func testBackoffIsNotActiveWithoutAPriorFailure() {
+        XCTAssertFalse(DevicectlBackoff.isActive(lastFailureAt: nil, now: Date(), backoffSeconds: 30))
+    }
+
+    func testBackoffIsActiveRightAfterAFailure() {
+        let now = Date()
+        XCTAssertTrue(DevicectlBackoff.isActive(lastFailureAt: now, now: now, backoffSeconds: 30))
+        XCTAssertTrue(DevicectlBackoff.isActive(
+            lastFailureAt: now, now: now.addingTimeInterval(10), backoffSeconds: 30))
+    }
+
+    /// 窓が切れたら再挑戦を許す(そうでないと1回の詰まりが永久に devicectl を止める)
+    func testBackoffExpiresAfterTheWindow() {
+        let now = Date()
+        XCTAssertFalse(DevicectlBackoff.isActive(
+            lastFailureAt: now, now: now.addingTimeInterval(31), backoffSeconds: 30))
+    }
+
+    /// ちょうど境界(経過 == backoffSeconds)は「切れた」側に倒す(`<` であって `<=` ではない)——
+    /// 境界を「まだ有効」に倒すと、時計の丸めで実質1周分ずつ余計に待つことになる
+    func testBackoffBoundaryIsExclusive() {
+        let now = Date()
+        XCTAssertFalse(DevicectlBackoff.isActive(
+            lastFailureAt: now, now: now.addingTimeInterval(30), backoffSeconds: 30))
+    }
+
+    // MARK: - 配線(ソース走査)
+
+    private func frontmostAppBody() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let follower = try String(
+            contentsOf: root.appendingPathComponent("Sources/fleetest/LiveSessionFollower.swift"),
+            encoding: .utf8)
+        guard let search = follower.range(
+            of: "private func frontmostApp(driver: AppDriver) async -> String? {") else {
+            throw XCTSkip("frontmostApp が見当たらない — テストを見直すこと")
+        }
+        return String(follower[search.upperBound...])
+    }
+
+    /// back-off 中は apps()/running() のどちらも呼ばない(呼ぶだけ無駄・毎コマンドの timeout を払う)。
+    /// 判定はブロックの先頭(if physicalApps == nil より前)にあること
+    func testBackoffGateComesBeforeEitherDevicectlCall() throws {
+        let body = try frontmostAppBody()
+        guard let physicalRange = body.range(of: "if physical {") else {
+            return XCTFail("実機の分岐が見当たらない")
+        }
+        guard let gateRange = body.range(
+            of: "DevicectlBackoff.isActive(", range: physicalRange.upperBound..<body.endIndex) else {
+            return XCTFail("back-off の判定(DevicectlBackoff.isActive)が無い")
+        }
+        guard let appsCallRange = body.range(
+            of: "IOSPhysicalAppCatalog.apps(", range: physicalRange.upperBound..<body.endIndex) else {
+            return XCTFail("apps() の呼び出しが見当たらない")
+        }
+        guard let runningCallRange = body.range(
+            of: "IOSPhysicalRunningApps.running(", range: physicalRange.upperBound..<body.endIndex) else {
+            return XCTFail("running() の呼び出しが見当たらない")
+        }
+        XCTAssertTrue(gateRange.upperBound < appsCallRange.lowerBound,
+                      "back-off の判定は apps() より前に行うこと")
+        XCTAssertTrue(gateRange.upperBound < runningCallRange.lowerBound,
+                      "back-off の判定は running() より前に行うこと")
+    }
+
+    /// 毎コマンド撃つ2呼び出しは、他の呼び手(list-apps 等)の既定 30 秒ではなく
+    /// physicalDevicectlTimeoutSeconds(短い timeout)を渡すこと
+    func testBothDevicectlCallsUseTheShortTimeout() throws {
+        let body = try frontmostAppBody()
+        let occurrences = body.components(separatedBy: "timeout: Self.physicalDevicectlTimeoutSeconds").count - 1
+        XCTAssertEqual(occurrences, 2,
+                       "apps()/running() の両方が短い timeout を渡すこと(occurrences=\(occurrences))")
+    }
+
+    /// 失敗/タイムアウトのたびに noteDevicectlFailure(back-off の開始点)を経由すること。
+    /// **catch 節で直接 log() しない** —— 直接 log すると、次に back-off ゲートで早期 return する
+    /// 回とログの経路が2つに割れ、「1回だけ言う」の保証が薄れる
+    func testBothDevicectlFailuresGoThroughNoteDevicectlFailure() throws {
+        let body = try frontmostAppBody()
+        // `action: "` の引用符つきで数える(関数宣言 `action: String` 自体を呼び出しと誤カウントしない)
+        let occurrences = body.components(separatedBy: "noteDevicectlFailure(action: \"").count - 1
+        XCTAssertEqual(occurrences, 2,
+                       "apps() の catch と running() の catch の両方が noteDevicectlFailure を"
+                       + " 呼ぶこと(occurrences=\(occurrences))")
+    }
+
+    /// noteDevicectlFailure が back-off の起点(lastDevicectlFailureAt)を書き、ログはそこでだけ出す
+    func testNoteDevicectlFailureRecordsTheTimestampAndLogsOnce() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let follower = try String(
+            contentsOf: root.appendingPathComponent("Sources/fleetest/LiveSessionFollower.swift"),
+            encoding: .utf8)
+        guard let start = follower.range(of: "private func noteDevicectlFailure(") else {
+            return XCTFail("noteDevicectlFailure が見当たらない")
+        }
+        guard let end = follower.range(of: "\n    }", range: start.upperBound..<follower.endIndex) else {
+            return XCTFail("noteDevicectlFailure の終わりが見当たらない")
+        }
+        let body = String(follower[start.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("lastDevicectlFailureAt = Date()"),
+                      "back-off の起点を書くこと")
+        XCTAssertTrue(body.contains("log("), "ログを出すこと")
+    }
+}
+
+/// ライブ操作の自動起動は、同じ実機を宛先に持つ別ポートのランナーを見たら起動しない(maintainer-notes §49.4)
+final class LiveAutoStarterDuplicateRunnerWiringTests: XCTestCase {
+    func testLaunchBridgeChecksForAnotherRunnerBeforeStarting() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/LiveBridgeAutoStarter.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let guardRange = code.range(of: "BridgeLauncher.runnersOnDevice("),
+              let startRange = code.range(of: "try launcher.startDetached()") else {
+            return XCTFail("launchBridge の門か起動が見当たらない — テストを見直すこと")
+        }
+        XCTAssertLessThan(guardRange.lowerBound, startRange.lowerBound, "門は startDetached より前に置く")
+        XCTAssertTrue(code.contains("LauncherError.deviceRunnerElsewhere("))
     }
 }

@@ -2290,3 +2290,75 @@ CLI の規律④(印を読んで断る)は変えていない —— 他プロセ
 従来どおり断る。**残した穴**: 拒否トーストの枠「実行中のテストがあるため」と CLI の
 「fleetest-mcp」の名指しは、run 以外の印では事実と違う(直すなら印にライブ操作 / MCP の区別を持たせる)。
 
+
+## 49. 3時間負荷テストで出た穴(2026-09-24)
+
+構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini)+ MCP ファズ5台(実機 iPhone SE3・
+Pixel 4a、仮想機 sim09 / sim10 / emulator-5554)+ ライブ操作ファズ3台(仮想機 iPhone 17・
+実機 Pixel 3a・**M1Ultra に USB でつながった実機 iPhone 13 を `remote exec` 越し**)+ CLI ファズ。
+
+### 49.1 長押しの秒数に上限が無く、引数1つで XCUITest ランナーが死んだ(最重要)
+
+`holdSeconds` / `durationSeconds` / `duration` / `press` は下限しか無かった。`ft_long_press
+{holdSeconds: 1e9}` は Android では注入層の2箇所が黙って 10 秒に丸めて「done」(誤った成功)、
+iOS ランナーは `press(forDuration: 1e9)` をそのまま撃ち、XCTest が3回リトライ → 次の操作が
+`Timed out while synthesizing event` → XCTest がランナーを再起動して 0 tests で終わり、
+**ブリッジが死んだ**(シミュレータ・実機 SE3 とも)。上限は Android の注入上限と同じ 10 秒
+(`ArgumentBounds.maxGestureSeconds`)。**DSL の `tap(holdSeconds:)` は縛っていない**(利用者が書く値)。
+
+### 49.2 「接続が即切れる」を「ブリッジ消失」と断定していた —— シミュレータに転送役は居ない
+
+`probeStatus` の `.transportFailed` は実機の固まった iproxy で測った指紋だった。シミュレータの
+ランナーが Safari の idle 待ちで 35 秒塞がると listen backlog が溢れ、他の接続は connect 直後に
+切れる = 同じ指紋。MCP は「process is gone … will not recover on its own」を 36 回言い、16 秒後に
+**同じ pid のまま**答えが戻った。直し: ループバックで待受の実体が iproxy でなければ `.timedOut`
+(`resolveTransportFailure`)。**§44 の4値は「所要時間」だけでは決まらない** —— 待受の実体を
+見て初めて「消えた」と言える。
+
+### 49.3 `bridge down --port` が駆動中のライブ操作のブリッジを止めた
+
+走査に載らない(操作中で /status に答えない)ポートは probe しか見ず、印(lease)を照合できて
+いなかった(鍵の udid が無い)。49.2 の誤分類で transportFailed → 門を通過。直し: 待受プロセスの
+コマンド行から udid を読み(`PortHolder.deviceUDID(fromListenerOn:)`)印を照合する。
+**トンネルだけのポートは読まない** —— 印で断ると §46.4 の袋小路(止めるのが唯一の回復手段)に戻る。
+
+### 49.4 実機に2本目のランナーを立て、互いに殺し合った(ライブ操作・他の機械)
+
+実機の前面追従(`LiveSessionFollower`)は**毎コマンド** devicectl を2回、各 timeout 30 秒で撃ち、
+失敗を控えなかった。M1Ultra で devicectl が詰まると1コマンドが command watchdog(30 秒)を超えて
+serve が強制終了 → 次の serve は起動途中のランナー(走査に載らない)を見つけられず**別ポートで
+2本目**を立てた(8124 → 8136 → 8137。xcodebuild が2本同時に生存)。直し3つ: ①ライブ操作の自動起動が
+同じ実機を宛先に持つ別ポートのランナーを見たら起動を断る(`BridgeLauncher.runnersOnDevice`・
+`deviceRunnerElsewhere`。**門は自動起動にだけ置く** —— bridge up / 供給は起動途中の台を待って引き取るので
+競合しない。ランチャ全体に置くと、固まった旧ポートのランナーを置き換える供給の回復まで断る)②追従の devicectl は 5 秒(実測 0.6 秒)③失敗後 30 秒は撃たない
+(`DevicectlBackoff`)。**「毎コマンド払う外部呼び出しの timeout ≧ watchdog」は同型が他にも
+ありうる** —— 常駐 CLI に外部コマンドを足すときは watchdog と比べる。
+
+### 49.5 承認していない実機を「ready」と言った
+
+iPhone 15 Pro(iOS 26.6.2)では UI 自動化の承認プロンプトに答えなくてもスイートが始まり、
+承認トラッカーは suiteStarted を「承認済み」と読み、/status だけで ready と報告した。以後の UI
+操作は全部 `Not authorized for performing UI testing actions`、約 100 秒後にランナーごと落ちた。
+直し: 実機は ready の直後に screenshot を1回撃ち、ログにその文言が出たら `runnerFailureReason`
+の承認の文言で断る(画像は認可が無くても返るのでログでしか分からない)。
+
+### 49.6 ライブ操作の小さな穴
+
+- 型違いの行に actionResult だけ返して終わり、拡張が 20 秒待って serve を建て直していた(§42 L3 の
+  修正が serve 側で終端イベントを省いていた)。frame は frame(ok:false)、他は actionResult → 観測
+- 自動起動の最中に「will not recover on its own: bridge up」と言った(自動起動の状態を先に見る)
+- iOS 用の springboard 退避が Android にも効き、422(a11y 根の一時欠落)が「cannot launch the app:
+  com.apple.springboard」(500)に化けた
+
+### 49.7 その他
+
+- MCP の `ft_tap` 等が ref と x/y を両方受けて x/y を黙って捨てた(入口で断る。`ft_drag` の
+  toX/dx・toY/dy も同型)/ `ft_pinch` の説明が座標ピンチ導入前のまま
+- `ShellError` が LocalizedError でなく、全呼び手のログが「(FTCore.ShellError error 0.)」になっていた
+- 台の印の拒否文がライブ操作の serve も「fleetest-mcp pid」と名指していた(§48 の残した穴)
+- `run` と `api run` の dry-run の検査が割れていた: `run --profile <無い名前> --dry-run` は注記だけで通り
+  (`api run` は断る。`--fleet` も同じ)、`--dry-run --runner` は `run` が注記して続行・`api run` が拒否。
+  **`RunCommandFlagParityTests` はフラグの集合しか見ないので、この種の割れは捕まらない**
+
+**仕様と判断したもの**: build 前の先取りロックを手放した隙に後発の run が手元を取る(§42.3 の代償)。
+**手元の赤は全部この Mac の Vision / ANE の不調**(`画像で要素を探す` / `チェック状態`)で、他3機は緑。

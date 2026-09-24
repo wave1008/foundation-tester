@@ -803,7 +803,23 @@ struct Bridge: AsyncParsableCommand {
             // 呼ばれる)には足さず、利用者が打つこの CLI の口だけに置く
             if all {
                 let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: root)
-                let targets = found.map { (name: $0.device, keys: $0.udid.map { [$0] } ?? []) }
+                // **応答しなかったポートは「死んでいる」とは限らない** —— 駆動中の XCUITest は
+                // /status を返さないので、走査に載らないまま止めると run / MCP を無言で壊す
+                // (実地 2026-09-22)。待受しているものだけ断る(待受も無ければ通す = 回復手段を残す)
+                let silentPorts = BridgeDiscovery.portRange.filter { candidate in
+                    !found.contains(where: { $0.port == candidate })
+                }
+                // **busy と「固まった転送」を分ける**ので isBound では足りない(§44.1 の4値)
+                let silentProbes = await BridgeDiscovery.probeStatuses(ports: silentPorts, repoRoot: root)
+                // 応答しないポートも listener からデバイスが特定できれば掃討の対象に含める。
+                // 特定できないポートは従来どおり対象外(= 掃討ごと断る理由にしない。固まったブリッジを
+                // 止める手段を奪わない)
+                let silentTargets: [(name: String, keys: [String])] = silentPorts.compactMap { candidate in
+                    PortHolder.deviceUDID(fromListenerOn: candidate).map {
+                        (name: "device on port \(candidate) (udid \($0))", keys: [$0])
+                    }
+                }
+                let targets = found.map { (name: $0.device, keys: $0.udid.map { [$0] } ?? []) } + silentTargets
                 if let refusal = BridgeDownRefusal.decide(
                     targets: targets, force: force,
                     runHolderPID: { RunLease.holderPID(stateDir: leaseStateDir, key: $0) },
@@ -813,14 +829,6 @@ struct Bridge: AsyncParsableCommand {
                     ConsoleOut.out("❌ \(refusal)")
                     throw ExitCode(1)
                 }
-                // **応答しなかったポートは「死んでいる」とは限らない** —— 駆動中の XCUITest は
-                // /status を返さないので、走査に載らないまま止めると run / MCP を無言で壊す
-                // (実地 2026-09-22)。待受しているものだけ断る(待受も無ければ通す = 回復手段を残す)
-                let silentPorts = BridgeDiscovery.portRange.filter { candidate in
-                    !found.contains(where: { $0.port == candidate })
-                }
-                // **busy と「固まった転送」を分ける**ので isBound では足りない(§44.1 の4値)
-                let silentProbes = await BridgeDiscovery.probeStatuses(ports: silentPorts, repoRoot: root)
                 if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
                     ports: silentPorts, force: force,
                     probe: { silentProbes[$0] ?? .notBound }) {
@@ -849,6 +857,17 @@ struct Bridge: AsyncParsableCommand {
                     let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: root)
                     if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
                         ports: [port], force: force, probe: { _ in probe }) {
+                        ConsoleOut.out("❌ \(refusal)")
+                        throw ExitCode(1)
+                    }
+                    // **鍵(udid)が listener から読めるなら、なお lease を照合する** ——
+                    // busy 判定を通っても、listener の実体からデバイスが特定できる形(シミュレータの
+                    // xcodebuild ランナー等)は run/MCP が握ったままのことがある。
+                    // 識別子が読めない形は従来どおり通す(固まったブリッジを止める手段を奪わない)
+                    if let udid = PortHolder.deviceUDID(fromListenerOn: port),
+                       let refusal = DeviceBooter.deviceInUseRefusal(
+                            deviceName: "the device on port \(port) (udid \(udid))",
+                            keys: [udid], force: force, leaseStateDir: leaseStateDir) {
                         ConsoleOut.out("❌ \(refusal)")
                         throw ExitCode(1)
                     }
@@ -1525,7 +1544,14 @@ struct RunScenarios: AsyncParsableCommand {
         // **RunRecorder を作らない**(実行していない結果を results DB と --failed の判断材料に
         // 混ぜないため。ScenarioHost も dryRun では LastResultsStore へ書かない)
         if dryRun {
-            if profile != nil {
+            if let profile {
+                // **使わなくても実在は確かめる** —— `api run` は同じ打鍵を「run profile not found」で
+                // 断る(2実装で検査規則を揃える)。確かめないと打ち間違えたプロファイル名が dry-run を
+                // 素通りし、デバイス実行で初めて落ちる
+                let names = ProfileResolver.runProfileNames(project: testProject)
+                guard names.contains(profile) else {
+                    throw ProfileError.runProfileNotFound(name: profile, available: names)
+                }
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --profile is not used"
                       + " (--platform decides which ios { } / android { } blocks run)")
             }
@@ -1533,7 +1559,9 @@ struct RunScenarios: AsyncParsableCommand {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --runner is not used"
                       + " (the scenarios are validated locally, from the same source the remote would run)")
             }
-            if fleet != nil {
+            if let fleet {
+                // プロファイルと同じく、使わなくても実在と形は確かめる(打ち間違いを素通りさせない)
+                _ = try FleetProfile.load(project: testProject, name: fleet)
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --fleet is not used"
                       + " (the scenarios are validated locally, from the same source every fleet entry would run)")
             }

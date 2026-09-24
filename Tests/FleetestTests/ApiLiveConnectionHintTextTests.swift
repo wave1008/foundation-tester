@@ -62,6 +62,76 @@ final class ApiLiveConnectionHintTextTests: XCTestCase {
     }
 }
 
+/// LIVE-3: bridgeUnreachable のヒントは starter(自動起動の状態機械)の状態も加味する。
+/// 実地(実機): 起動待ち中の probe が transportFailed を返し、「起動中です(自然に直ります)」の
+/// 直後に「自然には直りません: bridge up してください」という矛盾した案内が出た。
+/// `ApiLiveServe.BridgeUnreachableGuidance.decide` は純粋関数なのでデバイス無しで全分岐を確かめる。
+/// annotated がこの結果どおりに starter/probe のどちらを使うかは
+/// ApiLiveConnectionHintWiringTests(ソース走査)が縛る。
+final class BridgeUnreachableGuidanceTests: XCTestCase {
+
+    /// starter が無ければ probe の中身に関わらず probeHint のまま(従来どおり)
+    func testNoStarterAlwaysKeepsTheProbeHint() {
+        for probe: BridgeDiscovery.StatusProbe in [.transportFailed, .timedOut, .notBound, .answered] {
+            XCTAssertEqual(
+                ApiLiveServe.BridgeUnreachableGuidance.decide(
+                    probe: probe, hasStarter: false, starterIsIdle: true, triggering: true),
+                .probeHint, "starter が無いとき(\(probe))")
+        }
+    }
+
+    /// starter が starting/failed(非 idle)なら probe の中身を問わず starter の状態を使う ——
+    /// 進行中の自動起動と矛盾する案内を出さない
+    func testNonIdleStarterSuppressesTheProbeHintRegardlessOfProbeOrTriggering() {
+        for probe: BridgeDiscovery.StatusProbe in [.transportFailed, .timedOut, .notBound, .answered] {
+            for triggering in [true, false] {
+                XCTAssertEqual(
+                    ApiLiveServe.BridgeUnreachableGuidance.decide(
+                        probe: probe, hasStarter: true, starterIsIdle: false, triggering: triggering),
+                    .useStarterSuffix, "starter が非 idle のとき(probe: \(probe), triggering: \(triggering))")
+            }
+        }
+    }
+
+    /// idle な starter + 能動経路(triggering) + ブリッジが消えている(transportFailed/notBound)
+    /// —— bridgeConnectionRefused と同じ状況なので起動をトリガーする
+    func testIdleStarterTriggeringAndBridgeGoneTriggersTheStarter() {
+        for probe: BridgeDiscovery.StatusProbe in [.transportFailed, .notBound] {
+            XCTAssertEqual(
+                ApiLiveServe.BridgeUnreachableGuidance.decide(
+                    probe: probe, hasStarter: true, starterIsIdle: true, triggering: true),
+                .triggerStarter, "probe: \(probe)")
+        }
+    }
+
+    /// busy(timedOut)は「待て」のまま —— idle な starter があっても起動をトリガーしない
+    func testBusyStaysWaitEvenWithAnIdleStarter() {
+        XCTAssertEqual(
+            ApiLiveServe.BridgeUnreachableGuidance.decide(
+                probe: .timedOut, hasStarter: true, starterIsIdle: true, triggering: true),
+            .probeHint)
+    }
+
+    /// 追跡した瞬間に応答があった(answered)なら idle な starter があっても起動をトリガーしない
+    func testAnsweredStaysProbeHintEvenWithAnIdleStarter() {
+        XCTAssertEqual(
+            ApiLiveServe.BridgeUnreachableGuidance.decide(
+                probe: .answered, hasStarter: true, starterIsIdle: true, triggering: true),
+            .probeHint)
+    }
+
+    /// 受動経路(emitFrame。triggering:false)は idle な starter + ブリッジ消失でもトリガーしない
+    /// —— 起動トリガーは能動的な操作の失敗経路からだけ
+    func testPassiveObservationNeverTriggersTheStarterEvenWhenIdleAndBridgeGone() {
+        for probe: BridgeDiscovery.StatusProbe in [.transportFailed, .notBound] {
+            XCTAssertEqual(
+                ApiLiveServe.BridgeUnreachableGuidance.decide(
+                    probe: probe, hasStarter: true, starterIsIdle: true, triggering: false),
+                .probeHint, "probe: \(probe)")
+        }
+    }
+}
+
 /// a11y サーバの一時的な停止(500 + kAXErrorAPIDisabled)の出口。
 /// run は同じ判定で結果を捨てて振り直すが、MCP とライブ操作は人・エージェントが次の一手を
 /// 打つ場なので**環境要因であることと「待って再試行」**を言う(実地 2026-09-23 の負荷テスト:

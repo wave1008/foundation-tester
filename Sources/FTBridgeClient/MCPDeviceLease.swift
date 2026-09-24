@@ -77,7 +77,7 @@ public enum MCPDeviceLease {
         }
         guard let otherSession else { return nil }
         // 相手がライブ操作でも文言は変えない(ファイル冒頭の注記参照——「MCP session」のまま)
-        return "⚠️ another MCP session (fleetest-mcp pid \(otherSession)) is driving this device too — the two"
+        return "⚠️ another MCP session (pid \(otherSession)) is driving this device too — the two"
             + " sessions move each other's screens, so refs and snapshots go stale under you."
             + " Drive another device, or finish one of the sessions."
     }

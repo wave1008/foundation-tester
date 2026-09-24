@@ -27,6 +27,16 @@ public enum ArgumentBounds {
         public static let unbounded = Bound()
     }
 
+    /// hold/gesture 系(holdSeconds・durationSeconds・duration・press)の上限(秒)。
+    /// **Android は注入層で長押し/press を常に 10 秒に丸める**(FTAndroid/AndroidDriver.swift
+    /// `press(x:y:duration:)` の `min(max(ms,300),10000)` と AndroidRunner の
+    /// `InputInjector.java` `Math.min(Math.max(durationSeconds, 0), 10)` の2層)。これより
+    /// 大きい値を渡すと Android は黙って 10 秒で切って「done」を返す(false success)一方、
+    /// iOS の XCUITest ランナーは丸めず `press(forDuration:)` へそのまま渡すので、その秒数ぶん
+    /// ランナーを占有する(host の HTTP タイムアウトも `interactionTimeout + duration` で連動)。
+    /// 揃えるため両 OS とも同じ 10 秒で断る
+    public static let maxGestureSeconds: Double = 10
+
     /// 引数名 → 値域。**値域を持たない引数も `.unbounded` で必ず載せる** ——
     /// スキーマの数値プロパティ全部がここに載っていることを `ArgumentBoundsTests` が
     /// 走査で確かめる(載せ忘れは「値域が無いから」ではなく「まだ検討していないから」を
@@ -44,10 +54,10 @@ public enum ArgumentBounds {
         "lastN": Bound(min: 1),
         "maxWidth": Bound(min: 1),
         "quality": Bound(min: 0, minExclusive: true, max: 1),
-        "holdSeconds": Bound(min: 0, minExclusive: true),
-        "durationSeconds": Bound(min: 0, minExclusive: true),
-        "duration": Bound(min: 0, minExclusive: true),
-        "press": Bound(min: 0, minExclusive: true),
+        "holdSeconds": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
+        "durationSeconds": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
+        "duration": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
+        "press": Bound(min: 0, minExclusive: true, max: maxGestureSeconds),
         "radius": Bound(min: 0, minExclusive: true),
         "scale": Bound(min: 0, minExclusive: true),
         "port": Bound(min: 1, max: 65535),

@@ -71,6 +71,13 @@ actor LiveBridgeAutoStarter {
         suffix()
     }
 
+    /// starting/failed 中は true を返さない(非破壊。呼んでも状態を変えない)。
+    /// annotated が「probe のヒントより starter の状態を先に見る」判定に使う(ApiLiveCommand.swift)
+    var isIdle: Bool {
+        if case .idle = state { return true }
+        return false
+    }
+
     /// serve 起動時に呼ぶ。旧ビルドのブリッジ(/status の protocolVersion が現行値と不一致)を
     /// 検知したら再起動する。接続不可(不在含む)は何もしない(不在は既存の接続拒否経路が担当)
     func checkAndRestartIfStale() async {
@@ -179,6 +186,17 @@ actor LiveBridgeAutoStarter {
                     releaseLockOnce()
                     return .failure(AutoStarterError.staleStopFailed(port: port))
                 }
+            }
+            // **実機に2本目のランナーを立てない**(2本目の起動が1本目を殺し、残った側も道連れになる)。
+            // 自動起動は起動途中のランナーを引き取らないので、serve が再起動するたびに別ポートで
+            // 立て直していた(実地 2026-09-24: 8124→8136→8137 が同時に生存。maintainer-notes §49.4)。
+            // bridge up / 供給は起動途中の台を待って引き取るので、この門はここにだけ置く
+            if physical, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
+               let other = BridgeLauncher.runnersOnDevice(
+                   psOutput: ps.output, device: udid, excludingPort: port).first {
+                releaseLockOnce()
+                return .failure(LauncherError.deviceRunnerElsewhere(
+                    device: udid, port: other.port, pid: other.pid))
             }
             // このポートは実行プロファイルが固定するため freePort のような採番替えは無い。
             // それでも「今 LISTEN している実体」は確かめる —— 背面へ回った in-app ブリッジは

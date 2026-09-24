@@ -36,6 +36,37 @@ final class PortHolderListenerIdentityTests: XCTestCase {
     }
 }
 
+/// `PortHolder.udidFromListener`(B5): 応答しないポートの背後にデバイスが居ると分かれば、
+/// `bridge down` は止める前に lease(run/MCP)を照合する。`RunnerDestination.udidTokens` を
+/// 再利用するだけの純粋関数なので、境界は「識別子が読めるか」の1点だけ確かめる
+final class PortHolderUDIDFromListenerTests: XCTestCase {
+
+    /// シミュレータの XCUITest ランナー(実地の busy 台の形)
+    func testReadsTheUDIDFromASimulatorRunnerCommandLine() {
+        let listener = "pid 1: xcodebuild -destination platform=iOS Simulator,"
+            + "id=E38DCA93-95F2-4DDF-B1FE-29527205D3EE -resultBundlePath /x"
+        XCTAssertEqual(PortHolder.udidFromListener(listener),
+                       "E38DCA93-95F2-4DDF-B1FE-29527205D3EE")
+    }
+
+    /// 実機の USB トンネル(iproxy)の形も読める
+    func testReadsTheUDIDFromAnIproxyTunnelCommandLine() {
+        let listener = "pid 3: /opt/homebrew/bin/iproxy 8123 8123 -u 00008110-000260242EEB801E"
+        XCTAssertEqual(PortHolder.udidFromListener(listener), "00008110-000260242EEB801E")
+    }
+
+    /// listener が居ない(そもそも誰も listen していない)は nil ——
+    /// 「分からないから断らない」に倒す(止める手段を奪わない)
+    func testNoListenerYieldsNil() {
+        XCTAssertNil(PortHolder.udidFromListener(nil))
+    }
+
+    /// 識別子が1つも出てこない占有者も nil(既存の RunnerDestination.udidTokens の性質を継ぐ)
+    func testUnidentifiableListenerYieldsNil() {
+        XCTAssertNil(PortHolder.udidFromListener("pid 4: /usr/bin/something"))
+    }
+}
+
 /// `/status` が答えないポートの占有者が別のデバイスか(プロセスの実体から)。
 /// **busy は正常**(XCUITest は駆動中に答えない)なので、**肯定的に別デバイスと読めたときだけ**
 /// true —— ここを「待受している」だけで true にすると、自分の busy なブリッジを見捨てて

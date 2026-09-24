@@ -457,8 +457,8 @@ extension MCPServer {
             "fromY": ["type": "number"],
             "toX": ["type": "number"],
             "toY": ["type": "number"],
-            "dx": ["type": "number", "description": "Horizontal travel from the start point (ignored when toX is given)"],
-            "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (ignored when toY is given)"],
+            "dx": ["type": "number", "description": "Horizontal travel from the start point (pass this or toX, not both)"],
+            "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (pass this or toY, not both)"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
@@ -475,7 +475,8 @@ extension MCPServer {
             + "Pass profile: on iOS — without it Flutter apps do not zoom (see docs/commands.md).", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "Centre of the pinch, iOS=pt / Android=px (same coordinate system as the snapshot frames). "
-                + "Android and the iOS in-app engine honour it; the iOS XCUITest engine cannot (XCTest has no coordinate pinch) and says so"],
+                + "All engines honour it, including iOS XCUITest — only an Xcode build without its private coordinate-pinch API "
+                + "falls back to pinching an element instead, and says so"],
             "y": ["type": "number", "description": "Centre of the pinch, iOS=pt / Android=px"],
             "radius": ["type": "number", "description": "Half the width of the pinched area around x/y "
                 + "(default: 22% of the screen's short side, clamped to stay on screen)"],

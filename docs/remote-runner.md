@@ -2027,7 +2027,11 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   —— 止めることが唯一の回復手段なのに「待て」と言い続ける袋小路になる(実地 2026-09-23。
   2026-09-22 の初版は `isBound` だけを見ていたのでここを busy と読んでいた。
   docs/maintainer-notes.md §44.1・§46.4)。待受も無ければ(`.notBound`)従来どおり通す
-  (固まったブリッジを止める手段は奪わない)
+  (固まったブリッジを止める手段は奪わない)。**ループバックで即切れても、待受の実体が iproxy で
+  なければ busy**(塞がったシミュレータのランナーは backlog が溢れて同じ指紋になる =
+  `BridgeDiscovery.resolveTransportFailure`)。さらに**待受プロセスから udid が読めれば run / MCP の印を
+  照合して断る**(`PortHolder.deviceUDID(fromListenerOn:)`。トンネルだけのポートは読まない =
+  上の袋小路を作らない。maintainer-notes §49.2・§49.3)
 - **順番待ちは GUI からも**: `api run --wait-lock`(`run` と対等になった。
   `RunCommandFlagParityTests` の run 専用表から外れた)+ 設定 `fleetest.remoteWaitLock`
   (M2 の時点では既定 0 = 待たない。**§18.9 で既定 3600 秒へ変えた** = FIFO の待機列が入り、

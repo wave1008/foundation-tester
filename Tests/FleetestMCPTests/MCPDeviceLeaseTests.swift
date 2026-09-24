@@ -71,7 +71,7 @@ final class MCPDeviceLeaseTests: XCTestCase {
     func testTouchingADeviceAnotherMCPSessionDrivesIsNamed() async throws {
         MCPDeviceLease.write(stateDir: stateDir, key: "UDID-X", pid: 1)
         let text = try await snapshotText()
-        XCTAssertTrue(text.contains("another MCP session (fleetest-mcp pid 1) is driving this device too"), text)
+        XCTAssertTrue(text.contains("another MCP session (pid 1) is driving this device too"), text)
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("snapshot") }, "警告して進むこと: \(driver.calls)")
         XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []),
                        ["UDID-X": ProcessInfo.processInfo.processIdentifier], "自分の印で上書きする")

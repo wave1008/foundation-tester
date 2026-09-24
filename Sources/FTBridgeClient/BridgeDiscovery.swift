@@ -112,8 +112,12 @@ public enum BridgeDiscovery {
         case answered
         /// タイムアウト上限まで無応答 = 本当に busy
         case timedOut
-        /// TCP connect は通ったが、上限よりはるかに早く応答無しで転送が切れた ——
-        /// ブリッジが消えて転送役(実機なら iproxy)だけ残っている
+        /// TCP connect は通ったが、上限よりはるかに早く応答無しで転送が切れた。
+        /// loopback(シミュレータ)側は listener の実体を確かめ、iproxy トンネルでなければ
+        /// `.timedOut` へ読み替える(下記 `resolveTransportFailure`。忙しい XCUITest ランナーの
+        /// listen backlog が溢れて connect 直後に切れる形が、固まった実機の iproxy と同じ指紋になる)。
+        /// ここへ残るのは**実機の固まった iproxy か、listener を確認できなかった場合だけ** ——
+        /// 「ブリッジは消えている」と断定しない
         case transportFailed
         /// 誰も listen していない
         case notBound
@@ -143,8 +147,17 @@ public enum BridgeDiscovery {
         } catch {
             switch error {
             case DriverError.bridgeUnreachable, DriverError.bridgeConnectionRefused:
-                return classifyNoResponse(
+                let classification = classifyNoResponse(
                     elapsedMs: continuousClockMs(clock.now - start), timeoutSeconds: timeoutSeconds)
+                // 実測(2026-09-24 負荷テスト): 忙しい XCUITest(同 pid のまま quiescence 待ちで
+                // 数十秒ブロック)の listen backlog が溢れると、他クライアントの connect は
+                // connect 直後に切れ、固まった実機の iproxy と同じ指紋になる。loopback だけ
+                // listener の実体を確かめてから再分類する(LAN 経由の実機はここに来ない)
+                guard classification == .transportFailed, endpoint.isLoopback else { return classification }
+                let facts = await loopbackListenerFacts(port: port)
+                return resolveTransportFailure(
+                    classification: classification, isLoopback: endpoint.isLoopback,
+                    listenerExists: facts.exists, listenerIsTunnelOnly: facts.isTunnelOnly)
             default:
                 // badResponse(401 の token 不一致等)・decode 失敗はどちらも HTTP 応答を
                 // 受け取れた証拠 —— ステータスコードを問わず「生きている」側へ倒す
@@ -158,6 +171,30 @@ public enum BridgeDiscovery {
     static func classifyNoResponse(elapsedMs: Int, timeoutSeconds: Double) -> StatusProbe {
         Double(elapsedMs) < timeoutSeconds * 1000 * transportFailureFraction
             ? .transportFailed : .timedOut
+    }
+
+    /// `.transportFailed` の再分類(純粋関数・テスト用)。**肯定的に「トンネルではない listener が
+    /// 居る」と読めたときだけ** `.timedOut`(= 忙しいだけ)へ倒す ——
+    /// listener を確認できない・iproxy トンネルだった・loopback でない、はすべて元の分類のまま
+    /// (「わからないから消えたことにする」に倒すと、本当に固まった実機を busy と誤帰属する)
+    static func resolveTransportFailure(
+        classification: StatusProbe, isLoopback: Bool, listenerExists: Bool, listenerIsTunnelOnly: Bool
+    ) -> StatusProbe {
+        guard classification == .transportFailed, isLoopback, listenerExists, !listenerIsTunnelOnly else {
+            return classification
+        }
+        return .timedOut
+    }
+
+    /// `PortHolder.listenerFacts` は lsof/ps を撃つので、協調スレッドプールで直接 await せず
+    /// GCD へ逃がす(`ProvisionLock.acquire` と同じ形)。`.transportFailed` の再分類専用の経路なので、
+    /// 速い経路(answered/timedOut/notBound)には触れない
+    private static func loopbackListenerFacts(port: UInt16) async -> (exists: Bool, isTunnelOnly: Bool) {
+        await withCheckedContinuation { (cont: CheckedContinuation<(exists: Bool, isTunnelOnly: Bool), Never>) in
+            DispatchQueue.global().async {
+                cont.resume(returning: PortHolder.listenerFacts(port: port))
+            }
+        }
     }
 
     /// 複数ポートの `probeStatus` を**並列に**撃つ(1ポートずつ直列に撃つと、上限 2 秒 × ポート数を
