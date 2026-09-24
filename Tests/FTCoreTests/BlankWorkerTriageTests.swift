@@ -12,11 +12,37 @@ import UniformTypeIdentifiers
 import FTTestSupport
 @testable import FTCore
 
+/// 撮るたびに違う絵を返せるようにするための箱(修復で画面が戻る形を作る)。
+/// 参照型なのはテストが握ったまま中身を差し替えるため
+private final class ShotBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: Data
+    init(_ data: Data) { storage = data }
+    var data: Data {
+        get { lock.lock(); defer { lock.unlock() }; return storage }
+        set { lock.lock(); storage = newValue; lock.unlock() }
+    }
+}
+
+/// ログを取りこぼさずに集める(`log` は async 文脈から同期に呼ばれるので Task に逃がさない)
+private final class Collector: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [String] = []
+    func add(_ line: String) { lock.lock(); storage.append(line); lock.unlock() }
+    var lines: [String] { lock.lock(); defer { lock.unlock() }; return storage }
+}
+
+/// 撃たれた修復の記録
+private actor Repaired {
+    private(set) var labels: [String] = []
+    func add(_ label: String) { labels.append(label) }
+}
+
 /// 判定に要らない口は呼ばれない前提のドライバ。**スクショだけは差し替えられる** ——
 /// `excludeBlankScreenWorkers` 経由の経路はドライバから撮るので、既定の空 Data のままだと
 /// 「デコード不能 = 健全」で素通りし、暗い実機の経路を1度も踏まないテストになる
 private struct UnusedDriver: AppDriver {
-    var shot: Data = Data()
+    var shots: ShotBox = ShotBox(Data())
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
     }
@@ -34,33 +60,100 @@ private struct UnusedDriver: AppDriver {
     func type(ref: Int?, text: String) async throws {}
     func swipe(_ direction: FTSwipeDirection) async throws {}
     func press(ref: Int, duration: Double) async throws {}
-    func screenshot() async throws -> Data { shot }
+    func screenshot() async throws -> Data { shots.data }
     func terminate() async throws {}
 }
 
 final class BlankWorkerTriageTests: XCTestCase {
 
     private func worker(_ label: String, platform: String = "ios",
-                        physical: Bool = false, shot: Data = Data()) -> RunWorker {
-        RunWorker(label: label, platform: platform, driver: UnusedDriver(shot: shot),
+                        physical: Bool = false, shot: Data = Data(),
+                        box: ShotBox? = nil) -> RunWorker {
+        RunWorker(label: label, platform: platform,
+                  driver: UnusedDriver(shots: box ?? ShotBox(shot)),
                   connection: DriverConnection(platform: platform, physical: physical),
                   logicalName: label)
     }
 
     // MARK: - 対象の選び方
 
-    /// **iOS の仮想デバイス + 両 OS の実機**。Android の仮想デバイスだけは修復つきの自前
-    /// トリアージが既にあるので二重に撃たない。実機は修復手段が無いのでこちらで観測する
-    /// (誤断しないのは判定側の担保 = `.darkScreenPhysical` が非確定。下のテスト)
-    func testCandidatesAreVirtualIOSAndEveryPhysicalDevice() {
+    /// 除外・回復まで行う本体の対象は **iOS の仮想デバイスだけ**。Android の仮想デバイスは
+    /// 修復つきの自前トリアージが担当し、**実機は `observePhysicalScreens` が別に見る**
+    /// (除外の門を通る側に実機を乗せない)
+    func testOnlyVirtualIOSWorkersAreCandidates() {
         XCTAssertTrue(BlankWorkerTriage.isCandidate(worker("sim")))
         XCTAssertFalse(BlankWorkerTriage.isCandidate(worker("emu", platform: "android")),
                        "Android の仮想デバイスは自前のトリアージ(修復つき)が担当する")
-        XCTAssertTrue(BlankWorkerTriage.isCandidate(worker("iphone", physical: true)),
-                      "実機は修復を持たないこちらで観測する")
-        XCTAssertTrue(BlankWorkerTriage.isCandidate(worker("pixel", platform: "android",
-                                                          physical: true)),
-                      "Android 実機もこちら(あちらは仮想デバイスだけを見る)")
+        XCTAssertFalse(BlankWorkerTriage.isCandidate(worker("iphone", physical: true)),
+                       "実機は observePhysicalScreens が見る(除外しない側)")
+        XCTAssertFalse(BlankWorkerTriage.isCandidate(worker("pixel", platform: "android",
+                                                           physical: true)))
+    }
+
+    // MARK: - 実機: 起きているのに一様
+
+    /// **端末が起きていると申告しているのに一様 = 消灯ではない**。`darkScreenPhysical` と
+    /// 別の根拠になり、ここだけが修復(sleep/wake)の対象になる
+    func testAwakePhysicalDeviceGetsItsOwnEvidence() async {
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "serial-1", screenshot: { Self.blankPNG },
+            physical: true, awake: { true }, environment: [:])
+        XCTAssertEqual(verdict.evidence, [.awakeButBlankPhysical])
+        XCTAssertFalse(verdict.isFrozen, "材料は揃っていてもまだ確定させない(警告から入れる規律)")
+    }
+
+    /// **読めなかった(nil)は消灯側へ倒す**。true に丸めると消灯した端末に修復を撃つ
+    func testUnknownWakefulnessFallsBackToDarkScreen() async {
+        for probe in [{ nil as Bool? }, { false as Bool? }] {
+            let verdict = await BlankWorkerTriage.observedVerdict(
+                key: "serial-1", screenshot: { Self.blankPNG },
+                physical: true, awake: probe, environment: [:])
+            XCTAssertEqual(verdict.evidence, [.darkScreenPhysical])
+        }
+    }
+
+    /// **修復は「起きているのに一様」の台にだけ撃つ**。消灯かもしれない台には撃たない
+    func testRepairFiresOnlyForTheAwakeButBlankDevice() async {
+        let awakeWorker = worker("pixel-awake", platform: "android",
+                                 physical: true, shot: Self.blankPNG)
+        let darkWorker = worker("pixel-dark", platform: "android",
+                                physical: true, shot: Self.blankPNG)
+        let repaired = Repaired()
+        await BlankWorkerTriage.observePhysicalScreens(
+            [awakeWorker, darkWorker],
+            awake: { $0.label == "pixel-awake" ? true : nil },
+            repair: { await repaired.add($0.label) },
+            environment: [:], log: { _ in })
+        let labels = await repaired.labels
+        XCTAssertEqual(labels, ["pixel-awake"], "消灯かもしれない台には撃たない")
+    }
+
+    /// **修復で戻ったら警告を出さない**。判定し直しは修復側の戻り値ではなく、
+    /// こちらの観測器でやる(あちらの再判定はエミュレータ較正の閾値)
+    func testRepairThatBringsTheScreenBackIsNotWarned() async {
+        let box = ShotBox(Self.blankPNG)
+        let device = worker("pixel", platform: "android", physical: true, box: box)
+        let log = Collector()
+        await BlankWorkerTriage.observePhysicalScreens(
+            [device], awake: { _ in true },
+            repair: { _ in box.data = Self.contentPNG },
+            environment: [:], log: { log.add($0) })
+        XCTAssertTrue(log.lines.contains { $0.contains("came back") }, "戻ったことを言う")
+        XCTAssertFalse(log.lines.contains { $0.contains("still renders nothing") },
+                       "戻ったのに警告を残さない")
+    }
+
+    /// 修復しても戻らなければ**警告のまま続行**(レーンからは外さない = 返り値が無いので
+    /// 構造的に外せない)。文言は「手で見ろ・ツールは実機を再起動しない」まで言う
+    func testDeviceThatDoesNotComeBackIsWarnedAndKept() async {
+        let device = worker("pixel", platform: "android", physical: true,
+                            box: ShotBox(Self.blankPNG))
+        let log = Collector()
+        await BlankWorkerTriage.observePhysicalScreens(
+            [device], awake: { _ in true }, repair: { _ in },
+            environment: [:], log: { log.add($0) })
+        XCTAssertTrue(log.lines.contains { $0.contains("still renders nothing") })
+        XCTAssertTrue(log.lines.contains { $0.contains("does not reboot a physical device") })
     }
 
     /// **実機の一様フレームは確定させない**。消灯が同じ絵を出すので、確定させると

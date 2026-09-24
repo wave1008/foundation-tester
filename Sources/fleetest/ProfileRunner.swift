@@ -451,7 +451,9 @@ enum ProfileRunner {
         // **`api run` はワーカーが混在リストなので既存の1本で両 OS を見ている**が、こちらは
         // iOS レーンが別関数なので Android 側にも要る(片方だけだと `fleetest run` の実機が
         // 無観測のまま。`PhysicalDarkScreenWiringTests` が両経路の配線を固定する)
-        await BlankWorkerTriage.observePhysicalScreens(workers) { ConsoleOut.out($0) }
+        await BlankWorkerTriage.observePhysicalScreens(
+            workers, awake: PhysicalScreenProbes.awake, repair: PhysicalScreenProbes.cycleScreen
+        ) { ConsoleOut.out($0) }
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
                 message: "no usable devices (every Android device went blank)")

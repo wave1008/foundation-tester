@@ -28,6 +28,13 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
     /// これが無かった頃、run 前トリアージもモニターも実機を丸ごと除外していた
     /// (= 実機の異常は何も見えなかった)
     case darkScreenPhysical
+    /// **実機が「起きている」と申告しているのに一様**。`darkScreenPhysical` との違いは
+    /// 「消灯ではない」と端末側の状態で言えること(Android の `mWakefulness=Awake`)= 絵だけでは
+    /// 分けられなかった2つを分ける材料。**それでも確定はさせない**(新しい検知は警告から入れる規律)。
+    /// 代わりに**無害な修復(画面の sleep/wake)だけは疑いの段階で撃つ** —— run 開始時の
+    /// `wakeIfAsleep` と同種の操作で、再起動のような取り返しのつかない副作用が無い。
+    /// **iOS 実機ではこの根拠は立たない**(点灯状態を取る手段が無いため)
+    case awakeButBlankPhysical
 
     /// **単独で凍結と断じてよい根拠か**。**新しい根拠を警告から入れるときの分岐点はここ** ——
     /// false にすると `isSuspected` 経由の警告(BlankWorkerTriage のログ)だけが出て、
@@ -39,6 +46,10 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
         // 消灯との区別が付かないので断じない。**確定させるには「消灯ではない」と言える
         // 材料(端末側の display state)を先に足すこと** —— 絵だけでは永久に分けられない
         case .darkScreenPhysical: return false
+        // 材料は揃っているが**まだ確定させない**(警告から入れる規律)。除外・レーン離脱へ
+        // 昇格させるなら、実運用で真陽性率を測ってから。修復は疑いのまま撃ってよい
+        // (sleep/wake は無害)ので、昇格しなくても実害は回復する
+        case .awakeButBlankPhysical: return false
         }
     }
 
@@ -49,6 +60,7 @@ public enum FrozenEvidence: String, Codable, Sendable, CaseIterable {
         case .inputNotLanding: return "input-not-landing"
         case .injected: return "injected"
         case .darkScreenPhysical: return "dark-screen-physical"
+        case .awakeButBlankPhysical: return "awake-but-blank-physical"
         }
     }
 }
@@ -110,12 +122,17 @@ public struct FrozenVerdict: Codable, Sendable, Equatable {
     ///
     /// `physical` は**同じ観測(一様な絵)を別の根拠へ写すため**だけに要る —— 実機は消灯が
     /// 同じ絵を出すので `.darkScreenPhysical`(非確定)へ落とす。呼び手が真偽値を自前で
-    /// 分岐すると、run 側とモニター側で写し方がズレる(この型が唯一の定義元である理由と同じ)
+    /// 分岐すると、run 側とモニター側で写し方がズレる(この型が唯一の定義元である理由と同じ)。
+    ///
+    /// `awake` は実機のときだけ見る**端末側の申告**(Android の `mWakefulness`)。
+    /// **nil = 読めなかった、は「消灯かもしれない」側へ倒す** —— 読めないことを
+    /// 「起きている」と読むと、消灯した端末に修復を撃つ側へ倒れる
     public static func observe(uniformBlank: Bool, injected: Bool = false,
-                               physical: Bool = false) -> FrozenVerdict {
+                               physical: Bool = false, awake: Bool? = nil) -> FrozenVerdict {
         if injected { return FrozenVerdict([.injected]) }
         guard uniformBlank else { return FrozenVerdict([]) }
-        return FrozenVerdict([physical ? .darkScreenPhysical : .uniformBlank])
+        guard physical else { return FrozenVerdict([.uniformBlank]) }
+        return FrozenVerdict([awake == true ? .awakeButBlankPhysical : .darkScreenPhysical])
     }
 }
 

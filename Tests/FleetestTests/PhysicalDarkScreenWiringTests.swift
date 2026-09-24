@@ -36,12 +36,21 @@ final class PhysicalDarkScreenWiringTests: XCTestCase {
     ///   - ApiRunCommand: **ワーカーが混在リスト**なので既存の `excludeBlankScreenWorkers`
     ///     (iOS の供給口2つ)が実機も拾う = 観測専用の口は要らない
     func testBothRunPathsObservePhysicalScreens() throws {
-        XCTAssertEqual(occurrences(of: "BlankWorkerTriage.observePhysicalScreens",
-                                   in: try source("ProfileRunner.swift")), 1,
-                       "run 経路は Android ワーカーの観測を失っている")
-        XCTAssertEqual(occurrences(of: "BlankWorkerTriage.excludeBlankScreenWorkers",
-                                   in: try source("ApiRunCommand.swift")), 2,
-                       "api run の供給口が変わった。混在リストで実機を拾えているか確かめること")
+        for file in ["ProfileRunner.swift", "ApiRunCommand.swift"] {
+            XCTAssertEqual(occurrences(of: "BlankWorkerTriage.observePhysicalScreens",
+                                       in: try source(file)), 1,
+                           "\(file): 実機の観測を失っている")
+        }
+    }
+
+    /// **材料と修復は両経路で同じものを渡す**。片方だけが渡すと、同じ端末について
+    /// `fleetest run` と `fleetest api run` で別の判定が出る(どちらも緑のまま通る)
+    func testBothRunPathsPassTheSameProbes() throws {
+        for file in ["ProfileRunner.swift", "ApiRunCommand.swift"] {
+            let text = try source(file)
+            XCTAssertTrue(text.contains("PhysicalScreenProbes.awake"), "\(file): awake の材料")
+            XCTAssertTrue(text.contains("PhysicalScreenProbes.cycleScreen"), "\(file): 修復")
+        }
     }
 
     /// Android ワーカーを作る `ProfileRunner` 側は、**Android 側のトリアージの直後**に通すこと。

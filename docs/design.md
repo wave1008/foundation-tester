@@ -2588,8 +2588,19 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `api monitor` が3周目に `frozen=true` を出し、新では3周とも false。
   **同じ消灯でも Pixel 3a は一様でない**(AOD で 54KB・`isUniformBlank=false`)ので、
   **機種で出方が変わる** —— 「実機なら必ず出る/出ない」と書かないこと。
-  **確定させたいなら「消灯ではない」と言える材料(端末側の display state)を先に足すこと**。
-  絵だけでは永久に分けられない
+  **「消灯ではない」と言える材料は Android にはある**(2026-09-25 に追加)。`dumpsys power` の
+  `mWakefulness=Awake` を `AndroidPhysicalDevice.reportedAwake` が引き、**起きていると申告して
+  いるのに一様**なら `.awakeButBlankPhysical` になる。**読めなければ nil = 消灯側へ倒す**
+  (true に丸めると消灯した端末へ修復を撃つ)。**iOS 実機にはこの材料が無い**
+  (点灯状態を取る手段が無く、消灯中はブリッジが応答せず絵も撮れない)ので
+  `.darkScreenPhysical` のまま = 観測だけ。
+  **`.awakeButBlankPhysical` もまだ確定させない**(警告から入れる規律)。代わりに
+  **無害な修復だけは疑いの段階で撃つ** —— 画面の sleep/wake(`AndroidPhysicalDevice.cycleScreen`)を
+  1回。**実機に再起動は撃たない**(持ち主の端末であり、iOS 実機では既知のウェッジに
+  `devicectl reboot` が効かない実測もある)。戻ったかは**こちらの観測器で判定し直す**
+  (修復側の戻り値を信じない = あちらの再判定はエミュレータ較正の閾値)。戻らなくても
+  **レーンからは外さない**。材料と修復は `PhysicalScreenProbes` に括って run / api run の
+  両経路へ同じものを渡す(`PhysicalDarkScreenWiringTests` が固定)
 - **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
   実行プロファイルの `containerInference` / DSL の `tap(containerInference:)`・`withoutContainerInference { }`。
   実装は `StepExecutor.execute` 冒頭の `Self.containerInferenceEnabled && (step.containerInference ?? 既定)` 1式)。

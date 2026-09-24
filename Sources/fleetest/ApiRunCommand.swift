@@ -1045,6 +1045,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
             workers = triage.workers
+            // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
+            // `adb reboot` を撃つ)。観測と無害な修復(画面の sleep/wake)だけをここで通す。
+            // 材料と修復は `PhysicalScreenProbes` に括ってあり、**run 経路と同じものを渡す**
+            // (`PhysicalDarkScreenWiringTests` が両経路の配線を固定する)
+            await BlankWorkerTriage.observePhysicalScreens(
+                workers, awake: PhysicalScreenProbes.awake, repair: PhysicalScreenProbes.cycleScreen
+            ) { logSupply($0) }
             // iOS も **shutdown → boot → ブリッジ張り直し**で回復を試み、駄目な個体だけ除外する
             // (BlankWorkerTriage 参照)。**この経路にも通すこと** ——
             // iOS ワーカーの供給口は「遅延合流(lateWorkers)」とここの2つで、片方だけだと穴が空く

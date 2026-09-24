@@ -54,15 +54,14 @@ public enum BlankWorkerTriage {
         return Result(workers: kept, excluded: excluded)
     }
 
-    /// 対象にするワーカーか。**iOS の仮想デバイス + 両 OS の実機**:
-    ///   - Android の**仮想デバイス**だけは自前のトリアージ(修復つき)が既にある
+    /// 除外・回復まで行う本体(`excludeBlankScreenWorkers`)が対象にするワーカーか。
+    /// **iOS の仮想デバイスだけ**:
+    ///   - Android の仮想デバイスは自前のトリアージ(修復つき)が既にある
     ///     (`ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers`)= 二重に撃たない
-    ///   - **実機は両 OS ともここで見る**。あちらは修復(sleep/wake・guest reboot)まで行うが、
-    ///     実機に撃ってよい修復が無いので、修復を持たないこちらで観測だけする。
-    ///     判定は `.darkScreenPhysical`(非確定)に落ちるので**除外も回復も撃たれない**
+    ///   - **実機は `observePhysicalScreens` が別に見る**。あちらは除外せず、無害な修復
+    ///     (画面の sleep/wake)だけを撃つ。ここに混ぜると、除外の門を通る側に実機が乗る
     public static func isCandidate(_ worker: RunWorker) -> Bool {
-        if worker.connection.physical { return true }
-        return worker.platform == "ios"
+        worker.platform == "ios" && !worker.connection.physical
     }
 
     /// 恒常 blank かを判定する(`samples` 回続けて一様フレームなら blank)。
@@ -101,11 +100,14 @@ public enum BlankWorkerTriage {
     /// 入力は端末の状態を変えてしまう(前面アプリが替わる・消灯中の端末が点く)ので、
     /// 「無害な入力」が存在しない。能動プローブを持てない代わりに判定を確定させない
     /// (`.darkScreenPhysical`)ことで釣り合いを取る
+    /// `awake` は実機のときだけ引く**端末側の申告**(Android の `mWakefulness`)。
+    /// **一様が確定してから引く** —— 健全な台に毎回 `dumpsys` を撃たないため
     public static func observedVerdict(
         key: String?,
         screenshot: () async -> Data?,
         nudge: (() async -> Data?)? = nil,
         physical: Bool = false,
+        awake: (() async -> Bool?)? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) async -> FrozenVerdict {
         if FrozenInjection.isInjected(key: key, environment: environment) {
@@ -119,7 +121,8 @@ public enum BlankWorkerTriage {
             // 入力で描画が戻った = 凍結ではない(拍動では区別できなかった側)
             return FrozenVerdict.observe(uniformBlank: false)
         }
-        return FrozenVerdict.observe(uniformBlank: true, physical: physical)
+        let awakeNow = physical ? await awake?() ?? nil : nil
+        return FrozenVerdict.observe(uniformBlank: true, physical: physical, awake: awakeNow)
     }
 
     /// 凍結したワーカーの label と根拠(並列判定)。健全機は1サンプルで即返るので、
@@ -129,7 +132,17 @@ public enum BlankWorkerTriage {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         nudge: (@Sendable (RunWorker) async -> Data?)? = nil
     ) async -> [String: FrozenVerdict] {
-        let candidates = workers.filter(isCandidate)
+        await verdicts(of: workers.filter(isCandidate), environment: environment, nudge: nudge)
+    }
+
+    /// **既に絞り込まれた**ワーカーの判定(候補の規則を持たない)。実機の観測は
+    /// `isCandidate`(iOS 仮想だけ)を通れないので、こちらを直接使う
+    static func verdicts(
+        of candidates: [RunWorker],
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        nudge: (@Sendable (RunWorker) async -> Data?)? = nil,
+        awake: (@Sendable (RunWorker) async -> Bool?)? = nil
+    ) async -> [String: FrozenVerdict] {
         guard !candidates.isEmpty else { return [:] }
         return await withTaskGroup(of: (String, FrozenVerdict).self,
                                    returning: [String: FrozenVerdict].self) { group in
@@ -140,6 +153,7 @@ public enum BlankWorkerTriage {
                         screenshot: { try? await worker.driver.screenshot() },
                         nudge: nudge.map { probe in { await probe(worker) } },
                         physical: worker.connection.physical,
+                        awake: awake.map { probe in { await probe(worker) } },
                         environment: environment)
                     return (worker.label, verdict)
                 }
@@ -165,7 +179,11 @@ public enum BlankWorkerTriage {
     private static func warnSuspected(_ verdicts: [String: FrozenVerdict],
                                       log: @escaping @Sendable (String) -> Void) {
         for (label, verdict) in verdicts.filter({ $0.value.isSuspected }).sorted(by: { $0.key < $1.key }) {
-            if verdict.evidence.contains(.darkScreenPhysical) {
+            if verdict.evidence.contains(.awakeButBlankPhysical) {
+                log("⚠️ \(label): the device still renders nothing although it reports being awake"
+                    + " — the run keeps this lane, but scenarios on it are likely to fail."
+                    + " Check the device by hand (the tool does not reboot a physical device)")
+            } else if verdict.evidence.contains(.darkScreenPhysical) {
                 log("⚠️ \(label): the physical device's screen is dark"
                     + " — it may simply be asleep, so the run does not treat it as frozen."
                     + " If the run fails on this lane, wake the device and check it by hand")
@@ -186,14 +204,46 @@ public enum BlankWorkerTriage {
     /// **公表(DeviceFrozenStore)はしない** —— `syncStore` は clearAll してから自分が見た台だけを
     /// publish するので、後続の iOS レーンの公表と潰し合う。モニターは自分の受動観測から
     /// 同じ根拠を組み立てるので、ここで公表しなくてもタイルの答えは変わらない
+    /// `awake` / `repair` は Android 実機でだけ渡る(iOS 実機は点灯状態を取る手段が無い)。
+    /// **修復を撃つのは「起きていると申告しているのに一様」= `.awakeButBlankPhysical` のときだけ** ——
+    /// 消灯かもしれない台(`.darkScreenPhysical`)には撃たない。撃つのは画面の sleep/wake だけで、
+    /// 戻らなくても**レーンからは外さない**(実機を run から落とす判断はしない)
     public static func observePhysicalScreens(
         _ workers: [RunWorker],
+        awake: (@Sendable (RunWorker) async -> Bool?)? = nil,
+        repair: (@Sendable (RunWorker) async -> Void)? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         log: @escaping @Sendable (String) -> Void
     ) async {
         let physical = workers.filter(\.connection.physical)
         guard !physical.isEmpty else { return }
-        warnSuspected(await frozenVerdicts(physical, environment: environment), log: log)
+        var verdicts = await verdicts(of: physical, environment: environment, awake: awake)
+
+        if let repair {
+            let stuck = verdicts
+                .filter { $0.value.evidence.contains(.awakeButBlankPhysical) }.keys.sorted()
+            for label in stuck {
+                guard let worker = physical.first(where: { $0.label == label }) else { continue }
+                log("⚠️ \(label): the device reports it is awake but nothing is rendering"
+                    + " — cycling the screen (sleep/wake) once")
+                await repair(worker)
+                // **判定し直しは同じ観測器で行う**(修復側の戻り値を信じない —— あちらの再判定は
+                // エミュレータ較正の閾値で、実機では別の答えを出しうる)
+                let after = await observedVerdict(
+                    key: deviceKey(worker),
+                    screenshot: { try? await worker.driver.screenshot() },
+                    physical: true,
+                    awake: awake.map { probe in { await probe(worker) } },
+                    environment: environment)
+                if after.evidence.isEmpty {
+                    log("✅ \(label): the screen came back after the sleep/wake cycle")
+                    verdicts.removeValue(forKey: label)
+                } else {
+                    verdicts[label] = after
+                }
+            }
+        }
+        warnSuspected(verdicts, log: log)
     }
 
     /// 回復を試みる回数の上限。**2回**: 1回で戻らない個体はもう1回でも戻らないことが多く、

@@ -3084,7 +3084,11 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   **2026-09-25 に観測だけは足した**(修復は今も無い): `BlankWorkerTriage` が両 OS の実機を
   対象に含め、一様な絵を `FrozenEvidence.darkScreenPhysical`(`isConclusive=false`)として
   **警告1行に留める** —— 消灯と wedge を分ける材料が無いので確定させない。
-  `adb reboot` を撃つ経路は上の3つのままで、そこに実機は入らない(docs/design.md の該当節)
+  `adb reboot` を撃つ経路は上の3つのままで、そこに実機は入らない(docs/design.md の該当節)。
+  **2026-09-25 に修復も入った(Android 実機だけ)**: `mWakefulness=Awake` なのに一様なら
+  画面の sleep/wake を1回撃つ(`AndroidPhysicalDevice.cycleScreen`)。**再起動は撃たない**・
+  **戻らなくてもレーンからは外さない**・**消灯かもしれない台には撃たない**。
+  iOS 実機は点灯状態を取る材料が無いので観測だけのまま
 - ブリッジ起動時のアニメーション無効化と `hidden_api_policy=1` は **実機では設定が永続する**
   (使い捨てのエミュレータと違う)。戻すときは端末の開発者オプションから
 - 検証実績: Pixel 4a(Android 13 / arm64)で E2E-Android 全 21 シナリオ×6 連続グリーン

@@ -122,6 +122,34 @@ public enum AndroidPhysicalDevice {
     }
 
     /// dumpsys power の mWakefulness(Awake / Dozing / Asleep)。取得できなければ Awake 扱い
+    /// 端末が「起きている」と申告しているか。**読めなければ nil**(既定を持たない) ——
+    /// 呼び手は「一様な絵が消灯によるものか」を決めるためにこれを引くので、読めないことを
+    /// true/false のどちらかに丸めると、消灯した端末に修復を撃つか、本物の wedge を見逃すかの
+    /// どちらかへ倒れる。**下の private `isAwake` とは既定が逆なので統合しない** ——
+    /// あちらは「起こし終わるまで待つ」ループの番人で、読めないときに待ち続けないよう true に倒す
+    public static func reportedAwake(serial: String) -> Bool? {
+        guard let adb = try? AndroidDriver.findADB(),
+              let output = try? Shell.run(
+                [adb, "-s", serial, "shell", "dumpsys", "power"], timeout: 15).output,
+              output.contains("mWakefulness=") else { return nil }
+        return output.contains("mWakefulness=Awake")
+    }
+
+    /// 画面を一度落として点け直す(描画バッファの組み直しを促す)。**実機に撃ってよい唯一の修復**で、
+    /// 再起動は撃たない(`adb reboot` は持ち主の端末を落とすうえ、iOS 実機では既知のウェッジに
+    /// 効かないことが実測済み)。エミュレータ側の `AndroidHealthProbe.repairBlankDisplay` と
+    /// **統合しない** —— あちらは gRPC 経路と、エミュレータ較正の閾値による再判定を内側に持つ
+    public static func cycleScreen(serial: String) async {
+        guard let adb = try? AndroidDriver.findADB() else { return }
+        func key(_ name: String) {
+            _ = try? Shell.run([adb, "-s", serial, "shell", "input", "keyevent", name], timeout: 10)
+        }
+        key("KEYCODE_SLEEP")
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        key("KEYCODE_WAKEUP")
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+    }
+
     private static func isAwake(adb: String, serial: String) -> Bool {
         guard let output = try? Shell.run(
             [adb, "-s", serial, "shell", "dumpsys", "power"], timeout: 15).output else { return true }
