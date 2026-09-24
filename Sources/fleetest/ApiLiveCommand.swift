@@ -21,6 +21,12 @@
 //   {"cmd":"press","x":<Double>,"y":<Double>,"duration":<秒>,"maxGestureSeconds":<秒省略可>}  座標ロングプレス
 //                                                       press/drag/pinch の秒数は既定 10 秒が上限。
 //                                                       maxGestureSeconds でこの1回だけ最大60秒まで上げられる
+//   {"cmd":"gesture","fingers":[{"points":[{"x":..,"y":..,"t":..}, ...]}, ...],
+//    "maxGestureSeconds":<秒省略可>}                    **軌跡モード(ライブ操作パネルの「軌跡」/
+//                                                        Shift+ドラッグ)専用** —— マウスの軌跡を離さず
+//                                                        1本のタッチとして再生する(GestureRequest と
+//                                                        同じワイヤ形。検査は FTCore.TouchGesture.validate
+//                                                        の1箇所。MCP の ft_gesture と共有)
 //   {"cmd":"launch","bundle":<String>}                  bundle ID / パッケージ名を起動
 //   {"cmd":"activate","bundle":<String>}               状態を保持したまま前面切替(未起動なら起動)
 //   {"cmd":"appSwitcher"}                               アプリスイッチャー(タスク一覧)を開く
@@ -43,27 +49,36 @@
 //
 // イベント(serve → stdout、1行1JSON。診断は stderr のみ):
 //   refresh 以外のコマンドはまず
-//     {"kind":"actionResult","ok":true,"error":null,"app":"<bundle ID>"|null}
-//     {"kind":"actionResult","ok":false,"error":"<説明>","app":"<bundle ID>"|null}
+//     {"kind":"actionResult","ok":true,"error":null,"app":"<bundle ID>"|null,"bridgeStarting":<Bool>}
+//     {"kind":"actionResult","ok":false,"error":"<説明>","app":"<bundle ID>"|null,"bridgeStarting":<Bool>}
 //   のどちらかを出し、続けて(操作の成否を問わず)観測イベント
 //     {"kind":"snapshot","ok":true,"error":null,"platform":"ios"|"android",
 //      "screen":{"width":..,"height":..},"image":"<base64 JPEG>",
 //      "elements":[{"ref":..,"type":"..","label":..|null,"identifier":..|null,"value":..|null,
 //                    "frame":{"x":..,"y":..,"width":..,"height":..}}, ...],
-//      "notes":[<String>, ...]}   観測そのものへの注記(鮮度警告等。FTCore.StaleFrameDetector。
-//                                 無ければ空配列。elements と違い null にしない)
+//      "notes":[<String>, ...],"bridgeStarting":<Bool>}   観測そのものへの注記(鮮度警告等。
+//                                 FTCore.StaleFrameDetector。無ければ空配列。elements と違い null にしない)
 //     {"kind":"snapshot","ok":false,"error":"<説明>","platform":null,"screen":null,"image":null,
-//      "elements":null,"notes":[]}
+//      "elements":null,"notes":[],"bridgeStarting":<Bool>}
 //   を出す(操作後の追加waitは無し。ブリッジの操作応答=UI整定済みのため)。
 //   refresh はこの観測イベント1行だけを出す(actionResult は出さない)。
-//   frame は {"kind":"frame","ok":..,"error":..,"image":"<base64 JPEG>"|null} の1行だけを出す
-//   (actionResult・snapshot は出さない。ライブ操作パネルの自動画面更新用)。
+//   frame は {"kind":"frame","ok":..,"error":..,"image":"<base64 JPEG>"|null,"bridgeStarting":<Bool>}
+//   の1行だけを出す(actionResult・snapshot は出さない。ライブ操作パネルの自動画面更新用)。
 //   拡張側は actionResult が ok:false のとき、続く snapshot イベントは画面へ反映しない
 //   (直前の表示を保持したままエラーを表示する)。
 //   app は**その操作を撃った先**(セッションの向き先)。ライブ操作はセッションを前面のものへ
 //   追従させるので、ホーム画面・別のアプリを触った操作もここへ来る —— 拡張はこれを見て
 //   レコーディングに載せるかを決める(対象アプリ以外の操作は記録しない)。iOS のみ・
 //   分からなければ null(拡張は null を従来どおり「対象アプリの操作」として扱う)。
+//   bridgeStarting: **必須**。`LiveBridgeAutoStarter` が自動起動を進行中(.starting)かどうかを
+//   イベントの時点で読んだ値(starter が無ければ常に false)。ok の真偽を問わず全イベントに載る
+//   (annotated が noteConnectionRefused() で idle→starting へ遷移させ得るため、失敗イベントでは
+//   annotated の**後**に読む=たった今始まった自動起動も true になる)。拡張はこれを見て、
+//   起動中の失敗を「エラー」ではなく「接続中」の中立表示にする(自動で撃ち直しはしない)。
+//   **error 文言は自動起動の進捗を運ばない** —— 従来の "(Auto-starting the XCUITest bridge. …)"
+//   サフィックスは廃止し、進捗はこのフラグだけで伝える(LiveBridgeAutoStarter.suffix() 参照。
+//   起動が2回連続で失敗したときの "(Bridge auto-start failed: …)" は引き続き error 文言に残る
+//   =対処が要る本物のエラーのため)。
 //
 // 座標契約: snapshot の screen / elements[].frame はポイント座標。
 //
@@ -76,10 +91,11 @@
 // AsyncStream で橋渡しし SIGTERM/SIGINT は continuation.finish() で for-await を抜けさせる。
 //
 // --udid(iOS のみ): 指定時、DriverError.bridgeConnectionRefused を tap 等の実行時・観測
-// (emitObservation)時に検知すると LiveBridgeAutoStarter がブリッジを自動起動し、起動状況を
-// エラー文言に付記する(詳細は LiveBridgeAutoStarter.swift)。自動フレーム(emitFrame)は状況
-// 付記のみで起動はトリガーしない。serve 起動時に /status の protocolVersion を確認し、
-// 旧ビルドのブリッジは自動で再起動する。**resolve が返した宛先は udid で本人確認する**
+// (emitObservation)時に検知すると LiveBridgeAutoStarter がブリッジを自動起動し、進行状況は
+// 全イベント共通の bridgeStarting フラグ(上記)で伝える(詳細は LiveBridgeAutoStarter.swift)。
+// 自動フレーム(emitFrame)は状況の反映のみで起動はトリガーしない。serve 起動時に /status の
+// protocolVersion を確認し、旧ビルドのブリッジは自動で再起動する。
+// **resolve が返した宛先は udid で本人確認する**
 // (FTCore.BridgeIdentityCheck。実地: 別デバイスの生きたブリッジを掴んで操作を撃ち、版差を
 // 理由に止めて建て直した実害がある)。**`--port` を明示していれば**不一致は
 // bridgeIdentityMismatch で断つ(利用者が決めた宛先を勝手に変えない)。**既定ポートへの
@@ -424,11 +440,13 @@ struct ApiLiveServe: AsyncParsableCommand {
             // 再起動される(実地: launch/pinch/tap の型違い行がこれで無応答のまま再起動を誘発した)。
             // frame は frame イベント1行だけ(actionResult は出さない=通常の frame 経路と同形)。
             // それ以外は actionResult(ok:false) に続けて観測イベントを出す(通常経路と同形)
+            let starting = await bridgeStartingFlag(starter)
             if command.cmd == "frame" {
-                emitLine(ApiLiveFrameEvent(ok: false, error: decodeError, image: nil))
+                emitLine(ApiLiveFrameEvent(ok: false, error: decodeError, image: nil, bridgeStarting: starting))
                 return
             }
-            emitLine(ApiLiveActionResultEvent(ok: false, error: decodeError, app: follower?.sessionTarget))
+            emitLine(ApiLiveActionResultEvent(ok: false, error: decodeError, app: follower?.sessionTarget,
+                                              bridgeStarting: starting))
             await follower?.follow(driver: driver)
             await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
                                   staleFrameTracker: staleFrameTracker)
@@ -444,10 +462,13 @@ struct ApiLiveServe: AsyncParsableCommand {
             do {
                 try await perform(command: command, driver: driver, follower: follower,
                                   ownAppBundleID: ownAppBundleID)
-                emitLine(ApiLiveActionResultEvent(ok: true, error: nil, app: follower?.sessionTarget))
+                emitLine(ApiLiveActionResultEvent(ok: true, error: nil, app: follower?.sessionTarget,
+                                                  bridgeStarting: await bridgeStartingFlag(starter)))
             } catch {
                 let message = await annotated(error, starter: starter, triggering: true, port: port)
-                emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget))
+                // **annotated の後で読む**: noteConnectionRefused() が idle→starting へ遷移させ得るため
+                emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget,
+                                                  bridgeStarting: await bridgeStartingFlag(starter)))
             }
         }
         // **観測の直前にもう一度追従させる**: 直前の操作で前面が変わっている(ホームへ戻った・
@@ -455,6 +476,14 @@ struct ApiLiveServe: AsyncParsableCommand {
         await follower?.follow(driver: driver)
         await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
                               staleFrameTracker: staleFrameTracker)
+    }
+
+    /// 各イベントの `bridgeStarting` フィールドの唯一の算出元(starter が無ければ false)。
+    /// **失敗イベントでは必ず annotated(...) の後に呼ぶこと** —— annotated が
+    /// noteConnectionRefused() 経由で starter を idle→starting へ遷移させ得るため、先に読むと
+    /// 遷移前の値(false)を拡張へ渡し、たった今始まった自動起動を「していない」と報告する
+    private func bridgeStartingFlag(_ starter: LiveBridgeAutoStarter?) async -> Bool {
+        await starter?.isStarting ?? false
     }
 
     /// error が DriverError.bridgeConnectionRefused のときだけ starter のサフィックスを連結する
@@ -585,7 +614,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// あちらは対象のアプリを引数で名指ししており、追従させると自分で決めた向き先を上書きする
     private static func followsFrontmost(_ cmd: String) -> Bool {
         ["tap", "type", "clear", "hideKeyboard", "swipe", "drag", "doubleTap", "pinch", "press",
-         "back", "appSwitcher", "home"].contains(cmd)
+         "gesture", "back", "appSwitcher", "home"].contains(cmd)
     }
 
     /// launch/activate の前に確かめる(門は InstalledAppCheck.launchGuard の1箇所。MCP の
@@ -713,6 +742,22 @@ struct ApiLiveServe: AsyncParsableCommand {
                 throw ServeCommandError.invalidArguments("press requires x/y/duration")
             }
             try await driver.press(x: x, y: y, duration: duration)
+        case "gesture":
+            // **判定は TouchGesture.validate の1箇所**(MCP の ft_gesture と共有。DSL/MCP/ライブ操作の
+            // 3経路が同じ門を通る)。座標は webview が既に device 座標へ換算済み(このコマンドの唯一の
+            // 発生源は軌跡モード)なので、resolve(比率写像)は経由せず validate へ直接渡す
+            guard let fingers = command.fingers, !fingers.isEmpty else {
+                throw ServeCommandError.invalidArguments("gesture requires a non-empty fingers array")
+            }
+            let gestureScreen = try await driver.snapshot().screen
+            let cap = command.maxGestureSeconds ?? BridgeAPI.defaultMaxGestureSeconds
+            switch TouchGesture.validate(GestureRequest(fingers: fingers), screen: gestureScreen,
+                                         maxGestureSeconds: cap) {
+            case .failure(let rejection):
+                throw ServeCommandError.invalidArguments(rejection.message)
+            case .success(let validated):
+                try await driver.gesture(validated)
+            }
         case "launch":
             guard let bundle = command.bundle, !bundle.isEmpty else {
                 throw ServeCommandError.invalidArguments("launch requires a non-empty bundle")
@@ -818,27 +863,33 @@ struct ApiLiveServe: AsyncParsableCommand {
                 ok: true, error: nil,
                 platform: driverOptions.resolvedPlatform,
                 screen: ApiLiveScreenSize(width: snap.screen.width, height: snap.screen.height),
-                image: jpeg.data.base64EncodedString(), elements: elements, notes: notes))
+                image: jpeg.data.base64EncodedString(), elements: elements, notes: notes,
+                bridgeStarting: await bridgeStartingFlag(starter)))
         } catch {
             let message = await annotated(error, starter: starter, triggering: true, port: port)
+            // **annotated の後で読む**(bridgeStartingFlag のコメント参照)
             emitLine(ApiLiveSnapshotEvent(
                 ok: false, error: message,
-                platform: nil, screen: nil, image: nil, elements: nil, notes: []))
+                platform: nil, screen: nil, image: nil, elements: nil, notes: [],
+                bridgeStarting: await bridgeStartingFlag(starter)))
         }
     }
 
     /// スクリーンショットのみの観測イベント(kind:"frame")。自動画面更新用に AX スナップショット
     /// を省いて軽量化している(要素一覧は更新されない=鮮度判定に要る木が無いので撃たない)。
-    /// 自動フレームは受動的観測のため起動はトリガーせず、既知の状態(starting/failed)があれば
-    /// 付記するだけ
+    /// 自動フレームは受動的観測のため起動はトリガーせず、starter の既知の状態を bridgeStarting へ
+    /// 反映する(failed のときだけ error にも文言が付く)
     private func emitFrame(driver: AppDriver, starter: LiveBridgeAutoStarter?, port: UInt16) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
-            emitLine(ApiLiveFrameEvent(ok: true, error: nil, image: jpeg.data.base64EncodedString()))
+            emitLine(ApiLiveFrameEvent(ok: true, error: nil, image: jpeg.data.base64EncodedString(),
+                                       bridgeStarting: await bridgeStartingFlag(starter)))
         } catch {
             let message = await annotated(error, starter: starter, triggering: false, port: port)
-            emitLine(ApiLiveFrameEvent(ok: false, error: message, image: nil))
+            // **annotated の後で読む**(bridgeStartingFlag のコメント参照)
+            emitLine(ApiLiveFrameEvent(ok: false, error: message, image: nil,
+                                       bridgeStarting: await bridgeStartingFlag(starter)))
         }
     }
 
@@ -949,6 +1000,9 @@ struct ApiLiveServeCommand {
     /// press/drag/pinch の秒数上限をこの1回だけ引き上げる(nil = 既定
     /// `BridgeAPI.defaultMaxGestureSeconds` = 10 秒。最大 `BridgeAPI.gestureSecondsCeiling` = 60 秒)
     let maxGestureSeconds: Double?
+    /// gesture コマンド専用(ワイヤ形は GestureRequest.fingers そのまま)。座標は既に device 座標
+    /// (webview 側で pointFromClick を通した後)なので、ここでは比率写像を経由しない
+    let fingers: [GestureFinger]?
     /// 型違いの引数のうち1件目の説明(無ければ nil)。cmd 自体はこの型を作れている時点で読めている
     let decodeError: String?
 
@@ -970,12 +1024,59 @@ struct ApiLiveServeCommand {
         duration = Self.doubleField(raw, "duration", error: &error)
         scale = Self.doubleField(raw, "scale", error: &error)
         maxGestureSeconds = Self.doubleField(raw, "maxGestureSeconds", error: &error)
+        fingers = Self.fingersField(raw, "fingers", error: &error)
         // **秒数の相互検査は値域(doubleField)の隣**(MCPServer.call と同じ入口の粒度。
         // ArgumentBounds.gestureCapViolation は BridgeAPI の2関数を呼ぶだけ)
         if error == nil, let violation = ArgumentBounds.gestureCapViolation(raw) {
             error = violation
         }
         decodeError = error
+    }
+
+    /// "fingers"(gesture コマンド専用)。ワイヤ形は `GestureRequest.fingers` と同じ
+    /// (`[{"points":[{"x":..,"y":..,"t":..}, ...]}, ...]`)。積み上げ・本数・時刻の単調性・画面内の
+    /// 検査は `TouchGesture.validate` に委ねる(重複させない)—— ここは型違いだけを見る
+    private static func fingersField(
+        _ raw: [String: Any], _ key: String, error: inout String?
+    ) -> [GestureFinger]? {
+        guard let value = raw[key] else { return nil }
+        guard let rawFingers = value as? [Any] else {
+            if error == nil { error = typeError(key: key, value: value, expected: "an array", numeric: false) }
+            return nil
+        }
+        var fingers: [GestureFinger] = []
+        for (fingerIndex, rawFinger) in rawFingers.enumerated() {
+            guard let fingerDict = rawFinger as? [String: Any] else {
+                if error == nil {
+                    error = "\(key)[\(fingerIndex)] must be an object (got \(describeValue(rawFinger)))"
+                }
+                return nil
+            }
+            guard let rawPoints = fingerDict["points"] as? [Any] else {
+                if error == nil { error = "\(key)[\(fingerIndex)].points must be an array" }
+                return nil
+            }
+            var points: [GesturePoint] = []
+            for (pointIndex, rawPoint) in rawPoints.enumerated() {
+                guard let pointDict = rawPoint as? [String: Any],
+                      let x = numberValue(pointDict["x"]), let y = numberValue(pointDict["y"]),
+                      let t = numberValue(pointDict["t"]) else {
+                    if error == nil {
+                        error = "\(key)[\(fingerIndex)].points[\(pointIndex)] must be an object with"
+                            + " numeric x/y/t"
+                    }
+                    return nil
+                }
+                points.append(GesturePoint(x: x, y: y, t: t))
+            }
+            fingers.append(GestureFinger(points: points))
+        }
+        return fingers
+    }
+
+    /// {"scale":2} のような整数値も number として通す(NSNumber は Int/Double のどちらでも来うる)
+    private static func numberValue(_ value: Any?) -> Double? {
+        (value as? Double) ?? (value as? Int).map(Double.init)
     }
 
     /// 型違い・値域違反とも1件目のエラー文だけを残す(複数同時に違っても最初の1つで足りる)。
@@ -1053,8 +1154,10 @@ private struct ApiLiveActionResultEvent: Encodable {
     let ok: Bool
     let error: String?
     let app: String?
+    /// LiveBridgeAutoStarter.isStarting(ファイル冒頭プロトコル・bridgeStartingFlag 参照)
+    let bridgeStarting: Bool
 
-    private enum CodingKeys: String, CodingKey { case kind, ok, error, app }
+    private enum CodingKeys: String, CodingKey { case kind, ok, error, app, bridgeStarting }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -1062,6 +1165,7 @@ private struct ApiLiveActionResultEvent: Encodable {
         try container.encode(ok, forKey: .ok)
         try container.encode(error, forKey: .error)
         try container.encode(app, forKey: .app)
+        try container.encode(bridgeStarting, forKey: .bridgeStarting)
     }
 }
 
@@ -1088,9 +1192,11 @@ private struct ApiLiveSnapshotEvent: Encodable {
     let image: String?
     let elements: [ApiLiveElement]?
     let notes: [String]
+    /// LiveBridgeAutoStarter.isStarting(ファイル冒頭プロトコル・bridgeStartingFlag 参照)
+    let bridgeStarting: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case kind, ok, error, platform, screen, image, elements, notes
+        case kind, ok, error, platform, screen, image, elements, notes, bridgeStarting
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1103,6 +1209,7 @@ private struct ApiLiveSnapshotEvent: Encodable {
         try container.encode(image, forKey: .image)
         try container.encode(elements, forKey: .elements)
         try container.encode(notes, forKey: .notes)
+        try container.encode(bridgeStarting, forKey: .bridgeStarting)
     }
 }
 
@@ -1112,8 +1219,10 @@ private struct ApiLiveFrameEvent: Encodable {
     let ok: Bool
     let error: String?
     let image: String?
+    /// LiveBridgeAutoStarter.isStarting(ファイル冒頭プロトコル・bridgeStartingFlag 参照)
+    let bridgeStarting: Bool
 
-    private enum CodingKeys: String, CodingKey { case kind, ok, error, image }
+    private enum CodingKeys: String, CodingKey { case kind, ok, error, image, bridgeStarting }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
@@ -1121,6 +1230,7 @@ private struct ApiLiveFrameEvent: Encodable {
         try container.encode(ok, forKey: .ok)
         try container.encode(error, forKey: .error)
         try container.encode(image, forKey: .image)
+        try container.encode(bridgeStarting, forKey: .bridgeStarting)
     }
 }
 

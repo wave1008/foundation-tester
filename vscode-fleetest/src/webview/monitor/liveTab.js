@@ -8,6 +8,7 @@ import { vscode, persistedState } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { displayAspect, fitScreenSize } from './liveScreenFit.js';
+import { thinTracePoints } from './traceThinning.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -34,8 +35,12 @@ const screenshotPlaceholder = document.getElementById('live-screenshot-placehold
 const dragOverlay = document.getElementById('live-drag-overlay');
 const dragLine = document.getElementById('live-drag-line');
 const dragStartDot = document.getElementById('live-drag-start');
+const traceToggle = document.getElementById('live-btn-trace-toggle');
 const connOverlay = document.getElementById('live-conn-overlay');
 const connDetail = document.getElementById('live-conn-detail');
+// bridgeStarting(ブリッジの自動起動が進行中)専用の中立表示。conn-overlay(エラー)とは別要素
+// (host: monitorLiveController.ts の applyBridgeStarting・文言は monitorHtml.ts で host 側 t() 済み)。
+const connectingOverlay = document.getElementById('live-connecting-overlay');
 const busyOverlay = document.getElementById('live-busy-overlay');
 const busyMessage = document.getElementById('live-busy-message');
 
@@ -194,9 +199,17 @@ function showBanner(text) {
   banner.classList.add('visible');
 }
 
-function showActionError(text) {
-  if (!text) { actionError.classList.remove('visible'); actionErrorText.textContent = ''; return; }
+// neutral: true は bridgeStarting 中の操作失敗(live.bridgeStartingActionNotice)専用。
+// エラー色にしない(#live-action-error.neutral。style.css 参照)
+function showActionError(text, neutral) {
+  if (!text) {
+    actionError.classList.remove('visible');
+    actionError.classList.remove('neutral');
+    actionErrorText.textContent = '';
+    return;
+  }
   actionErrorText.textContent = text;
+  actionError.classList.toggle('neutral', !!neutral);
   actionError.classList.add('visible');
 }
 // **利用者が消せる口** —— 自動で消えるのは host が復帰を検知した接続系の文言だけで、
@@ -640,6 +653,18 @@ function hideDragOverlay() {
   dragOverlay.classList.remove('visible');
 }
 
+// 「軌跡」トグル(ツールバー)。ON の間、動かして離すドラッグは dragPoints(1回のスワイプ合成)
+// ではなく tracePoints(離さない1本のタッチとして軌跡どおり再生)を送る。押下時に Shift を
+// 押していた場合も同じ扱い(一時的な軌跡モード。トグルは変えない)。
+traceToggle.addEventListener('click', () => {
+  const pressed = traceToggle.getAttribute('aria-pressed') === 'true';
+  traceToggle.classList.toggle('toggled', !pressed);
+  traceToggle.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+});
+function isTraceToggleOn() {
+  return traceToggle.getAttribute('aria-pressed') === 'true';
+}
+
 function handleScreenPointerDown(event) {
   if (busy || !lastScreen || event.button !== 0) { return; }
   // 既定動作(画像ドラッグ・テキスト選択の開始)の抑止。dragstart 抑止だけでは環境により
@@ -647,13 +672,18 @@ function handleScreenPointerDown(event) {
   event.preventDefault();
   const el = event.currentTarget;
   const rect = el.getBoundingClientRect();
+  const downAt = performance.now();
   dragStart = {
     x: event.clientX - rect.left, y: event.clientY - rect.top, pointerId: event.pointerId,
-    downAt: performance.now(), moveAt: null, el,
+    downAt, moveAt: null, el,
     // **押した時点の Alt を採る**(離すまでに押し直されても、利用者の意図は押下時のもの)。
     // ダブルタップは「素早く2回」では表せない —— パネルの1クリックは既にタップとして
     // 送っているので、2回目を待つと通常のタップが毎回遅くなる
     doubleTap: event.altKey,
+    // **押した時点のトグル/Shift を採る**(doubleTap と同じ理由)。DRAG_MIN_PX 未満の
+    // 移動(タップ/長押し/ダブルタップ)は軌跡モードでも今までどおり(下の pointerup 参照)
+    trace: isTraceToggleOn() || event.shiftKey,
+    points: [{ x: event.clientX - rect.left, y: event.clientY - rect.top, t: 0 }],
   };
   updateDragOverlay(dragStart, dragStart.x, dragStart.y);
   try {
@@ -690,6 +720,9 @@ window.addEventListener('pointermove', (event) => {
   updateDragOverlay(dragStart, x, y);
   if (dragStart.moveAt === null && Math.hypot(x - dragStart.x, y - dragStart.y) >= DRAG_MIN_PX) {
     dragStart.moveAt = performance.now();
+  }
+  if (dragStart.trace) {
+    dragStart.points.push({ x, y, t: Math.round(performance.now() - dragStart.downAt) });
   }
 });
 // pointerup は window で拾う(capture が効かない環境・画像外で離した場合も取りこぼさない)。
@@ -731,6 +764,14 @@ window.addEventListener('pointerup', (event) => {
         displayWidth: rect.width, displayHeight: rect.height,
       });
     }
+  } else if (start.trace) {
+    const endT = Math.max(1, Math.round(upAt - start.downAt));
+    const points = start.points.concat([{ x: endX, y: endY, t: endT }]);
+    post({
+      type: 'tracePoints',
+      points: thinTracePoints(points),
+      displayWidth: rect.width, displayHeight: rect.height,
+    });
   } else {
     const moveAt = start.moveAt ?? upAt;
     post({
@@ -1122,7 +1163,7 @@ export function applyLiveMessage(message) {
       requestSnapshotIfNeeded();
       break;
     case 'actionError':
-      showActionError(message.message);
+      showActionError(message.message, !!message.neutral);
       break;
     case 'busy':
       setBusy(!!message.busy);
@@ -1139,6 +1180,13 @@ export function applyLiveMessage(message) {
         screenshot.classList.remove('disconnected');
         liveCanvas.classList.remove('disconnected');
       }
+      break;
+    // ブリッジの自動起動が進行中(bridgeStarting)。文言は monitorHtml.ts で host 側 t() 済みの固定文
+    // なので、ここは .visible の付け外しだけ行う(conn-overlay の "接続エラー" とは別状態)
+    case 'bridgeStarting':
+      connectingOverlay.classList.toggle('visible', !!message.starting);
+      // オーバーレイは半透明なので、下の「接続されていません」が透けて矛盾した2文になる。場所は保って文字だけ隠す
+      screenshotPlaceholder.classList.toggle('connecting', !!message.starting);
       break;
     case 'appProfiles':
       applyAppProfiles(message.profiles, message.selectedId);

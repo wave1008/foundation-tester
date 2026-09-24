@@ -65,6 +65,7 @@ import {
   parseLiveServeEvent,
   pointFromClick,
   type RecordedStep,
+  recordedGestureFingers,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
   stepDescriptionToOperationLabel,
@@ -110,6 +111,10 @@ const SERVE_SWEEP_STOP_WAIT_MS = 2500;
 /** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
  * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
 const FRAME_IDLE_RETRY_MS = 500;
+/** 「接続中」表示の間に観測を撃ち直す間隔[ms]。serve は自動起動の完了を自分から知らせない
+ * (観測・操作の応答に載せるだけ)ので、配信中(frameTick が止まる)は誰かが聞き直さないと
+ * 表示が残り続ける。2 秒 = 再利用の起動(十数秒)を待たせすぎず、serve を詰まらせない間隔 */
+const BRIDGE_STARTING_PROBE_MS = 2000;
 
 /** ライブ映像ストリーミング helper(iOS/Android共通)へ渡すフレーム長辺px。ネイティブのシミュレータ
  * フレームは ~1206x2622・JPEG ~300KB と重いため既定 900px 幅へ縮めて転送量を抑える(config に専用
@@ -196,13 +201,15 @@ export class MonitorLiveController implements vscode.Disposable {
   private frameFailureStreak = 0;
   /** webview へ connection:false を post 済みかどうか(復帰時の connection:true post 要否判定)。 */
   private connectionLost = false;
-  /** 直近 post した connection:false の message。Swift 側の自動起動サフィックスの進捗更新
-   * (「自動起動しています…」→「失敗しました…」)を検知して再 post するための比較用。 */
+  /** 直近 post した connection:false の message。文言が変わったとき(例えば自動起動が諦めて
+   * failed になったとき)だけ再 post するための比較用。 */
   private lastConnectionMessage: string | undefined;
   /** 直近 post した actionError バナーが接続系(isConnectionClassMessage)かどうか。true の間は
    * serve 復帰(handleConnectionOk)で自動的に消す。個々の操作失敗バナーは false のままなので、
    * 常時回っている自動フレームで誤って消えることはない。 */
   private connectionBannerShown = false;
+  /** 直近 webview へ post した bridgeStarting の値(applyBridgeStarting の冪等化・差分検知用)。 */
+  private bridgeStartingShown = false;
   /** prepareForRun() の waitForStreamSync() 待ち手。handleConnectionOk() 到達のたびに全件 resolve
    * して空にする(次の接続成功を「同期完了」とみなす契約。tap 待ち等 handleConnectionOk を呼ぶ
    * 全経路が対象なので、対象デバイス切り替え後の最初のフレーム/snapshot 成功で必ず起きる)。 */
@@ -251,6 +258,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private liveTabVisible = false;
   /** 自動フレームの次回 tick タイマー。 */
   private frameTimer: ReturnType<typeof setTimeout> | undefined;
+  private bridgeStartingProbeTimer: ReturnType<typeof setTimeout> | undefined;
 
   // ---- 画面ストリーミング(iOS: fleetest-simstream / Android: fleetest-androidstream。
   // ポーリング frameTick の低負荷な代替) ----
@@ -297,6 +305,7 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.clearBridgeStartingProbe();
     if (this.generating) {
       // `api gen-scenario` は `api run` と違って dispatch.lock 解放や終了スクリプトを持たない
       // 一回限りのコード生成なので、後始末を持たないヘルパー扱いで時限 SIGKILL してよい
@@ -363,10 +372,53 @@ export class MonitorLiveController implements vscode.Disposable {
 
   /** actionError バナーを出す共通経路。接続系の文言(serve 不在・タイムアウト・終了)なら
    * connectionBannerShown を立て、serve 復帰時に自動で消せるようにする。個々の操作失敗は
-   * false のまま残す(常時回る自動フレームで消さない)。全 actionError post はここを通す。 */
-  private postActionError(message: string): void {
-    this.connectionBannerShown = isConnectionClassMessage(message);
-    this.post({ type: "actionError", message });
+   * false のまま残す(常時回る自動フレームで消さない)。全 actionError post はここを通す。
+   * neutral: true は bridgeStarting 中の操作失敗(live.bridgeStartingActionNotice)専用 ——
+   * 接続系と同じく自動で消える(connectionBannerShown を立てる)が、webview 側はエラー色にしない。 */
+  private postActionError(message: string, neutral = false): void {
+    this.connectionBannerShown = neutral || isConnectionClassMessage(message);
+    this.post({ type: "actionError", message, ...(neutral ? { neutral: true } : {}) });
+  }
+
+  /** LiveBridgeAutoStarter が自動起動を進行中(bridgeStarting)かどうかの表示を同期する
+   * (frameTick/applySnapshotResult/runAction のいずれかがイベントを受けるたびに呼ぶ)。
+   * 前回と同じ値なら post しない(冪等)。 */
+  private applyBridgeStarting(starting: boolean): void {
+    if (this.bridgeStartingShown === starting) {
+      return;
+    }
+    this.bridgeStartingShown = starting;
+    this.post({ type: "bridgeStarting", starting });
+    if (starting) {
+      this.scheduleBridgeStartingProbe();
+    } else {
+      this.clearBridgeStartingProbe();
+    }
+  }
+
+  /** 「接続中」の間だけ観測を撃ち直し、起動が済んだ回の応答(bridgeStarting:false)で表示を畳む。
+   * **掛け直しは観測の後で自分から行う** —— applyBridgeStarting は値が変わらないと何もしないので、
+   * 起動中のままの応答からは予約が掛からない */
+  private scheduleBridgeStartingProbe(): void {
+    this.clearBridgeStartingProbe();
+    this.bridgeStartingProbeTimer = setTimeout(() => {
+      this.bridgeStartingProbeTimer = undefined;
+      void (async () => {
+        if (this.liveTabVisible && this.serveProcess && this.currentDeviceRef() && !this.busy) {
+          await this.refreshSnapshot();
+        }
+        if (this.bridgeStartingShown && this.liveTabVisible && this.serveProcess) {
+          this.scheduleBridgeStartingProbe();
+        }
+      })();
+    }, BRIDGE_STARTING_PROBE_MS);
+  }
+
+  private clearBridgeStartingProbe(): void {
+    if (this.bridgeStartingProbeTimer) {
+      clearTimeout(this.bridgeStartingProbeTimer);
+      this.bridgeStartingProbeTimer = undefined;
+    }
   }
 
   // ---- 接続断の可視化(自動フレームは失敗を無表示で再試行するため、connectionLost の間は
@@ -404,8 +456,10 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /** 自動フレーム失敗を反映する(streak が3に達したら connectionLost にして post。既に
-   * connectionLost でも message が前回と異なれば再 post する: Swift 側の自動起動サフィックスの
-   * 進捗更新「自動起動しています…」→「失敗しました…」を画面に反映するため)。 */
+   * connectionLost でも message が前回と異なれば再 post する: 例えば自動起動が諦めて
+   * failed になったときの文言更新を画面に反映するため)。
+   * **呼び出し元が bridgeStarting:true の回をここへ回さないこと** —— 起動が進行中の失敗は
+   * エラーではない(applyBridgeStarting が中立表示に倒す。frameTick 参照)。 */
   private handleFrameFailure(message: string): void {
     this.frameFailureStreak += 1;
     if (this.frameFailureStreak < 3) {
@@ -980,6 +1034,9 @@ export class MonitorLiveController implements vscode.Disposable {
    * 手放す(dispose/panel破棄から呼ぶ。デバイス切り替え中の再バインドは rebindServeProcess が
    * 個別に this.serveProcess を扱うため、こちらは呼ばない)。 */
   private stopServeProcess(): void {
+    // 表示ごと解く(予約だけ消すと「表示中」の記録が残り、次の serve も起動中だったとき
+    // 値が変わらず予約が掛からない = 同じ台の切り替えで「接続中」が残り続ける)
+    this.applyBridgeStarting(false);
     if (this.serveRestartTimer) {
       clearTimeout(this.serveRestartTimer);
       this.serveRestartTimer = undefined;
@@ -1084,13 +1141,15 @@ export class MonitorLiveController implements vscode.Disposable {
     if (!pending) {
       return;
     }
+    // **bridgeStarting は常に false**(この経路は自動起動とは無関係の host 側の障害
+    // [プロセス終了・応答タイムアウト]なので、デバイスが起動中かどうかは分からない・関係ない)
     if (pending.resolvesOn === "frame") {
-      this.settlePendingServeRequest({ frame: { ok: false, error: message } });
+      this.settlePendingServeRequest({ frame: { ok: false, error: message, bridgeStarting: false } });
       return;
     }
     this.settlePendingServeRequest({
-      action: pending.expectsAction ? { ok: false, error: message } : undefined,
-      snapshot: { ok: false, error: message },
+      action: pending.expectsAction ? { ok: false, error: message, bridgeStarting: false } : undefined,
+      snapshot: { ok: false, error: message, bridgeStarting: false },
     });
   }
 
@@ -1118,9 +1177,10 @@ export class MonitorLiveController implements vscode.Disposable {
     const proc = this.serveProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       const message = serveUnavailableMessage();
+      // serve プロセス自体が居ない(bridgeStarting とは無関係の host 側の障害)
       return Promise.resolve({
-        action: command.cmd === "refresh" ? undefined : { ok: false, error: message },
-        snapshot: { ok: false, error: message },
+        action: command.cmd === "refresh" ? undefined : { ok: false, error: message, bridgeStarting: false },
+        snapshot: { ok: false, error: message, bridgeStarting: false },
       });
     }
     return new Promise((resolve) => {
@@ -1135,7 +1195,9 @@ export class MonitorLiveController implements vscode.Disposable {
         resolve: (outcome) =>
           resolve({
             action: outcome.action,
-            snapshot: outcome.snapshot ?? { ok: false, error: t("live.internalErrorSnapshotMissing") },
+            snapshot: outcome.snapshot ?? {
+              ok: false, error: t("live.internalErrorSnapshotMissing"), bridgeStarting: false,
+            },
           }),
         timeout,
       };
@@ -1157,6 +1219,7 @@ export class MonitorLiveController implements vscode.Disposable {
       return Promise.resolve({
         ok: false,
         error: serveUnavailableMessage(),
+        bridgeStarting: false,
       });
     }
     return new Promise((resolve) => {
@@ -1169,7 +1232,9 @@ export class MonitorLiveController implements vscode.Disposable {
         resolvesOn: "frame",
         action: undefined,
         resolve: (outcome) =>
-          resolve(outcome.frame ?? { ok: false, error: t("live.internalErrorFrameMissing") }),
+          resolve(outcome.frame ?? {
+            ok: false, error: t("live.internalErrorFrameMissing"), bridgeStarting: false,
+          }),
         timeout,
       };
       proc.stdin.write(serializeLiveServeCommand({ cmd: "frame" }));
@@ -1179,7 +1244,13 @@ export class MonitorLiveController implements vscode.Disposable {
   // ---- snapshot -------------------------------------------------------------------
 
   private applySnapshotResult(result: LiveSnapshot | LiveErrorResult): void {
+    this.applyBridgeStarting(result.bridgeStarting);
     if (!result.ok) {
+      // 自動起動が進行中の失敗はエラーとして出さない(applyBridgeStarting の中立表示に任せる。
+      // 起動が終わっていればこの回は自動で reachable になる=撃ち直しはしない)
+      if (result.bridgeStarting) {
+        return;
+      }
       this.postActionError(result.error);
       return;
     }
@@ -1399,6 +1470,9 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 表示中のみ回る自動フレーム。busy(ユーザー操作中)・パネル非表示・serve 不在の回はスキップ
    * (このスキップ回は handleFrameFailure の streak に数えない)。失敗3回連続で接続断オーバーレイに
    * 切り替わる(handleFrameFailure)。serve 死は既存の自動再起動が回復する。
+   * **bridgeStarting 中の失敗は handleFrameFailure へ回さない** —— 自動起動の進行中は
+   * applyBridgeStarting が中立の「接続中」表示に倒す(接続断のエラー表示は本当に止まった
+   * ときだけ出す)。
    * 成功時は config.liveFps を上限とする間隔(1フレームの実測所要を差し引く)で次フレームへ。
    * **delayMs=0 のホットループにしない** —— デバイスが返す限り最速で /screenshot を叩く(iOS/Android 共通)。
    * スキップ・失敗時のみ FRAME_IDLE_RETRY_MS 空ける。 */
@@ -1415,12 +1489,13 @@ export class MonitorLiveController implements vscode.Disposable {
     if (this.deps.isPanelActive() && !this.busy && this.serveProcess && this.currentDeviceRef()) {
       const startedAt = Date.now();
       const frame = await this.sendServeFrame();
+      this.applyBridgeStarting(frame.bridgeStarting);
       if (frame.ok) {
         this.handleConnectionOk();
         this.post({ type: "frame", image: frame.image });
         const targetPeriodMs = Math.round(1000 / this.deps.getConfig().liveFps);
         delayMs = Math.max(0, targetPeriodMs - (Date.now() - startedAt));
-      } else {
+      } else if (!frame.bridgeStarting) {
         this.handleFrameFailure(frame.error);
       }
     }
@@ -1463,8 +1538,17 @@ export class MonitorLiveController implements vscode.Disposable {
     try {
       this.ensureServeProcess(device);
       const { action, snapshot } = await this.sendServeCommand(command);
+      if (action) {
+        this.applyBridgeStarting(action.bridgeStarting);
+      }
       if (action && !action.ok) {
-        this.postActionError(action.error);
+        // 自動起動が進行中の失敗はエラーとして出さない —— 撃ち直しはしない
+        // (利用者が画面の復帰を見てから自分でやり直す。interruption-no-resend-policy と同じ理由)
+        if (action.bridgeStarting) {
+          this.postActionError(t("live.bridgeStartingActionNotice"), true);
+        } else {
+          this.postActionError(action.error);
+        }
         if (options?.logLabel) {
           this.postOperationLog(options.logLabel, false, mcp);
         }
@@ -1814,6 +1898,34 @@ export class MonitorLiveController implements vscode.Disposable {
           },
           { action: "swipe", direction },
           { logLabel: swipeLabel },
+        );
+        break;
+      }
+      case "tracePoints": {
+        if (!this.lastScreen) {
+          this.postActionError(t("live.refreshFirst"));
+          break;
+        }
+        const screen = this.lastScreen;
+        const display = { width: message.displayWidth, height: message.displayHeight };
+        // t は webview ではミリ秒(pointerdown からの経過)。GestureRequest/ft_gesture は秒なので
+        // ここで一度だけ変換する(座標は既存のドラッグと同じ pointFromClick)
+        const devicePoints = message.points.map((p) => ({
+          ...pointFromClick({ x: p.x, y: p.y }, display, screen),
+          t: p.t / 1000,
+        }));
+        const totalSeconds = devicePoints[devicePoints.length - 1]?.t ?? 0;
+        // dragPoints と同じ 8 秒クランプ(serve のリクエストタイムアウトは20秒。実測時間をそのまま
+        // 流すと近づくため)。**全点を同じ比率で縮める**(形=相対的な速度を保つ。端点だけ削ると
+        // 途中の静止/速い動きが消える)
+        const scale = totalSeconds > 8 ? 8 / totalSeconds : 1;
+        const scaledPoints = scale === 1 ? devicePoints : devicePoints.map((p) => ({ ...p, t: p.t * scale }));
+        const fingers = [{ points: scaledPoints }];
+        const traceLabel = t("live.opLabel.trace");
+        void this.runAction(
+          { cmd: "gesture", fingers },
+          { action: "gesture", gesture: recordedGestureFingers(fingers, screen) },
+          { logLabel: traceLabel },
         );
         break;
       }

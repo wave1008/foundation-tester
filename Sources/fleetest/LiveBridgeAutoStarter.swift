@@ -78,6 +78,14 @@ actor LiveBridgeAutoStarter {
         return false
     }
 
+    /// starting 中だけ true(非破壊)。拡張(vscode-fleetest)へ渡す `bridgeStarting` フィールドの
+    /// 唯一の元(ApiLiveCommand.swift の bridgeStartingFlag が読む)。拡張はこれを見て、
+    /// 進行中の自動起動による失敗を「エラー」ではなく「接続中」の中立表示にする
+    var isStarting: Bool {
+        if case .starting = state { return true }
+        return false
+    }
+
     /// serve 起動時に呼ぶ。旧ビルドのブリッジ(/status の protocolVersion が現行値と不一致)を
     /// 検知したら再起動する。接続不可(不在含む)は何もしない(不在は既存の接続拒否経路が担当)
     func checkAndRestartIfStale() async {
@@ -115,13 +123,16 @@ actor LiveBridgeAutoStarter {
         }
     }
 
+    /// **starting は空文字**(進行状況は `isStarting`/`bridgeStarting` フィールド1つで伝える。
+    /// 文言側に「自動起動しています」を重複させると、拡張が起動中の失敗を中立表示に倒しても
+    /// エラー文言にだけ古い案内が残る=2つの伝達経路が食い違う)。failed は引き続き文言で返す
+    /// (対処が要る本物のエラーのため。`bridgeStarting` は false になるので拡張はそのままエラー表示する)
     private func suffix() -> String {
         switch state {
         case .idle:
             return ""
         case .starting:
-            return "(Auto-starting the XCUITest bridge. The first build takes several minutes. " +
-                "This screen recovers automatically once it is ready.)"
+            return ""
         case .failed(let detail):
             return "(Bridge auto-start failed: \(detail). " +
                 "Run `fleetest bridge up --device \(udid) --port \(port)`.)"

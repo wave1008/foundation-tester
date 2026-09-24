@@ -23,6 +23,7 @@ import {
   formatElementFrame,
   formatElementLine,
   frameToDisplayRect,
+  gestureStepsFromPoints,
   isLiveFromWebviewMessage,
   isLiveWebviewEnvelope,
   isListDevicesResult,
@@ -34,6 +35,7 @@ import {
   parseListDevicesResult,
   pointFromClick,
   mcpCommandForServeCommand,
+  recordedGestureFingers,
   remoteDeviceOption,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
@@ -149,17 +151,18 @@ test("parseLiveSnapshotResult: 成功形(ok:true)をそのまま返す", () => {
       { ref: 1, type: "Button", label: "ログイン", identifier: null, value: null, frame: { x: 0, y: 0, width: 10, height: 10 } },
     ],
     notes: [],
+    bridgeStarting: false,
   };
   assert.deepEqual(parseLiveSnapshotResult(value), value);
 });
 
 test("parseLiveSnapshotResult: 失敗形(ok:false)をそのまま返す", () => {
-  const value = { ok: false, error: "接続できません" };
+  const value = { ok: false, error: "接続できません", bridgeStarting: false };
   assert.deepEqual(parseLiveSnapshotResult(value), value);
 });
 
 test("parseLiveSnapshotResult: platform が ios/android 以外なら undefined", () => {
-  const value = { ok: true, platform: "windows", screen: { width: 1, height: 1 }, image: "A", elements: [], notes: [] };
+  const value = { ok: true, platform: "windows", screen: { width: 1, height: 1 }, image: "A", elements: [], notes: [], bridgeStarting: false };
   assert.equal(parseLiveSnapshotResult(value), undefined);
 });
 
@@ -171,6 +174,7 @@ test("parseLiveSnapshotResult: elements の frame が欠落していれば undef
     image: "A",
     elements: [{ ref: 1, type: "Button", label: null, identifier: null, value: null }],
     notes: [],
+    bridgeStarting: false,
   };
   assert.equal(parseLiveSnapshotResult(value), undefined);
 });
@@ -190,37 +194,53 @@ test("parseLiveSnapshotResult: notes に鮮度警告の本文が入っていれ�
     image: "AAAA",
     elements: [],
     notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+    bridgeStarting: false,
   };
   assert.deepEqual(parseLiveSnapshotResult(value), value);
 });
 
 test("parseLiveSnapshotResult: notes が欠落/null/要素が非文字列なら undefined", () => {
-  const base = { ok: true, platform: "ios", screen: { width: 1, height: 1 }, image: "A", elements: [] };
+  const base = { ok: true, platform: "ios", screen: { width: 1, height: 1 }, image: "A", elements: [], bridgeStarting: false };
   assert.equal(parseLiveSnapshotResult(base), undefined, "notes 欠落");
   assert.equal(parseLiveSnapshotResult({ ...base, notes: null }), undefined, "notes が null");
   assert.equal(parseLiveSnapshotResult({ ...base, notes: "warning" }), undefined, "notes が配列でない");
   assert.equal(parseLiveSnapshotResult({ ...base, notes: [1] }), undefined, "notes の要素が非文字列");
 });
 
+// ---- isLiveSnapshot/isLiveErrorResult/isLiveOkResult: bridgeStarting の検証(欄の新設。
+// 後方互換の読み替えを置かない方針) ----
+
+test("parseLiveSnapshotResult: bridgeStarting が欠落/非boolean なら undefined", () => {
+  const base = { ok: true, platform: "ios", screen: { width: 1, height: 1 }, image: "A", elements: [], notes: [] };
+  assert.equal(parseLiveSnapshotResult(base), undefined, "bridgeStarting 欠落");
+  assert.equal(parseLiveSnapshotResult({ ...base, bridgeStarting: "false" }), undefined, "bridgeStarting が文字列");
+  assert.equal(parseLiveSnapshotResult({ ok: false, error: "x" }), undefined, "エラー形も bridgeStarting 欠落は undefined");
+});
+
 // ---- parseLiveActionResult ----
 
-test("parseLiveActionResult: {ok:true} を { ok: true } に正規化する", () => {
-  assert.deepEqual(parseLiveActionResult({ ok: true }), { ok: true });
+test("parseLiveActionResult: {ok:true} を { ok: true, bridgeStarting } に正規化する", () => {
+  assert.deepEqual(parseLiveActionResult({ ok: true, bridgeStarting: false }), { ok: true, bridgeStarting: false });
+  assert.deepEqual(parseLiveActionResult({ ok: true, bridgeStarting: true }), { ok: true, bridgeStarting: true });
 });
 
 test("parseLiveActionResult: {ok:false,error} をそのまま返す", () => {
-  assert.deepEqual(parseLiveActionResult({ ok: false, error: "失敗しました" }), {
+  assert.deepEqual(parseLiveActionResult({ ok: false, error: "失敗しました", bridgeStarting: false }), {
     ok: false,
     error: "失敗しました",
+    bridgeStarting: false,
   });
 });
 
-test("parseLiveActionResult: ok が欠落/非boolean、または error が非文字列なら undefined", () => {
+test("parseLiveActionResult: ok が欠落/非boolean、error が非文字列、または bridgeStarting が欠落/非boolean なら undefined", () => {
   assert.equal(parseLiveActionResult({}), undefined);
   assert.equal(parseLiveActionResult({ ok: "true" }), undefined);
   assert.equal(parseLiveActionResult({ ok: false }), undefined);
   assert.equal(parseLiveActionResult({ ok: false, error: 123 }), undefined);
   assert.equal(parseLiveActionResult(null), undefined);
+  assert.equal(parseLiveActionResult({ ok: true }), undefined, "bridgeStarting 欠落");
+  assert.equal(parseLiveActionResult({ ok: true, bridgeStarting: "false" }), undefined, "bridgeStarting が文字列");
+  assert.equal(parseLiveActionResult({ ok: false, error: "x" }), undefined, "エラー形も bridgeStarting 欠落は undefined");
 });
 
 // ---- serializeLiveServeCommand ----
@@ -251,29 +271,47 @@ test("serializeLiveServeCommand: JSON化して末尾に改行を付ける", () =
 // ---- parseLiveServeEvent ----
 
 test("parseLiveServeEvent: kind=actionResult の成功/失敗を判別する", () => {
-  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true }), {
+  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true, bridgeStarting: false }), {
     kind: "actionResult",
-    result: { ok: true },
+    result: { ok: true, bridgeStarting: false },
   });
-  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: false, error: "失敗しました" }), {
+  assert.deepEqual(
+    parseLiveServeEvent({ kind: "actionResult", ok: false, error: "失敗しました", bridgeStarting: false }),
+    {
+      kind: "actionResult",
+      result: { ok: false, error: "失敗しました", bridgeStarting: false },
+    },
+  );
+});
+
+test("parseLiveServeEvent: actionResult の bridgeStarting(自動起動が進行中か)を落とさない", () => {
+  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: false, error: "x", bridgeStarting: true }), {
     kind: "actionResult",
-    result: { ok: false, error: "失敗しました" },
+    result: { ok: false, error: "x", bridgeStarting: true },
   });
 });
 
 test("parseLiveServeEvent: actionResult の app(操作を撃った先)を落とさない", () => {
-  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true, app: "com.example.app" }), {
-    kind: "actionResult",
-    result: { ok: true, app: "com.example.app" },
-  });
-  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: false, error: "x", app: "com.apple.springboard" }), {
-    kind: "actionResult",
-    result: { ok: false, error: "x", app: "com.apple.springboard" },
-  });
+  assert.deepEqual(
+    parseLiveServeEvent({ kind: "actionResult", ok: true, app: "com.example.app", bridgeStarting: false }),
+    {
+      kind: "actionResult",
+      result: { ok: true, bridgeStarting: false, app: "com.example.app" },
+    },
+  );
+  assert.deepEqual(
+    parseLiveServeEvent({
+      kind: "actionResult", ok: false, error: "x", app: "com.apple.springboard", bridgeStarting: false,
+    }),
+    {
+      kind: "actionResult",
+      result: { ok: false, error: "x", bridgeStarting: false, app: "com.apple.springboard" },
+    },
+  );
   // app が文字列でない/無い旧形式では欄自体を作らない(undefined の欄で deepEqual を割らない)
-  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true, app: 12 }), {
+  assert.deepEqual(parseLiveServeEvent({ kind: "actionResult", ok: true, app: 12, bridgeStarting: false }), {
     kind: "actionResult",
-    result: { ok: true },
+    result: { ok: true, bridgeStarting: false },
   });
 });
 
@@ -297,15 +335,32 @@ test("parseLiveServeEvent: kind=snapshot の成功/失敗を判別する", () =>
     image: "AAAA",
     elements: [],
     notes: [],
+    bridgeStarting: false,
   };
   assert.deepEqual(parseLiveServeEvent(success), {
     kind: "snapshot",
-    result: { ok: true, platform: "ios", screen: { width: 402, height: 874 }, image: "AAAA", elements: [], notes: [] },
+    result: {
+      ok: true, platform: "ios", screen: { width: 402, height: 874 }, image: "AAAA", elements: [], notes: [],
+      bridgeStarting: false,
+    },
   });
-  assert.deepEqual(parseLiveServeEvent({ kind: "snapshot", ok: false, error: "接続できません" }), {
-    kind: "snapshot",
-    result: { ok: false, error: "接続できません" },
-  });
+  assert.deepEqual(
+    parseLiveServeEvent({ kind: "snapshot", ok: false, error: "接続できません", bridgeStarting: false }),
+    {
+      kind: "snapshot",
+      result: { ok: false, error: "接続できません", bridgeStarting: false },
+    },
+  );
+});
+
+test("parseLiveServeEvent: kind=snapshot の bridgeStarting(自動起動が進行中か)を落とさない", () => {
+  assert.deepEqual(
+    parseLiveServeEvent({ kind: "snapshot", ok: false, error: "接続できません", bridgeStarting: true }),
+    {
+      kind: "snapshot",
+      result: { ok: false, error: "接続できません", bridgeStarting: true },
+    },
+  );
 });
 
 test("parseLiveServeEvent: kind=snapshot は notes(鮮度警告)を落とさない", () => {
@@ -317,6 +372,7 @@ test("parseLiveServeEvent: kind=snapshot は notes(鮮度警告)を落とさな�
     image: "AAAA",
     elements: [],
     notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+    bridgeStarting: false,
   };
   assert.deepEqual(parseLiveServeEvent(withNote), {
     kind: "snapshot",
@@ -327,6 +383,7 @@ test("parseLiveServeEvent: kind=snapshot は notes(鮮度警告)を落とさな�
       image: "AAAA",
       elements: [],
       notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+      bridgeStarting: false,
     },
   });
 });
@@ -340,24 +397,45 @@ test("parseLiveServeEvent: kind=snapshot は notes 欠落なら undefined(後方
       screen: { width: 402, height: 874 },
       image: "AAAA",
       elements: [],
+      bridgeStarting: false,
+    }),
+    undefined,
+  );
+});
+
+test("parseLiveServeEvent: kind=snapshot は bridgeStarting 欠落なら undefined(後方互換の読み替えを置かない)", () => {
+  assert.equal(
+    parseLiveServeEvent({
+      kind: "snapshot",
+      ok: true,
+      platform: "ios",
+      screen: { width: 402, height: 874 },
+      image: "AAAA",
+      elements: [],
+      notes: [],
     }),
     undefined,
   );
 });
 
 test("parseLiveServeEvent: kind=frame の成功/失敗/欠落を判別する", () => {
-  assert.deepEqual(parseLiveServeEvent({ kind: "frame", ok: true, image: "abc" }), {
+  assert.deepEqual(parseLiveServeEvent({ kind: "frame", ok: true, image: "abc", bridgeStarting: false }), {
     kind: "frame",
-    result: { ok: true, image: "abc" },
+    result: { ok: true, image: "abc", bridgeStarting: false },
   });
-  assert.deepEqual(parseLiveServeEvent({ kind: "frame", ok: false, error: "x" }), {
+  assert.deepEqual(parseLiveServeEvent({ kind: "frame", ok: false, error: "x", bridgeStarting: true }), {
     kind: "frame",
-    result: { ok: false, error: "x" },
+    result: { ok: false, error: "x", bridgeStarting: true },
   });
   assert.equal(
-    parseLiveServeEvent({ kind: "frame", ok: true }),
+    parseLiveServeEvent({ kind: "frame", ok: true, bridgeStarting: false }),
     undefined,
     "image 欠落は frame として不正",
+  );
+  assert.equal(
+    parseLiveServeEvent({ kind: "frame", ok: true, image: "abc" }),
+    undefined,
+    "bridgeStarting 欠落は frame として不正(後方互換の読み替えを置かない)",
   );
 });
 
@@ -727,6 +805,7 @@ test("toSnapshotMessage: elements に formatElementLine と同じ line フィー
       },
     ],
     notes: [],
+    bridgeStarting: false,
   };
   const message = toSnapshotMessage(snapshot);
   assert.equal(message.type, "snapshot");
@@ -750,6 +829,7 @@ test("toSnapshotMessage: notes(鮮度警告)をそのまま webview メッセー
     image: "AAAA",
     elements: [],
     notes: ["this screenshot may be stale: the element tree changed since the previous observation"],
+    bridgeStarting: false,
   };
   const message = toSnapshotMessage(snapshot);
   assert.deepEqual(message.notes, [
@@ -988,7 +1068,7 @@ test("統合: mock-live.mjs live serve の tap は actionResult(ok:true) → sna
   const serve = spawnServe(process.execPath, [MOCK_LIVE, "live", "serve", "--platform", "ios"], process.cwd());
   const [actionLine, snapshotLine] = await serve.send({ cmd: "tap", ref: 1 }, 2);
   const actionEvent = parseLiveServeEvent(actionLine);
-  assert.deepEqual(actionEvent, { kind: "actionResult", result: { ok: true } });
+  assert.deepEqual(actionEvent, { kind: "actionResult", result: { ok: true, bridgeStarting: false } });
   const snapshotEvent = parseLiveServeEvent(snapshotLine);
   assert.ok(snapshotEvent && snapshotEvent.kind === "snapshot" && snapshotEvent.result.ok);
   await serve.close();
@@ -1098,4 +1178,125 @@ test("mcpCommandForServeCommand: 要素番号のタップは枠の中心の座�
 test("mcpCommandForServeCommand: 観測だけ(refresh / frame)は操作ではないので出さない", () => {
   assert.equal(mcpCommandForServeCommand({ cmd: "refresh" }, ELEMENTS), undefined);
   assert.equal(mcpCommandForServeCommand({ cmd: "frame" }, ELEMENTS), undefined);
+});
+
+// ---- 軌跡モード(gesture) ----
+// ワイヤ形(GestureRequest)は t が秒。mcpCommandForServeCommand/recordedGestureFingers はどちらも
+// gestureStepsFromPoints(点列→move/hold の列)を土台にする(ロジックを2箇所に持たない)。
+
+test("gestureStepsFromPoints: 同座標が続く区間は hold、動けば move", () => {
+  // t は2進で誤差なく表現できる値を選ぶ(0.3-0.9 のような値は浮動小数点誤差(0.6000...1)が
+  // 出て本題と関係のない失敗になる)
+  const points = [
+    { x: 10, y: 20, t: 0 },
+    { x: 10, y: 20, t: 0.25 },
+    { x: 50, y: 80, t: 1 },
+  ];
+  assert.deepEqual(gestureStepsFromPoints(points), [
+    { kind: "hold", seconds: 0.25 },
+    { kind: "move", x: 50, y: 80, seconds: 0.75 },
+  ]);
+});
+
+test("gestureStepsFromPoints: 時刻が巻き戻る/止まっている点(dt<=0)は畳む(ステップを作らない)", () => {
+  const points = [
+    { x: 10, y: 20, t: 0 },
+    { x: 10, y: 20, t: 0 }, // 同時刻 → 畳む
+    { x: 30, y: 40, t: 0.5 },
+  ];
+  assert.deepEqual(gestureStepsFromPoints(points), [
+    { kind: "move", x: 30, y: 40, seconds: 0.5 },
+  ]);
+});
+
+test("mcpCommandForServeCommand: gesture は ft_gesture の fingers/steps 形へ写す", () => {
+  const command = {
+    cmd: "gesture",
+    fingers: [{ points: [
+      { x: 10, y: 20, t: 0 },
+      { x: 10, y: 20, t: 0.3 },
+      { x: 50, y: 80, t: 0.9 },
+    ] }],
+  };
+  assert.equal(
+    mcpCommandForServeCommand(command, ELEMENTS),
+    'ft_gesture {"fingers":[{"x":10,"y":20,"steps":[{"holdSeconds":0.3},{"x":50,"y":80,"durationSeconds":0.6}]}]}',
+  );
+});
+
+test("mcpCommandForServeCommand: gesture の秒は0.01刻みに丸め、0を超える値に敷く", () => {
+  const command = {
+    cmd: "gesture",
+    fingers: [{ points: [{ x: 0, y: 0, t: 0 }, { x: 1, y: 1, t: 0.002 }] }],
+  };
+  assert.equal(
+    mcpCommandForServeCommand(command, ELEMENTS),
+    'ft_gesture {"fingers":[{"x":0,"y":0,"steps":[{"x":1,"y":1,"durationSeconds":0.01}]}]}',
+  );
+});
+
+test("recordedGestureFingers: device座標をscreenの比率へ畳み、FTFinger(Codable)と同じキー名で返す", () => {
+  const fingers = [{ points: [
+    { x: 100, y: 200, t: 0 },
+    { x: 100, y: 200, t: 0.25 },
+    { x: 300, y: 400, t: 1 },
+  ] }];
+  assert.deepEqual(recordedGestureFingers(fingers, { width: 400, height: 800 }), [
+    {
+      x: 0.25, y: 0.25, startSeconds: 0,
+      steps: [
+        { hold: { seconds: 0.25 } },
+        { move: { x: 0.75, y: 0.5, durationSeconds: 0.75 } },
+      ],
+    },
+  ]);
+});
+
+test("recordedGestureFingers: screen が不明(0以下)なら空配列(比率が計算できない)", () => {
+  assert.deepEqual(
+    recordedGestureFingers([{ points: [{ x: 1, y: 1, t: 0 }] }], { width: 0, height: 0 }),
+    [],
+  );
+});
+
+// ---- isLiveFromWebviewMessage: tracePoints ----
+
+test("isLiveFromWebviewMessage: tracePoints は points(有限数のx/y/t)+displayWidth/Height を要求する", () => {
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "tracePoints",
+      points: [{ x: 1, y: 2, t: 0 }, { x: 3, y: 4, t: 10 }],
+      displayWidth: 400, displayHeight: 800,
+    }),
+    true,
+  );
+});
+
+test("isLiveFromWebviewMessage: tracePoints は空配列を拒否する", () => {
+  assert.equal(
+    isLiveFromWebviewMessage({ type: "tracePoints", points: [], displayWidth: 400, displayHeight: 800 }),
+    false,
+  );
+});
+
+test("isLiveFromWebviewMessage: tracePoints は非有限の点(NaN/Infinity)を拒否する", () => {
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "tracePoints", points: [{ x: NaN, y: 1, t: 0 }], displayWidth: 400, displayHeight: 800,
+    }),
+    false,
+  );
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "tracePoints", points: [{ x: 1, y: Infinity, t: 0 }], displayWidth: 400, displayHeight: 800,
+    }),
+    false,
+  );
+});
+
+test("isLiveFromWebviewMessage: tracePoints は displayWidth/Height 欠落を拒否する", () => {
+  assert.equal(
+    isLiveFromWebviewMessage({ type: "tracePoints", points: [{ x: 1, y: 2, t: 0 }], displayWidth: 400 }),
+    false,
+  );
 });

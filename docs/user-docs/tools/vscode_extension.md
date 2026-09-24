@@ -90,13 +90,18 @@ is unavailable.
 
 A tab for touching a device directly from its screenshot, shown to the right of the device monitor's
 **Device Monitor** tab. Open it with the command **"fleetest: Show Live Control"** or **Live Control**
-in a tile's right-click menu (opens with that device selected). It also opens automatically when a test run starts (setting `fleetest.liveControlOnRun`):
+in a tile's right-click menu (opens with that device selected). It also opens automatically when a test run starts (setting `fleetest.liveControlOnRun`).
+
+If the device's bridge isn't running yet, Live Control starts it automatically and shows a brief
+"Connecting to the device…" indicator instead of an error — normally this is tens of seconds
+(reusing an existing build); only the very first build for that device takes longer.
 
 | Gesture | Action |
 |---|---|
 | Click | Tap |
 | Hold ~500ms without moving | Long press |
 | Drag | Swipe (direction inferred from the drag vector) |
+| Shift + drag, or drag while the toolbar's **Trace** button is pressed | Trace the exact finger path (one continuous touch that never lifts; stopping and then moving while held is a long-press-then-drag) |
 | Alt/Option + click | Double tap |
 | Toolbar zoom in/out | Pinch (whole screen) |
 

@@ -410,6 +410,14 @@ function renderLivePanel(): string {
               <div class="conn-note">${t("panels.live.connectionErrorNote")}</div>
               <div id="live-conn-detail"></div>
             </div>
+            <!-- ブリッジの自動起動が進行中(bridgeStarting)の間だけ出す中立表示。conn-overlay(エラー)
+                 とは別要素 —— starting はまだエラーではない(monitorLiveController.ts の
+                 applyBridgeStarting)。文言は固定(host 側 t() で描画済み)なので webview は
+                 .visible の付け外しだけ行う -->
+            <div id="live-connecting-overlay">
+              <div id="live-connecting-spinner"></div>
+              <div id="live-connecting-message">${t("panels.live.connectingMessage")}</div>
+            </div>
             <div id="live-busy-overlay">
               <div id="live-busy-spinner"></div>
               <div id="live-busy-message"></div>
@@ -421,6 +429,8 @@ function renderLivePanel(): string {
           <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
           <button id="live-btn-zoom-in" class="secondary" title="${t("panels.live.zoomInTitle")}">${t("panels.live.zoomInButton")}</button>
           <button id="live-btn-zoom-out" class="secondary" title="${t("panels.live.zoomOutTitle")}">${t("panels.live.zoomOutButton")}</button>
+          <button id="live-btn-trace-toggle" class="secondary" type="button" aria-pressed="false"
+            title="${t("panels.live.traceModeTitle")}">${t("panels.live.traceModeButton")}</button>
           <!-- 修飾キーの割り当ては UI に出さないと誰も気付かない(README だけでは届かない)。
                全体の割り当ては画面領域の tooltip(gestureHintTitle)にも同じものを出す -->
           <span id="live-gesture-hint" class="screenshot-hint" title="${t("panels.live.gestureHintTitle")}">${t("panels.live.gestureHint")}</span>

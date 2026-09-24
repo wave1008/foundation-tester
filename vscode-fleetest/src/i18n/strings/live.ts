@@ -118,6 +118,12 @@ export const liveStrings = {
     ja: "操作の実行に失敗しました: {error}",
     en: "Failed to run the action: {error}",
   },
+  // ブリッジの自動起動が進行中(bridgeStarting)のときの操作失敗。エラーではなく中立の案内
+  // (撃ち直しはしない。ApiLiveCommand.swift の bridgeStarting フィールド参照)
+  "live.bridgeStartingActionNotice": {
+    ja: "デバイスの準備中です。表示されたら操作してください",
+    en: "The device is still getting ready — try again once the screen appears",
+  },
   "live.appProfileUnresolved": {
     ja: "アプリプロファイルを解決できません",
     en: "Could not resolve the app profile",
@@ -163,6 +169,7 @@ export const liveStrings = {
   "live.opLabel.type": { ja: "入力: {text}", en: "Input: {text}" },
   "live.opLabel.scrollTo": { ja: "スクロール: {target}", en: "Scroll: {target}" },
   "live.opLabel.swipe": { ja: "スワイプ: {direction}", en: "Swipe: {direction}" },
+  "live.opLabel.trace": { ja: "なぞる", en: "Trace" },
   "live.opLabel.home": { ja: "ホーム", en: "Home" },
   "live.opLabel.appSwitcher": { ja: "タスク切替", en: "App Switcher" },
   "live.opLabel.launch": { ja: "起動: {bundle}", en: "Launch: {bundle}" },

@@ -103,7 +103,7 @@ function createWebview() {
 }
 
 /** PointerEvent は jsdom に無いため MouseEvent に pointerId を後付けして代用する。 */
-function pointerEvent(window, type, { x, y, pointerId = 1, button = 0, altKey = false }) {
+function pointerEvent(window, type, { x, y, pointerId = 1, button = 0, altKey = false, shiftKey = false }) {
   const event = new window.MouseEvent(type, {
     bubbles: true,
     cancelable: true,
@@ -111,6 +111,7 @@ function pointerEvent(window, type, { x, y, pointerId = 1, button = 0, altKey = 
     clientY: y,
     button,
     altKey,
+    shiftKey,
   });
   Object.defineProperty(event, "pointerId", { value: pointerId });
   return event;
@@ -362,4 +363,94 @@ test("拡大・縮小ボタンは画面全体のピンチを送る", (t) => {
 
   const pinches = liveMessages().filter((m) => m.type === "pinch");
   assert.deepEqual(pinches.map((m) => m.zoomIn), [true, false]);
+});
+
+// ---- 軌跡モード(トグル/Shift+ドラッグ) ----
+// 通常のドラッグは1回のスワイプ(dragPoints)に合成される(ユーザー決定・維持)。軌跡モードは
+// トグル ON、または pointerdown 時の Shift 押下(一時的)で、マウスの軌跡をそのまま1本の
+// 離さないタッチとして送る(tracePoints)。
+
+test("軌跡トグルが OFF・Shift も無ければドラッグは今までどおり dragPoints", (t) => {
+  const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 120, y: 150 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 120, y: 150 }));
+
+  assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 1);
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0);
+});
+
+test("軌跡トグルを押した状態のドラッグは tracePoints を送る(始点・終点を含む)", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+
+  const toggle = document.getElementById("live-btn-trace-toggle");
+  toggle.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(toggle.getAttribute("aria-pressed"), "true", "押した状態が aria-pressed に出ること");
+  assert.ok(toggle.classList.contains("toggled"), "押した状態の見た目クラスが付くこと");
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 110, y: 120 }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 130, y: 160 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 130, y: 160 }));
+
+  const traces = liveMessages().filter((m) => m.type === "tracePoints");
+  assert.equal(traces.length, 1);
+  assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 0,
+    "軌跡モードのときは dragPoints を送らないこと");
+  const trace = traces[0];
+  assert.equal(trace.displayWidth, 400);
+  assert.equal(trace.displayHeight, 800);
+  assert.ok(trace.points.length >= 2, "少なくとも始点・終点は含むこと");
+  assert.deepEqual([trace.points[0].x, trace.points[0].y], [100, 100], "始点を含むこと");
+  const last = trace.points[trace.points.length - 1];
+  assert.deepEqual([last.x, last.y], [130, 160], "終点を含むこと");
+  assert.equal(trace.points[0].t, 0, "始点の t は 0");
+  for (let i = 1; i < trace.points.length; i++) {
+    assert.ok(trace.points[i].t >= trace.points[i - 1].t, "t は単調非減少");
+  }
+
+  // トグルをもう一度押すと解除される
+  toggle.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(toggle.getAttribute("aria-pressed"), "false");
+  assert.ok(!toggle.classList.contains("toggled"));
+});
+
+test("トグルが OFF でも pointerdown 時に Shift を押していれば軌跡モード(一時的)", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+
+  const toggle = document.getElementById("live-btn-trace-toggle");
+  assert.equal(toggle.getAttribute("aria-pressed"), "false", "前提: トグルは押していない");
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 60, y: 70, shiftKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 90, y: 110, shiftKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 90, y: 110, shiftKey: true }));
+
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 1);
+  assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 0);
+  // トグル自体は変わらない(あくまで一回限りの一時的な切り替え)
+  assert.equal(toggle.getAttribute("aria-pressed"), "false");
+});
+
+test("軌跡モードでも 5px 未満の移動は今までどおり tapPoint(タップ/長押し/ダブルタップは変えない)", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+
+  document.getElementById("live-btn-trace-toggle").dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true }));
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 50, y: 60 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 52, y: 61 }));
+
+  const taps = liveMessages().filter((m) => m.type === "tapPoint");
+  assert.equal(taps.length, 1);
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0);
+  assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 0);
 });

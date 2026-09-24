@@ -390,6 +390,9 @@ export const panelsStrings = {
     ja: "表示中の画面は最後に取得した状態です",
     en: "The screen shown is the last captured state",
   },
+  // ブリッジの自動起動が進行中(bridgeStarting)の間、画面領域に出す中立表示(エラーではない)。
+  // 契約: Sources/fleetest/ApiLiveCommand.swift 冒頭の bridgeStarting フィールド
+  "panels.live.connectingMessage": { ja: "デバイスに接続しています…", en: "Connecting to the device…" },
   "panels.live.homeButton": { ja: "ホーム", en: "Home" },
   "panels.live.homeButtonTitle": { ja: "ホーム画面に戻ります", en: "Return to the home screen" },
   "panels.live.zoomInButton": { ja: "拡大", en: "Zoom in" },
@@ -403,14 +406,19 @@ export const panelsStrings = {
   /// 画面領域の tooltip。**割り当ての一覧はここが唯一の表示**(README にも同じ表がある)
   "panels.live.gestureHintTitle": {
     ja: "クリック=タップ / Alt(Option)+クリック=ダブルタップ / 500ms 以上ホールド=長押し /"
-      + " ドラッグ=スワイプ。拡大・縮小は下のボタン",
+      + " ドラッグ=スワイプ / Shift+ドラッグ=軌跡どおりになぞる。拡大・縮小は下のボタン",
     en: "Click = tap / Alt(Option)+click = double tap / hold 500ms+ = long press /"
-      + " drag = swipe. Zoom is on the buttons below",
+      + " drag = swipe / Shift+drag = trace the exact path. Zoom is on the buttons below",
   },
   "panels.live.zoomOutButton": { ja: "縮小", en: "Zoom out" },
   "panels.live.zoomOutTitle": {
     ja: "画面全体をピンチで縮小します",
     en: "Pinch the whole screen to zoom out",
+  },
+  "panels.live.traceModeButton": { ja: "軌跡", en: "Trace" },
+  "panels.live.traceModeTitle": {
+    ja: "ドラッグを指の軌跡どおりに再生します(Shift+ドラッグでも一時的に使えます)",
+    en: "Replays a drag along the exact finger path (hold Shift while dragging for a one-off)",
   },
   "panels.live.appSwitcherButton": { ja: "タスク切替", en: "App Switcher" },
   "panels.live.appSwitcherTitle": {

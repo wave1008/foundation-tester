@@ -74,6 +74,7 @@ if (command === "list-devices") {
         ok: false,
         error: "mock-live: --fail-all 指定によりスナップショット取得に失敗しました",
         notes: [],
+        bridgeStarting: false,
       });
       return;
     }
@@ -103,6 +104,7 @@ if (command === "list-devices") {
         },
       ],
       notes: [],
+      bridgeStarting: false,
     });
   }
 
@@ -126,6 +128,7 @@ if (command === "list-devices") {
       kind: "actionResult",
       ok: !failed,
       error: failed ? `mock-live: ${String(cmd)} に失敗しました` : null,
+      bridgeStarting: false,
     });
     emitSnapshot();
   });

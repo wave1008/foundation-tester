@@ -128,6 +128,9 @@ export interface LiveSnapshot {
   /** 観測そのものへの注記(鮮度警告等。契約: ApiLiveCommand.swift 冒頭・FTCore.StaleFrameDetector)。
    * 注記が無い回も常に空配列(CLI 側は null にしない)。 */
   readonly notes: readonly string[];
+  /** LiveBridgeAutoStarter.isStarting(契約: ApiLiveCommand.swift 冒頭)。ok/エラーを問わず全イベント
+   * 共通の必須フィールド。monitorLiveController.ts の applyBridgeStarting が読む。 */
+  readonly bridgeStarting: boolean;
 }
 
 export interface LiveOkResult {
@@ -135,6 +138,8 @@ export interface LiveOkResult {
   /** actionResult のみ: その操作を撃った先(セッションの向き先の bundle ID)。契約は
    * Sources/fleetest/ApiLiveCommand.swift 冒頭。iOS のみ・不明なら undefined。 */
   readonly app?: string;
+  /** LiveSnapshot.bridgeStarting と同じ。 */
+  readonly bridgeStarting: boolean;
 }
 
 export interface LiveErrorResult {
@@ -142,6 +147,8 @@ export interface LiveErrorResult {
   readonly error: string;
   /** LiveOkResult.app と同じ(失敗した操作の撃ち先)。 */
   readonly app?: string;
+  /** LiveSnapshot.bridgeStarting と同じ。 */
+  readonly bridgeStarting: boolean;
 }
 
 export type LiveActionResult = LiveOkResult | LiveErrorResult;
@@ -186,7 +193,8 @@ export function isLiveSnapshot(value: unknown): value is LiveSnapshot {
     Array.isArray(value.elements) &&
     value.elements.every(isLiveElement) &&
     Array.isArray(value.notes) &&
-    value.notes.every((note) => typeof note === "string")
+    value.notes.every((note) => typeof note === "string") &&
+    typeof value.bridgeStarting === "boolean"
   );
 }
 
@@ -194,11 +202,11 @@ export function isLiveErrorResult(value: unknown): value is LiveErrorResult {
   if (!isRecord(value) || value.ok !== false) {
     return false;
   }
-  return typeof value.error === "string";
+  return typeof value.error === "string" && typeof value.bridgeStarting === "boolean";
 }
 
 export function isLiveOkResult(value: unknown): value is LiveOkResult {
-  return isRecord(value) && value.ok === true;
+  return isRecord(value) && value.ok === true && typeof value.bridgeStarting === "boolean";
 }
 
 export function parseLiveSnapshotResult(value: unknown): LiveSnapshot | LiveErrorResult | undefined {
@@ -214,12 +222,15 @@ export function parseLiveSnapshotResult(value: unknown): LiveSnapshot | LiveErro
 export interface LiveFrame {
   readonly ok: true;
   readonly image: string;
+  /** LiveSnapshot.bridgeStarting と同じ。 */
+  readonly bridgeStarting: boolean;
 }
 export type LiveFrameResult = LiveFrame | LiveErrorResult;
 
 export function parseLiveFrameResult(value: unknown): LiveFrameResult | undefined {
-  if (isRecord(value) && value.ok === true && typeof value.image === "string") {
-    return { ok: true, image: value.image };
+  if (isRecord(value) && value.ok === true && typeof value.image === "string"
+      && typeof value.bridgeStarting === "boolean") {
+    return { ok: true, image: value.image, bridgeStarting: value.bridgeStarting };
   }
   if (isLiveErrorResult(value)) {
     return value;
@@ -231,15 +242,26 @@ export function parseLiveActionResult(value: unknown): LiveActionResult | undefi
   // app は**在るときだけ載せる**(undefined の欄を作らない = 旧 CLI の出力と同じ形に保つ)
   const app = isRecord(value) && typeof value.app === "string" ? { app: value.app } : {};
   if (isLiveOkResult(value)) {
-    return { ok: true, ...app };
+    return { ok: true, bridgeStarting: value.bridgeStarting, ...app };
   }
   if (isLiveErrorResult(value)) {
-    return { ok: false, error: value.error, ...app };
+    return { ok: false, error: value.error, bridgeStarting: value.bridgeStarting, ...app };
   }
   return undefined;
 }
 
 // ---- live serve(常駐プロセス)のコマンド組み立て・イベント検証(契約はファイル冒頭参照) -----------
+
+/** GesturePoint と同じ形(x/y は device 座標、t はジェスチャ開始からの秒)。 */
+export interface LiveGesturePoint {
+  readonly x: number;
+  readonly y: number;
+  readonly t: number;
+}
+
+export interface LiveGestureFinger {
+  readonly points: readonly LiveGesturePoint[];
+}
 
 export type LiveServeCommand =
   | { readonly cmd: "tap"; readonly ref: number }
@@ -256,6 +278,12 @@ export type LiveServeCommand =
     }
   | { readonly cmd: "press"; readonly x: number; readonly y: number; readonly duration: number }
   | { readonly cmd: "doubleTap"; readonly x: number; readonly y: number }
+  /** 軌跡モード専用(ライブ操作パネルの「軌跡」トグル/Shift+ドラッグ)。ワイヤ形は
+   * `Sources/FTCore/BridgeDTO.swift` の `GestureRequest.fingers` と同じ(`GesturePoint.t` は
+   * ジェスチャ開始からの**秒**)。座標は既に device 座標(pointFromClick 済み)。呼び手
+   * (monitorLiveController.ts の tracePoints ハンドラ)がここへ揃える前は webview の点列は
+   * 表示pxかつ ms 単位なので、そのまま送らない */
+  | { readonly cmd: "gesture"; readonly fingers: readonly LiveGestureFinger[] }
   | { readonly cmd: "pinch"; readonly scale: number; readonly duration: number }
   | { readonly cmd: "appSwitcher" }
   | { readonly cmd: "home" }
@@ -264,6 +292,43 @@ export type LiveServeCommand =
   | { readonly cmd: "frame" }
   | { readonly cmd: "launch"; readonly bundle: string }
   | { readonly cmd: "install"; readonly path: string };
+
+export interface GestureStepMove {
+  readonly kind: "move";
+  readonly x: number;
+  readonly y: number;
+  readonly seconds: number;
+}
+export interface GestureStepHold {
+  readonly kind: "hold";
+  readonly seconds: number;
+}
+export type GestureStep = GestureStepMove | GestureStepHold;
+
+/** 点列(x/y は絶対座標、t は秒)→ move/hold の列。**同じ座標が続く区間は静止(hold)**、そうでなければ
+ * 移動(move)。時刻が巻き戻る/止まっている点(dt<=0)は畳む(捨てる)—— 間引き後の点列や
+ * pointerup の最終点が直前の点と同時刻・同座標になり得るため。mcpCommandForServeCommand の
+ * ft_gesture 表示と recordedGestureFingers(記録→シナリオ生成)の両方がこれを土台にする
+ * (ロジックを2箇所に持たない)。 */
+export function gestureStepsFromPoints(
+  points: readonly LiveGesturePoint[],
+): GestureStep[] {
+  const steps: GestureStep[] = [];
+  for (let i = 1; i < points.length; i++) {
+    const previous = points[i - 1]!;
+    const current = points[i]!;
+    const seconds = current.t - previous.t;
+    if (seconds <= 0) {
+      continue;
+    }
+    if (current.x === previous.x && current.y === previous.y) {
+      steps.push({ kind: "hold", seconds });
+    } else {
+      steps.push({ kind: "move", x: current.x, y: current.y, seconds });
+    }
+  }
+  return steps;
+}
 
 /** 操作記録の右列に出す、**同じ操作を MCP で撃つときのコマンド**(`ft_tap {"x":120,"y":340}` の形)。
  * ツール名と引数名は Sources/fleetest-mcp/MCPServer+ToolDefs.swift と対(片方だけ変えない)。
@@ -298,6 +363,21 @@ export function mcpCommandForServeCommand(
       return line("ft_long_press", { x: n(command.x), y: n(command.y), holdSeconds: n(command.duration) });
     case "doubleTap":
       return line("ft_double_tap", { x: n(command.x), y: n(command.y) });
+    case "gesture": {
+      // 秒は 0.01 刻みで丸め、0 未満に落ちないよう最小値を敷く(TouchGesture.validate は
+      // 0 より大きい秒数を要求する。丸めで 0 になった移動/静止を無効な引数として送らない)
+      const roundSeconds = (value: number): number => Math.max(0.01, Math.round(value * 100) / 100);
+      const fingers = command.fingers.map((finger) => {
+        const first = finger.points[0] ?? { x: 0, y: 0, t: 0 };
+        const steps = gestureStepsFromPoints(finger.points).map((step) =>
+          step.kind === "hold"
+            ? { holdSeconds: roundSeconds(step.seconds) }
+            : { x: n(step.x), y: n(step.y), durationSeconds: roundSeconds(step.seconds) },
+        );
+        return { x: n(first.x), y: n(first.y), steps };
+      });
+      return line("ft_gesture", { fingers });
+    }
     case "pinch":
       return line("ft_pinch", { scale: n(command.scale), durationSeconds: n(command.duration) });
     case "home":
@@ -357,8 +437,9 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
             image: result.image,
             elements: result.elements,
             notes: result.notes,
+            bridgeStarting: result.bridgeStarting,
           }
-        : { ok: false, error: result.error },
+        : { ok: false, error: result.error, bridgeStarting: result.bridgeStarting },
     };
   }
   if (value.kind === "frame") {
@@ -369,8 +450,8 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
     return {
       kind: "frame",
       result: result.ok
-        ? { ok: true, image: result.image }
-        : { ok: false, error: result.error },
+        ? { ok: true, image: result.image, bridgeStarting: result.bridgeStarting }
+        : { ok: false, error: result.error, bridgeStarting: result.bridgeStarting },
     };
   }
   return undefined;
@@ -463,11 +544,55 @@ export interface RecordedStep {
   readonly action:
     | "tap" | "type" | "press" | "swipe" | "home" | "appSwitcher" | "terminate"
     // マップ系(Sources/FTDSL/Commands.swift と同名。生成は ScenarioCodeGen.command(for:))
-    | "doubleTap" | "pinchOut" | "pinchIn";
+    | "doubleTap" | "pinchOut" | "pinchIn"
+    // 軌跡モード(gesture)。DSL の gesture { } と同名(ScenarioCodeGen.command(for:) の "gesture")
+    | "gesture";
   readonly locator?: FlowLocatorShape;
   readonly fallbacks?: readonly FlowLocatorShape[];
   readonly text?: string;
   readonly direction?: "up" | "down" | "left" | "right";
+  /** action: "gesture" 専用。**キー名は "gesture"**(FlowStep.gesture と同名。
+   * Sources/FTCore/Flow.swift)—— `fleetest api gen-scenario --steps` は RecordedStep を
+   * そのまま Swift の `FlowStep`(Decodable)として読むため、キー名が違うと黙って読み飛ばされる。
+   * 中身は `FTFinger` の Codable そのまま(`Sources/FTCore/TouchGesture.swift`。x/y は対象への
+   * 比率、steps は `{move:{x,y,durationSeconds}}` / `{hold:{seconds}}` の enum ケース名)。 */
+  readonly gesture?: readonly RecordedGestureFinger[];
+}
+
+/** RecordedStep.gesture の1本の指。FTFinger(Codable)と同じキー名・型で組む(recordedGestureFingers
+ * が唯一の生成元)。 */
+export interface RecordedGestureFinger {
+  readonly x: number;
+  readonly y: number;
+  readonly startSeconds: number;
+  readonly steps: readonly RecordedGestureFingerStep[];
+}
+export type RecordedGestureFingerStep =
+  | { readonly move: { readonly x: number; readonly y: number; readonly durationSeconds: number } }
+  | { readonly hold: { readonly seconds: number } };
+
+/** 軌跡モードの device 座標の指の経路 → `RecordedStep.gesture`(FTFinger の比率表現)。
+ * `screen`(snapshot 時点の画面サイズ)で割るだけ(Sources/fleetest-mcp/MCPServer+Gesture.swift の
+ * gestureFingersRatio と同じ考え方 —— 絶対座標→比率は screen で割るだけで、resolve 後の点列から
+ * move/hold を推測し直すより単純)。screen が不明(0以下)なら記録できないので空配列。 */
+export function recordedGestureFingers(
+  fingers: readonly LiveGestureFinger[],
+  screen: LiveSize,
+): RecordedGestureFinger[] {
+  if (!(screen.width > 0) || !(screen.height > 0)) {
+    return [];
+  }
+  return fingers
+    .filter((finger) => finger.points.length > 0)
+    .map((finger) => {
+      const first = finger.points[0]!;
+      const steps: RecordedGestureFingerStep[] = gestureStepsFromPoints(finger.points).map((step) =>
+        step.kind === "hold"
+          ? { hold: { seconds: step.seconds } }
+          : { move: { x: step.x / screen.width, y: step.y / screen.height, durationSeconds: step.seconds } },
+      );
+      return { x: first.x / screen.width, y: first.y / screen.height, startSeconds: first.t, steps };
+    });
 }
 
 /**
@@ -835,10 +960,16 @@ export type LiveToWebviewMessage =
    * 行タップが**別のデバイスの ref** を叩く。webview はこれを受けたら次のフレームで
    * refreshSnapshot を要求し直す(liveTab.js の requestSnapshotIfNeeded)。 */
   | { readonly type: "clearSnapshot" }
-  | { readonly type: "actionError"; readonly message: string }
+  /** neutral: true のときは失敗(エラー)としての見た目(赤)にしない。省略 = false
+   * (bridgeStarting 中の操作失敗だけが true を送る。live.bridgeStartingActionNotice)。 */
+  | { readonly type: "actionError"; readonly message: string; readonly neutral?: boolean }
   | { readonly type: "busy"; readonly busy: boolean }
   | { readonly type: "connection"; readonly connected: boolean; readonly message: string | null }
   | { readonly type: "busyOverlay"; readonly message: string | null }
+  /** LiveBridgeAutoStarter が自動起動を進行中かどうか(契約: ApiLiveCommand.swift 冒頭の
+   * bridgeStarting)。画面領域に中立の「接続中」表示を出す/消す(webview 側の固定文言。
+   * connection:false のエラー表示とは別の状態 —— starting はまだエラーではない)。 */
+  | { readonly type: "bridgeStarting"; readonly starting: boolean }
   | {
       readonly type: "appProfiles";
       readonly profiles: readonly string[];
@@ -914,6 +1045,15 @@ export type LiveFromWebviewMessage =
       readonly pressMs: number;
       readonly dragMs: number;
     }
+  /** 軌跡モード(トグル ON、または pointerdown 時に Shift を押していた)のドラッグ。点は表示px・
+   * t は pointerdown からの**ミリ秒**(host 側の tracePoints ハンドラが device 座標・秒へ変換する。
+   * liveModel.ts の LiveGesturePoint.t は秒なので混同しないこと)。 */
+  | {
+      readonly type: "tracePoints";
+      readonly points: readonly { readonly x: number; readonly y: number; readonly t: number }[];
+      readonly displayWidth: number;
+      readonly displayHeight: number;
+    }
   | { readonly type: "tapRef"; readonly ref: number }
   /** 入力は**デバイス側でフォーカスしている要素**へ送る(ref は付けない)。パネルで最後に
    * 触った要素の ref は、その操作が返すスナップショットで採番し直されるため、次の入力の時点では
@@ -978,6 +1118,20 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
         typeof value.displayHeight === "number" &&
         typeof value.pressMs === "number" &&
         typeof value.dragMs === "number"
+      );
+    case "tracePoints":
+      return (
+        Array.isArray(value.points) &&
+        value.points.length > 0 &&
+        value.points.every(
+          (p) =>
+            isRecord(p) &&
+            typeof p.x === "number" && Number.isFinite(p.x) &&
+            typeof p.y === "number" && Number.isFinite(p.y) &&
+            typeof p.t === "number" && Number.isFinite(p.t),
+        ) &&
+        typeof value.displayWidth === "number" &&
+        typeof value.displayHeight === "number"
       );
     case "tapRef":
       return typeof value.ref === "number";

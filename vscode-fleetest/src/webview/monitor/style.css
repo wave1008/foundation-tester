@@ -220,6 +220,14 @@ button.bulk-cancel:hover:not(:disabled) {
   padding: 0 8px;
   gap: 4px;
 }
+/* ライブ操作ツールバーの「軌跡」トグル。並びが button.secondary(ホーム・拡大縮小等)なので、
+   ON の見せ方は .icon-button.toggled と同じ配色を button.secondary に対して定義する。 */
+button.secondary.toggled {
+  background-color: var(--vscode-inputOption-activeBackground, rgba(0, 122, 204, 0.4));
+  background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14));
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+  box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
+}
 .profile-label {
   display: flex;
   align-items: center;
@@ -2614,6 +2622,33 @@ input[type="radio"]:focus-visible {
 #live-conn-overlay.visible { display: flex; }
 #live-conn-overlay .conn-title { font-size: 13px; font-weight: 600; }
 #live-conn-overlay #live-conn-detail { white-space: pre-wrap; opacity: 0.85; max-width: 320px; }
+/* ブリッジの自動起動が進行中(bridgeStarting)の間だけ出す中立表示。conn-overlay と同じ箱の形だが
+   別要素(starting はまだエラーではない。monitorLiveController.ts の applyBridgeStarting) */
+#live-connecting-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+}
+#live-connecting-overlay.visible { display: flex; }
+#live-screenshot-placeholder.connecting { visibility: hidden; }
+#live-connecting-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: live-busy-spin 0.8s linear infinite;
+}
 /* 処理中(レコーディング開始のinstall→launch待ち等)に画面を薄暗くしてメッセージを出すオーバーレイ。
    conn-overlay と同じく screenshot-wrap の inset:0。タップ透過(pointer-events:none)。 */
 #live-busy-overlay {
@@ -2755,6 +2790,9 @@ input[type="radio"]:focus-visible {
   align-items: flex-start;
 }
 #live-action-error.visible { display: flex; }
+/* neutral: bridgeStarting 中の操作失敗(live.bridgeStartingActionNotice)専用。エラー色にしない
+   (--vscode-descriptionForeground は他所でも使う「中立」の既定色。stale-notice の警告色とも別) */
+#live-action-error.neutral { color: var(--vscode-descriptionForeground); }
 #live-action-error-text { flex: 1 1 auto; min-width: 0; }
 /* 消す口。文言は長く折り返すので上端に置く(align-items: flex-start) */
 #live-action-error-close {
