@@ -60,7 +60,9 @@ final class InAppGestureRoutingTests: XCTestCase {
         let driver = try source("Sources/FTBridgeClient/InAppDriver.swift")
         XCTAssertTrue(driver.contains("client.doubleTap(x: x, y: y)"),
                       "InAppDriver が doubleTap をブリッジへ渡していません")
-        XCTAssertTrue(driver.contains("client.pinch(frame: frame"),
+        XCTAssertTrue(driver.contains("client.pinch(request:"),
                       "InAppDriver が pinch をブリッジへ渡していません")
+        XCTAssertTrue(driver.contains("PinchGesture.ios(frame: frame"),
+                      "InAppDriver が指の置き方を PinchGesture.ios に委ねていません(ホストが指を組んで fingers で送る)")
     }
 }

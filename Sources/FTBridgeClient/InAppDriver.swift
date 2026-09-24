@@ -201,11 +201,23 @@ public final class InAppDriver: AppDriver {
     public func doubleTap(x: Double, y: Double) async throws {
         try await withCrashContext { try await client.doubleTap(x: x, y: y) }
     }
+    /// in-app には「対象アプリ全体」を掴む要素ピンチの縮退先が無い(XCUITest の
+    /// `XCUIElement.pinch` はプロセス外の合成ジェスチャで、in-app の合成タッチは自プロセス内の
+    /// 座標にしか撃てない)ので、**`frame` が無ければ 501 で断る**(指の置き方
+    /// `FTCore.PinchGesture.ios` は領域が要る)。hybrid では StepExecutor が XCUITest 側へ回す
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
+        guard let frame else {
+            throw DriverError.badResponse(status: 501,
+                body: "pinch needs a target area on the in-app engine (no whole-app element pinch to"
+                    + " fall back to). Switch the run profile to hybrid or xcuitest, or scope the pinch"
+                    + " to an element")
+        }
         try await withCrashContext {
-            try await client.pinch(frame: frame, identifier: identifier, scale: scale,
-                                   durationSeconds: durationSeconds)
+            try await client.pinch(request: PinchRequest(
+                scale: scale, durationSeconds: durationSeconds, frame: frame, identifier: identifier,
+                fingers: try PinchGesture.ios(frame: frame, scale: scale,
+                                              durationSeconds: durationSeconds)))
         }
     }
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {

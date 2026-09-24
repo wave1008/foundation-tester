@@ -175,29 +175,26 @@ void FTSynthDoubleTap(UIWindow *window, CGPoint point, double gapSeconds) {
     ftTapWithCount(window, point, 2);
 }
 
-// 2本指ピンチ。center を挟んで対角(45度)に startSpan → endSpan まで開閉する。
+// 2本指の経路をそのまま再生する(pinch の実体)。指の置き方はここでは決めない——呼び出し側
+// (InAppBridge.handlePinch)がホストの `FTCore.PinchGesture` が組んだ2本指の経路を、この関数が
+// 送るだけの密度(1/60s刻み、最低20点)にキーフレーム補間してから渡す。
 // **合成タッチの move がジェスチャ認識器に受理されるかはフレームワーク依存**(UIKit/SwiftUI と
 // Compose は受理しない = swipe/press が in-app で 501 な理由と同じ)。受理判定はできないので
 // 呼び出し側が事後に検証する。
-void FTSynthPinch(UIWindow *window, CGPoint center, double startSpan, double endSpan,
-                  double duration, int steps) {
-    if (steps < 1) steps = 20;
-    if (!(duration > 0)) duration = 0.5;
-    const double axis = 0.70710678;   // cos45: 各軸への射影
-    CGPoint p1 = CGPointMake(center.x - startSpan / 2 * axis, center.y - startSpan / 2 * axis);
-    CGPoint p2 = CGPointMake(center.x + startSpan / 2 * axis, center.y + startSpan / 2 * axis);
-    UIView *hit = [window hitTest:center withEvent:nil] ?: window;
+void FTSynthTwoFingerSteps(UIWindow *window, const CGPoint *a, const CGPoint *b,
+                          int count, double stepDelay) {
+    if (count < 2) return;
+    UIView *hit = [window hitTest:CGPointMake((a[0].x + b[0].x) / 2, (a[0].y + b[0].y) / 2)
+                         withEvent:nil] ?: window;
     NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
-    UITouch *t1 = ftMakeTouch(window, hit, p1, ts);
-    UITouch *t2 = ftMakeTouch(window, hit, p2, ts);
+    UITouch *t1 = ftMakeTouch(window, hit, a[0], ts);
+    UITouch *t2 = ftMakeTouch(window, hit, b[0], ts);
     [t2 _setIsFirstTouchForView:NO];
-    ftDispatch2(window, t1, t2, p1, p2, UITouchPhaseBegan);
-    double stepDelay = duration / steps;
-    for (int i = 1; i <= steps; i++) {
-        double f = (double)i / (double)steps;
-        double span = startSpan + (endSpan - startSpan) * f;
-        p1 = CGPointMake(center.x - span / 2 * axis, center.y - span / 2 * axis);
-        p2 = CGPointMake(center.x + span / 2 * axis, center.y + span / 2 * axis);
+    ftDispatch2(window, t1, t2, a[0], b[0], UITouchPhaseBegan);
+    CGPoint p1 = a[0], p2 = b[0];
+    for (int i = 1; i < count; i++) {
+        p1 = a[i];
+        p2 = b[i];
         ts = NSProcessInfo.processInfo.systemUptime;
         [t1 _setLocationInWindow:p1 resetPrevious:NO];
         [t2 _setLocationInWindow:p2 resetPrevious:NO];

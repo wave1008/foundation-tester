@@ -7,9 +7,9 @@
 // ズーム 0、重心だけが移動)。逆に指が中身に収まっていれば正しくズームする(距離比 1.803)。
 //
 // そこで**両方の指が同じものに載る位置**を探して、その領域だけを送る。
-// 領域の中で指をどう置くかはブリッジ側(`BridgeRouter.coordinatePinch` /
-// Android の `InputInjector`)が決める —— **端の取り方は `closingTouchPoints` が唯一の定義元**で、
-// ホストはその2点で判定し、ブリッジは同じ規則で指を置く(片方だけ変えない)。
+// 領域の中で指をどう置くか(`FTCore.PinchGesture.ios` / `.android`)は
+// この型の外にある —— **端の取り方は `closingTouchPoints` が唯一の定義元**で、
+// `PinchGesture.ios` はその2点より内側(0.8 掛け)に指を置く(片方だけ変えない)。
 
 import Foundation
 
@@ -55,9 +55,9 @@ public enum PinchRegion {
     }
 
     /// 領域の中で指が置かれる**もっとも外側**の2点。
-    /// **向きの規則はブリッジ(`BridgeRouter.coordinatePinch`)と同じ** —— 原則は横並びで、
+    /// **向きの規則は `PinchGesture.ios` と同じ** —— 原則は横並びで、
     /// よほど縦長の枠のときだけ縦(縦に並べると縦スクロールの recognizer が指を取る)。
-    /// ブリッジは実際にはここから少し内側に置く(縁ちょうどは隣に拾われる)ので、
+    /// `PinchGesture.ios` は実際にはここから少し内側に置く(縁ちょうどは隣に拾われる)ので、
     /// **この2点で確かめておけば内側は必ず同じものの上**になる。片方だけ変えない
     public static func closingTouchPoints(in frame: FTRect) -> [(x: Double, y: Double)] {
         let vertical = frame.height > frame.width * 2

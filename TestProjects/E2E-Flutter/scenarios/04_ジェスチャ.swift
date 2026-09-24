@@ -138,23 +138,22 @@ class ジェスチャが正しく検出されること {
                     select("#txt_double_count").textIs("double=0")
                 }
             }
-            // **iOS の Flutter はエンジンで割れる**: 既定の hybrid(in-app)なら通るが、
-            // XCUITest のピンチは指の間隔を約 8px しか開かず Flutter のしきい値に届かない
-            // (2026-08-04 実測・docs/commands.md)。このシナリオは両エンジンで走るので
-            // Android に閉じる —— iOS のピンチは E2E-CMP と E2E-iOS が担保する
-            scene(13, "ピンチアウトで拡大が検出される(iOS の Flutter は上流制約で対象外)") {
+            // 指の配置はホスト側 FTCore.PinchGesture(OS ごとの規則)が決めブリッジは再生するだけ
+            // (2026-09-24 実測)。iOS も両エンジンでピンチが検出できるようになったので Android に
+            // 閉じない
+            scene(13, "ピンチアウトで拡大が検出される") {
                 action {
-                    android { pinchOut("#pad_map", scale: 2.0) }
+                    pinchOut("#pad_map", scale: 2.0)
                 }.expectation {
-                    android { select("#txt_zoom_dir").textIs("zoom=in") }
+                    select("#txt_zoom_dir").textIs("zoom=in")
                 }
             }
-            scene(14, "ピンチインで縮小が検出される(iOS の Flutter は上流制約で対象外)") {
+            scene(14, "ピンチインで縮小が検出される") {
                 action {
                     tap("#btn_map_reset")
-                    android { pinchIn("#pad_map", scale: 0.5) }
+                    pinchIn("#pad_map", scale: 0.5)
                 }.expectation {
-                    android { select("#txt_zoom_dir").textIs("zoom=out") }
+                    select("#txt_zoom_dir").textIs("zoom=out")
                 }
             }
             scene(15, "単タップではダブルタップカウントが増えない(区別の検証)") {
@@ -189,12 +188,12 @@ class ジェスチャが正しく検出されること {
                     select("#txt_pan").textIs("pan=right-down")
                 }
             }
-            scene(19, "対象を指定しないピンチも効く(iOS の Flutter は上流制約で対象外)") {
+            scene(19, "対象を指定しないピンチも効く") {
                 action {
                     tap("#btn_map_reset")
-                    android { pinchOut() }
+                    pinchOut()
                 }.expectation {
-                    android { select("#txt_zoom_dir").textIs("zoom=in") }
+                    select("#txt_zoom_dir").textIs("zoom=in")
                 }
             }
             scene(20, "リセットで全ての値が初期状態に戻る") {

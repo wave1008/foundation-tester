@@ -19,10 +19,12 @@ void FTSynthPress(UIWindow *window, CGPoint point, double duration);
 /// 短すぎると Compose(iOS)が2打目を捨て、長すぎると判定窓を外れる。
 void FTSynthDoubleTap(UIWindow *window, CGPoint point, double gapSeconds);
 
-/// 2本指ピンチ(center を挟んで対角に startSpan → endSpan)。steps<1 は既定 20。
+/// 2本指の経路をそのまま再生する(pinch の実体。指の置き方はホストの `FTCore.PinchGesture` が
+/// 決めて `a`/`b` に渡ってくる。ここでは組まない)。`a[0]`/`b[0]` で down、
+/// `a[1..count-1]`/`b[1..count-1]` を `stepDelay` 秒間隔で move、最後の点で up する。
 /// **受理されるかはフレームワーク依存**(合成タッチの move を無視する実装がある)。
-void FTSynthPinch(UIWindow *window, CGPoint center, double startSpan, double endSpan,
-                  double duration, int steps);
+void FTSynthTwoFingerSteps(UIWindow *window, const CGPoint *a, const CGPoint *b,
+                           int count, double stepDelay);
 
 /// 現在の first responder が UIKeyInput なら text を挿入する。挿入できたら YES。
 BOOL FTInsertTextIntoFirstResponder(NSString *text);

@@ -57,14 +57,9 @@ public struct FTFinger: Codable, Equatable, Sendable {
 
 public enum TouchGesture {
 
-    /// 指の本数の上限。**装置の上限ではなく操作の意味から決めた値**(片手の指の本数。
-    /// 6本以上を要する UI は無い)。上げても両ブリッジは動くが、要求の大きさだけが増える
-    public static let maxFingers = 5
-
-    /// 1本の指に置ける点の上限。根拠: Android の注入器は 16ms 刻みで再生するので、
-    /// 既定の上限 10 秒では 10 / 0.016 = 625 刻み。これより細かい点は再生で間引かれて意味を持たない。
-    /// 上限を `maxGestureSeconds:` で延ばしたときも点の数はこの値で縛る(要求の大きさを抑える)
-    public static let maxPointsPerFinger = 625
+    /// 指の本数・1本あたりの点数の上限(定義と根拠は BridgeAPI。ランナーと共有する)
+    public static let maxFingers = BridgeAPI.gestureMaxFingers
+    public static let maxPointsPerFinger = BridgeAPI.gestureMaxPointsPerFinger
 
     /// 移動も静止も無い指(= 触れて離すだけ)に置く接触時間(秒)。座標ドラッグの押下静止
     /// (`swipePointToPoint` の pressSeconds)と同じ 0.05 —— 押下と離す時刻が同じだと

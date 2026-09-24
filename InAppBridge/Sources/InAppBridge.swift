@@ -1357,9 +1357,9 @@ final class FTInAppBridge {
         }
     }
 
-    /// ダブルタップ。**in-app の方が正確な場面がある**: 離してから次に押すまでの間隔を
-    /// こちらで決められるので、XCTest の doubleTap(この間隔が 0ms)では単タップに落ちる
-    /// Compose(iOS)でも成立する(2026-08-04 実測)
+    /// ダブルタップ。**Compose(iOS)はここでしか成立しない**: Compose は XCTest が合成したタッチを
+    /// ダブルタップとして数えない(XCTest の doubleTap も、XCUITest ランナーが送る独立した2タッチも
+    /// 間隔によらず double=0。2026-09-24 実測)。アプリ内で合成したタッチなら数える
     private func handleDoubleTap(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         try requireSelfRenderedFramework("doubleTap")
@@ -1370,36 +1370,65 @@ final class FTInAppBridge {
         return ok()
     }
 
-    /// 2本指ピンチ。対象領域(PinchRequest.frame。nil = 画面全体)の中心で開閉する。
-    /// **XCUITest より指を大きく動かせる**のが効く場面がある: XCTest のピンチは指の間隔を
-    /// 8px 程度からしか開かず、Flutter のスケール判定のしきい値に届かない(2026-08-04 実測)。
-    /// こちらは対象領域の短辺 90% まで開くので届く
+    /// 2本指ピンチ。**指の置き方はホストが決める**(`FTCore.PinchGesture`。1つの規則を OS ごとに
+    /// 持つのは `BridgeDTO.PinchRequest.fingers` のドキュメント参照)—— ここは指を組まず、host が
+    /// 送った2本指のキーフレーム(押す→…→離す)を `FTSynthTwoFingerSteps` へ再生できる密度に
+    /// 補間して渡すだけ
     private func handlePinch(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(PinchRequest.self, body)
         try requireSelfRenderedFramework("pinch")
         guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
             throw InAppError(400, "scale must be positive and not 1 (got: \(req.scale))")
         }
+        guard let fingers = req.fingers, fingers.count == 2,
+              fingers[0].points.count >= 2, fingers[1].points.count >= 2 else {
+            throw InAppError(400, "pinch needs exactly 2 fingers with at least 2 points each")
+        }
         try performWithSettle { window in
-            let bounds = window.bounds
-            let frame = req.frame.map {
-                CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
-            } ?? bounds
-            // 指の間隔は**倍率が正確に出る側から決める**(Android ブリッジの handlePinch と同じ規律)
-            let maxSpan = min(frame.width, frame.height) * 0.9
-            let startSpan: Double
-            let endSpan: Double
-            if req.scale > 1 {
-                endSpan = maxSpan
-                startSpan = max(maxSpan / req.scale, 16)
-            } else {
-                startSpan = maxSpan
-                endSpan = max(maxSpan * req.scale, 16)
-            }
-            FTSynthPinch(window, CGPoint(x: frame.midX, y: frame.midY),
-                         startSpan, endSpan, req.durationSeconds ?? 0.5, 20)
+            let (a, b, stepDelay) = Self.pinchSteps(fingers[0], fingers[1])
+            FTSynthTwoFingerSteps(window, a, b, Int32(a.count), stepDelay)
         }
         return ok()
+    }
+
+    /// 補間の刻み[秒]。60Hz はディスプレイのリフレッシュレート/タッチのサンプリング周期の目安
+    /// (XCUITest ランナー側 `CoordinatePinch.stepInterval` と同じ考え)
+    private static let pinchStepInterval: TimeInterval = 1.0 / 60.0
+    /// 補間する点数の下限。秒未満の短いピンチでも recognizer が移動として認識できる点数を確保する床
+    private static let pinchMinimumSteps = 20
+
+    /// 2本指のキーフレーム(ホストの `PinchGesture` が組む)を、`pinchStepInterval` 刻みで均等
+    /// サンプリングし `FTSynthTwoFingerSteps` に渡せる並びへ整える。各指は自分の最初/最後の点で
+    /// クランプする(相手の指より早く離れても、離れた位置に止まったまま最後まで運ばれる = hold)
+    private static func pinchSteps(_ finger1: GestureFinger, _ finger2: GestureFinger)
+        -> (a: [CGPoint], b: [CGPoint], stepDelay: TimeInterval) {
+        let totalSeconds = max(finger1.points.last?.t ?? 0, finger2.points.last?.t ?? 0)
+        let stepCount = max(pinchMinimumSteps, Int((totalSeconds / pinchStepInterval).rounded()) + 1)
+        let stepDelay = stepCount > 1 ? totalSeconds / Double(stepCount - 1) : 0
+        func sample(_ finger: GestureFinger) -> [CGPoint] {
+            (0..<stepCount).map { i in
+                let t = stepCount > 1 ? Double(i) / Double(stepCount - 1) * totalSeconds : 0
+                return interpolate(finger.points, at: t)
+            }
+        }
+        return (sample(finger1), sample(finger2), stepDelay)
+    }
+
+    /// キーフレームの直線補間。両端はクランプ(押す前 = 最初の点・離した後 = 最後の点)。
+    /// 同座標が続く区間(静止)はそのまま同座標を返す
+    private static func interpolate(_ points: [GesturePoint], at t: Double) -> CGPoint {
+        guard let first = points.first, let last = points.last else { return .zero }
+        if t <= first.t { return CGPoint(x: CGFloat(first.x), y: CGFloat(first.y)) }
+        if t >= last.t { return CGPoint(x: CGFloat(last.x), y: CGFloat(last.y)) }
+        for i in 1..<points.count {
+            let p0 = points[i - 1], p1 = points[i]
+            guard t <= p1.t else { continue }
+            let span = p1.t - p0.t
+            let ratio = span > 0 ? (t - p0.t) / span : 0
+            return CGPoint(x: CGFloat(p0.x + (p1.x - p0.x) * ratio),
+                           y: CGFloat(p0.y + (p1.y - p0.y) * ratio))
+        }
+        return CGPoint(x: CGFloat(last.x), y: CGFloat(last.y))
     }
 
     /// POST /rotate. `requestGeometryUpdate` is async — the readback right after the request can

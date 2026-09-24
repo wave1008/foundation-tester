@@ -304,13 +304,13 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 - 表示は**読み取り専用の Text**(パッドの上に重ねる)。`#btn_map_reset` は始点を塞がないよう
   ジェスチャ画面と同じ規律(幅 45% 以内・上下の端)に置く
 
-**iOS はエンジンで成否が分かれるジェスチャがある**(2026-08-04 に4 SUT で実測。表と機構は
-docs/commands.md)。**既定の hybrid では全て動く**が、`ios-xcuitest` プロファイルでは
-`#txt_double_count` が Compose で増えず、`#txt_zoom_dir` が Flutter で動かない
+**iOS でエンジンにより成否が分かれるのは Compose のダブルタップだけ**(2026-09-24 実測。表と機構は
+docs/commands.md)。既定の hybrid(in-app)では増えるが、`ios-xcuitest` プロファイルでは
+`#txt_double_count` が増えない —— Compose は XCTest の合成タッチをダブルタップとして数えない
 (SUT 側の作りの問題ではないので直そうとしないこと)。E2E のシナリオは**両エンジンで走る**ため、
-該当 scene を `android { }` に閉じてある —— iOS 側の担保は届く SUT
-(ダブルタップ = E2EAppIOS/E2EAppFlutter、ピンチ = E2EAppIOS/E2EAppCMP)と、
-in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
+E2E-CMP のこの scene は `android { }` に閉じてある。ピンチ(全 SUT)と Flutter のダブルタップは両エンジンで動く。
+E2E-RN のダブルタップも `android { }` —— この SUT は JS の PanResponder が `Date.now()` で判定するので、
+iOS では XCUITest の2タッチを間欠的に取りこぼす(2026-09-24 実測 8 回中 3 回。SUT の判定方式に固有)。
 
 ## スクロール画面(タイトル `スクロール`)
 

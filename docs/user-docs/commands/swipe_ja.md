@@ -8,7 +8,7 @@
 |---|---|
 | `swipe(.up / .down / .left / .right)` | 画面全体を**指の動きの方向**でスワイプします。`scroll*` 系の「方向はコンテンツ基準」というルールの**唯一の例外**です。詳細は [scroll](./scroll_ja.md) 参照。 |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:)` | 2点間をドラッグします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます。 |
-| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | ある要素から別の要素までドラッグします(スライダー・並べ替え・限られた領域内のドラッグ用)。ヒール(自己修復)対象は**始点だけ**で、終点はヒールされません。上限は `swipePointToPoint` と同じです。 |
+| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | ある要素から別の要素までドラッグします(スライダー・並べ替え・限られた領域内のドラッグ用)。ヒール(自己修復)対象は**始点だけ**で、終点はヒールされません。上限は `swipePointToPoint` と同じです。押してから動かすまでは 0.05 秒固定なので、長押しから始まる並べ替えは起動しません([gesture](./gestures_ja.md) を使ってください)。 |
 | `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:)` | 対象の中心から**比率**で指を動かします。横方向・縦方向の両方を非 0 にすると斜めのドラッグになります。比率の符号が指の向きを表します。セレクタを省略すると画面全体が対象になります。上限は `swipePointToPoint` と同じです。 |
 
 ## 例

@@ -432,7 +432,12 @@ public enum BridgeAPI {
     /// v126 (XCUITest runner only): `POST /gesture` replays several fingers' timed paths as one touch sequence (DSL
     /// `gesture`, MCP `ft_gesture`) through the same private pointer-event API as the coordinate pinch. The in-app
     /// bridge has no such route, so the host sends it to the XCUITest runner.
-    public static let bridgeProtocolVersion = 126
+    /// v127: pinch finger placement moves to the host (`PinchGesture`, one rule per OS). `/pinch` on every bridge replays
+    /// the host-computed `fingers` instead of placing fingers itself (in-app and Android require them; the XCUITest
+    /// runner falls back to the element pinch only when the private pointer-event API is missing). `/doubletap` on the
+    /// XCUITest runner sends two separate touches through that API (RN's PanResponder saw XCTest's tapCount=2 touch
+    /// as one tap).
+    public static let bridgeProtocolVersion = 127
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -601,6 +606,16 @@ public enum BridgeAPI {
     /// duration=1e9 でランナーは3秒で ok を返すが testmanagerd は残り続け、数時間で170〜280GB。
     /// 止めるには testmanagerd 自体を kill するしかない。→ maintainer-notes §49.1)
     public static let gestureSecondsCeiling: Double = 60
+
+    /// `/gesture` の指の本数の上限。**装置の上限ではなく操作の意味から決めた値**(片手の指の本数。
+    /// 6本以上を要する UI は無い)。ホストの門(`TouchGesture.validate`)と XCUITest ランナーの
+    /// 最後の砦が共有する。Android(Java)は写しを持ち、`GestureLimitsSyncTests` が一致を固定する
+    public static let gestureMaxFingers = 5
+
+    /// `/gesture` の1本の指に置ける点の上限。根拠: Android の注入器は 16ms 刻みで再生するので、
+    /// 既定の上限 10 秒では 10 / 0.016 = 625 刻み。これより細かい点は再生で間引かれて意味を持たない
+    /// (`maxGestureSeconds:` で延ばしたときも点の数はこの値で縛る = 要求の大きさを抑える)
+    public static let gestureMaxPointsPerFinger = 625
 
     /// ジェスチャの見積もり所要(秒)が `cap` を超えるか、非有限・負か。
     /// **XCUITest ランナーが合成タッチを送る前に呼ぶ**(BridgeRouter の press/drag/swipe/pinch。
@@ -1591,14 +1606,10 @@ public struct SwipeRequest: Codable {
     }
 }
 
-/// POST /pinch(2本指のズーム。DSL の pinchOut / pinchIn)。
-/// **2つの表現を同時に運ぶ**のは、対象の指定方法が OS で原理的に違うため:
-/// - Android(`InputInjector.pinch`)は座標を合成できるので `frame` の中心を使う
-/// - XCUITest は座標を指定した多点ジェスチャを持たず `XCUIElement.pinch(withScale:velocity:)`
-///   しかない = **要素を掴むしかない**ので `identifier` で引く(見つからなければアプリ全体)
-///
-/// ホストは対象を1回解決して両方を埋める(同期相手: StepExecutor の "pinch" アクション /
-/// Runner の handlePinch / AndroidRunner BridgeRouter.handlePinch)
+/// POST /pinch(2本指のズーム。DSL の pinchOut / pinchIn)。**指の置き方はホスト(`PinchGesture`)が
+/// `fingers` に組んで送り、ブリッジは再生するだけ**。`identifier` は XCUITest ランナーが非公開の
+/// ポインタイベント API を持たないときの縮退先(`XCUIElement.pinch` = 要素単位)のためだけに運ぶ
+/// (同期相手: Runner / InAppBridge / AndroidRunner の handlePinch)
 public struct PinchRequest: Codable {
     /// 拡大率。> 1 = 拡大(指を開く) / 0 < scale < 1 = 縮小(指を閉じる)。
     /// **XCUITest は scale と velocity の符号が食い違うと例外を投げる**ので、velocity は
@@ -1606,12 +1617,19 @@ public struct PinchRequest: Codable {
     public var scale: Double
     /// ジェスチャの所要時間(秒)。Android のストローク時間・iOS の velocity 算出に使う
     public var durationSeconds: Double?
-    /// 対象領域(snapshot の screen と同じ座標系)。nil = 画面全体。**Android だけが読む**
+    /// 対象領域(snapshot の screen と同じ座標系)。nil = 画面全体。**ブリッジは読まない**
+    /// (`fingers` を組んだ元。XCUITest の縮退時の注記の有無にだけ使う)
     public var frame: FTRect?
     /// 対象の accessibility identifier。nil / 解決不能 = アプリ全体。**XCUITest だけが読む**
     public var identifier: String?
+    /// 指2本の経路(ホストの `PinchGesture` が OS ごとの規則で組む = 指の置き方の唯一の定義元)。
+    /// **ブリッジは指を自分で置かず、これを再生する**(in-app・Android は必須)。XCUITest は非公開 API が
+    /// 無いときだけ読まずに `identifier` の要素ピンチへ縮退する。nil は iOS の「対象なし = アプリ全体の
+    /// 要素ピンチ」だけ
+    public var fingers: [GestureFinger]?
     public init(scale: Double, durationSeconds: Double? = nil,
-                frame: FTRect? = nil, identifier: String? = nil) {
+                frame: FTRect? = nil, identifier: String? = nil, fingers: [GestureFinger]? = nil) {
+        self.fingers = fingers
         self.scale = scale
         self.durationSeconds = durationSeconds
         self.frame = frame

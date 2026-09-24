@@ -165,9 +165,9 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 
 | 操作 | Compose / Flutter | SwiftUI / UIKit / RN | 区分 |
 |---|---|---|---|
-| doubleTap | in-app で撃つ(XCUITest の doubleTap は2打の間隔が 0ms で、Compose が2打目を捨てる) | XCUITest へ回す(合成タッチでは発火しない) | C |
-| pinch | in-app で短辺の 90% まで開く(XCUITest は指を約 8px しか開かず、Flutter のしきい値に届かない) | XCUITest へ | C |
-| pinch の指の置き方 | — | **iOS は領域の長辺の両端・Android は領域の短辺から幅を決めて中心**。だから**対象未指定のピンチで領域を絞るのは iOS だけ**(Android は狭い領域だと最小スケール幅 27mm に届かない)。判定は `FTCore.PinchRegion` | B |
+| doubleTap | in-app で撃つ(**Compose は XCTest の合成タッチをダブルタップとして一度も数えない** —— 2回の独立したタッチで間隔を 0.1〜0.25 秒にしても同じ。2026-09-24 実測。ios-xcuitest の設定では Compose のダブルタップは成立しない) | XCUITest へ回す(ランナーは非公開 API で2回の独立したタッチを送る。XCTest の `doubleTap()` = 1回のタッチに tapCount=2 は RN が単タップと読む) | C |
+| pinch | host の `FTCore.PinchGesture` が組んだ指の経路を in-app が再生 | XCUITest へ(同じ経路を非公開 API で再生。API が無い Xcode だけ要素ピンチへ縮退) | A |
+| pinch の指の置き方 | **iOS**: 領域の長辺に沿って横に2本並べ、両端の 0.8 内側・両端で 20% 保持。**Android**: 領域の短辺の 90% から幅を決め中心に置く(最小 16px)。だから**対象未指定のピンチで領域を絞るのは iOS だけ**(Android は狭い領域だと最小スケール幅 27mm に届かない)。決めるのは `FTCore.PinchGesture`(指の座標)・対象領域は `FTCore.PinchRegion` | B |
 | 長押し | — | SwiftUI は in-app で発火しない → XCUITest へ | C |
 | ジェスチャ目的の `swipe` | XCUITest へ(AX の scroll に流すと、パッドの上でもスクロール可能な親が受理して空振りする) | XCUITest へ | C |
 | `gesture`(多点・時刻つき経路) | XCUITest へ(in-app にこの経路自体が無い) | XCUITest へ | A(フレームワークを問わず同じ結果。座標ピンチと同じ非公開 API でフォールバック無し = 使えない Xcode では 422) |

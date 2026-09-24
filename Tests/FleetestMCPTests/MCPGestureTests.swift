@@ -1,11 +1,11 @@
-// ft_gesture: `fingers` JSON → GestureRequest への変換(MCPServer+Gesture.swift)と、
+// ft_gesture: `fingers` JSON → 絶対座標の `[FTFinger]` への変換(MCPServer+Gesture.swift)と、
 // dispatch(MCPServer+Dispatch.swift の case "ft_gesture")の配線。
 //
-// TouchGesture.validate 自体の判定(本数・画面内・時刻の単調性・合計秒数の上限)は
-// TouchGestureTests(FTCoreTests)が持つ。ここで確かめるのは MCP 側の責務だけ:
+// TouchGesture.resolve/validate 自体の判定(点の積み上げ・本数・画面内・時刻の単調性・
+// 合計秒数の上限)は TouchGestureTests(FTCoreTests)が持つ。ここで確かめるのは MCP 側の責務だけ:
 // ①JSON の形だけの誤り(欠落・型違い・move/hold の二重指定)が指/ステップの番号を添えて
-// デバイスに触る前に断られること ②絶対座標のまま GestureRequest へ正しく写ること
-// ③validate を通った要求だけが driver.gesture(_:) に届くこと。
+// デバイスに触る前に断られること ②絶対座標のまま `[FTFinger]` へ正しく写り、resolve を1回だけ
+// 通って GestureRequest になること ③resolve を通った要求だけが driver.gesture(_:) に届くこと。
 //
 // **ネストした引数は `[String: Any]`/`[[String: Any]]` を明示する**(型推論に任せない) ——
 // リテラルの型推論は要素が同じ型なら `[String: Double]` 等の具体型に落ち、production 側の
@@ -171,38 +171,35 @@ final class MCPGestureTests: XCTestCase {
         XCTAssertEqual(added.last, "gesture(fingers:1)")
     }
 
-    /// 絶対座標 → 比率への割り戻し。移動区間は move・同座標が続く区間は hold に分類される
-    func testGestureFingersForDraftConvertsAbsoluteToRatioAndClassifiesMoveVsHold() {
+    /// 絶対座標 → 比率への割り戻し。**resolve 前の `[FTFinger]` から直接割る**(点への展開を
+    /// 経由しない)ので、move/hold の分類はそのまま素通しされる
+    func testGestureFingersRatioDividesAbsoluteCoordinatesByScreen() {
         let screen = FTRect(x: 0, y: 0, width: 390, height: 844)
-        let request = GestureRequest(fingers: [GestureFinger(points: [
-            GesturePoint(x: 0, y: 0, t: 0),
-            GesturePoint(x: 390, y: 844, t: 0.5),
-            GesturePoint(x: 390, y: 844, t: 1.0),
-        ])])
-        let fingers = MCPServer.gestureFingersForDraft(request, screen: screen)
+        let finger = FTFinger(x: 0, y: 0).move(x: 390, y: 844, durationSeconds: 0.5)
+            .hold(seconds: 0.5)
+        let fingers = MCPServer.gestureFingersRatio([finger], screen: screen)
         XCTAssertEqual(fingers.count, 1)
-        let finger = fingers[0]
-        XCTAssertEqual(finger.x, 0)
-        XCTAssertEqual(finger.y, 0)
-        XCTAssertEqual(finger.startSeconds, 0)
-        XCTAssertEqual(finger.steps, [
+        let ratio = fingers[0]
+        XCTAssertEqual(ratio.x, 0)
+        XCTAssertEqual(ratio.y, 0)
+        XCTAssertEqual(ratio.startSeconds, 0)
+        XCTAssertEqual(ratio.steps, [
             .move(x: 1, y: 1, durationSeconds: 0.5),
             .hold(seconds: 0.5),
         ])
     }
 
-    /// screen の原点(x, y)が 0 でなくても比率が正しく引かれること
-    func testGestureFingersForDraftAccountsForScreenOrigin() {
+    /// screen の原点(x, y)が 0 でなくても比率が正しく引かれること。steps 無し(タップ&リフト)の
+    /// 指は steps 無しのまま割り戻る —— `TouchGesture.minimumContactSeconds` の作り物の hold は
+    /// resolve が点へ展開するときにだけ足すもので、送信前の `[FTFinger]` には無い
+    func testGestureFingersRatioAccountsForScreenOrigin() {
         let screen = FTRect(x: 100, y: 200, width: 200, height: 400)
-        let request = GestureRequest(fingers: [GestureFinger(points: [
-            GesturePoint(x: 150, y: 400, t: 0),
-            GesturePoint(x: 150, y: 400, t: 0.05),
-        ])])
-        let fingers = MCPServer.gestureFingersForDraft(request, screen: screen)
+        let finger = FTFinger(x: 150, y: 400)
+        let fingers = MCPServer.gestureFingersRatio([finger], screen: screen)
         XCTAssertEqual(fingers.count, 1)
         XCTAssertEqual(fingers[0].x, 0.25)
         XCTAssertEqual(fingers[0].y, 0.5)
-        XCTAssertEqual(fingers[0].steps, [.hold(seconds: 0.05)])
+        XCTAssertEqual(fingers[0].steps, [])
     }
 
     /// 成功した gesture は下書き材料(InteractionLog)へ残る —— FlowStep.gesture に比率へ

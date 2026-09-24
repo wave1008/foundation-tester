@@ -1,20 +1,24 @@
 // MCPServer+Gesture.swift
-// ft_gesture の `fingers` 引数(JSON)→ GestureRequest への変換。本体は MCPServer.swift
+// ft_gesture の `fingers` 引数(JSON)→ 絶対座標の `[FTFinger]` への変換。本体は MCPServer.swift
 
 import Foundation
 import FTCore
 
 extension MCPServer {
 
-    /// `fingers` 引数 → `GestureRequest`。**座標は絶対**(ft_tap の x/y と同じ座標系)——
-    /// DSL の `FTFinger`(対象の枠に対する比率)とは違う。MCP は撮った snapshot の対象枠を
-    /// 呼び手に選ばせる仕組みを持たないので、比率にすると呼び手が自分で換算する羽目になる。
+    /// `fingers` 引数 → `[FTFinger]`。**座標は絶対**(ft_tap の x/y と同じ座標系)——
+    /// DSL の `FTFinger`(対象の枠に対する比率)とは違う値だが、**同じ型で表せる**: 呼び手
+    /// (`MCPServer+Dispatch.swift` の `ft_gesture`)は `TouchGesture.resolve(_:in: FTRect(x:0,y:0,
+    /// width:1,height:1), screen:, maxGestureSeconds:)` にそのまま渡す —— 幅1・高さ1の矩形を
+    /// target にすると `resolve` の比率写像(`target.x + target.width * rx`)が恒等写像になり、
+    /// 絶対座標をそのまま素通しする。**点の積み上げ・最小接触時間・秒数の妥当性検査(有限・
+    /// 0より大きい)は resolve 側の仕事**(重複させない)。
     ///
     /// 型エラー・欠落・move/hold の二重指定(または両方省略)は**指/ステップの番号を添えて**
-    /// 返す(デバイスに触る前 = `driver(args)` より前に呼ぶこと)。数値そのものの妥当性
-    /// (有限・非負・時刻の単調性・画面内・合計秒数の上限)は `TouchGesture.validate` に委ねる
-    /// (CLAUDE.md「MCP と DSL が共有する唯一の判定」—— ここは JSON の形だけを見る)
-    static func gestureRequestArgument(_ args: [String: Any]) throws -> GestureRequest {
+    /// 返す(デバイスに触る前 = `driver(args)` より前に呼べる形を保つ ——
+    /// `resolve` は screen が要るので driver 取得後にしか呼べないが、JSON の形だけの誤りは
+    /// ここで先に弾く。CLAUDE.md「MCP と DSL が共有する唯一の判定」—— ここは JSON の形だけを見る)
+    static func gestureFingersArgument(_ args: [String: Any]) throws -> [FTFinger] {
         guard let raw = args["fingers"] else {
             throw MCPError("fingers is required: an array of 1-\(TouchGesture.maxFingers) finger"
                 + " paths, each { x, y, startSeconds?, steps?: [{x, y, durationSeconds} or"
@@ -26,7 +30,7 @@ extension MCPServer {
         guard !rawFingers.isEmpty else {
             throw MCPError("fingers must not be empty — at least one finger path is required")
         }
-        var fingers: [GestureFinger] = []
+        var fingers: [FTFinger] = []
         for (fingerIndex, rawFinger) in rawFingers.enumerated() {
             let name = "finger \(fingerIndex + 1)"
             guard let finger = rawFinger as? [String: Any] else {
@@ -35,9 +39,7 @@ extension MCPServer {
             let x = try requiredGestureNumber(finger, "x", in: name)
             let y = try requiredGestureNumber(finger, "y", in: name)
             let startSeconds = try optionalGestureNumber(finger, "startSeconds", in: name) ?? 0
-            var t = startSeconds
-            var cx = x, cy = y
-            var points = [GesturePoint(x: cx, y: cy, t: t)]
+            var built = FTFinger(x: x, y: y, startSeconds: startSeconds)
             if let rawSteps = finger["steps"] {
                 guard let steps = rawSteps as? [Any] else {
                     throw MCPError("\(name).steps must be an array (got \(describeArgumentValue(rawSteps)))")
@@ -57,28 +59,20 @@ extension MCPServer {
                         throw MCPError("\(stepName) has both move fields (x/y/durationSeconds) and"
                             + " holdSeconds — a step is one or the other, not both")
                     }
-                    // 秒数は正の値だけ(DSL の TouchGesture.resolve と同じ規則。0 は瞬間移動になる)
-                    let secondsKey = isMove ? "durationSeconds" : "holdSeconds"
                     if isMove {
-                        cx = try requiredGestureNumber(step, "x", in: stepName)
-                        cy = try requiredGestureNumber(step, "y", in: stepName)
+                        let mx = try requiredGestureNumber(step, "x", in: stepName)
+                        let my = try requiredGestureNumber(step, "y", in: stepName)
+                        let duration = try requiredGestureNumber(step, "durationSeconds", in: stepName)
+                        built = built.move(x: mx, y: my, durationSeconds: duration)
+                    } else {
+                        let holdSeconds = try requiredGestureNumber(step, "holdSeconds", in: stepName)
+                        built = built.hold(seconds: holdSeconds)
                     }
-                    let seconds = try requiredGestureNumber(step, secondsKey, in: stepName)
-                    guard seconds.isFinite, seconds > 0 else {
-                        throw MCPError("\(stepName).\(secondsKey) must be a finite number greater than 0"
-                            + " (got \(seconds))")
-                    }
-                    t += seconds
-                    points.append(GesturePoint(x: cx, y: cy, t: t))
                 }
             }
-            // steps 無し = ただのタップ&リフト(TouchGesture.resolve の isEmpty 分岐と同じ規約)
-            if points.count == 1 {
-                points.append(GesturePoint(x: cx, y: cy, t: t + TouchGesture.minimumContactSeconds))
-            }
-            fingers.append(GestureFinger(points: points))
+            fingers.append(built)
         }
-        return GestureRequest(fingers: fingers)
+        return fingers
     }
 
     private static func requiredGestureNumber(_ dict: [String: Any], _ key: String,
@@ -101,30 +95,25 @@ extension MCPServer {
         return value
     }
 
-    /// validate を通った絶対座標の要求 → 下書き用の比率ジェスチャ(`FTFinger`)。
-    /// `TouchGesture.resolve` の逆写像(比率 → 絶対)を手で戻す —— MCP は比率を持たないので
-    /// screen を使って割り戻す。**同じ座標が続く区間は hold、動いた区間は move**にする
-    /// (`TouchGesture.resolve` の isEmpty 分岐と往復するので、steps 無しの FTFinger を書いた場合と
-    /// 実行結果が一致する。往復の最小形までは求めない — 下書きは実行できれば十分)
-    static func gestureFingersForDraft(_ request: GestureRequest, screen: FTRect) -> [FTFinger] {
+    /// 絶対座標の `[FTFinger]`(`gestureFingersArgument` が返した、送信前の形)→ 比率の `[FTFinger]`
+    /// (DSL の gesture が書く形)。screen で割るだけ —— resolve 後の `GestureRequest`(点に展開済み)
+    /// から再構築するより単純(往復して move/hold を推測し直さずに済む)
+    static func gestureFingersRatio(_ fingers: [FTFinger], screen: FTRect) -> [FTFinger] {
         guard screen.width > 0, screen.height > 0 else { return [] }
-        func ratio(_ point: GesturePoint) -> (x: Double, y: Double) {
-            ((point.x - screen.x) / screen.width, (point.y - screen.y) / screen.height)
+        func ratio(_ x: Double, _ y: Double) -> (x: Double, y: Double) {
+            ((x - screen.x) / screen.width, (y - screen.y) / screen.height)
         }
-        return request.fingers.compactMap { finger -> FTFinger? in
-            guard let first = finger.points.first else { return nil }
-            let (rx, ry) = ratio(first)
-            var built = FTFinger(x: rx, y: ry, startSeconds: first.t)
-            var previous = first
-            for point in finger.points.dropFirst() {
-                let dt = point.t - previous.t
-                if point.x == previous.x, point.y == previous.y {
-                    built = built.hold(seconds: dt)
-                } else {
-                    let (mx, my) = ratio(point)
-                    built = built.move(x: mx, y: my, durationSeconds: dt)
+        return fingers.map { finger in
+            let (rx, ry) = ratio(finger.x, finger.y)
+            var built = FTFinger(x: rx, y: ry, startSeconds: finger.startSeconds)
+            for step in finger.steps {
+                switch step {
+                case .move(let x, let y, let durationSeconds):
+                    let (mx, my) = ratio(x, y)
+                    built = built.move(x: mx, y: my, durationSeconds: durationSeconds)
+                case .hold(let seconds):
+                    built = built.hold(seconds: seconds)
                 }
-                previous = point
             }
             return built
         }

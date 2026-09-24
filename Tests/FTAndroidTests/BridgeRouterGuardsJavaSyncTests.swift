@@ -96,13 +96,15 @@ final class BridgeRouterGuardsJavaSyncTests: XCTestCase {
 
     func testSwipeAndPinchDoNotAssumeADisplaySize() throws {
         let router = code(try routerSource)
-        for signature in ["private BridgeHttpServer.Response handleSwipe(JSONObject body)",
-                          "private BridgeHttpServer.Response handlePinch(JSONObject body)"] {
-            let method = try body(of: signature, in: router)
-            XCTAssertFalse(method.contains("1080"), "\(signature) に固定の幅が残っている")
-            XCTAssertFalse(method.contains("2400"), "\(signature) に固定の高さが残っている")
-            XCTAssertTrue(method.contains("screenRect()"), "\(signature) は screenRect() を基準にする")
-        }
+        let swipe = try body(of: "private BridgeHttpServer.Response handleSwipe(JSONObject body)", in: router)
+        XCTAssertFalse(swipe.contains("1080"), "handleSwipe に固定の幅が残っている")
+        XCTAssertFalse(swipe.contains("2400"), "handleSwipe に固定の高さが残っている")
+        XCTAssertTrue(swipe.contains("screenRect()"), "handleSwipe は screenRect() を基準にする")
+        // ピンチはホストが指の経路を組んで送る(FTCore.PinchGesture.android)。ブリッジは寸法を仮定せず、
+        // 置き方も持たない(再生するだけ)
+        let pinch = try body(of: "private BridgeHttpServer.Response handlePinch(JSONObject body)", in: router)
+        XCTAssertFalse(pinch.contains("1080") || pinch.contains("2400"), "handlePinch に固定の寸法が残っている")
+        XCTAssertTrue(pinch.contains("InputInjector.gesture("), "handlePinch はホストの経路を再生する")
         let screenRect = try body(of: "private Rect screenRect()", in: router)
         XCTAssertTrue(screenRect.contains("lastScreen"), "直近の snapshot があればそれを使う")
         XCTAssertTrue(screenRect.contains("getMaximumWindowMetrics()") && screenRect.contains("getRealMetrics("),

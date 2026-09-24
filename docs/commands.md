@@ -50,7 +50,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**)。iOS の XCUITest では縦向きは `XCUIApplication.swipeUp()` 等、**横向きは点→点のドラッグに合成する**(実機の横向きでは `swipeUp()` 系が1pt も動かないため。2026-08-31 実測) |
 | `tap(x:y:holdSeconds: 0, maxGestureSeconds:)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し(秒数の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き)。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app エンジンは見えない物を撃たない**: 画面外とソフトキーボードの上の点は失敗にする(in-app はキーを押せない。キーボードの下へは `pressEnter` で閉じてから)。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
-| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き。**押してから動かすまでは 0.05 秒固定**(長押しから始まる並べ替えは起動しない) —— それが要る画面は下記「`gesture`」で `.hold(seconds:)` してから `.move` を書く |
 | `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:)` | 対象の中心から**比率**で指を動かす(**斜め可**。両方を非 0 にすると対角)。比率は対象の幅・高さに対する割合で、符号は指の向き。セレクタ省略 = 画面全体。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
 | `doubleTap(sel?)` | ダブルタップ。セレクタ省略 = 画面中心。**`tap` を2回書いても代用できない**(往復で OS のダブルタップ判定時間を超える) |
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
@@ -173,37 +173,41 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 `swipeBy` でパン(斜め含む)・`pinchOut`/`pinchIn` でズーム・`doubleTap` でズームイン。
 注意点は3つ:
 
-- **ピンチはどの経路でも「領域」で指定する**。Android は領域の短辺から指の幅を決めて中心に置き、
-  **iOS の XCUITest は領域の向かい合う2点に指を置く**(公開 API に座標版が無いので、
-  そこだけ非公開 API を使う。使えない Xcode では要素の枠でピンチし、**縮退したことが
-  ステップの注記に出る**)
+- **ピンチの指の座標はホスト側 `FTCore.PinchGesture` の1箇所が OS ごとの規則で決め、
+  in-app・XCUITest とも同じ座標を再生する**(2026-09-24 統一)。**iOS** は領域の長辺に沿って
+  横に2本並べ両端の 0.8 内側・両端で 20% 保持、**Android** は領域の短辺の 90% から幅を決め
+  中心に置く(最小 16px)。**XCUITest は非公開 API(`XCPointerEventPath`。座標ピンチ)で
+  ホストの座標をそのまま送る** —— この API を持たない Xcode でだけ要素の枠のピンチへ縮退し、
+  **縮退したことがステップの注記に出る**
 - **対象を書かない `pinchOut()` / `pinchIn()` は画面中央の狭い範囲に効く**(画面全体ではない)。
   **指の2点が別々のものに載るとピンチにならない** —— 実測(2026-09-22・Apple マップ)では、
   画面全体のピンチだと下の指が検索カードに乗り、**縮小が地図のパンに化けた**(拡大は指が中央から
   開くので効く、という非対称があった)。そこで**両方の指が同じものに載る位置**を選んで撃つ。
   置けなければ半径を狭め、それでも駄目なら従来どおり画面全体で撃つ
-- **iOS はエンジンによって成否が分かれるジェスチャがある**(2026-08-04 に4 SUT で実測)。
-  **既定の hybrid なら全フレームワークで動く**(ホストが自動で使い分ける)。Android は全て問題ない:
+- **iOS は Compose のダブルタップだけエンジンで成否が分かれる**(hybrid = in-app なら成立・`ios-xcuitest` では不成立。2026-09-24 に4 SUT で実測。
+  ピンチは全フレームワークとも両エンジンで動く)。Android は全て問題ない:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
   |---|---|---|---|---|
   | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ | 未実測(想定: uikit 経路 = ✅) |
-  | `doubleTap` | ✅ XCUITest | ✅ **in-app のみ** | ✅ | 未実測(想定: uikit 経路 = ✅ XCUITest。SwiftUI/UIKit と同じ合成タッチ非受理) |
-  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app のみ** | 未実測(想定: uikit 経路 = ✅ XCUITest) |
+  | `doubleTap` | ✅ XCUITest | ✅ **in-app のみ** | ✅ | △ XCUITest(2回の独立したタッチは届くが、E2E-RN の PanResponder 判定では間欠。SUT の判定方式に固有) |
+  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ | ✅ |
   | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
 
   「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機は注入不可のため
   XCUITest しか経路が無い)。**MCP の `ft_*` も `profile` を渡せば同じエンジンで動く**
   (渡さないときは接続先ポートのブリッジに従う = in-app ブリッジが動いていれば hybrid。
-  README「MCP」参照)。理由は注入側の性質で、どちらも実測で確定している:
-  - **XCUITest の `doubleTap` は「離してから次に押すまで」が 0ms**。Compose は 40ms 未満の
-    2打目を捨てる仕様なので単タップになる。**ランナー内で2打に分けても直らない** ——
-    `XCUICoordinate.tap()` は quiescence 待ちを飛ばしても1打 335ms かかり、今度は判定窓
-    (約 300ms)を超える。in-app は合成タッチなので間隔を 80ms に作れる
-  - **XCUITest の `pinch` は指の間隔を約 8px しか開かない**(要素指定でも画面全体でも同じ)。
-    Compose は間隔の**比**で見るので効くが、Flutter は移動量のしきい値で落ちる
-    (`scale: 8.0` のように大きくすると Flutter でも効く = しきい値の問題であることの裏付け)。
-    in-app は対象領域の短辺 90% まで開くので届く
+  README「MCP」参照)。理由は注入側の性質で、どちらも実測(2026-09-24)で確定している:
+  - **XCUITest ランナーの `/doubletap` は非公開 API で2回の独立したタッチ(0.08秒ずつ・
+    2回目は0.25秒後)を送る**(XCTest の `doubleTap()` は1回のタッチに tapCount=2 が乗るだけで、
+    RN の PanResponder には1タップにしか見えず Compose も2打目を捨てていた)。この形に変えた
+    結果、Flutter はカウントし、RN は届くようになった(E2E-RN は JS の PanResponder が JS スレッドの時計で判定するので
+    間欠的に取りこぼす = 8 回中 3 回。ネイティブの認識器を使うアプリには当てはまらない)。**Compose だけは間隔を 0.1秒・0.25秒のどちらで撃っても
+    ダブルタップとして一度も数えない**(XCTest 合成の2タッチそのものを認識器が受理しない)。
+    in-app は独自に2タップを合成して送るので、Compose でも hybrid なら発火する
+  - **ピンチも同じ非公開 API でホストが決めた座標をそのまま送るようになった**(前段落)。
+    以前あった「指の間隔を約 8px しか開かない」制約は無くなり、CMP・Flutter・RN とも対象指定・
+    対象未指定のピンチが `ios-xcuitest` プロファイルで動く
   - 逆に **UIKit/SwiftUI は合成タッチを受け付けない**(`UIGestureRecognizer` が受理しない。
     in-app の `press`/`drag` が未対応なのと同じ機構)。in-app 側が 501 を返して XCUITest へ回す
 - **倍率は指示どおりに出るとは限らない**。指を領域の外へは置けないので、極端な `scale` は

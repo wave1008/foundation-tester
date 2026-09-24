@@ -134,14 +134,37 @@ extension PinchRegionTests {
         }
     }
 
-    /// ランナーは**同じ規則**で指を置く(`closingTouchPoints` と `coordinatePinch`)。
-    /// 座標ピンチが非公開 API なので、**存在確認と縮退**も必ず残す
-    func testTheRunnerPlacesTheFingersByTheSameRuleAndDegradesSafely() throws {
+    /// 指の置き方は `PinchGesture.ios` の1箇所(ホスト)。**向きの規則が `closingTouchPoints` と同じ**で、
+    /// 指は外側の2点の内側に収まる(= 外側で「同じものに載る」を確かめれば実際の指も同じものの上)
+    func testPinchGestureUsesTheSameAxisAndStaysInsideTheClosingPoints() throws {
+        for frame in [FTRect(x: 0, y: 0, width: 400, height: 300),
+                      FTRect(x: 10, y: 20, width: 100, height: 400),
+                      FTRect(x: 0, y: 0, width: 100, height: 200)] {
+            let ends = PinchRegion.closingTouchPoints(in: frame)
+            let axisIsVertical = ends[0].x == ends[1].x
+            for scale in [2.0, 0.5] {
+                let fingers = try PinchGesture.ios(frame: frame, scale: scale, durationSeconds: 0.5)
+                for point in fingers.flatMap(\.points) {
+                    if axisIsVertical {
+                        XCTAssertEqual(point.x, ends[0].x, accuracy: 0.001, "\(frame) の指は縦に並ぶ")
+                        XCTAssertTrue(point.y >= ends[0].y && point.y <= ends[1].y, "\(frame) \(point)")
+                    } else {
+                        XCTAssertEqual(point.y, ends[0].y, accuracy: 0.001, "\(frame) の指は横に並ぶ")
+                        XCTAssertTrue(point.x >= ends[0].x && point.x <= ends[1].x, "\(frame) \(point)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// ランナーは指を置かない(ホストの経路を再生するだけ)。座標ピンチが非公開 API なので、
+    /// **存在確認と縮退**は残す
+    func testTheRunnerReplaysHostFingersAndDegradesSafely() throws {
         let runner = try source("Runner/FleetestRunnerUITests/BridgeRouter.swift")
         XCTAssertTrue(runner.contains("CoordinatePinch.isAvailable"),
                       "非公開 API の存在を確かめてから使うこと")
-        XCTAssertTrue(runner.contains("let vertical = frame.height > frame.width * 2"),
-                      "向きの規則が closingTouchPoints と同じであること")
+        XCTAssertFalse(runner.contains("frame.height > frame.width"),
+                       "ランナーに指の置き方の規則を戻さない(PinchGesture.ios が唯一の定義元)")
         XCTAssertTrue(runner.contains("no coordinate pinch in this Xcode"),
                       "縮退したことを注記で言うこと")
     }

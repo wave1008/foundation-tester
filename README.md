@@ -441,8 +441,8 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
   (方向はコンテンツ基準。`swipe(.up)` だけは指の動き)。**テキスト検証は自動スクロールしない**
 - **マップ・キャンバス系**(地図・画像ビューア・図面)は `swipeBy(dxRatio:dyRatio:)` でパン
   (**両軸を非 0 にすると斜め**)・`pinchOut` / `pinchIn` でズーム・`doubleTap` でズームイン。
-  **iOS はエンジンで成否が分かれるジェスチャがある**(既定の hybrid なら全て動く。
-  `xcuitest` 単独と実機に残る穴は docs/commands.md の表)
+  **iOS は Compose のダブルタップだけエンジンで成否が分かれる**(既定の hybrid なら全て動き、
+  `xcuitest` エンジンでは Compose のダブルタップだけが成立しない。`xcuitest` 単独と実機に残る穴は docs/commands.md の表)
 - **出るか不定のアプリ内メッセージ**は `irregularHandler` を setUp で1回宣言すると自動で閉じる
   (アプリ内の要素だけが対象。**OS のダイアログには効かない** —— 権限ダイアログは既定では自動で
   押さないので、`iosAlertHandler` か実行プロファイルで答えを決める。docs/commands.md)。**1ステップで最大10回**まで閉じ、
@@ -540,7 +540,9 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す)。**パスワード欄は追記できない**(読みが伏せ字なので追記すると伏せ字が本文に入る)ため、Android は 422 で断る = 先にここを通す |
 | `ft_clear_app_data` | アプリのデータと権限を消す(iOS はシミュレータのみ)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
 | `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
-| `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標を honour できるのは **Android と iOS in-app だけ**(XCTest に座標ピンチが無い)で、iOS の XCUITest エンジンでは**全画面へ退化したことを戻り値で言う**。iOS は Compose のダブルタップと Flutter のピンチがエンジン依存なので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標は**全エンジンが honour する**(XCUITest は非公開 API で座標ピンチを再生する。この API を
+持たない Xcode でだけ要素の枠のピンチへ**退化したことを戻り値で言う**)。iOS は Compose の
+ダブルタップだけエンジンで成否が分かれる(hybrid なら成立・`xcuitest` では不成立)ので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
 | `ft_gesture` | 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで指を離さない)—— `ft_tap`/`ft_drag`/`ft_pinch` を繰り返し呼ぶと呼ぶたびに指が離れるが、これは離れない。パターンロック・長押しからのドラッグ・3本指以上のジェスチャ用。**ref 形は無く座標のみ**(iOS=pt / Android=px)。iOS は既定の hybrid でも常に XCUITest 経由(in-app に経路が無い) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |

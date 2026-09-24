@@ -35,16 +35,17 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     /** stableActivePackage() の安定待ち上限(ms)。クロスパッケージ遷移の検知用 */
     private static final long STABLE_PACKAGE_BUDGET_MS = 100;
     /**
-     * ジェスチャ(POST /gesture)全体の絶対上限(秒)。InputInjector.press のクランプ・
-     * handlePinch のクランプと同じ 60s(= BridgeAPI.gestureSecondsCeiling)。
-     * **ここは丸めず拒否する** —— press/pinch は単純な往復なのでクランプの実害が小さいが、
-     * gesture は経路全体の形が意味を持つので丸めると別物になる。
+     * ジェスチャ(POST /gesture・POST /pinch)全体の絶対上限(秒)。InputInjector.press の
+     * クランプと同じ 60s(= BridgeAPI.gestureSecondsCeiling)。
+     * **gesture/pinch は丸めず拒否する** —— press は単純な往復なのでクランプの実害が小さいが、
+     * 指ごとの経路は形そのものが意味を持つので丸めると別物になる(pinch もホストが組んだ経路を
+     * 再生するので同じ)。
      */
     private static final double GESTURE_SECONDS_CEILING = 60;
-    /** 指の本数上限。Sources/FTCore/TouchGesture.swift の maxFingers と同じ値
-     *  (片方だけ変えない。cross-language なので自動同期テストは無い) */
+    /** 指の本数上限。Sources/FTCore/BridgeDTO.swift の BridgeAPI.gestureMaxFingers と同じ値
+     *  (片方だけ変えない。cross-language な値の一致は GestureLimitsSyncTests が固定する) */
     private static final int MAX_GESTURE_FINGERS = 5;
-    /** 1本の指に置ける点の上限。同じく TouchGesture.swift の maxPointsPerFinger と同じ値 */
+    /** 1本の指に置ける点の上限。同じく BridgeAPI.gestureMaxPointsPerFinger と同じ値 */
     private static final int MAX_GESTURE_POINTS_PER_FINGER = 625;
     /**
      * アプリの上に乗る「システムのダイアログ」のパッケージ。**force-stop の対象にしない**
@@ -405,58 +406,14 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     /**
-     * 2本指のピンチ。**ホストが送る frame の中心**で開閉する(nil = 画面全体)。
-     * PinchRequest.identifier は iOS 専用(XCUITest は座標指定の多点ジェスチャを持たないため)で、
-     * こちらは読まない —— 座標を作れるので frame の方が正確。
-     *
-     * span は**倍率が正確に出る側から決める**: 拡大なら「広い方 = 短辺の 90%」を終点にして
-     * 始点を span/scale に、縮小ならその逆。先に始点を決めて scale 倍すると領域からはみ出し、
-     * クランプで倍率が黙って目減りする(短辺の 90% を超える点は容器の外 = 別のビューが受け取る)。
-     * 指を 16px より近付けることはできない(タッチスロップ)ので、極端な scale では倍率が落ちる。
+     * gesture / pinch が共有する「fingers の JSON → 検査済み double[i][j] = {x,y,t}」変換。
+     * 本数上限・点数上限は MAX_GESTURE_FINGERS / MAX_GESTURE_POINTS_PER_FINGER
+     * (Swift の BridgeAPI.gestureMaxFingers / .gestureMaxPointsPerFinger と同じ値。
+     * cross-language なので GestureLimitsSyncTests が Swift 側の値との一致を固定する)。
+     * 本数の**下限**は呼び手ごとに違う(gesture は1本から・pinch はちょうど2本)ので、
+     * ここでは「空でない」だけを見て、下限は呼び手が別途検査する。
      */
-    private BridgeHttpServer.Response handlePinch(JSONObject body) {
-        double scale = body.optDouble("scale", 0);
-        if (!(scale > 0) || scale == 1 || Double.isInfinite(scale)) {
-            throw new BridgeException(400, "scale must be positive and not 1 (received: " + scale + ")");
-        }
-        Rect screen = screenRect();
-        double left = screen.left, top = screen.top;
-        double width = screen.width();
-        double height = screen.height();
-        JSONObject frame = body.optJSONObject("frame");
-        if (frame != null) {
-            left = frame.optDouble("x", left);
-            top = frame.optDouble("y", top);
-            width = frame.optDouble("width", width);
-            height = frame.optDouble("height", height);
-        }
-        double maxSpan = Math.min(width, height) * 0.9;
-        double startSpan, endSpan;
-        if (scale > 1) {
-            endSpan = maxSpan;
-            startSpan = Math.max(maxSpan / scale, 16);
-        } else {
-            startSpan = maxSpan;
-            endSpan = Math.max(maxSpan * scale, 16);
-        }
-        // 0〜60s にクランプ(InputInjector.press と同じ絶対上限 = BridgeAPI.gestureSecondsCeiling。
-        // 方針の判定(既定10秒・maxGestureSeconds での上書き)はホスト側が持つので、ここは最後の砦)
-        long durationMs = Math.min(Math.max(
-                (long) (body.optDouble("durationSeconds", 0.5) * 1000), 50), 60000);
-        InputInjector.pinch(ua(), left + width / 2, top + height / 2, startSpan, endSpan, durationMs);
-        settle();
-        return ok();
-    }
-
-    /**
-     * 指ごとの時刻つき経路を1回の多点タッチ列として再生する(DSL の gesture / MCP の ft_gesture)。
-     * 契約は Sources/FTCore/BridgeDTO.swift の GestureRequest(座標は px・t はジェスチャ開始からの秒)。
-     * **ホストは FTCore/TouchGesture.validate を通した形だけを送るが、ここでも同じ上限で断る**
-     * (古いホスト・直叩きから InputInjector.press と同じ理由で守る最後の砦)。
-     * 点の間の補間・タッチの合成は InputInjector.gesture に委ねる(ここは検査と JSON→配列の変換だけ)。
-     */
-    private BridgeHttpServer.Response handleGesture(JSONObject body) {
-        JSONArray fingersJson = body.optJSONArray("fingers");
+    private static double[][][] parseFingers(JSONArray fingersJson) {
         if (fingersJson == null || fingersJson.length() == 0) {
             throw new BridgeException(400, "a gesture needs at least one finger");
         }
@@ -465,7 +422,6 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                     + " fingers (got " + fingersJson.length() + ")");
         }
         double[][][] fingers = new double[fingersJson.length()][][];
-        double totalSeconds = 0;
         for (int i = 0; i < fingersJson.length(); i++) {
             JSONObject fingerObj = fingersJson.optJSONObject(i);
             JSONArray pointsJson = fingerObj == null ? null : fingerObj.optJSONArray("points");
@@ -501,8 +457,55 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 throw new BridgeException(400, "finger " + (i + 1) + " lifts at the moment it touches down");
             }
             fingers[i] = points;
-            totalSeconds = Math.max(totalSeconds, points[points.length - 1][2]);
         }
+        return fingers;
+    }
+
+    /** 全指の中で最後に離れる時刻(秒)。gesture の総所要 = pinch の総所要 */
+    private static double totalSeconds(double[][][] fingers) {
+        double total = 0;
+        for (double[][] finger : fingers) {
+            total = Math.max(total, finger[finger.length - 1][2]);
+        }
+        return total;
+    }
+
+    /**
+     * 2本指のピンチ。**指の置き方はホストが決める**(`FTCore.PinchGesture`。1つの規則を OS ごとに
+     * 持つのは BridgeDTO.PinchRequest.fingers のドキュメント参照)—— ここは指を組まず、host が
+     * 組んだ2本指の経路(fingers)をそのまま `InputInjector.gesture` へ渡して再生するだけ。
+     * PinchRequest.identifier は iOS 専用(XCUITest は座標指定の多点ジェスチャを持たないため
+     * 要素を掴むしかない)で、こちらは読まない。
+     */
+    private BridgeHttpServer.Response handlePinch(JSONObject body) {
+        double scale = body.optDouble("scale", 0);
+        if (!(scale > 0) || scale == 1 || Double.isInfinite(scale)) {
+            throw new BridgeException(400, "scale must be positive and not 1 (received: " + scale + ")");
+        }
+        double[][][] fingers = parseFingers(body.optJSONArray("fingers"));
+        if (fingers.length != 2) {
+            throw new BridgeException(400, "pinch needs exactly 2 fingers (got " + fingers.length + ")");
+        }
+        double totalSeconds = totalSeconds(fingers);
+        if (totalSeconds > GESTURE_SECONDS_CEILING) {
+            throw new BridgeException(400, "the total duration of pinch must be "
+                    + GESTURE_SECONDS_CEILING + " seconds or less (got " + totalSeconds + ")");
+        }
+        InputInjector.gesture(ua(), fingers);
+        settle();
+        return ok();
+    }
+
+    /**
+     * 指ごとの時刻つき経路を1回の多点タッチ列として再生する(DSL の gesture / MCP の ft_gesture)。
+     * 契約は Sources/FTCore/BridgeDTO.swift の GestureRequest(座標は px・t はジェスチャ開始からの秒)。
+     * **ホストは FTCore/TouchGesture.validate を通した形だけを送るが、ここでも同じ上限で断る**
+     * (古いホスト・直叩きから InputInjector.press と同じ理由で守る最後の砦。parseFingers を pinch と共有)。
+     * 点の間の補間・タッチの合成は InputInjector.gesture に委ねる(ここは検査と JSON→配列の変換だけ)。
+     */
+    private BridgeHttpServer.Response handleGesture(JSONObject body) {
+        double[][][] fingers = parseFingers(body.optJSONArray("fingers"));
+        double totalSeconds = totalSeconds(fingers);
         if (totalSeconds > GESTURE_SECONDS_CEILING) {
             throw new BridgeException(400, "the total duration of gesture must be "
                     + GESTURE_SECONDS_CEILING + " seconds or less (got " + totalSeconds + ")");

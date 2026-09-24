@@ -1242,35 +1242,104 @@ final class BridgeRouter {
     /// ダブルタップ(座標は tap と同じポイント座標)。**2回の /tap に分けない** ——
     /// ホストとの往復が入ると OS のダブルタップ判定時間を超えて単タップ2回になる。
     ///
-    /// **ランナー内で2打に分けるのも不可**(2026-08-04 実測): `XCUICoordinate.tap()` は
-    /// FastInput(quiescence スキップ)込みでも**1打 335ms** かかり、間隔を 60ms に詰めても
-    /// 実際の2打間隔は約 400ms = 判定窓(約 300ms)を外れて単タップ2回になる。
-    /// よって XCTest の `doubleTap()` に任せるしかない。
-    /// **既知の穴**: この2打は間隔が詰まりすぎていて **Compose Multiplatform の iOS だけ拾えない**
-    /// (`detectTapGestures` は最初の UP から `doubleTapMinTimeMillis` = 40ms 以内の DOWN を捨てる)。
-    /// SwiftUI/UIKit・Flutter・Android は問題ない。詳細と回避策は docs/commands.md
+    /// **`XCUICoordinate.doubleTap()` は React Native では拾われない**(実測 2026-09-24: XCTest は
+    /// 1つのタッチに tapCount=2 を付けて送るだけで、RN の PanResponder はこれを**単タップ**としか
+    /// 数えない)。座標ジェスチャの非公開 API があるときは**2本の独立したタッチ**として送る
+    /// (`doubleTapTouchDuration` / `doubleTapSecondTouchDelay`。RN・Flutter はこの形を拾う。
+    /// **Compose Multiplatform(iOS)はどちらの形も拾わない** —— XCTest 合成タッチはダブルタップとして
+    /// 一度も登録されない)。**API が無いときは** `XCUICoordinate.doubleTap()` へ縮退する
     private func handleDoubleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        if CoordinatePinch.isAvailable {
+            try CoordinatePinch.synthesize(
+                fingers: [
+                    [(point: point, offset: 0), (point: point, offset: Self.doubleTapTouchDuration)],
+                    [(point: point, offset: Self.doubleTapSecondTouchDelay),
+                     (point: point, offset: Self.doubleTapSecondTouchDelay + Self.doubleTapTouchDuration)],
+                ],
+                name: "fleetest doubletap",
+                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+            return .json(OKResponse())
+        }
         try FastInput.with(req.fast) {
             coordinate(app, point).doubleTap()
         }
         return .json(OKResponse())
     }
 
-    /// 2本指のピンチ。**XCUITest には座標指定の多点ジェスチャが無い**(XCUICoordinate は単点のみ)ため、
-    /// `XCUIElement.pinch(withScale:velocity:)` に落とすしかない = **要素単位**になる。
-    /// identifier で対象を引き、見つからなければアプリ全体をピンチして注記を返す
-    /// (ホストは PinchRequest.frame も送ってくるが、こちらでは使えない。Android 側が使う)。
+    /// 各タッチの接触時間[秒]。実測 2026-09-24 でこの長さのときだけ RN の PanResponder が拾った
+    private static let doubleTapTouchDuration: TimeInterval = 0.08
+    /// 1本目が触れてから2本目が触れるまでの間隔[秒](= OS のダブルタップ判定窓の内側。
+    /// 1本目は `doubleTapTouchDuration` で離れているので、2本目の直前には
+    /// 0.25 - 0.08 = 0.17 秒の空きができる)
+    private static let doubleTapSecondTouchDelay: TimeInterval = 0.25
+
+    /// gesture / pinch が共有する指の検査(本数・点数・時刻の単調性・全体の秒数)。上限は
+    /// `BridgeAPI.gestureMaxFingers` / `.gestureMaxPointsPerFinger`(BridgeDTO.swift はこのターゲットの
+    /// 入力集合。ホストと MCP の門(`FTCore.TouchGesture.validate`)と同じ値で、ここは古いホスト・
+    /// 直叩きから testmanagerd を守る**最後の砦**)
+    private func validateFingers(_ fingers: [GestureFinger], what: String) throws {
+        guard !fingers.isEmpty, fingers.count <= BridgeAPI.gestureMaxFingers else {
+            throw BridgeError(400, "a gesture needs 1 to \(BridgeAPI.gestureMaxFingers) fingers"
+                + " (got \(fingers.count))")
+        }
+        for (index, finger) in fingers.enumerated() {
+            guard finger.points.count >= 2, finger.points.count <= BridgeAPI.gestureMaxPointsPerFinger else {
+                throw BridgeError(400, "finger \(index + 1) needs 2 to \(BridgeAPI.gestureMaxPointsPerFinger)"
+                    + " points (got \(finger.points.count))")
+            }
+            var previousTime = -Double.infinity
+            for point in finger.points {
+                guard point.x.isFinite, point.y.isFinite, point.t.isFinite,
+                      point.t >= 0, point.t >= previousTime else {
+                    throw BridgeError(400, "finger \(index + 1) has a point with non-finite"
+                        + " coordinates, or a time that goes backwards")
+                }
+                previousTime = point.t
+            }
+        }
+        let total = fingers.compactMap { $0.points.last?.t }.max() ?? 0
+        if let violation = BridgeAPI.gestureDurationViolation(what, seconds: total,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
+    }
+
+    /// 2本指のピンチ。**指の置き方はホストが決める**(`FTCore.PinchGesture`。1つの規則を OS ごとに
+    /// 持つのは `BridgeDTO.PinchRequest.fingers` のドキュメント参照)—— ここは指を組まず、座標ジェスチャの
+    /// 非公開 API(`CoordinatePinch`)があればそれをそのまま再生するだけ。**API が無いときだけ**
+    /// `XCUIElement.pinch(withScale:velocity:)` へ縮退する(XCUICoordinate は単点のみで座標指定の
+    /// 多点ジェスチャを持たないため要素単位になる)。identifier で対象を引き、見つからなければ
+    /// アプリ全体をピンチして注記を返す。
     ///
-    /// velocity(scale/秒)は**符号が scale と食い違うと XCTest が例外を投げる**ので、ここで
-    /// scale と所要時間から導出する(ホストからは受け取らない = 不整合を作れなくする)。
+    /// velocity(scale/秒)は**符号が scale と食い違うと XCTest が例外を投げる**ので、要素ピンチの
+    /// 経路だけ scale と所要時間から導出する。
     private func handlePinch(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PinchRequest.self, body)
         let app = try requireForegroundAppForGesture()
         guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
             throw BridgeError(400, "scale must be positive, finite and not 1 (got \(req.scale))")
+        }
+        let duration = max(req.durationSeconds ?? 0.5, 0.05)
+        // requestedDuration 自体は下限クランプしか無い(座標ジェスチャへそのまま渡る)ので、
+        // ここで先に断る
+        if let violation = BridgeAPI.gestureDurationViolation("pinch", seconds: duration,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
+        // **ホストが組んだ指の経路があり、座標ジェスチャの API が使えるならそちらを再生する**。
+        // identifier は要素ピンチ(下)だけが読む——ここでは対象を選ばない
+        if let fingers = req.fingers, CoordinatePinch.isAvailable {
+            try validateFingers(fingers, what: "pinch")
+            try CoordinatePinch.synthesize(
+                fingers: fingers.map { finger in
+                    finger.points.map { (point: CGPoint(x: $0.x, y: $0.y), offset: $0.t) }
+                },
+                name: "fleetest pinch",
+                orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+            return .json(OKResponse())
         }
         var target: XCUIElement = app
         var note: String?
@@ -1283,20 +1352,7 @@ final class BridgeRouter {
                 note = "identifier [\(identifier)] not found; pinched the whole app instead"
             }
         }
-        let duration = max(req.durationSeconds ?? 0.5, 0.05)
-        // requestedDuration 自体は下限クランプしか無い(座標ピンチへそのまま渡る)ので、
-        // ここで先に断る
-        if let violation = BridgeAPI.gestureDurationViolation("pinch", seconds: duration,
-                                                               cap: BridgeAPI.gestureSecondsCeiling) {
-            throw BridgeError(400, violation)
-        }
-        // **領域が来ていて座標ピンチが使えるならそちら**(理由は CoordinatePinch)。
-        // XCUIElement のピンチは指の位置を選べず、縮小では枠の端から閉じるのでパンに化ける
-        if let frame = req.frame, CoordinatePinch.isAvailable {
-            try coordinatePinch(frame: frame, scale: req.scale, duration: duration)
-            return .json(OKResponse(note: note))
-        }
-        if req.frame != nil {
+        if req.fingers != nil {
             // **縮退したことは必ず言う**(黙ると「縮小したのにパンした」の理由が読めない)
             note = [note, "no coordinate pinch in this Xcode (XCPointerEventPath is gone), so the"
                 + " fingers came from the element's frame — a zoom out can be taken by whatever"
@@ -1316,49 +1372,19 @@ final class BridgeRouter {
         return .json(OKResponse(note: note))
     }
 
-    /// gesture が受ける指の本数・1本あたりの点数の上限。**`FTCore.TouchGesture.maxFingers` /
-    /// `.maxPointsPerFinger` と同じ値** —— あちらがホストと MCP の唯一の門だが、
-    /// TouchGesture.swift はこのターゲットの入力集合(project.yml)に無い(Foundation のみに
-    /// 依存する BridgeDTO.swift 等と違い FTRect 以上の依存を持たないぶん取り込む理由が薄い)ため、
-    /// ここは値を写して**最後の砦**として同じ上限で断る(v125 の秒数の門・v126 のこの門とも、
-    /// 古いホスト・直叩きから testmanagerd を守るのが目的)。上げるときは両方
-    private static let gestureMaxFingers = 5
-    private static let gestureMaxPointsPerFinger = 625
-
     /// 指ごとの時刻つき経路をまとめて1本のタッチ列として再生する(DSL `gesture` / MCP `ft_gesture`)。
     /// 座標は他の座標系コマンドと同じ画面座標(pt。snapshot の screen と同じ系)。
     ///
     /// **ホストは `FTCore.TouchGesture.validate` を通した形だけを送る**が、ここでも同じ規則で
-    /// 検査する(直上のコメント参照)。**フォールバック無し** —— `/pinch` は要素ピンチへ縮退できるが、
-    /// 多点の時刻つき経路には公開 API の代替が無いので、座標ピンチが無い Xcode では 422 を返すだけ
+    /// 検査する(`validateFingers`。/pinch の座標ピンチ経路と共有)。**フォールバック無し** ——
+    /// `/pinch` は要素ピンチへ縮退できるが、多点の時刻つき経路には公開 API の代替が無いので、
+    /// 座標ピンチが無い Xcode では 422 を返すだけ
     private func handleGesture(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(GestureRequest.self, body)
         // 前面確認のみ(座標は CoordinatePinch が直接送るので `app` 自体は使わない。/pinch の
         // 座標ピンチ経路と同じ —— coordinate(app, point) を経由しない)
         _ = try requireForegroundAppForGesture()
-        guard !req.fingers.isEmpty, req.fingers.count <= Self.gestureMaxFingers else {
-            throw BridgeError(400, "a gesture needs 1 to \(Self.gestureMaxFingers) fingers"
-                + " (got \(req.fingers.count))")
-        }
-        for (index, finger) in req.fingers.enumerated() {
-            guard finger.points.count >= 2, finger.points.count <= Self.gestureMaxPointsPerFinger else {
-                throw BridgeError(400, "finger \(index + 1) needs 2 to \(Self.gestureMaxPointsPerFinger)"
-                    + " points (got \(finger.points.count))")
-            }
-            var previousTime = -Double.infinity
-            for point in finger.points {
-                guard point.x.isFinite, point.y.isFinite, point.t.isFinite,
-                      point.t >= 0, point.t >= previousTime else {
-                    throw BridgeError(400, "finger \(index + 1) has a point with non-finite"
-                        + " coordinates, or a time that goes backwards")
-                }
-                previousTime = point.t
-            }
-        }
-        if let violation = BridgeAPI.gestureDurationViolation("gesture", seconds: req.totalSeconds,
-                                                               cap: BridgeAPI.gestureSecondsCeiling) {
-            throw BridgeError(400, violation)
-        }
+        try validateFingers(req.fingers, what: "gesture")
         // **501 にしない** —— ホストは 501 を「このエンジンでは無理」と読んで typeDriver へ回すが、
         // XCUITest ランナー自身が回送先なので自分に戻る(501 は hideKeyboard の1箇所だけ)
         guard CoordinatePinch.isAvailable else {
@@ -1373,46 +1399,6 @@ final class BridgeRouter {
             name: "fleetest gesture",
             orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
         return .json(OKResponse())
-    }
-
-    /// 閉じ切った側でも指をこれ以上近づけない[pt]。Android 側(`BridgeRouter.java` の 16px)と同じ考え
-    private static let pinchMinimumHalfSpan = 8.0
-
-    /// 指2本を **frame の中で向かい合う2点**に置いて動かす。**向きと端の決め方は
-    /// `FTCore.PinchRegion.closingTouchPoints` と同じ規則**(ホストはその2点が対象の上に
-    /// 乗ることを確かめてから領域を送る。片方だけ変えない)。
-    /// 縮小は両端から閉じ、拡大は閉じた位置から両端まで開く —— **どちらも指は frame の外へ出ない**
-    private func coordinatePinch(frame: FTRect, scale: Double, duration: TimeInterval) throws {
-        // **原則は横に並べる** —— 縦に並べると、同時に効いている縦スクロール/ドラッグの
-        // recognizer が指を取ってしまう(実測 2026-09-22: 縦長の `#pad_map` を縦にピンチすると
-        // SUT が `pan=none-down` を記録し、拡大率は 1 のままだった)。
-        // よほど縦長(2倍超)の枠のときだけ縦にする。**規則は `PinchRegion.closingTouchPoints` と同じ**
-        let vertical = frame.height > frame.width * 2
-        let centre = CGPoint(x: frame.x + frame.width / 2, y: frame.y + frame.height / 2)
-        // **指を枠の縁ちょうどには置かない**(境界の座標は隣の要素に拾われうる)。
-        // ホストは外側の2点で「同じものに載るか」を見る(`PinchRegion.closingTouchPoints`)ので、
-        // **内側へ寄せるぶんには判定を壊さない**。0.8 は Android の同じ処理(BridgeRouter.java の
-        // maxSpan)が使う 0.9 より一段内側 —— iOS は枠が画面いっぱいのことがあり、
-        // 画面の縁はシステムのジェスチャ帯になる
-        let edgeInset = 0.8
-        let outerHalf = (vertical ? frame.height : frame.width) / 2 * edgeInset
-        // 閉じた側の半径(拡大でも縮小でも内側)。**指が重なるまで閉じない** ——
-        // 極端な scale で2点が同じ座標になると、ピンチではなく1本指の操作として届く
-        // (Android の同じ処理 BridgeRouter.java も 16px の床を置いている)
-        let innerHalf = max(outerHalf * min(scale, 1 / scale), Self.pinchMinimumHalfSpan)
-        func points(_ halfSpan: Double) -> (CGPoint, CGPoint) {
-            vertical
-                ? (CGPoint(x: centre.x, y: centre.y - halfSpan),
-                   CGPoint(x: centre.x, y: centre.y + halfSpan))
-                : (CGPoint(x: centre.x - halfSpan, y: centre.y),
-                   CGPoint(x: centre.x + halfSpan, y: centre.y))
-        }
-        let zoomingOut = scale < 1
-        try CoordinatePinch.pinch(from: points(zoomingOut ? outerHalf : innerHalf),
-                                  to: points(zoomingOut ? innerHalf : outerHalf),
-                                  duration: duration,
-                                  orientation: appOrientation() == .landscape
-                                      ? .landscapeLeft : .portrait)
     }
 
     /// POST /rotate. See InAppBridge.handleRotate for why this polls (XCUIDevice's readback is

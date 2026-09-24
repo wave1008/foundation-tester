@@ -1,9 +1,13 @@
-// 座標を指定する多点ジェスチャ(2本指ピンチ / 指ごとの時刻つき経路の gesture)。**XCTest の公開 API には
+// 座標を指定する多点ジェスチャの送信口(pinch / gesture / doubletap が共有する)。**XCTest の公開 API には
 // ピンチが `XCUIElement` にしか生えておらず**(iOS 27 の SDK を確認)、指の位置は要素の枠から決まる ——
 // しかも**縮小は枠の長辺の両端から閉じる**ので、端に別のものが載っていると1本を取られ、ジェスチャが
 // パンに化ける(実測 2026-09-22・Apple マップ: 地図の容器の下端が検索カードに接しており、縮小が必ず
 // パンになった。公開 API の代替も無い —— 2本指タップは無反応・ダブルタップは拡大しかできない)。
 // 座標指定の多点タッチジェスチャそのものにも公開 API が無い(`XCUICoordinate` は単点のみ)。
+//
+// **指の置き方はこのファイルでは決めない** —— pinch の指の座標はホスト(`FTCore.PinchGesture`)が
+// 組んで `PinchRequest.fingers` で送り、gesture は利用者が指定した経路をそのまま運ぶ。ここは
+// キーフレームを認識される密度に補間して1つのタッチ列として送るだけ(`synthesize`)。
 //
 // そこで **Appium/WebDriverAgent と同じ非公開 API** で多点の経路を自分で組む。
 // クラスは `XCPointerEventPath` / `XCSynthesizedEventRecord`(**`XCUI` 接頭辞は付かない**。
@@ -44,16 +48,7 @@ import XCTest
 
 enum CoordinatePinch {
 
-    /// pinch が指を動かす分割数。**1本の直線を数点に割る** —— 始点と終点だけだと速度が出ず、
-    /// ピンチとして認識されないことがある(recognizer は移動量の履歴を見る)。
-    /// pinch は所要が固定 0.05〜数秒の狭いレンジなので分割数を固定できるが、`gesture` は所要が
-    /// 数十 ms 〜 `gestureSecondsCeiling`(60秒)まで伸びるので `stepInterval` の時間基準で刻む(下記)
-    private static let steps = 12
-
-    /// pinch が押してから動き出すまで / 止まってから離すまでに置く時間(所要に対する割合)
-    private static let holdRatio = 0.2
-
-    /// gesture のキーフレーム間(粗い move)を細かい move に割る間隔[秒]。60Hz はディスプレイの
+    /// キーフレーム間(粗い move)を細かい move に割る間隔[秒]。60Hz はディスプレイの
     /// リフレッシュレート/タッチのサンプリング周期の目安で、これより細かく刻んでも recognizer に渡る
     /// 前に間引かれる。**静止区間(直前と同じ点)は分割しない** —— 位置が変わらないので終端の
     /// 1点で足りる(分割すると同一点への move を stepCount 回繰り返すだけで意味が無い)
@@ -62,8 +57,8 @@ enum CoordinatePinch {
     /// 連続する move に同じ offset を渡さないための最小間隔[秒]。**XCPointerEventPath が厳密な
     /// 単調増加を要求するかは非公開 API なので確認できない** —— キーフレームの間隔が
     /// `stepInterval` 未満(短い move・丸め)だと同一 offset の move が連続しうるので、常にこの床で
-    /// 押し上げる。**最後の move → liftUp だけは同じ offset を許す**(pinch の従来の形がそう
-    /// —— `move(to: to, atOffset: duration)` の直後に `liftUp(atOffset: duration)` — 動いていた実績と
+    /// 押し上げる。**最後の move → liftUp だけは同じ offset を許す**
+    /// (`move(to: to, atOffset: duration)` の直後に `liftUp(atOffset: duration)` — 動いていた実績と
     /// 同じ形なので、そこだけは踏襲する)
     private static let minimumOffsetStep: TimeInterval = 0.001
 
@@ -94,35 +89,9 @@ enum CoordinatePinch {
         return unsafeBitCast(raw, to: EventSynthesizerSPI.self)
     }
 
-    /// 2本の指を `from` の2点から `to` の2点へ同時に動かす。
-    /// - Throws: 使えない / 送信が失敗したとき
-    static func pinch(from start: (CGPoint, CGPoint), to end: (CGPoint, CGPoint),
-                      duration: TimeInterval, orientation: UIInterfaceOrientation) throws {
-        // **押した直後に動かさない・離す直前に止める** —— 押下と最初の移動が同じ時刻だと、
-        // recognizer が開始を取りこぼすことがある(XCTest 自身のジェスチャも前後に間を置く)。
-        // 保持は前後それぞれこの割合。**ここは自前のキーフレーム(完全展開)を組んで send() へ渡すだけ**
-        // —— send() 側の時間分割は使わない(12 steps・holdRatio という固定の形を変えないため)
-        let hold = duration * holdRatio
-        let travel = duration - hold * 2
-        // **for-in のタプルパターンで書く**(`.map { from, to in }` は SE-0110 以降のクロージャでは
-        // 単一タプル引数への暗黙展開が効かず、型が合わない)
-        var fingers: [[(point: CGPoint, offset: TimeInterval)]] = []
-        for (from, to) in [(start.0, end.0), (start.1, end.1)] {
-            var keyframes: [(point: CGPoint, offset: TimeInterval)] = [(from, 0), (from, hold)]
-            for step in 1...steps {
-                let ratio = Double(step) / Double(steps)
-                keyframes.append((CGPoint(x: from.x + (to.x - from.x) * ratio,
-                                          y: from.y + (to.y - from.y) * ratio),
-                                  hold + travel * ratio))
-            }
-            keyframes.append((to, duration))
-            fingers.append(keyframes)
-        }
-        try send(fingers: fingers, name: "fleetest pinch", orientation: orientation)
-    }
-
     /// 指ごとの粗いキーフレーム(押す点→…→離す点。同じ点が続く区間 = 静止)を、認識されるだけの
-    /// 密度に補間してから1つのタッチ列として再生する(gesture の実体)。
+    /// 密度に補間してから1つのタッチ列として再生する。pinch / gesture / doubletap の実体
+    /// (指の置き方はここでは決めない——呼び手が組んだキーフレームをそのまま運ぶ)
     /// - Parameter fingers: 各指のキーフレーム列。1本目の要素が touch down・最後が lift
     static func synthesize(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
                            orientation: UIInterfaceOrientation) throws {
@@ -153,7 +122,7 @@ enum CoordinatePinch {
         return out
     }
 
-    /// **SPI に触れる唯一の場所**(pinch と gesture が共有する)。フルに展開済みのキーフレームから
+    /// **SPI に触れる唯一の場所**(pinch / gesture / doubletap が共有する)。フルに展開済みのキーフレームから
     /// 指1本につきパスを1本組み、全部を1つの record にまとめて送り、完了を待つ
     private static func send(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
                              orientation: UIInterfaceOrientation) throws {

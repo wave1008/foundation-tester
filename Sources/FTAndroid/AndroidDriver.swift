@@ -754,11 +754,22 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.doubleTap(x: x, y: y) }
     }
 
+    /// 指の置き方は `FTCore.PinchGesture.android` が決める(ブリッジは経路を再生するだけ)。`frame == nil`(対象未指定)は画面全体を対象にする —— Android は identifier を
+    /// 読まないので iOS の「アプリ全体の要素ピンチ」に相当する縮退先を持たず、常に座標が要る。
+    /// **画面サイズは直近 snapshot のキャッシュを使う**(`screen`)——ゼロ(未取得)のときだけ
+    /// 1回 snapshot して埋める(呼ぶたびに撮ると snapshot 分のコストを毎回払う)
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
+        var target = frame ?? screen
+        if target.width <= 0 || target.height <= 0 {
+            target = try await snapshot().screen
+        }
+        let fingers = try PinchGesture.android(frame: target, scale: scale,
+                                               durationSeconds: durationSeconds)
         try await withBridge {
-            try await $0.pinch(frame: frame, identifier: identifier, scale: scale,
-                               durationSeconds: durationSeconds)
+            try await $0.pinch(request: PinchRequest(
+                scale: scale, durationSeconds: durationSeconds, frame: target, identifier: identifier,
+                fingers: fingers))
         }
     }
 

@@ -385,8 +385,8 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `POST /type` | `{ref, text}`(tap → typeText) |
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
-| `POST /doubletap` | `{ref}` または `{x,y}`。**2回の /tap では代用できない**(往復で OS のダブルタップ判定時間を超える) |
-| `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?}` 2本指ズーム。**`frame` があればどの経路も座標で撃つ**(Android は frame の短辺から指の幅を決めて中心に置く / XCUITest は frame の長辺の両端に指を置く = `CoordinatePinch`)。`frame` が無い・座標ピンチが使えないときだけ XCUITest が `identifier` で要素を引く(**縮退したことを注記で必ず言う**) |
+| `POST /doubletap` | `{ref}` または `{x,y}`。**2回の /tap では代用できない**(往復で OS のダブルタップ判定時間を超える)。XCUITest ランナーは非公開 API(`CoordinatePinch` と同じ経路)で2回の独立したタッチ(0.08秒ずつ・2回目は0.25秒後)を送る(XCTest の `doubleTap()` = 1回のタッチに tapCount=2 は RN が単タップと読む)。非公開 API が無い Xcode では XCTest の `doubleTap()` へフォールバック |
+| `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?, fingers?}` 2本指ズーム。**指の座標はホスト側 `FTCore.PinchGesture` が OS ごとの規則(iOS/Android で別)で1箇所に決め、`fingers` として送る**。**全ブリッジがそのまま再生**(XCUITest は非公開 API = `CoordinatePinch`)。**`fingers` が無い・座標ピンチが使えないときだけ** XCUITest が `identifier` で要素を引く(**縮退したことを注記で必ず言う**) |
 | `POST /gesture` | `{fingers: [{points: [{x, y, t}]}]}` 指ごとの時刻つき経路を**1回のタッチ列として**再生する(DSL の `gesture` / MCP の `ft_gesture`)。各指は最初の点で押し最後の点で離す・同じ点が続く区間は静止。XCUITest は `CoordinatePinch` と同じ非公開 API、Android は多点 `MotionEvent`。**in-app は持たない**(hybrid は既定の 501 で XCUITest へ回す)。非公開 API が無い Xcode では 422(501 は自分へ戻るので使わない)。本数・点数・秒数はホストの `TouchGesture.validate` が断り、両ブリッジも同じ上限で最後に断る |
 | `POST /clear` | `{ref}` 省略可(省略時はフォーカス中の入力欄)。入力欄のクリア |
 | `POST /pressEnter` | Return キー相当(受け口ごとの機構は §10) |

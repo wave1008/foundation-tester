@@ -881,13 +881,27 @@ public final class BridgeClient: AppDriver {
                                            timeout: interactionTimeout)
     }
 
-    /// ピンチは XCUITest の `XCUIElement.pinch` に落ちる = **1回の呼び出しの中で指を動かし切る**ので、
-    /// 移動時間ぶん応答が遅れる。interactionTimeout に収まる範囲でしか使えない
+    /// XCUITest ランナー向けの呼び出し。**指の置き方はホスト(`FTCore.PinchGesture.ios`)が決める**
+    /// (ランナーは `fingers` をそのまま再生し、非公開のポインタイベント API が無いときだけ
+    /// `identifier` の要素ピンチへ縮退する)。`frame == nil` は「対象なし = アプリ全体」で、
+    /// この場合だけ `fingers` を送らない(縮退先が要る唯一のケース)。
+    /// 座標ピンチも要素ピンチも**1回の呼び出しの中で指を動かし切る**ので、移動時間ぶん応答が遅れる ——
+    /// interactionTimeout に収まる範囲でしか使えない
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
-        let _: OKResponse = try await post("/pinch", body: PinchRequest(
-            scale: scale, durationSeconds: durationSeconds,
-            frame: frame, identifier: identifier), timeout: timeout(forDuration: durationSeconds))
+        try await pinch(request: PinchRequest(
+            scale: scale, durationSeconds: durationSeconds, frame: frame, identifier: identifier,
+            fingers: try frame.map { try PinchGesture.ios(frame: $0, scale: scale,
+                                                           durationSeconds: durationSeconds) }))
+    }
+
+    /// 呼び手が自分で組んだ `PinchRequest`(`fingers` 込み)をそのまま送る低水準の口。
+    /// `AndroidDriver`(`FTCore.PinchGesture.android`)と `InAppDriver`(`FTCore.PinchGesture.ios`)が
+    /// これを使う —— 上の `pinch(frame:identifier:scale:durationSeconds:)` は XCUITest 向けの
+    /// 組み立て済みの形でしかない
+    public func pinch(request: PinchRequest) async throws {
+        let _: OKResponse = try await post("/pinch", body: request,
+                                           timeout: timeout(forDuration: request.durationSeconds ?? 0))
     }
 
     /// pinch と同じ理由(合成タッチを最後の指が離れるまで送り切ってから応答する)で

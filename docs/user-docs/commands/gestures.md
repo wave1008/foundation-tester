@@ -59,9 +59,12 @@ For a map, image viewer, or drawing surface, operate it with these four commands
 pan (diagonal included), `pinchOut`/`pinchIn` to zoom, `doubleTap` to zoom in. Three things to
 keep in mind:
 
-- **A pinch is aimed by an area on every engine.** Android and iOS in-app synthesize the two touch
-  points around the center of the given region; iOS XCUITest places them at the two opposite ends
-  of it. Only when the area cannot be used does XCUITest fall back to resolving an element by its
+- **A pinch is aimed by an area on every engine, and the fingers land at the same spot regardless
+  of engine.** A single rule per OS (`FTCore.PinchGesture`, host-side) decides the finger
+  coordinates, and every bridge — in-app and XCUITest alike — replays them. On iOS the two fingers
+  sit side by side along the region's long side, 0.8 inside its edges; on Android they sit on the
+  region's short side, 90% of it apart, centred. XCUITest sends these coordinates through a
+  private API; only on an Xcode without that API does it fall back to resolving an element by its
   `accessibilityIdentifier` — and it says so in a note on the step.
 - **`pinchOut()` / `pinchIn()` written without a target pinch a small area at the centre of the
   screen**, not the whole screen. **A pinch does not happen when the two fingers land on different
@@ -70,20 +73,26 @@ keep in mind:
   there the fingers start at the centre and spread out). fleetest therefore picks a spot where both
   fingers stay on the same thing, narrowing the span if it has to, and falls back to the whole
   screen only when no such spot exists.
-- **On iOS, whether a gesture works depends on the engine**, for some gestures. The default
-  hybrid engine works across every framework (the host picks the engine automatically). Android
-  has no such split — every gesture works everywhere:
+- **On iOS, only Compose's double tap depends on the engine.** The default hybrid engine works
+  across every framework for every gesture (the host picks the engine automatically); pinch now
+  works on both engines for every framework. Android has no such split — every gesture works
+  everywhere:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter |
   |---|---|---|---|
   | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ |
   | `doubleTap` | ✅ XCUITest | ✅ **in-app only** | ✅ |
-  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app only** |
+  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ |
   | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
 
   "in-app only" means it does not work with a standalone `xcuitest` profile or on a physical
-  device (physical devices cannot be injected, so XCUITest is the only path). The MCP `ft_*`
-  tools follow the same engine when a `profile` is passed.
+  device (physical devices cannot be injected, so XCUITest is the only path). Measured
+  2026-09-24: the XCUITest runner's `/doubletap` now sends two separate touches through the
+  private pointer-event API, which Flutter detects (it also reaches React Native, but a screen
+  that detects taps in JS with PanResponder and a clock can miss it intermittently), but Compose
+  never counts as a double tap regardless of the interval between the two touches — only the
+  in-app engine's synthesized touches register there. The MCP `ft_*` tools follow the same
+  engine when a `profile` is passed.
 - **The zoom scale you ask for is not always the scale you get.** Two fingers cannot move outside
   the region being pinched, so an extreme `scale` caps out at whatever that region's size allows.
   **Verify that zooming happened rather than the exact scale** — this holds up better across

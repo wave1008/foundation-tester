@@ -141,25 +141,22 @@ class ジェスチャが正しく検出されること {
                     select("#txt_double_count").textIs("double=0")
                 }
             }
-            // **iOS はエンジンで割れる可能性を Flutter 版から安全側で継承**: 既定の hybrid(in-app)
-            // なら通るが、XCUITest のピンチは指の間隔を約 8px しか開かず、絶対距離のしきい値を
-            // 前提にした検出には届かないことがある(Flutter で 2026-08-04 実測)。RN の判定は
-            // 距離の**比**ベース(ZOOM_DEAD_ZONE=0.05)で Flutter とは仕組みが異なるため、
-            // この制約が実際に当てはまるかは未検証(要デバイス実測)。当面は Android に閉じ、
-            // iOS のピンチは E2E-CMP と E2E-iOS が担保する
-            scene(13, "ピンチアウトで拡大が検出される(iOS は制約未検証のため対象外)") {
+            // 指の配置はホスト側 FTCore.PinchGesture(OS ごとの規則)が決めブリッジは再生するだけ
+            // (2026-09-24 実測)。iOS も両エンジンでピンチが検出できるようになったので Android に
+            // 閉じない
+            scene(13, "ピンチアウトで拡大が検出される") {
                 action {
-                    android { pinchOut("#pad_map", scale: 2.0) }
+                    pinchOut("#pad_map", scale: 2.0)
                 }.expectation {
-                    android { select("#txt_zoom_dir").textIs("zoom=in") }
+                    select("#txt_zoom_dir").textIs("zoom=in")
                 }
             }
-            scene(14, "ピンチインで縮小が検出される(iOS は制約未検証のため対象外)") {
+            scene(14, "ピンチインで縮小が検出される") {
                 action {
                     tap("#btn_map_reset")
-                    android { pinchIn("#pad_map", scale: 0.5) }
+                    pinchIn("#pad_map", scale: 0.5)
                 }.expectation {
-                    android { select("#txt_zoom_dir").textIs("zoom=out") }
+                    select("#txt_zoom_dir").textIs("zoom=out")
                 }
             }
             scene(15, "単タップではダブルタップカウントが増えない(区別の検証)") {
@@ -170,21 +167,18 @@ class ジェスチャが正しく検出されること {
                     select("#txt_double_count").textIs("double=0")
                 }
             }
-            // android {} に閉じる(2026-08-08 実測): XCUITest の doubleTap は tapCount=2 の
-            // 単一タッチ列で届き、JS の PanResponder には1タップにしか見えない(double=0)。
-            // in-app エンジンは2タップを合成するので発火する(実測済み)が、シナリオは
-            // 両エンジンで走るため iOS では実行しない。CMP の doubleTap と同じ扱い
-            // (ネイティブ認識器 = react-native-gesture-handler を使う実アプリでは tapCount が
-            // 読めるためこの制約は SUT の PanResponder 実装に固有)。
+            // android {} に閉じる(2026-09-24 実測): XCUITest ランナーの /doubletap は2回の独立したタッチ
+            // (0.08 秒ずつ・2回目は 0.25 秒後)を送るので RN にも届くが、この SUT は PanResponder が
+            // JS スレッドの Date.now() で「300ms 以内に離す・350ms 以内に2回」を判定するため、iOS では
+            // JS の混み具合で間欠的に外れる(8 回中 3 回 double=0。直前の単タップの有無や端末に依らない)。
+            // 証拠として当てにできないので iOS では実行しない。iOS のダブルタップは E2E-iOS / E2E-Flutter
+            // が両エンジンで担保する(ネイティブ認識器 = react-native-gesture-handler を使う実アプリは
+            // この判定方式を持たない)
             scene(16, "ダブルタップでカウントが1増える") {
                 action {
-                    android {
-                        doubleTap("#pad_map")
-                    }
+                    android { doubleTap("#pad_map") }
                 }.expectation {
-                    android {
-                        select("#txt_double_count").textIs("double=1")
-                    }
+                    android { select("#txt_double_count").textIs("double=1") }
                 }
             }
             scene(17, "左上への斜めドラッグが両軸で検出される") {
@@ -204,12 +198,12 @@ class ジェスチャが正しく検出されること {
                     select("#txt_pan").textIs("pan=right-down")
                 }
             }
-            scene(19, "対象を指定しないピンチも効く(iOS は制約未検証のため対象外)") {
+            scene(19, "対象を指定しないピンチも効く") {
                 action {
                     tap("#btn_map_reset")
-                    android { pinchOut() }
+                    pinchOut()
                 }.expectation {
-                    android { select("#txt_zoom_dir").textIs("zoom=in") }
+                    select("#txt_zoom_dir").textIs("zoom=in")
                 }
             }
             scene(20, "リセットで全ての値が初期状態に戻る") {

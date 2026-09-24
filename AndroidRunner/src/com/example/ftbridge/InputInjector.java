@@ -636,63 +636,25 @@ final class InputInjector {
         tap(ua, x, y);
     }
 
-    /**
-     * 2本指のピンチ。(centerX, centerY) を中心に、対角線上へ startSpan → endSpan まで
-     * 2点を同時に動かす(span = 2点間の距離)。
-     *
-     * 規律:
-     * - **ACTION_POINTER_DOWN/UP は pointer index を action へ埋める**(<< 8)。埋め忘れると
-     *   1本目の指の DOWN として解釈され、ピンチにならない
-     * - **MOVE は必ず2点ぶんの座標を1イベントに載せる**(2本のストロークを交互に注入する形だと
-     *   ScaleGestureDetector が距離変化を取れない)
-     * - 45度方向へ開く(水平だと横スクロール、垂直だと縦スクロールと競合しやすい)
-     */
-    static void pinch(UiAutomation ua, double centerX, double centerY,
-                      double startSpan, double endSpan, long durationMs) {
-        double axis = Math.sqrt(0.5);   // 45度: 各軸への射影は span/2 * cos45
-        long downTime = SystemClock.uptimeMillis();
-        double[] a = new double[]{centerX - startSpan / 2 * axis, centerY - startSpan / 2 * axis};
-        double[] b = new double[]{centerX + startSpan / 2 * axis, centerY + startSpan / 2 * axis};
-        inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, a[0], a[1]));
-        inject(ua, multiEvent(downTime, downTime,
-                MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-                a, b));
-        int steps = Math.max(1, (int) (durationMs / 16));
-        for (int i = 1; i <= steps; i++) {
-            double t = (double) i / steps;
-            double span = startSpan + (endSpan - startSpan) * t;
-            double[] p1 = new double[]{centerX - span / 2 * axis, centerY - span / 2 * axis};
-            double[] p2 = new double[]{centerX + span / 2 * axis, centerY + span / 2 * axis};
-            inject(ua, multiEvent(downTime, downTime + (long) (t * durationMs),
-                    MotionEvent.ACTION_MOVE, p1, p2));
-            SystemClock.sleep(16);
-        }
-        double[] e1 = new double[]{centerX - endSpan / 2 * axis, centerY - endSpan / 2 * axis};
-        double[] e2 = new double[]{centerX + endSpan / 2 * axis, centerY + endSpan / 2 * axis};
-        long upTime = downTime + durationMs;
-        inject(ua, multiEvent(downTime, upTime,
-                MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-                e1, e2));
-        inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, e1[0], e1[1]));
-    }
-
-    /** 60Hz フレーム間隔(pinch/swipe の sleep(16) と同じ刻み。gesture のチェックポイント生成用) */
+    /** 60Hz フレーム間隔(swipe の sleep(16) と同じ刻み。gesture のチェックポイント生成用) */
     private static final long GESTURE_TICK_MS = 16;
 
     /**
-     * 指ごとの時刻つき経路(BridgeRouter.handleGesture が検証・変換済み。fingers[i][j] = {x,y,t秒})を
-     * 1回の多点タッチ列として再生する。各指は自分の最初の点で押し、最後の点で離す
-     * (同座標が続く区間 = 静止。位置は positionAt の線形補間なので t が進んでも座標は変わらない)。
+     * 指ごとの時刻つき経路(BridgeRouter.parseFingers が検証・変換済み。fingers[i][j] = {x,y,t秒})を
+     * 1回の多点タッチ列として再生する(DSL の gesture / MCP の ft_gesture の実体。**pinch も
+     * これを通す** —— 指の置き方はホストの `FTCore.PinchGesture` が決め、fingers として
+     * ちょうど2本届く)。各指は自分の最初の点で押し、最後の点で離す(同座標が続く区間 = 静止。
+     * 位置は positionAt の線形補間なので t が進んでも座標は変わらない)。
      *
-     * 規律(pinch と同じ理由): **ACTION_POINTER_DOWN/UP は pointer index を action へ埋める**・
+     * 規律: **ACTION_POINTER_DOWN/UP は pointer index を action へ埋める**・
      * **MOVE は現在アクティブな指ぶんの座標を必ず1イベントに載せる**。pointer id は指の配列添字で
      * 固定する(押す/離す順が入れ替わっても id は変わらない。index だけがそのときのアクティブ
      * 集合で決まる)。**単点の DOWN/UP も pointerEvent で作る** —— event() は id 0 固定なので、
      * 2本目の指が先に押す/最後まで残る形で同じタッチ列の中の id が食い違う(不整合な列は捨てられうる)。
      *
      * チェックポイントは「GESTURE_TICK_MS 刻み」と「各指の押下/離脱の実時刻」の和集合。各
-     * チェックポイントは基準時刻 `base` からの絶対時刻まで sleep してから撃つ —— pinch のように
-     * 固定 16ms を毎回加算する形は、長いジェスチャでは注入のオーバーヘッドぶんのドリフトが
+     * チェックポイントは基準時刻 `base` からの絶対時刻まで sleep してから撃つ —— 固定 16ms を
+     * 毎回加算する形(swipe と同じ)は、長いジェスチャでは注入のオーバーヘッドぶんのドリフトが
      * 蓄積するため使わない。
      *
      * 注入が途中で失敗しても finally で残っている指を全部離す(端末にタッチを残さないため。
@@ -830,8 +792,7 @@ final class InputInjector {
         return new double[]{points[last][0], points[last][1]};
     }
 
-    /** N 本ぶんの座標を載せた MotionEvent。pointer id は呼び出し側(gesture)が指の配列添字で
-     *  固定して渡す(multiEvent の2本固定版と役割は同じで本数だけ一般化) */
+    /** N 本ぶんの座標を載せた MotionEvent。pointer id は呼び出し側(gesture)が指の配列添字で固定して渡す */
     private static MotionEvent pointerEvent(long downTime, long eventTime, int action,
                                             int[] ids, double[][][] fingers, double tSec) {
         int count = ids.length;
@@ -852,29 +813,6 @@ final class InputInjector {
         }
         return MotionEvent.obtain(downTime, eventTime, action, count, props, coords,
                 0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
-    }
-
-    /** 2点ぶんの座標を載せた MotionEvent(pointer id は 0 と 1 固定) */
-    private static MotionEvent multiEvent(long downTime, long eventTime, int action,
-                                          double[] p1, double[] p2) {
-        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[2];
-        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[2];
-        double[][] points = new double[][]{p1, p2};
-        for (int i = 0; i < 2; i++) {
-            MotionEvent.PointerProperties p = new MotionEvent.PointerProperties();
-            p.id = i;
-            p.toolType = MotionEvent.TOOL_TYPE_FINGER;
-            props[i] = p;
-            MotionEvent.PointerCoords c = new MotionEvent.PointerCoords();
-            c.x = (float) points[i][0];
-            c.y = (float) points[i][1];
-            c.pressure = 1;
-            c.size = 1;
-            coords[i] = c;
-        }
-        MotionEvent e = MotionEvent.obtain(downTime, eventTime, action, 2, props, coords,
-                0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
-        return e;
     }
 
     private static MotionEvent event(long downTime, long eventTime, int action, double x, double y) {

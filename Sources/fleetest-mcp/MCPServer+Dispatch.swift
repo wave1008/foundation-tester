@@ -1652,8 +1652,9 @@ extension MCPServer {
 
         case "ft_gesture":
             // JSON の形だけの検査はドライバ取得より前に(ft_long_press と同じ理由 —
-            // コールドスタートは分単位かかりうるので、引数だけで弾けるものは先に弾く)
-            let gestureRequest = try Self.gestureRequestArgument(args)
+            // コールドスタートは分単位かかりうるので、引数だけで弾けるものは先に弾く)。
+            // 秒数の妥当性・点の積み上げは resolve(下)へ委ねる(重複させない)
+            let gestureFingers = try Self.gestureFingersArgument(args)
             let gestureDriver = try await driver(args)
             // 画面内かどうかの判定に screen が要る。既に撮った木があれば読みを増やさない
             // (coordinateScreen の doc)
@@ -1663,8 +1664,11 @@ extension MCPServer {
             }
             let gestureCap = try Self.doubleArgument(args, "maxGestureSeconds")
                 ?? BridgeAPI.defaultMaxGestureSeconds
+            // parse → resolve は一度だけ。unit rect(幅1・高さ1)を target にすると
+            // TouchGesture.resolve の比率写像が恒等写像になり、絶対座標をそのまま検査に通せる
             let validatedGesture: GestureRequest
-            switch TouchGesture.validate(gestureRequest, screen: gestureScreen, maxGestureSeconds: gestureCap) {
+            switch TouchGesture.resolve(gestureFingers, in: FTRect(x: 0, y: 0, width: 1, height: 1),
+                                        screen: gestureScreen, maxGestureSeconds: gestureCap) {
             case .failure(let rejection): throw MCPError(rejection.message)
             case .success(let ok): validatedGesture = ok
             }
@@ -1673,7 +1677,7 @@ extension MCPServer {
             // FlowStep.gesture がその置き場)。対象は常に画面全体(ft_gesture にセレクタは無い)ので
             // locator は付けない
             var gestureDraftStep = FlowStep(action: "gesture")
-            gestureDraftStep.gesture = Self.gestureFingersForDraft(validatedGesture, screen: gestureScreen)
+            gestureDraftStep.gesture = Self.gestureFingersRatio(gestureFingers, screen: gestureScreen)
             gestureDraftStep.maxGestureSeconds = try Self.doubleArgument(args, "maxGestureSeconds")
             recordAction(InteractionLog.Entry(
                 step: gestureDraftStep, unresolved: nil,
