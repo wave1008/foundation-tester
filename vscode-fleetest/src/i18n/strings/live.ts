@@ -148,6 +148,10 @@ export const liveStrings = {
     ja: "テストコードの生成に失敗しました。",
     en: "Failed to generate test code.",
   },
+  "live.traceTooLong": {
+    ja: "軌跡が長すぎるため再生しませんでした（{seconds} 秒。再生できるのは {max} 秒まで）。",
+    en: "The trace was not replayed because it is too long ({seconds}s; up to {max}s can be replayed).",
+  },
   "live.refreshFirst": {
     ja: "先に要素一覧の「更新」で画面を取得してください。",
     en: 'Fetch the screen with "Refresh" first.',

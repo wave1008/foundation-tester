@@ -101,11 +101,11 @@ If the device's bridge isn't running yet, Live Control starts it automatically a
 | Click | Tap |
 | Hold ~500ms without moving | Long press |
 | Drag | Swipe (direction inferred from the drag vector) |
-| Shift + drag, or drag while the toolbar's **Trace** button is pressed | Trace the exact finger path (one continuous touch that never lifts; stopping and then moving while held is a long-press-then-drag) |
-| Alt/Option + click | Double tap |
+| Shift (⇧) + drag | Trace the exact finger path (the toolbar's **Trace** indicator lights up while Shift is held; one continuous touch that never lifts; stopping and then moving while held is a long-press-then-drag; it replays at the speed you traced; once a trace passes 60 seconds it is cancelled on the spot with an error, and nothing is sent when you release) |
+| Option (⌥) + click | Double tap |
 | Toolbar zoom in/out | Pinch (whole screen) |
 
-On iOS, double tap (Alt/Option + click) does not register in a Compose app on a physical device or
+On iOS, double tap (Option (⌥) + click) does not register in a Compose app on a physical device or
 with an `xcuitest`-only setup. To zoom in, use the toolbar's zoom (a pinch) instead
 ([gestures](../commands/gestures.md)).
 

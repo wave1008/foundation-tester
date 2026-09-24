@@ -149,6 +149,11 @@ test("トグルが『アプリを起動』の右にある", (t) => {
     "「アプリを起動」のすぐ右に並ぶこと",
   );
   assert.equal(document.getElementById("live-show-boxes").checked, false, "既定は OFF");
+  // 見た目は「ライブ更新」と同じスイッチ(.header-toggle + .toggle-switch)
+  assert.ok(toggle.classList.contains("header-toggle"), "ラベルは .header-toggle");
+  const input = document.getElementById("live-show-boxes");
+  assert.ok(input.classList.contains("toggle-switch"), "入力は .toggle-switch(チェックボックスの見た目にしない)");
+  assert.equal(input.getAttribute("role"), "switch");
 });
 
 test("ON で全要素の枠を出し、OFF で消す", async (t) => {

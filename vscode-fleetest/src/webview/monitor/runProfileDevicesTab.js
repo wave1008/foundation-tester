@@ -80,7 +80,6 @@ let rowElements = new Map();
 // 選択中デバイスの**キー**(複数選択、Finder/VSCode 標準セマンティクス)。
 let selectedKeys = new Set();
 let selectionAnchor = null;
-const isMacPlatform = /^Mac/.test(navigator.platform || '');
 
 /** runProfilesTab.js の renderRunProfileEditor / requestRunProfileLoad が、選択中プロファイルの
  * devices(フルボディ)で行一覧を作り直すときに呼ぶ。 */
@@ -277,7 +276,7 @@ function renderRows() {
     rowEl.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      if (isMacPlatform && event.ctrlKey) {
+      if (event.ctrlKey) {
         toggleRowSelection(row.key, event);
         return;
       }

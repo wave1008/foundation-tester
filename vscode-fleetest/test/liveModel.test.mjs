@@ -23,6 +23,7 @@ import {
   formatElementFrame,
   formatElementLine,
   frameToDisplayRect,
+  gestureCapFor,
   gestureStepsFromPoints,
   isLiveFromWebviewMessage,
   isLiveWebviewEnvelope,
@@ -39,6 +40,7 @@ import {
   remoteDeviceOption,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
+  serveCommandPlaybackMs,
   stepDescriptionToOperationLabel,
   toSnapshotMessage,
 } from "../src/liveModel";
@@ -1299,4 +1301,27 @@ test("isLiveFromWebviewMessage: tracePoints は displayWidth/Height 欠落を拒
     isLiveFromWebviewMessage({ type: "tracePoints", points: [{ x: 1, y: 2, t: 0 }], displayWidth: 400 }),
     false,
   );
+});
+
+// ---- 軌跡の上限(縮めない) ----
+
+test("gestureCapFor: 10秒以下は既定のまま・10秒超は切り上げた秒で上げる・60秒超は断る", () => {
+  assert.equal(gestureCapFor(3), undefined);
+  assert.equal(gestureCapFor(10), undefined);
+  assert.equal(gestureCapFor(10.2), 11);
+  assert.equal(gestureCapFor(59.5), 60);
+  assert.equal(gestureCapFor(60), 60);
+  assert.equal(gestureCapFor(60.01), "tooLong");
+});
+
+test("serveCommandPlaybackMs: gesture は最後の点の時刻(秒→ms)・他のコマンドは 0", () => {
+  const fingers = [{ points: [{ x: 0, y: 0, t: 0 }, { x: 1, y: 1, t: 14.25 }] }];
+  assert.equal(serveCommandPlaybackMs({ cmd: "gesture", fingers }), 14250);
+  assert.equal(serveCommandPlaybackMs({ cmd: "tap", x: 1, y: 1 }), 0);
+});
+
+test("mcpCommandForServeCommand: 上限を上げた軌跡は ft_gesture に maxGestureSeconds を出す", () => {
+  const fingers = [{ points: [{ x: 0, y: 0, t: 0 }, { x: 10, y: 10, t: 12 }] }];
+  assert.match(mcpCommandForServeCommand({ cmd: "gesture", fingers, maxGestureSeconds: 12 }, []), /"maxGestureSeconds":12/);
+  assert.doesNotMatch(mcpCommandForServeCommand({ cmd: "gesture", fingers }, []), /maxGestureSeconds/);
 });

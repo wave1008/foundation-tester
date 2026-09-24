@@ -1075,6 +1075,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key.toLowerCase() !== 'a' || event.altKey || event.shiftKey) {
     return;
   }
+  // ⌘A と Ctrl+A のどちらでも全選択(ユーザー決定)
   if (!event.metaKey && !event.ctrlKey) {
     return;
   }

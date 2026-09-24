@@ -12,6 +12,7 @@ enum ResidentProcessGuard {
     private static var watchdogTimer: DispatchSourceTimer?
     private static var forcedExitScheduled = false
     private static var commandStartedAt: DispatchTime?
+    private static var commandAllowanceSeconds: Double = 0
     private static var commandWatchdogTimer: DispatchSourceTimer?
 
     /// 起動時の親PIDを記録し、5秒間隔で監視して親が変わったら(reparent=親死亡による孤児化)
@@ -71,13 +72,14 @@ enum ResidentProcessGuard {
         timer.setEventHandler {
             lock.lock()
             let started = commandStartedAt
+            let limit = maxSeconds + commandAllowanceSeconds
             lock.unlock()
             guard let started else { return }
             let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- started.uptimeNanoseconds)
                 / 1_000_000_000
-            if elapsed > maxSeconds {
+            if elapsed > limit {
                 logStderr(logLabel,
-                    "A single command stalled for over \(Int(maxSeconds))s — force-quitting (command watchdog)")
+                    "A single command stalled for over \(Int(limit))s — force-quitting (command watchdog)")
                 exit(0)
             }
         }
@@ -86,9 +88,11 @@ enum ResidentProcessGuard {
     }
 
     /// 1コマンドの処理開始を記録する(startCommandWatchdog の監視対象)。
-    static func noteCommandStart() {
+    /// `allowanceSeconds` = そのコマンドが正当に占有する時間(軌跡の再生時間など)。上限はこのぶん延びる
+    static func noteCommandStart(allowanceSeconds: Double) {
         lock.lock()
         commandStartedAt = .now()
+        commandAllowanceSeconds = max(0, allowanceSeconds)
         lock.unlock()
     }
 

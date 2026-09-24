@@ -85,7 +85,7 @@ export interface ProfileFileLocation {
 }
 
 function normalizePath(value: string): string {
-  return value.replace(/\\/g, "/").replace(/\/+$/, "");
+  return value.replace(/\/+$/, "");
 }
 
 /**

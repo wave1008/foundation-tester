@@ -220,13 +220,21 @@ button.bulk-cancel:hover:not(:disabled) {
   padding: 0 8px;
   gap: 4px;
 }
-/* ライブ操作ツールバーの「軌跡」トグル。並びが button.secondary(ホーム・拡大縮小等)なので、
-   ON の見せ方は .icon-button.toggled と同じ配色を button.secondary に対して定義する。 */
-button.secondary.toggled {
-  background-color: var(--vscode-inputOption-activeBackground, rgba(0, 122, 204, 0.4));
-  background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14));
-  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
-  box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
+/* ライブ操作ツールバーの「軌跡」表示灯(押せない)。並びの button.secondary と同じ寸法・配色で置き、
+   Shift を押している間(.active)だけ点ける。 */
+.trace-indicator {
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background-color: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  cursor: help;
+  user-select: none;
+}
+/* 点灯は青い地(ユーザー決定)。色は「ライブ更新」のトグルの ON と同じ青(.toggle-switch:checked) */
+.trace-indicator.active {
+  background-color: var(--vscode-button-background, #0078d4);
+  color: var(--vscode-button-foreground, #ffffff);
 }
 .profile-label {
   display: flex;
@@ -243,8 +251,9 @@ button.secondary.toggled {
   gap: 8px;
   min-width: 0;
 }
-/* 見出し行に置くトグル(ラインビューの「すべて選択」・グリッドビューの「ライブ更新」)。
-   **見た目はここ1箇所**で、位置だけ .line-view-select-all / .run-stream-toggle が持つ */
+/* 見出し行に置くトグル(ラインビューの「すべて選択」・グリッドビューの「ライブ更新」・
+   ライブ操作の「バウンディングボックスを表示」)。**見た目はここ1箇所**で、位置だけ
+   .line-view-select-all / .run-stream-toggle / #panel-live .elements-header-toggle が持つ */
 .header-toggle {
   align-self: center;
   gap: 4px;
@@ -2726,7 +2735,13 @@ input[type="radio"]:focus-visible {
   pointer-events: none;
 }
 #live-drag-overlay.visible { display: block; }
-#live-drag-overlay line {
+#live-drag-overlay polyline { display: none; }
+#live-drag-overlay.trace line { display: none; }
+#live-drag-overlay.trace polyline { display: inline; }
+#live-drag-overlay line,
+#live-drag-overlay polyline {
+  fill: none;
+  stroke-linejoin: round;
   stroke: var(--vscode-focusBorder, #007acc);
   stroke-width: 3;
   stroke-linecap: round;
@@ -2784,34 +2799,15 @@ input[type="radio"]:focus-visible {
 /* #panel-live(縦 flex)の直下に置き .content の上に独立した行として表示。
    タブ横幅いっぱいに広がり(既定 align: stretch)、表示時は .content ごと下へ押し下げる
    (更新ボタンが下がるのは許容)。非表示時は display:none で行を畳む。左寄せは既定。 */
-#live-action-error {
-  flex: 0 0 auto;
-  display: none;
-  padding: 4px 12px;
-  font-size: 12px;
-  color: var(--vscode-errorForeground, #f14c4c);
-  white-space: pre-wrap;
-  gap: 8px;
-  align-items: flex-start;
-}
-#live-action-error.visible { display: flex; }
+/* 見た目・閉じ方はデバイスモニターの .banner と共通(クラスで付ける)。ここは差分だけ */
+#live-action-error-text { min-width: 0; }
 /* neutral: bridgeStarting 中の操作失敗(live.bridgeStartingActionNotice)専用。エラー色にしない
    (--vscode-descriptionForeground は他所でも使う「中立」の既定色。stale-notice の警告色とも別) */
-#live-action-error.neutral { color: var(--vscode-descriptionForeground); }
-#live-action-error-text { flex: 1 1 auto; min-width: 0; }
-/* 消す口。文言は長く折り返すので上端に置く(align-items: flex-start) */
-#live-action-error-close {
-  flex: 0 0 auto;
-  padding: 0 4px;
-  border: none;
-  background: none;
-  color: inherit;
-  font-size: 14px;
-  line-height: 1.2;
-  cursor: pointer;
-  opacity: 0.8;
+#live-action-error.neutral {
+  background-color: transparent;
+  border-color: var(--vscode-panel-border, transparent);
+  color: var(--vscode-descriptionForeground);
 }
-#live-action-error-close:hover { opacity: 1; }
 /* action-error と同じ行の作法(flex row・pre-wrap)だが警告色にしてエラーと見分けを付ける
    (#live-device-warning と同じトークン)。閉じるボタンは無い(次の観測で notes が空なら自動で消える)。 */
 #live-stale-notice {
@@ -2827,17 +2823,14 @@ input[type="radio"]:focus-visible {
 #live-stale-notice.visible { display: flex; }
 #live-stale-notice-label { flex: 0 0 auto; }
 #live-stale-notice-text { flex: 1 1 auto; min-width: 0; }
-/* 「アプリを起動」の右に並ぶトグル。ラベルと箱を1行に収める(ツールバーの gap で間が空く)。 */
+/* 「アプリを起動」の右に並ぶトグル。見た目は .header-toggle + .toggle-switch(「ライブ更新」と共通)で、
+   ここは位置だけ持つ */
 #panel-live .elements-header-toggle {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   flex: 0 0 auto;
   margin-left: 8px; /* 左隣のボタンとの間(ツールバーの gap に足す) */
-  white-space: nowrap;
-  cursor: pointer;
+  /* .profile-label の既定(descriptionForeground)より明るく(ユーザー決定: 視認性) */
+  color: var(--vscode-foreground);
 }
-#panel-live .elements-header-toggle input { margin: 0; }
 #panel-live .elements-header {
   display: flex;
   align-items: center;

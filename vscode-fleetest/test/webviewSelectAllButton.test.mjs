@@ -381,7 +381,7 @@ test("フォーカスがタイルにある経路でも効く(押した場所と�
   assert.equal(selectedCount(document), 2);
 });
 
-test("Ctrl+A でも同じ(Windows/Linux のキーバインド)", (t) => {
+test("Ctrl+A でも ⌘A と同じく全選択する", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, 2);

@@ -40,7 +40,7 @@ public enum PinchGesture {
 
     /// `frame` の中で向かい合う2本指の経路を作る。縮小(`scale < 1`)は外側→内側、拡大は
     /// 内側→外側。指は `frame` の外へ出ない。返すのは粗いキーフレーム(押す・保持後の到達点・
-    /// 保持前の出発点・離す)で、**細かい 60Hz 補間はランナー側**(`/gesture` の subdivide と共有)
+    /// 保持前の出発点・離す)で、**区間の割り方はランナー側**(`CoordinatePinch.resample`。`/gesture` と共有)
     public static func ios(frame: FTRect, scale: Double, durationSeconds: Double) throws -> [GestureFinger] {
         guard scale.isFinite, scale > 0, scale != 1 else { throw InvalidScale(scale: scale) }
         let vertical = frame.height > frame.width * iosVerticalAspectThreshold

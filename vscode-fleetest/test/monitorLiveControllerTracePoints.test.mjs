@@ -7,8 +7,8 @@
 //   ①snapshot 未取得(lastScreen 無し)なら送らないこと(他のポインタ操作ハンドラと同じ規律)
 //   ②点の座標は pointFromClick で device 座標へ、時刻は /1000 で秒へ変換すること
 //     (GestureRequest.t は秒。webview は ms で送る)
-//   ③合計が 8 秒を超えたら全点を比例縮小すること(dragPoints と同じ 8 秒クランプ。
-//     serve のリクエストタイムアウト 20 秒に近づけない)
+//   ③時間を縮めないこと(利用者の決定: なぞった時間どおりに再生する)。上限の判定は
+//     liveModel.gestureCapFor(値は liveModel.test.mjs が見る)を通し、応答待ちは再生時間ぶん延ばす
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -49,10 +49,17 @@ test("tracePoints: 座標は pointFromClick で device 座標へ、時刻は /10
   assert.match(body, /p\.t \/ 1000/, "ms → 秒の変換を行うこと(GestureRequest.t は秒)");
 });
 
-test("tracePoints: 合計8秒を超えたら全点を比例縮小する(dragPoints と同じ8秒クランプ)", () => {
+test("tracePoints: 時間を縮めず、上限は gestureCapFor で決めて長すぎるものは断る", () => {
   const body = tracePointsCaseBody();
-  assert.match(body, /totalSeconds > 8/, "8秒を超えたときだけ縮小すること");
-  assert.match(body, /8 \/ totalSeconds/, "縮小は比率(全点を同じ比率で縮める)で行うこと");
+  assert.doesNotMatch(body, /\/ totalSeconds/, "点の時刻を比率で縮めないこと");
+  assert.match(body, /gestureCapFor\(totalSeconds\)/, "上限の判定は gestureCapFor を通すこと");
+  assert.match(body, /"tooLong"[\s\S]*postActionError\(t\("live\.traceTooLong"/, "絶対上限を超えたら送らずに断ること");
+  assert.match(body, /maxGestureSeconds: cap/, "既定上限を超えたらこの1回だけ上限を上げること");
+});
+
+test("serve への応答待ちは軌跡の再生時間ぶん延ばす", () => {
+  const source = controllerSource();
+  assert.match(source, /SERVE_REQUEST_TIMEOUT_MS \+ serveCommandPlaybackMs\(command\)/);
 });
 
 test("tracePoints: gesture コマンドを組み立て、RecordedStep(gesture)も同じ点列から作る", () => {

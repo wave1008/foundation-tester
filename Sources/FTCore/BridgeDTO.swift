@@ -437,7 +437,7 @@ public enum BridgeAPI {
     /// runner falls back to the element pinch only when the private pointer-event API is missing). `/doubletap` on the
     /// XCUITest runner sends two separate touches through that API (RN's PanResponder saw XCTest's tapCount=2 touch
     /// as one tap).
-    public static let bridgeProtocolVersion = 127
+    public static let bridgeProtocolVersion = 128
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

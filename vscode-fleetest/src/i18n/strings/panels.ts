@@ -10,7 +10,6 @@ export const panelsStrings = {
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
   "panels.tabs.close": { ja: "タブを閉じる", en: "Close tab" },
-  "panels.live.dismissError": { ja: "このメッセージを消す", en: "Dismiss this message" },
   "panels.live.showBoxes": { ja: "バウンディングボックスを表示", en: "Show bounding boxes" },
   "panels.live.staleNoticeLabel": { ja: "⚠ 表示が古い可能性:", en: "⚠ Possible stale display:" },
   "panels.tabs.recordings": { ja: "テストセッション", en: "Test Sessions" },
@@ -402,13 +401,13 @@ export const panelsStrings = {
   },
   /// **改行を含む**(CSS の white-space: pre-line で2行に出す)。マークアップを文言へ
   /// 入れない(訳文に <br> が混ざると i18n の検査・エスケープ文脈で扱いが割れる)
-  "panels.live.gestureHint": { ja: "Alt+クリック\nでダブルタップ", en: "Alt+click\nfor double tap" },
+  "panels.live.gestureHint": { ja: "Option(⌥)+クリック\nでダブルタップ", en: "Option(⌥)+click\nfor double tap" },
   /// 画面領域の tooltip。**割り当ての一覧はここが唯一の表示**(README にも同じ表がある)
   "panels.live.gestureHintTitle": {
-    ja: "クリック=タップ / Alt(Option)+クリック=ダブルタップ / 500ms 以上ホールド=長押し /"
-      + " ドラッグ=スワイプ / Shift+ドラッグ=軌跡どおりになぞる。拡大・縮小は下のボタン",
-    en: "Click = tap / Alt(Option)+click = double tap / hold 500ms+ = long press /"
-      + " drag = swipe / Shift+drag = trace the exact path. Zoom is on the buttons below",
+    ja: "クリック=タップ / Option(⌥)+クリック=ダブルタップ / 500ms 以上ホールド=長押し /"
+      + " ドラッグ=スワイプ / Shift(⇧)+ドラッグ=軌跡どおりになぞる。拡大・縮小は下のボタン",
+    en: "Click = tap / Option(⌥)+click = double tap / hold 500ms+ = long press /"
+      + " drag = swipe / Shift(⇧)+drag = trace the exact path. Zoom is on the buttons below",
   },
   "panels.live.zoomOutButton": { ja: "縮小", en: "Zoom out" },
   "panels.live.zoomOutTitle": {
@@ -417,8 +416,8 @@ export const panelsStrings = {
   },
   "panels.live.traceModeButton": { ja: "軌跡", en: "Trace" },
   "panels.live.traceModeTitle": {
-    ja: "ドラッグを指の軌跡どおりに再生します(Shift+ドラッグでも一時的に使えます)",
-    en: "Replays a drag along the exact finger path (hold Shift while dragging for a one-off)",
+    ja: "Shift(⇧)を押しながらドラッグすると、指の軌跡どおりに再生します",
+    en: "Hold Shift(⇧) while dragging to replay the exact finger path",
   },
   "panels.live.appSwitcherButton": { ja: "タスク切替", en: "App Switcher" },
   "panels.live.appSwitcherTitle": {

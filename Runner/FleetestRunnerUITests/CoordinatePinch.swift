@@ -48,15 +48,22 @@ import XCTest
 
 enum CoordinatePinch {
 
-    /// キーフレーム間(粗い move)を細かい move に割る間隔[秒]。60Hz はディスプレイの
-    /// リフレッシュレート/タッチのサンプリング周期の目安で、これより細かく刻んでも recognizer に渡る
-    /// 前に間引かれる。**静止区間(直前と同じ点)は分割しない** —— 位置が変わらないので終端の
-    /// 1点で足りる(分割すると同一点への move を stepCount 回繰り返すだけで意味が無い)
-    private static let stepInterval: TimeInterval = 1.0 / 60.0
+    /// 1つの move に置く時間の下限[秒]。**これより短い move を続けると XCTest が時間を守らない**
+    /// (実測 2026-09-25・シミュレータ: 3 秒の直線を 20ms 間隔で送ると 5.4 秒、16.7ms で 4.4 秒、
+    /// 8ms で 0.45 秒。33ms 以上なら 3.4〜3.7 秒 = 固定の遅れ約 0.4 秒だけ)。ライブ操作の軌跡は
+    /// pointermove ごと(約 16〜20ms)の点を運ぶので、そのままだと再生が伸び、Apple マップは動かなかった。
+    /// 33ms が境目だったので余裕を見て 50ms
+    private static let minimumSegment: TimeInterval = 0.05
+
+    /// 長い move を割る間隔[秒]。**XCTest は1つの move の中を自分で補間する**(4 秒の1区間でも
+    /// ドラッグとして届く = 実測)が、始点と終点だけだと速度が出ずピンチとして認識されないことがある
+    /// (recognizer は移動量の履歴を見る)ので数点に割る。`minimumSegment` 以上に保つこと
+    /// (以前の 1/60 秒刻みは下限を割り、再生時間が狂っていた)
+    private static let maximumSegment: TimeInterval = 0.1
 
     /// 連続する move に同じ offset を渡さないための最小間隔[秒]。**XCPointerEventPath が厳密な
     /// 単調増加を要求するかは非公開 API なので確認できない** —— キーフレームの間隔が
-    /// `stepInterval` 未満(短い move・丸め)だと同一 offset の move が連続しうるので、常にこの床で
+    /// `minimumSegment` 未満になる静止区間の端などで同一 offset の move が連続しうるので、常にこの床で
     /// 押し上げる。**最後の move → liftUp だけは同じ offset を許す**
     /// (`move(to: to, atOffset: duration)` の直後に `liftUp(atOffset: duration)` — 動いていた実績と
     /// 同じ形なので、そこだけは踏襲する)
@@ -95,21 +102,35 @@ enum CoordinatePinch {
     /// - Parameter fingers: 各指のキーフレーム列。1本目の要素が touch down・最後が lift
     static func synthesize(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
                            orientation: UIInterfaceOrientation) throws {
-        try send(fingers: fingers.map(subdivide), name: name, orientation: orientation)
+        try send(fingers: fingers.map(resample), name: name, orientation: orientation)
     }
 
-    /// 粗いキーフレームを `stepInterval` 刻みで補間する。静止区間(直前と同じ点)は補間しない
-    private static func subdivide(_ keyframes: [(point: CGPoint, offset: TimeInterval)])
+    /// キーフレームを XCTest が時間どおりに再生できる粒度へ揃える: ①`minimumSegment` 未満の間隔の点を
+    /// 間引く(先頭・末尾と、静止区間の端 = 直前か直後と同じ点は必ず残す —— 落とすと静止が移動に化ける)
+    /// ②`maximumSegment` を超える移動を割る(静止区間は割らない = 位置が変わらないので終端の1点で足りる)
+    private static func resample(_ keyframes: [(point: CGPoint, offset: TimeInterval)])
         -> [(point: CGPoint, offset: TimeInterval)] {
-        guard let first = keyframes.first else { return [] }
+        guard let first = keyframes.first, let last = keyframes.last else { return [] }
+        var kept: [(point: CGPoint, offset: TimeInterval)] = [first]
+        if keyframes.count > 2 {
+            for index in 1..<(keyframes.count - 1) {
+                let keyframe = keyframes[index]
+                let holdEdge = keyframe.point == keyframes[index - 1].point
+                    || keyframe.point == keyframes[index + 1].point
+                if holdEdge || keyframe.offset - kept[kept.count - 1].offset >= minimumSegment {
+                    kept.append(keyframe)
+                }
+            }
+        }
+        if keyframes.count > 1 { kept.append(last) }
         var out: [(point: CGPoint, offset: TimeInterval)] = [first]
         var previous = first
-        for keyframe in keyframes.dropFirst() {
-            if keyframe.point == previous.point {
+        for keyframe in kept.dropFirst() {
+            let span = keyframe.offset - previous.offset
+            if keyframe.point == previous.point || span <= maximumSegment {
                 out.append(keyframe)
             } else {
-                let span = keyframe.offset - previous.offset
-                let stepCount = max(1, Int((span / stepInterval).rounded()))
+                let stepCount = Int((span / maximumSegment).rounded(.up))
                 for step in 1...stepCount {
                     let ratio = Double(step) / Double(stepCount)
                     out.append((CGPoint(x: previous.point.x + (keyframe.point.x - previous.point.x) * ratio,

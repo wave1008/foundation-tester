@@ -11,7 +11,7 @@ import Foundation
 
 public enum ProcessCPUTime {
     /// プロセス開始からの user+sys を合算したミリ秒。取得できなければ nil
-    /// (Linux/macOS とも getrusage は失敗しない想定だが、失敗を 0 と混ぜない)
+    /// (getrusage は失敗しない想定だが、失敗を 0 と混ぜない)
     public static func milliseconds() -> Int? {
         var usage = rusage()
         guard getrusage(RUSAGE_SELF, &usage) == 0 else { return nil }

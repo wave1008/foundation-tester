@@ -9,6 +9,7 @@ import { clampMenuPosition } from './menu.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { displayAspect, fitScreenSize } from './liveScreenFit.js';
 import { thinTracePoints } from './traceThinning.js';
+import { flashTip, setHoverTip } from './hoverTip.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -33,9 +34,10 @@ const boxesOverlay = document.getElementById('live-boxes-overlay');
 screenshotWrap.insertBefore(liveCanvas, hoverBox);
 const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
 const dragOverlay = document.getElementById('live-drag-overlay');
+const dragTrace = document.getElementById('live-drag-trace');
 const dragLine = document.getElementById('live-drag-line');
 const dragStartDot = document.getElementById('live-drag-start');
-const traceToggle = document.getElementById('live-btn-trace-toggle');
+const traceIndicator = document.getElementById('live-trace-indicator');
 const connOverlay = document.getElementById('live-conn-overlay');
 const connDetail = document.getElementById('live-conn-detail');
 // bridgeStarting(ブリッジの自動起動が進行中)専用の中立表示。conn-overlay(エラー)とは別要素
@@ -47,7 +49,7 @@ const busyMessage = document.getElementById('live-busy-message');
 const typeTextInput = document.getElementById('live-type-text');
 const actionError = document.getElementById('live-action-error');
 const actionErrorText = document.getElementById('live-action-error-text');
-const actionErrorClose = document.getElementById('live-action-error-close');
+const actionErrorCopy = document.getElementById('live-action-error-copy');
 const staleNotice = document.getElementById('live-stale-notice');
 const staleNoticeText = document.getElementById('live-stale-notice-text');
 const showBoxesToggle = document.getElementById('live-show-boxes');
@@ -212,9 +214,18 @@ function showActionError(text, neutral) {
   actionError.classList.toggle('neutral', !!neutral);
   actionError.classList.add('visible');
 }
-// **利用者が消せる口** —— 自動で消えるのは host が復帰を検知した接続系の文言だけで、
-// ブリッジ接続拒否のように serve が返す文言は次の失敗で上書きされるまで残る。
-actionErrorClose.addEventListener('click', () => showActionError(''));
+// デバイスモニターのバナー(deviceTiles.js の showBanner)と同じ作法: 本文クリックで閉じる・
+// コピーでは閉じない・クリップボードはホスト側で書く(copyText)。**利用者が消せる口** —— 自動で
+// 消えるのは host が復帰を検知した接続系の文言だけで、serve が返す文言は次の失敗まで残る。
+actionError.title = t('wvMonitor.banner.dismissTip');
+actionErrorCopy.textContent = t('wvMonitor.banner.copy');
+actionErrorCopy.title = t('wvMonitor.banner.copyTip');
+actionErrorCopy.addEventListener('click', (event) => {
+  event.stopPropagation();
+  vscode.postMessage({ type: 'copyText', text: actionErrorText.textContent });
+  flashTip(actionErrorCopy, t('wvMonitor.banner.copied'));
+});
+actionError.addEventListener('click', () => showActionError(''));
 
 // snapshot.notes(鮮度警告等。エラーではないので actionError とは別枠)。閉じる口は無く、
 // 次の観測で notes が空になれば自動で消える(applySnapshot/clearSnapshot から呼ぶ)。
@@ -635,6 +646,10 @@ function applySnapshot(message) {
 screenshot.draggable = false;
 screenshot.addEventListener('dragstart', (event) => event.preventDefault());
 const DRAG_MIN_PX = 5;
+// 軌跡の再生時間の絶対上限(ms)。liveModel.ts の GESTURE_SECONDS_CEILING(= BridgeAPI.gestureSecondsCeiling)
+// と同値。**なぞっている最中に超えた時点で中止して言う**(離すまで気付けないと、それまでの操作が無駄になる)。
+// host 側の gestureCapFor も同じ上限で断る(こちらは早く知らせるための先回り)
+const TRACE_MAX_MS = 60000;
 const LONG_PRESS_MS = 500;
 let dragStart = null; // el: pointerdown を受けた要素(screenshot か liveCanvas)。以後の rect 計算に使う
 
@@ -647,23 +662,30 @@ function updateDragOverlay(start, x, y) {
   dragLine.setAttribute('y1', start.y);
   dragLine.setAttribute('x2', x);
   dragLine.setAttribute('y2', y);
+  // 軌跡モードは送る中身(指の軌跡)をそのまま描く。直線を描くと送るものと見えるものが食い違う
+  dragOverlay.classList.toggle('trace', !!start.trace);
+  if (start.trace) {
+    dragTrace.setAttribute('points', start.points.map((p) => p.x + ',' + p.y).concat([x + ',' + y]).join(' '));
+  }
   dragOverlay.classList.add('visible');
 }
 function hideDragOverlay() {
   dragOverlay.classList.remove('visible');
 }
 
-// 「軌跡」トグル(ツールバー)。ON の間、動かして離すドラッグは dragPoints(1回のスワイプ合成)
-// ではなく tracePoints(離さない1本のタッチとして軌跡どおり再生)を送る。押下時に Shift を
-// 押していた場合も同じ扱い(一時的な軌跡モード。トグルは変えない)。
-traceToggle.addEventListener('click', () => {
-  const pressed = traceToggle.getAttribute('aria-pressed') === 'true';
-  traceToggle.classList.toggle('toggled', !pressed);
-  traceToggle.setAttribute('aria-pressed', pressed ? 'false' : 'true');
-});
-function isTraceToggleOn() {
-  return traceToggle.getAttribute('aria-pressed') === 'true';
+// 軌跡モードは Shift だけで決める: 押下時に Shift を押していたドラッグは dragPoints(1回のスワイプ
+// 合成)ではなく tracePoints(離さない1本のタッチとして軌跡どおり再生)を送る。ツールバーの「軌跡」は
+// 押せない表示灯で、Shift を押している間だけ点く。キー入力は webview にフォーカスがあるときしか
+// 届かないので、画面上のマウスイベントが運ぶ shiftKey でも追従させる。フォーカスを失ったら消す
+// (離した keyup を取りこぼすため)
+// 説明は自前ツールチップで出す(ネイティブ title は出るまで約1秒で、待たずに離すと何も出ない)
+setHoverTip(traceIndicator, traceIndicator.title);
+function setTraceIndicator(on) {
+  traceIndicator.classList.toggle('active', !!on);
 }
+window.addEventListener('keydown', (event) => { if (event.key === 'Shift') { setTraceIndicator(true); } });
+window.addEventListener('keyup', (event) => { if (event.key === 'Shift') { setTraceIndicator(false); } });
+window.addEventListener('blur', () => setTraceIndicator(false));
 
 function handleScreenPointerDown(event) {
   if (busy || !lastScreen || event.button !== 0) { return; }
@@ -680,11 +702,19 @@ function handleScreenPointerDown(event) {
     // ダブルタップは「素早く2回」では表せない —— パネルの1クリックは既にタップとして
     // 送っているので、2回目を待つと通常のタップが毎回遅くなる
     doubleTap: event.altKey,
-    // **押した時点のトグル/Shift を採る**(doubleTap と同じ理由)。DRAG_MIN_PX 未満の
+    // **押した時点の Shift を採る**(doubleTap と同じ理由)。DRAG_MIN_PX 未満の
     // 移動(タップ/長押し/ダブルタップ)は軌跡モードでも今までどおり(下の pointerup 参照)
-    trace: isTraceToggleOn() || event.shiftKey,
+    trace: event.shiftKey,
     points: [{ x: event.clientX - rect.left, y: event.clientY - rect.top, t: 0 }],
+    traceTimer: null,
   };
+  // 動かさずに押さえ続けた場合も上限で知らせる(pointermove が来ないので時計で見る)
+  if (dragStart.trace) {
+    const start = dragStart;
+    start.traceTimer = setTimeout(() => {
+      if (dragStart === start && start.moveAt !== null) { cancelTraceOverLimit(); }
+    }, TRACE_MAX_MS + 1);
+  }
   updateDragOverlay(dragStart, dragStart.x, dragStart.y);
   try {
     el.setPointerCapture(event.pointerId);
@@ -701,6 +731,7 @@ liveCanvas.addEventListener('pointerdown', handleScreenPointerDown);
 // SVG に pointer-events を入れると枠がクリックを吸ってタップが飛ばなくなるので、
 // オーバーレイは透過のままにして、ここで当たり判定する。
 function handleScreenHover(event) {
+  setTraceIndicator(event.shiftKey);
   const rect = event.currentTarget.getBoundingClientRect();
   // **枠が OFF でも一覧の行は光らせる**(どの要素を指しているかは分かったほうがよい)。
   // 違うのは見た目と一覧送りの2つだけ: 赤枠は枠が出ているときだけ(CSS の .boxes-on)、
@@ -722,15 +753,36 @@ window.addEventListener('pointermove', (event) => {
     dragStart.moveAt = performance.now();
   }
   if (dragStart.trace) {
-    dragStart.points.push({ x, y, t: Math.round(performance.now() - dragStart.downAt) });
+    const elapsed = performance.now() - dragStart.downAt;
+    if (elapsed > TRACE_MAX_MS && dragStart.moveAt !== null) {
+      cancelTraceOverLimit();
+      return;
+    }
+    dragStart.points.push({ x, y, t: Math.round(elapsed) });
   }
 });
+
+// なぞっている最中に上限を超えた軌跡を中止する(離しても何も送らない = dragStart を捨てる)
+function cancelTraceOverLimit() {
+  const start = dragStart;
+  if (!start) { return; }
+  dragStart = null;
+  clearTimeout(start.traceTimer);
+  hideDragOverlay();
+  try {
+    start.el.releasePointerCapture(start.pointerId);
+  } catch {
+    // 未 capture なら何もしない
+  }
+  showActionError(t('wvMonitor.live.traceTooLong', { max: TRACE_MAX_MS / 1000 }));
+}
 // pointerup は window で拾う(capture が効かない環境・画像外で離した場合も取りこぼさない)。
 window.addEventListener('pointerup', (event) => {
   if (!dragStart || event.pointerId !== dragStart.pointerId) { return; }
   hideDragOverlay();
   const start = dragStart;
   dragStart = null;
+  clearTimeout(start.traceTimer);
   try {
     start.el.releasePointerCapture(event.pointerId);
   } catch {
@@ -784,6 +836,7 @@ window.addEventListener('pointerup', (event) => {
   }
 });
 window.addEventListener('pointercancel', () => {
+  if (dragStart) { clearTimeout(dragStart.traceTimer); }
   dragStart = null;
   hideDragOverlay();
 });

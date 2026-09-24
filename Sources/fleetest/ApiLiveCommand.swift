@@ -22,7 +22,7 @@
 //                                                       press/drag/pinch の秒数は既定 10 秒が上限。
 //                                                       maxGestureSeconds でこの1回だけ最大60秒まで上げられる
 //   {"cmd":"gesture","fingers":[{"points":[{"x":..,"y":..,"t":..}, ...]}, ...],
-//    "maxGestureSeconds":<秒省略可>}                    **軌跡モード(ライブ操作パネルの「軌跡」/
+//    "maxGestureSeconds":<秒省略可>}                    **軌跡モード(ライブ操作パネルの
 //                                                        Shift+ドラッグ)専用** —— マウスの軌跡を離さず
 //                                                        1本のタッチとして再生する(GestureRequest と
 //                                                        同じワイヤ形。検査は FTCore.TouchGesture.validate
@@ -200,7 +200,9 @@ struct ApiLiveServe: AsyncParsableCommand {
                 continue
             }
             let command = ApiLiveServeCommand(cmd: cmd, raw: object)
-            ResidentProcessGuard.noteCommandStart()
+            // 軌跡は利用者がなぞった時間どおりに再生する(縮めない)ので、その再生時間ぶん watchdog を延ばす
+            ResidentProcessGuard.noteCommandStart(
+                allowanceSeconds: command.fingers.map { GestureRequest(fingers: $0).totalSeconds } ?? 0)
             // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ。
             // usb: host はループバックのままだが establish が新たに token を記録している ——
             // host だけで判定すると usb は再取得されず、起動前の token 無し driver を握ったままになる)

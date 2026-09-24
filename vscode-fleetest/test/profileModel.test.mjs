@@ -190,14 +190,6 @@ test("parseProfileFilePath: 既にワークスペースルート相対のパス�
   assert.deepEqual(location, { project: "SampleApp", kind: "runs", name: "ios" });
 });
 
-test("parseProfileFilePath: Windows 風のバックスラッシュ区切りも正規化して抽出する", () => {
-  const location = parseProfileFilePath(
-    "C:\\repo",
-    "C:\\repo\\TestProjects\\SampleApp\\profiles\\runs\\ios.json",
-  );
-  assert.deepEqual(location, { project: "SampleApp", kind: "runs", name: "ios" });
-});
-
 test("parseProfileFilePath: profiles/ 配下以外のパスは undefined", () => {
   assert.equal(
     parseProfileFilePath("/repo", "/repo/TestProjects/SampleApp/scenarios/ログインテスト.swift"),

@@ -147,7 +147,7 @@ Mac のデバイスに解決され、存在しない台の起動を試みるた�
 
 GUI 依存は fleetest のコードではなく **macOS のセッション意味論**に由来する
 (launchd のセッション種別が Background[SSH 直・LaunchDaemon]か Aqua かで
-WindowServer・ユーザー空間サービスへのアクセスが変わる。Linux の Xvfb に相当する
+WindowServer・ユーザー空間サービスへのアクセスが変わる。
 「ログインなしで Aqua を作る」公式手段は macOS に無い)。よってコード分離では消せず、
 **Aqua に置くものを最小化する**のが唯一の現実解。
 

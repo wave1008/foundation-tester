@@ -62,12 +62,15 @@ import {
   operationBelongsToApp,
   parseGenScenarioEvent,
   parseListDevicesResult,
+  GESTURE_SECONDS_CEILING,
+  gestureCapFor,
   parseLiveServeEvent,
   pointFromClick,
   type RecordedStep,
   recordedGestureFingers,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
+  serveCommandPlaybackMs,
   stepDescriptionToOperationLabel,
   swipeDirectionLabel,
   toSnapshotMessage,
@@ -1184,10 +1187,11 @@ export class MonitorLiveController implements vscode.Disposable {
       });
     }
     return new Promise((resolve) => {
+      // 軌跡の再生時間は応答待ちの上限に足す(serve 側の command watchdog も同じだけ延びる)
       const timeout = setTimeout(() => {
         this.failPendingServeRequest(serveTimeoutMessage());
         this.restartWedgedServe(proc);
-      }, SERVE_REQUEST_TIMEOUT_MS);
+      }, SERVE_REQUEST_TIMEOUT_MS + serveCommandPlaybackMs(command));
       this.pendingServeRequest = {
         expectsAction: command.cmd !== "refresh",
         resolvesOn: "snapshot",
@@ -1915,16 +1919,23 @@ export class MonitorLiveController implements vscode.Disposable {
           t: p.t / 1000,
         }));
         const totalSeconds = devicePoints[devicePoints.length - 1]?.t ?? 0;
-        // dragPoints と同じ 8 秒クランプ(serve のリクエストタイムアウトは20秒。実測時間をそのまま
-        // 流すと近づくため)。**全点を同じ比率で縮める**(形=相対的な速度を保つ。端点だけ削ると
-        // 途中の静止/速い動きが消える)
-        const scale = totalSeconds > 8 ? 8 / totalSeconds : 1;
-        const scaledPoints = scale === 1 ? devicePoints : devicePoints.map((p) => ({ ...p, t: p.t * scale }));
-        const fingers = [{ points: scaledPoints }];
+        // **時間を縮めない**(利用者の決定: なぞった時間どおりに再生する)。既定上限を超えたら
+        // この1回だけ maxGestureSeconds で上げ、絶対上限を超えるものは送らずに断る
+        const cap = gestureCapFor(totalSeconds);
+        if (cap === "tooLong") {
+          this.postActionError(t("live.traceTooLong", {
+            seconds: Math.round(totalSeconds), max: GESTURE_SECONDS_CEILING,
+          }));
+          break;
+        }
+        const fingers = [{ points: devicePoints }];
         const traceLabel = t("live.opLabel.trace");
         void this.runAction(
-          { cmd: "gesture", fingers },
-          { action: "gesture", gesture: recordedGestureFingers(fingers, screen) },
+          cap === undefined ? { cmd: "gesture", fingers } : { cmd: "gesture", fingers, maxGestureSeconds: cap },
+          {
+            action: "gesture", gesture: recordedGestureFingers(fingers, screen),
+            ...(cap === undefined ? {} : { maxGestureSeconds: cap }),
+          },
           { logLabel: traceLabel },
         );
         break;

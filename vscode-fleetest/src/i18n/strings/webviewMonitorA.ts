@@ -308,6 +308,10 @@ export const webviewMonitorAStrings = {
   "wvMonitor.devicePick.applying": { ja: "適用中...", en: "Applying..." },
   "wvMonitor.devicePick.detailSeparator": { ja: "・", en: "·" },
 
+  "wvMonitor.live.traceTooLong": {
+    ja: "軌跡が {max} 秒を超えたため中止しました（再生できるのは {max} 秒まで）。",
+    en: "The trace was cancelled because it exceeded {max}s (up to {max}s can be replayed).",
+  },
   "wvMonitor.live.stateConnected": { ja: "接続済み", en: "Connected" },
   "wvMonitor.live.stateUnknown": { ja: "状態不明(未確認)", en: "Unknown (unconfirmed)" },
   "wvMonitor.live.oplogMcpCopy": { ja: "クリックでコピー", en: "Click to copy" },

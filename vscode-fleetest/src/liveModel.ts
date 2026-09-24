@@ -278,12 +278,17 @@ export type LiveServeCommand =
     }
   | { readonly cmd: "press"; readonly x: number; readonly y: number; readonly duration: number }
   | { readonly cmd: "doubleTap"; readonly x: number; readonly y: number }
-  /** 軌跡モード専用(ライブ操作パネルの「軌跡」トグル/Shift+ドラッグ)。ワイヤ形は
+  /** 軌跡モード専用(ライブ操作パネルの Shift+ドラッグ)。ワイヤ形は
    * `Sources/FTCore/BridgeDTO.swift` の `GestureRequest.fingers` と同じ(`GesturePoint.t` は
    * ジェスチャ開始からの**秒**)。座標は既に device 座標(pointFromClick 済み)。呼び手
    * (monitorLiveController.ts の tracePoints ハンドラ)がここへ揃える前は webview の点列は
    * 表示pxかつ ms 単位なので、そのまま送らない */
-  | { readonly cmd: "gesture"; readonly fingers: readonly LiveGestureFinger[] }
+  | {
+      readonly cmd: "gesture";
+      readonly fingers: readonly LiveGestureFinger[];
+      /** 再生時間が既定の上限(10秒)を超えるときだけ付ける。値の出どころは gestureCapFor */
+      readonly maxGestureSeconds?: number;
+    }
   | { readonly cmd: "pinch"; readonly scale: number; readonly duration: number }
   | { readonly cmd: "appSwitcher" }
   | { readonly cmd: "home" }
@@ -376,7 +381,9 @@ export function mcpCommandForServeCommand(
         );
         return { x: n(first.x), y: n(first.y), steps };
       });
-      return line("ft_gesture", { fingers });
+      return line("ft_gesture", command.maxGestureSeconds === undefined
+        ? { fingers }
+        : { fingers, maxGestureSeconds: command.maxGestureSeconds });
     }
     case "pinch":
       return line("ft_pinch", { scale: n(command.scale), durationSeconds: n(command.duration) });
@@ -396,6 +403,30 @@ export function mcpCommandForServeCommand(
 }
 
 /** serve の stdin へ書き込む1行(末尾改行付き)を組み立てる。 */
+/** ジェスチャ秒数の既定上限・絶対上限(秒)。`BridgeAPI.defaultMaxGestureSeconds` /
+ * `BridgeAPI.gestureSecondsCeiling` と同値(片方だけ変えない) */
+export const DEFAULT_MAX_GESTURE_SECONDS = 10;
+export const GESTURE_SECONDS_CEILING = 60;
+
+/** 軌跡の再生時間 → 送る maxGestureSeconds。**縮めない**(利用者がなぞった時間どおりに再生する)
+ * ので、既定上限を超えたらこの1回だけ上限を上げる。undefined = 既定のままでよい /
+ * "tooLong" = 絶対上限を超えていて再生できない */
+export function gestureCapFor(totalSeconds: number): number | undefined | "tooLong" {
+  if (totalSeconds <= DEFAULT_MAX_GESTURE_SECONDS) { return undefined; }
+  if (totalSeconds > GESTURE_SECONDS_CEILING) { return "tooLong"; }
+  return Math.min(GESTURE_SECONDS_CEILING, Math.ceil(totalSeconds));
+}
+
+/** serve がこのコマンドで正当に占有する時間(ms)。応答待ちの上限にこのぶんを足す */
+export function serveCommandPlaybackMs(command: LiveServeCommand): number {
+  if (command.cmd !== "gesture") { return 0; }
+  let last = 0;
+  for (const finger of command.fingers) {
+    for (const p of finger.points) { last = Math.max(last, p.t); }
+  }
+  return Math.ceil(last * 1000);
+}
+
 export function serializeLiveServeCommand(command: LiveServeCommand): string {
   return `${JSON.stringify(command)}\n`;
 }
@@ -557,6 +588,8 @@ export interface RecordedStep {
    * 中身は `FTFinger` の Codable そのまま(`Sources/FTCore/TouchGesture.swift`。x/y は対象への
    * 比率、steps は `{move:{x,y,durationSeconds}}` / `{hold:{seconds}}` の enum ケース名)。 */
   readonly gesture?: readonly RecordedGestureFinger[];
+  /** 長押し・ジェスチャの秒数上限をこの1回だけ上げる(FlowStep.maxGestureSeconds と同名) */
+  readonly maxGestureSeconds?: number;
 }
 
 /** RecordedStep.gesture の1本の指。FTFinger(Codable)と同じキー名・型で組む(recordedGestureFingers

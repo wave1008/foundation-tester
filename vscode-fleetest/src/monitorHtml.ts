@@ -384,11 +384,11 @@ function renderLivePanel(): string {
     <div class="toolbar live-record-actions">
       <button id="live-btn-record">${t("panels.live.startRecording")}</button>
       <button id="live-btn-launch" class="secondary" title="${t("panels.live.launchButtonTitle")}" disabled>${t("panels.live.launchButton")}</button>
-      <label id="live-boxes-toggle" class="elements-header-toggle"><input id="live-show-boxes" type="checkbox">${t("panels.live.showBoxes")}</label>
+      <label id="live-boxes-toggle" class="profile-label header-toggle elements-header-toggle"><input id="live-show-boxes" type="checkbox" class="toggle-switch" role="switch">${t("panels.live.showBoxes")}</label>
       <span id="live-record-status" class="live-record-status"></span>
     </div>
     <div id="live-banner" class="banner"></div>
-    <div id="live-action-error"><span id="live-action-error-text"></span><button id="live-action-error-close" type="button" title="${t("panels.live.dismissError")}" aria-label="${t("panels.live.dismissError")}">×</button></div>
+    <div id="live-action-error" class="banner"><span id="live-action-error-text" class="banner-text"></span><button id="live-action-error-copy" class="banner-copy" type="button"></button></div>
     <!-- CLI(ApiLiveCommand.swift)の snapshot.notes(鮮度警告等)。エラーと見分けが付くよう
          action-error とは別要素・警告色にする。本文は CLI が英語で作るので訳さない(枠のラベルのみ訳す)。 -->
     <div id="live-stale-notice"><span id="live-stale-notice-label">${t("panels.live.staleNoticeLabel")}</span> <span id="live-stale-notice-text"></span></div>
@@ -403,7 +403,7 @@ function renderLivePanel(): string {
             <img id="live-screenshot" alt="${t("panels.live.screenshotAlt")}">
             <svg id="live-boxes-overlay" aria-hidden="true"></svg>
             <div id="live-hover-box"></div>
-            <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
+            <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><polyline id="live-drag-trace"/><circle id="live-drag-start" r="6"/></svg>
             <div id="live-screenshot-placeholder">${t("panels.live.screenshotPlaceholder")}</div>
             <div id="live-conn-overlay">
               <div class="conn-title">${t("panels.live.connectionErrorTitle")}</div>
@@ -429,8 +429,9 @@ function renderLivePanel(): string {
           <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
           <button id="live-btn-zoom-in" class="secondary" title="${t("panels.live.zoomInTitle")}">${t("panels.live.zoomInButton")}</button>
           <button id="live-btn-zoom-out" class="secondary" title="${t("panels.live.zoomOutTitle")}">${t("panels.live.zoomOutButton")}</button>
-          <button id="live-btn-trace-toggle" class="secondary" type="button" aria-pressed="false"
-            title="${t("panels.live.traceModeTitle")}">${t("panels.live.traceModeButton")}</button>
+          <!-- 押せない表示灯。Shift を押している間だけ点く(= 今ドラッグすると軌跡モード)。liveTab.js の setTraceIndicator -->
+          <span id="live-trace-indicator" class="trace-indicator"
+            title="${t("panels.live.traceModeTitle")}">${t("panels.live.traceModeButton")}</span>
           <!-- 修飾キーの割り当ては UI に出さないと誰も気付かない(README だけでは届かない)。
                全体の割り当ては画面領域の tooltip(gestureHintTitle)にも同じものを出す -->
           <span id="live-gesture-hint" class="screenshot-hint" title="${t("panels.live.gestureHintTitle")}">${t("panels.live.gestureHint")}</span>

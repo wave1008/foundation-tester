@@ -121,22 +121,29 @@ function showError(window, text) {
   }));
 }
 
-test("actionError の × でバナーを消せる", (t) => {
-  const { window, document } = createWebview();
+test("actionError はデバイスモニターと同じバナー: 本文クリックで閉じ、コピーでは閉じずに文言をコピーする", (t) => {
+  const { window, document, posts } = createWebview();
   t.after(() => window.close());
 
   const banner = document.getElementById("live-action-error");
   const text = document.getElementById("live-action-error-text");
-  const close = document.getElementById("live-action-error-close");
-  assert.ok(close, "閉じるボタンが存在すること");
+  const copy = document.getElementById("live-action-error-copy");
+  assert.ok(banner.classList.contains("banner"), "デバイスモニターと同じ .banner の見た目");
+  assert.ok(copy && copy.classList.contains("banner-copy"), "コピーボタンがあること");
   assert.ok(!banner.classList.contains("visible"), "前提: 最初は出ていない");
 
   showError(window, "Connection to the driver was refused (nothing listening on the port).");
   assert.ok(banner.classList.contains("visible"), "エラーが出ること");
   assert.match(text.textContent, /refused/, "本文は span 側に入ること(ボタンを消さない)");
 
-  close.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.ok(!banner.classList.contains("visible"), "× で消えること");
+  copy.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.ok(banner.classList.contains("visible"), "コピーでは閉じないこと");
+  const copied = posts.filter((m) => m.type === "copyText");
+  assert.equal(copied.length, 1);
+  assert.match(copied[0].text, /refused/, "表示中の文言をコピーすること");
+
+  text.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.ok(!banner.classList.contains("visible"), "本文クリックで消えること");
   assert.equal(text.textContent, "", "本文も空にすること");
 
   showError(window, "another failure");

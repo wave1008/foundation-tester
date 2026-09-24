@@ -280,6 +280,28 @@ test("ドラッグ中は軌跡オーバーレイが表示され、離すと消�
   assert.ok(!overlay.classList.contains("visible"), "離すとオーバーレイ非表示");
 });
 
+test("軌跡モードのオーバーレイは直線でなく、通った点を結ぶ折れ線を描く", (t) => {
+  const { window, document, screenshot, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+  const overlay = document.getElementById("live-drag-overlay");
+  const trace = document.getElementById("live-drag-trace");
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100 }));
+  assert.ok(!overlay.classList.contains("trace"), "OFF のときは直線の表示");
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 100, y: 100 }));
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100, shiftKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 200, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 200, y: 300 }));
+  assert.ok(overlay.classList.contains("trace"), "ON のときは折れ線の表示");
+  const pts = trace.getAttribute("points");
+  assert.ok(pts.startsWith("100,100"), "始点から描く: " + pts);
+  assert.ok(pts.includes("200,100"), "途中の曲がり角を含む: " + pts);
+  assert.ok(pts.endsWith("200,300"), "今の指の位置まで描く: " + pts);
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 200, y: 300 }));
+});
+
 test("500ms 以上ホールドして離すと pressPoint になる", async (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
   t.after(() => window.close());
@@ -334,20 +356,22 @@ test("Alt+クリックは doubleTapPoint になる(通常のタップは送ら�
 
 // **修飾キーは UI に出ていないと使われない**(README だけでは届かない)。
 // ヒント表示と画面領域の tooltip の両方を固定する
-test("Alt+クリックの割り当てがパネル上に表示されている", (t) => {
+test("Option(⌥)+クリックの割り当てがパネル上に表示されている", (t) => {
   const { window } = createWebview();
   t.after(() => window.close());
 
   const hint = window.document.getElementById("live-gesture-hint");
   assert.ok(hint, "ツールバーに割り当てのヒントを出すこと");
-  assert.match(hint.textContent, /Alt/i);
+  // macOS 専用のツールなので、キー名は Mac のキーボードの刻印で出す
+  assert.ok(hint.textContent.includes("Option(⌥)"), `Option(⌥) で出すこと: ${hint.textContent}`);
   assert.match(hint.textContent, /ダブルタップ|double tap/i);
   // **2行で出す**(CSS の white-space: pre-line が効く前提。文言から改行が落ちると1行に戻る)
   assert.ok(hint.textContent.includes("\n"), `ヒントは2行で出すこと: ${JSON.stringify(hint.textContent)}`);
 
   // 画面領域をホバーすれば全割り当てが読める
   const wrap = window.document.getElementById("live-screenshot-wrap");
-  assert.match(wrap.getAttribute("title") ?? "", /Alt/i);
+  assert.ok((wrap.getAttribute("title") ?? "").includes("Option(⌥)"));
+  assert.ok((wrap.getAttribute("title") ?? "").includes("Shift(⇧)"));
   assert.match(wrap.getAttribute("title") ?? "", /ダブルタップ|double tap/i);
 });
 
@@ -365,12 +389,12 @@ test("拡大・縮小ボタンは画面全体のピンチを送る", (t) => {
   assert.deepEqual(pinches.map((m) => m.zoomIn), [true, false]);
 });
 
-// ---- 軌跡モード(トグル/Shift+ドラッグ) ----
+// ---- 軌跡モード(Shift+ドラッグ) ----
 // 通常のドラッグは1回のスワイプ(dragPoints)に合成される(ユーザー決定・維持)。軌跡モードは
-// トグル ON、または pointerdown 時の Shift 押下(一時的)で、マウスの軌跡をそのまま1本の
-// 離さないタッチとして送る(tracePoints)。
+// pointerdown 時の Shift 押下だけで決まり、マウスの軌跡をそのまま1本の離さないタッチとして送る
+// (tracePoints)。ツールバーの「軌跡」は押せない表示灯(Shift を押している間だけ点く)。
 
-test("軌跡トグルが OFF・Shift も無ければドラッグは今までどおり dragPoints", (t) => {
+test("Shift を押していなければドラッグは今までどおり dragPoints", (t) => {
   const { window, screenshot, sendToWebview, liveMessages } = createWebview();
   t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
@@ -383,17 +407,12 @@ test("軌跡トグルが OFF・Shift も無ければドラッグは今までど�
   assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0);
 });
 
-test("軌跡トグルを押した状態のドラッグは tracePoints を送る(始点・終点を含む)", (t) => {
-  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+test("Shift+ドラッグは tracePoints を送る(始点・終点を含む)", (t) => {
+  const { window, screenshot, sendToWebview, liveMessages } = createWebview();
   t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
-  const toggle = document.getElementById("live-btn-trace-toggle");
-  toggle.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(toggle.getAttribute("aria-pressed"), "true", "押した状態が aria-pressed に出ること");
-  assert.ok(toggle.classList.contains("toggled"), "押した状態の見た目クラスが付くこと");
-
-  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100 }));
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100, shiftKey: true }));
   window.dispatchEvent(pointerEvent(window, "pointermove", { x: 110, y: 120 }));
   window.dispatchEvent(pointerEvent(window, "pointermove", { x: 130, y: 160 }));
   window.dispatchEvent(pointerEvent(window, "pointerup", { x: 130, y: 160 }));
@@ -413,29 +432,65 @@ test("軌跡トグルを押した状態のドラッグは tracePoints を送る(
   for (let i = 1; i < trace.points.length; i++) {
     assert.ok(trace.points[i].t >= trace.points[i - 1].t, "t は単調非減少");
   }
-
-  // トグルをもう一度押すと解除される
-  toggle.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(toggle.getAttribute("aria-pressed"), "false");
-  assert.ok(!toggle.classList.contains("toggled"));
 });
 
-test("トグルが OFF でも pointerdown 時に Shift を押していれば軌跡モード(一時的)", (t) => {
-  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+test("軌跡モードは押した時点の Shift で決まる(途中で Shift を押しても離しても変わらない)", (t) => {
+  const { window, screenshot, sendToWebview, liveMessages } = createWebview();
   t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
-  const toggle = document.getElementById("live-btn-trace-toggle");
-  assert.equal(toggle.getAttribute("aria-pressed"), "false", "前提: トグルは押していない");
-
-  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 60, y: 70, shiftKey: true }));
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 60, y: 70 }));
   window.dispatchEvent(pointerEvent(window, "pointermove", { x: 90, y: 110, shiftKey: true }));
   window.dispatchEvent(pointerEvent(window, "pointerup", { x: 90, y: 110, shiftKey: true }));
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0);
+  assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 1);
 
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 60, y: 70, shiftKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 90, y: 110 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 90, y: 110 }));
   assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 1);
-  assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 0);
-  // トグル自体は変わらない(あくまで一回限りの一時的な切り替え)
-  assert.equal(toggle.getAttribute("aria-pressed"), "false");
+});
+
+test("「軌跡」は押せない表示灯: Shift を押している間だけ点き、離すと消える", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+  const indicator = document.getElementById("live-trace-indicator");
+  assert.ok(indicator, "表示灯があること");
+  assert.equal(document.getElementById("live-btn-trace-toggle"), null, "トグルボタンは無いこと");
+  assert.notEqual(indicator.tagName, "BUTTON", "押せる部品にしないこと");
+  assert.ok(!indicator.classList.contains("active"), "前提: 最初は消えている");
+
+  window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Shift", shiftKey: true }));
+  assert.ok(indicator.classList.contains("active"), "Shift を押すと点く");
+  window.dispatchEvent(new window.KeyboardEvent("keyup", { key: "Shift" }));
+  assert.ok(!indicator.classList.contains("active"), "Shift を離すと消える");
+
+  // フォーカスが無くてもマウスイベントの shiftKey で追従する
+  screenshot.dispatchEvent(pointerEvent(window, "pointermove", { x: 10, y: 10, shiftKey: true }));
+  assert.ok(indicator.classList.contains("active"), "画面上で Shift を押したまま動かすと点く");
+  screenshot.dispatchEvent(pointerEvent(window, "pointermove", { x: 12, y: 10 }));
+  assert.ok(!indicator.classList.contains("active"), "Shift を離して動かすと消える");
+
+  window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Shift", shiftKey: true }));
+  window.dispatchEvent(new window.Event("blur"));
+  assert.ok(!indicator.classList.contains("active"), "フォーカスを失ったら消す(keyup を取りこぼすため)");
+
+  // クリックしても何も切り替わらず、何も送らない
+  const before = liveMessages().length;
+  indicator.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.ok(!indicator.classList.contains("active"));
+  assert.equal(liveMessages().length, before);
+});
+
+test("「軌跡」にマウスを乗せると Shift で操作することを説明する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  const indicator = document.getElementById("live-trace-indicator");
+  const tip = indicator.getAttribute("data-hover-tip") ?? "";
+  assert.match(tip, /Shift/, "自前ツールチップ(0.2 秒で出る)に説明を載せること");
+  assert.match(tip, /軌跡|path/);
+  assert.equal(indicator.getAttribute("title"), "", "ネイティブ title は空にする(二重に出さない)");
 });
 
 test("軌跡モードでも 5px 未満の移動は今までどおり tapPoint(タップ/長押し/ダブルタップは変えない)", (t) => {
@@ -443,14 +498,104 @@ test("軌跡モードでも 5px 未満の移動は今までどおり tapPoint(�
   t.after(() => window.close());
   sendToWebview(SNAPSHOT_MESSAGE);
 
-  document.getElementById("live-btn-trace-toggle").dispatchEvent(
-    new window.MouseEvent("click", { bubbles: true }));
-
-  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 50, y: 60 }));
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 50, y: 60, shiftKey: true }));
   window.dispatchEvent(pointerEvent(window, "pointerup", { x: 52, y: 61 }));
 
   const taps = liveMessages().filter((m) => m.type === "tapPoint");
   assert.equal(taps.length, 1);
   assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0);
   assert.equal(liveMessages().filter((m) => m.type === "dragPoints").length, 0);
+});
+
+// 軌跡は再生時間の絶対上限(60秒)まで。なぞっている最中に超えたら、その場で中止してエラーを出す
+// (離すまで気付けないと、それまでの操作が無駄になる)。離しても何も送らない。
+test("軌跡モードで60秒を超えて動かしたら、その場で中止してエラーを出し、離しても送らない", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+  let now = 1000;
+  window.performance.now = () => now;
+  const error = document.getElementById("live-action-error");
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100, shiftKey: true }));
+  now += 30000;
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 150, y: 100 }));
+  assert.ok(!error.classList.contains("visible"), "60秒以内は何も言わない");
+  now += 30001;
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 200, y: 100 }));
+  assert.ok(error.classList.contains("visible"), "60秒を超えた時点でエラーを出す");
+  assert.match(document.getElementById("live-action-error-text").textContent, /60/);
+  assert.ok(!document.getElementById("live-drag-overlay").classList.contains("visible"), "線を消す");
+
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 200, y: 100 }));
+  const sent = liveMessages().filter((m) => ["tracePoints", "dragPoints", "tapPoint", "pressPoint"].includes(m.type));
+  assert.equal(sent.length, 0, "離しても何も送らない");
+});
+
+test("軌跡モードで動かしたあと止めたまま60秒を超えても(pointermove が来なくても)中止してエラーを出す", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+  let now = 1000;
+  window.performance.now = () => now;
+  const timers = [];
+  const realSetTimeout = window.setTimeout.bind(window);
+  window.setTimeout = (fn, ms, ...rest) => {
+    if (ms > 59000) { timers.push(fn); return 0; }
+    return realSetTimeout(fn, ms, ...rest);
+  };
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100, shiftKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 150, y: 100 }));
+  assert.equal(timers.length, 1, "軌跡の押下で上限の時計を仕掛けること");
+  now += 60001;
+  timers[0]();
+  assert.ok(document.getElementById("live-action-error").classList.contains("visible"), "時計でもエラーを出す");
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 150, y: 100 }));
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0, "離しても送らない");
+});
+
+test("60秒以内に離した軌跡はそのまま送る(上限の中止は効かない)", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+  let now = 1000;
+  window.performance.now = () => now;
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100, shiftKey: true }));
+  now += 59000;
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 200, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 200, y: 100 }));
+  assert.ok(!document.getElementById("live-action-error").classList.contains("visible"));
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 1);
+});
+
+test("60秒で中止した後も、次の軌跡(押す→動かす→離す)は普通に送る", (t) => {
+  const { window, document, screenshot, sendToWebview, liveMessages } = createWebview();
+  t.after(() => window.close());
+  sendToWebview(SNAPSHOT_MESSAGE);
+  let now = 1000;
+  window.performance.now = () => now;
+
+  // 1本目: 60秒を超えて中止(マウスはまだ押したまま)→ 離す
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 100, y: 100, shiftKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 150, y: 100 }));
+  now += 60001;
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 200, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 220, y: 100 }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 220, y: 100 }));
+  assert.equal(liveMessages().filter((m) => m.type === "tracePoints").length, 0);
+
+  // 2本目: 普通の軌跡
+  now += 1000;
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 200, y: 600, shiftKey: true }));
+  assert.ok(document.getElementById("live-drag-overlay").classList.contains("visible"), "線がまた出る");
+  now += 300;
+  window.dispatchEvent(pointerEvent(window, "pointermove", { x: 200, y: 400 }));
+  now += 300;
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 200, y: 200 }));
+  const traces = liveMessages().filter((m) => m.type === "tracePoints");
+  assert.equal(traces.length, 1, "2本目は送ること");
+  assert.deepEqual([traces[0].points[0].x, traces[0].points[0].y], [200, 600], "2本目の始点から");
+  assert.equal(traces[0].points[0].t, 0, "時刻は2本目の押下から数え直す");
+  assert.ok(traces[0].points[traces[0].points.length - 1].t < 1000, "1本目の経過を引きずらない");
 });
