@@ -2262,7 +2262,33 @@ SE3(ホームボタン機・iOS 26)は設定アプリが前面でも `SBSwitcher
 木を見ても「カードは無い」と誤読する)。
 **ホームボタン機ではブリッジからスイッチャーを開けない**(422)ので、開いた側の対照はシミュレータで取った。
 
-### 47.7 直さず記録したもの
+### 47.7 ホームボタン機のアプリスイッチャーは XCTest では開けない(2026-09-24 に4案を実測・不採用)
+
+`POST /appswitcher` がホームボタン機(SE3)で 422 を返す件を、非公開 API まで含めて測った。**結論: 開けない**。
+- **HID のホームボタン2度押し**(WebDriverAgent と同じ `XCDeviceEvent(page: 0x0C, usage: 0x40)` +
+  `-[XCUIDevice performDeviceEvent:error:]`。Xcode 27 に現存・`isAvailable` で確認済み):
+  押下時間 0.06 秒を指定しても **1回の呼び出しが 0.52〜0.63 秒**(iPhone SE (3rd generation) シミュレータ)。
+  2回目が double-click の判定(約 0.3 秒)に入らず、ホームに戻るだけ。**前回(2026-08-28)の
+  「`press(.home)` の2連打はホームに戻るだけ」と同じ原因**を数字で確認した
+- **並列に2本**(別スレッドから同期呼び出し): デーモンが `only one gesture can be performed at a time`
+  (XCTDaemonErrorDomain 21)で断る = 直列化されている
+- **非同期の口**(`-[XCTRunnerDaemonSession(XCUIDeviceEventAndStateInterface) performDeviceEvent:completion:]`。
+  `XCUIDevice` には無く `XCTRunnerDaemonSession.sharedSession` にある): 受理はされるが所要は同じ 0.52 秒 =
+  待ち行列に積まれるだけで間隔は縮まない
+- **1イベントに `clicks = 2`**(`XCDeviceEvent.setClicks:` は存在する): 受理されるが何も起きない
+  (`clicks` は `deviceEventWithDisplayID:…` 系の別種のイベントのもの)
+
+**AssistiveTouch**(画面上のメニューの「マルチタスク」を XCUITest で叩く)は唯一残る案だが未検証:
+シミュレータの設定アプリに「タッチ」の項が無く AssistiveTouch を有効にできない(`defaults write
+com.apple.Accessibility AssistiveTouchEnabled` は値は入るが `assistivetouchd` が起きない)。実機では
+利用者が手で有効にする前提になり、メニューは SpringBoard ではなく `com.apple.accessibility.AccessibilityUIServer`
+の窓なので、その bundle へ attach して読む必要がある。**やるなら SE3 で「有効化 → attach → 木 → タップ →
+covering」を通してから**。今回は SE3 の CoreDevice 経路が詰まっていて(`devicectl` が 60〜170 秒無応答・
+ランナーの install が `Failed to read socket ID from device`)測れなかった。
+
+計測に使った実装(`HomeButton.swift`・`/appswitcher?variant=`)は**捨てた**(効かない経路を製品に残さない)。
+
+### 47.8 直さず記録したもの
 - **モニターから iPhone wave を起動すると、ブリッジが SE3 と同じ 8123 に建つ**(02:15 のログ。
   `start-device` が「8123 の残骸」として wave 向け iproxy を止め、同じポートに建て直した)
 - 他の機械の台では、この Mac のファイルを使う操作(アプリプロファイルからのインストール等)は失敗する
