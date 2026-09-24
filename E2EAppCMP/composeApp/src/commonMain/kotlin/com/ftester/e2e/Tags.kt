@@ -69,6 +69,7 @@ object Tags {
     const val TXT_ZOOM = "txt_zoom"
     const val TXT_PAN = "txt_pan"
     const val TXT_DOUBLE_COUNT = "txt_double_count"
+    const val TXT_DRAG_COUNT = "txt_drag_count"
     const val BTN_MAP_RESET = "btn_map_reset"
 
     // スクロール

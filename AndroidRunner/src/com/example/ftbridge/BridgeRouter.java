@@ -13,6 +13,7 @@ import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -33,6 +34,18 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private static final long LAUNCH_CAP_MS = 10_000;
     /** stableActivePackage() の安定待ち上限(ms)。クロスパッケージ遷移の検知用 */
     private static final long STABLE_PACKAGE_BUDGET_MS = 100;
+    /**
+     * ジェスチャ(POST /gesture)全体の絶対上限(秒)。InputInjector.press のクランプ・
+     * handlePinch のクランプと同じ 60s(= BridgeAPI.gestureSecondsCeiling)。
+     * **ここは丸めず拒否する** —— press/pinch は単純な往復なのでクランプの実害が小さいが、
+     * gesture は経路全体の形が意味を持つので丸めると別物になる。
+     */
+    private static final double GESTURE_SECONDS_CEILING = 60;
+    /** 指の本数上限。Sources/FTCore/TouchGesture.swift の maxFingers と同じ値
+     *  (片方だけ変えない。cross-language なので自動同期テストは無い) */
+    private static final int MAX_GESTURE_FINGERS = 5;
+    /** 1本の指に置ける点の上限。同じく TouchGesture.swift の maxPointsPerFinger と同じ値 */
+    private static final int MAX_GESTURE_POINTS_PER_FINGER = 625;
     /**
      * アプリの上に乗る「システムのダイアログ」のパッケージ。**force-stop の対象にしない**
      * (殺すと権限フローが壊れ、systemui なら端末ごと巻き添え)。handleLaunch の前面判定が
@@ -121,6 +134,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /swipe": return handleSwipe(body(request));
                 case "POST /doubletap": return handleDoubleTap(body(request));
                 case "POST /pinch": return handlePinch(body(request));
+                case "POST /gesture": return handleGesture(body(request));
                 case "POST /press": return handlePress(body(request));
                 case "POST /pressEnter": return handlePressEnter();
                 case "GET /screenshot": return handleScreenshot();
@@ -430,6 +444,70 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         long durationMs = Math.min(Math.max(
                 (long) (body.optDouble("durationSeconds", 0.5) * 1000), 50), 60000);
         InputInjector.pinch(ua(), left + width / 2, top + height / 2, startSpan, endSpan, durationMs);
+        settle();
+        return ok();
+    }
+
+    /**
+     * 指ごとの時刻つき経路を1回の多点タッチ列として再生する(DSL の gesture / MCP の ft_gesture)。
+     * 契約は Sources/FTCore/BridgeDTO.swift の GestureRequest(座標は px・t はジェスチャ開始からの秒)。
+     * **ホストは FTCore/TouchGesture.validate を通した形だけを送るが、ここでも同じ上限で断る**
+     * (古いホスト・直叩きから InputInjector.press と同じ理由で守る最後の砦)。
+     * 点の間の補間・タッチの合成は InputInjector.gesture に委ねる(ここは検査と JSON→配列の変換だけ)。
+     */
+    private BridgeHttpServer.Response handleGesture(JSONObject body) {
+        JSONArray fingersJson = body.optJSONArray("fingers");
+        if (fingersJson == null || fingersJson.length() == 0) {
+            throw new BridgeException(400, "a gesture needs at least one finger");
+        }
+        if (fingersJson.length() > MAX_GESTURE_FINGERS) {
+            throw new BridgeException(400, "a gesture can use at most " + MAX_GESTURE_FINGERS
+                    + " fingers (got " + fingersJson.length() + ")");
+        }
+        double[][][] fingers = new double[fingersJson.length()][][];
+        double totalSeconds = 0;
+        for (int i = 0; i < fingersJson.length(); i++) {
+            JSONObject fingerObj = fingersJson.optJSONObject(i);
+            JSONArray pointsJson = fingerObj == null ? null : fingerObj.optJSONArray("points");
+            if (pointsJson == null || pointsJson.length() < 2) {
+                throw new BridgeException(400, "finger " + (i + 1)
+                        + " needs at least two points (where it touches down and where it lifts)");
+            }
+            if (pointsJson.length() > MAX_GESTURE_POINTS_PER_FINGER) {
+                throw new BridgeException(400, "finger " + (i + 1) + " has " + pointsJson.length()
+                        + " points; at most " + MAX_GESTURE_POINTS_PER_FINGER + " are allowed");
+            }
+            double[][] points = new double[pointsJson.length()][3];
+            double previousT = -1;
+            for (int j = 0; j < pointsJson.length(); j++) {
+                JSONObject p = pointsJson.optJSONObject(j);
+                double x = p == null ? Double.NaN : p.optDouble("x", Double.NaN);
+                double y = p == null ? Double.NaN : p.optDouble("y", Double.NaN);
+                double t = p == null ? Double.NaN : p.optDouble("t", Double.NaN);
+                if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(t)) {
+                    throw new BridgeException(400, "finger " + (i + 1) + ", point " + (j + 1)
+                            + ": x/y/t must be finite numbers");
+                }
+                if (t < 0 || t < previousT) {
+                    throw new BridgeException(400, "finger " + (i + 1) + ", point " + (j + 1)
+                            + ": t must not go backwards (got " + t + " after " + previousT + ")");
+                }
+                previousT = t;
+                points[j][0] = x;
+                points[j][1] = y;
+                points[j][2] = t;
+            }
+            if (!(points[points.length - 1][2] > points[0][2])) {
+                throw new BridgeException(400, "finger " + (i + 1) + " lifts at the moment it touches down");
+            }
+            fingers[i] = points;
+            totalSeconds = Math.max(totalSeconds, points[points.length - 1][2]);
+        }
+        if (totalSeconds > GESTURE_SECONDS_CEILING) {
+            throw new BridgeException(400, "the total duration of gesture must be "
+                    + GESTURE_SECONDS_CEILING + " seconds or less (got " + totalSeconds + ")");
+        }
+        InputInjector.gesture(ua(), fingers);
         settle();
         return ok();
     }

@@ -159,6 +159,9 @@ public protocol AppDriver {
     /// 理由は BridgeDTO の PinchRequest 参照。**プロトコル要件として宣言すること**
     func pinch(frame: FTRect?, identifier: String?, scale: Double,
                durationSeconds: Double) async throws
+    /// ひと続きのジェスチャ(DSL の gesture / MCP の ft_gesture)。要求は `TouchGesture.validate` 済み。
+    /// **プロトコル要件として宣言すること**(doubleTap / pinch と同じ理由)。包むドライバは必ず素通しする
+    func gesture(_ request: GestureRequest) async throws
     /// Rotates the device and waits for it to settle, returning the actual settled orientation
     /// (always equals the request — the driver throws instead of returning a mismatch; see
     /// DriverError 422 usage). **Protocol requirement** (same reasoning as doubleTap/pinch above:
@@ -509,6 +512,11 @@ public extension AppDriver {
     func pinch(frame: FTRect?, identifier: String?, scale: Double,
                durationSeconds: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support pinch")
+    }
+
+    /// 501 = ホストが typeDriver(XCUITest)へ回す合図(in-app ブリッジは /gesture を持たない)
+    func gesture(_ request: GestureRequest) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support multi-point gestures")
     }
 
     func rotate(to orientation: FTOrientation) async throws -> FTOrientation {

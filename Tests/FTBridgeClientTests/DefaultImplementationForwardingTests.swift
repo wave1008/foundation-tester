@@ -30,6 +30,8 @@ final class DefaultImplementationForwardingTests: XCTestCase {
         // openURL は hybrid では withFallback(primary=in-app → fallback=XCUITest)だけを通り、
         // systemDriver 経路には乗らない。配送先アプリを持たないこのクラスへは到達しない
         "SystemUIDriver.openURL": "springboard 参照専用。openURL は primary/fallback が受ける",
+        // in-app ブリッジは /gesture を持たない。既定の 501 が hybrid を XCUITest へ回す合図になる
+        "InAppDriver.gesture": "in-app に /gesture は無い。501 で hybrid が XCUITest へ回す",
     ]
 
     /// オーバーロードがあり、名前だけでは検出できない操作の実シグネチャ

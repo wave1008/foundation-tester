@@ -66,6 +66,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |
 | `ft_dsl_commands` | DSL コマンドの索引(名前と署名)。書く前に存在確認できる |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ |
+| `ft_gesture` | 指ごとの時刻つき経路を1本の連続タッチとして再生する(区切りで指を離さない)—— パターンロック・長押しからのドラッグ・独自の複数指ジェスチャ用。絶対座標のみ・ref/セレクタ形は無い |
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
 | `ft_capture_element` | 要素を画像分類器の見本として保存し、学習の点検結果を返す(`checkIsON` / `imageIs` の見本。[imageIs](../commands/image_assertion_ja.md)) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(自動ビルド込み。コンパイルエラーはそのまま返る)。`id` にクラス名を渡すと `fleetest run` と同じく `@Deleted`/`@Draft` 以外の全本を順に流す。`profile:` は `port`/`serial`/`platform`/`udid` と併用できない。**`fleetest run` と違い、プロファイルの setup/teardown スクリプト・run 開始時の home・`results/` への記録は行わない**(フルの run は CLI で)。アプリを入れるのは、`autoInstall` のアプリを持つ `profile:` を iOS で指定したときだけ(ワークスペースへコピーし、入っている版が古ければインストールする)。それ以外は `ft_install` で入れておく |

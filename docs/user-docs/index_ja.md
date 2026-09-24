@@ -67,7 +67,7 @@ FM を使いません。テストはエージェント(MCP)に
     - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](commands/swipe_ja.md)
     - [スクロール(scrollTo, scrollDown, withScrollDown, scrollFrame, …)](commands/scroll_ja.md)
     - [flick](commands/flick_ja.md)
-    - [マップ・キャンバス系のジェスチャ(doubleTap, pinchIn, pinchOut)](commands/gestures_ja.md)
+    - [マップ・キャンバス系のジェスチャ(doubleTap, pinchIn, pinchOut, gesture)](commands/gestures_ja.md)
 - 編集とキーボード操作
     - [type](commands/type_ja.md)
     - [clearInput](commands/clear_input_ja.md)

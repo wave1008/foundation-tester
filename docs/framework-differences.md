@@ -170,6 +170,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | pinch の指の置き方 | — | **iOS は領域の長辺の両端・Android は領域の短辺から幅を決めて中心**。だから**対象未指定のピンチで領域を絞るのは iOS だけ**(Android は狭い領域だと最小スケール幅 27mm に届かない)。判定は `FTCore.PinchRegion` | B |
 | 長押し | — | SwiftUI は in-app で発火しない → XCUITest へ | C |
 | ジェスチャ目的の `swipe` | XCUITest へ(AX の scroll に流すと、パッドの上でもスクロール可能な親が受理して空振りする) | XCUITest へ | C |
+| `gesture`(多点・時刻つき経路) | XCUITest へ(in-app にこの経路自体が無い) | XCUITest へ | A(フレームワークを問わず同じ結果。座標ピンチと同じ非公開 API でフォールバック無し = 使えない Xcode では 422) |
 | `hideKeyboard` | Compose は受け口がフォーカスを持ち続け閉じられない(in-app は 501) | 閉じられる | B |
 | 戻る | Compose / Flutter には BackButton が無い → エッジスワイプ | 戻るボタンがあれば押す | C |
 

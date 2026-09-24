@@ -890,6 +890,13 @@ public final class BridgeClient: AppDriver {
             frame: frame, identifier: identifier), timeout: timeout(forDuration: durationSeconds))
     }
 
+    /// pinch と同じ理由(合成タッチを最後の指が離れるまで送り切ってから応答する)で
+    /// `request.totalSeconds` ぶん timeout を延ばす
+    public func gesture(_ request: GestureRequest) async throws {
+        let _: OKResponse = try await post("/gesture", body: request,
+                                           timeout: timeout(forDuration: request.totalSeconds))
+    }
+
     /// Captured only on this client's first `rotate(to:)` call in the current scenario (nil = not
     /// used yet, or already restored). Read from the bridge (GET /status) rather than assumed,
     /// since the bridge is the source of truth for its own orientation.

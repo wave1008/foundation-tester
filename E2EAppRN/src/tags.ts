@@ -67,6 +67,7 @@ export const Tags = {
   txtZoom: 'txt_zoom',
   txtPan: 'txt_pan',
   txtDoubleCount: 'txt_double_count',
+  txtDragCount: 'txt_drag_count',
   btnMapReset: 'btn_map_reset',
 
   // スクロール

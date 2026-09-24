@@ -745,7 +745,7 @@ final class MCPToolCallTests: XCTestCase {
     private static let driverBackedTools: Set<String> = [
         "ft_status", "ft_install", "ft_launch", "ft_snapshot", "ft_tap", "ft_type",
         "ft_swipe", "ft_scroll_to", "ft_batch", "ft_long_press", "ft_screenshot", "ft_terminate",
-        "ft_double_tap", "ft_pinch", "ft_drag",
+        "ft_double_tap", "ft_pinch", "ft_gesture", "ft_drag",
         "ft_navigate", "ft_clear_input", "ft_clear_app_data", "ft_open_url", "ft_rotate",
         "ft_list_apps", "ft_capture_element",
     ]

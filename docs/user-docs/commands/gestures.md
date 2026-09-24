@@ -1,6 +1,7 @@
-# gestures (doubleTap, pinchOut, pinchIn)
+# gestures (doubleTap, pinchOut, pinchIn, gesture)
 
-Multi-touch gestures: double tap, pinch to zoom out, pinch to zoom in.
+Multi-touch gestures: double tap, pinch to zoom out, pinch to zoom in, and a raw multi-finger
+gesture builder for anything those three cannot express.
 
 ## Functions
 
@@ -9,6 +10,7 @@ Multi-touch gestures: double tap, pinch to zoom out, pinch to zoom in.
 | `doubleTap(sel?)` | Double taps. Omitting the selector taps the center of the screen. Writing `tap` twice does not substitute for it — the round trip exceeds the OS's double-tap detection window. |
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:)` | Spreads two fingers apart = zoom in. `scale` must be greater than 1. `durationSeconds` is capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. |
 | `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:)` | Pinches two fingers together = zoom out. `scale` must be greater than 0 and less than 1. Same cap as `pinchOut`. |
+| `gesture(sel?, maxGestureSeconds:waitSeconds:) { FTFinger(x:y:).move(x:y:durationSeconds:).hold(seconds:) }` | Replays one or more finger paths as a single continuous touch — for a pattern-lock swipe, a long-press that then drags, a two-finger rotate, or anything `pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` cannot express. |
 
 See [swipe](./swipe.md) for `swipeBy(sel?, dxRatio:dyRatio:durationSeconds:)`, the panning
 gesture these are usually combined with.
@@ -21,6 +23,35 @@ pinchOut("#map", scale: 2.5)
 pinchIn("#map", scale: 0.4)
 swipeBy("#map", dxRatio: -0.3, dyRatio: 0.0)   // pan left
 ```
+
+## `gesture`: a multi-finger path that never lifts
+
+```swift
+gesture("#pad_map") {
+    FTFinger(x: 0.3, y: 0.35).hold(seconds: 0.3)
+        .move(x: 0.6, y: 0.35, durationSeconds: 0.3)
+        .move(x: 0.6, y: 0.65, durationSeconds: 0.3)
+}
+gesture("#pad_map") {                 // two fingers = a hand-built pinch
+    FTFinger(x: 0.45, y: 0.5).move(x: 0.2, y: 0.5, durationSeconds: 0.5)
+    FTFinger(x: 0.55, y: 0.5).move(x: 0.8, y: 0.5, durationSeconds: 0.5)
+}
+```
+
+Unlike calling `swipePointToPoint` (or any other gesture command) repeatedly — each call lifts the
+finger — every `FTFinger` in a `gesture` block is replayed as **one continuous touch sequence**:
+fingers touch down, move/hold in order, and only lift at the end of their own path. Coordinates
+are **ratios of the target's frame** (0...1 is inside it; a point outside is fine as long as it's
+still on screen), so the same gesture works at any resolution. Omitting the selector targets the
+whole screen; loops and branches are allowed inside the block. Limits: 1–5 fingers, up to 625
+points per finger, total duration capped at 10 seconds by default (`maxGestureSeconds:` raises it
+to 60, same rule as the other gesture commands). An invalid spec (no fingers, an off-screen point,
+a non-positive duration, too long a gesture) fails the step without touching the device.
+
+**On iOS this always runs through the XCUITest engine**, even under the default hybrid engine —
+the in-app engine has no route for it (it uses the same private pointer-event API as the
+coordinate pinch). Use cases: pattern lock, long-press-then-drag without lifting (e.g. reordering
+a list), a custom two-finger rotate, gestures needing 3+ fingers, drawing or signing.
 
 ## Maps, image viewers, drawing canvases
 
@@ -48,6 +79,7 @@ keep in mind:
   | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ |
   | `doubleTap` | ✅ XCUITest | ✅ **in-app only** | ✅ |
   | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app only** |
+  | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
 
   "in-app only" means it does not work with a standalone `xcuitest` profile or on a physical
   device (physical devices cannot be injected, so XCUITest is the only path). The MCP `ft_*`

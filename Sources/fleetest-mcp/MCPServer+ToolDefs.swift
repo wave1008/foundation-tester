@@ -499,6 +499,59 @@ extension MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
+        tool("ft_gesture", "Replay several fingers' timed paths as ONE continuous touch sequence — "
+            + "fingers touch down together and never lift between segments, unlike calling "
+            + "ft_tap/ft_drag/ft_pinch repeatedly (each of those is its own separate touch). Use it for "
+            + "gestures those tools cannot express: a pattern-lock swipe across several dots, a "
+            + "long-press that then drags, a custom multi-finger rotate, or anything needing more than "
+            + "2 fingers. This tool has no selector form — coordinates are absolute "
+            + "(iOS=pt / Android=px, same system as the ft_snapshot frames). Each finger touches down "
+            + "at (x, y), optionally after waiting startSeconds; its steps then move it "
+            + "({x, y, durationSeconds}) or hold it still ({holdSeconds}) in order, without lifting; "
+            + "the last point lifts the finger. A finger with no steps is a plain tap-and-lift. "
+            + "Coordinates skip the ref safety checks ft_tap's ref form gets (occlusion, scroll "
+            + "leftovers, a container whose centre misses its own content) — read positions off a "
+            + "fresh ft_snapshot.", [
+            "fingers": [
+                "type": "array", "minItems": 1, "maxItems": TouchGesture.maxFingers,
+                "description": "1-\(TouchGesture.maxFingers) finger paths, touching down together",
+                "items": [
+                    "type": "object",
+                    "properties": [
+                        "x": ["type": "number", "description": "Touch-down point, iOS=pt / Android=px"],
+                        "y": ["type": "number", "description": "Touch-down point, iOS=pt / Android=px"],
+                        "startSeconds": ["type": "number", "description": "Delay this finger's "
+                            + "touch-down by this many seconds (default 0) — place a second finger "
+                            + "down after the first"],
+                        "steps": [
+                            "type": "array",
+                            "description": "Moves and holds applied in order, without lifting the finger",
+                            "items": [
+                                "type": "object",
+                                "description": "Either a move ({x, y, durationSeconds}) or a hold "
+                                    + "({holdSeconds}), never both",
+                                "properties": [
+                                    "x": ["type": "number", "description": "Move: point to travel to"],
+                                    "y": ["type": "number", "description": "Move: point to travel to"],
+                                    "durationSeconds": ["type": "number",
+                                        "description": "Move: travel time in seconds"],
+                                    "holdSeconds": ["type": "number",
+                                        "description": "Hold: stay still this many seconds"],
+                                ],
+                            ],
+                        ],
+                    ],
+                    "required": ["x", "y"],
+                ],
+            ],
+            "maxGestureSeconds": maxGestureSecondsProperty,
+            "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
+        ], required: ["fingers"]),
         // **名前が「長押し」と言い切っていること**。ツールの説明が
         // 遅延ロードされるクライアントでは、呼ぶかどうかを**名前だけ**で決める瞬間があり、
         // `ft_press` は「ハードウェアキーを押す」と読まれていた。旧名は call() の toolAliases で受ける

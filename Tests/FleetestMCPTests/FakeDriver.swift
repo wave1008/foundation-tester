@@ -209,6 +209,16 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("pinch(\(target),id:\(identifier ?? "nil"),scale:\(scale))", "pinch")
     }
 
+    /// **既定実装(AppDriver extension)は 501 を投げる**ので、上書きしないと ft_gesture が
+    /// 一切テストできない。組み立てた `GestureRequest` を丸ごと控える(点ごとの座標/時刻は
+    /// `calls` の文字列化では読みにくいので、等値比較したいテストは `lastGestureRequest` を見る)
+    private(set) var lastGestureRequest: GestureRequest?
+
+    func gesture(_ request: GestureRequest) async throws {
+        lastGestureRequest = request
+        try record("gesture(fingers:\(request.fingers.count))", "gesture")
+    }
+
     /// **既定実装(AppDriver extension)は 501 を投げる**ので、上書きしないと ft_rotate の
     /// 整定ループが一切テストできない。要求された向きをそのまま「一致した」と返す
     func rotate(to orientation: FTOrientation) async throws -> FTOrientation {

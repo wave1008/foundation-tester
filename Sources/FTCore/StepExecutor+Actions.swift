@@ -1208,7 +1208,7 @@ extension StepExecutor {
             case .failed(let message):
                 return StepOutcome(status: .failed(message))
             }
-        case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
+        case "pinchOut", "pinchIn", "doubleTap", "swipeBy", "gesture":
             // 対象を指定した版。要素の frame(Android のピンチ中心・swipeBy の基準領域)と
             // identifier(XCUITest のピンチ対象)の両方を渡す(理由は BridgeDTO.PinchRequest)
             // **doubleTap も指で触る操作**なので、tap と同じ注記を載せる
@@ -1777,7 +1777,7 @@ extension StepExecutor {
 
     /// 対象を取り得るジェスチャ(対象未指定なら画面全体)。ロケータ有無で解決だけが違うので
     /// 実体はここ1箇所に置く
-    static let gestureActions: Set<String> = ["pinchOut", "pinchIn", "doubleTap", "swipeBy"]
+    static let gestureActions: Set<String> = ["pinchOut", "pinchIn", "doubleTap", "swipeBy", "gesture"]
 
     /// ピンチ / ダブルタップ / 相対ドラッグの実行。target = 対象領域(要素の frame か画面)、
     /// viewport = 画面矩形。**慣性が乗るので末尾で必ず整定を待つ**(ランナーはこれらのルートを
@@ -1818,6 +1818,19 @@ extension StepExecutor {
                 path: path,
                 durationSeconds: step.duration ?? FlowStep.defaultSwipeDurationSeconds,
                 phase: &phase)
+        case "gesture":
+            // 検査は写す前(比率)の段で言う(TouchGesture.resolve の doc)。失敗はデバイスに触らず返す
+            // —— 以降の共通処理(末尾の整定待ち)は実際に撃った回だけ通したいので、ここで早期 return する
+            switch TouchGesture.resolve(step.gesture ?? [], in: target, screen: viewport,
+                                        maxGestureSeconds: step.maxGestureSeconds
+                                            ?? BridgeAPI.defaultMaxGestureSeconds) {
+            case .failure(let rejection):
+                return StepOutcome(status: .failed(rejection.message))
+            case .success(let request):
+                viaXCUITest = try await gestureWithFallback(phase: &phase) {
+                    try await $0.gesture(request)
+                }
+            }
         default:
             return StepOutcome(status: .skipped("unknown gesture: \(action)"))
         }

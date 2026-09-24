@@ -676,6 +676,184 @@ final class InputInjector {
         inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, e1[0], e1[1]));
     }
 
+    /** 60Hz フレーム間隔(pinch/swipe の sleep(16) と同じ刻み。gesture のチェックポイント生成用) */
+    private static final long GESTURE_TICK_MS = 16;
+
+    /**
+     * 指ごとの時刻つき経路(BridgeRouter.handleGesture が検証・変換済み。fingers[i][j] = {x,y,t秒})を
+     * 1回の多点タッチ列として再生する。各指は自分の最初の点で押し、最後の点で離す
+     * (同座標が続く区間 = 静止。位置は positionAt の線形補間なので t が進んでも座標は変わらない)。
+     *
+     * 規律(pinch と同じ理由): **ACTION_POINTER_DOWN/UP は pointer index を action へ埋める**・
+     * **MOVE は現在アクティブな指ぶんの座標を必ず1イベントに載せる**。pointer id は指の配列添字で
+     * 固定する(押す/離す順が入れ替わっても id は変わらない。index だけがそのときのアクティブ
+     * 集合で決まる)。**単点の DOWN/UP も pointerEvent で作る** —— event() は id 0 固定なので、
+     * 2本目の指が先に押す/最後まで残る形で同じタッチ列の中の id が食い違う(不整合な列は捨てられうる)。
+     *
+     * チェックポイントは「GESTURE_TICK_MS 刻み」と「各指の押下/離脱の実時刻」の和集合。各
+     * チェックポイントは基準時刻 `base` からの絶対時刻まで sleep してから撃つ —— pinch のように
+     * 固定 16ms を毎回加算する形は、長いジェスチャでは注入のオーバーヘッドぶんのドリフトが
+     * 蓄積するため使わない。
+     *
+     * 注入が途中で失敗しても finally で残っている指を全部離す(端末にタッチを残さないため。
+     * 後始末自体の失敗は元の例外を隠さないよう握りつぶす)。
+     */
+    static void gesture(UiAutomation ua, double[][][] fingers) {
+        int n = fingers.length;
+        long[] downMs = new long[n];
+        long[] upMs = new long[n];
+        for (int i = 0; i < n; i++) {
+            double[][] points = fingers[i];
+            downMs[i] = Math.round(points[0][2] * 1000);
+            upMs[i] = Math.round(points[points.length - 1][2] * 1000);
+            // 丸めで区間(1ms未満)が潰れたときの保険。押した瞬間に離す形は表現できない
+            if (upMs[i] <= downMs[i]) upMs[i] = downMs[i] + 1;
+        }
+        long globalStart = downMs[0], globalEnd = upMs[0];
+        for (int i = 1; i < n; i++) {
+            globalStart = Math.min(globalStart, downMs[i]);
+            globalEnd = Math.max(globalEnd, upMs[i]);
+        }
+        java.util.TreeSet<Long> checkpoints = new java.util.TreeSet<>();
+        for (long t = globalStart; t < globalEnd; t += GESTURE_TICK_MS) checkpoints.add(t);
+        checkpoints.add(globalEnd);
+        for (int i = 0; i < n; i++) {
+            checkpoints.add(downMs[i]);
+            checkpoints.add(upMs[i]);
+        }
+
+        long base = SystemClock.uptimeMillis();
+        long downTime = base + globalStart;
+        boolean[] active = new boolean[n];
+        try {
+            for (long t : checkpoints) {
+                sleepUntilUptime(base + t);
+                long eventTime = base + t;
+                double tSec = t / 1000.0;
+                boolean transitioned = false;
+                for (int i = 0; i < n; i++) {
+                    if (active[i] || downMs[i] != t) continue;
+                    active[i] = true;
+                    int[] ids = activeIndices(active);
+                    if (ids.length == 1) {
+                        inject(ua, pointerEvent(downTime, eventTime, MotionEvent.ACTION_DOWN, ids, fingers, tSec));
+                    } else {
+                        int idx = indexOf(ids, i);
+                        int action = MotionEvent.ACTION_POINTER_DOWN
+                                | (idx << MotionEvent.ACTION_POINTER_INDEX_SHIFT);
+                        inject(ua, pointerEvent(downTime, eventTime, action, ids, fingers, tSec));
+                    }
+                    transitioned = true;
+                }
+                for (int i = 0; i < n; i++) {
+                    if (!active[i] || upMs[i] != t) continue;
+                    int[] ids = activeIndices(active);
+                    if (ids.length == 1) {
+                        inject(ua, pointerEvent(downTime, eventTime, MotionEvent.ACTION_UP, ids, fingers, tSec));
+                    } else {
+                        int idx = indexOf(ids, i);
+                        int action = MotionEvent.ACTION_POINTER_UP
+                                | (idx << MotionEvent.ACTION_POINTER_INDEX_SHIFT);
+                        inject(ua, pointerEvent(downTime, eventTime, action, ids, fingers, tSec));
+                    }
+                    active[i] = false;
+                    transitioned = true;
+                }
+                if (!transitioned) {
+                    int[] ids = activeIndices(active);
+                    if (ids.length > 0) {
+                        inject(ua, pointerEvent(downTime, eventTime, MotionEvent.ACTION_MOVE, ids, fingers, tSec));
+                    }
+                }
+            }
+        } finally {
+            for (int i = 0; i < n; i++) {
+                if (!active[i]) continue;
+                try {
+                    long releaseTime = SystemClock.uptimeMillis();
+                    double tSec = upMs[i] / 1000.0;
+                    int[] ids = activeIndices(active);
+                    if (ids.length == 1) {
+                        inject(ua, pointerEvent(downTime, releaseTime, MotionEvent.ACTION_UP, ids, fingers, tSec));
+                    } else {
+                        int idx = indexOf(ids, i);
+                        int action = MotionEvent.ACTION_POINTER_UP
+                                | (idx << MotionEvent.ACTION_POINTER_INDEX_SHIFT);
+                        inject(ua, pointerEvent(downTime, releaseTime, action, ids, fingers, tSec));
+                    }
+                } catch (RuntimeException ignored) {
+                    // 後始末の失敗で元の例外の伝播を隠さない(finally 内 throw は握り潰す)
+                } finally {
+                    active[i] = false;
+                }
+            }
+        }
+    }
+
+    /** 絶対時刻(uptimeMillis)まで実時間で待つ。gesture の各チェックポイントはここを通す
+     *  (固定 sleep(16) の積み上げだと長いジェスチャでドリフトが蓄積するため基準時刻から測り直す) */
+    private static void sleepUntilUptime(long targetUptimeMs) {
+        long remaining = targetUptimeMs - SystemClock.uptimeMillis();
+        if (remaining > 0) SystemClock.sleep(remaining);
+    }
+
+    /** 現在アクティブな指の添字を昇順で返す(pointer id = 添字なので、そのまま昇順 id 順になる) */
+    private static int[] activeIndices(boolean[] active) {
+        int count = 0;
+        for (boolean b : active) if (b) count++;
+        int[] ids = new int[count];
+        int k = 0;
+        for (int i = 0; i < active.length; i++) if (active[i]) ids[k++] = i;
+        return ids;
+    }
+
+    /** ids 内での id の位置(= action へ埋める pointer index)。呼び出し側は必ず含まれる前提で呼ぶ */
+    private static int indexOf(int[] ids, int id) {
+        for (int k = 0; k < ids.length; k++) if (ids[k] == id) return k;
+        throw new IllegalStateException("pointer id " + id + " is not active");
+    }
+
+    /** 指の経路(点の列 {x,y,t})上、時刻 tSec の座標を線形補間で求める。区間外は端の点で固定。 */
+    private static double[] positionAt(double[][] points, double tSec) {
+        int last = points.length - 1;
+        if (tSec <= points[0][2]) return new double[]{points[0][0], points[0][1]};
+        if (tSec >= points[last][2]) return new double[]{points[last][0], points[last][1]};
+        for (int k = 0; k < last; k++) {
+            double t0 = points[k][2], t1 = points[k + 1][2];
+            if (tSec > t1) continue;
+            double f = t1 > t0 ? (tSec - t0) / (t1 - t0) : 1;
+            return new double[]{
+                    points[k][0] + (points[k + 1][0] - points[k][0]) * f,
+                    points[k][1] + (points[k + 1][1] - points[k][1]) * f
+            };
+        }
+        return new double[]{points[last][0], points[last][1]};
+    }
+
+    /** N 本ぶんの座標を載せた MotionEvent。pointer id は呼び出し側(gesture)が指の配列添字で
+     *  固定して渡す(multiEvent の2本固定版と役割は同じで本数だけ一般化) */
+    private static MotionEvent pointerEvent(long downTime, long eventTime, int action,
+                                            int[] ids, double[][][] fingers, double tSec) {
+        int count = ids.length;
+        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[count];
+        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[count];
+        for (int k = 0; k < count; k++) {
+            MotionEvent.PointerProperties p = new MotionEvent.PointerProperties();
+            p.id = ids[k];
+            p.toolType = MotionEvent.TOOL_TYPE_FINGER;
+            props[k] = p;
+            double[] xy = positionAt(fingers[ids[k]], tSec);
+            MotionEvent.PointerCoords c = new MotionEvent.PointerCoords();
+            c.x = (float) xy[0];
+            c.y = (float) xy[1];
+            c.pressure = 1;
+            c.size = 1;
+            coords[k] = c;
+        }
+        return MotionEvent.obtain(downTime, eventTime, action, count, props, coords,
+                0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+    }
+
     /** 2点ぶんの座標を載せた MotionEvent(pointer id は 0 と 1 固定) */
     private static MotionEvent multiEvent(long downTime, long eventTime, int action,
                                           double[] p1, double[] p2) {

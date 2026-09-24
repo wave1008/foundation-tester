@@ -670,6 +670,60 @@ private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
             file: file, line: line)
 }
 
+// MARK: - 汎用ジェスチャ(指ごとの時刻つき経路。pinchOut/pinchIn/doubleTap/swipeBy で表せない動きに使う)
+
+/// ひと続きの多点ジェスチャ(指を離さずに再生する)。各 `FTFinger` は対象の枠に対する比率座標
+/// (0...1)で押し始め、ブロックの中で `.move(x:y:durationSeconds:)` / `.hold(seconds:)` を
+/// 順に積む(最後の点で離す。指を離す操作は書かない)。セレクタ無しは画面全体が対象。
+///
+///     gesture("#pad") {
+///         FTFinger(x: 0.2, y: 0.5).move(x: 0.8, y: 0.5, durationSeconds: 0.3)
+///     }
+///
+/// 本数・秒数・画面内かの検査はホスト側(`TouchGesture.validate`)の1箇所に集約する
+/// (ここでは検査しない)
+public func gesture(maxGestureSeconds: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line,
+                    @FTGestureBuilder _ body: () -> [FTFinger]) {
+    gestureImpl(nil, fingers: body(), maxGestureSeconds: maxGestureSeconds, waitSeconds: nil,
+                file: file, line: line)
+}
+
+public func gesture(_ selector: String, maxGestureSeconds: Double? = nil, waitSeconds: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line,
+                    @FTGestureBuilder _ body: () -> [FTFinger]) {
+    gestureImpl(FTSelector.parse(selector), fingers: body(), maxGestureSeconds: maxGestureSeconds,
+                waitSeconds: waitSeconds, file: file, line: line)
+}
+
+public func gesture(_ selector: Sel, maxGestureSeconds: Double? = nil, waitSeconds: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line,
+                    @FTGestureBuilder _ body: () -> [FTFinger]) {
+    gestureImpl(selector.ftSelector, fingers: body(), maxGestureSeconds: maxGestureSeconds,
+                waitSeconds: waitSeconds, file: file, line: line)
+}
+
+/// selector nil = 画面全体。指の本数・秒数・画面内かの検査は StepExecutor 側の
+/// `TouchGesture.validate` に集約する(判定を1箇所に置く)
+private func gestureImpl(_ selector: FTSelector?, fingers: [FTFinger], maxGestureSeconds: Double?,
+                         waitSeconds: Double?, file: StaticString, line: UInt) {
+    let step = FlowStep(action: "gesture", locator: selector?.primary,
+                        fallbacks: selector?.stepFallbacks, timeout: waitSeconds,
+                        maxGestureSeconds: maxGestureSeconds, gesture: fingers)
+    let fingerWord = fingers.count == 1 ? "finger" : "fingers"
+    // 秒の合計は浮動小数の誤差が出る(0.3 × 3 = 0.8999…)ので説明文では 1/100 に丸める
+    let seconds = FTSeconds.format(((fingers.map(\.endSeconds).max() ?? 0) * 100).rounded() / 100)
+    let description = selector.map {
+        "gesture \"\($0.text)\" (\(fingers.count) \(fingerWord), \(seconds)s)"
+    } ?? "gesture (\(fingers.count) \(fingerWord), \(seconds)s)"
+    guard let selector else {
+        FTRuntime.requireCore(command: "gesture")
+            .perform(step: step, description: description, command: "gesture", file: file, line: line)
+        return
+    }
+    perform("gesture", selector, step: step, description: description, file: file, line: line)
+}
+
 // MARK: - フリック(Shirates 準拠のコマンド名。画面基点8種)
 
 /// swipe/scroll と低レベル実装は同じ(等速の1ストローク・加速なし)だが、既定の

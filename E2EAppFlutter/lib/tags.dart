@@ -67,6 +67,7 @@ class Tags {
   static const txtZoom = 'txt_zoom';
   static const txtPan = 'txt_pan';
   static const txtDoubleCount = 'txt_double_count';
+  static const txtDragCount = 'txt_drag_count';
   static const btnMapReset = 'btn_map_reset';
 
   // スクロール

@@ -304,6 +304,10 @@ extension MCPServer {
             return "swipePointToPoint drives raw coordinates outside selector resolution — call"
                 + " ft_drag instead."
         }
+        if command == "gesture" {
+            return "gesture takes a trailing closure of multi-finger, timed paths that does not fit a"
+                + " single DSL line — call ft_gesture directly instead."
+        }
         if command.hasPrefix("existWith") {
             return "it is an assertion (exist) — ft_batch only runs operations."
         }

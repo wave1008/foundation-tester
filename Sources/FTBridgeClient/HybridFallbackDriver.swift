@@ -118,6 +118,10 @@ public final class HybridFallbackDriver: AppDriver {
         }
     }
 
+    public func gesture(_ request: GestureRequest) async throws {
+        try await withFallback { try await $0.gesture(request) }
+    }
+
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
         try await withFallback {

@@ -799,7 +799,11 @@
   1箇所に閉じ、守る規律3つ: **①実行時に存在を確かめてから使う**(無ければ要素ピンチへ縮退し、
   注記で必ず言う)/ **②起動時にも1行出す**(`coordinate pinch: available` —— 消えたことが
   run を待たずに分かる)/ **③completion ブロックは引数を宣言しない**(実際は先頭に BOOL が来るので
-  `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)
+  `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)。**`/gesture`
+  (DSL の `gesture` / MCP の `ft_gesture`)も同じファイル・同じ非公開 API を使う** ——
+  こちらは要素ピンチのような縮退先が無いので、この API が無い Xcode では **422**(501 ではない。
+  501 はホストに「このエンジンでは不可」= XCUITest へのフォールバック判定と読まれ、ランナー自身の
+  501 は `hideKeyboard` 専用)で断る
 - **ライブ操作は他の機械の台も開ける**(ユーザー決定 2026-09-24「その機械で動かす」): serve を
   `fleetest remote exec <machine> -- api live serve` で**向こうに**起こす(同じ実機が Wi-Fi 越しにこの Mac から
   見えても、USB で握っている機械のランナーと2本にしない)。右クリックの `openLiveForDevice` が machine・udid を

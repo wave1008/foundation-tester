@@ -41,11 +41,13 @@ final class FleetestBridgeTests: XCTestCase {
         NSLog("[fleetest] bridge listening on %@:%d ttl=%@", bindHost, Int(port),
               ttl > 0 ? "\(ttl)s" : "off")
         // **非公開 API が消えたら起動時に分かるようにする**(CoordinatePinch の doc)。
-        // 無いと縮小のピンチが「手前のシートに1本を取られてパンになる」形へ静かに戻る
-        NSLog("[fleetest] coordinate pinch: %@",
+        // 無いと縮小のピンチが「手前のシートに1本を取られてパンになる」形へ静かに戻る。
+        // `/gesture` にはフォールバックが無い(消えていれば 422 で断る)ので、消えたことは
+        // ここで先に言っておく
+        NSLog("[fleetest] coordinate pinch/gesture: %@",
               CoordinatePinch.isAvailable ? "available"
-                  : "UNAVAILABLE — this Xcode has no XCPointerEventPath;"
-                    + " a zoom out will fall back to the element pinch and may pan instead")
+                  : "UNAVAILABLE — this Xcode has no XCPointerEventPath; a zoom out will fall back to"
+                    + " the element pinch and may pan instead, and /gesture has no fallback (422)")
 
         // 画面が進んでいるかの計器(/status の displayIdleSeconds)。**RunLoop を回し始める前に**
         // 載せる —— 下のループが回り出さないと CADisplayLink は tick しない

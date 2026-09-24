@@ -209,6 +209,10 @@ public final class SessionRecoveryDriver: AppDriver {
         }
     }
 
+    public func gesture(_ request: GestureRequest) async throws {
+        try await withRecovery { try await base.gesture(request) }
+    }
+
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await withRecovery { try await base.rotate(to: orientation) }
     }

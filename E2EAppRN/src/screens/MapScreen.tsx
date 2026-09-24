@@ -34,6 +34,7 @@ export function MapScreen() {
   const [panX, setPanX] = useState(0);
   const [panY, setPanY] = useState(0);
   const [doubleCount, setDoubleCount] = useState(0);
+  const [dragCount, setDragCount] = useState(0);
 
   const lastDistanceRef = useRef<number | null>(null);
   const lastCentroidRef = useRef<Touch | null>(null);
@@ -50,6 +51,7 @@ export function MapScreen() {
     setPanX(0);
     setPanY(0);
     setDoubleCount(0);
+    setDragCount(0);
   };
 
   const panResponder = useRef(
@@ -101,6 +103,15 @@ export function MapScreen() {
       onPanResponderRelease: evt => {
         const start = gestureStartRef.current;
         const endTouch = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
+        // 連続ジェスチャの witness: 開始点からの軸ごとの移動量がしきい値以上なら1回のドラッグと
+        // 数える(タップ・ダブルタップは移動量が届かないので数えない)。
+        if (start) {
+          const dx = Math.abs(endTouch.x - start.touch.x);
+          const dy = Math.abs(endTouch.y - start.touch.y);
+          if (dx >= PAN_THRESHOLD || dy >= PAN_THRESHOLD) {
+            setDragCount(n => n + 1);
+          }
+        }
         if (
           start &&
           Date.now() - start.time < TAP_MAX_DURATION_MS &&
@@ -133,6 +144,7 @@ export function MapScreen() {
         <EchoText testID={Tags.txtZoom}>{`zoom=${zoom.toFixed(1)}`}</EchoText>
         <EchoText testID={Tags.txtPan}>{`pan=${panLabel}`}</EchoText>
         <EchoText testID={Tags.txtDoubleCount}>{`double=${doubleCount}`}</EchoText>
+        <EchoText testID={Tags.txtDragCount}>{`drag=${dragCount}`}</EchoText>
       </View>
       <View style={styles.bottomLeft}>
         <TaggedButton testID={Tags.btnMapReset} label="マップクリア" fillWidth onPress={reset} />

@@ -429,7 +429,10 @@ public enum BridgeAPI {
     /// A `press` with `duration: 1e9` used to answer `ok` in ~3s while the simulator's `testmanagerd` kept
     /// building the synthetic event stream at ~15MB/s, growing to 170–280GB over hours (measured 2026-09-24;
     /// killing the runner does not stop it — see maintainer-notes §49.1). A stale runner keeps accepting it.
-    public static let bridgeProtocolVersion = 125
+    /// v126 (XCUITest runner only): `POST /gesture` replays several fingers' timed paths as one touch sequence (DSL
+    /// `gesture`, MCP `ft_gesture`) through the same private pointer-event API as the coordinate pinch. The in-app
+    /// bridge has no such route, so the host sends it to the XCUITest runner.
+    public static let bridgeProtocolVersion = 126
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1613,6 +1616,38 @@ public struct PinchRequest: Codable {
         self.durationSeconds = durationSeconds
         self.frame = frame
         self.identifier = identifier
+    }
+}
+
+/// POST /gesture(指ごとの時刻つき経路を1回で再生する。DSL の gesture / MCP の ft_gesture)。
+/// 座標は snapshot の screen と同じ座標系(iOS = pt / Android = px)・`t` はジェスチャ開始からの秒。
+/// 各指の**最初の点で押し、最後の点で離す**(同じ座標の点が続く区間 = 静止)。
+/// **ホストは `TouchGesture.validate` を通した形だけを送る**(本数・時刻の単調性・画面内・上限)が、
+/// ブリッジも同じ上限で断る(古いホスト・直叩きから testmanagerd を守る。v125 の秒数の門と同じ理由)。
+/// 点の間はブリッジが自分の刻みで補間する(同期相手: Runner の handleGesture /
+/// AndroidRunner BridgeRouter.handleGesture / InputInjector.gesture)
+public struct GestureRequest: Codable, Equatable, Sendable {
+    public var fingers: [GestureFinger]
+    public init(fingers: [GestureFinger]) { self.fingers = fingers }
+    /// 最後の指が離れる時刻(秒)
+    public var totalSeconds: Double {
+        fingers.compactMap { $0.points.last?.t }.max() ?? 0
+    }
+}
+
+public struct GestureFinger: Codable, Equatable, Sendable {
+    public var points: [GesturePoint]
+    public init(points: [GesturePoint]) { self.points = points }
+}
+
+public struct GesturePoint: Codable, Equatable, Sendable {
+    public var x: Double
+    public var y: Double
+    public var t: Double
+    public init(x: Double, y: Double, t: Double) {
+        self.x = x
+        self.y = y
+        self.t = t
     }
 }
 

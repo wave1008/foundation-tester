@@ -152,6 +152,15 @@ public enum DSLCommandIndex {
               "pinchIn(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Pinches closed (zoom out). scale must be between 0 and 1. durationSeconds is capped "
                   + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
+        .init("gesture", "operation",
+              "gesture(selector?, maxGestureSeconds:, waitSeconds:) { FTFinger(...).move(...).hold(...) }",
+              "Replays several fingers' timed paths as one continuous touch sequence (no lifting "
+                  + "between segments) — for gestures pinchOut/pinchIn/doubleTap/swipeBy cannot express. "
+                  + "The trailing closure is an FTGestureBuilder returning [FTFinger]: each FTFinger "
+                  + "starts at a ratio position (0...1 of the target's frame) and chains .move(x:y:"
+                  + "durationSeconds:) / .hold(seconds:) in order; the last point lifts the finger. "
+                  + "No selector = the whole screen. Total duration is capped at 10s by default — "
+                  + "pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("swipeElementToElement", "operation",
               "swipeElementToElement(from, to, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Drags from one element to another. Only the start point is healed. durationSeconds is "

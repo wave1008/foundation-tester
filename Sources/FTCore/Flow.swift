@@ -151,6 +151,9 @@ public struct FlowStep: Codable, Sendable {
     /// checked / notChecked で CheckStateClassifier を a11y より優先するか(DSL の `prefer:`)。
     /// nil = 実行プロファイルの `preferCheckStateClassifier` に従う。**checked / notChecked 以外は未使用**
     public var preferCheckStateClassifier: Bool?
+    /// ひと続きのジェスチャの指の経路(DSL の `gesture` の結果ビルダーが積む)。
+    /// 座標は対象の枠に対する比率(`TouchGesture.resolve` が絶対座標へ写す)。**`gesture` 以外は未使用**
+    public var gesture: [FTFinger]?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -169,8 +172,10 @@ public struct FlowStep: Codable, Sendable {
                 scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil,
                 x: Double? = nil, y: Double? = nil,
                 imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil,
-                preferCheckStateClassifier: Bool? = nil) {
+                preferCheckStateClassifier: Bool? = nil,
+                gesture: [FTFinger]? = nil) {
         self.preferCheckStateClassifier = preferCheckStateClassifier
+        self.gesture = gesture
         self.x = x
         self.y = y
         self.imageThreshold = imageThreshold
@@ -468,7 +473,7 @@ public extension FlowStep {
             case "rotateTo": return "rotateTo \(direction ?? "landscape")"
             case "scrollTo": return "scrollTo \(locatorSummary)"
             // 対象なし(画面全体)を取り得るアクションは locatorSummary の "(no locator)" を出さない
-            case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
+            case "pinchOut", "pinchIn", "doubleTap", "swipeBy", "gesture":
                 return locator == nil ? action : "\(action) \(locatorSummary)"
             default: return "\(action) \(locatorSummary)"
             }

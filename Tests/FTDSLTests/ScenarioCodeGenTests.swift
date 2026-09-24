@@ -51,6 +51,24 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(both.contains("x:"), both)
     }
 
+    /// gesture は指ごとの経路をそのまま DSL へ戻す(MCP の ft_gesture の下書きがここを通る)。
+    /// 比率は 1/1000 に丸め、指は `;` で1行に並べる
+    func testGestureIsRenderedWithEveryFingerStep() {
+        let fingers = [
+            FTFinger(x: 0.3, y: 0.35).hold(seconds: 0.3).move(x: 0.6, y: 0.35, durationSeconds: 0.3),
+            FTFinger(x: 0.123456, y: 0.5, startSeconds: 0.2).move(x: 0.8, y: 0.5, durationSeconds: 0.5),
+        ]
+        var targeted = FlowStep(action: "gesture", locator: FlowLocator(id: "pad"), gesture: fingers)
+        targeted.maxGestureSeconds = 20
+        XCTAssertTrue(render([targeted]).contains(
+            "gesture(\"#pad\", maxGestureSeconds: 20) { FTFinger(x: 0.3, y: 0.35).hold(seconds: 0.3)"
+                + ".move(x: 0.6, y: 0.35, durationSeconds: 0.3); FTFinger(x: 0.123, y: 0.5, startSeconds: 0.2)"
+                + ".move(x: 0.8, y: 0.5, durationSeconds: 0.5) }"), render([targeted]))
+
+        let whole = render([FlowStep(action: "gesture", gesture: [FTFinger(x: 0.5, y: 0.5)])])
+        XCTAssertTrue(whole.contains("gesture { FTFinger(x: 0.5, y: 0.5) }"), whole)
+    }
+
     /// `maxGestureSeconds` を落とすと、既定10秒を超える長押し/ジェスチャが再生成後に
     /// 検査で断られる(実際に撃った値を残すのと同じ理由。tap/press/swipeBy/pinchOut/pinchIn/
     /// swipeElementToElement の全部を1本ずつ固定する)

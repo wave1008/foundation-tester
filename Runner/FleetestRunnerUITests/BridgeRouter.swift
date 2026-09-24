@@ -95,6 +95,7 @@ final class BridgeRouter {
             case ("POST", "/drag"): response = try handleDrag(request.body)
             case ("POST", "/doubletap"): response = try handleDoubleTap(request.body)
             case ("POST", "/pinch"): response = try handlePinch(request.body)
+            case ("POST", "/gesture"): response = try handleGesture(request.body)
             case ("POST", "/rotate"): response = try handleRotate(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
             case ("GET", "/screenshot"): response = handleScreenshot()
@@ -1313,6 +1314,65 @@ final class BridgeRouter {
         target.pinch(withScale: CGFloat(req.scale),
                      velocity: req.scale > 1 ? magnitude : -magnitude)
         return .json(OKResponse(note: note))
+    }
+
+    /// gesture が受ける指の本数・1本あたりの点数の上限。**`FTCore.TouchGesture.maxFingers` /
+    /// `.maxPointsPerFinger` と同じ値** —— あちらがホストと MCP の唯一の門だが、
+    /// TouchGesture.swift はこのターゲットの入力集合(project.yml)に無い(Foundation のみに
+    /// 依存する BridgeDTO.swift 等と違い FTRect 以上の依存を持たないぶん取り込む理由が薄い)ため、
+    /// ここは値を写して**最後の砦**として同じ上限で断る(v125 の秒数の門・v126 のこの門とも、
+    /// 古いホスト・直叩きから testmanagerd を守るのが目的)。上げるときは両方
+    private static let gestureMaxFingers = 5
+    private static let gestureMaxPointsPerFinger = 625
+
+    /// 指ごとの時刻つき経路をまとめて1本のタッチ列として再生する(DSL `gesture` / MCP `ft_gesture`)。
+    /// 座標は他の座標系コマンドと同じ画面座標(pt。snapshot の screen と同じ系)。
+    ///
+    /// **ホストは `FTCore.TouchGesture.validate` を通した形だけを送る**が、ここでも同じ規則で
+    /// 検査する(直上のコメント参照)。**フォールバック無し** —— `/pinch` は要素ピンチへ縮退できるが、
+    /// 多点の時刻つき経路には公開 API の代替が無いので、座標ピンチが無い Xcode では 422 を返すだけ
+    private func handleGesture(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(GestureRequest.self, body)
+        // 前面確認のみ(座標は CoordinatePinch が直接送るので `app` 自体は使わない。/pinch の
+        // 座標ピンチ経路と同じ —— coordinate(app, point) を経由しない)
+        _ = try requireForegroundAppForGesture()
+        guard !req.fingers.isEmpty, req.fingers.count <= Self.gestureMaxFingers else {
+            throw BridgeError(400, "a gesture needs 1 to \(Self.gestureMaxFingers) fingers"
+                + " (got \(req.fingers.count))")
+        }
+        for (index, finger) in req.fingers.enumerated() {
+            guard finger.points.count >= 2, finger.points.count <= Self.gestureMaxPointsPerFinger else {
+                throw BridgeError(400, "finger \(index + 1) needs 2 to \(Self.gestureMaxPointsPerFinger)"
+                    + " points (got \(finger.points.count))")
+            }
+            var previousTime = -Double.infinity
+            for point in finger.points {
+                guard point.x.isFinite, point.y.isFinite, point.t.isFinite,
+                      point.t >= 0, point.t >= previousTime else {
+                    throw BridgeError(400, "finger \(index + 1) has a point with non-finite"
+                        + " coordinates, or a time that goes backwards")
+                }
+                previousTime = point.t
+            }
+        }
+        if let violation = BridgeAPI.gestureDurationViolation("gesture", seconds: req.totalSeconds,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
+        // **501 にしない** —— ホストは 501 を「このエンジンでは無理」と読んで typeDriver へ回すが、
+        // XCUITest ランナー自身が回送先なので自分に戻る(501 は hideKeyboard の1箇所だけ)
+        guard CoordinatePinch.isAvailable else {
+            throw BridgeError(422, "this Xcode has no coordinate gesture support (XCPointerEventPath /"
+                + " XCSynthesizedEventRecord are gone), so a multi-finger timed gesture cannot be sent."
+                + " There is no fallback for this route on the XCUITest runner")
+        }
+        try CoordinatePinch.synthesize(
+            fingers: req.fingers.map { finger in
+                finger.points.map { (point: CGPoint(x: $0.x, y: $0.y), offset: $0.t) }
+            },
+            name: "fleetest gesture",
+            orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
+        return .json(OKResponse())
     }
 
     /// 閉じ切った側でも指をこれ以上近づけない[pt]。Android 側(`BridgeRouter.java` の 16px)と同じ考え

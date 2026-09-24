@@ -238,6 +238,18 @@ public final class AppAttachDriver: AppDriver {
         }
     }
 
+    /// gesture も座標だけで完結するので pinch と同じ 409 回復を入れる
+    public func gesture(_ request: GestureRequest) async throws {
+        try await ensureAttached()
+        do {
+            try await client.gesture(request)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.gesture(request)
+        }
+    }
+
     /// rotate も ref を使わないので pinch と同じ回復を入れる(上の pinch のコメント参照)
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await ensureAttached()

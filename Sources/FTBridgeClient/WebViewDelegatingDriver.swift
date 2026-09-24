@@ -317,6 +317,10 @@ public final class WebViewDelegatingDriver: AppDriver {
                                      durationSeconds: durationSeconds)
     }
 
+    public func gesture(_ request: GestureRequest) async throws {
+        try await screenDriver.gesture(request)
+    }
+
     // MARK: - 常に in-app 側で扱う操作
 
     // ライフサイクルは注入起動を持つ in-app 側の責務(XCUITest から起動すると dylib が入らない)。

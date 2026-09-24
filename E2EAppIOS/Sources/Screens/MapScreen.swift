@@ -14,6 +14,7 @@ struct MapScreen: View {
     @State private var panX: CGFloat = 0
     @State private var panY: CGFloat = 0
     @State private var doubleCount = 0
+    @State private var dragCount = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -35,6 +36,7 @@ struct MapScreen: View {
                         DragGesture(minimumDistance: 10).onEnded { value in
                             panX += value.translation.width
                             panY += value.translation.height
+                            dragCount += 1
                         }
                     )
 
@@ -47,6 +49,7 @@ struct MapScreen: View {
                     TaggedText(tag: Tags.txtZoom, text: "zoom=\(formattedZoom)")
                     TaggedText(tag: Tags.txtPan, text: "pan=\(panLabel)")
                     TaggedText(tag: Tags.txtDoubleCount, text: "double=\(doubleCount)")
+                    TaggedText(tag: Tags.txtDragCount, text: "drag=\(dragCount)")
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -56,6 +59,7 @@ struct MapScreen: View {
                     panX = 0
                     panY = 0
                     doubleCount = 0
+                    dragCount = 0
                 }
                 .frame(width: geo.size.width * 0.45)
                 .padding(12)

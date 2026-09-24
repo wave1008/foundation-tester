@@ -146,6 +146,20 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "1手目もデバイスへ通さないこと")
     }
 
+    /// gesture はトレイリングクロージャ(FTGestureBuilder)を取るので1行の DSL に落とせない
+    /// (category は operation で allowed だが `batchStepBuilders` に無い —— MCPServer+Batch.swift の
+    /// `batchUnsupportedGuidance`)。ft_gesture を直接呼ぶよう案内する
+    func testGestureIsRejectedWithFtGestureGuidance() async {
+        do {
+            _ = try await server.call(tool: "ft_batch", args: steps("gesture"))
+            XCTFail("gesture がバッチで通った")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("ft_gesture"), message)
+        }
+        XCTAssertEqual(driver.calls, [])
+    }
+
     /// clearAppData も同じ経路(データ消去まで1回の承認で届かせない、が主目的)
     func testClearAppDataIsRejected() async {
         do {

@@ -196,6 +196,32 @@ public enum ScenarioCodeGen {
                 return "clearInput(\(literal(selector)))"
             case "doubleTap":
                 return step.locator == nil ? "doubleTap()" : "doubleTap(\(literal(selector)))"
+            case "gesture":
+                guard let fingers = step.gesture, !fingers.isEmpty else { return nil }
+                // 比率は 1/1000 に丸める(MCP の下書きは絶対座標を割り戻すので桁が暴れる)。
+                // 指は `;` で1行に並べる(結果ビルダーは1行に複数の式を置ける)
+                func number(_ value: Double) -> String {
+                    FTSeconds.format((value * 1000).rounded() / 1000)
+                }
+                let body = fingers.map { finger -> String in
+                    var code = "FTFinger(x: \(number(finger.x)), y: \(number(finger.y))"
+                        + (finger.startSeconds > 0 ? ", startSeconds: \(number(finger.startSeconds)))" : ")")
+                    for fingerStep in finger.steps {
+                        switch fingerStep {
+                        case .move(let x, let y, let seconds):
+                            code += ".move(x: \(number(x)), y: \(number(y)), durationSeconds: \(number(seconds)))"
+                        case .hold(let seconds):
+                            code += ".hold(seconds: \(number(seconds)))"
+                        }
+                    }
+                    return code
+                }.joined(separator: "; ")
+                var args: [String] = step.locator == nil ? [] : [literal(selector)]
+                if let cap = step.maxGestureSeconds {
+                    args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
+                }
+                let head = args.isEmpty ? "gesture" : "gesture(\(args.joined(separator: ", ")))"
+                return "\(head) { \(body) }"
             case "pinchOut", "pinchIn":
                 // 既定値は省く(生成コードを既定ケースで太らせない。tap の holdSeconds と同じ方針)
                 let defaultScale = action == "pinchOut"

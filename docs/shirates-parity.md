@@ -44,7 +44,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 **`maxGestureSeconds:` は fleetest 独自の引数**(🟢・ユーザー決定 2026-09-24。Shirates に対応する
 引数は無い)。秒数を取る全コマンド(`tap(holdSeconds:)` / `tap(x:y:holdSeconds:)` /
-`swipePointToPoint` / `swipeBy` / `swipeElementToElement` / `pinchOut` / `pinchIn` /
+`swipePointToPoint` / `swipeBy` / `swipeElementToElement` / `pinchOut` / `pinchIn` / `gesture` /
 `flickCenterToTop` ほか flick 8種)に付いており、既定の秒数上限(10 秒)をそのコマンド1回だけ
 最大 60 秒まで上げる。シミュレータの testmanagerd が桁外れの秒数で肥大化する実害
 (maintainer-notes §49.1)を受けて、既定を低く抑えたぶんの逃げ道として追加した。
@@ -109,6 +109,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | — | `swipeBy(sel?, dxRatio:dyRatio:)` | 🟢 2026-08-04 **斜めを含む相対ドラッグ**(マップのパン)。Shirates は縦横 4 方向しか持たない |
 | — | `doubleTap(sel?)` | 🟢 2026-08-04 ブリッジ側の1操作(往復するとダブルタップ判定時間を超える) |
 | — | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | 🟢 2026-08-04 2本指ズーム。**Shirates(Classic) にピンチ系は無い**ので名前の準拠先も無い。対象指定は Android=座標合成 / iOS=XCUITest は identifier・in-app は座標。**iOS はエンジンで成否が分かれる**(docs/commands.md の表) |
+| — | `gesture(sel?) { FTFinger(...) }` | 🟢 2026-09-24 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで離れない。`pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` で表せない動き用)。**Shirates(Classic) に対応物は無い**。iOS は既定の hybrid でも常に XCUITest 経由(in-app に経路が無い)・**座標ピンチと同じ非公開 API でフォールバック無し**(使えない Xcode では 422) |
 
 ## 存在・画面の検証
 

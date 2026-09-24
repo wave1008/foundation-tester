@@ -89,6 +89,7 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
                durationSeconds: Double) async throws {
         try record("pinch")
     }
+    func gesture(_ request: GestureRequest) async throws { try record("gesture") }
     func press(ref: Int, duration: Double) async throws { try record("press(ref:\(ref))") }
     func press(x: Double, y: Double, duration: Double) async throws {
         try record("press(x:\(x),y:\(y))")
@@ -171,17 +172,23 @@ final class HybridFallbackDriverTests: XCTestCase {
     /// 座標・identifier で完結する操作は 501 で回す
     func testCoordinateGesturesFallBackWhenTheEngineCannot() async throws {
         primary.errors = ["doubleTap": Self.notCapable, "pinch": Self.notCapable,
-                          "drag": Self.notCapable, "home": Self.notCapable]
+                          "drag": Self.notCapable, "home": Self.notCapable,
+                          "gesture": Self.notCapable]
 
         try await driver.doubleTap(x: 1, y: 2)
         try await driver.pinch(frame: nil, identifier: "map", scale: 2, durationSeconds: 0.5)
         try await driver.drag(fromX: 1, fromY: 2, toX: 3, toY: 4,
                               pressSeconds: 0.05, durationSeconds: 1)
+        // gesture は home より前に撃つ(home の後は背面扱いで primary を撃たない = delegating)
+        try await driver.gesture(GestureRequest(fingers: [
+            GestureFinger(points: [GesturePoint(x: 0, y: 0, t: 0), GesturePoint(x: 10, y: 10, t: 0.3)]),
+        ]))
         try await driver.home()
 
         XCTAssertEqual(log.entries, ["inapp.doubleTap(x:1.0,y:2.0)", "xcui.doubleTap(x:1.0,y:2.0)",
                                      "inapp.pinch", "xcui.pinch",
                                      "inapp.drag", "xcui.drag",
+                                     "inapp.gesture", "xcui.gesture",
                                      "inapp.home", "xcui.home"])
         XCTAssertEqual(driver.lastActionNote, "fell back to XCUITest")
     }

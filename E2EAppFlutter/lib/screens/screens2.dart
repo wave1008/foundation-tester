@@ -164,6 +164,12 @@ class _MapScreenState extends State<MapScreen> {
   double _panX = 0;
   double _panY = 0;
   int _double = 0;
+  int _drag = 0;
+  // 連続ジェスチャの witness: この1回のジェスチャ内での開始点からの最大移動量(タップは
+  // 除外する)。_panX/_panY と違い、reset でなく毎ジェスチャの開始(onScaleStart)で戻す。
+  Offset _gestureStartFocal = Offset.zero;
+  double _gestureMaxDx = 0;
+  double _gestureMaxDy = 0;
 
   String get _zoomDir {
     if (_zoom > 1 + _zoomDeadZone) return 'in';
@@ -190,12 +196,29 @@ class _MapScreenState extends State<MapScreen> {
               onDoubleTap: () => setState(() => _double += 1),
               // scale は「そのジェスチャ内の累積倍率」なので、更新のたびに掛けると
               // 二重に効く。**直前の値との比**を掛ける
-              onScaleStart: (_) => _lastScale = 1,
+              onScaleStart: (details) {
+                _lastScale = 1;
+                _gestureStartFocal = details.focalPoint;
+                _gestureMaxDx = 0;
+                _gestureMaxDy = 0;
+              },
               onScaleUpdate: (details) => setState(() {
                 _zoom *= details.scale / _lastScale;
                 _lastScale = details.scale;
                 _panX += details.focalPointDelta.dx;
                 _panY += details.focalPointDelta.dy;
+                final dx = (details.focalPoint.dx - _gestureStartFocal.dx).abs();
+                final dy = (details.focalPoint.dy - _gestureStartFocal.dy).abs();
+                if (dx > _gestureMaxDx) _gestureMaxDx = dx;
+                if (dy > _gestureMaxDy) _gestureMaxDy = dy;
+              }),
+              // タップ・ダブルタップは onScaleUpdate をほぼ動かさないので、しきい値判定で
+              // ドラッグから除外される(スケール系レコグナイザは1本指のタップでも起動するため、
+              // ジェスチャ種別ではなく移動量で区別する)。
+              onScaleEnd: (_) => setState(() {
+                if (_gestureMaxDx >= _panThreshold || _gestureMaxDy >= _panThreshold) {
+                  _drag += 1;
+                }
               }),
               child: Container(
                 color: const Color(0xFFEEEEEE),
@@ -215,6 +238,7 @@ class _MapScreenState extends State<MapScreen> {
               TaggedText(Tags.txtZoom, 'zoom=${_zoom.toStringAsFixed(1)}'),
               TaggedText(Tags.txtPan, 'pan=$_panLabel'),
               TaggedText(Tags.txtDoubleCount, 'double=$_double'),
+              TaggedText(Tags.txtDragCount, 'drag=$_drag'),
             ],
           ),
         ),
@@ -231,6 +255,7 @@ class _MapScreenState extends State<MapScreen> {
               _panX = 0;
               _panY = 0;
               _double = 0;
+              _drag = 0;
             }),
           ),
         ),

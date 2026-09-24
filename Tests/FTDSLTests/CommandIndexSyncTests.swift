@@ -150,7 +150,8 @@ final class CommandIndexSyncTests: XCTestCase {
             let part = rawPart.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !part.isEmpty, let colon = part.firstIndex(of: ":") else { continue }
             let namesPart = part[part.startIndex..<colon].trimmingCharacters(in: .whitespaces)
-            let tokens = namesPart.split(separator: " ").map(String.init)
+            // 属性(`@FTGestureBuilder _ body:` の result builder 等)はラベルではない
+            let tokens = namesPart.split(separator: " ").map(String.init).filter { !$0.hasPrefix("@") }
             guard let first = tokens.first else { continue }
             if tokens.count >= 2 {
                 if first != "_" { labels.insert(first) }

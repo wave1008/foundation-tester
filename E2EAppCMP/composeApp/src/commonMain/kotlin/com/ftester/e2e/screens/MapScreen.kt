@@ -1,6 +1,8 @@
 package com.ftester.e2e.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -17,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -43,6 +46,7 @@ fun MapScreen() {
     var panX by remember { mutableStateOf(0f) }
     var panY by remember { mutableStateOf(0f) }
     var doubleCount by remember { mutableStateOf(0) }
+    var dragCount by remember { mutableStateOf(0) }
 
     Box(
         modifier = Modifier
@@ -62,6 +66,32 @@ fun MapScreen() {
                     zoom *= gestureZoom
                 }
             }
+            // 連続ジェスチャの witness: 指を上げ切るまでが1回のドラッグかを数える。消費しない
+            // (Initial pass を素通り観測するだけ)ので detectTapGestures/detectTransformGestures の
+            // 消費を妨げない。しきい値未満(= タップ)は数えない。
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val start = down.position
+                    var maxDx = 0f
+                    var maxDy = 0f
+                    var anyPressed = true
+                    while (anyPressed) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val primary = event.changes.firstOrNull { it.id == down.id }
+                        if (primary != null) {
+                            val dx = abs(primary.position.x - start.x)
+                            val dy = abs(primary.position.y - start.y)
+                            if (dx > maxDx) maxDx = dx
+                            if (dy > maxDy) maxDy = dy
+                        }
+                        anyPressed = event.changes.any { it.pressed }
+                    }
+                    if (maxDx >= PAN_THRESHOLD || maxDy >= PAN_THRESHOLD) {
+                        dragCount += 1
+                    }
+                }
+            }
     ) {
         Text("マップ領域", modifier = Modifier.align(Alignment.Center))
 
@@ -73,6 +103,7 @@ fun MapScreen() {
             TaggedText(Tags.TXT_ZOOM, "zoom=${formatZoom(zoom)}")
             TaggedText(Tags.TXT_PAN, "pan=${panLabel(panX, panY)}")
             TaggedText(Tags.TXT_DOUBLE_COUNT, "double=$doubleCount")
+            TaggedText(Tags.TXT_DRAG_COUNT, "drag=$dragCount")
         }
 
         TaggedButton(
@@ -84,6 +115,7 @@ fun MapScreen() {
             panX = 0f
             panY = 0f
             doubleCount = 0
+            dragCount = 0
         }
     }
 }

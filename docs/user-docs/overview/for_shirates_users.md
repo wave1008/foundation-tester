@@ -74,6 +74,7 @@ Shirates has no equivalent for these:
 | `swipeBy(sel?, dxRatio:dyRatio:)` | a relative drag by ratio of the target's size, diagonal included (for panning maps) |
 | `doubleTap(sel?)` | a genuine double-tap gesture (two separate `tap` calls are too slow to register as one) |
 | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | two-finger pinch zoom |
+| `gesture(sel?) { FTFinger(x:y:).move(...).hold(...) }` | one or more finger paths replayed as a single continuous touch that never lifts between segments — for pattern locks, long-press-then-drag, or custom multi-finger gestures |
 | `clearAppData(bundleID?)` | clears app data and permissions without reinstalling — for onboarding / permission-dialog tests |
 | `openURL(url)` / `launchApp(url:)` | deep-link delivery, with or without restarting the app |
 | `rotateTo(.landscape)` | rotates the device; the scenario restores the original orientation on completion |

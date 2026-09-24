@@ -74,6 +74,7 @@ Shirates に対応物が無いもの:
 | `swipeBy(sel?, dxRatio:dyRatio:)` | 対象のサイズに対する比率で相対ドラッグ(斜め可。地図のパンに使う) |
 | `doubleTap(sel?)` | 本物のダブルタップ(`tap` を2回書いても往復で判定時間を超えるため代用できない) |
 | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | 2本指のピンチズーム |
+| `gesture(sel?) { FTFinger(x:y:).move(...).hold(...) }` | 指1本以上の経路を、区切りで離さない1本の連続タッチとして再生する —— パターンロック・長押しからのドラッグ・独自の複数指ジェスチャ用 |
 | `clearAppData(bundleID?)` | 再インストール不要でアプリのデータと権限を消す(初回起動・権限ダイアログのテストに) |
 | `openURL(url)` / `launchApp(url:)` | ディープリンク配送(アプリ再起動あり・なしの両方) |
 | `rotateTo(.landscape)` | 画面を回転する。シナリオ終了時に元の向きへ自動で戻る |

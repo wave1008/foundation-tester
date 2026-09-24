@@ -762,6 +762,11 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    /// gesture も apk 経由だけ(doubleTap/pinch と同じ理由。多点の同期が要る)
+    public func gesture(_ request: GestureRequest) async throws {
+        try await withBridge { try await $0.gesture(request) }
+    }
+
     // MARK: - Rotation (host-side adb; no bridge route — adb already does this without one)
 
     /// Captured only on this driver instance's first `rotate(to:)` call (nil = not used yet, or

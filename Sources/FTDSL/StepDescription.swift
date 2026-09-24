@@ -231,6 +231,9 @@ public enum StepDescription {
             case "swipeBy":
                 if step.locator == nil { return "drag the screen by a relative offset" }
                 return isJapanese(obj) ? "\"\(obj)\"を相対量でドラッグする" : "drag \"\(obj)\" by a relative offset"
+            case "gesture":
+                if step.locator == nil { return "perform a gesture on the screen" }
+                return isJapanese(obj) ? "\"\(obj)\"上でジェスチャを行う" : "perform a gesture on \"\(obj)\""
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
                 let toObj = endLocator.label ?? FTSelector.serialize(primary: endLocator, fallbacks: [])

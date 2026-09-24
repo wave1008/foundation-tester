@@ -227,6 +227,19 @@ final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).pinch")
     }
 
+    /// 非 nil なら gesture がこのエラーを throw する(501 切替の検証用)
+    var gestureError: Error?
+    private(set) var lastGesture: GestureRequest?
+
+    func gesture(_ request: GestureRequest) async throws {
+        lastGesture = request
+        if let gestureError {
+            log.entries.append("\(name).gesture(throws)")
+            throw gestureError
+        }
+        log.entries.append("\(name).gesture")
+    }
+
     private(set) var screenshotCallCount = 0
     func screenshot() async throws -> Data {
         defer { screenshotCallCount += 1 }

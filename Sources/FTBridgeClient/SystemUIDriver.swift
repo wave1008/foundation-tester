@@ -172,6 +172,7 @@ public final class SystemUIDriver: AppDriver {
         try await client.pinch(frame: frame, identifier: identifier, scale: scale,
                                durationSeconds: durationSeconds)
     }
+    public func gesture(_ request: GestureRequest) async throws { try await client.gesture(request) }
     /// tapAppIcon の冒頭 home() 用。**素通しを書かないと extension の 501 既定実装に落ちる**
     /// (実機で踏んだ。SystemUIDriverHomeForwardingTests が守る)
     public func home() async throws { try await client.home() }

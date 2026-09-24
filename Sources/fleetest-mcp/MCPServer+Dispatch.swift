@@ -1650,6 +1650,41 @@ extension MCPServer {
                 + iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: args)
                 + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
 
+        case "ft_gesture":
+            // JSON の形だけの検査はドライバ取得より前に(ft_long_press と同じ理由 —
+            // コールドスタートは分単位かかりうるので、引数だけで弾けるものは先に弾く)
+            let gestureRequest = try Self.gestureRequestArgument(args)
+            let gestureDriver = try await driver(args)
+            // 画面内かどうかの判定に screen が要る。既に撮った木があれば読みを増やさない
+            // (coordinateScreen の doc)
+            guard let gestureScreen = await coordinateScreen(gestureDriver, args: args) else {
+                throw MCPError("could not read the screen size to check the gesture stays on it —"
+                    + " take a ft_snapshot first")
+            }
+            let gestureCap = try Self.doubleArgument(args, "maxGestureSeconds")
+                ?? BridgeAPI.defaultMaxGestureSeconds
+            let validatedGesture: GestureRequest
+            switch TouchGesture.validate(gestureRequest, screen: gestureScreen, maxGestureSeconds: gestureCap) {
+            case .failure(let rejection): throw MCPError(rejection.message)
+            case .success(let ok): validatedGesture = ok
+            }
+            try await gestureDriver.gesture(validatedGesture)
+            // **座標(絶対)→ 比率へ割り戻して記録する**(DSL の gesture は FTFinger の比率で書く。
+            // FlowStep.gesture がその置き場)。対象は常に画面全体(ft_gesture にセレクタは無い)ので
+            // locator は付けない
+            var gestureDraftStep = FlowStep(action: "gesture")
+            gestureDraftStep.gesture = Self.gestureFingersForDraft(validatedGesture, screen: gestureScreen)
+            gestureDraftStep.maxGestureSeconds = try Self.doubleArgument(args, "maxGestureSeconds")
+            recordAction(InteractionLog.Entry(
+                step: gestureDraftStep, unresolved: nil,
+                summary: "gesture (\(validatedGesture.fingers.count) finger(s))"), args: args)
+            let fingerWord = validatedGesture.fingers.count == 1 ? "finger" : "fingers"
+            return text("gesture sent (\(validatedGesture.fingers.count) \(fingerWord),"
+                + " \(FTSeconds.format((validatedGesture.totalSeconds * 100).rounded() / 100))s)."
+                + " Nothing about the result is checked — if it should have moved something,"
+                + " confirm with ft_snapshot/ft_screenshot."
+                + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
+
         // 旧名 `ft_press` は call() の toolAliases が現名へ畳む(ここに並べると記憶の適用から漏れる)
         case "ft_long_press":
             // 引数名は DSL の tap(holdSeconds:) と同語彙(2026-08-10 の語彙統一)。

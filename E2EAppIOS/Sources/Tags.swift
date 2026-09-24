@@ -88,6 +88,7 @@ enum Tags {
     static let txtZoom = "txt_zoom"
     static let txtPan = "txt_pan"
     static let txtDoubleCount = "txt_double_count"
+    static let txtDragCount = "txt_drag_count"
     static let btnMapReset = "btn_map_reset"
 
     // スクロール

@@ -55,6 +55,37 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `doubleTap(sel?)` | ダブルタップ。セレクタ省略 = 画面中心。**`tap` を2回書いても代用できない**(往復で OS のダブルタップ判定時間を超える) |
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
 | `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を閉じる = **縮小**。`scale` は 0 より大きく 1 未満のみ。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `gesture(sel?, maxGestureSeconds:waitSeconds:) { FTFinger(x:y:).move(x:y:durationSeconds:).hold(seconds:) }` | `pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` で表せない動き(パターンロック・長押しからのドラッグ・3本指以上のジェスチャ・回転)を1本の生ジェスチャとして組む。指ごとに `FTFinger` を並べ、全体の秒数の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き(下記「`gesture`: 指を離さずに続ける多点ジェスチャ」) |
+
+### `gesture`: 指を離さずに続ける多点ジェスチャ
+
+```swift
+gesture("#pad_map") {
+    FTFinger(x: 0.3, y: 0.35).hold(seconds: 0.3)
+        .move(x: 0.6, y: 0.35, durationSeconds: 0.3)
+        .move(x: 0.6, y: 0.65, durationSeconds: 0.3)
+}
+gesture("#pad_map") {                 // 指が2本 = 手組みのピンチ
+    FTFinger(x: 0.45, y: 0.5).move(x: 0.2, y: 0.5, durationSeconds: 0.5)
+    FTFinger(x: 0.55, y: 0.5).move(x: 0.8, y: 0.5, durationSeconds: 0.5)
+}
+gesture { for dot in dots { … } }     // ブロック内はループ・分岐も書ける。セレクタ省略 = 画面全体
+```
+
+- **指を離さない**。`swipePointToPoint` を連続で呼ぶと呼ぶたびに指が離れるが、`gesture` は
+  ブロック内の全指を**1回のタッチ列**として再生する(区切りで離れない)。パターンロック・
+  長押しから離さずドラッグ・複数指の同時操作はこれでしか書けない
+- **座標は対象の枠に対する比率**(0...1 が枠の内側。枠の外でも画面内なら書ける)。解像度に依存しない。
+  セレクタ省略時は画面全体が対象
+  - `FTFinger(x:y:startSeconds:)` で押し始め、`.move(x:y:durationSeconds:)`(等速・指は離れない)/
+    `.hold(seconds:)` を順に積む(離す操作は書かない・最後の点で離れる)。`startSeconds` は
+    2本目以降の指を遅らせて置くときに使う。ステップの無い指は 0.05 秒だけ触れて離れる
+- **上限**: 1〜5本・1本あたり最大625点・全体の秒数は既定10秒(`maxGestureSeconds:` で最大60秒まで上書き。
+  他のジェスチャ系コマンドと同じ規則)。0本の指・画面外の点・秒数が0以下・秒数超過はデバイスに触れずステップを失敗させる
+- `waitSeconds:` は他のコマンドと同じく対象の出現を待つ
+- **iOS は常に XCUITest 経由**(既定の hybrid エンジンでも)。in-app エンジンにはこの経路が無いため
+  ——座標ピンチと同じ非公開 API(`XCPointerEventPath`)を使う。この API を持たない Xcode では
+  フォールバック先が無く、ステップは 422 で失敗する
 
 ### まだ触れない画面を叩かない(`tap` は操作可能になるまで待つ)
 
@@ -159,6 +190,7 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
   | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ | 未実測(想定: uikit 経路 = ✅) |
   | `doubleTap` | ✅ XCUITest | ✅ **in-app のみ** | ✅ | 未実測(想定: uikit 経路 = ✅ XCUITest。SwiftUI/UIKit と同じ合成タッチ非受理) |
   | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app のみ** | 未実測(想定: uikit 経路 = ✅ XCUITest) |
+  | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
 
   「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機は注入不可のため
   XCUITest しか経路が無い)。**MCP の `ft_*` も `profile` を渡せば同じエンジンで動く**

@@ -91,17 +91,20 @@ fun buildMapScreen(activity: Activity, parent: ViewGroup): View {
     val zoomView = v.findViewById<TextView>(R.id.txt_zoom)
     val panView = v.findViewById<TextView>(R.id.txt_pan)
     val doubleView = v.findViewById<TextView>(R.id.txt_double_count)
+    val dragCountView = v.findViewById<TextView>(R.id.txt_drag_count)
 
     var zoom = 1f
     var panX = 0f
     var panY = 0f
     var doubleCount = 0
+    var dragCount = 0
 
     fun render() {
         zoomDirView.text = "zoom=" + zoomDirection(zoom)
         zoomView.text = "zoom=" + formatZoom(zoom)
         panView.text = "pan=" + panLabel(panX, panY)
         doubleView.text = "double=$doubleCount"
+        dragCountView.text = "drag=$dragCount"
     }
 
     val scaleDetector = android.view.ScaleGestureDetector(activity,
@@ -131,10 +134,36 @@ fun buildMapScreen(activity: Activity, parent: ViewGroup): View {
             }
         })
 
+    // 連続ジェスチャの witness: 指を上げ切るまでが1回のドラッグかを、scale/tap 検出器とは
+    // 独立に生の DOWN/MOVE/UP から数える(しきい値未満 = タップは数えない)。
+    var dragDownX = 0f
+    var dragDownY = 0f
+    var dragMaxDx = 0f
+    var dragMaxDy = 0f
     v.findViewById<View>(R.id.pad_map).setOnTouchListener { view, ev ->
         scaleDetector.onTouchEvent(ev)
         tapDetector.onTouchEvent(ev)
-        if (ev.action == MotionEvent.ACTION_UP) view.performClick()
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                dragDownX = ev.x
+                dragDownY = ev.y
+                dragMaxDx = 0f
+                dragMaxDy = 0f
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = abs(ev.x - dragDownX)
+                val dy = abs(ev.y - dragDownY)
+                if (dx > dragMaxDx) dragMaxDx = dx
+                if (dy > dragMaxDy) dragMaxDy = dy
+            }
+            MotionEvent.ACTION_UP -> {
+                if (dragMaxDx >= PAN_THRESHOLD || dragMaxDy >= PAN_THRESHOLD) {
+                    dragCount += 1
+                    render()
+                }
+                view.performClick()
+            }
+        }
         true
     }
 
@@ -143,6 +172,7 @@ fun buildMapScreen(activity: Activity, parent: ViewGroup): View {
         panX = 0f
         panY = 0f
         doubleCount = 0
+        dragCount = 0
         render()
     }
     return v

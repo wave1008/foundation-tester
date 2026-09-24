@@ -387,6 +387,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
 | `POST /doubletap` | `{ref}` または `{x,y}`。**2回の /tap では代用できない**(往復で OS のダブルタップ判定時間を超える) |
 | `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?}` 2本指ズーム。**`frame` があればどの経路も座標で撃つ**(Android は frame の短辺から指の幅を決めて中心に置く / XCUITest は frame の長辺の両端に指を置く = `CoordinatePinch`)。`frame` が無い・座標ピンチが使えないときだけ XCUITest が `identifier` で要素を引く(**縮退したことを注記で必ず言う**) |
+| `POST /gesture` | `{fingers: [{points: [{x, y, t}]}]}` 指ごとの時刻つき経路を**1回のタッチ列として**再生する(DSL の `gesture` / MCP の `ft_gesture`)。各指は最初の点で押し最後の点で離す・同じ点が続く区間は静止。XCUITest は `CoordinatePinch` と同じ非公開 API、Android は多点 `MotionEvent`。**in-app は持たない**(hybrid は既定の 501 で XCUITest へ回す)。非公開 API が無い Xcode では 422(501 は自分へ戻るので使わない)。本数・点数・秒数はホストの `TouchGesture.validate` が断り、両ブリッジも同じ上限で最後に断る |
 | `POST /clear` | `{ref}` 省略可(省略時はフォーカス中の入力欄)。入力欄のクリア |
 | `POST /pressEnter` | Return キー相当(受け口ごとの機構は §10) |
 | `GET  /screenshot` | `XCUIScreen.main.screenshot()` → PNG |
@@ -397,11 +398,11 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 26 |
-| Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
+| XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 27 |
+| Android(AndroidRunner/) | `POST /gesture`・`POST /locale`・`POST /settle`(§4.5) | 16 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
-**ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`)の上限は2層**:
+**ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
 方針(既定 10 秒・コマンドの `maxGestureSeconds` で最大 60 秒)は**ホスト側**(`FlowStep.gestureDurationViolation` /
 `ArgumentBounds.gestureCapViolation`)がデバイスに触る前に断り、**ブリッジは絶対上限 60 秒
 (`BridgeAPI.gestureSecondsCeiling`)だけ**を持つ —— XCUITest は見積もり所要が超えたら合成前に 400、
