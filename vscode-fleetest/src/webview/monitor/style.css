@@ -1420,6 +1420,11 @@ html.select-all-guard * {
 #panel-devices.no-selection:not(.log-view-hidden):not(.log-has-overall-lines) #lanes-empty {
   display: flex;
 }
+/* 待機の案内(#lanes-waiting)を出している間は選択の案内を出さない(同じ場所に重なる)。上の規則に勝つよう
+   同じ形にクラスを1つ足してある */
+#panel-devices.lanes-waiting-shown.no-selection:not(.grid-view-hidden) #preview-empty {
+  display: none;
+}
 .lanes-grid {
   /* 横の余白はここが持つ(ペインは 0)。タイル側の .grid の inset と同じ 12px */
   margin: 0 12px;

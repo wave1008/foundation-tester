@@ -129,9 +129,13 @@ test("待機中にラインビューを隠すと、下のペインに「デバ�
 
   lineViewToggle(document).click();
   assert.equal(note.style.display, "flex");
+  assert.ok(document.getElementById("panel-devices").classList.contains("lanes-waiting-shown"),
+    "待機の案内を出している間は、同じ場所の「デバイスを選択して下さい」を隠す合図を付けること");
 
   lineViewToggle(document).click();
   assert.equal(note.style.display, "none", "ラインビューを戻したら消す");
+  assert.ok(!document.getElementById("panel-devices").classList.contains("lanes-waiting-shown"),
+    "待機の案内を消したら合図も外すこと");
 });
 
 test("ラインビュー非表示のまま台が現れたら下のペインの待機表示を消し、再起動で台が消えたら出す", (t) => {
