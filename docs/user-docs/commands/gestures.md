@@ -73,26 +73,36 @@ keep in mind:
   there the fingers start at the centre and spread out). fleetest therefore picks a spot where both
   fingers stay on the same thing, narrowing the span if it has to, and falls back to the whole
   screen only when no such spot exists.
-- **On iOS, only Compose's double tap depends on the engine.** The default hybrid engine works
-  across every framework for every gesture (the host picks the engine automatically); pinch now
-  works on both engines for every framework. Android has no such split — every gesture works
-  everywhere:
+- **On iOS, only double tap can fail to register, depending on the framework and the engine.**
+  The default hybrid engine (Simulator) runs every gesture on every framework. Android has no such
+  split — every gesture works everywhere:
 
-  | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter |
-  |---|---|---|---|
-  | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ |
-  | `doubleTap` | ✅ XCUITest | ✅ **in-app only** | ✅ |
-  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ |
-  | `gesture` | ✅ XCUITest | ✅ XCUITest | ✅ XCUITest |
+  | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
+  |---|---|---|---|---|
+  | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ | ✅ |
+  | `doubleTap` | ✅ | ✅ **hybrid only** | ✅ | △ |
+  | `pinchOut` / `pinchIn` | ✅ | ✅ | ✅ | ✅ |
+  | `gesture` | ✅ | ✅ | ✅ | ✅ |
 
-  "in-app only" means it does not work with a standalone `xcuitest` profile or on a physical
-  device (physical devices cannot be injected, so XCUITest is the only path). Measured
-  2026-09-24: the XCUITest runner's `/doubletap` now sends two separate touches through the
-  private pointer-event API, which Flutter detects (it also reaches React Native, but a screen
-  that detects taps in JS with PanResponder and a clock can miss it intermittently), but Compose
-  never counts as a double tap regardless of the interval between the two touches — only the
-  in-app engine's synthesized touches register there. The MCP `ft_*` tools follow the same
-  engine when a `profile` is passed.
+  - **"hybrid only"**: works only with the default hybrid engine (Simulator). **With an
+    `xcuitest`-only profile or on a physical device, a Compose app does not recognize the double
+    tap** (a physical device cannot be injected into, so there is no other way to send it).
+  - **"△"**: it arrives, but a screen that detects taps in JavaScript (PanResponder and a clock,
+    for example) can miss it intermittently.
+  - The MCP `ft_*` tools and Live Control follow the same rules (MCP uses the run's engine when you
+    pass a `profile`).
+- **Where double tap does not register, check the zoom with `pinchOut` instead.** On a screen where
+  double tap means "zoom in" (maps, photos), `pinchOut` produces the same zoom for you to verify.
+  Pinch works on every framework, Compose included, with either engine:
+
+  ```swift
+  // instead of doubleTap("#map")
+  pinchOut("#map")
+  select("#zoom_level").textIs("x2")
+  ```
+
+  It is not a substitute when double tap does something other than zooming (a "like", for
+  example); check that on the Simulator (hybrid) or on Android.
 - **The zoom scale you ask for is not always the scale you get.** Two fingers cannot move outside
   the region being pinched, so an extreme `scale` caps out at whatever that region's size allows.
   **Verify that zooming happened rather than the exact scale** — this holds up better across

@@ -65,7 +65,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_clear_input` | 入力欄を空にする |
 | `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |
 | `ft_dsl_commands` | DSL コマンドの索引(名前と署名)。書く前に存在確認できる |
-| `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | ダブルタップ・ピンチ・任意方向のドラッグ。iOS の Compose アプリでは実機と `xcuitest` の構成でダブルタップが効かないので、拡大が目的なら `ft_pinch` を使う([ジェスチャ](../commands/gestures_ja.md)) |
 | `ft_gesture` | 指ごとの時刻つき経路を1本の連続タッチとして再生する(区切りで指を離さない)—— パターンロック・長押しからのドラッグ・独自の複数指ジェスチャ用。絶対座標のみ・ref/セレクタ形は無い |
 | `ft_screenshot` | 視覚確認用のスクリーンショット画像 |
 | `ft_capture_element` | 要素を画像分類器の見本として保存し、学習の点検結果を返す(`checkIsON` / `imageIs` の見本。[imageIs](../commands/image_assertion_ja.md)) |

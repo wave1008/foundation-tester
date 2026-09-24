@@ -100,6 +100,10 @@ in a tile's right-click menu (opens with that device selected). It also opens au
 | Alt/Option + click | Double tap |
 | Toolbar zoom in/out | Pinch (whole screen) |
 
+On iOS, double tap (Alt/Option + click) does not register in a Compose app on a physical device or
+with an `xcuitest`-only setup. To zoom in, use the toolbar's zoom (a pinch) instead
+([gestures](../commands/gestures.md)).
+
 An element list next to the screenshot lets you tap by row instead of by coordinate, and a text
 field sends input to whatever the device has focused (tap the field first, then type).
 

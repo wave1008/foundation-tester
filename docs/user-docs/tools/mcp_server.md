@@ -66,7 +66,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_clear_input` | Clear a text field |
 | `ft_clear_app_data` | Reset app data and permissions (on a physical iOS device it falls back to uninstall + install, using the path from `ft_install` or `packagePath:`) |
 | `ft_dsl_commands` | DSL command index (names and signatures), for checking a command exists before writing it |
-| `ft_double_tap` / `ft_pinch` / `ft_drag` | Double tap, pinch, and arbitrary-direction drag |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | Double tap, pinch, and arbitrary-direction drag. On iOS a Compose app ignores the double tap on a physical device or with `xcuitest`, so use `ft_pinch` when the goal is zooming in ([gestures](../commands/gestures.md)) |
 | `ft_gesture` | Replay several fingers' timed paths as one continuous touch sequence (fingers never lift between segments) — for a pattern-lock swipe, a long-press that then drags, or a custom multi-finger gesture; absolute coordinates only, no ref/selector form |
 | `ft_screenshot` | Screenshot image, for visual inspection |
 | `ft_capture_element` | Saves an element as a sample image of an image classifier and reports the training check (samples for `checkIsON` / `imageIs`; see [imageIs](../commands/image_assertion.md)) |
