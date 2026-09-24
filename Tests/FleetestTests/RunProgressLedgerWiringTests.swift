@@ -3,15 +3,14 @@
 // **型では守れない継ぎ目**: `writeRunProgress`/`removeRunProgress` を RunOrchestrator へ渡し
 // 忘れても run は緑のまま通り、その経路(`fleetest run --profile` または `fleetest api run`)は
 // 台帳を1バイトも書かない = モニターのフリート横断ボードにその run が永久に映らない。
-// `fleetest run` と `fleetest api run` は実装を別々に持つ2実装(CLAUDE.md)なので両方を見る
-// (ParentDeathWatchWiringTests / SupplyLeaseHandOffWiringTests と同型)。
+// 注入は `fleetest run` / `fleetest api run` が共有する ProfileRunOrchestrator の1箇所
+// (2経路がそこを通ることは ProfileRunOrchestratorWiringTests)。
 
 import XCTest
 
 final class RunProgressLedgerWiringTests: XCTestCase {
 
-    private static let sources = ["Sources/fleetest/ProfileRunner.swift",
-                                  "Sources/fleetest/ApiRunCommand.swift"]
+    private static let sources = ["Sources/fleetest/ProfileRunOrchestrator.swift"]
 
     private static func code(_ path: String) throws -> String {
         let url = URL(fileURLWithPath: #filePath)
@@ -34,7 +33,7 @@ final class RunProgressLedgerWiringTests: XCTestCase {
                           "\(path): writeRunProgress が RunProgressLedger.write を呼んでいない")
             XCTAssertTrue(text.contains("RunProgressLedger.remove("),
                           "\(path): removeRunProgress が RunProgressLedger.remove を呼んでいない")
-            XCTAssertTrue(text.contains("profile: resolved.runName") || text.contains("profile: profileName"),
+            XCTAssertTrue(text.contains("profile: profile,"),
                           "\(path): RunOrchestrator へプロファイル名を渡していない" +
                           " (RunProgressRecord.profile が常に nil になる)")
         }

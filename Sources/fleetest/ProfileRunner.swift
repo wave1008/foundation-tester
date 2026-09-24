@@ -22,9 +22,6 @@ enum LocalDeviceLeaseWaitPolicy {
 
 enum ProfileRunner {
 
-    /// ワーカー復帰待ちの上限。監視側の再起動やデバイス自己回復を待つ
-    private static let REVIVE_TIMEOUT: TimeInterval = 90
-
     /// 実行プロファイルの実効 FM 設定を、`ResolvedProfile.fm`/`ocrTextVisualCheck` から
     /// そのまま写す(**上書きは `--set` が `ProfileResolver.resolve(overrides:)` で当て済み**なので、
     /// ここで CLI 由来の override を二重に適用しない)
@@ -515,15 +512,6 @@ enum ProfileRunner {
             androidWorkers: workers.count, eagerIOSWorkers: eagerIOSWorkers.count, hasLateIOS: hasLateIOS)
             + "\n")
 
-        // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)
-        let recordingConfig: VideoRecordingConfig? = {
-            guard resolved.record, let recorder else { return nil }
-            return VideoRecordingConfig(
-                runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB(),
-                failuresOnly: resolved.recordFailuresOnly, bitrateKbps: resolved.recordBitrateKbps,
-                fullResolution: resolved.recordFullResolution)
-        }()
-
         // SIGINT/SIGTERM を受けたら、新しいシナリオを配らず・今動いている子(fleetest-scenarios)
         // を SIGTERM してから RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・
         // drain・summary)を通す(ApiRunCommand.runWithProfileParallel と同じ形。CLAUDE.md
@@ -533,18 +521,9 @@ enum ProfileRunner {
         // **sweep はここでは呼ばない** —— この run の掃除は "building" を書く入口で済んでいる
         // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
 
-        // 供給(iOS lateWorkers 等)がまだ済んでいない間もボードに1本出す(段階「準備中」)。
-        // RunOrchestrator が最初の laneJoined で "running" の record へ上書きするまでの穴埋め。
-        // **後始末**: ここから RunOrchestrator.run() の呼び出しへ到達できずに throw すると
-        // finish() が一度も呼ばれない(finish() は RunOrchestrator の中でしか呼ばれない)ので、
-        // handoff が立たないまま関数を抜けるときは defer で自分の控えを消す
-        let progressPid = ProcessInfo.processInfo.processIdentifier
-        RunProgressLedger.write(RunProgressRecord(
-            pid: progressPid, runID: recorder?.runID, runGroup: recorder?.runGroup,
-            issuer: LocalConfig.resolveIssuerId(), project: project.name, profile: profileName,
-            startedAt: ISO8601DateFormatter().string(from: Date()), total: 0, done: 0, failed: 0,
-            requeued: 0, laneDropouts: 0, etaSeconds: nil, lanes: [], phase: "preparing"),
-            directory: RunProgressLedger.directory())
+        // 段階「準備中」の控え。handoff が立たないまま抜けるときは defer で消す(writePreparingProgress の doc)
+        let progressPid = ProfileRunOrchestrator.writePreparingProgress(
+            recorder: recorder, project: project, profile: profileName)
         var progressHandedToOrchestrator = false
         defer {
             if !progressHandedToOrchestrator {
@@ -552,151 +531,18 @@ enum ProfileRunner {
             }
         }
 
-        let orchestrator = RunOrchestrator(
-            project: project, workers: workers + eagerIOSWorkers,
-            settings: ScenarioExecutionSettings(resolved),
-            reportDir: reportDir, recorder: recorder,
-            recordingConfig: recordingConfig,
-            isDeviceFrozen: { serial in
-                // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと
-                // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)。
-                // 凍結確定時はその場で sleep/wake 修復も試みる(判定・振り直しは従来どおり)
-                await AndroidHealthProbe.observeBlankAndRepair(serial: serial) { ConsoleOut.out($0) }
-            },
-            isDeviceUnreachable: { serial in
-                // adb で state=device の一覧に居なければ消失(offline/未検出)。取得失敗時は誤って
-                // 振り直さないよう false(reachable 扱い)に倒す。
-                guard let serials = try? AndroidDeviceCatalog.connectedSerials() else { return false }
-                return !serials.contains(serial)
-            },
-            bridgeLogSize: { worker in
-                // xcuitest ランナーのログのみ有効(hybrid は xcuiPort 側。in-app はホスト側ログが
-                // AX 処理で成長しないため nil を返して /status のみの判定にフォールバックさせる)
-                guard let port = worker.connection.xcuiPort
-                    ?? ((worker.connection.engine == nil || worker.connection.engine == "xcuitest")
-                        ? worker.connection.port : nil) else { return nil }
-                let attrs = try? FileManager.default.attributesOfItem(
-                    atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).log").path)
-                return (attrs?[.size] as? NSNumber)?.uint64Value
-            },
-            runnerProcessAlive: { worker in
-                // xcuitest ランナー(ホスト側の xcodebuild)の生死。**nil = 分からない**
-                // (in-app ブリッジは台帳に pid を持たない)。BridgeLiveness.decide の材料で、
-                // 「生きている間はログ静止の近道を使わない/消えていれば窓の残りを待たない」を分ける
-                guard let port = worker.connection.xcuiPort
-                    ?? ((worker.connection.engine == nil || worker.connection.engine == "xcuitest")
-                        ? worker.connection.port : nil) else { return nil }
-                let pidPath = repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path
-                guard let text = try? String(contentsOfFile: pidPath, encoding: .utf8),
-                      let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
-                return ProcessLiveness.isAlive(pid)
-            },
-            probeBridge: { worker in
-                // hybrid の主ポート(in-app)は別アプリのシナリオ中サスペンドされ TCP 受理・HTTP
-                // 無応答になる(design §8.8)ため、死活確認は suspend されない xcuitest 側で行う
-                guard let port = worker.connection.xcuiPort ?? worker.connection.port else {
-                    return .silent
-                }
-                do {
-                    // 実機ブリッジは 127.0.0.1 に居ない。宛先は DriverConnection 経由で届く
-                    // (取り違えると失敗のたびに健全な実機ワーカーを「接続不能」で離脱させる)。
-                    // physicalUDID も渡す —— usb トンネルは host がループバックのままでも
-                    // token を要求するため、host だけでは実機の判別に使えない
-                    // (ProfileWorkerFactory.warnOnResidualSystemAlerts と同じ規律)
-                    let status = try await BridgeClient(
-                        port: port,
-                        host: worker.connection.host ?? BridgeEndpoint.loopbackHost,
-                        physicalUDID: worker.connection.physical ? worker.connection.udid : nil)
-                        .status(timeout: 5)
-                    // 答えたのが別の台のブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
-                    if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
-                        expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
-                        status: status, remedy: BridgeIdentityCheck.runLaneRemedy) {
-                        return .hijacked(detail: detail)
-                    }
-                    return .ok
-                } catch DriverError.bridgeConnectionRefused {
-                    return .refused
-                } catch {
-                    return .silent
-                }
-            },
-            writeRunLease: { key in
-                guard let leaseStateDir else { return }
-                RunLease.write(stateDir: leaseStateDir, key: key, pid: ProcessInfo.processInfo.processIdentifier)
-                // 書いた後に手放す(順序を逆にすると一瞬 lease が消える)。SupplyLeaseHolder 冒頭参照
-                supplyLease?.handOff(key: key)
-            },
-            removeRunLease: { key in
-                guard let leaseStateDir else { return }
-                RunLease.remove(stateDir: leaseStateDir, key: key)
-            },
-            writeRecordingLease: { key in
-                guard let leaseStateDir else { return }
-                RecordingLease.write(stateDir: leaseStateDir, key: key,
-                                     pid: ProcessInfo.processInfo.processIdentifier)
-            },
-            removeRecordingLease: { key in
-                guard let leaseStateDir else { return }
-                RecordingLease.remove(stateDir: leaseStateDir, key: key)
-            },
-            profile: profileName,
-            writeRunProgress: { record in
-                RunProgressLedger.write(record, directory: RunProgressLedger.directory())
-            },
-            removeRunProgress: {
-                RunProgressLedger.remove(pid: ProcessInfo.processInfo.processIdentifier,
-                                         directory: RunProgressLedger.directory())
-            },
-            progressHistoryRuns: lptHistoryRuns,
-            cleanupRetiredWorker: { retired in
-                // ウェッジした旧ブリッジ(/status 無応答)は provision の再利用スキャンに映らないまま
-                // 生き残り、シミュレータを掴み続ける。離脱検知の時点で UDID 照合で明示停止する
-                // (revive 内でなくここに置く理由: 復帰を試みない離脱でも必ず kill するため)
-                guard let udid = retired.connection.udid else { return }  // udid は iOS のみ
-                let stopped = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
-                if !stopped.isEmpty {
-                    ConsoleOut.out("🔧 Stopped stale bridges: port \(stopped.joined(separator: ", "))")
-                }
-            },
-            reviveWorker: { retired in
-                guard let name = retired.logicalName else { return nil }
-                let deadline = Date().addingTimeInterval(REVIVE_TIMEOUT)
-                while Date() < deadline {
-                    if let w = await ProfileWorkerFactory.buildWorker(forLogicalName: name, resolved: resolved,
-                                                                       repoRoot: repoRoot, log: { ConsoleOut.out($0) }) {
-                        do {
-                            let installed = try await ProfileWorkerFactory.installIfNeeded(
-                                apps: resolved.apps, workers: [w], forceAndroidInstall: false) { ConsoleOut.out($0) }
-                            return installed.first
-                        } catch {
-                            // install に失敗した個体を古いアプリのまま参加させない(F5)。
-                            // この呼び出しでは復帰させない(呼び出し元が MAX_WORKER_REVIVES の
-                            // 範囲で reviveWorker を再度呼ぶ)
-                            ConsoleOut.out("❌ \(w.label): dropped out after an install failure — "
-                                + error.localizedDescription)
-                            return nil
-                        }
-                    }
-                    try? await Task.sleep(nanoseconds: 5_000_000_000)
-                }
-                return nil
-            },
-            recheckRunner: { worker, maxStepSnapshotMs, log in
-                await RunnerMidRunRecheck.recheck(worker: worker, maxStepSnapshotMs: maxStepSnapshotMs,
-                                                  repoRoot: repoRoot, log: log)
-            },
+        let orchestrator = ProfileRunOrchestrator.make(
+            project: project, workers: workers + eagerIOSWorkers, resolved: resolved, reportDir: reportDir,
+            recorder: recorder, repoRoot: repoRoot, leaseStateDir: leaseStateDir, supplyLease: supplyLease,
+            profile: profileName, progressHistoryRuns: lptHistoryRuns, interruptState: interruptState,
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
                 let ws = await buildIOSLane(resolved: resolved, repoRoot: repoRoot, supplyLease: supplyLease,
                                             blankRepairBox: iosBlankRepairBox)
                 ConsoleOut.out("🚀 \(ws.count) iOS worker(s) joined")
                 return ws
             }) : nil,
-            installHandler: InstallHandlerFactory.make(apps: resolved.apps),
-            appName: resolved.appName,
-            appBundleIDs: resolved.apps.mapValues(\.bundleID),
-            appTargets: resolved.apps,
-            registerChildProcess: { interruptState.registerChildProcess($0) })
+            onRevived: { _ in },
+            log: { ConsoleOut.out($0) })
         let interruptRelay = InterruptRelay.observing {
             interruptState.requestStop()
             orchestrator.requestInterrupt()

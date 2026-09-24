@@ -62,10 +62,10 @@ final class RunnerMidRunRecheckTests: XCTestCase {
     }
 
     func testBothRunPathsPassTheRecheck() throws {
-        for path in ["Sources/fleetest/ProfileRunner.swift", "Sources/fleetest/ApiRunCommand.swift"] {
-            XCTAssertEqual(try count("recheckRunner: { worker, maxStepSnapshotMs, log in", in: path), 1, path)
-            XCTAssertEqual(try count("RunnerMidRunRecheck.recheck(", in: path), 1, path)
-        }
+        // 2経路が ProfileRunOrchestrator を通ることは ProfileRunOrchestratorWiringTests
+        let path = "Sources/fleetest/ProfileRunOrchestrator.swift"
+        XCTAssertEqual(try count("recheckRunner: { worker, maxStepSnapshotMs, log in", in: path), 1, path)
+        XCTAssertEqual(try count("RunnerMidRunRecheck.recheck(", in: path), 1, path)
     }
 
     /// 門の材料(ステップの snapshot 所要)を集めて、緑の直後に呼ぶ配線

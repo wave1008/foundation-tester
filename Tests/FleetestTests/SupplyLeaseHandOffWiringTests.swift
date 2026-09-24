@@ -2,14 +2,14 @@
 //
 // **型では守れない継ぎ目**: 注入する writeRunLease から handOff を落としても run は緑のまま通り、
 // 担当を終えた台の lease を供給側のハートビートが run の最後まで書き戻す(モニターの配信が
-// 張られては畳まれる)。`fleetest run` と `fleetest api run` は注入を別々に持つので両方を見る。
+// 張られては畳まれる)。注入は `fleetest run` / `fleetest api run` が共有する ProfileRunOrchestrator の1箇所
+// (2経路がそこを通ることは ProfileRunOrchestratorWiringTests)。
 
 import XCTest
 
 final class SupplyLeaseHandOffWiringTests: XCTestCase {
 
-    private static let sources = ["Sources/fleetest/ProfileRunner.swift",
-                                  "Sources/fleetest/ApiRunCommand.swift"]
+    private static let sources = ["Sources/fleetest/ProfileRunOrchestrator.swift"]
 
     private static func code(_ path: String) throws -> [String] {
         let url = URL(fileURLWithPath: #filePath)
