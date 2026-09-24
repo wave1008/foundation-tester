@@ -3,7 +3,7 @@
 2026-07-30 の検討結果の文書化。**Phase 1(`run --runner` / `api run --runner` と GUI の
 ホスト登録・実行先選択)は実装済み(§12)。§14 の導入コマンド一式(`preflight.sh --runner` /
 `remote setup` / 汎用転送 `remote exec`)も実装済み(2026-08-16)。**§13 は段1〜段4が実装済み**
-(段5 の残りは watchdog 分界と自動修復だけ)、**§16 の運用コマンド(16.1〜16.5)と §18 の共有
+(段5 の残りは健全性 watchdog の分界だけ。ブリッジ watchdog は 2026-09-25 に分界済み)、**§16 の運用コマンド(16.1〜16.5)と §18 の共有
 (FIFO 待機列・占有の配布・1マシン1 run)も実装済み**。
 **別マシン(M1Ultra)への導入とシナリオ1本の実走まで実機で確認済み(2026-08-16。§14 末尾に実測と罠)**。
 **利用者向けの手順書は [remote-runner-setup.md](remote-runner-setup.md)**(この文書は設計の記録)。
@@ -640,8 +640,8 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 > 設定キーとしては存在しない(設定タブは `fleetest api remote-machines` を読み書きする)。
 > `fleetest.remote.*` 形の設定キーは無い。
 
-## 13. フリート実行と多ホスト GUI(**段1〜段4は実装済み**。段5 は状態・映像まで実装済みで、
-残るのは watchdog 分界と自動修復)
+## 13. フリート実行と多ホスト GUI(**段1〜段4は実装済み**。段5 は状態・映像とブリッジ
+watchdog の分界まで実装済みで、残るのは健全性 watchdog の分界)
 
 **実装済み**: 登録簿の LocalConfig 移行(段1。`fleetest remote machines` / `--runner <登録名>` /
 `api remote-machines` / 拡張の移行)・フリート定義と `run --fleet`(段4)・実行先重複の拒否・
@@ -656,7 +656,7 @@ target が hosts に無い/host 未設定を指す場合は**黙ってローカ�
 `remoteControl.workspace` で解消済み**なので、着手するなら残っている失敗の形を先に確かめる
 (下記「アプリプロファイル」)。段5(「デバイスモニター」タブの多ホスト化)は
 **状態・静止画・ライブ映像まで 2026-08-17 に実装**(下記「リモートのデバイスの状態と画面」)。
-残るのは watchdog 分界とリモート機の自動修復。
+残るのは健全性 watchdog の分界(ブリッジ watchdog は 2026-09-25 に分界済み)。
 
 **NDJSON 多重化はライブ配信(2026-08-18)**: `ApiRunMachineFanout.HostFanoutMultiplexer` は
 以前 workersReady が全子ぶん揃うまで全イベントをバッファしていた(リモート機の準備待ちで
@@ -974,9 +974,12 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 
 - ホスト別グループ。リモートの `api monitor`/ストリームを ssh 経由で起動し ssh パイプで中継
 - **watchdog 分界の実装地点はここ**(§11 の「後付け不可」の期限)。リモート機は無人で
-  モニター非常駐のため、**凍結の自動修復(sleep/wake keyevent)はこの watchdog が
-  ssh で撃つ**。「リモートタイルからの対話操作は作らない」原則は人間の手動操作の話で、
-  watchdog の自動修復は別枠
+  モニター非常駐のため、**自動修復は発行側の拡張が ssh で撃つ**。「リモートタイルからの
+  対話操作は作らない」原則は人間の手動操作の話で、watchdog の自動修復は別枠。
+  **2026-09-25 にブリッジ watchdog を分界した**。実装して分かったのは
+  **ランナー機に常駐 watchdog を置く必要が無かった**こと —— 修復は既存の lifecycle ジョブ
+  (machine を運ぶ)に乗るので、拡張が `remote exec <machine> -- api start-device` を
+  撃てば済む。**残るのは健全性 watchdog**(Wi-Fi 修復だけ `api` の口が無く手元の adb 直叩き)
 - ssh 常駐の respawn は**ホスト単位のバックオフ**を付ける(ネットワーク断で
   respawn 連打にしない。レビュー指摘)。プロセスタブのリモート分は状態表示のみで
   kill ボタンを出さない(§11)
@@ -1096,10 +1099,21 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   200 バイトの情報のために毎回 rsync(初回はアプリのパッケージ込みで 170MB)を払い、
   しかも `--delete` でランナー側の複製を毎回揃え直すことになる。**消す対象を名前で指す必要が
   そもそも無い**(消えるのはその AVD ディレクトリ / シミュレータ UDID そのもの)
-- **自動修復(watchdog)はリモートの台を見ない**。ブリッジ再供給も Wi-Fi 修復も手元にしか
-  効かないうえ、記録が name 単位なので、同名の台が2機にあると**向こうの connected が
-  手元のハングを隠し、向こうの booted が手元の健全な台を再起動する**。その機械の watchdog
-  (§13 の「watchdog 分界」)は未実装なので、いまは**見ない**のが正しい縮退
+- **ブリッジ watchdog はリモートの台も見る(2026-09-25 に分界を実装)**。旧: 見ない縮退。
+  除外の理由は2つあり、両方とも消えた ——
+  ①**修復手段**: lifecycle ジョブは machine を運べる(`{kind:"device", name, op, machine}`)ので、
+  リモートは `remote exec <machine> -- api start-device … --device-machine local` で回る。
+  §13 が想定していた「その機械に常駐 watchdog を置く」形は**要らなかった** —— 発行側の
+  拡張が ssh 越しに撃てば済む(常駐プロセスを1つ増やさずに分界できる)
+  ②**同名衝突**: 記録の鍵を `device.id`(= `DeviceMachineGrouping.workerID` で machine 込み)に
+  した。name 単位だった頃は**向こうの connected が手元のハングを隠し、向こうの booted が
+  手元の健全な台を再起動する**。webview へ出す `bridgeWatch` にも machine を載せる
+  (省略 = 手元。落とすと `findTileByName` が同名の手元タイルに当たる)
+- **健全性 watchdog(`monitorHealthWatchdog`)はまだ手元だけ**。Wi-Fi 再有効化が拡張からの
+  adb 直叩きで、`api` の口が無いため機械へ回せない(`repair-display` は口があるので回せる)。
+  足すなら `api repair-wifi --serial` を作り、上と同じ routing に乗せる
+- **実機はどちらの watchdog も見ない**(機械に依らない除外)。供給に数分かかり同時起動枠を
+  専有し、WiFi の実機は待ち受けが省電力で閉じるので「無応答 → 再供給」を繰り返すだけになる
 - **子の死は握りつぶさない**: 落ちたらそのホストの状態は**捨てる**(古い状態を出し続けると、
   向こうが落ちているのに connected と言い続ける)。再接続は 2s → 5s → 15s、
   **起動直後の死が3回続いたら諦める**(版が古い機械で無限に ssh を張らない)
@@ -1147,7 +1161,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 | 2 | マシンプロファイルタブの取得元セレクタ(段1の汎用転送を使うだけ) | 1。**2026-08-17 に形を変えて決着**(GUI のホスト指定はマシンプロファイルへ集約。下記) |
 | 3 | appPath の ssh 実在チェック(上書き機構は作らない) | 1。**未実装**(元の動機は §17 の workspace で解消済み。上記) |
 | 4 | フリート定義+`run --fleet`+静的検証(host→machine→デバイス名解決の赤字表示) | 1。**実装済み: 2026-08-16**(分散 `--split` も §8) |
-| 5 | 「デバイスモニター」タブ多ホスト化(**状態・静止画・ライブ映像は 2026-08-17 実装済み**。watchdog 分界と自動修復は未実装) | 1。①〜④と独立に後回し可 |
+| 5 | 「デバイスモニター」タブ多ホスト化(**状態・静止画・ライブ映像は 2026-08-17 実装済み**。**ブリッジ watchdog の分界は 2026-09-25 実装**。健全性 watchdog は Wi-Fi 修復の口が無く手元だけ) | 1。①〜④と独立に後回し可 |
 
 **results の扱い(2026-08-16 に実測で確認。当初の想定と違う)**: `fleetest results` 系の集計は
 `results/runs/` を走査する**ファイルベース**なので、results/ の回収が済んだ時点で

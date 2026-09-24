@@ -4,8 +4,10 @@
 // vscode を import しない(test/monitorBridgeWatchdog.test.mjs から node:test で検証するため。
 // orphanSweep.ts と同じ方針)。
 //
-// 契約: webview へは { type: "bridgeWatch", name, phase } を post する(name は deviceOpBusy と
+// 契約: webview へは { type: "bridgeWatch", name, machine, phase } を post する(name は deviceOpBusy と
 // 同じ名前空間=デバイス論理名。monitorModel.ts の MonitorToWebviewMessage 参照)。
+// **machine を落とさない** —— 一意なのは (machine, name) で、同名の台が別の機械に居るのは通常。
+// 落とすと webview の findTileByName が手元の同名タイルに当たり、向こうの異常を手元に表示する。
 
 import { t } from "./i18n";
 import type {
@@ -59,6 +61,15 @@ interface DeviceWatchEntry {
   heldInRun: boolean;
 }
 
+/** **machine は手元のとき欄ごと省く**(「省略 = 手元」が monitorDevices / wipeStatus と共通の綴り)。
+ * `machine: undefined` を載せると、手元の台のメッセージが「machine を持つ」別の形になる */
+function watchMessage(name: string, machine: string | undefined,
+                      phase: BridgeWatchMessage["phase"]): BridgeWatchMessage {
+  return machine === undefined
+    ? { type: "bridgeWatch", name, phase }
+    : { type: "bridgeWatch", name, machine, phase };
+}
+
 function freshEntry(): DeviceWatchEntry {
   return {
     bootedStreak: 0, attemptCount: 0, cooldownUntil: 0, failed: false, degraded: false, heldInRun: false,
@@ -89,34 +100,38 @@ export class MonitorBridgeWatchdog {
       if (device.registered === false) {
         continue;
       }
-      // **リモートの台は見ない** —— 修復手段(ブリッジ再供給)は手元にしか効かず、
-      // かつ entries が name 単位なので、同名の台が別の機械にも居ると
-      // 「向こうの connected が手元のハングを隠す / 向こうの booted が手元の健全な台を再起動する」
-      // の両方が起きる(その機械の watchdog は未実装。docs/remote-runner.md §13)
-      if (device.machine !== undefined) {
-        continue;
-      }
-      // **実機も見ない** —— 実機のブリッジ起動は `fleetest run` とタイルのメニューだけが担う
+      // **実機は見ない** —— 実機のブリッジ起動は `fleetest run` とタイルのメニューだけが担う
       // (一括操作と同じ理由: 供給に数分かかり同時起動枠を専有する。WiFi の実機は待ち受けが
-      // 省電力で閉じるので「無応答 → 再供給」を繰り返すだけになる。2026-09-04 実測)
+      // 省電力で閉じるので「無応答 → 再供給」を繰り返すだけになる。2026-09-04 実測)。
+      // **この除外は機械に依らない**(リモートの実機も同じ理由で見ない)
       if (device.kind === "physical") {
         continue;
       }
-      this.observeOne(device.name, device.state, device.inRun);
+      // **リモートの台も見る**(2026-09-25。旧: 除外)。成立の条件は2つとも揃っている ——
+      // ①修復手段: lifecycle ジョブは machine を運べ、リモートは
+      //   `remote exec <machine> -- api start-device … --device-machine local` で回る
+      // ②同名衝突: 記録の鍵を device.id にした(id は machine 込みで一意。
+      //   `DeviceMachineGrouping.workerID`)。name で持っていた頃は「向こうの connected が
+      //   手元のハングを隠す / 向こうの booted が手元の健全な台を再起動する」が起きた
+      this.observeOne(device.id, device.name, device.machine, device.state, device.inRun);
     }
   }
 
-  private observeOne(name: string, state: MonitorDeviceState, inRun: boolean | undefined): void {
-    const entry = this.entries.get(name);
+  /** `id` は記録の鍵(machine 込みで一意)、`name`/`machine` は表示と操作の宛先。
+   * **鍵と宛先を同じ文字列で兼ねない** —— 兼ねると、表示に出す名前を変えた日に記録が割れる */
+  private observeOne(id: string, name: string, machine: string | undefined,
+                     state: MonitorDeviceState, inRun: boolean | undefined): void {
+    const entry = this.entries.get(id);
+    const label = machine === undefined ? name : `${machine}/${name}`;
 
     if (state === "connected") {
       if (!entry) {
-        this.entries.set(name, freshEntry());
+        this.entries.set(id, freshEntry());
         return;
       }
       if (entry.degraded) {
-        this.entries.set(name, freshEntry());
-        this.deps.post({ type: "bridgeWatch", name, phase: "ok" });
+        this.entries.set(id, freshEntry());
+        this.deps.post(watchMessage(name, machine, "ok"));
       } else {
         entry.bootedStreak = 0;
       }
@@ -143,7 +158,7 @@ export class MonitorBridgeWatchdog {
       // streak は 0 に戻す(offline と同じ「連続性が途切れる」扱い)。failed/attemptCount/
       // cooldown は据え置く
       if (entry.degraded && !entry.heldInRun) {
-        this.deps.log(`[bridge-watch] ${name}: ${t("monitor.bridgeWatch.repairDeferredInRun")}`);
+        this.deps.log(`[bridge-watch] ${label}: ${t("monitor.bridgeWatch.repairDeferredInRun")}`);
       }
       entry.heldInRun = true;
       entry.bootedStreak = 0;
@@ -170,9 +185,9 @@ export class MonitorBridgeWatchdog {
     if (!entry.degraded) {
       entry.degraded = true;
       this.deps.log(
-        `[bridge-watch] ${name}: ${t("monitor.bridgeWatch.unresponsiveDetected", { count: UNRESPONSIVE_THRESHOLD })}`,
+        `[bridge-watch] ${label}: ${t("monitor.bridgeWatch.unresponsiveDetected", { count: UNRESPONSIVE_THRESHOLD })}`,
       );
-      this.deps.post({ type: "bridgeWatch", name, phase: "unresponsive" });
+      this.deps.post(watchMessage(name, machine, "unresponsive"));
     }
 
     if (this.now() < entry.cooldownUntil) {
@@ -181,9 +196,9 @@ export class MonitorBridgeWatchdog {
     if (entry.attemptCount >= MAX_REPAIR_ATTEMPTS) {
       entry.failed = true;
       this.deps.log(
-        `[bridge-watch] ${name}: ${t("monitor.watchdog.giveUpAfterAttempts", { count: MAX_REPAIR_ATTEMPTS })}`,
+        `[bridge-watch] ${label}: ${t("monitor.watchdog.giveUpAfterAttempts", { count: MAX_REPAIR_ATTEMPTS })}`,
       );
-      this.deps.post({ type: "bridgeWatch", name, phase: "failed" });
+      this.deps.post(watchMessage(name, machine, "failed"));
       return;
     }
     if (!this.deps.isAutoRepairEnabled() || this.deps.isAnyRunActive()
@@ -192,7 +207,10 @@ export class MonitorBridgeWatchdog {
     }
     entry.attemptCount += 1;
     entry.cooldownUntil = this.now() + COOLDOWN_MS;
-    this.deps.enqueueLifecycleJob({ kind: "device", name, op: "up" });
-    this.deps.post({ type: "bridgeWatch", name, phase: "repairing" });
+    // **machine は手元のとき欄ごと省く**(post と同じ理由。ジョブの綴りも「省略 = 手元」)
+    this.deps.enqueueLifecycleJob(machine === undefined
+      ? { kind: "device", name, op: "up" }
+      : { kind: "device", name, op: "up", machine });
+    this.deps.post(watchMessage(name, machine, "repairing"));
   }
 }

@@ -1762,9 +1762,11 @@ export function applyDeviceDownFinished(message) {
   renderFrame(entry);
 }
 
-// 契約: { type: 'bridgeWatch', name, phase }(name は deviceOpBusy と同じ device.name 名前空間)。
+// 契約: { type: 'bridgeWatch', name, machine, phase }(name は deviceOpBusy と同じ device.name
+// 名前空間。machine 省略 = 手元)。**machine で引く** —— 一意なのは (machine, name) で、
+// リモートの台も watchdog の対象になったため、名前だけで引くと手元の同名タイルに当たる。
 export function applyBridgeWatch(message) {
-  const entry = findTileByName(message.name);
+  const entry = findTileByName(message.name, message.machine);
   if (!entry) {
     return;
   }

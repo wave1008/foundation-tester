@@ -435,9 +435,12 @@ export type MonitorToWebviewMessage =
   | { readonly type: "showStreamDuringRun"; readonly value: boolean }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
   // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
+  // machine はそのデバイスが居る機械(省略=手元)。**リモートの台も見るようになったので必ず載せる**
+  // —— 名前だけだと webview が同名の手元タイルを書き換える(wipeStatus と同じ理由)。
   | {
       readonly type: "bridgeWatch";
       readonly name: string;
+      readonly machine?: string;
       readonly phase: "unresponsive" | "repairing" | "failed" | "ok";
     }
   // ゲストOS健全性の自動修復ウォッチドッグ(monitorHealthWatchdog.ts)の状態遷移通知。

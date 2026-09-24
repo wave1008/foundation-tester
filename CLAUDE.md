@@ -248,7 +248,15 @@
   `RemoteDeviceFanout.machineStamped` / `ApiRunMachineFanout` の rehost)—— 子は
   `--device-machine local` で走るので自分の台を `machine:null` と名乗り、そのまま流すと拡張が
   **同名の手元のタイル**を書き換える(機械ごとに2台ずつ起きていても「全体で2台」に見える)。
-  **自動修復(watchdog)はリモートの台を見ない**(修復手段が手元にしか効かず、記録が name 単位)。
+  **ブリッジ watchdog はリモートの台も見る**(2026-09-25)。成立の条件は2つ —— ①修復手段:
+  lifecycle ジョブが machine を運び、リモートは `remote exec <machine> -- api start-device
+  … --device-machine local` で回る ②記録の鍵を **`device.id`(machine 込みで一意)**にした
+  (name 単位だった頃は「向こうの connected が手元のハングを隠す / 向こうの booted が手元の
+  健全な台を再起動する」)。**webview へ出す `bridgeWatch` には machine を載せる**
+  (省略 = 手元。落とすと `findTileByName` が同名の手元タイルに当たる)。
+  **健全性 watchdog(`monitorHealthWatchdog`)はまだリモートを見ない** —— Wi-Fi 修復に
+  相当する `api` の口が無く、そこだけ手元の adb 直叩きのため。実機はどちらの watchdog も
+  見ない(供給に数分かかり枠を専有する。機械に依らない除外)。
   **ホストの負荷(MEM/CPU/GPU/VN/FM。VN = Vision / Core ML の呼び出し = OCR と画像分類器)も同じ** —— 拡張が
   `remote exec <runner> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを
   **機械ごとの行**にする(左端は手元が `local`・以降は機械名。1行のときはラベルを出さない)。
