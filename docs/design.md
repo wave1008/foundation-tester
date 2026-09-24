@@ -2581,8 +2581,13 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   材料が無い。そこで根拠を別ケース `FrozenEvidence.darkScreenPhysical`(`isConclusive=false`)へ
   写し、**警告だけ出して除外も回復も撃たない**。写す場所は
   `FrozenVerdict.observe(uniformBlank:injected:physical:)` の1箇所で、run 前トリアージと
-  モニターが同じ規則を通る —— モニター側にこの写しが無かった頃は、**夜間に消灯しているだけの
-  実機がタイルで ❄️ になり得た**(run 側だけ実機を除外していたため片側にしか手当てが無かった)。
+  モニターが同じ規則を通る —— モニター側にこの写しが無かった頃は、**消灯しているだけの実機が
+  タイルで ❄️ になっていた**(run 側だけ実機を除外していたため片側にしか手当てが無かった)。
+  **実測で確認済み(2026-09-25)**: Dozing の Pixel 4a の `screencap` は
+  `BlankFrameDetector.isUniformBlank = true`(15KB)で、写し方を旧に戻した対照では
+  `api monitor` が3周目に `frozen=true` を出し、新では3周とも false。
+  **同じ消灯でも Pixel 3a は一様でない**(AOD で 54KB・`isUniformBlank=false`)ので、
+  **機種で出方が変わる** —— 「実機なら必ず出る/出ない」と書かないこと。
   **確定させたいなら「消灯ではない」と言える材料(端末側の display state)を先に足すこと**。
   絵だけでは永久に分けられない
 - **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
