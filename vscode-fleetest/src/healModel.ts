@@ -200,7 +200,7 @@ export function setTrailingCommentPreview(line: string, newComment: string): str
 
 /**
  * 変更前セレクタ→変更後セレクタ・変更前コメント→編集中コメントを反映した「変更後」行を組み立てる
- * (diffプレビュー用。webview 側は同じロジックを手書きで複製して毎キー入力ごとに呼ぶ)。
+ * (diffプレビュー用。webview の src/webview/healReview/main.js が毎キー入力ごとに呼ぶ)。
  */
 export function buildPreviewAfterLine(
   originalLine: string,

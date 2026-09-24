@@ -16,7 +16,7 @@
 //   触れずに単体で構成できる(Monitor 本体はコンストラクタ自体が
 //   vscode.workspace.createFileSystemWatcher を呼ぶため、コンストラクタすら実行できない。
 //   Monitor 本体は対象外)。
-// - HealReviewController.renderHtml(items) は webview/extensionUri を取らず vscode に触れないため、
+// - HealReviewController は資産の URI 解決(vscode.Uri.joinPath)を注入で受けるため、fake を渡せば
 //   パネルが開いている場合も実行できる。
 // Monitor の relocalize()(html 再構築 → deviceStream.restartAllStreams() → live.restartStream() の
 // 順)は test/panelRelocalizeSourceContract.test.mjs がソース走査で検証する(同ファイル冒頭コメント参照)。
@@ -51,7 +51,11 @@ function newLiveTabHost() {
 }
 
 function newHealReviewController() {
-  return new HealReviewController("/tmp/proj", getConfig, outputChannel, {}, new RunEventBus());
+  const assets = {
+    localResourceRoots: [],
+    resolve: () => ({ styleUri: "https://x/style.css", scriptUri: "https://x/main.js", cspSource: "https://x" }),
+  };
+  return new HealReviewController("/tmp/proj", getConfig, outputChannel, {}, new RunEventBus(), assets);
 }
 
 test("LiveTabHost.restartStream(): MonitorLiveController.restartStream() へ委譲する(例外なし)", () => {
@@ -71,8 +75,6 @@ test("HealReviewController.relocalize(): パネル未生成なら何もしない
 
 test("HealReviewController.relocalize(): パネルが開いていれば items を埋め込んだ html を組み直す", () => {
   const controller = newHealReviewController();
-  // renderHtml(items) は webview に触れない(healReviewPanel.ts 冒頭コメント: 外部リソース無し)ため
-  // vscode スタブの制約を受けない。
   const panel = { webview: { html: "old-html" } };
   controller.panel = panel;
 

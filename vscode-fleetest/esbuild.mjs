@@ -2,7 +2,7 @@
 // vscode-fleetest のビルドスクリプト。
 //
 //   node esbuild.mjs          : src/extension.ts -> dist/extension.js と
-//                                src/webview/monitor/ -> media/monitor/ の両方を1回ビルド
+//                                src/webview/{monitor,healReview}/ -> media/<同名>/ を1回ビルド
 //                                (「ライブ操作」タブはモニターの webview に統合済み。専用エントリは無い)
 //   node esbuild.mjs --watch  : 上記をどちらもウォッチモードで実行
 //   node esbuild.mjs --tests  : test/*.test.mjs を out-test/ にバンドルする(node:test 用。
@@ -54,6 +54,8 @@ async function buildWebview() {
     entryPoints: [
       path.join(rootDir, "src/webview/monitor/main.js"),
       path.join(rootDir, "src/webview/monitor/style.css"),
+      path.join(rootDir, "src/webview/healReview/main.js"),
+      path.join(rootDir, "src/webview/healReview/style.css"),
     ],
     bundle: true,
     platform: "browser",
