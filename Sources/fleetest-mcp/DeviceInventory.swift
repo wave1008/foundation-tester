@@ -1,4 +1,4 @@
-// ft_list_devices / ft_list_apps の本文を組み立てる材料。MCPServer+Dispatch.swift(配線は別担当)から呼ぶ。
+// ft_list_devices / ft_list_apps の本文を組み立てる材料。MCPServer+SessionTools.swift(配線は別担当)から呼ぶ。
 //
 // **実行プロファイルを前提にできない**: .claude/skills/fleetest-mcp/SKILL.md の導線(MCP だけ
 // 入れる受け手)は runs/ にデバイスを一つも持たない。devicesText はプロファイルが解決できないときも

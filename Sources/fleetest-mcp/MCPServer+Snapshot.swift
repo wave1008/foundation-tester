@@ -858,7 +858,7 @@ extension MCPServer {
         + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"
         + " then `ft_launch` your app again"
 
-    // **internal**(MCPServer+Dispatch.swift の ft_type ref なし失敗経路も使う。他ファイルの
+    // **internal**(MCPServer+ScreenTools.swift の ft_type ref なし失敗経路も使う。他ファイルの
     // 拡張から呼ぶので private のままにできない)。一発物の照会 = target 無しで前面のアラートだけ聞く
     static func frontSystemAlert(driver: AppDriver) async -> String? {
         describeFrontSystemAlert(try? await driver.systemAlert())

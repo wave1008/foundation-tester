@@ -23,10 +23,7 @@ final class MCPPinchMinimumSpanTests: XCTestCase {
 
     /// 配線: 明示の radius には触らず、Android だけが広げる(ソース走査)
     func testOnlyAndroidWidensAndExplicitRadiusWins() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
-        let code = try String(contentsOf: url, encoding: .utf8)
+        let code = try MCPServerSourceText.combined()
         XCTAssertTrue(code.contains("if pinchRadius == nil, let android = pinchDriver as? AndroidDriver,"),
                       "Android 限定・明示 radius 優先の条件が消えている")
         XCTAssertTrue(code.contains("let minimumSpan = android.minimumScalingSpanPx()"), "最小距離を端末から採っていない")

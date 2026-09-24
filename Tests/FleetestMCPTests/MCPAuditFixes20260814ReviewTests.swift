@@ -49,10 +49,10 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
     /// 後ろにあると必ず throw する(実測: `Error: no booted simulator found: iPhone`)
     func testListAppsBuildsCandidateUDIDBeforeTheThrowingSimulatorFallback() throws {
         let source = try Self.dispatchSource()
-        let start = try XCTUnwrap(source.range(of: "case \"ft_list_apps\":"),
-                                  "ft_list_apps の分岐が見つからない")
+        let start = try XCTUnwrap(source.range(of: "func ftListApps("),
+                                  "ft_list_apps の実装が見つからない")
         let tail = source[start.upperBound...]
-        let end = try XCTUnwrap(tail.range(of: "case \"ft_logs\":"), "次の case が見つからない")
+        let end = try XCTUnwrap(tail.range(of: "func ftLogs("), "次の関数が見つからない")
         let body = String(tail[..<end.lowerBound])
 
         let candidate = try XCTUnwrap(body.range(of: "let candidateUDID ="),
@@ -70,10 +70,10 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
     /// SimulatorCatalog しか見ないため)実機では `udids[key]` が nil のままで拾えない
     func testListAppsCandidateUDIDConsultsTheRawArgumentFirst() throws {
         let source = try Self.dispatchSource()
-        let start = try XCTUnwrap(source.range(of: "case \"ft_list_apps\":"),
-                                  "ft_list_apps の分岐が見つからない")
+        let start = try XCTUnwrap(source.range(of: "func ftListApps("),
+                                  "ft_list_apps の実装が見つからない")
         let tail = source[start.upperBound...]
-        let end = try XCTUnwrap(tail.range(of: "case \"ft_logs\":"), "次の case が見つからない")
+        let end = try XCTUnwrap(tail.range(of: "func ftLogs("), "次の関数が見つからない")
         let body = compact(String(tail[..<end.lowerBound]))
 
         XCTAssertTrue(body.contains(compact("(args[\"udid\"] as? String)")),
@@ -85,10 +85,10 @@ final class MCPAuditFixes20260814ReviewTests: XCTestCase {
     /// これが無いと、udid: も渡さず port: だけで実機を指した呼び出しは依然として拾えない
     func testListAppsCandidateUDIDFallsBackToThePortRecordForBareUdidlessPortCalls() throws {
         let source = try Self.dispatchSource()
-        let start = try XCTUnwrap(source.range(of: "case \"ft_list_apps\":"),
-                                  "ft_list_apps の分岐が見つからない")
+        let start = try XCTUnwrap(source.range(of: "func ftListApps("),
+                                  "ft_list_apps の実装が見つからない")
         let tail = source[start.upperBound...]
-        let end = try XCTUnwrap(tail.range(of: "case \"ft_logs\":"), "次の case が見つからない")
+        let end = try XCTUnwrap(tail.range(of: "func ftLogs("), "次の関数が見つからない")
         let body = compact(String(tail[..<end.lowerBound]))
 
         XCTAssertTrue(body.contains(compact("BridgeDeviceRecord.load(port: port, repoRoot:")),

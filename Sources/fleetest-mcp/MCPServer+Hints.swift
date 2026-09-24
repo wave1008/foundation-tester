@@ -741,7 +741,7 @@ extension MCPServer {
     /// waitFor タイムアウト文の共通末尾(2026-08-12 監査)。waitFor はレンダリング済みの木しか
     /// 見ないので、探した相手がスクロール圏外にいると満額(既定5秒〜)を空費する
     /// (実測: 週間予報表が初期表示の下にあり、25秒2回=52秒を空費した。正解は ft_scroll_to)。
-    /// **ft_snapshot(MCPServer+Dispatch.swift)と snapshotAfter(MCPServer+Snapshot.swift)の
+    /// **ft_snapshot(MCPServer+ScreenTools.swift)と snapshotAfter(MCPServer+Snapshot.swift)の
     /// 両方が呼ぶ唯一の定義元**(片方だけ変わる事故を防ぐ)。スクロール容器が1つも申告されて
     /// いない画面ではスクロールが答えになり得ないので黙る
     static func waitForScrollHint(in snapshot: SnapshotResponse) -> String {

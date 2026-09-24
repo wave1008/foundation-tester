@@ -4,7 +4,7 @@
 //
 // iOS のパース・列挙は Sources/FTBridgeClient/SimulatorAppCatalog.swift(シミュレータ)/
 // IOSPhysicalAppCatalog.swift(実機)に委譲する。MCP の ft_list_apps(Sources/fleetest-mcp/
-// MCPServer+Dispatch.swift)もこの2つを共有するが、**宛先の仕分け(実機かどうかの判定・
+// MCPServer+SessionTools.swift)もこの2つを共有するが、**宛先の仕分け(実機かどうかの判定・
 // 候補 udid の集め方)は各自持つ** —— CLI は port → `.fleetest/bridge-<port>.device` の記録
 // だけを見る(引数に udid が無いため)。MCP は引数の `udid:`・セッション記憶も候補にする。
 
@@ -43,7 +43,7 @@ struct ApiListApps: AsyncParsableCommand {
 
     /// **実機判定はシミュレータへの素通し(bootedSimulatorUDID)より必ず前に置く**: 実機の
     /// `/status` は device に機種名("iPhone")しか返さず、そのまま simctl 側へ渡すと必ず throw
-    /// する(欠陥はここでは起きない ―― MCP の ft_list_apps と同じ理由。MCPServer+Dispatch.swift
+    /// する(欠陥はここでは起きない ―― MCP の ft_list_apps と同じ理由。MCPServer+SessionTools.swift
     /// 参照)。CLI には引数 `udid:` もセッション記憶も無いので、候補は
     /// `.fleetest/bridge-<port>.device` の記録だけ(実機の establish 経由でしか書かれない
     /// ―― IOSDeviceTransport.establish のコメント参照。仮想デバイスでは記録自体が存在しない)

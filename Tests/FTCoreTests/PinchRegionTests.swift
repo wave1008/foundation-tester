@@ -119,7 +119,7 @@ extension PinchRegionTests {
         let liveCall = try XCTUnwrap(live.range(of: "PinchRegion.area(elements: snapshot.elements,"))
         XCTAssertTrue(String(live[..<liveCall.lowerBound].suffix(160)).contains("== \"ios\""),
                       "ライブ操作も iOS のときだけ渡すこと")
-        let mcp = try source("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
+        let mcp = try source("Sources/fleetest-mcp/MCPServer+GesturesTools.swift")
         let mcpCall = try XCTUnwrap(mcp.range(of: "PinchRegion.area(elements: snapshot.elements,"))
         XCTAssertTrue(String(mcp[..<mcpCall.lowerBound].suffix(420)).contains("AndroidDriver"),
                       "MCP も Android を外すこと")
@@ -128,7 +128,7 @@ extension PinchRegionTests {
     func testEveryPinchCallerAsksForTheArea() throws {
         for path in ["Sources/FTCore/StepExecutor+Actions.swift",
                      "Sources/fleetest/ApiLiveCommand.swift",
-                     "Sources/fleetest-mcp/MCPServer+Dispatch.swift"] {
+                     "Sources/fleetest-mcp/MCPServer+GesturesTools.swift"] {
             XCTAssertTrue(try source(path).contains("PinchRegion.area("),
                           "\(path) が対象未指定のピンチで PinchRegion を通っていない")
         }

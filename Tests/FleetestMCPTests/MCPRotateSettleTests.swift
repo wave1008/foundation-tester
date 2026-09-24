@@ -99,10 +99,7 @@ final class MCPRotateSettleTests: XCTestCase {
     /// `rotateDriver is AndroidDriver` を条件に持っていること。これを外す変異(常時呼ぶ形へ戻す)は
     /// 上のテストが落とすが、「Android だけ」という条件そのものが消えていないかはここで固定する
     func testRestoreCallIsGatedToAndroidInSource() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
-        let code = try String(contentsOf: url, encoding: .utf8)
+        let code = try MCPServerSourceText.combined()
         XCTAssertTrue(code.contains("if settled == .portrait, let android = rotateDriver as? AndroidDriver {"),
                       "ft_rotate の復元呼び出しが Android 限定のままであること")
         // **元が固定なら戻さない**(R1): 丸ごと戻す restoreOrientationIfNeeded をここで呼ばない

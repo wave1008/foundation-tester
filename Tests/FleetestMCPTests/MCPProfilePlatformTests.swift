@@ -73,10 +73,7 @@ final class MCPProfilePlatformTests: XCTestCase {
     /// ft_list_apps / ft_launch / ft_rotate / ft_double_tap は driver() を通した直後なので、
     /// platformName(args) ではなく `is AndroidDriver` で分岐していること
     func testCallSitesWithADriverAtHandDecideByTheDriverType() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
-        let code = try String(contentsOf: url, encoding: .utf8)
+        let code = try MCPServerSourceText.combined()
         XCTAssertTrue(code.contains("if let android = appsDriver as? AndroidDriver {"), "ft_list_apps")
         XCTAssertTrue(code.contains("platform: launchDriver is AndroidDriver ? \"android\" : \"ios\""), "ft_launch")
         XCTAssertTrue(code.contains("recordSnapshot(rotated, rotateDriver is AndroidDriver ? \"android\" : \"ios\", args)"),

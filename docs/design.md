@@ -3295,7 +3295,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     警告すると誤検知になる) —— `FTCore.KeyboardOcclusion` が申告と木の chrome
     (`inputView`/`SystemInputAssistantView`。**申告と交差するものだけ**)を足し込んで実効矩形を作り、
     MCP/DSL の呼び出し側全員(MCPServer+Snapshot.swift / MCPServer+Hints.swift /
-    MCPServer+Dispatch.swift の ft_double_tap / StepExecutor+Actions.swift)がこの型を通す。
+    MCPServer+GesturesTools.swift の ft_double_tap / StepExecutor+Actions.swift)がこの型を通す。
     chrome が木に無ければ申告どおり(Android は既に画面下端まで届いており対象外。ブラウザの
     WebView 内キーボードは chrome がツリーに出ないため同様に対象外)。
     **広げるだけでは雑音になる**: キーボード自身の部品(地球儀キー・変換候補バー)まで

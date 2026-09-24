@@ -8,7 +8,7 @@ extension MCPServer {
 
     /// `fingers` 引数 → `[FTFinger]`。**座標は絶対**(ft_tap の x/y と同じ座標系)——
     /// DSL の `FTFinger`(対象の枠に対する比率)とは違う値だが、**同じ型で表せる**: 呼び手
-    /// (`MCPServer+Dispatch.swift` の `ft_gesture`)は `TouchGesture.resolve(_:in: FTRect(x:0,y:0,
+    /// (`MCPServer+GesturesTools.swift` の `ft_gesture`)は `TouchGesture.resolve(_:in: FTRect(x:0,y:0,
     /// width:1,height:1), screen:, maxGestureSeconds:)` にそのまま渡す —— 幅1・高さ1の矩形を
     /// target にすると `resolve` の比率写像(`target.x + target.width * rx`)が恒等写像になり、
     /// 絶対座標をそのまま素通しする。**点の積み上げ・最小接触時間・秒数の妥当性検査(有限・

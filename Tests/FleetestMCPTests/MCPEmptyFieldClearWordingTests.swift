@@ -81,10 +81,7 @@ final class MCPEmptyFieldClearWordingTests: XCTestCase {
     /// **配線**: ft_clear_input の呼び出し口が `requestedAs: "clear"` を渡していること
     /// (渡し忘れると既定の "replace" のまま文言が事実と食い違う)
     func testClearInputCallSiteIsWiredWithTheClearVerb() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Dispatch.swift")
-        let code = try String(contentsOf: url, encoding: .utf8)
+        let code = try MCPServerSourceText.combined()
         XCTAssertTrue(code.contains("target: clearTarget, expected: \"\",")
                       && code.contains("requestedAs: \"clear\")"),
             "ft_clear_input が replaceVerificationNote へ requestedAs: \"clear\" を渡していない")

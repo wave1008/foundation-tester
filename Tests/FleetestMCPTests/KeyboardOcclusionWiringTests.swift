@@ -26,14 +26,14 @@ final class KeyboardOcclusionWiringTests: XCTestCase {
     }
 
     /// スナップショットから KeyboardOcclusion を組み立てる側の4箇所。**ft_double_tap
-    /// (MCPServer+Dispatch.swift)も同じ被覆にする契約なので同列に含む**
+    /// (MCPServer+GesturesTools.swift)も同じ被覆にする契約なので同列に含む**
     /// (RefGuard.keyboardWarning は呼び出し元から渡された値を転送するだけなので対象外)
     func testAllResolveSitesBuildKeyboardOcclusionFromTheSnapshot() throws {
         let sites = [
             "FTCore/StepExecutor+Actions.swift",
             "fleetest-mcp/MCPServer+Snapshot.swift",
             "fleetest-mcp/MCPServer+Hints.swift",
-            "fleetest-mcp/MCPServer+Dispatch.swift",
+            "fleetest-mcp/MCPServer+GesturesTools.swift",
         ]
         for site in sites {
             let text = compact(try source(site))

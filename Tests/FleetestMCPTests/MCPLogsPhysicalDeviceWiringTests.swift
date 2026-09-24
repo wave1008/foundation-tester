@@ -1,7 +1,7 @@
 // ft_logs が実機宛てのときに CrashLogs.text の待ちを飛ばすための配線(件3)。
 //
 // CrashLogsTests は CrashLogs.text(physicalUDID:) 自体の分岐を直接検証するが、
-// MCPServer+Dispatch の ft_logs ケースが実際に physicalUDID を解決して渡しているかは
+// MCPServer+SessionTools の ftLogs が実際に physicalUDID を解決して渡しているかは
 // ソース走査でしか固定できない —— ft_logs はホストのファイル走査(DiagnosticReports)/
 // adb を伴うため、server.call を通した統合テストの対象から意図的に外れている
 // (MCPToolCallTests.hostBackedTools 参照)。
@@ -13,10 +13,10 @@ final class MCPLogsPhysicalDeviceWiringTests: XCTestCase {
 
     private static func logsCaseBody() throws -> String {
         let source = try MCPServerSourceText.combined()
-        let start = try XCTUnwrap(source.range(of: "case \"ft_logs\":"),
-                                  "ft_logs の分岐が見つからない")
+        let start = try XCTUnwrap(source.range(of: "func ftLogs("),
+                                  "ft_logs の実装が見つからない")
         let tail = source[start.upperBound...]
-        let end = try XCTUnwrap(tail.range(of: "case \"ft_install\":"), "次の case が見つからない")
+        let end = try XCTUnwrap(tail.range(of: "func ftInstall("), "次の関数が見つからない")
         return String(tail[..<end.lowerBound])
     }
 

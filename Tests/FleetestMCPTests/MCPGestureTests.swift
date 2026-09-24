@@ -1,5 +1,5 @@
 // ft_gesture: `fingers` JSON → 絶対座標の `[FTFinger]` への変換(MCPServer+Gesture.swift)と、
-// dispatch(MCPServer+Dispatch.swift の case "ft_gesture")の配線。
+// dispatch(MCPServer+GesturesTools.swift の ftGesture)の配線。
 //
 // TouchGesture.resolve/validate 自体の判定(点の積み上げ・本数・画面内・時刻の単調性・
 // 合計秒数の上限)は TouchGestureTests(FTCoreTests)が持つ。ここで確かめるのは MCP 側の責務だけ:

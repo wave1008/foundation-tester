@@ -117,10 +117,10 @@ final class MCPAuditFixes20260813PhysicalDeviceTests: XCTestCase {
     /// `Invalid device` で死ぬ)
     func testListAppsRoutesPhysicalDevicesAwayFromSimctl() throws {
         let source = try MCPServerSourceText.combined()
-        let start = try XCTUnwrap(source.range(of: "case \"ft_list_apps\":"),
-                                  "ft_list_apps の分岐が見つからない")
+        let start = try XCTUnwrap(source.range(of: "func ftListApps("),
+                                  "ft_list_apps の実装が見つからない")
         let tail = source[start.upperBound...]
-        let end = try XCTUnwrap(tail.range(of: "case \"ft_logs\":"), "次の case が見つからない")
+        let end = try XCTUnwrap(tail.range(of: "func ftLogs("), "次の関数が見つからない")
         let body = String(tail[..<end.lowerBound])
         let physical = try XCTUnwrap(body.range(of: "IOSPhysicalAppCatalog.apps"),
                                      "実機の経路が無い —— 実機 udid が simctl へ素通しされる")

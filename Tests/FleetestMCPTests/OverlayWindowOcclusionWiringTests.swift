@@ -23,13 +23,13 @@ final class OverlayWindowOcclusionWiringTests: XCTestCase {
     }
 
     /// 申告から OverlayWindowOcclusion を組み立てる側。**ft_tap(MCPServer+Snapshot)・
-    /// ft_double_tap(MCPServer+Dispatch)・DSL の tap/doubleTap(StepExecutor+Actions)の
+    /// ft_double_tap(MCPServer+GesturesTools)・DSL の tap/doubleTap(StepExecutor+Actions)の
     /// 3ファイルが同じ被覆でなければならない** —— どれかが黙ると同じ画面で言うことが割れる
     func testAllResolveSitesBuildFromTheSnapshotsDeclaredFrames() throws {
         let sites = [
             "FTCore/StepExecutor+Actions.swift",
             "fleetest-mcp/MCPServer+Snapshot.swift",
-            "fleetest-mcp/MCPServer+Dispatch.swift",
+            "fleetest-mcp/MCPServer+GesturesTools.swift",
         ]
         for site in sites {
             let text = compact(try source(site))
