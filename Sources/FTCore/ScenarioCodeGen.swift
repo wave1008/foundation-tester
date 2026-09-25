@@ -11,8 +11,9 @@ public enum ScenarioCodeGen {
     /// Flow から @TestClass シナリオの .swift ソースを生成する
     /// `emptyExpectation` = アサーションが1件も無くても `.expectation { }` を空で出す。
     /// MCP の下書き(ft_draft_scenario)専用の形で、**推測でアサーションを作らない**ための入口:
-    /// 空のまま出すと ft_dry_run の「アサーションの無い expectation ブロック」検出が
-    /// 必ず作者に埋めさせる。dry-run が落ちるのは意図した設計(不具合として扱わない)
+    /// 空のまま出すと ft_dry_run が「アサーションの無い expectation ブロック」を ⚠️ 行で言う
+    /// (失敗にはしない = FTRuntime.warnSectionWithoutAssertions)。埋めさせるのはその警告と
+    /// fleetest-scenario スキルの「⚠️ 行は必ず解消する」
     /// `notesBeforeStep` = 「この手の**直前**に出すコメント行」(キーは `flow.steps` の 0 起点の位置。
     /// `steps.count` は末尾)。**位置を持つのが要点** —— MCP の下書きはセレクタを解決できなかった手を
     /// コメントで残すが、まとめて先頭へ出すと `action` の並びからその手が消え、

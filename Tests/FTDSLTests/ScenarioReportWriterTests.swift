@@ -183,6 +183,54 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertTrue(content.contains("inconclusive: verify block contains no assertions"), content)
     }
 
+    // MARK: - 失敗の証跡(ft_run_scenario が読む `.failure.json`)
+
+    /// 失敗した scene の要素一覧とスクショのファイル名を証跡に書く。スクショ名は md が参照する
+    /// 実ファイルと同じ(読み手はこの名前でディレクトリから引く)
+    func testFailedSceneWritesEvidenceNextToTheReport() throws {
+        var record = ScenarioRecordData(id: "Sample.testCase", title: "サンプル",
+                                        app: "com.example.app", platform: "ios")
+        var scene = SceneRecordData(number: 2, title: "ログイン")
+        scene.steps = [DSLStepRecord(index: 1, section: "action", description: "tap \"#login\"",
+                                     status: .failed("element not found"), file: "", line: 0)]
+        scene.failureElements = "[1] Button \"Sign in\" id=btn_signin (0,0 10x10)"
+        scene.failureScreenshot = Data([0x89, 0x50])
+        scene.evidenceBlank = true
+        scene.failureForegroundWindows = ["SpringBoard alert"]
+        record.scenes = [scene]
+
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = try ScenarioReportWriter.write(record: record, to: dir)
+
+        let evidence = try XCTUnwrap(FailureEvidence.read(forReport: url))
+        XCTAssertEqual(evidence.scenes.count, 1)
+        let written = try XCTUnwrap(evidence.scenes.first)
+        XCTAssertEqual(written.number, 2)
+        XCTAssertEqual(written.title, "ログイン")
+        XCTAssertEqual(written.elements, "[1] Button \"Sign in\" id=btn_signin (0,0 10x10)")
+        XCTAssertTrue(written.screenshotBlank)
+        XCTAssertEqual(written.foregroundWindows, ["SpringBoard alert"])
+        let file = try XCTUnwrap(written.screenshotFile)
+        XCTAssertEqual(try Data(contentsOf: dir.appendingPathComponent(file)), Data([0x89, 0x50]))
+        let markdown = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(markdown.contains("src=\"\(file)\""), "md が参照する絵と証跡の名前が食い違う")
+    }
+
+    /// 証跡の無い(通った)レポートには置かない
+    func testPassingReportWritesNoEvidence() throws {
+        var record = ScenarioRecordData(id: "Sample.testCase", title: "サンプル",
+                                        app: "com.example.app", platform: "ios")
+        var scene = SceneRecordData(number: 1, title: "s")
+        scene.steps = [DSLStepRecord(index: 1, section: nil, description: "tap \"#a\"",
+                                     status: .passed, file: "", line: 0)]
+        record.scenes = [scene]
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = try ScenarioReportWriter.write(record: record, to: dir)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: FailureEvidence.url(forReport: url).path))
+    }
+
     private func makeTempDir() throws -> URL {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScenarioReportWriterTests-\(UUID().uuidString)", isDirectory: true)

@@ -1422,9 +1422,9 @@ public final class FTDriveCore {
         // tearDown だけは runLifecycle(allowAfterFailure:) がこのフラグを一時解除して実行する)
         scenarioAborted = true
 
-        // 失敗時のスクリーンショット+トリアージ(FM 利用可時のみ)。Android は画面凍結(白フレーム)で
-        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ。
-        // トリアージは白のままでも変わらず実行する(証跡としては evidenceBlank で無効マークするのみ)。
+        // 失敗時のスクリーンショット+要素一覧。Android は画面凍結(白フレーム)で
+        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ
+        // (回復しなければ evidenceBlank で無効マークする)。
         let driver = self.driver
         // 白フレーム=画面凍結の推定を行うか。**仮想デバイスなら OS を問わず行う**。
         // **実機だけ外す**理由は「画面が消灯しているだけ」を凍結と誤断するため。

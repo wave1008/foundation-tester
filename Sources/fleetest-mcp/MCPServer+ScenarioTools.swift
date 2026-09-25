@@ -47,7 +47,7 @@ extension MCPServer {
     }
 
     /// dry-run(**デバイス不要**)。コンパイルの次・デバイス実行の前に挟む検証で、デバイスを
-    /// 使わずにセレクタ構文エラー・到達しない scene・アサーション0の expectation を落とす。
+    /// 使わずにセレクタ構文エラーを落とし、アサーション0の expectation・台帳に無い `#id` を ⚠️ 行で言う。
     /// デバイスに触れないのでロケータが実在するかは分からない(それは ft_run_scenario の仕事)。
     /// クラス名なら CLI(`fleetest run`)と同じく非削除・非ドラフトの全シナリオを順に流す
     /// (`FTCore.ScenarioSelection.resolve` が唯一の定義元。`fleetest run` と共有する)
@@ -99,6 +99,8 @@ extension MCPServer {
                 ? "✅ dry-run passed (no device was touched — selectors were only syntax-checked)"
                 : "❌ dry-run failed")
         }
+        // 不合格は isError で返す(呼び手が本文を読まずに成否を分けられる。ft_run_scenario と同じ)
+        guard failedCount == 0 else { throw MCPToolFailure(content: text(lines.joined(separator: "\n"))) }
         return text(lines.joined(separator: "\n"))
     }
 
@@ -191,11 +193,9 @@ extension MCPServer {
                 prologue.append("ℹ️ using the app from profiles/apps/\(profileName).json (\(bundleID))"
                     + " — the scenario declares no @TestClass(app:)")
             case .ambiguous(let profileNames):
-                throw MCPError("this project has \(profileNames.count) app profiles"
-                    + " (\(profileNames.joined(separator: ", ")))"
-                    + " and the scenario declares no @TestClass(app:) — add @TestClass(app:"
-                    + " \"<bundleID>\") to the scenario, or run it with profile: <run profile name>"
-                    + " (then drop udid/port/serial)")
+                if let refusal = Self.ambiguousDefaultAppRefusal(profileNames: profileNames, infos: infos) {
+                    throw MCPError(refusal)
+                }
             case .none:
                 break
             }
@@ -240,6 +240,8 @@ extension MCPServer {
         var lines: [String] = prologue
         var passedCount = 0
         var failedCount = 0
+        // 最初に落ちたシナリオのレポート(証跡の読み先)。scenarioFinished が運ぶ
+        var firstFailedReport: String?
         for info in infos {
             let passed = await ScenarioHost.run(project: project, scenarioID: info.id,
                                        connection: connection,
@@ -247,6 +249,9 @@ extension MCPServer {
                                        appPath: appPath, appName: appName,
                                        appBundleID: appBundleID) { event in
                 lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
+                if event.kind == "scenarioFinished", event.passed != true, firstFailedReport == nil {
+                    firstFailedReport = event.reportPath
+                }
             }
             if passed { passedCount += 1 } else { failedCount += 1 }
         }
@@ -256,7 +261,68 @@ extension MCPServer {
         // **成功応答に載る警告・prologue も CLI → MCP の言い換えを通す**(forMCP は今まで
         // 投げた Error にしか掛かっておらず、ここに載る FTCore/ScenarioAppResolution 由来の
         // 文言(`--profile` 等)がそのまま出ていた)。掛ける場所はここ1箇所に集約する
-        return text(MCPMessageText.forMCP(lines.joined(separator: "\n")))
+        let body = text(MCPMessageText.forMCP(lines.joined(separator: "\n")))
+        guard failedCount == 0 else {
+            let evidence = firstFailedReport.map { path -> [[String: Any]] in
+                let report = URL(fileURLWithPath: path)
+                return Self.failureEvidenceContent(
+                    evidence: FailureEvidence.read(forReport: report),
+                    loadImage: { name in try? Data(contentsOf: report.deletingLastPathComponent()
+                        .appendingPathComponent(name)) })
+            } ?? []
+            throw MCPToolFailure(content: body + evidence)
+        }
+        return body
+    }
+
+    /// 不合格の応答に添える証跡(失敗時点の要素一覧 → スクリーンショットの順)。
+    /// **載せるのは最初に落ちた1本だけ**: 失敗はシナリオを中断するので1本につき証跡は1組だが、
+    /// クラス指定で全部落ちると画像と木が本数ぶん積まれる。直すのは1本ずつで、残りはレポートにある。
+    /// 要素一覧を先に置く(モデルは画像から `#id` を読めない = 直すための一次情報は木)。
+    /// **純粋関数**(読み込みは引数で受ける)
+    static func failureEvidenceContent(
+        evidence: FailureEvidence?, loadImage: (String) -> Data?
+    ) -> [[String: Any]] {
+        guard let evidence else { return [] }
+        var content: [[String: Any]] = []
+        for scene in evidence.scenes {
+            let title = scene.title.isEmpty ? "" : " (\"\(scene.title)\")"
+            var notes: [String] = []
+            if !scene.appProcess.isEmpty {
+                notes.append("⚠️ the app process was not running (it may have crashed): "
+                    + scene.appProcess.joined(separator: " / "))
+            }
+            if !scene.foregroundWindows.isEmpty {
+                notes.append("⚠️ another window was in front of the app: "
+                    + scene.foregroundWindows.joined(separator: ", ")
+                    + " — input may have been swallowed by it (it never appears in the element list)")
+            }
+            if let elements = scene.elements {
+                content.append(["type": "text", "text":
+                    (["Element list at the moment of failure — scene \(scene.number)\(title):"] + notes
+                        + [elements]).joined(separator: "\n")])
+            } else if !notes.isEmpty {
+                content.append(["type": "text", "text": notes.joined(separator: "\n")])
+            }
+            guard let file = scene.screenshotFile, let png = loadImage(file) else { continue }
+            if scene.screenshotBlank {
+                content.append(["type": "text", "text":
+                    "Screenshot at failure — scene \(scene.number): omitted, it was a blank frame"
+                    + " (not valid evidence; trust the element list)"])
+                continue
+            }
+            content.append(["type": "text", "text": "Screenshot at failure — scene \(scene.number):"])
+            // ft_screenshot の既定と同じ縮小。縮小できなければ原寸(絵を返さないよりまし)
+            if let scaled = ImageDownscale.jpeg(png: png, maxWidth: screenshotMaxWidth,
+                                                quality: screenshotQuality) {
+                content.append(["type": "image", "data": scaled.data.base64EncodedString(),
+                                "mimeType": "image/jpeg"])
+            } else {
+                content.append(["type": "image", "data": png.base64EncodedString(),
+                                "mimeType": "image/png"])
+            }
+        }
+        return content
     }
 
     /// profile 無し呼び出しの既定アプリ解決(profile あり経路は resolveProfileTarget が別に持つ)。
@@ -268,6 +334,18 @@ extension MCPServer {
         case ambiguous(profileNames: [String])
         /// 0個、または唯一のプロファイルに対象 platform の欄が無い
         case none
+    }
+
+    /// 既定アプリが曖昧(アプリプロファイルが2つ以上)なときに断る文。**既定アプリを使うシナリオが
+    /// 1本も無い(全部が @TestClass(app:) を宣言している)なら断らない** —— 宣言を見ずに断っていた頃は、
+    /// アプリプロファイルを2つ持つプロジェクトで profile 無しの ft_run_scenario が1本も走らなかった
+    static func ambiguousDefaultAppRefusal(profileNames: [String], infos: [ScenarioInfo]) -> String? {
+        guard infos.contains(where: { $0.app == nil }) else { return nil }
+        return "this project has \(profileNames.count) app profiles"
+            + " (\(profileNames.joined(separator: ", ")))"
+            + " and the scenario declares no @TestClass(app:) — add @TestClass(app:"
+            + " \"<bundleID>\") to the scenario, or run it with profile: <run profile name>"
+            + " (then drop udid/port/serial)"
     }
 
     static func defaultAppFromProjectApps(

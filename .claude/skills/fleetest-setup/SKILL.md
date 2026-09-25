@@ -235,9 +235,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 （テキストと画像入力の2経路）**exit code で返す**（両方使える=0／どちらかでも使えない=1）。
 `SystemLanguageModel.default.availability` は `.available` のまま全呼び出しが失敗することがあるので
 見ていない。
-**FM は必須ではない** — 使うのは FM 視覚検証（`screenLooksLike` 等）・シナリオ生成/探索
-（`/fleetest-scenario` の頭脳）だけで、決定的なシナリオ実行・自己修復（ロケータの指紋照合。FM を
-使わない）・VSCode 拡張・MCP のデバイス操作・dry-run は FM 無しで動く。**人間に「有効か」を聞かない**：
+**FM は必須ではない** — 使うのは FM 視覚検証（`screenLooksLike`・テキストの視覚検証）と、
+テストベースからのシナリオ下書き生成（`fleetest draft-scenario`。FM が無ければ決定的な解析に落ちる）
+だけで、決定的なシナリオ実行・自己修復（ロケータの指紋照合。FM を使わない）・VSCode 拡張・
+MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run は FM 無しで動く。**人間に「有効か」を聞かない**：
 
 - **exit 0**（`✅ 利用可能`）→ 次へ。
 - **exit 1**（無効／ダウンロード中／対象外）→ **セットアップは中断せず続行する**。有効化のための

@@ -56,4 +56,20 @@ final class ScenarioToolsDefaultAppFromProfilesTests: XCTestCase {
                                                           platform: "ios")
         XCTAssertEqual(result, .none)
     }
+
+    // MARK: - 曖昧なときに断るのは、既定アプリを使うシナリオがあるときだけ
+
+    func testAmbiguousDefaultAppIsNoReasonToRefuseWhenEveryScenarioNamesItsApp() {
+        let infos = [ScenarioInfo(id: "A.S0010", title: "", app: "com.example.a", platform: "ios"),
+                     ScenarioInfo(id: "A.S0020", title: "", app: "com.example.a", platform: "ios")]
+        XCTAssertNil(MCPServer.ambiguousDefaultAppRefusal(profileNames: ["x", "y"], infos: infos))
+    }
+
+    func testAmbiguousDefaultAppRefusesWhenAScenarioNeedsTheDefault() throws {
+        let infos = [ScenarioInfo(id: "A.S0010", title: "", app: "com.example.a", platform: "ios"),
+                     ScenarioInfo(id: "A.S0020", title: "", app: nil, platform: "ios")]
+        let refusal = try XCTUnwrap(
+            MCPServer.ambiguousDefaultAppRefusal(profileNames: ["x", "y"], infos: infos))
+        XCTAssertTrue(refusal.contains("x, y"), refusal)
+    }
 }

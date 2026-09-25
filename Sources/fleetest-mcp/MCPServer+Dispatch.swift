@@ -354,10 +354,9 @@ extension MCPServer {
         case .ambiguous(let message):
             throw MCPError(message)
         }
-        do {
-            // **失敗したら1回だけブリッジを建て直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
-            // 建て直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等は従来どおり
-            var content = try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved)
+        // 成功と「中身を持った失敗」(MCPToolFailure)の両方に同じ前後の注記を付ける
+        func decorated(_ body: [[String: Any]]) async -> [[String: Any]] {
+            var content = body
             if !rememberedNote.isEmpty {
                 content = [["type": "text", "text": rememberedNote]] + content
             }
@@ -372,6 +371,15 @@ extension MCPServer {
                 await recheckXCUITestRunnerIfSlow(args: resolved, elapsedMs: elapsedMs)
             }
             return Self.withElapsed(content, since: start, clock: clock)
+        }
+        do {
+            // **失敗したら1回だけブリッジを建て直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
+            // 建て直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等は従来どおり
+            // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
+            return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
+        } catch let failure as MCPToolFailure {
+            // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
+            throw MCPToolFailure(content: await decorated(failure.content))
         } catch {
             // run が台を使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの建て直し)ので、失敗にも言う
             let runNote = Self.toolAcceptsDeviceTarget(tool) ? markDeviceInUse(args: resolved) : nil

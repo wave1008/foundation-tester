@@ -643,7 +643,7 @@ extension MCPServer {
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ], scope: .project),
-        tool("ft_dry_run", "Dry-run a scenario without any device. Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions in seconds. "
+        tool("ft_dry_run", "Dry-run a scenario without any device. Fails (isError) on selector syntax errors; flags expectation blocks with no assertions and #ids never seen in an ft_snapshot as ⚠️ lines (not failures — fix them anyway). Takes seconds. "
             + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (real device) — it cannot tell whether a selector matches a real element. "
             + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run)", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
@@ -654,7 +654,8 @@ extension MCPServer {
                             + "ios { } / android { } branch and which #id ledger the dry-run checks "
                             + "(default ios)"],
         ], required: ["id"], scope: .project),
-        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the failing step's error and the report path. Builds automatically. "
+        tool("ft_run_scenario", "Run a scenario deterministically. Builds automatically. On failure the result is isError and carries the failing step's error, "
+            + "the element list and screenshot at the moment of failure (for the first failed scenario), and the report path. "
             + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run). "
             + "Unlike fleetest run it does not run the profile's setup/teardown scripts, "
             + "send the device home first, or record into results/ — use fleetest run for a full run. "

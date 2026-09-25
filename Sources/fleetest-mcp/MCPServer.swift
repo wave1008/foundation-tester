@@ -194,20 +194,29 @@ final class MCPServer {
             let name = params["name"] as? String ?? ""
             let args = params["arguments"] as? [String: Any] ?? [:]
             do {
-                let content = try await call(tool: name, args: args)
-                reply(id: id, result: ["content": content, "isError": false])
+                reply(id: id, result: Self.toolCallResult(.success(try await call(tool: name, args: args))))
             } catch {
-                // FTCore 由来の文には CLI のフラグ(`--project`)が書いてある。MCP の読み手が
-                // 渡せるのは同名の**引数**なので、ここで一度だけ言い換える(MCPMessageText)
-                reply(id: id, result: [
-                    "content": [["type": "text",
-                                 "text": "Error: "
-                                    + MCPMessageText.forMCP(error.localizedDescription)]],
-                    "isError": true,
-                ])
+                reply(id: id, result: Self.toolCallResult(.failure(error)))
             }
         default:
             reply(id: id, error: ["code": -32601, "message": "method not found: \(method)"])
+        }
+    }
+
+    /// tools/call の result。**失敗は RPC の error ではなく isError:true の result**(MCP 仕様)。
+    /// `MCPToolFailure` は呼び手が組んだ中身(証跡の画像を含む)をそのまま返す。
+    /// それ以外の失敗は文1本: FTCore 由来の文には CLI のフラグ(`--project`)が書いてあるので、
+    /// MCP の読み手が渡せる同名の**引数**へここで一度だけ言い換える(MCPMessageText)
+    static func toolCallResult(_ outcome: Result<[[String: Any]], Error>) -> [String: Any] {
+        switch outcome {
+        case .success(let content):
+            return ["content": content, "isError": false]
+        case .failure(let failure as MCPToolFailure):
+            return ["content": failure.content, "isError": true]
+        case .failure(let error):
+            return ["content": [["type": "text",
+                                 "text": "Error: " + MCPMessageText.forMCP(error.localizedDescription)]],
+                    "isError": true]
         }
     }
 
@@ -402,4 +411,14 @@ struct MCPError: Error, LocalizedError {
     let message: String
     init(_ message: String) { self.message = message }
     var errorDescription: String? { message }
+}
+
+/// **中身(文・画像)を持ったまま `isError: true` で返す失敗**。MCPError は文字列1本に畳まれるので、
+/// 失敗の報告に証跡(画像)を載せたい呼び手はこちらを投げる(ft_run_scenario の不合格)。
+/// 中身は JSON へ直列化するだけで共有しない(`[String: Any]` は Sendable でない)
+struct MCPToolFailure: Error, LocalizedError, @unchecked Sendable {
+    let content: [[String: Any]]
+    var errorDescription: String? {
+        content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+    }
 }

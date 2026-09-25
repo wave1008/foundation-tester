@@ -102,8 +102,8 @@ enum RetentionSweeper {
     /// 読み手は結果 JSON の `reportPath` が指す先の消失に耐える(拡張の両経路が存在を確かめる)。
     ///
     /// 日は**ファイル名のローカル時刻**から取る(runID の UTC とは別系統。混ぜない)。
-    /// `.md` と `.png` はどちらも `scenario-<yyyyMMdd>-<HHmmss>-<SSS>-` で始まる
-    /// (`ScenarioReportWriter` の命名)ので、同じ規則で1つの日へ入る。
+    /// `.md` と `.png` と失敗の証跡 `.failure.json`(`FTCore.FailureEvidence`)はどれも
+    /// `scenario-<yyyyMMdd>-<HHmmss>-<SSS>-` で始まる(`ScenarioReportWriter` の命名)ので、同じ規則で1つの日へ入る。
     static func reportSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
         // 今日のぶんは触らない(たった今終わった run のレポートを守る唯一の砦。
         // activeRunID は UTC の runID なので日の判定には使えない)

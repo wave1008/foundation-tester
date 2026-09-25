@@ -90,6 +90,11 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertEqual(
             RetentionSweeper.reportDay(of: "scenario-20260723-024446-308-x-scene1-step2-y.png"),
             "20260723")
+        // 失敗の証跡はレポートの名前から導く(FailureEvidence.url)= 同じ日へ束ねて消える
+        let report = URL(fileURLWithPath: "/r/scenario-20260723-024446-308-セレクタ_S0010.md")
+        XCTAssertEqual(
+            RetentionSweeper.reportDay(of: FailureEvidence.url(forReport: report).lastPathComponent),
+            "20260723")
     }
 
     /// この形でないファイルには触らない(利用者が置いた別のファイルかもしれない)

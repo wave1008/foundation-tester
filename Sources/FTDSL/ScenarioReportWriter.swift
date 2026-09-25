@@ -35,6 +35,7 @@ public enum ScenarioReportWriter {
         }
 
         var screenshots: [(name: String, data: Data)] = []
+        var evidenceScenes: [FailureEvidence.Scene] = []
 
         for scene in record.scenes {
             md += "\n## scene \(scene.number)"
@@ -76,8 +77,18 @@ public enum ScenarioReportWriter {
                 md += elements
                 md += "\n```\n</details>\n"
             }
-            if let screenshot = scene.failureScreenshot {
-                let imageName = "\(baseName)-scene\(scene.number).png"
+            let failureImageName = scene.failureScreenshot.map { _ in "\(baseName)-scene\(scene.number).png" }
+            if scene.failureElements != nil || failureImageName != nil
+                || !scene.failureForegroundWindows.isEmpty || !scene.failureAppProcess.isEmpty {
+                // 白フレームは凍結でもアラート中でも証跡として無効 = 判定を挟まず evidenceBlank をそのまま渡す
+                evidenceScenes.append(FailureEvidence.Scene(
+                    number: scene.number, title: scene.title,
+                    elements: scene.failureElements.flatMap { $0.isEmpty ? nil : $0 },
+                    screenshotFile: failureImageName, screenshotBlank: scene.evidenceBlank,
+                    foregroundWindows: scene.failureForegroundWindows,
+                    appProcess: scene.failureAppProcess))
+            }
+            if let screenshot = scene.failureScreenshot, let imageName = failureImageName {
                 screenshots.append((imageName, screenshot))
                 // 縮小表示+クリックでフルサイズ(markdown プレビューはインライン HTML を描画する。
                 // ![...]() 直埋めだと端末縦解像度のまま表示され確認しづらい)
@@ -109,6 +120,10 @@ public enum ScenarioReportWriter {
 
         let url = dir.appendingPathComponent("\(baseName).md")
         try md.write(to: url, atomically: true, encoding: .utf8)
+        // 読み手(ft_run_scenario)は証跡が無くても失敗を報告できるので、書けなくても md は返す
+        if !evidenceScenes.isEmpty {
+            try? FailureEvidence(scenes: evidenceScenes).write(forReport: url)
+        }
         return url
     }
 
