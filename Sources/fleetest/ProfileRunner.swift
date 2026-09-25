@@ -287,8 +287,8 @@ enum ProfileRunner {
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
                     broadcast: Bool = false,
-                    // **既定値を置かない**(渡し忘れをコンパイルで止める)。呼び手は recorder 確定直後・
-                    // 供給より前に InterruptRelay を登録済みの interruptState を渡す
+                    // **既定値を置かない**(渡し忘れをコンパイルで止める)。呼び手はロック取得の直前に
+                    // InterruptRelay を登録済みの interruptState を渡す(recorder は attachRecorder で後付け)
                     interruptState: RunInterruptState
     ) async throws -> (summary: RunSummary, fmSettings: FMSettingsRecord) {
         var items = rawItems

@@ -11,8 +11,9 @@ import FTCore
 import FTRemote
 import Foundation
 
-private let setupSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
-private let setupSCPBase = ["scp", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+// キープアライブ(SSHOptions.keepAliveArgs)の根拠は RemoteRunDispatcher.sshBase と同じ
+private let setupSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
+private let setupSCPBase = ["scp", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
 
 /// 進行の1行出力。**print は使わない** —— stdout が端末でないとき libc の行バッファが効かず、
 /// 分単位かかる install/align の進行が最後まで出ない(ログへリダイレクトすると「止まったのか

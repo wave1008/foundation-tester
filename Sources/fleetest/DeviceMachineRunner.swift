@@ -199,8 +199,13 @@ enum DeviceMachineRunner {
             project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
             runGroup: runGroup, mode: .cliRun, log: { FleetRunner.log($0) }))
         defer { prelock.releaseAll() }
-        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
-            active.map { $0.1.machineLabel }))
+        // 戻り値 false = 中断されて、ここまでに握った分は既に外し終えている(DispatchPrelock の
+        // 宣言)。**子を1つも起こさずに抜ける**(interruption-no-resend の規律と同じ理由 ——
+        // 中断済みなのに複数機械へ run を撃つと、届いていた分の二重実行になりうる)
+        guard prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
+            active.map { $0.1.machineLabel })) else {
+            throw ValidationError("interrupted while acquiring dispatch locks — starting no sub-run")
+        }
         // 子タスクへ渡すのは値のコピー(prelock 自身を @Sendable な closure へ持ち込まない)
         let lockMarkers = prelock.markers
         // サブ実行のクラッシュ検出(reportMissingResults)が「この run で書かれた記録」を
@@ -232,6 +237,12 @@ enum DeviceMachineRunner {
             for await (index, outcome) in taskGroup { collected[index] = outcome }
             return active.compactMap { collected[$0.0] }
         }
+        // **子の終了コードが分かった時点で解放する**(defer より早い ―― 正常終了(0/1)の機械は
+        // 従来どおり無条件、それ以外は生死を確かめてから。RemoteRunDispatcher.releaseDispatchLockAsParent
+        // の宣言参照)。末尾の bare `defer { prelock.releaseAll() }` は安全網として残るが、ここで
+        // 空になった held には何もしない(二重解放は無害)
+        prelock.releaseAll(exitCodes: Dictionary(
+            outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first }))
 
         printSummary(profileName: profileName, outcomes: outcomes)
         // **broadcast はここを呼ばない** —— 同じ ID を台数ぶん走らせるので、1台でも記録が

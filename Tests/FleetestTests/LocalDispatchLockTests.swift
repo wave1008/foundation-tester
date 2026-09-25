@@ -291,6 +291,44 @@ final class LocalDispatchLockTests: XCTestCase {
             environment: [DispatchLockHandoff.environmentKey: DispatchLockHandoff.localTarget]))
     }
 
+    // MARK: - interruptCheck(呼び出し側が既に登録済みの中断状態を渡す)
+
+    /// **戻すと落ちる根拠**: `interruptCheck` を渡したのに acquire() が自前の `InterruptFlag`/
+    /// `isSet` を見続けると、呼び出し側(`ApiRunCommand`/`Fleetest`)がロック取得より前に立てた
+    /// `RunInterruptState` の中断が待機ループへ届かない。**サーバ相当の pid の生死** ではなく
+    /// 単純に「渡した closure が true を返した周で抜ける」ことを確かめる(1周目で giveUp する
+    /// `waitLock: 600` の待機列に対して、呼ばれるたび true を返す closure を渡す)
+    func testAcquireHonorsAnExternallySuppliedInterruptCheck() throws {
+        let holder = try XCTUnwrap(try lock(pid: 4242).acquire())
+        defer { holder.release() }
+
+        var interruptCheckCalls = 0
+        XCTAssertThrowsError(try lock(pid: 7777, issuer: "bob", issuerHost: "mac-b", waitLock: 600)
+            .acquire(interruptCheck: { interruptCheckCalls += 1; return true })) {
+            let text = message($0)
+            XCTAssertTrue(text.contains("interrupted while queued for the dispatch lock on this Mac"), text)
+        }
+        XCTAssertGreaterThan(interruptCheckCalls, 0, "渡した interruptCheck が一度も呼ばれていない")
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(
+            atPath: RemoteDispatchQueue.directory(home: home)), [String](),
+            "中断で諦めたのに自分のチケットが列に残っている")
+    }
+
+    /// **陰性対照**: `interruptCheck` が常に false を返せば(=呼び出し側は中断していない)、
+    /// 待機は従来どおり `sleepSeconds`/`waitLock` の判断で進む —— 渡しただけで即座に断られはしない
+    func testAcquireIgnoresAnInterruptCheckThatNeverFires() throws {
+        let holder = try XCTUnwrap(try lock(pid: 4242).acquire())
+        var slept = 0
+        let waiting = lock(pid: 7777, issuer: "bob", issuerHost: "mac-b", waitLock: 600,
+                           sleepSeconds: { _ in
+                               slept += 1
+                               holder.release()
+                           })
+        let taken = try XCTUnwrap(try waiting.acquire(interruptCheck: { false }))
+        XCTAssertEqual(slept, 1)
+        taken.release()
+    }
+
     // MARK: - --force-lock
 
     func testForceLockStealsTheLockOnThisMachine() throws {

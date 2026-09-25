@@ -10,14 +10,15 @@
 // エンジン(xcuitest ⇄ inapp/hybrid)だけが入れ替わった形を見逃し、その engine には無い操作
 // (in-app には /terminate が無い)を撃って 501、逆向きなら別の ref 体系へ黙って撃つ。
 //
-// 判定そのもの(`FTCore.BridgeIdentityCheck.hybridFallbackMismatch`)と probe の配線
+// 判定そのもの(`FTCore.BridgeIdentityCheck.hybridFallbackDrift`)と probe の配線
 // (`FTBridgeClient.HybridFallbackIdentity.drifted`)は MCP とライブ操作(api live serve)の
 // 共有部品なので、それぞれ Tests/FTCoreTests・Tests/FTBridgeClientTests 側で固定する。
 // ここで見るのは **MCP のキャッシュ配線**(記録・no-op・後始末・両経路での呼び出し・
-// `primaryEngineOutcome` の拒否/黙って作り直しの振り分け)だけ。
+// `primaryEngineOutcome` の拒否/黙って作り直し/**differentDevice はrefの有無を問わず拒否**の振り分け)だけ。
 
 import XCTest
 @testable import fleetest_mcp
+import FTCore
 
 final class HybridFallbackDriftTests: XCTestCase {
 
@@ -45,18 +46,18 @@ final class HybridFallbackDriftTests: XCTestCase {
         XCTAssertFalse(drifted, "udid が無いのに判定を撃った")
     }
 
-    /// maintainer-notes §51.10: primary の port/udid/engine のどれかが無ければ撃たずに false
+    /// maintainer-notes §51.10: primary の port/udid/engine のどれかが無ければ撃たずに .none
     /// (`connectedPorts`/`udids`/`engines` は Android のキーには揃わないので、
     /// この no-op が Android の呼び出しを毎回 probe しないことも兼ねて守る)
-    func testPrimaryEngineDriftedIsNoOpWithoutAllThreeOfPortUDIDEngine() async {
+    func testPrimaryEngineDriftIsNoOpWithoutAllThreeOfPortUDIDEngine() async {
         let server = MCPServer()
         server.connectedPorts[key] = 8123
         server.udids[key] = "SIM-1"
         // engines[key] を書かない
 
-        let drifted = await server.primaryEngineDrifted(key)
+        let drift = await server.primaryEngineDrift(key)
 
-        XCTAssertFalse(drifted, "engine を覚えていないのに判定を撃った")
+        XCTAssertEqual(drift, .none, "engine を覚えていないのに判定を撃った")
     }
 
     // MARK: - forgetDeviceState が新しい記憶も捨てること(DeviceStateInvalidationTests の汎用走査と対)
@@ -71,27 +72,31 @@ final class HybridFallbackDriftTests: XCTestCase {
     }
 
     // MARK: - primaryEngineOutcome(maintainer-notes §51.10。純粋関数): drift していなければ現状維持、
-    // drift していれば「記憶に依る呼び出しだけ拒否・依らなければ黙って作り直し」
+    // sameDeviceEngineChanged は「記憶に依る呼び出しだけ拒否・依らなければ黙って作り直し」、
+    // differentDevice は ref の有無を問わず常に拒否
 
     func testPrimaryEngineOutcomeIsUnchangedWithoutDrift() {
         let outcome = MCPServer.primaryEngineOutcome(
-            drifted: false, usesRememberedDeviceState: true, port: 8123, expectedEngine: "xcuitest")
+            drift: .none, usesRememberedDeviceState: true, port: 8123, expectedEngine: "xcuitest",
+            expectedUDID: "SIM-1", callerNamedUDID: false)
         XCTAssertEqual(outcome, .unchanged)
     }
 
-    /// **本命**: ref を使わない呼び出し(`ft_terminate` の実測)は drift していても黙って
-    /// 作り直させる —— 拒否して「撮り直せ」と言う理由が無い(その call 自身が新しいドライバで
-    /// 正しく処理される)
+    /// **本命**: ref を使わない呼び出し(`ft_terminate` の実測)は同じ機のエンジンだけが
+    /// 変わっていても黙って作り直させる —— 拒否して「撮り直せ」と言う理由が無い
+    /// (その call 自身が新しいドライバで正しく処理される)
     func testPrimaryEngineOutcomeRebuildsSilentlyWhenTheCallDoesNotUseRememberedState() {
         let outcome = MCPServer.primaryEngineOutcome(
-            drifted: true, usesRememberedDeviceState: false, port: 8123, expectedEngine: "xcuitest")
+            drift: .sameDeviceEngineChanged, usesRememberedDeviceState: false, port: 8123,
+            expectedEngine: "xcuitest", expectedUDID: "SIM-1", callerNamedUDID: false)
         XCTAssertEqual(outcome, .rebuildSilently)
     }
 
-    /// ref を使う呼び出しは drift していれば拒否する(ref は旧エンジンのものなので無効)
+    /// ref を使う呼び出しは同じ機のエンジン変更だけでも拒否する(ref は旧エンジンのものなので無効)
     func testPrimaryEngineOutcomeRefusesWhenTheCallUsesRememberedState() {
         let outcome = MCPServer.primaryEngineOutcome(
-            drifted: true, usesRememberedDeviceState: true, port: 8123, expectedEngine: "xcuitest")
+            drift: .sameDeviceEngineChanged, usesRememberedDeviceState: true, port: 8123,
+            expectedEngine: "xcuitest", expectedUDID: "SIM-1", callerNamedUDID: false)
         guard case .refuse(let message) = outcome else {
             return XCTFail("記憶に依る呼び出しは拒否のはず: \(outcome)")
         }
@@ -100,12 +105,44 @@ final class HybridFallbackDriftTests: XCTestCase {
         XCTAssertTrue(message.contains("ft_snapshot"), message)
     }
 
+    /// **本題**: ポートの中身が別の台に替わった(differentDevice)なら、ref を使わない
+    /// 呼び出しでも黙って作り直さず断る —— 別の実体を黙って操作し続けさせない
+    func testPrimaryEngineOutcomeRefusesDifferentDeviceEvenWithoutRememberedState() {
+        let outcome = MCPServer.primaryEngineOutcome(
+            drift: .differentDevice, usesRememberedDeviceState: false, port: 8123,
+            expectedEngine: "xcuitest", expectedUDID: "SIM-1", callerNamedUDID: false)
+        guard case .refuse(let message) = outcome else {
+            return XCTFail("別の台に替わっていたら ref の有無を問わず拒否のはず: \(outcome)")
+        }
+        XCTAssertTrue(message.contains("8123"), message)
+        XCTAssertTrue(message.contains("SIM-1"), message)
+    }
+
+    /// ref を使う呼び出しも同様に differentDevice で拒否する
+    func testPrimaryEngineOutcomeRefusesDifferentDeviceWithRememberedState() {
+        let outcome = MCPServer.primaryEngineOutcome(
+            drift: .differentDevice, usesRememberedDeviceState: true, port: 8123,
+            expectedEngine: "xcuitest", expectedUDID: "SIM-1", callerNamedUDID: false)
+        guard case .refuse = outcome else {
+            return XCTFail("別の台に替わっていたら拒否のはず: \(outcome)")
+        }
+    }
+
+    /// 呼び手が udid を明示したら(記憶の補完は port しか書かない)今そのポートの台への同意なので作り直す。
+    /// これが無いと断り続けて抜けられない
+    func testPrimaryEngineOutcomeRebuildsDifferentDeviceWhenTheCallerNamedAUDID() {
+        let outcome = MCPServer.primaryEngineOutcome(
+            drift: .differentDevice, usesRememberedDeviceState: false, port: 8123,
+            expectedEngine: "xcuitest", expectedUDID: "SIM-1", callerNamedUDID: true)
+        XCTAssertEqual(outcome, .rebuildSilently)
+    }
+
     // MARK: - primaryEngineCheck(I/O 込みの入口): 材料が無ければ .unchanged で、
     // forgetDeviceState は呼ばない(既存の記憶を無用に捨てない)
 
     func testPrimaryEngineCheckIsUnchangedAndKeepsStateWithoutMaterial() async {
         let server = MCPServer()
-        server.hybridFallbackPorts[key] = 8129  // primaryEngineDrifted には無関係の記憶が残っていること
+        server.hybridFallbackPorts[key] = 8129  // primaryEngineDrift には無関係の記憶が残っていること
 
         let outcome = await server.primaryEngineCheck(key, args: [:])
 

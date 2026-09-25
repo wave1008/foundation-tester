@@ -82,7 +82,13 @@ import {
   updateRetention,
 } from "./retentionController";
 import { formatBytesAuto, type RetentionPatch } from "./retentionModel";
-import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
+import {
+  TYPE_ORDER,
+  parseAndroidBridges,
+  parseResidentProcesses,
+  planResidentKill,
+  type ResidentProcess,
+} from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
   createRunLaneState,
@@ -1537,10 +1543,11 @@ export class MonitorPanelController implements vscode.Disposable {
     this.post({ type: "residentProcesses", items, ts: Date.now() });
   }
 
-  /** fleetest CLI を1回実行して完了(または 120s タイムアウト)まで待つ。exit code は問わず
-   *  resolve する(掃除の一手段のため、失敗しても後段の SIGKILL 掃討に委ねて続行する)。 */
-  private runFleetest(args: string[]): Promise<void> {
-    return new Promise<void>((resolve) => {
+  /** fleetest CLI を1回実行して完了(または 120s タイムアウト)まで待つ。exitCode は呼び手が見る
+   *  (例: `bridge down` が lease/MCP の印で断られたかの判定)。null = 起動失敗・タイムアウトで
+   *  強制終了(非 0 と同じ「成功していない」として扱う)。 */
+  private runFleetest(args: string[]): Promise<{ readonly exitCode: number | null }> {
+    return new Promise<{ readonly exitCode: number | null }>((resolve) => {
       const tag = args.join(" ");
       let proc: PipeProcess;
       try {
@@ -1552,14 +1559,14 @@ export class MonitorPanelController implements vscode.Disposable {
         });
       } catch (e) {
         this.outputChannel.appendLine(`[fleetest] ${tag} ${t("monitor.log.launchFailed", { error: String(e) })}`);
-        resolve();
+        resolve({ exitCode: null });
         return;
       }
       const onLine = (stream: string, chunk: Buffer): void => {
         for (const raw of chunk.toString("utf8").split("\n")) {
-          const t = raw.trim();
-          if (t) {
-            this.outputChannel.appendLine(`[${tag} ${stream}] ${t}`);
+          const line = raw.trim();
+          if (line) {
+            this.outputChannel.appendLine(`[${tag} ${stream}] ${line}`);
           }
         }
       };
@@ -1571,15 +1578,15 @@ export class MonitorPanelController implements vscode.Disposable {
         } catch {
           // already dead
         }
-        resolve();
+        resolve({ exitCode: null });
       }, 120000);
-      proc.on("close", () => {
+      proc.on("close", (code) => {
         clearTimeout(timer);
-        resolve();
+        resolve({ exitCode: code });
       });
       proc.on("error", () => {
         clearTimeout(timer);
-        resolve();
+        resolve({ exitCode: null });
       });
     });
   }
@@ -1597,7 +1604,7 @@ export class MonitorPanelController implements vscode.Disposable {
     return path.isAbsolute(binaryDir) && command.includes(binaryDir);
   }
 
-  // 掃討本体(確認ダイアログ・掃討後の後始末は killAllResidentProcessesAndClose が持つ)。
+  // 掃討本体(確認ダイアログは killAllResidentProcessesAndClose が持つ)。
   private async killResidentProcessesCore(): Promise<void> {
     // 1) 自分の常駐子を respawn 抑止して停止(生 SIGKILL による respawn churn を防ぐため先に)。
     this.deviceStream.disposeAllForDown();
@@ -1605,36 +1612,66 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager.stopHostMetricsProcess();
     // 2) iOS ブリッジをシミュレータ本体を残してクリーン停止(xcuitest+inapp。pid/inapp ファイル基準で
     //    SIGTERM→simctl terminate。simctl shutdown はしない=「デバイスモニター」タブの領域)。
-    await this.runFleetest(["bridge", "down", "--all"]);
-    // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
-    //    adb 未検出環境ではスキップ(出力ノイズを避ける)。
-    if (resolveAdb()) {
-      await this.runFleetest(["bridge", "down", "--platform", "android"]);
+    //    lease/MCP の印で断られる(非 0 終了)ことがあるため、断られた側は手順4の SIGKILL 対象から外す
+    //    (planResidentKill の bridgeDownRefused/androidDownRefused)。
+    const bridgeDown = await this.runFleetest(["bridge", "down", "--all"]);
+    const bridgeDownRefused = bridgeDown.exitCode !== 0;
+    if (bridgeDownRefused) {
+      this.outputChannel.appendLine(
+        t("monitor.log.residentKillBridgeRefused", { cmd: "bridge down --all", exitCode: bridgeDown.exitCode ?? "timeout" }),
+      );
     }
-    // 4) 残余のホスト常駐を SIGKILL 掃討。この workspace 由来のものだけに限定する
-    //    (machine-wide の巻き込み・別 repo の同種プロセスへの誤爆を避ける)。除外:
-    //    Android エミュ本体(emulator)/ PID 無しの情報行 / MCP サーバ(mcp)/ 拡張ホスト自身。
+    // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
+    //    adb 未検出環境ではスキップ(出力ノイズを避ける。未実行 = 断られていないので android-bridge は
+    //    手順4の対象に残る。android-bridge はホスト PID を持たない合成行なので実際には killed されない)。
+    let androidDownRefused = false;
+    if (resolveAdb()) {
+      const androidDown = await this.runFleetest(["bridge", "down", "--platform", "android"]);
+      androidDownRefused = androidDown.exitCode !== 0;
+      if (androidDownRefused) {
+        this.outputChannel.appendLine(
+          t("monitor.log.residentKillBridgeRefused", { cmd: "bridge down --platform android", exitCode: androidDown.exitCode ?? "timeout" }),
+        );
+      }
+    }
+    // 4) 残余のホスト常駐を掃討。判定は planResidentKill(純粋関数)の1箇所 —— この workspace 由来
+    //    (machine-wide の巻き込み・別 repo の同種プロセスへの誤爆を避ける)・断られたブリッジ型を除く・
+    //    run 型は SIGTERM のみ(後始末を刺し殺さない。process-lifecycle.md)。
     const remaining = await this.listResidentProcesses();
-    for (const p of remaining) {
-      if (p.pid <= 0 || p.pid === process.pid || p.type === "emulator" || p.type === "mcp") {
-        continue;
-      }
-      if (!this.isWorkspaceOwned(p.command)) {
-        continue;
-      }
+    const targets = planResidentKill(remaining, {
+      ownPid: process.pid,
+      isWorkspaceOwned: (command) => this.isWorkspaceOwned(command),
+      bridgeDownRefused,
+      androidDownRefused,
+    });
+    for (const target of targets) {
       try {
-        process.kill(p.pid, "SIGKILL");
+        process.kill(target.pid, target.signal);
       } catch (e) {
         if ((e as NodeJS.ErrnoException)?.code !== "ESRCH") {
           this.outputChannel.appendLine(
-            `[fleetest] ${t("monitor.log.residentKillFailed", { pid: p.pid, error: String(e) })}`,
+            `[fleetest] ${t("monitor.log.residentKillFailed", { pid: target.pid, error: String(e) })}`,
           );
         }
       }
     }
   }
 
+  /** 「すべて終了」ボタンの確認(破壊的操作。webview の window.confirm は効かないのでホスト側で出す)。
+   *  キャンセル時は何もせず residentKillCancelled を返してボタンを戻す(処理は行わない)。 */
   private async killAllResidentProcessesAndClose(): Promise<void> {
+    const before = await this.listResidentProcesses();
+    const runCount = before.filter((p) => p.type === "run").length;
+    const proceed = t("monitor.residentKillClose.confirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      t("monitor.residentKillClose.confirmMessage"),
+      { modal: true, detail: runCount > 0 ? t("monitor.residentKillClose.confirmDetailRuns", { count: runCount }) : undefined },
+      proceed,
+    );
+    if (choice !== proceed) {
+      this.post({ type: "residentKillCancelled" });
+      return;
+    }
     try {
       await this.killResidentProcessesCore();
     } catch (e) {

@@ -286,6 +286,7 @@ window.addEventListener('message', (event) => {
       applyDevicePickMachines(message);
       break;
     case 'residentProcesses':
+    case 'residentKillCancelled':
       applyResidentMessage(message);
       break;
     case 'recordingsSessions':

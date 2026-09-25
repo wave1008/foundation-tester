@@ -524,11 +524,24 @@ struct RunScenarios: AsyncParsableCommand {
         // **run-lease(台ごと)との上下**: ここが**マシン全体**の門で、台ごとの二重使用は
         // この後の `ProfileRunner` / `RunLeaseGuard` が見る —— MCP のセッション
         // (`mcp-<鍵>.lease`)は dispatch.lock を取らないので、台ごとの調停はこのロックでは代替できない
+        // **中断(SIGINT/SIGTERM/SIGHUP)の登録は、この Mac のロックを取るより前**(1プロセス1組。
+        // .claude/rules/process-lifecycle.md「割り込みの登録は run の記録開始の直後・供給より前」)。recorder はまだ無い
+        // (`RunRecorder.begin` はビルド後にしか作れない)ので nil で構築し、後で確定したら
+        // `attachRecorder` で繋ぐ。setup.sh・供給は `ProfileRunner.run`/`runSequential`/
+        // `runParallel` の内側でこの interruptState をそのまま受け取るので、ここで登録すれば
+        // それらもカバーする(runParallel は orchestrator 構築後に attachLateSubscriber で合流する)
+        let interruptState = RunInterruptState(recorder: nil)
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
+
         var dispatchLock: LocalDispatchLock.Holder?
         if !dryRun {
+            // **待機中の中断は上で登録済みの interruptState をそのまま使う**(acquire() が自前で
+            // 2つ目の InterruptRelay を立てない)
             dispatchLock = try LocalDispatchLock(
                 runGroup: runGroup, waitLock: waitLock, forceLock: forceLock,
-                log: { ConsoleOut.out($0) }).acquire()
+                log: { ConsoleOut.out($0) }
+            ).acquire(interruptCheck: { interruptState.isStopped })
         }
         defer { dispatchLock?.release() }
         let testProject = try ScenarioHost.project(named: project)
@@ -567,6 +580,10 @@ struct RunScenarios: AsyncParsableCommand {
             }
         }
 
+        // **ビルドの前にも中断を見る**(ロック取得〜ここまでの間に届いた分をここで拾う)
+        if interruptState.isStopped {
+            throw RunInterruptedBeforeStartError(phase: "before the scenario build")
+        }
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
             writeProgress(phase: "building")
@@ -576,6 +593,12 @@ struct RunScenarios: AsyncParsableCommand {
         } else {
             // 食い違っていても止めない(警告のみ。)
             ScenarioHost.warnIfSkipBuildStale(project: testProject) { ConsoleOut.out($0) }
+        }
+        // **ビルドの後にも中断を見る**(`ScenarioHost.build` は子の生死を確かめられず
+        // `interruptState` に登録もしないので、ビルド中に届いた中断はここで初めて拾える ——
+        // その間 swift build 自体は最後まで走ってしまう。この限界は直せていない)
+        if interruptState.isStopped {
+            throw RunInterruptedBeforeStartError(phase: "after the scenario build")
         }
         PhaseLog.mark("build")
         let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
@@ -676,17 +699,10 @@ struct RunScenarios: AsyncParsableCommand {
         let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli",
                                          runGroup: runGroup)
         PhaseLog.mark("recorder-begin")
-
-        // **recorder 確定直後にここで1回だけ登録する**(シグナルソースは1プロセスに1組)。
-        // 供給フェーズ(ブリッジ起動・凍結triage・install 等)は ProfileRunner.run/runSequential/
-        // runParallel の**内側**で行われるが、そこに着くまで InterruptRelay が1つも登録されて
-        // いないと、供給中に届いた SIGINT/SIGTERM/SIGHUP は既定動作(即終了)のままプロセスを落とし、
-        // run.json は begin() が書いた start 欄だけの尻切れで残る(docs/results-json.md:
-        // finishedAt 無し = crash と誤分類される。ApiRunCommand.run の同じ登録参照)。
-        // 3経路は同じ interruptState を受け取るだけで、自分では登録しない
-        let interruptState = RunInterruptState(recorder: recorder)
-        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
-        defer { interruptRelay.stop() }
+        // **interruptState はロック取得の直後(build より前)に登録済み**(このコメントより上、
+        // dispatchLock の直前)。ここでは作った recorder を繋ぐだけ(`attachRecorder`。既に
+        // 中断済みならその場で markInterrupted)
+        interruptState.attachRecorder(recorder)
 
         if let profile {
             // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは

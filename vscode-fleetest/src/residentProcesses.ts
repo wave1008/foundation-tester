@@ -104,6 +104,20 @@ export const TYPE_ORDER: readonly ResidentType[] = [
   "fleetest",
 ];
 
+/** ブリッジに当たる型(iOS: bridge/sim-runner/inapp-bridge・Android: android-bridge)。
+ *  `bridge down` が断られたときに SIGKILL 対象から外す判定(planResidentKill)で使う。 */
+export const BRIDGE_RESIDENT_TYPES: ReadonlySet<ResidentType> = new Set([
+  "bridge",
+  "sim-runner",
+  "inapp-bridge",
+  "android-bridge",
+]);
+
+/** 自前の後始末を持つ型(`api run` / `fleetest run`)。「すべて終了」の掃討では SIGKILL で
+ *  後始末(dispatch.lock の解放・run.json 書き込み)を刺し殺さず、SIGTERM だけを送る
+ *  (process-lifecycle.md「終了猶予の方針」)。 */
+export const TEARDOWN_RESIDENT_TYPES: ReadonlySet<ResidentType> = new Set(["run"]);
+
 // ResidentType → 辞書キー(表示ラベル)。fleetest は素の CLI 名で ja/en 差が無いためキー無し。
 const TYPE_LABEL_KEY: Partial<Record<ResidentType, keyof typeof deviceOpsStrings>> = {
   bridge: "deviceOps.type.bridge",
@@ -375,6 +389,48 @@ export function parseResidentProcesses(
     const kb = TYPE_ORDER.indexOf(b.type);
     return ka !== kb ? ka - kb : a.pid - b.pid;
   });
+  return out;
+}
+
+/** planResidentKill のオプション。isWorkspaceOwned は monitorPanel.ts の同名判定を注入する
+ *  (この workspace / binaryDir 配下のコマンドだけを対象にする。他 repo・machine-wide への誤爆を避ける)。 */
+export interface ResidentKillPlanOptions {
+  readonly ownPid: number;
+  readonly isWorkspaceOwned: (command: string) => boolean;
+  /** `bridge down --all` が非 0 終了(断られた)か。true なら iOS 系ブリッジ型を対象から外す。 */
+  readonly bridgeDownRefused: boolean;
+  /** `bridge down --platform android` が非 0 終了か。true なら android-bridge を対象から外す。 */
+  readonly androidDownRefused: boolean;
+}
+
+export interface ResidentKillTarget {
+  readonly pid: number;
+  readonly signal: NodeJS.Signals;
+}
+
+/** 「すべて終了」の掃討で実際に撃つ対象と signal を決める純粋関数(monitorPanel.ts から呼ぶ)。
+ *  ブリッジ型は対応する `bridge down` が断られていれば対象から外す(他セッション/MCP が使用中の
+ *  可能性があるため)。run 型(TEARDOWN_RESIDENT_TYPES)は SIGTERM のみ、他は従来どおり SIGKILL。 */
+export function planResidentKill(
+  processes: readonly ResidentProcess[],
+  opts: ResidentKillPlanOptions,
+): ResidentKillTarget[] {
+  const out: ResidentKillTarget[] = [];
+  for (const p of processes) {
+    if (p.pid <= 0 || p.pid === opts.ownPid || p.type === "emulator" || p.type === "mcp") {
+      continue;
+    }
+    if (!opts.isWorkspaceOwned(p.command)) {
+      continue;
+    }
+    if (BRIDGE_RESIDENT_TYPES.has(p.type)) {
+      const refused = p.type === "android-bridge" ? opts.androidDownRefused : opts.bridgeDownRefused;
+      if (refused) {
+        continue;
+      }
+    }
+    out.push({ pid: p.pid, signal: TEARDOWN_RESIDENT_TYPES.has(p.type) ? "SIGTERM" : "SIGKILL" });
+  }
   return out;
 }
 

@@ -83,7 +83,10 @@ enum FleetRunner {
             project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
             runGroup: nil, mode: .cliRun, log: { FleetRunner.log($0) }))
         defer { prelock.releaseAll() }
-        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(fleet.runs.map(\.host)))
+        // false = 中断済みで握った分は外し終えている。子を1つも起こさずに抜ける(DeviceMachineRunner と同じ)
+        guard prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(fleet.runs.map(\.host))) else {
+            throw ValidationError("interrupted while acquiring dispatch locks — starting no fleet entry")
+        }
         // 子タスクへ渡すのは値のコピー(prelock 自身を @Sendable な closure へ持ち込まない)
         let lockMarkers = prelock.markers
 
@@ -226,7 +229,10 @@ enum FleetRunner {
             project: project, remoteDir: remoteDir, forceLock: forceLock, waitLock: waitLock,
             runGroup: nil, mode: .cliRun, log: { FleetRunner.log($0) }))
         defer { prelock.releaseAll() }
-        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(active.map { $0.1.host }))
+        // false = 中断済みで握った分は外し終えている。子を1つも起こさずに抜ける(DeviceMachineRunner と同じ)
+        guard prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(active.map { $0.1.host })) else {
+            throw ValidationError("interrupted while acquiring dispatch locks — starting no fleet entry")
+        }
         let lockMarkers = prelock.markers
 
         let outcomes = await withTaskGroup(of: (Int, FleetEntryOutcome).self) { group in

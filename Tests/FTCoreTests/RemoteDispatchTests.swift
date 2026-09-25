@@ -172,6 +172,7 @@ final class RemoteDispatchTests: XCTestCase {
                                         layout: layout, sshTarget: "user@host", ignore: .none),
             [
                 "-az", "--delete",
+                "-e", "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
                 "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.fleetest",
                 "/local/Projects/E2E/",
                 "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/",
@@ -188,6 +189,7 @@ final class RemoteDispatchTests: XCTestCase {
                                         layout: layout, sshTarget: "user@host", ignore: ignore),
             [
                 "-az", "--delete",
+                "-e", "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
                 "--exclude", "/reports", "--exclude", "/results", "--exclude", "/.fleetest",
                 "--exclude", "/workspace/*.log", "--exclude", "/workspace/**/*.log",
                 "/local/Projects/E2E/",
@@ -200,6 +202,7 @@ final class RemoteDispatchTests: XCTestCase {
                                             excludePatterns: ["/.stub-leases/", "/**/.stub-leases/"])),
             [
                 "-az", "--delete",
+                "-e", "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
                 "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
                 "--exclude", "/.stub-leases/", "--exclude", "/**/.stub-leases/",
                 "/local/ws/",
@@ -219,6 +222,7 @@ final class RemoteDispatchTests: XCTestCase {
                 layout: layout, sshTarget: "user@host", ignore: .none),
             [
                 "-az", "--delete",
+                "-e", "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
                 "--exclude", ".git", "--exclude", ".DS_Store", "--exclude", "node_modules",
                 "/local/sut-ec-mobile-workspace/",
                 "user@host:/Users/ci/fleetest-runner/users/alice/work/workspace/E2E/",
@@ -299,6 +303,7 @@ final class RemoteDispatchTests: XCTestCase {
                 localProjectsDir: "/local/Projects"),
             [
                 "-az", "--safe-links", "-8", "--out-format=%n",
+                "-e", "ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=4",
                 "user@host:/Users/ci/fleetest-runner/users/alice/work/TestProjects/E2E/results/",
                 "/local/Projects/E2E/results/",
             ])

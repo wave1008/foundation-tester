@@ -25,15 +25,24 @@ const ORPHAN_PPID = 1;
 const ORPHAN_COMMAND_RE =
   /(^|\/)fleetest(?:\s|$).*\bapi\s+(?:live\s+serve|host-metrics|monitor|run|device-stream)(?:\s|$)|(^|\/)fleetest-(?:simstream|androidstream|devicepoll)(?:\s|$)/;
 
-/** ps 出力(`ps -axo pid=,ppid=,command=`)から、孤児化した fleetest 常駐プロセスの PID を抽出する。
- * 対象: PPID が 1(親死亡で launchd に reparent 済み=誰の管理下にも無い)かつ、コマンドが
+// `api run` だけの部分集合(ORPHAN_COMMAND_RE の一部)。自前の後始末を持つので orphanSignal が
+// SIGTERM だけを送る対象を絞るのに使う(process-lifecycle.md「終了猶予の方針」)。
+const ORPHAN_RUN_RE = /(^|\/)fleetest(?:\s|$).*\bapi\s+run(?:\s|$)/;
+
+export interface OrphanCandidate {
+  readonly pid: number;
+  readonly command: string;
+}
+
+/** ps 出力(`ps -axo pid=,ppid=,command=`)から、孤児化した fleetest 常駐プロセスの候補(pid+command)を
+ * 抽出する。対象: PPID が 1(親死亡で launchd に reparent 済み=誰の管理下にも無い)かつ、コマンドが
  * fleetest の常駐 api サブコマンド(live serve / host-metrics / monitor / run / device-stream。
  * `remote exec` 越しの device-stream も含む)、または配信ヘルパー(fleetest-simstream /
  * fleetest-androidstream / fleetest-devicepoll)であるもの。
  * PPID=1 以外(生きている拡張ホストの子)は絶対に対象にしない(複数ウィンドウ環境の安全条件)。
  * ここは**候補**の抽出まで —— 実際に殺すかは sweepOrphans が環境の印(isSpawnedByFleetest)で決める。 */
-export function parseOrphanPids(psOutput: string): number[] {
-  const pids: number[] = [];
+export function parseOrphanCandidates(psOutput: string): OrphanCandidate[] {
+  const out: OrphanCandidate[] = [];
   for (const line of psOutput.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) {
@@ -52,9 +61,23 @@ export function parseOrphanPids(psOutput: string): number[] {
     if (!ORPHAN_COMMAND_RE.test(command)) {
       continue;
     }
-    pids.push(pid);
+    out.push({ pid, command });
   }
-  return pids;
+  return out;
+}
+
+/** parseOrphanCandidates の pid だけを返す(既存呼び手・テスト互換)。 */
+export function parseOrphanPids(psOutput: string): number[] {
+  return parseOrphanCandidates(psOutput).map((c) => c.pid);
+}
+
+/** `api run` は SIGTERM のみ(自前の後始末 = dispatch.lock の解放・run.json 書き込みを SIGKILL で
+ *  刺し殺さない。process-lifecycle.md「終了猶予の方針」)。Reload Window 直後は旧拡張ホストの死を
+ *  検知した run が既に ParentDeathWatch 経由で後始末中であることがあり、そこへ SIGKILL を打つと
+ *  後始末が完走しない。他の孤児(live serve/host-metrics/monitor/device-stream・配信ヘルパー)は
+ *  後始末を持たないので従来どおり SIGKILL。 */
+export function orphanSignal(command: string): NodeJS.Signals {
+  return ORPHAN_RUN_RE.test(command) ? "SIGTERM" : "SIGKILL";
 }
 
 /** 候補プロセスの環境(`ps -Eo command= -p <pid>` の出力)に、拡張 / fleetest が起こした印
@@ -73,7 +96,8 @@ export interface OrphanSweepDeps {
   listProcesses: () => Promise<string>;
   /** その pid の環境を含む行(`ps -Eo command= -p <pid>`)。読めなければ空文字 = 印なし扱い */
   readEnvironment: (pid: number) => Promise<string>;
-  kill: (pid: number) => void;
+  /** signal は orphanSignal が候補の command から決める(api run = SIGTERM・他 = SIGKILL)。 */
+  kill: (pid: number, signal: NodeJS.Signals) => void;
 }
 
 function execFileText(file: string, args: string[]): Promise<string> {
@@ -107,11 +131,12 @@ const defaultDeps: OrphanSweepDeps = {
       return "";
     }
   },
-  kill: (pid) => process.kill(pid, "SIGKILL"),
+  kill: (pid, signal) => process.kill(pid, signal),
 };
 
-/** ps 実行→抽出→所有の確認→SIGKILL。エラーは握って log に1行(掃除は best-effort、activate を
- * 失敗させない)。掃除した PID と、同名だが印が無くて見送った本数を log に報告する。 */
+/** ps 実行→抽出→所有の確認→kill(signal は orphanSignal)。エラーは握って log に1行
+ * (掃除は best-effort、activate を失敗させない)。掃除した PID と、同名だが印が無くて
+ * 見送った本数を log に報告する。 */
 export async function sweepOrphans(
   log: (message: string) => void,
   deps: OrphanSweepDeps = defaultDeps,
@@ -124,25 +149,25 @@ export async function sweepOrphans(
     return;
   }
 
-  const candidates = parseOrphanPids(psOutput).filter((pid) => pid !== process.pid);
+  const candidates = parseOrphanCandidates(psOutput).filter((c) => c.pid !== process.pid);
   if (candidates.length === 0) {
     return;
   }
 
   const killed: number[] = [];
   let skippedUnowned = 0;
-  for (const pid of candidates) {
-    if (!isSpawnedByFleetest(await deps.readEnvironment(pid))) {
+  for (const c of candidates) {
+    if (!isSpawnedByFleetest(await deps.readEnvironment(c.pid))) {
       skippedUnowned += 1;
       continue;
     }
     try {
-      deps.kill(pid);
-      killed.push(pid);
+      deps.kill(c.pid, orphanSignal(c.command));
+      killed.push(c.pid);
     } catch (error) {
       // ESRCH(既に終了済み)を含め、個別の失敗で全体を止めない。
       if ((error as NodeJS.ErrnoException)?.code !== "ESRCH") {
-        log(t("workbench.orphanSweep.killFailedLog", { pid, error: String(error) }));
+        log(t("workbench.orphanSweep.killFailedLog", { pid: c.pid, error: String(error) }));
       }
     }
   }

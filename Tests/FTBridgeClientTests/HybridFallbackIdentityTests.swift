@@ -1,5 +1,5 @@
 // HybridFallbackIdentity.drifted の I/O(/status を撃って判定へ渡す)配線を、実ブリッジ無しで
-// 固定する。判定そのもの(BridgeIdentityCheck.hybridFallbackMismatch)は
+// 固定する。判定そのもの(BridgeIdentityCheck.hybridFallbackDrift)は
 // Tests/FTCoreTests/BridgeIdentityCheckTests.swift が純粋関数として確かめてあるので、
 // ここで見るのは「その判定へ正しい status を渡せているか」と「不明を変わったに倒さないか」。
 //
@@ -75,7 +75,7 @@ final class HybridFallbackIdentityTests: XCTestCase {
         let drifted = await HybridFallbackIdentity.drifted(
             port: stub.port, expectedUDID: "SIM-1", repoRoot: nil)
 
-        XCTAssertFalse(drifted)
+        XCTAssertEqual(drifted, .none)
     }
 
     /// **本命**: fallback ポートが実際に別デバイスの XCUITest ブリッジへ移った形
@@ -88,10 +88,11 @@ final class HybridFallbackIdentityTests: XCTestCase {
         let drifted = await HybridFallbackIdentity.drifted(
             port: stub.port, expectedUDID: "SIM-1", repoRoot: nil)
 
-        XCTAssertTrue(drifted, "fallback ポートが別デバイスの udid を名乗っているのに見逃した")
+        XCTAssertEqual(drifted, .differentDevice, "fallback ポートが別デバイスの udid を名乗っているのに見逃した")
     }
 
-    /// **maintainer-notes §51.2 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた
+    /// **maintainer-notes §51.2 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた。
+    /// udid を申告しないのは実機の xcuitest だけなので、これは差し替わり(differentDevice)
     func testInAppEngineOnTheExpectedXCUITestPortIsDrifted() async throws {
         let stub = try StatusStubServer(status: StatusResponse(
             ready: true, device: "iPhone 17 Pro-05", osVersion: "-", sessionBundleID: "com.example.other",
@@ -101,7 +102,20 @@ final class HybridFallbackIdentityTests: XCTestCase {
         let drifted = await HybridFallbackIdentity.drifted(
             port: stub.port, expectedUDID: "SIM-1", repoRoot: nil)
 
-        XCTAssertTrue(drifted)
+        XCTAssertEqual(drifted, .differentDevice)
+    }
+
+    /// 同じ udid のまま engine だけ入れ替わった形は sameDeviceEngineChanged
+    func testSameUDIDDifferentEngineIsSameDeviceEngineChanged() async throws {
+        let stub = try StatusStubServer(status: StatusResponse(
+            ready: true, device: "iPhone 17 Pro-02", osVersion: "-", sessionBundleID: "com.example.app",
+            engine: "inapp", udid: "SIM-1"))
+        defer { stub.stop() }
+
+        let drifted = await HybridFallbackIdentity.drifted(
+            port: stub.port, expectedUDID: "SIM-1", repoRoot: nil)
+
+        XCTAssertEqual(drifted, .sameDeviceEngineChanged)
     }
 
     /// ライブ操作が主(in-app)側を確かめるときの形: `expectedEngine: "inapp"` を渡す
@@ -114,7 +128,7 @@ final class HybridFallbackIdentityTests: XCTestCase {
         let drifted = await HybridFallbackIdentity.drifted(
             port: stub.port, expectedUDID: "SIM-1", expectedEngine: "inapp", repoRoot: nil)
 
-        XCTAssertFalse(drifted, "in-app を期待し in-app が答えたのに drifted と判定した")
+        XCTAssertEqual(drifted, .none, "in-app を期待し in-app が答えたのに drifted と判定した")
     }
 
     /// **不明(接続すら失敗)は「変わった」に倒さない** —— busy/不在と区別できないので、
@@ -124,6 +138,6 @@ final class HybridFallbackIdentityTests: XCTestCase {
         let drifted = await HybridFallbackIdentity.drifted(
             port: 1, expectedUDID: "SIM-1", repoRoot: nil, timeoutSeconds: 1)
 
-        XCTAssertFalse(drifted, "unknown(接続失敗)を「変わった」と判定した")
+        XCTAssertEqual(drifted, .none, "unknown(接続失敗)を「変わった」と判定した")
     }
 }

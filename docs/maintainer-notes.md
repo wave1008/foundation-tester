@@ -2513,7 +2513,7 @@ MCP とライブ操作は hybrid(in-app + XCUITest の予備)を組んだ後、�
 確かめていなかった。フリートの建て直しで予備ポートが in-app ブリッジに化け、`/gesture`・`/drag` が 404
 (= in-app に来た証拠)。別の台なら home/drag を黙って別の台へ撃つ。直し: `HybridFallbackIdentity.drifted`
 を MCP(キャッシュ命中)とライブ操作(`frame` 以外の命令ごと)が共有。**`BridgeIdentityCheck.verdict` は udid が
-両側にあるとエンジンを見ない**ので、同じ台の in-app に化けた形は `hybridFallbackMismatch` でエンジンを先に見る
+両側にあるとエンジンを見ない**ので、同じ台の in-app に化けた形は `hybridFallbackDrift` でエンジンを先に見る
 
 ### 51.3 `api run` だけ供給前の lease の前倒しが無かった(run と api run の2実装)
 2026-09-20 に `fleetest run` だけ直していた。`api run` の供給中(ブリッジ起動)に `api stop-device` が門を

@@ -1,6 +1,8 @@
 // モニターパネル「プロセス」タブ(#panel-processes)。main.js が applyResidentMessage を message
 // ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の refreshResidentProcesses/
-// killAllResidentProcessesAndClose/residentProcesses、処理は src/monitorPanel.ts。
+// killAllResidentProcessesAndClose/residentProcesses/residentKillCancelled、処理は src/monitorPanel.ts。
+// 「すべて終了」の確認はホスト側の showWarningMessage({modal:true})が持つ(window.confirm は
+// webview で効かない)。キャンセル時は residentKillCancelled が届いてボタンの disabled を戻す。
 
 import { vscode } from './vscodeApi.js';
 import { formatDateTime, t } from '../i18n.js';
@@ -148,6 +150,8 @@ export function applyResidentMessage(message) {
     lastSignature = signature;
     renderResidentList(message.items);
     residentUpdated.textContent = t('wvMonitor2.process.lastUpdated', { time: formatUpdatedAt(message.ts) });
+  } else if (message.type === 'residentKillCancelled') {
+    residentKillCloseBtn.disabled = false;
   }
 }
 
@@ -156,7 +160,9 @@ function requestRefresh() {
 }
 
 residentKillCloseBtn.addEventListener('click', () => {
-  residentKillCloseBtn.disabled = true; // 二重送信防止。掃討完了とともにパネルごと閉じるので復帰は不要
+  // 二重送信防止。確認後に実行されればパネルごと閉じるので復帰は不要だが、ホスト側の確認モーダルで
+  // キャンセルされると residentKillCancelled が届いてここで戻す。
+  residentKillCloseBtn.disabled = true;
   vscode.postMessage({ type: 'killAllResidentProcessesAndClose' });
 });
 

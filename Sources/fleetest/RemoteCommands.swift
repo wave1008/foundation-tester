@@ -19,7 +19,7 @@ import Foundation
 
 /// 全 ssh 共通の基底引数。ConnectTimeout が無いと到達不能ホストで TCP 既定(75秒超)固まる
 /// (RemoteRunDispatcher.sshBase と同じ規律)
-private let remoteSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
+private let remoteSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
 
 struct RemoteCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

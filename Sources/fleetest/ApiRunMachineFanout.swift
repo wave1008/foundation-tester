@@ -147,8 +147,12 @@ enum ApiRunMachineFanout {
             waitLock: options.waitLock, runGroup: runGroup, mode: .apiRun,
             log: { logStderr($0) }))
         defer { prelock.releaseAll() }
-        prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
-            active.map { $0.group.machineLabel }))
+        // 戻り値 false = 中断されて、ここまでに握った分は既に外し終えている(DispatchPrelock の
+        // 宣言)。**子を1つも起こさずに抜ける**(DeviceMachineRunner.run と同じ理由)
+        guard prelock.acquireInOrder(machines: DispatchPrelock.machinesToLock(
+            active.map { $0.group.machineLabel })) else {
+            throw ValidationError("interrupted while acquiring dispatch locks — starting no sub-run")
+        }
         // 子タスクへ渡すのは値のコピー(prelock 自身を @Sendable な closure へ持ち込まない)
         let lockMarkers = prelock.markers
         let (stream, continuation) = AsyncStream<ChildEvent>.makeStream()
@@ -193,6 +197,9 @@ enum ApiRunMachineFanout {
             for await (position, outcome) in taskGroup { collected[position] = outcome }
             return (0..<active.count).compactMap { collected[$0] }
         }
+        // 理由は DeviceMachineRunner.run と同じ(子の終了コードが分かった時点で解放する)
+        prelock.releaseAll(exitCodes: Dictionary(
+            outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first }))
         // 全子が最後の .exited を継続へ渡し終えたあとでのみ finish してよい(withTaskGroup は
         // 各子タスクの return を待つので、この時点で runChild は必ず .exited を yield 済み)
         continuation.finish()

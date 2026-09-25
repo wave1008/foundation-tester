@@ -154,14 +154,18 @@ final class InterruptRelay {
 /// FTCore はこの型を知らない(fleetest ターゲットへの依存を作らない) —— 両方 closure で渡す。
 /// **2回目の中断は待たずに強制終了する**(1回目で通常の完了経路が刺さった場合に人が抜けられる
 /// ように。CLAUDE.md「終了猶予の方針」—— この force exit だけは registerChildProcess の
-/// SIGTERM や defer の巻き戻しを待たない最終手段)
+/// SIGTERM や defer の巻き戻しを待たない最終手段)。
+/// **構築はロック取得の直後(recorder が無い段階)で行う** —— `RunRecorder.begin()` はビルド後
+/// にしか作れないので、recorder は `attachRecorder` で後から繋ぐ(attachLateSubscriber と同じ
+/// 「後から来た者は現在の状態に追いつく」規律)
 final class RunInterruptState: @unchecked Sendable {
     private let lock = NSLock()
     private var stopped = false
     private var runningProcesses: [ObjectIdentifier: Process] = [:]
     /// 1回目の中断で `markInterrupted()` を呼ぶ相手(以後に書く失敗の記録へ `interrupted: true` を付ける)。
-    /// **既定値を置かない** —— 渡し忘れると中断で止めたシナリオが「回帰の疑い」として履歴に残る
-    private let recorder: RunRecorder?
+    /// **構築時点では nil のことがある**(setup/供給/ビルドより前に登録するため)。`attachRecorder` が
+    /// 後から繋ぐ
+    private var recorder: RunRecorder?
     /// 供給フェーズを終えてオーケストレータが立ってから合流する追加の通知先
     /// (`RunOrchestrator.requestInterrupt()`)。**この型は供給フェーズの前から生きているので
     /// オーケストレータはまだ存在しない** —— `attachLateSubscriber` で後から合流させる。
@@ -188,10 +192,11 @@ final class RunInterruptState: @unchecked Sendable {
         stopped = true
         let toKill = Array(runningProcesses.values)
         let subscriber = firstTime ? lateSubscriber : nil
+        let currentRecorder = recorder
         lock.unlock()
         // 子を止める前に印を付ける(止めた子の失敗の記録が印より先に書かれないように)
         if firstTime {
-            recorder?.markInterrupted()
+            currentRecorder?.markInterrupted()
             subscriber?()
             // 供給中(ブリッジの起動等)は止まるまで数十秒かかりうるので、効いていることを言う
             // (無言だと利用者は効いていないと見て強制終了し、中断の記録が残らない)
@@ -217,6 +222,16 @@ final class RunInterruptState: @unchecked Sendable {
         if alreadyStopped { subscriber() }
     }
 
+    /// `RunRecorder.begin()`(ビルド後にしか作れない)が確定したら繋ぐ。**登録前に既に中断済み
+    /// なら、その場で markInterrupted() を呼ぶ**(attachLateSubscriber と同じ取りこぼし対策)
+    func attachRecorder(_ recorder: RunRecorder) {
+        lock.lock()
+        let alreadyStopped = stopped
+        if self.recorder == nil { self.recorder = recorder }
+        lock.unlock()
+        if alreadyStopped { recorder.markInterrupted() }
+    }
+
     /// ScenarioHost.run(registerChildProcess:) に渡す。登録前に既に中断済みならその場で
     /// SIGTERM する(register と中断到着の競合を取りこぼさない)
     func registerChildProcess(_ process: Process) -> @Sendable () -> Void {
@@ -232,5 +247,16 @@ final class RunInterruptState: @unchecked Sendable {
             self.runningProcesses.removeValue(forKey: id)
             self.lock.unlock()
         }
+    }
+}
+
+/// setup.sh・供給(ブリッジ起動等)・ビルドのいずれか(= まだ `RunRecorder` が無いか、
+/// シナリオが1本も始まっていない段階)で中断が来たときに投げる。**既存の早期失敗と同じ出口**
+/// (ビルド失敗等と同じく、NDJSON は1行も出さず defer で後始末して stderr + 非0 exit で終わる)。
+/// 利用者向け文言は英語のみ
+struct RunInterruptedBeforeStartError: Error, LocalizedError {
+    let phase: String
+    var errorDescription: String? {
+        "interrupted before the run could start (during \(phase)) — cleaned up and exiting"
     }
 }

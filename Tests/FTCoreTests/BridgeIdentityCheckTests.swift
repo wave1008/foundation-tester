@@ -113,46 +113,49 @@ final class BridgeIdentityCheckTests: XCTestCase {
         }
     }
 
-    // MARK: - hybridFallbackMismatch(maintainer-notes §51.2。hybrid が主とは別に握るポートの本人確認。
+    // MARK: - hybridFallbackDrift(maintainer-notes §51.2。hybrid が主とは別に握るポートの本人確認。
     // 呼び手は MCP とライブ操作(api live serve)の2つ、どちらも FTBridgeClient.HybridFallbackIdentity 経由)
 
     /// **本命**: fallback ポートが今は別デバイスの XCUITest ブリッジ。以前は無検査で
-    /// キャッシュ/使い回されたドライバがそのまま撃たれていた
-    func testHybridFallbackMismatchDetectsADifferentUDID() {
-        XCTAssertTrue(BridgeIdentityCheck.hybridFallbackMismatch(
+    /// キャッシュ/使い回されたドライバがそのまま撃たれていた。**udid が違う形は differentDevice**
+    /// (エンジンも違えば同時に食い違っていても、機が違う事実のほうを優先する)
+    func testHybridFallbackDriftDetectsADifferentUDID() {
+        XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(
             port: 8129, expectedUDID: "SIM-1", status: status(engine: "xcuitest", udid: "SIM-2")),
-            "fallback ポートが別デバイスの udid を名乗っているのに一致と判定した")
+            .differentDevice, "fallback ポートが別デバイスの udid を名乗っているのに一致と判定した")
     }
 
     /// **maintainer-notes §51.2 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた(XCUITest ではない)。
-    /// in-app には `/gesture` が無いので 404 になるが、相手が同じデバイスの別ポートとは限らない
-    /// —— エンジンの食い違いだけでも mismatch にする(udid が申告されない旧作りでも捕まる)
-    func testHybridFallbackMismatchDetectsTheFallbackPortNowAnsweringAsInApp() {
-        XCTAssertTrue(BridgeIdentityCheck.hybridFallbackMismatch(
+    /// in-app には `/gesture` が無いので 404 になるが、相手が同じデバイスの別ポートとは限らない。
+    /// udid が申告されない(実機の xcuitest しか取り得ない形)ので、エンジンの食い違いは
+    /// differentDevice に分類する(実機 ⇄ シミュレータの入れ替わりでしか起こらない)
+    func testHybridFallbackDriftDetectsTheFallbackPortNowAnsweringAsInApp() {
+        XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(
             port: 8129, expectedUDID: "SIM-1", status: status(engine: "inapp", udid: nil)),
-            "fallback ポートが in-app を名乗っているのに一致と判定した")
+            .differentDevice, "fallback ポートが in-app を名乗っているのに一致と判定した")
     }
 
-    /// 同じ台の in-app ブリッジが予備ポートに居る形も不一致(udid だけ見ると一致に読める)
-    func testHybridFallbackMismatchDetectsSameDeviceInAppOnTheFallbackPort() {
-        XCTAssertTrue(BridgeIdentityCheck.hybridFallbackMismatch(
+    /// 同じ台(udid 一致)の in-app ブリッジが予備ポートに居る形は **sameDeviceEngineChanged**
+    /// (別デバイスではない —— MCP はこれを ref 依存呼び出しだけ拒否・非依存は黙って作り直す)
+    func testHybridFallbackDriftDetectsSameDeviceInAppOnTheFallbackPortAsEngineChanged() {
+        XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(
             port: 8129, expectedUDID: "SIM-1", status: status(engine: "inapp", udid: "SIM-1")),
-            "同じ udid の in-app を XCUITest の予備と取り違えた")
+            .sameDeviceEngineChanged, "同じ udid の in-app を XCUITest の予備と取り違えた")
     }
 
-    func testHybridFallbackMismatchIsFalseWhenTheUDIDStillMatches() {
-        XCTAssertFalse(BridgeIdentityCheck.hybridFallbackMismatch(
-            port: 8129, expectedUDID: "SIM-1", status: status(engine: "xcuitest", udid: "SIM-1")))
+    func testHybridFallbackDriftIsNoneWhenTheUDIDStillMatches() {
+        XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(
+            port: 8129, expectedUDID: "SIM-1", status: status(engine: "xcuitest", udid: "SIM-1")), .none)
     }
 
     /// `expectedEngine` はライブ操作が in-app 側(主)を確かめるのに使う(同じ判定を2つ持たない)
-    func testHybridFallbackMismatchCanExpectInAppForThePrimarySide() {
-        XCTAssertFalse(BridgeIdentityCheck.hybridFallbackMismatch(
+    func testHybridFallbackDriftCanExpectInAppForThePrimarySide() {
+        XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(
             port: 8123, expectedUDID: "SIM-1", expectedEngine: "inapp",
-            status: status(engine: "inapp", udid: "SIM-1")))
-        XCTAssertTrue(BridgeIdentityCheck.hybridFallbackMismatch(
+            status: status(engine: "inapp", udid: "SIM-1")), .none)
+        XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(
             port: 8123, expectedUDID: "SIM-1", expectedEngine: "inapp",
             status: status(engine: "xcuitest", udid: "SIM-1")),
-            "in-app を期待しているのに xcuitest が答えたら mismatch のはず")
+            .sameDeviceEngineChanged, "in-app を期待しているのに xcuitest が答えたら engine 違いのはず")
     }
 }

@@ -396,6 +396,10 @@ export type MonitorToWebviewMessage =
   // プロセスタブ「常駐プロセス」一覧。refreshResidentProcesses 受信時に送る。
   // 対向: processesTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
+  // 「すべて終了して閉じる」の確認モーダル(ホスト側 showWarningMessage)でキャンセルされたときだけ送る。
+  // webview はボタンの disabled を戻す(押下時に disabled=true にしたぶんの復帰)。
+  // 対向: processesTab.js の applyResidentMessage。
+  | { readonly type: "residentKillCancelled" }
   // 「デバイスモニター」タブのスプリッター位置(タイルペイン高さ px)。ready 直後に workspaceState の永続値を反映する。
   // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
   // webview 側は splitter.js の setTilePaneHeight へ渡す。
@@ -862,8 +866,9 @@ export type MonitorFromWebviewMessage =
   // ホスト側は両方と「ライブ更新」(setShowStreamDuringRun)の AND を deviceStream.setVisible へ渡す
   | { readonly type: "devicesTabVisible"; readonly visible: boolean }
   // 常駐プロセス(モニター/host-metrics/配信・ブリッジ・workspace 由来の残余)を掃討したあと、
-  // 再起動せずにモニターパネル(タブ)を閉じる。確認ダイアログは出さず即実行。応答は返さない
-  // (成功時は webview ごと消える。掃討の失敗はホスト側の showErrorMessage で通知しつつ閉じる)
+  // 再起動せずにモニターパネル(タブ)を閉じる。**確認はホスト側の showWarningMessage({modal:true})**
+  // (webview では window.confirm が効かない)。キャンセルは residentKillCancelled で応答、
+  // 確認時は成功時に webview ごと消える(掃討の失敗はホスト側の showErrorMessage で通知しつつ閉じる)
   | { readonly type: "killAllResidentProcessesAndClose" }
   // 「デバイスモニター」タブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。

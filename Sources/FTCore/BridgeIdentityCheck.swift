@@ -91,22 +91,36 @@ public enum BridgeIdentityCheck {
     public static let runLaneRemedy =
         "The lane's port was taken over; the worker must be re-provisioned"
 
+    /// `hybridFallbackDrift` の3値。**呼び手ごとに扱いを分けるための分類**(MCP は
+    /// `differentDevice` だけ ref の有無を問わず拒否・ライブ操作は `differentDevice` だけ
+    /// 同ポートでの作り直しをしない。`sameDeviceEngineChanged` は両呼び手とも現状どおり
+    /// 黙って作り直す/ref 依存呼び出しだけ拒否する)
+    public enum HybridFallbackDrift: Equatable, Sendable {
+        /// 期待通り、または判断材料が無い(不明を「変わった」にしない)
+        case none
+        /// 同じ udid のまま、ブリッジのエンジンだけが入れ替わった(建て直しで engine が変わった)
+        case sameDeviceEngineChanged
+        /// 別の udid(別の実体)が答えている
+        case differentDevice
+    }
+
     /// **エンジンの決まったポートの本人確認**(udid + エンジン)。呼び手は MCP のキャッシュ命中と
     /// ライブ操作の命令ごと(`FTBridgeClient.HybridFallbackIdentity` 経由)で、hybrid の予備
-    /// (XCUITest)ポートと、主ポート(xcuitest / in-app)の両方に使う。`detail` も `remedy` も
-    /// 要らないので `matches` を薄く包む。`physical: false` 固定でよい —— 実機のランナーが名乗らない
-    /// udid は呼び手が `statusForIdentityCheck` で台帳から補ってから渡す(補えなければ udid の比較は
-    /// 素通り = 不明を「変わった」にしない)。`expectedEngine` は `"xcuitest"` か `"inapp"`
-    public static func hybridFallbackMismatch(
+    /// (XCUITest)ポートと、主ポート(xcuitest / in-app)の両方に使う。`physical: false` 固定でよい
+    /// —— 実機のランナーが名乗らない udid は呼び手が `statusForIdentityCheck` で台帳から補ってから
+    /// 渡す(補えなければ udid の比較は素通り = 不明を「変わった」にしない)。`expectedEngine` は
+    /// `"xcuitest"` か `"inapp"`
+    public static func hybridFallbackDrift(
         port: UInt16, expectedUDID: String, expectedEngine: String = "xcuitest", status: StatusResponse
-    ) -> Bool {
-        // **エンジンを先に見る**: `verdict` は udid が両側にあると udid だけで比べるが、in-app も
-        // udid を名乗るので、予備ポートが**同じ台の** in-app ブリッジに化けた形(`/gesture` が 404)を
-        // 一致と読む。hybrid の片側はエンジンが決まっているので、食い違えば udid を問わず不一致
-        if let statusEngine = status.engine, (statusEngine == "inapp") != (expectedEngine == "inapp") {
-            return true
+    ) -> HybridFallbackDrift {
+        let engineMismatch = status.engine.map { ($0 == "inapp") != (expectedEngine == "inapp") } ?? false
+        if let statusUDID = status.udid {
+            guard statusUDID == expectedUDID else { return .differentDevice }
+            return engineMismatch ? .sameDeviceEngineChanged : .none
         }
-        let expected = Expected(port: port, udid: expectedUDID, physical: false, engine: expectedEngine)
-        return !matches(expected: expected, status: status)
+        // udid を申告しないのは実機の XCUITest ランナーだけ(in-app は必ず udid を名乗る)ので、
+        // ここでエンジンが食い違うのは常に「実機 ⇄ シミュレータ」= 別の実体。同じ機の中で
+        // エンジンだけ入れ替わる形は起こらない(実機は xcuitest しか動かない)
+        return engineMismatch ? .differentDevice : .none
     }
 }

@@ -4,7 +4,13 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseOrphanPids, isSpawnedByFleetest, sweepOrphans } from "../src/orphanSweep";
+import {
+  parseOrphanPids,
+  parseOrphanCandidates,
+  orphanSignal,
+  isSpawnedByFleetest,
+  sweepOrphans,
+} from "../src/orphanSweep";
 
 test("parseOrphanPids: PPID=1 の live serve / host-metrics / monitor を抽出する", () => {
   const psOutput = [
@@ -130,4 +136,45 @@ test("sweepOrphans: 印のある孤児だけ SIGKILL し、印の無い同名プ
   assert.deepEqual(killed, [111]);
   assert.equal(logs.some((m) => m.includes("111")), true, logs.join("\n"));
   assert.equal(logs.some((m) => m.includes("2")), true, "見送った 2 件を報告する: " + logs.join("\n"));
+});
+
+// 欠陥2: Reload Window で孤児化した `api run` は後始末中(dispatch.lock の解放・run.json 書き込み)
+// のことがあるため、SIGKILL で刺し殺さず SIGTERM のみを送る。他の孤児は従来どおり SIGKILL。
+test("orphanSignal: api run は SIGTERM、他の常駐種別は SIGKILL", () => {
+  assert.equal(orphanSignal(".build/debug/fleetest api run --project A --scenario Foo"), "SIGTERM");
+  assert.equal(orphanSignal("/x/.build/debug/fleetest api run --profile Nightly"), "SIGTERM");
+  assert.equal(orphanSignal(".build/debug/fleetest api monitor --project A"), "SIGKILL");
+  assert.equal(orphanSignal(".build/debug/fleetest api host-metrics"), "SIGKILL");
+  assert.equal(orphanSignal(".build/debug/fleetest api live serve --platform ios"), "SIGKILL");
+  assert.equal(orphanSignal(".build/debug/fleetest api device-stream --platform ios"), "SIGKILL");
+  assert.equal(orphanSignal("/x/.build/debug/fleetest-androidstream --serial emulator-5554"), "SIGKILL");
+});
+
+test("parseOrphanCandidates: pid と command を両方返す(parseOrphanPids は pid だけの派生)", () => {
+  const psOutput = "111 1 .build/debug/fleetest api run --project A --scenario Foo";
+  assert.deepEqual(parseOrphanCandidates(psOutput), [
+    { pid: 111, command: ".build/debug/fleetest api run --project A --scenario Foo" },
+  ]);
+  assert.deepEqual(parseOrphanPids(psOutput), [111]);
+});
+
+test("sweepOrphans: 孤児の api run は SIGKILL せず SIGTERM だけを送る(後始末中を刺し殺さない)", async () => {
+  const psOutput = [
+    "111 1 /x/.build/debug/fleetest api run --project A --scenario Foo",
+    "222 1 /x/.build/debug/fleetest api monitor --project B",
+  ].join("\n");
+  const envs = {
+    111: "fleetest api run --project A FT_PARENT_PID=9999 HOME=/Users/x",
+    222: "fleetest api monitor --project B FT_PARENT_PID=9999 HOME=/Users/x",
+  };
+  const killedWith = [];
+  await sweepOrphans(() => {}, {
+    listProcesses: async () => psOutput,
+    readEnvironment: async (pid) => envs[pid] ?? "",
+    kill: (pid, signal) => { killedWith.push([pid, signal]); },
+  });
+  assert.deepEqual(killedWith.sort((a, b) => a[0] - b[0]), [
+    [111, "SIGTERM"],
+    [222, "SIGKILL"],
+  ]);
 });

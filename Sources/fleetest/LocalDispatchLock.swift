@@ -120,11 +120,15 @@ final class LocalDispatchLock {
     /// 取る。**戻り値 nil = 取らなかった**(親が握っている)。throw = 取れなかった(run は止める)。
     ///
     /// **中断(SIGINT/SIGTERM)は待っている間だけ横取りする** —— 受けたら待機列から自分の
-    /// チケットを外して throw する(= 通常の巻き戻しへ入る)。**握ったあとは横取りを外す**:
-    /// ①握っているロックは死んだ pid として次の run が自分で回収する(`decideLocalSweep`)ので
-    /// 握りっぱなしで残らない ②run 自身の中断ハンドラ(`RunInterruptState`)は供給の後でしか
-    /// 立たないので、ここで握り続けると**供給中の Ctrl-C が黙って無視される**
-    func acquire() throws -> Holder? {
+    /// チケットを外して throw する(= 通常の巻き戻しへ入る)。**`interruptCheck` を渡された
+    /// ときはそれを使う**(呼び出し側 = `ApiRunCommand`/`Fleetest` がロック取得より前に
+    /// 自分の `InterruptRelay.observing` を1つ登録済みのときの規律 —— 1プロセス1組。
+    /// ここで2つ目を立てない)。**省略時**(他の呼び出し元)は従来どおり自前で1つ立てて
+    /// 待機を抜けたら `stop()` する。**握ったあとは自前で立てた分だけ外す**(`interruptCheck` が
+    /// 渡されていれば、それを提供した relay は呼び出し側が defer で管理するのでここでは
+    /// 何もしない)。**待機中だけで横取りをやめてよい理由**: 握っているロックは死んだ pid として
+    /// 次の run が自分で回収する(`decideLocalSweep`)ので握りっぱなしで残らない
+    func acquire(interruptCheck: (() -> Bool)? = nil) throws -> Holder? {
         if Self.parentHoldsTheLock(environment: environment) {
             log("==> the dispatch lock on this Mac is already held by this run's parent")
             return nil
@@ -144,9 +148,18 @@ final class LocalDispatchLock {
             }
             return makeHolder()
         }
-        let interrupted = InterruptFlag()
-        let relay = InterruptRelay.observing { interrupted.mark() }
-        defer { relay.stop() }
+        let isInterrupted: () -> Bool
+        let stopOwnRelay: () -> Void
+        if let interruptCheck {
+            isInterrupted = interruptCheck
+            stopOwnRelay = {}
+        } else {
+            let interrupted = InterruptFlag()
+            let relay = InterruptRelay.observing { interrupted.mark() }
+            isInterrupted = { interrupted.isSet }
+            stopOwnRelay = { relay.stop() }
+        }
+        defer { stopOwnRelay() }
 
         var elapsed = 0
         while true {
@@ -190,7 +203,7 @@ final class LocalDispatchLock {
                 log(elapsed == 0 ? status.queuedLine : status.stillQueuedLine)
                 emitDispatchWaiting(status)
             }
-            guard !interrupted.isSet else {
+            guard !isInterrupted() else {
                 dequeue(ticket)
                 throw LocalDispatchLockError(
                     message: "interrupted while queued for the dispatch lock on this Mac"

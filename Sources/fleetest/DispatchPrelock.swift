@@ -20,8 +20,11 @@ import Foundation
 
 final class DispatchPrelock {
 
-    /// ロック1件の解放手続き(取得時に決まる layout を閉じ込める)
-    typealias Release = () -> Void
+    /// ロック1件の解放手続き(取得時に決まる layout を閉じ込める)。引数はこの機械へ配った子の
+    /// 終了コード(nil = 子をまだ起こしていない/不明。正常終了(0/1)かどうかで無条件解放と
+    /// 条件付き解放を分けるのは `RemoteRunDispatcher.releaseDispatchLockAsParent` 側の役目 ——
+    /// ここは値を右から左へ渡すだけ)
+    typealias Release = (Int32?) -> Void
 
     /// 順序の鍵の供給と、1台ぶんの取得。**テストが差し替える継ぎ目**
     struct Actions {
@@ -40,9 +43,26 @@ final class DispatchPrelock {
     /// 取った順(解放は逆順)
     private var held: [(machine: DispatchOrder.Machine, release: Release)] = []
     /// 中断(SIGINT/SIGTERM)で親が即死して解放の defer が飛ばされないようにする観測。
-    /// **何もしない observer で構わない** —— 登録そのもの(signal(…, SIG_IGN))が defer の実行を
-    /// 保証する(RemoteRunDispatcher.dispatch の同じ仕掛け)
+    /// 登録そのもの(signal(…, SIG_IGN))が defer の実行を保証する(RemoteRunDispatcher.dispatch の
+    /// 同じ仕掛け)。**do-nothing ではなくなった** —— `interruptFlag` を立てる側も兼ねる
+    /// (下の `abortIfInterrupted`)
     private var interruptRelay: InterruptRelay?
+    /// 中断済みの印(シグナル用スレッドと acquireInOrder のループが別スレッドなので lock で守る。
+    /// RemoteRunDispatcher.DispatchInterruptFlag / LocalDispatchLock.InterruptFlag と同型 ——
+    /// いずれも file-private でファイルをまたいで共有できないので、ここにも1つ持つ)
+    private final class InterruptFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _interrupted = false
+        var interrupted: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return _interrupted
+        }
+        func mark() {
+            lock.lock(); defer { lock.unlock() }
+            _interrupted = true
+        }
+    }
+    private let interruptFlag = InterruptFlag()
 
     /// 機械ラベル → 子の環境へ入れる印の値。**取れた機械だけ**が載る
     private(set) var markers: [String: String] = [:]
@@ -58,15 +78,32 @@ final class DispatchPrelock {
     /// 同じ失敗を同じ文言で出す)。飛ばしても順序付けの前提は壊れない —— 要求は
     /// 「各 run が取る順序が全順序に従う」ことだけで、**一部を飛ばした部分列でも一貫性は保たれる**
     /// (飛ばした機械は誰にとっても取れないか、取れた人だけが先へ進む)。
-    func acquireInOrder(machines: [String]) {
+    ///
+    /// **中断(SIGINT/SIGTERM)を受けたら、ここまでに握ったロックを逆順で外して `false` を返す**。
+    /// **戻り値 `false` = 中断された**(呼び手 = `DeviceMachineRunner`/`ApiRunMachineFanout` は
+    /// これを見たら子を1つも起こさずに抜ける)。**throws ではなく Bool にしてある** ——
+    /// `FleetRunner`(`--fleet`)も同じ Actions/`acquireInOrder` を呼ぶが、中断時の打ち切りは
+    /// まだそちらに配線していない(この変更のスコープ外)。`throws` にすると戻り値を見ない
+    /// 既存呼び出しごとコンパイルが壊れるので、`@discardableResult` で無視しても壊れない形にし、
+    /// 中断を待たずに子を起こす退行は残しても**ビルドは壊さない**側を選ぶ。
+    ///
+    /// 見るのは①各機械へ進む直前 ②1台ぶんの取得が失敗した直後 の2箇所 —— ①だけだと、既に成功して
+    /// いた取得の直後に来た中断は次の反復まで気づかない(最後の1台の途中で来た中断は次の反復が
+    /// 無いので一生気づかない)
+    @discardableResult
+    func acquireInOrder(machines: [String]) -> Bool {
         let ordered = DispatchOrder.sorted(fillMissingUUIDs(actions.keys(machines)))
-        guard !ordered.isEmpty else { return }
+        guard !ordered.isEmpty else { return true }
         warnIfOrderUndetermined(ordered)
-        if interruptRelay == nil { interruptRelay = InterruptRelay.observing {} }
+        if interruptRelay == nil {
+            let flag = interruptFlag
+            interruptRelay = InterruptRelay.observing { flag.mark() }
+        }
         // 同じ Mac を指す別名が2つ並んだとき、2度目の取得は**自分が握っているロック**を待って
         // 詰む。控えを共有して1回だけ取る
         var markerByHost: [String: String] = [:]
         for machine in ordered {
+            if abortIfInterrupted() { return false }
             if let marker = markerByHost[machine.host] {
                 markers[machine.machine] = marker
                 continue
@@ -77,11 +114,24 @@ final class DispatchPrelock {
                 markerByHost[machine.host] = marker
                 markers[machine.machine] = marker
             } catch {
+                if abortIfInterrupted() { return false }
                 // 理由は子が改めて取りに行くときに出す(同じ拒否文言を2回書かない)
                 actions.log("==> could not take the dispatch lock on \(machine.host) up front"
                     + " — that machine's run queues for it on its own")
             }
         }
+        return true
+    }
+
+    /// 中断済みなら、ここまでに握ったロックを逆順で外して true を返す
+    private func abortIfInterrupted() -> Bool {
+        guard interruptFlag.interrupted else { return false }
+        actions.log("==> interrupted while acquiring dispatch locks in order"
+            + " — releasing \(held.count) already-held lock(s) and starting no sub-run")
+        releaseAll()
+        // 印も捨てる(外したロックを「親が持っている」と子へ渡さない)
+        markers.removeAll()
+        return true
     }
 
     /// **順序を決める前に**、キャッシュに UUID が無い機械だけ接続して採る。
@@ -128,9 +178,16 @@ final class DispatchPrelock {
     }
 
     /// 握ったぶんだけ逆順に解放する。**親が defer から呼ぶ**(成功・失敗・中断のいずれでも)。
-    /// 二重に呼んでも無害
-    func releaseAll() {
-        for entry in held.reversed() { entry.release() }
+    /// 二重に呼んでも無害(held が既に空なら何もしない)。
+    ///
+    /// `exitCodes`: この run で各機械へ配った子の終了コード(machine ラベルで引く。
+    /// `DeviceMachineRunner`/`ApiRunMachineFanout` の outcomes から作る)。**省略時(既定 `[:]`)は
+    /// 全機械が「終了コード不明」の扱いになる** —— 子をまだ1つも起こしていない中断時の解放
+    /// (`abortIfInterrupted`)や、この引数をまだ渡していない呼び手(`FleetRunner`)はこちらに落ちる。
+    /// 受け手側(`RemoteRunDispatcher.releaseDispatchLockAsParent`)は「不明」を「正常終了」と
+    /// 混同せず安全側(生死を確かめてから外す)に倒すので、省略しても壊れない
+    func releaseAll(exitCodes: [String: Int32] = [:]) {
+        for entry in held.reversed() { entry.release(exitCodes[entry.machine.machine]) }
         held.removeAll()
         interruptRelay?.stop()
         interruptRelay = nil
@@ -190,17 +247,20 @@ final class DispatchPrelock {
                                                   forceLock: forceLock, log: log)
                     // **nil = この fan-out 自身が誰かの子で、手元のロックは既に上が握っている**
                     // (入れ子の run)。そのときも印は配る —— 配らないと孫が自分で取りに行き、
-                    // 祖先の握っているロックを待って詰む。解放は握った1箇所(= 上)だけが行う
+                    // 祖先の握っているロックを待って詰む。解放は握った1箇所(= 上)だけが行う。
+                    // **local の release は終了コードを見ない** —— 呼び手は子プロセスの終了
+                    // (waitForExit 完了)を待ってから release を呼ぶので、渡された時点で子は
+                    // 既に死んでいる(リモートと違い「後始末が非同期でまだ生きているかも」が無い)
                     guard let holder = try local.acquire() else {
-                        return (DispatchLockHandoff.localTarget, {})
+                        return (DispatchLockHandoff.localTarget, { _ in })
                     }
-                    return (DispatchLockHandoff.localTarget, { holder.release() })
+                    return (DispatchLockHandoff.localTarget, { _ in holder.release() })
                 }
                 let target = try dispatcher(for: machine)
                 let layout = try target.acquireDispatchLockAsParent(project: project,
                                                                     runGroup: runGroup)
                 return (target.host.sshTarget,
-                        { target.releaseDispatchLockAsParent(layout: layout) })
+                        { exitCode in target.releaseDispatchLockAsParent(layout: layout, exitCode: exitCode) })
             },
             log: log)
     }

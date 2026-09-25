@@ -337,6 +337,16 @@ struct ApiRunCommand: AsyncParsableCommand {
             return
         }
 
+        // **中断(SIGINT/SIGTERM/SIGHUP)の登録は、この Mac のロックを取るより前**(1プロセス1組。
+        // .claude/rules/process-lifecycle.md「割り込みの登録は run の記録開始の直後・供給より前」)。recorder はまだ無い
+        // (`RunRecorder.begin` はビルド後にしか作れない)ので nil で構築し、後で確定したら
+        // `attachRecorder` で繋ぐ(既に中断済みならその場で markInterrupted)。runDirect/
+        // runWithProfile/runWithProfileParallel はパラメータで受け取るだけで自分では登録しない
+        // (runWithProfileParallel は orchestrator 構築後に attachLateSubscriber で合流する)
+        let interruptState = RunInterruptState(recorder: nil)
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
+
         // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(`fleetest run` と同じ位置・
         // 同じ理由。ユーザー決定 2026-09-21「1つのマシンで同時に複数の run は走らせない」)。
         // ここはワークスペースのステージング・run フック・供給の**すべてより前**で、NDJSON を
@@ -347,11 +357,14 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !dryRun {
             // **待っていることは NDJSON にも出す**(`emitWaiting`。`fleetest run` は渡さない) ——
             // 進行ログは stderr なので、これが無いと「テストを実行」を押した人には実行ログビューが
-            // 無言のまま止まって見える(`dispatchWaiting` を入れて潰したかった状態そのもの)
+            // 無言のまま止まって見える(`dispatchWaiting` を入れて潰したかった状態そのもの)。
+            // **待機中の中断は上で登録済みの interruptState をそのまま使う**(acquire() が自前で
+            // 2つ目の InterruptRelay を立てない)
             dispatchLock = try LocalDispatchLock(
                 runGroup: runGroup, waitLock: waitLock,
                 log: { ConsoleOut.err($0) },
-                emitWaiting: LocalDispatchLock.apiRunWaitingEmitter()).acquire()
+                emitWaiting: LocalDispatchLock.apiRunWaitingEmitter()
+            ).acquire(interruptCheck: { interruptState.isStopped })
         }
         defer { dispatchLock?.release() }
 
@@ -465,6 +478,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         defer {
             if let hookSession { RunHookRunner.end(hookSession) { logStderr($0) } }
         }
+        // **setup.sh の後で中断を見る**(既存の早期失敗と同じ出口 —— teardown は上の defer が
+        // 撃つ・ロックは dispatchLock の defer が外す)。ここではまだ供給タスクが1つも起きていない
+        if interruptState.isStopped {
+            throw RunInterruptedBeforeStartError(phase: "the run setup script")
+        }
 
         // **死活確認は開始スクリプトの後**(2026-08-19。ProfileRunner.run と同じ順序)。
         // 依存サービスを setup.sh が起動する構成では、先に撃つと毎回必ず「到達できない」と
@@ -481,6 +499,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 置き換えで数十秒かかりうる)を分離する。Android は先行ワーカーとして即時実行を開始し、
         // iOS は RunOrchestrator の lateWorkers として供給完了後に合流する(実測: 供給待ちで
         // 全ワーカーの開始が 10s→81s に悪化した対策。2026-07-18)。
+        // **供給タスクを起こす前にも中断を見る**(まだ何も起こしていないので、androidWorkersTask/
+        // iosWorkersTask 自体を作らずに抜けられる)
+        if interruptState.isStopped {
+            throw RunInterruptedBeforeStartError(phase: "device supply")
+        }
         let triageBox = BlankTriageBox()
         // 供給フェーズ(install・凍結triage)の間も run-lease を保つ。RunOrchestrator の lease は
         // シナリオ実行中しか書かれず、その手前に start-device が割り込む穴が空くため
@@ -646,6 +669,12 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
         }
 
+        // **ビルドの前にも中断を見る**(供給タスクが既に走っている可能性があるのでキャンセルする)
+        if interruptState.isStopped {
+            androidWorkersTask?.cancel()
+            iosWorkersTask?.cancel()
+            throw RunInterruptedBeforeStartError(phase: "before the scenario build")
+        }
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
             writeProgress(phase: "building")
@@ -655,6 +684,14 @@ struct ApiRunCommand: AsyncParsableCommand {
         } else {
             // 食い違っていても止めない(警告のみ。)
             ScenarioHost.warnIfSkipBuildStale(project: testProject) { logStderr($0) }
+        }
+        // **ビルドの後にも中断を見る**(`ScenarioHost.build` は子の生死を確かめられず
+        // `interruptState` に登録もしないので、ビルド中に届いた中断はここで初めて拾える ——
+        // その間 swift build 自体は最後まで走ってしまう。この限界は直せていない)
+        if interruptState.isStopped {
+            androidWorkersTask?.cancel()
+            iosWorkersTask?.cancel()
+            throw RunInterruptedBeforeStartError(phase: "after the scenario build")
         }
 
         let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
@@ -667,25 +704,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("nothing to run (every scenario is marked @Deleted or @Draft)")
         }
 
-        // dry-run/debug は実測にならない(dry-run はデバイス未接続、debug は人間介入前提)ため記録しない
+        // dry-run/debug は実測にならない(dry-run はデバイス未接続、debug は人間介入前提)ため記録しない。
+        // **interruptState はロック取得の直後(setup/供給/ビルドより前)に登録済み** —— ここでは
+        // 作った recorder を繋ぐだけ(`attachRecorder`。既に中断済みならその場で markInterrupted)
         let recorder: RunRecorder? = (!dryRun && debugOptions == nil)
             ? RunRecorder.begin(project: testProject, profile: profile, trigger: "api",
                                 runGroup: runGroup)
             : nil
-
-        // **recorder 確定直後にここで1回だけ登録する**(シグナルソースは1プロセスに1組)。
-        // 供給フェーズ(ブリッジ起動・凍結triage・install 等。数秒〜数十秒かかりうる。
-        // "terminating an in-app bridge … and restarting" 等はここに入る)は runDirect/
-        // runWithProfile/runWithProfileParallel の**内側**で行われるが、そこに着くまで
-        // InterruptRelay が1つも登録されていないと、供給中に届いた SIGINT/SIGTERM/SIGHUP は
-        // 既定動作(即終了)のままプロセスを落とし、run.json は begin() が書いた start 欄だけの
-        // 尻切れで残る(docs/results-json.md: finishedAt 無し = crash と誤分類される。
-        // リモートディスパッチは `-tt` の ssh 切断が SIGHUP として供給中に届く形でこれを踏んだ)。
-        // 3経路は同じ interruptState を受け取るだけで、自分では登録しない
-        // (runWithProfileParallel は orchestrator 構築後に attachLateSubscriber で合流する)
-        let interruptState = RunInterruptState(recorder: recorder)
-        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
-        defer { interruptRelay.stop() }
+        if let recorder { interruptState.attachRecorder(recorder) }
 
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)`)をキュー投入前に外す。
         // **dry-run では外さない** —— デバイスに触らないので全件を構文検査したい。

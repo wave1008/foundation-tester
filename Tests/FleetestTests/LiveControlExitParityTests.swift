@@ -24,6 +24,9 @@ final class LiveControlExitParityTests: XCTestCase {
         "isAccessibilityTemporarilyDown",
         // 座標が今の画面の外か(maintainer-notes §51.1: ライブ操作の drag が桁外れの座標でドライバごと落ちた)
         "isPointOnScreen",
+        // ポートの中身が別の台に替わった(hybridFallbackDrift の3値のうち differentDevice)。
+        // 黙って建て直すと片方だけ別の台へ操作を撃ち続ける
+        "differentDevice",
     ]
 
     /// **コメントを落としてから走査する** —— 判定の名前は doc コメントにも書かれているので、

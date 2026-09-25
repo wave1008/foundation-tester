@@ -66,11 +66,17 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   拡張の `api run` キャンセル = SIGTERM のみ + 2 秒経っても生きていれば「強制終了」ボタンを出す)。
   **時限 SIGKILL(2 秒)を送ってよいのは後始末を持たない外部・ヘルパーだけ**(ssh・`Shell.run` の
   外部コマンド・配信ヘルパー・`api monitor` / `host-metrics` / `api live serve` = stdin EOF で即終わる)。
-  後始末が刺さって残った fleetest は `FT_PARENT_PID` の印付き孤児として次回 activate の掃除が落とす
-  **割り込みの登録(`InterruptRelay.observing`)は run の記録開始の直後・供給より前**(run / api run /
-  プロファイル無しの3経路とも1プロセス1回。オーケストレータは `attachLateSubscriber` で後から合流)——
-  供給の後に登録すると、供給中のシグナル(fan-out の子は ssh 切断の SIGHUP)が OS 既定の即死になり、
-  run.json が開始欄だけの「クラッシュ」になる(`InterruptRelayEarlyRegistrationWiringTests`)→ maintainer-notes §51
+  **拡張も同じ方針**: 起動時の孤児掃除(`orphanSweep.ts` の `orphanSignal`)と「全て終了して閉じる」(`planResidentKill`)は
+  `api run` / `run` に SIGTERM だけを送る(Reload Window 直後の run は ParentDeathWatch で後始末中なので、SIGKILL は
+  録画の確定・teardown・run.json を刺し殺す)。後始末を持たないヘルパーは従来どおり SIGKILL。刺さった run は人が止める。
+  「全て終了して閉じる」はホスト側のモーダルで確認し、`bridge down` が断ったらブリッジ系を SIGKILL しない
+  **割り込みの登録(`InterruptRelay.observing`)は手元の dispatch.lock を取る直前 = setup.sh・供給・ビルドより前**
+  (run / api run とも1プロセス1回。recorder はビルド後に `attachRecorder` で後付け・オーケストレータは
+  `attachLateSubscriber` で合流・`LocalDispatchLock.acquire(interruptCheck:)` に同じ状態を渡して待機用の2組目を立てない)。
+  段の境目で中断を見て既存の早期失敗の出口で抜ける(teardown・ロック解放は defer)。遅く登録すると、その間のシグナル
+  (fan-out の子は ssh 切断の SIGHUP)が OS 既定の即死になり、teardown が走らず dispatch.lock が死んだ pid のまま残り、
+  孤児のビルド・供給と次の run が重なる(`InterruptRelayEarlyRegistrationWiringTests`)→ maintainer-notes §51。
+  **限界: `swift build` の実行中の中断は、ビルドが終わってから拾う**(ビルドの子は interruptState に登録していない)
   **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
   実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
   要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)

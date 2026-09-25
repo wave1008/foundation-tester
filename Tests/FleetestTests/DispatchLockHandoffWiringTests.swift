@@ -44,8 +44,9 @@ final class DispatchLockHandoffWiringTests: XCTestCase {
         let text = try source("Sources/fleetest/RemoteRunDispatcher.swift")
         let entry = try XCTUnwrap(text.range(of: "func acquireDispatchLockAsParent"))
         let body = text[entry.lowerBound...].prefix(600)
-        XCTAssertTrue(body.contains("try acquireDispatchLock(layout: layout, runGroup: runGroup)"),
-                      "親が独自の取得を書いている(待機列を通らない経路ができる)")
+        XCTAssertTrue(body.contains(
+            "try acquireDispatchLock(layout: layout, runGroup: runGroup, interruptFlag: interruptFlag)"),
+            "親が独自の取得を書いている(待機列を通らない経路ができる)")
         XCTAssertTrue(body.contains("resolveLayout()"),
                       "親が layout を自分で組み立てている(同じ ssh を2つの実装で書かない)")
     }

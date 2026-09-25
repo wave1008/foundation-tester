@@ -136,6 +136,23 @@ export const monitorStrings = {
     ja: "常駐プロセスの停止に失敗しました: {error}",
     en: "Failed to stop resident processes: {error}",
   },
+  // 「すべて終了」の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
+  "monitor.residentKillClose.confirmMessage": {
+    ja: "常駐プロセスを終了してモニターパネルを閉じます。他のセッション・MCP が使用中のブリッジは止めません。続けますか?",
+    en: "Stop resident processes and close the monitor panel? Bridges in use by other sessions or MCP are not stopped.",
+  },
+  // runCount > 0 のときだけ modal の detail に足す。
+  "monitor.residentKillClose.confirmDetailRuns": {
+    ja: "実行中の run が {count} 本あります。run には強制終了(SIGKILL)ではなく終了要求(SIGTERM)を送ります。",
+    en: "{count} run(s) are in progress. They will receive a termination request (SIGTERM), not a forced kill (SIGKILL).",
+  },
+  "monitor.residentKillClose.confirmButton": { ja: "終了して閉じる", en: "Stop and Close" },
+  // bridge down が lease/MCP の印で断られた(非 0 終了)ときに OUTPUT へ出す1行。cmd は
+  // "bridge down --all" / "bridge down --platform android"。
+  "monitor.log.residentKillBridgeRefused": {
+    ja: "{cmd} が断られたため(exit {exitCode})、ブリッジ系の常駐プロセスは残します。",
+    en: "{cmd} was refused (exit {exitCode}); leaving bridge-related resident processes running.",
+  },
   "monitor.log.residentKillFailed": {
     ja: "常駐プロセス(PID {pid})の終了に失敗: {error}",
     en: "Failed to terminate resident process (PID {pid}): {error}",

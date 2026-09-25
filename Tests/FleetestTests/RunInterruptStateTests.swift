@@ -5,6 +5,7 @@
 // 刺さったとき人が抜けられるようにするための最終手段)。このファイルの各テストは
 // `requestStop()` をちょうど1回しか呼ばない —— 2回呼ぶとテストプロセスごと終了する
 
+import FTCore
 import XCTest
 @testable import fleetest
 
@@ -99,5 +100,64 @@ final class RunInterruptStateTests: XCTestCase {
         let flag = Flag()
         state.attachLateSubscriber { flag.increment() }
         XCTAssertEqual(flag.count, 1, "合流前に既に中断済みなら、その場で呼ばれる")
+    }
+
+    // MARK: - attachRecorder(recorder はビルド後にしか作れないので後付けする)
+
+    /// `RunInterruptState` はロック取得の直後・recorder がまだ無い段階で構築する
+    /// (`RunRecorder.begin` はビルド後)。作られた recorder は `attachRecorder` で繋ぎ、
+    /// 以後の `requestStop()` は繋いだ recorder へ `markInterrupted()` する
+    private func makeRecorder() throws -> (recorder: RunRecorder, root: URL, cleanup: () -> Void) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fleetest-runinterruptstate-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
+                                         profile: nil, trigger: "test", captureHostMetrics: false)
+        return (recorder, root, { try? FileManager.default.removeItem(at: root) })
+    }
+
+    private func readInterrupted(_ recorder: RunRecorder, root: URL, scenarioID: String) -> Bool? {
+        let scenariosDir = RunResultsStore.runDir(
+            resultsDir: RunResultsStore.resultsDir(projectRoot: root), runID: recorder.runID
+        ).appendingPathComponent("scenarios")
+        let data = try? Data(contentsOf: scenariosDir.appendingPathComponent("\(scenarioID).json"))
+        return data.flatMap { try? JSONDecoder().decode(ScenarioRunRecord.self, from: $0) }?.interrupted
+    }
+
+    /// 戻すと落ちる根拠: recorder を渡さず構築したまま(`recorder: nil` の据え置き)だと、
+    /// setup/供給/ビルド中の中断を拾っても run.json のどの失敗にも `interrupted: true` が付かない
+    func testAttachRecorderReceivesMarkInterruptedOnSubsequentStop() throws {
+        let (recorder, root, cleanup) = try makeRecorder()
+        defer { cleanup() }
+        let state = RunInterruptState(recorder: nil)
+        state.attachRecorder(recorder)
+
+        state.requestStop()
+        recorder.record(ScenarioRunRecord(
+            runID: recorder.runID, scenarioID: "Foo.killed", platform: "ios", worker: nil,
+            host: "h", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 1,
+            steps: StepCountsRecord(total: 1, failed: 1)))
+
+        XCTAssertEqual(readInterrupted(recorder, root: root, scenarioID: "Foo.killed"), true,
+                       "attachRecorder で繋いだ recorder に markInterrupted が届いていない")
+    }
+
+    /// 戻すと落ちる根拠: 中断が recorder の確定より先に来た場合(setup.sh/供給/ビルド中)、
+    /// `attachRecorder` がその場で markInterrupted しないと、後から繋がれた recorder は
+    /// 中断済みという事実を一生知らない(attachLateSubscriber と同じ取りこぼし対策)
+    func testAttachRecorderMarksInterruptedImmediatelyIfAlreadyStopped() throws {
+        let (recorder, root, cleanup) = try makeRecorder()
+        defer { cleanup() }
+        let state = RunInterruptState(recorder: nil)
+        state.requestStop()  // recorder が確定するより前に中断が来た形(1回目 = exit しない)
+
+        state.attachRecorder(recorder)
+        recorder.record(ScenarioRunRecord(
+            runID: recorder.runID, scenarioID: "Foo.killed", platform: "ios", worker: nil,
+            host: "h", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 1,
+            steps: StepCountsRecord(total: 1, failed: 1)))
+
+        XCTAssertEqual(readInterrupted(recorder, root: root, scenarioID: "Foo.killed"), true,
+                       "登録前に既に中断済みなら、その場で markInterrupted されるはず")
     }
 }

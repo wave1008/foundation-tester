@@ -100,9 +100,23 @@ struct RemoteRunDispatcher {
         let interruptFlag = DispatchInterruptFlag()
         let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
-        try acquireDispatchLock(layout: layout, runGroup: runGroup)
+        try acquireDispatchLock(layout: layout, runGroup: runGroup, interruptFlag: interruptFlag)
         var lockReleasedEarly = false
         defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
+        // **取得の直後にもう一度見る**: 待機列で待っている間の中断はループ内(acquireDispatchLock)
+        // で捕まえて外に出るが、待たずに一発で取れた場合や、待機列を抜けた直後に中断が来た場合は
+        // ロックを持ったまま関数末尾まで来てしまう。ここで拾わないと、既に中断済みなのに
+        // このあと prepareWorkspace/transfer/runRemoteAndRelay(= 実際のリモート run を起動する)
+        // まで進む — 起動より前なので、まだ何も走っていないこの時点なら無条件に外してよい
+        guard !interruptFlag.interrupted else {
+            // releaseDispatchLock 自身が「親が持っているロックは外さない」を見て no-op に倒すので、
+            // この呼び出しはどちらの経路でも安全
+            releaseDispatchLock(layout: layout)
+            lockReleasedEarly = true
+            throw RemoteDispatchError.remoteSetupFailed(
+                "interrupted before dispatching to \(host.sshTarget) — stopping without starting"
+                + " a remote run")
+        }
         reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // ワークスペースの用意(ステージング)は project の rsync より先に行う。ワークスペースは
@@ -127,13 +141,28 @@ struct RemoteRunDispatcher {
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
         let overheadSeconds = Date().timeIntervalSince(setupStart)
-        let exitCode = try runRemoteAndRelay(
-            fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
-            stamp: stamp, project: project.name, developerDir: developerDir)
+        let exitCode: Int32
+        do {
+            exitCode = try runRemoteAndRelay(
+                fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
+                stamp: stamp, project: project.name, developerDir: developerDir)
+        } catch {
+            // timeout (throws from runInheritedWithLineRewrite): the remote run may still be
+            // alive — the ssh session was just signalled, but the runner's teardown is
+            // asynchronous. Release only if it has actually ended (same M7 judgment as the
+            // ssh-disconnect path below), never unconditionally
+            lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
+            if !lockReleasedEarly {
+                log("==> the remote run may still be finishing — keeping the dispatch lock"
+                    + " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended)")
+            }
+            throw error
+        }
         if interruptFlag.interrupted {
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
         } else {
-            awaitRemoteRunEndIfDisconnected(exitCode: exitCode, reportDir: remoteReportDir)
+            lockReleasedEarly = awaitRemoteRunEndIfDisconnected(
+                exitCode: exitCode, layout: layout, reportDir: remoteReportDir)
         }
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
@@ -181,9 +210,17 @@ struct RemoteRunDispatcher {
         let interruptFlag = DispatchInterruptFlag()
         let lockHeldRelay = InterruptRelay.observing { interruptFlag.mark() }
         defer { lockHeldRelay.stop() }
-        try acquireDispatchLock(layout: layout, runGroup: runGroup)
+        try acquireDispatchLock(layout: layout, runGroup: runGroup, interruptFlag: interruptFlag)
         var lockReleasedEarly = false
         defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
+        // 理由は dispatch() の同じガード参照(取得の直後にもう一度見る)
+        guard !interruptFlag.interrupted else {
+            releaseDispatchLock(layout: layout)
+            lockReleasedEarly = true
+            throw RemoteDispatchError.remoteSetupFailed(
+                "interrupted before dispatching to \(host.sshTarget) — stopping without starting"
+                + " a remote run")
+        }
         reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // 順序の理由は dispatch() のコメント参照(prepareWorkspace は transfer() より先)
@@ -203,13 +240,25 @@ struct RemoteRunDispatcher {
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
         let overheadSeconds = Date().timeIntervalSince(setupStart)
-        let exitCode = try runRemoteAndRelay(
-            fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
-            stamp: stamp, project: project.name, developerDir: developerDir)
+        let exitCode: Int32
+        do {
+            exitCode = try runRemoteAndRelay(
+                fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
+                stamp: stamp, project: project.name, developerDir: developerDir)
+        } catch {
+            // 理由は dispatch() の同じ catch 参照(timeout でも生きていれば外さない)
+            lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
+            if !lockReleasedEarly {
+                log("==> the remote run may still be finishing — keeping the dispatch lock"
+                    + " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended)")
+            }
+            throw error
+        }
         if interruptFlag.interrupted {
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
         } else {
-            awaitRemoteRunEndIfDisconnected(exitCode: exitCode, reportDir: remoteReportDir)
+            lockReleasedEarly = awaitRemoteRunEndIfDisconnected(
+                exitCode: exitCode, layout: layout, reportDir: remoteReportDir)
         }
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
@@ -410,16 +459,40 @@ struct RemoteRunDispatcher {
     ///
     /// **info.json に載る pid はこの親の pid** になる —— 親が死んでロックが残った場合の
     /// 自動回収(`autoReleaseOurStaleLock` → `RemoteDispatchUnlock.decideAutomaticSweep`)は
-    /// 「自分の発行者・この機械・死んだ pid」で判定するので、**子が取っていたときと同じに効く**
+    /// 「自分の発行者・この機械・死んだ pid」で判定するので、**子が取っていたときと同じに効く**。
+    ///
+    /// **この呼び出し専用の中断観測を張る** —— `dispatch()`/`dispatchApi()` と違い、ここは
+    /// `DispatchPrelock` から直接呼ばれるので囲む観測が無い。待機列で待っている間の Ctrl-C を
+    /// 待ち続けさせない(1と同じ理由)。`InterruptRelay` は多重登録を許すので、呼び出し元
+    /// (`DispatchPrelock`)が自分の中断観測を別に持っていても共存する
     func acquireDispatchLockAsParent(project: TestProject, runGroup: String?) throws -> RemoteLayout {
         let (layout, session) = try resolveLayout()
         cacheHardwareUUID(project: project, session: session)
-        try acquireDispatchLock(layout: layout, runGroup: runGroup)
+        let interruptFlag = DispatchInterruptFlag()
+        let relay = InterruptRelay.observing { interruptFlag.mark() }
+        defer { relay.stop() }
+        try acquireDispatchLock(layout: layout, runGroup: runGroup, interruptFlag: interruptFlag)
         return layout
     }
 
-    /// 上で取ったロックを外す(親の defer から。成功・失敗・中断のいずれでも1回)
-    func releaseDispatchLockAsParent(layout: RemoteLayout) {
+    /// 上で取ったロックを外す(親の defer から。成功・失敗・中断のいずれでも1回)。
+    /// **`exitCode` が 0/1(正常終了)なら従来どおり無条件に外す**。それ以外(timeout・ssh 断・
+    /// SIGKILL 等。**不明(nil)も含む** —— 不明を正常と混同しない)は、親はこの子が使った
+    /// `reportDir`(ディスパッチ単位の stamp)を知らないので `releaseLockIfRunEnded` は使えない ——
+    /// 代わりに `liveDispatchedRunPIDs`(このホストの base 配下に生きているディスパッチが
+    /// **どれか**あるか)で確かめてから外す。`autoReleaseOurStaleLock` と同じ生死判定を共有する
+    /// (2つ目の判定を作らない)
+    func releaseDispatchLockAsParent(layout: RemoteLayout, exitCode: Int32?) {
+        guard exitCode == 0 || exitCode == 1 else {
+            guard let livePIDs = liveDispatchedRunPIDs(layout: layout), livePIDs.isEmpty else {
+                log("==> \(host.sshTarget): keeping the dispatch lock (the sub-run did not exit"
+                    + " normally and a dispatched run may still be alive there — the next dispatch"
+                    + " reclaims it once it has ended)")
+                return
+            }
+            releaseDispatchLock(layout: layout)
+            return
+        }
         releaseDispatchLock(layout: layout)
     }
 
@@ -443,8 +516,13 @@ struct RemoteRunDispatcher {
     /// 先頭なら mkdir でロックを取る」まで行い、`--wait-lock` の撃ち直しがそのままチケットの
     /// ハートビートを兼ねる(別に touch を撃たない)。**中断・クラッシュでチケットが残っても
     /// `RemoteDispatchQueue.staleSeconds`(30秒)で失効する**ので defer で消しに行かない
-    /// (中断時に ssh を1本増やさない)
-    private func acquireDispatchLock(layout: RemoteLayout, runGroup: String?) throws {
+    /// (中断時に ssh を1本増やさない)。
+    ///
+    /// **待機ループは毎周 `interruptFlag` を見る**(`LocalDispatchLock.acquire` と同じ挙動へ揃える)。
+    /// 見ないと、待機列で順番待ちの間に Ctrl-C を受けても止まらず、順番が来た瞬間にロックを取って
+    /// 実際のリモート run(prepareWorkspace 以降)まで進んでしまう
+    private func acquireDispatchLock(layout: RemoteLayout, runGroup: String?,
+                                     interruptFlag: DispatchInterruptFlag) throws {
         if parentHoldsThisLock {
             // 親(fan-out)が全機械ぶんを順序どおりに取り切ってから起こした子。ここで取りに行くと
             // **自分の親が握っているロックを待って**進まない
@@ -467,7 +545,6 @@ struct RemoteRunDispatcher {
             return
         }
         var elapsed = 0
-        var autoReleaseTried = false
         while true {
             let result = try Shell.run(sshBase + [host.sshTarget,
                                                   RemoteDispatchQueue.enqueueAndTryAcquireCommand(
@@ -498,9 +575,10 @@ struct RemoteRunDispatcher {
                 holder = h
             }
             // 先頭なのに取れなかった = 誰かが掴んでいる。**自分の死んだディスパッチなら回収する**
-            // (1回だけ試す ―― 他人のロックは何周しても答えが変わらない)
-            if case .held = outcome, !autoReleaseTried {
-                autoReleaseTried = true
+            // (毎周試す ―― 待ち始めた時点では保持者が生きているのが普通なので初回はほぼ必ず
+            // 空振りし、待っている間に保持者が死ぬことがある。判定は pid の生死だけなので
+            // 毎周撃っても安い。LocalDispatchLock.acquire と同じ規律)
+            if case .held = outcome {
                 switch autoReleaseOurStaleLock(layout: layout) {
                 case .released:
                     continue // 待機列経由で撃ち直す
@@ -533,6 +611,14 @@ struct RemoteRunDispatcher {
             if WaitLockPolling.shouldLogProgress(elapsedSeconds: elapsed) {
                 log(elapsed == 0 ? status.queuedLine : status.stillQueuedLine)
                 emitDispatchWaiting(status)
+            }
+            // **中断は待機列から抜けて throw する**(LocalDispatchLock.acquire と同じ挙動)。
+            // ロックはまだ取れていないので外す物は無い ―― 消すのはチケットだけ
+            guard !interruptFlag.interrupted else {
+                dequeueTicket(layout: layout, ticket: ticket)
+                throw RemoteDispatchError.remoteSetupFailed(
+                    "interrupted while queued for the dispatch lock on \(host.sshTarget)"
+                    + " (waited \(elapsed)s) — left the queue")
             }
             guard WaitLockPolling.decide(elapsedSeconds: elapsed,
                                          limitSeconds: limitSeconds) == .retry else {
@@ -649,39 +735,54 @@ struct RemoteRunDispatcher {
         }
     }
 
-    /// **中断したときだけ、回収へ入る前にロックを外す**。回収(録画の rsync)は数十秒かかり、その間に
-    /// 中断の猶予が尽きて SIGKILL されると defer に届かずロックが残る(2026-09-16: 3 機とも
-    /// `collecting recordings` の最中に刺されて残った)。外すのはこのディスパッチの run がランナーに
-    /// 居ないと確かめられたときだけ(`releaseIfRunEndedCommand`)。回収は日時付きの dispatch
-    /// ディレクトリと results/ しか読まないのでロックは要らない。外せなかったら従来どおり末尾の defer
+    /// **正常終了(exit 0/1)以外(中断・timeout・ssh 断)は、回収へ入る前にこの判定を通してから
+    /// ロックを外す**(正常終了は呼び出し側の末尾の defer が無条件に外す ―― 従来どおり)。
+    /// 中断の場合は回収(録画の rsync)が数十秒かかり、その間に中断の猶予が尽きて SIGKILL されると
+    /// defer に届かずロックが残る(2026-09-16: 3 機とも `collecting recordings` の最中に刺されて
+    /// 残った)。timeout・ssh 断の場合は向こうの run がまだ後始末中かもしれず、無条件に外すと
+    /// 次の run が同じ機械に重なる。外すのはこのディスパッチの run がランナーに居ないと
+    /// 確かめられたときだけ(`releaseIfRunEndedCommand`)。回収は日時付きの dispatch
+    /// ディレクトリと results/ しか読まないのでロックは要らない。外せなかったら呼び出し側が
+    /// ロックを残したまま進む(次のディスパッチの自動回収 = `autoReleaseOurStaleLock` に任せる)
     private func releaseLockIfRunEnded(layout: RemoteLayout, reportDir: String) -> Bool {
-        // 親が握っているロックは子の中断では外さない(解放の持ち主は親の1箇所だけ)
+        // 親が握っているロックはここでは外さない(解放の持ち主は親の1箇所だけ)
         guard !parentHoldsThisLock else { return false }
         guard let output = try? sshCapture(RemoteDispatchLock.releaseIfRunEndedCommand(
             home: layout.home, reportDir: reportDir)) else { return false }
         let released = RemoteDispatchLock.releasedEarly(output)
-        if released { log("==> released the dispatch lock before collecting (the run was interrupted)") }
+        if released { log("==> released the dispatch lock before collecting"
+                          + " (the run had already ended on \(host.sshTarget))") }
         return released
     }
 
     /// M7: 自分から中断したのでも exit 0/1 でもない(ssh の断・kill = 255/137 等)ときだけ、
     /// 回収(collectReports)の前に「このディスパッチの run がランナー上でもう終わったか」を待つ。
-    /// **ロックは外さない**(releaseLockIfRunEnded と違い、自分から中断していないので二重投入の
-    /// 判断はできない)。待たずに回収へ進むと、リモートの後始末(run.json への interrupted/
-    /// finishedAt の書き込み)より先に手元が途中版を回収し、結果 DB でその run が走り続けているように
-    /// 見える(2026-09-17 実測: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)。
-    /// ssh 自体が通らない(sshCapture が throw)なら待たずに回収へ進む
-    private func awaitRemoteRunEndIfDisconnected(exitCode: Int32, reportDir: String) {
-        guard exitCode != 0, exitCode != 1 else { return }
+    /// **待った後、外せるなら外す**(`releaseLockIfRunEnded` と同じ「run が終わっていたら外す」
+    /// 判定を通す ―― 生きているかもしれない run に、次の run を無条件で重ねない。以前はここで
+    /// 一切ロックへ触れず、呼び出し側の defer が無条件に `rm -rf` していた)。戻り値 = 外したか
+    /// (呼び出し側が `lockReleasedEarly` へそのまま渡す)。
+    /// 待たずに回収へ進むと、リモートの後始末(run.json への interrupted/finishedAt の書き込み)
+    /// より先に手元が途中版を回収し、結果 DB でその run が走り続けているように見える
+    /// (2026-09-17 実測: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)。
+    /// ssh 自体が通らない(sshCapture が throw)なら待たずに下の条件付き解放へ進む
+    /// (そちらも同じ ssh 失敗で false を返すので安全側に倒れる)
+    private func awaitRemoteRunEndIfDisconnected(exitCode: Int32, layout: RemoteLayout,
+                                                  reportDir: String) -> Bool {
+        guard exitCode != 0, exitCode != 1 else { return false }
         let deadline = Date().addingTimeInterval(Self.remoteRunEndWaitLimitSeconds)
-        while Date() < deadline {
+        waitLoop: while Date() < deadline {
             guard let output = try? sshCapture(RemoteDispatchLock.runEndedCommand(reportDir: reportDir))
-            else { return }
-            if RemoteDispatchLock.runHasEnded(output) { return }
+            else { break waitLoop }  // ssh 自体が通らない ―― 下の条件付き解放も同じ理由で失敗し kept 側に倒れる
+            if RemoteDispatchLock.runHasEnded(output) { break waitLoop }
             sleep(Self.remoteRunEndPollIntervalSeconds)
         }
-        log("==> the remote run is still finishing — collecting what is there now"
-            + " (the next dispatch collects the rest)")
+        let released = releaseLockIfRunEnded(layout: layout, reportDir: reportDir)
+        if !released {
+            log("==> the remote run may still be finishing — keeping the dispatch lock"
+                + " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended;"
+                + " collecting what is there now)")
+        }
+        return released
     }
 
     /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を
@@ -1192,8 +1293,12 @@ struct RemoteRunDispatcher {
         return output.isEmpty ? nil : output
     }
 
-    /// 全 ssh 共通の基底引数。ConnectTimeout が無いと到達不能ホストで TCP 既定(75秒超)固まる
-    private var sshBase: [String] { ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] }
+    /// 全 ssh 共通の基底引数。ConnectTimeout が無いと到達不能ホストで TCP 既定(75秒超)固まる。
+    /// キープアライブ(`SSHOptions.keepAliveArgs`)は接続**後**に黙って死んだ回線を切るためのもので
+    /// ConnectTimeout(接続そのものの上限)とは効く場面が別 — 両方要る
+    private var sshBase: [String] {
+        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
+    }
 
     /// リモート実行専用(§16.1): `-tt` で疑似 TTY を強制割り当てると、ローカル ssh が
     /// SIGTERM/SIGKILL で落ちたとき SIGHUP がリモートのプロセスグループへ伝わり、キャンセルが

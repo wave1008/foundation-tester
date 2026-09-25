@@ -383,7 +383,7 @@ public enum RemoteTransferPlan {
     public static func rsyncArgs(project: String, localProjectsDir: String,
                                  layout: RemoteLayout, sshTarget: String,
                                  ignore: TransferIgnore.Scan) -> [String] {
-        var args = ["-az", "--delete"]
+        var args = ["-az", "--delete"] + SSHOptions.rsyncRemoteShellArgs
         for name in projectTopLevelExcludes { args += ["--exclude", "/" + name] }
         for pattern in ignore.excludePatterns { args += ["--exclude", pattern] }
         args += [
@@ -400,7 +400,7 @@ public enum RemoteTransferPlan {
     /// remoteCacheDir はリモートのホーム相対(親ディレクトリは呼び出し側が mkdir -p で用意する)
     public static func webViewCacheRsyncArgs(localCacheDir: String, sshTarget: String,
                                              remoteCacheDir: String) -> [String] {
-        ["-az", localCacheDir + "/", "\(sshTarget):\(remoteCacheDir)/"]
+        ["-az"] + SSHOptions.rsyncRemoteShellArgs + [localCacheDir + "/", "\(sshTarget):\(remoteCacheDir)/"]
     }
 
     /// `remoteControl.workspace` のミラー(RemoteRunDispatcher が宣言済みのときだけ呼ぶ)。
@@ -409,7 +409,7 @@ public enum RemoteTransferPlan {
     public static func workspaceRsyncArgs(localWorkspaceDir: String, project: String,
                                           layout: RemoteLayout, sshTarget: String,
                                           ignore: TransferIgnore.Scan) -> [String] {
-        var args = ["-az", "--delete"]
+        var args = ["-az", "--delete"] + SSHOptions.rsyncRemoteShellArgs
         for name in workspaceExcludesAnywhere { args += ["--exclude", name] }
         for pattern in ignore.excludePatterns { args += ["--exclude", pattern] }
         args += [
@@ -447,7 +447,7 @@ public enum RemoteArtifactCollection {
     /// 実在のパスに一致せず、回収後の3処理(relink・facts・`--failed` の記録)が黙って空振りする(実測)
     private static func rsyncArgs(project: String, layout: RemoteLayout,
                                   sshTarget: String, localProjectsDir: String) -> [String] {
-        var args = ["-az", "--safe-links", "-8", "--out-format=%n"]
+        var args = ["-az", "--safe-links", "-8", "--out-format=%n"] + SSHOptions.rsyncRemoteShellArgs
         args += [
             "\(sshTarget):\(layout.projectDir(project))/results/",
             "\(localProjectsDir)/\(project)/results/",

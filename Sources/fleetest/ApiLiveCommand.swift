@@ -240,27 +240,45 @@ struct ApiLiveServe: AsyncParsableCommand {
             // 「let への代入」でコンパイルエラーになる)
             if command.cmd != "frame", driverOptions.resolvedPlatform == "ios", let udid,
                let expectedEngine = primaryEngine,
-               let repoRoot = try? RepoRoot.find(),
-               await HybridFallbackIdentity.drifted(
-                   port: port, expectedUDID: udid, expectedEngine: expectedEngine, repoRoot: repoRoot) {
-                // **建て直しは「switched the driver」と同じ形**(再解決してから組み直す)。
-                // composeDriver は in-app 側の本人確認もその内側でやり直す。**ポートが動いていたら
-                // 追従しない** —— starter/deviceLease は元の port を見続けるので、ここで
-                // 乗り換えると自動起動・台の印との整合が崩れる(乗り換えは makeLiveDriver の
-                // 起動時ロジックの役目で、ここでは再現しない)
-                let resolution = await XCUIBridgeResolver.resolve(
-                    preferred: port, repoRoot: repoRoot, autoStart: false,
-                    logger: { message in ConsoleOut.err("[live serve] " + message) })
-                if resolution.endpoint.port == port,
-                   let rebuilt = try? await composeDriver(
-                       resolution: resolution, physical: physical, repoRoot: repoRoot) {
-                    (driver, port, ownAppBundleID, primaryEngine) = rebuilt
-                    logStderr("port \(port) no longer matched \(udid) (expected the \(expectedEngine)"
-                              + " engine) — rebuilt the driver")
-                } else {
-                    logStderr("port \(port) no longer matches \(udid) as the \(expectedEngine) engine, but a"
-                              + " fresh resolution could not be composed for it yet — continuing with the"
-                              + " previous driver")
+               let repoRoot = try? RepoRoot.find() {
+                let drift = await HybridFallbackIdentity.drifted(
+                    port: port, expectedUDID: udid, expectedEngine: expectedEngine, repoRoot: repoRoot)
+                switch Self.liveDriftOutcome(drift: drift, port: port, expectedUDID: udid) {
+                case .unchanged:
+                    break
+                case .rebuild:
+                    // **建て直しは「switched the driver」と同じ形**(再解決してから組み直す)。
+                    // composeDriver は in-app 側の本人確認もその内側でやり直す。**ポートが動いていたら
+                    // 追従しない** —— starter/deviceLease は元の port を見続けるので、ここで
+                    // 乗り換えると自動起動・台の印との整合が崩れる(乗り換えは makeLiveDriver の
+                    // 起動時ロジックの役目で、ここでは再現しない)
+                    let resolution = await XCUIBridgeResolver.resolve(
+                        preferred: port, repoRoot: repoRoot, autoStart: false,
+                        logger: { message in ConsoleOut.err("[live serve] " + message) })
+                    if resolution.endpoint.port == port,
+                       let rebuilt = try? await composeDriver(
+                           resolution: resolution, physical: physical, repoRoot: repoRoot) {
+                        (driver, port, ownAppBundleID, primaryEngine) = rebuilt
+                        logStderr("port \(port) no longer matched \(udid) (expected the \(expectedEngine)"
+                                  + " engine) — rebuilt the driver")
+                    } else {
+                        logStderr("port \(port) no longer matches \(udid) as the \(expectedEngine) engine, but a"
+                                  + " fresh resolution could not be composed for it yet — continuing with the"
+                                  + " previous driver")
+                    }
+                case .refuse(let message):
+                    // **同じポートで作り直さない**: 別の実体が答えている形なので、建て直すと乗り換えた
+                    // まま気付かず操作を撃ち続ける。このコマンドは撃たず、driver/port/primaryEngine を
+                    // 変えないので次のコマンドでも同じ判定・同じ拒否を繰り返す(黙って固定されない)
+                    logStderr(message)
+                    let starting = await bridgeStartingFlag(starter)
+                    emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget,
+                                                      bridgeStarting: starting))
+                    await follower?.follow(driver: driver)
+                    await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
+                                          staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
+                    ResidentProcessGuard.noteCommandEnd()
+                    continue
                 }
             }
             await handle(command: command, driver: driver, starter: starter, follower: follower,
@@ -427,6 +445,33 @@ struct ApiLiveServe: AsyncParsableCommand {
         // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で建て直せない)。
         // fallback(xcuitest)側の期待エンジンは常に "xcuitest"(MCP の hybridFallbackPorts と同じ)
         return (driver, resolution.endpoint.port, inApp.bundleID, "xcuitest")
+    }
+
+    /// 毎コマンドの本人確認(`HybridFallbackIdentity.drifted` の3値)から、この1コマンドを
+    /// どう扱うかを決める。**走査から切り離した純粋関数**(MCP の `primaryEngineOutcome` と同じ
+    /// 理由・テスト用): 実ブリッジ無しで「差し替える/断る/何もしない」の判定を固定できる。
+    /// `sameDeviceEngineChanged` は同じ台のブリッジがエンジンを変えただけなので差し替えて続ける。
+    /// `differentDevice` は別の実体なので、同じポートへ作り直すと乗り換えたまま気付かず操作を
+    /// 撃ち続ける —— 断る
+    enum LiveDriftOutcome: Equatable {
+        case unchanged, rebuild, refuse(String)
+    }
+
+    static func liveDriftOutcome(
+        drift: BridgeIdentityCheck.HybridFallbackDrift, port: UInt16, expectedUDID: String
+    ) -> LiveDriftOutcome {
+        switch drift {
+        case .none: return .unchanged
+        case .sameDeviceEngineChanged: return .rebuild
+        case .differentDevice: return .refuse(differentDeviceMessage(port: port, expectedUDID: expectedUDID))
+        }
+    }
+
+    /// **人間向け**(拡張のライブ操作パネルを見ている人が読む。MCP のエージェント向け文言
+    /// `MCPServer.differentDeviceRefusal` をそのまま流用しない)
+    static func differentDeviceMessage(port: UInt16, expectedUDID: String) -> String {
+        "port \(port) now serves a different device than \(expectedUDID) — this command was not sent."
+            + " Reopen live control for this device (or repoint --port/--udid) to continue."
     }
 
     /// endpoint が本当に `requestedUDID` の台か(判定は run 側4経路と同じ

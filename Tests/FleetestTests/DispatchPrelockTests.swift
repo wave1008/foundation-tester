@@ -95,7 +95,7 @@ final class DispatchPrelockTests: XCTestCase {
             probeHardwareUUID: Self.noProbe,
             acquire: { machine in
                 recorder.append("acquire:\(machine.machine)")
-                return (machine.host, { recorder.append("release:\(machine.machine)") })
+                return (machine.host, { _ in recorder.append("release:\(machine.machine)") })
             },
             log: { _ in }))
 
@@ -124,7 +124,7 @@ final class DispatchPrelockTests: XCTestCase {
             probeHardwareUUID: { _ in nil },
             acquire: { machine in
                 recorder.append(machine.machine)
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { _ in }))
         prelock.acquireInOrder(machines: ["M1Max", "M1mini", "M1Ultra"])
@@ -146,7 +146,7 @@ final class DispatchPrelockTests: XCTestCase {
             },
             acquire: { machine in
                 recorder.append("acquire:\(machine.machine)")
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { _ in }))
 
@@ -166,7 +166,7 @@ final class DispatchPrelockTests: XCTestCase {
                 recorder.append(machine.machine)
                 return Self.uuids[machine.machine]
             },
-            acquire: { machine in return (machine.host, {}) },
+            acquire: { machine in return (machine.host, { _ in }) },
             log: { _ in }))
 
         prelock.acquireInOrder(machines: ["M1Max", "M1mini", "M1Ultra"])
@@ -185,7 +185,7 @@ final class DispatchPrelockTests: XCTestCase {
             probeHardwareUUID: { machine in Self.uuids[machine.machine] },
             acquire: { machine in
                 recorder.append(machine.machine)
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { _ in }))
 
@@ -206,7 +206,7 @@ final class DispatchPrelockTests: XCTestCase {
             },
             acquire: { machine in
                 recorder.append(machine.machine)
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { logged.append($0) }))
 
@@ -230,7 +230,7 @@ final class DispatchPrelockTests: XCTestCase {
                 XCTFail("1台しか居ない run で採りに行った: \(machine.machine)")
                 return nil
             },
-            acquire: { machine in return (machine.host, {}) },
+            acquire: { machine in return (machine.host, { _ in }) },
             log: { logged.append($0) }))
 
         prelock.acquireInOrder(machines: ["M1Max"])
@@ -248,7 +248,7 @@ final class DispatchPrelockTests: XCTestCase {
             keys: { Self.keys($0, unknown: ["M1Ultra", "M1Max"]) },
             // 接続はできたが読めなかった(ioreg の出力形式が変わった等)
             probeHardwareUUID: { _ in nil },
-            acquire: { machine in return (machine.host, {}) },
+            acquire: { machine in return (machine.host, { _ in }) },
             log: { logged.append($0) }))
 
         prelock.acquireInOrder(machines: ["M1Max", "M1mini", "M1Ultra"])
@@ -265,7 +265,7 @@ final class DispatchPrelockTests: XCTestCase {
         let prelock = DispatchPrelock(actions: DispatchPrelock.Actions(
             keys: { Self.keys($0) },
             probeHardwareUUID: Self.noProbe,
-            acquire: { machine in return (machine.host, {}) },
+            acquire: { machine in return (machine.host, { _ in }) },
             log: { logged.append($0) }))
 
         prelock.acquireInOrder(machines: ["M1Max", "M1mini", "M1Ultra"])
@@ -286,7 +286,7 @@ final class DispatchPrelockTests: XCTestCase {
                 guard machine.machine != "M1mini" else {
                     throw RemoteDispatchError.remoteSetupFailed("held by someone else")
                 }
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { logged.append($0) }))
 
@@ -309,7 +309,7 @@ final class DispatchPrelockTests: XCTestCase {
             probeHardwareUUID: Self.noProbe,
             acquire: { machine in
                 recorder.append(machine.machine)
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { _ in }))
         prelock.acquireInOrder(machines: ["max", "max-alias"])
@@ -325,7 +325,7 @@ final class DispatchPrelockTests: XCTestCase {
             probeHardwareUUID: Self.noProbe,
             acquire: { machine in
                 recorder.append(machine.machine)
-                return (machine.host, {})
+                return (machine.host, { _ in })
             },
             log: { _ in }))
         prelock.acquireInOrder(machines: [])
@@ -360,7 +360,7 @@ final class DispatchPrelockTests: XCTestCase {
                 recorder.append(machine.machine)
                 let marker = machine.machine == "local"
                     ? DispatchLockHandoff.localTarget : machine.host
-                return (marker, { recorder.append("release:\(machine.machine)") })
+                return (marker, { _ in recorder.append("release:\(machine.machine)") })
             },
             log: { _ in }))
 
@@ -374,6 +374,87 @@ final class DispatchPrelockTests: XCTestCase {
                       "local の子が親の印を読めない(子が自分で取りに行って詰む)")
         prelock.releaseAll()
         XCTAssertEqual(Array(recorder.entries.suffix(2)), ["release:M1Max", "release:local"])
+    }
+
+    // MARK: - 中断(Ctrl-C)
+
+    /// **中断されたら、ここまでに握ったロックを逆順で外し、以降の機械は1台も取りに行かない**。
+    /// 自プロセスへ実際に SIGINT を送る(InterruptRelayTests.swift と同じ手法。登録済みの
+    /// observer が1つでもあれば SIG_IGN 済みなのでテストプロセスごと落ちる心配はない)。
+    /// 別の observer(witness)を同じシグナルで同期させ、DispatchPrelock 自身の中断印が
+    /// 立ってから次の反復に進ませる(シグナルハンドラは別キューで非同期に呼ばれるため)
+    func testInterruptWhileAcquiringInOrderReleasesAlreadyHeldLocksAndStopsWithoutAcquiringMore() {
+        let recorder = Recorder()
+        let witness = Recorder()
+        let witnessRelay = InterruptRelay.observing { witness.append("x") }
+        defer { witnessRelay.stop() }
+        let prelock = DispatchPrelock(actions: DispatchPrelock.Actions(
+            keys: { Self.keys($0) },
+            probeHardwareUUID: Self.noProbe,
+            acquire: { machine in
+                recorder.append("acquire:\(machine.machine)")
+                if machine.machine == "M1Ultra" {
+                    // UUID 昇順で最初に取られる機械(このテストの前提)。ここで中断を模して、
+                    // witness が呼ばれるまで待つ(= InterruptRelay の forwardToAll が一巡した)
+                    kill(getpid(), SIGINT)
+                    let deadline = Date().addingTimeInterval(5)
+                    while witness.entries.isEmpty, Date() < deadline {
+                        Thread.sleep(forTimeInterval: 0.02)
+                    }
+                }
+                return (machine.host, { _ in recorder.append("release:\(machine.machine)") })
+            },
+            log: { _ in }))
+
+        let acquired = prelock.acquireInOrder(machines: ["M1Max", "M1mini", "M1Ultra"])
+
+        XCTAssertFalse(acquired, "中断されたのに acquireInOrder が成功を返している")
+        XCTAssertEqual(recorder.entries, ["acquire:M1Ultra", "release:M1Ultra"],
+                       "M1mini/M1Max を取りに行っている、または M1Ultra を解放し損ねている")
+        XCTAssertTrue(prelock.markers.isEmpty, "取れなかった/中断された run に印を渡している")
+        // releaseAll は abortIfInterrupted が既に呼んでいるので、defer からの再呼び出しは無害
+        prelock.releaseAll()
+        XCTAssertEqual(recorder.entries, ["acquire:M1Ultra", "release:M1Ultra"], "二重解放している")
+    }
+
+    // MARK: - releaseAll の終了コードの伝搬
+
+    /// `releaseAll(exitCodes:)` は machine ラベルで引いた終了コードをその機械の release
+    /// クロージャへそのまま渡す(`RemoteRunDispatcher.releaseDispatchLockAsParent` が正常終了/
+    /// それ以外を仕分ける材料。DispatchPrelock 自身は値を解釈せず右から左へ渡すだけ)
+    func testReleaseAllPassesEachMachinesExitCodeToItsReleaseClosure() {
+        var received: [String: Int32?] = [:]
+        let prelock = DispatchPrelock(actions: DispatchPrelock.Actions(
+            keys: { Self.keys($0) },
+            probeHardwareUUID: Self.noProbe,
+            acquire: { machine in
+                (machine.host, { code in received[machine.machine] = code })
+            },
+            log: { _ in }))
+        prelock.acquireInOrder(machines: ["M1Max", "M1mini"])
+        prelock.releaseAll(exitCodes: ["M1Max": 0, "M1mini": 137])
+        XCTAssertEqual(received["M1Max"] ?? .some(-1), .some(0))
+        XCTAssertEqual(received["M1mini"] ?? .some(-1), .some(137))
+    }
+
+    /// `exitCodes` を渡さない(既定 `[:]`)呼び出しは、全機械へ nil(終了コード不明)を渡す ——
+    /// 不明を「正常終了」と混同しない側の呼び手(受け手は `RemoteRunDispatcher.releaseDispatchLockAsParent`)
+    /// のための既定
+    func testReleaseAllWithoutExitCodesPassesNilToEveryReleaseClosure() {
+        var received: [String: Int32?] = [:]
+        let prelock = DispatchPrelock(actions: DispatchPrelock.Actions(
+            keys: { Self.keys($0) },
+            probeHardwareUUID: Self.noProbe,
+            acquire: { machine in
+                (machine.host, { code in received[machine.machine] = code })
+            },
+            log: { _ in }))
+        prelock.acquireInOrder(machines: ["M1Max"])
+        prelock.releaseAll()
+        // release が一度も呼ばれていなければ received["M1Max"] 自体が nil(外側)になり、
+        // `?? .some(-1)` が -1 を素通しする。ここで nil になるのは release が nil を渡して
+        // 呼ばれたときだけ(内側の nil)
+        XCTAssertEqual(received["M1Max"] ?? .some(-1), nil)
     }
 
     // MARK: - 2つ目の run(この経路の存在理由)
@@ -451,7 +532,7 @@ final class DispatchPrelockTests: XCTestCase {
                 guard fleet.acquire(host: machine.host, owner: owner, waitSeconds: 10) else {
                     throw RemoteDispatchError.remoteSetupFailed("wait-lock expired")
                 }
-                return (machine.host, { fleet.release(host: machine.host, owner: owner) })
+                return (machine.host, { _ in fleet.release(host: machine.host, owner: owner) })
             },
             log: { _ in })
     }

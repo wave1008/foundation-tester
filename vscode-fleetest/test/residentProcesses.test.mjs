@@ -5,7 +5,14 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyResident, parseAndroidBridges, parseResidentProcesses } from "../src/residentProcesses";
+import {
+  classifyResident,
+  parseAndroidBridges,
+  parseResidentProcesses,
+  planResidentKill,
+  BRIDGE_RESIDENT_TYPES,
+  TEARDOWN_RESIDENT_TYPES,
+} from "../src/residentProcesses";
 
 test("classifyResident: 各種別を正しく判定する", () => {
   const cases = [
@@ -218,4 +225,98 @@ test("parseResidentProcesses: state Z / <defunct> をゾンビとして立てる
   assert.equal(byPid[555], true); // state 先頭 Z
   assert.equal(byPid[666], true); // command に <defunct>
   assert.equal(byPid[777], false); // 通常
+});
+
+// 欠陥1: モニター「すべて終了」の掃討対象と signal を決める純粋関数。bridge down が断られた側の
+// ブリッジ型は除外し、run 型(後始末を持つ)は SIGTERM のみに倒す(process-lifecycle.md)。
+test("planResidentKill: bridgeDownRefused はブリッジ型を除外・run 型は SIGTERM のみ・mcp/emulator/自分自身は常に除外", () => {
+  const root = "/Users/w/proj";
+  const psOutput = [
+    `111 1 S /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building -xctestrun ${root}/.fleetest/DerivedData/Build/Products/FleetestRunner-8127.xctestrun -destination id=2C4FBE2E-5358-48CD-B32A-964B8EB817B4`,
+    `222 1 S ${root}/.build/debug/fleetest api monitor --project A`,
+    `333 1 S ${root}/.build/debug/fleetest api run --project A --scenario Foo`,
+    `444 1 S ${root}/.build/debug/fleetest-mcp`,
+    "555 1 S /Users/w/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless -avd Pixel_9",
+    `999 1 S ${root}/.build/debug/fleetest api monitor --project self`, // ownPid と同じ pid で自分自身を模す
+  ].join("\n");
+  const processes = parseResidentProcesses(psOutput, { binaryDir: `${root}/.build/debug` });
+  const isWorkspaceOwned = (command) => command.includes(root);
+
+  const refused = planResidentKill(processes, {
+    ownPid: 999,
+    isWorkspaceOwned,
+    bridgeDownRefused: true,
+    androidDownRefused: false,
+  });
+  const byPidRefused = Object.fromEntries(refused.map((t) => [t.pid, t.signal]));
+  assert.equal(byPidRefused[111], undefined, "bridgeDownRefused のとき bridge 型は対象から外す");
+  assert.equal(byPidRefused[222], "SIGKILL", "monitor は通常どおり SIGKILL");
+  assert.equal(byPidRefused[333], "SIGTERM", "run は SIGKILL でなく SIGTERM");
+  assert.equal(byPidRefused[444], undefined, "mcp は常に除外");
+  assert.equal(byPidRefused[555], undefined, "emulator は常に除外");
+  assert.equal(byPidRefused[999], undefined, "拡張ホスト自身(ownPid)は除外");
+
+  const notRefused = planResidentKill(processes, {
+    ownPid: 999,
+    isWorkspaceOwned,
+    bridgeDownRefused: false,
+    androidDownRefused: false,
+  });
+  const byPidOk = Object.fromEntries(notRefused.map((t) => [t.pid, t.signal]));
+  assert.equal(byPidOk[111], "SIGKILL", "bridgeDownRefused=false なら bridge 型も対象に含む");
+});
+
+test("planResidentKill: isWorkspaceOwned が false の行(別 workspace/machine-wide)は対象から外す", () => {
+  const processes = parseResidentProcesses(
+    "222 1 S /elsewhere/.build/debug/fleetest api monitor --project A",
+  );
+  const targets = planResidentKill(processes, {
+    ownPid: 1,
+    isWorkspaceOwned: () => false,
+    bridgeDownRefused: false,
+    androidDownRefused: false,
+  });
+  assert.deepEqual(targets, []);
+});
+
+test("planResidentKill: androidDownRefused は android-bridge 型だけを除外する(bridgeDownRefused とは独立)", () => {
+  // android-bridge は実際には pid=0(ホスト PID 無し)の合成行だが、判定は type 駆動なので
+  // pid>0 の手作りの fixture で分岐を直接確かめる。
+  const fakeAndroidBridge = {
+    pid: 666,
+    ppid: 0,
+    type: "android-bridge",
+    label: "Androidブリッジ",
+    detail: "emulator-5554",
+    port: "52267",
+    zombie: false,
+    parentDescription: "Android(emulator-5554)",
+    command: "/Users/w/proj/.build/debug/fake-android-bridge",
+    note: "",
+  };
+  const isWorkspaceOwned = (command) => command.includes("/Users/w/proj");
+
+  const excluded = planResidentKill([fakeAndroidBridge], {
+    ownPid: 1,
+    isWorkspaceOwned,
+    bridgeDownRefused: false,
+    androidDownRefused: true,
+  });
+  assert.deepEqual(excluded, []);
+
+  const included = planResidentKill([fakeAndroidBridge], {
+    ownPid: 1,
+    isWorkspaceOwned,
+    bridgeDownRefused: true, // iOS 側が断られていても android-bridge は別枠なので対象に残る
+    androidDownRefused: false,
+  });
+  assert.deepEqual(included, [{ pid: 666, signal: "SIGKILL" }]);
+});
+
+test("BRIDGE_RESIDENT_TYPES / TEARDOWN_RESIDENT_TYPES: 想定する型の集合を固定する", () => {
+  assert.deepEqual(
+    [...BRIDGE_RESIDENT_TYPES].sort(),
+    ["android-bridge", "bridge", "inapp-bridge", "sim-runner"].sort(),
+  );
+  assert.deepEqual([...TEARDOWN_RESIDENT_TYPES], ["run"]);
 });

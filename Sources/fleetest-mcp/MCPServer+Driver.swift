@@ -978,44 +978,64 @@ extension MCPServer {
     /// (`usesRememberedDeviceState` を流用しない理由も同じ: ref を使わない呼び出しでこそ実際に踏んだ)。
     /// **iOS のキャッシュ命中では毎回確かめる**(`hybridFallbackDrifted` と同じコストの考え方 ——
     /// 1回の loopback probe)。判定は同じ `FTBridgeClient.HybridFallbackIdentity` の1箇所
-    func primaryEngineDrifted(_ key: String) async -> Bool {
+    func primaryEngineDrift(_ key: String) async -> BridgeIdentityCheck.HybridFallbackDrift {
         guard let port = connectedPorts[key], let expectedUDID = udids[key] ?? nil,
-              let engine = engines[key] else { return false }
+              let engine = engines[key] else { return .none }
         let expectedEngine = engine == "xcuitest" ? "xcuitest" : "inapp"
         return await HybridFallbackIdentity.drifted(
             port: port, expectedUDID: expectedUDID, expectedEngine: expectedEngine,
             repoRoot: try? RepoRoot.find())
     }
 
-    /// `primaryEngineDrifted` が true のときの後始末。**旧エンジンの ref はどの道無効**なので
-    /// 食い違っていれば必ず `forgetDeviceState`(fallback 専用の `hybridFallbackDrifted` と違い、
-    /// こちらは primary = ref の起点そのもの)。**この呼び出し自身が記憶に依っているときだけ拒否**
-    /// (`usesRememberedDeviceState`)—— 依っていなければ、捨てた上でこの call 自身を新しい
-    /// ドライバで再解決させれば足りるので、利用者に「撮り直せ」と言う理由が無い
-    /// (`ft_terminate` はまさにこの形 = 黙って直った状態で続行してよい)
+    /// `primaryEngineDrift` の結果を、この call をどう扱うかへ落とす。**旧エンジンの ref はどの道
+    /// 無効**なので、`.none` 以外は必ず `forgetDeviceState`(fallback 専用の `hybridFallbackDrifted`
+    /// と違い、こちらは primary = ref の起点そのもの)。
+    /// - `.sameDeviceEngineChanged`: **この呼び出し自身が記憶に依っているときだけ拒否**
+    ///   (`usesRememberedDeviceState`)—— 依っていなければ、捨てた上でこの call 自身を新しい
+    ///   ドライバで再解決させれば足りるので、利用者に「撮り直せ」と言う理由が無い
+    ///   (`ft_terminate` はまさにこの形 = 黙って直った状態で続行してよい)
+    /// - `.differentDevice`: **ref の有無を問わず必ず拒否**する。ここで黙って作り直すと、
+    ///   ref を使わない呼び出し(`ft_tap x/y`・`ft_type` 等)が警告なしで別の台へ効き続け、
+    ///   以後のセッションがその台に固定される
     enum PrimaryEngineCheck: Equatable {
         case unchanged, rebuildSilently, refuse(String)
     }
 
-    /// `primaryEngineDrifted`(I/O)が拾った事実から、この call をどう扱うかを決める
-    /// **走査から切り離した純粋関数**(`keyChangedDevice`/`hybridFallbackMismatch` と同じ理由・
+    /// `primaryEngineDrift`(I/O)が拾った事実から、この call をどう扱うかを決める
+    /// **走査から切り離した純粋関数**(`keyChangedDevice`/`hybridFallbackDrift` と同じ理由・
     /// テスト用): 実ブリッジ無しで「記憶に依る呼び出しだけ拒否する」判定そのものを固定できる
     static func primaryEngineOutcome(
-        drifted: Bool, usesRememberedDeviceState: Bool, port: UInt16?, expectedEngine: String?
+        drift: BridgeIdentityCheck.HybridFallbackDrift, usesRememberedDeviceState: Bool,
+        port: UInt16?, expectedEngine: String?, expectedUDID: String?, callerNamedUDID: Bool
     ) -> PrimaryEngineCheck {
-        guard drifted else { return .unchanged }
-        guard usesRememberedDeviceState else { return .rebuildSilently }
-        return .refuse(engineChangedRefusal(port: port, expectedEngine: expectedEngine))
+        switch drift {
+        case .none:
+            return .unchanged
+        case .differentDevice:
+            // args の udid は呼び手の明示だけ(記憶の補完は port しか書かない)= 今そのポートに居る台を
+            // 名指しした同意なので作り直してよい。明示が無ければ断り続ける(primaryEngineCheck が記憶を残す)
+            guard !callerNamedUDID else { return .rebuildSilently }
+            return .refuse(differentDeviceRefusal(port: port, expectedUDID: expectedUDID))
+        case .sameDeviceEngineChanged:
+            guard usesRememberedDeviceState else { return .rebuildSilently }
+            return .refuse(engineChangedRefusal(port: port, expectedEngine: expectedEngine))
+        }
     }
 
-    /// `primaryEngineOutcome` の I/O 込みの入口。**`.unchanged` 以外は必ず `forgetDeviceState`**
+    /// `primaryEngineOutcome` の I/O 込みの入口。**`.unchanged` 以外は `forgetDeviceState`**
     /// (旧エンジンの ref はどの道無効。`.rebuildSilently` でも捨てる — 呼び出し元はこの call を
-    /// 下の生成で再解決させるだけで、拒否文を返す理由は無い)
+    /// 下の生成で再解決させるだけで、拒否文を返す理由は無い)。
+    /// **例外は別の台を断ったとき**: 記憶(udid・キャッシュ)を捨てると次の同じ呼び出しが生成経路へ落ち、
+    /// `keyChangedDevice` の previous が nil になって**黙って別の台に固定される**。残して毎回断る
     func primaryEngineCheck(_ key: String, args: [String: Any]) async -> PrimaryEngineCheck {
+        let drift = await primaryEngineDrift(key)
+        let callerNamedUDID = (args["udid"] as? String).map { !$0.isEmpty } ?? false
         let outcome = Self.primaryEngineOutcome(
-            drifted: await primaryEngineDrifted(key), usesRememberedDeviceState: Self.usesRememberedDeviceState(args),
-            port: connectedPorts[key], expectedEngine: engines[key])
+            drift: drift, usesRememberedDeviceState: Self.usesRememberedDeviceState(args),
+            port: connectedPorts[key], expectedEngine: engines[key], expectedUDID: udids[key] ?? nil,
+            callerNamedUDID: callerNamedUDID)
         if case .unchanged = outcome { return outcome }
+        if drift == .differentDevice, case .refuse = outcome { return outcome }
         forgetDeviceState(key)
         return outcome
     }
@@ -1031,6 +1051,20 @@ extension MCPServer {
             + " — refusing this call because it relies on state remembered for the previous engine"
             + " (a ref, or the launched app that ft_open_url defaults to; refs do not carry across"
             + " engines). That state has been dropped. Take a fresh ft_snapshot and use the new refs."
+    }
+
+    /// primary ポートが別の udid へ移っていたときに呼び出しを断る文。**`movedDeviceRefusal` と役割は
+    /// 同じ**(捨てたものを名指しする)が、ここは `primaryEngineOutcome` が持つ材料(実測の
+    /// 「今の」udid は無く、期待していた udid だけ)に合わせて文面を作る。**ref の有無を問わず
+    /// 常にこの文を返す**(`sameDeviceEngineChanged` の `engineChangedRefusal` と違い、
+    /// `usesRememberedDeviceState` の分岐は無い)
+    static func differentDeviceRefusal(port: UInt16?, expectedUDID: String?) -> String {
+        let where_ = port.map { "port \($0)" } ?? "this bridge"
+        let expectedLabel = expectedUDID ?? "the device this session cached it for"
+        return "\(where_) now belongs to a different device than \(expectedLabel)"
+            + " — nothing was sent. This session keeps refusing calls on this port until you pass"
+            + " udid explicitly (the device you mean to drive); call ft_list_devices to see which"
+            + " device is on which port now."
     }
 
     /// **hybrid キャッシュ命中の fallback(XCUITest)ポートが別の機/別エンジンへ移っていないか**
@@ -1058,7 +1092,7 @@ extension MCPServer {
             return false
         }
         return await HybridFallbackIdentity.drifted(
-            port: port, expectedUDID: expectedUDID, repoRoot: try? RepoRoot.find())
+            port: port, expectedUDID: expectedUDID, repoRoot: try? RepoRoot.find()) != .none
     }
 
     /// ポートが別の機へ移っていたときに呼び出しを断る文。**捨てたものを名指しする** ——
