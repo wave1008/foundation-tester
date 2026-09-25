@@ -895,6 +895,54 @@ extension StepExecutorTests {
                       "422 でも typeDriver へ回すこと: \(log.entries)")
     }
 
+    /// **対象が確実に入力欄でない(button)+ 自前描画でないと確定**しているときは、409 でも
+    /// typeDriver へ撃ち直さない(type ケースと同じ判定。TypeReadback.isPositivelyNonTextInput の doc)
+    func testClearInput409WithConfirmedNonSelfRenderedButtonTargetFailsWithoutRetrying() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+        primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+                                    uiFramework: .uikit)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "btn_submit"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("ボタンへの 409 は撃ち直さず failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(message.contains("button"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
+                       "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
+    }
+
+    /// `type(replace: true)` の pre-clear も同じ門を通ること(performClearInput は clearInput
+    /// ケースと replace 前処理の両方が通る共有経路 = ClearOutcome の doc)
+    func testTypeWithReplaceButtonTargetFailsWithoutRetryingWhenClearInput409sWithConfirmedNonSelfRendered() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+        primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+                                    uiFramework: .uikit)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "new", replace: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("ボタンへの replace-clear 409 は撃ち直さず failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(message.contains("button"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
+                       "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(ref:") },
+                       "clear の門で断ったら type 自体も撃ってはいけない: \(log.entries)")
+    }
+
     /// ロケータ無し版でも 409 は typeDriver(ref: nil)へフォールバックすること(pressEnter と同じ形)。
     /// pre-snapshot(実装2の下ごしらえ)は 409 の前に必ず1回撮る
     func testClearInputWithoutLocator409FallsBackToTypeDriver() async throws {

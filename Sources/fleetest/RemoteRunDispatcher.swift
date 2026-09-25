@@ -688,12 +688,13 @@ struct RemoteRunDispatcher {
     /// (I/O は呼び出し側)。空(誰も掴んでいない)・読めない(ssh 失敗)は `.nothingToDo` —— 回収する
     /// 対象が無い/判定できないので、通常のエラー文言(dispatchLockFailureMessage)に任せる
     static func staleLockAutoRelease(
-        lockRead: String?, myIssuer: String, myHost: String, pidAlive: (Int32) -> Bool
+        lockRead: String?, myIssuer: String, myHost: String, pidAlive: (Int32) -> Bool,
+        startTime: (Int32) -> Date? = ProcessLiveness.startTime
     ) -> RemoteDispatchUnlock.Decision {
         guard let lockRead, !lockRead.isEmpty else { return .nothingToDo }
         let probe = RemoteDispatchLock.Probe.held(RemoteDispatchLock.decode(lockRead))
         return RemoteDispatchUnlock.decideAutomaticSweep(
-            probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive)
+            probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive, startTime: startTime)
     }
 
     /// 取得失敗(status ≠ 0・≠ 255)の文言。読めた控えが**空**(readCommand は不在でも exit 0 で

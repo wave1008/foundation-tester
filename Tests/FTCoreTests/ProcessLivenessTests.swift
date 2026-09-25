@@ -44,4 +44,41 @@ final class ProcessLivenessTests: XCTestCase {
         // `?Es` のまま数十分残る = ゾンビになりきらず刺さった形)
         XCTAssertFalse(ProcessLiveness.isAliveState(SRUN, flags: 0x0000_2000))
     }
+
+    // MARK: - isAliveAndNotStartedAfter(pid 再利用を弾く判定)
+
+    /// 自プロセスは実際の開始時刻より後の時刻を記録に持てば「その後に始まった別物」ではない
+    func testAliveAndNotStartedAfterIsTrueWhenRecordedAtIsAfterTheRealStart() {
+        XCTAssertTrue(ProcessLiveness.isAliveAndNotStartedAfter(getpid(), recordedAt: Date()))
+    }
+
+    /// **pid 再利用の再現**: 記録時刻をこの pid が実際に生まれるより前(この場合は epoch 0)に
+    /// 置くと、「その pid は記録より後に始まった」= 記録した pid とは別物として死んだ扱いにする
+    func testAliveAndNotStartedAfterIsFalseWhenTheRealStartComesAfterTheRecordedTime() {
+        XCTAssertFalse(ProcessLiveness.isAliveAndNotStartedAfter(
+            getpid(), recordedAt: Date(timeIntervalSince1970: 0)))
+    }
+
+    func testAliveAndNotStartedAfterIsFalseForANonexistentPid() throws {
+        let pid = pid_t(Int32.max - 7)  // 通常割り当てられない領域(衝突しうるので前提を確認する)
+        try XCTSkipUnless(kill(pid, 0) == -1 && errno == ESRCH,
+                          "pid \(pid) unexpectedly exists on this host")
+        XCTAssertFalse(ProcessLiveness.isAliveAndNotStartedAfter(pid, recordedAt: Date()))
+    }
+
+    /// **開始時刻が読めない(不明)ときは生きている側に倒す**(不明を死にしない) ——
+    /// 記録時刻がどれだけ古くても、開始時刻を確認できなければ結論を出さない
+    func testAliveAndNotStartedAfterTreatsAnUnreadableStartTimeAsAlive() {
+        XCTAssertTrue(ProcessLiveness.isAliveAndNotStartedAfter(
+            getpid(), recordedAt: Date(timeIntervalSince1970: 0),
+            isAliveOverride: { _ in true }, startTimeOverride: { _ in nil }))
+    }
+
+    /// pid 自体が死んでいれば、開始時刻の比較にすら進まず死んだ扱い
+    func testAliveAndNotStartedAfterIsFalseWhenIsAliveOverrideSaysDead() {
+        XCTAssertFalse(ProcessLiveness.isAliveAndNotStartedAfter(
+            getpid(), recordedAt: Date(),
+            isAliveOverride: { _ in false },
+            startTimeOverride: { _ in XCTFail("死んでいるなら開始時刻を読む必要は無い"); return nil }))
+    }
 }

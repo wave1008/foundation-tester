@@ -183,6 +183,39 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertFalse(TypeReadback.isTextInput(element(ref: 1, type: "staticText")))
     }
 
+    // MARK: - isPositivelyNonTextInput(撃ち直しを断ってよいほど確実に入力欄でないか)
+
+    func testPositivelyNonTextInputRequiresConfirmedNonSelfRendered() {
+        // ボタン + 自前描画でないと確定 → true(撃ち直しを断ってよい)
+        XCTAssertTrue(TypeReadback.isPositivelyNonTextInput(
+            element(ref: 1, type: "button"), selfRendered: false))
+        // ボタン + 自前描画(Compose/Flutter)→ false(Compose の実欄が誤って button 型に
+        // 化ける可能性を排除できないので、型名だけでは判定しない)
+        XCTAssertFalse(TypeReadback.isPositivelyNonTextInput(
+            element(ref: 1, type: "button"), selfRendered: true))
+        // ボタン + 不明(nil)→ false(自前描画と同じ扱い = 撃ち直しを許す側に倒す)
+        XCTAssertFalse(TypeReadback.isPositivelyNonTextInput(
+            element(ref: 1, type: "button"), selfRendered: nil))
+    }
+
+    func testPositivelyNonTextInputCoversOnlyUnambiguousNonInputTypes() {
+        for type in ["button", "switch", "toggle", "link", "slider", "stepper",
+                     "segmentedControl", "checkBox", "menuItem"] {
+            XCTAssertTrue(TypeReadback.isPositivelyNonTextInput(
+                element(ref: 1, type: type), selfRendered: false), type)
+        }
+        // 実在の入力欄
+        XCTAssertFalse(TypeReadback.isPositivelyNonTextInput(
+            element(ref: 1, type: "textField"), selfRendered: false))
+        // **役割不明の受け皿は含めない**: Compose の本物の入力欄が cell/clickable/other/
+        // staticText として報告される実測があるので(nonInputTypeTargetNote の doc)、
+        // 自前描画でないと確定していても「確実に入力欄でない」とは言えない
+        for type in ["cell", "clickable", "other", "staticText"] {
+            XCTAssertFalse(TypeReadback.isPositivelyNonTextInput(
+                element(ref: 1, type: type), selfRendered: false), type)
+        }
+    }
+
     // MARK: - isMaskedInput(secure 欄は読み返しの材料に使わない)
 
     func testIsMaskedInputCoversOnlySecureTextField() {

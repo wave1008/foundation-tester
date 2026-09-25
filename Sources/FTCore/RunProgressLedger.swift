@@ -13,7 +13,10 @@
 //
 // FMUsageLedger と違い、ここは「呼び出し回数の累積カウンタ」ではなく「run 1つのスナップショット」
 // なので UsageLedger(pid ごとの単調増加カウンタの共通実装)には乗せない —— 1 pid = 1 run が
-// 全欄を毎回まるごと上書きする。**生存判定は pid だけ**(mtime を見ない。FMUsageLedger と同じ)。
+// 全欄を毎回まるごと上書きする。**生存判定は pid だけでなく、記録の startedAt より後に
+// 始まっていないかも見る**(mtime は見ない。FMUsageLedger と同じ)—— SIGKILL された run の pid が
+// 別プロセスへ再利用されると、pid だけの判定は死んだ run をずっと「生きている」と読み続ける
+// (`ProcessLiveness.isAliveAndNotStartedAfter`)。
 // SIGKILL で finish() に届かなかった控えは読み手(readAll)が無視し、次の run の開始時に
 // sweep() が回収する(掃除は書き手側。理由は sweep の宣言)。
 
@@ -134,35 +137,58 @@ public enum RunProgressLedger {
     /// provision の入口で台帳を掃除するのと同じ立場)。**読み手(`api monitor`)には置かない** ——
     /// あちらは毎周期読むので、掃除を読み手に持たせると監視の周期がそのまま掃除の回数になる。
     /// `remove` に届かなかった控え(SIGKILL)はここでだけ回収される。
-    /// **pid としてパースできない名前は触らない**(この台帳が作った物ではない)
-    public static func sweep(directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive) {
+    /// **pid としてパースできない名前は触らない**(この台帳が作った物ではない)。
+    /// **中身が読めない(壊れた JSON)ときは pid の生死だけで判定する**(従来どおり。
+    /// startedAt が要る比較ができないので、それより弱い判定へ落ちるのは安全側)
+    public static func sweep(directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive,
+                             startTime: (Int32) -> Date? = ProcessLiveness.startTime) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return
         }
         for name in names where name.hasSuffix(".json") {
             guard let pid = Int32(name.dropLast(".json".count)), pid > 0 else { continue }
-            guard !isAlive(pid) else { continue }
-            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+            let url = directory.appendingPathComponent(name)
+            let startedAt = (try? Data(contentsOf: url))
+                .flatMap { try? JSONDecoder().decode(RunProgressRecord.self, from: $0) }?.startedAt
+            guard !isStillRunning(pid: pid, startedAt: startedAt, isAlive: isAlive, startTime: startTime)
+            else { continue }
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
-    /// 生きている pid の記録だけを返す。**生存判定は pid だけ**(mtime を見ない)。
-    /// 壊れた JSON は1件だけ飛ばす(全体を失わない)。`isAlive` はテスト用の差し替え口
+    /// 生きている pid の記録だけを返す。**生存判定は pid + startedAt**(pid 再利用を弾く。
+    /// ファイルの mtime は見ない)。壊れた JSON は1件だけ飛ばす(全体を失わない)。
+    /// `isAlive` / `startTime` はテスト用の差し替え口
     public static func readAll(
-        directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive
+        directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive,
+        startTime: (Int32) -> Date? = ProcessLiveness.startTime
     ) -> [RunProgressRecord] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return []
         }
         var records: [RunProgressRecord] = []
         for name in names where name.hasSuffix(".json") {
-            guard let pid = Int32(name.dropLast(".json".count)), pid > 0, isAlive(pid) else { continue }
+            guard let pid = Int32(name.dropLast(".json".count)), pid > 0 else { continue }
             let url = directory.appendingPathComponent(name)
             guard let data = try? Data(contentsOf: url),
                   let record = try? JSONDecoder().decode(RunProgressRecord.self, from: data)
             else { continue }
+            guard isStillRunning(pid: pid, startedAt: record.startedAt, isAlive: isAlive,
+                                 startTime: startTime) else { continue }
             records.append(record)
         }
         return records
+    }
+
+    /// pid の生死 + (読めれば)startedAt 以降に生まれた別プロセスでないかを1つの判定に畳む。
+    /// **startedAt が読めない/パースできないときは pid の生死だけで判定する**(sweep が中身を
+    /// 読めなかった控えを扱うときの後退経路)
+    private static func isStillRunning(pid: Int32, startedAt: String?, isAlive: (Int32) -> Bool,
+                                       startTime: (Int32) -> Date?) -> Bool {
+        guard let startedAt, let recordedAt = ISO8601DateFormatter().date(from: startedAt) else {
+            return isAlive(pid)
+        }
+        return ProcessLiveness.isAliveAndNotStartedAfter(
+            pid, recordedAt: recordedAt, isAliveOverride: isAlive, startTimeOverride: startTime)
     }
 }

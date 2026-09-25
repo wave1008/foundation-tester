@@ -243,19 +243,19 @@ final class RemoteDispatchUnlockTests: XCTestCase {
 
     func testAbsentLockIsNothingToDo() {
         XCTAssertEqual(RemoteDispatchUnlock.decide(probe: .absent, myIssuer: "wave1008", myHost: "my-mac",
-                                                   pidAlive: { _ in true }), .nothingToDo)
+                                                   pidAlive: { _ in true }, startTime: { _ in nil }), .nothingToDo)
     }
 
     func testUnreadableInfoIsRefused() {
         guard case .refuse = RemoteDispatchUnlock.decide(probe: .held(nil), myIssuer: "wave1008",
-                                                         myHost: "my-mac", pidAlive: { _ in false })
+                                                         myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("unreadable info must not be released") }
     }
 
     func testOtherIssuerIsRefusedEvenIfPidIsDead() {
         let theirs = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 1, acquiredAt: "x", issuer: "alice")
         guard case .refuse(let reason) = RemoteDispatchUnlock.decide(
-            probe: .held(theirs), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+            probe: .held(theirs), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("another issuer's lock must not be released") }
         XCTAssertTrue(reason.contains("alice"), reason)
     }
@@ -263,13 +263,13 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     func testLegacyInfoWithoutIssuerIsRefused() {
         let legacy = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 1, acquiredAt: "x")
         guard case .refuse = RemoteDispatchUnlock.decide(
-            probe: .held(legacy), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+            probe: .held(legacy), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("a lock with no issuer cannot be proven to be mine") }
     }
 
     func testMyLiveDispatchOnThisMachineIsRefused() {
         guard case .refuse(let reason) = RemoteDispatchUnlock.decide(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 }, startTime: { _ in nil })
         else { return XCTFail("a running dispatch of mine must not lose its lock") }
         XCTAssertTrue(reason.contains("4242"), reason)
     }
@@ -277,14 +277,44 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     /// ProcessInfo.hostName(小文字)と `hostname`(大文字)が同じ機械で食い違う実測に合わせる
     func testHostComparisonIsCaseInsensitive() {
         guard case .refuse = RemoteDispatchUnlock.decide(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "MY-MAC", pidAlive: { $0 == 4242 })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "MY-MAC", pidAlive: { $0 == 4242 }, startTime: { _ in nil })
         else { return XCTFail("the same machine spelled in another case must still see the live pid") }
     }
 
     func testMyDeadDispatchOnThisMachineIsReleased() {
         guard case .release = RemoteDispatchUnlock.decide(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("my dead dispatch's lock must be released") }
+    }
+
+    // MARK: - pid の再利用(acquiredAt との突き合わせ)
+
+    /// **pid の再利用**: 保持者の pid が生きているように見えても、実際の開始が acquiredAt
+    /// (`mine` = "2026-08-23T12:00:23Z")より後なら「記録した pid とは別物」として外してよい
+    func testMyDispatchIsReleasedWhenThePidWasReusedAfterAcquiredAt() {
+        guard case .release = RemoteDispatchUnlock.decide(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in true },
+            startTime: { _ in ISO8601DateFormatter().date(from: "2026-09-01T00:00:00Z") })
+        else { return XCTFail("acquiredAt より後に始まった pid を同じディスパッチのまま扱っている") }
+    }
+
+    /// **陰性対照**: 実際の開始が acquiredAt 以前(= 本当に同じディスパッチ)なら従来どおり外さない
+    func testMyDispatchIsKeptWhenTheRealStartPredatesAcquiredAt() {
+        guard case .refuse = RemoteDispatchUnlock.decide(
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in true },
+            startTime: { _ in ISO8601DateFormatter().date(from: "2026-08-23T00:00:00Z") })
+        else { return XCTFail("本当に生きているディスパッチのロックを外している") }
+    }
+
+    /// acquiredAt が読めない(壊れた/旧形式)ときは pid の生死だけで判定する(従来どおり) ——
+    /// 時刻を必須にすると読めない info.json を理由に死んだロックが永久に回収不能になる
+    func testUnparsableAcquiredAtFallsBackToPidAliveOnly() {
+        let legacy = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 4242, acquiredAt: "not-a-date",
+                                            issuer: "wave1008")
+        guard case .release = RemoteDispatchUnlock.decide(
+            probe: .held(legacy), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false },
+            startTime: { _ in XCTFail("acquiredAt が読めないなら開始時刻は見ない"); return nil })
+        else { return XCTFail("acquiredAt が読めないときに pid の生死へ後退していない") }
     }
 
     // MARK: - decideAutomaticSweep(モニター起動時の自動掃除。手動 unlock より保守側)
@@ -292,7 +322,7 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     /// 自動掃除が外してよいのは「この機械の自分の pid が死んでいる」ときだけ
     func testSweepReleasesMyDeadDispatchOnThisMachine() {
         guard case .release = RemoteDispatchUnlock.decideAutomaticSweep(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("the sweep must release my dead dispatch's lock") }
     }
 
@@ -300,7 +330,7 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     /// (pid の生死を確かめられず、別 Mac の生きている run を殺し得る)
     func testSweepRefusesMyLockFromAnotherMachine() {
         guard case .refuse(let reason) = RemoteDispatchUnlock.decideAutomaticSweep(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "other-mac", pidAlive: { _ in false })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "other-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("the sweep must not release a lock it cannot prove dead") }
         XCTAssertTrue(reason.contains("my-mac"), reason)
     }
@@ -308,10 +338,10 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     func testSweepRefusesOtherIssuersAndLivePids() {
         let theirs = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 1, acquiredAt: "x", issuer: "alice")
         guard case .refuse = RemoteDispatchUnlock.decideAutomaticSweep(
-            probe: .held(theirs), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+            probe: .held(theirs), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("another issuer's lock must never be swept") }
         guard case .refuse = RemoteDispatchUnlock.decideAutomaticSweep(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 }, startTime: { _ in nil })
         else { return XCTFail("a live dispatch must never be swept") }
     }
 
@@ -321,7 +351,7 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     /// 規則は `decideAutomaticSweep` と同じ1つを通す(2つ目の回収規則を作らない)
     func testLocalSweepReleasesMyDeadRunsLock() {
         guard case .release = RemoteDispatchUnlock.decideLocalSweep(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("my dead local run's lock must be released") }
     }
 
@@ -329,11 +359,11 @@ final class RemoteDispatchUnlockTests: XCTestCase {
     /// (別の機械から発行 = pid の生死を確かめられない)は外さない
     func testLocalSweepRefusesLiveRunsAndLocksDispatchedFromAnotherMac() {
         guard case .refuse = RemoteDispatchUnlock.decideLocalSweep(
-            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 })
+            probe: .held(mine), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { $0 == 4242 }, startTime: { _ in nil })
         else { return XCTFail("a live local run must never be swept") }
         guard case .refuse = RemoteDispatchUnlock.decideLocalSweep(
             probe: .held(mine), myIssuer: "wave1008", myHost: "someone-else-mbp",
-            pidAlive: { _ in false })
+            pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("a lock dispatched from another Mac must never be swept locally") }
     }
 
@@ -341,7 +371,7 @@ final class RemoteDispatchUnlockTests: XCTestCase {
         var pidChecked = false
         guard case .release = RemoteDispatchUnlock.decide(
             probe: .held(mine), myIssuer: "wave1008", myHost: "other-mac",
-            pidAlive: { _ in pidChecked = true; return true })
+            pidAlive: { _ in pidChecked = true; return true }, startTime: { _ in nil })
         else { return XCTFail("my lock from another machine is released on my say-so") }
         XCTAssertFalse(pidChecked)
     }

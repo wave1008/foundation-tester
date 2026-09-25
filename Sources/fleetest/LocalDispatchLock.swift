@@ -64,6 +64,7 @@ final class LocalDispatchLock {
     private let waitLock: Int?
     private let forceLock: Bool
     private let pidAlive: (Int32) -> Bool
+    private let pidStartTime: (Int32) -> Date?
     private let sleepSeconds: (Int) -> Void
     private let log: (String) -> Void
     private let emitWaiting: ((DispatchWaitStatus) -> Void)?
@@ -75,6 +76,7 @@ final class LocalDispatchLock {
          pid: Int32 = ProcessInfo.processInfo.processIdentifier,
          environment: [String: String] = ProcessInfo.processInfo.environment,
          pidAlive: @escaping (Int32) -> Bool = ProcessLiveness.isAlive,
+         pidStartTime: @escaping (Int32) -> Date? = ProcessLiveness.startTime,
          sleepSeconds: @escaping (Int) -> Void = { Thread.sleep(forTimeInterval: Double($0)) },
          log: @escaping (String) -> Void,
          emitWaiting: ((DispatchWaitStatus) -> Void)? = nil) {
@@ -87,6 +89,7 @@ final class LocalDispatchLock {
         self.waitLock = waitLock
         self.forceLock = forceLock
         self.pidAlive = pidAlive
+        self.pidStartTime = pidStartTime
         self.sleepSeconds = sleepSeconds
         self.log = log
         self.emitWaiting = emitWaiting
@@ -255,14 +258,16 @@ final class LocalDispatchLock {
         })
     }
 
-    /// **同じ機械の pid なので生死で確定できる**。判定は `RemoteDispatchUnlock.decideLocalSweep`
-    /// の1箇所(リモートの pgrep による裏取りを掛けない理由はそちらの宣言)
+    /// **同じ機械の pid なので生死(+ pid 再利用の除外)で確定できる**。判定は
+    /// `RemoteDispatchUnlock.decideLocalSweep` の1箇所(リモートの pgrep による裏取りを
+    /// 掛けない理由はそちらの宣言)
     private func autoReleaseOurDeadLock() -> Bool {
         guard let existing = try? shell(RemoteDispatchLock.readCommand(home: home)).output,
               !existing.isEmpty else { return false }
         let probe = RemoteDispatchLock.Probe.held(RemoteDispatchLock.decode(existing))
         guard case .release(let reason) = RemoteDispatchUnlock.decideLocalSweep(
-            probe: probe, myIssuer: issuer, myHost: issuerHost, pidAlive: pidAlive) else {
+            probe: probe, myIssuer: issuer, myHost: issuerHost, pidAlive: pidAlive,
+            startTime: pidStartTime) else {
             return false
         }
         log("==> auto-releasing a stale dispatch lock on this Mac left by a dead run of ours (\(reason))")

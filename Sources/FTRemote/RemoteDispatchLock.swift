@@ -51,6 +51,13 @@ public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {
         return RemoteDispatchLockInfo(issuerHost: issuerHost, pid: pid,
                                       acquiredAt: formatter.string(from: date), issuer: issuer)
     }
+
+    /// `acquiredAt` を Date へ(壊れた/旧形式で読めなければ nil)。`now()` と同じ ISO8601 表現
+    public var acquiredDate: Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.date(from: acquiredAt)
+    }
 }
 
 public enum RemoteDispatchLock {
@@ -287,7 +294,8 @@ public enum RemoteDispatchUnlock {
     }
 
     public static func decide(probe: RemoteDispatchLock.Probe, myIssuer: String, myHost: String,
-                              pidAlive: (Int32) -> Bool) -> Decision {
+                              pidAlive: (Int32) -> Bool,
+                              startTime: (Int32) -> Date? = ProcessLiveness.startTime) -> Decision {
         switch probe {
         case .absent:
             return .nothingToDo
@@ -303,7 +311,7 @@ public enum RemoteDispatchUnlock {
             // ホスト名は大文字小文字を区別しない(ProcessInfo.hostName は小文字・`hostname` は
             // 大文字で返すことがある。同じ機械を別物と見ると、生きている自分の run のロックを外す)
             let sameHost = info.issuerHost.caseInsensitiveCompare(myHost) == .orderedSame
-            if sameHost, pidAlive(info.pid) {
+            if sameHost, holderIsStillTheSameProcess(info, pidAlive: pidAlive, startTime: startTime) {
                 return .refuse(reason: "your dispatch (pid \(info.pid)) is still running on this machine"
                     + " — stop it and it releases the lock itself")
             }
@@ -312,6 +320,18 @@ public enum RemoteDispatchUnlock {
                 : "it was acquired by you from \(info.issuerHost) (pid \(info.pid) — not checkable from here)"
             return .release(reason: why)
         }
+    }
+
+    /// **pid の再利用**で死んだ保持者を「生きている」と読まない —— `info.acquiredAt` より後に
+    /// 始まったプロセスは記録した pid とは別物。`acquiredAt` が読めない(壊れた/旧形式の info.json)
+    /// ときは pid の生死だけで判定する(従来どおり。時刻を必須にすると読めない info.json を理由に
+    /// 死んだロックが永久に回収不能になる)
+    private static func holderIsStillTheSameProcess(_ info: RemoteDispatchLockInfo,
+                                                     pidAlive: (Int32) -> Bool,
+                                                     startTime: (Int32) -> Date?) -> Bool {
+        guard let recordedAt = info.acquiredDate else { return pidAlive(info.pid) }
+        return ProcessLiveness.isAliveAndNotStartedAfter(
+            info.pid, recordedAt: recordedAt, isAliveOverride: pidAlive, startTimeOverride: startTime)
     }
 
     /// release の判定に「ランナー上でディスパッチの run がまだ生きていないか」を掛ける(3つの呼び口 =
@@ -361,15 +381,18 @@ public enum RemoteDispatchUnlock {
     /// `<base>/users/<issuer>/work/.fleetest/dispatch/` 形の `--report-dir` を持つ run しか
     /// pgrep できない。**手元の run はその形を持たない**ので、掛けると答えが常に
     /// 「確かめられなかった」= 外さない側に倒れ、**死んだローカルのロックが永久に残る**。
-    /// 同じ機械の pid は `FTCore.ProcessLiveness.isAlive` で**確定できる** ——
-    /// リモートの裏取りより強い判定なので、掛けないほうが安全側。
+    /// 同じ機械の pid は `FTCore.ProcessLiveness.isAliveAndNotStartedAfter`(pid 再利用も弾く)で
+    /// **確定できる** —— リモートの裏取りより強い判定なので、掛けないほうが安全側。
     ///
     /// 規則そのものは `decideAutomaticSweep` と同じ1つを通す(2つ目の回収規則を作らない)。
     /// **他人がこの Mac へディスパッチして置いたロックは外さない** —— その控えは相手の issuer と
     /// 相手の issuerHost を名乗るので、同じ規則(発行者違い / 別の機械から発行)で refuse に落ちる
     public static func decideLocalSweep(probe: RemoteDispatchLock.Probe, myIssuer: String,
-                                        myHost: String, pidAlive: (Int32) -> Bool) -> Decision {
-        decideAutomaticSweep(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive)
+                                        myHost: String, pidAlive: (Int32) -> Bool,
+                                        startTime: (Int32) -> Date? = ProcessLiveness.startTime
+    ) -> Decision {
+        decideAutomaticSweep(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive,
+                             startTime: startTime)
     }
 
     /// `fleetest remote unlock --runner local`: **この Mac の** dispatch.lock を今すぐ外してよいか。
@@ -391,7 +414,9 @@ public enum RemoteDispatchUnlock {
     /// `guardingLiveRemoteRun` が外さない側へ倒す
     public static func decideThisMachine(probe: RemoteDispatchLock.Probe, myIssuer: String,
                                          myHost: String, pidAlive: (Int32) -> Bool,
-                                         livePIDs: () -> [Int32]?) -> Decision {
+                                         livePIDs: () -> [Int32]?,
+                                         startTime: (Int32) -> Date? = ProcessLiveness.startTime
+    ) -> Decision {
         switch probe {
         case .absent:
             return .nothingToDo
@@ -403,7 +428,7 @@ public enum RemoteDispatchUnlock {
             }
             guard info.issuerHost.caseInsensitiveCompare(myHost) != .orderedSame else {
                 return decideLocalSweep(probe: probe, myIssuer: myIssuer, myHost: myHost,
-                                        pidAlive: pidAlive)
+                                        pidAlive: pidAlive, startTime: startTime)
             }
             let release = Decision.release(
                 reason: "it was dispatched to this Mac by \(holderPhrase(info)) and no run it started"
@@ -423,8 +448,11 @@ public enum RemoteDispatchUnlock {
     /// 別 Mac の生きている run のロックを外し得る。手動なら本人が判断できるが、自動で外して
     /// よいのは「この機械の自分の pid が死んでいる」と確定できたときだけ)
     public static func decideAutomaticSweep(probe: RemoteDispatchLock.Probe, myIssuer: String,
-                                            myHost: String, pidAlive: (Int32) -> Bool) -> Decision {
-        let decision = decide(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive)
+                                            myHost: String, pidAlive: (Int32) -> Bool,
+                                            startTime: (Int32) -> Date? = ProcessLiveness.startTime
+    ) -> Decision {
+        let decision = decide(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive,
+                              startTime: startTime)
         if case .release = decision, case .held(let info?) = probe,
            info.issuerHost.caseInsensitiveCompare(myHost) != .orderedSame {
             return .refuse(reason: "acquired from \(info.issuerHost) — its liveness cannot be checked"

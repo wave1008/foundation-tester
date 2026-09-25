@@ -37,6 +37,25 @@ public enum ProcessLiveness {
         return flags & processExitingFlag == 0
     }
 
+    /// **pid の再利用**を弾いた生死判定。`isAlive(pid)` は死んだ pid が別プロセスへ再利用されると
+    /// 「生きている」を返し続けてしまう —— 台帳が持つのは pid だけで、記録を書いた時点の
+    /// プロセスと今生きているプロセスが同一という保証が無い。`recordedAt`(その pid を控えた時刻)
+    /// より後に始まったプロセスは「記録した pid とは別物」= 死んだ扱いにする。
+    /// **開始時刻が読めない(権限・確認までの競合)ときは生きている側に倒す**(不明を死にしない。
+    /// 呼び手はロック解放・掃除など取り返しのつかない操作の引き金にすることが多いため)。
+    /// `toleranceSeconds`(既定2秒)は ISO8601(秒精度)へ丸めた記録時刻の誤差(最大1秒)と、
+    /// 読み取りタイミングのずれを吸収する枠(pid 再利用そのものの間隔はこれよりずっと大きい)。
+    /// `isAliveOverride` / `startTimeOverride` はテスト用の差し替え口(既定は本番の実装)
+    public static func isAliveAndNotStartedAfter(
+        _ pid: pid_t, recordedAt: Date, toleranceSeconds: TimeInterval = 2,
+        isAliveOverride: (pid_t) -> Bool = ProcessLiveness.isAlive,
+        startTimeOverride: (pid_t) -> Date? = ProcessLiveness.startTime
+    ) -> Bool {
+        guard isAliveOverride(pid) else { return false }
+        guard let started = startTimeOverride(pid) else { return true }
+        return started <= recordedAt.addingTimeInterval(toleranceSeconds)
+    }
+
     /// 生きているプロセスの開始時刻(死んでいる・読めないなら nil)。
     /// **`ps -o lstart=` を使わない** —— 出力がロケール依存で、パースが利用者の環境で黙って外れる。
     /// `kinfo_proc.kp_proc.p_starttime` は epoch 基準の timeval なので変換が要らない。

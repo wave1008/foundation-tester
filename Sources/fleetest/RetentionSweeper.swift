@@ -472,11 +472,25 @@ enum RetentionSweeper {
         [.fileSizeKey, .contentModificationDateKey, .isRegularFileKey]
 
     /// run.json に完了時刻が無い(= 進行中)か、今終わった run か。
-    /// **読めない run.json も guarded** —— 進行中と壊れた記録を区別できないので安全側へ倒す
+    /// **読めない run.json も guarded** —— 進行中と壊れた記録を区別できないので安全側へ倒す。
+    /// finishedAt が無くても、**この機械の pid で、かつ本当に死んでいる**(pid の再利用も除いて)
+    /// と確定できたときだけ保護を外す —— でなければ SIGKILL・クラッシュ・電源断で finish() に
+    /// 届かなかった録画が永久に守られ続ける。**別の機械の run(host 不一致)・pid の無い記録は
+    /// 判断できないので従来どおり守る**
     private static func runIsGuarded(runDir: URL, activeRunID: String?) -> Bool {
         if let activeRunID, runDir.lastPathComponent == activeRunID { return true }
         guard let meta = RunResultsStore.meta(runDir: runDir) else { return true }
-        return meta.finishedAt == nil
+        guard meta.finishedAt == nil else { return false }
+        return unfinishedRunMayStillBeAlive(meta)
+    }
+
+    /// finishedAt の無い run が、この機械の生きているプロセスのものかもしれないか。
+    /// **host が今の機械と一致し、pid と startedAt の両方が読めるときだけ**判定できる
+    /// (`RunRecorder.currentMachine()` が `host` を書いたときと同じ規則で機械を照合する)
+    private static func unfinishedRunMayStillBeAlive(_ meta: RunMetaRecord) -> Bool {
+        guard meta.host == RunRecorder.currentMachine(), let pid = meta.pid, pid > 0,
+              let startedAt = ISO8601DateFormatter().date(from: meta.startedAt) else { return true }
+        return ProcessLiveness.isAliveAndNotStartedAfter(pid_t(pid), recordedAt: startedAt)
     }
 
     private static func runDirectories(project: TestProject) -> [URL] {

@@ -109,7 +109,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **プロセスの生存管理は3つの定義元に寄せる**(2026-09-05 の掃討): ①**生死の判定は
   `FTCore.ProcessLiveness.isAlive`**(sysctl で `SZOMB`・`P_WEXIT` を「死」と見る。`kill(pid, 0)` は
   ゾンビにも成功するので台帳が永久に回収されない —— `ProcessLivenessSourceScanTests` が素の
-  `kill(x, 0)` を落とす。例外は自分の子を SIGKILL する直前の確認だけ)②**子は親の死で自ら終わる**
+  `kill(x, 0)` を落とす。例外は自分の子を SIGKILL する直前の確認だけ。**時刻付きの記録と突き合わせるときは
+  `isAliveAndNotStartedAfter`** = 記録より後に起動した pid(再利用)を死とみなす・開始時刻が読めなければ生きている側)②**子は親の死で自ら終わる**
   (`FTCore.ParentDeathWatch`。spawn 側が `FT_PARENT_PID` を渡した子だけが kqueue で親の EXIT を待ち、
   SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
   巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら

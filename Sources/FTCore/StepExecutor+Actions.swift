@@ -678,7 +678,8 @@ extension StepExecutor {
             var replaceFallbackNote: String?
             if step.replace == true {
                 switch try await performClearInput(element: element, step: step,
-                                                   actingDriver: actingDriver, phase: &phase) {
+                                                   actingDriver: actingDriver, in: snapshot.elements,
+                                                   phase: &phase) {
                 case .cleared(let fallback):
                     replaceFallbackNote = fallback
                 case .failed(let message):
@@ -757,6 +758,13 @@ extension StepExecutor {
                 // フォーカス有無に依存する一時的競合なので、press/swipe と違い 501 化しない
                 // (判定は DriverError.isTextInputFallback)。
                 guard DriverError.isTextInputFallback(error), let td = typeDriver else { throw error }
+                // **対象が確実に入力欄でないなら撃ち直さない**(TypeReadback.isPositivelyNonTextInput の
+                // doc)。in-app の /type は撃つ前に合成タップを撃っており、ここで XCUITest が
+                // もう一度タップすると対象(ボタン等)を2回押しかねない(送信・購入の二重実行)
+                if TypeReadback.isPositivelyNonTextInput(element, selfRendered: uiFramework?.isSelfRendered) {
+                    return StepOutcome(status: .failed(Self.nonTextInputFallbackRefusal(
+                        element, in: snapshot.elements, action: "type")))
+                }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
                 // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
@@ -775,7 +783,8 @@ extension StepExecutor {
                                    healedByFingerprint: healedByFingerprint)
             }
             switch try await performClearInput(element: element, step: step,
-                                               actingDriver: actingDriver, phase: &phase) {
+                                               actingDriver: actingDriver, in: snapshot.elements,
+                                               phase: &phase) {
             case .cleared(let fallback):
                 driverFallback = fallback
             case .failed(let message):
@@ -1062,6 +1071,19 @@ extension StepExecutor {
         case failed(String)
     }
 
+    /// type/clearInput が `TypeReadback.isPositivelyNonTextInput` で撃ち直しを断ったときの文言。
+    /// 内側にちょうど1つ入力欄があれば名指しする(`TapTargetGeometry.nonInputTypeTargetNote` と同じ規則)
+    private static func nonTextInputFallbackRefusal(_ element: ElementInfo, in elements: [ElementInfo],
+                                                     action: String) -> String {
+        var message = "the target is a \(element.type), not a text field — \(action) cannot succeed on"
+            + " either engine. The tap that resolved this element may already have landed, so it was"
+            + " not retried via XCUITest (a retry could trigger the \(element.type) a second time)."
+        if let note = TapTargetGeometry.nonInputTypeTargetNote(element, in: elements) {
+            message += " " + note
+        }
+        return message
+    }
+
     /// clearInput(ref なし = フォーカス中要素)の本体。**ロケータ有り版(performClearInput)とは
     /// 別実装**: 対象を再解決できないので、クリア前に覚えたフォーカス要素を identifier/frame で
     /// 事後突き合わせる(residualClearValue(of:in:) 参照)。ロケータ無し `clearInput()` と
@@ -1115,6 +1137,7 @@ extension StepExecutor {
     /// **clearInput ケースと type の replace 前処理の両方がここを通る**(どのパスなら検証されるかに
     /// 例外を作らない、という既存の規律を replace 経路にも効かせるため)
     private func performClearInput(element: ElementInfo, step: FlowStep, actingDriver: AppDriver,
+                                   in elements: [ElementInfo],
                                    phase: inout PhaseAccumulator) async throws -> ClearOutcome {
         let clock = ContinuousClock()
         let before = try await valueBeforeClear(element: element, step: step,
@@ -1141,6 +1164,11 @@ extension StepExecutor {
             return .cleared(driverFallback: nil)
         } catch {
             guard DriverError.isClearInputFallback(error), let td = typeDriver else { throw error }
+            // **対象が確実に入力欄でないなら撃ち直さない**(type ケースの catch と同じ理由・
+            // TypeReadback.isPositivelyNonTextInput の doc)
+            if TypeReadback.isPositivelyNonTextInput(element, selfRendered: uiFramework?.isSelfRendered) {
+                return .failed(Self.nonTextInputFallbackRefusal(element, in: elements, action: "clearInput"))
+            }
             guard try await clearViaTypeDriver(td, step: step, phase: &phase) else { throw error }
             // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
             // 規則が無いと将来の変更で無検証の穴が復活する)

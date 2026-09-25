@@ -86,7 +86,7 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
     func testReleasesOwnDeadDispatchOnThisMachine() {
         let lock = encodedLock(issuerHost: "my-mac", pid: 4242, issuer: "wave1008")
         guard case .release = RemoteRunDispatcher.staleLockAutoRelease(
-            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil }
         ) else { return XCTFail("expected release") }
     }
 
@@ -94,7 +94,7 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
     func testRefusesWhenOwnDispatchIsStillAlive() {
         let lock = encodedLock(issuerHost: "my-mac", pid: 4242, issuer: "wave1008")
         guard case .refuse = RemoteRunDispatcher.staleLockAutoRelease(
-            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in true }
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in true }, startTime: { _ in nil }
         ) else { return XCTFail("expected refuse") }
     }
 
@@ -102,7 +102,7 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
     func testRefusesAnotherIssuersLock() {
         let lock = encodedLock(issuerHost: "my-mac", pid: 4242, issuer: "someone-else")
         guard case .refuse = RemoteRunDispatcher.staleLockAutoRelease(
-            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil }
         ) else { return XCTFail("expected refuse") }
     }
 
@@ -111,7 +111,7 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
     func testRefusesOwnIssuerFromAnotherMachine() {
         let lock = encodedLock(issuerHost: "other-mac", pid: 4242, issuer: "wave1008")
         guard case .refuse = RemoteRunDispatcher.staleLockAutoRelease(
-            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }
+            lockRead: lock, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil }
         ) else { return XCTFail("expected refuse") }
     }
 
@@ -119,7 +119,7 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
     func testEmptyOrUnreadableLockIsNothingToDo() {
         for read in ["", nil] {
             XCTAssertEqual(RemoteRunDispatcher.staleLockAutoRelease(
-                lockRead: read, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }),
+                lockRead: read, myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil }),
                 .nothingToDo)
         }
     }

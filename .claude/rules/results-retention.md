@@ -48,7 +48,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   見えなくなる)→ `api monitor` が `monitorRuns` で配る → リモートは fan-out が machine を埋める。
   守る規律5つ: **①記帳は `RunOrchestrator` の1箇所・注入は run / api run の2経路**
   (`RunProgressLedgerWiringTests` が走査で固定。片方だけだとその経路の run が緑のまま映らない)/
-  **②生存判定は pid だけ**(mtime を見ない)/ **③死んだ控えは書き手が run 開始時に掃く**
+  **②生存判定は pid と `startedAt` の開始時刻照合**(mtime を見ない。pid の再利用は `ProcessLiveness.isAliveAndNotStartedAfter` が弾く)/ **③死んだ控えは書き手が run 開始時に掃く**
   (読み手は毎周期読むので掃除を置かない)/ **④経過は読み手(同じ機械の monitor)が秒に直して運ぶ**
   (向こうの時計を手元で解釈しない)/ **⑤レーンごとの残り本数は持たない**(shared キューでは
   同じ数字が並ぶだけで誤読を招く)

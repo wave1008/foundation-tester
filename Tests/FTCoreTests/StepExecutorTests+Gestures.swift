@@ -225,6 +225,74 @@ extension StepExecutorTests {
         }
     }
 
+    /// **対象が確実に入力欄でない(button)+ 自前描画でないと確定**しているときは、409 でも
+    /// typeDriver へ撃ち直さない(in-app の /type は撃つ前に合成タップを撃っており、ここで
+    /// XCUITest がもう一度タップすると対象を2回押しかねない。element(ref:id:) は type "button"
+    /// を返す。TypeReadback.isPositivelyNonTextInput の doc)
+    func testType409WithConfirmedNonSelfRenderedButtonTargetFailsWithoutRetrying() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+        primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+                                    uiFramework: .uikit)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("ボタンへの 409 は撃ち直さず failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(message.contains("button"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
+                       "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
+    }
+
+    /// 自前描画(Compose/Flutter)では型名だけで「入力欄でない」と確定できない
+    /// (実測: Compose の実欄が clickable と報告される。nonInputTypeTargetNote の doc)ので、
+    /// selfRendered == true では従来どおり撃ち直すこと
+    func testType409WithSelfRenderedButtonTargetStillFallsBackToTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+        primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+                                    uiFramework: .compose)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("自前描画では従来どおり撃ち直すことを期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+    }
+
+    /// 対象が実在の入力欄なら、自前描画でないと確定していても従来どおり撃ち直すこと
+    /// (positivelyNonTextInputTypes に textField 等は含めない)
+    func testType409WithConfirmedNonSelfRenderedTextFieldTargetStillFallsBackToTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[inputField(ref: 1, id: "field_email")]])
+        primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[inputField(ref: 2, id: "field_email")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+                                    uiFramework: .uikit)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("入力欄は自前描画でなくても撃ち直すことを期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+    }
+
     // MARK: - swipeElementToElement
 
     /// 両要素の中心座標で drag が呼ばれること。duration 省略時は既定 1.5 秒が渡ること

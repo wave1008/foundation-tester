@@ -34,12 +34,13 @@ final class LocalDispatchLockTests: XCTestCase {
                       group: String? = nil, waitLock: Int? = nil, forceLock: Bool = false,
                       environment: [String: String] = [:],
                       pidAlive: @escaping (Int32) -> Bool = { _ in true },
+                      pidStartTime: @escaping (Int32) -> Date? = { _ in nil },
                       sleepSeconds: @escaping (Int) -> Void = { _ in
                           XCTFail("待たない設定で待とうとした") },
                       emitWaiting: ((DispatchWaitStatus) -> Void)? = nil) -> LocalDispatchLock {
         LocalDispatchLock(runGroup: group ?? "G\(pid)", waitLock: waitLock, forceLock: forceLock,
                           home: home, issuer: issuer, issuerHost: issuerHost, pid: pid,
-                          environment: environment, pidAlive: pidAlive,
+                          environment: environment, pidAlive: pidAlive, pidStartTime: pidStartTime,
                           sleepSeconds: sleepSeconds, log: { [self] in lines.append($0) },
                           emitWaiting: emitWaiting)
     }
@@ -186,7 +187,7 @@ final class LocalDispatchLockTests: XCTestCase {
         XCTAssertTrue(ndjson.isEmpty, ndjson.joined(separator: "\n"))
     }
 
-    // MARK: - 死んだロックの回収(pid だけで確定する)
+    // MARK: - 死んだロックの回収(pid + 開始時刻で確定する)
 
     /// **同じ機械の pid は生死で確定できる**ので、死んだ自分のロックは次の run が回収する。
     /// リモートの `pgrep` による裏取りは通らない(通すと手元の run は見つからず永久に残る)
@@ -231,6 +232,30 @@ final class LocalDispatchLockTests: XCTestCase {
         XCTAssertEqual(slept, 2, "死んだと分かった周では sleep せず即座に回収するはず")
         XCTAssertTrue(lines.contains { $0.contains("auto-releasing a stale dispatch lock on this Mac") },
                       lines.joined(separator: "\n"))
+    }
+
+    /// **pid の再利用**: 前の保持者の pid が「生きている」ように見えても、実際の開始が
+    /// acquiredAt より後(= 記録した pid とは別の、後から生まれたプロセス)なら回収する
+    func testAReusedLocalLockPidIsReclaimedEvenThoughItAppearsAlive() throws {
+        _ = try lock(pid: 4242).acquire()  // 解放せずに落ちた run を模す(acquiredAt は今)
+        XCTAssertTrue(lockDirExists)
+
+        let next = lock(pid: 7777, pidAlive: { _ in true },
+                        pidStartTime: { _ in Date().addingTimeInterval(60) })
+        let holder = try XCTUnwrap(try next.acquire())
+        XCTAssertTrue(lines.contains { $0.contains("auto-releasing a stale dispatch lock on this Mac") },
+                      lines.joined(separator: "\n"))
+        holder.release()
+    }
+
+    /// **陰性対照**: 開始時刻が acquiredAt 以前(= 本当に同じプロセス)なら従来どおり回収しない
+    func testAGenuinelyLiveLocalLockWhoseStartPredatesAcquiredAtIsNotReclaimed() throws {
+        let holder = try XCTUnwrap(try lock(pid: 4242).acquire())
+        defer { holder.release() }
+        XCTAssertThrowsError(try lock(pid: 7777, pidAlive: { _ in true },
+                                      pidStartTime: { _ in Date().addingTimeInterval(-60) }).acquire())
+        XCTAssertFalse(lines.contains { $0.contains("auto-releasing") },
+                       lines.joined(separator: "\n"))
     }
 
     /// **他人がこの Mac へディスパッチして置いたロックは、pid が死んでいても外さない** ——

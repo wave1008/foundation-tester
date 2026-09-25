@@ -7,6 +7,14 @@
 // **record() はメモリへ溜めるだけで毎回 save() しない**。指紋はステップが解決に成功するたび
 // 更新され得るので、成功のたびにファイル全体を書き直すと I/O がステップ数に比例する。
 // 書き出しは flush() でシナリオ終了時に1回だけ行う(呼び出し口は ScenarioRunnerMain)。
+//
+// **インスタンスはシナリオ実行プロセスごと**(レーン並列で同時に走る)。flush() は自分の
+// entries 全体を上書きしない ── flock で排他した上でディスクの最新を読み直し、この run が
+// 実際に set/remove した鍵だけを併合する(TemplatePrintStore と同じ作法)。そうしないと、
+// 同じシナリオ・同じ OS を並列プロファイルで同時に回したとき、先に flush した側が記録した
+// 指紋を後に flush した側が読み直さずに上書きして消す。刈り取り(古い鍵の削除)も併合後の
+// 内容に対して行う ── 自分の書き込み前に読んだ古い entries に対して刈ると、他プロセスが
+// その間に足した鍵を巻き込んで消しかねない。
 
 import Foundation
 import FTCore
@@ -14,7 +22,6 @@ import FTCore
 final class LocatorFingerprintCache {
     private let url: URL
     private var entries: [String: LocatorFingerprint]
-    private var dirty = false
 
     /// この run で lookup() または record() された鍵(失効判定の「触れた」集合)。マージ元の永続化
     /// entries とは別に持つ ── entries はロード時点で他 run 分の鍵も含むが、こちらは今回の実行だけを覚える。
@@ -23,14 +30,14 @@ final class LocatorFingerprintCache {
     /// 指紋を失って赤に戻っていた
     private var touchedThisRun: Set<String> = []
 
+    /// この run が record() で新しく持つに至った指紋(flush() でディスクの最新へ上書き併合する)
+    private var setThisRun: [String: LocatorFingerprint] = [:]
+    /// この run が record() で「名指しでなくなった」と判定した鍵(flush() でディスクから消す)
+    private var removedThisRun: Set<String> = []
+
     init(url: URL = URL(fileURLWithPath: ".fleetest/locator-fingerprints.json")) {
         self.url = url
-        if let data = try? Data(contentsOf: url),
-           let loaded = try? JSONDecoder().decode([String: LocatorFingerprint].self, from: data) {
-            entries = loaded
-        } else {
-            entries = [:]
-        }
+        entries = Self.load(url)
     }
 
     static func key(scenarioID: String, platform: String, file: String, line: Int, selector: String) -> String {
@@ -54,9 +61,14 @@ final class LocatorFingerprintCache {
         touchedThisRun.insert(key)
         if fingerprint.isIdentifying {
             entries[key] = fingerprint
-            dirty = true
-        } else if entries.removeValue(forKey: key) != nil {
-            dirty = true
+            setThisRun[key] = fingerprint
+            removedThisRun.remove(key)
+        } else {
+            entries.removeValue(forKey: key)
+            setThisRun.removeValue(forKey: key)
+            // ローカルの entries に無くても消去要求は残す ── flush() 時点のディスクには
+            // 他プロセスが書いた同じ鍵が乗っているかもしれない
+            removedThisRun.insert(key)
         }
     }
 
@@ -76,29 +88,48 @@ final class LocatorFingerprintCache {
     ///    対象にする。部分実行(`--scenario` 指定)でも他シナリオの指紋を巻き込まず、iOS の run が
     ///    同じシナリオの Android の指紋を刈らない(交互に回すと互いに消し合う)
     func flush(scenarioID: String, platform: String, scenarioPassed: Bool) {
-        if scenarioPassed {
-            let prefix = Self.scope(scenarioID: scenarioID, platform: platform)
-            let recordedThisRun = touchedThisRun.contains { $0.hasPrefix(prefix) }
-            if recordedThisRun {
-                let staleKeys = entries.keys.filter {
-                    $0.hasPrefix(prefix) && !touchedThisRun.contains($0)
-                }
-                if !staleKeys.isEmpty {
-                    for key in staleKeys { entries.removeValue(forKey: key) }
-                    dirty = true
-                }
+        let prefix = Self.scope(scenarioID: scenarioID, platform: platform)
+        let touchedOwnScope = touchedThisRun.contains { $0.hasPrefix(prefix) }
+        let mayPrune = scenarioPassed && touchedOwnScope
+        // 何も変える見込みが無ければロックすら取らない(dirty 相当のゲート)
+        guard !setThisRun.isEmpty || !removedThisRun.isEmpty || mayPrune else { return }
+
+        let directory = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        // FileManager.createFile を使わない(既存の inode を置き換えて先客の flock と衝突しなくなる。
+        // TemplatePrintStore と同じ罠)
+        let fd = open(directory.appendingPathComponent("\(url.lastPathComponent).lock").path, O_WRONLY | O_CREAT, 0o644)
+        if fd >= 0 { flock(fd, LOCK_EX) }
+        defer { if fd >= 0 { close(fd) } }
+
+        var diskEntries = Self.load(url)
+        var changed = false
+        for (key, fingerprint) in setThisRun where diskEntries[key] != fingerprint {
+            diskEntries[key] = fingerprint
+            changed = true
+        }
+        for key in removedThisRun where diskEntries.removeValue(forKey: key) != nil {
+            changed = true
+        }
+        if mayPrune {
+            let staleKeys = diskEntries.keys.filter {
+                $0.hasPrefix(prefix) && !touchedThisRun.contains($0)
+            }
+            if !staleKeys.isEmpty {
+                for key in staleKeys { diskEntries.removeValue(forKey: key) }
+                changed = true
             }
         }
-        guard dirty else { return }
-        do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                    withIntermediateDirectories: true)
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(entries).write(to: url, options: .atomic)
-            dirty = false
-        } catch {
-            // 保存失敗は実行を止めない(次回は指紋なしで解決を試みるだけ)
-        }
+        guard changed else { return }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        guard let data = try? encoder.encode(diskEntries) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    private static func load(_ url: URL) -> [String: LocatorFingerprint] {
+        guard let data = try? Data(contentsOf: url),
+              let loaded = try? JSONDecoder().decode([String: LocatorFingerprint].self, from: data) else { return [:] }
+        return loaded
     }
 }
