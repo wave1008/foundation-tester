@@ -26,7 +26,9 @@
 # パッケージ。git の外 = まっさらな読み手の条件・TestProjects/ には触らない)。run のたびに `Bench/fixtures/<fixture>/` の .swift を置き直し、台帳(.fleetest/)と
 # レポートを消す。完了は**自己申告ではなく**、最後の ft_run_scenario が通ったこと・その後に
 # ファイルを書き換えていないこと・`mustContain` の文字列が最終ファイルに残っていること(検証を
-# 削って緑にする抜け道を塞ぐ)で判定する(bench-summary.mjs の authoringVerdict)。
+# 削って緑にする抜け道を塞ぐ)で判定する(bench-summary.mjs の authoringVerdict)。任意で
+# `mustNotContain`(最終ファイルに残っていてはいけない文字列)と `lastRunMustNotContain`(最後の
+# ft_run_scenario の応答に出てはいけない文字列。例: 自己修復の印 🔧)も見る。
 #
 # `--tool-root <dir>` で測る対象のクローンを差し替える(既定はこの台本のクローン)。変更前の
 # コミットを worktree に出して渡せば、同じタスク・同じ台本で前後を比べられる:
@@ -163,13 +165,21 @@ if [ "$has_authoring" = 1 ] && [ "$DRY_RUN" = 0 ] && [ ! -f "$PKG/Package.swift"
 fi
 
 # 1 run ぶんの盤面を作り直す: シナリオをフィクスチャへ戻し、台帳(#id の台帳・指紋)と
-# レポートを消す(前の run の学習が次の run に漏れると手数が下がって見える)
+# レポートを消す(前の run の学習が次の run に漏れると手数が下がって見える)。
+# **台帳はプロジェクトの下にもある**(`TestProjects/<p>/.fleetest/` = locator-fingerprints.json と
+# selector-inventory.json。2026-09-25 まではここを消しておらず run をまたいで残っていた)。
+# フィクスチャに `fleetest/` があれば、それをプロジェクトの `.fleetest/` として置く(指紋の控えの種)
 reset_authoring() {
   local fixture="$1"
-  local scen="$PKG/TestProjects/$PKG_PROJECT/scenarios"
-  rm -rf "$PKG/.claude" "$PKG/.vscode" "$PKG/CLAUDE.md" "$PKG/AGENTS.md" "$PKG/.fleetest"
+  local proj="$PKG/TestProjects/$PKG_PROJECT"
+  local scen="$proj/scenarios"
+  rm -rf "$PKG/.claude" "$PKG/.vscode" "$PKG/CLAUDE.md" "$PKG/AGENTS.md" "$PKG/.fleetest" "$proj/.fleetest"
   find "$scen" -name '*.swift' ! -name '_Main.swift' -delete
   cp "$FIXTURE_DIR/$fixture"/*.swift "$scen/"
+  if [ -d "$FIXTURE_DIR/$fixture/fleetest" ]; then
+    mkdir -p "$proj/.fleetest"
+    cp "$FIXTURE_DIR/$fixture/fleetest"/* "$proj/.fleetest/"
+  fi
   find "$PKG/TestProjects/$PKG_PROJECT/reports" -mindepth 1 -delete 2>/dev/null || true
 }
 
@@ -268,7 +278,9 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
         "$transcript" "$(node -e '
           const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
           process.stdout.write(t.kind === "authoring"
-            ? JSON.stringify({ final: process.argv[2] || null, mustContain: t.mustContain ?? [] })
+            ? JSON.stringify({ final: process.argv[2] || null, mustContain: t.mustContain ?? [],
+                               mustNotContain: t.mustNotContain ?? [],
+                               lastRunMustNotContain: t.lastRunMustNotContain ?? [] })
             : "null")' "$f" "$final")" >> "$INDEX"
     done
   done

@@ -369,3 +369,18 @@ test('隔離: メモリ・スキル・プラグインのどれかが見えてい
   assert.equal(m.isolated, true)
   assert.equal(metricsFromTranscript([result('done')], null).isolated, null)
 })
+
+test('作成フロー: 古い文字列が残る・最後の実行が自己修復(🔧)で通った、はどちらも未完了', () => {
+  const base = { lastRunText: passedRun, editedAfterLastRun: false, finalSource: 'tap("#new")',
+                 mustContain: [], mustNotContain: ['#old'], lastRunMustNotContain: ['🔧'] }
+  assert.equal(authoringVerdict(base).completed, true)
+  const leftover = authoringVerdict({ ...base, finalSource: 'tap("#old")' })
+  assert.equal(leftover.completed, false)
+  assert.deepEqual(leftover.leftover, ['#old'])
+  const healed = authoringVerdict({ ...base, lastRunText: '    🔧 4. [action] tap "#old" → healed\n  → ✅ passed' })
+  assert.equal(healed.completed, false)
+  assert.deepEqual(healed.lastRunLeaks, ['🔧'])
+  // 条件を渡さない既存のタスクは今までどおり
+  assert.equal(authoringVerdict({ lastRunText: passedRun, editedAfterLastRun: false,
+                                  finalSource: '', mustContain: [] }).completed, true)
+})

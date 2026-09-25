@@ -84,16 +84,25 @@ export function foldNoteCost(entries) {
  *   この2行は isError を持たない旧版の応答にも同じ形で出るので、前後の比較に使える)
  * - その後にファイルを書き換えていない(通った後に書き換えたなら、最終ファイルは未検証)
  * - `mustContain` の文字列が最終ファイルに全部残っている(検証を削って緑にする抜け道を塞ぐ)
+ * - 任意: `mustNotContain` が最終ファイルに1つも残っていない(古い id を直したか)/
+ *   `lastRunMustNotContain` が最後の実行の応答に出ていない(例: 自己修復の印 🔧 = 修復に頼って通った)
  */
-export function authoringVerdict({ lastRunText, editedAfterLastRun, finalSource, mustContain }) {
+export function authoringVerdict({ lastRunText, editedAfterLastRun, finalSource, mustContain,
+                                   mustNotContain, lastRunMustNotContain }) {
   const ran = typeof lastRunText === 'string'
   const passed = ran && lastRunText.includes('→ ✅ passed') && !lastRunText.includes('→ ❌ failed')
-  const missing = (mustContain ?? []).filter((needle) => !String(finalSource ?? '').includes(needle))
+  const source = String(finalSource ?? '')
+  const missing = (mustContain ?? []).filter((needle) => !source.includes(needle))
+  const leftover = (mustNotContain ?? []).filter((needle) => source.includes(needle))
+  const lastRunLeaks = ran ? (lastRunMustNotContain ?? []).filter((needle) => lastRunText.includes(needle)) : []
   return {
-    completed: passed && !editedAfterLastRun && missing.length === 0,
+    completed: passed && !editedAfterLastRun && missing.length === 0 && leftover.length === 0
+      && lastRunLeaks.length === 0,
     lastRunPassed: passed,
     editedAfterLastRun: Boolean(editedAfterLastRun),
     missing,
+    leftover,
+    lastRunLeaks,
   }
 }
 
@@ -191,7 +200,8 @@ export function metricsFromTranscript(lines, expect, authoring = null) {
   // expect が無いタスクは claude 自身の成否だけを見る
   const verdict = authoring
     ? authoringVerdict({ lastRunText, editedAfterLastRun, finalSource: authoring.finalSource,
-                         mustContain: authoring.mustContain })
+                         mustContain: authoring.mustContain, mustNotContain: authoring.mustNotContain,
+                         lastRunMustNotContain: authoring.lastRunMustNotContain })
     : null
   const completed = verdict
     ? verdict.completed
@@ -368,7 +378,8 @@ function main(argv) {
     const lines = readFileSync(run.transcript, 'utf8').split('\n').filter((l) => l.trim())
     const authoring = run.authoring
       ? { finalSource: run.authoring.final ? readText(run.authoring.final) : '',
-          mustContain: run.authoring.mustContain }
+          mustContain: run.authoring.mustContain, mustNotContain: run.authoring.mustNotContain,
+          lastRunMustNotContain: run.authoring.lastRunMustNotContain }
       : null
     return { ...run, metrics: metricsFromTranscript(lines, run.expect, authoring) }
   })
@@ -385,7 +396,9 @@ function main(argv) {
     if (!v || v.completed) continue
     const why = !v.lastRunPassed ? '最後の ft_run_scenario が通っていない'
       : v.editedAfterLastRun ? '通った後にファイルを書き換えた'
-        : `検証が消えた: ${v.missing.join(', ')}`
+        : v.missing.length ? `検証が消えた: ${v.missing.join(', ')}`
+          : v.leftover.length ? `直すべき文字列が残っている: ${v.leftover.join(', ')}`
+            : `最後の実行に出てはいけない印が出た: ${v.lastRunLeaks.join(', ')}`
     console.log(`!! ${run.variant}/${run.task} ${run.transcript}: ${why}`)
   }
   const rows = aggregate(runs)
