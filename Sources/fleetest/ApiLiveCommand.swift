@@ -942,7 +942,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     }
 
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
-    /// (ApiMonitorCommand.swift の MonitorImage を共有利用する)。refresh(ユーザーの「更新」
+    /// (MonitorImage.swift の MonitorImage を共有利用する)。refresh(ユーザーの「更新」
     /// ボタン)はこの経路しか通らないため、ここでの自動起動トリガーは必須。
     /// **鮮度判定(StaleFrameDetector)はここだけ**——絵と木の両方を撮るのはこの経路だけで、
     /// emitFrame は絵だけなので判定できない

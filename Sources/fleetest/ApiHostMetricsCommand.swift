@@ -172,18 +172,3 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
     }
 }
 
-/// stdin 読み取りスレッド・シグナルハンドラ・メインループの間で共有する停止フラグ
-/// (ApiMonitorCommand.swift の StopFlag と同じ実装。private のためファイル間で共有できず複製)
-private final class StopFlag: @unchecked Sendable {
-    private let lock = NSLock()
-    private var flag = false
-
-    var isSet: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return flag
-    }
-
-    func set() {
-        lock.lock(); flag = true; lock.unlock()
-    }
-}
