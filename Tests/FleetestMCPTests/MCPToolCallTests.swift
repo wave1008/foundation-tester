@@ -786,40 +786,35 @@ final class MCPToolCallTests: XCTestCase {
         }
     }
 
-    /// **旧名 `ft_press` は call() の入口で `ft_long_press` へ畳まれ、宛先の記憶も効く**
-    /// (2026-09-06 のバグ出し: dispatch の case にだけ並んでいたので `toolAcceptsDeviceTarget` が
-    /// false になり、`ft_tap port: 8138` の後の `ft_press x: y:` が既定ポートの**別の機**を
-    /// 長押ししていた)。スキーマには現名だけを出す(名前で呼ぶかを決めるクライアント対策)
-    func testPressAliasIsCanonicalizedAndGetsTheRememberedDevice() async throws {
-        XCTAssertEqual(MCPServer.canonicalToolName("ft_press"), "ft_long_press")
-        XCTAssertEqual(MCPServer.canonicalToolName("ft_long_press"), "ft_long_press")
-        XCTAssertTrue(MCPServer.toolAcceptsDeviceTarget("ft_press"))
-        XCTAssertFalse(MCPServer.toolDefinitions.contains { $0["name"] as? String == "ft_press" },
-                       "旧名をツール一覧に出さない")
+    /// **長押しにも宛先の記憶が効く**(2026-09-06 のバグ出し: `ft_tap port: 8138` の後の長押しが
+    /// 既定ポートの**別の機**を長押ししていた)。**改名前の名前は受けない**(未公開のツールなので
+    /// 別名を置かない = ユーザー方針)—— `ft_press` は他の打ち間違いと同じ「不明なツール」になる
+    func testLongPressGetsTheRememberedDeviceAndTheOldNameIsUnknown() async throws {
+        XCTAssertTrue(MCPServer.toolAcceptsDeviceTarget("ft_long_press"))
+        XCTAssertFalse(MCPServer.toolDefinitions.contains { $0["name"] as? String == "ft_press" })
 
         let fake = FakeDriver()
         var seenArgs: [[String: Any]] = []
-        let aliased = MCPServer(write: { _ in }, makeDriver: { args in
+        let server = MCPServer(write: { _ in }, makeDriver: { args in
             seenArgs.append(args)
             return fake
         }, recordSnapshot: { _, _, _ in })
-        aliased.lastExplicitIOSTarget = (port: 8138, udid: nil)
-        aliased.lastExplicitPlatform = "ios"
-        aliased.seenExplicitIOSPorts = [8138]
+        server.lastExplicitIOSTarget = (port: 8138, udid: nil)
+        server.lastExplicitPlatform = "ios"
+        server.seenExplicitIOSPorts = [8138]
         // ref の台帳を作ってから撃つ(実フローと同順)
-        _ = try await aliased.call(tool: "ft_snapshot", args: [:])
-        _ = try await aliased.call(tool: "ft_press", args: ["ref": 1, "holdSeconds": 2.0])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_long_press", args: ["ref": 1, "holdSeconds": 2.0])
         XCTAssertFalse(seenArgs.isEmpty)
         XCTAssertTrue(seenArgs.allSatisfy { $0["port"] as? Int == 8138 },
-                      "旧名の呼び出しに記憶した port が畳み込まれていない: \(seenArgs)")
+                      "記憶した port が畳み込まれていない: \(seenArgs)")
         XCTAssertTrue(fake.calls.contains("press(ref:1,duration:2.0)"), "\(fake.calls)")
 
-        // 別名表に無い名前は今までどおり「不明なツール」
         do {
-            _ = try await aliased.call(tool: "ft_presss", args: [:])
-            XCTFail("未知の名前が通った")
+            _ = try await server.call(tool: "ft_press", args: [:])
+            XCTFail("改名前の名前が通った")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("unknown tool: ft_presss"),
+            XCTAssertTrue(error.localizedDescription.contains("unknown tool: ft_press"),
                           error.localizedDescription)
         }
     }

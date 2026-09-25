@@ -1,4 +1,4 @@
-// call(tool:args:) は canonicalToolName の直後・foldingUDIDIntoPort(udid→port のブリッジ走査)より
+// call(tool:args:) は入口で・foldingUDIDIntoPort(udid→port のブリッジ走査)より
 // 前でツール名を toolDefinitions と照合する。**この門が無いと**、存在しない udid + 打ち間違えた
 // ツール名の呼び出しが「unknown tool」ではなく「no running bridge is on udid …」を返す
 // (foldingUDIDIntoPort がツール名を見ずに udid の解決を先に撃つため。実測)。

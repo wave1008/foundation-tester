@@ -9,6 +9,10 @@ import FTCore
 
 extension MCPServer {
 
+    /// **接続が消えた失敗には「今どこに何が居るか」を添える**(2026-08-06 フィードバック #7)。
+    /// ポートで誰も待受していない = XCUITest ランナーのプロセス死で、原因の筆頭は
+    /// **同一シミュレータに2本目のランナーが立った**こと(全ポート共通 bundle id のため
+    /// 先代が蹴り出される。Fleetest.swift の bridge up 参照)。素のメッセージからは追えない
     /// **経路の振り分けは記録(`connectedPorts`/`connectedAndroidSerials`)で決め、表示ラベルの
     /// 接頭辞では決めない**: `connections[key]` は表示用で、profile 経由の書式
     /// ("<device name> port/serial <値>")は "port"/"serial " のどちらの接頭辞にも一致しない ——

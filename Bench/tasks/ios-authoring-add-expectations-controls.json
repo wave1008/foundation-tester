@@ -1,0 +1,19 @@
+{
+  "id": "ios-authoring-add-expectations-controls",
+  "archetype": "authoring",
+  "kind": "authoring",
+  "requires": "iOS シミュレータ1台に xcuitest ブリッジ + com.ftester.e2e.ios(E2EAppIOS)がインストール済み",
+  "maxTurns": 60,
+  "fixture": "ios-authoring-add-expectations-controls",
+  "appId": "com.ftester.e2e.ios",
+  "scenario": "コントロール.S0010",
+  "file": "コントロール.swift",
+  "mustContain": [
+    "notify=on",
+    "agree=true",
+    "tap(\"#tab_controls\")",
+    "tap(\"#sw_notify\")",
+    "tap(\"#cb_agree\")"
+  ],
+  "prompt": "fleetest の MCP ツール(ft_*)と、ファイルの読み書きだけを使って作業してください。あなたはこのアプリもこのシナリオも初めて見ます。\n\n状況: テストプロジェクト BenchAuthoring のシナリオ TestProjects/BenchAuthoring/scenarios/コントロール.swift(ID: コントロール.S0010)は、操作だけが書かれた下書きで、各 scene の expectation(検証)が空です。対象は iOS シミュレータ上のアプリ com.ftester.e2e.ios です。\n\nゴール: 各 scene について、画面の表示だけでなく、操作した部品やその画面の部品自体の状態(スイッチ・チェックボックスが ON/OFF か、スライダーの値など)も、確かめられる範囲で確かめる検証を expectation に書き足し、ft_run_scenario で通すこと。操作(condition / action)は変えないでください。\n\nデバイスは ft_list_devices で iOS シミュレータを選び、ft_run_scenario には port か udid を渡してください。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: passed(通せた)または RESULT: failed(通せなかった)"
+}

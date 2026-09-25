@@ -217,20 +217,6 @@ extension MCPServer {
 
     // MARK: - ツール実装
 
-    /// **接続が消えた失敗には「今どこに何が居るか」を添える**(2026-08-06 フィードバック #7)。
-    /// ポートで誰も待受していない = XCUITest ランナーのプロセス死で、原因の筆頭は
-    /// **同一シミュレータに2本目のランナーが立った**こと(全ポート共通 bundle id のため
-    /// 先代が蹴り出される。Fleetest.swift の bridge up 参照)。素のメッセージからは追えない
-    /// 旧名 → 現名。**別名は call() の入口で現名へ畳む**(dispatch の case に旧名を並べない)——
-    /// `toolAcceptsDeviceTarget` はスキーマ(現名)しか知らないので、dispatch だけで受けると
-    /// 宛先の記憶が別名の呼び出しに効かず、**別の機を長押しする**(実測: `ft_tap port: 8138` の後の
-    /// `ft_press x: y:` が既定ポートへ行った)。旧名を落とさない理由は手元のメモ・既存の手順に
-    /// 残っている名前を「不明なツール」にしないため(ツール一覧には現名だけを出す ——
-    /// 名前だけで呼ぶかを決めるクライアントが `ft_press` をハードウェアキーと読んだ)
-    static let toolAliases: [String: String] = ["ft_press": "ft_long_press"]
-
-    static func canonicalToolName(_ tool: String) -> String { toolAliases[tool] ?? tool }
-
     /// ツール引数の数値を丸ごと `ArgumentBounds` に掛ける(`call` の入口の1箇所)。
     /// 表に無い鍵・`.unbounded` の鍵は素通し。**型違いはここでは断らない** ——
     /// 型の文言は `intArgument`/`doubleArgument` が値を読むときに出す(2つの文言を作らない)
@@ -279,7 +265,6 @@ extension MCPServer {
     }
 
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
-        let tool = Self.canonicalToolName(tool)
         // **未知のツール名はここで断る**(デバイスを触るより前)。この後の
         // foldingUDIDIntoPort は udid → port の解決にブリッジ走査を撃つので、ここで弾かないと
         // 「打ち間違えたツール名」が「ブリッジが無い」という誤った診断になる
@@ -641,7 +626,6 @@ extension MCPServer {
         case "ft_gesture":
             return try await ftGesture(args)
 
-        // 旧名 `ft_press` は call() の toolAliases が現名へ畳む(ここに並べると記憶の適用から漏れる)
         case "ft_long_press":
             return try await ftLongPress(args)
 
