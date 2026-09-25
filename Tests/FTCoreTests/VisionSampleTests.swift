@@ -24,6 +24,74 @@ final class VisionSampleTests: XCTestCase {
         XCTAssertNotNil(VisionSample.labelIssue(classifier: "ScreenClassifier", label: "[Top]"))
     }
 
+    // MARK: - path escape (G5)
+
+    func testLabelIssueRejectsDotDotComponents() {
+        XCTAssertNotNil(VisionSample.labelIssue(
+            classifier: "DefaultClassifier", label: "@a/../../../../zz_escape2/[X]"))
+    }
+
+    func testLabelIssueRejectsAbsolutePaths() {
+        XCTAssertNotNil(VisionSample.labelIssue(classifier: "DefaultClassifier", label: "/etc/[X]"))
+    }
+
+    func testLabelIssueRejectsSingleDotComponent() {
+        XCTAssertNotNil(VisionSample.labelIssue(classifier: "DefaultClassifier", label: "./[X]"))
+    }
+
+    func testLabelIssueRejectsEmptyComponents() {
+        XCTAssertNotNil(VisionSample.labelIssue(classifier: "DefaultClassifier", label: "@i//[X]"))
+    }
+
+    func testLabelIssueStillAcceptsAnOrdinaryNestedLabel() {
+        XCTAssertNil(VisionSample.labelIssue(classifier: "DefaultClassifier", label: "@i/Settings/[Camera Icon]"))
+    }
+
+    func testNameIssueRejectsSlash() {
+        XCTAssertNotNil(VisionSample.nameIssue("../../etc/passwd"))
+        XCTAssertNotNil(VisionSample.nameIssue("sub/leaf.png"))
+    }
+
+    func testNameIssueRejectsDotDotAndEmpty() {
+        XCTAssertNotNil(VisionSample.nameIssue(".."))
+        XCTAssertNotNil(VisionSample.nameIssue("."))
+        XCTAssertNotNil(VisionSample.nameIssue(""))
+    }
+
+    func testNameIssueAcceptsAnOrdinaryFileName() {
+        XCTAssertNil(VisionSample.nameIssue("a.png"))
+    }
+
+    /// `save` の二次防御。`labelIssue` を経由しない(将来 bypass する)呼び出しでも folder が
+    /// classifierFolder の外へ出ていれば isContained が独立に検出できることを確かめる
+    func testIsContainedDetectsAnEscapedFolder() {
+        let root = URL(fileURLWithPath: "/tmp/testroot/vision/classifiers/DefaultClassifier", isDirectory: true)
+        let escaped = root.appendingPathComponent("@a/../../../../zz_escape2/[X]", isDirectory: true)
+        XCTAssertFalse(VisionSample.isContained(escaped, in: root))
+        let inside = root.appendingPathComponent("@i/Settings/[Camera Icon]", isDirectory: true)
+        XCTAssertTrue(VisionSample.isContained(inside, in: root))
+        XCTAssertTrue(VisionSample.isContained(root, in: root))
+    }
+
+    /// 元バグの再現: この形のラベルは save に渡すと無限ループ+created が際限なく伸びていた
+    /// (deletingLastPathComponent が "a/../../.." 型の不動点で止まらなくなる)。
+    /// labelIssue が入口で断るので、この呼び出しは待たずに(ハングせず)エラーで返る
+    func testSaveRejectsThePathEscapeLabelWithoutHanging() {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("vs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertThrowsError(try VisionSample.save(image(), projectRoot: root, classifier: "DefaultClassifier",
+                                                   label: "@a/../../../../zz_escape2/[X]", name: nil))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path), "何も作らずに断る")
+    }
+
+    func testSaveRejectsAnInvalidNameWithoutWriting() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("vs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        XCTAssertThrowsError(try VisionSample.save(image(), projectRoot: root, classifier: "DefaultClassifier",
+                                                   label: "[OK]", name: "../../escape.png"))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: root.path), "何も作らずに断る")
+    }
+
     // MARK: - save
 
     private func image() -> CGImage {

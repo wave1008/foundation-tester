@@ -75,22 +75,43 @@ extension MCPServer {
             // 「profile を使う利用者にだけ穴が残る」形になる
             if let cached = drivers[key] {
                 if let moved = await deviceIdentityChanged(key, args: args) { throw MCPError(moved) }
-                // **profile のキャッシュ命中でも記憶を更新する**(欠陥②・2026-08-14): 下の
-                // direct 経路のキャッシュ命中と同じ理由(rememberResolvedTarget のコメント参照)。
-                // platform 変数はここではまだ無い(resolveProfileTarget を経ていない)ので、
-                // connectionLostHint と同じく **記録(connectedPorts/connectedAndroidSerials)で
-                // 判別する**(表示ラベルの接頭辞では判別しない、と同じ規律)。iosPort は生成側と
-                // 揃えて `connectedPorts[key]` をそのまま渡す(そちらに実機は
-                // `probePort ?? provisioned.port` が既に入っている)
-                if connectedPorts[key] != nil {
-                    rememberResolvedTarget(platform: "ios", args: args,
-                                           iosPort: connectedPorts[key], iosUDID: udids[key] ?? nil,
-                                           androidSerial: nil)
-                } else if let serial = connectedAndroidSerials[key] {
-                    rememberResolvedTarget(platform: "android", args: args,
-                                           iosPort: nil, iosUDID: nil, androidSerial: serial)
+                // **G14**: エンジン(xcuitest/inapp/hybrid)が同じ機のまま入れ替わっていないかも
+                // 確かめる(udid だけでは捕まらない・ref を使わない呼び出しでも効かせる)。
+                // 食い違っていれば `.refuse`(記憶に依る呼び出し)か `.rebuildSilently`
+                // (依らない呼び出し。下の生成へそのまま落ちる)のどちらか
+                switch await primaryEngineCheck(key, args: args) {
+                case .refuse(let message):
+                    throw MCPError(message)
+                case .rebuildSilently:
+                    break
+                case .unchanged:
+                    // **hybrid の fallback(XCUITest)ポートも本人確認する**(G6): 主(in-app)の udid が
+                    // 変わっていなくても、`HybridFallbackDriver` の fallback は別ポートを握ったままで
+                    // 建て直しにより別の機へ移り得る。fallback には ref が乗らないので(primary と違い)
+                    // 捨てるべきセッション記憶が無い —— キャッシュだけ落として下の生成へ通す
+                    // (`.inappOnly` へ静かに縮退することもある)
+                    if await hybridFallbackDrifted(key) {
+                        drivers[key] = nil
+                        hybridFallbackPorts[key] = nil
+                    } else {
+                        // **profile のキャッシュ命中でも記憶を更新する**(欠陥②・2026-08-14): 下の
+                        // direct 経路のキャッシュ命中と同じ理由(rememberResolvedTarget のコメント参照)。
+                        // platform 変数はここではまだ無い(resolveProfileTarget を経ていない)ので、
+                        // connectionLostHint と同じく **記録(connectedPorts/connectedAndroidSerials)で
+                        // 判別する**(表示ラベルの接頭辞では判別しない、と同じ規律)。iosPort は生成側と
+                        // 揃えて `connectedPorts[key]` をそのまま渡す(そちらに実機は
+                        // `probePort ?? provisioned.port` が既に入っている)
+                        if connectedPorts[key] != nil {
+                            rememberResolvedTarget(platform: "ios", args: args,
+                                                   iosPort: connectedPorts[key], iosUDID: udids[key] ?? nil,
+                                                   androidSerial: nil)
+                        } else if let serial = connectedAndroidSerials[key] {
+                            rememberResolvedTarget(platform: "android", args: args,
+                                                   iosPort: nil, iosUDID: nil, androidSerial: serial)
+                        }
+                        return cached
+                    }
                 }
-                return cached
             }
             let project = try ScenarioHost.project(named: args["project"] as? String)
             var prologue: [String] = []
@@ -106,9 +127,10 @@ extension MCPServer {
             pendingWarnings[key] = prologue.filter { $0.hasPrefix("⚠️") }
             let created: AppDriver
             var probePort: UInt16?
+            var xcuiFallbackPort: UInt16?
             switch target {
             case .ios(let provisioned, let iosApp):
-                (created, probePort) = try await Self.iosDriver(
+                (created, probePort, xcuiFallbackPort) = try await Self.iosDriver(
                     provisioned: provisioned, bundleID: iosApp?.bundleID)
             case .android(let serial, _):
                 created = try AndroidDriver(serial: serial)
@@ -118,6 +140,9 @@ extension MCPServer {
                 if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
                 else { "android" }
             }()
+            // **hybrid のときだけ fallback ポートを覚える**(それ以外は前の機の値が残らないよう nil)。
+            // 主(connectedPorts)とは別枠 —— `hybridFallbackDrifted` が次回のキャッシュ命中で読む
+            hybridFallbackPorts[key] = engines[key] == "hybrid" ? xcuiFallbackPort : nil
             // **udid と port を両方記録する**(port は 2026-08-13 に追加)。`deviceIdentityChanged`
             // はこの2つが揃っているときだけ動くので、**port を書かないとガードが黙って no-op になる**
             // (直接ポート経路で実際に踏んだ形。DeviceStateInvalidationTests が両方を守る)。
@@ -212,16 +237,33 @@ extension MCPServer {
             if let moved = await deviceIdentityChanged(key, args: args) {
                 throw MCPError(moved)
             }
-            // **キャッシュ命中でも記憶を更新する**(2026-08-12 の実アプリ監査で踏んだ)。
-            // 記録を「ドライバを生成したとき」に紐付けると、2度目に同じ機を明示した呼び出しは
-            // ここで返って記憶を動かさず、**A→B→A のあとの省略呼び出しが B へ行く**。
-            // 実害: iOS を明示 launch した直後の無指定 ft_snapshot が Android のツリーを返し、
-            // 注記は「最も新しいターゲット = <Android>」と名乗った(直前の明示は iOS なので嘘)。
-            // 失敗モードが沈黙(黙って別 OS の機を操作する)なので、生成の有無に依らせない
-            rememberResolvedTarget(platform: platform, args: args,
-                                   iosPort: connectedPorts[key] ?? explicitPort, iosUDID: udids[key] ?? nil,
-                                   androidSerial: args["serial"] as? String)
-            return cached
+            // **G14**(profile 経路の同じ確認と理由は同じ): エンジンが同じ機のまま入れ替わって
+            // いないかも確かめる(Android のキーは connectedPorts が無いので即 .unchanged)
+            switch await primaryEngineCheck(key, args: args) {
+            case .refuse(let message):
+                throw MCPError(message)
+            case .rebuildSilently:
+                break
+            case .unchanged:
+                // **hybrid の fallback(XCUITest)ポートも本人確認する**(G6。profile 経路の
+                // 同じ確認と理由は同じ)。fallback には ref が乗らないのでキャッシュだけ落とし、
+                // 下の生成へ通す(セッション記憶は主の udid が変わっていないので保つ)
+                if await hybridFallbackDrifted(key) {
+                    drivers[key] = nil
+                    hybridFallbackPorts[key] = nil
+                } else {
+                    // **キャッシュ命中でも記憶を更新する**(2026-08-12 の実アプリ監査で踏んだ)。
+                    // 記録を「ドライバを生成したとき」に紐付けると、2度目に同じ機を明示した呼び出しは
+                    // ここで返って記憶を動かさず、**A→B→A のあとの省略呼び出しが B へ行く**。
+                    // 実害: iOS を明示 launch した直後の無指定 ft_snapshot が Android のツリーを返し、
+                    // 注記は「最も新しいターゲット = <Android>」と名乗った(直前の明示は iOS なので嘘)。
+                    // 失敗モードが沈黙(黙って別 OS の機を操作する)なので、生成の有無に依らせない
+                    rememberResolvedTarget(platform: platform, args: args,
+                                           iosPort: connectedPorts[key] ?? explicitPort, iosUDID: udids[key] ?? nil,
+                                           androidSerial: args["serial"] as? String)
+                    return cached
+                }
+            }
         }
         let created: AppDriver
         switch platform {
@@ -251,6 +293,8 @@ extension MCPServer {
             created = resolved.driver
             engines[key] = resolved.engine
             udids[key] = resolved.udid
+            // **hybrid のときだけ fallback ポートを覚える**(profile 経路と同じ理由・同じ枠)
+            hybridFallbackPorts[key] = resolved.engine == "hybrid" ? resolved.xcuiPort : nil
             // **宛先は port だけでなく udid まで書く**(2026-08-12 の実アプリ監査): ブリッジは
             // 落ちても monitor が別ポートで建て直すので、**同じセッション中にポートが動く**
             // (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手は、
@@ -354,8 +398,72 @@ extension MCPServer {
             return port
         }
         let udidPorts = await bridgePorts(forUDID: udid)
-        let diagnosis = udidPorts.isEmpty ? await Self.udidBridgeDiagnosis(udid: udid) : .unknown
+        guard udidPorts.isEmpty else {
+            return try reconcilePort(port, udid: udid, udidPorts: udidPorts)
+        }
+        // **明示 port は scan より先に、その1本だけ狙い撃ちで本人確認する**(G12・2026-09-25実測):
+        // `bridgePorts(forUDID:)` は全ポートへ一律2秒の窓で scan するだけなので、高負荷で busy な
+        // XCUITest(quiescence 待ちで数十秒ブロックしうる)は生きていても scan の結果に載らない。
+        // 呼び手が port を明示しているなら、その1本だけをもっと長い窓で確かめたほうが scan の
+        // 取りこぼしより確実。一致すれば即採用・食い違えば拒否・確かめられなければ(無応答/読めない)
+        // 下の一般診断へフォールバックする(timedOut を「居ない」に畳まないのは
+        // `noResponsiveBridgeMessage` 側の規律と同じ)
+        if let port {
+            switch await Self.explicitPortIdentityProbe(port: port, udid: udid, repoRoot: try? RepoRoot.find()) {
+            case .confirmedMatch:
+                return port
+            case .confirmedMismatch(let actualUDID):
+                throw MCPError(Self.explicitPortMismatchMessage(port: port, udid: udid, actualUDID: actualUDID))
+            case .unknown:
+                break
+            }
+        }
+        let diagnosis = await Self.udidBridgeDiagnosis(udid: udid)
         return try reconcilePort(port, udid: udid, udidPorts: udidPorts, diagnosis: diagnosis)
+    }
+
+    /// 明示 port だけを狙い撃ちして udid を本人確認した結果(G12)。**「確かめられない」を
+    /// 「一致した/しなかった」に畳まない** —— 3値のまま呼び出し元(`portForIOS`)へ渡す
+    enum ExplicitPortIdentity: Equatable, Sendable {
+        /// `/status` が答え、udid(実機は `statusForIdentityCheck` が記録で補う)が一致した
+        case confirmedMatch
+        /// `/status` が答えたが、別の udid を名乗った —— scan の取りこぼしではなく本当の食い違い
+        case confirmedMismatch(actualUDID: String)
+        /// 応答が無い/読めない/udid を判定できない —— 一致とも不一致とも言えない
+        case unknown
+    }
+
+    /// `explicitPortIdentityProbe` が payload を確かめる窓。**scan の2秒より長く取る** ——
+    /// scan の窓の短さが G12 の取りこぼしの原因なので、そこに揃えると同じ取りこぼしを再現する。
+    /// `udidBridgeDiagnosisBudget`(3秒)に揃え、追加コストの上限を「診断1回ぶん」に留める
+    static let explicitPortIdentityProbeTimeoutSeconds: Double = 3
+
+    /// 明示 port の `/status` を1回だけ撃って udid を確かめる。**`statusForIdentityCheck` で
+    /// 実機の未申告 udid を記録から補う**(`BridgeDiscovery.scan` と同じ規則) —— 補わないと
+    /// 実機は毎回 `.unknown` に落ちる。判定そのものは `FTCore.BridgeIdentityCheck`(udid が
+    /// 両側にあるときは udid だけを比べる枝なので `physical` は未使用・ダミー値でよい)を再利用する
+    static func explicitPortIdentityProbe(
+        port: UInt16, udid: String, repoRoot: URL?
+    ) async -> ExplicitPortIdentity {
+        let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+            ?? BridgeEndpoint(port: port)
+        guard let reported = try? await BridgeClient(
+            endpoint: endpoint, timeoutSeconds: Self.explicitPortIdentityProbeTimeoutSeconds
+        ).status(timeout: Self.explicitPortIdentityProbeTimeoutSeconds) else { return .unknown }
+        let status = BridgeDiscovery.statusForIdentityCheck(reported, port: port, repoRoot: repoRoot)
+        guard let statusUDID = status.udid else { return .unknown }
+        let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: false, engine: nil)
+        return BridgeIdentityCheck.matches(expected: expected, status: status)
+            ? .confirmedMatch : .confirmedMismatch(actualUDID: statusUDID)
+    }
+
+    /// 明示 port の直接確認で「別の udid」と確定したときの文面(G12)。scan 経由の同種の食い違い
+    /// (`reconcilePort` 第2 guard)とトーンは揃えるが、ここでは udidPorts が空(scan が何も
+    /// 見つけていない)ので「その udid の他の応答ポート一覧」は出さず、確かめた1件だけを示す
+    static func explicitPortMismatchMessage(port: UInt16, udid: String, actualUDID: String) -> String {
+        "port \(port) is not a bridge answering on udid \(udid) — it answered as a different device"
+            + " (udid \(actualUDID)). Pass only one of port/udid, or use the port and udid that"
+            + " belong to the same device"
     }
 
     /// `reconcilePort` が「応答したポートが1本も無い」ときに使う追加事実。**IO は呼び出し側
@@ -380,11 +488,28 @@ extension MCPServer {
         /// 合成 memberwise init で省略可能なパラメータになるのは **`var` のときだけ** ——
         /// 既定値つきの `let` は memberwise init から丸ごと外れて渡せなくなる)
         var wedgedPorts: [UInt16] = []
+        /// **診断そのものが確定したか**(G12・2026-09-25実測)。`false`(既定)= この値の他の欄
+        /// (空の `listeningButUnresponsive`/`wedgedPorts`)は「確かめて本当に空だった」ことを表す。
+        /// `true` = 予算超過で診断を最後まで走らせられず、他の欄は「集まらなかった」だけで
+        /// 空になっている ——  この区別が無いと、時間切れの結果が①〜④のどの分岐にも当たらず
+        /// 「no running bridge」(= 本当に居ない)へ黙って落ち、生きたブリッジに `bridge up` を
+        /// 勧めて2本目を起動させかけた。**`var` + 既定値**(`wedgedPorts` と同じ理由: 合成
+        /// memberwise init で省略可能にするため `let` にしない)
+        var timedOut: Bool = false
 
-        /// 診断そのものを取れなかった(予算超過)ときの既定。**理由を捏造しない** ——
-        /// 「載っていない」でも「シミュレータ/実機と判定できた」でもなく、診断が間に合わなかった事実だけ運ぶ
+        /// 診断を呼ばなかった(必要が無かった)ときの既定。**`timedOut` は `false`** ——
+        /// `reconcilePort` の default 引数・省略呼び出しのテストがこの値を「診断していない」
+        /// 意味で使っており、その経路は今までどおり「no running bridge」の文面に落ちる
         static let unknown = UDIDBridgeDiagnosis(
             listeningButUnresponsive: [], heldByRunPID: nil, lookup: .unreadable("diagnosis timed out"))
+
+        /// 実際に診断(`udidBridgeDiagnosis`)を試みたが、予算(`udidBridgeDiagnosisBudget`)内に
+        /// 終わらなかったときの値。`.unknown` と違い `timedOut: true` を立てるので、
+        /// `noResponsiveBridgeMessage` はこれを「居ない」とは読まず `bridgeDiagnosisUnconfirmedMessage`
+        /// へ回す
+        static let diagnosisTimedOut = UDIDBridgeDiagnosis(
+            listeningButUnresponsive: [], heldByRunPID: nil,
+            lookup: .unreadable("diagnosis timed out"), timedOut: true)
     }
 
     /// `udidBridgeDiagnosis` が確かめる候補ポートの上限。**2026-09-16 実機実測**: 旧実装は全ポート
@@ -405,8 +530,9 @@ extension MCPServer {
     /// 引く。probe(`BridgeDiscovery.probeStatus`。isBound 300ms 上限 + `udidProbeTimeoutSeconds`)は
     /// 候補上限本まで**並列**に撃つので、直列合算ではなく1回ぶんだけ足で乗る。
     /// **この 30 秒をそのまま `ft_status`(対話的な口)へ持ち込まない** —— 尽きたら
-    /// `UDIDBridgeDiagnosis.unknown`(既定 = 判定できない)へ落とす。診断自体は打ち切らず
-    /// 走り続ける(`TaskBudget.run` と同じ立場: 諦めるのは待つことだけ)
+    /// `UDIDBridgeDiagnosis.diagnosisTimedOut`(= 完走できなかった。`.unknown` とは別の値 —— G12)
+    /// へ落とす。診断自体は打ち切らず走り続ける(`TaskBudget.run` と同じ立場: 諦めるのは
+    /// 待つことだけ)
     static let udidBridgeDiagnosisBudget: Duration = .seconds(3)
 
     /// probe 1回(`BridgeDiscovery.probeStatus`)の窓。**scan の既定(2秒)より短くする** ——
@@ -441,7 +567,7 @@ extension MCPServer {
         let outcome = await TaskBudget.run(Self.udidBridgeDiagnosisBudget) {
             await Self.probedUDIDBridgeDiagnosis(udid: udid)
         }
-        guard case .value(let value) = outcome else { return .unknown }
+        guard case .value(let value) = outcome else { return .diagnosisTimedOut }
         return value
     }
 
@@ -456,12 +582,13 @@ extension MCPServer {
         let candidates = await Self.budgeted(
             Self.udidBridgeDiagnosisBudget,
             fallback: UDIDDiagnosisCandidates(ports: [], heldByRunPID: nil,
-                                              lookup: .unreadable("diagnosis timed out"))) {
+                                              lookup: .unreadable("diagnosis timed out"), timedOut: true)) {
             Self.udidBridgeDiagnosisBlocking(udid: udid, repoRoot: repoRoot)
         }
         guard !candidates.ports.isEmpty else {
             return UDIDBridgeDiagnosis(listeningButUnresponsive: [],
-                                       heldByRunPID: candidates.heldByRunPID, lookup: candidates.lookup)
+                                       heldByRunPID: candidates.heldByRunPID, lookup: candidates.lookup,
+                                       timedOut: candidates.timedOut)
         }
         let probes = await withTaskGroup(of: (UInt16, BridgeDiscovery.StatusProbe).self) { group in
             for port in candidates.ports {
@@ -485,6 +612,10 @@ extension MCPServer {
         let ports: [UInt16]
         let heldByRunPID: Int32?
         let lookup: SimulatorCatalog.UDIDLookup
+        /// **台帳走査そのものが予算超過で打ち切られたか**(既定 `false`)。`true` のときは
+        /// `ports` が空でも「候補が無かった」ではなく「集められなかった」——
+        /// `UDIDBridgeDiagnosis.timedOut` へそのまま運ぶ
+        var timedOut: Bool = false
     }
 
     /// `udidBridgeDiagnosis` の同期本体。**`await` を書かない**(上の doc 参照)。
@@ -593,14 +724,23 @@ extension MCPServer {
         return port
     }
 
-    /// `reconcilePort` が応答ポート0本のときに組む文面(純粋関数・4形固定):
+    /// `reconcilePort` が応答ポート0本のときに組む文面(純粋関数・5形固定):
     /// ①LISTEN もしていない(本当に居ない・実体を名前引きできた) ②同①だが実体を判定できない
     /// ③LISTEN しているが `/status` がタイムアウト上限まで無応答(= busy。「居ない」とは言わない)
     /// ④LISTEN しているが `/status` への接続が早期に切れる(= wedged。ブリッジが消えて転送役
     /// だけ残っている。③と事実が違うので文面も分ける)。**④を③より先に見る** ——
     /// 両方が非空になる実測は無いが、wedged は「待っても戻らない」という強い事実なので
-    /// busy 側の「Retry in a moment」より優先する
+    /// busy 側の「Retry in a moment」より優先する。
+    /// ⑤診断そのものが予算内に終わらなかった(`timedOut`。G12・2026-09-25実測)。①〜④は
+    /// すべて「診断が完走した」上での分岐なので、**timedOut を全部より先に見る** —— 完走して
+    /// いない回は busy/wedged の判定材料(probe の結果)自体が集まっていないので、空の
+    /// `listeningButUnresponsive`/`wedgedPorts` を「本当に空だった」と読むと、確かめていない
+    /// のに「居ない・bridge up しろ」を言うことになる(実際にこれで、明示 port が生きている
+    /// 実機ブリッジへ2本目の起動を勧めかけた)
     static func noResponsiveBridgeMessage(udid: String, diagnosis: UDIDBridgeDiagnosis) -> String {
+        guard !diagnosis.timedOut else {
+            return Self.bridgeDiagnosisUnconfirmedMessage(udid: udid)
+        }
         guard diagnosis.wedgedPorts.isEmpty else {
             return Self.bridgeWedgedOnUDIDMessage(udid: udid, diagnosis: diagnosis)
         }
@@ -610,6 +750,16 @@ extension MCPServer {
         return "no running bridge is on udid \(udid). ft_list_devices shows which devices have one;"
             + " \(Self.bridgeUpSuggestion(udid: udid, lookup: diagnosis.lookup))"
             + " (a device without a bridge cannot be driven from MCP)"
+    }
+
+    /// 診断(`udidBridgeDiagnosis`)自体が予算内に終わらなかったときの文面(G12)。**「居ない」と
+    /// 断定せず `bridge up` も勧めない** —— ①〜④のどの事実も集められていないので、確かめられた
+    /// のは「確かめられなかった」ことだけ。生きているブリッジへ2本目を起動させる案内を誤って出さない
+    static func bridgeDiagnosisUnconfirmedMessage(udid: String) -> String {
+        "could not confirm whether a bridge for udid \(udid) is running — the diagnosis did not"
+            + " finish within its time budget (the Mac or the device may be busy right now)."
+            + " This does not mean the bridge is gone, and `fleetest bridge up` is not suggested;"
+            + " retry the call in a moment."
     }
 
     /// `bridge up` の完成コマンド(純粋関数)。**udid は名前より優先して解決される**
@@ -817,6 +967,100 @@ extension MCPServer {
         return Self.movedDeviceRefusal(port: port, previousUDID: moved, nowUDID: now)
     }
 
+    /// **主ポートのエンジンが変わっていないか(G14・2026-09-25)**: `deviceIdentityChanged` は
+    /// udid しか見ず、しかも `usesRememberedDeviceState` で ref を使う呼び出しにしか効かない —— 同じ
+    /// udid のまま run のたびのブリッジ建て直しでエンジンが xcuitest ⇄ inapp/hybrid に入れ替わった形を
+    /// 見逃す。**実測**: xcuitest でキャッシュ済みのドライバの port が in-app ブリッジへ化け、ref を
+    /// 使わない `ft_terminate`(`usesRememberedDeviceState` のゲートを通らない)が
+    /// 「in-app では未サポート」の 501 を返した(in-app には /terminate が無い)。逆向き
+    /// (キャッシュは in-app 期待だが実は xcuitest)なら tap/snapshot は成功で返るが、**別の ref 体系・
+    /// 別の挙動**を渡している —— 気付ける形の失敗がむしろ良性
+    /// (`usesRememberedDeviceState` を流用しない理由も同じ: ref を使わない呼び出しでこそ実際に踏んだ)。
+    /// **iOS のキャッシュ命中では毎回確かめる**(`hybridFallbackDrifted` と同じコストの考え方 ——
+    /// 1回の loopback probe)。判定は同じ `FTBridgeClient.HybridFallbackIdentity` の1箇所
+    func primaryEngineDrifted(_ key: String) async -> Bool {
+        guard let port = connectedPorts[key], let expectedUDID = udids[key] ?? nil,
+              let engine = engines[key] else { return false }
+        let expectedEngine = engine == "xcuitest" ? "xcuitest" : "inapp"
+        return await HybridFallbackIdentity.drifted(
+            port: port, expectedUDID: expectedUDID, expectedEngine: expectedEngine,
+            repoRoot: try? RepoRoot.find())
+    }
+
+    /// `primaryEngineDrifted` が true のときの後始末。**旧エンジンの ref はどの道無効**なので
+    /// 食い違っていれば必ず `forgetDeviceState`(fallback 専用の `hybridFallbackDrifted` と違い、
+    /// こちらは primary = ref の起点そのもの)。**この呼び出し自身が記憶に依っているときだけ拒否**
+    /// (`usesRememberedDeviceState`)—— 依っていなければ、捨てた上でこの call 自身を新しい
+    /// ドライバで再解決させれば足りるので、利用者に「撮り直せ」と言う理由が無い
+    /// (`ft_terminate` はまさにこの形 = 黙って直った状態で続行してよい)
+    enum PrimaryEngineCheck: Equatable {
+        case unchanged, rebuildSilently, refuse(String)
+    }
+
+    /// `primaryEngineDrifted`(I/O)が拾った事実から、この call をどう扱うかを決める
+    /// **走査から切り離した純粋関数**(`keyChangedDevice`/`hybridFallbackMismatch` と同じ理由・
+    /// テスト用): 実ブリッジ無しで「記憶に依る呼び出しだけ拒否する」判定そのものを固定できる
+    static func primaryEngineOutcome(
+        drifted: Bool, usesRememberedDeviceState: Bool, port: UInt16?, expectedEngine: String?
+    ) -> PrimaryEngineCheck {
+        guard drifted else { return .unchanged }
+        guard usesRememberedDeviceState else { return .rebuildSilently }
+        return .refuse(engineChangedRefusal(port: port, expectedEngine: expectedEngine))
+    }
+
+    /// `primaryEngineOutcome` の I/O 込みの入口。**`.unchanged` 以外は必ず `forgetDeviceState`**
+    /// (旧エンジンの ref はどの道無効。`.rebuildSilently` でも捨てる — 呼び出し元はこの call を
+    /// 下の生成で再解決させるだけで、拒否文を返す理由は無い)
+    func primaryEngineCheck(_ key: String, args: [String: Any]) async -> PrimaryEngineCheck {
+        let outcome = Self.primaryEngineOutcome(
+            drifted: await primaryEngineDrifted(key), usesRememberedDeviceState: Self.usesRememberedDeviceState(args),
+            port: connectedPorts[key], expectedEngine: engines[key])
+        if case .unchanged = outcome { return outcome }
+        forgetDeviceState(key)
+        return outcome
+    }
+
+    /// 同じ機のまま(udid は同じ)ブリッジのエンジンだけが変わっていたときに呼び出しを断る文。
+    /// **`movedDeviceRefusal` と文面を分ける** —— 「別の機だ」と早合点させない(繋ぎ直す先の
+    /// 機は無い。同じ機のブリッジが建て直しでエンジンを変えただけ)
+    static func engineChangedRefusal(port: UInt16?, expectedEngine: String?) -> String {
+        let where_ = port.map { "port \($0)" } ?? "this bridge"
+        let engineLabel = expectedEngine.map { "the \($0) engine" } ?? "its previous engine"
+        return "\(where_) no longer answers as \(engineLabel) this session cached it for"
+            + " (the same device appears to have rebuilt its bridge with a different engine)"
+            + " — refusing this call because it relies on state remembered for the previous engine"
+            + " (a ref, or the launched app that ft_open_url defaults to; refs do not carry across"
+            + " engines). That state has been dropped. Take a fresh ft_snapshot and use the new refs."
+    }
+
+    /// **hybrid キャッシュ命中の fallback(XCUITest)ポートが別の機/別エンジンへ移っていないか**
+    /// (G6・2026-09-25): `deviceIdentityChanged` は主(in-app・`connectedPorts`/`udids`)しか
+    /// 見ないので、`HybridFallbackDriver` の fallback が握る `hybridFallbackPorts[key]` は
+    /// ノーチェックのまま残っていた。ブリッジは run のたびに建て直され**同じポート番号が
+    /// 別デバイス(あるいは同じデバイスの in-app ブリッジ)に化ける**ため、home/appSwitcher/drag/
+    /// 座標 press/gesture/pinch(すべて fallback 経由。primary の in-app は 501 で必ず回る)が
+    /// 黙って別の機を操作しうる。
+    ///
+    /// **`usesRememberedDeviceState` のゲートは流用しない**: あちらは ref が指す要素が
+    /// 別物になる形だけを守る規律で、fallback は ref を一切受けない(HybridFallbackDriver の
+    /// doc「ref を使う操作は回さない」)ので ref の有無では判定できない。hybrid のキャッシュ命中
+    /// でだけ効くので、コストは Android・xcuitest 単独・inapp 単独の呼び出しには掛からない。
+    ///
+    /// **I/O・判定とも `FTBridgeClient.HybridFallbackIdentity`(`FTCore.BridgeIdentityCheck`)の
+    /// 1箇所**(ライブ操作(api live serve)と共有 —— 二つ目の実装を書かない。「不明(/status を
+    /// 読めない・タイムアウト)は変わったに倒さない」もそちらが守る)。ここに残るのは MCP の
+    /// キャッシュ(`hybridFallbackPorts`/`udids`)から材料を集めるだけ。
+    /// **食い違っていてもここでは断らない** —— 呼び出し元がキャッシュを落として次の解決に委ねる
+    /// (fallback には捨てるべき ref/起動アプリの記憶が無いので、断って利用者へ「撮り直せ」と
+    /// 言う理由が無い。udid は分かっているので次の解決が静かに `.inappOnly` へ縮退することもある)
+    func hybridFallbackDrifted(_ key: String) async -> Bool {
+        guard let port = hybridFallbackPorts[key], let expectedUDID = udids[key] ?? nil else {
+            return false
+        }
+        return await HybridFallbackIdentity.drifted(
+            port: port, expectedUDID: expectedUDID, repoRoot: try? RepoRoot.find())
+    }
+
     /// ポートが別の機へ移っていたときに呼び出しを断る文。**捨てたものを名指しする** ——
     /// 「別の機だ」だけだと、読み手は手元の ref をそのまま撃ち直す
     static func movedDeviceRefusal(port: UInt16?, previousUDID: String, nowUDID: String) -> String {
@@ -979,8 +1223,8 @@ extension MCPServer {
     /// `connectedPorts` に記録すると、`deviceIdentityChanged` が**無関係な機のブリッジを読んで
     /// 正しい呼び出しを拒否し、記憶まで捨てる**(穴を塞ぐより悪い)。
     /// **確かめられないときは nil**(ガードは何もしない = 従来どおり)
-    static func iosDriver(provisioned: ProvisionedIOSDevice,
-                          bundleID: String?) async throws -> (driver: AppDriver, probePort: UInt16?) {
+    static func iosDriver(provisioned: ProvisionedIOSDevice, bundleID: String?) async throws
+        -> (driver: AppDriver, probePort: UInt16?, xcuiPort: UInt16?) {
         guard !provisioned.physical, provisioned.engine == "inapp" || provisioned.engine == "hybrid" else {
             // xcuitest(と実機)は従来どおり。resolve は接続先が in-app だったときの振り替えも担う
             let resolution = await XCUIBridgeResolver.resolve(
@@ -995,13 +1239,13 @@ extension MCPServer {
             // **実際に繋いだポート**を返す(preferred ではない)。実機は loopback ではないので nil
             let probe = (provisioned.physical || resolution.endpoint.host != BridgeEndpoint.loopbackHost)
                 ? nil : resolution.endpoint.port
-            return (driver, probe)
+            return (driver, probe, nil)
         }
         let inapp = InAppDriver(repoRoot: try RepoRoot.find(), udid: provisioned.udid,
                                 port: provisioned.port)
         guard provisioned.engine == "hybrid", let xcuiPort = provisioned.xcuiPort,
               let bundleID else {
-            return (inapp, provisioned.port)
+            return (inapp, provisioned.port, nil)
         }
         // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(実行側と同じ理由:
         // activate/attached 状態を1本にしないと余計な activate が挟まる)
@@ -1015,7 +1259,7 @@ extension MCPServer {
                         port: xcuiPort, host: provisioned.host,
                         physicalUDID: provisioned.physical ? provisioned.udid : nil)),
                     bundleID: bundleID),
-                provisioned.port)
+                provisioned.port, xcuiPort)
     }
 
     /// **実際に主となったエンジンが XCUITest のときだけ**添える切り分け。XCUITest では

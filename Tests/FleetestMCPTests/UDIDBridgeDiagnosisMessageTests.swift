@@ -180,6 +180,100 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
         }
     }
 
+    // MARK: - G12(2026-09-25実測): 診断が予算超過で完走しなかった回を「居ない」に畳まない
+    //
+    // 実機 iPhone SE3 を高負荷下で MCP 越しに駆動していたセッションが、ちょうど生きている
+    // udid(明示 port 8152 も生存)に対して交互に「no running bridge … run `fleetest bridge up`」で
+    // 失敗した。原因は `udidBridgeDiagnosis` が予算超過時に返す値(旧 `.unknown`)が、
+    // 「診断していない」ときの default 引数と同じ値を再利用しており、`noResponsiveBridgeMessage` が
+    // 両者を区別できなかったこと。`UDIDBridgeDiagnosis.timedOut` で区別し、`.unknown`
+    // (timedOut: false・default 引数用)と `.diagnosisTimedOut`(timedOut: true・実際に時間切れ)を
+    // 分けた。
+
+    /// 既定値をリテラルで固定する(CLAUDE.md「既定値はリテラルで固定するテストを置く」)。
+    /// `.unknown` は「診断していない」の意味を保つため `timedOut: false` のまま
+    func testUnknownDefaultsToNotTimedOut() {
+        XCTAssertFalse(MCPServer.UDIDBridgeDiagnosis.unknown.timedOut)
+    }
+
+    /// `.diagnosisTimedOut` は `.unknown` と別の値で、`timedOut: true` を立てる
+    /// (両方向を掛ける: `.unknown` が false 固定でも `.diagnosisTimedOut` まで false のままでは
+    /// 「常に false を返す」変異を見逃す)
+    func testDiagnosisTimedOutIsFlaggedAndDistinctFromUnknown() {
+        XCTAssertTrue(MCPServer.UDIDBridgeDiagnosis.diagnosisTimedOut.timedOut)
+        XCTAssertNotEqual(MCPServer.UDIDBridgeDiagnosis.diagnosisTimedOut,
+                          MCPServer.UDIDBridgeDiagnosis.unknown)
+    }
+
+    /// `timedOut: true` のときは「no running bridge」を名乗らず `bridge up` も勧めない
+    /// (旧実装はここが `.unknown` と区別できず、生きたブリッジへ2本目の起動を勧めかけた)
+    func testNoResponsiveBridgeMessageWhenTimedOutDoesNotClaimAbsence() {
+        let text = MCPServer.noResponsiveBridgeMessage(
+            udid: "U1", diagnosis: MCPServer.UDIDBridgeDiagnosis.diagnosisTimedOut)
+        XCTAssertFalse(text.contains("no running bridge"), text)
+        // the message may explain *that* `fleetest bridge up` is not being suggested (so the
+        // literal substring can appear) — what must never appear is the actual recommendation
+        XCTAssertFalse(text.contains("start it with `fleetest bridge up"), text)
+        XCTAssertTrue(text.contains("could not confirm"), text)
+    }
+
+    /// `bridgeDiagnosisUnconfirmedMessage` の文面を等号で固定する
+    func testBridgeDiagnosisUnconfirmedMessageExactWording() {
+        let text = MCPServer.bridgeDiagnosisUnconfirmedMessage(udid: "U1")
+        XCTAssertEqual(text, "could not confirm whether a bridge for udid U1 is running — the"
+            + " diagnosis did not finish within its time budget (the Mac or the device may be busy"
+            + " right now). This does not mean the bridge is gone, and `fleetest bridge up` is not"
+            + " suggested; retry the call in a moment.")
+    }
+
+    /// `timedOut` は busy/wedged より先に見る: どちらも非空のまま timedOut が立っていても
+    /// 「確かめられなかった」を名乗る(busy/wedged は probe が完走してはじめて言える事実なので、
+    /// 完走していない回にそれらの文言を出してはいけない)
+    func testTimedOutTakesPriorityOverBusyAndWedged() {
+        let text = MCPServer.noResponsiveBridgeMessage(
+            udid: "U1", diagnosis: .init(listeningButUnresponsive: [8124], heldByRunPID: nil,
+                                         lookup: .simulator, wedgedPorts: [8125], timedOut: true))
+        XCTAssertTrue(text.contains("could not confirm"), text)
+        // the specific ports named by the busy/wedged branches must not leak into the
+        // unconfirmed message — their presence would mean those branches ran instead
+        XCTAssertFalse(text.contains("8124"), text)
+        XCTAssertFalse(text.contains("8125"), text)
+        XCTAssertFalse(text.contains("gone; only its transport"), text)
+    }
+
+    /// `reconcilePort` に `.diagnosisTimedOut` を渡すと、投げるエラーが確認不能の文面になる
+    /// (`testReconcilePortUsesBusyMessageWhenDiagnosisShowsListeningPorts` と同じ配線の確認)
+    func testReconcilePortUsesUnconfirmedMessageWhenDiagnosisTimedOut() {
+        XCTAssertThrowsError(try MCPServer.reconcilePort(
+            8152, udid: "U1", udidPorts: [], diagnosis: MCPServer.UDIDBridgeDiagnosis.diagnosisTimedOut)
+        ) {
+            let text = $0.localizedDescription
+            XCTAssertTrue(text.contains("could not confirm"), text)
+            XCTAssertFalse(text.contains("no running bridge"), text)
+        }
+    }
+
+    // MARK: - G12: 明示 port の直接確認(`explicitPortIdentityProbe` の3値のうち純粋な部分)
+
+    /// 一致したときの文面は組まない(呼び出し側は port をそのまま返すだけ)ので、ここでは
+    /// 食い違い(`confirmedMismatch`)側の文面だけを固定する
+    func testExplicitPortMismatchMessageExactWording() {
+        let text = MCPServer.explicitPortMismatchMessage(
+            port: 8152, udid: "U1", actualUDID: "U2")
+        XCTAssertEqual(text, "port 8152 is not a bridge answering on udid U1 — it answered as a"
+            + " different device (udid U2). Pass only one of port/udid, or use the port and udid"
+            + " that belong to the same device")
+    }
+
+    /// `ExplicitPortIdentity` は3値のまま等号比較できる(呼び出し側が `switch` で畳み込まずに
+    /// 扱えることの最小確認)
+    func testExplicitPortIdentityCasesAreDistinct() {
+        XCTAssertNotEqual(MCPServer.ExplicitPortIdentity.confirmedMatch,
+                          MCPServer.ExplicitPortIdentity.unknown)
+        XCTAssertNotEqual(MCPServer.ExplicitPortIdentity.confirmedMismatch(actualUDID: "U2"),
+                          MCPServer.ExplicitPortIdentity.confirmedMatch)
+    }
+
     // MARK: - cappedCandidatePorts(走査の広さの上限。純粋関数・等号固定)
 
     /// 上限そのものをリテラルで固定する。**変異(数字を動かす)でここが落ちる**契約

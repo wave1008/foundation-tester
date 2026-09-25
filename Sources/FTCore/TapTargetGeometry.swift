@@ -704,6 +704,22 @@ public enum TapTargetGeometry {
             + " so this almost certainly did nothing"
     }
 
+    /// 「撃つ座標そのものが画面の矩形内か」の**無検証の生判定**(要素の中心ではなく、呼び手が
+    /// 直接渡した (x, y))。**MCP(`offscreenCoordinateError`)とライブ操作(`ApiLiveCommand`)が
+    /// 共有する唯一の定義元**(`LiveControlExitParityTests` の `sharedJudgements` に載っている名前 =
+    /// `isPointOnScreen`。片方だけ判定すると同じ座標が一方でだけ拒否される)。
+    /// `offscreenAdvisory` とは別物 —— あちらは要素の中心に丸め誤差の猶予(2pt)を持つ「たぶん
+    /// 空振り」の助言、こちらは縁も含めた exact な範囲判定(縁は外: 幅 1080 なら x∈[0,1080))。
+    ///
+    /// screen が分からない(width/height <= 0)ときは true(「分からない」を「外れている」と
+    /// 読まない)。非有限値は false
+    public static func isPointOnScreen(x: Double, y: Double, screen: FTRect) -> Bool {
+        guard screen.width > 0, screen.height > 0 else { return true }
+        guard x.isFinite, y.isFinite else { return false }
+        return x >= screen.x && x < screen.x + screen.width
+            && y >= screen.y && y < screen.y + screen.height
+    }
+
     /// スクロール探索の「見つかった」ゲート専用の画面外判定。`StepExecutor.isClippedByViewport`
     /// と同じサイズ免除を**軸ごとに**重ねる ——ある軸のサイズが `0 < size <= screen` に収まる
     /// ときだけ、その軸の中心はみ出しを判定に使う。収まらない(oversized/ゼロ)軸は判定から外す。

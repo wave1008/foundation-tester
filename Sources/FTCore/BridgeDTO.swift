@@ -437,7 +437,14 @@ public enum BridgeAPI {
     /// runner falls back to the element pinch only when the private pointer-event API is missing). `/doubletap` on the
     /// XCUITest runner sends two separate touches through that API (RN's PanResponder saw XCTest's tapCount=2 touch
     /// as one tap).
-    public static let bridgeProtocolVersion = 128
+    /// v129 (XCUITest runner only): a locator-less `/type` with a trailing newline now reads back the focused element
+    /// the same way a ref-resolved `/type` does (matching it to the live keyboard focus by identifier/frame), instead
+    /// of firing the whole string through `app.typeText` unverified. Under load, keystrokes reach the field
+    /// asynchronously through the keyboard process; the trailing newline (Return) used to fire before a dropped last
+    /// keystroke landed, committing the short value (`tap("#field_single")` → `type("pqr\n")` landed as "pq"). A
+    /// locator-less `/type` without a trailing newline, or one whose focused element cannot be verified (not a text
+    /// input, secure field, ambiguous match, embedded newline), still fires unverified as before.
+    public static let bridgeProtocolVersion = 129
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

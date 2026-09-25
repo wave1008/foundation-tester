@@ -65,4 +65,39 @@ final class RunInterruptStateTests: XCTestCase {
         unregister()  // 二重呼び出しも無害
         XCTAssertTrue(p.isRunning, "unregister 後の requestStop は届かない前提の確認(まだ止めていない)")
     }
+
+    /// 供給フェーズ間で使い回す発火カウンタ(`attachLateSubscriber` の相手は `@Sendable` なので、
+    /// ローカル `var` を直接キャプチャできない。InterruptRelayTests.Flag と同じ形)
+    private final class Flag: @unchecked Sendable {
+        private let lock = NSLock()
+        private(set) var count = 0
+        func increment() { lock.lock(); count += 1; lock.unlock() }
+    }
+
+    /// 戻すと落ちる根拠: 供給フェーズより前に立てた interruptState を、オーケストレータ構築後に
+    /// `attachLateSubscriber` で合流させる形(ApiRunCommand.runWithProfileParallel /
+    /// ProfileRunner.run / Fleetest.runParallel が実際に使う形)。まだ中断していなければ、
+    /// requestStop() が呼ばれたときに初めて subscriber が呼ばれる
+    func testAttachLateSubscriberFiresOnFirstRequestStop() {
+        let state = RunInterruptState(recorder: nil)
+        let flag = Flag()
+        state.attachLateSubscriber { flag.increment() }
+        XCTAssertEqual(flag.count, 0, "登録しただけでは呼ばない")
+        state.requestStop()
+        XCTAssertEqual(flag.count, 1, "requestStop() の1回目で合流先を呼ぶ")
+    }
+
+    /// 戻すと落ちる根拠: 供給フェーズ中(オーケストレータがまだ存在しない間)に中断が届いた場合、
+    /// あとから合流した subscriber がその場で追いつけないと、オーケストレータが中断を一生
+    /// 知らないまま全シナリオを普通に実行してしまう(G10: リモートの供給フェーズ中の SIGHUP が
+    /// この形で run.json を尻切れのまま残した)
+    func testAttachLateSubscriberFiresImmediatelyIfAlreadyStopped() {
+        let state = RunInterruptState(recorder: nil)
+        state.requestStop()  // まだ何も合流していない状態で中断済みにする(1回目 = exit しない)
+        XCTAssertTrue(state.isStopped)
+
+        let flag = Flag()
+        state.attachLateSubscriber { flag.increment() }
+        XCTAssertEqual(flag.count, 1, "合流前に既に中断済みなら、その場で呼ばれる")
+    }
 }

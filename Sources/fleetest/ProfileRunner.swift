@@ -68,6 +68,36 @@ enum ProfileRunner {
         }
     }
 
+    /// 供給(buildAndroidWorkers/buildIOSWorkers/buildWorkers)より前に run-lease を前倒しして持つ
+    /// 共通実装。手順は reject(planned) → hold(planned) → build() → reject(built) → hold(built) →
+    /// release(planned - built) で固定(順序自体が対策 = 供給完了を待ってから hold すると、
+    /// 供給中(Wipe Data・古いブリッジ停止・凍結台の再起動などで数十秒かかりうる)は lease が無く
+    /// 別プロセスの `stop-device` 等に台を奪われる。負荷テスト実測 2026-09-25: 供給中のシミュレータを
+    /// 奪われて run が落ちた)。`platforms` は前倒しで hold する lease キーを `resolved` から
+    /// 絞り込むためだけに使う(実際に何を build するかは呼び出し側の `build` クロージャが決める)。
+    /// **ProfileRunner と ApiRunCommand の全供給パスがこれを呼ぶ**(CLAUDE.md「run と api run は
+    /// 別配線の2実装」対策 —— 各経路が前倒しを別々に書くと、書き忘れた経路にだけ同じ穴が残る)
+    static func buildWorkersWithFrontLoadedLease(
+        resolved: ResolvedProfile, platforms: Set<String>, leaseStateDir: URL?,
+        supplyLease: SupplyLeaseHolder?,
+        build: () async throws -> [RunWorker]
+    ) async throws -> [RunWorker] {
+        let plannedKeys = leaseKeysByDevice(resolved: resolved)
+            .filter { platforms.contains($0.device.platform) }
+            .map { (device: $0.device.name, key: $0.key) }
+        try rejectIfDeviceLeased(devices: plannedKeys, leaseStateDir: leaseStateDir)
+        supplyLease?.hold(keys: plannedKeys.map(\.key))
+        let workers = try await build()
+        // 供給前に解決できなかった台(起動直後に serial が決まる AVD 等)も同じ規律で確保する
+        try rejectIfDeviceLeased(workers: workers, leaseStateDir: leaseStateDir)
+        let builtKeys = workers.compactMap { $0.connection.serial ?? $0.connection.udid }
+        supplyLease?.hold(keys: builtKeys)
+        // 予定したが実際には建たなかった台(供給失敗でレーンから外れた)の lease は取り消す
+        let builtKeySet = Set(builtKeys)
+        supplyLease?.releaseKeys(plannedKeys.map(\.key).filter { !builtKeySet.contains($0) })
+        return workers
+    }
+
     /// **開始スクリプトと供給の前**に、使う台の lease キーを台の実体から引いて二重使用を断る。
     /// 供給段は破壊的な準備(Wipe Data・GPU 復帰・古いブリッジの停止・凍結台の再起動)を含むので、
     /// ワーカー構築後の判定(rejectIfDeviceLeased)だけだと、2本目が1本目の台を消去・再起動してから断る。
@@ -256,7 +286,13 @@ enum ProfileRunner {
                     deviceMachine: String? = nil,
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
-                    broadcast: Bool = false
+                    broadcast: Bool = false,
+                    // **既定値は呼び出し元が登録済みの interruptState を渡し忘れたときの保険ではない**
+                    // —— 単体テスト(0件早期リターン等、供給に触れない経路)がこの引数を渡さずに
+                    // 呼べるようにするためだけの既定値。実運用の呼び手(Fleetest.swift の run())は
+                    // 必ず、recorder 確定直後・供給フェーズより前に InterruptRelay を登録済みの
+                    // interruptState を渡す
+                    interruptState: RunInterruptState = RunInterruptState(recorder: nil)
     ) async throws -> (summary: RunSummary, fmSettings: FMSettingsRecord) {
         var items = rawItems
         let runClockStart = Date()
@@ -409,24 +445,12 @@ enum ProfileRunner {
         defer { supplyLease?.release() }
 
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { ConsoleOut.out($0) }
-        // 供給(buildAndroidWorkers。Wipe Data・古いブリッジ停止等の破壊的操作を含みうる)より前に、
-        // その時点で解決できる台(既に起動している AVD・接続済みの実機)の lease を先に持つ
-        // (reject→hold の順は崩さない。狙いは lease を前倒しすることだけで、供給自体は前倒ししない)
-        let plannedAndroidKeys = Self.leaseKeysByDevice(resolved: resolved)
-            .filter { $0.device.platform == "android" }
-            .map { (device: $0.device.name, key: $0.key) }
-        try Self.rejectIfDeviceLeased(devices: plannedAndroidKeys, leaseStateDir: leaseStateDir)
-        supplyLease?.hold(keys: plannedAndroidKeys.map(\.key))
-        var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { ConsoleOut.out($0) }
-        // 供給前に解決できなかった台(起動直後に serial が決まる AVD 等)も同じ規律で確保する ——
-        // 供給フェーズが自分の lease を書き始める前に、生きた別プロセスが同じ台を
-        // 既に使っていないか確かめる(拒否して止める)
-        try Self.rejectIfDeviceLeased(workers: workers, leaseStateDir: leaseStateDir)
-        let builtAndroidKeys = workers.compactMap { $0.connection.serial ?? $0.connection.udid }
-        supplyLease?.hold(keys: builtAndroidKeys)
-        // 予定したが実際には建たなかった台(供給失敗でレーンから外れた)の lease は取り消す
-        let builtAndroidKeySet = Set(builtAndroidKeys)
-        supplyLease?.releaseKeys(plannedAndroidKeys.map(\.key).filter { !builtAndroidKeySet.contains($0) })
+        // 供給(buildAndroidWorkers。Wipe Data・古いブリッジ停止等の破壊的操作を含みうる)より前に
+        // lease を前倒しして持つ(buildWorkersWithFrontLoadedLease の宣言参照)
+        var workers = try await Self.buildWorkersWithFrontLoadedLease(
+            resolved: resolved, platforms: ["android"], leaseStateDir: leaseStateDir,
+            supplyLease: supplyLease
+        ) { try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { ConsoleOut.out($0) } }
         let androidSerials = workers.compactMap { $0.connection.serial }
         // **テスト開始時に WebView を揃える**(既定 ON。AndroidWebViewUpdate の宣言参照)
         if resolved.updateWebView, let adbPath = try? AndroidDriver.findADB() {
@@ -515,8 +539,11 @@ enum ProfileRunner {
         // SIGINT/SIGTERM を受けたら、新しいシナリオを配らず・今動いている子(fleetest-scenarios)
         // を SIGTERM してから RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・
         // drain・summary)を通す(ApiRunCommand.runWithProfileParallel と同じ形。CLAUDE.md
-        // 「終了猶予の方針」= 自前の後始末を持つ fleetest の子には時限の SIGKILL を送らない)
-        let interruptState = RunInterruptState(recorder: recorder)
+        // 「終了猶予の方針」= 自前の後始末を持つ fleetest の子には時限の SIGKILL を送らない)。
+        // **interruptState は呼び出し元(Fleetest.swift の run())が供給の前から持っている**
+        // (パラメータで受け取るだけ。ここで新しく作ると、この関数の上のほうの供給フェーズ
+        // 〈buildWorkersWithFrontLoadedLease・blank/frozen triage・install〉中に届いた中断を
+        // 取りこぼす)
 
         // **sweep はここでは呼ばない** —— この run の掃除は "building" を書く入口で済んでいる
         // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
@@ -543,11 +570,9 @@ enum ProfileRunner {
             }) : nil,
             onRevived: { _ in },
             log: { ConsoleOut.out($0) })
-        let interruptRelay = InterruptRelay.observing {
-            interruptState.requestStop()
-            orchestrator.requestInterrupt()
-        }
-        defer { interruptRelay.stop() }
+        // **新しい InterruptRelay は登録しない**(1プロセス1組。呼び出し元が既に登録済み)。
+        // 供給中に既に中断済みならここで即 orchestrator.requestInterrupt() が呼ばれる
+        interruptState.attachLateSubscriber { orchestrator.requestInterrupt() }
         PhaseLog.mark("orchestrator-setup")
         // レーン = 絞り込み後の全デバイス(供給に失敗して参加しなかった台のぶんは、orchestrator が
         // 「never joined」でそのレーンの本数を失敗として残す = 準備できなかった台が緑に紛れない)
@@ -710,28 +735,21 @@ enum ProfileRunner {
         do {
             PhaseLog.mark("ios-workers-start")
             let leaseStateDir = repoRoot.appendingPathComponent(".fleetest")
-            // 供給(buildIOSWorkers。シミュレータ起動+ブリッジ供給で数十秒〜数分かかりうる)より前に、
-            // その時点で解決できる台(シミュレータ一覧から UDID が引ける・実機は spec の udid)の
-            // lease を先に持つ(Android 経路のコメント参照。reject→hold の順は崩さない)。
-            // 前倒ししないと供給中は run-lease が無く、`stop-device` に台を奪われて
-            // ワーカーが離脱する(実測: シナリオが requeue された)
-            let plannedIOSKeys = leaseKeysByDevice(resolved: resolved)
-                .filter { $0.device.platform == "ios" }
-                .map { (device: $0.device.name, key: $0.key) }
-            try rejectIfDeviceLeased(devices: plannedIOSKeys, leaseStateDir: leaseStateDir)
-            supplyLease?.hold(keys: plannedIOSKeys.map(\.key))
-            var ws = try await ProfileWorkerFactory.buildIOSWorkers(
-                resolved: resolved, repoRoot: repoRoot) { ConsoleOut.out($0) }
-            PhaseLog.mark("ios-workers-built")
-            // 同じ理由(Android 経路のコメント参照)。ここで throw すると呼び出し元の
-            // do/catch が「❌ Failed to build iOS workers: …」として拒否理由(台+保持者 pid)を
-            // そのまま出す(iOS 供給失敗は run 全体を落とさない既存の規律はそのまま=このレーンだけ空になる)
-            try rejectIfDeviceLeased(workers: ws, leaseStateDir: leaseStateDir)
-            let builtIOSKeys = ws.compactMap { $0.connection.serial ?? $0.connection.udid }
-            supplyLease?.hold(keys: builtIOSKeys)
-            // 予定したが実際には建たなかった台(供給失敗でレーンから外れた)の lease は取り消す
-            let builtIOSKeySet = Set(builtIOSKeys)
-            supplyLease?.releaseKeys(plannedIOSKeys.map(\.key).filter { !builtIOSKeySet.contains($0) })
+            // 供給(buildIOSWorkers。シミュレータ起動+ブリッジ供給で数十秒〜数分かかりうる)より前に
+            // lease を前倒しして持つ(buildWorkersWithFrontLoadedLease の宣言参照。前倒ししないと
+            // 供給中は run-lease が無く、`stop-device` に台を奪われてワーカーが離脱する。
+            // 実測: シナリオが requeue された)。ここで throw すると呼び出し元の do/catch が
+            // 「❌ Failed to build iOS workers: …」として拒否理由(台+保持者 pid)をそのまま出す
+            // (iOS 供給失敗は run 全体を落とさない既存の規律はそのまま=このレーンだけ空になる)
+            var ws = try await buildWorkersWithFrontLoadedLease(
+                resolved: resolved, platforms: ["ios"], leaseStateDir: leaseStateDir,
+                supplyLease: supplyLease
+            ) {
+                let built = try await ProfileWorkerFactory.buildIOSWorkers(
+                    resolved: resolved, repoRoot: repoRoot) { ConsoleOut.out($0) }
+                PhaseLog.mark("ios-workers-built")
+                return built
+            }
             // install 全滅の throw は握りつぶさない(F5) —— `try?` で受けると失敗前(=古いアプリ
             // のまま)の ws へ静かに戻ってしまう。ここで投げれば下の catch が「レーンを空にする」
             // 既定の扱いに落とす

@@ -135,21 +135,29 @@ struct ApiLiveServe: AsyncParsableCommand {
     // iOS は XCUIBridgeResolver 経由で makeDriver を通らないので、ここでは効かせられない
     func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "api live") }
 
+    /// `ResidentProcessGuard.startCommandWatchdog(maxSeconds:)` に渡す基準値[秒]。拡張側の
+    /// SERVE_REQUEST_TIMEOUT_MS(20秒。vscode-fleetest/src/monitorLiveController.ts)より大きくする
+    /// —— 通常は拡張の kill→respawn が先に効き、これは拡張が kill しない場合の最終安全弁。
+    /// 秒数を指定する操作(軌跡・press/drag/pinch)は `gestureAllowanceSeconds` ぶん延ばす
+    static let commandWatchdogMaxSeconds: Double = 30
+
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "live serve")
-        // 1コマンドが wedge(CPU spin 等)しても自死できる最終安全弁。30秒 > 拡張の
-        // SERVE_REQUEST_TIMEOUT_MS(20秒)にして、通常は拡張の kill→respawn を先に効かせる。
-        ResidentProcessGuard.startCommandWatchdog(maxSeconds: 30, logLabel: "live serve")
+        // 1コマンドが wedge(CPU spin 等)しても自死できる最終安全弁(commandWatchdogMaxSeconds の宣言参照)
+        ResidentProcessGuard.startCommandWatchdog(
+            maxSeconds: Self.commandWatchdogMaxSeconds, logLabel: "live serve")
 
-        var (driver, port, ownAppBundleID) = try await makeLiveDriver()
+        var (driver, port, ownAppBundleID, primaryEngine) = try await makeLiveDriver()
         let starter = makeAutoStarter(port: port)
+        // **本人確認(下)も follower と同じ値を使う**(独立に導出すると判定用と実際の駆動用が
+        // 食い違う恐れがある。実機かは udid の形から決まるので一度だけ解決する)
+        let physical = udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false
         // セッションを「今 前面にあるもの」へ追従させる(LiveSessionFollower)。**iOS だけ**の補正で、
         // Android は木がアクティブウィンドウ・タップが画面座標なので何もしなくても画面に追従する
         let follower = driverOptions.resolvedPlatform == "ios"
-            ? LiveSessionFollower(udid: udid, physical: udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false,
-                                  log: { logStderr($0) }) : nil
+            ? LiveSessionFollower(udid: udid, physical: physical, log: { logStderr($0) }) : nil
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
         }
@@ -200,16 +208,59 @@ struct ApiLiveServe: AsyncParsableCommand {
                 continue
             }
             let command = ApiLiveServeCommand(cmd: cmd, raw: object)
-            // 軌跡は利用者がなぞった時間どおりに再生する(縮めない)ので、その再生時間ぶん watchdog を延ばす
-            ResidentProcessGuard.noteCommandStart(
-                allowanceSeconds: command.fingers.map { GestureRequest(fingers: $0).totalSeconds } ?? 0)
+            // 軌跡・press/drag/pinch の duration は利用者が指定した時間どおりに再生する(縮めない)
+            // ので、その再生時間ぶん watchdog を延ばす(gestureAllowanceSeconds 参照)
+            ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.gestureAllowanceSeconds)
             // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ。
             // usb: host はループバックのままだが establish が新たに token を記録している ——
             // host だけで判定すると usb は再取得されず、起動前の token 無し driver を握ったままになる)
             if let starter, await starter.takeStarted(), let repoRoot = try? RepoRoot.find() {
                 let endpoint = BridgeEndpoint.load(port: port, repoRoot: repoRoot)
                 driver = BridgeClient(endpoint: endpoint)
+                // **LiveBridgeAutoStarter は XCUITest しか建てない**(旧ビルド再起動・接続拒否からの
+                // 起動、どちらも launchBridge が xcodebuild で建てる)ので、以後の期待エンジンも固定
+                primaryEngine = "xcuitest"
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
+            }
+            // **port の本人確認(udid + エンジン)を毎コマンド撃つ**(G6・G14 と同型の穴):
+            // makeLiveDriver は起動時に1回組むきりで、フリートが run のたびにブリッジを
+            // 建て直すと port が別デバイス、あるいは**同じデバイスの別エンジン**へ移り得る ——
+            // hybrid なら home/appSwitcher/drag/座標 press/gesture/pinch(fallback 経由)が、
+            // 非 hybrid ならすべての呼び出しが黙って別物(別デバイス、または in-app ⇄ xcuitest で
+            // ref 体系・サポート操作が別)へ届く。primaryEngine(composeDriver が決める。
+            // hybrid/genuine xcuitest は "xcuitest"、in-app 単独は "inapp")を期待値にするので、
+            // in-app 単独の構成を xcuitest 期待で誤検知しない。
+            // **frame(自動更新)には掛けない**(継続的に飛ぶので絶え間ない probe になる。
+            // ライブ操作は人の操作1つに1回なのでコマンドごとの probe は許容できる)。
+            // 判定は MCP(fleetest-mcp)と同じ `FTBridgeClient.HybridFallbackIdentity`
+            // (`FTCore.BridgeIdentityCheck`)の1箇所。**不明は「変わった」に倒さない**
+            // **`expectedEngine` という別名で unwrap する**(`if let primaryEngine` にすると、
+            // ブロック内の `primaryEngine` が外側の `var`(4行下の代入対象)を隠して
+            // 「let への代入」でコンパイルエラーになる)
+            if command.cmd != "frame", driverOptions.resolvedPlatform == "ios", let udid,
+               let expectedEngine = primaryEngine,
+               let repoRoot = try? RepoRoot.find(),
+               await HybridFallbackIdentity.drifted(
+                   port: port, expectedUDID: udid, expectedEngine: expectedEngine, repoRoot: repoRoot) {
+                // **建て直しは「switched the driver」と同じ形**(再解決してから組み直す)。
+                // composeDriver は in-app 側の本人確認もその内側でやり直す。**ポートが動いていたら
+                // 追従しない** —— starter/deviceLease は元の port を見続けるので、ここで
+                // 乗り換えると自動起動・台の印との整合が崩れる(乗り換えは makeLiveDriver の
+                // 起動時ロジックの役目で、ここでは再現しない)
+                let resolution = await XCUIBridgeResolver.resolve(
+                    preferred: port, repoRoot: repoRoot, autoStart: false,
+                    logger: { message in ConsoleOut.err("[live serve] " + message) })
+                if resolution.endpoint.port == port,
+                   let rebuilt = try? await composeDriver(
+                       resolution: resolution, physical: physical, repoRoot: repoRoot) {
+                    (driver, port, ownAppBundleID, primaryEngine) = rebuilt
+                    logStderr("port \(port) no longer matched \(udid) (expected the \(expectedEngine)"
+                              + " engine) — rebuilt the driver")
+                } else {
+                    logStderr("port \(port) no longer matches \(udid) as the \(expectedEngine) engine, but a"
+                              + " fresh resolution could not be composed for it yet — continuing with the"
+                              + " previous driver")
+                }
             }
             await handle(command: command, driver: driver, starter: starter, follower: follower,
                         ownAppBundleID: ownAppBundleID, deviceLease: deviceLease, port: port,
@@ -244,9 +295,14 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 空きポートを充てて「まだ居ない」の形(接続拒否)に落とし、自動起動
     /// (LiveBridgeAutoStarter)に委ねる。ここが無いと、自動起動が想定している
     /// まさにその場面(ブリッジ未着手の台を既定ポートで開く)が塞がれる
-    private func makeLiveDriver() async throws -> (AppDriver, UInt16, String?) {
+    /// **4つ目の戻り値**(G14): `port` の期待エンジン(composeDriver 参照)。**Android と、
+    /// 台がまだ無いプレースホルダ(自動起動待ち)は nil** —— どちらも「今 probe してよい
+    /// エンジンの期待」が無い(Android は engine の概念が無く、プレースホルダは
+    /// 何も応答しない = 自動起動の成功を「switched the driver」が拾ってから初めて分かる)。
+    /// run() の毎コマンド確認は nil のときは何もしない
+    private func makeLiveDriver() async throws -> (AppDriver, UInt16, String?, String?) {
         guard driverOptions.resolvedPlatform == "ios" else {
-            return (try await driverOptions.makeDriver(), driverOptions.resolvedPort, nil)
+            return (try await driverOptions.makeDriver(), driverOptions.resolvedPort, nil, nil)
         }
         let repoRoot = try? RepoRoot.find()
         // **autoStart:false**(= 走査までで止める)。serve は常駐で、拡張は応答が無いと
@@ -324,21 +380,31 @@ struct ApiLiveServe: AsyncParsableCommand {
             throw DriverError.bridgeIdentityMismatch(mismatch)
         }
         let placeholder = BridgeClient(endpoint: BridgeEndpoint.load(port: freePort, repoRoot: repoRoot))
-        return (placeholder, freePort, nil)
+        return (placeholder, freePort, nil, nil)
     }
 
     /// resolve(または乗り換え後の resolve)の結果から実際に使うドライバを組み立てる。
-    /// hybrid の in-app 側(別ポート)はここで初めて本人確認する——xcuitest 側だけでは検分できない
+    /// hybrid の in-app 側(別ポート)はここで初めて本人確認する——xcuitest 側だけでは検分できない。
+    /// **4つ目の戻り値**は、以後の毎コマンドの本人確認(run() の drift チェック・G14)が
+    /// `port` へ probe を撃つときの期待エンジン —— hybrid/genuine xcuitest は `"xcuitest"`、
+    /// XCUITest が見つからず in-app 単独に落ちたときだけ `"inapp"`(`port` がそのまま
+    /// in-app ポートを指すため)。ここを固定にすると in-app 単独の構成を xcuitest 期待で
+    /// probe してしまい、毎コマンド誤検知で作り直しを繰り返す
     private func composeDriver(
         resolution: XCUIBridgeResolver.Resolution, physical: Bool, repoRoot: URL?
-    ) async throws -> (AppDriver, UInt16, String?) {
+    ) async throws -> (AppDriver, UInt16, String?, String?) {
         let xcui = BridgeClient(endpoint: resolution.endpoint)
         // in-app が居て、かつ振り替え先(XCUITest)が別に取れているときだけ組む。
         // 同じ宛先しか無い = XCUITest が見つからなかった場合は、in-app 単独では home も
         // appSwitcher も撃てないので XCUITest 側(= そのまま)に寄せる
         guard let inApp = resolution.inApp, inApp.endpoint.port != resolution.endpoint.port,
               let repoRoot, let udid else {
-            return (xcui, resolution.endpoint.port, nil)
+            // **in-app 単独の判定は「inApp があり、かつそのポートが resolution.endpoint と同じ」
+            // だけ**(makeLiveDriver の isInAppOnly と同じ式)。inApp はあるがポートが違う
+            // (hybrid になり得たのに repoRoot/udid が無くて諦めた)回は resolution.endpoint が
+            // xcuitest 側なので、ここで inApp の有無だけで判定すると誤る
+            let isInAppOnly = resolution.inApp.map { $0.endpoint.port == resolution.endpoint.port } ?? false
+            return (xcui, resolution.endpoint.port, nil, isInAppOnly ? "inapp" : "xcuitest")
         }
         // hybrid の in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない。
         // 無応答(.silent)は従来どおり素通し —— in-app は背面へ回ると答えないので、ここで断ると
@@ -357,8 +423,9 @@ struct ApiLiveServe: AsyncParsableCommand {
         // **合成は HybridDriverComposition の1箇所**(MCP の ft_* と同じ形。二つ目の実装を書かない)
         let driver = HybridDriverComposition.inAppFirst(
             inApp: inAppDriver, attach: attach, foreignApp: xcui, bundleID: inApp.bundleID)
-        // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で建て直せない)
-        return (driver, resolution.endpoint.port, inApp.bundleID)
+        // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で建て直せない)。
+        // fallback(xcuitest)側の期待エンジンは常に "xcuitest"(MCP の hybridFallbackPorts と同じ)
+        return (driver, resolution.endpoint.port, inApp.bundleID, "xcuitest")
     }
 
     /// endpoint が本当に `requestedUDID` の台か(判定は run 側4経路と同じ
@@ -667,6 +734,22 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
     }
 
+    /// x/y 座標が今の画面の外なら断る(判定は `TapTargetGeometry.isPointOnScreen` = MCP の
+    /// `offscreenCoordinateError` と共有。`LiveControlExitParityTests.sharedJudgements`)。
+    /// 画面を知るためだけに snapshot を撮る(`gesture` と同じ形)。門が無いと桁外れの座標が
+    /// Android の最後の砦まで届き、利用者には「範囲外」としか返せない
+    private func requireOnScreen(_ points: [(x: Double, y: Double)], driver: AppDriver) async throws {
+        guard !points.isEmpty else { return }
+        let screen = try await driver.snapshot().screen
+        for point in points
+            where !TapTargetGeometry.isPointOnScreen(x: point.x, y: point.y, screen: screen) {
+            throw ServeCommandError.invalidArguments(
+                "(\(FTSeconds.format(point.x)), \(FTSeconds.format(point.y))) is outside the screen"
+                + " (\(FTSeconds.format(screen.width))x\(FTSeconds.format(screen.height))) —"
+                + " refusing to send it. Take a fresh screenshot and click inside the visible screen.")
+        }
+    }
+
     /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
     /// (呼び出し元 handle が actionResult の ok:false として拾う)
     private func perform(command: ApiLiveServeCommand, driver: AppDriver,
@@ -677,6 +760,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             if let ref = command.ref {
                 try await driver.tap(ref: ref)
             } else if let x = command.x, let y = command.y {
+                try await requireOnScreen([(x, y)], driver: driver)
                 try await driver.tap(x: x, y: y)
             } else {
                 throw ServeCommandError.invalidArguments("tap requires ref or x/y")
@@ -701,15 +785,17 @@ struct ApiLiveServe: AsyncParsableCommand {
                   let toX = command.toX, let toY = command.toY else {
                 throw ServeCommandError.invalidArguments("drag requires fromX/fromY/toX/toY")
             }
+            try await requireOnScreen([(fromX, fromY), (toX, toY)], driver: driver)
             try await driver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
-                                  pressSeconds: command.press ?? 0.05,
-                                  durationSeconds: command.duration ?? 0.3)
+                                  pressSeconds: command.press ?? ApiLiveGestureDefaults.dragPressSeconds,
+                                  durationSeconds: command.duration ?? ApiLiveGestureDefaults.dragDurationSeconds)
         case "doubleTap":
             // **座標へ畳んでから撃つ**(ref はブリッジごとに別名前空間。AppDriver.doubleTap の注記参照)
             if let ref = command.ref {
                 let element = try await Self.element(ref: ref, driver: driver)
                 try await driver.doubleTap(x: element.frame.centerX, y: element.frame.centerY)
             } else if let x = command.x, let y = command.y {
+                try await requireOnScreen([(x, y)], driver: driver)
                 try await driver.doubleTap(x: x, y: y)
             } else {
                 throw ServeCommandError.invalidArguments("doubleTap requires ref or x/y")
@@ -720,7 +806,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 throw ServeCommandError.invalidArguments(
                     "pinch scale must be positive and not 1 (>1 zooms in, <1 zooms out)")
             }
-            let duration = command.duration ?? 0.5
+            let duration = command.duration ?? ApiLiveGestureDefaults.pinchDurationSeconds
             if let ref = command.ref {
                 // ref 指定時は frame と identifier の両方を渡す(経路で対象の伝え方が違う。
                 // FTCore/BridgeDTO の PinchRequest)
@@ -743,6 +829,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             guard let x = command.x, let y = command.y, let duration = command.duration else {
                 throw ServeCommandError.invalidArguments("press requires x/y/duration")
             }
+            try await requireOnScreen([(x, y)], driver: driver)
             try await driver.press(x: x, y: y, duration: duration)
         case "gesture":
             // **判定は TouchGesture.validate の1箇所**(MCP の ft_gesture と共有。DSL/MCP/ライブ操作の
@@ -973,6 +1060,19 @@ private func emitLine<T: Encodable>(_ value: T) {
 
 // MARK: - stdin コマンド
 
+/// press/drag/pinch の秒数引数を省略したときの既定値。**perform() と
+/// ApiLiveServeCommand.gestureAllowanceSeconds が同じ値を使うこと** —— 片方だけ変えると
+/// 実際に撃つジェスチャの所要と command watchdog の許容がずれ、正当な長さの
+/// ドラッグ/ピンチが watchdog に途中で殺されうる
+enum ApiLiveGestureDefaults {
+    /// drag の「押下してから動かし始めるまでの静止時間」既定[秒]
+    static let dragPressSeconds: Double = 0.05
+    /// drag の「移動にかける時間」既定[秒]
+    static let dragDurationSeconds: Double = 0.3
+    /// pinch の「変形にかける時間」既定[秒]
+    static let pinchDurationSeconds: Double = 0.5
+}
+
 /// stdin から受け取る1コマンド分(NDJSON 1行)。cmd 以外は全コマンド共通のオプショナルとし、
 /// 必須引数の欠落は perform(command:driver:) がコマンド種別毎に判定する(フィールド欠落は
 /// actionResult の ok:false として1件だけ失敗させるため)。
@@ -1007,6 +1107,30 @@ struct ApiLiveServeCommand {
     let fingers: [GestureFinger]?
     /// 型違いの引数のうち1件目の説明(無ければ nil)。cmd 自体はこの型を作れている時点で読めている
     let decodeError: String?
+
+    /// このコマンドが正当に占有しうる時間[秒]。command watchdog の allowance
+    /// (`ResidentProcessGuard.noteCommandStart(allowanceSeconds:)`)に渡す。
+    /// **press/drag/pinch/gesture だけが対象** —— これらは `BridgeClient.timeout(forDuration:)` で
+    /// 実行時間ぶん HTTP タイムアウトを伸ばして撃つため、固定の watchdog 基準値
+    /// (`ApiLiveServe.commandWatchdogMaxSeconds`)だけでは正当な長い指定
+    /// (例: `maxGestureSeconds` で最大60秒)を待ち切れず、まだ実行中のジェスチャを watchdog が
+    /// force-quit してしまう。**他のコマンドは 0**(固定の watchdog 基準値だけで足りる)。
+    /// 既定値は perform() と同じ `ApiLiveGestureDefaults` を使う(1箇所)
+    var gestureAllowanceSeconds: Double {
+        switch cmd {
+        case "gesture":
+            return fingers.map { GestureRequest(fingers: $0).totalSeconds } ?? 0
+        case "press":
+            return duration ?? 0
+        case "drag":
+            return (press ?? ApiLiveGestureDefaults.dragPressSeconds)
+                + (duration ?? ApiLiveGestureDefaults.dragDurationSeconds)
+        case "pinch":
+            return duration ?? ApiLiveGestureDefaults.pinchDurationSeconds
+        default:
+            return 0
+        }
+    }
 
     init(cmd: String, raw: [String: Any]) {
         self.cmd = cmd

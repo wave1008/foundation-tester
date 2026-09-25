@@ -1026,6 +1026,14 @@
   **ライブ操作の文言は人間向け**(拡張の UI を触っている人が読む)なので、MCP のエージェント向けの
   文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
   `notes` 欄と ProtocolVersion、拡張の表示まで通す
+- **hybrid の予備(XCUITest)ポートも使うたびに本人確認する**(`FTBridgeClient.HybridFallbackIdentity` を
+  MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、建て直しで予備ポートが別の台・
+  in-app に化けても home/drag を撃ち続ける。**`BridgeIdentityCheck.verdict` は udid が両側にあるとエンジンを
+  見ない**ので、エンジンの決まった片側は `hybridFallbackMismatch` で先に見る)。**udid の診断が予算切れなら
+  「確認できなかった」と言い、不在も `bridge up` も言わない**(`diagnosisTimedOut`)→ maintainer-notes §51
+- **座標を整数へ畳む所は trap しない側に倒す**(座標は `.unbounded`。入口の画面内判定
+  `TapTargetGeometry.isPointOnScreen` は MCP とライブ操作が共有するが、DSL も届くので最後の砦
+  `AndroidDriver.checkedInt32` は別に要る)
 - **宛先(udid/serial/port)を取らない MCP ツールで宛先を解決しない**(`toolAcceptsDeviceTarget` の
   分岐1箇所)。畳み込み(`foldingUDIDIntoPort`)はブリッジ走査を撃ち、居なければ落ちるので、
   1台を駆動している呼び手(`udid` を毎回添える)はブリッジが死んだ瞬間に**一覧・診断のツールまで
@@ -1206,6 +1214,10 @@
   **時限 SIGKILL(2 秒)を送ってよいのは後始末を持たない外部・ヘルパーだけ**(ssh・`Shell.run` の
   外部コマンド・配信ヘルパー・`api monitor` / `host-metrics` / `api live serve` = stdin EOF で即終わる)。
   後始末が刺さって残った fleetest は `FT_PARENT_PID` の印付き孤児として次回 activate の掃除が落とす
+  **割り込みの登録(`InterruptRelay.observing`)は run の記録開始の直後・供給より前**(run / api run /
+  プロファイル無しの3経路とも1プロセス1回。オーケストレータは `attachLateSubscriber` で後から合流)——
+  供給の後に登録すると、供給中のシグナル(fan-out の子は ssh 切断の SIGHUP)が OS 既定の即死になり、
+  run.json が開始欄だけの「クラッシュ」になる(`InterruptRelayEarlyRegistrationWiringTests`)→ maintainer-notes §51
   **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
   実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
   要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)

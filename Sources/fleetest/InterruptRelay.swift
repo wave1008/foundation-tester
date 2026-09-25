@@ -162,6 +162,13 @@ final class RunInterruptState: @unchecked Sendable {
     /// 1回目の中断で `markInterrupted()` を呼ぶ相手(以後に書く失敗の記録へ `interrupted: true` を付ける)。
     /// **既定値を置かない** —— 渡し忘れると中断で止めたシナリオが「回帰の疑い」として履歴に残る
     private let recorder: RunRecorder?
+    /// 供給フェーズを終えてオーケストレータが立ってから合流する追加の通知先
+    /// (`RunOrchestrator.requestInterrupt()`)。**この型は供給フェーズの前から生きているので
+    /// オーケストレータはまだ存在しない** —— `attachLateSubscriber` で後から合流させる。
+    /// 合流前に既に中断済みならその場で呼ぶ(registerChildProcess と同じ「後から来た者は
+    /// 現在の状態に追いつく」規律。取りこぼすと「供給中に中断 → 直後にオーケストレータが立つ」
+    /// 順序でオーケストレータが中断を一生知らない)
+    private var lateSubscriber: (@Sendable () -> Void)?
 
     init(recorder: RunRecorder?) {
         self.recorder = recorder
@@ -180,13 +187,34 @@ final class RunInterruptState: @unchecked Sendable {
         let firstTime = !stopped
         stopped = true
         let toKill = Array(runningProcesses.values)
+        let subscriber = firstTime ? lateSubscriber : nil
         lock.unlock()
         // 子を止める前に印を付ける(止めた子の失敗の記録が印より先に書かれないように)
-        if firstTime { recorder?.markInterrupted() }
+        if firstTime {
+            recorder?.markInterrupted()
+            subscriber?()
+            // 供給中(ブリッジの起動等)は止まるまで数十秒かかりうるので、効いていることを言う
+            // (無言だと利用者は効いていないと見て強制終了し、中断の記録が残らない)
+            ConsoleOut.err("⏹ Interrupt received — stopping (the device supply or the running"
+                + " scenario finishes its current step first; send it again to quit immediately"
+                + " without the interruption record)")
+        }
         for process in toKill where process.isRunning { process.terminate() }
         guard !firstTime else { return }
         // rc=143 は「同じシグナルを2回受けた」ことの目印(1回目は下の通常経路で rc=1 になる)
         exit(143)
+    }
+
+    /// 供給フェーズより前に立てた `RunInterruptState` へ、あとから組み上がった
+    /// `RunOrchestrator.requestInterrupt()` を合流させる。**登録前に既に中断済みならその場で呼ぶ**
+    /// (registerChildProcess と同じ取りこぼし対策 —— 供給中に届いた中断を、オーケストレータが
+    /// 後から合流したというだけの理由で黙らせない)
+    func attachLateSubscriber(_ subscriber: @escaping @Sendable () -> Void) {
+        lock.lock()
+        let alreadyStopped = stopped
+        if !alreadyStopped { lateSubscriber = subscriber }
+        lock.unlock()
+        if alreadyStopped { subscriber() }
     }
 
     /// ScenarioHost.run(registerChildProcess:) に渡す。登録前に既に中断済みならその場で

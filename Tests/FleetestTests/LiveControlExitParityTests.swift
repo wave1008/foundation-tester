@@ -22,6 +22,8 @@ final class LiveControlExitParityTests: XCTestCase {
         "StaleFrameDetector",
         // XCTest の a11y サーバが一時的に落ちている(環境要因。数秒で戻る)
         "isAccessibilityTemporarilyDown",
+        // 座標が今の画面の外か(G1・2026-09-25: ライブ操作の drag が桁外れの座標でドライバごと落ちた)
+        "isPointOnScreen",
     ]
 
     /// **コメントを落としてから走査する** —— 判定の名前は doc コメントにも書かれているので、

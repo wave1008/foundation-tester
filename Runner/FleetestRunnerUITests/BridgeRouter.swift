@@ -667,21 +667,53 @@ final class BridgeRouter {
         // 下の読み返しループに入れると `expected` に `•` が混ざり、それを本物の1文字として
         // resend して欄へ literal な bullet を打ち込む(実害。TypeReadback.isMaskedInput
         // の doc 参照)。検証を諦めて1回だけ送る側にとどめる
-        guard !main.contains("\n"),
-              let target = req.ref.flatMap({ refElements[$0] }),
-              TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) else {
-            // **この分岐だけ焦点の有無を確かめる**(ライブクエリ = 上のコメントで避けている
-            // コストそのものだが、検証つきの主経路には持ち込まない・この分岐だけで払う)。
-            // 焦点が無いまま `app.typeText` を撃つと XCTest が
-            // "Neither element nor any descendant has keyboard focus" で失敗し、
-            // テストが Tear Down して**ランナーごと落ちる**(ref が入力欄でない・
-            // ref 無しで未フォーカスのどちらも踏む)。in-app は同じ状況で 409 を返せるので、
-            // ここは 422 で先に失敗させて揃える(409 は requireApp() 専用という不変条件)
-            let focusAfter = try Self.requireKeyboardFocus(app)
-            try Self.requireFocusMoved(from: focusBefore, to: focusAfter, tapped: tapped, action: "type")
-            app.typeText(req.text)
-            return .json(OKResponse())
+        if !main.contains("\n"),
+           let target = req.ref.flatMap({ refElements[$0] }),
+           TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) {
+            let note = try performTypeReadback(app, target: target, main: main)
+            // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
+            // ランナーごと落ちうる)
+            if hasTrailingNewline { app.typeText("\n") }
+            return .json(OKResponse(note: note))
         }
+        // **この分岐だけ焦点の有無を確かめる**(ライブクエリ = 上のコメントで避けている
+        // コストそのものだが、検証つきの主経路には持ち込まない・この分岐だけで払う)。
+        // 焦点が無いまま `app.typeText` を撃つと XCTest が
+        // "Neither element nor any descendant has keyboard focus" で失敗し、
+        // テストが Tear Down して**ランナーごと落ちる**(ref が入力欄でない・
+        // ref 無しで未フォーカスのどちらも踏む)。in-app は同じ状況で 409 を返せるので、
+        // ここは 422 で先に失敗させて揃える(409 は requireApp() 専用という不変条件)
+        let focusAfter = try Self.requireKeyboardFocus(app)
+        try Self.requireFocusMoved(from: focusBefore, to: focusAfter, tapped: tapped, action: "type")
+        // **末尾に改行があるときだけ、焦点中の要素を読み返しに乗せる**(v129)。改行が無ければ
+        // 取りこぼしても後続の読みで収束するが、改行はこの直後に Return を撃って確定させるため、
+        // 取りこぼした最後の1文字を Return がそのまま確定させる
+        // (E2E-RN 実測: `tap("#field_single")` → `type("pqr\n")` が "pq" で確定。打鍵はキーボード
+        // 経由で非同期に届くため、高負荷では届く前に Return が先着する)。
+        // 対象は焦点(`focusAfter`)を直近の snapshot と identifier/frame で突き合わせて特定する
+        // (`matchFocusedElement`)。ref 経路が使う `refElements` の表はこの経路(ref なし)には無いので
+        // ここで一度だけ突き合わせる。曖昧・非入力欄・secure 欄・文中に改行が残る形は
+        // 検証不能として従来どおり一発撃ちへ落ちる
+        if hasTrailingNewline, !main.contains("\n"),
+           let captured = try? captureOnce(app),
+           let target = Self.matchFocusedElement(focusAfter, in: captured.elements),
+           TypeReadback.isTextInput(target), !TypeReadback.isMaskedInput(target) {
+            let note = try performTypeReadback(app, target: target, main: main)
+            app.typeText("\n")
+            return .json(OKResponse(note: note))
+        }
+        app.typeText(req.text)
+        return .json(OKResponse())
+    }
+
+    /// `/type` の読み返しループ本体。ref 経路(`refElements` から引いた対象)・焦点経由
+    /// (`matchFocusedElement` で特定した対象)の両方から呼ぶ共有実装。呼び手は `target` が
+    /// `TypeReadback.isTextInput` かつ `!isMaskedInput` であることを確認してから呼ぶこと
+    /// (secure 欄を読み返しに乗せると伏せ字を literal 文字として撃ち込む。TypeReadback.isMaskedInput の doc)。
+    /// 戻り値は driverFallback へ運ぶ注記(打ち直しが起きたときだけ non-nil)。
+    /// 末尾の改行は呼び手が本体の読み返し成立後に別送する(呼び手側のコメント参照)
+    private func performTypeReadback(_ app: XCUIApplication, target: ElementInfo,
+                                     main: String) throws -> String? {
         let expected = TypeReadback.normalizedValue(of: target) + main
         var pending = main
         var previous: String?
@@ -726,20 +758,34 @@ final class BridgeRouter {
                     + " against the expected \(expected.count))")
             }
         }
-        // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
-        // ランナーごと落ちうる)
-        if hasTrailingNewline { app.typeText("\n") }
         // 打ち直した事実は注記で返す(ホストは driverFallback へ載せる = 緑の run で何回起きたかを数える口)
-        let note: String?
         if retypeAbandoned {
-            note = "retyped the whole text once, but the field still lost the same characters;"
+            return "retyped the whole text once, but the field still lost the same characters;"
                 + " accepted as input the app transforms"
-        } else if retypes > 0 {
-            note = "retyped the whole text \(retypes) time(s) after a keystroke was dropped mid-string"
-        } else {
-            note = nil
         }
-        return .json(OKResponse(note: note))
+        if retypes > 0 {
+            return "retyped the whole text \(retypes) time(s) after a keystroke was dropped mid-string"
+        }
+        return nil
+    }
+
+    /// 焦点(`requireKeyboardFocus` が撮ったライブの値)を直近の snapshot の要素と突き合わせる。
+    /// ref 経路は `refElements` の表から対象を引けるが、この経路(ref なし)は焦点そのものしか
+    /// 手掛かりが無いのでここで一度だけ突き合わせる。規律は `TypeReadback.value(of:in:)` と同じ:
+    /// identifier があればそれで、無ければ frame で、**候補が複数(曖昧)なら nil**
+    /// (別の要素を誤って読み返しの対象にすると、検証にも取りこぼしにもならない別要素へ delete/resend
+    /// を打ち込む)
+    private static func matchFocusedElement(_ focus: FocusMark, in elements: [ElementInfo]) -> ElementInfo? {
+        let matches: [ElementInfo]
+        if !focus.identifier.isEmpty {
+            matches = elements.filter { $0.identifier == focus.identifier }
+        } else {
+            let frame = FTRect(x: focus.frame.origin.x, y: focus.frame.origin.y,
+                               width: focus.frame.width, height: focus.frame.height)
+            matches = elements.filter { $0.frame == frame }
+        }
+        guard matches.count == 1 else { return nil }
+        return matches.first
     }
 
     /// 入力の打ち切り時間(秒)と、値が変わらない周回の許容数。handleClear と同じ設計・同じ値

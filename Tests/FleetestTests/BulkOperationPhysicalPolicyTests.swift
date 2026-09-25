@@ -216,7 +216,7 @@ final class BulkOperationPhysicalPolicyTests: XCTestCase {
     /// 壊してこちらまで巻き込んでいないことを確かめる
     func testRestartDevicesStillLeavesPhysicalDevicesAloneEntirely() throws {
         let api = try source("Sources/fleetest/ApiDeviceCommands.swift")
-        guard let start = api.range(of: "guard case .found(let spec, let platform) = ApiDeviceOperation.findDevice("),
+        guard let start = api.range(of: "name: deviceName, deviceMachine: deviceMachine, in: machineProfile) {"),
               let end = api.range(of: "items.append(RestartItem(spec: spec, platform: platform))")
         else {
             XCTFail("restart-devices の実機分岐が見つからない")

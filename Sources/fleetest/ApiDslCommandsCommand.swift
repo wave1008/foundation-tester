@@ -112,7 +112,9 @@ private struct DSLCommandJSONEntry: Encodable {
         category = "project"
         signature = entry.signature
         summary = entry.summary
-        chainable = false
+        // builtin の chainable は「FTElement のメソッド」と同義(CommandIndex の先頭コメント)。
+        // MCP の ft_dsl_commands も receiver を見て select(...). を付けるので同じ判定に揃える
+        chainable = entry.receiver == "FTElement"
         origin = "project"
         file = entry.file
         line = entry.line

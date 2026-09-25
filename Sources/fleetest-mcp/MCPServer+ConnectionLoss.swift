@@ -271,6 +271,7 @@ extension MCPServer {
         drivers[key] = nil
         connections[key] = nil
         connectedPorts[key] = nil
+        hybridFallbackPorts[key] = nil
         connectedAndroidSerials[key] = nil
         engines[key] = nil
         udids[key] = nil

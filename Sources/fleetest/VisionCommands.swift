@@ -36,6 +36,7 @@ struct VisionCapture: AsyncParsableCommand {
 
     func run() async throws {
         if let issue = VisionSample.labelIssue(classifier: classifier, label: label) { throw ValidationError(issue) }
+        if let name, let issue = VisionSample.nameIssue(name) { throw ValidationError(issue) }
         let project = try ScenarioHost.project(named: project)
 
         let driver = try await driverOptions.makeDriver()

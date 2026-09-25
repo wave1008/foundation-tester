@@ -13,7 +13,7 @@ final class OpenURLRememberedBundleIDTests: XCTestCase {
     func testExplicitBundleIDIsReportedWithoutAnyInference() {
         let summary = MCPServer.openURLSummary(
             url: "https://example.com", bundleID: "com.example.app",
-            bundleIDWasRemembered: false, snapshotAfter: false)
+            bundleIDWasRemembered: false, routedByScheme: false, snapshotAfter: false)
         XCTAssertTrue(summary.contains("to com.example.app"), summary)
         XCTAssertFalse(summary.contains("not given"),
                        "明示された bundleId に推測の断りが付いた: \(summary)")
@@ -22,7 +22,7 @@ final class OpenURLRememberedBundleIDTests: XCTestCase {
     func testRememberedBundleIDSaysItWasNotGiven() {
         let summary = MCPServer.openURLSummary(
             url: "https://example.com", bundleID: "com.example.app",
-            bundleIDWasRemembered: true, snapshotAfter: false)
+            bundleIDWasRemembered: true, routedByScheme: false, snapshotAfter: false)
         XCTAssertTrue(summary.contains("not given"), summary)
         XCTAssertTrue(summary.contains("ft_launch"),
                       "どこから来た宛先なのかが書かれていない: \(summary)")
@@ -32,7 +32,7 @@ final class OpenURLRememberedBundleIDTests: XCTestCase {
     func testNoBundleIDMeansNoInferenceClause() {
         let summary = MCPServer.openURLSummary(
             url: "https://example.com", bundleID: nil,
-            bundleIDWasRemembered: true, snapshotAfter: false)
+            bundleIDWasRemembered: true, routedByScheme: false, snapshotAfter: false)
         XCTAssertFalse(summary.contains("not given"), summary)
         XCTAssertTrue(summary.hasPrefix("Delivered https://example.com."), summary)
     }
@@ -41,8 +41,17 @@ final class OpenURLRememberedBundleIDTests: XCTestCase {
     func testRememberedClauseSurvivesTheSnapshotAfterBranch() {
         let withTree = MCPServer.openURLSummary(
             url: "https://example.com", bundleID: "com.example.app",
-            bundleIDWasRemembered: true, snapshotAfter: true)
+            bundleIDWasRemembered: true, routedByScheme: false, snapshotAfter: true)
         XCTAssertTrue(withTree.contains("not given"), withTree)
         XCTAssertTrue(withTree.contains("the tree below"), withTree)
+    }
+
+    /// iOS は OS がスキームで宛先を決めるので、渡された bundleId を宛先として名乗らない
+    func testIOSDoesNotClaimTheBundleIDAsTheRecipient() {
+        let summary = MCPServer.openURLSummary(
+            url: "fte2eios://screen/list", bundleID: "com.ftester.e2e",
+            bundleIDWasRemembered: false, routedByScheme: true, snapshotAfter: false)
+        XCTAssertFalse(summary.contains("to com.ftester.e2e"), summary)
+        XCTAssertTrue(summary.contains("\"fte2eios\" URL scheme"), summary)
     }
 }

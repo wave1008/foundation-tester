@@ -875,20 +875,36 @@ public final class AndroidDriver: AppDriver {
                      pressSeconds: Double, durationSeconds: Double) async throws {
         let durationMs = min(max(Int((durationSeconds * 1000).rounded()), 50),
                              Int(BridgeAPI.gestureSecondsCeiling * 1000))
+        let fromXi = try Self.checkedInt32(fromX, field: "fromX")
+        let fromYi = try Self.checkedInt32(fromY, field: "fromY")
+        let toXi = try Self.checkedInt32(toX, field: "toX")
+        let toYi = try Self.checkedInt32(toY, field: "toY")
         if let serial, await EmulatorControl.drag(serial: serial,
-                                      fromX: Int32(fromX.rounded()), fromY: Int32(fromY.rounded()),
-                                      toX: Int32(toX.rounded()), toY: Int32(toY.rounded()),
+                                      fromX: fromXi, fromY: fromYi,
+                                      toX: toXi, toY: toYi,
                                       durationMs: durationMs) {
             return
         }
         let result = try adb(["shell", "input", "swipe",
-                              String(Int(fromX.rounded())), String(Int(fromY.rounded())),
-                              String(Int(toX.rounded())), String(Int(toY.rounded())),
+                              String(fromXi), String(fromYi),
+                              String(toXi), String(toYi),
                               String(durationMs)])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "drag failed: \(result.tail)")
         }
+    }
+
+    /// 座標は `ArgumentBounds` で `.unbounded` なので桁外れの値(`1e308`)が DSL/MCP/ライブ操作から
+    /// 届きうる。`Int32(x.rounded())` はそこで **trap してプロセスごと落ちる** —— 整数へ畳む最後の砦
+    /// なので投げる側に倒す(呼び手の `isPointOnScreen` は先に断れる分の入口でしかない)
+    static func checkedInt32(_ value: Double, field: String) throws -> Int32 {
+        let rounded = value.rounded()
+        guard rounded.isFinite, let converted = Int32(exactly: rounded) else {
+            throw DriverError.badResponse(status: 422,
+                body: "\(field) is out of range for this device: \(value)")
+        }
+        return converted
     }
 
     public func press(ref: Int, duration: Double) async throws {
@@ -907,12 +923,14 @@ public final class AndroidDriver: AppDriver {
     public func press(x: Double, y: Double, duration: Double) async throws {
         let durationMs = min(max(Int((duration * 1000).rounded()), 300),
                              Int(BridgeAPI.gestureSecondsCeiling * 1000))
-        if let serial, await EmulatorControl.longPress(serial: serial, x: Int32(x.rounded()),
-                                           y: Int32(y.rounded()), durationMs: durationMs) {
+        let xi = try Self.checkedInt32(x, field: "x")
+        let yi = try Self.checkedInt32(y, field: "y")
+        if let serial, await EmulatorControl.longPress(serial: serial, x: xi,
+                                           y: yi, durationMs: durationMs) {
             return
         }
-        let px = String(Int(x.rounded()))
-        let py = String(Int(y.rounded()))
+        let px = String(xi)
+        let py = String(yi)
         let result = try adb(["shell", "input", "swipe", px, py, px, py, String(durationMs)])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),

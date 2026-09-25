@@ -529,15 +529,14 @@ struct ApiRunCommand: AsyncParsableCommand {
                 }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logSupply($0) }
-                var workers = try ProfileWorkerFactory.buildAndroidWorkers(
-                    resolved: resolved) { logSupply($0) }
-                // 供給フェーズが自分の lease を書き始める(次行の hold)前に、生きた別プロセスが
-                // 同じ台を既に使っていないか確かめる(拒否して止める。ProfileRunner と共用)
-                try ProfileRunner.rejectIfDeviceLeased(
-                    workers: workers,
-                    leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
-                supplyLease?.hold(
-                    keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
+                // 供給(buildAndroidWorkers)より前に lease を前倒しして持つ
+                // (ProfileRunner.buildWorkersWithFrontLoadedLease と共用。CLAUDE.md「run と
+                // api run は別配線の2実装」対策 —— 片方だけ前倒しすると、もう片方に同じ穴が残る)
+                let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+                var workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
+                    resolved: resolved, platforms: ["android"], leaseStateDir: leaseStateDir,
+                    supplyLease: supplyLease
+                ) { try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { logSupply($0) } }
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
                 // (CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
@@ -556,16 +555,18 @@ struct ApiRunCommand: AsyncParsableCommand {
             if !resolved.iosDevices.isEmpty {
                 iosWorkersTask = Task {
                     do {
-                        var workers = try await ProfileWorkerFactory.buildIOSWorkers(
-                            resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
-                        // 同じ理由(Android 側のコメント参照)。ここで throw すると下の catch が
-                        // 「❌ Failed to build iOS workers: …」として拒否理由(台+保持者 pid)を出す
-                        // (iOS 供給失敗は run 全体を落とさない既存の規律のまま=このレーンだけ空になる)
-                        try ProfileRunner.rejectIfDeviceLeased(
-                            workers: workers,
-                            leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
-                        supplyLease?.hold(
-                            keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
+                        // 供給(buildIOSWorkers)より前に lease を前倒しして持つ(Android 側の
+                        // コメント参照)。ここで throw すると下の catch が「❌ Failed to build iOS
+                        // workers: …」として拒否理由(台+保持者 pid)を出す(iOS 供給失敗は run
+                        // 全体を落とさない既存の規律のまま=このレーンだけ空になる)
+                        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+                        var workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
+                            resolved: resolved, platforms: ["ios"], leaseStateDir: leaseStateDir,
+                            supplyLease: supplyLease
+                        ) {
+                            try await ProfileWorkerFactory.buildIOSWorkers(
+                                resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
+                        }
                         // install 全滅の throw は握りつぶさない(F5) —— `try?` で受けると失敗前
                         // (=古いアプリのまま)の workers へ静かに戻る。投げれば下の catch が
                         // 「このレーンは空」の既定の扱いに落とす
@@ -672,6 +673,20 @@ struct ApiRunCommand: AsyncParsableCommand {
                                 runGroup: runGroup)
             : nil
 
+        // **recorder 確定直後にここで1回だけ登録する**(シグナルソースは1プロセスに1組)。
+        // 供給フェーズ(ブリッジ起動・凍結triage・install 等。数秒〜数十秒かかりうる。
+        // "terminating an in-app bridge … and restarting" 等はここに入る)は runDirect/
+        // runWithProfile/runWithProfileParallel の**内側**で行われるが、そこに着くまで
+        // InterruptRelay が1つも登録されていないと、供給中に届いた SIGINT/SIGTERM/SIGHUP は
+        // 既定動作(即終了)のままプロセスを落とし、run.json は begin() が書いた start 欄だけの
+        // 尻切れで残る(docs/results-json.md: finishedAt 無し = crash と誤分類される。
+        // リモートディスパッチは `-tt` の ssh 切断が SIGHUP として供給中に届く形でこれを踏んだ)。
+        // 3経路は同じ interruptState を受け取るだけで、自分では登録しない
+        // (runWithProfileParallel は orchestrator 構築後に attachLateSubscriber で合流する)
+        let interruptState = RunInterruptState(recorder: recorder)
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
+
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)`)をキュー投入前に外す。
         // **dry-run では外さない** —— デバイスに触らないので全件を構文検査したい。
         // --platform/--port/--serial 直指定(resolvedProfile == nil)も対象外 ——
@@ -726,7 +741,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 if dryRun || debugOptions != nil {
                     outcome = try await runWithProfile(
                         resolved: resolvedProfile, project: testProject, selected: selected,
-                        debugOptions: debugOptions, recorder: recorder)
+                        debugOptions: debugOptions, recorder: recorder, interruptState: interruptState)
                 } else {
                     let androidWorkers = try await androidWorkersTask!.value
                     // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の
@@ -767,12 +782,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                     outcome = try await runWithProfileParallel(
                         resolved: resolvedProfile, project: testProject, selected: selected,
                         workers: androidWorkers + eagerIOSWorkers, iosWorkersTask: effectiveIosWorkersTask,
-                        recorder: recorder, supplyLease: supplyLease)
+                        recorder: recorder, supplyLease: supplyLease, interruptState: interruptState)
                 }
             } else {
                 outcome = await runDirect(
                     project: testProject, selected: selected, debugOptions: debugOptions,
-                    recorder: recorder)
+                    recorder: recorder, interruptState: interruptState)
             }
         } catch {
             // 供給段(ワーカー構築・performanceMode のレーン不足等)の例外は run.json を
@@ -906,7 +921,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     private func runDirect(project: TestProject, selected: [ScenarioInfo],
                            debugOptions: ScenarioDebugOptions?,
-                           recorder: RunRecorder?) async -> RunOutcome {
+                           recorder: RunRecorder?, interruptState: RunInterruptState) async -> RunOutcome {
         let effectivePlatform = platform ?? "ios"
         // count<=1 は validate() が既に保証済み(--port を2回以上渡すと弾く)
         let effectivePort = ports.first ?? BridgeAPI.defaultPort
@@ -943,10 +958,8 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         // SIGINT/SIGTERM を受けたら、次のシナリオへ進まず・今動いている子を SIGTERM してから
         // 普通に return する(呼び出し元 run() の通常の完了経路 = recorder.finish/RunCompletionSweep
-        // をそのまま通す。新しい分岐を足さない)
-        let interruptState = RunInterruptState(recorder: recorder)
-        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
-        defer { interruptRelay.stop() }
+        // をそのまま通す。新しい分岐を足さない)。**登録は呼び出し元(run())が supply の前に
+        // 済ませている** —— ここでは新しく登録しない(interruptState を受け取るだけ)
 
         var passedCount = 0
         var failedCount = 0
@@ -997,7 +1010,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     private func runWithProfile(
         resolved: ResolvedProfile, project: TestProject,
         selected: [ScenarioInfo], debugOptions: ScenarioDebugOptions?,
-        recorder: RunRecorder?
+        recorder: RunRecorder?, interruptState: RunInterruptState
     ) async throws -> RunOutcome {
         let profileName = resolved.runName
         // `--set` の上書きは ProfileResolver.resolve が resolved.fm へ当て済み(二重適用しない)
@@ -1033,14 +1046,16 @@ struct ApiRunCommand: AsyncParsableCommand {
                 _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
                     devices: resolved.androidDevices, locale: resolved.locale) { logSupply($0) }
             }
-            workers = try await ProfileWorkerFactory.buildWorkers(
-                resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
-            // 同じ理由(並列経路と共通。ここは --debug --profile の逐次経路)
-            try ProfileRunner.rejectIfDeviceLeased(
-                workers: workers,
-                leaseStateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest"))
-            supplyLease?.hold(
-                keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
+            // 供給(buildWorkers)より前に lease を前倒しして持つ(並列経路と共通の関数。
+            // ここは --debug --profile の逐次経路)
+            let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
+            workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
+                resolved: resolved, platforms: Set(resolved.devices.map(\.platform)),
+                leaseStateDir: leaseStateDir, supplyLease: supplyLease
+            ) {
+                try await ProfileWorkerFactory.buildWorkers(
+                    resolved: resolved, repoRoot: try RepoRoot.find()) { logSupply($0) }
+            }
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
@@ -1088,10 +1103,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             : (workers.contains { $0.platform == "ios" } ? "ios" : "android")
 
         // 中断時は次のシナリオへ進まず、今動いている子を SIGTERM してから普通に return する
-        // (呼び出し元 run() の通常の完了経路をそのまま通す。runDirect と同じ形)
-        let interruptState = RunInterruptState(recorder: recorder)
-        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
-        defer { interruptRelay.stop() }
+        // (呼び出し元 run() の通常の完了経路をそのまま通す。runDirect と同じ形)。
+        // **登録は呼び出し元(run())が supply の前に済ませている**(このコメントより上の
+        // buildWorkersWithFrontLoadedLease/triage/install がまさにその供給フェーズ)
 
         var passedCount = 0
         var failedCount = 0
@@ -1171,7 +1185,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
         workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?,
-        supplyLease: SupplyLeaseHolder?
+        supplyLease: SupplyLeaseHolder?, interruptState: RunInterruptState
     ) async throws -> RunOutcome {
         let repoRoot = try RepoRoot.find()
         // `--set` の上書きは ProfileResolver.resolve が resolved.fm へ当て済み(二重適用しない)
@@ -1218,8 +1232,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         // SIGINT/SIGTERM を受けたら、新しいシナリオを配らず・今動いている子を SIGTERM する
         // (orchestrator.requestInterrupt() で配布停止・interruptState 経由で子の登録簿を撃つ)。
         // 立てた後は RunOrchestrator.run() の通常の完了経路(録画停止・lease 解放・drain・summary)を
-        // そのまま通す —— ここでは新しい分岐を作らない
-        let interruptState = RunInterruptState(recorder: recorder)
+        // そのまま通す —— ここでは新しい分岐を作らない。**interruptState は呼び出し元(run())が
+        // 供給の前から持っている**(ここで新しく作ると供給中に届いた中断がこの新しいインスタンスに
+        // 届かず取りこぼす)
 
         // **sweep はここでは呼ばない** —— この run の掃除は "building" を書く入口で済んでいる
         // (1 run で2回走らせない。docs/design.md §18.1「run 開始時に1回」)
@@ -1251,11 +1266,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             // workersReady の id と食い違う(lateWorkers と同じ処理)
             onRevived: { workerID.merge([$0]) },
             log: { logStderr($0) })
-        let interruptRelay = InterruptRelay.observing {
-            interruptState.requestStop()
-            orchestrator.requestInterrupt()
-        }
-        defer { interruptRelay.stop() }
+        // 供給フェーズより前に立てた interruptState へ、いま組み上がったオーケストレータの
+        // 中断口を合流させる(**新しい InterruptRelay は登録しない** —— 1プロセス1組。
+        // 供給中に既に中断済みならここで即 orchestrator.requestInterrupt() が呼ばれる)
+        interruptState.attachLateSubscriber { orchestrator.requestInterrupt() }
         // ここから先は RunOrchestrator.run() が必ず finish() まで進む(non-throwing)ので、
         // "preparing" の後始末は orchestrator 側の finish()/remove に委ねる
         progressHandedToOrchestrator = true

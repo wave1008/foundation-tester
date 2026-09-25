@@ -1011,6 +1011,9 @@ public struct BridgeLauncher {
                     }
                     enableReduceMotion()
                     keepSoftwareKeyboardShown()
+                    // **ready になった事実を1回だけ記帳する**(BridgeReadyLedger)。「起動しきれない
+                    // ランナーを止める」掃除がこの後を「一度も announce しなかった」と誤認しないため
+                    BridgeReadyLedger.mark(stateDir: stateDir, port: port)
                     return status
                 }
             } catch {

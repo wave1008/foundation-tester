@@ -165,4 +165,40 @@ final class StaleLedgerSweepTests: XCTestCase {
         XCTAssertFalse(StaleLedgerSweep.toolchainIsOrphan(
             hasToolchain: false, hasPid: false, inappListening: false))
     }
+
+    // MARK: - StaleLedgerSweep.readyIsOrphan(.ready = BridgeReadyLedger の孤児判定)
+    //
+    // .toolchain と同じ形の判定(そのポートのランナーが生きているかの1点だけ)。
+    // sweepStuckStartingRunners が読む「一度でも ready だったか」の印を、死んだポートに
+    // 残したままにしない(残すと同じポートに立った別ランナーが誤って「前にも ready だった」と読む)。
+
+    func testReadyIsOrphanOnlyWhenTheBridgeIsGone() {
+        XCTAssertFalse(StaleLedgerSweep.readyIsOrphan(
+            hasReady: true, hasPid: true, inappListening: false))
+        XCTAssertFalse(StaleLedgerSweep.readyIsOrphan(
+            hasReady: true, hasPid: false, inappListening: true))
+        XCTAssertTrue(StaleLedgerSweep.readyIsOrphan(
+            hasReady: true, hasPid: false, inappListening: false))
+        XCTAssertFalse(StaleLedgerSweep.readyIsOrphan(
+            hasReady: false, hasPid: false, inappListening: false))
+    }
+
+    /// 実際の掃除経路(BridgeProvisioner.sweepStaleLedgers)を通した確認。.pid が死んでいれば
+    /// 対の .ready も一緒に消える
+    func testSweepRemovesOrphanReadyMarkWithoutAPid() throws {
+        let root = try makeRepoRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let stateDir = root.appendingPathComponent(".fleetest")
+        let port: UInt16 = 8198
+        BridgeReadyLedger.mark(stateDir: stateDir, port: port)
+        // .pid も .inapp も無い(実機ランナー不在と同じ形)ことを保証するため endpoint/device と
+        // 同じダミー台帳を1つ添える(ports の走査対象に入れる。この2つ自体は今回の主張と無関係)
+        try "127.0.0.1".write(to: stateDir.appendingPathComponent("bridge-\(port).endpoint"),
+                              atomically: true, encoding: .utf8)
+
+        BridgeProvisioner.sweepStaleLedgers(repoRoot: root)
+
+        XCTAssertFalse(BridgeReadyLedger.exists(stateDir: stateDir, port: port),
+                       "対応する .pid が無い .ready は消えること")
+    }
 }

@@ -90,4 +90,24 @@ public enum BridgeIdentityCheck {
     /// run のレーン(4経路が共有する対処文。**ここが定義元**)
     public static let runLaneRemedy =
         "The lane's port was taken over; the worker must be re-provisioned"
+
+    /// **hybrid(in-app + XCUITest)の合成が握る、主(in-app)とは別ポートの本人確認**
+    /// 判定材料が `port` + 期待 udid + 期待 engine だけの呼び手向け(`detail`
+    /// も `remedy` も要らないので `matches` を薄く包む)。**呼び手は MCP(fleetest-mcp)と
+    /// ライブ操作(api live serve)の2つ**(`FTBridgeClient.HybridFallbackIdentity` 経由)。
+    /// hybrid の合成は `!physical` のときしか組まれないので `physical: false` 固定。
+    /// `expectedEngine` の既定は `"xcuitest"`(HybridFallbackDriver の fallback 側)。
+    /// **主(in-app)側を確かめる呼び手は `"inapp"` を渡す**(同じ判定を2つ持たない)
+    public static func hybridFallbackMismatch(
+        port: UInt16, expectedUDID: String, expectedEngine: String = "xcuitest", status: StatusResponse
+    ) -> Bool {
+        // **エンジンを先に見る**: `verdict` は udid が両側にあると udid だけで比べるが、in-app も
+        // udid を名乗るので、予備ポートが**同じ台の** in-app ブリッジに化けた形(`/gesture` が 404)を
+        // 一致と読む。hybrid の片側はエンジンが決まっているので、食い違えば udid を問わず不一致
+        if let statusEngine = status.engine, (statusEngine == "inapp") != (expectedEngine == "inapp") {
+            return true
+        }
+        let expected = Expected(port: port, udid: expectedUDID, physical: false, engine: expectedEngine)
+        return !matches(expected: expected, status: status)
+    }
 }

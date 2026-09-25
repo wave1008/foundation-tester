@@ -681,15 +681,27 @@ extension MCPServer {
     /// 「waitForChange: false」を名乗ると、渡していない引数を渡したことにされる(§19.3 M4)。
     /// `waitForChangeExplicit` は `args["waitForChange"] as? Bool`(渡していなければ nil)。
     /// 優先順: waitFor > 明示 false > それ以外(暗黙の着地待ち・明示 true)は汎用文言
+    /// `routedByScheme`: **iOS は宛先を名乗らない** —— simctl openurl / devicectl openURL は
+    /// スキームの持ち主へ OS が配る(bundleId は同意ダイアログの了承と in-app の再起動先にしか
+    /// 使わない)。名乗ると、別アプリの bundleId を渡した呼び手に「そこへ届けた」と誤って請け合う。
+    /// Android は intent の宛先そのものなので従来どおり名乗る
     static func openURLSummary(url: String, bundleID: String?, bundleIDWasRemembered: Bool,
+                               routedByScheme: Bool,
                                snapshotAfter: Bool, waitFor: String? = nil,
                                waitForChangeExplicit: Bool? = nil) -> String {
-        let target = bundleID.map {
-            " to \($0)" + (bundleIDWasRemembered
-                ? " (not given — this session's last ft_launch on this device;"
-                    + " pass bundleId if the foreground app has changed since)"
-                : "")
-        } ?? ""
+        let target: String
+        if routedByScheme {
+            let scheme = URL(string: url)?.scheme.map { "\"\($0)\" " } ?? ""
+            target = " (iOS hands it to the app that registers the \(scheme)URL scheme —"
+                + " bundleId does not choose the recipient)"
+        } else {
+            target = bundleID.map {
+                " to \($0)" + (bundleIDWasRemembered
+                    ? " (not given — this session's last ft_launch on this device;"
+                        + " pass bundleId if the foreground app has changed since)"
+                    : "")
+            } ?? ""
+        }
         let delivered = "Delivered \(url)" + target + "."
         let asynchronous = " Delivery is asynchronous (the app has to receive and handle it)"
         guard !snapshotAfter else {

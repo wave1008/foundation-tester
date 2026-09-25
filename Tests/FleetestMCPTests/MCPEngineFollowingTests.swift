@@ -22,33 +22,37 @@ final class MCPEngineFollowingTests: XCTestCase {
 
     /// hybrid = in-app を主に、XCUITest をフォールバックに持つ合成(実行側と同じ形)
     func testHybridComposesInAppWithXCUITestFallback() async throws {
-        let (driver, _) = try await MCPServer.iosDriver(
+        let (driver, _, xcuiPort) = try await MCPServer.iosDriver(
             provisioned: provisioned(engine: "hybrid", xcuiPort: 8124),
             bundleID: "com.example.app")
         XCTAssertTrue(driver is HybridFallbackDriver,
                       "hybrid は「不可な操作だけ XCUITest へ回す」合成にすること: \(type(of: driver))")
+        XCTAssertEqual(xcuiPort, 8124, "hybrid の fallback ポートを返していない"
+                       + "(MCPServer.hybridFallbackDrifted が本人確認できなくなる)")
     }
 
     /// inapp 単独はフォールバック先が無いので素の in-app
     func testInAppEngineUsesTheInAppDriverDirectly() async throws {
-        let (driver, _) = try await MCPServer.iosDriver(
+        let (driver, _, xcuiPort) = try await MCPServer.iosDriver(
             provisioned: provisioned(engine: "inapp", xcuiPort: nil),
             bundleID: "com.example.app")
         XCTAssertTrue(driver is InAppDriver, "\(type(of: driver))")
+        XCTAssertNil(xcuiPort, "hybrid でないのに fallback ポートを返した")
     }
 
     /// hybrid でも**対象アプリが分からなければ** attach できないので素の in-app へ落とす
     /// (AppAttachDriver は bundleID が必須)
     func testHybridWithoutBundleIDFallsBackToInAppOnly() async throws {
-        let (driver, _) = try await MCPServer.iosDriver(
+        let (driver, _, xcuiPort) = try await MCPServer.iosDriver(
             provisioned: provisioned(engine: "hybrid", xcuiPort: 8124), bundleID: nil)
         XCTAssertTrue(driver is InAppDriver, "\(type(of: driver))")
+        XCTAssertNil(xcuiPort, "合成できず in-app 単独に落ちたのに fallback ポートを返した")
     }
 
     /// **実機は注入できない**ので、engine の申告に関わらず in-app 側を作らない
     /// (作ると dylib 注入を試みて必ず失敗する)
     func testPhysicalDeviceNeverUsesTheInAppEngine() async throws {
-        let (driver, _) = try await MCPServer.iosDriver(
+        let (driver, _, _) = try await MCPServer.iosDriver(
             provisioned: provisioned(engine: "hybrid", xcuiPort: 8124, physical: true),
             bundleID: "com.example.app")
         XCTAssertFalse(driver is HybridFallbackDriver, "実機で in-app 合成を作ってはいけない")
@@ -61,7 +65,7 @@ final class MCPEngineFollowingTests: XCTestCase {
     /// ポート番号だけで 127.0.0.1 を叩くと**無関係なシミュレータのブリッジを読む** ——
     /// `deviceIdentityChanged` が別の機の udid を見て、正しい呼び出しを拒否し記憶まで捨てる
     func testPhysicalDeviceHasNoLoopbackProbePort() async throws {
-        let (_, probePort) = try await MCPServer.iosDriver(
+        let (_, probePort, _) = try await MCPServer.iosDriver(
             provisioned: provisioned(engine: "hybrid", xcuiPort: 8124, physical: true),
             bundleID: "com.example.app")
         XCTAssertNil(probePort, "実機に loopback の probe ポートを出した")
@@ -69,7 +73,7 @@ final class MCPEngineFollowingTests: XCTestCase {
 
     /// in-app / hybrid は主(in-app)のポートを probe に使う
     func testInAppEngineProbesItsOwnPort() async throws {
-        let (_, probePort) = try await MCPServer.iosDriver(
+        let (_, probePort, _) = try await MCPServer.iosDriver(
             provisioned: provisioned(engine: "inapp", xcuiPort: nil), bundleID: "com.example.app")
         XCTAssertEqual(probePort, 8123)
     }

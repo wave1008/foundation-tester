@@ -51,6 +51,18 @@ public enum ExploreDriverResolver {
         /// = AppBundleInspector を使えるように運ぶ)、実機なら `.device` 記録由来の UDID。
         /// どちらも特定できなければ nil
         public let udid: String?
+        /// engine == "hybrid" のときの XCUITest フォールバックポート(それ以外は nil)。
+        /// **呼び手がこのポートの生死を独立に見張れるように運ぶ** —— HybridFallbackDriver は
+        /// このポートへ home/drag/座標 press/gesture 等を回すが、in-app 側(port)の同一性を
+        /// 確かめても、建て直しで別デバイスへ移ったこちらのポートは検知できない(G6)
+        public let xcuiPort: UInt16?
+
+        public init(driver: AppDriver, engine: String, udid: String?, xcuiPort: UInt16? = nil) {
+            self.driver = driver
+            self.engine = engine
+            self.udid = udid
+            self.xcuiPort = xcuiPort
+        }
     }
 
     /// 稼働中ブリッジを見て組み立てる。XCUITest ブリッジが要るケースでは
@@ -138,7 +150,7 @@ public enum ExploreDriverResolver {
                 primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
                 fallback: attach, primaryBundleID: bundleID,
                 foreignApp: SessionRecoveryDriver(base: BridgeClient(endpoint: resolution.endpoint))),
-                            engine: "hybrid", udid: udid)
+                            engine: "hybrid", udid: udid, xcuiPort: xcuiPort)
         }
     }
 

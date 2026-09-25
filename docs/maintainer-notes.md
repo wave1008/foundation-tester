@@ -2488,3 +2488,89 @@ iPhone 13(M1Ultra)の2台で同時に出た。ロック解除では直らない�
   マップは次の起動にこの状態を持ち越す。判別は「画面を見る」だけで付く(差分の数字だけ見ると見落とす)
 - 実機の画面を外から撮る `idevicescreenshot` は iOS 26 の SE3 で1枚も撮れない。実機の判定は CMP のマップ画面の
   `drag=` / `pan=` で読む
+
+## 51. 3時間負荷テストで出た穴(2026-09-25)
+
+構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini)+ MCP ファズ4台(実機 iPhone SE3・Pixel 4a、
+仮想機 sim08 / emulator-5564 = フリートと取り合う)+ ライブ操作ファズ(仮想機 sim07・実機 Pixel 3a・
+M1Ultra の sim06 を `remote exec` 越し)+ CLI ファズ + 周回の合間の `api run`・中断・実機 run。
+直近の新機能(多点ジェスチャ・`@FTCommand`・実機の暗い画面・watchdog のリモート分界)も当てた。
+
+**新規の型は3つ**(51.1・51.4・51.8)。残りは既知の型の再発(括弧内)。**持ち主(同一性)の型が4件**(51.2・51.9・51.10・51.11)で最多 —— 「ポートは台の同一性ではない」に加えて「udid はエンジンの同一性ではない」「台帳の機械名は操作する機械ではない」が今回の新しい言い方
+
+### 51.1 桁外れの座標で Android のドライバが trap してプロセスごと落ちた
+ライブ操作の `{"cmd":"drag","fromX":1e308,…}` で serve が `Double value cannot be converted to Int32` で死んだ。
+座標は `ArgumentBounds` で `.unbounded` のまま、`AndroidDriver.drag/press` が `Int32(x.rounded())` していた。
+MCP は画面外の座標を先に断るので落ちない(= §45 の「MCP にだけ出口がある」型)。直し: 画面内の判定を
+`TapTargetGeometry.isPointOnScreen` に移して MCP とライブ操作で共有・Android は `checkedInt32` で投げる側へ。
+**呼び手の入口で断っても、整数へ畳む最後の砦は別に要る**(DSL の `tap(x:y:holdSeconds:)` も届く)
+
+### 51.2 hybrid の予備ポートが別の台・別のエンジンへ移っても使い続けた(§46 持ち主の型)
+MCP とライブ操作は hybrid(in-app + XCUITest の予備)を組んだ後、キャッシュ命中では主(in-app)の udid しか
+確かめていなかった。フリートの建て直しで予備ポートが in-app ブリッジに化け、`/gesture`・`/drag` が 404
+(= in-app に来た証拠)。別の台なら home/drag を黙って別の台へ撃つ。直し: `HybridFallbackIdentity.drifted`
+を MCP(キャッシュ命中)とライブ操作(`frame` 以外の命令ごと)が共有。**`BridgeIdentityCheck.verdict` は udid が
+両側にあるとエンジンを見ない**ので、同じ台の in-app に化けた形は `hybridFallbackMismatch` でエンジンを先に見る
+
+### 51.3 `api run` だけ供給前の lease の前倒しが無かった(run と api run の2実装)
+2026-09-20 に `fleetest run` だけ直していた。`api run` の供給中(ブリッジ起動)に `api stop-device` が門を
+すり抜けて台を止めた。直し: `ProfileRunner.buildWorkersWithFrontLoadedLease` に全5経路を寄せ、
+`DeviceLeaseFrontLoadWiringTests` が「build の呼び出しは必ずこの関数を通る」を本数で固定
+
+### 51.4 供給中の中断で run の記録が「クラッシュ」になった(新規)
+`InterruptRelay.observing`(= SIGINT/SIGTERM/SIGHUP を無視に倒す)の登録が供給段の**後**だった。供給中の
+シグナルは OS 既定の即死で、run.json が開始欄だけ(`finishedAt` 無し = クラッシュ扱い)。fan-out の子は
+ssh の切断(SIGHUP)で必ずここを踏む。直し: 登録を `RunRecorder.begin()` の直後へ(1プロセス1組のまま)・
+オーケストレータは `attachLateSubscriber` で後から合流(合流前に中断済みならその場で呼ぶ)。
+**1回目の中断で1行言う** —— 供給は止まるまで数十秒かかり、無言だと利用者は強制終了して記録を失う
+
+### 51.5 ロケータ無しの `type("…\n")` で最後の1文字が落ちたまま Enter が確定(打鍵の読み返しの型)
+XCUITest ランナーの `/type` は ref があるときだけ読み返していた。`tap(欄)` → `type("pqr\n")` が負荷下で
+`pq` のまま確定(E2E-RN で2回再現)。直し: 末尾改行のときだけ焦点の要素を直近の木と突き合わせて読み返しに
+乗せ、確かめてから Return(曖昧なら従来の一発送信)。ブリッジ v129
+
+### 51.6 udid の診断が予算切れ(不明)なのに「ブリッジが無い・bridge up せよ」と断定(不明を確定に畳む型)
+負荷下で実機 SE3 の MCP 呼び出しが半分失敗した(ブリッジは生存・`port` も明示)。案内どおり `bridge up` すると
+実機に2本目のランナーへ向かう誤誘導。直し: 予算切れは `diagnosisTimedOut` という別の値にして「確認できなかった・
+再試行」と言う(不在も `bridge up` も言わない)・明示された port はまず1回だけ本人確認して使う
+
+### 51.7 ライブ操作の watchdog が秒数指定の操作に猶予を持たなかった(§49 の watchdog 規律)
+猶予は軌跡(gesture)だけで、`press`/`drag`/`pinch` の最大60秒の指定が 30 秒で強制終了されうる。
+`gestureAllowanceSeconds` へ一本化。**全要求の上限を一律に縮める案は採らない** —— `launch` や負荷下の
+スナップショット(この回の実測 3〜6 秒)を毎回失敗させる。拡張は1命令 20 秒で serve を張り直すので、
+「遅い命令」はそちらが先に扱う
+
+### 51.8 `ft_capture_element` のラベルの `..` で MCP が永久ループ(新規)
+`VisionSample.save` の「作るフォルダを遡る」ループが `..` を含む URL で不動点に達せず、3分で RSS 4.8GB。
+抜けても `..` でプロジェクトの外へ書く経路だった。直し: ラベル・ファイル名の `..`/`.`/絶対パス/空要素を断る・
+保存先が分類器フォルダの内側かを保存時にも確かめる・ループは不動点で止める
+
+### 51.9 `--device-machine <他の機械>` を手元で撃つと、その台の設定でこの Mac の台を操作した(§42.5 と同族)
+`api start-device --name X --device-machine M1Max` は M1Max の台の設定を引いたうえで起動の本体を**この Mac で**
+走らせた。iOS は UDID が違うので無害に失敗したが、Android は AVD 名が機械をまたいで同じなので手元の同名 AVD に当たる。
+しかも同名が複数の機械にあるときの断り文面が「--device-machine で指定せよ」と案内していた。直し: 解決した台が
+他の機械のものなら `.foreign` で断り、`fleetest remote exec <machine> -- api … --device-machine local` を示す
+(start-device / stop-device --name / restart-devices)。**この Mac で意味を持つ値は `local` だけ**
+
+### 51.10 主ポートが同じ台の別エンジンに化けても使い続けた(51.2 と同じ根・主ポート側)
+MCP の `ft_terminate` が in-app ブリッジの 501(`/terminate is not supported in-app`)を返した = XCUITest として
+掴んだ主ポートが、建て直しで同じ台の in-app ブリッジになっていた。`deviceIdentityChanged` は udid しか比べず、
+ref を使う呼び出しでしか撃たない。直し: キャッシュ命中のたびに主ポートのエンジンも確かめ、変わっていたら
+ref を使う呼び出しは断り(`ft_snapshot` を撮り直せ)、それ以外は黙って作り直す。ライブ操作の in-app 単独構成は
+期待エンジンを `inapp` にする(一律 `xcuitest` だと健全な台を毎回「変わった」と読む)
+
+### 51.11 run の供給が、MCP で駆動中の実機ランナーを「起動しきれない」と誤って止めた(持ち主 + 不明を確定に畳む)
+E2E の run(その実機を含まないプロファイル)が `sweepStuckStartingRunners` で、1時間近く稼働していた実機 SE3 の
+ランナー(MCP の印あり)を止め、以後そのセッションは壊れたままだった。「待受していない」の根拠が `isBound` の
+300ms の connect で、負荷で受付が詰まると繋がらない = 不明を「居ない」と読む。しかも「一度も準備完了になって
+いない」ことも、台の印も確かめていなかった。直し: 準備完了の実績がある・台に run/MCP の印がある・connect が
+時間切れ(拒否ではない)のどれかなら止めない
+
+### 51.12 その他
+- `ft_open_url` が iOS で渡された bundleId を宛先と名乗った(実際はスキームの持ち主へ OS が配る)
+- `@FTCommand`: バッククォートの名前(`` `default` ``)を無視していた・`api dsl-commands` が FTElement の
+  メソッドを `chainable: false` 固定で出していた(MCP は receiver を見て `select(...).` を付ける)
+- 負荷テストの作り方の教訓: Android 実機のライブ操作ファズに「前面が対象アプリか」の見張りを付けず、
+  ランダムなタップで Pixel 3a が USB から消えた(電源・USB 設定を触った疑い)。**実機のファズは必ず前面を見張る**
+- 観察(直していない): 負荷下で `exist` の待ち(5秒)の間に読みが1回も要素の出現後に入らず赤になり、
+  失敗時の木には要素が載っている形(63 回中2回)

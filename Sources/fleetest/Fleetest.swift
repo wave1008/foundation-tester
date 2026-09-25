@@ -1594,6 +1594,17 @@ struct RunScenarios: AsyncParsableCommand {
                                          runGroup: runGroup)
         PhaseLog.mark("recorder-begin")
 
+        // **recorder 確定直後にここで1回だけ登録する**(シグナルソースは1プロセスに1組)。
+        // 供給フェーズ(ブリッジ起動・凍結triage・install 等)は ProfileRunner.run/runSequential/
+        // runParallel の**内側**で行われるが、そこに着くまで InterruptRelay が1つも登録されて
+        // いないと、供給中に届いた SIGINT/SIGTERM/SIGHUP は既定動作(即終了)のままプロセスを落とし、
+        // run.json は begin() が書いた start 欄だけの尻切れで残る(docs/results-json.md:
+        // finishedAt 無し = crash と誤分類される。ApiRunCommand.run の同じ登録参照)。
+        // 3経路は同じ interruptState を受け取るだけで、自分では登録しない
+        let interruptState = RunInterruptState(recorder: recorder)
+        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
+        defer { interruptRelay.stop() }
+
         if let profile {
             // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
@@ -1624,7 +1635,8 @@ struct RunScenarios: AsyncParsableCommand {
                     deviceMachine: effectiveDeviceHost,
                     workspaceOverride: workspace,
                     recorder: recorder,
-                    broadcast: broadcast)
+                    broadcast: broadcast,
+                    interruptState: interruptState)
             } catch {
                 // 供給段(ワーカー構築等)の例外は run.json を完了させずに投げていた
                 // (finishedAt 無し = results insights が「クラッシュ/強制終了」に誤分類する)。
@@ -1737,14 +1749,14 @@ struct RunScenarios: AsyncParsableCommand {
                                                       port: iosPorts[0], reportDir: reportDirPath,
                                                       settings: ScenarioExecutionSettings(noProfileSettings),
                                                       homeOnStart: noProfileSettings.homeOnStart,
-                                                      recorder: recorder)
+                                                      recorder: recorder, interruptState: interruptState)
             } else {
                 (failedCount, interrupted) = await runParallel(items, project: testProject,
                                                 iosPorts: iosPorts, reportDir: reportDirPath,
                                                 settings: ScenarioExecutionSettings(noProfileSettings),
                                                 homeOnStart: noProfileSettings.homeOnStart,
                                                 recordingConfig: recordingConfig,
-                                                recorder: recorder)
+                                                recorder: recorder, interruptState: interruptState)
             }
         } catch {
             // 供給段の throw はここへ来る時点で
@@ -2000,14 +2012,11 @@ struct RunScenarios: AsyncParsableCommand {
                                port: UInt16, reportDir: String,
                                settings: ScenarioExecutionSettings,
                                homeOnStart: Bool,
-                               recorder: RunRecorder?
+                               recorder: RunRecorder?, interruptState: RunInterruptState
     ) async throws -> (failed: Int, interrupted: Bool) {
         // 次のシナリオへ進まず、今動いている子(fleetest-scenarios)を SIGTERM してから
         // 普通に return する(呼び出し元の通常の完了経路をそのまま通す。ApiRunCommand.runDirect
-        // と同じ形)
-        let interruptState = RunInterruptState(recorder: recorder)
-        let interruptRelay = InterruptRelay.observing { interruptState.requestStop() }
-        defer { interruptRelay.stop() }
+        // と同じ形)。**登録は呼び出し元(run())が供給の前に済ませている**
         let iosUdid = await Self.resolveUdid(port: port)
         // homeOnStart は「run 開始時に1回」の予防措置(ProfileWorkerFactory.pressHomeOnStart)。
         // この経路は毎シナリオでワーカーを組み直すので、実際に使う platform 分の使い捨てワーカーを
@@ -2087,7 +2096,7 @@ struct RunScenarios: AsyncParsableCommand {
                              settings: ScenarioExecutionSettings,
                              homeOnStart: Bool,
                              recordingConfig: VideoRecordingConfig?,
-                             recorder: RunRecorder?
+                             recorder: RunRecorder?, interruptState: RunInterruptState
     ) async -> (failed: Int, interrupted: Bool) {
         let defaultPlatform = resolvedPlatform
         let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
@@ -2120,8 +2129,9 @@ struct RunScenarios: AsyncParsableCommand {
         await ProfileWorkerFactory.prepareDevicesOnStart(
             workers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
-        // ApiRunCommand.runWithProfileParallel / ProfileRunner.run と同じ形
-        let interruptState = RunInterruptState(recorder: recorder)
+        // ApiRunCommand.runWithProfileParallel / ProfileRunner.run と同じ形。
+        // **interruptState は呼び出し元(run())が供給の前から持っている** —— ここで新しく
+        // 作ると供給中(上の prepareDevicesOnStart 等)に届いた中断を取りこぼす
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            settings: settings,
                                            reportDir: URL(fileURLWithPath: reportDir),
@@ -2134,11 +2144,9 @@ struct RunScenarios: AsyncParsableCommand {
                                            progressHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                            appBundleIDs: Self.appBundleIDs(appID),
                                            registerChildProcess: { interruptState.registerChildProcess($0) })
-        let interruptRelay = InterruptRelay.observing {
-            interruptState.requestStop()
-            orchestrator.requestInterrupt()
-        }
-        defer { interruptRelay.stop() }
+        // **新しい InterruptRelay は登録しない**(1プロセス1組)。供給中に既に中断済みなら
+        // ここで即 orchestrator.requestInterrupt() が呼ばれる
+        interruptState.attachLateSubscriber { orchestrator.requestInterrupt() }
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)。

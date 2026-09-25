@@ -324,6 +324,11 @@ final class MCPServer {
     /// —— 表示用の文と機械判定を同じ文字列に相乗りさせると、表記を整えるたびに判定が壊れる。
     /// タイムアウト時にそのポートがまだ生きているかを確かめる `connectionLostHint` が使う
     var connectedPorts: [String: UInt16] = [:]
+    /// hybrid(in-app + XCUITest)キャッシュ命中の engineKey ごとの XCUITest フォールバックポート。
+    /// **`connectedPorts` とは別枠**(あちらは主(in-app)のポート): `HybridFallbackDriver` の
+    /// fallback は home/drag/座標 press/gesture 等をこちらへ回すので、建て直しで別デバイスへ
+    /// 移っていないかは主の udid だけでは検知できない(G6・2026-09-25。hybridFallbackDrifted 参照)
+    var hybridFallbackPorts: [String: UInt16] = [:]
     /// 掴んでいる Android ブリッジの serial(engineKey ごと)。iOS の `connectedPorts` と同じ理由で
     /// `connections` の表示文字列からは読み解かない —— 直接指定は "serial <serial>"、profile
     /// 経由は "<device name> serial <serial>" と経路ごとに書式が違い、文字列切り出しに頼ると

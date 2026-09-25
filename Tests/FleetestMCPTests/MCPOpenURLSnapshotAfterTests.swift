@@ -10,7 +10,7 @@ import FTCore
 final class MCPOpenURLSummaryTests: XCTestCase {
     func testWithoutSnapshotAfterMentionsAsynchronousDeliveryAndSnapshotAdvice() {
         let summary = MCPServer.openURLSummary(url: "myapp://item/1", bundleID: "com.example.app",
-                                               bundleIDWasRemembered: false,
+                                               bundleIDWasRemembered: false, routedByScheme: false,
                                                snapshotAfter: false)
         XCTAssertTrue(summary.hasPrefix("Delivered myapp://item/1 to com.example.app."), summary)
         XCTAssertTrue(summary.contains("asynchronous"), summary)
@@ -23,7 +23,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     /// 遷移前の画面を返し得る。撮り直しの代わりに waitFor を案内する(2026-08-12 のレビュー)
     func testWithSnapshotAfterSwapsTheAdviceForWaitForButKeepsTheAsyncCaveat() {
         let summary = MCPServer.openURLSummary(url: "myapp://item/1", bundleID: "com.example.app",
-                                               bundleIDWasRemembered: false,
+                                               bundleIDWasRemembered: false, routedByScheme: false,
                                                snapshotAfter: true)
         XCTAssertTrue(summary.hasPrefix("Delivered myapp://item/1 to com.example.app."), summary)
         XCTAssertFalse(summary.contains("ft_snapshot"), summary)
@@ -100,7 +100,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     /// snapshotAfterBody 側で別途効いているので、要約だけが実態と食い違っていた)
     func testWaitForIsNamedInsteadOfClaimingWaitForChangeFalse() {
         let summary = MCPServer.openURLSummary(url: "myapp://x", bundleID: "com.example.app",
-                                               bundleIDWasRemembered: false,
+                                               bundleIDWasRemembered: false, routedByScheme: false,
                                                snapshotAfter: true, waitFor: "検索結果")
         XCTAssertTrue(summary.contains("waiting for \"検索結果\" to appear"), summary)
         XCTAssertFalse(summary.contains("waitForChange: false"), summary)
@@ -109,7 +109,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     /// waitFor を渡さず明示 `waitForChange: false` のときだけ、その文言を名乗る
     func testWaitForChangeFalseIsNamedOnlyWhenExplicitlyPassed() {
         let summary = MCPServer.openURLSummary(url: "myapp://x", bundleID: "com.example.app",
-                                               bundleIDWasRemembered: false,
+                                               bundleIDWasRemembered: false, routedByScheme: false,
                                                snapshotAfter: true, waitForChangeExplicit: false)
         XCTAssertTrue(summary.contains("waitForChange: false"), summary)
     }
@@ -147,7 +147,7 @@ final class MCPOpenURLSummaryTests: XCTestCase {
     func testBundleIDIsOptionalInBothForms() {
         for snapshotAfter in [true, false] {
             let summary = MCPServer.openURLSummary(url: "myapp://x", bundleID: nil,
-                                                   bundleIDWasRemembered: false,
+                                                   bundleIDWasRemembered: false, routedByScheme: false,
                                                    snapshotAfter: snapshotAfter)
             // bundleID があれば "Delivered <url> to <bundle>." になるので、接頭辞だけで足りる
             XCTAssertTrue(summary.hasPrefix("Delivered myapp://x. "), summary)

@@ -38,7 +38,8 @@ final class DeviceIndependentToolsIgnoreTargetTests: XCTestCase {
             do {
                 _ = try await server.call(tool: tool, args: ["udid": "no-such-simulator-udid-0000"])
             } catch {
-                XCTAssertFalse(error.localizedDescription.contains("no running bridge"),
+                XCTAssertFalse(error.localizedDescription.contains("no running bridge")
+                               || error.localizedDescription.contains("could not confirm whether a bridge"),
                                "\(tool): \(error.localizedDescription)")
             }
         }
@@ -50,7 +51,10 @@ final class DeviceIndependentToolsIgnoreTargetTests: XCTestCase {
             _ = try await server.call(tool: "ft_snapshot", args: ["udid": "no-such-simulator-udid-0000"])
             XCTFail("ブリッジの居ない udid が通った")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("no running bridge"),
+            // 負荷で診断が予算内に終わらない回は「確認できなかった」で断る(不在とは言わない)。
+            // どちらも udid を解決しようとして断った形
+            XCTAssertTrue(error.localizedDescription.contains("no running bridge")
+                          || error.localizedDescription.contains("could not confirm whether a bridge"),
                           error.localizedDescription)
         }
     }

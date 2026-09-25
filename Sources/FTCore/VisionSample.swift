@@ -21,11 +21,48 @@ public enum VisionSample {
         }
     }
 
+    /// label/name が `classifierFolder` の外へ出ないための下拵え。`..`/`.`/空の部品と絶対パスを断る
+    /// (絶対パスは先頭が空の部品として弾かれる)。`save` の containment チェックとは独立の一次防御
+    private static func pathIssue(_ value: String, kind: String) -> String? {
+        let example = kind == "name" ? "\"capture-1.png\"" : "\"@i/Settings/[Camera Icon]\""
+        if value.isEmpty { return "\(kind) must not be empty" }
+        if value.hasPrefix("/") {
+            return "\(kind) must be a relative path, not an absolute path (got \(value))"
+        }
+        for component in value.split(separator: "/", omittingEmptySubsequences: false) {
+            if component.isEmpty {
+                return "\(kind) must not contain empty path components such as \"//\" (got \(value));"
+                    + " example: \(example)"
+            }
+            if component == "." || component == ".." {
+                return "\(kind) must not contain \".\" or \"..\" path components (got \(value));"
+                    + " example: \(example)"
+            }
+        }
+        return nil
+    }
+
+    /// A sample file name (the leaf, not the label folder) must be a single path component.
+    public static func nameIssue(_ name: String) -> String? {
+        if let issue = pathIssue(name, kind: "name") { return issue }
+        if name.contains("/") { return "name must be a single file name, not a path (got \(name))" }
+        return nil
+    }
+
+    /// `candidate` が `root` そのもの、または `root` の真下かを字面で確かめる。`labelIssue` の部品検査
+    /// とは別の独立した判定(`save` の二次防御。`labelIssue` を経由しない直呼び出しでも効く)
+    static func isContained(_ candidate: URL, in root: URL) -> Bool {
+        let candidatePath = candidate.standardizedFileURL.path
+        let rootPath = root.standardizedFileURL.path
+        return candidatePath == rootPath || candidatePath.hasPrefix(rootPath + "/")
+    }
+
     /// 保存してから学習で気付く誤り(状態に写らないラベル・短いラベルの無いフォルダ)を先に断る
     public static func labelIssue(classifier: String, label: String) -> String? {
         guard knownClassifiers.contains(classifier) else {
             return "unknown classifier \(classifier) (use \(knownClassifiers.sorted().joined(separator: " or ")))"
         }
+        if let issue = pathIssue(label, kind: "label") { return issue }
         let leaf = label.split(separator: "/").last.map(String.init) ?? label
         if classifier == CheckStateClassifier.name, CheckStateClassifier.state(forLabel: leaf) == nil {
             return "a CheckStateClassifier label must contain [ON], [OFF] or [INDETERMINATE] (got \(label))"
@@ -49,15 +86,25 @@ public enum VisionSample {
     public static func save(_ image: CGImage, projectRoot: URL, classifier: String, label: String,
                             name: String?, now: Date = Date()) throws -> URL {
         if let issue = labelIssue(classifier: classifier, label: label) { throw SaveError.invalidLabel(issue) }
+        if let name, let issue = nameIssue(name) { throw SaveError.invalidLabel(issue) }
         guard let data = VisionClassifier.pngData(image) else { throw SaveError.notEncodable }
         let classifierFolder = VisionClassifier.directory(projectRoot: projectRoot, name: classifier)
         let folder = classifierFolder.appendingPathComponent(label, isDirectory: true)
-        // 断ったときに片付けるため、これから作るフォルダ(深い順)を控える
+        guard isContained(folder, in: classifierFolder) else {
+            throw SaveError.invalidLabel("label escapes the classifier folder (got \(label))")
+        }
+        // 断ったときに片付けるため、これから作るフォルダ(深い順)を控える。`deletingLastPathComponent()` は
+        // "a/../../.." のような形に対して縮まらない不動点へ落ちて動かなくなることがある(元バグ:
+        // `..` を含むラベルで無限ループ+created が際限なく伸びた)ので、不動点に着いたら打ち切る
+        // (上の containment チェックで folder は既に classifierFolder の内側と確定しているので、
+        // 通常経路ではこの不動点そのものに到達しない。直呼び出し等への保険として残す)
         var created: [URL] = []
         var cursor = folder
         while !FileManager.default.fileExists(atPath: cursor.path) {
             created.append(cursor)
-            cursor = cursor.deletingLastPathComponent()
+            let parent = cursor.deletingLastPathComponent()
+            if parent.path == cursor.path { break }
+            cursor = parent
         }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent(name ?? defaultFileName(now))

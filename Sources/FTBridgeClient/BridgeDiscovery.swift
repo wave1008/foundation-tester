@@ -76,32 +76,56 @@ public enum BridgeDiscovery {
     /// アプリのスレッドがブロックしていても true になる —— そこが `isAlive` との差で、
     /// 「応答なし=死」と読まないための材料になる。
     /// IPv4 のみ(実機ブリッジの宛先も provision が IP で残す)。名前解決が要る宛先は false =
-    /// 判定材料にしない側へ倒す
+    /// 判定材料にしない側へ倒す。**"refused" と "300ms では分からない" のどちらも false**
+    /// (この関数の既存契約)—— 破壊的な判定(掃除・kill)で「居ない」の根拠にする呼び手は
+    /// `connectProbe` を直接見て2つを区別すること
     public static func isBound(port: UInt16, repoRoot: URL?) -> Bool {
+        connectProbe(port: port, repoRoot: repoRoot) == .connected
+    }
+
+    /// `isBound` の生の接続試行結果(3値)。負荷が高いと accept backlog が溢れて 300ms の poll が
+    /// 間に合わないことがあり、それは「busy(=誰か居る)」であって「誰も居ない」ではない。
+    /// **`.refused`(ECONNREFUSED。kernel が明示的に断った)だけが「誰も居ない」の確定証拠**——
+    /// `.unknown`(名前解決不能・poll timeout・getsockopt 失敗)を「居ない」扱いにしない
+    public enum ConnectProbe: Equatable, Sendable {
+        case connected
+        case refused
+        case unknown
+    }
+
+    public static func connectProbe(port: UInt16, repoRoot: URL?, timeoutMs: Int32 = 300) -> ConnectProbe {
         let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
             ?? BridgeEndpoint(port: port)
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = endpoint.port.bigEndian
-        guard inet_pton(AF_INET, endpoint.host, &addr.sin_addr) == 1 else { return false }
+        guard inet_pton(AF_INET, endpoint.host, &addr.sin_addr) == 1 else { return .unknown }
         let fd = socket(AF_INET, SOCK_STREAM, 0)
-        guard fd >= 0 else { return false }
+        guard fd >= 0 else { return .unknown }
         defer { close(fd) }
         _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK)
-        let connected = withUnsafePointer(to: &addr) {
+        let result = withUnsafePointer(to: &addr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
-        if connected == 0 { return true }
-        // ECONNREFUSED = 誰も居ない(= 乗り換えてよい)。EINPROGRESS だけ結果を待つ
-        guard errno == EINPROGRESS else { return false }
+        if result == 0 { return .connected }
+        if errno == ECONNREFUSED { return .refused }
+        guard errno == EINPROGRESS else { return .unknown }
         var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
-        guard poll(&pfd, 1, 300) > 0 else { return false }
+        let pollReady = poll(&pfd, 1, timeoutMs) > 0
         var soError: Int32 = 0
         var length = socklen_t(MemoryLayout<Int32>.size)
-        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &length) == 0 else { return false }
-        return soError == 0
+        let readable = pollReady && getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &length) == 0
+        return classifyPendingConnect(pollReady: pollReady, soError: readable ? soError : nil)
+    }
+
+    /// 非同期 connect(EINPROGRESS)の結末の3値化(純粋関数。時間切れを実ソケットで作れないので切り出す)。
+    /// poll が時間切れ・SO_ERROR が読めない・ECONNREFUSED 以外のエラーは **`.unknown`**
+    static func classifyPendingConnect(pollReady: Bool, soError: Int32?) -> ConnectProbe {
+        guard pollReady, let soError else { return .unknown }
+        if soError == 0 { return .connected }
+        return soError == ECONNREFUSED ? .refused : .unknown
     }
 
     /// `probeStatus` の失敗の仕方。**HTTP のステータスコードは問わない** —— 実機ブリッジは token

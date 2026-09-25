@@ -156,6 +156,15 @@ enum StaleLedgerSweep {
         hasToolchain && !(hasPid || inappListening)
     }
 
+    /// `.ready`(BridgeReadyLedger)を消すか。**同じ理由で `Ledger` に入れない** ——
+    /// 判定基準は「そのポートのランナーが生きているか」の1点だけ。**消し忘れると**、
+    /// 死んだランナーの跡地に立った**別の**ランナーが「前にも ready だった」と誤って読め、
+    /// sweepStuckStartingRunners が本物の stuck ランナーを見逃す(逆方向の安全側なので
+    /// toolchain ほど有害ではないが、掃除が効かなくなる点は同じ)
+    static func readyIsOrphan(hasReady: Bool, hasPid: Bool, inappListening: Bool) -> Bool {
+        hasReady && !(hasPid || inappListening)
+    }
+
     struct Inputs {
         let hasPid: Bool
         /// hasPid が true のときだけ意味を持つ
@@ -204,7 +213,17 @@ enum StaleLedgerSweep {
     /// 判定は既存の `StartingRunnerVerdict.decide` をそのまま使う(二つ目の実装を書かない):
     /// **待受していない**(= まだ何も提供していない)かつ **生存が起動予算を超えている**かつ
     /// **起動ログが予算ぶん伸びていない**ときだけ止める —— 起動中のブリッジはログが伸び続けるので
-    /// 巻き込まない。**busy なブリッジは待受している**ので最初の条件で外れる
+    /// 巻き込まない。**busy なブリッジは待受している**ので最初の条件で外れる。
+    ///
+    /// **elapsed/quietFor だけでは足りない**(実地: 55 分サービス済みのブリッジが負荷下で
+    /// 誤って止められた)—— 長寿ブリッジは elapsed が予算を超え続けるのが普通で、quietFor も
+    /// xcodebuild の出力がブロックバッファされるため、リクエストの合間は「ログが伸びていない」
+    /// と読める。区別するのは3つ: **①一度でも ready(BridgeReadyLedger)を確認していれば
+    /// 対象外**(elapsed/quietFor と違って腐らない一次証拠)。**②`refused`(誰も居ないと
+    /// 確定)のときだけ進む** —— `BridgeDiscovery.isBound` の 300ms 待ちは timeout/unknown も
+    /// false に畳むため、負荷下で busy な(=生きている)リスナーを「居ない」と誤読しうる。
+    /// 破壊的な判定はここだけ `connectProbe` の3値を直接見る(`isBound` の他の呼び手の意味は
+    /// 変えない)。**③宛先の台に生きた run/MCP セッションがあれば触らない**
     static func sweepStuckStartingRunners(repoRoot: URL, log: (String) -> Void = { _ in }) {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -215,18 +234,42 @@ enum StaleLedgerSweep {
                 .replacingOccurrences(of: "bridge-", with: "")),
                 let pidText = try? String(contentsOf: entry, encoding: .utf8),
                 let pid = Int32(pidText.trimmingCharacters(in: .whitespacesAndNewlines)),
-                BridgeLauncher.isOurRunner(pid: pid, port: port),
-                !BridgeDiscovery.isBound(port: port, repoRoot: repoRoot) else { continue }
+                // isOurRunner(pid:port:) と同じ ps 呼び出しだが、宛先(RunnerDestination)の
+                // 照合にも同じ出力を使い回すため1回だけ自前で撃つ
+                let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="]),
+                ps.status == 0, BridgeLauncher.isOurRunner(command: ps.output, port: port)
+                else { continue }
+            let readyMarked = BridgeReadyLedger.exists(stateDir: stateDir, port: port)
+            let connect = BridgeDiscovery.connectProbe(port: port, repoRoot: repoRoot)
+            let destinationHeld = RunnerDestination.udid(inCommand: ps.output).map {
+                RunLease.holderPID(stateDir: stateDir, key: $0) != nil
+                    || MCPDeviceLease.holderPID(stateDir: stateDir, key: $0, excluding: []) != nil
+            } ?? false
             // physical は DerivedData の別だけで決まる(stop() は kind で分岐しない)ので false でよい
             let launcher = BridgeLauncher(repoRoot: repoRoot, port: port, physical: false)
-            guard StartingRunnerVerdict.decide(
+            let verdict = StartingRunnerVerdict.decide(
                 elapsed: launcher.runnerElapsed(), quietFor: launcher.logQuietFor(),
-                budget: BridgeLauncher.startupTimeoutSeconds) == .restart else { continue }
+                budget: BridgeLauncher.startupTimeoutSeconds)
+            guard shouldReapStuckRunner(readyMarked: readyMarked, connect: connect,
+                                        destinationHeld: destinationHeld, verdict: verdict) else {
+                if destinationHeld, !readyMarked, connect == .refused {
+                    log("🔧 left the runner on port \(port) alone — its device has an active run or MCP session")
+                }
+                continue
+            }
             guard BridgeLauncher.reapRunnerProcess(pid: pid) else { continue }
             try? FileManager.default.removeItem(at: entry)
             log("🔧 stopped a runner on port \(port) that never became ready"
                 + " (it was still waiting for its destination)")
         }
+    }
+
+    /// 起動しきれないランナーを止めてよいか(純粋関数)。**4つとも揃ったときだけ** —— 一度でも
+    /// ready になった(`.ready` の台帳)・待受が拒否でない(時間切れは busy の可能性 = 不明)・
+    /// 宛先の台に run/MCP の印がある、のどれかがあれば止めない
+    static func shouldReapStuckRunner(readyMarked: Bool, connect: BridgeDiscovery.ConnectProbe,
+                                      destinationHeld: Bool, verdict: StartingRunnerVerdict) -> Bool {
+        !readyMarked && connect == .refused && !destinationHeld && verdict == .restart
     }
 
     /// **ブリッジを失ったトンネルを止める**(`iproxy-<port>.pid` の掃除とは別物)。
@@ -595,7 +638,9 @@ public struct BridgeProvisioner {
     /// .pid はこれまでどおり BridgeLauncher.sweepStalePidFiles(TTL 自主終了の ps 照合)に委ねる。
     /// ここではそれに加えて、対応する実体が消えた .inapp(LISTEN 実体なし)・.endpoint/.device
     /// (対になる .pid が無い = 実機ランナー不在)・.toolchain(BridgeToolchainLedger。ポートが
-    /// 死んでいれば一緒に消す)・iproxy-<port>.pid(死んだ実機トンネル)・**台帳を持たないまま
+    /// 死んでいれば一緒に消す)・.ready(BridgeReadyLedger。同じくポートが死んでいれば一緒に消す。
+    /// 消し忘れると同じポートに立った別ランナーが「前にも ready だった」と誤読する)・
+    /// iproxy-<port>.pid(死んだ実機トンネル)・**台帳を持たないまま
     /// ポートを握っているトンネル**(sweepTunnelOnlyPorts)・**起動しきれないランナー**
     /// (sweepStuckStartingRunners)を掃除する。.pid の掃除を
     /// 先に済ませてから残った台帳を見るので、StaleLedgerSweep.decide への pidAlive は
@@ -618,7 +663,7 @@ public struct BridgeProvisioner {
             at: stateDir, includingPropertiesForKeys: nil) else { return }
         var ports: Set<UInt16> = []
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-") {
-            guard ["pid", "inapp", "endpoint", "device", "toolchain"].contains(entry.pathExtension)
+            guard ["pid", "inapp", "endpoint", "device", "toolchain", "ready"].contains(entry.pathExtension)
             else { continue }
             let portStr = entry.deletingPathExtension().lastPathComponent
                 .replacingOccurrences(of: "bridge-", with: "")
@@ -630,13 +675,15 @@ public struct BridgeProvisioner {
             let endpointPath = stateDir.appendingPathComponent("bridge-\(port).endpoint")
             let devicePath = stateDir.appendingPathComponent("bridge-\(port).device")
             let toolchainPath = BridgeToolchainLedger.url(stateDir: stateDir, port: port)
+            let readyPath = BridgeReadyLedger.url(stateDir: stateDir, port: port)
             let hasPid = FileManager.default.fileExists(atPath: pidPath.path)
             let hasInApp = FileManager.default.fileExists(atPath: inappPath.path)
             let hasEndpoint = FileManager.default.fileExists(atPath: endpointPath.path)
             let hasDevice = FileManager.default.fileExists(atPath: devicePath.path)
             let hasToolchain = FileManager.default.fileExists(atPath: toolchainPath.path)
+            let hasReady = FileManager.default.fileExists(atPath: readyPath.path)
             // .pid だけのポートは sweepStalePidFiles が既に判定済み(何もすることが無い)
-            guard hasInApp || hasEndpoint || hasDevice || hasToolchain else { continue }
+            guard hasInApp || hasEndpoint || hasDevice || hasToolchain || hasReady else { continue }
 
             // **「誰かが待受している」だけでは in-app ブリッジの生存と言えない** ——
             // 別のデバイスのブリッジがこのポートを取っていると古い `.inapp` が生き続け、
@@ -659,6 +706,10 @@ public struct BridgeProvisioner {
             if StaleLedgerSweep.toolchainIsOrphan(hasToolchain: hasToolchain, hasPid: hasPid,
                                                   inappListening: inappListening) {
                 try? FileManager.default.removeItem(at: toolchainPath)
+            }
+            if StaleLedgerSweep.readyIsOrphan(hasReady: hasReady, hasPid: hasPid,
+                                              inappListening: inappListening) {
+                try? FileManager.default.removeItem(at: readyPath)
             }
         }
     }

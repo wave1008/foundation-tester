@@ -1975,25 +1975,26 @@ extension MCPServer {
     /// ことがある、という事実は engine を問わず有効)
     static func offscreenCoordinateError(x: Double, y: Double, screen: FTRect?,
                                          engine: String?) -> MCPError? {
-        guard let screen, screen.width > 0, screen.height > 0 else { return nil }
-        guard x >= screen.x, x < screen.x + screen.width,
-              y >= screen.y, y < screen.y + screen.height else {
-            let reason: String
-            switch engine {
-            case "inapp", "hybrid":
-                reason = "The in-app engine hit-tests only \"does some frame contain this point\","
-                    + " not \"is this point on screen\", so"
-            default:
-                reason = "The tree can include elements that are off-screen, so"
-            }
-            return MCPError("(\(x), \(y)) is outside the screen (\(FTSeconds.format(screen.width))"
-                + "x\(FTSeconds.format(screen.height)), origin \(FTSeconds.format(screen.x)),"
-                + "\(FTSeconds.format(screen.y))) — refusing to fire. \(reason) an offscreen"
-                + " coordinate can land on a real, offscreen element (e.g. a tab below the fold,"
-                + " or a row still in the tree from a previous screen). Take a fresh ft_snapshot"
-                + " and pass an in-bounds coordinate, or use a ref instead.")
+        // **判定は TapTargetGeometry.isPointOnScreen の1箇所**(ライブ操作の座標コマンドと共有。
+        // LiveControlExitParityTests.sharedJudgements が両側の配線を固定する。screen が nil/幅高さ0
+        // のときは isPointOnScreen が true を返すので、そのまま nil で抜ける)
+        guard let screen, !TapTargetGeometry.isPointOnScreen(x: x, y: y, screen: screen) else {
+            return nil
         }
-        return nil
+        let reason: String
+        switch engine {
+        case "inapp", "hybrid":
+            reason = "The in-app engine hit-tests only \"does some frame contain this point\","
+                + " not \"is this point on screen\", so"
+        default:
+            reason = "The tree can include elements that are off-screen, so"
+        }
+        return MCPError("(\(x), \(y)) is outside the screen (\(FTSeconds.format(screen.width))"
+            + "x\(FTSeconds.format(screen.height)), origin \(FTSeconds.format(screen.x)),"
+            + "\(FTSeconds.format(screen.y))) — refusing to fire. \(reason) an offscreen"
+            + " coordinate can land on a real, offscreen element (e.g. a tab below the fold,"
+            + " or a row still in the tree from a previous screen). Take a fresh ft_snapshot"
+            + " and pass an in-bounds coordinate, or use a ref instead.")
     }
 
     /// **座標がソフトキーボードの中にある**ときの警告(ft_tap / ft_double_tap / ft_long_press の座標形)。

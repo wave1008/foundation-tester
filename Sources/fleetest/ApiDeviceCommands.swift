@@ -63,7 +63,8 @@ struct ApiStartDeviceCommand: AsyncParsableCommand {
             throw ValidationError("specify exactly one of --name / --udid")
         }
         try await ApiDeviceOperation.run(
-            name: name, project: project, profile: profile, deviceMachine: deviceMachine
+            name: name, project: project, profile: profile, deviceMachine: deviceMachine,
+            subcommand: "start-device"
         ) { spec, platform, log in
             try await DeviceBooter.bootOne(spec: spec, platform: platform, gpuMode: resolvedGpu, log: log)
             // iOS はブリッジも供給する(稼働中ブリッジがあれば再利用。供給しないと画面が取れず
@@ -391,9 +392,27 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             var items: [RestartItem] = []
             for deviceName in name {
                 // machineProfile は DeviceRosterLoad.load が deviceMachine で絞った後なので、
-                // ここに残っているのは「この機械の台」だけ(entries が host を焼き込んでいる)
-                guard case .found(let spec, let platform) = ApiDeviceOperation.findDevice(
-                    name: deviceName, deviceMachine: deviceMachine, in: machineProfile) else {
+                // 通常はここに残っているのは「この機械の台」だけ(entries が host を焼き込んでいる)。
+                // ただし deviceMachine に**手元でない**登録名を渡されると、その機械の台だけに
+                // 絞られた上で残る(keepingDevices は「指定された machine を手元として扱う」
+                // だけで、実際にこの機械がその名前かは確かめない)—— restart-devices は
+                // 常にこの機械で body(down→up)を実行するので、その場合も実行してはならない
+                // (findDevice が .foreign で断る。restart-devices は分散しないので RemoteDeviceFanout の
+                // 出番も無い)
+                let spec: DeviceSpec
+                let platform: String
+                switch ApiDeviceOperation.findDevice(
+                    name: deviceName, deviceMachine: deviceMachine, in: machineProfile) {
+                case .found(let foundSpec, let foundPlatform):
+                    spec = foundSpec
+                    platform = foundPlatform
+                case .foreign(let machine, _, _):
+                    ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
+                        ok: false, error: ApiDeviceOperation.foreignMachineMessage(
+                            subcommand: "restart-devices", name: deviceName, machine: machine,
+                            project: project, profile: profile)))
+                    throw ExitCode(1)
+                case .missing, .ambiguous:
                     ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
                         ok: false, error: "device not found: \(deviceName)"))
                     throw ExitCode(1)
@@ -616,7 +635,8 @@ struct ApiStopDeviceCommand: AsyncParsableCommand {
         switch try ApiDeviceDownDirectTarget.resolve(name: name, udid: udid, serial: serial) {
         case .name(let name):
             try await ApiDeviceOperation.run(
-                name: name, project: project, profile: profile, deviceMachine: deviceMachine
+                name: name, project: project, profile: profile, deviceMachine: deviceMachine,
+                subcommand: "stop-device"
             ) { spec, platform, log in
                 // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止。
                 // BridgeProvisioner.provision の失敗時後始末と対)。repoRoot 未検出時は nil のまま
@@ -754,6 +774,7 @@ enum ApiDeviceOperation {
 
     static func run(
         name: String, project: String?, profile: String?, deviceMachine: String? = nil,
+        subcommand: String,
         body: @escaping @Sendable (
             DeviceSpec, String, @escaping @Sendable (String) -> Void
         ) async throws -> Void
@@ -795,10 +816,18 @@ enum ApiDeviceOperation {
         case .found(let foundSpec, let foundPlatform):
             spec = foundSpec
             platform = foundPlatform
+        case .foreign(let machine, _, _):
+            // **この関数は常にこの機械で body を実行する**(ssh 越しに投げる経路を持たない)。
+            // 見つかった台が他の機械のものなら、名前が同じだけの手元の台を触りかねないので
+            // 実行せず断る(CLAUDE.md「一括だけでなくタイル1枚の起動・停止もその機械へ回す」)
+            emitFinished(ok: false, error: foreignMachineMessage(
+                subcommand: subcommand, name: name, machine: machine,
+                project: project, profile: profile))
+            throw ExitCode(1)
         case .ambiguous(let hosts):
-            emitFinished(ok: false, error: "\(name) exists on more than one machine"
-                + " (\(hosts.joined(separator: ", "))) — pass --device-machine to say which one"
-                + " (\(rosterLabel))")
+            emitFinished(ok: false, error: ambiguousMachineMessage(
+                subcommand: subcommand, name: name, hosts: hosts,
+                project: project, profile: profile, rosterLabel: rosterLabel))
             throw ExitCode(1)
         case .missing:
             emitFinished(ok: false, error: "device not found: \(name)"
@@ -828,28 +857,75 @@ enum ApiDeviceOperation {
     /// `.ambiguous` で止める —— 黙って手元を選ぶと「M1Max を止めたつもりで手元が止まる」に
     /// なり、しかも成功したように見える(2026-08-17 に実際に起きた: 版の古い拡張が
     /// `--device-machine` を付けずに撃ち、手元の同名シミュレータが2台停止した)。
+    ///
+    /// **呼び出し側は常にこの機械で body を実行する**(ssh 越しに投げる経路を持たない)ので、
+    /// 見つかった台が他の機械のものなら `.found` を返さない —— 返すと Android は AVD 名が
+    /// 機械を跨いで同じため、**同名の手元の台を他の機械の設定で操作してしまう**(iOS は UDID が
+    /// 違うので無害に失敗するだけだが、Android は黙って手元の台に当たる。G13)。明示の
+    /// `deviceMachine` が他機を指すときも、省略して候補が1つだけ他機に居たときも同じく `.foreign`
+    /// へ倒す(`.found` の条件は「解決した台の machine が手元」だけ)
     enum DeviceLookup {
         case found(spec: DeviceSpec, platform: String)
         case missing
         case ambiguous(machines: [String])
+        /// 名前は一意に解決したが、その台は他の機械(`machine`。正規化済み・"local" ではない)に属する
+        case foreign(machine: String, spec: DeviceSpec, platform: String)
     }
 
     static func findDevice(
         name: String, deviceMachine: String?, in machine: DeviceRoster
     ) -> DeviceLookup {
         let entries = DeviceMachineGrouping.entries(roster: machine).filter { $0.name == name }
-        guard deviceMachine != nil else {
+        let resolved: DeviceMachineGrouping.CatalogEntry?
+        if deviceMachine == nil {
             let machines = DeviceMachineGrouping.groups(entries, machine: { MachineDispatch.normalize($0.spec.machine) })
             if machines.count > 1 {
                 return .ambiguous(machines: machines.map { DeviceMachineGrouping.display($0.machine) })
             }
-            guard let entry = entries.first else { return .missing }
-            return .found(spec: entry.spec, platform: entry.platform)
+            resolved = entries.first
+        } else {
+            let wanted = MachineDispatch.normalize(deviceMachine)
+            resolved = entries.first(where: { MachineDispatch.normalize($0.spec.machine) == wanted })
         }
-        let wanted = MachineDispatch.normalize(deviceMachine)
-        guard let entry = entries.first(where: { MachineDispatch.normalize($0.spec.machine) == wanted })
-        else { return .missing }
+        guard let entry = resolved else { return .missing }
+        if let foreignMachine = MachineDispatch.normalize(entry.spec.machine) {
+            return .foreign(machine: foreignMachine, spec: entry.spec, platform: entry.platform)
+        }
         return .found(spec: entry.spec, platform: entry.platform)
+    }
+
+    /// `.foreign` の断り文言。呼び出し元(subcommand)ごとに、貼って撃てる代替コマンドを組み立てる
+    /// (`--device-machine local` が実際に効く唯一の形 —— 拡張・fan-out はエイリアスを送らず、
+    /// 常に "local" を渡す。CLAUDE.md リモート§「エイリアスをリモートへ出さない」)
+    static func foreignMachineMessage(
+        subcommand: String, name: String, machine: String, project: String?, profile: String?
+    ) -> String {
+        let args = remoteExecArgs(subcommand: subcommand, name: name, project: project, profile: profile)
+        return "\(name) is on machine \(machine), not this Mac — running \(subcommand) here would act on a"
+            + " different, same-named local device instead. Operate on it on its own machine:"
+            + " fleetest remote exec \(machine) -- \(args)"
+    }
+
+    /// `.ambiguous` の断り文言。手元で完結する選択肢(`--device-machine local`)と、
+    /// 他機で操作する選択肢の両方を言う
+    static func ambiguousMachineMessage(
+        subcommand: String, name: String, hosts: [String], project: String?, profile: String?,
+        rosterLabel: String
+    ) -> String {
+        let args = remoteExecArgs(subcommand: subcommand, name: name, project: project, profile: profile)
+        return "\(name) exists on more than one machine (\(hosts.joined(separator: ", ")))"
+            + " — pass --device-machine local to operate on this Mac, or run it on one of the"
+            + " others: fleetest remote exec <machine> -- \(args)"
+            + " (\(rosterLabel))"
+    }
+
+    private static func remoteExecArgs(
+        subcommand: String, name: String, project: String?, profile: String?
+    ) -> String {
+        "api \(subcommand) --name \"\(name)\""
+            + (project.map { " --project \"\($0)\"" } ?? "")
+            + (profile.map { " --profile \"\($0)\"" } ?? "")
+            + " --device-machine local"
     }
 
     private static func emitLog(_ message: String) {

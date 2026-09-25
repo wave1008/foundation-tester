@@ -385,7 +385,8 @@ extension LiveSessionFollowerTests {
                       "シミュレータは従来どおり launchctl で採ること")
         let command = try String(contentsOf: root.appendingPathComponent("Sources/fleetest/ApiLiveCommand.swift"),
                                  encoding: .utf8)
-        XCTAssertTrue(command.contains("LiveSessionFollower(udid: udid, physical: udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false,"),
+        XCTAssertTrue(command.contains("let physical = udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false")
+                      && command.contains("LiveSessionFollower(udid: udid, physical: physical,"),
                       "serve は実機かを SimulatorCatalog.isPhysical で解いて follower へ渡すこと")
     }
 

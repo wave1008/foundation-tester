@@ -397,9 +397,19 @@ public enum ProjectCommandIndex {
 
         let funcKeywordEnd = cursor
         skipTrivia(chars, kinds, &cursor)
-        guard cursor < chars.count, isIdentifierStart(chars[cursor]) else { return nil }
+        guard cursor < chars.count else { return nil }
         let nameStart = cursor
-        while cursor < chars.count, kinds[cursor] == .code, isIdentifierChar(chars[cursor]) { cursor += 1 }
+        if chars[cursor] == "`" {
+            // `default` のような予約語の名前。呼び出し側もバッククォートが要るので名前ごと残す
+            cursor += 1
+            guard cursor < chars.count, isIdentifierStart(chars[cursor]) else { return nil }
+            while cursor < chars.count, kinds[cursor] == .code, isIdentifierChar(chars[cursor]) { cursor += 1 }
+            guard cursor < chars.count, chars[cursor] == "`" else { return nil }
+            cursor += 1
+        } else {
+            guard isIdentifierStart(chars[cursor]) else { return nil }
+            while cursor < chars.count, kinds[cursor] == .code, isIdentifierChar(chars[cursor]) { cursor += 1 }
+        }
         let name = String(chars[nameStart..<cursor])
 
         skipWhitespaceOnly(chars, kinds, &cursor)

@@ -23,6 +23,17 @@ final class ProjectCommandIndexTests: XCTestCase {
         XCTAssertEqual(entry.line, 2)
     }
 
+    /// 予約語をバッククォートで名前にした関数も載る(呼び出し側もバッククォートが要るので名前ごと)
+    func testBacktickedReservedWordName() {
+        let result = ProjectCommandIndex.scan(source: """
+            @FTCommand("Resets to the default state")
+            func `default`(hard: Bool = false) {}
+            """, file: "Helpers.swift")
+        XCTAssertEqual(result.warnings, [])
+        XCTAssertEqual(result.commands.map(\.name), ["`default`"])
+        XCTAssertEqual(result.commands.first?.signature, "`default`(hard:)")
+    }
+
     func testMultiLineParamsWithDefaultsContainingParensAndClosures() {
         let result = ProjectCommandIndex.scan(source: """
             @FTCommand("Logs in and retries once on failure")
