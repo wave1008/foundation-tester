@@ -564,12 +564,13 @@ final class NoteCoverageTests: XCTestCase {
         let sources = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/fleetest-mcp")
-        // 定義元(Hints)と唯一の呼び口(NoteCatalog)以外は直に呼んではいけない関数
+        // 定義元(Hints / WebViewHints / LabelHints)と唯一の呼び口(NoteCatalog)以外は直に呼んではいけない関数
         let forbidden = ["ghostNote(", "truncationNote(", "bulkExemptNote(",
                          "unlabeledClickablesNote(", "ambiguousLabelsNote(", "duplicateIDsNote(",
                          "keyboardCoverageNote(", "sliverNote(",
                          "SnapshotRenderer.truncatedLabelNote("]
-        let exempt: Set<String> = ["MCPServer+Hints.swift", "NoteCatalog.swift"]
+        let exempt: Set<String> = ["MCPServer+Hints.swift", "MCPServer+WebViewHints.swift",
+                                   "MCPServer+LabelHints.swift", "NoteCatalog.swift"]
         for file in try FileManager.default.contentsOfDirectory(atPath: sources.path)
             .filter({ $0.hasSuffix(".swift") }).sorted() where !exempt.contains(file) {
             let text = try String(contentsOf: sources.appendingPathComponent(file), encoding: .utf8)

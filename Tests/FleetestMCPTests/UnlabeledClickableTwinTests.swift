@@ -108,10 +108,7 @@ final class UnlabeledClickableTwinTests: XCTestCase {
     /// クロージャの中で呼ぶと候補ごとに全要素走査と集合の再構築が走る —— 正しさでは差が出ず
     /// `gradedComputeCount` にも出ない(キャッシュが効くため)ので、構造をソースで固定する
     func testTheTwinScanIsHoistedOutOfTheFilter() throws {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+Hints.swift")
-        let source = try String(contentsOf: url, encoding: .utf8)
+        let source = try MCPServerSourceText.combined()
         guard let start = source.range(of: "static func unlabeledClickablesNote"),
               let end = source.range(of: "\n    }", range: start.upperBound..<source.endIndex) else {
             return XCTFail("unlabeledClickablesNote が見つからない")

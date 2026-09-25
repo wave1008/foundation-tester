@@ -1146,7 +1146,7 @@ export function installSystemImageApiArgs(pkg: string): string[] {
 
 /**
  * `fleetest api delete-device` の CLI 引数を組み立てる(deviceCommandArgs と組み合わせて使う純粋関数。
- * monitorDeviceOps.ts の spawnDeleteDevice からテスト分離のために公開する)。iOS は --udid、
+ * monitorDeviceCreateOps.ts の spawnDeleteDevice からテスト分離のために公開する)。iOS は --udid、
  * Android は --avd(いずれも識別子1本。実行プロファイル・プロジェクトは参照しない —— この操作は
  * ホスト上の実体[シミュレータ/AVD]を直接消すだけで、どの実行プロファイルが参照しているかは
  * finished イベントの referencedBy で返ってくる)。

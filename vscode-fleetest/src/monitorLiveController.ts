@@ -19,18 +19,12 @@
 //   liveTab.js 側も追随させること。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import type { FleetestCli } from "./cli";
 import {
   type FleetestConfig,
-  listAppProfileNames,
-  readAppProfileDetail,
-  readAppProfileTarget,
   resolveAdb,
   resolveAndroidStream,
   resolveProjectName,
@@ -38,6 +32,7 @@ import {
 } from "./config";
 import { StreamPipeline, type LiveStreamPipeline } from "./deviceStream";
 import { t } from "./i18n";
+import { LiveAppActions } from "./liveAppActions";
 import {
   buildDeviceArgs,
   describeElementShort,
@@ -59,8 +54,6 @@ import {
   type LiveSnapshot,
   type LiveToWebviewMessage,
   locatorChainForElement,
-  operationBelongsToApp,
-  parseGenScenarioEvent,
   parseListDevicesResult,
   GESTURE_SECONDS_CEILING,
   gestureCapFor,
@@ -275,24 +268,29 @@ export class MonitorLiveController implements vscode.Disposable {
    * パネル単位(ライブ操作パネルは常に1デバイスのみ選択するため)。 */
   private liveMjpegFallback = false;
 
-  // ---- レコーディング(操作→FlowStep記録→gen-scenario) -----------------------------------
-  private recording = false;
-  /** startRecord の install→launch 実行中(recording=true になる前)の再入ガード。無いと開始待ち中の
-   * 二度押しで2本目が走り、その finally が1本目の「処理中」recordStatus を消してしまう。 */
-  private startingRecord = false;
-  private recordedSteps: RecordedStep[] = [];
-  private recordApp: { bundle: string; platform: string } | null = null;
-  /** refreshAppProfiles の選択維持用(applyDevices の selectedDeviceId と同じ役割)。 */
-  private selectedAppProfileId: string | undefined;
-  /** generateScenario 実行中かどうか。dispose 時に cli.ts の直列キューから
-   * 自分のタスクを止めるか判定するのに使う。 */
-  private generating = false;
+  // ---- アプリ操作・レコーディング(liveAppActions.ts の LiveAppActions へ委譲) -----------------
+  private readonly appActions: LiveAppActions;
 
   constructor(
     private readonly deps: LiveDeps,
     private readonly cli: FleetestCli,
-    private readonly refreshTestTree: () => void,
-  ) {}
+    refreshTestTree: () => void,
+  ) {
+    this.appActions = new LiveAppActions(
+      {
+        workspaceRoot: this.deps.workspaceRoot,
+        getConfig: () => this.deps.getConfig(),
+        outputChannel: this.deps.outputChannel,
+        post: (message) => this.post(message),
+        currentDeviceRef: () => this.currentDeviceRef(),
+        postActionError: (message) => this.postActionError(message),
+        runAction: (command, recordStep, options) => this.runAction(command, recordStep, options),
+        openGeneratedDocument: (filePath) => this.deps.openGeneratedDocument(filePath),
+      },
+      cli,
+      refreshTestTree,
+    );
+  }
 
   /** パネル close 時・dispose 時の両方から呼ばれる。パネル再オープン後は webview からの
    * refreshDevices→applyDevices→ensureServeProcessForSelection で serve が再起動される。 */
@@ -309,7 +307,7 @@ export class MonitorLiveController implements vscode.Disposable {
 
   dispose(): void {
     this.clearBridgeStartingProbe();
-    if (this.generating) {
+    if (this.appActions.isGenerating()) {
       // `api gen-scenario` は `api run` と違って dispatch.lock 解放や終了スクリプトを持たない
       // 一回限りのコード生成なので、後始末を持たないヘルパー扱いで時限 SIGKILL してよい
       // (cli.ts の cancelCurrent の既定はここでは使わない。既定にすると dispose が確定しない)。
@@ -574,7 +572,7 @@ export class MonitorLiveController implements vscode.Disposable {
     // アプリID/パッケージパスは選択デバイスの platform で解決する(android/ios でセクションが別)。
     // デバイス確定(初期ロード・一覧更新・自動選択)のたびに送り直さないと、platform 未確定時に
     // 計算した空の詳細が残る。
-    this.postAppProfileDetail();
+    this.appActions.postAppProfileDetail();
   }
 
   private applyFallback(config: FleetestConfig, bannerMessage: string): void {
@@ -602,7 +600,7 @@ export class MonitorLiveController implements vscode.Disposable {
     this.selectedDeviceId = match.id;
     this.post({ type: "devices", devices: this.devices, selectedId: this.selectedDeviceId });
     this.ensureServeProcessForSelection();
-    this.postAppProfileDetail(); // platform 切替に合わせて詳細も更新する(applyDevices と同理由)。
+    this.appActions.postAppProfileDetail(); // platform 切替に合わせて詳細も更新する(applyDevices と同理由)。
     if (match.state === "connected") {
       void this.refreshSnapshot();
     }
@@ -1513,7 +1511,7 @@ export class MonitorLiveController implements vscode.Disposable {
   /** serve へ1コマンド送って結果を反映する。成功時は serve が続けて返す観測イベント(操作後の
    * 追加待ちなしで届く。ブリッジ応答=UI整定済みのため)をそのまま画面へ反映する。失敗時は
    * 画面を再取得しない(観測イベント自体は届くが反映せず、直近のエラーを表示する)。
-   * recordStep はレコーディング中(this.recording)かつ action 成功時に記録する(busy中スキップ・
+   * recordStep はレコーディング中(appActions.recordStep)かつ action 成功時に記録する(busy中スキップ・
    * デバイス未選択・action失敗では記録しない)。snapshot 失敗では記録を止めない: home/appSwitcher/
    * terminate は対象アプリを離れ直後の観測が失敗し得るが、操作自体は成立しているため。
    * silentObservation: 直後に別コマンドが続くとき観測を反映・表示せず action 成否だけ返す。
@@ -1564,10 +1562,8 @@ export class MonitorLiveController implements vscode.Disposable {
       // 常時回っている自動フレーム(frameTick)が読む前に消してしまうことはない。
       this.post({ type: "actionError", message: "" });
       this.connectionBannerShown = false;
-      // 記録するのは対象アプリの上での操作だけ(operationBelongsToApp の doc)
-      if (this.recording && recordStep && operationBelongsToApp(action?.app, this.recordApp?.bundle)) {
-        this.recordedSteps.push(recordStep);
-      }
+      // 記録するのは対象アプリの上での操作だけ(LiveAppActions.recordStep の operationBelongsToApp doc)
+      this.appActions.recordStep(recordStep, action?.app);
       if (options?.logLabel) {
         this.postOperationLog(options.logLabel, true, mcp);
       }
@@ -1599,238 +1595,6 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  // ---- レコーディング ---------------------------------------------------------------
-
-  /** 直前の選択が新しい一覧にも存在すれば維持し、無ければ先頭を選択する(applyDevices と同じ方針)。 */
-  private refreshAppProfiles(): void {
-    const config = this.deps.getConfig();
-    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    if (resolution.kind !== "resolved") {
-      this.selectedAppProfileId = undefined;
-      this.post({ type: "appProfiles", profiles: [], selectedId: undefined });
-      return;
-    }
-    const profiles = listAppProfileNames(this.deps.workspaceRoot, resolution.project);
-    const stillExists = this.selectedAppProfileId !== undefined && profiles.includes(this.selectedAppProfileId);
-    this.selectedAppProfileId = stillExists ? this.selectedAppProfileId : profiles[0];
-    this.post({ type: "appProfiles", profiles, selectedId: this.selectedAppProfileId });
-    this.postAppProfileDetail();
-  }
-
-  /** 選択中アプリプロファイルの詳細(表示名/アプリID/パッケージパス)を現在のデバイス platform で
-   * 解決して webview へ送る。詳細は platform 依存(bundle/appPath が OS 別)のため、デバイス変更・
-   * プロファイル選択変更・一覧更新のたびに送り直す。未選択・プロジェクト未解決・デバイス未選択では
-   * 空値を送る(webview 側で「—」表示・インストール不可になる)。 */
-  private postAppProfileDetail(): void {
-    const id = this.selectedAppProfileId;
-    if (!id) {
-      return;
-    }
-    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
-    const device = this.currentDeviceRef();
-    const detail =
-      resolution.kind === "resolved" && device
-        ? readAppProfileDetail(this.deps.workspaceRoot, resolution.project, id, device.platform)
-        : null;
-    this.post({
-      type: "appProfileDetail",
-      appProfile: id,
-      appName: detail?.appName ?? null,
-      bundle: detail?.bundle ?? null,
-      appPath: detail?.appPath ?? null,
-    });
-  }
-
-  /** 選択中プロファイルの appPath を現在のデバイス platform で解決してインストールする。
-   * appPath 未設定(システムアプリ・ビルド無し等)や未解決はエラー表示して何もしない。 */
-  private async installApp(appProfile: string): Promise<void> {
-    const device = this.currentDeviceRef();
-    if (!device) {
-      this.postActionError(t("live.noDeviceSelected"));
-      return;
-    }
-    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
-    if (resolution.kind !== "resolved") {
-      this.postActionError(t("live.projectUnresolved"));
-      return;
-    }
-    const detail = readAppProfileDetail(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
-    if (!detail?.appPath) {
-      this.postActionError(t("live.installNoPath"));
-      return;
-    }
-    this.post({ type: "busyOverlay", message: t("live.installing") });
-    try {
-      await this.runAction(
-        { cmd: "install", path: detail.appPath },
-        undefined,
-        { silentObservation: true, logLabel: t("live.opLabel.install", { name: appProfile }) },
-      );
-    } finally {
-      this.post({ type: "busyOverlay", message: null });
-    }
-  }
-
-  /** 選択中プロファイルのアプリ(bundle)を現在のデバイス platform で解決して起動する
-   * (記録は開始しない。startRecord と違い install はしない)。bundle 未解決はエラー表示のみ。 */
-  private async launchApp(appProfile: string): Promise<void> {
-    const device = this.currentDeviceRef();
-    if (!device) {
-      this.postActionError(t("live.noDeviceSelected"));
-      return;
-    }
-    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
-    if (resolution.kind !== "resolved") {
-      this.postActionError(t("live.projectUnresolved"));
-      return;
-    }
-    const detail = readAppProfileDetail(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
-    if (!detail?.bundle) {
-      this.postActionError(t("live.launchNoBundle"));
-      return;
-    }
-    await this.runAction(
-      { cmd: "launch", bundle: detail.bundle },
-      undefined,
-      { logLabel: t("live.opLabel.launch", { bundle: detail.bundle }) },
-    );
-  }
-
-  /** アプリ起動(必要なら事前インストール)まで完了させてから記録状態に入る。起動失敗時は
-   * 記録を開始しない(runAction が既に actionError を post 済み)。 */
-  private async startRecord(appProfile: string, autoInstall: boolean): Promise<void> {
-    if (this.recording || this.startingRecord) {
-      return;
-    }
-    const device = this.currentDeviceRef();
-    if (!device) {
-      this.postActionError(t("live.noDeviceSelected"));
-      return;
-    }
-    const config = this.deps.getConfig();
-    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    if (resolution.kind !== "resolved") {
-      this.postActionError(t("live.projectUnresolved"));
-      return;
-    }
-    const target = readAppProfileTarget(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
-    if (!target) {
-      this.postActionError(t("live.appProfileUnresolved"));
-      return;
-    }
-    this.selectedAppProfileId = appProfile;
-    // タップ直後〜アプリ起動完了(install→launch は数秒かかり得る)まで画面を薄暗くして「処理中」を出す。
-    // finally で必ず消す(成功時はレコーディングUI、失敗時は runAction が post 済みの actionError が状態を示す)。
-    this.startingRecord = true;
-    this.post({ type: "busyOverlay", message: t("live.recordStarting") });
-    try {
-      if (autoInstall && target.appPath) {
-        // 再インストールはアプリを終了させ、install 直後の観測は必ず「not running」で失敗する。
-        // それを表示・中断に使わないよう silentObservation。画面はこの後の launch が出す。
-        const installed = await this.runAction(
-          { cmd: "install", path: target.appPath }, undefined, { silentObservation: true });
-        if (!installed) {
-          return;
-        }
-      }
-      const launched = await this.runAction({ cmd: "launch", bundle: target.bundle });
-      if (!launched) {
-        return;
-      }
-      this.recording = true;
-      this.recordedSteps = [];
-      this.recordApp = { bundle: target.bundle, platform: device.platform };
-      this.post({ type: "recording", active: true });
-    } finally {
-      this.startingRecord = false;
-      this.post({ type: "busyOverlay", message: null });
-    }
-  }
-
-  private stopRecord(): void {
-    this.recording = false;
-    if (this.recordedSteps.length === 0) {
-      this.post({ type: "recording", active: false });
-      this.post({ type: "recordStatus", message: t("live.recordNoSteps"), file: null });
-      return;
-    }
-    // 生成が終わるまでは「レコーディング終了」を非活性で見せる(active:false のまま generating:true)。
-    // active:false→開始ボタンへの切り替えは generateScenario の完了時(generating:false)に行う。
-    this.post({ type: "recording", active: false, generating: true });
-    void this.generateScenario();
-  }
-
-  /** 記録済みステップを一時JSONに書き出し `fleetest api gen-scenario` を(cli.ts の直列キュー経由で)
-   * 実行する。成功時は生成ファイルを開いてテストツリーを更新する。一時ファイルはベストエフォートで削除する。 */
-  private async generateScenario(): Promise<void> {
-    // stopRecord が generating:true を post 済み。成否・経路によらずここを抜けるときに
-    // 「レコーディング終了(非活性)」→「レコーディング開始」へ戻す(外側 finally で一元化)。
-    try {
-      const app = this.recordApp;
-      const config = this.deps.getConfig();
-      const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-      if (!app || resolution.kind !== "resolved") {
-        this.post({ type: "recordStatus", message: t("live.projectUnresolvedShort"), file: null });
-        return;
-      }
-
-      const payload = { app: app.bundle, platform: app.platform, steps: this.recordedSteps };
-      const tmpPath = path.join(os.tmpdir(), `fleetest-record-${Date.now()}-${process.pid}.json`);
-      try {
-        fs.writeFileSync(tmpPath, JSON.stringify(payload), "utf8");
-      } catch (error) {
-        this.post({
-          type: "recordStatus",
-          message: t("live.tempFileWriteFailed", { error: errorMessage(error) }),
-          file: null,
-        });
-        return;
-      }
-      this.post({ type: "recordStatus", message: t("live.generatingCode"), file: null });
-
-      let generatedFile: string | undefined;
-      let errorMsg: string | undefined;
-      this.generating = true;
-      try {
-        await this.cli.invoke(config.binaryPath, this.deps.workspaceRoot, {
-          args: ["api", "gen-scenario", "--project", resolution.project, "--steps", tmpPath],
-          onNdjsonValue: (value) => {
-            const event = parseGenScenarioEvent(value);
-            if (!event) {
-              return;
-            }
-            if (event.event === "scenarioGenerated") {
-              generatedFile = event.file;
-            } else {
-              errorMsg = event.message;
-            }
-          },
-          onLog: (line, stream) => this.deps.outputChannel.appendLine(`[gen-scenario ${stream}] ${line}`),
-        });
-      } catch (error) {
-        errorMsg = errorMessage(error);
-      } finally {
-        this.generating = false;
-        try {
-          fs.unlinkSync(tmpPath);
-        } catch {
-          // 生成完了後の一時ファイルなので削除失敗は無視してよい(ベストエフォート)。
-        }
-      }
-
-      if (generatedFile) {
-        // 生成成功は自動で開くファイルが示すので「生成しました」の文言は出さず、生成中表示だけ消す。
-        this.post({ type: "recordStatus", message: "", file: generatedFile });
-        this.deps.openGeneratedDocument(generatedFile);
-        this.refreshTestTree();
-      } else {
-        this.post({ type: "recordStatus", message: errorMsg ?? t("live.codeGenFailed"), file: null });
-      }
-    } finally {
-      this.post({ type: "recording", active: false, generating: false });
-    }
-  }
-
   // ---- webview からのメッセージ -----------------------------------------------------
   // isLiveFromWebviewMessage による型ガードは呼び出し元(monitorPanel.ts の
   // isMonitorFromWebviewMessage の "live" ケース)側で済んでいるためここでは行わない。
@@ -1846,7 +1610,7 @@ export class MonitorLiveController implements vscode.Disposable {
           this.preferredPlatform = undefined; // 手動選択は platform 優先より強い(明示選択を尊重)
           this.selectedDeviceId = message.id;
           this.ensureServeProcessForSelection();
-          this.postAppProfileDetail();
+          this.appActions.postAppProfileDetail();
         }
         break;
       case "openDevice":
@@ -1854,7 +1618,7 @@ export class MonitorLiveController implements vscode.Disposable {
         void this.openDevice(message.id);
         // デバイスタイル右クリック起動(liveTab.js の openLiveDevice)は refreshAppProfiles を
         // 送らない(初回自動 refresh を抑止する経路)ため、ここでアプリプロファイル一覧を補充する。
-        this.refreshAppProfiles();
+        this.appActions.refreshAppProfiles();
         break;
       case "refreshSnapshot":
         void this.refreshSnapshot();
@@ -2038,23 +1802,22 @@ export class MonitorLiveController implements vscode.Disposable {
         this.updateLiveFrameSource();
         break;
       case "refreshAppProfiles":
-        this.refreshAppProfiles();
+        this.appActions.refreshAppProfiles();
         break;
       case "selectAppProfile":
-        this.selectedAppProfileId = message.appProfile;
-        this.postAppProfileDetail();
+        this.appActions.selectAppProfile(message.appProfile);
         break;
       case "installApp":
-        void this.installApp(message.appProfile);
+        void this.appActions.installApp(message.appProfile);
         break;
       case "launchApp":
-        void this.launchApp(message.appProfile);
+        void this.appActions.launchApp(message.appProfile);
         break;
       case "startRecord":
-        void this.startRecord(message.appProfile, message.autoInstall);
+        void this.appActions.startRecord(message.appProfile, message.autoInstall);
         break;
       case "stopRecord":
-        this.stopRecord();
+        this.appActions.stopRecord();
         break;
     }
   }

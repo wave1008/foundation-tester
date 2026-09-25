@@ -16,15 +16,15 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { MonitorDeviceOps } from "../src/monitorDeviceOps";
 import {
-  MonitorDeviceOps,
   firstLine,
   installSystemImageBatchConfirmMessage,
   installSystemImageConfirmMessage,
   occupancyDetailLine,
   signingGuidance,
   stderrDetailLine,
-} from "../src/monitorDeviceOps";
+} from "../src/monitorDeviceOpsText";
 
 // resolveProjectName は TestProjects/ に実在しない名前を採用しない(missing)ので、
 // workspaceRoot は候補ディレクトリを持つ専用の一時ディレクトリにする(共有の /tmp 直下には作らない)。
@@ -1067,8 +1067,11 @@ test("occupancyDetailLine: 占有が不明・空きなら何も足さない", ()
 
 // 呼び出し側の配線(型では守れない)。remote だけで絞っていた頃は手元で1行も出なかった
 test("削除の modal は手元でも occupancyDetail を通す(remote で絞らない)", () => {
-  const source = fs.readFileSync(
-    path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "monitorDeviceOps.ts"), "utf8");
+  // runDeleteDevice/occupancyDetail は MonitorDeviceCreateOps(monitorDeviceCreateOps.ts)に居るため、
+  // 元ファイルと移動先を連結して走査する(否定の検査が移動で空のまま通らないようにする)。
+  const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
+  const source = fs.readFileSync(path.join(srcDir, "monitorDeviceOps.ts"), "utf8")
+    + "\n" + fs.readFileSync(path.join(srcDir, "monitorDeviceCreateOps.ts"), "utf8");
   assert.doesNotMatch(source, /"remote"\s*\?\s*this\.occupancyDetail/,
     "occupancyDetail をリモート限定の三項で囲わない(手元の占有が出なくなる)");
   assert.match(

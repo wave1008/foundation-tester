@@ -2,17 +2,19 @@
 // デバイスモニターパネル(monitorPanel.ts)のデバイスライフサイクル操作(起動/終了/新規作成)部分。
 // pause/resume・プロジェクトのデバイスカタログ最新化の通知は monitorProcessManager.ts/monitorProfilesController.ts
 // を直接参照せず、MonitorPanelDeps 経由のコールバックで依頼する(サブコントローラ間の直接参照禁止)。
+// デバイスの新規作成/削除(create-device・delete-device・install-system-image)は
+// monitorDeviceCreateOps.ts の MonitorDeviceCreateOps へ委譲する。文言組み立ての純粋関数は
+// monitorDeviceOpsText.ts。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
-import { t, type MessageKey } from "./i18n";
+import { t } from "./i18n";
 import {
   bulkLifecycleOp,
   createDeviceLifecycleQueueState,
-  deleteDeviceApiArgs,
   finishDeviceLifecycleJob,
   type DeviceLifecycleJob,
   type DeviceLifecycleQueueState,
@@ -21,15 +23,11 @@ import {
   deviceLifecycleStatusFor,
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
-  installSystemImageApiArgs,
-  isCreateDeviceEvent,
-  isDeleteDeviceEvent,
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
   isDevicesRestartEvent,
   isDevicesUpEvent,
-  isInstallSystemImageEvent,
   removeQueuedBulkUpJob,
   removeQueuedDeviceUpJob,
   isInstalledDevicesJson,
@@ -37,31 +35,21 @@ import {
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
-import { type MachineLock, isConfirmedHeld, sweepRefusalDetail } from "./machineLockModel";
-import { LOCAL_MACHINE_KEY } from "./runBoardModel";
+import { sweepRefusalDetail } from "./machineLockModel";
 import { NdjsonParser } from "./ndjson";
 import { DeviceActionNotices } from "./monitorDeviceActionNotice";
 import type { MonitorPanelDeps } from "./monitorPanel";
-import { formatBytesAuto } from "./retentionModel";
 import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
+import { firstLine, signingGuidance, stderrDetailLine, withSourceContext } from "./monitorDeviceOpsText";
+import {
+  MonitorDeviceCreateOps,
+  type BatchCreateDevicesMessage,
+  type CreateDeviceMessage,
+  type DevicePickDeviceDeleteMessage,
+} from "./monitorDeviceCreateOps";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts の FleetestProcess と同じ形)。 */
 type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
-
-/** webview からの "createDevice" メッセージの形(runCreateDevice で使う)。 */
-export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "createDevice" }>;
-
-/** webview からの "batchCreateDevices" メッセージの形(runBatchCreateDevices で使う)。 */
-export type BatchCreateDevicesMessage = Extract<MonitorFromWebviewMessage, { type: "batchCreateDevices" }>;
-
-/** spawnCreateDevice の1台ぶんの結果。バッチが1台ずつ受け取るために使う
- *  (単発は従来どおり createDeviceResult を post するので渡さない)。 */
-type CreateDeviceOutcome = {
-  readonly ok: boolean;
-  readonly error: string | null;
-  readonly device: { readonly avd: string | null; readonly udid: string | null } | null;
-};
-type CreateDeviceOutcomeHandler = (outcome: CreateDeviceOutcome) => void;
 
 /** プロファイルタブの「Wipe Data」1台分(runProfileDeviceWipe メッセージの要素と同じ形)。
  * **identifier が主**(iOS = UDID / Android = AVD id)で、name は確認・ログ・タイル表示用。 */
@@ -70,218 +58,6 @@ type WipeTargetDevice = Extract<MonitorFromWebviewMessage, { type: "runProfileDe
 /** 「GPU で再起動」の1台ぶん(deviceRestartGpu / devicesRestartGpu の要素と同じ形)。
  * machine 省略 = 手元。 */
 type GpuRestartTarget = Extract<MonitorFromWebviewMessage, { type: "devicesRestartGpu" }>["devices"][number];
-
-/** webview からの "devicePickDeviceDelete" メッセージの形(runDeleteDevice で使う)。 */
-export type DevicePickDeviceDeleteMessage = Extract<MonitorFromWebviewMessage, { type: "devicePickDeviceDelete" }>;
-
-/** monitorProfilesController.ts の handleMachineDeviceRemove(複数選択一括除去の確認文言)で使う。 */
-export function summarizeDeviceNames(names: readonly string[]): string {
-  const shown = names.slice(0, 3).join(t("deviceOps.nameSeparator"));
-  return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
-}
-
-/** エラーメッセージへマシン名を付記する(§13 段2「失敗時はマシン名込みのメッセージにする」)。
- * ローカルは素通し(既存の文言を変えない)。 */
-function withSourceContext(message: string, source: DeviceCommandSource): string {
-  return source.kind === "remote" ? t("deviceOps.remoteMachineSuffix", { machine: source.machine, message }) : message;
-}
-
-/**
- * 失敗メッセージへ添える stderr の1行。**exit code だけでは受け手が何もできない** ——
- * とくにリモート転送(`remote exec <host>`)は原因と対処を stderr の最終行に出す
- * (例: exit 91 = "this issuer has no runner workspace on … — run `fleetest remote setup …`")。
- * 進捗見出し("==> …")は落として最後の実質行を採り、webview の1行表示に収まる長さで切る。
- * 実質行が無ければ null(呼び出し側は exit code だけの従来文言に落ちる)。
- */
-export function stderrDetailLine(stderr: string, limit = 200): string | null {
-  const lines = stderr
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0 && !line.startsWith("==>"));
-  const last = lines[lines.length - 1];
-  if (last === undefined) {
-    return null;
-  }
-  return last.length > limit ? `${last.slice(0, limit)}…` : last;
-}
-
-/** 種別 → 事実の i18n キー(FTBridgeClient の XcodeSigningProblem の raw 値と対。
- * 片方だけ変えない: Swift 側は testRawValuesAreTheWireContractWithTheExtension が固定)。
- * ここに無い種別は事実行を出さないだけ(見出しは出る)= CLI が判定を増やしても壊れない。 */
-const SIGNING_FACT_KEYS: Record<string, MessageKey> = {
-  noAccount: "deviceOps.signing.fact.noAccount",
-  noAccountForTeam: "deviceOps.signing.fact.noAccountForTeam",
-  invalidCertificate: "deviceOps.signing.fact.invalidCertificate",
-  deviceNotRegistered: "deviceOps.signing.fact.deviceNotRegistered",
-  certificateNotInProfile: "deviceOps.signing.fact.certificateNotInProfile",
-  deviceNotInProfile: "deviceOps.signing.fact.deviceNotInProfile",
-  keychainLocked: "deviceOps.signing.fact.keychainLocked",
-};
-
-/** ポータル通信(端末登録・プロファイルの取り直し)が要る種別(Swift 側 needsProvisioningUpdate
- * と対)。ssh 越し(= 別の機械へ `remote exec` した)なら「GUI セッションで一度」、手元なら
- * 「登録直後の1回目は落ちる。もう一度」だけを添える(GUI に居る人へ「GUI で」は行き止まり)。 */
-const SIGNING_NEEDS_PORTAL = new Set([
-  "deviceNotRegistered", "certificateNotInProfile", "deviceNotInProfile",
-]);
-
-/** CLI が「署名で止まった」と判定したときの案内を、**この拡張の言語で**組み立てる。
- * 判定は CLI(FTBridgeClient の XcodeSigningDiagnosis)、文言はここ
- * (CLAUDE.md「共有するのは判定であって文言ではない」)。
- *
- * **事実(どれが欠けているか)は言い、手順は書かない**(Xcode も macOS も版ごとに手順が
- * 変わり、書いた手順は必ず古くなる)。**1つも種別を知らなければ null** —— 見出しだけの案内で
- * CLI の error(全種別の事実を含む)を上書きすると、版ズレのとき情報を捨てることになる。 */
-export function signingGuidance(
-  problems: readonly string[], logPath: string | undefined, overSSH: boolean,
-): string | null {
-  if (problems.length === 0) {
-    return null;
-  }
-  const facts = problems
-    .map((kind) => SIGNING_FACT_KEYS[kind])
-    .filter((key): key is MessageKey => key !== undefined)
-    .map((key) => t(key));
-  if (facts.length === 0) {
-    return null;
-  }
-  // キーチェーンのロックだけなら Xcode の署名設定は無関係(CLI 側の guidance と同じ出し分け)
-  const onlyKeychain = problems.every((kind) => kind === "keychainLocked");
-  const lines = [t(onlyKeychain
-    ? "deviceOps.signing.headlineNotXcodeSetup"
-    : "deviceOps.signing.headline")];
-  lines.push(t("deviceOps.signing.detected", { facts: facts.join(" / ") }));
-  if (problems.some((kind) => SIGNING_NEEDS_PORTAL.has(kind))) {
-    lines.push(t(overSSH ? "deviceOps.signing.portalNeedsGui" : "deviceOps.signing.portalRetryOnce"));
-  }
-  // CLI 側の guidance と同じ出し分け(判定は同じ、文言はそれぞれが持つ)
-  if (overSSH && problems.includes("keychainLocked")) {
-    lines.push(t("deviceOps.signing.keychainUnlockScope"));
-  }
-  if (logPath !== undefined) {
-    lines.push(t("deviceOps.signing.fullLog", { path: logPath }));
-  }
-  return lines.join("\n");
-}
-
-/** xcodebuild 自身が出す素の verdict バナー(例: "** TEST BUILD FAILED **")。見出しと同じ
- * 「失敗した」を繰り返すだけで原因を持たないので、原因行を探すときは候補から外す
- * (外さないと常に最終行のこれを拾って見出しの言い直しにしかならない)。 */
-const XCODEBUILD_VERDICT_BANNER = /^\*\*.*\*\*$/;
-
-/** 失敗の印(error: / errSec* / failed)を含む行を**後ろから**探す。xcodebuild は原因の行を
- * 先に出し、末尾に verdict バナーを置く構成なので、後ろから探すほうが「直前の具体行」に
- * 素早く当たる(前から探すと無関係な note/序盤の行に当たる)。 */
-function reasonLine(lines: readonly string[]): string | undefined {
-  for (let i = lines.length - 1; i >= 0; i -= 1) {
-    const line = lines[i];
-    if (line === undefined || XCODEBUILD_VERDICT_BANNER.test(line)) {
-      continue;
-    }
-    if (/error|errsec|fail/i.test(line)) {
-      return line;
-    }
-  }
-  return undefined;
-}
-
-/** 複数行のエラーの1行目(バナー用)。空行は飛ばし、長ければ切る
- * (stderrDetailLine と対 —— あちらは stderr の**最後**の実質行、こちらは NDJSON の
- * error の**先頭**行。CLI が先頭行に要点を置く契約なのでここは先頭を採る)。
- *
- * **先頭行が見出し(":" で終わる)なら単独では情報が無い**
- * (実例: "xcodebuild build-for-testing failed:\n<tail>" — 原因は次の行以降。見出しだけを
- * 返すと「失敗しました」しか言わないバナーになる)。このときは reasonLine で原因らしい行を
- * 後ろから探して添える。見つからなければ最後の非空行を使う。見出しで終わらない普通の
- * 1行エラーは従来どおり(ここを通らない)。 */
-export function firstLine(message: string, limit = 200): string {
-  const lines = message.split("\n").map((value) => value.trim()).filter((value) => value.length > 0);
-  const head = lines[0];
-  if (head === undefined) {
-    return message;
-  }
-  let text = head;
-  if (head.endsWith(":")) {
-    const tail = lines.slice(1);
-    const detail = reasonLine(tail) ?? tail[tail.length - 1];
-    if (detail !== undefined && detail !== head) {
-      text = `${head} ${detail}`;
-    }
-  }
-  return text.length > limit ? `${text.slice(0, limit)}…` : text;
-}
-
-/** ダウンロードが要る Android システムイメージの容量注記("(約 1.9 GB)")。sizeBytes が読めなければ
- * 空文字(「不明」を断定しない。テンプレート側は空文字を許容する形で書く)。 */
-function installSystemImageSizeNote(sizeBytes: number | null): string {
-  return sizeBytes === null ? "" : t("deviceOps.installSystemImageSizeNote", { size: formatBytesAuto(sizeBytes) });
-}
-
-/** 同上のライセンス識別子注記("(android-sdk-arm-dbt-license)")。license が読めなければ空文字。 */
-function installSystemImageLicenseNote(license: string | null): string {
-  return license === null ? "" : t("deviceOps.installSystemImageLicenseNote", { license });
-}
-
-/**
- * confirmAndInstallThenCreate(単発作成)の確認メッセージ。vscode 非依存の純粋関数として切り出し、
- * 組み立てをテストできるようにする(firstLine/signingGuidance と同じ方針)。
- */
-export function installSystemImageConfirmMessage(params: {
-  readonly machine: string;
-  readonly name: string;
-  readonly packageName: string;
-  readonly sizeBytes: number | null;
-  readonly license: string | null;
-}): string {
-  return t("deviceOps.installSystemImageConfirmMessage", {
-    machine: params.machine,
-    package: params.packageName,
-    sizeNote: installSystemImageSizeNote(params.sizeBytes),
-    name: params.name,
-    licenseNote: installSystemImageLicenseNote(params.license),
-  });
-}
-
-/** runBatchCreateDevices の同名確認メッセージ(バッチ版。count/first/last は既存の
- * batchConfirmMessage と同じ組み立て方)。 */
-export function installSystemImageBatchConfirmMessage(params: {
-  readonly machine: string;
-  readonly count: number;
-  readonly first: string;
-  readonly last: string;
-  readonly packageName: string;
-  readonly sizeBytes: number | null;
-  readonly license: string | null;
-}): string {
-  return t("deviceOps.installSystemImageBatchConfirmMessage", {
-    machine: params.machine,
-    package: params.packageName,
-    sizeNote: installSystemImageSizeNote(params.sizeBytes),
-    count: String(params.count),
-    first: params.first,
-    last: params.last,
-    licenseNote: installSystemImageLicenseNote(params.license),
-  });
-}
-
-/**
- * 破壊的操作の確認に添える占有の1行(その機械で run が走っているときだけ)。
- * **`machine === null` は手元**で、呼び名は既存の1つ(`deviceOps.machineLocalLabel`)。
- * **占有が不明(観測できていない)なら何も足さない** —— 「走っていない」と請け合わないための沈黙
- * (docs/remote-runner.md §18.1 #6)。控えは呼び手が引いて渡す(純粋関数)。
- */
-export function occupancyDetailLine(
-  machine: string | null,
-  lock: MachineLock | undefined,
-): string | undefined {
-  if (!isConfirmedHeld(lock)) {
-    return undefined;
-  }
-  return t("deviceOps.occupiedDetail", {
-    machine: machine ?? t("deviceOps.machineLocalLabel"),
-    issuer: lock?.issuer ?? t("deviceOps.occupiedIssuerUnknown"),
-  });
-}
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
  * 短命プロセス実行を担う。MonitorPanelController が1つ保持する。 */
@@ -298,12 +74,9 @@ export class MonitorDeviceOps {
   /** 実機の起動で人の操作(ロック解除・UI 自動化の承認)を促す通知。タイルの文言だけでは気付かれない */
   private readonly deviceActionNotices = new DeviceActionNotices(
     (line) => this.deps.outputChannel.appendLine(line));
-  /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
-  private creatingDevice = false;
-  /** delete-device の多重実行ガード(identifier 単位)。行ごとに独立して走らせるため creatingDevice と
-   * 違い Set にする(他の行の削除は妨げない。webview 側もその行の checkbox を disabled にして
-   * 連打を防ぐが、直後の再送・別経路からの二重送信に対する保険として持つ)。 */
-  private readonly deletingIdentifiers = new Set<string>();
+  /** デバイスの新規作成/削除(create-device・delete-device・install-system-image)の実処理。
+   * 状態(多重実行ガード)は書き込み箇所と同じこのサブコントローラの中に閉じる。 */
+  private readonly createOps: MonitorDeviceCreateOps;
   /** 実行中の bulk up(start-all-devices)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
   private bulkUpProc: PipeProcess | undefined;
   /** 実行中の device up ジョブのプロセスと取り消しの印(cancelDeviceUp)。**鍵はジョブ**(再試行を跨いで同一) */
@@ -314,7 +87,9 @@ export class MonitorDeviceOps {
    * Sources/fleetest/ApiDeviceCommands.swift の cpuRender → DeviceBooter.bootAll)。 */
   private readonly cpuRenderNames = new Set<string>();
 
-  constructor(private readonly deps: MonitorPanelDeps) {}
+  constructor(private readonly deps: MonitorPanelDeps) {
+    this.createOps = new MonitorDeviceCreateOps(this.deps);
+  }
 
   /** ライフサイクルキューに実行中/待機中のジョブがあるか。watchdog が「一括down 実行中に
    * 無応答と誤検知して停止デバイスを再起動する」競合を避けるため、修復 up の抑止判定に使う。 */
@@ -1330,10 +1105,10 @@ export class MonitorDeviceOps {
     });
   }
 
-  // ---- プロファイルタブ: デバイスカタログ取得・デバイス追加 -----------------
+  // ---- プロファイルタブ: デバイスカタログ取得 -----------------
   // いずれもデバイスライフサイクルの直列キュー(lifecycleQueue)には載せない —
-  // device-catalog は単なる参照系の単発コマンド、create-device もモーダル側の1件実行ガード
-  // (creatingDevice)で十分であり、simctl/adb 起動系のキューと競合する処理ではないため。
+  // 単なる参照系の単発コマンドで、simctl/adb 起動系のキューと競合する処理ではないため。
+  // デバイス追加(create-device)はモーダル側の1件実行ガードで足り、MonitorDeviceCreateOps に居る。
 
   /**
    * `fleetest api device-catalog` を短命プロセスとして実行し、結果を webview へ返す。
@@ -1612,698 +1387,18 @@ export class MonitorDeviceOps {
     });
   }
 
-  /**
-   * `fleetest api create-device` を短命プロセスとして実行する(デバイス追加モーダルの OK)。
-   * creatingDevice による多重実行防止(モーダル側のボタン無効化に加えた保険)。source が remote
-   * なら、実行環境を変え得る破壊的操作として先にホスト側 modal 確認を挟む(§13。照会系の
-   * device-catalog/installed-devices は確認不要)。確認を待つ間も多重実行防止は効かせる
-   * (creatingDevice を確認前に true にする)。
-   */
+  /** デバイス追加モーダルの OK。実処理は MonitorDeviceCreateOps(多重実行ガード込み)へ委譲する。 */
   runCreateDevice(msg: CreateDeviceMessage): void {
-    if (this.creatingDevice) {
-      this.deps.post({
-        type: "createDeviceResult",
-        ok: false,
-        name: msg.name,
-        error: t("deviceOps.createAlreadyRunning"),
-        device: null,
-      });
-      return;
-    }
-    this.creatingDevice = true;
-    // ダウンロードが要る OS バージョンを選んだ場合は、上書き/リモートの確認とは統合した
-    // 1枚のモーダル(ライセンス同意)だけを出す(2枚続けて出さない。§13/2026-08-25 の規律と同じ)。
-    if (msg.installSystemImage) {
-      void this.confirmAndInstallThenCreate(msg, msg.installSystemImage);
-      return;
-    }
-    // 上書き(既存の実体を消して作り直す)は破壊的なので、ローカル・リモートを問わず確認する。
-    // リモートの確認文はマシン名も出す(どの機械の実体を消すかが要点)
-    if (msg.overwrite) {
-      void this.confirmAndSpawnCreateDevice(msg, msg.source.kind === "remote" ? msg.source.machine : null);
-      return;
-    }
-    if (msg.source.kind === "remote") {
-      void this.confirmAndSpawnCreateDevice(msg, msg.source.machine);
-      return;
-    }
-    this.spawnCreateDevice(msg);
+    this.createOps.runCreateDevice(msg);
   }
 
-  /**
-   * 「デバイスを追加」左下の「バッチ作成」: 同じ設定で names を**1台ずつ順に**作る。
-   *
-   * **並列にしない** —— simctl/avdmanager は同時実行で相互に失敗し得るうえ、進行窓は
-   * 「いま何台目か」を示すのが役目なので、順に確定させたほうが読める。
-   *
-   * 確認は **1枚だけ**(webview では出せないのでホスト側 modal)。何台をどこへ作るかを聞き、
-   * 既存を消して作り直すぶんがあれば同じ文面に書き足してボタンの文言を変える。
-   * 断られたら **started を出さずに** finished(started:false)で戻す
-   * (webview は追加ダイアログを開いたまま元に戻す)。
-   *
-   * 1台でも失敗しても残りは続ける(N 台中1台の失敗を致命にしない)。結果は finished の
-   * created/failed に分けて返し、webview が一覧に出す。
-   */
+  /** 「デバイスを追加」左下の「バッチ作成」。実処理は MonitorDeviceCreateOps へ委譲する。 */
   async runBatchCreateDevices(msg: BatchCreateDevicesMessage): Promise<void> {
-    const abort = (error: string): void => {
-      this.deps.post({
-        type: "batchCreateFinished",
-        started: false,
-        created: [],
-        failed: [],
-        error,
-      });
-    };
-    if (this.creatingDevice) {
-      abort(t("deviceOps.batchAlreadyRunning"));
-      return;
-    }
-    this.creatingDevice = true;
-    try {
-      const machine = msg.source.kind === "remote" ? msg.source.machine : t("deviceOps.createOverwriteLocalMachine");
-      // 検証(isMonitorFromWebviewMessage)で names.length > 0 は保証済み。?? は型のためだけ
-      const first = msg.names[0] ?? "";
-      const last = msg.names[msg.names.length - 1] ?? "";
-      const install = msg.installSystemImage;
-      // **確認は1回だけ**(2026-08-25 指示)。上書き・ダウンロード導入が要るときは同じ文面(または
-      // installSystemImageBatchConfirmMessage)に書き足す —— 2枚に分けると、2枚目を断ったときに
-      // **衝突していないぶんまで巻き添えで中止**になり、「どこまで作られたのか」が押した人にも分からない
-      let message: string;
-      let confirmLabel: string;
-      let detail: string | undefined;
-      if (install) {
-        message = installSystemImageBatchConfirmMessage({
-          machine, count: msg.names.length, first, last,
-          packageName: install.package, sizeBytes: install.sizeBytes, license: install.license,
-        });
-        const detailLines = [
-          msg.overwriteNames.length > 0
-            ? t("deviceOps.installSystemImageBatchOverwriteNote", {
-                machine, count: String(msg.overwriteNames.length), names: msg.overwriteNames.join(", "),
-              })
-            : undefined,
-          this.occupancyDetail(msg.source.kind === "remote" ? msg.source.machine : null),
-          t("deviceOps.installSystemImageLicenseHint"),
-        ].filter((line): line is string => line !== undefined);
-        detail = detailLines.join("\n\n");
-        confirmLabel = t("deviceOps.installSystemImageConfirmButton");
-      } else {
-        const overwriteNote = msg.overwriteNames.length > 0
-          ? t("deviceOps.batchOverwriteNote", {
-              machine,
-              count: String(msg.overwriteNames.length),
-              names: msg.overwriteNames.join(", "),
-            })
-          : "";
-        message = t("deviceOps.batchConfirmMessage", { machine, count: String(msg.names.length), first, last })
-          + overwriteNote;
-        confirmLabel = msg.overwriteNames.length > 0
-          ? t("deviceOps.batchOverwriteConfirmButton")
-          : t("deviceOps.batchConfirmButton");
-      }
-      const choice = await vscode.window.showWarningMessage(message, { modal: true, detail }, confirmLabel);
-      if (choice !== confirmLabel) {
-        abort(t("deviceOps.createCancelled"));
-        return;
-      }
-      if (install) {
-        this.deps.post({ type: "deviceAddProgress", phase: "installing" });
-        const installOutcome = await new Promise<{ ok: boolean; error: string | null }>((resolve) => {
-          this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => resolve({ ok, error }));
-        });
-        if (!installOutcome.ok) {
-          abort(installOutcome.error ?? t("deviceOps.installSystemImageFailedGeneric"));
-          return;
-        }
-      }
-      this.deps.post({ type: "batchCreateStarted", names: msg.names });
-      const overwrite = new Set(msg.overwriteNames);
-      const created: { name: string; avd: string | null; udid: string | null }[] = [];
-      const failed: { name: string; error: string | null }[] = [];
-      for (const [index, name] of msg.names.entries()) {
-        this.deps.post({ type: "batchCreateProgress", index, name, state: "running", error: null });
-        const outcome = await new Promise<CreateDeviceOutcome>((resolve) => {
-          this.spawnCreateDevice(
-            {
-              type: "createDevice",
-              platform: msg.platform,
-              name,
-              model: msg.model,
-              os: msg.os,
-              // 登録はピッカーの OK(runProfileDevicesSync)が行う。ここは物理作成だけ
-              register: false,
-              overwrite: overwrite.has(name),
-              source: msg.source,
-            },
-            resolve,
-          );
-        });
-        if (outcome.ok) {
-          created.push({ name, avd: outcome.device?.avd ?? null, udid: outcome.device?.udid ?? null });
-        } else {
-          failed.push({ name, error: outcome.error });
-        }
-        this.deps.post({
-          type: "batchCreateProgress",
-          index,
-          name,
-          state: outcome.ok ? "ok" : "failed",
-          error: outcome.error,
-        });
-      }
-      this.deps.post({ type: "batchCreateFinished", started: true, created, failed, error: null });
-    } finally {
-      this.creatingDevice = false;
-    }
+    return this.createOps.runBatchCreateDevices(msg);
   }
 
-  /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
-   * webview の window.confirm は効かないため必ずホスト側で行う)。 */
-  private async confirmAndSpawnCreateDevice(msg: CreateDeviceMessage, machine: string | null): Promise<void> {
-    const overwrite = msg.overwrite === true;
-    const confirmLabel = overwrite
-      ? t("deviceOps.createOverwriteConfirmButton")
-      : t("deviceOps.createRemoteConfirmButton");
-    const where = machine ?? t("deviceOps.createOverwriteLocalMachine");
-    const message = overwrite
-      ? t("deviceOps.createOverwriteConfirmMessage", { machine: where, name: msg.name })
-      : t("deviceOps.createRemoteConfirmMessage", { machine: where, name: msg.name });
-    const choice = await vscode.window.showWarningMessage(
-      message,
-      { modal: true, detail: this.occupancyDetail(machine) },
-      confirmLabel,
-    );
-    if (choice !== confirmLabel) {
-      this.creatingDevice = false;
-      this.deps.post({
-        type: "createDeviceResult",
-        ok: false,
-        name: msg.name,
-        error: t("deviceOps.createCancelled"),
-        device: null,
-      });
-      return;
-    }
-    this.spawnCreateDevice(msg);
-  }
-
-  /**
-   * ダウンロードが要る Android OS バージョンを選んだときの「デバイスを追加」OK(runCreateDevice から)。
-   * **確認は1枚だけ**(上書き・リモートの確認とは統合する。confirmAndSpawnCreateDevice を分岐で
-   * 使い分けない — 2枚続けて聞かない §13/2026-08-25 の規律)。同意を得てから
-   * `install-system-image` を実行し、成功したときだけ通常の spawnCreateDevice へ進む。
-   */
-  private async confirmAndInstallThenCreate(
-    msg: CreateDeviceMessage,
-    install: NonNullable<CreateDeviceMessage["installSystemImage"]>,
-  ): Promise<void> {
-    const machine = msg.source.kind === "remote" ? msg.source.machine : null;
-    const where = machine ?? t("deviceOps.createOverwriteLocalMachine");
-    const message = installSystemImageConfirmMessage({
-      machine: where,
-      name: msg.name,
-      packageName: install.package,
-      sizeBytes: install.sizeBytes,
-      license: install.license,
-    });
-    const detailLines = [
-      msg.overwrite
-        ? t("deviceOps.installSystemImageOverwriteNote", { machine: where, name: msg.name })
-        : undefined,
-      this.occupancyDetail(machine),
-      t("deviceOps.installSystemImageLicenseHint"),
-    ].filter((line): line is string => line !== undefined);
-    const confirmLabel = t("deviceOps.installSystemImageConfirmButton");
-    const choice = await vscode.window.showWarningMessage(
-      message,
-      { modal: true, detail: detailLines.join("\n\n") },
-      confirmLabel,
-    );
-    if (choice !== confirmLabel) {
-      this.creatingDevice = false;
-      this.deps.post({
-        type: "createDeviceResult",
-        ok: false,
-        name: msg.name,
-        error: t("deviceOps.createCancelled"),
-        device: null,
-      });
-      return;
-    }
-    this.deps.post({ type: "deviceAddProgress", phase: "installing" });
-    this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => {
-      if (!ok) {
-        this.creatingDevice = false;
-        this.deps.post({
-          type: "createDeviceResult",
-          ok: false,
-          name: msg.name,
-          error: error ?? t("deviceOps.installSystemImageFailedGeneric"),
-          device: null,
-        });
-        return;
-      }
-      this.deps.post({ type: "deviceAddProgress", phase: "creating" });
-      // creatingDevice の解除は spawnCreateDevice 側の respond(onResult 省略時)に任せる
-      this.spawnCreateDevice(msg);
-    });
-  }
-
-  /**
-   * runCreateDevice/confirmAndSpawnCreateDevice からの実処理。finished が来る前にプロセスが
-   * 落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
-   * FileSystemWatcher 経由でも postProfileInfo() が呼ばれるが、反映を待たせないようここでも
-   * MonitorPanelDeps.notifyProjectDeviceCatalogChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
-   * msg.register が false、または source が remote のときは `--no-register` を付与し物理作成のみ
-   * 行う(実行プロファイルには追記しない)。remote は register の値によらず強制する ——
-   * リモート側に登録してもプロファイルの正はローカルで、次回ディスパッチの rsync --delete で
-   * 消えるため(§13)。作成した1台は #device-pick-overlay の再取得→チェック→OK
-   * (runProfileDevicesSync。常にローカルへ書く既存経路)にそのまま乗せてローカル登録する。
-   */
-  private spawnCreateDevice(msg: CreateDeviceMessage, onResult?: CreateDeviceOutcomeHandler): void {
-    const config = this.deps.getConfig();
-    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    if (resolution.kind !== "resolved") {
-      if (onResult) {
-        onResult({ ok: false, error: t("deviceOps.projectUnresolved"), device: null });
-        return;
-      }
-      this.creatingDevice = false;
-      this.deps.post({
-        type: "createDeviceResult",
-        ok: false,
-        name: msg.name,
-        error: t("deviceOps.projectUnresolved"),
-        device: null,
-      });
-      return;
-    }
-    const apiArgs = [
-      "api",
-      "create-device",
-      "--project",
-      resolution.project,
-      "--platform",
-      msg.platform,
-      "--name",
-      msg.name,
-      "--model",
-      msg.model,
-      "--os",
-      msg.os,
-    ];
-    // このダイアログは常に #device-pick-overlay の「+」からしか開かず、常に register:false
-    // (物理作成のみ。登録は #device-pick-overlay の OK[runProfileDevicesSync]が別途行う)。
-    // `--profile` は登録するときだけ必要(CLI 契約)なので、常に --no-register のこの経路では渡さない。
-    if (!msg.register || msg.source.kind === "remote") {
-      apiArgs.push("--no-register");
-    }
-    // 上書き(既存の実体を消してから作る)。判定と確認は呼び出し側で済んでいる
-    if (msg.overwrite) {
-      apiArgs.push("--overwrite");
-    }
-    const args = deviceCommandArgs(msg.source, apiArgs);
-    const source = msg.source;
-
-    let responded = false;
-    const respond = (
-      ok: boolean,
-      error: string | null,
-      device: { avd: string | null; udid: string | null } | null,
-    ): void => {
-      if (responded) {
-        return;
-      }
-      responded = true;
-      const detail = error ? withSourceContext(error, source) : error;
-      // **バッチのときは creatingDevice を落とさない**(1台ごとに落とすと、次の1台の
-      // 多重実行ガードが素通りする)。解除はループを回している runBatchCreateDevices の責任
-      if (onResult) {
-        if (ok) {
-          this.deps.notifyProjectDeviceCatalogChanged();
-        }
-        onResult({ ok, error: detail, device });
-        return;
-      }
-      this.creatingDevice = false;
-      this.deps.post({ type: "createDeviceResult", ok, name: msg.name, error: detail, device });
-      if (ok) {
-        this.deps.notifyProjectDeviceCatalogChanged();
-      }
-    };
-
-    let proc: PipeProcess;
-    try {
-      proc = spawn(config.binaryPath, args, {
-        cwd: this.deps.workspaceRoot,
-        shell: false,
-        env: childEnv(),
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.createDeviceStartFailed", { name: msg.name, error: String(error) }),
-      );
-      respond(false, String(error), null);
-      return;
-    }
-
-    const stdoutParser = new NdjsonParser(
-      (value) => {
-        if (!isCreateDeviceEvent(value)) {
-          this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: `create-device ${msg.name}`, value: JSON.stringify(value) }),
-          );
-          return;
-        }
-        if (value.kind === "log") {
-          this.deps.outputChannel.appendLine(`[create-device ${msg.name}] ${value.message}`);
-        } else {
-          if (!value.ok) {
-            this.deps.outputChannel.appendLine(
-              t("deviceOps.log.createDeviceFailed", {
-                name: msg.name,
-                error: value.error ?? t("deviceOps.detailUnknown"),
-              }),
-            );
-          }
-          respond(value.ok, value.error, value.device ? { avd: value.device.avd, udid: value.device.udid } : null);
-        }
-      },
-      (line) => this.deps.outputChannel.appendLine(`[create-device ${msg.name} stdout] ${line}`),
-    );
-    // stderr の末尾を保持する。**finished を経由せず落ちたときはこれが唯一の手掛かり** ——
-    // exit code だけ出しても「何が起きたか」は OUTPUT を開くまで分からない
-    // (実害: リモートの fleetest が古く --overwrite を知らず exit 64。画面には数字しか出なかった)
-    let lastStderr = "";
-    const rememberStderr = (line: string): void => {
-      const trimmed = line.trim();
-      if (trimmed.length > 0) {
-        lastStderr = trimmed;
-      }
-    };
-    const stderrParser = new NdjsonParser(
-      (value) => {
-        this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${JSON.stringify(value)}`);
-      },
-      (line) => {
-        rememberStderr(line);
-        this.deps.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${line}`);
-      },
-    );
-
-    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
-
-    proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.createDeviceRuntimeError", { name: msg.name, error: error.message }),
-      );
-      respond(false, error.message, null);
-    });
-    proc.on("close", (exitCode) => {
-      stdoutParser.end();
-      stderrParser.end();
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.createDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
-      );
-      // finished を経由せず落ちた場合の合成失敗(executeDeviceOpJob と同じパターン。responded ガードで二重防止)。
-      // **exit 64 = 引数エラー**(ArgumentParser)。リモートで出たなら、ほぼ「向こうの fleetest が
-      // 古くてこのオプションを知らない」なので、版合わせの案内に変える(数字だけでは辿れない)
-      const detail = lastStderr.length > 0 ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}` : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
-      const staleRemote = exitCode === 64 && source.kind === "remote";
-      respond(false, staleRemote ? t("deviceOps.remoteCliTooOld", { machine: source.machine, detail: lastStderr }) : detail, null);
-    });
-  }
-
-  /**
-   * `fleetest api install-system-image --package <pkg> --accept-licenses` を実行する
-   * (confirmAndInstallThenCreate/runBatchCreateDevices からの実処理)。ダウンロードは数分かかりうる
-   * ため timeout は設けない(runInstallCmdlineTools と同じ方針)。作成物を持たないコマンドなので
-   * spawnCreateDevice と違い device は返さない —— 結果は (ok, error) だけの callback で渡す。
-   */
-  private spawnInstallSystemImage(
-    pkg: string,
-    source: DeviceCommandSource,
-    onResult: (ok: boolean, error: string | null) => void,
-  ): void {
-    const config = this.deps.getConfig();
-    const args = deviceCommandArgs(source, installSystemImageApiArgs(pkg));
-
-    let responded = false;
-    const respond = (ok: boolean, error: string | null): void => {
-      if (responded) {
-        return;
-      }
-      responded = true;
-      onResult(ok, error ? withSourceContext(error, source) : error);
-    };
-
-    let proc: PipeProcess;
-    try {
-      proc = spawn(config.binaryPath, args, {
-        cwd: this.deps.workspaceRoot,
-        shell: false,
-        env: childEnv(),
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.installSystemImageStartFailed", { package: pkg, error: String(error) }),
-      );
-      respond(false, String(error));
-      return;
-    }
-
-    const stdoutParser = new NdjsonParser(
-      (value) => {
-        if (!isInstallSystemImageEvent(value)) {
-          this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: `install-system-image ${pkg}`, value: JSON.stringify(value) }),
-          );
-          return;
-        }
-        if (value.kind === "log") {
-          this.deps.outputChannel.appendLine(`[install-system-image ${pkg}] ${value.message}`);
-        } else {
-          if (!value.ok) {
-            this.deps.outputChannel.appendLine(
-              t("deviceOps.log.installSystemImageFailed", {
-                package: pkg,
-                error: value.error ?? t("deviceOps.detailUnknown"),
-              }),
-            );
-          }
-          respond(value.ok, value.error);
-        }
-      },
-      (line) => this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stdout] ${line}`),
-    );
-    // finished を経由せず落ちた場合の唯一の手掛かり(spawnCreateDevice の lastStderr と同じ理由)。
-    let lastStderr = "";
-    const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stderr] ${JSON.stringify(value)}`),
-      (line) => {
-        const trimmed = line.trim();
-        if (trimmed.length > 0) {
-          lastStderr = trimmed;
-        }
-        this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stderr] ${line}`);
-      },
-    );
-
-    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
-
-    proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.installSystemImageRuntimeError", { package: pkg, error: error.message }),
-      );
-      respond(false, error.message);
-    });
-    proc.on("close", (exitCode) => {
-      stdoutParser.end();
-      stderrParser.end();
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.installSystemImageClosed", { package: pkg, exitCode: String(exitCode) }),
-      );
-      const detail = lastStderr.length > 0
-        ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}`
-        : t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) });
-      respond(false, detail);
-    });
-  }
-
-  /** 破壊的操作の modal に添える1行。**machine の null は手元**(控えの鍵は `LOCAL_MACHINE_KEY`)——
-   * 手元の run も dispatch.lock を取るので、リモートと同じ規則で添える。 */
-  private occupancyDetail(machine: string | null): string | undefined {
-    return occupancyDetailLine(machine, this.deps.machineLock(machine ?? LOCAL_MACHINE_KEY));
-  }
-
-  /**
-   * #device-pick-overlay の行右クリック「削除」: `fleetest api delete-device` を実行し、ホスト上の
-   * 実体(シミュレータ/AVD)を消す(runProfileDeviceRemove のプロファイル除去とは別物。本体は残さない)。
-   * 破壊的・不可逆な操作なので、ローカル/リモートどちらでも必ずホスト側 modal 確認を挟む
-   * (§13・runCreateDevice のリモート確認と同じ showWarningMessage({modal:true}) 方式だが、
-   * こちらは常に確認する — create と違い「作るだけ」ではなく実体を消すため)。
-   */
+  /** #device-pick-overlay の行右クリック「削除」。実処理は MonitorDeviceCreateOps へ委譲する。 */
   async runDeleteDevice(msg: DevicePickDeviceDeleteMessage): Promise<void> {
-    if (this.deletingIdentifiers.has(msg.identifier)) {
-      this.deps.post({
-        type: "devicePickDeviceDeleteResult",
-        ok: false,
-        identifier: msg.identifier,
-        name: msg.name,
-        error: t("deviceOps.deleteAlreadyRunning"),
-        referencedBy: [],
-      });
-      return;
-    }
-    this.deletingIdentifiers.add(msg.identifier);
-    const machineLabel = msg.source.kind === "remote" ? msg.source.machine : t("deviceOps.machineLocalLabel");
-    const deleteLabel = t("deviceOps.deleteConfirmButton");
-    const choice = await vscode.window.showWarningMessage(
-      t("deviceOps.deleteConfirmMessage", { name: msg.name, machine: machineLabel }),
-      // **手元も添える** —— 手元の run も dispatch.lock を取るので、占有は機械を問わず同じ規則
-      { modal: true, detail: this.occupancyDetail(msg.source.kind === "remote" ? msg.source.machine : null) },
-      deleteLabel,
-    );
-    if (choice !== deleteLabel) {
-      this.deletingIdentifiers.delete(msg.identifier);
-      this.deps.post({
-        type: "devicePickDeviceDeleteResult",
-        ok: false,
-        identifier: msg.identifier,
-        name: msg.name,
-        error: t("deviceOps.deleteCancelled"),
-        referencedBy: [],
-      });
-      return;
-    }
-    this.spawnDeleteDevice(msg);
-  }
-
-  /**
-   * runDeleteDevice からの実処理(confirm 済み)。finished が来る前にプロセスが落ちた場合は合成の
-   * 失敗結果を送る(spawnCreateDevice と同じパターン)。成功時、referencedBy が非空なら
-   * (削除した実体をまだ参照している実行プロファイルが残る)webview のダイアログが閉じていても
-   * 気付けるよう、別途 warning 通知も出す(devicePickDeviceDeleteResult はダイアログが開いている
-   * 間しか見えないため)。
-   */
-  private spawnDeleteDevice(msg: DevicePickDeviceDeleteMessage): void {
-    const config = this.deps.getConfig();
-    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    const project = resolution.kind === "resolved" ? resolution.project : undefined;
-    const args = deviceCommandArgs(msg.source, deleteDeviceApiArgs(msg.platform, msg.identifier, project));
-    const source = msg.source;
-
-    let responded = false;
-    const respond = (ok: boolean, error: string | null, referencedBy: readonly string[]): void => {
-      if (responded) {
-        return;
-      }
-      responded = true;
-      this.deletingIdentifiers.delete(msg.identifier);
-      const finalError = error ? withSourceContext(error, source) : error;
-      this.deps.post({
-        type: "devicePickDeviceDeleteResult",
-        ok,
-        identifier: msg.identifier,
-        name: msg.name,
-        error: finalError,
-        referencedBy,
-      });
-      if (ok) {
-        this.deps.outputChannel.appendLine(t("deviceOps.log.deleteDeviceSucceeded", { name: msg.name }));
-        // **実体が消えたら登録も外す**(2026-08-25 の報告)。「デバイスを選択」の OK 側の同期
-        // (runProfileDevicesSync)に任せると、**キャンセルしたときに実体の無い登録が残る**。
-        // 消えた事実にプロファイルを合わせるだけなので確認は聞かない(削除自体は確認済み)。
-        // 引き当ては (platform, machine, name) —— 別の機械の同名を巻き添えにしない。
-        // **referencedBy が空でも呼ぶ** —— こちらは全実行プロファイルを自分で全件走査する
-        {
-          const machine = source.kind === "remote" ? source.machine : undefined;
-          const updated = this.deps.unregisterDeletedDevice(msg.platform, msg.name, machine);
-          if (updated.runs.length > 0) {
-            this.deps.outputChannel.appendLine(
-              t("deviceOps.log.deleteDeviceUnregistered", {
-                name: msg.name,
-                profiles: updated.runs.join(t("deviceOps.nameSeparator")),
-              }),
-            );
-          }
-          // 外せなかったぶんだけ従来どおり警告する(形式不正・読めない等)
-          const remaining = referencedBy.filter((run) => !updated.runs.includes(run));
-          if (remaining.length > 0) {
-            void vscode.window.showWarningMessage(
-              t("deviceOps.deleteReferencedByWarning", {
-                name: msg.name,
-                profiles: remaining.join(t("deviceOps.nameSeparator")),
-              }),
-            );
-          }
-        }
-      } else {
-        this.deps.outputChannel.appendLine(
-          t("deviceOps.log.deleteDeviceFailed", { name: msg.name, error: finalError ?? "" }),
-        );
-        void vscode.window.showErrorMessage(`fleetest: ${finalError ?? t("deviceOps.deleteFailedGeneric")}`);
-      }
-    };
-
-    let proc: PipeProcess;
-    try {
-      proc = spawn(config.binaryPath, args, {
-        cwd: this.deps.workspaceRoot,
-        shell: false,
-        env: childEnv(),
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-    } catch (error) {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.deleteDeviceStartFailed", { name: msg.name, error: String(error) }),
-      );
-      respond(false, String(error), []);
-      return;
-    }
-
-    const stdoutParser = new NdjsonParser(
-      (value) => {
-        if (!isDeleteDeviceEvent(value)) {
-          this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: `delete-device ${msg.name}`, value: JSON.stringify(value) }),
-          );
-          return;
-        }
-        if (value.kind === "log") {
-          this.deps.outputChannel.appendLine(`[delete-device ${msg.name}] ${value.message}`);
-        } else {
-          respond(value.ok, value.error, value.referencedBy ?? []);
-        }
-      },
-      (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stdout] ${line}`),
-    );
-    const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stderr] ${JSON.stringify(value)}`),
-      (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stderr] ${line}`),
-    );
-
-    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
-
-    proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.deleteDeviceRuntimeError", { name: msg.name, error: error.message }),
-      );
-      respond(false, error.message, []);
-    });
-    proc.on("close", (exitCode) => {
-      stdoutParser.end();
-      stderrParser.end();
-      this.deps.outputChannel.appendLine(
-        t("deviceOps.log.deleteDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
-      );
-      // finished を経由せず落ちた場合の合成失敗(spawnCreateDevice と同じパターン。responded ガードで二重防止)。
-      respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), []);
-    });
+    return this.createOps.runDeleteDevice(msg);
   }
 }

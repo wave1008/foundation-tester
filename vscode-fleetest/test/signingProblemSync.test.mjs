@@ -1,6 +1,6 @@
 // 署名エラー種別のドリフト検出。Swift 側の真実(FTBridgeClient の XcodeSigningProblem の
 // case 一覧と needsProvisioningUpdate が true の集合)と、拡張側の SIGNING_FACT_KEYS /
-// SIGNING_NEEDS_PORTAL(monitorDeviceOps.ts)が一致することを確認する。
+// SIGNING_NEEDS_PORTAL(monitorDeviceOpsText.ts)が一致することを確認する。
 //
 // ズレると: Swift に種別を足しても拡張は事実行を黙って落とし(NDJSON は前方互換なので
 // 落ちない = 気付けない)、needsProvisioningUpdate のズレは「GUI セッションで一度」の行が
@@ -41,7 +41,7 @@ function swiftPortalCases() {
 }
 
 function extensionSource() {
-  return readFileSync(path.join(ROOT, "src", "monitorDeviceOps.ts"), "utf8");
+  return readFileSync(path.join(ROOT, "src", "monitorDeviceOpsText.ts"), "utf8");
 }
 
 /** SIGNING_FACT_KEYS のキー一覧 */
