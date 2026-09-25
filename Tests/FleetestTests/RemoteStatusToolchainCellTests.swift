@@ -4,7 +4,7 @@
 // 製品版(Xcode 27.0 等)が同じで build 番号だけ違う(ベータ seed 違い)は advisory(⚠️・
 // ディスパッチは止めない)、それ以外の toolchain 差(製品版違い・片方 nil)は従来どおり
 // blocking(❌・ディスパッチを止める)。判定そのものは FTRemote.RemoteCompat.verdict(別途
-// Tests/FTCoreTests/RemoteDispatchTests.swift で検証)なので、ここは HostReport 経由の
+// Tests/FTCoreTests/RemoteDispatchTests+HostCompat.swift で検証)なので、ここは HostReport 経由の
 // 配線(toolchainCell・toolchainCompatible・toolchainAdvisory)だけを見る。
 
 import FTCore
