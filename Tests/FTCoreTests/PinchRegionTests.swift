@@ -110,8 +110,13 @@ extension PinchRegionTests {
     /// **Android には渡さない** —— あちらは領域の短辺から指の幅を決めて中心に置くので、
     /// 狭い領域だと最小スケール幅(27mm)に届かずズームにならない
     /// (実測 2026-09-22: E2E の対象未指定 pinchOut が `zoom=-` になった)
+    ///
+    /// 呼び出しの実体は StepExecutor+DirectActions.swift(executeDirectUntargetedGesture)に
+    /// あるが、判定そのものは executeAction の分岐から続くものなので**元ファイルとの連結**で読む
+    /// (`PinchRegionTests` 冒頭のコメント参照)
     func testTheAreaIsNotUsedOnAndroid() throws {
         let dsl = try source("Sources/FTCore/StepExecutor+Actions.swift")
+            + source("Sources/FTCore/StepExecutor+DirectActions.swift")
         let call = try XCTUnwrap(dsl.range(of: "PinchRegion.area(elements: snapshot.elements,"))
         XCTAssertTrue(String(dsl[..<call.lowerBound].suffix(160)).contains("!isAndroid"),
                       "Android では領域を渡さないこと")
@@ -126,8 +131,11 @@ extension PinchRegionTests {
     }
 
     func testEveryPinchCallerAsksForTheArea() throws {
-        for path in ["Sources/FTCore/StepExecutor+Actions.swift",
-                     "Sources/fleetest/ApiLiveCommand.swift",
+        let dslSites = try source("Sources/FTCore/StepExecutor+Actions.swift")
+            + source("Sources/FTCore/StepExecutor+DirectActions.swift")
+        XCTAssertTrue(dslSites.contains("PinchRegion.area("),
+                      "StepExecutor が対象未指定のピンチで PinchRegion を通っていない")
+        for path in ["Sources/fleetest/ApiLiveCommand.swift",
                      "Sources/fleetest-mcp/MCPServer+GesturesTools.swift"] {
             XCTAssertTrue(try source(path).contains("PinchRegion.area("),
                           "\(path) が対象未指定のピンチで PinchRegion を通っていない")

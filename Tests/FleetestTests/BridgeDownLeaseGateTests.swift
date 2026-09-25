@@ -140,7 +140,7 @@ final class BridgeDownLeaseGateTests: XCTestCase {
     func testDownImplementationCallsTheLeaseGate() throws {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest/Fleetest.swift")
+            .appendingPathComponent("Sources/fleetest/BridgeCommand.swift")
         let text = try String(contentsOf: url, encoding: .utf8)
         let code = text.split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }

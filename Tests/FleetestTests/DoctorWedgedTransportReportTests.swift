@@ -14,7 +14,7 @@ final class DoctorWedgedTransportReportTests: XCTestCase {
     private func source() throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest/Fleetest.swift")
+            .appendingPathComponent("Sources/fleetest/DoctorCommand.swift")
         return try String(contentsOf: url, encoding: .utf8)
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { $0.drop(while: { $0 == " " || $0 == "\t" }).hasPrefix("//") ? "" : $0 }

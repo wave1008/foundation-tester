@@ -253,7 +253,7 @@ final class BulkOperationPhysicalPolicyTests: XCTestCase {
         XCTAssertTrue(try source("Sources/fleetest/DevicesCommand.swift")
             .contains("BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)"),
             "掃討(devices down・profile 無し)も実機の iOS ブリッジを止めること")
-        XCTAssertTrue(try source("Sources/fleetest/Fleetest.swift")
+        XCTAssertTrue(try source("Sources/fleetest/BridgeCommand.swift")
             .contains("BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)"))
     }
 

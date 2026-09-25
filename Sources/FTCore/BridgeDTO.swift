@@ -444,7 +444,9 @@ public enum BridgeAPI {
     /// keystroke landed, committing the short value (`tap("#field_single")` → `type("pqr\n")` landed as "pq"). A
     /// locator-less `/type` without a trailing newline, or one whose focused element cannot be verified (not a text
     /// input, secure field, ambiguous match, embedded newline), still fires unverified as before.
-    public static let bridgeProtocolVersion = 129
+    /// v130 (XCUITest runner only): no behaviour change — BridgeRouter.swift was split into BridgeRouter+Snapshot.swift /
+    /// BridgeRouter+TextInput.swift (the source fingerprint moved, so the version moves with it).
+    public static let bridgeProtocolVersion = 130
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///

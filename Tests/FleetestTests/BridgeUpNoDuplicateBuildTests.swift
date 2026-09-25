@@ -10,7 +10,7 @@ import XCTest
 final class BridgeUpNoDuplicateBuildTests: XCTestCase {
     private static let repoRoot = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-    private static let path = "Sources/fleetest/Fleetest.swift"
+    private static let path = "Sources/fleetest/BridgeCommand.swift"
 
     /// `struct Up`(次の `struct Down` の直前まで)だけを切り出す。`run`/`api run` にも同名
     /// `--skip-build`(swift build 自体の省略。無関係の別物)があるため、走査を `Bridge.Up` の

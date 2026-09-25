@@ -14,7 +14,7 @@ final class DoctorImpactParityTests: XCTestCase {
     }
 
     func testBothDoctorsPrintTheUnavailableImpact() throws {
-        for file in ["fleetest/Fleetest.swift", "fleetest-mcp/MCPServer+SessionTools.swift"] {
+        for file in ["fleetest/DoctorCommand.swift", "fleetest-mcp/MCPServer+SessionTools.swift"] {
             let source = try String(contentsOf: sourcesRoot.appendingPathComponent(file),
                                     encoding: .utf8)
             XCTAssertTrue(source.contains("FMDoctor.unavailableImpact"),
@@ -26,7 +26,7 @@ final class DoctorImpactParityTests: XCTestCase {
     /// 綴りを変えただけの偽の合格を落とす
     func testScanReachesTheSources() throws {
         let source = try String(
-            contentsOf: sourcesRoot.appendingPathComponent("fleetest/Fleetest.swift"),
+            contentsOf: sourcesRoot.appendingPathComponent("fleetest/DoctorCommand.swift"),
             encoding: .utf8)
         XCTAssertFalse(source.isEmpty)
         XCTAssertFalse(source.contains("FMDoctor.unavailableImpactZZZ"))

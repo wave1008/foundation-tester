@@ -13,12 +13,15 @@ final class DoctorExitCodeTests: XCTestCase {
     private func doctorBody() throws -> String {
         let url = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/fleetest/Fleetest.swift")
+            .appendingPathComponent("Sources/fleetest/DoctorCommand.swift")
         let text = try String(contentsOf: url, encoding: .utf8)
-        guard let start = text.range(of: "struct Doctor: AsyncParsableCommand"),
-              let end = text.range(of: "\nstruct ", range: start.upperBound..<text.endIndex)
+        guard let start = text.range(of: "struct Doctor: AsyncParsableCommand")
         else { throw XCTSkip("struct Doctor が見つからない") }
-        return String(text[start.upperBound..<end.lowerBound])
+        // Doctor は DoctorCommand.swift 内で最後の struct(後続の "\nstruct " は無い)なので
+        // 見つからなければファイル末尾までを本体とする
+        let end = text.range(of: "\nstruct ", range: start.upperBound..<text.endIndex)?.lowerBound
+            ?? text.endIndex
+        return String(text[start.upperBound..<end])
     }
 
     /// レポート経路の ❌ はすべて集計に載る(FM text / FM vision / tool root / xcodebuild /

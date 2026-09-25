@@ -15,14 +15,25 @@ import XCTest
 
 final class BridgeRouterStatusContractTests: XCTestCase {
 
+    /// **BridgeRouter.swift + BridgeRouter+TextInput.swift の連結**(2,000行超のため分割済み。
+    /// handleClear / requirePresent など下の走査対象は TextInput 側に居る。片方だけ読むと
+    /// `handlerBody` が空を返し、否定の検査が空のまま通ってしまう)
     private var routerSource: String {
         get throws {
-            let url = URL(fileURLWithPath: #filePath)
+            let root = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()   // FTCoreTests
                 .deletingLastPathComponent()   // Tests
                 .deletingLastPathComponent()   // リポジトリルート
-                .appendingPathComponent("Runner/FleetestRunnerUITests/BridgeRouter.swift")
-            return try String(contentsOf: url, encoding: .utf8)
+            // BridgeRouter は extension でファイルを分けている。本数の契約は全ファイルに掛ける
+            // (1ファイルだけ読むと、別ファイルに足した 409 が数えられない)
+            let dir = root.appendingPathComponent("Runner/FleetestRunnerUITests")
+            let names = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+                .filter { $0.hasPrefix("BridgeRouter") && $0.hasSuffix(".swift") }
+                .sorted()
+            XCTAssertTrue(names.contains("BridgeRouter.swift"), "走査が BridgeRouter.swift に届いていない")
+            return try names
+                .map { try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }
+                .joined(separator: "\n")
         }
     }
 
@@ -146,9 +157,11 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         XCTAssertFalse(body[..<end].contains("super.record"), "super を呼ぶと失敗が記録され Tear Down する")
     }
 
-    /// `private func <名>` から次の `private func` の手前まで
+    /// `func <名>` から次の `private func` の手前まで。**`private ` は付けずに探す** ——
+    /// ファイル分割で handleType/handleClear は internal(ルート表から別ファイルの
+    /// BridgeRouter.swift へ呼ばれるため)になったので、`private func` 固定では見つからない
     private func handlerBody(_ name: String, in source: String) -> String? {
-        guard let start = source.range(of: "private func \(name)") else { return nil }
+        guard let start = source.range(of: "func \(name)") else { return nil }
         let rest = source[start.upperBound...]
         guard let end = rest.range(of: "\n    private func ") else { return String(rest) }
         return String(rest[..<end.lowerBound])
