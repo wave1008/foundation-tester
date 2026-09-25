@@ -21,7 +21,7 @@ final class RemoteSetupTests: XCTestCase {
                 "--name", "E2E",
                 "--skip-extension",
                 "--skip-mcp",
-                "--skip-claude-md",
+                "--skip-entry-point",
                 "--no-next-steps",
             ])
     }

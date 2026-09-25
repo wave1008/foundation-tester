@@ -103,5 +103,14 @@ The tools intentionally do not include an "explore" tool: exploration and judgme
 calling agent (it already has a snapshot and operation primitives to explore with), while
 `fleetest` supplies determinism — operate, replay, verify.
 
+## Structured output (opt-in)
+
+Set `FT_MCP_STRUCTURED_CONTENT=1` in the server's environment (the `env` of its MCP entry) to have
+`ft_run_scenario`, `ft_dry_run` and `ft_list_scenarios` also return `structuredContent` — a JSON
+summary (per-scenario pass/fail and report path, or the scenario list). It is only sent when the
+client negotiated MCP 2025-06-18 or later. **Leave it off for Claude Code**: Claude Code shows the
+model only `structuredContent` when it is present, so the text notes and the failure screenshot would
+no longer reach it.
+
 ### Link
 - [index](../index.md)

@@ -178,9 +178,11 @@ final class MCPServer {
 
         switch method {
         case "initialize":
+            let version = Self.negotiatedProtocolVersion(
+                requested: (message["params"] as? [String: Any])?["protocolVersion"] as? String)
+            negotiatedProtocolVersion = version
             reply(id: id, result: [
-                "protocolVersion": Self.negotiatedProtocolVersion(
-                    requested: (message["params"] as? [String: Any])?["protocolVersion"] as? String),
+                "protocolVersion": version,
                 "capabilities": ["tools": [String: Any]()],
                 "serverInfo": ["name": "fleetest", "version": "0.1.0"],
                 "instructions": Self.serverInstructions,
@@ -194,9 +196,10 @@ final class MCPServer {
             let name = params["name"] as? String ?? ""
             let args = params["arguments"] as? [String: Any] ?? [:]
             do {
-                reply(id: id, result: Self.toolCallResult(.success(try await call(tool: name, args: args))))
+                reply(id: id, result: Self.toolCallResult(.success(try await call(tool: name, args: args)),
+                                                          emitStructured: emitsStructuredContent))
             } catch {
-                reply(id: id, result: Self.toolCallResult(.failure(error)))
+                reply(id: id, result: Self.toolCallResult(.failure(error), emitStructured: emitsStructuredContent))
             }
         default:
             reply(id: id, error: ["code": -32601, "message": "method not found: \(method)"])
@@ -207,17 +210,55 @@ final class MCPServer {
     /// `MCPToolFailure` は呼び手が組んだ中身(証跡の画像を含む)をそのまま返す。
     /// それ以外の失敗は文1本: FTCore 由来の文には CLI のフラグ(`--project`)が書いてあるので、
     /// MCP の読み手が渡せる同名の**引数**へここで一度だけ言い換える(MCPMessageText)
-    static func toolCallResult(_ outcome: Result<[[String: Any]], Error>) -> [String: Any] {
+    static func toolCallResult(_ outcome: Result<[[String: Any]], Error>,
+                               emitStructured: Bool = false) -> [String: Any] {
+        var result: [String: Any]
         switch outcome {
         case .success(let content):
-            return ["content": content, "isError": false]
+            result = ["content": content, "isError": false]
         case .failure(let failure as MCPToolFailure):
-            return ["content": failure.content, "isError": true]
+            result = ["content": failure.content, "isError": true]
         case .failure(let error):
-            return ["content": [["type": "text",
-                                 "text": "Error: " + MCPMessageText.forMCP(error.localizedDescription)]],
-                    "isError": true]
+            result = ["content": [["type": "text",
+                                   "text": "Error: " + MCPMessageText.forMCP(error.localizedDescription)]],
+                      "isError": true]
         }
+        // 構造化データ(structuredMarker)は**必ず content から取り除く**(未知の content 型を
+        // クライアントへ出さない)。載せるのは有効なときだけ
+        let content = result["content"] as? [[String: Any]] ?? []
+        let structured = content.first { $0["type"] as? String == structuredMarkerType }?["value"]
+        result["content"] = content.filter { $0["type"] as? String != structuredMarkerType }
+        if emitStructured, let structured { result["structuredContent"] = structured }
+        return result
+    }
+
+    // MARK: - 構造化出力(structuredContent)
+    //
+    // **既定では出さない**。Claude Code は structuredContent があると content(文面と画像)を捨てて
+    // 構造化データだけをモデルへ渡す(GitHub anthropics/claude-code #55677 / #15412。2026-09-25 に
+    // ft_list_scenarios で実地確認: 有効にするとモデルが受け取るのは JSON だけで、文面は消えた)
+    // ので、既定で出すと注記と失敗の証跡(スクショ)が届かなくなる。構造化データを読む
+    // クライアントのための口で、両方が揃ったときだけ出す: 利用者が環境変数で有効にした +
+    // 交渉した版が structuredContent を定義した 2025-06-18 以降
+
+    static let structuredContentEnvironmentKey = "FT_MCP_STRUCTURED_CONTENT"
+    static let structuredMarkerType = "_fleetest_structured"
+
+    /// ツールが content に混ぜる構造化データの目印(toolCallResult が取り出す)
+    static func structuredMarker(_ value: [String: Any]) -> [String: Any] {
+        ["type": structuredMarkerType, "value": value]
+    }
+
+    var emitsStructuredContent: Bool {
+        Self.emitsStructuredContent(
+            environment: ProcessInfo.processInfo.environment[Self.structuredContentEnvironmentKey],
+            negotiatedVersion: negotiatedProtocolVersion)
+    }
+
+    /// **純粋関数**。版は YYYY-MM-DD の文字列比較で足りる
+    static func emitsStructuredContent(environment: String?, negotiatedVersion: String?) -> Bool {
+        guard environment == "1", let negotiatedVersion else { return false }
+        return negotiatedVersion >= "2025-06-18"
     }
 
     /// このサーバが実装している MCP の版。**2025-03-26 は入れない** —— その版は JSON-RPC バッチの
@@ -289,6 +330,8 @@ final class MCPServer {
     /// 更新は iOS/Android どちらかの記憶が実際に更新された(= 利用者が明示した)ときだけ
     /// (foldInRememberedDevice が platform 明示時はこれを読まない)
     var lastExplicitPlatform: String?
+    /// initialize で交渉した MCP の版(structuredContent を出してよいかの判定に使う)
+    var negotiatedProtocolVersion: String?
 }
 
 extension MCPServer {

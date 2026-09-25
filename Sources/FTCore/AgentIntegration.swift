@@ -24,8 +24,13 @@ public enum AgentIntegration {
     /// エージェントがスキルを探すディレクトリ(受け手のワークスペース基準)
     public static let skillsDirectory = ".claude/skills"
 
-    /// セッションの冒頭で読まれる指示ファイル。install.sh がマーカー付きで入口を書く先
-    public static let entryPointFile = "CLAUDE.md"
+    /// セッションの冒頭で読まれる指示ファイル。install.sh がマーカー付きで入口の**本文**を書く先。
+    /// Claude Code(v2.1.277 以降)と AGENTS.md を読む他のエージェントの共通の入口
+    public static let entryPointFile = "AGENTS.md"
+
+    /// install.sh が `@AGENTS.md` の読み込みだけをマーカー付きで置く先。Claude Code は同じ場所か上に
+    /// CLAUDE.md があると既定では AGENTS.md を読まず、古い版は AGENTS.md 自体を読まないため
+    public static let claudeImportFile = "CLAUDE.md"
 
     /// スキルの明示呼び出し記法(入口の本文に出す)
     public static let skillInvocationPrefix = "/"

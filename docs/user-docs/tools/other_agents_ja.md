@@ -10,9 +10,10 @@ Cursor・Copilot など)でも、次の3つを自分で用意すれば同じこ�
 | `ft_*`(画面の探索・操作・シナリオ実行) | `fleetest-mcp` を MCP サーバとして登録 | 設定ファイルの書式だけ |
 | 手順書(runbook) | クローンの `SKILL.md`(ツール中立の markdown)を読ませる | 置き場所だけ |
 
-得られないのは**スキルの自動発見と入口ファイル**だけです —— `/fleetest-setup` のように名前で
-呼べる仕組みと、セッション冒頭で自動的に読まれる `CLAUDE.md`。手順書は「このファイルを読んで
-進めて」と渡せば同じように動きます。
+得られないのは**スキルの自動発見**だけです —— `/fleetest-setup` のように名前で呼べる仕組み。
+手順書は「このファイルを読んで進めて」と渡せば同じように動きます。インストーラはテスト用フォルダの
+`AGENTS.md` に入口(手順書と[エージェント向けの手引き](agent_guide_ja.md)の場所)を書くので、
+`AGENTS.md` を読むエージェントならセッション冒頭で自動的に読まれます。
 
 ## 1. インストール
 
@@ -24,9 +25,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   | bash -s -- --name MyApp --app-id com.example.myapp
 ```
 
-インストーラは Claude Code 向けの生成物も置きます。`.mcp.json` と `CLAUDE.md` は
-`--skip-mcp` / `--skip-claude-md` で抑止できますが、`.claude/settings.json`(Bash 承認の
-許可リスト)は現状抑止できません(他のエージェントからは無視されるだけで無害です)。
+インストーラは Claude Code 向けの生成物も置きます。`.mcp.json` は `--skip-mcp` で、入口
+(`AGENTS.md` と、それを読み込むだけの `CLAUDE.md`)は `--skip-entry-point` で抑止できますが、
+`.claude/settings.json`(Bash 承認の許可リスト)は現状抑止できません(他のエージェントからは
+無視されるだけで無害です)。
 
 手順の全体像・前提・アンインストールは
 [はじめに(導入・更新・アンインストール)](../getting-started_ja.md)を参照してください。

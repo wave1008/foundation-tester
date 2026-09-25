@@ -1,4 +1,5 @@
-// install.sh のステップ7.6(受け手の CLAUDE.md へ入口ブロックを置く)の破壊耐性。
+// install.sh のステップ7.6(受け手の AGENTS.md へ入口の本文、CLAUDE.md へ `@AGENTS.md` の読み込みを
+// 置く。同じ書き込み処理を2つのファイルに掛ける)の破壊耐性。
 //
 // **これは利用者の資産を書き換える唯一の箇所**なので、壊し方を固定して守る。
 // 2026-08-06 に実際にデータを消した: `end` マーカーだけ壊れた CLAUDE.md に対し、
@@ -30,15 +31,18 @@ function guideScript() {
   return body.slice(0, end);
 }
 
-/** 与えた入口ファイルの内容(null = ファイル無し)に対してステップ7.6 を1回流す。 */
-function run(initial, { fileName = "CLAUDE.md" } = {}) {
+const TOOL_ROOT = "/Users/someone/fleetest/foundation-tester";
+
+/** 与えた入口ファイルの内容(null = ファイル無し)に対してステップ7.6 を1回流す。
+ *  kind = "body"(AGENTS.md の本文)/ "import"(CLAUDE.md の `@AGENTS.md`) */
+function run(initial, { fileName = "AGENTS.md", kind = "body" } = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "ft-entry-md-"));
   try {
     const script = path.join(dir, "guide.py");
     writeFileSync(script, guideScript());
     const target = path.join(dir, fileName);
     if (initial !== null) writeFileSync(target, initial);
-    const verb = execFileSync("python3", [script, target], { encoding: "utf8" });
+    const verb = execFileSync("python3", [script, target, kind, TOOL_ROOT], { encoding: "utf8" });
     return { verb, text: existsSync(target) ? readFileSync(target, "utf8") : null };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -59,11 +63,32 @@ test("ファイルが無ければ作り、2回目は変えない(冪等)", () =>
   assert.equal(second.verb, "unchanged");
   assert.equal(first.text, second.text);
   assert.match(first.text, /fleetest:begin/);
-  // 呼び出し記法は Claude Code の `/`(入口の本文はここでしか検証されない)
+  // 入口の本文はここでしか検証されない。Claude Code のスキル記法と、スキル機構の無いエージェント
+  // 向けの手順書・手引きの**絶対パス**(受け手の作業場所からクローンを指す)の両方が要る
   assert.ok(first.text.includes("`/fleetest-scenario`"), "スキルの呼び出し記法が / でない");
+  assert.ok(first.text.includes(`${TOOL_ROOT}/.claude/skills/fleetest-scenario/SKILL.md`), first.text);
+  assert.ok(first.text.includes(`${TOOL_ROOT}/docs/user-docs/tools/agent_guide.md`), first.text);
 });
 
-test("既存の CLAUDE.md には追記し、利用者の記述を残す", () => {
+test("CLAUDE.md には @AGENTS.md の読み込みだけを置く(本文を二重に持たない)", () => {
+  const first = run(USER_TEXT, { fileName: "CLAUDE.md", kind: "import" });
+  assert.equal(first.verb, "appended to");
+  assert.ok(first.text.includes("社内ルール: PR は必ず2人レビュー。"));
+  const block = first.text.slice(first.text.indexOf("<!-- fleetest:begin -->"));
+  assert.match(block, /^@AGENTS\.md$/m);
+  assert.ok(!block.includes("ft_scroll_to"), "本文が CLAUDE.md にも書かれている");
+  const second = run(first.text, { fileName: "CLAUDE.md", kind: "import" });
+  assert.equal(second.verb, "unchanged");
+});
+
+test("読み込み側も壊れたマーカーでは何も書かない", () => {
+  const damaged = "<!-- fleetest:begin -->\n## 古い\n" + USER_TEXT;
+  const { verb, text } = run(damaged, { fileName: "CLAUDE.md", kind: "import" });
+  assert.equal(verb, "damaged");
+  assert.equal(text, damaged);
+});
+
+test("既存の入口ファイルには追記し、利用者の記述を残す", () => {
   const { first, second } = runTwice(USER_TEXT);
   assert.equal(first.verb, "appended to");
   assert.equal(second.verb, "unchanged");
@@ -80,7 +105,7 @@ test("マーカーが1組なら中身だけ差し替え、外側には触れな�
 });
 
 // ここから下が本題。**壊れたマーカーでは1バイトも書かない**。
-// どれか1つでも書き込みに転ぶと、利用者の CLAUDE.md が黙って削れる。
+// どれか1つでも書き込みに転ぶと、利用者の AGENTS.md / CLAUDE.md が黙って削れる。
 
 test("end マーカーが欠けていたら何も書かない(2回流しても消えない)", () => {
   const damaged = "<!-- fleetest:begin -->\n## 古い\n" + USER_TEXT;

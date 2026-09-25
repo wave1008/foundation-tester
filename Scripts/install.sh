@@ -7,7 +7,7 @@
 #
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
 #           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 /
-#           MCP 登録(.mcp.json)/ エージェントの入口(CLAUDE.md)/ 検証ゲート。
+#           MCP 登録(.mcp.json)/ エージェントの入口(AGENTS.md + CLAUDE.md)/ 検証ゲート。
 #           **冪等**(済んだ手順は skip)。
 #           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
 #           SKILL.md 直読みで使う。docs/user-docs/tools/other_agents.md)。
@@ -46,7 +46,7 @@ PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
-DO_CLAUDE_MD=1
+DO_ENTRY_POINT=1
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -69,7 +69,7 @@ Usage: install.sh [options]
   --skip-extension   Do not install the VSCode extension
   --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
-  --skip-claude-md   Do not write the fleetest block into <work-dir>/CLAUDE.md
+  --skip-entry-point Do not write the fleetest block into <work-dir>/AGENTS.md and CLAUDE.md
   --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -78,7 +78,7 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
-         the CLAUDE.md entry point / verification gates. **With --app-name it also creates profiles (--auto-device)**
+         the AGENTS.md / CLAUDE.md entry point / verification gates. **With --app-name it also creates profiles (--auto-device)**
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -101,7 +101,7 @@ while [ $# -gt 0 ]; do
     --skip-extension) DO_EXTENSION=0; shift ;;
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
-    --skip-claude-md) DO_CLAUDE_MD=0; shift ;;
+    --skip-entry-point) DO_ENTRY_POINT=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -449,7 +449,7 @@ fi
 # 置換するので、開いた fd は旧 inode を指し続ける。2026-08-06 に実験で確認)。
 # そのため update.sh 経由(= クローンの Scripts/install.sh を bash で起動する経路)では、
 # **pull で入った新しいステップがその回は1つも実行されない**。しかも次回は update.sh が
-# up-to-date で即終了するので**永久に実行されない**(実害: ステップ7.6 の CLAUDE.md が
+# up-to-date で即終了するので**永久に実行されない**(実害: ステップ7.6 の入口(AGENTS.md / CLAUDE.md)が
 # 版だけ上がって一度も走らなかった)。スキル既定の curl 形は常に新鮮なので対象外。
 #
 # 条件は「**いま実行しているファイルが、たった今 pull したクローンの install.sh 自身**」のときだけ。
@@ -660,15 +660,18 @@ fi
 # 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
 # 「このアプリのテスト書いて」と言われたエージェントの手掛かりはスキルの description だけになる。
 # 実害は3つに絞られる(素の XCTest を書き始める / 新しい ft_* に気づかない /
-# DSL コマンドを推測で書く)ので、**使い方の解説は書かず入口だけ4行**置く
+# DSL コマンドを推測で書く)ので、**使い方の解説は書かず入口だけ**置く
 # —— 解説を置くとツール説明と二重管理になり必ずズレる(docs/design.md「契約は1箇所」)。
-# 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら
-# --skip-claude-md。
+# 受け手の資産なので**マーカーの内側だけ**差し替える。嫌うなら --skip-entry-point。
 #
-# 書き先は CLAUDE.md(AgentIntegration.entryPointFile)。
+# **本文は AGENTS.md、CLAUDE.md には読み込み(`@AGENTS.md`)だけ**(AgentIntegration.entryPointFile /
+# claudeImportFile)。Claude Code は v2.1.277 から AGENTS.md を読むが、**同じ場所か上に CLAUDE.md が
+# あると既定では読まない**。古い版は AGENTS.md を読まない。CLAUDE.md からの読み込みなら
+# どちらでも届き、AGENTS.md を読む他のエージェントにも同じ本文が届く。
 write_entry_point() {
-  ep_file="$WORK_DIR/CLAUDE.md"
-  ep_label="CLAUDE.md"
+  ep_file="$1"   # 書き先(AGENTS.md / CLAUDE.md)
+  ep_kind="$2"   # body(本文)/ import(@AGENTS.md の読み込みだけ)
+  ep_label="$(basename "$ep_file")"
   # **クローンの作業ツリーの中には書かない**(2026-08-07 に自己破壊を再現)。
   # clone 構成(WORK_DIR = TOOL_ROOT)で入口ファイルへ書くと、次の更新が pull ガード
   # (「local changes」)で必ず止まる。しかも `git reset --hard` で戻しても次の更新が
@@ -687,21 +690,28 @@ print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' 
     record "$ep_label" skip "it lives inside the clone — writing there would make the next update abort at the pull guard"
     return 0
   fi
-  if guide_out=$(python3 - "$ep_file" <<'PYGUIDE'
+  if guide_out=$(python3 - "$ep_file" "$ep_kind" "$TOOL_ROOT" <<'PYGUIDE'
 import os, re, sys
 
 path = sys.argv[1]
+kind = sys.argv[2] if len(sys.argv) > 2 else "body"
+tool_root = sys.argv[3] if len(sys.argv) > 3 else "<TOOL_ROOT>"
 # **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
 # 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
 BEGIN = "<!-- fleetest:begin -->"
 END = "<!-- fleetest:end -->"
-BODY = """## テスト(fleetest)
+MANAGED = """<!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
+     不要なら begin〜end ごと削除するか、インストーラに --skip-entry-point を
+     渡してください。 -->"""
+if kind == "import":
+    # Claude Code へ AGENTS.md の本文を届ける読み込み(版・設定を問わず効く)
+    BODY = MANAGED + "\n\n@AGENTS.md"
+else:
+    skills = tool_root + "/.claude/skills"
+    BODY = "## テスト(fleetest)\n\n" + MANAGED + """
 
-<!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
-     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を
-     渡してください。 -->
-
-- シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
+- シナリオ作成・対象アプリ/デバイスの追加・更新は手順書に従う: `""" + skills + """/fleetest-scenario/SKILL.md`・`fleetest-profiles/SKILL.md`・`fleetest-update/SKILL.md`(Claude Code ではスキル `/fleetest-scenario` 等として呼べる)
+- シナリオを書いて通すまでの短い手引き(英語): `""" + tool_root + """/docs/user-docs/tools/agent_guide.md`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
 - シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
@@ -746,23 +756,24 @@ PYGUIDE
   ); then
     case "$guide_out" in
       damaged)
-        record "$ep_label" warn "the fleetest markers in CLAUDE.md are not a single begin/end pair"\
+        record "$ep_label" warn "the fleetest markers in $ep_label are not a single begin/end pair"\
 " — left the file untouched (fix or remove them by hand, then re-run)" ;;
       *)
-        record "$ep_label" ok "$guide_out CLAUDE.md (delete the fleetest block, or pass --skip-claude-md, to opt out)" ;;
+        record "$ep_label" ok "$guide_out $ep_label (delete the fleetest block, or pass --skip-entry-point, to opt out)" ;;
     esac
   else
-    record "$ep_label" warn "could not write the entry point to CLAUDE.md (agents may miss ft_*)"
+    record "$ep_label" warn "could not write the entry point to $ep_label (agents may miss ft_*)"
   fi
 }
 
 if ! command -v python3 >/dev/null 2>&1; then
   record "entry point" warn "python3 is missing, so the entry point was not written (agents may miss ft_*)"
 else
-  if [ "$DO_CLAUDE_MD" = "0" ]; then
-    record "CLAUDE.md" skip "--skip-claude-md"
+  if [ "$DO_ENTRY_POINT" = "0" ]; then
+    record "entry point" skip "--skip-entry-point"
   else
-    write_entry_point
+    write_entry_point "$WORK_DIR/AGENTS.md" body
+    write_entry_point "$WORK_DIR/CLAUDE.md" import
   fi
 fi
 

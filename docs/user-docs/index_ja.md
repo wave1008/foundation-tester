@@ -120,6 +120,7 @@ FM を使いません。テストはエージェント(MCP)に
 - [MCP サーバ](tools/mcp_server_ja.md)
 - [Claude Code のスキル](tools/claude_code_skills_ja.md)
 - [その他のエージェント](tools/other_agents_ja.md)
+- [エージェント向けの手引き](tools/agent_guide_ja.md)
 
 ## チュートリアル(In action)
 

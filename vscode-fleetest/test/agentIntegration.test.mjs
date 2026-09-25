@@ -58,7 +58,8 @@ test("正典スキルディレクトリの定義が Swift とインストーラ�
 test("インストーラ一式が他エージェントの規約位置・設定へ書かない", () => {
   const files = ["Scripts/install.sh", "Scripts/install-skill.sh",
                  "Scripts/update.sh", "Scripts/preflight.sh"];
-  const forbidden = [/\.codex\//, /AGENTS\.md/, /\.agents\/skills/, /codex plugin/];
+  // AGENTS.md は禁止しない —— Claude Code 自身が v2.1.277 から読む入口になった(install.sh ステップ7.6)
+  const forbidden = [/\.codex\//, /\.agents\/skills/, /codex plugin/];
   for (const rel of files) {
     const src = readFileSync(path.join(ROOT, rel), "utf8")
       .split("\n")
@@ -71,13 +72,13 @@ test("インストーラ一式が他エージェントの規約位置・設定�
 });
 
 // --- ランナー機には入口ファイルを置かない -------------------------------------
-// 入口(CLAUDE.md)は**人が開く機械**のためのもので、ランナー機には要らない。
+// 入口(AGENTS.md / CLAUDE.md)は**人が開く機械**のためのもので、ランナー機には要らない。
 // 抑止フラグを変えると Swift の実引数と docs の記載がドリフトするので、両方を見る。
 
 test("RemoteSetup.installArgs が入口ファイルの生成を抑止する", () => {
   const swift = readFileSync(path.join(ROOT, "Sources/FTRemote/RemoteSetup.swift"), "utf8");
-  assert.ok(swift.includes('"--skip-claude-md"'),
-    "RemoteSetup.installArgs に入口抑止 --skip-claude-md がありません");
+  assert.ok(swift.includes('"--skip-entry-point"'),
+    "RemoteSetup.installArgs に入口抑止 --skip-entry-point がありません");
 });
 
 test("ランナーの install 引数が docs と一致する(片方だけ変えない)", () => {
@@ -119,16 +120,23 @@ test("入口ファイルはクローンの中には書かない(未追跡でも)
       'record() { echo "$1|$2"; }',
       fn,
       'WORK_DIR="$1"; TOOL_ROOT="$2"',
-      "write_entry_point",
+      // install.sh と同じく本文は AGENTS.md、CLAUDE.md は読み込みだけ
+      'write_entry_point "$WORK_DIR/AGENTS.md" body',
+      'write_entry_point "$WORK_DIR/CLAUDE.md" import',
     ].join("\n"));
 
     const inClone = execFileSync("bash", [script, clone, clone], { encoding: "utf8" });
+    assert.match(inClone, /AGENTS\.md\|skip/, `クローンの中に書こうとしています: ${inClone}`);
     assert.match(inClone, /CLAUDE\.md\|skip/, `クローンの中に書こうとしています: ${inClone}`);
+    assert.ok(!existsSync(path.join(clone, "AGENTS.md")), "クローンに AGENTS.md が作られました");
     assert.ok(!existsSync(path.join(clone, "CLAUDE.md")), "クローンに CLAUDE.md が作られました");
 
     const outsideClone = execFileSync("bash", [script, outside, clone], { encoding: "utf8" });
+    assert.match(outsideClone, /AGENTS\.md\|ok/, `クローンの外なのに書いていません: ${outsideClone}`);
     assert.match(outsideClone, /CLAUDE\.md\|ok/, `クローンの外なのに書いていません: ${outsideClone}`);
-    assert.ok(existsSync(path.join(outside, "CLAUDE.md")), "クローン外の入口が作られていません");
+    assert.ok(existsSync(path.join(outside, "AGENTS.md")), "クローン外の AGENTS.md が作られていません");
+    assert.ok(readFileSync(path.join(outside, "CLAUDE.md"), "utf8").includes("@AGENTS.md"),
+      "クローン外の CLAUDE.md が AGENTS.md を読み込んでいません");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

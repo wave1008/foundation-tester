@@ -178,10 +178,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 **`--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
 (ステップ5・8 が不要になる。デバイスは自動選定・常にこの Mac)。値はすべてステップ0の回答と preflight の出力から作る。
 
-- **インストーラが規約位置(`.claude/`・`CLAUDE.md`・`.mcp.json`)を用意するのは Claude Code だけ**。
-  他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの登録と手順書の渡し方を
-  docs/user-docs/tools/other_agents_ja.md で案内する（生成物が不要なら `--skip-mcp` /
-  `--skip-claude-md`）。
+- **インストーラが規約位置(`.claude/`・`.mcp.json`)を用意するのは Claude Code だけ**。入口の
+  `AGENTS.md` は他のエージェントも読む。他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの
+  登録と手順書の渡し方を docs/user-docs/tools/other_agents_ja.md で案内する（生成物が不要なら
+  `--skip-mcp` / `--skip-entry-point`）。
 - **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
   「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
   `${FLEETEST_REF:-main}` は**保守者が未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
@@ -376,42 +376,59 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 **ツール本体 = TOOL_ROOT / シナリオのパッケージ = WORK_DIR** と表示されること（逆・同一なら
 `.mcp.json` の値か開く場所が違う）。FM 判定を挟まないので即座に返る。
 
-### 7.6 エージェントの入口を WORK_DIR の CLAUDE.md に置く
+### 7.6 エージェントの入口を WORK_DIR の AGENTS.md に置く(CLAUDE.md からは読み込むだけ)
 
 **導入直後ではなく、その後のセッションのための手当て**。MCP 登録も `.claude/settings.json` も
 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
 「このアプリのテスト書いて」と言われたエージェントの手掛かりは**スキルの description だけ**になる。
-
-書き先は `CLAUDE.md`（インストーラが用意する規約位置は Claude Code のものだけ）。
 潰したい実害は3つ ——「素の XCTest を書き始める」「新しい `ft_*` に気づかない」
 「DSL コマンドを推測で書く」。
 
-**使い方の解説は書かない**（それは `ft_*` のツール説明と `/fleetest-scenario` の仕事。
-ここに書くと二重管理になり必ずズレる）。入口の4行だけを、**マーカーの内側だけ**差し替える形で置く
+**入口の本文は `AGENTS.md`、`CLAUDE.md` には `@AGENTS.md` の読み込みだけ**を置く。
+Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に CLAUDE.md があると既定では読まず、
+古い版は読まない —— CLAUDE.md からの読み込みならどちらにも届き、AGENTS.md を読む他のエージェント
+(Codex など)にも同じ本文が届く。
+
+**使い方の解説は書かない**（それは `ft_*` のツール説明と手順書・手引きの仕事。ここに書くと
+二重管理になり必ずズレる）。入口の数行だけを、**マーカーの内側だけ**差し替える形で置く
 （受け手の既存の記述には触れない。ファイルが無ければ新規作成、マーカーが無ければ末尾に追記）。
 **マーカーは説明文を含めない**（文言を変えた瞬間に既存ブロックを見失い二重に追記されるため。
-説明は本文側に置く）:
+説明は本文側に置く）。`<TOOL_ROOT>` はクローンの絶対パス:
+
+`AGENTS.md`:
 
 ```markdown
 <!-- fleetest:begin -->
 ## テスト(fleetest)
 
 <!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
-     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を
+     不要なら begin〜end ごと削除するか、インストーラに --skip-entry-point を
      渡してください。 -->
 
-- シナリオ作成は `/fleetest-scenario`、対象アプリ/デバイスの追加は `/fleetest-profiles`、更新は `/fleetest-update`
+- シナリオ作成・対象アプリ/デバイスの追加・更新は手順書に従う: `<TOOL_ROOT>/.claude/skills/fleetest-scenario/SKILL.md`・`fleetest-profiles/SKILL.md`・`fleetest-update/SKILL.md`(Claude Code ではスキル `/fleetest-scenario` 等として呼べる)
+- シナリオを書いて通すまでの短い手引き(英語): `<TOOL_ROOT>/docs/user-docs/tools/agent_guide.md`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
 - シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張
 <!-- fleetest:end -->
 ```
 
-**チーム共有リポジトリでツール固有の記述を嫌う受け手には入れない**。インストーラなら
-`--skip-claude-md`、手作業ならこのステップを飛ばす（機能には影響しない＝スキルを明示的に
-呼べば同じことができる）。既に入れた後で外したくなったら、マーカーごと削除すればよい。
+`CLAUDE.md`(同じマーカー・同じ管理コメントの下に `@AGENTS.md` の1行だけ):
 
-**検証ゲート**: WORK_DIR の `CLAUDE.md` にマーカーが**1組だけ**あり、
+```markdown
+<!-- fleetest:begin -->
+<!-- (管理コメントは AGENTS.md と同じ) -->
+
+@AGENTS.md
+<!-- fleetest:end -->
+```
+
+**チーム共有リポジトリでツール固有の記述を嫌う受け手には入れない**。インストーラなら
+`--skip-entry-point`、手作業ならこのステップを飛ばす（機能には影響しない＝スキルや手順書を
+明示的に渡せば同じことができる）。既に入れた後で外したくなったら、両方のファイルからマーカーごと
+削除すればよい。
+
+**検証ゲート**: WORK_DIR の `AGENTS.md` と `CLAUDE.md` の両方にマーカーが**1組だけ**あり、
 受け手の既存の記述が残っていること（2回流しても増えない＝冪等）。
 
 ### 7.7 Claude Code 以外のエージェントで使う場合（該当するときだけ）

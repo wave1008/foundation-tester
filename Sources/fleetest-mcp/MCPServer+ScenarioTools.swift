@@ -26,6 +26,16 @@ extension MCPServer {
         return text(lines.isEmpty
                     ? "No scenarios (add a @TestClass under TestProjects/\(project.name)/scenarios/)"
                     : "Project: \(project.name)\n" + lines.joined(separator: "\n"))
+            + [Self.structuredMarker([
+                "project": project.name,
+                "scenarios": scenarios.map { info -> [String: Any] in
+                    var row: [String: Any] = ["id": info.id, "title": info.title,
+                                              "deleted": info.deleted, "draft": info.draft]
+                    if let platform = info.platform { row["platform"] = platform }
+                    if let app = info.app { row["app"] = app }
+                    return row
+                },
+            ])]
     }
 
     func listProjects() throws -> [[String: Any]] {
@@ -75,6 +85,7 @@ extension MCPServer {
         var lines: [String] = []
         var passedCount = 0
         var failedCount = 0
+        var outcomes: [(id: String, passed: Bool, reportPath: String?)] = []
         for info in infos {
             // dry-run は NullDriver 固定なので接続情報は使われない(platform だけが ios { } / android { } を分ける)
             let passed = await ScenarioHost.run(
@@ -88,6 +99,7 @@ extension MCPServer {
                     lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
                 }
             if passed { passedCount += 1 } else { failedCount += 1 }
+            outcomes.append((info.id, passed, nil))  // レポートは消える一時ディレクトリなので載せない
         }
         // レポートは一時ディレクトリに書かれ、この関数を抜けると消える。
         // 案内すると開けないパスを渡すことになるので落とす(dry-run に証跡は要らない)
@@ -100,8 +112,11 @@ extension MCPServer {
                 : "❌ dry-run failed")
         }
         // 不合格は isError で返す(呼び手が本文を読まずに成否を分けられる。ft_run_scenario と同じ)
-        guard failedCount == 0 else { throw MCPToolFailure(content: text(lines.joined(separator: "\n"))) }
-        return text(lines.joined(separator: "\n"))
+        let structured = [Self.structuredMarker(Self.scenarioRunSummary(outcomes))]
+        guard failedCount == 0 else {
+            throw MCPToolFailure(content: text(lines.joined(separator: "\n")) + structured)
+        }
+        return text(lines.joined(separator: "\n")) + structured
     }
 
     /// `profile` と platform/port/serial/udid の併用を拒否する(profile がデバイスを決めるため。
@@ -242,6 +257,7 @@ extension MCPServer {
         var failedCount = 0
         // 最初に落ちたシナリオのレポート(証跡の読み先)。scenarioFinished が運ぶ
         var firstFailedReport: String?
+        var outcomes: [(id: String, passed: Bool, reportPath: String?)] = []
         for info in infos {
             let passed = await ScenarioHost.run(project: project, scenarioID: info.id,
                                        connection: connection,
@@ -251,6 +267,9 @@ extension MCPServer {
                 lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
                 if event.kind == "scenarioFinished", event.passed != true, firstFailedReport == nil {
                     firstFailedReport = event.reportPath
+                }
+                if event.kind == "scenarioFinished" {
+                    outcomes.append((event.scenario ?? info.id, event.passed == true, event.reportPath))
                 }
             }
             if passed { passedCount += 1 } else { failedCount += 1 }
@@ -262,6 +281,7 @@ extension MCPServer {
         // 投げた Error にしか掛かっておらず、ここに載る FTCore/ScenarioAppResolution 由来の
         // 文言(`--profile` 等)がそのまま出ていた)。掛ける場所はここ1箇所に集約する
         let body = text(MCPMessageText.forMCP(lines.joined(separator: "\n")))
+            + [Self.structuredMarker(Self.scenarioRunSummary(outcomes))]
         guard failedCount == 0 else {
             let evidence = firstFailedReport.map { path -> [[String: Any]] in
                 let report = URL(fileURLWithPath: path)
@@ -273,6 +293,19 @@ extension MCPServer {
             throw MCPToolFailure(content: body + evidence)
         }
         return body
+    }
+
+    /// ft_run_scenario / ft_dry_run の構造化データ(structuredContent。既定では出さない = toolCallResult)
+    static func scenarioRunSummary(_ outcomes: [(id: String, passed: Bool, reportPath: String?)]) -> [String: Any] {
+        [
+            "passed": outcomes.filter(\.passed).count,
+            "failed": outcomes.filter { !$0.passed }.count,
+            "scenarios": outcomes.map { outcome -> [String: Any] in
+                var row: [String: Any] = ["id": outcome.id, "passed": outcome.passed]
+                if let reportPath = outcome.reportPath { row["reportPath"] = reportPath }
+                return row
+            },
+        ]
     }
 
     /// 不合格の応答に添える証跡(失敗時点の要素一覧 → スクリーンショットの順)。

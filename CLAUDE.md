@@ -88,11 +88,14 @@
     最後の再掲は warn/fail だけ → maintainer-notes §1.4
   - **外部構成ではクローンのローカル変更を自動破棄**(reset --hard + `clean -fd`。`-x` は付けない
     = .build/ を消さない。`--keep-local` で従来)
-  - **WORK_DIR の `CLAUDE.md` にマーカー付きで入口を4行置く**(ステップ7.6。`.mcp.json` も
+  - **WORK_DIR の `AGENTS.md` にマーカー付きで入口を置き、`CLAUDE.md` には `@AGENTS.md` の読み込みだけを置く**
+    (ステップ7.6。Claude Code は v2.1.277 から AGENTS.md を読むが、CLAUDE.md があると既定では読まず、
+    古い版は読まない = 読み込みならどちらにも届き、AGENTS.md を読む他のエージェントにも同じ本文が届く。
+    定義元は `AgentIntegration.entryPointFile` / `claudeImportFile`。`.mcp.json` も
     `.claude/settings.json` も「設定として効く」だけでエージェントが読む物ではないため、これが
     無いと導入の翌週にスキルの description しか手掛かりが無くなる)。
     **使い方の解説は書かない**(ツール説明と二重管理になり必ずズレる)。受け手の資産なので
-    マーカーの内側だけ差し替え、嫌う受け手には `--skip-claude-md`。
+    マーカーの内側だけ差し替え、嫌う受け手には `--skip-entry-point`。
     **ここは受け手のファイルを書き換える唯一の箇所**なので、**マーカーが begin/end ちょうど1組で
     なければ1バイトも書かない**(`installClaudeMdBlock.test.mjs` が3形を守る)→ maintainer-notes §1.2
   - **クローンが git 管理しているファイルには書かない**。判定はレイアウトではなく

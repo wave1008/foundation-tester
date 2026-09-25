@@ -121,6 +121,7 @@ needs no changes ([details](overview/about.md)).
 - [MCP server](tools/mcp_server.md)
 - [Claude Code skills](tools/claude_code_skills.md)
 - [Other agents](tools/other_agents.md)
+- [Agent guide](tools/agent_guide.md)
 
 ## Tutorial (In action)
 

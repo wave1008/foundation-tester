@@ -91,9 +91,11 @@ claude plugin install fleetest@foundation-tester --scope user
    スキル機構が無いエージェントには、必要なときにこのファイルを読ませればよい
    (スキル機構があるなら `install-skill.sh | sh -s -- --dir <その置き場>` でコピーできる)
 
-得られないのは**スキルの自動発見と入口ファイル**(`/fleetest-setup` のように呼べる仕組み)だけ。
-インストーラは常に Claude Code 向けの生成物を置くので、使わないものが出る ——
-`.mcp.json` と `CLAUDE.md` は `--skip-mcp` / `--skip-claude-md` で抑止できるが、
+得られないのは**スキルの自動発見**(`/fleetest-setup` のように呼べる仕組み)だけ。入口は
+テスト用フォルダの `AGENTS.md` に書くので、AGENTS.md を読むエージェントにはそのまま届く。
+インストーラは常に Claude Code 向けの生成物も置くので、使わないものが出る ——
+`.mcp.json` は `--skip-mcp`、入口(`AGENTS.md` と、それを読み込むだけの `CLAUDE.md`)は
+`--skip-entry-point` で抑止できるが、
 **`.claude/settings.json`(Bash 許可リスト)は現状抑止できない**(無害・無視される)。
 手順の詳細は [docs/user-docs/tools/other_agents_ja.md](docs/user-docs/tools/other_agents_ja.md)
 (Codex のサンドボックス設定も同ページ)。

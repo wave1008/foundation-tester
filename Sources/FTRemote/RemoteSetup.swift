@@ -84,8 +84,8 @@ public enum RemoteSetupPlan {
             "--skip-extension",
             "--skip-mcp",
             // ランナー機にエージェントの入口は要らない(人が開く機械ではない。
-            // AgentIntegration.entryPointFile と対)
-            "--skip-claude-md",
+            // AgentIntegration.entryPointFile / claudeImportFile と対)
+            "--skip-entry-point",
             "--no-next-steps",
         ]
     }

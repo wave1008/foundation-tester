@@ -10,9 +10,11 @@ do the same work once you provide these three things yourself:
 | `ft_*` (exploring screens, driving devices, running scenarios) | register `fleetest-mcp` as an MCP server | only the config file format |
 | The runbooks | point the agent at the `SKILL.md` files in the clone | only where they live |
 
-The only things you give up are **skill auto-discovery and the entry-point file** — being able to
-call `/fleetest-setup` by name, and a `CLAUDE.md` that is read automatically at the start of a
-session. The runbooks themselves work fine when you simply say "read this file and follow it".
+The only thing you give up is **skill auto-discovery** — being able to call `/fleetest-setup` by
+name. The runbooks themselves work fine when you simply say "read this file and follow it". The
+installer writes the entry point to `AGENTS.md` in your test folder (with the paths to the runbooks
+and to the [agent guide](agent_guide.md)), so an agent that reads `AGENTS.md` picks it up at the start
+of a session.
 
 ## 1. Install
 
@@ -24,9 +26,10 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   | bash -s -- --name MyApp --app-id com.example.myapp
 ```
 
-The installer also writes the Claude Code artefacts. `.mcp.json` and `CLAUDE.md` can be suppressed
-with `--skip-mcp` / `--skip-claude-md`; `.claude/settings.json` (the Bash permission allowlist)
-currently cannot — other agents simply ignore it.
+The installer also writes the Claude Code artefacts. `.mcp.json` can be suppressed with
+`--skip-mcp`, and the entry point (`AGENTS.md`, plus a `CLAUDE.md` that only imports it) with
+`--skip-entry-point`; `.claude/settings.json` (the Bash permission allowlist) currently cannot —
+other agents simply ignore it.
 
 Prerequisites, updates and uninstall are covered in
 [Getting started](../getting-started.md).

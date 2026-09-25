@@ -98,5 +98,13 @@ hybrid(in-app が実装できない操作 = ホーム/タスク切替/ドラッ�
 (スナップショットと操作プリミティブがあれば自分で探索できるため)、`fleetest` は決定性 ——
 操作・再生・検証を担います。
 
+## 構造化出力(明示的に有効にしたときだけ)
+
+サーバの環境(MCP の登録の `env`)に `FT_MCP_STRUCTURED_CONTENT=1` を設定すると、`ft_run_scenario`・
+`ft_dry_run`・`ft_list_scenarios` が `structuredContent`(シナリオごとの成否とレポートのパス、または
+シナリオの一覧を JSON にしたもの)も返します。クライアントが MCP 2025-06-18 以降で交渉したときだけ
+送ります。**Claude Code では有効にしないでください**: Claude Code は `structuredContent` があると
+それだけをモデルに渡すため、文面の注記と失敗時のスクリーンショットが届かなくなります。
+
 ### Link
 - [index](../index_ja.md)
