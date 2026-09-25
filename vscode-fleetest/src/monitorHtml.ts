@@ -236,7 +236,7 @@ function renderDevicesPanel(): string {
           <!-- リモートの行があるときだけ出す(.host-metrics.hm-multi)。手元は "local" 固定 -->
           <span class="hm-machine">local</span>
           <!-- 占有(その機械で run が実行中)の錠前。**全行に必ず置く** —— 出る行にだけ足すと
-               その行だけ幅が増えて、MEM/CPU/… の列が行ごとにずれる(2026-08-31 の実害)。
+               その行だけ幅が増えて、MEM/CPU/… の列が行ごとにずれる(実害)。
                出す/出さないは可視性だけで切り替える(hostCharts.js の hmApplyLock)。 -->
           <!-- 「マシン有効」off の印。錠前と同じく**全行に必ず置き**可視性だけ切り替える(hmApplyDisabled) -->
           <span class="hm-off">${t("panels.hostMetrics.machineDisabled")}</span>
@@ -248,7 +248,7 @@ function renderDevicesPanel(): string {
           <span class="host-metric" id="hm-fm" data-metric="fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <!-- FM が死んでいるときだけ、どの経路が死んだかを語で出す(hostCharts.js の
                hmRenderFmLabel が入れる)。**行の最後尾に置く** —— ここより左に足すと
-               MEM/CPU/… の列が行ごとにずれる(2026-08-31 の実害。錠前と同じ理由)。
+               MEM/CPU/… の列が行ごとにずれる(実害。錠前と同じ理由)。
                最後尾なので出し入れは display で切ってよい(右端が伸び縮みするだけ)。 -->
           <span class="hm-fm-dead-badge"></span>
         </div>
@@ -260,21 +260,21 @@ function renderDevicesPanel(): string {
            「すべて選択」⇄「すべて解除」で入れ替わるので、静的 HTML に置くと二重管理になる。 -->
     </div>
     <!-- run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上
-         (グリッド表示中も進捗が見えることを優先。ユーザー決定 2026-09-20)。run 0本でもヘッダは残す
+         (グリッド表示中も進捗が見えることを優先。ユーザー決定)。run 0本でもヘッダは残す
          (main.js の 'monitorRuns'/'runBoardReset'/'runBoardCollapsed' ケースが runBoard.js へ渡す)。 -->
     <div id="run-board" class="run-board">
       <div id="run-board-header" class="run-board-header">
         <!-- title/aria-label は webview 側(runBoard.js)が状態(開/閉)に応じて入れる(状態で入れ替える既存の規律と同じ) -->
         <button id="run-board-toggle" class="run-board-toggle" type="button" aria-expanded="true" data-expanded="true">▶</button>
         <span id="run-board-title" class="run-board-title"></span>
-        <!-- ツリーを開いた形のアイコン(下向きの三角 + インデントした行。ユーザー決定 2026-09-21)。名前は tooltip と aria-label が持つ
+        <!-- ツリーを開いた形のアイコン(下向きの三角 + インデントした行。ユーザー決定)。名前は tooltip と aria-label が持つ
              (runBoard.js)。クリックはヘッダ行の開閉へ波及させない(stopPropagation) -->
         <button id="run-board-expand-all" class="icon-button run-board-expand-all" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.6 2.9h4.2L3.7 6.6z"/><rect x="7" y="2.9" width="7.4" height="1.5" rx="0.7"/><rect x="9" y="7.2" width="5.4" height="1.5" rx="0.7"/><rect x="9" y="11.5" width="5.4" height="1.5" rx="0.7"/></svg></button>
         <!-- プラットフォームの表示フィルタ(3択・既定は「すべて」)。選ばれていない側のデバイスは
              4つのセクション(実行中・デバイス一覧・選択したデバイス・実行ログ)から同時に消える
              —— deviceTiles.js が applyDevices の入口で落とすため。**ヘッダ行のクリック
              (ボード全体の開閉)へ波及させない**ので deviceTiles.js が stopPropagation する。
-             **見た目はバッジ**(ユーザー決定 2026-09-22): 選んでいるものだけ色付き
+             **見た目はバッジ**(ユーザー決定): 選んでいるものだけ色付き
              (iOS / Android はタイルのデバイス名ピルと同じ色・「すべて」は白)で、
              選んでいないものは灰色。3択なので role は radiogroup/radio のまま持つ。
              iOS / Android は製品名なので翻訳しない(「すべて」と説明だけ t() を通す) -->
@@ -285,7 +285,7 @@ function renderDevicesPanel(): string {
         </span>
       </div>
       <div id="run-board-rows" class="run-board-rows"></div>
-      <!-- 2カラムの境目(ユーザー決定 2026-09-22)。マウスで幅を変える。**見出し行には掛けない**
+      <!-- 2カラムの境目(ユーザー決定)。マウスで幅を変える。**見出し行には掛けない**
            ので top は runBoard.js が測ったヘッダの高さ(--rb-head)。飾りではなく掴む相手なので
            role="separator"(向きは縦) -->
       <div id="run-board-split" class="run-board-split" role="separator" aria-orientation="vertical" aria-label="${t("panels.runBoard.splitAriaLabel")}"></div>
@@ -293,7 +293,7 @@ function renderDevicesPanel(): string {
 
     <div id="banner" class="banner"></div>
 
-    <!-- 「実行中」と「デバイス」を分ける仕切り(ユーザー決定 2026-09-22)。見た目も挙動も実行ログ
+    <!-- 「実行中」と「デバイス」を分ける仕切り(ユーザー決定)。見た目も挙動も実行ログ
          ビューの上の #splitter-log と同じ(.splitter)—— 下げると run ボードが伸びる(splitter.js)。
          run ボードを畳んでいる間だけ CSS が掴めなくする -->
     <div id="devices-separator" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.runBoardSplitterAriaLabel")}"></div>
@@ -310,7 +310,7 @@ function renderDevicesPanel(): string {
            次に何が起きるか(選択/解除)は自前ツールチップが出す(deviceTiles.js の
            renderSelectAllButton)—— 見える文字は状態で入れ替えない -->
       <label class="profile-label header-toggle line-view-select-all"><input type="checkbox" class="toggle-switch" role="switch" id="chk-select-all">${t("panels.devices.selectAllLabel")}</label>
-      <!-- 「ライブ更新」。**「すべて選択」の右**(ユーザー決定 2026-09-22)—— どちらもタイルの
+      <!-- 「ライブ更新」。**「すべて選択」の右**(ユーザー決定)—— どちらもタイルの
            見え方を操るので隣り合わせる。効く相手は全台(タイルも拡大表示も)。
            状態の保存と復元は streamToggle.js ⇄ monitorPanel.ts
            (setShowStreamDuringRun / showStreamDuringRun) -->
@@ -1125,7 +1125,7 @@ function renderDevicePickOverlay(): string {
           <label for="device-pick-machine-select">${t("panels.devicePick.machineLabel")}</label>
           <select id="device-pick-machine-select"></select>
           <!-- ホスト切替中のインジケーター。**リストボックスの右に置く**(一覧側に出すと
-               ダイアログの高さが変わって画面が跳ねる。2026-08-17 ユーザー指示) -->
+               ダイアログの高さが変わって画面が跳ねる。ユーザー指示) -->
           <span id="device-pick-loading" class="device-pick-loading" style="display: none;">
             <span class="device-pick-spinner"></span>
             <span>${t("panels.devicePick.loading")}</span>

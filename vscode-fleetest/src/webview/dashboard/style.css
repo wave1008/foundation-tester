@@ -10,7 +10,7 @@
   color-scheme: light dark;
 }
 /* モニターの document に @import で同居するので、要素セレクタは #panel-dashboard で必ず囲む
-   (body / h2 / button を素で書くと他タブへ漏れる。2026-09-01 実害: body の padding が全タブへ)。
+   (body / h2 / button を素で書くと他タブへ漏れる。実害: body の padding が全タブへ)。
    ペイン自身がスクロール領域(.tab-panel は overflow:hidden の flex 列)。 */
 #panel-dashboard {
   overflow-y: auto;
