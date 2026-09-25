@@ -3,7 +3,7 @@
 // 実機には無いので、`devicectl device info processes`(実行ファイルのパスだけ。bundle ID は載らない)を
 // `devicectl device info apps --include-all-apps`(bundle ID と `url` = インストール先)で引き直す。
 //
-// 実測 2026-09-24(iPhone SE3・iOS 26): どちらも 0.6 秒前後。apps は 71 件すべてに url が付く。
+// 実測(iPhone SE3・iOS 26): どちらも 0.6 秒前後。apps は 71 件すべてに url が付く。
 // 設定アプリを開いた状態で候補 14 件のうち `/appstate` が前面と答えたのは Preferences と SpringBoard
 // だけ = シミュレータと同じ「除外してちょうど1つ」の規則がそのまま効く。
 

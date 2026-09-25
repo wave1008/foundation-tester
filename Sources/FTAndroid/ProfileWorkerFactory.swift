@@ -46,12 +46,12 @@ public enum ProfileWorkerFactory {
 
     /// run 開始時に各デバイスへ `home()` を1回撃つ(実行プロファイルの `homeOnStart`。既定 true)。
     ///
-    /// **予防措置**(2026-08-11 の実測): 一斉に launch した直後の端末は「描画要求が無いだけ」で
+    /// **予防措置**(実測): 一斉に launch した直後の端末は「描画要求が無いだけ」で
     /// 画面が黒いまま止まることがある(黒かった5台のうち4台は HOME を押した瞬間に 15KB → 1.4MB へ
     /// 戻った)。この状態は本物の凍結と受動観測では見分けが付かないので、**先に1回入力を入れて
     /// 描画を動かしておく**。デバイスあたり1回なので実行時間への影響はほぼ無い。
     ///
-    /// **in-app ブリッジを持つ台には撃たない**(実測 2026-09-09、3機18台)。`home` はアプリを背面へ
+    /// **in-app ブリッジを持つ台には撃たない**(実測、3機18台)。`home` はアプリを背面へ
     /// 送るが、**in-app ブリッジはそのアプリの中に居る**ので背面に回った瞬間に無応答になる ——
     /// 供給が「壊れたブリッジ」と見て停止・張り直しに入り、3機で13台がワーカーから脱落した
     /// (シナリオの結果は緑のままだが手元の run が 50s → 136s)。engine=inapp/hybrid は黙って飛ばす。
@@ -126,8 +126,8 @@ public enum ProfileWorkerFactory {
     /// **失敗は握りつぶす** —— これは診断であって run を止める理由にはしない
     /// **アプリの外(SpringBoard)を触れる driver**。in-app ブリッジは注入先アプリしか見えず
     /// `/home` のルートも持たないので、hybrid でも必ず XCUITest ブリッジ側へ回す
-    /// (`RunWorker.driver` は in-app ブリッジ宛なので、そのまま使うと 0/N になる。実害 2026-09-09:
-    /// homeOnStart が hybrid の全台で不発だったのに「inapp 固定の台だけができない」と説明していた)。
+    /// (`RunWorker.driver` は in-app ブリッジ宛なので、そのまま使うと 0/N になる。実害:
+    /// homeOnStart が hybrid の全台で不発だったのに「inapp 固定の台だけができない」と誤って説明していた)。
     /// iOS 以外・XCUITest ブリッジを持たない台は nil(呼び手は黙って飛ばす)。
     /// 使い手は pressHomeOnStart と warnOnResidualSystemAlerts の2つ。
     static func systemUIClient(for worker: RunWorker) -> BridgeClient? {
@@ -175,7 +175,7 @@ public enum ProfileWorkerFactory {
     /// **画面を必ず変える無害な入力**を送り、その後のフレームを返す(iOS シミュレータ)。
     /// `BlankWorkerTriage` の能動プローブ用。
     ///
-    /// なぜ要るか(2026-08-11 の実測): 一斉に force-stop / launch した直後の黒画面は、
+    /// なぜ要るか(実測): 一斉に force-stop / launch した直後の黒画面は、
     /// **描画要求が無いだけ**で死んでいないことが多い(黒かった5台のうち本物の wedge は1台。
     /// 残り4台は HOME を押した瞬間に 15KB → 1.4MB へ戻った)。受動観測ではこの2つを区別できない。
     ///
@@ -299,9 +299,8 @@ public enum ProfileWorkerFactory {
         }
 
         // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
-        // **回復したら公表を消す**(2026-08-11 の実害)。以前は回復の分岐ごとに `clear` を書いており、
-        // **guest restart の分岐だけ落ちていた**ため、戻った機が run の間ずっと ❄️ のままになった
-        // (モニターは公表を無条件に取り込む)。
+        // **回復したら公表を消す**(実害)。回復の分岐ごとに `clear` を書くと **guest restart の分岐だけ
+        // 落ちる**ことがあり、戻った機が run の間ずっと ❄️ のままになる(モニターは公表を無条件に取り込む)。
         // **label と serial を1つの記録にまとめてある**のが要点 —— 回復の分岐を足すときに
         // 「レーンに残す」だけ書いて「公表を消す」を忘れる、が**型の上で起きない**
         var repairedDevices: [(label: String, serial: String)] = []
@@ -362,7 +361,7 @@ public enum ProfileWorkerFactory {
         }
 
         // sleep/wake 不発の難治型を guest reboot で本 run 内に復帰させる。1台ずつ直列に処理する
-        // (複数台の同時ブート描画は凍結そのもののトリガ=別個体を巻き込みうる。実測 2026-07-25)。
+        // (複数台の同時ブート描画は凍結そのもののトリガ=別個体を巻き込みうる。実測)。
         // 該当は通常 0〜1台のため直列でも run 開始の遅延は reboot 1回ぶんに収まる
         var excludedIndices: Set<Int> = []
         for index in stubbornIndices {
@@ -441,7 +440,7 @@ public enum ProfileWorkerFactory {
 
     /// guest reboot 後、非空白の画面が観測できるまで待ち続けてよいか(純粋関数。単体テスト対象)。
     /// 予算(reboot を発行した時刻からの経過 vs blankRebootTimeoutSeconds)を使い切ったら
-    /// 待つのをやめる(従来どおり、まだ空白なら除外)
+    /// 待つのをやめる(まだ空白なら除外)
     static func blankPollShouldContinue(elapsedSeconds: Double, budgetSeconds: Double) -> Bool {
         elapsedSeconds < budgetSeconds
     }
@@ -493,18 +492,18 @@ public enum ProfileWorkerFactory {
     }
 
     /// **起動しただけでは run できない**: コールドブート直後の Android は起動ストームの間、
-    /// ブリッジ(ftbridge instrumentation)を立てても数秒で殺す(実測 2026-08-01:
+    /// ブリッジ(ftbridge instrumentation)を立てても数秒で殺す(実測:
     /// 起動17s→21s で死亡)。sys.boot_completed / bootanim / PackageManager 応答 /
     /// ランチャーの mCurrentFocus はどれもこの窓より手前で真になり、信号に使えなかった。
     /// よって**「立てて、生き続けることを確認する」自己検証で待つ**。
-    /// これが機能する前提が AndroidBridge の .active 無効化(死んだクライアントを
-    /// 握り続けない)で、それ以前は何度再試行しても同じ死体に当たっていた。
+    /// これが機能する前提は AndroidBridge の .active 無効化(死んだクライアントを
+    /// 握り続けない) —— 無効化しなければ何度再試行しても同じ死体に当たる。
     ///
     /// **起こす側は `AndroidLaneRecovery.bootMissingDevices`**(直列・再試行・locale 適用)。
     /// ここはその直後に、**実際に起こせた分だけ**を渡して呼ぶ
     /// (起こせなかったレーンの扱いは `FTCore.LaneGate` の責務なので待たない)。
     /// buildAndroidWorkers より前に呼ぶこと
-    /// **待ちは台ごとに並列**(実測 2026-09-09: 直列だと冷起動が ≈28 秒/台の台数比例になり、
+    /// **待ちは台ごとに並列**(実測: 直列だと冷起動が ≈28 秒/台の台数比例になり、
     /// 手元8台で run 開始まで 3分41秒 —— そのうち約半分がこの待ちだった)。
     /// **直列にする理由は起こす側にしか無い** —— `AndroidLaneRecovery.bootMissingDevices` が
     /// 1台ずつなのは「複数台の同時ブート描画が画面凍結の契機」だから。こちらは `/status` を
@@ -558,7 +557,7 @@ public enum ProfileWorkerFactory {
     /// アニメーション設定の同期もここで行う(run 開始の全経路がこの関数を通るため。
     /// Wipe Data / GPU 復帰の後に呼ぶこと = serial が確定している)。
     ///
-    /// **1台の解決失敗で全体を落とさない**(2026-08-16 の実害: 別プロファイル実行中にエミュレータ
+    /// **1台の解決失敗で全体を落とさない**(実害: 別プロファイル実行中にエミュレータ
     /// 2台がプロセスごと死に、`try ... map` が丸ごと throw して後続3プロファイル74本が開始前に
     /// 全滅した。健全な6台は使われなかった)。集約規則は `FTCore.FleetOutcome.resolve`
     /// (iOS ブリッジ供給 `BridgeProvisioner.provision` と共有)。**全滅のときだけ**最初のエラーを
@@ -644,7 +643,7 @@ public enum ProfileWorkerFactory {
             // **実機は 60s に収まらない**: ランナーの起動→LAN 宣言(最大 startupTimeoutSeconds)→
             // /status(同じく最大 startupTimeoutSeconds)を直列に払う(build-for-testing は共有済み)。
             // 60s で切ると復帰が構造的に成立せず、切られた供給は続行して孤児ランナーを残していた
-            // (2026-09-04 iPhone 13: 18 本中 17 本が「no usable workers」)。数字は launcher の
+            // (実測 iPhone 13: 18 本中 17 本が「no usable workers」)。数字は launcher の
             // 2 段の締切から導く(独立した定数を置かない)
             let budgetSeconds: TimeInterval = device.spec.isPhysical
                 ? 2 * BridgeLauncher.startupTimeoutSeconds : 60
@@ -845,7 +844,7 @@ public enum ProfileWorkerFactory {
                         // **先にこの機のブリッジを止める**。掴んだまま落とすと `simctl shutdown` が
                         // XCUITest ランナーの teardown を待って **約50秒**かかり(止めてからなら約5秒)、
                         // 生き残ったランナーが再ブート後に再接続してくるので張り直しも遅い
-                        // (2026-08-11 実測・3周とも一致: 96.5s → 34.6s)。
+                        // (実測・3周とも一致: 96.5s → 34.6s)。
                         // 止めるのは**この udid のブリッジだけ**(他機・他セッションは巻き込まない)
                         _ = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
                         _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])

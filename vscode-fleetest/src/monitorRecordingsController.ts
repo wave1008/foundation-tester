@@ -274,7 +274,7 @@ export class MonitorRecordingsController {
         sourcesFailed = (sourcesFailed ?? 0) + detail.index.sourcesFailed;
       }
     }
-    // エラーとツリーは機械をまたいで1つに混ぜる(壁時計順・クラス初出順。単機のときは従来と同じ)
+    // エラーとツリーは機械をまたいで1つに混ぜる(壁時計順・クラス初出順。単機のときも同じ結果)
     errors.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
     const tree = groupTreeByClass(treeScenarios);
     return {

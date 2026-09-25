@@ -26,7 +26,7 @@ extension MCPServer {
     /// 救済(半開きシートを広げての再試行)がレイアウトを変えた可能性を伝える。
     /// **検出できるものは名指しする**: 救済前に横ページャ(`pageIndicator`)があり救済後に
     /// 消えていれば、`direction` がもうページ送りの意味を持たないことまで言う
-    /// (2026-08-12実測: Apple マップの経路一覧が横ページャ→縦リストに化けた回。直前の
+    /// (実測: Apple マップの経路一覧が横ページャ→縦リストに化けた回。直前の
     /// ft_snapshot の「direction: right で届く」という案内と実際の結果が食い違っていた)。
     /// 消えていない/両方に無いときは汎用の一文のみ(それ以上の推測はしない=誤検知回避)
     static func sheetExpansionLayoutNote(before: SnapshotResponse, after: SnapshotResponse) -> String {
@@ -39,9 +39,9 @@ extension MCPServer {
     }
 
     /// シート展開救済で scrollFrame 容器が実際に伸びたか。伸びていなければ再試行(逆走査
-    /// 8本+通常8本)は最初から無駄なので撃たない(2026-08-12実測: Apple マップの乗換案内
+    /// 8本+通常8本)は最初から無駄なので撃たない(実測: Apple マップの乗換案内
     /// シートはグラバーを引いても伸びず、32.5秒かけて同じ失敗をなぞっていた)。
-    /// **どちらかの高さを測れなかったら「伸びた」扱い** = 従来どおり再試行する(判断できない
+    /// **どちらかの高さを測れなかったら「伸びた」扱い** = 再試行する(判断できない
     /// ときに救済を奪わない)。+1 は同一高の描画ゆらぎ吸収
     static func sheetExpansionGrew(beforeHeight: Double?, expandedHeight: Double?) -> Bool {
         guard let beforeHeight, let expandedHeight else { return true }
@@ -60,7 +60,7 @@ extension MCPServer {
     /// 画面内判定は `TapTargetGeometry.offscreenAdvisory`(nil = 画面の中)に委ねる ——
     /// **ここに2つ目の「見えているか」の定義を置かない**。ただし退化 frame(幅か高さ 0)だけは
     /// 手前で落とす: offscreenAdvisory は画面の内側にある 0x0 を「画面内」と答えるので
-    /// (2026-08-12 に外して実測)、これが無いと**描かれていない一致で救済を打ち切る**
+    /// (外して実測)、これが無いと**描かれていない一致で救済を打ち切る**
     static func visibleAfterExpansion(step: FlowStep, in snapshot: SnapshotResponse) -> ElementInfo? {
         guard let locator = step.locator,
               let hit = StepExecutor.match(locator, in: snapshot),
@@ -70,7 +70,7 @@ extension MCPServer {
         return hit
     }
 
-    /// **救済が効かないと分かった画面で、手で開く手順を名指しする**(2026-08-12 の監査)。
+    /// **救済が効かないと分かった画面で、手で開く手順を名指しする**(監査)。
     /// 救済が「もう一度やっても同じ」で終わったとき、読み手に残る手は
     /// **グラバーを全開まで引いてから素の ft_snapshot を撮る**(探索が届かなくても、
     /// 展開後の木には行が載る。実測でこれだけが通った)。文言だけの案内では毎回
@@ -98,7 +98,7 @@ extension MCPServer {
 
     /// 再試行後の scrollFrame 容器の姿(リスト端でのスワイプが外側シートの折りたたみ/閉鎖に
     /// 化ける画面の検出)。救済前に測れていた容器が再試行後の木から消えていたら `gone`
-    /// (2026-08-12実測: Apple マップの乗換案内は再試行のスワイプでシートごと閉じ、
+    /// (実測: Apple マップの乗換案内は再試行のスワイプでシートごと閉じ、
     /// 最終画面が地図だけになっていた)。縮んでいたら `shrunk`。救済前から測れていない
     /// 容器については黙る(嘘を足さない)
     enum SheetRetryContainerState { case silent, shrunk, gone }
@@ -131,7 +131,7 @@ extension MCPServer {
     static let sheetRescueMarker = "note: sheet-expand rescue "
 
     /// この長さ未満(ms)の探索は、救済(シート展開)が無ければ内訳を出さない —— 短い探索まで
-    /// 毎回「何本振ったか」を出すと、実際に遅い回(2026-08-12実測 9.8/12.8/15.6s)の内訳が
+    /// 毎回「何本振ったか」を出すと、実際に遅い回(実測 9.8/12.8/15.6s)の内訳が
     /// 埋もれる。救済ありは長さに関わらず出す(遅さの主因を切り分けたい回だから)
     static let scrollTimingNoteThresholdMs = 2000
 
@@ -204,10 +204,10 @@ extension MCPServer {
     /// 探索が止まった画面で「実際に引けるもの」を列挙する。id とラベルが両方あれば
     /// 両方出す(id だけだと、同じ id を複数のラベルが共有する画面で見分けが付かない)。
     /// **多すぎると読めない**ので上限を切る(足りなければ ft_snapshot を撮ればよい)
-    /// **飾りの葉を後回しにする**(2026-08-12 の監査)。実測(Apple マップ・経路詳細で探索が
+    /// **飾りの葉を後回しにする**(監査)。実測(Apple マップ・経路詳細で探索が
     /// 止まった回)では、この一覧の 20 枠が地図ピン(`#VKPointFeature "セブン‐イレブン"` 等)で
     /// 埋まり、探していたリストの行が1つも出なかった —— 読み手にとって情報量ゼロの 20 語。
-    /// **落とすのではなく順序を落とす**: 枠が余れば従来どおり出す(地図の POI を探している
+    /// **落とすのではなく順序を落とす**: 枠が余れば出す(地図の POI を探している
     /// 回もあるので、消してしまうと逆の実害が出る)。判定は bulk fold・曖昧ラベル注記と同じ
     /// `SnapshotRenderer.isDecorativeLeaf`(2つ目の「飾りか」を作らない)
     static func actionableFirst(_ elements: [ElementInfo],
@@ -229,7 +229,7 @@ extension MCPServer {
         var shown: [String] = []
         for e in Self.actionableFirst(snapshot.elements, in: snapshot) {
             // **ゼロ幅文字を落としてから出す**: ここから写したラベルは**見た目が正しいのに
-            // 完全一致しない**(2026-08-07 実測。Google マップの発車案内で U+200B が21個
+            // 完全一致しない**(実測。Google マップの発車案内で U+200B が21個
             // 漏れていた。木の描画側は除去済みで、ヒストだけ素通しだった)
             let cleaned = e.label.map(SnapshotRenderer.displayText)
             let id = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)" : nil
@@ -265,7 +265,7 @@ extension MCPServer {
             .map(\.ref)
     }
 
-    /// 残像の行に付ける印。**先頭の注記だけでは足りない**(外部フィードバック 2026-08-06):
+    /// 残像の行に付ける印。**先頭の注記だけでは足りない**(外部フィードバック):
     /// エージェントは一覧の行から ref をコピーするので、その行自体に出ていないと届かない。
     ///
     /// 積み重なり(`stackedRefs`)にも同じ印を付ける —— 利用者から見ると原因は同じ
@@ -422,10 +422,10 @@ extension MCPServer {
             + " something else (like the map behind it) instead of the pager."
     }
 
-    /// 同じ印の付いた行のうち**最外のものだけ**を残す(2026-08-12 の実アプリ監査)。
+    /// 同じ印の付いた行のうち**最外のものだけ**を残す(実アプリ監査)。
     /// 実測(Apple マップの経路詳細)では leftover 8 件のうち 7 件が先頭行の子孫で、
     /// **1つのはみ出しを 8 回読ませて**いた。子孫を撃つときは祖先も必ず同じ状態なので、
-    /// 最外だけ名指しても安全上の情報は減らない(行そのものに付く ⚠️ 印は従来どおり全行に出る)。
+    /// 最外だけ名指しても安全上の情報は減らない(行そのものに付く ⚠️ 印は全行に出る)。
     /// 返り値の第2要素は落とした件数 —— **黙って消さない**(件数は注記に出す)
     static func outermost(_ elements: [ElementInfo],
                           in all: [ElementInfo]) -> (outer: [ElementInfo], dropped: Int) {
@@ -470,7 +470,7 @@ extension MCPServer {
         return parts.joined(separator: " ")
     }
 
-    /// 木の中に**同じ連続領域が2回**現れる形の注記(2026-08-13・
+    /// 木の中に**同じ連続領域が2回**現れる形の注記(
     /// jma.go.jp を横スクロールした後の iOS Safari で実測)。横スクロールで前後のコピーが
     /// 両方残ると、片方は既にスクロールで動いた実座標を持たないまま木に残る = 読み手が
     /// コピーした ref が古い側かもしれない。
@@ -510,7 +510,7 @@ extension MCPServer {
         // **渡した scrollFrame が複数に当たっているなら、それを先に言う**。`matchDetailed` は
         // 添字が無ければ `matches[0]` を黙って採るので、同名の容器が並ぶ画面では
         // preorder 先頭(たいてい横カルーセル)を掴んだまま「見つからない」で終わる。
-        // 実測(2026-08-07・Google マップ Android): `#recycler_view` は1画面に4つあり、
+        // 実測(Google マップ Android): `#recycler_view` は1画面に4つあり、
         // 注記どおり渡すと高さ126pxのチップ行が選ばれて結果リストは1pxも動かなかった。
         // **ref 指定は曖昧さが無い**(id の重複・欠落を避けるための逃げ道そのものなので、
         // 「他にも当たる」という注記自体が成立しない)。resolveScrollFrameArg 側で
@@ -522,9 +522,9 @@ extension MCPServer {
             let locator = FTSelector.parse(frame).primary
             let matches = StepExecutor.candidates(locator, elements: snapshot.elements) ?? []
             // **1件も当たらないなら、その事実こそ言う**: 誤字や範囲外の添字でも
-            // `scrollContainer` は nil を返し、**2026-08-08 からは探索そのものを打ち切る**
-            // (以前は全画面スワイプへ黙って退化していたが、カードのボタン等を誤発火させる
-            // 実害があったため fail-fast に変えた。ここは fail-fast の理由文に添える候補列挙)
+            // `scrollContainer` は nil を返し、**探索そのものを打ち切る(fail-fast)**
+            // (全画面スワイプへ退化させるとカードのボタン等を誤発火させる実害があった。
+            // ここは fail-fast の理由文に添える候補列挙)
             if matches.isEmpty {
                 // 「search was not run」とはここでは言わない —— fail-fast の理由文
                 // (StepExecutor.scrollNotFoundMessage)が既に言っており、このヒントは
@@ -540,7 +540,7 @@ extension MCPServer {
             return " scrollFrame \"\(frame)\" matches \(matches.count) elements and the first one"
                 + " was used — add [n] to pick another: \(listed)."
         }
-        // **スクロール容器が1つも申告されない木**では、案内が出せない理由ごと言う(2026-08-08 の
+        // **スクロール容器が1つも申告されない木**では、案内が出せない理由ごと言う(
         // 監査)。in-app は版57から Compose/Flutter でも申告できるが、XCUITest エンジンの木では
         // 依然として出ない。黙ると「scrollFrame を渡せ」というツール説明だけが残り、
         // 渡す候補が無いことに気づけない
@@ -557,7 +557,7 @@ extension MCPServer {
     }
 
     /// 候補選定の規則(装飾葉の除外・スコア付け・編集距離)は `FTCore.SimilarLabels` が唯一の
-    /// 定義元(2026-08-15、DSL 側の `StepExecutor.candidateHint` と共有するため降ろした)。
+    /// 定義元(DSL 側の `StepExecutor.candidateHint` と共有する)。
     /// ここは MCP 応答の文言(`"note: similar labels on screen: …"`)の組み立てだけを持つ ——
     /// **この文言は既存の MCP テスト・NoteBudgetTests のバイト数ゲート対象で1文字も変えない**
     static func isSimilarText(_ a: String, _ b: String) -> Bool {
@@ -585,8 +585,8 @@ extension MCPServer {
         return " note: similar labels on screen: \(display.joined(separator: ", "))."
     }
 
-    /// セレクタの**記法**が原因で外れたときだけ出す助言。無条件に「\* で囲め」と言っていた版は
-    /// 誤った助言を2形返していた(2026-08-07 に Google マップで実測): 既に `*寿司*` を渡した相手に
+    /// セレクタの**記法**が原因で外れたときだけ出す助言。無条件に「\* で囲め」と言うと
+    /// 誤った助言を2形返す(Google マップで実測): 既に `*寿司*` を渡した相手に
     /// 同じ `*寿司*` を勧める / `#no_such_id` に**ラベル部分一致**の `*no_such_id*` を勧める。
     /// 判定は DSL と同じ `StepExecutor.partialMatchHint` に委ねる(3条件そろったときだけ返る)。
     /// 切り詰めラベルの取り違えはそれとは別の形なので独立に足す
@@ -636,7 +636,7 @@ extension MCPServer {
         let fromFinal = notationHint(selectorText, in: after)
         let fromStart = beforeScroll.map { notationHint(selectorText, in: $0) } ?? ""
         if !fromFinal.isEmpty {
-            // **待たされた理由を帰属させる**(2026-08-15 の追加フィードバック): 開始画面から
+            // **待たされた理由を帰属させる**(追加フィードバック): 開始画面から
             // 同じ答えが出せた回は、スワイプの秒数を丸ごと捨てている。**時間は縮まない**
             // (MCP は1応答なので「これから探します」を先に届ける口が無い)が、
             // 黙っていると「完全一致は即成功・部分一致だけは 24 秒かけて失敗」という
@@ -652,7 +652,7 @@ extension MCPServer {
             + " back to that screen first) is what actually reaches it."
     }
 
-    /// **記法の形違い**による部分一致の空振り。実測(2026-08-10): `*武蔵野線`(endsWith)を渡して
+    /// **記法の形違い**による部分一致の空振り。実測: `*武蔵野線`(endsWith)を渡して
     /// 7スクロール空振りした(正解は `*武蔵野線*`)。StepExecutor.partialMatchHint は
     /// 「素の完全一致指定が部分一致なら在る」しか見ないので、**既に endsWith/startsWith を
     /// 指定した相手が別の部分一致形でなら当たる**ケースはここで別に見る。
@@ -695,7 +695,7 @@ extension MCPServer {
     /// 呼び手ごとに持つ —— MCP は `ft_snapshot maxElements:` と書き、DSL は
     /// `.webView >> ...` / `scrollFrame:` と書く。
     /// **逃げ道まで書く**: 「落ちた中に居るかもしれない」で止めると、読み手は同じ探索を
-    /// 撃ち直す(2026-08-12 のブラウザ監査で 45.3s + 56.1s を空費した)
+    /// 撃ち直す(ブラウザ監査で 45.3s + 56.1s を空費した)
     static func truncationHint(_ snapshot: SnapshotResponse) -> String {
         guard let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
         let escape = truncationEscape(remedy, for: .hint)
@@ -738,7 +738,7 @@ extension MCPServer {
         }
     }
 
-    /// waitFor タイムアウト文の共通末尾(2026-08-12 監査)。waitFor はレンダリング済みの木しか
+    /// waitFor タイムアウト文の共通末尾(監査)。waitFor はレンダリング済みの木しか
     /// 見ないので、探した相手がスクロール圏外にいると満額(既定5秒〜)を空費する
     /// (実測: 週間予報表が初期表示の下にあり、25秒2回=52秒を空費した。正解は ft_scroll_to)。
     /// **ft_snapshot(MCPServer+ScreenTools.swift)と snapshotAfter(MCPServer+Snapshot.swift)の
@@ -757,7 +757,7 @@ extension MCPServer {
     /// 新しいインスタンスを作ること(このクラス自身は「同じ snapshot 値に対して同じ答えを返す」
     /// こと以上は保証しない)。
     ///
-    /// 実測(2026-08-12・実アプリ 203 要素画面): 素の呼び出しは同じ木に対して ghostFlags を
+    /// 実測(実アプリ 203 要素画面): 素の呼び出しは同じ木に対して ghostFlags を
     /// 3回・foldedGroups を2回払い、ambiguousLabelsNote と duplicateIDsNote は別々の
     /// SelectorNaming を作るので、両方の群に出る要素の graded が二重に走ることがあった。
     final class SnapshotAnnotationCache {
@@ -785,7 +785,7 @@ extension MCPServer {
         /// **テスト専用の注入口**。呼び出し回数のカウンタは「cache を経由した呼び出し」しか
         /// 数えられないので、ある呼び手が cache 引数を丸ごと渡し忘れて生の関数を直呼びしても、
         /// 別の呼び手が後から同じ cache を正しく使えばカウンタは辻褄が合ってしまう
-        /// (2026-08-12 に mutation-check で実際に2件すり抜けた)。**値の出所**を追う ——
+        /// (mutation-check で実際に2件すり抜けた)。**値の出所**を追う ——
         /// ここで明らかに間違った値を仕込み、応答にその値が現れるかで「本当にこのインスタンスを
         /// 読んだか」を確かめる。production コードはこのメソッドを呼ばない
         func primeGhostFlagsForTesting(_ value: [Int: String]) {
@@ -814,7 +814,7 @@ extension MCPServer {
     }
 
     // SelectorNaming / Durability の実体は FTCore.SelectorNaming / FTCore.Durability
-    // (2026-08-15 に FTCore へ移設。StepExecutor の自己修復書き戻しも同じ判定を要るため)。
+    // (FTCore に置く理由: StepExecutor の自己修復書き戻しも同じ判定を要るため)。
     // ここは呼び出し元・テストの綴りを変えないための typealias + 転送だけ
     // (RefGuard.swift が TapTargetGeometry/OcclusionGeometry へ転送しているのと同じ形)
     typealias SelectorNaming = FTCore.SelectorNaming
@@ -850,7 +850,7 @@ extension MCPServer {
     }
 
     /// 木が空(要素0)であること自体を言う。**一覧が空なのと「画面に何も無い」のは別**で、
-    /// 実測(2026-08-13・Android Chrome の初回起動ダイアログを閉じた直後)では
+    /// 実測(Android Chrome の初回起動ダイアログを閉じた直後)では
     /// `screen: 1080x2424` の1行だけが返り、**遷移中である**という手掛かりがどこにも無かった。
     /// 木だけで判る事実なので目録に載る(NoteCatalog)。**次の一手まで書く** ——
     /// ここで読み手が撃つべきは撮り直しではなく `waitFor` 付きの1回
@@ -879,8 +879,8 @@ extension MCPServer {
             }
             return parts.isEmpty ? "" : " (\(parts.joined(separator: ", ")))"
         } ?? ""
-        // **逃げ道を必ず添える**(2026-08-12 のブラウザ監査): 従来の助言は「画面を狭くする」
-        // だけで、web ページでは実行できない(シートも大きなリストも無い ——
+        // **逃げ道を必ず添える**(ブラウザ監査): 「画面を狭くする」という助言だけでは
+        // web ページでは実行できない(シートも大きなリストも無い ——
         // 1ドキュメントぶんの要素が最初から全部載っている)。実測では tenki.jp の2週間天気で
         // **落ちた 179 件が全部 labelled = 表の本文**で、`ft_scroll_to` が2回で 101 秒を捨てた。
         // 順序は「上限を上げる」が先: 落ちた行がまさに読みたい物である確率が高い
@@ -905,7 +905,7 @@ extension MCPServer {
         guard let count = snapshot.bulkExemptCount, count > 0 else { return "" }
         // **「無害」と読ませない**: 元の文言は要素上限を守っていることしか言わず、
         // これらの行がコンテキストを消費している事実が伝わらなかった。
-        // **満額は初回だけ**(2026-08-12 の監査。`abbreviated` は他の注記と同じ F-6 の仕組み):
+        // **満額は初回だけ**(監査。`abbreviated` は他の注記と同じ F-6 の仕組み):
         // 実体は木の1行に畳まれているのに、注記のほうが長いという逆転が毎回の応答で起きていた。
         // 伝えたい2点(枠を食っていない/出力は食う)は一度読めば足りる
         guard !abbreviated else {
@@ -940,11 +940,11 @@ extension MCPServer {
 
     /// キーボード下に隠れた操作対象。木からは判定できない(キーボードはスナップショットの対象外)
     /// ので、ブリッジ申告の `keyboardFrame` でだけ言える(判定は RefGuard.keyboardWarning と共有)。
-    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
+    /// 実測(iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
     /// **見出しに出す座標は広げた実効矩形のまま**(申告のまま出すと判定と表示が食い違い、
     /// 読み手が検算できない)。**列挙は chrome 自身とその部分木を除く**(地球儀キー・変換候補
     /// バー等は覆っている側であり、覆われているとは言えない)。
-    /// **Android adjustResize では覆われた要素が木から消える**(実測 2026-09-05・Pixel 4a:
+    /// **Android adjustResize では覆われた要素が木から消える**(実測・Pixel 4a:
     /// パスワード欄フォーカスで窓 2340→1267px・送信/クリアが木から脱落)ため、
     /// `covered.isEmpty` を「下に何も無い」と読むと誤った安心になる ——
     /// `windowResizedAboveKeyboard` で分岐する

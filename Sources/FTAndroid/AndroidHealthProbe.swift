@@ -1,6 +1,6 @@
 // connected な Android エミュレータのゲスト OS 健全性を低頻度で確認する(ApiMonitorCommand.swift
 // から呼ばれる)。adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト時計が凍結)なまま
-// テストが延々失敗し続けた実害(2026-07-16)への対策。
+// テストが延々失敗し続けた実害への対策。
 
 import CoreGraphics
 import FTCore
@@ -16,7 +16,7 @@ public enum AndroidHealthProbe {
     /// monitorHealthWatchdog.ts が明示除外。自動リブートのポリシー化は未決)
     public static let issueMetalErrors = "metal-errors"
 
-    /// metal-errors の警告閾値(行数)。実測(2026-07-25 スケールテスト): 健全ブート 0〜2 件、
+    /// metal-errors の警告閾値(行数)。実測(スケールテスト): 健全ブート 0〜2 件、
     /// 劣化個体は数十〜513 件で高カウント個体が凍結する。ブート中の一過性(〜34件)を拾わない値
     public static let metalErrorWarnThreshold = 100
 
@@ -150,7 +150,7 @@ public enum AndroidHealthProbe {
     /// 固着した表示凍結(blank)を画面 sleep→wake で修復する。凍結は複数エミュレータ同時描画時の
     /// ホスト GPU(-gpu host)側の合成バッファ固着で、表示パイプラインの無効化→再合成が唯一の
     /// 軽量修復(readback = screencap/screenrecord では回復しない。adb reboot ~60s は不要。
-    /// 対照実験 2026-07-25、docs/performance-tuning.md §7)。
+    /// 対照実験、docs/performance-tuning.md §7)。
     /// 1サイクル(dwell 1.5s ≈4s)で直らない抵抗性の変種が実在し(wake 後 6s 待っても blank)、
     /// dwell 3s の2サイクル目で回復する(実測)。成功時 ~4s・抵抗変種のみ ~11s。
     /// 注入は gRPC 優先(sleep/wake ≈1.2ms×2・adb 死亡個体にも届く)・adb フォールバック
@@ -180,7 +180,7 @@ public enum AndroidHealthProbe {
 
     /// 実行中の凍結起因失敗の事後判定+その場修復: isBlankObserved が true なら sleep/wake 修復を
     /// 試みてから true を返す。判定結果(このシナリオ失敗が凍結起因か)は修復成否で変えない=
-    /// 振り直し・ワーカー離脱は従来どおりで、修復は「次のシナリオ/ワーカー復帰が健全画面に当たる」
+    /// 振り直し・ワーカー離脱の判定は変えず、修復は「次のシナリオ/ワーカー復帰が健全画面に当たる」
     /// ための処置。RunOrchestrator.isDeviceFrozen への注入用(ProfileRunner / ApiRunCommand で共用)。
     public static func observeBlankAndRepair(serial: String,
                                              log: (String) -> Void) async -> Bool {
@@ -199,8 +199,8 @@ public enum AndroidHealthProbe {
     /// - gRPC: PNG をホスト側でデコードし画素の一様判定(uniformFrame)。凍結フレームは経路により
     ///   白/黒どちらもあり、emulator の PNG エンコーダは一様黒でも 51KB を出すため
     ///   **PNG サイズ閾値は使えない**(30KB 閾値は adb screencap のエンコーダ較正。
-    ///   2026-07-25 証跡 PNG の画素解析で確認)
-    /// - adb フォールバック: 従来どおり PNG サイズ閾値(blankScreen)
+    ///   証跡 PNG の画素解析で確認)
+    /// - adb フォールバック: PNG サイズ閾値(blankScreen)を使う
     private static func probeBlank(serial: String) async -> Bool {
         if let png = await EmulatorControl.screenshotPNG(serial: serial),
            let rgba = decodeRGBA(png: png) {

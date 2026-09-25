@@ -345,7 +345,7 @@ function registerCommands(
       }
       // **実行プロファイルの選択はプロジェクトに属する**。切替後も前のプロジェクトの名前が
       // 残ると、その名前はもう存在せず CLI が「run profile not found」で落ちる
-      // (モニターが起動できなくなる。2026-08-17 の実害)。判定は
+      // (モニターが起動できなくなる実害があった)。判定は
       // config.ts の reconciledProfileForProject(勝手に別の名前を選ばない)
       void reconcileProfileWithProject();
       // 実行中は TestRun がアイテムを参照しているので再構築しない。**旗を立てて run 終了で拾う**

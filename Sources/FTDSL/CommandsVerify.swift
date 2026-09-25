@@ -665,7 +665,7 @@ private func textAssert(_ assert: String, verb: String, selector: FTSelector, ex
 /// exist の裏返しであり、ダイアログ・ローディング・トーストが閉じたことの確認に使う。
 /// 可視性(occlusion)は見ない — ツリーから消えたことが判定基準。
 /// scroll: 指定すると**その方向へスクロールしながら探し、見つかったら不在検証を即失敗させる**
-/// (exist(scroll:) の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちへ進む)
+/// (exist(scroll:) の裏返し。見つからなければ現在のビューポートでの消滅待ちへ進む)
 public func notExist(_ selector: String, waitSeconds: Double? = nil,
                      scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
@@ -852,7 +852,7 @@ public struct FTElement {
         // 掛けると連鎖したアサーションが「invalid selector syntax」になり、
         // **書いた本人のセレクタの誤りだと誤って名指しする**。dry-run では画像を探せないので
         // 必ずこの形になり、findImage/existImage を含むシナリオの dry-run が丸ごと赤くなっていた
-        // (実地 2026-09-23 の負荷テスト)
+        // (実地の負荷テスト)
         self.selector = imageMatch?.selector.map(FTSelector.parse)
             ?? FTElement.placeholderSelector(
                 imageLabel: imageLabel,

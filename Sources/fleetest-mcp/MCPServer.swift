@@ -61,7 +61,7 @@ final class MCPServer {
     var interactions = InteractionLog()
     /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
     ///
-    /// **機ごとに持ってはいけない**(2026-08-13 に実機で踏んだ): engineKey ごとに 0 から始めると
+    /// **機ごとに持ってはいけない**(実機で踏んだ): engineKey ごとに 0 から始めると
     /// **2台を触ったセッションで ref 番号が両機で衝突する**。実測(E2EAppCMP・iOS 2台)——
     /// 機A の ref 10 は `#row_30`、機B の ref 10 は `#btn_item_1` で、機A の木を見て採った
     /// `ft_tap ref: 10` を `port:` だけ機B にして撃つと、**警告も拒否も無く成功して**
@@ -71,7 +71,7 @@ final class MCPServer {
     /// `RefGuard` が `.gone` で断る(番号が衝突しない = 黙って別物に当たれない)。
     /// **`forgetDeviceState` はこれを消さない** —— 捨てた番号を再配布しないため
     var nextRefBase = 0
-    /// 保持する世代数の上限。**5**: 「1つ前の木」しか見ない従来より十分に厚いが、
+    /// 保持する世代数の上限。**5**: 「1つ前の木」だけを見る設計より十分に厚いが、
     /// 無制限にするとセッションが長引くほど探索コストと保持量が線形に増える
     static let maxRefGenerations = 5
     /// 台の印(`MCPDeviceLease`)と run の lease を読む場所(run と同じ `RepoRoot/.fleetest`)。
@@ -103,8 +103,8 @@ final class MCPServer {
     /// (rotationSettleDeadlineSeconds ÷ pollInterval)が0本になり、
     /// 一度も整定しないフェイクドライバでもすぐに「未整定」の注記へ落ちる。
     /// 既定は `FTCore.RotationSettle.deadlineSeconds`(ブリッジ側 POST /rotate の整定予算と同じ)——
-    /// 従来は変化待ちの `changeSettleRereads`(3)×`settleWaitSeconds`(0.4s)=1.2秒を
-    /// 流用していたが、実機 iPhone ではレイアウトが収まる前に予算が尽きていた
+    /// 変化待ちの `changeSettleRereads`(3)×`settleWaitSeconds`(0.4s)=1.2秒を流用すると、
+    /// 実機 iPhone ではレイアウトが収まる前に予算が尽きる(別の文脈の定数を流用しない)
     var rotationSettleDeadlineSeconds: Double = RotationSettle.deadlineSeconds
 
 
@@ -235,7 +235,7 @@ final class MCPServer {
     // MARK: - 構造化出力(structuredContent)
     //
     // **既定では出さない**。Claude Code は structuredContent があると content(文面と画像)を捨てて
-    // 構造化データだけをモデルへ渡す(GitHub anthropics/claude-code #55677 / #15412。2026-09-25 に
+    // 構造化データだけをモデルへ渡す(GitHub anthropics/claude-code #55677 / #15412。
     // ft_list_scenarios で実地確認: 有効にするとモデルが受け取るのは JSON だけで、文面は消えた)
     // ので、既定で出すと注記と失敗の証跡(スクショ)が届かなくなる。構造化データを読む
     // クライアントのための口で、両方が揃ったときだけ出す: 利用者が環境変数で有効にした +
@@ -309,13 +309,13 @@ final class MCPServer {
     /// このセッションで明示解決された iOS 宛先(port)の**延べ集合**。
     /// **lastExplicitIOSTarget との違い**: あちらは「省略呼び出しが実際にどこへ行くか」に使う
     /// 直近1件、こちらは「省略呼び出しが曖昧かどうか」の判定材料(2件以上あれば
-    /// finishingFold が毎回注記する。1台しか触っていなければ従来どおり初回だけ)。
+    /// finishingFold が毎回注記する。1台しか触っていなければ初回だけ)。
     /// 更新は lastExplicitIOSTarget と同じ箇所・同じ条件(driver(_:) 参照)。
     /// forgetConnection が死んだポートを取り除く(消えた機は候補として名乗る意味が無い)
     var seenExplicitIOSPorts: Set<UInt16> = []
     /// Android 版の同じ延べ集合(serial)
     var seenExplicitAndroidSerials: Set<String> = []
-    /// **このセッションが一度でも宛先を名指ししたか**(2026-08-13。一度立ったら降ろさない)。
+    /// **このセッションが一度でも宛先を名指ししたか**(一度立ったら降ろさない)。
     /// 上の2つの集合とは別に要る —— あちらは forgetConnection が死んだ機を取り除くので、
     /// 名指しした機が全部死ぬと空になり、**新しいセッションと見分けが付かなくなる**。
     /// その状態で省略呼び出しをブリッジ探索へ落とすと、名指ししていない機を操作する
@@ -350,13 +350,13 @@ extension MCPServer {
 
     /// **数値引数の唯一の取り出し口**(Int/Double 共通)。全ての `args["…"] as? Int` /
     /// `as? Double` はここを通す(`NumericArgumentSourceScanTests` が直読みの再混入を検出)。
-    /// 無指定は nil(従来どおり)。**型が違えば断る**(寛容化しない) —— MCP クライアントは
+    /// 無指定は nil。**型が違えば断る**(寛容化しない) —— MCP クライアントは
     /// JSON Schema が integer/number でも実際に文字列で送ることがあり(実測)、黙って
     /// `as?` を失敗させると呼び手は「値が無い」と区別できないまま、tap の ref なら x/y
     /// 座標フォールバックのような**より危険な**経路へ落ちる。"8" と "8.5" のような境界を
     /// 解釈で割ることもしない(文字列から数値への変換規則を1つ選ぶこと自体が寛容化)。
-    /// **型が合っていても値域(`ArgumentBounds`)を外れれば同じく断る** —— 0/負・上限超えは
-    /// 従来ここを黙って通り抜けていた(実地: `maxElements:0`・`maxSwipes:-3` 等)
+    /// **型が合っていても値域(`ArgumentBounds`)を外れれば同じく断る** —— この検査が無いと
+    /// 0/負・上限超えがここを黙って通り抜ける(実地: `maxElements:0`・`maxSwipes:-3` 等)
     static func intArgument(_ args: [String: Any], _ key: String) throws -> Int? {
         guard let raw = args[key] else { return nil }
         guard let value = raw as? Int else {

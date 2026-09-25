@@ -67,8 +67,8 @@ public func restartApp(_ appID: String? = nil,
 /// Android は `pm clear` 相当。
 ///
 /// **iOS の実機だけは「入れ直し」で代替する**(`ReinstallSource`)—— devicectl に同等手段が無く
-/// ブリッジが 501 を返すため。MCP の `ft_clear_app_data` は 2026-08-31 からそうしており、
-/// DSL に受け皿が無いせいで**同じ端末・同じ意図の操作が経路によって割れていた**。
+/// ブリッジが 501 を返すため。MCP の `ft_clear_app_data` も同じ扱いをしている ——
+/// DSL に受け皿が無いと**同じ端末・同じ意図の操作が経路によって割れる**。
 /// 意味の差は2つ: **権限の付与も消える**(次の起動で OS のアラートが出る)/ install のぶん遅い。
 /// どちらも注記 `reinstalled-to-clear-data` で報告に残す。
 /// **消す前に入れ直せることを確かめる** —— 確かめずに uninstall すると端末からアプリだけ消える
@@ -125,10 +125,10 @@ public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
     }
 }
 
-/// アプリをインストールする。**実行はオーケストレータ(親プロセス)の仕事**(2026-08-03 決定): 子は
+/// アプリをインストールする。**実行はオーケストレータ(親プロセス)の仕事**: 子は
 /// installControl 経由で依頼を送るだけで、親が実行プロファイルの appPath 解決・実インストール・
 /// (iOS inapp/hybrid の)再注入注記までを担う。appPackageFile 省略時は親側でプロファイルの appPath を
-/// 解決する。ホスト無しの単独実行(installControl が nil)では従来どおり子が直接
+/// 解決する。ホスト無しの単独実行(installControl が nil)では子が直接
 /// driver.install を呼び、パス解決は 明示引数 ?? --app-path(親が解決して渡した場合) ?? 明示エラー
 public func installApp(_ appPackageFile: String? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
@@ -450,7 +450,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
 ///
 /// **ブロック形と命令形の使い分け**: こちらは**出口で必ず戻る**(途中で失敗しても戻る)が、
 /// **1つの CAE ブロックの内側にしか置けない**。`condition` で止めて `expectation` で戻す形は
-/// `disableHandler()` / `enableHandler()` でしか書けない(2026-08-21 ユーザー指摘)。
+/// `disableHandler()` / `enableHandler()` でしか書けない(ユーザー指摘)。
 ///
 /// **OS のシステムダイアログ(権限の許可等)はここでは止まらない** —— あちらはシナリオの
 /// `iosAlertHandler` による自動押下で、別の機構(そもそも要求した要素が解決できるときは
@@ -479,7 +479,7 @@ public func useHandler(_ body: () -> Void) {
 
 /// **CAE のブロックを跨いで**自動クローズを止める(Shirates 準拠。`enableHandler()` で戻す)。
 /// `suppressHandler { }` は1つの CAE ブロックの内側にしか置けないので、
-/// 「`condition` で止めて `expectation` で戻す」はこちらでしか書けない(2026-08-21 ユーザー指摘)。
+/// 「`condition` で止めて `expectation` で戻す」はこちらでしか書けない(ユーザー指摘)。
 ///
 /// **戻し忘れはシナリオの終わりまで効く**。中断した場合、以降の画面操作は tearDown だけなので、
 /// 片付けが割り込みに吸われうる点だけ意識する(気になるなら `suppressHandler { }` を使う)
@@ -501,7 +501,7 @@ private func validationError(_ selector: FTSelector) -> String? {
 /// 条件判定の最中に割り込みを閉じたことを説明文へ足す。**文言は perform 経路と同じ形**
 /// (StepExecutor.noteWithInterrupt。読み手が同じものだと分かるように揃える)。
 /// **不成立でも必ず出す** —— 「覆いを閉じたうえで無かった」と「覆われたまま無いことにした」は
-/// 読み手にとって別物で、後者を黙って返していたのが 2026-08-20 の不具合
+/// 読み手にとって別物で、後者を黙って返すのは不具合
 private func interruptSuffix(_ outcome: FTDriveCore.CanSelectOutcome) -> String {
     guard let dismissed = outcome.dismissed else { return "" }
     let times = dismissed.count > 1 ? " ×\(dismissed.count)" : ""
@@ -513,7 +513,7 @@ public struct FTBranch {
     /// dry-run(デバイス無しの列挙)。**成立側に加えて `.ifElse` 側も列挙する** ——
     /// dry-run の `canSelect` は常に成立なので、ここを実行しないと else 側のセレクタ構文誤り・
     /// 台帳に無い `#id` がデバイス実行まで出てこない(3段検証「誤りは早い段の言葉で返す」に反する)。
-    /// デバイス実行では従来どおり(成立側が走ったら else は未実行)
+    /// デバイス実行では成立側が走ったら else は未実行
     let enumeratesBothBranches: Bool
 
     init(taken: Bool, enumeratesBothBranches: Bool = false) {
@@ -549,7 +549,7 @@ public func android(_ body: () -> Void) {
 }
 
 /// セレクタが解決できる限り本体を繰り返す(件数不定の一括操作用。上限 max 回)。
-/// DSL にループが無いため、従来は「ガード付き反復を上限回数ぶん並べる」必要があった。
+/// DSL にループが無いので、これが無いと「ガード付き反復を上限回数ぶん並べる」形になる。
 /// **各周回のステップ説明には `[名前 #n]` が前置される**(group と同じ記録規約)。
 /// 上限に達しても失敗にはしない(消化しきれなかったことは記録に残る)。
 /// 本体が要素を減らさないと上限まで空回りするので、max は想定最大件数に合わせる

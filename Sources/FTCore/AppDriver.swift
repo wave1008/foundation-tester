@@ -31,7 +31,7 @@ public struct LaunchTiming: Sendable {
 ///   iOS で SpringBoard の面(アプリスイッチャー・コントロールセンター)がアプリを覆うと
 ///   これになる —— そのとき `/snapshot` は覆う前と1バイト同じ木を返し続けるので、
 ///   **木と食い違うこの答えだけが「木が画面を代表していない」ことを知っている**
-///   (2026-08-28 実測: 覆い無し 0/12 → 覆い有り 12/12。判定は
+///   (実測: 覆い無し 0/12 → 覆い有り 12/12。判定は
 ///   `TapTargetGeometry.platformShouldResolve` で「引き当てられて当然の要素」に絞る)
 /// - `unavailable`: 旧ブリッジ・in-app・Android・通信失敗。**何も言えない**
 public enum HitTestAnswer: Sendable, Equatable {
@@ -66,7 +66,7 @@ public protocol AppDriver {
     ///
     /// **利用者が見ているものが必ずしも「アプリ」ではない**ので要る —— Spotlight を開くと
     /// `com.apple.Spotlight` が前面と答えるが、これは SpringBoard の拡張で、activate すると
-    /// **ホーム画面が描画を失い画面が真っ黒になる**(実測 2026-09-22。陽性対照:
+    /// **ホーム画面が描画を失い画面が真っ黒になる**(実測。陽性対照:
     /// activate でスクリーンショット 2.2MB→68KB・木が 28→6 要素)。自アプリでも同じで、
     /// in-app ドライバの activate は既定実装から launch = dylib 注入の再起動へ落ちる。
     ///
@@ -74,7 +74,6 @@ public protocol AppDriver {
     func attach(bundleID: String) async throws
     /// アプリスイッチャー(タスク一覧)を開く。
     func openAppSwitcher() async throws
-    /// ホーム画面に戻る。
     func home() async throws
     /// 前の画面へ戻る。Android は戻るキー、iOS は左端エッジスワイプ(pop ジェスチャ)と、
     /// ドライバごとに機構が違う。
@@ -138,7 +137,7 @@ public protocol AppDriver {
     /// 最初のラッパーで用途と座標が落ちる)
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws
     /// 直前の**端送り**(`intent: .edge`)で「もう端に着いている」とドライバが**確信できた**か。
-    /// 既定 nil = 分からない(ホストは従来どおり木の署名が2回続けて不変になるまで読む)。
+    /// 既定 nil = 分からない(ホストは木の署名が2回続けて不変になるまで読む)。
     ///
     /// 端送りの所要は、スクロールそのものではなく**この判定のための読み**が支配する
     /// (ページを1回で飛ばせる画面では 2.3s のほぼ全部。docs/performance-tuning.md §3.27)。
@@ -210,7 +209,7 @@ public protocol AppDriver {
     /// iOS の pt(1/163 inch)と Android の dp(1/160 inch)は**物理的にほぼ同じ**なので、
     /// pt で測った床は dp としてそのまま通用する —— 足りないのは px への換算だけ。
     /// 換算しないと 3倍密度の端末で床が約3倍緩くなり、**わずかな重なりを「見えている部分」と
-    /// 信じて叩く**(2026-08-15。コメントが pt と書いてある値を px の木へ当てていた)。
+    /// 信じて叩く**(コメントが pt と書いてある値を px の木へ当てていた)。
     /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)。
     /// **ラッパードライバは base の値を透過すること**(1 に落とすと最内の Android へ届かない)
     var pointScale: Double { get }
@@ -258,7 +257,7 @@ public struct DriverErrorContext: Sendable, Equatable {
 
 /// `DriverError.errorDescription` の文言組み立て(純粋関数。`DriverErrorMessageTests` が
 /// 構成ごとの文面を等号固定する)。**構成ごとに、その構成で実際に起こりうる原因だけを並べる**
-/// —— 2026-09-16 の負荷テストで、Android の一時的な adb 断に iOS inapp/hybrid 向けの案内
+/// —— 負荷テストで、Android の一時的な adb 断に iOS inapp/hybrid 向けの案内
 /// (「シミュレータ専用」)が付き、iOS xcuitest ランナーを外から殺した接続拒否で
 /// 「アプリが落ちた」が第一容疑にされていた(xcuitest はアプリと別プロセスなので的外れ)
 public enum DriverErrorMessage {
@@ -503,7 +502,7 @@ public extension AppDriver {
     }
 
     /// 実装を持たないドライバの既定。501 = ホストが typeDriver(XCUITest)へ回す合図
-    /// (in-app は 2026-08-04 から自前描画フレームワーク向けに実装を持つ。UIKit/SwiftUI は
+    /// (in-app は自前描画フレームワーク向けに実装を持つ。UIKit/SwiftUI は
     /// 合成タッチを受理しないので、あちらが 501 を返して XCUITest へ回る)
     func doubleTap(x: Double, y: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support double tap")

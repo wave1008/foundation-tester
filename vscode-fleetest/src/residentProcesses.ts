@@ -419,7 +419,7 @@ export interface ResidentKillTarget {
 
 /** 「すべて終了」の掃討で実際に撃つ対象と signal を決める純粋関数(monitorPanel.ts から呼ぶ)。
  *  ブリッジ型は対応する `bridge down` が断られていれば対象から外す(他セッション/MCP が使用中の
- *  可能性があるため)。run 型(TEARDOWN_RESIDENT_TYPES)は SIGTERM のみ、他は従来どおり SIGKILL。 */
+ *  可能性があるため)。run 型(TEARDOWN_RESIDENT_TYPES)は SIGTERM のみ、他は SIGKILL。 */
 export function planResidentKill(
   processes: readonly ResidentProcess[],
   opts: ResidentKillPlanOptions,

@@ -9,7 +9,7 @@
 // kind: "virtual"(シミュレータ/エミュレータ)/ "physical"(実機)。実機は録画・画面配信が
 // できない等で扱いが変わるため消費側が判別できるようにする(追加フィールド=後方互換)。
 // registered: false はどの実行プロファイルにも無い起動中デバイス(ApiMonitorCommand.determineStates
-// の includeUnregistered と同じ合成。--profile 指定時は従来どおり合成しない=false)。
+// の includeUnregistered と同じ合成。--profile 指定時は合成しない=false)。
 // 対向: vscode-fleetest/src/liveModel.ts
 
 import ArgumentParser

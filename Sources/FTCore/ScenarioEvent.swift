@@ -58,7 +58,7 @@ public struct ScenarioEvent: Codable, Sendable {
     public var waitMs: Int?
     /// **順番待ち**: このステップの async タスクを作ってから最初の1命令が走るまで(ミリ秒)。
     /// 協調スレッドプールが詰まると、ステップは1命令も実行しないまま壁時計だけが進む ——
-    /// 締め切り(FTSync.commandTimeout)が妥当かを判断する材料(実測 2026-09-10: 20 秒超の
+    /// 締め切り(FTSync.commandTimeout)が妥当かを判断する材料(実測: 20 秒超の
     /// ステップは snapshot/action/wait のどれにも計上されない時間が 99.7% を占めていた)
     public var scheduleDelayMs: Int?
     /// **このプロセスが実際に貰えた CPU 時間**(user+sys の増分。ミリ秒)。ホストが飽和していると

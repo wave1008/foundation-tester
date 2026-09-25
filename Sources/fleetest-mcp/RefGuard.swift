@@ -1,6 +1,6 @@
 // ref で指した要素を「撃つ直前に撮り直して照合する」ための純ロジック。
 //
-// なぜ要るか(2026-08-06 の探索で3形とも実機ならぬ Simulator/Emulator 上で決定的に再現した):
+// なぜ要るか(探索で3形とも実機ならぬ Simulator/Emulator 上で決定的に再現した):
 //   1. Android の Compose は縦横どちらのスクロール後も a11y ツリーが**古いまま固まる**。
 //      ft_snapshot が返す frame はスクロール前のもので、その ref を叩くと**別の行**が発火し、
 //      ツールは "tap done" を返す(#row_03 を叩いて selected=row_10 になった)
@@ -100,11 +100,11 @@ enum RefGuard {
     ///
     /// **ブリッジが塗り順(`z`)を申告するなら必ずそれを使う**。ツリー順は描画順の代理として
     /// 使ってきたが、production では裏返る —— Google マップは地図の FAB(ref 81〜86)を
-    /// シート(ref 17〜61)より**後**に出すのに、描画はシートが手前。2026-08-07 に
+    /// シート(ref 17〜61)より**後**に出すのに、描画はシートが手前。実測では
     /// `#mylocation_button` を無警告でタップして裏の広告を踏み、**Chrome が起動**した。
     ///
     /// `z` を持たないエンジン(iOS の XCUITest / in-app には描画順を読む API が無い)では
-    /// 従来どおり ref 順へ落ちる。**両者が揃っているときだけ z を信じる**のは、
+    /// ref 順へ落ちる。**両者が揃っているときだけ z を信じる**のは、
     /// 片方だけ nil の木(打ち切りや別ブリッジの混在)で大小が無意味になるため
     /// 判定の実体は `FTCore.PaintOrder` にある(DSL の `OcclusionSuspicion` と共有。
     /// 別々に持つと、同じ画面で MCP と DSL の遮蔽判定が食い違う)
@@ -171,7 +171,7 @@ enum RefGuard {
             + " that ft_snapshot\(truncated). Take a fresh ft_snapshot and use the new ref."
     }
 
-    /// **撃つ。ただし何に当たったかもしれないかを言う**(2026-08-06 に拒否から後退)。
+    /// **撃つ。ただし何に当たったかもしれないかを言う**(拒否から後退した経緯がある)。
     ///
     /// 木の幾何だけでは「実際に描かれているか」を決められない、というのが5形の誤検知で
     /// 示された結論。相手が残像でなく、包含でもなく、それでも描かれていないことがある
@@ -194,7 +194,7 @@ enum RefGuard {
         let hit = occluder(of: found, in: elements, screen: screen)
             .map { " — the tap would land on \(describe($0))" } ?? ""
         let f = found.frame
-        // **逃げ道も書く**が、順序を守る(外部フィードバック 2026-08-06)。
+        // **逃げ道も書く**が、順序を守る(外部フィードバック)。
         // 先に「本来の直し方」、次に「確かめたうえでの回避」。座標タップを無条件に勧めると、
         // 判定が正しいとき **覆っている要素を黙って叩く**ことになり、このガードの意味が消える
         return "[\(ref)] \(describe(found)) is outside its scroll container and something else is"
@@ -209,7 +209,7 @@ enum RefGuard {
 
     /// **無効な要素を叩こうとしている**ときの警告。木には `disabled` と印字しているのに、
     /// 操作経路は `enabled` を一度も見ておらず、押しても何も起きない要素へ "done" を返していた
-    /// (2026-08-07 の棚卸しで確認。E2E-CMP の契約上「押しても何も起きない」ボタンに対し
+    /// (棚卸しで確認。E2E-CMP の契約上「押しても何も起きない」ボタンに対し
     /// tap / press / double_tap の3つとも無警告で成功していた。実アプリでも
     /// Apple マップの経路画面に `#CardButtonTypeShare disabled` がある)。
     ///
@@ -222,7 +222,7 @@ enum RefGuard {
 
     /// **中心が画面の外にある要素を撃とうとしている**ときの警告。ウィンドウ外のタッチは
     /// hitTest に乗らず黙って落ちる(判定は TapTargetGeometry.offscreenAdvisory = DSL と共有)。
-    /// 実測(2026-08-08): カレンダーでヘッダ裏へ抜けた `#slot_07`(中心 y=-18)への
+    /// 実測: カレンダーでヘッダ裏へ抜けた `#slot_07`(中心 y=-18)への
     /// ft_tap が無警告の "done" を返し、画面は 1px も変わらなかった
     static func offscreenWarning(_ element: ElementInfo, screen: FTRect) -> String {
         guard let advisory = TapTargetGeometry.offscreenAdvisory(for: element, screen: screen) else {
@@ -235,7 +235,7 @@ enum RefGuard {
     /// **中心がソフトキーボードの下にある要素を撃とうとしている**ときの警告。木からは判定できない
     /// (キーボードはスナップショットの対象外)ので、ブリッジが申告する `keyboardFrame` でだけ言える
     /// (判定は KeyboardOcclusion = DSL と共有。chrome 自身とその部分木には言わない)。
-    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
+    /// 実測(iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
     static func keyboardWarning(_ element: ElementInfo, keyboardOcclusion: KeyboardOcclusion) -> String? {
         guard let advisory = keyboardOcclusion.advisory(for: element) else { return nil }
         return " (warning: \(describe(element)) — \(advisory))"
@@ -243,7 +243,7 @@ enum RefGuard {
 
     /// **木に出ないオーバーレイ・ウィンドウの下にある要素を撃とうとしている**ときの警告。
     /// キーボードと同じ理由でブリッジ申告からしか言えない(判定は `OverlayWindowOcclusion`
-    /// = DSL と共有)。実測(2026-08-28・実機 Pixel 4a の Chrome): テキスト選択の
+    /// = DSL と共有)。実測(実機 Pixel 4a の Chrome): テキスト選択の
     /// フローティングツールバーの下にある段落への ft_tap が無警告の "done" を返し、
     /// 実際には「Select all」に当たってページ全体が選択された
     static func overlayWindowWarning(_ element: ElementInfo,
@@ -268,7 +268,7 @@ enum RefGuard {
     /// あちらの入口は容器の**推測**(`StepExecutor.isOutsideContainer`)なので、申告のある
     /// UIKit/SwiftUI の木では nil に落ちて1件も捕まえていなかった。
     ///
-    /// 実測(2026-08-09・Apple マップ): カードを送って `#MUScrollableStackView` (0,72 402x802) の
+    /// 実測(Apple マップ): カードを送って `#MUScrollableStackView` (0,72 402x802) の
     /// 上へ抜けた `link "ウィキペディア"` (16,-2 85x18) への ft_tap が無警告の "done" を返し、
     /// 実際には中心 (58,7) = ステータスバーに当たってカードが先頭へ飛んだ
     static func scrolledOutWarning(_ element: ElementInfo, in elements: [ElementInfo],
@@ -289,7 +289,7 @@ enum RefGuard {
         else { return "" }
         switch kind {
         case .zeroFrame:
-            // **DSL にだけあり MCP のタップ時には出ていなかった形**(2026-08-15 に合流)
+            // **DSL にだけあり MCP のタップ時には出ていなかった形**(合流済み)
             return " (warning: \(describe(found))'s reported frame has zero width/height,"
                 + " so the tap may land on whatever is at that point — verify with ft_screenshot)"
         case .offscreen:
@@ -309,7 +309,7 @@ enum RefGuard {
                 + " Target the content instead, e.g. \(describe(inner)))"
         case .nestedAction(let nested):
             // **子孫が中心を横取りしている**。`overlayCovering` は子孫を除外するので届かない
-            // (2026-08-09 に Apple マップの検索候補で実害。TapTargetGeometry の解説を参照)
+            // (Apple マップの検索候補で実害。TapTargetGeometry の解説を参照)
             return " (warning: \(describe(nested)) sits inside \(describe(found)) and covers its"
                 + " center, so this may have triggered \(describe(nested)) instead of"
                 + " \(describe(found)) — verify with ft_screenshot, and target the part you"
@@ -340,7 +340,7 @@ enum RefGuard {
                 + " whatever is drawn there instead — scroll it fully into view with"
                 + " ft_scroll_to, and verify with ft_screenshot)"
         case .sliver:
-            // **DSL にだけあり MCP のタップ時には出ていなかった形**(2026-08-15 に合流)
+            // **DSL にだけあり MCP のタップ時には出ていなかった形**(合流済み)
             return " (warning: \(describe(found)) is clipped to a thin sliver at the edge of its"
                 + " container, so it is narrower than it looks and the tap may miss —"
                 + " verify with ft_screenshot)"
@@ -352,8 +352,8 @@ enum RefGuard {
             + " retargeted to where it is now\(cause))"
     }
 
-    /// **同一 identifier で再ターゲットしたら、ラベルが変わっていないかも見る**(2026-08-10 の
-    /// 実アプリ監査)。`match(_:in:)` は identifier があればそれだけで引き直すので、検索候補が
+    /// **同一 identifier で再ターゲットしたら、ラベルが変わっていないかも見る**(実アプリ監査で発覚)。
+    /// `match(_:in:)` は identifier があればそれだけで引き直すので、検索候補が
     /// 更新された画面では**同じ id・違う行**を掴むことがある。実測: 「立川駅、最近表示した項目」を
     /// 狙ったタップが「立川駅 南口、立川市」に化けたが、位置の話(movedNote)しかしていなかった。
     /// **動いていなくても出す**(ラベルだけ変わって位置が同じ形も同じ危険)

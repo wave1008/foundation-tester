@@ -1,5 +1,5 @@
 // ParentDeathWatch.swift
-// 親プロセスが死んだら自分も終わる(孤児として端末を叩き続けない。実測 2026-09-05:
+// 親プロセスが死んだら自分も終わる(孤児として端末を叩き続けない。実測:
 // `fleetest run` の親を kill -9 すると、Process() で起こした子(fleetest-scenarios-<project> run …
 // / ApiRunMachineFanout・RemoteDeviceFanout・RemoteMonitorFanout・FleetRunner が起こす
 // fleetest 自身の子)が ppid 1 の孤児として残った。Foundation.Process は親の死を子へ伝えない
@@ -25,8 +25,8 @@ public enum ParentDeathWatch {
     /// 親が死んだら**自分に SIGTERM を送るだけ**で、時限の `_exit` はしない —— 自前の後始末
     /// (終了スクリプト・dispatch.lock の解放・向きの復元)を持つ fleetest のプロセスは、
     /// `InterruptRelay` の fleetest の子と同じく「待つ側」に倒す(所要は利用者のスクリプト次第で
-    /// 上限を置けない。2 秒で `_exit` していた版は外側から後始末を打ち切っていた = Codex 指摘
-    /// 2026-09-06)。SIGTERM の既定動作は終了なので、ハンドラの無いプロセスは即座に終わる。
+    /// 上限を置けない。2 秒で `_exit` すると外側から後始末を打ち切ることになる = Codex 指摘)。
+    /// SIGTERM の既定動作は終了なので、ハンドラの無いプロセスは即座に終わる。
     /// 後始末が刺さって残ったものは `FT_PARENT_PID` の印を持つ孤児として拡張の掃除
     /// (`orphanSweep.ts`)が次回 activate で落とす
     public static func armIfRequested(environment: [String: String] = ProcessInfo.processInfo.environment) {

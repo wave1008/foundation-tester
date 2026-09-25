@@ -3,7 +3,7 @@
 // `-destination` が実体を見つけられないと xcodebuild は `error:` 行を先に書き、その**後**に
 // 対象外だった宛先を1つ1行で列挙する(`{ platform:… } doesn't match …` が数十行)。
 // 単純な末尾30行(Shell.Result.tail)では、この一覧に本当の原因行が押し出されて見えなくなる
-// (実測 2026-09-17: `Unable to find a device matching the provided destination specifier` が
+// (実測: `Unable to find a device matching the provided destination specifier` が
 // 一覧の後ろに隠れ、画面には一覧しか出なかった)。
 
 import Foundation
@@ -18,7 +18,7 @@ public enum XcodebuildFailureSummary {
         let usableIndices = lines.indices.filter { !isIneligibleDestinationLine(lines[$0]) }
         let errorIndices = usableIndices.filter { lines[$0].contains("error:") }
         guard !errorIndices.isEmpty else {
-            // 見つからなければ従来どおり単純な末尾(署名エラー等はここに乗らないので変えない)
+            // 見つからなければ単純な末尾(署名エラー等はここに乗らないので変えない)
             return lines.suffix(tailLineCount).joined(separator: "\n")
         }
         let errorIndexSet = Set(errorIndices)

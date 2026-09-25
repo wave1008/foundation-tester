@@ -400,7 +400,7 @@ struct RemoteCommand: AsyncParsableCommand {
 
     /// `remote clean` が占有中のホストで止まった理由(同上)
     /// モニター(親)の起動時に、登録簿の各ランナーで**自分の死んだディスパッチの**
-    /// dispatch.lock だけを掃除する(ユーザー指示 2026-09-01「ロックされたままにならないように、
+    /// dispatch.lock だけを掃除する(ユーザー指示「ロックされたままにならないように、
     /// デバイスモニター再起動後に処理して」—— セッションごと殺されたディスパッチはロック解放に
     /// 到達できず、次の run が「別の dispatch が実行中」で止まっていた)。
     /// 判定は手動 unlock より保守側(RemoteDispatchUnlock.decideAutomaticSweep)。
@@ -527,7 +527,7 @@ struct RemoteCommand: AsyncParsableCommand {
             // 掃除の相手が他人の実行中の環境でありうるので、デバイスに触る前に占有を見る。
             // **dry-run でも読む**(読むだけ・解放や変更はしない) —— 読まずに素通しすると、
             // 本番なら refuse する台でも dry-run だけ「掃除する」と予告してしまう
-            // (実測 2026-09-16: ランナーが run 中でも dry-run は rc=0 で予告していた)
+            // (実測: ランナーが run 中でも dry-run は rc=0 で予告していた)
             let decision = RemoteDestructiveGuard.decide(
                 probe: probeLock(target: target, layout: layout), ignoreLock: ignoreLock)
             if RemoteCleanPlan.stopsDevices(dryRun: dryRun) {
@@ -966,7 +966,7 @@ func resolveRemoteTarget(_ dispatch: EffectiveDispatchTarget, remoteDirOverride:
 /// 呼び出し側が既に --device-machine を持つときは呼ばないこと。`requestedDevices` は利用者の
 /// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのマシンの台に限定して渡す
 /// (同名の台が他の機械にもあると、名前だけでは全機械ぶんを拾う)。
-/// プロファイルが読めないときは従来どおり丸ごと(名前はそのまま・machine は付けない)
+/// プロファイルが読めないときは丸ごと(名前はそのまま・machine は付けない)
 func machineScopedDeviceFilter(
     project: TestProject, profile: String, targetMachine: String, requestedDevices: [String] = []
 ) throws -> (deviceNames: [String], deviceMachine: String?) {

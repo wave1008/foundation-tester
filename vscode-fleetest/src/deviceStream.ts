@@ -65,7 +65,7 @@ const RESTART_DELAY_MS = 1000;
  * (**ただし1枚も届いていない場合は別扱い**。NO_FRAME_WEDGE_LIMIT 参照)。 */
 const WEDGE_TIMEOUT_MS = 15000;
 /** **1フレームも受け取れないまま** wedge 再起動をこの回数繰り返したら諦める(→ onFailure)。
- * 実害(2026-08-17): 20 タイル同時配信でホストがエンコードをこなせなくなり(h264 は
+ * 実害: 20 タイル同時配信でホストがエンコードをこなせなくなり(h264 は
  * kVTSessionMalfunctionErr、mjpeg は "JPEG encode failed")、**15秒ごとの再起動を無限に
  * 繰り返した**。再起動そのものが CPU を食うので、資源不足が原因のときは事態を悪化させる。
  * 「一度も映像が来ていない」= 一時的な固着ではなく構造的に無理、と判断してよい
@@ -79,7 +79,7 @@ const HEALTHY_WINDOW_MS = 10000;
 const MAX_QUICK_FAILURES = 3;
 /** helper が「この機械では h264 でエンコードできない」と判断して降りたときの exit code。
  * 契約の同期相手: Sources/fleetest-simstream/main.m の kFtExitCodecUnavailable。
- * **同じ引数で再起動しても直らない**(2026-08-17 の実害: 20 タイル構成で VideoToolbox の
+ * **同じ引数で再起動しても直らない**(実害: 20 タイル構成で VideoToolbox の
  * 圧縮セッションが壊れ、15秒ごとの wedge 再起動を無限に繰り返してタイルが永久に
  * 「接続中」になった)。呼び出し側に mjpeg で張り直させる。 */
 const CODEC_UNAVAILABLE_EXIT_CODE = 3;
@@ -287,7 +287,7 @@ export class StreamPipeline implements LiveStreamPipeline {
       const len = this.buffer.readUInt32BE(4);
       // helper が書き込み途中で死ぬ等でバイト境界がズレると、以降このパーサは永久に
       // 壊れた寸法+非 JPEG を吐き続ける(自力では復帰しない)。足切りで検出して helper を
-      // 再起動する。素通しした場合の実害はモニタータイルのアスペクト崩れ(2026-07-26)
+      // 再起動する。素通しした場合の実害はモニタータイルのアスペクト崩れ
       if (width <= 0 || height <= 0 || width > MAX_FRAME_DIMENSION || height > MAX_FRAME_DIMENSION
         || len <= 0 || len > MAX_FRAME_BYTES) {
         this.handleProtocolDesync(`invalid v1 header w=${width} h=${height} len=${len}`);
@@ -398,7 +398,7 @@ export class StreamPipeline implements LiveStreamPipeline {
       this.options.onFailure(t("live.stream.noFrameMessage", { seconds: WEDGE_TIMEOUT_MS / 1000 }));
       return;
     }
-    // **「速い失敗」だけを数えると、遅い失敗が上限をすり抜ける**。実害(2026-08-30 の一括起動):
+    // **「速い失敗」だけを数えると、遅い失敗が上限をすり抜ける**。実害(一括起動):
     // ランナーへの ssh が混雑して 1 本あたり約 10〜11 秒かけて失敗し、毎回 elapsed が
     // HEALTHY_WINDOW_MS を超えるので streak が 0 に戻り、**永久に張り直し続けた**
     // (混雑しているホストをさらに叩く)。時間ではなく「1 フレームも来なかったか」で数える ——

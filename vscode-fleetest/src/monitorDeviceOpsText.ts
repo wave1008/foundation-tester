@@ -17,7 +17,7 @@ export function withSourceContext(message: string, source: DeviceCommandSource):
  * とくにリモート転送(`remote exec <host>`)は原因と対処を stderr の最終行に出す
  * (例: exit 91 = "this issuer has no runner workspace on … — run `fleetest remote setup …`")。
  * 進捗見出し("==> …")は落として最後の実質行を採り、webview の1行表示に収まる長さで切る。
- * 実質行が無ければ null(呼び出し側は exit code だけの従来文言に落ちる)。
+ * 実質行が無ければ null(呼び出し側は exit code だけの文言に落ちる)。
  */
 export function stderrDetailLine(stderr: string, limit = 200): string | null {
   const lines = stderr
@@ -119,7 +119,7 @@ function reasonLine(lines: readonly string[]): string | undefined {
  * (実例: "xcodebuild build-for-testing failed:\n<tail>" — 原因は次の行以降。見出しだけを
  * 返すと「失敗しました」しか言わないバナーになる)。このときは reasonLine で原因らしい行を
  * 後ろから探して添える。見つからなければ最後の非空行を使う。見出しで終わらない普通の
- * 1行エラーは従来どおり(ここを通らない)。 */
+ * 1行エラーはそのまま(ここを通らない)。 */
 export function firstLine(message: string, limit = 200): string {
   const lines = message.split("\n").map((value) => value.trim()).filter((value) => value.length > 0);
   const head = lines[0];

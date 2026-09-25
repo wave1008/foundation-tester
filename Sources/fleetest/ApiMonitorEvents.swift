@@ -33,7 +33,7 @@ struct ApiMonitorDevicesEvent: Codable {
 /// **欠落 = 手元**(monitorRuns / monitorDevices と同じ綴り。拡張は runBoardModel の
 /// LOCAL_MACHINE_KEY へ写す)。
 ///
-/// **ProtocolVersion は上げない**(2026-09-21 の「手元でも出す」): 欄は1つも増減せず型も
+/// **ProtocolVersion は上げない**(「手元でも出す」変更): 欄は1つも増減せず型も
 /// 変わらず、`machine` 欠落は fan-out の子が中継前に出していた既存の形そのまま。増えたのは
 /// **この行が出てくる場所**だけで、欄の取りうる値も読み替えも足していない。
 /// 同期相手: vscode-fleetest/src/monitorDeviceModel.ts(isMonitorEvent)
@@ -80,7 +80,7 @@ struct ApiMonitorRunProgressLane: Codable, Equatable {
     let platform: String?
     let scenario: String?
     let scenarioElapsedSeconds: Int?
-    /// **記録用**(画面には出さない。ユーザー決定 2026-09-21): 実行中シナリオの実績中央値(秒)。
+    /// **記録用**(画面には出さない。ユーザー決定): 実行中シナリオの実績中央値(秒)。
     /// 台帳の値をそのまま運ぶ(作り替えない)
     let expectedSeconds: Int?
 }

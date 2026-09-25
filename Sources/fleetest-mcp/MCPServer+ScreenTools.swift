@@ -51,7 +51,7 @@ extension MCPServer {
                             + " appeared, so the wait ran to the deadline"
                     // **記法の助言はここにも要る**: 切り詰めラベルをそのまま渡した waitFor は
                     // 外れるのに、返す木には**同じ文字列が印字されている**ので照合のバグに見える
-                    // (2026-08-07 実測)。scrollTo だけに出していて届いていなかった
+                    // (実測)。scrollTo だけに出していて届いていなかった
                     } ?? (Self.notationHint(waitFor, in: snapshot)
                           // **部分一致が出ていたときは出さない**: そちらのほうが具体的な
                           // ヒントなので、的の外れた推測を並べて紛らわせない
@@ -121,7 +121,7 @@ extension MCPServer {
         var note = ""
         // **type は追記**(docs/commands.md)。既に入っている欄へ撃つと連結された文字列になり、
         // 戻り値が `Typed: "東京タワー"` だけだと気づけない —— 検索欄なら検索自体は成立するので
-        // **沈黙した誤りになる**(2026-08-07 に Google マップで `レストラン東京タワー` を実測)。
+        // **沈黙した誤りになる**(Google マップで `レストラン東京タワー` を実測)。
         // 撃つ前の値は verifiedRef が撮り直した木から引く(追加の snapshot を払わない)
         var priorValue: String?
         var priorElement: ElementInfo?
@@ -139,7 +139,7 @@ extension MCPServer {
             // (TapTargetGeometry.nonInputTypeTargetNote。実測と理由はそちらの doc)。
             // MCP は StepExecutor を経由しない別経路なので、ここにも配線が要る。
             //
-            // 容器(内側に入力欄がちょうど1つ)は従来どおり警告して
+            // 容器(内側に入力欄がちょうど1つ)は警告して
             // 撃つ(nonInputTypeTargetNote が non-nil)。**そうでない非入力欄(入力欄が0個・
             // 2個以上)は撃つ前に拒否する** —— 警告のまま撃つと、送信ボタンを押してしまった
             // 後で読み返しが失敗し(「検索窓が本物の入力欄へ焦点を渡す形かも」という誤誘導)、
@@ -194,7 +194,7 @@ extension MCPServer {
             // 外さないので、ref なし type は**前の欄へ入って「Typed」とだけ返していた**
             // (Pixel 3a・§19 F13 の MCP 版)。払うのは tap の直後の1枚だけ。
             // **生読み**(adoptSnapshot を通さない)= 返る ref は native なのでそのまま撃てる。
-            // 入れ先が一意に決まらなければ従来どおり焦点の欄へ送るが、**焦点が叩いた欄の外に
+            // 入れ先が一意に決まらなければ焦点の欄へ送るが、**焦点が叩いた欄の外に
             // あることは警告に出す**(typedIntoNote の「どこへ入ったか」と対で読める)
             var rescuedNativeRef: Int?
             if targetRef == nil, !content.contains("\n"),
@@ -244,8 +244,8 @@ extension MCPServer {
                 // **注意書きで済ませず、ここで確かめる**: iOS の XCUITest ランナーは ref から
                 // 対象を引けたときだけ TypeReadback を回すので、ref なしは無検証で OK が返る。
                 // 木は `focused` を持っているのだから、撮り直して**どこへ入ったか**を名指しできる。
-                // **Android も払う**(以前は焦点ノードの読み返しを理由に省いていたが、読み返しは
-                // 「焦点のある欄に入った」しか言わず、**それが別の欄だった**ことを言えない = F13)。
+                // **Android も払う**(焦点ノードの読み返しだけでは「焦点のある欄に入った」しか
+                // 言えず、**それが別の欄だった**ことを言えない = F13)。
                 // **生読み(adoptSnapshot を通さない)**: この読みは入力という操作の**後**に
                 // 撮っているので、freshSnapshot 経由だと lastSnapshots[key] を上書きし、
                 // 続く snapshotAfterBody の settle-lite 基準(操作前の木のつもり)が
@@ -264,7 +264,7 @@ extension MCPServer {
                 note += Self.replaceVerificationNote(
                     target: priorElement, expected: content, fresh: await verificationSnapshot())
             } else if let prior = priorValue, !prior.isEmpty {
-                // **予告ではなく観測**(2026-08-13。appendVerificationNote の doc に witness)
+                // **予告ではなく観測**(appendVerificationNote の doc に witness)
                 note += Self.appendVerificationNote(target: priorElement, typed: content,
                                                     prior: prior,
                                                     fresh: await verificationSnapshot())
@@ -281,7 +281,7 @@ extension MCPServer {
                 // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから。
                 // **タップの直後に撃たない**(下の awaitFocus): 直前に別の欄へ入力していると
                 // フォーカスの移動が間に合わず、Enter が**前の欄**へ飛んで黙って何も起きない
-                // (2026-08-06 に Android で観測。ime カウンタが増えなかった)
+                // (Android で観測。ime カウンタが増えなかった)
                 try await typeDriver.tap(ref: nativeRef(ref, args: args))
                 note += await awaitFocus(ref: ref, driver: typeDriver, args: args)
             }
@@ -339,12 +339,12 @@ extension MCPServer {
         } catch {
             // ref 指定の失敗はランナーが既にタップを撃った後(焦点待ちの 422 等)——
             // 記録せずに投げると、次の ft_type/ft_snapshot が「このセッションの誰も
-            // 変えていないのに木が変わった」と外部要因のせいにする(M5b実測 2026-09-17)
+            // 変えていないのに木が変わった」と外部要因のせいにする(M5b実測)
             if clearRef != nil { recordInteraction(action: "clearInput", resolvedRef: clearRef, args: args) }
             throw error
         }
         recordInteraction(action: "clearInput", resolvedRef: clearRef, args: args)
-        // **無条件の「cleared」を断言しない**(2026-08-13。ft_type replace / 追記と同じ型の掃討)——
+        // **無条件の「cleared」を断言しない**(ft_type replace / 追記と同じ型の掃討)——
         // in-app iOS の UIKit 経路は clearInput の成否を検証なしで YES を返すので、値が残っていても
         // 「消した」と言ってしまう。呼び手はこの後 ft_type を撃つので、**残っていると黙って連結される**。
         // 判定は replace の clear-only 検証と同じ関数(空を期待して読み返す)

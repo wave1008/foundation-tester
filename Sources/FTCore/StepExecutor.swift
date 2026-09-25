@@ -3,7 +3,7 @@
 // 実証済みのセマンティクス:
 // - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してから指紋照合へ
 //   (UI 遷移直後対策。指紋照合までの総待機は計700ms)。step.timeout 指定時はアクションも
-//   その秒数を予算にリトライ(0 = リトライなし。省略時=nilは従来の3回固定のまま)
+//   その秒数を予算にリトライ(0 = リトライなし。省略時(nil)は3回固定)
 // - アサーションでは type+index のみのフォールバックを使わない(別画面要素への誤った緑防止)。
 //   ただしスコープ付き(`#list >> .Cell[2]`)は容器に錨があるので除外しない(FlowLocator.isWeakForAssert)
 // - **要素未発見で失敗しない唯一のアクションは `select`**(空要素を返す契約。DSL の
@@ -20,9 +20,9 @@ import Foundation
 /// FM フック。実装は FTFoundationModels 側(画面検証・occlusion-guard)。
 public protocol ReplayDelegate: AnyObject {
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)?
-    /// [PoC occlusion-guard] ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
+    /// occlusion-guard: ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
     /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を誤った緑として反転する。
-    /// 戻り nil = 判定不能(FM 不可・画像不正)で、この場合ガードは何もしない(従来どおり pass)。
+    /// 戻り nil = 判定不能(FM 不可・画像不正)で、ガードは何もしない(pass のまま)。
     /// state は fullyVisible/covered/dimmed/notRendered/textMismatch のいずれか(FTCore は FM 非依存
     /// のため文字列で受ける)。既定実装は nil(ガード無効時・非対応 delegate は素通り)。
     /// observedText は FM が実際に読み取れた文字列(切り分け用。空 = 何も読めなかった)。
@@ -214,7 +214,7 @@ public struct StepOutcome: Sendable {
 ///
 /// bool を渡し回すと、新しい呼び出しを足すときに**既定値を何気なく渡してドリフトする** ——
 /// しかも失敗モードは沈黙(古い木で「動かなかった」と誤認する / 静止判定が古い位置で成立する)
-/// なので、テストでは捕まらない。素取得でよい経路は今までどおり `driver.snapshot()` を呼ぶ。
+/// なので、テストでは捕まらない。素取得でよい経路は `driver.snapshot()` を呼ぶ。
 enum SnapshotFreshness {
     /// 直前に**自分で画面を動かした**(スワイプ・ドラッグ・整定のポーリング)。
     /// 実測と機構は runScrollSearch のコメントおよび docs/verification.md
@@ -343,7 +343,7 @@ public final class StepExecutor {
     /// 含まれるアクションは inapp で試さず最初から typeDriver で実行する。
     /// **アクション別に持つ**: uikit は press だけ申告する(swipe は contentOffset 直接操作で
     /// 決定的に効く)。一括 Bool だと press の申告だけで swipe まで XCUITest 実スワイプ化し、
-    /// バウンス由来の非決定性で scrollTo 直後のタップが flake した(2026-07-23 実害)。
+    /// バウンス由来の非決定性で scrollTo 直後のタップが flake した(実害)。
     /// type 用の preferTypeDriver(廃止済み・常に false)とは別物。
     public var typeDriverGestures: Set<String>
     /// swipe/press が「このエンジンでは不可」を1回でも受けたら true。以降は直接 typeDriver へ
@@ -363,13 +363,13 @@ public final class StepExecutor {
     /// 実行プロファイルの screenLooksLike に対応するマスタースイッチ(既定 true)。false なら
     /// screenMatches ステップを skip する
     public var screenLooksLikeEnabled: Bool
-    /// [PoC occlusion-guard] true のとき、exists/textEquals がツリー一致で pass した直後に
+    /// occlusion-guard: true のとき、exists/textEquals がツリー一致で pass した直後に
     /// FM で「その要素がスクショ上で実際に見えているか」を1回照合し、覆われ/切れ/減光/不在なら
     /// 誤った緑として失敗へ反転する。delegate が verifyElementVisible を実装していなければ無効。
     /// occlusionGuardEnabled(実行プロファイル由来のマスタースイッチ)とは別物: こちらは
     /// exist の requireVisible 既定値由来のステップ既定(step.occlusionGuard が per-step 指定)
     public var occlusionGuard: Bool
-    /// [PoC occlusion-guard] 事前フィルタの閾値。対象 frame 領域の輝度 stddev がこの値以上なら
+    /// occlusion-guard: 事前フィルタの閾値。対象 frame 領域の輝度 stddev がこの値以上なら
     /// 「明瞭にインクあり=見えている」とみなし FM を省略する(疑いのある低インク領域だけ FM へ回す)。
     /// 単位はスクショの輝度分散(0〜約128)。実測(合成フィクスチャ)で可視 stddev≳25 / 覆い・空・減光
     /// stddev≲8 に分離するため既定 12。0 にするとインクでは省かない(その先の Tier-2 OCR は通る)。
@@ -425,7 +425,7 @@ public final class StepExecutor {
         }
         public var detectChain: [FlowLocator] { [detect] + detectFallbacks }
         public var dismissChain: [FlowLocator] { [dismiss] + dismissFallbacks }
-        /// 注記・回数の鍵。代替が無ければ従来どおり `detect.summary` と同じ文字列
+        /// 注記・回数の鍵。代替が無ければ `detect.summary` と同じ文字列
         public var key: String { detectChain.map(\.summary).joined(separator: "||") }
         /// 先に書いたほうが勝つ(`||` と同じ)
         public func matchDetect(in snapshot: SnapshotResponse) -> ElementInfo? {
@@ -456,7 +456,7 @@ public final class StepExecutor {
     public var handlerSuppressionDepth = 0
 
     /// `disableHandler()` で止めているか(`enableHandler()` で戻す)。
-    /// **ブロック形と別に持つ理由は CAE**(2026-08-21 ユーザー指摘): `suppressHandler { }` は
+    /// **ブロック形と別に持つ理由は CAE**(ユーザー指摘): `suppressHandler { }` は
     /// **1つの CAE ブロックの内側にしか置けない**ので、`condition` で止めて `expectation` で
     /// 戻す、という書き方ができない。命令形の対だけが**ブロックを跨いで**制御できる
     public var handlersDisabled = false
@@ -472,7 +472,7 @@ public final class StepExecutor {
     /// スクロール探索の直後に「空打ち」の極小ドラッグを入れるか(**iOS だけ true**)。
     /// iOS(Compose)のスクロール容器は次の1タッチを消費してタップが効かないため必要だが、
     /// **Android では 2pt のドラッグがクリックとして発火してしまう**(タップしていないのに
-    /// 行が選択される = 二重実行。2026-07-27 実測)。プラットフォームで分ける唯一の理由
+    /// 行が選択される = 二重実行。実測)。プラットフォームで分ける唯一の理由
     let releasesScrollTouch: Bool
 
     /// タップの遮蔽・切り詰め注記の文言分岐にだけ使う。`TapTargetGeometry.advisory` /
@@ -487,7 +487,7 @@ public final class StepExecutor {
 
     /// 要素が現れる・値が変わるのを**待つ間の 2 回目以降の読み**で、ドライバのキャッシュを迂回するか。
     /// Android の Compose は、新しく出たノードを a11y のキャッシュへ 800ms 以上出さない
-    /// (2026-09-18 実測: 1 秒後に表示される要素を、ポーリング間隔 100/200/400/800/1000ms で読むと
+    /// (実測: 1 秒後に表示される要素を、ポーリング間隔 100/200/400/800/1000ms で読むと
     /// 押してから 1.8 秒の読みでまだ無く 2.8 秒で見つかる。`refresh=1` なら 1.08 秒。
     /// 50ms 刻みで読み続けると遅れは出ない = 読む頻度に依存する)。View/XML と Flutter の E2E では
     /// 遅れが出ていない。迂回は 1 回あたり約 +50ms(要素 19 個の画面で 8 → 50〜60ms)なので、
@@ -505,9 +505,9 @@ public final class StepExecutor {
     /// Compose/Flutter だけに絞る —— タッチ消費はそれらの自前描画スクロール容器に固有で、
     /// UIKit 系(RN 含む)の容器は消費しない。**RN は逆に空打ちが害になる**: 横抜き4pt の終点が
     /// Pressable の pressRetentionOffset(既定20pt)内に収まり onPress が成立し、`scrollTo` しただけで
-    /// 行が選択された(2026-08-08 E2E-RN S0100 実測: `selected=row_40`)。Android がタッチ消費を
+    /// 行が選択された(E2E-RN S0100 実測: `selected=row_40`)。Android がタッチ消費を
     /// 持たず releasesScrollTouch=false で対象外なのと同型の理由。
-    /// **nil(不明)は打たない**(2026-09-12 に反転): 打って外れると行やボタンが押されてアプリの状態が
+    /// **nil(不明)は打たない**: 打って外れると行やボタンが押されてアプリの状態が
     /// 黙って変わる(取り消せない)が、打たずに外れるとタップが吸われて失敗として見える。不明になるのは
     /// 材料(.app / .ipa)も台帳も in-app の自己申告も無い物理端末だけ
     /// **`FT_EMPTY_DRAG=off` は保守者の殺しスイッチ**(空打ちが今も要るかを E2E の規模で測るため。
@@ -540,7 +540,7 @@ public final class StepExecutor {
     /// FTDSL コマンド1回分の外枠(`FTDSL.FTSync.commandTimeout`)をミリ秒にしたもの。
     /// **FTCore から FTDSL は参照できない**ため、呼び出し側(FTRuntime)が渡す値をそのまま持つ
     /// だけで、ここでは既定値を作らない。nil は「外枠を持たない呼び出し元」(MCP 等)を表し、
-    /// `SlowSnapshotBudget.mayRetake` は常に許可を返す = 従来どおり
+    /// `SlowSnapshotBudget.mayRetake` は常に許可を返す
     let commandTimeoutMs: Int?
 
     /// 画面が変わり得る操作の直後に呼び、スクショ再利用キャッシュを捨てる(performCustom から呼ぶ)。
@@ -909,7 +909,7 @@ public final class StepExecutor {
     /// **tap が続いたとき、前のタップの記録を次のタップの解決まで持ち越す**入れ物(`executeAction` の入口で
     /// 移し、`recordInteraction` で次のタップの解決に使った木と比べて確定させる)。
     /// 直前 1 件だけだと、`tap(効かなかった) → tap(画面を変えないのが正常)→ 検証` で後者を名指しし、
-    /// 本当に効かなかった前者が消える(2026-09-16: E2E-iOS S0020 の `#btn_request_photos` →
+    /// 本当に効かなかった前者が消える(E2E-iOS S0020 の `#btn_request_photos` →
     /// `#btn_freeze_3s`。この並びでは失敗すれば必ず freeze_3s を名指しし、情報になっていなかった)
     var tapAwaitingNextTree: LastInteraction?
     /// 次のタップが解決に使った木と比べて**画面が変わっていなかった**と確定した、それより前のタップ
@@ -950,21 +950,21 @@ public final class StepExecutor {
     /// `AppDriver.verifiesTypedText == false`(in-app エンジン)のときだけで、実機(xcuitest
     /// エンジン)は `verifiesTypedText == true` なので読み返し自体を通らない
     /// (CLAUDE.md「type の読み返しの有無はドライバの能力」)。
-    /// 実測したバグは iPhone 13 実機(xcuitest エンジン)で起きており、読み返しの木に頼る旧実装は
-    /// **この経路では1度も発火しなかった**。**「打った後」は次のステップが解決のために
+    /// 実測したバグは iPhone 13 実機(xcuitest エンジン)で起きており、読み返しの木に頼る実装は
+    /// **この経路を1度も検知できない**。**「打った後」は次のステップが解決のために
     /// どのみち撮る最初の `freshSnapshot` に譲る**ことで、読み返しの有無・エンジンに依存しない
     /// (StepExecutor+Actions.swift の消費側 doc 参照)。
     /// **nextResolveBypassesCache と同じ「1回で消費」規律**。立っていても、その1枚で
     /// キーボードが動いていなければ**追加コストはゼロ**(比較だけ)——動いていたときだけ
-    /// `settledSignature(phase:)` で収束を待つ。iOS 実機を LAN(往復48ms)で回した実測
-    /// (2026-09-16): WebView の `type` → 116〜134pt の押し上げの最中に次の `tap` が解決し、
+    /// `settledSignature(phase:)` で収束を待つ。iOS 実機を LAN(往復48ms)で回した実測:
+    /// WebView の `type` → 116〜134pt の押し上げの最中に次の `tap` が解決し、
     /// 押し上げ前の座標を撃って別要素に当たった(E2E-iOS S0010・11 本中 5 本)
     var pendingTypeKeyboardCheck = false
 
     /// **Android の `hideKeyboard` の後、次のロケータ操作の解決で木のキーボードが消えるまで待つ上限(秒)**。
     /// 立てるのは hideKeyboard の成功時だけ・消費は次のロケータ操作の最初の解決で1回(pendingTypeKeyboardCheck と
     /// 同じ規律。exist / textIs は自分で待つので消費しない)。木にキーボードが無ければ追加の費用はゼロ。
-    /// 実測(2026-09-19 Pixel 3a・Android 12・Flutter): 入力欄の外を叩いて IME が閉じ始めると dumpsys は即
+    /// 実測(Pixel 3a・Android 12・Flutter): 入力欄の外を叩いて IME が閉じ始めると dumpsys は即
     /// 非表示(= hideKeyboard は何もしない)だが、a11y の木は **約 5.4 秒** キーボードを申告し続け、その間
     /// 下端のタブバーを `isVisibleToUser = false` で落とす(refresh しても同じ)。次の tap は既定の解決の
     /// 待ち(約 0.7 秒)で「cannot resolve」になった。Pixel 4a(Android 13)は 0.32 秒で戻る。
@@ -976,7 +976,7 @@ public final class StepExecutor {
     var pendingTypeEndedWithNewline = false
 
     /// 打つ前に出ていたキーボードが、打った後の最初の木で画面外に居るか(純粋関数)。
-    /// **secure 欄では iOS がキーボードを一度隠して出し直す**(実測 2026-09-17: 打っている間と、type が
+    /// **secure 欄では iOS がキーボードを一度隠して出し直す**(実測: 打っている間と、type が
     /// 返ってから約 0.8 秒は画面外・その間 0.45 秒ほど木が静止する)ので、整定待ちだけだと隠れている間に
     /// 「静止した」と抜け、戻った直後に中身が 64pt 押し上げられて次の tap が古い座標を撃つ(M22)。
     /// 本文が改行で終わるときは Enter で正当に閉じうるので待たない
@@ -1006,7 +1006,7 @@ public final class StepExecutor {
     /// 容器の外に居る要素を可視域へ戻すのに必要な移動量(`hintDrag` の jump 規約 = 正なら指を上へ)。
     /// 収まっている/測れないときは nil。
     ///
-    /// **全画面スワイプで戻してはいけない**(2026-08-05 実測): ずれは 100pt 程度なのに1回が
+    /// **全画面スワイプで戻してはいけない**(実測): ずれは 100pt 程度なのに1回が
     /// 約1ページ動くので**行き過ぎて反対側へ出る** → 次の周で逆向き → 往復して収束しない。
     /// 8並列で採った失敗 13 件は**全部**が救済を撃ち切ったうえで(tap 4.0s → 約8.0s)、
     /// `#row_30` は容器 230..692 の**上** y=116〜174 に戻っていた。
@@ -1018,7 +1018,7 @@ public final class StepExecutor {
     }
 
     /// **またぎ解消に必要な最小スクロール量**(+マージン)。またぎ補正に recoveryJump
-    /// (容器の 40% 位置へ寄せる)を使うと寄せ過ぎる —— 2026-08-08 実害: SwiftUI の素の
+    /// (容器の 40% 位置へ寄せる)を使うと寄せ過ぎる —— 実害: SwiftUI の素の
     /// scrollView が木に出るようになった(版58)ことで補正がネイティブ画面でも発火し、
     /// 約330px の寄せが観測対象の echo ラベルまで仮想化の外へ流して、タップは成立したのに
     /// アサーションが要素を見失った(E2E-iOS の3シナリオが決定的に失敗)。
@@ -1035,10 +1035,10 @@ public final class StepExecutor {
     }
 
     /// **報告された frame の中心が容器の外に落ちるとき、実際に見えている部分の矩形**を返す。
-    /// 中心が容器の中なら nil = 従来どおり ref でタップする(ブリッジが frame の中心へ解決)。
+    /// 中心が容器の中なら nil = ref でタップする(ブリッジが frame の中心へ解決)。
     ///
     /// フレームワークは縁をまたぐ行を「原点はクリップ前・サイズはクリップ後」の混成で返すため、
-    /// **frame の中心が可視域の外に落ちる**。実測(2026-08-05・S0110 を8並列で 80 サンプル):
+    /// **frame の中心が可視域の外に落ちる**。実測(S0110 を8並列で 80 サンプル):
     /// **失敗 40 件の全部**でタップ座標が容器の外だった(完全に外 14 / またぎ 26。
     /// またぎの中心は 218〜228 で容器の上端は 230)。
     ///
@@ -1125,7 +1125,7 @@ public final class StepExecutor {
     /// 呼び手は**既に持っている木の要素列**を渡すこと(このために追加取得しない)。
     ///
     /// 出るのは排他な2つ。**この2つを分けることが目的**で、事後の幾何だけでは区別できない
-    /// (2026-08-05 に実際に取り違えた: 失敗時に対象が容器の縁へずれていたのを「掴んだ時点で
+    /// (実際に取り違えた: 失敗時に対象が容器の縁へずれていたのを「掴んだ時点で
     /// 壊れていた」と読み、探索側を直したが**一度も発火しなかった**):
     ///   1. **木が1ピクセルも変わっていない** → タップが丸ごと飲まれた(真の空振り)
     ///   2. **対象があの後動いた** → タップは**動く前の座標**を撃った可能性(古い座標)
@@ -1165,7 +1165,7 @@ public final class StepExecutor {
                 + "; the interaction may have been swallowed\(outOfAppCaveat)"
             if let taken = last.pointTakenBy {
                 // 名指しであって貼れるセレクタの保証はしない(TapTargetGeometry.describe と同じ判断。
-                // 2026-08-15。エスケープ未対応)
+                // エスケープ未対応)
                 let label = taken.identifier.map { "#\($0)" } ?? taken.label.map { "\"\($0)\"" }
                     ?? taken.type
                 text += " — its point was inside \(label), which is in front of the target"
@@ -1208,7 +1208,7 @@ public final class StepExecutor {
                 + " — the dismiss selector may not close it")
         }
         // **閉じたのに落ちた**ときは、割り込みが「出ていた」ことより「**直前の操作を吸った
-        // かもしれない**」ことの方が読み手に要る情報(2026-08-20 の受け手報告)。
+        // かもしれない**」ことの方が読み手に要る情報(受け手報告)。
         // 撃ち直しはしない —— 既に届いていた場合に二重実行になる(報告者の指摘どおり)
         // **抑止したまま忘れた**ときに気付けるようにする。出ていたのに閉じなかったのは
         // 宣言どおりの動作なので、**落ちたときにだけ**言う(成功していれば意図どおり)
@@ -1227,13 +1227,13 @@ public final class StepExecutor {
     }
 
     /// 1ステップで割り込みを閉じる上限の**既定値**(宣言ごとに `maxDismissals` で変えられる)。
-    /// **1回きりでは足りない**(2026-08-20 の受け手要望): 長いステップの最中に2度目の配信が
+    /// **1回きりでは足りない**(受け手要望): 長いステップの最中に2度目の配信が
     /// 湧くと、閉じ切れないまま待ち続ける。
     ///
     /// 上限を残すのは**閉じても消えない相手に無限に付き合わない**ためだが、
     /// **その役目はもう「閉じたのに残っている」の打ち切りが担っている**(2回で見切る)。
     /// ここは「湧く回数」の上限でしかないので、**素直に湧く相手を取りこぼさない側へ寄せて 10**
-    /// (2026-08-20 ユーザー指定)。尽きたときは注記に残るので、黙って待ち続けることはない
+    /// (ユーザー指定)。尽きたときは注記に残るので、黙って待ち続けることはない
     public static let maxInterruptDismissalsPerStep = 10
 
     /// 宣言された割り込み(アプリ内メッセージ等)が現在の画面に出ていれば閉じる。
@@ -1262,10 +1262,10 @@ public final class StepExecutor {
             let start = clock.now
             try await driver.tap(ref: target.ref)
             phase.actionMs += Self.ms(clock.now - start)
-            // **整定してから取り直す**(2026-08-20 の受け手報告)。閉じた直後の1枚は
+            // **整定してから取り直す**(受け手報告)。閉じた直後の1枚は
             // **消えるアニメーションの最中**のことがあり、そのとき背面はまだ覆われている扱い =
             // 「同じステップの中で割り込みを閉じたのに、直後の解決が失敗する」が起きる。
-            // 追加コストは**閉じたときだけ**(宣言が無ければ従来どおりゼロ)
+            // 追加コストは**閉じたときだけ**(宣言が無ければゼロ)
             let settled = try await settledSignature(phase: &phase)
             snapshot = settled.snapshot
             interruptNote = key
@@ -1313,7 +1313,7 @@ public final class StepExecutor {
 
     /// 宣言された割り込みが写っていれば閉じて、整定後の木を返す(`dismissInterruption` と同じ実装)。
     /// **条件判定から使う** —— 覆いを閉じずに不成立を確定すると、分岐が黙って飛ぶ
-    /// (2026-08-20 の受け手報告。失敗ではなく**誤った経路**として現れるので気付けない)。
+    /// (受け手報告。失敗ではなく**誤った経路**として現れるので気付けない)。
     /// 宣言が無ければ何もしない = コストゼロ
     public func dismissDeclaredInterruption(in snapshot: SnapshotResponse) async -> InterruptDismissal? {
         guard !interruptHandlers.isEmpty else { return nil }
@@ -1326,7 +1326,7 @@ public final class StepExecutor {
     }
 
     /// scrollFrame の空振り申告(ステップの注記へ載せる)。**「1ステップ1回」は nil 判定だけで
-    /// 表現できる**(2026-08-08: 別に立てていた `reportedScrollFrameNote` フラグは、唯一の代入元が
+    /// 表現できる**(別に立てていた `reportedScrollFrameNote` フラグは、唯一の代入元が
     /// 常に `pendingScrollFrameNote != nil` と同値になり、ガード条件として無力だった)
     var pendingScrollFrameNote: String?
 

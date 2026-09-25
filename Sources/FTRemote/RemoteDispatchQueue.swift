@@ -195,7 +195,7 @@ public enum RemoteDispatchQueue {
     /// `enqueueAndTryAcquireCommand` の出力を読む。**position / total の算出はここ(Swift 側)**
     /// —— シェルに判定を増やさない(判定は1箇所)。
     /// `waiting` / `held` で**自分のチケットが一覧に無い**出力は nil(解析不能。呼び出し側は
-    /// 従来のエラー経路へ倒す)。`acquired` は一覧を見ない —— ロックは既に取れており、
+    /// 通常のエラー経路へ倒す)。`acquired` は一覧を見ない —— ロックは既に取れており、
     /// 判定語のほうが一覧より新しい事実
     public static func parseOutcome(_ output: String, ticket: DispatchTicket) -> Outcome? {
         let lines = output.split(separator: "\n", omittingEmptySubsequences: false)

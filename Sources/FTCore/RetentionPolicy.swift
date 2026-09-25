@@ -68,7 +68,7 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// ランナーが書き込み中で消せない**(guarded) —— 束の中身は「終わらない UI テスト」の
     /// 全操作(`XCTWaiter` / `XCTContext` の活動)を起動から継続して書く生ログで、
     /// `BridgeLauncher.captureSettings`(動画・スクショを止める設定)の対象外。
-    /// 実測(2026-09-20): 実機ブリッジ1本を 75 分立てただけで束が 324 MB(24 時間なら
+    /// 実測: 実機ブリッジ1本を 75 分立てただけで束が 324 MB(24 時間なら
     /// 1台で約 6 GB/日)、8台規模の負荷試験では全体で 733 MB/時。この上限は
     /// **保持量を抑える線ではなく、立てっぱなしに気付かせる線** —— guarded だけで
     /// 超えても掃除はできず `overCapAfterGuards` の通知が出るだけ。5 GiB は単発のブリッジなら

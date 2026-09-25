@@ -73,7 +73,7 @@ extension StepExecutor {
     /// 1. 対象より手前の要素が点を取る(タブバー等。pointIsTakenByFrontElement)
     /// 2. 点が**画面下端の帯**にある。タブバーの実ヒット域は a11y frame の下(ホームインジケータ域
     ///    =画面下端)まで伸びるのに、その帯は a11y 上は空白で 1 が効かない
-    ///    (実測 2026-07-28: タブ frame 下端 840・画面高 874 で、帯内 y=841.8 への空打ちで
+    ///    (実測: タブ frame 下端 840・画面高 874 で、帯内 y=841.8 への空打ちで
     ///    #tab_home が反応しホームへ遷移。E2E-iOS 07/16 の間欠フレークの根因)
     static func emptyDragIsSafe(x: Double, y: Double, of element: ElementInfo,
                                 in elements: [ElementInfo], screen: FTRect) -> Bool {
@@ -95,50 +95,50 @@ extension StepExecutor {
     /// 「同じ depth の兄弟が2つ以上その中に居る」ことを確かめてから採用する ——
     /// 叔父を掴んだときは兄弟が誰も中に居ないので nil に落ちる。
     ///
-    /// **交差の有無で絞らない**(2026-08-05 に条件を外した)。旧実装は「容器と交差しないときだけ」
-    /// 容器を返していたため、**縁をまたぐ要素で nil に落ちて viewport が画面全体になっていた**。
+    /// **交差の有無で絞らない** —— 「容器と交差しないときだけ容器を返す」条件を入れると、
+    /// **縁をまたぐ要素で nil に落ちて viewport が画面全体になる**。
     /// Compose は縁をまたぐ行を「原点はクリップ前・サイズはクリップ後」の混成で返すので、
     /// `#list_rows` が y 230..692 のとき `#row_30` が `(16,206 370x43)` = **中心 227.5 が容器の外**
     /// になる。画面基準では「見えている」と判定されて探索が止まり、隙間をタップして飲まれていた
     /// (S0110 の失敗 21 件中 **12 件**がこの形)。
     ///
-    /// **scrollable を申告している祖先があればそれを優先する**(2026-08-23・受け手の最小再現):
+    /// **scrollable を申告している祖先があればそれを優先する**(受け手の最小再現):
     /// 横カルーセル(`other scroll`)> カード(`clickable`)> ラベル+バッジ、の木では上の規則が
     /// **カード自身**を容器に選ぶ(同じ深さの子を2つ持つ直近の祖先だから)。右にはみ出したカードを
     /// 画面と交差させると幅 42pt しか残らず、幅 98pt のラベルが「viewport より大きい」扱いになって
     /// 見切れ判定が免除され、回復ドラッグに入らないまま既定の全画面スワイプ(縦容器基準)が
     /// 横カルーセルに届かず `nothing moved` で落ちた。クリップするのはカードではなくスクロール容器
     /// なので、**申告があるときはそれが正**。申告の無い木(Compose iOS は xcuitest で申告できない)は
-    /// 従来の規則のまま = 挙動は変わらない
+    /// 上の規則のみ = 挙動は変わらない
     static func clippingContainer(of element: ElementInfo, in elements: [ElementInfo],
                                   inferring enabled: Bool = containerInferenceEnabled) -> FTRect? {
         guard enabled,
               let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
         let tight = siblingRuleContainer(of: element, at: index, in: elements)
-        // **申告の祖先へ倒すのは「深さ由来の候補が小さすぎる」ときだけ**(2026-08-28)。
+        // **申告の祖先へ倒すのは「深さ由来の候補が小さすぎる」ときだけ**。
         //
-        // 2026-08-23 に申告を無条件で優先したところ、縦リストのように**行の容器が scrollable を
+        // 申告を無条件で優先すると、縦リストのように**行の容器が scrollable を
         // 申告せず外側の全画面 scrollView だけが申告する**木で容器が画面全体へ広がり、
-        // 慣性で動いている最中の見切れ・整定判定が効かなくなった(iOS xcuitest 限定の退行。
-        // maintainer-notes §4.5.1)。**それ以外は 2026-08-23 以前とまったく同じ経路**にする ——
+        // 慣性で動いている最中の見切れ・整定判定が効かなくなる(iOS xcuitest 限定の退行。
+        // maintainer-notes §4.5.1)。**それ以外は元の経路とまったく同じ**にする ——
         // 候補が無ければ nil を返すところまで含めて(nil と「画面全体」は下流で別物として効く)。
         //
         // 倒す条件は**元の不具合そのものの形**: 横カルーセルではカード(164 幅)を容器に選び、
         // カルーセル(402 幅)で切ると **42 幅**になって要素「スタンプラリー」(98 幅)を収められず、
         // 「viewport より大きい」扱いで見切れ判定が免除された。**小さすぎる候補だけを退ける**。
         //
-        // **収まり・重なりでは判定しない**(2026-08-28 に2案とも実機で否定)。動いている最中は
+        // **収まり・重なりでは判定しない**(2案とも実機で否定した)。動いている最中は
         // 行が容器の縁・外に報告されるので、位置を見る述語は**効いてほしい瞬間だけ**申告容器へ
         // 倒れる。代償として、位置的に無関係な候補を退ける力は失う(実アプリのコーパス
-        // `and-browser_weather_weekly` の ghost 1件。2026-08-23 以前の基準値へ戻る)——
+        // `and-browser_weather_weekly` の ghost 1件ぶん、基準値が戻る)——
         // スクロール探索が別の行を撃つ実害と、警告レベルの検知1件を秤にかけた判断
         guard let tight else {
             // 深さの規則が候補を出せない木でも、scrollable を申告する祖先があればそれが clip 元。
-            // 2026-09-15 実測(E2E-iOS in-app・#txt_offscreen): 700pt の余白の後ろの最後の要素は
+            // 実測(E2E-iOS in-app・#txt_offscreen): 700pt の余白の後ろの最後の要素は
             // 可視域に兄弟が 1 つしか居ないので nil に落ち、viewport が画面全体へ広がって
             // 容器の下端(778)を 18pt はみ出した要素(776..796)が「見えている」で探索を止めていた。
             // 実際にはタブバーの裏で 2pt しか描かれておらず、FM の転写が正しく反転する = 探索側の穴。
-            // 申告が無い木は従来どおり nil(下流は nil と画面全体を別物として扱う)
+            // 申告が無い木は nil のまま(下流は nil と画面全体を別物として扱う)
             return nearestScrollableAncestor(of: element, at: index, in: elements)?.frame
         }
         if let scroller = nearestScrollableAncestor(of: element, at: index, in: elements),
@@ -151,12 +151,12 @@ extension StepExecutor {
 
     /// 「同じ深さの子を2つ持つ直近の祖先」= Compose iOS 向けの近似(申告の無い木ではこれが唯一の手)。
     /// preorder 祖先の連鎖(ancestors(of:in:) と同じ復元)を辿り、**同じ depth の行を1件も含まない
-    /// 候補は飛ばす**(実機 iPhone 13・2026-08-31: 見出し `staticText "アカウント"` d11 95x22 が
-    /// `#btn_logout` d12 の直前に来て「直前の depth の小さい要素=親」の旧仮定を崩し、容器を丸ごと
-    /// 見失っていた。見出しは行を1件も含まないので葉と分かる)。
+    /// 候補は飛ばす**(実機 iPhone 13: 見出し `staticText "アカウント"` d11 95x22 が
+    /// `#btn_logout` d12 の直前に来て、単純な「直前の depth の小さい要素=親」という仮定を崩し、
+    /// 容器を丸ごと見失っていた。見出しは行を1件も含まないので葉と分かる)。
     /// **要素自身との交差を gate にしてはいけない**: ghost(容器の完全に外へ報告された行)は容器と
-    /// 交差しないが、その容器こそ `isOutsideContainer` が要る答え。行を1件でも含む候補は旧規則の
-    /// まま(2件未満なら nil で確定、上へは辿らない = 2026-08-23 以前の「直近の祖先1つ」の規律)
+    /// 交差しないが、その容器こそ `isOutsideContainer` が要る答え。行を1件でも含む候補はそのまま
+    /// (2件未満なら nil で確定、上へは辿らない = 「直近の祖先1つ」の規律)
     private static func siblingRuleContainer(of element: ElementInfo, at index: Int,
                                              in elements: [ElementInfo]) -> FTRect? {
         var depth = element.depth
@@ -166,7 +166,7 @@ extension StepExecutor {
             let candidate = elements[cursor]
             guard candidate.depth < depth else { continue }
             // **入力欄は容器候補にしない**(`depth` も下げない = 本物の容器まで遡り続ける)。
-            // 2026-09-01・実機 iPhone 13 の検索結果で実測: 上に貼り付いた
+            // 実機 iPhone 13 の検索結果で実測: 上に貼り付いた
             // `textView #field_search` (56,55 326x57) は、平坦な木では後続の全要素を「子孫」に
             // 持つため「同じ depth の行を2件以上含む候補」を満たして採用され、画面の下半分に
             // ある**正しく描かれたカードのハート4件**まで「容器の外」= ⚠️scroll-leftover に
@@ -216,7 +216,7 @@ extension StepExecutor {
     /// public なのは fleetest-mcp の RefGuard が同じ判定を使うため(ref を撃つ直前の照合)。
     /// **判定はここ1箇所** —— MCP 側に別の閾値を置くと、DSL と MCP で「ghost の定義」が割れる
     ///
-    /// **容器の外側の帯に固定された chrome は ghost から除く**(2026-08-31・and-sutec_home):
+    /// **容器の外側の帯に固定された chrome は ghost から除く**(and-sutec_home で実際に踏んだ):
     /// Android ブリッジが無ラベルの NavigationBar を間引く(`SnapshotBuilder.shouldInclude`)と、
     /// preorder+depth の復元がタブを容器(`#screen_home`)の子に再配線し、非交差になる。
     /// `isChromePinnedOutside` の doc を参照
@@ -235,7 +235,7 @@ extension StepExecutor {
     /// 押し出された行)と区別する。判定は自分自身、または**自分を含む祖先**(タブのラベルのように
     /// chrome の中に居る要素)のどれかが帯の一員であること。
     ///
-    /// 実測(2026-08-31・and-sutec_home): Compose Scaffold の NavigationBar が無ラベルで
+    /// 実測(and-sutec_home): Compose Scaffold の NavigationBar が無ラベルで
     /// 間引かれ(`SnapshotBuilder.shouldInclude`)、preorder+depth の復元がタブを
     /// `#screen_home`(scrollView・d9)の子(d10)に再配線する。タブは容器と交差せず、
     /// `isOutsideContainer` / `outsideDeclaredScroller` の両方が ghost/scrolledOut と判定していた。
@@ -338,15 +338,15 @@ extension StepExecutor {
         }
         // **スワイプではなくドラッグで戻す**。スワイプはフリングになり、この局面(端に着いている =
         // 残りの可動域が短い)では1回で反対の端まで走り切って、また同じ飛び越しを起こす
-        // (2026-08-06 に Emulator で観測: path 付きスワイプでは1本も拾えなかった)。
+        // (Emulator で観測: path 付きスワイプでは1本も拾えなかった)。
         // slowDrag は距離ぶんの時間を必ず取るのでフリング閾値を下回る
         let vertical = back == .up || back == .down
         let extent = vertical ? container.height : container.width
         // + = 進む向き(縦は指を上・横は指を左)。dragGesture の規約と対
         let jump = (back == .up || back == .left ? 1.0 : -1.0)
             * extent * Self.reverseSweepSpanRatio
-        // 横は 2026-08-08 まで未対応で即 nil だった(RN の横 FlatList がフリングで
-        // #tag_15 を飛び越して右端に着き、救済されず 4/10 で失敗した実測が動機)
+        // 横方向も同じ経路を通す —— RN の横 FlatList がフリングで #tag_15 を飛び越して右端に着き、
+        // 救済されず 4/10 で失敗した実測が動機
 
         var previous: String?
         for _ in 0..<Self.reverseSweepMaxSwipes {
@@ -369,7 +369,7 @@ extension StepExecutor {
                                                   snapshot: snapshot, phase: &phase)
                     // **連続2回一致まで待つ**(settleAfterScroll より強い)。逆走査のドラッグは
                     // 遅い代わりに離した後もしばらく減速しながら動き、**掴んだ座標が
-                    // タップまでにずれる**(2026-08-06 実測: 176px ずれて隣の行を叩いた)
+                    // タップまでにずれる**(実測: 176px ずれて隣の行を叩いた)
                     _ = try await settledSignature(phase: &phase)
                     return .some(fallback)
                 }
@@ -384,11 +384,11 @@ extension StepExecutor {
 
     /// 探索が要素を見つけた直後の後始末。**スワイプを撃った周回だけ**呼ぶ。戻り値は
     /// 「静止待ちが収束せず打ち切られた」= 呼び手はそれを注記に載せる。
-    /// **順序に意味がある**(逆にすると Android で誤タップが再発する。2026-07-27 実測)
+    /// **順序に意味がある**(逆にすると Android で誤タップが再発する。実測)
     func settleAfterFind(step: FlowStep, element: ElementInfo,
                                  snapshot: SnapshotResponse,
                                  phase: inout PhaseAccumulator) async throws -> Bool {
-        // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
+        // 順序:
         //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
         //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
         //     **横へ抜けるドラッグ**でその1回ぶんを肩代わりする。向きの根拠は
@@ -396,16 +396,16 @@ extension StepExecutor {
         //     直後のアサーションが壊れる / 矩形の中で離すとクリックとして成立してしまう)
         //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
         //  **uikit はスキップ**(容器がタッチを消費しない。RN は横抜き4ptが pressRetentionOffset
-        //  20pt 内でクリック成立し scrollTo が行を選択した。2026-08-08 S0100 実測。shouldEmptyDrag 参照)
+        //  20pt 内でクリック成立し scrollTo が行を選択した。S0100 実測。shouldEmptyDrag 参照)
         // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
         // (タブバー等)に届き、そのボタンが反応してしまう
-        // (2026-07-27 実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
+        // (実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
         // 空打ちでホームタブへ切り替わっていた)
         // **点は容器の中でありさえすればよい**(容器の1タッチを肩代わりするだけで、
         // 対象要素に当てる必要は無い)。そこで下端の a11y 空白帯に掛かるときは
         // 上へずらす —— 探索は「見えた瞬間」に止まるので、**1回の移動量が小さいほど
         // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
-        // (2026-08-02 実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
+        // (実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
         // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
         let x: Double = element.frame.x + element.frame.width / 2
         let y: Double = min(element.frame.y + element.frame.height / 2,
@@ -423,7 +423,7 @@ extension StepExecutor {
     /// 掴んだ要素を可視域へ入れ直すために**次に送る向き**。
     ///
     /// **探索方向へ送り続けてはいけない** —— 行き過ぎた側の要素は**さらに遠ざかる**。
-    /// 2026-08-05 実測: `withScrollDown` の探索(指は上)で `#row_30` が容器(230..692)の**上**
+    /// 実測: `withScrollDown` の探索(指は上)で `#row_30` が容器(230..692)の**上**
     /// y=76 に報告され、ghost 検出後の追加スワイプ2回でも外のままだった
     /// (注記が `3 re-resolve(s), 2 extra swipe(s)` で残っていた = 検出はできていて救済が収束しない)。
     ///
@@ -431,7 +431,7 @@ extension StepExecutor {
     /// 中心が容器の内側にある間は探索方向のまま = 「まだ届いていない」ときの挙動は変わらない
     /// 見切れ回収に必要な移動量(符号は dragGesture の規約: + = 指を上/左)。
     /// 見切れていなければ nil。**全幅フリングで戻すと既定経路(scrollFrame 無し)では
-    /// 逆側へ飛び越して往復振動になり maxSwipes を使い切る**(2026-08-08 実測:
+    /// 逆側へ飛び越して往復振動になり maxSwipes を使い切る**(実測:
     /// RN 横カルーセルで "after 10 scroll(s)")。量が分かっている局面なので距離で寄せる
     static func clipRecoveryJump(for element: ElementInfo, viewport: FTRect,
                                  finger back: FTSwipeDirection) -> Double? {
@@ -469,7 +469,7 @@ extension StepExecutor {
     static func isClippedByViewport(_ element: ElementInfo, screen: FTRect) -> Bool {
         let frame = element.frame
         // **等しいときは「大きい」ではない**: リストの行は容器と同じ幅を持つのが普通で、
-        // `<` にすると幅一致の行が丸ごと判定から漏れる(2026-08-02 実測: 下端で見切れた行が
+        // `<` にすると幅一致の行が丸ごと判定から漏れる(実測: 下端で見切れた行が
         // 可視とみなされ、タップが容器の外のタブバーに当たって別画面へ遷移した)
         guard frame.height > 0, frame.width > 0,
               frame.height <= screen.height, frame.width <= screen.width else { return false }
@@ -483,17 +483,17 @@ extension StepExecutor {
     ///
     /// フレームワークは**容器の可視域を外れた子孫の frame の原点を、容器の原点へクランプする**。
     /// XCUITest の `UITableView` では**実体化していない行のラベルまでツリーに載り**、
-    /// 全部が容器の原点に積み上がる(2026-08-05 実採取: 40 行のうち **32 個**が
+    /// 全部が容器の原点に積み上がる(実採取: 40 行のうち **32 個**が
     /// `(16,270 330x56)` に重なり、**すべて depth 8**)。これを掴むと:
     ///   - `tap("行 15")` が**先頭行をタップする**(実採取で再現。可視性ガードを通らないので沈黙)
     ///   - `exist("行 15")` が画面外なのに真を返す(「exist は非スクロール」の契約に反する)
     ///
-    /// **判定に depth の一致が要る**(2026-08-05 に過去レポート 466 件へ当てて確認): frame だけで
+    /// **判定に depth の一致が要る**(過去レポート 466 件へ当てて確認): frame だけで
     /// 判定すると `homepage_container > main_content > list_container > recycler_view` のような
     /// **入れ子の連鎖**(親子が同じ矩形を持つのは普通)を巻き込む。祖先と子孫は depth が違うので、
     /// 「同じ depth = 兄弟」を条件にすれば連鎖は残る。
     ///
-    /// **「同じ場所に3つ」だけでは足りない**(2026-08-05: 症状で判定したら既存テスト 13 件が落ちた)。
+    /// **「同じ場所に3つ」だけでは足りない**(症状で判定したら既存テスト 13 件が落ちた)。
     /// 同 depth の兄弟が同じ矩形を持つこと自体は珍しくない —— 重ねたオーバーレイや、
     /// 属性だけが違う要素群がそうなる。**機構そのもの**を条件にする:
     ///   「容器の**原点にちょうど固定**され、かつ容器より**小さい**要素が3つ以上重なっている」
@@ -560,7 +560,7 @@ extension StepExecutor {
     /// 「約 `scrollSettleIntervalMs` の周期で画面が変わらないこと」であって sleep の長さではない。
     /// キャッシュ迂回の snapshot は Android で約 +35ms 掛かる(ブリッジ直叩きで 5.1ms → 39.9ms)ので、
     /// 差し引かないと周期が 100ms → 140ms へ伸び、**スクロール系のステップが丸ごと遅くなる**
-    /// (2026-08-03 実測: scroll 系ステップ合計 +3.2s。差し引きで -2.0s 回収)。
+    /// (実測: scroll 系ステップ合計 +3.2s。差し引きで -2.0s 回収)。
     /// **迂回しないエンジン(iOS)では引かない** —— あちらは snapshot 自体が重く(xcuitest は
     /// 数百 ms)、引くと周期が大きく縮んで「早すぎる静止判定」に倒れる
     static func settleSleepMs(afterSnapshotMs: Int, bypassing: Bool) -> Int {
@@ -610,7 +610,7 @@ extension StepExecutor {
     /// 静止時点のスナップショットも返す(scrollToEdge のヒント跳躍が再利用する。
     /// 別途撮り直すと iOS xcuitest では1周 約380ms の追加になるため)
     ///
-    /// **label を署名に入れてはいけない**(2026-07-31 実測。入れると SwiftUI List で永久に
+    /// **label を署名に入れてはいけない**(実測。入れると SwiftUI List で永久に
     /// 収束しない): 画面外まで含む行のうち 2 件が、静止画面でも取得のたびに別の行のラベルを
     /// 名乗り、A↔B で交互に振れ続ける(XCUITest が再利用セル群の古いラベルを読むため。
     /// frame は 1pt も動かない)。結果 settledSignature は毎回 6 poll を使い切り、
@@ -623,7 +623,7 @@ extension StepExecutor {
     /// 取りこぼすと stale なツリーを返す
     /// 戻り値の `settled` は false = **ポーリング上限で打ち切った**(静止を確認できていない)。
     /// 呼び出し側は note にして可視化する。黙って返すと「毎回上限を使い切っているのに緑」が
-    /// 続き、実際そうなっていた(ラベル振れによる非収束。2026-07-31 修正)
+    /// 続き、実際そうなっていた(ラベル振れによる非収束)
     /// `changed` = 収束するまでの間に**少なくとも1回**署名が変わったか(= 待った甲斐があったか)。
     /// 最初の2枚が既に一致していれば false。type 後のキーボード押し上げ待ちのように
     /// 「実際に救えた回だけ」を注記したい呼び出し側が使う(guard-retaken と同じ思想)
@@ -638,7 +638,7 @@ extension StepExecutor {
         // **全周キャッシュを捨てて撮る**(Android のみ実費。iOS は素通し)。素取得だと
         // 遅れて公開された古いツリーが2回続けて同じ署名を返し、**動いている最中に
         // 「静止した」が成立する** —— しかも返す `last` が古い木なので、呼び出し側は
-        // そのまま古い座標で解決する(settleAfterScroll と同じ理由。掃討 2026-08-03)。
+        // そのまま古い座標で解決する(settleAfterScroll と同じ理由)。
         // 落ち着いた画面なら 2 枚で返るので固定費は約 +130ms/呼び出しに収まる
         let clock = ContinuousClock()
         var start = clock.now
@@ -665,7 +665,7 @@ extension StepExecutor {
             motion.append(SettleMotion.displacement(from: previousElements, to: last.elements))
             previous = current
             previousElements = last.elements
-            // 従来の予算(6周)を超えて回すのは**まだ減速しているとき**だけ。
+            // 基本予算(6周)を超えて回すのは**まだ減速しているとき**だけ。
             // 横ばい・増加は等速のアニメーションで、待っても止まらない
             if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
@@ -678,15 +678,15 @@ extension StepExecutor {
 
     /// 空打ちドラッグの終点。**対象の矩形の外へ横に抜ける**のが要件。
     /// Compose iOS は「離した点が要素の中」ならクリックとして成立させるので、中に留まる限り
-    /// **距離では消せない**(2026-08-03 実測: 2pt / 24pt / 120pt、0.05s / 0.30s のどれでも
+    /// **距離では消せない**(実測: 2pt / 24pt / 120pt、0.05s / 0.30s のどれでも
     /// `scrollTo("#row_40")` だけで `selected=row_40` が入った = 読み取り専用のはずの
     /// コマンドがアプリの状態を書き換える)。矩形の外で離せばクリックは取り消される。
     /// **縦に抜いてはいけない**: 容器がスクロールとして消費して内容が動き、直後に
     /// 「今ここにある」を確かめる assertion が壊れる(実測: E2E-CMP/ios-inapp の S0020 が 0/3)。
     /// **止めるという選択肢も無い**: 完全に外すと肩代わりが効かず S0080 が CMP/ios で落ちる。
     /// **抜けられないときだけ nil**(= その回は撃たない)。矩形が画面幅いっぱいだと左右どちらへも
-    /// 出られず、ここは以前**開始点をそのまま返していた** —— 始点と終点が同じ 0.30 秒のプレスは
-    /// タップそのもので、この doc が禁じている「矩形の中で離す」を実装自身が踏んでいた。
+    /// 出られない —— そこで**開始点をそのまま返すと**、始点と終点が同じ 0.30 秒のプレスは
+    /// タップそのもので、この doc が禁じている「矩形の中で離す」をそのまま実装してしまう。
     /// 実機(iPhone 実機・SmartNews)の全幅セルで `ft_scroll_to` が**記事を開く**形で 2/2 再現
     ///。自前 SUT の行はすべてインセット(例 16,270 330x56)なので E2E には出ない
     /// —— 全幅の行は実アプリに固有。撃つのは Compose / Flutter と判定できたときだけ
@@ -704,7 +704,7 @@ extension StepExecutor {
     /// **in-app エンジンは drag を一切実装しない**(501)ため、hybrid では typeDriver=XCUITest へ
     /// 回さないとこの対策が丸ごと不発になる(= Compose の容器がタッチを1回吸ったままになり、
     /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
-    /// (両経路とも失敗したら黙って進む = 従来の `try?` と同じ扱い)
+    /// (両経路とも失敗したら黙って進む = `try?` と同じ扱い)
     func emptyDrag(x: Double, y: Double, toX: Double) async {
         try? await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: y,
                                     pressSeconds: 0.05, durationSeconds: Self.emptyDragSeconds)
@@ -712,10 +712,10 @@ extension StepExecutor {
 
     /// **座標ドラッグの唯一の入口**(空打ち・見切れ回復の slowDrag・ヒント跳躍の hintDrag)。
     /// in-app エンジンは drag を一切実装しない(501)ので、hybrid では typeDriver=XCUITest へ回す。
-    /// 2026-08-23 まで slowDrag / hintDrag は `driver.drag` を直に呼んで 501 を「失敗」として
-    /// 握りつぶしていた = **in-app 主の run(利用者の既定 hybrid)では見切れ回復のドラッグが
-    /// 一度も出ていなかった**(受け手の最小再現 R0020: 容器推定を直しても全画面スワイプに落ちて
-    /// 届かず not-found。MCP は HybridFallbackDriver が drag を転送するので同じ探索が通った)。
+    /// slowDrag / hintDrag が `driver.drag` を直に呼んで 501 を「失敗」として握りつぶすと、
+    /// **in-app 主の run(利用者の既定 hybrid)では見切れ回復のドラッグが一度も出なくなる**
+    /// (受け手の最小再現 R0020: 容器推定を直しても全画面スワイプに落ちて届かず not-found。
+    /// MCP は HybridFallbackDriver が drag を転送するので同じ探索が通った)。
     /// 501 を見たら以後は latch して typeDriver から撃つ(emptyDrag と同じ規律)。
     /// typeDriver が無いエンジン非対応はそのまま投げる(呼び手が「ドラッグできない」として扱う)
     func dragWithFallback(fromX: Double, fromY: Double, toX: Double, toY: Double,

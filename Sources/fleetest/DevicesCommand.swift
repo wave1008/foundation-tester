@@ -51,7 +51,7 @@ struct DevicesCommand: AsyncParsableCommand {
             let outcomes = await DeviceBooter.bootAll(
                 machine: machineProfile, repoRoot: repoRoot) { ConsoleOut.out($0) }
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
-            // 1台も無い/全部成功は従来どおりの1行。**全滅は exit 1**(1台以上あって0台成功。
+            // 1台も無い/全部成功は1行にまとめる。**全滅は exit 1**(1台以上あって0台成功。
             // 1台も起動できていないのに exit 0 で ✅ を出していたのが不具合1の実害)。
             // 部分失敗は exit 0 のまま(CLAUDE.md「1台の失敗で全体を落とさない」)だが必ず要約する
             if summary.failedNames.isEmpty {
@@ -94,7 +94,7 @@ struct DevicesCommand: AsyncParsableCommand {
             + " is refused entirely while any run holds a device on this machine"))
         var force = false
 
-        /// 全掃討の結果行。**読めなかったことを「止まった」と言わない**(従来は一覧が読めないと ✅ だった)
+        /// 全掃討の結果行。**読めなかったことを「止まった」と言わない**(一覧が読めないのに ✅ を出していた実害の修正)
         static func simulatorSweepLine(_ observation: SimulatorShutdownObservation) -> String {
             switch observation {
             case .stopped:
@@ -123,7 +123,7 @@ struct DevicesCommand: AsyncParsableCommand {
             }
 
             // 手元だけ掃討しても**モニターに出ているリモートの台は残る**(「全て終了」を押しても
-            // 消えない。実害 2026-08-30)。監視と同じ集合(登録簿の全マシン)へ同じ掃討を投げる。
+            // 消えない。実害)。監視と同じ集合(登録簿の全マシン)へ同じ掃討を投げる。
             // 子は `--device-machine local` で走るので入れ子にはならない
             async let fanout: Void = RemoteDeviceFanout.dispatchSweep(
                 machines: RemoteDeviceFanout.sweepMachines(deviceMachine: deviceMachine),
@@ -132,7 +132,7 @@ struct DevicesCommand: AsyncParsableCommand {
 
             if let root = try? RepoRoot.find() {
                 // 実機ランナー(xcodebuild)も掃討対象 —— 「全て終了」は実機のブリッジも
-                // 止める(ユーザー決定 2026-09-08)。stopAll は ps を見て殺すだけで、実機の
+                // 止める(ユーザー決定)。stopAll は ps を見て殺すだけで、実機の
                 // 端末そのものには simctl/adb 相当のコマンドを一切撃たない
                 let stopped = BridgeLauncher.stopAll(repoRoot: root, skipPhysical: false)
                 if !stopped.isEmpty {
@@ -168,7 +168,7 @@ struct DevicesCommand: AsyncParsableCommand {
                     _ = try? Shell.run(["pkill", "-9", "-f", "sdk/emulator/qemu"])
                 }
             }
-            // 実機のブリッジも掃討対象(ユーザー決定 2026-09-08)。emu kill/pkill は撃たない ——
+            // 実機のブリッジも掃討対象(ユーザー決定)。emu kill/pkill は撃たない ——
             // connectedSerials()(adb に見えている全台)から allEmulatorSerials() を引いた残りが
             // 実機の serial で、AndroidDriver.stopBridge() はアプリの force-stop + adb forward
             // 解除だけを行い端末の電源には触らない
@@ -232,7 +232,7 @@ enum DeviceRosterLoad {
     ///   呼び出し側(親)が明示する。例: `remote exec M1Max -- devices up --profile p --device-machine M1Max`
     /// **他の機械のデバイスを呼び出し側がどう扱うか**。既定値を置かない —— 分散する経路で
     /// 「その機械で起動してください」と案内すると、直後にツール自身が起動するので嘘になる
-    /// (実害 2026-08-30: 一括起動のログで、案内の 2 秒後に fan-out が同じ台を起動していた)
+    /// (実害: 一括起動のログで、案内の 2 秒後に fan-out が同じ台を起動していた)
     enum ForeignDevices {
         /// 呼び出し側が RemoteDeviceFanout でその機械へ回す(api start-all-devices / stop-all-devices)
         case dispatchedByCaller
@@ -257,7 +257,7 @@ enum DeviceRosterLoad {
         // 手元 + リモート実行の登録簿にあるマシンの台を対象にする(監視 = ApiMonitorCommand・
         // 単体操作 = ApiDeviceOperation と同じ規律)。決められないという理由で操作を断らない:
         // 台帳が2つある案件では「(プロファイルなし)」のまま「デバイスを全て起動」を押しても
-        // 即死し、**画面には何も起きない**(実害 2026-08-29)
+        // 即死し、**画面には何も起きない**(実害)
         guard let profile else {
             let inventory = MachineInventory.merge(
                 sources: MachineInventory.loadAllNamed(project: testProject) { warn("→ \($0)") },
@@ -277,7 +277,7 @@ enum DeviceRosterLoad {
     /// **この機械が扱えるデバイスだけ**にする(既定は手元 = host 無し)。起動・停止は simctl/adb を
     /// 叩く操作なので、別の機械のデバイスはここからは扱えない —— 残すと「起動待機のまま
     /// 終わらないタイル」と、存在しない UDID への simctl boot(必ず失敗)を並べることになる
-    /// (2026-08-17 の実害)。落とした分は必ず言う(黙って減らさない)。
+    /// (実害)。落とした分は必ず言う(黙って減らさない)。
     /// `deviceMachine` を渡すと、そのマシンのデバイスを**手元のものとして**扱う(上の doc 参照)
     static func keepingDevices(of deviceMachine: String?, in profile: DeviceRoster,
                                foreign: ForeignDevices,

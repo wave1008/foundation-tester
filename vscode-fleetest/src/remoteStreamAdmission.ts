@@ -1,6 +1,6 @@
 // リモート機への配信(api device-stream)を**一斉に張らない**ための入場制限。
 //
-// 実測(2026-08-30): 1機械あたりの ssh は device-stream N 本 + monitor 1 + host-metrics 1 の
+// 実測: 1機械あたりの ssh は device-stream N 本 + monitor 1 + host-metrics 1 の
 // N+2 本で、M1Max(8台)がちょうど 10 本だった。sshd の MaxStartups 既定 `10:30:100` は
 // **未認証の同時接続**を数え、10 を超えると 30% の確率で落とし始める。認証済みの常駐接続は
 // 枠を消費しないので、壊れるのは「一斉に張りにいく瞬間」だけ —— 実際そのとき

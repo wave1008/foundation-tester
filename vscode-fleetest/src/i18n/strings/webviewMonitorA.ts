@@ -262,7 +262,7 @@ export const webviewMonitorAStrings = {
   },
   "wvMonitor.deviceAdd.progressCreating": { ja: "デバイスを作成しています...", en: "Creating the device..." },
   // OS バージョンのドロップダウンをグループ分けするときの見出し(インストール済み/未のとき優先だけ)。
-  // downloadableSystemImages が空なら従来どおりグループ分けせず出す(片方だけの環境で見た目を変えない)。
+  // downloadableSystemImages が空ならグループ分けせず出す(片方だけの環境で見た目を変えない)。
   "wvMonitor.deviceAdd.installedGroupLabel": { ja: "インストール済み", en: "Installed" },
   "wvMonitor.deviceAdd.downloadGroupLabel": { ja: "ダウンロードが必要", en: "Download required" },
   // ダウンロードが要る OS の option ラベルに付くサイズの接尾辞。sizeBytes が読めなければ付けない

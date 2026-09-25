@@ -32,7 +32,7 @@ enum RemoteDeviceFanout {
         // **実行プロファイル未選択でも分散する** —— 台帳を1つに決めず runs/ を畳み、
         // 登録簿にあるマシンの台を持つ機械へ投げる(監視の fan-out と同じ集合)。
         // ここで [] を返していたため、「(プロファイルなし)」での「デバイスを全て起動」は
-        // **手元しか起きなかった**(実害 2026-08-29)
+        // **手元しか起きなかった**(実害)
         guard let profile else {
             let registry = (LocalConfig.load().remoteHosts ?? []).map(\.machine)
             let entries = MachineInventory.observableEntries(
@@ -58,7 +58,7 @@ enum RemoteDeviceFanout {
                 group.addTask {
                     // **先にプロファイルを送る** —— `remote exec` は何も転送しないので、
                     // 向こうの作業ディレクトリに profiles/ が無い(または古い)ままだと
-                    // デバイスが見つからず失敗する(2026-08-17 実機で確認)。run のディスパッチと
+                    // デバイスが見つからず失敗する(実機で確認)。run のディスパッチと
                     // 同じ rsync 引数(RemoteTransferPlan)を使う = 転送の規則を二重に持たない
                     if let project, let failure = RemoteProjectSync.run(project: project, machine: machine) {
                         relay(logLine("❌ \(failure)"))

@@ -11,14 +11,14 @@ public enum BridgeAPI {
     /// 返さない)。根拠: ホストの操作系 HTTP 上限 `BridgeClient.Timeout.interaction`(20 秒)より
     /// 短く、往復と応答の組み立てに 5 秒残す。「整定の cap + 余裕」のような小さい見積りにすると、
     /// 8 台並列で main が遅いだけの回(操作は実際に完了する)を 504 にしてしまう
-    /// (2026-09-06 E2E-CMP で 4,000ms が実際に尽きた)。`BridgeMainThreadBudgetTests` が上限の順序を守る
+    /// (E2E-CMP で 4,000ms が実際に尽きた実測がある)。`BridgeMainThreadBudgetTests` が上限の順序を守る
     public static let inAppMainThreadWaitMs = 15_000
     /// 1回のスナップショットで返す要素数の上限(4Kトークン対策の第一段)
     public static let maxSnapshotElements = 120
 
     /// `GET /snapshot?max=<n>` で引き上げられる上限の天井。
     ///
-    /// **既定を上げるのではなく、呼び手が1回だけ上げる**(2026-08-12・ブラウザ監査): web ページは
+    /// **既定を上げるのではなく、呼び手が1回だけ上げる**(ブラウザ監査): web ページは
     /// 広告リンクだけで tier0 が枠を埋め、間引きは tier1(ラベル付きの本文)から捨てるので、
     /// **画面に写っている表の行が丸ごと消える**。実測(tenki.jp の2週間天気)では 299 候補中
     /// 179 件が脱落し、その **全部が labelled** —— 落ちた行を `ft_scroll_to` が探し続けて
@@ -88,7 +88,7 @@ public enum BridgeAPI {
     /// 入力でもあるため版を上げる(上げないと稼働中の旧ブリッジが再利用され続ける)
     /// 36: XCUITest ランナーの /swipe が SwipeRequest.velocity を受けるようになった。
     /// 旧ランナーが再利用されると既定速度のままで効かない
-    /// 37: DragRequest.hold(終端ドウェル)を一時的に足した版(2026-08-02)。**実測で iOS では
+    /// 37: DragRequest.hold(終端ドウェル)を一時的に足した版。**実測で iOS では
     /// 慣性を止められないと分かったため 38 で撤去した**。37 のブリッジが稼働している環境を
     /// 確実に入れ替えるため、番号は再利用せず欠番にする
     /// 38: DragRequest.hold を撤去。wire 形式は 36 と同一だが、37 が稼働している
@@ -112,16 +112,16 @@ public enum BridgeAPI {
     /// 44: POST /appstate(DSL の appIs)を追加。旧ブリッジは
     /// 404 "not found:" を返し続けるため入れ替える
     /// 45: XCUITest ランナーの GET /snapshot が XCUIElementTypeIcon(springboard のホーム画面
-    /// アイコン)を含めるようになった(2026-08-03、tapAppIcon 用)。旧ランナーは identifier の
+    /// アイコン)を含めるようになった(tapAppIcon 用)。旧ランナーは identifier の
     /// 無いアイコンを黙って除外するため、tapAppIcon が「見つからない」で失敗し続ける
     /// 46: XCUITest ランナーの GET /snapshot が SnapshotResponse.offscreen(WebView 配下の
     /// 画面外ノード)を供給するようになった。Android は既に供給しており iOS だけ
     /// 欠けていたため offscreenJump/offscreenEdgeJump が一度も発火しなかった。旧ランナーは
     /// offscreen を返さない = 黙って無効のまま
-    /// 47: POST /pinch(2本指ズーム)と POST /doubletap を追加(2026-08-04、マップ系アプリ用)。
+    /// 47: POST /pinch(2本指ズーム)と POST /doubletap を追加(マップ系アプリ用)。
     /// 旧ブリッジは 404 "not found:" を返すので、hybrid では XCUITest へ回って**動くが遅い**、
     /// xcuitest 単独では失敗し続ける。in-app は今もルートを持たない(= 404 でホストが回す)
-    /// 48: /doubletap をランナー内の2打(間隔 60ms)に変えた版(2026-08-04)。**実測で
+    /// 48: /doubletap をランナー内の2打(間隔 60ms)に変えた版。**実測で
     /// `XCUICoordinate.tap()` が1打 335ms かかり、実際の間隔が約 400ms = 判定窓を外れて
     /// 単タップ2回になる**と分かったため 49 で撤去した。48 が稼働している環境を確実に
     /// 入れ替えるため番号は再利用せず欠番にする(37 と同じ扱い)
@@ -142,16 +142,16 @@ public enum BridgeAPI {
     /// 中身のような本物のコンテンツが残るようになった。旧ランナー/dylib は先着順のままなので、
     /// 再利用されると枠を装飾に食われた画面で waitFor/scrollTo が見えない要素を探し続ける
     /// 55: in-app のエラー文を英語化(agent が読む面は英語 = CLI と同じ決定)+ pressEnter の
-    /// 409 の助言を「先に欄へ tap/type」へ直した(2026-08-08。フォーカスが無いだけの場面で
+    /// 409 の助言を「先に欄へ tap/type」へ直した(フォーカスが無いだけの場面で
     /// エンジン切替を勧めていた)。旧 dylib が再利用されると日本語文と誤誘導が残る
     /// 56: WebView DOM マージの上限超過を先着順から優先度順(mergedSlots)へ変えた
-    /// (2026-08-08。密グリッドページで装飾セルが操作可能要素を全部押し出す実害を実測)。
+    /// (密グリッドページで装飾セルが操作可能要素を全部押し出す実害を実測)。
     /// 旧 dylib が再利用されると DOM の濃い画面で送信ボタン等が木から消えたまま緑になる
     /// 57: in-app が Compose/Flutter でも scrollable を申告するようになった
     /// (UIFocusItemScrollableContainer へのインスタンス毎準拠で判定。id 無しのスクロール容器も
     /// 木に出す)。旧 dylib が再利用されると scroll マークも scrollFrame 候補も出ないまま緑になる
     /// 58: 間引きの bulk 条件を「スクロール祖先の除外」から「自身がスクロール容器でない」へ
-    /// 変更(2026-08-08。地図 POI がスクロール容器[地図]の中に居るため旧条件では素通りし、
+    /// 変更(地図 POI がスクロール容器[地図]の中に居るため旧条件では素通りし、
     /// ラベル付き tier1 として操作可能要素より後まで生き残って +84 切り詰めを起こした実測)。
     /// indicesToKeep がスクロール容器自身を cap 免除するようにもなった(容器が落ちると
     /// scrollFrame 解決が退化する)。XCUITest ランナーの isEligible も id 無しのスクロール容器を
@@ -164,19 +164,19 @@ public enum BridgeAPI {
     /// isRedundant が「id 持ちの直後の匿名 scroll 双子」を残すようになった(XCUITest ランナー内
     /// でも効く。ホスト側 wrapperScrollMerge の統合材料)。旧 dylib/ランナーが再利用されると
     /// RN でタップの誤着弾・WebView 操作の空振り・#list_rows の scrollFrame 不成立が再発する
-    /// 60: 打ち切りの**内訳**を申告する(2026-08-09。SnapshotResponse.truncatedTiers)。
+    /// 60: 打ち切りの**内訳**を申告する(SnapshotResponse.truncatedTiers)。
     /// 件数だけでは「選べる物が消えたのか、飾りが消えただけか」をホストが区別できず、
     /// 実測(Apple マップの経路プランナー: 候補 211 → 120、91 件脱落)でも間引きの方針が
     /// 妥当かを議論できなかった。**iOS の2ブリッジだけが申告する**(Android の
     /// SnapshotBuilder は tier3 を持たず語彙が揃わない)。旧ランナー/dylib が再利用されると
     /// 内訳が出ないだけ = 件数は従来どおり出るので安全に縮退するが、
     /// 「飾りだけ落ちた」のか「操作要素まで落ちた」のかは分からないままになる
-    /// 61: **bulk 群(同一 id ×20 以上の非操作の葉)を要素上限の勘定から外す**(2026-08-09。
+    /// 61: **bulk 群(同一 id ×20 以上の非操作の葉)を要素上限の勘定から外す**(
     /// BridgeSnapshotThinning.indicesToKeep / bulkExemptCeiling)。上限は「読み手が選ぶ対象」に
     /// 使い切らせるためのものなのに、実測(Apple マップの経路手順)では `#VKPointFeature` が
     /// 保持 119 件中 87 件 = 73% を占め、操作可能要素とラベル持ち要素をその分だけ押し出していた。
     /// **捨てるのではなく予算から外す**ので ref タップ・SelectorInventory への記録・
-    /// expandBulk の展開は従来どおり(「大きな同一 id 群を先に捨てる」案は却下済み。
+    /// expandBulk の展開はそのまま(「大きな同一 id 群を先に捨てる」案は却下済み。
     /// bulkGroupMinimum のコメント参照)。件数は `SnapshotResponse.bulkExemptCount` で申告する。
     /// 旧ランナー/dylib が再利用されると、地図系の画面で操作要素が従来どおり押し出されたままになる
     /// 62: Added POST /rotate (device orientation; DSL `rotateTo`/MCP `ft_rotate`) to the in-app
@@ -194,7 +194,7 @@ public enum BridgeAPI {
     /// 69: the XCUITest runner refuses GET /snapshot and GET /hittable with **422** while the
     /// session's app is not in the foreground. Reading the tree in that state made XCUI retry
     /// `Find the Application` for ~45s and then **took the runner down**, losing the bridge for
-    /// good (measured 6/6 on 2026-08-15). A stale bridge still wedges and dies, so the host must
+    /// good (measured 6/6). A stale bridge still wedges and dies, so the host must
     /// not keep using one → bump.
     /// 71: POST /swipe accepts `edge` (the swipe is part of scrollToEdge). The in-app engine
     /// does not send a gesture at all — it moves `contentOffset` by 85% of the viewport per
@@ -222,18 +222,18 @@ public enum BridgeAPI {
     /// A modal presented in its own UIWindow (in-app message SDKs do this, and they do not make
     /// it key) was missing from the tree, so it blocked nothing: taps go through `activate` and
     /// scrolling writes `contentOffset`, neither of which hit-tests, and `irregularHandler` had
-    /// nothing to match — **a covered screen kept passing** (consumer report 2026-08-20,
+    /// nothing to match — **a covered screen kept passing** (consumer report,
     /// reproduced with E2EAppIOS `OverlayWindow`). A stale bridge keeps hiding it → bump.
     /// 76: the in-app engine **operates on the window that owns the target**, not on the key
     /// window. The tree already walked every visible window (75), but taps fell back to a
     /// synthetic touch **into the key window**, so a modal in its own UIWindow was visible yet
-    /// could not be closed — the touch went to the app behind it (consumer report 2026-08-20).
+    /// could not be closed — the touch went to the app behind it (consumer report).
     /// Scrolls and coordinate taps now go to the frontmost touch-receiving window, and the
     /// screenshot draws every visible window (a screenshot that omits the modal is a misleading
     /// piece of evidence). A stale bridge keeps aiming at the key window → bump.
     /// 77: `GET /systemalert` on the XCUITest runner — is a SpringBoard alert on top, and if so
     /// its title and buttons. A **new route**, so a stale runner answers 404 → bump.
-    /// It exists because the full springboard `/snapshot` costs ~185ms (measured 2026-08-21),
+    /// It exists because the full springboard `/snapshot` costs ~185ms (measured),
     /// far too much to pay per step, while the in-app tree cannot see the alert at all
     /// (another process) and `applicationState` turned out not to track it (see the route's doc).
     /// 78: the WebView DOM read probes the centre of the element's **visible part** instead of
@@ -265,7 +265,7 @@ public enum BridgeAPI {
     ///
     /// 82: POST /appswitcher and POST /home branch on device class. On a **home-button iPhone**
     /// the bottom-edge swipe up is Control Center by design, so the Face ID gesture **silently
-    /// opened the wrong surface while answering ok** (measured 2026-08-28 on a physical iPhone
+    /// opened the wrong surface while answering ok** (measured on a physical iPhone
     /// SE 3: `ft_navigate appSwitcher` put Control Center on screen). /home now presses the
     /// hardware button there (measured working), and /appswitcher **refuses with 422** — the
     /// switcher is a hardware double-press XCUITest cannot send, and `press(.home)` twice just
@@ -282,7 +282,7 @@ public enum BridgeAPI {
     /// (`webview-loading` / `webview-eval-timeout` / `webview-not-readable` / `webview-dom-off`).
     /// A stale runner keeps dropping the Web elements with no reason left behind → bump.
     ///
-    /// 85: two blind spots measured 2026-08-31 on a physical iPhone 13. `POST /swipe` with no
+    /// 85: two blind spots measured on a physical iPhone 13. `POST /swipe` with no
     /// `path` now falls back to a coordinate press-drag in **landscape** (`landscapeDefaultSwipe`)
     /// — the 8-way `swipeUp()`/`swipeDown()`/etc. switch moves nothing there (844x390, portrait
     /// unaffected). `POST /clearInput` now fires one blind delete burst when the field's
@@ -305,12 +305,12 @@ public enum BridgeAPI {
     /// 88: the keep-awake pulse verifies itself instead of assuming `press(.home)` is invisible.
     /// That assumption was measured on iOS 26.5.2; on **26.6 the same device's home press reaches
     /// SpringBoard**, so every step that goes 25s without HID input had the app under test sent to
-    /// the home screen mid-scenario (measured 2026-09-05: foreground at 25s, background at 30s,
+    /// the home screen mid-scenario (measured: foreground at 25s, background at 30s,
     /// and foreground throughout with FT_KEEP_AWAKE=0). The runner now checks the first home pulse
     /// against the session app and falls back to the volume pulse, bringing the app back. A stale
     /// runner keeps backgrounding the app on such an OS → bump.
     ///
-    /// 89: keep-awake is **gone** (user decision 2026-09-05). The runner no longer fires a pulse,
+    /// 89: keep-awake is **gone** (user decision). The runner no longer fires a pulse,
     /// no longer classifies routes as input vs non-input, and no longer reads FT_KEEP_AWAKE\*.
     /// Keeping a physical device awake is the device owner's setting (Settings → Display &
     /// Brightness → Auto-Lock → Never), not something the tool synthesises input for: every pulse
@@ -427,7 +427,7 @@ public enum BridgeAPI {
     /// v125 (XCUITest runner only): `/press`, `/drag`, `/swipe` and `/pinch` now refuse (400) a gesture whose
     /// estimated real-world duration exceeds `gestureDurationViolation`'s cap **before** handing it to XCTest.
     /// A `press` with `duration: 1e9` used to answer `ok` in ~3s while the simulator's `testmanagerd` kept
-    /// building the synthetic event stream at ~15MB/s, growing to 170–280GB over hours (measured 2026-09-24;
+    /// building the synthetic event stream at ~15MB/s, growing to 170–280GB over hours (measured;
     /// killing the runner does not stop it — see maintainer-notes §49.1). A stale runner keeps accepting it.
     /// v126 (XCUITest runner only): `POST /gesture` replays several fingers' timed paths as one touch sequence (DSL
     /// `gesture`, MCP `ft_gesture`) through the same private pointer-event API as the coordinate pinch. The in-app
@@ -452,18 +452,18 @@ public enum BridgeAPI {
     ///
     /// なぜ要るか: ホームボタン機では画面下端から上へのスワイプが**仕様上コントロールセンター**で、
     /// アプリスイッチャーはハードウェアボタンの2度押し。Face ID 機のジェスチャをそのまま撃つと
-    /// **黙って別の面が開いたまま ok を返す**(2026-08-28・実機 iPhone SE 第3世代で実測。
+    /// **黙って別の面が開いたまま ok を返す**(実機 iPhone SE 第3世代で実測。
     /// `ft_navigate appSwitcher` がコントロールセンターを開いていた)。
     ///
     /// 実測値: iPhone SE3 = 375x667(1.78)/ iPhone 15 Pro = 393x852(2.17)/
     /// iPhone 17 Pro = 402x874(2.17)。**2.0 で綺麗に割れる**。
     /// **iPad は対象外**(短辺 500pt 以上で false)—— Face ID iPad は下端スワイプでスイッチャーが
-    /// 開くので従来どおりでよく、ホームボタン iPad は未実測なので勝手に挙動を変えない。
+    /// 開くのでそのままでよく、ホームボタン iPad は未実測なので勝手に挙動を変えない。
     ///
     /// **XCUITest ランナーもこの定義を使う**(BridgeDTO.swift はランナーの入力集合に入っている)。
     /// 2つ目の閾値を作らないこと
     public static let homeButtonAspectThreshold = 2.0
-    /// iPhone とみなす短辺の上限(pt)。これ以上は iPad 扱いで従来動作
+    /// iPhone とみなす短辺の上限(pt)。これ以上は iPad 扱いで挙動は変えない
     public static let phoneShortSideLimit = 500.0
 
     /// 横向き既定 swipe(XCUITest ランナーの `landscapeDefaultSwipe`)のマージン比。
@@ -484,7 +484,7 @@ public enum BridgeAPI {
     ///
     /// 根拠: iOS のタブバー 49pt + home indicator のセーフエリア 34pt = 83pt が標準だが、
     /// **アイコン+ラベルのタブバーは実測 80pt** で、下端 20pt のインセットと合わせて
-    /// **下端から 100pt** を占める(2026-09-01・実機 iPhone 13 横向き 844x390 の実測。
+    /// **下端から 100pt** を占める(実機 iPhone 13 横向き 844x390 の実測。
     /// `defaultSwipeMarginRatio` の始点 0.75×390=292.5pt はバーの上端 290pt の内側に落ち、
     /// scrollTo / swipe / scrollFrame 指定のすべてが「nothing moved」で終わった。
     /// 座標ドラッグを 250→60 に変えると同じ画面が 137pt 動く)。
@@ -497,7 +497,7 @@ public enum BridgeAPI {
 
     /// **SpringBoard の面がアプリを覆っていることの目印**(`GET /systemui/covering`)。
     ///
-    /// 実測(2026-08-28・実機 iPhone SE3 / iOS 26.6。SpringBoard の木の要素数):
+    /// 実測(実機 iPhone SE3 / iOS 26.6。SpringBoard の木の要素数):
     /// **素の状態 6 件 → コントロールセンター 56 件 → 通知センター 9 件**。
     /// 素の状態にはここに挙げた識別子が**1つも無い**ので、存在そのものが信号になる。
     ///
@@ -507,7 +507,7 @@ public enum BridgeAPI {
     /// - `SBCoverSheetWindow`: 通知センター(カバーシート)。ロック画面もこれなので、
     ///   **ロック中もアプリは覆われている**という意味で正しい
     /// - `SBSwitcherWindow`: アプリスイッチャー(タスク一覧)。**アプリは前面と答え続ける**
-    ///   (実測 2026-09-22: スイッチャー表示中に Safari が foreground:true、木もページのまま)
+    ///   (実測: スイッチャー表示中に Safari が foreground:true、木もページのまま)
     ///   ので、ここに無いとライブ操作の前面追従がアプリへ activate を撃ち、
     ///   **開いたスイッチャーが閉じてアプリに戻る**
     ///
@@ -518,10 +518,10 @@ public enum BridgeAPI {
     ]
     /// `systemUICoveringMarkers` のうちアプリスイッチャーの窓。**この窓だけは「触れる」では足りず、
     /// 中にカード(`appSwitcherCardPrefix`)が載っているときだけ覆いと見る**(BridgeRouter.handleSystemUICovering。
-    /// ホームボタン機はアプリが前面でも窓を isHittable と答える。実測 2026-09-24 iPhone SE3)
+    /// ホームボタン機はアプリが前面でも窓を isHittable と答える。実測 iPhone SE3)
     public static let appSwitcherMarkerPrefix = "SBSwitcherWindow"
     /// スイッチャーのアプリのカードの identifier(`card:<bundle>:sceneID:<bundle>-default`)。
-    /// 実測 2026-09-24: 開いているとき(iPhone 17 Pro / iOS 27.0 シミュレータ)は縮んだカードが並ぶ
+    /// 実測: 開いているとき(iPhone 17 Pro / iOS 27.0 シミュレータ)は縮んだカードが並ぶ
     /// (281×612 が 5 枚)。閉じたあと、Face ID 機・シミュレータの窓には 1 枚も残らないが、
     /// **ホームボタン機(iPhone SE3 / iOS 26)は前面アプリのカードが窓いっぱい(375×667)のまま 1 枚残り、
     /// isHittable も true** —— だから有無では切れず、`appSwitcherCardIsShrunken` で切る
@@ -601,17 +601,17 @@ public enum BridgeAPI {
     }
 
     /// press/drag/swipe/pinch が iOS で XCTest に合成させる時間の**既定**上限(秒)。Android の
-    /// 従来の注入丸め(10 秒)と同じ値。**唯一の定義元**(`ArgumentBounds.numeric` の
+    /// 注入丸め(10 秒)と同じ値。**唯一の定義元**(`ArgumentBounds.numeric` の
     /// holdSeconds/durationSeconds/duration/press はこれを既定として参照する)。
     /// コマンドの `maxGestureSeconds:` 引数で1コマンドだけ `gestureSecondsCeiling` まで上書きできる
-    /// (ユーザー決定 2026-09-24)。根拠は `gestureSecondsCeiling` のコメント参照
+    /// (ユーザー決定)。根拠は `gestureSecondsCeiling` のコメント参照
     public static let defaultMaxGestureSeconds: Double = 10
 
     /// `maxGestureSeconds:` で上書きできる**絶対上限**(秒)。ランナー(iOS)と Android の注入層が
     /// 最後の砦として断るのもこの値 —— ホスト側(StepExecutor / ArgumentBounds)の門をどちらも
     /// 通らない経路(DSL からランナーへ直接・ライブ操作)が残っていても、ここで必ず止まる。
     /// 根拠: これを超えて素通しすると、シミュレータ内の testmanagerd が合成タッチ列
-    /// (RCPSyntheticEventStream)を作り続けて約15MB/秒で肥大化する(実測 2026-09-24: press
+    /// (RCPSyntheticEventStream)を作り続けて約15MB/秒で肥大化する(実測: press
     /// duration=1e9 でランナーは3秒で ok を返すが testmanagerd は残り続け、数時間で170〜280GB。
     /// 止めるには testmanagerd 自体を kill するしかない。→ maintainer-notes §49.1)
     public static let gestureSecondsCeiling: Double = 60
@@ -759,7 +759,7 @@ public enum BridgeCoordinateTapTarget {
 /// (リスト・詳細シート)を押し出す。**当初は scrollable な祖先を持つ群を bulk から除外**していたが、
 /// 地図 POI 自体がスクロール容器(地図)の中に居るため素通りしてラベル付き tier1 になり、
 /// preorder 前方(地図は木の先頭)に居るため同 tier 内では最後まで残って、後方のカード内容から
-/// 先に落ちる +84 切り詰めを起こした(2026-08-08 実測、Apple マップ)。
+/// 先に落ちる +84 切り詰めを起こした(実測、Apple マップ)。
 /// **免除は「自身がスクロール容器か」だけに縮小**(祖先ベースの免除は撤去)。リスト行の
 /// ラベル群(同一id×20+)も bulk 対象になるが、捨て順は tier2(無ラベル装飾)が先
 /// (indicesToKeep)なので、装飾より先に本物の行が消えることはない。
@@ -768,7 +768,7 @@ public enum BridgeSnapshotThinning {
 
     /// 同一 identifier の出現数がこの数以上なら bulk tier の対象候補。
     ///
-    /// **「畳める群は枠も1つぶんにする」案は却下**(2026-08-09 に実装して撤回): 地図の POI が
+    /// **「畳める群は枠も1つぶんにする」案は却下**(実装して撤回): 地図の POI が
     /// 上限の 64% を占めるのは事実だが、**同じ述語はリストの行にも当たる**(同一 id ×20 以上の
     /// 行は普通にある)。群の尾を先に落とすと、30 行のリストの 21 行目以降が
     /// **無ラベル装飾より先に**消える —— tier2 → tier3 の順序はまさにそれを防ぐために
@@ -803,12 +803,12 @@ public enum BridgeSnapshotThinning {
     /// **並べ替えない**: RefGuard.lineage が preorder+depth からツリーを復元し、ref の大小を
     /// z-order の代理に使う。
     ///
-    /// **bulk 群(tier3)は要素上限の勘定に入れない**(61。2026-08-09): 上限は「読み手が選ぶ
+    /// **bulk 群(tier3)は要素上限の勘定に入れない**(61): 上限は「読み手が選ぶ
     /// 対象」に使い切らせるためのもので、同一 id の飾りがその枠を食うのは上限の目的に反する。
     /// 実測(Apple マップの経路手順)では `#VKPointFeature` が保持 119 件中 87 件 = 73% を占め、
     /// 操作可能要素とラベル持ち要素がその分だけ押し出されていた。
     /// **捨てるのではなく予算から外す**ので、ref タップも SelectorInventory への記録も
-    /// expandBulk の展開も従来どおり効く(捨てる案は却下済み。bulkGroupMinimum のコメント参照)。
+    /// expandBulk の展開もそのまま効く(捨てる案は却下済み。bulkGroupMinimum のコメント参照)。
     /// 予算外にした分だけ `elements.count` は max を超え得る —— スクロール容器の cap 免除と同じ扱い
     public static func indicesToKeep(_ candidates: [Candidate], max: Int) -> [Int] {
         let n = candidates.count
@@ -867,7 +867,7 @@ public enum BridgeSnapshotThinning {
     /// WebView DOM マージ用の間引き。ネイティブ(間引き済み)の直後に各 webView コンテナの
     /// DOM 要素を差し込んだ合算列を作り、max 超過なら indicesToKeep と同じ優先度で捨てる。
     ///
-    /// なぜ要るか(2026-08-08 に E2E-iOS の密グリッドページで実測): 従来の先着順カットは
+    /// なぜ要るか(E2E-iOS の密グリッドページで実測): 従来の先着順カットは
     /// 装飾セル 115 個を残して**ページ上の操作可能要素(送信・入力欄・リンク・状態 echo)を
     /// 全部**押し出した —— iOS ネイティブ側が版54で直した形がマージ側に残っていた。
     ///
@@ -917,7 +917,7 @@ public enum BridgeSnapshotThinning {
 
     /// 捨てた候補の内訳(`SnapshotResponse.truncatedTiers`)。**間引きの方針を実データで
     /// 議論するために要る** —— 件数だけでは「選べる物が消えたのか、飾りが消えただけか」を
-    /// 区別できない(2026-08-09。Apple マップの経路プランナーで 211 → 120 の 91 件脱落を
+    /// 区別できない(Apple マップの経路プランナーで 211 → 120 の 91 件脱落を
     /// 観測したが、内訳が無く原因を断定できなかった)。
     /// `kept` は indicesToKeep の戻り値(元配列の添字)
     public static func droppedByTier(_ candidates: [Candidate], kept: [Int]) -> [String: Int] {
@@ -1003,7 +1003,7 @@ public struct StatusResponse: Codable, Sendable {
     /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは返さない → nil 許容(=旧版扱い)。
     public var protocolVersion: Int?
     /// このブリッジが載っているシミュレータの UDID(`SIMULATOR_UDID` 環境変数)。
-    /// **iOS のツールをポートではなく udid で指すために要る**(H。2026-08-09): ft_list_devices は
+    /// **iOS のツールをポートではなく udid で指すために要る**(H): ft_list_devices は
     /// udid と port を両方出すのに、操作系が受けるのは port だけで、ホストは port から udid を
     /// 確定できなかった。**実機とシミュレータ以外では nil**(実機のランナーにこの環境変数は無い)。
     /// 追加 optional フィールドのみなので単独なら版を上げる必要は無いが、61 に相乗りさせている
@@ -1084,7 +1084,7 @@ public struct StatusResponse: Codable, Sendable {
 public struct LaunchRequest: Codable {
     public var bundleID: String
     /// true なら XCUIApplication.activate()(起動中は状態保持で前面化、未起動なら起動)。
-    /// nil/false は従来どおり launch(再起動)。旧ランナーは本フィールドを無視して launch する。
+    /// nil/false は launch(再起動)する。旧ランナーは本フィールドを無視して launch する。
     public var activate: Bool?
     /// true ならプロキシ接続のみ(XCUIApplication を生成・保持するだけで launch/activate を呼ばない。
     /// simctl で起動済みのアプリに使う=FastLaunchDriver)。activate より優先。
@@ -1119,7 +1119,7 @@ public struct ElementInfo: Codable, Sendable {
     public var depth: Int
     /// **DOM から読んだ Web コンテンツか**(true のときだけ送る)。in-app ブリッジが WKWebView の
     /// 中身を読めたときに立てる。ホストは「in-app で中身が読めているか」をこれで判定する
-    /// (幾何で判定すると WebView と同じ矩形を持つ interop 容器を中身と誤認する。2026-07-29 実害)
+    /// (幾何で判定すると WebView と同じ矩形を持つ interop 容器を中身と誤認する実害があった)
     public var web: Bool?
     /// **スクロールできる容器か**(true のときだけ送る = checked/web と同じ省略規約)。
     /// 取得元: Android=`AccessibilityNodeInfo.isScrollable` / iOS xcuitest=要素の型
@@ -1139,7 +1139,7 @@ public struct ElementInfo: Codable, Sendable {
     ///
     /// **preorder は描画順ではない**ので、遮蔽の判定にツリー順を代理で使うと裏返る ——
     /// Google マップは地図の FAB をシートより後に出すが、描画はシートが手前で、
-    /// 「シートの裏の要素」を無警告でタップして別アプリを起動していた(2026-08-07 実測)。
+    /// 「シートの裏の要素」を無警告でタップして別アプリを起動していた(実測)。
     ///
     /// **ホストでは合成できないのでブリッジが1本の整数にして送る**: 出力ツリーは中間ノードを
     /// 間引くため、2要素の共通祖先が木に残っておらず、段ごとの `getDrawingOrder` を
@@ -1158,7 +1158,7 @@ public struct ElementInfo: Codable, Sendable {
 
     /// **その要素を実装しているクラス名**(XCUITest ランナーだけが出す。in-app / Android は nil)。
     /// 取得元は XCTest の非公開辞書 `XCElementSnapshot.additionalAttributes` の属性番号 5004
-    /// (2026-09-12 に反射で確認。根の snapshot から children を辿るだけで全要素に付き、追加の往復は無い)。
+    /// (反射で確認。根の snapshot から children を辿るだけで全要素に付き、追加の往復は無い)。
     /// 値はフレームワーク名ではない —— Compose / Flutter の要素は `UIAccessibilityElement`(自前描画の上の
     /// a11y 要素)、React Native は `UIView`、SwiftUI は `NSObject`、UIKit は実クラス名。読み手は
     /// `AccessibilityClassHint`(空打ちの第3段)だけ。**非公開属性なので取れなければ nil = 不明**。
@@ -1236,7 +1236,7 @@ public struct SnapshotResponse: Codable, Sendable {
     /// (WebViewDelegatingDriver)が座標へ解決して XCUITest の実タッチへ回す /
     /// `"delegated"` = XCUITest へ画面ごと委譲(ホスト側の WebViewDelegatingDriver が入れる)。
     /// **要素の形から推測してはいけない**: Android は webView 型を出すが web フラグを持たないため、
-    /// 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
+    /// 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する実害がある。
     /// 経路を知っているのは snapshot を返した本人だけなので、そこに申告させる。
     /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(TapRequest.fast と同じ方針。
     /// 旧ブリッジは返さず nil = 申告なし = 注記も出ない、で安全に縮退する)
@@ -1251,7 +1251,7 @@ public struct SnapshotResponse: Codable, Sendable {
     /// ソフトキーボードが覆っている矩形(画面座標)。省略は「非表示、または旧ブリッジ」。
     /// 取得元は iOS xcuitest=走査中に見た `.keyboard` ノードの frame /
     /// iOS in-app=`keyboardWillChangeFrame` 通知の最新値(**TextEffects window の frame は
-    /// 使わない** — 開いていても全画面で、画面上部の要素まで誤警告する。2026-08-08 実測)/
+    /// 使わない** — 開いていても全画面で、画面上部の要素まで誤警告する。実測)/
     /// Android=UiAutomation.getWindows() の TYPE_INPUT_METHOD ウィンドウ bounds。
     /// 読み手はホストの遮蔽警告(TapTargetGeometry)。
     public var keyboardFrame: FTRect?
@@ -1270,7 +1270,7 @@ public struct SnapshotResponse: Codable, Sendable {
     /// **何を捨てたか**の内訳(`BridgeSnapshotThinning.tierKey` の値 → 件数)。
     /// `truncatedCount` は「何件落ちたか」しか言わないので、ホストは
     /// 「選べる物が消えたのか、飾りが消えただけなのか」を区別できなかった ——
-    /// 実測(2026-08-09・Apple マップの経路プランナー): 候補 211 件中 91 件が落ちたが、
+    /// 実測(Apple マップの経路プランナー): 候補 211 件中 91 件が落ちたが、
     /// **内訳が分からないと間引きの方針が妥当かを議論できない**。
     /// 落とした本人にしか分からないのでブリッジが申告する。
     /// 追加 optional フィールドのみ = 旧ブリッジは返さず nil(件数だけ出す)で安全に縮退する
@@ -1281,7 +1281,7 @@ public struct SnapshotResponse: Codable, Sendable {
     /// **要素上限の外で送った bulk 要素の数**(61。`BridgeSnapshotThinning.bulkExemptCount`)。
     /// これが非 0 なら「`elements.count` が上限を超えているのは異常ではない」ことを意味し、
     /// ホストはそれを読み手へ言える。**申告が無い(nil)= 旧ブリッジ or Android** ——
-    /// Android の SnapshotBuilder は tier3 を持たないので常に nil で、従来動作に縮退する
+    /// Android の SnapshotBuilder は tier3 を持たないので常に nil で、件数だけの報告に縮退する
     public var bulkExemptCount: Int?
 
     /// `truncatedTiers` を出すときの並びと表示名。**ホストの表示順を固定する**ため、
@@ -1318,7 +1318,7 @@ public struct SnapshotResponse: Codable, Sendable {
 /// 載っているならその題名とボタン。
 ///
 /// なぜ専用の口があるか: in-app の木は自プロセスしか見えず、SpringBoard の木を丸ごと撮ると
-/// 約 185ms かかる(実測 2026-08-21)。この口は `alerts.firstMatch.exists` の1問だけなので
+/// 約 185ms かかる(実測)。この口は `alerts.firstMatch.exists` の1問だけなので
 /// **アラート無しで約 73ms・表示中で約 146ms**(題名とボタンの読み出し込み)。
 /// **セッションを変えない**ので、操作の途中で呼んでも直前の snapshot の ref が生き残る。
 public struct SystemAlertProbeResponse: Codable, Sendable {
@@ -1334,7 +1334,7 @@ public struct SystemAlertProbeResponse: Codable, Sendable {
 
 /// `GET /systemui/covering`(XCUITest ランナーのみ)。**SpringBoard の面がアプリを覆っているか**。
 ///
-/// なぜ専用の口が要るか(2026-08-28・実機 iPhone SE3 で実測): コントロールセンター /
+/// なぜ専用の口が要るか(実機 iPhone SE3 で実測): コントロールセンター /
 /// 通知センターがアプリを全画面で覆っても、**アプリ側からは何も分からない** ——
 /// `/snapshot` は覆う前と1バイト同じ木を返し、`XCUIApplication.state` は `foreground: true`、
 /// `/hittable` も `hittable: true` のまま。覆っているのは別プロセス(SpringBoard)の窓なので、
@@ -1374,7 +1374,7 @@ public struct DragRequest: Codable {
     /// 押下から移動開始までの静止時間(秒)。nil は最小値(0.05)扱い
     public var press: Double?
     /// 移動開始から離すまでの時間(秒)。nil は既定速度。
-    /// **終端ドウェル(`thenHoldForDuration`)のフィールドは持たない** —— 2026-08-02 に実測して
+    /// **終端ドウェル(`thenHoldForDuration`)のフィールドは持たない** —— 実測して
     /// **iOS では慣性を止められない**ことが分かったため(v1500 + hold 0.2s で 2.85→2.82 倍。
     /// 所要だけ +200ms)。XCUITest の hold は指を保持するだけでイベントを出さず、
     /// `UIPanGestureRecognizer` の速度計算が更新されない。詳細は docs/performance-tuning.md §6
@@ -1432,7 +1432,7 @@ public enum FTSwipeDirection: String, Codable, CaseIterable {
 /// so that is the only definition that means the same thing on iOS and Android and across
 /// Compose / SwiftUI / View-XML / Flutter / React Native (all verified to relayout identically).
 ///
-/// **Two values on purpose** (2026-08-10 decision). landscapeLeft/Right were dropped:
+/// **Two values on purpose** (decision). landscapeLeft/Right were dropped:
 /// the physical direction they name is *not observable from a test* (both platforms report the
 /// tree in the app's frame either way), so no definition of them could be verified — and the
 /// Android side was in fact accepting either landscape as success while iOS enforced the exact
@@ -1565,7 +1565,7 @@ public struct SwipeRequest: Codable {
     /// in-app の Compose/Flutter だけがこれを見る: スクロールは UIAccessibility の scroll
     /// アクションで代行できるが、**ジェスチャ目的の swipe を同じ経路へ流すと、画面内の
     /// スクロール可能な親が受理してしまい、ジェスチャ検出パッドに届かないまま 200 を返す**
-    /// (2026-07-31 実測: E2E-Flutter のジェスチャ画面が黙って空振りした)。
+    /// (実測: E2E-Flutter のジェスチャ画面が黙って空振りした)。
     /// 旧ブリッジは無視して従来動作(TapRequest.fast と同じ互換方針で版は据え置かない —
     /// 挙動が変わるので handleSwipe 側の変更とセットで上げる)
     public var scroll: Bool?
@@ -1577,13 +1577,13 @@ public struct SwipeRequest: Codable {
     public var durationMs: Int?
     /// ACTION_UP の eventTime を MOVE と同じ合成時刻にするか。**Android の View/Compose では
     /// これが false(= 実時計)だとフリングが出ない**(実測: 276px → 1,156px)。
-    /// 既定 false = 従来動作。Flutter は影響を受けない(独自の速度計算)
+    /// 既定 false(挙動は変えない)。Flutter は影響を受けない(独自の速度計算)
     public var fling: Bool?
     /// スワイプ速度(points/sec)。**XCUITest ランナーだけが読む**(`XCUIGestureVelocity`)。
     /// nil = `swipeUp()` 等の既定速度。Android は距離とストローク時間で速度を決めるので読まない
     public var velocity: Double?
     /// **スクロール領域を指定したときの実座標**(snapshot の screen と同じ座標系)。
-    /// ホストが `ScrollGeometry` で計算して送る。**nil = 従来の全画面固定**(ブリッジ側の
+    /// ホストが `ScrollGeometry` で計算して送る。**nil = 全画面固定**(ブリッジ側の
     /// 軸別既定で計算する)。両 OS のブリッジがこれを読む —— 経路を分けると
     /// 「どこをスクロールするか」の決定がエンジンごとに割れるため。
     /// **in-app ブリッジは座標を撃たずに「対象と移動量」として読む**: 始点は必ず対象領域の
@@ -1597,7 +1597,7 @@ public struct SwipeRequest: Codable {
     /// コンテンツの端まで1回で寄せる。
     ///
     /// 実ジェスチャを撃つエンジン(XCUITest・Android)は**読まない** —— あちらは指を動かす以上の
-    /// ことはできないので、端の判定は従来どおりホストのループが持つ(`velocity`/`fling` が
+    /// ことはできないので、端の判定はホストのループが持つ(`velocity`/`fling` が
     /// 速さのノブ)。旧ブリッジは無視して従来どおりページ送りする(正しいが遅いまま)
     public var edge: Bool?
     public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil,

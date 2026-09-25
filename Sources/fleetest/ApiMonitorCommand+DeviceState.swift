@@ -98,7 +98,7 @@ extension ApiMonitorCommand {
     /// 未登録(台帳未記載)の起動中デバイスを合成する。iOS は booted なシミュレータの
     /// うち registeredIosUdids に無いもの、Android は runningAVDs のうち canonical AVD ID が
     /// registeredTargets の avd に無いもの。
-    /// **接続中の実機も合成する**(2026-08-26。以前は対象外だった)—— 拡張の「(起動中のデバイス)」は
+    /// **接続中の実機も合成する** —— 拡張の「(起動中のデバイス)」は
     /// 台帳を引かないので、ここで合成しないと**繋いである実機が一覧に出ず**、
     /// 実機バッジも付かない。識別子は iOS=udid / Android=serial で、登録済みのぶんは除く。
     /// 合成 id が登録ターゲット(または他の合成デバイス)の id と衝突したらスキップする — 拡張側は id を
@@ -289,7 +289,7 @@ extension ApiMonitorCommand {
     /// **配信を抑制中のデバイスでも凍結判定のために撮る**間隔(秒)。
     ///
     /// タイルをストリーミング表示しているデバイスは `suppressFrames` でフレーム配信を止めるが、
-    /// **観測まで止めてはいけない** —— 2026-08-11 に、抑制のガードが凍結判定より手前にあったため
+    /// **観測まで止めてはいけない** —— 抑制のガードが凍結判定より手前にあったため
     /// 実運用の全デバイス(iOS 10 + Android 8)が判定対象から外れ、`Frozen:` が恒久的に 0 になった。
     /// 配信しないぶん cadence だけ落とす(2連続で確定なので最悪 12 秒で出る。凍結は分単位)
     static let frozenProbeIntervalSeconds: TimeInterval = 6
@@ -297,7 +297,7 @@ extension ApiMonitorCommand {
     /// 1サイクルぶんの「撮る/配る」判断。
     /// **純粋関数として切り出してある**のは、「配信を抑制しても観測は続く」という不変条件を
     /// 単体テストで固定するため(MonitorFrozenWiringTests)。この不変条件が壊れたのが
-    /// 2026-08-11 の凍結カウンタ恒久 0 で、当時は判断がループ本体に埋まっていて誰も試せなかった
+    /// 凍結カウンタ恒久 0 の実害で、当時は判断がループ本体に埋まっていて誰も試せなかった
     struct CaptureDecision: Equatable {
         let id: String
         /// webview へフレームを配るか。**撮るかどうかとは独立**
@@ -355,7 +355,7 @@ extension ApiMonitorCommand {
     /// **"booted" も対象**: ブリッジの無い台の state は登録の有無で割れる —— 未登録の合成
     /// デバイスは "connected"、**台帳に載っている台は "booted"**。connected だけを見ていた頃は、
     /// 台帳に載っていてブリッジを持たない台の絵の出所がゼロで、タイルが「接続中」のまま
-    /// 永久に埋まらなかった(2026-08-29)。実機は simctl で撮れないので対象外
+    /// 永久に埋まらなかった。実機は simctl で撮れないので対象外
     /// (そちらは devicepoll がブリッジ経由で撮る)。I/O を持たない pure 関数
     static func isSimctlCaptureTarget(state: DeviceRuntimeState) -> Bool {
         (state.state == "connected" || state.state == "booted")
@@ -387,7 +387,7 @@ extension ApiMonitorCommand {
     ///   ② run が公表した判定(`DeviceFrozenStore`。run 前トリアージが書く)
     ///   ③ 陽性対照の注入(`FrozenInjection`)
     ///
-    /// ②を見るのが要点 —— 2026-08-11 に run は9台の凍結を見つけて回復まで走っていたのに、
+    /// ②を見るのが要点 —— run は9台の凍結を見つけて回復まで走っていたのに、
     /// モニターは自前の観測しか持たず `Frozen: 0` を出し続けた。純粋関数にしてあるのは、
     /// この「run が知っていることをモニターが知る」経路を陽性対照で毎回通すため
     /// 配信ヘルパーが台を名指しする綴り(LocalStreamHolder.DeviceIdentity)。ヘルパーが張れない
@@ -614,7 +614,7 @@ extension ApiMonitorCommand {
                 group.addTask {
                     // 実機ブリッジは 127.0.0.1 に居ない(LAN)か、居ても token が要る(usb トンネル)。
                     // establish が残した記録を**丸ごと**使う —— host だけ取り出すと usb の token が
-                    // 落ちて 401 になり、生きているブリッジが「未起動」に見える(2026-09-08 iPhone SE3)。
+                    // 落ちて 401 になり、生きているブリッジが「未起動」に見える(iPhone SE3)。
                     // 記録が無ければループバック・token 無し = シミュレータ・Android の既定
                     let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
                         ?? BridgeEndpoint(port: port)

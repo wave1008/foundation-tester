@@ -14,8 +14,8 @@
 // 台が fleet に1台も無い」シナリオは対象外**(単機の run と同じ PlatformApplicability の規律)——
 // 呼び手は partition の前に `applicability(scenarios:entryPlatforms:)` で外し、notApplicable を
 // スキップとして出す。ここで throw するのは設定ミス(platform 未宣言なのに受けるエントリが無い)だけ。
-// 2026-08-23 まで対象外も throw していたため、iOS だけの混在プロファイルに Android 宣言が1本あると
-// 1本も走らなかった(受け手報告)
+// 対象外まで throw すると、iOS だけの混在プロファイルに Android 宣言が1本あるだけで
+// 1本も走らなくなる(受け手報告)
 //
 // 実績が無いシナリオの見積り(unknownDurationMs)は呼び出し側が決める。プロジェクトごとに
 // 実行速度が大きく違うので、固定の秒数をここに埋め込まない(別の文脈で調整した定数の流用は
@@ -28,7 +28,7 @@
 // **速い platform の値で遅い platform を見積もって一番遅い機械へ最も多く配る**。
 // 実データ(受け手の 98 本 iOS run・3機)では M1Ultra だけが android 由来の見積りを 9 本ぶん掴み、
 // レーン当たり実績 552 秒に対して推定 448 秒(-19%)で最後まで走る極になっていた。scope を
-// 掛けると推定 511 秒(-7%)。**両 platform を回すエントリでは scope が両方 = 従来の max と同一**
+// 掛けると推定 511 秒(-7%)。**両 platform を回すエントリでは scope が両方 = 単純な max と同一**
 // なので、狭まるのは「そちらの platform を回せないエントリ」だけ。
 
 import Foundation
@@ -52,7 +52,7 @@ public enum FleetSplit {
     /// 割り当て1エントリぶんの「見積りが何に基づいたか」。partition が assign と同時に数える
     /// (どの分岐を通ったかは割り当てが決まらないと分からないので、後から作り直せない)。
     /// 用途はディスパッチ時のログ1行だけ —— 受け手が「その機械の係数がどこから来たか」を
-    /// 結果と突き合わせられるようにする(2026-08-24 受け手要望)。
+    /// 結果と突き合わせられるようにする(受け手要望)。
     public struct EstimateBasis: Equatable, Sendable {
         public let entryIndex: Int
         /// 実績レコードの machine(不明なら nil)
@@ -117,7 +117,7 @@ public enum FleetSplit {
         /// 実績の無い機械向けの事前係数(無次元。呼び出し側がコア数比等から算出する)。
         /// **無次元なので単位重み(unknownDurationMs)とも ms 実績とも安全に混ざる**
         /// (entryFixedOffsetsMs と違い、実績ゼロのガードで潰す必要が無い)。
-        /// nil(省略)は全員 1.0 = 従来どおり混合見積りをそのまま使う
+        /// nil(省略)は全員 1.0 = 混合見積りをそのまま使う
         public let entryFallbackFactors: [Double]
 
         public init(entryMachines: [String?], entryFixedOffsetsMs: [Double],
@@ -176,11 +176,11 @@ public enum FleetSplit {
     ///   デバイス単位の host 混在(1つの実行プロファイルの中に複数ホストのデバイスが並ぶ形)では
     ///   **台数が違うホストへ同じ量を配ると台数の少ない側が終わらない**。総量ではなく
     ///   「見込み終了時刻 = 負荷合計 / 台数」で比べる。全員同じ値なら比較順序は変わらないので、
-    ///   既定(全員 1)の割り当ては従来と1バイトも変わらない
+    ///   既定(全員 1)なら台数差を考慮しない場合と割り当てが1バイトも変わらない
     /// - machineContext: 機械ごとの速度差・ディスパッチ固定費を見積りへ反映する(リモート実行)。
     ///   **投入順(降順ソート)は machineContext の有無によらず混合見積りで決める**
-    ///   (機械非依存 = 決定的。エントリごとに順序が割れない)。nil(既定)は従来と完全一致
-    ///   (offsets 全 0・machine 全 nil と同じ経路を通る)。
+    ///   (機械非依存 = 決定的。エントリごとに順序が割れない)。nil(既定)は
+    ///   offsets 全 0・machine 全 nil と同じ経路を通る。
     public static func partition(
         scenarios: [(id: String, platform: String?)],
         durations: [LPTScheduler.Duration],
@@ -329,8 +329,7 @@ public enum FleetSplit {
     /// ms の offset は単位重み(1.0)と混ぜると支配して壊れる —— 実績ゼロだと呼び出し側の
     /// unknownDuration は単位重みへ退化するが、entryFixedOffsetsMs は実測ミリ秒のままなので、
     /// 比較の中で offset が重みを支配して**facts を持つエントリへは数千本積むまで1本も行かず、
-    /// 全シナリオが facts の無いエントリ(local)へ寄る**(単位の混在は黙って誤る。2026-08-18 の
-    /// レビューで検出)。
+    /// 全シナリオが facts の無いエントリ(local)へ寄る**(単位の混在は黙って誤る。レビューで検出)。
     ///
     /// **entryFallbackFactors は無次元なので単位重みと安全に併用できる** —— コア数の事前係数は
     /// むしろ実績ゼロのときにこそ効かせたいので、machineDurations/entryFallbackFactors は保持し、

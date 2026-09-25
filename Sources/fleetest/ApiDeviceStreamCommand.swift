@@ -64,7 +64,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
         guard codec == "mjpeg" || codec == "h264" else {
             throw ValidationError("--codec must be mjpeg or h264")
         }
-        // **解決の間も生存を知らせる**(実測 2026-09-09): 拡張は 15 秒 1 バイトも来なければ
+        // **解決の間も生存を知らせる**(実測): 拡張は 15 秒 1 バイトも来なければ
         // 配信が固まったと見て kill→再起動する。ヘルパー自身はアタッチ中も ping を流すが、
         // **ここ(ssh 越しの解決 = DeviceRosterLoad + determineStates)は exec より前**で、
         // 起動ストームの最中は determineStates が十数秒かかる(実測: ヘルパーが起きる前に

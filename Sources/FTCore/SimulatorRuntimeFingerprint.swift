@@ -1,7 +1,7 @@
 // iOS シミュレータのランタイムの指紋(`fleetest remote status` の RUNTIME 欄。手元と違えば ⚠️)。
 //
 // なぜ要るか: TOOLCHAIN(Xcode + SDK)が一致していても、**起動に使えるランタイムが無い**機械がある。
-// 2026-09-10 実害: M1Max にベータ版の 24A5423a しか無く、正式版の macOS 27.0 + Xcode 27 RC ではこれで
+// 実害: M1Max にベータ版の 24A5423a しか無く、正式版の macOS 27.0 + Xcode 27 RC ではこれで
 // 起動できず、4台とも "runtime path not found" で落ちた。**simctl の一覧は isAvailable=true のまま**
 // なので一覧からは使えないことが見えず、align の検証も ✅ で通した。
 //
@@ -10,7 +10,7 @@
 // **警告だけ**(remote status の exit code・ディスパッチの適合判定には入れない)。
 //
 // 指紋 = SDK と同じ版の iOS ランタイムのビルド番号。**正式版があれば正式版だけ**を並べる ——
-// 正式版とベータが同居していても起動に使われるのは正式版(実測 2026-09-10: ベータ4つ + 24A434 の
+// 正式版とベータが同居していても起動に使われるのは正式版(実測: ベータ4つ + 24A434 の
 // 機械で、起動中の6台すべてが 24A434)。正式版が無ければベータを `(beta)` 付きで並べる。
 // ベータの見分けはビルド番号の末尾が小文字であること(実物: 24A5423a / 23A5260l / 22A5346a)。
 // 正式版は数字で終わる(24A434 / 22A3351 —— 4桁でも末尾が数字なら正式版)。
@@ -25,7 +25,7 @@ public enum SimulatorRuntimeFingerprint {
 
     /// simctl の期限(秒)。simctl は CoreSimulatorService に XPC で訊くので、サービスが刺さると
     /// **返らない**(ssh 側の期限は ConnectTimeout だけで、remote status ごと止まる)。
-    /// 根拠: 定常の所要は 0.4〜1 秒(2026-09-10 実測)。その10倍を超えたらサービスの詰まりと見なす。
+    /// 根拠: 定常の所要は 0.4〜1 秒(実測)。その10倍を超えたらサービスの詰まりと見なす。
     /// 尽きたら**不明**(欄は `-`・警告は鳴らない)—— 警告だけの欄なので短すぎても誤った赤は作らない
     public static let runtimeListTimeoutSeconds = 10
 
@@ -67,7 +67,7 @@ public enum SimulatorRuntimeFingerprint {
 
     /// 選んだ Xcode の SDK に対応するランタイムが1本も無い指紋か。
     /// **手元と一致していても警告する** —— 全機が等しく「無い」と一致 = ✅ になり、その SDK の台を
-    /// 要求した run が供給で落ちるまで誰も気づかない(2026-09-21 に Xcode 27.2 beta を
+    /// 要求した run が供給で落ちるまで誰も気づかない(Xcode 27.2 beta を
     /// 自動選択した実機で観測。ランタイムは Xcode に付いてこないので、この状態は普通に起きる)
     public static func hasNoMatchingRuntime(_ fingerprint: String) -> Bool {
         fingerprint.hasSuffix(": \(noneMarker)")

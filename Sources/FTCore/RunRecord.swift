@@ -151,7 +151,7 @@ public struct RunMetaRecord: Codable, Sendable {
     public var project: String
     public var profile: String?
     /// **その run を走らせた機械のホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。
-    /// 用語の定義(2026-08-26 ユーザー決定): host = ホスト名/IP、machine = そのローカルエイリアス。
+    /// 用語の定義(ユーザー決定): host = ホスト名/IP、machine = そのローカルエイリアス。
     /// **エイリアスは頻繁に変わりうるので記録の鍵にしない** —— LPT の「同じ機械の実績を優先」も
     /// この欄で照合する。**JSON キーは "host"**
     public var host: String
@@ -165,7 +165,7 @@ public struct RunMetaRecord: Codable, Sendable {
     public var finishedAt: String?
     /// **run を書いているプロセスの pid**(`fleetest run` / `api run` 自身。同じ `host` でだけ意味を持つ)。
     /// `finishedAt` が無い run を「クラッシュ」と数える前に、**同じ機械で pid がまだ生きていれば
-    /// 「実行中」**と読み分けるための欄(insights の unfinishedRuns。2026-09-14 より前の記録には無い)
+    /// 「実行中」**と読み分けるための欄(insights の unfinishedRuns。旧い記録には無い)
     public var pid: Int?
     public var total: Int?
     public var passed: Int?
@@ -499,7 +499,7 @@ public enum ScenarioSkipKind: String, Codable, Sendable {
     /// 実行プロファイルの platform に対して対象外(`@TestClass(platform:)` / `@Test(platform:)`)。
     /// **意図された未実行**なので run の失敗数には数えない
     case notApplicable
-    /// 担当ワーカー不在・全滅・振り直し上限などのインフラ都合。従来どおり失敗として数える
+    /// 担当ワーカー不在・全滅・振り直し上限などのインフラ都合。失敗として数える
     case noWorker
     /// run が中断(SIGINT/SIGTERM)されて**始まらなかった**。run の失敗数には数えるが、シナリオの
     /// 履歴(insights の連続失敗・新規失敗・flaky)には入れない —— 利用者が止めただけで、シナリオの

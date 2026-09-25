@@ -47,7 +47,7 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 /// **1.5 秒の根拠は「シミュレータの launch がおおむね1〜3秒」**という観測だけで、
 /// 凍結率で較正した値ではない —— 効くかどうかは**まだ確かめていない**(凍結の観測は
 /// n=1 で、同じ run の別プロファイルは無事だった)。対照実験を安く回せるように
-/// `FT_WORKER_STAGGER_SEC` で差し替えられるようにしてある(`0` で従来どおり一斉起動)。
+/// `FT_WORKER_STAGGER_SEC` で差し替えられるようにしてある(`0` で一斉起動)。
 ///
 /// **間隔だけでは足りない**(ユーザー指示)。時間は当て推量で、ホストが実際に
 /// 空いたことは見ていない —— 供給が長引いた run では飽和したまま次を起こす。もう一つの門
@@ -120,7 +120,7 @@ public struct RunWorker {
     /// label からレーン(= デバイス)の識別子を戻す。プロファイル経路の label は末尾に
     /// "(<platform>:<id>)" を持ち、**iOS の id はブリッジのポートで回復のたびに変わる**ので、
     /// label そのものでレーンを数えると同じ台が2レーンになる(リモート2台の run が
-    /// 「3 lane(s), 66% busy」と出た。受け手報告 2026-08-23)。末尾の括弧群を落とした
+    /// 「3 lane(s), 66% busy」と出た。受け手報告)。末尾の括弧群を落とした
     /// デバイス名をレーンの鍵にする。非プロファイル経路("ios:<port>")は label のまま
     public static func laneKey(fromLabel label: String) -> String {
         guard label.hasSuffix(")"), let open = label.lastIndex(of: "("),
@@ -293,7 +293,7 @@ private actor DeadlineGuard {
 /// withDeadline の満期スリーパー task 参照を保持する箱(op 勝利時に cancel するための前方参照用)。
 /// **代入(生成側)と参照(opTask 側)は並行に走る**: `Task { }` の本体は囲みの同期区間と
 /// 並行に開始し得るので「代入は op の初回 await より前に完了する」は成り立たない
-/// (ThreadSanitizer が実測で競合を報告。2026-07-30)。素の `var` だと競合そのものに加え、
+/// (ThreadSanitizer が実測で競合を報告)。素の `var` だと競合そのものに加え、
 /// **代入前に op が勝つと cancel を取りこぼしスリーパーが seconds 秒居座る**
 /// (この箱を置いた目的が消える)ため、**先に来た cancel を覚えて後から来た task に適用する**。
 /// `@unchecked Sendable` の根拠は lock(素の可変参照ではない)。
@@ -452,7 +452,7 @@ public enum BridgeProbeOutcome: Sendable {
     /// `.refused` を「ブリッジプロセス死亡」と即断してよい宛先か。ループバック(シミュレータ・
     /// USB トンネル)は LISTEN 不在の証拠になるが、**LAN の実機は Wi-Fi の瞬断・省電力でも
     /// 接続不能(-1004)を返す** —— 即断すると生きたランナーを cleanupRetiredWorker が SIGTERM する
-    /// (2026-09-18 実測: 外からの /status が失敗の 1 秒前も 6 秒後も応答していたのに、4 run で 12 回離脱)。
+    /// (実測: 外からの /status が失敗の 1 秒前も 6 秒後も応答していたのに、4 run で 12 回離脱)。
     /// false の宛先では `.silent` と同じく観察窓とランナーログの成長で判定する
     public static func refusalIsConclusive(host: String?) -> Bool {
         guard let host else { return true }
@@ -480,7 +480,7 @@ public enum BridgeLiveness {
     /// - windowExpired: 観察窓(`BRIDGE_PROBE_OBSERVE_SECONDS`)を使い切ったか。
     ///
     /// **プロセスが生きている間はログ静止の近道を使わない** —— XCUITest の 1 照会は、対象アプリが
-    /// 外部要因で背面に回ると実測 31 秒ブロックし(2026-09-18: 実機で外から設定アプリを前面にした)、
+    /// 外部要因で背面に回ると実測 31 秒ブロックし(実機で外から設定アプリを前面にした)、
     /// その間ログも /status も止まる。近道(15 秒)で確定すると、**生きているランナーを止めて建て直す**。
     /// 逆にプロセスが消えていれば、それが最も確かな死の証拠なので窓の残りを待たない。
     public static func decide(probe: BridgeProbeOutcome, host: String?, runnerProcessAlive: Bool?,
@@ -727,7 +727,7 @@ public enum ScenarioOutcome: Sendable, Equatable {
 /// 判定を広げると本物の失敗を skipped に隠すことになる
 enum EnvironmentFault {
     /// XCUITest の a11y 基盤が一時的に応答しない。**ブリッジ供給直後・アプリ入れ替え直後**に
-    /// 同時刻クラスタで出て、再実行で必ず消える(2026-08-05/06 に2回・8件と6件を手で判定した)。
+    /// 同時刻クラスタで出て、再実行で必ず消える(2回・8件と6件を手で判定した)。
     /// docs/verification.md「kAXErrorAPIDisabled は環境と判定してよい」
     static let markers = ["kAXErrorAPIDisabled"]
 
@@ -868,8 +868,8 @@ public enum ScenarioRunner {
     /// ここで早期に振り直すとブリッジの建て直しが起きなくなる
     /// **iOS でこれが呼ばれるのは事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後だけ**
     /// (呼び出し側の順序。Android にはその工程が無い)。生きている台で一過性に切れた 1 本を
-    /// 赤のまま残さず、台は残して振り直す —— 2026-09-18 まで iOS はここを通らず、
-    /// Wi-Fi の瞬断・アプリが背面に回った回が赤か、生きたランナーの建て直しになっていた
+    /// 赤のまま残さず、台は残して振り直す —— ここを通さないと iOS は
+    /// Wi-Fi の瞬断・アプリが背面に回った回が赤になるか、生きたランナーの建て直しになる
     static func requeuesWithoutRetiring(outcome: ScenarioOutcome) -> Bool {
         switch outcome {
         case .environmentFault:
@@ -1149,7 +1149,7 @@ public final class RunOrchestrator {
 
     /// 死活確認系の await に期限を切る。ウェッジしたブリッジは「接続は受けるが応答しない」ため、
     /// BridgeClient の既定タイムアウトに任せると status 確認だけで数分止まり run 全体が凍結する
-    /// (実測 2026-07-18: ウェッジ機への status で run が 5 分以上アイドル固着)。
+    /// (実測: ウェッジ機への status で run が 5 分以上アイドル固着)。
     ///
     /// **withTaskGroup は使わない**: 構造化並行はスコープ終端で全子タスクの完了を待つため、
     /// op(URLSession)がキャンセルに即応しないと cancelAll しても遅い方を待ち続けてハングする。
@@ -1690,7 +1690,7 @@ public final class RunOrchestrator {
                     // 消失判定(adb devices)は実機でも有効。USB 抜け・WiFi 断の検知に使える。
                     // **エミュレータなら自分のログを名指しする** —— qemu 自身が FATAL 終了した
                     // ときの理由(Vulkan 等)はこのログの末尾にしか出ず、案内が無いと
-                    // DiagnosticReports 側を掘る遠回りになる(受け手報告 2026-08-24)
+                    // DiagnosticReports 側を掘る遠回りになる(受け手報告)
                     unusableReason = "the device disappeared (offline/not found)"
                         + (worker.connection.physical ? ""
                            : EmulatorLog.dropoutHint(deviceName: worker.connection.deviceName))

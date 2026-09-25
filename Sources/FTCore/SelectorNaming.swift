@@ -2,9 +2,8 @@
 // 「この要素をセレクタとしてどう綴るか」の唯一の実装。**MCP(ft_tap 等の推奨セレクタ・注記)と
 // DSL/StepExecutor(自己修復の書き戻し)の両方が使う** —— 別々に持つと、同じ画面で
 // 「書けるセレクタ」の判定が食い違う(幾何を TapTargetGeometry へ寄せたのと同じ理由)。
-// 元は fleetest-mcp/MCPServer+Hints.swift にあったが、自己修復(StepExecutor+Actions.swift)が
-// 修復結果を利用者の .swift ソースへ書き戻す経路でも同じ「書けるか」の判定が要るため
-// FTCore へ移した。MCPServer 側は typealias + 転送だけを残す
+// FTCore に置く理由: 自己修復(StepExecutor+Actions.swift)が修復結果を利用者の .swift ソースへ
+// 書き戻す経路でも同じ「書けるか」の判定が要るため。MCPServer 側は typealias + 転送だけを残す
 // (RefGuard.swift が TapTargetGeometry/OcclusionGeometry へ転送しているのと同じ形)。
 
 import Foundation
@@ -49,7 +48,7 @@ public struct SelectorNaming {
     /// 「型 × ラベル」の出現数。**候補を組む前のゲート**で、これが 1 のときだけ
     /// `.型&&ラベル` を試す —— 数え上げは木1周(O(N))で済むのに対し、候補の検証は
     /// `matchDetailed` + `resolvedCandidates` の2周を候補ごとに払う。
-    /// 入れ忘れると注記1本の生成が実アプリ画面で 29ms → 116ms になる(2026-08-12 に実測)
+    /// 入れ忘れると注記1本の生成が実アプリ画面で 29ms → 116ms になる(実測)
     private let typeLabelCounts: [String: Int]
 
     public init(_ snapshot: SnapshotResponse) {
@@ -116,7 +115,7 @@ public struct SelectorNaming {
         return FTSelector.serialize(primary: parsed.primary, fallbacks: parsed.fallbacks) != label
     }
 
-    /// **勧める前に自分で引いてみる**(2026-08-09。実アプリ 18 枚へ当てて発覚): 候補を
+    /// **勧める前に自分で引いてみる**(実アプリ 18 枚へ当てて発覚): 候補を
     /// 組み立てただけでは書けているか分からない —— ラベルを `"…"` で囲んで出していた版は
     /// 引用符ごと literal になって**1件も当たらなかった**。記法の綴じ(先頭が `#`/`.`、
     /// `>>` や `||` を含む等)は場合分けで潰しきれないので、DSL 本体で解決して
@@ -192,7 +191,7 @@ public struct SelectorNaming {
         }
         // **切り詰め表示になるラベルは候補にしない**: 40字超は一覧に "…" 付きで出るので、
         // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)。
-        // **改行を空白へ畳んでから使う**(2026-08-12): 改行入り a11y ラベル(実測: Safari の
+        // **改行を空白へ畳んでから使う**: 改行入り a11y ラベル(実測: Safari の
         // 広告リンク)を素で勧めると Swift の1行文字列リテラルに書けない。畳んだ文字列は
         // `.selector` 照合(空白を種類問わず畳んで比較)で元のラベルに一致し続けるので安全
         let label = SnapshotRenderer.displayText(element.label ?? "")
@@ -206,7 +205,7 @@ public struct SelectorNaming {
         if writableLabel, labelCounts[label] == 1 {
             out += labelForms.map { ($0, .stable) }
         }
-        // **ラベルが重複していても、まず絞ってから索引に落とす**(2026-08-12 の実アプリ監査)。
+        // **ラベルが重複していても、まず絞ってから索引に落とす**(実アプリ監査)。
         // ここが無かった版は「一意な id も一意なラベルも無い」を即 `#容器 >> .型[n]` に
         // 落としていた —— 実測(Google マップの検索候補)では `#typed_suggest_container >>
         // .clickable[3]` しか書けず、**候補の件数が変わると別の駅を選ぶ**。
@@ -214,7 +213,7 @@ public struct SelectorNaming {
         // **既存の提案は動かさない** —— 上の `#id` / 一意ラベルより後、索引形より前に置く
         // **数え上げで足切りしてから検証する**: 候補1つの検証は木2周(`matchDetailed` と
         // `resolvedCandidates`)で、当たらない候補まで並べると注記の生成が実アプリ画面で
-        // 4倍になる(2026-08-12 に実測して入れ直した)。数え上げは init の1周で済む
+        // 4倍になる(実測して入れ直した)。数え上げは init の1周で済む
         if writableLabel, typeLabelCounts[Self.typeLabelKey(element.type, label)] == 1 {
             out += labelForms.map { (".\(element.type)&&\($0)", .stable) }
         }
@@ -239,7 +238,7 @@ public struct SelectorNaming {
         // 勧める断片が2つの経路で食い違うと、読み手はどちらが正しいか判断できない。
         // 長さは**木が印字する範囲(labelDisplayLimit)**に限る: それより先は読み手が
         // 出力から確かめられないので、当たっても根拠を見せられない。
-        // 一意でなければ `picksOnlyOne` が落として索引形へ進む = 従来の挙動に戻るだけ
+        // 一意でなければ `picksOnlyOne` が落として索引形へ進むだけ
         // **絞り方は完全一致ラベルと同じ梯子を辿る**(素 → 型 → スコープ → スコープ+型)。
         // 素だけだと、行そのものと中の staticText が同じ文言を持つ形(実測:
         // ios-place_guides_scrolled の `#PlaceCollectionCell`)で必ず2件に当たり、
@@ -283,7 +282,7 @@ public extension SelectorNaming {
     /// **その要素**を選び、かつ**候補が1件しかない**か。`picksExactly` は `matchDetailed` の
     /// 先頭一致を見るだけなので、**曖昧な式でも先頭の要素に対しては true を返す** ——
     /// 添字なしの式(`.型&&ラベル` など)をそれだけで採ると、群の1件目にだけ
-    /// 「一意に指せる」と嘘の助言を出す(2026-08-12 に `MCPWritableSelectorTests` が捕まえた)。
+    /// 「一意に指せる」と嘘の助言を出す(`MCPWritableSelectorTests` が捕まえた)。
     /// **`[n]` を含む式には使わない**: `resolvedCandidates` は添字を適用する前の候補列なので、
     /// 添字付きのスコープ記法を「曖昧」と誤判定する(`picksExactly` のコメント参照)
     static func picksOnlyOne(_ element: ElementInfo, with selector: String,
@@ -308,7 +307,7 @@ public extension SelectorNaming {
     /// `scopedSelector` 側の `snapshot.elements.first(where:)` 再検索(2つ目の O(N))を
     /// 無くすため —— 見つけた祖先を id 経由で index-of-id 検索し直す必要が無くなる。
     /// `idCounts` を呼び出し元(`SelectorNaming`)から受け取れるときは渡す ——
-    /// 渡さなければ従来どおりその場で数え直す(2引数のみの外部呼び出しと出力互換)
+    /// 渡さなければその場で数え直す(2引数のみの外部呼び出しと出力互換)
     private static func uniqueScopeElement(for element: ElementInfo, in snapshot: SnapshotResponse,
                                            idCounts precomputed: [String: Int]? = nil) -> ElementInfo? {
         let counts = precomputed ?? idCounts(in: snapshot)
@@ -329,7 +328,7 @@ public extension SelectorNaming {
     /// `#容器 >> …` を組む者はすべてここを通す —— スコープの規則を2箇所に持つと、
     /// `.型[n]` 版とラベル版で別の容器を指しはじめる。
     /// `idCounts:` は `SelectorNaming` が保持済みの数え上げを渡すための省略可能引数
-    /// (省略時は従来どおりその場で数え直す。graded 1要素あたり最大2回この経路が呼ばれるため、
+    /// (省略時はその場で数え直す。graded 1要素あたり最大2回この経路が呼ばれるため、
     /// 2回目以降の再計算を避けたい呼び出し元だけが渡す)
     static func uniqueScopeID(for element: ElementInfo, in snapshot: SnapshotResponse,
                               idCounts precomputed: [String: Int]? = nil) -> String? {

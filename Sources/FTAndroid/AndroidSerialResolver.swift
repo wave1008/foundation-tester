@@ -2,7 +2,7 @@
 //
 // **serial 無しで adb を撃たない**: `-s` を付けない adb は複数台接続時に
 // "more than one device/emulator" で落ち、生のエラーがそのまま利用者へ出る
-// (2026-08-06 の外部フィードバック #5)。run プロファイル経由なら
+// (外部フィードバック #5)。run プロファイル経由なら
 // AndroidDeviceCatalog.resolveSerial が解決するが、profile 無しの探索には解決口が無かった。
 //
 // 方針は iOS の BridgeDiscovery と同じ: **1台だけなら自動採用**・複数なら AVD 名付きで

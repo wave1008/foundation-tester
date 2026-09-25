@@ -21,7 +21,7 @@ import UniformTypeIdentifiers
 // MARK: - @Generable 転写型
 
 /// FM に求める出力は転写 1 欄だけ。可否・分類の欄を置くと、読む前に結論を書き、転写がその結論に
-/// 合わせて期待文字列を写す形になる(欄順を転写 → 可否に替えても直らなかった。2026-09-15 実測)
+/// 合わせて期待文字列を写す形になる(欄順を転写 → 可否に替えても直らなかった。実測)
 @Generable
 struct DrawnTextTranscript {
     @Guide(description: "Every character of text drawn in the image, transcribed exactly as written, in reading order; empty when the image contains no legible text")
@@ -60,7 +60,7 @@ public struct OcclusionVerifier {
     /// 惜しい転写のときの OCR 確認に許す時間。Tier-2 の近道(1.3 秒)と違い、ここで諦めると**誤った赤**に
     /// なるので、Vision の初回コンパイル(実測 25〜47 秒。RegionText.prewarmIfNeeded の doc)を待ち切れる
     /// 長さにする。払うのは「プロセスで最初の読みが惜しい転写だった回」だけ(align 直後の最初の
-    /// シナリオで実際に踏んだ。2026-09-15・E2E-RN M1Max)。暖まっていれば数百 ms で返る
+    /// シナリオで実際に踏んだ。E2E-RN M1Max 実測)。暖まっていれば数百 ms で返る
     static let nearMissOCRBudget: Duration = .seconds(60)
 
     /// 暖機(`prewarmVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PREWARM=0` で撃たない
@@ -134,7 +134,7 @@ public struct OcclusionVerifier {
         // 反転(不可視判定)したときだけ、**FM が実際に見た crop** を保存する。
         // レポートの失敗時スクショは poll が尽きた後の別撮りで、FM の入力ではない。
         // これを残さないと「FM の誤判定」なのか「渡した crop が別物だった」のかを
-        // 事後に切り分けられない(2026-07-23、切り分け不能に陥って追加)。
+        // 事後に切り分けられない(切り分け不能に陥って追加)。
         if !verdict.visible, let dumpedPath = Self.dump(crop: crop, expectedText: expectedText) {
             reason += " [crop: \(dumpedPath)]"
         }
@@ -148,7 +148,7 @@ public struct OcclusionVerifier {
     /// 「疑わしい要素が無く正常」が区別できないので、成功も失敗も FMHealth へ計上する)
     @available(macOS 27, *)
     private static func transcribe(_ image: CGImage, instructions: String, prewarmed: Bool) async -> String? {
-        // 暖機済みがあれば使う(無ければその場で作る = 従来と同じ)。
+        // 暖機済みがあれば使う(無ければその場で作る)。
         // **取り出したら捨てる** —— respond を通したセッションは会話履歴を持つので使い回せない
         let session = (prewarmed ? OcclusionPrewarm.take(matching: instructions) : nil)
             ?? LanguageModelSession(instructions: instructions)

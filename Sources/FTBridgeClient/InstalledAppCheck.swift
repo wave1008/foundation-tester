@@ -31,7 +31,7 @@ public enum InstalledAppCheck {
     }
 
     /// 判定できなかった理由を持つ(**沈黙させないため**。理由が出ないと、ガードが
-    /// 素通ししていることに誰も気付けない —— 2026-08-06 に受け手側で実際に起きた)
+    /// 素通ししていることに誰も気付けない —— 受け手側で実際に起きた)
     public enum InstallVerdict: Equatable {
         case installed
         case notInstalled

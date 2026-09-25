@@ -18,7 +18,7 @@ public enum AndroidGpuRecovery {
 
     /// android の仮想デバイスのみ対象。GPU へ戻したデバイス名の配列を返す(失敗はログして継続)。
     /// AndroidDataWiper と同じく **1台ずつ直列**に処理する(複数台の同時ブート描画は画面凍結の
-    /// トリガそのもの。実測 2026-07-25)。停止〜再ブートは1台数十秒の無音区間になるため各フェーズを
+    /// トリガそのもの。実測)。停止〜再ブートは1台数十秒の無音区間になるため各フェーズを
     /// 必ずログする(GUI は stderr を出力チャネルへ逐次表示する)。
     public static func recoverCpuFallbackDevices(
         devices: [ResolvedDevice], locale: String,

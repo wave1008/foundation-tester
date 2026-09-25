@@ -706,7 +706,7 @@ export type MonitorFromWebviewMessage =
       /** 選んだ OS バージョンがダウンロードが要る(インストール済みでない)Android システムイメージの
        * ときだけ載る。ホストは1枚の確認モーダル(ライセンス同意)を挟んでから
        * `api install-system-image` → 成功後に通常の create-device という順で実行する
-       * (2枚のモーダルを続けて出さない。§13/2026-08-25 の規律と同じ)。 */
+       * (2枚のモーダルを続けて出さない。§13の規律と同じ)。 */
       readonly installSystemImage?: {
         readonly package: string;
         readonly sizeBytes: number | null;
@@ -968,7 +968,7 @@ function isDeviceCommandSourceLike(value: unknown): value is DeviceCommandSource
 }
 
 /** setRemoteConfig の hosts[] 1件の検証(webview 側は既に正規化済みの値を送る想定だが、
- * 型不正なペイロードを弾くための最終ゲート)。**マシン名のキーは "machine"**(2026-08-26 改名。
+ * 型不正なペイロードを弾くための最終ゲート)。**マシン名のキーは "machine"**(改名済み。
  * 旧キー "name" を要求すると settingsTab.js の payload が全滅し、リモートマシンの追加・削除が
  * 黙って無視される)。 */
 function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {

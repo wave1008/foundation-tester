@@ -3,7 +3,7 @@
 // それに従う(StepExecutor.shouldEmptyDrag)。どちらも無い(材料の無い物理端末・他人のアプリ)ときだけ、
 // **掴んだ要素のクラス名**(ElementInfo.axClass = XCTest の非公開属性 5004)で決める。
 //
-// 根拠(2026-09-12 実測・予備シミュレータ・XCUITest): Compose / Flutter の要素は `UIAccessibilityElement`
+// 根拠(実測・予備シミュレータ・XCUITest): Compose / Flutter の要素は `UIAccessibilityElement`
 // (自前描画の上に置く a11y 要素 = ビューを持たず、タッチはホストのビューが自前で処理する = 次の1タッチを
 // 吸う側)。React Native は `UIView`、SwiftUI は `NSObject`、UIKit は実クラス名で、どれも空打ちが要らない
 // (RN は空打ちで行が押される側)。UIKit の実アプリにも `UIAccessibilityElement` は少数出る(地図 6/111・

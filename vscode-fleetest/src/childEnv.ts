@@ -1,7 +1,7 @@
 // childEnv.ts
 // 拡張が起こす子プロセスの環境。FT_PARENT_PID を渡すと fleetest 側(FTCore.ParentDeathWatch)が
 // この拡張ホストの死で自ら終わる —— stdin を ignore で起こす api run 等は EOF を終了契機に
-// できないため、これが無いと拡張の突然死で孤児になる(Codex 指摘 2026-09-05)。
+// できないため、これが無いと拡張の突然死で孤児になる(Codex 指摘)。
 // vscode 非依存(orphanSweep.ts/adbWifiRepair.ts 等 vscode を import しないファイルからも使う)。
 
 import { hostname } from "node:os";

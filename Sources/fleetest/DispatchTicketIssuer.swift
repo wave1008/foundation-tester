@@ -9,7 +9,7 @@
 // 互いに相手の機械を待って `--wait-lock` の上限まで進まない。
 //
 // **親自身は ssh を1本も足さない**(docs/remote-runner.md §18.7「占有を知るために ssh を足さない」)。
-// 親がするのは「同じ鍵を配る」ことだけで、待機列へ並ぶのは従来どおり子の
+// 親がするのは「同じ鍵を配る」ことだけで、待機列へ並ぶのはそのまま子の
 // `RemoteRunDispatcher.acquireDispatchLock` の1往復。
 //
 // 配線は `DispatchTicketPlumbingTests` が走査で固定する(採る場所が1箇所であること・
@@ -50,7 +50,7 @@ enum DispatchTicketIssuer {
     /// 子を起こす全経路の契約。`ParentDeathWatchWiringTests`)
     ///
     /// `lockHeldTarget` = 親が**この子の宛先の** dispatch.lock を先に取れたときの ssh 宛先
-    /// (`DispatchPrelock`)。**取れなかった機械には渡さない** —— その子は従来どおり自分で
+    /// (`DispatchPrelock`)。**取れなかった機械には渡さない** —— その子はそのまま自分で
     /// 取りに行き、同じ失敗を同じ文言で出す。継承した印を消さないのは、値が宛先を名乗っており
     /// (`DispatchLockHandoff`)、別の宛先へ向かう子には効かないから
     static func childEnvironment(ticket: DispatchTicket, lockHeldTarget: String? = nil,

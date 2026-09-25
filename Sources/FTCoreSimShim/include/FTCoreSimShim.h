@@ -9,10 +9,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// @{ @"udid": NSString, @"name": NSString, @"os": NSString(例 "iOS 27.0"), @"booted": NSNumber(BOOL) }。
 /// CoreSimulator が使えない環境(クラス/セレクタ欠落・ctx 取得失敗)では nil。
 /// 初期化(dlopen+SimServiceContext ~470ms)は初回のみ。保持する deviceSet は
-/// boot/shutdown に live 追従する(2026-07-25 実測)ため再初期化不要。
+/// boot/shutdown に live 追従する(実測)ため再初期化不要。
 NSArray<NSDictionary<NSString *, id> *> * _Nullable FTCoreSimListDevices(void);
 
-/// アプリを起動する(simctl launch の置き換え。往復 883〜909ms → ほぼ0ms・2026-08-02 実測)。
+/// アプリを起動する(simctl launch の置き換え。往復 883〜909ms → ほぼ0ms・実測)。
 /// udid の SimDevice が引けない/セレクタ欠落なら nil(「シムが使えない」= simctl へフォールバックする契約)。
 /// 引けたときは必ず非 nil で、実行結果を
 /// @{ @"success": NSNumber(BOOL), @"pid": NSNumber(int, 成功時のみ), @"error": NSString(失敗時のみ) }

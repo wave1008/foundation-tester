@@ -163,7 +163,7 @@ public struct SharedResource: Sendable {
     //
     // `rethrows` にはできない。ロック取得は body と無関係にタイムアウト・再入で throw するので、
     // コンパイラが弾く("a function declared 'rethrows' may only throw if its parameter does"。
-    // 2026-08-10 に実際にコンパイルして確認)。結果として body が非 throwing でも `try` が要る
+    // 実際にコンパイルして確認)。結果として body が非 throwing でも `try` が要る
 
     public func locked<T>(_ body: () throws -> T) throws -> T {
         let fd = try acquireSync()

@@ -57,7 +57,7 @@ public enum DeviceDeletion {
     ///
     /// **判定は共有・末尾の一手だけ呼び手が決める**(`then:`)。削除コマンドなら "delete it"、
     /// 作り直し(create --overwrite)なら "create it again" —— 共有された文言をそのまま流用すると、
-    /// 上書きしようとした人に「then delete it」と言うことになる(2026-08-17 に実際に出た)
+    /// 上書きしようとした人に「then delete it」と言うことになる(実際に出た)
     public static func refusalReason(isRunning: Bool, exists: Bool,
                                      then: String = "delete it") -> String? {
         if isRunning {

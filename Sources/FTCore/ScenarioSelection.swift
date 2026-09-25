@@ -7,7 +7,7 @@ import Foundation
 
 public enum ScenarioSelection {
     /// `scenariosDir` は「見つからない」を `_disabled`(コンパイル対象外)在住と見分けるための
-    /// 追加情報。省略した呼び出し元(profile/fleet 経由)は従来文のまま
+    /// 追加情報。省略した呼び出し元(profile/fleet 経由)は `notFound`(単純な文)のまま
     public static func resolve(_ ids: [String], from all: [ScenarioInfo],
                                scenariosDir: URL? = nil) throws -> [ScenarioInfo] {
         guard !ids.isEmpty else { return all.filter { !$0.deleted && !$0.draft } }

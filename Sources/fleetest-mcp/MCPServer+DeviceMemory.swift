@@ -37,7 +37,7 @@ extension MCPServer {
     /// ここだけ udid:"" を「指定あり」と誤読すると、記憶の適用だけが抑止されて記録は素通しする
     /// 非対称に戻る。**profile 指定時は触らない**(宛先はプロファイルが決める)。
     ///
-    /// platform の決め方(2026-08-12・4欠陥修正): **udid/port か serial のどちらかが明示されて
+    /// platform の決め方(4欠陥修正): **udid/port か serial のどちらかが明示されて
     /// いれば、その platform だけを見る**(serial 明示に iOS の記憶を注入しない/逆も同じ)。
     /// **どちらも無ければ platform 引数 → 直近に明示された platform(lastExplicitPlatform)→
     /// 既定(ios)の順**で決める —— 契約は「udid, port, AND serial を全部省略したら同じデバイスへ」
@@ -85,7 +85,7 @@ extension MCPServer {
             var out = args
             out["port"] = Int(remembered.port)
             if explicitPlatform == nil { out["platform"] = "ios" }
-            // **ログは適用が決まってから**(2026-08-13 のレビュー指摘): 先に出すと、
+            // **ログは適用が決まってから**(レビュー指摘): 先に出すと、
             // 曖昧で拒否した呼び出しまで「その機へ行った」と読める痕跡を stderr に残す
             let iosFold = Self.finishingFold(out, chosen: "port \(remembered.port)",
                                       allSeenLabels: seenExplicitIOSPorts.map(String.init),
@@ -137,7 +137,7 @@ extension MCPServer {
         }
     }
 
-    /// 記憶した宛先が**失敗で消えた後**の省略呼び出し(2026-08-13 の監査。セッションの形 = OS 跨ぎ)。
+    /// 記憶した宛先が**失敗で消えた後**の省略呼び出し(監査で発覚。セッションの形 = OS 跨ぎ)。
     ///
     /// **実測した事故**: ①port 8138 を明示して成功 → ②存在しない port 8999 を明示して失敗 →
     /// ③宛先を省いた呼び出しが、**8138 でも 8999 でもない別のシミュレータ**(ホーム画面が返った)
@@ -187,12 +187,11 @@ extension MCPServer {
             + " back. Pass udid or port (iOS) / serial (Android) to say which."
     }
 
-    /// `foldInRememberedDevice` の結果。**曖昧なら適用せず拒否する**。
-    /// 以前は「2台以上を触っていたら毎回注記しつつ直近の1台へ流す」だったが、
-    /// **注記は事故を1件も止めなかった** —— 実際に起きた3件(serial だけの呼び出しが黙って
+    /// `foldInRememberedDevice` の結果。**曖昧なら適用せず拒否する** —— 注記だけを添えて
+    /// 直近の1台へ流す形は**事故を1件も止めない**。実際に起きた3件(serial だけの呼び出しが黙って
     /// iOS へ / キャッシュ命中で記憶が更新されない / udid 2台の記憶混線)は**3件とも
     /// 「2台以上を触ったセッション」でだけ起きている**。逆に1台しか触っていないセッションは
-    /// 原理的に外しようがないので、そこは従来どおり黙って適用してよい。
+    /// 原理的に外しようがないので、そこは黙って適用してよい。
     /// 「記憶が安全なのは、それが一意なときちょうど」が規則の本体
     enum RememberedDeviceFold {
         case unchanged

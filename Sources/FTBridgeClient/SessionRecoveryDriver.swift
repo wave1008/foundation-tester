@@ -3,7 +3,7 @@
 // この経路の 409 は「セッション消失」と断定してよい。
 //
 // **この「1箇所だけ」は不変条件であって観察ではない**: 一度 handleClear が 409 を足して破れており
-// (2026-07-31 修正)、その間 clearInput の正当な失敗が「ランナーが再起動した可能性」と誤報告され、
+// (修正済み)、その間 clearInput の正当な失敗が「ランナーが再起動した可能性」と誤報告され、
 // 無用な activate まで撃っていた。以後 `BridgeRouterStatusContractTests` が本数を数えて守る。
 // **in-app ブリッジには適用しない** — あちらは 409 を一時的競合(キーウィンドウ不在・フォーカス
 // 無し)に広く使っており意味が違う(ScenarioRunnerMain の driver 組み立て参照)。
@@ -39,7 +39,7 @@ public final class SessionRecoveryDriver: AppDriver {
 
     /// XCTest の a11y サーバが一時的に落ちると、ツリー走査が
     /// 「Error getting main window kAXErrorAPIDisabled」(500)で失敗する。
-    /// **同時刻に全レーンで一斉に出る**(2026-08-04 00:55:29〜34 に6件・2026-08-01 にも7件の塊。
+    /// **同時刻に全レーンで一斉に出る**(ある回に6件・別の回にも7件の塊。
     /// 19件すべてクラスタ)ので**環境要因**で、数秒で復旧する。
     /// アプリ側の問題ではないため、失敗として返すと調査が明後日の方向へ行く
     public static func isAccessibilityTemporarilyDown(_ error: Error) -> Bool {

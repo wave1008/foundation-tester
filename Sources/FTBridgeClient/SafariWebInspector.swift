@@ -92,7 +92,7 @@ public enum SafariWebInspector {
 
     /// `_rpc_applicationSentListing:` の `WIRListingKey`(ページid文字列→辞書)から評価対象を選ぶ。
     /// **`WIRTypeKey == "WIRTypeWebPage"` だけを候補にし、id が最大のものを選ぶ** ——
-    /// ページ辞書に「今どれが前面か」を示すフラグが無く、実測(2026-08-13・2タブ)では
+    /// ページ辞書に「今どれが前面か」を示すフラグが無く、実測(2タブ)では
     /// 後から開いたタブほど id が大きく、フォアグラウンドのタブと一致した。これが唯一の手掛かり
     public static func pickPageId(_ listing: [String: [String: Any]]) -> Int? {
         listing.compactMap { key, info -> Int? in
@@ -246,7 +246,7 @@ public enum SafariWebInspector {
     }
 
     /// `launchd_sim` のコマンドラインから UDID を取り出す。パスは
-    /// `.../CoreSimulator/Devices/<UDID>/data/var/run/launchd_bootstrap.plist`(実測で固定・2026-08-13)。
+    /// `.../CoreSimulator/Devices/<UDID>/data/var/run/launchd_bootstrap.plist`(実測で固定)。
     /// これが**ソケットのディレクトリ名(`com.apple.launchd.XXXX`)と UDID を結ぶ唯一の経路**
     /// (webinspectord のソケット自体に UDID は載らない。全ソケットに接続して探る案より
     /// 2桁安い: `lsof` 1回 + `ps` 1回で全台ぶん解決できる。実測: 10台で計 1秒未満)
@@ -280,7 +280,7 @@ public enum SafariWebInspector {
     /// 呼び出しは `BridgeClient.snapshot(query:)`(木の組み立て箇所)。
 
     /// 殺しスイッチの判定(純粋)。**`"off"` のときだけ無効**(既定オン)
-    /// **大小文字を無視する**(2026-08-13 のレビュー指摘)。Android(`AndroidWebViewDOM`)と
+    /// **大小文字を無視する**。Android(`AndroidWebViewDOM`)と
     /// in-app(`InAppWebViewDOM`)は `.lowercased()` で見ているので、ここだけ素の比較だと
     /// `FT_BROWSER_DOM=OFF` で**片肺**になる(片方だけ止まると A/B の陽性対照が壊れる)
     public static func isEnabled(env: [String: String]) -> Bool {
@@ -318,7 +318,7 @@ public extension SafariWebInspector {
         guard isEnabled else { return nil }
         // **実機は1通あたりのフレーム長に上限がある**(分割する理由は messageBudgets の宣言)。
         // **退避のたびに繋ぎ直す** —— 同じ接続で RPC をやり直すと、2周目は
-        // `_rpc_getConnectedApplications:` にアプリ一覧が返らず必ず失敗する(2026-08-13 に実機で実測)。
+        // `_rpc_getConnectedApplications:` にアプリ一覧が返らず必ず失敗する(実機で実測)。
         // **退避も含めて全体の締切の内側**(段ごとの締切を足すだけだと分単位で沈黙し得る。
         // snapshot は最頻の操作)
         let overall = Date().addingTimeInterval(readBudget)
@@ -347,7 +347,7 @@ public extension SafariWebInspector {
     /// 退避で繋ぎ直す前に置く間(秒)。**0 にすると2周目のアプリ一覧が返らない**(実測)
     static let reconnectPause: TimeInterval = 1.5
 
-    /// **実機だけ、1通が大きいと黙って捨てられる**(2026-08-13 実測)。エラーも応答も返らず、
+    /// **実機だけ、1通が大きいと黙って捨てられる**(実測)。エラーも応答も返らず、
     /// 60 秒待っても来ない。しかも**上限は固定ではない** —— 同じ端末・同じページで2回測って
     /// 境界がフレーム 7917/7981 と 8493/8557 に割れた(約 600 バイトの揺れ)。
     /// 測った境界のギリギリは狙わず、まず 7000 で試し、駄目なら 4000 へ落とす。
@@ -356,7 +356,7 @@ public extension SafariWebInspector {
     static let messageBudgets = [7000, 4000]
 
     /// `/private/var/tmp/com.apple.launchd.*/com.apple.webinspectord_sim.socket` を
-    /// 対象 UDID まで絞り込む。**全ソケットへ接続して探る案は採らない**(2026-08-13 実測で
+    /// 対象 UDID まで絞り込む。**全ソケットへ接続して探る案は採らない**(実測で
     /// 10台ぶん Safari を probe すると約1〜2秒×台数がかかる)。`lsof`+`ps` の2コマンドで
     /// 全ソケット→pid→UDID を1秒未満に解決できるため、こちらを既定にした
     private static func resolveSocketPath(forUDID udid: String) -> String? {
@@ -370,7 +370,7 @@ public extension SafariWebInspector {
         return socketPath(forUDID: udid, sockets: sockets, lsofOutput: lsofResult.output, psOutput: psResult.output)
     }
 
-    /// **根は2つある**(2026-08-13 に実測で踏んだ)。ソケットの置き場所は
+    /// **根は2つある**(実測で踏んだ)。ソケットの置き場所は
     /// シミュレータを起こしたプロセスの `TMPDIR` で決まるので、`/private/var/tmp`(`/var/tmp`)と
     /// `/private/tmp`(`/tmp`)の**両方**を見ないと取りこぼす —— macOS ではこの2つは別ディレクトリで、
     /// 同じ機械の上で Xcode 由来のシミュレータは前者、シェルから `simctl boot` したものは後者に出た。
@@ -604,7 +604,7 @@ final class SafariInspectorConnection: InspectorTransport {
         return nil
     }
 
-    /// **二度閉じない**(2026-08-13 のレビュー指摘)。呼び出し側は `defer { close() }` を打つので
+    /// **二度閉じない**。呼び出し側は `defer { close() }` を打つので
     /// close → deinit で同じ fd を2回閉じることになり、**その間に別スレッドが開いた無関係な
     /// fd を閉じ得る**(このプロセスはソケット・パイプを並行に開く)。
     /// `TLSInspectorConnection` は同じ理由で最初から `closed` を持っている

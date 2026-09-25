@@ -328,9 +328,9 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
                         name: name, machine: MachineDispatch.normalize(deviceMachine), action: action))
                 })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
-            // **手元の台が1台以上あって0台も起動できなかったときだけ ok:false**(部分失敗は従来どおり
+            // **手元の台が1台以上あって0台も起動できなかったときだけ ok:false**(部分失敗は
             // ok:true。「1台の失敗で全体を落とさない」規律は変えず、全滅だけを失敗として伝える —
-            // 以前は bootAll が例外を握って何を積んでも ok:true・exit 0 だった)。リモートの機械ごとの
+            // 例外を握ったまま返すと、何を積んでも ok:true・exit 0 になる)。リモートの機械ごとの
             // 失敗は既存の machineFailed が別途伝える(ここでは手元の outcomes だけを見る)
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
             if summary.allFailed {
@@ -442,7 +442,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             }
             // physical だけの --name 集合(items が空)は誰も試みていないので全滅扱いにしない。
             // それ以外は「渡した台が1台も再起動できなかった」ときだけ ok:false(部分失敗は ok:true。
-            // 以前は restartOne が例外を握るだけで常に ok:true・exit 0 だった)
+            // 例外を握ったままだと常に ok:true・exit 0 になる)
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(await outcomes.all())
             if summary.allFailed {
                 ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
@@ -570,9 +570,9 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
                                                    machine: MachineDispatch.normalize(deviceMachine)))
                 })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
-            // **手元の台が1台以上あって0台も停止できなかったときだけ ok:false**(部分失敗は従来どおり
+            // **手元の台が1台以上あって0台も停止できなかったときだけ ok:false**(部分失敗は
             // ok:true。「1台の失敗で全体を落とさない」規律は変えず、全滅だけを失敗として伝える —
-            // 以前は例外を握って何を積んでも ok:true・exit 0 だった)。リモートの機械ごとの失敗は
+            // 例外を握ったまま返すと、何を積んでも ok:true・exit 0 になる)。リモートの機械ごとの失敗は
             // 既存の機構が別途伝える(ここでは手元の outcomes だけを見る)
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(outcomes)
             if summary.allFailed {
@@ -789,7 +789,7 @@ enum ApiDeviceOperation {
         //     リモート実行の登録簿にあるマシンの台から探す(MachineInventory)
         //
         // 決められないという理由で操作を断らない —— **タイルに出ている台は操作できるべき**
-        // (実害 2026-08-29: NDJSON を出さずに終わるので拡張には何も出なかった)
+        // (実害: NDJSON を出さずに終わるので拡張には何も出なかった)
         let roster: DeviceRoster
         let rosterLabel: String
         if let profile {
@@ -855,7 +855,7 @@ enum ApiDeviceOperation {
     ///
     /// `deviceMachine` を渡さない(= nil)ときは**候補が1つのときだけ**採る。2つ以上あれば
     /// `.ambiguous` で止める —— 黙って手元を選ぶと「M1Max を止めたつもりで手元が止まる」に
-    /// なり、しかも成功したように見える(2026-08-17 に実際に起きた: 版の古い拡張が
+    /// なり、しかも成功したように見える(実際に起きた: 版の古い拡張が
     /// `--device-machine` を付けずに撃ち、手元の同名シミュレータが2台停止した)。
     ///
     /// **呼び出し側は常にこの機械で body を実行する**(ssh 越しに投げる経路を持たない)ので、
@@ -1013,7 +1013,7 @@ private struct ApiDevicesUpLifecycleEvent: Encodable {
     /// **どの機械のデバイスか**(マシン名 = エイリアス。手元は nil)。同名のデバイスが別の機械にも
     /// 居るのは通常なので、名前だけでは受け手がタイルを特定できない(拡張のタイル id は
     /// platform:machine/name)。リモートへ分散したときは、子プロセスの行をそのまま中継するので
-    /// 値は子が入れる。**キーは "machine"**(2026-08-26 改名。対向は
+    /// 値は子が入れる。**キーは "machine"**(改名。対向は
     /// vscode-fleetest/src/monitorDeviceLifecycle.ts の DevicesUpEvent)
     let machine: String?
 }

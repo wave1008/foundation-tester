@@ -16,7 +16,7 @@ extension MCPServer {
         try Self.validateScrollFrameArg(args)
         let swipeDriver = try await driver(args)
         // **未指定は今までと1バイトも変えない**(全画面固定の既定経路)。
-        // **例外はキーボード表示中**(2026-08-31): 直近の `ft_snapshot` の控えがキーボードを
+        // **例外はキーボード表示中**: 直近の `ft_snapshot` の控えがキーボードを
         // 申告していれば、素の driver.swipe ではなく DSL の swipe と同じ StepExecutor の
         // "swipe" ステップへ回す(StepExecutor+Actions.swift 参照。座標の合成・fail-fast を
         // MCP に2つ目実装しない)。**控えは古びうる方向にだけ倒す** —— 消えていれば
@@ -29,7 +29,7 @@ extension MCPServer {
                 try await swipeDriver.swipe(direction)
                 recordInteraction(action: "swipe", resolvedRef: nil, args: args,
                                   direction: direction.rawValue)
-                // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いて
+                // **「動いた」と断言しない**(back と同じ理由)。スワイプは端に着いて
                 // いれば1px も動かないし、スクロールできない画面では何も起きない
                 return text("swipe \(direction.rawValue) sent."
                     + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
@@ -306,7 +306,7 @@ extension MCPServer {
                 backIneffectiveNote = ". note: " + BackEffect.note(advice: BackEffect.mcpAdvice)
             }
         }
-        // **「画面が変わった」と断言しない**(2026-08-06 の探索で外した): iOS の back は
+        // **「画面が変わった」と断言しない**: iOS の back は
         // 端の swipe なので、自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では
         // **何も起きない**。back でアプリ自体を出てしまうこともあり、どちらも
         // 「変わった」と言い切ると誤操作の起点になる
@@ -325,7 +325,7 @@ extension MCPServer {
         let doubleTapDriver = try await driver(args)
         let doubleTapPoint: (x: Double, y: Double)
         // **答えは渡された形で返す**: ref を渡したのに座標で返すと、tap/press
-        // (`[17]` と返す)と食い違って読み手が取り違える(2026-08-07 の棚卸し)
+        // (`[17]` と返す)と食い違って読み手が取り違える(棚卸しで発覚)
         var doubleTapWhat: String
         var doubleTapNote = ""
         var doubleTapSelector = ""
@@ -337,7 +337,7 @@ extension MCPServer {
             doubleTapResolvedRef = element.ref
             // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
             // 中身外し・キーボード被覆も見ている)。ここだけ見落とすと、同じ要素に対して
-            // ツールごとに言うことが変わる(2026-08-08 のレビュー)。
+            // ツールごとに言うことが変わる(レビューで発覚)。
             // keyboardFrame は verifiedElement が撮り直した木(lastSnapshots に反映済み)から
             // 作る(木の chrome で広げ、chrome 自身とその部分木は除外する)
             let doubleTapSnapshot = lastSnapshots[Self.engineKey(args)]
@@ -467,7 +467,7 @@ extension MCPServer {
             pinchResolvedRef = element.ref
             pinchSelector = reproductionNote(resolvedRef: element.ref, args: args) + labelNote
         } else if let x = try Self.doubleArgument(args, "x"), let y = try Self.doubleArgument(args, "y") {
-            // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
+            // **地図・キャンバスには ref が無い**(実測): Apple マップの場所カードを
             // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
             // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
             // ft_tap / ft_long_press / ft_drag と同じく座標を受ける
@@ -488,7 +488,7 @@ extension MCPServer {
                         + " to override)"
                 }
             }
-            // **どの経路も領域を受け取れる**(2026-09-22。XCUITest は非公開 API の座標ピンチ
+            // **どの経路も領域を受け取れる**(XCUITest は非公開 API の座標ピンチ
             // `CoordinatePinch` で撃つ)。**使えない Xcode だけ**要素ピンチへ縮退し、
             // そのことはブリッジが注記で返す —— ここで先回りして「無視した」と言わない
             frame = Self.pinchArea(x: x, y: y, radius: pinchRadius, screen: pinchScreen)
@@ -518,14 +518,14 @@ extension MCPServer {
                           duration: pinchDuration == 0.5 ? nil : pinchDuration,
                           maxGestureSeconds: try Self.doubleArgument(args, "maxGestureSeconds"), scale: scale)
         return text("pinch x\(scale) done.\(pinchSelector)"
-            // **「小さくなる」とだけ言わない**(2026-08-06 実測): 指が対象の内側に収まる分だけ
+            // **「小さくなる」とだけ言わない**(実測): 指が対象の内側に収まる分だけ
             // 小さくなることもあれば、慣性で大きくもなる(scale 2.0 の要求で累積 3.9 倍)
             + " The actual zoom can differ from what you asked for in either direction"
             + " — verify with ft_snapshot/ft_screenshot."
             + (whole ? " The fingers spanned the whole screen, so anything on top of the area"
                 + " you meant (a bottom sheet, a card) may have taken the gesture instead —"
                 + " pass x/y to pinch a specific spot." : "")
-            // **同じ逃げ道を2度書かない**(2026-08-08 に長文の苦情があった箇所)。
+            // **同じ逃げ道を2度書かない**(長文の苦情があった箇所)。
             // 領域が無視されたときの文は engine も remedy も言い切っているので、
             // 汎用の Flutter 助言はそこでは畳む
             + iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: args)
@@ -573,7 +573,7 @@ extension MCPServer {
     }
 
     func ftLongPress(_ args: [String: Any]) async throws -> [[String: Any]] {
-        // 引数名は DSL の tap(holdSeconds:) と同語彙(2026-08-10 の語彙統一)。
+        // 引数名は DSL の tap(holdSeconds:) と同語彙(語彙統一)。
         // 旧名は黙って既定値に落とさない(1.0s の長押しに化けて沈黙した誤りになる)。
         // **引数だけで弾ける検証はドライバ取得より前に**(コールドスタートは分単位かかりうる)
         guard args["duration"] == nil else {

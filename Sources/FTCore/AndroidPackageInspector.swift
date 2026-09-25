@@ -1,7 +1,7 @@
 // Android の .apk を読んで UI フレームワークとパッケージ名を決める(材料を読むだけ。
 // **問い合わせの口は AppUIFrameworkQuery**)。Android のブリッジは自己申告を持たないので、答えは静的な材料だけ。
 //
-// 目印(2026-09-14 に E2E の SUT 4 つの APK で実測。パッケージ名は aapt2 dump packagename と突き合わせ済み):
+// 目印(E2E の SUT 4 つの APK で実測。パッケージ名は aapt2 dump packagename と突き合わせ済み):
 //   flutter     … lib/<abi>/libflutter.so
 //   reactNative … lib/<abi>/libreactnative.so(0.76 以降)/ libreactnativejni.so(それ以前)/
 //                 assets/index.android.bundle(release)

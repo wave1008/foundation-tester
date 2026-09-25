@@ -18,7 +18,7 @@ const ORPHAN_PPID = 1;
 //
 // 配信ヘルパー(fleetest-simstream / fleetest-androidstream / fleetest-devicepoll)も別枝で拾う ——
 // stdin EOF で自ら終わる設計だが、拡張ホストが瞬断されて EOF が届かない形では launchd に
-// reparent されて残る(実害 2026-09-01: 孤児の配信が VSCode 再起動でも死なず、リモート Android の
+// reparent されて残る(実害: 孤児の配信が VSCode 再起動でも死なず、リモート Android の
 // E2E を接続断で赤にした。Android の孤児 screenrecord は実際に E2E を落とす)。
 // "fleetest" の直後が "-" なので上のサブコマンド判定(`fleetest(?:\s|$)`)には一致せず、専用の
 // 枝が要る(residentProcesses.ts の stream 判定と同じ理由)。
@@ -75,7 +75,7 @@ export function parseOrphanPids(psOutput: string): number[] {
  *  刺し殺さない。process-lifecycle.md「終了猶予の方針」)。Reload Window 直後は旧拡張ホストの死を
  *  検知した run が既に ParentDeathWatch 経由で後始末中であることがあり、そこへ SIGKILL を打つと
  *  後始末が完走しない。他の孤児(live serve/host-metrics/monitor/device-stream・配信ヘルパー)は
- *  後始末を持たないので従来どおり SIGKILL。 */
+ *  後始末を持たないので SIGKILL。 */
 export function orphanSignal(command: string): NodeJS.Signals {
   return ORPHAN_RUN_RE.test(command) ? "SIGTERM" : "SIGKILL";
 }
@@ -105,7 +105,7 @@ function execFileText(file: string, args: string[]): Promise<string> {
     // **maxBuffer を明示する** —— Node の既定は 1MB で、`ps -axo command=` は
     // 引数の長い行(xcodebuild・emulator・fleetest のサブプロセス)が並ぶと簡単に超える。
     // 超えると ERR_CHILD_PROCESS_STDIO_MAXBUFFER で**掃除が黙って無効化される**
-    // (2026-08-17 の実害: 20台構成で毎回失敗していた)。監視対象が多い環境ほど
+    // (実害: 20台構成で毎回失敗していた)。監視対象が多い環境ほど
     // 掃除が要るのに、多いほど効かなくなる向きだった。monitorPanel.ts の ps も同じ 8MB
     execFile(file, args, { maxBuffer: 8 * 1024 * 1024, env: childEnv() }, (error, stdout) => {
       if (error) {
@@ -122,7 +122,7 @@ const defaultDeps: OrphanSweepDeps = {
   // 環境は**候補だけ**個別に読む(全プロセスの環境を1回で取ると1行が数百 KB になり maxBuffer を
   // 超える)。ps の -E は自分のプロセスだけ環境を出す = 他ユーザーの同名プロセスは印なし扱いで
   // 触らない(そもそも kill も EPERM)。**プラットフォームバイナリ(sleep 等・hardened)は環境を
-  // 隠す**が、掃除の対象は全部 fleetest 自身のバイナリなので読める(実測 2026-09-05: fleetest は
+  // 隠す**が、掃除の対象は全部 fleetest 自身のバイナリなので読める(実測: fleetest は
   // 1 件・sleep は 0 件)
   readEnvironment: async (pid) => {
     try {

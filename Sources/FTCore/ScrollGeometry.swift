@@ -13,11 +13,11 @@ public enum ScrollGeometry {
     /// 片側 0.45(= スパン最小 0.1)で頭打ちにする
     public static let maxMarginRatio: Double = 0.45
 
-    /// この距離(pt/px)未満のスワイプは注入しても意味がない = 呼び出し側が従来経路へ落ちる
+    /// この距離(pt/px)未満のスワイプは注入しても意味がない = 呼び出し側が全画面固定経路へ落ちる
     public static let minUsableDistance: Double = 8
 
     /// スクロール対象の矩形から始点・終点を出す。**戻り値 nil = この矩形では座標を作れない**
-    /// (画面と交差しない / 削りすぎて動かせない)。呼び出し側は従来の全画面固定へ落ちる。
+    /// (画面と交差しない / 削りすぎて動かせない)。呼び出し側は全画面固定へ落ちる。
     ///
     /// - Parameters:
     ///   - container: スクロール対象の矩形(scrollFrame で解決した要素の frame)
@@ -264,7 +264,7 @@ public enum FlickKind: String, Codable, Sendable, CaseIterable {
 /// 探索は行き過ぎると戻らず `maxSwipes` を使い切って**シナリオ全体が中断**するため保守側、
 /// 端送りは行き過ぎても無害なので速度優先。
 ///
-/// **これらは `scrollFrame` を明示したときの値**。未指定の従来経路(ブリッジ側の軸別既定)には
+/// **これらは `scrollFrame` を明示したときの値**。未指定のとき(ブリッジ側の軸別既定)には
 /// 影響しない —— 全画面固定のままスパンを広げると始点がスクロール領域の外に出て
 /// 1ミリも動かない(docs/performance-tuning.md §3.16 の実害)。
 public enum FTScrollDefaults {
@@ -281,7 +281,7 @@ public enum FTScrollDefaults {
         switch intent {
         // 探索は保守側(重なり 50%)。**慣性を消せないので刻み = 実移動量にはならない** ——
         // 速度を落として慣性を消す案は iOS では効くが Android に同じノブが無く、
-        // 実測で収束しなかった(2026-08-02)。行き過ぎは探索の失敗に直結するので控えめに取る
+        // 実測で収束しなかった。行き過ぎは探索の失敗に直結するので控えめに取る
         case .search: return 0.25            // スパン 0.5・重なり 50%
         case .gesture, .edge: return 0.2     // スパン 0.6
         }

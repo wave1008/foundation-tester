@@ -17,7 +17,7 @@ public enum ScenarioCodeGen {
     /// `notesBeforeStep` = 「この手の**直前**に出すコメント行」(キーは `flow.steps` の 0 起点の位置。
     /// `steps.count` は末尾)。**位置を持つのが要点** —— MCP の下書きはセレクタを解決できなかった手を
     /// コメントで残すが、まとめて先頭へ出すと `action` の並びからその手が消え、
-    /// 生成コードが実際の手順と食い違う(2026-08-10 に 33 手の下書きで実際に起きた)。
+    /// 生成コードが実際の手順と食い違う(33 手の下書きで実際に起きた)。
     ///
     /// `sceneBreaks` = 「ここから新しい scene」の位置(同じく 0 起点)。**推測はしない** ——
     /// シーン境界は「そのシーンで何を証明するか」という意図で、記録からは導けないので、
@@ -26,7 +26,7 @@ public enum ScenarioCodeGen {
     /// 生成するクラス名が Swift の識別子として通るか(**判定だけ。文言は呼び手が持つ**)。
     /// **日本語のクラス名は正当** —— この repo のシナリオがそれなので、弾くのは
     /// 「空・数字始まり・空白や記号を含む」の3つだけ。生成の口はここ1つなので、
-    /// 通さないと**コンパイルできない .swift をツールが書き出す**(実地 2026-09-22:
+    /// 通さないと**コンパイルできない .swift をツールが書き出す**(実地:
     /// `className: "9 bad name"` がそのまま `class 9 bad name {` になった)
     public static func isWritableClassName(_ name: String) -> Bool {
         guard let first = name.unicodeScalars.first else { return false }
@@ -119,7 +119,7 @@ public enum ScenarioCodeGen {
 
     /// 切れ目から scene の範囲を作る。**範囲外・重複・順不同を吸収する** ——
     /// 呼び出し側(MCP)は人が読んだ番号をそのまま渡してくるので、ここで正規化しないと
-    /// 空の scene や逆転した範囲が出る。切れ目が無ければ 1 scene(従来どおり)
+    /// 空の scene や逆転した範囲が出る。切れ目が無ければ 1 scene
     static func sceneRanges(count: Int, breaks: [Int]) -> [Range<Int>] {
         guard count > 0 else { return [0..<0] }
         let starts = ([0] + breaks.filter { $0 > 0 && $0 < count }).sorted()

@@ -30,7 +30,7 @@ public enum FindImage {
     /// Shirates の Const.VISION_FIND_IMAGE_ASPECT_RATIO_TOLERANCE
     public static let defaultAspectRatioTolerance = 0.2
     /// DSL の findImage の `waitSeconds:` の既定(秒)。0 = 今の画面を1回だけ見る(Shirates の findImage の
-    /// waitSeconds = 0.0 と同じ・ユーザー決定 2026-09-19)。1回 0.16〜0.25 秒かかるので、実行プロファイルの
+    /// waitSeconds = 0.0 と同じ・ユーザー決定)。1回 0.16〜0.25 秒かかるので、実行プロファイルの
     /// defaultTimeout(5 秒)まで撮り直すと「無いことを確かめる」たびに 5 秒を払う(docs/performance-tuning.md §3.30)。
     /// **待つのは検証の側**(existImage の既定は実行プロファイルの defaultTimeout)
     public static let defaultWaitSeconds: Double = 0
@@ -126,7 +126,7 @@ public enum FindImage {
     /// 比べても同じ距離になる。残すのは id を持つもの、その中では木の順で先(= 外側)。
     /// **ラベルで選ばない**: XCUITest の木は `accessibilityHidden` の内側の Image も SF Symbol 名の id と
     /// ラベル付きで同じ枠に載せるので、ラベルを加点すると操作対象のボタン(id だけ)が飾りに負ける
-    /// (2026-09-19 E2E-iOS の #radio_a が id=circle になった)
+    /// (E2E-iOS の #radio_a が id=circle になった実例がある)
     public static func candidates(in elements: [ElementInfo], screen: FTRect,
                                   templateWidth: Double, templateHeight: Double,
                                   tolerance: Double) -> [(element: ElementInfo, visibleFrame: FTRect)] {
@@ -232,7 +232,7 @@ public enum FindImage {
         TemplatePrintStore.drop(template)
     }
 
-    /// 縮退の検知に使う一様な白(この画像の特徴量は、実物の見本とは距離 1.4 ほど離れる。2026-09-19 実測)
+    /// 縮退の検知に使う一様な白(この画像の特徴量は、実物の見本とは距離 1.4 ほど離れる。実測)
     static let blankSentinel: CGImage = {
         let context = CGContext(data: nil, width: 32, height: 32, bitsPerComponent: 8, bytesPerRow: 0,
                                 space: CGColorSpaceCreateDeviceRGB(),
@@ -243,13 +243,13 @@ public enum FindImage {
     }()
 
     /// **Vision が縮退していないか**。異なる画像の特徴量が距離 0 = 何を比べても 0 で、最初の候補を「発見」して
-    /// 別の要素を叩く(2026-09-19 04:29〜04:32 に3 SUT の別プロセスで同時に起き、5分後には正常だった。
+    /// 別の要素を叩く(3 SUT の別プロセスで同時に起き、5分後には正常に戻った実測がある。
     /// 一様な白と実物の見本は 1.44 離れるので、0 は縮退か見本自体が白紙かのどちらか)。
     /// 判定は純粋関数(テストは同じ観測を2つ渡して破れることを確かめる)
     static func isDegenerate(templateDistanceToBlank distance: Double) -> Bool { distance == 0 }
 
     /// **同じ見本を取り直した特徴量が控えと一致するか**(縮退の門が拾えない「半端な異常」の門)。
-    /// 健全なら完全に一致する(2026-09-19 実測: 4 機 = M1 / M1 Max / M1 Ultra / M2 Ultra・macOS 27.0/27.2 で
+    /// 健全なら完全に一致する(実測: 4 機 = M1 / M1 Max / M1 Ultra / M2 Ultra・macOS 27.0/27.2 で
     /// 見本 60 枚 × 5 回 × 4 = 1,200 回すべて距離 0)。許容幅 `selfDistanceTolerance` は、異なる見本どうしの
     /// 最小距離(0.0011。同じ実測)より一桁小さい値。超えたら照合の距離を信用しない
     /// (負荷テストでは普段 0.002 前後で見つかる見本が 0.33〜0.43 で「見つからない」になった = findImage の

@@ -27,7 +27,7 @@ enum DeviceMachineRunner {
         var machineLabel: String { DeviceMachineGrouping.display(machine) }
     }
 
-    /// デバイスが2つ以上の機械にまたがっていれば、その分け方を返す。1つ(= 従来どおり全台が
+    /// デバイスが2つ以上の機械にまたがっていれば、その分け方を返す。1つ(= 全台が
     /// 同じ機械)なら nil を返し、呼び出し側は既存の単一ディスパッチ経路をそのまま通す。
     ///
     /// **`--runner` を明示したときは常に nil** —— 明示指定は「今回はこの機械で走らせる」の意味で、
@@ -66,8 +66,8 @@ enum DeviceMachineRunner {
     /// マシンごとのサブ実行を並行に走らせ、1画面の集計を出す。戻り値 = 各サブ実行の非0の最大
     ///
     /// **`failed`/`reportDir` は Fleetest.swift の単機経路(`run()`)と同じ意味の
-    /// `--failed`/`--report-dir` をこの分割経路にも適用するためのもの**(欠陥: 以前はここへ
-    /// 渡されておらず、複数機械にまたがるプロファイルでは黙って無視されていた)。
+    /// `--failed`/`--report-dir` をこの分割経路にも適用するためのもの**(渡し忘れると、
+    /// 複数機械にまたがるプロファイルでは黙って無視される)。
     /// **`--failed` は子へ転送しない** —— ここで `selected` を絞ってから機械へ配るので、
     /// 判定はこのマシンの `.fleetest/last-results/` の1回きりで済む(子へ `--failed` も渡すと、
     /// リモート子は**そのランナー自身の last-results**で再判定してしまい、機械ごとに結果がバラつく)。
@@ -103,7 +103,7 @@ enum DeviceMachineRunner {
         // 早い epoch になり、build を終えて戻ってきた自分が FIFO で追い越される
         let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
         setenv(DispatchTicket.environmentKey, ticket.environmentValue, 1)
-        // **この Mac のロックを、ビルド/一覧取得より前に取る**(ユーザー決定 2026-09-21
+        // **この Mac のロックを、ビルド/一覧取得より前に取る**(ユーザー決定
         // 「1つのマシンで同時に複数の run は走らせない」・規律③「取るのは run の入口」)。
         // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
         // 関わらず必ず手放す(下)。全順序どおりの本取得は `DispatchPrelock` が local を含めて
@@ -165,7 +165,7 @@ enum DeviceMachineRunner {
                 return 0
             }
             for (index, group, ids) in active {
-                // 推定に続けて**その推定が何に基づいたか**を出す(2026-08-24 受け手要望)。
+                // 推定に続けて**その推定が何に基づいたか**を出す(受け手要望)。
                 // 係数だけ出しても由来が分からないと、遅い機に偏った run を後から検証できない
                 FleetRunner.log("    \(group.machineLabel): \(ids.count) scenario(s)"
                     + " on \(group.deviceNames.count) device(s)"
@@ -238,7 +238,7 @@ enum DeviceMachineRunner {
             return active.compactMap { collected[$0.0] }
         }
         // **子の終了コードが分かった時点で解放する**(defer より早い ―― 正常終了(0/1)の機械は
-        // 従来どおり無条件、それ以外は生死を確かめてから。RemoteRunDispatcher.releaseDispatchLockAsParent
+        // 無条件、それ以外は生死を確かめてから。RemoteRunDispatcher.releaseDispatchLockAsParent
         // の宣言参照)。末尾の bare `defer { prelock.releaseAll() }` は安全網として残るが、ここで
         // 空になった held には何もしない(二重解放は無害)
         prelock.releaseAll(exitCodes: Dictionary(
@@ -324,7 +324,7 @@ enum DeviceMachineRunner {
         let unknown = durations.isEmpty ? 1.0
             : (durations.map(\.medianMs).sorted()[durations.count / 2])
         // facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
-        // machine=nil・offset=0 で MachineContext が従来の混合見積りへ退化する(FleetRunner と同じ)。
+        // machine=nil・offset=0 で MachineContext が単純な混合見積りへ退化する(FleetRunner と同じ)。
         // entryFallbackFactors(実績が無い機械の事前係数)の考え方は FleetRunner.buildMachineContext
         // のコメント参照(二重に書かない)
         let factsDir = RemoteHostFactsStore.dir(project: project)
@@ -384,7 +384,7 @@ enum DeviceMachineRunner {
     /// FleetRunner.buildMachineContext の同名ヘルパと同じ規律(手元の鍵で facts を保存、
     /// dispatchOverheadSeconds は既存値を保持)。こちらは local グループの台数が分かるので
     /// concurrentDevices も埋める。**鍵はこの機械のホスト名**("local" ではない ——
-    /// エイリアスも予約名も記録の鍵にしない。2026-08-26 ユーザー決定)
+    /// エイリアスも予約名も記録の鍵にしない。ユーザー決定)
     private static func saveLocalHostFacts(project: TestProject, hardware: MachineHardware, groups: [Group]) {
         let dir = RemoteHostFactsStore.dir(project: project)
         let localHost = RunRecorder.currentMachine()
@@ -430,7 +430,7 @@ enum DeviceMachineRunner {
             }
             // M7b: 中断された記録は「記録あり」に数えられて missing に出ない(missing は「1件も
             // 記録が無い」だけを見る)ので、別枠で知らせる。**exit code 0(正常終了)では出さない**
-            // (中断済みの記録が残るのは異常終了経路(ssh の断・kill 等)だけの想定。実測 2026-09-17:
+            // (中断済みの記録が残るのは異常終了経路(ssh の断・kill 等)だけの想定。実測:
             // リモート機は中断を受け取って scenarios/*.json に interrupted: true で書いたが、
             // 手元は「記録あり」としか見ておらず、その1本は画面にも exit=137 のログにも一度も出なかった)
             guard exitCode != 0 else { continue }

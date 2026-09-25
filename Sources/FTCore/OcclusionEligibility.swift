@@ -1,5 +1,5 @@
-// [PoC occlusion-guard] FM 視覚照合に回してよい要素かの足切り(ツリーのみ・安価)。
-// 実機計測(2026-07-21 sut-ec-mobile)で、a11y label が実描画と一致しない要素
+// occlusion-guard: FM 視覚照合に回してよい要素かの足切り(ツリーのみ・安価)。
+// 実機計測(sut-ec-mobile)で、a11y label が実描画と一致しない要素
 // (アイコン/画像=label は説明文、絵文字単体、結合セマンティクス=label に `, ` 区切り)に
 // FM を当てると約50%が誤反転すると判明。これらを FM 前に除外し、
 // 「label が verbatim にテキスト描画される要素」だけを対象にする。省略(…)は verifier 側で許容する。
@@ -9,7 +9,7 @@ import Foundation
 public enum OcclusionEligibility {
     public struct Verdict { public let ok: Bool; public let reason: String }
 
-    /// FM occlusion 照合の対象にしてよいか。ok=false の要素はガードを素通り(従来どおり pass)。
+    /// FM occlusion 照合の対象にしてよいか。ok=false の要素はガードを素通りする(pass のまま)。
     /// isUserText: label が textEquals/valueEquals の**ユーザー期待値**(リテラル)か。true のときは
     /// 結合セマンティクスの `, ` 規則を当てない(ユーザーが句読点入りテキストを意図的に検証し得るため。
     /// この規則は exist の実 a11y label=結合コンテナ検出のためのもの)。

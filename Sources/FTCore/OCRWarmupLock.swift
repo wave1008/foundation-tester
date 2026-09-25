@@ -1,6 +1,6 @@
 // `warm-ocr`(Vision の認識器のコンパイルキャッシュを同じプロセス名でコミットさせる暖機)を
 // **機械で同時に 1 本**に抑える。複数の機械に跨る profile では親が別プロセスになり、run の
-// 経路を通るたびに 1 本ずつ起きて 3 本が同じキャッシュを競ってコンパイルしていた(実測 2026-09-10)。
+// 経路を通るたびに 1 本ずつ起きて 3 本が同じキャッシュを競ってコンパイルしていた(実測)。
 // 鍵はプロセス名(= キャッシュの鍵と同じ)。flock は所有プロセスが死ねば自動で外れるので、
 // 途中で殺されても次の暖機を永久に塞がない。
 
@@ -30,7 +30,7 @@ public enum OCRWarmupLock {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("ocr-warmup-\(processName).lock")
         // **`FileManager.createFile` を使わない** —— 既存のパスに書くと別の inode に置き換わり、
-        // 先客の flock(旧 inode に付いている)と衝突しなくなる(2026-09-10 にテストで踏んだ)。
+        // 先客の flock(旧 inode に付いている)と衝突しなくなる(テストで踏んだ)。
         // O_CREAT は既存ファイルをそのまま開く
         let fd = open(url.path, O_WRONLY | O_CREAT, 0o644)
         guard fd >= 0 else { return nil }

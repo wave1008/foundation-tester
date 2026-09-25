@@ -24,7 +24,7 @@ public final class FastLaunchDriver: AppDriver {
         lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
         // **terminate は別コールにしない**(--terminate-running-process で1往復に畳む。
         // InAppLauncher.relaunch と同じ形)。分けていた頃は simctl の往復がもう1回増え、
-        // 実測で launch 1回あたり約 1.5s を捨てていた(8レーンの ios-xcuitest・2026-08-01)。
+        // 実測で launch 1回あたり約 1.5s を捨てていた(8レーンの ios-xcuitest)。
         // 未起動でも成功する(冪等)
         let clock = ContinuousClock()
         let actionStart = clock.now
@@ -34,9 +34,9 @@ public final class FastLaunchDriver: AppDriver {
         // **ランナーが前面と見るまで、接続だけで待つ**(attach = ランナー側の
         // `wait(for: .runningForeground, timeout: 5)`。待ち切れなくても XCTest の失敗を記録しない)。
         // activate はランナーがアプリを「動いていない」と見ると起動し直し、その起動が時間切れになると
-        // main が戻らず**ランナーごと落ちる**(2026-09-16: 起動直後・高負荷のシミュレータで、1 本の起動
+        // main が戻らず**ランナーごと落ちる**(起動直後・高負荷のシミュレータで、1 本の起動
         // 失敗がレーンの喪失(建て直し約 60 秒 + 再キュー)になった。ランナーの見張りを 180 秒に延ばしても
-        // main は戻らなかった = 撃った時点で手遅れ)。**待ち切れなくても activate は撃つ**(従来の挙動)が、
+        // main は戻らなかった = 撃った時点で手遅れ)。**待ち切れなくても activate は撃つ**が、
         // その事実を注記に残す —— 次にランナーが落ちたとき、この形だったかが記録から分かる
         let activatedBeforeForeground = try await attachMissedForeground(bundleID: bundleID)
         lastLaunchTimingValue = LaunchTiming(
@@ -63,7 +63,7 @@ public final class FastLaunchDriver: AppDriver {
         }
     }
 
-    /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・2026-08-02実測)。
+    /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・実測)。
     /// **フォールバックするのは「シムが使えない」ときだけ**(nil)。起動そのものの失敗は投げる
     /// (simctl で撃ち直しても同じ結果になり、本物の失敗を隠して二重に時間を使うだけ)。
     /// 強制的に simctl へ戻すには FT_SIMULATOR_CONTROL=simctl
@@ -133,7 +133,7 @@ public final class FastLaunchDriver: AppDriver {
     public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
     // 包むドライバは 用途つき版も必ず素通しする(既定実装は自分の swipe(_:) を呼ぶので
-    // ここで受けないと**フラグが最初のラッパーで落ちる**。2026-07-31 に実際に落として
+    // ここで受けないと**フラグが最初のラッパーで落ちる**。実際に落として
     // in-app のスクロール経路が丸ごと不発になった)
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {

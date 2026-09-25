@@ -12,7 +12,7 @@
 // suppressFrames プロトコル(デバイスタイルがストリーミング表示中はタイル側のポーリングを
 // 止めるため): stdin に {"cmd":"suppressFrames","devices":["<id>",...]}。devices は抑制対象の
 // 全置換(差分ではない)。省略/null は空集合(全デバイス再開)。抑制中デバイスはスクショ取得〜
-// monitorFrame emit をスキップするが monitorDevices は従来どおり全デバイス分 emit する。
+// monitorFrame emit をスキップするが monitorDevices は全デバイス分 emit する。
 // 同期相手: vscode-fleetest/src/monitorModel.ts (monitorControlLine)
 //
 // health プローブ: state=connected の Android エミュレータ(実機除く)へ低頻度でヘルス
@@ -74,7 +74,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         //   選んでいない(拡張の「(プロファイルなし)」): **台帳を1つに決めない** —— runs/ を
         //     全部畳み、手元 + リモート実行の登録簿にあるマシンの台だけを残す(MachineInventory)。
         //     決められないからと「今動いている台」だけに縮退すると、**未起動の台が1台も出ない**
-        //     (実害 2026-08-28)
+        //     (実害)
         // **実効マシンは spec に焼き込まれている**(id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
         let targets: [MonitorTarget]
         if let profile {
@@ -89,7 +89,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let merged = MachineInventory.merge(
                 sources: sources, registry: registry, existsLocally: Self.localPresencePredicate())
             // **食い違いは黙って畳まない** —— 負けた台帳の台が実在するほうだと、起動中の台が
-            // 下の unregisteredStates で「id 衝突」として落ち、画面から消える(実害 2026-09-03)
+            // 下の unregisteredStates で「id 衝突」として落ち、画面から消える(実害)
             for conflict in merged.conflicts { logStderr("[monitor] \(conflict.message)") }
             targets = merged.entries.map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
             // **0台でも続ける**(起動中の台が現れたら出す)
@@ -171,7 +171,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 直近サイクルで id 衝突により落とした合成デバイスの警告(変化したときだけ出す)
         var lastSkipped: Set<String> = []
         // その機械の dispatch.lock を毎周期読んで monitorLock を出す。**ランナー機の文脈かで
-        // 分岐しない**(2026-09-21)—— ロックは機械に1本で、リモートへのディスパッチも
+        // 分岐しない** —— ロックは機械に1本で、リモートへのディスパッチも
         // ローカル run も同じ1本を取る(CLAUDE.md「1マシンで同時に走る run は1本」)ので、
         // **手元の run も占有**。黙ると錠前と配信の退避が手元にだけ効かない。
         // **ssh は増えない**(ローカルのファイル読み)。`machine` は埋めない = 欠落が手元の綴り
@@ -226,7 +226,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 if holdActive {
                     // **リモートの台も held にする**(remote: を空で渡す)。fanout の snapshot
                     // (state=connected)を合流させると、拡張が qualifying 判定で device-stream を
-                    // 張り続け、pause 中もリモートのタイルだけ映像が更新され続ける(2026-09-01 報告)。
+                    // 張り続け、pause 中もリモートのタイルだけ映像が更新され続ける(報告)。
                     // fanout の子の観測は止めない —— 畳むのは配信段(この表示)だけ
                     let held = listedTargets.map {
                         Self.unobservedInfo(target: $0, detail: "held (fleetest monitor resume)")
@@ -236,7 +236,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // **interval で寝る(pausedPollSeconds を使わない)** —— あの 0.2s は
                     // pause 分岐が emit せずに resume を素早く検知するための値で、emit を伴う
                     // このループへ流用すると 0.2s ごとに全台ぶんの devices を出し続ける
-                    // (受け手の無人計測 = 数十分で数千イベントの洪水。2026-08-24 実害)。
+                    // (受け手の無人計測 = 数十分で数千イベントの洪水。実害)。
                     // resume の反映が最大 interval 秒遅れるのは許容(既定 2s)
                     await Self.sleepInterruptible(seconds: max(interval, 1), stop: stop)
                     continue
@@ -414,12 +414,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
             // **ブリッジを持たない iOS シミュレータは simctl で撮る**。通常は拡張の simstream が
             // 映すので出番は無いが、**配信が張れない台ではここが唯一の絵の出所**になる
-            // (リモート機・ポーリングモード)。以前はこの穴が塞がっておらず、
-            // 「落ちたときはポーリングへ落ちる」が iOS では成立していなかった(2026-08-28)。
+            // (リモート機・ポーリングモード)。ここを塞がないと、
+            // 「落ちたときはポーリングへ落ちる」が iOS では成立しない(実害)。
             // 抑制中(= そのタイルは配信で映っている)の台は重い simctl を撃つ理由が無いので外す。
             // 実機は simctl で撮れないので対象外(そちらは devicepoll がブリッジ経由で撮る)。
             //
-            // **"booted" も対象**(2026-08-29)。ブリッジの無い台の state は登録の有無で割れる ——
+            // **"booted" も対象**。ブリッジの無い台の state は登録の有無で割れる ——
             // 未登録の合成デバイスは "connected"、**台帳に載っている台は "booted"**。connected だけを
             // 見ていたので、台帳に載っていてブリッジを持たない台は絵の出所がゼロになり、タイルが
             // 「接続中」のまま永久に埋まらなかった(実行プロファイル未選択の一覧で顕在化)
@@ -433,7 +433,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 simctlCandidates.first { $0.target.id == id }
             }
             // **観測段と配信段の分かれ目はここだけ**。抑制(拡張のタイルがストリーミング表示中)は
-            // `deliver` にしか効かない —— 観測まで止めると凍結判定が丸ごと死ぬ(2026-08-11 の実害)
+            // `deliver` にしか効かない —— 観測まで止めると凍結判定が丸ごと死ぬ(実害)
             let plan = Self.capturePlan(ids: eligible.map(\.target.id),
                                         suppressed: { control.isFrameSuppressed($0) },
                                         lastProbeAt: &lastFrozenProbeAt)
@@ -524,7 +524,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// fan-out 先の決定。**プロファイルを選んでいるときはその範囲**(scope が挙げた他機)、
     /// **選んでいないとき(拡張の「起動中のデバイス」)は登録簿の全マシン** ——
     /// 実行プロファイルを引かない = どの台がどの機械に居るかを知る手掛かりが他に無いので、
-    /// 何もしないと**リモートで起動中の台が一覧に出ない**(2026-08-26 の報告)。
+    /// 何もしないと**リモートで起動中の台が一覧に出ない**(報告)。
     /// **子(--device-machine 付き)は常に空** = 入れ子のディスパッチを作らない。
     /// 重複除去は登場順を保つ(表示とログの並びを入力から決まる形にする)。I/O を持たない pure 関数
     static func fanoutMachines(
@@ -604,7 +604,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// - remote: 子(その機械の monitor)が報告してきた台。id は (platform, host, name) 由来で
     ///   親子で一致する
     /// どちらにも無い台は **「状態を取得できない」** として出す —— 観測していないものを
-    /// offline と言うと、向こうで動いていても止まって見える(2026-08-17 の実害)。
+    /// offline と言うと、向こうで動いていても止まって見える(実害)。
     /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func mergedDevices(listedTargets: [MonitorTarget], observed: [ApiMonitorDeviceInfo],
                               remote: [String: ApiMonitorDeviceInfo]) -> [ApiMonitorDeviceInfo] {
@@ -618,11 +618,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         merged += observed.filter { !listedIDs.contains($0.id) }
         // **リモートの未登録の台も足す** —— プロファイル未選択(拡張の「起動中のデバイス」)では
         // listedTargets が手元のぶんしか無いので、ここで足さないと**向こうで起動中の台が
-        // 一覧に出ない**(2026-08-26 の報告)。並びは id 順に固定する(辞書は順序を持たないため、
+        // 一覧に出ない**(報告)。並びは id 順に固定する(辞書は順序を持たないため、
         // 揺らすと拡張のタイルが毎サイクル並べ替わる)
         let mergedIDs = Set(merged.map(\.id))
         merged += remote.values.filter { !mergedIDs.contains($0.id) }.sorted { $0.id < $1.id }
-        // **WiFi 越しの分身は隠す**(2026-08-31 指示: wired を優先表示し WiFi は非表示)。
+        // **WiFi 越しの分身は隠す**(指示: wired を優先表示し WiFi は非表示)。
         // 同じ実機(udid)を、USB で繋がった機械と WiFi ペアリング済みの機械の両方が connected と
         // 報告する(devicectl は localNetwork でも state=connected)。wired の1枚が居るときだけ
         // WiFi 側(wired == false)を落とす。wired が1枚も無ければ全部残す —— どれが本物か
@@ -633,7 +633,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     }
 
     /// 誰も観測していない台。**state は "unknown"** で、offline(= 止まっている)とは区別する。
-    /// detail は hold(`fleetest monitor pause`)が理由を載せるための口(既定は従来どおり空)。
+    /// detail は hold(`fleetest monitor pause`)が理由を載せるための口(既定は空)。
     /// hold の値 "held (fleetest monitor resume)" は接頭辞 'held' を拡張の webview が
     /// 「モニタ停止中」表示の目印にする(vscode-fleetest/src/webview/monitor/deviceTiles.js と
     /// 同期。monitorHoldDetailSync.test.mjs が突き合わせる)
@@ -652,7 +652,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// ため、材料はここで畳んでからクロージャに閉じ込める。
     /// **判定できない種別に true を返さない**: 実機 iOS の列挙は devicectl(秒オーダー)が要るので
     /// ここでは払わず false = 「この機械で観測していない」に倒す。AVD は id と表示名の完全一致だけ
-    /// (取りこぼしも false 側 = 従来どおり先頭優先のまま)。見る順は MachineInventory の
+    /// (取りこぼしも false 側 = 先頭優先のまま)。見る順は MachineInventory の
     /// identity(of:) と同じ udid → avd → serial
     static func localPresencePredicate() -> (DeviceSpec) -> Bool {
         // udid の大小は台帳ごとに揺れる(simctl は大文字)ので畳んで比べる
@@ -758,7 +758,7 @@ struct MonitorTarget {
     /// 再割当をまたいで安定する)
     /// タイル・ストリーミングの識別子。**ホストを含める** —— 同名のデバイスが別の機械に居るのは
     /// 通常(一意なのは (host, name))で、含めないと拡張側の Map で1つに潰れ、12台の
-    /// プロファイルが6タイルになる(2026-08-17 の実害)。手元のデバイスは従来と同じ形にする
+    /// プロファイルが6タイルになる(実害)。手元のデバイスは id の形を変えない
     /// (単一マシン構成の id を変えない)
     var id: String {
         DeviceMachineGrouping.workerID(platform: platform, machine: spec.machine, name: spec.name)
@@ -1010,9 +1010,8 @@ enum MonitorError: Error, LocalizedError {
             return "no bridge port and no capturable device id"
                 + " (a physical device without a bridge, or an unresolved Android serial)"
         case .simctlScreenshotFailed(let udid):
-            // **事実だけ言う**(2026-09-09): 以前は「a test run is probably driving it」と書いており、
-            // run が始まる2分前(一括起動の最中)の失敗にも同じ推測を断定していた。混んでいる理由は
-            // ここからは分からない —— 起こりうる原因だけを候補として並べる
+            // **事実だけ言う** —— 混んでいる理由はここからは分からない(run・一括起動・詰まった
+            // simctl のどれかは断定できない)。起こりうる原因だけを候補として並べる
             return "`simctl io screenshot` failed or did not return within 15 s (\(udid))."
                 + " Something else is holding the simulator (a run, a bulk start/stop, or a stuck"
                 + " simctl); the connection is kept and the next cycle retries"

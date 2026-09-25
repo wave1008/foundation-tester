@@ -146,7 +146,7 @@ public struct Sel: Sendable, Equatable {
 
     /// 候補内の順番(**1 オリジン**。記法の `[n]` と同じ)。相対ステップの後なら近い順の ordinal。
     /// **`updatingTarget` は使えない** — あちらは相対ステップがあると filter 節へ潜るので、
-    /// 「対象の何番目か」ではなく「filter 節の index」になってしまう(2026-08-02 に踏んだ)
+    /// 「対象の何番目か」ではなく「filter 節の index」になってしまう(踏んだ実例)
     public func nth(_ n: Int) -> Sel {
         guard n >= 1 else { return invalidated("nth is 1-origin: \(n)") }
         func numbered(_ locator: FlowLocator) -> FlowLocator {

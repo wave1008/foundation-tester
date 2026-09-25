@@ -27,7 +27,7 @@ public enum RemoteHooksReap {
         // **グロブを使わない**。ssh の相手はログインシェル(macOS 既定は zsh)で、
         // **`for w in <マッチしないグロブ>` はシェルごと落とす**(`no matches found` で exit 1。
         // 後続の文も実行されない = まだ誰も setup していないランナーで旧 work の掃除まで消える。
-        // 2026-08-31 に実機で確認)。find なら「1件も無い」が空の出力になるだけ。
+        // 実機で確認)。find なら「1件も無い」が空の出力になるだけ。
         // **パスに空白は入らない**(RemoteLayout.validateBase / validateIssuerKey が入口で弾く)ので
         // コマンド置換の語分割で壊れない
         let users = RemoteShell.quote(layout.usersDir)

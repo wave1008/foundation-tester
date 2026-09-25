@@ -871,7 +871,7 @@ private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio
 /// 1回スクロールする(`repeat` 回ぶん繰り返す)。**コンテンツ基準**なので `scrollDown` は
 /// 下に読み進める = 指は上へ動く。fleetest のブリッジは全画面スワイプのみなので、
 /// `scrollFrame` はスクロールさせたい領域のセレクタ式(Shirates と同じく式で受ける)。
-/// **省略時は従来どおり画面中央基準の全画面スワイプ**で、マージン指定も無視される
+/// **省略時は画面中央基準の全画面スワイプ**で、マージン指定も無視される
 /// (全画面固定のままスパンを変えると始点がスクロール領域の外に出る。design.md 参照)。
 /// 時間指定(scrollDurationSeconds / scrollIntervalSeconds)は持たない(承認済み差分)
 public func scrollDown(scrollFrame: String? = nil,

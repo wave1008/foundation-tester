@@ -45,7 +45,7 @@ public struct FMUsageRecord: Codable, Sendable {
     public var byKind: [String: FMKindUsage]
     /// 最初の失敗の内容(以降は捨てる。同一原因が連続するため)。**失敗が1件も無ければ nil**。
     /// これが無いと `failures` の件数しか残らず、**なぜ落ちたかを事後に特定できない**
-    /// (2026-09-01: M1Ultra だけ 12% 失敗する調査で、合成負荷では再現せず理由を追えなかった)
+    /// (M1Ultra だけ 12% 失敗する調査で、合成負荷では再現せず理由を追えなかった)
     public var firstError: String?
     /// FMGate が FMLock.acquire() で実際に待たされた合計/p50/max。呼び出しコスト(totalMs 等)とは別物 ——
     /// 直列化を緩める判断材料(docs/results-json.md)
@@ -129,7 +129,7 @@ public enum FMHealth {
         samples[kind, default: []].append(Sample(ms: ms, ok: ok))
         if !ok, firstError == nil, let error {
             // 入れ子を畳んだ連鎖(FMHealth.describe)を切らない長さ。300 だと真因の domain が
-            // 途中で切れて特定できなかった(2026-09-01 の M1Ultra 調査)
+            // 途中で切れて特定できなかった(M1Ultra 調査)
             firstError = String(error.prefix(800))
         }
         lock.unlock()

@@ -121,7 +121,7 @@ public enum ScrollFrameCandidates {
     /// 注記に出す1件分。**同名が複数あるときは添字と矩形まで出す**のが要点 ——
     /// 名前だけ並べると `#recycler_view / #search_list_layout / #recycler_view / #recycler_view`
     /// のようになり、「どれか1つを渡せ」と言いながら**渡せる書き方が無い**。
-    /// 実測(2026-08-07・Google マップ Android): その注記どおり `#recycler_view` を渡すと
+    /// 実測(Google マップ Android): その注記どおり `#recycler_view` を渡すと
     /// `matches[0]` = 高さ126pxの横チップ行が黙って選ばれ、結果リストは1pxも動かなかった
     static func describe(_ candidate: Candidate, in snapshot: SnapshotResponse) -> String {
         let f = candidate.visible

@@ -60,7 +60,7 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
     /// **loopback を明示的に渡す形は文字面では通ってしまう**ので、宛先はここで引くこと)。
     /// **host だけを取り出して `BridgeClient(port:host:)` に渡さない** —— usb トンネルの実機は
     /// host がループバックのまま token を要求するので、`BridgeClient(endpoint:)` へそのまま渡す
-    /// (2026-09-08 iPhone SE3: モニターが host だけで生成して 401 → 生きているブリッジが「未起動」)。
+    /// (iPhone SE3: モニターが host だけで生成して 401 → 生きているブリッジが「未起動」)。
     /// リポジトリルートが取れない実行では loopback・token 無し(記録の置き場が無い)
     public static func resolved(port: UInt16) -> BridgeEndpoint {
         (try? RepoRoot.find()).map { load(port: port, repoRoot: $0) } ?? BridgeEndpoint(port: port)

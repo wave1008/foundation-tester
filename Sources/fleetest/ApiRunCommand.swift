@@ -110,12 +110,12 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// `fleetest run --app-id` と揃える。**揃えないと逃げ道の案内が届かない** ——
     /// 「app が解決できない」のエラーは --app-id を勧めるが、拡張は api run を使うので、
     /// こちらに無いと「言われたとおりにしたらオプションが無い」で行き止まりになる
-    /// (2026-08-20 の受け手報告)
+    /// (受け手報告)
     @Option(name: .customLong("app-id"),
             help: "Default app (bundle ID / package name) for scenarios that declare no @TestClass(app:). Cannot be combined with --profile (the app profile supplies the bundle ID)")
     var appID: String?
 
-    /// **用語**(2026-08-26 ユーザー決定): machine = 登録簿の名前(このマシンだけのローカル
+    /// **用語**(ユーザー決定): machine = 登録簿の名前(このマシンだけのローカル
     /// エイリアス)、host = ホスト名 / IP。解決は RemoteHostRegistry.resolve がどちらの形も受ける
     @Option(name: .customLong("runner"), help: ArgumentHelp(
         "Dispatch this run to a remote runner: a registered machine name (fleetest remote machines) "
@@ -301,7 +301,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 台の machine を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
         // run --runner <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
-        // (docs/remote-runner.md §13)。--runner 明示や全台が同じ機械なら nil が返り従来経路のまま。
+        // (docs/remote-runner.md §13)。--runner 明示や全台が同じ機械なら nil が返り通常経路のまま。
         // --debug は子プロセスの stdin へ橋渡しする経路が無いため、ここでだけ明示的に拒否する
         // (単一ホストの --runner + --debug は dispatchToRemoteHost が同様に拒否している)
         if !dryRun, let profile,
@@ -348,7 +348,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         defer { interruptRelay.stop() }
 
         // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(`fleetest run` と同じ位置・
-        // 同じ理由。ユーザー決定 2026-09-21「1つのマシンで同時に複数の run は走らせない」)。
+        // 同じ理由。ユーザー決定「1つのマシンで同時に複数の run は走らせない」)。
         // ここはワークスペースのステージング・run フック・供給の**すべてより前**で、NDJSON を
         // 1行も出していない地点でもある(取れなければ runStarted 無しで stderr + 非0 = 単機の
         // 事前検証の失敗と同じ形)。`--dry-run` はデバイスに触らないので取らない。
@@ -395,8 +395,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             let resolvedAll = try ProfileResolver.resolve(
                 project: testProject, runName: profile,
                 workspaceOverride: workspace, overrides: profileOverrides)
-            // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
-            // 2026-08-18)なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
+            // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
+            // なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
             // 何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う
             // = RemoteRunDispatcher.prepareWorkspace)。続けて appPath の原本を apps/ へ
             // ステージング(WorkspaceAppStaging。ProfileRunner.run と同じ規律 ——
@@ -420,7 +420,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
             // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
             // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
-            // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告 2026-08-24:
+            // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告:
             // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
             var effectiveDevices = devices
             var effectiveDeviceHost = deviceMachine
@@ -484,7 +484,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw RunInterruptedBeforeStartError(phase: "the run setup script")
         }
 
-        // **死活確認は開始スクリプトの後**(2026-08-19。ProfileRunner.run と同じ順序)。
+        // **死活確認は開始スクリプトの後**(ProfileRunner.run と同じ順序)。
         // 依存サービスを setup.sh が起動する構成では、先に撃つと毎回必ず「到達できない」と
         // 警告することになり、**本当に落ちているときの警告が埋もれる**(受け手からの報告)
         if let resolved = resolvedProfile {
@@ -498,7 +498,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // Android(serial 照合+インストール確認=数秒)と iOS(ブリッジ供給=壊れたブリッジの
         // 置き換えで数十秒かかりうる)を分離する。Android は先行ワーカーとして即時実行を開始し、
         // iOS は RunOrchestrator の lateWorkers として供給完了後に合流する(実測: 供給待ちで
-        // 全ワーカーの開始が 10s→81s に悪化した対策。2026-07-18)。
+        // 全ワーカーの開始が 10s→81s に悪化した対策)。
         // **供給タスクを起こす前にも中断を見る**(まだ何も起こしていないので、androidWorkersTask/
         // iosWorkersTask 自体を作らずに抜けられる)
         if interruptState.isStopped {
@@ -646,7 +646,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         var progressHandedToRunWithProfileParallel = false
         // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
         let progressStartedAt = ISO8601DateFormatter().string(from: Date())
-        /// **段階は実際にやっていることだけを言う**(ユーザー決定 2026-09-22)—— 入口ではまだ
+        /// **段階は実際にやっていることだけを言う**(ユーザー決定)—— 入口ではまだ
         /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
         /// "preparing" で始め、"building" は `ScenarioHost.build` を挟む間だけ立てて直後に戻す。
         func writeProgress(phase: String) {
@@ -781,7 +781,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         effectiveIosWorkersTask = nil
                     }
                     // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
-                    // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
+                    // (既定 false ではここへ来ない=切り離して完走を優先する通常の挙動)
                     if performanceMode {
                         let missingAndroid = LaneGate.missing(
                             expected: resolvedProfile.androidDevices.map(\.name),
@@ -1237,7 +1237,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let defaultPlatform = (!resolved.iosDevices.isEmpty
             || workers.contains { $0.platform == "ios" }) ? "ios" : "android"
 
-        // 長いシナリオを先に流すと末尾の遊休が減る(LPTOrdering。--no-lpt で従来の ID 順)
+        // 長いシナリオを先に流すと末尾の遊休が減る(LPTOrdering。--no-lpt で元の ID 順)
         let items = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },
                                       project: project, defaultPlatform: defaultPlatform,
                                       enabled: !noLPT,
@@ -1629,7 +1629,7 @@ struct ApiDispatchWaitingEvent: Encodable {
     /// **手元のロックを待っているときは `local`**(`DeviceMachineGrouping.localDisplayName` =
     /// `--device-machine` / タイルと同じ語彙。新しい綴りを作らない)。
     ///
-    /// **`ProtocolVersion` は上げない**(2026-09-21): 欄の集合も型も必須/省略も1つも変わらず、
+    /// **`ProtocolVersion` は上げない**: 欄の集合も型も必須/省略も1つも変わらず、
     /// 既存の欄に取りうる値が1つ増えるだけで、拡張の**読み方**(decode・レーンの振り分け =
     /// `laneIdOf` は worker しか見ない)は変わらない。版で守っているのは decode の互換で、
     /// ここは表示の文言だけ —— 古い拡張は `local` を機械名としてそのまま出す(名前を持たない
@@ -1689,7 +1689,7 @@ struct ApiWorkersReadyEvent: Encodable {
 }
 
 /// ApiWorkersReadyEvent の 1 ワーカー分。同期相手: vscode-fleetest/src/model.ts の WorkerInfo
-/// (id/name/platform/detail。machine は 2026-08-17 時点で未追随)。machine は
+/// (id/name/platform/detail)。machine は
 /// src/monitorDeviceModel.ts の MonitorDevice.machine と同じ名前・同じ意味(手元は省略・
 /// リモートはホスト名)で揃える。表示の組み立ては拡張側(src/runLaneModel.ts の workersReady
 /// 処理・laneLog.js の .lane-name)の責務なので、name 自体は加工しない

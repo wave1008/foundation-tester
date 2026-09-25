@@ -56,8 +56,8 @@ enum ProfileRunOrchestrator {
             recordingConfig: recordingConfig(resolved: resolved, recorder: recorder),
             isDeviceFrozen: { serial in
                 // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと
-                // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)。
-                // 凍結確定時はその場で sleep/wake 修復も試みる(判定・振り直しは従来どおり)
+                // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測)。
+                // 凍結確定時はその場で sleep/wake 修復も試みる(判定・振り直しは変えない)
                 await AndroidHealthProbe.observeBlankAndRepair(serial: serial) { log($0) }
             },
             isDeviceUnreachable: { serial in

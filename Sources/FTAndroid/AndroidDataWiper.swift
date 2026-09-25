@@ -148,7 +148,7 @@ public enum AndroidDataWiper {
         status?("stopping")
         // 停止を確認できなければ **throw**(呼び手が失敗として扱う)。**false を返して成功扱いに
         // しない** —— 「消えていないのに成功」は、この案件で最も避けたい誤った緑そのもの
-        // (2026-08-29 に実際に起きた: 台が止まっただけで中身は残り、利用者には ok:true が返った)
+        // (実際に起きた: 台が止まっただけで中身は残り、利用者には ok:true が返った)
         let running = try await stopIfRunning(avdID: avdID, deviceName: name, log: log)
 
         for target in targets {
@@ -174,7 +174,7 @@ public enum AndroidDataWiper {
 
     /// 停止確認の締切(秒)。**この時間内に消えなければ削除へ進まない**(消したい相手より
     /// 「稼働中のイメージを抜かない」ほうが重い)。フリート実行中の kill は adb の応答が詰まって
-    /// 数十秒かかることがあるため 60 秒(2026-08-29 に 30 秒では取り切れず中止した実例あり)
+    /// 数十秒かかることがあるため 60 秒(30 秒では取り切れず中止した実例あり)
     private static let stopConfirmSeconds = 60
 
     /// 起動中なら emu kill → **停止したことの確認**を待つ。確認は2つのどちらかで取れればよい:

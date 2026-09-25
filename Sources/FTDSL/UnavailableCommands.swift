@@ -15,7 +15,7 @@ import Foundation
 // MARK: - ① 置いていない別名(本体の `scroll:` 引数で書ける)
 //
 // **スクロールの指定は各コマンドの `scroll:` 引数だけ**(向き = `.down` 等 / この1コマンドだけ送らない = `.noScroll`)。
-// 関数名で指定する `*WithScrollDown` 等・`*WithoutScroll` は1つも置かない(ユーザー決定 2026-09-19)。
+// 関数名で指定する `*WithScrollDown` 等・`*WithoutScroll` は1つも置かない(ユーザー決定)。
 // Shirates には実在する名前なので全部受け止める。引数は「書かれうるもの」を既定値つきで受ける
 // (ラベル違いで `cannot find` に落ちると案内が出ない)
 

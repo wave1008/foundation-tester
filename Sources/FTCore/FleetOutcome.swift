@@ -7,9 +7,9 @@ public enum FleetOutcome {
     /// 規則は1つ: **1台でも用意できたら残りで走る**。全滅のときだけ最初のエラーを投げる。
     ///
     /// この規則が守っている実害2件:
-    /// - 2026-08-11: iOS ブリッジ供給(`BridgeProvisioner.provision`)が10台中8台readyでも
+    /// - iOS ブリッジ供給(`BridgeProvisioner.provision`)が10台中8台readyでも
     ///   残り2台の期限切れで丸ごと throw し、Flutter/RN の51本が1本も走らなかった。
-    /// - 2026-08-16: Android ワーカー構築(`ProfileWorkerFactory.buildAndroidWorkers`)が
+    /// - Android ワーカー構築(`ProfileWorkerFactory.buildAndroidWorkers`)が
     ///   `try ... map` で1台の serial 解決失敗を全体 throw にし、後続3プロファイル74本が
     ///   開始前に全滅した(健全な6台は使われなかった)。
     ///

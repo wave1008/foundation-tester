@@ -11,7 +11,7 @@ extension MCPServer {
 
     /// WebView の中に**要素が1つも無い縦帯**がある = 木がその部分を落としている疑い。
     ///
-    /// なぜ要るか(2026-08-12・Android の Chrome で実測): Chrome は web コンテンツの
+    /// なぜ要るか(Android の Chrome で実測): Chrome は web コンテンツの
     /// a11y ノードを**部分的にしか公開しない**。同じ URL を iOS Safari で読むと全部出るのに、
     /// Android では画面に描かれている「曇一時雨」「時間/降水」の表・「風/波」の行が
     /// **フルツリーにも1つも無い**(スクリーンショットで実在を確認済み)。
@@ -58,7 +58,7 @@ extension MCPServer {
     }
 
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の検知
-    /// (2026-08-13・jma.go.jp を Android Chrome で実測)。
+    /// (jma.go.jp を Android Chrome で実測)。
     ///
     /// なぜ要るか: `webViewGapNote` は webView 容器の**内側**しか測れず、`emptyTreeNote` は
     /// `elements.isEmpty` の完全一致でしか発火しない。Chrome が自分の chrome(ツールバー・
@@ -66,7 +66,7 @@ extension MCPServer {
     /// 掛からずに黙って通り抜ける —— 実測(and-browser_jma_notree)は要素19件が全部ブラウザ
     /// chrome で、画面の 88.6%(unrepresentedScreenFraction)が空白のまま報告されていた。
     ///
-    /// **既定が a11y になったので、この注記は役目を終えた**(2026-08-14 にユーザー決定で反転)。
+    /// **既定が a11y になったので、この注記は役目を終えた**(ユーザー決定で反転)。
     /// a11y から来ているのは**正常**になり、言うことが行動に繋がらない
     /// (足りないときは `missingPageContentNote` が「読み直せ」と言う)。
     /// **常に空を返す** —— 目録から外すと鍵の集合が変わるので、まず黙らせて次のラウンドで消す
@@ -89,7 +89,7 @@ extension MCPServer {
         guard !snapshot.elements.contains(where: { $0.web == true }) else { return "" }
         // ブラウザ chrome しか無い画面は別の注記の担当(こちらまで出すと二重に言う)
         guard snapshot.elements.contains(where: { ($0.identifier ?? "").isEmpty }) else { return "" }
-        // **`note: ` は各注記が自分で付ける規約**(目録側は付けない。2026-08-14 に付け忘れて
+        // **`note: ` は各注記が自分で付ける規約**(目録側は付けない。付け忘れて
         // この注記だけ書式が揃っていなかった)。末尾の改行も同様
         return "note: the page content below came from the accessibility tree, not the DOM"
             + " — the browser publishes only part of a page there, so text that IS on screen can be missing."
@@ -97,7 +97,7 @@ extension MCPServer {
     }
 
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の注記
-    /// (2026-08-13・jma.go.jp を Android Chrome で実測)。
+    /// (jma.go.jp を Android Chrome で実測)。
     ///
     /// なぜ要るか: `webViewGapNote` は webView 容器の**内側**しか測れず、`emptyTreeNote` は
     /// `elements.isEmpty` の完全一致でしか発火しない。Chrome が自分の chrome(ツールバー・
@@ -108,7 +108,7 @@ extension MCPServer {
     /// **判定は `FTCore.TreeCoverage.missingPageContent` が唯一の定義元**(閾値・ブラウザに
     /// 絞る理由・witness の実測はそちら)。ここが持つのは文言だけ
     ///
-    /// **ネイティブのモーダルにも同じ鍵で答える**(2026-09-04): 木がモーダルの部分木だけに
+    /// **ネイティブのモーダルにも同じ鍵で答える**: 木がモーダルの部分木だけに
     /// なる形はブラウザ固有ではない —— 固定コーパスの `and-dialog_confirm`(設定の確認
     /// ダイアログ。木は6要素で背後の設定画面は消えている)と `and-overflow`(地図のメニュー)が
     /// 同じ形。**注記の鍵は増やさない**(`NoteBudgetTests` が本数と鍵の集合を等号で固定して
@@ -126,7 +126,7 @@ extension MCPServer {
                 + " an assertion that something is absent would pass for the wrong reason)."
                 + " Check with ft_screenshot.\n"
         }
-        // **次の一手まで書く**(2026-08-14 に原因が判った)。Chromium は a11y を要求する
+        // **次の一手まで書く**(原因が判った)。Chromium は a11y を要求する
         // サービスが繋がってから木を作り、**出来上がるまで数秒かかる**。その窓で撮ると
         // chrome だけが返る(実測: ブリッジ起動直後 19 要素 → 5 秒後 135 要素で安定)。
         // 恒久的な故障ではないので、**まず読み直させる**(screenshot だけを勧めると
@@ -140,11 +140,11 @@ extension MCPServer {
     }
 
     /// センターX が近い(=セルが中央揃えで縦に並ぶ)ことを列とみなす許容誤差。**容器幅の比率**
-    /// (iOS=pt/Android=px の桁違いを吸収する)。実測(2026-08-12・tenki.jp 2週間天気)では
+    /// (iOS=pt/Android=px の桁違いを吸収する)。実測(tenki.jp 2週間天気)では
     /// 同じ日付列内の要素(天気アイコン・気温・降水確率)の centerX 差は 2px 未満だった
     static let gridColumnCenterToleranceRatio = 0.02
     /// 同じ行とみなす y 区間の重なり(Jaccard = 交差 / 和集合)。幅ベースの overlap/min(width) は
-    /// 不採用(2026-08-12実測): ナビの全幅リンクのような大きな要素に、無関係な小要素が
+    /// 不採用(実測): ナビの全幅リンクのような大きな要素に、無関係な小要素が
     /// 「収まっている」というだけで同じ列に巻き込まれた(実際に3件の誤検知を作った)
     static let gridRowOverlapRatio = 0.6
     static let gridMinColumns = 3
@@ -152,7 +152,7 @@ extension MCPServer {
     /// **見出し行が入る余地**の下限。格子の直上の空白が「行の間隔(pitch)の何倍あれば
     /// 1行ぶん抜けたと言えるか」。
     ///
-    /// なぜ要るか(2026-08-13・Yahoo!天気を iOS Safari で実測。**実アプリでの初めての誤検知**):
+    /// なぜ要るか(Yahoo!天気を iOS Safari で実測。**実アプリでの初めての誤検知**):
     /// 見出し行そのものが値の行と centerX で揃っていると、**見出しは格子の最上行として鎖に
     /// 取り込まれ**、その上の余白(見出しのさらに上の段落間)が「見出しが無い」と読まれる。
     /// 実測比 = 空白 / pitch: 誤検知 **1.16**(週間表: 22px / 19px)・**0.54**(時間別の表:
@@ -164,7 +164,7 @@ extension MCPServer {
     /// `webViewGapNote` は「どこかに空白がある」としか言わないので、格子であることと
     /// 見出しが無いことを名指しする。
     ///
-    /// なぜ要るか(2026-08-12・Android の Chrome で実測): tenki.jp の2週間天気で、
+    /// なぜ要るか(Android の Chrome で実測): tenki.jp の2週間天気で、
     /// 日付ヘッダ行(「日付 / 12日(水) / 13日(木) / …」)がツリーから丸ごと欠落しているのに、
     /// 値のセル(天気・気温・降水確率)は木にある。読み手は列と日付を取り違えて
     /// **警告なしに誤答**しうる。
@@ -364,7 +364,7 @@ extension MCPServer {
 
     /// **鎖の最上行が見出し行そのものに見えるか**(internal = GridWithoutHeaderNoteTests から届く)。
     ///
-    /// なぜ要るか(2026-08-15・J1順位表を iOS Safari(Simulator)/ Android Chrome(Emulator)で実測):
+    /// なぜ要るか(J1順位表を iOS Safari(Simulator)/ Android Chrome(Emulator)で実測):
     /// `gridHeaderRoomRatio` は「直上に見出し1行ぶんの空きがあるか」しか見ないので、その空きを
     /// **見出しとは無関係の別要素**(ページ内の「Ｊ１」「2026/27」セレクタが a11y から落ちている)
     /// が作った画面でも通ってしまう(iOS: room/pitch=2.6・y=438 の 7x2 / Android: y=1318 の 6x2、
@@ -398,10 +398,10 @@ extension MCPServer {
         }
     }
 
-    /// アドレス欄の identifier 既知集合(実測 2026-08-12)。Android Chrome = `url_bar` /
+    /// アドレス欄の identifier 既知集合(実測)。Android Chrome = `url_bar` /
     /// iOS Safari = `TabBarItemTitle`(通常時)・`URL`(アドレス欄をタップした状態)。
     ///
-    /// **「値が URL らしい textField」というフォールバックは置かない**(2026-08-12 に実装して撤回)。
+    /// **「値が URL らしい textField」というフォールバックは置かない**(実装して撤回)。
     /// ドットを含む値は住所欄でもメール欄でも普通に出るので、**WebView を載せたアプリの
     /// 入力画面で誤って「アドレス欄」と名乗る** —— そしてその形は固定コーパス(ブラウザ6枚は
     /// すべて既知 identifier を持つ)には1枚も無いので、「誤検知0」の確認が効かない。
@@ -420,7 +420,7 @@ extension MCPServer {
 
     /// ブラウザのアドレス欄を名指しする注記。**木だけで判定**(driver・セッション状態は使わない)。
     ///
-    /// なぜ要るか(2026-08-12実測): `ft_open_url` に同じ URL を渡しても、iOS Safari はフル版、
+    /// なぜ要るか(実測): `ft_open_url` に同じ URL を渡しても、iOS Safari はフル版、
     /// Android Chrome は `/lite/` へリダイレクトされた別のページを表示していた。ツリーの中身も
     /// 別物になるが、応答のどこにもそのことに気付く手掛かりが無かった
     static func addressBarNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
@@ -438,7 +438,7 @@ extension MCPServer {
 
     /// ラベルが**見えている文字ではなく URL の断片**になっているリンク。
     ///
-    /// なぜ要るか(2026-08-12・Android の Chrome で実測): アクセシブルな名前を持たないリンクに
+    /// なぜ要るか(Android の Chrome で実測): アクセシブルな名前を持たないリンクに
     /// Chrome は URL を入れる。実物は `"13101"`(市区町村リンク=画面には「千代田区」と描画)・
     /// `"dc2557a17fdf039c74261b0b5da109ec"`・`"details%3Fid%3Dcom…"`(400字超)。
     /// **黙っていると読み手はこれを画面の文字だと読む** —— 同じ画面を iOS Safari で読むと
@@ -447,7 +447,7 @@ extension MCPServer {
     /// **数字だけの形は判定に入れない**(`13101`): 本文の数値(気温・件数)と区別が付かず、
     /// 誤検知のほうが害になる。ここで名指しできるのは「人が書いた文には出ない綴り」だけ
     ///
-    /// **webView の中だけを見る**(2026-08-15。E2EAppCMP のライフサイクル画面が witness):
+    /// **webView の中だけを見る**(E2EAppCMP のライフサイクル画面が witness):
     /// この注記の主張は「ブラウザがアクセシブル名の無いリンクに URL を入れた」という**機構**なので、
     /// ブラウザが関与しない木で言うと**2重に誤る** —— 実測では、契約で URL を丸ごと表示する
     /// ネイティブの `Text`(`#txt_last_deeplink` = `deeplink=fte2ecmp://screen/lifecycle`)に対して
@@ -517,12 +517,12 @@ extension MCPServer {
     /// **ラベルも id も無い clickable**の注記(欠陥⑨)。座標か ref でしか指定できず、
     /// シナリオでは安定したセレクタを書けないことを伝える。実測: 経路の移動手段タブ(アイコンのみ)
     /// が id もラベルも無い `clickable` として出て、書ける手段が何も無いことに気付けなかった
-    /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細(`listed`)は既定と同じまま、
+    /// `abbreviated`(F-6 の対象拡大): 明細(`listed`)は既定と同じまま、
     /// 冒頭の長い advice だけ「初出の注記を見よ」に圧縮する。呼び手は once 経由(instance の
     /// `unlabeledClickablesNote(_:)` ラッパ)で使い分ける
     static func unlabeledClickablesNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
                                         cache: SnapshotAnnotationCache? = nil) -> String {
-        // **候補を先に絞ってから grade する**(2026-08-13 のレビュー指摘)。木の全要素を
+        // **候補を先に絞ってから grade する**(レビュー指摘)。木の全要素を
         // 無条件に grade すると、**注記が1バイトも出ない画面で最も高くつく** ——
         // 実測(debug・固定コーパス)で 233 要素の画面が 3497ms、120 要素で 1208ms。
         // ft_snapshot 全体が 203 要素で 1.2 秒なので、桁で効いてしまう。
@@ -531,7 +531,7 @@ extension MCPServer {
             $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
         }
         guard !candidates.isEmpty else { return "" }
-        // **filter の外で1回だけ求める**(2026-08-13 のレビュー指摘): クロージャの中で呼ぶと
+        // **filter の外で1回だけ求める**(レビュー指摘): クロージャの中で呼ぶと
         // 候補ごとに全要素走査と集合の再構築が走り、`cache: nil` なら `SelectorNaming` まで
         // 作り直していた —— 直前に直した性能問題と同じ形を、同じ関数で作っていた
         let twins = stableTwinFrames(candidates, in: snapshot, cache: cache)
@@ -566,7 +566,7 @@ extension MCPServer {
             + " (\(listed)\(more))\(advice)\n"
     }
 
-    /// **同じ矩形に、書けるセレクタを持つ要素が居るか**(2026-08-13・設定アプリの監査)。
+    /// **同じ矩形に、書けるセレクタを持つ要素が居るか**(設定アプリの監査)。
     ///
     /// iOS の設定アプリは行を `clickable` の容器で包み、**その中に同じ矩形の
     /// `button` + `#id`** を置く。素の判定では容器のほうが「ラベルも id も無い」に該当し、
@@ -579,12 +579,12 @@ extension MCPServer {
     /// タップ結果は同じで、木の形は OS ごとに違うため。**一致は丸めた完全一致**(近似にしない)
     /// —— 緩めるほど「隣の行のセレクタで代用できる」と誤って黙る側へ倒れるので、
     /// 観測した形(容器と中身が同一矩形)にだけ効かせる
-    /// **`.stable` の要素だけを数える**(2026-08-13 に自分で踏んだ): `selector(for:)` は索引付きの
+    /// **`.stable` の要素だけを数える**(自分で踏んだ): `selector(for:)` は索引付きの
     /// スコープ記法も返すので、素で使うと**無ラベル clickable 自身が「書ける」に該当し、
     /// 自分自身を twin として黙る**(コーパスで ios-home / ios-maps_route_options の
     /// 真陽性まで消えた)。注記の趣旨は「索引記法より良い、位置に依存しない書き方がある」
     /// なので、`.indexed` は代替として数えない
-    /// **`cache` を必ず通す**(2026-08-13 のレビュー指摘): 自前で `SelectorNaming` を作ると、
+    /// **`cache` を必ず通す**(レビュー指摘): 自前で `SelectorNaming` を作ると、
     /// 曖昧ラベル・重複 id のある画面で**同じ応答の中で二度 grade する**。しかも
     /// `MCPAnnotationCacheTests` の計数は共有インスタンスしか見ないので、
     /// **二重計算がテストから見えない**(キャッシュの doc が warn している盲点そのもの)

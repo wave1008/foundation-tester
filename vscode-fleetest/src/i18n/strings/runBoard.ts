@@ -6,7 +6,7 @@ import type { MessageDict } from "../core";
 
 export const runBoardStrings = {
   "runBoard.title": { ja: "実行中 {count}", en: "Running {count}" },
-  // ツールチップと aria-label が共有。**ON/OFF で入れ替えない**(ユーザー決定 2026-09-21)——
+  // ツールチップと aria-label が共有。**ON/OFF で入れ替えない**(ユーザー決定)——
   // このボタンは「いま開く」ではなく「開いた状態を保つ」モードのスイッチ
   "runBoard.expandAll": { ja: "全て展開を維持", en: "Keep all expanded" },
   "runBoard.collapse": { ja: "run ボードを閉じる", en: "Collapse run board" },

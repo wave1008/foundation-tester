@@ -1,7 +1,7 @@
 // RemoteProjectSync.swift
 // **リモート機で fleetest を動かす前にプロジェクト一式を送る**(デバイス起動の fan-out・
 // モニターの fan-out に共通)。`remote exec` は転送を一切しないので、向こうの作業ディレクトリに
-// profiles/ が無い(または古い)ままだとデバイスが見つからず失敗する(2026-08-17 実機で確認)。
+// profiles/ が無い(または古い)ままだとデバイスが見つからず失敗する(実機で確認)。
 //
 // 転送の規則(除外・宛先レイアウト)は run のディスパッチと同じ `RemoteTransferPlan.rsyncArgs`
 // を使う —— 二重に持つと、片方だけ除外が増えたときに「run では動くのに fan-out では動かない」になる。
@@ -61,7 +61,7 @@ enum RemoteProjectSync {
     /// 送り元の TestProjects/。**run のディスパッチと同じ基準**(`ScenarioHost.project(named:)` =
     /// 受け手パッケージ / FT_PACKAGE_ROOT)で引く。外部パッケージ構成ではプロジェクトはクローン側に
     /// 無いので、ツールのクローン(RepoRoot)から組むと rsync が 23 で落ち、リモートのタイルが
-    /// 1枚も出ない(受け手報告 2026-08-23)。クローンへのフォールバックは clone 構成で cwd が
+    /// 1枚も出ない(受け手報告)。クローンへのフォールバックは clone 構成で cwd が
     /// パッケージの外にあるとき(拡張が任意の cwd で起こす)のため
     static func localProjectsDir(project: String) -> String? {
         localProjectsDir(

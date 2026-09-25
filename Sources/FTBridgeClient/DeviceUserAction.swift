@@ -22,7 +22,7 @@ public enum DeviceUserAction: String, Sendable, Equatable {
 final class AutomationApprovalTracker {
     /// 待ちの上限に達した時点でまだ承認待ちだったときの理由(総称の「時間内に上がらなかった」の代わり)。
     /// XCTest が自分で打ち切る(60 秒・`runnerFailureReason` が名指し)とは限らない ——
-    /// 打ち切らずにツールの上限まで待つ形も実測した(iPhone SE3・2026-09-24)
+    /// 打ち切らずにツールの上限まで待つ形も実測した(iPhone SE3)
     static let notApprovedReason = "the UI-automation prompt on the iPhone (Touch ID / passcode) was not"
         + " approved. Start the bridge again and authenticate on the device while the prompt is shown"
 

@@ -102,8 +102,8 @@ extension MCPServer {
         return header + Self.pruningListing(scope) + "\n" + code
     }
 
-    /// 実体は `FTCore.SelectorNaming.asWritten`(2026-08-15 に移設。needsEscaping/computeGraded が
-    /// 使うため SelectorNaming と一緒に FTCore へ移った)。ここは呼び出し元の綴りを変えないための転送
+    /// 実体は `FTCore.SelectorNaming.asWritten`(needsEscaping/computeGraded が使うため
+    /// SelectorNaming と一緒に FTCore に置く)。ここは呼び出し元の綴りを変えないための転送
     static func asWritten(_ selector: String) -> String {
         SelectorNaming.asWritten(selector)
     }
@@ -147,7 +147,7 @@ extension MCPServer {
     /// **`#id` を持つ欄でも**。Google メッセージの `#ContactSearchField` で 3/3 再現し、
     /// 修正後は 2/2 で `type("#ContactSearchField", …)` になった。
     ///
-    /// **世代が無いときだけ最新の木へ落ちる**(世代を持たない経路 = 座標タップ等は従来どおり)。
+    /// **世代が無いときだけ最新の木へ落ちる**(座標タップ等、世代を持たない経路はこちら)。
     ///
     /// **配線(ここを呼ぶこと)も単体テストで守っている**(`DraftTypeSelectorTests`)。
     /// ただし台本には条件がある —— **操作後の木の顔ぶれを変えること**。`adoptSnapshot` は
@@ -186,7 +186,7 @@ extension MCPServer {
         // 下書きが `// TODO: no stable selector — type` になる**。実機の観測:
         //   REC action=tap  ref=14 refs=1,2,3,…   → 引ける
         //   REC action=type ref=21 refs=26,27,28,… → 引けない(木が入力後の世代)
-        // 世代を先に見て、無ければ従来どおり最新の木へ落ちる
+        // 世代を先に見て、無ければ最新の木へ落ちる
         if let resolvedRef,
            let snapshot = Self.namingSnapshot(
                ref: resolvedRef, generation: generationSnapshot(containing: resolvedRef, args: args),
@@ -233,7 +233,7 @@ extension MCPServer {
         step.maxGestureSeconds = maxGestureSeconds
         step.scale = scale
         step.replace = replace ? true : nil
-        // **下書きの本文にも格付けを残す**(2026-08-10 の掃討): 注記と ft_tap の戻り値だけに
+        // **下書きの本文にも格付けを残す**(掃討で判明): 注記と ft_tap の戻り値だけに
         // 印を出しても、その場で読まれなければ意味が無い —— 添字付きのセレクタは
         // シナリオに書かれた後で静かに壊れるので、コードの側に理由を残す。
         // **セッション内2回目以降は短縮形**(once)にする — 同じ探索で添字セレクタが何度も

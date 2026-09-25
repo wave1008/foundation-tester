@@ -26,11 +26,11 @@ extension MCPServer {
     /// `ft_launch` は「アプリが前面に来なかった」としか言わない —— 消灯そのものには一度も触れない。
     /// run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices` → `AndroidPhysicalDevice.
     /// prepareForRun`)と**同じ処理を同じ粒度で**呼ぶ(起こす・ロック解除。消灯の抑止は
-    /// 端末の設定のまま変えない——2026-09-05 のユーザー決定はそのまま尊重する)。
+    /// 端末の設定のまま変えない——ユーザー決定はそのまま尊重する)。
     /// **このセッションでその機へ初めて触れたときは準備を丸ごと**(`preparedPhysicalAndroid`)、
     /// **2回目以降は画面の状態を1往復で見て、消灯・ロック中のときだけ起こす**(`wakeIfAsleep`)。
     /// 初回だけだと、セッションの途中で消えた後の `ft_launch` が 23 秒後に「アプリが前面に来なかった」
-    /// とだけ言い、常時表示の snapshot を「システムダイアログ」と誤って言った(2026-09-11 Pixel 3a)。
+    /// とだけ言い、常時表示の snapshot を「システムダイアログ」と誤って言った(Pixel 3a で実測)。
     /// 確認は 0.1 秒前後(run のシナリオごとの確認と同じ関数)
     func prepareAndroidDeviceIfNeeded(_ resolved: AppDriver, args: [String: Any]) async {
         guard resolved is AndroidDriver, makeDriver == nil else { return }
@@ -70,7 +70,7 @@ extension MCPServer {
         if let profileName = args["profile"] as? String {
             let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
                                           platform: args["platform"] as? String)
-            // **直接ポート経路と同じ確認を通す**(2026-08-13 の掃討)。profile 経由でもブリッジは
+            // **直接ポート経路と同じ確認を通す**(掃討で揃えた)。profile 経由でもブリッジは
             // 建て直され、そのとき同じ profile キーが別の機を指し得る —— 片方だけ守ると
             // 「profile を使う利用者にだけ穴が残る」形になる
             if let cached = drivers[key] {
@@ -94,7 +94,7 @@ extension MCPServer {
                         drivers[key] = nil
                         hybridFallbackPorts[key] = nil
                     } else {
-                        // **profile のキャッシュ命中でも記憶を更新する**(欠陥②・2026-08-14): 下の
+                        // **profile のキャッシュ命中でも記憶を更新する**(欠陥②): 下の
                         // direct 経路のキャッシュ命中と同じ理由(rememberResolvedTarget のコメント参照)。
                         // platform 変数はここではまだ無い(resolveProfileTarget を経ていない)ので、
                         // connectionLostHint と同じく **記録(connectedPorts/connectedAndroidSerials)で
@@ -121,7 +121,7 @@ extension MCPServer {
                 project: project, profileName: profileName,
                 platformArg: args["platform"] as? String, prologue: &prologue)
             prologue.forEach(Self.logStderr)
-            // **警告を stderr に捨てない**(外部フィードバック 2026-08-06)。MCP クライアントは
+            // **警告を stderr に捨てない**(外部フィードバック)。MCP クライアントは
             // stderr を見ないので、「runs の name が machines のデバイスに解決できない」等の
             // 設定ミスが**実行するまで表に出なかった**。次の応答に1度だけ載せる
             pendingWarnings[key] = prologue.filter { $0.hasPrefix("⚠️") }
@@ -143,14 +143,14 @@ extension MCPServer {
             // **hybrid のときだけ fallback ポートを覚える**(それ以外は前の機の値が残らないよう nil)。
             // 主(connectedPorts)とは別枠 —— `hybridFallbackDrifted` が次回のキャッシュ命中で読む
             hybridFallbackPorts[key] = engines[key] == "hybrid" ? xcuiFallbackPort : nil
-            // **udid と port を両方記録する**(port は 2026-08-13 に追加)。`deviceIdentityChanged`
+            // **udid と port を両方記録する**。`deviceIdentityChanged`
             // はこの2つが揃っているときだけ動くので、**port を書かないとガードが黙って no-op になる**
             // (直接ポート経路で実際に踏んだ形。DeviceStateInvalidationTests が両方を守る)。
             // **記録するのは `provisioned.port` ではなく実際に繋いだ loopback ポート**
             // (`iosDriver` の probePort。理由はあちらの doc)—— 誤ったポートを記録すると
             // ガードが無関係な機のブリッジを読み、正しい呼び出しを拒否して記憶まで捨てる
             if case .ios(let provisioned, _) = target {
-                // **生成経路でも機の入れ替わりを見る**(2026-08-13 のレビュー指摘)。
+                // **生成経路でも機の入れ替わりを見る**(レビュー指摘)。
                 // キャッシュ命中側だけに置くと、`enforceVersion` の拒否(`drivers[key]` だけを
                 // nil にする)のあとブリッジが別のフリート機へ建て直された回に、
                 // 前の機の ref 世代と起動アプリが生き残る(直接ポート経路と同じ手当て)
@@ -252,7 +252,7 @@ extension MCPServer {
                     drivers[key] = nil
                     hybridFallbackPorts[key] = nil
                 } else {
-                    // **キャッシュ命中でも記憶を更新する**(2026-08-12 の実アプリ監査で踏んだ)。
+                    // **キャッシュ命中でも記憶を更新する**(実アプリ監査で踏んだ)。
                     // 記録を「ドライバを生成したとき」に紐付けると、2度目に同じ機を明示した呼び出しは
                     // ここで返って記憶を動かさず、**A→B→A のあとの省略呼び出しが B へ行く**。
                     // 実害: iOS を明示 launch した直後の無指定 ft_snapshot が Android のツリーを返し、
@@ -295,7 +295,7 @@ extension MCPServer {
             udids[key] = resolved.udid
             // **hybrid のときだけ fallback ポートを覚える**(profile 経路と同じ理由・同じ枠)
             hybridFallbackPorts[key] = resolved.engine == "hybrid" ? resolved.xcuiPort : nil
-            // **宛先は port だけでなく udid まで書く**(2026-08-12 の実アプリ監査): ブリッジは
+            // **宛先は port だけでなく udid まで書く**(実アプリ監査): ブリッジは
             // 落ちても monitor が別ポートで建て直すので、**同じセッション中にポートが動く**
             // (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手は、
             // その port が今どの機かを確かめる手段が無かった
@@ -303,7 +303,7 @@ extension MCPServer {
             connectedPorts[key] = port
             rememberResolvedTarget(platform: "ios", args: args,
                                    iosPort: port, iosUDID: resolved.udid, androidSerial: nil)
-            // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
+            // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(踏んだ実例)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
             // 生きているポートへ素で繋ぐだけ**なので、版を上げても旧ランナーが使われ続ける。
             // 実害: ブリッジ側の修正2件を入れて版も上げたのに、ft_snapshot は直る前の木を
@@ -390,8 +390,8 @@ extension MCPServer {
     /// `udid` / `port` から iOS の宛先ポートを決める(H-2)。**両方渡されたら port を優先**し、
     /// **食い違うなら明示的に失敗する** —— 黙ってどちらかを採ると、読み手は指したつもりの
     /// デバイスと別の機を操作したことに最後まで気付けない。
-    /// どちらも無ければ nil(従来どおり resolveIOSPort が既定ポート → 探索の順で決める)。
-    /// **udidPorts が空のときだけ追加調査(IO)を払う** —— 応答が1本でもあれば従来どおり素通り
+    /// どちらも無ければ nil(resolveIOSPort が既定ポート → 探索の順で決める)。
+    /// **udidPorts が空のときだけ追加調査(IO)を払う** —— 応答が1本でもあればそのまま素通り
     static func portForIOS(_ args: [String: Any]) async throws -> UInt16? {
         let port = try Self.portArgument(args)
         guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
@@ -468,7 +468,7 @@ extension MCPServer {
 
     /// `reconcilePort` が「応答したポートが1本も無い」ときに使う追加事実。**IO は呼び出し側
     /// (`udidBridgeDiagnosis`)が集め、ここへは値として渡す** —— reconcilePort 自体は
-    /// 走査を伴わない純粋関数のまま保つ(2026-08-09 の変異テストが踏んだ理由と同じ)
+    /// 走査を伴わない純粋関数のまま保つ(変異テストが踏んだ理由と同じ)
     struct UDIDBridgeDiagnosis: Equatable, Sendable {
         /// LISTEN しているが `/status` がタイムアウト上限まで無応答(= 本当に busy の根拠。
         /// `BridgeDiscovery.StatusProbe.timedOut`)。空なら「本当に居ない」
@@ -512,13 +512,13 @@ extension MCPServer {
             lookup: .unreadable("diagnosis timed out"), timedOut: true)
     }
 
-    /// `udidBridgeDiagnosis` が確かめる候補ポートの上限。**2026-09-16 実機実測**: 旧実装は全ポート
-    /// 範囲(最大32本)へ `PortHolder.describe`(`lsof` を毎回起こす同期ブロッキング)を
-    /// `withTaskGroup` で同時に起こしており、Swift の協調スレッドプールのワーカーを synchronous な
-    /// `DispatchSemaphore.wait`(`Shell.run` → `ProcessExitWait.prepareTimed`)で埋め尽くし、
-    /// `ft_status` を含む MCP プロセス全体が200秒以上前進できなくなった
+    /// `udidBridgeDiagnosis` が確かめる候補ポートの上限。**実機実測**: 全ポート範囲(最大32本)へ
+    /// `PortHolder.describe`(`lsof` を毎回起こす同期ブロッキング)を `withTaskGroup` で同時に
+    /// 撃つと、Swift の協調スレッドプールのワーカーを synchronous な `DispatchSemaphore.wait`
+    /// (`Shell.run` → `ProcessExitWait.prepareTimed`)で埋め尽くし、`ft_status` を含む
+    /// MCP プロセス全体が200秒以上前進できなくなる
     /// (CLAUDE.md「協調スレッドプールにブロッキングを載せない」— `PipeLinePump`/専用スレッドの
-    /// 規律と同じ話)。**新しい実装は lsof を一切起こさず**、候補ポートは台帳から絞る
+    /// 規律と同じ話)。**lsof は一切起こさず**、候補ポートは台帳から絞る
     /// (`candidatePorts`)。台帳が壊れて候補が異常に多くても、確かめるのはここまで
     /// (`BridgeDiscovery.isBound` 1回 300ms 上限 × この件数で worst case を秒単位に収める)
     static let maxUDIDBridgeCandidatePorts = 4
@@ -559,8 +559,8 @@ extension MCPServer {
     /// 呼んでいる)。**`udidBridgeDiagnosisBlocking` は丸ごと同期**(`await` を1つも持たない) ——
     /// これを async 関数の本体に直に書くと、`Shell.run` の完了待ち(`DispatchSemaphore.wait`。
     /// 真のスレッドブロッキング)が Swift の協調スレッドプールのワーカーをそのまま占有する
-    /// (2026-09-16 に一度この関数で lsof の並列版を踏んでいる。同じ関数がもう一度、本数が減った
-    /// だけで同じ性質を持っていた)。`TaskBudget.run` が `udidBridgeDiagnosisBudget` で
+    /// (この関数は一度 lsof の並列版でこれを踏んでいる。本数を減らすだけでは同じ性質が残る)。
+    /// `TaskBudget.run` が `udidBridgeDiagnosisBudget` で
     /// 両段(台帳走査 + probe)の合計へ上限を掛ける
     /// (CLAUDE.md「協調スレッドプールにブロッキングを載せない」)
     static func udidBridgeDiagnosis(udid: String) async -> UDIDBridgeDiagnosis {
@@ -699,7 +699,7 @@ extension MCPServer {
 
     /// `port` と `udid` の突き合わせ。**走査から切り離した純粋関数** —— 実ブリッジが要ると
     /// 「食い違い」の枝がテストで一度も実行されず、判定を壊しても素通しする
-    /// (2026-08-09 の変異テストで実際に素通しした)。
+    /// (変異テストで実際に素通しした)。
     /// **udid 側は複数ポートを許す**: 同じシミュレータに in-app / XCUITest の
     /// 2本が立つのが常態で、先頭の1本とだけ比べると正しい併記(udid + その in-app port)を
     /// 「別デバイス」と誤って拒否する(Simulator で 3/3 再現)
@@ -771,7 +771,7 @@ extension MCPServer {
     /// virtual/physical のどちらを付けるべきか断定できないので、確認の手順だけを返す。
     /// **`.notFound`(一覧は読めたが載っていない)と `.unreadable`(一覧を読めなかった)は文面を分ける**
     /// —— 後者を前者と同じ文言にすると、simctl がタイムアウトしただけの回を
-    /// 「そのデバイスは存在しない」と読者に断定させる(2026-09-17 実測: 高負荷下の5.3秒応答時に発生)
+    /// 「そのデバイスは存在しない」と読者に断定させる(実測: 高負荷下の5.3秒応答時に発生)
     static func bridgeUpSuggestion(udid: String, lookup: SimulatorCatalog.UDIDLookup) -> String {
         switch lookup {
         case .simulator:
@@ -886,7 +886,7 @@ extension MCPServer {
     /// 別物へ届く」——  ref は世代から引き、`bundleId` 省略の `ft_open_url` は記憶した起動アプリへ配る。
     /// 座標タップや素の ft_snapshot は記憶を使わないので、確認の往復を払う価値が無い。
     /// **`ft_batch` は先頭ステップだけ ref を受ける**ので steps も見る
-    /// **ref を受ける引数名は `ref` だけではない**(2026-08-13 のレビュー指摘): `ft_drag` は
+    /// **ref を受ける引数名は `ref` だけではない**(レビュー指摘): `ft_drag` は
     /// `fromRef` で受け、`verifiedElement` 経由で同じ世代から引く。名前を1つ見落とすと
     /// **その1ツールだけ穴が開いたまま**になるので、`refBearingKeys` を唯一の定義元にして
     /// `MCPServerToolDefinitionsTests` がスキーマ側と突き合わせる
@@ -896,7 +896,7 @@ extension MCPServer {
     /// **整数を受ける引数を全部説明しきる**(`MCPServerToolDefinitionsTests` がスキーマと
     /// 等号照合する)—— 新しい整数引数を足したらどちらかへ入れることになるので、
     /// 「ref を受ける引数が1つ増えたのにガードが知らない」が起きない。
-    /// **綴りの類似で判定しない**(2026-08-13 に3度踏んだ): `ref` → `fromRef` →
+    /// **綴りの類似で判定しない**(3度踏んだ): `ref` → `fromRef` →
     /// `scrollFrame` と、名前からは ref だと分からない引数が毎回出てきた
     static let nonRefIntegerKeys = ["lastN", "lines", "maxElements", "maxSwipes", "maxWidth",
                                     "port", "sinceSeconds"]
@@ -909,7 +909,7 @@ extension MCPServer {
     }
 
     /// `ft_batch` の先頭ステップが ref を持つか。**`contains("ref:")` では足りない**
-    /// (2026-08-13 のレビュー指摘): パーサは `tap ref : 12` という綴りも受理する。
+    /// (レビュー指摘): パーサは `tap ref : 12` という綴りも受理する。
     /// **空白を許す形で見る**。引用符の中の `ref:` を拾う誤検知はあり得るが、
     /// **外した場合は黙って別の機を操作する**のに対し、余分に拾っても `/status` 1往復
     /// (実測6〜9ms)なので、**安全側へ倒す**
@@ -935,26 +935,26 @@ extension MCPServer {
     /// **udid を採れないとき(実機・旧ブリッジ)は何もしない** —— 「分からない」を「変わった」と
     /// 読むと毎回記憶が飛ぶ(`keyChangedDevice` と同じ規律)。
     /// Android は engineKey に serial(= 機そのもの)が入っているので、この穴が構造的に無い
-    /// **問い合わせは掴んでいるドライバ越しにやらない**(2026-08-13 に実装2回目で踏んだ):
+    /// **問い合わせは掴んでいるドライバ越しにやらない**(実装2回目で踏んだ):
     /// 実運用のドライバは `SessionRecoveryDriver` に包まれており、**建て直した直後のブリッジは
     /// まだセッションを持たない**ので `status()` が 409 で落ちる。`try?` で握ると
     /// **機が変わったときにちょうどガードが黙る** —— 陰性が「常に false を返す検出器」と
     /// 区別できない形そのものだった(実機の陽性対照で発覚)。ポートへ直に `/status` を撃つ
-    /// **platform は引数で取らない**(2026-08-13 の掃討): 必要な2つ(`udids` と
+    /// **platform は引数で取らない**(掃討で決めた): 必要な2つ(`udids` と
     /// `connectedPorts`)は **iOS でしか埋まらない**ので、前提のほうが platform 判定より強い。
     /// profile 経路は解決前に platform 文字列を持たないため、引数で取ると呼び手ごとに
     /// 合成することになり、そこで取り違える余地が生まれる
     func deviceIdentityChanged(_ key: String, args: [String: Any]) async -> String? {
         guard Self.usesRememberedDeviceState(args),
               let recorded = udids[key] ?? nil, let port = connectedPorts[key] else { return nil }
-        // **宛先ホストは BridgeEndpoint.load で解決する**(欠陥④・2026-08-14): 127.0.0.1 決め打ちだと
+        // **宛先ホストは BridgeEndpoint.load で解決する**(欠陥④): 127.0.0.1 決め打ちだと
         // 実機の lan トランスポート(ランナーを 0.0.0.0 に bind してデバイスの LAN IP へ直接 HTTP)
         // ではデバイスに届かず、同じポート番号で loopback に応答した**別の機**の udid を読んでしまう
         // (BridgeDiscovery.isBound/scan・ExploreDriverResolver と同じ解決点に揃える)。
         // **udid を申告するのはシミュレータ上のブリッジだけ**(in-app・XCUITest とも SIMULATOR_UDID)。
         // 実機のランナーは申告しない(nil)ので、実機のポートを実機のランナー自身が答えている間は
         // 何もしない。**実機のポートをシミュレータのブリッジが奪った形は now = シミュレータの udid に
-        // なるので捕まる**(2026-09-15 の負荷テストで DSL 側に起きた F8b の形。DSL は
+        // なるので捕まる**(負荷テストで DSL 側に起きた F8b の形。DSL は
         // FTCore.BridgeIdentityCheck が同じ udid 比較を持つ)。黙るのは**実機同士の入れ替わり**
         // (両方 nil)だけで、奪う側の採番・kill は PortHolder の ownerUDID / 生きた iproxy の除外で
         // 源から止めてある。`.fleetest/bridge-<port>.device` で補う余地はあるが広げない
@@ -1147,7 +1147,7 @@ extension MCPServer {
     /// 別デバイスに化けたときに記憶が黙って乗り換わる。
     /// **`profile:` も名指しとして数える**: profile で実機を指すセッションは udid/port を
     /// 一度も渡さないので、ここが profile を見ないと2台目を触っても曖昧さガードに数えられず
-    /// 省略呼び出しが黙って別の機(仮想デバイス側)へ流れる(実機監査 2026-08-13 で実際に踏んだ)
+    /// 省略呼び出しが黙って別の機(仮想デバイス側)へ流れる(実機監査で実際に踏んだ)
     static func recordsIOSMemory(_ args: [String: Any]) -> Bool {
         (argsGaveIOSTarget(args) || args["profile"] is String) && !injectedFromMemory(args)
     }
@@ -1183,9 +1183,9 @@ extension MCPServer {
     /// キャッシュ命中、direct の新規生成・キャッシュ命中)が共に呼ぶ唯一の記録点** —— どれか1つ
     /// でも欠けると、その経路で触った機が記憶にも曖昧さの候補にも載らず、省略呼び出しが黙って
     /// 別の機(別 OS のことすらある)へ行く
-    /// (実測 2026-08-13: profile の新規生成だけが呼んでいなかったため、実機を profile で触った後に
+    /// (実測: profile の新規生成だけが呼んでいなかったため、実機を profile で触った後に
     /// 仮想デバイスを port で触ると、宛先を省いた呼び出しが拒否されず仮想デバイスへ流れた。
-    /// 2026-08-14: profile のキャッシュ命中も同じ理由で漏れていた —— profile:A → port:B →
+    /// profile のキャッシュ命中も同じ理由で漏れていた —— profile:A → port:B →
     /// profile:A の順に触ると、2回目の profile:A がキャッシュ命中で記憶を更新せず、
     /// セッションの記憶が B のまま止まった)。
     /// 何を記録するかの判定は recordsIOSMemory / recordsAndroidMemory が持つ(明示指定でなければ
@@ -1256,11 +1256,11 @@ extension MCPServer {
     /// **接続先を振り替える**ことがあり、実機は loopback ですらない。誤ったポートを
     /// `connectedPorts` に記録すると、`deviceIdentityChanged` が**無関係な機のブリッジを読んで
     /// 正しい呼び出しを拒否し、記憶まで捨てる**(穴を塞ぐより悪い)。
-    /// **確かめられないときは nil**(ガードは何もしない = 従来どおり)
+    /// **確かめられないときは nil**(ガードは何もしない)
     static func iosDriver(provisioned: ProvisionedIOSDevice, bundleID: String?) async throws
         -> (driver: AppDriver, probePort: UInt16?, xcuiPort: UInt16?) {
         guard !provisioned.physical, provisioned.engine == "inapp" || provisioned.engine == "hybrid" else {
-            // xcuitest(と実機)は従来どおり。resolve は接続先が in-app だったときの振り替えも担う
+            // xcuitest(と実機)は素のまま。resolve は接続先が in-app だったときの振り替えも担う
             let resolution = await XCUIBridgeResolver.resolve(
                 preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
@@ -1304,17 +1304,17 @@ extension MCPServer {
     /// ブリッジを掴めば hybrid になるため、引数だけからは決まらない)
     /// **1文に圧縮**: UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、
     /// 長文の苦情があった。「in-app は起動し直る」制約(dylib は起動時にしか差し込めない。
-    /// 2026-08-06 に実際に踏んだ: マップ画面で double tap → ホームから `#nav_scroll` が開いた)
+    /// 実際に踏んだ: マップ画面で double tap → ホームから `#nav_scroll` が開いた)
     /// は末尾に畳み込む。
     /// **`frameworkKey` が判明していて一致しなければ黙る**(この助言は `framework` 1つに
     /// 固有の欠陥で、他のフレームワーク(判明した uikit や、もう一方の compose/flutter)には
-    /// 効かない誤誘導になる)。**不明なら従来どおり出すが「もしこのフレームワークなら」に弱める**
+    /// 効かない誤誘導になる)。**不明なら出すが「もしこのフレームワークなら」に弱める**
     /// (uiFrameworkHints は判定に成功した回しか埋まらないので、まだ問い合わせていない接続は不明側)
     func iosEngineHint(_ framework: String, frameworkKey: AppUIFramework, _ gesture: String,
                       args: [String: Any]) -> String {
         guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
         // `fleetest bridge up --engine inapp` と案内しない —— そのフラグは存在しない
-        // (in-app ブリッジは in-app/hybrid の実行プロファイル経由でだけ立つ。2026-08-08 に確認)
+        // (in-app ブリッジは in-app/hybrid の実行プロファイル経由でだけ立つ。確認済み)
         let advice = " pass profile: naming an in-app/hybrid run profile, which starts"
             + " an in-app bridge (this relaunches the app — re-navigate before retrying)."
         switch uiFrameworkHints[Self.engineKey(args)] {
@@ -1331,13 +1331,13 @@ extension MCPServer {
 
     /// **launch する前に**確かめる。未インストールのまま `XCUIApplication.launch()` を撃つと、
     /// XCUI が記録する issue が(main queue 上 = テストのスタック外なので)ランナーごと落とし、
-    /// ブリッジが消える —— 2026-08-06 の外部フィードバック #7 の真因はこれで、
+    /// ブリッジが消える —— 外部フィードバック #7 の真因はこれで、
     /// 「Safari 操作後に切断」に見えていたのは**別ポートで先に死んでいたランナー**だった。
     /// requireLiveApp と同じ形(XCUI に触れる前に弾いて手前でエラーにする)。
     ///
     /// ブリッジ側は未インストールと未起動を区別できない(XCUIApplication はどちらも notRunning)
     /// のでホストが確かめる。iOS のシステムアプリ(springboard/Safari)も get_app_container が
-    /// runtime のパスを返すので誤って弾かない(2026-08-06 実測)。
+    /// runtime のパスを返すので誤って弾かない(実測)。
     ///
     /// **判定そのものを返す**(Bool? ではない): 「確かめられない」ときに撃つか断つかは呼び出し側
     /// (`launchGuardDecision`)がエンジン・OS を見て決める。ここで nil = 素通しへ潰すと、
@@ -1434,7 +1434,7 @@ extension MCPServer {
     /// 素では読めない。ただし**読む方法はある**(springboard 参照セッション。BridgeRouter の
     /// handleLaunch が bundleID=com.apple.springboard を非破壊で特別扱いする)。
     /// 詰まる2つの応答 —— セッション不在の 409 と、背面アプリ照会の kAXErrorServerNotFound ——
-    /// にだけ足す(2026-08-06 フィードバック #6)。
+    /// にだけ足す(フィードバック #6)。
     /// **in-app/hybrid には付けない**: in-app ブリッジは注入先アプリ専用で springboard を掴めない
     static func springboardHint(_ error: Error, engine: String?) -> String {
         guard engine == nil || engine == "xcuitest" else { return "" }
@@ -1535,17 +1535,17 @@ extension MCPServer {
     /// selector が出るまで snapshot を撃ち直す。**照合は DSL と同じ**(FTSelector →
     /// StepExecutor)なので、ここで書ける式はそのままシナリオへ持ち込める。
     ///
-    /// **完全一致が出るまで満額待つ**(2026-08-10。案B): 周回ごとに部分一致の有無だけ
+    /// **完全一致が出るまで満額待つ**(案B): 周回ごとに部分一致の有無だけ
     /// (`notationHint` はメモリ上の計算で往復を払わない)見て、最初に見えた経過秒とヒントを
     /// 覚える。**早期打ち切りはしない** —— ローディング中のプレースホルダが部分一致で先に出て、
     /// 本命が後から来る画面があるため(打ち切ると本命を待ち損ねる)
-    /// `refetched`: 撃ち直しが1回でも起きたか(2026-08-10 の ref 世代管理で追加)。false のとき
+    /// `refetched`: 撃ち直しが1回でも起きたか(ref 世代管理で追加)。false のとき
     /// `snapshot` は引数 `first` そのもの(値も ref 番号も変わっていない)。呼び手はこれを見て
-    /// `adoptSnapshot` を通すかどうかを決める —— **通さないと世代が進まない従来どおりの結果に
-    /// なるだけで無害だが、通すと事故る**: `first` は既にセッション ref(base 込み)なので、
+    /// `adoptSnapshot` を通すかどうかを決める —— **通さないと世代が進まないだけで無害だが、
+    /// 通すと事故る**: `first` は既にセッション ref(base 込み)なので、
     /// native 前提の adoptSnapshot にそのまま渡すと素の native と誤認して余計な世代を作る
     /// `elementLimit`: ポーリングの読みへ毎回かける要素上限(nil = ブリッジの既定)。
-    /// **ここを通さないと web ページの天井ラッチが待ちの経路だけ効かない**(2026-08-15 の実害):
+    /// **ここを通さないと web ページの天井ラッチが待ちの経路だけ効かない**(実害):
     /// 最初の1枚は `freshSnapshot` がラッチして天井で撮り直すのに、その直後の waitFor が
     /// 素の 120 で撮り直すため、**返る木は切り詰められたまま**になり
     /// 「maxElements を上げろ」の旧注記が出続けていた(`raiseElementLimitOnNextSnapshot` は
@@ -1605,7 +1605,7 @@ extension MCPServer {
     /// セッションのアプリが前面に居ないときの注記(居るとき・判定できないときは空)。
     /// 判定は 1 往復(/appstate)なので snapshot の1割程度。**黙って嘘を返すよりは安い**
     ///
-    /// **システム UI の面には言わない**(2026-08-28・実機 Pixel 4a で実害確認)。Android の
+    /// **システム UI の面には言わない**(実機 Pixel 4a で実害確認)。Android の
     /// `foregroundAppID()` は **topmost *app* package**(`mCurrentFocus` のアクティビティ名)を
     /// 返すので、通知シェード / クイック設定のように**アクティビティを持たない窓**が前面に居ると
     /// `com.android.systemui` は決して一致しない —— 木がまさにその面のものでも
@@ -1628,7 +1628,7 @@ extension MCPServer {
     /// **このセッションが home / appSwitcher を送ったあと、まだ ft_launch で戻していない**
     /// ときの注記。`/appstate` の照会と違い**プラットフォームに聞かない**ので、答えが
     /// 当てにならない機械(実機 iPhone 13 で前面と答えた実測)でも必ず出る。
-    /// **文言は `HybridFallbackDriver.backgroundSnapshot` と合わせてある**(2026-09-06): 背面化中は
+    /// **文言は `HybridFallbackDriver.backgroundSnapshot` と合わせてある**: 背面化中は
     /// 再前面化せず今の画面(SpringBoard 等)をそのまま読むので、対象アプリの「最後の状態」ではなく
     /// 「今そこに実際にあるもの」だと案内する
     /// **名指しは対象アプリ**: 背面化中の読みは SpringBoard を参照するので snapshot の
@@ -1638,7 +1638,7 @@ extension MCPServer {
     /// してもアプリに付いたままで、**アプリ自身の木**を返し続ける)なら「今の画面」とは言わない ——
     /// 実機 iPhone 13 では appSwitcher の直後に「the tree below is whatever is actually on screen」と
     /// 言いながらアプリの木を返していた(§19.3 担当報告の再現)。hybrid の背面化読み(SpringBoard を
-    /// 参照 = sessionBundleID が springboard)のときだけ従来の「今そこにあるもの」
+    /// 参照 = sessionBundleID が springboard)のときだけ「今そこにあるもの」
     static func sentToBackgroundNote(_ sessionBundleID: String?, treeIsAppsOwn: Bool) -> String {
         let app = sessionBundleID.flatMap { $0 == "com.apple.springboard" ? nil : $0 } ?? "the app"
         if treeIsAppsOwn {
@@ -1673,7 +1673,7 @@ extension MCPServer {
     ///
     /// `processEvidence`(Android のみ・呼び出し側が adb で引く)が `running == false` を
     /// 言っているときは、原因を「操作でアプリを離れた」から「プロセスが無い(クラッシュの疑い)」
-    /// へ差し替える —— 2026-09-05・実機 Pixel 4a で実測: #btn_crash_confirm でプロセスを落とすと、
+    /// へ差し替える —— 実機 Pixel 4a で実測: #btn_crash_confirm でプロセスを落とすと、
     /// 通常文言は launcher へ迷い込んだとしか言わず、実際に落ちたことを伝えられない。
     /// **`stoppedByTool` はさらに確度が高い事実**(推測ではなく、ツール自身が撃った操作)なので
     /// processEvidence より先に見る —— 明示 ft_clear_app_data / ft_install の直後は

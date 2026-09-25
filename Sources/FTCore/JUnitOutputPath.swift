@@ -7,12 +7,12 @@ import Foundation
 /// (`Fleetest.swift` の `writeJUnitIfRequested` / `FleetRunner.mergeAndWriteJUnit` /
 /// `RemoteRunDispatcher`。失敗 run こそ CI がレポートを要るので、結果を捨てない)——
 /// ここは「始める前に分かる分」だけを前倒しする。両者は補完関係で、
-/// 途中で埋まったディスク等は従来どおり末尾の警告が拾う。
+/// 途中で埋まったディスク等は末尾の警告が拾う。
 public enum JUnitOutputPath {
 
     /// 書けない理由。書けそうなら nil。
     /// **ディレクトリを作らない** —— 検査は引数だけで決まる純粋な判定に留め、実際の作成は
-    /// 従来どおり書き出し側が行う(検査が失敗した run の残骸を置かない)。
+    /// 書き出し側が行う(検査が失敗した run の残骸を置かない)。
     public static func unwritableReason(path: String) -> String? {
         let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return "the path is empty" }

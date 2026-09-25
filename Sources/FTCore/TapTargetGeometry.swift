@@ -62,11 +62,11 @@ public enum TapTargetGeometry {
     /// ghost ではないが**別の物に当たったかもしれない**2形の注記。空文字なら心当たり無し。
     ///
     /// ghostWarning と同じ方針で**撃ってから言う**(拒否しない)。木の幾何だけでは
-    /// 「本当に描かれているか」を決められないという 2026-08-06 の結論は、この2形にも効く。
+    /// 「本当に描かれているか」を決められないという結論は、この2形にも効く。
     /// **中身のどこでもない点を叩こうとしている**か。対話的でない容器(`other`)で、
     /// 子孫を持つのに**中心がそのどれの上にも無い**とき、タップは背後(地図・背景)へ抜ける。
     ///
-    /// 実測(2026-08-07・Google マップ Android): `#layers_fab_button` は全幅 (0,442 1080x157) の
+    /// 実測(Google マップ Android): `#layers_fab_button` は全幅 (0,442 1080x157) の
     /// 非 clickable コンテナで、中身は右端の FAB 1つだけ。中心 (540,520) は地図の上にあり、
     /// `ft_tap` は "done" を返しながら**海上の座標にピンを落として place page を開いた**。
     /// 名前が `..._button` で終わるのでエージェントが選びがちな形。
@@ -116,7 +116,7 @@ public enum TapTargetGeometry {
     /// **自分の子孫が中心を横取りしている**か。`occluder` は祖先と子孫を除外するので
     /// (親子の重なりは正常な入れ子で、数えると何でも遮蔽になる)、この形を1つも捕まえない。
     ///
-    /// 実測(2026-08-09・Apple マップの検索候補): `#Maps.PlaceTableViewCell` (20,138 362x155) の
+    /// 実測(Apple マップの検索候補): `#Maps.PlaceTableViewCell` (20,138 362x155) の
     /// 中心 (201,215) は、同じセルの中の `#FeaturedInMultipleGuidesContextLineItem`
     /// (80,202 205x18) の内側にある。ref タップは**場所カードではなくガイド一覧を開き**、
     /// 警告は一切出なかった(兄弟の重なりである `#FavoriteButton` × `#TransitDepartureRow` では
@@ -174,7 +174,7 @@ public enum TapTargetGeometry {
     /// **祖先を depth から復元するのは、ブリッジが中間ノードを間引くと嘘になる**
     /// (`clippingContainer` が同じ理由で「中に居る兄弟が2つ以上」を要求している)。
     ///
-    /// 実測(2026-08-09・Google マップ Android の検索結果): スポンサーカードの本文
+    /// 実測(Google マップ Android の検索結果): スポンサーカードの本文
     /// (`"5.0 星 (25)"` 等・depth 20〜22)は、カード容器が間引かれた結果、直前に並ぶ
     /// **写真カルーセル `#recycler_view` (0,975 1080x352)・depth 19** の子孫に見える。
     /// 本物の子は写真3枚(depth 24)だけで、本文は容器の外に落ちるため、素の判定では
@@ -193,8 +193,8 @@ public enum TapTargetGeometry {
     /// **プラットフォームに「引き当てられない」と言われて意味がある要素か**。
     ///
     /// ライブのクエリ(`GET /hittable`)は identifier / label + frame で**一意に**引き当てるので、
-    /// **名前を持たない容器は覆いが無くても普通に引き当てられない** —— 実測(2026-08-28・
-    /// 覆いの無い iOS 設定 root)で 53 要素中 12 件が unresolved だった。そのまま信号にすると
+    /// **名前を持たない容器は覆いが無くても普通に引き当てられない** —— 実測(覆いの無い
+    /// iOS 設定 root)で 53 要素中 12 件が unresolved だった。そのまま信号にすると
     /// 誤検知だらけになる。
     ///
     /// 操作可能型かつ名前を持つものに絞ると分離する: **13 画面・111 件で誤検知 0** /
@@ -209,7 +209,7 @@ public enum TapTargetGeometry {
     /// **撃つ前に言える「たぶん何も起きない/別の物に当たる」**を1文にする。空 = 心当たり無し。
     /// **申告由来(keyboard → overlay window)を先頭**に合成する —— どちらも木の遮蔽判定では
     /// 原理的に拾えず(覆っている実体が `elements` に載っていない)、確度が最も高いため。
-    /// `keyboardFrame` を渡さない呼び出しは従来どおり disabled から始まる。
+    /// `keyboardFrame` を渡さない呼び出しは disabled から始まる。
     ///
     /// 判断はしない —— 呼び出し側が注記に混ぜるか警告にするかを決める。
     /// DSL は**ステップ注記**に混ぜる(失敗にはしない): 無効な要素をわざと叩いて
@@ -286,7 +286,7 @@ public enum TapTargetGeometry {
 
     /// **容器の縁で切り詰められたタップ対象**(返すのは容器 = 名指し用)。
     ///
-    /// 実測(2026-08-31・実機 iPhone 13, 390x844, XCUITest, Compose): アカウント画面の
+    /// 実測(実機 iPhone 13, 390x844, XCUITest, Compose): アカウント画面の
     /// `#screen_account` (0,47 390x683) の下端で `button "ログアウト" id=btn_logout` が
     /// 43pt(スクロール前は 48pt)しか報告されない —— 同じ画面の他のボタンは56/48pt。
     /// 中心 (195,708)・(195,725) いずれを撃っても何も起きなかった(ブリッジは frame を
@@ -416,7 +416,7 @@ public enum TapTargetGeometry {
     /// 聞きに行くゲート)。**警告そのものではない** —— ここは粗くてよく、断定は
     /// プラットフォームのヒットテストに委ねる。
     ///
-    /// 動機(2026-08-14 実測・iOS カレンダーの月表示): 前月の行が y=47 に報告され、
+    /// 動機(実測・iOS カレンダーの月表示): 前月の行が y=47 に報告され、
     /// ナビゲーションバー(y=61..106)の `#BackButton` が中心を覆っているのに、
     /// **ナビバーは木の前にある**ので `PaintOrder.drawnAbove` が false になり遮蔽として
     /// 名指しされない。`ft_tap` は警告ゼロで成功を返し、実際には戻るボタンが押されて
@@ -432,7 +432,7 @@ public enum TapTargetGeometry {
     /// 決められない当のケース)⑸ その相手が**画面の縁の帯に居る**(= chrome)。
     ///
     /// **費用は固定コーパスで測る**(発火した要素をタップしたときだけ 72〜146ms の照会を払う):
-    /// 3094 要素中 82 件 = 2.7%(2026-09-01)。⑷ を「容器の外」にしていた頃は 14 件だったが、
+    /// 3094 要素中 82 件 = 2.7%。⑷ を「容器の外」にしていた頃は 14 件だったが、
     /// その条件は sticky ヘッダの形を**構造的に**取りこぼしていた(doc の実測)
     public static func suspectedHiddenUnderChrome(_ element: ElementInfo,
                                                   in elements: [ElementInfo],
@@ -452,7 +452,7 @@ public enum TapTargetGeometry {
         //    「描かれていない」ので数えない)。子孫と、**自分を丸ごと収める相手**は
         //    普通の入れ子なので除く。
         //
-        //    **「容器の外に居る相手」では拾えない**(2026-09-01・実機 iPhone 13 で実測):
+        //    **「容器の外に居る相手」では拾えない**(実機 iPhone 13 で実測):
         //    sticky ヘッダは victim と**同じ root scrollView の中**に居る(ヘッダ depth 10 /
         //    victim depth 12 / scrollView depth 7)。検索結果を送ると `#btn_wishlist_…` が
         //    (332,85) と報告されるがヘッダの下に潜っており、ref タップは警告ゼロで
@@ -486,7 +486,7 @@ public enum TapTargetGeometry {
 
     /// 覆っている相手が**画面の縁の帯に居る**か。chrome(バー・sticky ヘッダ)は画面に固定される
     /// ので、この条件が「ただ重なっている兄弟」と分ける。**これが無いと、商品写真の上に重ねた
-    /// お気に入りボタンのような普通の重なりまで毎回ヒットテストを払う**(2026-09-01 実測の木で
+    /// お気に入りボタンのような普通の重なりまで毎回ヒットテストを払う**(実測の木で
     /// カード内のハート4件が該当した)
     static func pinnedNearScreenEdge(_ element: ElementInfo, screen: FTRect) -> Bool {
         guard screen.height > 0 else { return false }
@@ -501,7 +501,7 @@ public enum TapTargetGeometry {
     /// コンパイルするので、ホスト専用の関数を足すと dylib に無駄が入り指紋ゲートが鳴る)
     /// **入力欄でないものへ打とうとしている**ときの警告(内側の入力欄を名指しする)。
     ///
-    /// 実測(2026-08-14・iOS ヘルスケアの初期設定・Simulator): 行は
+    /// 実測(iOS ヘルスケアの初期設定・Simulator): 行は
     /// `clickable id=…HeightEntry` が「姓/名/身長…」のラベルと入力欄を包む形で、**id を持つのは
     /// 包み側だけ**(欄は無ラベル・プレースホルダが5つとも "オプション")。素直に
     /// `type '#…HeightEntry' '170'` と書くと **ok が返るのに欄の値は "168 cm"** になった ——
@@ -527,7 +527,7 @@ public enum TapTargetGeometry {
             cursor = elements.index(after: cursor)
         }
         guard inner.count == 1, let field = inner.first else { return nil }
-        // **書ける形で名指しする**(2026-08-14 の実画面で判明): 内側の欄は無ラベル・無 id の
+        // **書ける形で名指しする**(実画面で判明): 内側の欄は無ラベル・無 id の
         // ことが多く、素の `describe` だと "textField" としか言えない —— 同型が5つ並ぶ画面では
         // 選べないので助言にならない。包み側の id があればスコープ記法、無ければ ref を出す。
         // **id の記法エスケープは `FTSelector.serialize` に委ねる** —— 手で
@@ -579,7 +579,7 @@ public enum TapTargetGeometry {
 
     /// **送るときに指を当てる領域**(覆いを避けた容器の残り)。
     /// `StepExecutor.dragGesture` は容器の下端付近から指を動かし始めるので、容器をそのまま
-    /// 渡すと**覆いの上をなぞる**ことになり何も動かない(2026-08-27 に実測: キーボードが
+    /// 渡すと**覆いの上をなぞる**ことになり何も動かない(実測: キーボードが
     /// 573..874 を占める画面で、容器 117..817 の下端付近 712 から始まっていた)。
     /// 下側の帯なら覆いの上、上側の帯なら覆いの下を返す。ドラッグに足りない高さなら nil
     public static func uncoverDragArea(container: FTRect, cover: FTRect,
@@ -612,10 +612,10 @@ public enum TapTargetGeometry {
     ///
     /// 対象にできるのは「容器の縁に貼り付いた**帯**が中心を覆っている」形だけ
     /// —— タブバー・下部の固定ボタン・上部のナビゲーションバーで、**実アプリで頻出**
-    /// (2026-08-27 に受け手の SUT の 4.7 インチ実機で7本が巻き添えで落ちた: 画面下端の
+    /// (受け手の SUT の 4.7 インチ実機で7本が巻き添えで落ちた: 画面下端の
     /// ログアウトがタブバーに潜り、タップがタブ「カート」に当たっていた)。
     ///
-    /// 次の3つは**送っても外せない**ので nil を返す(呼び手は従来どおり警告付きで撃つ):
+    /// 次の3つは**送っても外せない**ので nil を返す(呼び手は警告付きで撃つ):
     /// - 覆いが**操作可能でない**(暗幕・装飾)—— 送っても同じ物が付いてくることが多く、
     ///   「別の物に当たる」実害も薄い
     /// - 覆いが**容器の半分以上**を占める(全画面のモーダル。送っても外に出ない)
@@ -645,7 +645,7 @@ public enum TapTargetGeometry {
         // 必ず対象の中心を含むので、上下どちらの比較も成り立たない(最初の実装の誤り)。
         // **「容器の縁に接しているか」でも決まらない** —— タブバーの下端は
         // セーフエリアぶん内側にあり、内容を潜らせた容器の下端とは揃わない
-        // (2026-08-27 に E2E-iOS の witness で実測: 帯 778..840 / 容器 200..873)。
+        // (E2E-iOS の witness で実測: 帯 778..840 / 容器 200..873)。
         // 中心線を跨ぐ覆い(中央のダイアログ等)は「どちらへ送っても外れない」ので nil
         let containerCentre = container.y + container.height / 2
         let overBottom = over.y + over.height
@@ -683,7 +683,7 @@ public enum TapTargetGeometry {
     /// frame の中心を撃つ経路では確実に空振りになる。これも**frame の中心を撃つときにしか
     /// 言えない**(`visibleTapRect` で見えている部分へ寄せたなら撃つ点は画面内)。
     ///
-    /// 実測(2026-08-08・Compose iOS のカレンダー): ヘッダ裏へスクロールで抜けた
+    /// 実測(Compose iOS のカレンダー): ヘッダ裏へスクロールで抜けた
     /// `#slot_07` (0,-46 402x56) — 中心 y=-18 — への ref タップが "done" を返し、
     /// 画面は 1px も変わらなかった。スクロール直後の木は縁の外の要素を frame ごと残すので、
     /// エージェントが古い位置感覚のまま撃つとこの形になる
@@ -728,7 +728,7 @@ public enum TapTargetGeometry {
     /// 中心が画面外なら oversized な相方の軸に免除を借りて found と言ってはいけない
     /// (実例: 画面 402x874 で高さ1000のページャセルが x=800 = 横に完全に画面外。縦が
     /// oversized でも、収まる横軸の画面外は無視できない)。両軸とも oversized/ゼロなら
-    /// 判定材料が無いので nil(従来の全体免除と同じ帰結)。MCP 側の scroll_to 再照合
+    /// 判定材料が無いので nil(先述の全体免除と同じ帰結)。MCP 側の scroll_to 再照合
     /// (`MCPServer+Snapshot.swift`)もこれへ揃える(単独の `offscreenAdvisory` ではなくこちら)
     public static func offscreenScrollGateAdvisory(for element: ElementInfo, screen: FTRect) -> String? {
         guard let c = offscreenScrollGateCentre(for: element, screen: screen) else { return nil }
@@ -758,14 +758,14 @@ public enum TapTargetGeometry {
 
     /// 「中心が中身のどこにも乗らない」。**frame の中心を撃つときにしか言えない** ——
     /// 呼び出し側が見えている部分の中心へ寄せる(`StepExecutor.visibleTapRect`)場合、
-    /// 撃つ点が変わるので「背後へ抜けた」は嘘になる(2026-08-08 のレビュー)
+    /// 撃つ点が変わるので「背後へ抜けた」は嘘になる
     public static func missedContentAdvisory(for element: ElementInfo, in elements: [ElementInfo],
                                              screen: FTRect) -> String? {
         guard let inner = missesItsOwnContent(element, in: elements, screen: screen) else {
             return nil
         }
-        // **`describe` と同じ「名指し」であってセレクタの保証はしない**(2026-08-15。
-        // ラベルはエスケープを通していない)。「代わりにこれを狙え」という助言だが、
+        // **`describe` と同じ「名指し」であってセレクタの保証はしない**
+        // (ラベルはエスケープを通していない)。「代わりにこれを狙え」という助言だが、
         // 対象は読み手が見て選ぶための短い名前で、DSL に書ける保証まで負わせていない
         let name = inner.identifier.map { "#\($0)" } ?? inner.label.map { "\"\($0)\"" } ?? inner.type
         return "the target is not interactive and its centre is not over any of its own content,"
@@ -786,7 +786,7 @@ public enum TapTargetGeometry {
     /// (キーボードはスナップショットの対象外)ので、ブリッジが申告する `keyboardFrame` でだけ
     /// 言える。**警告のみ**(新しい検知は拒否でなく警告から。start-new-detections-as-warnings)。
     ///
-    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
+    /// 実測(iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
     /// ツリー内の inputView は子孫が全部除外された空葉になり、既存の空葉コンテナ除外
     /// (`OcclusionGeometry.isBlankLeafContainer`。誤検知対策)で遮蔽候補から外れる —— だからツリー由来の
     /// 遮蔽判定では原理的に拾えない。
@@ -806,14 +806,14 @@ public enum TapTargetGeometry {
     }
 
     /// 容器の縁で細い帯に切れた要素(ラベルは付いているが実際には掴めないほど狭い)。
-    /// 実測(2026-08-08・Apple マップ): 右端で幅9pxに切れたタブ「サンライズ瀬戸」(9x137)。
+    /// 実測(Apple マップ): 右端で幅9pxに切れたタブ「サンライズ瀬戸」(9x137)。
     /// アイコン(9x13 等)は縦横比条件(細い辺の対辺が `sliverLongDimension` 未満)で除外される
     public static let sliverThinDimension: Double = 10
     public static let sliverLongDimension: Double = 30
 
     /// **画面端に接した**細い帯の閾値。sliverThinDimension(10)より緩めるが、
     /// デザイン上ただ細いだけの要素(端に接していない)を巻き込まないよう画面端接触を必須にする
-    /// (2026-08-10。実測: Google マップのモードタブ「2 時間 26」が (1068,449 12x59)・画面幅1080で
+    /// (実測: Google マップのモードタブ「2 時間 26」が (1068,449 12x59)・画面幅1080で
     /// 幅12px、素の閾値10を取りこぼした)
     public static let edgeSliverThinDimension: Double = 14
     /// 画面端とみなす許容誤差(pt/px)。縁の丸め差を「接していない」と誤判定しないための猶予

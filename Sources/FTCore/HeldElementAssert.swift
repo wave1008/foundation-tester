@@ -1,5 +1,5 @@
 // 掴んだ時点の要素だけで判定できるアサーション(FTDSL のチェーンの初回判定に使う)。
-// `exist("#x").textIs("y")` は掴んだ値で先に判定し、満たしていなければ従来どおり
+// `exist("#x").textIs("y")` は掴んだ値で先に判定し、満たしていなければ
 // StepExecutor が取り直しながらポーリングする(満たしていればデバイス往復が 0 回になる)。
 //
 // **判定規則は StepExecutor と同じ関数を使う**(matchedText / negativeAssertSatisfied)。

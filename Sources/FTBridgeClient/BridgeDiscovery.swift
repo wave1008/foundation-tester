@@ -2,7 +2,7 @@
 //
 // **既定 8123 は固定できない**: `bridge up` は稼働中ブリッジの再利用や pid ファイルの残りで
 // 別ポート(8124 等)を選ぶ。既定を決め打ちすると全ツールが接続待ちでタイムアウトし、
-// 利用者は全呼び出しに port: を書く羽目になる(2026-08-06 の外部フィードバック #2)。
+// 利用者は全呼び出しに port: を書く羽目になる(外部フィードバック)。
 //
 // 方針(ユーザー決定): **生きているブリッジが1本だけなら自動採用**・複数なら
 // デバイス名付きで列挙してエラー(取り違えを作らない)・0本なら起動方法を返す。
@@ -33,7 +33,7 @@ public enum BridgeDiscovery {
     }
 
     public enum Decision: Equatable {
-        /// 指定/既定ポートが応答した = 従来どおり
+        /// 指定/既定ポートが応答した(通常の経路)
         case usePreferred
         /// 生きているのが1本だけ
         case adopt(Found)
@@ -47,7 +47,7 @@ public enum BridgeDiscovery {
     /// 判断だけ(IO 無し)。材料は呼び出し側が集める。
     ///
     /// **`preferredBound` を無視して自動採用してはいけない**: XCUITest の quiescence 待ちで
-    /// ブリッジのスレッドは数十秒ブロックする(2026-08-06 のログで実測 33.7s)。この間は
+    /// ブリッジのスレッドは数十秒ブロックする(ログで実測 33.7s)。この間は
     /// /status が返らないが待受は続いているので、応答なしを死と読むと**別デバイスのブリッジへ
     /// 黙って乗り換える** —— 自動採用が防ぐはずの取り違えを自分で作ることになる
     public static func decide(preferredAlive: Bool, preferredBound: Bool, found: [Found]) -> Decision {
@@ -148,7 +148,7 @@ public enum BridgeDiscovery {
     }
 
     /// `timedOut` と `transportFailed` を分ける境界(タイムアウト上限に対する割合)。
-    /// 実測(2026-09-22, 実機 iPhone SE3・固まった iproxy 越し): 転送だけが残った切断は
+    /// 実測(実機 iPhone SE3・固まった iproxy 越し): 転送だけが残った切断は
     /// connect 後 ~2.5ms で終わる・本当に busy な XCUITest は上限まで応答を保持する。
     /// 上限の半分を境にしても両実測に大きな余裕がある
     static let transportFailureFraction = 0.5
@@ -173,7 +173,7 @@ public enum BridgeDiscovery {
             case DriverError.bridgeUnreachable, DriverError.bridgeConnectionRefused:
                 let classification = classifyNoResponse(
                     elapsedMs: continuousClockMs(clock.now - start), timeoutSeconds: timeoutSeconds)
-                // 実測(2026-09-24 負荷テスト): 忙しい XCUITest(同 pid のまま quiescence 待ちで
+                // 実測(負荷テスト): 忙しい XCUITest(同 pid のまま quiescence 待ちで
                 // 数十秒ブロック)の listen backlog が溢れると、他クライアントの connect は
                 // connect 直後に切れ、固まった実機の iproxy と同じ指紋になる。loopback だけ
                 // listener の実体を確かめてから再分類する(LAN 経由の実機はここに来ない)
@@ -272,7 +272,7 @@ public enum BridgeDiscovery {
     /// **実機に名前引きは原理的に当たらない**(`/status.device` は汎用名 "iPhone" を返し、
     /// プロファイルの表示名 "iPhone wave(実機)" とは一致しない)。この段が抜けていたために
     /// **生きている実機ブリッジが同一デバイス判定に当たらず、2本目のランナーが立っていた**
-    /// (2026-08-14 実測。1台の実機に2本立てると2本目の起動が1本目を即殺し、
+    /// (実測。1台の実機に2本立てると2本目の起動が1本目を即殺し、
     /// 約5分半後に1本目のハング締切の後始末が2本目を道連れにする)
     static func resolveUDID(reported: String?, recorded: String?,
                             matchedByName: String? = nil) -> String? {
@@ -282,7 +282,7 @@ public enum BridgeDiscovery {
     /// 本人確認(`FTCore.BridgeIdentityCheck`)に渡す前の status。**申告が無いときだけ**記録で udid を
     /// 補う(規則は `resolveUDID`)。補わずに渡すと、実機の XCUITest ランナー(udid を申告しない)は
     /// 「udid 不明・エンジン一致 = 一致」に倒れ、**既定ポートに居る別の実機のブリッジを自分のものとして
-    /// 掴む**(実地 2026-09-24: iPhone wave のライブ操作に 8123 の iPhone SE3 の画面が出た)
+    /// 掴む**(実地: iPhone wave のライブ操作に 8123 の iPhone SE3 の画面が出た)
     public static func statusForIdentityCheck(_ status: StatusResponse, port: UInt16, repoRoot: URL?) -> StatusResponse {
         guard status.udid == nil,
               let recorded = repoRoot.flatMap({ BridgeDeviceRecord.load(port: port, repoRoot: $0) }) else {

@@ -41,7 +41,7 @@ public struct BridgeLauncher {
     }
     /// **起動ごとに別名**(`bridge-<port>-<起動時刻ms>.xcresult`)。同名を使い回すと、前回の束が
     /// 残っていた/消した直後に書き戻された回に xcodebuild が `Existing file at -resultBundlePath` で
-    /// 1 秒で死ぬ(2026-09-14 に 2 台で実測。台帳 §19.25)。古い束は startDetached が同じポートの
+    /// 1 秒で死ぬ(2 台で実測。台帳 §19.25)。古い束は startDetached が同じポートの
     /// ぶんを掃く(`staleResultBundles`)ので溜まらない
     func resultBundlePath(stamp: String) -> URL {
         resultBundleDirectory.appendingPathComponent("bridge-\(port)-\(stamp).xcresult")
@@ -59,8 +59,8 @@ public struct BridgeLauncher {
     }
 
     /// **`physical` に既定値を置かない** —— 呼び忘れると DerivedData も -destination も
-    /// シミュレータ用のまま実機へ向けて起動し、確実に失敗する(2026-08-30 に
-    /// LiveBridgeAutoStarter が実際にこれを踏んでいた)。新しい呼び出し元の呼び忘れは
+    /// シミュレータ用のまま実機へ向けて起動し、確実に失敗する(LiveBridgeAutoStarter が
+    /// 実際にこれを踏んでいた)。新しい呼び出し元の呼び忘れは
     /// コンパイルで止める(BridgeLauncher.stopAll の skipPhysical と同じ規律)
     public init(repoRoot: URL, device: String = "iPhone 17 Pro",
                 port: UInt16 = BridgeAPI.defaultPort, physical: Bool) {
@@ -90,7 +90,7 @@ public struct BridgeLauncher {
     /// project.yml **またはランナーのソース**が .xcodeproj より新しいか
     /// (取得できなければ「古くない」= 再生成しない)。
     ///
-    /// **ソース側も見るのが要点**(2026-08-11 に踏んだ): project.yml はディレクトリを指すので、
+    /// **ソース側も見るのが要点**(実際に踏んだ): project.yml はディレクトリを指すので、
     /// ランナーへファイルを1本足しても manifest の mtime は動かない。manifest だけを見ていると
     /// **新しいファイルがターゲットに入らないまま**ビルドが走り、`cannot find X in scope` で
     /// 落ちる(原因が project 生成側にあると気付きにくい)
@@ -118,7 +118,7 @@ public struct BridgeLauncher {
         let signing = signingArguments.joined(separator: "\n")
         // 署名設定(チーム・接頭辞)が変わっても増分ビルドは旧 bundle id のランナー .app を
         // 作り直さない。ビルドは成功するのに起動が「The requested application
-        // com.example.… is not installed (-10814)」で落ちる(2026-08-31 実害)ので成果物ごと捨てる
+        // com.example.… is not installed (-10814)」で落ちる(実害)ので成果物ごと捨てる
         if Self.signingMismatch(
             stored: try? String(contentsOf: signingFingerprintPath, encoding: .utf8),
             current: signing) {
@@ -206,7 +206,7 @@ public struct BridgeLauncher {
     /// 「xctestrunNotFound のときだけ build」の起動ヘルパー(XCUIBridgeResolver /
     /// LiveBridgeAutoStarter)が旧成果物を起動し続けないための前段
     /// (BridgeProvisioner.prepareSharedBuilds と同じ判定)。xctestrun 不在は何もしない
-    /// = 従来の xctestrunNotFound → buildForTesting 経路に任せる
+    /// = xctestrunNotFound → buildForTesting 経路に任せる
     public func rebuildIfStale() throws {
         guard let xctestrun = try findXCTestRun() else { return }
         if Self.runnerRebuildReason(repoRoot: repoRoot, xctestrun: xctestrun,
@@ -231,7 +231,7 @@ public struct BridgeLauncher {
     /// 未ビルド(指紋なし)は nil = 何も言わない —— 作り直しの必要ではなく未導入なので、
     /// ここで警告すると初回の受け手に「壊れている」と読める。
     ///
-    /// **成果物の Info.plist を見てはいけない**(2026-08-25 に誤検知): `XCTRunner.app` は
+    /// **成果物の Info.plist を見てはいけない**(誤検知した): `XCTRunner.app` は
     /// ビルドの生成物ではなく **プラットフォーム SDK のテンプレートのコピー**で、その
     /// `DTXcodeBuild` はテンプレート自身の値(Xcode 27 beta 6 では `27A252`)のまま残る。
     /// `xcodebuild -version` の `27A5252f` とは体系が違うので、建て直しても永久に警告し続ける。
@@ -263,7 +263,7 @@ public struct BridgeLauncher {
 
     /// 実機ビルドは署名が要る。team は ~/.config/fleetest/config.json の developmentTeam か
     /// FT_DEVELOPMENT_TEAM。-allowProvisioningUpdates で App ID/プロファイルの自動登録を許す。
-    /// シミュレータでは空(署名不要のまま従来どおり)
+    /// シミュレータでは空(署名不要)
     func codeSigningArguments() throws -> [String] {
         guard physical else { return [] }
         let signing = LocalConfig.codeSigning()
@@ -433,7 +433,7 @@ public struct BridgeLauncher {
 
     /// ready 直後の実機ランナーへ screenshot を1回撃ち、ログに認可エラーが出たらその理由を返す。
     /// 画像は認可が無くても返るのでログでしか分からない。ログは xcodebuild 経由で遅れて届くので
-    /// 1 秒おいてもう1回だけ読む(届かなければ従来どおり ready = 見逃しは退行ではない)
+    /// 1 秒おいてもう1回だけ読む(届かなければそのまま ready 扱い = 見逃しは退行ではない)
     private func unauthorizedAfterReady(client: BridgeClient) async -> String? {
         _ = try? await client.screenshot()
         for attempt in 0..<2 {
@@ -466,7 +466,7 @@ public struct BridgeLauncher {
                   let pid = Int32(trimmed[..<spaceIdx]) else { continue }
             // **同じポートに居る「別のデバイスの」ランナーは残骸ではない**(RunnerDestination)。
             // xctestrun のファイル名はポートしか持たないので、ブリッジを失った2台が同じ既定ポートへ
-            // 倒れると互いの生きたランナーを殺し合う(実地 2026-09-23 の負荷テスト)
+            // 倒れると互いの生きたランナーを殺し合う(実地の負荷テストで確認)
             if let other = RunnerDestination.belongsToOtherDevice(
                 command: String(command), ourDevice: device) {
                 ConsoleOut.err("→ port \(port) is running another device's xcuitest runner"
@@ -510,7 +510,7 @@ public struct BridgeLauncher {
                 // **トンネルだけが残っている**(ブリッジは死に、実機の iproxy がポートを握ったまま)。
                 // 台帳(`iproxy-<port>.pid`)が既に消えているとここまで来るが、「起動していません」は
                 // 事実と食い違う —— このポートを名指しで止めに来た呼び手にとっては、その残骸こそが
-                // 止めたいもの(doctor の案内先もここ。実地 2026-09-23 → maintainer-notes §46)
+                // 止めたいもの(doctor の案内先もここ → maintainer-notes §46)
                 if PortHolder.stopTunnelHolder(port: port) {
                     ConsoleOut.err("stopped the leftover USB tunnel holding port \(port)"
                         + " (its bridge was already gone)")
@@ -679,7 +679,7 @@ public struct BridgeLauncher {
 
     /// **生きたランナーの居ないポートの束**(純粋関数)。起動時の掃除(`staleResultBundles`)は
     /// 同じポートで起動し直したときしか消さないので、復活のたびにポートが変わると古い束が
-    /// 誰にも消されず残る(2026-09-16: 23 束・4.1GB。束の中身は XCTest のセッションログで、ランナーが
+    /// 誰にも消されず残る(実測: 23 束・4.1GB。束の中身は XCTest のセッションログで、ランナーが
     /// 生きている間ずっと伸びる = 実機で約 230MB/時)。生きているランナーの束には触らない
     static func orphanResultBundleNames(_ names: [String], livePorts: Set<UInt16>) -> [String] {
         names.filter { name in
@@ -884,7 +884,7 @@ public struct BridgeLauncher {
     /// 停止する。戻り値は停止したポート一覧。
     /// - skipPhysical: true なら実機向けランナー(isPhysicalRunnerCommand で同定)を対象から外す。
     ///   **一括停止(devices down の掃討・`bridge down --all`)はどちらも false で呼ぶ**
-    ///   (ユーザー決定 2026-09-08: 実機のブリッジも止める。端末そのものは呼び出し側が触らない)。
+    ///   (ユーザー決定: 実機のブリッジも止める。端末そのものは呼び出し側が触らない)。
     ///   **既定値は置かない** —— 新しい呼び出し元が選択を明示せず素通りするのを防ぐ。
     ///   true 側を選ぶと、除外した実機は kill もせず pid ファイルも消さない(生きているランナーの
     ///   ファイルを消すとポート採番(assignPort)が壊れる)
@@ -939,7 +939,7 @@ public struct BridgeLauncher {
     /// log: 実機で「失敗ではないが進まない」条件(端末ロック等)を1回だけ知らせるための出力先
     /// **xcodebuild のテストセッションが既に終わっている**ことをログから判定する。
     /// 終わっていれば ready には二度とならないので、待ち続けても既定 180 秒を捨てるだけ
-    /// (2026-08-05 実測: 未インストールのアプリを launch してランナーが落ちた後、次の
+    /// (実測: 未インストールのアプリを launch してランナーが落ちた後、次の
     /// provision がこの待ちで 3 分級になった)。**pid の生死では判定できない** ——
     /// テストが失敗しても xcodebuild は後始末の間だけ生きており、`ps` にも残る。
     /// ログは起動のたびに空で作り直される(startDetached の createFile)ので、
@@ -1027,7 +1027,7 @@ public struct BridgeLauncher {
                 // **理由が分かる終わり方は名指しで落とす**(証明書未信頼・Developer Mode・
                 // automation mode のタイムアウト = IOSDeviceTransport.runnerFailureReason)。
                 // 先に総称の「session already ended」を投げると、ログに理由が書いてあるのに
-                // 呼び手には届かない(2026-09-07 iPhone SE3 で実測)
+                // 呼び手には届かない(iPhone SE3 で実測)
                 _ = try physicalDiagnosis()
                 throw LauncherError.timedOut("the test session already ended (\(marker))",
                                              logPath.path)
@@ -1075,7 +1075,7 @@ public struct BridgeLauncher {
             try await Task.sleep(nanoseconds: 2_000_000_000)
         }
         // **締切後にもう一度読む**: xcodebuild は諦めた時点で初めて理由をログに書くことがある
-        // (ロック中の deviceprep エラーは実測でそう。2026-07-25)。ループ内の読み取りだけでは
+        // (ロック中の deviceprep エラーは実測でそう)。ループ内の読み取りだけでは
         // 「network connection was lost で 180 秒後にタイムアウト」という無情報な失敗になる
         blocker = try physicalDiagnosis() ?? blocker
         if blocker == nil, approval.pending {
@@ -1186,7 +1186,7 @@ public struct BridgeLauncher {
 
     /// ランナーのソースが xctestrun より新しいか(InAppLauncher.needsBuild と対の鮮度判定)。
     /// これが無いと prepareSharedBuilds は「xctestrun 不在」しか見ず、ソース変更後も旧バイナリを
-    /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。2026-07-28 実害)。
+    /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。実害)。
     /// nil = 作り直さない
     static func runnerRebuildReason(repoRoot: URL, xctestrun: URL, signing: String,
                                     toolchain: String? = ToolchainFingerprint.current())
@@ -1210,9 +1210,9 @@ public struct BridgeLauncher {
 
     /// ランナーのビルド入力の最終更新時刻。入力 = **`BridgeSourceSet.xcuitest`(ブリッジの入力の正本:
     /// UITests と、project.yml が取り込む共有 FTCore ファイル)** + project.yml + ホストアプリ(FleetestRunnerApp。
-    /// 挙動には効かないがビルドには入る)。自前の一覧を持たない —— 以前は共有ファイルのうち
-    /// SnapshotDedupe.swift / TypeReadback.swift を落としていて、それだけを変えても旧ビルドのまま走った。
-    /// 取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
+    /// 挙動には効かないがビルドには入る)。自前の一覧を持たない —— 一覧が SnapshotDedupe.swift /
+    /// TypeReadback.swift のような共有ファイルを1つでも落とすと、そのファイルだけを変えても
+    /// 旧ビルドのまま走ってしまう。取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
     static func newestRunnerSourceTimestamp(repoRoot: URL) -> Date? {
         guard let bridgeInputs = try? BridgeSourceSet.xcuitest.files(repoRoot: repoRoot) else { return nil }
         var inputs = bridgeInputs.map { repoRoot.appendingPathComponent($0) }
@@ -1239,7 +1239,7 @@ public enum LauncherError: Error, LocalizedError {
     case commandFailed(String, String)
     case xctestrunNotFound(String)
     /// port: どの pid ファイルを探して無かったか。**素の "bridge.pid" と言わない** ——
-    /// 実在するのは常に `bridge-<port>.pid` で、その名前で grep しても何も出ない(2026-09-04)
+    /// 実在するのは常に `bridge-<port>.pid` で、その名前で grep しても何も出ない
     case notRunning(port: UInt16?)
     /// ポートでブリッジが応答しているのに、このリポジトリの状態ファイル(.fleetest/)に記録が無い。
     /// 別クローン・別ワークスペースが起動したブリッジを掴んでいる状態。

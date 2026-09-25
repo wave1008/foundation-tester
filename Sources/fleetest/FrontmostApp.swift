@@ -4,7 +4,7 @@
 //   ① 起動中アプリの bundle ID(ホスト: シミュレータは `simctl spawn <udid> launchctl list` の
 //      UIKitApplication 行、実機は devicectl の processes × apps = IOSPhysicalRunningApps)
 //   ② それぞれが前面か(ブリッジ: `POST /appstate` = XCUIApplication.state。公開 API)
-// ②単独では決まらない —— **SpringBoard は system shell で常に前面と答える**(実測 2026-09-22:
+// ②単独では決まらない —— **SpringBoard は system shell で常に前面と答える**(実測:
 // 設定アプリを開いた状態で springboard / Preferences の両方が true、他の起動中 9 アプリは false)。
 // 除外してちょうど1つ残ったときだけ採る。
 //
@@ -18,7 +18,7 @@ enum FrontmostApp {
     /// - SpringBoard: system shell。背面に回らないので常に前面と答える
     /// - ランナー自身: XCUITest のランナーアプリ
     /// - SpringBoard の裏方(ウィジェットのレンダラ・ビューサービス): 画面の一部を描くだけで、
-    ///   利用者から見ればホーム画面。**実測 2026-09-22: ホーム画面で
+    ///   利用者から見ればホーム画面。**実測: ホーム画面で
     ///   `com.apple.chrono.WidgetRenderer-Default` が前面と答える**(SpringBoard も true、他は false)。
     ///   落とさないとセッションがここを向き、**home が効かなくなる**
     ///   (`XCUIDevice.press(.home)` の検証が「前面のまま」で 422。BridgeRouter.handleHome)

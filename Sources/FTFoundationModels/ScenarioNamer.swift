@@ -24,7 +24,7 @@ public struct ScenarioNaming: Sendable {
 
 public enum ScenarioNamer {
 
-    // 生成物(クラス名・説明)はユーザー資産なので**入力の言語に追従**させる(2026-07-30 決定)。
+    // 生成物(クラス名・説明)はユーザー資産なので**入力の言語に追従**させる(決定)。
     // ただし @Guide の言語が出力言語を支配する実測があるため(ReplayAssist.swift の記録参照)、
     // 日本語 @Guide を維持したまま指示で表明する形。英語入力への追従が実際に必要になったら
     // @Generable を言語別に分けて入力言語で選ぶこと

@@ -3,7 +3,7 @@
 //
 // **インストールは bundletool へ委譲する**(スプリットの選別を自前でやらない)。選別の正は
 // zip 内の `toc.pb`(variant / ABI / 密度 / 言語 / SDK の targeting)で、ファイル名からは決まらない —
-// 実測(2026-08-19、79MB の実物): `splits/base-master.apk` と `splits/base-master_2.apk` の
+// 実測(79MB の実物): `splits/base-master.apk` と `splits/base-master_2.apk` の
 // **2つの master** があり、bundletool が API 36 の端末へ入れたのは後者(variant 2)だった。
 // 名前規約だけの選別は master を取り違え、入るが動かない組み合わせを作る。
 //

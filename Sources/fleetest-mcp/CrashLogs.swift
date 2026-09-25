@@ -20,7 +20,7 @@ enum CrashLogs {
     /// 例外で終わらせると、まさに診断したい落ちた直後の状況で使い物にならない)。
     /// `physicalUDID`: 宛先が実機だと分かっているときだけ非 nil(**既定値は付けない** —
     /// 呼び出し忘れをコンパイルで止める)。**記録が無い(nil)ことは実機でない証拠にはならない**
-    /// (best-effort。手掛かりが取れなければ従来どおりシミュレータの待ちへ落ちる)
+    /// (best-effort。手掛かりが取れなければシミュレータの待ちへ落ちる)
     static func text(platform: String, bundleID: String?, serial: String?,
                      withinSeconds: Int, maxLines: Int, crashOnly: Bool,
                      physicalUDID: String?) async -> String {
@@ -38,7 +38,7 @@ enum CrashLogs {
 
     // MARK: - iOS
 
-    /// **クラッシュ直後はまだ .ips が無い**(2026-08-09 実測: 落とした直後の呼び出しでは
+    /// **クラッシュ直後はまだ .ips が無い**(実測: 落とした直後の呼び出しでは
     /// 見つからず、同じレポートが数秒後には在った)。ReportCrash の書き込みは非同期なので、
     /// 待たないと「落ちたのに落ちていない」と答える —— この道具でいちばん起きてはいけない誤り。
     /// **見つからないときだけ**短く待って引き直す(見つかれば即返るので通常の費用はゼロ)
@@ -107,7 +107,7 @@ enum CrashLogs {
         }
         let reason = found.reason ?? "unknown reason (the report did not parse)"
         // **必ず経過時間を出す**: 既定の窓は 300s あり、直前の run のクラッシュが残っていると
-        // それを今回のものとして読む(2026-08-09 実測。11 分前のレポートを掴んだ)。
+        // それを今回のものとして読む(実測。11 分前のレポートを掴んだ)。
         // 新しいレポートは書き込みが数秒遅れるので、古い方を先に掴む競合も現実に起きる
         return "Crash found for \(bundleID)\(ageNote(path: found.path, now: now)): \(reason)"
             + "\nReport file: \(found.path)\n\(asymmetryNote)"

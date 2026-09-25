@@ -95,8 +95,8 @@ public enum RunResultsStore {
     /// opendir/readdir による列挙(隠しエントリは除く。順序は不定 = 呼び手がソートする)。
     /// `FileManager.contentsOfDirectory(at:)` は1エントリごとに open + getattrlistbulk を撃って
     /// CFURL を組み立てるため、run 1,092 個の `scenarios/` を列挙するだけで約 3 秒かかっていた
-    /// (E2E-iOS 2万ファイル: 全体 4.0s のうち sample の 233/296 がここ。2026-09-01 実測)。
-    /// 読めないディレクトリは nil(呼び手は従来どおり黙って飛ばす)
+    /// (E2E-iOS 2万ファイル: 全体 4.0s のうち sample の 233/296 がここ。実測)。
+    /// 読めないディレクトリは nil(呼び手は黙って飛ばす)
     static func directoryEntries(_ dir: URL) -> [(name: String, isDirectory: Bool)]? {
         guard let handle = opendir(dir.path) else { return nil }
         defer { closedir(handle) }
@@ -167,8 +167,8 @@ public enum RunResultsStore {
     /// **辞書順 = 時系列**(runID の月ディレクトリ剪定と同じ仮定)。境界をこの書式へ1回だけ
     /// 変換し、レコード側は文字列比較だけにする —— レコードごとの ISO8601 パースは ICU の
     /// **グローバルロック**(udat_parseCalendar)を取り、並列デコードが直列化して 90 日窓の
-    /// 走査が数十秒になる(2026-09-01 sample 実測)。パース不能な startedAt は辞書順で小さく
-    /// 並ぶため、since 指定時は従来(distantPast 扱い)と同じ除外側に倒れる。
+    /// 走査が数十秒になる(sample 実測)。パース不能な startedAt は辞書順で小さく
+    /// 並ぶため、since 指定時は distantPast 扱いと同じ除外側に倒れる。
     /// 境界とレコードで秒の小数部の有無が違う場合は境界の±1秒未満で判定が割れうるが、
     /// 窓の境界は「now - 90d」等の粗い値なので影響しない
     public static func windowKey(_ date: Date) -> String {
@@ -249,9 +249,9 @@ public enum RunResultsStore {
     /// - maxObservationsPerScenario: 指定すると窓を **run 数ではなく (scenarioID, platform) ごとの
     ///   観測数**で決める(maxRuns / countingPlatform とは併用しない)。run 数で数えると
     ///   **1シナリオだけの run**(調査中のピンポイント実行)が窓を食い潰し、直前のフル run の実績が
-    ///   丸ごと消える —— 2026-08-11 のフル E2E で iOS 側が軒並み `1/N with history` に落ちていた。
+    ///   丸ごと消える —— フル E2E で iOS 側が軒並み `1/N with history` に落ちていた。
     ///   遡る run ディレクトリ数は `observationScanLimitFactor` 倍で頭打ち(I/O の上限)。
-    ///   打ち切っても集まった分だけで並べる = 従来と同じ安全側。
+    ///   打ち切っても集まった分だけで並べる(安全側に倒す)。
     ///   窓は **machine 別にも**数える。リモート実行の回収記録は machine が
     ///   相手のホスト名で、新しい側に並ぶ。machine 非対応で数えると、その記録がこの機械の
     ///   実績を窓から押し出し、LPT の同一 machine 優先(LPTScheduler.durations)が常に
@@ -270,7 +270,7 @@ public enum RunResultsStore {
             targetRunDirs += runDirs(in: monthDir)
         }
         // キャップ無し(全件走査)はデコードを並列化する。キャップ付き(LPT 等)は
-        // 「新しい順に見て埋まったら止める」逐次の意味を持つので従来経路のまま。
+        // 「新しい順に見て埋まったら止める」逐次の意味を持つので逐次のまま処理する。
         // 読む集合・返す内容は逐次と同一(最後のソートで順序も決定的)
         if maxRuns == nil, countingPlatform == nil, maxObservationsPerScenario == nil {
             return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until).map(\.record)
@@ -290,12 +290,12 @@ public enum RunResultsStore {
             if let maxRuns, runsWithRecords >= maxRuns { break }
             // 歯止めは走査した run ディレクトリ数だけ。**「見えている分が満たされたら止める」に
             // しない** —— 新しい run が1シナリオしか含まないと、そのシナリオが満たされた時点で
-            // 止まり、他のシナリオの実績を1件も読まないまま抜ける(2026-08-11 に実装して踏んだ)
+            // 止まり、他のシナリオの実績を1件も読まないまま抜ける(実装して踏んだ)
             if let cap = maxObservationsPerScenario,
                runDirsInspected >= cap * observationScanLimitFactor { break }
             // countingPlatform 指定時は枠が埋まるまで遡るため、対象 platform が長く走っていないと
             // 窓の全 run を読みかねない。maxRuns の 8 倍で打ち切る(3 プロファイル交互でも
-            // 5 枠は 15 run 程で埋まる)。打ち切った場合は集まった分だけで並べる = 従来と同じ安全側。
+            // 5 枠は 15 run 程で埋まる)。打ち切った場合は集まった分だけで並べる(安全側に倒す)。
             if let maxRuns, countingPlatform != nil, runDirsInspected >= maxRuns * 8 { break }
             runDirsInspected += 1
             let before = results.count
@@ -437,11 +437,11 @@ public enum RunResultsStore {
     ///   **ファイルの中身を rename 無しで in-place 書き換えした場合だけ捕まえない**(記録の規律 =
     ///   追加専用の外なので許容)
     /// scenarios/ の中は列挙しない —— readdir だけで 2万エントリに 0.23s、URL 化まで含めて約 1s
-    /// かかり(2026-09-01 実測)、ヒットの意味が無くなる。E2E-iOS 1,092 run で数十 ms。
+    /// かかり(実測)、ヒットの意味が無くなる。E2E-iOS 1,092 run で数十 ms。
     /// **呼ぶ順序は「指紋 → 走査」**: 指紋の後に届いた記録は走査に混ざっても次回の指紋が変わる
     /// (ミス側に倒れる)。逆順だと走査後に届いた記録が指紋に入り、無い記録の出力を有効と見なす
     ///
-    /// **進行中の run は中身を鍵に入れない**(2026-09-15。進行中の run は `scenarios/` が
+    /// **進行中の run は中身を鍵に入れない**(進行中の run は `scenarios/` が
     /// シナリオ完了のたびに mtime を更新するので、中身を鍵に含めると誰かが実行中の間は
     /// 一度もキャッシュに命中しない = E2E-CMP 3,687 run で毎回 15〜19 秒の走査を払っていた)。
     /// 「進行中」の判定は `scenarios/` の mtime が `run.json` の mtime より新しいことだけで行う

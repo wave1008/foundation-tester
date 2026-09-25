@@ -26,14 +26,14 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     /// **実機に配るパッケージ**のパス(省略時は appPath)。iOS はシミュレータ用ビルド
     /// (iphonesimulator SDK・未署名)を実機へ入れられない —— `0xe8008014 invalid signature` で
     /// インストールが失敗するため、同じアプリでも成果物が2つ要る。**端末ごとにアプリ
-    /// プロファイルを分けない**ためのフィールド(2026-08-26 ユーザー決定)。
+    /// プロファイルを分けない**ためのフィールド(ユーザー決定)。
     /// Android は同じ APK が両方で動くので普通は書かない
     public var appPathPhysical: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効)
     public var autoInstall: Bool?
     /// アプリが依存するバックエンドの死活確認 URL(common のみ)。実行開始前に到達確認し、
     /// 不達なら警告する(バックエンド停止でアプリがクラッシュ→全滅する事故の早期検知。
-    /// 2026-07-21 の実害から追加)。ブロックはしない(オフライン検証を妨げない)
+    /// 実害から追加)。ブロックはしない(オフライン検証を妨げない)
     public var healthCheckURL: String?
 
     public init(appName: String? = nil, app: String? = nil,
@@ -121,7 +121,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// このデバイスが居る機械。省略時は手元(ツールは常に明示して書く)。
     /// 書けるのは**登録名**だけ(ssh の実体は書けない = プロファイルはプロジェクト資産)。
     /// 解決規則は DeviceMachineGrouping、正規化は MachineDispatch.normalize。
-    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "host" も読む(既存プロファイルは無改修)
+    /// **JSON キーは "machine"**。旧キー "host" も読む(既存プロファイルは無改修)
     public var machine: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
     public var kind: DeviceKind?
@@ -332,7 +332,7 @@ public struct FMConfig: Sendable, Equatable {
     /// FM を使用するか(false = 実行バイナリへ --no-fm。MCP・dry-run は明示的に false を渡す)
     public var enabled: Bool
     /// テキストの視覚検証(occlusion guard)= 誤った緑(木では一致したが実際には見えていない)の検査。
-    /// **実行プロファイルの既定は true**(2026-09-03 ユーザー決定。それ以前はオプトインだった)
+    /// **実行プロファイルの既定は true**(ユーザー決定)
     public var textVisualCheck: Bool
     public var screenLooksLike: Bool
 
@@ -358,7 +358,7 @@ public struct RemoteControlSection: Codable, Sendable, Equatable {
     /// appPath の解決基準には使わない(常にリポジトリルート基準のまま)——
     /// 実行時に appPath の原本をここ配下の `apps/<ファイル名>` へコピー(ステージング)し、
     /// インストールにはそちらを使う(`WorkspaceAppStaging`。docs/remote-runner.md §17)。
-    /// **省略時の既定は `<project.rootURL>/workspace`**(2026-08-18。ワークスペースは常に有効
+    /// **省略時の既定は `<project.rootURL>/workspace`**(ワークスペースは常に有効
     /// —— ここを省略しても appPath はリポジトリルート基準のままではなく、既定ワークスペースの
     /// `apps/` へ切り替わる)。優先順位・既定値の算出は `ProfileResolver.resolveWorkspaceRoot`。
     /// `--workspace` で1回限り上書き可
@@ -379,8 +379,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var devices: [RunDeviceEntry]?
     /// ロケータ自己修復(指紋照合)を許可するか(既定 true)。FM は使わない
     public var heal: Bool?
-    /// テキストの視覚検証(occlusion guard)を有効にするか(**既定 true**。2026-09-03 ユーザー決定で
-    /// オプトインをやめた)= 誤った緑(木では一致したが実際には見えていない)の検査
+    /// テキストの視覚検証(occlusion guard)を有効にするか(**既定 true**。ユーザー決定)
+    /// = 誤った緑(木では一致したが実際には見えていない)の検査
     public var textVisualCheck: Bool?
     /// screenLooksLike(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenLooksLike: Bool?
@@ -409,7 +409,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// と src/monitorModel.ts の RunProfileFormFields
     public var wipeDataOnBloat: Bool?
     /// wipeDataOnBloat のしきい値(GB、1GB=1_073_741_824 バイト。既定 8。0 以下は検証エラー。
-    /// Play イメージは wipe 直後の再構築だけで userdata が 2〜4GB になるため(実測 2026-07-17)、
+    /// Play イメージは wipe 直後の再構築だけで userdata が 2〜4GB になるため(実測)、
     /// それ未満のしきい値は毎実行 wipe が発動するスラッシングになる — 下げるときは要注意)
     /// **テスト開始時に WebView を揃えるか**(既定 ON)。版が混在すると同じシナリオが
     /// 端末によって落ちる(124 は placeholder / 150 は #id と表現が入れ替わる)
@@ -451,13 +451,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var enableAnimations: Bool?
     /// run 開始時に各デバイスへ home() を1回撃つか(**既定 true**)。
     /// 一斉に launch した直後の端末は「描画要求が無いだけ」で画面が黒いまま止まることがあり、
-    /// そのままだと凍結と見分けが付かない(2026-08-11 の実測: 黒かった5台のうち4台は入力で戻った)。
+    /// そのままだと凍結と見分けが付かない(実測: 黒かった5台のうち4台は入力で戻った)。
     /// 予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への影響はほぼゼロ。
     /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と RunProfileFormFields
     public var homeOnStart: Bool?
     /// Android の `adb install` で Play Protect の照会を通さないか(**既定 true**)。true で
     /// install の間だけ `verifier_verify_adb_installs` を 0 にして元へ戻す(AdbInstallVerifier。
-    /// テスト対象アプリを Google へ送らない = ユーザー決定 2026-09-05)。**false はキルスイッチ**:
+    /// テスト対象アプリを Google へ送らない = ユーザー決定)。**false はキルスイッチ**:
     /// ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで install が止まったまま
     /// になる(ツールはそのダイアログに答えない)。FT_PLAY_PROTECT_BYPASS で実行環境へ注入する。
     /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と RunProfileFormFields
@@ -475,7 +475,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// true なら半分解像度化をスキップしフル解像度のまま出力する(既定 false)。
     /// Android は screenrecord 自体の --size 指定も省略する(録画元から既にフル解像度になる)
     public var recordFullResolution: Bool?
-    /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準の従来挙動)
+    /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準)
     public var remoteControl: RemoteControlSection?
 
     public init(app: String? = nil, devices: [RunDeviceEntry]? = nil,
@@ -817,13 +817,13 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
 
     /// `--profile` を使わない実行(`--port`/`--serial` 直指定)の基底。**プロファイルの既定を
     /// そのまま使わない** —— 2つだけ意図的に違う(`textVisualCheck` はプロファイルと同じ既定 true。
-    /// ユーザー決定 2026-09-15):
+    /// ユーザー決定):
     ///   `heal` … profile-less は**修復しない**(`ScenarioExecutionSettings.init` の既定と同じ。
     ///     素の run で壊れたセレクタを黙って別要素へ解決させない)
     ///   `homeOnStart` … profile-less は**デバイスに触らない**。この設定は一斉起動直後の
     ///     黒画面を防ぐためのもので、既に建っているブリッジへ繋ぐだけの経路では、手で用意した
     ///     画面を Home で流してしまう
-    /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` は従来どおり効く。
+    /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` はそのまま効く。
     /// 既定はリテラルで固定するテストを置くこと(`DeviceIndependentRunSettingsTests`)
     public static let profileLessBase = RunProfileDocument(
         heal: false, homeOnStart: false)
@@ -904,7 +904,7 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     /// 名指しする(インストール先を出しても何をビルドすればよいか分からないため)
     public let sourcePath: String?
     /// インストールに実際に使う絶対パス(nil = インストールしない)。**ワークスペースは常に
-    /// 有効**(既定 `<project.rootURL>/workspace`。2026-08-18)なので sourcePath と同値になるのは
+    /// 有効**(既定 `<project.rootURL>/workspace`)なので sourcePath と同値になるのは
     /// appPath 自体が既にワークスペース配下を指している場合だけ。`WorkspaceAppStaging.installPath`
     /// が決める "<workspaceRoot>/apps/<原本のファイル名>"(ProfileResolver.resolve が唯一の生成元)。
     /// 呼び出し側(installApp・ProfileWorkerFactory 等)はこちらだけを見ればよい
@@ -1002,7 +1002,7 @@ public struct ResolvedProfile: Sendable {
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
     /// **絶対パス解決済みのワークスペースルート**(remoteControl.workspace / `--workspace` 上書きの
-    /// 実効値)。**常に非 nil**(2026-08-18。既定 `<project.rootURL>/workspace` —— ワークスペースは
+    /// 実効値)。**常に非 nil**(既定 `<project.rootURL>/workspace` —— ワークスペースは
     /// 常に有効。`ProfileResolver.resolveWorkspaceRoot`)。appPath の原本の解決基準はこれの
     /// 有無に関わらず常にリポジトリルート ―― `apps[platform].appPath`(インストール先)だけが
     /// この配下の `apps/<ファイル名>` に切り替わる(ステージングは WorkspaceAppStaging)。
@@ -1043,7 +1043,7 @@ public struct ResolvedProfile: Sendable {
     /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しない台で走る
     /// マシン別サブ実行のスコープ。**一意なのは name 単体ではなく (host, name)** なので、
     /// 名前だけで絞ると**別の機械の同名デバイスまで掴む**(フリートの各機は同じ命名規則で
-    /// シミュレータを作るので、同名は例外ではなく通常。2026-08-17 に実走で確認 ——
+    /// シミュレータを作るので、同名は例外ではなく通常。実走で確認 ——
     /// 手元のサブ実行が3機ぶんの "iPhone …-01" を全部拾って8台になった)。
     /// - deviceMachine: そのサブ実行が担当する機械("local" / 登録名。nil = ホストで絞らない)
     public func filteringDevices(names: [String], deviceMachine: String? = nil) -> ResolvedProfile {
@@ -1265,7 +1265,7 @@ public enum ProfileResolver {
 
     /// `remoteControl.workspace` 宣言と `--workspace` 上書きから実効の生値(未解決)を決める。
     /// override が非空なら常に勝つ(中継されたリモートの子はこれで自分のリポジトリルート基準を
-    /// 上書きする)。両方無ければ nil(未宣言 = 従来どおりリポジトリルート基準)。
+    /// 上書きする)。両方無ければ nil(未宣言 = リポジトリルート基準)。
     /// 純粋関数として切り出す(デバイス・ファイル I/O 不要のためテストが直接叩ける)
     public static func effectiveWorkspaceRaw(declared: String?, override: String?) -> String? {
         func trimmedNonEmpty(_ s: String?) -> String? {
@@ -1278,7 +1278,7 @@ public enum ProfileResolver {
 
     /// `remoteControl.workspace` の実効ルート(絶対パス解決済み)。優先順は
     /// **override(`--workspace`) > declared(`remoteControl.workspace`) > 既定**。
-    /// **既定は `"<projectRoot>/workspace"`**(2026-08-18。常に非 nil を返す ——
+    /// **既定は `"<projectRoot>/workspace"`**(常に非 nil を返す ——
     /// ワークスペースは常に有効。declared/override 省略時に repoRoot 基準へ戻すと、
     /// 呼び出し側ごとに「省略時どう扱うか」の分岐が要る)。declared/override が相対パスなら
     /// repoRoot 基準で解決する(絶対パスならそのまま)。純粋関数(I/O なし)
@@ -1393,7 +1393,7 @@ public enum ProfileResolver {
         // reportDir だけはプロジェクト直下に出すため下記で project.rootURL 基準のまま
         // (基準が異なるので resolvePath の base で使い分ける)。
         //
-        // **ワークスペースは常に有効**(既定 `"<project.rootURL>/workspace"`。2026-08-18)。
+        // **ワークスペースは常に有効**(既定 `"<project.rootURL>/workspace"`)。
         // インストールに使うパス(ResolvedAppTarget.appPath)は常に
         // "<workspaceRoot>/apps/<原本のファイル名>" に切り替わる(原本の
         // ResolvedAppTarget.sourcePath は常にリポジトリルート基準のまま)。実体のコピー(ステージング)
@@ -1450,7 +1450,7 @@ public enum ProfileResolver {
             // ステージ済みの複製(installPath)を読む** —— リモートの子は原本を持たず
             // ステージ先の複製だけを持つため、sourcePath だけを見ると常に nil(判らない)になり
             // 実機用ビルドが appPath に入っている場合でも誤って警告が鳴る。両方読めないときだけ
-            // 従来どおり鳴らす(安全側)
+            // 鳴らす(安全側)
             if platform == "ios", section.appPathPhysical == nil, section.appPath != nil,
                (AppBundleInspector.declaresDevicePlatform(appPath: sourcePath)
                    ?? AppBundleInspector.declaresDevicePlatform(appPath: installPath)) != true,

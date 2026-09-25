@@ -11,9 +11,9 @@ public enum StaleBridgeStop: Equatable {
     case stopRunner
     /// どちらの記録も無い → **ポートを LISTEN している実体**を `PortHolder` で特定して止める。
     /// 記録の無い in-app ブリッジ(別クローンの `.fleetest` が起動した・記録前に run が中断された)は
-    /// ここでしか止められない。2026-08-23 まではこの形を `.pid` 経路へ流して
+    /// ここでしか止められない。`.pid` 経路へ流すと
     /// 「the bridge is not running (no .fleetest/bridge.pid)」で止めそこね、旧ブリッジが
-    /// 掴んだままのポートへ新しい注入が衝突していた(受け手報告の never joined)
+    /// 掴んだままのポートへ新しい注入が衝突する(受け手報告の never joined)
     case stopPortHolder
 
     public static func decide(hasInAppRecord: Bool, hasPidFile: Bool) -> StaleBridgeStop {

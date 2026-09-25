@@ -62,7 +62,7 @@ public enum DeviceBooter {
         //
         // 実機(physicalItems)は maxConcurrent の外、幅1の別レーンで直列に流す。実機の「起動」=
         // ブリッジ供給(iOS は数分の xcodebuild build-for-testing)なので、仮想デバイスの枠へ
-        // 混ぜると一枠を専有して他機のブートを遅らせる(ユーザー決定 2026-09-08)。
+        // 混ぜると一枠を専有して他機のブートを遅らせる(ユーザー決定)。
         let (items, physicalItems) = buildBootQueue(
             machine: machine, restartNames: restartNames, cpuRenderNames: cpuRenderNames)
         guard !items.isEmpty || !physicalItems.isEmpty else { return [] }
@@ -209,7 +209,7 @@ public enum DeviceBooter {
     }
 
     /// **MCP(fleetest-mcp)が操作中の台も止めない**(run と同じ規律④。run は MCP の台を避けるのに、
-    /// 止める側だけが印を読まずにエージェントの台を落としていた = 2026-09-17 負荷テスト M10)。
+    /// 止める側だけが印を読まずにエージェントの台を落としていた = 負荷テスト M10)。
     /// 文言は run の拒否と分ける(「run が使用中」は事実と違う)
     static func mcpStopRefusal(
         deviceName: String, keys: [String], force: Bool, mcpHolderPID: (String) -> Int32?
@@ -239,8 +239,7 @@ public enum DeviceBooter {
     }
 
     /// **全掃討の拒否文の見出しは1つ**(run と MCP のどちらか一方だけを断るときも、両方を
-    /// 断るときも先頭はこれ1回)。以前は run/MCP それぞれが見出し込みの完成文を持ち、両方
-    /// 使用中のときに単純連結して見出しが2回出ていた
+    /// 断るときも先頭はこれ1回)。run/MCP 双方の完成文を単純連結すると見出しが2回出るため
     public static let sweepRefusalHeading = "refusing to shut everything down: "
 
     /// 2つの本文を1つの見出しの下へ並べる。**後ろの文は大文字で始める** —— 本文はどちらも
@@ -402,7 +401,7 @@ public enum DeviceBooter {
         public let name: String
         public let platform: String
         /// 失敗の理由(エラーの文言)。**nil = 成功**。成否はここから導く —— 別々に持つと
-        /// 「失敗なのに理由が無い」形が作れ、全滅の1行が台の名前だけになる(実害 2026-09-10:
+        /// 「失敗なのに理由が無い」形が作れ、全滅の1行が台の名前だけになる(実害:
         /// ランタイム欠落で4台とも落ちたのに、拡張のバナーには名前しか出なかった)
         public let failure: String?
         public var succeeded: Bool { failure == nil }
@@ -516,7 +515,7 @@ public enum DeviceBooter {
     }
 
     /// 凍結フォールバック中の個体(cpuRenderNames)は一括起動でも swiftshader を維持する
-    /// (従来は bulk start-all-devices が host で起き上がり直してフォールバックが消える穴だった。
+    /// (見なければ bulk start-all-devices が host で起き上がり直してフォールバックが消える。
     /// 名簿は VSCode 拡張 MonitorDeviceOps.cpuRenderNames が --cpu-render で渡す)
     private static func gpuMode(name: String, platform: String, cpuRenderNames: Set<String>) -> String {
         platform == "android" && cpuRenderNames.contains(name) ? "swiftshader_indirect" : "host"
@@ -730,7 +729,7 @@ public enum DeviceBooter {
             // **「すでに停止している」は成功**(iOS の `guard sim.booted else { … already stopped }`
             // と同じ扱い)。Android は serial の解決が `avdNotRunning` で throw するため、
             // 素通しすると停止済みの台が「停止に失敗」に化ける —— 全台停止済みの機械で
-            // 一括停止が `every device failed to stop` を出していた(実害 2026-09-10。
+            // 一括停止が `every device failed to stop` を出していた(実害。
             // 一括停止が全滅だけを失敗と伝えるようになって表面化した)。
             // **avd 未記載(noIdentifier)等はそのまま失敗**(プロファイルの誤りは黙らせない)
             let serial: String
@@ -873,7 +872,7 @@ public enum DeviceBooter {
 
     /// エミュレータをヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す(検出待ち上限60秒)。
     /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する。
-    /// locale の -change-locale は **Play イメージ(フリート全機)では無効**(実測 2026-07-17。
+    /// locale の -change-locale は **Play イメージ(フリート全機)では無効**(実測。
     /// AOSP イメージ向けの保険として残置)。実効的なロケール適用はブート完了後の applyLocale
     /// (ブリッジ /locale)が担う。
     /// **stale ロックは1回だけ自己修復する** —— 早期終了のログが多重起動を示し、かつ実際には
@@ -910,11 +909,11 @@ public enum DeviceBooter {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         // -gpu host 必須: headless(-no-window)では hw.gpu.mode=auto が SwiftShader(CPU 描画)に
-        // フォールバックし、モーション時 qemu が約3コア/台を消費する(host=Metal なら約1/3。実測 2026-07-14)
+        // フォールバックし、モーション時 qemu が約3コア/台を消費する(host=Metal なら約1/3。実測)
         // gpuMode 既定は host。swiftshader_indirect は軽い修復で直らない凍結個体のみ呼び出し側が
         // 指定する(CPU 描画は凍結を回避できるが上記の約3コア/台を払う)
         // -no-snapshot 必須: ロード+セーブ両方の無効化=コールドブート保証。Quickboot スナップショットの
-        // ロードはブート時黒画面の代表原因(旧 -no-snapshot-save はセーブのみ無効で、Android Studio 等が
+        // ロードはブート時黒画面の代表原因(-no-snapshot-save だけではセーブのみ無効で、Android Studio 等が
         // 残したスナップショットがあるとロードしてしまう。docs/performance-tuning.md §6 の Wipe Data 行参照)
         var arguments = ["-avd", avd,
                          "-no-snapshot", "-no-window", "-no-boot-anim", "-no-audio",
@@ -924,8 +923,8 @@ public enum DeviceBooter {
         }
         process.arguments = arguments
         // 凍結の根因証跡(GLDRendererMetal command buffer completion error 等)は emulator の
-        // stdout/stderr にしか出ない(2026-07-25 実測)ため捨てずに AVD 毎ログへ残す。
-        // ログを開けない場合はブートを優先して従来どおり破棄する
+        // stdout/stderr にしか出ない(実測)ため捨てずに AVD 毎ログへ残す。
+        // ログを開けない場合はブートを優先して破棄する
         let logHandle = emulatorLogHandle(avd: avd, arguments: arguments)
         process.standardOutput = logHandle ?? FileHandle.nullDevice
         process.standardError = logHandle ?? FileHandle.nullDevice
@@ -943,7 +942,7 @@ public enum DeviceBooter {
             // **起動そのものに失敗した emulator は即座に落ちる**ので、60秒の期限を待たずに理由を返す
             // (AVD 名の誤りは約2秒で exit≠0。レーン復活の再試行が1台あたり3分かかっていた)。
             // **成功時はここへ入らない**: emulator は exec で qemu に化け、プロセスは起動中ずっと
-            // 生き続ける(実測 2026-08-16 —— この Process を kill するとエミュレータごと落ちる。
+            // 生き続ける(実測 —— この Process を kill するとエミュレータごと落ちる。
             // ps で見える qemu の PPID が 1 なのは、起動させた側が先に終了して再親付けされただけ)。
             // **isRunning を「起動できたか」の判定に流用しない** —— ここが偽になるのは
             // 「serial を掴む前にプロセスが消えた」ときだけで、それ以外の失敗は下の期限切れが拾う

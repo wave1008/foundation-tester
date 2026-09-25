@@ -21,7 +21,7 @@ public enum ConsoleOut {
     /// write(2) はブロッキングなので、読み手が詰まると**ロックを握ったまま返らない** ——
     /// そのとき止まるのは書こうとしたスレッドだけでなく、協調スレッドプールごと詰まって
     /// **全レーンが同時に固まる**。ステップの壁時計の締め切り(FTSync.commandTimeout)が
-    /// この待ちに食われていないかを記録から判定するための計器(2026-09-10)。
+    /// この待ちに食われていないかを記録から判定するための計器。
     /// 読み手は `blockedMilliseconds` の差分を取る(cpuMs と同じ使い方)
     private static let meterLock = NSLock()
     private static var blockedMs = 0
@@ -94,13 +94,13 @@ public enum ConsoleOut {
                 // 起きた瞬間に行が裂ける(このファイルが解決する当のバグと同じ形になる)。
                 // **このループはテストで踏めない**: ブロッキングの fd への write(2) は全バイトを
                 // 書くまで返らない(短く返るのはシグナル割り込みのときだけ)ので、パイプ越しの
-                // 変異チェックでは生き残る(2026-09-07 に確認済み)。O_NONBLOCK な fd と
+                // 変異チェックでは生き残る(確認済み)。O_NONBLOCK な fd と
                 // 割り込みのためだけに残す防御。**「テストが無いから消せる」と読まないこと**
                 // **EINTR は諦める理由にならない**: fleetest は SIGINT/SIGTERM を扱うので
                 // シグナルで中断された write を諦めると、同じ「行が裂ける」形が稀に再発する
                 if n < 0 && errno == EINTR { continue }
                 // **EAGAIN / ENOBUFS も諦めない**。諦めると書きかけの行の直後に次の行が続き、
-                // NDJSON が2行ぶん壊れる(2026-09-19 実測: api monitor のフレーム2枚が1行に
+                // NDJSON が2行ぶん壊れる(実測: api monitor のフレーム2枚が1行に
                 // 繋がった。errno は未記録のため EAGAIN か ENOBUFS かは未確定)。
                 // 待つのはブロッキングの write(2) が本来待つのと同じ = 上限を置かない
                 if n < 0 && (errno == EAGAIN || errno == ENOBUFS) {

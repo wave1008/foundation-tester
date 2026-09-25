@@ -4,7 +4,7 @@
 // 自前でツリーへ反映済みなので対象外)。GUI 実行中(isGuiRunActive)は tick を丸ごと skip し、
 // GUI 実行終了時は runHandler.ts が absorb(実行対象ID)を呼んでその分のスナップショットだけ
 // 黙って進める(合成 run を作ると TEST RESULTS の最新実行が出力ゼロの run に切り替わり、
-// GUI 実行の出力が隠れるため)。GUI 実行と無関係なターミナル実行分は従来どおり tick で反映する。
+// GUI 実行の出力が隠れるため)。GUI 実行と無関係なターミナル実行分は tick で反映する。
 
 import * as fs from "node:fs";
 import * as vscode from "vscode";
@@ -89,7 +89,7 @@ function findLeaf(items: vscode.TestItemCollection, id: string): vscode.TestItem
 }
 
 /** レポートが見つかれば fleetest.openScenarioReport(runHandler.ts)へのリンク付きメッセージ、
- * 無ければ従来通りのプレーンテキスト。location(テスト宣言位置)が無いとエディタの
+ * 無ければプレーンテキスト。location(テスト宣言位置)が無いとエディタの
  * インライン peek に出ず Test Results パネル限定になる(テストをクリックした時にリンクが
  * 見えない)ため、item の uri/range があれば付ける。 */
 function buildFailedMessage(

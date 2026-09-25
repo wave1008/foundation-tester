@@ -65,7 +65,7 @@ public enum SettleMotion {
     /// (名前を持つ要素が1つも無いキャンバス・地図・無名ノードだらけの WebView)で、
     /// そこでは何周待っても測れるようにはならない。無条件に「動いている」へ倒すと、
     /// そういう画面は早抜けの枝へ一度も入れず**毎ジェスチャが上限まで回り切る**
-    /// (24 周 = iOS xcuitest でスワイプ1回あたり約 11 秒。2026-08-25)。
+    /// (24 周 = iOS xcuitest でスワイプ1回あたり約 11 秒)。
     public static func isDecelerating(_ history: [Double?]) -> Bool {
         guard let latest = history.last else { return false }
         guard let latest else {

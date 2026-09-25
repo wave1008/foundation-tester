@@ -1,12 +1,12 @@
 // 再利用する XCUITest ランナーが「AX 照会のたびに数秒待つ」状態に落ちていないかの判定(純粋関数)。
 //
-// 2026-09-14 実測(台帳 §19.27): 3 時間生きたランナーが、SpringBoard の remote element(DragUI の druid)を
+// 実測(台帳 §19.27): 3 時間生きたランナーが、SpringBoard の remote element(DragUI の druid)を
 // 引けなくなった後も参照し続け、**存在確認 1 回ごとに約 3.7 秒**(XCTest が remote element を諦める時間)
 // 待つようになった。同じ木の照会が隣の台では 0.03〜0.27 秒。run のすべての XCUITest 照会に乗るので、
 // 1 シナリオ 6 秒が 22 秒になり、in-app の tap も(前面確認で fallback を引くため)0.5 秒が 4 秒になる。
 // ランナーを建て直すと直る(シミュレータの再起動は要らない)。druid を意図的に再起動しても再現しないため
 // 発生条件は未特定 —— だから**再利用の入口で 1 問だけ測って、遅ければ建て直す**。
-// **run の最中にも再発する**(2026-09-16: xcuitest の 4 プロファイルで毎回 供給時に検出 → 建て直し →
+// **run の最中にも再発する**(xcuitest の 4 プロファイルで毎回 供給時に検出 → 建て直し →
 // run 中にまた 2 秒超のステップが 7/22・22/91 本)ので、緑のシナリオの直後にも同じ 1 問で測り直す
 // (`BridgeProvisioner.recheckRunner` / fleetest の `RunnerMidRunRecheck`)。
 
@@ -14,7 +14,7 @@ import FTCore
 import Foundation
 
 /// 建て直しても直らなかった台(udid)。**このプロセスの間だけ**覚える(run ごとに作り直される)。
-/// 2026-09-16 実測: -01 は建て直すたびに新しいランナーでも 1 問 2.9〜3.0 秒のまま(同時刻の他の台は
+/// 実測: -01 は建て直すたびに新しいランナーでも 1 問 2.9〜3.0 秒のまま(同時刻の他の台は
 /// 0.03 秒)で、緑のシナリオのたびに約 10 秒の建て直しを空振りしていた。測って健全なら消す
 /// (長く生きるプロセス = MCP で、シミュレータを再起動して直った台を覚え続けないため)
 public final class RunnerRestartFutility: @unchecked Sendable {
@@ -78,7 +78,7 @@ public enum RunnerAccessibilityHealth {
 
     /// 建て直した直後の新しいランナーでもまだ遅かったときの 1 行。**新しいプロセスでも遅い = 遅さは
     /// ランナーのプロセスには無い**(測った事実から言えるのはここまで)。以降このプロセスでは建て直さない。
-    /// 次の手としてシミュレータの再起動を挙げる根拠: 2026-09-16 の -01 は建て直しでは 2.7〜3.0 秒のまま、
+    /// 次の手としてシミュレータの再起動を挙げる根拠: -01 は建て直しでは 2.7〜3.0 秒のまま、
     /// 再起動で 0.03 秒に戻った(同じ 3 シナリオの合計 42.3s → 22.1s)
     public static func restartDidNotHelpMessage(name: String, port: UInt16, afterSeconds: TimeInterval) -> String {
         "⚠️ \(name): the restarted xcuitest bridge on port \(port) still took"
@@ -125,9 +125,9 @@ public enum RunnerAccessibilityHealth {
 
     /// 供給の入口で、run をまたいだ印(`RunnerSlownessStore`)から次に何を試すかを決める(純粋関数)。
     /// **リースのある台には絶対に触らない**(ユーザー決定)—— 印があっても再起動を試みず、
-    /// 従来どおり「建て直さずそのまま使う」に落とす
+    /// 「建て直さずそのまま使う」に落とす
     public enum SupplySlownessAction: Equatable, Sendable {
-        /// 印なし。従来どおり 1 問プローブしてから必要なら建て直す
+        /// 印なし。1 問プローブしてから必要なら建て直す
         case proceedNormally
         /// 印 = runnerRestartDidNotHelp かつリース無し。ブリッジを建てる前にシミュレータごと再起動する
         case restartSimulator

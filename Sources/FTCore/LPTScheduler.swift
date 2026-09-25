@@ -17,7 +17,7 @@
 //
 // **実績は machine ごとにも優先して分ける**。リモート実行(remote runner)で
 // 走った記録が回収されて手元の results/ に混ざるようになったため、機械ごとの速度差が同じ理由で
-// 中央値を歪める。同一 machine の記録があればそれだけで中央値を作り、無ければ従来どおり
+// 中央値を歪める。同一 machine の記録があればそれだけで中央値を作り、無ければ
 // 全 machine 混合の中央値へフォールバックする(相対順は機械を跨いでもおおむね保たれるため)。
 
 import Foundation
@@ -149,7 +149,7 @@ public enum LPTScheduler {
     /// (skipped 合成・durationMs<=0・platform 空を除外)に加え、host 空の記録も除く
     /// (どの機械の実績か決められない)。FleetSplit.speedFactors / MachineContext が使う。
     /// **照合の鍵は記録の host(ホスト名)** —— ローカルエイリアスは頻繁に変わりうるので鍵にしない
-    /// (2026-08-26 ユーザー決定)
+    /// (ユーザー決定)
     public static func machineDurations(from records: [ScenarioRunRecord]) -> [MachineDuration] {
         let usable = records.filter {
             !RunResultsQuery.isSkippedSynthetic($0) && $0.durationMs > 0 && !$0.platform.isEmpty

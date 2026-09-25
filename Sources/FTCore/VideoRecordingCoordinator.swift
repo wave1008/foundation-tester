@@ -101,7 +101,7 @@ actor VideoRecordingCoordinator {
     /// **録画ソースが1本も使えなかったワーカー数**(起動できなかった/停止時に読めるファイルが
     /// 無かった)。切り出しまで到達しないので clipsAttempted には現れない —— ここで数えないと、
     /// 録画が全滅した run が index を書かずに**録画タブから黙って消える**
-    /// (2026-08-26 の実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
+    /// (実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
     /// 「local だけバッジが出ない」ように見えた)
     private var sourcesFailed = 0
     /// sourcesFailed のうち「録れない台」(物理 iPhone)のぶん。finish の警告文を分けるためだけに持つ

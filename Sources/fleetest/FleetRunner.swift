@@ -283,7 +283,7 @@ enum FleetRunner {
 
     /// エントリごとの machine 識別子と固定オフセット(ディスパッチ経路の平均秒 × 1000)。
     /// facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
-    /// machine=nil・offset=0 で FleetSplit.MachineContext が従来の混合見積りへ退化する。
+    /// machine=nil・offset=0 で FleetSplit.MachineContext が単純な混合見積りへ退化する。
     /// **entryFallbackFactors**(§8): 実績が無い機械の事前係数(コア数の逆比、単位なし)。
     /// FleetSplit の優先順は 同一機実績 → 実測係数(speedFactors=共通観測)→ この事前係数 なので、
     /// 観測が貯まり次第そちらへ自然に置き換わる。基準はローカル機(混合中央値の実績は主に
@@ -355,7 +355,7 @@ enum FleetRunner {
         let byIndex = Dictionary(uniqueKeysWithValues: buckets.map { ($0.entryIndex, $0) })
         let basisByIndex = Dictionary(uniqueKeysWithValues: basis.map { ($0.entryIndex, $0) })
         // BASIS = その推定が何に基づいたか(同一機の実績 / 混合実績 × 係数)。係数だけでは
-        // 由来が分からず、遅い機に偏った run を後から検証できない(2026-08-24 受け手要望)
+        // 由来が分からず、遅い機に偏った run を後から検証できない(受け手要望)
         let header = hasHistory ? ["HOST", "PROFILE", "SCENARIOS", "EST.", "BASIS"]
                                 : ["HOST", "PROFILE", "SCENARIOS"]
         var rows = [header]
@@ -454,7 +454,7 @@ enum FleetRunner {
         quiet: Bool, junitPath: String?, broadcast: Bool = false, runGroup: String? = nil
     ) -> [String] {
         var args = ["run", "--project", project, "--profile", profile]
-        // "local" エントリも常に --runner を渡す(欠陥3・2026-08-17)。子プロセスは自分自身が
+        // "local" エントリも常に --runner を渡す(欠陥3)。子プロセスは自分自身が
         // MachineDispatch を再適用するため、--runner を省略すると「未指定」と区別が付かず、
         // entry.profile の台が全部リモートにあると子がそこへ自動ディスパッチしてしまい、
         // {"host":"local"} と書いた意味が失われる(重複ホスト拒否も無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
@@ -473,7 +473,7 @@ enum FleetRunner {
         }
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         // **ホストも渡す** —— 一意なのは (host, name) なので、名前だけだと子が別の機械の
-        // 同名デバイスまで掴む(2026-08-17 に実走で確認。RunProfile.filteringDevices の宣言)
+        // 同名デバイスまで掴む(実走で確認。RunProfile.filteringDevices の宣言)
         if let deviceMachine { args += ["--device-machine", deviceMachine] }
         if !scenarios.isEmpty { args += ["--scenario"] + scenarios }
         if !folders.isEmpty { args += ["--folder"] + folders }

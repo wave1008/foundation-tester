@@ -57,7 +57,7 @@ struct DeviceSession {
     /// `root.getPackageName()`)。つまり back でアプリを出ると session がその場で別アプリに
     /// 差し替わり、`backgroundedSessionNote`(session が前面か)は**構造上まったく発火しない**。
     /// E2E の 4 SUT は `#id`・ラベルが共通契約なので、木を見ても入れ替わりに気付けない
-    /// (2026-08-06 の探索で決定的に再現: `ft_launch com.ftester.e2e.android` → `back` 1回で
+    /// (決定的に再現: `ft_launch com.ftester.e2e.android` → `back` 1回で
     /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
     /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
     var launchedBundleID: String?
@@ -96,7 +96,7 @@ struct DeviceSession {
     /// 事実だけが唯一の確かな材料になる。**プラットフォームの答えに上書きさせない**
     var backgroundedByNavigate = false
     /// ft_screenshot の鮮度判定用。**静止画面の2連続 ft_screenshot は PNG が
-    /// バイト単位で同一**(2026-08-10 実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
+    /// バイト単位で同一**(実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
     /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の
     /// 前後比較単独では拾えなかった動機の事象: 木は新しいのに絵だけ古い)
     var lastScreenshot: StaleFrameDetector.Record?
@@ -135,7 +135,7 @@ struct DeviceSession {
     /// 掴んでいる Android ブリッジの serial。iOS の `connectedPort` と同じ理由で
     /// `connection` の表示文字列からは読み解かない —— 直接指定は "serial <serial>"、profile
     /// 経由は "<device name> serial <serial>" と経路ごとに書式が違い、文字列切り出しに頼ると
-    /// profile 経由だけ判定から漏れる(2026-08-14 に実際に踏んだ)
+    /// profile 経由だけ判定から漏れる(実際に踏んだ)
     var connectedAndroidSerial: String?
     /// **物理 Android を起こす処理(`AndroidPhysicalDevice.prepareForRun`)を済ませた**か。
     /// run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices`)は run の

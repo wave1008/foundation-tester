@@ -28,7 +28,7 @@ public enum SimulatorCrashReport {
         }
         // dyld 由来の即死は exception が EXC_CRASH SIGABRT にしかならず、**何が読めなかったのか**は
         // termination.reasons にしか出ない(実害: シミュレータのランタイム共有キャッシュ破損で
-        // "Library not loaded: libSystem.B.dylib / no dyld cache"。受け手報告 2026-08-24)
+        // "Library not loaded: libSystem.B.dylib / no dyld cache"。受け手報告)
         if let dyld = dyldDetail(from: body) { parts.append(dyld) }
         if parts.isEmpty, let termination = body["termination"] as? [String: Any] {
             let name = termination["name"] as? String ?? (termination["signal"] as? Int).map { "signal \($0)" }

@@ -7,7 +7,7 @@ import Foundation
 /// パイプを専用スレッドでブロッキング読みし、行ごとに onLine を読み取りスレッド上で同期に呼ぶ。
 /// 不変条件: splitter は読み取りスレッドだけが触り、flush は EOF(drain の完了)後だけ。
 /// EOF は書込端が全部閉じたとき = 子だけでなく孫がパイプを継承して生きていれば来ない
-/// (呼び出し側の従来挙動と同じ)。
+/// (呼び出し側の同期版と同じ挙動)。
 public final class PipeLinePump: @unchecked Sendable {
     private let handle: FileHandle
     private let onLine: @Sendable (String) -> Void
@@ -27,7 +27,7 @@ public final class PipeLinePump: @unchecked Sendable {
     public func start() {
         DispatchQueue.global(qos: .utility).async { [self] in
             while true {
-                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める。2026-08-18 実測)。
+                // availableData = 届いた分だけ返す(readData(ofLength:) は EOF まで貯める。実測)。
                 // **1回ごとに解放の区切り**(autoreleasepool)—— 自動解放の NSData が抜けないループで溜まる
                 let eof: Bool = autoreleasepool {
                     let chunk = handle.availableData

@@ -65,7 +65,7 @@ public enum SimulatorCatalog {
     public static let simctlTimeoutSeconds: Double = 15
 
     /// 利用可能な iOS シミュレータ一覧(起動中 → OS 降順 → 名前順)。
-    /// CoreSimulator 直叩き(FTCoreSimShim。列挙 6ms vs simctl 567ms・2026-07-25 実測)優先、
+    /// CoreSimulator 直叩き(FTCoreSimShim。列挙 6ms vs simctl 567ms・実測)優先、
     /// 利用不能なら simctl フォールバック。殺しスイッチ: FT_SIMULATOR_CONTROL=simctl
     public static func devices() throws -> [SimDeviceInfo] {
         if ProcessInfo.processInfo.environment["FT_SIMULATOR_CONTROL"] != "simctl",

@@ -10,7 +10,7 @@ extension StepExecutor {
 
     func executeDirectSwipe(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
-        // **未指定でも撮る**(2026-08-31): キーボード表示中かどうかは snapshot でしか
+        // **未指定でも撮る**: キーボード表示中かどうかは snapshot でしか
         // 分からない。キーボードが無ければ path は nil のまま = エンジン既定(1バイトも
         // 変わらない)。**path を付けるのはキーボードがあるときだけ** —— in-app の
         // contentOffset 経路はキーボードに塞がれないが、座標つきは Compose/Flutter で
@@ -43,7 +43,7 @@ extension StepExecutor {
         phase.actionMs += Self.ms(clock.now - start)
         // **向きが変わっただけでは終わりではない**: ドライバは「向きが要求と一致したか」までしか
         // 見ておらず、その時点でレイアウトはまだ動いている。直後のタップは動く前の座標を撃つ
-        // (2026-08-10 実測: 回転直後の `#tab_home` が (-6,45) 動いた後の位置に当たらず、
+        // (実測: 回転直後の `#tab_home` が (-6,45) 動いた後の位置に当たらず、
         // 別の要素を押していた)。スクロール後の静止をホスト側が担うのと同じ規律で、
         // 木が2回続けて同じ署名になるまで待つ
         _ = try? await settledSignature(phase: &phase)
@@ -57,16 +57,16 @@ extension StepExecutor {
         var viaXCUITest = false
         var unsettled = false
         var sentSwipes = 0
-        // **未指定でも撮る**(2026-08-31): scrollPath には viewport(snapshot.screen)が要るので、
+        // **未指定でも撮る**: scrollPath には viewport(snapshot.screen)が要るので、
         // 木が無いと path ごと nil になり黙って全画面スワイプへ退化する
-        // (scrollToEdge/flick は rect を見ている。2026-08-12)。
+        // (scrollToEdge/flick は rect を見ている)。
         // **キーボード表示中はこれが唯一の検知手段でもある** —— ソフトキーボードの上で
         // スワイプすると始点がキーボード面に乗って何も動かない(scrollContainer 参照)。
         // 木を1枚読む固定費は scrollDown/scrollUp のたび毎回払う
         var latest: SnapshotResponse? = try await snapshotForScrollFrame(phase: &phase)
         for _ in 0..<times {
             // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
-            // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由。2026-08-08)
+            // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由)
             if let latest, Self.scrollFrameUnresolved(step, in: latest) {
                 noteCodesThisStep.insert(.scrollFrameMissing)
                 return StepOutcome(status: failed(
@@ -83,7 +83,7 @@ extension StepExecutor {
             // 直後に tap する書き方をここで支える(index 条件を外した理由)
             let settled = try await settledSignature(phase: &phase)
             if !settled.settled { unsettled = true }
-            // **常に引き継ぐ**(2026-08-31): settledSignature は毎回木を撮り直しているので
+            // **常に引き継ぐ**: settledSignature は毎回木を撮り直しているので
             // 追加コストは無い。scrollFrame 未指定でもキーボードの開閉は周回ごとに変わりうる
             latest = settled.snapshot
         }
@@ -99,7 +99,7 @@ extension StepExecutor {
     // 比較は**静止してから**行う(フリングの減速中に撮ると動いていないように見える)。
     // さらに **2 回続けて変化なし**を条件にする — Android では次のスワイプがフリングの
     // 停止だけに消費されて 1 回空振りすることがあり、1 回で打ち切ると途中で止まる
-    // (2026-07-27 実測: scrollToTop が row_22 付近で停止した)
+    // (実測: scrollToTop が row_22 付近で停止した)
     func executeDirectScrollToEdge(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         var viaXCUITest = false
@@ -236,7 +236,7 @@ extension StepExecutor {
                 container = snapshot.screen
             }
             // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
-            // 黙って全画面スワイプへ退化させない(scroll/scrollToEdge と同じ理由。2026-08-08)。
+            // 黙って全画面スワイプへ退化させない(scroll/scrollToEdge と同じ理由)。
             // rect は常に解決済みなのでこの分岐に来ない
             if step.scrollFrame != nil, container == nil {
                 noteCodesThisStep.insert(.scrollFrameMissing)
@@ -250,7 +250,7 @@ extension StepExecutor {
                     startMarginRatio: step.startMarginRatio
                         ?? FTScrollDefaults.startMarginRatio(intent: .gesture, vertical: kind.isVertical))
                 // **容器は解決したが動かせる幅が無い**(margin で潰れた等)。黙って全画面へ
-                // 落ちると理由が読めなくなる(scrollPath と同じ注記。2026-08-08)
+                // 落ちると理由が読めなくなる(scrollPath と同じ注記)
                 if path == nil, step.scrollFrame != nil || step.scrollFrameRect != nil {
                     pendingScrollFrameNote = "the specified scrollFrame resolved but leaves"
                         + " nothing to move, so the whole screen was swiped"
@@ -383,12 +383,12 @@ extension StepExecutor {
             }
         }
         let text = step.text ?? ""
-        // **`tap(入力欄)` → `type("文字列")` を成立させる**(2026-08-21。Shirates 伝統の書き方)。
+        // **`tap(入力欄)` → `type("文字列")` を成立させる**(Shirates 伝統の書き方)。
         // Android の入力欄は容器(TextInputLayout)と中身(TextInputEditText)に分かれ、
         // **id は容器側に付くことが多い** —— 容器を叩いても入力フォーカスは中身へ移らないので、
         // 素直に書くと次の type が「フォーカスが無い」で落ちていた。
         // **払うのは tap の直後だけ**(木を1枚読む)。自動フォーカスに任せる書き方や、
-        // pressEnter で欄を移った直後の type は従来どおり読み足さない。
+        // pressEnter で欄を移った直後の type は読み足さない。
         // 改行入りは typeDriver(XCUITest)へ回す経路があり ref の体系が別なので触らない
         if let tapped = lastTapTarget, !text.contains("\n"),
            let recovered = try await retypeTargetIfUnfocused(after: tapped, phase: &phase) {

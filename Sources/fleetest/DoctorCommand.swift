@@ -52,7 +52,7 @@ struct Doctor: AsyncParsableCommand {
         + "in the monitor / VSCode toolbar"))
     var fmLoad = false
 
-    // 根拠: 2026-07-22 M2 Ultra 実測でスループットが頭打ちになる最小の並列度
+    // 根拠: M2 Ultra 実測でスループットが頭打ちになる最小の並列度
     // (並列度1→0.83 回/秒、5→1.03 回/秒、10→1.02 回/秒で頭打ち)。天井まで埋めるのに要る最小のコスト
     @Option(name: .long, help: "Concurrency for --fm-load (default: 5, the smallest concurrency that saturates the serialized FM queue)")
     var fmLoadConcurrency: Int?
@@ -139,7 +139,7 @@ struct Doctor: AsyncParsableCommand {
 
         // ランナーをビルドした Xcode/SDK と現在のものの一致確認。Xcode(beta)更新後に
         // 旧ビルドのランナーを使う・逆に新ビルドのランナーを旧ランタイムに載せると、アプリが
-        // 実行中に「Application is not running」でクラッシュする(2026-07-21 実害)。
+        // 実行中に「Application is not running」でクラッシュする(実害)。
         // 判定は再ビルドの砦と同じ指紋(BridgeLauncher.staleRunnerToolchain)。
         // **成果物の Info.plist は見ない** —— 理由は同関数の doc(テンプレートのコピー)
         if let root = try? RepoRoot.find(),
@@ -242,7 +242,7 @@ struct Doctor: AsyncParsableCommand {
         var reaped: [String] = []
         // 応答しなかったポート。**「答えない = 何も居ない」ではない** —— ブリッジが死んで
         // 転送役(実機なら iproxy)だけがポートを握っている形は /status に答えないので、
-        // この走査からは丸ごと消えて「異常なし」と報告されていた(実地 2026-09-23 の負荷テスト:
+        // この走査からは丸ごと消えて「異常なし」と報告されていた(実地の負荷テスト:
         // 画面ロックで死んだ実機のトンネルが採番範囲のポートを握ったまま、doctor は緑だった)
         var silentPorts: [UInt16] = []
         for port in BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31) {

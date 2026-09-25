@@ -6,9 +6,9 @@ import Foundation
 /// 半開きボトムシートの幾何判定の唯一の定義元。**判定は1箇所** —— `scrollFrame` 明示時
 /// (対象の容器そのもの)と未指定時(申告された scrollable 要素からの推測)のどちらもここを通す。
 ///
-/// 旧判定(容器の高さが画面の 15〜80%)は**位置を見ない**ため、下端が画面下端から離れた
-/// 固定高リストや、シートの無い通常画面の容器にも同じ高さ比のものがあり誤って発火した
-/// (2026-09-15 実測: 逆走査で見つかった探索・シートの無いホーム画面の `tap` の両方に
+/// 高さ比だけの判定(容器の高さが画面の 15〜80%)は**位置を見ない**ため、下端が画面下端から離れた
+/// 固定高リストや、シートの無い通常画面の容器にも同じ高さ比のものがあり誤って発火する
+/// (実測: 逆走査で見つかった探索・シートの無いホーム画面の `tap` の両方に
 /// `sheet-collapsed` が付いた)。ボトムシートは「下端が画面下端に接し、上端が画面の上のほうに
 /// 無い」という**位置**が本質なので、これを主判定にする
 public enum SheetGeometry {
@@ -70,7 +70,7 @@ extension StepExecutor {
         /// 動かせず `contentEverMoved=false` のまま確定するが、その直後の逆走査は画面を
         /// 動かして(見つけられずに)戻ってくることがある。ここを見ずに `contentEverMoved`
         /// だけで文言を分岐すると「スワイプがスクロール領域に届いていない」と誤って
-        /// 断定する(2026-09-16 実測: 逆走査でリストを先頭まで戻しているのに、その文言が出た)。
+        /// 断定する(実測: 逆走査でリストを先頭まで戻しているのに、その文言が出た)。
         /// **`contentEverMoved` を流用しない** —— 「順方向で動いて端に着いた」と
         /// 「開始位置が既に端で、逆走査でも見つからなかった」は次の一手が違う
         /// (前者は maxSwipes を上げても無駄、後者はそもそもこの画面に無い)ので
@@ -90,7 +90,7 @@ extension StepExecutor {
         var containerIsPartialHeight: Bool = false
         /// 探索の**どこか1周でも**木が要素上限で打ち切られていた件数の最大。
         ///
-        /// **最終木だけを見ても分からない**(2026-08-12 のブラウザ監査): 目的の行が画面に
+        /// **最終木だけを見ても分からない**(ブラウザ監査): 目的の行が画面に
         /// 入っていた周回では打ち切られていても、探索が通り過ぎた先の最終画面は上限に
         /// 当たらないことがある。そのとき失敗文は「見つからない」としか言わず、
         /// **実在する行を探し続ける**。最終木だけで判定していたため、実測の2回のうち
@@ -178,7 +178,7 @@ extension StepExecutor {
         // **「stopped early」と言わない**。旧文言は「途中で諦めた」としか
         // 読めず、実際には**リストの末尾に着いていた**回(iOS の設定アプリで実測)を欠陥と
         // 受け取らせ、maxSwipes を上げた再試行を誘っていた。上げても結果は変わらないので明言する。
-        // **3形を分ける**(2026-09-16 に3形目を追加): `contentEverMoved`(順方向)が
+        // **3形を分ける**: `contentEverMoved`(順方向)が
         // 「動いた末の停止」か「1度も動かなかった」かをまず分け、後者はさらに
         // `reverseSweepMoved`(逆走査が画面を動かしたか)で分ける ——
         // 逆走査が動かしていたなら**探索側は実際にスワイプを届かせている**ので、
@@ -201,8 +201,8 @@ extension StepExecutor {
             stopped = ""
         }
         // **シート展開のヒント**: 半開ボトムシート内のリストは容器が動いても中身は動かず、
-        // 「動かなくなった」だけでは利用者がシートの状態に気付けない(2026-08-08・Google マップ実測)。
-        // **全画面リストの末尾到達には出さない**(containerIsPartialHeight。2026-08-08)。
+        // 「動かなくなった」だけでは利用者がシートの状態に気付けない(Google マップで実測)。
+        // **全画面リストの末尾到達には出さない**(containerIsPartialHeight)。
         // **縦方向の探索のときだけ**(ボトムシートは縦の概念。`tap(scroll: .right)` 等の
         // 横方向探索にまで出すと、画面のどこかに無関係な縦シートがあるだけで誤誘導になる ——
         // `containerIsPartialHeight` は scrollContainer が解決できないと画面全体から
@@ -243,7 +243,7 @@ extension StepExecutor {
     /// 明示 scrollFrame が「解決できない」ことの判定。**scrollContainer には委ねない** ——
     /// scrollContainer は殺しスイッチ(`FT_SCROLL_TARGET=legacy`)のとき常に nil を返すため、
     /// それを fail-fast の根拠にすると legacy 指定時に「セレクタが実在するのに matched nothing」
-    /// と誤判定する。殺しスイッチ有効時は判定自体をスキップし、従来(legacy)挙動へ流す。
+    /// と誤判定する。殺しスイッチ有効時は判定自体をスキップし、legacy 挙動へ流す。
     /// runScrollSearch(scrollTo/exist/notExist 系)と scroll/scrollToEdge/flick の両方から呼ぶ
     static func scrollFrameUnresolved(_ step: FlowStep, in snapshot: SnapshotResponse) -> Bool {
         guard Self.coordinateScrollEnabled, let locator = step.scrollFrame else { return false }
@@ -272,10 +272,10 @@ extension StepExecutor {
     /// スナップショットは 25ms)。距離が分かれば、固定幅スワイプ N 回を少数の長距離ドラッグに
     /// 置き換えられる(1500px を 0.44s)。ヒントは Android の WebView だけが供給する
     /// (Chromium が全ドキュメントをツリーに載せる。ネイティブのリストは画面外を載せないため、
-    /// **ヒントが無いことは不在の根拠にならない** = 従来ループの代替であって不在の即断には使わない)。
+    /// **ヒントが無いことは不在の根拠にならない** = 通常の探索ループの代替であって不在の即断には使わない)。
     ///
     /// 戻り値: 正 = 指を上へ(内容を下へ読み進める)動かす px。ヒント不一致・方向不一致・
-    /// 水平方向・既に画面内なら nil(呼び手は従来のスワイプに落ちる)。
+    /// 水平方向・既に画面内なら nil(呼び手は通常のスワイプに落ちる)。
     /// 呼び手はスナップショットごとに再計算する(ドラッグの実移動はフリングで揺れるが、
     /// 毎回測り直す自己補正で収束する。較正は持たない)
     static func offscreenJump(step: FlowStep, snapshot: SnapshotResponse,
@@ -309,7 +309,7 @@ extension StepExecutor {
     /// `scrollToEdge` が端と認めるまでに必要な「署名が不変だった周回数」。
     ///
     /// 既定は **2**。Android では次のスワイプがフリングの停止だけに消費されて1回空振りすることがあり、
-    /// 1回で打ち切ると途中で止まる(2026-07-27 実測: scrollToTop が row_22 付近で停止)。
+    /// 1回で打ち切ると途中で止まる(実測: scrollToTop が row_22 付近で停止)。
     ///
     /// **ヒントを供給する画面(WebView)だけ 1 に下げる**。`offscreen` はその方向にまだ内容が
     /// あるかの**肯定的な証拠**で、`remainingJump == nil` = 「もう先が無い」。これがあるなら
@@ -317,7 +317,7 @@ extension StepExecutor {
     /// 効くのは iOS xcuitest の WebView で、**端に着いた後に捨てのスワイプを2回撃っていた**
     /// (1スワイプ約2.5秒 = 実測 scrollToTop 中央値 12.1s の主成分。docs/performance-tuning.md §8)。
     /// 供給の無い画面(ネイティブ・旧ブリッジ・hybrid の WebViewDelegatingDriver)は
-    /// `offscreen` が nil なので従来どおり 2 のまま = 挙動は変わらない
+    /// `offscreen` が nil なので 2 のまま
     static func unchangedRoundsForEdge(snapshot: SnapshotResponse,
                                        remainingJump: Double?) -> Int {
         guard remainingJump == nil, let hints = snapshot.offscreen, !hints.isEmpty else { return 2 }
@@ -325,7 +325,7 @@ extension StepExecutor {
     }
 
     /// スクロールヒントの端(その方向にまだ続く実座標の限界)までの距離。scrollToEdge 用。
-    /// 正 = 指を上へ。ヒントがその方向に無ければ nil(従来の署名ループへ)
+    /// 正 = 指を上へ。ヒントがその方向に無ければ nil(署名ループへ)
     static func offscreenEdgeJump(snapshot: SnapshotResponse,
                                   finger: FTSwipeDirection) -> Double? {
         guard finger == .up || finger == .down,
@@ -355,7 +355,7 @@ extension StepExecutor {
     ///
     /// **容器は画面と交差させる**(`ScrollGeometry.intersection` と同じ規則)。
     /// 交差を取らないと、画面からはみ出した容器で**画面外の座標を撃つ**ことになる
-    /// (WebView が画面より高いときに起き得た。2026-08-03 に scrollFrame 側と規則を揃えた)
+    /// (WebView が画面より高いときに起き得た。scrollFrame 側と規則を揃えた)
     static func dragGesture(jump: Double, container rawContainer: FTRect,
                             viewport: FTRect? = nil, vertical: Bool = true)
         -> (fromX: Double, fromY: Double, toX: Double, toY: Double)? {
@@ -388,7 +388,7 @@ extension StepExecutor {
     }
 
     /// ヒント跳躍のドラッグ実行。ゆっくり終える(pressSeconds でフリングを抑えつつ、
-    /// 距離に応じた duration)。失敗したら false(呼び手は従来のスワイプへ落ちる)
+    /// 距離に応じた duration)。失敗したら false(呼び手は通常のスワイプへ落ちる)
     func hintDrag(jump: Double, container: FTRect, viewport: FTRect,
                           phase: inout PhaseAccumulator) async -> Bool {
         guard let g = Self.dragGesture(jump: jump, container: container,
@@ -410,7 +410,7 @@ extension StepExecutor {
 
     /// **フリングを出さないドラッグ**。逆走査専用。hintDrag(0.3〜0.7s)は Android では
     /// まだ速く、189px のドラッグが慣性で 700px 走って**逆向きの飛び越し**になった
-    /// (2026-08-06 に Emulator で観測)。指を離す直前の速度が閾値を下回るよう、
+    /// (Emulator で観測)。指を離す直前の速度が閾値を下回るよう、
     /// **距離ぶんの時間を必ず取る**(reverseSweepDragSpeed px/s)
     func slowDrag(jump: Double, container: FTRect, vertical: Bool = true,
                           phase: inout PhaseAccumulator) async -> Bool {
@@ -481,7 +481,7 @@ extension StepExecutor {
             // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
             // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
             // (アニメが始まる前に「変化なし」と判定される)、動く前のツリーで解決すると
-            // **古い座標をタップして別の要素が選ばれる**(2026-08-02 に CMP で実測。
+            // **古い座標をタップして別の要素が選ばれる**(CMP で実測。
             // ステップは成功のまま = 黙って誤った結果)。2周目以降はスワイプ後の
             // settleAfterScroll / settledSignature が既に待っているので素取得でよい
             var snapshot: SnapshotResponse
@@ -492,7 +492,7 @@ extension StepExecutor {
                 // **スワイプ直後は必ずキャッシュを捨てて撮る**(Android のみ実費。iOS は素通し)。
                 // ブリッジの整定(a11y の静穏待ち)を通っても、**Compose の a11y ツリーは
                 // 数十 ms 遅れて公開される** —— 応答時点の素の snapshot が**スワイプ前の位置**を
-                // 返す瞬間があり(2026-08-03 実測: 4回中2回。素=row_01 / refresh=1=row_06)、
+                // 返す瞬間があり(実測: 4回中2回。素=row_01 / refresh=1=row_06)、
                 // 古いツリーで探索を続けると「動かなかった」と誤認する・見つけた要素が直後の
                 // 解決で消える(`cannot resolve the locator` として現れる)。
                 // 検証系の期限切れ直前の1回とは別で、ここは**毎周払う**必要がある
@@ -516,10 +516,10 @@ extension StepExecutor {
             // **1回の移動量が容器を超えると要素を飛び越す**(スクロール探索は行き過ぎた要素を
             // 拾い直さない)。実測して超えていたら次の刻みを詰める。
             //
-            // **基準は画面ではなく容器**(2026-08-05 修正)。旧実装は画面の高さで割っており、
-            // 容器は定義上それより小さいので**ほぼ発火しなかった** —— §3.18(f) の実測を当てると
-            // SwiftUI は 1 スワイプ 681pt に対し閾値 0.8×874=699pt で素通りする一方、
-            // リストの可視高は 492pt = **1.38 倍の超過**(いちばん取りこぼす SUT で無効だった)。
+            // **基準は画面ではなく容器**: 画面の高さを基準にすると、容器は定義上それより小さいので
+            // **ほぼ発火しない** —— §3.18(f) の実測では SwiftUI は 1 スワイプ 681pt に対し
+            // 画面基準の閾値 0.8×874=699pt で素通りする一方、リストの可視高は 492pt =
+            // **1.38 倍の超過**(いちばん取りこぼす SUT で無効になる)。
             //
             // **効くのは `scrollFrame` を書いた経路だけ**。刻みを縮める唯一の口は `spanScale` →
             // `scrollPath` で、あちらは領域未指定なら nil を返してエンジン既定に任せるため。
@@ -543,11 +543,11 @@ extension StepExecutor {
                 // まだ送れるなら、完全に見えるまでもう1回スワイプする。
                 // 1回の移動量が小さいほど「見えた瞬間 = 見切れ位置」で止まるので、
                 // 領域指定(scrollFrame)や刻みの細かい設定ほどここに掛かる
-                // (2026-08-02 実測: CMP で #row_40 が y=829/高さ56 = 下端 885 > 画面 874 で見つかり、
-                // タップが別の行に取られた。従来の全画面スワイプでは y=720 で見つかっていた)
+                // (実測: CMP で #row_40 が y=829/高さ56 = 下端 885 > 画面 874 で見つかり、
+                // タップが別の行に取られた。全画面スワイプでは y=720 で見つかっていた)
                 // 領域が指定されていないときは**報告された木から clip 元の祖先**を採る。
                 // これが無いと viewport が画面全体になり、容器の外に並ぶ ghost 要素を
-                // 「見えている」と判定して探索がそこで止まる(2026-08-03 実測: #row_30 が
+                // 「見えている」と判定して探索がそこで止まる(実測: #row_30 が
                 // label=nil・y=783 = 容器 230..692 の外で見つかり、タップが飲まれた)
                 let viewport = (scrollContainer(step: step, in: snapshot,
                                                 vertical: direction == .up || direction == .down)
@@ -575,8 +575,8 @@ extension StepExecutor {
                     // **path が無い(= 全幅フリングになる)既定経路だけ**、必要距離の遅いドラッグで
                     // 寄せる(clipRecoveryJump 参照。フリングは逆側へ再飛び越しして往復振動する)。
                     // scrollFrame あり = path は元々容器基準の短い送りなので置き換えない
-                    // (置き換えると SwiftUI で +28% の実退行。2026-08-08 に 92s/72s の A/B で確定)。
-                    // ジャンプ量 40pt 未満は嘘 frame(クランプ)の兆候なので従来スワイプへ
+                    // (置き換えると SwiftUI で +28% の実退行。92s/72s の A/B で確定)。
+                    // ジャンプ量 40pt 未満は嘘 frame(クランプ)の兆候なので通常のスワイプへ
                     if path == nil,
                        let jump = Self.clipRecoveryJump(for: element, viewport: viewport,
                                                         finger: back),
@@ -635,13 +635,13 @@ extension StepExecutor {
             if attempt < maxSwipes {
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
                 // 空振りしたまま全画面スワイプへ黙って退化すると、カード上のボタン等
-                // 無関係な要素を発火させ得る(2026-08-08・Apple マップの実害: 申告した
+                // 無関係な要素を発火させ得る(Apple マップの実害: 申告した
                 // #MUScrollableStackView が次の瞬間ツリーから落ち、退化したスワイプが
                 // カードの「計画」ボタンを叩いて画面遷移した)。**探索中に容器が消えた場合も同型**
                 // なので、初回だけでなく毎周チェックする。
                 // **scrollContainer ではなく Self.scrollFrameUnresolved で判定する**
                 // (scrollContainer は殺しスイッチ時に常に nil を返すため、それをそのまま使うと
-                // legacy 指定時に「セレクタが実在するのに matched nothing」と誤検知する。2026-08-08)
+                // legacy 指定時に「セレクタが実在するのに matched nothing」と誤検知する)
                 if Self.scrollFrameUnresolved(step, in: snapshot) {
                     return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
                                               hintJumps: hintJumps, swipes: swipes,
@@ -653,7 +653,7 @@ extension StepExecutor {
                        == Self.contentSignature(snapshot.elements) {
                     unmovedRounds += 1
                     if unmovedRounds >= Self.unmovedRoundsToStopSearch {
-                        // **打ち切る前に整定まで待って確かめる**(2026-08-06 に Flutter/Android で
+                        // **打ち切る前に整定まで待って確かめる**(Flutter/Android で
                         // 誤発火): a11y ツリーは遅れて公開されるので、**動いている最中でも
                         // 2周続けて同じ木**が返ることがある。`settledSignature` は
                         // キャッシュを捨てて連続2回一致まで待つので、遅れと停止を区別できる。
@@ -669,9 +669,9 @@ extension StepExecutor {
                         }
                         // シート展開ヒントは**対象の容器がボトムシートの幾何に合う**ときだけ
                         // (全画面リストの末尾到達・シートの無い画面で毎回誤って出すのを防ぐゲート。
-                        // 2026-08-08 / [F7b] 2026-09-15: 「画面の大半を占めない」だけでは、
+                        // [F7b] 「画面の大半を占めない」だけでは、
                         // 下端が画面下端から離れた固定高リストやシートの無いホーム画面の容器にも
-                        // 中〜広い高さ比のものがあり誤って鳴った。判定は `SheetGeometry` に一本化)。
+                        // 中〜広い高さ比のものがあり誤って鳴る。判定は `SheetGeometry` に一本化)。
                         // **scrollFrame 未指定でも判定する**: 半開きシートの中で
                         // 止まる形は指定の有無に関係なく起きるのに、指定したときにしかヒントが
                         // 出ていなかった —— 実測(Apple マップの経路手順)では、未指定の1回目が
@@ -762,13 +762,13 @@ extension StepExecutor {
                 previousSnapshot = snapshot
             }
         }
-        // **弾切れでも逆走査を1回だけ試す**(2026-08-08 実測: 端のバウンスで内容署名が毎周
+        // **弾切れでも逆走査を1回だけ試す**(実測: 端のバウンスで内容署名が毎周
         // 揺れ、「2周連続不変」の端判定に到達しないまま maxSwipes を使い切る形が RN の
         // 横カルーセルで 2/10 残った。既に通り過ぎている公算が高い局面で、失敗経路限定なので
         // 正常系のコストはゼロ。ゲートは stoppedUnmoving 側の逆走査と同じ)
         // **見つからなくても画面を動かしたかは別に確かめる**(mid-loop 側の reverseSweepMoved と
         // 同じ理由。ScrollSearchResult.reverseSweepMoved の doc)。ガード(recoverOnMiss 等)で
-        // reverseSweep 自体を撃たなかった回は false のまま = 従来どおり「1度も動かなかった」に読める
+        // reverseSweep 自体を撃たなかった回は false のまま = 「1度も動かなかった」に読める
         var reverseSweepMoved = false
         if recoverOnMiss, step.containerInference ?? true,
            let latest = previousSnapshot,

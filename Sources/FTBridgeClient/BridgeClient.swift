@@ -21,7 +21,7 @@ public final class BridgeClient: AppDriver {
     /// 既知のシミュレータ UDID(ワーカー構築時に分かっている場合だけ入る。nil = ブリッジに聞く)。
     /// **これが無いと removeApp() の直後に installApp() できない** —— 対象の特定が `status()` に
     /// 依存するため、アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が
-    /// 居なくなる(2026-08-19 の受け手報告)
+    /// 居なくなる(受け手報告)
     let simulatorUDID: String?
     /// 実機ブリッジ接続時だけ非 nil(LAN・USB トンネルのどちらも)。BridgeAPI.bridgeTokenHeader で送る。
     /// **トークンの要否は宛先がループバックかでは決まらない** —— 実機は USB トンネル経由でも
@@ -40,7 +40,7 @@ public final class BridgeClient: AppDriver {
     var tokenReloader: () -> String? = { nil }
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)。
     ///
-    /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(2026-08-04 実測)。
+    /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(実測)。
     /// 1スワイプは 2,546→926ms まで縮み S0090 は −10% になったが、**探索直後のタップが飲まれる**
     /// (`tap("#row_30")` 後に `selected=-`)。E2E-iOS の S0080/S0060 が 2/2 で落ちた ——
     /// あの空打ちドラッグ+`settleAfterScroll` は「XCTest の quiescence が慣性を吸った後」を
@@ -80,7 +80,7 @@ public final class BridgeClient: AppDriver {
     /// per-endpoint 既定(interaction/session)は URLRequest.timeoutInterval として config 側を
     /// 上書きするため、timeoutSeconds でクランプしないと短い指定が無効化される(実害:
     /// scanBridgeStatuses の 1s が status() の 45s に化け、suspend ゾンビ存在時に
-    /// monitor/list-devices のスキャンが毎回 45s 待った。2026-07-25)
+    /// monitor/list-devices のスキャンが毎回 45s 待った)
     /// token: 省略時は `inferredToken(host:port:physicalUDID:)` が推測する。**呼び出し元が
     /// 既に解決済みの `BridgeEndpoint` を持っているなら、推測させず `init(endpoint:)` を使うこと**
     /// —— host だけを取り出してここへ渡すと token を静かに失う(usb トンネルは host が
@@ -204,7 +204,7 @@ public final class BridgeClient: AppDriver {
     enum ResolvedTarget: Equatable {
         case simulator(udid: String)
         case physical(udid: String)
-        /// カタログ自体が引けない(別種の故障)。従来どおり名前を simctl へ渡す
+        /// カタログ自体が引けない(別種の故障)。名前をそのまま simctl へ渡す
         case unknown(name: String)
     }
 
@@ -326,7 +326,7 @@ public final class BridgeClient: AppDriver {
                 body: "could not delete \(failed.count) item(s) in the data container of"
                     + " \(bundleID): \(failed.prefix(5).joined(separator: ", "))")
         }
-        // **ファイルを消しただけでは NSUserDefaults が戻ってくる**(2026-08-05 に実測で確定):
+        // **ファイルを消しただけでは NSUserDefaults が戻ってくる**(実測で確定):
         // cfprefsd がドメインをメモリに抱えており、次の起動で消したはずの値を配って plist を
         // 書き直す。対照実験(消して起動を3回)で launch_count が 2→3→4 と増え続けた =
         // 消去が一度も効いていなかった。デーモンを入れ直すとキャッシュが落ちる(3/3 で初期化)。
@@ -346,7 +346,7 @@ public final class BridgeClient: AppDriver {
     }
 
     /// install は HTTP エンドポイントを持たず simctl / devicectl の役割。
-    /// 実機(physicalUDID 指定時)は `devicectl device install app`、シミュレータは従来どおり simctl。
+    /// 実機(physicalUDID 指定時)は `devicectl device install app`、シミュレータは simctl。
     /// シミュレータの対象特定は /status のデバイス名から行う。同名デバイス(Shutdown の複製等)が
     /// あると名前指定 simctl は失敗するため、Booted かつ同名の UDID に解決してから実行する
     /// (解決不能時は名前のまま試す)。
@@ -626,7 +626,7 @@ public final class BridgeClient: AppDriver {
 
     /// `refresh=1` は Android ブリッジとの契約(AndroidRunner の BridgeRouter.handleSnapshot)。
     /// **iOS ブリッジへ送ってはいけない** —— クエリ付きは別ルート扱いで
-    /// `404 not found: GET /snapshot?refresh=1` になる(2026-08-03 に実測。
+    /// `404 not found: GET /snapshot?refresh=1` になる(実測。
     /// 「未知クエリは無視される」と書いてあったが誤りだった)。
     /// 呼び出し側は必ず `supportsCacheBypass`(このクライアントは既定の false)で閉じること
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
@@ -661,7 +661,7 @@ public final class BridgeClient: AppDriver {
     private func injectSafariDOMIfApplicable(_ response: inout SnapshotResponse) async {
         guard SafariWebInspector.isEnabled,
               response.sessionBundleID == SafariWebInspector.safariBundleID else { return }
-        // **`webView` ノードが無くても差し込む**(2026-08-14 の監査で直した。Android 側と同じ規律。
+        // **`webView` ノードが無くても差し込む**(監査で直した。Android 側と同じ規律。
         // 理由は `WebViewDOM.browserContentFrame` の宣言)
         // **既定は a11y**。足りているなら DOM は読まない(理由は browserA11yLooksSufficient)
         guard !WebViewDOM.browserA11yLooksSufficient(elements: response.elements) else { return }
@@ -720,7 +720,7 @@ public final class BridgeClient: AppDriver {
     /// 純粋な名前引き(`resolveTarget(named:simulators:physicalDevices:)` と同じ形)。
     /// **実機は `.udid`(ハードウェア UDID)を返す** —— `resolveTarget` が返す
     /// `deviceCtlIdentifier` は devicectl 専用でここでは使えない
-    /// **同名が複数居たら諦める**(2026-08-13 のレビュー指摘)。ここで1つ選ぶと
+    /// **同名が複数居たら諦める**(レビュー指摘)。ここで1つ選ぶと
     /// **別端末の Safari の画面内容を、この端末の木へ正として差し込む**ことになる。
     /// 宛先が一意でないときは撃たない規律(MCP の宛先記憶と同じ)。
     /// 取れないときは黙って a11y のまま = 誤った木を返すより無害
@@ -782,7 +782,7 @@ public final class BridgeClient: AppDriver {
     /// UIKit / SwiftUI のナビゲーションバーは戻るボタンに `BackButton` という識別子を付ける
     /// (iOS 27.0 の設定アプリで実測: `button id=BackButton label=設定 (16,62 44x44)`)。
     /// **Compose / Flutter は自前描画でシステムのナビゲーションバーを持たない**ので nil になり、
-    /// 従来どおりエッジスワイプへ落ちる = 既存の挙動は変わらない
+    /// エッジスワイプへ落ちる
     public func back() async throws {
         let tree = try await snapshot()
         if let button = Self.navigationBackButton(in: tree) {
@@ -809,7 +809,7 @@ public final class BridgeClient: AppDriver {
     }
 
     /// 直前の端送りで「もう端」とブリッジが答えたか(`AppDriver.reachedEdgeOnLastSwipe`)。
-    /// **答えない旧ブリッジでは nil のまま** = ホストは従来どおり木の署名で判定する
+    /// **答えない旧ブリッジでは nil のまま** = ホストは木の署名で判定する
     public private(set) var atEdgeOnLastSwipe: Bool?
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
 
@@ -835,13 +835,13 @@ public final class BridgeClient: AppDriver {
     /// **`SwipeRequest.distance` は送らない**(= ブリッジの軸別既定 縦 0.4・横 0.6 のまま)。
     /// 距離を広げてはいけない: スワイプは画面中央基準の全画面固定(design.md 承認済み差分)なので、
     /// 0.8 にすると始点が y=画面の10% になり**スクロール領域の外から始まって1ミリも動かない**。
-    /// 2026-08-02 に実際に踏んだ(scrollToBottom は始点がリスト内なので成功し、scrollToTop だけが
+    /// 実際に踏んだ(scrollToBottom は始点がリスト内なので成功し、scrollToTop だけが
     /// 3 SUT とも row_29 で止まって直後の `exist "#row_01"` が落ちた)。速くするのはストロークだけ。
     /// 実測(Android View/XML): 300ms/実時計 276px → 200ms/合成 1,156px
     static let edgeSwipeDurationMs = 150
 
     /// ストローク時間。**探索では触らない**(ブリッジ既定 300ms)。
-    /// 2026-08-02 に 200ms を試したが、Android の Compose で慣性が出て
+    /// 200ms を試したが、Android の Compose で慣性が出て
     /// **探索直後のタップが 9 行ずれた**(row_30 を狙って row_39)。
     /// 逆に 300ms のままだと Flutter/Android は負荷時に到達し損ねることがある ——
     /// **どちらかに倒せるだけの較正が無い**ので現状維持(docs/performance-tuning.md §3.16 の
@@ -998,7 +998,7 @@ public final class BridgeClient: AppDriver {
 
     /// **クエリは path に混ぜない**: appendingPathComponent は "?" を %3F へ逃がすので、
     /// "/snapshot?refresh=1" を渡すとブリッジ側で "GET /snapshot%3Frefresh=1" になり 404 になる
-    /// (2026-08-02 に実際に踏んだ。フェイクドライバの単体テストでは配線が通らず気付けなかった)
+    /// (実際に踏んだ。フェイクドライバの単体テストでは配線が通らず気付けなかった)
     static func url(base: URL, path: String, query: String?) -> URL {
         let withPath = base.appendingPathComponent(path)
         guard let query, !query.isEmpty,
@@ -1012,7 +1012,7 @@ public final class BridgeClient: AppDriver {
     /// 実機以外の経路(シミュレータ・Android・USB トンネル)は常にループバックなので、
     /// この判定だけで実機の LAN を名指しできる(IOSDeviceTransport.establish の2分岐と対)。
     /// WiFi の待ち受けは端末の省電力で閉じるため、実行途中の接続拒否は
-    /// **アプリの死ではなくトランスポート**であることが多い(2026-08-26 実測: LAN で2回とも
+    /// **アプリの死ではなくトランスポート**であることが多い(実測: LAN で2回とも
     /// 同じ手順で拒否 → USB トンネルで成功、所要も 13.2s → 5.5s)
     static func lanTransportAdvice(baseURL: URL) -> String {
         guard let host = baseURL.host, host != BridgeEndpoint.loopbackHost else { return "" }

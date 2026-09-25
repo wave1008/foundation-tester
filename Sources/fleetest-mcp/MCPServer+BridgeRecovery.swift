@@ -2,7 +2,7 @@
 // MCP が長く駆動する xcuitest ブリッジ(シミュレータ)の死亡からの自動復帰と、劣化の測り直し。
 // 本体は MCPServer.swift。
 //
-// 実地(2026-09-22 B1): 3時間生きたランナーが a11y 照会の劣化の末に自壊し(ポートに何も応答しなくなり
+// 実地(B1): 3時間生きたランナーが a11y 照会の劣化の末に自壊し(ポートに何も応答しなくなり
 // 台帳も消える)、以後そのセッションは connectionLostHint の案内(`fleetest bridge up` を打て)を
 // 返すだけで、誰も打たないので二度と戻らなかった。ライブ操作(LiveBridgeAutoStarter)は同じ事象を
 // 自動起動で凌ぐので、MCP にも同じ復帰を持たせる。**建て直しは BridgeProvisioner.provision の1箇所**
@@ -10,7 +10,7 @@
 //
 // **対象はシミュレータの xcuitest エンジンだけ**(RunnerMidRunRecheck.target と同じ絞り込み):
 // hybrid/in-app は建て直しの単位が違う(対象アプリごと落ちる)・実機は provision() の対象外。
-// それ以外の接続は従来どおり connectionLostHint の案内だけに落ちる(退化ではない——今までどおり)。
+// それ以外の接続は connectionLostHint の案内だけに落ちる(退化ではなく対象外なだけ)。
 
 import Foundation
 import FTBridgeClient
@@ -24,7 +24,7 @@ extension MCPServer {
     /// ここで重複して持たない
     /// 建て直したことを**結果本文の先頭に載せる**(既存の注記と同じ前置の形)。
     /// stderr だけに出すと **JSON-RPC しか読まない呼び手には届かない** ——
-    /// 2026-09-21 T1 の「唯一の警告が stderr」と同じ型。この呼び出しが数分かかった理由も、
+    /// T1 の「唯一の警告が stderr」と同じ型。この呼び出しが数分かかった理由も、
     /// 「同じポートで別のランナーに変わった」ことも、ここにしか現れない
     static let bridgeRebuiltNote =
         "⚠️ the xcuitest bridge on this device had died (nothing was listening) and was rebuilt"

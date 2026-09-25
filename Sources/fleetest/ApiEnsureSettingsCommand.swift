@@ -1,7 +1,7 @@
 // 受け手パッケージの `.claude/settings.json` の Bash 許可リストを補修する
 // (fleetest api ensure-settings)。install.sh が**毎回**呼ぶ。
 //
-// なぜ独立したコマンドが要るか: 許可リストは従来 `fleetest init` でしか書かれず、更新は
+// なぜ独立したコマンドが要るか: 許可リストは `fleetest init` でしか書かれず、更新は
 // `--skip-project`(init を回さない)で走るため、**許可エントリを増やしても既存の受け手には
 // 一生届かなかった**。エントリの実装は ProjectScaffold.writeClaudeSettings ただ1つに保つ。
 

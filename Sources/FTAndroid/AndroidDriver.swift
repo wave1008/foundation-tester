@@ -109,7 +109,7 @@ public final class AndroidDriver: AppDriver {
     /// `ViewConfiguration.getScaledMinimumScalingSpan()` = **27 mm** を density から px に換算する
     /// (440 dpi の Pixel 3a で 468 px)。これを下回る間隔の 2 本指は、どれだけ開いても
     /// ズームにならない(実測: 既定半径 238 px = 最大間隔 428 px で `zoom=-`、450 px で `zoom=in`)。
-    /// 読めなければ nil(呼び手は従来の既定のまま)
+    /// 読めなければ nil(呼び手は既定のまま)
     public func minimumScalingSpanPx() -> Double? {
         guard let out = try? adb(["shell", "wm", "density"]).output,
               let density = Self.parseDisplayDensity(out) else { return nil }
@@ -125,7 +125,7 @@ public final class AndroidDriver: AppDriver {
     /// `adb shell wm density` の出力 → **dp あたりの px**。
     /// **最後の density 行**を採る(`Override density` があればそれが実効値)。
     /// 160 は dp の定義そのもの(1dp = 1/160 inch)なので調整値ではない。
-    /// 読めなければ nil = 呼び手は 1(換算しない = 従来の挙動)へ落ちる
+    /// 読めなければ nil = 呼び手は 1(換算しない)へ落ちる
     static func parseDisplayDensity(_ output: String) -> Double? {
         guard let line = output.split(separator: "\n").last(where: { $0.contains("density") }),
               let dpi = line.split(separator: ":").last
@@ -221,7 +221,7 @@ public final class AndroidDriver: AppDriver {
     /// 出力も見る。**判定材料は "Error:" だけ** —— `Warning: Activity not started, intent has been
     /// delivered to currently running top-most instance.` は**成功**(既に前面にある同じ Activity の
     /// onNewIntent へ配送済み = ディープリンクの warm 配送そのもの)で、singleTop の SUT では
-    /// これが通常の応答になる。ここを失敗にすると Flutter/RN の配送が全滅する(2026-08-08 に実測)
+    /// これが通常の応答になる。ここを失敗にすると Flutter/RN の配送が全滅する(実測)
     static func amStartIndicatesFailure(output: String) -> Bool {
         output.contains("Error:")
     }
@@ -350,7 +350,7 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// ホーム画面に戻る。**gRPC の名前付きキー("GoHome" 等)は使わない** — 成功を返すのに
-    /// キーが届かない無音 no-op(2026-08-19 に emulator 36.5.10 / API 36 の2台で確認。
+    /// キーが届かない無音 no-op(emulator 36.5.10 / API 36 の2台で確認。
     /// GoHome も AppSwitch も前面が変わらず、adb keyevent なら戻る。送出中の getevent は1イベントも
     /// 受けず、guest の入力デバイスは gpio-keys と multi-touch だけ = キーの載る先が無い。
     /// gpio-keys に載る KEY_POWER/KEY_SLEEP = sleepWake だけは届く。docs/design.md §16.3)。
@@ -366,7 +366,7 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// 前の画面へ戻る。**gRPC "GoBack" は使わない** — 成功を返すのにキーが届かない
-    /// (2026-07-30 実機で確認。KEY_WAKEUP 不発と同型の無音 no-op。機序は home())。adb keyevent 直行。
+    /// (実機で確認。KEY_WAKEUP 不発と同型の無音 no-op。機序は home())。adb keyevent 直行。
     public func back() async throws {
         let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
         guard result.status == 0 else {
@@ -381,7 +381,7 @@ public final class AndroidDriver: AppDriver {
 
     /// 木は px で来るので、**pt/dp で決めた床を px へ換算する倍率**(= 表示密度)。
     /// 端末ごとに固定なので1度だけ引く(`wm density` の adb 往復をタップのたび払わない)。
-    /// 引けなければ 1 = 換算しない側 = 従来の挙動(嘘の倍率を作らない)
+    /// 引けなければ 1 = 換算しない側(嘘の倍率を作らない)
     public var pointScale: Double {
         if let cachedPointScale { return cachedPointScale }
         let value = displayDensity()
@@ -415,16 +415,16 @@ public final class AndroidDriver: AppDriver {
         // 対応表は snapshot ごとに作り直す(前の画面のものを持ち越すと別の欄へ注入する)
         domBridgeRefs = [:]
         // **web コンテンツを DOM で置き換える**。対象はブラウザ本体と
-        // **テスト対象アプリ自身の WebView**(2026-08-15。a11y が版で属性を入れ替えるため)。
+        // **テスト対象アプリ自身の WebView**(a11y が版で属性を入れ替えるため)。
         // **どちらの門も `AndroidWebViewDOM.route` の1箇所**(ここに2つ目の判定を書かない)。
         //
         // **前面の判定はスナップショット自身の `sessionBundleID`(= ブリッジがデバイス上で見た値)を
         // 先に見る**。`currentPackage` は launch/openURL/activate が更新するホスト側の帳簿でしかなく、
         // **MCP のようにアプリを起こさず既にブラウザが前面の端末へ繋ぐ経路では nil のまま**になる
-        // (2026-08-13 に実測: 新しいプロセスから Chrome を撮ったら帳簿が nil で経路が丸ごと不発だった)。
+        // (実測: 新しいプロセスから Chrome を撮ったら帳簿が nil で経路が丸ごと不発だった)。
         // 帳簿は `sessionBundleID` を返さない古いブリッジのための保険として残す
         if let package = snapshot.sessionBundleID ?? currentPackage {
-            // **`webView` ノードが無くても差し込む(ブラウザだけ)**(2026-08-14 の監査で直した)。
+            // **`webView` ノードが無くても差し込む(ブラウザだけ)**(監査で直した)。
             // Chrome は本文を1要素も公開しない画面でノードごと出さないことがあり、
             // そこが**まさに DOM が要る場面**なのに門で弾いていた。無いときは
             // 上下の chrome から内容領域を割り出す(`browserContentFrame`)。
@@ -532,7 +532,7 @@ public final class AndroidDriver: AppDriver {
     /// ソフトキーボードを閉じる(DSL の hideKeyboard)。ブリッジの /hidekeyboard
     /// (BridgeRouter.handleHideKeyboard、ESCAPE キー注入)経由。adb keyevent 直行にしない
     /// (back() と違い、ESCAPE は IME にだけ吸われる想定でアプリの画面遷移を起こさない)
-    /// ソフトキーボードを閉じる。**ESCAPE は効かない**(2026-07-30 実機で確認。ブリッジの
+    /// ソフトキーボードを閉じる。**ESCAPE は効かない**(実機で確認。ブリッジの
     /// /hidekeyboard は撃っても IME が閉じない)ので、唯一効く BACK キーを使う。
     /// **BACK は出ていないときに撃つと画面が戻ってしまう**ため、必ず dumpsys で可視を確かめてから
     /// 撃つ(hideKeyboard は冪等が契約。出ていなければ no-op)
@@ -590,7 +590,7 @@ public final class AndroidDriver: AppDriver {
     /// nil = そのままのエラーでよい。
     ///
     /// ブリッジの文面は「tap the field by ref first」だが、**その tap が効かなかったからここに来る**
-    /// (2026-08-21 の受け手報告)。Android の入力欄は容器(TextInputLayout 等)と中身
+    /// (受け手報告)。Android の入力欄は容器(TextInputLayout 等)と中身
     /// (TextInputEditText)に分かれることがあり、**容器を叩いても入力フォーカスは中身へ移らない** ——
     /// しかも容器のほうが id を持つので、`#id` を書くと容器に解決する。
     /// 読み手が次に打つ手が分かる形にする = **セレクタを取る `type` へ寄せる**
@@ -626,7 +626,7 @@ public final class AndroidDriver: AppDriver {
     /// ブリッジの pressEnter が失敗したあとの分岐(純関数 = 単体テストで固定する)。
     /// nil = キーイベントへフォールバックしてよい / 非 nil = このエラーで止める。
     ///
-    /// **「フォーカスが無い」だけはフォールバックしない**(2026-08-07 実測)。
+    /// **「フォーカスが無い」だけはフォールバックしない**(実測)。
     /// 409 は2種類あり、「IME アクションが失敗」はキーイベントで救えるが、
     /// 「そもそも入力フォーカスが無い」は**誰も受け取らない**ので、生の Enter を
     /// 撃って成功を返すと沈黙した誤りになる(入力欄のタップに失敗したまま
@@ -673,7 +673,7 @@ public final class AndroidDriver: AppDriver {
     /// (`AndroidWebViewDOM.scrollToEdge`。実測 28ms)。Android のスワイプは1本 ≒ 6 行しか
     /// 進まないので、長文では往復回数がそのまま所要になる(受け手の実文書で 19.2s)。
     /// iOS の in-app が `contentOffset` で同じことをしているのと揃える。
-    /// **飛ばせなければ従来のジェスチャへ落ちる**(判定は1インスタンスにつき1回だけ試す)
+    /// **飛ばせなければ通常のジェスチャへ落ちる**(判定は1インスタンスにつき1回だけ試す)
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {
         atEdgeOnLastSwipe = nil
@@ -689,7 +689,7 @@ public final class AndroidDriver: AppDriver {
 
     /// 端送りのストローク。**ブリッジの `/swipe` ではなく drag(注入器直結)で撃つ**理由は2つ:
     ///
-    /// - **1本で進む距離が違う**(2026-08-20 実測・40 行リスト): `/swipe`(画面比 0.4 + fling)は
+    /// - **1本で進む距離が違う**(実測・40 行リスト): `/swipe`(画面比 0.4 + fling)は
     ///   1本 **約 6 行**しか進まないのに、中央→端のストローク(0.25s)は **14 行**進む。
     ///   端送りは往復回数がそのまま所要になるので、ここが倍違うと所要も倍違う
     /// - **`/swipe` はブリッジ内で静穏を待ってから返す**(中央値 233ms)。ホストも同じ整定を
@@ -707,7 +707,7 @@ public final class AndroidDriver: AppDriver {
                            screen: FTRect) -> FTSwipePath? {
         if let path { return path }   // 領域指定はホストが計算済み(ScrollGeometry)
         // 画面の大きさが分からないとき(snapshot 前)は ScrollGeometry が nil を返し、
-        // 呼び手は従来の /swipe へ落ちる。**ここで別途ガードしない**(同じ判定を2箇所に置くと、
+        // 呼び手は通常の /swipe へ落ちる。**ここで別途ガードしない**(同じ判定を2箇所に置くと、
         // 変異テストで「殺せない条件」として残るだけで何も守らない)
         let kind: FlickKind
         switch direction {
@@ -913,7 +913,7 @@ public final class AndroidDriver: AppDriver {
             throw DriverError.badResponse(status: 404, body: "unknown reference number [\(ref)]. Take a snapshot first")
         }
         // tap(ref:) と同じくホスト側で座標解決してブリッジへは x/y で送る(ブリッジ再起動で
-        // ブリッジ側 ref 表だけが消えてもずれない。注入経路は従来と同じ InputInjector.press)。
+        // ブリッジ側 ref 表だけが消えてもずれない。注入経路は InputInjector.press のまま)。
         // ブリッジ v8 以降が前提(v7 は /press が ref 必須。probe の版照合で自動更新される)
         try await withBridge { try await $0.press(x: center.x, y: center.y, duration: duration) }
     }
@@ -950,9 +950,9 @@ public final class AndroidDriver: AppDriver {
     /// 順序は**安い順**: ①画像に全幅の大きな1色の帯があるか(数ミリ秒。通常の画面はここで終わる)
     /// → ②木を読んで `webView` の矩形を採る → ③CDP でページを撮る → ④貼れる形なら貼る。
     ///
-    /// **貼る位置は木の `webView` ノードを優先し、無ければ帯**(2026-08-20 の受け手報告で修正)。
-    /// 当初は帯だけで決めていたが、**アプリの chrome ごと写らずに画面全体が1色になる端末**では
-    /// 帯 = 画面全体になり、ページ画像と縦横比が合わず**1枚も貼れなかった**。
+    /// **貼る位置は木の `webView` ノードを優先し、無ければ帯**(受け手報告で修正)。
+    /// 帯だけで決めると、**アプリの chrome ごと写らずに画面全体が1色になる端末**では
+    /// 帯 = 画面全体になり、ページ画像と縦横比が合わず**1枚も貼れない**。
     /// ノードがあれば「どこからどこまでが WebView か」が分かるので、その矩形へ貼る。
     /// ノードが出ないことも実際にある(同じ画面で「木に居る/居ない」の両方を実測)ので、
     /// その場合だけ帯へ落ち、**縦横比がほぼ一致するときに限って**貼る

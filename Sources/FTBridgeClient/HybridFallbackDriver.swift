@@ -3,7 +3,7 @@
 // シナリオ実行では同じ判断を StepExecutor が持っている(driver → 501 なら typeDriver)。
 // **StepExecutor を通らない呼び出し口**(MCP の ft_*)にも同じ振る舞いを与えるのがこのクラスで、
 // これが無いと in-app エンジンでは home / drag / 座標 press が素の 501 で返る
-// (2026-07-28 に live/MCP を xcuitest 固定にした理由そのもの)。
+// (live/MCP を xcuitest 固定にしていた理由そのもの)。
 //
 // **ref を使う操作は回さない**のが不変条件: ref はブリッジごとに別名前空間で、そのまま渡すと
 // **無関係な要素を操作する**。座標・identifier で完結する操作だけが安全に回せる
@@ -21,7 +21,7 @@ public final class HybridFallbackDriver: AppDriver {
     private var fallbackNote: String?
     /// **home/appSwitcher の後は in-app 側が使えない**: in-app ブリッジは対象アプリの
     /// プロセス内に住むので、背面化すると iOS に suspend され、TCP は受理されるのに HTTP が
-    /// 返らない(実測: home 直後の snapshot がタイムアウト。2026-08-05)。
+    /// 返らない(実測: home 直後の snapshot がタイムアウト)。
     /// この間は**全操作を XCUITest 側へ寄せる** —— 読みも書きも同じ側に寄せるので
     /// ref の名前空間も一致する(混ぜると別要素を操作する)。launch/activate で解除
     private var appBackgrounded = false
@@ -36,7 +36,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// **in-app ブリッジは自分のプロセスの中しか見えない**ので、別アプリや springboard を
     /// launch したら以降は読みも書きも XCUITest 側へ寄せる。
     /// これが無いと `ft_launch com.apple.springboard` が**成功を返したうえで、
-    /// 続く snapshot がアプリ自身の古い木を返す**(2026-08-06 に実測。
+    /// 続く snapshot がアプリ自身の古い木を返す**(実測。
     /// ホーム画面を読もうとして 30 要素のアプリ画面が返った)
     private var delegatedApp = false
     /// 直前の swipe を実際に受けたドライバ(reachedEdgeOnLastSwipe の読み先)
@@ -212,10 +212,9 @@ public final class HybridFallbackDriver: AppDriver {
     /// **ref を渡さずに回す**: in-app は長押しを持たない(501)ので、primary の snapshot で
     /// 中心座標へ畳んでから XCUITest の座標長押しへ送る。ref をそのまま渡すと別要素を押す。
     /// **delegating(背面化 or 別アプリ委譲)中は active へ**(tap(ref:)/type(ref:)/clearInput(ref:) と
-    /// 同じ理由): 元は `appBackgrounded` だけを見ており、`delegatedApp`(foreignApp へ委譲中)を
-    /// 見落として primary(自分の木を持たない別アプリの ref)へ投げていた
-    /// (2026-09-06 発覚: springboard 委譲中の press(ref:) が無関係な要素を長押しするか、
-    /// suspend されたアプリへの応答待ちでタイムアウトしていた)
+    /// 同じ理由): `appBackgrounded` だけでなく `delegatedApp`(foreignApp へ委譲中)も見ないと、
+    /// primary(自分の木を持たない別アプリの ref)へ投げてしまい、springboard 委譲中の press(ref:) が
+    /// 無関係な要素を長押しするか、suspend されたアプリへの応答待ちでタイムアウトする
     public func press(ref: Int, duration: Double) async throws {
         if delegating { return try await active.press(ref: ref, duration: duration) }
         do {
@@ -244,7 +243,7 @@ public final class HybridFallbackDriver: AppDriver {
     }
 
     /// **home()/openAppSwitcher() の直後(delegatedApp ではない背面化)だけ特別扱い**する。
-    /// それ以外(通常時・foreignApp への明示委譲中)は従来どおり `active` を読む
+    /// それ以外(通常時・foreignApp への明示委譲中)は通常どおり `active` を読む
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         if appBackgrounded, !delegatedApp {
             return try await backgroundSnapshot(bypassingCache: bypassingCache)
@@ -256,7 +255,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// 呼ぶたび `client.activate(bundleID:)` するため、素通しすると「読むだけで背面化していた
     /// アプリを前面へ戻す」事故になる(MCPServer+Driver.swift の `sentToBackgroundNote` が
     /// 「最後の状態、今の画面ではない」と案内しているのに、実際には読むたびに前面へ戻された
-    /// **今の**アプリの木を返していた。2026-09-06 発覚)。
+    /// **今の**アプリの木を返してしまう)。
     ///
     /// **foreignApp があれば springboard 参照へ張り替えて読む**
     /// (`SystemUIDriver` の旧ランナーフォールバックと同じ形。`launch(bundleID:)` はブリッジ側で
@@ -314,7 +313,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// プロセス内に住むので、別 bundle を渡されても自分の外は見えない ——
     /// primary に投げると「成功したのに読めるのは自分の木だけ」になる。
     /// 開いた後も寄せたままにする(読みと書きを同じ側に置く = ref の名前空間が揃う)。
-    /// primaryBundleID が不明なときは従来どおり primary へ(判定材料が無いので嘘をつかない)
+    /// primaryBundleID が不明なときは primary へ(判定材料が無いので嘘をつかない)
     private func delegateForeignApp(
         _ bundleID: String, _ operation: (AppDriver) async throws -> Void) async throws -> Bool {
         guard let own = primaryBundleID, bundleID != own, let foreignApp else { return false }

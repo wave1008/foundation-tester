@@ -1,7 +1,7 @@
 // Android のスクリーンショットに **WebView の中身が写らない**ときに、CDP から撮ったページ画像を
 // その矩形へ貼って1枚に合成する。
 //
-// **端末側のキャプチャ経路の選び方の問題ではない**(2026-08-20 に E2E-Android の WebView 画面で
+// **端末側のキャプチャ経路の選び方の問題ではない**(E2E-Android の WebView 画面で
 // 実測): ブリッジの `UiAutomation.takeScreenshot` / `adb exec-out screencap` /
 // エミュレータの gRPC スクリーンショットの**3経路とも同じ空白**を返し、木には WebView の全要素が
 // 実座標で載っていて、CDP の `Page.captureScreenshot` だけが中身を返した。つまりデバイスの
@@ -23,10 +23,10 @@ enum WebViewShotComposite {
     /// **既定 0.45 = 「画面の過半に近い部分が1色」**。写らなかった WebView は画面のほとんどを
     /// 占めるので、これで取り逃さない。下げると普通の画面(下半分が余白のリスト等)でも
     /// CDP を叩きに行き、**貼らないと分かるまでに 3 秒**払うことになる
-    /// (2026-08-20 実測: 余白が高さの約 3 割ある一覧画面で 3.4s。0.45 なら門で終わって 0.3s)。
+    /// (実測: 余白が高さの約 3 割ある一覧画面で 3.4s。0.45 なら門で終わって 0.3s)。
     ///
     /// **a11y の webView ノードを当てにしない**: Android は WebView の a11y サブツリーを
-    /// 出したり出さなかったりする(2026-08-20 に同じ画面で「木に居る/居ない」の両方を実測)。
+    /// 出したり出さなかったりする(同じ画面で「木に居る/居ない」の両方を実測)。
     /// ノードがあればそちらの矩形の方が正確なので、呼び出し側は木を優先し、無ければこの帯を使う
     static func largestUniformBand(_ image: CGImage, minBandRatio: Double = 0.45) -> CGRect? {
         guard let pixels = Pixels(image) else { return nil }
@@ -94,8 +94,8 @@ enum WebViewShotComposite {
         return png(from: composed)
     }
 
-    /// 補えなかった理由。**3つは別の事実**で、案内が違う(2026-08-31: 全部を「デバッグを有効に
-    /// しろ」に丸めていたので、アプリが起きていないだけの台にも同じ案内が出ていた)
+    /// 補えなかった理由。**3つは別の事実**で、案内が違う(全部を「デバッグを有効に
+    /// しろ」に丸めると、アプリが起きていないだけの台にも同じ案内が出る)
     enum BlankCaptureReason: Equatable {
         /// アプリの pid に devtools ソケットが無い = WebView 未生成 か デバッグ無効
         case noDevtoolsSocket
@@ -134,7 +134,7 @@ enum WebViewShotComposite {
 
     /// **補えなかったことを言う価値があるか**(純粋)。木に webView ノードが無く、devtools
     /// ソケットも無いなら、WebView が居る証拠がどこにも無い = 遷移中の一様フレームか素の画面
-    /// (実測 2026-09-05: 実機 Pixel 4a の 23 シナリオ run で 13 回、全部 WebView の無い画面
+    /// (実測: 実機 Pixel 4a の 23 シナリオ run で 13 回、全部 WebView の無い画面
     /// ——ホーム/About 等—— で `largestUniformBand` の門(45%)だけが通っていた)。
     /// **黙る側に倒す** —— 「デバッグが OFF で a11y ノードも出ない」形は取りこぼすが、
     /// 13/23 の誤案内より軽い
@@ -148,7 +148,7 @@ enum WebViewShotComposite {
     /// まだ警告できるようにする)。
     /// AndroidDriver のインスタンス変数にしてはいけない —— モニターは1枚撮るごとに
     /// `AndroidDriver(serial:)` を作り直すので、インスタンスに閉じた once は毎フレーム鳴る
-    /// (2026-08-31 に手元と M1Max の両方で毎秒出続けた)。NSLock は並列の撮影が同時に来るため
+    /// (手元と M1Max の両方で毎秒出続けた実測)。NSLock は並列の撮影が同時に来るため
     static func hasWarnedBlankCapture(serial: String) -> Bool {
         blankCaptureWarnLock.lock()
         defer { blankCaptureWarnLock.unlock() }

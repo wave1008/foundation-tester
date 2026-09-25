@@ -3,7 +3,7 @@
 // FTCore のエラー文は CLI(`fleetest …`)の利用者に向けて書かれていて、指示するのは
 // `--project` のような**コマンドラインフラグ**。MCP のツールは同じ値を `project:` という
 // **引数**で受けるので、そのまま素通しすると読み手は存在しないフラグを渡そうとする。
-// 実測(2026-08-09・ft_list_devices): 「multiple projects exist. Pick one with --project」。
+// 実測(ft_list_devices): 「multiple projects exist. Pick one with --project」。
 //
 // **`fleetest` から始まる例示コマンドの中は書き換えない** —— そこは本当にシェルへ打つ
 // 文字列で、`fleetest api list-scenarios project: X` は動かない。同じ1文に両方

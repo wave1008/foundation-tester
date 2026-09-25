@@ -171,7 +171,7 @@ extension TestClassMacro: ExtensionMacro {
         let entries = methods.map { m in
             let deletedArg = (classDeleted || m.deleted) ? "\n                deleted: true," : ""
             let draftArg = (classDraft || m.draft) ? "\n                draft: true," : ""
-            // ライフサイクル無しのときは従来どおり 1 式のまま(生成コードを増やさない)
+            // ライフサイクル無しのときは 1 式のまま(生成コードを増やさない)
             var body = "\(className)().\(m.name)()"
             if hasSetUp || hasTearDown {
                 body = "let ftInstance = \(className)(); "

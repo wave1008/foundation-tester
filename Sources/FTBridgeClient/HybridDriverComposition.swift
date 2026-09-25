@@ -8,7 +8,7 @@
 // **シナリオ実行はここを通らない**(意図的): あちらは StepExecutor が「501 なら typeDriver へ」の
 // 判断を持っているので、HybridFallbackDriver を被せず WebViewDelegatingDriver だけを使う。
 //
-// 役割分担(ユーザー決定 2026-09-22。ライブ操作もこの形に揃えた):
+// 役割分担(ユーザー決定。ライブ操作もこの形に揃えた):
 //   - **自アプリ** → in-app。WKWebView の中身を DOM で読めるのは in-app だけで、
 //     レコーディングはそれに依る
 //   - **WebView 画面 / interop ホスト** → WebViewDelegatingDriver が必要な分だけ XCUITest へ委譲

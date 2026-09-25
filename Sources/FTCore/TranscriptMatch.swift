@@ -1,7 +1,7 @@
 // occlusion-guard の FM 段の判定規則(純粋関数)。FM には期待文字列を渡さず「描かれている文字」だけを
 // 転写させ、可否はここで期待文字列と突き合わせて決める。
 //
-// **期待文字列を FM に渡さない理由**(2026-09-15 の実測・ja 70 / en 80 要素 × 合成変種 + 実 run の crop 158 枚):
+// **期待文字列を FM に渡さない理由**(実測・ja 70 / en 80 要素 × 合成変種 + 実 run の crop 158 枚):
 // 期待文字列を prompt に入れて「見えるか」を訊く形は、空白・別の文字の crop でも observedText に
 // **期待文字列をそのまま写して visible=true** と答えた(空白で 20〜23% / 別の文字で 33〜56% の見逃し。
 // 同じ crop を OCR は正しく読めていた = 画像が読めないのではなく手本を写している)。転写だけを
@@ -84,7 +84,7 @@ public enum TranscriptMatch {
     /// `judge` が退けた転写のうち、**誤読の可能性が残る**もの(1 文字、または len÷5 文字までの差。
     /// 先頭の文字・長さの条件は問わない)。呼び手はこのときだけ OCR に読ませ、期待文字列が丸ごと
     /// 読めれば見えている側へ倒す(OCR は素通りの根拠にしかしない = RegionText の規律)。
-    /// 実測(2026-09-15・E2E-RN M1Max): 入力欄の placeholder「単一行」を FM が簡体字で「单一行」と転写し、
+    /// 実測(E2E-RN M1Max): 入力欄の placeholder「単一行」を FM が簡体字で「单一行」と転写し、
     /// 3 文字で許容 0 → 誤った赤。旧字体「擴張」も同型。OCR はどちらも正しく読める
     public static func isNearMiss(transcript: String, expected: String) -> Bool {
         let o = RegionText.normalize(transcript)

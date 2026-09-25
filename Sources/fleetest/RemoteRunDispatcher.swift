@@ -42,7 +42,7 @@ struct RemoteRunDispatcher {
 
     /// M7: ssh の断・kill(exit 255/137 等 —— 0/1/自分の中断のいずれでもない)のとき、回収へ入る前に
     /// 「ランナー上でこのディスパッチの run がもう終わったか」を待つ上限(秒)。実測
-    /// (2026-09-17: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)では、
+    /// (M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)では、
     /// リモートの後始末(run.json へ interrupted/finishedAt を書く)は 2 秒で終わっていた。
     /// 超えても実害は「手元の記録が途中版のまま回収される = 次のディスパッチの回収で埋まる」
     /// だけなので、待ちすぎない値に留める
@@ -171,11 +171,11 @@ struct RemoteRunDispatcher {
         let transferredScenarioPaths = collectArtifacts(project: project, layout: layout)
         // 今回の回収で転送された scenario JSON だけを読む。**読んだ結果は1回だけ作り**、
         // saveHostFacts/relinkCollectedReports/writeLastResults の3箇所へ共有する
-        // (以前は同じ全件走査(過去2か月分)を毎ディスパッチ2回行っていた)
+        // (同じ全件走査(過去2か月分)を毎ディスパッチ2回行うと重い)
         let texts = collectedScenarioTexts(
             project: project, stamp: stamp, transferredScenarioPaths: transferredScenarioPaths)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
-        // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
+        // stamp 走査で machine を採れなくなる。実ディスパッチで machine 欠落を確認)
         saveHostFacts(project: project, overheadSeconds: overheadSeconds, session: session, texts: texts)
         relinkCollectedReports(project: project, stamp: stamp, texts: texts)
         // リモートで走った分の `--failed` 記録を手元へ書く。リモート側の
@@ -262,7 +262,7 @@ struct RemoteRunDispatcher {
         let texts = collectedScenarioTexts(
             project: project, stamp: stamp, transferredScenarioPaths: transferredScenarioPaths)
         // relink より先に撃つ(relink が reportPath を書き換えると stamp がファイルから消え、
-        // stamp 走査で machine を採れなくなる。2026-08-18 に実ディスパッチで machine 欠落を確認)
+        // stamp 走査で machine を採れなくなる。実ディスパッチで machine 欠落を確認)
         saveHostFacts(project: project, overheadSeconds: overheadSeconds, session: session, texts: texts)
         relinkCollectedReports(project: project, stamp: stamp, texts: texts)
         // 理由は dispatch() と同じ
@@ -296,7 +296,7 @@ struct RemoteRunDispatcher {
                 + " — check the host name and keys; BatchMode disables password prompts\n\(result.tail)")
         }
         guard let session = RemoteProbe.parseSessionInfo(result.output) else {
-            // 想定外の出力(古い macOS 等): ログイン判定はスキップするが $HOME は従来どおり必須
+            // 想定外の出力(古い macOS 等): ログイン判定はスキップするが $HOME は必須のまま
             let firstLine = (result.output.split(separator: "\n", maxSplits: 1,
                                                  omittingEmptySubsequences: false).first ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -389,7 +389,7 @@ struct RemoteRunDispatcher {
         var reasons = verdict.blocking
         // rev 不一致の**いちばん多い原因は「まだ push していない」**。ランナーは origin から
         // fetch するので、押していないコミットへは remote setup でも合わせられない
-        // (そのままだと checkout が exit 128 で落ちるだけ。2026-08-16 に実際に踏んだ)
+        // (そのままだと checkout が exit 128 で落ちるだけ。実際に踏んだ)
         if reasons.contains(where: { $0.hasPrefix("git revision") }), let localRevision,
            !revisionIsPublished(repoRoot: localRepoRoot, revision: localRevision) {
             reasons.append(RemoteSetupPlan.unpublishedRevisionMessage(revision: localRevision))
@@ -406,7 +406,7 @@ struct RemoteRunDispatcher {
         // ワークスペースの実在は転送より前に確かめる(§18.6)。remoteRunCommand の 91 ガードに
         // 任せると、その前の rsync が users/<issuer>/work/TestProjects/… を部分的に作ってしまい、
         // 後から remote setup してもプロジェクト作成がディレクトリ存在でスキップされて壊れる
-        // (§12 の既知の罠と同型。2026-08-18 に実ディスパッチで確認)
+        // (§12 の既知の罠と同型。実ディスパッチで確認)
         let workspaceProbe = try sshCapture(
             "test -f \(RemoteShell.quote(layout.workDir))/Package.swift && echo yes || echo no")
         guard workspaceProbe.trimmingCharacters(in: .whitespacesAndNewlines) == "yes" else {
@@ -439,7 +439,7 @@ struct RemoteRunDispatcher {
     // MARK: - 2. 同一ホストへの二重ディスパッチ防止(docs/remote-runner.md §5)
 
     /// **この宛先の**ロックを親(fan-out)が先に取っているか(`FT_DISPATCH_LOCK_HELD`)。
-    /// 印が無ければ従来どおり自分で取る —— 単発 `run --runner`(親が居ない)はこの縮退で
+    /// 印が無ければ自分で取る —— 単発 `run --runner`(親が居ない)はこの縮退で
     /// そのまま動くので、モードの分岐を持たない
     private var parentHoldsThisLock: Bool {
         DispatchLockHandoff.isHeldByParent(
@@ -470,7 +470,7 @@ struct RemoteRunDispatcher {
     }
 
     /// 上で取ったロックを外す(親の defer から。成功・失敗・中断のいずれでも1回)。
-    /// **`exitCode` が 0/1(正常終了)なら従来どおり無条件に外す**。それ以外(timeout・ssh 断・
+    /// **`exitCode` が 0/1(正常終了)なら無条件に外す**。それ以外(timeout・ssh 断・
     /// SIGKILL 等。**不明(nil)も含む** —— 不明を正常と混同しない)は、親はこの子が使った
     /// `reportDir`(ディスパッチ単位の stamp)を知らないので `releaseLockIfRunEnded` は使えない ——
     /// 代わりに `liveDispatchedRunPIDs`(このホストの base 配下に生きているディスパッチが
@@ -549,7 +549,7 @@ struct RemoteRunDispatcher {
                     "cannot reach \(host.sshTarget) over ssh (status 255)\n\(result.tail)")
             }
             guard let outcome = RemoteDispatchQueue.parseOutcome(result.output, ticket: ticket) else {
-                // 並べなかった/シェルのエラーで判定語が読めない ―― 従来のエラー経路へ倒す
+                // 並べなかった/シェルのエラーで判定語が読めない ―― 既存のエラー経路へ倒す
                 dequeueTicket(layout: layout, ticket: ticket)
                 let existing = try? sshCapture(RemoteDispatchLock.readCommand(home: layout.home))
                 throw RemoteDispatchError.remoteSetupFailed(Self.dispatchLockFailureMessage(
@@ -577,7 +577,7 @@ struct RemoteRunDispatcher {
                 case .released:
                     continue // 待機列経由で撃ち直す
                 case .keptBecauseRunIsAlive(let reason):
-                    // 向こうで run が生きているので、待てるなら待つ(待たないなら従来どおり落とす)。
+                    // 向こうで run が生きているので、待てるなら待つ(待たないならそのまま落とす)。
                     // 定型文(heldMessage)は unlock を勧めるので使わない(unlock も同じ理由で断る)
                     guard waitLock != nil else {
                         dequeueTicket(layout: layout, ticket: ticket)
@@ -626,7 +626,7 @@ struct RemoteRunDispatcher {
     }
 
     /// 待機の事実を `fleetest api run` の NDJSON へ出す(**apiRun のときだけ** ―― cliRun の
-    /// stdout は人間向けなので従来のログのまま)。押した人に無言で止まって見えるのを防ぐのが目的で、
+    /// stdout は人間向けなので普段どおりのログのまま)。押した人に無言で止まって見えるのを防ぐのが目的で、
     /// 数字・保持者はログと同じ1つの値(`DispatchWaitStatus`)から採る。
     /// **machine は拡張のモニタータイル・run レーンと同じ名前空間**にする ―― `hostLabel`
     /// (`--runner` の生値 = 登録簿の machine 名)があればそれ、無ければ ssh 宛先
@@ -647,7 +647,7 @@ struct RemoteRunDispatcher {
         case released
         /// 自分の死んだディスパッチのロックだが、ランナー上でその run は生きていた/確かめられなかった
         case keptBecauseRunIsAlive(String)
-        /// 他人・他機・自分の生きているディスパッチのロック(従来どおり待たせる)
+        /// 他人・他機・自分の生きているディスパッチのロック(そのまま待たせる)
         case notOurs
     }
 
@@ -700,9 +700,9 @@ struct RemoteRunDispatcher {
     /// 取得失敗(status ≠ 0・≠ 255)の文言。読めた控えが**空**(readCommand は不在でも exit 0 で
     /// 空を返す)なら誰も掴んでいない = mkdir 自体が失敗した(権限・ディスク・base の誤り)ので
     /// 「held by …」ではなく stderr をそのまま出す。控えが読めない(nil)・壊れている(decode 不能)
-    /// ときは従来どおり holder unknown の held 文言。
+    /// ときは holder unknown の held 文言のまま。
     /// **`scope` は文言だけ**を分ける(手元のロック = `LocalDispatchLock` もこの仕分けを共有する
-    /// = 2つ目の実装を作らない)。既定はリモート = 従来と1バイトも変わらない
+    /// = 2つ目の実装を作らない)。既定はリモート
     static func dispatchLockFailureMessage(status: Int32, lockRead: String?, tail: String,
                                            sshTarget: String,
                                            scope: DispatchLockScope = .remoteHost) -> String {
@@ -731,9 +731,9 @@ struct RemoteRunDispatcher {
     }
 
     /// **正常終了(exit 0/1)以外(中断・timeout・ssh 断)は、回収へ入る前にこの判定を通してから
-    /// ロックを外す**(正常終了は呼び出し側の末尾の defer が無条件に外す ―― 従来どおり)。
+    /// ロックを外す**(正常終了は呼び出し側の末尾の defer が無条件に外す)。
     /// 中断の場合は回収(録画の rsync)が数十秒かかり、その間に中断の猶予が尽きて SIGKILL されると
-    /// defer に届かずロックが残る(2026-09-16: 3 機とも `collecting recordings` の最中に刺されて
+    /// defer に届かずロックが残る(実測: 3 機とも `collecting recordings` の最中に刺されて
     /// 残った)。timeout・ssh 断の場合は向こうの run がまだ後始末中かもしれず、無条件に外すと
     /// 次の run が同じ機械に重なる。外すのはこのディスパッチの run がランナーに居ないと
     /// 確かめられたときだけ(`releaseIfRunEndedCommand`)。回収は日時付きの dispatch
@@ -753,15 +753,15 @@ struct RemoteRunDispatcher {
     /// 自分から中断したとき、または exit 0/1 でない(ssh の断・kill = 255/137 等)ときは、
     /// 回収(collectReports)の前に「このディスパッチの run がランナー上でもう終わったか」を待つ
     /// (**中断も待つ** —— ssh は SIGHUP で即座に閉じるが、向こうの run はそこから後始末して run.json を
-    /// 書き終えるので、待たないと手元は開始欄だけの写しを回収し「クラッシュ」に見える。2026-09-26 実測: 約 2 秒差)。
+    /// 書き終えるので、待たないと手元は開始欄だけの写しを回収し「クラッシュ」に見える(実測: 約 2 秒差)。
     /// 終わっていれば待ちは1周で抜ける。
     /// **待った後、外せるなら外す**(`releaseLockIfRunEnded` と同じ「run が終わっていたら外す」
-    /// 判定を通す ―― 生きているかもしれない run に、次の run を無条件で重ねない。以前はここで
-    /// 一切ロックへ触れず、呼び出し側の defer が無条件に `rm -rf` していた)。戻り値 = 外したか
+    /// 判定を通す ―― 生きているかもしれない run に、次の run を無条件で重ねない(呼び出し側の
+    /// defer は無条件に `rm -rf` するので、その前にここで判定を通す)。戻り値 = 外したか
     /// (呼び出し側が `lockReleasedEarly` へそのまま渡す)。
     /// 待たずに回収へ進むと、リモートの後始末(run.json への interrupted/finishedAt の書き込み)
     /// より先に手元が途中版を回収し、結果 DB でその run が走り続けているように見える
-    /// (2026-09-17 実測: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)。
+    /// (実測: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)。
     /// ssh 自体が通らない(sshCapture が throw)なら待たずに下の条件付き解放へ進む
     /// (そちらも同じ ssh 失敗で false を返すので安全側に倒れる)
     /// 回収の前に向こうの run の終わりを待つか(中断・exit 0/1 以外 = 待つ)
@@ -819,7 +819,7 @@ struct RemoteRunDispatcher {
         // profiles/ を「そのランナーから見た姿」へ差し替える —— 向こうの台は "local" になり、
         // 他機の台は消える。子へ渡す --device-machine も local になる(RemoteRunArgs)
         // hostLabel が無い構築箇所(旧経路)では畳めない —— 畳む鍵はプロファイルが書く
-        // エイリアスそのものなので、生の ssh 宛先しか無いときは差し替えず従来どおり送る
+        // エイリアスそのものなので、生の ssh 宛先しか無いときは差し替えずそのまま送る
         if let hostLabel, let failure = RunnerProfileTransfer.localizeAndUpload(
             localProjectDir: project.rootURL, project: project.name, alias: hostLabel,
             layout: layout, sshTarget: host.sshTarget) {
@@ -830,7 +830,7 @@ struct RemoteRunDispatcher {
 
     /// WebView レベリング(AndroidWebViewUpdate)の供給元キャッシュをランナーへ届ける。
     /// 実機の無い機械は機内にドナーが居らず永遠に古いまま(M1Max が 124 で取り残され
-    /// WebView シナリオがリモートレーンでだけ落ちた。2026-09-01)。**失敗しても run は止めない**
+    /// WebView シナリオがリモートレーンでだけ落ちた)。**失敗しても run は止めない**
     /// (レベリング自体が best-effort。版差は run を落とすより軽い)。android を含まない構成でも
     /// 一度だけ払う(この層では platform を解決しない。rsync は同版なら no-op)
     private func transferWebViewCache() {
@@ -853,8 +853,8 @@ struct RemoteRunDispatcher {
         }
     }
 
-    /// ワークスペース(既定 `<project.rootURL>/workspace`。常に有効 = docs/remote-runner.md §17・
-    /// 2026-08-18)を用意し、リモートの子へ渡す `--workspace` の絶対パスを返す。**呼び出しは
+    /// ワークスペース(既定 `<project.rootURL>/workspace`。常に有効 = docs/remote-runner.md §17)を
+    /// 用意し、リモートの子へ渡す `--workspace` の絶対パスを返す。**呼び出しは
     /// transfer() より先であること**(プロジェクトルート配下のときはここでのステージングだけを
     /// 行い、専用の rsync は行わない —— project の rsync(transfer)がそのまま運ぶので、
     /// 順序が逆だと直前にステージングしたファイルが漏れる)。
@@ -975,7 +975,7 @@ struct RemoteRunDispatcher {
     /// (--delete は付けない = リモートの reports/ 丸ごとは触らない。同じマシンで走る
     /// ローカル実行のレポート・録画と混ざらない)。
     /// **interrupted**: このディスパッチが自分から中断した(SIGINT/SIGTERM)かどうか。
-    /// 中断は正常に閉じて0件なだけで「失敗」ではない(実測 2026-09-16: 4機ファンアウトへの
+    /// 中断は正常に閉じて0件なだけで「失敗」ではない(実測: 4機ファンアウトへの
     /// SIGTERM 中断でも「the run failed」と出ていた。reportsMissingNote の宣言参照)
     private func collectReports(project: TestProject, remoteReportDir: String, interrupted: Bool) {
         log("==> collecting reports")
@@ -1034,10 +1034,10 @@ struct RemoteRunDispatcher {
     }
 
     /// **この stamp を含む・今回の回収で転送された** scenario JSON だけを読む。
-    /// 以前は「当月+前月の runs ディレクトリを全件 String で読み `contains(stamp)`」という
-    /// 走査を `saveHostFacts`/`relinkCollectedReports` がそれぞれ独立に行っており、
+    /// 「当月+前月の runs ディレクトリを全件 String で読み `contains(stamp)`」という走査を
+    /// `saveHostFacts`/`relinkCollectedReports` がそれぞれ独立に行うと、
     /// 手元の E2E-CMP 規模(46,945 ファイル)で1回23.6秒 × 2回 = ディスパッチごとに約50秒
-    /// 手元レーンを遊ばせていた。`transferredScenarioPaths` は `collectArtifacts` が
+    /// 手元レーンを遊ばせる。`transferredScenarioPaths` は `collectArtifacts` が
     /// rsync `--out-format=%n` から拾った一覧(このディスパッチで新規に転送されたファイルだけ)
     /// なので、件数は「今回走った本数」程度で済む。`stamp` を含むかの確認は残す(このディスパッチの
     /// stamp は一意なので理屈上は不要だが、判定を一箇所(この関数)に保つ)。
@@ -1080,7 +1080,7 @@ struct RemoteRunDispatcher {
     /// concurrentDevices はレコードの "worker" の相異なる値の個数(この stamp のぶんだけ)。
     /// hostLabel が無い構築箇所(旧経路)では何もしない。失敗は黙って握る(advisory キャッシュ。
     /// run の成否・ログを汚さない)
-    /// **接続のたび**にハードウェア UUID を採ってキャッシュへ書く(ユーザー決定 2026-09-21)。
+    /// **接続のたび**にハードウェア UUID を採ってキャッシュへ書く(ユーザー決定)。
     /// ここが唯一の書き手で、**run の最後(saveHostFacts)ではなく接続直後**に置く ——
     /// ロックも取れずに落ちた run でも控えが残り、「この host は前回と別の Mac を指している」を
     /// run の頭で言える。触るのは UUID 欄だけ(他の欄は既存値のまま)。
@@ -1127,7 +1127,7 @@ struct RemoteRunDispatcher {
 
     private func recordedMachine(texts: [(url: URL, text: String)]) -> String? {
         for (_, text) in texts {
-            // 記録側のキーは "host"(2026-08-26 改名)。旧記録の "machine" も読む
+            // 記録側のキーは "host"(改名済み)。旧記録の "machine" も読む
             if let host = Self.recordedField(in: text, key: "host") { return host }
             if let machine = Self.recordedField(in: text, key: "machine") { return machine }
         }
@@ -1245,7 +1245,7 @@ struct RemoteRunDispatcher {
         let reportsRedirected = RemoteReportLink.rewriteDispatchReportPaths(
             xml, stamp: stamp, project: project)
         // **写す先は workDir**(base ではない)。base のまま置換すると `users/<issuer>/work` が
-        // 残って手元に存在しないパスができる(2026-08-26 の実害。§18.2 の発行者ネームスペースを
+        // 残って手元に存在しないパスができる(実害。§18.2 の発行者ネームスペースを
         // 足したときに追随し損ねていた)
         let rewritten = RemotePathRewrite.rewrite(
             reportsRedirected, remoteRoot: layout.workDir, localRoot: localRepoRoot.path)
@@ -1398,7 +1398,7 @@ struct RemoteRunDispatcher {
                 reportsRedirected, remoteRoot: remoteRoot, localRoot: localRoot)
             // `-tt`(擬似 TTY)はリモートの stderr を stdout に合流させる。apiRun の stdout は
             // NDJSON 専用の契約なので、機械可読行だけを stdout へ流し、リモートの人間向け診断は
-            // stderr へ振り分け直す(2026-07-31 の localhost E2E で混入を実測)
+            // stderr へ振り分け直す(localhost E2E で混入を実測)
             if mode == .apiRun, !RemoteRelay.isMachineReadableLine(rewritten) {
                 ConsoleOut.err(rewritten)
                 return
@@ -1409,7 +1409,7 @@ struct RemoteRunDispatcher {
         DispatchQueue.global(qos: .utility).async {
             while true {
                 // availableData = 届いた分だけ返す(readData(ofLength:) は length か EOF まで
-                // 貯めるので、NDJSON 中継が ssh の終了時の一括になる。2026-08-18 実測)。
+                // 貯めるので、NDJSON 中継が ssh の終了時の一括になる。実測)。
                 // **1回ごとに解放の区切り**(autoreleasepool)—— 自動解放の NSData が抜けないループで溜まる
                 let eof: Bool = autoreleasepool {
                     let chunk = readHandle.availableData

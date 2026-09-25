@@ -8,7 +8,7 @@ import FTCore
 public enum AndroidDeviceCatalogError: Error, LocalizedError {
     /// `revivalFailure` は復活失敗の理由の受け渡し(`RevivalOutcomeLedger`): この run が開始時に
     /// この AVD を復活させようとして失敗していれば、その理由をここへ載せる。
-    /// nil のときは復活を試みていない(=そもそも触っていない)ので従来どおり `devices up` を案内する
+    /// nil のときは復活を試みていない(=そもそも触っていない)ので `devices up` を案内する
     case avdNotRunning(String, running: [String: String], revivalFailure: String?)
     case noIdentifier(name: String)
     /// kind=physical の serial が adb に見えない
@@ -113,7 +113,7 @@ public enum AndroidDeviceCatalog {
 
     /// AVD の実体ディレクトリ。**`<id>.avd` の機械組み立てではなく `<id>.ini` の `path=` が正**
     /// (emulator も ini を見る。Android Studio の改名で別名ディレクトリを指すことがある。
-    /// 実例 2026-07-17: Pixel_9_Android_15_ の実体は Pixel_9_Android_15__1.avd で、
+    /// 実例: Pixel_9_Android_15_ の実体は Pixel_9_Android_15__1.avd で、
     /// `.avd` 直組みの wiper が空の残骸を測り 11.5GiB の実体が wipe をすり抜けた)。
     /// ini 欠落・path 不在時は `<home>/<id>.avd` にフォールバック
     public static func avdContentDirectory(id: String) -> URL {
@@ -191,7 +191,7 @@ public enum AndroidDeviceCatalog {
 
     /// 照合順序: ①id 完全一致 ②Android Studio の id 生成規則(非英数字→_)で正規化した候補
     /// ③displayName 一致。②を③より先に行うのは、displayName は ini を失った孤児 .avd
-    /// ディレクトリにも一致し起動不能な id を返しうるため(実例 2026-07-16: "Pixel 9(Android 15)"
+    /// ディレクトリにも一致し起動不能な id を返しうるため(実例: "Pixel 9(Android 15)"
     /// が ini 無しの Pixel_9_Android_15__1 に解決され serial 検出の 60 秒タイムアウトまで待った)
     static func canonicalAVDID(
         _ name: String, installed: [(id: String, displayName: String?)]
@@ -206,7 +206,7 @@ public enum AndroidDeviceCatalog {
     }
 
     /// 実機は serial 直指定(AVD 照合は使えない)。接続確認だけして返す。
-    /// エミュレータは従来どおり avd → 起動中エミュレータの AVD ID 照合
+    /// エミュレータは avd → 起動中エミュレータの AVD ID 照合
     public static func resolveSerial(spec: DeviceSpec) throws -> String {
         if spec.isPhysical {
             let serial = spec.serial ?? ""
@@ -241,7 +241,7 @@ public enum AndroidDeviceCatalog {
 
     /// adb 不安定等で取得できない場合は安全側(未完了=false)を返す
     /// (呼び出し元は「ブリッジ APK インストールを試みてよいか」の判定にこれを使う)。
-    /// gRPC getStatus.booted は true のときだけ確定として使い、false/取得不可は従来の getprop で
+    /// gRPC getStatus.booted は true のときだけ確定として使い、false/取得不可は getprop で
     /// 再確認する(booted の立つタイミングが sys.boot_completed と同一である保証がないため、
     /// 判定 semantics を変えない安全側)
     public static func bootCompleted(serial: String) async -> Bool {

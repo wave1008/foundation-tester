@@ -1,9 +1,9 @@
-// Android の web コンテンツを DOM(CDP)から読む。**対象は2つ**(2026-08-15 に自作アプリを追加):
-// **ブラウザ本体**(2026-08-13〜)と**テスト対象アプリ自身の WebView**。
+// Android の web コンテンツを DOM(CDP)から読む。**対象は2つ**:
+// **ブラウザ本体**と**テスト対象アプリ自身の WebView**。
 // どちらを DOM で読むかの判定は `route`(純粋)1箇所。経緯と根拠は docs/design.md
 // §ブラウザの中身は DOM から読む / §木はどこから来るか。
 //
-// **自作アプリの WebView を DOM で読む理由は、ブラウザとは別**(2026-08-15 実測)。
+// **自作アプリの WebView を DOM で読む理由は、ブラウザとは別**(実測)。
 // Android の a11y は WebView の版で属性を**入れ替えて**出す:
 //
 //   WebView 124 : textField ph="WebView 入力"   (placeholder あり / id なし)
@@ -15,12 +15,12 @@
 // **門も別**(`route` の宣言参照): ブラウザは a11y が足りていれば読まないが、
 // **自作アプリは足りて見えても読む**(問題は「読めているか」ではなく「同じ属性が出るか」)。
 //
-// **成立条件: アプリが debuggable であること**(2026-08-15 に emulator-5554 /
+// **成立条件: アプリが debuggable であること**(emulator-5554 /
 // `com.ftester.e2e` で実測)。**アプリ側が `setWebContentsDebuggingEnabled(true)` を
 // 呼ぶ必要は無い** —— debuggable なら WebView が1つでも生成された時点で devtools ソケットが開く
 // (確認した版は Chrome/150.0.7871.181)。**アプリの協力を要る退化を足さない**
 // (プロジェクトの決定。release ビルドは id を難読化するので、id で指すテスト自体が
-// debug ビルドの活動)。開いていなければ黙って従来の a11y(下の `read` の宣言参照)。
+// debug ビルドの活動)。開いていなければ黙って a11y のまま(下の `read` の宣言参照)。
 //
 // **JS も木への差し込みロジックも iOS と共有する**(`FTCore.WebViewDOM`)。あちらは in-app
 // エンジンから WKWebView の a11y が見えない事情で先に入った経路で、返す形(role/label/矩形)も
@@ -63,7 +63,7 @@
 //                            = 「テスト対象アプリの WebView を DOM で読むか」。OS で別名にしない)
 //
 // **Chrome 側の成立条件は未実測**(ソケット公開条件。実測できた端末では常に見えていた)。
-// 取れないときは例外にせず黙って従来の a11y のまま(下の `read` の宣言参照)。
+// 取れないときは例外にせず黙って a11y のまま(下の `read` の宣言参照)。
 
 import CryptoKit
 import Foundation
@@ -107,8 +107,8 @@ public enum AndroidWebViewDOM {
     /// - 自作アプリ: **a11y の充足度では切り替えない**。足りて見えても版で属性が入れ替わるので
     ///   (冒頭の 124/150 の実測)、問うているのは「読めているか」ではなく「**同じ属性が出るか**」。
     ///   代わりの門は **`webView` ノードの有無**だけ —— 無い画面で pid 引きと forward を払わない
-    ///   (ブラウザはこの門を 2026-08-14 に外したが、あれは Chrome が本文非公開の画面で
-    ///   ノードごと落とすため。**アプリ自身の WebView は自分の a11y ツリーに出る**ので事情が違う)
+    ///   (ブラウザはこの門を持たない —— Chrome は本文非公開の画面でノードごと落とすため。
+    ///   **アプリ自身の WebView は自分の a11y ツリーに出る**ので事情が違う)
     public static func route(packageID: String, hasWebViewNode: Bool, a11yLooksSufficient: Bool,
                              browserDOMEnabled: Bool, appWebViewDOMEnabled: Bool) -> Route {
         if let socket = browserSocketName(packageID: packageID) {
@@ -234,7 +234,7 @@ public enum AndroidWebViewDOM {
     /// 呼び出し側が上から順に評価を試し、**応答したものを能動タブとみなす**
     /// (`read` の宣言参照)。
     ///
-    /// **`/json` は MRU 順ではない**(2026-08-13 に実測して撤回した。7タブの Chrome で
+    /// **`/json` は MRU 順ではない**(実測して撤回した。7タブの Chrome で
     /// 先頭は前面ではない別サイトだった)。順序を信じて1つ選ぶと**背面タブを掴む**ことがあり、
     /// **Chrome は背面タブの JS を止めるので評価が返らない**(実測で 183 秒待っても返らなかった)。
     ///
@@ -289,7 +289,7 @@ public enum AndroidWebViewDOM {
     /// **ブリッジは自分の snapshot の ref しか受け付けない**(`BridgeRouter.centerOf` は未知の ref を
     /// 404)。DOM ノードにはホスト側で新しい ref を振るので、そのまま渡すと
     /// **`type` / `clearInput` だけが 404 で落ちる**(タップは座標をホストが持っているので通る)。
-    /// 差し替えれば注入は従来どおりブリッジの経路(SET_TEXT + resource-id 追跡 + 読み返し。
+    /// 差し替えれば注入はブリッジの経路(SET_TEXT + resource-id 追跡 + 読み返し。
     /// docs/design.md §Android のテキスト注入の規律)にそのまま乗る。
     ///
     /// **木の ref そのものは書き換えない** —— `z` を持たない要素の塗り順は ref 順に落ちるので、
@@ -349,7 +349,7 @@ public extension AndroidWebViewDOM {
 
     /// CDP で能動タブ/ページの DOM を1往復読む。**失敗は握って nil**(未対応ブラウザ・非公開ソケット・
     /// WebView 未生成・タブ未選択はどれも普通にあるので、取れないことを例外にしない。呼び出し側は
-    /// この nil を「従来どおり a11y のまま」に読み替える)。
+    /// この nil を「a11y のまま」に読み替える)。
     /// **経路の判定はここでしない**(`route` で済ませて渡す)
 
     /// ソケット解決 → port forward → タブ一覧 → 順位付け までを1箇所に置き、
@@ -387,7 +387,7 @@ public extension AndroidWebViewDOM {
     /// **ページの画像を CDP から撮る**(`Page.captureScreenshot`)。
     /// Android の端末側キャプチャ(`UiAutomation.takeScreenshot` / `adb screencap` /
     /// エミュレータ gRPC のいずれも)は **WebView のレイヤを取り逃すことがある**
-    /// (2026-08-20 に E2E-Android の WebView 画面で再現。木には全要素が居るのに
+    /// (E2E-Android の WebView 画面で再現。木には全要素が居るのに
     /// 3経路とも同じ空白を返し、CDP だけが中身を返した)。失敗は握って nil
     static func capturePagePNG(serial: String, packageID: String, route: Route,
                                webViewLabel: String?, urlBarValue: String?,
@@ -550,7 +550,7 @@ public extension AndroidWebViewDOM {
         let task = URLSession.shared.webSocketTask(with: url)
         task.resume()
         defer { task.cancel(with: .goingAway, reason: nil) }
-        // **必ず締切を付ける**(2026-08-13 の実害)。`URLSessionWebSocketTask.receive()` には
+        // **必ず締切を付ける**(実害)。`URLSessionWebSocketTask.receive()` には
         // タイムアウトが無く、**Chrome は背面タブの JS を止める**ので評価の応答が永久に来ないことがある。
         // snapshot は最頻の操作なので、ここで止まると run ごと固まる(実測で 183 秒待っても返らなかった)。
         // ソケットを閉じると受信側が throw で起きるため、番犬は cancel するだけでよい

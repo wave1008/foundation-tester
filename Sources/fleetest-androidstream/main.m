@@ -309,7 +309,7 @@ static const int kFtExitTimeLimitReached = 6;
 
 /// screenrecord の --time-limit を端末の API レベルで決める。
 /// **--time-limit 0(無制限)は API 34 未満で使えない**: Android 13(API 33)実機では即座に
-/// 終了して 47 バイトしか出ない(2026-07-25 実測。エミュレータは API 35 で問題なく、
+/// 終了して 47 バイトしか出ない(実測。エミュレータは API 35 で問題なく、
 /// この差のため実機で画面配信だけが無音で壊れていた)。古い端末は上限の 180 秒を使い、
 /// セッション終了後の再接続は拡張側の常駐監視(deviceStream.ts の handleUnexpectedExit)に任せる。
 static NSString *ftScreenRecordTimeLimit(NSString *adbPath, NSString *serial) {
@@ -350,7 +350,7 @@ static NSString *ftContentSizeFromVerbose(NSString *output) {
 /// **プローブが返した領域はエンコーダが受け付けたサイズ以下**なので、--size 明示で configure が
 /// 落ちる恐れがない(自前でサイズを推定すると拒否され得る。--size 指定時の screenrecord は
 /// 1280x720 への自動フォールバックをせず即エラー終了する)。出力先が /dev/null でも
-/// --output-format=h264 なら raw 書き込みで通る(2026-07-29 実測)。
+/// --output-format=h264 なら raw 書き込みで通る(実測)。
 static NSString *ftLetterboxFreeSize(NSString *adbPath, NSString *serial) {
     NSTask *probe = [[NSTask alloc] init];
     probe.executableURL = [NSURL fileURLWithPath:adbPath];

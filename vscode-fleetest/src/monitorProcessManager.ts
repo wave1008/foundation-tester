@@ -53,7 +53,7 @@ type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
  * 「非対応バイナリ(恒久)」と「その機械が飽和している(一時)」の2つがあり、close の理由からは
  * 区別できない。恒久停止にすると後者で行が永久に空になる: E2E は測りたい機械そのものを
  * 十数分間 dispatch lock ごと占有するので、**この安全弁を最も踏みやすいのが最も見たい場面**
- * になっていた(2026-09-01 に3機フリートの E2E 後、M1Max / M1Ultra の MEM/CPU/GPU が
+ * になっていた(3機フリートの E2E 後、M1Max / M1Ultra の MEM/CPU/GPU が
  * 出ないまま戻らなかった)。gaveUp は「モニター再起動」ボタンと show() でも即座にリセットし、
  * **その機械が再び観測できるようになった合図**でも畳む(hostMetricsRetry.ts の
  * observationRevivalPlan。ランナーの再起動を時間ではなくデータで拾う)。
@@ -417,9 +417,9 @@ export class MonitorProcessManager {
       },
       (line) => this.deps.outputChannel.appendLine(`[monitor stdout] ${abbreviateLogLine(line)}`),
     );
-    // **CLI が言っている理由を捨てない** —— 以前は exit code だけを見て「デバイス設定が
-    // 未設定かも」と決め打ちしていたため、実際は「その実行プロファイルはこのプロジェクトに
-    // 無い」だったときに**見当違いの場所を調べさせた**(2026-08-17 の実害)。
+    // **CLI が言っている理由を捨てない** —— exit code だけを見て「デバイス設定が
+    // 未設定かも」と決め打ちすると、実際は「その実行プロファイルはこのプロジェクトに
+    // 無い」だったときに**見当違いの場所を調べさせる**(実害)。
     // stderr の直近の Error 行を控えてバナーに載せる(全文は OUTPUT に残る)
     let lastError: string | undefined;
     const noteStderr = (line: string): void => {
@@ -452,7 +452,7 @@ export class MonitorProcessManager {
       const selfInitiated = this.stoppingMonitor;
       this.stoppingMonitor = false;
       // **OUTPUT にも必ず1行残す**(webview バナーはパネルの開き直しで消えるため、これが無いと
-      // monitor がいつ・どう死んだかが後から一切追えない。受け手報告 2026-08-24: silent 死に見えた。
+      // monitor がいつ・どう死んだかが後から一切追えない。受け手報告: silent 死に見えた。
       // signal=SIGKILL はバイナリ差し替え(update.sh の再ビルド)の署名)
       this.deps.outputChannel.appendLine(
         t("deviceOps.log.monitorClosed", {
@@ -464,7 +464,7 @@ export class MonitorProcessManager {
       if (!selfInitiated) {
         // **終了のたびにバナーは出さない** —— 自動再起動が自己回復させるので、外からの kill
         // (update.sh のバイナリ差し替え・新バイナリへの respawn)で毎回警告が鳴っていた
-        // (2026-09-01 報告)。無言にはしない: OUTPUT には上で必ず1行残り、バナーは
+        // (報告)。無言にはしない: OUTPUT には上で必ず1行残り、バナーは
         // **再起動を諦めたときだけ**(scheduleMonitorRestart の give-up)。
         // **CLI が理由を言っていればそれを出す**(推測より事実。決め打ちの案内は最後の手段)
         const hint = lastError
@@ -485,7 +485,6 @@ export class MonitorProcessManager {
 
   /**
    * monitor プロセスの予期しない終了を受けて、再起動するか諦めるかを決める(host-metrics と同型。
-   * 2026-08-24 追加 — それまで monitor は死ぬとバナー通知のみで、パネルの開き直しまで戻らなかった。
    * 実害: update.sh の再ビルドが稼働中バイナリを差し替えて SIGKILL → 無人計測の監視が止まりっぱなし)。
    */
   private scheduleMonitorRestart(downMessage: string): void {

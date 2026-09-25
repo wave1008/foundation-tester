@@ -47,7 +47,7 @@ extension StepExecutor {
         }
         // **登録が無いとき**の安い防御: launch 系の直後の**最初の触る操作**で1回だけ SpringBoard に
         // 聞き、前面にアラートがあれば注記と助言(題名・ボタン)を残す。操作は止めない
-        // (閉じるのはシナリオの責務)。2026-08-22 受け手報告: 再インストール後の通知 → ATT の
+        // (閉じるのはシナリオの責務)。受け手報告: 再インストール後の通知 → ATT の
         // 2枚が登録漏れのまま前面にあり、背面の操作が緑になっていた
         if systemAlertProbePending,
            Self.interactsByTouch(action) || action == "type" || action == "swipe" {
@@ -110,7 +110,7 @@ extension StepExecutor {
         // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
         // 探索がスワイプを撃ったか。直後の解決 snapshot も**キャッシュを捨てて**撮るために立てる
         // (探索が最後に見た木は新しいのに、ここで古い木を掴むと**見つけたはずの要素が消えて**
-        // `cannot resolve the locator` になる。2026-08-03 に CMP/Android で実測した失敗そのもの)
+        // `cannot resolve the locator` になる。CMP/Android で実測した失敗そのもの)
         var searchSwiped = false
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
@@ -123,7 +123,7 @@ extension StepExecutor {
                 // **scrollFrame の申告は失敗文へ畳んで返す**: 探索が空振りした理由がそこにある
                 // のに、`StepOutcome(status:)` だけの return は driverFallback を運ばないので
                 // `scrollSearchNote` が捨てられていた(MCP の失敗文にも一度も出ていなかった)。
-                // 実測(2026-08-07): 同名 `#recycler_view` が4つある画面で先頭の横チップ行を
+                // 実測: 同名 `#recycler_view` が4つある画面で先頭の横チップ行を
                 // 掴んだまま「element not found」としか言わず、曖昧だったことが伝わらなかった
                 let why = pendingScrollFrameNote.map { " (\($0))" } ?? ""
                 return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result) + why))
@@ -216,13 +216,13 @@ extension StepExecutor {
         // 効いていなかった**のが残存フレークの正体。
         // 判定は `isOutsideContainer`(容器と**交差しない** = 完全に外)。
         //
-        // **またぎ(縁をまたぐ要素)まで対象に広げてはいけない**(2026-08-05 に試して撤回)。
+        // **またぎ(縁をまたぐ要素)まで対象に広げてはいけない**(試して撤回)。
         // 「掴み直し+送り直し」の対象を `isClippedByViewport`(= 完全に外もまたぎも拾う)へ
         // 統一したところ、S0110 の失敗が **2/10 → 5/10 に悪化**した。失敗はいずれも救済が発火し、
         // tap が 4.0s → 7.2〜8.2s に伸びたうえで**「対象があの後 9〜14pt 動いた」**で落ちている
         // = 縁で救済スワイプを撃つと、わずかに動いた先の座標でタップすることになり自傷する。
         // **またぎは探索ループ側の見切れ判定に任せる**(あちらは掴む前に送るので座標が古くならない)
-        // **このステップが探索したかは条件にしない**(2026-08-06 に外した): ghost は
+        // **このステップが探索したかは条件にしない**(外した): ghost は
         // 「直前の探索」ではなく**アプリがスクロールしていること**の帰結で、木にはその後も
         // 残り続ける。`scrollTo` と `tap` を別ステップで書く(利用者の自然な書き方)と
         // searchSwiped が false になり、**防御がまるごと素通り**していた —— 実測では
@@ -260,15 +260,14 @@ extension StepExecutor {
                     start = clock.now
                     try await Task.sleep(for: backoff.nextDelay())
                     phase.waitMs += Self.ms(clock.now - start)
-                    // **撮り直しだけでは戻らないことがある**(2026-08-04 実測: 3回撮り直しても
+                    // **撮り直しだけでは戻らないことがある**(実測: 3回撮り直しても
                     // 容器の外に報告されたまま = タップが飲まれて `selected=-`)。
                     // 探索ループと同じく**もう1回送って**容器の中へ入れる。1周目は撮り直しだけ
                     // (木の遅れなら送らずに直る)、2周目以降だけ送る = 正常系のコストを増やさない
-                    // **指の向きを持たないステップでも救済に入る**: 素の `tap` は
-                    // direction を持たないため、旧実装は ghost を検出しておきながら
-                    // **1本も送らずにそのままタップ**していた。ghost は容器の外に居ることが
-                    // 分かっているので、戻す向きは `recoveryJump` / `recoveryDirection` が
-                    // 幾何から決められる(既定の finger は「内側に居るとき」しか使われない)
+                    // **指の向きを持たないステップでも救済に入る**: 素の `tap` は direction を
+                    // 持たないが、ghost は容器の外に居ることが分かっているので、戻す向きは
+                    // `recoveryJump` / `recoveryDirection` が幾何から決められる(既定の finger は
+                    // 「内側に居るとき」しか使われない)
                     if attempt > 0, grabbedGhost(resolved),
                        let element = resolved?.0 {
                         let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -277,7 +276,7 @@ extension StepExecutor {
                             inferring: step.containerInference ?? true)
                         // **距離を測ってその分だけ動かす**(recoveryJump 参照)。全画面スワイプだと
                         // 100pt のずれに対して1ページ動いてしまい、**行き過ぎて往復する**。
-                        // 容器が分かるときだけ使える手なので、駄目なら従来のスワイプへ落ちる
+                        // 容器が分かるときだけ使える手なので、駄目なら全画面スワイプへ落ちる
                         if let container,
                            let jump = Self.recoveryJump(for: element, container: container),
                            await hintDrag(jump: jump, container: container,
@@ -324,11 +323,11 @@ extension StepExecutor {
         // の snapshot でも解決を試す。act は解決した driver で行う。
         // substring 誤解決の誤検知(in-app の label がシステム UI label の部分文字列で contains 命中し、
         // 本来当てたいシステム UI 要素へフォールバックされない)を、fallback の exact 一致で上書きする。
-        // primary が exact のときは fallback を照会しない(従来どおりコスト増なし)。
+        // primary が exact のときは fallback を照会しない(コスト増なし)。
         // **select は照会しない**: 掴むだけでデバイス操作が無く、掴めないことが答えになり得る
         // コマンドなので、システム UI 側を探す意味がない。実害もある — fb.snapshot() は
         // springboard セッションを張り、**同一デバイス1セッション制約でアプリ attach を潰す**。
-        // WebView(domInterop)では直後の type が入らなくなった(2026-08-04 実測。
+        // WebView(domInterop)では直後の type が入らなくなった(実測。
         // `select("wv_result=*")` はワイルドカードが quality=substring になり毎回ここを踏む)
         // 掴み直しの結果を**必ず注記に残す**: 救えたなら「なぜ遅かったか」の説明になり、
         // 救えなかったなら「タップが飲まれた可能性」を失敗調査の起点にできる(黙るのが最悪)
@@ -351,7 +350,7 @@ extension StepExecutor {
                 // 空打ちで木が入れ替わるので ref を取り直す(古い ref は別要素を指す)。
                 // **取り直せないなら撃たずに失敗させる**: 空打ちが画面を変えた(下の行・ボタンが
                 // 発火した)形で、古い ref のまま撃つと新しい木の別の要素を押して ok になる
-                // (2026-09-11 物理 iPhone 13: 空打ちで診断画面へ遷移 → 古い ref が #tab_home を押して
+                // (物理 iPhone 13: 空打ちで診断画面へ遷移 → 古い ref が #tab_home を押して
                 // ホームへ戻り ok)。救済(キャッシュ・指紋・FM)にも回さない —— 変わった画面で
                 // 別の要素へ「修復」するのも同じ誤った緑。撃ち直しもしない(吸われた操作と同じ規律)
                 guard let refreshed = Self.resolve(step: step, in: snapshot) else {
@@ -495,11 +494,11 @@ extension StepExecutor {
         // Compose は focus 時に bringIntoView で内容を動かすため、離すまでに隣の行が指の下へ来る
         // (Emulator で約 50%・実測 135〜179px ずれて隣の行が反応した)。**容器の中へ寄せてから撃つ**。
         //
-        // 2026-08-05 に撤回した「またぎも掴み直しの対象へ広げる」との違いは**送り方**:
+        // 撤回した「またぎも掴み直しの対象へ広げる」との違いは**送り方**:
         // あちらは全画面スワイプで行き過ぎて自傷した(S0110 が 2/10 → 5/10)。ここは
         // `straddleJump`(またぎ解消に必要な最小量。40% 位置への寄せは観測対象まで流す —
-        // 定義部の 2026-08-08 実害参照)+ `slowDrag`(フリングを出さない)なので
-        // 行き過ぎない。**1回だけ**(収束しなければ従来どおり見えている部分を撃つ)
+        // 定義部の実害参照)+ `slowDrag`(フリングを出さない)なので
+        // 行き過ぎない。**1回だけ**(収束しなければ見えている部分を撃つ)
         if Self.interactsByTouch(action), step.containerInference ?? true,
            let container = Self.clippingContainer(of: element, in: snapshot.elements,
                                                   inferring: true),
@@ -520,10 +519,10 @@ extension StepExecutor {
         // **無効な対象は操作可能になるまで待ってから撃つ**(ユーザー決定)。
         // 画面が出た直後は、要素は木に居るのに**まだ触れない**ことがある(受け手の実アプリ:
         // ログインフォームが読み込み中は入力欄が無効で、id を持たない透明な clickable が
-        // 覆っていた)。従来は警告を出してそのまま撃っており、**空振りしたことは
-        // 後段のアサーションが落ちて初めて分かる** = 原因から遠い。
+        // 覆っていた)。撃つと空振りしたことは**後段のアサーションが落ちて初めて分かる**
+        // = 原因から遠いので、待ってから撃つ。
         // **待ち切れなくても撃つ** —— 無効な要素をわざと叩いて「反応しない」ことを確かめる
-        // 書き方は正当なので、失敗にはしない(注記は従来どおり出る)
+        // 書き方は正当なので、失敗にはしない(注記は出る)
         var enabledWaitNote: String?
         if action == "tap", !element.enabled,
            let waited = try await waitUntilEnabled(step: step, phase: &phase) {
@@ -556,7 +555,7 @@ extension StepExecutor {
             recordInteraction(step: step, element: element, in: snapshot)
             lastTapTarget = element
             driverFallback = Self.joinNotes(driverFallback, enabledWaitNote)
-            // **注記が出るときは解決先を1回だけ名乗る**(2026-08-21 の受け手報告)。
+            // **注記が出るときは解決先を1回だけ名乗る**(受け手報告)。
             // 連鎖(`A||B`)や型+順序(`.textField[1]`)では**書いた文字列から解決先が読めない**ので、
             // 「無効だ」「覆われている」と言われても**どの要素の話か分からない**
             // (Material の TextInputLayout/TextInputEditText のように、同じ矩形に容器と
@@ -585,7 +584,7 @@ extension StepExecutor {
             // 実害はキーボード誤タップのほうが具体的で誤操作に直結する)。
             // **offscreen/missedContent はここに混ぜない**: 撃つ座標(visibleTapRect で寄せるか
             // frame の中心か)が決まってからでないと嘘になる(下記2箇所参照)。混ぜると
-            // keyboard/disabled が2回付く(2026-08-08 に発覚したバグ)ので、この2つだけをここで確定する。
+            // keyboard/disabled が2回付く(発覚したバグ)ので、この2つだけをここで確定する。
             // **申告 keyboardFrame はキー面だけ**なので木の chrome で広げ、chrome 自身とその
             // 部分木(地球儀キー等)は除外して渡す(KeyboardOcclusion の doc。MCP 側も同じ型で揃える)
             let tapKeyboardOcclusion = KeyboardOcclusion.resolve(
@@ -629,8 +628,8 @@ extension StepExecutor {
                 }
                 break
             }
-            // **縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す**(2026-08-27。
-            // 判定と手順は liftCoveredTarget の1箇所。type も同じものを通る)
+            // **縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す**。
+            // 判定と手順は liftCoveredTarget の1箇所。type も同じものを通る
             if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
                                                         verb: "touching", phase: &phase) {
                 element = lifted.element
@@ -664,7 +663,7 @@ extension StepExecutor {
             // activate 不発→合成タッチ)。失敗ではないので driverFallback に載せて可視化するだけ。
             // **代入ではなく合流**: 上書きすると、直前に積んだ注記(無効な要素・中身外し)が
             // 消える —— しかも消えるのは activate 不発のような**まさに飲まれた場面**で、
-            // 両方が要るときに片方を失っていた(2026-08-07 のレビューで発覚)
+            // 両方が要るときに片方を失っていた(レビューで発覚)
             driverFallback = Self.joinNotes(driverFallback, actingDriver.lastActionNote)
         case "type":
             // "\n" を含む入力だけ typeDriver(XCUITest)を優先する: typeText は改行を Return
@@ -697,7 +696,7 @@ extension StepExecutor {
                     : element.type == "secureTextField"
                         ? "the field already holds a value; type appends, so the result will not"
                             + " simply be what you typed. Call clearInput first if you meant to replace it"
-                        // **連結後の値を予告しない**(2026-08-13。MCP 側の同名警告と同じ理由)——
+                        // **連結後の値を予告しない**(MCP 側の同名警告と同じ理由)——
                         // 空欄のヒント文字列が `value` に載り `placeholder` が来ないアプリ
                         // (Google メッセージの宛先欄が witness)では前の値が実在の内容ではなく、
                         // 予告は外れる。**ここでは読み返さない**(型ステップごとの往復を増やさない)
@@ -705,18 +704,18 @@ extension StepExecutor {
                         : "the field already held \"\(SnapshotRenderer.truncate(priorValue, 30))\";"
                             + " type appends, so the result will not simply be what you typed."
                             + " Call clearInput first if you meant to replace it")
-            // **キーボードの下の欄へは打たない**(2026-08-27)。焦点を当てるタップがキーボードに
+            // **キーボードの下の欄へは打たない**。焦点を当てるタップがキーボードに
             // 当たるので焦点が移らず、**打鍵が直前に焦点のあった欄へ流れ込む**
             // (受け手の 4.7 インチ実機で実測: 市区町村の欄に住所が3回ぶん追記された。
             // 読み返しが 422 で止めるが、別の欄はすでに壊れている)。tap と同じ規則で
-            // 容器を送り、外せたら送った後の木で解決し直す。外せなければ従来どおり撃つ
+            // 容器を送り、外せたら送った後の木で解決し直す。外せなければそのまま撃つ
             if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
                                                         verb: "typing", phase: &phase) {
                 element = lifted.element
                 snapshot = lifted.snapshot
                 driverFallback = Self.joinNotes(driverFallback, lifted.note)
             }
-            // **入力欄でないものへ打とうとしていないか**(2026-08-14。TypeReadback の doc に実測)。
+            // **入力欄でないものへ打とうとしていないか**(TypeReadback の doc に実測)。
             // 検証は両側とも空になる経路なので、せめて内側の欄を名指しして知らせる
             let nonInputNote = TapTargetGeometry.nonInputTypeTargetNote(element, in: snapshot.elements)
             // **押し上げ検知の「打つ前」の基準**(keyboardFrameBeforeType の doc)。以下のどの経路
@@ -822,7 +821,7 @@ extension StepExecutor {
             endStep.locator = endLocator
             endStep.fallbacks = nil
             var endResolved = Self.resolve(step: endStep, in: snapshot)
-            // **終点も上限で間引かれているなら撮り直す**(2026-08-15。始点(上の truncatedCount
+            // **終点も上限で間引かれているなら撮り直す**(始点(上の truncatedCount
             // ブロック)だけ救済される非対称を埋める)。**始点も同じ撮り直した木から取り直す** ——
             // 片方だけ別の読みの座標のままだと frame の世代が混ざる
             if endResolved == nil, snapshot.truncatedCount > 0 {
@@ -1006,7 +1005,7 @@ extension StepExecutor {
 
     /// 読み返しが目標にする値(順序の規則と理由は `TypeReadback.readbackTarget`)。
     ///
-    /// **この退化は再現していない**(2026-08-13 時点)。値にヒントが載る盤面として確かめられたのは
+    /// **この退化は再現していない**(現時点)。値にヒントが載る盤面として確かめられたのは
     /// **Android の E2E-CMP `#field_single`**(value="単一行" / placeholder なし。同じシナリオの
     /// `textIs "#txt_echo_length" == "len=8"` が通るので "単一行hello123" は偽)と
     /// **Google メッセージの宛先欄**の2つで、どちらも `verifiesTypedText == true` の
@@ -1015,7 +1014,7 @@ extension StepExecutor {
     /// 出すので `priorValue` が空になる。**失敗モードが沈黙(検証を諦めたことを誰にも言わない)なので、
     /// witness が無くても塞ぐ**
     static func readbackTarget(expected: String, typedOnly: String, actual: String) -> String {
-        // 不可視文字を正規化してから比較する(2026-08-15。MCP の
+        // 不可視文字を正規化してから比較する(MCP の
         // replaceVerificationNote/appendVerificationNote と同じ規律)。self-contained にする
         // (呼び出し側での正規化に依存しない) —— これが無いと、ゼロ幅文字が expected/typedOnly/actual
         // のどれか1つにだけ混じった時点で .unverifiable に落ち、追送も打ち直しも走らず受理される。
@@ -1200,19 +1199,19 @@ extension StepExecutor {
     ///
     /// 解決済みの `element.value` をそのまま使うと、Android の a11y キャッシュが古い値を返した
     /// とき `before == after` が成立し、**実際には消えているのに「消えていない」と報告する**。
-    /// 2026-08-14 に E2E-CMP/android の S0040 で並列負荷 10 周中 8 周再現:
+    /// E2E-CMP/android の S0040 で並列負荷 10 周中 8 周再現:
     /// 空欄の `value` にヒント文字列が載る欄(CMP の `#field_single` は placeholder を送らない)では、
     /// 撃つ前の古い読みが「ヒント」・クリア後も「ヒント」で一致してしまう。
     /// ブリッジ側は撃つ前に `refresh()` してから読むので、**同じノードをブリッジは「入っている」・
     /// snapshot は「空」と読む**のが元の食い違い。
     ///
-    /// **キャッシュ迂回でなければならない**(2026-08-14 の実測):
+    /// **キャッシュ迂回でなければならない**(実測):
     /// ブリッジの木で editable ノードだけ `refresh()` する案は、step5 の誤検出を 12/28 → 0/4 に
     /// したが、**木が混世代になり ref の座標が別版のレイアウトを指す**ため、後段の clearInput が
     /// **別の入力欄を消す**退行(step12 が 0/17 → 2/4)を生んで棄却した。`bypassingCache` は
     /// 全ノードを取り直すので木の世代が揃い、この危険が無い。
     ///
-    /// 迂回を持たないドライバ(iOS)は従来どおり解決時の値を使う(費用ゼロ)。
+    /// 迂回を持たないドライバ(iOS)は解決時の値を使う(費用ゼロ)。
     /// Android は 1 clearInput につき約 +65ms —— 沈黙する誤判定と引き換えなら安い
     private func valueBeforeClear(element: ElementInfo, step: FlowStep, driver clearDriver: AppDriver,
                                   phase: inout PhaseAccumulator) async throws -> String? {
@@ -1233,7 +1232,7 @@ extension StepExecutor {
     /// clearInput 事後検証: 残っている値(nil = 消えている/判定不能)。
     /// **`placeholder` フィールドとの一致では判定できない**ので「クリア前の値からの変化」で見る:
     /// 空欄の `value` に placeholder 文字列が入る実装があり(iOS 全般 / **Android の CMP は
-    /// `placeholder` を送らないまま value に入れる** ―― 2026-07-30 実測)、一致判定は素通りする。
+    /// `placeholder` を送らないまま value に入れる** ―― 実測)、一致判定は素通りする。
     /// **層3は保険なので誤検出ゼロに倒す**(検出漏れは層2 = 受け口側の読み返しが拾う):
     /// 値が変わっていれば消えたと見なし、`before` が空/placeholder なら「消すものが無かった」
     /// として検証しない
@@ -1257,7 +1256,7 @@ extension StepExecutor {
     /// clearInput(ref あり)の事後検証: 同じ driver で snapshot を撮り直してから残存値を見る。
     /// **単発では判定しない**(ロケータ解決の再試行と同じ規律で最大3回・計約700ms):
     /// Android の `ACTION_SET_TEXT` は a11y ツリーへの反映が数十〜数百ms遅れ、1発勝負では
-    /// 消えているのに古い値を読んで誤検出する(2026-07-30 実測。textIs がポーリングで
+    /// 消えているのに古い値を読んで誤検出する(実測。textIs がポーリングで
     /// 吸収しているのと同じ事情)
     private func residualClearValue(_ driver: AppDriver, step: FlowStep, before: String?,
                                     phase: inout PhaseAccumulator) async throws -> String? {
@@ -1415,24 +1414,14 @@ extension StepExecutor {
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }
 
-    /// 座標ドラッグを通常ドライバ →(501/ルート不明404 なら)typeDriver の順で撃つ。
-    /// 座標はブリッジ間で共通(ref と違い取り直しが要らない)ので、そのまま渡すだけでよい。
-    /// 戻り値: true = typeDriver(XCUITest)経由
-    /// **縁の帯に潜っている対象を、容器を1回だけ送って外す**(tap と type が共有する)。
-    /// 覆いは2種類: 木に載る操作可能な帯(タブバー・固定フッタ = `overlayCoveringForUncover`)と、
-    /// 木に要素として渡せないソフトキーボード(`KeyboardOcclusion.frame`)。
-    /// 外せたら (送った後の要素, 送った後の木, 注記) を返し、外せなければ nil
-    /// (呼び手は従来どおり警告付きで撃つ。**拒否はしない**)。
-    /// 払うのは覆いが出ている画面だけで、ドラッグ1回と木1枚。
-    /// verb は注記の文言(touching / typing)。判定そのものは共通で、言い回しだけ呼び手が持つ
     /// **縁の帯に潜っている対象を、容器を送って外す**(tap と type が共有する)。
     /// 覆いは2種類: 木に載る操作可能な帯(タブバー・固定フッタ = `overlayCoveringForUncover`)と、
     /// 木に要素として渡せないソフトキーボード(`KeyboardOcclusion.frame`)。
     /// 外せたら (送った後の要素, 送った後の木, 注記) を返し、外せなければ nil
-    /// (呼び手は従来どおり警告付きで撃つ。**拒否はしない**)。
+    /// (呼び手は警告付きで撃つ。**拒否はしない**)。
     ///
     /// **1回では足りないことがあるので、動いている限り最大 `maxLifts` 回送る**
-    /// (2026-08-27 実測: 191pt 要求して実際の移動は 144pt で、中心がまだ覆いの内側だった)。
+    /// (実測: 191pt 要求して実際の移動は 144pt で、中心がまだ覆いの内側だった)。
     /// 動かなくなったら諦める = 端まで来ている画面で無限に粘らない。
     /// verb は注記の文言(touching / typing)。判定は共通で、言い回しだけ呼び手が持つ
     private func liftCoveredTarget(_ element: ElementInfo, in snapshot: SnapshotResponse,
@@ -1500,6 +1489,9 @@ extension StepExecutor {
         return nil
     }
 
+    /// 座標ドラッグを通常ドライバ →(501/ルート不明404 なら)typeDriver の順で撃つ。
+    /// 座標はブリッジ間で共通(ref と違い取り直しが要らない)ので、そのまま渡すだけでよい。
+    /// 戻り値: true = typeDriver(XCUITest)経由
     /// **private ではない**: StepExecutor+DirectActions.swift の executeDirectFlick からも呼ぶ
     func dragWithFallback(path: FTSwipePath, durationSeconds: Double,
                           phase: inout PhaseAccumulator) async throws -> Bool {
@@ -1706,7 +1698,7 @@ extension StepExecutor {
     }
 
     /// 直前のタップが**叩いた対象へ焦点を立てられていなかった**ときに、入れ直す先を決める。
-    /// nil = 従来どおりフォーカス中要素へ送ってよい(焦点が叩いた対象そのもの/内側にある、
+    /// nil = フォーカス中要素へそのまま送ってよい(焦点が叩いた対象そのもの/内側にある、
     /// または先が一意に決まらない)。**焦点が叩いた対象の外の別の欄に残っているだけでも
     /// 救済へ進む**(前の欄の焦点が外れないまま容器を叩く Android の形)。
     /// **木は撮り直す** —— ref は木ごとに振り直されるので、タップ時の ref は使えない。

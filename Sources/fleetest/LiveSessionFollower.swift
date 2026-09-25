@@ -89,7 +89,7 @@ final class LiveSessionFollower {
     private let udid: String?
     /// 実機か(ApiLiveCommand が SimulatorCatalog.isPhysical で1回だけ解く)。列挙の口が違う ——
     /// 実機に simctl を撃つと失敗して候補が空 = 前面のアプリを見ていても springboard を向いたままになり、
-    /// **アプリの要素が1つも取れない**(実地 2026-09-24: M1Ultra の iPhone wave で YouTube を表示中)
+    /// **アプリの要素が1つも取れない**(実地: M1Ultra の iPhone wave で YouTube を表示中)
     private let physical: Bool
     /// 実機のインストール済みアプリ(bundle ID と url)。滅多に変わらないので最初の探索で1回だけ採る
     private var physicalApps: [IOSPhysicalAppCatalog.App]?
@@ -102,7 +102,7 @@ final class LiveSessionFollower {
     }
 
     /// 操作・観測の直前に呼ぶ。**失敗しても投げない** —— 向け直せなかっただけで
-    /// 利用者のコマンドを道連れにしない(従来どおりの経路で撃ち、結果は本来の失敗で返る)
+    /// 利用者のコマンドを道連れにしない(通常の経路で撃ち、結果は本来の失敗で返る)
     func follow(driver: AppDriver) async {
         await initializeIfNeeded(driver: driver)
         var foreground = false
@@ -117,7 +117,7 @@ final class LiveSessionFollower {
         // センター・通知センターの間、**どのアプリも foreground と答え続ける**(アプリ側からは
         // 気付けないので専用の口がある。BridgeRouter.handleSystemUICovering)。
         // preferred の前面判定だけでなく**前面アプリの探索も必ず誤る**ので、駆動対象が前面か
-        // どうかに関わらず先に聞く(実害 2026-09-22: 駆動対象でない Safari を見ている状態で
+        // どうかに関わらず先に聞く(実害: 駆動対象でない Safari を見ている状態で
         // スイッチャーを開くと、探索が Safari を「前面」と拾って木が Safari のままだった)。
         let covered = ((try? await driver.systemUICovering()) ?? nil)?.covering == true
         if covered {
@@ -134,7 +134,7 @@ final class LiveSessionFollower {
         // **そのときだけ探す**(毎回 simctl と IPC を払わない)。
         // **覆われているときは探さない** —— 見えているのは SpringBoard の面なので springboard へ
         // 倒すのが正しく、探すだけ無駄。しかも面が出ている間は state の問い合わせが極端に遅く、
-        // 探索が応答を止める(実測 2026-09-22: アプリスイッチャー表示中に 120 秒を超えて
+        // 探索が応答を止める(実測: アプリスイッチャー表示中に 120 秒を超えて
         // 強制終了 = 拡張から見ると serve が固まる)
         var frontmost: String?
         if !foreground && !systemAlertPresent && !covered {
@@ -163,7 +163,7 @@ final class LiveSessionFollower {
     }
 
     /// 今 前面にあるアプリ(preferred 以外)。**公開 API だけで採る** —— 手順と根拠は FrontmostApp。
-    /// 見つからなければ nil(呼び手は springboard へ倒す = 従来どおり)。
+    /// 見つからなければ nil(呼び手は springboard へ倒す)。
     ///
     /// **直近の答えを先に1回だけ確かめる** —— 同じアプリを見ている間は IPC 1 回で済み、
     /// 起動中アプリの列挙(simctl spawn)も全候補への問い合わせも払わない。
@@ -212,7 +212,7 @@ final class LiveSessionFollower {
             candidates = FrontmostApp.candidates(launchctlOutput: listing.output)
         }
         // **探索に締切を置く** —— 1件あたりの問い合わせは普通ミリ秒だが、画面の状態によっては
-        // 極端に遅くなる(実測 2026-09-22)。ライブ操作は人間の操作なので、待たせるくらいなら
+        // 極端に遅くなる(実測)。ライブ操作は人間の操作なので、待たせるくらいなら
         // 「見つからなかった」(= springboard へ倒す)ほうがよい。尽きたら打ち切る
         let deadline = Date().addingTimeInterval(Self.frontmostSearchBudgetSeconds)
         var foreground: [String] = []
@@ -281,7 +281,7 @@ final class LiveSessionFollower {
         // **駆動対象にできないものは preferred にしない** —— 起動時のセッションが
         // SpringBoard の裏方(ウィジェットのレンダラ等)を向いていることがあり、そのまま
         // 引き継ぐと「そのアプリを駆動している」ことになって前面追従が働かない
-        // (実害 2026-09-22: screen がウィジェットの窓になり、絵が横に膨らんだ)
+        // (実害: screen がウィジェットの窓になり、絵が横に膨らんだ)
         preferred = sessionTarget.map { FrontmostApp.isExcluded($0) ? nil : $0 } ?? nil
     }
 }

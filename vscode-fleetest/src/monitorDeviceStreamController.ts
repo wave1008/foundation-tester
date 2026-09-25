@@ -10,7 +10,7 @@
 // deviceTiles.js → monitorPanel.ts → noteStreamRendered)を受けてから。ホストがチャンクを
 // 受信した時点で間引くと、Reload Window 直後など webview 準備前に初期キーフレームが落ちた場合、
 // 静止画面では以後チャンクが来ず「ポーリング抑止済み・ストリーム無描画」でタイルが永久に
-// 「起動中」のまま止まる(2026-07-15 実害)。
+// 「起動中」のまま止まる(実害)。
 // ストリーミングが継続不能(onFailure)になった場合も同様にポーリングへ戻すだけで、明示的な
 // フォールバック処理は不要(ポーリングは止めていないため)。
 //
@@ -392,7 +392,7 @@ export class MonitorDeviceStreamController {
       command: target.command,
       args: target.args,
       // 台名を入れる —— helper の stderr(encode 失敗・wedge)は全部この prefix で出るので、
-      // 無いと数十本のどれが壊れたか分からない(2026-08-31: iOS 4本の同時失敗が特定できなかった)
+      // 無いと数十本のどれが壊れたか分からない(実際に iOS 4本の同時失敗が特定できなかった)
       logPrefix: `${target.platform === "ios" ? "ios-stream" : "android-stream"} ${deviceId}`,
       outputChannel: this.deps.outputChannel,
       codec: target.codec,
@@ -415,7 +415,7 @@ export class MonitorDeviceStreamController {
         this.gaveUpDeviceIds.add(deviceId); // 2秒毎の applyDevices による再生成スパムを止める
         // **タイルに黙って「接続中」を出し続けない** —— プロファイル未選択(未登録デバイス)の
         // iOS はブリッジが無くポーリングのフレームも来ないので、諦めたことを伝えないと
-        // 永久に「接続中」に見える(2026-08-17 の実害)
+        // 永久に「接続中」に見える(実害)
         this.deps.post({ type: "streamUnavailable", device: deviceId, unavailable: true });
       },
     });
@@ -464,7 +464,7 @@ export class MonitorDeviceStreamController {
   /** 描画 ack は webview から1本ずつ別メッセージで届く(起動時は数十本が連続)ので、送信を
    * **monitor の polling 間隔1つ分**だけ溜めてまとめる。窓がこの値なのは、抑止がその cadence で
    * しか効かないため —— 遅らせる代償は台ごとに最大1枚余分にポーリングするだけ。
-   * (microtask ではメッセージを跨いで畳めず、実運用で 31 行/秒のままだった 2026-08-31) */
+   * (microtask ではメッセージを跨いで畳めず、実運用で 31 行/秒のままだった) */
   private suppressSyncTimer: ReturnType<typeof setTimeout> | undefined;
   private syncSuppressFrames(): void {
     if (this.suppressSyncTimer) {

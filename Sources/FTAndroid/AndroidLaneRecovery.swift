@@ -55,7 +55,7 @@ public enum AndroidLaneRecovery {
     /// plan の対象を**1台ずつ直列に**起こす。失敗は非致命(ログして次へ)。
     ///
     /// **必ず1台ずつ直列**: 複数台の同時ブート描画は画面凍結の契機そのもの
-    /// (`AndroidGpuRecovery` と `AndroidDataWiper` が同じ理由で直列に処理している。実測 2026-07-25)。
+    /// (`AndroidGpuRecovery` と `AndroidDataWiper` が同じ理由で直列に処理している。実測)。
     ///
     /// `boot` は1台分の実起動の差し込み口(既定 nil = 本番経路。テストは失敗するスタブを渡して
     /// 直列性・再試行回数・部分失敗の非致命性だけを検証する)。本番経路は

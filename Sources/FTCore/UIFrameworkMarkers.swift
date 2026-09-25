@@ -1,10 +1,10 @@
 // iOS アプリの UI フレームワークをパッケージの目印から決める規則と、その語彙。
 // **in-app ブリッジ(自己申告)とホスト(AppBundleInspector)の両方がこのファイルを使う** ——
 // InAppBridge/build.sh の SWIFT_SOURCES と BridgeSourceSet.inApp に入っている(片方だけ変えない)。
-// 規則を分けて持っていた頃は、ホストだけ SkikoUIView を見るようになり、同じアプリで答えが割れた。
+// 分けて持つと、ホストだけ SkikoUIView を見るようになるなど、同じアプリで答えが割れる。
 // このファイルはブリッジにも入るので **FTCore の他の型に依存しない**。変えたらブリッジの版を上げる。
 //
-// 目印(2026-09-14 に E2E の SUT 4 つの .app で実測):
+// 目印(E2E の SUT 4 つの .app で実測):
 //   compose     … `compose-resources`(リソースの仕組みが作る = 使わないアプリには無い)か、
 //                 実行ファイルに Skiko の描画ビューのクラス名 `SkikoUIView`(実行時に名前で登録されるので削れない)
 //   flutter     … `Frameworks/Flutter.framework`
@@ -71,7 +71,7 @@ public enum UIFrameworkMarkers {
     }
 
     /// 目印を**1 語 1 スレッドで並列に**探す(目印の無い UIKit アプリは 3 語とも全走査になる)。
-    /// 実測(2026-09-14・release・7 回の中央値): 実物の Mach-O(swift-frontend 173 MB)で逐次 142 ms → 並列 66 ms、
+    /// 実測(release・7 回の中央値): 実物の Mach-O(swift-frontend 173 MB)で逐次 142 ms → 並列 66 ms、
     /// E2E-RN の実行ファイル 6 MB で 4.3 → 2.0 ms。1 回の走査で 3 語を照合する形は 129 ms で縮まない
     /// (Data.range(of:) の走査のほうが Swift のバイト単位ループより速い)
     static func presentNeedles(_ needles: [String], in binaries: [Data]) -> Set<String> {

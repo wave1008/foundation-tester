@@ -16,14 +16,14 @@ public enum PortHolder {
     /// port を LISTEN しているプロセスの説明("pid N: <command>")。**止めない**(原因の名指し専用)。
     /// 誰も LISTEN していなければ nil。
     /// in-app ブリッジは注入先アプリが背面に回ると TCP は受け付けるが HTTP に答えないので、
-    /// 注入の失敗を「応答が無い」とだけ言うと残骸が原因だと分からない(受け手報告 2026-08-22/23)
+    /// 注入の失敗を「応答が無い」とだけ言うと残骸が原因だと分からない(受け手報告)
     public static func describe(port: UInt16) -> String? {
         lookup(port: port).map { "pid \($0.pid): \($0.command)" }
     }
 
     /// そのポートを握っているのが**実機の USB トンネル(iproxy)だけ**か。
     /// ブリッジが死んでもトンネルは残るので、この形のポートは誰から見ても「使用中」に見えるのに
-    /// 誰も駆動できない(doctor がこれを見落として「異常なし」と言っていた。実地 2026-09-23)。
+    /// 誰も駆動できない(doctor がこれを見落として「異常なし」と言っていた。実地で確認)。
     /// **プロセスの実体で判定する** —— 応答の速さ(`probeStatus`)で決めると、駆動中で答えない
     /// だけの in-app ブリッジまで拾う
     public static func isHeldByTunnelOnly(port: UInt16) -> Bool {
@@ -53,7 +53,7 @@ public enum PortHolder {
     /// **2つ目のパーサは書かず** `RunnerDestination.udidTokens` を再利用する。複数の識別子が
     /// 出てきても最初の1つだけを使う(そのポートの持ち主は1台のはず)。listener が居ない・
     /// 識別子が読めない形は nil(= 「分からないから断らない」に倒す。呼び手はこの場合、
-    /// lease を照合できないまま従来どおり止めてよい)
+    /// lease を照合できないまま止めてよい)
     static func udidFromListener(_ listener: String?) -> String? {
         listener.flatMap { RunnerDestination.udidTokens(inCommand: $0).first }
     }
@@ -70,7 +70,7 @@ public enum PortHolder {
 
     /// `/status` が答えないポートの占有者が**別のデバイスのもの**か(プロセスの実体から読む)。
     /// **肯定的に別デバイスと読めたときだけ** true —— 占有者が読めない・識別子が出てこない形は
-    /// false(= 自分のブリッジが駆動中で答えられないだけ、という従来の扱い)。
+    /// false(= 自分のブリッジが駆動中で答えられないだけ、という扱い)。
     ///
     /// 用途はライブ操作の宛先決定: 既定ポートが「待受しているが答えない」とき、
     /// **自分の busy なブリッジ**なら待てばよく、**別のデバイスのもの**なら掴んではいけない
@@ -84,12 +84,12 @@ public enum PortHolder {
 
     /// 記録された in-app ブリッジ(`.inapp`)から見て、**今そのポートを握っているのが別のデバイスか**。
     /// 判定は**肯定的に別のシミュレータと読めたときだけ** true —— 実機の in-app(ポートを握るのは
-    /// iproxy)や、形の分からない占有者は false(= 従来どおり「生きている」側)に倒す。
+    /// iproxy)や、形の分からない占有者は false(= 「生きている」側)に倒す。
     ///
     /// これが要るのは、台帳の生死を「誰かが待受しているか」だけで決めていたため:
     /// 別のデバイスのブリッジがそのポートを取ると、**古い `.inapp` が生き続け**、供給が
     /// 「別アプリに注入された in-app ブリッジ」と読んで**無関係なデバイスのアプリを terminate** する
-    /// (実地 2026-09-23 の負荷テスト)
+    /// (実地の負荷テストで確認)
     public static func listenerIsAnotherSimulator(listener: String, recordedUDID: String) -> Bool {
         guard listener.contains("/CoreSimulator/Devices/") else { return false }
         return !listener.contains("/CoreSimulator/Devices/\(recordedUDID)/")
@@ -122,7 +122,7 @@ public enum PortHolder {
     /// iproxy 分岐の所有判定(純粋関数。lsof/kill を伴う stopIfOwnedBridge から切り出してテストする)。
     /// **台帳(bridge-<port>.device)の UDID が ownerUDID(呼び手が今回供給しようとしているデバイス)
     /// と一致するときだけ** .owned。記録が無い・不一致・ownerUDID 不明(呼び手が対象デバイスを
-    /// 渡していない)はすべて .foreign —— **F8 実測 2026-09-15**: 「第1引数がポート一致なら
+    /// 渡していない)はすべて .foreign —— **F8 実測**: 「第1引数がポート一致なら
     /// 自分の資産」とだけ判定していたため、別プロセスが実機へ張った iproxy を誤って kill し、
     /// 跡地に立てたシミュレータの in-app ブリッジが実機向けシナリオを代わりに実行して
     /// 誤った PASS を作った(実機レーンは "Cannot reach the driver" で全滅)。
@@ -167,7 +167,7 @@ public enum PortHolder {
             .appendingPathComponent("Build/Products/FleetestRunner-\(port).xctestrun").path
         if command.contains("xcodebuild"), command.contains(xctestrunPath) {
             // **別のデバイスのランナーは残骸ではない**(killOrphanRunners と同じ判定)。
-            // 照合できるのは呼び手が宛先を知っているときだけなので、ownerUDID が無ければ従来どおり
+            // 照合できるのは呼び手が宛先を知っているときだけなので、ownerUDID が無ければそのまま
             if let ownerUDID, let other = RunnerDestination.belongsToOtherDevice(
                 command: command, ourDevice: ownerUDID) {
                 return .foreign(description: "another device's xcuitest runner (udid \(other))")

@@ -6,7 +6,7 @@
 //   - `Sources/fleetest/ApiDeviceStreamCommand.swift` … その機械で該当ヘルパーへ `execv` で化ける
 //
 // 建っていないヘルパーへ化けようとすると `api device-stream` は即死し、拡張はそのタイルを
-// 「映像なし」にして諦める(2026-08-28: ランナー機の版合わせが `--product fleetest` しか
+// 「映像なし」にして諦める(ランナー機の版合わせが `--product fleetest` しか
 // 建てておらず、リモートのタイルが1枚も映らなかった)。
 
 public enum StreamHelpers {

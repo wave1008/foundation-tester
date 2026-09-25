@@ -52,7 +52,7 @@ export function applyMachineLockEvent(
   const machine = event.machine ?? LOCAL_MACHINE_KEY;
   if (!event.observed) {
     // **控えを消さない** —— 消すと「一度も聞いていない機械」(= 配信してよい)と同じになり、
-    // run の最中に子が落ちただけで**配信が再開する**(2026-08-31 のレビュー指摘)。
+    // run の最中に子が落ちただけで**配信が再開する**(レビュー指摘)。
     // **直前に分かっていた値は残す**(捨てると「不明」と「空きだと分かっている」が同じ形になる)。
     // 残した値を**事実として出してはいけない** —— 表示と確認は isConfirmedHeld を通す
     const previous = current.get(machine);
@@ -70,7 +70,7 @@ export function applyMachineLockEvent(
   return next;
 }
 
-// **デバイス一覧で控えを間引かない**(2026-08-31 のレビュー指摘)。供給元の子は「変化したとき
+// **デバイス一覧で控えを間引かない**(レビュー指摘)。供給元の子は「変化したとき
 // だけ」出すので、一覧から一時的に消えた機械の控えを捨てると run が終わるまで二度と届かず、
 // 破壊的操作の警告と錠前が黙って消える。寿命は monitor プロセスと共にする
 // (monitorProcessManager.ts が起動時に空へ戻す)。
@@ -80,7 +80,7 @@ export function applyMachineLockEvent(
  *
  * **観測できなくなった機械(observed:false)も畳んだままにする** —— 走っているかどうかが
  * 分からない以上、配信を再開する側に倒さない(その機械のタイルはどのみち state:"unknown" で
- * ポーリング表示になる)。**一度も聞いていない機械は入らない** = 旧ランナーの配信は従来どおり。 */
+ * ポーリング表示になる)。**一度も聞いていない機械は入らない** = 旧ランナーの配信はそのまま。 */
 export function occupiedMachines(locks: ReadonlyMap<string, MachineLock>): Set<string> {
   const occupied = new Set<string>();
   for (const [machine, lock] of locks) {
@@ -97,7 +97,7 @@ export function occupiedMachines(locks: ReadonlyMap<string, MachineLock>): Set<s
  * ON でも畳む(`mine` は「他人」と「不明」を区別しない)。
  *
  * **手元(`LOCAL_MACHINE_KEY`)も同じ規則で通る** —— 自分の run は `mine:true` なので ON では
- * 畳まれず(ユーザー決定 2026-09-17「自分の run のぶんは利用者が選ぶ」)、他人がこの Mac へ
+ * 畳まれず(ユーザー決定「自分の run のぶんは利用者が選ぶ」)、他人がこの Mac へ
  * ディスパッチして保持しているときだけ畳む。この3ケースは machineLockModel.test.mjs が等号固定。 */
 export function streamFoldMachines(
   locks: ReadonlyMap<string, MachineLock>,

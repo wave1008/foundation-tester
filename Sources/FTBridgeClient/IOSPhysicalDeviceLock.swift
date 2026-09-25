@@ -2,16 +2,15 @@
 // (SpringBoard が `denied by SBMainWorkspace ... reason: Locked` で拒否する)ので、
 // ビルドと起動の前にここで見て人に促す。**自動解除は原理的にできない** ——
 // 端末に入力を撃つ手段がランナー自身なので、ランナーが無い状態では起こしようがない。
-// **起動後の再ロックもツールは防がない**(2026-09-05 にパルスを廃止した)ので、
-// 実機は端末側で自動ロックを「なし」にしておくこと。
+// **起動後の再ロックもツールは防がない**ので、実機は端末側で自動ロックを「なし」にしておくこと。
 //
 // 信号は `xcrun devicectl device info lockState` の **`passcodeRequired`**。
 // これは「今パスコードの入力が要るか」= 画面ロックの現況で、静的な「パスコードを設定して
-// あるか」ではない(2026-08-27 実機実測 iPhone SE3: 消灯 true / 解除して点灯 false、
+// あるか」ではない(実機実測 iPhone SE3: 消灯 true / 解除して点灯 false、
 // 自動ロック 30 秒での false→true の遷移も観測)。実測 0.23 秒。
 //
 // **パスコード未設定の端末では常に false** になるため、その場合は locked を見落とす。
-// 誤検知(解除済みなのにロックと言う)を出さない側に倒してあり、見落としても従来どおり
+// 誤検知(解除済みなのにロックと言う)を出さない側に倒してあり、見落としても
 // xcodebuild のログからの検出(IOSDeviceTransport.blockingCondition)に落ちるだけ。
 // **`devicectl device info displays` の `backlightState` は使えない** —— 消灯中でも
 // `activeOn` を返した(同時刻の IORegistry は CurrentPowerState=0)。

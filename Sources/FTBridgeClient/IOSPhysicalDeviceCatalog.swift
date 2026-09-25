@@ -13,7 +13,7 @@ import FTCore
 public struct IOSPhysicalDeviceInfo: Sendable, Hashable, Identifiable {
     /// ハードウェア UDID("00008130-001819863E60001C" 形式)。実行プロファイルの udid に書く値。
     /// **devicectl の identifier(別の UUID)ではない**: xcodebuild の -destination id= が
-    /// 受け付けるのはこちらだけ(devicectl --device はどちらでも通る。2026-07-25 実機で確認)
+    /// 受け付けるのはこちらだけ(devicectl --device はどちらでも通る。実機で確認)
     public let udid: String
     /// devicectl の identifier。list devices の Identifier 列に出る値(照合用に保持)
     public let deviceCtlIdentifier: String
@@ -52,7 +52,7 @@ public enum IOSPhysicalDeviceCatalogError: Error, LocalizedError {
     case devicectlFailed(String)
     case notFound(udid: String, available: [IOSPhysicalDeviceInfo])
     /// transport: devicectl の transportType 生値。**助言をこれで選ぶ** —— 両方を並べると
-    /// 読み手は自分に当たらない側も試す(2026-09-04: USB に挿さった端末に「同じネットワークか
+    /// 読み手は自分に当たらない側も試す(USB に挿さった端末に「同じネットワークか
     /// 確かめろ」と言っていた)。wired は usbmuxd から見えていてもトンネルが張れないことがあり、
     /// その正体はほぼロック/未信頼なので、ケーブルより先にそちらを言う
     case notConnected(udid: String, name: String, transport: String)
@@ -116,7 +116,7 @@ public enum IOSPhysicalDeviceCatalog {
         let hardware = (properties?["hardware"] as? [String: Any])
             ?? (entry["hardwareProperties"] as? [String: Any]) ?? [:]
         // reality(CoreDevice の DeviceReality)は physical / simulated / virtual(=VM)の三値だが、
-        // **実機は値を出さずキーごと省略する**(Xcode 27 beta 4 実測 2026-07-25: 68 台中
+        // **実機は値を出さずキーごと省略する**(Xcode 27 beta 4 実測: 68 台中
         // 67 台が "simulated"、実機 1 台はキー欠落)。よって "physical" 一致で拾ってはいけない
         // (実機が 1 台も見えなくなる)。「simulated 以外」で弾くこと。
         // virtual(VM)も通るが iOS の VM は存在せず platform 条件と併せて実害はない
@@ -143,16 +143,15 @@ public enum IOSPhysicalDeviceCatalog {
 
         // **到達性は connection.state / tunnelState だけで決める**。
         // `pairingState` と `bootState` は**一度ペアリングした端末には繋がっていなくても残り続ける**
-        // ので信号にならない(実測 2026-08-28・Xcode 27.0・2台で実機6台分: 接続中の wired 2台が
+        // ので信号にならない(実測・Xcode 27.0・2台で実機6台分: 接続中の wired 2台が
         // state="connected"、手元に無い localNetwork 4台が state="disconnected"。pairingState は
         // 6台とも "paired"、bootState も6台とも "booted")。
         //
-        // 以前は「未接続の実機は list devices にそもそも出てこない」を前提に paired/booted も
-        // 真としていたが、**devicectl は接続が切れてもペアリング済みの端末を列挙し続ける** ——
-        // その結果、判定が「devicectl が知っている = 到達可能」= 恒真になり、モニターの
-        // 「起動中のデバイス」に手元に無い iPhone が「未起動」タイルとして並んでいた。
+        // **devicectl は接続が切れてもペアリング済みの端末を列挙し続ける**ので、pairingState/
+        // bootState を真として使うと判定が「devicectl が知っている = 到達可能」で恒真になり、
+        // モニターの「起動中のデバイス」に手元に無い iPhone が「未起動」タイルとして並ぶ。
         //
-        // 2026-07-25(Xcode 27 beta 4)には USB 接続中でも state="disconnected" と出た記録がある。
+        // Xcode 27 beta 4 には USB 接続中でも state="disconnected" と出た記録がある。
         // 27.0 では再現しない。**もし将来のベータでまた嘘をつくなら、症状は
         // `IOSPhysicalDeviceCatalogError.notConnected` で明示的に落ちる**(黙って誤った緑には
         // ならない)ので、そのときは信号を足す
@@ -171,7 +170,7 @@ public enum IOSPhysicalDeviceCatalog {
     ///
     /// `list devices` の `connection.state` は「**今**つながっているか」であって
     /// 「到達できるか」ではない —— 有線で待機中の端末は CoreDevice がトンネルを畳むので
-    /// `disconnected` と出るが、名指しで問い合わせれば繋がる(2026-09-04 実測: USB の
+    /// `disconnected` と出るが、名指しで問い合わせれば繋がる(実測: USB の
     /// iPhone SE3 が list では disconnected、`device info details` は成功)。
     /// **そこに無い端末と同じ値になる**ので、一覧だけで「無い」と結論すると、
     /// 実在して使える端末を、既に済ませた対処(Trust・Developer Mode)を促して拒否する。

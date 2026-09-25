@@ -50,9 +50,9 @@ public enum AndroidWebViewUpdate {
     /// ことが普通で、同じ集合から選ぶと「供給元が居ない」で何も起きなかった(実際に踏んだ)。
     /// 逆に**無関係な端末を書き換えない** —— テスト実行が触っていない端末を変えるのは驚きが大きい。
     /// キャッシュを候補に入れるのは、**実機の無い機械はドナー不在で永遠に古いまま**だから
-    /// (M1Max が 124 のまま取り残され、WebView シナリオがリモートレーンでだけ落ちた。
-    /// 2026-09-01)。ディスパッチ元がキャッシュをランナーへ届ける(RemoteRunDispatcher の
-    /// transferWebViewCache)。**同版なら端末を優先**(従来と挙動が変わらない側に倒す)
+    /// (M1Max が 124 のまま取り残され、WebView シナリオがリモートレーンでだけ落ちた)。
+    /// ディスパッチ元がキャッシュをランナーへ届ける(RemoteRunDispatcher の
+    /// transferWebViewCache)。**同版なら端末を優先**(挙動が変わらない側に倒す)
     public static func plan(candidates: [String: String], targets targetSerials: [String],
                             cachedAPKs: [String: String] = [:]) -> Plan? {
         var donor: (source: Donor, version: String)?
@@ -85,7 +85,7 @@ public enum AndroidWebViewUpdate {
     }
 
     /// **自動化できないときに出す文**(純粋)。
-    /// **run の対象が揃っているだけのときは黙る**(2026-08-14 に実測で踏んだ) ——
+    /// **run の対象が揃っているだけのときは黙る**(実測で踏んだ) ——
     /// 供給元は繋がっているのに「新しい端末が無い」と言ってしまい、事実と食い違った。
     /// 言うべきなのは「**対象の中に古いものが在るのに、それより新しい端末が1台も無い**」ときだけ
     public static func cannotUpdateMessage(candidates: [String: String], targets: [String]) -> String? {

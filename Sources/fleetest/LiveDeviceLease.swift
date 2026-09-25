@@ -3,7 +3,7 @@
 // —— 読み手(DeviceBooter.deviceInUseRefusal / ProfileRunner.limitingDevicesAvoidingMCP)を
 // 増やさないため。ライブ操作も「対話セッション」の一種として同じ印を書く)。
 //
-// 実地(2026-09-22 B5): ライブ操作がこの印を1つも書いていなかったため、`api stop-device` 等の
+// 実地(B5): ライブ操作がこの印を1つも書いていなかったため、`api stop-device` 等の
 // 台ごとの調停(run-lease / MCP の印しか読まない)がライブ操作中の台を無言で止め、シミュレータごと
 // 落としていた。コマンドが通るたびに refresh() で上書きし(MCPServer.call の markDeviceInUse と
 // 同じ粒度)、serve の終了時に release() で自分の印だけを消す。
@@ -21,7 +21,7 @@ struct LiveDeviceLease {
     /// 鍵は iOS = `--udid`、Android = 解決済み serial(`--serial` 省略時は接続中の1台に
     /// 自動決定される値を使う——駆動先と印の鍵がずれると別の台を守ることになる)。
     /// RepoRoot が見つからない・鍵が決まらない(iOS で `--udid` 未指定)ときは nil
-    /// (印を置かない=従来どおり無警告のまま。ベストエフォート)
+    /// (印を置かない=無警告のまま。ベストエフォート)
     static func make(platform: String, udid: String?, explicitAndroidSerial: String?,
                      log: @escaping (String) -> Void) -> LiveDeviceLease? {
         guard let repoRoot = try? RepoRoot.find() else { return nil }

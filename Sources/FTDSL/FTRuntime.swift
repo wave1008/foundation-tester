@@ -205,7 +205,7 @@ public final class FTDriveCore {
 
     private(set) var record: ScenarioRecordData
     /// **いま記録している scene** の `record.scenes` 上の添字(runScene が入口で push・出口で pop)。
-    /// 空 = scene の外(末尾の scene、無ければ暗黙 scene 0 へ書く = 従来どおり)。
+    /// 空 = scene の外(末尾の scene、無ければ暗黙 scene 0 へ書く)。
     /// `scenes.last` で決めると入れ子の内側を出た後のステップが内側へ落ちる。stateLock の内側で触る
     private var sceneIndexStack: [Int] = []
     /// stateLock の内側から呼ぶ(record と同じ規律)
@@ -312,7 +312,7 @@ public final class FTDriveCore {
         }
     }
 
-    /// コマンドが使うスクロール領域。明示 > ブロックの文脈 > 無し(= 従来の全画面固定)
+    /// コマンドが使うスクロール領域。明示 > ブロックの文脈 > 無し(= 全画面固定)
     func effectiveScrollFrame(_ explicit: String?) -> String? {
         if let explicit { return explicit }
         return scrollFrameStack.last ?? nil
@@ -352,7 +352,7 @@ public final class FTDriveCore {
     /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
     /// --host-install 時のみ非 nil。installApp() はこれがあれば親(オーケストレータ)へ RPC する
-    /// (installApp と同じ理由で子はパスを解決できないため、実行自体を親に委ねる。2026-08-03 決定)
+    /// (installApp と同じ理由で子はパスを解決できないため、実行自体を親に委ねる)
     public var installControl: ScenarioInstallControl?
     /// --app-path で親が解決して渡した実行プロファイルの appPath。installControl が nil のとき
     /// (ホスト無しの単独実行)の installApp() 引数省略時のフォールバックに使う
@@ -679,7 +679,7 @@ public final class FTDriveCore {
     /// commandError: セレクタ以外の引数の誤り。**メッセージをそのまま**失敗理由にする
     /// (selectorError は "invalid selector syntax: " を前置するので用途が違う)
     /// heldElement: **既に掴んである要素**(FTElement のチェーンだけが渡す)。満たしていれば
-    /// デバイスを見ずに通す(下記の高速経路)。満たしていなければ従来どおり実機で取り直す
+    /// デバイスを見ずに通す(下記の高速経路)。満たしていなければ実機で取り直す
     func perform(step: FlowStep, description: String, command: String? = nil,
                  selectorText: String? = nil,
                  selectorError: String? = nil, commandError: String? = nil,
@@ -742,7 +742,7 @@ public final class FTDriveCore {
         }
 
         // 高速経路: **掴んである値だけで満たしているなら実機を見に行かない**(FTElement のチェーン)。
-        // 満たしていなければ何もせず下の通常経路へ落ちる = 従来どおり取り直しながらポーリングする。
+        // 満たしていなければ何もせず下の通常経路へ落ちる = 取り直しながらポーリングする。
         // 判定できるアサートの範囲と除外理由は HeldElementAssert。
         // **可視性照合(occlusion-guard)が走る設定では高速経路に入らない** —— 見えているかは
         // 保持値から言えないので、飛ばすと textVisualCheck 有効の run で検査が1つ静かに消える。
@@ -774,11 +774,11 @@ public final class FTDriveCore {
         let executor = self.executor
         // 打ち切られた回は outcome が nil = StepExecutor の計時ごと失われるので、**ホスト側でも測る**。
         // ここを測らないと、いちばん高いステップ(コマンド上限まるごと)だけが結果 JSON に
-        // 時間ゼロで載り、scenes[].durationMs もその分を落とす(2026-09-09 に results DB で確認:
+        // 時間ゼロで載り、scenes[].durationMs もその分を落とす(results DB で確認:
         // `the command timed out` の 10 件すべてが durationMs 無し)
         let hostClock = ContinuousClock()
         let hostStart = hostClock.now
-        // **締め切りの妥当性を測る2つ**(2026-09-10): 順番待ち(タスクが走り出すまで)と、
+        // **締め切りの妥当性を測る2つ**: 順番待ち(タスクが走り出すまで)と、
         // このプロセスが実際に貰えた CPU 時間。壁時計 120 秒の上限が、飽和で進めなかっただけの
         // ステップを打ち切っていないかを、記録から判定できるようにする
         let scheduleDelay = FTSync.ScheduleDelay()
@@ -989,13 +989,13 @@ public final class FTDriveCore {
     }
 
     /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。
-    /// 綴り誤り・でっち上げは構文検証を通ってしまい、従来は実機で初めて分かった。
+    /// 綴り誤り・でっち上げは構文検証を通ってしまうため、この警告が無いと実機で初めて分かる。
     /// **失敗にはしない** —— 台帳は「撮った画面ぶんだけ」なので、新しい画面の id は当然載っていない。
     /// シナリオ終了時に1回だけ呼ぶ(dry-run 以外では unknownIDs が空なので no-op)。
     ///
     /// **薄い台帳では黙る**: 台帳の有無だけで判定すると、1画面しか撮っていない状態で
     /// 既存シナリオを回したときに**他画面の id を全部「綴り誤り」と言う**(実測 44/47 シナリオが
-    /// 誤警告。2026-08-03 のドッグフーディングで判明)。**そのシナリオが触る id の 2/3 以上が
+    /// 誤警告。ドッグフーディングで判明)。**そのシナリオが触る id の 2/3 以上が
     /// 台帳に在るときだけ**警告する = 台帳がこの範囲をカバーしている証拠がある場合に限る。
     /// 綴り誤りは「多数の正しい id に少数の誤り」という形で出るので、この比で拾える
     public func warnAboutUnknownIDs() {
@@ -1252,7 +1252,7 @@ public final class FTDriveCore {
                StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
                 return result(true)
             }
-            // **宣言された割り込みが覆っていたら閉じて見直す**(2026-08-20 の受け手報告)。
+            // **宣言された割り込みが覆っていたら閉じて見直す**(受け手報告)。
             // 覆われた要素は木から落ちるので、閉じずに不成立を確定すると**分岐が黙って飛ぶ** ——
             // 失敗ではなく誤った経路として現れるため、注記が無いと気付けない。
             // **撮り足さない**: いま撮った木で照合するだけなので、宣言が無ければコストゼロ
@@ -1429,7 +1429,7 @@ public final class FTDriveCore {
         // 白フレーム=画面凍結の推定を行うか。**仮想デバイスなら OS を問わず行う**。
         // **実機だけ外す**理由は「画面が消灯しているだけ」を凍結と誤断するため。
         //
-        // **Android 限定にしない**(2026-08-05 実測): iOS シミュレータでも
+        // **Android 限定にしない**(実測): iOS シミュレータでも
         // まったく同じ病理が起きる —— 画面は真っ黒なのに **a11y ツリーは健全なホーム画面を返し、
         // タップだけが1つも届かない**。E2E-CMP/ios-xcuitest の `-06` で `tap("#nav_scroll")` が
         // 9/9 で飲まれ、MCP から手で叩いても再現した(2回連続タップも不発 =「容器が最初の1タッチを

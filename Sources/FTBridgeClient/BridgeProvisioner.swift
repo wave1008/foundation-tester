@@ -54,7 +54,7 @@ public enum BridgeProvisionerError: Error, LocalizedError {
         switch self {
         case .noFreePort(let scanned):
             // **次の一手を添える** —— この失敗は run ごと落とすのに、「何が塞いでいるか」も
-            // 「どう空けるか」も言っていなかった(実地 2026-09-23 の負荷テスト: フル編成 +
+            // 「どう空けるか」も言っていなかった(実地の負荷テスト: フル編成 +
             // MCP のセッション + 実機のトンネルで 32 ポートが埋まり、`--broadcast` が全滅した)。
             // 窓は1台あたり最大2本(in-app + xcuitest)なので、台数が増えると普通に届く
             return "no free port (scanned \(scanned.lowerBound)-\(scanned.upperBound));"
@@ -64,7 +64,7 @@ public enum BridgeProvisionerError: Error, LocalizedError {
         case .notReady(let port, let underlying):
             // localizedDescription を使う。素の enum を補間すると
             // addressNotAnnounced(port: 8133, logPath: "...", blocker: Optional("..."))
-            // のような内部表現がそのままユーザーに出る(実害。2026-07-25)
+            // のような内部表現がそのままユーザーに出る(実害)
             return "the bridge did not become ready in time (port \(port)): "
                 + underlying.localizedDescription
         case .inAppNeedsBundleID(let name):
@@ -133,7 +133,7 @@ public final class ProvisionLock {
 }
 
 /// 台帳(.pid/.inapp/.endpoint/.device)1ポートぶんの掃除判定(純粋関数。実 FS/lsof は呼び手が渡す)。
-/// **実測 2026-09-05**: 誰も LISTEN していない .inapp と、対になる .pid が無い .endpoint/.device が
+/// **実測**: 誰も LISTEN していない .inapp と、対になる .pid が無い .endpoint/.device が
 /// 手元に残っていた。前者は assignPort に「使用中」と誤認されてポートが飛ばされ、後者は
 /// DriverOptions.makeDriver(Sources/fleetest/Fleetest.swift)が古い宛先へ接続しに行く原因になる。
 extension BridgeProvisioner {
@@ -207,7 +207,7 @@ enum StaleLedgerSweep {
     /// `xcodebuild` は**宛先が用意できるのを永久に待つ**("Run Destination Preflight: Waiting for
     /// the destination to become ready")。ロックされた実機のように二度と用意できない宛先だと、
     /// 試行のたびに1本ずつ積み上がり、ポート・DerivedData・CPU を握ったまま誰も片付けない
-    /// (実地 2026-09-23 の負荷テスト: 同じ実機向けのランナーが **10 本**溜まり、
+    /// (実地の負荷テスト: 同じ実機向けのランナーが **10 本**溜まり、
     /// トンネルの残骸と合わせて採番の窓 32 ポートを埋め尽くした)。
     ///
     /// 判定は既存の `StartingRunnerVerdict.decide` をそのまま使う(二つ目の実装を書かない):
@@ -277,7 +277,7 @@ enum StaleLedgerSweep {
     /// `api live serve` を kill→respawn する)と、**トンネルだけがポートを握ったまま残る**。
     /// 台帳も残らない形があり(`stopIproxy` は pid ファイルを消してからでも殺し損ねる)、
     /// そうなると誰も片付けられないまま採番の窓(32 ポート)を1つずつ食い潰す ——
-    /// 実地 2026-09-23 の負荷テストで窓が埋まり `--broadcast` が `no free port` で全滅した。
+    /// 実地の負荷テストで窓が埋まり `--broadcast` が `no free port` で全滅した。
     ///
     /// 対象は**ブリッジの台帳が1つも無いポートで、占有者がトンネルだけ**のとき
     /// (`PortHolder.isHeldByTunnelOnly`)。起動中のブリッジは `.pid` を**トンネルより先に**
@@ -325,7 +325,7 @@ enum StaleLedgerSweep {
 
 /// **ポート確保(pid ファイル/記録の書き込み)まで**を数える関門。全ブリッジが「確保済み or 失敗」に
 /// なった時点で ProvisionLock を解く —— ready 待ち(実測 7〜28 秒)をロックの外へ出すため。
-/// これが無いと、ワーカーが 2 つあっても供給は常に 1 台ずつになる(2026-08-30 の実測: iOS 5 本の
+/// これが無いと、ワーカーが 2 つあっても供給は常に 1 台ずつになる(実測: iOS 5 本の
 /// 供給 95 秒がすべて直列)。**撃ち漏らすとロックが解放されない**ので、呼び出し側は成否を問わず
 /// 必ず 1 回通すこと(BridgeProvisioner.executeDevice の ClaimOnce)
 actor PortClaimBarrier {
@@ -497,7 +497,7 @@ public struct BridgeProvisioner {
         var claimed = Set<UInt16>()  // 1回の provision 内で同じ稼働ブリッジを二重占有しないため
         var plans: [DevicePlan] = []
         // 今このツリーの in-app ソースが作る dylib の digest(再利用判定に使う。
-        // 計算できない構成では nil = 従来どおり版と注入先だけで判定する)
+        // 計算できない構成では nil = 版と注入先だけで判定する)
         let inappSourceDigest = try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot)
         for (index, target) in targets.enumerated() {
             let engine = target.spec.engine ?? "xcuitest"
@@ -536,7 +536,7 @@ public struct BridgeProvisioner {
 
         // **ロックはここから「ポート確保が済むまで」しか要らない**。採番と確保(pid ファイル/
         // 記録の書き込み)さえ直列なら bindFailed(48) は防げる —— ready 待ちまで握っていると、
-        // ワーカーが 2 つあっても供給が常に 1 台ずつになる(2026-08-30 実測: iOS 5 本の供給 95 秒が
+        // ワーカーが 2 つあっても供給が常に 1 台ずつになる(実測: iOS 5 本の供給 95 秒が
         // すべて直列。同時進行は 2 台のままで、撤回済みの ProvisionBatcher とは別物)。
         // 起動直後で /status 未応答のランナーは、他プロセスからは EnginePlan.adopt が引き取る
         let claimBarrier = PortClaimBarrier(expected: plans.reduce(0) { $0 + $1.bridges.count })
@@ -547,12 +547,12 @@ public struct BridgeProvisioner {
         defer { earlyRelease.cancel() }
 
         // 6. 起動(デバイス単位で並列。**in-app の新規起動を含むときだけ同時2台に絞る**)。
-        // 2026-08-08: フルスイート直後の in-app フェーズ開始(8台同時の terminate→launch+注入)で
+        // フルスイート直後の in-app フェーズ開始(8台同時の terminate→launch+注入)で
         // シミュレータの画面凍結クラスタが同日2回発生した(a11y は応答・描画とタップが停止。
         // 凍結検出器がワーカー除外して完走はする)。Android で対照実験済みの「複数台同時描画」
         // 凍結と同族とみて、一括デバイス起動と同じ「同時2台」に絞る(ユーザー決定の
         // start-device ポリシーと同じ理屈)。再利用/adopt だけの供給は launch を伴わないので
-        // 従来どおり全並列 = xcuitest ランナー再利用時の供給時間は変わらない
+        // 全並列のまま = xcuitest ランナー再利用時の供給時間は変わらない
         let launchesInApp = plans.contains { plan in
             plan.bridges.contains { bridge in
                 if case .launch = bridge.plan { return bridge.engine == "inapp" }
@@ -599,9 +599,9 @@ public struct BridgeProvisioner {
 
         // 7. 元のデバイス順に集約。**供給できなかった機はその機だけ離脱させ、残りで走る**。
         //
-        // 以前は appNotInstalled 以外を throw していたが、それは**健全な機を道連れにする**:
-        // 2026-08-11 のフル E2E では 10台中8台が ready だったのに、残り2台の期限切れで
-        // iOS ワーカーが丸ごと失われ、Flutter/RN の 51 本が1本も走らなかった。
+        // appNotInstalled 以外の理由でも即 throw すると**健全な機を道連れにする**:
+        // フル E2E で 10台中8台が ready だったのに残り2台の期限切れで
+        // iOS ワーカーが丸ごと失われ、Flutter/RN の 51 本が1本も走らなかった実例がある。
         // 「凍結機はレーンから外して残りで走る」(BlankWorkerTriage)と同じ思想へ揃える。
         //
         // **全滅のときだけ throw する**(呼び出し側が run 全体の失敗として扱えるように)。
@@ -610,7 +610,7 @@ public struct BridgeProvisioner {
         }
         // **理由は resolve より前に、1台ずつ全部出す**。`FleetOutcome.resolve` は全滅のとき
         // **最初の1件だけを throw** するので、ここで出しておかないと残りの理由が消える ——
-        // 2026-09-04 の調査で、8台が同時に落ちた回の記録が1ポートぶんしか無く、
+        // 調査で、8台が同時に落ちた回の記録が1ポートぶんしか無く、
         // 「全機が同じ理由で死んだのか、別々の理由なのか」を後から言えなかった
         for outcome in collected {
             if case .failure(let error) = outcome.result {
@@ -688,7 +688,7 @@ public struct BridgeProvisioner {
             // **「誰かが待受している」だけでは in-app ブリッジの生存と言えない** ——
             // 別のデバイスのブリッジがこのポートを取っていると古い `.inapp` が生き続け、
             // 供給が「別アプリに注入された in-app ブリッジ」と読んで無関係なデバイスのアプリを
-            // terminate する(実地 2026-09-23)。**肯定的に別のシミュレータと読めた回だけ**外す
+            // terminate する(実測)。**肯定的に別のシミュレータと読めた回だけ**外す
             let inappListener = hasInApp ? PortHolder.describe(port: port) : nil
             let inappListening = inappListener.map { listener in
                 InAppBridgeState.read(at: inappPath).map {
@@ -797,12 +797,12 @@ public struct BridgeProvisioner {
         // 使い回すと、アプリ違いのブリッジを掴む → 最初のシナリオが対象アプリを前面化した時点で
         // 旧アプリが suspend → probe が無応答 → フォールバックが「注入先 = 今回のアプリ」と誤認 →
         // 旧アプリが握ったままのポートで relaunch → bind 失敗し、以降のリクエストは suspend した
-        // 旧ブリッジへ(TCP 受理・HTTP 無応答の 20s タイムアウト)。2026-07-23 に E2E → E2E-iOS の
+        // 旧ブリッジへ(TCP 受理・HTTP 無応答の 20s タイムアウト)。E2E → E2E-iOS の
         // 連続実行で 14/20 失敗として実害化した連鎖の根がここ
         // **inapp は dylib の出所も一致しないと再利用しない**。版一致だけでは
         // 「版を上げ忘れた変更」も「決定するプロセスが1ビルド古い場合」も素通りし、**変更が
         // 1度も実行されないまま緑になる**(実測は InAppBridgeState 冒頭)。digest はその場の
-        // ソースから計算するのでどちらにも掛かる。**計算できないとき(nil)は従来どおり**
+        // ソースから計算するのでどちらにも掛かる。**計算できないとき(nil)は一致扱い**
         // = 判定材料が無いことを理由に毎回建て直さない
         func inappSourcesMatch(_ rb: RunningBridge) -> Bool {
             guard engine == "inapp", let current = inappSourceDigest else { return true }
@@ -1301,7 +1301,7 @@ public struct BridgeProvisioner {
             }
             // **引き取ったランナーの版は応答してから確かめる**(起動途中は /status に答えないので、
             // 再利用の判定=版一致を通らずにここへ来る)。旧ビルドのまま起動途中だったランナーを使うと、
-            // 版を上げた修正が黙って効かない(2026-09-19: v119 のツールの bridge up が v118 のランナーを返した)
+            // 版を上げた修正が黙って効かない(v119 のツールの bridge up が v118 のランナーを返した実例がある)
             if Self.adoptedRunnerIsStale(status) {
                 log("⚠️ \(name): the bridge that was starting on port \(port) is from an older build"
                     + " (v\(status.protocolVersion.map(String.init) ?? "?"), this tool expects"
@@ -1324,8 +1324,8 @@ public struct BridgeProvisioner {
                 // 止める手段は記録の有無で決める(StaleBridgeStop。純粋関数でテスト固定):
                 // inapp(.inapp あり)は simctl terminate / xcuitest(.pid あり)は stopAndWait /
                 // **どちらの記録も無い**= 別クローンが起動した・記録前に中断された in-app ブリッジは
-                // ポートの LISTEN 実体を PortHolder で止める(以前はここを .pid 経路へ流して
-                // 「no .fleetest/bridge.pid」で止めそこね、掴んだままのポートと衝突していた)
+                // ポートの LISTEN 実体を PortHolder で止める(.pid 経路へ流すと
+                // 「no .fleetest/bridge.pid」で止めそこね、掴んだままのポートと衝突する)
                 let stalePath = InAppBridgeState.url(stateDir: stateDir, port: stopStalePort)
                 let pidPath = stateDir.appendingPathComponent("bridge-\(stopStalePort).pid")
                 switch StaleBridgeStop.decide(
@@ -1358,11 +1358,10 @@ public struct BridgeProvisioner {
                 }
             }
             // **これから使うポートを今 LISTEN しているプロセス**を、記録の有無に関わらず確かめる。
-            // 以前は stale .inapp の記録があるときだけ見ていたが、記録の無い残骸(別クローン・
-            // 別デバイスで背面に回った in-app ブリッジ)は /status に答えないので scan に映らず、
-            // 採番では空きに見える(全シミュレータはホストの loopback を共有するのでポートは台を跨いで
-            // 一意)。そのまま注入すると bind できず「did not respond in time」で落ち、原因が残骸だと
-            // 分からない(受け手報告 2026-08-22/23)。
+            // 記録の無い残骸(別クローン・別デバイスで背面に回った in-app ブリッジ)は /status に
+            // 答えないので scan に映らず、採番では空きに見える(全シミュレータはホストの loopback を
+            // 共有するのでポートは台を跨いで一意)。そのまま注入すると bind できず
+            // 「did not respond in time」で落ち、原因が残骸だと分からない(受け手報告)。
             // 記録の有無に関わらず、実際に LISTEN されている場合のみ占有者の実体を確認して停止する
             // (記録どおりに blind に terminate すると同アプリの別ポートの現役ブリッジを誤殺する実害あり)
             switch PortHolder.stopIfOwnedBridge(
@@ -1636,7 +1635,7 @@ public struct BridgeProvisioner {
                     // status(timeout:) を明示する(引数なし status() は sessionTimeout=45s を
                     // per-request に上書きするため、init の timeoutSeconds:2 が効かない)。これを怠ると
                     // suspend/ウェッジした孤児ブリッジ(TCP 受理・HTTP 無応答)1本で scan 全体が
-                    // 並列でも ~45s 待ち、連続 run が逓減する(2026-07-25 実測 46s→<2s)。
+                    // 並列でも ~45s 待ち、連続 run が逓減する(実測 46s→<2s)。
                     // 実機ブリッジは 127.0.0.1 に居ない。establish が残した宛先を使う
                     // (記録が無ければループバック = シミュレータ/Android の既定)
                     let endpoint = BridgeEndpoint.load(port: port, repoRoot: self.repoRoot)
@@ -1688,7 +1687,7 @@ public struct BridgeProvisioner {
         }
         // 実機の USB トンネル(iproxy-<port>.pid)が生きているポートも使用中とみなす。**別の台帳**
         // なので isPidFree(bridge-<port>.pid の存在)では見えない —— F27 前は掃除もされないので
-        // 存在チェックでは代用できず生死そのものを見る必要がある(F8 実測 2026-09-15: 実機の
+        // 存在チェックでは代用できず生死そのものを見る必要がある(F8 実測: 実機の
         // トンネルが生きたまま別デバイスのポートとして採番され、後段の PortHolder が誤って
         // kill する事故につながった)。ignoringPidFileFor と同じ「このポートは今回停止して
         // 使い直す」バイパスを揃える

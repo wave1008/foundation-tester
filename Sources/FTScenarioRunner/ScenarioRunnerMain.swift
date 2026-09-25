@@ -275,7 +275,7 @@ struct RunScenario: AsyncParsableCommand {
         // StepExecutor へ渡す答え(空打ちゲート shouldEmptyDrag と、待つ間の読み直しの迂回
         // repollBypassesCache)。**AppUIFrameworkQuery だけで決める**(静的な材料 → in-app の自己申告 → 不明)。
         // **Android も決める** —— 空打ちには効かないが、Compose の a11y キャッシュの遅れを迂回するのに要る
-        // (nil のままだと迂回が黙って効かない。2026-09-18 に実際にそうなっていた)
+        // (nil のままだと迂回が黙って効かない。実際にそうなっていた)
         var uiFrameworkHint: AppUIFramework?
         let uiFrameworkSubject = AppUIFrameworkQuery.Subject(
             platform: runPlatform, bundleID: appBundleID, appPath: appPath, udid: udid, physical: physical)
@@ -341,7 +341,7 @@ struct RunScenario: AsyncParsableCommand {
                             // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を
                             // 使う: activate/attached 状態を1本にしないと余計な activate が挟まる
                             driver = WebViewDelegatingDriver(primary: inapp, delegated: attach)
-                            // 2026-07-21 から Compose も inapp で type 可能
+                            // Compose も inapp で type 可能
                             // (IntermediateTextInputUIView への insertText。InAppInput.m 参照。
                             // 実測 266ms vs attach 1.0〜1.3s)。**attach は優先しない** ——
                             // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
@@ -362,14 +362,14 @@ struct RunScenario: AsyncParsableCommand {
                 } else {
                     // **physicalUDID を渡す**: これが無いとドライバは /status のデバイス名から
                     // 宛先を引き直し、実機は名前が一致せず `.unknown` に落ちて **simctl 経路**へ行く
-                    // (`simctl openurl` が "Invalid device: iPhone" で失敗する形。2026-08-09 に実機で実測)。
+                    // (`simctl openurl` が "Invalid device: iPhone" で失敗する形。実機で実測)。
                     // ホスト側の RunWorker は渡しているので install だけ成功し、シナリオ中の
                     // 実機分岐(openURL 等)だけが黙って壊れる
                     let client = BridgeClient(port: port, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
                                               physicalUDID: physical ? udid : nil,
                                               simulatorUDID: physical ? nil : udid)
                     // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
-                    // FT_NO_FAST_LAUNCH=1 で従来の XCUIApplication.launch() に戻せる。
+                    // FT_NO_FAST_LAUNCH=1 で素の XCUIApplication.launch() に戻せる。
                     // preflight(未インストール検査)は fast launch の外側に置く。
                     // **実機は両方とも simctl 依存なので必ず外す**(engine=xcuitest なら実機で動く、と
                     // 誤認しやすい罠。素の XCUIApplication.launch() 経路に落とす)
@@ -389,7 +389,7 @@ struct RunScenario: AsyncParsableCommand {
                     // **主ドライバと同じブリッジを共有していても安全**なのは、SystemUIDriver が
                     // 版 79 の `/systemui/*`(セッションと ref を触らない)を使うため。
                     // これが無いと SpringBoard の権限アラートはアプリの木に載らないまま
-                    // 「操作が効かない」だけが見える(2026-08-25 に E2E-iOS で踏んだ)
+                    // 「操作が効かない」だけが見える(E2E-iOS で踏んだ)
                     let systemUI = SystemUIDriver(port: port,
                                                   host: bridgeHost ?? BridgeEndpoint.loopbackHost,
                                                   physicalUDID: physical ? udid : nil,
@@ -517,7 +517,7 @@ struct RunScenario: AsyncParsableCommand {
                 AndroidForegroundWindows.query(package: package, serial: serial)
             }
             // 失敗時に「アプリの process がまだ在るか」も添える(pidof が空 = クラッシュの疑い。
-            // 2026-09-05・実機 Pixel 4a で実測: #btn_crash_confirm を落としても通常文言は
+            // 実機 Pixel 4a で実測: #btn_crash_confirm を落としても通常文言は
             // 「別 window が手前」としか言わなかった)
             core.appProcessEvidence = {
                 guard let evidence = AndroidAppProcessEvidenceQuery.query(package: package, serial: serial),
@@ -593,7 +593,7 @@ struct RunScenario: AsyncParsableCommand {
         let passed = record.passed && !core.stoppedByUser
         // **落ちたときだけ**、Android 実機の画面が途中で消えていなかったかを1往復で見て名指しする。
         // シナリオの前の確認(wakeIfAsleep)は実行中に消えた1本を救えず、その失敗文は
-        // 「セレクタが解決できない」としか言わない(2026-09-11 Pixel 4a)。緑の run では撃たない。
+        // 「セレクタが解決できない」としか言わない(実機 Pixel 4a で実測)。緑の run では撃たない。
         // **レポート書き出しより前に判定する** —— stderr(→ errorLogs)には出るが、書き出しが
         // 先だとレポート(.md)には載らない
         var reportNotices: [String] = []

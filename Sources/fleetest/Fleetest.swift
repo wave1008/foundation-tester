@@ -137,7 +137,7 @@ struct DriverOptions: ParsableArguments {
         case "ios":
             // 実機ブリッジは 127.0.0.1 に居ない(LAN)か token が要る(usb)。provision が残した
             // 宛先を丸ごと使う(記録が無ければループバック = シミュレータの既定)。
-            // **明示 --port は探索しない**ので実機は従来どおり通る
+            // **明示 --port は探索しない**ので実機はそのまま通る
             let resolvedPort: UInt16
             do {
                 resolvedPort = try await BridgeTargetResolution.iosPort(
@@ -487,7 +487,7 @@ struct RunScenarios: AsyncParsableCommand {
         // 理由と罠は RemoteDispatchGate の宣言。判定は resolveEffectiveDispatchTarget)
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
         // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--runner 明示や
-        // 全台が同じ機械なら nil が返り、従来の経路をそのまま通る
+        // 全台が同じ機械なら nil が返り、通常の経路をそのまま通る
         if !dryRun, fleet == nil, let profile,
            let groups = try DeviceMachineRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
@@ -516,7 +516,7 @@ struct RunScenarios: AsyncParsableCommand {
             return
         }
         PhaseLog.mark("start")
-        // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(ユーザー決定 2026-09-21
+        // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(ユーザー決定
         // 「1つのマシンで同時に複数の run は走らせない」)。リモートへのディスパッチが
         // dispatch.lock で守っていた不変条件を、手元で直接打った run にも同じロックで掛ける。
         // **ビルドより前**に置くのは `swift build` 自体が重い負荷だから(CLAUDE.md
@@ -558,7 +558,7 @@ struct RunScenarios: AsyncParsableCommand {
         let recordsProgress = profile != nil && !dryRun
         // 書き直しても**入口の時刻のまま**(経過が巻き戻らない)
         let progressStartedAt = ISO8601DateFormatter().string(from: Date())
-        /// **段階は実際にやっていることだけを言う**(ユーザー決定 2026-09-22)—— 入口ではまだ
+        /// **段階は実際にやっていることだけを言う**(ユーザー決定)—— 入口ではまだ
         /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
         /// "preparing" で始め、"building" は `ScenarioHost.build` を挟む間だけ立てて直後に戻す。
         func writeProgress(phase: String) {
@@ -684,9 +684,9 @@ struct RunScenarios: AsyncParsableCommand {
         }
 
         // **availability(FMDoctor.check)では判定しない** —— `.available` のまま実呼び出しが
-        // 全滅する状態が実在する(2026-07-22 実測)。判定は --profile 経路と同じ1箇所へ委ねる。
+        // 全滅する状態が実在する(実測)。判定は --profile 経路と同じ1箇所へ委ねる。
         //
-        // **--profile のときはここで撃たない**(2026-09-03 の実 run で二重に出た)。あちらは
+        // **--profile のときはここで撃たない**(実 run で二重に出た実例がある)。あちらは
         // `ProfileRunner.run` が**プロファイルの実効トグル**で撃つので、ここで撃つと同じ警告が
         // 2行並ぶうえ、機能ごとのトグルを持たないこちらの既定のほうが情報として粗い。
         // プロファイル無しの run にはその呼び出し元が無いので、ここが唯一の口になる
@@ -710,7 +710,7 @@ struct RunScenarios: AsyncParsableCommand {
             // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
             // **明示 --device があっても絞る** —— 名前だけでは同名の台が別の機械にもあるとき
             // そちらのエントリに解決し、向こうの UDID を手元で探して
-            // "no simulator with that UDID" で止まる(受け手報告 2026-08-24)。判定は
+            // "no simulator with that UDID" で止まる(受け手報告)。判定は
             // --runner <リモート> と同じ machineScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
             var effectiveDeviceFilter = devices
             var effectiveDeviceHost = deviceMachine
@@ -1040,10 +1040,10 @@ struct RunScenarios: AsyncParsableCommand {
     /// **プロファイル経路は provision の udid を渡すのでここを通らない** —— これは
     /// `--port` 直指定の経路だけの相関。
     ///
-    /// 同名複数・未起動・応答なしは nil(検査なしで従来動作)だが、**黙って落とさない**:
+    /// 同名複数・未起動・応答なしは nil(検査を素通りする)だが、**黙って落とさない**:
     /// 事前検査が外れると、未インストールのまま launch して XCUITest ランナーが死ぬ経路
     /// (LaunchPreflightDriver のコメント)がそのまま開く。Xcode はランタイムごとに同名の
-    /// シミュレータを作るので、同名2台は受け手環境で普通に起きる(2026-08-06 に実例)
+    /// シミュレータを作るので、同名2台は受け手環境で普通に起きる(実例あり)
     private static func resolveUdid(port: UInt16) async -> String? {
         guard let status = try? await PortDirectIOSTarget(port: port).makeDriver(timeoutSeconds: 5).status(),
               let catalog = try? SimulatorCatalog.devices() else { return nil }

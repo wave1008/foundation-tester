@@ -38,7 +38,7 @@ export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "cr
 export type BatchCreateDevicesMessage = Extract<MonitorFromWebviewMessage, { type: "batchCreateDevices" }>;
 
 /** spawnCreateDevice の1台ぶんの結果。バッチが1台ずつ受け取るために使う
- *  (単発は従来どおり createDeviceResult を post するので渡さない)。 */
+ *  (単発は createDeviceResult を post するので渡さない)。 */
 type CreateDeviceOutcome = {
   readonly ok: boolean;
   readonly error: string | null;
@@ -96,7 +96,7 @@ export class MonitorDeviceCreateOps {
     }
     this.creatingDevice = true;
     // ダウンロードが要る OS バージョンを選んだ場合は、上書き/リモートの確認とは統合した
-    // 1枚のモーダル(ライセンス同意)だけを出す(2枚続けて出さない。§13/2026-08-25 の規律と同じ)。
+    // 1枚のモーダル(ライセンス同意)だけを出す(2枚続けて出さない。§13の規律と同じ)。
     if (msg.installSystemImage) {
       void this.confirmAndInstallThenCreate(msg, msg.installSystemImage);
       return;
@@ -149,7 +149,7 @@ export class MonitorDeviceCreateOps {
       const first = msg.names[0] ?? "";
       const last = msg.names[msg.names.length - 1] ?? "";
       const install = msg.installSystemImage;
-      // **確認は1回だけ**(2026-08-25 指示)。上書き・ダウンロード導入が要るときは同じ文面(または
+      // **確認は1回だけ**。上書き・ダウンロード導入が要るときは同じ文面(または
       // installSystemImageBatchConfirmMessage)に書き足す —— 2枚に分けると、2枚目を断ったときに
       // **衝突していないぶんまで巻き添えで中止**になり、「どこまで作られたのか」が押した人にも分からない
       let message: string;
@@ -274,7 +274,7 @@ export class MonitorDeviceCreateOps {
   /**
    * ダウンロードが要る Android OS バージョンを選んだときの「デバイスを追加」OK(runCreateDevice から)。
    * **確認は1枚だけ**(上書き・リモートの確認とは統合する。confirmAndSpawnCreateDevice を分岐で
-   * 使い分けない — 2枚続けて聞かない §13/2026-08-25 の規律)。同意を得てから
+   * 使い分けない — 2枚続けて聞かない §13の規律)。同意を得てから
    * `install-system-image` を実行し、成功したときだけ通常の spawnCreateDevice へ進む。
    */
   private async confirmAndInstallThenCreate(
@@ -679,7 +679,7 @@ export class MonitorDeviceCreateOps {
       });
       if (ok) {
         this.deps.outputChannel.appendLine(t("deviceOps.log.deleteDeviceSucceeded", { name: msg.name }));
-        // **実体が消えたら登録も外す**(2026-08-25 の報告)。「デバイスを選択」の OK 側の同期
+        // **実体が消えたら登録も外す**。「デバイスを選択」の OK 側の同期
         // (runProfileDevicesSync)に任せると、**キャンセルしたときに実体の無い登録が残る**。
         // 消えた事実にプロファイルを合わせるだけなので確認は聞かない(削除自体は確認済み)。
         // 引き当ては (platform, machine, name) —— 別の機械の同名を巻き添えにしない。
@@ -695,7 +695,7 @@ export class MonitorDeviceCreateOps {
               }),
             );
           }
-          // 外せなかったぶんだけ従来どおり警告する(形式不正・読めない等)
+          // 外せなかったぶんだけ警告する(形式不正・読めない等)
           const remaining = referencedBy.filter((run) => !updated.runs.includes(run));
           if (remaining.length > 0) {
             void vscode.window.showWarningMessage(

@@ -70,7 +70,7 @@ function numberField(obj: Record<string, unknown> | null, key: string): number |
  */
 /**
  * **ホスト名 → 設定タブで付けたマシン名(ローカルエイリアス)**の読み替え表
- * (2026-08-26 ユーザー決定: 記録側はエイリアスを持たず、読み手が読み替える)。
+ * (ユーザー決定: 記録側はエイリアスを持たず、読み手が読み替える)。
  * 供給元は CLI が書く `.fleetest/remote-hosts/<ホスト>.json` の `host`(ホスト名)と
  * `machineAlias`(表示用のエイリアス)。**ファイル名=鍵はホスト**で、エイリアスは欄として
  * 持つだけ(Sources/FTRemote/RemoteHostFacts.swift)。ディスパッチのたびに更新される。
@@ -176,7 +176,7 @@ export async function listRecordingSessions(
 /**
  * **同じ実行から分かれた run を1セッションに束ねる**(docs/results-json.md の runGroup)。
  * デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run になるため、束ねないと
- * 「Mac ごとにセッションが並ぶ」。鍵を持たない run(単機・2026-08-26 より前の記録)は
+ * 「Mac ごとにセッションが並ぶ」。鍵を持たない run(単機・runGroup 導入前の記録)は
  * **束ねない** —— profile 名と開始時刻からの推測は、同じプロファイルの連続実行や
  * 機械間の時計ずれで別の実行を混ぜるので採らない。
  * 入力は runID 降順。代表は**最も古い run**(親が最初に起こした = 一覧の並びと同じ基準)。

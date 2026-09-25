@@ -40,7 +40,7 @@ struct Bridge: AsyncParsableCommand {
         }
 
         /// `--port` はブリッジの走査範囲(BridgeDiscovery.portRange。run/MCP が見にいく範囲)の外だと
-        /// 起動自体は成功しても誰からも見つからない孤立ブリッジになる(実測 2026-09-17)。
+        /// 起動自体は成功しても誰からも見つからない孤立ブリッジになる(実測)。
         /// 省略時の既定 8123 は範囲内なのでここでは明示指定だけを見る
         static func validatePort(_ port: UInt16?, in range: ClosedRange<UInt16>) throws {
             guard let port, !range.contains(port) else { return }
@@ -51,7 +51,7 @@ struct Bridge: AsyncParsableCommand {
 
         /// --device は UDID・シミュレータ名のどちらでも受けるが、実体は常に UDID に解決してから使う ——
         /// xcodebuild の `-destination platform=iOS Simulator,name=<名前>` は名前に丸括弧等が入ると
-        /// 一致に失敗することがある(実測 2026-09-17: simctl 上に1台しか無い名前でも build-for-testing が
+        /// 一致に失敗することがある(実測: simctl 上に1台しか無い名前でも build-for-testing が
         /// 「Unable to find a device matching the provided destination specifier」で落ちた)。UDID 指定なら
         /// 綴りに関わらず通る。同名複数・0台は推測で1台を選ばず、SimulatorCatalog.resolve の判定に断らせる
         static func resolveDeviceUDID(device: String, physical: Bool,
@@ -90,7 +90,7 @@ struct Bridge: AsyncParsableCommand {
         /// 案内どおりに今のポートを止めても要求ポートは空かない(塞いでいるのは別のブリッジ)
         /// requestedPortHeldByOther: 要求ポートを**別の台の**ブリッジ(台帳 .pid/.inapp・実機の iproxy)が
         /// 握っているか。握られていれば再利用でも止める案内は出さない —— 今のポートを止めても
-        /// 要求ポートは空かない(実測 2026-09-18: 既定 8123 が USB 実機のトンネルだった)
+        /// 要求ポートは空かない(実測: 既定 8123 が USB 実機のトンネルだった)
         static func portMismatchMessage(actualPort: UInt16, requestedPort: UInt16,
                                         reason: PortMismatchReason,
                                         requestedPortHeldByOther: Bool) -> String {
@@ -231,14 +231,14 @@ struct Bridge: AsyncParsableCommand {
                 let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: root)
                 // **応答しなかったポートは「死んでいる」とは限らない** —— 駆動中の XCUITest は
                 // /status を返さないので、走査に載らないまま止めると run / MCP を無言で壊す
-                // (実地 2026-09-22)。待受しているものだけ断る(待受も無ければ通す = 回復手段を残す)
+                // (実地)。待受しているものだけ断る(待受も無ければ通す = 回復手段を残す)
                 let silentPorts = BridgeDiscovery.portRange.filter { candidate in
                     !found.contains(where: { $0.port == candidate })
                 }
                 // **busy と「固まった転送」を分ける**ので isBound では足りない(§44.1 の4値)
                 let silentProbes = await BridgeDiscovery.probeStatuses(ports: silentPorts, repoRoot: root)
                 // 応答しないポートも listener からデバイスが特定できれば掃討の対象に含める。
-                // 特定できないポートは従来どおり対象外(= 掃討ごと断る理由にしない。固まったブリッジを
+                // 特定できないポートは対象外(= 掃討ごと断る理由にしない。固まったブリッジを
                 // 止める手段を奪わない)
                 let silentTargets: [(name: String, keys: [String])] = silentPorts.compactMap { candidate in
                     PortHolder.deviceUDID(fromListenerOn: candidate).map {
@@ -277,8 +277,8 @@ struct Bridge: AsyncParsableCommand {
                 // **走査に載らなかったポートを「引けないから通す」に倒さない** —— 応答が無いのは
                 // 死んでいるときだけでなく**駆動中で忙しい**ときも起きる(XCUITest は操作中 /status を
                 // 返さない)。鍵(udid)が引けないので lease も照合できず、そのまま止めると走っている
-                // run / MCP セッションを無言で壊す(実地 2026-09-22)。待受しているなら断り、
-                // 待受も無ければ従来どおり通す(固まったブリッジを止める手段を奪わない)
+                // run / MCP セッションを無言で壊す(実地)。待受しているなら断り、
+                // 待受も無ければ通す(固まったブリッジを止める手段を奪わない)
                 } else {
                     let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: root)
                     if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
@@ -289,7 +289,7 @@ struct Bridge: AsyncParsableCommand {
                     // **鍵(udid)が listener から読めるなら、なお lease を照合する** ——
                     // busy 判定を通っても、listener の実体からデバイスが特定できる形(シミュレータの
                     // xcodebuild ランナー等)は run/MCP が握ったままのことがある。
-                    // 識別子が読めない形は従来どおり通す(固まったブリッジを止める手段を奪わない)
+                    // 識別子が読めない形は通す(固まったブリッジを止める手段を奪わない)
                     if let udid = PortHolder.deviceUDID(fromListenerOn: port),
                        let refusal = DeviceBooter.deviceInUseRefusal(
                             deviceName: "the device on port \(port) (udid \(udid))",
@@ -322,7 +322,7 @@ struct Bridge: AsyncParsableCommand {
                 }
                 return
             }
-            // **1本だけ見て「何も無い」と言わない**(2026-09-04 の実害): 既定ポートへ問い合わせて
+            // **1本だけ見て「何も無い」と言わない**(実害): 既定ポートへ問い合わせて
             // 落ちるだけの実装では、**8本動いている状態で**「nothing listening / アプリが
             // 落ちたのだろう」と報告していた(既定の 8123 が空いていただけ)。Android 側は
             // 元から接続中の全 serial を列挙しており、非対称でもあった。**動いているものを全部出す**

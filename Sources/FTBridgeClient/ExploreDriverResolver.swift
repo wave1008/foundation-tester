@@ -7,7 +7,7 @@
 // Flutter のピンチは XCUITest では届かない)。
 //
 // 合成できないとき(実機・同名デバイスが複数・XCUITest ブリッジを用意できない)は
-// **従来の振り替え/素通しへ落とす** —— 機能が減る方向には倒さない。
+// **振り替え/素通しへ落とす** —— 機能が減る方向には倒さない。
 
 import FTCore
 import Foundation
@@ -22,7 +22,7 @@ public enum ExploreDriverResolver {
         case hybrid(inappPort: UInt16, xcuiPort: UInt16, bundleID: String)
         /// in-app しか用意できない(XCUITest ブリッジが立てられなかった)
         case inappOnly(port: UInt16)
-        /// in-app だが合成できないので XCUITest へ振り替える(従来挙動)
+        /// in-app だが合成できないので XCUITest へ振り替える
         case rerouteToXCUI(port: UInt16)
     }
 
@@ -164,7 +164,7 @@ public enum ExploreDriverResolver {
     }
 
     /// /status はデバイス名しか返さないので名前で引く。**同名が複数起動していたら諦める**
-    /// (誤ったデバイスへ注入するより従来どおり振り替える。XCUIBridgeResolver.start と同じ判断)
+    /// (誤ったデバイスへ注入するより振り替える。XCUIBridgeResolver.start と同じ判断)
     private static func bootedSimulatorUDID(_ device: String) -> String? {
         let booted = ((try? SimulatorCatalog.devices()) ?? []).filter { $0.booted && $0.name == device }
         return booted.count == 1 ? booted[0].udid : nil

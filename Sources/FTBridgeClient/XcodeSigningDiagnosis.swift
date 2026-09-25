@@ -4,7 +4,7 @@
 // 実機のランナーはその機械でビルドして端末へ入れるので、Xcode の署名設定が要る
 // (シミュレータは署名不要 —— だから「シミュレータは動くのに実機だけ建たない」が普通に起きる)。
 // 失敗すると xcodebuild は数十行のビルドログを吐き、それがそのまま拡張のバナーへ流れていた:
-// **読み手は何をすればいいのか分からない**(2026-08-29 の実害)。
+// **読み手は何をすればいいのか分からない**(実害)。
 //
 // ここが持つのは2つ:
 //   - **判定**(どの設定が欠けているか。ログの署名エラー行から拾う)
@@ -35,8 +35,8 @@ import Foundation
 ///     xcodegen が生成し(generateProjectIfNeeded)、ビルドのたびに DEVELOPMENT_TEAM を
 ///     コマンドラインで上書きする(codeSigningArguments)。**Team の正は fleetest の設定**
 ///   - keychainLocked は **ssh 越しのビルド固有** —— GUI セッションでは出ない。
-///     **鍵の ACL の問題ではない**(`security set-key-partition-list` は不要だった。2026-09-08 に
-///     M1Ultra で実測)。ロックそのものが原因で、**解錠は接続ごとに閉じる** —— その Mac の画面や
+///     **鍵の ACL の問題ではない**(`security set-key-partition-list` は不要だった。M1Ultra で実測)。
+///     ロックそのものが原因で、**解錠は接続ごとに閉じる** —— その Mac の画面や
 ///     別のシェルで解錠しても remote exec の新しい接続には届かない。**ツールは実機 ssh ビルドの
 ///     直前に、ユーザーの検索リストに載っている各キーチェーンの空パスワード解錠を試みる**
 ///     (BridgeLauncher.buildForTesting)。この診断まで
@@ -46,12 +46,12 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// Xcode に Apple ID が1つも無い
     case noAccount
     /// アカウントはあるが、設定(developmentTeam)のチームのものが無い
-    /// (2026-08-31 に M1Ultra で実測: チームを切り替えたのに config が旧チームのままだった)
+    /// (M1Ultra で実測: チームを切り替えたのに config が旧チームのままだった)
     case noAccountForTeam
     /// 開発用証明書が失効/期限切れ
     case invalidCertificate
     /// その端末がチームに未登録。**登録(ポータル通信)は ssh からはできない** ——
-    /// その Mac の GUI セッションで一度ビルドが要る(2026-08-31 に M1Ultra の iPhone snb で実測)
+    /// その Mac の GUI セッションで一度ビルドが要る(M1Ultra の iPhone snb で実測)
     case deviceNotRegistered
     /// provisioning profile が署名証明書を含まない(証明書を作り直した直後に出る。
     /// プロファイルの取り直しにはポータル通信 = GUI セッションが要る)
@@ -62,7 +62,7 @@ public enum XcodeSigningProblem: String, Sendable, CaseIterable {
     /// **ssh 越しのビルドで出る**(remote exec 経由の実機ビルド)。ログの現れ方は2通りで、
     /// どちらも同じ原因: `User interaction is not allowed` と `errSecInternalComponent`。
     /// **解錠は ssh 接続ごと** —— GUI セッションや別のシェルで解錠しても、remote exec が
-    /// 毎回張る新しい接続には届かない(2026-09-08 に M1Ultra で実測。同一接続内で
+    /// 毎回張る新しい接続には届かない(M1Ultra で実測。同一接続内で
     /// unlock → codesign は成功、別接続では再びロック)
     case keychainLocked
 
@@ -169,7 +169,7 @@ public enum XcodeSigningDiagnosis {
     }
 
     /// 空パスワードでの解錠を試す集合。検索リストに**ログインキーチェーンを必ず足す** ——
-    /// 一覧が空・取得できなかったときでもそこだけは試す(従来の挙動への縮退)。重複は畳む。
+    /// 一覧が空・取得できなかったときでもそこだけは試す(取得失敗時のフォールバック)。重複は畳む。
     public static func keychainsToUnlock(listKeychainsOutput: String?,
                                          homeDirectory: String) -> [String] {
         var paths = listKeychainsOutput.map(userKeychainPaths(listKeychainsOutput:)) ?? []
@@ -218,7 +218,7 @@ public enum XcodeSigningDiagnosis {
         }
         // **ここは手順を書かない規律の例外**(ポータルの行と同じ理由)—— remote exec は毎回
         // 新しい ssh 接続を張るという**このツールの実行経路の制約**で、知らないと手で解錠しては
-        // 何度でも同じ失敗を繰り返す(2026-09-08 に実際にそうなった)。**どこで解錠するか**まで
+        // 何度でも同じ失敗を繰り返す(実際にそうなった)。**どこで解錠するか**まで
         // 言い、鍵の置き場所や具体的な設定は言わない(運用は機械ごとに違い、書けば古くなる)
         if overSSH, problems.contains(.keychainLocked) {
             lines.append("Each ssh connection starts with the keychain locked, so it has to be"

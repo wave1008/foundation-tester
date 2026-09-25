@@ -1,7 +1,7 @@
 // アプリプロファイルの healthCheckURL(バックエンド死活確認)の実行前プローブ。
 // 不達でも実行はブロックしない(オフライン検証を妨げない)— 警告だけを確実に出す。
 // 背景: バックエンド停止中はアプリが非同期処理の未処理例外でクラッシュし、テストが
-// 「Application is not running」で全滅して原因が見えにくい(2026-07-21 実害)。
+// 「Application is not running」で全滅して原因が見えにくい(実害)。
 
 import Foundation
 import FTCore

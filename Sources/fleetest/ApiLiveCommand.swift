@@ -69,14 +69,14 @@
 //   app は**その操作を撃った先**(セッションの向き先)。ライブ操作はセッションを前面のものへ
 //   追従させるので、ホーム画面・別のアプリを触った操作もここへ来る —— 拡張はこれを見て
 //   レコーディングに載せるかを決める(対象アプリ以外の操作は記録しない)。iOS のみ・
-//   分からなければ null(拡張は null を従来どおり「対象アプリの操作」として扱う)。
+//   分からなければ null(拡張は null を「対象アプリの操作」として扱う)。
 //   bridgeStarting: **必須**。`LiveBridgeAutoStarter` が自動起動を進行中(.starting)かどうかを
 //   イベントの時点で読んだ値(starter が無ければ常に false)。ok の真偽を問わず全イベントに載る
 //   (annotated が noteConnectionRefused() で idle→starting へ遷移させ得るため、失敗イベントでは
 //   annotated の**後**に読む=たった今始まった自動起動も true になる)。拡張はこれを見て、
 //   起動中の失敗を「エラー」ではなく「接続中」の中立表示にする(自動で撃ち直しはしない)。
-//   **error 文言は自動起動の進捗を運ばない** —— 従来の "(Auto-starting the XCUITest bridge. …)"
-//   サフィックスは廃止し、進捗はこのフラグだけで伝える(LiveBridgeAutoStarter.suffix() 参照。
+//   **error 文言は自動起動の進捗を運ばない** —— "(Auto-starting the XCUITest bridge. …)" のような
+//   サフィックスは付けない。進捗はこのフラグだけで伝える(LiveBridgeAutoStarter.suffix() 参照。
 //   起動が2回連続で失敗したときの "(Bridge auto-start failed: …)" は引き続き error 文言に残る
 //   =対処が要る本物のエラーのため)。
 //
@@ -291,14 +291,14 @@ struct ApiLiveServe: AsyncParsableCommand {
         deviceLease?.release()
     }
 
-    /// live のドライバ構成。**自アプリだけ in-app を主にする**(ユーザー決定 2026-09-22) ——
+    /// live のドライバ構成。**自アプリだけ in-app を主にする**(ユーザー決定) ——
     /// WKWebView の中身を DOM で読めるのは in-app だけで、レコーディングはそれに依る。
     /// それ以外(別アプリ・SpringBoard)と、in-app が原理的に実行できない操作
     /// (home / appSwitcher / 座標 drag・press)は XCUITest が受け持つ。
     /// 仕分けは `HybridFallbackDriver` と `WebViewDelegatingDriver` が持っている既存の規律を
     /// そのまま使う(MCP の ft_* と同じ構成。二つ目の実装を書かない)。
     ///
-    /// in-app が居ない(指定ポートが XCUITest・Android)ときは従来どおり単独で使う。
+    /// in-app が居ない(指定ポートが XCUITest・Android)ときは単独で使う。
     /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す。3つ目の戻り値は
     /// hybrid のとき in-app が住んでいる own app の bundleID(launchGuard が own app への
     /// launch/activate を素通しするのに使う。hybrid でなければ nil)
@@ -355,8 +355,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             // `/status` の代わりに**プロセスの実体**で占有者を見る —— **肯定的に別のデバイスと
             // 読めたときだけ**掴むのをやめる。決めつけて進むと、この後の自動起動がそのポートへ
             // 自分のブリッジを立て、占有者の生きたランナーを残骸として殺す
-            // (実地 2026-09-23: ブリッジを失った実機2台が既定ポート 8123 で殺し合った)。
-            // 利用者が --port で決めた宛先は従来どおり進む(指定を勝手に変えない)。
+            // (実地: ブリッジを失った実機2台が既定ポート 8123 で殺し合った)。
+            // 利用者が --port で決めた宛先はそのまま進む(指定を勝手に変えない)。
             // **占有者を読めるのはループバックの宛先だけ** —— 実機の LAN bind は向こうの機械の
             // ポートなので、こちらの lsof が同じ番号で見つけるのは無関係なプロセス。
             // 読めない相手を根拠に宛先を変えない(§18.7「不明と空きを混ぜない」の同型)
@@ -426,7 +426,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             return (xcui, resolution.endpoint.port, nil, isInAppOnly ? "inapp" : "xcuitest")
         }
         // hybrid の in-app 側は別ポート(=別ブリッジ)なので、呼び出し元の確認はこちらを検分していない。
-        // 無応答(.silent)は従来どおり素通し —— in-app は背面へ回ると答えないので、ここで断ると
+        // 無応答(.silent)は素通しする —— in-app は背面へ回ると答えないので、ここで断ると
         // 通常の遷移で serve が開けなくなる
         if case .mismatch(let detail) = await Self.portIdentity(
             endpoint: inApp.endpoint, requestedUDID: udid, physical: physical, isInApp: true) {
@@ -513,7 +513,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
     /// serve 自体を止めず自動起動なしで続行する(--udid 未指定時と同じ扱いに落とす)。
     /// **physical は construction 時に1回だけ解決する**(SimulatorCatalog.isPhysical(udid:)。
-    /// 判別できなければシミュレータ扱いに倒す = 従来の既定 false と同じで退行しない)
+    /// 判別できなければシミュレータ扱いに倒す = 既定 false のままで退行しない)
     private func makeAutoStarter(port: UInt16) -> LiveBridgeAutoStarter? {
         guard driverOptions.resolvedPlatform == "ios", let udid else { return nil }
         do {
@@ -657,7 +657,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         /// starter が idle・能動経路(triggering)・probe がブリッジ消失(transportFailed/notBound)
         /// —— bridgeConnectionRefused と同じ状況なので同じ起動トリガーへ倒す
         case triggerStarter
-        /// 上記のどちらでもない(starter が無い/busy/応答あり/受動経路) —— 従来どおり probe のヒント
+        /// 上記のどちらでもない(starter が無い/busy/応答あり/受動経路) —— そのまま probe のヒント
         case probeHint
 
         static func decide(
@@ -1064,7 +1064,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// **springboard への退避は iOS だけ**。Android の 422 は「アクティブウィンドウの a11y 根が無い」
     /// (`DriverError.isNoReadableWindow`。アプリスイッチャー表示中などで普通に起きる)で、そこへ
     /// `com.apple.springboard` の launch を撃つと 500「cannot launch the app」に化け、元の事実と
-    /// 自然回復の案内(noReadableWindowHint)が消えていた(実地 2026-09-24・Pixel 3a)
+    /// 自然回復の案内(noReadableWindowHint)が消えていた(実地・Pixel 3a)
     static func usesSpringboardFallback(platform: String) -> Bool {
         platform == "ios"
     }
@@ -1272,7 +1272,7 @@ struct ApiLiveServeCommand {
     /// 型違い・値域違反とも1件目のエラー文だけを残す(複数同時に違っても最初の1つで足りる)。
     /// **値がおかしいときは常に nil を返す**(error が既に埋まっていても)—— 「1件目の文言」と
     /// 「この値をなだれ込ませるか」は別の軸。文言は MCP(MCPServer.intArgument/doubleArgument)と
-    /// 揃える(2026-09-22 L3)。**型が合っていても値域(`ArgumentBounds`)を外れれば同じく断る**
+    /// 揃える(L3)。**型が合っていても値域(`ArgumentBounds`)を外れれば同じく断る**
     /// (MCP と同じ表を引く — 2箇所に値を持たない)
     private static func intField(_ raw: [String: Any], _ key: String, error: inout String?) -> Int? {
         guard let value = raw[key] else { return nil }
@@ -1303,7 +1303,7 @@ struct ApiLiveServeCommand {
 
     /// 型が合っていても `ArgumentBounds.mustNotBeEmpty` に載っている鍵(bundle/path)は
     /// 明示された空文字・空白のみを断る。**cmd を問わず一律**(decode 段は cmd を見ない)——
-    /// clearAppData の bundle / install の path はここで初めて空文字が断られる(従来は無検査だった)
+    /// clearAppData の bundle / install の path はここで初めて空文字が断られる
     private static func stringField(_ raw: [String: Any], _ key: String, error: inout String?) -> String? {
         guard let value = raw[key] else { return nil }
         guard let string = value as? String else {

@@ -903,7 +903,7 @@ export interface LiveDeviceOption {
   readonly serial: string | null;
   readonly udid: string | null;
   /** 映像の供給元の選択に使う(monitorLiveController.ts の updateLiveFrameSource)。フォールバックは
-   * 実体が分からないので virtual(従来の既定)。 */
+   * 実体が分からないので virtual を既定にする。 */
   readonly kind: LiveDeviceKind;
   /** LiveDeviceRef.machine と同じ。list-devices(この Mac)由来は常に省略 */
   readonly machine?: string;

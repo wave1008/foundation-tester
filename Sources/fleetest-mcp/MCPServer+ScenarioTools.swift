@@ -219,7 +219,7 @@ extension MCPServer {
             // 「ft_snapshot は繋がるのに ft_run_scenario だけ既定ポートで落ちる」になる。
             // **iOS の接続は CLI の `--port` 直指定と同じ PortDirectIOSTarget から作る** —— ポートだけ
             // 渡すと子プロセスは 127.0.0.1・physical=false で走り、LAN の実機は接続拒否、usb トンネルの
-            // 実機は token 無しの 401 になる(2026-09-11 物理 iPhone 13 で 3/3。「クラッシュ」と誤帰属)
+            // 実機は token 無しの 401 になる(物理 iPhone 13 で 3/3。「クラッシュ」と誤帰属)
             if platform == "ios" {
                 connection = PortDirectIOSTarget(
                     port: try await Self.resolveIOSPort(explicit: try Self.portArgument(args)))

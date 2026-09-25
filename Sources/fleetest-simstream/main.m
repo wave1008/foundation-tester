@@ -37,13 +37,13 @@ static size_t gCompHeight = 0;
 // kVTSessionMalfunctionErr(-17691)は「今は無理」ではなく**セッションが壊れた**状態で、
 // 放っておいても回復しない —— 実際 20 タイル構成で 10 本の圧縮セッションを張ると一部が壊れ、
 // **警告を出すだけだったので以後1バイトも出さず、タイルが永久に「接続中」になった**
-// (2026-08-17 の実害)。作り直す以外に回復手段が無いので、失敗したら作り直す
+// (実害)。作り直す以外に回復手段が無いので、失敗したら作り直す
 static int gEncodeFailures = 0;
 // 圧縮セッションの世代(作るたびに +1。refCon として VT に渡し、コールバックが「どのセッションの
 // 失敗か」を持ち帰る)。**失敗は1セッションにつき1回だけ数え、1回だけ出す** —— VT の出力
 // コールバックは非同期で、壊れたセッションに投入済みのフレームぶんが一度に返る。1本ごとに
 // 数えると作り直す前に閾値へ達し「作り直しても壊れた」を確かめずに exit 3 していた
-// (2026-08-31: 台ごとに -17691 が 8 行並んで即 exit)
+// (台ごとに -17691 が 8 行並んで即 exit)
 static uintptr_t gCompGeneration = 0;
 // 何回連続で失敗したら h264 を諦めて MJPEG へ落ちるか。**2 の根拠**: 1回目は
 // そのセッション固有の malfunction かもしれない(作り直しで直る)。作り直した直後に
@@ -154,7 +154,7 @@ static void ftWritePing(void) {
 // VT の kVTSessionMalfunctionErr は「ホストが h264 をこなせない」と読んで MJPEG へ落とすが、
 // シミュレータ側が空(0x0)や無効なサーフェスを返しているときは MJPEG(CIContext)も同じ入力で
 // 失敗し、「この機械では h264 が無理」という診断が外れたまま再起動ループになる
-// (2026-08-31: 4台同時、直前まで同じ機械で h264 が動いていた)。無効な入力はエンコード
+// (4台同時、直前まで同じ機械で h264 が動いていた)。無効な入力はエンコード
 // 失敗に数えず、次のトリガを待つ。ログは台ごとに1回(60Hz で鳴らさない)
 static BOOL gBadSurfaceLogged = NO;
 static BOOL ftSurfaceUsable(IOSurfaceRef s) {
@@ -178,7 +178,7 @@ static void ftLogSurface(const char *what, IOSurfaceRef s) {
 }
 
 // JPEG 化は2段。**`JPEGRepresentationOfImage:` は macOS 27 で正常な BGRA surface に対しても
-// nil を返す**(2026-08-31 実測: 1206x2622 BGRA で h264 は通り、こちらだけ失敗)。同じ CIContext の
+// nil を返す**(実測: 1206x2622 BGRA で h264 は通り、こちらだけ失敗)。同じ CIContext の
 // `createCGImage` + ImageIO は同じ画像で成功するので、1段目が落ちたら2段目で書く。
 // 1段目を残すのは、通る環境ではそちらが速い(中間の CGImage を作らない)ため。
 // 切り替えの警告は寿命で1回だけ(毎フレーム鳴らすと fps ぶんログが並ぶ)
@@ -298,7 +298,7 @@ static void ftEnsureCompressionSession(size_t w, size_t h) {
         fprintf(stderr, "error: VTCompressionSessionCreate failed status=%d\n", (int)st);
         // **生成失敗も「黙って何も出さない」に落ちる** —— gCompSession が NULL のままだと
         // 下の encode を丸ごと飛ばすので、失敗として数えない限り永久に無フレームになる
-        // (encode 失敗と同じ穴。2026-08-17)
+        // (encode 失敗と同じ穴)
         ftCountEncodeFailure();
         return;
     }
@@ -507,7 +507,7 @@ int main(int argc, char **argv) {
     gMaxWidth = (maxWidth > 0) ? maxWidth : 0;
     gCodecH264 = [codec isEqualToString:@"h264"];
 
-    // **アタッチの間も生存を知らせる**(実害 2026-09-09): 消費側(vscode-fleetest の
+    // **アタッチの間も生存を知らせる**(実害): 消費側(vscode-fleetest の
     // deviceStream.ts)は「15秒1バイトも来なければ helper が固まった」と見て kill→再起動するが、
     // この下の CoreSimulator へのアタッチ(SimServiceContext / ioPorts / setPowerState)は
     // dispatch_main より前の同期処理で、**keepalive タイマーがまだ動いていない**。起動ストームの

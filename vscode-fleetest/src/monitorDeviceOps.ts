@@ -376,7 +376,7 @@ export class MonitorDeviceOps {
   private postDeviceLifecycleStatus(name: string, machine?: string): void {
     const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, machine);
     // **machine も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
-    // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(2026-08-17 の実害)
+    // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(実害)
     // op:"up" を返すのは device ジョブだけ(bulk / restartBatch は down の順番待ちで返る)= 取り消せる
     this.deps.post({
       type: "deviceOpBusy", name, machine, op: status?.op ?? null, status: status?.status ?? null,
@@ -500,8 +500,8 @@ export class MonitorDeviceOps {
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     // up は api start-all-devices(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)。
     // down は profile 指定時のみ api stop-all-devices(deviceStopping/deviceFinished の NDJSON。1台落ちる
-    // ごとにそのタイルを「未起動」へ倒す)。profile 無しは従来の devices down(全ブリッジ停止+
-    // simctl shutdown all+全 qemu kill の全掃討。プレーンテキスト)。
+    // ごとにそのタイルを「未起動」へ倒す)。profile 無しは devices down(全ブリッジ停止+
+    // simctl shutdown all+全 qemu kill の全掃討。プレーンテキスト)を使う。
     const useNdjson = kind === "up" || (kind === "down" && !!config.profile);
     const args: string[] = kind === "up"
       ? ["api", "start-all-devices"]
@@ -514,8 +514,8 @@ export class MonitorDeviceOps {
       for (const n of restartNames) {
         args.push("--restart", n);
       }
-      // CPU 描画フォールバック中の個体は一括起動でも swiftshader を維持する(従来は bulk up が
-      // host で起き上がり直してフォールバックが消える既知の穴だった)
+      // CPU 描画フォールバック中の個体は一括起動でも swiftshader を維持する(渡さないと bulk up で
+      // host 描画に起き上がり直り、フォールバックが消える)
       for (const n of this.cpuRenderNames) {
         args.push("--cpu-render", n);
       }
@@ -571,7 +571,7 @@ export class MonitorDeviceOps {
     };
 
     if (!useNdjson) {
-      // profile 無しの down = 従来の devices down(全掃討・プレーンテキスト)。
+      // profile 無しの down = devices down(全掃討・プレーンテキスト)。
       // **CLI が run-lease で断ったら通知で見せる**(押す前の門 bulkDownGate は monitor の観測に頼るので、
       // 観測の遅れ・一時停止中は CLI 側で初めて断られる。OUTPUT の1行だけだと「押しても何も起きない」)
       let refusal: string | undefined;
@@ -673,7 +673,7 @@ export class MonitorDeviceOps {
               const detail = value.error ?? t("deviceOps.detailUnknown");
               this.deps.outputChannel.appendLine(t("deviceOps.log.bulkOpFailed", { label, error: detail }));
               // **バナーにも出す** —— ログだけだと「押したのに何も始まらない」にしか見えない
-              // (実害 2026-08-29: プロファイル未選択で台帳を決められず即死していたのに無反応だった)。
+              // (実害: プロファイル未選択で台帳を決められず即死していたのに無反応だった)。
               // 1行目だけ = 外から来た生のエラーは長くなりうる(deviceOpFailed と同じ規律)
               this.deps.post({ type: "deviceError", message: firstLine(detail) });
             }
@@ -906,7 +906,7 @@ export class MonitorDeviceOps {
     // **wipe は識別子だけで撃つ**(delete-device と同じ契約: プロジェクトも実行プロファイルも
     // 参照しない)。名前で引く形にすると、リモートでは向こうのプロファイル複製が古いと
     // `device not found` で必ず失敗し、操作のたびにプロジェクトを送り直す羽目になる
-    // (複製が更新されるのはモニターの fan-out 開始時だけ。2026-08-29 に実機で確認)
+    // (複製が更新されるのはモニターの fan-out 開始時だけ。実機で確認)
     if (job.op === "wipe") {
       args.push("--platform", job.platform,
                 job.platform === "ios" ? "--udid" : "--avd", job.identifier);
@@ -979,7 +979,7 @@ export class MonitorDeviceOps {
         setTimeout(
           // **machine を落とさない** —— 落とすと再試行だけ手元で走り、別の機械の台に対して
           // 「そんな UDID の実機は無い(認識しているのは…)」という**見当違いのエラー**が
-          // 最後に出て、本当の失敗理由(向こうの署名エラー等)が隠れる(実害 2026-08-29)
+          // 最後に出て、本当の失敗理由(向こうの署名エラー等)が隠れる(実害)
           () => this.runDeviceOpAttempt(job, attempt + 1, finishOnce),
           MonitorDeviceOps.deviceUpRetryDelayMs,
         );
@@ -1044,7 +1044,7 @@ export class MonitorDeviceOps {
           // signingProblems 付きの error も全文 —— CLI が畳んだ数行の案内で、生のビルドログ
           // ではない(こちらで組み立てられない種別のときの受け皿)。
           // 外から来た生のエラーは1行目だけ —— xcodebuild のビルドログのように数十行あり得て、
-          // 全文を流すとパネルが埋まる(実害 2026-08-29)。
+          // 全文を流すとパネルが埋まる(実害)。
           // **OUTPUT へは誘導しない** —— 常時流れていて利用者が読む場所ではない(ユーザー決定)
           this.deps.post({
             type: "deviceOpFailed", name, machine,
@@ -1056,7 +1056,7 @@ export class MonitorDeviceOps {
     );
     // **stderr を控える** —— CLI が NDJSON を出さずに終わる失敗(引数・プロファイル解決の
     // ValidationError 等)は理由が stderr にしか無い。控えないと close の分岐で
-    // 「exit code だけ」になり、**バナーに何も出ないまま失敗する**(実害 2026-08-29:
+    // 「exit code だけ」になり、**バナーに何も出ないまま失敗する**(実害:
     // タイルの「ブリッジ起動」が無反応に見えた)
     let stderr = "";
     const stderrParser = new NdjsonParser(
@@ -1116,7 +1116,7 @@ export class MonitorDeviceOps {
    * ここでは単純に都度実行する。stdout を全量蓄積し、close 時にまとめて JSON.parse する
    * (単発 JSON 1行の出力なので NDJSON パーサは不要)。
    * source が remote なら deviceCommandArgs が `remote exec <host> -- api device-catalog` に
-   * 組み立てる(§13 段2。個別 ssh 実装は書かない)。local は従来どおり `api device-catalog` のまま
+   * 組み立てる(§13 段2。個別 ssh 実装は書かない)。local は `api device-catalog` のまま
    * (deviceCommandArgs の local 分岐が apiArgs を素通しするため、挙動は1バイトも変わらない)。
    */
   runDeviceCatalog(source: DeviceCommandSource): void {

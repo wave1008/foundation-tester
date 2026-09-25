@@ -9,7 +9,7 @@
 //   実行中のタスクはキャンセルしない(次の要求は実行中タスクの後に1件だけ積まれる)。
 // - キャンセルは **その呼び出し自身のハンドル**(`enqueue()` が返す `CliInvocationHandle.cancel`)で行う。
 //   `cancelCurrent()` は「今走っている何か」を殺すので、run の前に list-scenarios / ビルドが
-//   キューに居るとそちらを殺し、続く `api run` は止められないまま走り出す(2026-09-07 の実害)。
+//   キューに居るとそちらを殺し、続く `api run` は止められないまま走り出す(実害)。
 //   run のように前に別の呼び出しが積まれうる経路では使わない。
 // - キャンセルは既定で SIGTERM のみを送り、SIGKILL しない。fleetest 自身の子
 //   (`api run` 等)は自前の後始末(dispatch.lock 解放・終了スクリプト)を持ち、その所要時間は
@@ -79,8 +79,8 @@ export class CliSupersededError extends Error {
 
 export interface CancelOptions {
   /**
-   * 指定すると、SIGTERM 送信後この時間(ms)経ってもプロセスが生きていれば SIGKILL する
-   * (従来挙動)。**後始末を持たない外部・ヘルパー専用**(例: `api live serve` = stdin EOF で
+   * 指定すると、SIGTERM 送信後この時間(ms)経ってもプロセスが生きていれば SIGKILL する。
+   * **後始末を持たない外部・ヘルパー専用**(例: `api live serve` = stdin EOF で
    * 即終わる)。fleetest 自身の子には使わない —— 自前の終了スクリプトを打ち切ってしまう。
    */
   escalateAfterMs?: number;
@@ -137,7 +137,7 @@ export class FleetestCli {
    * 自分しか積まない経路)。前に別の呼び出しが積まれうる経路は `enqueue()` のハンドルで
    * 自分の分だけを止める。
    * 既定では SIGKILL しない(fleetest 自身の子は自前の後始末を持つため待つ側に倒す)。
-   * `options.escalateAfterMs` を渡したときだけ従来どおり時限 SIGKILL する
+   * `options.escalateAfterMs` を渡したときだけ時限 SIGKILL する
    * (後始末を持たない外部・ヘルパー専用)。`options.onStillRunning` を渡すと、
    * SIGTERM から STILL_RUNNING_NOTICE_MS 後もまだ生きていれば1回だけ通知する。
    */

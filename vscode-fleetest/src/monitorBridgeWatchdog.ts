@@ -102,12 +102,12 @@ export class MonitorBridgeWatchdog {
       }
       // **実機は見ない** —— 実機のブリッジ起動は `fleetest run` とタイルのメニューだけが担う
       // (一括操作と同じ理由: 供給に数分かかり同時起動枠を専有する。WiFi の実機は待ち受けが
-      // 省電力で閉じるので「無応答 → 再供給」を繰り返すだけになる。2026-09-04 実測)。
+      // 省電力で閉じるので「無応答 → 再供給」を繰り返すだけになる。実測)。
       // **この除外は機械に依らない**(リモートの実機も同じ理由で見ない)
       if (device.kind === "physical") {
         continue;
       }
-      // **リモートの台も見る**(2026-09-25。旧: 除外)。成立の条件は2つとも揃っている ——
+      // **リモートの台も見る**。成立の条件は2つとも揃っている ——
       // ①修復手段: lifecycle ジョブは machine を運べ、リモートは
       //   `remote exec <machine> -- api start-device … --device-machine local` で回る
       // ②同名衝突: 記録の鍵を device.id にした(id は machine 込みで一意。
@@ -167,7 +167,7 @@ export class MonitorBridgeWatchdog {
     entry.heldInRun = false;
 
     if (this.deps.isDeviceLifecycleQueueBusy()) {
-      // **一括起動/停止の最中は数えない・宣言しない**(inRun と同じ扱い。実害 2026-09-09: 供給中の
+      // **一括起動/停止の最中は数えない・宣言しない**(inRun と同じ扱い。実害: 供給中の
       // 台に「booted が5回連続したためブリッジ無応答とみなします」を出していた —— 10秒後には
       // xcuitest bridge ready が来る、まだ起動しきっていないだけの台だった)。修復は下の門でも
       // 止まるので実害は誤検知の警告だけだったが、**出ない警告に寄せる**(検知は誤検知0が条件)。

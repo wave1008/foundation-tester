@@ -2,7 +2,7 @@
 // プロセス生存判定の唯一の定義元。`kill(pid, 0) == 0` はゾンビ(終了済みだが親が
 // まだ回収していないプロセス)にも成功するため「生きている」と誤判定し、それを鮮度条件に
 // 使っている台帳(RunLease/RecordingLease/DeviceFrozenStore/hooks 等)を永久に回収不能にする
-// (2026-08-18 に実害: ssh 越しに殺された run の pid がゾンビのまま残り hooks の lease が
+// (実害: ssh 越しに殺された run の pid がゾンビのまま残り hooks の lease が
 // 回収されなかった)。sysctl(KERN_PROC_PID)でプロセス状態まで見て SZOMB と exit 処理中
 // (P_WEXIT)を「死」として扱う。
 //
@@ -15,7 +15,7 @@ public enum ProcessLiveness {
 
     /// `<sys/proc.h>` の `P_WEXIT`(Swift へは import されないので値を写す)。
     /// **exit 処理に入ったプロセスはもう戻ってこない** —— ssh 越しに殺された run は
-    /// ゾンビになりきらず「終了の途中で刺さったまま」残ることがあり(2026-08-18 にリモートで
+    /// ゾンビになりきらず「終了の途中で刺さったまま」残ることがあり(リモートで
     /// 実測: `ps` の STAT が `?Es` のまま数十分)、生存扱いにすると lease が永久に回収されない
     private static let processExitingFlag: Int32 = 0x0000_2000
 

@@ -489,7 +489,7 @@ export class MonitorPanelController implements vscode.Disposable {
       }
       // Select Project(fleetest.project の設定更新)にダッシュボードタブも追従する。テストビューは
       // 設定変更で refresh するのにこのタブだけ据え置きだと、切り替えたのにヘッダが旧プロジェクトの
-      // まま、に見える(2026-09-01 実害。旧 dashboardPanel.ts から移設)。
+      // まま、に見える(実害)。
       if (event.affectsConfiguration("fleetest.project")) {
         this.dashboard.onProjectSettingChanged();
         this.recordings.onProjectSettingChanged();
@@ -875,7 +875,7 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * 「テストを実行」ボタンは**まず「デバイスを全て起動」と同じ処理**を通す(ユーザー決定 2026-09-09)。
+   * 「テストを実行」ボタンは**まず「デバイスを全て起動」と同じ処理**を通す(ユーザー決定)。
    * タイルの「起動待機」バッジはこのライフサイクルキューからしか出ないので、run 内の供給
    * (ApiRunCommand → AndroidLaneRecovery)に任せるとボタンから起動したときだけ無表示になっていた。
    * **run 内の供給は消せない** —— Test Explorer からの実行・CLI・リモート機にはモニターが居ない
@@ -1271,7 +1271,7 @@ export class MonitorPanelController implements vscode.Disposable {
    * されうるため、ここで呼ぶ各処理は冪等であること(いずれもwebview側で上書き描画するだけ)。
    */
   /** 一括停止の前に、占有中の機械があれば modal で確認する(webview の window.confirm は
-   * 効かないのでホスト側で出す)。占有が無ければ即実行 = 従来どおり。 */
+   * 効かないのでホスト側で出す)。占有が無ければ即実行する。 */
   private async confirmThenBulkDown(): Promise<void> {
     const gate = bulkDownGate({
       // executeBulkJob と同じ判定(プロファイル未選択 = 全掃討の devices down)

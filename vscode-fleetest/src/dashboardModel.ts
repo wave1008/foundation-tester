@@ -12,7 +12,7 @@ export interface RunMetaRecord {
   readonly runID: string;
   readonly project: string;
   readonly profile?: string | null;
-  /** その run を走らせた**機械のホスト名**(旧キー "machine" も読む。2026-08-26 改名。
+  /** その run を走らせた**機械のホスト名**(旧キー "machine" も読む。改名済み。
    * 用語: host = ホスト名/IP、machine = そのローカルエイリアス)。 */
   readonly host: string;
   /** "api" | "cli" */
@@ -250,7 +250,7 @@ export interface MatrixReport {
 }
 
 /** count 降順。section/command/failureKind は言えないとき欄ごと省く(「その他」に丸めない)。
- * failureKind/command の欄が無い失敗は 2026-08-20 より前の記録に必ずある(欄の後発追加)ので、
+ * failureKind/command の欄が無い失敗は過去の記録に必ずある(欄の後発追加)ので、
  * 必須にすると実データでペイロード全体が弾かれる。 */
 export interface TriageRow {
   readonly section?: string | null;

@@ -96,7 +96,7 @@ const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
  * 掛かり、その間 serveProcess は未設定になる。この窓のコマンドを待たずに断ると、利用者が
  * **たった今選び直したデバイス**に対して「起動していません。デバイスを選び直してください」を出す
  * ことになる(案内どおり選び直しても同じ再バインドなので同じ文言が出る)。2秒の停止 + close→spawn
- * の余裕。超えたら従来どおり断る(本当に立ち上がらない場合の固まりを作らない)。 */
+ * の余裕。超えたらそのまま断る(本当に立ち上がらない場合の固まりを作らない)。 */
 const SERVE_REBIND_WAIT_MS = 6000;
 
 /** 「全て終了」の前に serve を畳むときの close 待ちの上限(ms)。killServeProcess は stdin EOF +
@@ -341,7 +341,7 @@ export class MonitorLiveController implements vscode.Disposable {
   /** **booted(台は起動済み・ブリッジ未接続)の台へ切り替えたら観測を1回撃つ**。serve の自動起動
    * (LiveBridgeAutoStarter)の引き金は観測・操作の接続拒否だけで、自動のフレーム取得(frame)は
    * 受動的な観測として起動を撃たない(ApiLiveCommand.emitFrame)。撃たないと、ブリッジの無い台
-   * (実機では普通)を開いても「接続できません」のまま何も始まらない(実地 2026-09-24: iPhone wave)。
+   * (実機では普通)を開いても「接続できません」のまま何も始まらない(実地: iPhone wave)。
    * 切り替えの全経路(openDevice / selectDevice / applyDevices / preferPlatform)が通る
    * ensureServeProcess から呼ぶ。offline は撃たない(台そのものが起きていない = start-device の役目) */
   private requestOpenObservation(): void {
@@ -750,7 +750,7 @@ export class MonitorLiveController implements vscode.Disposable {
     if (this.selectedDeviceId !== id) {
       // 一覧取得失敗(フォールバック)は refreshDevices が banner を出し済み。取れた一覧に居ないのは
       // **他の機械の台**(モニターのタイル id が `ios:<machine>/<name>`)か消えた台 —— 黙ると前の台の
-      // 画面が出続け、開いたつもりの台と違う画面になる(実地 2026-09-24: M1Ultra の iPhone wave)
+      // 画面が出続け、開いたつもりの台と違う画面になる(実地: M1Ultra の iPhone wave)
       if (this.devices.every((device) => device.id !== id) && this.devices[0]?.id !== FALLBACK_DEVICE_ID) {
         this.post({ type: "banner", message: t("live.deviceNotOpenable", { id }) });
       }
@@ -865,8 +865,8 @@ export class MonitorLiveController implements vscode.Disposable {
    * 再バインド中(serveRestartPending)なら、新しい serve が立つまで待たせる。デバイスを選んだ
    * 直後の snapshot/操作はこの窓に必ず入るため、待たずに serveUnavailableMessage() を返すと
    * 「常駐プロセスが起動していません。デバイスを選び直してください」が数秒だけ出て、その後
-   * 何事もなく画面が出る = 利用者に対処のしようが無い誤報になる(2026-09-23)。
-   * 再バインド中でないとき(本当に居ない・諦めた)は待たず、従来どおり即座に断る。
+   * 何事もなく画面が出る = 利用者に対処のしようが無い誤報になる(実際にあった)。
+   * 再バインド中でないとき(本当に居ない・諦めた)は待たず、そのまま即座に断る。
    */
   private awaitServeRebind(): Promise<void> {
     if (!this.serveRestartPending) {
@@ -986,7 +986,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * 「全て終了」の直前に呼ぶ。serve を止めて終了(close)まで待つ —— serve は終了時に自分の台の印
    * (`.fleetest/mcp-<鍵>.lease`。Sources/fleetest/LiveDeviceLease.swift)を消すので、これで
    * 全掃討(`devices down` の sweepRefusal)がこの印で丸ごと断られなくなる。掴んだままだと
-   * 「MCP session が駆動中」と名指しされて何も止まらない(実地 2026-09-24)。
+   * 「MCP session が駆動中」と名指しされて何も止まらない(実地)。
    * 他の機械の台(remote exec 越しの serve)も同じに畳む: 掃討はその機械へも分散し、向こうの印は
    * 向こうの serve が stdin EOF で消す(こちらで待つのは手元の子の close まで)。
    * resumeServeAfterSweep が呼ばれるまで serve は起動しない。

@@ -12,7 +12,7 @@ import Foundation
 /// - `arm`: **失敗と決める前**(期限切れ)。アプリは正しいのに検証だけが落ちるのを防ぐ。
 ///   誤った**失敗**を潰す側で、通るアサーションは1円も払わない
 /// - `confirmPass`: **否定形を通す前**。古い木は「まだ現れていない」姿を返すので、
-///   不在・不一致での pass は**誤った成功**になりうる(2026-08-14 の掃討で発見)。
+///   不在・不一致での pass は**誤った成功**になりうる(掃討で発見)。
 ///   肯定形が同じ穴を持たないのは、古い木が期待値に一致せずポーリングが続くから ——
 ///   つまり肯定形は運で守られているだけで、**否定形だけが通る側にも払う必要がある**
 ///
@@ -85,15 +85,15 @@ extension StepExecutor {
     ///     (`TapTargetGeometry.offscreenScrollGateCentre`。スクロール探索の「見つかった」ゲートと
     ///     同じ述語)。iOS の木は画面外の要素も frame ごと残すので、これが無いと通り過ぎた要素への
     ///     exist が通る。FM 側は crop が画像の外に落ちると nil = 素通りなので、**FM が生きていても
-    ///     この形は FM では塞がらない**(2026-08-20 受け手報告・横スクロール区画の実例)
-    ///   Tier-1〜 FM: 覆われ/減光/不在(従来)。判定が返らなければ `visibilityGuardSkipped` を立てて素通り
+    ///     この形は FM では塞がらない**(受け手報告・横スクロール区画の実例)
+    ///   Tier-1〜 FM: 覆われ/減光/不在。判定が返らなければ `visibilityGuardSkipped` を立てて素通り
     /// 呼び出し側(exists/textEquals)は不可視を即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
     /// launch storyboard を「何も描かれていない」と読む crop の輝度 stdDev の上限。
     /// 単位は 8-bit 輝度(0〜255)の段階。**1.0 = 量子化1段階未満** —— ディザや圧縮の揺らぎしか
     /// 無く、画素に構造が無いことの定義であって調整値ではない(実測: M1Max の launch storyboard は
     /// min=253 / max=255 で stdDev ≈ 0.1、厳密 0 ではなかった)。これ以上は「何か描かれている」
-    /// (本物の覆い・減光)として従来どおり扱う = 猶予を与えない
+    /// (本物の覆い・減光)として扱う = 猶予を与えない
     static let firstFrameBlankStdDevCeiling: Double = 1.0
 
     func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
@@ -178,8 +178,8 @@ extension StepExecutor {
         // コメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
-        // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(ユーザー決定
-        // 2026-09-15。run の開始時には待たない)。諦めた読みが走っている間は待たない
+        // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(ユーザー決定。
+        // run の開始時には待たない)。諦めた読みが走っている間は待たない
         // (shouldTakeShortcut と同じ理由 — 詰まった読みの後ろに積み増さない)。待った時間は
         // DeadlineExclusion 経由で締め切り(FTSync/scenarioTimeout)から差し引かれるので、
         // ここで払っても呼び出し元のステップ/シナリオが不当に打ち切られない
@@ -237,7 +237,7 @@ extension StepExecutor {
             guard let fresh = freshVerdict
             else {
                 // **訊いたのに答えが無い**(FM の失敗・ブレーカ開・直列化待ちの期限切れ・画像不正)。
-                // 素通りは従来どおりだが、**黙らない** —— シナリオ側からは「判定能力が欠けている」ことを
+                // 素通りはするが、**黙らない** —— シナリオ側からは「判定能力が欠けている」ことを
                 // 観測できず、知っているのはここだけ。結果 JSON の notes から run 横断で数えられる。
                 // **控えない**(次は必ず訊き直す)
                 noteCodesThisStep.insert(.visibilityGuardSkipped)
@@ -314,10 +314,8 @@ extension StepExecutor {
     /// 「見つかりません」と区別が付かない**(実在するのに送られていないだけ)ため、
     /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい。
     ///
-    /// **残っている手の判定は `SnapshotTruncation.remedy`(MCP と共有)**。以前ここだけが
-    /// 「対象に近づくようスクロールする」と勧めており、同じ事実に対して MCP は
-    /// 「スクロールしても戻ってこない」と書いていた —— 打ち切りは配列からの脱落なので
-    /// MCP のほうが正しく、この助言は読み手に空振りの探索を撃たせる(2026-08-15 に統一)。
+    /// **残っている手の判定は `SnapshotTruncation.remedy`(MCP と共有)** —— 打ち切りは配列からの
+    /// 脱落なので「スクロールすれば戻る」とは勧めない(空振りの探索を読み手に撃たせる)。
     /// 文言(スコープの絞り方)は DSL の語彙で持つ
     static func truncationHint(_ snapshot: SnapshotResponse?) -> String {
         guard let snapshot, let remedy = SnapshotTruncation.remedy(for: snapshot) else { return "" }
@@ -371,8 +369,8 @@ extension StepExecutor {
     /// 切り詰められていなければ**撮らない**(通る側の固定費はゼロ)。
     /// **呼び手は1回当たったら以後の周を最初から天井で撮ること**(`needsCeiling` の latch)——
     /// 毎周2枚払わずに済むうえ、判定に使う木が常に天井のものになるので
-    /// 「天井でも足りなかった」という文言が嘘にならない(2026-08-15 のデバイス実行で
-    /// 予算方式の文言が実際に嘘をついた)
+    /// 「天井でも足りなかった」という文言が嘘にならない(デバイス実行で
+    /// 予算方式の文言が実際に嘘をついたことがある)
     func retakenAtElementLimitCeiling(_ snapshot: SnapshotResponse,
                                       phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
         guard snapshot.truncatedCount > 0 else { return snapshot }
@@ -410,7 +408,7 @@ extension StepExecutor {
     /// **注記だけで判定は変えない**: 打ち切りと違いブリッジの申告ではなく幾何からの疑いなので、
     /// 失敗にすると空のページに対する正当な `notExist` が書けなくなる。
     ///
-    /// **呼ぶのは不在を結論する2経路(notExists / count)だけ**(2026-08-15 のデバイス実行で確定)。
+    /// **呼ぶのは不在を結論する2経路(notExists / count)だけ**(デバイス実行で確定)。
     /// 隣の `noteEmptyWebView` は4経路すべてから呼ぶので揃えたくなるが、**あちらの条件
     /// (委譲 WebView が完全に空)は稀**なのに対し、こちらは a11y に出ない部分がある WebView
     /// なら**どの画面でも立つ**。4経路へ広げたところ、5 SUT の緑の run すべてで
@@ -460,7 +458,7 @@ extension StepExecutor {
     /// いつでも取りこぼし得るため、この注記は「目印が正しい間も」必要。
     static func webViewPathHint(_ snapshot: SnapshotResponse?) -> String {
         // **要素の形から推測しない**。Android は webView 型を出すが web フラグを持たないため、
-        // 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
+        // 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(実害)。
         // 申告が無いドライバ(Android・engine=xcuitest 単独・旧ブリッジ)では何も足さない
         switch snapshot?.webViewPath {
         case WebViewPath.delegatedEmpty:
@@ -999,12 +997,12 @@ extension StepExecutor {
             }
             lastElements = snapshot.elements
             if resolved == nil {
-                // **不在を見た周でだけ評価する**(2026-08-15 の実測)。毎周だと 400 要素の
+                // **不在を見た周でだけ評価する**(実測)。毎周だと 400 要素の
                 // ブラウザ画面で 11.9ms/回(debug)を全ポーリングぶん払う —— 見えている
                 // 要素があった周の木は結論に使われないので、測る意味が無い
                 noteUnderreportedTree(snapshot)
                 // 天井でも切り詰められている = 「無い」と「送られていない」を分けられない。
-                // ここで pass を返すのが 2026-08-15 に掃討した誤った成功そのもの
+                // ここで pass を返すのが掃討した誤った成功そのもの
                 if snapshot.truncatedCount > 0 {
                     return .failed(Self.undecidableTruncationMessage(
                         "absence", step: step,

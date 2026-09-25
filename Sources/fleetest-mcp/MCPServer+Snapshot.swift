@@ -12,7 +12,7 @@ extension MCPServer {
     /// 木を撮り直す。**MCP は必ずキャッシュを捨てて撮る**(driver が対応していれば)。
     ///
     /// Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる**
-    /// (2026-08-06 に決定的再現。撮り直しても数分待っても直らない)。ブリッジ側の既定が
+    /// (決定的に再現。撮り直しても数分待っても直らない)。ブリッジ側の既定が
     /// 「WebView 内だけ refresh」なのは**シナリオ実行**の実測(全ノード refresh で
     /// snapshot +65ms・E2E-Android の sum +43%)に基づくもので、MCP はエージェントが
     /// 1手ずつ撃つ経路なので往復のほうが桁で大きく、この上乗せは見えない。
@@ -85,10 +85,10 @@ extension MCPServer {
     /// native のリストは操作可能な要素が優先的に残るので、同じ被害にはならない。
     /// 既に天井で読まれた木なら撮り直しても同じ木が返るだけなので撮らない。
     ///
-    /// **「web ページか」の判定は `TreeCoverage.holdsWebContent` に委ねる**(2026-08-15 に修正)。
-    /// 最初の実装は `type == "webView"` だけを見ており、**Android Chrome では1件も発火しなかった**
-    /// (あちらの木に webView 要素は無い)。固定コーパスに Android のブラウザが7枚あったのに
-    /// 当てずに入れたのが原因で、Yahoo 天気では 81 件が脱落していた
+    /// **「web ページか」の判定は `TreeCoverage.holdsWebContent` に委ねる**。
+    /// 単純に `type == "webView"` だけを見ると、**Android Chrome では1件も発火しない**
+    /// (あちらの木に webView 要素は無い)。固定コーパスに Android のブラウザが7枚あるのに
+    /// 当てずに入れると、Yahoo 天気で 81 件が脱落する
     static func needsWebPageCeiling(_ snapshot: SnapshotResponse) -> Bool {
         snapshot.truncatedCount > 0 && !SnapshotTruncation.isAtCeiling(snapshot)
             && TreeCoverage.holdsWebContent(in: snapshot)
@@ -135,14 +135,14 @@ extension MCPServer {
     /// 撮り直すたびに番号が変わってエージェントを混乱させる。ラベルが1つでも変われば
     /// (時計等)世代は進むが、それ自体は無害 —— stale 判定は「受領時点で最新だったか」で行う
     /// (resolveSessionRef 参照)ので、無関係な世代の増加が誤警告を増やすことはない。
-    /// **最初の世代は base 0**(= 従来の ref とビット単位で同じ)なので、世代が1本の間は
-    /// 応答が今までと完全に一致する。
+    /// **最初の世代は base 0**(= ブリッジが返す生の ref とビット単位で同じ)なので、世代が1本の間は
+    /// 応答がそのまま一致する。
     func adoptSnapshot(_ native: SnapshotResponse, args: [String: Any]) -> SnapshotResponse {
         let key = Self.engineKey(args)
         if var generations = refGenerations[key], let last = generations.last {
             let nativeIdentity = Set(native.elements.map { Self.identity($0, base: 0) })
             let lastIdentity = Set(last.snapshot.elements.map { Self.identity($0, base: last.base) })
-            // **アプリが同じであることも要求する**(2026-08-13 のレビュー指摘)。`identity` は
+            // **アプリが同じであることも要求する**(レビュー指摘)。`identity` は
             // frame を見ないので、**兄弟アプリの同じ画面は「同じ木」に見える**。ここで
             // 使い回すと世代が**新しいアプリの sessionBundleID で上書き**され、
             // `refFromAnotherAppMessage` の比較が B vs B になって**2回目の試行で素通り**する
@@ -194,7 +194,7 @@ extension MCPServer {
         return nil
     }
 
-    /// **ref を採った木と、今の木が同じアプリか**(2026-08-13・「アプリ切替」の監査で実機再現)。
+    /// **ref を採った木と、今の木が同じアプリか**(「アプリ切替」の監査で実機再現)。
     ///
     /// ref の世代は engineKey(= 機)ごとで、**アプリでは区切っていない**。同じ機で別アプリを
     /// 起動すると、前のアプリで採った ref が次のアプリの木に対して再照合され、
@@ -218,7 +218,7 @@ extension MCPServer {
             + " Take a fresh ft_snapshot and use the new refs."
     }
 
-    /// **ref を採ったときの木と、撃つ直前の木が違う**ことの警告(2026-08-15・Simulator で再現)。
+    /// **ref を採ったときの木と、撃つ直前の木が違う**ことの警告(Simulator で再現)。
     ///
     /// なぜ要るか: 既存の警告はどれも**要素の見え方**を見ている(gone / ghost / moved /
     /// ラベル変化 / 遮蔽 / 別アプリ)ので、**同じ id・同じラベル・同じ frame の別インスタンス**を
@@ -305,7 +305,7 @@ extension MCPServer {
     /// セッション ref → native ref(ブリッジへ渡す番号)。**最新世代の base を引くことでしか
     /// 正しく戻せない** —— 渡してよいのは verifiedRef/verifiedElement が返した「撮り直した後の」
     /// ref だけという規約(古い世代の ref を渡すと、その世代の base を引いても、ブリッジは
-    /// とうにその番号を再利用しているので無効)。世代が無ければ素通し(従来どおり)
+    /// とうにその番号を再利用しているので無効)。世代が無ければ素通し
     func nativeRef(_ sessionRef: Int, args: [String: Any]) -> Int {
         guard let last = refGenerations[Self.engineKey(args)]?.last else { return sessionRef }
         return sessionRef - last.base
@@ -322,7 +322,7 @@ extension MCPServer {
         let cache = cache ?? SnapshotAnnotationCache()
         // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
         // セッションのアプリに閉じているので、**別のアプリが前面に来ても同じ木を返し続ける**。
-        // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
+        // 実測(シミュレータで確定。症状の初出は iPhone 実機):
         // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
         // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
         var backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: driver)
@@ -392,7 +392,7 @@ extension MCPServer {
     static func coordinateUnit(isAndroid: Bool) -> String { isAndroid ? "px" : "pt" }
 
     /// `snapshotAfter` が読む木は基本的に整定を待たないという注意を初回だけ満額で出す
-    /// (2026-08-10。settle-lite 追加後も「基本的に」待たない: 直後の木が操作前と見分けが
+    /// (settle-lite 追加後も「基本的に」待たない: 直後の木が操作前と見分けが
     /// 付かないときだけ、snapshotAfterBody が1回だけ短い待ちを挟んで撮り直す)。
     /// 実測: ft_type の直後は候補リストがまだネットワーク待ちで、waitFor 付きの ft_snapshot なら
     /// 出るものが「候補なし」に見えた
@@ -410,7 +410,7 @@ extension MCPServer {
             short: "(immediate read — see the first snapshotAfter note)\n")
     }
 
-    /// 直後の木が操作前と区別できないときだけ挟む、1回きりの短い再読(settle-lite。2026-08-10)。
+    /// 直後の木が操作前と区別できないときだけ挟む、1回きりの短い再読(settle-lite)。
     /// **value と frame を比較に含めるのが要点**: ft_type 直後は value が変わるので「変化あり」に
     /// なり無駄な待ちが入らない/ スクロールを伴うタップは frame が動くので同じ理由で入らない。
     /// **push 遷移が主目的**: 操作直後の木が古いまま返り、snapshotAfter が空振りして
@@ -419,7 +419,7 @@ extension MCPServer {
     /// label/frame までで、value/checked の変化には反応しない(あちらはスクリーンショットの
     /// 鮮度判定用で、ここが要る「入力しただけの変化」を感知できない)
     /// **同一性判定はこの1本だけ**(ft_batch も跨いで呼ぶ。2つ目を書かない)
-    /// **truncatedCount も見る**(2026-08-13 監査): `elements` はブリッジ側で既に
+    /// **truncatedCount も見る**(監査): `elements` はブリッジ側で既に
     /// maxSnapshotElements(既定120)へ切り詰め済みなので、変化が切り詰められた側だけに
     /// 起きると `elements` は同一のまま検知できない(実測: iOS Safari の横スクロール表で
     /// タップ後に +113 件がすべて cutoff の下に並び、生存 120 行はバイト同一だった)。
@@ -460,7 +460,7 @@ extension MCPServer {
 
     /// **中身が1つも入っていない大きなスクロール容器**の名前(無ければ nil)。
     ///
-    /// `looksUnchanged` では拾えない「まだ読み込み中」の形を1つだけ足す(2026-08-12 の監査)。
+    /// `looksUnchanged` では拾えない「まだ読み込み中」の形を1つだけ足す(監査)。
     /// 実測(Google マップ・経路検索): 出発地/目的地を確定した直後の snapshotAfter は
     /// `#expandingscrollview_container` が**子ゼロ**のまま返り、経路一覧は次の ft_snapshot で
     /// 初めて出た —— 木そのものは前の画面から大きく変わっているので、既存の settle-lite
@@ -535,7 +535,7 @@ extension MCPServer {
     /// 操作系ツールが `snapshotAfter: true` で返す「操作の直後の画面」。
     ///
     /// **往復を半分にするためにある**: tap/type/drag は「変わったかもしれない」で終わるので、
-    /// 読み手はほぼ必ず ft_snapshot を続けて撃つ。実測(2026-08-09 のマップ探索1セッション)では
+    /// 読み手はほぼ必ず ft_snapshot を続けて撃つ。実測(マップ探索1セッション)では
     /// 46 回の呼び出しのうち 21 回が**この確認だけの snapshot** だった。
     ///
     /// **撮るのは操作の直後**。木が操作前(`lastSnapshots`)と見分けが付かないときだけ、
@@ -553,7 +553,7 @@ extension MCPServer {
     ///: catch した回(読みに失敗した回)は `lastSnapshots` が back 前の木のまま
     /// 残るため、`succeeded` を返さずに「今の lastSnapshots」だけを見ると back 前の木と
     /// 指紋が自明に一致し、謝罪文の横に「back は効かなかった」という偽の注記が並ぶ
-    /// (2026-08-12 実測)。他の呼び出し口は text だけを使い、この差は見ない
+    /// (実測)。他の呼び出し口は text だけを使い、この差は見ない
     func snapshotAfterBodyWithStatus(_ args: [String: Any]) async -> (text: String, succeeded: Bool) {
         guard args["snapshotAfter"] as? Bool == true else { return ("", false) }
         do {
@@ -586,7 +586,7 @@ extension MCPServer {
                         } ?? (Self.notationHint(waitFor, in: snapshot)
                               + Self.similarLabelsHint(waitFor, in: snapshot)))
                         + Self.waitForScrollHint(in: snapshot)
-                        // **操作の効果も疑う**(2026-08-12 監査): waitFor はここでしか「操作前の木」
+                        // **操作の効果も疑う**(監査): waitFor はここでしか「操作前の木」
                         // を持たない(ft_snapshot 単独には操作前が無い)。判定は settle-lite/
                         // waitForChange と同じ looksUnchanged を再利用する(2つ目の同一性判定を書かない)
                         + (beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
@@ -647,7 +647,7 @@ extension MCPServer {
         }
     }
 
-    /// `snapshotAfterBodyWithStatus` の waitForChange 分岐(waitFor の隣の抽出。2026-08-12)。
+    /// `snapshotAfterBodyWithStatus` の waitForChange 分岐(waitFor の隣の抽出)。
     /// **beforeAction が無ければ待たない**(比較対象が無いので「変わった」と言う材料が無い)。
     /// 戻り値の snapshot は撮り直した最新の木(呼び手はこれで自分の `snapshot` を置き換える)
     func waitForChangeBody(beforeAction: SnapshotResponse?, snapshot initial: SnapshotResponse,
@@ -675,7 +675,7 @@ extension MCPServer {
                 + Self.unrepresentedScreenCaveat(snapshot) + "\n")
         }
         // **「変わった」は「終わった」ではない**: 最初に差が出た木が遷移途中のこともある
-        // (2026-08-12 の実測: 検索結果がまだネットワーク待ちの「候補なし」中間状態で確定を
+        // (実測: 検索結果がまだネットワーク待ちの「候補なし」中間状態で確定を
         // 返した)。直前の読みと一致するまで少数回だけ読み直して採り直す。waitSeconds には縛らない
         // (settle-lite と同じく操作後の固定小コストであって、待ち時間の指定ではない)
         var churn = 0
@@ -728,15 +728,15 @@ extension MCPServer {
     /// —— セッション内で ref は一意なので、世代があるのに見つからないのは番号の書き間違いか、
     /// 直近5世代より前の snapshot からコピーしてきた番号のどちらか。
     ///
-    /// **素通しの条件はセッション全体で見る**(2026-08-14・実機+仮想デバイス混在の監査)。
-    /// 以前は「この engineKey に世代が無いか」で判定していたが、engineKey は**指し方**込み
+    /// **素通しの条件はセッション全体で見る**(実機+仮想デバイス混在の監査)。
+    /// 「この engineKey に世代が無いか」だけで判定すると、engineKey は**指し方**込み
     /// (`profile:<project>:<name>` / `direct:ios:<port>:`)なので、**同じ機を profile: で撮って
-    /// port: で撃つ**だけで「世代なし」になり、番号がそのままブリッジへ渡っていた。
+    /// port: で撃つ**だけで「世代なし」になり、番号がそのままブリッジへ渡ってしまう。
     /// ブリッジは自前の 1..N で解決するので**別の要素に当たって成功と報告する** ——
     /// 実機で再現: profile: で撮った木の ref は 70..93 なのに `port:8143 ref:10` が
     /// `tap [10] done` を返し、ブリッジの #10 = `#btn_input_submit` を実際に押した
     /// (`submitted=-` → `submitted=physical`)。既存の「機を跨いだ ref」テストが通っていたのは
-    /// 「木が画面を代表していない」の申告由来の警告。**覆いを先に聞く**(2026-08-28 実機で実測):
+    /// 「木が画面を代表していない」の申告由来の警告。**覆いを先に聞く**(実機で実測):
     /// 通知センターが出ているときは覆いの検知と `hitTest` の**両方**が発火し、後者は
     /// 「アプリスイッチャーが開いている」という**誤った説明**を並べてしまう。
     /// 面が分かっているならそちらが正確なので、当たったほうだけを言う。
@@ -747,7 +747,7 @@ extension MCPServer {
         return await treeDoesNotMatchScreenWarning(found, driver: driver)
     }
 
-    /// **`screenNotRepresentedWarning` を毎タップ聞き直さない**(2026-08-31)。
+    /// **`screenNotRepresentedWarning` を毎タップ聞き直さない**。
     /// 撃つ前の照合(`verifiedRef`)は ref のたびに最大3往復(`/systemalert` →
     /// `/systemui/covering` → `/hittable`)を払っており、同じ画面へ連打するだけの探索でも
     /// 木の数だけ払っていた。**撮り直した fresh 木の指紋が前回と同じなら答えを使い回す**——
@@ -793,7 +793,7 @@ extension MCPServer {
             + " appears here. \(handleAlertFirst)."
     }
 
-    /// **中心がソフトキーボードの下にある要素への ref 操作は断る**(ユーザー決定 2026-09-14)。
+    /// **中心がソフトキーボードの下にある要素への ref 操作は断る**(ユーザー決定)。
     /// ghost・重なりは「拒否せず警告して撃つ」だが、キーボード被覆は**結果が確実で副作用がある**:
     /// XCUITest はキーの上に指が落ちて**焦点の欄に文字が入り**(実機 SE3・`#tab_about` で「o」)、
     /// in-app は 422 で断る = エンジンで割れていた。判定は ref 形・DSL と同じ `KeyboardOcclusion`
@@ -877,7 +877,7 @@ extension MCPServer {
     ///
     /// **費用**: `/systemalert` と同じ「目印を1問聞くだけ」の口。**MCP のタップ経路だけ**に置く ——
     /// エージェントは1手ずつ撃つので影響しないが、DSL は1 run で数千回撃つ。DSL へ広げるのは
-    /// 実害を観測してから(2026-08-28 時点で DSL での観測は0件)。
+    /// 実害を観測してから(現時点で DSL での観測は0件)。
     /// **警告のみ**(拒否しない)。答えられない(旧ブリッジ・in-app・Android)ときは黙る
     static func systemUICoveringWarning(_ found: ElementInfo, driver: AppDriver) async -> String {
         guard let covering = try? await driver.systemUICovering(), covering.covering
@@ -897,7 +897,7 @@ extension MCPServer {
     /// `foreground: true` のままになる(実機・Simulator の両方で実測)。木由来の判定は全部素通しする。
     /// **唯一食い違うのがライブのヒットテスト** —— 木が今まさに載せている要素を引き当てられない。
     ///
-    /// 実測(2026-08-28・Simulator の設定 root): 覆い無し 0/12 → アプリスイッチャーで 12/12。
+    /// 実測(Simulator の設定 root): 覆い無し 0/12 → アプリスイッチャーで 12/12。
     /// 実害の witness は同じ形で `ft_tap` が **`tap [5] done. (selector: #com.apple.settings
     /// .primaryAppleAccount)` と成功を返しながら、実際にはスイッチャーの別アプリのカードに
     /// 当たって端末ごと別アプリへ切り替わった**こと。
@@ -1003,7 +1003,7 @@ extension MCPServer {
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount))
         case .ghost(let found):
-            // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)。
+            // **拒否せず警告して撃つ**(方針を後退させた。理由は RefGuard の宣言)。
             // **キーボード被覆だけは断る**(`keyboardRefusal` の doc)
             if let refusal = Self.keyboardRefusal(found, keyboardOcclusion: keyboardOcclusion) {
                 throw MCPError(refusal)
@@ -1035,7 +1035,7 @@ extension MCPServer {
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
-            // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
+            // 切り分けの手掛かりとして出す(外部フィードバック。severity は低いとのこと)
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
             return (found.ref, originNote
@@ -1051,7 +1051,7 @@ extension MCPServer {
     /// ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部 StepExecutor に入っており、
     /// **同じ知見の2つ目の実装を作ると必ず割れる**(docs/design.md の「契約は1箇所」)。
     /// ここは FlowStep を1つ組んで投げるだけにする = MCP で届く要素はシナリオでも届く。
-    /// `scrollFrame` 引数の解決結果。**ref(整数)は rect へ、文字列は従来どおり locator へ**
+    /// `scrollFrame` 引数の解決結果。**ref(整数)は rect へ、文字列は locator へ**
     /// (FlowStep.scrollFrameRect 参照)。`original` は ref 経由のときだけ埋まり、
     /// シート展開後に同じ要素を撮り直した木から再照合して rect を作り直すのに使う
     /// **ft_scroll_to と ft_swipe が共有する**(解決の2つ目の実装を作らない)
@@ -1062,7 +1062,7 @@ extension MCPServer {
         var note: String = ""
     }
 
-    /// **型は入口で確かめる**(2026-08-12 のレビュー指摘): resolveScrollFrameArg が見るのは
+    /// **型は入口で確かめる**(レビュー指摘): resolveScrollFrameArg が見るのは
     /// Int と String だけなので、それ以外(bool・配列・オブジェクト)は空の ScrollFrameArg に
     /// なり、**容器を無視した全画面の操作を「inside …」と名乗って**返す。ft_swipe と ft_scroll_to の
     /// 両方が resolveScrollFrameArg より前(ドライバ取得より前)に呼ぶ —— 片方だけに置くと
@@ -1074,7 +1074,7 @@ extension MCPServer {
         }
     }
 
-    /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落。2026-08-10)。
+    /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落)。
     /// 既存の stale-ref 再照合(resolveSessionRef → RefGuard.relocate)を通してから frame を取る ——
     /// verifiedRef と同じ規律で、撮った時点から動いていても黙って古い座標を使わない
     func resolveScrollFrameArg(_ args: [String: Any], driver: AppDriver) async throws
@@ -1092,7 +1092,7 @@ extension MCPServer {
             let target = resolved.element
             let takenFrom = generationSnapshot(containing: ref, args: args)
             let fresh = try await freshSnapshot(driver, args: args)
-            // **ref を食う3つ目の経路**(2026-08-13 の掃討漏れ)。verifiedRef / verifiedElement /
+            // **ref を食う3つ目の経路**(掃討漏れ)。verifiedRef / verifiedElement /
             // ここ、で全部。容器の ref も id・ラベルで再照合されるので、放置すると
             // **別アプリの同名容器の中でジェスチャが走る**
             if let message = Self.refFromAnotherAppMessage(
@@ -1196,7 +1196,7 @@ extension MCPServer {
         }
     }
 
-    /// `ft_scroll_to` 成功文に添える多重ヒットの注記(2026-08-12 監査)。**セレクタ依存の本文**
+    /// `ft_scroll_to` 成功文に添える多重ヒットの注記(監査)。**セレクタ依存の本文**
     /// であって木だけから決まる注記ではないので NoteCatalog には登録しない
     /// (NoteCoverageTests のソース走査対象は木由来の注記だけ)
     static func multiMatchHint(_ matched: [ElementInfo]) -> String {
@@ -1220,7 +1220,7 @@ extension MCPServer {
     func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
         // **型違いだけ共有の門と同じ文言**にする(stringArgument は使わない —— あちらは
         // selector が ArgumentBounds.mustNotBeEmpty に載っているため空文字を自前の文言より先に
-        // 断ってしまう)。必須+空文字の文言は DSL 構文の案内込みで従来どおり残す
+        // 断ってしまう)。必須+空文字の文言は DSL 構文の案内込みで残す
         if let raw = args["selector"], !(raw is String) {
             throw MCPError("selector must be a string (got \(Self.describeArgumentValue(raw)))"
                 + " — pass a JSON string, not a number")
@@ -1237,7 +1237,7 @@ extension MCPServer {
         let scrollDriver = try await driver(args)
         // **曖昧さは「渡す前に見えていた画面」で判定する**: 探索後の木で数えると、リストが
         // 読み込み直しに入っている回に同名の容器が1つしか残らず黙ってしまう
-        // (2026-08-07 実測。Google マップは探索スワイプのたびに結果を組み直す)
+        // (実測。Google マップは探索スワイプのたびに結果を組み直す)
         let beforeScroll = lastSnapshots[Self.engineKey(args)]
         let selector = FTSelector.parse(selectorText)
         let scrollFrameArg = try await resolveScrollFrameArg(args, driver: scrollDriver)
@@ -1264,7 +1264,7 @@ extension MCPServer {
         let timingStart = timingClock.now
         var outcome = await executor.execute(step)
         // **必ず撮り直す**(0スワイプで見つかった回も)。executor が解決に使った木を再利用して
-        // 1枚ぶん(iOS 実測 2.0s)節約する案は 2026-08-12 に実装して**撤回**した ——
+        // 1枚ぶん(iOS 実測 2.0s)節約する案は実装して**撤回**した ——
         // 撮り直しは節約ではなく**独立した砦**で、これを省くと「対象が返す木から消えている」
         // (MCPRefGuardTests)と「中心が画面外へ動いた」(MCPScrollToOffscreenGateTests)の
         // 2つのゲートが構造的に無効になる。後者は **0スワイプの witness を持つ**
@@ -1278,7 +1278,7 @@ extension MCPServer {
         // ときだけ**動かす —— 当てずっぽうのドラッグは地図やリストを勝手に動かす
         var sheetNote = ""
         var rescueMs: Int?
-        // **同じ画面で2度は撃たない**(2026-08-12 の監査): 救済は実測 21.2 秒かかるのに、
+        // **同じ画面で2度は撃たない**(監査): 救済は実測 21.2 秒かかるのに、
         // 1回目が「3回目も同じ」と結論した画面で ft_scroll_to を撃ち直すと全額を再び払っていた。
         // 鍵は木の指紋(sheetRescueKey)—— 画面が変われば指紋も変わるので、記憶は自然に失効する
         let rescueKey = Self.sheetRescueKey(after)
@@ -1329,7 +1329,7 @@ extension MCPServer {
                     + " so the search was not retried."
                     + Self.sheetManualExpandHint(after) + "\n"
             } else if let alreadyThere = Self.visibleAfterExpansion(step: step, in: expanded) {
-                // **展開しただけで出ていたら、そこで終わり**(2026-08-12 の実アプリ監査)。
+                // **展開しただけで出ていたら、そこで終わり**(実アプリ監査)。
                 // シートを広げる目的は「隠れていた行を出すこと」なので、出た時点で探索の
                 // 目的は達成されている。ここで素通しして再スワイプに入ると、**この画面では
                 // リスト内のスワイプが外側シートの折りたたみに化ける**ため、せっかく出した行を
@@ -1354,12 +1354,12 @@ extension MCPServer {
                 outcome = await retryExecutor.execute(step)
                 after = try await freshSnapshot(scrollDriver, args: args)
                 rescueMs = Int((timingClock.now - rescueStart) / .milliseconds(1))
-                // **再試行後にシートが元より縮んでいたら名指しする**(2026-08-12実測: Apple
+                // **再試行後にシートが元より縮んでいたら名指しする**(実測: Apple
                 // マップの乗換案内は、リスト端で続けたスワイプが外側シートの折りたたみに化ける。
                 // 黙っていると読み手は同じ探索をもう一度撃つ)
                 var shrunkNote = ""
                 // **再試行も sheetCollapsed で終わったら、その画面の性質として名指しする**
-                // (2026-08-12実測: Apple マップの乗換案内は、リスト内のドラッグが外側シートの
+                // (実測: Apple マップの乗換案内は、リスト内のドラッグが外側シートの
                 // 折りたたみに化ける。展開→再試行→また畳まれる、を黙って返すと読み手は
                 // 3回目を撃つ)。高さ比較(shrunk)より直接的な証拠なのでこちらを優先する
                 if !StepExecutor.isSuccess(outcome.status),
@@ -1404,7 +1404,7 @@ extension MCPServer {
         }
         // **成功は .passed/.passedViaFallback/.healed の3形**(StepExecutor.isSuccess の定義)。
         // fallback 一致も探索としては成功であり、失敗文を投げると内部 enum(FlowLocator ダンプ)が
-        // そのまま利用者に見える(2026-08-10 実害)
+        // そのまま利用者に見える(実害)
         guard StepExecutor.isSuccess(outcome.status) else {
             // ここに来る時点で outcome.status は failed/skipped/inconclusive のいずれか
             let reason: String
@@ -1416,12 +1416,12 @@ extension MCPServer {
             }
             // **fail-fast(scrollFrame 未解決)は別の文で伝える**: 通常の「did not reach the
             // element」はスワイプを何本か送った前提の文言で、fail-fast は1本も送っていないので
-            // そのままでは誤解を招く(2026-08-08。StepNote.scrollFrameMissing = DSL と共有した判定)
+            // そのままでは誤解を招く(StepNote.scrollFrameMissing = DSL と共有した判定)
             if outcome.notes.contains(.scrollFrameMissing) {
                 throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
                     + Self.scrollAlternativesHint(beforeScroll ?? after))
             }
-            // **渡された scrollFrame 容器が最終木から消えていたら名指しする**(2026-08-12実測:
+            // **渡された scrollFrame 容器が最終木から消えていたら名指しする**(実測:
             // Apple マップの乗換案内は探索スワイプがシートごと畳み、最終画面が地図だけになる。
             // 探索開始時には実在した容器(無ければ scrollFrameMissing で上の分岐に入る)なので、
             // 消えたのは探索中 = 同じ探索を繰り返しても届かない)。判定は**最終木**で行う ——
@@ -1435,7 +1435,7 @@ extension MCPServer {
                     + " showed it) and read the visible rows, or use ft_swipe one screenful at a"
                     + " time instead.\n"
             }
-            // **止まった時点で見えているものを一緒に返す**(外部フィードバック 2026-08-06)。
+            // **止まった時点で見えているものを一緒に返す**(外部フィードバック)。
             // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
             // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
             // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
@@ -1443,14 +1443,14 @@ extension MCPServer {
             // 読んで**もう一度同じことを手で試す**(そのぶん往復が増える)
             // **内訳は失敗側にも出す**: 実測で 7.8 秒かけて届かなかった回に何も出ず、
             // 何本振ったのかも分からなかった —— 遅さの説明が最も要るのはこちら
-            // **シートが原因の失敗には必ず具体手順を添える**(2026-08-12 の監査)。救済を
+            // **シートが原因の失敗には必ず具体手順を添える**(監査)。救済を
             // 撃たなかった/撃てなかった回(グラバーは居るのに `.sheetCollapsed` が立たない、
             // 記憶で省いた等)は、FTCore 側の総称ヒント「drag its grabber upward」で終わっており、
             // 読み手は毎回 ref と目標 y を自分で組み立てていた。**sheetNote が既に出していたら足さない**
             let manualExpand = sheetNote.contains("ft_drag fromRef:") ? ""
                 : ((outcome.notes.contains(.sheetCollapsed) || !sheetNote.isEmpty)
                    ? Self.sheetManualExpandHint(after) : "")
-            // **探索中の打ち切りは最終木からは分からない**(2026-08-12 のブラウザ監査):
+            // **探索中の打ち切りは最終木からは分からない**(ブラウザ監査):
             // 目的の行が画面に入っていた周回で上限に当たっていても、通り過ぎた先の最終画面が
             // 上限内なら `truncationHint(after)` は黙る。実測の2回のうち1回がこれで、
             // 「見つからない」だけを読んだ結果、同じ探索をもう一度撃って 45 秒を捨てた
@@ -1474,7 +1474,7 @@ extension MCPServer {
                 + Self.similarLabelsHint(selectorText, in: after)
                 + Self.scrollAreaHint(beforeScroll ?? after, args: args, isAndroid: isAndroid))
         }
-        // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
+        // **成功と言う前に、返す木にそれが居ることを確かめる**(探索で外した)。
         // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
         // その場合 executor は途中の観測で passed のまま、撮り直した木は**別画面**になり、
         // 「scrolled to #nav_diagnostics」+ `#nav_diagnostics` が居ない木、が返っていた。
@@ -1527,12 +1527,12 @@ extension MCPServer {
                 landed = ""
             }
         }
-        // **多重ヒットは黙らない**(2026-08-12 監査): 木順の先頭を掴むのは既定挙動のままだが、
+        // **多重ヒットは黙らない**(監査): 木順の先頭を掴むのは既定挙動のままだが、
         // 他にも当たりがあったことを言わないと「別の意図しない要素に静かに命中した成功」を
         // 見分けられない(実測: tenki.jp で "*週間*" がタブ「2週間」に当たり、週間予報の行は
         // 無視された)。件数は `matchedInTree` で計算済み = 追加コストは無い
         landed += Self.multiMatchHint(matchedInTree)
-        // **木を返す口はすべて名指しする**(2026-08-06 の掃討で漏れを見つけた)。上の再確認は
+        // **木を返す口はすべて名指しする**(掃討で漏れを見つけた)。上の再確認は
         // 「セレクタが居るか」しか見ないので、**別アプリに同じ id がある**と素通しする ——
         // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形
         let scrollToLaunched = launchedBundleIDs[Self.engineKey(args)]
@@ -1573,7 +1573,7 @@ extension MCPServer {
                                              cache: cache), context: .scrollTo)
             // **既定で畳む**(expandBulk で戻せる): ft_scroll_to の答えは「探した1つがどこに居るか」
             // なので、地図のピンが数十行並ぶ意味は薄い。ft_snapshot と同じ規則にする
-            // (2026-08-10 まではここだけ interactiveOnly を無視して常に全行を出していた)
+            // (ここだけ interactiveOnly を無視すると常に全行を出してしまう)
             + SnapshotRenderer.render(after, flagging: cache.ghostFlags(after),
                                       collapsingBulk: collapsingBulk,
                                       interactiveOnly: treeArgs["interactiveOnly"] as? Bool == true,

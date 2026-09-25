@@ -12,7 +12,7 @@ extension MCPServer {
     // MARK: - ツール定義
 
     // **共通引数の説明は最小限にする**: 5つ × デバイス系ツールで定義全体の約4割を占めるため、
-    // 1文字が13倍になる(2026-08-05 実測)。意味は enum と名前で足りる
+    // 1文字が13倍になる(実測)。意味は enum と名前で足りる
     static let platformProperty: [String: Any] = [
         "type": "string", "enum": ["ios", "android"], "description": "default ios",
     ]
@@ -30,7 +30,7 @@ extension MCPServer {
         "type": "string", "description": "Test project name",
     ]
     /// iOS の宛先を udid で指す(H)。ft_list_devices が出す udid をそのまま渡せる
-    // **繰り返し載る説明は短文+詳細は serverInstructions**(2026-08-10 のスキーマ痩身)。
+    // **繰り返し載る説明は短文+詳細は serverInstructions**。
     // ここを長くすると全ツールに複製されて毎セッションのコンテキスト費用になる —— ニュアンスを
     // 足したくなったら serverInstructions 側へ(initialize で1回だけ渡る)
     static let udidProperty: [String: Any] = [
@@ -95,7 +95,7 @@ extension MCPServer {
     ]
     /// 共通引数の詳細。**各ツールのプロパティ説明は短文に留め、ニュアンスはここに1本化する**
     /// (initialize の instructions で1回だけ渡る。プロパティ側に書くと全ツールへ複製され、
-    /// 毎セッションのコンテキスト費用になる —— 2026-08-10 のスキーマ痩身)
+    /// 毎セッションのコンテキスト費用になる)
     static let serverInstructions = """
         Common arguments accepted by every ft_* device tool: platform (default ios) / project / \
         profile (profiles/runs/<name>; same device and engine as ft_run_scenario) / \
@@ -676,7 +676,7 @@ extension MCPServer {
     ]
 
     /// ツールがどの引数群を要るか。**デバイスに触らないツールへ5つ足さない**のが要点 ——
-    /// 共通引数はツール定義全体の過半を占めており(2026-08-05 実測 57%)、
+    /// 共通引数はツール定義全体の過半を占めており(実測 57%)、
     /// 使えない引数を並べるとコンテキストを食うだけでなく「渡せば効く」と誤解させる
     enum ToolScope {
         /// デバイスを掴む(platform/port/serial/profile/project)
@@ -718,7 +718,7 @@ extension MCPServer {
     /// **`requestedAs`**: 判定は `ft_type(replace:true)` と `ft_clear_input` の
     /// 両方が共有するが、**文言は呼び手ごとに持つ**(CLAUDE.md の規律)—— `ft_clear_input` は
     /// 一度も「replace」を頼んでいないのに、既定の文言のまま使うと「replace requested」と
-    /// 事実と違うことを言う。呼び手が自分の動詞を渡す(既定は従来どおり "replace")
+    /// 事実と違うことを言う。呼び手が自分の動詞を渡す(既定は "replace")
     static func replaceVerificationNote(target: ElementInfo?, expected: String,
                                         fresh: SnapshotResponse?,
                                         requestedAs: String = "replace") -> String {
@@ -827,7 +827,7 @@ extension MCPServer {
     }
 
     /// 座標形は ref の安全網(遮蔽・残像・中身外し)を1つも通らない。**設計上そうなる**が、
-    /// 説明に書いていないと読み手が ref 形と同じ信頼度だと思い込む(2026-08-07 の棚卸し)
+    /// 説明に書いていないと読み手が ref 形と同じ信頼度だと思い込む(棚卸しで判明)
     static let coordinateCaveat = "Coordinates skip the ref safety checks (occlusion, scroll"
         + " leftovers, a container whose centre misses its own content), so prefer a ref when the"
         + " element is in the tree."

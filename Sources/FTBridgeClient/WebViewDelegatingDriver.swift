@@ -139,7 +139,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         snapshot.webViewPath = WebViewPath.delegated
         // offscreen ヒントは純 xcuitest エンジン限定にする: hybrid の WebView スクロールは
         // in-app の contentOffset 短絡が既に速く(実測 scrollToTop 1.5s)、ヒントが乗ると
-        // StepExecutor の跳躍(実ドラッグ)が優先されて計測済みの挙動が変わる(2026-08-04)
+        // StepExecutor の跳躍(実ドラッグ)が優先されて計測済みの挙動が変わる
         snapshot.offscreen = nil
         guard !sawWebContent else { return snapshot }
 
@@ -227,7 +227,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
     public func tap(x: Double, y: Double) async throws { try await screenDriver.tap(x: x, y: y) }
     /// domInterop の入力は「座標タップでフォーカス → フォーカス中要素へ typeText」なので、
-    /// **タップがフォーカスを立て損なうと打鍵が丸ごと落ちる**(値が空のまま。実測 2026-08-04:
+    /// **タップがフォーカスを立て損なうと打鍵が丸ごと落ちる**(値が空のまま。実測:
     /// E2E-CMP の WebView シナリオが 4/78 でこれを踏み、後段の検証だけが落ちていた)。
     /// DOM は `value` を返せるので**読み返して1回だけ張り直す**。
     /// **判定は「値が入力前から1文字も変わっていない」ときだけ**にする —— 「期待した文字列を
@@ -244,7 +244,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         await warmDelegatedForEvent()
         try await delegated.tap(x: point.x, y: point.y)
         try await delegated.type(ref: nil, text: text)
-        // **値を報告する要素だけ**読み返す(報告しない要素は検証不能 = 従来どおり撃ちっぱなし。
+        // **値を報告する要素だけ**読み返す(報告しない要素は検証不能 = 撃ちっぱなしのまま。
         // ここを空文字で代用すると、value を持たない要素で毎回二重入力になる)
         guard !text.isEmpty, let before, before != nil else { return }
         // 読み返しは DOM の再取得(in-app 経路。実測 1手 3ms 級なので正常系でも重くない)
@@ -271,11 +271,11 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// 用途つき版。**delegated/domInterop 中でもスクロール目的だけは in-app を先に試す**:
     /// WKWebView の中の WKScrollView は contentOffset で動かせるので、XCUITest の実スワイプ
     /// (1回 ≒ 450ms、直後の委譲 snapshot も 300ms)を丸ごと省ける。効かない構成なら in-app が
-    /// 501 を返すので従来どおり XCUITest へ落とす。
+    /// 501 を返すので XCUITest へ落とす。
     ///
     /// **ref を使わない操作なので名前空間の不変条件は崩れない**(このクラスの冒頭注記の例外は
     /// ここだけ。ref を伴う操作を同じ理屈で in-app へ回してはいけない)。
-    /// intent が `.gesture`(DSL の `swipe` = ジェスチャ自体が目的)は従来どおり委譲先へ送る:
+    /// intent が `.gesture`(DSL の `swipe` = ジェスチャ自体が目的)は委譲先へ送る:
     /// in-app は interop のジェスチャを駆動できない。
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
                       path: FTSwipePath?) async throws {

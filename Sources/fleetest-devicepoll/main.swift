@@ -2,7 +2,7 @@
 //   fleetest-simstream    … iOS シミュレータ。CoreSimulator/SimulatorKit の私有 API で IOSurface を
 //                          掴むため**実機では原理的に不可**(deviceSet に実機は居ない)。
 //                          macOS 27 では iOS 実機を AVCaptureDevice として出す DAL プラグインも
-//                          消えており(2026-07-25 実測: CoreMediaIO デバイス数 0)、この道も無い。
+//                          消えており(実測: CoreMediaIO デバイス数 0)、この道も無い。
 //   fleetest-androidstream … adb screenrecord。Android 実機でも動くが **画面が動いている間しか
 //                          フレームが流れない**(静止画面は 20 バイトのキープアライブのみ。同実測)。
 // そこで実機は「スクリーンショットを一定間隔で取る」方式に統一する。遅いが確実で、静止画面でも映る。
@@ -152,7 +152,7 @@ while true {
     // **1 周ごとに解放する** —— 取得(`URLSession` / `adb` の `Data`)も縮小(Core Graphics の
     // CGImage・CGImageSource)も autoreleased なオブジェクトを返すので、**トップレベルの
     // 抜けないループには pool が1つも無く**、囲まないと1枚も解放されないまま回り続ける
-    // (実測 2026-09-22: 実機 1 台の配信が 1 時間 15 分で 71 GB ≒ **55 GB/時**。
+    // (実測: 実機 1 台の配信が 1 時間 15 分で 71 GB ≒ **55 GB/時**。
     // `api monitor` の `availableData` と同型で、あちらは 630 MB/時だった = ここは画像なので桁が違う)。
     // **sleep は pool の外**(待っている間ずっと1周ぶんを抱えない)
     autoreleasepool {

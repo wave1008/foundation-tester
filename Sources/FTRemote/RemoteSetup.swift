@@ -118,7 +118,7 @@ public enum RemoteSetupPlan {
     /// zsh。zsh では `status` が `$?` の読み取り専用エイリアスなので、代入が
     /// `read-only variable: status` で失敗し、**中のスクリプトの終了コードが zsh のエラーに化けて
     /// 消える**(preflight の needs-manual=2 が 1 に化け blocked と誤報した。rm も実行されず
-    /// 一時ファイルが残った。2026-08-16 に localhost で実測)
+    /// 一時ファイルが残った。localhost で実測)
     /// **PATH に Homebrew を足してから実行する**。非対話 ssh の PATH は
     /// `/usr/bin:/bin:/usr/sbin:/sbin` だけで、install.sh が要求する `brew`(xcodegen の導入元)が
     /// 見えない —— 入っているのに「Homebrew が無い」で落ちる(`RemoteShell.remoteRunCommand` と
@@ -192,8 +192,8 @@ public enum RemoteSetupPlan {
     }
 
     /// **ランナーは origin から fetch する**ので、手元だけにあるコミットへは合わせられない。
-    /// そのまま撃つと `git checkout` が exit 128 で落ちるだけで理由が読めない(2026-08-16 に
-    /// 実際に踏んだ)。押していないと分かっているなら、ssh を張る前にそう言う
+    /// そのまま撃つと `git checkout` が exit 128 で落ちるだけで理由が読めない(実際に
+    /// 踏んだ)。押していないと分かっているなら、ssh を張る前にそう言う
     public static func unpublishedRevisionMessage(revision: String) -> String {
         "commit \(revision.prefix(7)) is not on any remote — the runner fetches from origin, "
             + "so push the branch first (git push), then re-run this command"

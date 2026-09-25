@@ -95,7 +95,7 @@ extension AndroidDriver {
     /// エラーから「一次情報だけ」を取り出す。`.unavailable` のキャッシュに格納する値と、
     /// `unreachableError` の `detail` はここを通す ——
     /// **既に組み立て済みの DriverError 説明文(errorDescription)を渡すと、
-    /// unreachableError がもう一度包んで二重表示になる**(2026-09-16 の負荷テストで実際に踏んだ:
+    /// unreachableError がもう一度包んで二重表示になる**(負荷テストで実際に踏んだ:
     /// 固定文が2回出て一次情報が括弧の奥に埋もれた)。DriverError.bridgeUnreachable/
     /// .bridgeConnectionRefused は raw な一次情報を運んでいるので、その `detail` だけを使い
     /// context は捨てる(ここで確定させ直す)。それ以外のエラーは errorDescription/文字列化へ後退する
@@ -135,7 +135,7 @@ extension AndroidDriver {
 
     /// - `detail`: **一次情報の文字列だけを渡すこと**(adb の生の失敗文言等)。
     ///   `DriverError.errorDescription` 経由で既に組み立て済みの説明文を渡すと、
-    ///   この関数が組み立てる文の中でもう一度包まれて二重表示になる(2026-09-16 に実際に踏んだ。
+    ///   この関数が組み立てる文の中でもう一度包まれて二重表示になる(実際に踏んだ。
     ///   `rawFailureDetail` がこの規律を守る唯一の抽出口)
     /// - `physicalDevice`: 実機かエミュレータか。呼び出し元は `isPhysicalAndroidDevice`/
     ///   `androidContext()` から渡す(既定値を置かない ——渡し忘れをコンパイルで止める)
@@ -143,12 +143,12 @@ extension AndroidDriver {
     ///   **キャッシュだと名乗らせる**: 再生された文はライブの失敗と1バイトも
     ///   違わなかったので、読み手は「今まさに adb forward が落ちた」と読む。実際、手で
     ///   `adb forward` を打って成功し `fleetest bridge status` も通るのに MCP だけが同じ文言を
-    ///   返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした(2026-08-13 に実際に踏んだ)。
+    ///   返し続ける状況で、原因をブリッジ側だと誤認して調査に数分溶かした(実際に踏んだ)。
     ///   嵐防止としてのキャッシュ自体は残す価値がある(失敗1回は probe 2s + 起動待ち最大 10s)
     ///   ので、消さずに**残り時間と抜け道**を添える
     static func unreachableError(detail: String?, physicalDevice: Bool,
                                  cachedSecondsRemaining: TimeInterval? = nil) -> DriverError {
-        // **他プロセスで直しても、この文が消えるのは期限後**(2026-08-13 のレビュー指摘):
+        // **他プロセスで直しても、この文が消えるのは期限後**:
         // `.unavailable` はプロセスごとの static なので、CLI の `bridge up` が成功しても
         // **この長寿命プロセス(fleetest-mcp / monitor)の記憶は消えない**。
         // 「すぐ再試行できる」と書くと、直したのに同じ文が返る次の混乱を作る
@@ -170,7 +170,7 @@ extension AndroidDriver {
     /// 付け替える**: `BridgeClient`(operation の中身)は自分が iOS xcuitest 向けか Android 向けか
     /// を知らず、既定で iosXCUITest の context を付けて投げる(BridgeClient.send 参照)。
     /// 付け替えないと Android の一時的な adb 断に xcuitest/inapp 向けの案内が付く
-    /// (2026-09-16 の負荷テストで実際に踏んだ)
+    /// (負荷テストで実際に踏んだ)
     func withBridge<T>(_ operation: (BridgeClient) async throws -> T) async throws -> T {
         let client = try await ensureBridge()
         do {
@@ -188,7 +188,7 @@ extension AndroidDriver {
             }
         } catch DriverError.bridgeUnreachable(_, let detail) {
             // **接続が確立してから切れた**(instrumentation の死。コールドブート直後の
-            // 起動ストームで頻発する。実測 2026-08-01: 起動17s→21s で死亡)。
+            // 起動ストームで頻発する。実測: 起動17s→21s で死亡)。
             // 同じ操作は自動再試行しない — 届いた可能性があり tap/type の二重実行になる。
             // ただし**レジストリは必ず捨てる**: .active は生存確認なしで即返す設計なので、
             // 死んだクライアントを握ったままだと以後の全操作と worker の revive が
@@ -311,7 +311,7 @@ extension AndroidDriver {
     /// (「アプリが繰り返し停止しています」が残ると、同じデバイスに割り当てられた後続シナリオの
     /// タップを全部吸う)。クラッシュ自体は隠れない — プロセスが落ちれば次の操作が
     /// 「アプリが起動していません」で落ちるので、検知は失われない。
-    /// A/B 実測(2026-07-27・Pixel 9 / Android 15): `am crash` 後の window に
+    /// A/B 実測(Pixel 9 / Android 15): `am crash` 後の window に
     /// エラーダイアログが 0 のとき 3 行 → 1 のとき 0 行。失敗は非致命
     private func hideErrorDialogs() {
         guard (try? adb(["shell", "settings", "put", "global",
@@ -326,7 +326,7 @@ extension AndroidDriver {
     /// 入力欄にフォーカスすると「タッチペンを試してみる」の教育用シートが**別プロセスの window として**
     /// アプリの上に出ることがあり、送信ボタン等を覆う。ブリッジの a11y ツリーには他プロセスの window が
     /// 出ないため、覆われたまま tap が成功扱いになり「✅ なのに何も起きない」になる
-    /// (2026-07-27 に 05_テキスト入力 の間欠失敗として実際に踏んだ。失敗時スクショで確定)。
+    /// (05_テキスト入力 の間欠失敗として実際に踏んだ。失敗時スクショで確定)。
     /// 失敗は非致命(disableAnimations と同方針)
     private func disableStylusHandwriting() {
         guard (try? adb(["shell", "settings", "put", "secure",
@@ -485,7 +485,7 @@ extension AndroidDriver {
         // **版が合っていても code path の実在まで見る** —— `pm list packages -u` と
         // `dumpsys package` にはレコードが残るのに `pm path` が空、という中途半端な install が
         // あり、この形だと `am instrument` が黙って失敗して「cannot connect」がレーン復帰でも
-        // 直らない(受け手報告 2026-08-24: 4 run 連続。`pm uninstall` → 再インストールで回復)。
+        // 直らない(受け手報告: 4 run 連続。`pm uninstall` → 再インストールで回復)。
         // 壊れたレコードは `install -r` を弾きうるので、先に剥がしてから通常の導入経路へ落とす
         if installed != nil, bridgeCodePathPresent() == false {
             logStderr("⚠️ the bridge package record is present but has no code path"
@@ -507,7 +507,7 @@ extension AndroidDriver {
             result = try adb(["install", apk.path])
         }
         guard result.output.contains("Success") else {
-            // チェックとインストールの間に別ホストが新版を入れたレース。読み直せなければ従来メッセージ
+            // チェックとインストールの間に別ホストが新版を入れたレース。読み直せなければ通常のメッセージ
             if result.output.contains("INSTALL_FAILED_VERSION_DOWNGRADE"),
                let refusal = Self.downgradeRefusal(installed: installedBridgeVersionCode(),
                                                     expected: Self.expectedBridgeVersionCode,

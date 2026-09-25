@@ -54,7 +54,7 @@ export class MonitorDashboardController {
   /** 同時に複数 refresh() が走らないようにする簡易ガード(更新ボタン連打・runEnded と手動更新の重なり対策)。 */
   private refreshing = false;
   /** 実行中に来た refresh 要求を1回ぶんだけ持ち越す。捨てると「読み込み中にプロジェクトを
-   * 切り替えたのに、終わってみると旧プロジェクトの表示のまま」になる(2026-09-01 実害)。 */
+   * 切り替えたのに、終わってみると旧プロジェクトの表示のまま」になる(実害)。 */
   private refreshQueued = false;
   /** runDetail 版の同型ガード(行クリック連打対策)。 */
   private detailFetching = false;

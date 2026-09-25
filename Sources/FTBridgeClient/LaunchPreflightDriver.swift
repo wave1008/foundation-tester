@@ -81,7 +81,7 @@ public final class LaunchPreflightDriver: AppDriver {
 
     private func ensureInstalled(bundleID: String) throws {
         if confirmedInstalled.contains(bundleID) { return }
-        // CoreSimulator 直叩き優先(simctl get_app_container 約703ms → ほぼ0ms・2026-08-02実測)。
+        // CoreSimulator 直叩き優先(simctl get_app_container 約703ms → ほぼ0ms・実測)。
         // シム利用不能なら simctl へフォールバック(FT_SIMULATOR_CONTROL=simctl で強制)
         if let installed = CoreSimAppControl.isInstalled(udid: udid, bundleID: bundleID) {
             guard installed else {

@@ -39,11 +39,11 @@ public enum TypeReadback {
 
     public static func plan(expected: String, actual: String) -> Plan {
         if actual == expected { return .done }
-        // **空白は a11y から読み返せない**(2026-08-18 実測: 空白のみの値は「値なし」で返る/
-        // 2026-08-31 実測: 可視文字と混在していても空白の有無自体は読み返しに現れない)。
+        // **空白は a11y から読み返せない**(実測: 空白のみの値は「値なし」で返る/
+        // 可視文字と混在していても空白の有無自体は読み返しに現れない)。
         // 前後の空白を除いて一致するなら、残った差分は「読めない空白」でしかありえないので、
         // 追送も delete も打たず検証を諦める——誤って追送すると同じ空白が毎周積まれて欄を壊す
-        // (2026-08-18 実測: 4周で12個の空白が入った)
+        // (実測: 4周で12個の空白が入った)
         if expected.trimmingCharacters(in: .whitespacesAndNewlines)
             == actual.trimmingCharacters(in: .whitespacesAndNewlines) {
             return .unverifiable

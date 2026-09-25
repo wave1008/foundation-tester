@@ -67,7 +67,7 @@ static id ftDeviceForUDID(NSString *udid) {
 
 // launch options 辞書のキーは Xcode 版で値が変わり得る私有 API 定数なので dlsym で引く。
 // シンボルが引けない(=フレームワークが未読み込み・版差でリネーム)場合だけリテラルへフォールバックする
-// (2026-08-02 時点の実値は Xcode 27 beta 4 で採取: "environment" / "terminate_running_process")
+// (実値は Xcode 27 beta 4 で採取: "environment" / "terminate_running_process")
 static NSString *ftSimConstant(const char *symbolName, NSString *fallback) {
     // dlopen は呼ぶたび参照カウントが増えるので1回だけ(launch のたびに2回呼ばれる)
     static void *handle;
@@ -123,7 +123,7 @@ NSNumber *FTCoreSimIsInstalled(NSString *udid, NSString *bundleID) {
         bundleID, &typeOut, &error);
     if (installed) return @YES;
     // **NO は2種類ある**。未インストールは NSPOSIXErrorDomain code 3
-    // ("failed to lookup application properties"。2026-08-02 実採取)で、これだけを
+    // ("failed to lookup application properties"。実採取)で、これだけを
     // 「入っていない」と断定してよい。それ以外(端末が未 boot 等のエラー、および
     // 採取では出なかった error なしの NO)を「入っていない」と読むと appNotInstalled として
     // run を止め、原因と食い違う失敗になる。**断定できるのは POSIX 3 だけ**なので残りは

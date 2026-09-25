@@ -4,7 +4,7 @@
 //
 // なぜ要るか: 再ビルド判定はソースの mtime 比較だけだったため、**Xcode を上げてもソースの mtime は
 // 動かず、旧 SDK でビルドした成果物が使われ続けた**。旧ランナーを新ランタイムに載せると実行中に
-// 「Application is not running」で落ちる(2026-07-21 実害)。macOS/Xcode がベータのうちは更新が
+// 「Application is not running」で落ちる(実害)。macOS/Xcode がベータのうちは更新が
 // 頻繁なので、人間の記憶ではなく機械で検知する。
 //
 // 使い方: 成果物の隣に current() を書き、次回 matches(storedAt:) が false なら作り直す。

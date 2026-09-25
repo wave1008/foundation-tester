@@ -7,8 +7,7 @@ extension StepExecutor {
 
     /// `scrollFrame` を解決するためだけの snapshot。**scroll/flick は scrollFrame の有無に
     /// 関わらず毎回呼ぶ**(未指定でも画面全体を対象に座標を作る必要があり、かつ
-    /// キーボード表示中かどうかの唯一の検知手段でもある。2026-08-31 に scroll 側の
-    /// 「指定時だけ」を撤廃した)。scrollToEdge はこの関数を使わない
+    /// キーボード表示中かどうかの唯一の検知手段でもある)。scrollToEdge はこの関数を使わない
     /// (settledSignature が毎周すでに撮っている木をそのまま使い回す)
     func snapshotForScrollFrame(phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
         let clock = ContinuousClock()
@@ -42,13 +41,13 @@ extension StepExecutor {
     ///
     /// **共通要素が無いときは nil(不明)を返す**。「1画面ぶん動いた」とは限らず、画面遷移や
     /// id を持たない画面でも同じ状態になるため、行き過ぎと読むと**刻みを縮め続けて到達できなくなる**
-    /// (2026-08-02 に実際に踏んだ: #txt_offscreen への scrollTo が maxSwipes を使い切って失敗)
+    /// (実際に踏んだ: #txt_offscreen への scrollTo が maxSwipes を使い切って失敗)
     /// **スワイプで中身が入れ替わった領域**の推測 = スクロールした容器。
     /// 2枚の木を比べ、**後の木にだけ現れた要素**の clip 元を数えて最頻のものを採る。
     ///
     /// **スワイプ点から推測してはいけない**: 既定スワイプの始点はブリッジ側の比率
     /// (Android は画面 70%)で、ホストは知らない。中央と決め打つと、下寄せの容器で nil になる
-    /// (2026-08-06 に実測)。**動いた要素から採るのも駄目** —— 飛び越したときは
+    /// (実測)。**動いた要素から採るのも駄目** —— 飛び越したときは
     /// 2枚の木に共通の要素が1つも無い(だから「消えた/現れた」で見る)
     static func changedContentContainer(before: SnapshotResponse, after: SnapshotResponse)
         -> FTRect? {
@@ -168,9 +167,9 @@ extension StepExecutor {
             + " — add [n] to pick another"
     }
 
-    /// `scrollFrame` 指定時のスワイプ座標。**nil = 従来の全画面固定へ落ちる**。
+    /// `scrollFrame` 指定時のスワイプ座標。**nil = 全画面固定へ落ちる**。
     /// 落ちる条件は「指定が無い」「削りすぎて動かせない」の2つ(「その画面で解決できない」は
-    /// 2026-08-08 に runScrollSearch と scroll/scrollToEdge/flick の fail-fast へ移した ——
+    /// runScrollSearch と scroll/scrollToEdge/flick の fail-fast が扱う ——
     /// ここで黙って nil を返すと、呼び手が全画面スワイプへ退化してしまう)。
     ///
     /// **毎回の snapshot から解決し直す**: 容器の矩形はスクロールやレイアウト変化で動く。
@@ -231,7 +230,7 @@ extension StepExecutor {
             endMarginRatio: margins.end)
         // **容器は解決したのに動かせる幅が無い**(margin で潰れた・画面と交差しない等)。
         // fail-fast はここを通らない(容器自体は見つかっている)ので、黙って全画面へ落ちる前に
-        // 理由を残す(2026-08-08。1ステップにつき1回 = pendingScrollFrameNote の空きで判定)
+        // 理由を残す(1ステップにつき1回 = pendingScrollFrameNote の空きで判定)
         if path == nil, step.scrollFrame != nil || step.scrollFrameRect != nil,
            pendingScrollFrameNote == nil {
             pendingScrollFrameNote = "the specified scrollFrame resolved but leaves nothing to move,"
@@ -240,11 +239,11 @@ extension StepExecutor {
         return path
     }
 
-    /// このステップのスクロール対象領域。**nil = 従来の全画面固定へ落ちる**。
+    /// このステップのスクロール対象領域。**nil = 全画面固定へ落ちる**。
     /// スワイプ座標の計算(`scrollPath`)と、見つけた要素の見切れ判定の**両方**がこれを使う ——
     /// 見切れは画面ではなく**容器の縁**で起きるので、判定を画面基準にすると
     /// 「容器の外にはみ出した行」を可視とみなしてタップが容器の外(タブバー等)へ落ちる
-    /// (2026-08-02 実測: #row_30 が y=745・容器の下端 762 で見つかり、中心 773 のタップが
+    /// (実測: #row_30 が y=745・容器の下端 762 で見つかり、中心 773 のタップが
     /// タブバーに当たって別画面へ遷移した)
     func scrollContainer(step: FlowStep, in snapshot: SnapshotResponse,
                          vertical: Bool) -> FTRect? {
@@ -256,7 +255,7 @@ extension StepExecutor {
         if let locator = step.scrollFrame {
             guard let element = Self.match(locator, in: snapshot) else {
                 // **未解決は呼び手(runScrollSearch / scroll・scrollToEdge・flick アクション)が
-                // fail-fast する**(2026-08-08。全画面スワイプへの黙った退化がカードのボタン等を
+                // fail-fast する**(全画面スワイプへの黙った退化がカードのボタン等を
                 // 誤発火させた実害があったため)。この関数自身は判定せず nil を返すだけでよい
                 return nil
             }
@@ -267,8 +266,8 @@ extension StepExecutor {
             }
             return element.frame
         }
-        // **未指定は従来のエンジン既定に任せる**(2026-08-02 に実装 → 撤回 → 08-03 に条件を
-        // 変えて再投入 → 再び撤回。**3度目は無い**)。2度目の撤回理由:
+        // **未指定はエンジンの既定に任せる**(実装 → 撤回 → 条件を変えて再投入 → 再び撤回。
+        // **3度目は無い**)。2度目の撤回理由:
         //  - 狙いだった Compose の飛び越しには**効かない**。Compose の容器は xcuitest で
         //    `other` として出て `scrollable` を申告できず、そもそも対象に選べない
         //  - in-app では**到達距離が縮んで既定 maxSwipes(8)で届かなくなる**(実測:
@@ -280,7 +279,7 @@ extension StepExecutor {
         // 画面全体の固定比率で始点を作るため、キーボードの上を撃って何も動かない
         // (キーボードは常にタッチを飲む)。ここで screen を返すだけで、scrollPath 側の
         // viewport クリップ(ScrollGeometry.viewport)がキーボードを避けた始点を作るようになる。
-        // キーボードが無ければ従来どおり nil のまま(3度目の暗黙座標化にはしない)
+        // キーボードが無ければ nil のまま(3度目の暗黙座標化にはしない)
         if snapshot.keyboardFrame != nil || snapshot.keyboardShown == true {
             return snapshot.screen
         }

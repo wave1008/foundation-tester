@@ -142,7 +142,7 @@ actor LiveBridgeAutoStarter {
     /// 自動起動が成功した直後の1回だけ true。**実機の LAN では宛先が変わる**(起動前は loopback、
     /// 起動後はランナーが告知した LAN アドレスを `.endpoint` に残す)ので、呼び手はこれを見て
     /// BridgeEndpoint.load で張り直す。張り直さないと loopback へ撃ち続けて接続拒否 → 再起動の
-    /// 無限ループになる(2026-09-07 iPhone 13/LAN で実測: 起動は成功するのに毎回「leftover」として
+    /// 無限ループになる(iPhone 13/LAN で実測: 起動は成功するのに毎回「leftover」として
     /// 自分で止めていた)
     func takeStarted() -> Bool {
         defer { startedSinceLastCheck = false }
@@ -200,7 +200,7 @@ actor LiveBridgeAutoStarter {
             }
             // **実機に2本目のランナーを立てない**(2本目の起動が1本目を殺し、残った側も道連れになる)。
             // 自動起動は起動途中のランナーを引き取らないので、serve が再起動するたびに別ポートで
-            // 立て直していた(実地 2026-09-24: 8124→8136→8137 が同時に生存。maintainer-notes §49.4)。
+            // 立て直していた(実地: 8124→8136→8137 が同時に生存。maintainer-notes §49.4)。
             // bridge up / 供給は起動途中の台を待って引き取るので、この門はここにだけ置く
             if physical, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0,
                let other = BridgeLauncher.runnersOnDevice(

@@ -9,7 +9,7 @@ import FTCore
 
 extension MCPServer {
 
-    /// **接続が消えた失敗には「今どこに何が居るか」を添える**(2026-08-06 フィードバック #7)。
+    /// **接続が消えた失敗には「今どこに何が居るか」を添える**(フィードバック #7)。
     /// ポートで誰も待受していない = XCUITest ランナーのプロセス死で、原因の筆頭は
     /// **同一シミュレータに2本目のランナーが立った**こと(全ポート共通 bundle id のため
     /// 先代が蹴り出される。Fleetest.swift の bridge up 参照)。素のメッセージからは追えない
@@ -41,7 +41,7 @@ extension MCPServer {
             let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
             return connectionLostAndForget(key: key, connection: connection, running: running)
         case DriverError.bridgeUnreachable:
-            // **タイムアウトは死を意味しない**(2026-08-12 の実アプリ監査で踏んだ): 素の文言は
+            // **タイムアウトは死を意味しない**(実アプリ監査で踏んだ): 素の文言は
             // 「未起動 / 遅い / suspend」の3択を並べるだけで、直後に ft_status を撃つと
             // 「そのポートにブリッジが無い」と一意に答えられた —— 判定材料はあるのに
             // 操作系が使っていなかった。**確かめてから断定する**: 走査してポートが消えていれば
@@ -49,7 +49,7 @@ extension MCPServer {
             // 素の3択メッセージのままにする)
             guard let port = connectedPorts[key] else { return "" }
             let repoRoot = try? RepoRoot.find()
-            // **応答なしを死と読まない**(2026-08-12 の別監査で踏んだ、同じ勘違いの再発): scan は
+            // **応答なしを死と読まない**(別監査でも踏んだ、同じ勘違いの再発): scan は
             // 応答しないブリッジを「消えた」と数えるが、busy なブリッジ(XCUITest quiescence は
             // 実測33.7秒 /status 無応答・tap 等の interaction timeout は20秒)は生きたまま scan にも
             // 載らない。**bound(誰かが listen しているか)を verdict へそのまま渡し、production の
@@ -73,7 +73,7 @@ extension MCPServer {
                 // しか見ていない —— busy(タイムアウト上限まで無応答)と wedged(応答が来ないまま
                 // 早期に切れる。実機なら iproxy だけ残った形)はここでもう一段 probe して分ける
                 // (BridgeDiscovery.transportFailureFraction のコメント参照)。生きた xcodebuild の
-                // pid が残っていても wedged は起こる(2026-09-22 実機実測。ownerAlive では捕まらない)
+                // pid が残っていても wedged は起こる(実機実測。ownerAlive では捕まらない)
                 let engine = Self.resolvedEngine(known: engines[key], port: port, repoRoot: repoRoot)
                 let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: repoRoot)
                 // **in-app/hybrid には wedged の文言を出さない** —— あちらは `bridge up` で
@@ -93,11 +93,11 @@ extension MCPServer {
         }
     }
 
-    /// iOS の2分岐(bridgeConnectionRefused/.vanished)の共通尾部(2026-08-12 の掃討): 記憶を
+    /// iOS の2分岐(bridgeConnectionRefused/.vanished)の共通尾部(掃討で統合): 記憶を
     /// 捨てて、今の状況を添えたメッセージを組む
     func connectionLostAndForget(key: String, connection: String,
                                  running: [BridgeDiscovery.Found]) -> String {
-        // **udid は忘れる前に読む**(2026-08-13 のレビュー指摘)。`forgetConnection` は
+        // **udid は忘れる前に読む**(レビュー指摘)。`forgetConnection` は
         // `forgetDeviceState` 経由で `udids[key]` も消すようになったので、後から読むと
         // 常に nil = 「同じ機のブリッジを先に挙げる」案内が**黙って死んでいた**
         let udid = udids[key].flatMap { $0 }
@@ -111,8 +111,8 @@ extension MCPServer {
     /// 識別材料にする —— adb の失敗文言は経路(clear/install/forward…)ごとに違って狭く確実な
     /// 部分文字列が取れないので、文字列ではなく probe で確かめる。
     /// **forgetConnection の Android 分岐(lastExplicitAndroidSerial の消去)はここが唯一の呼び手**
-    /// (2026-08-12 まで到達不能だった —— 死んだ serial への省略呼び出しがセッション中ずっと
-    /// 同じ死んだ serial へ再ダイヤルされ続けていた)
+    /// (ここを経由しないと、死んだ serial への省略呼び出しがセッション中ずっと
+    /// 同じ死んだ serial へ再ダイヤルされ続ける)
     func androidConnectionLostHint(_ error: Error, key: String, connection: String,
                                    serial: String) async -> String {
         switch error {
@@ -223,7 +223,7 @@ extension MCPServer {
 
     /// タイムアウトのとき「そのブリッジは消えた」と言い切ってよいか。**走査から切り離した
     /// 純粋関数** —— 実ブリッジが要ると、この枝はテストで一度も実行されず、判定を壊しても
-    /// 素通しする(`reconcilePort` が 2026-08-09 の変異テストで実際に踏んだのと同じ型)
+    /// 素通しする(`reconcilePort` が変異テストで実際に踏んだのと同じ型)
     static func bridgeVanished(port: UInt16, running: [BridgeDiscovery.Found]) -> Bool {
         !running.contains { $0.port == port }
     }
@@ -273,7 +273,7 @@ extension MCPServer {
         sessions[key] = nil
     }
 
-    /// 名指しする上限本数(2026-08-12): 実測で17本が1行に並び、読み手が要るのは
+    /// 名指しする上限本数: 実測で17本が1行に並び、読み手が要るのは
     /// 「今この端末で使えるポート」だけだった。残りは件数へ畳む(runningBridgesSummary)
     static let connectionLostShownCap = 3
 

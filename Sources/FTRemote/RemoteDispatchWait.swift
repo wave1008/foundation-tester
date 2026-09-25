@@ -40,7 +40,7 @@ public struct DispatchWaitStatus: Equatable, Sendable {
     public let elapsedSeconds: Int
     /// `--wait-lock <秒>`。フラグが無ければ nil
     public let limitSeconds: Int?
-    /// 文言だけを分ける(既定はリモート = 従来の出力と1バイトも変わらない)。
+    /// 文言だけを分ける(既定はリモート scope)。
     /// 判定・数え方・刻みは scope で変えない
     public let scope: DispatchLockScope
 
@@ -91,8 +91,8 @@ public struct DispatchWaitStatus: Equatable, Sendable {
     }
 
     /// `RemoteDispatchLock.heldMessage` の後ろへ足す1句(**heldMessage 自体は変えない** ——
-    /// 待機列は判定を足しただけで、ロックの文言は従来のまま)。
-    /// 足すものが無ければ空文字 = 従来と1バイトも変わらない
+    /// 待機列は判定を足しただけで、ロックの文言はそのまま)。
+    /// 足すものが無ければ空文字のまま
     public var refusalSuffix: String {
         var parts: [String] = []
         if aheadCount > 0 { parts.append("\(aheadCount) ahead in the queue") }

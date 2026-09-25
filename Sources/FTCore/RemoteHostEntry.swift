@@ -9,7 +9,7 @@ import Foundation
 public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// マシン名(利用者が設定タブで付ける名前)。登録簿内で一意(upsert が同名を置き換える)。
     /// プロファイルの `machine` 欄・`--host` に書くのはこの名前。
-    /// **JSON キーは "machine"**(2026-08-26 改名)。旧キー "name" も読む
+    /// **JSON キーは "machine"**(改名済み)。旧キー "name" も読む
     public let machine: String
     /// ssh 宛先("user@host" または "host")
     public let host: String

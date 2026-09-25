@@ -18,9 +18,9 @@ extension MCPServer {
     /// 群の全メンバーが index-based(`.indexed`)か「そもそも書けない」(`graded` が nil)で、
     /// かつ index-based なメンバーが**全員同じスコープ接頭辞**(`graded.selector` の最後の
     /// `" >> "` より前。無ければ空文字)を持つときだけ、代替セレクタの列挙を ref の列へ畳む。
-    /// 1件でも `.stable` があれば nil(呼び手は従来の列挙描画へ落ちる)。
+    /// 1件でも `.stable` があれば nil(呼び手は通常の列挙描画へ落ちる)。
     /// **判定・整形の両方をここに閉じる**(呼び手が条件を自前で再実装しない)。
-    /// 実測(2026-08-12 の Apple マップ監査): 同じ容器に並ぶ同型セルが10件あると、
+    /// 実測(Apple マップ監査): 同じ容器に並ぶ同型セルが10件あると、
     /// index 違いだけの代替セレクタ6行が並び、注記が本文より長くなっていた
     ///
     /// `gradedShown` は**明細描画と共有する**先頭 `ambiguousMatchesShown` 件の採番結果。
@@ -45,7 +45,7 @@ extension MCPServer {
             } else {
                 prefix = ""
             }
-            // **スコープが割れたら畳まない**。2026-08-16 に「全員索引形なら畳めるはず」と
+            // **スコープが割れたら畳まない**。「全員索引形なら畳めるはず」と
             // 緩めて実測したが、**撤回した** —— 固定コーパス 40 枚で減るのは 1,555B(最悪画面
             // `ios-maps_transit_steps_expanded` で 2,690→2,290)なのに対し、
             // 失うのは上のテストが witness を持つ識別情報そのもの(Google マップのタブ帯は
@@ -76,7 +76,7 @@ extension MCPServer {
     /// ここは凡例ヘッダ・グループごとの明細・打ち切り行・`anyStable` フッタだけを持つ。
     /// **グループ化とフィルタは呼び出し側の責務のまま**(ここへ寄せない)
     /// `brief`: **事実と群は出すが、要素ごとの代替セレクタの列挙だけ畳む**。
-    /// A/B の計測用の口(`FT_MCP_NOTES_BRIEF` の宣言参照)で、既定は false = 従来どおり。
+    /// A/B の計測用の口(`FT_MCP_NOTES_BRIEF` の宣言参照)で、既定は false。
     /// **`abbreviated` とは畳む対象が違う** —— あちらはヘッダの凡例、こちらは明細。
     /// 実測(`ios-maps_transit_steps_expanded`)では、注記 3,621B のうち明細が主因で、
     /// 短縮形にしても 2,894B にしか下がらない
@@ -89,7 +89,7 @@ extension MCPServer {
         var lines: [String] = [abbreviated ? shortHeader : fullHeader]
         var anyStable = false
         if brief {
-            // **既に畳まれている群には触らない**(2026-08-16 の実測で踏んだ): 全群が
+            // **既に畳まれている群には触らない**(実測で踏んだ): 全群が
             // `compactGroupLine` で畳まれる画面(セレクタが1つも書けない web の格子等)で
             // 末尾の総括を足すと、**畳んだはずの brief のほうが長くなる**(固定コーパス 40 枚中
             // 10 枚が負だった)。brief は full の**厳密な部分集合**でなければ、A/B が
@@ -123,7 +123,7 @@ extension MCPServer {
             return lines.joined(separator: "\n") + "\n"
         }
         // **畳んだ行は既に「tap by ref instead」と言っている**(compactGroupLine)。全部が
-        // 畳まれた回に末尾の総括まで出すと、同じ助言が N+1 回並ぶ(2026-08-12 の監査で実測:
+        // 畳まれた回に末尾の総括まで出すと、同じ助言が N+1 回並ぶ(監査で実測:
         // Google マップの経路一覧で5群すべてが畳まれ、その下にもう一度同じ文が出ていた)
         var allCompact = true
         for (label, matches) in sortedGroups.prefix(ambiguousLabelsShown) {
@@ -137,7 +137,7 @@ extension MCPServer {
                 continue
             }
             allCompact = false
-            // **索引形も書き出す**。2026-08-16 に「索引形は最も弱い格付けなので ref だけにする」と
+            // **索引形も書き出す**。「索引形は最も弱い格付けなので ref だけにする」と
             // 削って実測したが、**撤回した** —— 固定コーパスで 3,401B(明細の 42%)を占める
             // 最大の塊ではあるが、**その長さの元凶であるスコープ接頭辞が識別情報そのもの**
             // (`#explore_tab_strip_button >> .other` と `#saved_tab_strip_button >> .other` は
@@ -168,7 +168,7 @@ extension MCPServer {
     /// 同一ラベルが複数に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
     /// 行内に `×N` として個別に出すので、こちらは**ラベルだけ**を扱う。
     /// 実測: 経路検索の候補一覧で「東京駅」が9件一致し、素のラベルでは一意に指せなかった
-    /// `abbreviated`(F-6 の対象拡大・2026-08-10): 明細行(ラベルごとの候補列挙)と末尾の
+    /// `abbreviated`(F-6 の対象拡大): 明細行(ラベルごとの候補列挙)と末尾の
     /// 「+N more」は既定と同じまま、ヘッダの凡例だけ「初出の注記を見よ」に圧縮する
     static func ambiguousLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false,
                                     brief: Bool = false,
@@ -186,12 +186,12 @@ extension MCPServer {
         }
         let ambiguous = groups
             .filter { $0.value.count >= ambiguousLabelMinimum && !isSingleChain($0.value, in: snapshot) }
-            // **全員が飾りの葉なら列挙しない**(2026-08-10 の実アプリ監査): 地図 POI の
+            // **全員が飾りの葉なら列挙しない**(実アプリ監査): 地図 POI の
             // 「〜の路線」×3 のような群はセレクタの書き先にならないのに行を占めていた。
-            // 1件でも操作対象・型付きが混じる群は従来どおり全員出す(片側だけ隠すと
+            // 1件でも操作対象・型付きが混じる群は全員出す(片側だけ隠すと
             // ×N の数と明細が食い違う)。判定は bulk fold と同じ SnapshotRenderer.isDecorativeLeaf
             .filter { !$0.value.allSatisfy { SnapshotRenderer.isDecorativeLeaf($0, in: snapshot.elements) } }
-            // **セレクタとして誰も書かないラベルは列挙しない**(2026-08-12 の実アプリ監査):
+            // **セレクタとして誰も書かないラベルは列挙しない**(実アプリ監査):
             // Google マップの経路詳細では区切りの `" · "` ×3 が代替セレクタ付きで注記の上位を
             // 占めていた。飾り葉フィルタ(上)は `type == "other"` 限定なので staticText の
             // 区切りは素通りする —— **あちらを広げない**(staticText を飾り扱いにすると
@@ -284,7 +284,7 @@ extension MCPServer {
     /// 下限を2へ下げると、`button "自宅、追加"` とその子 `#IconImage-TitleLabel-SubtitleLabel`
     /// のようなラッパー対が全部鳴る —— どちらを掴んでも同じものなので曖昧ではない。
     /// `RefGuard.stackedRefs` が同じ理由で使っている除外と同型
-    /// **前提が崩れる形が1つある**(2026-08-14 に実機 Android の YouTube で実測): 祖先が
+    /// **前提が崩れる形が1つある**(実機 Android の YouTube で実測): 祖先が
     /// **画面規模の面**で、子孫が**その中の小さな操作子**のとき、「どちらを掴んでも同じ」は
     /// 成り立たない。実測 —— 広告再生中の `clickable "Skip" #player_overlays (0,136 1080x1683)`
     /// と `clickable "Skip" #skip_ad_button (888,1555 192x132)` が同じラベルを名乗り、

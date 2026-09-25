@@ -198,8 +198,7 @@ export interface RunProfileFormFields {
  * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  * heal/screenLooksLike/textVisualCheck/ocrTextVisualCheck/preferCheckStateClassifier/containerInference/
- * homeOnStart/playProtectBypass はスキーマ既定と合わせ既定 true
- * (textVisualCheck は 2026-09-03 に false から変更)。
+ * homeOnStart/playProtectBypass はスキーマ既定と合わせ既定 true。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -795,7 +794,7 @@ export interface AndroidCatalog {
   readonly models: readonly AndroidCatalogModel[];
   readonly systemImages: readonly AndroidCatalogSystemImage[];
   /** ダウンロードして導入できるシステムイメージ(既にインストール済みのものは含まない)。
-   * 旧 CLI は送ってこないため省略可(その場合「デバイスを追加」は従来どおり systemImages だけを見せる)。 */
+   * 旧 CLI は送ってこないため省略可(その場合「デバイスを追加」は systemImages だけを見せる)。 */
   readonly downloadableSystemImages?: readonly AndroidCatalogDownloadableSystemImage[];
   /** ダウンロード候補の取得自体が失敗した理由(英語。枠だけ i18n)。旧 CLI は送ってこないため省略可。 */
   readonly downloadableError?: string | null;
@@ -883,7 +882,7 @@ function isAndroidCatalog(value: unknown): value is AndroidCatalog {
     value.models.every(isAndroidCatalogModel) &&
     Array.isArray(value.systemImages) &&
     value.systemImages.every(isAndroidCatalogSystemImage) &&
-    // 旧 CLI は送ってこないため欠落を許容する(欠落時は webview が従来どおり動く)
+    // 旧 CLI は送ってこないため欠落を許容する(欠落時も webview は動く)
     (value.downloadableSystemImages === undefined ||
       (Array.isArray(value.downloadableSystemImages) &&
         value.downloadableSystemImages.every(isAndroidCatalogDownloadableSystemImage))) &&

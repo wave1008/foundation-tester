@@ -2,7 +2,7 @@
 // `ProfileRunner.run` と `ApiRunCommand.run` の両実装がこれを呼ぶ ―― 別々に組み立てると、
 // Android 0 台のプロファイル(iOS だけの run)でも固定文言で Android の行が出たり、iOS 0 台の
 // プロファイル(Android だけの run)でも固定文言で「iOS joins…」と言ったりする事故が起きる
-// (実測 2026-09-16。CLAUDE.md「2 実装の差」)。
+// (実測。CLAUDE.md「2 実装の差」)。
 
 enum RunStartLine {
     /// - Parameters:

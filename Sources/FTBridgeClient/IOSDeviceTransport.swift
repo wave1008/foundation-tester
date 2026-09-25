@@ -67,7 +67,7 @@ public enum IOSDeviceTransport {
             return parsed
         }
         // **USB 接続でない端末に usb を選んではいけない**: iproxy はトンネルを張れず、
-        // 「network connection was lost で 180 秒後にタイムアウト」としか出ない(2026-07-25 実害)。
+        // 「network connection was lost で 180 秒後にタイムアウト」としか出ない(実害)。
         // wired は devicectl の transportType 由来(localNetwork = WiFi のみ)
         guard wired else { return .lan }
         return iproxyPath() == nil ? .lan : .usb
@@ -77,7 +77,7 @@ public enum IOSDeviceTransport {
     /// deviceUDID は usb のトンネル先指定に使う(lan では未使用)
     /// wired: USB 接続か(devicectl の transportType == "wired")。false なら usb は選べない
     /// `wired` に既定値を置かない —— 既定 true に頼った呼び出し元(live serve の自動起動)が
-    /// LAN 接続の iPhone を iproxy(USB)で待ち、必ず失敗していた(2026-09-07 実機で確認)。
+    /// LAN 接続の iPhone を iproxy(USB)で待ち、必ず失敗していた(実機で確認)。
     /// `token` にも既定値を置かない —— 呼び忘れは LAN bind のブリッジを認証なしで晒す
     /// (BridgeAPI 参照)。呼び出し元は `launcher.bridgeToken` を渡す
     public static func establish(port: UInt16, deviceUDID: String, repoRoot: URL,
@@ -89,7 +89,7 @@ public enum IOSDeviceTransport {
         switch kind(wired: wired) {
         case .lan:
             // LAN は WiFi の省電力で 1 往復 ~48ms(標準偏差 27ms)かかる。USB の ~5ms に比べ
-            // 1 シナリオあたり約 25% 遅い(実測 2026-07-25)。iproxy があれば usb が既定
+            // 1 シナリオあたり約 25% 遅い(実測)。iproxy があれば usb が既定
             log(wired
                 ? "transport lan (over WiFi; the device closes this listener under power saving and a run can fail mid-way — `brew install libimobiledevice` switches to the USB tunnel)"
                 : "transport lan (the device is not on USB; connecting over USB cuts a round trip from 48ms to 5ms)")
@@ -146,7 +146,7 @@ public enum IOSDeviceTransport {
             // **キャンセルで抜ける**: 呼び手(ProfileWorkerFactory.buildWorker)は期限付きの
             // TaskGroup で包んで cancelAll するが、`try? Task.sleep` は取り消しを握りつぶすので、
             // 見ないと締切まで空回りし、その間に呼び手が次の試行で同じポートへ2本目を起動する
-            // (孤児ランナーが残る形。2026-09-04 iPhone 13 で実測)。投げれば provision 側の
+            // (孤児ランナーが残る形。iPhone 13 で実測)。投げれば provision 側の
             // catch が launcher.stop() で今回のランナーを止める
             try Task.checkCancellation()
             if let host = announcedHost(inLogAt: logURL, port: port) { return host }
@@ -181,7 +181,7 @@ public enum IOSDeviceTransport {
 
     /// 端末に UI 自動化の承認プロンプトが出うる区間か(ランナーは起動したがテスト本体がまだ・
     /// 失敗もしていない)。**時間では決めない** —— プロンプトが出ていない端末では数秒で抜けるだけ。
-    /// 実測(iPhone SE3・2026-09-24): この区間で Touch ID の画面が出て、承認しないと 60 秒で
+    /// 実測(iPhone SE3): この区間で Touch ID の画面が出て、承認しないと 60 秒で
     /// `Timed out while enabling automation mode`
     static func awaitingAutomationApproval(inLog text: String) -> Bool {
         text.contains(runnerProcessStartedMarker)
@@ -209,7 +209,7 @@ public enum IOSDeviceTransport {
     static func runnerFailureReason(inLog text: String) -> String? {
         // **端末が起動を拒否した条件は終端マーカーを待たずに確定させる**:
         // xcodebuild は `** TEST EXECUTE FAILED **` も `Testing failed:` も出さないまま
-        // 留まり続けることがある(実測 2026-07-26: 証明書未信頼のエラーは 20 秒時点でログに
+        // 留まり続けることがある(実測: 証明書未信頼のエラーは 20 秒時点でログに
         // 出ていたのに、マーカー待ちのせいで 181 秒の締切まで待たされ、
         // 「LAN アドレスを取得できません」という無関係な理由で失敗した)。
         // 端末が拒否した時点で結論は出ているので、下の 3 文字列だけは単独で終端扱いにする
@@ -225,7 +225,7 @@ public enum IOSDeviceTransport {
                 + "On the iPhone, turn on Settings → Privacy & Security → Developer Mode"
         }
         if text.contains(notAuthorizedMarker) {
-            // **スイートは承認なしでも始まることがある**(実測 iPhone 15 Pro / iOS 26.6.2・2026-09-24):
+            // **スイートは承認なしでも始まることがある**(実測 iPhone 15 Pro / iOS 26.6.2):
             // 承認待ちの区間(runner 起動〜suiteStarted)を抜けて ready を名乗るのに、UI 操作は全部
             // この文言で断られ、約 100 秒後にランナーごと落ちる。ready の判定は /status だけなので、
             // waitUntilReady が ready 直後に1回撃つ操作(screenshot)でしか表に出ない
@@ -235,8 +235,8 @@ public enum IOSDeviceTransport {
         }
         if text.contains("Timed out while enabling automation mode") {
             // ランナーは起動したが端末側が UI 自動化モードに入らない。実測(iPhone SE3 /
-            // iPhone 13, 2026-09-11・14。2026-09-07 の SE3 はロック解除済み・Developer Mode
-            // オンでも出た)ではロック解除・再起動では直らない —— 効くのは、起動を試みている
+            // iPhone 13。ロック解除済み・Developer Mode オンでも出た)ではロック解除・再起動では
+            // 直らない —— 効くのは、起動を試みている
             // 最中に端末へ出る UI 自動化の**承認プロンプトに端末上で答えてから撃ち直す**こと
             return "the device did not enter UI-automation mode (\"Timed out while enabling"
                 + " automation mode\"). The iPhone shows a UI-automation approval prompt while"
@@ -268,7 +268,7 @@ public enum IOSDeviceTransport {
 
     static func announcedHost(inLog text: String, port: UInt16) -> String? {
         var found: String?
-        // **xcodebuild のテストログは CRLF**(実測 2026-07-25)。Swift では "\r\n" が 1 つの
+        // **xcodebuild のテストログは CRLF**(実測)。Swift では "\r\n" が 1 つの
         // Character なので `split(separator: "\n")` は CRLF を**一切分割しない**(ログ全体が
         // 1 行になり照合が必ず外れる。180 秒待って失敗した実害)。isNewline で分割すること
         for line in text.split(whereSeparator: \.isNewline) {
@@ -425,7 +425,7 @@ public enum IOSDeviceTransport {
 
     /// startIproxy がトンネルを確立/再利用した直後に呼ぶ。実機は全ポートで bundle id が
     /// 共通なので、1台に同居できる iproxy は1本 —— 同じ UDID を向いた**他ポート**の古いトンネルは
-    /// どれにも使われないまま残り続ける(実測 2026-09-17: SE3 で iproxy が3本(現役1・前日以降の
+    /// どれにも使われないまま残り続ける(実測: SE3 で iproxy が3本(現役1・前日以降の
     /// 残骸2)生き残っていた)。**台帳に無い iproxy(利用者が手で起こしたもの)は触らない** ——
     /// `.fleetest/iproxy-*.pid` を列挙した分だけが対象。生死・iproxy 判定は isIproxy(pid:) を
     /// 再利用する(素の kill(pid,0) は禁止。StaleLedgerSweep と同じ「台帳はプロセスの実体で掃除する」規律)

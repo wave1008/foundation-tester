@@ -15,7 +15,7 @@
 
 export interface RemoteHostEntry {
   /** マシン名(設定タブで付ける名前)。プロファイルの `machine` 欄・`--runner` に書くのはこれ。
-   * **JSON キーは "machine"**(2026-08-26 改名。CLI が旧キー "name" も読む)。 */
+   * **JSON キーは "machine"**(改名。CLI が旧キー "name" も読む)。 */
   readonly machine: string;
   readonly host: string;
   /** リモート専用ベースディレクトリ(tool/ = クローン, work/ = Projects・results・.build。
@@ -255,7 +255,7 @@ export interface RemoteHostsSideFields {
  * **読み取り(`api remote-machines`)だけでなく書き込み(`--import` / `--remove`)の応答からも通す。**
  * 読み取り時にしか控えないと、書き込み直後に webview へ送り返す `local` が古いままになり、
  * 固定行(この機械)に打った FM 枠が**打った瞬間に元の値へ戻る** = 変更できない、という
- * 症状になる(2026-09-02 に実際に踏んだ)。`diffRemoteHostsForSync` が hosts[] の欄を
+ * 症状になる(実際に踏んだ)。`diffRemoteHostsForSync` が hosts[] の欄を
  * 落として同じ症状を出したのと**同じ型** —— どちらも「往復の片道で欄が落ちる」。
  */
 export function mergeRemoteHostsSideFields(

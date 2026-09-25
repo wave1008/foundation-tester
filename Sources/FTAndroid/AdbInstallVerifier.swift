@@ -1,6 +1,6 @@
 // `adb install` の検証(Play Protect)を通さない。
 //
-// **ユーザー決定(2026-09-05): テストツールはアプリを Google へ送らない。確認も取らない。**
+// **ユーザー決定: テストツールはアプリを Google へ送らない。確認も取らない。**
 // 実測(Pixel 4a・Android 13): release 署名の APK を `adb install -r` すると Play Protect が
 // 「Send app for a security check?」(`com.android.vending/…PlayProtectDialogsActivity`)を出して
 // install が**無期限に止まる**(9.5 分待っても終わらず、ログは 0 バイト)。同じ APK でも
@@ -92,7 +92,7 @@ public enum AdbInstallVerifier {
     }
 
     /// 検証を切って `body` を実行し、必ず元へ戻す。読めなければ(adb 失敗)切らずにそのまま実行
-    /// (黙って検証を残す側 = 止まるのは従来どおりで、設定を壊す側には倒さない)。
+    /// (黙って検証を残す側 = 止まるだけで、設定を壊す側には倒さない)。
     /// **キルスイッチ(`bypassEnabled` = false)のときは端末に1バイトも書かず body だけ**
     /// (この経路では端末単位の錠も取らない = get-serialno すら撃たない)。
     /// **同じ端末への呼び出しは錠で直列化する**(`withDeviceLock` の宣言参照)。

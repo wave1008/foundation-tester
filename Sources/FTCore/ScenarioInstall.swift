@@ -1,5 +1,5 @@
 // ScenarioInstall.swift
-// installApp() の子→親 RPC(2026-08-03 決定: インストールの実行はオーケストレータ[親]の仕事)。
+// installApp() の子→親 RPC(インストールの実行はオーケストレータ[親]の仕事)。
 // プロトコル:
 //   子→親(stdout NDJSON ScenarioEvent, kind="installRequest"): requestID・installPath(nil可)。
 //     ScenarioHost.run が横取りして処理する(ScenarioEvent.swift のコメント参照)。

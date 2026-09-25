@@ -47,7 +47,7 @@ const RESTART_COOLDOWN_MS = 5 * 60_000;
 const MAX_RESTART_ATTEMPTS = 2;
 /** 異常なし観測がこの時間(ミリ秒)連続して初めてエピソード(試行回数の記憶)を破棄する。ブート直後は
  * 一時的に健全になるため、即時リセットだと restartAttempts が毎回0に戻り MAX_RESTART_ATTEMPTS が
- * 永遠に発動せず無限再起動ループになった実害への対策(2026-07-17)。 */
+ * 永遠に発動せず無限再起動ループになった実害への対策。 */
 const EPISODE_RESET_AFTER_HEALTHY_MS = 10 * 60_000;
 /** ストリーム修復後、再判定を待つクールダウン(ミリ秒)。Wi-Fi 修復と同じ根拠(プローブ30秒×2回+マージン)。 */
 const STREAM_REPAIR_COOLDOWN_MS = 120_000;
@@ -237,7 +237,7 @@ export class MonitorHealthWatchdog {
       // blank-screen 専用ラダー: displayRepair(sleep/wake ~4s)1回 → streamRepair 1回 →
       // swiftshader 再起動 1回 → failed。host 再起動は実験で「治らず再凍結」が確定したため
       // 一切挟まない。第一手の画面リセットは固着型を ~4s で直す最軽量修復
-      // (対照実験 2026-07-25。readback = stream 再起動が効かない個体にも効く)。
+      // (対照実験。readback = stream 再起動が効かない個体にも効く)。
       if (!entry.displayAttempted && serial !== undefined) {
         entry.displayAttempted = true;
         entry.cooldownUntil = this.now() + DISPLAY_REPAIR_COOLDOWN_MS;

@@ -28,7 +28,7 @@ public struct InAppLauncher {
     /// **存在チェックだけにしてはいけない**: build/ は gitignore・手動ビルドなので、ブリッジの
     /// ソースを直しても注入されるのは古いバイナリのままになる。実害として、isChecked 追加と型の
     /// 役割正規化(b8a408c)がビルドされず ios-inapp/ios-heal だけ「checked が取れない」
-    /// 「switch 型が出ない」で落ち続けた(2026-07-27 に判明)。SUT の再ビルド判定(Scripts/e2e.sh の
+    /// 「switch 型が出ない」で落ち続けた(判明した実例)。SUT の再ビルド判定(Scripts/e2e.sh の
     /// needs_rebuild)・シナリオの BuildFingerprint と同じ考え方を、ここにも置く。
     public func buildIfNeeded() throws {
         guard Self.needsBuild(repoRoot: repoRoot) else { return }
@@ -129,7 +129,7 @@ public struct InAppLauncher {
             // **一次原因を添える**: 「did not respond in time: connection refused」の裏が
             // アプリの即死(例: ランタイム共有キャッシュ破損の dyld エラー = OS_REASON_DYLD。
             // simctl shutdown→boot で回復)でも、素の文言からは見えず simctl のログを手で
-            // 掘ることになる(受け手報告 2026-08-24)。ここは bundleID を知っている唯一の層。
+            // 掘ることになる(受け手報告)。ここは bundleID を知っている唯一の層。
             // 30 秒待った後なので .ips の書き込み遅延(約2秒)はもう待たなくてよい
             throw InAppLauncherError.notReady(crashAnnotated(detail, bundleID: bundleID))
         }
@@ -149,7 +149,7 @@ public struct InAppLauncher {
         return detail + " / the app crashed on launch: \(hit.path)\(suffix)"
     }
 
-    /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・2026-08-02実測)。
+    /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・実測)。
     /// **フォールバックするのは「シムが使えない」ときだけ**(nil)。起動そのものの失敗は投げる
     /// (simctl で撃ち直しても同じ結果になり、本物の失敗を隠して二重に時間を使うだけ)。
     /// 強制的に simctl へ戻すには FT_SIMULATOR_CONTROL=simctl

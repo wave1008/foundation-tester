@@ -18,7 +18,7 @@ public enum SlowSnapshotBudget {
     /// - commandTimeoutMs: 呼び出し元の外枠(FTDSL.FTSync.commandTimeout をミリ秒にしたもの)。
     ///   **FTCore から FTDSL は参照できない**ので呼び出し側(FTRuntime)が渡す。
     ///   nil は「外枠を持たない呼び出し元」(MCP 等。FTSync でラップされていない)を表し、
-    ///   常に許可する = 従来どおり
+    ///   常に許可する
     public static func mayRetake(stepElapsedMs: Int, lastSnapshotMs: Int,
                                  commandTimeoutMs: Int?) -> Bool {
         guard let commandTimeoutMs else { return true }

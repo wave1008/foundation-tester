@@ -176,7 +176,7 @@ public enum VisionClassifier {
         /// 1位のラベル。Shirates と同じく確信度 0.1 以下は候補にしない。
         /// **対照が自分のラベルに答えなければ答えを使わない**(`ClassifyError.controlMismatch`)——
         /// Vision / Core ML は壊れても失敗を返さず、どの画像にも同じラベルを確信度 1.00 で答える
-        /// (2026-09-19 負荷テスト: ON が写った crop を [OFF] 1.00 と 7 回答え、同じ crop・同じモデルを
+        /// (負荷テストで実測: ON が写った crop を [OFF] 1.00 と 7 回答え、同じ crop・同じモデルを
         /// 後で掛けると 20/20 [ON] 1.00)。1推論ごとに VisionUsageLedger へ1件書く
         /// (ロックの内側から呼ぶ経路は `classifyUnrecorded`)
         public func classify(_ image: CGImage) throws -> Classification? {

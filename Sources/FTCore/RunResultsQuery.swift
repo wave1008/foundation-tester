@@ -494,7 +494,7 @@ public enum RunResultsQuery {
         }
 
         // **実行中の run を「クラッシュの可能性」と数えない**(§18 の残件): 同じ機械で pid がまだ
-        // 生きていれば実行中。pid の無い古い記録・別の機械の記録は従来どおり未完了として数える
+        // 生きていれば実行中。pid の無い古い記録・別の機械の記録は未完了として数える
         // (別の機械の生死はここからは分からない = 断定しない側)
         let unfinished = runs.filter { $0.finishedAt == nil }
         let stillRunning = unfinished.filter { run in
@@ -765,7 +765,7 @@ public enum RunResultsQuery {
         public let runIDs: [String]
         public let startedAt: String
         public let profile: String?
-        /// hosts の先頭(単機 run では従来どおりその host)。表示は hosts を使う
+        /// hosts の先頭(単機 run ではその host)。表示は hosts を使う
         public let host: String
         /// グループ内の全機械のホスト名(昇順・distinct)。表示は machine へ読み替える
         public let hosts: [String]
@@ -790,8 +790,8 @@ public enum RunResultsQuery {
         /// scenarioTotalMs / **Σ機械ごとの(レーン数 × その機械のテスト時間窓)** × 100。
         /// **分母は壁時計にしない**(供給待ちで膨らみ、実測 87% が 17% に見えた)し、
         /// **グループ全体の窓×全レーンにもしない**(機械の開始ずれが「全レーンの遊び」に化けて
-        /// フリート計測で 16.7% に見えた。どちらも 2026-09-01 実データ)。
-        /// 単機グループでは従来(laneCount × testTimeMs)と同値。分母が 0 なら nil
+        /// フリート計測で 16.7% に見えた。どちらも実データ)。
+        /// 単機グループでは (laneCount × testTimeMs) と同値。分母が 0 なら nil
         public let avgLaneUtilisationPct: Double?
     }
 
@@ -813,7 +813,7 @@ public enum RunResultsQuery {
         public let invalidCount: Int
         /// **同じ (profile, 機械集合) に前回計測がある最新の実行**と、その直前の実行の突き合わせ。
         /// 「全体の最新」に固定しない —— 初計測の構成が最新に来ると、意味ある比較が眠ったまま
-        /// 空になる(2026-09-01 実データ)。機械集合も揃える(デバイス構成を揃える規律:
+        /// 空になる(実データ)。機械集合も揃える(デバイス構成を揃える規律:
         /// docs/results-json.md。ローカルのみ計測とフリート計測の突き合わせは機械性能差が混ざる)。
         /// **両方に存在する (scenarioID, platform) だけ**を比べる(集合を揃える規律。
         /// 同一実行内に同じ組が複数あるときは startedAt 最新を採る = matrix と同じ規律)。

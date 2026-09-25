@@ -2,7 +2,7 @@
 // run-lease を既に握っている生きた別プロセスがいないか確かめる(ユーザー決定「拒否して
 // 止める」)。
 //
-// **dispatch.lock との上下関係**(2026-09-21):
+// **dispatch.lock との上下関係**:
 // - **dispatch.lock は「マシン全体」**(その Mac で同時に走る run は1本。手元の run も取る =
 //   Sources/fleetest/LocalDispatchLock.swift)。
 // - **run-lease は「台ごと」**で、dispatch.lock の**内側**。2つの run の直列化だけなら

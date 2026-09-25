@@ -552,7 +552,7 @@ extension RemoteCommand {
             if isatty(STDERR_FILENO) != 0 { resolved.announce(toStderr: true) }
 
             // **-n: この ssh に stdin を読ませない**。読むと、続く本番の ssh へ渡すはずの stdin の先頭
-            // (`api live serve` の最初のコマンド等)をここで食べて捨てる(実地 2026-09-24: 他の機械の
+            // (`api live serve` の最初のコマンド等)をここで食べて捨てる(実地: 他の機械の
             // 実機のライブ操作で最初の frame が返らなかった)
             let homeResult = try Shell.run(setupSSHBase + ["-n", hostSpec.sshTarget, "echo $HOME"])
             guard homeResult.status == 0 else {

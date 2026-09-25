@@ -6,8 +6,8 @@
 // UIKit / WebKit を import してはいけない(ホスト側 FTCore と共有するため)。
 //
 // なぜ DOM を読むのか: in-app エンジンからは WKWebView の a11y ツリーが見えず(別プロセス提供)、
-// 従来は WebView 画面まるごと XCUITest へ委譲していた。委譲中は 1 手 378ms(in-app は 3ms)で
-// 約120倍の劣化になる。DOM を1往復で読めば in-app の速度のまま中身を扱える。
+// WebView 画面ごと XCUITest へ委譲すると 1 手 378ms(in-app は 3ms)で約120倍の劣化になる。
+// DOM を1往復で読めば in-app の速度のまま中身を扱える。
 
 import Foundation
 
@@ -257,8 +257,8 @@ public enum WebViewDOM {
 
     public struct Node: Decodable, Sendable {
         public var role: String
-        /// DOM の `id`(**`#id` セレクタの供給源**)。2026-08-14 に足した ——
-        /// WebView 150 の a11y は既に DOM の id を `viewIdResourceName` に出しており、
+        /// DOM の `id`(**`#id` セレクタの供給源**)—— WebView 150 の a11y は既に DOM の id を
+        /// `viewIdResourceName` に出しており、
         /// DOM 経路だけ出さないと**同じページで経路によってセレクタが変わる**
         public var identifier: String?
         public var label: String?
@@ -299,7 +299,7 @@ public enum WebViewDOM {
     /// 判定されるのに中の WebView は interop 配下になる(逆に、その1画面のために
     /// アプリ全体で DOM 経路を諦めることにもなる)。危険は WKWebView 単位で決まる。
     ///
-    /// 目印は実測(2026-07-29・iOS 27.0 シミュレータ)の祖先チェーンから採った:
+    /// 目印は実測(iOS 27.0 シミュレータ)の祖先チェーンから採った:
     /// - Flutter: `FlutterTouchInterceptingView < ChildClippingView < FlutterView`
     /// - CMP: `ComposeApp…androidx.compose.ui.viewinterop.InteropWrappingView < … ComposeContainerView`
     ///   (先頭の `ComposeApp` は Kotlin フレームワーク名でプロジェクトごとに変わるため**使わない**)
@@ -310,7 +310,7 @@ public enum WebViewDOM {
             "FlutterTouchInterceptingView", // platform view のタッチ横取り本体
             "androidx.compose.ui.",         // Compose Multiplatform の interop / コンテナ
             "RNCWebView",                   // react-native-webview(RNCWebViewImpl も contains で拾う。
-                                            // 2026-08-08 実測: DOM 読みは通るが合成タッチが Web 側の
+                                            // 実測: DOM 読みは通るが合成タッチが Web 側の
                                             // ハンドラに届かず、リンクタップが無反応のまま成功に見える)
         ]
         return ancestorClassNames.contains { name in

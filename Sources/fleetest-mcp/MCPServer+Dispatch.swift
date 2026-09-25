@@ -24,7 +24,7 @@ extension MCPServer {
             // **生読み**: この polling read は tap の後に走り、この直後 ft_type は
             // pressEnter → snapshotAfterBody を呼ぶ。freshSnapshot(adoptSnapshot 経由)だと
             // lastSnapshots[key] を tap 後の状態で上書きし、settle-lite の基準が
-            // pressEnter 前の状態にずれる(typedIntoNote と同じ理由。2026-08-10)
+            // pressEnter 前の状態にずれる(typedIntoNote と同じ理由)
             guard let fresh = try? await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
             else { return "" }
             if case .found(let found, _) = RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen),
@@ -52,7 +52,7 @@ extension MCPServer {
                                  args: [String: Any]) async throws -> (element: ElementInfo, note: String) {
         let resolved = resolveSessionRef(ref, args: args)
         // stderr のみ・応答には何も足さない。警告を付けるかは実運用の頻度を見て決める
-        // (2026-08-10・依頼側と合意した観測)
+        // (依頼側と合意した観測)
         if resolved?.isStale == true {
             Self.logStderr("verifiedElement: stale ref [\(ref)] passed to a"
                 + " double_tap/pinch/drag path — no warning is attached here; counting"
@@ -103,7 +103,7 @@ extension MCPServer {
     }
 
     /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)。**93 箇所から
-    /// 呼ばれる non-throwing 関数**なので型ゲートは `try?` で通す(誤った型は nil = 従来どおり
+    /// 呼ばれる non-throwing 関数**なので型ゲートは `try?` で通す(誤った型は nil = そのまま
     /// port なしのキーに畳む)——実際の接続は `portArgument`/`portForIOS`(throws)が別途
     /// 検査するので、ここが緩くても「文字列を渡したのに繋がってしまう」ことにはならない
     static func engineKey(_ args: [String: Any]) -> String {
@@ -118,7 +118,7 @@ extension MCPServer {
     /// 引数から見た宛先プラットフォーム。**既定は iOS**(FLEETEST_PLATFORM で上書き)
     static func platformName(_ args: [String: Any]) -> String {
         if let explicit = args["platform"] as? String { return explicit }
-        // **宛先そのものが platform を名乗っている**(2026-08-12 に実機で踏んだ):
+        // **宛先そのものが platform を名乗っている**(実機で踏んだ):
         // `serial` は Android のもの・`udid`/`port` は iOS のものなので、platform を省いた
         // `{"serial": "emulator-5554"}` が既定の "ios" に落ちて**黙って iOS の画面を返していた**
         // (エラーにもならず、返ってくる木が別プラットフォームというだけ)。記憶の適用
@@ -307,7 +307,7 @@ extension MCPServer {
         // udid → port の解決にブリッジ走査を撃ち、居なければ「no running bridge」で落ちる。
         // 端末を1つ駆動している呼び手は `udid` を毎回添えるので、ブリッジが死んだ瞬間に
         // **一覧・診断のツールまで道連れ**になり、文面が案内する `ft_list_devices` 自身が
-        // 同じエラーを返す袋小路になっていた(実地 2026-09-23 の負荷テスト)
+        // 同じエラーを返す袋小路になっていた(実地の負荷テストで確認)
         let folded: [String: Any]
         if Self.toolAcceptsDeviceTarget(tool) {
             do {
@@ -359,7 +359,7 @@ extension MCPServer {
         }
         do {
             // **失敗したら1回だけブリッジを建て直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
-            // 建て直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等は従来どおり
+            // 建て直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
             return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
         } catch let failure as MCPToolFailure {
@@ -405,7 +405,7 @@ extension MCPServer {
             stateDir: stateDir, key: deviceKey, pid: ProcessInfo.processInfo.processIdentifier)
     }
 
-    /// ios/android 分岐の共通尾部(2026-08-12 の掃討・2026-08-12 曖昧化対応で拡張):
+    /// ios/android 分岐の共通尾部(掃討・曖昧化対応で拡張):
     /// マーカーを立て、注記を組む(rememberedDeviceNote 参照)。
     /// `firstTime` はキー消費(explainedNotes への insert)を伴うので呼び手のクロージャで渡す
     /// (このメソッドを static のままにするため — instance メソッド化すると呼び出し側で
@@ -432,7 +432,7 @@ extension MCPServer {
     /// ブリッジは既に tap を撃ち終えている**(BridgeRouter.handleType が tap → type の順で動き、
     /// tap 後に断られる)ので、「まず tap しろ」と言うと二度撃ちになるうえ、擬似検索ボックスが
     /// 実入力欄へ差し替わる画面(ブラウザの新規タブなど)では**渡した ref がもう木に無い**ため
-    /// 再タップ自体が別の失敗を返す(2026-08-12 実測)。正解は ref なしで撃ち直すこと
+    /// 再タップ自体が別の失敗を返す(実測)。正解は ref なしで撃ち直すこと
     /// (フォーカス済みの欄へキーで撃つ経路は通る)。
     /// 走査から切り離した純粋関数(デバイスが要ると、この枝はテストで一度も実行されない)
     static func setTextRefusedHint(tool: String, args: [String: Any], message: String) -> String {
@@ -470,7 +470,7 @@ extension MCPServer {
     /// 読みを撃ち直した**後**に出るので、呼び手にできるのは「数秒おいてから」だけ。
     /// これが無いと生の `Error Domain=com.apple.dt.xctest.automation-support.error Code=8 …` が
     /// そのまま返り、run では「環境要因」と分かっている事象を呼び手が**アプリの不具合**と
-    /// 読み違える(実地 2026-09-23 の負荷テスト)
+    /// 読み違える(実地の負荷テストで確認)
     static func accessibilityOutageHint(_ error: Error) -> String {
         guard SessionRecoveryDriver.isAccessibilityTemporarilyDown(error) else { return "" }
         return " The device's accessibility server is momentarily down (kAXErrorAPIDisabled) —"
@@ -479,12 +479,12 @@ extension MCPServer {
             + " If every call keeps failing this way, restart the simulator/device."
     }
 
-    /// セレクタ引数の両端の引用符を入口で剥がす(2026-08-12 の実アプリ監査)。
+    /// セレクタ引数の両端の引用符を入口で剥がす(実アプリ監査)。
     /// DSL は Swift の文字列リテラルが引用符を剥がすが、MCP は生文字列で受けるので、
     /// `"*立川*"` は**引用符ごと完全一致ラベル**になり黙って一致しない(先頭が `"` なので
     /// `*` 記法も展開されない)。ft_batch は逆に引用符必須なので、跨いで使うと必ず混入する。
     /// 両端が同じ引用符で**中にその引用符が無い**ときだけ剥がす(`"a"||"b"` を壊さない)。
-    /// 引用符そのものを含むラベルは `=` エスケープ(`="…"`)で従来どおり書ける
+    /// 引用符そのものを含むラベルは `=` エスケープ(`="…"`)でそのまま書ける
     /// 引用符剥がしの対象キー。**ToolDefs のスキーマ記述と同期を取る**
     /// (`MCPServerToolDefinitionsTests.testSelectorSyntaxMarkedPropertiesAreAllQuoteStripped`) ——
     /// セレクタ構文を受ける引数を新設したら、ここへ足し忘れないとテストが落ちる
@@ -666,7 +666,7 @@ extension MCPServer {
     /// 木を返すのに「ft_snapshot を撃ち直せ」と言うのは矛盾するので、そちらは待ち方の案内に替える。
     /// **配送が非同期であることは黙らない** —— settle-lite は**操作前の木を覚えているときしか
     /// 走らない**ので、`ft_launch` 直後(記憶が無い)の `snapshotAfter` は遷移前の画面を
-    /// 何の断りもなく返し得る(2026-08-12 のレビュー指摘)
+    /// 何の断りもなく返し得る
     /// **推測した宛先は推測と分かる形で言う**: `bundleId` を省くと
     /// 「このセッションで最後に ft_launch したアプリ」が既定になるが、素の
     /// "Delivered <url> to <bundleID>." は**利用者が渡した宛先の確認**と字面が同じで、
@@ -682,7 +682,7 @@ extension MCPServer {
     /// `routedByScheme`: **iOS は宛先を名乗らない** —— simctl openurl / devicectl openURL は
     /// スキームの持ち主へ OS が配る(bundleId は同意ダイアログの了承と in-app の再起動先にしか
     /// 使わない)。名乗ると、別アプリの bundleId を渡した呼び手に「そこへ届けた」と誤って請け合う。
-    /// Android は intent の宛先そのものなので従来どおり名乗る
+    /// Android は intent の宛先そのものなのでそのまま名乗る
     static func openURLSummary(url: String, bundleID: String?, bundleIDWasRemembered: Bool,
                                routedByScheme: Bool,
                                snapshotAfter: Bool, waitFor: String? = nil,
@@ -836,7 +836,7 @@ extension MCPServer {
 
     /// 座標で撃ったときの断り(E-4)。**推測のセレクタを出さない** —— 座標には
     /// 「その点に何があったか」以上の根拠が無い
-    /// **2026-08-16 に「書けない」から「書けるが弱い」へ直した**: DSL に `tap(x:y:)` が入ったので
+    /// **「書けない」ではなく「書けるが弱い」と言う**: DSL に `tap(x:y:)` が入ったので
     /// 座標もシナリオ行になる(`ft_draft_scenario` は置き換えを促す行末コメント付きで出す)。
     /// 用途で重みが違う —— **探索中は座標のほうが速いことがあり、それでよい**。
     /// **シナリオに残すならセレクタが最優先**(レイアウトが動けば座標は別の物を叩く)
@@ -891,7 +891,7 @@ extension MCPServer {
         return warnings.joined(separator: "\n") + "\n" + body
     }
 
-    /// 繰り返し出る注記を初回だけ満額にする(F-6・2026-08-10)。**通すのは dispatch 経由の
+    /// 繰り返し出る注記を初回だけ満額にする(F-6)。**通すのは dispatch 経由の
     /// 応答組み立てだけ**にすること — static 関数そのものは short/full を知らないまま変えない
     /// (テストの独立性を保つ: 同じ static 関数を単体で呼ぶテストは常に満額の文を見る)。
     /// **full/short は @autoclosure**: 呼び出し側は素の式を渡すだけでよく、

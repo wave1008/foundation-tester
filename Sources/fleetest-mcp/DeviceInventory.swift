@@ -164,9 +164,9 @@ enum DeviceInventory {
     /// **理由を必ず載せる** —— 設定の壊れ(登録マシン名とプロファイル名の不一致など)を黙って
     /// フォールバックで隠すと、受け手は自分の profiles/ が死んでいることに気づけない
     ///
-    /// **2回目以降は理由を畳む**(2026-08-12 の実アプリ監査): 理由は候補プロジェクトを
+    /// **2回目以降は理由を畳む**(実アプリ監査): 理由は候補プロジェクトを
     /// 全部並べるので長く(実測 8 件)、探索中に ft_list_devices を繰り返すと同じ数行を
-    /// 毎回読まされる。初回は従来どおり満額 —— **短縮形でも「使っていない」事実は残す**
+    /// 毎回読まされる。初回は満額 —— **短縮形でも「使っていない」事実は残す**
     /// (ここを消すと受け手は自分の profiles/ が死んでいることに永久に気づけない)
     static func fallbackHeader(reason: String, abbreviated: Bool = false) -> String {
         guard !abbreviated else {
@@ -190,7 +190,7 @@ enum DeviceInventory {
             // 両方出す — 片方しか出さないと「動いているのにもう一方が見えない」になる
             parts.append("bridge " + row.bridges.map(bridgeLabel).joined(separator: ", "))
         } else if row.running, row.platform == "ios" {
-            // **「動いているのに MCP からは触れない」を行から読めるようにする**(H-3。2026-08-09)。
+            // **「動いているのに MCP からは触れない」を行から読めるようにする**(H-3)。
             // iOS の操作系はブリッジ越しなので、ブリッジが無い機は udid を渡しても port を渡しても
             // 動かない。行の見た目は他と同じなので、書かないと利用者は「なぜか効かない」を踏む
             parts.append("no bridge — not drivable from MCP until `fleetest bridge up`")
@@ -380,7 +380,7 @@ enum DeviceInventory {
         return duplicated
     }
 
-    /// **実機も並べる**(2026-08-14・実機+仮想デバイス混在の監査)。ここは台帳(実行プロファイル)が
+    /// **実機も並べる**(実機+仮想デバイス混在の監査)。ここは台帳(実行プロファイル)が
     /// 解決しなかったときの**唯一の一覧**で、`androidFallbackRows` は最初から実機を含むのに
     /// iOS だけシミュレータしか数えていなかった。結果、繋がっている iPhone が
     /// **どの経路からも見えず**、`udid:` を要求するエラー文が「ft_list_devices を見ろ」と言うのと
@@ -502,14 +502,14 @@ enum DeviceInventory {
 
     /// 純粋関数(テスト用)。
     ///
-    /// **「system を見ていない」ことは必ず書く**(2026-08-09 の実測が動機): 既定は user だけで、
+    /// **「system を見ていない」ことは必ず書く**(実測が動機): 既定は user だけで、
     /// 端末に載っている地図・ブラウザは system 側に居る。黙って空を返すと読み手は
     /// 「入っていない」と読み、MCP の外(adb / simctl)へ逃げることになる。
     /// `filter` を渡したときに system まで見るのは MCPServer 側の既定(そちらのコメント参照)
     /// `systemAppsCounted` = 渡された rows が system も含んでいるか。**false のときも案内は出す** ——
     /// 件数が分からないことと「system が無いこと」は別で、Android は前者。ここを黙ると
     /// Android でだけ案内が消え、いちばん詰まりやすい面(表示名が無く id を当てにいく面)で
-    /// 逃げ道が見えなくなる(2026-08-09 の実地確認で発覚)
+    /// 逃げ道が見えなくなる(実地確認で発覚)
     static func renderAppLines(_ rows: [AppRow], includeSystem: Bool, filter: String?,
                                systemAppsCounted: Bool = true) -> String {
         let scoped = includeSystem ? rows : rows.filter(\.isUser)

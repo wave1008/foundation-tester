@@ -40,7 +40,7 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 export type MonitorPlatform = "ios" | "android";
 /** "unknown" は**誰も観測していない**の意味(この機械のものではなく、その機械の monitor も
  * 届いていない)。offline(= 止まっている)と区別する —— 向こうで動いていても手元の simctl/adb
- * には映らないので、offline と言うと「起動したのに未起動のまま」に見える(2026-08-17 の実害)。 */
+ * には映らないので、offline と言うと「起動したのに未起動のまま」に見える(実害)。 */
 export type MonitorDeviceState = "connected" | "booted" | "offline" | "unknown";
 /** デバイスの実体種別(ApiMonitorCommand の kind。旧 CLI 互換のため欠落時は virtual 扱い)。 */
 export type MonitorDeviceKind = "virtual" | "physical";
@@ -83,7 +83,7 @@ export interface MonitorDevice {
   readonly recording?: boolean;
   /** どれかの実行プロファイルの devices に実在するか。false は ApiMonitorCommand.determineStates(includeUnregistered:)
    * が合成した起動中デバイス(未登録)。欠落・非 bool は true に正規化する(旧 CLI 互換。
-   * kind と同じ「欠落は従来どおりの表示に寄せる」方針)。 */
+   * kind と同じ「欠落は通常の表示に寄せる」方針)。 */
   readonly registered?: boolean;
   /** 画面が凍結しているか(一様フレームが2サイクル連続。ApiMonitorCommand の MonitorFrozenDebounce)。
    * **1サイクル遅れる**(devices イベントはフレーム取得より前に出る)。欠落・非 bool は false
@@ -227,7 +227,7 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // 欠落/null/型不正を「未使用中」に寄せる(イベント全体は捨てない)。
     value.inRun = false;
   }
-  // kind は後から追加したフィールド。欠落・未知値は virtual(=従来の挙動)に寄せる
+  // kind は後から追加したフィールド。欠落・未知値は virtual に寄せる
   if (value.kind !== "physical" && value.kind !== "virtual") {
     value.kind = "virtual";
   }
@@ -399,7 +399,7 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
 
 /**
  * デバイス一覧を整列する: **手元が先 → 機械名順 → ios→android → name 順**
- * (ユーザー決定 2026-09-22。それまではプラットフォームが外側だった)。
+ * (ユーザー決定)。
  * **機械が外側**なのは、台は機械ごとに起動・停止し、run も機械ごとに配られるため ——
  * タイルは1列なので、外側 = 左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
@@ -433,17 +433,14 @@ export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
  * 未登録デバイス(registered===false)は定義上「起動中」なので running では素通りする。
  * **"all" は何も落とさない**(元の順序のまま素通し)。
  *
- * 以前の "all" は registered===false を落としていた(実行プロファイルの一覧と揃える意図)。
- * **これが「(プロファイルなし)で1台も出ない」の正体**(実害 2026-08-28): 実行プロファイルが
- * 2つ以上ある案件では `--profile` 無しの `api monitor` は対象デバイスの一覧を1つに決められず、
- * 「起動中のデバイスだけを見る」に縮退して**全台を registered:false で出す**
- * (ApiMonitorCommand の includeUnregistered)。それを丸ごと落としていたので 0 件になっていた。
- * 実行プロファイルが複数あるとき「登録済みの台の一覧」は一意に決まらないので、
- * 縮退そのものは正しい —— 落とす側が間違っていた。
+ * registered===false を "all" で落とすと「(プロファイルなし)で1台も出ない」を再発する(実害):
+ * 実行プロファイルが2つ以上ある案件では `--profile` 無しの `api monitor` は対象デバイスの一覧を
+ * 1つに決められず、「起動中のデバイスだけを見る」に縮退して**全台を registered:false で出す**
+ * (ApiMonitorCommand の includeUnregistered)。実行プロファイルが複数あるとき「登録済みの台の
+ * 一覧」は一意に決まらないので、この縮退は正しい —— registered===false を落とす側が誤り。
  *
- * **ブリッジ不在の iOS 実機(state==="booted")も出す**(2026-08-26 に方針変更)。以前は
- * 「タイルが未起動表示になるので出さない」として除外していたが、`api monitor` が接続中の実機を
- * 合成するようになった以上、**繋がっている端末を「起動中のデバイス」から隠すほうが実態と食い違う**
+ * **ブリッジ不在の iOS 実機(state==="booted")も出す** —— `api monitor` が接続中の実機を合成する
+ * ので、**繋がっている端末を「起動中のデバイス」から隠すと実態と食い違う**
  * (ブリッジはタイルのメニューから起こせる。タイル側の表示は deviceTiles.js の bridgeNotRunning のまま)。 */
 export function filterMonitorDevices(
   devices: readonly MonitorDevice[],

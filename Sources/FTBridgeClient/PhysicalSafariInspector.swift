@@ -8,7 +8,7 @@
 // 実機の指定ポートへの生の中継管になり、そこから先は lockdown の「4byte BE 長 + plist」
 // (`SafariWebInspector.encodeFrame`/`extractFrame` を再利用。書式は同じで plist の中身が違うだけ)。
 //
-// 手順(実測 2026-08-13・iOS 26.6):
+// 手順(実測・iOS 26.6):
 //   ReadPairRecord → ListDevices → Connect(port 62078) → lockdown StartSession(TLS 開始)
 //   → lockdown StartService(com.apple.webinspector) → 返ってきたポートへ Connect
 //   → EnableServiceSSL なら TLS で包み直す → ここから webinspector の RPC
@@ -423,7 +423,7 @@ enum PairingIdentityImporter {
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: combinedPath.path)
 
         let passphrase = UUID().uuidString
-        // **絶対パスで固定**(2026-08-13 のレビュー指摘)。PATH 次第で macOS 同梱の LibreSSL と
+        // **絶対パスで固定**。PATH 次第で macOS 同梱の LibreSSL と
         // Homebrew の OpenSSL 3 が入れ替わり、p12 の既定暗号が変わって `SecPKCS12Import` の
         // 可否が受け手の環境で割れ得る。**締切も必ず付ける** —— ここだけ無期限だと、
         // `connect(deadline:)` という契約の内側に締切の効かない子プロセス待ちが残る

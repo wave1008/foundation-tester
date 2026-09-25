@@ -27,7 +27,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `scrollFrame` が明示されているのに探索開始時点(または探索中)の snapshot で
     /// 1件も解決できず、**スワイプを1本も送らずに**探索を打ち切った。MCP(RefGuard 経由ではなく
     /// StepOutcome.notes 経由)がこのコードで fail-fast 専用の文へ分岐する。
-    /// 実測(2026-08-08・Apple マップ): 申告した容器がツリーから消え、黙った全画面スワイプへ
+    /// 実測(Apple マップ): 申告した容器がツリーから消え、黙った全画面スワイプへ
     /// 退化してカードの「計画」ボタンを誤発火させた
     case scrollFrameMissing = "scroll-frame-missing"
 
@@ -141,13 +141,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 画像の不正)。このステップは幾何の Tier-0(中心が画面外でないこと)だけで通っている。
     /// **立てるのは FM に訊いた回だけ** —— マスタースイッチ OFF・macOS 26・インクゲートで
     /// 省いた回は「訊く必要が無かった」のであって skip ではない(毎回出る注記にしない)。
-    /// run 横断で率を見ると**環境側の FM 不調**が拾える(2026-08-20 受け手報告: availability は
+    /// run 横断で率を見ると**環境側の FM 不調**が拾える(受け手報告: availability は
     /// available なのに実呼び出しが ModelManagerError(1001) で落ち、可視判定が黙って通っていた)
     case visibilityGuardSkipped = "visibility-guard-skipped"
 
     /// **`iosAlertHandler` の登録が無い**のに、OS のシステムアラートがアプリの前面に出ていた
     /// (SpringBoard への1問 `GET /systemalert` で確認した事実)。in-app の操作は OS のイベント経路を
-    /// 通らないので**背面のアプリに届いてしまう** = 人手では不可能な操作が通る(受け手報告 2026-08-22)。
+    /// 通らないので**背面のアプリに届いてしまう** = 人手では不可能な操作が通る(受け手報告)。
     /// 聞くのは安い契機だけ: ①launch 系の直後の最初の触る操作 ②ステップが失敗したとき(1回ずつ)。
     /// 常時監視はしない(登録がある間の毎ステップの往復は SystemUIGate が別に担う)。
     /// 判定は変えず注記(+ 失敗文言に題名)に留める —— 閉じるのはシナリオの責務のまま。
@@ -192,11 +192,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 載っていない(プロセス初回)か、Vision 自体が劣化している(`RegionText.occlusionBudget`)
     case ocrBudgetExhausted = "ocr-budget-exhausted"
     /// OCR の近道を撃たなかった理由。「近道が効くはず」の witness(薄いテキスト)が FM に落ちて
-    /// 反転したとき、理由が残らないと 1 回で切れない(2026-09-15 の負荷テスト F29)
+    /// 反転したとき、理由が残らないと 1 回で切れない(負荷テスト F29)
     case ocrShortcutNotWarm = "ocr-shortcut-not-warm"
     case ocrShortcutBusy = "ocr-shortcut-busy"
 
-    /// 近道を撃つ前に暖機の完了を待った(ユーザー決定 2026-09-15: run の開始時には待たない・
+    /// 近道を撃つ前に暖機の完了を待った(ユーザー決定: run の開始時には待たない・
     /// 近道を呼ぶ時点でだけ待つ)。待った時間は `DeadlineExclusion` 経由で締め切りから差し引かれる
     /// ので判定は変えない。**率が上がったら暖機の開始(FTDriveCore.init)が間に合っていない**
     /// (実行プロファイルのマスタースイッチが効いているのに最初のガードより前に終わらない)
@@ -215,7 +215,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
-    /// deadline を一度だけ延ばして撮り直したところ通った(2026-09-15 実測: guardMs 6.3s >
+    /// deadline を一度だけ延ばして撮り直したところ通った(実測: guardMs 6.3s >
     /// 既定 timeout 5s で1フレームだけ古い描画を反転として確定させた欠陥)。
     /// **立つのは撮り直しが通った回だけ** —— 撮り直しても覆われたままなら本物の occlusion
     /// なので通常の失敗文言に譲り、この注記は立てない。
@@ -232,7 +232,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま**操作した**
     /// (止めないのは設計どおり = docs/design.md「スクロール残像(ghost)は拒否せず、警告して撃つ」)。
     /// ステップは緑のまま。**後段の検証が無いシナリオでは、これだけが「別の物に当たったかもしれない」
-    /// 痕跡**になる(2026-09-16: iPhone 13 LAN で撃った後、後段の textIs が selected=- で赤。
+    /// 痕跡**になる(実測: iPhone 13 LAN で撃った後、後段の textIs が selected=- で赤。
     /// それまでは説明文の括弧書きにしか残らず run 横断で数えられなかった)。
     /// **率が上がったら往復の遅い経路で寄せ(recoveryJump / recoveryDirection)が収束していない**
     case actedOutsideContainer = "acted-outside-container"
@@ -240,14 +240,14 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 検証が失敗したとき、それより前のタップのうち**画面を 1 ピクセルも変えなかったもの**を失敗文言で
     /// 名指しした(`StepExecutor.tapDiagnosisHint`。追加の撮影はしない)。**判定は変えない**
     /// (変えないのが正常なタップもある)。立つのは失敗したステップだけ。
-    /// **率が上がったらタップが吸われている**(遷移直後の 1 タップ目・遅い Mac。2026-09-16 の
+    /// **率が上がったらタップが吸われている**(遷移直後の 1 タップ目・遅い Mac。
     /// S0020 は約 130 回中 2 回で、それまでは失敗文言にしか残らず数えられなかった)
     case unchangedTapBeforeFailure = "unchanged-tap-before-failure"
 
     /// xcuitest の高速起動で、起動させた後に**ランナーがアプリを前面と見ないまま** activate を頼んだ
     /// (`FastLaunchDriver`。ランナーが 5 秒待っても前面にならなかった)。activate はアプリを
     /// 「動いていない」と見ると起動し直し、その起動が時間切れになるとランナーごと落ちる
-    /// (2026-09-16 の L18)。**立つだけでは失敗ではない**(activate が通れば緑)。
+    /// (負荷テスト L18)。**立つだけでは失敗ではない**(activate が通れば緑)。
     /// **率が上がったら起動の遅い台・高負荷**で、ランナー喪失の手前にいる
     case launchActivatedBeforeForeground = "launch-activated-before-foreground"
 

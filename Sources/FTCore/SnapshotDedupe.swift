@@ -1,6 +1,6 @@
 // スナップショットに同じ物が2度並ぶのを落とす規則。
 //
-// iOS の AX ツリーはラッパと実体を両方出すことがある(2026-08-06 に Simulator 上で実測):
+// iOS の AX ツリーはラッパと実体を両方出すことがある(Simulator 上で実測):
 //   - UIKit の Switch が `id=sw_notify 61x28` と `(id 無し) 63x28` の2ノード
 //   - UIAlertController の `#btn_dialog_ok` / `#btn_dialog_cancel` が同一 frame で各2つ
 //   - キーボードの `#dictation` が2つ
@@ -21,7 +21,7 @@ public enum SnapshotDedupe {
     /// `candidate` は、既に採った要素のどれかと**同じ物**か。
     ///
     /// 落としてよい条件は3つとも成り立つときだけ:
-    ///   1. 型が同じ(容器と中身 = Other と Button は今までどおり両方残す)
+    ///   1. 型が同じ(容器と中身 = Other と Button は両方残す)
     ///   2. 位置がほぼ同じ
     ///   3. **情報を足していない**(id・ラベル・value を新しく持たない)
     ///
@@ -40,7 +40,7 @@ public enum SnapshotDedupe {
                   candidate.value == nil || candidate.value == earlier.value,
                   // scrollable を足す candidate は、earlier が id 持ち(= wrapperScrollMerge が
                   // 後で統合する RN のラッパー形)のときだけ残す。匿名どうしの同枠 scroll 双子は
-                  // 従来どおり畳む(広く残すと既存 SUT の序数と間引き枠がずれる)
+                  // 畳む(広く残すと既存 SUT の序数と間引き枠がずれる)
                   !(candidate.scrollable == true && earlier.scrollable != true
                         && earlier.identifier != nil)
             else { return false }
@@ -55,7 +55,7 @@ public enum SnapshotDedupe {
     }
 
     /// RN の ScrollView/FlatList は testID がラッパー(RCTScrollView)に付き、実際にスクロールする
-    /// 内側ノードは別要素として出る(2026-08-08 実測、iOS xcuitest/in-app 双方)。
+    /// 内側ノードは別要素として出る(実測、iOS xcuitest/in-app 双方)。
     /// id 付き非スクロール要素(A)と、**直後に続く**同じ frame の匿名スクロール要素(B)を1つに畳む。
     /// 隣接(pre-order で B が A の次)を条件にするのは、離れた位置の同枠一致
     /// (全画面 ScrollView に同寸の id 付きオーバーレイが重なる等)を誤結合しないため。
@@ -81,7 +81,7 @@ public enum SnapshotDedupe {
     }
 
     /// RN(Android)の Pressable は accessible でも子の Text が別ノードで出て、button と同ラベルの
-    /// staticText が並ぶ(2026-08-08 実測。ブリッジは a11y 非重要ビューも採るためアプリ側では隠せない)。
+    /// staticText が並ぶ(実測。ブリッジは a11y 非重要ビューも採るためアプリ側では隠せない)。
     /// 素のラベルセレクタが曖昧になり `.staticText[n]` の序数も水増しされるので、
     /// **直前の button に frame ごと内包される同ラベル・無 id の staticText** を落とす。
     /// View/XML の Button はテキスト内蔵(子ノード無し)・Compose は単一ノードなので既存 SUT では発火しない。

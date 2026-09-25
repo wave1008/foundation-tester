@@ -27,7 +27,7 @@ public enum FMDoctor {
     }
 
     /// 実際に1回推論して可否を判定する。availability は「端末が対応しているか」しか見ておらず、
-    /// モデル資産側の理由で全呼び出しが失敗していても .available を返す(実測 2026-07-22:
+    /// モデル資産側の理由で全呼び出しが失敗していても .available を返す(実測:
     /// availability=available / isAvailable=true のまま ModelManagerError 1001 で全滅した)。
     /// availability を信じて緑を出すと、occlusion-guard が黙って無効なまま「正常」と報告される。
     ///
@@ -82,7 +82,7 @@ public enum FMDoctor {
 
     /// FM 本体が使えないときに**何が止まり、代わりに何を書くか**。
     /// 「unavailable」だけでは、シナリオの書き方をどう変えればよいか分からない
-    /// (外部フィードバック 2026-08-06)。visionReport が視覚系について同じことをしている。
+    /// (外部フィードバック)。visionReport が視覚系について同じことをしている。
     public static let unavailableImpact =
         "Disabled: screenLooksLike, the occlusion-guard (the requireVisible check of exist), and"
         + " FM-based scenario drafting and naming. Everything deterministic keeps working (self-healing"

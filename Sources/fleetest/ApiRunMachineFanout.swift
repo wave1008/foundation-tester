@@ -9,7 +9,7 @@
 // ストリームを、runStarted/runFinished は集計してこちらが1回だけ出し、workersReady は
 // **子ごとに届くたび**それまでの累積(子 index 順)で合成して出し直し、それ以外は worker
 // フィールドをホスト付き id(FTCore.DeviceMachineGrouping.workerID)へ書き換えて**即時**中継する
-// (バッファしない = リモート機の準備待ちでローカル分の表示が止まらない。2026-08-18)。
+// (バッファしない = リモート機の準備待ちでローカル分の表示が止まらない)。
 // 子が担当シナリオを残して終了したら、そのシナリオを failed として合成イベントで報告する。
 
 import ArgumentParser
@@ -63,7 +63,7 @@ enum ApiRunMachineFanout {
         let ticket = DispatchTicketIssuer.issue(runGroup: runGroup)
         setenv(DispatchTicket.environmentKey, ticket.environmentValue, 1)
         // **この Mac のロックを、ビルド/一覧取得より前に取る**(DeviceMachineRunner.run と同じ
-        // 理由・同じ位置。ユーザー決定 2026-09-21「1つのマシンで同時に複数の run は走らせない」)。
+        // 理由・同じ位置。ユーザー決定「1つのマシンで同時に複数の run は走らせない」)。
         // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
         // 関わらず必ず手放す(下)。全順序どおりの本取得は `DispatchPrelock` が local を含めて
         // 改めて行う(§18.10「循環待ちを構造的に作れない」= local だけ順序の外に出さない)。
@@ -421,7 +421,7 @@ enum ApiRunMachineFanout {
 /// それまでに判明している全ワーカー(子 index 順の累積)で合成して出し直す —— 拡張側の
 /// レーン構成は全置換だが同一 id のログは維持されるため、再送は増分の追加として映る
 /// (vscode-fleetest/src/runLaneModel.ts applyWorkers と対)。他のイベントはバッファせず
-/// 即時中継する(貯めると複数マシン実行の進行表示が最後に一括更新になる。2026-08-18)。
+/// 即時中継する(貯めると複数マシン実行の進行表示が最後に一括更新になる)。
 /// 子が担当シナリオを残して終了したら、そのシナリオを failed の合成イベントで報告する
 /// (沈黙のまま「走っていない」を作らない)。
 struct MachineFanoutMultiplexer {

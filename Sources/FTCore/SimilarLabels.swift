@@ -1,6 +1,6 @@
 // SimilarLabels.swift
 // 「セレクタが外れたときに近いラベル/id を挙げる」候補選定。MCP(similarLabelsHint)と
-// DSL(StepExecutor+Resolve.candidateHint)が共有する唯一の定義元(2026-08-15、MCP から降ろした)。
+// DSL(StepExecutor+Resolve.candidateHint)が共有する唯一の定義元。
 //
 // **文言はここでは組み立てない**: MCP の応答文言("note: similar labels on screen: …")は
 // 既存の MCP テスト・NoteBudgetTests のバイト数ゲート対象で1文字も変えられない。
@@ -73,7 +73,7 @@ public enum SimilarLabels {
     /// 「強い一致 > 操作可能 > 文書順」で返す(似ているというだけで断定はしない)。
     ///
     /// **装飾葉(bulk fold と同じ `SnapshotRenderer.isDecorativeLeaf` 判定)は候補プールから除く**
-    /// —— 実測(2026-08-10、Apple マップ): 除かないと地図 POI のような装飾要素が短い CJK 語の
+    /// —— 実測(Apple マップ): 除かないと地図 POI のような装飾要素が短い CJK 語の
     /// 緩い編集距離一致で枠を埋め、実在した操作ボタンを1件も出せない(「南口」「北口」「1」が出て
     /// 「計画」が出ない)。
     ///

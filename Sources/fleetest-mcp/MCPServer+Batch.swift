@@ -641,7 +641,7 @@ extension MCPServer {
     /// (縁で止まっているだけの正当なケースがあるため)。撮り直したら、以後の表示・記録は
     /// **撮り直したほうの木**を使う(snapshotAfterBodyWithStatus と同じ)。
     /// `beforeBatch` が nil(起点を知らない)なら比較対象が無いので何もしない。
-    /// **木がほぼ空の画面には `unrepresentedScreenCaveat` を添える**(2026-08-13 監査。
+    /// **木がほぼ空の画面には `unrepresentedScreenCaveat` を添える**(監査。
     /// MCPServer+Snapshot.swift 参照) —— 空の木は必ず「変化なし」に一致するため
     /// `engine` は iOS のシステムダイアログの案内を出すかの判定にだけ使う
     /// (`systemDialogHint` 参照。既定 nil = engine 不明として出す側)

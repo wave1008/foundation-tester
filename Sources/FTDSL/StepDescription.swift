@@ -311,7 +311,7 @@ public enum StepDescription {
 
     /// 説明文の言語判定: どれかに日本語(かな・カナ・CJK 漢字)が含まれれば日本語文。
     /// テスト対象が日本語 UI のときだけ日本語の枠を使い、#id やラテン文字だけのステップに
-    /// 日本語の枠を付けない(2026-07-30「内容由来の文は入力の言語に追従」)
+    /// 日本語の枠を付けない(「内容由来の文は入力の言語に追従」)
     static func isJapanese(_ values: String...) -> Bool {
         values.contains { value in
             value.unicodeScalars.contains { scalar in

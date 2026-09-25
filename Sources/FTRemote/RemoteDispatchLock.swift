@@ -1,5 +1,5 @@
 // RemoteDispatchLock.swift
-// **1つの Mac で同時に走る run は1本**(ユーザー決定 2026-09-21。高負荷はテストを不安定にする)を
+// **1つの Mac で同時に走る run は1本**(ユーザー決定。高負荷はテストを不安定にする)を
 // 守るロック。docs/remote-runner.md §5「ジョブは直列化」。
 // フリート内の重複は FleetProfile.validate で防げるが、別フリート・別人・CLI/GUI 併走による
 // 同一ホストへの二重実行は防げない ―― そこをその機械のロックファイルで塞ぐ。
@@ -95,7 +95,7 @@ public enum RemoteDispatchLock {
 
     /// 取得失敗時に出す1行。「誰がいつから掴んでいるか」+ どうすればよいか
     /// (相手の完了を待つ / stuck なら --force-lock で奪う)を必ず含める。
-    /// **`scope` は文言だけを分ける**(既定はリモート = 従来と1バイトも変わらない)
+    /// **`scope` は文言だけを分ける**(既定はリモート = 元の挙動と1バイトも変わらない)
     public static func heldMessage(_ info: RemoteDispatchLockInfo?,
                                    scope: DispatchLockScope = .remoteHost) -> String {
         switch scope {
@@ -276,7 +276,7 @@ public enum RemoteDispatchLock {
 
 /// `fleetest remote unlock`: **自分の死んだディスパッチが残したロックだけ**を外す判定(純粋関数)。
 /// `--force-lock` は他人の走っている run を奪えるので、残ったロックの片付けにそれを使わせない
-/// (受け手要望 2026-08-23: 複数人でフリートを共有すると、残ったロック + --force-lock が事故になる)。
+/// (受け手要望: 複数人でフリートを共有すると、残ったロック + --force-lock が事故になる)。
 ///
 /// 規則(上から順に最初に当たったもの):
 /// - ロック無し → 何もしない
@@ -324,7 +324,7 @@ public enum RemoteDispatchUnlock {
 
     /// **pid の再利用**で死んだ保持者を「生きている」と読まない —— `info.acquiredAt` より後に
     /// 始まったプロセスは記録した pid とは別物。`acquiredAt` が読めない(壊れた/旧形式の info.json)
-    /// ときは pid の生死だけで判定する(従来どおり。時刻を必須にすると読めない info.json を理由に
+    /// ときは pid の生死だけで判定する(時刻を必須にすると読めない info.json を理由に
     /// 死んだロックが永久に回収不能になる)
     private static func holderIsStillTheSameProcess(_ info: RemoteDispatchLockInfo,
                                                      pidAlive: (Int32) -> Bool,

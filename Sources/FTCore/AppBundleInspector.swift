@@ -70,7 +70,7 @@ public enum AppBundleInspector {
     /// アプリプロファイルの `appName` がアイコン名の候補のどれとも一致しないときの警告(一致・候補が空は nil)。
     /// **appName はアイコン名を兼ねる**: 名前を省いた `tapAppIcon()` はこれとラベルの完全一致で探し
     /// (`AppIconLocator.findIcon`)、システムアラートの題名がこの名前を含まなければ「前の run の残りかも」と
-    /// 助言する(`SystemUIGate.mayBeLeftover`)。どちらも食い違うと黙って誤る(2026-09-11: 実機用
+    /// 助言する(`SystemUIGate.mayBeLeftover`)。どちらも食い違うと黙って誤る(実機用
     /// プロファイルに「(実機)」を足した appName で tapAppIcon が App icon not found)。止めはしない
     public static func appNameMismatchWarning(appRef: String, platform: String, appName: String,
                                               candidates: [String]) -> String? {

@@ -101,7 +101,7 @@ public enum ScenarioDraftCodeGen {
 
     /// 「アプリの起動」を指す前提か。**「開く」「表示する」だけでは起動と見なさない** —
     /// 「カートタブを開く」のような画面内操作まで launchApp() に化けるため
-    /// (FM 経路の実出力で確認。2026-07-26)。目的語がアプリのときだけ「開く」を起動と読む。
+    /// (FM 経路の実出力で確認)。目的語がアプリのときだけ「開く」を起動と読む。
     static func isAppLaunch(_ text: String) -> Bool {
         if contains(text, ["起動", "立ち上げ", "launch"]) { return true }
         return contains(text, ["アプリ", "app"]) && contains(text, ["開く", "表示"])

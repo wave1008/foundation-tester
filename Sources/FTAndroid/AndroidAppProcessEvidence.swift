@@ -1,10 +1,10 @@
 // クラッシュしたアプリの process 証跡(MCP の switchedAppNote / DSL の失敗記録が共有する)。
-// `adb shell pidof <pkg>` が空を返す = プロセスが死んでいる(2026-09-05・実機 Pixel 4a で
+// `adb shell pidof <pkg>` が空を返す = プロセスが死んでいる(実機 Pixel 4a で
 // #btn_crash_confirm から実測)。このとき ft_snapshot は前面へ移った launcher の木しか見せず
 // 「別のアプリが前面」としか言えないため、クラッシュを利用者の操作と誤解される。
 // adb が無い・失敗したときは nil で黙る(AndroidLogcat/AndroidForegroundWindows と同じ規律 —
 // 判定材料が無いのに「落ちていない」と断定しない)。**pidof 自体が「見つからない」で返す
-// 非 0 終了と、adb 自体の断(device offline 等)は別物**(2026-09-16 の負荷テストで
+// 非 0 終了と、adb 自体の断(device offline 等)は別物**(負荷テストで
 // M1Ultra のエミュレータで実際に踏んだ: 一瞬の adb 断を「プロセスが居ない」と誤記録した。
 // logcat ではアプリもブリッジも生きていた)。区別は `processAbsence` の1箇所だけに置く。
 
@@ -59,7 +59,7 @@ public enum AndroidAppProcessEvidenceQuery {
     /// - `nil`: **判定できない**(adb 自体が失敗した。device offline 等)。
     ///   ここが唯一の判定点 —— exit ≠ 0 を一律「プロセスが居ない」と読むと、adb 自体の断
     ///   (device offline / not found / unauthorized / daemon 起動失敗)を「クラッシュの疑い」と
-    ///   誤記録する(2026-09-16 の負荷テストで M1Ultra のエミュレータで実際に踏んだ:
+    ///   誤記録する(負荷テストで M1Ultra のエミュレータで実際に踏んだ:
     ///   一瞬の `adb: device offline` が「プロセスが居ない」と記録された。logcat ではアプリも
     ///   ブリッジも生きていた)。**言えないときは欄ごと省く**(失敗の記録の規律。呼び出し元は
     ///   `query` 経由で nil を受け取り、`core.appProcessEvidence` は空配列を返す)

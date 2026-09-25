@@ -1,7 +1,7 @@
 // アプリ自身の WebView を DOM(CDP)で読めなかったとき、AndroidDriver.snapshot() は
 // **黙って a11y へ落ちて**いた(AndroidWebViewDOM.read が nil を返すだけで理由が消える)。
 //
-// **実測(2026-09-03、E2E-RN S0010 の DOM 経路検査)**: local(userdebug 系, ro.debuggable=1)は
+// **実測(E2E-RN S0010 の DOM 経路検査)**: local(userdebug 系, ro.debuggable=1)は
 // 緑、M1Max/M1Ultra(user 系 = Play Store イメージ, ro.debuggable=0)は決定的に赤。SUT は3機とも
 // 同じ release ビルド(ApplicationInfo.FLAG_DEBUGGABLE も 0)。Chromium が devtools ソケットを
 // 開くのは、システムかアプリが debuggable か、アプリ自身が setWebContentsDebuggingEnabled(true) を

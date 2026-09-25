@@ -101,7 +101,7 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
 // (Sources/fleetest/ApiDeviceCommands.swift の ApiDevicesUpLifecycleEvent と対)。
 // **リモートへ分散した分は親が machine を入れて中継する**(RemoteDeviceFanout.machineStamped)——
 // 子は `--device-machine local` で走るので自分では null を名乗る。**キーは "machine"**
-// (2026-08-26 改名。ProtocolVersion 9)。
+// (ProtocolVersion 9 で改名)。
 export type DevicesUpEvent =
   | { readonly kind: "log"; readonly message: string }
   | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string; readonly machine?: string | null }
@@ -255,7 +255,7 @@ export type DeviceLifecycleJob =
  * という実測は**その機械の CPU の話**で、別の機械の起動を止める理由が無い(起動は機械ごとに
  * 独立した資源[CPU・GPU・ディスク]を使う。一括起動が RemoteDeviceFanout で機械ごとに
  * 分散するのと同じ考え方)。全機で共有すると、M2Ultra の2台を起こしている間、
- * M1Max の台が「起動待機」で止まる(2026-08-17 の実害)。 */
+ * M1Max の台が「起動待機」で止まる(実害)。 */
 export const DEVICE_LIFECYCLE_MAX_CONCURRENT = 2;
 
 /** スケジューラ状態(不変)。running が実行中、jobs が待機列(FIFO)。 */
@@ -279,7 +279,7 @@ export function enqueueDeviceLifecycleJob(
 /** ジョブの同一性(finish の running 照合用)。device は (machine, name)+op、bulk は op、
  * restartBatch は names。**machine を入れないと**、同名の台を2機で同時に操作したとき
  * 片方の完了がもう片方を running から外し、残ったジョブのバッジが剥がれない・
- * 二重に完了扱いになる(2026-08-17 に同型を掃討)。 */
+ * 二重に完了扱いになる(同型を掃討)。 */
 function sameLifecycleJob(a: DeviceLifecycleJob, b: DeviceLifecycleJob): boolean {
   if (a.kind === "device" && b.kind === "device") {
     return a.name === b.name && a.op === b.op && a.machine === b.machine;
@@ -326,7 +326,7 @@ export function promoteDeviceLifecycleJobs(state: DeviceLifecycleQueueState): {
       }
       // **先頭が詰まっていても、空いている機械のジョブは進める** —— FIFO を機械をまたいで
       // 守る意味は無い(それが「M2Ultra を起こす間 M1Max が待つ」の正体)。
-      // 走査は最初の非 device ジョブまで(bulk との前後関係は従来どおり守る)
+      // 走査は最初の非 device ジョブまで(bulk との前後関係は守る)
       const limit = jobs.findIndex((j) => j.kind !== "device");
       const scanEnd = limit === -1 ? jobs.length : limit;
       const index = jobs.slice(0, scanEnd).findIndex(canStart);
@@ -381,7 +381,7 @@ export function hasDeviceLifecycleJobFor(
   state: DeviceLifecycleQueueState,
   name: string,
   /** そのデバイスが居る機械(手元は undefined)。**名前だけで見ると、別の機械の同名の台の
-   * ジョブが手元の操作を黙って握りつぶす**(2026-08-17 に同型を掃討)。
+   * ジョブが手元の操作を黙って握りつぶす**(同型を掃討)。
    * bulk / restartBatch は全機に触れうるので名前だけで見てよい。 */
   machine?: string,
 ): boolean {
@@ -445,7 +445,7 @@ export function deviceLifecycleStatusFor(
   name: string,
   /** そのデバイスが居る機械(手元は undefined)。**名前だけで引くと同名の別の機械のジョブに
    * 当たる** —— 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」を出す
-   * (2026-08-17 の実害。bulk/restartBatch は手元専用なので name のままでよい)。 */
+   * (実害。bulk/restartBatch は手元専用なので name のままでよい)。 */
   machine?: string,
 ): DeviceOpBusyState | undefined {
   const all = [...state.running, ...state.jobs];

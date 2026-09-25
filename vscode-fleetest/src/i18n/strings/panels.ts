@@ -270,7 +270,7 @@ export const panelsStrings = {
   // ここは静的ラベルのみ。
   "panels.settings.logSectionTitle": { ja: "ログ・録画", en: "Logs & recordings" },
   "panels.settings.remoteSectionTitle": { ja: "マシン", en: "Machines" },
-  // 列見出しは「マシン」(2026-08-26 指示)。プロファイルの machine 欄・--runner に書く名前と同じもの
+  // 列見出しは「マシン」(指示済み)。プロファイルの machine 欄・--runner に書く名前と同じもの
   "panels.settings.remoteHostsColMachine": {
     ja: "マシン(任意のエイリアス)",
     en: "Machine (optional alias)",

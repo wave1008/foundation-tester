@@ -5,17 +5,17 @@
 // fleetest を kill しても ssh クライアントは生き残る。すると `-tt` が担っていた
 // 「切断でリモートのプロセスグループへ SIGHUP」(docs/remote-runner.md §16.1)が**発火しない** ——
 // リモートには走りっぱなしの run が残り、dispatch.lock も握られたままになる
-// (2026-08-18 に実測。残った子は exit 途中で刺さり、次のディスパッチが数十分ぶん詰まった)。
+// (実測。残った子は exit 途中で刺さり、次のディスパッチが数十分ぶん詰まった)。
 //
 // 中断を握りつぶすのではなく、**子を落としてから通常の巻き戻しを続ける**のが要点:
 // そうすることで呼び出し側の defer(dispatch.lock の解放・終了スクリプト)が動く。
 //
 // **1プロセスに1組のシグナルソース**: ホスト別の子を並行に持つ親
 // (DeviceMachineRunner / FleetRunner / ApiRunMachineFanout)は relay を同時に複数抱える。
-// 以前は relay ごとにソースを立て、`stop()` が `signal(sig, SIG_DFL)` を戻していたため、
-// **先に終わった子の stop() が残りの子の横取りまで解いていた** —— 手元のぶんが先に終わった
+// relay ごとにソースを立て `stop()` で `signal(sig, SIG_DFL)` へ戻す実装だと、
+// **先に終わった子の stop() が残りの子の横取りまで解いてしまう** —— 手元のぶんが先に終わった
 // 分散 run の親へ `kill -INT` すると、親だけ既定動作で死に、残った M1Max の子・ssh・リモートの
-// run・dispatch.lock が全部残った(受け手報告 2026-08-23。端末の Ctrl-C はプロセスグループ
+// run・dispatch.lock が全部残る(受け手報告。端末の Ctrl-C はプロセスグループ
 // 全体に届くので子も自力で止まり、差が出ない)。ソースは登録が 0→1 で立て、1→0 で戻す。
 
 import Foundation
@@ -61,7 +61,7 @@ final class InterruptRelay {
     ///     走り続ける」元の症状に戻るので必ず落とす
     ///   - **fleetest の子(マシン別サブ実行)= nil**。こちらは SIGTERM を受けてから
     ///     dispatch.lock の解放と終了スクリプトを走らせる。**時間で殺すとそれを飛ばす** ——
-    ///     2 秒で殺していた版では実際にロックが残った(2026-08-18 実測: 子の exit=9)。
+    ///     2 秒で殺すと実際にロックが残る(実測: 子の exit=9)。
     ///     片付けの所要は利用者のスクリプト次第で上限を決められないので、待つ側に倒す
     ///     (刺さった場合は人が kill -9 する)
     static func forwarding(to process: Process, escalateAfter: TimeInterval? = 2) -> InterruptRelay {

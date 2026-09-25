@@ -1,12 +1,12 @@
 // Android 実機だけに必要な run 前準備。エミュレータには無い前提を埋める:
 //   - 実機は放置すると画面が消灯しロック画面に入る。ロック中は
 //     UiAutomation.getRootInActiveWindow() が対象アプリにならず launch が 500
-//     (「アプリの画面が表示されませんでした」)、スクショも真っ黒になる(2026-07-25 の実害)
+//     (「アプリの画面が表示されませんでした」)、スクショも真っ黒になる(実害)
 //   - PIN/パターンが設定された端末は adb から解除できない。docs 側で「画面ロックなし」を要件に
 //     している(解除できないと全シナリオが launch 500 で落ちる)
 // 副作用(stay-awake)は端末に永続するため、呼び出し側が 1 回だけ知らせること。
 //
-// **ロック判定に使ってよい信号は topResumedActivity の有無だけ**(Pixel 4a/Android 13 実測 2026-07-25)。
+// **ロック判定に使ってよい信号は topResumedActivity の有無だけ**(Pixel 4a/Android 13 実測)。
 // `isKeyguardShowing` と `mCurrentFocus` は、実際には解除されランチャーが見えている状態でも
 // 古い値(true / NotificationShade)を返し続けた。この2つを信じると解除済みを失敗と誤報する。
 
@@ -28,10 +28,9 @@ public enum AndroidPhysicalDevice {
             _ = try? Shell.run([adb, "-s", serial] + args, timeout: timeout)
         }
 
-        // **消灯抑止はツールの仕事にしない**(2026-09-05 ユーザー決定)。端末の画面設定は
-        // 端末側で決めるもので、`stayon` は true も false も撃たない —— false を「旧版の後始末」として
-        // 撃っていた頃は、持ち主が開発者オプションで立てた「充電中はスリープしない」(7)と区別できず
-        // run・MCP のたびに 0 へ消していた(2026-09-11 Pixel 3a で 7 → 0)。
+        // **消灯抑止はツールの仕事にしない**(ユーザー決定)。端末の画面設定は
+        // 端末側で決めるもので、`stayon` は true も false も撃たない —— 持ち主が開発者オプションで立てた
+        // 「充電中はスリープしない」(7)と区別できず、撃つと run・MCP のたびに 0 へ消してしまう(Pixel 3a で実害)。
         // 点灯と解除は残す(ロック中は launch が 500 で落ちるため run の前提であって抑止ではない)。
         // 途中で消えた分は `wakeIfAsleep` がシナリオごと・MCP の呼び出しごとに起こし直す
         shell(["shell", "input", "keyevent", "KEYCODE_WAKEUP"])
@@ -56,7 +55,7 @@ public enum AndroidPhysicalDevice {
 
     /// **消灯・ロック中のときだけ** `prepareForRun` を撃つ(点いていて解除済みなら何もしない)。起こしたら true。
     /// 起こすのが run 開始時の1回だけだと、途中で1回消えた後の全シナリオが「アプリが前面に来ない」
-    /// (launch の 500)で落ち、消灯に一言も触れなかった(2026-09-11 Pixel 4a: 1回の消灯で 22/24 赤)。
+    /// (launch の 500)で落ち、消灯に一言も触れなかった(Pixel 4a 実測: 1回の消灯で 22/24 赤)。
     /// 確認は1往復(端末側で grep。Pixel 4a / 3a で 0.07〜0.15 秒)なので、シナリオごと・MCP の呼び出しごとに払う
     @discardableResult
     public static func wakeIfAsleep(serial: String, log: (String) -> Void = { _ in }) async -> Bool {

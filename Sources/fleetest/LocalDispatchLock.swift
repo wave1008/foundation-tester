@@ -2,7 +2,7 @@
 // **この Mac で直接走る run**(`fleetest run` / `fleetest api run` を人が打つ・fan-out の local
 // エントリ)が、リモートへのディスパッチとまったく同じ dispatch.lock を取る1箇所。
 //
-// **なぜ要るか**(ユーザー決定 2026-09-21): 「1つのマシンで同時に複数の run は走らせない」は
+// **なぜ要るか**(ユーザー決定): 「1つのマシンで同時に複数の run は走らせない」は
 // 避けたい副作用ではなく**守りたい不変条件**(高負荷はテストを不安定にする)。リモートへの
 // ディスパッチは `dispatch.lock` でそれを守っていたが、その機械で直接打った run は取っていな
 // かった —— 他人がこの Mac をランナーとして登録していると、他人のディスパッチと手元の run が
@@ -126,7 +126,7 @@ final class LocalDispatchLock {
     /// チケットを外して throw する(= 通常の巻き戻しへ入る)。**`interruptCheck` を渡された
     /// ときはそれを使う**(呼び出し側 = `ApiRunCommand`/`Fleetest` がロック取得より前に
     /// 自分の `InterruptRelay.observing` を1つ登録済みのときの規律 —— 1プロセス1組。
-    /// ここで2つ目を立てない)。**省略時**(他の呼び出し元)は従来どおり自前で1つ立てて
+    /// ここで2つ目を立てない)。**省略時**(他の呼び出し元)は自前で1つ立てて
     /// 待機を抜けたら `stop()` する。**握ったあとは自前で立てた分だけ外す**(`interruptCheck` が
     /// 渡されていれば、それを提供した relay は呼び出し側が defer で管理するのでここでは
     /// 何もしない)。**待機中だけで横取りをやめてよい理由**: 握っているロックは死んだ pid として
@@ -238,7 +238,7 @@ final class LocalDispatchLock {
     // MARK: - 内部
 
     /// 待機の事実を拡張へ渡す(**渡されていれば** = `fleetest api run` の経路だけ。
-    /// 注入されていなければ何もしない = `fleetest run` は従来のログのまま)
+    /// 注入されていなければ何もしない = `fleetest run` はログを変えない)
     private func emitDispatchWaiting(_ status: DispatchWaitStatus) {
         emitWaiting?(status)
     }

@@ -119,7 +119,7 @@ public enum Shell {
 
     /// 子の終了(reap)後に出力の EOF を待つ猶予(秒)。子自身の出力は終了時点でパイプに入っており、
     /// 64KB 飽和ぶんの排出はミリ秒で終わる。EOF がそれ以上遅れるのは**孫が書込端を継承したまま
-    /// 残っている**形だけ(adb の常駐化・`&` のバックグラウンド等。実測 2026-09-05: `(sleep 3) &` の
+    /// 残っている**形だけ(adb の常駐化・`&` のバックグラウンド等。実測: `(sleep 3) &` の
     /// 孫で 3 秒、`trap '' TERM` の孫で 30 秒返らなかった)。孫の出力はこのコマンドの出力ではないので
     /// ここで打ち切る。**尽きたとき**(猶予内に EOF が来ず出力が欠けた)は読めたぶんを返す
     public static let outputDrainGraceSeconds: Double = 1.0
@@ -167,7 +167,7 @@ public enum Shell {
         }
 
         // 子孫ごと止める。Foundation.Process は子を新しいプロセスグループのリーダーにする
-        // (実測 2026-09-05: pgid == 子の pid)ので `killpg` で孫まで届く。`kill(pid,…)` だけだと
+        // (実測: pgid == 子の pid)ので `killpg` で孫まで届く。`kill(pid,…)` だけだと
         // `trap '' TERM` を継いだ孫が SIGKILL を受けずパイプを握り続ける(Codex 指摘)。
         // グループが取れない環境では直接の子へ落とす
         func signalGroup(_ sig: Int32) {
@@ -177,7 +177,7 @@ public enum Shell {
         /// pgid = 子の pid はグループが空になるまで再利用されないので、子の reap 後に呼んでも
         /// 無関係なプロセスには当たらない。ゾンビは launchd の reap まで数えうるので待ちは必ず期限付き
         func groupHasMembers() -> Bool { killpg(pid, 0) == 0 }
-        /// **グループの残存は直接の子の終了と独立に処理する**(Codex 指摘 2026-09-06):
+        /// **グループの残存は直接の子の終了と独立に処理する**(Codex 指摘):
         /// 子が SIGTERM で素直に終わっても、`trap '' TERM` を継いだ孫は残る
         /// (`trap 'exit 0' TERM; sh -c 'trap "" TERM; exec sleep 30' & wait`)。
         /// 猶予(killAt)まで待ち、まだ居れば SIGKILL。その後は reap(launchd 任せ)を短く待つだけ

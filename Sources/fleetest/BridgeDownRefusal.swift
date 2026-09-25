@@ -36,16 +36,16 @@ enum BridgeDownRefusal {
     /// scan に載らなかった(= /status が返らなかった)ポートの扱い。
     /// **待受しているのに応答しない = 忙しい**(XCUITest はアプリを駆動している間 /status を返さず、
     /// quiescence 待ちで数十秒ブロックする)。鍵(udid)が引けないので lease も照合できず、
-    /// そのまま通すと**駆動中のセッションを黙って壊す**(2026-09-22 の負荷テストで実測: MCP が
+    /// そのまま通すと**駆動中のセッションを黙って壊す**(負荷テストで実測: MCP が
     /// 操作中のブリッジが `bridge down --port` で無言のまま止まり、そのセッションは
     /// 「no running bridge」しか返さなくなった)。**止めずに断り、`--force` を案内する**。
     ///
     /// **ただし「忙しい」と「固まった転送」を混ぜない**(docs/maintainer-notes.md §44.1 と同じ判定を
     /// この口にも通す): ブリッジが死んで iproxy だけがポートを握っている形は、connect は通るのに
     /// 即座に切れる(`.transportFailed`)。これを busy と読むと**止めることが唯一の回復手段なのに
-    /// 「待て」と言い続ける**袋小路になる(実地 2026-09-23 の負荷テスト: 画面ロックで死んだ実機の
+    /// 「待て」と言い続ける**袋小路になる(実地の負荷テスト: 画面ロックで死んだ実機の
     /// トンネルが握ったポートを `bridge down --port` が延々と断った)。
-    /// 待受もしていないポート(`.notBound`)は「止めるものが無い」ので従来どおり通す
+    /// 待受もしていないポート(`.notBound`)は「止めるものが無い」のでそのまま通す
     static func unresponsiveButBoundRefusal(
         ports: [UInt16], force: Bool,
         probe: (UInt16) -> BridgeDiscovery.StatusProbe

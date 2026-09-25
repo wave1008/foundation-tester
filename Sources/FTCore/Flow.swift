@@ -115,10 +115,10 @@ public struct FlowStep: Codable, Sendable {
     /// Shirates の WAIT_SECONDS_ON_ISSCREEN 準拠
     public static let defaultIsScreenWaitSeconds: Double = 15.0
 
-    /// スクロール対象の領域(Shirates の `scrollFrame`)。**nil = 従来の全画面固定**。
+    /// スクロール対象の領域(Shirates の `scrollFrame`)。**nil = 全画面固定**。
     /// 非 nil のときだけホストが座標を計算してブリッジへ渡す(`ScrollGeometry`)。
     /// **解決できなければ全画面スワイプへ退化させず失敗させる**(`scrollFrameUnresolved` の
-    /// fail-fast。2026-08-08。黙って退化するとカード上のボタンを発火させる実害があった)
+    /// fail-fast。黙って退化するとカード上のボタンを発火させる実害があった)
     public var scrollFrame: FlowLocator?
     /// スクロール対象の領域を矩形で直接指定する(MCP 専用。DSL は使わない)。非 nil なら
     /// `scrollFrame`(セレクタ)より優先し、**常に解決済み扱い**(`scrollFrameUnresolved` の
@@ -269,7 +269,7 @@ public enum FlowMatchMode: String, Codable, Equatable, Sendable {
     /// **幅を持つ不可視空白**。ゼロ幅と違って**桁を食う**ので、除去すると `"A B"` が `"AB"` に
     /// なって別の一致崩れを作る —— こちらは**通常空白(U+0020)へ正規化**する。
     ///
-    /// 集合は実データで確認したものだけ(2026-08-09。Google マップ Android の路線ラベルが
+    /// 集合は実データで確認したものだけ(Google マップ Android の路線ラベルが
     /// `"\u{00A0} 埼京線"`)。**推測で足さない** —— 足すなら ft_snapshot で採った生ラベルの
     /// スカラ列挙を根拠にすること。
     /// **U+3000(全角スペース)は入れない**: 日本語ラベルでは有意な文字で、正規化すると

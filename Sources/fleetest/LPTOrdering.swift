@@ -52,8 +52,8 @@ enum LPTOrdering {
         let maxRuns = max(1, historyRuns)
         // 窓は **シナリオごとの観測数**で数える(RunResultsStore.scanRecords の
         // maxObservationsPerScenario)。run 数で数えると、調査中の 1 シナリオだけの run が窓を
-        // 食い潰して直前のフル run の実績が丸ごと消える(2026-08-11 のフル E2E で iOS 側が
-        // 軒並み `1/N with history` になっていた)。混在プロジェクトの platform 押し出しも
+        // 食い潰して直前のフル run の実績が丸ごと消える(フル E2E で iOS 側が
+        // 軒並み `1/N with history` になった実例がある)。混在プロジェクトの platform 押し出しも
         // 同時に解ける —— 観測は (scenarioID, platform) ごとに数えるため
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: since,
                                                   maxObservationsPerScenario: maxRuns)

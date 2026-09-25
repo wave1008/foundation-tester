@@ -17,7 +17,7 @@ public final class InAppDriver: AppDriver {
     /// **simulatorUDID を渡し切る**: install/uninstall/clearAppData は simctl 経路で、宛先を
     /// 知らないと `/status` に聞きに行く。in-app ブリッジは対象アプリのプロセス内に住むので、
     /// 前のシナリオがアプリを終了した直後の `removeApp` は「接続拒否」で落ちる
-    /// (受け手報告 2026-08-23: シナリオ先頭の removeApp が同じ台で連続して driver-unreachable)。
+    /// (受け手報告: シナリオ先頭の removeApp が同じ台で連続して driver-unreachable)。
     /// "booted" は UDID ではないので渡さない(台が複数 booted だと simctl の宛先として曖昧)
     public init(repoRoot: URL, udid: String, port: UInt16) {
         let simulatorUDID = udid == "booted" ? nil : udid
@@ -143,7 +143,7 @@ public final class InAppDriver: AppDriver {
     }
 
     /// RN 等 UIKit の in-app ツリーはラッパー分離(testID 付き容器 + 別ノードの実スクロール要素)と
-    /// テキスト2重化(id 付き + 同枠同ラベルの匿名ノード)を起こす(2026-08-08 実測)。
+    /// テキスト2重化(id 付き + 同枠同ラベルの匿名ノード)を起こす(実測)。
     /// ビューを持つ系(uikit / swiftUI / reactNative)と判ったときだけ両方を畳む。compose/flutter は scrollable を申告できず
     /// wrapperScrollMerge が実質発火しないとしても、既存 SUT の序数を動かさないため明示的に触らない
     private func normalizedSnapshot(_ fetch: () async throws -> SnapshotResponse) async throws -> SnapshotResponse {
@@ -260,7 +260,7 @@ public final class InAppDriver: AppDriver {
     /// refused だけでなく unreachable も見るのが要点: **操作自体がクラッシュを引き起こした場合**は
     /// リクエスト配送中に切断されるため URLSession は networkConnectionLost を返し、
     /// `isDefiniteDeliveryFailure` が false → bridgeUnreachable に分類される。refused だけを
-    /// 見ていると「最も普通のクラッシュ」でレポート添付を取り逃す(2026-07-22 実測)。
+    /// 見ていると「最も普通のクラッシュ」でレポート添付を取り逃す(実測)。
     /// 分類自体は変えない(unreachable は「届いたか不明」= リトライ可否の意味論を持つため)。
     private func withCrashContext<T>(_ op: () async throws -> T) async throws -> T {
         do {
@@ -296,7 +296,7 @@ public final class InAppDriver: AppDriver {
             }
             if attempt < 7 { try? await Task.sleep(for: .milliseconds(500)) }
         }
-        // .ips が無い = 殺されたとは限らない(実測 2026-09-17: SIGSTOP で 60 秒止めたアプリは
+        // .ips が無い = 殺されたとは限らない(実測: SIGSTOP で 60 秒止めたアプリは
         // プロセスとして生きたまま無応答だった)。生死を確かめてから事実どおりの文言に分ける
         switch await appIsStillRunning(bundleID: bundleID) {
         case true:
@@ -310,7 +310,7 @@ public final class InAppDriver: AppDriver {
     }
 
     /// .ips が見つからなかったときの生死確認。simulatorUDID が nil("booted" 起動で宛先が
-    /// 曖昧)や simctl 自体の失敗では判定できない(nil)ので、呼び出し側は従来の
+    /// 曖昧)や simctl 自体の失敗では判定できない(nil)ので、呼び出し側は通常の
     /// 「殺された可能性」の文言を使う(判定できない=生きていない、にはしない)
     /// **協調スレッドプールで待たない**(Shell.run は同期で最大 timeout 秒ブロックする)
     private func appIsStillRunning(bundleID: String) async -> Bool? {

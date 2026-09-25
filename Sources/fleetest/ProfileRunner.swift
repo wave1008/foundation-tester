@@ -72,7 +72,7 @@ enum ProfileRunner {
     /// 共通実装。手順は reject(planned) → hold(planned) → build() → reject(built) → hold(built) →
     /// release(planned - built) で固定(順序自体が対策 = 供給完了を待ってから hold すると、
     /// 供給中(Wipe Data・古いブリッジ停止・凍結台の再起動などで数十秒かかりうる)は lease が無く
-    /// 別プロセスの `stop-device` 等に台を奪われる。負荷テスト実測 2026-09-25: 供給中のシミュレータを
+    /// 別プロセスの `stop-device` 等に台を奪われる。負荷テスト実測: 供給中のシミュレータを
     /// 奪われて run が落ちた)。`platforms` は前倒しで hold する lease キーを `resolved` から
     /// 絞り込むためだけに使う(実際に何を build するかは呼び出し側の `build` クロージャが決める)。
     /// **ProfileRunner と ApiRunCommand の全供給パスがこれを呼ぶ**(CLAUDE.md「run と api run は
@@ -119,7 +119,7 @@ enum ProfileRunner {
     /// **機械分担の run がリモートへ配る前に**、手元の子と同じ規則(この機械の台へ絞る →
     /// 本数+予備で絞る(MCP の台を避ける)→ lease 照合)で二重使用を断る(台+保持者 pid を名指しして throw)。
     /// 手元の子の拒否より先にリモートの子がロックを取り、断られた run の半分が走って同時刻の
-    /// 別 run のリモート分を丸ごと弾いていた(2026-09-17 負荷テスト M12)。
+    /// 別 run のリモート分を丸ごと弾いていた(負荷テスト M12)。
     /// 判定材料が揃わない(プロファイル解決の失敗等)ときは何もしない = 手元の子の判定に任せる。
     /// DeviceMachineRunner と ApiRunMachineFanout の2経路から呼ぶ。
     ///
@@ -252,7 +252,7 @@ enum ProfileRunner {
 
     /// 台が足りず MCP の台を使うときの理由を事実で組み立てる(純粋関数)。
     /// `scenarios == 0` はレーン数を数で言えない(本数不明 = 絞りの計算に使わない)ときの
-    /// 従来の言い方のまま。`scenarios > 0` は必要レーン数(本数+予備1台)と空き台数を数で言う
+    /// 単純な言い方。`scenarios > 0` は必要レーン数(本数+予備1台)と空き台数を数で言う
     static func shortageReason(needed: Int, scenarios: Int, free: Int) -> String {
         guard scenarios > 0 else { return "no other device was free" }
         func plural(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
@@ -298,8 +298,8 @@ enum ProfileRunner {
         let resolvedAll = try ProfileResolver.resolve(
             project: project, runName: profileName,
             workspaceOverride: workspaceOverride, overrides: setOverrides)
-        // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17・
-        // 2026-08-18)なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
+        // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
+        // なので毎回雛形作成(既に揃っていれば何もしない。WorkspaceScaffold の宣言)。
         // リモートディスパッチはこれとは別に、ミラー前のローカル側で同じ呼び出しを行う
         // (RemoteRunDispatcher.prepareWorkspace)。続けて appPath の原本を apps/ へ
         // ステージング(WorkspaceAppStaging)。**dest も原本も無ければここで throw する**
@@ -504,7 +504,7 @@ enum ProfileRunner {
         let hasLateIOS = iosDevicesExist && !performanceMode
 
         // performanceMode: 復活できなかったレーンがあれば run を開始せずに失敗する
-        // (既定 false ではここへ来ない=切り離して完走を優先する従来どおりの挙動)
+        // (既定 false ではここへ来ない=切り離して完走を優先する挙動のまま)
         if performanceMode {
             let missingAndroid = LaneGate.missing(
                 expected: resolved.androidDevices.map(\.name),
@@ -525,7 +525,7 @@ enum ProfileRunner {
         // 3. 両OS同時並列実行(platform 別キューは RunOrchestrator がそのまま担う)
         let defaultPlatform = (hasLateIOS || (workers + eagerIOSWorkers).contains { $0.platform == "ios" })
             ? "ios" : "android"
-        // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で従来の ID 順)
+        // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で素の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { ConsoleOut.out($0) })
         // ApiRunCommand.run と同じ関数(RunStartLine)で組み立てる(CLAUDE.md「2 実装の差」対策)
@@ -670,7 +670,7 @@ enum ProfileRunner {
     /// **その経路を使う機能が有効な run でだけ言う** —— run の中で FM を使うのは vision 経路だけ
     /// (occlusion-guard = exist の既定 requireVisible・screenLooksLike)。**text 経路は run の中で
     /// 使わない**ので、その死は言わない(失われる機能が無いのに「無効」と言わない)。availability は嘘をつく
-    /// (available のまま実呼び出しが全滅する実測 2026-07-22)ので、台帳(FMLiveness)の実観測を使う。
+    /// (available のまま実呼び出しが全滅する実測)ので、台帳(FMLiveness)の実観測を使う。
     ///
     /// **台帳が新しければ1回も呼ばない** —— モニターが動いていれば既に埋まっている
     /// (FMLivenessProbe.refresh の門①)。埋まっていないときだけ 1〜2 秒払う。

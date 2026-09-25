@@ -14,7 +14,7 @@ public enum EmulatorGrpcSession {
     /// 注意: blank 判定に PNG バイト数を使わないこと(emulator 側エンコーダは一様黒でも
     /// 51KB を出す=adb 較正の 30KB 閾値をすり抜ける。判定はホスト側でデコードして画素一様性で
     /// 行う(AndroidHealthProbe.uniformFrame)。RGBA8888 直取りは約10MB の単一メッセージが
-    /// grpc-swift トランスポートに切断され使えない(2026-07-25 実測。node の grpc-js は受かる))
+    /// grpc-swift トランスポートに切断され使えない(実測。node の grpc-js は受かる))
     public static func screenshotPNG(endpoint: EmulatorEndpoint,
                                      timeout: Duration = defaultTimeout) async throws -> Data {
         try await withController(endpoint: endpoint, timeout: timeout) { client, metadata, options in
@@ -27,8 +27,8 @@ public enum EmulatorGrpcSession {
 
     /// evdev キーコードの keypress(down+up)。
     /// 罠: **届くのは guest に入力デバイスがあるキーだけ** — gpio-keys の KEY_POWER(116)/
-    /// KEY_SLEEP(142) は届き、KEY_WAKEUP(143) は不発(2026-07-25 実測)。API 36 arm64 の AVD は
-    /// キーボードデバイスを持たないので HOME/APP_SWITCH/ENTER 相当も届かない(2026-08-19 実測。
+    /// KEY_SLEEP(142) は届き、KEY_WAKEUP(143) は不発(実測)。API 36 arm64 の AVD は
+    /// キーボードデバイスを持たないので HOME/APP_SWITCH/ENTER 相当も届かない(実測。
     /// docs/design.md §16.3)。wake には KEY_POWER を使うこと(sleepWake() が正しい並びを内蔵)
     public static func sendEvdevKeypress(endpoint: EmulatorEndpoint, keyCode: Int32,
                                          timeout: Duration = defaultTimeout) async throws {
@@ -51,7 +51,7 @@ public enum EmulatorGrpcSession {
 
     // 名前付きキー(KeyboardEvent.key = "GoHome"/"AppSwitch"/"Enter")の keypress は置かない —
     // proto は Android 固有動作を明記しているが guest には届かず、RPC だけ成功する
-    // (2026-08-19 実測。FTAndroid.AndroidDriver.home() と docs/design.md §16.3)
+    // (実測。FTAndroid.AndroidDriver.home() と docs/design.md §16.3)
 
     /// 2点間ドラッグ(`input swipe` の代替)。down → ~16ms 刻みの補間 move → up を
     /// 1接続内で送る(pressure 0 の up を必ず送らないと identifier が残留する。proto 契約)。

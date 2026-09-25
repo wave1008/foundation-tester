@@ -30,7 +30,7 @@ public enum PSElapsedTime {
 
 /// 引き取った起動中ランナーへの判定
 public enum StartingRunnerVerdict: Equatable {
-    /// 起動予算内 → 従来どおり announce を待つ
+    /// 起動予算内 → announce を待つ
     case wait
     /// 起動予算を超えて生きている → 起動した側は既に諦めている。待たずに止めて建て直す
     case restart
@@ -38,10 +38,10 @@ public enum StartingRunnerVerdict: Equatable {
     /// - elapsed: ランナーの生存時間(ps etime)。測れなければ待つ側に倒す(不明を restart の根拠にしない)
     /// - quietFor: 起動ログが最後に伸びてからの秒数。**起動した側は進み具合で待つ**
     ///   (BridgeStartupWait)ので、ログが伸びている間は起動側もまだ諦めていない = 引き取る側も待つ。
-    ///   測れなければ elapsed だけで決める(旧挙動)
+    ///   測れなければ elapsed だけで決める
     /// - simulatorBooted: 対象がシミュレータで Shutdown なら、ランナーが起動中であるはずがない(xcodebuild は
     ///   ブートを待つ側で、落とされた台に張り付いたランナーは二度と announce しない)。**待たずに建て直す**
-    ///   (実測 2026-09-14: 落とした台の引き取りが 180 秒待ってから建て直していた。台帳 §19.25)
+    ///   (実測: 落とした台の引き取りが 180 秒待ってから建て直していた。台帳 §19.25)
     public static func decide(elapsed: TimeInterval?, quietFor: TimeInterval? = nil,
                               simulatorBooted: Bool = true,
                               budget: TimeInterval) -> StartingRunnerVerdict {
@@ -57,7 +57,7 @@ public enum StartingRunnerVerdict: Equatable {
 /// (起動ログの mtime)を信用できない場面がある** —— 複数 run にまたがって生き続ける長寿ランナーは
 /// run のたびにログへ出力するため、無応答になった直後でも「最近書かれた」と読めてしまい、
 /// decide が .wait を返して waitUntilReady が満額 startupTimeoutSeconds を無駄に待つ
-/// (実測 2026-09-15 M1Ultra: 直前2 run で健全だった長寿ブリッジが無応答化 →
+/// (実測 M1Ultra: 直前2 run で健全だった長寿ブリッジが無応答化 →
 /// 「起動中」に分類され 180 秒待ってから建て直した)。
 /// pid ファイルは起動時に一度だけ書かれる(BridgeLauncher.startDetached)ので寿命の起点として
 /// ぶれない。起動が正当にかかる時間は startupTimeoutSeconds を超えないので、それより古い pid は

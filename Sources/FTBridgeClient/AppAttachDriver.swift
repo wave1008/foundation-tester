@@ -15,7 +15,7 @@ public final class AppAttachDriver: AppDriver {
     /// **XCUITest ブリッジは run 内で使い回される**(別プロジェクト・別シナリオ間で再利用)ため、
     /// セッションが**前に attach した別アプリ**を指したまま来ることがある。その状態で ref 無しの
     /// ジェスチャを撃つと、ブリッジは「セッションはある」ので 409 を返さず、XCUI が
-    /// `application ... is not running` で失敗する(2026-07-28 実測: E2E-iOS の次に E2E-Flutter を
+    /// `application ... is not running` で失敗する(実測: E2E-iOS の次に E2E-Flutter を
     /// 回した run で、Flutter の scrollTo が com.ftester.e2e.ios を掴んで失敗)。
     /// **ランナーはこの失敗でプロセスごと落ちる**(BridgeRouter.requireLiveApp のコメント参照)ため、
     /// 撃つ前に対象を自分の bundleID へ揃える。activate は refFrames をクリアするので
@@ -70,7 +70,7 @@ public final class AppAttachDriver: AppDriver {
     /// **`snapshot(bypassingCache:)` の非 activate 版**(HybridFallbackDriver 専用)。
     /// 通常経路は毎回 activate する契約(上のメソッド参照)だが、それは
     /// home()/openAppSwitcher() で背面化した対象を**読むだけで前面へ戻してしまう**
-    /// (2026-09-06 発覚: MCP の snapshot が「最後の状態」の案内に反して、読むたびに
+    /// (発覚: MCP の snapshot が「最後の状態」の案内に反して、読むたびに
     /// 前面へ戻された「今の」アプリの木を返していた)。activate を挟まないので、
     /// セッションのアプリが前面に無ければランナー側 `requireForegroundApp()` が 422 で断る ——
     /// **ここで activate へフォールバックしない**(呼び手には「アプリが背面にある」とそのまま伝わる)
@@ -158,7 +158,7 @@ public final class AppAttachDriver: AppDriver {
     /// swipe は ref を使わないので、事前に attach を揃え(ensureAttached)、それでも
     /// 409/503 なら activate して1回だけ再試行する。snapshot() を経ずに swipe が先に来るシナリオ
     /// (scrollTo が最初の操作)が
-    /// あり、そのままだと 409 で落ちる(2026-07-23 に TestProjects/E2E-iOS の inapp 実行で顕在化。
+    /// あり、そのままだと 409 で落ちる(TestProjects/E2E-iOS の inapp 実行で顕在化。
     /// Compose 版は press のフォールバックが先に snapshot=activate していて露呈していなかった)。
     /// ref を使う tap/type/press には同じ回復を入れない: activate は refFrames をクリアするため、
     /// 再試行時には直前 snapshot の ref が別要素を指してしまう。
@@ -199,7 +199,7 @@ public final class AppAttachDriver: AppDriver {
     /// 座標ロングプレスも ref を使わないので drag と同じ 409 回復を入れる。
     /// **既定実装(501)に落としてはいけない**: hybrid のフォールバックで in-app が長押しを
     /// 持たない(501)ぶんをここが受けるため、無いと「どちらの経路でも 501」になる
-    /// (2026-08-04 に MCP のエンジン追従で実際に踏んだ)
+    /// (MCP のエンジン追従で実際に踏んだ)
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await ensureAttached()
         do {

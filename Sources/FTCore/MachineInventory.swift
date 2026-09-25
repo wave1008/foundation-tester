@@ -6,7 +6,7 @@
 //
 // 決め方は「どれか1つを選ぶ」ではなく **全部の台帳を畳んで、観測できるマシンの台だけ残す**:
 //   - **観測できるマシン = 手元 + リモート実行の登録簿にあるマシン**(設定タブのホスト表。
-//     ユーザー決定 2026-08-29)。登録簿に無いマシンの台は、監視の fan-out が張られないので
+//     ユーザー決定)。登録簿に無いマシンの台は、監視の fan-out が張られないので
 //     状態が永久に "unknown" のタイルになるだけ = 出す意味が無い
 //   - 重複((platform, machine, name)が同じ)は**最初の1件**。実行プロファイルをまたいで同じ台を
 //     書くのは普通なので、重複はエラーではない。**入力の順序で決まる**ので
@@ -41,7 +41,7 @@ public enum MachineInventory {
 
     /// 同じ (platform, machine, name) を2枚の台帳が**別の実体**として書いている。畳み込みは
     /// 先頭を採るので、負けたほうの台は一覧から消える —— **手元に実在しないほうが勝つと、
-    /// 実在して起動中の台が「id 衝突」で落ちて監視から消える**(実害 2026-09-03: ランナー機の
+    /// 実在して起動中の台が「id 衝突」で落ちて監視から消える**(実害: ランナー機の
     /// 視点で書かれた台帳が `machine: "local"` のまま手元の台帳と同居していた)
     public struct IdentityConflict: Equatable, Sendable {
         public let platform: String
@@ -74,7 +74,7 @@ public enum MachineInventory {
     /// runs/ の全実行プロファイルの devices(enabled: false も含む)。**ファイル名順**
     /// (下の重複解決が入力順で決まるので、走査順で結果が揺れないようにする)。壊れた JSON は
     /// 警告して飛ばす —— 実行プロファイルを選んでいないときは「見えるものを見せる」経路なので、
-    /// 1枚の壊れた台帳で全部を止めない(選んでいるときは従来どおり decodeFailed で落ちる)。
+    /// 1枚の壊れた台帳で全部を止めない(選んでいるときは decodeFailed で落ちる)。
     /// **I/O はこれと loadAllNamed だけ** —— 下の3つは純粋関数
     public static func loadAll(project: TestProject, warn: (String) -> Void) -> [DeviceRoster] {
         loadAllNamed(project: project, warn: warn).map(\.profile)
@@ -119,7 +119,7 @@ public enum MachineInventory {
     /// `existsLocally` は「その spec の実体がこの機械にあるか」の述語(nil = 判定材料が無い)。
     /// **既定値は置かない** —— 渡し忘れをコンパイルで止める。**この関数は I/O を持たない**ので、
     /// 材料の採取(simctl / adb)は呼び手が起動時に1回だけ済ませて畳んで渡すこと。
-    /// 決着できない食い違い(材料が無い・両方実在・両方不在・**他機の台**)は従来どおり先頭を
+    /// 決着できない食い違い(材料が無い・両方実在・両方不在・**他機の台**)は先頭を
     /// 採って警告する —— 同居自体は誤りではない(構成の使い分け)
     public static func merge(sources: [Source], registry: [String],
                              existsLocally: ((DeviceSpec) -> Bool)?) -> Merged {

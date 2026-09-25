@@ -35,7 +35,7 @@ enum MonitorImage {
     }
 
     /// maxWidth が 0 以下なら縮小せず原寸で JPEG 化する(ライブ操作の原寸表示用。
-    /// モニタータイルは従来どおり正の値でダウンスケールする)
+    /// モニタータイルは正の値でダウンスケールする)
     static func downscaledJPEG(pngData: Data, maxWidth: Int,
                                quality: CGFloat = 0.7) throws -> Result {
         guard let source = CGImageSourceCreateWithData(pngData as CFData, nil) else {

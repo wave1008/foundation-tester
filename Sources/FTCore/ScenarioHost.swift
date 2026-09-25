@@ -498,7 +498,7 @@ public enum ScenarioHost {
                 // **締め切りの時点で子が既に終わっていたら打ち切らない**(判定は終了経路に任せる)。
                 // 親が止まっていた間(拡張ホストの停止・ssh 越しの親の停止)に子が完走すると、再開時に
                 // この Task と stdout の読み取りが同時に起き、先に claim すると緑の子を timeout の赤に
-                // 書き換えていた(2026-09-17 負荷テスト M9。ScenarioHostWatchdogExitedChildTests)
+                // 書き換えていた(負荷テスト実害。ScenarioHostWatchdogExitedChildTests)
                 guard !Task.isCancelled, ProcessLiveness.isAlive(process.processIdentifier),
                       await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
@@ -652,7 +652,7 @@ public enum ScenarioHost {
     /// **失敗理由は step イベントの `detail`** に載る(`message` は kind == log =
     /// 利用者の print 専用)。message だけを見ると、セレクタの構文エラーのように
     /// 利用者が何も print しない失敗で本文が丸ごと落ち「dry-run が失敗しました」しか
-    /// 出ない(2026-07-28 実害。api steps だけ原因が読めず run では読めた)
+    /// 出ない(実害。api steps だけ原因が読めず run では読めた)
     static func dryRunFailureDetail(_ events: [ScenarioEvent]) -> String {
         let failures = events.filter { $0.status == "failed" }.compactMap { event -> String? in
             guard let detail = event.detail else { return nil }

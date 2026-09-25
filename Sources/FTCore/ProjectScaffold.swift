@@ -114,7 +114,7 @@ public enum ProjectScaffold {
 
     /// 受け手のパッケージに `.claude/settings.json` を書く(fleetest init から呼ぶ)。
     /// **fleetest の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
-    /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望。2026-07-29)。
+    /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望)。
     /// 既存の設定は温存し、重複しないエントリだけ足す(他ツールの許可を消さない)。
     /// 追加するのはこのツール由来のコマンドに限る — 汎用の `Bash(*)` は絶対に書かない。
     @discardableResult
@@ -126,7 +126,7 @@ public enum ProjectScaffold {
         ]
         if let toolRoot {
             // 更新系も載せる。**更新のたびに承認を求められると、更新1回で承認が数回に膨らむ**
-            // (2026-07-29 の受け手実測で6回)。補修は install.sh が毎回 `api ensure-settings` で行う
+            // (受け手実測で6回)。補修は install.sh が毎回 `api ensure-settings` で行う
             for script in ["preflight.sh", "install.sh", "update.sh", "update-check.sh"] {
                 entries.append("Bash(bash \(toolRoot)/Scripts/\(script):*)")
             }

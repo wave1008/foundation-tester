@@ -41,7 +41,7 @@ export interface FleetestConfig {
    * 既定 3600 秒(1 時間)の根拠: run 1 本の実測が 10 分前後(フル E2E スイートで約 615 秒。
    * docs/verification.md の基準値)なので、**先客が数本並んでいても待ち切れる長さ**を採る。
    * **進捗(待機列の位置)に応じて期限を延ばす形は採らない** —— 期限が動くと仕様が分かりにくく
-   * 挙動が読めない(ユーザー決定 2026-09-21。再提案しない)。尽きたときは CLI が待機列の位置つきの
+   * 挙動が読めない(ユーザー決定。再提案しない)。尽きたときは CLI が待機列の位置つきの
    * 文言で失敗するので、利用者は押し直すか この値を伸ばす。
    * 既定は package.json の fleetest.remoteWaitLock.default・monitorPanel.ts が設定タブへ送る
    * default と一致必須(test/remoteWaitLockDefaultSync.test.mjs が検証)。 */
@@ -66,7 +66,7 @@ export interface FleetestConfig {
    * iosStreamEnabled と同じ方針(helper 未ビルド・adb 未検出なら自動でポーリングにフォールバック)。 */
   androidStreamEnabled: boolean;
   /** 画面ストリーミングのコーデック。"h264": WebCodecs によるハードウェアデコード(既定、
-   * deviceStream.ts の v2 stdout 形式)。"mjpeg": 従来方式(v1 形式)。webview からの
+   * deviceStream.ts の v2 stdout 形式)。"mjpeg": v1 形式。webview からの
    * codecError(WebCodecs 未対応/デコード失敗)を受けた個別デバイスは設定に関わらず
    * mjpeg へ自動フォールバックする(monitorDeviceStreamController.ts/monitorLiveController.ts)。 */
   streamCodec: "h264" | "mjpeg";
@@ -276,7 +276,7 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
 /**
  * プロジェクト切替に追従して `fleetest.profile` をどうするか。**実行プロファイルはプロジェクトに
  * 属する**ので、切り替えたあとも前のプロジェクトの名前が残ると、その名前はもう存在せず
- * CLI が「run profile not found」で落ちる(2026-08-17 の実害: project=E2E-Android /
+ * CLI が「run profile not found」で落ちる(実害: project=E2E-Android /
  * profile=local+remote でモニターが起動できなくなった)。
  *
  * - 新しいプロジェクトにその名前があるなら**そのまま**(同名のプロファイルを持つ構成は普通)

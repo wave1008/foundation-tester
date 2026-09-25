@@ -595,7 +595,7 @@ async function executeRun(
   // liveTarget は単一デバイスで --profile と排他(下の args 分岐)のため、連動させると並列が単一に潰れる。
   // クラス内の複数シナリオは連動対象(ユーザー決定。シナリオ数ではなくクラス数で判定)。
   //
-  // **実行プロファイルが設定されていたら連動しない**(2026-08-20。受け手報告の回帰)。
+  // **実行プロファイルが設定されていたら連動しない**(受け手報告の回帰)。
   // liveTarget は --profile と排他なので、連動すると**プロファイルが黙って捨てられる**:
   // 対象アプリが解決できず app 省略シナリオが全滅し(「no app could be resolved」)、
   // scenarioTimeout / record / defaultTimeout も効かず、複数デバイスの並列も1台に潰れる。
@@ -621,7 +621,7 @@ async function executeRun(
 
   // プロファイル未指定は「ブリッジを自動供給しない直接ポート接続」モードに落ちる。事前に
   // `fleetest bridge up` を回していない限り全シナリオが接続拒否で即失敗するため、走らせずに止める
-  // (実害 2026-07-26: 19 シナリオが 2 秒で全滅し、原因が設定だと分からなかった)。
+  // (実害: 19 シナリオが 2 秒で全滅し、原因が設定だと分からなかった)。
   // 除外2件: dry-run はデバイスに触れない / liveTarget はライブ操作パネルが実デバイスを解決済み。
   if (!dryRun && !liveTarget && profile.length === 0) {
     const message = t("run.profileRequired.message");
@@ -800,7 +800,7 @@ async function executeRun(
   }
   // リモートへ出る run だけに効く(純ローカルの run では CLI が黙って無視する…のではなく
   // **ValidationError で弾く**ので、プロファイル指定があるときだけ渡す)。共有フリートでは
-  // ロックの取り合いが日常になるため、既定 0(待たない = 従来どおり)で明示的に有効化させる
+  // ロックの取り合いが日常になるため、既定 0(待たない)で明示的に有効化させる
   if (config.remoteWaitLock > 0 && !liveTarget && profile.length > 0) {
     args.push("--wait-lock", String(config.remoteWaitLock));
   }

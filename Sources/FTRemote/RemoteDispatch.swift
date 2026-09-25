@@ -110,7 +110,7 @@ public enum RemoteCompat {
 
     /// リモート側の照会の結果。**失敗を nil に潰さない** —— 「値が無い」と「なぜ取れなかったか」は
     /// 別の情報で、後者を捨てると**レーンが丸ごと落ちた理由が誰にも分からない**
-    /// (2026-09-09 のフル E2E で実際に踏んだ: 適合チェックの `try?` が ssh の失敗を握り潰し、
+    /// (フル E2E で実際に踏んだ: 適合チェックの `try?` が ssh の失敗を握り潰し、
     /// `could not determine the remote value` だけが出て、そのプロファイルの4本が1本も走らなかった)
     public enum ProbeOutcome: Equatable, Sendable {
         case value(String)
@@ -172,7 +172,7 @@ public enum RemoteCompat {
     /// 機械的な依存が無く、止める根拠は結果の比較可能性だけ。Xcode の製品版(`productVersion`)が
     /// 一致していれば build 番号の差は正式版とベータ seed の違いでしかない(正式版のビルドは
     /// 製品版ごとに1つしか無いため、製品版が同じで build が違えばどちらかが必ずベータ)ので advisory
-    /// に落とす。製品版が違う(26 vs 27 等)・切り出せない・片方 nil は従来どおり blocking
+    /// に落とす。製品版が違う(26 vs 27 等)・切り出せない・片方 nil はそのまま blocking
     public static func verdict(
         localRevision: String?, remoteRevision: String?,
         localToolchain: String?, remoteToolchain: String?
@@ -264,7 +264,7 @@ public struct RemoteLayout: Equatable, Sendable {
     /// **ディレクトリ名は "foundation-tester" 固定**(短くしない)。SPM はパス依存の
     /// パッケージ名をディレクトリ名から導出するため、受け手 Package.swift が宣言する
     /// `package: "foundation-tester"` と一致しないと "unknown package" でマニフェストが
-    /// 壊れる(2026-07-31 の localhost E2E で実測)。install.sh の既定
+    /// 壊れる(localhost E2E で実測)。install.sh の既定
     /// TOOL_ROOT(= WORK_DIR/../foundation-tester)とも揃う。**ツールクローンは
     /// ホスト共有のまま**(発行者ごとに分けない。§18.2/§18.4)
     public var toolRoot: String { base + "/foundation-tester" }
@@ -476,7 +476,7 @@ extension RemoteArtifactCollection {
     /// rsync の失敗が「**転送元がそもそも無い**」だけかを判定する。run がシナリオ実行の前に
     /// 落ちた場合(リモートのビルド失敗など)、reports/results はリモートに1つも作られないので
     /// 回収は必ず 23 で失敗する —— これを warning にすると、**本当の失敗理由の下に
-    /// 無関係な警告が2行積まれる**(2026-08-16 に実機で確認)。
+    /// 無関係な警告が2行積まれる**(実機で確認)。
     ///
     /// 判定は exit code だけでは足りない: 23 は「一部が転送できなかった」の総称で、権限や
     /// 途中切断でも返る。**転送元不在のときだけ黙る**ために stderr の文言まで見る
@@ -502,7 +502,7 @@ extension RemoteArtifactCollection {
 }
 
 /// `remoteControl.workspace` の実効ルートがプロジェクトルート配下かどうかで転送経路を分ける
-/// (docs/remote-runner.md §17。2026-08-18)。配下(既定 `<project.rootURL>/workspace` を含む)
+/// (docs/remote-runner.md §17)。配下(既定 `<project.rootURL>/workspace` を含む)
 /// ならプロジェクト転送(`RemoteTransferPlan.rsyncArgs`。`TestProjects/<project>/` を丸ごと運ぶ)が
 /// そのまま運ぶので専用の rsync は要らない ―― 同じバイトを二度送らない。配下でない
 /// (明示指定でプロジェクト外を指した)ときだけ専用ミラー(`workspaceRsyncArgs`)が要る
@@ -569,7 +569,7 @@ public enum RemoteDispatchGate {
 }
 
 /// `--runner` が明示指定か、実行プロファイルの全台が居る機械への自動ディスパッチかを表す
-/// (欠陥1・2026-08-17)。ローカル専用フラグとの併用可否・拒否理由の文言はこれで分岐する
+/// (欠陥1)。ローカル専用フラグとの併用可否・拒否理由の文言はこれで分岐する
 /// (RemoteDispatchFlagPolicy 参照)。machine は自動ディスパッチのときの文言合成専用
 public enum RemoteDispatchOrigin: Equatable, Sendable {
     case explicitHost
@@ -589,7 +589,7 @@ public enum RemoteDispatchFlagPolicy {
     /// `--skip-build`: リモートは常に自前でビルドするため、ローカルのビルド抑止指定はそもそも
     /// 意味を持たない。**自動ディスパッチでは黙って無視する**(拡張の `buildBeforeRun: false` は
     /// 常に `--skip-build` を送るため、全台がリモートのプロファイルで実行すると利用者が打っていないフラグを
-    /// 理由に必ず落ちていた)。`--runner` 明示は従来どおり拒否のまま(利用者が意識して付けたフラグ
+    /// 理由に必ず落ちていた)。`--runner` 明示は拒否のまま(利用者が意識して付けたフラグ
     /// なので、効かないことを黙認せず気づかせる)
     public static func skipBuild(origin: RemoteDispatchOrigin) -> Decision {
         switch origin {
@@ -606,7 +606,7 @@ public enum RemoteDispatchFlagPolicy {
     /// **全台がリモートに居て自動ディスパッチする実行プロファイル**(`--runner` を打たない)や
     /// **デバイスが複数の機械にまたがるプロファイル**(ホスト別の子へ分かれる)で使えず、
     /// 中断した run が残したロックを解除する手段が `remote clean`(デバイスも止まる)か
-    /// 手動削除しか無くなる(2026-08-18 に実際に詰まった。子への転送自体は
+    /// 手動削除しか無くなる(実際に詰まった。子への転送自体は
     /// DeviceMachineRunner/FleetRunner が既に行っている)。
     /// 純粋にローカルだけの実行(プロファイルすら無い)のときだけ、打ち間違いとして拒否する
     public static func forceLockRejection(host: String?, fleet: String?, profile: String?) -> String? {
@@ -690,11 +690,11 @@ public enum RemoteRunArgs {
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じ実行プロファイルを
         // 受け取るので、渡さないと**全ホストぶんの台**を自分のものとして解決しようとする
-        // (同名は別の機械にも居るのが通常。2026-08-17 に実走で確認)。
+        // (同名は別の機械にも居るのが通常。実走で確認)。
         // **値は常に "local"** —— 転送したプロファイルは RunnerProfileTransfer が
         // 「そのランナーから見た姿」へ畳んであり、向こうの台は local になっている。
         // ローカルエイリアス(M1Ultra 等)は発行側だけの概念なのでリモートへ出さない
-        // (用語の定義は FTCore.RunnerProfileView。2026-08-26 ユーザー決定)
+        // (用語の定義は FTCore.RunnerProfileView。ユーザー決定)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if deviceMachine != nil { args += ["--device-machine", DeviceMachineGrouping.localDisplayName] }
         // **remoteControl.workspace が宣言されているプロファイルだけ渡る**(RemoteRunDispatcher が
@@ -744,7 +744,7 @@ public enum RemoteRunArgs {
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない**(build() と同じ理由。ApiRunMachineFanout が
         // 複数機械にまたがるプロファイルをホストごとの子へ分けるようになったため、`api run --runner`
-        // でも同名デバイスが別の機械に居りうる。2026-08-17)。値が "local" 固定なのも build() と同じ
+        // でも同名デバイスが別の機械に居りうる)。値が "local" 固定なのも build() と同じ
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
         if deviceMachine != nil { args += ["--device-machine", DeviceMachineGrouping.localDisplayName] }
         // 渡す条件・理由は build() の --workspace と同じ
@@ -778,13 +778,13 @@ public enum RemoteTimeout {
     /// 固定オーバーヘッド」で minimum..maximum にクランプする(遅いデバイス起動・LPT 待ちを
     /// 1シナリオ600秒/固定900秒で見込む。根拠は docs/remote-runner.md §16.2)。
     ///
-    /// **戻り値 nil = タイムアウトを掛けない**(欠陥2・2026-08-17)。`scenarioCount` は呼び出し側の
+    /// **戻り値 nil = タイムアウトを掛けない**(欠陥2)。`scenarioCount` は呼び出し側の
     /// 明示 `--scenario` の個数で、プロファイル全体や `--fleet` では実行本数を実行前に知らない
-    /// ため 0 になる。以前は 0 を「見積り不能」ではなく「overhead だけの極小値」として扱い
-    /// minimum(1800秒)へ丸めていたため、30分を超える正当な run が SIGKILL されていた。
+    /// ため 0 になる。**0 を「見積り不能」ではなく「overhead だけの極小値」として扱い
+    /// minimum(1800秒)へ丸めてはいけない** —— そうすると30分を超える正当な run が SIGKILL される。
     /// タイムアウトは「無限に待たない」ための安全弁であって、正当な実行を打ち切る装置ではない
     /// —— 見積りが立たないときは安全弁を掛けない方が実害が小さい。呼び手が上限を望むなら
-    /// `--remote-timeout` で明示すればよい(explicit は従来どおり必ず勝つ)
+    /// `--remote-timeout` で明示すればよい(explicit は必ず勝つ)
     public static func seconds(explicit: Int?, scenarioCount: Int, perScenario: Int = 600,
                                overhead: Int = 900, minimum: Int = 1800, maximum: Int = 86_400) -> Int? {
         if let explicit {
@@ -839,12 +839,12 @@ public enum RemoteProbe {
     ///
     /// `stat -f%Su /dev/console` だけでは**画面共有(仮想ディスプレイ)でログインした機械を
     /// 見逃して弾く**: 物理コンソールの所有者は root のまま残るが、ssh ユーザーには
-    /// Aqua セッションがあり simctl も xcodebuild も動く(2026-09-01 に M1Ultra で実測。
+    /// Aqua セッションがあり simctl も xcodebuild も動く(M1Ultra で実測。
     /// who / scutil ConsoleUser / Dock はどれも wave1008 を指していた)。
     /// そこで**先に「ssh ユーザー自身の Aqua ドメインが在るか」を直接聞く**。
     /// `launchctl print gui/<uid>` はログインセッションが作るドメインなので、
     /// loginwindow で停止中は存在しない(負の対照: gui/0・gui/999 はどちらも失敗する)。
-    /// 無ければ従来の `/dev/console` へ落ちる = 判定が緩むのは実際に GUI セッションが
+    /// 無ければ上記の `/dev/console` へ落ちる = 判定が緩むのは実際に GUI セッションが
     /// 在るときだけ。**出力はどちらの枝もちょうど1行**(行数で形を判定しているため)
     public static let consoleUserCommand =
         "if launchctl print gui/$(id -u) >/dev/null 2>&1; then id -un; else stat -f%Su /dev/console; fi"
@@ -1093,7 +1093,7 @@ public enum RemoteCleanPlan {
     /// `--dry-run` でデバイスを止めてよいか = **止めてはいけない**。`remote clean` は削除の前に
     /// `devices down`(ブリッジ停止 + シミュレータ/エミュレータのシャットダウン)を撃つが、これは
     /// **走っている run を巻き添えにする破壊的操作**で、「消える物を見るだけ」の dry-run が
-    /// 実際に環境を壊すのは契約違反(2026-08-16 に実機で踏んだ: プレビューのつもりで
+    /// 実際に環境を壊すのは契約違反(実機で踏んだ: プレビューのつもりで
     /// ランナーの 8123/8124 のブリッジが落ちた)
     public static func stopsDevices(dryRun: Bool) -> Bool { !dryRun }
 
@@ -1193,7 +1193,7 @@ public enum RemoteShell {
     /// 後続の run が明確に失敗するので、ここで止めると本来の失敗理由が sync の方に隠れる。
     /// SSH の Background セッションのまま直接実行する(ユーザーの launchd ドメインへ昇格させる
     /// 処理は挟まない)。コンソールにログインしている限りそのままで launchd ドメイン
-    /// (CoreSimulator 等)へ到達できる(2026-07-31 実測)
+    /// (CoreSimulator 等)へ到達できる(実測)
     /// `fmConcurrency` は登録簿の欄(`RemoteHostEntry`)。**機械によっては FM を 2 並列以上で
     /// 呼ぶと壊れる**(実測と経緯は docs/remote-runner.md)ので、枠を機械ごとに絞れるようにする。
     /// nil のときは**1バイトも足さない** —— ランナー側の既定(`FMLock.defaultConcurrency`)に任せる
@@ -1216,7 +1216,7 @@ public enum RemoteShell {
         let launch = "\(binary) \(args)"
         // 非対話 ssh の PATH は /usr/bin:/bin:/usr/sbin:/sbin だけで Homebrew が入らない。
         // xcodegen(iOS ワーカーのビルドに必須)・adb などが見えず「No such file or directory」で
-        // 落ちる(2026-07-31 の localhost E2E で実測)。ログインシェルに頼ると受け手の
+        // 落ちる(localhost E2E で実測)。ログインシェルに頼ると受け手の
         // シェル設定に依存するので、ここで明示的に足す
         let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
         // 発行者はディスパッチ側から運ぶ(LocalConfig.resolveIssuerId が FT_ISSUER を最優先で
@@ -1290,7 +1290,7 @@ public enum RemoteReportLink {
     /// 記録側を回収先へ向け直せば results から辿れるようになる。
     ///
     /// これを入れないと**リモート実行の結果だけレポートへ飛べない**(results には載るのに
-    /// リンクがどこも指していない。2026-08-16 に実機で確認)。ローカル実行は最初から
+    /// リンクがどこも指していない。実機で確認)。ローカル実行は最初から
     /// リポジトリルート基準の `TestProjects/<project>/reports/<file>` を記録している
     /// ので、書き換え後は両者が同じ規約になる。
     ///
@@ -1336,7 +1336,7 @@ public enum RemotePathRewrite {
     /// **渡す remoteRoot は `layout.workDir`**(`base` ではない)—— 手元のリポジトリルートに
     /// 対応するのは受け手パッケージ = workDir で、base はその2段上。base を渡すと
     /// `users/<issuer>/work` が残り、**手元に存在しないパス**が画面と記録に出る
-    /// (2026-08-26 の実害: リモート実行のログが `<手元のクローン>/users/<issuer>/work/…` を指し、
+    /// (実害: リモート実行のログが `<手元のクローン>/users/<issuer>/work/…` を指し、
     /// 実際に走ったスクリプトと違うパスに見えて原因調査が空転した)
     public static func rewrite(_ text: String, remoteRoot: String, localRoot: String) -> String {
         let remote = stripTrailingSlash(remoteRoot)

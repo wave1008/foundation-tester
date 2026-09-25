@@ -10,8 +10,8 @@ import FTCore
 extension MCPServer {
 
     func ftStatus(_ args: [String: Any]) async throws -> [[String: Any]] {
-        // **読み取り専用のここだけは、複数台でも失敗させない**(外部フィードバック 2026-08-06)。
-        // 操作系(tap/type/…)は従来どおりエラーにする —— 曖昧なまま「どれか」を操作させない
+        // **読み取り専用のここだけは、複数台でも失敗させない**(外部フィードバック)。
+        // 操作系(tap/type/…)はエラーのままにする —— 曖昧なまま「どれか」を操作させない
         // 規律([[BridgeDiscovery]] と同じ)を崩さないため。status は状態を見るだけなので、
         // 全台を並べて返すほうが次の一手(serial: を選ぶ)に直結する
         if args["profile"] == nil, args["serial"] == nil,
@@ -23,9 +23,9 @@ extension MCPServer {
         let status = try await driver(args).status()
         // **宛先とセッションの意味まで出す**: 「どこに繋がっているか」が見えないと、
         // 既定ポートの死・はぐれデバイスの誤掴み・ブリッジ再起動によるセッション消失が
-        // どれも「応答はしているのに操作できない」に見える(2026-08-06 フィードバック #2/#8)
+        // どれも「応答はしているのに操作できない」に見える(フィードバック #2/#8)
         let statusKey = Self.engineKey(args)
-        // **同じシミュレータに in-app / XCUITest が同時に立つのが常態**(2026-08-12 の実アプリ
+        // **同じシミュレータに in-app / XCUITest が同時に立つのが常態**(実アプリ
         // 監査: 10台に対し稼働ブリッジ17本)。どちらに繋がっているかで scrollable 検知・
         // キーボード遮蔽・型語彙・読み返しの有無が変わるので、宛先と一緒に出す。
         // **走査は増やさない** — driver(args) が解決時に埋めた engines[key] を読むだけ
@@ -35,7 +35,7 @@ extension MCPServer {
         let session = status.sessionBundleID
             ?? "none (no app attached — ft_launch <bundleId> first;"
                 + " a bridge restart clears the session)"
-        // **session と「いま前面にあるもの」は別物**(外部フィードバック 2026-08-06)。
+        // **session と「いま前面にあるもの」は別物**(外部フィードバック)。
         // session はブリッジが掴んでいるアプリで、ft_navigate home の後も変わらない。
         // 前面の照会は 1 往復で済むので、シナリオ冒頭の appIs 相当をここで賄えるようにする
         let foreground = await Self.foregroundNote(status.sessionBundleID,
@@ -66,7 +66,7 @@ extension MCPServer {
         let appsFilter = (args["filter"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         // **filter を渡したら既定で system も探す**: 絞り込む唯一の動機は「あのアプリを
         // 見つける」ことで、端末に載っている地図・ブラウザは system 側に居る。既定のままだと
-        // 「入っていない」という誤った空振りになる(2026-08-09 に実測して adb へ落ちた)。
+        // 「入っていない」という誤った空振りになる(実測して adb へ落ちた)。
         // 明示の includeSystem: false は尊重する
         let includeSystem = args["includeSystem"] as? Bool ?? (appsFilter != nil)
         if let android = appsDriver as? AndroidDriver {
@@ -96,7 +96,7 @@ extension MCPServer {
         // **実機は simctl ではなく devicectl**(欠陥⑤): udid の形はどちらも同じなので、
         // simctl へ素通しすると "Invalid device" で失敗する。実機かどうかは
         // IOSPhysicalDeviceCatalog の一覧に居るかで判定する(判定できなければ
-        // シミュレータ側の従来経路へ素通し = 断定しない側に倒す)
+        // シミュレータ側の通常の経路へ素通し = 断定しない側に倒す)
         if let candidateUDID,
            let physicalDevices = try? IOSPhysicalDeviceCatalog.devices(),
            physicalDevices.contains(where: { $0.udid == candidateUDID || $0.deviceCtlIdentifier == candidateUDID }) {
@@ -118,7 +118,7 @@ extension MCPServer {
         // `.fleetest/bridge-<port>.device`(BridgeDeviceRecord。実機のときだけ書かれる)で、
         // port は明示引数かこのセッションが覚えている宛先(connectedPorts。driver() を経由した
         // 呼び出しで埋まる)から取る。**どちらも取れなければ nil = 実機でない証拠にはならない
-        // ので従来どおり待つ**(best-effort)
+        // ので待つ**(best-effort)
         let logsPort = try Self.portArgument(args) ?? connectedPorts[Self.engineKey(args)]
         let logsPhysicalUDID = Self.platformName(args) == "ios"
             ? logsPort.flatMap { port in

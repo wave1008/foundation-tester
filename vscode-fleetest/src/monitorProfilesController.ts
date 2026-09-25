@@ -98,7 +98,7 @@ export class MonitorProfilesController {
     });
     this.profileFileWatcher.onDidChange((uri) => {
       this.deps.post({ type: "runProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
-      // **devices の変化はどの実行プロファイルでも一覧を最新化する**(2026-08-31 指示を踏襲: `api
+      // **devices の変化はどの実行プロファイルでも一覧を最新化する**(指示を踏襲: `api
       // monitor` は台帳を起動時に1回しか読まないので、外した台は再起動するまでタイルに残る)。
       // プロジェクトのデバイスカタログは全実行プロファイルの devices[] の和集合なので、選択中で
       // ないプロファイルの編集(チェックボックス・行の編集/除去/追加)もここで拾う必要がある。
@@ -929,7 +929,7 @@ export class MonitorProfilesController {
    *
    * **確認は聞かない** —— 削除そのものを確認済みで、ここは実体が消えた事実にプロファイルを
    * 合わせるだけ。聞かずに残すと**実体の無い登録が残り**、次の run が「その台が無い」で落ちるまで
-   * 気付けない(2026-08-25 の報告)。「+既存から選択」の OK 側の同期(runProfileDevicesSync)には
+   * 気付けない(実害)。「+既存から選択」の OK 側の同期(runProfileDevicesSync)には
    * 乗らない = キャンセルでも必ず消える、が要点。
    *
    * **引き当ては (platform, machine, name)**(machine 省略=手元)。名前だけで消すと別の機械の

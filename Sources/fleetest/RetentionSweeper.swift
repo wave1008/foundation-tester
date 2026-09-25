@@ -181,7 +181,7 @@ enum RetentionSweeper {
     /// 単位は束1つ = 起動1回ぶん(`BridgeLauncher.resultBundlePath` が起動のたびに別名で作る)。
     /// 生きているブリッジの分は XCTest が書き込み中(「終わらない UI テスト」の全操作ログ)なので
     /// guarded ——`BridgeLauncher.captureSettings`(動画・スクショを止める設定)はこのログを止めない
-    /// (実測 2026-09-20: 実機ブリッジ1本・75分で 324 MB)。**孤児**(生きたランナーの居ないポートの束)は
+    /// (実測: 実機ブリッジ1本・75分で 324 MB)。**孤児**(生きたランナーの居ないポートの束)は
     /// 通常 `BridgeLauncher.sweepOrphanResultBundles` が起動のたびに無条件で消すので、ここに残るのは
     /// その掃除より後に生まれた分か掃除の間隔が空いた分だけ。名前がこの形
     /// (`bridge-<port>.xcresult` / `bridge-<port>-<stamp>.xcresult`)でない束には触らない
@@ -476,7 +476,7 @@ enum RetentionSweeper {
     /// finishedAt が無くても、**この機械の pid で、かつ本当に死んでいる**(pid の再利用も除いて)
     /// と確定できたときだけ保護を外す —— でなければ SIGKILL・クラッシュ・電源断で finish() に
     /// 届かなかった録画が永久に守られ続ける。**別の機械の run(host 不一致)・pid の無い記録は
-    /// 判断できないので従来どおり守る**
+    /// 判断できないので守る**
     private static func runIsGuarded(runDir: URL, activeRunID: String?) -> Bool {
         if let activeRunID, runDir.lastPathComponent == activeRunID { return true }
         guard let meta = RunResultsStore.meta(runDir: runDir) else { return true }

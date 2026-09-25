@@ -302,7 +302,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         }
         // **子の id はマシンを含まない** —— 転送プロファイルを畳んである(RunnerProfileView)ので
         // 向こうは自分の台を "local" と名乗る。親のタイルは (machine, name) で一意なので、ここで
-        // マシン付きの id へ直す。**直さないと状態も映像もタイルに届かない**(実害 2026-08-26:
+        // マシン付きの id へ直す。**直さないと状態も映像もタイルに届かない**(実害:
         // 畳み込みを入れた直後、リモートのタイルが全部「状態不明」になった)
         var byID: [String: ApiMonitorDeviceInfo] = [:]
         for device in event.devices {

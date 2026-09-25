@@ -24,7 +24,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     /// 予期しない死亡からの再spawn上限。無限リトライで死に続けるデバイスに張り付かないため
     private static let maxRestarts = 5
     /// **録画の開始が一過性に空振りするときの再試行**。直前セッションの CoreSimulator io 解放が
-    /// 間に合わない形(spawnNextPart の宣言)と、run 開始直後の負荷で撮れない形(実測 2026-09-10:
+    /// 間に合わない形(spawnNextPart の宣言)と、run 開始直後の負荷で撮れない形(実測:
     /// M1Ultra の6台が同時に空になり、数分後には同じ台で 1 秒 66KB が撮れた。並列6本でも
     /// 空いていれば全部成功)は同じ一過性なので、**予算はここ1箇所**にして smokeCheck と共有する
     private static let startAttempts = 3
@@ -79,10 +79,10 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         return await spawnNextPart()
     }
 
-    /// **録画できることを実物で1本確かめてから本番を始める**(2026-08-26)。
+    /// **録画できることを実物で1本確かめてから本番を始める**。
     /// `recordVideo` は端末側にセッションが刺さっていても "Recording started" を出し、**0 バイトの
     /// .mov を作り続ける** —— 気付けるのは run の終わり(切り出し時)で、その run の録画は全部失われる。
-    /// 実害: 3台構成の run で1台だけ録れており、他の2台は録画タブから消えた(2026-08-26)。
+    /// 実害: 3台構成の run で1台だけ録れており、他の2台は録画タブから消えた。
     ///
     /// **「ファイルが育たない」は検知に使えない** —— 正常な録画でも**閉じるまで 0 バイトのまま**
     /// (実測: 8 秒間ずっと 0、停止した瞬間に 21KB)。だから短い録画を1本**閉じて**大きさを見る。
@@ -155,7 +155,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         }
         try? await Task.sleep(nanoseconds: UInt64(Self.smokeSeconds * 1_000_000_000))
         // **停止は SIGINT**(SIGTERM/SIGKILL だと moov が書かれず、健全な端末でも空に見える)。
-        // **猶予が尽きても SIGKILL しない**(実測 2026-09-09): SIGINT 以外で殺した recordVideo は
+        // **猶予が尽きても SIGKILL しない**(実測): SIGINT 以外で殺した recordVideo は
         // **端末側のセッションを握ったまま**になり、その台は再起動するまで録画できなくなる ——
         // 以後の録画は "Host recording is already in progress" で全部落ち、ツール自身が
         // 「セッションが残っている」と警告する自作自演になっていた。止まらない個体は放置する
@@ -304,7 +304,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     /// 同じ udid への stale な recordVideo(client プロセス)を起動前に best-effort で止める。
     /// **SIGINT で止める**(既定の SIGTERM だと moov が書かれないうえ、端末側のセッションが
-    /// 握られたまま残り、その台が再起動まで録画できなくなる。実測 2026-09-09)。
+    /// 握られたまま残り、その台が再起動まで録画できなくなる。実測)。
     /// **端末側に残るセッションはこれでは解けない** —— プロセスが1つも無いのに録画が始まらない形が
     /// あり、そちらは smokeCheck が busy として報告する
     private func killStaleRecording() {

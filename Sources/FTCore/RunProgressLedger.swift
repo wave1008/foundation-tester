@@ -38,7 +38,7 @@ public struct RunProgressLane: Codable, Equatable, Sendable {
     // **レーンごとの残り本数は持たない**(docs/design.md §18.1)—— shared dispatch は同一 platform の
     // レーンが1つのキューを共有するので、レーン別の残数は同じ数字が並ぶだけで誤読を招く
     // (3レーンに「残 2」= 6本残っていると読める)。run の残りは total - done で足りる
-    /// **記録用**(画面には出さない。ユーザー決定 2026-09-21): 実行中シナリオの実績中央値(秒)。
+    /// **記録用**(画面には出さない。ユーザー決定): 実行中シナリオの実績中央値(秒)。
     /// `scenario` が nil、または実績表に無ければ nil(推測値は書かない)。値は固定 ——
     /// シナリオ開始時に1回引く。**「いつもと比べてどうだったか」を後から分析するために残す**
     public let expectedSeconds: Int?
@@ -138,8 +138,8 @@ public enum RunProgressLedger {
     /// あちらは毎周期読むので、掃除を読み手に持たせると監視の周期がそのまま掃除の回数になる。
     /// `remove` に届かなかった控え(SIGKILL)はここでだけ回収される。
     /// **pid としてパースできない名前は触らない**(この台帳が作った物ではない)。
-    /// **中身が読めない(壊れた JSON)ときは pid の生死だけで判定する**(従来どおり。
-    /// startedAt が要る比較ができないので、それより弱い判定へ落ちるのは安全側)
+    /// **中身が読めない(壊れた JSON)ときは pid の生死だけで判定する**
+    /// (startedAt が要る比較ができないので、それより弱い判定へ落ちるのは安全側)
     public static func sweep(directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive,
                              startTime: (Int32) -> Date? = ProcessLiveness.startTime) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {

@@ -171,7 +171,7 @@ public enum AppUIFrameworkQuery {
 
     // MARK: - ② シミュレータに入っているバンドル
 
-    /// simctl は 1 回 約 0.45 秒(2026-09-14 実測)。前回引いた置き場の控えがこの台のもので指紋も同じなら撃たない
+    /// simctl は 1 回 約 0.45 秒(実測)。前回引いた置き場の控えがこの台のもので指紋も同じなら撃たない
     static func installedBundleFramework(bundleID: String, udid: String) -> AppUIFramework? {
         let rules = UIFrameworkMarkers.rulesVersion
         if let entry = AppFrameworkLedger.load(bundleID: bundleID, platform: "ios"),
