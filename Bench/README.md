@@ -47,8 +47,13 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
   `Error:` を先に潰す
 - **差が出ないときは実験系を疑う**。ビルドは毎回 `swift build --product fleetest-mcp` を通すが、
   タスク・盤面・デバイスが変わっていれば手数は簡単に動く
-- **CLAUDE.md の無い作業ディレクトリで走らせている**(`<out>/cwd`)。保守者向けの指示を
-  読んだエージェントは「まっさらな読み手」ではない
+- **まっさらな読み手にしてある**(2026-09-25 に穴を塞いだ)。作業場所は **git の外**
+  (`~/.fleetest/bench/cwd`)、起動は `--setting-sources project`(利用者設定 = プラグインを読ませない)・
+  `--disable-slash-commands`(スキル無し)・`autoMemoryEnabled:false`。**それまでは作業場所が
+  クローンの内側(`<out>/cwd`)で、自動メモリの置き場が保守者のメモリを指し、fleetest のスキルも
+  使える状態だった**(残っていた記録6本ではスキルもメモリも使われていなかったので、過去の計測が
+  それで動いた証拠は無い)。**各 run の起動イベントで確かめる** —— 漏れていれば集計の冒頭に
+  `まっさらな読み手ではない` が出る
 
 ## タスク
 
@@ -66,6 +71,8 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 | `cmp-webview-grid` | webview-grid | 見出し行が `aria-hidden` の表。**列見出しはツリーから原理的に取れず `ft_screenshot` でしか読めない** = 代替手段の無い盤面(`gridWithoutHeaderNote` の offline witness) |
 | `and-browser-dupgrid` / `-tap` / `-multitap` / `-selector` | browser | **実ブラウザ + 中身の変わらないページ**(`boards/weather-dupgrid.html`)。同じ値が何度も出る格子で、読み取り・操作・ref 再利用・セレクタ品質を別々に問う。詳細は下の「browser 盤面」 |
 | `and-browser-grid-noheader` | browser | 実ブラウザ側の**見出しが落ちる格子**(`boards/grid-noheader.html`)。`cmp-webview-grid` と同じ形を、注記が実際に生まれる経路(Chrome + DOM)で測る |
+| `ios-authoring-fix-drift` | authoring | **作成フロー**: 古くなったシナリオ(手前の id のずれ + 見出しの期待値違い)を直して通す。**回す前に触って直せる**ので、`ft_run_scenario` の返し方の差は出にくい(対照) |
+| `ios-authoring-fix-late` | authoring | **作成フロー**: 起動から5〜6手先の**最後の段**で送信ボタンの id がずれている。手で再現するより回して失敗時の要素一覧を読むほうが安い = `ft_run_scenario` の失敗の返し方が手数に出る盤面 |
 
 自前 SUT の4つは**対照**(盤面が契約で固定されているので手数のブレが小さい)。
 `maps-route` だけが実アプリで、**自前 SUT は実アプリの形を代表しない**(遮蔽・積み重なり・
@@ -81,6 +88,44 @@ Bench/measurements.md)。使い道は**探索が「再生できるシナリオ�
 
 `expect` は**契約から決めた値**(`E2EAppCMP/docs/ui-contract.md`)。SUT の契約を変えたら
 ここも変えること。
+
+## 作成フローのタスク(`"kind": "authoring"`。2026-09-25)
+
+他のタスクは「アプリを操作して値を読む」までしか測らない。こちらは **シナリオを書く → 回す →
+直す** のループで、`ft_run_scenario` の失敗の返し方(証跡・isError)や、今後の `ft_verify` の
+ようなツールが効いたかを測るためのもの。
+
+- **許す道具が違う**: `ft_*` に加えて Read / Edit / Write / Glob / Grep(ファイルを直すため)。
+  それ以外(Bash 等)は許さない。**既存タスクの条件は変えていない**(`ft_*` だけのまま = 過去の
+  計測と比べられる)
+- **作業場所**: `~/.fleetest/bench/authoring-pkg/<tool-root のハッシュ>/authoring-pkg`(台本が
+  `fleetest init` で作る外部パッケージ。受け手と同じ構成で、git の外・**TestProjects/ には触らない**)。`init` が置く `.claude/` と
+  `.vscode/` は消す(まっさらな読み手の条件)。初回は外部パッケージの cold build に約2分かかる
+- **run のたびに盤面を戻す**: `Bench/fixtures/<fixture>/` の .swift を置き直し、`.fleetest/`
+  (`#id` の台帳・指紋)とレポートを消す。前の run の学習が次へ漏れると手数が下がって見える
+- **完了は自己申告を見ない**(`RESULT:` 行は読まない)。3つ揃ったときだけ完了 ——
+  ①最後の `ft_run_scenario` の応答に `→ ✅ passed` があり `→ ❌ failed` が無い
+  ②その後にファイルを書き換えていない ③タスクの `mustContain` が最終ファイルに全部残っている
+  (**検証を削って緑にする抜け道**を塞ぐ)。落ちた run は集計の冒頭に理由が1行ずつ出る
+- 最終ファイルは `<variant>/<task>-<n>.final.swift` に控える
+- 表の `files` 列は ft_* 以外(ファイル操作)の回数。**主指標は引き続き `tools`**
+
+**前後の比較は `--tool-root`**: 変更前のコミットを worktree に出して渡すと、同じタスク・同じ
+台本・同じフィクスチャで測れる(作業場所も worktree 側に別に作る)。
+
+```
+git worktree add /tmp/before/foundation-tester <変更前のコミット>
+Scripts/mcp-bench.sh --task ios-authoring-fix-drift --repeat 3 --tool-root /tmp/before/foundation-tester --out <dir>
+```
+
+**worktree のディレクトリ名は `foundation-tester` にする**。`fleetest init` の Package.swift は
+ツールを `package: "foundation-tester"` で参照し、SPM はパス依存をディレクトリ名で識別するので、
+別の名前だと `unknown package 'foundation-tester'` で init が落ちる(台本は起動時に名指しで止める)。
+
+**フィクスチャを足すときの規律**: ①アプリは正しくシナリオが古い形にする(アプリの不具合を
+直させない)②**コンパイルは通り、実行時にだけ落ちる**形にする(コンパイルエラーは失敗の証跡の
+経路を通らない)③正解が**失敗時の要素一覧から読める**ずれにする(推測でしか直せない盤面は
+エージェントの運を測る)④`mustContain` には直した後に必ず残る検証を書く。
 
 ## アーキタイプを足すとき
 

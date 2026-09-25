@@ -20,6 +20,19 @@
 # 「事実が要るか」ではなく「明細まで要るか」を測るときはこちら:
 #   --variant full= --variant brief=brief:duplicateIDsNote,ambiguousLabelsNote
 #
+# **作成フローのタスク**(`"kind": "authoring"`。2026-09-25): 壊れたシナリオを直して緑にするまでを測る。
+# このときだけエージェントに**ファイルの読み書き**(Read/Edit/Write/Glob/Grep)も許し、作業場所は
+# `~/.fleetest/bench/authoring-pkg/<tool-root のハッシュ>/authoring-pkg`(`fleetest init` で作る外部
+# パッケージ。git の外 = まっさらな読み手の条件・TestProjects/ には触らない)。run のたびに `Bench/fixtures/<fixture>/` の .swift を置き直し、台帳(.fleetest/)と
+# レポートを消す。完了は**自己申告ではなく**、最後の ft_run_scenario が通ったこと・その後に
+# ファイルを書き換えていないこと・`mustContain` の文字列が最終ファイルに残っていること(検証を
+# 削って緑にする抜け道を塞ぐ)で判定する(bench-summary.mjs の authoringVerdict)。
+#
+# `--tool-root <dir>` で測る対象のクローンを差し替える(既定はこの台本のクローン)。変更前の
+# コミットを worktree に出して渡せば、同じタスク・同じ台本で前後を比べられる:
+#   git worktree add /tmp/before/foundation-tester <commit>   # 名前は foundation-tester 固定
+#   Scripts/mcp-bench.sh --task ios-authoring-fix-drift --repeat 5 --tool-root /tmp/before/foundation-tester
+#
 # 前提: `claude` CLI と、タスクが要求するデバイス/アプリ。デバイスは各タスクの
 # `requires` に書いてあるものを**先に用意しておくこと**(この台本は用意しない ——
 # 用意まで抱えると、失敗したときに「エージェントが下手だった」のか「盤面が違った」のかが
@@ -29,6 +42,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TASK_DIR="$ROOT/Bench/tasks"
+FIXTURE_DIR="$ROOT/Bench/fixtures"
+TOOL_ROOT="$ROOT"
 REPEAT=3
 DRY_RUN=0
 LIST=0
@@ -52,9 +67,10 @@ while [ $# -gt 0 ]; do
       shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
+    --tool-root) TOOL_ROOT="$(cd "$2" && pwd)"; shift 2 ;;
     --list) LIST=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
-    -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,39p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "不明なオプション: $1" ;;
   esac
 done
@@ -97,18 +113,65 @@ say() { echo "$*" | tee -a "$LOG"; }
 
 # **測る対象は「今のソースで建てた」サーバ**(古いバイナリを測ると、直したはずの注記が
 # 反映されないまま結論が出る)
-say "==> fleetest-mcp を建てる"
+say "==> fleetest-mcp を建てる($TOOL_ROOT)"
 if [ "$DRY_RUN" = 0 ]; then
-  (cd "$ROOT" && swift build --product fleetest-mcp) >>"$LOG" 2>&1 \
+  (cd "$TOOL_ROOT" && swift build --product fleetest-mcp) >>"$LOG" 2>&1 \
     || die "ビルドに失敗($LOG)"
 fi
-BIN="$ROOT/.build/debug/fleetest-mcp"
+BIN="$TOOL_ROOT/.build/debug/fleetest-mcp"
 [ "$DRY_RUN" = 1 ] || [ -x "$BIN" ] || die "実行ファイルが無い: $BIN"
 
-# **CLAUDE.md の無い作業ディレクトリで走らせる**: 保守者向けの指示を読んだエージェントは
-# 「まっさらな読み手」ではない(このリポジトリの事情を知っている)
-CWD="$OUT/cwd"
+# **まっさらな読み手にする**(2026-09-25 に穴を塞いだ): 保守者向けの知識を持ったエージェントは
+# 「まっさらな読み手」ではない。塞ぐのは3つ ——
+#  ① 作業場所を **git の外**に置く。クローンの内側(旧既定 = `<クローン>/.fleetest/bench/`)だと
+#    Claude Code はクローンを同じプロジェクトと見なし、**自動メモリの置き場が保守者のメモリ**を指していた
+#  ② `--setting-sources project`: 利用者設定(有効なプラグイン = fleetest のスキル・許可)を読ませない
+#  ③ `--disable-slash-commands` と `autoMemoryEnabled:false`: スキルと自動メモリを切る
+# 効いたかは各 run の起動イベント(memory_paths / skills / plugins)で集計が確かめる(isolated 列)
+BENCH_HOME="$HOME/.fleetest/bench"
+CWD="$BENCH_HOME/cwd"
 mkdir -p "$CWD"
+git -C "$CWD" rev-parse --show-toplevel >/dev/null 2>&1 \
+  && die "作業場所が git の中にある($CWD)。Claude Code がそのリポジトリのメモリ・設定を読む"
+ISOLATION_SETTINGS='{"autoMemoryEnabled":false}'
+
+# ---- 作成フローの作業場所 ----
+# `fleetest init` の Package.swift はツールを `package: "foundation-tester"` で参照し、SPM は
+# パス依存をディレクトリ名で識別する = worktree も `…/foundation-tester` という名前で作る
+# 作業場所は git の外(上の①)。測る対象のクローンごとに分ける(前後の比較で依存先が違う)
+PKG="$BENCH_HOME/authoring-pkg/$(printf '%s' "$TOOL_ROOT" | shasum | cut -c1-12)/authoring-pkg"
+PKG_PROJECT=BenchAuthoring
+has_authoring=0
+pkg_app=""
+for id in "${TASKS[@]}"; do
+  if [ "$(task_field "$TASK_DIR/$id.json" kind)" = authoring ]; then
+    has_authoring=1
+    [ -n "$pkg_app" ] || pkg_app="$(task_field "$TASK_DIR/$id.json" appId)"
+  fi
+done
+[ "$has_authoring" = 0 ] || [ "$(basename "$TOOL_ROOT")" = foundation-tester ] \
+  || die "--tool-root のディレクトリ名は foundation-tester にする(SPM がパス依存を名前で識別する): $TOOL_ROOT"
+# 外部パッケージは一度作れば使い回す(.build が温まる)。`fleetest init` は受け手向けに
+# .claude/(スキル・許可)と .vscode/ を置くが、**まっさらな読み手**には要らないので消す
+if [ "$has_authoring" = 1 ] && [ "$DRY_RUN" = 0 ] && [ ! -f "$PKG/Package.swift" ]; then
+  say "==> 作成フローの外部パッケージを作る($PKG)"
+  (cd "$ROOT" && swift build --product fleetest) >>"$LOG" 2>&1 || die "fleetest のビルドに失敗($LOG)"
+  mkdir -p "$PKG"
+  (cd "$PKG" && "$ROOT/.build/debug/fleetest" init --fleetest-path "$TOOL_ROOT" \
+      --name "$PKG_PROJECT" --platform ios ${pkg_app:+--app-id "$pkg_app"}) >>"$LOG" 2>&1 \
+      || die "fleetest init に失敗($LOG)"
+fi
+
+# 1 run ぶんの盤面を作り直す: シナリオをフィクスチャへ戻し、台帳(#id の台帳・指紋)と
+# レポートを消す(前の run の学習が次の run に漏れると手数が下がって見える)
+reset_authoring() {
+  local fixture="$1"
+  local scen="$PKG/TestProjects/$PKG_PROJECT/scenarios"
+  rm -rf "$PKG/.claude" "$PKG/.vscode" "$PKG/CLAUDE.md" "$PKG/AGENTS.md" "$PKG/.fleetest"
+  find "$scen" -name '*.swift' ! -name '_Main.swift' -delete
+  cp "$FIXTURE_DIR/$fixture"/*.swift "$scen/"
+  find "$PKG/TestProjects/$PKG_PROJECT/reports" -mindepth 1 -delete 2>/dev/null || true
+}
 
 EMPTY=0
 INDEX="$OUT/index.json"
@@ -147,12 +210,33 @@ JSON
 drop: や lastN: で刈り込んでから、もう一度呼んでください。"
     fi
 
+    kind="$(task_field "$f" kind)"
+    run_cwd="$CWD"
+    allowed=mcp__fleetest
+    if [ "$kind" = authoring ]; then
+      fixture="$(task_field "$f" fixture)"
+      [ -d "$FIXTURE_DIR/$fixture" ] || die "フィクスチャが無い: $FIXTURE_DIR/$fixture"
+      run_cwd="$PKG"
+      allowed="mcp__fleetest,Read,Edit,Write,Glob,Grep"
+      # **最初の run だけがビルドを払わないよう、先に1回建てておく**(2 分級。手数ではなく
+      # wall が歪む)。フィクスチャは実行時にだけ落ちる形なのでコンパイルは通る
+      if [ "$DRY_RUN" = 0 ]; then
+        reset_authoring "$fixture"
+        (cd "$PKG" && swift build --product "fleetest-scenarios-$PKG_PROJECT") >>"$LOG" 2>&1 \
+          || die "フィクスチャのビルドに失敗($LOG)"
+      fi
+    fi
+
     for n in $(seq 1 "$REPEAT"); do
       transcript="$vdir/$id-$n.jsonl"
+      final=""
+      [ "$kind" != authoring ] || [ "$DRY_RUN" = 1 ] || reset_authoring "$fixture"
       set -- claude -p "$prompt" \
         --output-format stream-json --verbose \
         --mcp-config "$vdir/mcp.json" --strict-mcp-config \
-        --allowedTools mcp__fleetest \
+        --allowedTools "$allowed" \
+        --setting-sources project --settings "$ISOLATION_SETTINGS" --disable-slash-commands \
+        --no-session-persistence \
         --max-turns "$max_turns"
       [ -z "$MODEL" ] || set -- "$@" --model "$MODEL"
       if [ "$DRY_RUN" = 1 ]; then
@@ -160,7 +244,13 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
       else
         # **1本の失敗で全体を止めない**(残りの盤面は生きている)。失敗は空の記録として
         # 残り、集計では未完了として数えられる
-        (cd "$CWD" && "$@") > "$transcript" 2>>"$LOG" || true
+        (cd "$run_cwd" && "$@") > "$transcript" 2>>"$LOG" || true
+        # 判定は最終ファイルで行う(次の run が置き直す前に控える)
+        if [ "$kind" = authoring ]; then
+          final="$vdir/$id-$n.final.swift"
+          cp "$PKG/TestProjects/$PKG_PROJECT/scenarios/$(task_field "$f" file)" "$final" 2>/dev/null \
+            || : > "$final"
+        fi
         lines="$(wc -l < "$transcript" | tr -d ' ')"
         # **記録が空 = エージェントが1手も打っていない**。集計ではこれも「未完了」に
         # 畳まれるので、ここで名指ししないと**盤面の失敗と台本の失敗が区別できない**
@@ -173,9 +263,13 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
       fi
       [ "$first_entry" = 1 ] || echo ',' >> "$INDEX"
       first_entry=0
-      printf '{"variant":"%s","task":"%s","expect":%s,"transcript":"%s"}' \
+      printf '{"variant":"%s","task":"%s","expect":%s,"transcript":"%s","authoring":%s}' \
         "$variant" "$id" "$(node -e 'process.stdout.write(JSON.stringify(process.argv[1]||null))' "$expect")" \
-        "$transcript" >> "$INDEX"
+        "$transcript" "$(node -e '
+          const t = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))
+          process.stdout.write(t.kind === "authoring"
+            ? JSON.stringify({ final: process.argv[2] || null, mustContain: t.mustContain ?? [] })
+            : "null")' "$f" "$final")" >> "$INDEX"
     done
   done
 done

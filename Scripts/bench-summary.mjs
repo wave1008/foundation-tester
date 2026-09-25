@@ -78,8 +78,45 @@ export function foldNoteCost(entries) {
   return [...bySignature.values()].sort((a, b) => b.bytes - a.bytes || a.signature.localeCompare(b.signature))
 }
 
-/** 1回ぶんの記録から指標を採る。`lines` は stream-json の各行(文字列 or 解析済み) */
-export function metricsFromTranscript(lines, expect) {
+/**
+ * 作成フロー(`kind: authoring`)の合否。**自己申告は見ない**。3つが揃ったときだけ完了:
+ * - 最後の `ft_run_scenario` の応答が通った(`→ ✅ passed` があり `→ ❌ failed` が無い。
+ *   この2行は isError を持たない旧版の応答にも同じ形で出るので、前後の比較に使える)
+ * - その後にファイルを書き換えていない(通った後に書き換えたなら、最終ファイルは未検証)
+ * - `mustContain` の文字列が最終ファイルに全部残っている(検証を削って緑にする抜け道を塞ぐ)
+ */
+export function authoringVerdict({ lastRunText, editedAfterLastRun, finalSource, mustContain }) {
+  const ran = typeof lastRunText === 'string'
+  const passed = ran && lastRunText.includes('→ ✅ passed') && !lastRunText.includes('→ ❌ failed')
+  const missing = (mustContain ?? []).filter((needle) => !String(finalSource ?? '').includes(needle))
+  return {
+    completed: passed && !editedAfterLastRun && missing.length === 0,
+    lastRunPassed: passed,
+    editedAfterLastRun: Boolean(editedAfterLastRun),
+    missing,
+  }
+}
+
+/**
+ * 起動イベントから「まっさらな読み手」だったかを判定する。3つとも空でなければ漏れている:
+ * 自動メモリの置き場(memory_paths)・スキル・プラグイン。旧台本はクローンの内側で走らせていたので
+ * 保守者のメモリを指し、fleetest のスキルも使える状態だった(2026-09-25)
+ */
+export function isolationFromInit(init) {
+  const memory = init.memory_paths && Object.keys(init.memory_paths).length > 0
+  const skills = Array.isArray(init.skills) && init.skills.length > 0
+  const plugins = Array.isArray(init.plugins) && init.plugins.length > 0
+  return !memory && !skills && !plugins
+}
+
+/** ファイルを書き換える道具(作成フローの判定と fileOps の数え分けに使う) */
+const WRITING_TOOLS = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit'])
+
+/**
+ * 1回ぶんの記録から指標を採る。`lines` は stream-json の各行(文字列 or 解析済み)。
+ * `authoring` を渡すと(`{ finalSource, mustContain }`)完了を authoringVerdict で決める
+ */
+export function metricsFromTranscript(lines, expect, authoring = null) {
   const events = lines
     .map((line) => (typeof line === 'string' ? safeParse(line) : line))
     .filter(Boolean)
@@ -93,11 +130,29 @@ export function metricsFromTranscript(lines, expect) {
   let subtype = null
   let draft = null
   const notes = []
+  // 作成フロー: tool_use の id → 名前(tool_result は id しか持たない)
+  const toolNames = new Map()
+  let fileOps = 0
+  let lastRunText = null
+  let editedAfterLastRun = false
+  // まっさらな読み手だったか(起動イベントで判定。記録に起動イベントが無ければ null = 不明)
+  let isolated = null
   for (const event of events) {
+    if (event.type === 'system' && event.subtype === 'init') {
+      isolated = isolationFromInit(event)
+      continue
+    }
     if (event.type === 'assistant') {
       for (const block of contentBlocks(event)) {
         if (block.type !== 'tool_use') continue
         const name = String(block.name ?? '')
+        toolNames.set(block.id, name)
+        // ファイル操作は ft_* と別に数える(作成フローのタスクでだけ許している)
+        if (!name.startsWith('mcp__')) {
+          fileOps += 1
+          if (WRITING_TOOLS.has(name) && lastRunText !== null) editedAfterLastRun = true
+          continue
+        }
         // fleetest の ft_* だけを数える(他サーバの道具が混ざる構成でも指標がぶれない)
         if (!name.startsWith('mcp__fleetest__')) continue
         toolCalls += 1
@@ -111,7 +166,15 @@ export function metricsFromTranscript(lines, expect) {
         // **下書きは最後のものを採る**(刈り込みで呼び直すのが正しい使い方なので、
         // 途中の下書きを混ぜると「直した後」の質が見えない)
         const text = resultText(block)
-        const quality = draftQuality(text)
+        if (toolNames.get(block.tool_use_id) === 'mcp__fleetest__ft_run_scenario') {
+          lastRunText = text
+          editedAfterLastRun = false
+        }
+        // 下書きは ft_draft_scenario の応答からだけ採る(作成フローで Read したシナリオ本文も
+        // @TestClass を含むので、名前で絞らないと読んだファイルを「下書き」と数える)
+        const from = toolNames.get(block.tool_use_id)
+        const quality = from === undefined || from === 'mcp__fleetest__ft_draft_scenario'
+          ? draftQuality(text) : null
         if (quality) draft = quality
         notes.push(...noteCost(text))
       }
@@ -126,11 +189,20 @@ export function metricsFromTranscript(lines, expect) {
   }
   // **完了は成果物で判定する**(「終わった」という自己申告ではなく、答えの中身を照合する)。
   // expect が無いタスクは claude 自身の成否だけを見る
-  const completed = expect
-    ? new RegExp(expect, 'i').test(finalText)
-    : subtype === 'success'
+  const verdict = authoring
+    ? authoringVerdict({ lastRunText, editedAfterLastRun, finalSource: authoring.finalSource,
+                         mustContain: authoring.mustContain })
+    : null
+  const completed = verdict
+    ? verdict.completed
+    : expect
+      ? new RegExp(expect, 'i').test(finalText)
+      : subtype === 'success'
   return {
     completed,
+    verdict,
+    isolated,
+    fileOps,
     toolCalls,
     snapshots: (byTool.ft_snapshot ?? 0) + (byTool.ft_batch ?? 0),
     errors,
@@ -151,6 +223,14 @@ function resultText(block) {
   if (typeof content === 'string') return content
   if (!Array.isArray(content)) return ''
   return content.map((part) => (typeof part?.text === 'string' ? part.text : '')).join('\n')
+}
+
+function readText(path) {
+  try {
+    return readFileSync(path, 'utf8')
+  } catch {
+    return ''
+  }
 }
 
 function safeParse(line) {
@@ -188,6 +268,7 @@ export function aggregate(runs) {
       n: group.runs.length,
       completed: group.runs.filter((m) => m.completed).length,
       toolCalls: median(group.runs.map((m) => m.toolCalls)),
+      fileOps: median(group.runs.map((m) => m.fileOps)),
       snapshots: median(group.runs.map((m) => m.snapshots)),
       errors: median(group.runs.map((m) => m.errors)),
       wallSeconds: median(group.runs.map((m) => m.wallSeconds)),
@@ -233,7 +314,8 @@ export function compare(rows, baseVariant) {
 export function formatTable(rows) {
   // sel は「下書きの安定セレクタ数 / 弱いセレクタ数(索引 + TODO)」。下書きを採っていない
   // task では "-"(この軸について何も言っていない)
-  const header = ['variant', 'task', 'n', 'ok', 'tools', 'snaps', 'err', 'wall s', 'out tok',
+  // files は ft_* 以外(ファイルの読み書き)の回数。作成フローのタスクでだけ 0 でなくなる
+  const header = ['variant', 'task', 'n', 'ok', 'tools', 'files', 'snaps', 'err', 'wall s', 'out tok',
                   'note B', 'sel ok/weak']
   const body = rows.map((r) => [
     r.variant,
@@ -241,6 +323,7 @@ export function formatTable(rows) {
     String(r.n),
     `${r.completed}/${r.n}`,
     fmt(r.toolCalls),
+    fmt(r.fileOps),
     fmt(r.snapshots),
     fmt(r.errors),
     fmt(r.wallSeconds),
@@ -283,8 +366,28 @@ function main(argv) {
   const index = JSON.parse(readFileSync(indexPath, 'utf8'))
   const runs = index.runs.map((run) => {
     const lines = readFileSync(run.transcript, 'utf8').split('\n').filter((l) => l.trim())
-    return { ...run, metrics: metricsFromTranscript(lines, run.expect) }
+    const authoring = run.authoring
+      ? { finalSource: run.authoring.final ? readText(run.authoring.final) : '',
+          mustContain: run.authoring.mustContain }
+      : null
+    return { ...run, metrics: metricsFromTranscript(lines, run.expect, authoring) }
   })
+  // **まっさらでなかった run は集計の意味が変わる**ので、表より先に名指しする
+  for (const run of runs) {
+    if (run.metrics.isolated === false) {
+      console.log(`!! ${run.variant}/${run.task} ${run.transcript}: まっさらな読み手ではない`
+        + '(メモリ・スキル・プラグインのどれかが見えている。台本の隔離を確かめる)')
+    }
+  }
+  // 作成フローで落ちた run は理由を1行ずつ出す(表の ok だけでは直し損ねか検証の削りか分からない)
+  for (const run of runs) {
+    const v = run.metrics.verdict
+    if (!v || v.completed) continue
+    const why = !v.lastRunPassed ? '最後の ft_run_scenario が通っていない'
+      : v.editedAfterLastRun ? '通った後にファイルを書き換えた'
+        : `検証が消えた: ${v.missing.join(', ')}`
+    console.log(`!! ${run.variant}/${run.task} ${run.transcript}: ${why}`)
+  }
   const rows = aggregate(runs)
   console.log(formatTable(rows))
   const baseVariant = index.baseVariant ?? 'full'

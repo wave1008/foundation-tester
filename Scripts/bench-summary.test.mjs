@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
   metricsFromTranscript, median, aggregate, compare, formatTable, formatComparison, draftQuality, noteCost, foldNoteCost,
+  authoringVerdict, isolationFromInit,
 } from './bench-summary.mjs'
 
 const toolUse = (name) => ({
@@ -272,4 +273,99 @@ test('metricsFromTranscript が注記のバイトを積む', () => {
 test('注記が1つも無い run は 0(欠測ではない)', () => {
   const m = metricsFromTranscript([toolUse('mcp__fleetest__ft_tap'), result('RESULT: ok')], null)
   assert.equal(m.noteBytes, 0)
+})
+
+// ---- 作成フロー(kind: authoring)の判定 ----
+
+const use = (id, name) => ({
+  type: 'assistant',
+  message: { content: [{ type: 'tool_use', id, name, input: {} }] },
+})
+const answer = (id, text, isError = false) => ({
+  type: 'user',
+  message: { content: [{ type: 'tool_result', tool_use_id: id, is_error: isError,
+                         content: [{ type: 'text', text }] }] },
+})
+const RUN = 'mcp__fleetest__ft_run_scenario'
+const passedRun = '▶ 画面遷移.S0010\n  → ✅ passed\n  → report: /r.md'
+const failedRun = '▶ 画面遷移.S0010\n    ❌ 2. [action] tap "#x"\n  → ❌ failed'
+const fixed = 'select("#t").textIs("セレクタ")\nselect("#t").textIs("ホーム")'
+const authoring = { finalSource: fixed, mustContain: ['textIs("セレクタ")', 'textIs("ホーム")'] }
+
+test('作成フロー: 最後の ft_run_scenario が通り、検証が残っていれば完了(RESULT は見ない)', () => {
+  const m = metricsFromTranscript([
+    use('a', RUN), answer('a', failedRun, true),
+    use('b', 'Edit'), answer('b', 'ok'),
+    use('c', RUN), answer('c', passedRun),
+    result('RESULT: failed'),
+  ], null, authoring)
+  assert.equal(m.completed, true)
+  assert.equal(m.fileOps, 1)
+  assert.equal(m.toolCalls, 2)
+})
+
+test('作成フロー: 通った後にファイルを書き換えたら未完了(最終ファイルは未検証)', () => {
+  const m = metricsFromTranscript([
+    use('a', RUN), answer('a', passedRun),
+    use('b', 'Write'), answer('b', 'ok'),
+    result('RESULT: passed'),
+  ], null, authoring)
+  assert.equal(m.completed, false)
+  assert.equal(m.verdict.editedAfterLastRun, true)
+})
+
+test('作成フロー: 読むだけ(Read)は通った後でも判定を変えない', () => {
+  const m = metricsFromTranscript([
+    use('a', RUN), answer('a', passedRun),
+    use('b', 'Read'), answer('b', 'source'),
+    result('RESULT: passed'),
+  ], null, authoring)
+  assert.equal(m.completed, true)
+})
+
+test('作成フロー: 最後の実行が落ちていれば未完了(途中で通っていても)', () => {
+  const m = metricsFromTranscript([
+    use('a', RUN), answer('a', passedRun),
+    use('b', RUN), answer('b', failedRun, true),
+    result('RESULT: passed'),
+  ], null, authoring)
+  assert.equal(m.completed, false)
+  assert.equal(m.verdict.lastRunPassed, false)
+})
+
+test('作成フロー: ft_dry_run の passed は実行に数えない', () => {
+  const m = metricsFromTranscript([
+    use('a', 'mcp__fleetest__ft_dry_run'), answer('a', '  → ✅ passed\n✅ dry-run passed'),
+    result('RESULT: passed'),
+  ], null, authoring)
+  assert.equal(m.completed, false)
+})
+
+test('作成フロー: 検証を削って緑にしたら未完了(削った文字列を名指し)', () => {
+  const v = authoringVerdict({
+    lastRunText: passedRun, editedAfterLastRun: false,
+    finalSource: 'select("#t").textIs("ホーム")', mustContain: authoring.mustContain,
+  })
+  assert.equal(v.completed, false)
+  assert.deepEqual(v.missing, ['textIs("セレクタ")'])
+})
+
+test('作成フロー: Read したシナリオ本文を下書きと数えない', () => {
+  const m = metricsFromTranscript([
+    use('a', 'Read'), answer('a', '@TestClass(app: "x")\nclass A { tap("#a") }'),
+    use('b', RUN), answer('b', passedRun),
+    result('RESULT: passed'),
+  ], null, authoring)
+  assert.equal(m.draft, null)
+})
+
+test('隔離: メモリ・スキル・プラグインのどれかが見えていたら、まっさらではない', () => {
+  const clean = { type: 'system', subtype: 'init', skills: [], plugins: [] }
+  assert.equal(isolationFromInit(clean), true)
+  assert.equal(isolationFromInit({ ...clean, memory_paths: { auto: '/m/' } }), false)
+  assert.equal(isolationFromInit({ ...clean, skills: ['fleetest-scenario'] }), false)
+  assert.equal(isolationFromInit({ ...clean, plugins: [{ name: 'fleetest' }] }), false)
+  const m = metricsFromTranscript([clean, result('done')], null)
+  assert.equal(m.isolated, true)
+  assert.equal(metricsFromTranscript([result('done')], null).isolated, null)
 })

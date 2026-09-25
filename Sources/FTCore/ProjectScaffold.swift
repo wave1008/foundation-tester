@@ -440,7 +440,7 @@ public enum ProjectScaffold {
                             launchApp()
                         }.expectation {
                             appIs("\(app)")
-                            screenshot(filename: "起動直後")
+                            screenshot("起動直後")
                         }
                     }
 
