@@ -54,7 +54,7 @@ Flutter は canvas 描画で Android 側の className が `android.view.View` �
 ブリッジが **葉 + contentDesc → `staticText`** の規則で写像している(docs/design.md §10)。
 → 型セレクタは `button` / `switch` / `staticText` / `textField` が使える。
 → **id の無いテキストもスナップショットに出る**(2026-07-26 以降)。ラベルをアンカーにした
-  方向セレクタが Android でも使える(`TestProjects/E2E-Flutter/scenarios/13_ID無し画面.swift`)。
+  方向セレクタが Android でも使える(`TestProjects/E2E-Flutter/scenarios/09_ID無し画面.swift`)。
 → `obscureText: true` は **`secureTextField` にならない**(ネイティブ SUT と違い型で区別できない)。
 → **iOS の in-app エンジンではテキスト欄は `other`**(Flutter のフィールドは UITextField ではないため。
   `#id` 指定なら両エンジン同一に動く)。

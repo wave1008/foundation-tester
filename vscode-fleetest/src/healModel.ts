@@ -2,10 +2,9 @@
 // vscode 非依存。以下の対応関係を維持すること:
 // - HealFixCollector: healReviewPanel.ts が「実行終了時に1件以上あればパネルを開く」判定に使う。
 // - selectorOccursOnce/isValidSelector/isValidComment/trailingComment/computeNewComment/
-//   buildPreviewAfterLine: healReviewPanel.ts の webview は CSP で本モジュールを import できず
-//   同じロジックを手書き複製している。規則の正は Sources/FTCore/ScenarioSourceComments.swift /
-//   ScenarioSourceEditor.swift の isValidSelector/isValidComment/trailingCommentStart/
-//   setTrailingComment。
+//   buildPreviewAfterLine: 自己修復の確認パネルの webview(src/webview/healReview/main.js)が直接 import する。
+//   規則の正は Sources/FTCore/ScenarioSourceComments.swift の trailingCommentStart と
+//   ScenarioSourceEditor.swift の replaceSelector/setTrailingComment(TS 側はプレビューと入力検証の移植)。
 // - buildApplyHealRequest/parseApplyHealResponse/toApplyHealFix: `fleetest api apply-heal`
 //   (stdin/stdout の JSON 契約。Sources/fleetest/ApiApplyHealCommand.swift 参照)の変換。
 

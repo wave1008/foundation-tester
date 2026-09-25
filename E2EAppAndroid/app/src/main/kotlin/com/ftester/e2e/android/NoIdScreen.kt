@@ -9,7 +9,7 @@ import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
 
-// 契約: E2EApp/docs/ui-contract.md「ID なし画面」。
+// 契約: E2EAppCMP/docs/ui-contract.md「ID なし画面」。
 // **この画面のビューに android:id を付けてはいけない**(方向セレクタだけで操作・検証できることの検証用)。
 // XML を使わずコードで組むのは、レイアウト XML だと `@+id` を付けたくなる/付けないと
 // 参照できないため。ここでは参照をローカル変数で持つので id が要らない。

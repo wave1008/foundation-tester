@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 
 // 永続化キーは "launch_count" / "auto_dialog" / "heal_schema_v1" の3つのみ
-// (E2EApp/docs/ui-contract.md §永続化する値)。launchApp はアプリのデータを消さないため、
+// (E2EAppCMP/docs/ui-contract.md §永続化する値)。launchApp はアプリのデータを消さないため、
 // これ以外を永続化するとシナリオの前提が崩れる。
 object Prefs {
     private lateinit var prefs: SharedPreferences

@@ -1,16 +1,10 @@
 // monitorDeviceOpsText.ts
-// monitorDeviceOps.ts/monitorDeviceCreateOps.ts が共有する、vscode 非依存の文言組み立て純粋関数群。
+// monitorDeviceOps.ts/monitorDeviceCreateOps.ts が共有する文言組み立ての純粋関数群。
 
 import { t, type MessageKey } from "./i18n";
 import { type MachineLock, isConfirmedHeld } from "./machineLockModel";
 import { formatBytesAuto } from "./retentionModel";
 import { type DeviceCommandSource } from "./remoteRunArgs";
-
-/** monitorProfilesController.ts の handleMachineDeviceRemove(複数選択一括除去の確認文言)で使う。 */
-export function summarizeDeviceNames(names: readonly string[]): string {
-  const shown = names.slice(0, 3).join(t("deviceOps.nameSeparator"));
-  return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
-}
 
 /** エラーメッセージへマシン名を付記する(§13 段2「失敗時はマシン名込みのメッセージにする」)。
  * ローカルは素通し(既存の文言を変えない)。 */

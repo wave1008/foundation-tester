@@ -5,7 +5,6 @@ import type { MessageDict } from "../core";
 
 export const deviceOpsStrings = {
   "deviceOps.nameSeparator": { ja: "、", en: ", " },
-  "deviceOps.nameListMore": { ja: "{shown} ほか", en: "{shown} and more" },
 
   "deviceOps.log.cancelBulkUpSigterm": {
     ja: "[fleetest] デバイスの起動を中断します(start-all-devices へ SIGTERM)",

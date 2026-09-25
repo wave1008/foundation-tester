@@ -414,7 +414,7 @@ switchTab(initialTab);
 // パネルのどこ(全タブ・モーダル)で右クリックしても既定メニュー(Cut/Copy/Paste)を出さない。
 // 文字を打つ入力欄だけは残す(貼り付けが要る)。stopPropagation しない = 開いている自前メニューを閉じる
 // 他の document の contextmenu リスナはそのまま届く。タイル・空きエリア・実行ログ等は各自で自前メニューを出す。
-// 拡張の全画面で揃える規則(対: src/healReviewPanel.ts のインラインスクリプトの同じリスナ)
+// 拡張の全画面で揃える規則(対: src/webview/healReview/main.js の同じリスナ)
 document.addEventListener('contextmenu', (event) => {
   const target = event.target;
   const editable = target instanceof HTMLTextAreaElement

@@ -1324,7 +1324,7 @@ extension MCPServer {
             }
         } else {
             // **実機は simctl ではなく devicectl**(§19.3 M8。ft_list_apps の同型判定と揃える —
-            // MCPServer+SessionTools.swift の ft_list_apps 参照): 実機の udid を simulatorInstallVerdict
+            // MCPServer+SessionTools.swift の ftListApps 参照): 実機の udid を simulatorInstallVerdict
             // へ渡すと、udid の形が同じシミュレータ名(既定は機種名なので実機と同名になりやすい)を
             // 誤って照会し、別デバイスの在否を答える。候補は3段(ft_list_apps と同じ優先順)
             let key = Self.engineKey(args)

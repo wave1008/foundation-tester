@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../widgets.dart';
 
-// 契約: E2EApp/docs/ui-contract.md「ID なし画面」。
+// 契約: E2EAppCMP/docs/ui-contract.md「ID なし画面」。
 // **この画面のウィジェットに Semantics(identifier:) を付けてはいけない**
 // (方向セレクタだけで操作・検証できることを保証するための画面)。
 // 行の最小高 48 と行間は帯判定(:right が隣の行のスイッチを拾わない)の余裕。

@@ -219,9 +219,9 @@ export class MonitorLiveController implements vscode.Disposable {
    * 「デバイスが変わったか」判定、および再起動時に同じデバイスへ再バインドするために保持する。 */
   private serveDevice: LiveDeviceRef | undefined;
   /** stopServeProcess() 経由(dispose/再バインド)による意図した終了かどうか
-   * (monitorProcessManager.ts の stoppingHostMetrics と同じ役割)。 */
+   * (monitorProcessManager.ts の stoppingMonitor と同じ役割)。 */
   private stoppingServe = false;
-  /** rebindServeProcess() の多重起動ガード(monitorProcessManager.ts の hostMetricsRestartPending と
+  /** rebindServeProcess() の多重起動ガード(monitorProcessManager.ts の restartPending と
    * 同じ役割)。true の間に来た再バインド要求は serveDevice の更新だけ行い、進行中の切り替えが
    * 完了した時点の最新の serveDevice を使って起動する(restartMonitorProcess と同じ
    * 「最終的に最新設定が勝つ」方式)。 */
@@ -264,7 +264,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * デバイス切り替え時の張り替え要否判定に使う。 */
   private streamKey: string | undefined;
   /** webview から codecError(scope=live)を受けたら true(fallbackToMjpeg 参照)。以後このパネルは
-   * 設定値に関わらず mjpeg 固定。deviceStream.ts の mjpegFallbackIds と違いデバイス単位ではなく
+   * 設定値に関わらず mjpeg 固定。monitorDeviceStreamController.ts の mjpegFallbackIds と違いデバイス単位ではなく
    * パネル単位(ライブ操作パネルは常に1デバイスのみ選択するため)。 */
   private liveMjpegFallback = false;
 

@@ -465,7 +465,8 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 
 ## 自己修復(heal)と修復候補の確定
 
-macOS GUI 版(`fleetest-gui`)の「自己修復トグル + 修復候補の確認シート」に相当する機能です。
+自己修復トグルと、修復候補を確かめて適用する確認パネル(`src/healReviewPanel.ts`。webview 資産は
+`src/webview/healReview/`)です。
 
 ### 設定と実行
 
@@ -520,9 +521,8 @@ stdin 経由の JSON(`{"fixes":[...]}`)で呼び出し、シナリオソース�
 デバイスモニターパネル(`src/monitorPanel.ts`)の「ライブ操作」タブ。ロジック本体は
 `src/liveTabHost.ts`(サブコントローラとして monitorPanel.ts に同居)と、デバイスモニターと共通の
 `src/monitorLiveController.ts`、webview 資産はデバイスモニターと共通の `src/webview/monitor/main.js`
-から呼び出す `src/webview/monitor/liveTab.js` です。macOS GUI 版(`fleetest-gui`)の「ライブ操作」
-タブ(`Sources/fleetest-gui/LiveView.swift` + `AppModel.swift` の `refreshLive`/`liveAction`)に
-相当する機能です。デバイスモニターの他タブとはポーリングモード設定(`workspaceState` の
+から呼び出す `src/webview/monitor/liveTab.js` です。アプリ操作・レコーディング・シナリオ生成は
+`src/liveAppActions.ts` に分けてあります。デバイスモニターの他タブとはポーリングモード設定(`workspaceState` の
 `monitor.pollingMode`)を含め、webview・設定とも完全に同居しています。
 
 タブを開く経路は2通りあります。
@@ -671,8 +671,9 @@ SPM のビルドロック対策として同時に2プロセス走らせない設
 ## 結果ダッシュボード
 
 コマンドパレットから **「fleetest: 結果ダッシュボードを開く」**(`fleetest.showResultsDashboard`)を
-実行すると開く独立 Webview パネルです(`src/dashboardPanel.ts`。monitorPanel.ts/healReviewPanel.ts
-と同じ、1拡張につきパネル1枚のシングルトン)。
+実行すると、デバイスモニターパネル(`src/monitorPanel.ts`)の「ダッシュボード」タブが開きます
+(サブコントローラ `src/monitorDashboardController.ts`。webview 資産は `src/webview/monitor/dashboardTab.js` が
+`src/webview/dashboard/` のモジュールを読む)。
 
 - データは `fleetest api results --project <project> --since 90d --min-runs 3` を1発叩いて得る
   1行 JSON(`src/dashboardModel.ts` の `ApiResultsPayload`。ビルドを伴わない読み取り専用コマンドなので
@@ -1014,6 +1015,8 @@ vscode-fleetest/
 │   ├── monitorModel.ts           # `fleetest api monitor` の NDJSON → webview メッセージへの変換・検証(vscode 非依存)
 │   ├── monitorPanel.ts           # デバイスモニターの WebviewPanel(fleetestMonitor)。monitor プロセスの spawn/中継・サブコントローラの束ね役
 │   ├── monitorHtml.ts            # デバイスモニターの webview HTML 生成(devices/profiles/processes/settings の4タブ)
+│   ├── monitorDeviceOpsText.ts   # monitorDeviceOps / monitorDeviceCreateOps が共有する文言の純粋関数(vscode 非依存)
+│   ├── monitorDeviceCreateOps.ts # デバイスの新規作成・削除(create-device・delete-device・install-system-image)。monitorDeviceOps から委譲
 │   ├── monitorDeviceOps.ts       # デバイスライフサイクル操作(起動/終了/新規作成)。device-catalog/installed-devices/create-device の単発 spawn
 │   ├── monitorDeviceStreamController.ts # タイル向け画面ストリーミング制御(iOS: fleetest-simstream / Android: fleetest-androidstream)
 │   ├── monitorProcessManager.ts  # monitor/host-metrics 常駐子プロセスの起動・停止・再起動・pause/resume
@@ -1030,9 +1033,10 @@ vscode-fleetest/
 │   ├── liveDeps.ts               # MonitorLiveController への窓口インターフェース(liveTabHost.ts が実装)
 │   ├── liveRunTarget.ts          # prepareForRun が返す契約(runHandler.ts の --platform/--port/--serial 組み立て用)
 │   ├── monitorLiveController.ts  # ライブ操作の中核サブコントローラ。list-devices の専用spawn+live serve の常駐spawn(いずれもFleetestCliのキューを使わない)・座標変換の適用・serveの観測イベント反映・画面ストリーミング/自動フレームの供給元切替・レコーディング→gen-scenario
+│   ├── liveAppActions.ts         # ライブ操作のアプリ操作(インストール・起動)・レコーディング・シナリオ生成。MonitorLiveController から委譲
 │   ├── liveTabHost.ts            # デバイスモニターの「ライブ操作」タブのサブコントローラ。コマンド fleetest.showLiveControl・実行開始時の自動オープン(fleetest.liveControlOnRun)・デバイスタイル右クリック連携
 │   ├── dashboardModel.ts         # 結果ダッシュボードの vscode 非依存の型・ペイロード型ガード(`fleetest api results` の契約)
-│   ├── dashboardPanel.ts         # 結果ダッシュボードの WebviewPanel(fleetestResultsDashboard)。コマンド fleetest.showResultsDashboard
+│   ├── monitorDashboardController.ts # デバイスモニターの「ダッシュボード」タブのサブコントローラ。コマンド fleetest.showResultsDashboard
 │   ├── i18n/
 │   │   ├── index.ts              # 拡張側 i18n ランタイム。t()・initI18n()・locale 解決(fleetest.language)
 │   │   ├── core.ts               # i18n の型と純関数(vscode 非依存。webview バンドルにも入る)
@@ -1040,7 +1044,8 @@ vscode-fleetest/
 │   └── webview/
 │       ├── i18n.js                # webview 側 i18n ランタイム(locale は <html lang> 経由)
 │       ├── monitor/               # デバイスモニターの webview 資産(main.js/tabs.js/deviceTiles.js/liveTab.js/各プロファイルタブ/h264Decoder.js 等。liveTab.js が「ライブ操作」タブの UI 本体)
-│       └── dashboard/             # 結果ダッシュボードの webview 資産(main.js/render.js/charts.js/format.js/style.css)
+│       ├── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/charts.js/format.js/style.css 等。monitor/dashboardTab.js が読む)
+│       └── healReview/            # 自己修復の確認パネルの webview 資産(main.js/style.css。healModel.ts を直接 import する)
 └── test/
     ├── ndjson.test.mjs           # NdjsonParser のユニットテスト(node:test)
     ├── runReducer.test.mjs       # runReducer のユニットテスト(並列実行ケース含む) + mock-runner を使った統合テスト

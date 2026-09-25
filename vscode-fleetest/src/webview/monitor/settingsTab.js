@@ -706,7 +706,7 @@ function applyUpdateStatus(message) {
 // ---- クリーンアップ(CLI 側のマシン設定。`fleetest api retention` / `api clean`) ----------
 // **正は CLI**。既定値も使用量も CLI が返したものを写すだけで、拡張は値を持たない
 // (二重管理にすると片方だけ変わったときに嘘を表示する。FM 枠と同じ規律)。
-// 画面は GB / MB、契約はバイト。**変換は retentionModel.js の1経路だけ**を通す。
+// 画面は GB / MB、契約はバイト。**変換は retentionModel.ts の1経路だけ**を通す。
 //
 // HTML の id と CLI の鍵の対応。RETENTION_FIELDS の並びと1対1(片方だけ変えない)。
 const CLEANUP_INPUT_IDS = {

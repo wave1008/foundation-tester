@@ -1,4 +1,4 @@
-// Semantics identifier の唯一の正。値は E2EApp/docs/ui-contract.md の表と byte 一致させる。
+// Semantics identifier の唯一の正。値は E2EAppCMP/docs/ui-contract.md の表と byte 一致させる。
 // シナリオ側(Projects/E2E-Flutter/Scenarios)が "#<値>" で参照するため、リネームは契約変更。
 // Flutter の `Semantics(identifier:)` は iOS = accessibilityIdentifier / Android = resource-id
 // にマップされるため、両 OS で同じ #id が引ける。

@@ -1,5 +1,5 @@
 // monitorDashboardController.ts
-// デバイスモニターパネルの「ダッシュボード」タブ(旧 dashboardPanel.ts)向けサブコントローラ。
+// デバイスモニターパネルの「ダッシュボード」タブ向けサブコントローラ。
 // `fleetest api results` / `results-run` をワンショット spawn して webview へ配る。
 // monitorPanel.ts から MonitorDashboardControllerDeps 経由でのみ連携する(他のサブコントローラを
 // 直接参照しない。monitorPanel.ts 冒頭コメントの分割方針と同じ)。
@@ -36,8 +36,7 @@ export interface MonitorDashboardControllerDeps {
   getConfig(): FleetestConfig;
   readonly outputChannel: vscode.OutputChannel;
   post(message: DashboardToWebviewMessage): void;
-  /** モニターパネルが開いているか。閉じている間は CLI を叩かない(旧 dashboardPanel.ts の
-   * this.panel チェックと同じ役割)。 */
+  /** モニターパネルが開いているか。閉じている間は CLI を叩かない。 */
   isPanelActive(): boolean;
 }
 

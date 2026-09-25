@@ -242,7 +242,7 @@ test("isMonitorEvent: monitorDevices の registered は true/false をそのま�
 
 // bridgeRunning は registered と違い「欠落は true」ではなく「欠落は undefined(不明)」に
 // 正規化する —— false に丸めると、Android 実機のブリッジが生きているのに観測できなかった
-// 回にタイルの絵が消える(ApiMonitorCommand.swift の bridgeRunningVerdict と同じ規律)。
+// 回にタイルの絵が消える(FTAndroid/AndroidBridge.swift の bridgeRunningVerdict と同じ規律)。
 test("isMonitorEvent: monitorDevices の bridgeRunning は欠落・null・非boolean値を undefined に正規化する(false に倒さない)", () => {
   const missing = {
     kind: "monitorDevices",

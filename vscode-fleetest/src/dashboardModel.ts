@@ -1,5 +1,5 @@
 // dashboardModel.ts
-// 結果ダッシュボード(モニターパネル「ダッシュボード」タブ、旧・単独パネル dashboardPanel.ts)の
+// 結果ダッシュボード(モニターパネル「ダッシュボード」タブ)の
 // vscode 非依存の型・ペイロード型ガード。ホスト側の実体は monitorDashboardController.ts。
 //
 // 契約(Sources/fleetest/ApiResultsCommand.swift): `fleetest api results --project <名> --since 90d

@@ -303,7 +303,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.devicePick.fetchFailed": { ja: "一覧の取得に失敗しました。", en: "Failed to retrieve the list." },
   "wvMonitor.devicePick.syncFailed": { ja: "デバイスの同期に失敗しました。", en: "Failed to sync devices." },
   // devicePickDeviceDeleteResult の error が空(理論上想定外)のときだけ使うフォールバック。
-  // 通常はホスト側が理由文を必ず載せる(monitorDeviceOps.ts の deleteOps.deleteFailedGeneric)。
+  // 通常はホスト側が理由文を必ず載せる(monitorDeviceCreateOps.ts の deviceOps.deleteFailedGeneric)。
   "wvMonitor.devicePick.deleteFailed": { ja: "デバイスの削除に失敗しました。", en: "Failed to delete the device." },
   "wvMonitor.devicePick.applying": { ja: "適用中...", en: "Applying..." },
   "wvMonitor.devicePick.detailSeparator": { ja: "・", en: "·" },

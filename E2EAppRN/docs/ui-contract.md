@@ -180,7 +180,7 @@ TextInput の testID が本体でなく親ラッパーに付く / #43648 = Text/
 
 1. `package.json` の react-native を上げ、`npm install` → `cd ios && pod install` → 両 OS 再ビルド
 2. `Scripts/e2e.sh --rn` と `--rn --ios --ios-inapp` を回す
-3. **専用の検知器**: `05_テキスト入力.swift` の S0050(`.型#id` 複合セレクタ = testID が
+3. **専用の検知器**: `03_テキスト入力.swift` の S0050(`.型#id` 複合セレクタ = testID が
    入力欄**本体**に付いていることを要求。#38709 型の退行で赤くなる)/ 04(型語彙)/
    18(pressEnter 経路)/ 13(ラベル露出 = #43648 型)
 4. 割れたら本ファイルの型語彙表・罠を実測で更新し、必要なら shirates-parity の

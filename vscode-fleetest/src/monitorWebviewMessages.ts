@@ -84,7 +84,7 @@ export type MonitorToWebviewMessage =
   // その台の配信ヘルパーを落とした(畳み・破棄・パネル非表示)。**黙って落とさない** —— webview は
   // h264 を描いている間ポーリングのフレームを隠れた img にしか入れないので、知らせないとタイルは
   // 最後に復号した絵のまま止まる(「畳んだ台はポーリングのフレームで更新され続ける」という
-  // monitorDeviceStreamController.ts の契約が破れる)。受け手: deviceTiles.ts の applyStreamStopped。
+  // monitorDeviceStreamController.ts の契約が破れる)。受け手: webview/monitor/deviceTiles.js の applyStreamStopped。
   | { readonly type: "streamStopped"; readonly device: string }
   // 配信を諦めた(unavailable:true)/対象から外れて解除した(false)。
   // monitorDeviceStreamController.ts の onFailure と対。**プロファイル未選択の iOS は

@@ -3,7 +3,7 @@
 // webviewDevicesTabVisible.test.mjs と同じ。
 //
 // 縛るのは3つ:
-// - **画面は GB / MB、契約はバイト**。変換は retentionModel.js の1経路だけを通り、往復で値が変わらない
+// - **画面は GB / MB、契約はバイト**。変換は retentionModel.ts の1経路だけを通り、往復で値が変わらない
 // - **不正値(空欄・負・非数)は null**(CLI 側を既定へ戻す)+ 入力欄に既定値を入れ直す。
 //   **0 は有効な指定**(保持しない)なので 0 として送る
 // - webview が送る payload が拡張側の最終ゲート(isMonitorFromWebviewMessage)を通る

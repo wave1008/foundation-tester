@@ -631,7 +631,7 @@ GUI(vscode-fleetest)は単一ホスト設定ではなく**複数ホスト登録+
 `fleetest.remote.hosts`(name/host/dir/session の配列。name は実行先セレクタの一意キー)と
 `fleetest.remote.target`(空 = ローカル、非空 = hosts の name に一致するディスパッチ先)。
 target が hosts に無い/host 未設定を指す場合は**黙ってローカル実行にフォールバックせず run を
-中止する**(runHandler.ts の resolveRemoteTarget)。同一リモートへの同時ディスパッチはまだ
+中止する**(fleetest の resolveRemoteTarget。Fleetest.swift / ApiRunCommand.swift)。同一リモートへの同時ディスパッチはまだ
 直列化していない(Phase 2 の課題のまま)。
 
 > **2026-08-17 に実行先セレクタは廃止**(§13 の実装で確定した点を参照)。`fleetest.remote.target`

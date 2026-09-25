@@ -230,7 +230,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
     /// 経路が容器(y 100〜700)の中に収まっていること = 全画面(y 0〜874)へ黙って
     /// 退化していないことを見る。**FTCore 側の穴の回帰テスト**でもある:
     /// action "scroll" は rect だけの step で木を撮らず、path ごと nil にして
-    /// 全画面スワイプへ落ちていた(StepExecutor+Actions.swift の latest の条件)
+    /// 全画面スワイプへ落ちていた(StepExecutor+DirectActions.swift の latest の条件)
     func testScrollFrameRefConfinesTheSwipeToThatContainer() async throws {
         driver.snapshotResponse = SnapshotResponse(
             sessionBundleID: "com.example.app", screen: screen,

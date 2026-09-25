@@ -173,7 +173,7 @@ Android は intent に package を明示するので影響しないが、**契�
 `#nav_diagnostics` は画面外に出る。ここは**直さない** —— ツール側の
 「上に描かれた要素に覆われている」警告(`RefGuard.overlayCovering`)の**唯一の生きた witness**で、
 飛び越し画面と同じ役割を持つ。安全なのは、この2つを触るシナリオが `_disabled/` にしか無いため
-(CMP の `23_飛び越し.swift` は `#nav_diagnostics` を叩くが、CMP のホームは全行が収まる)。
+(CMP の `16_飛び越し.swift` は `#nav_diagnostics` を叩くが、CMP のホームは全行が収まる)。
 **他の SUT でこの形を作らない**(witness は1つで足りる)。
 
 ## セレクタ画面(タイトル `セレクタ`)

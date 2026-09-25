@@ -3295,7 +3295,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     警告すると誤検知になる) —— `FTCore.KeyboardOcclusion` が申告と木の chrome
     (`inputView`/`SystemInputAssistantView`。**申告と交差するものだけ**)を足し込んで実効矩形を作り、
     MCP/DSL の呼び出し側全員(MCPServer+Snapshot.swift / MCPServer+Hints.swift /
-    MCPServer+GesturesTools.swift の ft_double_tap / StepExecutor+Actions.swift)がこの型を通す。
+    MCPServer+GesturesTools.swift の ftDoubleTap / StepExecutor+Actions.swift)がこの型を通す。
     chrome が木に無ければ申告どおり(Android は既に画面下端まで届いており対象外。ブラウザの
     WebView 内キーボードは chrome がツリーに出ないため同様に対象外)。
     **広げるだけでは雑音になる**: キーボード自身の部品(地球儀キー・変換候補バー)まで
@@ -4453,7 +4453,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `HIDDEN_AT_STARTUP`・× で隠す)。開く口はコマンド `fleetest.showLiveControl`・タイルの
   右クリック・Run Test の自動表示(`liveControlOnRun`)。ロジックは `liveTabHost.ts`(モニターに同居)
 - **右クリックの既定メニュー(Cut/Copy/Paste)は拡張の全画面で出さない**(モニターの `main.js` と
-  `healReviewPanel.ts` のインラインスクリプトが同じ規則を持つ。文字を打つ入力欄だけ残す)
+  `src/webview/healReview/main.js` が同じ規則を持つ。文字を打つ入力欄だけ残す)
 - **「プロセス」タブ(常駐プロセス一覧・停止)**(2026-07-19): **起動時は出さない** —— 設定タブ「ツール」の
   「プロセス」で設定タブの右に現れ、タブの × で隠す(`tabs.js` の `HIDDEN_AT_STARTUP`。復元もしない)。
   `ps` の fleetest 関連常駐を分類表示
@@ -4499,21 +4499,13 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 > `DEFAULT_TILE_PANE_RATIO`。領域が測れた最初の描画で決める)。下の「非表示中は実測しない」規律は
 > `relayoutTiles` と `splitAreaHidden` に残っている。
 
-タイルが1行(`.grid` は `flex-wrap:nowrap`)で横スクロールせずちょうど収まる高さへ、
-セパレーターを自動で置く(ツールバー右端のトグル・既定 ON。手動ドラッグは OFF ではなく
-**一時停止**で、台数が変わると自動で再開する)。
-
 - **量の連鎖**: ペイン高さ → タイル高さ → `--tile-image-h`(= タイル実測高 − 固定 chrome 66px。
   `deviceTiles.js` の `relayoutTiles`)→ タイル幅(`--tile-image-h × --tile-aspect`)。
-  幅は画像高さに比例するので、**収まる高さは1回の差分計算で出せる**
-  (`paneHeight + (収まる画像高 − 現在の画像高)`。`tileFitModel.js`)。padding/border/gap の定数は
-  持たず全て実測して渡す(style.css を変えたとき片方だけ古くなるのを防ぐ)
-- **前提**: 差分計算は「**今のペイン高さ ↔ 今の `--tile-image-h` が対応している**」ことに依存する。
-  この対応が崩れると、崩れた差のぶんだけ高さが増減して二度と収まらない
-- **罠(実害 2026-07-31)**: `devices` のポーリングは「デバイスモニター」タブが**非表示の間も届き続ける**
+  padding/border/gap の定数は持たず全て実測する(style.css を変えたとき片方だけ古くなるのを防ぐ)
+- **罠(実害 2026-07-31。auto-fit があった頃に踏んだが、規律は今も効く)**: `devices` のポーリングは「デバイスモニター」タブが**非表示の間も届き続ける**
   (タブ非表示で止まるのはフレーム配信だけ。`devicesTabVisible`)。`applyDevices` は毎回
   `relayoutTiles` を呼ぶため、`display:none` 中は `clientHeight=0` → `--tile-image-h` が下限 60px に
-  潰れて書き込まれ、上の対応が壊れていた。**タブへ戻ると実際の画像高さぶん過大**になりタイルが
+  潰れて書き込まれ、ペイン高さと `--tile-image-h` の対応が壊れていた。**タブへ戻ると実際の画像高さぶん過大**になりタイルが
   はみ出す(初回表示だけ正しく、他タブを経由すると必ず崩れる)。対策は
   **レイアウトが無いとき(`clientHeight===0`)は書かずに抜ける** — 非表示中は直前の正しい値が保たれる。
   同じ理由で `splitter.js` の高さ反映も `splitAreaHidden()` で抜け、タブ復帰時に

@@ -11,7 +11,7 @@ import 'tags.dart';
 import 'widgets.dart';
 
 // 永続化キーは "launch_count" / "auto_dialog" / "heal_schema_v1" の3つのみ
-// (E2EApp/docs/ui-contract.md §永続化する値)。
+// (E2EAppCMP/docs/ui-contract.md §永続化する値)。
 late SharedPreferences prefs;
 
 /// プロセス起動ごとに +1。main() から1回だけ呼ぶ。

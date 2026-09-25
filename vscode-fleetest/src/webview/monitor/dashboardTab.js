@@ -1,5 +1,5 @@
 // dashboardTab.js
-// モニターパネルの「ダッシュボード」タブ(旧・独立パネル src/webview/dashboard/main.js)。
+// モニターパネルの「ダッシュボード」タブ。
 // acquireVsCodeApi はこの document で既に './vscodeApi.js' が1回呼んでいるため、
 // ダッシュボード側の postMessage は '../dashboard/vscodeApi.js' の setDashboardTransport() で
 // 封筒 {type:'dashboard', message} に包んで転送する(webview→host は必ずこの封筒。
