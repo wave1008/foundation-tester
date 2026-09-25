@@ -326,7 +326,10 @@ extension MCPServer {
         let folded: [String: Any]
         if Self.toolAcceptsDeviceTarget(tool) {
             do {
-                folded = Self.strippingSelectorQuotes(try await Self.foldingUDIDIntoPort(args))
+                // **udid を宣言していないツールでは走査しない**(ft_logs = ブリッジが死んだ後に読むツール。
+                // 畳むと「no running bridge」で落ち、読みたいクラッシュログに届かない)
+                folded = Self.strippingSelectorQuotes(Self.toolFoldsUDID(tool)
+                    ? try await Self.foldingUDIDIntoPort(args) : args)
             } catch {
                 let hint = await connectionLostHint(error, args: args)
                 throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
@@ -729,7 +732,7 @@ extension MCPServer {
     /// を**指の向き**として読む(`StepExecutor+Actions.swift:55`
     /// `FTSwipeDirection(rawValue: step.direction ?? "")`)。DSL の `scrollImpl`
     /// (`Commands.swift:664`)も `direction.swipe.rawValue`(content→指の向き)を積んでおり、
-    /// `ft_swipe` の `direction` 引数はもともと指の向きなので、**ここで逆写像を掛けてはいけない**
+    /// `ft_swipe` の `finger` 引数は指の向きなので、**ここで逆写像を掛けてはいけない**
     /// (掛けると黙って逆へ振る)。maxSwipes は 1(一画面ぶん)固定。マージン比は渡さない
     /// (nil = `StepExecutor` 側の探索既定に従う。MCP 側で定数を選ばない)
     static func swipeScrollFrameStep(direction: FTSwipeDirection,

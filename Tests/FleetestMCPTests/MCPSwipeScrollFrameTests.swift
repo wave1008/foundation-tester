@@ -102,7 +102,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
 
         do {
             _ = try await server.call(tool: "ft_swipe",
-                                      args: ["direction": "up", "scrollFrame": "#does_not_exist"])
+                                      args: ["finger": "up", "scrollFrame": "#does_not_exist"])
             XCTFail("当たらない scrollFrame は fail-fast するはず")
         } catch {
             let message = error.localizedDescription
@@ -118,7 +118,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
     func testScrollFrameOfAWrongTypeIsRefusedInsteadOfSwipingTheWholeScreen() async {
         do {
             _ = try await server.call(tool: "ft_swipe",
-                                      args: ["direction": "up", "scrollFrame": true])
+                                      args: ["finger": "up", "scrollFrame": true])
             XCTFail("型違いの scrollFrame は断るはず")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("scrollFrame must be"),
@@ -135,7 +135,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
         var swipeMessage = ""
         do {
             _ = try await server.call(tool: "ft_swipe",
-                                      args: ["direction": "up", "scrollFrame": true])
+                                      args: ["finger": "up", "scrollFrame": true])
             XCTFail("型違いの scrollFrame は断るはず")
         } catch { swipeMessage = error.localizedDescription }
         do {
@@ -161,12 +161,12 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
             truncatedCount: 0)
 
         _ = try await server.call(tool: "ft_swipe",
-                                  args: ["direction": "up", "scrollFrame": "#list_rows"])
+                                  args: ["finger": "up", "scrollFrame": "#list_rows"])
         let up = try XCTUnwrap(driver.lastSwipePath)
         XCTAssertGreaterThan(up.fromY, up.toY, "指が上へ動いていない: \(up)")
 
         _ = try await server.call(tool: "ft_swipe",
-                                  args: ["direction": "down", "scrollFrame": "#list_rows"])
+                                  args: ["finger": "down", "scrollFrame": "#list_rows"])
         let down = try XCTUnwrap(driver.lastSwipePath)
         XCTAssertLessThan(down.fromY, down.toY, "指が下へ動いていない: \(down)")
     }
@@ -179,7 +179,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
             truncatedCount: 0)
 
         let text = body(try await server.call(tool: "ft_swipe",
-                                              args: ["direction": "up", "scrollFrame": "#list_rows"]))
+                                              args: ["finger": "up", "scrollFrame": "#list_rows"]))
         XCTAssertTrue(text.contains("list_rows"), text)
         XCTAssertTrue(text.contains("inside"), text)
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("swipe(") }, "\(driver.calls)")
@@ -195,7 +195,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
             truncatedCount: 0)
 
         let text = body(try await server.call(tool: "ft_swipe",
-                                              args: ["direction": "up", "scrollFrame": "#offscreen_rows"]))
+                                              args: ["finger": "up", "scrollFrame": "#offscreen_rows"]))
         XCTAssertTrue(text.contains("leaves nothing to move"), text)
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("swipe(") }, "\(driver.calls)")
     }
@@ -203,7 +203,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
     /// **未指定は今までと1バイトも変えない**: scrollFrame を渡さなければ従来どおり
     /// 「swipe <direction> sent.」だけで、容器の名乗りは出ない
     func testWithoutScrollFrameBehaviorIsUnchanged() async throws {
-        let text = body(try await server.call(tool: "ft_swipe", args: ["direction": "up"]))
+        let text = body(try await server.call(tool: "ft_swipe", args: ["finger": "up"]))
         XCTAssertTrue(text.hasPrefix("swipe up sent."), text)
         XCTAssertFalse(text.contains("inside"), text)
     }
@@ -219,7 +219,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
             elements: [], truncatedCount: 0, keyboardFrame: keyboard)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
 
-        let text = body(try await server.call(tool: "ft_swipe", args: ["direction": "up"]))
+        let text = body(try await server.call(tool: "ft_swipe", args: ["finger": "up"]))
 
         XCTAssertTrue(text.contains("soft keyboard was up"), text)
         let path = try XCTUnwrap(driver.lastSwipePath, "キーボード表示中は座標つきスワイプを送るはず")
@@ -238,7 +238,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
             truncatedCount: 0)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
 
-        _ = try await server.call(tool: "ft_swipe", args: ["direction": "up", "scrollFrame": 1])
+        _ = try await server.call(tool: "ft_swipe", args: ["finger": "up", "scrollFrame": 1])
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("swipe(") }, "\(driver.calls)")
         let path = try XCTUnwrap(driver.lastSwipePath, "領域指定の経路が渡っていない(全画面へ退化)")
         XCTAssertTrue(path.fromY > 100 && path.fromY < 700, "fromY=\(path.fromY)")
@@ -262,7 +262,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
 
         let text = body(try await server.call(
-            tool: "ft_swipe", args: ["direction": "up", "scrollFrame": 1]))
+            tool: "ft_swipe", args: ["finger": "up", "scrollFrame": 1]))
 
         let path = try XCTUnwrap(driver.lastSwipePath, "領域指定の経路が渡っていない(全画面へ退化)")
         XCTAssertTrue(path.fromY > 100 && path.fromY < 700, "fromY=\(path.fromY)")
@@ -282,7 +282,7 @@ final class MCPSwipeScrollFrameDispatchTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
 
         do {
-            _ = try await server.call(tool: "ft_swipe", args: ["direction": "up", "scrollFrame": 1])
+            _ = try await server.call(tool: "ft_swipe", args: ["finger": "up", "scrollFrame": 1])
             XCTFail("0サイズの frame は断るはず")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("zero-size frame"),

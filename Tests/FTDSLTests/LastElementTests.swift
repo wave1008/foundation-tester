@@ -86,6 +86,22 @@ final class LastElementTests: XCTestCase {
         XCTAssertEqual(held.id, "order", "tap が掴んだ要素に差し替わっていない")
     }
 
+    /// **セレクタで1要素を掴む操作は掴んだ要素を返す**(exist / select と同じ形でチェーンできる)。
+    /// 失敗した操作は空要素を返す(前の要素を返すと別要素の値を読む)
+    func testOperationsReturnTheElementTheyGrabbed() {
+        var tapped: FTElement!
+        var scrolled: FTElement!
+        var missed: FTElement!
+        run {
+            tapped = tap("#order")
+            scrolled = scrollTo("#total")
+            missed = tap("#missing", waitSeconds: 0)
+        }
+        XCTAssertEqual(tapped.id, "order")
+        XCTAssertEqual(scrolled.id, "total")
+        XCTAssertTrue(missed.isEmpty, "失敗した tap が要素を返した: \(missed.id ?? "-")")
+    }
+
     /// 掴めなかったコマンドは**空で上書きする**。前の要素が残ると、別要素の値を
     /// 「今掴んだもの」として読んでしまう(この検査が本命)
     func testFailedGrabClearsTheHeldElement() {

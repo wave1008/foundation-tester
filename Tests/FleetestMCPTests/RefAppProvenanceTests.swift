@@ -129,7 +129,7 @@ final class RefAppProvenanceTests: XCTestCase {
         driver.snapshotResponse = tree("com.ftester.e2e.ios", id: "list_rows")
         do {
             _ = try await server.call(tool: "ft_swipe",
-                                      args: ["direction": "up", "scrollFrame": 1])
+                                      args: ["finger": "up", "scrollFrame": 1])
             XCTFail("別アプリで採った scrollFrame の ref が通った")
         } catch {
             XCTAssertTrue("\(error)".contains("com.ftester.e2e.ios"), "\(error)")

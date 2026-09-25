@@ -6,7 +6,7 @@
 
 | 関数 | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, maxGestureSeconds:waitSeconds:scroll:maxSwipes:containerInference:)` | セレクタにマッチする最初の要素をタップします。`holdSeconds` を 0 より大きくすると長押しになります(既定 0 = 通常タップ。上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。タップ前に対象が操作可能になるまで待ちます(後述)。 |
+| `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:waitSeconds:scroll:maxSwipes:)` | セレクタにマッチする最初の要素をタップします。`holdSeconds` を 0 より大きくすると長押しになります(既定 0 = 通常タップ。上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。タップ前に対象が操作可能になるまで待ちます(後述)。タップした要素を返すので、検証をそのままチェーンできます(`tap("#btn_ok").textIs("OK")`)。 |
 | `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:)` | 座標を直接タップします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px。dp ではありません)。セレクタで指せるならそちらを優先してください。iOS の in-app エンジンでは、画面外とソフトキーボードの上の点は失敗になります(in-app はキーを押せません。先に `pressEnter` でキーボードを閉じてください)。スクロール容器で切れて見えていない要素は、frame が点を含んでも押しません。 |
 | `tap(sel, scroll: .noScroll)` | `withScrollDown { }` ブロックの中でも、この1コマンドだけスクロールせずにタップします。 |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップします。名前省略時はアプリプロファイルの `appName` が使われます。 |

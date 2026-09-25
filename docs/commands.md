@@ -13,9 +13,19 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | 引数 | 意味 |
 |---|---|
-| `waitSeconds: 秒` | ロケータ解決の再試行上限。**小数可**(`waitSeconds: 1.2`)。**操作系の省略時は約 0.7 秒**、**`select` と検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に) |
+| `waitSeconds: 秒` | 待つ上限。**小数可**(`waitSeconds: 1.2`)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に)。**省略時の値はコマンドの系統で違う**(下表。Shirates の既定を踏襲) |
 | `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true。確認が実際に走るのは実行プロファイルの `textVisualCheck`(**既定 true**。2026-09-03 にオプトインをやめた)が有効な run。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②視覚照合** — 端末の OCR(Vision)が期待テキストを丸ごと読めれば通り、読めなければ FM が**描かれている文字を転写**し、期待テキストと突き合わせる(FM に期待テキストは渡さない。覆い・空白・別の文字はここで赤になる)。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開)は①だけで通り、結果 JSON の `notes` に **`visibility-guard-skipped`** が残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `textVisualCheck:false` の静的に無効な構成では出ない)。**`launchApp` / `restartApp` の直後だけ猶予がある** —— 画面がまだ launch storyboard(全画素同一の未描画フレーム)なら、この待ち時間を**もう一度だけ**払って待ち直し `first-frame-pending` を残す(スプラッシュのあるアプリで起動直後の `exist` が赤くならないため)。それでも一様色のままなら赤にして `first-frame-timeout` を添える |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
+
+**`waitSeconds:` を省略したときの値**:
+
+| コマンド | 省略時 |
+|---|---|
+| `tap` / `type` / `clearInput` / `doubleTap` / ジェスチャ系(セレクタあり) | 約 0.7 秒(ロケータ解決の再試行) |
+| `select` / `exist` / `notExist` / `countIs` / テキスト・値・状態の検証 / `existImage` | 実行プロファイルの `defaultTimeout`(既定 5 秒) |
+| `findImage` / `ifCanSelect` / `repeatWhileCanSelect` | 0(今の画面を1回だけ見る) |
+| `waitForDisplay` / `waitForClose` / `appIs` | 15 秒 |
+| `doUntilTrue` | 10 秒(1コマンドの上限 120 秒は超えられない) |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`** で、掴めなければ
   失敗させず空要素を返す(`.isEmpty` で分岐する)。**「出るか不定」を表す引数は無い** —
@@ -38,9 +48,9 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, maxGestureSeconds:waitSeconds:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**秒数の上限は既定 10 秒・`maxGestureSeconds:` でこの1コマンドだけ最大 60 秒まで上書きできる**(ユーザー決定 2026-09-24。方針の判定はホスト側 = StepExecutor / MCP・ライブ操作の入口。ランナーと Android の注入層は 60 秒を絶対上限として最後に断る — 桁外れの秒数を素通しすると、シミュレータの testmanagerd が合成列を作り続けて肥大化するため)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
+| `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:waitSeconds:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。**秒数の上限は既定 10 秒・`maxGestureSeconds:` でこの1コマンドだけ最大 60 秒まで上書きできる**(ユーザー決定 2026-09-24。方針の判定はホスト側 = StepExecutor / MCP・ライブ操作の入口。ランナーと Android の注入層は 60 秒を絶対上限として最後に断る — 桁外れの秒数を素通しすると、シミュレータの testmanagerd が合成列を作り続けて肥大化するため)。**対象がまだ無効なら操作可能になるまで待ってから撃つ**(下記)。**下端のタブバー等に潜っているだけなら、撃つ前に容器を1回送って外す**(下記「縁の帯に潜った対象」)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `select(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
-| `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
+| `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告**。**セレクタで1要素を掴む操作(`tap` / `type(sel, …)` / `clearInput(sel)` / `doubleTap(sel)` / `swipeBy(sel, …)` / `pinchOut(sel)` / `pinchIn(sel)` / `gesture(sel)` / `swipeElementToElement` / `scrollTo`)は掴んだ要素を返す**ので、`tap("#btn_ok").textIs("OK")` と直接チェーンできる(`exist` / `select` と同じ。暗黙の `lastElement` に頼らず対象がソースに見える) |
 | `type("文字列", replace: false)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む) |
 | `type(sel, "文字列", replace:waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる) |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
@@ -49,7 +59,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `clearInput(sel, waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`。セレクタ解決を1回で済ませたいだけなら `type(sel, "文字列", replace: true)` で1コマンドに畳める)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる)。**空白だけの内容は a11y の値に載らない**(iOS の Compose で実測)ので、XCUITest ランナーは「空に見える」欄にも短い削除バーストを送り、`type` の読み返しは空白だけの差を検証不能として再送しない(2026-08-31。**末尾・途中の空白の欠落も検出できない**ので、空白が意味を持つ値は `textIs` で別途確かめる) |
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**)。iOS の XCUITest では縦向きは `XCUIApplication.swipeUp()` 等、**横向きは点→点のドラッグに合成する**(実機の横向きでは `swipeUp()` 系が1pt も動かないため。2026-08-31 実測) |
 | `tap(x:y:holdSeconds: 0, maxGestureSeconds:)` | **座標を直接タップ**(Shirates 準拠)。座標は snapshot の `screen` と同じ座標系で、**iOS = pt / Android = px**(dp ではない)。`holdSeconds` を 0 より大きくすると長押し(秒数の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き)。**セレクタで指せるならそちらを使う** —— 座標はレイアウトが動いた瞬間に別の物を叩く。要るのは「アプリが要素を1つも公開しない画面」で、実測では操作可能要素の 9.3% が書けるセレクタを持たない。**`ft_batch` でも書ける**(`tap x: 120 y: 640`)。ただし**セレクタと併記はできない** —— どちらを撃ったか読み手に分からなくなるため拒否する。**in-app エンジンは見えない物を撃たない**: 画面外とソフトキーボードの上の点は失敗にする(in-app はキーを押せない。キーボードの下へは `pressEnter` で閉じてから)。スクロール容器で切れて描かれていない要素は frame が点を含んでも activate せず、その点に実際に見えている物へ撃つ |
-| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
+| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5, maxGestureSeconds:)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き。**`ft_batch` でも書ける**(`swipePointToPoint startX: 200 startY: 550 endX: 200 endY: 250`)。MCP の `ft_drag` の下書きもこの行になる |
 | `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5, maxGestureSeconds:)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ)。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き。**押してから動かすまでは 0.05 秒固定**(長押しから始まる並べ替えは起動しない) —— それが要る画面は下記「`gesture`」で `.hold(seconds:)` してから `.move` を書く |
 | `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5, maxGestureSeconds:)` | 対象の中心から**比率**で指を動かす(**斜め可**。両方を非 0 にすると対角)。比率は対象の幅・高さに対する割合で、符号は指の向き。セレクタ省略 = 画面全体。`durationSeconds` の上限は既定 10 秒・`maxGestureSeconds:` で最大 60 秒まで上書き |
 | `doubleTap(sel?)` | ダブルタップ。セレクタ省略 = 画面中心。**`tap` を2回書いても代用できない**(往復で OS のダブルタップ判定時間を超える) |
@@ -218,7 +228,7 @@ action を持たない欄など)—— 黙って「全部入った」にはし�
 
 | コマンド | 説明 |
 |---|---|
-| `scrollTo(sel, direction: .down, maxSwipes: 8, containerInference:)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
+| `scrollTo(sel, direction: .down, containerInference:, maxSwipes: 8)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `scrollDown(repeat: 1)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1 画面ぶんスクロール(`repeat:` 回繰り返す) |
 | `scrollFrame:` / `startMarginRatio:` / `endMarginRatio:`(`scroll*` / `scrollToBottom` 等 / `scrollTo` の引数。`withScroll*` は `scrollFrame:` のみ取る) | **スクロールさせたい領域**をセレクタ式で指定する(Shirates 準拠)。例: `scrollTo("#row_40", scrollFrame: "#list_rows")`。**どれが容器かは MCP の `ft_snapshot` が行末に出す `scroll` 印**で分かる(2つ以上あるときは先頭でも名指しする。ただし**印が無い = スクロールしない、ではない** —— Compose / Flutter は xcuitest エンジンでは申告できない(in-app は版57から申告できる))。**省略時は画面中央基準の全画面スワイプ**(マージン指定も無視)。**iOS の in-app エンジンも同じく画面中央の下にあるスクロール容器だけを動かす**(画面の別の場所にあるカルーセル等は動かさない = XCUITest・Android と同じ結果)。**例外はソフトキーボードが出ている間だけ**: 全画面の固定比率で始点を作るとキーボード面に乗って何も動かないので(iPhone 13 実測: 始点 y=633 に対しキーボード上端 y=509)、`scrollTo` / `scroll*` / `scrollTo*Edge` はキーボードを除いた残りの画面を対象に始点・終点を作る(キーボードが無ければ従来どおり)。素の `swipe(.up)` / MCP の `ft_swipe` も同じ(キーボードが出ていれば残りの画面で振る)。`withScrollDown(scrollFrame:) { }` に渡すとブロック内の探索が継承する。**Compose / Flutter の in-app エンジンは、指定した要素がスクロール容器(`ft_snapshot` の `scroll` 印。枠が一致する容器)のときだけ in-app で送る**(1回 = 1ページ。刻み幅は選べない)。**容器でない要素(固定ヘッダ等)を指定したときはXCUITest へ自動フォールバックする**(そのぶん遅い)。**スクロールできない領域を指定すると、スワイプは成功するが何も動かない** —— 気付けるようにステップへ注記が付く(`the specified scrollFrame is not scrollable` / margin で動かせる幅が潰れた場合は `resolved but leaves nothing to move`)。**画面に1件も無い scrollFrame を指定すると、スワイプを1本も送らずに失敗する**(2026-08-08。`scrollTo` の探索だけでなく `scroll*` / `scrollTo*Edge` 系 / `flick*` / `withScroll*` 配下の探索も同じ。**`select` 系だけは例外**で、掴めなければ空要素を返す契約が優先し skipped になる。以前は黙って全画面スワイプへ退化し、カード上のボタンを発火させる実害があった。探索中に容器が木から消えた場合も失敗になる)。**Compose(CMP)で領域指定が必須だった制限は 2026-08-03 に解消**(容器の外に出る ghost 要素を掴んでいた。docs/verification.md「Compose の探索直後タップ」)|
 | `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く)。**iOS の in-app エンジンは1回で端まで寄せる** —— 下記「端送りの速さはエンジンで決まる」 |

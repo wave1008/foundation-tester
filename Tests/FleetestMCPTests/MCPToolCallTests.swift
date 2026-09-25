@@ -607,7 +607,7 @@ final class MCPToolCallTests: XCTestCase {
     }
 
     func testSwipeParsesDirection() async throws {
-        _ = try await server.call(tool: "ft_swipe", args: ["direction": "left"])
+        _ = try await server.call(tool: "ft_swipe", args: ["finger": "left"])
         XCTAssertEqual(driver.calls, ["swipe(left)"])
     }
 
@@ -704,7 +704,7 @@ final class MCPToolCallTests: XCTestCase {
             ("ft_type", [:], "text"),
             ("ft_long_press", [:], "ref"),
             ("ft_tap", [:], "ref or x/y"),
-            ("ft_swipe", ["direction": "sideways"], "up/down/left/right"),
+            ("ft_swipe", ["finger": "sideways"], "up/down/left/right"),
             ("ft_run_scenario", [:], "id"),
             ("ft_dry_run", [:], "id"),
         ]

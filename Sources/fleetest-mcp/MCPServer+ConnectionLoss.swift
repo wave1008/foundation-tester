@@ -262,39 +262,11 @@ extension MCPServer {
     /// 同じ base が新しい世代へ再配布され、セッション内で ref が一意という保証が壊れる ——
     /// 世代管理そのものが防いでいる「番号は同じだが別要素」を、後始末の側から作ってしまう。
     ///
-    /// **engineKey で引く記憶を新設したらここへ足す**。足し忘れは
-    /// `DeviceStateInvalidationTests.testEveryEngineKeyedMemoIsAccountedForHere` が検出する
-    /// (`MCPServer.swift` の `[String: …]` を走査して、この関数か `deliberatelyKept` の
-    /// どちらにも現れない名前を落とす)—— この後始末は網羅が本体なので、1つ漏れると
-    /// 「ほとんど捨てたが1つだけ前の機のまま」という最も分かりにくい形になる
+    /// **網羅は構造で担保する**: engineKey ごとの記憶は全部 `DeviceSession` の欄なので、
+    /// セッションを丸ごと捨てれば漏れようが無い。並列の `[String: …]` / `Set<String>` を
+    /// MCPServer に戻すと網羅が再び人の注意力頼みになる(`DeviceStateInvalidationTests` が落とす)
     func forgetDeviceState(_ key: String) {
-        drivers[key] = nil
-        connections[key] = nil
-        connectedPorts[key] = nil
-        hybridFallbackPorts[key] = nil
-        connectedAndroidSerials[key] = nil
-        engines[key] = nil
-        udids[key] = nil
-        versionSkew[key] = nil
-        lastSnapshots[key] = nil
-        refGenerations[key] = nil
-        sessionActionCounts[key] = nil
-        lastTapTargets[key] = nil
-        knownScreens[key] = nil
-        launchedBundleIDs[key] = nil
-        launchTimestamps[key] = nil
-        toolStoppedBundleIDs[key] = nil
-        installedPackagePaths[key] = nil
-        lastScreenProbe[key] = nil
-        systemAlertProbePending.remove(key)
-        uiFrameworkHints[key] = nil
-        uiFrameworkUnknownPending.remove(key)
-        lastScreenshots[key] = nil
-        rememberedSnapshotFilters[key] = nil
-        sheetRescueFutile[key] = nil
-        pendingWarnings[key] = nil
-        preparedPhysicalAndroid.remove(key)
-        bridgeRecoveryFailed.remove(key)
+        sessions[key] = nil
     }
 
     /// 名指しする上限本数(2026-08-12): 実測で17本が1行に並び、読み手が要るのは

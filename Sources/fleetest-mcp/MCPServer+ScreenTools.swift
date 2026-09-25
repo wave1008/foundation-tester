@@ -349,12 +349,23 @@ extension MCPServer {
         // 「消した」と言ってしまう。呼び手はこの後 ft_type を撃つので、**残っていると黙って連結される**。
         // 判定は replace の clear-only 検証と同じ関数(空を期待して読み返す)
         // 文言は「clear」——このツールは一度も replace を頼んでいない
+        // **snapshotAfter の1枚を読み返しにも使う**(ft_type の replace と同じ = 同じ瞬間の木を2回読まない)。
+        // snapshotAfter の読みが失敗したときだけ生読みへ落ちる
+        var afterBody = ""
+        var verification: SnapshotResponse?
+        if args["snapshotAfter"] as? Bool == true {
+            let result = await snapshotAfterBodyWithStatus(args)
+            afterBody = result.text
+            if result.succeeded { verification = lastSnapshots[Self.engineKey(args)] }
+        }
+        if verification == nil {
+            verification = try? await clearDriver.snapshot(bypassingCache: clearDriver.supportsCacheBypass)
+        }
         let clearedVerdict = Self.replaceVerificationNote(
-            target: clearTarget, expected: "",
-            fresh: try? await clearDriver.snapshot(bypassingCache: clearDriver.supportsCacheBypass),
-            requestedAs: "clear")
+            target: clearTarget, expected: "", fresh: verification, requestedAs: "clear")
         return text("clearInput sent\(clearNote)\(clearedVerdict)"
-            + (clearRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""))
+            + (clearRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? "")
+            + waitForWithoutSnapshotAfterNote(args) + afterBody)
     }
 
     func ftScreenshot(_ args: [String: Any]) async throws -> [[String: Any]] {

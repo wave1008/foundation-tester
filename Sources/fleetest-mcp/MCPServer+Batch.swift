@@ -53,7 +53,8 @@ extension MCPServer {
 
     static let batchStepBuilders: [String: BatchStepBuilder] = [
         "tap": BatchStepBuilder(
-            keys: ["selector", "holdSeconds", "maxGestureSeconds", "waitSeconds", "x", "y"]
+            keys: ["selector", "holdSeconds", "maxGestureSeconds", "waitSeconds", "scroll", "maxSwipes",
+                   "x", "y"]
         ) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
             let duration = hold == FlowStep.defaultTapHoldSeconds ? nil : hold
@@ -63,6 +64,9 @@ extension MCPServer {
             // **セレクタと併記されたら拒否する**(黙ってどちらかを選ぶと、読み手は自分が何を
             // 撃ったのか分からない)
             if let x = raw["x"] as? Double, let y = raw["y"] as? Double {
+                guard raw["scroll"] == nil, raw["maxSwipes"] == nil else {
+                    throw MCPError("tap x: y: does not search — scroll:/maxSwipes: only apply to a selector")
+                }
                 guard raw["selector"] == nil else {
                     throw MCPError("tap takes either a selector or x/y, not both —"
                         + " drop one (a selector survives a layout change, coordinates do not)")
@@ -75,19 +79,23 @@ extension MCPServer {
                 throw MCPError("tap needs both x and y for a coordinate tap")
             }
             let selector = try requiredBatchSelector(raw, command: "tap")
+            let search = try batchSearch(raw, command: "tap")
             let step = FlowStep(action: "tap", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector),
-                                timeout: raw["waitSeconds"] as? Double,
+                                direction: search.direction,
+                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes,
                                 duration: duration, maxGestureSeconds: maxGestureSeconds)
             return (step, "tap \"\(selector.text)\"")
         },
-        "select": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
+        "select": BatchStepBuilder(keys: ["selector", "waitSeconds", "scroll", "maxSwipes"]) { raw in
             let selector = try requiredBatchSelector(raw, command: "select")
+            let search = try batchSearch(raw, command: "select")
             let step = FlowStep(action: "select", locator: selector.primary,
-                                fallbacks: batchFallbacks(selector), timeout: raw["waitSeconds"] as? Double)
+                                fallbacks: batchFallbacks(selector), direction: search.direction,
+                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
             return (step, "select \"\(selector.text)\"")
         },
-        "type": BatchStepBuilder(keys: ["selector", "text", "waitSeconds", "replace"]) { raw in
+        "type": BatchStepBuilder(keys: ["selector", "text", "replace", "waitSeconds", "scroll", "maxSwipes"]) { raw in
             let replace = raw["replace"] as? Bool == true
             // **空文字は replace: true のときだけ通す**: 欄を空にする形で、DSL の
             // `type(_:_:replace:)` と `ft_type` が同じことをする(断ると「シナリオに書ける行が
@@ -97,9 +105,11 @@ extension MCPServer {
                     + " or pass replace: true with an empty string")
             }
             let selector = optionalBatchSelector(raw)
+            let search = try batchSearch(raw, command: "type", hasSelector: selector != nil)
             var step = FlowStep(action: "type", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks), text: text,
-                                timeout: raw["waitSeconds"] as? Double)
+                                direction: search.direction,
+                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
             step.replace = replace ? true : nil
             let target = selector.map { " \"\($0.text)\"" } ?? ""
             let suffix = replace ? " (replace)" : ""
@@ -118,11 +128,13 @@ extension MCPServer {
         "hideKeyboard": BatchStepBuilder(keys: []) { _ in
             (FlowStep(action: "hideKeyboard"), "hideKeyboard")
         },
-        "clearInput": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
+        "clearInput": BatchStepBuilder(keys: ["selector", "waitSeconds", "scroll", "maxSwipes"]) { raw in
             let selector = optionalBatchSelector(raw)
+            let search = try batchSearch(raw, command: "clearInput", hasSelector: selector != nil)
             let step = FlowStep(action: "clearInput", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
-                                timeout: raw["waitSeconds"] as? Double)
+                                direction: search.direction,
+                                timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
             return (step, selector.map { "clearInput \"\($0.text)\"" } ?? "clearInput")
         },
         "swipe": BatchStepBuilder(keys: ["direction"]) { raw in
@@ -181,6 +193,23 @@ extension MCPServer {
                                 maxGestureSeconds: raw["maxGestureSeconds"] as? Double)
             return (step, "swipeElementToElement \"\(from.text)\" → \"\(to.text)\"")
         },
+        // 座標どうしのドラッグ。DSL と同じ StepExecutor の1アクション(`tap x: y:` と同じ扱い =
+        // シナリオ行へ 1:1 で書き出せるので「通ったバッチはシナリオ行になる」は保たれる)
+        "swipePointToPoint": BatchStepBuilder(
+            keys: ["startX", "startY", "endX", "endY", "durationSeconds", "maxGestureSeconds"]
+        ) { raw in
+            guard let startX = raw["startX"] as? Double, let startY = raw["startY"] as? Double,
+                  let endX = raw["endX"] as? Double, let endY = raw["endY"] as? Double else {
+                throw MCPError("swipePointToPoint requires startX, startY, endX and endY")
+            }
+            let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultSwipeDurationSeconds
+            let step = FlowStep(action: "swipePointToPoint",
+                                duration: duration == FlowStep.defaultSwipeDurationSeconds ? nil : duration,
+                                maxGestureSeconds: raw["maxGestureSeconds"] as? Double,
+                                x: startX, y: startY, toX: endX, toY: endY)
+            return (step, "swipePointToPoint (\(FTSeconds.format(startX)), \(FTSeconds.format(startY)))"
+                + " → (\(FTSeconds.format(endX)), \(FTSeconds.format(endY)))")
+        },
         "scrollTo": BatchStepBuilder(
             keys: ["selector", "direction", "maxSwipes", "scrollFrame"]
         ) { raw in
@@ -225,6 +254,26 @@ extension MCPServer {
             throw MCPError("\(command) requires selector (same syntax as the DSL: #id, a label, .type, a||b)")
         }
         return FTSelector.parse(text)
+    }
+
+    /// `scroll:`(DSL の `FTScrollOption`)と `maxSwipes:` を FlowStep の探索欄へ写す(DSL の tapImpl 等と同じ規則:
+    /// direction は**指の向き**・maxSwipes は探索するときだけ載せる)。バッチに `withScroll*` の文脈は無いので
+    /// `.noScroll` は省略と同じ。**`maxSwipes:` だけ・セレクタ無しの `scroll:` は断る**(指定したのに効かない形)
+    private static func batchSearch(_ raw: [String: Any], command: String,
+                                    hasSelector: Bool = true) throws -> (direction: String?, maxSwipes: Int?) {
+        guard let text = raw["scroll"] as? String, text != "noScroll" else {
+            if raw["maxSwipes"] != nil {
+                throw MCPError("\(command): maxSwipes: only applies with scroll: .down/.up/.right/.left")
+            }
+            return (nil, nil)
+        }
+        guard let direction = FTScrollDirection(rawValue: text) else {
+            throw MCPError("\(command): scroll: takes .down, .up, .right, .left or .noScroll (content direction)")
+        }
+        guard hasSelector else {
+            throw MCPError("\(command): scroll: searches for the target, so it needs a selector")
+        }
+        return (direction.swipe.rawValue, raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes)
     }
 
     private static func optionalBatchSelector(_ raw: [String: Any]) -> FTSelector? {
@@ -300,24 +349,9 @@ extension MCPServer {
         if command == "lastElement" {
             return "lastElement reads the element the previous select/exist grabbed — it runs nothing."
         }
-        if command == "swipePointToPoint" {
-            return "swipePointToPoint drives raw coordinates outside selector resolution — call"
-                + " ft_drag instead."
-        }
         if command == "gesture" {
             return "gesture takes a trailing closure of multi-finger, timed paths that does not fit a"
                 + " single DSL line — call ft_gesture directly instead."
-        }
-        if command.hasPrefix("existWith") {
-            return "it is an assertion (exist) — ft_batch only runs operations."
-        }
-        if command.hasPrefix("selectWith") {
-            return "select does not touch the device and cannot be chained to an assertion inside a"
-                + " batch — use a scrollTo/scrollDown step, then ft_snapshot."
-        }
-        if command.hasPrefix("tapWith") {
-            return "it is a scroll+tap alias — put a scrollTo (or scrollDown/Up/Right/Left) step"
-                + " before a plain tap step instead."
         }
         if command.hasPrefix("with") {
             return "it wraps a block of other commands — ft_batch steps are flat; give the wrapped"

@@ -45,6 +45,17 @@ final class DeviceIndependentToolsIgnoreTargetTests: XCTestCase {
         }
     }
 
+    /// **宛先を取るが udid を宣言しないツールは畳み込みを撃たない**(集合を等号で固定)。
+    /// ft_logs はブリッジが死んだ後に読むツールで、畳み込みの走査に落ちるとクラッシュログへ届かない
+    func testOnlyToolsDeclaringUDIDFoldIt() {
+        let noFold = Set(MCPServer.toolDefinitions.compactMap { definition -> String? in
+            guard let name = definition["name"] as? String,
+                  MCPServer.toolAcceptsDeviceTarget(name), !MCPServer.toolFoldsUDID(name) else { return nil }
+            return name
+        })
+        XCTAssertEqual(noFold, ["ft_logs"])
+    }
+
     /// 逆向き: 宛先を取るツールは従来どおり udid を解決し、居なければ名指しで断る
     func testDeviceTargetToolStillResolvesTheUDID() async {
         do {

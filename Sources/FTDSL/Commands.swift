@@ -205,24 +205,26 @@ public enum FTScrollOption: Sendable, Equatable {
 /// (Shirates の tapWithScrollDown 相当。省略時はブロックの文脈に従い、文脈も無ければ現在画面だけを見る。
 /// `.noScroll` は文脈があっても送らない = `FTScrollOption`)。
 /// 方向は**コンテンツ基準**(標準用語どおり `.down` = 下に読み進める。Shirates の ScrollDirection と同じ)
+@discardableResult
 public func tap(_ selector: String, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 maxGestureSeconds: Double? = nil,
+                containerInference: Bool? = nil,
                 waitSeconds: Double? = nil,
                 scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                containerInference: Bool? = nil,
-                file: StaticString = #filePath, line: UInt = #line) {
+                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     tapImpl(FTSelector.parse(selector), holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
             waitSeconds: waitSeconds,
             scroll: scroll, maxSwipes: maxSwipes, containerInference: containerInference,
             file: file, line: line)
 }
 
+@discardableResult
 public func tap(_ selector: Sel, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 maxGestureSeconds: Double? = nil,
+                containerInference: Bool? = nil,
                 waitSeconds: Double? = nil,
                 scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                containerInference: Bool? = nil,
-                file: StaticString = #filePath, line: UInt = #line) {
+                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     tapImpl(selector.ftSelector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
             waitSeconds: waitSeconds,
             scroll: scroll, maxSwipes: maxSwipes, containerInference: containerInference,
@@ -243,7 +245,7 @@ func contextScrollFrame(_ core: FTDriveCore, scrolling: Bool) -> FlowLocator? {
 func tapImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Double?,
              waitSeconds: Double?,
              scroll: FTScrollOption?, maxSwipes: Int, containerInference: Bool?,
-             file: StaticString, line: UInt) {
+             file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "tap")
     let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: "tap", locator: selector.primary,
@@ -256,9 +258,10 @@ func tapImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Dou
                         containerInference: core.effectiveContainerInference(containerInference),
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let hold = holdSeconds == FlowStep.defaultTapHoldSeconds ? "" : " (hold \(FTSeconds.format(holdSeconds))s)"
-    perform("tap", selector, step: step,
-            description: "tap \"\(selector.text)\"" + hold,
-            file: file, line: line)
+    let result = perform("tap", selector, step: step,
+                         description: "tap \"\(selector.text)\"" + hold,
+                         file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
@@ -296,23 +299,25 @@ public func clearInput(file: StaticString = #filePath, line: UInt = #line) {
 }
 
 /// waitSeconds: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)
+@discardableResult
 public func type(_ selector: String, _ text: String, replace: Bool = false, waitSeconds: Double? = nil,
                  scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                 file: StaticString = #filePath, line: UInt = #line) {
+                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     typeImpl(FTSelector.parse(selector), text, replace: replace, waitSeconds: waitSeconds,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
+@discardableResult
 public func type(_ selector: Sel, _ text: String, replace: Bool = false, waitSeconds: Double? = nil,
                  scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                 file: StaticString = #filePath, line: UInt = #line) {
+                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     typeImpl(selector.ftSelector, text, replace: replace, waitSeconds: waitSeconds,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func typeImpl(_ selector: FTSelector, _ text: String, replace: Bool, waitSeconds: Double?,
                       scroll: FTScrollOption?, maxSwipes: Int,
-                      file: StaticString, line: UInt) {
+                      file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "type")
     let scroll = core.effectiveScroll(scroll)
     var step = FlowStep(action: "type", locator: selector.primary,
@@ -323,30 +328,33 @@ private func typeImpl(_ selector: FTSelector, _ text: String, replace: Bool, wai
     step.replace = replace ? true : nil
     let suffix = replace ? " (replace)" : ""
     // 表示だけエスケープする(打鍵内容の `step.text` は生のまま)
-    perform("type", selector, step: step,
-            description: "type \"\(selector.text)\" \"\(StepDescription.escapingControlCharacters(text))\"\(suffix)",
-            file: file, line: line)
+    let result = perform("type", selector, step: step,
+                         description: "type \"\(selector.text)\" \"\(StepDescription.escapingControlCharacters(text))\"\(suffix)",
+                         file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 /// waitSeconds: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)
 /// scroll: 指定するとクリア前に**その方向へスクロールしながら要素を探す**
+@discardableResult
 public func clearInput(_ selector: String, waitSeconds: Double? = nil,
                        scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                       file: StaticString = #filePath, line: UInt = #line) {
+                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     clearInputImpl(FTSelector.parse(selector), waitSeconds: waitSeconds,
                    scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
+@discardableResult
 public func clearInput(_ selector: Sel, waitSeconds: Double? = nil,
                        scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
-                       file: StaticString = #filePath, line: UInt = #line) {
+                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     clearInputImpl(selector.ftSelector, waitSeconds: waitSeconds,
                    scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func clearInputImpl(_ selector: FTSelector, waitSeconds: Double?,
                             scroll: FTScrollOption?, maxSwipes: Int,
-                            file: StaticString, line: UInt) {
+                            file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "clearInput")
     let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: "clearInput", locator: selector.primary,
@@ -354,9 +362,10 @@ private func clearInputImpl(_ selector: FTSelector, waitSeconds: Double?,
                         direction: scroll?.swipe.rawValue, timeout: waitSeconds,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
-    perform("clearInput", selector, step: step,
-            description: "clearInput \"\(selector.text)\"",
-            file: file, line: line)
+    let result = perform("clearInput", selector, step: step,
+                         description: "clearInput \"\(selector.text)\"",
+                         file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 public func swipe(_ direction: FTSwipeDirection,
@@ -397,36 +406,15 @@ public func tap(x: Double, y: Double, holdSeconds: Double = FlowStep.defaultTapH
 }
 
 /// 座標タップの本体(`tap(x:y:)` と、findImage で見つけた要素の `FTElement.tap()` が共有する)。
-/// **FlowStep/StepExecutor を経由しない**ので、ジェスチャの秒数検査(`FlowStep.gestureDurationViolation`)
-/// をここで自分で呼ぶ(デバイスに触る前に)
+/// **FlowStep を通す**(ft_batch の `tap x: y:` と同じ経路): システム UI の門・秒数の検査・
+/// 直前の操作記録のリセットは StepExecutor の入口にしか無い
 func coordinateTap(x: Double, y: Double, holdSeconds: Double, maxGestureSeconds: Double?,
                    description: String, file: StaticString, line: UInt) {
-    let core = FTRuntime.requireCore(command: "tap")
-    let driver = core.driver
-    let typeDriver = core.executor.typeDriver
-    core.performCustom(description: description, command: "tap", file: file, line: line) {
-        if let violation = FlowStep.gestureDurationViolation(
-            action: "tap", duration: holdSeconds > 0 ? holdSeconds : nil,
-            maxGestureSeconds: maxGestureSeconds) {
-            throw FTCommandError.message(violation)
-        }
-        // 長押しだけ経路が分かれるのは `tap(sel, holdSeconds:)` と同じ(StepExecutor+Actions)。
-        // in-app は座標ジェスチャを持たない(501)ので hybrid では XCUITest へ回す
-        do {
-            if holdSeconds > 0 {
-                try await driver.press(x: x, y: y, duration: holdSeconds)
-            } else {
-                try await driver.tap(x: x, y: y)
-            }
-        } catch {
-            guard DriverError.isEngineIncapable(error), let typeDriver else { throw error }
-            if holdSeconds > 0 {
-                try await typeDriver.press(x: x, y: y, duration: holdSeconds)
-            } else {
-                try await typeDriver.tap(x: x, y: y)
-            }
-        }
-    }
+    let step = FlowStep(action: "tap",
+                        duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds,
+                        maxGestureSeconds: maxGestureSeconds, x: x, y: y)
+    FTRuntime.requireCore(command: "tap")
+        .perform(step: step, description: description, command: "tap", file: file, line: line)
 }
 
 /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。
@@ -436,26 +424,16 @@ public func swipePointToPoint(startX: Double, startY: Double, endX: Double, endY
                               durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
                               maxGestureSeconds: Double? = nil,
                               file: StaticString = #filePath, line: UInt = #line) {
-    let core = FTRuntime.requireCore(command: "swipePointToPoint")
-    let driver = core.driver
-    let typeDriver = core.executor.typeDriver
-    core.performCustom(
-        description: "swipePointToPoint (\(startX), \(startY)) → (\(endX), \(endY))",
-        command: "swipePointToPoint", file: file, line: line) {
-        if let violation = FlowStep.gestureDurationViolation(
-            action: "swipePointToPoint", duration: durationSeconds, maxGestureSeconds: maxGestureSeconds) {
-            throw FTCommandError.message(violation)
-        }
-        do {
-            try await driver.drag(fromX: startX, fromY: startY, toX: endX, toY: endY,
-                                  pressSeconds: 0.05, durationSeconds: durationSeconds)
-        } catch {
-            // in-app エンジンは drag を一切実装しない(501)。hybrid では typeDriver(XCUITest)へ回す
-            guard DriverError.isEngineIncapable(error), let typeDriver else { throw error }
-            try await typeDriver.drag(fromX: startX, fromY: startY, toX: endX, toY: endY,
-                                      pressSeconds: 0.05, durationSeconds: durationSeconds)
-        }
-    }
+    // 実体は StepExecutor.executeDirectPointToPoint(撃つのは dragWithFallback だけ)
+    let step = FlowStep(action: "swipePointToPoint",
+                        duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
+                            ? nil : durationSeconds,
+                        maxGestureSeconds: maxGestureSeconds,
+                        x: startX, y: startY, toX: endX, toY: endY)
+    FTRuntime.requireCore(command: "swipePointToPoint")
+        .perform(step: step,
+                 description: "swipePointToPoint (\(startX), \(startY)) → (\(endX), \(endY))",
+                 command: "swipePointToPoint", file: file, line: line)
 }
 
 // MARK: - マップ系のジェスチャ(ピンチ・ダブルタップ・斜めパン)
@@ -484,21 +462,23 @@ public func swipeBy(dxRatio: Double, dyRatio: Double,
                  command: "swipeBy", file: file, line: line)
 }
 
+@discardableResult
 public func swipeBy(_ selector: String, dxRatio: Double, dyRatio: Double,
                     durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
                     maxGestureSeconds: Double? = nil,
                     waitSeconds: Double? = nil,
-                    file: StaticString = #filePath, line: UInt = #line) {
+                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     swipeByImpl(FTSelector.parse(selector), dxRatio: dxRatio, dyRatio: dyRatio,
                 durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
                 waitSeconds: waitSeconds, file: file, line: line)
 }
 
+@discardableResult
 public func swipeBy(_ selector: Sel, dxRatio: Double, dyRatio: Double,
                     durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
                     maxGestureSeconds: Double? = nil,
                     waitSeconds: Double? = nil,
-                    file: StaticString = #filePath, line: UInt = #line) {
+                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     swipeByImpl(selector.ftSelector, dxRatio: dxRatio, dyRatio: dyRatio,
                 durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
                 waitSeconds: waitSeconds, file: file, line: line)
@@ -507,16 +487,17 @@ public func swipeBy(_ selector: Sel, dxRatio: Double, dyRatio: Double,
 private func swipeByImpl(_ selector: FTSelector, dxRatio: Double, dyRatio: Double,
                          durationSeconds: Double, maxGestureSeconds: Double?,
                          waitSeconds: Double?,
-                         file: StaticString, line: UInt) {
+                         file: StaticString, line: UInt) -> FTElement {
     let step = FlowStep(action: "swipeBy", locator: selector.primary,
                         fallbacks: selector.stepFallbacks, timeout: waitSeconds,
                         duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
                             ? nil : durationSeconds,
                         maxGestureSeconds: maxGestureSeconds,
                         dxRatio: dxRatio, dyRatio: dyRatio)
-    perform("swipeBy", selector, step: step,
-            description: "swipeBy \"\(selector.text)\" (\(dxRatio), \(dyRatio))",
-            file: file, line: line)
+    let result = perform("swipeBy", selector, step: step,
+                         description: "swipeBy \"\(selector.text)\" (\(dxRatio), \(dyRatio))",
+                         file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 /// ダブルタップ(マップの拡大・カード展開等)。セレクタ無しは**画面中心**。
@@ -528,22 +509,25 @@ public func doubleTap(file: StaticString = #filePath, line: UInt = #line) {
                  command: "doubleTap", file: file, line: line)
 }
 
+@discardableResult
 public func doubleTap(_ selector: String, waitSeconds: Double? = nil,
-                      file: StaticString = #filePath, line: UInt = #line) {
+                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     doubleTapImpl(FTSelector.parse(selector), waitSeconds: waitSeconds, file: file, line: line)
 }
 
+@discardableResult
 public func doubleTap(_ selector: Sel, waitSeconds: Double? = nil,
-                      file: StaticString = #filePath, line: UInt = #line) {
+                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     doubleTapImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line)
 }
 
 private func doubleTapImpl(_ selector: FTSelector, waitSeconds: Double?,
-                           file: StaticString, line: UInt) {
+                           file: StaticString, line: UInt) -> FTElement {
     let step = FlowStep(action: "doubleTap", locator: selector.primary,
                         fallbacks: selector.stepFallbacks, timeout: waitSeconds)
-    perform("doubleTap", selector, step: step,
-            description: "doubleTap \"\(selector.text)\"", file: file, line: line)
+    let result = perform("doubleTap", selector, step: step,
+                         description: "doubleTap \"\(selector.text)\"", file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 /// 2本指を開くピンチ = **拡大**(scale > 1)。セレクタ無しは画面全体が対象。
@@ -559,25 +543,27 @@ public func pinchOut(scale: Double = FlowStep.defaultPinchOutScale,
                      durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                      maxGestureSeconds: Double? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
-    pinchImpl(nil, action: "pinchOut", scale: scale, durationSeconds: durationSeconds,
+    _ = pinchImpl(nil, action: "pinchOut", scale: scale, durationSeconds: durationSeconds,
               maxGestureSeconds: maxGestureSeconds, waitSeconds: nil, file: file, line: line)
 }
 
+@discardableResult
 public func pinchOut(_ selector: String, scale: Double = FlowStep.defaultPinchOutScale,
                      durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                      maxGestureSeconds: Double? = nil,
                      waitSeconds: Double? = nil,
-                     file: StaticString = #filePath, line: UInt = #line) {
+                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     pinchImpl(FTSelector.parse(selector), action: "pinchOut", scale: scale,
               durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
               waitSeconds: waitSeconds, file: file, line: line)
 }
 
+@discardableResult
 public func pinchOut(_ selector: Sel, scale: Double = FlowStep.defaultPinchOutScale,
                      durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                      maxGestureSeconds: Double? = nil,
                      waitSeconds: Double? = nil,
-                     file: StaticString = #filePath, line: UInt = #line) {
+                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     pinchImpl(selector.ftSelector, action: "pinchOut", scale: scale,
               durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
               waitSeconds: waitSeconds, file: file, line: line)
@@ -588,25 +574,27 @@ public func pinchIn(scale: Double = FlowStep.defaultPinchInScale,
                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                     maxGestureSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
-    pinchImpl(nil, action: "pinchIn", scale: scale, durationSeconds: durationSeconds,
+    _ = pinchImpl(nil, action: "pinchIn", scale: scale, durationSeconds: durationSeconds,
               maxGestureSeconds: maxGestureSeconds, waitSeconds: nil, file: file, line: line)
 }
 
+@discardableResult
 public func pinchIn(_ selector: String, scale: Double = FlowStep.defaultPinchInScale,
                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                     maxGestureSeconds: Double? = nil,
                     waitSeconds: Double? = nil,
-                    file: StaticString = #filePath, line: UInt = #line) {
+                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     pinchImpl(FTSelector.parse(selector), action: "pinchIn", scale: scale,
               durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
               waitSeconds: waitSeconds, file: file, line: line)
 }
 
+@discardableResult
 public func pinchIn(_ selector: Sel, scale: Double = FlowStep.defaultPinchInScale,
                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                     maxGestureSeconds: Double? = nil,
                     waitSeconds: Double? = nil,
-                    file: StaticString = #filePath, line: UInt = #line) {
+                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     pinchImpl(selector.ftSelector, action: "pinchIn", scale: scale,
               durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
               waitSeconds: waitSeconds, file: file, line: line)
@@ -617,7 +605,7 @@ public func pinchIn(_ selector: Sel, scale: Double = FlowStep.defaultPinchInScal
 private func pinchImpl(_ selector: FTSelector?, action: String, scale: Double,
                        durationSeconds: Double, maxGestureSeconds: Double?,
                        waitSeconds: Double?,
-                       file: StaticString, line: UInt) {
+                       file: StaticString, line: UInt) -> FTElement {
     let step = FlowStep(action: action, locator: selector?.primary,
                         fallbacks: selector?.stepFallbacks, timeout: waitSeconds,
                         duration: durationSeconds == FlowStep.defaultPinchDurationSeconds
@@ -628,28 +616,31 @@ private func pinchImpl(_ selector: FTSelector?, action: String, scale: Double,
     guard let selector else {
         FTRuntime.requireCore(command: action)
             .perform(step: step, description: description, command: action, file: file, line: line)
-        return
+        return FTElement(selector: FTSelector.label(""))
     }
-    perform(action, selector, step: step, description: description, file: file, line: line)
+    let result = perform(action, selector, step: step, description: description, file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 /// 要素間のドラッグ(スライダー・並べ替え・部分領域のスクロール等、要素を掴んで動かす操作用)。
 /// **終点(to)はヒール・自己修復の対象外**(始点だけが解決連鎖を持つ)
+@discardableResult
 public func swipeElementToElement(_ from: String, _ to: String,
                                   durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
                                   maxGestureSeconds: Double? = nil,
                                   waitSeconds: Double? = nil,
-                                  file: StaticString = #filePath, line: UInt = #line) {
+                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     swipeElementToElementImpl(FTSelector.parse(from), FTSelector.parse(to),
                               durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
                               waitSeconds: waitSeconds, file: file, line: line)
 }
 
+@discardableResult
 public func swipeElementToElement(_ from: Sel, _ to: Sel,
                                   durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
                                   maxGestureSeconds: Double? = nil,
                                   waitSeconds: Double? = nil,
-                                  file: StaticString = #filePath, line: UInt = #line) {
+                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     swipeElementToElementImpl(from.ftSelector, to.ftSelector,
                               durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
                               waitSeconds: waitSeconds, file: file, line: line)
@@ -658,16 +649,17 @@ public func swipeElementToElement(_ from: Sel, _ to: Sel,
 private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
                                        durationSeconds: Double, maxGestureSeconds: Double?,
                                        waitSeconds: Double?,
-                                       file: StaticString, line: UInt) {
+                                       file: StaticString, line: UInt) -> FTElement {
     let step = FlowStep(action: "swipeElementToElement", locator: from.primary,
                         fallbacks: from.stepFallbacks, endLocator: to.primary,
                         timeout: waitSeconds,
                         duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
                             ? nil : durationSeconds,
                         maxGestureSeconds: maxGestureSeconds)
-    perform("swipeElementToElement", from, step: step,
-            description: "swipeElementToElement \"\(from.text)\" → \"\(to.text)\"",
-            file: file, line: line)
+    let result = perform("swipeElementToElement", from, step: step,
+                         description: "swipeElementToElement \"\(from.text)\" → \"\(to.text)\"",
+                         file: file, line: line)
+    return FTElement(selector: from, matched: result.element)
 }
 
 // MARK: - 汎用ジェスチャ(指ごとの時刻つき経路。pinchOut/pinchIn/doubleTap/swipeBy で表せない動きに使う)
@@ -685,20 +677,22 @@ private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
 public func gesture(maxGestureSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line,
                     @FTGestureBuilder _ body: () -> [FTFinger]) {
-    gestureImpl(nil, fingers: body(), maxGestureSeconds: maxGestureSeconds, waitSeconds: nil,
+    _ = gestureImpl(nil, fingers: body(), maxGestureSeconds: maxGestureSeconds, waitSeconds: nil,
                 file: file, line: line)
 }
 
+@discardableResult
 public func gesture(_ selector: String, maxGestureSeconds: Double? = nil, waitSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line,
-                    @FTGestureBuilder _ body: () -> [FTFinger]) {
+                    @FTGestureBuilder _ body: () -> [FTFinger]) -> FTElement {
     gestureImpl(FTSelector.parse(selector), fingers: body(), maxGestureSeconds: maxGestureSeconds,
                 waitSeconds: waitSeconds, file: file, line: line)
 }
 
+@discardableResult
 public func gesture(_ selector: Sel, maxGestureSeconds: Double? = nil, waitSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line,
-                    @FTGestureBuilder _ body: () -> [FTFinger]) {
+                    @FTGestureBuilder _ body: () -> [FTFinger]) -> FTElement {
     gestureImpl(selector.ftSelector, fingers: body(), maxGestureSeconds: maxGestureSeconds,
                 waitSeconds: waitSeconds, file: file, line: line)
 }
@@ -706,7 +700,7 @@ public func gesture(_ selector: Sel, maxGestureSeconds: Double? = nil, waitSecon
 /// selector nil = 画面全体。指の本数・秒数・画面内かの検査は StepExecutor 側の
 /// `TouchGesture.validate` に集約する(判定を1箇所に置く)
 private func gestureImpl(_ selector: FTSelector?, fingers: [FTFinger], maxGestureSeconds: Double?,
-                         waitSeconds: Double?, file: StaticString, line: UInt) {
+                         waitSeconds: Double?, file: StaticString, line: UInt) -> FTElement {
     let step = FlowStep(action: "gesture", locator: selector?.primary,
                         fallbacks: selector?.stepFallbacks, timeout: waitSeconds,
                         maxGestureSeconds: maxGestureSeconds, gesture: fingers)
@@ -719,9 +713,10 @@ private func gestureImpl(_ selector: FTSelector?, fingers: [FTFinger], maxGestur
     guard let selector else {
         FTRuntime.requireCore(command: "gesture")
             .perform(step: step, description: description, command: "gesture", file: file, line: line)
-        return
+        return FTElement(selector: FTSelector.label(""))
     }
-    perform("gesture", selector, step: step, description: description, file: file, line: line)
+    let result = perform("gesture", selector, step: step, description: description, file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 // MARK: - フリック(Shirates 準拠のコマンド名。画面基点8種)
@@ -998,24 +993,26 @@ public func withoutContainerInference(_ body: () -> Void) {
 // MARK: - スクロール
 
 /// 要素が見つかるまでスクロールする(見つかったら成功。タップはしない)
+@discardableResult
 public func scrollTo(_ selector: String, direction: FTScrollDirection = .down,
                      scrollFrame: String? = nil,
                      startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
-                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      containerInference: Bool? = nil,
-                     file: StaticString = #filePath, line: UInt = #line) {
+                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     scrollToImpl(FTSelector.parse(selector), direction: direction, scrollFrame: scrollFrame,
                  startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio,
                  maxSwipes: maxSwipes, containerInference: containerInference,
                  file: file, line: line)
 }
 
+@discardableResult
 public func scrollTo(_ selector: Sel, direction: FTScrollDirection = .down,
                      scrollFrame: String? = nil,
                      startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
-                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      containerInference: Bool? = nil,
-                     file: StaticString = #filePath, line: UInt = #line) {
+                     maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     scrollToImpl(selector.ftSelector, direction: direction, scrollFrame: scrollFrame,
                  startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio,
                  maxSwipes: maxSwipes, containerInference: containerInference,
@@ -1025,7 +1022,7 @@ public func scrollTo(_ selector: Sel, direction: FTScrollDirection = .down,
 private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection,
                           scrollFrame: String?, startMarginRatio: Double?,
                           endMarginRatio: Double?, maxSwipes: Int, containerInference: Bool?,
-                          file: StaticString, line: UInt) {
+                          file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "scrollTo")
     let frame = core.effectiveScrollFrame(scrollFrame)
     let step = FlowStep(action: "scrollTo", locator: selector.primary,
@@ -1034,7 +1031,8 @@ private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection,
                         containerInference: core.effectiveContainerInference(containerInference),
                         scrollFrame: frame.map(FTSelector.parse)?.primary,
                         startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
-    perform("scrollTo", selector, step: step, description: "scrollTo \"\(selector.text)\"",
-            file: file, line: line)
+    let result = perform("scrollTo", selector, step: step, description: "scrollTo \"\(selector.text)\"",
+                         file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 

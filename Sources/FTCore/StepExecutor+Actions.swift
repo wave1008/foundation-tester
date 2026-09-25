@@ -81,6 +81,9 @@ extension StepExecutor {
            step.fallbacks?.isEmpty ?? true {
             return try await executeDirectCoordinateTap(step: step, x: x, y: y, phase: &phase)
         }
+        if action == "swipePointToPoint" {
+            return try await executeDirectPointToPoint(step: step, phase: &phase)
+        }
         if Self.gestureActions.contains(action), step.locator == nil,
            step.fallbacks?.isEmpty ?? true {
             return try await executeDirectUntargetedGesture(action, step: step, phase: &phase)

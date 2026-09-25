@@ -25,39 +25,40 @@ struct FleetestMCP {
 
 final class MCPServer {
 
-    var drivers: [String: AppDriver] = [:]
-    /// drivers と同じキーで「実際に主となったエンジン」を覚える。iosEngineHint がこれで
-    /// 助言を出し分ける(引数からは決まらない: profile 無しでも in-app を掴めば hybrid)
-    var engines: [String: String] = [:]
+    /// engineKey ごとの記憶の唯一の保存先(欄の意味は DeviceSession.swift)。下の窓はここを見るだけ
+    var sessions: [String: DeviceSession] = [:]
+    var drivers: SessionMap<AppDriver> { SessionMap(server: self, path: \.driver) }
+    var engines: SessionMap<String> { SessionMap(server: self, path: \.engine) }
+    var lastSnapshots: SessionMap<SnapshotResponse> { SessionMap(server: self, path: \.lastSnapshot) }
+    var refGenerations: SessionMap<[(base: Int, snapshot: SnapshotResponse, actionCount: Int)]> { SessionMap(server: self, path: \.refGenerations) }
+    var sessionActionCounts: SessionMap<Int> { SessionMap(server: self, path: \.sessionActionCount) }
+    var lastTapTargets: SessionMap<ElementInfo> { SessionMap(server: self, path: \.lastTapTarget) }
+    var knownScreens: SessionMap<FTRect> { SessionMap(server: self, path: \.knownScreen) }
+    var uiFrameworkHints: SessionMap<AppUIFramework> { SessionMap(server: self, path: \.uiFrameworkHint) }
+    var udids: SessionMap<String?> { SessionMap(server: self, path: \.udid) }
+    var launchedBundleIDs: SessionMap<String> { SessionMap(server: self, path: \.launchedBundleID) }
+    var launchTimestamps: SessionMap<Date> { SessionMap(server: self, path: \.launchTimestamp) }
+    var toolStoppedBundleIDs: SessionMap<String> { SessionMap(server: self, path: \.toolStoppedBundleID) }
+    var installedPackagePaths: SessionMap<String> { SessionMap(server: self, path: \.installedPackagePath) }
+    var lastScreenshots: SessionMap<StaleFrameDetector.Record> { SessionMap(server: self, path: \.lastScreenshot) }
+    var rememberedSnapshotFilters: SessionMap<[String: Bool]> { SessionMap(server: self, path: \.rememberedSnapshotFilters) }
+    var sheetRescueFutile: SessionMap<Set<String>> { SessionMap(server: self, path: \.sheetRescueFutile) }
+    var pendingWarnings: SessionMap<[String]> { SessionMap(server: self, path: \.pendingWarnings) }
+    var lastScreenProbe: SessionMap<(fingerprint: Int, warning: String)> { SessionMap(server: self, path: \.lastScreenProbe) }
+    var connections: SessionMap<String> { SessionMap(server: self, path: \.connection) }
+    var connectedPorts: SessionMap<UInt16> { SessionMap(server: self, path: \.connectedPort) }
+    var hybridFallbackPorts: SessionMap<UInt16> { SessionMap(server: self, path: \.hybridFallbackPort) }
+    var connectedAndroidSerials: SessionMap<String> { SessionMap(server: self, path: \.connectedAndroidSerial) }
+    var versionSkew: SessionMap<String> { SessionMap(server: self, path: \.versionSkew) }
+    var uiFrameworkUnknownPending: SessionFlags { SessionFlags(server: self, path: \.uiFrameworkUnknownPending) }
+    var systemAlertProbePending: SessionFlags { SessionFlags(server: self, path: \.systemAlertProbePending) }
+    var backgroundedByNavigate: SessionFlags { SessionFlags(server: self, path: \.backgroundedByNavigate) }
+    var webPageCeilingLatched: SessionFlags { SessionFlags(server: self, path: \.webPageCeilingLatched) }
+    var preparedPhysicalAndroid: SessionFlags { SessionFlags(server: self, path: \.preparedPhysicalAndroid) }
+    var bridgeRecoveryFailed: SessionFlags { SessionFlags(server: self, path: \.bridgeRecoveryFailed) }
+
     /// 探索中の操作列(ft_draft_scenario の材料。InteractionLog 参照)
     var interactions = InteractionLog()
-    /// drivers と同じキーで**直前にエージェントへ返した木**を覚える。ref を撃つ直前に
-    /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
-    /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
-    var lastSnapshots: [String: SnapshotResponse] = [:]
-    /// **ref の世代管理**。ブリッジは撮るたびに ref を振り直すので、
-    /// 「1つ前の木」しか起点にしない `lastSnapshots` だけでは、それより前の snapshot の ref を
-    /// 撃たれたときに「たまたま同じ番号を持つ別要素」へ黙って当たる(実害: ft_scroll_to の後に
-    /// 旧 ref [42](戻るボタン)を叩いたら新しい木の [42](静的テキスト「料金:」)に当たった)。
-    /// MCP 層で ref にオフセット(`base`)を掛け、セッション内で全世代の ref を一意にする ——
-    /// ブリッジには一切触らない。古い順に並び、**直近5世代だけ**保持する(adoptSnapshot 参照)
-    /// 各世代を採った時点の `sessionActionCounts[key]`(出自判定用。宣言はそちら)
-    var refGenerations: [String: [(base: Int, snapshot: SnapshotResponse, actionCount: Int)]] = [:]
-    /// この engineKey へこのセッションが撃った操作(tap/type/swipe/… — `recordAction` を通った回数)。
-    /// **「このセッションは変えていない」と言ってよいかの唯一の判定材料**:
-    /// `screenChangedUnderRefNote` は木の変化を「アプリ自身・他プロセス・人」のせいだと名指しするが、
-    /// ref を採った世代からこの回数が増えていれば、変化はこのセッション自身の直前の操作で
-    /// 説明がつく可能性が高く、外部要因のせいにしてはいけない
-    var sessionActionCounts: [String: Int] = [:]
-    /// **直前の `ft_tap` が叩いた要素**(engineKey ごと)。ref なし `ft_type` が「叩いた欄へ焦点が
-    /// 立たなかった」形を救うための材料(DSL の `StepExecutor.lastTapTarget` と同じ役)。
-    /// tap / type 以外の操作(`recordInteraction`)で消える —— 間に別の操作を挟んだ type は
-    /// 「叩いた欄へ入れる」意図ではない
-    var lastTapTargets: [String: ElementInfo] = [:]
-    /// 座標の操作が範囲判定に使う画面の大きさ(engineKey ごと)。**直近の木が無いときの控え**
-    /// (`coordinateScreen`)—— 生読みで採り、世代(`lastSnapshots` / `refGenerations`)は作らない。
-    /// 作ると settle-lite の「操作前の木」がこの読みになり、呼び手が撮っていない木を基準に待つ
-    var knownScreens: [String: FTRect] = [:]
     /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。
     ///
     /// **機ごとに持ってはいけない**(2026-08-13 に実機で踏んだ): engineKey ごとに 0 から始めると
@@ -73,77 +74,6 @@ final class MCPServer {
     /// 保持する世代数の上限。**5**: 「1つ前の木」しか見ない従来より十分に厚いが、
     /// 無制限にするとセッションが長引くほど探索コストと保持量が線形に増える
     static let maxRefGenerations = 5
-    /// scroll_to の空打ちゲート用 uiFramework(engineKey ごと)。**成功だけ**記憶する —
-    /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される
-    var uiFrameworkHints: [String: AppUIFramework] = [:]
-    /// 実機で uiFramework が不明のまま探索を撃った engineKey(次の応答で1回だけ言う。
-    /// 不明のとき空打ちは撃たれないので、Compose / Flutter なら吸われた形が赤に出る)
-    var uiFrameworkUnknownPending: Set<String> = []
-    /// 特定できたシミュレータの udid(engineKey ごと)。xcuitest のマーカー判定に使う
-    var udids: [String: String?] = [:]
-    /// drivers と同じキーで**最後に ft_launch した bundleID**を覚える。
-    ///
-    /// **Android のブリッジは session を前面ウィンドウから採る**(`SnapshotBuilder` の
-    /// `root.getPackageName()`)。つまり back でアプリを出ると session がその場で別アプリに
-    /// 差し替わり、`backgroundedSessionNote`(session が前面か)は**構造上まったく発火しない**。
-    /// E2E の 4 SUT は `#id`・ラベルが共通契約なので、木を見ても入れ替わりに気付けない
-    /// (2026-08-06 の探索で決定的に再現: `ft_launch com.ftester.e2e.android` → `back` 1回で
-    /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
-    /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
-    var launchedBundleIDs: [String: String] = [:]
-    /// `launchedBundleIDs` と対で、そのアプリを起動した**時刻**(engineKey ごと)。
-    /// : Android のクラッシュ帰属(`androidProcessEvidenceForSwitch`)が
-    /// 「直近の launch 以降」に絞るための起点 —— 無いと、数分〜数時間前の別プロセスの
-    /// クラッシュ(adb の crash バッファは時間で絞らない限りずっと残る)を今回の launch の
-    /// せいと誤って引用する
-    var launchTimestamps: [String: Date] = [:]
-    /// **ツール自身がこのアプリを止めた**(ft_clear_app_data の通常経路・ft_install の
-    /// 上書きインストール)ことの記録(engineKey → 止めた操作名。例 "ft_clear_app_data")。
-    /// 値は `launchedBundleIDs[key]` に対する申告 —— 別のアプリが起動されれば ft_launch が
-    /// 消すので、古い記録が別アプリへ誤って付くことはない。
-    /// `switchedAppNote` が「プロセスが無い = クラッシュの疑い」と誤診しないための材料
-    /// (§19.3 M2: 明示的に止めた直後の snapshot が「crashed かも」と言っていた)。
-    /// **ft_launch で消える**(再起動すれば以後の不在は別の原因になり得るため)
-    var toolStoppedBundleIDs: [String: String] = [:]
-    /// drivers と同じキーで**最後に ft_install した packagePath**を覚える(engineKey ごと)。
-    /// **実機の ft_clear_app_data が使う** —— devicectl には clearAppData の同等手段が無く
-    /// (BridgeClient.clearAppData の 501)、代わりに uninstall+install で再現するのに要る
-    var installedPackagePaths: [String: String] = [:]
-    /// **launch 系ツール(ft_launch/ft_open_url/ft_clear_app_data/ft_install)の直後**、次の
-    /// ft_snapshot で一度だけ `GET /systemalert` を確かめるための予約(engineKey ごと)。
-    /// DSL 側の `StepExecutor.systemAlertProbePending`(FTRuntime.swift の `noteAppLaunched`)と
-    /// 同じ設計 —— launch 直後は SpringBoard の許可アラートが出やすいが、毎 snapshot 払うと
-    /// 高頻度な MCP のポーリングで往復が倍になる。**springboard 自身への ft_launch では立てない**
-    /// (そちらは意図してアラートを読みに行く経路なので、覆いではなく本来の画面)。
-    /// snapshotBody が読んで消費(先に消してから probe)し、forgetDeviceState / ft_terminate で捨てる
-    var systemAlertProbePending: Set<String> = []
-    /// **このセッションが `ft_navigate home` / `appSwitcher` でアプリを背面へ送ったまま**か
-    /// (engineKey ごと)。次の ft_launch で消す。
-    ///
-    /// なぜ「聞く」だけでは足りないか: `backgroundedSessionNote(_:driver:)` は `/appstate` へ
-    /// 聞くが、**実機 iPhone 13 の実測でその照会が前面と答えた**(ホーム画面が出ていて、
-    /// スクリーンショットでも確認済み)。木も session もアプリのままなので、ツールが送った
-    /// 事実だけが唯一の確かな材料になる。**プラットフォームの答えに上書きさせない**
-    var backgroundedByNavigate: Set<String> = []
-    /// ft_screenshot の鮮度判定用(engineKey ごと)。**静止画面の2連続 ft_screenshot は PNG が
-    /// バイト単位で同一**(2026-08-10 実測: Android 83,028B×2 / iOS 95,076B×2)—— これが成り立つから
-    /// 「木は変わったのに絵が前回と同一 = 古いフレームを返し続けている」と言える(treeFingerprint の
-    /// 前後比較単独では拾えなかった動機の事象: 木は新しいのに絵だけ古い)
-    var lastScreenshots: [String: StaleFrameDetector.Record] = [:]
-    /// ft_snapshot で**明示された** interactiveOnly/expandBulk(engineKey ごと)。呼ばれるたびに
-    /// 丸ごと置き換える(省略されたキーは記憶から消える)。snapshotAfterBody が、呼び出し側の
-    /// args に無いキーだけこれで補う — 明示した値が常に優先(snapshotAfterBody 参照)
-    var rememberedSnapshotFilters: [String: [String: Bool]] = [:]
-    /// **切り詰められた web ページを見たデバイス**(engineKey)。以後の読みは最初から要素上限の
-    /// 天井で撮る(`needsWebPageCeiling`)。2枚払うのはラッチした1回だけ ——
-    /// 毎回「撮る→切り詰めを見て撮り直す」だと、waitFor のポーリングで読みが倍になる
-    var webPageCeilingLatched: Set<String> = []
-    /// **シート展開救済が効かないと分かった画面**(engineKey ごと・木の指紋の集合。
-    /// `sheetRescueKey` 参照)。同じ画面での2回目以降の ft_scroll_to は救済を撃たずに即返す
-    var sheetRescueFutile: [String: Set<String>] = [:]
-    /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
-    /// stderr だけに出していたときは MCP クライアントに一切届かなかった
-    var pendingWarnings: [String: [String]] = [:]
     /// 台の印(`MCPDeviceLease`)と run の lease を読む場所(run と同じ `RepoRoot/.fleetest`)。
     /// nil = 印を置かない。**差し替えドライバ(テスト)では既定 nil** —— 既定のままだと偽の台の印を本物の
     /// `.fleetest/` へ書き散らす(実際に `mcp-emulator-5554.lease` が残った)。テストは一時フォルダを渡す
@@ -177,11 +107,6 @@ final class MCPServer {
     /// 流用していたが、実機 iPhone ではレイアウトが収まる前に予算が尽きていた
     var rotationSettleDeadlineSeconds: Double = RotationSettle.deadlineSeconds
 
-    /// ref を撃つ直前の覆い探針(`screenNotRepresentedWarning` = 覆う面とヒットテスト。
-    /// `/systemalert` は含まない = 毎回聞く)を木の指紋ごとに覚える(engineKey ごと)。**健全性の上限**: 木がバイト同一のまま
-    /// 覆う面が出た/消えた画面(静止画面へ出た Control Center 等)は、次に木が変わるまで
-    /// 再確認しない —— 見逃しはそこまでに限られる(verifiedRef 参照)
-    var lastScreenProbe: [String: (fingerprint: Int, warning: String)] = [:]
 
     init(write: @escaping (Data) -> Void = { ConsoleOut.out($0) },
          makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,
@@ -244,6 +169,12 @@ final class MCPServer {
 
         // id なしは notification(initialized 等)— 応答しない
         guard id != nil else { return }
+        // **`"id": null` は notification ではなく無効要求**(JSON-RPC 2.0 / MCP は id に null を許さない)。
+        // 実行してから null 宛てに result を返すと、どの要求の答えかクライアントが突き合わせられない
+        if id is NSNull {
+            reply(id: nil, error: ["code": -32600, "message": "invalid request: id must not be null"])
+            return
+        }
 
         switch method {
         case "initialize":
@@ -316,37 +247,7 @@ final class MCPServer {
     }
 
 
-    /// 接続先の宛先(ft_status が見せる)。**#2/#5 の取り違えは「今どこに繋がっているか」が
-    /// 見えないまま起きる** —— 既定 8123 が死んでいても、はぐれエミュレータを掴んでいても、
-    /// 応答だけ見ると正常に見える
-    var connections: [String: String] = [:]
-    /// 掴んでいる iOS ブリッジのポート(engineKey ごと)。**`connections` の文字列から読み解かない**
-    /// —— 表示用の文と機械判定を同じ文字列に相乗りさせると、表記を整えるたびに判定が壊れる。
-    /// タイムアウト時にそのポートがまだ生きているかを確かめる `connectionLostHint` が使う
-    var connectedPorts: [String: UInt16] = [:]
-    /// hybrid(in-app + XCUITest)キャッシュ命中の engineKey ごとの XCUITest フォールバックポート。
-    /// **`connectedPorts` とは別枠**(あちらは主(in-app)のポート): `HybridFallbackDriver` の
-    /// fallback は home/drag/座標 press/gesture 等をこちらへ回すので、建て直しで別デバイスへ
-    /// 移っていないかは主の udid だけでは検知できない(maintainer-notes §51.2。hybridFallbackDrifted 参照)
-    var hybridFallbackPorts: [String: UInt16] = [:]
-    /// 掴んでいる Android ブリッジの serial(engineKey ごと)。iOS の `connectedPorts` と同じ理由で
-    /// `connections` の表示文字列からは読み解かない —— 直接指定は "serial <serial>"、profile
-    /// 経由は "<device name> serial <serial>" と経路ごとに書式が違い、文字列切り出しに頼ると
-    /// profile 経由だけ判定から漏れる(2026-08-14 に実際に踏んだ)
-    var connectedAndroidSerials: [String: String] = [:]
-    /// **物理 Android を起こす処理(`AndroidPhysicalDevice.prepareForRun`)を済ませた engineKey**
-    /// : run 経路(`ProfileWorkerFactory.preparePhysicalAndroidDevices`)は run の
-    /// 開始前に1回だけ呼ぶので、MCP もそれと同じ粒度(このセッションでその機へ初めて触れたとき
-    /// 1回)にする —— 毎ツール呼び出しに払うと adb 往復が積み上がる。`driver(_:)` が管理する
-    var preparedPhysicalAndroid: Set<String> = []
-    /// **このセッションで xcuitest ブリッジの自動建て直し(bridgeConnectionRefused からの復帰)を
-    /// 一度試して失敗した engineKey**。建て直しの成否に関わらず次にまた死んだら再挑戦してよいので、
-    /// 成功時は insert しない(失敗のときだけ = 環境そのものが壊れている台へ分単位のビルドを
-    /// 撃ち続けない。MCPServer+BridgeRecovery.swift 参照)
-    var bridgeRecoveryFailed: Set<String> = []
 
-    /// 版ズレの内容(engineKey ごと)。ft_status が「失敗するが理由を返す」ために覚えておく
-    var versionSkew: [String: String] = [:]
 
     /// このプロセスの寿命だけ生きる、最後に**明示**された iOS 宛先(port + udid)。
     /// **更新は udid/port のどちらかが引数にあった呼び出しの、解決成功後だけ**

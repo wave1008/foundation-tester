@@ -1035,6 +1035,12 @@
 - **座標を整数へ畳む所は trap しない側に倒す**(座標は `.unbounded`。入口の画面内判定
   `TapTargetGeometry.isPointOnScreen` は MCP とライブ操作が共有するが、DSL も届くので最後の砦
   `AndroidDriver.checkedInt32` は別に要る)
+- **MCP の engineKey ごとの記憶は `DeviceSession`(`Sources/fleetest-mcp/DeviceSession.swift`)の欄だけ**。
+  `MCPServer` の `drivers` / `lastSnapshots` 等は `sessions` を見る窓(`SessionMap` / `SessionFlags`)で、
+  `forgetDeviceState` はセッションを丸ごと捨てる。**並列の `[String: …]` / `Set<String>` を戻さない**
+  (束ねる前は集合型の2つが後始末から漏れていた。`DeviceStateInvalidationTests` が落とす)。
+  **udid → port の畳み込みはスキーマに `udid` を宣言したツールでだけ撃つ**(`toolFoldsUDID`。
+  `ft_logs` はブリッジが死んだ後に読むツールなので走査で落とさない)
 - **宛先(udid/serial/port)を取らない MCP ツールで宛先を解決しない**(`toolAcceptsDeviceTarget` の
   分岐1箇所)。畳み込み(`foldingUDIDIntoPort`)はブリッジ走査を撃ち、居なければ落ちるので、
   1台を駆動している呼び手(`udid` を毎回添える)はブリッジが死んだ瞬間に**一覧・診断のツールまで

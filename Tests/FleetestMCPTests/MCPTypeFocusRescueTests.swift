@@ -102,7 +102,7 @@ final class MCPTypeFocusRescueTests: XCTestCase {
         driver.snapshotResponse = screen(focusOn: 1)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_tap", args: ["ref": 2])
-        _ = try await server.call(tool: "ft_swipe", args: ["direction": "up"])
+        _ = try await server.call(tool: "ft_swipe", args: ["finger": "up"])
         let before = driver.calls.count
         driver.scriptedSnapshots = [screen(focusOn: 1)]
 

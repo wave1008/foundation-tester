@@ -72,6 +72,17 @@ final class MCPProtocolTests: XCTestCase {
         }
     }
 
+    /// `"id": null` は実行せず Invalid Request(-32600)で断る(notification と取り違えない・実行もしない)
+    func testNullIDIsAnInvalidRequestAndIsNotExecuted() async throws {
+        await send(["jsonrpc": "2.0", "id": NSNull(), "method": "tools/call",
+                    "params": ["name": "ft_status", "arguments": [String: Any]()]])
+        XCTAssertEqual(sent.count, 1)
+        let error = try XCTUnwrap(sent.first?["error"] as? [String: Any])
+        XCTAssertEqual(error["code"] as? Int, -32600)
+        XCTAssertNil(sent.first?["result"])
+        XCTAssertTrue(sent.first?["id"] is NSNull)
+    }
+
     func testInitializeWithoutAVersionAnswersTheLatestSupported() async throws {
         await send(["jsonrpc": "2.0", "id": 1, "method": "initialize"])
         let result = try XCTUnwrap(sent.first?["result"] as? [String: Any])

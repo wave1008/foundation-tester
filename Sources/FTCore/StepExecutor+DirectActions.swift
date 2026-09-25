@@ -316,6 +316,23 @@ extension StepExecutor {
         return StepOutcome(status: .passed, driverFallback: note)
     }
 
+    /// 座標どうしのドラッグ(DSL の `swipePointToPoint` / ft_batch)。**撃つのは `dragWithFallback` だけ**
+    /// (in-app は drag が 501。直に `driver.drag` を呼ぶと hybrid で XCUITest へ回らない)。
+    /// 押してから動かすまでは 0.05 秒固定(長押しから始まる並べ替えは `gesture` の `.hold` で書く)
+    func executeDirectPointToPoint(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        guard let x = step.x, let y = step.y, let toX = step.toX, let toY = step.toY else {
+            return StepOutcome(status: .failed("swipePointToPoint needs startX, startY, endX and endY"))
+        }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let latchedBefore = dragFallbackLatched
+        try await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY, pressSeconds: 0.05,
+                                   durationSeconds: step.duration ?? FlowStep.defaultSwipeDurationSeconds)
+        phase.actionMs += Self.ms(clock.now - start)
+        return StepOutcome(status: .passed,
+                           driverFallback: dragFallbackLatched && !latchedBefore ? "fell back to XCUITest" : nil)
+    }
+
     // ピンチ・ダブルタップ・相対ドラッグ(斜め可)の**対象未指定版** = 画面全体を対象にする。
     // ロケータ付きは下の switch(要素解決・ヒール・スクロール探索にそのまま乗せるため)で、
     // 対象の決め方以外は performGesture に集約してある
@@ -343,6 +360,7 @@ extension StepExecutor {
         guard result.found else {
             return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result)))
         }
+        resolvedElementThisStep = result.element
         if let fallback = result.fallback {
             return StepOutcome(status: .passedViaFallback(fallback), driverFallback: note)
         }

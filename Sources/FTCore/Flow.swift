@@ -140,9 +140,12 @@ public struct FlowStep: Codable, Sendable {
     /// 座標タップの座標(`tap(x:y:)`)。**単位は snapshot の screen と同じ** ——
     /// iOS = pt / Android = px(dp ではない)。**locator と排他**: 両方あるときは locator を使う
     /// (セレクタで指せるならそちらが常に優先。用途を問わない規律)。
-    /// **`tap` 以外は未使用**
+    /// **`tap` と `swipePointToPoint`(始点)以外は未使用**
     public var x: Double?
     public var y: Double?
+    /// `swipePointToPoint` の終点(単位は `x` / `y` と同じ)。**`swipePointToPoint` 以外は未使用**
+    public var toX: Double?
+    public var toY: Double?
     /// findImage / findImages / existImage の特徴量の距離の閾値(`FindImage`)。findImages の nil = 絞らない。
     /// **これら以外は未使用**(ラベルは `expected`)
     public var imageThreshold: Double?
@@ -171,6 +174,7 @@ public struct FlowStep: Codable, Sendable {
                 intervalSeconds: Double? = nil,
                 scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil,
                 x: Double? = nil, y: Double? = nil,
+                toX: Double? = nil, toY: Double? = nil,
                 imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil,
                 preferCheckStateClassifier: Bool? = nil,
                 gesture: [FTFinger]? = nil) {
@@ -178,6 +182,8 @@ public struct FlowStep: Codable, Sendable {
         self.gesture = gesture
         self.x = x
         self.y = y
+        self.toX = toX
+        self.toY = toY
         self.imageThreshold = imageThreshold
         self.aspectRatioTolerance = aspectRatioTolerance
         self.scale = scale
@@ -209,8 +215,8 @@ public struct FlowStep: Codable, Sendable {
 
     /// `duration` が `maxGestureSeconds`(省略時は既定 `BridgeAPI.defaultMaxGestureSeconds` = 10 秒)を
     /// 超えていないかの唯一の判定。**デバイスに触る前に呼ぶ唯一の場所**:
-    /// `StepExecutor.executeAction` の入口(FlowStep 経由の全アクション)と、FlowStep を経由しない
-    /// 座標コマンド(DSL の `tap(x:y:holdSeconds:)` / `swipePointToPoint`)の両方がここを呼ぶ。
+    /// `StepExecutor.executeAction` の入口(FlowStep 経由の全アクション。座標コマンドの
+    /// `tap(x:y:holdSeconds:)` / `swipePointToPoint` もここを通る)。
     /// `duration` が nil(通常タップ等、既定のまま)は検査しない。判定は `BridgeAPI` の2関数
     /// (唯一の定義元)を呼ぶだけ —— 「判定は1箇所に置く」を守るための薄いラッパー
     public static func gestureDurationViolation(action: String, duration: Double?,

@@ -146,7 +146,7 @@ public enum ScenarioCodeGen {
         if let action = step.action {
             switch action {
             case "select":
-                return "select(\(literal(selector))\(timeoutArg(step)))"
+                return "select(\(literal(selector))\(timeoutArg(step))\(searchScrollArgs(step)))"
             case "tap":
                 let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
                 // **holdSeconds が無いのに maxGestureSeconds だけ出さない**(意味を持たない —
@@ -158,14 +158,16 @@ public enum ScenarioCodeGen {
                 if step.locator == nil, let x = step.x, let y = step.y {
                     return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold)\(cap))"
                 }
-                return "tap(\(literal(selector))\(hold)\(cap))"
+                let inference = step.containerInference == false ? ", containerInference: false" : ""
+                return "tap(\(literal(selector))\(hold)\(cap)\(inference)\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "type":
                 let replaceArg = step.replace == true ? ", replace: true" : ""
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。
                 if step.locator == nil {
                     return "type(\(literal(step.text ?? ""))\(replaceArg))"
                 }
-                return "type(\(literal(selector)), \(literal(step.text ?? ""))\(replaceArg))"
+                return "type(\(literal(selector)), \(literal(step.text ?? ""))\(replaceArg)"
+                    + "\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
             case "rotateTo":
@@ -193,9 +195,10 @@ public enum ScenarioCodeGen {
                 if step.locator == nil {
                     return "clearInput()"
                 }
-                return "clearInput(\(literal(selector)))"
+                return "clearInput(\(literal(selector))\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "doubleTap":
-                return step.locator == nil ? "doubleTap()" : "doubleTap(\(literal(selector)))"
+                return step.locator == nil ? "doubleTap()"
+                    : "doubleTap(\(literal(selector))\(actionWaitArg(step)))"
             case "gesture":
                 guard let fingers = step.gesture, !fingers.isEmpty else { return nil }
                 // 比率は 1/1000 に丸める(MCP の下書きは絶対座標を割り戻すので桁が暴れる)。
@@ -220,6 +223,9 @@ public enum ScenarioCodeGen {
                 if let cap = step.maxGestureSeconds {
                     args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                 }
+                if step.locator != nil, let wait = step.timeout {
+                    args.append("waitSeconds: \(FTSeconds.format(wait))")
+                }
                 let head = args.isEmpty ? "gesture" : "gesture(\(args.joined(separator: ", ")))"
                 return "\(head) { \(body) }"
             case "pinchOut", "pinchIn":
@@ -236,6 +242,9 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if step.locator != nil, let wait = step.timeout {
+                    args.append("waitSeconds: \(FTSeconds.format(wait))")
+                }
                 return "\(action)(\(args.joined(separator: ", ")))"
             case "swipeBy":
                 var args: [String] = step.locator == nil ? [] : [literal(selector)]
@@ -247,6 +256,9 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if step.locator != nil, let wait = step.timeout {
+                    args.append("waitSeconds: \(FTSeconds.format(wait))")
+                }
                 return "swipeBy(\(args.joined(separator: ", ")))"
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
@@ -257,7 +269,21 @@ public enum ScenarioCodeGen {
                         args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
                     }
                 }
+                if let wait = step.timeout {
+                    args.append("waitSeconds: \(FTSeconds.format(wait))")
+                }
                 return "swipeElementToElement(\(args.joined(separator: ", ")))"
+            case "swipePointToPoint":
+                guard let x = step.x, let y = step.y, let toX = step.toX, let toY = step.toY else { return nil }
+                var args = ["startX: \(FTSeconds.format(x))", "startY: \(FTSeconds.format(y))",
+                            "endX: \(FTSeconds.format(toX))", "endY: \(FTSeconds.format(toY))"]
+                if let duration = step.duration {
+                    args.append("durationSeconds: \(FTSeconds.format(duration))")
+                    if let cap = step.maxGestureSeconds {
+                        args.append("maxGestureSeconds: \(FTSeconds.format(cap))")
+                    }
+                }
+                return "swipePointToPoint(\(args.joined(separator: ", ")))"
             case "scroll":
                 // ft_batch の scrollDown/Up/Left/Right と ft_swipe(scrollFrame 指定)の下書き用。
                 // **これが無いと「通ったバッチは1:1でシナリオ行になる」という ft_batch の契約が破れる**
@@ -316,7 +342,7 @@ public enum ScenarioCodeGen {
                     + "\(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
             case "notExists":
                 // `exist` 側(exists ケース)はまだ scroll 再構成に未対応(別課題。exists は触らない)
-                return "notExist(\(literal(selector))\(timeoutArg(step))\(notExistScrollArgs(step)))"
+                return "notExist(\(literal(selector))\(timeoutArg(step))\(searchScrollArgs(step)))"
             case "enabled":
                 return "select(\(literal(selector))\(timeoutArg(step))).enabledIsTrue(\(bareTimeoutArg(step)))"
             case "disabled":
@@ -336,10 +362,11 @@ public enum ScenarioCodeGen {
         return nil
     }
 
-    /// `notExist(scroll:)` 生成用: FlowStep.direction(**ジェスチャ**)を FTScrollDirection へ逆写像し、
-    /// `scroll:`/`maxSwipes:` 引数を再構成する。scrollTo ケースの写像と同じ規則だが、notExist の
-    /// scroll 既定は「探索しない」(nil)なので scrollTo と違い `.down` を特別扱いしない
-    private static func notExistScrollArgs(_ step: FlowStep) -> String {
+    /// `scroll:` を取るコマンド(tap / type / clearInput / select / notExist)の探索引数を再構成する:
+    /// FlowStep.direction(**ジェスチャ**)を FTScrollDirection へ逆写像し、`scroll:`/`maxSwipes:` を出す。
+    /// scrollTo ケースの写像と同じ規則だが、これらの scroll 既定は「探索しない」(nil)なので
+    /// scrollTo と違い `.down` を特別扱いしない
+    private static func searchScrollArgs(_ step: FlowStep) -> String {
         guard let swipe = step.direction.flatMap(FTSwipeDirection.init(rawValue:)),
               let scroll = FTScrollDirection.allCases.first(where: { $0.swipe == swipe }) else {
             return ""
@@ -378,6 +405,12 @@ public enum ScenarioCodeGen {
     static func selectorText(for step: FlowStep) -> String {
         guard let primary = step.locator else { return "" }
         return FTSelector.serialize(primary: primary, fallbacks: step.fallbacks ?? [])
+    }
+
+    /// 操作系(tap / type / clearInput / doubleTap)の `waitSeconds:`。**検証系と違い既定は 5 秒ではない**
+    /// (省略 = 約 0.7 秒の再試行)ので、値があれば必ず出す —— timeoutArg で 5 を省くと別の意味に化ける
+    static func actionWaitArg(_ step: FlowStep) -> String {
+        step.timeout.map { ", waitSeconds: \(FTSeconds.format($0))" } ?? ""
     }
 
     static func timeoutArg(_ step: FlowStep) -> String {

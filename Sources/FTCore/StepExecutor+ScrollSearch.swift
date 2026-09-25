@@ -108,6 +108,9 @@ extension StepExecutor {
         /// 具体名で言うための材料。`suggestedScrollFrame` とは別 —— あちらは reverseSweeps が
         /// 実際に拾い直した容器、こちらは探索を試す前から木にあった宣言候補)
         var directionMatchedScrollFrameCandidate: String?
+        /// 見つけた要素(found のときだけ)。scrollTo が「掴んだ要素」として返す
+        /// (無いと DSL の `scrollTo` が lastElement を空で上書きしていた)
+        var element: ElementInfo? = nil
     }
 
     /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
@@ -625,7 +628,8 @@ extension StepExecutor {
                     return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
                                               hintJumps: hintJumps, settleCapped: settleCapped,
                                               swipes: swipes,
-                                              maxTruncatedDuringSearch: truncatedDuringSearch)
+                                              maxTruncatedDuringSearch: truncatedDuringSearch,
+                                              element: element)
                 }
             }
             if attempt < maxSwipes {

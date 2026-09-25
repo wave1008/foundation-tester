@@ -70,6 +70,11 @@ public enum ArgumentBounds {
         "fromY": .unbounded,
         "toX": .unbounded,
         "toY": .unbounded,
+        // ft_batch の swipePointToPoint(座標は x / y と同じ扱い)
+        "startX": .unbounded,
+        "startY": .unbounded,
+        "endX": .unbounded,
+        "endY": .unbounded,
         // 負が正しい向きを表す(反対側へ動かす)ので縛らない
         "dxRatio": .unbounded,
         "dyRatio": .unbounded,

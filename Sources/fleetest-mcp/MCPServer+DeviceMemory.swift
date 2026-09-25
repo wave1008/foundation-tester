@@ -24,6 +24,17 @@ extension MCPServer {
         return props["port"] != nil || props["serial"] != nil
     }
 
+    /// udid → port の畳み込み(ブリッジ走査)を撃つツールか。**スキーマに `udid` を宣言したツールだけ** ——
+    /// `ft_logs` は port / serial を取るが udid を取らない(ブリッジを通らずに読むのが目的なので、
+    /// 走査で落ちると死んだブリッジの後に何も読めない)
+    static func toolFoldsUDID(_ tool: String) -> Bool {
+        let tool = canonicalToolName(tool)
+        guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let props = schema["properties"] as? [String: Any] else { return false }
+        return props["udid"] != nil
+    }
+
     /// **省略呼び出しへ記憶した宛先を注入する**(dispatch 入口。call() 参照)。
     /// 条件は明示ターゲット述語(argsGaveIOSTarget/argsGaveAndroidTarget)と1本化してある ——
     /// ここだけ udid:"" を「指定あり」と誤読すると、記憶の適用だけが抑止されて記録は素通しする

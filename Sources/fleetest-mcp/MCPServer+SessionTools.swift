@@ -205,8 +205,10 @@ extension MCPServer {
             platform: launchDriver is AndroidDriver ? "android" : "ios",
             summary: resumes ? "activate \(bundleID) (resumed, not relaunched)"
                               : "launch \(bundleID)"), args: args)
-        return text(resumes ? "Activated: \(bundleID) (resumed without relaunching)"
+        // snapshotAfter の読みは system alert の予約(上)を消費するので、立てた後に読む
+        return text((resumes ? "Activated: \(bundleID) (resumed without relaunching)"
                              : "Launched: \(bundleID)")
+            + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
     }
 
     func ftOpenUrl(_ args: [String: Any]) async throws -> [[String: Any]] {

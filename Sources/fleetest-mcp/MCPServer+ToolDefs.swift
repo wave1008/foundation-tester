@@ -217,7 +217,9 @@ extension MCPServer {
         ], required: ["packagePath"]),
         tool("ft_launch", "Launch the app (terminating it first if it is already running). The app "
             + "itself may restore its previous UI state on launch — system apps such as Maps often "
-            + "do — so do not assume the first screen: check with ft_snapshot. "
+            + "do — so do not assume the first screen: check with ft_snapshot, or pass snapshotAfter (with "
+            + "waitFor for an element only the expected first screen has — the tree right after launch can "
+            + "still be the splash). "
             + "iOS: com.apple.springboard attaches to the home screen instead, without launching "
             + "anything — that is how you read the home screen or a system dialog. "
             + "resume: true brings it back to front WITHOUT terminating it first — its state is "
@@ -226,6 +228,13 @@ extension MCPServer {
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
             "resume": ["type": "boolean", "description": "Bring the app to front without "
                 + "terminating it — its state is kept. xcuitest engine or Android only"],
+            // waitForChange は置かない: 起動前の木(前のアプリか、同じ画面へ戻る再起動)と比べても
+            // 「着地した」とは言えず、同じ画面へ戻る再起動では締め切りまで待つだけになる
+            "snapshotAfter": snapshotAfterProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ], required: ["bundleId"]),
         tool("ft_open_url", "Deliver a URL (deep link) to the app WITHOUT restarting it — unlike "
             + "ft_launch, the app keeps running and whatever it navigates to is pushed on top of the "
@@ -292,10 +301,14 @@ extension MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
-        tool("ft_swipe", "Swipe one screenful (up = scroll down the content). To reach a specific element use "
+        // **引数名が「指の向き」と言い切っていること**: 隣の ft_scroll_to の `direction` はコンテンツの向きで
+        // 意味が逆。説明を遅延ロードするクライアントは名前だけで書くので、同じ名前にしない
+        tool("ft_swipe", "Swipe one screenful by finger direction (finger: up = scroll down the content). "
+            + "To reach a specific element use "
             + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
-            "direction": ["type": "string", "enum": ["up", "down", "left", "right"],
-                          "description": "Finger direction (same vocabulary as the DSL's swipe)"],
+            "finger": ["type": "string", "enum": ["up", "down", "left", "right"],
+                       "description": "Direction the finger moves (same vocabulary as the DSL's swipe). "
+                           + "The opposite of ft_scroll_to's direction, which names where the content goes"],
             "scrollFrame": ["type": ["string", "integer"],
                             "description": "Swipe inside this scrolling container only, instead of the "
                                 + "whole screen — selector of the container (e.g. #list_rows), or its "
@@ -318,7 +331,7 @@ extension MCPServer {
             "timeout": snapshotAfterTimeoutProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["direction"]),
+        ], required: ["finger"]),
         tool("ft_scroll_to", "Scroll until a selector is on screen, then return the fresh element list. "
             + "Use this instead of repeating ft_swipe + ft_snapshot: it runs the same search the DSL's "
             + "scrollTo does (settling, container-sized steps, overshoot recovery) and the refs it returns "
@@ -405,6 +418,12 @@ extension MCPServer {
         ], required: ["bundleId"]),
         tool("ft_clear_input", "Empty an input field (ft_type appends, so clear first to replace)", [
             "ref": ["type": "integer", "description": "Reference number of the field (default: the focused one)"],
+            "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "timeout": snapshotAfterTimeoutProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
         ]),
         tool("ft_draft_scenario", "Turn the operations you just performed with ft_* into a Swift "
             + "scenario draft and return it as text (it writes no file — place it yourself under "

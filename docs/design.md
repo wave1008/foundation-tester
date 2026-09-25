@@ -1497,7 +1497,9 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   無いラベルを受ける。`BatchLineParserTests.testWaitCapLabelFollowsTheDSL` が縛る)
 - **引数の並びは「対象 → コマンド固有 → `waitSeconds:` → `scroll:` → `maxSwipes:`」**(ユーザー決定 2026-09-19)。
   `exist(sel, requireVisible:, waitSeconds:, scroll:, maxSwipes:)` / `textIs(expected, requireVisible:, strict:, waitSeconds:)` /
-  `checkIsON(prefer:, waitSeconds:)` / `tap(sel, holdSeconds:, waitSeconds:, scroll:, maxSwipes:)`。以前は検証系だけ
+  `checkIsON(prefer:, waitSeconds:)` / `tap(sel, holdSeconds:, maxGestureSeconds:, containerInference:, waitSeconds:, scroll:, maxSwipes:)` /
+  `scrollTo(sel, direction:, scrollFrame:, startMarginRatio:, endMarginRatio:, containerInference:, maxSwipes:)`
+  (`containerInference:` もコマンド固有の引数。2026-09-25 までは末尾にあった)。以前は検証系だけ
   `waitSeconds` が固有の引数より前で、`checkIsON` とも操作系とも逆だった
 - tap/type/select は `waitSeconds:`(ロケータ解決の再試行待ち上限秒。0=リトライなし。
   省略時は tap/type が約0.7秒・select は `defaultTimeout`)を取る。
@@ -3503,6 +3505,12 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     各ビルダに「実際に読むキー」を宣言させ(`BatchStepBuilder.keys`)、シグネチャには載っているのに
     ビルダが対応していないラベル(例: `tap` の `containerInference:`)は名指しで拒否し、シグネチャに
     すら無いラベルは別の文言(`ft_dsl_commands` へ誘導)で拒否する。
+    **探索の `scroll:` / `maxSwipes:` は `tap` / `type` / `clearInput` / `select` が受ける**(2026-09-25。
+    DSL の「スクロールの指定は `scroll:` だけ」に揃えた。バッチには `withScroll*` の文脈が無いので
+    `.noScroll` は省略と同じ。`maxSwipes:` だけ・セレクタ無しの `scroll:` は効かないので拒否する)。
+    `swipePointToPoint` も1手として受ける(DSL と同じ StepExecutor のアクション = 1:1 で書き戻せる)。
+    書き戻し(`ScenarioCodeGen`)は操作系の `waitSeconds:` を**値があれば必ず**出す —— 検証系と違い
+    省略時は 5 秒ではなく約 0.7 秒なので、5 を省くと別の意味に化ける
     **ref は1手目でだけ書ける**(2026-08-12。それ以前は全面禁止だった) —— 禁止の理由
     「ref はそれを撮ったスナップショットに対してだけ有効で、各手が木を変えるので後続の手の ref は
     黙って別の要素に当たる」は2手目以降にしか当てはまらない。**1手目はまだどの手も画面を

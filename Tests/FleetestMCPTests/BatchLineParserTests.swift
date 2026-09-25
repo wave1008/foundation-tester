@@ -360,6 +360,15 @@ final class BatchLineParserTests: XCTestCase {
         return [
             FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA)),
             FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA), duration: 1.5),
+            // 探索(scroll: .down = 指は up)と操作系の waitSeconds(5 でも省かない = 操作系の既定は 5 ではない)
+            FlowStep(action: "tap", locator: selA.primary, fallbacks: fallbacks(selA), direction: "up",
+                     timeout: 5, maxSwipes: 5),
+            FlowStep(action: "select", locator: selA.primary, fallbacks: fallbacks(selA), direction: "down",
+                     maxSwipes: FlowStep.defaultMaxSwipes),
+            FlowStep(action: "type", locator: selA.primary, fallbacks: fallbacks(selA), text: "hello",
+                     direction: "left", timeout: 2, maxSwipes: 3),
+            FlowStep(action: "clearInput", locator: selA.primary, fallbacks: fallbacks(selA), timeout: 1.5),
+            FlowStep(action: "swipePointToPoint", duration: 0.3, x: 200, y: 550, toX: 200, toY: 250),
             FlowStep(action: "select", locator: selA.primary, fallbacks: fallbacks(selA)),
             FlowStep(action: "type", locator: selA.primary, fallbacks: fallbacks(selA), text: "hello"),
             FlowStep(action: "type", locator: nil, text: "hello"),  // フォーカス中の要素へ(セレクタ省略)

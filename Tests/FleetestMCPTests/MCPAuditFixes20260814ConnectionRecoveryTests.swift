@@ -132,7 +132,7 @@ final class MCPAuditFixes20260814ConnectionRecoveryTests: XCTestCase {
 
     /// `forgetDeviceState` は engineKey で引く記憶を全部捨てる契約(DeviceStateInvalidationTests
     /// 参照)。新設した `connectedAndroidSerials` を足し忘れていないかを直接確かめる
-    /// (`testEveryEngineKeyedMemoIsAccountedForHere` の汎用走査と、この具体的な instance
+    /// (`testNoEngineKeyedMemoLivesOutsideTheSession` の構造走査と、この具体的な instance
     /// レベルの確認を両方持つ)
     func testForgetDeviceStatePurgesTheAndroidSerialRecord() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },

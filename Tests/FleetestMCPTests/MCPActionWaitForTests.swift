@@ -107,7 +107,7 @@ final class MCPActionWaitForTests: XCTestCase {
     /// 代表として ft_swipe(従来は snapshotAfter が無く、毎回 ft_snapshot の1往復を払っていた)
     func testFtSwipeSupportsSnapshotAfter() async throws {
         let text = bodyText(try await server.call(
-            tool: "ft_swipe", args: ["direction": "up", "snapshotAfter": true]))
+            tool: "ft_swipe", args: ["finger": "up", "snapshotAfter": true]))
         let screenLines = text.components(separatedBy: "\n").filter { $0.hasPrefix("screen:") }
         XCTAssertEqual(screenLines.count, 1, text)
         // 木を返したのに「撮り直せ」と言わない(snapshotAfter 有りでは stale ヒントを畳む)

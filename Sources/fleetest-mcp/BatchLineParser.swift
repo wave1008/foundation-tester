@@ -468,17 +468,19 @@ enum BatchStepResolver {
     }
 
     // このバッチ辞書語彙で使われている全キーの型。4集合はどれとも重ならない
-    // (containerInference/requireVisible/scroll は Bool 型だが未対応のため boolKeys に無い)
+    // (containerInference/requireVisible は未対応のため boolKeys に無い。scroll は `.down` 等の dotIdent)
     /// ビルダが宣言するキーは必ずこの4表のどれか1つに載る(載せ忘れると、その引数を書いた行が
     /// 「does not accept」で弾かれる。`BatchKeyTypeCoverageTests` が漏れを検出する)
     static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
-                                          "orientation"]
+                                          "orientation", "scroll"]
     static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]
     static let doubleKeys: Set<String> = [
         // x/y は座標タップ(`tap x: 120 y: 640`)。単位は snapshot の screen と同じ
         // (iOS = pt / Android = px)なので整数で書かれることが多いが、型は Double で揃える
         "holdSeconds", "waitSeconds", "scale", "durationSeconds", "maxGestureSeconds",
         "dxRatio", "dyRatio", "x", "y",
+        // swipePointToPoint の2点(単位は x / y と同じ)
+        "startX", "startY", "endX", "endY",
     ]
     static let boolKeys: Set<String> = ["replace"]
 

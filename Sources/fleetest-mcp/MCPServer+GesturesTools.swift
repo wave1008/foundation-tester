@@ -10,8 +10,8 @@ import FTCore
 extension MCPServer {
 
     func ftSwipe(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
-            throw MCPError("direction must be one of up/down/left/right")
+        guard let direction = FTSwipeDirection(rawValue: args["finger"] as? String ?? "") else {
+            throw MCPError("finger must be one of up/down/left/right (the direction the finger moves)")
         }
         try Self.validateScrollFrameArg(args)
         let swipeDriver = try await driver(args)
@@ -375,13 +375,22 @@ extension MCPServer {
         }
         let fromX = from.x
         let fromY = from.y
+        let durationSeconds = try Self.doubleArgument(args, "durationSeconds") ?? FlowStep.defaultSwipeDurationSeconds
         try await dragDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
-                                  pressSeconds: 0.05,
-                                  durationSeconds: try Self.doubleArgument(args, "durationSeconds") ?? 1.5)
-        // DSL に drag の対応コマンドが無いので、下書きには TODO 行として残す
-        // (座標タップと同じ扱い。黙って消すと探索の再現が途中から辻褄が合わなくなる)
-        recordInteraction(action: "drag", resolvedRef: nil, args: args,
-                          coordinate: (fromX, fromY))
+                                  pressSeconds: 0.05, durationSeconds: durationSeconds)
+        // 下書きには DSL の `swipePointToPoint` として残す(座標タップと同じ扱い = 実行できる行 +
+        // セレクタへ置き換えるべきことを行末コメントに)。fromRef で始めても終点は座標なので同じ形
+        lastTapTargets[Self.engineKey(args)] = nil
+        var dragStep = FlowStep(action: "swipePointToPoint",
+                                duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
+                                    ? nil : durationSeconds,
+                                maxGestureSeconds: try Self.doubleArgument(args, "maxGestureSeconds"),
+                                x: fromX, y: fromY, toX: toX, toY: toY)
+        dragStep.note = "coordinates — replace with a selector before keeping this;"
+            + " a layout change makes it hit something else"
+        recordAction(InteractionLog.Entry(step: dragStep, unresolved: nil,
+                                          summary: "drag (\(fromX), \(fromY)) → (\(toX), \(toY))"),
+                     args: args)
         // **無検証であることを言う**(swipe / pinch は言っているのに drag / press だけ
         // 「done」で言い切っていた。同じ無検証なのに信頼度が違って見える)
         return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) sent.\(dragSelector)"

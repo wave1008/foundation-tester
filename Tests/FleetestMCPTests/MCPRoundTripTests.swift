@@ -189,12 +189,14 @@ final class MCPRoundTripTests: XCTestCase {
         XCTAssertTrue(draft.contains("pinchOut(\"#login_btn\", scale: 3)"), draft)
     }
 
-    /// drag は DSL に対応コマンドが無いが、探索の再現性のため TODO 行として下書きに残る
-    func testDragIsRecordedAsATodoLine() async throws {
+    /// drag は DSL の swipePointToPoint として下書きに残る(実行できる行 + セレクタへ置き換えよの注記)
+    func testDragIsRecordedAsSwipePointToPoint() async throws {
         _ = try await server.call(tool: "ft_drag",
-                                  args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0])
+                                  args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0, "durationSeconds": 0.3])
         let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
-        XCTAssertTrue(draft.contains("drag at (10.0, 20.0)"), draft)
+        XCTAssertTrue(draft.contains(
+            "swipePointToPoint(startX: 10, startY: 20, endX: 10, endY: -80, durationSeconds: 0.3)"), draft)
+        XCTAssertTrue(draft.contains("replace with a selector"), draft)
     }
 
     /// ft_drag もスキーマに waitFor を持つ以上、snapshotAfter 無しで渡されたら
@@ -478,7 +480,7 @@ final class MCPDraftAndBulkTests: XCTestCase {
     /// F-3: 既定は「直近の ft_launch 以降」/ all: true で全体
     func testDraftScopeDefaultsToTheLastLaunch() async throws {
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.first.app"])
-        _ = try await server.call(tool: "ft_swipe", args: ["direction": "up"])
+        _ = try await server.call(tool: "ft_swipe", args: ["finger": "up"])
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.second.app"])
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_tap", args: ["ref": 1])
@@ -530,7 +532,7 @@ final class MCPVersionGateTests: XCTestCase {
         for tool in ["ft_snapshot", "ft_tap", "ft_type", "ft_swipe", "ft_launch", "ft_screenshot"] {
             do {
                 _ = try await server.call(tool: tool, args: ["ref": 1, "text": "a",
-                                                            "direction": "up",
+                                                            "finger": "up",
                                                             "bundleId": "com.example.app"])
                 XCTFail("\(tool) が版ズレのまま通った")
             } catch {

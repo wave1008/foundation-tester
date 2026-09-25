@@ -125,53 +125,55 @@ final class DeviceStateInvalidationTests: XCTestCase {
 
     // MARK: - 同型の再発を落とす(足し忘れの検出)
 
-    /// **engineKey で引く記憶を新設して forgetDeviceState へ足し忘れると落ちる**。
-    /// この後始末は網羅が本体で、1つ漏れると「ほとんど捨てたが1つだけ前の機のまま」という
-    /// 最も分かりにくい形になるので、人の注意力ではなくソース走査で守る。
-    /// `nextRefBase` だけは**意図して残す**ので、ここに理由付きで明記する
-    func testEveryEngineKeyedMemoIsAccountedForHere() throws {
-        // 空でよい: `nextRefBase` は 2026-08-13 にセッション共通のスカラーへ変えたので、
-        // engineKey で引く記憶ではなくなり、この走査(`[String: …]` 宣言)には掛からない
-        let deliberatelyKept: [String] = []
+    /// **engineKey で引く記憶を MCPServer に並列で持たせると落ちる**。記憶は全部 `DeviceSession` の欄で、
+    /// `forgetDeviceState` はセッションを丸ごと捨てる —— 網羅はこの構造だけが担保している。
+    /// 並列の `[String: …]` / `Set<String>` を戻すと、消し忘れが再び人の注意力頼みになる
+    /// (束ねる前は `Set<String>` の2つがこの走査の外にあり、実際に消し忘れていた)。
+    /// セッションを跨いで持つと決めた記憶だけを理由付きで通す
+    func testNoEngineKeyedMemoLivesOutsideTheSession() throws {
+        let sessionWide: [String: String] = [
+            "explainedNotes": "注記の鍵。説明の中身は接続先に依らないので機ごとに割らない",
+            "seenExplicitAndroidSerials": "宛先の延べ集合(値が serial)。キーは engineKey ではない",
+        ]
+        let declarations = try Self.serverDeclarations()
+        var parallel: [String] = []
+        for line in declarations.split(separator: "\n") {
+            guard line.hasPrefix("    var "),
+                  line.contains(": [String: ") || line.contains(": Set<String>") else { continue }
+            let name = String(line.dropFirst("    var ".count).prefix { $0 != ":" })
+            if name == "sessions" || sessionWide[name] != nil { continue }
+            parallel.append(name)
+        }
+        XCTAssertEqual(parallel, [],
+                       "engineKey で引く記憶が DeviceSession の外にある: \(parallel.joined(separator: ", "))。"
+                       + "DeviceSession へ欄を足し、MCPServer には SessionMap / SessionFlags の窓だけを置く")
+    }
 
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let declarations = try String(
-            contentsOf: root.appendingPathComponent("Sources/fleetest-mcp/MCPServer.swift"),
-            encoding: .utf8)
+    /// 後始末がセッションを丸ごと捨てていること(欄ごとに消す形へ戻ると網羅が崩れる)
+    func testForgetDeviceStateDropsTheWholeSession() throws {
         let body = try MCPServerSourceText.combined()
         guard let purge = body.range(of: "func forgetDeviceState(_ key: String) {"),
               let end = body.range(of: "\n    }", range: purge.upperBound..<body.endIndex) else {
             return XCTFail("forgetDeviceState が見つからない — 改名したらこのテストも直す")
         }
-        let purgeBody = String(body[purge.upperBound..<end.lowerBound])
-
-        var missing: [String] = []
-        for line in declarations.split(separator: "\n") {
-            // engineKey で引く記憶はすべて `var <name>: [String: …]` の形
-            guard line.hasPrefix("    var "), line.contains(": [String: ") else { continue }
-            let name = String(line.dropFirst("    var ".count).prefix { $0 != ":" })
-            guard !deliberatelyKept.contains(name),
-                  !purgeBody.contains("\(name)[key] = nil") else { continue }
-            missing.append(name)
-        }
-        XCTAssertEqual(missing, [],
-                       "engineKey で引く記憶が forgetDeviceState で捨てられていない: "
-                       + "\(missing.joined(separator: ", "))。"
-                       + "キーが別の機を指し始めたときに前の機の値が残り、操作が別物へ届く")
+        let purgeBody = body[purge.upperBound..<end.lowerBound]
+        XCTAssertTrue(purgeBody.contains("sessions[key] = nil"), String(purgeBody))
     }
 
     /// 走査そのものが効いていることの確認(常に空を返す走査を「漏れ0」と読まないため)
     func testTheScanActuallySeesTheDeclarations() throws {
+        let found = try Self.serverDeclarations().split(separator: "\n")
+            .filter { $0.hasPrefix("    var ") && ($0.contains(": [String: ") || $0.contains(": Set<String>")) }
+        XCTAssertTrue(found.contains { $0.contains("var sessions: [String: DeviceSession]") },
+                      "宣言の書式が変わって走査が空振りしている(漏れを検出できない)")
+    }
+
+    private static func serverDeclarations() throws -> String {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let declarations = try String(
+        return try String(
             contentsOf: root.appendingPathComponent("Sources/fleetest-mcp/MCPServer.swift"),
             encoding: .utf8)
-        let found = declarations.split(separator: "\n")
-            .filter { $0.hasPrefix("    var ") && $0.contains(": [String: ") }
-        XCTAssertGreaterThan(found.count, 10,
-                             "宣言の書式が変わって走査が空振りしている(漏れを検出できない)")
     }
 
     /// 別のキーの状態は巻き込まない(1台の後始末が他の機の探索を壊さない)

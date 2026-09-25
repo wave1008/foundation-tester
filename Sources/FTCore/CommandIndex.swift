@@ -91,7 +91,7 @@ public enum DSLCommandIndex {
 
         // MARK: operation
         .init("tap", "operation",
-              "tap(selector, holdSeconds:, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:, containerInference:)",
+              "tap(selector, holdSeconds:, maxGestureSeconds:, containerInference:, waitSeconds:, scroll:, maxSwipes:)",
               // **座標形はオーバーロードなので別項目にできない**(索引は関数名で一意。
               // signature 文字列は BatchArgSpecTable が位置引数名を導出するのにも使うので触らない)
               "Taps an element. holdSeconds greater than 0 makes it a long press, capped at 10s by "
@@ -133,7 +133,7 @@ public enum DSLCommandIndex {
               "Rotates the app UI to that orientation. Reverted automatically to "
                   + "the original orientation at the end of the scenario."),
         .init("swipePointToPoint", "operation",
-              "swipePointToPoint(startX:startY:endX:endY:durationSeconds:maxGestureSeconds:)",
+              "swipePointToPoint(startX:, startY:, endX:, endY:, durationSeconds:, maxGestureSeconds:)",
               "Drags between two coordinates (iOS = pt / Android = px). durationSeconds is capped at "
                   + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("swipeBy", "operation",
@@ -169,7 +169,7 @@ public enum DSLCommandIndex {
         // MARK: scroll
         .init("scrollTo", "scroll",
               "scrollTo(selector, direction:, scrollFrame:, startMarginRatio:, endMarginRatio:,"
-                  + " maxSwipes:, containerInference:)",
+                  + " containerInference:, maxSwipes:)",
               "Scrolls until the element is found. Does not tap it."),
         .init("scrollDown", "scroll",
               "scrollDown(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:)",
