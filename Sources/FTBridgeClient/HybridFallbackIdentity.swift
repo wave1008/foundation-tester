@@ -1,4 +1,4 @@
-// hybrid(in-app + XCUITest)が握る「主とは別ポート」の本人確認(G6・2026-09-25)。
+// hybrid(in-app + XCUITest)が握る「主とは別ポート」の本人確認(maintainer-notes §51.2)。
 //
 // キャッシュ/使い回すドライバが1本の port だけを確かめて安全だと思っていても、hybrid の合成
 // (HybridFallbackDriver / HybridDriverComposition)は home/appSwitcher/drag/座標 press/gesture/
@@ -8,7 +8,9 @@
 //
 // 判定そのものは FTCore.BridgeIdentityCheck.hybridFallbackMismatch の1箇所(呼び手ごとに
 // 文言は持たない)。ここは probe(status 取得)の配線だけを共有する ——
-// 呼び手は MCP(fleetest-mcp)とライブ操作(api live serve)の2つ。
+// 呼び手は MCP(fleetest-mcp)とライブ操作(api live serve)の2つ。予備ポートだけでなく
+// 主ポート(エンジンが同じ台の別エンジンに化けた形。§51.10)の確認にも使う。
+// 実機のランナーは udid を名乗らないので、status は statusForIdentityCheck で台帳から補ってから判定する。
 
 import FTCore
 import Foundation

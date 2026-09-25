@@ -190,7 +190,7 @@ final class StaleLedgerSweepTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let stateDir = root.appendingPathComponent(".fleetest")
         let port: UInt16 = 8198
-        BridgeReadyLedger.mark(stateDir: stateDir, port: port)
+        BridgeReadyLedger.mark(stateDir: stateDir, port: port, pid: 4242)
         // .pid も .inapp も無い(実機ランナー不在と同じ形)ことを保証するため endpoint/device と
         // 同じダミー台帳を1つ添える(ports の走査対象に入れる。この2つ自体は今回の主張と無関係)
         try "127.0.0.1".write(to: stateDir.appendingPathComponent("bridge-\(port).endpoint"),

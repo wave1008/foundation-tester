@@ -89,7 +89,7 @@ final class RunInterruptStateTests: XCTestCase {
 
     /// 戻すと落ちる根拠: 供給フェーズ中(オーケストレータがまだ存在しない間)に中断が届いた場合、
     /// あとから合流した subscriber がその場で追いつけないと、オーケストレータが中断を一生
-    /// 知らないまま全シナリオを普通に実行してしまう(G10: リモートの供給フェーズ中の SIGHUP が
+    /// 知らないまま全シナリオを普通に実行してしまう(maintainer-notes §51.4: リモートの供給フェーズ中の SIGHUP が
     /// この形で run.json を尻切れのまま残した)
     func testAttachLateSubscriberFiresImmediatelyIfAlreadyStopped() {
         let state = RunInterruptState(recorder: nil)

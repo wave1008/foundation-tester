@@ -327,7 +327,7 @@ final class MCPServer {
     /// hybrid(in-app + XCUITest)キャッシュ命中の engineKey ごとの XCUITest フォールバックポート。
     /// **`connectedPorts` とは別枠**(あちらは主(in-app)のポート): `HybridFallbackDriver` の
     /// fallback は home/drag/座標 press/gesture 等をこちらへ回すので、建て直しで別デバイスへ
-    /// 移っていないかは主の udid だけでは検知できない(G6・2026-09-25。hybridFallbackDrifted 参照)
+    /// 移っていないかは主の udid だけでは検知できない(maintainer-notes §51.2。hybridFallbackDrifted 参照)
     var hybridFallbackPorts: [String: UInt16] = [:]
     /// 掴んでいる Android ブリッジの serial(engineKey ごと)。iOS の `connectedPorts` と同じ理由で
     /// `connections` の表示文字列からは読み解かない —— 直接指定は "serial <serial>"、profile

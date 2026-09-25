@@ -54,7 +54,7 @@ public enum ExploreDriverResolver {
         /// engine == "hybrid" のときの XCUITest フォールバックポート(それ以外は nil)。
         /// **呼び手がこのポートの生死を独立に見張れるように運ぶ** —— HybridFallbackDriver は
         /// このポートへ home/drag/座標 press/gesture 等を回すが、in-app 側(port)の同一性を
-        /// 確かめても、建て直しで別デバイスへ移ったこちらのポートは検知できない(G6)
+        /// 確かめても、建て直しで別デバイスへ移ったこちらのポートは検知できない(maintainer-notes §51.2)
         public let xcuiPort: UInt16?
 
         public init(driver: AppDriver, engine: String, udid: String?, xcuiPort: UInt16? = nil) {

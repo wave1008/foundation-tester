@@ -4,7 +4,7 @@
 // 名前だけで引くと最初の一致 = 手元の台に当たるので、**M1Max のタイルから停止したのに
 // 手元のシミュレータが止まった**(しかも ok:true で「成功」に見えた)。
 //
-// 実害(2026-09-25・G13): `findDevice` は (machine, name) を正しく解決しても、
+// 実害(maintainer-notes §51.9): `findDevice` は (machine, name) を正しく解決しても、
 // **呼び出し側(ApiDeviceOperation.run / ApiRestartDevicesCommand)は常にこの機械で
 // 操作を実行する**(ssh 越しに投げる経路を持たない)。解決した台が他の機械のものでも
 // `.found` を返していたため、`--device-machine M1Max` を渡すと M1Max の台の**設定**で
@@ -45,7 +45,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
             android: DeviceRosterList(devices: [spec("Pixel-01", host: "M1Max")]))
     }
 
-    /// **G13**: `--device-machine M1Max` を明示しても、その機械の台をこの機械で
+    /// **maintainer-notes §51.9**: `--device-machine M1Max` を明示しても、その機械の台をこの機械で
     /// 実行してはならない —— `.found` ではなく `.foreign` で断る(body は呼ばれない)
     func testHostGivenRefusesThatMachinesDeviceAsForeign() {
         guard case .foreign(let host, let spec, let platform) = ApiDeviceOperation.findDevice(
@@ -69,7 +69,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
         XCTAssertEqual(machines, ["local", "M1Max", "M1Ultra"], "どれなのか選べるよう候補を全部出す")
     }
 
-    /// **G13 同型**: `--device-machine` 省略でも、候補が1つしかなければ黙って `.found` にしていた。
+    /// **maintainer-notes §51.9 同型**: `--device-machine` 省略でも、候補が1つしかなければ黙って `.found` にしていた。
     /// その1つが他機の台なら(Android の AVD 名は機械を跨いで同名になりうる)、同名の手元の台を
     /// 他機の設定で操作してしまう —— 候補が1つでも手元でなければ `.foreign` で断る
     func testNoHostStillRefusesTheUniqueCandidateWhenItIsOnAnotherMachine() {
@@ -122,7 +122,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
         XCTAssertFalse(message.contains("--profile"))
     }
 
-    /// **G13**: 旧文言「pass --device-machine to say which one」は、この機械では実行できない
+    /// **maintainer-notes §51.9**: 旧文言「pass --device-machine to say which one」は、この機械では実行できない
     /// 機械名を渡すよう誘導していた。新しい文言は「local でこの Mac」と「他機は remote exec」の
     /// 両方を言う
     func testAmbiguousMachineMessageOffersLocalAndRemoteExecChoices() {

@@ -1013,7 +1013,9 @@ public struct BridgeLauncher {
                     keepSoftwareKeyboardShown()
                     // **ready になった事実を1回だけ記帳する**(BridgeReadyLedger)。「起動しきれない
                     // ランナーを止める」掃除がこの後を「一度も announce しなかった」と誤認しないため
-                    BridgeReadyLedger.mark(stateDir: stateDir, port: port)
+                    if let pid = Self.runnerPid(at: pidPath) {
+                        BridgeReadyLedger.mark(stateDir: stateDir, port: port, pid: pid)
+                    }
                     return status
                 }
             } catch {

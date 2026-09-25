@@ -861,7 +861,7 @@ enum ApiDeviceOperation {
     /// **呼び出し側は常にこの機械で body を実行する**(ssh 越しに投げる経路を持たない)ので、
     /// 見つかった台が他の機械のものなら `.found` を返さない —— 返すと Android は AVD 名が
     /// 機械を跨いで同じため、**同名の手元の台を他の機械の設定で操作してしまう**(iOS は UDID が
-    /// 違うので無害に失敗するだけだが、Android は黙って手元の台に当たる。G13)。明示の
+    /// 違うので無害に失敗するだけだが、Android は黙って手元の台に当たる。maintainer-notes §51.9)。明示の
     /// `deviceMachine` が他機を指すときも、省略して候補が1つだけ他機に居たときも同じく `.foreign`
     /// へ倒す(`.found` の条件は「解決した台の machine が手元」だけ)
     enum DeviceLookup {

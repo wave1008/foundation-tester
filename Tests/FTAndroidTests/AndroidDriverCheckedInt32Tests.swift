@@ -1,7 +1,7 @@
 // AndroidDriver.checkedInt32(_:field:) — 座標を Int32 へ畳む最後の砦(drag/press(x:y:))。
 // 呼び手側の座標は `.unbounded`(FTCore.ArgumentBounds)なので、桁外れの値(1e308 等)が
 // 無検査でここまで届く。`Int32(value.rounded())` はその範囲では trap するので、
-// checkedInt32 は必ず DriverError を投げる側で守る(G1、2026-09-25)。
+// checkedInt32 は必ず DriverError を投げる側で守る(maintainer-notes §51.1)。
 
 import XCTest
 import FTCore
@@ -21,7 +21,7 @@ final class AndroidDriverCheckedInt32Tests: XCTestCase {
         XCTAssertEqual(try AndroidDriver.checkedInt32(-10.0, field: "y"), -10)
     }
 
-    /// G1 の実地値そのもの。**trap せず throw する**ことがこのテストの本体
+    /// maintainer-notes §51.1 の実地値そのもの。**trap せず throw する**ことがこのテストの本体
     /// (直す前は `Int32(1e308.rounded())` がここでテストプロセスごと落ちていた)
     func testWildlyOutOfRangeFiniteValueThrowsInsteadOfTrapping() {
         XCTAssertThrowsError(try AndroidDriver.checkedInt32(1e308, field: "fromX")) {

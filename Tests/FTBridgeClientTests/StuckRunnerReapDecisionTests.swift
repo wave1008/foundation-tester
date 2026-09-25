@@ -1,7 +1,7 @@
 import XCTest
 @testable import FTBridgeClient
 
-/// 起動しきれないランナーの掃除の判定(G15)。実プロセスでは「起動予算を超えた・待受を拒否した」を
+/// 起動しきれないランナーの掃除の判定(maintainer-notes §51.11)。実プロセスでは「起動予算を超えた・待受を拒否した」を
 /// 作れないので、判定そのものを純粋関数で縛る。止めてよいのは4条件が揃ったときだけ
 final class StuckRunnerReapDecisionTests: XCTestCase {
     func testReapsOnlyWhenEveryConditionHolds() {

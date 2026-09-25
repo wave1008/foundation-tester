@@ -48,7 +48,7 @@ final class ProfileRunnerFMSettingsTests: XCTestCase {
         let androidOnly = ScenarioRunItem(info: ScenarioInfo(id: "A.S0010", title: "S0010", platform: "android"))
         let (summary, fmSettings) = try await ProfileRunner.run(
             project: project, profileName: "iosOnly", items: [androidOnly],
-            reportDirOverride: nil)
+            reportDirOverride: nil, interruptState: RunInterruptState(recorder: nil))
 
         XCTAssertEqual(summary.total, 0)
         XCTAssertEqual(summary.failed, 0)

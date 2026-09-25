@@ -1,4 +1,4 @@
-// G10(2026-09-25): リモートディスパッチの子が「供給フェーズ(ブリッジ起動・凍結triage・
+// maintainer-notes §51.4: リモートディスパッチの子が「供給フェーズ(ブリッジ起動・凍結triage・
 // install)」の最中に SIGHUP/SIGTERM/SIGINT を受けると、InterruptRelay がまだ1つも登録
 // されていなかった(runDirect/runWithProfile/runWithProfileParallel/runSequential/runParallel
 // が自分で登録するのは供給が終わった後だった)。その間の signal は既定動作(即終了)のまま

@@ -1,7 +1,7 @@
 import XCTest
 
 /// `api live serve` の座標コマンド(tap/doubleTap/press/drag の x/y 形)が、ドライバへ撃つ前に
-/// 画面内かを断ることの配線(G1、2026-09-25: 断らずに撃った結果 AndroidDriver の Int32 変換が
+/// 画面内かを断ることの配線(maintainer-notes §51.1: 断らずに撃った結果 AndroidDriver の Int32 変換が
 /// trap してプロセスごと落ちた)。`perform` はデバイスが要る private func なのでソース走査で
 /// 固定する(ApiLiveGestureCommandTests と同じ方針)。
 /// 判定そのもの(`FTCore.TapTargetGeometry.isPointOnScreen`)の単体テストは
@@ -35,6 +35,19 @@ final class ApiLiveCoordinateOnScreenGuardTests: XCTestCase {
         let body = String(source[start.upperBound..<end.lowerBound])
         XCTAssertTrue(body.contains("TapTargetGeometry.isPointOnScreen("), body)
         XCTAssertTrue(body.contains("driver.snapshot()"), "画面を得るために snapshot を撮ること: \(body)")
+        // **直近の観測の控えを先に見る**(パネルのクリックは座標の tap = 毎クリック木を読まない)。
+        // 撮り直すのは控えで外れたときだけ
+        let memo = try XCTUnwrap(body.range(of: "await screenMemo.screen"), "控えを見ていない: \(body)")
+        let snap = try XCTUnwrap(body.range(of: "driver.snapshot()"))
+        XCTAssertLessThan(memo.lowerBound, snap.lowerBound, "snapshot より先に控えを見ること")
+    }
+
+    /// 観測のたびに画面の大きさを控えること(控えが空のままだと毎クリック撮り直しに戻る)
+    func testObservationRemembersTheScreen() throws {
+        let source = try liveCommandSource()
+        let start = try XCTUnwrap(source.range(of: "private func emitObservation"))
+        let body = source[start.upperBound...].prefix(1200)
+        XCTAssertTrue(body.contains("await screenMemo.note(snap.screen)"), String(body))
     }
 
     func testTapCoordinateFormGoesThroughTheGuardBeforeTouchingTheDriver() throws {

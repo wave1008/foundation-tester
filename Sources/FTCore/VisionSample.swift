@@ -94,10 +94,8 @@ public enum VisionSample {
             throw SaveError.invalidLabel("label escapes the classifier folder (got \(label))")
         }
         // 断ったときに片付けるため、これから作るフォルダ(深い順)を控える。`deletingLastPathComponent()` は
-        // "a/../../.." のような形に対して縮まらない不動点へ落ちて動かなくなることがある(元バグ:
-        // `..` を含むラベルで無限ループ+created が際限なく伸びた)ので、不動点に着いたら打ち切る
-        // (上の containment チェックで folder は既に classifierFolder の内側と確定しているので、
-        // 通常経路ではこの不動点そのものに到達しない。直呼び出し等への保険として残す)
+        // `..` を含む形で縮まらない不動点に落ちる(無限ループ)ので、着いたら打ち切る(containment を
+        // 通らない直呼び出しへの保険)
         var created: [URL] = []
         var cursor = folder
         while !FileManager.default.fileExists(atPath: cursor.path) {

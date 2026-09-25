@@ -1261,13 +1261,16 @@
   (2026-09-16 の負荷テストで実測。9/05 以来ずっとこの形だった)。**この経路のテストは子の出力を
   パイプ/FIFO にする** —— ファイルへリダイレクトすると write が失敗せず、砦が1度も踏まない
   → maintainer-notes §24)
-  ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device/.toolchain`)はプロセスの実体で掃除し、
+  ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device/.toolchain/.ready`)はプロセスの実体で掃除し、
   中身は読む側が検証する**(`.endpoint` の1行目 = host が URL に使えなければ「記録が無い」へ倒す
   = `BridgeEndpoint.isUsableHost`。**台帳由来の文字列を強制開封しない** —— 壊れた1行が
   `URL(string:)!` でプロセスごと落とし、そのポートを開く `bridge status` も fleetest-mcp も
   道連れになった)
   (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
   対の `.pid` の生死。**`/status` 応答で生死を決めない**)。
+  **`.ready` は「このランナーが一度でも準備完了になった」**(`BridgeReadyLedger`。起動しきれない
+  ランナーの掃除が止めてよいかの門)で、**中身の pid が今の `.pid` と一致するときだけ数える**
+  (ポートは同じ番号で建て直されるので、在否だけだと前世代の印が新しいランナーを守る → maintainer-notes §51.11)。
   **`.toolchain` は「そのブリッジを建てたツールチェーン」**(`BridgeToolchainLedger`)で、
   **生きているブリッジを再利用してよいかの門**。守る規律4つ: **①起動より前に控える**
   (ready の後に書くと、別プロセスが `.adopt` で引き取るときに「控え無し」を見て**正常な

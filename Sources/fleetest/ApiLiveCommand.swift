@@ -169,6 +169,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         deviceLease?.refresh()
         // serve は1プロセスが1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる
         let staleFrameTracker = LiveStaleFrameTracker()
+        let screenMemo = LiveScreenMemo()
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
         let reader = Thread {
@@ -222,7 +223,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 primaryEngine = "xcuitest"
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
-            // **port の本人確認(udid + エンジン)を毎コマンド撃つ**(G6・G14 と同型の穴):
+            // **port の本人確認(udid + エンジン)を毎コマンド撃つ**(maintainer-notes §51.2・§51.10 と同型の穴):
             // makeLiveDriver は起動時に1回組むきりで、フリートが run のたびにブリッジを
             // 建て直すと port が別デバイス、あるいは**同じデバイスの別エンジン**へ移り得る ——
             // hybrid なら home/appSwitcher/drag/座標 press/gesture/pinch(fallback 経由)が、
@@ -264,7 +265,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             await handle(command: command, driver: driver, starter: starter, follower: follower,
                         ownAppBundleID: ownAppBundleID, deviceLease: deviceLease, port: port,
-                        staleFrameTracker: staleFrameTracker)
+                        staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
             ResidentProcessGuard.noteCommandEnd()
         }
         // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていない台を他プロセスが
@@ -295,7 +296,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 空きポートを充てて「まだ居ない」の形(接続拒否)に落とし、自動起動
     /// (LiveBridgeAutoStarter)に委ねる。ここが無いと、自動起動が想定している
     /// まさにその場面(ブリッジ未着手の台を既定ポートで開く)が塞がれる
-    /// **4つ目の戻り値**(G14): `port` の期待エンジン(composeDriver 参照)。**Android と、
+    /// **4つ目の戻り値**(maintainer-notes §51.10): `port` の期待エンジン(composeDriver 参照)。**Android と、
     /// 台がまだ無いプレースホルダ(自動起動待ち)は nil** —— どちらも「今 probe してよい
     /// エンジンの期待」が無い(Android は engine の概念が無く、プレースホルダは
     /// 何も応答しない = 自動起動の成功を「switched the driver」が拾ってから初めて分かる)。
@@ -385,7 +386,7 @@ struct ApiLiveServe: AsyncParsableCommand {
 
     /// resolve(または乗り換え後の resolve)の結果から実際に使うドライバを組み立てる。
     /// hybrid の in-app 側(別ポート)はここで初めて本人確認する——xcuitest 側だけでは検分できない。
-    /// **4つ目の戻り値**は、以後の毎コマンドの本人確認(run() の drift チェック・G14)が
+    /// **4つ目の戻り値**は、以後の毎コマンドの本人確認(run() の drift チェック・maintainer-notes §51.10)が
     /// `port` へ probe を撃つときの期待エンジン —— hybrid/genuine xcuitest は `"xcuitest"`、
     /// XCUITest が見つからず in-app 単独に落ちたときだけ `"inapp"`(`port` がそのまま
     /// in-app ポートを指すため)。ここを固定にすると in-app 単独の構成を xcuitest 期待で
@@ -496,7 +497,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     private func handle(
         command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?,
         follower: LiveSessionFollower?, ownAppBundleID: String?, deviceLease: LiveDeviceLease?,
-        port: UInt16, staleFrameTracker: LiveStaleFrameTracker
+        port: UInt16, staleFrameTracker: LiveStaleFrameTracker, screenMemo: LiveScreenMemo
     ) async {
         // **コマンドが通るたびに台の印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
         // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する——駆動している事実に変わりはない)
@@ -518,7 +519,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                                               bridgeStarting: starting))
             await follower?.follow(driver: driver)
             await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
-                                  staleFrameTracker: staleFrameTracker)
+                                  staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
             return
         }
         if command.cmd == "frame" {
@@ -530,7 +531,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         if command.cmd != "refresh" {
             do {
                 try await perform(command: command, driver: driver, follower: follower,
-                                  ownAppBundleID: ownAppBundleID)
+                                  ownAppBundleID: ownAppBundleID, screenMemo: screenMemo)
                 emitLine(ApiLiveActionResultEvent(ok: true, error: nil, app: follower?.sessionTarget,
                                                   bridgeStarting: await bridgeStartingFlag(starter)))
             } catch {
@@ -544,7 +545,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // 別のアプリが出た)ことがあり、古いセッションのまま撮ると画面ではなく最後の状態が載る
         await follower?.follow(driver: driver)
         await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
-                              staleFrameTracker: staleFrameTracker)
+                              staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
     }
 
     /// 各イベントの `bridgeStarting` フィールドの唯一の算出元(starter が無ければ false)。
@@ -736,11 +737,19 @@ struct ApiLiveServe: AsyncParsableCommand {
 
     /// x/y 座標が今の画面の外なら断る(判定は `TapTargetGeometry.isPointOnScreen` = MCP の
     /// `offscreenCoordinateError` と共有。`LiveControlExitParityTests.sharedJudgements`)。
-    /// 画面を知るためだけに snapshot を撮る(`gesture` と同じ形)。門が無いと桁外れの座標が
-    /// Android の最後の砦まで届き、利用者には「範囲外」としか返せない
-    private func requireOnScreen(_ points: [(x: Double, y: Double)], driver: AppDriver) async throws {
+    /// 門が無いと桁外れの座標が Android の最後の砦まで届き、利用者には「範囲外」としか返せない。
+    /// **画面の大きさは直近の観測の控え(`screenMemo`)で見る** —— パネルのクリックは座標の tap なので、
+    /// 毎回 snapshot を撮るとクリックのたびに木を1回余分に読む(MCP の `coordinateScreen` と同じ考え方)。
+    /// **控えで外れたときだけ撮り直して確かめる**(回転の直後など控えが古い回に正当なクリックを断らない)
+    private func requireOnScreen(_ points: [(x: Double, y: Double)], driver: AppDriver,
+                                 screenMemo: LiveScreenMemo) async throws {
         guard !points.isEmpty else { return }
+        if let remembered = await screenMemo.screen,
+           points.allSatisfy({ TapTargetGeometry.isPointOnScreen(x: $0.x, y: $0.y, screen: remembered) }) {
+            return
+        }
         let screen = try await driver.snapshot().screen
+        await screenMemo.note(screen)
         for point in points
             where !TapTargetGeometry.isPointOnScreen(x: point.x, y: point.y, screen: screen) {
             throw ServeCommandError.invalidArguments(
@@ -753,14 +762,15 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
     /// (呼び出し元 handle が actionResult の ok:false として拾う)
     private func perform(command: ApiLiveServeCommand, driver: AppDriver,
-                         follower: LiveSessionFollower?, ownAppBundleID: String?) async throws {
+                         follower: LiveSessionFollower?, ownAppBundleID: String?,
+                         screenMemo: LiveScreenMemo) async throws {
         if Self.followsFrontmost(command.cmd) { await follower?.follow(driver: driver) }
         switch command.cmd {
         case "tap":
             if let ref = command.ref {
                 try await driver.tap(ref: ref)
             } else if let x = command.x, let y = command.y {
-                try await requireOnScreen([(x, y)], driver: driver)
+                try await requireOnScreen([(x, y)], driver: driver, screenMemo: screenMemo)
                 try await driver.tap(x: x, y: y)
             } else {
                 throw ServeCommandError.invalidArguments("tap requires ref or x/y")
@@ -785,7 +795,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                   let toX = command.toX, let toY = command.toY else {
                 throw ServeCommandError.invalidArguments("drag requires fromX/fromY/toX/toY")
             }
-            try await requireOnScreen([(fromX, fromY), (toX, toY)], driver: driver)
+            try await requireOnScreen([(fromX, fromY), (toX, toY)], driver: driver, screenMemo: screenMemo)
             try await driver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                   pressSeconds: command.press ?? ApiLiveGestureDefaults.dragPressSeconds,
                                   durationSeconds: command.duration ?? ApiLiveGestureDefaults.dragDurationSeconds)
@@ -795,7 +805,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 let element = try await Self.element(ref: ref, driver: driver)
                 try await driver.doubleTap(x: element.frame.centerX, y: element.frame.centerY)
             } else if let x = command.x, let y = command.y {
-                try await requireOnScreen([(x, y)], driver: driver)
+                try await requireOnScreen([(x, y)], driver: driver, screenMemo: screenMemo)
                 try await driver.doubleTap(x: x, y: y)
             } else {
                 throw ServeCommandError.invalidArguments("doubleTap requires ref or x/y")
@@ -829,7 +839,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             guard let x = command.x, let y = command.y, let duration = command.duration else {
                 throw ServeCommandError.invalidArguments("press requires x/y/duration")
             }
-            try await requireOnScreen([(x, y)], driver: driver)
+            try await requireOnScreen([(x, y)], driver: driver, screenMemo: screenMemo)
             try await driver.press(x: x, y: y, duration: duration)
         case "gesture":
             // **判定は TouchGesture.validate の1箇所**(MCP の ft_gesture と共有。DSL/MCP/ライブ操作の
@@ -938,7 +948,8 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// emitFrame は絵だけなので判定できない
     private func emitObservation(driver: AppDriver, starter: LiveBridgeAutoStarter?,
                                  follower: LiveSessionFollower?, port: UInt16,
-                                 staleFrameTracker: LiveStaleFrameTracker) async {
+                                 staleFrameTracker: LiveStaleFrameTracker,
+                                 screenMemo: LiveScreenMemo) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
@@ -948,6 +959,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                                identifier: $0.identifier, value: $0.value, frame: $0.frame)
             }
             let notes = await staleFrameTracker.staleNotes(png: png, elements: snap.elements)
+            await screenMemo.note(snap.screen)
             emitLine(ApiLiveSnapshotEvent(
                 ok: true, error: nil,
                 platform: driverOptions.resolvedPlatform,
@@ -1035,6 +1047,13 @@ actor LiveStaleFrameTracker {
             + " be frozen on an old frame. Don't trust what's on screen from this image alone;"
             + " interact again (or refresh) and see whether the picture actually changes."]
     }
+}
+
+/// 直近の観測で得た画面の大きさ(`requireOnScreen` が毎クリック snapshot を撮らないための控え)。
+/// serve は1プロセス1台なので1つで足りる
+actor LiveScreenMemo {
+    private(set) var screen: FTRect?
+    func note(_ screen: FTRect) { self.screen = screen }
 }
 
 /// 引数不足・未知の cmd 等、コマンドの中身が不正なときのエラー(JSON 自体は壊れていない場合)

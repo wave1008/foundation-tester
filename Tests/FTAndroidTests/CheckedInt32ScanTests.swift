@@ -1,7 +1,7 @@
 // Double → Int32 の座標変換は `AndroidDriver.checkedInt32(_:field:)` の1箇所だけを通す。
 // `Int32(value.rounded())`(trapping init)は呼び手側の座標が `.unbounded`
 // (FTCore.ArgumentBounds)なので桁外れの値(1e308 等)で **trap してプロセスごと落ちる**
-// (G1、2026-09-25)。安全な形は `Int32(exactly: rounded)`(failable init)だけ。
+// (maintainer-notes §51.1)。安全な形は `Int32(exactly: rounded)`(failable init)だけ。
 // 新しい `Int32(<式>.rounded())` を Sources/FTAndroid・Sources/FTEmulatorGrpc に書いたら落ちる。
 
 import Foundation

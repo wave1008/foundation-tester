@@ -245,7 +245,7 @@ extension MCPServer {
                                           summary: "openURL \"\(url)\""), args: args)
         return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
                                         bundleIDWasRemembered: explicitBundleID == nil,
-                                        routedByScheme: engines[Self.engineKey(args)] != "android",
+                                        routedByScheme: !(openURLDriver is AndroidDriver),
                                         snapshotAfter: args["snapshotAfter"] as? Bool == true,
                                         waitFor: args["waitFor"] as? String,
                                         waitForChangeExplicit: args["waitForChange"] as? Bool)

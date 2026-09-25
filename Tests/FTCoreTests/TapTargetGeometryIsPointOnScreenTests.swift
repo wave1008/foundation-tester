@@ -1,6 +1,6 @@
 // TapTargetGeometry.isPointOnScreen の判定。MCP(offscreenCoordinateError)とライブ操作
 // (ApiLiveCommand.requireOnScreen)が共有する唯一の定義元(LiveControlExitParityTests が
-// 両側の配線を固定する)。G1(2026-09-25): ライブ操作の drag に 1e308 が渡り、この判定を
+// 両側の配線を固定する)。maintainer-notes §51.1(2026-09-25): ライブ操作の drag に 1e308 が渡り、この判定を
 // 経ずに AndroidDriver の Int32 変換が trap してプロセスごと落ちた。
 
 import XCTest
@@ -27,7 +27,7 @@ final class TapTargetGeometryIsPointOnScreenTests: XCTestCase {
         XCTAssertFalse(TapTargetGeometry.isPointOnScreen(x: 100, y: -1, screen: screen))
     }
 
-    /// G1 の実地値そのもの
+    /// maintainer-notes §51.1 の実地値そのもの
     func testWildlyOutOfRangeFiniteValueIsOutside() {
         XCTAssertFalse(TapTargetGeometry.isPointOnScreen(x: 1e308, y: 0, screen: screen))
     }

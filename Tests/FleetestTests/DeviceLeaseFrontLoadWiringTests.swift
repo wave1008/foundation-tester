@@ -2,7 +2,7 @@
 // 再起動などの破壊的操作を含み数十秒かかりうる)は必ず
 // `ProfileRunner.buildWorkersWithFrontLoadedLease` 経由で呼ぶことをソース走査で固定する。
 //
-// この砦が要る理由(負荷テスト実測 2026-09-25、bug G8): `api run` は build → reject → hold の
+// この砦が要る理由(負荷テスト実測。maintainer-notes §51.3): `api run` は build → reject → hold の
 // 順で lease を後付けしていたため、供給中は run-lease が無く、並行の `api stop-device` が
 // 供給中のシミュレータを止めて run を落とした(bridge start-up timed out … BUILD INTERRUPTED)。
 // `fleetest run` 側は既に前倒し(reject→hold→build→reject/hold→release)だったので、

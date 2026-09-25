@@ -54,4 +54,16 @@ final class OpenURLRememberedBundleIDTests: XCTestCase {
         XCTAssertFalse(summary.contains("to com.ftester.e2e"), summary)
         XCTAssertTrue(summary.contains("\"fte2eios\" URL scheme"), summary)
     }
+
+    /// 配線: iOS かどうかは**使ったドライバの型**で決める(`ft_launch` の記録と同じ判定)。
+    /// `ftOpenUrl` はデバイスが要るのでソース走査で固定する(定数に倒すと片方の OS で必ず嘘を言う)
+    func testRoutedBySchemeFollowsTheDriverThatDeliveredTheURL() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest-mcp/MCPServer+SessionTools.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func ftOpenUrl("))
+        let body = source[start.upperBound...].prefix(4000)
+        XCTAssertTrue(body.contains("routedByScheme: !(openURLDriver is AndroidDriver)"), String(body))
+    }
 }

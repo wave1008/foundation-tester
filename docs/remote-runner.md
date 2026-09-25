@@ -1071,6 +1071,11 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   `--device-machine` を付けずに撃つので、既定を手元にすると
   **「M1Max を止めたつもりで手元が止まり、しかも ok:true で成功に見える」**になる
   (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律。
+  **手元で `--device-machine <他の機械>` を撃つと断る**(start-device / stop-device --name /
+  restart-devices)—— 解決した台が他の機械のものなら、本体を手元で走らせずに
+  `fleetest remote exec <machine> -- api … --device-machine local` を案内する。この Mac で意味を持つ値は
+  `local` だけ(Android は AVD 名が機械をまたいで同じなので、通すと手元の同名 AVD に当たる。
+  maintainer-notes §51.9)
   **同じ規律で回すのは起動・停止だけではない** —— プロファイルタブの右クリック「Wipe Data」も
   `remote exec <machine> -- api wipe-device …` を通す(手元で撃つと、同名の台が別の機械にも
   居るとき**手元の台が初期化される**)

@@ -287,12 +287,9 @@ enum ProfileRunner {
                     workspaceOverride: String? = nil,
                     recorder: RunRecorder? = nil,
                     broadcast: Bool = false,
-                    // **既定値は呼び出し元が登録済みの interruptState を渡し忘れたときの保険ではない**
-                    // —— 単体テスト(0件早期リターン等、供給に触れない経路)がこの引数を渡さずに
-                    // 呼べるようにするためだけの既定値。実運用の呼び手(Fleetest.swift の run())は
-                    // 必ず、recorder 確定直後・供給フェーズより前に InterruptRelay を登録済みの
-                    // interruptState を渡す
-                    interruptState: RunInterruptState = RunInterruptState(recorder: nil)
+                    // **既定値を置かない**(渡し忘れをコンパイルで止める)。呼び手は recorder 確定直後・
+                    // 供給より前に InterruptRelay を登録済みの interruptState を渡す
+                    interruptState: RunInterruptState
     ) async throws -> (summary: RunSummary, fmSettings: FMSettingsRecord) {
         var items = rawItems
         let runClockStart = Date()

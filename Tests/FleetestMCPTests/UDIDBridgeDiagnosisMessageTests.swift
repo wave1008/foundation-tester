@@ -180,7 +180,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
         }
     }
 
-    // MARK: - G12(2026-09-25実測): 診断が予算超過で完走しなかった回を「居ない」に畳まない
+    // MARK: - maintainer-notes §51.6(2026-09-25実測): 診断が予算超過で完走しなかった回を「居ない」に畳まない
     //
     // 実機 iPhone SE3 を高負荷下で MCP 越しに駆動していたセッションが、ちょうど生きている
     // udid(明示 port 8152 も生存)に対して交互に「no running bridge … run `fleetest bridge up`」で
@@ -253,7 +253,7 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
         }
     }
 
-    // MARK: - G12: 明示 port の直接確認(`explicitPortIdentityProbe` の3値のうち純粋な部分)
+    // MARK: - maintainer-notes §51.6: 明示 port の直接確認(`explicitPortIdentityProbe` の3値のうち純粋な部分)
 
     /// 一致したときの文面は組まない(呼び出し側は port をそのまま返すだけ)ので、ここでは
     /// 食い違い(`confirmedMismatch`)側の文面だけを固定する

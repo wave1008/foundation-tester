@@ -239,7 +239,7 @@ enum StaleLedgerSweep {
                 let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="]),
                 ps.status == 0, BridgeLauncher.isOurRunner(command: ps.output, port: port)
                 else { continue }
-            let readyMarked = BridgeReadyLedger.exists(stateDir: stateDir, port: port)
+            let readyMarked = BridgeReadyLedger.isMarked(stateDir: stateDir, port: port, pid: pid)
             let connect = BridgeDiscovery.connectProbe(port: port, repoRoot: repoRoot)
             let destinationHeld = RunnerDestination.udid(inCommand: ps.output).map {
                 RunLease.holderPID(stateDir: stateDir, key: $0) != nil

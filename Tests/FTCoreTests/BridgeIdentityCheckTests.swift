@@ -113,7 +113,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
         }
     }
 
-    // MARK: - hybridFallbackMismatch(G6・2026-09-25。hybrid が主とは別に握るポートの本人確認。
+    // MARK: - hybridFallbackMismatch(maintainer-notes §51.2。hybrid が主とは別に握るポートの本人確認。
     // 呼び手は MCP とライブ操作(api live serve)の2つ、どちらも FTBridgeClient.HybridFallbackIdentity 経由)
 
     /// **本命**: fallback ポートが今は別デバイスの XCUITest ブリッジ。以前は無検査で
@@ -124,7 +124,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
             "fallback ポートが別デバイスの udid を名乗っているのに一致と判定した")
     }
 
-    /// **G6 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた(XCUITest ではない)。
+    /// **maintainer-notes §51.2 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた(XCUITest ではない)。
     /// in-app には `/gesture` が無いので 404 になるが、相手が同じデバイスの別ポートとは限らない
     /// —— エンジンの食い違いだけでも mismatch にする(udid が申告されない旧作りでも捕まる)
     func testHybridFallbackMismatchDetectsTheFallbackPortNowAnsweringAsInApp() {

@@ -21,17 +21,17 @@ final class BridgeReadyLedgerTests: XCTestCase {
     }
 
     func testMarkThenExists() {
-        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123)
+        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123, pid: 4242)
         XCTAssertTrue(BridgeReadyLedger.exists(stateDir: stateDir, port: 8123))
     }
 
     func testMarkDoesNotAffectOtherPorts() {
-        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123)
+        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123, pid: 4242)
         XCTAssertFalse(BridgeReadyLedger.exists(stateDir: stateDir, port: 8124))
     }
 
     func testRemoveClearsTheMark() {
-        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123)
+        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123, pid: 4242)
         BridgeReadyLedger.remove(stateDir: stateDir, port: 8123)
         XCTAssertFalse(BridgeReadyLedger.exists(stateDir: stateDir, port: 8123))
     }
@@ -39,5 +39,13 @@ final class BridgeReadyLedgerTests: XCTestCase {
     func testRemoveOfAnAbsentMarkIsANoOp() {
         BridgeReadyLedger.remove(stateDir: stateDir, port: 8123)
         XCTAssertFalse(BridgeReadyLedger.exists(stateDir: stateDir, port: 8123))
+    }
+
+    /// 同じポートで建て直された次のランナー(別 pid)は「ready だった」と読まない
+    func testMarkBelongsToTheRunnerThatBecameReady() {
+        BridgeReadyLedger.mark(stateDir: stateDir, port: 8123, pid: 4242)
+        XCTAssertTrue(BridgeReadyLedger.isMarked(stateDir: stateDir, port: 8123, pid: 4242))
+        XCTAssertFalse(BridgeReadyLedger.isMarked(stateDir: stateDir, port: 8123, pid: 5151))
+        XCTAssertFalse(BridgeReadyLedger.isMarked(stateDir: stateDir, port: 8124, pid: 4242))
     }
 }

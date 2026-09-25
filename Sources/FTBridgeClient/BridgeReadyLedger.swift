@@ -21,10 +21,20 @@ public enum BridgeReadyLedger {
     }
 
     /// ベストエフォート(書けなくても sweepStuckStartingRunners が connectProbe/lease の
-    /// 判定へ倒れるだけで、誤って何かを壊すことはない)
-    public static func mark(stateDir: URL, port: UInt16) {
+    /// 判定へ倒れるだけで、誤って何かを壊すことはない)。**ready になったランナーの pid を書く** ——
+    /// 同じポートで建て直された次のランナーは `.pid` だけ書き換えるので、印がポートにしか紐付かないと
+    /// 固まった新ランナーまで「前に ready だった」と読めて掃除から永久に外れる
+    public static func mark(stateDir: URL, port: UInt16, pid: Int32) {
         try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: url(stateDir: stateDir, port: port).path, contents: nil)
+        FileManager.default.createFile(atPath: url(stateDir: stateDir, port: port).path,
+                                       contents: Data(String(pid).utf8))
+    }
+
+    /// そのポートの**このランナー(pid)**が ready になったことがあるか
+    public static func isMarked(stateDir: URL, port: UInt16, pid: Int32) -> Bool {
+        guard let text = try? String(contentsOf: url(stateDir: stateDir, port: port), encoding: .utf8)
+        else { return false }
+        return Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) == pid
     }
 
     public static func exists(stateDir: URL, port: UInt16) -> Bool {

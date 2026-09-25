@@ -66,7 +66,7 @@ final class StuckStartingRunnerOwnershipTests: XCTestCase {
         let runner = try FakeRunnerProcess(argv: ["FleetestRunner-\(port).xctestrun"])
         defer { runner.stop() }
         try writePidFile(port: port, pid: runner.pid)
-        BridgeReadyLedger.mark(stateDir: stateDir, port: port)
+        BridgeReadyLedger.mark(stateDir: stateDir, port: port, pid: runner.pid)
 
         var logs: [String] = []
         StaleLedgerSweep.sweepStuckStartingRunners(repoRoot: repoRoot, log: { logs.append($0) })
@@ -74,6 +74,21 @@ final class StuckStartingRunnerOwnershipTests: XCTestCase {
         XCTAssertTrue(logs.isEmpty, "ready 印のあるランナーを撃っている: \(logs)")
         XCTAssertTrue(FileManager.default.fileExists(
             atPath: stateDir.appendingPathComponent("bridge-\(port).pid").path))
+    }
+
+    /// **ready 印は今のランナーの pid と照合して読む**(`exists` で在否だけ見ると、同じポート番号で
+    /// 建て直した後も前世代の印が「起動しきれない新しいランナー」を守り続ける)。撃つ判定まで
+    /// 到達できない(上の注記)ので、読み方はソース走査で固定する
+    func testSweepReadsTheReadyMarkBoundToTheCurrentRunnerPid() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTBridgeClient/BridgeProvisioner.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "func sweepStuckStartingRunners"))
+        let body = source[start.upperBound...].prefix(4000)
+        XCTAssertTrue(body.contains("BridgeReadyLedger.isMarked(stateDir: stateDir, port: port, pid: pid)"),
+                      String(body))
+        XCTAssertFalse(body.contains("BridgeReadyLedger.exists("), String(body))
     }
 
     /// 宛先(RunnerDestination)に生きた run-lease があれば、ready 印が無くても対象外
