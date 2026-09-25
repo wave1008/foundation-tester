@@ -67,7 +67,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **時限 SIGKILL(2 秒)を送ってよいのは後始末を持たない外部・ヘルパーだけ**(ssh・`Shell.run` の
   外部コマンド・配信ヘルパー・`api monitor` / `host-metrics` / `api live serve` = stdin EOF で即終わる)。
   **拡張も同じ方針**: 起動時の孤児掃除(`orphanSweep.ts` の `orphanSignal`)と「全て終了して閉じる」(`planResidentKill`)は
-  `api run` / `run` に SIGTERM だけを送る(Reload Window 直後の run は ParentDeathWatch で後始末中なので、SIGKILL は
+  `api run` / `run`・シナリオ実行バイナリ(`fleetest-scenarios-<project>` = 分類は汎用型なのでコマンド名で見る `hasOwnTeardown`)に
+  SIGTERM だけを送る(Reload Window 直後の run は ParentDeathWatch で後始末中なので、SIGKILL は
   録画の確定・teardown・run.json を刺し殺す)。後始末を持たないヘルパーは従来どおり SIGKILL。刺さった run は人が止める。
   「全て終了して閉じる」はホスト側のモーダルで確認し、`bridge down` が断ったらブリッジ系を SIGKILL しない
   **割り込みの登録(`InterruptRelay.observing`)は手元の dispatch.lock を取る直前 = setup.sh・供給・ビルドより前**

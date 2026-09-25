@@ -320,3 +320,21 @@ test("BRIDGE_RESIDENT_TYPES / TEARDOWN_RESIDENT_TYPES: 想定する型の集合�
   );
   assert.deepEqual([...TEARDOWN_RESIDENT_TYPES], ["run"]);
 });
+
+test("planResidentKill: シナリオ実行バイナリ(fleetest-scenarios-<project>)は汎用型でも SIGTERM のみ・他の汎用ヘルパーは SIGKILL", () => {
+  const root = "/Users/w/proj";
+  const psOutput = [
+    `701 1 S ${root}/TestProjects/.build/debug/fleetest-scenarios-E2E-iOS run --scenario Foo`,
+    `702 1 S ${root}/.build/debug/fleetest-devicepoll --udid X`,
+  ].join("\n");
+  const processes = parseResidentProcesses(psOutput, { binaryDir: `${root}/.build/debug` });
+  const plan = planResidentKill(processes, {
+    ownPid: 1,
+    isWorkspaceOwned: (command) => command.includes(root),
+    bridgeDownRefused: false,
+    androidDownRefused: false,
+  });
+  const byPid = Object.fromEntries(plan.map((t) => [t.pid, t.signal]));
+  assert.equal(byPid[701], "SIGTERM", "シナリオ実行バイナリは後始末(向きの復元等)を持つので SIGKILL しない");
+  assert.equal(byPid[702], "SIGKILL", "後始末を持たない配信ヘルパーは SIGKILL");
+});

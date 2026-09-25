@@ -118,6 +118,15 @@ export const BRIDGE_RESIDENT_TYPES: ReadonlySet<ResidentType> = new Set([
  *  (process-lifecycle.md「終了猶予の方針」)。 */
 export const TEARDOWN_RESIDENT_TYPES: ReadonlySet<ResidentType> = new Set(["run"]);
 
+// シナリオ実行バイナリ(`fleetest-scenarios-<project>`。TestProject.productName)も後始末(向きの復元等)を持つが、
+// 分類は汎用の "fleetest" 型に落ちるのでコマンド名で見る
+const SCENARIO_RUNNER_RE = /(^|\/)fleetest-scenarios(?:-[^\s/]+)?(?:\s|$)/;
+
+/** SIGKILL でなく SIGTERM だけを送る相手か(run 型・シナリオ実行バイナリ)。 */
+export function hasOwnTeardown(p: Pick<ResidentProcess, "type" | "command">): boolean {
+  return TEARDOWN_RESIDENT_TYPES.has(p.type) || SCENARIO_RUNNER_RE.test(p.command);
+}
+
 // ResidentType → 辞書キー(表示ラベル)。fleetest は素の CLI 名で ja/en 差が無いためキー無し。
 const TYPE_LABEL_KEY: Partial<Record<ResidentType, keyof typeof deviceOpsStrings>> = {
   bridge: "deviceOps.type.bridge",
@@ -429,7 +438,7 @@ export function planResidentKill(
         continue;
       }
     }
-    out.push({ pid: p.pid, signal: TEARDOWN_RESIDENT_TYPES.has(p.type) ? "SIGTERM" : "SIGKILL" });
+    out.push({ pid: p.pid, signal: hasOwnTeardown(p) ? "SIGTERM" : "SIGKILL" });
   }
   return out;
 }
