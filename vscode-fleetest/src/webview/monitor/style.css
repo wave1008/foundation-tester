@@ -15,7 +15,7 @@
      依存せず widget-border→panel-border→薄いグレーで必ず可視にする。入力欄・セレクトの border は
      必ずこのトークンを使う(transparent や *-input-border 直参照をフォールバックにしないこと)。 */
   --ft-control-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.5)));
-  /* 「デバイス一覧」「選択したデバイス」「実行ログ」の見出し行の高さ(ユーザー決定 2026-09-22)。
+  /* 「デバイス一覧」「選択したデバイス」「実行ログ」の見出し行の高さ(ユーザー決定)。
      3つを同じ高さで揃えるので**値は1箇所**(#line-view-header / .pane-header が参照する)。
      22px = padding-top 2px + 三角(.run-board-toggle)16px + padding-bottom 4px —— 上下の padding も
      3つで同じにしてあるので、中身の縦位置まで揃う */
@@ -208,7 +208,7 @@ button.bulk-cancel:hover:not(:disabled) {
    .icon-button で none のため、枠は inset box-shadow で描く(付け外しで幅がずれない)。 */
 .icon-button.toggled {
   background-color: var(--vscode-inputOption-activeBackground, rgba(0, 122, 204, 0.4));
-  /* 地色のトークンは触らず、白を薄く重ねて明度だけ上げる(ユーザー決定 2026-09-21)。
+  /* 地色のトークンは触らず、白を薄く重ねて明度だけ上げる(ユーザー決定)。
      トークンを直値に置き換えるとテーマ追従を失うので、調整ノブはこの alpha 1つだけ */
   background-image: linear-gradient(rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.14));
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
@@ -270,7 +270,7 @@ button.bulk-cancel:hover:not(:disabled) {
 .header-toggle input {
   cursor: pointer;
 }
-/* 見出し行のラジオは**外側の丸だけ縮める**(ユーザー決定 2026-09-22)—— 行の高さが 20px なので
+/* 見出し行のラジオは**外側の丸だけ縮める**(ユーザー決定)—— 行の高さが 20px なので
    18px の丸は大きすぎる。**内側の点は 8px のまま**で、中央に置く位置だけ計算し直す:
    絶対位置は枠の内側(14 - 枠線 2 = 12)基準なので (12 - 8) / 2 = 2。
    **モーダルのラジオは 18px のまま** —— あちらは同じ行にチェックボックス(18px)が並ぶので、
@@ -282,11 +282,11 @@ button.bulk-cancel:hover:not(:disabled) {
 .header-toggle input[type="radio"]:checked::after {
   left: 2px;
   top: 2px;
-  /* 点の色は**「ライブ更新」のトグルの ON と同じ青**(ユーザー決定 2026-09-22)。
+  /* 点の色は**「ライブ更新」のトグルの ON と同じ青**(ユーザー決定)。
      同じ見出し行で「選ばれている」を表す色なので片方だけ変えない(.toggle-switch:checked) */
   background-color: var(--vscode-button-background, #0078d4);
 }
-/* 「すべて選択」の右に続く(ユーザー決定 2026-09-22)。2つのトグルは1つの group なので、
+/* 「すべて選択」の右に続く(ユーザー決定)。2つのトグルは1つの group なので、
    間は行の gap(6px)だけ —— 台数から離すぶんは先頭の .line-view-select-all が持つ */
 /* 通常は1行(手元だけ)。リモート機の行が増えると縦に積む(hostCharts.js が hm-multi を付ける) */
 .host-metrics {
@@ -294,7 +294,7 @@ button.bulk-cancel:hover:not(:disabled) {
   flex-direction: column;
   align-items: flex-start;
   gap: 2px;
-  /* グラフと run ボードの間を空ける(ユーザー決定 2026-09-22)。**ツールバーの
+  /* グラフと run ボードの間を空ける(ユーザー決定)。**ツールバーの
      padding-bottom は 0 のまま** —— あちらを触ると1行目(「テストを実行」の行)にも効く */
   margin-bottom: 2px;
 }
@@ -323,7 +323,7 @@ button.bulk-cancel:hover:not(:disabled) {
 }
 /* 占有の錠前(その機械で run が走っている印)。**枠は全行に常にある**(機械名の直後・固定幅)
    —— 出る行にだけ要素を足すとその行だけ幅が増え、MEM/CPU/… の列が行ごとにずれる
-   (2026-08-31 の実害)。出す/出さないは visibility で切り替える(display を切ると枠ごと
+   (実害あり)。出す/出さないは visibility で切り替える(display を切ると枠ごと
    消えて同じことが起きる)。機械名を出さない単独構成では枠ごと畳む(hm-multi と同じ条件)。
    表示だけ ―― 配信を畳む判断はホスト側(monitorDeviceStreamController.ts)。 */
 .hm-lock {
@@ -366,10 +366,10 @@ button.bulk-cancel:hover:not(:disabled) {
   display: inline-block;
   visibility: visible;
 }
-/* 「マシン有効」が off の行は明度を下げる(ユーザー決定 2026-09-22)。
+/* 「マシン有効」が off の行は明度を下げる(ユーザー決定)。
    **opacity で地へ寄せる** —— 明暗どちらのテーマでも背景に近づく方向へ薄くなる
    (文字色を直に薄くすると、ライトテーマでは逆に目立つ)。
-   **⊘無効 の印だけは薄くしない**(ユーザー決定 2026-09-22)—— なぜこの行が引っ込んで
+   **⊘無効 の印だけは薄くしない**(ユーザー決定)—— なぜこの行が引っ込んで
    いるのかを読む相手。opacity は**親に掛けると子では戻せない**(グループ単位で効く)ので、
    行ではなく**子へ掛けて印だけ外す** */
 .host-metrics .hm-row.hm-row-disabled > *:not(.hm-off) {
@@ -411,7 +411,7 @@ button.bulk-cancel:hover:not(:disabled) {
 /* run ボード(フリート横断の実行状況。docs/design.md §18)。ツールバー直下・ラインビューの上に
    常設(run 0本でもヘッダは残す。runBoard.js)。 */
 /* 見出し行どうしの区切りは地色(見出し行と同じ)だけで付け、線を見せない。
-   **例外は「実行中」と「デバイス」の間の1本だけ**(ユーザー決定 2026-09-22)——
+   **例外は「実行中」と「デバイス」の間の1本だけ**(ユーザー決定)——
    仕切りは #devices-separator が持つので、ここは下辺の罫線を持たない */
 .run-board {
   /* 2カラムの境目(.run-board-split)を絶対位置で置くための基準 */
@@ -435,12 +435,12 @@ button.bulk-cancel:hover:not(:disabled) {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  /* プラットフォームのバッジを見出し行の**中央**へ絶対位置で置くための基準(ユーザー決定 2026-09-22) */
+  /* プラットフォームのバッジを見出し行の**中央**へ絶対位置で置くための基準(ユーザー決定) */
   position: relative;
   gap: 6px;
   padding: 4px 8px;
   /* 4つの見出し行(実行中・ラインビュー・グリッドビュー・実行ログ)は同じ地色
-     (ユーザー決定 2026-09-21)。.run-board 自身にも同じ色があるので、中の見出しでは二重になるだけ */
+     (ユーザー決定)。.run-board 自身にも同じ色があるので、中の見出しでは二重になるだけ */
   background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   /* グリッドビューの見出し(.lanes-header)と同じ 12px。既定(13px)のままだと
      ラインビューの見出しだけ1px 大きくなる */
@@ -450,7 +450,7 @@ button.bulk-cancel:hover:not(:disabled) {
 .run-board-header:hover {
   background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
 }
-/* 「実行中」と「デバイス」を分ける仕切り(ユーザー決定 2026-09-22)。**見た目も挙動も実行ログ
+/* 「実行中」と「デバイス」を分ける仕切り(ユーザー決定)。**見た目も挙動も実行ログ
    ビューの上の #splitter-log と同じ**(.splitter の 6px バー)—— 下げると run ボードが伸びる。
    上下の余白も #splitter-log と同じ 2px + 2px。下は見出し側が持ち、上は run ボードの末尾が
    持つ。
@@ -491,7 +491,7 @@ button.bulk-cancel:hover:not(:disabled) {
   color: var(--vscode-foreground);
 }
 /* 配色・hover・ON の見せ方は .icon-button / .icon-button.toggled に任せる(「デバイスを
-   すべて選択」と同じエフェクト。ユーザー決定 2026-09-20)。ここは位置と字の大きさだけ持つ */
+   すべて選択」と同じエフェクト。ユーザー決定)。ここは位置と字の大きさだけ持つ */
 .run-board-expand-all {
   flex: 0 0 auto;
   /* 見出し行(20px)に収める。中身はアイコンだけなので正方形 */
@@ -506,7 +506,7 @@ button.bulk-cancel:hover:not(:disabled) {
   margin-left: 10px;
 }
 /* 見出しの台数(ラインビュー・グリッドビューの「N台」)。**幅を固定する**
-   (ユーザー決定 2026-09-22)—— 桁が変わるたびに右隣のトグルが動くため。数字は等幅にし、
+   (ユーザー決定)—— 桁が変わるたびに右隣のトグルが動くため。数字は等幅にし、
    箱は 3 桁(999台)まで入る幅を持つ。**文言の長さが言語で違うので幅も言語ごと** ——
    文言(wvMonitor.lineView.selected / wvMonitor2.laneLog.selectedCount)を変えたら幅も見る。
    min-width なので 4 桁になれば伸びる(そこでは動くが、設計の範囲外) */
@@ -534,13 +534,13 @@ html[lang="en"] .header-count {
 #run-board-title {
   min-width: 56px;
 }
-/* プラットフォームの表示フィルタは「全て展開」から**5文字ぶん**空ける(ユーザー決定 2026-09-22)。
+/* プラットフォームの表示フィルタは「全て展開」から**5文字ぶん**空ける(ユーザー決定)。
    ch = 見出しの文字(12px)の "0" の幅なので、字の大きさを変えれば間隔も一緒に動く。
    **位置が桁で動かない**のは #run-board-title の min-width が効いているため(片方だけ変えない) */
-/* プラットフォームの表示フィルタ(3択)。**見た目はバッジ**(ユーザー決定 2026-09-22)——
+/* プラットフォームの表示フィルタ(3択)。**見た目はバッジ**(ユーザー決定)——
    選んでいるものだけ色付き、選んでいないものは灰色。押せる面なので cursor は pointer */
 .run-board-platform-filter {
-  /* **見出し行の中央**(ユーザー決定 2026-09-22)。左の項目(三角・件数・全て展開)の幅に
+  /* **見出し行の中央**(ユーザー決定)。左の項目(三角・件数・全て展開)の幅に
      依存しないよう、flex の流れから外して絶対位置で真ん中に置く —— auto マージンだと
      「左の項目を除いた残りの中央」になり、左の項目が伸び縮みすると位置が動く */
   position: absolute;
@@ -554,11 +554,11 @@ html[lang="en"] .header-count {
   border: none;
   font-family: inherit;
   line-height: 16px;
-  /* 太字(ユーザー決定 2026-09-22)。600 は見出し(.run-board-title / .lanes-title)と同じ重み。
+  /* 太字(ユーザー決定)。600 は見出し(.run-board-title / .lanes-title)と同じ重み。
      幅の下限 8ch はこの重みの "0" 幅で決まるので、重みを変えたら "Android" が収まるか見る */
   font-weight: 600;
   cursor: pointer;
-  /* **3つとも同じ幅**(ユーザー決定 2026-09-22)—— 文字数(iOS / Android / すべて)で幅が
+  /* **3つとも同じ幅**(ユーザー決定)—— 文字数(iOS / Android / すべて)で幅が
      変わると、並びが不揃いで押し分けにくい。いちばん長い "Android" が収まる下限にして中央寄せ */
   min-width: 8ch;
   text-align: center;
@@ -596,7 +596,7 @@ html[lang="en"] .header-count {
   flex: 1 1 auto;
 }
 
-/* 走っていない機械は2値(空き / 不明)。**どちらもグレー**(ユーザー決定 2026-09-20)——
+/* 走っていない機械は2値(空き / 不明)。**どちらもグレー**(ユーザー決定)——
    観測できていないのは異常ではないので警告色を使わない。区別は語と「—」で付ける。
    実行中の機械は run の行として出るのでここには現れない。 */
 .run-board-machine-state-idle,
@@ -677,7 +677,7 @@ html[lang="en"] .header-count {
   min-width: 0;
 }
 
-/* 2カラム(ユーザー決定 2026-09-22): 左 = ツリー(機械・台の名前)、右 = ステータス。
+/* 2カラム(ユーザー決定): 左 = ツリー(機械・台の名前)、右 = ステータス。
    **境目を全行で1本に見せる**ための約束が3つ: ①行の左右 padding は 8px で揃える
    ②階層のインデントは左カラムの padding で表す ③レーンのガイド線は背景で引く
    (border/margin は箱の幅を変えるので境目が行ごとにずれる)。
@@ -699,7 +699,7 @@ html[lang="en"] .header-count {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  /* **左寄せ**(ユーザー決定 2026-09-22)。境目に文字が触れないぶんだけ空ける */
+  /* **左寄せ**(ユーザー決定)。境目に文字が触れないぶんだけ空ける */
   padding-left: 8px;
 }
 .run-board-row-summary > .run-board-col-left {
@@ -767,7 +767,7 @@ html[lang="en"] .header-count {
 }
 .run-board-progress-bar {
   /* **display: block が要る** —— この要素は <span> なので、既定の inline のままだと
-     width/height が1ピクセルも効かず、枠だけ出て塗りが見えない(2026-09-20 に実際にそうなった) */
+     width/height が1ピクセルも効かず、枠だけ出て塗りが見えない(実際にそうなった) */
   display: block;
   height: 100%;
   background-color: var(--vscode-progressBar-background, #0e70c0);
@@ -849,15 +849,15 @@ html[lang="en"] .header-count {
   align-items: center;
   gap: 0;              /* 2カラム(.run-board-row-summary と同じ規律) */
   padding: 2px 8px;
-  /* **行の高さを固定する**(ユーザー指摘 2026-09-20)—— 中身(「0:08」/「0:08(中央 0:08)」)で
+  /* **行の高さを固定する**(ユーザー指摘)—— 中身(「0:08」/「0:08(中央 0:08)」)で
      高さが変わると、レーンが増減したように見えて目が滑る */
   line-height: 18px;
   min-height: 18px;
-  /* **押せる面にしない**(ユーザー決定 2026-09-22)—— 台の行はクリックで何も起きないので、
+  /* **押せる面にしない**(ユーザー決定)—— 台の行はクリックで何も起きないので、
      cursor も hover の地色も付けない(付けると押せるように見える) */
 }
 .run-board-lane-name {
-  /* 既定では**省略しない**(ユーザー決定 2026-09-20)—— デバイス名は末尾で見分けるので、
+  /* 既定では**省略しない**(ユーザー決定)—— デバイス名は末尾で見分けるので、
      途中で切ると "iPhone 17 Pro(iO…" が並んで区別が付かない。
      **左カラムを手で狭めたときだけ**省略する(境目より右へはみ出させない。広げれば戻る) */
   flex: 0 1 auto;
@@ -920,7 +920,7 @@ html[lang="en"] .header-count {
   font-variant-numeric: tabular-nums;
 }
 /* FM 死活(hostCharts.js が hmRenderFmLabel で付け外し)。dead=死活台帳か窓内が全滅、warn=一部失敗。
-   **hm-fm-dead に文字色は与えない**(ユーザー決定 2026-09-03)—— 死はスパークラインをグレーに
+   **hm-fm-dead に文字色は与えない**(ユーザー決定)—— 死はスパークラインをグレーに
    することで表し、ラベルと値の色は動かさない。クラス自体は残す(ツールチップの分岐と
    test/webviewHostMetricsRows.test.mjs が状態の名前として使う) */
 /* FM が死んでいる経路の名指し(行の最後尾)。**空のときは display:none** —— 空の span でも
@@ -933,7 +933,7 @@ html[lang="en"] .header-count {
   /* nowrap ではなく pre —— 経路の区切りの空白2つを畳ませない(既定では1つになる)。
      折り返さない性質は pre にも含まれる。 */
   white-space: pre;
-  /* グレー(ユーザー決定 2026-09-03)。**行の中に色を持ち込まない** —— 赤にすると隣の
+  /* グレー(ユーザー決定)。**行の中に色を持ち込まない** —— 赤にすると隣の
      CPU/GPU/MEM と同じ「高い値が出ている」の合図に見えるが、死は値の異常ではなく機能の無効。
      スパークラインを彩度の無い色にしたのと同じ判断で、行全体の色調を揃える。
      **リテラルのグレーは置かない**(ライト/ダークのどちらかで背景に溶ける)——
@@ -989,7 +989,7 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 .grid {
   position: absolute;
-  /* 上 2px = 見出し行とタイルの間(ユーザー決定 2026-09-21。左右 12px は据え置き) */
+  /* 上 2px = 見出し行とタイルの間(ユーザー決定。左右 12px は据え置き) */
   inset: 2px 12px 0 12px;
   display: flex;
   flex-wrap: nowrap;
@@ -997,9 +997,9 @@ select:disabled { opacity: 0.5; cursor: default; }
   gap: 8px;
   overflow-x: scroll; /* auto は常時表示にならないため */
   overflow-y: hidden;
-  padding-bottom: 2px;   /* タイルの下端と横スクロールバーの間(ユーザー決定 2026-09-21。10 → 2) */
+  padding-bottom: 2px;   /* タイルの下端と横スクロールバーの間(ユーザー決定。10 → 2) */
   /* つまみは**わずかに青みのある濃いグレーを半透明で**・溝は**塗らない**
-     (ユーザー決定 2026-08-28 / 青みは 2026-09-21)。
+     (ユーザー決定)。
      テーマのトークンにも前面色にも戻さない —— どちらも明るめの中間グレーで、
      セパレーター(.splitter)と同色になり見分けが付かなかった。黒だと今度は暗い地に
      溶けて消えるので、地(#1e1e1e 前後)との差が残る濃さを保つ。
@@ -1016,7 +1016,7 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 .tile {
   flex: 0 0 auto;
-  /* **枠の内側でクリップする**(ユーザー決定 2026-09-21)—— タイルの高さはペインに合わせて
+  /* **枠の内側でクリップする**(ユーザー決定)—— タイルの高さはペインに合わせて
      stretch されるので、ペインを画像の下限(MIN_TILE_IMAGE_HEIGHT + chrome)より低く詰めると
      画像が枠からはみ出す。外すとその状態で絵が枠の外へ流れる */
   overflow: hidden;
@@ -1090,7 +1090,7 @@ html.select-all-guard * {
 /* **タイルの幅は画面(.frame-wrap)だけで決める** —— この3つは中身が長くても幅を押し広げない
    (width:0 + min-width:100% で「幅の計算に寄与しないが表示は親いっぱい」)。**新しい段を足したら
    必ずここへ加える** —— 外すとバッジの文字数でタイルの幅が変わり、同じ機種の台が不揃いに並ぶ
-   (2026-09-21: .tile-machine-row を足したときに漏れ、M1Ultra の台だけ広くなった) */
+   (.tile-machine-row を足したときに漏れ、M1Ultra の台だけ広くなった) */
 .tile-header,
 .tile-footer,
 .tile-machine-row {
@@ -1107,7 +1107,7 @@ html.select-all-guard * {
   flex: 0 0 20px;
   height: 20px;
 }
-/* マシン名バッジの段(デバイス名の**上**。ユーザー決定 2026-09-22)。**常に出す** ——
+/* マシン名バッジの段(デバイス名の**上**。ユーザー決定)。**常に出す** ——
    手元にも機械名を出すので段は全タイルにあり、段の有無がタイルごとに混ざることは無い
    (混ざると共通の --tile-image-h では高さが揃わない)。
    高さは deviceTiles.js の TILE_MACHINE_ROW_HEIGHT と一致させること */
@@ -1250,7 +1250,7 @@ html.select-all-guard * {
   justify-content: center;
   gap: 6px;
 }
-/* プレースホルダのアイコン・スピナーは 2026-09-01 に撤去(タイル幅 60px では英語ラベルが
+/* プレースホルダのアイコン・スピナーは置かない(タイル幅 60px では英語ラベルが
    表示しきれない。状態はテキストだけで伝える)。ft-placeholder-spin は他要素が使うので残す */
 /* 改行入りの文言(ホスト名 + 補足)をそのまま出す */
 .frame-placeholder span {
@@ -1292,7 +1292,7 @@ html.select-all-guard * {
   flex: 0 0 6px;
   height: 6px;
   cursor: row-resize;
-  /* **スクロールバーのつまみより明るく、ただし控えめに**(ユーザー決定 2026-09-21)。
+  /* **スクロールバーのつまみより明るく、ただし控えめに**(ユーザー決定)。
      暗い地(#1f1f1f)に重ねた見かけの明度で比べる: つまみ rgba(70,90,165,0.4) ≈ 47/55/85(青み) /
      ここ ≈ 63(旧: --vscode-scrollbarSlider-background = rgba(121,121,121,0.4) ≈ 67)。
      つまみ側がテーマのトークンを使えない(.grid の注記)ので、こちらも直値で比べられる形にする */
@@ -1410,7 +1410,7 @@ html.select-all-guard * {
   font-size: 13px;
   padding: 12px;
 }
-/* 選択0台のときの案内(ユーザー決定 2026-09-21)。.lanes-waiting と同じ出し方(ペインに重ねる)。
+/* 選択0台のときの案内(ユーザー決定)。.lanes-waiting と同じ出し方(ペインに重ねる)。
    **出し入れは必ずクラスで**行う —— inline の display を書くと畳みの規則(display:none)に勝つ。
    実行ログビュー側は**全体レーンに行があるときは出さない**(供給の進行と文字が重なるため) */
 .pane-empty {
@@ -1569,12 +1569,12 @@ html.select-all-guard * {
   font-size: 12px;
 }
 /* .tile-name-ios/-android を共用する色付きピル(タイルのデバイス名と同じ表現) */
-/* **機械バッジはデバイス名の下**(ユーザー決定 2026-09-21。タイルと同じ並び)。
+/* **機械バッジはデバイス名の下**(ユーザー決定。タイルと同じ並び)。
    段の有無がレーンごとに混ざると高さが揃わないので、1つでも機械付きが居れば全レーンで確保する
    (laneLog.js の syncLaneMachineRow が #lanes-grid に with-machine-row を付ける) */
 .lanes-grid.with-machine-row .lane-header {
   flex-direction: column;
-  /* **上寄せ**(ユーザー決定 2026-09-21)—— 中央寄せだと、機械バッジの無いレーンだけ
+  /* **上寄せ**(ユーザー決定)—— 中央寄せだと、機械バッジの無いレーンだけ
      デバイス名が下がって縦位置が揃わない */
   justify-content: flex-start;
   flex-basis: 44px;
@@ -1630,7 +1630,7 @@ html.select-all-guard * {
 }
 .device-op-menu.visible { display: block; }
 /* #device-pick-overlay(z-index:2000)・#device-add-overlay(2010)の**上**に出す。
-   .device-op-menu の 1000 のままだとモーダルの背後に隠れて選べない(2026-08-17 実機で確認)。
+   .device-op-menu の 1000 のままだとモーダルの背後に隠れて選べない(実機で確認)。
    hover-tip(10000)より下、モーダル群より上の帯に置く。 */
 #device-pick-delete-menu {
   z-index: 2100;
@@ -1741,7 +1741,7 @@ html.select-all-guard * {
   align-items: center;
   gap: 8px;
   /* 上は 10px。ツールバー(マシン選択・確定)と地続きに見えると、「デバイスを追加」が
-     どちらの操作群に属するのか読めない(2026-08-17 指摘)。下 6px は一覧との距離 */
+     どちらの操作群に属するのか読めない(指摘あり)。下 6px は一覧との距離 */
   padding: 10px 12px 6px;
 }
 .profile-actions-label {
@@ -1774,7 +1774,7 @@ html.select-all-guard * {
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 4px;
   /* **10台ぶんで頭打ちにして中でスクロールする**(台数が多いとセクションが画面外まで伸び、
-     プロファイルタブの他セクションへ辿り着けない。2026-08-17 指摘)。
+     プロファイルタブの他セクションへ辿り着けない、との指摘)。
      max-height は runProfileDevicesTab.js が11行目の実位置から算出して設定する —— 1行の高さは
      フォント設定・実機バッジの有無で変わるので、CSS に固定値を置くと行が切れる(実際に切れた)。 */
   overflow-y: auto;
@@ -1882,7 +1882,7 @@ html.select-all-guard * {
 }
 
 /* リモートのデバイス(実行プロファイルのデバイス一覧行)。行の右端へ寄せる。
-   既定は薄いグレー地に黒字(2026-08-17 指示)。**テーマ変数を使わない** —— 前景と背景の
+   既定は薄いグレー地に黒字(ユーザー指示)。**テーマ変数を使わない** —— 前景と背景の
    組み合わせを固定したいので、ここだけはリテラル色にする。**背景は machineColors.js が
    マシンごとに(remoteConfig の machineColors[]・hosts[].color から)インラインで上書きする**
    —— ここに書いているのは色パレット未設定/未受信のときの既定だけ。文字色は上書きしない
@@ -1890,7 +1890,7 @@ html.select-all-guard * {
 .badge-remote {
   flex: 0 0 auto;
   /* 名前ピルのすぐ右に置く(margin-left: auto で行の右端へ飛ばすと、名前との間が
-     行幅ぶん空いて「どのデバイスの札か」が読み取りにくい。2026-08-17 指示)。
+     行幅ぶん空いて「どのデバイスの札か」が読み取りにくい、との指示)。
      間隔は .run-profile-device-name-line の gap(6px)に任せる */
   --badge-remote-bg: #d4d4d4;
   background-color: var(--badge-remote-bg);
@@ -2020,7 +2020,7 @@ html.select-all-guard * {
 
 /* .profile-checkbox-row 限定で上の 170px 上書きをさらに打ち消す(定義順が後のため有効)。
    **grow は 0 にする**: label は `for` でチェックボックスに結び付いているので、伸ばすと
-   行の右端までが当たり判定になり、**文字の無い余白を押しても切り替わる**(2026-09-03 の指摘)。
+   行の右端までが当たり判定になり、**文字の無い余白を押しても切り替わる**(指摘あり)。
    0 1 auto なら箱は文字ぶんに収まり、反応するのはチェックアイコンとラベルだけになる。
    shrink は 1 のまま(長いラベルが行からはみ出さないように折り返させる)。 */
 #run-profile-editor .profile-checkbox-row > label,
@@ -2029,7 +2029,7 @@ html.select-all-guard * {
 }
 /* **`.modal-row > input[type="checkbox"]` の `margin-right: auto` を打ち消す**。
    あれは「残り幅を右の余白にする」ための指定だが、余白を入れる先は**チェックと label の間**
-   なので、label が伸びなくなった途端に**ラベルが行の右端まで飛ぶ**(2026-09-03 に実際に踏んだ)。
+   なので、label が伸びなくなった途端に**ラベルが行の右端まで飛ぶ**(実際に踏んだ)。
    ここでは 0 にして、行の余りは label の後ろ = 当たり判定の外に残す。間隔は .modal-row の gap。 */
 #run-profile-editor .profile-checkbox-row > input[type="checkbox"],
 #app-profile-editor .profile-checkbox-row > input[type="checkbox"] {
@@ -2117,7 +2117,7 @@ input[type="search"] {
   padding: 2px 6px;
   border-radius: 2px;
   /* **テーマの枠色トークン(--vscode-widget-border / --vscode-input-border)を使わない** ——
-     どちらも既定テーマでは薄すぎて枠がほぼ見えなかった(2026-09-02 に順に試して不合格)。
+     どちらも既定テーマでは薄すぎて枠がほぼ見えなかった(試して不合格)。
      文字色から作れば**明background・暗backgroundのどちらでも必ずコントラストが付く**。
      背景は白を少しだけ混ぜて面から浮かせる —— 白と混ぜるので暗いテーマでだけ明るくなり、
      明るいテーマ(既に白)では動かない。
@@ -2161,7 +2161,7 @@ input[type="search"]::placeholder {
 }
 /* バッチ作成の進行窓。**#device-pick-overlay(2000)より上**に置くこと ——
    既定の 2000 のままだと同じ重なり順で後ろの DOM が勝ち、進行窓が「デバイスを選択」の
-   背後に隠れる(2026-08-25 に実際に隠れた。作成は成功しているのに何も見えない)。
+   背後に隠れる(実際に隠れた。作成は成功しているのに何も見えない)。
    帯: モーダル群(2000/2010) < ここ(2020) < 右クリックメニュー(2100) < hover-tip(10000) */
 #device-batch-overlay {
   z-index: 2020;
@@ -2462,7 +2462,7 @@ input[type="radio"]:focus-visible {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
-/* 見出し / ホスト選択 / 「+新規作成」。**ホストは見出しのすぐ右に詰める**(2026-08-17 指示)。
+/* 見出し / ホスト選択 / 「+新規作成」。**ホストは見出しのすぐ右に詰める**(ユーザー指示)。
    space-between で3つを散らすと、ホストが中央に浮いて見出しとの関係が読めない。
    右端に寄せるのは「+新規作成」だけ(margin-left: auto)。 */
 .device-pick-title-row {
@@ -2776,7 +2776,7 @@ input[type="radio"]:focus-visible {
 #panel-live .control-pane {
   /* 画像の右の残り幅いっぱいに広げる(要素一覧・操作記録を横いっぱいに)。min-width が下限。
      **flex-basis は 0** —— auto にすると基準幅が中身(要素一覧の列幅は max-content)になり、
-     長いラベルの木が来ただけで画像ペイン(flex-shrink:1)を押して画像が縮む。実害 2026-09-22:
+     長いラベルの木が来ただけで画像ペイン(flex-shrink:1)を押して画像が縮む。実害あり:
      システムアラートの説明文が長く、アラートが出ている間だけ画像がひと回り小さくなった。
      画像の大きさは木の中身に依存してはいけない。 */
   flex: 1 1 0;

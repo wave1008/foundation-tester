@@ -3,7 +3,7 @@
 //
 // 縦の並び: ツールバー → run ボード → devices-separator → ラインビューの見出し → tile-pane →
 // splitter → output-pane → splitter-log → log-pane。**セパレーターをどこまで動かしても
-// run ボード・実行ログビュー・グリッドビューの見出し行は消さない**(ユーザー決定 2026-09-21)。
+// run ボード・実行ログビュー・グリッドビューの見出し行は消さない**(ユーザー決定)。
 
 export function clampHeight(value, min, max) {
   return Math.min(Math.max(value, min), Math.max(min, max));

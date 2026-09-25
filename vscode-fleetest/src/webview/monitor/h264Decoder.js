@@ -119,7 +119,7 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
       }
       // **canvas の寸法ではなく、このレンダラが最後に伝えた寸法と比べる** —— canvas は作り直しを
       // 跨いで使い回すので、前の世代と同じ寸法だと新しい世代が一度も伝えず、その間に別の経路
-      // (隠れた img)が書いた比率がタイルに残る(縦長の映像が横長の枠に入った 2026-09-17)
+      // (隠れた img)が書いた比率がタイルに残る(縦長の映像が横長の枠に入った実害あり)
       if (onDimensions && width > 0 && height > 0
           && (reportedWidth !== width || reportedHeight !== height)) {
         reportedWidth = width;

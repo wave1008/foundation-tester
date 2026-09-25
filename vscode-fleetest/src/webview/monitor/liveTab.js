@@ -134,14 +134,14 @@ const BOXES_SETTLE_CAP_MS = SETTLE_REFRESH_MS * 4;
 let showBoxes = persistedState.liveShowBoxes === true;
 // 枠を消してから**次の木が届くまで**は描き直さない。fitScreenshot も枠を引き直すので、
 // これが無いと画像のサイズが変わった拍子に古い木の枠が復活する
-// (実害 2026-09-22: タスクスイッチャーを出すと直前の画面の枠が出たまま残った)。
+// (実害あり: タスクスイッチャーを出すと直前の画面の枠が出たまま残った)。
 let boxesStale = false;
 let settleRefreshTimer = null;
 // ON にした直後の静定待ちの打ち切りタイマー(BOXES_SETTLE_CAP_MS)。待っていない間は null。
 let boxesSettleCapTimer = null;
 // 静定待ち中(deferBoxesUntilSettled が立て、静定後の木か打ち切りで畳む)。**操作の直後に返る木で
 // 描かない**ための印 —— あの木はまだ慣性で動いている最中のことがあり、描くと中間の座標で一度出て
-// 止まってからもう一度出る(2026-09-23 の実害: 設定画面のスクロール)。
+// 止まってからもう一度出る(実害あり: 設定画面のスクロール)。
 let boxesAwaitSettle = false;
 // 撮り直しとして要求した snapshot か(その結果でまた仕掛けると静止画面で撮り続ける)。
 let settleRefreshRequested = false;
@@ -157,12 +157,12 @@ function setBusy(value) {
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
   busyLabel.textContent = value ? t('wvMonitor.live.processing') : '';
-  // **操作を撃った時点で枠を消す**(ユーザー決定 2026-09-22) —— これから画面が変わるので、
+  // **操作を撃った時点で枠を消す**(ユーザー決定) —— これから画面が変わるので、
   // 古い木から描いた枠はもう画面と合わない。操作の結果が届いたら renderBoxes が引き直す。
   // 要素一覧は消さない(読んでいる最中に行が消えると追えない。あちらは「更新」で入れ替わる)
   //
   // **撮り直し(scheduleSettleRefresh)の間は消さない** —— あれは画面を変えない観測で、
-  // 消すと遷移後に「出る → 消える → 出る」とちらつく(2026-09-22)
+  // 消すと遷移後に「出る → 消える → 出る」とちらつく
   if (value && !settleRefreshRequested) { deferBoxesUntilSettled(); }
   // 「レコーディング開始」も busy を見る(updateRecordButton が updateProfileActionButtons を呼ぶ)
   updateRecordButton();
@@ -451,7 +451,7 @@ function cancelBoxesSettleCap() {
   }
 }
 
-/** 枠を出すのは画面が静定してからにする(ユーザー決定 2026-09-23)。手元の木は最後に観測した
+/** 枠を出すのは画面が静定してからにする(ユーザー決定)。手元の木は最後に観測した
  * 時点のものなので、絵がまだ動いている間に描くと**前の画面の位置に枠が出る**。
  * 静定 = 絵が SETTLE_REFRESH_MS 動かないこと(scheduleSettleRefresh の予約は絵が動くたびに
  * 先送りされる)。止まったら撮り直しが届き、applySnapshot が boxesStale を落として描く。
@@ -466,7 +466,7 @@ function deferBoxesUntilSettled() {
 }
 // **busy 中に鳴ったら諦めずに待ち直す**(遅い台 = リモート・実機は1操作に数秒かかり、静定も打ち切りも
 // 必ず busy 中に鳴る)。諦めると、操作の結果が失敗(木が来ない)だった回は枠が永久に出ず、
-// トグルを入れ直しても撮り直しが飛ばなかった(実地 2026-09-24: M1Ultra 経由の iPhone wave)
+// トグルを入れ直しても撮り直しが飛ばなかった(実地で確認: M1Ultra 経由の iPhone wave)
 function armBoxesSettleCap(delayMs) {
   boxesSettleCapTimer = setTimeout(() => {
     boxesSettleCapTimer = null;
@@ -499,7 +499,7 @@ function fitScreenshot() {
   const maxH = Math.max(40, avail);
   // **絵そのものには幅・高さを入れない**。上限(max-width/max-height)だけ与えて、縦横比は
   // 絵に決めさせる —— 寸法を明示すると、screen が実画面と食い違った回にその比へ引き伸ばされる
-  // (実害 2026-09-22: セッションがウィジェットの裏方を向いて screen が 349x565 になり、
+  // (実害あり: セッションがウィジェットの裏方を向いて screen が 349x565 になり、
   //  0.46 の絵が 0.618 へ横に膨らんだ)。**絵の比は常に正しい**ので、こちらを信じる。
   // screen は pane の幅を決めるためだけに使う(下)。
   // 絵がまだ無い間の placeholder も絵と同じ高さまで伸ばす(CSS は box-sizing:border-box)。
@@ -543,7 +543,7 @@ function disposeLiveH264() {
   liveDeltasBeforeKey = 0;
   liveStallSent = false;
   // **canvas を降りたら一枚絵を前に出す** —— 両方隠れると wrap の背景色が見えて画面が
-  // 真っ黒になる(実害 2026-09-22: Spotlight でキーボードが出た直後。デコードエラーからの
+  // 真っ黒になる(実害あり: Spotlight でキーボードが出た直後。デコードエラーからの
   // mjpeg フォールバックは host 側の切り替えを挟むので、その間ずっと黒いままだった)。
   // 絵をまだ1枚も受けていないときは placeholder のままにする
   if (screenshot.getAttribute('src')) {
@@ -980,7 +980,7 @@ function renderElements() {
     main.className = 'element-cell-main';
     main.textContent = element.line;
     row.append(frameCell, main);
-    // **行のクリックでは何もしない**(ユーザー決定 2026-09-22) —— 一覧は読むためのもので、
+    // **行のクリックでは何もしない**(ユーザー決定) —— 一覧は読むためのもので、
     // 触れたつもりのないタップがデバイスへ飛ばないようにする。ホバーで枠を出すだけ。
     // 枠を出している間(showBoxes)は **hot(赤)へ一本化** —— 単一枠(青)と重ねると同じ要素に
     // 2つ枠が出る。画像側から指したときと見た目が揃うので、どちらから指しても同じに見える。

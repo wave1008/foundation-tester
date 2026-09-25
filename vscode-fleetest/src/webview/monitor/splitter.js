@@ -40,7 +40,7 @@ let fleetVisible = persistedState.fleetVisible !== false;
 let logViewVisible = persistedState.logViewVisible !== false;
 let gridViewVisible = persistedState.gridViewVisible !== false;
 
-// **1台だけ選択した間は実行ログビューを自動で畳む**(ユーザー決定 2026-09-21)——
+// **1台だけ選択した間は実行ログビューを自動で畳む**(ユーザー決定)——
 // グリッドビューの中に同じログの複製が出るため。利用者の設定(logViewVisible)は書き換えないので、
 // 選択が 1 台でなくなればこの旗を下ろすだけで元の開閉状態に戻る。
 // **畳む理由が生きているか(= 複製が見えているか)は旗と別に毎回導出する** —— グリッドビューを

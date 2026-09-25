@@ -18,7 +18,7 @@ const machineSelect = document.getElementById('device-pick-machine-select');
 const addBadge = document.getElementById('device-add-source-badge');
 
 // remoteConfig.hosts[].machine(登録簿のマシン名)のうち非空のもの。
-// **キーは "machine"**(2026-08-26 改名。remoteRunArgs.ts の RemoteHostEntry と対。旧キー "name" を
+// **キーは "machine"**(remoteRunArgs.ts の RemoteHostEntry と対。旧キー "name" を
 // 読むと一覧が常に空になり、リモートのマシンを1つも選べない)。
 let machineNames = [];
 // 選択中のマシン名。null = ローカル。

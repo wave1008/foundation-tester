@@ -552,7 +552,7 @@ dlgOk.addEventListener('click', () => {
     dlgError.textContent = t('wvMonitor.deviceAdd.nameRequired');
     return;
   }
-  // **同名は拒否せず「上書きするか」を聞く**(2026-08-17 指示)。判定は選択中のホストのぶんだけ
+  // **同名は拒否せず「上書きするか」を聞く**(ユーザー指示)。判定は選択中のホストのぶんだけ
   // (一意なのは (machine, name)。別の機械の同名は衝突ではない)。実体と登録のどちらの衝突でも、
   // 上書き = 実体を消して作り直す + 古い登録を新しい実体で置き換える。
   // 確認ダイアログはホスト側(webview の window.confirm は効かない)。
@@ -586,7 +586,7 @@ dlgOk.addEventListener('click', () => {
 
 // ---- バッチ作成 -------------------------------------------------------------
 
-/** 「デバイス名 + `-` + 連番2桁」。**`-01` 始まり**(2026-08-25 指示。既存フリートの命名と同じ)で、
+/** 「デバイス名 + `-` + 連番2桁」。**`-01` 始まり**(ユーザー指示。既存フリートの命名と同じ)で、
  *  #dlg-batch-count の上限 99 とあわせて -01〜-99 の範囲に収まる。 */
 export function batchDeviceNames(base, count) {
   const names = [];
@@ -737,7 +737,7 @@ export function applyBatchCreateFinished(message) {
     : t('wvMonitor.deviceBatch.finished', { created: String(created.length), failed: String(failed.length) });
   batchOk.disabled = false;
   batchOk.focus();
-  // **ここでは pendingAutoChecks を立てない**(2026-08-25 の実害)。立てると、OK を押すまでの間に
+  // **ここでは pendingAutoChecks を立てない**(実害あり)。立てると、OK を押すまでの間に
   // 別経路の installedDevices 応答(runProfileDevicesTab の機種/OS 取得)が届いた時点で
   // **一度きりの適用を使い切り**、そのあと OK の再取得で行が作り直されてチェックが消える。
   // 立てるのは OK を押して再取得を投げる直前(batchOk のリスナー)
@@ -775,7 +775,7 @@ batchOk.addEventListener('click', () => {
 
 // **Esc は手前の1枚だけ閉じる**。document 上に Esc ハンドラが3つ(この追加ダイアログ /
 // 削除メニュー / 選択ダイアログ)あり、**手前を閉じた時点でフラグが下りる**ため、後続の
-// ハンドラが「奥も閉じてよい」と誤判定して2枚同時に閉じていた(2026-08-17 実機で確認)。
+// ハンドラが「奥も閉じてよい」と誤判定して2枚同時に閉じていた(実機で確認)。
 // 消費したら preventDefault で印を付け、奥のハンドラはそれを見て降りる
 // (フラグの読み合いだと登録順に依存する)。
 document.addEventListener('keydown', (event) => {
@@ -1079,7 +1079,7 @@ function devicePickRowKey(row) {
 
 /** **まだ OK していない手作業のチェック**(登録状態と食い違っている行)を鍵ごとに控える。
  *  一覧はデバイスを作るたびに取り直して行 DOM を作り直すので、控えて戻さないと
- *  「作成を続けざまにやると前のチェックが外れる」(2026-08-25 の報告)。
+ *  「作成を続けざまにやると前のチェックが外れる」(報告あり)。
  *  **initialChecked と一致する行は控えない** —— 登録状態そのものは新しい一覧の値が正しく、
  *  古い値で上書きすると別経路の登録変更を打ち消してしまう。 */
 function capturePendingDevicePickEdits() {
@@ -1278,7 +1278,7 @@ function applyPendingAutoCheck() {
   pendingAutoChecks = [];
   const unmatched = [];
   // **チェックだけでは足りない** —— 一覧は端末が数百行あり、作った行が画面外だと
-  // 「作ったのに出てこない」と読める(2026-08-25 の報告)。最初の1行を見える位置へ運び、
+  // 「作ったのに出てこない」と読める(報告あり)。最初の1行を見える位置へ運び、
   // 作った行には印を付ける
   let firstChecked = null;
   for (const target of targets) {
@@ -1322,7 +1322,7 @@ function setDevicePickControlsEnabled(enabled) {
 }
 
 /** 取得中の表示。**一覧は消さずに保つ** —— 空にするとダイアログが一度縮んでから
- * 新しい一覧で伸び直し、切り替えのたびに画面が跳ねる(2026-08-17 ユーザー指摘)。
+ * 新しい一覧で伸び直し、切り替えのたびに画面が跳ねる(ユーザー指摘)。
  * 代わりに薄くして操作を止め、**ホストのリストボックスの右**に「読み込み中...」を出す
  * (一覧側に出すと同じ理由で高さが変わる)。中身の入れ替えは応答が届いた1回だけ。
  * 取得中はホスト選択も止める(往復が重なると、あとから来た応答がどちらのものか分からなくなる)。 */
@@ -1342,7 +1342,7 @@ function endDevicePickLoading() {
   devicePickLoading.style.display = 'none';
   devicePickMachineSelect.disabled = false;
   // **行のチェックも戻す**。begin 側で無効化しているので、ここで戻さないと取得に失敗したとき
-  // 見た目は通常なのに全行が反応しない状態が残る(2026-08-17 のレビュー指摘)。
+  // 見た目は通常なのに全行が反応しない状態が残る(レビュー指摘)。
   // 応答が来て再描画される場合は新しい行に置き換わるため二重には効かない
   for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
     row.checkbox.disabled = false;

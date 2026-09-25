@@ -101,7 +101,7 @@ function showRunProfilePlaceholder(text) {
  * silent=true: 同じプロファイルの背景更新(devices カタログが**他の**実行プロファイルの編集で
  * 変わったときの profileInfo 再送等)。プレースホルダへ差し替えない —— 差し替えると
  * runProfileDevicesTab.js の選択・編集ペインが全消去され、無関係な編集のたびにデバイス編集中の
- * 画面が点滅して選択も失われる(2026-09-16 の実害)。応答(runProfileData)は
+ * 画面が点滅して選択も失われる(実害あり)。応答(runProfileData)は
  * applyRunProfileData の「値が同じなら作り直さない」判定に委ねる。
  * silent=false(既定): プロファイル切替・新規作成・Esc破棄等、**別の状態を表示する**遷移。
  * 応答が来るまでプレースホルダで編集をブロックする(レース防止。ローカル読みなので一瞬で置き換わる)。

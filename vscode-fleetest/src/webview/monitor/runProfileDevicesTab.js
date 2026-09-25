@@ -17,7 +17,7 @@ import { paintMachineBadge } from './machineColors.js';
 // **runProfilesTab.js からは import しない**(片方向依存を保つ。modals.js との相互 import も
 // 同様に避ける —— 循環にすると esbuild のバンドル評価順が入れ替わり、modals.js 側の
 // `btnDeviceAddExisting.addEventListener` が undefined を触って webview 全体が初期化に失敗する
-// [実害。2026-07-25]。選択中の実行プロファイルは renderDeviceRows/clearDeviceRows の呼び分けで
+// [実害あり]。選択中の実行プロファイルは renderDeviceRows/clearDeviceRows の呼び分けで
 // 暗黙に表す(呼ぶのは常に runProfilesTab.js)。
 
 // ---- プロジェクトのデバイスカタログ(profileInfo.devices) -----------------------------

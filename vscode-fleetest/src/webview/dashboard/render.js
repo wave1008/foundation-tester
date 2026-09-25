@@ -97,7 +97,7 @@ function groupMachinesText(members) {
   return machineLabels([...new Set(members.map((r) => r.host))]).join(' + ');
 }
 
-/** 日時セル。runID もバッジも列に出さない(2026-09-01 ユーザー指示。runID は行の title と
+/** 日時セル。runID もバッジも列に出さない(ユーザー指示。runID は行の title と
  * 詳細取得の鍵にだけ使い、何台構成かは machine 列が示す)。 */
 function groupDateCell(members) {
   return td(formatLocalDateTime(groupStartedAt(members)));
@@ -199,7 +199,7 @@ export function renderRunsTable(groups, statsByRunID) {
     const row = document.createElement('tr');
     row.className = 'row-clickable';
     row.title = members.map((r) => r.runID).join('\n');
-    // 列構成はパフォーマンス表と同じ(2026-09-01 ユーザー指示)
+    // 列構成はパフォーマンス表と同じ(ユーザー指示)
     row.append(
       groupDateCell(members),
       td(groupMachinesText(members)),

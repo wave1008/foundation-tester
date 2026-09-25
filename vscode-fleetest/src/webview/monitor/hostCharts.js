@@ -162,7 +162,7 @@ export function setMachineLock(machine, held, issuer, mine) {
 /**
  * 控え(hmLocks)を1行へ反映する。**要素は足しも消しもしない** —— 枠は monitorHtml.ts が
  * 全行に置いてあり、ここは可視性と説明文だけを切り替える(足し引きすると、その行だけ幅が
- * 変わって MEM/CPU/… の列が行ごとにずれる。2026-08-31 の実害)。
+ * 変わって MEM/CPU/… の列が行ごとにずれる実害)。
  */
 function hmApplyLock(row, machine) {
   const chip = row.el.querySelector('.hm-lock');
@@ -174,7 +174,7 @@ function hmApplyLock(row, machine) {
   // 手元の行キーは空文字なので、名前のスロットには行の呼び名を入れる(hmApplyDisabled と同じ)
   const label = machine === '' ? HM_LOCAL_LABEL : machine;
   // **説明はタイルと同じ自前ツールチップ**(0.2 秒)。ネイティブ `title` は遅延が約1秒で
-  // 指定できず、この錠前のような小さい的では「乗せても何も出ない」に見える(2026-08-31 の指摘)
+  // 指定できず、この錠前のような小さい的では「乗せても何も出ない」に見える(指摘あり)
   setHoverTip(chip, lock
     ? (lock.mine
       ? t('wvMonitor2.hostCharts.lockMine', { machine: label })
@@ -192,7 +192,7 @@ function hmApplyDisabled(row, machine) {
   }
   const off = isMachineDisabled(machine);
   chip.classList.toggle('hm-off-on', off);
-  // 行ごと明度を下げる(ユーザー決定 2026-09-22)—— 使えない機械のグラフが同じ明るさで
+  // 行ごと明度を下げる(ユーザー決定)—— 使えない機械のグラフが同じ明るさで
   // 並んでいると、動いている機械と見分けが付かない
   row.el.classList.toggle('hm-row-disabled', off);
   setHoverTip(chip, off
@@ -329,7 +329,7 @@ function hmRenderFmLabel(row) {
   // 「全部失敗」がすぐ立ってしまい落ち着かないため。
   const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
-  // **死んでいる間は回数を出さない**(ユーザー決定 2026-09-03)。死んだ FM の「0回」は
+  // **死んでいる間は回数を出さない**(ユーザー決定)。死んだ FM の「0回」は
   // 事実ではあるが読み手を誤らせる —— 0 は「使われていない」とも読めるうえ、死んでいる間の
   // 回数には意味が無い。欠測と同じ '–' に倒し、死であることはグレーの線とツールチップが言う
   entry.value.textContent = dead ? '–' : (partial ? '⚠' : '') + callsText;
@@ -341,7 +341,7 @@ function hmRenderFmLabel(row) {
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
   const deadPaths = fmDeadPaths(row);
-  // **台帳由来の死はここでは語らない**(ユーザー決定 2026-09-03)。どの経路が死んだかは右の
+  // **台帳由来の死はここでは語らない**(ユーザー決定)。どの経路が死んだかは右の
   // バッジが語で出しており、理由と観測時刻はそのバッジのツールチップが持つ。ここで同じことを
   // 繰り返すと、レート統計を見に来た人が毎回 3 行の説明を読まされる。
   // 窓内の全滅だけはバッジが経路を名指しできない(台帳が無い)ので、ここに残す
@@ -359,7 +359,7 @@ function hmRenderFmLabel(row) {
   hmRenderDeadBadge(row, { dead, deadPaths, stats });
 }
 
-/** 死んだ経路を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定 2026-09-03)
+/** 死んだ経路を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定)
  *  —— 不明で出すと、プローブの谷間や旧版 CLI の入ったリモート機で点滅し続ける。
  *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら経路を名指しでき、
  *  窓内の全滅は**どの経路かを言えない**ので事実だけ述べる。 */
@@ -371,7 +371,7 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
     badge.removeAttribute('title');
     return;
   }
-  // **経路ごとに ⚠︎ を1つ**(印と経路名の間に空白は置かない)(ユーザー決定 2026-09-03)。語は付けない —— 経路名は
+  // **経路ごとに ⚠︎ を1つ**(印と経路名の間に空白は置かない)(ユーザー決定)。語は付けない —— 経路名は
   // text / vision という識別子そのもので訳す対象が無いため、ここは辞書を通さない。
   // 区切りの空白2つは CSS の `white-space: pre` が保つ(既定では連続空白が1つに畳まれる)
   badge.textContent = deadPaths.length > 0
@@ -447,11 +447,11 @@ function hmDraw(row, entry, scale) {
     return;
   }
   const palette = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'];
-  // FM が死んでいる間はスパークラインをグレーにする(ユーザー決定 2026-09-03)。
+  // FM が死んでいる間はスパークラインをグレーにする(ユーザー決定)。
   // **文字(FM ラベル・値)の色は変えない** —— 行のどこかが赤くなると、隣の CPU/GPU/MEM と
   // 同じ「高い値が出ている」の合図に見える。死は値ではなく系列そのものが無効という話なので、
   // 色を抜くことで表す
-  // **「マシン有効」が off の機械も同じグレー**(ユーザー決定 2026-09-22)—— 行を薄くするだけだと
+  // **「マシン有効」が off の機械も同じグレー**(ユーザー決定)—— 行を薄くするだけだと
   // 色は残るので、系列の色で機械を見分ける目には「動いているが暗い」に見える。無効は値ではなく
   // 系列そのものが無効という話なので、FM の死と同じく色を抜いて表す
   const grey = isMachineDisabled(row.machine) || (entry === row.entries.fm && fmIsDead(row));

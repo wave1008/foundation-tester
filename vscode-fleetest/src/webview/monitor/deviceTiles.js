@@ -66,7 +66,7 @@ const WIPE_STATUS_LABEL = {
 // physical: 実機は端末そのものを起動・停止しない(DeviceBooter の実機分岐)。操作対象は
 // **ブリッジだけ**なのでラベルで明示する(「起動/停止」だと端末の電源だと誤解される)。
 // 項目自体は隠さない: 隠すとモニターから実機のブリッジを起動できなくなる(タイルが
-// 「接続中」のまま何もできない状態になる実害。2026-07-25)
+// 「接続中」のまま何もできない状態になる実害)
 function deviceOpMenuItem(state, busy, physical) {
   // 起動中・起動待ちの1台は取り消せる(未起動へ戻す。MonitorDeviceOps.cancelDeviceUp)。
   // 一括起動・再起動のバッチの台(cancellable 無し)は従来どおり押せない「起動中」
@@ -163,7 +163,7 @@ const deviceMirrors = new Map();
 
 // 画像高さの絶対下限(px)。セパレーターを手で最小まで詰めたときに 0 や負にならないための床。
 // **タイルの幅もここで決まる**(幅 = この高さ × アスペクト比)。60 では中身が判別できない
-// (iPhone で幅 28px)ので 120 にした(ユーザー決定 2026-09-21)。
+// (iPhone で幅 28px)ので 120 にした(ユーザー決定)。
 // **既知の副作用**: ペインをこの高さ(120 + chrome 66〜88)より低く詰めると、画像がタイルから
 // はみ出す。タイルの幅を CSS の min-width / width の式で広げる案は、**バッジの自然幅が
 // タイルの幅になる**(.tile-header は「幅0 + min-width:100%」で親の幅を参照する)ため取り下げた
@@ -172,13 +172,13 @@ const MIN_TILE_IMAGE_HEIGHT = 120;
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
 // マシン名バッジの段(.tile-machine-row)。**全タイルに常にある**(手元にも機械名を出す。
-// ユーザー決定 2026-09-22)—— タイルの画像高さ(--tile-image-h)はグリッド共通の1値なので、
+// ユーザー決定)—— タイルの画像高さ(--tile-image-h)はグリッド共通の1値なので、
 // 段の有無が混ざると高さが揃わない。CSS の .tile-machine-row と一致必須
 const TILE_MACHINE_ROW_HEIGHT = 16;
 
 // タイル幅は「--tile-image-h × --tile-aspect」で決まる(style.css の .frame-wrap)。
 // **実際にデコードできた画像の実寸からしか設定しない**: ストリームのヘッダ由来の寸法を信じると、
-// 境界ズレで壊れたフレーム1枚がタイルを異常な幅に広げ、以後そのまま戻らない(実害 2026-07-26。
+// 境界ズレで壊れたフレーム1枚がタイルを異常な幅に広げ、以後そのまま戻らない(実害。
 // 上流の検出は deviceStream.ts の handleProtocolDesync)。同値なら書かない(毎フレームの
 // スタイル書き込みによるレイアウト再計算を避ける)
 function setTileAspect(entry, aspect) {
@@ -324,7 +324,7 @@ function createTile(device) {
   unregisteredBadge.style.display = 'none';
   // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
   header.append(kindBadge, name, unregisteredBadge);
-  // 機械名は**名前の上の段**(ユーザー決定 2026-09-22。2026-08-17 は下だった)。
+  // 機械名は**名前の上の段**(ユーザー決定)。
   // 手元も含めて全タイルに出すので、段は常にある(高さも常に勘定する)
   const machineRow = document.createElement('div');
   machineRow.className = 'tile-machine-row';
@@ -494,8 +494,8 @@ function renderFrame(entry) {
       entry.frameWrapEl.appendChild(entry.canvasEl);
     }
   } else {
-    // 状態はテキストだけで伝える(アイコン・スピナーは 2026-09-01 に撤去 —— タイル幅は
-    // 60px 程度しかなく、英語ラベルはアイコンの行に押されて表示しきれなかった)
+    // 状態はテキストだけで伝える(アイコン・スピナーは置かない —— タイル幅は
+    // 60px 程度しかなく、英語ラベルはアイコンの行に押されて表示しきれない)
     entry.placeholderEl.textContent = '';
     const labelSpan = document.createElement('span');
     // **リモートのデバイスは状態を観測できない**(モニターの判定は simctl/adb = 手元にしか効かない)。
@@ -513,7 +513,7 @@ function renderFrame(entry) {
     const streamUnavailable = !!entry.streamUnavailable && !wiping && !shuttingDown && !waitingUp
       && !upRunning && !offline;
     // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
-    // 2026-08-17 に実際に読めない表示になった)。理由と対処はツールチップと OUTPUT へ
+    // 実際に読めない表示になった実害あり)。理由と対処はツールチップと OUTPUT へ
     entry.placeholderEl.title = wiping
       ? t('wvMonitor.tile.wipingTip')
       : awaitingAction === 'unlock'
@@ -595,7 +595,7 @@ function renderMirror(entry) {
 // 絵の上のタグ段。タイルのヘッダ(実機バッジ・デバイス名のピル・未登録バッジ)をそのまま複製する
 // —— ラインビューと同じ見た目・同じ内容にするため(組み立て直すと renderMeta の切替と食い違う)。
 // ホスト名の段(タイルと同じく名前の下)は**常に置く**。リモートの台にだけ段を足すと、
-// その台だけ絵の上端が下がって手元と高さが揃わない(2026-08-24 のユーザー指摘)。
+// その台だけ絵の上端が下がって手元と高さが揃わない(ユーザー指摘)。
 // 手元の台には**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
 function renderMirrorHeader(entry, mirror) {
   mirror.headerEl.textContent = '';
@@ -703,7 +703,7 @@ function renderMeta(entry) {
     entry.device.frozen && entry.device.state === 'connected' ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
-  // **手元も含めて必ず出す**(ユーザー決定 2026-09-22)—— どの機械の台かは全タイルで同じ形で
+  // **手元も含めて必ず出す**(ユーザー決定)—— どの機械の台かは全タイルで同じ形で
   // 読めるほうがよい。色は machineColors が機械ごとに持つ(手元は 'local' の鍵)
   entry.remoteBadgeEl.textContent = entry.device.machine || LOCAL_MACHINE_LABEL;
   entry.remoteBadgeEl.style.display = 'inline-block';
@@ -805,7 +805,7 @@ export function renderDeviceOpMenuItem() {
   // 成立しない。停止(down)だけ出す。
   // **実機は例外** —— 実機の up は「ブリッジを起動」であって端末の電源ではなく、udid で撃てる
   // (start-device --udid)。ここで隠すと、繋がっている実機がタイルに出るのに何も操作できない
-  // (2026-07-25 に一度直した実害が、未登録デバイスを出すようになった時点で実機に再発していた)
+  // (一度直した実害が、未登録デバイスを出すようになった時点で実機に再発していた)
   if (device.registered === false && item.op !== 'down' && device.kind !== 'physical') {
     deviceOpMenuItemBtn.style.display = 'none';
     return;
@@ -831,7 +831,7 @@ onMachineEnablementChanged(() => {
 let deviceOpMenuOpen = false;
 /** コンテキストメニューの対象として印(.menu-target)を付けている要素 = ラインビューのタイルと、
  * 選択中ならグリッドビューの拡大表示(.lane-preview)。どちらで右クリックしても両方に付ける。
- * **メニューを出している間だけ**(ユーザー決定 2026-09-23)。チェックボックスの選択(.selected)とは
+ * **メニューを出している間だけ**(ユーザー決定)。チェックボックスの選択(.selected)とは
  * 別の印で、entry を握らず要素を握るのは、タイルが作り直されても外し忘れが残らないようにするため。 */
 let menuTargetEls = [];
 function setMenuTargetTile(entry) {
@@ -946,7 +946,7 @@ function selectAllIsDeselect() {
 // ツールチップと当たり判定はラベル全体(文字の上でも効かせる)。
 const selectAllLabel = btnSelectAll.closest('label');
 
-// ラインビューの見出しの台数は**選択に関係なく全台**(ユーザー決定 2026-09-22)。
+// ラインビューの見出しの台数は**選択に関係なく全台**(ユーザー決定)。
 // **0 台でも「0台」を出す** —— 欄が消えるとトグルの位置が動く。
 // **台が1枚も来ていない時点でも出す**ので初期化でも1回呼ぶ(applyDevices は最初の devices
 // まで走らない)
@@ -1022,7 +1022,7 @@ let fleetActive = false;
 // **右クリックメニューもラインビューの領域**(タイルから開くもので、DOM 上だけペインの外に居る)。
 // 含めないと、メニューの項目を押した瞬間にガードが外れ、**それまで隠れていた選択が
 // 見えるようになる** —— 利用者からは「メニューの『すべて選択』で HTML が全選択された」
-// ように見える(実害 2026-08-28)。
+// ように見える(実害あり)。
 function inFleetRegion(node) {
   return node instanceof Node && (tilePane.contains(node) || deviceOpMenu.contains(node));
 }
@@ -1064,7 +1064,7 @@ function fleetHasFocus() {
 // ラインビューを触っている間だけ Cmd/Ctrl+A を「全選択/全解除」に使う(webview 既定の
 // 「テキストを全選択」はここでは何の役にも立たない)。それ以外の場所では横取りしない。
 //
-// **テキスト全選択の抑止は preventDefault ではできない**(2026-08-28 実測: 効かなかった)。
+// **テキスト全選択の抑止は preventDefault ではできない**(実測: 効かなかった)。
 // VSCode は Electron で「すべて選択」はネイティブメニュー経由でも走り、そちらは
 // ページの既定動作とは別経路。届く時刻も keydown とずれるので、後から選択を消す
 // (removeAllRanges)のも間に合わない。**選択できるものが無ければ、いつ届いても何も
@@ -1138,7 +1138,7 @@ export function devicesOnMachine(machine) {
   const out = [];
   // **タイルではなく生の一覧から採る** —— タイルは「起動中のデバイス」で絞られているので、
   // ビルド中(台がまだ起動していない)の run の下から台が消える。ツリーからは消さない
-  // (ユーザー決定 2026-09-22)。プラットフォームの表示フィルタだけは通す
+  // (ユーザー決定)。プラットフォームの表示フィルタだけは通す
   // (選んでいない側を4つのセクションから同時に隠すのが、あちらの決定事項)。
   for (const device of lastDevices) {
     if (device.machine !== machine || !isPlatformVisible(device.platform)) {
@@ -1384,7 +1384,7 @@ let lastDevices = [];
 // 「起動中のデバイス」(設定 fleetest.monitorDeviceFilter)。**ここで落とすのはタイル側だけ** ——
 // run ボードのツリー(devicesOnMachine)はこの値を見ない。停止中・観測できない台を消すと、
 // ビルド中の run の下から台が丸ごと消えてフリートに何が居るのか分からなくなる
-// (ユーザー決定 2026-09-22。docs/design.md §18.5)。**知らない値は 'all' へ倒す**
+// (ユーザー決定。docs/design.md §18.5)。**知らない値は 'all' へ倒す**
 let deviceStateFilter = 'all';
 const platformFilterListeners = [];
 
@@ -1398,7 +1398,7 @@ export function onPlatformFilterChanged(listener) {
 }
 
 /** 選んでいるものだけ色付き(iOS / Android は台のピルと同じ色・「すべて」は白)、
- *  選んでいないものは灰色(ユーザー決定 2026-09-22)。色は CSS が `.selected` で持つ。 */
+ *  選んでいないものは灰色(ユーザー決定)。色は CSS が `.selected` で持つ。 */
 function paintPlatformBadges() {
   for (const badge of platformFilterBadges) {
     const on = badge.dataset.value === platformFilter;
@@ -1455,7 +1455,7 @@ function tileDevices() {
 
 function applyVisibleDevices(devices) {
   // 全選択が ON(= 今の全タイルが選択済み)の間は、**後から現れたデバイスも選択に足す**
-  // = フリートが増えても「全部選択」のままにする(ユーザー要求 2026-09-09)。判定は
+  // = フリートが増えても「全部選択」のままにする(ユーザー要求)。判定は
   // タイルを増やす前に採る —— 1台でも足すと等号が崩れて ON が読めなくなる。
   // **selectAllIsDeselect() ではなく旗そのものを読む** —— 再起動直後は0枚なのであちらは
   // 常に OFF を返し、戻ってきた台が選ばれない。
@@ -1606,7 +1606,7 @@ function ackStreamRendered(entry) {
 // で img→canvas に切り替える。h264ErrorSent 済みなら以後は無視(host が mjpeg に切替済みの前提)。
 // 契約: { type:'streamUnavailable', device, unavailable }。配信を諦めた台は「接続中」を出さない
 // —— プロファイル未選択(未登録デバイス)の iOS はブリッジが無くポーリングのフレームも来ないので、
-// 黙っていると永久に「接続中」に見える(2026-08-17 の実害)
+// 黙っていると永久に「接続中」に見える(実害あり)
 export function applyStreamUnavailable(message) {
   const entry = tiles.get(message.device);
   if (!entry) {
@@ -1696,7 +1696,7 @@ export function applyDeviceOpBusy(message) {
   // **起動が終わった直後の1瞬だけ「待機中」へ落ちるのを防ぐ**。CLI の deviceFinished は
   // モニターの観測サイクル(既定2秒)より先に来るので、busy を剥がした時点ではまだ state が
   // offline のまま = 「一括起動中の未起動機」= 待機中/起動待機 の条件に合致してしまう
-  // (実害 2026-08-29: 起動中 → 一瞬 待機中 → 画面)。**次の観測が来るまで**起動中を保つ
+  // (実害: 起動中 → 一瞬 待機中 → 画面)。**次の観測が来るまで**起動中を保つ
   // (時間で消さない = 定数を置かない。applyDevices が必ず畳む)
   // 実機は device.state が 'offline' にならない(端末は起動も停止もしない。無いのはブリッジだけ)
   // ので、bridgeNotRunning もここで見る。無いと up 完了直後に awaitingStateAfterUp が立たず、
@@ -1898,7 +1898,7 @@ export function applyRecordingsFinalizing(active) {
 function refreshBulkButtons() {
   // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
   // 受け手: monitorPanel.ts devicesUpCancel → MonitorDeviceOps.cancelBulkUp)。
-  // **GUI 実行が起こした一括起動は中断ボタンにしない**(ユーザー指示 2026-09-09)——
+  // **GUI 実行が起こした一括起動は中断ボタンにしない**(ユーザー指示)——
   // 「テストを実行」は先に一括起動を通す(monitorPanel.startTestRunAfterDevicesUp)が、実行中は
   // ツールバーを畳むので押せず、「デバイスの起動を中断」が押せない文言だけ出ていた。
   // この段の中断の口は「テストを中断」1つ(押すと一括起動を止めて run へ進まない)。
@@ -2151,7 +2151,7 @@ function updateSelectionUi() {
   updateLaneVisibility();
 }
 
-// クリックの当たり(ユーザー決定 2026-09-21)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
+// クリックの当たり(ユーザー決定)。タイルごとに張らず委譲するのは判定を1箇所に持つため。
 //  - **タイルの中ならどこでも**そのデバイスの選択トグル(見出し・ホスト名の段・脚も含む)
 //  - タイルの外(タイルとタイルの間・右端の余り)でも、**タイルの高さに収まっていれば何もしない**
 //    —— タイルの隙間は 8px しかなく、狙って押すものではない
@@ -2190,9 +2190,9 @@ function deviceHitRect(entry) {
 // 今は一致するが、タイルの外(全解除)と区別する構造はそのまま残す。
 //
 // **判定は座標だけで行う(event.target を見ない)**。ラインビューは配信の描画と同じ main thread に
-// 載っており(実測 2026-08-28: 配信ヘルパー 22 本 × 12fps)、詰まっている間に押下と離上をまたいで
+// 載っており(実測: 配信ヘルパー 22 本 × 12fps)、詰まっている間に押下と離上をまたいで
 // タイルが描き直されると、`event.target.closest('.tile')` は入れ替わった DOM を指して当たりを
-// 落とす —— 選択も解除も黙って効かない(2026-08-28 の報告)。タイルは重ならないので、
+// 落とす —— 選択も解除も黙って効かない(実害の報告あり)。タイルは重ならないので、
 // 座標で引くほうが DOM の入れ替わりに影響されない。
 function tileHitAtPoint(x, y) {
   const point = { x, y };
@@ -2256,7 +2256,7 @@ let marqueeBaseIds = [];
 let marqueeSuppressClick = false;
 // pointerup で選択を処理済み = 後続の click を1回だけ捨てる(二重トグル防止)。
 // **pointerdown で必ず倒す** —— click が来ないまま残ると次の1回を飲み込む(marqueeSuppressClick
-// が 2026-08-24 に踏んだのと同じ穴)。
+// が踏んだのと同じ穴)。
 let pointerHandledClick = false;
 
 // additive は pointermove ごとに見る(ドラッグ中に押した・離したがそのまま効く)。
@@ -2371,7 +2371,7 @@ grid.addEventListener('pointerdown', (event) => {
   // 前のドラッグの取り残し。**その click は必ずこの pointerdown より前に来る**ので、ここで
   // 落としてよい。落とさないと、グリッドの外(ペイン・セパレーター等)で離したドラッグの
   // click は grid に来ない = 旗が立ったまま残り、**次の普通のクリックを1回飲み込む**
-  // (範囲選択の直後に未選択のデバイスを押しても選ばれず、2回目で選ばれる。実害 2026-08-24)。
+  // (範囲選択の直後に未選択のデバイスを押しても選ばれず、2回目で選ばれる。実害あり)。
   marqueeSuppressClick = false;
   pointerHandledClick = false;
   if (event.button !== 0) {

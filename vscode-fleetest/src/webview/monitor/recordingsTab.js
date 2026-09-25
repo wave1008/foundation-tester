@@ -181,7 +181,7 @@ function sessionMachines(message) {
   return typeof message.machine === 'string' && message.machine !== '' ? [message.machine] : [];
 }
 
-/** セッション行の3カラム目「実行マシン」のバッジ群。**台は出さない**(2026-08-26 ユーザー指示)——
+/** セッション行の3カラム目「実行マシン」のバッジ群。**台は出さない**(ユーザー指示)——
  *  台は動画ごとに違うので、行では機械だけを見せて中身は再生ビューで見る。
  *  マシンが読めない古い記録では null(段を作らない)。 */
 function buildSessionMeta(session) {

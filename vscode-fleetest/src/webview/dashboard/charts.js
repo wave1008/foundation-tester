@@ -77,7 +77,7 @@ function drawAxis(heightCss, palette) {
   const titleHeight = Math.ceil(titleMetrics.actualBoundingBoxAscent + titleMetrics.actualBoundingBoxDescent);
   // ◀ は下 1/3 の段に居るので、横に並ぶのはその段の目盛り(0%・25%)だけ。ラベルは右揃えで
   // 「100%」より短いぶん左に空きができるため、ボタンの右端は**その段で最も長いラベルの左端から
-  // Y_AXIS_GAP** に置く(全ラベルの最大幅を基準にすると 1 文字ぶん余計に空く。2026-09-01 指摘)
+  // Y_AXIS_GAP** に置く(全ラベルの最大幅を基準にすると 1 文字ぶん余計に空く、との指摘)
   const buttonTop = CHART_HEIGHT - SCROLL_BUTTON_HEIGHT;
   const besideButton = Math.ceil(Math.max(0, ...Y_TICKS
     .filter((v) => yOf(v) >= buttonTop)

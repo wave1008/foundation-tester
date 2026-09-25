@@ -38,7 +38,7 @@ let remoteMachines = [];
 // ボード全体の開閉。host 復元前の既定は展開(webview 側 splitter.js の isFleetVisible と同じ規律)。
 let collapsed = false;
 // 「全て展開」トグル。**モードであって一度きりの操作ではない** —— ON の間は、あとから現れた
-// run も展開された状態で出る(ユーザー決定 2026-09-20)。host が workspaceState に持つ。
+// run も展開された状態で出る(ユーザー決定)。host が workspaceState に持つ。
 let expandAll = false;
 // 個々の run 行の展開。groupKey は run が終われば二度と現れないので、host 側には
 // 永続化しない(webview の getState だけ = 同一パネルの再読込(言語切替)を跨ぐだけで十分)。
@@ -46,7 +46,7 @@ const expandedGroups = new Set(
   Array.isArray(persistedState.runBoardExpandedGroups) ? persistedState.runBoardExpandedGroups : [],
 );
 // 機械の枝(「(マシン名) プロジェクト / 実行プロファイル」+ その機械の台)の開閉。
-// **既定は開いた状態**(ユーザー決定 2026-09-22)なので、run 行(既定は閉じ = expandedGroups に
+// **既定は開いた状態**(ユーザー決定)なので、run 行(既定は閉じ = expandedGroups に
 // 入っているものだけ開く)とは逆に**畳んだものを覚える**。寿命も同じ(webview の getState だけ)
 const collapsedBranches = new Set(
   Array.isArray(persistedState.runBoardCollapsedBranches) ? persistedState.runBoardCollapsedBranches : [],
@@ -115,7 +115,7 @@ function machineKey(machine) {
 }
 
 function machineList() {
-  // **「マシン有効」が off の機械は出さない**(ユーザー決定 2026-09-22)—— ディスパッチの対象外
+  // **「マシン有効」が off の機械は出さない**(ユーザー決定)—— ディスパッチの対象外
   // なので、「空き」と並べると使える機械に見える。isMachineDisabled は '' を手元として読む
   // (LOCAL_MACHINE_KEY と同じ綴り)。**run はこれで消えない** —— 一覧に無い機械の run は
   // render の最後の loop が拾う(走っている事実は隠さない)
@@ -161,10 +161,10 @@ export function setRunBoardCollapsed(value) {
 // 呼ばないと隠したはずの台が次の監視サイクルまで残る)
 onPlatformFilterChanged(() => render());
 
-// ---- 2カラムの境目(ユーザー決定 2026-09-22) ----
+// ---- 2カラムの境目(ユーザー決定) ----
 // **px で持つ**(比率ではない) —— ドラッグは px で来るので、比率にすると丸めのたびに境目が滑る。
 // null = まだドラッグされていない = 既定(いちばん長いラベルの幅)を毎回引き直す。
-// **どこにも保存しない**(ユーザー決定 2026-09-22)—— 寿命はこのパネルそのもの。タブを閉じたら
+// **どこにも保存しない**(ユーザー決定)—— 寿命はこのパネルそのもの。タブを閉じたら
 // 解放し、開き直したら既定へ戻す。**この変数だけが持ち主**なので、host へ送る・getState へ書く
 // のどちらも足さない(どちらも閉じても残り、リセットされなくなる)。
 // 隠す/再表示は retainContextWhenHidden で webview が生き続けるため、幅も保たれる。
@@ -172,7 +172,7 @@ let desiredSplit = null;
 
 // 左右それぞれに最低これだけは残す(境目を端まで引き切って片方を潰さない)。
 const MIN_COLUMN_WIDTH = 80;
-// 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定 2026-09-22)。
+// 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定)。
 // 比率ではないので、機械名・台名の長さで決まる。ドラッグするまでは毎回引き直す
 // (台が増えて名前が伸びたら追従する)。
 function naturalLeftWidth() {
@@ -182,7 +182,7 @@ function naturalLeftWidth() {
   for (const el of runBoardRows.querySelectorAll('.run-board-col-left')) {
     // **offsetWidth ではなく矩形の実寸で測る** —— offsetWidth は整数へ丸めた値なので、
     // 中身が 422.4px のときに 422 を返し、0.4px 足りずにその行だけ "…" になる
-    // (2026-09-22 に実地で踏んだ: 同じ長さの行が1つだけ切れた)。ceil は最後に1回だけ
+    // (実地で踏んだ: 同じ長さの行が1つだけ切れた)。ceil は最後に1回だけ
     width = Math.max(width, el.getBoundingClientRect().width);
   }
   runBoardRows.classList.remove('run-board-measuring');
@@ -270,13 +270,13 @@ function renderHeader(groups) {
   // **折りたたみ中は出さない**(本体が見えないので押しても何も起きない)。run 0 本でも出す ——
   // これはモードのスイッチで、「いま開く行があるか」とは別
   runBoardExpandAll.style.display = collapsed ? 'none' : '';
-  // ON の見せ方は「デバイスをすべて選択」と同じ .toggled(ユーザー決定 2026-09-20)
+  // ON の見せ方は「デバイスをすべて選択」と同じ .toggled(ユーザー決定)
   runBoardExpandAll.classList.toggle('toggled', expandAll);
   runBoardExpandAll.setAttribute('aria-pressed', expandAll ? 'true' : 'false');
-  // アイコンだけなので(ユーザー決定 2026-09-21)、名前は tooltip と aria-label が持つ。
+  // アイコンだけなので(ユーザー決定)、名前は tooltip と aria-label が持つ。
   // 出し方は「デバイスをすべて選択」と同じ(deviceTiles.js の renderSelectAllButton)。
   // ネイティブ title は使わない(表示まで約1秒で指定できない。setHoverTip が title を空にするので
-  // 二重にも出ない)。**文言は ON/OFF で入れ替えない**(ユーザー決定 2026-09-21)
+  // 二重にも出ない)。**文言は ON/OFF で入れ替えない**(ユーザー決定)
   const expandAllLabel = t('runBoard.expandAll');
   setHoverTip(runBoardExpandAll, expandAllLabel);
   runBoardExpandAll.setAttribute('aria-label', expandAllLabel);
@@ -310,7 +310,7 @@ export function setRunBoardExpandAll(value) {
 }
 
 // 走っていない機械をまとめる**根の行**(行の DOM は run 行と共有する = ensureRow)。
-// **構成は run の行と同じ**(ユーザー決定 2026-09-22): 根 =「プロジェクト / 実行プロファイル」・
+// **構成は run の行と同じ**(ユーザー決定): 根 =「プロジェクト / 実行プロファイル」・
 // その下に機械の枝「(マシン名) プロジェクト / 実行プロファイル」・さらに下にその機械の台。
 // **run のある機械はここに出さない** —— その機械は run の行として出ているので二重になる。
 // **台のツリーはデバイスの状態に関わらず出す**(停止中でも消さない)。
@@ -354,7 +354,7 @@ function updateScopeRow(row, entries) {
 }
 
 // 機械1つぶんの枝 = 見出し(マシン名のバッジ)+ その機械の台。
-// **run の行の中でも、空きの根の中でも同じ形**(ユーザー決定 2026-09-22)—— 行の種類ごとに
+// **run の行の中でも、空きの根の中でも同じ形**(ユーザー決定)—— 行の種類ごとに
 // 作りを変えるとインデントと2カラムの境目が割れ、ツリーに見えなくなる。
 // **プロジェクト / 実行プロファイルはここに出さない**(同日ユーザー決定)—— すぐ上の根が
 // 出しているので、枝にも置くと同じ文字が機械の数だけ並ぶ。
@@ -406,7 +406,7 @@ function appendMachineBranch(row, { machine, status, run, expandKey }) {
   const rightEl = document.createElement('span');
   rightEl.className = 'run-board-col-right';
   if (status !== undefined) {
-    // 空きは語、**不明は「—」**(ユーザー決定 2026-09-20)。どちらもグレーで警告色は使わない ——
+    // 空きは語、**不明は「—」**(ユーザー決定)。どちらもグレーで警告色は使わない ——
     // 観測できていないのは異常ではない。**何のダッシュかは title で言う**
     const statusEl = document.createElement('span');
     statusEl.className = 'run-board-idle-machine-status run-board-machine-state-' + status;
@@ -426,7 +426,7 @@ function appendMachineBranch(row, { machine, status, run, expandKey }) {
   });
   groupEl.appendChild(header);
 
-  // **その機械の台を全部並べ、run が使っている台にだけシナリオを添える**(ユーザー決定 2026-09-22)
+  // **その機械の台を全部並べ、run が使っている台にだけシナリオを添える**(ユーザー決定)
   // —— run に出ていない台も見えるようにする。台の一覧と並びはラインビュー(monitorDevices)から採る
   for (const device of devices) {
     const lane = device.laneKey === undefined ? undefined : laneByKey.get(device.laneKey);
@@ -540,7 +540,7 @@ function ensureRow(groupKey) {
   remainingEl.className = 'run-board-remaining';
   timeEl.append(elapsedEl, document.createTextNode(' / '), remainingEl);
 
-  // 2カラム(ユーザー決定 2026-09-22): 左 = ツリー・右 = ステータス。**箱の幅は全行で同じ**
+  // 2カラム(ユーザー決定): 左 = ツリー・右 = ステータス。**箱の幅は全行で同じ**
   // ので、境目(--rb-left)が行の種類によらず1本に見える
   const leftEl = document.createElement('span');
   leftEl.className = 'run-board-col-left';
@@ -616,7 +616,7 @@ function renderLaneTimes(row) {
 // レーンの一覧は run が続く間ほぼ動かない(監視サイクルごとに毎回作り直しても軽い)ので
 // diff はしない。作り直すのは展開したときと監視サイクルごとの update だけ(1秒ごとの秒読みは
 // renderLaneTimes が数字だけ書き換える)。
-// **機械が1つの run でも枝を作る**(ユーザー決定 2026-09-22)—— 行の種類で作りを変えないので、
+// **機械が1つの run でも枝を作る**(ユーザー決定)—— 行の種類で作りを変えないので、
 // 「根 → (マシン名) プロジェクト / 実行プロファイル → 台」の形がどの run でも同じに見える
 function renderLanes(row, group) {
   row.lanesEl.textContent = '';
@@ -636,7 +636,7 @@ function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, pla
   const laneEl = document.createElement('div');
   laneEl.className = 'run-board-lane';
 
-  // 台のアイコン(ユーザー決定 2026-09-22)。**色はプラットフォームのバッジと同じ**
+  // 台のアイコン(ユーザー決定)。**色はプラットフォームのバッジと同じ**
   // (iOS / Android。CSS の .run-board-lane-icon-* が持つ)。platform を持たない台は
   // 色を付けない(既定の文字色)—— 知らないものを iOS にも Android にも見せない
   const iconEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -687,7 +687,7 @@ function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, pla
   rightEl.className = 'run-board-col-right';
   rightEl.append(scenarioEl, elapsedEl);
   laneEl.append(leftEl, rightEl);
-  // **台の行は押しても何も起きない**(ユーザー決定 2026-09-22)—— ここは実行状況を読む場所で、
+  // **台の行は押しても何も起きない**(ユーザー決定)—— ここは実行状況を読む場所で、
   // ラインビューの選択を動かす口ではない(選択は run の行と機械の枝の見出しが持つ)
   container.appendChild(laneEl);
 
@@ -716,7 +716,7 @@ function updateRow(row, group) {
   row.chevronEl.title = chevronLabel;
   row.chevronEl.setAttribute('aria-label', chevronLabel);
 
-  // **run 行にバッジは出さない**(ユーザー決定 2026-09-22)—— 機械の名前はすぐ下の枝
+  // **run 行にバッジは出さない**(ユーザー決定)—— 機械の名前はすぐ下の枝
   // 「(マシン名) プロジェクト / 実行プロファイル」が名乗るので、出すと同じ名前が2行に並ぶ
   row.machineBadgeEl.style.display = 'none';
   paintMachineBadge(row.machineBadgeEl, undefined);
@@ -769,7 +769,7 @@ function render() {
   let scopePlaced = false;
 
   // **並びは常に機械の順**(machineList = local → 登録簿の順)。run が始まっても機械の位置は
-  // 動かさない(ユーザー決定 2026-09-20)—— 動くと目が追えない
+  // 動かさない(ユーザー決定)—— 動くと目が追えない
   const seen = new Set();
   const placed = new Set();
   const place = (group) => {
@@ -790,7 +790,7 @@ function render() {
         place(group);
       }
     }
-    // **走っていない機械は根の1行にまとめる**(ユーザー決定 2026-09-22)。根は**最初の空き機械の
+    // **走っていない機械は根の1行にまとめる**(ユーザー決定)。根は**最初の空き機械の
     // 位置**に置く —— こうすると機械の並び(local → 登録簿の順)が run 行と混ざっても崩れない
     if (!scopePlaced && idleStatus.has(machine)) {
       scopePlaced = true;

@@ -9,7 +9,7 @@ export function formatPercent(rate) {
   return typeof rate === 'number' ? rate.toFixed(1) + '%' : '–';
 }
 
-// シナリオ別サマリの成功率。小数は落とす(2026-09-09 ユーザー指示)。
+// シナリオ別サマリの成功率。小数は落とす(ユーザー指示)。
 // **丸めで 100% に化けさせない** —— 1回でも失敗した窓を「全部成功」と読ませないため、
 // 100 未満は切り捨てる(9/10 = 90% はそのまま、99.6% は 99%)
 export function formatPercentInteger(rate) {
@@ -23,7 +23,7 @@ export function formatDurationSeconds(ms) {
   return typeof ms === 'number' ? (ms / 1000).toFixed(1) + 's' : '–';
 }
 
-// 人間向けの所要表示: 1000ms 未満は ms、1秒以上は常に「XmYYs」(2026-09-01 ユーザー指示。
+// 人間向けの所要表示: 1000ms 未満は ms、1秒以上は常に「XmYYs」(ユーザー指示。
 // 55.1s と 1m 9s の混在をやめて 0m55s / 1m9s に揃える)。
 export function formatDurationHuman(ms) {
   if (typeof ms !== 'number' || !isFinite(ms)) return '–';
