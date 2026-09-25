@@ -507,7 +507,8 @@ public enum SnapshotRenderer {
     public static func partialMatchFragment(_ rawFragment: String) -> String {
         let fragment = rawFragment.range(of: "…")
             .map { String(rawFragment[..<$0.lowerBound]) } ?? rawFragment
-        let cutIndex = [", ", "、"]
+        // 読点(U+3001)は日本語のラベルを切る照合用で表示ではないので、エスケープで書く(CLIEnglishStringsScanTests)
+        let cutIndex = [", ", "\u{3001}"]
             .compactMap { fragment.range(of: $0)?.lowerBound }
             .filter { $0 > fragment.startIndex }
             .min()

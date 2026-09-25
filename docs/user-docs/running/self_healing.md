@@ -46,7 +46,7 @@ Self-healing is fingerprint matching only — it does not call FM (Foundation Mo
 ## Reviewing and applying fix suggestions (VS Code)
 
 When a `--set heal=true`-enabled run produces one or more fix suggestions, the VS Code extension
-automatically opens a **"fleetest self-healing review"** panel (dry-run runs never trigger it).
+automatically opens a **"fleetest Heal Review"** panel (dry-run runs never trigger it).
 For each candidate you can see:
 
 - The current ("before") selector, read-only, and the proposed ("after") selector, editable.
@@ -54,7 +54,7 @@ For each candidate you can see:
 - A checkbox to include it (pre-checked, unless the source line has changed since the panel
   opened enough that the before-selector no longer appears exactly once — those are disabled).
 
-Clicking "Apply selected" writes the accepted fixes into your scenario source via
+Clicking "Apply N selected" writes the accepted fixes into your scenario source via
 `fleetest api apply-heal`. Fixes that fail to apply stay in the list with a reason; the panel
 closes automatically once every remaining fix has succeeded. Closing without applying leaves the
 same candidates to be proposed again on the next `--set heal=true` run (fingerprint matching runs

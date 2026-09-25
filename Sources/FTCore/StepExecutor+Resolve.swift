@@ -403,7 +403,7 @@ extension StepExecutor {
         if let hint = splitTextHint(for: locator, in: elements) { hints.append(hint) }
         if let hint = clampedStackHint(for: locator, in: elements) { hints.append(hint) }
         // 候補の区切りが " / " なので、ヒント同士は別の記号で割る(読み手が機械でも人でも混ざらない)
-        return hints.isEmpty ? nil : hints.joined(separator: "。")
+        return hints.isEmpty ? nil : hints.joined(separator: "; ")
     }
 
     /// **候補から外した理由**を書く(`hasClampedCoordinates` 参照)。これが無いと、画面外の行を

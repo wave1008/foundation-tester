@@ -75,8 +75,9 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
 ❌ 6. [action] tap "#btn_something"
    system UI is covering the app ("MyApp"が写真ライブラリへのアクセスを求めています).
    The in-app engine could still reach the app, but a person could not, so the step was not
-   performed. None of the registered iosAlertHandler entries matched a button on it.
-   Buttons on this alert: 「写真を選択」 / 「フルアクセスを許可」 / 「許可しない」.
+   performed. None of the registered iosAlertHandler entries
+   (*写真ライブラリ*→許可) matched a button on it.
+   Buttons on this alert: "写真を選択" / "フルアクセスを許可" / "許可しない".
    Register the one you want pressed with iosAlertHandler(...), or dismiss it in the scenario.
 ```
 

@@ -52,10 +52,10 @@ public enum SystemUIGate {
     /// `iosAlertHandler(alert:button:)` に写せる形で出す。読めなければ nil
     public static func describeUnregistered(_ probe: SystemAlertProbeResponse?) -> String? {
         guard let probe, probe.present else { return nil }
-        let title = (probe.title?.isEmpty == false) ? "「\(probe.title!)」" : nil
+        let title = (probe.title?.isEmpty == false) ? "\"\(probe.title!)\"" : nil
         let buttons = probe.buttons.filter { !$0.isEmpty }
         let buttonText = buttons.isEmpty ? nil
-            : "buttons: " + buttons.prefix(4).map { "「\($0)」" }.joined(separator: " / ")
+            : "buttons: " + buttons.prefix(4).map { "\"\($0)\"" }.joined(separator: " / ")
         switch (title, buttonText) {
         case (nil, nil): return nil
         case (let t?, nil): return t
@@ -115,7 +115,7 @@ public enum SystemUIGate {
                 + " — dismiss it in the scenario instead."
         } else {
             message += " Buttons on this alert: "
-                + actual.map { "「\($0)」" }.joined(separator: " / ")
+                + actual.map { "\"\($0)\"" }.joined(separator: " / ")
                 + ". Register the one you want pressed with iosAlertHandler(...),"
                 + " or dismiss it in the scenario."
         }

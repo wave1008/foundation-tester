@@ -384,9 +384,12 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 - **launchApp が直前画面から再開する**アプリは、一覧/先頭画面へ正規化してから進める
   (`ifCanSelect("#詳細ビュー") { tap("#BackButton") }` 等)。
 - **WebView(Web コンテンツ)内は規約が違う**(スナップショットに `.webView` 型が出たらこの画面):
-  **`#id` は一切効かない**(HTML の `id` 属性は両 OS とも a11y に出ない)。指せるのは
-  表示テキスト・`aria-label`・型だけ。**リンクは `.link` と `.staticText` の2要素で重複して
-  出る**ので `.link&&ラベル` と型で絞る。**ラベルの無い入力欄は `placeholder=…`** で指す。
+  **`#id`(HTML の `id`)が使えるかは読み取り経路で決まる**。DOM を読める経路(iOS の既定エンジン /
+  Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成(Android WebView 150 以降)では
+  使える。**iOS の `engine: xcuitest` では出ない**(WebKit が HTML id を a11y へ渡さない)。
+  id が使えない構成では表示テキスト・`aria-label`・型で指す。**リンクは `.link` と `.staticText` の
+  2要素で重複して出る**ので `.link&&ラベル` と型で絞る。**入力欄は `#id||#placeholder の値` の
+  2節で書く**のが確実(Android は WebView の版で id と placeholder が入れ替わるため)。
   中身が現れるまで初回は数秒かかることがあるため、**遷移直後の検証は `waitSeconds:` を長めに**
   (実測: 内蔵 HTML で 2〜8 秒。実ページ+通信ならさらに延びる)。id を採取しようとして
   スナップショットに無くても、アプリ側の不備ではなく仕様(改善提案の対象にしない)。

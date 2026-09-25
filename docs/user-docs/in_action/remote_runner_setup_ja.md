@@ -11,16 +11,16 @@
 | 条件 | 確認方法(ランナー機で実行) |
 |---|---|
 | Apple silicon であること | `sysctl -n hw.optional.arm64` が `1` |
-| ログインしていること |  |
+| ログインしていること | `stat -f%Su /dev/console` がランナーのユーザー名と一致 |
 | システムスリープが無効になっていること | `sudo pmset -a sleep 0` |
 | 画面共有が ON になっていること | システム設定 → 一般 → 共有 → 画面共有 |
 | リモートログインが ON になっていること | システム設定 → 一般 → 共有 → リモートログイン |
 | 外部からの接続をすべてブロックが OFF であること | システム設定 → ネットワーク → ファイアウォール → オプション |
 | Homebrew がインストールされていること | `brew --version` |
-| Xcode をインストールしてライセンスに同意していること |  |
+| Xcode をインストールしてライセンスに同意していること | `sudo xcodebuild -license accept` → `sudo xcodebuild -runFirstLaunch` |
 | 手元の Mac と同じ Xcode の製品版がランナー機のどこかにあること(ベータのビルド番号までは揃えなくてよい) | `xcodebuild -version` |
-| Xcode でテストで使用するiOSシミュレーターをダウンロードしていること |  |
-| Android Studio をインストールしていること。SDK の場所は既定(`~/Library/Android/sdk`)であること |  |
+| Xcode でテストで使用するiOSシミュレーターをダウンロードしていること | `xcodebuild -downloadPlatform iOS` |
+| Android Studio をインストールしていること。SDK の場所は既定(`~/Library/Android/sdk`)であること | `fleetest doctor` |
 
 ランナー機の `/Applications` に複数の Xcode を並べて入れておけば、手元の Mac の Xcode の製品版に
 合う方を fleetest が自動で選びます(他の版を削除する必要はなく、`sudo` も要りません)。別の場所に
@@ -28,6 +28,60 @@
 `--developer-dir <.app へのパス>` でそのパスを指定してください。指定しないと fleetest はその
 Xcode を見つけられません。一致する Xcode が無い、または複数が同じくらい一致するときは、
 候補の一覧を添えて実行が止まります。
+
+## ステップ0: ランナー機を準備する
+
+👉 **ランナー機で1回だけ作業します。**
+
+ランナー機の前に座るか、画面共有で作業してください。どれも sudo か画面操作が要るので、
+fleetest は代わりに行いません。
+
+1. **リモートログインを ON にする**: システム設定 → 一般 → 共有 → リモートログイン。
+2. **ファイアウォールを確認する**。**ファイアウォールが OFF なら何もしなくてよい。** ON のときは
+   「外部からの接続をすべてブロック」だけを OFF にする(システム設定 → ネットワーク →
+   ファイアウォール → オプション)。このオプションが ON の間は SSH も塞がれます。ファイアウォール
+   自体は ON のままでかまいません。状態は次のコマンドで確かめられます:
+   ```bash
+   /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate   # "Firewall is disabled" なら完了
+   /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall      # "… set to disabled" なら OK
+   ```
+3. **画面共有を ON にする**(推奨)。ランナー機が再起動したあと、手元の Mac からログインし直せます。
+4. **システムスリープを無効にする**:
+   ```bash
+   sudo pmset -a sleep 0
+   ```
+5. **Xcode をインストールしてライセンスに同意する**。手元の Mac と同じ製品版にします(ベータの
+   ビルド番号までは揃えなくてよい)。Xcode は <https://developer.apple.com/download/> から
+   ダウンロードできます。
+   ```bash
+   sudo xcodebuild -license accept
+   sudo xcodebuild -runFirstLaunch
+   ```
+6. **Android Studio をインストールする**(Android を回すときだけ)。Android Studio は
+   <https://developer.android.com/studio> からダウンロードできます。初回起動時のセットアップ
+   ウィザードで Android SDK を入れてください。
+   - SDK は既定の場所(`~/Library/Android/sdk`)のままにします。fleetest は SSH 越しに動くので、
+     `~/.zshrc` などで設定した `ANDROID_HOME` は読まれません。既定の場所なら何も設定しなくてよい。
+   - エミュレータ(AVD)は Android Studio の Device Manager で作れます。ステップ4で fleetest から
+     作ることもできます。
+7. **Homebrew をインストールする**。ステップ3で fleetest が必要なツール(xcodegen)を Homebrew で
+   自動で入れるので、Homebrew が要ります。
+   - **Homebrew を入れたことがない場合**: ターミナルで次のコマンドを実行します(手順は
+     <https://brew.sh/> にもあります)。途中でランナー機のログインパスワードを聞かれます。
+     ```bash
+     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+     ```
+     終わると「Next steps」の下に `brew` を使えるようにするコマンドが表示されます。表示どおりに
+     実行し、`brew --version` が動くことを確かめてください。
+   - **Homebrew がすでに入っている場合**: `brew --version` が動くことを確かめます。しばらく更新して
+     いない Mac では、Homebrew が新しい macOS に対応しておらず、まったく動かないことがあります。
+     その場合は次のコマンドで更新します(`brew update` 自体が動かないので、git で更新します)。
+     ```bash
+     git -C /opt/homebrew fetch origin && git -C /opt/homebrew reset --hard origin/master
+     ```
+8. **ログインしたままにする**。ログアウトしないでください。画面のロックはかまいません。
+
+まだ足りないものがあれば、ステップ3の `fleetest remote setup` が一覧にして教えてくれます。
 
 ## ステップ1: SSH の鍵でログインできるようにする
 
@@ -95,7 +149,7 @@ CLI と拡張は同じ登録簿(`~/.config/fleetest/config.json`)を読み書き
 ターミナルで次のコマンドを実行します。
 
 ```bash
-swift run fleetest remote setup <マシン名> --project project1
+fleetest remote setup <マシン名> --project <プロジェクト>
 ```
 
 - 初回はビルドがあるので数分かかります。

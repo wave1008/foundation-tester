@@ -29,7 +29,7 @@ final class BridgeContractTests: XCTestCase {
     //   in-app / XCUITest ランナー → Sources/FTCore/BridgeDTO.swift の bridgeProtocolVersion
     //   Android                    → AndroidRunner/build.sh の VERSION_CODE と
     //                                Sources/FTAndroid/AndroidBridge.swift の expectedBridgeVersionCode
-    // 3実装でルートが異なるのは仕様。共通コアは11本で、差分は:
+    // 3実装でルートが異なるのは仕様。共通コアは13本で、差分は:
     //   in-app     … 同一プロセスしか見えないので /drag・/appswitcher・/home を持たない
     //   /locale    … Android だけ
     //   /settle    … Android だけ(ホストが adb で撃った操作〈launch・戻るキー〉の整定を

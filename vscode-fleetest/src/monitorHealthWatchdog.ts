@@ -118,7 +118,9 @@ export class MonitorHealthWatchdog {
       if (device.registered === false) {
         continue;
       }
-      // リモートの台は見ない(理由は monitorBridgeWatchdog.ts の同じ位置)
+      // リモートの台は見ない: Wi-Fi 修復に相当する `api` の口が無く、修復が手元の adb 直叩きのため
+      // (bridge watchdog はリモートも見る = 修復が `remote exec … api start-device` で回るから)。
+      // 実機は届かない: health は `api monitor` が `emulator-` の serial にだけ採るので実機には付かない
       if (device.machine !== undefined) {
         continue;
       }

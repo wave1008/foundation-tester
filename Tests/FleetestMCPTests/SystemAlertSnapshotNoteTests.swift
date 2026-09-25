@@ -26,8 +26,8 @@ final class SystemAlertSnapshotNoteTests: XCTestCase {
     /// 手で書いた期待文言(production の文字列を呼んで作らない)。
     /// タイトル・ボタンは受け手報告の実例(実機 iPhone 13・ローカルネットワークアラート)
     private static let expectedNote =
-        "note: a system alert (「“SUT Store”がローカルネットワーク上のデバイスを見つけることを"
-        + "許可しますか?」, buttons: 「許可しない」 / 「許可」) is in front of the app — the tree"
+        "note: a system alert (\"“SUT Store”がローカルネットワーク上のデバイスを見つけることを"
+        + "許可しますか?\", buttons: \"許可しない\" / \"許可\") is in front of the app — the tree"
         + " below is the app behind it; a user cannot reach any of it and the alert is drawn by"
         + " SpringBoard so it never appears here. Handle the alert first: read it with"
         + " `ft_launch bundleId: com.apple.springboard`, tap its button by ref,"

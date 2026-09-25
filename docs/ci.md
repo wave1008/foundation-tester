@@ -103,7 +103,7 @@ pipeline {
   (vision)経路を別々に撃ち、どちらが死んでも exit 1** —— 両者は独立に死ぬので、片方しか見ない
   ゲートは occlusion-guard が全滅した機械で「FM は使える」と答えてしまう
   (macOS が画像入力に対応していないだけのときは死に数えない)
-- FM はホスト全体で共有される資源で、許可枠(既定5・詳細と実測は performance-tuning.md §3.5)で
+- FM はホスト全体で共有される資源で、許可枠(既定1・詳細と実測は performance-tuning.md §3.5)で
   制限される。screenLooksLike を多用するスイートは壁時計が伸びる
 - 自己修復(ロケータの指紋照合)は FM を使わないので、この節(Apple Intelligence の有効化)とは
   無関係に CI で動く。`heal` を CI で有効にするかはチーム方針: 有効なら UI 変更起因の失敗は

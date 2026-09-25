@@ -6,7 +6,7 @@
 
 | 関数 | 説明 |
 |---|---|
-| `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0) { }` | セレクタが解決できる限りブロックを繰り返します。件数不定の一括操作(不定数のカードを閉じる等)に。上限 `maxLoopCount` への到達は失敗にしませんが記録には残ります。 |
+| `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0, title:) { }` | セレクタが解決できる限りブロックを繰り返します。件数不定の一括操作(不定数のカードを閉じる等)に。上限 `maxLoopCount` への到達は失敗にしませんが記録には残ります。 |
 | `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | `条件`(`() async throws -> Bool`)が true になるまで繰り返します。セレクタで表現できないアプリ・外部の状態待ち専用です(要素の出現待ちには使いません。それには各コマンドの `waitSeconds:` を使います)。throw したらリトライせず即座に失敗します。 |
 
 ## 例

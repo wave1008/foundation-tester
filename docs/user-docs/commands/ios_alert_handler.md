@@ -81,7 +81,8 @@ the alert to clear (or be closed by a registered button), and fails with
 ❌ 6. [action] tap "#btn_something"
    system UI is covering the app ("MyApp" Would Like to Access the Photo Library).
    The in-app engine could still reach the app, but a person could not, so the step was not
-   performed. None of the registered iosAlertHandler entries matched a button on it.
+   performed. None of the registered iosAlertHandler entries
+   (*Photo Library*→Allow) matched a button on it.
    Buttons on this alert: "Select Photos" / "Allow Full Access" / "Don't Allow".
    Register the one you want pressed with iosAlertHandler(...), or dismiss it in the scenario.
 ```

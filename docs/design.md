@@ -23,7 +23,7 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 | Dynamic Profiles | セッション中にモデル・ツール・instructions を切替 | verifier の役割切替 |
 | `LanguageModel` プロトコル | オンデバイス / PCC(32K ctx) / Claude / Gemini / MLX を同一 Session API で差替 | **使わない**。PCC は完全に禁止(下記)、外部 LLM も同様 |
 | 制約: コンテキスト ~4K トークン級 | TN3193 参照。プロンプト+応答で共有 | **設計全体を規定する最重要制約** |
-| 制約: ホスト全体で共有される資源 | 許可枠(既定5、環境変数で上書き可)で制限される。並列度が枠を超えるとレイテンシが伸びる(performance-tuning.md §3.5) | 並列実行では FM 呼び出し数と枠が実行時間の下限に効く(performance-tuning.md §3.5) |
+| 制約: ホスト全体で共有される資源 | 許可枠(既定1、環境変数で上書き可)で制限される。並列度が枠を超えるとレイテンシが伸びる(performance-tuning.md §3.5) | 並列実行では FM 呼び出し数と枠が実行時間の下限に効く(performance-tuning.md §3.5) |
 
 **可否判定の罠**: `SystemLanguageModel.default.availability` は「端末が対応しているか」しか見ておらず、
 モデル資産側の理由で**全呼び出しが失敗していても `.available` を返す**(専用ケース
@@ -126,7 +126,7 @@ M1Max の launch storyboard は min=253 / max=255 = stdDev ≈ 0.1 で猶予が�
 
 **全 FM 呼び出しは `FMGate.enter()` を通す**(Sources/FTCore/FMGate.swift)。
 ①サーキットブレーカ(FM は累積 20〜30 回で死に再起動まで回復しないので、連続 3 回失敗したら
-以後呼ばない)②ホスト単位の許可枠(`FMLock`。FM はホスト全体で共有される資源で、既定5枠。
+以後呼ばない)②ホスト単位の許可枠(`FMLock`。FM はホスト全体で共有される資源で、既定1枠。
 詳細と実測は performance-tuning.md §3.5)の順に見る。
 **新しい FM 呼び出しを足すときは必ずここを通す**(監査点を 1 つに保つのが目的)。
 なお**ロックの有無自体は全滅の防止には効果が無いことが実測で確認済み**(残しているのは p50 が
@@ -871,7 +871,7 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
   `InAppBridge.handleSwipe` は compose/flutter + `scroll=true` のとき、AX 経路より先に**画面中央を
   覆う `WKScrollView`** を探して動かす(中央で絞るのは小さな埋め込み WebView のために画面本体の
   スクロールを奪わないため)。端では 501 でなく **no-op 200**(501 だと XCUITest の実スワイプへ
-  ラッチして下端タップが不安定になる)。ホスト側は `WebViewDelegatingDriver.swipe(_:forScroll:)` が
+  ラッチして下端タップが不安定になる)。ホスト側は `WebViewDelegatingDriver.swipe(_:intent:path:)` が
   委譲中でも primary を先に試し、501 なら委譲先へ落とす。**ref を使わない操作なので名前空間の
   不変条件は崩れない — ref を伴う操作を同じ理屈で in-app へ回してはいけない**。
   効果は CMP/Flutter の WebView シナリオが **41s → 24s**(docs/performance-tuning.md §3.11)
@@ -1040,7 +1040,7 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 (自己修復は指紋照合のみになり FM を呼ばないため。§10「ロケータの指紋」・maintainer-notes §22)。
 残る `@Generable` 型はスクリーンショットの画面検証(`ScreenVerdict`)等、FM を呼ぶ他の機能のもの。
 
-### 5.3 実装(Sources/FTFoundationModels/ の5ファイル)
+### 5.3 実装(Sources/FTFoundationModels/ の8ファイル)
 
 | 実装 | 役割 |
 |---|---|
@@ -1049,8 +1049,13 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 | `FMDoctor.swift` | FM 可用性判定。`check()` は同期・可否を保証しない / `checkLive()` は実際に1回推論する(§1.1 の罠) |
 | `ScenarioNamer.swift` | 記録操作(ライブ操作タブ)からのシナリオ名生成 |
 | `TestbaseDrafter.swift` | テスト設計資料 → シナリオ下書き(§17)。FM 不可用時は決定的パーサへ落ちる |
+| `FMLivenessProbe.swift` | FM の死活プローブ(§リモート「FM の「死活」は回数とは別の軸」)。**FMGate を通さない** |
+| `FMLoadGenerator.swift` | `fleetest doctor --fm-load` の負荷測定。**FMGate を通さない**(測っている対象が門になるため) |
+| `OcclusionPrewarm.swift` | occlusion-guard の暖機。**FMGate を通らない**(生成を伴わないので枠を消費させない) |
 
-- 全 FM 呼び出しは `FMGate.enter()` を通す(§1.1)。出力の実例・運用知見は §8.6。
+- 生成を伴う FM 呼び出し(`ReplayAssist` / `OcclusionVerifier` / `ScenarioNamer` / `TestbaseDrafter`)は
+  `FMGate.enter()` を通す(§1.1)。死活プローブ・負荷生成・暖機の3つは意図してこの門を通らない。
+  出力の実例・運用知見は §8.6。
 
 ---
 
@@ -1117,7 +1122,7 @@ Android シナリオで約 33%、iOS シナリオで約 27% 所要を短縮し�
 | リスク | 対策 |
 |---|---|
 | Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。**PCC/外部 LLM への差替は行わない**(§1.2)—— FM 系は自動スキップで走る |
-| 4K コンテキスト超過 | スナップショット圧縮 + 1 ステップ 1 セッション + 応答の構造化。`contextSizeExceeded` 捕捉時は要素数を半減させて再試行 |
+| 4K コンテキスト超過 | スナップショット圧縮 + 1 ステップ 1 セッション + 応答の構造化。FM 呼び出しの失敗は `FMHealth.record` に記録して諦める(再試行はしない) |
 | 巨大な画面ツリーで snapshot が遅い | ランナー側でフィルタしてから返す(ホストに生ツリーを送らない) |
 | xcodebuild ランナーの不安定さ | `bridge up` にヘルスチェック+自動再起動。`/status` ポーリング |
 | Vision 入力の HW 要件(AFM 3 Core Advanced) | ホストは Apple Silicon Mac 前提なので通常問題なし。`doctor` で検査 |
@@ -1170,8 +1175,9 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
   検証(2026-07-18、Pixel 9a/Android 16 実機): 設定→「Security & privacy」タップで SafetyCenter を
   settings と同一タスクに積んで launchApp settings すると、v6 は 10s タイムアウトで error・SafetyCenter
   居座り、v7 は同条件で自己復旧して settings 前面化(前面判定タイムアウト→掃除+再試行の before/after 確認済み)。
-  **版 67 から、前面がシステムダイアログのパッケージ(permissioncontroller / packageinstaller / systemui /
-  chrome。ホストの `systemDialogPackages` と同じ集合)で、かつ対象アプリの窓が `getWindows()` に見えている
+  **版 67 から、前面がシステムダイアログのパッケージ(permissioncontroller / packageinstaller / systemui。
+  ホストの `systemDialogPackages` と同じ集合。Android 側だけ chrome も追加で含む —— Custom Tab を
+  force-stop するとアプリ側の遷移が壊れるため)で、かつ対象アプリの窓が `getWindows()` に見えている
   ときは「ダイアログ越しに前面」として掃除せず成功を返す**(権限ダイアログを force-stop すると権限フローが
   壊れる)。対象アプリの窓が見えない全画面の居座り(上の SafetyCenter の形)は従来どおり掃除+再試行
 
@@ -1417,8 +1423,9 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
    accessibility identifier 付き)をリポジトリに同梱
 2. M1: `fleetest bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る
 3. M3: SampleApp の identifier を 1 つ改名 → `fleetest run --set heal=true` で修復・成功。
-   意図的にログインを失敗させるビルド → TriageReport が `appBug` と分類する
-   (FM トリアージは 2026-09-15 に撤去 → maintainer-notes §21)
+   意図的にログインを失敗させるビルド → `fleetest results` の TriageReport が
+   (section, command, failureKind) の組で失敗をグルーピングして出す
+   (FM による `appBug` 等の分類は 2026-09-15 に撤去 → maintainer-notes §21)
 4. 性能の検証・回帰比較は `Scripts/bench.swift` の計測基盤で行う。壁時計中央値・
    シナリオ/ステップ内訳・成功率・ホスト CPU/GPU/MEM を `summary.md` に出力し、
    変更前後を比較する。手順・指標の読み方は
@@ -1706,7 +1713,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
     (ジェスチャ自体が目的)を混ぜると、**ジェスチャ検出パッドの上でもスクロール可能な親が
     受理してしまい**、パッドに届かないまま 200 を返す(2026-07-31 に E2E-Flutter の
     ジェスチャ画面が 2/2 で黙って空振りした)
-  - **包むドライバは `swipe(_:forScroll:)` を必ず素通しする**。既定実装は自分の `swipe(_:)` を
+  - **包むドライバは `swipe(_:intent:path:)` を必ず素通しする**。既定実装は自分の `swipe(_:)` を
     呼ぶので、受けないと**フラグが最初のラッパーで落ちて**経路が丸ごと不発になる
     (実際に落として、フルスイート2周ぶん「緑だが遅いまま」を測ってしまった)。
     `SwipeForScrollForwardingTests` がソース走査で守る
@@ -2430,7 +2437,8 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 ### 失敗時に返す情報(2026-07-26)
 
 - **解決失敗のメッセージに「近い候補」を最大3件**添える(`StepExecutor.candidateHint`。
-  id の部分一致 → ラベルの部分一致 → 同型の順)。直すための snapshot 取り直しを1往復減らす
+  id/ラベルの近さ(`FTCore.SimilarLabels`。強い一致 > 操作可能 > 文書順)→ 同型の順)。
+  直すための snapshot 取り直しを1往復減らす
 - **レポートに失敗時点の要素一覧**を折りたたみで載せる(`SceneRecordData.failureElements`)。
   スクリーンショットからは `#id` を読めないため、機械が直すための一次情報はこちら
 - **「`checkIsOFF` で通ったが checked を一度も観測できなかったセレクタ」を run 終了時に警告**する
@@ -2507,7 +2515,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `TapTargetGeometry.occlusionAdvisory` に集約し、強い事実から**最初の1件だけ**言う:
   zero-frame → 画面外 → 申告 scroller 外の残像 → 中心を覆う最前面
   (`OcclusionGeometry.overlayCovering`)→ 中身外し → 内側の別アクション → クランプ残骸
-  (`stackedRefs`)→ 細帯(sliver)。
+  (`stackedRefs`)→ 容器の縁で切り詰め(`clippedByContainer`)→ 細帯(sliver)。
   **関数は分けてある**(2026-08-08): `keyboardCoveredAdvisory`/`disabledAdvisory` は
   **撃つ座標に依らない**のでどの経路でも言えるが、チェーンの残りは
   **frame の中心を撃つときにしか言えない** ——
@@ -2976,8 +2984,9 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     ブリッジは落ちても monitor が別ポートで建て直すので**同じセッション中にポートが動く**
     (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手には、
     その port が今どの機かを確かめる手段が無かった。udid を申告しない旧ブリッジでは port だけ
-    (「不明」と書くより短く、嘘も混ざらない)。**先頭は必ず `port `** ——
-    `connectionLostHint` が `hasPrefix("port")` で iOS 経路を判別する
+    (「不明」と書くより短く、嘘も混ざらない)。**先頭は必ず `port `**(表示の整形規則。
+    iOS/Android の判別はこの文字列からではなく `connectedPorts`/`connectedAndroidSerials` の
+    記録で行う——後述)
   - **「応答しない」を「死んだ」と読まない**(`BridgeDiscovery.isBound`。2026-08-06)。XCUITest は
     整定待ちでブリッジのスレッドを数十秒ブロックする(外部ログで実測 33.7s)。/status が返らなくても
     **カーネルは accept する**ので、待受があるうちは乗り換えず「今は忙しい・少し待て」を返す。
@@ -3431,11 +3440,13 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     実画面での確認: 3 SUT(E2E-Android / E2E-CMP on Android / E2E-iOS)の 35 画面で
     印が出たのはスクロール画面3枚だけ・いずれも設計どおりの2容器(縦リスト+横カルーセル)で誤検知0。
 
-    **印が出ない理由は2つあり、混同しない**(2026-08-06 に iOS 設定アプリで実地確認):
+    **印が出ない理由は2つあり、混同しない**(2026-08-06 に iOS 設定アプリで実地確認。
+    ネイティブの `scrollView`/`table`/`collectionView` 自体は直前の版58/57の免除で
+    identifier 無しでも残るようになったため、②は現在では主にブリッジがそもそもスクロール容器と
+    認識しない相手(web ページの入れ子 `overflow-x` 等)で起きる):
     ①**エンジンが申告できない**(Compose/Flutter の自前描画容器)/
-    ②**容器がスナップショットに載っていない**。②は iOS で普通に起きる ——
-    `scrollView`/`table`/`collectionView` は `BridgeRouter.isEligible` の `default` 分岐、
-    in-app は `UIScrollView` が `.other` へ写るので、**どちらも identifier が空なら除外**される
+    ②**容器がスナップショットに載っていない**。認識されない容器は `BridgeRouter.isEligible` の
+    `default` 分岐、in-app は `.other` へ写るので、**identifier が空なら除外**される
     (Android も resource-id が無い容器は同じ)。**`scrollFrame:` は名前を要求するので、
     ②の容器はそもそも指定できない** = 印が無いことと書けないことが一致していて矛盾は無い。
     容器を型で指定できるようにする(`.scrollView` を書けるようにする)には**ブリッジのフィルタを
@@ -3608,12 +3619,12 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
      `app.state` を確認し、起動していなければ XCUI に触れず **503** を返す
      (409 はセッション消失専用・501/404 はフォールバック判定に使用済みのため空いている 503)。
      snapshot/screenshot には入れない(`state` は IPC で毎回コスト・取得系は issue を出さない)
-  3. **ランナーのテストは XCUI の失敗を記録しない**(`FleetestBridgeTests.record(_:)` がログにだけ残す。v119)。
+  2. **ランナーのテストは XCUI の失敗を記録しない**(`FleetestBridgeTests.record(_:)` がログにだけ残す。v119)。
      今の版では失敗はテストケースへ届くが、**記録すると1件でも Tear Down してランナーが消える**
      (2026-09-19: 入力の途中で WebView の中身を止め、消えた欄への typeText 1件で消えた。毎回再現 →
      上書き後は同じ手順5回で生存・失敗はログに12件)。操作の失敗は各ハンドラが HTTP のエラーで返す。
      消去(/clear)は欄に触る直前に `exists` で在るかを確かめ、消えていれば 422(`requirePresent`)
-  2. **ホスト**: `AppAttachDriver` が ref 無し操作の前に `ensureAttached()` で
+  3. **ホスト**: `AppAttachDriver` が ref 無し操作の前に `ensureAttached()` で
      **セッションを自分の bundleID へ揃える**(1インスタンス=1シナリオにつき1回)。
      XCUITest ブリッジは run 内で使い回されるため、セッションが**前のプロジェクトのアプリ**を
      指したまま来ることがある(実測: E2E-iOS の次に回った E2E-Flutter の `scrollTo` が
@@ -3698,7 +3709,7 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
 
 **アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
 `autoInstall` は **common のみ**採用(未指定時の既定は
-`appPath` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、
+`appPath`/`appPathPhysical` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、
 `appName`(表示名)・bundle ID(`app`)・`appPath`・`appPathPhysical` は
 **ios/android セクションのみ**採用(common に書くと merging で無視され validate が警告する。
 表示名を OS ごとに書き分けられるようにするため、common の `appName` は継承しない):
@@ -3717,9 +3728,10 @@ invalid signature.` で失敗するため、同じアプリでも成果物が2�
 プロファイルを分けないための欄**(2026-08-26 ユーザー決定。分けると実行プロファイルまで
 二重管理になり、`all` のような混在プロファイルに実機を入れられない)。Android は同じ APK が
 両方で動くので普通は書かない。選び分けの規則は `ResolvedAppTarget.packagePath(physical:)` の1箇所。
-**ステージング先は `apps/physical/<ファイル名>`**(仮想デバイス用は `apps/<ファイル名>`)——
+**ステージング先は `apps/physical/<declared のハッシュ12桁>/<ファイル名>`**(仮想デバイス用は
+`apps/<declared のハッシュ12桁>/<ファイル名>`。`WorkspaceAppStaging.installPath`)——
 2つのビルドは同名(`dist/ios-simulator/X.app` と `dist/ios-device/X.app`)なのが普通で、
-同じディレクトリへ置くと後からステージングした方が相手を上書きし、**片方の端末に必ず誤った
+ハッシュの名前空間が無ければ後からステージングした方が相手を上書きし、**片方の端末に必ず誤った
 ビルドが入る**。実機用の転送は**その platform に実機が居る run でだけ**行う(100MB 級を
 毎回リモートへ rsync しない)。**実機が居るのに `appPathPhysical` が無い iOS の run は
 resolve の時点で警告する**(インストール失敗はブリッジ供給の後に出るので遅い)。
@@ -3957,8 +3969,10 @@ attach したままの XCUITest セッションは、ランナーに問い合わ
 座標イベントを **200 を返しつつ届け損なう**(実測 約13%。ページは pointerdown すら見ない。
 機構は非公開で特定できておらず、観測に立脚した防御。A/B と経緯は docs/verification.md
 §interop WebView)。時間閾値にしないのは、短いギャップでも確率的に落ちる実測があり安全な
-境界を引けないため。false は `FT_PRE_ACTION_WARMUP=0` として注入される(ProfileRunner /
-ApiRunCommand の2箇所)。**効くのは hybrid の domInterop 経路だけ**(委譲モード・xcuitest
+境界を引けないため。false は `FT_PRE_ACTION_WARMUP=0` として注入される(`FTCore.RunEnvironment`
+が唯一の定義元 —— ProfileRunner / ApiRunCommand の profile 有無2経路 / Fleetest.swift の
+profile 無し経路と、fleetest-mcp の resolveProfileTarget から呼ばれる)。**効くのは hybrid の
+domInterop 経路だけ**(委譲モード・xcuitest
 エンジンは毎ステップ ランナーが働くので元から出ない)。コストは該当画面のイベント1回につき
 約 +0.4 秒で、スイート全体では並列に隠れて差が出ない(25周比較 88.9s vs 90.0s)。
 UI は実行プロファイル設定の iOS セクション(inapp エンジン ON のときだけ表示)。
@@ -4056,7 +4070,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    コールド起動は「プランニング(ポート採番、直列)→ 共有ビルド(dylib/xctestrun、直列)→
    起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)。
    **run は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が再利用する)
-4. **自動インストール**: `appPath` あり+`autoInstall`(**未指定の既定は appPath の有無**。
+4. **自動インストール**: `appPath` あり+`autoInstall`(**未指定の既定は appPath/appPathPhysical の有無**。
    `false` 明示で opt-out)→ オーケストレータ投入前に各ワーカーへ並行 install
    (差分判定=installedIsCurrent も並列。失敗ワーカーは離脱、残ワーカーがキューを引き継ぐ)。
    **ライブ操作(記録開始)の install も同じ差分判定**を通す(`ApiLiveServe`。無条件に入れ直すと
@@ -4151,7 +4165,13 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
   自動投入。実行レーン稼働中は保留・クールダウン3分・2回失敗で諦めて表示(`fleetest.autoRepairBridge`
   既定 ON)。タイルに出すのは諦めた後(failed)だけで、文言は実機「デバイス未接続」/仮想機
   「接続できません」(内部語ではなくユーザーの取れる行動が分かる語にする。fleetest 出力への
-  誘導はホバーのツールチップへ退避。`deviceTiles.js` の `bridgeWatchLabel`)
+  誘導はホバーのツールチップへ退避。`deviceTiles.js` の `bridgeWatchLabel`)。
+  **他の機械(リモート)の台も見る**: 修復は lifecycle ジョブが machine を運び、
+  `remote exec <machine> -- api start-device … --device-machine local` で向こうへ回す。記録の鍵は
+  `device.id`(machine 込みで一意。name で持つと、向こうの connected が手元のハングを隠し、向こうの
+  booted が手元の健全な台を再起動する)。webview へ出す `bridgeWatch` にも machine を載せる(省略 = 手元)。
+  **実機は見ない**(供給に数分かかり枠を専有する)。健全性の watchdog(`monitorHealthWatchdog`)は
+  まだ手元だけ(Wi-Fi 修復に相当する `api` の口が無く、手元の adb を直接叩くため)
 - **残骸掃除**: `BridgeLauncher.startDetached` は起動前に同一ポートの xctestrun
   (`FleetestRunner-<port>.xctestrun`)を掴む旧 xcodebuild を kill する(他ポートはパス不一致で不干渉)
 
@@ -4692,10 +4712,11 @@ launch/activate はライブ操作側で門より前に素通しする(in-app �
 ### 14.1 マージ安全性(設計の核)
 
 **1 run = 1 ディレクトリ、1 シナリオ実行 = 1 ファイルの追加専用レイアウト**。
-runID = `<yyyyMMdd-HHmmss(UTC)>Z-<マシン名>-<乱数4hex>` をディレクトリ名にするため、
-異なるマシン・異なる実行は必ず別パスに書き、git 上は常に純粋な追加になる
-(同一秒・同一マシンの二重起動は乱数 4hex で分離)。JSONL 追記型は同一ファイルへの
-複数ブランチ追記で必ず衝突するため不採用。
+runID = `<yyyyMMdd-HHmmss(UTC)>Z-<乱数8hex>`(マシン名は埋めない。埋めたホスト名が表示へ
+漏れ続けるため 2026-09-01 に撤去し、代わりに乱数を 4hex→8hex(2^32)へ広げて衝突を避ける。
+どの機械の run かは記録の `host` 欄が持つ)をディレクトリ名にするため、異なる実行は必ず
+別パスに書き、git 上は常に純粋な追加になる(同一秒の二重起動も乱数で分離)。JSONL 追記型は
+同一ファイルへの複数ブランチ追記で必ず衝突するため不採用。
 
 検証済み(2026-07-17): 2 ブランチで同一シナリオ集合を同時刻に実行→マージで、
 コンフリクトゼロ・全 run が合流・`fleetest results list` が統合結果を返すことを確認。

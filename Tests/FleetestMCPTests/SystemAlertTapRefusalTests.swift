@@ -52,7 +52,7 @@ final class SystemAlertTapRefusalTests: XCTestCase {
 
         driver.scriptedSystemAlert = Self.photosAlert
         let second = await refusal()
-        XCTAssertTrue(second?.contains("a system alert (「“E2E”が写真へのアクセスを求めています」") == true,
+        XCTAssertTrue(second?.contains("a system alert (\"“E2E”が写真へのアクセスを求めています\"") == true,
                       second ?? "not refused")
         XCTAssertEqual(taps.count, 1, "2回目は撃たない: \(driver.calls)")
     }

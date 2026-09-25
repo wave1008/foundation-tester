@@ -2829,7 +2829,7 @@ FM は**ホスト全体で共有される資源**。2026-07-22 時点の実測�
 (2026-09-01 の反証は `Sources/FTCore/FMLock.swift` 冒頭が正 —— `fleetest doctor --fm-load` で
 門を通さず直接叩くと、並列度5で 7.81 回/秒(text)まで伸びる)。並列ワーカーから無制限に同時に
 投げるとやはり modelmanagerd のモデル積み降ろし(`unloadIfNeededToMakeRoom`)が増えるので、
-呼び出し側で**枠(既定5・`FT_FM_CONCURRENCY` で上書き)を作る**(`FMLock`。
+呼び出し側で**枠(既定1・`FT_FM_CONCURRENCY` で上書き)を作る**(`FMLock`。
 ~/Library/Caches/fleetest/fm.lock.<0..<枠数> への flock)。
 
 - **リポジトリ単位ではなくホスト単位**。別リポジトリの fleetest とも枠を共有する

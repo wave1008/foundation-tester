@@ -567,7 +567,7 @@ TestProjects/<project>/workspace/scripts/teardown.sh   # テスト実行後に�
 - **setup.sh が失敗したら、テストは1本も走らずに止まる**(依存サービスが無いまま流すと、
   全シナリオが「アプリの不具合」の顔で落ちるため)。teardown.sh の失敗は結果を変えない(警告のみ)
 - スクリプトが読める環境変数: `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・
-  `FT_PROFILE`・`FT_MACHINE`・`FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`
+  `FT_PROFILE`・`FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`
 
 ```bash
 #!/bin/sh

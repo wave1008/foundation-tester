@@ -21,7 +21,7 @@ Run the same mechanical work in one command, without an agent (idempotent):
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-  | bash -s -- --name MyApp --app com.example.myapp
+  | bash -s -- --name MyApp --app-id com.example.myapp
 ```
 
 The installer also writes the Claude Code artefacts. `.mcp.json` and `CLAUDE.md` can be suppressed
@@ -72,7 +72,7 @@ written not to depend on any one agent's features, so an agent can simply read o
 |---|---|
 | `fleetest-setup` | first install (clone → build → project → verification) |
 | `fleetest-update` | pull in a newer version |
-| `fleetest-profiles` | create machine / app / run profiles in one pass |
+| `fleetest-profiles` | create app / run profiles in one pass |
 | `fleetest-scenario` | author a test scenario (.swift) |
 | `fleetest-mcp` | register only the MCP server |
 | `fleetest-remote-setup` | turn another Mac into a runner |

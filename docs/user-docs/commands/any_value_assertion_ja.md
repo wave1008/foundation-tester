@@ -7,13 +7,13 @@
 
 | 関数 | 判定 |
 |---|---|
-| `thisIs(expected, strict:)` / `thisIsNot(expected, strict:)` | 一致 / 不一致 |
+| `thisIs(expected)` / `thisIsNot(expected)` | 一致 / 不一致 |
 | `thisIsTrue()` / `thisIsFalse()` | `Bool` |
 | `thisIsEmpty()` / `thisIsNotEmpty()` | 空文字 |
 | `thisIsBlank()` / `thisIsNotBlank()` | 空白のみ(空文字も blank) |
 | `thisContains(Not)` / `thisStartsWith(Not)` / `thisEndsWith(Not)` | 部分・前方・後方一致 |
 | `thisMatches(Not)` / `thisMatchesDateFormat(format)` | 正規表現 / `DateFormatter` の書式 |
-| `thisIsGreaterThan(other)` / `thisIsGreaterThanOrEqual(other)` | 数値の大なり(以上) |
+| `thisIsGreaterThan(other)` / `thisIsGreaterThanOrEqual(other)` | 数値の大なり(以上)(数値に解釈できなければ失敗) |
 | `thisIsLessThan(other)` / `thisIsLessThanOrEqual(other)` | 数値の小なり(以下)(数値に解釈できなければ失敗) |
 
 ## 例

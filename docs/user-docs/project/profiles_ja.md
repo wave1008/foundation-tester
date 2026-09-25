@@ -21,8 +21,8 @@
                "appPath": "builds/app-debug.apk" } }
 ```
 
-- `autoInstall` は `common` からのみ読まれます(既定は `appPath` の有無。パスがあってもインストール
-  を止めたいときだけ `false` を明示します)。
+- `autoInstall` は `common` からのみ読まれます(既定は `appPath` か `appPathPhysical` の有無。
+  パスがあってもインストールを止めたいときだけ `false` を明示します)。
 - `appName`(表示名)・`app`(bundle ID / パッケージ名)・`appPath` は `ios`/`android` セクションに
   書いたものだけが採用されます(`common` に書いても無視されるため、表示名を OS ごとに書き分けられます)。
 - `appName` は**ホーム画面でアイコンの下に出る名前そのもの**にします。名前を省いた `tapAppIcon()` はこれを

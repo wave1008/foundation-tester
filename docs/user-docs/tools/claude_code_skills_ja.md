@@ -32,9 +32,9 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 | スキル | コマンド | 役割 |
 |---|---|---|
-| `fleetest-setup` | `/fleetest:fleetest-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・プロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストール) |
+| `fleetest-setup` | `/fleetest:fleetest-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・プロジェクト作成・アプリ/実行のプロファイル設定・VSCode 拡張のインストール) |
 | `fleetest-update` | `/fleetest:fleetest-update` | upstream の更新取り込み(git pull → `TestProjects/`/`Package.swift` の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映) |
-| `fleetest-profiles` | `/fleetest:fleetest-profiles` | マシン/アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
+| `fleetest-profiles` | `/fleetest:fleetest-profiles` | アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
 | `fleetest-scenario` | `/fleetest:fleetest-scenario` | セットアップ済みプロジェクトに Swift DSL のシナリオ(`.swift`)を1本作成(ライブ探索からコンパイル検証まで) |
 | `fleetest-mcp` | `/fleetest:fleetest-mcp` | MCP サーバ(`fleetest-mcp`)だけを Claude Code に登録(VSCode 拡張・プロジェクト作成・プロファイル設定は行わない) |
 | `fleetest-remote-setup` | `/fleetest:fleetest-remote-setup` | 別の Mac をランナー機として用意し、手元から SSH 経由でシナリオをディスパッチできるようにする |

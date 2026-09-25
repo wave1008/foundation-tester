@@ -21,8 +21,8 @@ section wins on conflicts):
                "appPath": "builds/app-debug.apk" } }
 ```
 
-- `autoInstall` is only read from `common` (default: whether `appPath` is set — write `false`
-  explicitly to opt out even with a path present).
+- `autoInstall` is only read from `common` (default: whether `appPath` or `appPathPhysical` is
+  set — write `false` explicitly to opt out even with a path present).
 - `appName` (display name), `app` (bundle ID / package) and `appPath` are only read from the
   `ios`/`android` sections (writing them in `common` is ignored, so the display name can differ
   per OS).

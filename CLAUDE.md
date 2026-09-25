@@ -96,8 +96,9 @@
     **ここは受け手のファイルを書き換える唯一の箇所**なので、**マーカーが begin/end ちょうど1組で
     なければ1バイトも書かない**(`installClaudeMdBlock.test.mjs` が3形を守る)→ maintainer-notes §1.2
   - **クローンが git 管理しているファイルには書かない**。判定はレイアウトではなく
-    **`git ls-files --error-unmatch` で追跡の有無**。**受け手のフローに「クローンの中を書く」工程を
-    足すときは必ず追跡を見る** → maintainer-notes §1.3
+    **入口ファイルがクローンの作業ツリーの内側にあるか**(`os.path.commonpath` による包含判定)。
+    **受け手のフローに「クローンの中を書く」工程を足すときは必ずこの判定を見る**
+    → maintainer-notes §1.3
   - **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
     `--skip-project` の更新で既存の受け手に永久に届かない)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **Claude Code の
@@ -811,7 +812,7 @@
   **`XCUI` 接頭辞は付かない**・公開ヘッダに宣言が無い。ユーザー決定 2026-09-22 ——
   公開 API に代替が無いことを実測で確かめてから採用した)。`Runner/.../CoordinatePinch.swift` の
   1箇所に閉じ、守る規律3つ: **①実行時に存在を確かめてから使う**(無ければ要素ピンチへ縮退し、
-  注記で必ず言う)/ **②起動時にも1行出す**(`coordinate pinch: available` —— 消えたことが
+  注記で必ず言う)/ **②起動時にも1行出す**(`coordinate pinch/gesture/doubletap: available` —— 消えたことが
   run を待たずに分かる)/ **③completion ブロックは引数を宣言しない**(実際は先頭に BOOL が来るので
   `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)。**`/gesture`
   (DSL の `gesture` / MCP の `ft_gesture`)も同じファイル・同じ非公開 API を使う** ——
@@ -1174,7 +1175,7 @@
   この関数はタップの座標補正・ghost 判定・MCP にも効くので、触ったら 5 SUT のフル E2E
   **+ `--ios-xcuitest`**。**フルスイートは iOS を in-app で回すので、これだけでは守れない** ——
   現にこの規則の導入(`8a416bc0`)が xcuitest 限定の退行を入れ、フル E2E 緑のまま通った
-  (**同日 `931897d6` で修正済み** —— 申告の祖先へ倒すのは「深さ由来の候補が要素を収められない」
+  (**5日後の `931897d6` で修正済み** —— 申告の祖先へ倒すのは「深さ由来の候補が要素を収められない」
   ときだけ。経緯と壊れ方は maintainer-notes §4.5.1)
   **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
   `driver.drag` を直に呼ぶと hybrid で黙って不発になる)

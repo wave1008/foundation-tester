@@ -29,7 +29,8 @@ corporate LAN that does not reach the internet. It is not a setup guide.
   401** without touching the device at all. The comparison is constant-time.
 - **The bridge cannot open on all interfaces without a token** — the runner refuses to start if
   one is missing.
-- The token lives in `<project>/.fleetest/bridge-<port>.endpoint` and **never passes through
+- The token lives in `.fleetest/bridge-<port>.endpoint` (at the work folder's root, not inside a
+  `TestProjects/<project>/`) and **never passes through
   arguments or environment variables to other processes** (so it does not show up in `ps`).
 - **This protects against a third party on the same LAN.** The loopback path has no
   authentication at all — anyone who can log into that Mac already has equivalent access.

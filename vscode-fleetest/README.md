@@ -331,6 +331,12 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 エディタの横(`ViewColumn.Beside`)に Webview パネルが開きます。既に開いている
 場合は既存のパネルを前面に出すだけです(1ワークスペースにつき1枚のシングルトン)。
 
+- **常設3ペイン**: 上から**ラインビュー**(タイルの並び)・**グリッドビュー**(選択した台の拡大表示)・
+  **実行ログビュー**(選択した台の実行ログ)の3段構成です(見出し行はどれもクリックで開閉できます。
+  契約は docs/design.md §12.6 が唯一の定義元)。両ビューに出るのは**ラインビューで選択した台だけ**で、
+  供給の進行を表す全体レーン(`__overall__`)は台ではないため、選択に関わらず実行ログビューに
+  残ります。**ちょうど1台選択したときだけ**グリッドビューの中に「拡大表示 | 実行ログの複製」が
+  並び、その間は同じログを二重に出さないよう実行ログビューが自動的に畳まれます。
 - パネルを開くと `fleetest api monitor --project <project> --interval <秒> --max-width <max-width>` を
   裏で起動し(`<秒>`=`fleetest.monitorInterval`、`<max-width>`=`fleetest.monitorMaxWidth`(既定 960))、
   その NDJSON 出力(デバイス一覧・各デバイスの画面(JPEG)・エラー)をタイル表示に
@@ -353,7 +359,7 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
   (`fleetest api start-device --name <論理名>`。iOS はブリッジ供給も行います)、「接続済み」
   「起動中」のタイルには**「停止」**(`fleetest api stop-device --name <論理名>`)
   が表示されます。メニュー外クリック・Esc・スクロールで閉じます。右クリックしてもタイル自体の
-  選択(レーン絞り込み)には影響しません。実行中はそのデバイスのタイル画像左上に
+  選択(グリッドビュー・実行ログビューの絞り込み)には影響しません。実行中はそのデバイスのタイル画像左上に
   「起動中...」/「停止中...」の小さなバッジが表示され、メニューの項目も同じ文言で無効化されます。
   完了するとモニターの次回ポーリングで状態バッジが自動的に更新されます。失敗した場合
   (`finished` イベントが `ok:false`、またはプロセスの異常終了)は、パネル上部のエラーバナーに
@@ -429,7 +435,8 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 
 - **ブリッジ無応答の自動修復**(`src/monitorBridgeWatchdog.ts`、設定 `fleetest.autoRepairBridge`
   既定 `true`): 接続済みだったデバイスが起動中(booted)のまま連続で復帰しない状態を検出すると、
-  実行中のログレーンが1つも無い間に限り `start-device` を自動的に積んで再接続を試みます。
+  実行中のレーン(実行ログビューに出るワーカー単位の実行ログ)が1つも無い間に限り
+  `start-device` を自動的に積んで再接続を試みます。
 - **Android ゲスト OS 健全性の自動修復**(`src/monitorHealthWatchdog.ts`、設定
   `fleetest.autoRepairDeviceHealth` 既定 `false`): Wi-Fi 無効化・時計のずれ等の異常が Swift 側の
   プローブで連続確認されると、Wi-Fi 再有効化(`src/adbWifiRepair.ts` 経由の adb コマンド)→それでも
@@ -934,7 +941,7 @@ F5 で Extension Development Host を起動した状態(またはパッケージ
 |---|---|
 | `npm run compile` | `esbuild.mjs` で `src/extension.ts` を `dist/extension.js` にバンドルし、`tsc --noEmit` で型チェックする |
 | `npm run watch` | 上記のバンドルをウォッチモードで実行する |
-| `npm test` | `esbuild.mjs --tests` で `test/*.test.mjs` を `out-test/` にバンドルし、`node --test out-test/*.test.mjs` で実行する(NDJSON パーサ・実行結果 reducer(並列実行ケース含む)・ログレーン変換・DAP アダプタ・デバイスモニター(タイル個別起動/停止含む)/ライブ操作/プロファイル/i18n の変換・検証のユニットテスト。E2E テストは `FLEETEST_E2E` 未設定時は自動的に skip される) |
+| `npm test` | `esbuild.mjs --tests` で `test/*.test.mjs` を `out-test/` にバンドルし、`node --test --test-force-exit out-test/*.test.mjs` で実行する(NDJSON パーサ・実行結果 reducer(並列実行ケース含む)・ログレーン変換・DAP アダプタ・デバイスモニター(タイル個別起動/停止含む)/ライブ操作/プロファイル/i18n の変換・検証のユニットテスト。E2E テストは `FLEETEST_E2E` 未設定時は自動的に skip される) |
 | `npm run package` | `vsce package` で `.vsix` を生成する(marketplace 未公開/publisher 未検証の警告は無視してよい) |
 | `npm run install-local` | `scripts/install-local.sh` を実行する(`.vsix` のパッケージ化 → インストール → 到達確認まで一括で行う) |
 
@@ -988,11 +995,17 @@ vscode-fleetest/
 ├── src/
 │   ├── extension.ts            # activate/deactivate。コンポーネント登録の起点
 │   ├── config.ts                # fleetest.* 設定の読み取り・ワークスペースルート/対象プロジェクトの解決
+│   ├── projectResolution.ts     # 対象プロジェクトの解決規則(候補一覧からの絞り込み判定。CLI/MCP の ProjectStore.find と対。vscode 非依存)
+│   ├── projectResolutionMessages.ts # projectResolution.ts の "missing" 判定を利用者向け文言にする(t() を使うため vscode 依存)
+│   ├── projectSelection.ts      # webview のプロジェクト選択(ダッシュボード・録画タブ)から fleetest.project 設定を書き換える
+│   ├── defaultProject.ts        # 起動時に既定プロジェクト(TestProjects/default/)を用意する(雛形は `fleetest project create` に委ねる。vscode 非依存)
 │   ├── binaryPathResolve.ts     # fleetest バイナリパスの解決(clone 構成: .build/debug/fleetest、外部パッケージ構成: PATH。vscode 非依存)
 │   ├── compatCheck.ts           # 起動時プレフライト。`fleetest api version` を単発実行し CLI↔拡張のプロトコル版を照合
 │   ├── protocolVersion.ts       # 拡張側のプロトコル版定数(Sources/FTCore/ProtocolVersion.swift と一致必須)
+│   ├── timestampedOutput.ts     # OUTPUT「fleetest」の全行へ時刻を付ける唯一の定義元(呼び出し側は appendLine のまま。vscode 非依存)
 │   ├── orphanSweep.ts           # activate 時、孤児化した fleetest 常駐プロセス(PPID=1)を掃除する(vscode 非依存)
 │   ├── residentProcesses.ts     # 設定タブ「常駐プロセス」一覧の中核。ps 出力から fleetest 関連プロセスを分類(vscode 非依存)
+│   ├── childEnv.ts              # 拡張が起こす子プロセスへ渡す環境(FT_PARENT_PID = 拡張ホストの死で子も自ら終わる。vscode 非依存)
 │   ├── cli.ts                   # FleetestCli: spawn・NDJSON/JSON パース・実行キュー・キャンセル
 │   ├── oneShotCli.ts            # 直列キューに乗せない単発 spawn(list-devices/results 等が使う runOneShot)
 │   ├── ndjson.ts                 # NdjsonParser(vscode 非依存の純粋クラス)
@@ -1012,19 +1025,38 @@ vscode-fleetest/
 │   ├── scenarioReports.ts        # シナリオ実行レポート(Markdown)の探索(vscode 非依存)
 │   ├── reportCodeLens.ts         # 失敗テストの「レポートを開く」を CodeLens として常設表示
 │   ├── copyTestName.ts           # fleetest.copyTestName のキーボード起点時、カーソル位置から対象 TestItem を逆引き(vscode 非依存)
-│   ├── monitorModel.ts           # `fleetest api monitor` の NDJSON → webview メッセージへの変換・検証(vscode 非依存)
+│   ├── monitorModel.ts           # 下記4ファイルへの re-export 窓口(このファイル自体は挙動を持たない)
+│   ├── monitorDeviceModel.ts     # デバイスの型・`fleetest api monitor` の NDJSON イベントの検証/整列/フィルタ(拡張・webview 両バンドルに入る。vscode 非依存)
+│   ├── monitorWebviewMessages.ts # extension ⇔ webview の postMessage 契約(型)・検証・変換(vscode 非依存)
+│   ├── monitorDeviceLifecycle.ts # デバイス個別/一括の起動・停止(start-device 等)の NDJSON イベント型と直列実行キュー(vscode 非依存)
+│   ├── monitorProfileForms.ts    # 実行/アプリプロファイルのフォーム解析・検証・デバイスカタログ(vscode 非依存)
 │   ├── monitorPanel.ts           # デバイスモニターの WebviewPanel(fleetestMonitor)。monitor プロセスの spawn/中継・サブコントローラの束ね役
 │   ├── monitorHtml.ts            # デバイスモニターの webview HTML 生成(devices/profiles/processes/settings の4タブ)
 │   ├── monitorDeviceOpsText.ts   # monitorDeviceOps / monitorDeviceCreateOps が共有する文言の純粋関数(vscode 非依存)
 │   ├── monitorDeviceCreateOps.ts # デバイスの新規作成・削除(create-device・delete-device・install-system-image)。monitorDeviceOps から委譲
 │   ├── monitorDeviceOps.ts       # デバイスライフサイクル操作(起動/終了/新規作成)。device-catalog/installed-devices/create-device の単発 spawn
+│   ├── monitorDeviceActionNotice.ts # 実機の起動で「端末の前で人がやること」を VSCode 通知(withProgress)で促す(鍵は (machine, name))
 │   ├── monitorDeviceStreamController.ts # タイル向け画面ストリーミング制御(iOS: fleetest-simstream / Android: fleetest-androidstream)
 │   ├── monitorProcessManager.ts  # monitor/host-metrics 常駐子プロセスの起動・停止・再起動・pause/resume
+│   ├── hostMetricsRetry.ts       # host-metrics 子プロセスの「次にいつ再試行するか」を決める純粋関数(Sources/fleetest/RemoteMonitorFanout.swift の retryPlan と対)
 │   ├── monitorProfilesController.ts # 「プロファイル」タブ(実行/アプリプロファイルのCRUD・フォーム)
+│   ├── monitorScopeFiles.ts      # 実行プロファイルの変更でモニターを再起動すべきかの判定(`--profile` は devices を起動時に1回だけ読むため。vscode 非依存)
 │   ├── monitorBridgeWatchdog.ts  # ブリッジ無応答の自動検出・start-device による自動修復(設定 fleetest.autoRepairBridge。vscode 非依存)
 │   ├── monitorHealthWatchdog.ts  # Android ゲストOS異常の自動検出・Wi-Fi再有効化/再起動による自動修復(設定 fleetest.autoRepairDeviceHealth。vscode 非依存)
 │   ├── adbWifiRepair.ts          # MonitorHealthWatchdog の Wi-Fi 修復コマンド実行(vscode 非依存)
+│   ├── monitorUpdateController.ts # 「設定」タブ「更新」セクション本体。判定は update-check.sh、取り込みは update.sh に委譲する
+│   ├── updateCheck.ts            # 起動時(1日1回まで)の更新チェックと fleetest.checkForUpdate コマンドの手動チェック(取り込みはしない)
+│   ├── toolRootResolve.ts        # foundation-tester クローン(TOOL_ROOT)の解決(preflight.sh/update-check.sh と同じ規則。vscode 非依存)
+│   ├── remoteHostsController.ts  # リモートホスト登録簿(`fleetest api remote-machines`)の CLI 越しの読み書き
+│   ├── remoteRunArgs.ts          # リモートホスト登録簿の正規化・解決・差分計算と、デバイス候補取得のマシン指定引数組み立て(vscode 非依存)
+│   ├── remoteCompatGate.ts       # `fleetest api remote-compat` の結果から確認ダイアログ表示の要否を決める純粋関数(vscode 非依存)
+│   ├── retentionController.ts    # クリーンアップ設定(保持ポリシー)と掃除(`fleetest api retention`/`clean`)の CLI 越しの読み書き
+│   ├── retentionModel.ts         # 設定タブ「ログ・録画」のクリーンアップ欄の単位変換・入力検証・CLI 応答の解釈(拡張・webview 両バンドルに入る。vscode 非依存)
+│   ├── runHookScaffold.ts        # プロファイルタブ「リモート制御」の run 前後スクリプトの雛形を作成する
+│   ├── machineLockModel.ts       # どの機械で誰の run が走っているかの控え(`api monitor` の monitorLock イベントが供給元。vscode 非依存)
+│   ├── runBoardModel.ts          # デバイスモニターの「run ボード」(フリート横断の実行状況)の純粋ロジック(拡張・webview 両バンドルに入る。vscode 非依存)
 │   ├── deviceStream.ts           # 映像ストリーミング常駐 helper のプロセス管理(iOS/Android 共通。ライブ操作・モニタータイル両方が使う)
+│   ├── remoteStreamAdmission.ts  # リモート機への画面配信(`api device-stream`)を一斉に張らないための入場制限(sshd MaxStartups 対策)
 │   ├── healModel.ts              # HealFixCollector・検証/diffロジック・apply-heal 契約の変換(vscode 非依存)
 │   ├── healReviewPanel.ts        # 自己修復確認の WebviewPanel(fleetestHealReview)。RunEventBus購読・ソース読込・apply-heal 呼び出し
 │   ├── profileModel.ts           # `fleetest api validate-profile` の出力の検証・変換、プロファイルファイルパスの種別判定(vscode 非依存)
@@ -1035,8 +1067,16 @@ vscode-fleetest/
 │   ├── monitorLiveController.ts  # ライブ操作の中核サブコントローラ。list-devices の専用spawn+live serve の常駐spawn(いずれもFleetestCliのキューを使わない)・座標変換の適用・serveの観測イベント反映・画面ストリーミング/自動フレームの供給元切替・レコーディング→gen-scenario
 │   ├── liveAppActions.ts         # ライブ操作のアプリ操作(インストール・起動)・レコーディング・シナリオ生成。MonitorLiveController から委譲
 │   ├── liveTabHost.ts            # デバイスモニターの「ライブ操作」タブのサブコントローラ。コマンド fleetest.showLiveControl・実行開始時の自動オープン(fleetest.liveControlOnRun)・デバイスタイル右クリック連携
+│   ├── monitorRecordingsController.ts # 「録画」タブ: セッション一覧の供給と選択セッションの再生データの組み立て
+│   ├── recordingsModel.ts        # 録画再生 UI の型ガード・純粋関数(recordings/index.json の解釈。vscode 非依存)
+│   ├── recordingsSessionsCache.ts # テストセッション一覧の前回結果を workspaceState に控える
+│   ├── recordingsStore.ts        # テストセッション(recordings/index.json のある run)の列挙・読み込み(fs 直読みのみ。vscode 非依存)
+│   ├── resultsExportModel.ts     # scenarios/*.json・run.json をテスト結果エクスポート向けの中立なレポートモデルへ変換する(locale 非依存の純粋ロジック)
+│   ├── resultsExportWorkbook.ts  # ResultsExportModel を xlsxWriter.ts 呼び出しへ変換する(文言はここで t() を通して解決)
+│   ├── xlsxWriter.ts             # 依存ゼロの最小 XLSX(OOXML)ライター(vscode 非依存)
 │   ├── dashboardModel.ts         # 結果ダッシュボードの vscode 非依存の型・ペイロード型ガード(`fleetest api results` の契約)
 │   ├── monitorDashboardController.ts # デバイスモニターの「ダッシュボード」タブのサブコントローラ。コマンド fleetest.showResultsDashboard
+│   ├── languageChangeHandler.ts  # fleetest.language 変更時の反映本体(各 webview パネルの relocalize() を束ねる。extension.ts から呼ぶ)
 │   ├── i18n/
 │   │   ├── index.ts              # 拡張側 i18n ランタイム。t()・initI18n()・locale 解決(fleetest.language)
 │   │   ├── core.ts               # i18n の型と純関数(vscode 非依存。webview バンドルにも入る)

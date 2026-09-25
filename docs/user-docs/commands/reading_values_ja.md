@@ -41,7 +41,7 @@ if e.isNotEmpty { 合計 = e.text }   // 無い・見えていなければ空要
 ```
 
 - 検証ステップをレポートに残したくないときは、`exist` の代わりに `select` を使ってください。
-  `select` は掴むだけで可視性照合の対象にもなりません(`select("#total").text`)。
+  `select` は掴むだけで検証ステップとしては記録されません(`select("#total").text`)。
 
 ## 直前に掴んだ要素(`lastElement`)
 

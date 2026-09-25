@@ -34,9 +34,9 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 | Skill | Command | Purpose |
 |---|---|---|
-| `fleetest-setup` | `/fleetest:fleetest-setup` | Full initial setup: clone if needed, build, verify the environment, create your project, set up machine/app profiles, and install the VS Code extension |
+| `fleetest-setup` | `/fleetest:fleetest-setup` | Full initial setup: clone if needed, build, verify the environment, create your project, set up app/run profiles, and install the VS Code extension |
 | `fleetest-update` | `/fleetest:fleetest-update` | Pull the latest upstream fixes: git pull, resync `TestProjects/`/`Package.swift`, rebuild, reinstall the VS Code extension, and reload |
-| `fleetest-profiles` | `/fleetest:fleetest-profiles` | Create machine, app and run profiles together in one pass (asks for iOS/Android and the app's display name/ID, then picks or creates a device) |
+| `fleetest-profiles` | `/fleetest:fleetest-profiles` | Create app and run profiles together in one pass (asks for iOS/Android and the app's display name/ID, then picks or creates a device) |
 | `fleetest-scenario` | `/fleetest:fleetest-scenario` | Author one Swift DSL scenario (`.swift`) in an already set-up project, from live exploration through compile verification |
 | `fleetest-mcp` | `/fleetest:fleetest-mcp` | Register just the MCP server (`fleetest-mcp`) with Claude Code — no VS Code extension, project creation, or profiles |
 | `fleetest-remote-setup` | `/fleetest:fleetest-remote-setup` | Provision another Mac as a runner machine so scenarios can be dispatched to it over SSH |

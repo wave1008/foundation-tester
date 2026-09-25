@@ -79,7 +79,7 @@ keep in mind:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
   |---|---|---|---|---|
-  | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ | ✅ |
+  | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ | not measured (expected ✅ via the UIKit-based path) |
   | `doubleTap` | ✅ | ✅ **hybrid only** | ✅ | △ |
   | `pinchOut` / `pinchIn` | ✅ | ✅ | ✅ | ✅ |
   | `gesture` | ✅ | ✅ | ✅ | ✅ |

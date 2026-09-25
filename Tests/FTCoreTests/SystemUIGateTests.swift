@@ -242,7 +242,7 @@ final class SystemUIGateTests: XCTestCase {
                       "何が覆っているかを名指しすること: \(message)")
         XCTAssertTrue(message.contains("アプリの使用中は許可 / 許可"),
                       "何を宣言していたかを出すこと: \(message)")
-        XCTAssertTrue(message.contains("「Appにトラッキングしないよう要求」"),
+        XCTAssertTrue(message.contains("\"Appにトラッキングしないよう要求\""),
                       "**実際に在るボタン**を出すこと(これが無いと次の一手が決まらない): \(message)")
         XCTAssertTrue(message.contains("a person could not"),
                       "「人手では不可能」がこの失敗の理由そのもの: \(message)")
@@ -285,7 +285,7 @@ final class SystemUIGateTests: XCTestCase {
     /// unregisteredAdvice は判断材料が揃ったときだけヒントを足す。揃わなければ従来どおりの文言のまま
     func testUnregisteredAdviceAddsTheLeftoverHintOnlyWhenItCanTell() {
         let withHint = SystemUIGate.unregisteredAdvice(
-            "「Allow “FT E2E Flutter” to access your photo library?」",
+            "\"Allow “FT E2E Flutter” to access your photo library?\"",
             title: "Allow “FT E2E Flutter” to access your photo library?",
             currentAppDisplayName: "FT E2E iOS")
         XCTAssertTrue(withHint.contains("left over"), withHint)
@@ -293,7 +293,7 @@ final class SystemUIGateTests: XCTestCase {
                       withHint)
 
         let sameApp = SystemUIGate.unregisteredAdvice(
-            "「Allow “FT E2E iOS” to access your photo library?」",
+            "\"Allow “FT E2E iOS” to access your photo library?\"",
             title: "Allow “FT E2E iOS” to access your photo library?",
             currentAppDisplayName: "FT E2E iOS")
         XCTAssertFalse(sameApp.contains("left over"), sameApp)

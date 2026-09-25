@@ -182,6 +182,7 @@ settings, so they also apply to tests you run directly from a terminal.
   | Recordings | 100 GB |
   | Reports | 1000 MB |
   | Logs | 500 MB |
+  | Bridge diagnostics | 5 GB |
 
 - Each row shows the **current usage** on its right. Measuring takes about 20 seconds; until then
   it reads "Now - GB".

@@ -1226,8 +1226,8 @@ Scripts/install.sh             **そのまま流用**(外部構成で呼ぶ):
                                **--skip-project は使えない**(WORK_DIR に Package.swift が要る。§12)。
                                --tool-root も渡さない(既定の <work-dir>/../foundation-tester が
                                RemoteLayout.toolRoot とちょうど一致する)
-fleetest remote setup <runner>  発行側の入口。local(手元のプロジェクト解決)→ reach → preflight
-                               → install → align → machine → verify の7段。preflight と
+fleetest remote setup <runner>  発行側の入口。local(手元のプロジェクト解決)→ reach → issuer
+                               → preflight → install → align → verify の7段。preflight と
                                install.sh は**手元のスクリプトを scp で送って実行する**
                                (リモートに clone が無い初回と、curl 形が main 固定で
                                ブランチ検証に使えない問題の両方を1つの解で塞ぐ)。
@@ -1555,7 +1555,7 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
 ### 16.5 フリートの一括診断(**実装済み** = `remote status`)
 
 ホストが3台を超えると「どれが今使えるか」の確認が運用の主コストになる。
-`fleetest remote status [--fleet <name>]` で**全ホストへ並列に**到達性・rev・toolchain・
+`fleetest remote status --runner <host>...` で**全ホストへ並列に**到達性・rev・toolchain・
 FM 可否・**ログイン状態**(16.3)・空き容量・**占有**(LOCK。§18.7)を投げ、1画面の表にする。
 **1ホスト = 1往復に収める**(項目を足すときはプローブのブロックを増やす。ssh を足さない)。
 §13 のホスト状態表示(GUI)は**この結果をそのまま描画する**(判定ロジックを二重に持たない)。
@@ -1799,7 +1799,7 @@ appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に
   **切り分け**: ランナーの画面のターミナルで同じ setup.sh を流して通るなら、この権限の問題
   (ツール側の不具合ではない)
 - **環境変数**(利用者のスクリプトが読む契約。`RunHookEnvironment`):
-  `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・`FT_MACHINE`・
+  `FT_HOOK`(setup/teardown)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・
   `FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`(空白区切りのデバイス名)。
   **値が無いときもキーは置く**(落とすと呼び出し側の `set -u` が落ちる)。
   **エミュレータの adb serial・シミュレータの UDID は載らない** —— 実体の解決は run の中で

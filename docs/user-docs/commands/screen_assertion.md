@@ -22,6 +22,11 @@ expectation {
   descriptions has not been measured yet. See [environments.md](../overview/environments.md).
 - Requires **macOS 27+** — on macOS 26 this check is automatically skipped. Check current
   availability with `fleetest doctor`.
+- **Don't rely on it as a strict pass/fail gate.** The result depends heavily on the exact wording
+  of the description (not on the language you write it in), and the same screen can flip between
+  pass and fail depending on how the screenshot happens to be taken (though the result is
+  deterministic for the same image). Use it only for rough, big-picture checks; for assertions
+  that must not fail, write tree-based checks (`exist` / `textIs` / `countIs`) instead.
 - Unlike Shirates(Classic)'s `screenIs`, there is no screen-nickname mechanism — you always
   describe what the screen should look like in the call itself.
 

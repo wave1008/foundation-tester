@@ -45,7 +45,7 @@ if e.isNotEmpty { total = e.text }   // absent or invisible → an empty element
 ```
 
 - To read a value without leaving a verification step in the report, use `select` instead of
-  `exist` — `select` only grabs, and is not subject to visibility checks
+  `exist` — `select` only grabs and does not appear as a verification step in the report
   (`select("#total").text`).
 
 ## The last grabbed element (`lastElement`)

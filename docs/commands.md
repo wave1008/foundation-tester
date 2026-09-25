@@ -42,7 +42,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `select(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列", replace: false)` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う。`replace: true` で撃つ前に `clearInput` 相当のクリアをしてから入力する(セレクタ解決が1回で済む) |
-| `type(sel, "文字列", waitSeconds:scroll:maxSwipes:replace:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる) |
+| `type(sel, "文字列", replace:waitSeconds:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記。`replace: true` で撃つ前にクリアしてから入力する(下記 `clearInput` 参照)。**入った値を読み返して直す**: 末尾の欠落は追送・二重入力は削除・**中央の1文字が落ちた形(`hello123`→`hllo123`)は消してから全文を打ち直す**(ブリッジ v104。注記 `type-retyped` / XCUITest ランナーは `driverFallback` に "retyped the whole text …")。**打ち直しは1回まで** —— 打ち直しても同じ形で欠けるなら(英字を捨てる数字欄など)アプリ側の加工なので検証を諦めて受理する(注記 `type-retype-abandoned`。値は `textIs` で別途確かめる) |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
 | `hideKeyboard()` | ソフトキーボードを閉じる。**Android のみ**(出ているときだけ戻るキーを撃つので冪等)。**次のロケータ操作は、画面の木からキーボードが消えるまで待ってから要素を解決する**(上限 5 秒 = 検証の既定の待ちと同じ `FlowStep.defaultWaitSeconds`。消えなければそのまま進む。Android 12 の端末では閉じた後も木がキーボードを数秒申告し続け、下端の要素が木に戻らない)。**iOS は未対応で失敗する** — iOS で閉じたいときは `pressEnter()` を使う(単一行の欄なら閉じる) |
 | `clearInput()` | フォーカス中の入力欄を空にする |
@@ -687,7 +687,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `wait(秒)` | 固定待ち。**要素の出現待ちには使わない**(暗黙待ちで足りる)。出番はセレクタで待てない整定(アニメ中の座標ずれ等)だけ |
 | `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`。小数可)。出るか不定のダイアログの無害化に。**dry-run では両方のブロックを列挙する**(`.ifElse` の中の構文誤り・未知の `#id` もデバイス無しで返すため) |
 | `ios { … }` / `android { … }` | 対象 OS のときだけ実行 |
-| `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
+| `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0, title:) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
 | `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `waitSeconds:`)。throw したらリトライせず即 NG。`waitSeconds` は下記の 120 秒上限を超えられない |
 
 ## 構造化・前後処理・割り込み
@@ -893,7 +893,7 @@ iosAlertHandler(alert: "*トラッキング*||*track your activity*",
 ①`launchApp` / `restartApp` / `clearAppData` / `installApp` の直後の**最初の触る操作**
 ②**ステップが失敗したとき**(時間切れ・見つからない等)。前面にあれば、操作は止めずに
 注記 `system-alert-present` を立て、文言に題名とボタンを出す(失敗なら失敗理由の末尾に
-「— a system alert (「…」, buttons: 「…」/「…」) is in front of the app and no iosAlertHandler is
+「— a system alert ("…", buttons: "…" / "…") is in front of the app and no iosAlertHandler is
 registered for it …」)。**その題名とボタンをそのまま `iosAlertHandler(alert:button:)` に書けば
 次の run から自動で押せる**。閉じるのはシナリオの責務のまま(自動では押さない)。
 確かめるのは**触る瞬間**なので、要求の直後に非同期で出るアラートと同じ瞬間に触ると「まだ無い」に
@@ -948,7 +948,7 @@ ifCanSelect("#btnAgree||同意する") { tap("#btnAgree||同意する") }
    The in-app engine could still reach the app, but a person could not, so the step was not
    performed. None of the registered iosAlertHandler entries
    (*写真ライブラリ*→Appの使用中は許可) matched a button on it.
-   Buttons on this alert: 「写真を選択」 / 「フルアクセスを許可」 / 「許可しない」.
+   Buttons on this alert: "写真を選択" / "フルアクセスを許可" / "許可しない".
    Register the one you want pressed with iosAlertHandler(...), or dismiss it in the scenario.
 ```
 

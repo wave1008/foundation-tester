@@ -7,7 +7,7 @@ Types text into a field, either the currently focused one or a specified element
 | function | description |
 |---|---|
 | `type("some text", replace: false)` | Types into the **currently focused** element (focus it first with `tap(inputField)`). The argument is text, not a selector — passing something that looks like a selector (starts with `#`, or contains `\|\|` / `>>`) fails before execution rather than silently typing the literal string. To actually type such a string, use the two-argument form `type("#field", "#email")`. `replace: true` clears the field (like `clearInput`) before typing. |
-| `type(sel, "some text", waitSeconds:scroll:maxSwipes:replace:)` | Resolves the element, then types into it. Japanese text is typed as-is (no IME switching needed). `replace: true` clears the field before typing. |
+| `type(sel, "some text", replace:waitSeconds:scroll:maxSwipes:)` | Resolves the element, then types into it. Japanese text is typed as-is (no IME switching needed). `replace: true` clears the field before typing. |
 
 ## Example
 

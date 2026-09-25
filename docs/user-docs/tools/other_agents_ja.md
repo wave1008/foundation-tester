@@ -21,7 +21,7 @@ Cursor・Copilot など)でも、次の3つを自分で用意すれば同じこ�
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-  | bash -s -- --name MyApp --app com.example.myapp
+  | bash -s -- --name MyApp --app-id com.example.myapp
 ```
 
 インストーラは Claude Code 向けの生成物も置きます。`.mcp.json` と `CLAUDE.md` は
@@ -71,7 +71,7 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 |---|---|
 | `fleetest-setup` | 初回導入(clone → build → プロジェクト作成 → 検証) |
 | `fleetest-update` | 修正版の取り込み |
-| `fleetest-profiles` | マシン/アプリ/実行プロファイルの一括作成 |
+| `fleetest-profiles` | アプリ/実行プロファイルの一括作成 |
 | `fleetest-scenario` | テストシナリオ(.swift)の作成 |
 | `fleetest-mcp` | MCP サーバだけの登録 |
 | `fleetest-remote-setup` | 別の Mac をランナー機にする |

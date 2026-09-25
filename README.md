@@ -193,8 +193,8 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 | `--version` | `<git の短い revision> (protocol <版>)` を表示(`api version` はプロトコル版だけを JSON で返す別口) |
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果は台ごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--enable-animations` アプリのアニメーションを残す、`--fast-input` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
-| `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--port`) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果は台ごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、`--set iosFastInput=true` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
+| `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--set heal=...`、`--port`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
@@ -472,7 +472,7 @@ condition {
   失敗時の要素一覧、失敗スクリーンショット、**修正提案**)
 - **自己修復(ロケータの指紋照合)**: 自己修復が有効な実行(**`--profile` 実行では実行プロファイルの
   `heal` が既定 ON** / **プロファイルを使わない `fleetest run` は既定 OFF**。FM・OCR 系のトグルとは独立。
-  CLI からは `--heal` で ON・`--no-heal` で OFF に上書きできる。両方の同時指定はエラー)では、
+  CLI からは `--set heal=true` / `--set heal=false` で上書きできる)では、
   壊れたセレクタは、その要素の型+ラベル(入力欄はプレースホルダも)の指紋が現在の画面で
   **ちょうど1件だけ**一致すれば FM なしで決定的に解決して続行する(指紋は
   `TestProjects/<name>/.fleetest/locator-fingerprints.json` に保存)。
@@ -548,6 +548,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 ダブルタップだけエンジンで成否が分かれる(hybrid なら成立・`xcuitest` では不成立)ので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
 | `ft_gesture` | 指ごとの時刻つき経路を**1本の連続タッチ**として再生する(区切りで指を離さない)—— `ft_tap`/`ft_drag`/`ft_pinch` を繰り返し呼ぶと呼ぶたびに指が離れるが、これは離れない。パターンロック・長押しからのドラッグ・3本指以上のジェスチャ用。**ref 形は無く座標のみ**(iOS=pt / Android=px)。iOS は既定の hybrid でも常に XCUITest 経由(in-app に経路が無い) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
+| `ft_capture_element` | 要素を画像分類器の見本として保存する(プロジェクト内 `vision/classifiers/<classifier>/<label>/`)。切り出しは `checkIsON`/`checkIsOFF`(CheckStateClassifier)や `imageIs`(DefaultClassifier)が判定時に使うのと同じ a11y の枠。保存後は必要なら学習し直し、見分けられない見本があれば報告する |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |
 | `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** をデバイス実行の前に落とす |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
@@ -614,13 +615,18 @@ Sources/
   fleetest-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
   fleetest-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
   fleetest-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
+  fleetest-devicepoll/    実機(iOS/Android)専用の画面配信。定間隔スクリーンショットで供給する第3の配信源
   FTDSL/           Swift DSL 本体(コマンド・セレクタ式・発見・レポート・コード生成・ロケータの指紋)
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
   FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)
+  FTCoreSimShim/   CoreSimulator 直叩きシム(Objective-C。dlopen+objc_msgSend で私有 API を叩き、利用不能なら simctl へフォールバックさせる)
   FTFoundationModels/ FM 呼び出し(失敗時の Healer / Verifier・occlusion-guard・下書き生成・命名)
   FTBridgeClient/  iOS ブリッジの HTTP クライアントと起動管理・SimulatorCatalog・BridgeProvisioner
   FTAndroid/       Android ドライバ(常駐ブリッジ)・AndroidDeviceCatalog・ProfileWorkerFactory
+  FTEmulatorGrpc/  Android エミュレータの gRPC(EmulatorController)直叩き。スクリーンショット等を adb より高速に取得し、失敗時は FTAndroid が adb へフォールバックする
+  FTRemote/        リモートの純粋ロジック(SSH ディスパッチ・登録簿の解決・dispatch.lock・占有・setup 計画。利用側は fleetest CLI だけ)
+  FTTestSupport/   テスト専用の共有資源ロック・実アプリ固定コーパスの読み込み(production からは import しない)
 Runner/            xcodegen 定義 + ブリッジ本体(HTTP サーバ内蔵 UI テスト)
 SampleApp/         検証用 SwiftUI デモアプリ(test@example.com / password123)
 vscode-fleetest/    VSCode 拡張(UI 入口。詳細は vscode-fleetest/README.md)

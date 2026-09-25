@@ -76,7 +76,7 @@ gesture("#pad_map") {                 // 指が2本 = 手組みのピンチ
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
   |---|---|---|---|---|
-  | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ | ✅ |
+  | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ | 未実測(想定: UIKit 経路 = ✅) |
   | `doubleTap` | ✅ | ✅ **hybrid のみ** | ✅ | △ |
   | `pinchOut` / `pinchIn` | ✅ | ✅ | ✅ | ✅ |
   | `gesture` | ✅ | ✅ | ✅ | ✅ |

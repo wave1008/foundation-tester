@@ -226,7 +226,7 @@ Android は intent に package を明示するので影響しないが、**契�
 | `#txt_echo_wrapped` | Text | `wrapped=<v>` 初期 `wrapped=` | **Android だけが持つ**。`#field_wrapped` の中身の入力値 |
 
 **IME アクション(`#field_single`)**: Enter / 送信キーで発火し `#txt_ime_action` が +1 される
-(シナリオ 18 が `pressEnter()` と `type("…\n")` の両方で検証する)。
+(シナリオ 12 が `pressEnter()` と `type("…\n")` の両方で検証する)。
 
 - **改行は本文に入らない**: 発火しても `#txt_echo_single` / `#txt_echo_length` は変わらない
   (singleLine のフィールドとして全 SUT 共通。`len` が増えたら改行が文字として入っている = バグ)

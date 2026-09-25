@@ -49,8 +49,10 @@ final class CLIEnglishStringsScanTests: XCTestCase {
 
     private static func containsCJK(_ text: String) -> Bool {
         text.unicodeScalars.contains { scalar in
-            // 仮名と漢字だけ。**中黒 U+30FB は除く** —— 英語の出力でも箇条書きに使っている
-            (0x3041...0x3096).contains(scalar.value)          // ひらがな
+            // 仮名と漢字と全角の句読点・括弧。**中黒 U+30FB は除く** —— 英語の出力でも箇条書きに使っている。
+            // 句読点・括弧(「」『』、。等)を数えないと、英語の文の中で名前を「」で囲む形が素通りする
+            (0x3001...0x303F).contains(scalar.value)          // 全角の句読点・括弧(U+3000 の全角空白は除く)
+                || (0x3041...0x3096).contains(scalar.value)   // ひらがな
                 || (0x30A1...0x30FA).contains(scalar.value)   // カタカナ(中黒より前)
                 || (0x4E00...0x9FFF).contains(scalar.value)   // 漢字
         }

@@ -75,7 +75,7 @@ public func expectation(_ body: () -> Void) -> CAEChain { CAEChain().expectation
 /// 閉じたことは必ずステップの注記に残る(黙って閉じると、出続けている異常に気付けないため)。
 /// 追加のスナップショットは取らない(操作前に持っているものへ照合するだけ)ので正常系のコストはゼロ。
 /// **OS 側のダイアログ(権限・IME の案内等)はここに書かない** — ツール側で吸収する範囲
-/// `maxDismissals` は**1ステップで閉じる上限**(既定3)。湧く頻度は配信側の設定次第で
+/// `maxDismissals` は**1ステップで閉じる上限**(既定10 = `StepExecutor.maxInterruptDismissalsPerStep`)。湧く頻度は配信側の設定次第で
 /// こちらからは決められないので、宣言ごとに変えられる。**0 以下は 1 に丸める** ——
 /// 「閉じない宣言」は宣言しないのと同じなので、書き間違いを黙って通さない
 public func irregularHandler(_ detect: String, dismiss: String? = nil,

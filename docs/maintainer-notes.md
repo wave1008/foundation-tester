@@ -53,11 +53,11 @@ clone 構成では受け手の CLAUDE.md は**クローン自身の追跡ファ�
 なり、2回目以降の更新が pull ガードで必ず止まる。`git reset --hard` で戻しても次の更新が
 同じブロックを書くので堂々巡りになる。2026-08-07 に自己破壊を実再現した。
 
-判定は**レイアウトではなく `git ls-files --error-unmatch` で追跡の有無**を見る
+判定は**レイアウトではなく「入口ファイルがクローンの作業ツリーの内側にあるか」(`os.path.commonpath` による包含判定)**を見る
 (レイアウトで判定すると、新しい構成が増えるたびに条件が増える)。
 
 **同型**: `packageLockSync`(npm install が lock を書き換えてクローンが dirty になる)。
-**一般化**: 受け手のフローに「クローンの中を書く」工程を足すときは必ず追跡を見る。
+**一般化**: 受け手のフローに「クローンの中を書く」工程を足すときは必ずこの判定を見る。
 
 → 規則: CLAUDE.md「受け手の一括導入」
 
@@ -1643,7 +1643,7 @@ webview・配信・デコーダといった無関係な場所を延々と疑う�
 (`Runner/.../CoordinatePinch.swift`)。Appium/WebDriverAgent と同じ
 `XCPointerEventPath` / `XCSynthesizedEventRecord`(**`XCUI` 接頭辞は付かない**・公開ヘッダに宣言なし)。
 守る規律4つ: **①実行時に存在を確かめてから使う**(無ければ従来の要素ピンチへ縮退し、注記で言う)/
-**②起動時にも一行出す**(`coordinate pinch: available` —— 消えたことが run を待たずに分かる)/
+**②起動時にも一行出す**(`coordinate pinch/gesture/doubletap: available` —— 消えたことが run を待たずに分かる)/
 **③completion ブロックは引数を宣言しない**(実際は先頭に BOOL が来るので `(Error?) -> Void` で
 受けると Swift の thunk が 1 を objc_retain して**落ちる**。実測 EXC_BAD_ACCESS at 0x1)/
 **④指の位置はホストが決め、ブリッジは写すだけ**(`FTCore.PinchRegion` が「両方の指が同じものに
@@ -1979,11 +1979,11 @@ notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWe
   `BridgeRouter.handleSnapshot` の再試行(WAKEUP 注入込み)も root=null のままなら、
   `IllegalStateException` を包んで **422 + 本文接頭辞 `no-active-window-root:`** で申告するように分けた
   (`SnapshotBuilder.java` の例外自体は内部合図のまま変えていない)。ホスト側は
-  `DriverError.isNoReadableWindow`(status + 接頭辞。`BridgeAPI.androidNoActiveWindowRootPrefix` と同期)
+  `DriverError.isNoReadableWindow`(status + 接頭辞。`AndroidBridgeErrorPrefix.noActiveWindowRoot` と同期)
   が判定だけを持ち、MCP(`MCPServer.noReadableWindowHint`)が「一時的な状態で撃ち直しても同じ・
   前面復帰で早く戻る」という文言を添える(判定は共有・文言は呼び手が持つ)。
   Android ブリッジの版を 70 へ上げた(`AndroidRunner/build.sh` の `VERSION_CODE` /
-  `AndroidDriver.expectedBridgeVersionCode`)。
+  `AndroidBridge.expectedBridgeVersionCode`)。
 - **`ft_scroll_to` の失敗文の先頭行が注記**(`Error: note: search took 14.7s (3 swipe(s)).`)で、
   何が失敗したかが2行目。注記の順序は `sheetNote` について意図的に決めてあるので、
   足し引きは `Scripts/mcp-bench.sh` の手数で決める(印象で動かさない)。

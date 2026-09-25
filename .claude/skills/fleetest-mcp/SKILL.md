@@ -120,7 +120,6 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
 - `env.FT_TOOL_ROOT` は**ブリッジ資産(`Runner/`・`InAppBridge/`)のルート**の明示指定
   (cwd は受け手パッケージ = `TestProjects/` 側を指すため別物)。省略しても実行ファイルの位置から
   自動解決するが、明示しておくと解決に依存しない。
-- build 出力は `/dev/null`(JSON-RPC は stdout 専用・混ぜると壊れる)。
 - `bash -c` で足りる —— `mcp-server.sh` 自身が先頭で `/opt/homebrew/bin:/usr/local/bin` を PATH に足すので、
   最小の PATH でサーバを起こすクライアントでも swift/Xcode を引ける。**`-l`(ログインシェル)にしない**:
   `~/.bash_profile` の `echo` が stdout に混ざり JSON-RPC のハンドシェイクを壊す。
