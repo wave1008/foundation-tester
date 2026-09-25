@@ -28,167 +28,14 @@
 ### 設計・検証
 
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
-- **モニターの run ボード**(フリート横断の実行状況。**誰の run でも**「何本中何本」を出す。
-  拡張が起こした run しか見えない `runEvent` の穴を塞ぐ): 契約は **docs/design.md §18 が唯一の定義元**。
-  供給は機械グローバルの台帳 `~/.fleetest/runs/<pid>.json`(`FTCore.RunProgressLedger`。
-  **プロジェクトの `.fleetest/` に置かない** = ランナー機では発行者ごとに work が分かれ他人の run が
-  見えなくなる)→ `api monitor` が `monitorRuns` で配る → リモートは fan-out が machine を埋める。
-  守る規律5つ: **①記帳は `RunOrchestrator` の1箇所・注入は run / api run の2経路**
-  (`RunProgressLedgerWiringTests` が走査で固定。片方だけだとその経路の run が緑のまま映らない)/
-  **②生存判定は pid だけ**(mtime を見ない)/ **③死んだ控えは書き手が run 開始時に掃く**
-  (読み手は毎周期読むので掃除を置かない)/ **④経過は読み手(同じ機械の monitor)が秒に直して運ぶ**
-  (向こうの時計を手元で解釈しない)/ **⑤レーンごとの残り本数は持たない**(shared キューでは
-  同じ数字が並ぶだけで誤読を招く)
 - **UI フレームワーク別の差異の索引**(揃えている / 揃っていない / 経路だけ違う、の3区分で横に並べる):
   docs/framework-differences.md。**フレームワークで挙動が割れる変更を入れたら表に1行足す**
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
-- **結果 JSON のスキーマ**(run.json / scenarios/*.json の全欄・落ちた run の仕分けレシピ・
-  **フレークの推移を run 横断で見るときに先に揃える4つ**(run の本数 / シナリオの集合 / 標本数 /
-  デバイス構成)。揃えないと同じデータが改善にも悪化にも読める):
-  docs/results-json.md(**唯一の定義元**。`results/` は .gitignore なので中に README を置いても
-  受け手に届かない)。**`api results` の出力キャッシュ**(`<project>/.fleetest/results-cache/`。
-  鍵は引数 + 実行ファイル + run ごとの stat 2回・`--since` は「窓から落ちた記録が無い」条件で厳密判定・
-  確認は `--no-cache` との一致)も同ページ
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
   OS で挙動が割れるもの・足す価値がある残り): docs/shirates-parity.md。
   **コマンドを足す/名前を変えるときは必ずここも更新する**
-- MCP 監査ラウンドの回し方(**1ラウンド = 初見の「形」1つ。アプリ名は軸ではない**。
-  軸①画面の形 / 軸②セッションの形・拾ったものを**バグ / 自作機構の欠陥 / 言い回し**の3つに
-  分ける規律・**増設と検分は交互**・停止規則・台帳): docs/mcp-audit-rounds.md。
-  **地図の反復監査は閉じた。天気サイトはもう足さない**(→ maintainer-notes §9)
-- MCP の使い勝手の計測(まっさらなエージェントがタスクを終えられたか・何手かかったか):
-  Bench/README.md(`Scripts/mcp-bench.sh`)。**実 web ページの形も盤面で測れる**
-  (`Bench/boards/` に HTML を置きホストで配信。**ライブの web は叩かない** = 盤面が毎日変わると
-  手数の差が注記の効果と混ざる)。**手数は注記の有無で動かないと分かっている**ので
-  (代替手段の無い盤面でも 5/5 完了。Bench/measurements.md)、**足す/消すの判断材料は
-  note B(実現バイト)**。`NoteBudgetTests` の**本数と鍵の集合の等号固定**は
-  引き続き効かせる(予算を動かすには根拠を台帳へ書く)
 - 保守者向けの事故台帳(規則の由来): docs/maintainer-notes.md
-
-### 受け手フローのスクリプト
-
-- 受け手の状態判定: `Scripts/preflight.sh`(読み取りのみ。既定モードは引数なしでカレントを見て
-  ready=0 / installed=2 / blocked=1。SKILL.md ステップ0・0.5 と 1:1)。
-  **`--runner [--base <dir>]` はリモートランナー機としての判定**(ready=0 / needs-manual=2 /
-  blocked=1。`fleetest remote setup` が scp して実行する)。**既定モードの出力は1バイトも変えない**
-  (共通判定は関数に括り出して両モードから呼ぶ)。**判定を足すときは blocked/needs-manual の
-  仕分けを間違えない** —— install.sh が自動導入するもの(xcodegen 等)を needs-manual にすると、
-  `remote setup` が install.sh に到達できず「入れれば直るのに入れる工程まで進めない」で詰まる
-- 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。
-  - **各手順は `.claude/skills/fleetest-setup/SKILL.md` のステップ番号と 1:1**(失敗時に
-    「→ SKILL.md ステップ N」を出す)。**片方だけ変えない**
-    (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)
-  - **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古い)。
-    全出力は `<WORK_DIR>/.fleetest/install-<日時>.log` へ
-  - **pull 後は自分自身を再 exec する**(条件は「実行中のファイル = pull したクローンの
-    `Scripts/install.sh` 自身」かつ HEAD が動いたときだけ)。**`update.sh` にも同じ再 exec がある**
-    (2周目は `FT_UPDATE_REEXEC` で up-to-date の早期終了を通さない)→ maintainer-notes §1.1
-  - **画面は各ステップ1行(逐次)+ 集計だけ・生ログはファイルへ**(`--verbose` で従来)。
-    最後の再掲は warn/fail だけ → maintainer-notes §1.4
-  - **外部構成ではクローンのローカル変更を自動破棄**(reset --hard + `clean -fd`。`-x` は付けない
-    = .build/ を消さない。`--keep-local` で従来)
-  - **WORK_DIR の `AGENTS.md` にマーカー付きで入口を置き、`CLAUDE.md` には `@AGENTS.md` の読み込みだけを置く**
-    (ステップ7.6。Claude Code は v2.1.277 から AGENTS.md を読むが、CLAUDE.md があると既定では読まず、
-    古い版は読まない = 読み込みならどちらにも届き、AGENTS.md を読む他のエージェントにも同じ本文が届く。
-    定義元は `AgentIntegration.entryPointFile` / `claudeImportFile`。`.mcp.json` も
-    `.claude/settings.json` も「設定として効く」だけでエージェントが読む物ではないため、これが
-    無いと導入の翌週にスキルの description しか手掛かりが無くなる)。
-    **使い方の解説は書かない**(ツール説明と二重管理になり必ずズレる)。受け手の資産なので
-    マーカーの内側だけ差し替え、嫌う受け手には `--skip-entry-point`。
-    **ここは受け手のファイルを書き換える唯一の箇所**なので、**マーカーが begin/end ちょうど1組で
-    なければ1バイトも書かない**(`installClaudeMdBlock.test.mjs` が3形を守る)→ maintainer-notes §1.2
-  - **クローンが git 管理しているファイルには書かない**。判定はレイアウトではなく
-    **入口ファイルがクローンの作業ツリーの内側にあるか**(`os.path.commonpath` による包含判定)。
-    **受け手のフローに「クローンの中を書く」工程を足すときは必ずこの判定を見る**
-    → maintainer-notes §1.3
-  - **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
-    `--skip-project` の更新で既存の受け手に永久に届かない)
-- 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **Claude Code の
-  プラグイン更新と版照合**(`marketplace update`→`plugin update`・版は `plugin list` の sha)。
-  `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
-  即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
-  「次にやること」にも出す**(install.sh には `--no-next-steps` を渡すため)。doctor は既定で
-  出さない(`--doctor`)。**スキルのステップ0は `.fleetest/state.json` の Read で TOOL_ROOT を採る**
-  (コマンドを打たない = 承認が要らない。無ければ preflight に落ちる)
-- 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
-  upstream と比較し up-to-date=0 / update-available=3 / pinned=0 / unknown=1)。
-  VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `fleetest.updateCheck`)。
-  **手動コマンド `fleetest.checkForUpdate` は間隔・却下・設定 off を無視して必ず結果を返す**
-  (自動は更新があるときだけ喋る。両者の差はここだけ)。
-  **更新の実行口はモニターの「設定」タブ1箇所**(`src/monitorUpdateController.ts`。判定も取り込みも
-  スクリプトに委譲)。通知は手順を書かず「設定タブを開く」で誘導する。
-  **実行ログは webview に持たせず OUTPUT へ**(検索・コピーが標準UIで済み、パネルを閉じても残る)。
-  進行は状態行/ボタンのスピナー + `withProgress`(見出し行 `==>` だけ report する)。
-  **webview で `window.confirm` は効かない** ——
-  破壊的操作の確認はホスト側の `showWarningMessage({modal:true})`。
-  **`reason=` は ja/en どちらでも英語**(拡張の通知に素通しするため。枠だけ訳す)。
-  **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。
-  片方だけ変えない。`toolRootContract.test.mjs` が規則の3語(クローン判別マーカー・既定の隣・
-  Package.swift の宣言)の欠落を検出)
-
-### エージェント連携・配布
-
-- **インストーラが面倒を見るエージェントは Claude Code だけ**(規約位置の唯一の定義元は
-  `Sources/FTCore/AgentIntegration.swift`。経緯と表は docs/design.md §15)。
-  - **runbook 本体(`.claude/skills/<name>/SKILL.md`)は複製しない** —— Claude Code へは
-    規約位置から正典を参照する薄いアダプタ(`.claude-plugin/`)だけを置く
-  - **他のエージェント(Codex・Cline 等)向けの分岐をコードに戻さない**。案内は
-    **docs/user-docs/tools/other_agents(.md/_ja.md) の1箇所**に集約する → maintainer-notes §2.1
-  - **受け手のグローバル設定(`~/.codex/config.toml` 等)には1バイトも書かない**
-    (`agentIntegration.test.mjs` / `agentAdapters.test.mjs` が落とす)
-  - **正典をシンボリックリンクの側へ移さない** → maintainer-notes §2.4。
-    **シェル(install.sh / install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、
-    規約位置を手で持つ** —— 片方だけ変えない
-  - **SKILL.md に特定エージェント専用機能を前提として書かない**(`AskUserQuestion` は
-    「選択ダイアログ(Claude Code なら AskUserQuestion)」の形で、実装ではなく意図を書く)
-  - **Codex のサンドボックスはシェルだけを縛る**(`ft_*` は既定設定で全部動く。通らないのは
-    シェル経由の導入・更新だけ)。**`network_access` / `writable_roots` を根拠に OK と言ってはいけない**
-    → maintainer-notes §2.2
-- MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
-  - **`.mcp.json` をリポジトリに置かない**(追跡外・`.gitignore` 済み)。登録は構成を問わず
-    install.sh が**絶対パス**で WORK_DIR へ書く。**ルートに何か置くときは「プラグインに載って
-    よいか」を必ず問う** → maintainer-notes §2.3
-  - **シェル式を `.mcp.json` へ直書きしない**(起動のたび約8秒の `swift build` を払い、失敗すると
-    `>/dev/null` で理由が分からないまま起動しない)
-  - ランチャが守るのは3つ: **鮮度でだけ建てる**(`find Sources Package.swift -newer <bin>`。
-    存在チェックに戻さない = InAppLauncher と同じ規律。建てた直後に `touch` するのは、
-    無変更のソースを触っただけだと再リンクされず毎回建て直しになるため)/
-    **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
-    **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
-- **スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` を足す**(clone より前に走るので
-  導出できず、**手書きの一覧はここだけ**。`update.sh` は TOOL_ROOT の正典から導出する)
-
-### DSL コマンドの索引
-
-- **機械可読な索引は `Sources/FTCore/CommandIndex.swift`**(`fleetest api dsl-commands` が出す)。
-  **コマンドを足す/消す/改名したら索引も直す**(`CommandIndexSyncTests` が Commands.swift /
-  CommandsVerify.swift / CommandsAppControl.swift / ValueAssertions.swift / FTElement と突き合わせる)
-- **利用者が scenarios/ に書いた `@FTCommand("summary")` 付き関数(FTDSL の空展開マーカー)は
-  `fleetest api dsl-commands --project` / MCP `ft_dsl_commands` の索引に `origin: "project"` で載る**。
-  出典は `Sources/FTCore/ProjectCommandIndex.swift`(ソーステキストを直接読む純粋な走査。デバイス・
-  ビルド非依存)—— `CommandIndexSyncTests` 等の組み込み同期テストはこちらを対象にしない(走査対象は
-  ユーザーのシナリオファイルで、リポジトリには実例を置かない)
-- **スクロールの指定は各コマンドの `scroll:` 引数だけ**(ユーザー決定 2026-09-19)。向き(`.down` 等)か
-  `.noScroll`(`withScroll*` の中でもこの1コマンドだけ送らない)。**関数名で指定する別名
-  (`*WithScrollDown/Up/Right/Left`・`*WithoutScroll`)は1つも置かない・再提案しない** —— 別名は族ごとに
-  シグネチャが不揃いになり(`maxSwipes:` しか取らない・`exist` は上下だけ…)、同じことが2通りで書ける。
-  型は FTDSL の `FTScrollOption`(4方向 + `.noScroll`)。**`FTCore.FTScrollDirection` に `.noScroll` を足さない**
-  —— `scrollTo(direction:)`・`withScroll*`・MCP の `direction` に書けてしまう。**省略(nil)= 文脈に従う、と
-  `.noScroll` は別の値**で、解くのは `FTDriveCore.effectiveScroll` の1箇所(`SelScrollVariantDispatchTests` が
-  3値の解決を縛る)。ブロック形の `withScrollDown { }` / `withoutScroll { }` は残す
-- **引数名の規律**(ユーザー決定 2026-09-19): 待つ上限は全コマンドで **`waitSeconds:`**(`timeout:` を DSL に置かない。
-  **MCP ツールの待ち上限も `waitSeconds`**(ユーザー決定 2026-09-25。DSL を書くための入口なので名前を揃える)。
-  `FlowStep.timeout`・プロファイルの `defaultTimeout` は内部 / 別系統の名前で据え置き)/ ループ上限は
-  **`maxLoopCount:`** / ラベル無しの第1引数は `selector`・`label`・`appID`・`filename`、ブロックは `body` /
-  同じことを2通りで書ける口を作らない(`screenshot` のファイル名はラベル無しの1形だけ)。
-  **引数の並びは「対象(ラベル無し)→ コマンド固有(`holdSeconds` / `requireVisible` / `strict` / `prefer` /
-  `threshold` 等)→ `waitSeconds:` → `scroll:` → `maxSwipes:`」**を全コマンドで守る(Swift は既定値つきでも
-  順序を強制するので、族の中で並びが割れると書き手が1つずつ覚える羽目になる)。
-  **`ft_batch` は DSL の行を受けるので、索引の signature を変えたら `MCPServer.batchStepBuilders` のキーも同時に変える**
-  (片方だけだと実在するラベルを断り、無いラベルを受ける。緑のまま通った = `BatchLineParserTests.testWaitCapLabelFollowsTheDSL`)
-- **置いていない名前は `Sources/FTDSL/UnavailableCommands.swift` で受け止める**(他ツールの名前・
-  対称性から実在すると誤解される別名。`cannot find in scope` の代わりに正しい書き方を出す)
 
 ### 失敗の記録と操作の規律
 
@@ -199,267 +46,10 @@
   `command` を description から切り出さない・`failureKind` をエラー文言の一致で決めない
   (どちらも書式を変えた瞬間に静かに壊れる。仕分けは `DriverError` の case で行う)。
   渡し忘れは `CommandNamePlumbingTests` がソース走査で落とす
-- **`tap` は対象が操作可能になるまで待ってから撃つ**(ユーザー決定「待って、それでも無効なら撃つ」)。
-  **待ち切れなくても撃つ** = 無効な要素をわざと叩く書き方を壊さない。`&&enabled=` 明示の
-  セレクタでは待たない。witness は `E2EAppAndroid` の `#btn_enables_late`(1.5 秒後に有効)
-- **`tap(入力欄)` → `type("文字列")`(Shirates 伝統形)は支えるべき書き方**(ユーザー指示)——
-  容器を叩いて焦点が立たなかったときは `InputFocusRescue` が入力欄を名指しして入れ直す
-  (払うのはタップ直後の木1枚だけ・入れ先が一意に決まらなければ何もしない・注記
-  `type-focus-recovered`)。**witness は `E2EAppAndroid` の `#field_wrapped`**
-- **割り込みの自動クローズは止められる**(Shirates 準拠で4つ): `suppressHandler { }` /
-  `useHandler { }`(ブロック形。出口で必ず戻る)と `disableHandler()` / `enableHandler()`
-  (**CAE のブロックを跨げる唯一の形**。ブロック形は1つの CAE ブロックの内側にしか置けない)。
-  **止まるのはツールが閉じることだけ**で、割り込みが出ること自体は変わらない。
-  **抑止したまま落ちたときだけ**注記に出す(危険は「抑止したまま忘れる」)。
-  witness は `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift` の S0050
 - **割り込みに吸われた操作は撃ち直さない**(届いていた場合に二重実行 = 送信・購入で取り返しが
   つかない)。ツールが閉じるのは**ステップ開始時点で出ている割り込み**まで。**間に湧いた分の
   復帰はシナリオ側**(docs/commands.md §割り込みが「操作を吸った」ときの扱い)。
   **自動リトライを再提案しない**
-
-### リモート
-
-- **リモートの純粋ロジック(SSH ディスパッチ・登録簿の解決・dispatch.lock・占有・setup 計画)は
-  `Sources/FTRemote`**(利用側は fleetest CLI だけ。受け手のシナリオ実行バイナリにはリンクしない)。
-  **FTCore から FTRemote を参照しない**(循環)—— `LocalConfig` が持つ登録簿のスキーマ
-  `RemoteHostEntry` だけが FTCore に居る。他の分割は保留(理由は maintainer-notes §10)
-- **用語(ユーザー決定。全体で一貫させる)**: **host = ホスト名 / IP**(ネットワークの実体)、
-  **machine = その host に対するローカルエイリアス**(この Mac の登録簿だけが知る名前)。
-  定義と4つの規律(①エイリアスをリモートへ出さない ②記録の鍵は host ③プロファイルに ssh 実体を
-  書かない ④**手元の台帳をランナーの視点で書かない** = 他機の台に `machine: "local"` と書くと、
-  ディスパッチが手元へ落ち、監視では実在する手元の同名機が id 衝突で消える)は
-  docs/remote-runner.md §0。**エイリアスは頻繁に変わりうるので記録・登録の鍵に
-  しない**(例外はその machine 自身に関する構成)。JSON キーはプロファイル `devices[].machine`・
-  登録簿 `machine`・記録 `host`。**拡張 ⇄ webview のメッセージと CLI ⇄ 拡張のワイヤも `machine`**
-  (ProtocolVersion 9。同時配布なので旧キーは読まない = **型検査の効かない webview 境界は
-  往復テストで縛る**)→ maintainer-notes §3.1。
-  リモートへ送るプロファイルは `FTCore.RunnerProfileView` が「そのランナーから見た姿」へ畳む
-  (自分の台は `machine: "local"`・他機の台は削除)ので、**転送物にも引数にもエイリアスは出ない**
-- **リモートのデバイスの監視と配信**: 手元の `api monitor` は simctl/adb = **この機械しか観測
-  できない**。別の機械のぶんは `RemoteMonitorFanout` が
-  `remote exec <runner> -- api monitor --device-machine local` を1本ずつ立てて合流させ、
-  ライブ映像は**1デバイス = 1本の ssh**(`api device-stream` が向こうで宛先を解決し配信ヘルパーへ
-  `execv` で化ける = stdout のバイト列が手元起動時と同一なので `StreamPipeline` をそのまま使える)。**多重化の枠は作らない**(却下理由は docs/remote-runner.md §13)。
-  守る規律3つ: **①他の機械の台を走査しない**(仕分けは `ApiMonitorCommand.scope` が pure に持つ)/
-  **②観測していない台は `state:"unknown"`** —— offline と別の値にする(同じにすると向こうで
-  動いていても止まって見える。拡張の `MonitorDeviceState` と対)/ **③配信が張れなければ
-  ポーリングへ落ちる**。**版が揃っていないと状態も映像も来ない**。
-  **操作も同じ規律** —— 一括だけでなく**タイル1枚の起動・停止もその機械へ回す**
-  (`--device-machine` を付けずに `api start-device --name` を撃つと、同名の台が別の機械にも
-  居るとき**別の機械の設定でこの Mac にシミュレータが1台できる**、という事故を防ぐのがこの規律。
-  `findDevice` は (machine, name) で引き、`--device-machine` 省略時に同名の台が複数の機械に
-  居れば `.ambiguous` で断る —— 黙って手元を選びはしない)。
-  **中継する側が machine を埋める**(3経路とも: `RemoteMonitorFanout.ingest` /
-  `RemoteDeviceFanout.machineStamped` / `ApiRunMachineFanout` の rehost)—— 子は
-  `--device-machine local` で走るので自分の台を `machine:null` と名乗り、そのまま流すと拡張が
-  **同名の手元のタイル**を書き換える(機械ごとに2台ずつ起きていても「全体で2台」に見える)。
-  **ブリッジ watchdog はリモートの台も見る**(2026-09-25)。成立の条件は2つ —— ①修復手段:
-  lifecycle ジョブが machine を運び、リモートは `remote exec <machine> -- api start-device
-  … --device-machine local` で回る ②記録の鍵を **`device.id`(machine 込みで一意)**にした
-  (name 単位だった頃は「向こうの connected が手元のハングを隠す / 向こうの booted が手元の
-  健全な台を再起動する」)。**webview へ出す `bridgeWatch` には machine を載せる**
-  (省略 = 手元。落とすと `findTileByName` が同名の手元タイルに当たる)。
-  **健全性 watchdog(`monitorHealthWatchdog`)はまだリモートを見ない** —— Wi-Fi 修復に
-  相当する `api` の口が無く、そこだけ手元の adb 直叩きのため。実機はどちらの watchdog も
-  見ない(供給に数分かかり枠を専有する。機械に依らない除外)。
-  **ホストの負荷(MEM/CPU/GPU/VN/FM。VN = Vision / Core ML の呼び出し = OCR と画像分類器)も同じ** —— 拡張が
-  `remote exec <runner> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを
-  **機械ごとの行**にする(左端は手元が `local`・以降は機械名。1行のときはラベルを出さない)。
-  **行の集合は直近の monitorDevices に居る機械で決める**(表示フィルタは通さない = ssh の churn を
-  作らない)/ **消えた機械の行は捨てる**(古い値を出し続けない)/ **機械名は spawn した側が付ける**
-  (サンプル自身は持たない)。**FM も同じ行に乗る**が、host-metrics は FM を自分では叩かない
-  (測る対象を自分で消費してしまう)—— **FM を呼んだプロセスが
-  `~/.fleetest/fm-usage/<pid>.json` に置いた控えを毎 tick 読む**(`FTCore.FMUsageLedger`。
-  機械グローバル = `api host-metrics` に `--project` が無い性質を保つ / 生存判定は **pid だけで
-  mtime を見ない** / **読めない(不明)は null・呼び出し 0 件は 0** で混ぜない / 初見の pid は
-  増分 0)。**run のイベントからは供給しない** —— 拡張が起こした run しか見えず、CLI 実行や
-  他人の run が 0 に見えるため
-- **FM の「死活」は回数とは別の軸**(`FTCore.FMLiveness` が唯一の定義元。
-  `~/.fleetest/fm-liveness.json`)。回数は「使われたか」しか言えないので、**誰も呼んでいない間は
-  死んでいても 0 件と同じ絵**になる。守る規律5つ: **①生 / 死 / 不明の3値**(記録が無い・
-  `freshSeconds`(120秒)より古いは不明。死と混ぜない)/ **②経路は text と vision で別に持つ**
-  (**独立に死ぬ・戻る**実測。畳むと text だけ生きた機械で occlusion-guard の全滅を見落とす)/
-  **③availability を書き手にしない**(`.available` のまま全滅する。`unavailable` の向きだけは
-  信じてよい)/ **④単発の失敗で死と言わない**(連続 `FMBreaker.threshold` 回。閾値は増やさず
-  ブレーカのものを共有する。**ただし数えるのは経路ごと** —— ブレーカのカウンタは経路を区別せず、
-  text の成功が毎回戻すので vision の死を記録できない)/ **⑤プローブは `FMHealth` /
-  `FMUsageLedger` に書かない**(書くと誰も run を回していないのに FM のレートが動く =
-  測る対象を自分で消費して見せる)。
-  **`api host-metrics --fm-probe` だけが「host-metrics は FM を叩かない」の例外**
-  (拡張のモニターだけが渡す。既定 OFF)—— 撃つのは**台帳が古く、かつ誰も FM を使っていない**
-  ときだけ(`FMLivenessProbe.refresh` の門①②③。FMLock は 1 秒で諦める = 実仕事を待たせない)。
-  プローブ間隔 60 秒の根拠は `Scripts/fm-flap-monitor.swift` と同じ刻み。
-  読み手は4つ: モニターの FM 行(NDJSON の `fmTextState`/`fmVisionState`/`fmDeadReason`/
-  `fmCheckedAt`)/ run 開始前の警告(`ProfileRunner.warnIfFMDegraded`。**run の中で FM を使うのは
-  vision 経路(occlusion-guard・screenLooksLike)だけ**なので、言うのは vision の死を、その機能が有効な
-  run でだけ。**text 経路はシナリオの下書き・命名だけが使う** = text の死で run が失う機能は無い)/
-  run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
-  (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
-- **ランナーの Xcode は発行側に合わせて自動選択する**(`FTRemote.XcodeSelection`。選択は
-  `DEVELOPER_DIR` の export = **プロセス単位・sudo 不要**で、**`xcode-select -s` は使わない** ——
-  機械全体に効くので共有ランナーでは他人の run を壊す)。守る規律4つ:
-  **①照合(toolchain probe)と run は同じ解決を1回だけ通す**(別々に解決すると、照合した Xcode と
-  実際に走る Xcode が食い違い、**緑のまま別の Xcode で走る**。`RemoteDeveloperDirWiringTests` が
-  走査で固定)/ **②ちょうど1件一致のときだけ採る**(登録簿の pin > build 一致 > 製品版一致。
-  0個・複数は候補を並べて拒否し、手近な Xcode へ黙って倒さない)/ **③候補を列挙できなければ
-  ambient**(見えないだけで運用を止めない)/ **④モニターには効かせない**
-  (`remoteExecCommand` の既定は nil。観測は dispatch.lock の**外**で常時 simctl を撃つので、
-  版の違う simctl を同じ CoreSimulatorService に当てない)。**拒否の文言は原因で分ける** ——
-  一致0個は「その Xcode を入れる」・複数は「pin する」で**対処が逆**。
-  **toolchain 不一致そのものの仕分けは `RemoteCompat.verdict` の1箇所**(製品版が同じで build だけ
-  違う = ベータ seed はディスパッチを止めない advisory・製品版違いと読めない指紋は blocking)
-  → maintainer-notes §3.7・§3.8
-- リモート実行(`run --runner` の SSH ディスパッチ):
-  - **ssh 越しに何かを起動する経路を新設したら非対話 PATH の補正
-    (`/opt/homebrew:/usr/local/bin`)を必ず写す**(既存は `RemoteShell.remoteRunCommand`)
-  - **子プロセスを spawn する経路を足したら中断のリレーも足す**(`InterruptRelay`)。
-    **async 文脈でパイプを行読みするときは `FTRemote.PipeLinePump`**(semaphore の `wait` を
-    async 文脈に書かない = Swift 6 でエラー。同期関数の既存2箇所は据え置き)。
-    **SIGKILL へのエスカレートは ssh にだけ**。**シグナルソースは1プロセスに1組**
-    → maintainer-notes §3.2。`fleetest remote unlock` は自分の死んだディスパッチのロックだけを外す(`RemoteDispatchUnlock`)。**`--runner local` で手元のロックも外せる**(判定の軸は issuer ではなく **issuerHost** —— この機械が置いたロックは pid で確定・他人がここへディスパッチしたロックは**その run がこの機械に残っていないか**を pgrep で確かめる。**base を仮定して pgrep しない** = 別 base の生きた run を「居ない」と答えて守っているロックを外す)。**ロックの自動回収・unlock はランナー上でその run が生きていないことを確かめてから外す**(手元の pid が死んでもリモートの run は生きている)。**`-tt` の ssh は `ParentBoundCommand` で包む**(`kill -9` で親が死ぬと孤児の ssh がリモートの run を出力の write で止めたままにする)
-  - **機械分担の run は手元の台の二重使用を、どの機械へも配る前に断る**
-    (`ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`。run / api run の2経路。子の中の拒否だけだと
-    リモート分が走り続けて同時刻の別 run を弾く)→ maintainer-notes §32
-  - **`--runner M` + 明示 `--device` は M の台に限定**
-    (`RemoteDispatchExplicitDeviceScope`)。**`--runner local` も同じ判定を通す**
-    (run / api run の2経路。絞らないと別ホストのエントリの UDID を手元で探して
-    `no simulator with that UDID` で止まる)
-  - **LPT はリモートでも実績で回る**: 実績 JSON は run のたびに常に回収・実績と観測窓は
-    machine 別・フリート割り当ては facts キャッシュ(`.fleetest/remote-hosts/<host>.json`)で
-    機械別に見積もる(実測は docs/performance-tuning.md §3.7)。**facts の machine 採取は
-    relink より前** → maintainer-notes §3.3
-  - 設計・却下案・セキュリティ前提は docs/remote-runner.md / **利用者向けの導入手順は
-    docs/remote-runner-setup.md** / **エージェント向けは
-    `.claude/skills/fleetest-remote-setup/SKILL.md`**(機械作業は `fleetest remote setup` に委ね、
-    聞くこと・人手へ渡すこと・結果の読み方だけを持つ)。**片方だけ変えない** —— 手順に影響する
-    変更(レイアウト・併用不可オプション・適合チェックの項目)は docs とスキルの両方に入れる
-- **共有(複数ユーザー)の規律**(docs/remote-runner.md §18.7。M2 実装済み): **占有を知るために
-  ssh を足さない** —— `dispatch.lock` はその機械のディスクにあるので、**向こうで走っている子
-  (`api monitor` の fan-out)にローカルで読ませ**既存の NDJSON(`monitorLock`)に相乗りさせる
-  (読む場所は `~/.fleetest` 固定・判定は `FTRemote.HostOccupancy` の1箇所)。
-  **手元も同じ1行を出す**(手元の run も同じロックを取るので「ランナー機の文脈か」は占有と無関係。
-  綴りは `machine` 欄の省略 = `monitorRuns` / `monitorDevices` と同じ手元の表し方)。守る規律4つ:
-  **①「不明」と「空き」を混ぜない**(子が落ちたら `observed:false`。**控えは消さない** ——
-  消すと「一度も聞いていない機械」= 配信してよい、と同じ形になり run の最中に配信が再開する。
-  不明の間は**配信を畳んだまま・保持者は名乗らない**(`isConfirmedHeld` を通す)。
-  不明を空きに倒すと破壊的操作の確認が「走っている run は無い」と誤って請け合う)/
-  **②配信の退避は保持者を問わない**(自分の run でも干渉は同じ)**が、畳むのは配信だけで観測は続ける**。
-  **自分の run のぶんだけは「デバイスモニター」タブの「ライブ更新」(既定 ON = 配信を続ける)で利用者が選ぶ**
-  (ユーザー決定 2026-09-17。他人の run・観測できない機械は常に畳む。`streamFoldMachines`)。
-  **OFF は run の有無を問わず全台の配信と画面の取り込みを止める**(負荷を下げる口。パネルが隠れたときと同じ
-  `deviceStream.setVisible(false)`。ユーザー決定 2026-09-20)/
-  **③二重配信は拒否でなく事実で止める**(`FTCore.StreamLease` の控えを監視が読んで
-  `streamedByOther` を配り、拡張が起こさない。**起こしてから断る形にすると ssh の再試行ループ**
-  になる。**同じ Mac の別ウィンドウは台帳でなくプロセスの実体で判定する** = `FTCore.LocalStreamHolder`
-  が `ps -E` で同じ台のヘルパーを探し、最も早く起動した1本の所有者の印(`FTCore.StreamOwner` =
-  拡張ホストが立てる `FT_STREAM_OWNER`。`RemoteShell` が ssh 越しに運ぶので**ランナー機の上でも
-  同じ判定が走り、同じ利用者の2ウィンドウも止まる**。`FT_PARENT_PID` は運ばない)が自分と違えば
-  `streamedByOther`。保持者は両方のウィンドウが同じ答えを出す規則で1本に決める)/ **④他人の run を殺す操作はロックを読む**(`remote clean` は中止・
-  `--ignore-lock` で押し切る。**読めないときは通す** = 掃除が永久にできなくなるほうが害が大きい)。
-  **台を止める操作も同じ**(`DeviceBooter.shutdownOne` / `shutdownAll` が実際に止める前に
-  `deviceInUseRefusal` = run-lease と **MCP の印(`mcp-<鍵>.lease`)** の保持者を読む。文言は run と MCP で分ける。`api stop-device` / `stop-all-devices` / `restart-devices` /
-  `wipe-device` / `devices down --profile` / **`bridge down`(`--port` / `--all` / `--platform android` の3経路とも)**
-  の全部がここを通る。押し切るのは CLI の `--force` だけ)。**門は CLI の口にだけ置く** ——
-  `BridgeLauncher.stop()` / `stopAll()` は供給と古いブリッジの掃除からも呼ばれるので、
-  あちらに足すと run が建てられなくなる。**宛先が引けないときは通す**(無応答のブリッジを
-  止められないと回復手段が無くなる)**が、「応答しない」を「死んでいる」と読まない** ——
-  駆動中の XCUITest は操作の間 /status を返さない(quiescence 待ちで数十秒ブロックする実測がある)ので、
-  **走査に載らないポートは `BridgeDiscovery.probeStatus` の4値で見て、断るのは本当に busy
-  (`.timedOut`)のときだけ**(`BridgeDownRefusal.unresponsiveButBoundRefusal`。`--port` / `--all` の
-  両経路。押し切るのは `--force`)。**「固まった転送」(`.transportFailed` = ブリッジが死んで
-  iproxy だけがポートを握る)は断らない** —— 止めることが唯一の回復手段なのに「待て」と言い続ける
-  袋小路になる(実地 2026-09-23 → maintainer-notes §46.4)。複数ポートは `probeStatuses` で並列に撃つ。
-  鍵(udid)が引けない = lease も照合できないので、**いちばん使用中のときだけ門が開く**という
-  逆向きの穴になっていた(実地 2026-09-22: MCP が操作中のブリッジが無言で止まり、そのセッションは
-  「no running bridge」しか返さなくなった → maintainer-notes §42.5)。待受も無ければ従来どおり通す
-  (固まったブリッジを止める手段を奪わない)。`bridge down --all` の判定は `BridgeDownRefusal.decide`
-  (純粋関数。文言は `DeviceBooter` の既存関数から組み立て、新しい文言を作らない)
-  **プロファイル無しの全掃討 `devices down` は台を選べないので、生きた run-lease か MCP の印が1本でもあれば
-  掃討ごと断る**(`DeviceBooter.sweepRefusal`。判定はリモートへ分散する前。`--force` は子へ、
-  `remote clean --ignore-lock` は `--force` として運ぶ)→ maintainer-notes §25。
-  **モニターの「全て終了」は拡張が自分のライブ操作の serve を畳んで印が消えてから撃つ**
-  (`LiveTabHost.suspendServeForSweep` → 掃討 → `resumeServeAfterSweep`。ライブ操作も MCP と同じ印を
-  書くので、畳まないと全掃討がその印で丸ごと断られ何も止まらない → maintainer-notes §48)。
-  **奪う口(`--force-lock` / `--force`)を GUI に出さない**。
-  **ssh 越しのコマンドにグロブを書かない**(相手は zsh。`for w in <マッチ無し>` は**シェルごと
-  落ちて後続の文が全部消える**)—— 一覧は `find … 2>/dev/null` で作る → maintainer-notes §3.5
-- **1マシンで同時に走る run は1本**(ユーザー決定 2026-09-21「高負荷になりすぎてテストが不安定に
-  なる」= 避けたい副作用ではなく**守りたい不変条件**)。`dispatch.lock` は **`~/.fleetest/`**
-  (機械グローバル)に1本で、**リモートのディスパッチもローカル run も同じロックを取る**
-  (`Sources/fleetest/LocalDispatchLock.swift`。docs/remote-runner.md §13)。守る規律6つ:
-  **①置き場を `<base>` の下に戻さない**(守るのはマシンの資源 = デバイス・ポート。base が2つあると
-  ロックが割れるのに取り合う相手は同じ)/ **②ローカルの取得もコマンド文字列を書かない**
-  (`RemoteDispatchQueue` が作る同じシェル片を `/bin/sh -c` で撃つ)/ **③取るのは run の入口**
-  (ビルドにもデバイスにも触る前。`swift build` も重い負荷なので直列化する。**dry-run は取らない**)——
-  **複数機械 fan-out は配分にシナリオ一覧が要る**ので、`DeviceMachineRunner` / `ApiRunMachineFanout` は
-  **①チケットを `ScenarioHost.build` より前に発行して `setenv` で確定**(発行だけでは効かない ——
-  取得側は `resolveTicket(environment:)` で環境を見るので、書かないと取得時の `Date()` で
-  採り直され、build 中に並んだ別 run に追い越される)**②ローカルのロックを build の前に先取りし、
-  配分が確定したら local に配られたかに関わらず無条件で解放**する(build を直列化するための
-  一時的な先取り)。**本取得は `DispatchPrelock` が local を含めて全順序どおり**行う/
-  **④ローカルのロックの回収は pid だけ**(リモートの pgrep はローカル run を見つけられず、掛けると
-  死んだロックが永久に残る。同じ機械の pid は確定できるので**リモートより強い**判定)。
-  **回収は待機の毎周試す** —— 1回だけにすると、待ち始めた時点では保持者が生きているのが普通なので
-  その1回はほぼ必ず空振りし、**そのあと保持者が死んでも二度と試さない**(実地 2026-09-22:
-  run の親を SIGKILL した後、待っている run が上限まで待ち続けた)。
-  「他人のロックは何周しても答えが変わらない」は他人のロックには正しいが、**自分のロックは
-  待っている間に保持者が死ぬ = 答えが変わる**(→ maintainer-notes §42.1・§42.2)/
-  **⑤ランナー機で自壊させない** —— ディスパッチ先の `run --runner local` は向こうから見れば手元の
-  run なので、`RemoteShell.remoteRunCommand` が `FT_DISPATCH_LOCK_HELD='local'` を export して
-  二重取得を止める(**`remoteExecCommand` には置かない** = exec はロックを取らない)/
-  **⑥run-lease(台ごと)は残す** —— MCP の印と `start-device` 等は dispatch.lock を取らないので、
-  台ごとの調停はあちらでしか成立しない。順序は「マシンの門 → 台の門」だが、**fan-out の
-  `rejectIfLocalDevicesLeasedBeforeDispatch` だけは手前**(読み取りの先読み = どのロックも取る前に断る)。
-  **`--wait-lock` が渡されていれば、この先読みも待ってから再判定する**(`WaitLockPolling` の同じ刻み。
-  1マシン1 run が保証されている = 走っている run が終われば台の lease は**必ず**空くので、
-  待たずに断ると連続実行の後発が待機列に並べないまま落ちる。→ maintainer-notes §42.4)
-- **順番待ちは FIFO の待機列**(docs/remote-runner.md §18.9。`FTRemote.RemoteDispatchQueue`):
-  `dispatch.lock` の**手前**に `~/.fleetest/dispatch.queue/<13桁epoch>~<issuer>~<group>` を置き、
-  **先頭のチケットの持ち主だけが `mkdir` を撃つ**(ロックの原子性は mkdir のまま)。
-  守る規律4つ: **①待たない取得も列を通す**(通さないと並んでいる人を追い越せて FIFO が壊れる。
-  列を通らないのは `--force-lock` だけ)/ **②チケットの鍵は発行側が1回だけ採り
-  `FT_DISPATCH_TICKET` で全機械へ運ぶ**(機械ごとに採り直すと同じ run の前後関係が機械によって
-  食い違い、互いに相手の機械を待つ)/ **③失効は mtime の 30 秒**(= ポーリング間隔 × 3。
-  **ここが唯一 mtime に頼る場所** = 発行側の pid はランナーから見えない。**失効しても run は
-  1本も殺さない** —— 列から落ちるだけで、ロック本体には時刻判定を一切入れない)/
-  **④保持者が読めないときに「実行中」と言わない**(自分の番でないだけのときは、控えが nil でも
-  ロックは空いていることがある = §18.7「不明と空きを混ぜない」の同型)。
-  待機は `dispatchWaiting`(NDJSON)で拡張の実行ログビューへ出し、**ログとイベントは同じ刻みの
-  式を1つ通す**(数字が2箇所で食い違わない)
-- **複数機械 run のロックは親が1台ずつ取る**(資源順序付け。docs/remote-runner.md §18.10。
-  `FTRemote.DispatchOrder` / `Sources/fleetest/DispatchPrelock.swift`): **全員が同じ順序でしか
-  取らない**ので循環待ちを作れない(検出も自己解消も要らない)。守る規律5つ:
-  **①順序の鍵はランナーのハードウェア UUID**(`IOPlatformUUID`。**IP は1台に複数付き・
-  ホスト名は重複と mDNS で変わる・`<base>` 配下の ID は同じ Mac に base を2つ作ると割れる**。
-  採取は接続の1往復に相乗り = ssh を足さない)/ **②並べ替えは `DispatchOrder.sorted` の1箇所**
-  (不明は最後尾・tie-break まで下ろして全順序にする = 非安定ソートで並びが揺れない)/
-  **③印(`FT_DISPATCH_LOCK_HELD`)は真偽値でなく ssh 宛先**(環境変数は子孫へ継がれるので、
-  真偽値だと別の宛先の子まで取得を飛ばして誰もロックを持たない)/ **④子は取得と解放の両方を
-  スキップする**(取得だけ飛ばすと子の defer が親のロックを消し、解放だけ飛ばすと子が親を待って詰む)/
-  **⑤子へ `--wait-lock` を渡さない**(待つのは親。渡すと親が待ち切った上限を子がもう一度払う)/
-  **⑥local を全順序の外へ出さない**(→ maintainer-notes §42.3) —— 「手元はもう取ってあるから飛ばす」という口を作ると、
-  **A が手元を握って M1Max を待ち、B が M1Max を握って手元を待つ**形が作れて①〜②の保証が消える
-  (build 前の先取りは**必ず解放してから** `acquireInOrder` に入る。`DispatchPrelock` の local 分岐から
-  取得を飛ばす return を足さない = `DispatchLockBeforeBuildOrderingTests` が走査で固定)。
-  **取れなかった機械は飛ばす**(部分列でも順序の一貫性は保たれる)・**印が無ければ子が自分で取る**
-  ので単発 run は無改造。**緑の run では1度も実行されない**ので、差し替え口に偽のランナー群を
-  注入した単体と、**順序付けが無い形で確定的にデッドロックする陽性対照**を対で置く
-- **リモート制御(実行プロファイルの `remoteControl`)**: ワークスペース(資材の置き場)+
-  **run 前後のスクリプト**(docs/remote-runner.md §17)。**スクリプトに宣言は無い** ——
-  `<workspace>/scripts/setup.sh` / `teardown.sh` が**あれば実行、無ければ何もしない**
-  (名前も置き場所も固定。拡張のフォームにも入力欄を置かない = ユーザー決定)。
-  **呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所** —— リモートの子は
-  `fleetest run --runner local` として向こうで同じコードを通るので `RemoteRunDispatcher` には
-  足さない。守る規律3つ: **①setup の失敗は run を止める**(teardown の失敗は結果を変えない)/
-  **②デバイスに触る前に撃つ** / **③片付けは defer だけに頼らない** —— setup の前に
-  `.fleetest/hooks/<pid>.json` を置き、次の run 開始時と `fleetest hooks reap`(`remote clean` が撃つ)が死んだ pid の
-  ぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない**)。**④刺さっても打ち切らない**
-  (上限の根拠がこちらに無い)—— 無音が `RunHookStall.silentWarningSeconds`(60 秒)を跨ぐたびに
-  警告を 1 行出して待ち続ける(出力が来れば数え直す)。
-  **転送から外すのは `.fleetest-transfer-ignore`**(`FTCore.TransferIgnore`)。
-  **rsync の `-F`(dir-merge)は使わない** → maintainer-notes §3.4。
-  **3つの転送(run ディスパッチ・fan-out の `RemoteProjectSync`・プロジェクト外ミラー)が
-  同じ走査を通る**(`rsyncArgs` の `ignore:` は既定値無し = 読み忘れはコンパイルで止まる)
 
 ### fleetest 自身の E2E(SUT)
 
@@ -473,65 +63,66 @@
 | `E2EAppFlutter/` | Flutter | TestProjects/E2E-Flutter | ios + android |
 | `E2EAppRN/` | React Native | TestProjects/E2E-RN | ios + android |
 
-- **iOS だけが持つ witness**: `E2EAppIOS/Sources/UI/OverlayWindow.swift` = **キーウィンドウに
-  しない別 UIWindow のモーダル**(全画面 / 上部バナーの2形)と、診断画面の `#btn_request_photos`
-  = **OS(SpringBoard)の権限アラートがアプリを覆う形**(別プロセスなので in-app の木に載らない。
-  緑の回帰は `scenarios/16_システムアラート.swift`・**陽性対照は `_disabled/94_システムアラート.swift`**)。
-  覆い・別ウィンドウに関わる変更は `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift`
-  の4本で対照を取る(docs/verification.md)。**4本目は条件判定**(`ifCanSelect`)——
-  **perform を通らないので操作・検証を直しても守られない**
-- **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオが
-  これを参照。片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を
-  検出)。**型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
-  (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)
-- **シナリオは画面の解像度に依存しない形で書く**(ユーザー方針 2026-09-05)。**背の高い
-  シミュレータで緑になっても、背の低い実機では落ちる** —— 逆向き(小さい画面で通したら
-  大きい画面が落ちる)も同じだけ起きるので、**どちらか片方だけで判定しない**。
-  判定は「その手順が窓の高さに依存していないか」の1点で、具体的には5つ:
-  **①折り返しの下にある要素は `tap(..., scroll:)` / `scrollTo` で到達させる**
-  (見えている前提で `tap` を書かない)/ **②送りの始点・終点は「その画面で確実に窓の中に
-  居る要素」だけを使う** —— 見切れた要素はクランプされた座標を返すので、そこから払うと
-  容器に当たらず1pt も動かない / **③1回の送りで届く距離を前提にしない**。慣性の量は
-  窓の高さで変わる(実測: 3行×2回 < 4行×1回)/ **④`notExist` を「画面外へ出た」の観測に
-  使わない** —— リストの再利用窓に残るかは窓の高さ次第(実測: 短い画面で4行・高い画面で5〜6行)。
-  距離で担保するなら**両方の画面で実測してから**書く / **⑤対にして検証する2要素**
-  (上端の結果表示と下端のボタン等)は、**最小サポート画面で同時にツリーへ載る**ことを
-  SUT 側で保証する(`E2EAppCMP/docs/ui-contract.md` 全体規約)。載らないなら
-  シナリオ側で回避せず SUT の配置を直す —— 送ってから読み返す形にすると `:above()` の
-  相手がクランプされた残骸になり、検証そのものが成立しない。
-  **確かめ方**: 変更したシナリオは**背の低い実機と背の高いシミュレータの両方**で回す
-  (片方だけの緑は根拠にならない)。**iOS の実機は SUT の成果物が別**(`E2EAppIOS/dist/ios-device` /
-  `E2EAppCMP/dist/ios-device`)—— `e2e.sh` は実機用を一度作ってある機械ならソースの鮮度で作り直すが、
-  `e2e.sh` を通さずに SUT を変えたら各 SUT の `scripts/build-ios-device.sh` を先に打つ(古いアプリのまま足した `#id` が not found で赤になる)。
-  **実機の有無は物理端末だけに絞った一覧を全行見て決める**(`xcrun devicectl list devices | grep -i physical` /
-  `adb devices -l`。`head` で切った一覧から「つながっていない」と言わない)
-- **5 SUT のシナリオはほぼ同内容だが共通化しない**(ユーザー決定・可読性優先)。DSL 変更のたび
-  5箇所を編集することになるが、共通化すると SUT 固有の差(型語彙・フレームワーク固有の罠)が
-  表現しにくくなる。**共通化を再提案しない**
-- **ディープリンクの URL スキームは SUT ごとに固有**(`fte2ecmp`/`fte2eios`/`fte2eandroid`/
-  `fte2eflutter`/`fte2ern`。契約は `E2EAppCMP/docs/ui-contract.md` §ディープリンク)。
-  iOS は同一スキームを複数アプリが登録していても解決先を1つしか選ばず、E2E のシミュレータには
-  iOS の SUT が4つ同居するため共有スキームでは配送先が端末ごとに揺れる。
-  `Tests/FleetestTests/DeepLinkSchemeSyncTests.swift` が契約表との一致と SUT 間の重複を検出する
+
+## 領域ごとの規律(`.claude/rules/`)
+
+**領域に固有の規律は `.claude/rules/<領域>.md` にある**。その領域のファイルを **Read ツールで**読むと
+自動で読み込まれる(サブエージェントにも届く。2026-09-26 に実地で確認)。**読み込まれないのは3つの場合** ——
+grep やシェル(`cat`)で見るだけのとき・新しいファイルを読まずに書くとき・設計や方針を相談するとき。
+**そのときは該当する規則ファイルを先に Read する**。
+
+**規則を足すときの置き場**: どの作業でも効く規則(検証の進め方・判断の規律・コメント規約・
+「どこであれ新しいものを足すとき」の規律)だけをこのファイルに置き、特定の領域のファイルを触るときに
+効く規律は該当する `.claude/rules/<領域>.md` へ足す(frontmatter の `paths:` がその領域のファイルを
+指しているか確かめる)。**このファイルを肥大させない** —— 全セッションと全サブエージェントが毎回読む
+(2026-09-26 の計測: 移す前は起動時の読み込みが約 85k トークン・移した後は約 43k)。
+
+| 規則ファイル | 領域 |
+|---|---|
+| `.claude/rules/android.md` | Android(Play Protect・テキスト注入) |
+| `.claude/rules/app-framework-scroll.md` | UI フレームワーク判定・容器推定・スクロールの端 |
+| `.claude/rules/bridge-provision.md` | ブリッジ(版・ポート・供給) |
+| `.claude/rules/device-health.md` | デバイスの健康状態(凍結) |
+| `.claude/rules/dsl-commands.md` | DSL コマンド(索引・引数名・スクロール指定・操作の待ち) |
+| `.claude/rules/e2e-sut.md` | fleetest 自身の E2E(SUT) |
+| `.claude/rules/executor.md` | StepExecutor(実行時設定・失敗の文言・システムアラート) |
+| `.claude/rules/fm-occlusion.md` | FM・テキストの視覚検証(occlusion-guard / OCR) |
+| `.claude/rules/gesture.md` | ピンチ・座標ジェスチャ |
+| `.claude/rules/installer-agents.md` | 受け手フローのスクリプト・エージェント連携・配布 |
+| `.claude/rules/live-control.md` | ライブ操作 |
+| `.claude/rules/mcp.md` | MCP サーバ(ft_*)と Bench |
+| `.claude/rules/process-lifecycle.md` | プロセスの生存管理(終了猶予・Shell.run・台帳) |
+| `.claude/rules/profile.md` | 実行プロファイルの --set |
+| `.claude/rules/remote.md` | リモート(SSH ディスパッチ・監視の fan-out・ロックと待機列・占有) |
+| `.claude/rules/results-retention.md` | 結果 JSON・run ボード・保持容量の掃除・LPT |
+| `.claude/rules/selector-snapshot.md` | セレクタ・スナップショット・自己修復(指紋照合) |
+| `.claude/rules/vision.md` | 画像(findImage / checkIsON / 画像分類) |
+| `.claude/rules/vscode-i18n.md` | VSCode 拡張(ビルド・ソース分割・i18n) |
+| `.claude/rules/webview-dom.md` | WebView / ブラウザの DOM |
+
+**どこであれ新しいものを足すときの規律**(ファイルが決まらないので読み込まれない。詳細は各規則ファイル):
+- 子プロセスを起こす経路を足す → 中断のリレー(`InterruptRelay`)・fleetest を起こすなら
+  `ParentDeathWatch.childEnvironment()`・ssh 越しなら非対話 PATH の補正・`-tt` の ssh は
+  `ParentBoundCommand` で包む(process-lifecycle.md / remote.md)
+- 子プロセスのパイプを読む → `readDataToEndOfFile` を使わない・`availableData` のループは
+  `autoreleasepool` で区切る・生死判定は `ProcessLiveness.isAlive`(process-lifecycle.md)
+- FM を呼ぶ → `FMGate` を通す・オンデバイスだけ(fm-occlusion.md)
+- MCP のツール・引数を足す → `ArgumentBounds` に載せる・ツールの集合を固定するテスト
+  (`MCPToolCallTests` の driverBackedTools 等)を更新する・DSL と同じ判定は共有する(mcp.md)
+- ブリッジの挙動・エンドポイントを変える → 版を上げる(iOS `bridgeProtocolVersion` / Android
+  `VERSION_CODE`。`BridgeContractTests` が落ちたらそこで上げる)・XCUITest を触ったら `--ios-xcuitest`
+  (bridge-provision.md)
+- 実行時設定を足す → `ScenarioExecutionSettings` の1箇所(executor.md)
+- DSL コマンドを足す・改名する → 索引 `CommandIndex`(`CommandIndexSyncTests`)・docs/commands.md と
+  user-docs・docs/shirates-parity.md・`ft_batch` のキー・引数名は `waitSeconds:` 等の規律(dsl-commands.md)
+- 受け手のフロー(install.sh・スキル)を変える → SKILL.md のステップ番号と 1:1(`installStepSync.test.mjs`)・
+  受け手のファイルを書くのはステップ7.6 の入口だけ(installer-agents.md)
 
 ## ビルド・検証
 
 **検証の詳細な罠と判定規律(flake/性能の判定・macOS/Xcode ベータ整合・常駐プロセス掃除・
 「Application is not running」全滅時の切り分け・`Scripts/e2e.sh` の各オプション)は docs/verification.md**。
 以下は毎回効く最重要ゲートだけ。
-
-### 拡張(vscode-fleetest)
-
-- `cd vscode-fleetest && npm run compile`(esbuild+tsc)/ `npm test`。挙動を変えたら
-  **`npm version --no-git-tag-version <新版>` で版を上げて** `npm run install-local`
-  (反映は VSCode の Reload Window **+パネル開き直し**。code CLI は PATH に無い)
-- **package.json だけ手で書き換えない** —— lock も version を内包しており、放置すると受け手の
-  `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
-  (`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
-- **jsdom を使う webview テストは `t.after(() => window.close())` で必ず閉じる**
-  (`jsdomTeardown.test.mjs` がソース走査で落とし、`npm test` は `--test-force-exit` 付き)
-  → maintainer-notes §4.3。**同型: `argumentHelpLiteral.test.mjs`**。
-  **一般化: 「コンパイルで落ちる誤り」「テストが終わらない」型はソース走査で秒未満に落とす**
 
 ### Swift
 
@@ -661,14 +252,6 @@
   失敗モードが沈黙(誤った成功)なら塞ぐ価値がある**(その場合は「再現していない」と明記する)。
   可能なら**同型の再発を落とすテスト**まで足す(`SwipeForScrollForwardingTests` = ソース走査 /
   `BridgeRouterStatusContractTests` = 本数固定 / `AppDriverDefaultDispatchTests` = 宣言の突き合わせ)
-- **空打ち(スクロール探索の終端)を撃つかは、アプリの UI フレームワーク(`AppUIFrameworkQuery`)→
-  掴んだ要素のクラス名の順で決める**(後者は `ElementInfo.axClass` =
-  XCUITest ランナーが XCTest の**非公開**属性 5004 から載せる。Compose / Flutter の要素は
-  `UIAccessibilityElement`、RN は `UIView`、SwiftUI は `NSObject`。`AccessibilityClassHint`)。
-  どれも無ければ撃たない(打って外れると行が押される = 取り消せない側)。**木の形・型の名前から
-  フレームワークを推定しない**(実アプリの 10/22 画面が Compose と同形・RN は Flutter と同形。
-  docs/verification.md)。③は非公開属性なので `Tests/Fixtures/AXClass/` の等号テストで Xcode の版の
-  変化を検出し、取れなければ nil = 撃たない側へ縮退する
 - **`AppDriver` に既定実装を足すときはプロトコル要件にも宣言する**。存在型越しの呼び出しは
   要件でなければ**静的ディスパッチで既定実装に落ち**、ドライバ側の実装が呼ばれないまま黙って
   既定値が返る(ビルドもテストも通る。`snapshot(bypassingCache:)` で実際に踏んだ)。`AppDriverDefaultDispatchTests` が検出する
@@ -722,76 +305,10 @@
   「併用不可・必須」の検査規則も両方に揃える** —— フラグ名が同じでも検査が片方に無いと、
   同じ打鍵が片方で通り片方で落ちる(実際にそうなっていた: `--profile` + `--port` が `run` では
   黙って無視され `api run` ではエラーだった)
-- **`--since` / `--until` の文法は `FTCore.TimeBoundParse` が唯一の定義元**(docs/results-json.md
-  §`--since`/`--until` の文法)。時刻境界を取るオプションを新設するときは必ずここを通す
-- **保持容量の掃除は run の完了後に背景の別プロセスで**(`RunCompletionSweep.spawn` →
-  `fleetest clean --background`。**テストの実行時間に含めない** = ユーザー決定。開始時に置く・
-  run の中で同期に走らせる形へ戻さない)。起こすのは**結果を書く3経路**(`Fleetest.swift` の
-  プロファイル経路・プロファイル無し経路・`ApiRunCommand`)で、`RunCompletionSweepWiringTests` が
-  本数・順序(結果の後)・「記録開始の直後に無いこと」を固定する。**子の標準入出力は3本とも
-  /dev/null**(継がせると拡張は NDJSON の EOF を、ssh は channel の閉鎖を掃除の終わりまで待つ)・
-  **`FT_PARENT_PID` を抜く**(渡すと親の終了と同時に殺される)。**消す処理は機械で同時に1本**
-  (`FTCore.RetentionSweepLock` = flock。背景は先客がいれば黙って抜け、手動は名指しして断る。
-  dry-run は取らない)。**発動は上限の 90% 超・目標も 90%**(`RetentionPolicy.sweepTriggerPercent`)。
-  判定は `FTCore.RetentionSweep.plan`(純粋関数)の1箇所・採取と削除は
-  `Sources/fleetest/RetentionSweeper.swift`。**削除の一覧と通知は口を分ける**(`log` / `notice`)。
-  既定値は `FTCore.RetentionPolicy` の1箇所だけ・拡張は `api retention` の実効値を表示する。
-  **`api retention` の使用量は `--usage` を付けたときだけ測る**。**レポートの単位は run ではなく日**・
-  **セッション内のパスを `URL.path` で並べ替えない**(日本語名の正規化で採取の 98% を食った)。
-  **XCUITest ランナーの自動記録は起動時に止める**(`BridgeLauncher.captureSettings` = 静止画・常に捨てる。
-  ビルド既定の「動画・成功時に捨てる」は終わらないテストでは永久に捨てられず 870 GB 溜まった。
-  `BridgeLauncherCaptureSettingsTests` がリテラルで固定。**旧形式の xctestrun(トップレベルに対象)も通す**
-  —— 実際のビルドが書くのは旧形式)。**ブリッジの `xcodebuild` には `-resultBundlePath` と
-  `-derivedDataPath` を必ず渡す**(渡さないと既定の DerivedData に起動ごとのフォルダを積む)。
-  **生きたランナーの居ないポートの束は供給の入口で消す**(`BridgeLauncher.sweepOrphanResultBundles`。
-  起動時の掃除は同じポートで起動し直したときしか消さず、復活でポートが変わると残った = 4.1GB)。
-  **掃除が見る場所は2つ**(`RetentionSweeper.Roots` = パッケージ / ツール。1つの値で兼ねない ——
-  受け手の外部構成では別の場所で、兼ねると受け手の録画・レポートを1度も掃除しなかった。
-  **保守者のクローン構成では一致するので手元の実データでは出ない** = テストは必ず別の一時フォルダで)
-  → docs/results-json.md §保持容量
-- **ブリッジの挙動・エンドポイントを変えたら版を上げる** → maintainer-notes §4.4。
-  iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest
-  ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と
-  `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**
-  (`AndroidBridgeVersionSyncTests` が定数間の不一致と、**コミット済み `prebuilt/ftbridge.apk` が
-  定数と別版のまま = APK 作り直し忘れ**を検出)。**実装ソースを変えたら `BridgeContractTests` が
-  落ちる**ので、そこで版を上げてから期待値を貼り替える(貼り付け用のリテラルは失敗メッセージが
-  出す)。検出は2段: ルート表(エンドポイントの増減)+ ソース指紋(**ルートが同じで
-  ハンドラだけ変えた場合も落ちる**)。**版を上げること自体は強制できない**ので最後は人間の規律。
-  **試行的な変更ほどブリッジに入れない**。
-  **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
-  (`InAppLauncher` の dylib 再ビルド判定と、XCUITest ランナーの作り直し判定 `BridgeLauncher.newestRunnerSourceTimestamp`
-  も同じ一覧を使う。片方だけ変えない。ランナーが取り込む共有 FTCore ファイルは `Runner/project.yml` と
-  この一覧の等号を `BridgeLauncherRebuildTests` が固定する)
-- **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
-  `fleetest.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
-  (`lptDefaultSync.test.mjs` が検出)
 
 ### 判定は1箇所に置く
 
-- **アプリの UI フレームワークは `FTCore.AppUIFrameworkQuery` だけで決める**(語彙 `AppUIFramework` =
-  iOS: compose / flutter / reactNative / swiftUI / uikit、Android: compose / flutter / reactNative / androidView)。
-  順は**静的(.app / .ipa / .apk の目印 → iOS シミュレータに入っているバンドル → 台帳 `AppFrameworkLedger`)→
-  動的(in-app ブリッジの自己申告)→ `.unknown`**。**iOS の目印の規則は `UIFrameworkMarkers` の1ファイルを
-  ホストと in-app ブリッジが共有する**(build.sh の SWIFT_SOURCES と BridgeSourceSet に入っている =
-  触ったらブリッジの版を上げる。別々に持っていた頃はホストだけ SkikoUIView を見るようになり答えが割れた)。
-  Android は `AndroidPackageInspector`(ブリッジは申告しない)。守る規律5つ:
-  **①不明を既定値で埋めない**(呼び手が安全側を選ぶ)/ **②パッケージは宣言した bundle ID(パッケージ名)が
-  対象と一致するときだけ使う**(プロファイルのアプリとシナリオの対象アプリは別になりうる)/
-  **③自己申告は `bridgeReport(_:about:)` を通し、対象アプリ自身の申告のときだけ使う**・
-  台帳にもプロセス内の控えにも入れない(`AppUIFrameworkQueryWiringTests` が `StatusResponse.uiFramework` の
-  直読みをソース走査で落とす)/ **④目印・順序を変えたら規則の版(`rulesVersion`)を上げる**(台帳は版の違う
-  控えを使わない)/ **⑤台帳と控えは OS で分ける**(CMP は iOS の bundle ID と Android のパッケージ名が同じ)。
-  **呼び手は「自前描画か」(`isSelfRendered`)で分岐する** —— 個別の値(`== .uikit` 等)で分けると語彙を
-  足した日に黙って外れる(RN / SwiftUI を uikit から分けたとき、in-app の木の正規化はそれらにも掛け続ける必要があった)。
-  Android の compose は「Compose を含む」であって全画面が Compose とは限らない(View/XML に混ぜた E2EAppAndroid もこちら)
 
-- **失敗の文言は構成(OS・エンジン・実機か)を知っている必要がある**(`FTCore.DriverErrorContext` を
-  `DriverError` の同伴データに必須で持たせる。既定値を置かない = 新しい経路が渡し忘れたらコンパイルで止まる)。
-  **detail に渡すのは一次情報だけ**(完成した説明文を渡すと固定文が二重に出る)→ maintainer-notes §27
-- **診断のために外部コマンドを撃つ経路も、協調スレッドプールにブロッキングを載せない**
-  (ft_status の udid 診断が全ポートへ `lsof` を同時に撃ってプールを塞ぎ、200 秒返らなくなった。
-  台帳から候補を絞る → `ps` 1 回 + `isBound` 数本で 1.2 秒)→ maintainer-notes §27
 - **判定は MCP と DSL で共有する**。「手前かどうか」は `FTCore.PaintOrder`、「撃つと別の物に
   当たるか」は `FTCore.TapTargetGeometry`(合成チェーンは `occlusionAdvisory`)と
   `FTCore.OcclusionGeometry`(中心を覆う最前面の名指し。`OcclusionSuspicion.covering` とは
@@ -800,54 +317,11 @@
   `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**
   (実例は maintainer-notes §5)。移設したときは**掃討ゲート(`SweepHarnessTests`)が
   実アプリのコーパスで等価性を検証する**
-- **対象未指定のピンチをどこへ当てるかは `FTCore.PinchRegion` の1箇所**(DSL・MCP・ライブ操作が
-  共有する)。**指の2点が別々のものに載るとピンチにならない** —— XCTest のピンチは
-  **縮小だけ枠の長辺の両端から閉じる**ので、端に手前のものが載っていると1本を取られ、
-  ジェスチャがパンに化ける(実測 2026-09-22・Apple マップ。→ maintainer-notes §41)。
-  守る規律4つ: **①両方の指が同じものに載る位置を探す**(置けなければ半径を狭め、それでも
-  駄目なら画面矩形を渡す —— **nil にしない**。領域さえあれば座標で撃てて端ちょうどは避けられる。
-  3経路で揃える)/ **②指は原則 横に並べる**(縦に並べると同時に効いている
-  縦スクロールの recognizer が指を取る)/ **③指の座標は `FTCore.PinchGesture` が唯一の定義元**
-  (OS ごとの規則。host 側の1箇所で決め、ブリッジは受け取った座標を再生するだけ)。同じ規則の
-  端の閉じ幅を確かめる外側チェックは `closingTouchPoints`(同じモジュール)/
-  **④領域を渡すのは iOS だけ** —— Android は領域の**短辺**から指の幅を決めて中心に置くので、
-  狭い領域だと最小スケール幅(27mm)に届かない
-- **座標ピンチは非公開 API**(`XCPointerEventPath` / `XCSynthesizedEventRecord`。
-  **`XCUI` 接頭辞は付かない**・公開ヘッダに宣言が無い。ユーザー決定 2026-09-22 ——
-  公開 API に代替が無いことを実測で確かめてから採用した)。`Runner/.../CoordinatePinch.swift` の
-  1箇所に閉じ、守る規律3つ: **①実行時に存在を確かめてから使う**(無ければ要素ピンチへ縮退し、
-  注記で必ず言う)/ **②起動時にも1行出す**(`coordinate pinch/gesture/doubletap: available` —— 消えたことが
-  run を待たずに分かる)/ **③completion ブロックは引数を宣言しない**(実際は先頭に BOOL が来るので
-  `(Error?) -> Void` で受けると Swift の thunk が 1 を objc_retain して落ちる)。**`/gesture`
-  (DSL の `gesture` / MCP の `ft_gesture`)も同じファイル・同じ非公開 API を使う** ——
-  こちらは要素ピンチのような縮退先が無いので、この API が無い Xcode では **422**(501 ではない。
-  501 はホストに「このエンジンでは不可」= XCUITest へのフォールバック判定と読まれ、ランナー自身の
-  501 は `hideKeyboard` 専用)で断る
-- **ライブ操作は他の機械の台も開ける**(ユーザー決定 2026-09-24「その機械で動かす」): serve を
-  `fleetest remote exec <machine> -- api live serve` で**向こうに**起こす(同じ実機が Wi-Fi 越しにこの Mac から
-  見えても、USB で握っている機械のランナーと2本にしない)。右クリックの `openLiveForDevice` が machine・udid を
-  運び、一覧は取り直しても足し戻す(`remoteOptions`)。配信は張らず serve の frame で取る。
-  **stdin で命令を受ける子を `remote exec` で起こすとき、到達確認の ssh は `-n`**(読むと最初の命令を捨てる)。
-  **ブリッジ未起動(booted)の台へ切り替えたら観測を1回撃つ**(`requestOpenObservation`。自動のフレーム取得は
-  自動起動を撃たない)。**前面追従の候補はシミュレータ = `launchctl list` / 実機 = devicectl の
-  processes × apps(`IOSPhysicalRunningApps`)** —— 片方だけ変えない。**本人確認へ渡す `/status` は
-  `BridgeDiscovery.statusForIdentityCheck` で udid を補う**(実機のランナーは名乗らない = 補わないと
-  既定ポートの別の実機を「自分」と読む)→ maintainer-notes §47。
-  **1コマンドの中で撃つ外部呼び出しの timeout は command watchdog(30 秒)より十分短く**し、失敗は控えて
-  毎コマンド撃ち直さない(`DevicectlBackoff`)—— watchdog が serve を殺すたびに自動起動が走る。
-  **実機に2本目のランナーを立てない**(ライブ操作の自動起動 `LiveBridgeAutoStarter.launchBridge` が、同じ実機を
-  宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中の台を
-  待って引き取るので門は置かない)→ maintainer-notes §49.4
 - **前面にあると観測しただけの相手へ、画面を動かす操作を撃たない**。セッションの向け直しは
   `AppDriver.attach`(前面確認だけ・非破壊)で、**activate は使わない** —— Spotlight のような
   SpringBoard の拡張を activate すると**ホーム画面が描画を失って真っ黒になり**、自アプリなら
   in-app の既定実装から launch = 注入付きの再起動へ落ちる(実測 2026-09-22 → maintainer-notes §40)。
   `attach` の既定実装は activate へ倒さず 501 を投げる(向け直せないことより画面を壊すほうが害が大きい)
-- **occlusion-guard の FM 段には期待文字列を渡さない**(2026-09-15)。FM に訊くのは「何が描かれているか」
-  (転写 1 欄・prompt は定数)だけで、可否は `FTCore.TranscriptMatch` が期待文字列と突き合わせて決める。
-  期待文字列を prompt に入れて「見えるか」を訊くと、空白・別の文字の crop でも期待文字列を写して
-  visible=true と答える(おうむ返し。空白 20〜23% / 別の文字 33〜56% の見逃し)。欄順を変えても直らない。
-  `OcclusionTranscriptTests` がソース走査で守る → maintainer-notes §19
 - **FM の失敗トリアージ(分類・要約・修正案)は置かない**(ユーザー決定 2026-09-15)。照合相手の無い自由文で、
   実レポート 30 件のうち要約 13 件が事実を誤り(数の向き・引用・帰属)、分類は環境の問題を `appBug` にし
   (ブリッジ不達 5/6・a11y 無効 3/3)、修正案は別要素への差し替えを勧めた。「環境の問題」と「アプリの不具合」を
@@ -860,32 +334,6 @@
   変わりラベル不変)は指紋照合が決定的に拾う。**`heal` は指紋照合だけのスイッチで、FM を使わないので FM の
   トグルと独立**(ユーザー決定)。`FMHealRemovedTests` が Sources への再混入を落とす。
   **戻すなら §21 の測り方で誤りの率を測ってから** → maintainer-notes §22
-- **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
-  **丸ごと**読めた回だけ FM を省く(既定 on。**利用者の口は実行プロファイルの
-  `ocrTextVisualCheck`**(拡張のプロファイルタブ
-  「Advanced Features(Experimental)」)。保守者の口は `FT_OCCLUSION_OCR=0` の
-  殺しスイッチと `measure` のコーパス採取で、**プロファイルの false が環境変数に勝つ**)。**読めなかったことを反転の根拠にしない** —— 日本語モデルを載せた版では実測で
-  29% が可視なテキストの1文字誤読(`swipe=down`→`swipe=aown`)で、反転に使うと誤った赤になる。
-  反転の判定は必ず FM。**一致は語境界つきの完全含有**(素の部分一致だと `exist("OK")` が
-  覆いの「Cookieの設定」に当たって素通りする)。
-  **読ませる言語は期待文字列から決める**(`languages(for:)`。ASCII の期待値に日本語モデルを
-  載せると所要が 2.3 倍になる)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
-  en ロケールの端末は「単」を中国語フォントの字形で描き、補正なしだと Vision も FM も「单」と読む。
-  ASCII は切ったまま = 欠けを推測で埋めさせない)。読めなければ crop を
-  拡大して読み直す(`upscaleLadder = [1,2,3]`。×4 で悪化するので上げ続けない。**1行も読めない
-  crop は段を上げない** = 覆いを待つ poll 周回で毎周3回払わない)。**Vision の版は固定しない**
-  (OS の既定に従う)—— 版・認識レベル・言語補正・言語規則が動いたことの検出は、実 crop の固定
-  コーパス `Tests/Fixtures/OcclusionCrops/` が読みと撃つ回数を等号で固定して担う。
-  crop 矩形は `FTCore.OcclusionCrop` を FM と共有する(別々に持つと同じ画面で判断が食い違う)
-- **木からは原理的に判定できない遮蔽は「ブリッジの申告」+ 専用の型** —— キーボードは
-  `KeyboardOcclusion`(`keyboardFrame`)、**それ以外の別ウィンドウは
-  `FTCore.OverlayWindowOcclusion`(`overlayWindowFrames`)**。Android の木の根は
-  `getRootInActiveWindow()` = **アクティブウィンドウ1枚だけ**なので、手前に居る非フォーカスの
-  ポップアップ(ツールチップ・テキスト選択のフローティングツールバー)は `elements` に1要素も
-  載らず、覆われた要素を無警告で撃っていた。**申告由来の2つは木由来の警告より先に言う**
-  (確度が最も高い)。**この2つの引数に既定値を置かない** —— 新しい呼び出し元の呼び忘れを
-  コンパイルで止めるため(`OverlayWindowOcclusionWiringTests` が配線を、変異チェックが
-  検知の生死を落とす)。**この検知は「出れば正しい」であって「出なければ覆いが無い」ではない**
 - **共有するのは「判定」であって「文言」ではない**。正しい形は**①判定・順序・当たり判定を
   FTCore に1つ ②文言は呼び手ごとに持つ**。**呼び手は中核を呼んで写すだけ**にする。中核は `TapTargetGeometry.advisoryKind` /
   `FTCore.SimilarLabels` / `FTCore.BackEffect` / `FTCore.SnapshotTruncation.remedy` /
@@ -898,265 +346,9 @@
   呼び手が渡す**(既定値を置かない = 新しい呼び手の渡し忘れをコンパイルで止める。run の4経路が
   共有する文は `BridgeIdentityCheck.runLaneRemedy` の1箇所)。**detail が要らない呼び手には
   `matches(expected:status:)`** を使わせる(文言を作らないので remedy も要らない)
-- **チェック状態は `FTCore.CheckStateReading`(a11y の4値)と `FTCore.CheckStateClassifier`(見本画像の
-  画像分類。Shirates Vision の移植)の2つだけが読む**。画像分類の学習・推論は `FTCore.VisionClassifier` の
-  1箇所で、`imageIs`(DefaultClassifier)と共有する。value は型で絞って読む(バッジの "1" を読まない)。
-  分類器は `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に見本があるときだけ使い、優先は
-  実行プロファイルの `preferCheckStateClassifier`(既定 true)と、それを1コマンドだけ上書きする DSL の
-  `checkIsON(prefer:)` / `checkIsOFF(prefer:)`(`CheckStateSource`。決めるのは `executeAssertChecked` の1箇所 =
-  ステップ指定 > プロファイル)。**DSL の写像は `CheckStatePreferDSLTests` が通しで縛る** —— FTCore の単体は
-  FlowStep を直接作り、E2E の 21 は合否しか見ないので、写像の反転・渡し忘れはどちらも緑のまま通る。
-  **見本は推論と同じ a11y の枠で切る**(docs/design.md の checkIsON の節)。
-  **分類器の答えは推論のたびに対照(ラベルの違う見本2枚)で確かめ、外れたら使わない**(`VisionClassifier.Model.classify`。
-  壊れた Vision / Core ML はエラーを返さず全部に同じラベルを確信度 1.00 で答える = checkIsOFF の誤った緑。
-  findImage の縮退の門は特徴量の経路だけで Core ML の経路には効かない)。
-  **見本は 5 SUT 全部に ON / OFF の両方を置く**(片側だけだと分類器が片方の状態しか知らず、findImage も
-  その状態の部品を探せない)。見本を置いた SUT では引数なしの `checkIsON()` が分類器の判定に切り替わるので、
-  a11y の読みを E2E で守るのは各 SUT の `21_チェック状態の判定元.swift` の `prefer: .accessibility`
-- **画像で要素を探す判定は `FTCore.FindImage` の1箇所**(findImage / findImages / existImage。Shirates Vision の移植)。
-  **existImage は探索を2つ目に持たない** —— `executeFindImage` を同じ action 経路で通り、見つからなかったときだけ
-  失敗にする(証跡のスクリーンショットを添える)。action として走るので、アサーションの計数は `FlowStep.isVerification` が
-  拾う(`assert != nil` だけで数えると existImage しか無い expectation を「検証0本」と誤る。`AuthoringGuardTests`)。
-  DSL の写像(timeout 省略 = defaultTimeout・`scroll:` の向きと `.noScroll`・失敗で中断)は `ExistImageDSLTests`。
-  候補は a11y の枠(見えている部分)・アスペクト比の許容幅に入るものだけ・同じ枠は1つに畳む(**id を持つ
-  外側を残す。ラベルで選ばない** = XCUITest の木は飾りの Image を SF Symbol 名の id とラベル付きで同じ枠に
-  載せる)。守る規律4つ: **①分類器のラベル一致だけで採らない**(分類器は見本のどれかのラベルを必ず答える。
-  Shirates の `classifyFull` と同じく確信度か見本との距離で確かめる = `classificationConfirmed`)/
-  **②Vision の縮退を黙って通さない**(`isDegenerate`。異なる画像に同一の特徴量が返ると全候補が距離 0 になり、
-  最初の候補を「発見」して別の要素を叩く。Vision の失敗としては記録されない。**半端な異常も止める** = 見本を取り直し、
-  控えと一致しなければ断る(`isConsistent`。健全なら 4 機 1,200 回とも距離 0)。取り直すのは**走査の最初の見本(= 今の機械の状態)と、
-  プロセスで初めて計算した見本(= その控えの正しさ)だけ**・永続控えから読んだ見本は門を通ったもの = 確かめ済み・
-  白紙も走査で1回(機械の異常は見本を選ばない))/ **③見つからないことは失敗に
-  しない**(select と同じ。失敗は設定の誤りと Vision が答えを出せない状態だけ。**existImage だけが見つからないことを失敗にする**)/
-  **④findImage の `waitSeconds` の既定は 0**(`FindImage.defaultWaitSeconds`。待つのは existImage の側 = 既定は実行プロファイルの defaultTimeout)。**文字だけが違う同じ形の部品は距離
-  0.08〜0.15 に並ぶ**ので、既定の閾値のまま行を探す書き方を E2E に置かない → maintainer-notes §37。
-  **findImages もラベルの見本を全部使う**(Shirates は1枚 = shirates-parity.md の差分)。特徴量は計算の回数だけが
-  費用(大きさ・並列で変わらない)なので、候補の特徴量は走査の中で使い回し(`FindImage.CandidatePrints`)、
-  見本の特徴量は `TemplatePrintStore`(`<project>/.fleetest/vision/template-prints.json`)に永続化する ——
-  **中身の sha256 と OS の版で差分更新・書くのは門を通った特徴量だけ・門で落ちたら消す**(docs/performance-tuning.md §3.30)。
-  **掴めなかったときの「飾りの名前」(`<image "…": not found>`)は利用者が書いたセレクタではないので
-  構文検証に掛けない**(`FTElement.placeholderSelector` の `structured: true`)—— 掛けると連鎖した
-  アサーションが `invalid selector syntax` で落ち、**書いた本人のセレクタを誤って名指し**する。
-  dry-run は画像を探せないので必ずこの形になり、**画像で探す手を含むプロジェクトは dry-run が丸ごと赤**
-  になっていた(実地 2026-09-23 → maintainer-notes §46.6)
-- **in-app のスクリーンショットは、自前描画(`isSelfRendered`)で木が絵より先に進んでいる間は撮らない**
-  (`InAppRenderCatchUp`・v117)。操作を起こす2経路(`tapByRef` / `performSettlingIfMoved`)が直前に画素と木の
-  指紋を控え、`/screenshot` は**木が変わったのに画素が控えのままの間だけ**待つ。**遷移の完了は待たない**
-  (ユーザー決定。ループするアニメーションで毎回上限まで待つ形を作らない)。**木の指紋は枠だけで取らない**
-  (スイッチのオン/オフは枠を変えない = 型・id・ラベル・value・checked・enabled も畳む)。**門は層の型でなく
-  フレームワークの自己申告**(Compose の `CMPMetalLayer` は `CAMetalLayer` の子孫ではない)→ maintainer-notes §37
-- **type の読み返しの有無はドライバの能力**(`AppDriver.verifiesTypedText`。xcuitest ランナー/
-  Android 注入器 = true・in-app = false で、false のときだけ `StepExecutor` がホスト側で読み返す)
-- **デバイスの健康状態も同じ**: 「画面が凍結しているか」は `FTCore.FrozenVerdict` が唯一の定義元で、
-  run 前トリアージとモニターは**根拠(`FrozenEvidence`)を束ねた同じ型**を配る。プロセスを跨ぐ
-  受け渡しは `FTCore.DeviceFrozenStore`(`.fleetest/frozen-<key>.json`。RunLease と同じ
-  pid 生存 + mtime)。**新しい根拠は `isConclusive=false`(警告)から入れる**
-- **「木が画面を代表していない」判定は `FTCore.TreeCoverage` の1箇所**(webView の内側に大きな
-  空白帯が残る形と、アドレス欄はあるのにページ本体が1要素も無い形)。**失敗の型は打ち切りと同じ**
-  (不完全な木で否定アサーションが誤って成功する)ので、DSL の notExists/count も
-  `StepNote.treeUnderreported` を運ぶ。**判定は変えず注記だけ** —— 幾何からの疑いであって
-  申告された事実ではないので、断定すると空のページに対する正当な `notExist` が書けなくなる。
-  同型で `FTCore.DuplicateRegion`(横スクロールで前後のコピーが両方 木に残る形。DSL の tap は
-  `StepNote.staleDuplicateRegion`)—— こちらは `hasClampedCoordinates` では**発火し得ない**ので
-  独立に持つ。どちらも固定コーパスで**発火する画面の集合を等号で固定**する
-  (`TreeCoverageTests` / `DuplicateRegionTests`)
-- **要素上限の撮り直しは肯定側にも要る**。`retakenAtElementLimitCeiling` は notExists/count
-  (誤った成功)だけを塞いでいたが、操作側は**実在する要素で赤くなる**。操作側は**ドライバ切替と
-  指紋照合より前**に置く —— 切り詰められた木で指紋を照合すると、実在する本命が候補に無いまま
-  同じ型+ラベルの別要素が「ちょうど1件」になり、修正提案が `fleetest api apply-heal` で利用者の
-  .swift へ書き戻される
-- **「書けるセレクタ」の規則は `FTCore.SelectorNaming` の1箇所**(一意性(`picksOnlyOne`)・
-  祖先スコープ・記法のエスケープ・耐久性の格付け)。**自己修復(指紋照合)の書き戻しもここを通す**。
-  (→ maintainer-notes §8)。書けるセレクタが無いときは**操作は続けて修復だけ成立させない**(`StepNote.healUnwritable`)——
-  掴んだ要素は手元にあるので叩くのは正しく、書き戻せないという理由で緑の run を赤にしない
-- **ロケータの指紋(`FTCore.LocatorFingerprint`)の規律4つ**(詳細は docs/design.md §10
-  「ロケータの指紋」): **①効くのは失敗経路だけ**(プライマリ・フォールバックが
-  どちらも外れたとき。今緑のステップの挙動は変えられないので、リスクがこの1箇所に閉じる)/
-  **②ちょうど1件一致のときだけ採用**(スコアも距離も作らない。複数件を「もっとも近い」で
-  選ぶと別要素へ静かに解決し誤った緑を作る)/ **③記録するのはプライマリ/フォールバックで
-  解決した回だけ**(指紋で解決した回を記録すると誤った解決が固定化され再生産される)/
-  **④修復結果を永続化しない**(指紋は毎回再導出できるので得られるのは速度だけ。一方で
-  誤りが永続化して注記が消える)。
-  **控えるのは `type` + `label` だけ** —— `id` はドリフトで変わる当のもの、`value` は毎回変わる。
-  **型だけの指紋(label も placeholder も無い)は記録も照合もしない**(`isIdentifying`)。
-  **失効はシナリオ単位の置き換え**(時間の定数を使わない): 通った run で、その `scenarioID` の
-  鍵のうち触れなかったものを刈る。**「触れた」= lookup または record**(record だけだと指紋で
-  直った行の鍵が刈られ、次の run で赤に戻る)・**触れた0件の run では刈らない**・
-  **接頭辞で自分のシナリオ・自分の OS のぶんだけ**(部分実行で他を巻き込まない・
-  鍵に OS が入る = 型名が OS で違うので、混ぜると交互に上書きし合って直らない)。
-  **`heal=false` は指紋照合(= 自己修復)を止める**(門は `StepExecutor.execute` の入口1箇所)。
-  **FM のトグル(`textVisualCheck` / `screenLooksLike`)では止めない**(FM を使わないので。ユーザー決定 2026-09-15)。
-  **緑の run では1度も実行されない**ので、自己修復を触ったらデバイスの陽性対照
-  `Scripts/heal-verify.sh`(v1 で採取 → v2 で2周 → `heal=false` で赤。1台に固定)を回す
-- **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は
-  FTCore に居る**(写像先の `FlowLocator` が FTCore の型で、DSL ランタイムには依存しない)。
-  利用者からの見え方は `Descriptors.swift` の `@_exported import FTCore` が保っている。
-  **ただし FTCore の名指し(`TapTargetGeometry.describe` 等)は「どれの話か」を短く言うためのもので、
-  セレクタとして貼れる保証はしない** —— 貼れる形が要るなら `SelectorNaming` を通す
-- **引数の値域は `FTCore.ArgumentBounds` の1箇所**(MCP の `intArgument`/`doubleArgument`/
-  `stringArgument` と、ライブ操作の `intField`/`doubleField`/`stringField` が同じ表を引く)。
-  守る規律3つ: **①値域を持たない引数も `.unbounded` で表に載せる**(載せ忘れと「縛らないと決めた」を
-  区別する。`ArgumentBoundsTests` がスキーマの数値プロパティ全数との包含を等号で固定)/
-  **②検査は読む場所ではなく `MCPServer.call` の入口で全数**(`waitSeconds` のように条件付きでしか
-  読まれない欄は、読まれない回に 0/負が通って「効いた」と誤解させる)/ **③`ft_batch` の DSL 行も
-  同じ表を通す**(あちらは `intArgument` を経由しない)。必須の文字列は空文字・空白のみを断る
-  (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2。**長押し・ジェスチャの秒数は
-  既定 10 秒まで、コマンドの `maxGestureSeconds:` 引数でその1回だけ最大 60 秒まで上書きできる**
-  (ユーザー決定 2026-09-24)。**方針の判定(既定10・上書き上限60)はホスト側**(DSL は
-  `StepExecutor.executeAction` の入口 = `FlowStep.gestureDurationViolation`・MCP/ライブ操作は
-  `ArgumentBounds.gestureCapViolation`)。**定義元は `BridgeAPI.defaultMaxGestureSeconds` /
-  `BridgeAPI.gestureSecondsCeiling`**。
-  **ランナー(iOS)と Android の注入層は 60 秒(ceiling)を絶対上限として最後に断る**
-  (要求ごとの上書きは受け取らない・ホストの門をどちらも通らない経路の最後の砦。超過は
-  testmanagerd が合成列を作り続けて肥大化する → maintainer-notes §49.1)。
-  **同じ的を指す引数の併用(ref と x/y 等)は入口で断る**(`targetExclusivityViolation`)
-- **「応答しない」を busy と死で分けるのは所要時間**(`BridgeDiscovery.probeStatus` の4値)。
-  健全 = HTTP 応答が返る(**ステータスコードで判定しない** —— 実機はトークン不一致の 401 を返す)/
-  **固まった転送**(ブリッジが消えて iproxy だけ残る)= connect は通るのに応答無しで即切れる /
-  本当に busy = 上限まで保持 / 不在 = connect が即 拒否。**固まりには `bridge up` を勧める**
-  (「2本目を起動させる」懸念は生きたブリッジがある前提なので成立しない)。
-  **in-app/hybrid には固まりの文言を出さない**(あちらは前面から外れただけのことが多い)。
-  **`.pid` の生死では捕まらない** —— xcodebuild は生きたまま待ち続ける → maintainer-notes §44.1。
-  **所要時間だけで「消えた」と言わない** —— 塞がったシミュレータのランナーも backlog が溢れて即切れる
-  (シミュレータに転送役は居ない)。ループバックで待受の実体が iproxy でなければ busy(`resolveTransportFailure`)
-  → maintainer-notes §49.2
-- **失敗の「出口」(次の一手)を配る経路は MCP とライブ操作の2つ**。判定(`BridgeDiscovery.probeStatus` /
-  `DriverError.isNoReadableWindow` / `FTCore.StaleFrameDetector` 等)は FTCore・FTBridgeClient に1つ置いて
-  共有するが、**それを呼んで文言にするのは呼び手ごと** —— **片方にだけ配線すると、同じ状況で一方は
-  出口を案内し他方は一次情報しか返さない**(実際にこの形で同じ型の不具合が3回続けて出た。
-  直すたびに MCP にだけ足していた → maintainer-notes §45)。**run(DSL)は別扱い** —— あちらは失敗を
-  レポートへ残して自動回復する経路で、人がその場で次の一手を打つ場ではない。集合は
-  `LiveControlExitParityTests` が等号で固定する(**走査はコメントを落としてから** = 判定の名前は
-  doc コメントにも出るので、素のまま検索すると配線を消してもコメントだけで通る)。
-  **ライブ操作の文言は人間向け**(拡張の UI を触っている人が読む)なので、MCP のエージェント向けの
-  文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
-  `notes` 欄と ProtocolVersion、拡張の表示まで通す
-- **hybrid の予備(XCUITest)ポートも使うたびに本人確認する**(`FTBridgeClient.HybridFallbackIdentity` を
-  MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、建て直しで予備ポートが別の台・
-  in-app に化けても home/drag を撃ち続ける。**`BridgeIdentityCheck.verdict` は udid が両側にあるとエンジンを
-  見ない**ので、エンジンの決まった片側は `hybridFallbackMismatch` で先に見る)。**udid の診断が予算切れなら
-  「確認できなかった」と言い、不在も `bridge up` も言わない**(`diagnosisTimedOut`)→ maintainer-notes §51
-- **座標を整数へ畳む所は trap しない側に倒す**(座標は `.unbounded`。入口の画面内判定
-  `TapTargetGeometry.isPointOnScreen` は MCP とライブ操作が共有するが、DSL も届くので最後の砦
-  `AndroidDriver.checkedInt32` は別に要る)
-- **MCP の engineKey ごとの記憶は `DeviceSession`(`Sources/fleetest-mcp/DeviceSession.swift`)の欄だけ**。
-  `MCPServer` の `drivers` / `lastSnapshots` 等は `sessions` を見る窓(`SessionMap` / `SessionFlags`)で、
-  `forgetDeviceState` はセッションを丸ごと捨てる。**並列の `[String: …]` / `Set<String>` を戻さない**
-  (束ねる前は集合型の2つが後始末から漏れていた。`DeviceStateInvalidationTests` が落とす)。
-  **udid → port の畳み込みはスキーマに `udid` を宣言したツールでだけ撃つ**(`toolFoldsUDID`。
-  `ft_logs` はブリッジが死んだ後に読むツールなので走査で落とさない)
-- **宛先(udid/serial/port)を取らない MCP ツールで宛先を解決しない**(`toolAcceptsDeviceTarget` の
-  分岐1箇所)。畳み込み(`foldingUDIDIntoPort`)はブリッジ走査を撃ち、居なければ落ちるので、
-  1台を駆動している呼び手(`udid` を毎回添える)はブリッジが死んだ瞬間に**一覧・診断のツールまで
-  道連れ**になり、文面が案内する `ft_list_devices` 自身が同じエラーを返す袋小路になる
-  (実地 2026-09-23 → maintainer-notes §46.5)。集合は
-  `DeviceIndependentToolsIgnoreTargetTests` が等号で固定する
-- **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**
-  → maintainer-notes §5。**ただし同じ判定をそのまま強い挙動へ流用しない**。探索ロジックは
-  **MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)。
-  **逆に、同じ門が両側にあるなら倒す向きも揃える** —— 未インストールのまま
-  `XCUIApplication.launch()` を撃つとハンドラが 60 秒で自壊してブリッジごと消えるので、
-  `ft_launch` の門(`MCPServer.launchGuardDecision`)は DSL の `LaunchPreflightDriver` と同じく
-  **「確かめられないなら撃たない」**側に倒す(在否は udid で引く =
-  `InstalledAppCheck.simulatorInstallVerdict(udid:)`。**素通しでよいのは Android と in-app
-  エンジンだけ** = ランナーが死なない経路。`com.apple.springboard` は launch しないので門の外)。
-  **判定は `InstalledAppCheck.launchGuard` の1箇所で、MCP の `ft_launch` と
-  ライブ操作(`api live serve` の `launch` / `activate`)が共有する** —— ライブ操作に門が無かったため、
-  空文字列や端末に無い bundleID を渡すと**そのコマンドが 30 秒刺さって watchdog が serve を
-  force-quit し、健全なブリッジまで建て直しになった**(T1 と同じ型の掃討漏れ → maintainer-notes §42.7)。
-  **ライブ操作の NDJSON は型違いを黙殺しない** —— `cmd` が読めた行は
-  `{"kind":"actionResult","ok":false,"error":"<欄> must be …"}` を返す(文言は MCP の
-  `intArgument`/`doubleArgument` と同じ)。黙殺すると拡張は応答を待って固まり、serve の再起動に至る。
-  JSON でない行・`cmd` の無い行だけが従来どおり黙殺の対象
-- **木だけから決まる注記は `Sources/fleetest-mcp/NoteCatalog.swift` が唯一の定義元**
-  (`NoteCoverageTests` のソース走査が検出)。目録にすると3つ手に入る: **発火の全数計測** /
-  **鍵ごとの黙らせ**(`FT_MCP_NOTES_OFF=<鍵,…|all>`)/ **出力バイトの回帰ゲート**。
-  **注記を足すか消すかは読んだ印象で決めない** —— `Scripts/mcp-bench.sh` で手数が動いたかで決める
-  (バグは有限だが「もっと分かりやすく言えたはず」は無限に出るので、印象で決める限り注記は
-  単調に増える)。**「出ない」を削除の根拠にする前に、必ずアーキタイプを足して測り直す**。
-  **フィクスチャの分類の正は `NoteCoverageTests.archetypes`**(接頭辞は OS を表すだけ)。
-  **「地図でしか出ない」と見えた注記も、アーキタイプを足すと他でも出る**
-  (`unlabeledClickablesNote` は settings、`keyboardCoverageNote` / `scrollFrameCandidates` は
-  chat で発火した)。残る `truncationNote` / `ghostNote` は各1画面のみ、
-  `bulkExemptNote` / `sliverNote` は0枚 —— 死に注記は理由を確かめて `knownSilent` に
-  登録する(等号照合なので新しい死に注記は落ちる)。
-  **1つのアーキタイプがコーパスの 60% を超えないこと**(`testNoArchetypeDominatesTheCorpus`)——
-  深く掘るほど1アプリが増え、**掘るほど汎用性の判定が悪くなる**逆向きの力が働くので機械で止める
-- **エラーの status はホストの分岐契約**(表は docs/design.md §4.3)。とくに
-  **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** —— ホストはこの経路の 409 を無条件に
-  「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422** を使う
-  (`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。in-app ブリッジは逆に
-  409 を一時的競合へ広く使ってよい(あちらは包まれない)
-- **実行時設定は継ぎ目で解かない**。`fm`(`FMConfig`)/ `heal` / `occlusionOCR` / `containerInference` / timeouts は
-  `FTCore.ScenarioExecutionSettings` 1つに束ね、`runSequential`/`runParallel` → `RunOrchestrator` →
-  `ScenarioRunner.runOne` → `ScenarioHost.run` をそのまま通す。**既定値はこの型の init 1箇所だけ**
-  —— 層ごとに引数へ解くと、その層の既定が**渡し忘れを合法にする**(コンパイルでも実行でも
-  見えない)→ maintainer-notes §17。プロファイル由来の値の写像元は変換 init
-  (`ResolvedProfile` / `DeviceIndependentRunSettings` から)**だけ**で、欄を足して写像を忘れると
-  `ScenarioExecutionSettingsTests` の `Mirror` 走査が落とす。
-  **走査テストは型の効かない継ぎ目にだけ置く**(`OCRToggleWiringTests` に残すのは子プロセス境界の
-  3本。型で守れる区間の走査は、リファクタのたびに走査だけが落ちる)。
-  **`occlusionOCR` は OCR 全体のスイッチではない** —— プロファイルの `ocrTextVisualCheck`
-  (視覚検証の OCR 段だけ)なので、**OCR の用途が増えてもこの Bool を再利用せず欄を足す**。
-  **FM / OCR の親スイッチ(`fm` / `ocr`)は置かない**(ユーザー決定 2026-09-15。キーも
-  チェックボックスも無い)—— FM を呼ぶかは `FMConfig.enabled = textVisualCheck || screenLooksLike`
-  で導く(両方 false なら実行バイナリへ `--no-fm`)。親と子で同じ状態を2か所に持っていた
-  → maintainer-notes §23
 
 ### 個別の規律
 
-- **テストツールはアプリを Google へ送らない・確認も取らない**(ユーザー決定 2026-09-05)。
-  Android の `adb install` は Play Protect の照会(「Send app for a security check?」)で無期限に
-  止まるので、`AdbInstallVerifier` が install の間だけ `verifier_verify_adb_installs` を 0 にして
-  必ず戻す(実機・エミュレータとも)。**門は `AndroidDriver.adb` が引数で掛ける**ので、
-  アプリを入れる新しい経路は何もしなくても通る。例外は adb を自分で spawn する bundletool と
-  adb 閉包を外から受ける `AndroidWebViewUpdate` だけで、そこは `withVerificationOff` を明示。
-  **素の `Shell.run` で adb install を打つコードは `AdbInstallVerifierTests` が落とす**。
-  **ダイアログを押す方式にしない**(id 無し・ロケール依存・送信の選択肢が画面に出る)。
-  キルスイッチは実行プロファイルの `playProtectBypass: false`(ユーザー決定: 設定タブではなく
-  プロファイル)—— OFF でもツールは端末のダイアログに答えない(止まるだけ)
-- **実行プロファイルのキーは `--set <キー>=<値>` の1つの口で上書きする**(ユーザー決定 2026-09-08)。
-  **キー名はプロファイル JSON・拡張のチェックボックスと1文字も同じ**(kebab 変換をしない)。
-  受けるのは `RunProfileDocument` の Bool とスカラー(String/Int/Double)で、配列・オブジェクト
-  (`devices`/`remoteControl`)は専用のメッセージで断る(「未知のキー」に丸めない)。
-  **キーごとに専用フラグを生やさない** —— 以前は 20 個のチェックボックスに対し CLI が4個・
-  形も3通り(両方向/否定のみ/肯定のみ)で、`iosFastInput`→`--fast-input` とキー名すら
-  ずれていた。**同じ非対称が育たないよう2つで守る**: ①**上書きは
-  `ProfileResolver.resolve` が読み込み直後の文書へ当てる1箇所だけ**(消費側へ個別配線しない。
-  `ResolvedProfile` の全欄が自動で追随する)②**`--set` が受けるキーの集合 ==
-  `RunProfileDocument` の全欄**(配列・オブジェクトを除く)を `Mirror` で
-  等号固定(`RunProfileSetOverrideTests`)—— 新しい欄を足して `--set` から漏れると落ちる。
-  **同じ意味の専用フラグ(`--report-dir` / `--default-timeout` / `--scenario-timeout`)と
-  併用したらエラー**(片方を黙って勝たせない)。**`--app-id` / `--runner` は衝突させない** ——
-  CLI のそれらは「既定アプリの bundle ID」「リモートディスパッチ先」で、プロファイルのキー
-  `app`(アプリプロファイル名)・`devices[].machine`(デバイスが居るマシン名)とは**別物**。
-  **`--profile` を要求してよいのは、プロファイルの devices 一覧・供給工程が要るキーだけ**
-  (`profileOnlyKeys`)—— 「配線が無いだけ」のキーをここへ入れない(実際 `record` 系と
-  `homeOnStart` は配線するだけで profile-less でも動いた)。**指定したのに黙って効かない形を
-  作らない** = 効かせられないなら名指しでエラーにする。経緯は maintainer-notes §16
-- **同じ Mac で実機とシミュレータの run が同居する前提でポートを扱う**(2026-09-15 の負荷テスト。
-  経緯は maintainer-notes §20): ①採番は `.pid` に加えて**生きた `iproxy-<port>.pid`** を除外する
-  ②`PortHolder.stopIfOwnedBridge` が iproxy を止めるのは台帳 `.device` の UDID が供給中の台と
-  一致するときだけ(`ownerUDID:` を必ず渡す。渡さなければ `.foreign`)③**接続先の同一性は
-  `FTCore.BridgeIdentityCheck` で確かめる**(シナリオ実行プロセスの事前確認と、ホストの
-  `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked`、**ライブ操作(`api live serve`)の
-  宛先決定と `LiveBridgeAutoStarter.checkAndRestartIfStale`**。bundle ID が同じ別の台は
-  /status の udid / engine でしか見分けられない)。**ライブ操作は `--udid` の明示/既定で扱いを分ける** ——
-  `--port` を明示されたら不一致は断る / **既定ポートへのフォールバックなら断らずにその udid の
-  ポートを探し、無ければ空きポートへ向けて自動起動に委ねる**(拡張は port が分かるときだけ
-  `--port` を渡すので、**ブリッジのまだ無い台を開く場面**で既定 8123 に居る別の台を掴んでいた。
-  ここで断ると、自動起動が想定しているその場面でライブ操作が開けなくなる → maintainer-notes §42.6)④ワークスペースのステージ先は
-  `WorkspaceAppStaging.installPath(declared:)` = 宣言文字列の名前空間(絶対パスから導かない)
-- **録画ありの run は供給段階で「端末側に残った録画セッション」を解く**(`HostRecordingProbe` →
-  `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・台は外さない・不明は撃たない)。
-  **iOS の供給口3つ全部で凍結トリアージの直後に通す**(`HostRecordingProbeTests` が固定)。
-  **検査も録画も recordVideo は SIGINT でしか止めない**(SIGKILL/SIGTERM がこの状態を作る)。
-  切り出しのエンコーダはソフトウェア固定(実測は docs/verification.md §録画)
-- **iOS 供給の `installIfNeeded` を `try?` で戻さない**(全員失敗の throw を飲むと失敗前の一覧に
-  戻り、古いアプリのまま走る。`InstallIfNeededTryOptionalSourceScanTests`)
-- **occlusion-guard の反転は、1 回目のガード評価が締切を跨いだ回だけ 1 度延長して撮り直す**
-  (`guard-retaken`。FM 待ちはアプリの応答ではないので待ち予算から引かない。同じ絵は
-  `VisibilityVerdictMemo` が同じ verdict を返すので、テストでは撮り直しごとに違う絵を渡す)
 - **PCC(Private Cloud Compute)は完全に禁止**(ユーザー決定 2026-09-07)。FM で使ってよいのは
   **オンデバイスの `SystemLanguageModel` だけ** —— `PrivateCloudComputeLanguageModel` を使うと
   アプリの画面情報が Mac の外へ出る。受け手向けドキュメント(docs/user-docs/overview/
@@ -1169,187 +361,9 @@
   ②セッションに `model:` を明示的に渡さない ③走査が Sources に届いていることの確認)。
   **PCC のインスタンスは型名を書かずに得られない**ので①だけで経路は閉じ、②は二重の備え。
   経緯と SDK の実地調査は docs/design.md §1.1 末尾
-- **木は a11y が既定。ブラウザで足りないときだけ DOM で補う**(**どの組み合わせでどこから木が
-  来るかの一覧は docs/design.md §木はどこから来るか**)。**口は3つ・その上の層は1つ**
-  (Android Chrome=CDP / iOS Safari シミュレータ=unix ソケット / iOS Safari 実機=usbmuxd →
-  lockdown → TLS)。**条件分岐にしない** —— a11y の充実度はページごとに変わるので、
-  ブラウザでは常に DOM を正とする。差し込みの判定は `FTCore.WebViewDOM`(`WebViewDOMTree.swift`)の1箇所。
-  **`WebViewDOMSnapshot.swift` へホスト専用の関数を足さない**(ブリッジのソース集合に入っており、
-  足すと dylib に無駄が入って指紋ゲートが鳴る)。**実機 iOS だけの罠3つ**は docs/design.md §実機だけの罠
-- **1台の失敗で全体を落とさない**。供給は部分失敗を許容し全滅のときだけ throw する
-  (`BridgeProvisioner.resolveOutcomes` = 純粋関数)。**逆向きも守る —— 全レーンが同時に落ちて
-  いるときにレーンを離脱させない**(`FTCore.WorkerCircuitBreaker`。連続失敗での離脱は
-  「その streak の間に別のレーンが通った」証拠があるときだけ。無ければ残して走り続け
-  `circuitHeld` を記録する。condition 除外案・閾値ノブだけの案は却下)→ maintainer-notes §6
-- **容器推定(`StepExecutor.clippingContainer`)は scrollable 申告の祖先を優先する**。
-  この関数はタップの座標補正・ghost 判定・MCP にも効くので、触ったら 5 SUT のフル E2E
-  **+ `--ios-xcuitest`**。**フルスイートは iOS を in-app で回すので、これだけでは守れない** ——
-  現にこの規則の導入(`8a416bc0`)が xcuitest 限定の退行を入れ、フル E2E 緑のまま通った
-  (**5日後の `931897d6` で修正済み** —— 申告の祖先へ倒すのは「深さ由来の候補が要素を収められない」
-  ときだけ。経緯と壊れ方は maintainer-notes §4.5.1)
-  **座標ドラッグは `StepExecutor.dragWithFallback` だけから撃つ**(in-app は drag が 501。
-  `driver.drag` を直に呼ぶと hybrid で黙って不発になる)
-- **端送りは「最後に動いてから `edgeClaimGraceAfterMove`(1.0 秒)」経つまで端と確定しない**(窓の外に描き足す
-  RN の FlatList で途中止まりした)。**ドライバの `atEdge: false`(= 確かに動かした)は事実を知っている経路だけが返す**
-  (in-app の contentOffset・Android の CDP)。**AX の scroll の受理は含めない** —— Compose は端でも受理し、含めた版は
-  端送りが毎回 maxSwipes まで回った(緑のまま)→ maintainer-notes §36
-- **occlusion-guard の OCR 近道は、暖機が終わっていなければ終わるまで待ってから撃つ**(ユーザー決定
-  2026-09-15。**run の開始時には待たない**。経緯は maintainer-notes §18・§20): 認識器(Espresso)の
-  コンパイルキャッシュは**プロセス名とバイナリの素性ごと・コンパイルがプロセスの生存中に終わったときだけ
-  コミット**。**シナリオを実際に走らせる経路は `ScenarioHost.listForRun`**(run / api run / 機械分担の
-  3 箇所。`OCRWarmupWiringTests` が等号で固定)で同じプロセス名の待てる子 `warm-ocr` を背景で起こす。
-  一覧だけの経路(dry-run / MCP / codegen)は `list`。**プロセス内の暖機(探り)は DSL ではシナリオ開始時に
-  FTRuntime が始める**(executor の既定ガードは off でステップごとに効かせるので、`StepExecutor.init` の
-  条件だけに頼ると最初のガードの中で初めて始まり、全シナリオの最初のガードが近道を逃していた)。
-  近道の直前で `RegionText.awaitPrewarm(cap:)` を待ち(上限 `prewarmWaitCap` 120 秒 = 正当な暖機の
-  実測最大 108 秒 + 1 割。超えたら ANE のハングと見て FM へ・注記 `ocr-warmup-capped`)、
-  **待った時間はステップ(FTSync 120 秒)とシナリオ(scenarioTimeout)の締め切りから差し引く**
-  (`DeadlineExclusion`。子→親の `deadlineExclusion` イベントはホストが横取りし api の NDJSON には出さない)。
-  暖機の待ちはアプリの応答ではないので待ち予算に数えない(9/10 の「初期化をステップの予算で払って
-  締め切りに当たる」事故を、待たないことではなく差し引くことで防ぐ)。
-  近道を撃つのは **warm(探りが 1 行以上読めた)かつ 詰まった読みが無い**ときだけ(`shouldTakeShortcut`。
-  純粋関数・配線は走査で固定)、予算 1.3 秒 = 置き換える相手の実測下限、**諦めても読みは止めない**。
-  認識器は ANE を避ける(定常の所要は同じ・装置で読みが変わる分はコーパスに固定)。
-  **締め切り・予算のテストは戻り値でなく所要を直接測る**(`TaskBudgetTests`)
-- **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
-  無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
-  題名を残す(止めない・閉じない)。常時監視へ広げない。
-  **失敗時の証跡の絵は hybrid なら XCUITest(`XCUIScreen`)で撮る**(`FTRuntime.handleFailure`。in-app の絵は
-  アプリの window しか描かず OS のアラートが写らない)。**iOS の「飲まれたタップ」注記はアラートの可能性を
-  併記する**(iOS の木はアプリのプロセスだけ = アラートを出したタップも無変化に見える)
-- **終了猶予の方針は1つ**(Codex 指摘 2026-09-06): **自前の後始末を持つ fleetest のプロセス**
-  (`api run` / `run --runner` の子 / `fleetest-scenarios` = 終了スクリプト・dispatch.lock の解放・
-  向きの復元)には**時限の SIGKILL を送らない** —— SIGTERM を送って待ち、刺さったら人が強制終了する
-  (`InterruptRelay` の fleetest の子 = `escalateAfter: nil` / `ParentDeathWatch` = SIGTERM のみ /
-  拡張の `api run` キャンセル = SIGTERM のみ + 2 秒経っても生きていれば「強制終了」ボタンを出す)。
-  **時限 SIGKILL(2 秒)を送ってよいのは後始末を持たない外部・ヘルパーだけ**(ssh・`Shell.run` の
-  外部コマンド・配信ヘルパー・`api monitor` / `host-metrics` / `api live serve` = stdin EOF で即終わる)。
-  後始末が刺さって残った fleetest は `FT_PARENT_PID` の印付き孤児として次回 activate の掃除が落とす
-  **割り込みの登録(`InterruptRelay.observing`)は run の記録開始の直後・供給より前**(run / api run /
-  プロファイル無しの3経路とも1プロセス1回。オーケストレータは `attachLateSubscriber` で後から合流)——
-  供給の後に登録すると、供給中のシグナル(fan-out の子は ssh 切断の SIGHUP)が OS 既定の即死になり、
-  run.json が開始欄だけの「クラッシュ」になる(`InterruptRelayEarlyRegistrationWiringTests`)→ maintainer-notes §51
-  **階層をまたぐ保証(起こした側 → `api run` → シナリオ実行バイナリ)は `CrossLayerTerminationTests` が
-  実バイナリで固定する**(`--dry-run --debug --pause-on-start --skip-build` = デバイスも入れ子の swift build も
-  要らない長生きの孫。親の SIGKILL と子への SIGTERM の両方)
-- **シナリオの watchdog(`ScenarioHost`)は打ち切る前に子の生存を見る・時計は SuspendingClock**
-  (親の一時停止・Mac のスリープからの再開で、終わっていた緑の子を timeout の赤に書き換えていた。
-  `ScenarioHostWatchdogExitedChildTests`)→ maintainer-notes §32
-- **`Shell.run` は子孫ごと止め、出力の EOF を待ち切らない**(Codex 指摘 2026-09-05): timeout の
-  SIGTERM/SIGKILL は `killpg`(Foundation.Process の子はグループリーダー)で孫まで届かせる ——
-  `kill(pid,…)` だけだと `trap '' TERM` を継いだ孫がパイプを握り続けて 30 秒返らなかった。
-  出力の回収は子の reap 後 `Shell.outputDrainGraceSeconds`(1 秒)で打ち切る(EOF が遅れるのは
-  孫が書込端を継承したまま残る形だけ。`(sleep 3) &` の孫で 3 秒待っていた)。
-  **`readDataToEndOfFile` を子プロセスのパイプに使わない**(EOF まで戻らない = 期限が置けない。
-  `ShellSourceScanTests` が Sources 全体で落とす。対話プロンプトへ答える子は `Shell.run(stdin:)`)。
-  **`availableData` を読むループは1回ごとに `autoreleasepool` で区切る**(返る NSData は自動解放で、
-  抜けないループ・`Thread`・長く生きる readabilityHandler の中では1つも解放されない。拡張が1日じゅう
-  生かす `api monitor` が 1 時間に約 630 MB 溜めた。`AvailableDataAutoreleaseScanTests` が Sources 全体で落とす)。
-  **同じ規律は「1周ごとに画像を作る常駐ヘルパー」にも要る** ——
-  `fleetest-devicepoll` の取り込みループは `URLSession` / `adb` の `Data` と Core Graphics の
-  中間物(CGImage / CGImageSource)を毎周作るのに pool が無く、**1 時間 15 分で 71 GB(≒ 55 GB/時)**
-  溜めて物理 192 GB の Mac をメモリ不足にした(2026-09-22。`api monitor` の 630 MB/時 と同型だが
-  **画像なので桁が2つ違う**)。**`sleep` は pool の外に置く**(待っている間 1 周ぶんを抱えない)。
-  ObjC のヘルパー(`fleetest-simstream` / `fleetest-androidstream` = `main.m`)は `@autoreleasepool` で
-  main 全体を囲む慣例で守られており、**欠けていたのは Swift の `main.swift` だけ**だった ——
-  Swift のトップレベルには pool が1つも無い。`StreamingHelperAutoreleaseScanTests` が
-  取り込みヘルパーの集合と「画像を作る行が pool の内側にあること」を固定する → maintainer-notes §43。
-  **グループの残存は直接の子の終了と独立に見る**(Codex 指摘 2026-09-06: 子が SIGTERM で素直に
-  終わっても `trap '' TERM` の孫は残る。猶予が尽きたら `killpg(pgid, 0)` で残りを確かめ SIGKILL)。
-  witness は `ShellTimeoutTests` の孫3本
-- **プロセスの生存管理は3つの定義元に寄せる**(2026-09-05 の掃討): ①**生死の判定は
-  `FTCore.ProcessLiveness.isAlive`**(sysctl で `SZOMB`・`P_WEXIT` を「死」と見る。`kill(pid, 0)` は
-  ゾンビにも成功するので台帳が永久に回収されない —— `ProcessLivenessSourceScanTests` が素の
-  `kill(x, 0)` を落とす。例外は自分の子を SIGKILL する直前の確認だけ)②**子は親の死で自ら終わる**
-  (`FTCore.ParentDeathWatch`。spawn 側が `FT_PARENT_PID` を渡した子だけが kqueue で親の EXIT を待ち、
-  SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
-  巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
-  `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定。
-  **例外は `warm-ocr` と背景の掃除(`RunCompletionSweep`)の2つ**: どちらも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる)。有限で自分で終わる。
-  **親の死を知らせる発話は投げない API で書く**(`ParentDeathWatch.writeNotice` = fd に `F_SETNOSIGPIPE` を
-  掛けた生の `write(2)`。失敗は黙って諦める)—— 親が死んだ瞬間の stderr は**読み手の居ないパイプ**で、
-  `FileHandle.write` は EPIPE を ObjC 例外にするので abort し、**SIGTERM に到達せず後始末が1つも走らない**
-  (2026-09-16 の負荷テストで実測。9/05 以来ずっとこの形だった)。**この経路のテストは子の出力を
-  パイプ/FIFO にする** —— ファイルへリダイレクトすると write が失敗せず、砦が1度も踏まない
-  → maintainer-notes §24)
-  ③**台帳(`.fleetest/bridge-<port>.pid/.inapp/.endpoint/.device/.toolchain/.ready`)はプロセスの実体で掃除し、
-  中身は読む側が検証する**(`.endpoint` の1行目 = host が URL に使えなければ「記録が無い」へ倒す
-  = `BridgeEndpoint.isUsableHost`。**台帳由来の文字列を強制開封しない** —— 壊れた1行が
-  `URL(string:)!` でプロセスごと落とし、そのポートを開く `bridge status` も fleetest-mcp も
-  道連れになった)
-  (`StaleLedgerSweep` = provision の入口。`.inapp` は LISTEN 実体の有無、`.endpoint/.device` は
-  対の `.pid` の生死。**`/status` 応答で生死を決めない**)。
-  **`.ready` は「このランナーが一度でも準備完了になった」**(`BridgeReadyLedger`。起動しきれない
-  ランナーの掃除が止めてよいかの門)で、**中身の pid が今の `.pid` と一致するときだけ数える**
-  (ポートは同じ番号で建て直されるので、在否だけだと前世代の印が新しいランナーを守る → maintainer-notes §51.11)。
-  **`.toolchain` は「そのブリッジを建てたツールチェーン」**(`BridgeToolchainLedger`)で、
-  **生きているブリッジを再利用してよいかの門**。守る規律4つ: **①起動より前に控える**
-  (ready の後に書くと、別プロセスが `.adopt` で引き取るときに「控え無し」を見て**正常な
-  ブリッジを止める** —— 引き取る側は `/status` が答えた瞬間に見に来る)/ **②成果物側の指紋
-  (`<DerivedData>/.toolchain`)と比べない** —— 成果物は `runnerRebuildReason` が後から独立に
-  建て直すので「ディスクは新しいがプロセスは古い」を検出できない / **③`.reuse` と `.adopt` の
-  両方で見る**(建て直しの判定が走るのは**建てるとき**だけなので、生きたブリッジはここでしか
-  捕まらない)/ **④リースのある台は止めない代わりに1行言う**(`hasForeignLease` は run と MCP の
-  印を両方数える。止めると他プロセスの run を壊すが、版の違うブリッジを駆動している事実は
-  黙らない)。仕分けは `BridgeToolchainLedger.decide` の1箇所 → maintainer-notes §3.8。
-  採番は `ProvisionLock` の内側でだけ行う
-  (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` / **`ApiLiveCommand`**(要求された台の
-  ブリッジがどこにも無いとき空きポートを充てる)の4経路。`ProvisionLockStartupPathsSyncTests` が
-  集合を固定する。**ライブ操作の1件は「選ぶだけで起動しない」= 予約ではない**ので、
-  起動までに埋まったら `LiveBridgeAutoStarter` が占有者を名指しして諦める)。拡張の孤児掃除(`orphanSweep.ts`)は配信
-  (`api device-stream`・`fleetest-*stream` / `devicepoll`)も対象。**殺すのは PPID=1 かつ環境に
-  `FT_PARENT_PID` を持つもの(= 拡張 / fleetest が起こしたもの)だけ** —— 手で `nohup` した同名の
-  プロセスはコマンド文字列では区別できないので、所有の印で絞る(Codex 指摘 2026-09-05)
-- **ブリッジを起動する前に「そのポートを今 LISTEN している実体」を確かめる**。`/status` 応答だけで
-  数えると、背面に回った in-app ブリッジ(TCP 受付・HTTP 無応答)が掴んだポートを「空き」と
-  採番して新しい注入が衝突する(全シミュレータは loopback を共有 = ポートは台を跨いで一意)。
-  `PortHolder.stopIfOwnedBridge` / `describe` と `StaleBridgeStop.decide` が定義元。
-  **失敗は占有者を名指しして落とす**。
-  **ポートだけで「自分の残骸」と決めない** —— `FleetestRunner-<port>.xctestrun` も `.inapp` も
-  ポートしか持たないので、同じポートに居る**別デバイスの生きたブリッジ**を殺す/生かす判断に化ける
-  (実地 2026-09-23: 既定ポートへ倒れた実機2台が互いのランナーを殺し合い、MCP が駆動中の
-  シミュレータも巻き添えになった)。**宛先のデバイスを混ぜて、肯定的に別デバイスと読めた回だけ
-  手を引く**(`RunnerDestination` / `PortHolder.listenerIsAnotherSimulator` /
-  `PortHolder.isHeldByAnotherDevice`)—— 「分からないから残す」に倒すと本物の残骸が永久に
-  ポートを塞ぐ。**busy は正常**(駆動中の XCUITest は /status に答えない)なので、
-  単に「待受している」を根拠に他人扱いしない → maintainer-notes §46
-- **回復のたびに label(ポート)は変わる**。回復を注入するときは**その時点のワーカー一覧を渡す**
-  (`BlankWorkerTriage` の `recover` は第2引数)。最初の一覧を捕まえたままだと2回目の試行で
-  新しい label を引けず、`frozen devices have no iOS simulator udid` で必ず失敗する
-- **Android のテキスト注入(`InputInjector`)を触ったら負荷10周で判定する**
-  (`for i in $(seq 10); do Scripts/e2e.sh --cmp --android; done`)。**単独実行では出ない** flake が
-  ある(高負荷でだけ約40%)。守る規律 —「`ACTION_SET_TEXT` の `true` は受理であって反映ではない
-  (必ず読み返す)」「`combined` は最初の読みから1回だけ作る(パスワード欄の読みはマスクされて
-  おり、作り直すと伏せ字を書き込む・二重追記する)」「フォーカスが立つまで撃たない」
-  「追跡は座標でなく resource-id」「**読む前に `refresh()` し、その戻り値を見る**(a11y ノードはキャッシュ供給で、
-  とくに WebView は DOM 変更を数秒遅れて出す。取り直さないと**入っているのに古い値を
-  読み続けて**期限切れで 500 になる。**false は取り直せておらず中身が古いまま**なので、
-  その周回は読まず撃たず次周回で引き直す)」「**`findFocus(FOCUS_INPUT)` を信じない**(Flutter では
-  半分の確率で欄でなく FlutterView の入れ物を返す。ref なしの clear / IME Enter は
-  `focusedEditable` = 編集可能でなければ木から `isFocused && isEditable` を探す。実機 10 周中 5 周)」
-  — と不採用案(`ACTION_FOCUS`・ホスト側のキーボード回避)は
-  docs/design.md §Android のテキスト注入の規律
 
 ## 受け手フローの設計方針(スキル・スクリプト・CLI の分担)
 
-- **機械作業はスクリプト/CLI に寄せ、スキルには判断だけ残す**。エージェントに JSON を書かせる・
-  値を集めさせると、実行のたびに結果が揺れる。決まった手順は `Scripts/*.sh` か `fleetest` の
-  サブコマンドにする
-- **承認回数はコストとして数える**。値の収集は preflight の出力に寄せ、デバイス選定は
-  `profile setup --auto-device`、繰り返す実行は `.claude/settings.json` の許可(fleetest 由来の
-  コマンドのみ。`api ensure-settings` が毎回補修)で吸収する。承認は3方向から増えるので全部潰す:
-  **①聞かなくてよい確認**(答えが決まっているならスクリプトが決める)/ **②許可リストに無い
-  コマンド**(スクリプトを足したら許可も足す)/ **③巨大な出力**(切られてエージェントが grep を
-  打つ。生ログはファイルへ)。**出力済みの情報を別コマンドで取り直さない**
-- **人に聞くのは AskUserQuestion(ダイアログ)だけ**。チャットに質問文を書くと見落とされてフローが止まる
-- **生成したシナリオの検証は3段**(`.claude/skills/fleetest-scenario/SKILL.md` ステップ4→4.5→5):
-  コンパイル → **dry-run(デバイス不要・数秒)** → デバイス実行。真ん中を飛ばすと「コンパイルは
-  通るが何も検証していない」をデバイス実行の時間で見つけることになる。**誤りは早い段の言葉で返す**
-  (未知の名前 = コンパイラのメッセージ / 構文・アサーション不足・**撮った画面に無い `#id`** =
-  dry-run / 実挙動の確認 = デバイス実行)。**`#id` の実在照合は `ft_snapshot` が貯める台帳**が
-  供給源(`SelectorInventory`。撮っていない画面については黙る = 誤検知を出さない側に倒す)
-- **デバイス(実機・シミュレータ/エミュレータ)が要る判断は純粋ロジックへ切り出して単体テストで固める**
-  (例: `DevicePicker`・`ProfileWriter`・`ToolchainFingerprint`)。デバイス上でしか出ない部分だけを E2E に残す
 
 ## 実装の委譲
 
@@ -1368,34 +382,17 @@
 
 保守者は Claude Code。目安: 1ファイル約2,000行以下(一度の Read で収まる)、1タスクで編集するのは1〜2ファイルに収まる構成を保つ。超えたら分割を検討する(人間向け可読性は目的ではない)。
 
-- コントローラ分割は、必要なコールバックだけを束ねた狭い deps インターフェースをコンストラクタ注入し、サブコントローラ同士は直接参照しない(実例: monitorPanel.ts の MonitorPanelDeps)
-- 可変状態は書き込み箇所と同じモジュールに置き、他モジュールへは読み取り専用で公開する(実例: src/webview/monitor/ の各モジュール)
-- webview 資産(CSS/JS)はテンプレートリテラルに内蔵せず src/webview/ の実ファイル+esbuild バンドル(media/ 出力)にする
-- エスケープ文脈が変わる逐語移動(テンプレートリテラル⇔実ファイル)では二重エスケープの残存を機械チェックする(`grep '\\\\[dswb]'` 等。過去に `\\d` が検証不能バグとして実害化)
 
 ## 国際化(i18n・日英切替)
 
 拡張の UI 文字列は日英切替対応(設定 `fleetest.language`: auto/ja/en、auto は VSCode 表示言語に追従。モニター「設定」タブからも変更可)。UI 文字列を追加/変更するとき:
 
-- 辞書は `src/i18n/strings/<namespace>.ts` に `{ "ns.key": { ja, en } } satisfies MessageDict`。**ja は表示文字列と byte 一致**(未初期化時の既定 locale が "ja"・既存テストが日本語をアサートするため)。プレースホルダは名前付き `{name}` で ja/en 同集合。namespace とファイルは1対1。
-- 拡張側: `import { t } from "./i18n"`(`MessageKey` 型で typo を tsc 検出)。activate 冒頭で `initI18n()`。webview 側: `import { t } from '../i18n.js'`(locale は `<html lang>` 経由)。静的 HTML(monitorHtml.ts 等)は拡張側 `t()` で描画する。
-- **罠**: 拡張と webview の**両バンドルに入る .ts**(runReducer.ts/runLaneModel.ts 等。webview の import 連鎖で混入)は、vscode を引き込む `i18n/index.ts` を import できない(webview ビルドが壊れる)。vscode 非依存の別ランタイム `src/i18n/strings/lane.ts`(`tLane`/`setLaneLocale`、locale は両バンドルが注入)を使う。両バンドル共有の文字列を新たに i18n 化するときも同じ制約。
-- **module-level の表示 const 禁止**(import 時=initI18n 前に "ja" で固定される)。関数化する。
-- package.json の contributes(コマンド名・設定説明)だけは別系統: `%key%` + `package.nls.json`(英)/`package.nls.ja.json`(日)で **VSCode 表示言語連動**(fleetest.language ではない)。両 nls はキー集合一致。
 - **CLI(`fleetest`)の表示文字列は英語だけ**(ユーザー決定 2026-07-30。切替機構は入れない)。
   コメント・docs・SKILL.md・拡張 UI は日本語のまま。**`Sources/` の文字列リテラル**は
   `CLIEnglishStringsScanTests` が走査し、日本語を正しく持つファイルだけを理由付きの表で通す
   (ステップ説明の日英生成・日本語入力の照合表・FM の `@Guide`・生成物・受け手の Package.swift へ
   書くマーカー)。**中黒 `・` を日本語と数えない**(英語の出力でも箇条書きに使う)
   → maintainer-notes §44.3
-- 検証は `test/i18n.test.mjs`(辞書パリティ・**残存日本語の AST 走査**[HTML コメントは除外]・webview/lane キー存在・nls 整合)。正当に日本語を残す文字列(非表示の内部 throw 等)は同ファイルの `RESIDUAL_ALLOWLIST` に登録。
-- `fleetest.language` 変更は各 webview パネル(Monitor/HealReview。Dashboard・ライブ操作はモニターのタブ)の `relocalize()` が
-  `webview.html` を再代入して即時反映する(`extension.ts` が呼ぶ `languageChangeHandler.ts` の
-  `handleLanguageChange` が束ねる。vscode 非依存に切り出してあるのはテストのため。パネル未生成時は
-  no-op)。Monitor は html 再代入(webview 再読込)でブラウザ側デコーダが失われるため、直後に
-  `restartAllStreams()`(タイル)と `LiveTabHost.restartStream()`(ライブ操作タブ)でライブ配信を新キーフレームから張り直す。
-  Reload Window が必要なのは package.nls(コマンド名・設定説明。VSCode 表示言語連動で
-  `fleetest.language` とは無関係)だけ。
 
 ## コメント規約
 
