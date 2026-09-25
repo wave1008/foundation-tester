@@ -237,6 +237,13 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     func openAppSwitcher() async throws { try record("appSwitcher", "appSwitcher") }
     func pressEnter() async throws { try record("pressEnter", "pressEnter") }
 
+    /// 非 nil なら hideKeyboard がこのエラーを投げる(iOS の 501 を再現する)
+    var hideKeyboardError: Error?
+    func hideKeyboard() async throws {
+        try record("hideKeyboard", "hideKeyboard")
+        if let hideKeyboardError { throw hideKeyboardError }
+    }
+
     func clearInput(ref: Int?) async throws {
         try record("clearInput(ref:\(ref.map(String.init) ?? "nil"))", "clearInput")
     }

@@ -61,6 +61,7 @@ cwd(受け手パッケージ)とは別物です。
 | `ft_batch` | 複数の操作/スクロール手を1回の呼び出しにまとめ、1回の承認で実行する |
 | `ft_rotate` | デバイスを回転し、新しい向きの要素一覧を返す |
 | `ft_navigate` | 戻る / ホーム / タスク切替 |
+| `ft_hide_keyboard` | ソフトキーボードを閉じる(Android のみ。iOS は `ft_type` の `pressEnter`) |
 | `ft_open_url` | アプリを再起動せずディープリンクを配送する |
 | `ft_clear_input` | 入力欄を空にする |
 | `ft_clear_app_data` | アプリのデータと権限をリセットする(iOS 実機は `ft_install` のパスか `packagePath:` で uninstall + install に振り替える) |

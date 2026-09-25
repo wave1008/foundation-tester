@@ -23,7 +23,7 @@ public struct DSLCommandInfo: Sendable, Encodable {
     /// 名前と引数だけを見て `xxx(selector, expected)` と書かれるのを防ぐ(その形は無い)
     public let signature: String
     public let summary: String
-    /// `exist(...)` / `waitForDisplay(...)` の戻り値へ `.name(...)` で繋げられるか
+    /// 掴んだ要素(`exist` / `select` / セレクタを取る操作の戻り値)へ `.name(...)` で繋げられるか
     public let chainable: Bool
 
     init(_ name: String, _ category: String, _ signature: String, _ summary: String,
@@ -101,7 +101,9 @@ public enum DSLCommandIndex {
                 + "coordinates hit something else as soon as the layout moves, and they are for screens "
                 + "where the app publishes nothing to select. Also chains as "
                 + "element.tap(holdSeconds:, maxGestureSeconds:): an element grabbed by "
-                + "findImage/findImages is tapped at the centre of the found frame.",
+                + "findImage/findImages is tapped at the centre of the found frame."
+                + " The selector form returns the element it grabbed (like exist / select), so"
+                + " assertions chain directly: tap(\"#ok\").textIs(\"OK\").",
               chainable: true),
         .init("select", "operation", "select(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
@@ -118,14 +120,17 @@ public enum DSLCommandIndex {
         .init("type", "operation",
               "type(selector, text, replace:, waitSeconds:, scroll:, maxSwipes:) / type(text, replace:)",
               "Types text. replace: true clears the field first (like clearInput) instead of appending."
-                  + " The single-argument form targets the focused element and takes text, not a selector."),
+                  + " The single-argument form targets the focused element and takes text, not a selector."
+                  + " The selector form returns the element it grabbed (like exist / select), so"
+                  + " assertions chain directly."),
         .init("pressEnter", "operation", "pressEnter()",
               "Fires the Enter/IME action on the focused input."),
         .init("hideKeyboard", "operation", "hideKeyboard()",
               "Closes the soft keyboard. Android only; on iOS use pressEnter()."),
         .init("clearInput", "operation",
               "clearInput(selector, waitSeconds:, scroll:, maxSwipes:) / clearInput()",
-              "Empties an input field. type appends, so clear first to replace."),
+              "Empties an input field. type appends, so clear first to replace."
+                  + " The selector form returns the element it grabbed, so assertions chain directly."),
         .init("swipe", "operation", "swipe(.up / .down / .left / .right)",
               "Swipes the whole screen. The direction is the finger motion, unlike the scroll commands."),
         .init("rotateTo", "operation",
@@ -140,18 +145,21 @@ public enum DSLCommandIndex {
               "swipeBy(selector?, dxRatio:, dyRatio:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Drags from the center of the target by a ratio of its size. Diagonal is allowed "
                   + "(both ratios non-zero). No selector = the whole screen. durationSeconds is capped "
-                  + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
+                  + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
+                  + " The selector form returns the element it grabbed."),
         .init("doubleTap", "operation", "doubleTap(selector?, waitSeconds:)",
-              "Double-taps. No selector = the center of the screen."),
+              "Double-taps. No selector = the center of the screen."
+                  + " The selector form returns the element it grabbed, so assertions chain directly."),
         .init("pinchOut", "operation",
               "pinchOut(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Pinches open (zoom in). scale must be > 1. No selector = the whole screen. "
                   + "durationSeconds is capped at 10s by default — pass maxGestureSeconds: "
-                  + "(up to 60) to allow longer."),
+                  + "(up to 60) to allow longer. The selector form returns the element it grabbed."),
         .init("pinchIn", "operation",
               "pinchIn(selector?, scale:, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Pinches closed (zoom out). scale must be between 0 and 1. durationSeconds is capped "
-                  + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
+                  + "at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
+                  + " The selector form returns the element it grabbed."),
         .init("gesture", "operation",
               "gesture(selector?, maxGestureSeconds:, waitSeconds:) { FTFinger(...).move(...).hold(...) }",
               "Replays several fingers' timed paths as one continuous touch sequence (no lifting "
@@ -160,17 +168,20 @@ public enum DSLCommandIndex {
                   + "starts at a ratio position (0...1 of the target's frame) and chains .move(x:y:"
                   + "durationSeconds:) / .hold(seconds:) in order; the last point lifts the finger. "
                   + "No selector = the whole screen. Total duration is capped at 10s by default — "
-                  + "pass maxGestureSeconds: (up to 60) to allow longer."),
+                  + "pass maxGestureSeconds: (up to 60) to allow longer."
+                  + " The selector form returns the element it grabbed."),
         .init("swipeElementToElement", "operation",
               "swipeElementToElement(from, to, durationSeconds:, maxGestureSeconds:, waitSeconds:)",
               "Drags from one element to another. Only the start point is healed. durationSeconds is "
-                  + "capped at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
+                  + "capped at 10s by default — pass maxGestureSeconds: (up to 60) to allow longer."
+                  + " Returns the start element it grabbed."),
 
         // MARK: scroll
         .init("scrollTo", "scroll",
               "scrollTo(selector, direction:, scrollFrame:, startMarginRatio:, endMarginRatio:,"
                   + " containerInference:, maxSwipes:)",
-              "Scrolls until the element is found. Does not tap it."),
+              "Scrolls until the element is found. Does not tap it. Returns the element it found,"
+                  + " so assertions chain directly."),
         .init("scrollDown", "scroll",
               "scrollDown(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:)",
               "Scrolls one screen further down the content."),

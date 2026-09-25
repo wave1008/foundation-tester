@@ -543,8 +543,8 @@ public func pinchOut(scale: Double = FlowStep.defaultPinchOutScale,
                      durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                      maxGestureSeconds: Double? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
-    _ = pinchImpl(nil, action: "pinchOut", scale: scale, durationSeconds: durationSeconds,
-              maxGestureSeconds: maxGestureSeconds, waitSeconds: nil, file: file, line: line)
+    untargetedPinch(action: "pinchOut", scale: scale, durationSeconds: durationSeconds,
+                    maxGestureSeconds: maxGestureSeconds, file: file, line: line)
 }
 
 @discardableResult
@@ -574,8 +574,8 @@ public func pinchIn(scale: Double = FlowStep.defaultPinchInScale,
                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                     maxGestureSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
-    _ = pinchImpl(nil, action: "pinchIn", scale: scale, durationSeconds: durationSeconds,
-              maxGestureSeconds: maxGestureSeconds, waitSeconds: nil, file: file, line: line)
+    untargetedPinch(action: "pinchIn", scale: scale, durationSeconds: durationSeconds,
+                    maxGestureSeconds: maxGestureSeconds, file: file, line: line)
 }
 
 @discardableResult
@@ -600,26 +600,34 @@ public func pinchIn(_ selector: Sel, scale: Double = FlowStep.defaultPinchInScal
               waitSeconds: waitSeconds, file: file, line: line)
 }
 
-/// selector nil = 画面全体。倍率と向きの食い違い(pinchOut に scale < 1 等)は
+/// 対象なし = 画面全体(掴む要素が無いので何も返さない)。倍率と向きの食い違い(pinchOut に scale < 1 等)は
 /// StepExecutor が失敗にする(判定を1箇所に置く)
-private func pinchImpl(_ selector: FTSelector?, action: String, scale: Double,
+private func untargetedPinch(action: String, scale: Double, durationSeconds: Double,
+                             maxGestureSeconds: Double?, file: StaticString, line: UInt) {
+    let step = pinchStep(nil, action: action, scale: scale, durationSeconds: durationSeconds,
+                         maxGestureSeconds: maxGestureSeconds, waitSeconds: nil)
+    FTRuntime.requireCore(command: action)
+        .perform(step: step, description: "\(action) x\(scale)", command: action, file: file, line: line)
+}
+
+private func pinchImpl(_ selector: FTSelector, action: String, scale: Double,
                        durationSeconds: Double, maxGestureSeconds: Double?,
                        waitSeconds: Double?,
                        file: StaticString, line: UInt) -> FTElement {
-    let step = FlowStep(action: action, locator: selector?.primary,
-                        fallbacks: selector?.stepFallbacks, timeout: waitSeconds,
-                        duration: durationSeconds == FlowStep.defaultPinchDurationSeconds
-                            ? nil : durationSeconds,
-                        maxGestureSeconds: maxGestureSeconds,
-                        scale: scale)
-    let description = selector.map { "\(action) \"\($0.text)\" x\(scale)" } ?? "\(action) x\(scale)"
-    guard let selector else {
-        FTRuntime.requireCore(command: action)
-            .perform(step: step, description: description, command: action, file: file, line: line)
-        return FTElement(selector: FTSelector.label(""))
-    }
-    let result = perform(action, selector, step: step, description: description, file: file, line: line)
+    let step = pinchStep(selector, action: action, scale: scale, durationSeconds: durationSeconds,
+                         maxGestureSeconds: maxGestureSeconds, waitSeconds: waitSeconds)
+    let result = perform(action, selector, step: step, description: "\(action) \"\(selector.text)\" x\(scale)",
+                         file: file, line: line)
     return FTElement(selector: selector, matched: result.element)
+}
+
+private func pinchStep(_ selector: FTSelector?, action: String, scale: Double, durationSeconds: Double,
+                       maxGestureSeconds: Double?, waitSeconds: Double?) -> FlowStep {
+    FlowStep(action: action, locator: selector?.primary,
+             fallbacks: selector?.stepFallbacks, timeout: waitSeconds,
+             duration: durationSeconds == FlowStep.defaultPinchDurationSeconds ? nil : durationSeconds,
+             maxGestureSeconds: maxGestureSeconds,
+             scale: scale)
 }
 
 /// 要素間のドラッグ(スライダー・並べ替え・部分領域のスクロール等、要素を掴んで動かす操作用)。
@@ -677,8 +685,7 @@ private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
 public func gesture(maxGestureSeconds: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line,
                     @FTGestureBuilder _ body: () -> [FTFinger]) {
-    _ = gestureImpl(nil, fingers: body(), maxGestureSeconds: maxGestureSeconds, waitSeconds: nil,
-                file: file, line: line)
+    untargetedGesture(fingers: body(), maxGestureSeconds: maxGestureSeconds, file: file, line: line)
 }
 
 @discardableResult
@@ -697,26 +704,32 @@ public func gesture(_ selector: Sel, maxGestureSeconds: Double? = nil, waitSecon
                 waitSeconds: waitSeconds, file: file, line: line)
 }
 
-/// selector nil = 画面全体。指の本数・秒数・画面内かの検査は StepExecutor 側の
-/// `TouchGesture.validate` に集約する(判定を1箇所に置く)
-private func gestureImpl(_ selector: FTSelector?, fingers: [FTFinger], maxGestureSeconds: Double?,
+/// 指の本数・秒数・画面内かの検査は StepExecutor 側の `TouchGesture.validate` に集約する(判定を1箇所に置く)。
+/// 対象なし = 画面全体(掴む要素が無いので何も返さない)
+private func untargetedGesture(fingers: [FTFinger], maxGestureSeconds: Double?,
+                               file: StaticString, line: UInt) {
+    let step = FlowStep(action: "gesture", maxGestureSeconds: maxGestureSeconds, gesture: fingers)
+    FTRuntime.requireCore(command: "gesture")
+        .perform(step: step, description: "gesture (\(gestureShape(fingers)))", command: "gesture",
+                 file: file, line: line)
+}
+
+private func gestureImpl(_ selector: FTSelector, fingers: [FTFinger], maxGestureSeconds: Double?,
                          waitSeconds: Double?, file: StaticString, line: UInt) -> FTElement {
-    let step = FlowStep(action: "gesture", locator: selector?.primary,
-                        fallbacks: selector?.stepFallbacks, timeout: waitSeconds,
+    let step = FlowStep(action: "gesture", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks, timeout: waitSeconds,
                         maxGestureSeconds: maxGestureSeconds, gesture: fingers)
-    let fingerWord = fingers.count == 1 ? "finger" : "fingers"
-    // 秒の合計は浮動小数の誤差が出る(0.3 × 3 = 0.8999…)ので説明文では 1/100 に丸める
-    let seconds = FTSeconds.format(((fingers.map(\.endSeconds).max() ?? 0) * 100).rounded() / 100)
-    let description = selector.map {
-        "gesture \"\($0.text)\" (\(fingers.count) \(fingerWord), \(seconds)s)"
-    } ?? "gesture (\(fingers.count) \(fingerWord), \(seconds)s)"
-    guard let selector else {
-        FTRuntime.requireCore(command: "gesture")
-            .perform(step: step, description: description, command: "gesture", file: file, line: line)
-        return FTElement(selector: FTSelector.label(""))
-    }
-    let result = perform("gesture", selector, step: step, description: description, file: file, line: line)
+    let result = perform("gesture", selector, step: step,
+                         description: "gesture \"\(selector.text)\" (\(gestureShape(fingers)))",
+                         file: file, line: line)
     return FTElement(selector: selector, matched: result.element)
+}
+
+/// 説明文の「N fingers, Xs」。秒の合計は浮動小数の誤差が出る(0.3 × 3 = 0.8999…)ので 1/100 に丸める
+private func gestureShape(_ fingers: [FTFinger]) -> String {
+    let fingerWord = fingers.count == 1 ? "finger" : "fingers"
+    let seconds = FTSeconds.format(((fingers.map(\.endSeconds).max() ?? 0) * 100).rounded() / 100)
+    return "\(fingers.count) \(fingerWord), \(seconds)s"
 }
 
 // MARK: - フリック(Shirates 準拠のコマンド名。画面基点8種)

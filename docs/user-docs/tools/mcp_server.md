@@ -62,6 +62,7 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_batch` | Run several operation/scroll steps in one call under a single approval |
 | `ft_rotate` | Rotate the device and return the element list in the new orientation |
 | `ft_navigate` | Back / Home / app switcher |
+| `ft_hide_keyboard` | Close the soft keyboard (Android only; on iOS use `ft_type` with `pressEnter`) |
 | `ft_open_url` | Deliver a deep link without restarting the app |
 | `ft_clear_input` | Clear a text field |
 | `ft_clear_app_data` | Reset app data and permissions (on a physical iOS device it falls back to uninstall + install, using the path from `ft_install` or `packagePath:`) |

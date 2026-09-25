@@ -606,6 +606,9 @@ extension MCPServer {
         case "ft_navigate":
             return try await ftNavigate(args)
 
+        case "ft_hide_keyboard":
+            return try await ftHideKeyboard(args)
+
         case "ft_clear_app_data":
             return try await ftClearAppData(args)
 

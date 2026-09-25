@@ -53,7 +53,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | fleetest | |
 |---|---|---|
-| `tap` | `tap(sel, waitSeconds:scroll:maxSwipes:)` | ✅ |
+| `tap` | `tap(sel, holdSeconds:maxGestureSeconds:containerInference:waitSeconds:scroll:maxSwipes:)` | ✅ Shirates と同じく**掴んだ要素を返す**(`tap("#ok").textIs("OK")`)。セレクタで1要素を掴む他の操作(`type(sel, …)` / `clearInput(sel)` / `doubleTap(sel)` / `swipeBy(sel, …)` / `pinchOut(sel)` / `pinchIn(sel)` / `gesture(sel)` / `swipeElementToElement` / `scrollTo`)も同じ |
 | `tap(holdSeconds:)` | 同名 | ✅ |
 | `tapWithScrollDown/Up/Left/Right` | `tap(sel, scroll: .down)` | 🟡 関数は置かない(下記「スクロールの指定は `scroll:` だけ」) |
 | `tapWithoutScroll` | `tap(sel, scroll: .noScroll)` | 🟡 関数は置かない(ユーザー決定 2026-09-19: スクロールの指定は `scroll:` に寄せる。Shirates の名前は `UnavailableCommands.swift` が書き方を返す) |

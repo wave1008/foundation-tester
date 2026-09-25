@@ -198,6 +198,50 @@ extension MCPServer {
             + (await snapshotBody(rotated, driver: rotateDriver, args: args)))
     }
 
+    /// DSL の `hideKeyboard()` と同じ StepExecutor のアクションを撃つ(ft_batch と同じ経路)。
+    /// **executor の「次の解決でキーボードが木から消えるのを待つ」は1回の呼び出しで捨てられる**ので、
+    /// Android ではここで待ってから返す(次の ft_tap が下端の要素を掴めるように)
+    func ftHideKeyboard(_ args: [String: Any]) async throws -> [[String: Any]] {
+        let hideDriver = try await driver(args)
+        let (isAndroid, uiFramework) = await resolveExecutorHints(hideDriver, args: args)
+        let executor = StepExecutor(driver: hideDriver, releasesScrollTouch: !isAndroid,
+                                    isAndroid: isAndroid, uiFramework: uiFramework)
+        let outcome = await executor.execute(FlowStep(action: "hideKeyboard"))
+        guard StepExecutor.isSuccess(outcome.status) else {
+            let reason: String
+            switch outcome.status {
+            case .failed(let message), .skipped(let message), .inconclusive(let message): reason = message
+            case .passed, .passedViaFallback, .healed: reason = "could not confirm the result"
+            }
+            throw MCPError("hideKeyboard failed: \(reason)" + (isAndroid ? ""
+                : " — iOS cannot close the keyboard without side effects; ft_type pressEnter: true"
+                    + " closes a single-line field's keyboard"))
+        }
+        recordInteraction(action: "hideKeyboard", resolvedRef: nil, args: args)
+        var note = outcome.driverFallback.map { " (\($0))" } ?? ""
+        if isAndroid { note += await awaitKeyboardLeftTree(hideDriver) }
+        return text("hideKeyboard sent.\(note)" + waitForWithoutSnapshotAfterNote(args)
+            + (await snapshotAfterBody(args)))
+    }
+
+    /// 木がキーボードを申告しなくなるまで待つ(上限 `FlowStep.defaultWaitSeconds` = DSL の
+    /// pendingHideKeyboardWait と同じ値)。**生読み**(世代を作らない = snapshotAfter の基準をずらさない)。
+    /// 申告が無ければ1枚読むだけ。上限まで残ったら言う(下端の要素がまだ木に無い)
+    func awaitKeyboardLeftTree(_ driver: AppDriver) async -> String {
+        let cap = FlowStep.defaultWaitSeconds
+        let deadline = Date().addingTimeInterval(cap)
+        while true {
+            guard let snapshot = try? await driver.snapshot(bypassingCache: driver.supportsCacheBypass),
+                  StepExecutor.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen)
+            else { return "" }
+            guard Date() < deadline else {
+                return " (warning: the element list still reports the keyboard after"
+                    + " \(Self.secondsText(cap)) — elements it covered may still be missing from the tree)"
+            }
+            try? await Task.sleep(for: .seconds(FocusWait.pollSeconds))
+        }
+    }
+
     func ftNavigate(_ args: [String: Any]) async throws -> [[String: Any]] {
         // **3つを1ツールに束ねる**: back/home/appSwitcher を個別ツールにすると定義が3倍になり、
         // 似た選択肢が並んでエージェントの選択が揺れる(docs/shirates-parity.md の

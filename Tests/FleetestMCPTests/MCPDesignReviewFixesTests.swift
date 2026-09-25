@@ -126,6 +126,44 @@ final class MCPDesignReviewFixesTests: XCTestCase {
         XCTAssertTrue(text.contains("timed out after 0s"), text)
     }
 
+    // MARK: - ft_hide_keyboard
+
+    func testHideKeyboardRunsAndIsDraftedAsADSLLine() async throws {
+        let text = body(try await server.call(tool: "ft_hide_keyboard", args: ["snapshotAfter": true]))
+        XCTAssertTrue(text.hasPrefix("hideKeyboard sent."), text)
+        XCTAssertTrue(text.contains("id=login_btn"), "木が付いていない: \(text)")
+        XCTAssertTrue(driver.calls.contains("hideKeyboard"), "\(driver.calls)")
+        let draft = body(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertTrue(draft.contains("hideKeyboard()"), draft)
+    }
+
+    /// iOS は閉じる手段が無く 501 → 断り、代わりの手(ft_type pressEnter)を名指しする。下書きにも残さない
+    func testHideKeyboardRefusalOnIOSNamesPressEnter() async throws {
+        driver.hideKeyboardError = DriverError.badResponse(status: 501, body: "not supported on iOS")
+        do {
+            _ = try await server.call(tool: "ft_hide_keyboard", args: [:])
+            XCTFail("501 が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("pressEnter"), error.localizedDescription)
+        }
+        let draft = body(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
+        XCTAssertFalse(draft.contains("hideKeyboard()"), draft)
+    }
+
+    /// 木がキーボードを申告しなくなるまで待つ(Android では executor の後続待ちが1回の呼び出しで捨てられるため)
+    func testAwaitKeyboardLeftTreeWaitsUntilTheKeyboardIsGone() async throws {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        var withKeyboard = SnapshotResponse(sessionBundleID: "com.example.app", screen: screen,
+                                            elements: [], truncatedCount: 0)
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 500, width: 400, height: 300)
+        let gone = SnapshotResponse(sessionBundleID: "com.example.app", screen: screen,
+                                    elements: [], truncatedCount: 0)
+        driver.scriptedSnapshots = [withKeyboard, withKeyboard, gone]
+        let note = await server.awaitKeyboardLeftTree(driver)
+        XCTAssertEqual(note, "")
+        XCTAssertEqual(driver.calls.filter { $0.hasPrefix("snapshot") }.count, 3, "\(driver.calls)")
+    }
+
     // MARK: - セッション状態
 
     /// 束ねる前は Set<String> の2つが forgetDeviceState の外にあった(前の機の状態が残っていた)

@@ -986,7 +986,7 @@ public final class StepExecutor {
     }
 
     /// 隠れたキーボードは nil ではなく画面外(y が画面の下端以上)の矩形で申告されることがある
-    static func keyboardOnScreen(_ frame: FTRect?, screen: FTRect) -> Bool {
+    public static func keyboardOnScreen(_ frame: FTRect?, screen: FTRect) -> Bool {
         guard let frame, frame.height > 0 else { return false }
         return frame.y < screen.y + screen.height
     }

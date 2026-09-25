@@ -102,6 +102,23 @@ final class LastElementTests: XCTestCase {
         XCTAssertTrue(missed.isEmpty, "失敗した tap が要素を返した: \(missed.id ?? "-")")
     }
 
+    /// チェーン形の `select(…).tap()` も自由関数の `tap` と同じく掴んだ要素を返す
+    func testChainedTapReturnsTheElement() {
+        var chained: FTElement!
+        run { chained = select("#order").tap() }
+        XCTAssertEqual(chained.id, "order")
+    }
+
+    /// 要素を返す操作は索引の説明文でそう言う(シナリオを書く側は索引しか読まない)
+    func testIndexSaysSelectorOperationsReturnTheElement() {
+        let names = ["tap", "type", "clearInput", "doubleTap", "swipeBy", "pinchOut", "pinchIn",
+                     "gesture", "swipeElementToElement", "scrollTo"]
+        for name in names {
+            let summary = DSLCommandIndex.all.first { $0.name == name }?.summary ?? ""
+            XCTAssertTrue(summary.lowercased().contains("returns the"), "\(name): \(summary)")
+        }
+    }
+
     /// 掴めなかったコマンドは**空で上書きする**。前の要素が残ると、別要素の値を
     /// 「今掴んだもの」として読んでしまう(この検査が本命)
     func testFailedGrabClearsTheHeldElement() {

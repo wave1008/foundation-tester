@@ -765,7 +765,7 @@ final class MCPToolCallTests: XCTestCase {
         "ft_swipe", "ft_scroll_to", "ft_batch", "ft_long_press", "ft_screenshot", "ft_terminate",
         "ft_double_tap", "ft_pinch", "ft_gesture", "ft_drag",
         "ft_navigate", "ft_clear_input", "ft_clear_app_data", "ft_open_url", "ft_rotate",
-        "ft_list_apps", "ft_capture_element",
+        "ft_list_apps", "ft_capture_element", "ft_hide_keyboard",
     ]
     private static let projectBackedTools: Set<String> = [
         "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",

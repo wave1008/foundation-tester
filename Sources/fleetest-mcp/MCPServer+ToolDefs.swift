@@ -409,6 +409,18 @@ extension MCPServer {
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["target"]),
+        tool("ft_hide_keyboard", "Close the soft keyboard. Android only: it sends the back key only while the "
+            + "keyboard is up, so it never navigates back. Afterwards it waits until the element list stops "
+            + "reporting the keyboard (Android can keep reporting it for seconds, hiding the elements under it). "
+            + "iOS has no side-effect-free way to close it, so this is refused there — ft_type pressEnter: true "
+            + "closes a single-line field's keyboard instead", [
+            "snapshotAfter": snapshotAfterProperty,
+            "waitForChange": snapshotAfterWaitForChangeProperty,
+            "waitFor": snapshotAfterWaitForProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
+            "expandBulk": expandBulkProperty,
+            "interactiveOnly": interactiveOnlyProperty,
+        ]),
         tool("ft_clear_app_data", "Wipe the app's data and permissions. "
             + "Stops the app, so ft_launch after it. Scenarios start from clearAppData(), so explore from that same state. "
             + "iOS simulator: wipes in place. iOS physical device: devicectl has no equivalent, so this "

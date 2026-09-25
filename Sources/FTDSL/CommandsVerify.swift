@@ -874,27 +874,29 @@ public struct FTElement {
     /// (画像で探す部品は id もラベルも無いことが多いので引き直さない。見つけた後に画面を動かすと
     /// 古い座標を叩く)。空の画像要素は叩かずに失敗する。それ以外は `tap(セレクタ)` と同じ
     /// (セレクタから引き直す)
+    /// 自由関数の `tap` と同じく掴んだ要素を返す(画像で見つけた要素は座標で叩くので自分自身)
+    @discardableResult
     public func tap(holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                     maxGestureSeconds: Double? = nil,
-                    file: StaticString = #filePath, line: UInt = #line) {
+                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         guard let imageLabel else {
-            tapImpl(selector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
-                    waitSeconds: nil, scroll: nil,
-                    maxSwipes: FlowStep.defaultMaxSwipes, containerInference: nil, file: file, line: line)
-            return
+            return tapImpl(selector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
+                           waitSeconds: nil, scroll: nil,
+                           maxSwipes: FlowStep.defaultMaxSwipes, containerInference: nil, file: file, line: line)
         }
         guard let imageFrame else {
             FTRuntime.requireCore(command: "tap").performCustom(
                 description: "tap image \"\(imageLabel)\"", command: "tap", file: file, line: line) {
                 throw FTCommandError.message("nothing to tap: the image \"\(imageLabel)\" was not found")
             }
-            return
+            return self
         }
         let x = imageFrame.x + imageFrame.width / 2
         let y = imageFrame.y + imageFrame.height / 2
         coordinateTap(x: x, y: y, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
                       description: "tap image \"\(imageLabel)\" (\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))",
                       file: file, line: line)
+        return self
     }
 
     /// **要素を掴めていないか**(Shirates の `TestElement.isEmpty` 相当)。

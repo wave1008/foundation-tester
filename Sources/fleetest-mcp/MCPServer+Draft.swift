@@ -201,7 +201,7 @@ extension MCPServer {
         }
         // ロケータ不要の手(swipe / フォーカス任せの type / 全画面ピンチ)はセレクタが無くても行にできる
         let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher",
-                             "pinchOut", "pinchIn"]
+                             "pinchOut", "pinchIn", "hideKeyboard"]
             .contains(action) || (resolvedRef != nil || coordinate != nil)
         // **座標タップは行にできる**(DSL の `tap(x:y:)` へ 1:1 で書き出せる)。
         // **ただし用途で重みが違う**(ユーザー方針): 対話中の探索では座標のほうが速いことがあるが、
