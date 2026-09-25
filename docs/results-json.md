@@ -212,7 +212,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | runID | String | この run の ID |
 | project | String | プロジェクト名 |
 | profile | String? | 実行プロファイル名 |
-| host | String | **実行マシンのホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。**LPT の同一マシン判定はこれ**。**マシン名(設定タブで付けたローカルエイリアス)は記録しない** —— エイリアスは頻繁に変わりうるので記録の鍵にしない(2026-08-26 ユーザー決定。用語は docs/remote-runner.md §0)。**旧キー `machine` の記録も読める** |
+| host | String | **実行マシンのホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。**LPT の同一マシン判定はこれ**。**マシン名(設定タブで付けたローカルエイリアス)は記録しない** —— エイリアスは頻繁に変わりうるので記録の鍵にしない(2026-08-26 ユーザー決定。用語は docs/remote-runner.md §0) |
 | toolchain | String? | **この run を実行した機械のツールチェーン指紋**(`xcodebuild -version` + iOS Simulator SDK のビルド。`FTCore.ToolchainFingerprint.current()`)。Xcode の無い機械(Android 専用のランナー等)では欠落。リモート実行でツールチェーンの混在(ベータ seed 違いは advisory で止めない。docs/remote-runner.md §7)を許すぶん、**その赤がどの機械の Xcode で出たかを run 横断で追うための事実** |
 | trigger | String | `"api"`(拡張)/ `"cli"` |
 | pid | Int? | run を書いたプロセスの pid(`fleetest run` / `api run` 自身)。**同じ `host` でだけ意味を持つ**。insights の `unfinishedRuns` は、finishedAt の無い run のうち **同じ機械で pid がまだ生きているものを「実行中」として数えない**(2026-09-14 より前の記録には無く、その run は従来どおり未完了として数える) |
@@ -240,8 +240,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 
 ### fmSettings(`FMSettingsRecord`)
 
-**4つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。**旧キー
-`falsePositiveCheck` / `ocrFalsePositiveCheck`(2026-09-15 以前の記録)も読める**(書くのは新キーだけ)。`ocrTextVisualCheck` は `FMConfig` の外(実行プロファイルの独立したキー)だが、記録上はここへまとめてある。`heal` も同様 —— FM を使わないが、記録上はここにまとめてある。
+**4つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。`ocrTextVisualCheck` は `FMConfig` の外(実行プロファイルの独立したキー)だが、記録上はここへまとめてある。`heal` も同様 —— FM を使わないが、記録上はここにまとめてある。
 
 | フィールド | 型 | 意味 |
 |---|---|---|
@@ -292,7 +291,7 @@ FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定
 | title | String? | `@Test` のタイトル |
 | platform | String | `ios` / `android` |
 | worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`fleetest run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
-| host / profile | String / String? | host = 実行マシンのホスト名(run.json と同じ。旧キー `machine` も読む) |
+| host / profile | String / String? | host = 実行マシンのホスト名(run.json と同じ) |
 | passed | Bool | シナリオ全体の成否 |
 | timedOut | Bool? | タイムアウトで強制終了したか |
 | startedAt / durationMs | String / Int | |

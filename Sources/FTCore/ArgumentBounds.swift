@@ -38,7 +38,7 @@ public enum ArgumentBounds {
     /// 走査で確かめる(載せ忘れは「値域が無いから」ではなく「まだ検討していないから」を
     /// 区別できない)。
     ///
-    /// `duration` / `press`(api live serve の別名。MCP のスキーマには出ない)は
+    /// `duration` / `press`(api live serve のワイヤの欄名。MCP のスキーマには出ない)は
     /// `durationSeconds` と同じ値域を共有する。`waitSeconds` は MCP ツールの待ち上限と
     /// `ft_batch` の DSL 行の両方が使う(同じ名前・同じ値域)。`repeat` / `dxRatio` / `dyRatio`
     /// は `ft_batch` の DSL 行だけが使う鍵(BatchStepResolver.intKeys/doubleKeys)

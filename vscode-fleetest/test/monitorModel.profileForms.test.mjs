@@ -728,40 +728,19 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
   });
 });
 
-test("parseRunProfileForForm: 旧キー screenIs は新キーが無いときだけ読む(改名前のプロファイル)", () => {
-  // 優先順は Sources/FTCore/RunProfile.swift の effectiveScreenLooksLike と同じ。
-  // 読み落とすと、受け手が OFF にしていた設定が画面上だけ ON へ戻る
-  assert.equal(parseRunProfileForForm({ screenIs: false }).screenLooksLike, false);
-  assert.equal(parseRunProfileForForm({ screenLooksLike: true, screenIs: false }).screenLooksLike, true);
-  assert.equal(parseRunProfileForForm({ screenIs: "false" }).screenLooksLike, true, "型不正は既定 true");
-  assert.equal(parseRunProfileForForm({}).screenLooksLike, true);
-});
-
-test("updateRunProfileInObject: 保存すると旧キー screenIs は消える(同じ設定が2つのキーに残らない)", () => {
+test("旧キーは読まず、保存でも特別扱いしない(未公開のツールなので移行処理を置かない)", () => {
+  // 改名前の screenIs は読まない = 新キーが無ければ既定 true
+  assert.equal(parseRunProfileForForm({ screenIs: false }).screenLooksLike, true);
+  // 撤去したキー(screenIs / fm / ocr / triage)も他の未知のキーと同じく引き継ぐだけ
+  // (CLI の validate が unknown key として警告する)
   const saved = updateRunProfileInObject(
-    { screenIs: false, app: "a" },
+    { screenIs: false, fm: true, triage: true, app: "a" },
     { ...BASE_RUN_PROFILE_FIELDS, screenLooksLike: true });
   assert.equal(saved.ok, true);
   assert.equal(saved.object.screenLooksLike, true);
-  assert.ok(!("screenIs" in saved.object), `旧キーが残っている: ${JSON.stringify(saved.object)}`);
-});
-
-test("updateRunProfileInObject: 保存すると撤去したキー triage は消える(旧テンプレートが必ず書いていた)", () => {
-  const saved = updateRunProfileInObject(
-    { triage: true, app: "a", customKey: 1 },
-    { ...BASE_RUN_PROFILE_FIELDS });
-  assert.equal(saved.ok, true);
-  assert.ok(!("triage" in saved.object), `撤去したキーが残っている: ${JSON.stringify(saved.object)}`);
-  assert.equal(saved.object.customKey, 1, "他の未知のキーは引き継ぐ");
-});
-
-test("updateRunProfileInObject: 保存すると撤去したキー fm/ocr は値に関わらず消える(旧 GUI が必ず書いていた)", () => {
-  const saved = updateRunProfileInObject(
-    { fm: true, ocr: false, app: "a" },
-    { ...BASE_RUN_PROFILE_FIELDS });
-  assert.equal(saved.ok, true);
-  assert.ok(!("fm" in saved.object), `撤去したキーが残っている: ${JSON.stringify(saved.object)}`);
-  assert.ok(!("ocr" in saved.object), `撤去したキーが残っている: ${JSON.stringify(saved.object)}`);
+  assert.equal(saved.object.screenIs, false);
+  assert.equal(saved.object.fm, true);
+  assert.equal(saved.object.triage, true);
 });
 
 test("parseRunProfileForForm: remoteControl はネストしたオブジェクトから読む(欠落/非オブジェクト/非文字列 は既定値'')", () => {

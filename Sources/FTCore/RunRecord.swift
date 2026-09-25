@@ -58,39 +58,12 @@ public struct FMSettingsRecord: Codable, Sendable, Equatable {
         self.screenLooksLike = screenLooksLike
         self.ocrTextVisualCheck = ocrTextVisualCheck
     }
-
-    /// 旧キー "falsePositiveCheck" / "ocrFalsePositiveCheck"(2026-09-15 以前の記録)も読む。
-    /// 書きは新キーだけ。**読めないと run.json 全体が読めなくなる**(欄が非 Optional のため)
-    private enum CodingKeys: String, CodingKey {
-        case heal, textVisualCheck, screenLooksLike, ocrTextVisualCheck
-        case legacyTextVisualCheck = "falsePositiveCheck"
-        case legacyOcrTextVisualCheck = "ocrFalsePositiveCheck"
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        heal = try c.decode(Bool.self, forKey: .heal)
-        screenLooksLike = try c.decode(Bool.self, forKey: .screenLooksLike)
-        textVisualCheck = try c.decodeIfPresent(Bool.self, forKey: .textVisualCheck)
-            ?? c.decode(Bool.self, forKey: .legacyTextVisualCheck)
-        ocrTextVisualCheck = try c.decodeIfPresent(Bool.self, forKey: .ocrTextVisualCheck)
-            ?? c.decode(Bool.self, forKey: .legacyOcrTextVisualCheck)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(heal, forKey: .heal)
-        try c.encode(textVisualCheck, forKey: .textVisualCheck)
-        try c.encode(screenLooksLike, forKey: .screenLooksLike)
-        try c.encode(ocrTextVisualCheck, forKey: .ocrTextVisualCheck)
-    }
 }
 
 /// results/runs/<YYYY-MM>/<runID>/run.json
 public struct RunMetaRecord: Codable, Sendable {
-    /// 旧キー "machine"(2026-08-26 以前の記録)も読む。書きは "host" だけ
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, runID, project, profile, host, machine, toolchain, trigger, startedAt, finishedAt, pid
+        case schemaVersion, runID, project, profile, host, toolchain, trigger, startedAt, finishedAt, pid
         case total, passed, failed, degradedWorkers, freezeRetries, blankRepairs, blankExclusions
         case measurementInvalid, measurementInvalidReasons, workerAnomalies, issuer, runGroup
         case performanceMode, fmDead, fmDeadReason
@@ -104,8 +77,7 @@ public struct RunMetaRecord: Codable, Sendable {
         runID = try c.decode(String.self, forKey: .runID)
         project = try c.decode(String.self, forKey: .project)
         profile = try c.decodeIfPresent(String.self, forKey: .profile)
-        host = try c.decodeIfPresent(String.self, forKey: .host)
-            ?? c.decodeIfPresent(String.self, forKey: .machine) ?? ""
+        host = try c.decodeIfPresent(String.self, forKey: .host) ?? ""
         // 旧レコードにキーが無いので Optional のまま decode する(schemaVersion は上げない。issuer と同じ形)
         toolchain = try c.decodeIfPresent(String.self, forKey: .toolchain)
         trigger = try c.decode(String.self, forKey: .trigger)
@@ -181,7 +153,7 @@ public struct RunMetaRecord: Codable, Sendable {
     /// **その run を走らせた機械のホスト名**(`FT_MACHINE` > hostname を sanitize したもの)。
     /// 用語の定義(2026-08-26 ユーザー決定): host = ホスト名/IP、machine = そのローカルエイリアス。
     /// **エイリアスは頻繁に変わりうるので記録の鍵にしない** —— LPT の「同じ機械の実績を優先」も
-    /// この欄で照合する。**JSON キーは "host"**(旧キー "machine" も読む)
+    /// この欄で照合する。**JSON キーは "host"**
     public var host: String
     /// **この run を実行した機械のツールチェーン指紋**(`FTCore.ToolchainFingerprint.current()` =
     /// `xcodebuild -version` + iOS Simulator SDK のビルド)。Xcode の無い機械(Android のみ等)では
@@ -536,10 +508,8 @@ public enum ScenarioSkipKind: String, Codable, Sendable {
 }
 
 public struct ScenarioRunRecord: Codable, Sendable {
-    /// 旧キー "machine"(2026-08-26 以前の記録)も読む。書きは "host" だけ
-    /// (RunMetaRecord と同じ規律。片方だけ変えない)
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, runID, scenarioID, title, platform, worker, host, machine, profile
+        case schemaVersion, runID, scenarioID, title, platform, worker, host, profile
         case passed, timedOut, startedAt, durationMs, scenes, steps, reportPath, failedSteps
         case fixSuggestions, errorLogs, fm, timeline, skipKind, interrupted
     }
@@ -552,8 +522,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         title = try c.decodeIfPresent(String.self, forKey: .title)
         platform = try c.decode(String.self, forKey: .platform)
         worker = try c.decodeIfPresent(String.self, forKey: .worker)
-        host = try c.decodeIfPresent(String.self, forKey: .host)
-            ?? c.decodeIfPresent(String.self, forKey: .machine) ?? ""
+        host = try c.decodeIfPresent(String.self, forKey: .host) ?? ""
         profile = try c.decodeIfPresent(String.self, forKey: .profile)
         passed = try c.decode(Bool.self, forKey: .passed)
         timedOut = try c.decodeIfPresent(Bool.self, forKey: .timedOut)
@@ -606,7 +575,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// "<platform>:<デバイス論理名>"(ScenarioEvent.worker と同一規則)
     public var worker: String?
     /// RunRecorder が焼き込む(Builder 段階では "")。**機械のホスト名**で、ローカルエイリアス
-    /// ではない(RunMetaRecord.host の宣言参照)。**JSON キーは "host"**(旧キー "machine" も読む)
+    /// ではない(RunMetaRecord.host の宣言参照)。**JSON キーは "host"**
     public var host: String
     /// RunRecorder が焼き込む
     public var profile: String?

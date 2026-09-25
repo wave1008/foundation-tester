@@ -267,7 +267,7 @@ public final class StepExecutor {
     /// (アプリ内の事前説明を閉じた直後の通知許可・ATT)でも出るので、フェーズ単位で
     /// 1回だけ見る(シーンあたり高々3往復 ≈ 0.2s。毎ステップの往復は登録がある間だけ)
     public func armUnregisteredSystemAlertProbe() { systemAlertProbePending = true }
-    /// launch 系の直後(後方互換の別名)。**firstFrameGatePending もここで arm する**
+    /// launch 系の直後に呼ぶ。システムアラートの確認に加え、**firstFrameGatePending もここで arm する**
     /// (CAE フェーズ先頭の armUnregisteredSystemAlertProbe には乗せない ——
     /// launch storyboard の猶予は launch 系コマンド直後だけに絞る)
     public func noteAppLaunched() {

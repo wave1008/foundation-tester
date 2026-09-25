@@ -563,7 +563,7 @@ final class RunResultsStoreTests: XCTestCase {
 
     /// 旧 run.json(issuer キーが無い)も引き続き decode できる(schemaVersion は上げていない)
     func testRunMetaRecordDecodesOldJsonWithoutIssuerKey() throws {
-        let raw = "{\"schemaVersion\":1,\"runID\":\"x\",\"project\":\"SampleApp\",\"machine\":\"m\","
+        let raw = "{\"schemaVersion\":1,\"runID\":\"x\",\"project\":\"SampleApp\",\"host\":\"m\","
             + "\"trigger\":\"cli\",\"startedAt\":\"2026-01-01T00:00:00Z\"}"
         let decoded = try XCTUnwrap(try? JSONDecoder().decode(RunMetaRecord.self, from: Data(raw.utf8)))
         XCTAssertNil(decoded.issuer)

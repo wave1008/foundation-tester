@@ -192,7 +192,8 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertNil(resolved.apps["ios"]?.appPath, "common の appPath は引き継がれないはず")
     }
 
-    func testValidateWarnsOnDeprecatedCommonAppAndAppPath() throws {
+    /// 合成が読まないキーは**未知キーとして警告する**(移行の案内は置かない。黙って無視しないことだけ守る)
+    func testValidateWarnsOnCommonAppAndAppPathAsUnknownKeys() throws {
         let data = #"""
         { "common": { "app": "com.example.app", "appPath": "x.app" } }
         """#.data(using: .utf8)!
@@ -200,30 +201,25 @@ final class ProfileResolverTests: XCTestCase {
         let (errors, warnings) = ProfileResolver.validate(
             kind: .app, data: data, context: "apps/app2.json")
         XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
-        XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"app\"")
-                                          && $0.contains("deprecated") },
-                      "common.app 廃止警告が出るはず: \(warnings)")
-        XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"appPath\"")
-                                          && $0.contains("deprecated") },
-                      "common.appPath 廃止警告が出るはず: \(warnings)")
+        XCTAssertTrue(warnings.contains("apps/app2.json common: unknown key \"app\" is ignored"),
+                      "\(warnings)")
+        XCTAssertTrue(warnings.contains("apps/app2.json common: unknown key \"appPath\" is ignored"),
+                      "\(warnings)")
     }
 
-    /// 読まなくなった `iosSystemAlertButtons` は、**validate 経路でも**行き先を案内する
-    /// (resolve だけだと `profile check`/エディタで沈黙する ← レビュー指摘 2026-08-22)
-    func testValidateWarnsWhenLegacySystemAlertKeyPresent() throws {
+    /// 読まなくなった `iosSystemAlertButtons` は未知キーとして警告する(黙って無視しない)
+    func testValidateWarnsOnRemovedSystemAlertKeyAsUnknown() throws {
         let data = #"""
         { "app": "sampleapp", "devices": [{ "name": "x" }],
           "iosSystemAlertButtons": ["許可"] }
         """#.data(using: .utf8)!
         let (_, warnings) = ProfileResolver.validate(
             kind: .run, data: data, context: "runs/legacy.json")
-        XCTAssertTrue(warnings.contains { $0.contains("iosSystemAlertButtons")
-                                          && $0.contains("iosAlertHandler") },
-                      "旧キーの行き先(iosAlertHandler)を案内する警告が出るはず: \(warnings)")
+        XCTAssertTrue(warnings.contains("runs/legacy.json: unknown key \"iosSystemAlertButtons\" is ignored"),
+                      "\(warnings)")
     }
 
-    /// common.appName は廃止(この契約変更の核): 黙って無視せず、ios/android への移動を促す
-    /// 警告が出ること
+    /// common.appName は読まない: 黙って無視せず未知キーとして警告する
     func testValidateWarnsWhenAppNameInCommonSection() throws {
         let data = #"""
         { "common": { "appName": "A" }, "ios": { "app": "com.example.app" } }
@@ -232,9 +228,8 @@ final class ProfileResolverTests: XCTestCase {
         let (errors, warnings) = ProfileResolver.validate(
             kind: .app, data: data, context: "apps/app2.json")
         XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
-        XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"appName\"")
-                                          && $0.contains("ios/android") },
-                      "common.appName は ios/android への移動を促す警告が出るはず: \(warnings)")
+        XCTAssertTrue(warnings.contains("apps/app2.json common: unknown key \"appName\" is ignored"),
+                      "\(warnings)")
     }
 
     func testValidateNoWarningWhenAppAndAppPathInPlatformSection() throws {
@@ -349,7 +344,8 @@ final class ProfileResolverTests: XCTestCase {
                        "common.appName は継承されないので、参照名 app5 にフォールバックするはず")
     }
 
-    func testValidateWarnsOnDeprecatedPlatformAutoInstall() throws {
+    /// autoInstall は common でしか読まない = platform 側は未知キーとして警告する
+    func testValidateWarnsOnPlatformAutoInstallAsUnknown() throws {
         let data = #"""
         { "ios":     { "appName": "A", "app": "com.example.app", "autoInstall": true },
           "android": { "app": "com.example.app", "autoInstall": false } }
@@ -358,12 +354,10 @@ final class ProfileResolverTests: XCTestCase {
         let (errors, warnings) = ProfileResolver.validate(
             kind: .app, data: data, context: "apps/app3.json")
         XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
-        XCTAssertTrue(warnings.contains { $0.contains("ios") && $0.contains("autoInstall")
-                                          && $0.contains("deprecated") },
-                      "ios.autoInstall 廃止警告が出るはず: \(warnings)")
-        XCTAssertTrue(warnings.contains { $0.contains("android") && $0.contains("autoInstall")
-                                          && $0.contains("deprecated") },
-                      "android.autoInstall 廃止警告が出るはず: \(warnings)")
+        XCTAssertTrue(warnings.contains("apps/app3.json ios: unknown key \"autoInstall\" is ignored"),
+                      "\(warnings)")
+        XCTAssertTrue(warnings.contains("apps/app3.json android: unknown key \"autoInstall\" is ignored"),
+                      "\(warnings)")
     }
 
     func testValidateNoWarningWhenAutoInstallInCommonSection() throws {
@@ -1067,30 +1061,16 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.fm.screenLooksLike)
     }
 
-    /// 改名前の旧キー `screenIs` を書いた受け手のプロファイルが動き続けること。
-    /// **未知キー警告も出さない**(knownKeys に残してある)
-    func testLegacyScreenIsKeyStillDisablesScreenLooksLike() throws {
+    /// 改名前のキー `screenIs` は読まない(未公開のツールなので移行処理を置かない)。
+    /// 未知キーとして警告し、screenLooksLike は既定の true のまま
+    func testOldScreenIsKeyIsAnUnknownKey() throws {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "screenIs": false }
-        """, to: project.runsDir, name: "legacykey")
-        let resolved = try ProfileResolver.resolve(
-            project: project, runName: "legacykey")
-        XCTAssertFalse(resolved.fm.screenLooksLike, "旧キーを読み落とすと設定が黙って既定へ戻る")
-        XCTAssertTrue(resolved.fm.enabled)
-    }
-
-    /// 新旧が両方書かれていたら**新キーが勝つ**(拡張は保存時に旧キーを落とすので、
-    /// 両方あるのは手で足した場合だけ。優先順を決めておかないと画面と実行が食い違う)
-    func testNewKeyWinsOverLegacyScreenIsKey() throws {
-        try writeStandardFixture()
-        try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "screenLooksLike": true, "screenIs": false }
-        """, to: project.runsDir, name: "bothkeys")
-        let resolved = try ProfileResolver.resolve(
-            project: project, runName: "bothkeys")
+        """, to: project.runsDir, name: "oldkey")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "oldkey")
         XCTAssertTrue(resolved.fm.screenLooksLike)
+        XCTAssertEqual(resolved.warnings, ["runs/oldkey.json: unknown key \"screenIs\" is ignored"])
     }
 
     // MARK: - containerInference(FM とは独立。既定 true)

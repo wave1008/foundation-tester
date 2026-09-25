@@ -18,16 +18,7 @@ public struct TestProject: Sendable, Hashable, Identifiable {
 
     public var productName: String { "fleetest-scenarios-\(name)" }
 
-    /// **小文字 `scenarios/` が正**(2026-08-05 に `Scenarios/` から統一。他の器 —— profiles /
-    /// reports / results / docs —— と揃える)。**旧名も受ける**: 既存の受け手のプロジェクトは
-    /// `Scenarios/` のままで、macOS は大小同一視するので実害が出ないが、
-    /// **大小を区別するボリュームでは解決できなくなる**ため明示的に見に行く
-    public var scenariosDir: URL {
-        let lower = rootURL.appendingPathComponent("scenarios")
-        guard !FileManager.default.fileExists(atPath: lower.path) else { return lower }
-        let legacy = rootURL.appendingPathComponent("Scenarios")
-        return FileManager.default.fileExists(atPath: legacy.path) ? legacy : lower
-    }
+    public var scenariosDir: URL { rootURL.appendingPathComponent("scenarios") }
     public var generatedDir: URL { scenariosDir.appendingPathComponent("Generated") }
     public var disabledDir: URL { scenariosDir.appendingPathComponent("_disabled") }
     public var profilesDir: URL { rootURL.appendingPathComponent("profiles") }
@@ -68,14 +59,7 @@ public enum ProjectStoreError: Error, LocalizedError {
 
 public enum ProjectStore {
     public static func projectsDir(repoRoot: URL) -> URL {
-        {
-            let current = repoRoot.appendingPathComponent("TestProjects")
-            guard !FileManager.default.fileExists(atPath: current.path) else { return current }
-            // **旧名 `TestProjects/` も受ける**(2026-08-05 に改名。既存の受け手のリポジトリは
-            // 旧名のままで、こちらは大小が違うので macOS でも解決できない)
-            let legacy = repoRoot.appendingPathComponent("Projects")
-            return FileManager.default.fileExists(atPath: legacy.path) ? legacy : current
-        }()
+        repoRoot.appendingPathComponent("TestProjects")
     }
 
     /// TestProjects/ 直下のディレクトリを列挙(名前順)

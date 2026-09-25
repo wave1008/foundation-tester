@@ -42,34 +42,19 @@ final class RunnerProfileViewTests: XCTestCase {
         XCTAssertFalse(text(view).contains("M1Max"))
     }
 
-    /// 旧キー "host" のまま書かれた台も畳める(持ち込まない)
-    func testReadsTheLegacyHostKey() {
-        let profile = json("""
-        {"devices": [{"platform": "ios", "host": "M1Ultra", "name": "旧キー"},
-                     {"platform": "ios", "host": "local", "name": "手元"}]}
-        """)
-        let view = RunnerProfileView.localizeRunProfile(profile, alias: "M1Ultra",
-                                                        projectIsMachineAnnotated: true)
-        let list = devices(view)
-        XCTAssertEqual(list.map { $0["name"] as? String }, ["旧キー"])
-        XCTAssertEqual(list[0]["machine"] as? String, "local")
-        XCTAssertNil(list[0]["host"], "旧キーは持ち込まない(エイリアスが残る)")
-    }
-
     /// 注記の無いプロジェクト(全台が手元 = `profile setup` の素の出力)。
     /// **全台を alias の台として残す**(落とすと向こうで0台になる)
     func testUnannotatedProjectKeepsEveryDeviceAsLocal() {
         let profile = json("""
         {"devices": [{"platform": "ios", "name": "iPhone-01", "udid": "AAA"},
                      {"platform": "ios", "machine": "local", "name": "iPhone-02"},
-                     {"platform": "android", "host": "local", "name": "Pixel 3a", "serial": "S"}]}
+                     {"platform": "android", "machine": "local", "name": "Pixel 3a", "serial": "S"}]}
         """)
         let view = RunnerProfileView.localizeRunProfile(profile, alias: "M1Max",
                                                         projectIsMachineAnnotated: false)
         let list = devices(view)
         XCTAssertEqual(list.map { $0["name"] as? String }, ["iPhone-01", "iPhone-02", "Pixel 3a"])
         XCTAssertEqual(list.map { $0["machine"] as? String }, ["local", "local", "local"])
-        XCTAssertNil(list[2]["host"])
         XCTAssertFalse(text(view).contains("M1Max"), "エイリアスが1文字も残ってはいけない")
     }
 

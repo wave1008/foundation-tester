@@ -248,18 +248,6 @@ final class RunRecordTests: XCTestCase {
         XCTAssertNil(decoded.fmSettings)
     }
 
-    /// 2026-09-15 以前の記録は旧キー(falsePositiveCheck / ocrFalsePositiveCheck)で書かれている。
-    /// 欄が非 Optional なので、旧キーを読めないと run.json 全体が読めなくなる
-    func testRunMetaRecordDecodesLegacyFmSettingsKeys() throws {
-        let raw = "{\"schemaVersion\":1,\"runID\":\"x\",\"project\":\"SampleApp\",\"host\":\"m\","
-            + "\"trigger\":\"cli\",\"startedAt\":\"2026-01-01T00:00:00Z\","
-            + "\"fmSettings\":{\"fm\":true,\"heal\":true,\"falsePositiveCheck\":false,"
-            + "\"screenLooksLike\":true,\"ocr\":true,\"ocrFalsePositiveCheck\":false}}"
-        let decoded = try JSONDecoder().decode(RunMetaRecord.self, from: Data(raw.utf8))
-        XCTAssertEqual(decoded.fmSettings, FMSettingsRecord(
-            heal: true, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: false))
-    }
-
     func testFailedScenarioCollectsStepsScenesAndFailures() throws {
         var builder = ScenarioRecordBuilder(
             scenarioID: "Foo.bar", platform: "ios", title: "Foo bar", worker: "ios:iPhone 16")

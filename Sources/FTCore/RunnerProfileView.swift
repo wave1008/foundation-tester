@@ -30,9 +30,9 @@ public enum RunnerProfileView {
     /// 手元を表す予約名(FTCore.DeviceMachineGrouping.localDisplayName と同じ値)
     private static let localName = DeviceMachineGrouping.localDisplayName
 
-    /// デバイス1件の実効マシン(nil = 手元)。**旧キー "host" も読む**(DeviceSpec.init(from:) と同じ規律)
+    /// デバイス1件の実効マシン(nil = 手元)
     static func effectiveMachine(device: [String: Any]) -> String? {
-        MachineDispatch.normalize((device["machine"] ?? device["host"]) as? String)
+        MachineDispatch.normalize(device["machine"] as? String)
     }
 
     private static func devices(_ object: [String: Any]) -> [[String: Any]] {
@@ -62,7 +62,6 @@ public enum RunnerProfileView {
                 return nil  // 発行側の手元("local")も他機の台も、そのランナーでは走らない
             }
             var localized = device
-            localized["host"] = nil          // 旧キーが残っていても持ち込まない
             localized["machine"] = localName
             return localized
         }

@@ -1121,7 +1121,7 @@
   ずれていた。**同じ非対称が育たないよう2つで守る**: ①**上書きは
   `ProfileResolver.resolve` が読み込み直後の文書へ当てる1箇所だけ**(消費側へ個別配線しない。
   `ResolvedProfile` の全欄が自動で追随する)②**`--set` が受けるキーの集合 ==
-  `RunProfileDocument` の全欄**(配列・オブジェクトと旧名 `screenIs` を除く)を `Mirror` で
+  `RunProfileDocument` の全欄**(配列・オブジェクトを除く)を `Mirror` で
   等号固定(`RunProfileSetOverrideTests`)—— 新しい欄を足して `--set` から漏れると落ちる。
   **同じ意味の専用フラグ(`--report-dir` / `--default-timeout` / `--scenario-timeout`)と
   併用したらエラー**(片方を黙って勝たせない)。**`--app-id` / `--runner` は衝突させない** ——

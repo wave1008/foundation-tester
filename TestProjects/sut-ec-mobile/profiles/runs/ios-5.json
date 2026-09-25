@@ -136,7 +136,7 @@
   "heal": true,
   "iosInappEngine": true,
   "record": true,
-  "screenIs": true,
+  "screenLooksLike": true,
   "textVisualCheck": true,
   "wipeDataOnBloat": true
 }

@@ -138,7 +138,7 @@
   "heal": true,
   "iosInappEngine": true,
   "recoverCpuFallbackToGpu": true,
-  "screenIs": true,
+  "screenLooksLike": true,
   "textVisualCheck": true,
   "wipeDataOnBloat": true
 }

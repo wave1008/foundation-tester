@@ -48,20 +48,17 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
         self.healthCheckURL = healthCheckURL
     }
 
-    /// common セクションで許容されるキー(appName は platform 専用のためここには含まない —
-    /// 含めると common.appName が「既知キー」に化けて checkAppProfileKeys の未知キー検出を
-    /// すり抜け、黙って無視される)
-    static let commonKnownKeys: Set<String> = ["app", "appPath", "autoInstall", "healthCheckURL"]
-    /// ios/android セクションで許容されるキー
-    static let platformKnownKeys: Set<String> = [
-        "appName", "app", "appPath", "appPathPhysical", "autoInstall", "healthCheckURL",
-    ]
+    /// セクションごとに**合成(merging)が実際に読むキーだけ**を既知とする。読まないキーを
+    /// 既知に入れると checkAppProfileKeys の未知キー警告をすり抜け、書いたのに効かない設定が黙る
+    static let commonKnownKeys: Set<String> = ["autoInstall", "healthCheckURL"]
+    static let platformKnownKeys: Set<String> = ["appName", "app", "appPath", "appPathPhysical"]
 
     /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
     /// 採用元が異なる: appName・app・appPath = platform のみ(OS ごとに書き分けるため。
     /// 表示名も common からは継承しない) /
     /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)(インストール可否は OS 間で揃えるべき運用設定のため)。
-    /// common セクションに appName/app/appPath が書かれていてもここで黙って無視される(validate が警告を出す)。
+    /// common セクションの appName/app/appPath・platform セクションの autoInstall/healthCheckURL は
+    /// ここで無視される(validate が未知キーとして警告する)。
     /// other が nil(platform セクション自体が無い)場合も同じ規則で合成するため、
     /// early return せず常に other?.field / self.field を明示的に選ぶ
     func merging(_ other: AppProfileSection?) -> AppProfileSection {
@@ -178,22 +175,19 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         osVersion == nil && udid == nil && avd == nil && serial == nil
     }
 
-    /// 旧キー "host" は読めるので既知扱いにする(未知キー検査で弾かない)
     static let knownKeys: Set<String> = [
-        "name", "machine", "host", "kind", "osVersion", "udid", "port", "engine", "avd",
+        "name", "machine", "kind", "osVersion", "udid", "port", "engine", "avd",
         "serial", "model",
     ]
 
     private enum CodingKeys: String, CodingKey {
-        case name, machine, host, kind, osVersion, udid, port, engine, avd, serial, model
+        case name, machine, kind, osVersion, udid, port, engine, avd, serial, model
     }
 
-    /// **読みは machine > 旧 host**、書きは machine だけ(改名の互換はこの1箇所)
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decode(String.self, forKey: .name)
         machine = try container.decodeIfPresent(String.self, forKey: .machine)
-            ?? container.decodeIfPresent(String.self, forKey: .host)
         kind = try container.decodeIfPresent(DeviceKind.self, forKey: .kind)
         osVersion = try container.decodeIfPresent(String.self, forKey: .osVersion)
         udid = try container.decodeIfPresent(String.self, forKey: .udid)
@@ -398,10 +392,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 分類器が使えるのは `vision/classifiers/CheckStateClassifier/<ラベル>/` に画像があるときだけ。
     /// false なら a11y が状態を報告しない要素にだけ使う(VisionClassifier.swift)
     public var preferCheckStateClassifier: Bool?
-    /// 旧名 `screenIs` の受け口(コマンドの改名前に書かれた受け手のプロファイルが動き続けるため)。
-    /// **読むのは screenLooksLike が未指定のときだけ**(effectiveScreenLooksLike)。書き出す側は
-    /// 新キーだけを書く。この欄を消すと既存のプロファイルが黙って既定値に戻る
-    public var screenIs: Bool?
     /// レポート出力先(プロジェクトルート相対 or 絶対。既定 "reports")
     public var reportDir: String?
     /// DSL コマンドの既定タイムアウト秒(小数可。省略時は DSL 側の既定値)
@@ -492,7 +482,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 heal: Bool? = nil, textVisualCheck: Bool? = nil, screenLooksLike: Bool? = nil,
                 ocrTextVisualCheck: Bool? = nil,
                 preferCheckStateClassifier: Bool? = nil,
-                screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, updateWebView: Bool? = nil,
@@ -511,7 +500,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.screenLooksLike = screenLooksLike
         self.ocrTextVisualCheck = ocrTextVisualCheck
         self.preferCheckStateClassifier = preferCheckStateClassifier
-        self.screenIs = screenIs
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
@@ -534,19 +522,14 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.remoteControl = remoteControl
     }
 
-    /// screenLooksLike の実効値。新キーが優先、無ければ旧キー `screenIs`、どちらも無ければ既定 true
-    public var effectiveScreenLooksLike: Bool { screenLooksLike ?? screenIs ?? true }
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "textVisualCheck", "screenLooksLike", "ocrTextVisualCheck",
         "preferCheckStateClassifier",
-        "screenIs",  // 旧名。effectiveScreenLooksLike が拾う(未知キー警告を出さないため残す)
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "iosInappEngine", "wipeDataOnBloat", "updateWebView", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        // iosSystemAlertButtons はもう読まない(→ シナリオの iosAlertHandler)。
-        // knownKeys に残すのは、一般の unknown-key 警告ではなく resolve の専用警告で案内するため
-        "iosFastInput", "iosPreActionWarmup", "iosSystemAlertButtons", "enableAnimations", "homeOnStart",
+        "iosFastInput", "iosPreActionWarmup", "enableAnimations", "homeOnStart",
         "playProtectBypass",
         "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
@@ -590,8 +573,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// `fleetest run --set <key>=<value>` / `fleetest api run --set` が受け付けるキー全部
     /// (Bool 17 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
     /// kebab 変換をしない)。**`RunProfileDocument` の Bool/String/Int/Double 欄の全部から
-    /// `screenIs`(旧名の受け口で `screenLooksLike` に一本化済み)・`devices`・`remoteControl`
-    /// (配列・オブジェクトで `key=value` を持たない)を除いたもの**。
+    /// `devices`・`remoteControl`(配列・オブジェクトで `key=value` を持たない)を除いたもの**。
     /// この等号は `RunProfileSetOverrideKeysTests` が Mirror で固定する
     public static let overridableKeys: Set<String> = Set(overridableKeyKinds.keys)
 
@@ -850,7 +832,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
         // FM を使うかは子トグルから導く(親スイッチは無い)。両方 false なら
         // 実行バイナリへ --no-fm が渡る(ScenarioHost の既存分岐。FMConfig の doc コメント参照)
         let textVisualCheck = doc.textVisualCheck ?? true
-        let screenLooksLike = doc.effectiveScreenLooksLike
+        let screenLooksLike = doc.screenLooksLike ?? true
         return DeviceIndependentRunSettings(
             fm: FMConfig(
                 enabled: textVisualCheck || screenLooksLike,
@@ -1329,7 +1311,6 @@ public enum ProfileResolver {
             checkKeys(json, allowed: RunProfileDocument.knownKeys, context: "runs/\(runName).json")
                 + checkDeviceEntryKeys(json, context: "runs/\(runName).json")
                 + checkRemoteControlKeys(json, context: "runs/\(runName).json")
-                + legacyKeyWarnings(json, context: "runs/\(runName).json")
         }
         // `--set` はここで一度だけ当てる(読み込み直後・解決より前)。以降の全処理はこの
         // runDoc だけを見るので、全キーが個別の配線無しで効く(RunProfileDocument.applyingOverrides)
@@ -1627,7 +1608,6 @@ public enum ProfileResolver {
                 errors.append("cannot load as an app profile (\(describeDecodingError(error)))")
             }
             warnings += checkAppProfileKeys(json, context: context)
-            warnings += checkDeprecatedSectionKeys(json, context: context)
         case .run:
             if let doc = try? decoder.decode(RunProfileDocument.self, from: data) {
                 if doc.app == nil { errors.append("no \"app\" (a reference into apps/)") }
@@ -1670,7 +1650,6 @@ public enum ProfileResolver {
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
             warnings += checkDeviceEntryKeys(json, context: context)
             warnings += checkRemoteControlKeys(json, context: context)
-            warnings += legacyKeyWarnings(json, context: context)
         }
         return (errors, warnings)
     }
@@ -1726,16 +1705,6 @@ public enum ProfileResolver {
         return value
     }
 
-    /// 読まなくなったキーは、黙って無視すると「宣言したのに効かない」が沈黙になるので、
-    /// 行き先まで書いて案内する(unknown-key 警告より具体的に)。resolve と単体 validate の
-    /// **両方**から呼ぶ —— 片方だけだと `profile check`/エディタ経路で沈黙する
-    static func legacyKeyWarnings(_ json: [String: Any], context: String) -> [String] {
-        guard json["iosSystemAlertButtons"] != nil else { return [] }
-        return ["\(context): \"iosSystemAlertButtons\" is no longer read —"
-                + " register in the scenario instead:"
-                + " iosAlertHandler(alert: \"<title part>\", button: \"<label>\") (docs/commands.md)"]
-    }
-
     private static func checkKeys(_ json: [String: Any], allowed: Set<String>,
                                   context: String) -> [String] {
         json.keys.filter { !allowed.contains($0) }.sorted().map {
@@ -1753,26 +1722,6 @@ public enum ProfileResolver {
     private static func checkRemoteControlKeys(_ json: [String: Any], context: String) -> [String] {
         guard let section = json["remoteControl"] as? [String: Any] else { return [] }
         return checkKeys(section, allowed: RemoteControlSection.knownKeys, context: "\(context) remoteControl")
-    }
-
-    /// セクション別に廃止されたキーの検査(廃止の理由は AppProfileSection.merging 参照)。
-    /// 存在すれば警告のみ(値自体は merging で無視されるだけなので後方互換上エラーにはしない)
-    private static func checkDeprecatedSectionKeys(_ json: [String: Any],
-                                                   context: String) -> [String] {
-        // (セクション, 廃止キー, 移動先の案内, 補足)。表示順を安定させるため明示配列で回す
-        let rules: [(section: String, key: String, moveTo: String, hint: String)] = [
-            ("common", "app", "ios/android", ""),
-            ("common", "appPath", "ios/android", ""),
-            ("common", "appName", "ios/android", " (the display name)"),
-            ("ios", "autoInstall", "common", " (enabled by default when appPath is set)"),
-            ("android", "autoInstall", "common", " (enabled by default when appPath is set)"),
-        ]
-        return rules.compactMap { rule in
-            guard let section = json[rule.section] as? [String: Any],
-                  section[rule.key] != nil else { return nil }
-            return "\(context) \(rule.section): \"\(rule.key)\" is deprecated."
-                + " Specify it in the \(rule.moveTo) section instead\(rule.hint)"
-        }
     }
 
     private static func checkAppProfileKeys(_ json: [String: Any], context: String) -> [String] {

@@ -172,7 +172,7 @@ test("run_profile.md が実行プロファイルの全キーを列挙してい�
   for (const page of ["project/run_profile.md", "project/run_profile_ja.md"]) {
     const documented = [...readPage(page).matchAll(/^\| `([a-zA-Z]+)`/gm)].map((m) => m[1]).sort();
     assert.deepEqual([...new Set(documented)], [...new Set(known)],
-      `${page} と RunProfile.knownKeys が食い違う(旧名 screenIs のような「まだ読まれるキー」も載せる)`);
+      `${page} と RunProfile.knownKeys が食い違う`);
   }
 });
 

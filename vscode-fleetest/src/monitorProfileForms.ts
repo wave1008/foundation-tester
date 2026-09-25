@@ -216,11 +216,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     typeof source.ocrTextVisualCheck === "boolean" ? source.ocrTextVisualCheck : true;
   const preferCheckStateClassifier =
     typeof source.preferCheckStateClassifier === "boolean" ? source.preferCheckStateClassifier : true;
-  // screenIs は改名前の旧キー。新キーが無いときだけ読む(Sources/FTCore/RunProfile.swift の
-  // effectiveScreenLooksLike と同じ優先順。保存時は updateRunProfileInObject が旧キーを落とす)
-  const screenLooksLike = typeof source.screenLooksLike === "boolean"
-    ? source.screenLooksLike
-    : typeof source.screenIs === "boolean" ? source.screenIs : true;
+  const screenLooksLike = typeof source.screenLooksLike === "boolean" ? source.screenLooksLike : true;
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
@@ -345,13 +341,6 @@ export function updateRunProfileInObject(
   result.heal = fields.heal;
   result.textVisualCheck = fields.textVisualCheck;
   result.screenLooksLike = fields.screenLooksLike;
-  delete result.screenIs;  // 旧キーを残すと同じ設定が2つのキーに現れ、片方だけ直す事故になる
-  // 撤去したキー(FM/OCR の親スイッチ、FM の失敗トリアージ)。旧テンプレートが必ず書いていたので、
-  // 残すと GUI で作ったプロファイルが run のたびに unknown-key 警告を出し続ける
-  // (docs/maintainer-notes.md §21)
-  delete result.fm;
-  delete result.ocr;
-  delete result.triage;
   result.containerInference = fields.containerInference;
   result.ocrTextVisualCheck = fields.ocrTextVisualCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
   result.preferCheckStateClassifier = fields.preferCheckStateClassifier;  // 同上(既定 true 側)

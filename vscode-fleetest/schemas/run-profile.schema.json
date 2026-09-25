@@ -105,11 +105,6 @@
       "description": "screenLooksLike コマンド(FM による画面判定)を有効にするか(既定 true)。",
       "default": true
     },
-    "screenIs": {
-      "type": "boolean",
-      "deprecated": true,
-      "description": "旧名。screenLooksLike が未指定のときだけ読まれる。新しく書くときは screenLooksLike を使う。"
-    },
     "containerInference": {
       "type": "boolean",
       "description": "容器(スクロール領域)の推測に基づくタップ/スクロール座標補正を行うか(既定 true)。false で見切れ判定・掴み直し・救済ドラッグ・座標補正・壊れた座標の候補除外を止める。FM とは無関係の幾何ヒューリスティック。",

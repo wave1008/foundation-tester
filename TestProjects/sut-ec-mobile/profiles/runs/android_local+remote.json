@@ -418,7 +418,7 @@
   "iosInappEngine": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
-  "screenIs": true,
+  "screenLooksLike": true,
   "textVisualCheck": true,
   "updateWebView": true,
   "wipeDataOnBloat": true

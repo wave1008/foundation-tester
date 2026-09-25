@@ -72,7 +72,7 @@ final class LPTOrderingTests: XCTestCase {
         let record: [String: Any] = [
             "schemaVersion": 1, "scenarioID": scenarioID, "title": scenarioID,
             "durationMs": durationMs, "passed": true, "timedOut": false,
-            "platform": platform, "profile": "android", "machine": machine,
+            "platform": platform, "profile": "android", "host": machine,
             "worker": "エミュ1(android:emulator-5554)",
             "runID": runID, "startedAt": startedAt,
             "reportPath": "reports/x.md", "scenes": [],

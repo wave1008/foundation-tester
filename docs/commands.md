@@ -874,9 +874,7 @@ ifCanSelect("Appの使用中は許可", waitSeconds: 3) {
 
 ### 自動で押す(`iosAlertHandler`)
 
-**シナリオの中で、出るアラートを1枚ずつ予告する**(2026-08-22 に登録関数方式へ。
-実行プロファイルの JSON 宣言 `iosSystemAlertButtons` は廃止 —— 残っていれば
-プロファイル検証が警告で行き先を案内する):
+**シナリオの中で、出るアラートを1枚ずつ予告する**:
 
 ```swift
 iosAlertHandler(alert: "*写真ライブラリ*", button: "許可しない")

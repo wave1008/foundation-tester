@@ -106,8 +106,7 @@ final class RunProfileSetOverrideParseTests: XCTestCase {
         }
     }
 
-    /// `screenIs`(旧名の受け口)は Bool 欄ではあるが `--set` からは書けない
-    /// (新キー screenLooksLike に一本化済み。testOverridableKeysMatchAllFieldsExceptExcluded 参照)
+    /// 改名前のキー `screenIs` は受けない(未知のキー)
     func testScreenIsIsNotAnAcceptedSetKey() {
         XCTAssertThrowsError(try RunProfileSetOverride.parse(["screenIs=true"])) { error in
             guard case RunProfileSetOverrideError.unknownKey = error else {
@@ -207,7 +206,6 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
 
     /// `RunProfileDocument` の Bool/Int/Double/String 欄と `--set` が受け付けるキーは
     /// **等号で一致する**こと(新しいスカラー欄を足したのに `--set` から漏れる、を落とす)。
-    /// **`screenIs` だけ意図的に除外**する(新キー `screenLooksLike` に一本化済み)。
     /// **`other`(配列・オブジェクト)は `devices`/`remoteControl` の2つだけであること**も固定する
     /// —— 新しい配列/オブジェクト欄が増えたときに、この等号でだけ検知されず黙って `--set` の
     /// 対象外になる(=気づかれない)のを防ぐ
@@ -217,9 +215,7 @@ final class RunProfileSetOverrideKeysTests: XCTestCase {
             .union(byKind["int"] ?? [])
             .union(byKind["double"] ?? [])
             .union(byKind["string"] ?? [])
-        XCTAssertTrue((byKind["bool"] ?? []).contains("screenIs"),
-                      "screenIs は Bool 欄のはず(このテストの前提が壊れる)")
-        XCTAssertEqual(scalarFields.subtracting(["screenIs"]), RunProfileDocument.overridableKeys)
+        XCTAssertEqual(scalarFields, RunProfileDocument.overridableKeys)
         XCTAssertEqual(byKind["other"] ?? [], ["devices", "remoteControl"],
                        "配列/オブジェクト欄が増減した —— --set から弾く/受け付ける対応を決めて"
                        + " arrayOrObjectKeys かこのテストの期待値を更新する")
