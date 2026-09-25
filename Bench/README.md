@@ -73,6 +73,7 @@ Scripts/mcp-bench.sh --task cmp-scroll-find --repeat 5 \
 | `and-browser-grid-noheader` | browser | 実ブラウザ側の**見出しが落ちる格子**(`boards/grid-noheader.html`)。`cmp-webview-grid` と同じ形を、注記が実際に生まれる経路(Chrome + DOM)で測る |
 | `ios-authoring-fix-drift` | authoring | **作成フロー**: 古くなったシナリオ(手前の id のずれ + 見出しの期待値違い)を直して通す。**回す前に触って直せる**ので、`ft_run_scenario` の返し方の差は出にくい(対照) |
 | `ios-authoring-fix-late` | authoring | **作成フロー**: 起動から5〜6手先の**最後の段**で送信ボタンの id がずれている。手で再現するより回して失敗時の要素一覧を読むほうが安い = `ft_run_scenario` の失敗の返し方が手数に出る盤面 |
+| `android-authoring-fix-late` | authoring | `ios-authoring-fix-late` の **Android 版**(E2EAppAndroid・エミュレータ)。失敗の返し方の効果が OS に依らないかを見る |
 | `ios-authoring-heal-late` | authoring | **作成フロー**: fix-late と同じずれに、**アプリがまだ古い id だった頃の指紋の控え**を同梱(`fixture/fleetest/`)。heal を付けると自己修復で通る。修復に頼らない形へ直して heal 無しで通すまでを測る(`ft_apply_heal` のような確定の口が要るかの判断材料)。合否に `mustNotContain`(古い id)と `lastRunMustNotContain`(🔧)を使う |
 | `ios-authoring-add-expectations` | authoring | **作成フロー**: 操作だけで expectation が空の下書き(`ft_draft_scenario` が返す形)に検証を書き足して通す。書いた検証が合っているかをその場で確かめる手段(`ft_verify` 等)が手数に出るかを測る盤面。**ft_verify は測って不採用**(Bench/measurements.md 2026-09-25(2)(3)) |
 | `ios-authoring-add-expectations-controls` | authoring | **作成フロー**: 同じく検証を書き足すが、**素直に書くと外れる検証**がある(自作チェックボックスの `checkIsON` は a11y で読めない・スライダーの value は `50%`)。その場で確かめる手段が効く余地のある盤面(エージェントは書く前に木を読んで落とし穴を避けた) |

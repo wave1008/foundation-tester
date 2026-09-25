@@ -1,0 +1,18 @@
+{
+  "id": "android-authoring-fix-late",
+  "archetype": "authoring",
+  "kind": "authoring",
+  "requires": "Android エミュレータ1台 + com.ftester.e2e.android(E2EAppAndroid)がインストール済み",
+  "maxTurns": 60,
+  "fixture": "android-authoring-fix-late",
+  "appId": "com.ftester.e2e.android",
+  "scenario": "テキスト入力.S0010",
+  "file": "テキスト入力.swift",
+  "mustContain": [
+    "textIs(\"submitted=hello123\")",
+    "textIs(\"single=hello123\")",
+    "textIs(\"password=secret42\")",
+    "#txt_input_submitted"
+  ],
+  "prompt": "fleetest の MCP ツール(ft_*)と、ファイルの読み書きだけを使って作業してください。あなたはこのアプリもこのシナリオも初めて見ます。\n\n状況: テストプロジェクト BenchAuthoring のシナリオ TestProjects/BenchAuthoring/scenarios/テキスト入力.swift(ID: テキスト入力.S0010)が失敗します。アプリ(Android エミュレータ上の com.ftester.e2e.android)は正しく動いており、シナリオのほうが古くなっています。\n\nゴール: シナリオを直して、ft_run_scenario で通すこと。セレクタや期待値は実際のアプリに合わせて直してください。ただし検証(expectation の中身)を削ったり弱めたりしてはいけません。\n\nデバイスは ft_list_devices で Android エミュレータを選び、ft_run_scenario には serial を渡してください。\n\n最後に必ず1行だけ次の形式で出力してください: RESULT: passed(通せた)または RESULT: failed(通せなかった)"
+}
