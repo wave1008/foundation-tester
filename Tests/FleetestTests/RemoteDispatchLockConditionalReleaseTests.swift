@@ -9,6 +9,7 @@
 // checks are used instead of exact multi-line literals so continuation-line indentation can't
 // make this brittle.
 
+@testable import fleetest
 import Foundation
 import XCTest
 
@@ -57,21 +58,21 @@ final class RemoteDispatchLockConditionalReleaseTests: XCTestCase {
         }
     }
 
-    /// `awaitRemoteRunEndIfDisconnected` は Bool を返し、`releaseLockIfRunEnded` を自分で呼ぶ
+    /// `awaitRemoteRunEnd` は Bool を返し、`releaseLockIfRunEnded` を自分で呼ぶ
     /// (以前は待つだけでロックに一切触れず、呼び出し側の defer が無条件に外していた)。
     /// 呼び出し側(dispatch/dispatchApi)は戻り値を `lockReleasedEarly` へ捕まえること
     func testAwaitRemoteRunEndIfDisconnectedReturnsBoolAndReleasesConditionally() throws {
         let source = try Self.source()
-        guard let funcRange = source.range(of: "private func awaitRemoteRunEndIfDisconnected(")
+        guard let funcRange = source.range(of: "private func awaitRemoteRunEnd(")
         else { return XCTFail("function not found") }
         let body = source[funcRange.lowerBound...]
         guard let signatureEnd = body.range(of: "-> Bool {") else {
-            return XCTFail("awaitRemoteRunEndIfDisconnected must return Bool (released-early) —"
+            return XCTFail("awaitRemoteRunEnd must return Bool (released-early) —"
                           + " the caller needs to know whether it may skip the unconditional"
                           + " defer release")
         }
         guard let paramsRange = body.range(of: "layout: RemoteLayout,") else {
-            return XCTFail("awaitRemoteRunEndIfDisconnected must take layout (needed to call"
+            return XCTFail("awaitRemoteRunEnd must take layout (needed to call"
                           + " releaseLockIfRunEnded)")
         }
         XCTAssertTrue(paramsRange.upperBound < signatureEnd.lowerBound)
@@ -85,9 +86,9 @@ final class RemoteDispatchLockConditionalReleaseTests: XCTestCase {
         for marker in ["func dispatch(", "func dispatchApi("] {
             guard let funcRange = source.range(of: marker) else { continue }
             let callerBody = source[funcRange.lowerBound...]
-            guard let assignRange = callerBody.range(of: "lockReleasedEarly = awaitRemoteRunEndIfDisconnected(")
+            guard let assignRange = callerBody.range(of: "lockReleasedEarly = awaitRemoteRunEnd(")
             else {
-                XCTFail("\(marker): must capture awaitRemoteRunEndIfDisconnected's return value"
+                XCTFail("\(marker): must capture awaitRemoteRunEnd's return value"
                         + " into lockReleasedEarly — otherwise the unconditional defer release"
                         + " still fires underneath it")
                 continue
@@ -122,5 +123,15 @@ final class RemoteDispatchLockConditionalReleaseTests: XCTestCase {
         }
         XCTAssertTrue(normalCheckRange.upperBound < livePIDsRange.lowerBound,
                       "liveDispatchedRunPIDs must be checked inside the non-normal-exit-code branch")
+    }
+
+    /// 中断したら exit 0/1 でも待つ(ssh は即座に閉じるが向こうは後始末中 = 待たないと開始欄だけを回収する)。
+    /// 中断していない exit 0/1 は待たない(正常終了は run.json を書き終えてから exit している)
+    func testShouldAwaitRemoteRunEndWaitsOnInterruptionEvenForNormalExitCodes() {
+        XCTAssertTrue(RemoteRunDispatcher.shouldAwaitRemoteRunEnd(exitCode: 0, interrupted: true))
+        XCTAssertTrue(RemoteRunDispatcher.shouldAwaitRemoteRunEnd(exitCode: 1, interrupted: true))
+        XCTAssertTrue(RemoteRunDispatcher.shouldAwaitRemoteRunEnd(exitCode: 255, interrupted: false))
+        XCTAssertFalse(RemoteRunDispatcher.shouldAwaitRemoteRunEnd(exitCode: 0, interrupted: false))
+        XCTAssertFalse(RemoteRunDispatcher.shouldAwaitRemoteRunEnd(exitCode: 1, interrupted: false))
     }
 }

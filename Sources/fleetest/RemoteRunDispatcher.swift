@@ -158,12 +158,9 @@ struct RemoteRunDispatcher {
             }
             throw error
         }
-        if interruptFlag.interrupted {
-            lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
-        } else {
-            lockReleasedEarly = awaitRemoteRunEndIfDisconnected(
-                exitCode: exitCode, layout: layout, reportDir: remoteReportDir)
-        }
+        lockReleasedEarly = awaitRemoteRunEnd(
+            exitCode: exitCode, interrupted: interruptFlag.interrupted, layout: layout,
+            reportDir: remoteReportDir)
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
                       interrupted: interruptFlag.interrupted)
@@ -254,12 +251,9 @@ struct RemoteRunDispatcher {
             }
             throw error
         }
-        if interruptFlag.interrupted {
-            lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
-        } else {
-            lockReleasedEarly = awaitRemoteRunEndIfDisconnected(
-                exitCode: exitCode, layout: layout, reportDir: remoteReportDir)
-        }
+        lockReleasedEarly = awaitRemoteRunEnd(
+            exitCode: exitCode, interrupted: interruptFlag.interrupted, layout: layout,
+            reportDir: remoteReportDir)
 
         collectReports(project: project, remoteReportDir: remoteReportDir,
                       interrupted: interruptFlag.interrupted)
@@ -755,8 +749,11 @@ struct RemoteRunDispatcher {
         return released
     }
 
-    /// M7: 自分から中断したのでも exit 0/1 でもない(ssh の断・kill = 255/137 等)ときだけ、
-    /// 回収(collectReports)の前に「このディスパッチの run がランナー上でもう終わったか」を待つ。
+    /// 自分から中断したとき、または exit 0/1 でない(ssh の断・kill = 255/137 等)ときは、
+    /// 回収(collectReports)の前に「このディスパッチの run がランナー上でもう終わったか」を待つ
+    /// (**中断も待つ** —— ssh は SIGHUP で即座に閉じるが、向こうの run はそこから後始末して run.json を
+    /// 書き終えるので、待たないと手元は開始欄だけの写しを回収し「クラッシュ」に見える。2026-09-26 実測: 約 2 秒差)。
+    /// 終わっていれば待ちは1周で抜ける。
     /// **待った後、外せるなら外す**(`releaseLockIfRunEnded` と同じ「run が終わっていたら外す」
     /// 判定を通す ―― 生きているかもしれない run に、次の run を無条件で重ねない。以前はここで
     /// 一切ロックへ触れず、呼び出し側の defer が無条件に `rm -rf` していた)。戻り値 = 外したか
@@ -766,9 +763,14 @@ struct RemoteRunDispatcher {
     /// (2026-09-17 実測: M1Max へのディスパッチの ssh を SIGKILL してネットワーク断を模した)。
     /// ssh 自体が通らない(sshCapture が throw)なら待たずに下の条件付き解放へ進む
     /// (そちらも同じ ssh 失敗で false を返すので安全側に倒れる)
-    private func awaitRemoteRunEndIfDisconnected(exitCode: Int32, layout: RemoteLayout,
-                                                  reportDir: String) -> Bool {
-        guard exitCode != 0, exitCode != 1 else { return false }
+    /// 回収の前に向こうの run の終わりを待つか(中断・exit 0/1 以外 = 待つ)
+    static func shouldAwaitRemoteRunEnd(exitCode: Int32, interrupted: Bool) -> Bool {
+        interrupted || (exitCode != 0 && exitCode != 1)
+    }
+
+    private func awaitRemoteRunEnd(exitCode: Int32, interrupted: Bool, layout: RemoteLayout,
+                                   reportDir: String) -> Bool {
+        guard Self.shouldAwaitRemoteRunEnd(exitCode: exitCode, interrupted: interrupted) else { return false }
         let deadline = Date().addingTimeInterval(Self.remoteRunEndWaitLimitSeconds)
         waitLoop: while Date() < deadline {
             guard let output = try? sshCapture(RemoteDispatchLock.runEndedCommand(reportDir: reportDir))
