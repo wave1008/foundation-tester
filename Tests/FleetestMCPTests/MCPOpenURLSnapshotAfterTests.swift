@@ -166,7 +166,7 @@ final class MCPOpenURLToolDefinitionTests: XCTestCase {
     }
 
     func testDeclaresTheSameOperationKeysAsOtherActionTools() {
-        for key in ["snapshotAfter", "waitForChange", "waitFor", "timeout",
+        for key in ["snapshotAfter", "waitForChange", "waitFor", "waitSeconds",
                     "expandBulk", "interactiveOnly"] {
             XCTAssertNotNil(properties[key], "ft_open_url に \(key) が無い")
         }

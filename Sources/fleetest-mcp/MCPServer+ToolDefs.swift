@@ -44,7 +44,7 @@ extension MCPServer {
         "description": "Append the resulting screen's element list (as ft_snapshot would) — "
             + "saves the follow-up ft_snapshot call",
     ]
-    /// 操作系ツールが共有する waitFor/timeout(ft_snapshot と同じ待ちのロジックを流用。
+    /// 操作系ツールが共有する waitFor/waitSeconds(ft_snapshot と同じ待ちのロジックを流用。
     /// snapshotAfterBody 参照)。**snapshotAfter: true と併用が前提** — 無いときは操作は
     /// 実行したうえで note だけ返す(throw しない。操作自体は成功しているため)
     static let snapshotAfterWaitForProperty: [String: Any] = [
@@ -53,9 +53,9 @@ extension MCPServer {
             + "screen (syntax: #id, a label, .type, a||b — quotes wrapped around the whole "
             + "selector are stripped)",
     ]
-    static let snapshotAfterTimeoutProperty: [String: Any] = [
+    static let snapshotAfterWaitSecondsProperty: [String: Any] = [
         "type": "number",
-        "description": "Seconds to wait for waitFor (default 5, same as ft_snapshot)",
+        "description": "Seconds to wait for waitFor (default 5, same as ft_snapshot and the DSL's waitSeconds:)",
     ]
     /// **「何かが変わる」を待つ**: 再検索のように**同じセレクタのまま中身だけ入れ替わる**画面では
     /// waitFor が古い結果に即マッチして待ちにならない(実測: Google マップの経路再検索で
@@ -133,8 +133,9 @@ extension MCPServer {
         changed", not "the final content arrived": a screen that first shows a loading or empty \
         intermediate (a search still fetching) satisfies it early — the response notes when the \
         difference was already on the first read, and only checking for the expected content \
-        guarantees it is there. Both waits run to timeout (default 5s) when they miss — pass a \
-        smaller timeout on a wait you expect to miss, a larger one for a slow load. \
+        guarantees it is there. Both waits run to waitSeconds (default 5s; the same name as the DSL's \
+        waitSeconds:) when they miss — pass a smaller waitSeconds on a wait you expect to miss, a larger \
+        one for a slow load. \
         snapshotAfter and ft_scroll_to inherit interactiveOnly/expandBulk from your last \
         ft_snapshot call unless passed explicitly, and say so when they do.
 
@@ -232,7 +233,7 @@ extension MCPServer {
             // 「着地した」とは言えず、同じ画面へ戻る再起動では締め切りまで待つだけになる
             "snapshotAfter": snapshotAfterProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["bundleId"]),
@@ -249,7 +250,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["url"]),
@@ -257,7 +258,7 @@ extension MCPServer {
             + "A line marked scroll is a scrolling container you can pass as scrollFrame. "
             + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [
             "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b (quotes wrapped around the whole selector are stripped)"],
-            "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
+            "waitSeconds": ["type": "number", "description": "Seconds to wait for waitFor (default 5; same name and default as the DSL's waitSeconds:)"],
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
             "maxElements": maxElementsProperty,
@@ -272,7 +273,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -297,7 +298,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -328,7 +329,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["finger"]),
@@ -404,7 +405,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["target"]),
@@ -421,7 +422,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -476,7 +477,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -499,7 +500,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -522,7 +523,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),
@@ -575,7 +576,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ], required: ["fingers"]),
@@ -594,7 +595,7 @@ extension MCPServer {
             "snapshotAfter": snapshotAfterProperty,
             "waitForChange": snapshotAfterWaitForChangeProperty,
             "waitFor": snapshotAfterWaitForProperty,
-            "timeout": snapshotAfterTimeoutProperty,
+            "waitSeconds": snapshotAfterWaitSecondsProperty,
             "expandBulk": expandBulkProperty,
             "interactiveOnly": interactiveOnlyProperty,
         ]),

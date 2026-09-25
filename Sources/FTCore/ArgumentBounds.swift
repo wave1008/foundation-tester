@@ -39,12 +39,12 @@ public enum ArgumentBounds {
     /// 区別できない)。
     ///
     /// `duration` / `press`(api live serve の別名。MCP のスキーマには出ない)は
-    /// `durationSeconds` と同じ値域を共有する。`waitSeconds` / `repeat` / `dxRatio` / `dyRatio`
+    /// `durationSeconds` と同じ値域を共有する。`waitSeconds` は MCP ツールの待ち上限と
+    /// `ft_batch` の DSL 行の両方が使う(同じ名前・同じ値域)。`repeat` / `dxRatio` / `dyRatio`
     /// は `ft_batch` の DSL 行だけが使う鍵(BatchStepResolver.intKeys/doubleKeys)
     public static let numeric: [String: Bound] = [
         "lines": Bound(min: 1),
         "sinceSeconds": Bound(min: 1),
-        "timeout": Bound(min: 0),
         "maxElements": Bound(min: 1, max: Double(BridgeAPI.maxSnapshotElementsCeiling)),
         "maxSwipes": Bound(min: 0),
         "lastN": Bound(min: 1),

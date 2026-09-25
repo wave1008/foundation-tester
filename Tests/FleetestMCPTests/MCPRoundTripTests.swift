@@ -34,7 +34,7 @@ final class MCPRoundTripTests: XCTestCase {
     func testNullArgumentsAreTreatedAsOmitted() async throws {
         let text = bodyText(try await server.call(
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true, "waitForChange": true,
-                                   "timeout": 0, "waitFor": NSNull()]))
+                                   "waitSeconds": 0, "waitFor": NSNull()]))
         XCTAssertFalse(text.contains("waitForChange was ignored"), text)
     }
 
@@ -325,7 +325,7 @@ final class MCPRoundTripTests: XCTestCase {
     /// 引用符ごと照合されて waitFor が満了まで待つ
     func testQuotedWaitForMatchesThroughTheCallPath() async throws {
         let text = bodyText(try await server.call(
-            tool: "ft_snapshot", args: ["waitFor": "\"ログイン\"", "timeout": 0.2]))
+            tool: "ft_snapshot", args: ["waitFor": "\"ログイン\"", "waitSeconds": 0.2]))
         XCTAssertFalse(text.contains("did not appear"), text)
         XCTAssertTrue(text.contains("id=login_btn"), text)
     }

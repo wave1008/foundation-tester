@@ -72,7 +72,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
                                recordSnapshot: { _, _, _ in })
         let content = try await server.call(tool: "ft_snapshot",
-                                            args: ["waitFor": "*週間天気*", "timeout": 0.0])
+                                            args: ["waitFor": "*週間天気*", "waitSeconds": 0.0])
         let body = text(content)
         XCTAssertTrue(body.contains("waitFor only looks at what is currently rendered"), body)
         XCTAssertTrue(body.contains("use ft_scroll_to (it searches by scrolling)"), body)
@@ -89,7 +89,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
                                recordSnapshot: { _, _, _ in })
         let content = try await server.call(tool: "ft_snapshot",
-                                            args: ["waitFor": "*週間天気*", "timeout": 0.0])
+                                            args: ["waitFor": "*週間天気*", "waitSeconds": 0.0])
         let body = text(content)
         XCTAssertFalse(body.contains("waitFor only looks at what is currently rendered"), body)
         XCTAssertFalse(body.contains("use ft_scroll_to"), body)
@@ -109,7 +109,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         let snapshotSideServer = MCPServer(write: { _ in }, makeDriver: { _ in snapshotSideDriver },
                                            recordSnapshot: { _, _, _ in })
         let snapshotSideBody = text(try await snapshotSideServer.call(
-            tool: "ft_snapshot", args: ["waitFor": "*週間天気*", "timeout": 0.0]))
+            tool: "ft_snapshot", args: ["waitFor": "*週間天気*", "waitSeconds": 0.0]))
 
         let tapSideDriver = FakeDriver()
         tapSideDriver.snapshotResponse = scrollable
@@ -118,7 +118,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         tapSideServer.settleWaitSeconds = 0
         let tapSideBody = text(try await tapSideServer.call(
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                                   "waitFor": "*週間天気*", "timeout": 0.0]))
+                                   "waitFor": "*週間天気*", "waitSeconds": 0.0]))
 
         XCTAssertTrue(snapshotSideBody.contains(sentence), snapshotSideBody)
         XCTAssertTrue(tapSideBody.contains(sentence), tapSideBody)
@@ -143,7 +143,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let body = text(try await server.call(
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                                   "waitFor": "*週間予報*", "timeout": 0.0]))
+                                   "waitFor": "*週間予報*", "waitSeconds": 0.0]))
         XCTAssertTrue(body.contains("the action itself may not have taken effect"), body)
     }
 
@@ -166,7 +166,7 @@ final class MCPAuditRound21Tests: XCTestCase {
         ])
         let body = text(try await server.call(
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                                   "waitFor": "*週間予報*", "timeout": 0.0]))
+                                   "waitFor": "*週間予報*", "waitSeconds": 0.0]))
         XCTAssertFalse(body.contains("the action itself may not have taken effect"), body)
     }
 

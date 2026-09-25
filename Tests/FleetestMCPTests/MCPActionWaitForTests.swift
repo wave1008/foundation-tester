@@ -1,4 +1,4 @@
-// ft_tap/ft_type の snapshotAfter に waitFor/timeout を追加した分の検証。
+// ft_tap/ft_type の snapshotAfter に waitFor/waitSeconds を追加した分の検証。
 // waitFor 付きは settle-lite(操作前後の見分けが付かないときだけ1回再読む)の代わりに、
 // ft_snapshot と同じ待ちのロジック(MCPServer.waitFor)を使う。両者は排他 —— waitFor が
 // あれば settle-lite は動かさない(snapshotAfterBody 参照)。
@@ -48,7 +48,7 @@ final class MCPActionWaitForTests: XCTestCase {
 
         let text = bodyText(try await server.call(
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                                   "waitFor": "#candidate_row", "timeout": 2.0]))
+                                   "waitFor": "#candidate_row", "waitSeconds": 2.0]))
         XCTAssertTrue(text.contains("waitFor \"#candidate_row\" appeared"), text)
         XCTAssertTrue(text.contains("id=candidate_row"), text)
         XCTAssertFalse(text.contains("still looked unchanged"), text)
@@ -60,7 +60,7 @@ final class MCPActionWaitForTests: XCTestCase {
         driver.snapshotResponse = waitSnapshot([waitElement(ref: 1, id: "existing_row")])
         let text = bodyText(try await server.call(
             tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                                   "waitFor": "#never_appears", "timeout": 0.1]))
+                                   "waitFor": "#never_appears", "waitSeconds": 0.1]))
         XCTAssertTrue(text.contains("did not appear within"), text)
         XCTAssertTrue(text.contains("id=existing_row"), text)
     }
@@ -97,7 +97,7 @@ final class MCPActionWaitForTests: XCTestCase {
 
         let text = bodyText(try await server.call(
             tool: "ft_type", args: ["ref": 1, "text": "query", "snapshotAfter": true,
-                                    "waitFor": "#result_row", "timeout": 2.0]))
+                                    "waitFor": "#result_row", "waitSeconds": 2.0]))
         XCTAssertTrue(text.contains("waitFor \"#result_row\" appeared"), text)
         XCTAssertTrue(text.contains("id=result_row"), text)
     }

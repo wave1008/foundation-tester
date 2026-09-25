@@ -30,7 +30,7 @@ extension MCPServer {
         // **待つのはホスト側の仕事**: エージェントに snapshot を撃ち直させると、待った
         // 回数だけ画面一覧が文脈に積まれる(1回あたり数千トークン)
         if let waitFor = args["waitFor"] as? String {
-            let seconds = try Self.doubleArgument(args, "timeout") ?? Self.defaultWaitSeconds
+            let seconds = try Self.doubleArgument(args, "waitSeconds") ?? Self.defaultWaitSeconds
             let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
                                                 first: snapshot, seconds: seconds,
                                                 elementLimit: try pollElementLimit(args))

@@ -183,7 +183,7 @@ final class MCPWebPageCeilingTests: XCTestCase {
         driver.elementLimits.removeAll()
 
         _ = try await server.call(tool: "ft_snapshot",
-                                  args: ["waitFor": "#never_appears", "timeout": 0.6])
+                                  args: ["waitFor": "#never_appears", "waitSeconds": 0.6])
 
         XCTAssertGreaterThanOrEqual(
             driver.elementLimits.filter { $0 == BridgeAPI.maxSnapshotElementsCeiling }.count, 2,

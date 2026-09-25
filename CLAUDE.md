@@ -175,7 +175,8 @@
   `.noScroll` は別の値**で、解くのは `FTDriveCore.effectiveScroll` の1箇所(`SelScrollVariantDispatchTests` が
   3値の解決を縛る)。ブロック形の `withScrollDown { }` / `withoutScroll { }` は残す
 - **引数名の規律**(ユーザー決定 2026-09-19): 待つ上限は全コマンドで **`waitSeconds:`**(`timeout:` を DSL に置かない。
-  `FlowStep.timeout`・プロファイルの `defaultTimeout`・MCP ツールの `timeout` は別系統で据え置き)/ ループ上限は
+  **MCP ツールの待ち上限も `waitSeconds`**(ユーザー決定 2026-09-25。DSL を書くための入口なので名前を揃える)。
+  `FlowStep.timeout`・プロファイルの `defaultTimeout` は内部 / 別系統の名前で据え置き)/ ループ上限は
   **`maxLoopCount:`** / ラベル無しの第1引数は `selector`・`label`・`appID`・`filename`、ブロックは `body` /
   同じことを2通りで書ける口を作らない(`screenshot` のファイル名はラベル無しの1形だけ)。
   **引数の並びは「対象(ラベル無し)→ コマンド固有(`holdSeconds` / `requireVisible` / `strict` / `prefer` /
@@ -993,7 +994,7 @@
   `stringArgument` と、ライブ操作の `intField`/`doubleField`/`stringField` が同じ表を引く)。
   守る規律3つ: **①値域を持たない引数も `.unbounded` で表に載せる**(載せ忘れと「縛らないと決めた」を
   区別する。`ArgumentBoundsTests` がスキーマの数値プロパティ全数との包含を等号で固定)/
-  **②検査は読む場所ではなく `MCPServer.call` の入口で全数**(`timeout` のように条件付きでしか
+  **②検査は読む場所ではなく `MCPServer.call` の入口で全数**(`waitSeconds` のように条件付きでしか
   読まれない欄は、読まれない回に 0/負が通って「効いた」と誤解させる)/ **③`ft_batch` の DSL 行も
   同じ表を通す**(あちらは `intArgument` を経由しない)。必須の文字列は空文字・空白のみを断る
   (省略は断らない = 呼び手ごとに既定が違う)→ maintainer-notes §44.2。**長押し・ジェスチャの秒数は

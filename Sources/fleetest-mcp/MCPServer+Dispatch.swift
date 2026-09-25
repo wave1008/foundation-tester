@@ -291,7 +291,7 @@ extension MCPServer {
         // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
         let args = Self.droppingNullArguments(args)
         // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)
-        // —— 条件付きでしか読まれない欄(`timeout` は snapshotAfter のときだけ等)は、
+        // —— 条件付きでしか読まれない欄(`waitSeconds` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
         try Self.checkArgumentBounds(args)
         // **秒数の相互検査は値域の隣**(seconds ≤ maxGestureSeconds(省略時は既定10秒)。

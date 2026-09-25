@@ -1491,8 +1491,9 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   失敗させず空要素を返す(`FTElement.isEmpty`)。**「出るか不定」を表す引数は持たない**
   (`optional:` は 2026-08-02 に全廃。`irregularHandler` と `ifCanSelect` に一本化した。下記)
 - **待つ上限の引数名は全コマンドで `waitSeconds:`**(ユーザー決定 2026-09-19。Shirates と同名・単位が名前に出る。
-  `timeout:` は DSL に置かない。`FlowStep.timeout`・実行プロファイルの `defaultTimeout` / `scenarioTimeout`・MCP ツールの
-  `timeout` は内部 / 別系統の名前で据え置き。**`ft_batch` は DSL の行を受けるので DSL と同じ `waitSeconds:`** ——
+  `timeout:` は DSL に置かない。**MCP ツールの待ち上限も `waitSeconds`**(2026-09-25 に `timeout` から改名。
+  MCP は DSL を書くための入口なので、同じセッションで2つの名前を書かせない)。`FlowStep.timeout`・実行プロファイルの
+  `defaultTimeout` / `scenarioTimeout` は内部 / 別系統の名前で据え置き。**`ft_batch` は DSL の行を受けるので DSL と同じ `waitSeconds:`** ——
   索引の signature とビルダーのキー(`MCPServer.batchStepBuilders`)を片方だけ変えると、実在するラベルを断り
   無いラベルを受ける。`BatchLineParserTests.testWaitCapLabelFollowsTheDSL` が縛る)
 - **引数の並びは「対象 → コマンド固有 → `waitSeconds:` → `scroll:` → `maxSwipes:`」**(ユーザー決定 2026-09-19)。
@@ -3573,7 +3574,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     **止まる機能と代わりの書き方**まで返す(`FMDoctor.unavailableImpact`)
   - **既にある逃げ道は、払った場所で名指しする**(2026-08-16 の外部評価。指摘4件のうち3件が
     「機能はあるのに応答が名乗っていない」形だった。実バグ0):
-    **⑴ 待ちの上限**(`MCPServer.waitTimeoutRemedy`)—— `timeout` は全ての待ちに 2026-08-10 から
+    **⑴ 待ちの上限**(`MCPServer.waitTimeoutRemedy`)—— 上限(当時は `timeout`、2026-09-25 から `waitSeconds`)は全ての待ちに 2026-08-10 から
     あるのに、**外れた回の文がどこにもそれを名指していなかった**ため「5秒固定」と読まれ、
     外れると分かっている待ちにも毎回満額を払わせていた(評価の1セッションで 10 秒)。
     3経路(ft_snapshot の waitFor / snapshotAfter の waitFor / waitForChange)に同じ1文を出す。

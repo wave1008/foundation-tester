@@ -1495,7 +1495,7 @@ extension MCPServer {
 
     /// waitForChange が「変わった」後に安定(直前の読みと一致)を確かめる再読の上限。
     /// 1回で一致するのが普通で、上限まで揺れ続けたら採り直しをやめて still-changing を注記する
-    /// —— timeout を食い潰さない固定小コストに抑えるための蓋(settleWaitSeconds × この回数)
+    /// —— waitSeconds を食い潰さない固定小コストに抑えるための蓋(settleWaitSeconds × この回数)
     static let changeSettleRereads = 3
 
     /// selector が出るまで snapshot を撃ち直す。**照合は DSL と同じ**(FTSelector →

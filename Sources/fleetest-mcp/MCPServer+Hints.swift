@@ -115,12 +115,12 @@ extension MCPServer {
     }
 
     /// 満額待って外れた回に、**払った場所で**上限の変え方を名指しする。
-    /// `timeout` は全ての待ち(ft_snapshot / 操作系の snapshotAfter)に元からあるが、
+    /// `waitSeconds` は全ての待ち(ft_snapshot / 操作系の snapshotAfter)に元からあるが、
     /// 外れた回の文がどこにもそれを名指していなかったため、読み手には「5秒固定」と読まれ、
     /// **外れると分かっている待ちにも毎回満額**を払っていた。
     /// 逃げ道は払った場所で言う(`SnapshotTruncation.remedy` と同じ規律)
     static let waitTimeoutRemedy =
-        " (timeout: <seconds> sets this cap — a smaller one to find out sooner,"
+        " (waitSeconds: <seconds> sets this cap — a smaller one to find out sooner,"
         + " a larger one for a slow load)"
 
     /// シート展開救済が走った(または意図的に省いた)ことを表す、応答の先頭に立つ固定の語。

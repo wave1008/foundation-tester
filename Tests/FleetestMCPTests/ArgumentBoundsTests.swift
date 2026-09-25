@@ -83,7 +83,7 @@ final class ArgumentBoundsTests: XCTestCase {
             ("maxSwipes", -3), ("lines", -10), ("sinceSeconds", -1000),
             ("maxWidth", 0), ("quality", 0), ("quality", 5),
             ("holdSeconds", -3), ("durationSeconds", -1), ("radius", -50),
-            ("timeout", -1), ("lastN", 0),
+            ("waitSeconds", -1), ("lastN", 0),
         ]
         for (key, value) in cases {
             let message = ArgumentBounds.violation(key, value)
@@ -95,7 +95,7 @@ final class ArgumentBoundsTests: XCTestCase {
     func testBoundaryValuesAreAccepted() {
         let cases: [(String, Double)] = [
             ("maxElements", 1), ("maxElements", Double(BridgeAPI.maxSnapshotElementsCeiling)),
-            ("maxSwipes", 0), ("timeout", 0), ("quality", 1), ("lastN", 1),
+            ("maxSwipes", 0), ("waitSeconds", 0), ("quality", 1), ("lastN", 1),
         ]
         for (key, value) in cases {
             XCTAssertNil(ArgumentBounds.violation(key, value), "\(key)=\(value) は境界内のはず")
@@ -303,15 +303,15 @@ final class ArgumentBoundsTests: XCTestCase {
         }
     }
 
-    /// timeout は snapshotAfter: true のときだけ読まれる(snapshotAfterBodyWithStatus の門)
-    func testOpenURLNegativeTimeoutIsRejected() async {
+    /// waitSeconds は snapshotAfter: true のときだけ読まれる(snapshotAfterBodyWithStatus の門)
+    func testOpenURLNegativeWaitSecondsIsRejected() async {
         do {
             _ = try await server.call(tool: "ft_open_url",
                                       args: ["url": "myapp://x", "snapshotAfter": true,
-                                             "waitFor": "#anything", "timeout": -1.0])
-            XCTFail("timeout -1 が通った")
+                                             "waitFor": "#anything", "waitSeconds": -1.0])
+            XCTFail("waitSeconds -1 が通った")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("timeout"), error.localizedDescription)
+            XCTAssertTrue(error.localizedDescription.contains("waitSeconds"), error.localizedDescription)
         }
     }
 

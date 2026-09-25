@@ -23,7 +23,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         }
         let tapProps = properties("ft_tap")
         let navigateProps = properties("ft_navigate")
-        for key in ["snapshotAfter", "waitFor", "timeout", "expandBulk", "interactiveOnly"] {
+        for key in ["snapshotAfter", "waitFor", "waitSeconds", "expandBulk", "interactiveOnly"] {
             let tapDescription = (tapProps[key] as? [String: Any])?["description"] as? String
             let navigateDescription = (navigateProps[key] as? [String: Any])?["description"] as? String
             XCTAssertNotNil(navigateDescription, "ft_navigate に \(key) が無い")
@@ -199,7 +199,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let content = try await server.call(
             tool: "ft_tap", args: ["x": 10.0, "y": 10.0, "snapshotAfter": true,
-                                   "waitForChange": true, "timeout": 0.1])
+                                   "waitForChange": true, "waitSeconds": 0.1])
         let text = try XCTUnwrap(content.first?["text"] as? String)
         XCTAssertTrue(text.contains("waitForChange timed out"), text)
         XCTAssertFalse(text.contains("waitForChange: the tree differs"), text)

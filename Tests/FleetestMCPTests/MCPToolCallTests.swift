@@ -167,7 +167,7 @@ final class MCPToolCallTests: XCTestCase {
         driver.scriptedSnapshots = [empty, empty, driver.snapshotResponse]
 
         let result = try await server.call(tool: "ft_snapshot",
-                                           args: ["waitFor": "#login_btn", "timeout": 5.0])
+                                           args: ["waitFor": "#login_btn", "waitSeconds": 5.0])
         let rendered = try XCTUnwrap(result.first?["text"] as? String)
 
         XCTAssertTrue(rendered.contains("login_btn"), rendered)
@@ -179,7 +179,7 @@ final class MCPToolCallTests: XCTestCase {
     /// 「出なかった」と明示する(黙って現状を返すと、出たものと読み違える)
     func testSnapshotReportsWhenTheSelectorNeverAppears() async throws {
         let result = try await server.call(tool: "ft_snapshot",
-                                           args: ["waitFor": "#missing", "timeout": 0.5])
+                                           args: ["waitFor": "#missing", "waitSeconds": 0.5])
         let rendered = try XCTUnwrap(result.first?["text"] as? String)
 
         XCTAssertTrue(rendered.contains("did not appear"), rendered)

@@ -570,7 +570,7 @@ extension MCPServer {
             // 追いついていない)なので、両方は二重に待つだけ。パターンは ft_snapshot の
             // waitFor 分岐と同じ(refetched の扱いも含め)
             if let waitFor = args["waitFor"] as? String {
-                let seconds = try Self.doubleArgument(args, "timeout") ?? Self.defaultWaitSeconds
+                let seconds = try Self.doubleArgument(args, "waitSeconds") ?? Self.defaultWaitSeconds
                 let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
                                                     first: snapshot, seconds: seconds,
                                                     elementLimit: try pollElementLimit(args))
@@ -658,7 +658,7 @@ extension MCPServer {
                 + " (nothing was read on this device yet), so it did not wait.\n")
         }
         var snapshot = initial
-        let seconds = try Self.doubleArgument(args, "timeout") ?? Self.defaultWaitSeconds
+        let seconds = try Self.doubleArgument(args, "waitSeconds") ?? Self.defaultWaitSeconds
         let deadline = Date().addingTimeInterval(max(0, seconds))
         var changed = !Self.looksUnchanged(beforeAction, snapshot)
         let changedOnFirstRead = changed
@@ -676,7 +676,7 @@ extension MCPServer {
         }
         // **「変わった」は「終わった」ではない**: 最初に差が出た木が遷移途中のこともある
         // (2026-08-12 の実測: 検索結果がまだネットワーク待ちの「候補なし」中間状態で確定を
-        // 返した)。直前の読みと一致するまで少数回だけ読み直して採り直す。timeout には縛らない
+        // 返した)。直前の読みと一致するまで少数回だけ読み直して採り直す。waitSeconds には縛らない
         // (settle-lite と同じく操作後の固定小コストであって、待ち時間の指定ではない)
         var churn = 0
         var stable = false

@@ -141,7 +141,7 @@ final class UnrepresentedScreenCaveatBoundaryTests: XCTestCase {
         let text = bodyText(try await server.call(
             tool: "ft_tap",
             args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                   "waitFor": "#never-appears", "timeout": 0.01]))
+                   "waitFor": "#never-appears", "waitSeconds": 0.01]))
         XCTAssertTrue(text.contains("may not have taken effect"), text)
         XCTAssertTrue(text.contains("no element in the tree at all"), text)
     }
@@ -155,7 +155,7 @@ final class UnrepresentedScreenCaveatBoundaryTests: XCTestCase {
         let text = bodyText(try await server.call(
             tool: "ft_tap",
             args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
-                   "waitForChange": true, "timeout": 0.01]))
+                   "waitForChange": true, "waitSeconds": 0.01]))
         XCTAssertTrue(text.contains("waitForChange timed out"), text)
         XCTAssertTrue(text.contains("no element in the tree at all"), text)
     }

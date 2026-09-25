@@ -1,7 +1,7 @@
 // 4人目の外部評価(2026-08-16。マップで赤羽→立川の経路を調べるタスクの呼び出しコスト計測)。
 // 指摘は4件で、実バグは0・**既にある機能が払った場所で名乗っていない**形が3件だった:
 //
-// ⒜ 「waitFor のタイムアウトは5秒固定」と読まれた —— `timeout` は 2026-08-10 から全ての待ちに
+// ⒜ 「waitFor のタイムアウトは5秒固定」と読まれた —— 上限の `waitSeconds` は全ての待ちに
 //    あるのに、**外れた回の文がどこにもそれを名指していなかった**。外れると分かっている待ちに
 //    毎回満額(実測 5s × 2回)を払っていた
 // ⒝ ft_scroll_to のシート展開救済を機械で判定したい —— 散文は出ていたが所要時間の内訳
@@ -47,38 +47,38 @@ final class MCPWaitTimeoutRemedyTests: XCTestCase {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
 
-    func testFtSnapshotWaitForMissNamesTheTimeoutArgument() async throws {
+    func testFtSnapshotWaitForMissNamesTheWaitSecondsArgument() async throws {
         let text = body(try await server.call(
-            tool: "ft_snapshot", args: ["waitFor": "#never_appears", "timeout": 0.0]))
+            tool: "ft_snapshot", args: ["waitFor": "#never_appears", "waitSeconds": 0.0]))
         XCTAssertTrue(text.contains("did not appear within"), text)
-        XCTAssertTrue(text.contains("timeout: <seconds> sets this cap"), text)
+        XCTAssertTrue(text.contains("waitSeconds: <seconds> sets this cap"), text)
     }
 
     /// 操作系の snapshotAfter 側にも同じ逃げ道が要る(評価で払われたのはこちら)
-    func testSnapshotAfterWaitForMissNamesTheTimeoutArgument() async throws {
+    func testSnapshotAfterWaitForMissNamesTheWaitSecondsArgument() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let text = body(try await server.call(
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true,
-                                   "waitFor": "#never_appears", "timeout": 0.0]))
+                                   "waitFor": "#never_appears", "waitSeconds": 0.0]))
         XCTAssertTrue(text.contains("did not appear within"), text)
-        XCTAssertTrue(text.contains("timeout: <seconds> sets this cap"), text)
+        XCTAssertTrue(text.contains("waitSeconds: <seconds> sets this cap"), text)
     }
 
     /// waitForChange の打ち切りも同じ上限を使うので、同じ逃げ道を出す
-    func testWaitForChangeTimeoutNamesTheTimeoutArgument() async throws {
+    func testWaitForChangeTimeoutNamesTheWaitSecondsArgument() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         let text = body(try await server.call(
             tool: "ft_tap", args: ["ref": 1, "snapshotAfter": true,
-                                   "waitForChange": true, "timeout": 0.0]))
+                                   "waitForChange": true, "waitSeconds": 0.0]))
         XCTAssertTrue(text.contains("waitForChange timed out"), text)
-        XCTAssertTrue(text.contains("timeout: <seconds> sets this cap"), text)
+        XCTAssertTrue(text.contains("waitSeconds: <seconds> sets this cap"), text)
     }
 
     /// 当たった回には出さない(逃げ道は払った場所だけで言う)
     func testASuccessfulWaitDoesNotCarryTheRemedy() async throws {
         let text = body(try await server.call(
-            tool: "ft_snapshot", args: ["waitFor": "#login_btn", "timeout": 0.0]))
-        XCTAssertFalse(text.contains("timeout: <seconds>"), text)
+            tool: "ft_snapshot", args: ["waitFor": "#login_btn", "waitSeconds": 0.0]))
+        XCTAssertFalse(text.contains("waitSeconds: <seconds>"), text)
     }
 
     /// 秒の印字は `5.0s` ではなく `5s`(既定値の桁が増えるだけで情報が無い)。

@@ -744,7 +744,7 @@ final class MCPRefGuardTests: XCTestCase {
         truncated.truncatedCount = 3
         driver.snapshotResponse = truncated
         let text = Self.text(try await server.call(
-            tool: "ft_snapshot", args: ["waitFor": "#missing", "timeout": 0.3]))
+            tool: "ft_snapshot", args: ["waitFor": "#missing", "waitSeconds": 0.3]))
         XCTAssertTrue(text.contains("did not appear"), text)
         XCTAssertTrue(text.contains("truncated"), text)
     }
@@ -754,7 +754,7 @@ final class MCPRefGuardTests: XCTestCase {
     func testWaitForFailureMentionsASimilarLabel() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "btn_plan", label: "計画", x: 0, y: 0)])
         let text = Self.text(try await server.call(
-            tool: "ft_snapshot", args: ["waitFor": "経路", "timeout": 0.3]))
+            tool: "ft_snapshot", args: ["waitFor": "経路", "waitSeconds": 0.3]))
         XCTAssertTrue(text.contains("did not appear"), text)
         XCTAssertTrue(text.contains("similar labels on screen"), text)
         XCTAssertTrue(text.contains("計画"), text)
@@ -764,7 +764,7 @@ final class MCPRefGuardTests: XCTestCase {
     func testWaitForFailureStaysQuietWithoutASimilarLabel() async throws {
         driver.snapshotResponse = screen([element(ref: 1, id: "btn_settings", label: "設定確認画面", x: 0, y: 0)])
         let text = Self.text(try await server.call(
-            tool: "ft_snapshot", args: ["waitFor": "経路", "timeout": 0.3]))
+            tool: "ft_snapshot", args: ["waitFor": "経路", "waitSeconds": 0.3]))
         XCTAssertTrue(text.contains("did not appear"), text)
         XCTAssertFalse(text.contains("similar labels"), text)
     }

@@ -101,6 +101,31 @@ final class MCPDesignReviewFixesTests: XCTestCase {
         XCTAssertTrue(typed.contains("waitSeconds: 5"), typed)
     }
 
+    // MARK: - 待ち上限は waitSeconds(DSL と同じ名前)
+
+    /// 3経路とも渡した waitSeconds を読むこと。外れた回の文言に出る秒数で見る
+    /// (別の名前を読むと既定の 5 秒に化け、文言は "5s" になる)
+    func testFtSnapshotWaitForHonoursWaitSeconds() async throws {
+        let text = body(try await server.call(
+            tool: "ft_snapshot", args: ["waitFor": "#never_appears", "waitSeconds": 0.0]))
+        XCTAssertTrue(text.contains("did not appear within 0s"), text)
+    }
+
+    func testSnapshotAfterWaitForHonoursWaitSeconds() async throws {
+        let text = body(try await server.call(
+            tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
+                                   "waitFor": "#never_appears", "waitSeconds": 0.0]))
+        XCTAssertTrue(text.contains("did not appear within 0s"), text)
+    }
+
+    func testWaitForChangeHonoursWaitSeconds() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = body(try await server.call(
+            tool: "ft_tap", args: ["x": 1.0, "y": 2.0, "snapshotAfter": true,
+                                   "waitForChange": true, "waitSeconds": 0.0]))
+        XCTAssertTrue(text.contains("timed out after 0s"), text)
+    }
+
     // MARK: - セッション状態
 
     /// 束ねる前は Set<String> の2つが forgetDeviceState の外にあった(前の機の状態が残っていた)
