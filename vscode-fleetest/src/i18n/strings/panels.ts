@@ -290,10 +290,6 @@ export const panelsStrings = {
     en: "Max wait on runner contention",
   },
   "panels.settings.remoteWaitLockUnit": { ja: "秒", en: "sec" },
-  "panels.settings.remoteWaitLockHint": {
-    ja: "この Mac から出るリモート実行が、ランナーが他の run で埋まっているときに順番待ちをする上限です。0 にすると待たずに失敗します。",
-    en: "How long a remote run started from this Mac waits in line while the runner is busy with another run. 0 fails immediately instead of waiting.",
-  },
 
   // 設定タブ「ログ・録画」のクリーンアップ欄(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく
   // CLI 側のマシン設定**(`fleetest api retention`)。動的表示(使用量・掃除の結果)は
@@ -319,6 +315,27 @@ export const panelsStrings = {
   "panels.settings.cleanupXcresultLabel": {
     ja: "ブリッジ診断ログの上限",
     en: "Limit for bridge diagnostics",
+  },
+  // 上限の各行のツールチップ(label の title)。中身の定義は docs/results-json.md §保持容量
+  "panels.settings.cleanupDeviceCapturesTooltip": {
+    ja: "Simulator の中に XCUITest が自動で残す録画・スクリーンショットです。",
+    en: "Recordings and screenshots XCUITest leaves inside the Simulator.",
+  },
+  "panels.settings.cleanupRecordingsTooltip": {
+    ja: "テスト実行中に fleetest が撮った画面録画です。",
+    en: "Screen recordings fleetest captured during test runs.",
+  },
+  "panels.settings.cleanupReportsTooltip": {
+    ja: "テスト結果のレポート(Markdown と失敗時のスクリーンショット)です。",
+    en: "Test reports (Markdown and failure screenshots).",
+  },
+  "panels.settings.cleanupLogsTooltip": {
+    ja: "ブリッジやインストールのテキストログです。",
+    en: "Text logs from bridges and installs.",
+  },
+  "panels.settings.cleanupXcresultTooltip": {
+    ja: "iOS のブリッジが動いている間に Xcode が書き続ける記録です。",
+    en: "Records Xcode keeps writing while an iOS bridge is running.",
   },
   "panels.settings.cleanupNowButton": { ja: "今すぐクリーンアップ", en: "Clean up now" },
 

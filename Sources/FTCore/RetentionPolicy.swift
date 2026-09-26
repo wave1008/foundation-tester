@@ -46,23 +46,26 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
 
     // MARK: - 既定値(単位: バイト。1 GiB = 1_073_741_824 / 1 MiB = 1_048_576)
 
-    /// 20 GiB。XCUITest の添付は1シナリオごとに積まれ、放っておくと際限なく育つ
-    /// (この Mac で 870 GB まで育った実測がこの機構の発端)。20 GiB は**フル E2E 数周ぶん**が
-    /// 残る量 —— 事後の切り分けに要るのは直近の run の添付だけなので、これ以上は保持しない。
-    /// 尽きたら**古い run の添付から**消える(進行中のブリッジのぶんは消さない)
-    public static let defaultDeviceCapturesMaxBytes: Int64 = 20 * 1_073_741_824
+    /// 2 GiB。XCUITest の添付は1シナリオごとに積まれ、放っておくと際限なく育つ
+    /// (この Mac で 870 GB まで育った実測がこの機構の発端)。ブリッジ起動時に自動記録を止めた
+    /// (`BridgeLauncher.captureSettings`)ので新しくは溜まらず、残るのはそれより前に起動した
+    /// ブリッジの分だけ(実測 71 MB)。尽きたら**古い run の添付から**消える(進行中のブリッジのぶんは消さない)
+    public static let defaultDeviceCapturesMaxBytes: Int64 = 2 * 1_073_741_824
 
-    /// 100 GiB。1クリップ数十 MB × シナリオ本数で、フル E2E 1周が数 GB。**10周ぶん**残る量。
+    /// 50 GiB。実測(保守者の Mac・run 1,451 件): 1 run 中央値 4.5 MB / 最大 62 MB、
+    /// 1 日平均約 0.35 GB / 最大 0.89 GB(負荷テスト + フル E2E の日)。重い日が続いても約 2 か月残る。
     /// 尽きたら古い run から run 単位で消える(結果 JSON は消さないので run 自体は残る)
-    public static let defaultRecordingsMaxBytes: Int64 = 100 * 1_073_741_824
+    public static let defaultRecordingsMaxBytes: Int64 = 50 * 1_073_741_824
 
-    /// 1000 MiB。レポートは Markdown + 失敗時のスクリーンショット PNG で、1 run 数十 MB。
-    /// 尽きたら古い run のぶんから消える
-    public static let defaultReportsMaxBytes: Int64 = 1000 * 1_048_576
+    /// 2000 MiB。レポートは Markdown + 失敗時のスクリーンショット PNG。実測: 負荷テストの日で
+    /// 1 日 60〜95 MB(1000 MiB では約 19 日で掃除が始まった)。約 1 か月残る量。
+    /// 尽きたら古い日のぶんから消える
+    public static let defaultReportsMaxBytes: Int64 = 2000 * 1_048_576
 
-    /// 500 MiB。ブリッジ1本のログが長い run で数十 MB になる。
+    /// 100 MiB。ブリッジのログはポートごとに1本で起動のたびに作り直すので、量はポート数で頭打ち
+    /// (実測: 35 本で 10.3 MB・1 本最大 1.3 MB)。
     /// 尽きたら古いログファイルから消える(生きているブリッジのログは消さない)
-    public static let defaultLogsMaxBytes: Int64 = 500 * 1_048_576
+    public static let defaultLogsMaxBytes: Int64 = 100 * 1_048_576
 
     /// 5 GiB。XCUITest ランナーの結果の束(xcresult)。**生きているブリッジぶんは
     /// ランナーが書き込み中で消せない**(guarded) —— 束の中身は「終わらない UI テスト」の

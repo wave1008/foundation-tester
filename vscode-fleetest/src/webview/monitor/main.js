@@ -404,6 +404,8 @@ btnRestart.addEventListener('click', () => {
 // 遅延を指定できない)ではなくタイルと同じ自前ツールチップ(0.2秒)で出す。
 // 全選択ボタンの文言は押すたびに変わるので deviceTiles.js が自分で setHoverTip する。
 adoptTitleHoverTips('#toolbar .icon-button[title]');
+// 設定タブ「ログ・録画」の上限の各行(文言は monitorHtml.ts の title)も同じ自前ツールチップで出す
+adoptTitleHoverTips('.settings-cleanup-row[title]');
 
 // 選択タブの永続化(vscode.getState())から復元する。不正値・未設定・起動時に出さないタブは 'devices'。
 const initialTab =

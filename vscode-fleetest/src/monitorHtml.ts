@@ -893,31 +893,31 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-cleanup-enabled"> ${t("panels.settings.cleanupEnabledLabel")}</label>
         <div class="settings-hint">${t("panels.settings.cleanupHint")}</div>
         <div class="settings-cleanup-grid">
-          <label class="settings-item settings-cleanup-row" for="settings-cleanup-device-captures">
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-device-captures" title="${t("panels.settings.cleanupDeviceCapturesTooltip")}">
             <span>${t("panels.settings.cleanupDeviceCapturesLabel")}</span>
             <input type="number" id="settings-cleanup-device-captures" class="settings-number settings-cleanup-number" min="0" step="any">
             <span class="settings-unit">GB</span>
             <span id="settings-cleanup-device-captures-usage" class="settings-hint settings-cleanup-usage"></span>
           </label>
-          <label class="settings-item settings-cleanup-row" for="settings-cleanup-recordings">
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-recordings" title="${t("panels.settings.cleanupRecordingsTooltip")}">
             <span>${t("panels.settings.cleanupRecordingsLabel")}</span>
             <input type="number" id="settings-cleanup-recordings" class="settings-number settings-cleanup-number" min="0" step="any">
             <span class="settings-unit">GB</span>
             <span id="settings-cleanup-recordings-usage" class="settings-hint settings-cleanup-usage"></span>
           </label>
-          <label class="settings-item settings-cleanup-row" for="settings-cleanup-reports">
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-reports" title="${t("panels.settings.cleanupReportsTooltip")}">
             <span>${t("panels.settings.cleanupReportsLabel")}</span>
             <input type="number" id="settings-cleanup-reports" class="settings-number settings-cleanup-number" min="0" step="any">
             <span class="settings-unit">MB</span>
             <span id="settings-cleanup-reports-usage" class="settings-hint settings-cleanup-usage"></span>
           </label>
-          <label class="settings-item settings-cleanup-row" for="settings-cleanup-logs">
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-logs" title="${t("panels.settings.cleanupLogsTooltip")}">
             <span>${t("panels.settings.cleanupLogsLabel")}</span>
             <input type="number" id="settings-cleanup-logs" class="settings-number settings-cleanup-number" min="0" step="any">
             <span class="settings-unit">MB</span>
             <span id="settings-cleanup-logs-usage" class="settings-hint settings-cleanup-usage"></span>
           </label>
-          <label class="settings-item settings-cleanup-row" for="settings-cleanup-xcresult">
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-xcresult" title="${t("panels.settings.cleanupXcresultTooltip")}">
             <span>${t("panels.settings.cleanupXcresultLabel")}</span>
             <input type="number" id="settings-cleanup-xcresult" class="settings-number settings-cleanup-number" min="0" step="any">
             <span class="settings-unit">GB</span>
@@ -959,7 +959,6 @@ function renderSettingsPanel(): string {
           <input type="number" id="settings-remote-wait-lock" class="settings-number settings-seconds-number" min="0" step="1">
           <span class="settings-unit">${t("panels.settings.remoteWaitLockUnit")}</span>
         </label>
-        <div class="settings-hint">${t("panels.settings.remoteWaitLockHint")}</div>
       </div>
     </div>
   </div>`;

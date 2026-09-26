@@ -34,10 +34,10 @@ run の**完了後に、別プロセスの背景で**保持容量の掃除が走
 
 | カテゴリ | 対象 | 削除の単位 | 既定の上限 |
 |---|---|---|---|
-| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 20 GiB |
-| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 100 GiB |
-| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 1000 MiB |
-| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 500 MiB |
+| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 2 GiB |
+| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 50 GiB |
+| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 2000 MiB |
+| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 100 MiB |
 | `xcresult` | `<repoRoot>/.fleetest/xcresult/`(XCUITest ランナーの結果の束) | 束1つ(起動1回ぶん) | 5 GiB |
 
 **結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、

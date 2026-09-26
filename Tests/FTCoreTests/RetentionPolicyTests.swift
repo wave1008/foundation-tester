@@ -8,10 +8,10 @@ import XCTest
 final class RetentionPolicyTests: XCTestCase {
 
     func testDefaultsArePinned() {
-        XCTAssertEqual(RetentionPolicy.defaultDeviceCapturesMaxBytes, 21_474_836_480)  // 20 GiB
-        XCTAssertEqual(RetentionPolicy.defaultRecordingsMaxBytes, 107_374_182_400)     // 100 GiB
-        XCTAssertEqual(RetentionPolicy.defaultReportsMaxBytes, 1_048_576_000)          // 1000 MiB
-        XCTAssertEqual(RetentionPolicy.defaultLogsMaxBytes, 524_288_000)               // 500 MiB
+        XCTAssertEqual(RetentionPolicy.defaultDeviceCapturesMaxBytes, 2_147_483_648)   // 2 GiB
+        XCTAssertEqual(RetentionPolicy.defaultRecordingsMaxBytes, 53_687_091_200)      // 50 GiB
+        XCTAssertEqual(RetentionPolicy.defaultReportsMaxBytes, 2_097_152_000)          // 2000 MiB
+        XCTAssertEqual(RetentionPolicy.defaultLogsMaxBytes, 104_857_600)               // 100 MiB
         XCTAssertEqual(RetentionPolicy.defaultXcresultMaxBytes, 5_368_709_120)         // 5 GiB
         XCTAssertTrue(RetentionPolicy.defaultSweepAfterRun)
     }
@@ -19,10 +19,10 @@ final class RetentionPolicyTests: XCTestCase {
     /// 未設定(全欄 nil)のとき、実効値が既定と1バイトも違わない
     func testUnsetPolicyFallsBackToTheDefaults() {
         let policy = RetentionPolicy()
-        XCTAssertEqual(policy.effectiveDeviceCapturesMaxBytes, 21_474_836_480)
-        XCTAssertEqual(policy.effectiveRecordingsMaxBytes, 107_374_182_400)
-        XCTAssertEqual(policy.effectiveReportsMaxBytes, 1_048_576_000)
-        XCTAssertEqual(policy.effectiveLogsMaxBytes, 524_288_000)
+        XCTAssertEqual(policy.effectiveDeviceCapturesMaxBytes, 2_147_483_648)
+        XCTAssertEqual(policy.effectiveRecordingsMaxBytes, 53_687_091_200)
+        XCTAssertEqual(policy.effectiveReportsMaxBytes, 2_097_152_000)
+        XCTAssertEqual(policy.effectiveLogsMaxBytes, 104_857_600)
         XCTAssertEqual(policy.effectiveXcresultMaxBytes, 5_368_709_120)
         XCTAssertTrue(policy.effectiveSweepAfterRun)
         XCTAssertEqual(RetentionPolicy.defaults, policy.resolved)
@@ -45,10 +45,10 @@ final class RetentionPolicyTests: XCTestCase {
     func testNegativeValuesFallBackToTheDefaults() {
         let policy = RetentionPolicy(deviceCapturesMaxBytes: -1, recordingsMaxBytes: -1024,
                                      reportsMaxBytes: -1, logsMaxBytes: -1, xcresultMaxBytes: -1)
-        XCTAssertEqual(policy.effectiveDeviceCapturesMaxBytes, 21_474_836_480)
-        XCTAssertEqual(policy.effectiveRecordingsMaxBytes, 107_374_182_400)
-        XCTAssertEqual(policy.effectiveReportsMaxBytes, 1_048_576_000)
-        XCTAssertEqual(policy.effectiveLogsMaxBytes, 524_288_000)
+        XCTAssertEqual(policy.effectiveDeviceCapturesMaxBytes, 2_147_483_648)
+        XCTAssertEqual(policy.effectiveRecordingsMaxBytes, 53_687_091_200)
+        XCTAssertEqual(policy.effectiveReportsMaxBytes, 2_097_152_000)
+        XCTAssertEqual(policy.effectiveLogsMaxBytes, 104_857_600)
         XCTAssertEqual(policy.effectiveXcresultMaxBytes, 5_368_709_120)
     }
 
