@@ -116,8 +116,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **例外は FM が判定を返さないときだけ**(macOS 26・実呼び出しの失敗・`FT_FAKE_FM_NO_VERDICT=1`)——
   近道が既に読んだ行を `TranscriptMatch.judge` に通し、行が無ければインク量(`occlusionInkThreshold`)で
   「描かれていない / 判定不能」を分ける(`FTCore.OCROnlyVisibility`。**追加の OCR は撃たない**)。
-  **不可視でも今は赤にしない**(注記 `ocr-only-would-flip`。新しい検知は警告から —— デバイス実行で誤検知 0 を
-  確かめてから赤へ上げる)。実測は docs/poc-fm-occlusion-guard.md §5.19(見えている実 crop 290 件で誤った赤 0)
+  **不可視なら FM の反転と同じく赤**(警告から始め、コーパスの誤った赤 0 と配信を止めた E2E の赤 0 を確かめて
+  上げた。**近道が撃たれていない = 読みが nil なら判定しない** —— [] と混ぜるとインク量だけで赤にする)。
+  実測は docs/poc-fm-occlusion-guard.md §5.19
 - **先頭だけ読めた形の判定は `TranscriptMatch` の1か所**(FM と OCR で共有): 省略記号 → 緑(`text-ellipsized`)/
   割合 > `mostlyHiddenRatio`(0.5・ユーザー決定)→ 緑(`text-partially-hidden`)/ 以下 → 赤。**省略記号は点の列でも
   受ける**(ヒラギノの `…` を OCR は `•••`・`・・・` と読む。`RegionText.ellipsisTailLength`)。**誤読を許す先頭一致は

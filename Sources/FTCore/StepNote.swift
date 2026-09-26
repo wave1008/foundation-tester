@@ -154,11 +154,6 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// アプリの意図した省略なので判定は変えない —— 率を見ると省略表示の画面が分かる
     case textEllipsized = "text-ellipsized"
 
-    /// FM が判定を返さず(macOS 26・実呼び出しの失敗・陽性対照の注入)、代わりに `OCROnlyVisibility`
-    /// が不可視と判定した。**判定は変えない**(新しい検知は警告から。誤検知 0 を確かめてから赤へ上げる)。
-    /// **率が上がったら FM が使えない環境で遮蔽を見逃している**(赤にしていないだけで、本来赤になる
-    /// べき回の候補)
-    case ocrOnlyWouldFlip = "ocr-only-would-flip"
 
     /// **`iosAlertHandler` の登録が無い**のに、OS のシステムアラートがアプリの前面に出ていた
     /// (SpringBoard への1問 `GET /systemalert` で確認した事実)。in-app の操作は OS のイベント経路を
@@ -334,9 +329,6 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
                 + " on-screen geometry alone"
         case .textPartiallyHidden: return "part of the text is hidden"
         case .textEllipsized: return "the text is truncated with an ellipsis"
-        case .ocrOnlyWouldFlip:
-            return "FM gave no verdict and OCR alone read the element as not visible;"
-                + " reported only, the step was not failed"
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"

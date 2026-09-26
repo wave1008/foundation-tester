@@ -321,7 +321,7 @@ extension StepExecutor {
     /// FM が判定を返せない(macOS 26・陽性対照の注入・実呼び出しの失敗)ときの代替判定。
     /// 使うのは同じ呼び出しの中で既に読んだ `ocrReading`(近道が撃たれていなければ nil = 判定不能)と
     /// `sd`(無ければここで測る)だけ —— **追加の OCR は撃たない**。
-    /// **不可視と判定しても赤にしない**(`.ocrOnlyWouldFlip` を残して素通り)。
+    /// **不可視なら FM の反転と同じく赤**(失敗文言に「OCR だけで判定した」と書く)。
     /// `countsAsSkipped` は FM に**実際に訊いた**回だけ true
     /// (macOS 26・注入は訊いていないので `visibilityGuardSkipped` を立てない)
     private func applyOCROnlyVisibility(ocrReading: RegionText.Reading?, expectedText: String,
@@ -336,15 +336,11 @@ extension StepExecutor {
             return nil
         case .notVisible(let state):
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
-            // 検証専用: FM の反転と同じ扱い(呼び出し側の poll が見えるまで撮り直し、尽きたら赤)
-            if OCROnlyFlipExperiment.isActive() {
-                consumeFirstFrameGate(visible: false, sd: ink, screenshot: screenshot, element: element, screen: screen)
-                return .failed("false positive (occlusion, judged by OCR alone because FM gave no verdict):"
-                               + " present in the tree but not visually visible [\(state.rawValue)]"
-                               + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\"")
-            }
-            noteCodesThisStep.insert(.ocrOnlyWouldFlip)
-            return nil
+            // FM の反転と同じ扱い(呼び出し側の poll が見えるまで撮り直し、尽きたら赤)
+            consumeFirstFrameGate(visible: false, sd: ink, screenshot: screenshot, element: element, screen: screen)
+            return .failed("false positive (occlusion, judged by OCR alone because FM gave no verdict):"
+                           + " present in the tree but not visually visible [\(state.rawValue)]"
+                           + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\"")
         case .undetermined:
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
             return nil

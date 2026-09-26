@@ -55,7 +55,7 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
     }
 
     /// applyOCROnlyVisibility 本体: 可視側は visibilityGuardSkipped を立てず、
-    /// 不可視側は無条件に ocrOnlyWouldFlip を立ててから countsAsSkipped で分岐する
+    /// 不可視側は FM の反転と同じく赤(launch 直後の門も消費する)
     func testApplyOCROnlyVisibilityBranchWiring() throws {
         let block = try body(from: "private func applyOCROnlyVisibility(",
                              to: "/// [occlusion-guard Tier-2 measure]", in: source)
@@ -69,22 +69,17 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
 
         XCTAssertFalse(visibleBody.contains(".visibilityGuardSkipped"),
                        "可視側は FM で見えていると確認できたので visibilityGuardSkipped を立てないはず")
-        XCTAssertTrue(notVisibleBody.contains(".ocrOnlyWouldFlip"),
-                      "不可視側は無条件に ocrOnlyWouldFlip を立てるはず")
+        XCTAssertTrue(notVisibleBody.contains("consumeFirstFrameGate(visible: false"),
+                      "launch 直後の門を消費しないと launch storyboard を覆いと読んで赤にする")
         XCTAssertTrue(notVisibleBody.contains("if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }"))
         // 警告の段階: 不可視でも赤にしない(新しい検知は警告から。赤へ上げるのは誤検知 0 を確かめてから)
-        XCTAssertTrue(notVisibleBody.contains("return nil"), "不可視側は素通り(return nil)のはず")
-        // 赤にするのは検証専用の口(FT_OCR_ONLY_FLIP=1)の中だけ
-        guard let gate = notVisibleBody.range(of: "if OCROnlyFlipExperiment.isActive() {"),
-              let failed = notVisibleBody.range(of: ".failed(")
-        else { return XCTFail("検証用の口か .failed が見つからない(書式が変わった)") }
-        XCTAssertTrue(gate.upperBound <= failed.lowerBound, "検証用の口の外で赤にしている")
+        XCTAssertTrue(notVisibleBody.contains("return .failed("), "不可視側は赤のはず")
+        XCTAssertFalse(notVisibleBody.contains("return nil"), "不可視側が素通りしている")
         XCTAssertEqual(block.components(separatedBy: ".failed(").count, 2, ".failed は1か所だけ")
         // 読んでいない(nil)を「読んで何も無かった」([])へ畳まない(畳むとインク量だけで不可視と言う)
         XCTAssertTrue(block.contains("OCROnlyVisibility.judge(lines: ocrReading?.lines,"))
         XCTAssertFalse(block.contains("ocrReading?.lines ?? []"))
-        XCTAssertFalse(undeterminedBody.contains(".ocrOnlyWouldFlip"),
-                       "判定不能は不可視ではないので ocrOnlyWouldFlip を立てないはず")
+        XCTAssertFalse(undeterminedBody.contains(".failed("), "判定不能は赤にしない")
         XCTAssertTrue(undeterminedBody.contains("if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }"))
     }
 }

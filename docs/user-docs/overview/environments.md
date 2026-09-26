@@ -42,9 +42,9 @@ switches to the cloud.
   disabled automatically; everything else works without restriction. Text visual verification
   runs without its FM stage (see below).
 - When FM is unavailable, `screenLooksLike` is **skipped**, not failed. Text visual verification
-  judges from the on-device OCR reading (`ocrTextVisualCheck`) instead of FM, and a step whose
-  element OCR reads as not visible gets the note `ocr-only-would-flip` (**it is not failed for
-  now**; the step stays green with the note). Either way the run can stay green, so confirm
+  judges from the on-device OCR reading (`ocrTextVisualCheck`) instead of FM and fails a step
+  whose element OCR reads as not visible (the message says `judged by OCR alone`). Elements OCR
+  cannot judge (nothing legible but something drawn) pass unverified, so confirm
   that FM actually works with `fleetest doctor --fm-only`, which performs one real inference on
   each of the text and vision paths and exits 1 when
   either is dead. Details in

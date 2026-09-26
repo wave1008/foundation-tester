@@ -66,10 +66,4 @@ final class OCROnlyVisibilityTests: XCTestCase {
         XCTAssertFalse(FMNoVerdictInjection.isActive(environment: ["FT_FAKE_FM_NO_VERDICT": "true"]))
         XCTAssertFalse(FMNoVerdictInjection.isActive(environment: ["FT_FAKE_FM_NO_VERDICT": "0"]))
     }
-
-    func testFlipExperimentIsActiveOnlyForExactly1() {
-        XCTAssertTrue(OCROnlyFlipExperiment.isActive(environment: ["FT_OCR_ONLY_FLIP": "1"]))
-        XCTAssertFalse(OCROnlyFlipExperiment.isActive(environment: [:]))
-        XCTAssertFalse(OCROnlyFlipExperiment.isActive(environment: ["FT_OCR_ONLY_FLIP": "true"]))
-    }
 }

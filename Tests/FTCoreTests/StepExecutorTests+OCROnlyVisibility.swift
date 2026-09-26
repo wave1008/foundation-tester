@@ -10,7 +10,7 @@ extension StepExecutorTests {
 
     /// FM に実際に訊いたが答えが無く(NoVerdictVisibilityDelegate)、OCR の読みも無い(off)。
     /// **低インク(Self.blankPNG)でも不可視とは言わない** —— 読んでいないのにインク量だけで判定していた
-    /// (E2E の暖機前のステップで ocr-only-would-flip が出た)。FM に訊いた回なので visibilityGuardSkipped は立つ
+    /// (E2E の暖機前のステップで実際に出た)。FM に訊いた回なので visibilityGuardSkipped は立つ
     func testNoVerdictFromFMWithoutOCRReadingDoesNotJudgeByInkAlone() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
@@ -27,7 +27,7 @@ extension StepExecutorTests {
         guard case .passed = outcome.status else {
             XCTFail("実際は \(outcome.status)"); return
         }
-        XCTAssertFalse(outcome.notes.contains(.ocrOnlyWouldFlip), "読みが無いのに判定した: \(outcome.notes)")
+        
         XCTAssertTrue(outcome.notes.contains(.visibilityGuardSkipped), "FM に訊いた回なので立つはず: \(outcome.notes)")
         XCTAssertEqual(delegate.visibleCalls, 1)
     }
@@ -48,7 +48,7 @@ extension StepExecutorTests {
         let outcome = await executor.execute(step)
 
         guard case .passed = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
-        XCTAssertFalse(outcome.notes.contains(.ocrOnlyWouldFlip), "\(outcome.notes)")
+        
         XCTAssertTrue(outcome.notes.contains(.visibilityGuardSkipped), "\(outcome.notes)")
     }
 
@@ -78,7 +78,7 @@ extension StepExecutorTests {
 
         guard case .passed = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
         XCTAssertEqual(delegate.visibleCalls, 0, "注入が効いていれば FM を一切呼ばないはず")
-        XCTAssertFalse(outcome.notes.contains(.ocrOnlyWouldFlip), "\(outcome.notes)")
+        
         XCTAssertFalse(outcome.notes.contains(.visibilityGuardSkipped),
                        "訊いてすらいないので立たないはず: \(outcome.notes)")
     }

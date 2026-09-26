@@ -63,8 +63,8 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 `FT_OCCLUSION_OCR=0`・`measure` でコーパス採取(実測は docs/poc-fm-occlusion-guard.md §5.17)。
 **①の例外は FM が判定を返さないときだけ**(2026-09-26。macOS 26・実呼び出しの失敗):
 近道が読んだ行を `TranscriptMatch.judge` に通し、行が無ければインク量で分ける(`FTCore.OCROnlyVisibility`)。
-不可視と判定しても**今は赤にせず注記 `ocr-only-would-flip` だけ**(新しい検知は警告から。
-実測は同 §5.19・見えている実 crop 290 件で誤った赤 0)。
+不可視なら FM の反転と同じく赤(警告の段階でコーパス・E2E の誤った赤 0 を確かめてから上げた。
+実測は同 §5.19)。
 **先頭だけ描かれた形**は `TranscriptMatch` が FM と OCR で共通に分ける: 省略記号 → 緑(`text-ellipsized`)/
 割合 > 0.5 → 緑(`text-partially-hidden`)/ 以下 → 赤(ユーザー決定)。
 

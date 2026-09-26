@@ -4,9 +4,9 @@
 // (近道が撃たれていない回は lines = nil = 判定不能。「読んで何も無かった」[] と混ぜると、読んでいない
 // のにインク量だけで不可視と言う —— E2E の暖機前のステップで実際に出た)。
 //
-// **不可視と判定しても今は赤にしない**(呼び手が `.ocrOnlyWouldFlip` を残して素通りする)。
-// 新しい検知は警告から入れる規律(ユーザー決定)で、デバイス実行で誤検知 0 を確かめてから赤へ上げる。
-// コーパスでの実測(見えている実 crop 290 件で誤った赤 0)は docs/poc-fm-occlusion-guard.md §5.19。
+// **不可視なら FM の反転と同じく赤**(警告の段階で E2E とコーパスの誤った赤 0 を確かめてから上げた。
+// 実測は docs/poc-fm-occlusion-guard.md §5.19)。**FM の反転と同じく、スクショが古い絵のままだと赤になる**
+// (モニターの配信が張られた Android Emulator で実際に出た)—— OCR 固有の問題ではない。
 
 import Foundation
 
@@ -33,16 +33,6 @@ public enum OCROnlyVisibility {
         // 40 以上に分かれ、間に境界例が無い。docs/poc-fm-occlusion-guard.md §5.19)
         guard let inkStdDev else { return .undetermined }
         return inkStdDev < inkThreshold ? .notVisible(.notRendered) : .undetermined
-    }
-}
-
-/// **検証専用**: OCR だけの判定の「不可視」を FM の反転と同じく赤にする(見えるまで撮り直し、尽きたら赤)。
-/// 警告から赤へ上げる前に、E2E で誤った赤が出ないかを確かめるための口。利用者の口は置かない
-public enum OCROnlyFlipExperiment {
-    public static let environmentKey = "FT_OCR_ONLY_FLIP"
-
-    public static func isActive(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment[environmentKey] == "1"
     }
 }
 
