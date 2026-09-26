@@ -36,6 +36,16 @@ public enum OCROnlyVisibility {
     }
 }
 
+/// **検証専用**: OCR だけの判定の「不可視」を FM の反転と同じく赤にする(見えるまで撮り直し、尽きたら赤)。
+/// 警告から赤へ上げる前に、E2E で誤った赤が出ないかを確かめるための口。利用者の口は置かない
+public enum OCROnlyFlipExperiment {
+    public static let environmentKey = "FT_OCR_ONLY_FLIP"
+
+    public static func isActive(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment[environmentKey] == "1"
+    }
+}
+
 /// **陽性対照の注入口**。FM の実際の不調(モデル不可用・ブレーカ開)は意図的に起こせないので、
 /// これが無いと「FM が答えを返さなかった」経路を一度も通せない。デバイスを触る動作は何もしない
 /// (`FrozenInjection` と同じ規律 —— 観測・分岐だけを差し替える)。

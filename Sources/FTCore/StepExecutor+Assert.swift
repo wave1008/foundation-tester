@@ -283,15 +283,7 @@ extension StepExecutor {
         // (nil にして素通りさせると誤った緑になる。呼び出し側の poll ループが deadline を
         // 一度だけ延ばす)。sd は Tier-1 を通らなかった経路(幾何が疑い有り / 閾値 0)では
         // 未計算なので、**門が開いている回だけ**ここで測る(常時は払わない)
-        if firstFrameGatePending {
-            firstFrameGatePending = false
-            if !v.visible,
-               let blank = sd ?? RegionInk.luminanceStdDev(pngData: screenshot,
-                                                            frame: element.frame, screen: screen),
-               blank < Self.firstFrameBlankStdDevCeiling {
-                firstFrameBlankObserved = true
-            }
-        }
+        consumeFirstFrameGate(visible: v.visible, sd: sd, screenshot: screenshot, element: element, screen: screen)
         if v.visible {
             notePartialVisibility(TranscriptMatch.State(rawValue: v.state))
             return nil
@@ -301,6 +293,20 @@ extension StepExecutor {
         // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した。
         return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
                        + " observed=\"\(v.observedText)\"")
+    }
+
+    /// launch 直後の一度きりの門(上の occlusionFlip のコメント)。FM の判定と OCR だけの判定の両方が
+    /// 判定を出した回に消費する —— 片方だけにすると、FM が答えない run で launch storyboard を覆いと読む
+    private func consumeFirstFrameGate(visible: Bool, sd: Double?, screenshot: Data,
+                                       element: ElementInfo, screen: FTRect) {
+        guard firstFrameGatePending else { return }
+        firstFrameGatePending = false
+        if !visible,
+           let blank = sd ?? RegionInk.luminanceStdDev(pngData: screenshot,
+                                                        frame: element.frame, screen: screen),
+           blank < Self.firstFrameBlankStdDevCeiling {
+            firstFrameBlankObserved = true
+        }
     }
 
     /// 緑の判定のうち、先頭だけ読めた形を注記に残す(FM の判定と OCR だけの判定の両方から呼ぶ)
@@ -325,11 +331,19 @@ extension StepExecutor {
         switch OCROnlyVisibility.judge(lines: ocrReading?.lines, expected: expectedText,
                                        inkStdDev: ink, inkThreshold: occlusionInkThreshold) {
         case .visible(let state):
+            consumeFirstFrameGate(visible: true, sd: ink, screenshot: screenshot, element: element, screen: screen)
             notePartialVisibility(state)
             return nil
-        case .notVisible:
-            noteCodesThisStep.insert(.ocrOnlyWouldFlip)
+        case .notVisible(let state):
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
+            // 検証専用: FM の反転と同じ扱い(呼び出し側の poll が見えるまで撮り直し、尽きたら赤)
+            if OCROnlyFlipExperiment.isActive() {
+                consumeFirstFrameGate(visible: false, sd: ink, screenshot: screenshot, element: element, screen: screen)
+                return .failed("false positive (occlusion, judged by OCR alone because FM gave no verdict):"
+                               + " present in the tree but not visually visible [\(state.rawValue)]"
+                               + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\"")
+            }
+            noteCodesThisStep.insert(.ocrOnlyWouldFlip)
             return nil
         case .undetermined:
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }

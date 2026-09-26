@@ -60,7 +60,7 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         let block = try body(from: "private func applyOCROnlyVisibility(",
                              to: "/// [occlusion-guard Tier-2 measure]", in: source)
         guard let visibleCase = block.range(of: "case .visible(let state):"),
-              let notVisibleCase = block.range(of: "case .notVisible:"),
+              let notVisibleCase = block.range(of: "case .notVisible(let state):"),
               let undeterminedCase = block.range(of: "case .undetermined:")
         else { return XCTFail("switch の case が見つからない(書式が変わった)") }
         let visibleBody = String(block[visibleCase.upperBound..<notVisibleCase.lowerBound])
@@ -74,7 +74,12 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         XCTAssertTrue(notVisibleBody.contains("if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }"))
         // 警告の段階: 不可視でも赤にしない(新しい検知は警告から。赤へ上げるのは誤検知 0 を確かめてから)
         XCTAssertTrue(notVisibleBody.contains("return nil"), "不可視側は素通り(return nil)のはず")
-        XCTAssertFalse(block.contains(".failed("), "OCR だけの判定で赤にしている")
+        // 赤にするのは検証専用の口(FT_OCR_ONLY_FLIP=1)の中だけ
+        guard let gate = notVisibleBody.range(of: "if OCROnlyFlipExperiment.isActive() {"),
+              let failed = notVisibleBody.range(of: ".failed(")
+        else { return XCTFail("検証用の口か .failed が見つからない(書式が変わった)") }
+        XCTAssertTrue(gate.upperBound <= failed.lowerBound, "検証用の口の外で赤にしている")
+        XCTAssertEqual(block.components(separatedBy: ".failed(").count, 2, ".failed は1か所だけ")
         // 読んでいない(nil)を「読んで何も無かった」([])へ畳まない(畳むとインク量だけで不可視と言う)
         XCTAssertTrue(block.contains("OCROnlyVisibility.judge(lines: ocrReading?.lines,"))
         XCTAssertFalse(block.contains("ocrReading?.lines ?? []"))
