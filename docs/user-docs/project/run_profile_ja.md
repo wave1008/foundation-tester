@@ -24,7 +24,7 @@
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
 | `textVisualCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する。FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
-| `ocrTextVisualCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読めなければ FM が判定する。FM が判定を返せないとき(macOS 26・FM の不調)は、この読みで判定し、見えていないと読めたら失敗にする。切ると検査が遅くなり、FM が使えないときの判定も無くなる。`textVisualCheck` が `false` の run では guard 自体が走らないので効かない |
+| `ocrTextVisualCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読みだけで見えていないと言い切れた回は FM を呼ばずに失敗にし、それ以外は FM が判定する。FM が判定を返せないとき(macOS 26・FM の不調)は、この読みで判定し、見えていないと読めたら失敗にする。切ると検査が遅くなり、FM が使えないときの判定も無くなる。切っても、FM の書き起こしが期待と1文字だけ違う回に限り、字形の取り違え(「単」を「单」と読む等)で誤って失敗にしないよう OCR で読み直す(その回だけ OCR の初回準備に最大 60 秒かかることがある)。`textVisualCheck` が `false` の run では guard 自体が走らないので効かない |
 | `preferCheckStateClassifier` | bool | `true` | `checkIsON` / `checkIsOFF` の判定で CheckStateClassifier(プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置いた見本画像から学習する画像分類器)をアクセシビリティより優先する。`false` なら、アクセシビリティが状態を報告しない要素にだけ使う。見本画像が無ければ効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `waitSeconds:` を取る DSL コマンドの既定タイムアウト |

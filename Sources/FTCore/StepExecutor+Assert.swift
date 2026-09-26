@@ -177,8 +177,8 @@ extension StepExecutor {
         }
         // Tier-2(FM の手前): 期待テキストが Vision OCR で丸ごと読めれば見えている(FM を呼ばず素通り)。
         // 実 run で FM の段に届いた crop の 97% がここで片付く(p50 92ms。FM は 1.3〜2.8s)。
-        // **読めなかったことは反転の根拠にしない**(判定は必ず FM)。詳細は RegionText の
-        // コメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
+        // 丸ごと読めなかったこと自体は反転の根拠にしない(反転は下の OCROnlyVisibility が言い切れた回か FM)。
+        // 詳細は RegionText のコメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
         // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(ユーザー決定。
@@ -224,6 +224,17 @@ extension StepExecutor {
             // 落ちて反転した回に、未 warm か予算切れの読みが残っていたかを後から切り分けるため)
             noteCodesThisStep.insert(RegionText.isWarm ? .ocrShortcutBusy : .ocrShortcutNotWarm)
         }
+        // **OCR だけで不可視と言い切れる回は FM の有無に関わらず FM に回さない**(ユーザー決定)。
+        // FM へ上げるのは判定不能(読めない × インクが多い)と、見えるが丸ごとは読めなかった回だけ。
+        // 根拠: 見えている実 crop 290 件で誤った赤 0(docs/poc-fm-occlusion-guard.md §5.21)。
+        // measure は FM と並べて採取するのが目的なので止めない。読んでいない(nil)は judge が判定不能を返す
+        let ocrOnly = ocrOnlyOutcome(ocrReading: ocrReading, expectedText: expectedText, sd: sd,
+                                     screenshot: screenshot, element: element, screen: screen)
+        if occlusionOCRMode == .on, case .notVisible = ocrOnly.outcome {
+            return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
+                                          element: element, screen: screen, countsAsSkipped: false,
+                                          fmGaveNoVerdict: !fmAvailable)
+        }
         // FM に画像を渡せないなら(macOS 26・陽性対照の注入)FM は撃たない。
         // 「訊いたのに答えが無い」のと同じ扱いで OCR/インクだけの代替判定へ落ちるが、
         // **訊いてすらいない**ので visibilityGuardSkipped は立てない
@@ -235,9 +246,9 @@ extension StepExecutor {
                               screenshot: screenshot, element: element, screen: screen,
                               fmVisible: nil, fmState: nil, fmObserved: nil)
             }
-            return applyOCROnlyVisibility(ocrReading: ocrReading, expectedText: expectedText, sd: sd,
-                                          screenshot: screenshot, element: element, screen: screen,
-                                          countsAsSkipped: false)
+            return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
+                                          element: element, screen: screen, countsAsSkipped: false,
+                                          fmGaveNoVerdict: true)
         }
         // 同じスクショ(バイト同一)・同じ frame・同じ期待文字列なら FM に訊き直さない
         // (VisibilityVerdictMemo。答えは同じで、払うのは FM の数秒だけ)
@@ -263,9 +274,9 @@ extension StepExecutor {
                                   screenshot: screenshot, element: element, screen: screen,
                                   fmVisible: nil, fmState: nil, fmObserved: nil)
                 }
-                return applyOCROnlyVisibility(ocrReading: ocrReading, expectedText: expectedText, sd: sd,
-                                              screenshot: screenshot, element: element, screen: screen,
-                                              countsAsSkipped: true)
+                return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
+                                              element: element, screen: screen, countsAsSkipped: true,
+                                              fmGaveNoVerdict: true)
             }
             visibilityVerdictMemo.store(imageHash: memoImageHash, key: memoKey, verdict: fresh)
             v = fresh
@@ -318,18 +329,18 @@ extension StepExecutor {
         }
     }
 
-    /// FM が判定を返せない(macOS 26・陽性対照の注入・実呼び出しの失敗)ときの代替判定。
-    /// 使うのは同じ呼び出しの中で既に読んだ `ocrReading`(近道が撃たれていなければ nil = 判定不能)と
-    /// `sd`(無ければここで測る)だけ —— **追加の OCR は撃たない**。
-    /// **不可視なら FM の反転と同じく赤**(失敗文言に「OCR だけで判定した」と書く)。
-    /// `countsAsSkipped` は FM に**実際に訊いた**回だけ true
-    /// (macOS 26・注入は訊いていないので `visibilityGuardSkipped` を立てない)
-    private func applyOCROnlyVisibility(ocrReading: RegionText.Reading?, expectedText: String,
-                                        sd: Double?, screenshot: Data, element: ElementInfo,
-                                        screen: FTRect, countsAsSkipped: Bool) -> StepResult.Status? {
-        let ink = sd ?? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen)
-        switch OCROnlyVisibility.judge(lines: ocrReading?.lines, expected: expectedText,
-                                       inkStdDev: ink, inkThreshold: occlusionInkThreshold) {
+    /// OCR の読みとインク量だけの判定(`OCROnlyVisibility`)を適用する。呼ぶのは2つの場合 ——
+    /// ①不可視と言い切れた回(FM の有無に関わらず FM を省く)②FM が判定を返せない回(macOS 26・
+    /// 陽性対照の注入・実呼び出しの失敗)。**不可視なら FM の反転と同じく赤**。
+    /// `countsAsSkipped` は FM に**実際に訊いた**のに答えが無かった回だけ true
+    /// (macOS 26・注入・①は訊いていないので `visibilityGuardSkipped` を立てない)。
+    /// `fmGaveNoVerdict` は失敗文言の出し分けだけに使う
+    private func applyOCROnlyVisibility(_ judged: (outcome: OCROnlyVisibility.Outcome, ink: Double?),
+                                        ocrReading: RegionText.Reading?, screenshot: Data,
+                                        element: ElementInfo, screen: FTRect, countsAsSkipped: Bool,
+                                        fmGaveNoVerdict: Bool) -> StepResult.Status? {
+        let ink = judged.ink
+        switch judged.outcome {
         case .visible(let state):
             consumeFirstFrameGate(visible: true, sd: ink, screenshot: screenshot, element: element, screen: screen)
             notePartialVisibility(state)
@@ -338,13 +349,27 @@ extension StepExecutor {
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
             // FM の反転と同じ扱い(呼び出し側の poll が見えるまで撮り直し、尽きたら赤)
             consumeFirstFrameGate(visible: false, sd: ink, screenshot: screenshot, element: element, screen: screen)
-            return .failed("false positive (occlusion, judged by OCR alone because FM gave no verdict):"
+            let judgedBy = fmGaveNoVerdict ? "judged by OCR alone because FM gave no verdict" : "judged by OCR"
+            return .failed("false positive (occlusion, \(judgedBy)):"
                            + " present in the tree but not visually visible [\(state.rawValue)]"
                            + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\"")
         case .undetermined:
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
             return nil
         }
+    }
+
+    /// 同じ呼び出しの中で既に読んだ `ocrReading`(近道が撃たれていなければ nil = 判定不能)と
+    /// `sd`(無ければここで測る)だけで判定する —— **追加の OCR は撃たない**
+    private func ocrOnlyOutcome(ocrReading: RegionText.Reading?, expectedText: String, sd: Double?,
+                                screenshot: Data, element: ElementInfo,
+                                screen: FTRect) -> (outcome: OCROnlyVisibility.Outcome, ink: Double?) {
+        // インク量を judge が使うのは「読んで何も無かった」ときだけ。それ以外で測らない —— PNG 全体の
+        // 復号を FM の前(OCR off を含む全回)に払うことになる。nil は consumeFirstFrameGate が自分で測る
+        let ink = sd ?? (ocrReading?.lines.isEmpty == true
+            ? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen) : nil)
+        return (OCROnlyVisibility.judge(lines: ocrReading?.lines, expected: expectedText,
+                                        inkStdDev: ink, inkThreshold: occlusionInkThreshold), ink)
     }
 
     /// [occlusion-guard Tier-2 measure] OCR と FM の判定を並べてコーパスへ書く。run の成否には

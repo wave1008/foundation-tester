@@ -19,10 +19,12 @@ tree check, so a different value is not its concern.
 ## How it decides
 
 1. When the device's **OCR** reads the whole expected text, the step passes right there (fast).
-2. Otherwise **FM** (Foundation Models) transcribes the text that is drawn, and the transcript is matched
+2. When the OCR reading (or, if nothing is legible, the amount of ink in the region) alone shows that the
+   text is not visible, the step fails right there without calling FM (fast).
+3. Otherwise **FM** (Foundation Models) transcribes the text that is drawn, and the transcript is matched
    against the expected text.
-3. When FM is unavailable (macOS 26, or FM failing), the same rules are applied to the **OCR reading
-   alone**.
+4. When FM is unavailable (macOS 26, or FM failing), the cases in step 3 are judged from the **OCR reading
+   alone** with the same rules.
 
 An element whose centre is off the screen fails before any image is looked at.
 
@@ -68,8 +70,8 @@ tolerated.
 | <img src="../images/text_visual_check/en/other_text.png" width="187" alt="other text"> | `Game Center` | `Walpaper` | Unrelated text is drawn there (`textMismatch`) |
 
 The failure message is `false positive (occlusion): present in the tree but not visually visible
-[<reason>] ...`. When FM was unavailable and OCR alone decided, it says `judged by OCR alone because FM
-gave no verdict`. In both cases the step does not fail at once: it keeps taking new screenshots for its
+[<reason>] ...`. When the OCR reading decided the failure it adds `judged by OCR`, and when FM was unavailable
+and OCR alone decided it adds `judged by OCR alone because FM gave no verdict`. In both cases the step does not fail at once: it keeps taking new screenshots for its
 wait time (`waitSeconds`) and passes if the text becomes visible.
 
 ### Shapes OCR cannot judge: FM decides

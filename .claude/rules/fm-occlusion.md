@@ -96,16 +96,18 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   期待文字列を prompt に入れて「見えるか」を訊くと、空白・別の文字の crop でも期待文字列を写して
   visible=true と答える(おうむ返し。空白 20〜23% / 別の文字 33〜56% の見逃し)。欄順を変えても直らない。
   `OcclusionTranscriptTests` がソース走査で守る → maintainer-notes §19
-- **occlusion-guard の OCR 段(`FTCore.RegionText`)は「素通りの根拠」にしかしない** —— 期待テキストが
-  **丸ごと**読めた回だけ FM を省く(既定 on。**利用者の口は実行プロファイルの
+- **occlusion-guard の OCR 段(`FTCore.RegionText`)の「丸ごと読めた」は素通りの根拠** —— 期待テキストが
+  **丸ごと**読めた回は FM を省く(既定 on。**利用者の口は実行プロファイルの
   `ocrTextVisualCheck`**(拡張のプロファイルタブ
   「Advanced Features(Experimental)」)。保守者の口は `FT_OCCLUSION_OCR=0` の
-  殺しスイッチと `measure` のコーパス採取で、**プロファイルの false が環境変数に勝つ**)。**読めなかったことを反転の根拠にしない** —— 日本語モデルを載せた版では実測で
+  殺しスイッチと `measure` のコーパス採取で、**プロファイルの false が環境変数に勝つ**)。**「丸ごとは読めなかった」だけを反転の根拠にしない** —— 日本語モデルを載せた版では実測で
   29% が可視なテキストの1文字誤読(`swipe=down`→`swipe=aown`)で、反転に使うと誤った赤になる。
-  反転の判定は必ず FM。**一致は語境界つきの完全含有**(素の部分一致だと `exist("OK")` が
+  反転するのは下の `OCROnlyVisibility` が言い切れた回か FM だけ。**一致は語境界つきの完全含有**(素の部分一致だと `exist("OK")` が
   覆いの「Cookieの設定」に当たって素通りする)。
   **読ませる言語は期待文字列から決める**(`languages(for:)`。ASCII の期待値に日本語モデルを
-  載せると所要が 2.3 倍になる)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
+  載せると所要が 2.3 倍になる)。**FM の「惜しい」転写の OCR 読み直し(`OcclusionVerifier.nearMissOCRBudget`)は `ocrTextVisualCheck` を見ない**
+  (ユーザー決定: 精度優先。off でも字形の取り違えを誤った赤にしない。off は暖機しないのでその回だけ初回コンパイルを
+  払いうる。利用者向けは run_profile に明記)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
   en ロケールの端末は「単」を中国語フォントの字形で描き、補正なしだと Vision も FM も「单」と読む。
   ASCII は切ったまま = 欠けを推測で埋めさせない)。読めなければ crop を
   拡大して読み直す(`upscaleLadder = [1,2,3]`。×4 で悪化するので上げ続けない。**1行も読めない
@@ -113,12 +115,14 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (OS の既定に従う)—— 版・認識レベル・言語補正・言語規則が動いたことの検出は、実 crop の固定
   コーパス `Tests/Fixtures/OcclusionCrops/` が読みと撃つ回数を等号で固定して担う。
   crop 矩形は `FTCore.OcclusionCrop` を FM と共有する(別々に持つと同じ画面で判断が食い違う)
-- **例外は FM が判定を返さないときだけ**(macOS 26・実呼び出しの失敗・`FT_FAKE_FM_NO_VERDICT=1`)——
-  近道が既に読んだ行を `TranscriptMatch.judge` に通し、行が無ければインク量(`occlusionInkThreshold`)で
+- **OCR だけで不可視と言い切れた回は FM の有無に関わらず FM を呼ばずに赤**(ユーザー決定 2026-09-26。
+  FM へ上げるのは判定不能と、見えるが丸ごとは読めなかった回だけ。`measure` では止めない。
+  `OCROnlyVisibilityWiringTests` が FM より前にあることを固定)。FM が判定を返さないとき(macOS 26・
+  実呼び出しの失敗・`FT_FAKE_FM_NO_VERDICT=1`)は残りも同じ判定で決める —— 近道が既に読んだ行を `TranscriptMatch.judge` に通し、行が無ければインク量(`occlusionInkThreshold`)で
   「描かれていない / 判定不能」を分ける(`FTCore.OCROnlyVisibility`。**追加の OCR は撃たない**)。
   **不可視なら FM の反転と同じく赤**(警告から始め、コーパスの誤った赤 0 と配信を止めた E2E の赤 0 を確かめて
   上げた。**近道が撃たれていない = 読みが nil なら判定しない** —— [] と混ぜるとインク量だけで赤にする)。
-  実測は docs/poc-fm-occlusion-guard.md §5.19
+  実測は docs/poc-fm-occlusion-guard.md §5.19・§5.21
 - **先頭だけ読めた形の判定は `TranscriptMatch` の1か所**(FM と OCR で共有): 省略記号 → 緑(`text-ellipsized`)/
   割合 > `mostlyHiddenRatio`(0.5・ユーザー決定)→ 緑(`text-partially-hidden`)/ 以下 → 赤。**省略記号は点の列でも
   受ける**(ヒラギノの `…` を OCR は `•••`・`・・・` と読む。`RegionText.ellipsisTailLength`)。**誤読を許す先頭一致は

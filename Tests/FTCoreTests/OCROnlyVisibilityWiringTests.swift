@@ -45,6 +45,24 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         XCTAssertTrue(block.contains("countsAsSkipped: false"), block)
     }
 
+    /// OCR だけで不可視と言い切れた回は **FM の有無に関わらず** FM より前で赤にする(ユーザー決定)。
+    /// on のときだけ(measure は FM と並べて採取する)・FM に訊いていないので countsAsSkipped: false
+    func testOCRNotVisibleShortCircuitsBeforeFM() throws {
+        let text = source
+        // body(from:) はマーカーが無いと skip する —— 短絡ごと消されたら落とす
+        XCTAssertTrue(text.contains("let ocrOnly = ocrOnlyOutcome("), "OCR の赤の短絡が消えている")
+        let block = try body(from: "let ocrOnly = ocrOnlyOutcome(",
+                             to: "guard fmAvailable else {", in: text)
+        XCTAssertTrue(block.contains("if occlusionOCRMode == .on, case .notVisible = ocrOnly.outcome {"), block)
+        XCTAssertTrue(block.contains("applyOCROnlyVisibility(ocrOnly,"), block)
+        XCTAssertTrue(block.contains("countsAsSkipped: false"), block)
+        XCTAssertFalse(block.contains("verifyElementVisible("), "FM より前に置くはず")
+        guard let shortCircuit = text.range(of: "let ocrOnly = ocrOnlyOutcome("),
+              let fmCall = text.range(of: "delegate.verifyElementVisible(")
+        else { return XCTFail("マーカーが見つからない") }
+        XCTAssertLessThan(shortCircuit.lowerBound, fmCall.lowerBound, "OCR の赤は FM を呼ぶ前に判定するはず")
+    }
+
     /// FM に実際に訊いたのに答えが無かったときは countsAsSkipped: true
     /// (visibilityGuardSkipped を立てる側)
     func testNoVerdictFromFMCountsAsSkipped() throws {

@@ -4,9 +4,9 @@
 // FM と同一の矩形**を切り出すので、両者が食い違わない。
 //
 // 既定は on: FM の段に届いた実 run の crop 163 枚のうち **97% が OCR で片付き**、残りは FM に回るので
-// 誤った赤は増えない(docs/poc-fm-occlusion-guard.md §5.17)。**OCR 単独で判定はしない** ——
-// 等倍では 29% が可視なテキストの1文字誤読(`swipe=down`→`swipe=aown`)で、それを反転の根拠に
-// すると誤った赤になる。読めなかった回の判定は必ず FM が行う。
+// 誤った赤は増えない(docs/poc-fm-occlusion-guard.md §5.17)。**「丸ごと読めなかった」だけを反転の根拠に
+// しない** —— 日本語モデルを載せた版では可視なテキストの 29% が1文字誤読(`swipe=down`→`swipe=aown`)した。
+// 反転するのは OCROnlyVisibility が言い切れた回(読みが期待と無関係・インクが無い)か FM だけ(§5.21)。
 
 import CoreGraphics
 import CoreText

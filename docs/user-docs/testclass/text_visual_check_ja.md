@@ -19,8 +19,10 @@
 ## 判定の流れ
 
 1. 端末の **OCR** が、期待のテキストを丸ごと読めれば、その場で緑にします(速い)。
-2. 読めなければ **FM**(Foundation Models)が描かれている文字を書き起こし、期待のテキストと照合します。
-3. FM が使えないとき(macOS 26・FM の不調)は、**OCR の読みだけ**で同じ規則を当てます。
+2. OCR の読み(何も読めなければ領域のインク量)だけで「見えていない」と言い切れれば、その場で失敗にします
+   (FM は呼びません。速い)。
+3. どちらとも言えなければ **FM**(Foundation Models)が描かれている文字を書き起こし、期待のテキストと照合します。
+4. FM が使えないとき(macOS 26・FM の不調)は、3 の形も **OCR の読みだけ**で同じ規則を当てます。
 
 画面の外(要素の中心が画面に無い)は、画像を見る前に失敗にします。
 
@@ -64,7 +66,8 @@
 | <img src="../images/text_visual_check/ja/other_text.png" width="367" alt="別の文字"> | `アクセシビリティ` | `スクリーンタイム` | 期待と無関係な文字が描かれている(`textMismatch`) |
 
 失敗の文言は `false positive (occlusion): present in the tree but not visually visible [<理由>] ...` です。
-FM が使えず OCR だけで判定したときは、`judged by OCR alone because FM gave no verdict` と出ます。
+OCR の読みで失敗にしたときは `judged by OCR`、FM が使えず OCR だけで判定したときは
+`judged by OCR alone because FM gave no verdict` と添えます。
 どちらも、すぐには失敗にせず、待ち時間(`waitSeconds`)のあいだ撮り直して、見えるようになれば緑にします。
 
 ### OCR では判定できない形 → FM が判定
