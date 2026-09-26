@@ -2701,5 +2701,6 @@ MCP 使用中の実機ブリッジが落ちる。直し: 共有の `BridgeDiscov
 - **記録に残るキーを改名するときは、移行を同じ変更に入れる**(拡張の `recordingsStore` は欠けた欄を null で読むので
   拡張側では気付かない。落ちるのは Swift 側だけ)。確かめ方: 改名したビルドで `fleetest results list --project <P>`
   の stderr の件数を移行前後で比べる(移行後に残るのは、それより前の形の記録)
-- 9/15 以前の形(`falsePositiveCheck` / `ocrFalsePositiveCheck`)の run.json は、その時の改名で既に読めなくなっており、
-  今回も移行していない(E2E-iOS 341 件・E2E-Android 214 件・sut-ec-mobile 107 件)
+- 9/7〜9/15 の形(`falsePositiveCheck` / `ocrFalsePositiveCheck`)の run.json は 9/15 の改名の時点で既に読めなく
+  なっていた(移行していなかった)。同じ日に同じ手順で移行した(手元 2,092 件・M1Max 328 件・M1Ultra 574 件。
+  移行後は手元の全プロジェクトで読めない件数 0)
