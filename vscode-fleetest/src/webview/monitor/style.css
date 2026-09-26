@@ -3041,6 +3041,12 @@ input[type="radio"]:focus-visible {
 .settings-item-inline {
   cursor: default;
 }
+/* label は行幅いっぱいに広がると文字の右の空白クリックでもチェックが切り替わる → 中身の幅に縮める。
+   クリーンアップの行は subgrid で列を揃えるので除外(縮めると列がずれる) */
+.settings-item:not(.settings-cleanup-row) {
+  width: fit-content;
+  max-width: 100%;
+}
 /* 設定タブの入力欄。**素の input はブラウザ既定の白**で、隣の select(--vscode-dropdown-*)
    だけがテーマ色になり浮いて見える。VSCode の入力欄トークンで塗る(テーマ追従) */
 /* select は input ではないので上のグローバル規則に載らない。**同じ見た目を写す**
