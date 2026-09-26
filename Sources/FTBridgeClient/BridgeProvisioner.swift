@@ -1050,7 +1050,7 @@ public struct BridgeProvisioner {
             }
         }
         // 直前まで確かめた Shutdown の上で撃つ(PosterBoard のスナップショットキャッシュ掃除)
-        SimulatorPosterCache.purge(udid: udid)
+        SimulatorBootCleanup.beforeBoot(udid: udid)
         let result = try Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
         guard result.status == 0 else {
             throw BridgeProvisionerError.simulatorRebootFailed(name: name, detail: result.tail)

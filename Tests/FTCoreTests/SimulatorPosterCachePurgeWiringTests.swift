@@ -1,7 +1,7 @@
 // iOS 27 Simulator の PosterBoard(壁紙ギャラリー)は、版を作り直すたびにスナップショットキャッシュを作り、
 // 古い版の分を消さない(Sources/FTBridgeClient/SimulatorPosterCache.swift の doc)。
 // **simctl で boot / bootstatus -b(Shutdown なら boot する)を撃つ関数は、必ず同じ関数の中で、
-// その呼び出しより前に `SimulatorPosterCache.purge` を呼ぶ**。新しい boot 経路を足して purge を呼び忘れても
+// その呼び出しより前に `SimulatorBootCleanup.beforeBoot`(壁紙のスナップショットと古い統合ログの掃除)を呼ぶ**。新しい boot 経路を足して purge を呼び忘れても
 // コンパイルも実行時の失敗も起きない(起動が遅くキャッシュが溜まるだけ)ので、この走査で守る。
 
 import Foundation
@@ -9,7 +9,7 @@ import XCTest
 
 final class SimulatorPosterCachePurgeWiringTests: XCTestCase {
 
-    private static let purgeCall = "SimulatorPosterCache.purge("
+    private static let purgeCall = "SimulatorBootCleanup.beforeBoot("
     // `Shell.run(["xcrun", "simctl", "boot", …])` / `…, "bootstatus", …` の形だけを狙う
     // (コメント・エラー文言の素の文字列は事前に "//" 以降を落とすので当たらない)
     private static let bootPattern = #""simctl"\s*,\s*"(boot|bootstatus)""#
@@ -23,7 +23,7 @@ final class SimulatorPosterCachePurgeWiringTests: XCTestCase {
         var bootCalls = 0
         for case let url as URL in enumerator where url.pathExtension == "swift" {
             // 定義そのものは対象外(purge の中に boot 呼び出しは無いが、名前の一致で誤検知しない)
-            guard url.lastPathComponent != "SimulatorPosterCache.swift" else { continue }
+            guard url.lastPathComponent != "SimulatorBootCleanup.swift" else { continue }
             let codeLines = try String(contentsOf: url, encoding: .utf8)
                 .components(separatedBy: "\n").map(Self.stripLineComment)
             for (index, code) in codeLines.enumerated() {
@@ -45,7 +45,7 @@ final class SimulatorPosterCachePurgeWiringTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(bootCalls, 4,
                                     "simctl boot / bootstatus -b の呼び出しが見つからない —— 走査の前提が崩れた")
         XCTAssertEqual(offenders, [],
-                       "起動直前に SimulatorPosterCache.purge を呼んでいない simctl boot 経路: "
+                       "起動直前に SimulatorBootCleanup.beforeBoot を呼んでいない simctl boot 経路: "
                        + offenders.joined(separator: ", "))
     }
 

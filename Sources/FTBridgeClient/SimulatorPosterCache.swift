@@ -3,8 +3,8 @@
 // SnapshotCache.cachedb`(壁紙プレビュー画像のキャッシュ)を作り、古い版の分を消さない
 // (Apple の公式な認知は確認できていない。起動のたびではない —— 消さずに再起動しても束は増えず、版の数が増えた。
 // 実測 15 台で合計約 187GB・1台最大 30GB。docs/design.md §12.4.2)。
-// **simctl でブートする直前だけ**この関数を撃つ(古い版が増える機会そのものを減らす。
-// 呼び出し口の一覧は Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift が固定する)。
+// 起動の直前の呼び出しは `SimulatorBootCleanup.beforeBoot` が入口(呼び出し口の一覧は
+// Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift が固定する)。ここを直接呼ぶのは `fleetest clean`。
 //
 // **Booted の台には撃たない** —— PosterBoard が動いている最中に消すと書き込み中のファイルを
 // 壊しうる。呼び出し側の保証をあてにせず、この関数自身が simctl の実状態を確かめる

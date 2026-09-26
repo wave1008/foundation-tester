@@ -71,6 +71,54 @@ final class DeviceStorageSamplerTests: XCTestCase {
         sampler.forget(keysNotIn: ["a"])
         XCTAssertEqual(Set(sampler.snapshot().keys), ["a"])
     }
+
+    private func countingAndroidSampler(_ calls: LockedCounter, delay: TimeInterval = 0) -> DeviceStorageSampler {
+        DeviceStorageSampler(
+            probeIOS: { _ in nil },
+            probeAndroid: { _ in
+                if delay > 0 { Thread.sleep(forTimeInterval: delay) }
+                calls.increment()
+                return DeviceStorageInfo(usedBytes: calls.value, freeBytes: 1, freeScope: .device, measuredAt: "t")
+            },
+            isRunActive: { false })
+    }
+
+    func testRebootedDeviceIsRemeasuredBeforeTheInterval() {
+        let calls = LockedCounter()
+        let sampler = countingAndroidSampler(calls)
+        sampler.noteConnected(keys: ["emu"])
+        sampler.schedule(candidates: [("emu", "android")], now: Date())
+        waitUntil { calls.value == 1 }
+        Thread.sleep(forTimeInterval: 0.05)
+
+        // つながったままなら間隔の内側では測らない
+        sampler.noteConnected(keys: ["emu"])
+        sampler.schedule(candidates: [("emu", "android")], now: Date())
+        Thread.sleep(forTimeInterval: 0.1)
+        XCTAssertEqual(calls.value, 1)
+
+        // 再起動(connected 以外を挟んで connected へ戻る)したら測り直す
+        sampler.noteConnected(keys: [])
+        sampler.noteConnected(keys: ["emu"])
+        sampler.schedule(candidates: [("emu", "android")], now: Date())
+        waitUntil { calls.value == 2 }
+        XCTAssertEqual(calls.value, 2)
+    }
+
+    func testRebootDuringAMeasurementIsRemeasuredAfterItFinishes() {
+        let calls = LockedCounter()
+        let sampler = countingAndroidSampler(calls, delay: 0.3)
+        sampler.noteConnected(keys: ["emu"])
+        sampler.schedule(candidates: [("emu", "android")], now: Date())
+        // 計測中に再起動が観測された
+        sampler.noteConnected(keys: [])
+        sampler.noteConnected(keys: ["emu"])
+        waitUntil { calls.value == 1 }
+        Thread.sleep(forTimeInterval: 0.05)
+        sampler.schedule(candidates: [("emu", "android")], now: Date())
+        waitUntil { calls.value == 2 }
+        XCTAssertEqual(calls.value, 2, "起動前の中身かもしれない計測で期限を進めない")
+    }
 }
 
 private final class LockedCounter: @unchecked Sendable {

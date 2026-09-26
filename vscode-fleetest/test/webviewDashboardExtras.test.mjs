@@ -625,3 +625,31 @@ test("デバイスの健全性: モニターの周期で表に出る値が変わ
   assert.notEqual(after, first, "状態が変われば描き直す");
   assert.match(after.children[2].textContent, /未起動/);
 });
+
+test("デバイスの健全性: 実機にはデバイスモニターと同じ「実機」バッジ(モニターに居ない台はプロファイルの kind で判断)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendDeviceCatalog(sendToWebview, [
+    { platform: "android", machine: "local", name: "Pixel 4a", kind: "physical" },
+    { platform: "android", machine: "local", name: "Pixel 9", kind: "virtual" },
+  ]);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [
+      healthRow({ worker: "android:Pixel 4a", removed: 1 }),
+      healthRow({ worker: "android:Pixel 9", removed: 1 }),
+    ],
+  }) } });
+  sendToWebview({ type: "devices", filter: "all", devices: [
+    monitorDevice({ id: "ios:iPhone SE3", name: "iPhone SE3", platform: "ios", kind: "physical" }),
+    monitorDevice({ id: "android:emu", name: "emu", kind: "virtual" }),
+  ] });
+  const badgeOf = (worker) => window.document
+    .querySelector(`#table-device-health-body tr[data-worker="${worker}"]`).children[1].querySelector(".badge-kind");
+  assert.ok(badgeOf("ios:iPhone SE3"), "モニターが実機と言う台");
+  assert.match(badgeOf("ios:iPhone SE3").textContent, /実機/);
+  assert.ok(badgeOf("android:Pixel 4a"), "モニターに居なくてもプロファイルが実機と言う台");
+  assert.equal(badgeOf("android:Pixel 9"), null);
+  assert.equal(badgeOf("android:emu"), null);
+});

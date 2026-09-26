@@ -210,7 +210,8 @@ On iOS 27 Simulators, PosterBoard (the wallpaper gallery) writes a new snapshot 
 rebuilds a wallpaper version, and never deletes the older ones. Home-screen rendering snapshots pile up
 the same way. With frequent reboots a single
 Simulator can reach tens of GB. fleetest purges a Simulator's accumulated cache right before it boots
-that Simulator (wallpaper settings and other data are left untouched).
+that Simulator (wallpaper settings and other data are left untouched). At the same time it trims the
+iOS diagnostic log store that has no size limit (Special), keeping only the newest 100 files (about 0.2 GB).
 
 To purge it for Simulators that are not being booted, run `fleetest clean --simulator-poster-cache`
 from a terminal (`--dry-run` shows the amount without deleting). It purges every **stopped**

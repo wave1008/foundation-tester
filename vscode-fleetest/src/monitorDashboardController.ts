@@ -216,6 +216,7 @@ export class MonitorDashboardController {
           name: device.name,
           avd: device.avd,
           udid: device.udid,
+          kind: device.kind,
         })),
       });
       // 直近ペイロードがあれば取得完了を待たず即座に再送する(パネルを開き直した webview は

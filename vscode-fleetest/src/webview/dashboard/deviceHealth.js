@@ -145,12 +145,34 @@ function machineCell(machine) {
   return cell;
 }
 
+/** 実機か。モニターに居る台はモニターの kind、居ない台(履歴だけ)は実行プロファイルの kind で決める。
+ * どちらも言えなければ付けない(推測しない) */
+function isPhysical(row) {
+  if (row.monitor && row.monitor.kind) {
+    return row.monitor.kind === 'physical';
+  }
+  const sep = row.worker.indexOf(':');
+  const platform = row.worker.slice(0, sep);
+  const name = row.worker.slice(sep + 1);
+  const entry = deviceCatalog.find((e) => e.platform === platform && e.name === name
+    && (e.machine || LOCAL_MACHINE_LABEL) === row.machine);
+  return !!entry && entry.kind === 'physical';
+}
+
 /** 台の名前と OS のラベル(worker = "<platform>:<name>")。機械は別の列が持つ */
 function deviceCell(row) {
   const cell = document.createElement('td');
   const sep = row.worker.indexOf(':');
   const platform = sep < 0 ? '' : row.worker.slice(0, sep);
   const name = sep < 0 ? row.worker : row.worker.slice(sep + 1);
+  if (isPhysical(row)) {
+    // デバイスモニターのタイルと同じバッジ(クラス・文言とも)
+    const physical = document.createElement('span');
+    physical.className = 'badge badge-kind dh-kind';
+    physical.textContent = t('wvMonitor.tile.physicalBadge');
+    physical.title = t('wvMonitor.tile.physicalBadgeTitle');
+    cell.appendChild(physical);
+  }
   if (platform) {
     const label = document.createElement('span');
     // 色はデバイスモニターのタイルの名前ピルと同じクラス(.tile-name-ios / -android)

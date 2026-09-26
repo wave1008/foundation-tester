@@ -353,8 +353,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
 
             // ストレージ: 仮想デバイスの connected で run 中でない台だけ(実機はここで測れない)
+            // 「動いている」= connected か booted(ブリッジ未起動でも中身は測れる)
+            let storageUpStates: Set<String> = ["connected", "booted"]
+            storageSampler.noteConnected(keys: Set(states.compactMap { state in
+                storageUpStates.contains(state.state) ? (state.iosUdid ?? state.androidSerial) : nil
+            }))
             storageSampler.schedule(candidates: states.compactMap { state in
-                guard state.state == "connected", !state.target.spec.isPhysical,
+                guard storageUpStates.contains(state.state), !state.target.spec.isPhysical,
                       let key = state.iosUdid ?? state.androidSerial else { return nil }
                 let inRun = leaseStateDir.map { RunLease.isFresh(stateDir: $0, key: key) } ?? false
                 return inRun ? nil : (key, state.target.platform)

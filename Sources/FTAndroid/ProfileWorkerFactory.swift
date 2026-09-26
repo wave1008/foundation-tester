@@ -859,7 +859,7 @@ public enum ProfileWorkerFactory {
                         _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])
                         // shutdown の成否に関わらず purge 自身が Shutdown を確かめる
                         // (PosterBoard のスナップショットキャッシュ掃除)
-                        SimulatorPosterCache.purge(udid: udid)
+                        SimulatorBootCleanup.beforeBoot(udid: udid)
                         _ = try? Shell.run(["xcrun", "simctl", "boot", udid])
                         // boot 完了まで待つ(待たずに注入すると launch が失敗する)
                         _ = try? Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])

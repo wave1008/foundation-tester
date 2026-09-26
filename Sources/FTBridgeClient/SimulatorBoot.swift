@@ -21,7 +21,7 @@ public enum SimulatorBoot {
     public static func ensureBooted(udid: String) throws {
         // Booted なら SimulatorPosterCache が自ら気付いて何もしない(PosterBoard の
         // スナップショットキャッシュ掃除。docs/design.md §Simulator の供給・健全性)
-        SimulatorPosterCache.purge(udid: udid)
+        SimulatorBootCleanup.beforeBoot(udid: udid)
         let result = try Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
         guard result.status == 0 else { throw Error.failed(udid: udid, detail: result.tail) }
     }

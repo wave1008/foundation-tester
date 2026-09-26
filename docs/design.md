@@ -4535,7 +4535,9 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 monitor が `monitorDevices[].storage`(`usedBytes` / `freeBytes` / `freeScope` / `measuredAt`)を配る。
 契約は `Sources/fleetest/ApiMonitorEvents.swift` の `ApiMonitorDeviceInfo.storage`。
 
-- **対象**: connected な仮想デバイスで、run 中(run lease)でない台だけ。実機は測らない(欄を省く)。
+- **対象**: 動いている(connected / booted。ブリッジ未起動でも測れる)仮想デバイスで、run 中(run lease)で
+  ない台だけ。実機は測らない(欄を省く)。**起動し直した台(動いていない → 動いている)は間隔を待たず次の周期で
+  測り直す**(起動前の掃除で減った量をすぐ見せる。計測中に起動し直した台は、その計測の後にもう一度)。
   測れなかった・撃たなかった回は前回値を配り続ける(0 で埋めない)。
 - **Android**: `adb shell df /data`(`AndroidStorageProbe`。5 分おき)。`freeScope: "device"`。
 - **iOS Simulator**: `taskpolicy -b du -sk <データディレクトリ>` + ホストのボリュームの空き
@@ -4558,7 +4560,8 @@ SnapshotCache.cachedb`(壁紙プレビュー画像のキャッシュ。`Snapshot
 **boot する直前に消す**ことで溜まる量を抑える。iOS 26 の台は同じフォルダが約 100MB(起動回数が少ない台なので、
 iOS 26 で溜まらないとは言えない)・iOS 18 の台にはこのキャッシュ自体が無い
 
-- **定義元は `FTBridgeClient.SimulatorPosterCache.purge(udid:)`**。simctl で boot / bootstatus -b
+- **起動の直前の入口は `FTBridgeClient.SimulatorBootCleanup.beforeBoot(udid:)`**(中身は
+  `SimulatorPosterCache.purge` と §12.4.3 のログの整理)。simctl で boot / bootstatus -b
   (Shutdown なら boot する)を撃つ関数は、必ず同じ関数の中でこれを呼ぶ
   (`Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift` が Sources 全体を走査して固定する。
   2026-09-27 時点の呼び出し口は `SimulatorBoot.ensureBooted` / `DeviceBooter.bootOne` /
@@ -4586,6 +4589,22 @@ iOS 26 で溜まらないとは言えない)・iOS 18 の台にはこのキャ�
 - **既に溜まった分**は `fleetest clean --simulator-poster-cache` が停止中の全 Simulator ぶんを
   消す(§保持容量とは別枠 —— `RetentionSweeper.Category` には入れず、このフラグを付けたときだけ動く。
   背景の自動掃除には含まれない)。Booted の台は名前だけ出して飛ばす
+
+### 12.4.3 iOS Simulator の統合ログ(Special)の整理(起動前)
+
+`<data>/var/db/diagnostics/Special/*.tracev3` は logd が**容量でなくファイル数(1,000)でしか抑えない**
+(`logdata.statistics.*.txt` の purge 記録で goal が無制限・kept 1000 files)。調べた `-01` では Special が 1.9GB、
+統合ログ全体(diagnostics + uuidtext)で 3.7GB あった。Special の書き手は backboardd 47%(ほぼ全部が
+`IOSurfaceQueryTransactionList got non-success return from kernel`)・runningboardd 13%・kbd 11%。
+backboardd のこのエラーは、モニターが画面を配信している台で 192 件/5分、配信していない台で 24 件/5分
+(1組の比較。モニターを止めた対照はしていない)—— 画面の取り込みとツールの操作が主な源と読める。
+
+- **起動の直前に新しい 100 ファイルだけ残して消す**(`SimulatorBootCleanup.specialLogFilesToKeep`。約 0.18GB)。
+  ファイル名は固定幅の16進連番なので名前の昇順 = 古い順。`.tracev3` 以外には触れない
+- 検証: 停止中の `-09`(647 ファイル・1.2GB)で古い 547 ファイルを消す(5 秒)→ 起動 → 新しいファイルが続けて
+  書かれ・`log show` で読め・ホーム画面・シナリオ1本が正常。logd の `Failed to get persona` は削除前から出ている
+  (手を入れていない台にもある)
+- Persist / HighVolume / Signpost は logd が容量でローテーションしているので触らない
 
 ### 12.5 タイルペインの auto-fit と「非表示中は実測しない」規律(2026-07-30/31)
 

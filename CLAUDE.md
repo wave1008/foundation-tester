@@ -121,8 +121,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   user-docs・docs/shirates-parity.md・`ft_batch` のキー・引数名は `waitSeconds:` 等の規律(dsl-commands.md)
 - 受け手のフロー(install.sh・スキル)を変える → SKILL.md のステップ番号と 1:1(`installStepSync.test.mjs`)・
   受け手のファイルを書くのはステップ7.6 の入口だけ(installer-agents.md)
-- iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorPosterCache.purge(udid:)`
-  (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2)
+- iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorBootCleanup.beforeBoot(udid:)`
+  (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2・§12.4.3)
 - モニターの周期に計測を足す → 周期の中で待たない(裏で回して控えを読むだけ。`DeviceStorageSampler`)
   → maintainer-notes §55
 

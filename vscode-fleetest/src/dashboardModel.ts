@@ -371,6 +371,8 @@ export interface DeviceCatalogEntry {
   readonly avd?: string;
   /** iOS のみ。 */
   readonly udid?: string;
+  /** 実行プロファイルの kind(省略 = virtual)。モニターに居ない台の「実機」バッジに使う。 */
+  readonly kind?: "virtual" | "physical";
 }
 
 export type DashboardToWebviewMessage =

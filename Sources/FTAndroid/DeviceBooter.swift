@@ -596,7 +596,7 @@ public enum DeviceBooter {
             }
             log("→ \(spec.name): starting the simulator (\(sim.name) \(sim.os))...")
             // Shutdown 確定済みの上で撃つ(PosterBoard のスナップショットキャッシュ掃除)
-            SimulatorPosterCache.purge(udid: sim.udid)
+            SimulatorBootCleanup.beforeBoot(udid: sim.udid)
             // bootstatus -b は起動してブート完了までブロックする
             let result = try Shell.run(["xcrun", "simctl", "bootstatus", sim.udid, "-b"])
             guard result.status == 0 else {
