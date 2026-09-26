@@ -34,6 +34,8 @@ struct VisionCapture: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         if let issue = VisionSample.labelIssue(classifier: classifier, label: label) { throw ValidationError(issue) }
         if let name, let issue = VisionSample.nameIssue(name) { throw ValidationError(issue) }

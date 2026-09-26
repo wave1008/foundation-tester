@@ -68,6 +68,23 @@ struct RemoteRunDispatcher {
     /// 構築箇所(facts を書く必要のない経路)では facts の保存をスキップする
     var hostLabel: String? = nil
 
+    /// **中断済みならまだ何も走っていない前提で無条件にロックを外して抜ける**。
+    /// `dispatch()`/`dispatchApi()` の両方から2回ずつ呼ぶ ―― ロック取得の直後と、
+    /// ssh でリモート run を起動する直前(runRemoteAndRelay の呼び出し前)。取得直後の
+    /// チェックだけだと、その間の prepareWorkspace/transfer(rsync)の間に届いた中断は
+    /// 誰も見ないまま起動まで進んでしまう。releaseDispatchLock 自身が「親が持っている
+    /// ロックは外さない」を見て no-op に倒すので、この呼び出しはどちらの経路でも安全
+    private func bailIfAlreadyInterrupted(
+        interruptFlag: DispatchInterruptFlag, layout: RemoteLayout, lockReleasedEarly: inout Bool
+    ) throws {
+        guard interruptFlag.interrupted else { return }
+        releaseDispatchLock(layout: layout)
+        lockReleasedEarly = true
+        throw RemoteDispatchError.remoteSetupFailed(
+            "interrupted before dispatching to \(host.sshTarget) — stopping without starting"
+            + " a remote run")
+    }
+
     /// 戻り値 = リモート `fleetest run` の exit code
     func dispatch(project: TestProject, profile: String,
                   scenarios: [String], folders: [String],
@@ -105,18 +122,11 @@ struct RemoteRunDispatcher {
         defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
         // **取得の直後にもう一度見る**: 待機列で待っている間の中断はループ内(acquireDispatchLock)
         // で捕まえて外に出るが、待たずに一発で取れた場合や、待機列を抜けた直後に中断が来た場合は
-        // ロックを持ったまま関数末尾まで来てしまう。ここで拾わないと、既に中断済みなのに
-        // このあと prepareWorkspace/transfer/runRemoteAndRelay(= 実際のリモート run を起動する)
-        // まで進む — 起動より前なので、まだ何も走っていないこの時点なら無条件に外してよい
-        guard !interruptFlag.interrupted else {
-            // releaseDispatchLock 自身が「親が持っているロックは外さない」を見て no-op に倒すので、
-            // この呼び出しはどちらの経路でも安全
-            releaseDispatchLock(layout: layout)
-            lockReleasedEarly = true
-            throw RemoteDispatchError.remoteSetupFailed(
-                "interrupted before dispatching to \(host.sshTarget) — stopping without starting"
-                + " a remote run")
-        }
+        // ロックを持ったまま関数末尾まで来てしまう。**ここで拾っても安心しない** —— このあとの
+        // prepareWorkspace/transfer の間に届く分は誰も見ないので、ssh 起動の直前でもう一度
+        // 同じ判定を通す(bailIfAlreadyInterrupted の呼び出しがもう1箇所ある)
+        try bailIfAlreadyInterrupted(
+            interruptFlag: interruptFlag, layout: layout, lockReleasedEarly: &lockReleasedEarly)
         reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // ワークスペースの用意(ステージング)は project の rsync より先に行う。ワークスペースは
@@ -141,21 +151,22 @@ struct RemoteRunDispatcher {
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
         let overheadSeconds = Date().timeIntervalSince(setupStart)
+        // ssh 起動の直前にもう一度見る(理由は取得直後のガードの宣言参照)
+        try bailIfAlreadyInterrupted(
+            interruptFlag: interruptFlag, layout: layout, lockReleasedEarly: &lockReleasedEarly)
         let exitCode: Int32
         do {
             exitCode = try runRemoteAndRelay(
                 fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
-                stamp: stamp, project: project.name, developerDir: developerDir)
+                stamp: stamp, project: project.name, developerDir: developerDir,
+                interruptFlag: interruptFlag)
         } catch {
             // timeout (throws from runInheritedWithLineRewrite): the remote run may still be
             // alive — the ssh session was just signalled, but the runner's teardown is
             // asynchronous. Release only if it has actually ended (same M7 judgment as the
             // ssh-disconnect path below), never unconditionally
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
-            if !lockReleasedEarly {
-                log("==> the remote run may still be finishing — keeping the dispatch lock"
-                    + " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended)")
-            }
+            if !lockReleasedEarly { logKeptDispatchLock(afterCollecting: false) }
             throw error
         }
         lockReleasedEarly = awaitRemoteRunEnd(
@@ -210,14 +221,9 @@ struct RemoteRunDispatcher {
         try acquireDispatchLock(layout: layout, runGroup: runGroup, interruptFlag: interruptFlag)
         var lockReleasedEarly = false
         defer { if !lockReleasedEarly { releaseDispatchLock(layout: layout) } }
-        // 理由は dispatch() の同じガード参照(取得の直後にもう一度見る)
-        guard !interruptFlag.interrupted else {
-            releaseDispatchLock(layout: layout)
-            lockReleasedEarly = true
-            throw RemoteDispatchError.remoteSetupFailed(
-                "interrupted before dispatching to \(host.sshTarget) — stopping without starting"
-                + " a remote run")
-        }
+        // 理由は dispatch() の同じガード参照(取得直後・ssh 起動直前の2箇所で見る)
+        try bailIfAlreadyInterrupted(
+            interruptFlag: interruptFlag, layout: layout, lockReleasedEarly: &lockReleasedEarly)
         reapOrphanedHooksAcrossIssuers(layout: layout)
 
         // 順序の理由は dispatch() のコメント参照(prepareWorkspace は transfer() より先)
@@ -237,18 +243,19 @@ struct RemoteRunDispatcher {
             explicit: remoteTimeoutSeconds, scenarioCount: scenarios.count)
         announceTimeout(timeoutSeconds)
         let overheadSeconds = Date().timeIntervalSince(setupStart)
+        // ssh 起動の直前にもう一度見る(理由は dispatch() の同じガード参照)
+        try bailIfAlreadyInterrupted(
+            interruptFlag: interruptFlag, layout: layout, lockReleasedEarly: &lockReleasedEarly)
         let exitCode: Int32
         do {
             exitCode = try runRemoteAndRelay(
                 fleetestArgs: fleetestArgs, layout: layout, timeoutSeconds: timeoutSeconds,
-                stamp: stamp, project: project.name, developerDir: developerDir)
+                stamp: stamp, project: project.name, developerDir: developerDir,
+                interruptFlag: interruptFlag)
         } catch {
             // 理由は dispatch() の同じ catch 参照(timeout でも生きていれば外さない)
             lockReleasedEarly = releaseLockIfRunEnded(layout: layout, reportDir: remoteReportDir)
-            if !lockReleasedEarly {
-                log("==> the remote run may still be finishing — keeping the dispatch lock"
-                    + " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended)")
-            }
+            if !lockReleasedEarly { logKeptDispatchLock(afterCollecting: false) }
             throw error
         }
         lockReleasedEarly = awaitRemoteRunEnd(
@@ -780,12 +787,25 @@ struct RemoteRunDispatcher {
             sleep(Self.remoteRunEndPollIntervalSeconds)
         }
         let released = releaseLockIfRunEnded(layout: layout, reportDir: reportDir)
-        if !released {
-            log("==> the remote run may still be finishing — keeping the dispatch lock"
-                + " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended;"
-                + " collecting what is there now)")
-        }
+        if !released { logKeptDispatchLock(afterCollecting: true) }
         return released
+    }
+
+    /// **`releaseLockIfRunEnded` が外せなかったときに、この不確実な注記を出してよいか**
+    /// (純粋関数)。親(fan-out)がこのホストのロックを先取りしている(`parentHoldsThisLock`)
+    /// ときは `releaseLockIfRunEnded` が run の生死に関わらず無条件で false を返す(解放の
+    /// 持ち主は親の1箇所だけ)ので、この子が「まだ終わっていないかも」と言うのは誤り
+    static func shouldLogKeptDispatchLock(parentHoldsLock: Bool) -> Bool {
+        !parentHoldsLock
+    }
+
+    private func logKeptDispatchLock(afterCollecting: Bool) {
+        guard Self.shouldLogKeptDispatchLock(parentHoldsLock: parentHoldsThisLock) else { return }
+        let suffix = afterCollecting
+            ? " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended;"
+              + " collecting what is there now)"
+            : " (the next dispatch on \(host.sshTarget) reclaims it once the run has ended)"
+        log("==> the remote run may still be finishing — keeping the dispatch lock" + suffix)
     }
 
     /// 成功・失敗・タイムアウト・例外いずれでも defer から呼ばれる。解放の失敗は run の成否を
@@ -946,7 +966,8 @@ struct RemoteRunDispatcher {
 
     private func runRemoteAndRelay(fleetestArgs: [String], layout: RemoteLayout,
                                    timeoutSeconds: Int?, stamp: String, project: String,
-                                   developerDir: String?) throws -> Int32 {
+                                   developerDir: String?,
+                                   interruptFlag: DispatchInterruptFlag) throws -> Int32 {
         log("==> running on \(host.sshTarget): fleetest \(fleetestArgs.joined(separator: " "))")
         let command = RemoteShell.remoteRunCommand(layout: layout, fleetestArgs: fleetestArgs,
                                                    issuer: LocalConfig.resolveIssuerId(),
@@ -957,7 +978,8 @@ struct RemoteRunDispatcher {
         let status = try runInheritedWithLineRewrite(
             ParentBoundCommand.wrap(sshRunBase + [host.sshTarget, command],
                                     parentPID: ProcessInfo.processInfo.processIdentifier),
-            layout: layout, timeoutSeconds: timeoutSeconds, stamp: stamp, project: project)
+            layout: layout, timeoutSeconds: timeoutSeconds, stamp: stamp, project: project,
+            interruptFlag: interruptFlag)
         if status == 90 {
             log("==> the remote fleetest binary is missing — build it on the remote first"
                 + " (swift build --product fleetest)")
@@ -1370,10 +1392,15 @@ struct RemoteRunDispatcher {
     /// 読み取りは別スレッドで行う。期限超過時は SIGTERM→2秒猶予→SIGKILL(Shell.runRaw の
     /// timeout 経路と同じ規律)。stdin は /dev/null に固定する(`-tt` は TTY として stdin を
     /// 要求するが、ディスパッチは対話しない)。**timeoutSeconds nil = 無期限**
-    /// (`.distantFuture` を渡す。欠陥2: RemoteTimeout.seconds がシナリオ数不明を表す nil)
+    /// (`.distantFuture` を渡す。欠陥2: RemoteTimeout.seconds がシナリオ数不明を表す nil)。
+    /// **`interruptFlag` に既定値を置かない** —— 呼び出し元(runRemoteAndRelay)は
+    /// ssh 起動の直前で一度確かめてから呼ぶが、コマンド組み立てや `process.run()` 自体の間にも
+    /// 中断は届きうる。forwarding を登録した直後にもう一度確かめ、既に立っていれば forwarding が
+    /// 撃つのと同じ操作(SIGTERM)を自分で撃つ
     private func runInheritedWithLineRewrite(_ argv: [String], layout: RemoteLayout,
                                              timeoutSeconds: Int?, stamp: String,
-                                             project: String) throws -> Int32 {
+                                             project: String,
+                                             interruptFlag: DispatchInterruptFlag) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = argv
@@ -1425,6 +1452,8 @@ struct RemoteRunDispatcher {
         // ssh が生き残り、-tt による SIGHUP がリモートへ届かない)
         let relay = InterruptRelay.forwarding(to: process)
         defer { relay.stop() }
+        // **登録の直前までに届いていた中断を閉じる**(宣言は関数冒頭参照)
+        if interruptFlag.interrupted { process.terminate() }
         let deadline = timeoutSeconds.map { DispatchTime.now() + .seconds($0) } ?? .distantFuture
         if waitExit(deadline) == .timedOut {
             process.terminate()                        // SIGTERM; -tt が SIGHUP をリモートへ伝える(§16.1)

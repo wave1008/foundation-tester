@@ -240,6 +240,16 @@ final class ArgumentBoundsTests: XCTestCase {
         }
     }
 
+    /// iOS で bundleId が決まらない ft_logs は isError(本文で返すと「クラッシュ無し」と区別できない)
+    func testLogsWithoutBundleOnIOSIsAnError() async {
+        do {
+            _ = try await server.call(tool: "ft_logs", args: ["platform": "ios"])
+            XCTFail("bundleId 無しの iOS の ft_logs が成功扱いで返った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("bundleId is required"), error.localizedDescription)
+        }
+    }
+
     func testScreenshotMaxWidthAndQualityAreRejected() async {
         do {
             _ = try await server.call(tool: "ft_screenshot", args: ["maxWidth": 0])

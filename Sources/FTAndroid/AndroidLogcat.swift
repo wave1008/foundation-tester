@@ -115,14 +115,18 @@ public enum AndroidLogcat {
         return trimmed.split(separator: " ").first.map(String.init)
     }
 
-    /// logcat `-t` の時刻絞り込み書式("MM-dd HH:mm:ss.SSS")。**端末のローカル時刻**で組む
+    /// logcat `-t` の時刻絞り込み書式("yyyy-MM-dd HH:mm:ss.SSS")。**端末のローカル時刻**で組む
     /// (deviceUTCOffsetSeconds = 端末の UTC オフセット秒。ホストの時間帯ではない)。
+    /// **年を落とさない** —— 年なし("MM-dd …")は logcat が「今年」と読むので、年をまたぐ窓
+    /// (1月初旬の「直近数日」)の起点が今年の12月 = 未来になり、クラッシュがあっても 0 行で返る。
+    /// 起点は 1970 年より前へ出さない(巨大な secondsAgo で年が負になると logcat が読めない)。
     /// 時計そのもののずれは残るが致命ではない(末尾 maxLines への切り詰めで上限は掛かる。
     /// エミュレータはホストと時刻同期・実機も NTP 同期が通常)
     static func logcatTimeArgument(secondsAgo: Int, now: Date, deviceUTCOffsetSeconds: Int) -> String {
-        let cutoff = now.addingTimeInterval(-Double(secondsAgo))
+        let cutoff = now.addingTimeInterval(-min(Double(secondsAgo), now.timeIntervalSince1970))
         let formatter = DateFormatter()
-        formatter.dateFormat = "MM-dd HH:mm:ss.SSS"
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
         formatter.timeZone = TimeZone(secondsFromGMT: deviceUTCOffsetSeconds) ?? TimeZone(identifier: "UTC")!
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.string(from: cutoff)

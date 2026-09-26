@@ -34,6 +34,7 @@ struct Bridge: AsyncParsableCommand {
 
         func validate() throws {
             try driverOptions.rejectVersionSkewFlag(in: "bridge up")
+            try driverOptions.rejectDeviceTargetMismatch()
             if driverOptions.resolvedPlatform != "android" {
                 try Self.validatePort(driverOptions.port, in: BridgeDiscovery.portRange)
             }
@@ -187,14 +188,14 @@ struct Bridge: AsyncParsableCommand {
     struct Down: AsyncParsableCommand {
         static let configuration = CommandConfiguration(abstract: "Stop the bridge")
 
-        @Option(name: .long, help: "Port of the bridge to stop (iOS only)")
-        var port: UInt16 = BridgeAPI.defaultPort
+        @Option(name: .long, help: "Port of the bridge to stop (iOS only; default \(BridgeAPI.defaultPort))")
+        var port: UInt16?
 
         @Flag(help: "Stop the bridges on every port (iOS only)")
         var all = false
 
-        @Option(help: "Target platform: ios / android")
-        var platform: String = "ios"
+        @Option(help: "Target platform: ios / android (default ios; android when only --serial is given)")
+        var platform: String?
 
         @Option(help: "Android device serial (defaults to every connected device)")
         var serial: String?
@@ -202,8 +203,31 @@ struct Bridge: AsyncParsableCommand {
         @Flag(help: "Stop the bridge even if a run or an MCP session is currently using its device")
         var force = false
 
+        /// `platform`/`port` は non-Optional にしない —— 既定値を持たせると「明示されたか」が
+        /// 区別できず、`DeviceTargetConsistency.mismatch` の判定に platform の明示有無を渡せない
+        /// (DriverOptions と同じ規律)。省略時の推定は `DeviceTargetConsistency.defaultPlatform`
+        var resolvedPlatform: String {
+            FTCore.DeviceTargetConsistency.defaultPlatform(
+                explicit: platform, gaveIOSTarget: port != nil, gaveAndroidTarget: serial != nil)
+        }
+
+        var resolvedPort: UInt16 { port ?? BridgeAPI.defaultPort }
+
+        func validate() throws {
+            if let mismatch = FTCore.DeviceTargetConsistency.mismatch(
+                platform: platform, gaveIOSTarget: port != nil, gaveAndroidTarget: serial != nil) {
+                throw ValidationError(DriverOptions.deviceTargetMismatchMessage(mismatch))
+            }
+            // **--all は iOS 専用**(ヘルプに明記済み)。android 側では黙って無視されていたので、
+            // 効かせられない組み合わせは名指しで断る(rejectVersionSkewFlag と同じ規律)
+            if all, resolvedPlatform == "android" {
+                throw ValidationError("--all is iOS-only; it has no effect with --platform android"
+                    + " or --serial. Drop --all, or drop --platform/--serial to stop every iOS bridge")
+            }
+        }
+
         func run() async throws {
-            if platform == "android" {
+            if resolvedPlatform == "android" {
                 let serials = try AndroidBridgeCLI.serials(only: serial)
                 // **止める前に全台ぶん見る** —— 途中で断ると、断られる前の台だけ止まった
                 // 半端な状態になる(鍵は serial。run-lease / MCP の印と同じ鍵)
@@ -267,7 +291,7 @@ struct Bridge: AsyncParsableCommand {
                       : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")
             } else {
                 let found = await BridgeDiscovery.scan(excluding: 0, repoRoot: root)
-                if let target = found.first(where: { $0.port == port }) {
+                if let target = found.first(where: { $0.port == resolvedPort }) {
                     if let refusal = DeviceBooter.deviceInUseRefusal(
                         deviceName: target.device, keys: target.udid.map { [$0] } ?? [],
                         force: force, leaseStateDir: leaseStateDir) {
@@ -280,9 +304,9 @@ struct Bridge: AsyncParsableCommand {
                 // run / MCP セッションを無言で壊す(実地)。待受しているなら断り、
                 // 待受も無ければ通す(固まったブリッジを止める手段を奪わない)
                 } else {
-                    let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: root)
+                    let probe = await BridgeDiscovery.probeStatus(port: resolvedPort, repoRoot: root)
                     if let refusal = BridgeDownRefusal.unresponsiveButBoundRefusal(
-                        ports: [port], force: force, probe: { _ in probe }) {
+                        ports: [resolvedPort], force: force, probe: { _ in probe }) {
                         ConsoleOut.out("❌ \(refusal)")
                         throw ExitCode(1)
                     }
@@ -290,9 +314,9 @@ struct Bridge: AsyncParsableCommand {
                     // busy 判定を通っても、listener の実体からデバイスが特定できる形(シミュレータの
                     // xcodebuild ランナー等)は run/MCP が握ったままのことがある。
                     // 識別子が読めない形は通す(固まったブリッジを止める手段を奪わない)
-                    if let udid = PortHolder.deviceUDID(fromListenerOn: port),
+                    if let udid = PortHolder.deviceUDID(fromListenerOn: resolvedPort),
                        let refusal = DeviceBooter.deviceInUseRefusal(
-                            deviceName: "the device on port \(port) (udid \(udid))",
+                            deviceName: "the device on port \(resolvedPort) (udid \(udid))",
                             keys: [udid], force: force, leaseStateDir: leaseStateDir) {
                         ConsoleOut.out("❌ \(refusal)")
                         throw ExitCode(1)
@@ -300,9 +324,9 @@ struct Bridge: AsyncParsableCommand {
                 }
                 // physical は stop() が見ない(kind を知らない経路からも止められるよう、
                 // stop() 側が条件分岐しない宣言をしている)ので false でよい
-                let launcher = BridgeLauncher(repoRoot: root, port: port, physical: false)
+                let launcher = BridgeLauncher(repoRoot: root, port: resolvedPort, physical: false)
                 try launcher.stop()
-                ConsoleOut.out("✅ Stopped the bridge (port: \(port))")
+                ConsoleOut.out("✅ Stopped the bridge (port: \(resolvedPort))")
             }
         }
     }
@@ -312,7 +336,10 @@ struct Bridge: AsyncParsableCommand {
 
         @OptionGroup var driverOptions: DriverOptions
 
-        func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "bridge status") }
+        func validate() throws {
+            try driverOptions.rejectVersionSkewFlag(in: "bridge status")
+            try driverOptions.rejectDeviceTargetMismatch()
+        }
 
         func run() async throws {
             if driverOptions.resolvedPlatform == "android" {

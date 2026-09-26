@@ -2609,3 +2609,76 @@ E2E の run(その実機を含まないプロファイル)が `sweepStuckStartin
 
 **再発させないために**: 新しい規律は、どの作業でも効くものだけ CLAUDE.md へ、特定の領域のファイルを
 触るときに効くものは該当する規則ファイルへ足す(CLAUDE.md「領域ごとの規律」)。
+
+## 53. 3時間負荷テストで出た穴(2026-09-26)
+
+構成: フリート run の周回 8 周(手元 + M1Max / M1Ultra / M1mini)+ MCP ファズ4台(実機 iPhone SE3・Pixel 4a、
+仮想機 sim08 / emulator-5564 = フリートと取り合う)約 32,000 回 + ライブ操作ファズ(sim07・emulator-5562・
+M1Ultra の sim06 を `remote exec` 越し)約 61,000 命令 + CLI ファズ 1,709 回 + 周回の合間の実機 run・api run・中断。
+
+**新規の型は2つ**(53.4 季節性の時刻書式・53.9 1資源1ファイルの印を複数の持ち主が共有)。残りは既知の型の再発:
+宛先の畳み込み(53.3)・中断の登録と確認の時機(53.6)・watchdog が正当な待ちを知らない(53.1)・
+MCP にだけ出口がある(53.7)・不明/別の答えを確定に畳む(53.10)。
+
+### 53.1 ライブ操作の watchdog と拡張の要求上限が、命令自身の内側の上限より短い(§51.7 の取りこぼし)
+in-app の `launch` が起動待ち(30 秒)で正当に失敗を返した直後、撮り直しの途中で watchdog(30 秒)が serve を
+殺した(M1Ultra では actionResult すら返らなかった)。猶予は秒数指定のジェスチャにしか無かった。直し:
+`watchdogAllowanceSeconds` に launch/activate(`BridgeClient.Timeout.session` 45 秒)と install
+(`Timeout.physicalInstall` 600 秒)を足し、拡張の `serveCommandAllowanceMs` も同じ表に(値の一致は
+`liveAllowanceSync.test.mjs` が Swift を読んで固定)。**負荷で撮り直しが遅れて 30 秒を超える一般の命令は対象外** ——
+拡張の 20 秒張り直しと同じ「詰まりからの回復」の範囲
+
+### 53.2 結果の読み飛ばし警告が理由を誤っていた
+「corrupt, or schemaVersion too new」と言っていた 546 件は、改名前の `fmSettings` を持つ旧 run.json(decode 失敗)。
+互換は置かず、理由(decode 不可・版が新しい・窓の startedAt が読めない)を分けて数えて言う
+
+### 53.3 platform と宛先の食い違いを黙って片側へ畳んでいた(§46.5 宛先畳み込みの型・MCP と CLI の両方)
+MCP の `{serial:<Android>, platform:"ios"}` が serial を捨てて run 使用中の別の iOS の台を操作・
+`{udid:<iOS>, platform:"android"}` が「前に使った Android の台」を操作。CLI は `--platform ios --serial X` を黙って受理し、
+**`--serial X` だけでも `platform ?? "ios"` で既定ポートの iOS の台へ行った**(`api list-apps --serial emulator-5554` が iOS の一覧)。
+`bridge down --serial X` は 8123 の iOS ブリッジを止める形だった。直し: 判定を `FTCore.DeviceTargetConsistency` に1つ
+(`mismatch` と `defaultPlatform`)、MCP は入口・CLI は `DriverOptions` を持つ全コマンドの validate() から呼ぶ
+(**ArgumentParser は OptionGroup の validate() を呼ばない**ので、呼び忘れは `DriverOptionsMismatchWiringTests` が落とす)
+
+### 53.4 logcat の時刻絞り込みが年を落としていた(新規・季節性)
+`-t 'MM-dd …'` を logcat は「今年」と読む。1月初旬に前年末からの窓を作ると起点が未来になり、**クラッシュがあっても
+0 行**(実測: `-t '12-30 …'` → 0 行、年つき・epoch → 81,345 行)。`ft_logs` と MCP のクラッシュ引用が
+「誤った無事」を返す。直し: `yyyy-MM-dd`・起点は 1970 年で止める。**緑の run では原理的に出ない**
+(年をまたぐ日にしか起きない)ので、境界の日付を入力にした単体テストで固定した
+
+### 53.5 `ft_logs` が iOS で bundleId を決められないとき成功扱いで返していた
+本文で「requires bundleID」と言うだけで isError=false。呼び手は「クラッシュ無し」と区別できない
+
+### 53.6 リモートへ出す子が、ロック取得後〜ssh 起動の間に届いた中断を握り潰していた(§51.4 の型)
+`RemoteRunDispatcher.dispatch()/dispatchApi()` は取得直後に1回だけ中断を見ていたので、転送(rsync 数秒)の間の
+SIGTERM はフラグが立つだけで誰も見ず、ssh への中継は ssh 起動後に登録 = **中断した機械分担の run で1機だけ
+リモート run を完走した**(TERM から 30 秒)。直し: ssh 起動の直前にも同じ確認・中継の登録直後にもう一度。
+加えて、親がロックを握る子が run 終了後も「まだ終わっていないかも・保持」と誤って言っていた
+
+### 53.7 ライブ操作に「その Mac に無い udid」を渡すと xcodebuild を空撃ちし続けた(§45 MCP にだけ出口がある型)
+自動起動が 2 回(各約 60 秒)失敗するまで `bridgeStarting: true` と「接続拒否・ランナーが止まった」を言い続けた。
+MCP は同じ状況を `SimulatorCatalog.lookupUDID` で即答していた。直し: 起動時に同じ判定を通し、一覧を読めたうえで
+無いときだけ断る(読めない = 不明は従来どおり進む)
+
+### 53.8 `api run` / `run` がロックを取ってから `--device` の照合をしていた
+打ち間違いを知るまで他人の run を `--wait-lock` いっぱい待たされた。読むだけの検証をロックの前へ出した
+(書き込み = ワークスペースの雛形・ステージングはロックの後のまま)
+
+### 53.9 対話セッションの台の印を別セッションが上書き・削除し、生きた持ち主が消えた(新規・持ち主の型)
+印が 1台1ファイルで、後から触った MCP セッションが上書きし終了時に削除 → 拡張のライブ操作が張り付いている
+シミュレータを `api stop-device` が止めた。「避けて・警告して使う」ので**複数の生きた書き手が正規に共存する印**は
+1資源1ファイルにできない。直し: `mcp-<鍵>@<pid>.lease`(書き手は自分のファイルしか触らない)。
+run の印は開始時に拒否するので書き手が1つ = 同型ではない
+
+### 53.10 doctor が生きている USB 実機ブリッジを「消えた・トンネルだけ残っている」と断定していた(不明を確定に畳む型)
+**USB 実機ブリッジはホスト側の待受が常に iproxy だけ**(ランナーは iPhone 上)なので「トンネルだけが握る」は平常の姿。
+doctor は token 無しの独自の探り(401 を無応答扱い)で判定し、`bridge down --port` を案内していた = 案内どおり打つと
+MCP 使用中の実機ブリッジが落ちる。直し: 共有の `BridgeDiscovery.probeStatus`(token 付き・401 = 応答あり)で確かめ、
+即切断のときだけ止め方を案内する
+
+### 53.11 その他・負荷テストの作り方
+- 観察(直していない): 負荷下で `ft_navigate back` が 75 秒(run と同じ台の XCUITest 静止待ちと見られる。内訳未計測)・
+  Android のジェスチャ検出の低頻度の揺れ(7 日で 131 勝 1 敗)
+- **ファズの手動の MCP 呼び出しも持ち主の衝突を起こす**(53.9 の発見は、私が手で撃った1回のセッションが引き金だった)
+- `git apply` は**シンボリックリンクの書き込み失敗で途中まで書いて止まる**(全体が失敗しても一部のファイルは消える)。
+  ワークツリーから本線へ移すときは `git add -N .` で余計な物(`node_modules` のリンク)を拾わないこと

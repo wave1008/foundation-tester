@@ -58,11 +58,16 @@ public final class BridgeClient: AppDriver {
     public var verifiesTypedText: Bool { true }
 
     /// per-endpoint の壁時計上限(秒)の既定値。init の 120 は未指定エンドポイントのフォールバック。
-    /// URLRequest.timeoutInterval で config の既定を1リクエスト単位に上書きする
-    enum Timeout {
+    /// URLRequest.timeoutInterval で config の既定を1リクエスト単位に上書きする。
+    /// **public**: `ApiLiveServe`(Sources/fleetest/ApiLiveCommand.swift)の command watchdog が
+    /// launch/activate の猶予としてそのまま参照する(数字をリテラルで重複させない)
+    public enum Timeout {
         static let interaction: TimeInterval = 20  // tap/swipe/type/press/drag
         // snapshot は a11y ツリー直列化で並列飽和時に伸びるため session 側に置く(誤爆回避)
-        static let session: TimeInterval = 45      // launch/activate/screenshot/status/terminate/snapshot/appswitcher/home
+        public static let session: TimeInterval = 45  // launch/activate/screenshot/status/terminate/snapshot/appswitcher/home
+        /// 実機の `devicectl device install/uninstall app` に与える timeout(install/uninstall の
+        /// Shell.run 呼び出しが参照)。**public**: ApiLiveServe の install の watchdog 猶予も同じ値を使う
+        public static let physicalInstall: TimeInterval = 600
     }
 
     /// press/drag/pinch の1リクエスト予算。**根拠**: これらは `duration`/`durationSeconds` を
@@ -354,7 +359,7 @@ public final class BridgeClient: AppDriver {
         if case .physical(let udid) = try await installTarget() {
             let result = try Shell.run(
                 ["xcrun", "devicectl", "device", "install", "app",
-                 "--device", udid, packagePath], timeout: 600)
+                 "--device", udid, packagePath], timeout: Timeout.physicalInstall)
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
                     body: "devicectl device install app failed"
@@ -376,7 +381,7 @@ public final class BridgeClient: AppDriver {
         if case .physical(let udid) = try await installTarget() {
             let result = try Shell.run(
                 ["xcrun", "devicectl", "device", "uninstall", "app",
-                 "--device", udid, bundleID], timeout: 600)
+                 "--device", udid, bundleID], timeout: Timeout.physicalInstall)
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
                     body: "devicectl device uninstall app failed: \(result.tail)")

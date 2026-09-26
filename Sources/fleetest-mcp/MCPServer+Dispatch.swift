@@ -291,6 +291,10 @@ extension MCPServer {
         if Self.toolAcceptsDeviceTarget(tool), let refusal = Self.profileWithExplicitTargetRefusal(args) {
             throw MCPError(refusal)
         }
+        // platform と udid/port/serial の食い違いも**畳む前に**断る(同じ理由)
+        if Self.toolAcceptsDeviceTarget(tool), let refusal = Self.deviceTargetMismatchRefusal(args) {
+            throw MCPError(refusal)
+        }
         let clock = ContinuousClock()
         let start = clock.now
         // **udid は入口で port へ畳む**。`driver(_:)` は解決後のポートで

@@ -102,6 +102,12 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (束ねる前は集合型の2つが後始末から漏れていた。`DeviceStateInvalidationTests` が落とす)。
   **udid → port の畳み込みはスキーマに `udid` を宣言したツールでだけ撃つ**(`toolFoldsUDID`。
   `ft_logs` はブリッジが死んだ後に読むツールなので走査で落とさない)
+- **platform と宛先(udid/port は iOS・serial は Android)の食い違いは畳む前に断る**(判定は
+  `FTCore.DeviceTargetConsistency` の1箇所。CLI の `DriverOptions.rejectDeviceTargetMismatch` と共有 ——
+  片方だけ持つと同じ食い違いが片方でだけ弾かれる)。呼ぶのは `call()` の入口・
+  `profileWithExplicitTargetRefusal` の隣(`toolAcceptsDeviceTarget(tool)` のツールだけ・udid の
+  畳み込みより前)。**文言は `MCPServer.deviceTargetMismatchRefusal` が MCP の引数名で組む**
+  (CLI とは別に持つ)
 - **宛先(udid/serial/port)を取らない MCP ツールで宛先を解決しない**(`toolAcceptsDeviceTarget` の
   分岐1箇所)。畳み込み(`foldingUDIDIntoPort`)はブリッジ走査を撃ち、居なければ落ちるので、
   1台を駆動している呼び手(`udid` を毎回添える)はブリッジが死んだ瞬間に**一覧・診断のツールまで

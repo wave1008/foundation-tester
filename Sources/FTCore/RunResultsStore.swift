@@ -186,10 +186,43 @@ public enum RunResultsStore {
         subdirectories(in: monthDir) ?? []
     }
 
-    private static func warnSkipped(_ count: Int, kind: String) {
-        guard count > 0 else { return }
-        ConsoleOut.err("RunResultsStore: skipped \(count) \(kind)(s)" +
-            " (corrupt, or their schemaVersion is too new)")
+    /// 読み飛ばした理由ごとの件数。**「環境要因の失敗」のような推測の分類は置かない**(CLAUDE.md
+    /// §失敗の記録の規律と同じ理由)—— ここは decode の成否・schemaVersion の比較・startedAt の
+    /// パース可否という**事実**だけを数える。**古い形を読めるようにする互換は入れない**
+    /// (ユーザー方針: 未公開ツールなので読み替えを置かない)
+    struct SkipCounts: Equatable {
+        var decodeFailure = 0
+        var schemaTooNew = 0
+        var windowStartedAtUnparseable = 0
+
+        mutating func add(_ other: SkipCounts) {
+            decodeFailure += other.decodeFailure
+            schemaTooNew += other.schemaTooNew
+            windowStartedAtUnparseable += other.windowStartedAtUnparseable
+        }
+    }
+
+    /// SkipCounts から stderr へ出す行を組み立てる(理由ごとに1行・0件の理由は言わない)。
+    /// **純粋関数**(RunResultsStoreTests の skipWarningLines 系がデバイス/ファイル無しで固定する)
+    static func skipWarningLines(_ counts: SkipCounts, kind: String) -> [String] {
+        var lines: [String] = []
+        if counts.decodeFailure > 0 {
+            lines.append("RunResultsStore: skipped \(counts.decodeFailure) \(kind)(s) this build cannot decode"
+                + " (corrupt, or written in a shape this build no longer reads)")
+        }
+        if counts.schemaTooNew > 0 {
+            lines.append("RunResultsStore: skipped \(counts.schemaTooNew) \(kind)(s) with a schemaVersion newer"
+                + " than this build supports")
+        }
+        if counts.windowStartedAtUnparseable > 0 {
+            lines.append("RunResultsStore: skipped \(counts.windowStartedAtUnparseable) \(kind)(s) whose"
+                + " startedAt this build could not parse against the --since/--until window")
+        }
+        return lines
+    }
+
+    private static func warnSkipped(_ counts: SkipCounts, kind: String) {
+        for line in skipWarningLines(counts, kind: kind) { ConsoleOut.err(line) }
     }
 
     /// since/until は startedAt(ISO8601)でフィルタ。両方 nil なら全件
@@ -197,17 +230,17 @@ public enum RunResultsStore {
         let decoder = JSONDecoder()
         let formatter = ISO8601DateFormatter()
         var results: [RunMetaRecord] = []
-        var skipped = 0
+        var skipped = SkipCounts()
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             for runDir in runDirs(in: monthDir) {
                 let metaURL = runDir.appendingPathComponent("run.json")
                 guard let data = try? Data(contentsOf: metaURL),
                       let meta = try? decoder.decode(RunMetaRecord.self, from: data) else {
-                    skipped += 1
+                    skipped.decodeFailure += 1
                     continue
                 }
                 guard meta.schemaVersion <= RunRecordSchema.current else {
-                    skipped += 1
+                    skipped.schemaTooNew += 1
                     continue
                 }
                 // 窓の指定があるのに startedAt がパースできない場合は**除外**する
@@ -217,7 +250,7 @@ public enum RunResultsStore {
                 // 「窓から落ちた記録が無い」前提の docs/results-json.md の判定が誤る)
                 if since != nil || until != nil {
                     guard let started = formatter.date(from: meta.startedAt) else {
-                        skipped += 1
+                        skipped.windowStartedAtUnparseable += 1
                         continue
                     }
                     if let since, started < since { continue }
@@ -264,7 +297,7 @@ public enum RunResultsStore {
         let sinceKey = since.map(windowKey)
         let untilKey = until.map(windowKey)
         var results: [ScenarioRunRecord] = []
-        var skipped = 0
+        var skipped = SkipCounts()
         var targetRunDirs: [URL] = []
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             targetRunDirs += runDirs(in: monthDir)
@@ -306,11 +339,11 @@ public enum RunResultsStore {
             for file in files {
                 guard let data = try? Data(contentsOf: file),
                       let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
-                    skipped += 1
+                    skipped.decodeFailure += 1
                     continue
                 }
                 guard record.schemaVersion <= RunRecordSchema.current else {
-                    skipped += 1
+                    skipped.schemaTooNew += 1
                     continue
                 }
                 if let sinceKey, record.startedAt < sinceKey {
@@ -386,7 +419,7 @@ public enum RunResultsStore {
                                  chunkCount: ProcessInfo.processInfo.activeProcessorCount)
         let chunkCount = ranges.count
         var chunkResults = [[ScannedRecord]](repeating: [], count: chunkCount)
-        var chunkSkipped = [Int](repeating: 0, count: chunkCount)
+        var chunkSkipped = [SkipCounts](repeating: SkipCounts(), count: chunkCount)
 
         // 各チャンクは自分のスロットにだけ書く(共有ロック不要)。decoder はチャンクごとに作る
         chunkResults.withUnsafeMutableBufferPointer { resultsBuffer in
@@ -394,12 +427,15 @@ public enum RunResultsStore {
                 DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
                     let decoder = JSONDecoder()
                     var local: [ScannedRecord] = []
-                    var localSkipped = 0
+                    var localSkipped = SkipCounts()
                     for file in files[ranges[chunkIndex]] {
                         guard let data = try? Data(contentsOf: file),
-                              let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
-                              record.schemaVersion <= RunRecordSchema.current else {
-                            localSkipped += 1
+                              let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
+                            localSkipped.decodeFailure += 1
+                            continue
+                        }
+                        guard record.schemaVersion <= RunRecordSchema.current else {
+                            localSkipped.schemaTooNew += 1
                             continue
                         }
                         if let sinceKey, record.startedAt < sinceKey {
@@ -418,7 +454,9 @@ public enum RunResultsStore {
 
         // 逐次経路の skipped の数え方は「読めない・版が新しすぎる」だけで、日付範囲外は数えない。
         // ここも同じ(壊れたディレクトリ一覧の失敗は逐次と同様 continue で黙って飛ばす)
-        warnSkipped(chunkSkipped.reduce(0, +), kind: "scenario record")
+        var totalSkipped = SkipCounts()
+        for chunk in chunkSkipped { totalSkipped.add(chunk) }
+        warnSkipped(totalSkipped, kind: "scenario record")
         return chunkResults.flatMap { $0 }
             .sorted {
                 $0.record.runID == $1.record.runID ? $0.record.scenarioID < $1.record.scenarioID

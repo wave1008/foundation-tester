@@ -82,7 +82,7 @@ final class RemoteDispatchLockWaitLoopTests: XCTestCase {
             let body = source[funcRange.lowerBound...]
             guard let acquireRange = body.range(of: "try acquireDispatchLock(layout: layout, runGroup: runGroup, interruptFlag: interruptFlag)")
             else { XCTFail("\(marker): acquireDispatchLock call not found"); continue }
-            guard let recheckRange = body.range(of: "guard !interruptFlag.interrupted else {") else {
+            guard let recheckRange = body.range(of: "try bailIfAlreadyInterrupted(") else {
                 XCTFail("\(marker): no post-acquire interrupt recheck — a Ctrl-C that arrives"
                         + " exactly as the lock is acquired would still start the remote run")
                 continue

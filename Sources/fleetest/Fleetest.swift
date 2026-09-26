@@ -120,10 +120,45 @@ struct DriverOptions: ParsableArguments {
         }
     }
 
+    /// **platform と宛先(--port は iOS 専用・--serial は Android 専用)の食い違いを断る**
+    /// (判定は `FTCore.DeviceTargetConsistency` の1箇所。MCP の `MCPServer.deviceTargetMismatchRefusal`
+    /// と共有——片方だけ変えない)。**ArgumentParser は OptionGroup の `validate()` を自動で呼ばない**
+    /// (rejectVersionSkewFlag と同じ理由)ので、この OptionGroup を持つ各コマンドが自分の
+    /// `validate()` から呼ぶこと。
+    /// - extraIOSTarget: DriverOptions 自身は udid を持たないので、udid を別に持つコマンド
+    ///   (`api live serve` 等)は自分の udid の有無をここへ渡す
+    func rejectDeviceTargetMismatch(extraIOSTarget: Bool = false) throws {
+        if let mismatch = FTCore.DeviceTargetConsistency.mismatch(
+            platform: platform, gaveIOSTarget: port != nil || extraIOSTarget, gaveAndroidTarget: serial != nil) {
+            throw ValidationError(Self.deviceTargetMismatchMessage(mismatch))
+        }
+    }
+
+    /// `rejectDeviceTargetMismatch` の文言(CLI の引数名で組む。MCP の同種の文言とは別に持つ
+    /// —— CLAUDE.md「共有するのは判定であって文言ではない」)。**iOS の宛先は「--port」と決め打たない**
+    /// —— `extraIOSTarget` 経由で --udid を持つコマンド(`api live serve`)もこの文言を使うため
+    static func deviceTargetMismatchMessage(_ mismatch: FTCore.DeviceTargetConsistency.Mismatch) -> String {
+        switch mismatch {
+        case .bothPlatformsTargeted:
+            return "an iOS target (--port, or --udid where supported) and an Android target (--serial)"
+                + " were both given, with no --platform to say which one to use. Pass only one, or add"
+                + " --platform."
+        case .iosPlatformWithAndroidTarget:
+            return "--platform ios was given along with --serial (an Android target)."
+                + " Drop --serial, or change --platform to android."
+        case .androidPlatformWithIOSTarget:
+            return "--platform android was given along with an iOS target (--port, or --udid where"
+                + " supported). Drop it, or change --platform to ios."
+        }
+    }
+
     /// `platform`/`port` は non-Optional にしない —— 既定値を持たせると「指定された」と
     /// 「既定のまま」が区別できず、`--profile` との併用禁止のような検査ができなくなる
     /// (`RunRejectionTests` 参照)。既定値が要る箇所はここを通す
-    var resolvedPlatform: String { platform ?? "ios" }
+    var resolvedPlatform: String {
+        FTCore.DeviceTargetConsistency.defaultPlatform(
+            explicit: platform, gaveIOSTarget: port != nil, gaveAndroidTarget: serial != nil)
+    }
     var resolvedPort: UInt16 { port ?? BridgeAPI.defaultPort }
 
     /// FTFoundationModels/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)。
@@ -368,8 +403,12 @@ struct RunScenarios: AsyncParsableCommand {
     var serial: String?
 
     /// `platform` は non-Optional にしない —— 既定値を持たせると「指定された」と「既定のまま」が
-    /// 区別できず、`--profile` との併用禁止のような検査ができなくなる(DriverOptions と同じ規律)
-    var resolvedPlatform: String { platform ?? "ios" }
+    /// 区別できず、`--profile` との併用禁止のような検査ができなくなる(DriverOptions と同じ規律)。
+    /// 省略時の推定は `DeviceTargetConsistency.defaultPlatform`(--serial だけなら android)
+    var resolvedPlatform: String {
+        FTCore.DeviceTargetConsistency.defaultPlatform(
+            explicit: platform, gaveIOSTarget: !ports.isEmpty, gaveAndroidTarget: serial != nil)
+    }
 
     func validate() throws {
         // レポートは run 後に書くので、書けない先は**始める前に**言う(フリート run では
@@ -470,6 +509,40 @@ struct RunScenarios: AsyncParsableCommand {
         // (理由と経緯は FTRemote.RemoteDispatchFlagPolicy の `--wait-lock` の節。`api run` と同じ)
     }
 
+    /// **--profile の読むだけの検証**(`ProfileResolver.resolve` と `--device`/`--device-machine`
+    /// の照合)を dispatch lock を取るより前に行う(`ApiRunCommand.resolveProfileDevicesBeforeLock`
+    /// と揃える)。実測: タイポ入りの `--device` を `--wait-lock` 付きで打つと、誤りに気づくのは
+    /// 他人の run のロックが空くまで待たされたあとだった。**書き込み**(swift build・ワークスペースの
+    /// 雛形・供給)はここに含めず、ロックの後で `ProfileRunner.run` が同じ resolve をもう一度行う ——
+    /// 読むだけなので二重に払っても正しさに影響しない(プロファイルのファイルがロック待ち〜ビルドの
+    /// 間に書き換わる可能性は無視する。次の run で気づく程度の実害しかない)
+    private func validateProfileDevicesBeforeLock() throws {
+        guard let profile else { return }
+        let testProject = try ScenarioHost.project(named: project)
+        let resolvedAll = try ProfileResolver.resolve(
+            project: testProject, runName: profile,
+            workspaceOverride: workspace, overrides: try RunProfileSetOverride.parse(setOverrides))
+        // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
+        // local 枠だけに絞る(理由は run() 本編の同じ判定の宣言参照)
+        var effectiveDeviceFilter = devices
+        var effectiveDeviceHost = deviceMachine
+        if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
+            (effectiveDeviceFilter, effectiveDeviceHost) = try machineScopedDeviceFilter(
+                project: testProject, profile: profile,
+                targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
+        }
+        let full = resolvedAll.filteringDevices(names: effectiveDeviceFilter, deviceMachine: effectiveDeviceHost)
+        // 絞り込みを指定したときだけ「合致0」を言う(指定なしで0台はプロファイル自体の誤りで、
+        // resolve / ProfileRunner.run が自分の言葉で報告する)。文言は ProfileRunner.run と同じ形
+        guard full.devices.isEmpty, !effectiveDeviceFilter.isEmpty || effectiveDeviceHost != nil else { return }
+        let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
+                     deviceMachine.map { "--device-machine \($0)" }]
+            .compactMap { $0 }.joined(separator: " ")
+        throw ValidationError(
+            "\(scope) matched no device in run profile \(profile)"
+            + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
+    }
+
     func run() async throws {
         // `--set` は validate() で検証済み(未知キー・不正値は既に弾かれている)。
         // **デバイスに依存しない設定は `--profile` の有無に関わらず1つの経路で決まる**
@@ -516,6 +589,13 @@ struct RunScenarios: AsyncParsableCommand {
             return
         }
         PhaseLog.mark("start")
+        // **--profile の読むだけの検証はロックを取るより前**(理由は
+        // validateProfileDevicesBeforeLock の宣言参照)。書き込みはまだ何もしていない。
+        // **`--dry-run` はここでも呼ばない** —— dry-run はデバイスに触れないので `--device`/
+        // `--device-machine` を素通しする既存の挙動(下の `if dryRun` 分岐。`--profile` の実在
+        // だけ確かめて devices は見ない)のままにする。ロックを取らない dry-run はそもそも
+        // 待たせる問題が起きない経路なので、ここで新しい検証を割り込ませない
+        if !dryRun { try validateProfileDevicesBeforeLock() }
         // **この Mac のロックを、デバイスにもビルドにも触る前に取る**(ユーザー決定
         // 「1つのマシンで同時に複数の run は走らせない」)。リモートへのディスパッチが
         // dispatch.lock で守っていた不変条件を、手元で直接打った run にも同じロックで掛ける。

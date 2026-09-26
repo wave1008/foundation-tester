@@ -235,6 +235,27 @@ struct Doctor: AsyncParsableCommand {
     /// プロファイル外のデバイスに残った旧版ブリッジは誰も片付けない。
     /// 実害: protocolVersion 4 のランナーが 7 時間 22 分ポート 8127 とシミュレータを占有した
     /// (無通信 TTL 導入後は最長でも TTL で消えるが、旧版ブリッジには TTL が無い)。
+    /// トンネルだけが握るポートの所見(純粋関数)。**応答した(401 を含む)なら健全なので言わない**。
+    /// 即切断(`.transportFailed`)だけが「背後のランナーが居ない」指紋で、止める案内はそのときだけ。
+    /// 時間切れは busy と区別できないので、止めろとは言わない
+    static func tunnelOnlyFinding(port: UInt16, probe: BridgeDiscovery.StatusProbe) -> String? {
+        switch probe {
+        case .answered:
+            return nil
+        case .notBound:
+            // 探っている間に待受が消えた(トンネルごと片付いた)。握っているものが無いので言うことも無い
+            return nil
+        case .transportFailed:
+            return "   - port \(port) — only a USB tunnel (iproxy) is holding this port, and it drops"
+                + " connections without an answer, so the runner behind it is most likely gone (the port"
+                + " then looks occupied to everything else). If no run or MCP session is using that"
+                + " device, run `fleetest bridge down --port \(port)`"
+        case .timedOut:
+            return "   - port \(port) — only a USB tunnel (iproxy) is holding this port, and the bridge"
+                + " behind it did not answer in time (it may just be busy). Check again before stopping it"
+        }
+    }
+
     private func reportUnmanagedBridges() async {
         guard let root = try? RepoRoot.find() else { return }
         let stateDir = root.appendingPathComponent(".fleetest")
@@ -303,11 +324,13 @@ struct Doctor: AsyncParsableCommand {
         // **待受を先に見る**(非ブロッキング connect)—— 占有者の照合は lsof + ps で1ポート
         // あたり約 0.2 秒。誰も待受していないポートにトンネルは居ないので、ここで落とす。
         // **宛先はループバック固定**(`repoRoot: nil`)= iproxy が張るのはそこだけ
+        // **トンネルだけが握っているのは USB 実機ブリッジの平常の姿**(ランナーは iPhone 上で動き、
+        // ホスト側の待受は iproxy だけ)。上の probeForeignBridge は token を付けないので、生きた
+        // 実機ブリッジの 401 も無応答に見える —— 判定は台帳の token を付ける共有の probeStatus で行う
         for port in silentPorts where BridgeDiscovery.isBound(port: port, repoRoot: nil)
             && PortHolder.isHeldByTunnelOnly(port: port) {
-            findings.append("   - port \(port) — only a USB tunnel (iproxy) is holding this port;"
-                + " its bridge is gone (a dead runner leaves this behind, and the port then looks"
-                + " occupied to everything else). Run `fleetest bridge down --port \(port)`")
+            let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: root)
+            if let finding = Self.tunnelOnlyFinding(port: port, probe: probe) { findings.append(finding) }
         }
         if !reaped.isEmpty {
             ConsoleOut.out("✂️ Stopped bridges that will not be reused:")

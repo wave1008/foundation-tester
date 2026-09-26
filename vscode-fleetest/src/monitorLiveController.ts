@@ -63,7 +63,7 @@ import {
   recordedGestureFingers,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
-  serveCommandPlaybackMs,
+  serveCommandAllowanceMs,
   stepDescriptionToOperationLabel,
   swipeDirectionLabel,
   toSnapshotMessage,
@@ -1185,11 +1185,12 @@ export class MonitorLiveController implements vscode.Disposable {
       });
     }
     return new Promise((resolve) => {
-      // 軌跡の再生時間は応答待ちの上限に足す(serve 側の command watchdog も同じだけ延びる)
+      // 正当に長く占有しうる操作(軌跡・press/drag/pinch・launch/install)は応答待ちの上限に
+      // その分を足す(serve 側の command watchdog も同じだけ延びる)
       const timeout = setTimeout(() => {
         this.failPendingServeRequest(serveTimeoutMessage());
         this.restartWedgedServe(proc);
-      }, SERVE_REQUEST_TIMEOUT_MS + serveCommandPlaybackMs(command));
+      }, SERVE_REQUEST_TIMEOUT_MS + serveCommandAllowanceMs(command));
       this.pendingServeRequest = {
         expectsAction: command.cmd !== "refresh",
         resolvesOn: "snapshot",

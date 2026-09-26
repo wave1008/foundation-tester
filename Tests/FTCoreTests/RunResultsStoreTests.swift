@@ -671,4 +671,43 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertEqual(record?.profile, "myProfile")
         XCTAssertFalse(record?.host.isEmpty ?? true)
     }
+
+    // MARK: - 読み飛ばし理由ごとの警告(skipWarningLines)
+
+    /// 理由が1つも無ければ何も言わない
+    func testSkipWarningLinesEmptyWhenNothingSkipped() {
+        XCTAssertEqual(RunResultsStore.skipWarningLines(RunResultsStore.SkipCounts(), kind: "run.json"), [])
+    }
+
+    /// decode 失敗だけの理由を言う(schemaVersion やパースの話を混ぜない)
+    func testSkipWarningLinesDecodeFailureOnly() {
+        let counts = RunResultsStore.SkipCounts(decodeFailure: 546, schemaTooNew: 0, windowStartedAtUnparseable: 0)
+        XCTAssertEqual(RunResultsStore.skipWarningLines(counts, kind: "run.json"), [
+            "RunResultsStore: skipped 546 run.json(s) this build cannot decode"
+                + " (corrupt, or written in a shape this build no longer reads)",
+        ])
+    }
+
+    /// schemaVersion が新しすぎる件は decode 失敗と別の行になる
+    func testSkipWarningLinesSchemaTooNewOnly() {
+        let counts = RunResultsStore.SkipCounts(decodeFailure: 0, schemaTooNew: 3, windowStartedAtUnparseable: 0)
+        XCTAssertEqual(RunResultsStore.skipWarningLines(counts, kind: "scenario record"), [
+            "RunResultsStore: skipped 3 scenario record(s) with a schemaVersion newer than this build supports",
+        ])
+    }
+
+    /// 窓指定時に startedAt が解釈できなかった件も別の行になる
+    func testSkipWarningLinesWindowStartedAtUnparseableOnly() {
+        let counts = RunResultsStore.SkipCounts(decodeFailure: 0, schemaTooNew: 0, windowStartedAtUnparseable: 2)
+        XCTAssertEqual(RunResultsStore.skipWarningLines(counts, kind: "run.json"), [
+            "RunResultsStore: skipped 2 run.json(s) whose startedAt this build could not parse"
+                + " against the --since/--until window",
+        ])
+    }
+
+    /// 3つとも件数があれば3行(理由を1つに丸めない)
+    func testSkipWarningLinesAllThreeReasonsAreSeparateLines() {
+        let counts = RunResultsStore.SkipCounts(decodeFailure: 1, schemaTooNew: 2, windowStartedAtUnparseable: 3)
+        XCTAssertEqual(RunResultsStore.skipWarningLines(counts, kind: "run.json").count, 3)
+    }
 }

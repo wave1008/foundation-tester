@@ -95,7 +95,7 @@ final class AndroidLogcatTests: XCTestCase {
 
     // MARK: - logcatTimeArgument
 
-    /// -t の書式固定("MM-dd HH:mm:ss.SSS")。書式が崩れると adb logcat -t が解釈できず
+    /// -t の書式固定("yyyy-MM-dd HH:mm:ss.SSS")。書式が崩れると adb logcat -t が解釈できず
     /// エラーで落ちる(サイレントに全件フォールバックにはならない)ため、書式そのものを固定する
     /// 2026-08-09 12:34:56 UTC(ホストの時間帯に依存しない固定の瞬間)
     private var fixedNow: Date {
@@ -107,14 +107,13 @@ final class AndroidLogcatTests: XCTestCase {
 
     func testLogcatTimeArgumentFormat() {
         let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: fixedNow, deviceUTCOffsetSeconds: 0)
-        XCTAssertEqual(arg.count, "MM-dd HH:mm:ss.SSS".count)
-        XCTAssertEqual(arg, "08-09 12:34:56.000")
+        XCTAssertEqual(arg, "2026-08-09 12:34:56.000")
     }
 
     /// secondsAgo だけ過去に戻ること(丸めや符号の反転が無いこと)
     func testLogcatTimeArgumentSubtractsSecondsAgo() {
         let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 56, now: fixedNow, deviceUTCOffsetSeconds: 0)
-        XCTAssertEqual(arg, "08-09 12:34:00.000")
+        XCTAssertEqual(arg, "2026-08-09 12:34:00.000")
     }
 
     /// **端末の時間帯で組む**(logcat は `-t` を端末のローカル時刻で解釈する)。+0900 の端末では
@@ -123,8 +122,8 @@ final class AndroidLogcatTests: XCTestCase {
     func testLogcatTimeArgumentUsesTheDeviceUTCOffset() {
         let utc = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: fixedNow, deviceUTCOffsetSeconds: 0)
         let jst = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: fixedNow, deviceUTCOffsetSeconds: 32400)
-        XCTAssertEqual(utc, "08-09 12:34:56.000")
-        XCTAssertEqual(jst, "08-09 21:34:56.000")
+        XCTAssertEqual(utc, "2026-08-09 12:34:56.000")
+        XCTAssertEqual(jst, "2026-08-09 21:34:56.000")
         XCTAssertNotEqual(utc, jst)
     }
 
@@ -134,7 +133,23 @@ final class AndroidLogcatTests: XCTestCase {
         calendar.timeZone = TimeZone(identifier: "UTC")!
         let now = calendar.date(from: DateComponents(year: 2026, month: 8, day: 9, hour: 1))!
         let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 0, now: now, deviceUTCOffsetSeconds: -18000)
-        XCTAssertEqual(arg, "08-08 20:00:00.000")
+        XCTAssertEqual(arg, "2026-08-08 20:00:00.000")
+    }
+
+    /// 年をまたぐ窓は前年の日付になる。年なしだと logcat は「今年の12月」= 未来と読み、
+    /// クラッシュがあっても 0 行を返していた(実測: `-t '12-30 00:00:00.000'` → 0 行)
+    func testLogcatTimeArgumentKeepsTheYearAcrossNewYear() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let now = calendar.date(from: DateComponents(year: 2027, month: 1, day: 2, hour: 3))!
+        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: 3 * 86400, now: now, deviceUTCOffsetSeconds: 0)
+        XCTAssertEqual(arg, "2026-12-30 03:00:00.000")
+    }
+
+    /// 巨大な secondsAgo でも起点は 1970-01-01 で止まる(年が負になると logcat が読めない)
+    func testLogcatTimeArgumentClampsAtTheEpoch() {
+        let arg = AndroidLogcat.logcatTimeArgument(secondsAgo: Int.max, now: fixedNow, deviceUTCOffsetSeconds: 0)
+        XCTAssertEqual(arg, "1970-01-01 00:00:00.000")
     }
 
     // MARK: - `date +%z` の読み取り

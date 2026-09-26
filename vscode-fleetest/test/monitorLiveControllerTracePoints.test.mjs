@@ -57,9 +57,9 @@ test("tracePoints: 時間を縮めず、上限は gestureCapFor で決めて長�
   assert.match(body, /maxGestureSeconds: cap/, "既定上限を超えたらこの1回だけ上限を上げること");
 });
 
-test("serve への応答待ちは軌跡の再生時間ぶん延ばす", () => {
+test("serve への応答待ちは正当な占有時間(軌跡・press/drag/pinch・launch/install)ぶん延ばす", () => {
   const source = controllerSource();
-  assert.match(source, /SERVE_REQUEST_TIMEOUT_MS \+ serveCommandPlaybackMs\(command\)/);
+  assert.match(source, /SERVE_REQUEST_TIMEOUT_MS \+ serveCommandAllowanceMs\(command\)/);
 });
 
 test("tracePoints: gesture コマンドを組み立て、RecordedStep(gesture)も同じ点列から作る", () => {

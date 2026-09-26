@@ -113,6 +113,12 @@ extension MCPServer {
     func ftLogs(_ args: [String: Any]) async throws -> [[String: Any]] {
         let logBundleID = try Self.stringArgument(args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
             ?? lastLaunchedBundleID(args)
+        // iOS のクラッシュレポートはアプリ単位でしか引けない。本文で返すと isError=false になり、
+        // 呼び手は「クラッシュ無し」と区別できない
+        if Self.platformName(args) == "ios", logBundleID == nil {
+            throw MCPError("bundleId is required on iOS — crash reports are looked up per app, and no"
+                + " app was launched in this session. Pass bundleId")
+        }
         // **ブリッジには一切問い合わせない**(CrashLogs の存在理由はまさにブリッジごと
         // 落ちた直後に使うこと)。唯一のブリッジ非依存な実機の手掛かりは
         // `.fleetest/bridge-<port>.device`(BridgeDeviceRecord。実機のときだけ書かれる)で、

@@ -417,14 +417,38 @@ export function gestureCapFor(totalSeconds: number): number | undefined | "tooLo
   return Math.min(GESTURE_SECONDS_CEILING, Math.ceil(totalSeconds));
 }
 
-/** serve がこのコマンドで正当に占有する時間(ms)。応答待ちの上限にこのぶんを足す */
-export function serveCommandPlaybackMs(command: LiveServeCommand): number {
-  if (command.cmd !== "gesture") { return 0; }
-  let last = 0;
-  for (const finger of command.fingers) {
-    for (const p of finger.points) { last = Math.max(last, p.t); }
+/** launch/activate の内側の上限(ms)。`BridgeClient.Timeout.session`(45秒。
+ * Sources/FTBridgeClient/BridgeClient.swift)と同値 —— 片方だけ変えない。 */
+const LAUNCH_ALLOWANCE_MS = 45_000;
+/** install の内側の上限(ms)。`BridgeClient.Timeout.physicalInstall`(実機 devicectl install の
+ * 600秒。Sources/FTBridgeClient/BridgeClient.swift)と同値 —— 片方だけ変えない。 */
+const INSTALL_ALLOWANCE_MS = 600_000;
+
+/** serve がこのコマンドで正当に占有する時間(ms)。応答待ちの上限にこのぶんを足す。
+ * Swift 側は `ApiLiveServeCommand.watchdogAllowanceSeconds`(Sources/fleetest/ApiLiveCommand.swift)
+ * が同じ表を持つ(片方だけ変えない)。 */
+export function serveCommandAllowanceMs(command: LiveServeCommand): number {
+  switch (command.cmd) {
+    case "gesture": {
+      let last = 0;
+      for (const finger of command.fingers) {
+        for (const p of finger.points) { last = Math.max(last, p.t); }
+      }
+      return Math.ceil(last * 1000);
+    }
+    case "press":
+      return Math.ceil(command.duration * 1000);
+    case "drag":
+      return Math.ceil((command.press + command.duration) * 1000);
+    case "pinch":
+      return Math.ceil(command.duration * 1000);
+    case "launch":
+      return LAUNCH_ALLOWANCE_MS;
+    case "install":
+      return INSTALL_ALLOWANCE_MS;
+    default:
+      return 0;
   }
-  return Math.ceil(last * 1000);
 }
 
 export function serializeLiveServeCommand(command: LiveServeCommand): string {

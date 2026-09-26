@@ -21,6 +21,8 @@ struct Install: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         guard FileManager.default.fileExists(atPath: packagePath) else {
             throw ValidationError("package file not found: \(packagePath)")
@@ -38,6 +40,8 @@ struct Launch: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         try await driverOptions.makeDriver().launch(bundleID: bundleID)
         ConsoleOut.out("✅ Launched: \(bundleID)")
@@ -52,6 +56,8 @@ struct Snapshot: AsyncParsableCommand {
     var json = false
 
     @OptionGroup var driverOptions: DriverOptions
+
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
 
     func run() async throws {
         let snapshot = try await driverOptions.makeDriver().snapshot()
@@ -79,6 +85,8 @@ struct Tap: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         if let ref {
             try await driverOptions.makeDriver().tap(ref: ref)
@@ -105,6 +113,8 @@ struct TypeCommand: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         try await driverOptions.makeDriver().type(ref: ref, text: text)
         ConsoleOut.out("✅ type \"\(text)\"")
@@ -118,6 +128,8 @@ struct Swipe: AsyncParsableCommand {
     var direction: String
 
     @OptionGroup var driverOptions: DriverOptions
+
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
 
     func run() async throws {
         guard let dir = FTSwipeDirection(rawValue: direction) else {
@@ -139,6 +151,8 @@ struct Press: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         try await driverOptions.makeDriver().press(ref: ref, duration: holdSeconds)
         ConsoleOut.out("✅ press [\(ref)] \(holdSeconds)s")
@@ -153,6 +167,8 @@ struct Screenshot: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
+
     func run() async throws {
         let data = try await driverOptions.makeDriver().screenshot()
         try data.write(to: URL(fileURLWithPath: output))
@@ -164,6 +180,8 @@ struct Terminate: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Terminate the app under test")
 
     @OptionGroup var driverOptions: DriverOptions
+
+    func validate() throws { try driverOptions.rejectDeviceTargetMismatch() }
 
     func run() async throws {
         try await driverOptions.makeDriver().terminate()

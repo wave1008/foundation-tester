@@ -40,7 +40,7 @@ import {
   remoteDeviceOption,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
-  serveCommandPlaybackMs,
+  serveCommandAllowanceMs,
   stepDescriptionToOperationLabel,
   toSnapshotMessage,
 } from "../src/liveModel";
@@ -1314,10 +1314,26 @@ test("gestureCapFor: 10秒以下は既定のまま・10秒超は切り上げた�
   assert.equal(gestureCapFor(60.01), "tooLong");
 });
 
-test("serveCommandPlaybackMs: gesture は最後の点の時刻(秒→ms)・他のコマンドは 0", () => {
+test("serveCommandAllowanceMs: gesture は最後の点の時刻(秒→ms)・他の内側上限を持たないコマンドは 0", () => {
   const fingers = [{ points: [{ x: 0, y: 0, t: 0 }, { x: 1, y: 1, t: 14.25 }] }];
-  assert.equal(serveCommandPlaybackMs({ cmd: "gesture", fingers }), 14250);
-  assert.equal(serveCommandPlaybackMs({ cmd: "tap", x: 1, y: 1 }), 0);
+  assert.equal(serveCommandAllowanceMs({ cmd: "gesture", fingers }), 14250);
+  assert.equal(serveCommandAllowanceMs({ cmd: "tap", x: 1, y: 1 }), 0);
+});
+
+test("serveCommandAllowanceMs: press/drag/pinch は指定秒数そのもの(秒→ms)", () => {
+  assert.equal(serveCommandAllowanceMs({ cmd: "press", x: 0, y: 0, duration: 5 }), 5000);
+  assert.equal(
+    serveCommandAllowanceMs({ cmd: "drag", fromX: 0, fromY: 0, toX: 1, toY: 1, press: 0.05, duration: 0.3 }),
+    350,
+  );
+  assert.equal(serveCommandAllowanceMs({ cmd: "pinch", scale: 2, duration: 0.5 }), 500);
+});
+
+// launch/install は Sources/FTBridgeClient/BridgeClient.swift の Timeout.session(45秒)/
+// Timeout.physicalInstall(600秒)と同値(片方だけ変えない)
+test("serveCommandAllowanceMs: launch/install は Swift 側の内側上限と同じ ms", () => {
+  assert.equal(serveCommandAllowanceMs({ cmd: "launch", bundle: "com.example" }), 45_000);
+  assert.equal(serveCommandAllowanceMs({ cmd: "install", path: "/tmp/App.app" }), 600_000);
 });
 
 test("mcpCommandForServeCommand: 上限を上げた軌跡は ft_gesture に maxGestureSeconds を出す", () => {

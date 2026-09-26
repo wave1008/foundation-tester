@@ -93,8 +93,9 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
 
     /// **pid の再利用で生き返らない**: 開始時刻が一致しない印は死んだ扱い
     func testALeaseWhosePIDWasReusedIsNotLive() throws {
-        try "\(otherLivePID) 12345".write(to: MCPDeviceLease.leaseURL(stateDir: stateDir, key: "UA"),
-                                         atomically: true, encoding: .utf8)
+        try "\(otherLivePID) 12345".write(
+            to: MCPDeviceLease.leaseURL(stateDir: stateDir, key: "UA", pid: otherLivePID),
+            atomically: true, encoding: .utf8)
         XCTAssertTrue(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []).isEmpty)
     }
 

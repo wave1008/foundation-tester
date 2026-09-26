@@ -871,6 +871,29 @@ extension MCPServer {
             + " bridge running on it), or drop udid/port/serial to use the profile's device"
     }
 
+    /// **platform と宛先(udid/port/serial)の食い違いを断る**。判定は
+    /// `FTCore.DeviceTargetConsistency`(CLI の `DriverOptions.rejectDeviceTargetMismatch` と共有)。呼ぶのは
+    /// `call()` の入口・`profileWithExplicitTargetRefusal` の隣(udid を畳む前 —— 畳み込みは
+    /// ブリッジ走査を撃つので、そもそも矛盾した呼び出しでは撃たせない)。**文言だけここで組む**
+    static func deviceTargetMismatchRefusal(_ args: [String: Any]) -> String? {
+        guard let mismatch = DeviceTargetConsistency.mismatch(
+            platform: args["platform"] as? String,
+            gaveIOSTarget: argsGaveIOSTarget(args), gaveAndroidTarget: argsGaveAndroidTarget(args))
+        else { return nil }
+        switch mismatch {
+        case .bothPlatformsTargeted:
+            return "both an iOS target (udid/port) and an Android target (serial) were given, with no"
+                + " platform to say which one to use — refusing to guess which device to operate."
+                + " Pass only one platform's target, or add platform to say which."
+        case .iosPlatformWithAndroidTarget:
+            return "platform is \"ios\" but serial (an Android target) was also given — refusing to guess"
+                + " which device to operate. Drop serial, or drop platform (or set it to \"android\")."
+        case .androidPlatformWithIOSTarget:
+            return "platform is \"android\" but udid/port (an iOS target) was also given — refusing to"
+                + " guess which device to operate. Drop udid/port, or drop platform (or set it to \"ios\")."
+        }
+    }
+
     /// **fold が注入した呼び出しかどうかの目印**。foldInRememberedDevice が
     /// 省略呼び出しへ port/serial を差し込むとき一緒に立てる —— スキーマ検証後にしか付かず、
     /// engineKey(platform/port/serial/profile しか見ない)にも影響せず、ブリッジへ渡る辞書にも

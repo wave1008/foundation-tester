@@ -21,7 +21,10 @@ struct ApiListApps: AsyncParsableCommand {
 
     @OptionGroup var driverOptions: DriverOptions
 
-    func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "api list-apps") }
+    func validate() throws {
+        try driverOptions.rejectVersionSkewFlag(in: "api list-apps")
+        try driverOptions.rejectDeviceTargetMismatch()
+    }
 
     func run() async throws {
         let apps: [ApiAppEntry]

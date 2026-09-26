@@ -73,10 +73,13 @@ final class MCPDeviceLeaseTests: XCTestCase {
         let text = try await snapshotText()
         XCTAssertTrue(text.contains("another MCP session (pid 1) is driving this device too"), text)
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("snapshot") }, "警告して進むこと: \(driver.calls)")
+        // 印は「鍵 × pid」ごとに別ファイルなので、自分の印を書いても pid 1 の印は消えない
+        // (どちらも生きている台の代表は最小 pid = 1)
         XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []),
-                       ["UDID-X": ProcessInfo.processInfo.processIdentifier], "自分の印で上書きする")
+                       ["UDID-X": 1], "自分の印を書いても相手の印を上書き・消去しない")
         let again = try await snapshotText()
-        XCTAssertFalse(again.contains("another MCP session"), "相手が書き戻すまでは言わない: \(again)")
+        XCTAssertTrue(again.contains("another MCP session (pid 1) is driving this device too"),
+                      "相手が生きている限り、触るたびに言う: \(again)")
     }
 
     /// 自分の印しか無ければ黙る

@@ -278,6 +278,50 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
     }
 
+    /// **--profile の読むだけの検証**(`ProfileResolver.resolve` と `--device`/`--device-machine`
+    /// の照合)を dispatch lock を取るより前に呼ぶための切り出し —— 打ち間違いを、他人の run の
+    /// ロックが空くまで待たせてから言わない(読むだけの判定なのでロックの外で完結する)。
+    /// **書き込み**(WorkspaceScaffold.ensure・WorkspaceAppStaging・run フック・供給)はここに
+    /// 含めず、ロック取得後に呼び出し側が続きを行う(戻り値の `resolvedAll`/`full` をそのまま
+    /// 使い回すので、二重に resolve しない)。
+    /// プロファイルのファイルがロック待ちの間に書き換わる可能性は無視する(次の run で気づく程度の
+    /// 実害しかなく、待たせてから同じ検証をもう一度払う理由が無い)
+    private func resolveProfileDevicesBeforeLock(
+        testProject: TestProject, profile: String, profileOverrides: [String: RunProfileSetValue]
+    ) throws -> (resolvedAll: ResolvedProfile, full: ResolvedProfile) {
+        let resolvedAll = try ProfileResolver.resolve(
+            project: testProject, runName: profile,
+            workspaceOverride: workspace, overrides: profileOverrides)
+        // --device / --device-machine: ApiRunMachineFanout の子(マシン別サブ実行)が自分のぶんだけを
+        // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
+        // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
+        //
+        // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
+        // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
+        // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
+        // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告:
+        // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
+        var effectiveDevices = devices
+        var effectiveDeviceHost = deviceMachine
+        if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
+            (effectiveDevices, effectiveDeviceHost) = try machineScopedDeviceFilter(
+                project: testProject, profile: profile,
+                targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
+        }
+        let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceMachine: effectiveDeviceHost)
+        // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
+        // プロファイル自体の誤りで、それは resolve 側が自分の言葉で報告する
+        if full.devices.isEmpty, !effectiveDevices.isEmpty || effectiveDeviceHost != nil {
+            let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
+                         deviceMachine.map { "--device-machine \($0)" }]
+                .compactMap { $0 }.joined(separator: " ")
+            throw ValidationError(
+                "\(scope) matched no device in run profile \(profile)"
+                + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
+        }
+        return (resolvedAll, full)
+    }
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -337,6 +381,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             return
         }
 
+        // **--profile の読むだけの検証はロックを取るより前**(理由は
+        // resolveProfileDevicesBeforeLock の宣言参照)。書き込みはまだ何もしていない
+        let preResolvedProfile = try profile.map {
+            try resolveProfileDevicesBeforeLock(
+                testProject: testProject, profile: $0, profileOverrides: profileOverrides)
+        }
+
         // **中断(SIGINT/SIGTERM/SIGHUP)の登録は、この Mac のロックを取るより前**(1プロセス1組。
         // .claude/rules/process-lifecycle.md「割り込みの登録は run の記録開始の直後・供給より前」)。recorder はまだ無い
         // (`RunRecorder.begin` はビルド後にしか作れない)ので nil で構築し、後で確定したら
@@ -386,15 +437,11 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
         }
 
-        // --profile の解決は runStarted 送出前に済ませる: タイポ等の検証エラーは他の事前検証と
-        // 同様 NDJSON を1行も出さず失敗させたい(runStarted だけ出て runFinished が来ない尻切れを
-        // 避ける)。デバイス接続等の実行時失敗は runWithProfile 側で扱う(VSCode拡張は
-        // runFinished 無しの異常終了を exit code で検知するため許容される)
+        // --profile の resolve/照合(タイポ等の検証)は上の preResolvedProfile で
+        // ロックより前に済んでいる。ここから下は runStarted 送出前の**書き込み**
+        // (ワークスペースの雛形・供給の絞り込み)だけを行う
         var resolvedProfile: ResolvedProfile?
-        if let profile {
-            let resolvedAll = try ProfileResolver.resolve(
-                project: testProject, runName: profile,
-                workspaceOverride: workspace, overrides: profileOverrides)
+        if let (resolvedAll, full) = preResolvedProfile {
             // ワークスペースは常に有効(既定 `<project.rootURL>/workspace`。docs/remote-runner.md §17)
             // なので毎回雛形作成(ProfileRunner.run と同じ規律。既に揃っていれば
             // 何もしない。リモートディスパッチは別途ミラー前のローカル側で同じ呼び出しを行う
@@ -412,33 +459,6 @@ struct ApiRunCommand: AsyncParsableCommand {
                     logStderr("→ Staged app package(s) into the workspace: "
                         + staged.joined(separator: ", "))
                 }
-            }
-            // --device / --device-machine: ApiRunMachineFanout の子(マシン別サブ実行)が自分のぶんだけを
-            // 回すのに使う(ProfileRunner.run と同じ順序・同じメッセージ規律 —— ホストで絞らないと
-            // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
-            //
-            // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
-            // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
-            // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
-            // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告:
-            // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
-            var effectiveDevices = devices
-            var effectiveDeviceHost = deviceMachine
-            if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
-                (effectiveDevices, effectiveDeviceHost) = try machineScopedDeviceFilter(
-                    project: testProject, profile: profile,
-                    targetMachine: DeviceMachineGrouping.localDisplayName, requestedDevices: devices)
-            }
-            let full = resolvedAll.filteringDevices(names: effectiveDevices, deviceMachine: effectiveDeviceHost)
-            // 絞り込みを指定したときだけ「合致0」を報告する。指定していないのに0台なのは
-            // プロファイル自体の誤りで、それは resolve 側が自分の言葉で報告する
-            if full.devices.isEmpty, !effectiveDevices.isEmpty || effectiveDeviceHost != nil {
-                let scope = [devices.isEmpty ? nil : "--device \(devices.joined(separator: ", "))",
-                             deviceMachine.map { "--device-machine \($0)" }]
-                    .compactMap { $0 }.joined(separator: " ")
-                throw ValidationError(
-                    "\(scope) matched no device in run profile \(profile)"
-                    + " (available: \(resolvedAll.devices.map(\.name).joined(separator: ", ")))")
             }
             // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices)。
             // ここではシナリオ一覧がまだ無い(ビルドと並行に解決するため。下の先行構築のコメント参照)
@@ -948,7 +968,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     private func runDirect(project: TestProject, selected: [ScenarioInfo],
                            debugOptions: ScenarioDebugOptions?,
                            recorder: RunRecorder?, interruptState: RunInterruptState) async -> RunOutcome {
-        let effectivePlatform = platform ?? "ios"
+        let effectivePlatform = FTCore.DeviceTargetConsistency.defaultPlatform(
+            explicit: platform, gaveIOSTarget: !ports.isEmpty, gaveAndroidTarget: serial != nil)
         // count<=1 は validate() が既に保証済み(--port を2回以上渡すと弾く)
         let effectivePort = ports.first ?? BridgeAPI.defaultPort
         // `--report-dir`/`--default-timeout`/`--scenario-timeout` が優先(run() が両方指定を

@@ -90,9 +90,11 @@
 // 流儀)。ただしこちらは周期処理を持たないコマンド駆動のため、StopFlag+ポーリングではなく
 // AsyncStream で橋渡しし SIGTERM/SIGINT は continuation.finish() で for-await を抜けさせる。
 //
-// --udid(iOS のみ): 指定時、DriverError.bridgeConnectionRefused を tap 等の実行時・観測
-// (emitObservation)時に検知すると LiveBridgeAutoStarter がブリッジを自動起動し、進行状況は
-// 全イベント共通の bridgeStarting フラグ(上記)で伝える(詳細は LiveBridgeAutoStarter.swift)。
+// --udid(iOS のみ): この udid がシミュレータ一覧にも実機一覧にも見つからなければ、
+// 自動起動を一度も撃たずに起動時点で即エラー終了する(SimulatorCatalog.lookupUDID。
+// run() の冒頭・udidStartupOutcome 参照)。見つかれば、DriverError.bridgeConnectionRefused を
+// tap 等の実行時・観測(emitObservation)時に検知すると LiveBridgeAutoStarter がブリッジを自動起動し、
+// 進行状況は全イベント共通の bridgeStarting フラグ(上記)で伝える(詳細は LiveBridgeAutoStarter.swift)。
 // 自動フレーム(emitFrame)は状況の反映のみで起動はトリガーしない。serve 起動時に /status の
 // protocolVersion を確認し、旧ビルドのブリッジは自動で再起動する。
 // **resolve が返した宛先は udid で本人確認する**
@@ -133,12 +135,17 @@ struct ApiLiveServe: AsyncParsableCommand {
     @OptionGroup var driverOptions: DriverOptions
 
     // iOS は XCUIBridgeResolver 経由で makeDriver を通らないので、ここでは効かせられない
-    func validate() throws { try driverOptions.rejectVersionSkewFlag(in: "api live") }
+    func validate() throws {
+        try driverOptions.rejectVersionSkewFlag(in: "api live")
+        // udid は DriverOptions が持たない別オプションなので、ここで足す
+        try driverOptions.rejectDeviceTargetMismatch(extraIOSTarget: !(udid ?? "").isEmpty)
+    }
 
     /// `ResidentProcessGuard.startCommandWatchdog(maxSeconds:)` に渡す基準値[秒]。拡張側の
     /// SERVE_REQUEST_TIMEOUT_MS(20秒。vscode-fleetest/src/monitorLiveController.ts)より大きくする
     /// —— 通常は拡張の kill→respawn が先に効き、これは拡張が kill しない場合の最終安全弁。
-    /// 秒数を指定する操作(軌跡・press/drag/pinch)は `gestureAllowanceSeconds` ぶん延ばす
+    /// コマンドが正当にこれより長く占有しうるとき(軌跡・press/drag/pinch・launch/activate・install)は
+    /// `ApiLiveServeCommand.watchdogAllowanceSeconds` ぶん延ばす
     static let commandWatchdogMaxSeconds: Double = 30
 
     func run() async throws {
@@ -148,6 +155,19 @@ struct ApiLiveServe: AsyncParsableCommand {
         // 1コマンドが wedge(CPU spin 等)しても自死できる最終安全弁(commandWatchdogMaxSeconds の宣言参照)
         ResidentProcessGuard.startCommandWatchdog(
             maxSeconds: Self.commandWatchdogMaxSeconds, logLabel: "live serve")
+
+        // **ドライバを組む前に udid の実在を確かめる**(判定は MCP の bridgeUpSuggestion 等と同じ
+        // `SimulatorCatalog.lookupUDID` の1箇所——2つ目の判定を作らない)。ここで断らないと、
+        // 実在しない udid は `LiveBridgeAutoStarter` が xcodebuild build-for-testing を
+        // 2回(各約60秒)空撃ちしたあとにようやく失敗する
+        if driverOptions.resolvedPlatform == "ios", let udid {
+            switch Self.udidStartupOutcome(SimulatorCatalog.lookupUDID(udid: udid)) {
+            case .proceed:
+                break
+            case .missing:
+                throw ValidationError(Self.udidNotFoundMessage(udid: udid))
+            }
+        }
 
         var (driver, port, ownAppBundleID, primaryEngine) = try await makeLiveDriver()
         let starter = makeAutoStarter(port: port)
@@ -210,8 +230,9 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             let command = ApiLiveServeCommand(cmd: cmd, raw: object)
             // 軌跡・press/drag/pinch の duration は利用者が指定した時間どおりに再生する(縮めない)
-            // ので、その再生時間ぶん watchdog を延ばす(gestureAllowanceSeconds 参照)
-            ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.gestureAllowanceSeconds)
+            // ので、その再生時間ぶん・launch/activate/install は内側の上限ぶん watchdog を延ばす
+            // (watchdogAllowanceSeconds 参照)
+            ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.watchdogAllowanceSeconds)
             // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ。
             // usb: host はループバックのままだが establish が新たに token を記録している ——
             // host だけで判定すると usb は再取得されず、起動前の token 無し driver を握ったままになる)
@@ -535,6 +556,31 @@ struct ApiLiveServe: AsyncParsableCommand {
                 error.localizedDescription)
             return nil
         }
+    }
+
+    /// `SimulatorCatalog.lookupUDID` の4値から、起動時にこの udid で進んでよいかを決める
+    /// (純粋関数)。**`.notFound`(一覧を読めたが載っていない)のときだけ止める** ——
+    /// `.unreadable`(一覧そのものが読めなかった)は不明を確定値に畳まず、`.simulator`/`.physical`
+    /// と同じく進む(自動起動に委ねる。CLAUDE.md「不明を確定値に畳まない」)
+    enum UDIDStartupOutcome: Equatable { case proceed, missing }
+
+    static func udidStartupOutcome(_ lookup: SimulatorCatalog.UDIDLookup) -> UDIDStartupOutcome {
+        switch lookup {
+        case .simulator, .physical:
+            return .proceed
+        case .unreadable:
+            // 一覧が読めなかった(負荷下の simctl 時間切れ等)= 不明。「無い」に畳まず従来どおり進む
+            return .proceed
+        case .notFound:
+            return .missing
+        }
+    }
+
+    /// **人間向け**(拡張のライブ操作パネルを見ている人が読む)。判定は共有するが文言は呼び手ごと
+    /// —— MCP の `bridgeUpSuggestion`/`lostTargetRefusal` とは別に持つ
+    static func udidNotFoundMessage(udid: String) -> String {
+        "no simulator or connected iPhone with udid \(udid) was found on this Mac."
+            + " Check the udid with `fleetest api list-devices`."
     }
 
     /// 1コマンドを処理する: refresh 以外はまずアクションを実行して actionResult を出し、
@@ -1125,7 +1171,7 @@ private func emitLine<T: Encodable>(_ value: T) {
 // MARK: - stdin コマンド
 
 /// press/drag/pinch の秒数引数を省略したときの既定値。**perform() と
-/// ApiLiveServeCommand.gestureAllowanceSeconds が同じ値を使うこと** —— 片方だけ変えると
+/// ApiLiveServeCommand.watchdogAllowanceSeconds が同じ値を使うこと** —— 片方だけ変えると
 /// 実際に撃つジェスチャの所要と command watchdog の許容がずれ、正当な長さの
 /// ドラッグ/ピンチが watchdog に途中で殺されうる
 enum ApiLiveGestureDefaults {
@@ -1174,13 +1220,17 @@ struct ApiLiveServeCommand {
 
     /// このコマンドが正当に占有しうる時間[秒]。command watchdog の allowance
     /// (`ResidentProcessGuard.noteCommandStart(allowanceSeconds:)`)に渡す。
-    /// **press/drag/pinch/gesture だけが対象** —— これらは `BridgeClient.timeout(forDuration:)` で
-    /// 実行時間ぶん HTTP タイムアウトを伸ばして撃つため、固定の watchdog 基準値
-    /// (`ApiLiveServe.commandWatchdogMaxSeconds`)だけでは正当な長い指定
-    /// (例: `maxGestureSeconds` で最大60秒)を待ち切れず、まだ実行中のジェスチャを watchdog が
-    /// force-quit してしまう。**他のコマンドは 0**(固定の watchdog 基準値だけで足りる)。
-    /// 既定値は perform() と同じ `ApiLiveGestureDefaults` を使う(1箇所)
-    var gestureAllowanceSeconds: Double {
+    /// **press/drag/pinch/gesture**: `BridgeClient.timeout(forDuration:)` で実行時間ぶん HTTP
+    /// タイムアウトを伸ばして撃つため、固定の watchdog 基準値(`ApiLiveServe.commandWatchdogMaxSeconds`)
+    /// だけでは正当な長い指定(例: `maxGestureSeconds` で最大60秒)を待ち切れず、まだ実行中の
+    /// ジェスチャを watchdog が force-quit してしまう。既定値は perform() と同じ
+    /// `ApiLiveGestureDefaults` を使う(1箇所)。
+    /// **launch/activate**: 失敗しても直後に観測(snapshot)を撮り直すので、猶予はその分も
+    /// カバーする必要がある。内側の上限は xcuitest 経由が `BridgeClient.Timeout.session`
+    /// (45秒)で in-app(30秒)より大きいので、大きい方を猶予にする。
+    /// **install**: 実機は `devicectl device install app` に `BridgeClient.Timeout.physicalInstall`
+    /// (600秒)を渡すため、その全量を猶予にする。**他のコマンドは 0**(固定の watchdog 基準値だけで足りる)
+    var watchdogAllowanceSeconds: Double {
         switch cmd {
         case "gesture":
             return fingers.map { GestureRequest(fingers: $0).totalSeconds } ?? 0
@@ -1191,6 +1241,10 @@ struct ApiLiveServeCommand {
                 + (duration ?? ApiLiveGestureDefaults.dragDurationSeconds)
         case "pinch":
             return duration ?? ApiLiveGestureDefaults.pinchDurationSeconds
+        case "launch", "activate":
+            return BridgeClient.Timeout.session
+        case "install":
+            return BridgeClient.Timeout.physicalInstall
         default:
             return 0
         }

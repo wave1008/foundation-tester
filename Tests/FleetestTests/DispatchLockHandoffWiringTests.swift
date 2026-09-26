@@ -30,12 +30,16 @@ final class DispatchLockHandoffWiringTests: XCTestCase {
                     $0.isLetter || $0.isNumber || $0 == "_"
                 })
             }
-            // 宣言そのものの行は数えない(門を置いた場所だけを見る)
-            guard line.contains("parentHoldsThisLock"), !line.contains("private var") else { continue }
+            // 宣言そのものの行・コメント行は数えない(門を置いた場所だけを見る)
+            guard line.contains("parentHoldsThisLock"), !line.contains("private var"),
+                  !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") else { continue }
             gated.append(enclosing)
         }
         XCTAssertEqual(gated.sorted(),
-                       ["acquireDispatchLock", "releaseDispatchLock", "releaseLockIfRunEnded"],
+                       // logKeptDispatchLock はロック操作ではなく「保持している」と言うかの門
+                       // (親が握るロックを子が「まだ終わっていないかも・保持」と言わない)
+                       ["acquireDispatchLock", "logKeptDispatchLock", "releaseDispatchLock",
+                        "releaseLockIfRunEnded"],
                        "親が握っているときに飛ばす箇所が増減した(取得と解放は必ず両方)")
     }
 
