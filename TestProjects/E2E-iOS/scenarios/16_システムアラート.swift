@@ -74,7 +74,7 @@ class システムアラートの操作 {
                     tap("#btn_back")
                 }.expectation {
                     // ホームは先頭へ戻るので #nav_diagnostics は折り返しの下(木には居るが見えない)。
-                    // textVisualCheck 有効の run では見えない一致は通らないため、送ってから確かめる
+                    // テキストの視覚検証が有効な run(fmTextOcclusionCheck / ocrTextOcclusionCheck)では見えない一致は通らないため、送ってから確かめる
                     exist("#nav_diagnostics", scroll: .down)
                 }
             }

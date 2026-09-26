@@ -232,7 +232,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | guardSkipped | Int? | `guarded` のうち、FM が判定を返せず(死活・ブレーカ・直列化待ち)素通りした回(`visibility-guard-skipped`)。**`guarded` が1件以上ある run では、0件でも必ず書く**(欄が無い=観測なし、0=観測したが起きなかった、を混ぜない)。`guarded` が省略された run では同じく省略 |
 | guardStaleFrame | Int? | `guarded` のうち、絵が古いまま撮り直しても stale で素通りした回(`stale-screenshot`)。`guardSkipped` と同じ 0/nil の規律 |
 | runGroup | String? | **同じ実行から分かれた run を束ねる鍵**。デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run(別 runID・別 machine・リモートは向こうの時計)になるので、`profile` と開始時刻では同じ実行かどうか決められない。ファンアウトの親が1回だけ発行し、手元の子にもリモートの子にも同じ値が入る。**単機の run と 2026-08-26 より前の記録では欠落**(束ねる相手が居ない) |
-| fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set textVisualCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の4フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
+| fmSettings | FMSettingsRecord? | **その run で実際に効いていた FM 設定**(プロファイルの値そのものではなく、`--set heal=…`/`--set fmTextOcclusionCheck=…` 等の CLI 上書きを反映した後の実効値)。下記の4フィールドを常に持つ。**欄が無い = この版より前の記録**であって、FM が無効だった意味ではない(fmDead 等と同じく「無い」と「false」を混ぜない) |
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM/SIGHUP(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>`・ssh の切断等)を受けたか**。**供給段(デバイス・ブリッジの用意)の最中の中断も含む**(受け付けは記録の開始直後から)。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
@@ -240,16 +240,16 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 
 ### fmSettings(`FMSettingsRecord`)
 
-**4つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。`ocrTextVisualCheck` は `FMConfig` の外(実行プロファイルの独立したキー)だが、記録上はここへまとめてある。`heal` も同様 —— FM を使わないが、記録上はここにまとめてある。
+**4つのフィールドは常に明示的に書く**(true/false のどちらも省略しない)。`ocrTextOcclusionCheck` は `FMConfig` の外(実行プロファイルの独立したキー)だが、記録上はここへまとめてある。`heal` も同様 —— FM を使わないが、記録上はここにまとめてある。
 
 | フィールド | 型 | 意味 |
 |---|---|---|
 | heal | Bool | ロケータ自己修復(指紋照合)の実効値。FM は使わない(他のトグルとは独立) |
-| textVisualCheck | Bool | occlusion-guard(テキストの視覚検証)の実効値 |
+| fmTextOcclusionCheck | Bool | テキストの視覚検証の FM の段の実効値 |
 | screenLooksLike | Bool | `screenLooksLike` の実効値 |
-| ocrTextVisualCheck | Bool | OCR を使ったテキストの視覚検証の値(プロファイル + `--set` を反映した値)。`textVisualCheck` が false の run では guard 自体が走らないので、true でも OCR は使われていない |
+| ocrTextOcclusionCheck | Bool | テキストの視覚検証の OCR の段の実効値(プロファイル + `--set` を反映した値)。2つの段は独立で、どちらかが true なら視覚検証は走る |
 
-FM を呼ぶ構成だったかは `textVisualCheck || screenLooksLike` で判定する(両方 false の run では FM を一切呼ばない)。
+FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で判定する(両方 false の run では FM を一切呼ばない)。
 
 ### host-metrics.ndjson の FM/Vision 欄
 
@@ -342,7 +342,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
-| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-warmup-waited` / `ocr-warmup-capped` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)。`check-state-classified`(checkIsON / checkIsOFF の状態を CheckStateClassifier が要素の画像から判定した。a11y の報告ではない)。`check-state-classifier-failed`(見本画像はあるのに学習か読み込みに失敗し、a11y だけで判定した)。`settled-after-keyboard`(直前の `type` がキーボードを出して画面が動いたので、次の操作の解決前に整定を待ち、**待っている間に実際に木が変わった**回だけ立つ。立たない = 待った時点で既に静止していた)。`acted-outside-container`(容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま操作した。**ステップは緑のまま**(設計どおり止めない)なので、後段の検証が無いシナリオではこれが「別の物に当たったかもしれない」唯一の痕跡)。`unchanged-tap-before-failure`(検証が失敗したとき、それより前のタップのうち画面を 1 ピクセルも変えなかったものを失敗文言で名指しした。**判定は変えない**。直前のタップだけでなく、tap が続いた場合は次のタップの時点で画面が変わっていなかった前のタップも名指しする。**iOS の木はアプリのプロセスだけ**なので、権限の要求など OS のアラートを出したタップも無変化に見える —— iOS の文言は「飲まれた」と言い切らずその可能性を併記する)。`launch-activated-before-foreground`(xcuitest の高速起動で、起動させた後にランナーがアプリを前面と見ないまま activate を頼んだ。activate が通れば緑のまま。**ランナーごと落ちる手前**の印)。自己修復の注記は `heal-fingerprint-match`(指紋照合で解決)/ `heal-unwritable`(一致したが一意に書けるセレクタが無い)の2つ(2026-09-15 に FM ヒール関連の `heal-proposal-rejected` / `heal-answer-unresolved` / `heal-no-replacement` / `heal-confidence-injected` を撤去 → maintainer-notes §22)) |
+| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-warmup-waited` / `ocr-warmup-capped` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)。`ocr-read-what-fm-missed` / `fm-read-what-ocr-missed`(テキストの視覚検証で OCR と FM の判定が割れ、見えていると読めた側を採って緑にした。前者は FM が見えないと言い OCR が読めた回・後者はその逆。**率を見る注記**)。`check-state-classified`(checkIsON / checkIsOFF の状態を CheckStateClassifier が要素の画像から判定した。a11y の報告ではない)。`check-state-classifier-failed`(見本画像はあるのに学習か読み込みに失敗し、a11y だけで判定した)。`settled-after-keyboard`(直前の `type` がキーボードを出して画面が動いたので、次の操作の解決前に整定を待ち、**待っている間に実際に木が変わった**回だけ立つ。立たない = 待った時点で既に静止していた)。`acted-outside-container`(容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま操作した。**ステップは緑のまま**(設計どおり止めない)なので、後段の検証が無いシナリオではこれが「別の物に当たったかもしれない」唯一の痕跡)。`unchanged-tap-before-failure`(検証が失敗したとき、それより前のタップのうち画面を 1 ピクセルも変えなかったものを失敗文言で名指しした。**判定は変えない**。直前のタップだけでなく、tap が続いた場合は次のタップの時点で画面が変わっていなかった前のタップも名指しする。**iOS の木はアプリのプロセスだけ**なので、権限の要求など OS のアラートを出したタップも無変化に見える —— iOS の文言は「飲まれた」と言い切らずその可能性を併記する)。`launch-activated-before-foreground`(xcuitest の高速起動で、起動させた後にランナーがアプリを前面と見ないまま activate を頼んだ。activate が通れば緑のまま。**ランナーごと落ちる手前**の印)。自己修復の注記は `heal-fingerprint-match`(指紋照合で解決)/ `heal-unwritable`(一致したが一意に書けるセレクタが無い)の2つ(2026-09-15 に FM ヒール関連の `heal-proposal-rejected` / `heal-answer-unresolved` / `heal-no-replacement` / `heal-confidence-injected` を撤去 → maintainer-notes §22)) |
 | detail | String? | 失敗理由(英語・人間可読) |
 | file / line | String? / Int? | ソース位置 |
 | durationMs | Int? | 所要 |

@@ -20,10 +20,26 @@ public enum OCROnlyVisibility {
     }
 
     /// FM が判定を返さない run の occlusion-guard を説明する但し書き(括弧つき・先頭空白つき)。CLI の警告・
-    /// FMHealth・doctor・ft_status が共有する。**ocrTextVisualCheck を知らない呼び手でも真になる形**
+    /// FMHealth・doctor・ft_status が共有する。**ocrTextOcclusionCheck を知らない呼び手でも真になる形**
     /// (off なら読みが無く judge は常に判定不能 = 素通り)
     public static let fmFallbackCaveat =
-        " (text that OCR cannot judge passes unchecked; with ocrTextVisualCheck off the guard passes through)"
+        " (text that OCR cannot judge passes unchecked; with ocrTextOcclusionCheck off the guard passes through)"
+
+    /// FM の判定と OCR の読みの判定の突き合わせ。**見えていると読めた側を採る**(赤は両方が見えないと
+    /// 言った回か、OCR が判定不能で FM が見えないと言った回だけ)。どちらも期待文字列を知らずに読んだ文字を
+    /// 同じ `TranscriptMatch` で照合するので「読めた」は描かれている直接の証拠で、「読めなかった」は読み手の
+    /// 失敗でも起きる。割れた回は `disagreement` の注記で残す(率で監査する)。根拠は poc §5.22
+    public static func merge(fmVisible: Bool, fmState: TranscriptMatch.State?,
+                             ocr: Outcome) -> (visible: Bool, state: TranscriptMatch.State?, disagreement: StepNote?) {
+        switch ocr {
+        case .visible(let state) where !fmVisible:
+            return (true, state, .ocrReadWhatFMMissed)
+        case .notVisible where fmVisible:
+            return (true, fmState, .fmReadWhatOCRMissed)
+        default:
+            return (fmVisible, fmState, nil)
+        }
+    }
 
     /// `lines` が nil(読んでいない)なら判定不能。空でなければ `TranscriptMatch.judge` へそのまま回す。
     /// 空なら `inkStdDev` で「描かれていない」か「判定不能」かだけを分ける。

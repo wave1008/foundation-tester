@@ -758,7 +758,7 @@ FileVault 有効のランナーは**再起動のたびに誰かが解錠+ログ�
 | `app package not found at …` | 手元の `appPath` にアプリが無い(未ビルド・パス違い) | 手元でアプリをビルドするか `appPath` を直す(ステップ4。アプリは手元から運ばれる) |
 | `.apks` のインストールで `needs bundletool` | ランナー機に bundletool が無い | ランナー機で `brew install bundletool`（`.apks` を使うときだけ要る。単一 `.apk` なら不要） |
 | `Couldn't fetch updates from remote repositories` / `Recv failure: Operation timed out` | ランナー機の回線が細く SPM の依存取得が落ちた | 再実行する（取得済みは残るので数回で通る）。事前に `swift package resolve` を通しておくと確実 |
-| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | `screenLooksLike` / occlusion-guard(`textVisualCheck`)を使わないなら無視してよい（実行は続く。自己修復は FM を使わないので影響しない）。使うなら Apple Intelligence を有効化 |
+| `Foundation Models unavailable` の警告 | ランナー機で Apple Intelligence が無効 | `screenLooksLike` / occlusion-guard(`fmTextOcclusionCheck`)を使わないなら無視してよい（実行は続く。自己修復は FM を使わないので影響しない）。使うなら Apple Intelligence を有効化 |
 | `--port is not supported with --runner` 等 | 併用できない指定 | ステップ6 の一覧 |
 | 手元で走ってほしいのにリモートへ飛ぶ / その逆 | 実行プロファイルの**デバイスが持つ `machine`** が効いている | ステップ4。今回だけ変えるなら `--runner local` / `--runner <名前>`(明示が勝つ) |
 | `the device is currently running — stop it first` | 起動中のデバイスは削除できない | `fleetest devices down` で停止してから削除する |

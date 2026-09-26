@@ -247,7 +247,7 @@ test("概要: プロファイル/マシン/起動元/実行者は run 横断で�
 });
 
 test("概要: fmSettings は最初に見つかった非 null 値を代表として使う", () => {
-  const fm = { heal: true, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: false };
+  const fm = { heal: true, fmTextOcclusionCheck: false, screenLooksLike: true, ocrTextOcclusionCheck: false };
   const metas = [runMeta({ runID: "r1", fmSettings: null }), runMeta({ runID: "r2", fmSettings: fm })];
   assert.deepEqual(modelFrom([], metas).overview.fmSettings, fm);
 });

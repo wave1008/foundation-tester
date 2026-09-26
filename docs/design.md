@@ -43,7 +43,7 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 **文言は呼び手ごと**)→ Tier-1〜 FM。iOS の木は画面外の要素も frame ごと残し、FM 側は crop が
 画像の外に落ちると nil(素通り)なので、**通り過ぎた要素への exist は FM が生きていても FM では
 塞がらなかった**(2026-08-20 受け手報告・横スクロール区画)。幾何の段は FM の有無に依らず
-`textVisualCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
+`fmTextOcclusionCheck || ocrTextOcclusionCheck` の下で効く(`StepExecutor.visibilityGuardActive` が唯一の入口。FTRuntime の
 保持値の高速経路もこれを見る)。
 **Tier-2 は Vision OCR**(2026-09-07): インク足切りを通って「FM に訊く」と決まった crop に、まず
 `FTCore.RegionText` が OCR を当て、**期待文字列が丸ごと読めたら可視として素通り**させる
@@ -51,8 +51,10 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 実 run で FM の段に届いた crop 163 枚のうち **97% がここで片付き**、FM に回ったのは本当に
 描かれていない 2 枚だけだった(p50 92ms。FM は 1.3〜2.8s)。守る規律は4つ:
 **①丸ごと読めなかったことだけを反転の根拠にしない**(日本語モデルを載せた版では可視な
-テキストの 29% を 1 文字誤読した)。反転するのは `OCROnlyVisibility` が言い切れた回(読みが期待と無関係・
-インクが無い)で、**FM の有無に関わらず FM を呼ばない**(判定不能だけ FM へ。poc §5.21)/ **②一致は完全含有だけ**(先頭一致を許すと、部分的に覆われて
+テキストの 29% を 1 文字誤読した)。FM の段(`fmTextOcclusionCheck`)が使えるときは丸ごと読めなかった回を**全部** FM に回し、
+`OCROnlyVisibility.merge` で**見えていると読めた側を採る**(赤は両方が見えないと言った回だけ。割れた回は注記
+`ocr-read-what-fm-missed` / `fm-read-what-ocr-missed`。poc §5.22)。FM の段が無い・使えないときは
+`OCROnlyVisibility` の判定だけで赤にする/ **②一致は完全含有だけ**(先頭一致を許すと、部分的に覆われて
 残りだけ読めた回を通してしまい誤った緑になる)/ **③読ませる言語は期待文字列から決め、言語補正は日本語の集合でだけ掛ける**
 (`RegionText.languages(for:)` / `usesLanguageCorrection(for:)`。ASCII の期待値に日本語モデルを載せると
 所要が 2.3 倍。en ロケールの端末は「単」を中国語フォントの字形で描き、補正なしだと「单」と読む。
@@ -2120,7 +2122,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
   `checkIsOFF` の誤用警告が消える)、`screenMatches` / `keyboard*`(要素の値を見ていない)
 - **可視性照合が走る設定では高速経路に入らない**(`visibilityWouldBeChecked`)。条件は
   `occlusionFlip` の入口のうちステップ非依存の部分と同じものを見る。飛ばすと
-  textVisualCheck 有効の run で誤った緑の検出が**静かに1つ消える**
+  視覚検証が有効な run(fmTextOcclusionCheck か ocrTextOcclusionCheck)で誤った緑の検出が**静かに1つ消える**
 - 記録は通常どおり1ステップだが、説明に `(from the grabbed value)` を付ける
   (レポートで「取り直していない判定」を見分けられるようにするため。durationMs は 0)
 - **残る危険は「古い値が偶然期待に一致して待たずに通る」向き**。`textIs` は本来
@@ -3682,7 +3684,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。
   アプリ側でダイアログにも `Modifier.semantics { testTagsAsResourceId = true }` を再適用させる。
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
-- **テキストの視覚検証の run(実行プロファイル `textVisualCheck`。**既定 true**。2026-09-03 にオプトインをやめた)では、
+- **テキストの視覚検証の run(実行プロファイル `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` のどちらか。**既定はどちらも true**)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「`false positive (occlusion)`」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
@@ -3884,9 +3886,9 @@ targeting = bundletool にしか決められない。feature module を足した
 掴む)。除外が効くのは自動選定だけで、`--device-name`/`--udid` や `api create-device` で
 iPad を明示指定する経路は従来どおり通る。
 
-FM(Foundation Models)を使うのは `textVisualCheck`(occlusion-guard 全体のスイッチ。
-FM を呼ぶのはその視覚照合の段)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true
-(`textVisualCheck` は 2026-09-03 にオプトインをやめた)。両方 false の run では FM 呼び出しを
+FM(Foundation Models)を使うのは `fmTextOcclusionCheck`(occlusion-guard の FM の段。OCR の段
+`ocrTextOcclusionCheck` と独立で、guard はどちらかが true なら走る = FTRuntime が合成)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true
+(`fmTextOcclusionCheck` は 2026-09-03 にオプトインをやめた)。両方 false の run では FM 呼び出しを
 一切行わない(子ランナーへも伝搬し、delegate 自体を作らない)。screenLooksLike を無効にした
 run では該当ステップは skip(素通り)になり、FM 利用不可時と同じ扱い。子への伝搬(プロファイル →
 子 → 実行時)は `FMToggleWiringTests` が固定する。UI は「プロファイル」タブの実行プロファイル設定

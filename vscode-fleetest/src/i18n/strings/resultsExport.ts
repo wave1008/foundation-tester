@@ -24,8 +24,8 @@ export const resultsExportStrings = {
 
   // FM 設定(4つ常に同じ順で「ラベル=ON/OFF」を並べる。docs/results-json.md の fmSettings)。
   "resultsExport.fm.heal": { ja: "自己修復", en: "Self-heal" },
-  "resultsExport.fm.textVisualCheck": { ja: "テキストの視覚検証", en: "Text visual verification" },
-  "resultsExport.fm.ocrTextVisualCheck": { ja: "OCRを使ったテキストの視覚検証", en: "OCR text visual verification" },
+  "resultsExport.fm.fmTextOcclusionCheck": { ja: "テキストの視覚検証", en: "Text visual verification" },
+  "resultsExport.fm.ocrTextOcclusionCheck": { ja: "OCRを使ったテキストの視覚検証", en: "OCR text visual verification" },
   "resultsExport.fm.screenLooksLike": { ja: "画面の見た目判定", en: "Screen appearance check" },
   "resultsExport.fm.on": { ja: "ON", en: "ON" },
   "resultsExport.fm.off": { ja: "OFF", en: "OFF" },

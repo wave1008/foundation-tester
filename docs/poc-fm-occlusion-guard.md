@@ -516,11 +516,10 @@ E2E(local)でガード 54 件中 43 件が近道・予算切れ 0・guardMs 最�
 
 ### 既定と殺しスイッチ
 
-**利用者の口は実行プロファイルの `ocrTextVisualCheck`**(既定 true。拡張のプロファイルタブ
+**利用者の口は実行プロファイルの `ocrTextOcclusionCheck`**(既定 true。拡張のプロファイルタブ
 「Advanced Features(Experimental)」セクションの「OCRを使用したテキストの視覚検証を有効にする」)。
 他のキーを経由せずこの値がそのまま効く。`false` にすると `--no-occlusion-ocr` がランナーへ渡り、
-**環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`textVisualCheck` が false の
-run では guard 自体が走らないのでこの値は効かない。
+**環境変数より優先**して OCR を止める(従来どおり FM だけで判定)。`fmTextOcclusionCheck` との関係は §5.22。
 
 環境変数は保守者用の口:
 `FT_OCCLUSION_OCR`: 未設定/その他 = **on(既定)** / `0`・`off` = 殺しスイッチ(従来どおり FM だけ)/
@@ -706,7 +705,7 @@ FM が拾えるのは空白と全面の覆いだけで、どちらもインク�
 転写を木のラベルと突き合わせられるからで、アイコンには突き合わせる相手が無い。再検討するなら、
 見た目の正解(見本・前回の見た目)を持つ形に限る。
 
-## 5.21 OCR で不可視と言い切れた回は FM を呼ばない(2026-09-26)
+## 5.21 OCR で不可視と言い切れた回は FM を呼ばない(2026-09-26。§5.22 で改めた)
 
 ユーザー決定: **FM の有無に関わらず**、OCR の読み(読めなければインク量)だけで `OCROnlyVisibility` が
 「見えていない」と言い切れた回は FM に回さず赤にする。役割は「a11y の木が在ることを保証し、見えているかを
@@ -725,6 +724,43 @@ FM が拾えるのは空白と全面の覆いだけで、どちらもインク�
   FM に訊いていないので `visibility-guard-skipped` は立てない
 - 配線は `OCROnlyVisibilityWiringTests.testOCRNotVisibleShortCircuitsBeforeFM` が FM より前にあることを固定
   (変異 2 件 = measure に限定・skipped を立てる、を検出)
+
+## 5.22 FM の段と OCR の段を独立させ、両方の判定を突き合わせる(2026-09-26)
+
+ユーザー決定で §5.21 を改める: 実行プロファイルの `fmTextOcclusionCheck`(「FM を使用したテキストの視覚検証」)は
+**FM の段**、`ocrTextOcclusionCheck` は **OCR の段**を指し、独立に切り替える(guard はどちらかが true なら走る)。
+**FM の段が使えるときは OCR の赤でも FM に回し**、最終判定は2つを突き合わせて決める。
+
+**突き合わせの規則: 見えていると読めた側を採る**(`OCROnlyVisibility.merge`。赤は両方が見えないと言った回か、
+OCR が判定不能で FM が見えないと言った回だけ)。根拠:
+
+- どちらも期待文字列を知らずに読んだ文字を同じ `TranscriptMatch` で照合する(FM には期待文字列を渡さない = §5.18。
+  おうむ返しで「読めた」ことにはならない)。**「読めた」は描かれている直接の証拠**で、「読めなかった」は読み手の
+  失敗でも起きる(OCR: 短い文字列の誤読・5 文字未満は誤読の許容が無い。FM: 字形の取り違え「擴張」、§5.18 の ja 1/70)
+- 割れる2向きの誤りの率(同じ母集団ではないので目安): OCR の赤が見えている要素に出る率 0/290(§5.19)・
+  FM の赤が見えている要素に出る率 ja 1/70・en 0/80・実 run 0/153(§5.18)/ 見えない要素を FM が緑にする率
+  3/608(合成・余白への写り込み。§5.18)・OCR の判定が緑にする率は左 65% の覆いで 4/295(§5.19。値だけ違う別の文字と
+  右 35% の覆い・半透明は設計どおりの緑)。**ガードに届く要素の大半は見えている**(E2E で 142/142 等)ので、
+  割れた回は見えている側である見込みが高い
+- 規則が割れた回を**黙って**畳まないよう、注記 `ocr-read-what-fm-missed`(FM は見えないと言い OCR は読めた)/
+  `fm-read-what-ocr-missed`(その逆)を残す。**率が上がったら、その向きの読み手の見逃しを疑って測り直す**
+  (割れた回の正解を目視で付ければ、どちらを採るべきだったかが直接測れる。未測定)
+
+構成ごとの動き:
+
+| fmTextOcclusionCheck | ocrTextOcclusionCheck | 判定 |
+|---|---|---|
+| on | on(既定) | OCR が丸ごと読めれば緑(FM を省く)/ それ以外は FM と OCR を突き合わせ |
+| on | off | FM だけ(FM が答えなければ素通り + `visibility-guard-skipped`) |
+| off | on | OCR だけ(`OCROnlyVisibility`。赤の文言は `judged by OCR`) |
+| off | off | guard 無し(Tier-0 の幾何も止まる) |
+
+- FM の段が on でも使えない(macOS 26・実呼び出しの失敗・注入)ときは OCR だけ(文言は `... because FM gave no verdict`)
+- 配線: FTRuntime が `occlusionGuardEnabled = fmTextOcclusionCheck || ocrTextOcclusionCheck` と
+  `fmVisibilityCheckEnabled = fmTextOcclusionCheck` を渡す。`--no-fm` で delegate が nil でも OCR の段は走る
+- テスト: `OCROnlyVisibilityTests`(merge の全組み合わせ)・`OCROnlyVisibilityWiringTests`(FM より前に OCR の赤で
+  返らない・merge が FM の後)・`FTDriveCorePrewarmWiringTests`(OCR だけでも guard が走る)・
+  `testFMStageOffNeverCallsFM`。変異 5 件をすべて検出
 
 ## 6. 既知の限界
 

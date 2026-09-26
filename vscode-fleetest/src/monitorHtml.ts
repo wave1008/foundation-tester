@@ -635,16 +635,16 @@ function renderRunProfileSection(): string {
               <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-ocr-text-visual-check">
-              <label for="run-profile-ocr-text-visual-check">${t("panels.runProfile.ocrTextVisualCheckLabel")}</label>
+              <input type="checkbox" id="run-profile-ocr-text-occlusion-check">
+              <label for="run-profile-ocr-text-occlusion-check">${t("panels.runProfile.ocrTextOcclusionCheckLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-prefer-check-state-classifier">
               <label for="run-profile-prefer-check-state-classifier">${t("panels.runProfile.preferCheckStateClassifierLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
-              <input type="checkbox" id="run-profile-text-visual-check">
-              <label for="run-profile-text-visual-check">${t("panels.runProfile.textVisualCheckLabel")}</label>
+              <input type="checkbox" id="run-profile-fm-text-occlusion-check">
+              <label for="run-profile-fm-text-occlusion-check">${t("panels.runProfile.fmTextOcclusionCheckLabel")}</label>
             </div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-screen-looks-like">

@@ -59,7 +59,7 @@ override the default for a single call.
 `requireVisible: false` skips the covered/off-screen check that normally backs `exist`
 (where it flips a match to failure) and `select` (where it returns an empty element). This
 extra visibility pass only actually runs on runs where the run profile has
-`textVisualCheck: true` — on other runs the flag has nothing to skip.
+`fmTextOcclusionCheck` or `ocrTextOcclusionCheck` set to `true` — on other runs the flag has nothing to skip.
 
 ### Link
 - [index](../index.md)

@@ -402,10 +402,11 @@ public final class FTDriveCore {
     public init(driver: AppDriver, platform: String, app: String,
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
-                textVisualCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
+                // occlusion-guard の FM の段(`fmTextOcclusionCheck`)。OCR の段(occlusionOCREnabled)と独立
+                fmTextOcclusionCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
                 containerInference: Bool = true,
-                // occlusion guard 前段の Vision OCR 事前判定(`ocrTextVisualCheck` の実効値。
+                // occlusion guard 前段の Vision OCR 事前判定(`ocrTextOcclusionCheck` の実効値。
                 // `fm` の配下ではない)。false のときは FT_OCCLUSION_OCR を読まず常に .off ——
                 // プロファイルの明示 off が環境変数に勝つ
                 occlusionOCREnabled: Bool = true,
@@ -446,7 +447,9 @@ public final class FTDriveCore {
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
                                      occlusionOCRMode: occlusionOCRResolvedMode,
-                                     occlusionGuardEnabled: textVisualCheckEnabled,
+                                     // guard は FM の段(fmTextOcclusionCheck)と OCR の段のどちらかがあれば走る
+                                     occlusionGuardEnabled: fmTextOcclusionCheckEnabled || occlusionOCREnabled,
+                                     fmVisibilityCheckEnabled: fmTextOcclusionCheckEnabled,
                                      screenLooksLikeEnabled: screenLooksLikeEnabled,
                                      releasesScrollTouch: platform == "ios",
                                      isAndroid: platform == "android",
@@ -475,7 +478,7 @@ public final class FTDriveCore {
         // DSL の経路では実質発火しない(executor 既定の occlusionGuard は常に false)ため、
         // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは prewarmIfNeeded
         // 自身が no-op(occlusionOCRResolvedMode の doc)
-        if textVisualCheckEnabled {
+        if fmTextOcclusionCheckEnabled || occlusionOCREnabled {
             RegionText.prewarmIfNeeded(mode: occlusionOCRResolvedMode)
         }
         // 暖機待ち(RegionText.awaitPrewarm)が締め切りから差し引かれるよう、子→親へ知らせる。
@@ -745,7 +748,7 @@ public final class FTDriveCore {
         // 満たしていなければ何もせず下の通常経路へ落ちる = 取り直しながらポーリングする。
         // 判定できるアサートの範囲と除外理由は HeldElementAssert。
         // **可視性照合(occlusion-guard)が走る設定では高速経路に入らない** —— 見えているかは
-        // 保持値から言えないので、飛ばすと textVisualCheck 有効の run で検査が1つ静かに消える。
+        // 保持値から言えないので、飛ばすと視覚検証が有効な run で検査が1つ静かに消える。
         // 条件は StepExecutor.occlusionFlip の入口と同じ述語(`visibilityGuardActive`)。
         // **FM の有無で絞らない** —— 幾何の Tier-0 は FM 無しで効く。
         // 注記を description に足すのは、レポートで「取り直していない判定」を見分けられるようにするため

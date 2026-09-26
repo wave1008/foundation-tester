@@ -139,6 +139,6 @@
   "iosInappEngine": true,
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,
-  "textVisualCheck": true,
+  "fmTextOcclusionCheck": true,
   "wipeDataOnBloat": true
 }

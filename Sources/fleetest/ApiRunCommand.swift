@@ -767,16 +767,16 @@ struct ApiRunCommand: AsyncParsableCommand {
         if let resolvedProfile {
             let fm = resolvedProfile.fm
             fmSettings = FMSettingsRecord(
-                heal: resolvedProfile.heal, textVisualCheck: fm.textVisualCheck,
+                heal: resolvedProfile.heal, fmTextOcclusionCheck: fm.fmTextOcclusionCheck,
                 screenLooksLike: fm.screenLooksLike,
-                ocrTextVisualCheck: resolvedProfile.ocrTextVisualCheck)
+                ocrTextOcclusionCheck: resolvedProfile.ocrTextOcclusionCheck)
         } else {
             // runDirect と同じ設定(DeviceIndependentRunSettings)
             let fm = noProfileSettings.fm
             fmSettings = FMSettingsRecord(
-                heal: noProfileSettings.heal, textVisualCheck: fm.textVisualCheck,
+                heal: noProfileSettings.heal, fmTextOcclusionCheck: fm.fmTextOcclusionCheck,
                 screenLooksLike: fm.screenLooksLike,
-                ocrTextVisualCheck: noProfileSettings.ocrTextVisualCheck)
+                ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck)
         }
 
         var outcome: RunOutcome

@@ -4,7 +4,7 @@ import XCTest
 
 /// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
 private let testFMSettings = FMSettingsRecord(
-    heal: false, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: true)
+    heal: false, fmTextOcclusionCheck: false, screenLooksLike: true, ocrTextOcclusionCheck: true)
 
 final class RunRecordTests: XCTestCase {
 
@@ -223,7 +223,7 @@ final class RunRecordTests: XCTestCase {
         let recorder = RunRecorder.begin(project: TestProject(name: "P", rootURL: root),
                                          profile: "p", trigger: "cli", captureHostMetrics: false)
         let settings = FMSettingsRecord(
-            heal: false, textVisualCheck: true, screenLooksLike: false, ocrTextVisualCheck: true)
+            heal: false, fmTextOcclusionCheck: true, screenLooksLike: false, ocrTextOcclusionCheck: true)
         recorder.finish(total: 1, passed: 1, failed: 0, performanceMode: false, fmSettings: settings, setOverrides: nil)
 
         let data = try Data(contentsOf: recorder.runDir.appendingPathComponent("run.json"))
@@ -231,9 +231,9 @@ final class RunRecordTests: XCTestCase {
         let fmSettingsJSON = try XCTUnwrap(json["fmSettings"] as? [String: Any])
         XCTAssertEqual(fmSettingsJSON.count, 4, "4つの欄すべてが書かれること(欠落は退行): \(fmSettingsJSON)")
         XCTAssertEqual(fmSettingsJSON["heal"] as? Bool, false)
-        XCTAssertEqual(fmSettingsJSON["textVisualCheck"] as? Bool, true)
+        XCTAssertEqual(fmSettingsJSON["fmTextOcclusionCheck"] as? Bool, true)
         XCTAssertEqual(fmSettingsJSON["screenLooksLike"] as? Bool, false)
-        XCTAssertEqual(fmSettingsJSON["ocrTextVisualCheck"] as? Bool, true)
+        XCTAssertEqual(fmSettingsJSON["ocrTextOcclusionCheck"] as? Bool, true)
 
         let meta = try JSONDecoder().decode(RunMetaRecord.self, from: data)
         XCTAssertEqual(meta.fmSettings, settings, "型付きの往復でも同じ値が読める")

@@ -6,7 +6,7 @@
 // 既定は on: FM の段に届いた実 run の crop 163 枚のうち **97% が OCR で片付き**、残りは FM に回るので
 // 誤った赤は増えない(docs/poc-fm-occlusion-guard.md §5.17)。**「丸ごと読めなかった」だけを反転の根拠に
 // しない** —— 日本語モデルを載せた版では可視なテキストの 29% が1文字誤読(`swipe=down`→`swipe=aown`)した。
-// 反転するのは OCROnlyVisibility が言い切れた回(読みが期待と無関係・インクが無い)か FM だけ(§5.21)。
+// 反転するのは FM と突き合わせて両方が見えないと言った回か、FM の段が無い・使えないときの OCROnlyVisibility だけ(§5.22)。
 
 import CoreGraphics
 import CoreText

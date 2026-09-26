@@ -49,7 +49,7 @@ final class HeldValueAssertTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    /// occlusion-guard(textVisualCheck)が実際に走る条件を作るための delegate。
+    /// occlusion-guard(fmTextOcclusionCheck)が実際に走る条件を作るための delegate。
     /// 「見えている」と答えるので、ガードは通るが**走ったこと自体**は snapshot 回数に出る
     private final class VisibleDelegate: ReplayDelegate {
         func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
@@ -61,12 +61,13 @@ final class HeldValueAssertTests: XCTestCase {
     }
 
     private func run(driver: MutatingDriver, delegate: ReplayDelegate? = nil,
-                     textVisualCheck: Bool = false,
+                     fmTextOcclusionCheck: Bool = false,
                      _ body: @escaping () -> Void) -> FTDriveCore {
         let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: delegate, healingEnabled: false,
-                               textVisualCheckEnabled: textVisualCheck, dryRun: false,
+                               fmTextOcclusionCheckEnabled: fmTextOcclusionCheck, occlusionOCREnabled: fmTextOcclusionCheck,
+                               dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-test.json"),
                                emit: { _ in })
@@ -88,7 +89,7 @@ final class HeldValueAssertTests: XCTestCase {
         let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false,
-                               textVisualCheckEnabled: false, dryRun: false,
+                               fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-notes-test.json"),
                                emit: { events.append($0) })
@@ -210,12 +211,12 @@ final class HeldValueAssertTests: XCTestCase {
         XCTAssertEqual(driver.snapshotCount, 2, "checked が掴んだ値で判定されている")
     }
 
-    /// **可視性照合(textVisualCheck)が走る run では高速経路に入らない**。
+    /// **可視性照合(fmTextOcclusionCheck)が走る run では高速経路に入らない**。
     /// 飛ばすと「覆われているのに緑」を検出する検査が静かに1つ消える
     func testVisibilityCheckedRunStillReadsTheDevice() {
         let driver = MutatingDriver()
         let delegate = VisibleDelegate()
-        let core = run(driver: driver, delegate: delegate, textVisualCheck: true) {
+        let core = run(driver: driver, delegate: delegate, fmTextOcclusionCheck: true) {
             select("#total").textIs("1,200")
         }
         assertAllPassed(core)
@@ -228,7 +229,7 @@ final class HeldValueAssertTests: XCTestCase {
     /// FM の無いホストで幾何の検査が静かに1つ消える
     func testVisibilityCheckedRunReadsTheDeviceEvenWithoutAnFMDelegate() {
         let driver = MutatingDriver()
-        let core = run(driver: driver, delegate: nil, textVisualCheck: true) {
+        let core = run(driver: driver, delegate: nil, fmTextOcclusionCheck: true) {
             select("#total").textIs("1,200")
         }
         assertAllPassed(core)

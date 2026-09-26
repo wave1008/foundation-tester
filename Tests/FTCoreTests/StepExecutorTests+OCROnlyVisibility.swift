@@ -116,4 +116,22 @@ extension StepExecutorTests {
         XCTAssertFalse(outcome.notes.contains(.textPartiallyHidden), "\(outcome.notes)")
         XCTAssertFalse(outcome.notes.contains(.textEllipsized), "\(outcome.notes)")
     }
+
+    /// FM の段を切った設定(fmTextOcclusionCheck off = fmVisibilityCheckEnabled: false)では、delegate があっても
+    /// FM を呼ばない。OCR も off なら Tier-0 の幾何だけ = 低インクの画面でも緑のまま
+    func testFMStageOffNeverCallsFM() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
+                                    screenshots: [Self.blankPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionOCRMode: .off, fmVisibilityCheckEnabled: false, isAndroid: false)
+        let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                      timeout: 0, occlusionGuard: true))
+
+        guard case .passed = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
+        XCTAssertEqual(delegate.visibleCalls, 0, "FM の段を切ったのに FM を呼んだ")
+        XCTAssertFalse(outcome.notes.contains(.visibilityGuardSkipped), "訊いていないので立たない: \(outcome.notes)")
+    }
 }

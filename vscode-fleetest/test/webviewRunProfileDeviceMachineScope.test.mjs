@@ -76,7 +76,7 @@ function runProfileData(devices) {
     type: "runProfileData", profile: "all", ok: true, error: null,
     fields: {
       app: "", devices,
-      heal: true, textVisualCheck: true, screenLooksLike: true, ocrTextVisualCheck: true, preferCheckStateClassifier: true,
+      heal: true, fmTextOcclusionCheck: true, screenLooksLike: true, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
       iosInappEngine: true, iosFastInput: false, iosPreActionWarmup: true, homeOnStart: true,
       playProtectBypass: true, enableAnimations: false, containerInference: true, updateWebView: true,
       wipeDataOnBloat: true, recoverCpuFallbackToGpu: false, record: false, recordFailuresOnly: false,

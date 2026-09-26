@@ -39,24 +39,24 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
 }
 
 /// その run で実際に効いていた FM 設定(`FTCore.ResolvedProfile` の実効値。CLI の
-/// `--set`(heal/textVisualCheck/screenLooksLike/ocrTextVisualCheck)による
+/// `--set`(heal/fmTextOcclusionCheck/screenLooksLike/ocrTextOcclusionCheck)による
 /// 上書きを反映した後の値)。
 /// **4つとも常に明示的に書く**(true/false のどちらも省略しない) —— 省略を許すと
 /// RunMetaRecord.fmSettings が nil(旧レコード)なのか、この構造体の中の1欄だけが
-/// 省略されたのか区別できなくなる。`heal` / `ocrTextVisualCheck` は `FMConfig` の外
+/// 省略されたのか区別できなくなる。`heal` / `ocrTextOcclusionCheck` は `FMConfig` の外
 /// (`RunProfileDocument` の独立の兄弟キー。heal は FM を使わない)だが、記録上はここへまとめる
 public struct FMSettingsRecord: Codable, Sendable, Equatable {
     public var heal: Bool
-    public var textVisualCheck: Bool
+    public var fmTextOcclusionCheck: Bool
     public var screenLooksLike: Bool
-    public var ocrTextVisualCheck: Bool
+    public var ocrTextOcclusionCheck: Bool
 
-    public init(heal: Bool, textVisualCheck: Bool, screenLooksLike: Bool,
-                ocrTextVisualCheck: Bool) {
+    public init(heal: Bool, fmTextOcclusionCheck: Bool, screenLooksLike: Bool,
+                ocrTextOcclusionCheck: Bool) {
         self.heal = heal
-        self.textVisualCheck = textVisualCheck
+        self.fmTextOcclusionCheck = fmTextOcclusionCheck
         self.screenLooksLike = screenLooksLike
-        self.ocrTextVisualCheck = ocrTextVisualCheck
+        self.ocrTextOcclusionCheck = ocrTextOcclusionCheck
     }
 }
 

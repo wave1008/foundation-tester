@@ -559,7 +559,7 @@ public enum ProjectScaffold {
         {
           "app": "\(app)",
           "devices": [],
-          "textVisualCheck": true,
+          "fmTextOcclusionCheck": true,
           "heal": true
         }
         """

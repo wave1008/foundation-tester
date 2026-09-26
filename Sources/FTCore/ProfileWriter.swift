@@ -56,7 +56,7 @@ public enum ProfileWriter {
         [
             "app": appRef,
             "devices": devices,
-            "textVisualCheck": true,
+            "fmTextOcclusionCheck": true,
             "heal": true,
         ]
     }

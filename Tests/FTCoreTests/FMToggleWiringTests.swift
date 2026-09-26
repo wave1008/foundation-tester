@@ -1,4 +1,4 @@
-// FM の個別トグル(heal / textVisualCheck / screenLooksLike)が
+// FM の個別トグル(heal / fmTextOcclusionCheck / screenLooksLike)が
 // **プロファイル → 子ランナー → 実行時**の3段でつながっていることを固定する。
 //
 // **1段でも欠けると、その機能だけが黙って効いたまま/効かないままになる**(利用者から見ると
@@ -24,7 +24,7 @@ final class FMToggleWiringTests: XCTestCase {
     func testEveryFMToggleIsForwardedToTheChildRunner() throws {
         let host = try source("Sources/FTCore/ScenarioHost.swift")
         for (property, flag) in [("fm.enabled", "--no-fm"),
-                                 ("fm.textVisualCheck", "--no-text-visual-check"),
+                                 ("fm.fmTextOcclusionCheck", "--no-fm-text-occlusion-check"),
                                  ("fm.screenLooksLike", "--no-screen-looks-like")] {
             XCTAssertTrue(host.contains("if !\(property) { args.append(\"\(flag)\") }"),
                           "\(property) が子へ伝わっていない(切っても子は知らないまま走る)")
@@ -36,7 +36,7 @@ final class FMToggleWiringTests: XCTestCase {
     /// 子ランナーは受け取ったフラグを実行時の設定へ渡すこと
     func testTheChildRunnerWiresTheFlagsIntoTheRuntime() throws {
         let runner = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
-        XCTAssertTrue(runner.contains("textVisualCheckEnabled: !noTextVisualCheck"))
+        XCTAssertTrue(runner.contains("fmTextOcclusionCheckEnabled: !noFMTextOcclusionCheck"))
         XCTAssertTrue(runner.contains("screenLooksLikeEnabled: !noScreenLooksLike"))
     }
 
@@ -44,7 +44,7 @@ final class FMToggleWiringTests: XCTestCase {
     /// 同じ既定が JSON スキーマと拡張のフォームにもあるので、3箇所で一致させること
     func testProfileDefaultsArePinned() {
         let document = RunProfileDocument(app: "a", devices: [])
-        XCTAssertNil(document.textVisualCheck, "未指定はあくまで nil(解決時に既定へ倒す)")
+        XCTAssertNil(document.fmTextOcclusionCheck, "未指定はあくまで nil(解決時に既定へ倒す)")
         XCTAssertNil(document.screenLooksLike)
     }
 }

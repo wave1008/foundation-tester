@@ -66,4 +66,42 @@ final class OCROnlyVisibilityTests: XCTestCase {
         XCTAssertFalse(FMNoVerdictInjection.isActive(environment: ["FT_FAKE_FM_NO_VERDICT": "true"]))
         XCTAssertFalse(FMNoVerdictInjection.isActive(environment: ["FT_FAKE_FM_NO_VERDICT": "0"]))
     }
+
+    // MARK: - OCR と FM の突き合わせ(merge)
+
+    /// 割れたら見えていると読めた側を採る(両方向)。注記で割れた向きを残す
+    func testMergeTakesTheSideThatReadTheText() {
+        let ocrRead = OCROnlyVisibility.merge(fmVisible: false, fmState: .covered,
+                                              ocr: .visible(.partiallyHidden))
+        XCTAssertTrue(ocrRead.visible)
+        XCTAssertEqual(ocrRead.state, .partiallyHidden, "緑の注記は読めた側(OCR)の形を使う")
+        XCTAssertEqual(ocrRead.disagreement, .ocrReadWhatFMMissed)
+
+        let fmRead = OCROnlyVisibility.merge(fmVisible: true, fmState: .fullyVisible,
+                                             ocr: .notVisible(.textMismatch))
+        XCTAssertTrue(fmRead.visible)
+        XCTAssertEqual(fmRead.state, .fullyVisible)
+        XCTAssertEqual(fmRead.disagreement, .fmReadWhatOCRMissed)
+    }
+
+    /// 両方が見えないと言ったとき・OCR が判定不能のときは FM の判定のまま(割れていないので注記なし)
+    func testMergeKeepsFMWhenTheyAgreeOrOCRCannotJudge() {
+        let bothRed = OCROnlyVisibility.merge(fmVisible: false, fmState: .notRendered,
+                                              ocr: .notVisible(.notRendered))
+        XCTAssertFalse(bothRed.visible)
+        XCTAssertNil(bothRed.disagreement)
+
+        let ocrUnknownFMRed = OCROnlyVisibility.merge(fmVisible: false, fmState: .covered, ocr: .undetermined)
+        XCTAssertFalse(ocrUnknownFMRed.visible, "OCR が判定不能なら FM の赤を覆さない")
+        XCTAssertNil(ocrUnknownFMRed.disagreement)
+
+        let ocrUnknownFMGreen = OCROnlyVisibility.merge(fmVisible: true, fmState: .ellipsized, ocr: .undetermined)
+        XCTAssertTrue(ocrUnknownFMGreen.visible)
+        XCTAssertEqual(ocrUnknownFMGreen.state, .ellipsized)
+        XCTAssertNil(ocrUnknownFMGreen.disagreement)
+
+        let bothGreen = OCROnlyVisibility.merge(fmVisible: true, fmState: .fullyVisible, ocr: .visible(.fullyVisible))
+        XCTAssertTrue(bothGreen.visible)
+        XCTAssertNil(bothGreen.disagreement)
+    }
 }

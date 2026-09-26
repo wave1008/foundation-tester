@@ -45,7 +45,7 @@ final class SetOverrideRelayTests: XCTestCase {
             project: "E2E-Android", profileName: "android", group: group,
             scenarioIDs: ["A.S0010"],
             options: ApiRunMachineFanout.Options(
-                setOverrides: ["textVisualCheck": false, "screenLooksLike": true],
+                setOverrides: ["fmTextOcclusionCheck": false, "screenLooksLike": true],
                 defaultTimeout: nil, scenarioTimeout: nil, noLPT: false,
                 lptHistoryRuns: nil, performanceMode: false, remoteDir: nil,
                 remoteTimeout: nil, waitLock: nil),
@@ -56,7 +56,7 @@ final class SetOverrideRelayTests: XCTestCase {
         // 末尾は --run-group g なので、その手前2組が --set トークン
         let setTokens = Array(args[index..<(args.count - 2)])
         XCTAssertEqual(setTokens,
-                       ["--set", "screenLooksLike=true", "--set", "textVisualCheck=false"], "\(args)")
+                       ["--set", "fmTextOcclusionCheck=false", "--set", "screenLooksLike=true"], "\(args)")
     }
 
     func testApiRunMachineFanoutBuildArgsOmitsSetWhenEmpty() {

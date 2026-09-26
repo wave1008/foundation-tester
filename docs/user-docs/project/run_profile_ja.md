@@ -22,9 +22,9 @@
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
 | `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS シミュレータではシミュレータ自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
-| `textVisualCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)を有効にする。木では一致したが実際には見えていない「誤った緑」を検出する。FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
+| `fmTextOcclusionCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)で FM(Foundation Models。experimental — [environments_ja.md](../overview/environments_ja.md))を使う。視覚検証は、木では一致したが実際には見えていない「誤った緑」を検出する。`ocrTextOcclusionCheck` と独立で、どちらかが `true` なら視覚検証は走る。両方 `true` のときは OCR が丸ごと読めた要素だけ FM を省き、それ以外は OCR と FM の両方で判定して、どちらかが期待のテキストを読めれば緑にする。これが `false` なら OCR の読みだけで判定する。FM が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
-| `ocrTextVisualCheck` | bool | `true` | occlusion guard が FM に訊く前に、端末の OCR(Vision)で要素を読む。期待テキストが丸ごと読めた回は FM を呼ばずに通り、読みだけで見えていないと言い切れた回は FM を呼ばずに失敗にし、それ以外は FM が判定する。FM が判定を返せないとき(macOS 26・FM の不調)は、この読みで判定し、見えていないと読めたら失敗にする。切ると検査が遅くなり、FM が使えないときの判定も無くなる。切っても、FM の書き起こしが期待と1文字だけ違う回に限り、字形の取り違え(「単」を「单」と読む等)で誤って失敗にしないよう OCR で読み直す(その回だけ OCR の初回準備に最大 60 秒かかることがある)。`textVisualCheck` が `false` の run では guard 自体が走らないので効かない |
+| `ocrTextOcclusionCheck` | bool | `true` | テキストの視覚検証で、端末の OCR(Vision)を使う。`fmTextOcclusionCheck` と独立で、どちらかが `true` なら視覚検証は走る。期待テキストが丸ごと読めた要素は FM を呼ばずに通る。`fmTextOcclusionCheck` が `false` のとき、または FM が判定を返せないとき(macOS 26・FM の不調)は、この読みだけで判定し、見えていないと読めたら失敗にする。切ると検査が遅くなり、FM が使えないときの判定も無くなる(`fmTextOcclusionCheck` も `false` なら視覚検証そのものが走らない)。切っても、FM の書き起こしが期待と1文字だけ違う回に限り、字形の取り違え(「単」を「单」と読む等)で誤って失敗にしないよう OCR で読み直す(その回だけ OCR の初回準備に最大 60 秒かかることがある)。 |
 | `preferCheckStateClassifier` | bool | `true` | `checkIsON` / `checkIsOFF` の判定で CheckStateClassifier(プロジェクトの `vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]` に置いた見本画像から学習する画像分類器)をアクセシビリティより優先する。`false` なら、アクセシビリティが状態を報告しない要素にだけ使う。見本画像が無ければ効かない |
 | `reportDir` | string | `"reports"` | Markdown レポートの出力先(プロジェクトルート相対) |
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `waitSeconds:` を取る DSL コマンドの既定タイムアウト |
@@ -49,16 +49,16 @@
 
 ## FM の使われ方
 
-FM(Foundation Models)が呼ばれるのは `textVisualCheck` か `screenLooksLike` が `true` の
-ときだけです。どちらも既定 `true`(`textVisualCheck` は 2026-09-03 に既定オフから変更しました)。
+FM(Foundation Models)が呼ばれるのは `fmTextOcclusionCheck` か `screenLooksLike` が `true` の
+ときだけです。どちらも既定 `true`(`fmTextOcclusionCheck` は 2026-09-03 に既定オフから変更しました)。
 両方 `false` の run では FM は一切呼ばれません(FM を一切呼ばせたくない run では両方を `false` に
-します)。`ocrTextVisualCheck` は occlusion guard の前段なので、`textVisualCheck` が `true` の
-run でだけ効きます。`heal` は FM を使わないため、自分自身のキーだけで制御されます。
+します)。`fmTextOcclusionCheck` を `false` にしても、`ocrTextOcclusionCheck` が `true` なら視覚検証は OCR だけで
+走ります(FM は呼ばれません)。`heal` は FM を使わないため、自分自身のキーだけで制御されます。
 自己修復が既定でオンかどうかは実行方法に依存します。**`--profile` を使う実行は `heal` の既定が
 ON**、プロファイルを使わない素の `fleetest run` は既定 OFF です。
 `fleetest run --profile <name> --set <キー>=<値>` は、プロファイルを書き換えずに1回の
 実行だけこの表のほぼどのキーも上書きできます(例: `--set heal=false`・
-`--set textVisualCheck=false`・`--set reportDir=/tmp/out`・`--set defaultTimeout=8`。
+`--set fmTextOcclusionCheck=false`・`--set reportDir=/tmp/out`・`--set defaultTimeout=8`。
 `--set` については [running_scenarios_ja.md](../running/running_scenarios_ja.md) 参照。
 値は上表に示したキーの型と一致させる)。`--profile` の有無を問わず効きます —— 例外は実行
 プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・

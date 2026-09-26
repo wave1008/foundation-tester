@@ -64,7 +64,7 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertEqual(devices?.first?["name"] as? String, "simulator1")
         XCTAssertEqual(devices?.first?["model"] as? String, "iPhone 17 Pro")
         XCTAssertEqual(run["heal"] as? Bool, true)
-        XCTAssertEqual(run["textVisualCheck"] as? Bool, true)
+        XCTAssertEqual(run["fmTextOcclusionCheck"] as? Bool, true)
         XCTAssertNil(run["reportDir"], "既定(reports)は書かない = フォームで空欄+透かしになる")
         XCTAssertNil(run["machine"], "トップレベルの machine は無い(台ごとに持つ)")
     }

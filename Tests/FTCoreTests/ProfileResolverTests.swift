@@ -971,17 +971,17 @@ final class ProfileResolverTests: XCTestCase {
                       "原本も複製も読めなければ従来どおり鳴らす: \(resolved.warnings)")
     }
 
-    // MARK: - FM トグル(heal/textVisualCheck/screenLooksLike)
+    // MARK: - FM トグル(heal/fmTextOcclusionCheck/screenLooksLike)
 
     func testFMTogglesDefaultsWhenUnspecified() throws {
-        try writeStandardFixture()  // "all" は heal:true 明示。textVisualCheck/screenLooksLike は未指定
+        try writeStandardFixture()  // "all" は heal:true 明示。fmTextOcclusionCheck/screenLooksLike は未指定
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.heal, "heal 明示 true")
         // **2026-09-03 にオプトインをやめた**(ユーザー決定)。3箇所(ここ / JSON スキーマ /
         // 拡張のフォーム)で既定が一致していないと、GUI で作ったプロファイルと CLI の挙動がずれる
-        XCTAssertTrue(resolved.fm.textVisualCheck, "テキストの視覚検証の既定は true")
+        XCTAssertTrue(resolved.fm.fmTextOcclusionCheck, "テキストの視覚検証の既定は true")
         XCTAssertTrue(resolved.fm.screenLooksLike, "省略時は既定 true のはず")
     }
 
@@ -994,28 +994,28 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.heal, "heal の既定は true")
-        XCTAssertTrue(resolved.fm.textVisualCheck, "テキストの視覚検証の既定は true(2026-09-03 に変更)")
+        XCTAssertTrue(resolved.fm.fmTextOcclusionCheck, "テキストの視覚検証の既定は true(2026-09-03 に変更)")
         XCTAssertTrue(resolved.fm.screenLooksLike)
     }
 
-    /// FMConfig.enabled は textVisualCheck/screenLooksLike のどちらかが true のときだけ true
+    /// FMConfig.enabled は fmTextOcclusionCheck/screenLooksLike のどちらかが true のときだけ true
     /// (両方 false のとき、実行バイナリへ --no-fm が渡って FM を一切呼ばない。親スイッチは無い)
     func testFMEnabledIsFalseOnlyWhenBothSubFlagsAreFalse() throws {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "heal": true, "textVisualCheck": false, "screenLooksLike": false }
+          "heal": true, "fmTextOcclusionCheck": false, "screenLooksLike": false }
         """, to: project.runsDir, name: "bothoff")
         let bothOff = try ProfileResolver.resolve(
             project: project, runName: "bothoff")
         XCTAssertFalse(bothOff.fm.enabled)
         XCTAssertTrue(bothOff.heal, "heal は FM の配下ではない(両方 false でも heal:true のまま)")
-        XCTAssertFalse(bothOff.fm.textVisualCheck)
+        XCTAssertFalse(bothOff.fm.fmTextOcclusionCheck)
         XCTAssertFalse(bothOff.fm.screenLooksLike)
 
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "textVisualCheck": true, "screenLooksLike": false }
+          "fmTextOcclusionCheck": true, "screenLooksLike": false }
         """, to: project.runsDir, name: "fpconly")
         let fpcOnly = try ProfileResolver.resolve(
             project: project, runName: "fpconly")
@@ -1023,7 +1023,7 @@ final class ProfileResolverTests: XCTestCase {
 
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "textVisualCheck": false, "screenLooksLike": true }
+          "fmTextOcclusionCheck": false, "screenLooksLike": true }
         """, to: project.runsDir, name: "sllonly")
         let sllOnly = try ProfileResolver.resolve(
             project: project, runName: "sllonly")
@@ -1041,23 +1041,23 @@ final class ProfileResolverTests: XCTestCase {
             project: project, runName: "leftover")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.heal)
-        XCTAssertTrue(resolved.fm.textVisualCheck)
+        XCTAssertTrue(resolved.fm.fmTextOcclusionCheck)
         XCTAssertTrue(resolved.fm.screenLooksLike)
         XCTAssertEqual(resolved.warnings, ["runs/leftover.json: unknown key \"triage\" is ignored"])
     }
 
     func testIndividualSubFlagsFollowExplicitValues() throws {
         try writeStandardFixture()
-        // 既定と逆向きの明示指定(heal/screenLooksLike=OFF・textVisualCheck=ON)が個別に効くこと
+        // 既定と逆向きの明示指定(heal/screenLooksLike=OFF・fmTextOcclusionCheck=ON)が個別に効くこと
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "heal": false, "textVisualCheck": true, "screenLooksLike": false }
+          "heal": false, "fmTextOcclusionCheck": true, "screenLooksLike": false }
         """, to: project.runsDir, name: "subsoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "subsoff")
         XCTAssertTrue(resolved.fm.enabled, "fm 自体は既定 true のまま")
         XCTAssertFalse(resolved.heal)
-        XCTAssertTrue(resolved.fm.textVisualCheck, "明示 true で有効化できること")
+        XCTAssertTrue(resolved.fm.fmTextOcclusionCheck, "明示 true で有効化できること")
         XCTAssertFalse(resolved.fm.screenLooksLike)
     }
 
@@ -1084,7 +1084,7 @@ final class ProfileResolverTests: XCTestCase {
         // FM が実質無効(両トグル false)でも巻き込まれない(FM のサブフラグではない)ことも同時に見る
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "textVisualCheck": false, "screenLooksLike": false, "containerInference": false }
+          "fmTextOcclusionCheck": false, "screenLooksLike": false, "containerInference": false }
         """, to: project.runsDir, name: "ciofffmoff")
         let off = try ProfileResolver.resolve(
             project: project, runName: "ciofffmoff")
@@ -1092,7 +1092,7 @@ final class ProfileResolverTests: XCTestCase {
 
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ],
-          "textVisualCheck": false, "screenLooksLike": false }
+          "fmTextOcclusionCheck": false, "screenLooksLike": false }
         """, to: project.runsDir, name: "fmoffonly")
         let fmOffOnly = try ProfileResolver.resolve(
             project: project, runName: "fmoffonly")
@@ -1100,33 +1100,33 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(fmOffOnly.warnings.isEmpty, "containerInference は既知キー: \(fmOffOnly.warnings)")
     }
 
-    // MARK: - ocrTextVisualCheck(occlusion guard 前段の Vision OCR 事前判定。既定 true。親スイッチは無い)
+    // MARK: - ocrTextOcclusionCheck(occlusion guard 前段の Vision OCR 事前判定。既定 true。親スイッチは無い)
 
-    func testOcrTextVisualCheckDefaultsToTrueAndFollowsExplicitValue() throws {
+    func testOcrTextOcclusionCheckDefaultsToTrueAndFollowsExplicitValue() throws {
         try writeStandardFixture()
         let onByDefault = try ProfileResolver.resolve(
             project: project, runName: "all")
-        XCTAssertTrue(onByDefault.ocrTextVisualCheck, "省略時は既定 true のはず")
+        XCTAssertTrue(onByDefault.ocrTextOcclusionCheck, "省略時は既定 true のはず")
 
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "ocrTextVisualCheck": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "ocrTextOcclusionCheck": false }
         """, to: project.runsDir, name: "ocrfpcoff")
         let off = try ProfileResolver.resolve(
             project: project, runName: "ocrfpcoff")
-        XCTAssertFalse(off.ocrTextVisualCheck)
-        XCTAssertFalse(off.warnings.contains { $0.contains("ocrTextVisualCheck") },
-                       "ocrTextVisualCheck は既知キー: \(off.warnings)")
+        XCTAssertFalse(off.ocrTextOcclusionCheck)
+        XCTAssertFalse(off.warnings.contains { $0.contains("ocrTextOcclusionCheck") },
+                       "ocrTextOcclusionCheck は既知キー: \(off.warnings)")
 
-        // textVisualCheck(FM 側)が off でも resolve 層では巻き込まれない(ゲートは downstream の
+        // fmTextOcclusionCheck(FM 側)が off でも resolve 層では巻き込まれない(ゲートは downstream の
         // occlusion guard 実行有無であって、ここではない)ことを同時に見る
         try write("""
-        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "textVisualCheck": false }
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "fmTextOcclusionCheck": false }
         """, to: project.runsDir, name: "ocrfpcfmoffonly")
         let fpcOffOnly = try ProfileResolver.resolve(
             project: project, runName: "ocrfpcfmoffonly")
-        XCTAssertTrue(fpcOffOnly.ocrTextVisualCheck,
-                      "textVisualCheck:false でも ocrTextVisualCheck は既定のまま")
-        XCTAssertFalse(fpcOffOnly.fm.textVisualCheck)
+        XCTAssertTrue(fpcOffOnly.ocrTextOcclusionCheck,
+                      "fmTextOcclusionCheck:false でも ocrTextOcclusionCheck は既定のまま")
+        XCTAssertFalse(fpcOffOnly.fm.fmTextOcclusionCheck)
     }
 
     /// 実機の検査は enabled の台だけ(無効の台の不備で保存・実行を止めない)

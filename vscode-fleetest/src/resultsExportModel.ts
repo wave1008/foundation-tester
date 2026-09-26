@@ -166,9 +166,9 @@ export function extractResultsExportScenarioSource(
 
 export interface ResultsExportFmSettings {
   readonly heal: boolean | null;
-  readonly textVisualCheck: boolean | null;
+  readonly fmTextOcclusionCheck: boolean | null;
   readonly screenLooksLike: boolean | null;
-  readonly ocrTextVisualCheck: boolean | null;
+  readonly ocrTextOcclusionCheck: boolean | null;
 }
 
 export interface ResultsExportRunMeta {

@@ -260,7 +260,7 @@ production の FM 呼び出しは全て `FMGate.enter()` → `FMLock.acquire()` 
 M1Max 10コア/16コア ANE が 3.51 で、コア数比にも ANE 比にも対応しない)。
 新世代で膝が動いた疑いが出たら、同じ掃引をやり直してこの表を更新すること。
 
-**枠数は掃引だけでは決まらない**。実 run(E2E-CMP・local 8レーン・`textVisualCheck` ON)で
+**枠数は掃引だけでは決まらない**。実 run(E2E-CMP・local 8レーン・`fmTextOcclusionCheck` ON)で
 **「ゲート待ち + FM 実働」= レーンが FM で止まった総時間**を測る:
 
 | 枠 | ゲート待ち | FM 実働 | 和 | 壁時計 |
@@ -351,7 +351,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   `OcclusionVerifier.cropRect` と同じ規則(適応余白 min(24, 辺/3))で切り出し、
   期待テキスト = そのラベルとして撃つ(台本は scratchpad の `fm-positive-check.swift`)
 - **実 run での確認(M1Max・E2E-CMP `スクロールで折り返し下の要素に到達できること`・
-  `textVisualCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
+  `fmTextOcclusionCheck: true`・交互に撃つ)**。殺しスイッチで同じ機械・同じシナリオを A/B した:
 
   | | 1呼び出しあたり(中央値) | run ごとの FM 総時間(中央値) | 対の差 |
   |---|---|---|---|

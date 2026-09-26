@@ -42,7 +42,7 @@ Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。
 | `pressHome` | `home()` | 両 OS で使える |
 | `irregularHandler { }`(ラムダ登録) | `irregularHandler(sel, dismiss:, maxDismissals:)` | ラムダではなくセレクタで宣言する形。出るか不定のアプリ内モーダルを出るたびに自動で閉じる |
 | `goPreviousApp` | `appSwitcher()` | アプリスイッチャーを開くだけで、直前のアプリへの切り替えまでは行わない |
-| `displayedIs` | `requireVisible:` 引数 + 実行プロファイルの `textVisualCheck` | 可視性の確認は独立したアサーションではなく、各コマンドの引数として指定する |
+| `displayedIs` | `requireVisible:` 引数 + 実行プロファイルの `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` | 可視性の確認は独立したアサーションではなく、各コマンドの引数として指定する |
 
 ## 持たないもの — 代わりにこう書く
 

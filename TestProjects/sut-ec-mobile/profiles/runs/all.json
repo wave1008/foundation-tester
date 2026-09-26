@@ -379,12 +379,12 @@
   "homeOnStart": true,
   "iosInappEngine": true,
   "iosPreActionWarmup": true,
-  "ocrTextVisualCheck": true,
+  "ocrTextOcclusionCheck": true,
   "playProtectBypass": true,
   "record": true,
   "recoverCpuFallbackToGpu": true,
   "screenLooksLike": true,
-  "textVisualCheck": true,
+  "fmTextOcclusionCheck": true,
   "updateWebView": true,
   "wipeDataOnBloat": true
 }

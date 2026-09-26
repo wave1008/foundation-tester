@@ -6,7 +6,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     public var fm: FMConfig
     /// ロケータ自己修復(指紋照合)。FM を使わないので `fm` の外に置く
     public var heal: Bool
-    /// OCR を使ったテキストの視覚検証の実効値(プロファイルの `ocrTextVisualCheck`)。
+    /// OCR を使ったテキストの視覚検証の実効値(プロファイルの `ocrTextOcclusionCheck`)。
     /// OCR の用途が増えたらこの Bool を再利用せず欄を足す
     public var occlusionOCR: Bool
     /// checkIsON / checkIsOFF で CheckStateClassifier を優先するか(プロファイルの `preferCheckStateClassifier`)
@@ -38,14 +38,14 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     }
 
     public init(_ settings: DeviceIndependentRunSettings) {
-        self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextVisualCheck,
+        self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextOcclusionCheck,
                   preferCheckStateClassifier: settings.preferCheckStateClassifier,
                   containerInference: settings.containerInference,
                   defaultTimeout: settings.defaultTimeout, scenarioTimeout: settings.scenarioTimeout)
     }
 
     public init(_ resolved: ResolvedProfile) {
-        self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextVisualCheck,
+        self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextOcclusionCheck,
                   preferCheckStateClassifier: resolved.preferCheckStateClassifier,
                   containerInference: resolved.containerInference,
                   defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,

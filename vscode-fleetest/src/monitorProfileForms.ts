@@ -49,8 +49,8 @@ export function buildRunProfileTemplate(appNames: readonly string[]): string {
   template.app = app;
   template.devices = [];
   template.heal = true;
-  template.textVisualCheck = true;
-  template.ocrTextVisualCheck = true;
+  template.fmTextOcclusionCheck = true;
+  template.ocrTextOcclusionCheck = true;
   template.preferCheckStateClassifier = true;
   template.screenLooksLike = true;
   template.iosInappEngine = true;
@@ -124,10 +124,9 @@ export function validateNewProjectName(name: string, existing: readonly string[]
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
  * iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
- * runProfilesTab.js の責務)。textVisualCheck/screenLooksLike/ocrTextVisualCheck は
- * 「Advanced Features」セクションの独立トグル(親チェックボックスは無い。ocrTextVisualCheck は
- * occlusion guard の Vision OCR 事前判定段で、textVisualCheck が false の run では guard 自体が
- * 走らないため効かない)。containerInference は misc セクションの独立トグル。heal はロケータの指紋照合による自己修復の
+ * runProfilesTab.js の責務)。fmTextOcclusionCheck/screenLooksLike/ocrTextOcclusionCheck は
+ * 「Advanced Features」セクションの独立トグル(親チェックボックスは無い。fmTextOcclusionCheck は
+ * occlusion guard の FM の段・ocrTextOcclusionCheck は OCR の段で、どちらかが true なら guard は走る)。containerInference は misc セクションの独立トグル。heal はロケータの指紋照合による自己修復の
  * トグルで、「Advanced Features」セクションの先頭に並ぶ独立トグル(FM を使わない)。 */
 /** 実行プロファイルの devices[] 1件(プロジェクトのデバイスカタログと同じ形 +
  * `enabled`)。**一意なのは (platform, machine, name)**(machine 省略=手元。
@@ -153,12 +152,11 @@ export interface RunProfileFormFields {
   readonly app: string;
   readonly devices: readonly RunProfileDeviceEntry[];
   readonly heal: boolean;
-  readonly textVisualCheck: boolean;
+  readonly fmTextOcclusionCheck: boolean;
   readonly screenLooksLike: boolean;
   readonly containerInference: boolean;
-  /** occlusion guard の Vision OCR 事前判定段(独立トグル。textVisualCheck が false の run では
-   * guard 自体が走らないため効かない)。 */
-  readonly ocrTextVisualCheck: boolean;
+  /** occlusion guard の OCR の段(独立トグル。fmTextOcclusionCheck = FM の段と独立で、どちらかが true なら guard は走る)。 */
+  readonly ocrTextOcclusionCheck: boolean;
   /** checkIsON/checkIsOFF で CheckStateClassifier(vision/classifiers/CheckStateClassifier/ の見本画像)を
    * a11y より優先するか(**既定 true**。false なら a11y が状態を報告しない要素にだけ使う)。
    * Swift 側は RunProfileDocument.preferCheckStateClassifier */
@@ -197,7 +195,7 @@ export interface RunProfileFormFields {
  * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
  * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * heal/screenLooksLike/textVisualCheck/ocrTextVisualCheck/preferCheckStateClassifier/containerInference/
+ * heal/screenLooksLike/fmTextOcclusionCheck/ocrTextOcclusionCheck/preferCheckStateClassifier/containerInference/
  * homeOnStart/playProtectBypass はスキーマ既定と合わせ既定 true。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
@@ -210,9 +208,9 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const reportDir = typeof source.reportDir === "string" ? source.reportDir : "";
   const locale = typeof source.locale === "string" ? source.locale : "";
   const heal = typeof source.heal === "boolean" ? source.heal : true;
-  const textVisualCheck = typeof source.textVisualCheck === "boolean" ? source.textVisualCheck : true;
-  const ocrTextVisualCheck =
-    typeof source.ocrTextVisualCheck === "boolean" ? source.ocrTextVisualCheck : true;
+  const fmTextOcclusionCheck = typeof source.fmTextOcclusionCheck === "boolean" ? source.fmTextOcclusionCheck : true;
+  const ocrTextOcclusionCheck =
+    typeof source.ocrTextOcclusionCheck === "boolean" ? source.ocrTextOcclusionCheck : true;
   const preferCheckStateClassifier =
     typeof source.preferCheckStateClassifier === "boolean" ? source.preferCheckStateClassifier : true;
   const screenLooksLike = typeof source.screenLooksLike === "boolean" ? source.screenLooksLike : true;
@@ -275,10 +273,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     app,
     devices,
     heal,
-    textVisualCheck,
+    fmTextOcclusionCheck,
     screenLooksLike,
     containerInference,
-    ocrTextVisualCheck,
+    ocrTextOcclusionCheck,
     preferCheckStateClassifier,
     iosInappEngine,
     iosFastInput,
@@ -338,10 +336,10 @@ export function updateRunProfileInObject(
   }
 
   result.heal = fields.heal;
-  result.textVisualCheck = fields.textVisualCheck;
+  result.fmTextOcclusionCheck = fields.fmTextOcclusionCheck;
   result.screenLooksLike = fields.screenLooksLike;
   result.containerInference = fields.containerInference;
-  result.ocrTextVisualCheck = fields.ocrTextVisualCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
+  result.ocrTextOcclusionCheck = fields.ocrTextOcclusionCheck;  // 同上(既定 true 側。containerInference と同じ理由で常に書く)
   result.preferCheckStateClassifier = fields.preferCheckStateClassifier;  // 同上(既定 true 側)
   result.iosInappEngine = fields.iosInappEngine;
   result.updateWebView = fields.updateWebView;

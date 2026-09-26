@@ -73,7 +73,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **接頭辞で自分のシナリオ・自分の OS のぶんだけ**(部分実行で他を巻き込まない・
   鍵に OS が入る = 型名が OS で違うので、混ぜると交互に上書きし合って直らない)。
   **`heal=false` は指紋照合(= 自己修復)を止める**(門は `StepExecutor.execute` の入口1箇所)。
-  **FM のトグル(`textVisualCheck` / `screenLooksLike`)では止めない**(FM を使わないので。ユーザー決定 2026-09-15)。
+  **FM のトグル(`fmTextOcclusionCheck` / `screenLooksLike`)では止めない**(FM を使わないので。ユーザー決定 2026-09-15)。
   **緑の run では1度も実行されない**ので、自己修復を触ったらデバイスの陽性対照
   `Scripts/heal-verify.sh`(v1 で採取 → v2 で2周 → `heal=false` で赤。1台に固定)を回す
 - **セレクタ文法(`FTSelector`)・コマンド索引(`CommandIndex`)・コード生成(`ScenarioCodeGen`)は

@@ -119,8 +119,8 @@ function fmSettingsText(fm: ResultsExportFmSettings | null): string {
   if (fm === null) return "";
   const parts: readonly [boolean | null, MessageKey][] = [
     [fm.heal, "resultsExport.fm.heal"],
-    [fm.textVisualCheck, "resultsExport.fm.textVisualCheck"],
-    [fm.ocrTextVisualCheck, "resultsExport.fm.ocrTextVisualCheck"],
+    [fm.fmTextOcclusionCheck, "resultsExport.fm.fmTextOcclusionCheck"],
+    [fm.ocrTextOcclusionCheck, "resultsExport.fm.ocrTextOcclusionCheck"],
     [fm.screenLooksLike, "resultsExport.fm.screenLooksLike"],
   ];
   return parts

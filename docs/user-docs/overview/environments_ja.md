@@ -39,7 +39,7 @@ Apple Intelligence の有無に関わらず同じように動きます。)
 - macOS 26 では `screenLooksLike` が使えません。画像入力が macOS 27+ 必須のためで、自動で
   無効になり、他の機能は制限なく動きます。テキストの視覚検証は FM の段を除いて動きます(下記)。
 - FM が使えない環境では、`screenLooksLike` は失敗ではなく**スキップ**されます。テキストの視覚検証は
-  FM の代わりに端末の OCR(`ocrTextVisualCheck`)の読みで判定し、「見えていない」と読めたら失敗にします
+  FM の代わりに端末の OCR(`ocrTextOcclusionCheck`)の読みで判定し、「見えていない」と読めたら失敗にします
   (失敗文言に `judged by OCR alone` と出ます)。OCR で判定できない要素(何も読めないが何かが描かれている等)は
   確かめずに通るので、FM が実際に使えているかは `fleetest doctor --fm-only` で確認して
   ください。テキストと画像の2経路をそれぞれ実際に推論して判定し、どちらかが死んでいれば

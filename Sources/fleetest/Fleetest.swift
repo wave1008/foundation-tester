@@ -255,7 +255,7 @@ struct RunScenarios: AsyncParsableCommand {
     @Option(name: .customLong("set"),
             help: ArgumentHelp("Override one field of the run profile document for this run only "
                 + "(repeatable): <key>=<value>, where <key> is exactly the run profile JSON key and "
-                + "<value> matches that key's type (e.g. --set textVisualCheck=false "
+                + "<value> matches that key's type (e.g. --set fmTextOcclusionCheck=false "
                 + "--set reportDir=/tmp/out). Keys that need a run profile's device list/supply "
                 + "pipeline (iosInappEngine, updateWebView, wipeDataOnBloat, recoverCpuFallbackToGpu, "
                 + "app, machine, locale, wipeDataThresholdGB) need --profile. The run profile keys "
@@ -827,9 +827,9 @@ struct RunScenarios: AsyncParsableCommand {
                                 performanceMode: performanceMode,
                                 fmSettings: FMSettingsRecord(
                                     heal: noProfileSettings.heal,
-                                    textVisualCheck: noProfileSettings.fm.textVisualCheck,
+                                    fmTextOcclusionCheck: noProfileSettings.fm.fmTextOcclusionCheck,
                                     screenLooksLike: noProfileSettings.fm.screenLooksLike,
-                                    ocrTextVisualCheck: noProfileSettings.ocrTextVisualCheck),
+                                    ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck),
                                 setOverrides: profileOverrides.mapValues(\.token),
                                 abortReason: error.localizedDescription)
                 throw error
@@ -918,9 +918,9 @@ struct RunScenarios: AsyncParsableCommand {
         // fmSettings は下の finish 呼び出しと同じ noProfileSettings 由来の値なので先に計算する
         let noProfileFMSettings = FMSettingsRecord(
             heal: noProfileSettings.heal,
-            textVisualCheck: noProfileSettings.fm.textVisualCheck,
+            fmTextOcclusionCheck: noProfileSettings.fm.fmTextOcclusionCheck,
             screenLooksLike: noProfileSettings.fm.screenLooksLike,
-            ocrTextVisualCheck: noProfileSettings.ocrTextVisualCheck)
+            ocrTextOcclusionCheck: noProfileSettings.ocrTextOcclusionCheck)
         let failedCount: Int
         let interrupted: Bool
         do {

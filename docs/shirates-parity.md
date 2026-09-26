@@ -147,7 +147,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Vision 版の `checkIsON` / `checkIsOFF`(`CheckStateClassifier`) | 同じ置き場所(`vision/classifiers/CheckStateClassifier/[ON]`・`[OFF]`)の見本画像があれば使う | 🟡 2026-09-18 移植(`Sources/FTCore/VisionClassifier.swift`)。学習(Create ML・ScenePrint・`options=`/`imageFilter=binary`)とラベルの読み方(`[ON]`/`[OFF]` を含むか)は同じ。**違い**: 部品の切り出しは Shirates の画像区分け(SegmentContainer)ではなく a11y の枠 / a11y が状態を報告する要素と両方あるときの優先は実行プロファイルの `preferCheckStateClassifier`(既定 true = 分類器を優先)と、1コマンドだけ上書きする引数 `prefer:` / Shirates の `classifierName` 等の引数は持たない / **`[INDETERMINATE]` のラベル(fleetest 独自)** で indeterminate を判定する(Shirates ではどちらにも当たらず両方落ちる = 結果は同じ) |
 | `enabledIs(expected:)` / `checkedIs(expected:)`(生文字列の親形) | — | ➖ **持たない**。生値比較は OS 依存(checked は Android "true"/"false"・iOS "1"/"")で、fleetest が持つ正規化済み Bool と衝突する。糖衣形(`enabledIsTrue/False`・`checkIsON/OFF`)は OS 差を吸収済みで正規化と一致する。Shirates 自身も `checkIsON/OFF` の中でこの OS 差を吸収している。**再提案しない** |
 | `selectedIs(True/False)` | — | ➖ iOS の selected trait は `checked` に写像している |
-| `displayedIs` | `requireVisible:` + `textVisualCheck` | 🟡 |
+| `displayedIs` | `requireVisible:` + `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` | 🟡 |
 | `classIs(Not)` | セレクタの `.型` で絞る | 🟡 |
 | `attributeIs(Not)` / `buttonIsActive(Not)` | — | ➖ **木が持つ属性は固定集合**(2026-08-21 判定)。`ElementInfo` にある物は専用の検証(`textIs`/`valueIs`/`enabledIs*`/`checkIs*`)で表明でき、無い属性は**任意名で聞かれてもブリッジが答えられない**。新しい属性が要るなら、まず供給側(ブリッジ)に足す話になる |
 

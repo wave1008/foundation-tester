@@ -86,7 +86,7 @@ final class ReplayDelegateDispatchTests: XCTestCase {
     func testPrewarmIsIssuedBeforeTheGuardScreenshot() throws {
         let source = try source("Sources/FTCore/StepExecutor+Assert.swift")
         let body = try XCTUnwrap(block(after: "func occlusionFlip", in: source))
-        let prewarm = try XCTUnwrap(body.range(of: "delegate.prewarmVisibilityCheck()"),
+        let prewarm = try XCTUnwrap(body.range(of: "delegate?.prewarmVisibilityCheck()"),
                                     "occlusionFlip が暖機を撃っていない")
         let screenshot = try XCTUnwrap(body.range(of: "try await guardScreenshot("),
                                        "occlusionFlip がスクショを撮っていない = 走査が壊れている")

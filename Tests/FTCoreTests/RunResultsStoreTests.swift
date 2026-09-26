@@ -3,7 +3,7 @@ import XCTest
 
 /// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
 private let testFMSettings = FMSettingsRecord(
-    heal: false, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: true)
+    heal: false, fmTextOcclusionCheck: false, screenLooksLike: true, ocrTextOcclusionCheck: true)
 
 final class RunResultsStoreTests: XCTestCase {
     var repoRoot: URL!

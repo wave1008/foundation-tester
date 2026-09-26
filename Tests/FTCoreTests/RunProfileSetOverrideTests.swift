@@ -9,8 +9,8 @@ import XCTest
 final class RunProfileSetOverrideParseTests: XCTestCase {
 
     func testParsesMultipleValidTokens() throws {
-        let overrides = try RunProfileSetOverride.parse(["heal=true", "textVisualCheck=false"])
-        XCTAssertEqual(overrides, ["heal": true, "textVisualCheck": false])
+        let overrides = try RunProfileSetOverride.parse(["heal=true", "fmTextOcclusionCheck=false"])
+        XCTAssertEqual(overrides, ["heal": true, "fmTextOcclusionCheck": false])
     }
 
     func testLaterDuplicateKeyWins() throws {
@@ -268,9 +268,9 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     private func fieldValue(_ doc: RunProfileDocument, _ key: String) -> RunProfileSetValue? {
         switch key {
         case "heal": return doc.heal.map(RunProfileSetValue.bool)
-        case "textVisualCheck": return doc.textVisualCheck.map(RunProfileSetValue.bool)
+        case "fmTextOcclusionCheck": return doc.fmTextOcclusionCheck.map(RunProfileSetValue.bool)
         case "screenLooksLike": return doc.screenLooksLike.map(RunProfileSetValue.bool)
-        case "ocrTextVisualCheck": return doc.ocrTextVisualCheck.map(RunProfileSetValue.bool)
+        case "ocrTextOcclusionCheck": return doc.ocrTextOcclusionCheck.map(RunProfileSetValue.bool)
         case "preferCheckStateClassifier": return doc.preferCheckStateClassifier.map(RunProfileSetValue.bool)
         case "iosInappEngine": return doc.iosInappEngine.map(RunProfileSetValue.bool)
         case "iosFastInput": return doc.iosFastInput.map(RunProfileSetValue.bool)
@@ -301,8 +301,8 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
     /// キーごとの見本値(型はキーの宣言型に一致させる)。`RunProfileSetOverride.parse` を通して
     /// 作るので、値の型は本体の宣言型マップと自動的に一致する(このテストが型を手で二重管理しない)
     private static let sampleRawValues: [String: String] = [
-        "heal": "false", "textVisualCheck": "false",
-        "screenLooksLike": "false", "ocrTextVisualCheck": "false", "preferCheckStateClassifier": "false",
+        "heal": "false", "fmTextOcclusionCheck": "false",
+        "screenLooksLike": "false", "ocrTextOcclusionCheck": "false", "preferCheckStateClassifier": "false",
         "iosInappEngine": "false", "iosFastInput": "true", "iosPreActionWarmup": "false",
         "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
@@ -369,10 +369,10 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
 
         // 残りはプロファイルの既定と同じであること(2つ以外を勝手に倒していない)
         let settings = DeviceIndependentRunSettings.resolve(base)
-        XCTAssertTrue(settings.fm.textVisualCheck, "profile-less でもテキストの視覚検証は ON")
+        XCTAssertTrue(settings.fm.fmTextOcclusionCheck, "profile-less でもテキストの視覚検証は ON")
         XCTAssertTrue(settings.fm.enabled)
         XCTAssertTrue(settings.fm.screenLooksLike)
-        XCTAssertTrue(settings.ocrTextVisualCheck)
+        XCTAssertTrue(settings.ocrTextOcclusionCheck)
         XCTAssertTrue(settings.containerInference)
         XCTAssertFalse(settings.record)
     }
@@ -388,10 +388,10 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
 
     func testDefaultsMatchTheRunProfileDocumentDefaults() {
         let settings = DeviceIndependentRunSettings.resolve(RunProfileDocument())
-        XCTAssertEqual(settings.fm, FMConfig(enabled: true, textVisualCheck: true,
+        XCTAssertEqual(settings.fm, FMConfig(enabled: true, fmTextOcclusionCheck: true,
                                              screenLooksLike: true))
         XCTAssertTrue(settings.heal)
-        XCTAssertTrue(settings.ocrTextVisualCheck)
+        XCTAssertTrue(settings.ocrTextOcclusionCheck)
         XCTAssertFalse(settings.iosFastInput)
         XCTAssertTrue(settings.iosPreActionWarmup)
         XCTAssertTrue(settings.containerInference)
@@ -439,35 +439,35 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
     }
 
     /// FM を使うかは親スイッチではなく子トグルから導く。両方 false のときだけ無効
-    /// (`textVisualCheck || screenLooksLike`)
+    /// (`fmTextOcclusionCheck || screenLooksLike`)
     func testFMConfigEnabledIsFalseOnlyWhenBothChildTogglesAreFalse() {
         let doc = RunProfileDocument().applyingOverrides(
-            ["textVisualCheck": false, "screenLooksLike": false])
+            ["fmTextOcclusionCheck": false, "screenLooksLike": false])
         let settings = DeviceIndependentRunSettings.resolve(doc)
         XCTAssertFalse(settings.fm.enabled)
-        XCTAssertFalse(settings.fm.textVisualCheck)
+        XCTAssertFalse(settings.fm.fmTextOcclusionCheck)
         XCTAssertFalse(settings.fm.screenLooksLike)
     }
 
     func testFMConfigEnabledIsTrueWhenEitherChildToggleIsTrue() {
-        let onlyTextVisualCheck = DeviceIndependentRunSettings.resolve(
+        let onlyFMTextOcclusionCheck = DeviceIndependentRunSettings.resolve(
             RunProfileDocument().applyingOverrides(
-                ["textVisualCheck": true, "screenLooksLike": false]))
-        XCTAssertTrue(onlyTextVisualCheck.fm.enabled)
+                ["fmTextOcclusionCheck": true, "screenLooksLike": false]))
+        XCTAssertTrue(onlyFMTextOcclusionCheck.fm.enabled)
 
         let onlyScreenLooksLike = DeviceIndependentRunSettings.resolve(
             RunProfileDocument().applyingOverrides(
-                ["textVisualCheck": false, "screenLooksLike": true]))
+                ["fmTextOcclusionCheck": false, "screenLooksLike": true]))
         XCTAssertTrue(onlyScreenLooksLike.fm.enabled)
     }
 
-    /// `ocrTextVisualCheck` は親ゲートを持たない独立のキー(既定 true)
-    func testOcrTextVisualCheckHasNoParentGate() {
-        XCTAssertTrue(DeviceIndependentRunSettings.resolve(RunProfileDocument()).ocrTextVisualCheck)
+    /// `ocrTextOcclusionCheck` は親ゲートを持たない独立のキー(既定 true)
+    func testOcrTextOcclusionCheckHasNoParentGate() {
+        XCTAssertTrue(DeviceIndependentRunSettings.resolve(RunProfileDocument()).ocrTextOcclusionCheck)
 
         let explicitFalse = DeviceIndependentRunSettings.resolve(
-            RunProfileDocument().applyingOverrides(["ocrTextVisualCheck": false]))
-        XCTAssertFalse(explicitFalse.ocrTextVisualCheck)
+            RunProfileDocument().applyingOverrides(["ocrTextOcclusionCheck": false]))
+        XCTAssertFalse(explicitFalse.ocrTextOcclusionCheck)
     }
 
     /// `preferCheckStateClassifier` の既定は true(ユーザー決定 2026-09-18)。リテラルで固定する

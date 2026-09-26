@@ -20,7 +20,7 @@ Self-healing is fingerprint matching only — it does not call FM (Foundation Mo
   one run without editing the profile file (see [running_scenarios.md](./running_scenarios.md)
   for `--set`).
 - In the run profile itself, `heal` (default `true`) is its own toggle, independent of the FM- and
-  OCR-based toggles (`textVisualCheck`, `screenLooksLike`, `ocrTextVisualCheck`) — see
+  OCR-based toggles (`fmTextOcclusionCheck`, `screenLooksLike`, `ocrTextOcclusionCheck`) — see
   [run_profile.md](../project/run_profile.md).
 - In the VS Code extension, the `fleetest.heal` setting appends `--set heal=true` to Test
   Explorer's "Run" and "Debug" actions (not "Run (dry-run)", since dry-run never touches a

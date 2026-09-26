@@ -357,9 +357,14 @@ public final class StepExecutor {
     public var delegate: ReplayDelegate?
     /// 自己修復(指紋照合)を許す(`execute` の入口で畳む)。FM は使わない
     public var healingEnabled: Bool
-    /// 実行プロファイルの textVisualCheck に対応するマスタースイッチ(既定 true)。false なら
-    /// occlusionGuard/perStepGuard の値に関わらず occlusion-guard 自体を無効化する
+    /// occlusion-guard のマスタースイッチ(既定 true)。実行プロファイルでは
+    /// `fmTextOcclusionCheck || ocrTextOcclusionCheck`(FTRuntime が合成)。false なら occlusionGuard/perStepGuard の
+    /// 値に関わらず occlusion-guard 自体を無効化する(Tier-0 の幾何も止まる)
     public var occlusionGuardEnabled: Bool
+    /// occlusion-guard の FM の段を使うか = 実行プロファイルの `fmTextOcclusionCheck`(既定 true)。
+    /// OCR の段(`occlusionOCRMode` = `ocrTextOcclusionCheck`)とは独立で、false なら OCR の読みだけで判定する。
+    /// delegate が nil なら true でも FM は撃てない(OCR だけ)
+    public var fmVisibilityCheckEnabled: Bool
     /// 実行プロファイルの screenLooksLike に対応するマスタースイッチ(既定 true)。false なら
     /// screenMatches ステップを skip する
     public var screenLooksLikeEnabled: Bool
@@ -570,7 +575,8 @@ public final class StepExecutor {
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
                 occlusionOCRMode: RegionTextGateMode = RegionText.mode(environment: ProcessInfo.processInfo.environment),
-                occlusionGuardEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
+                occlusionGuardEnabled: Bool = true, fmVisibilityCheckEnabled: Bool = true,
+                screenLooksLikeEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
                 isAndroid: Bool,
                 uiFramework: AppUIFramework? = nil,
@@ -594,6 +600,7 @@ public final class StepExecutor {
         self.occlusionInkThreshold = occlusionInkThreshold
         self.occlusionOCRMode = occlusionOCRMode
         self.occlusionGuardEnabled = occlusionGuardEnabled
+        self.fmVisibilityCheckEnabled = fmVisibilityCheckEnabled
         self.screenLooksLikeEnabled = screenLooksLikeEnabled
         // **ガードに入った時ではなく、ここで**暖機を始める。Vision のモデルの初回ロードは
         // プロセスに1回・実測 25〜108 秒かかるので、ここで前もって頼んでおく(実際に近道を撃つ前に

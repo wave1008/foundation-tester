@@ -9,7 +9,7 @@
 
 - 対象のコマンド: `exist` / `waitForDisplay` / `select`(見えていなければ空要素を返す)/
   肯定形のテキスト・値の検証(`textIs` / `textContains` / `valueIs` など)
-- 設定: 実行プロファイルの `textVisualCheck`(既定 `true`)と `ocrTextVisualCheck`(既定 `true`)
+- 設定: 実行プロファイルの `fmTextOcclusionCheck`(既定 `true`)と `ocrTextOcclusionCheck`(既定 `true`)
   ([実行プロファイルの設定項目](../project/run_profile_ja.md))
 - ステップごとに外すときは `requireVisible: false`
 
@@ -18,11 +18,17 @@
 
 ## 判定の流れ
 
+実行プロファイルの2つの設定(OCR を使う `ocrTextOcclusionCheck` と FM を使う `fmTextOcclusionCheck`)は独立していて、
+どちらかが有効なら検証します。両方有効(既定)のときは次のとおりです。
+
 1. 端末の **OCR** が、期待のテキストを丸ごと読めれば、その場で緑にします(速い)。
-2. OCR の読み(何も読めなければ領域のインク量)だけで「見えていない」と言い切れれば、その場で失敗にします
-   (FM は呼びません。速い)。
-3. どちらとも言えなければ **FM**(Foundation Models)が描かれている文字を書き起こし、期待のテキストと照合します。
-4. FM が使えないとき(macOS 26・FM の不調)は、3 の形も **OCR の読みだけ**で同じ規則を当てます。
+2. それ以外は **FM**(Foundation Models)も描かれている文字を書き起こし、OCR の読み(何も読めなければ領域のインク量)と
+   それぞれ期待のテキストと照合します。**どちらかが期待のテキストを読めれば緑**、両方とも見えていないと判定したときだけ失敗です
+   (読めたことは描かれている直接の証拠で、読めなかったことは読み違いでも起きるため)。
+3. FM が使えないとき(macOS 26・FM の不調)は、**OCR の読みだけ**で同じ規則を当てます。
+
+FM を切った(`fmTextOcclusionCheck: false`)ときは OCR の読みだけで、OCR を切った(`ocrTextOcclusionCheck: false`)ときは
+FM だけで判定します。
 
 画面の外(要素の中心が画面に無い)は、画像を見る前に失敗にします。
 
@@ -66,8 +72,8 @@
 | <img src="../images/text_visual_check/ja/other_text.png" width="367" alt="別の文字"> | `アクセシビリティ` | `スクリーンタイム` | 期待と無関係な文字が描かれている(`textMismatch`) |
 
 失敗の文言は `false positive (occlusion): present in the tree but not visually visible [<理由>] ...` です。
-OCR の読みで失敗にしたときは `judged by OCR`、FM が使えず OCR だけで判定したときは
-`judged by OCR alone because FM gave no verdict` と添えます。
+FM を切っていて OCR の読みで失敗にしたときは `judged by OCR`、FM を使う設定なのに FM が使えず OCR だけで
+判定したときは `judged by OCR alone because FM gave no verdict` と添えます。
 どちらも、すぐには失敗にせず、待ち時間(`waitSeconds`)のあいだ撮り直して、見えるようになれば緑にします。
 
 ### OCR では判定できない形 → FM が判定

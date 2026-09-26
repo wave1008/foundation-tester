@@ -116,7 +116,7 @@ export const panelsStrings = {
   "panels.runProfile.appLabel": { ja: "参照するアプリプロファイル", en: "App profile to reference" },
   "panels.runProfile.healLabel": { ja: "セレクタの自己修復を有効にする(指紋照合方式)", en: "Enable selector self-healing (fingerprint matching)" },
   "panels.runProfile.advancedSectionTitle": { ja: "Advanced Features(Experimental)", en: "Advanced Features (Experimental)" },
-  "panels.runProfile.textVisualCheckLabel": {
+  "panels.runProfile.fmTextOcclusionCheckLabel": {
     ja: "FMを使用したテキストの視覚検証を有効にする(macOS 27+)",
     en: "Enable FM-based visual verification for text (macOS 27+)",
   },
@@ -124,7 +124,7 @@ export const panelsStrings = {
     ja: "FMを使用したscreenLooksLikeを有効にする(macOS 27+)",
     en: "Enable FM-based screenLooksLike (macOS 27+)",
   },
-  "panels.runProfile.ocrTextVisualCheckLabel": {
+  "panels.runProfile.ocrTextOcclusionCheckLabel": {
     ja: "OCRを使用したテキストの視覚検証を有効にする",
     en: "Enable OCR-based visual verification for text",
   },

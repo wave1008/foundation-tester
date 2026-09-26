@@ -1193,10 +1193,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
             (ref.machine === undefined || typeof ref.machine === "string"),
         ) &&
         typeof value.fields.heal === "boolean" &&
-        typeof value.fields.textVisualCheck === "boolean" &&
+        typeof value.fields.fmTextOcclusionCheck === "boolean" &&
         typeof value.fields.screenLooksLike === "boolean" &&
         typeof value.fields.containerInference === "boolean" &&
-        typeof value.fields.ocrTextVisualCheck === "boolean" &&
+        typeof value.fields.ocrTextOcclusionCheck === "boolean" &&
         typeof value.fields.preferCheckStateClassifier === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.iosFastInput === "boolean" &&

@@ -22,45 +22,45 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         return String(text[start.lowerBound..<end.lowerBound])
     }
 
-    /// macOS 26・陽性対照の注入で FM を撃たない配線: delegate の nil チェックだけが早期 return で、
-    /// FMVisionSupport はここでは見ない(下流の fmAvailable でだけ効く)
-    func testDelegateGateNoLongerChecksFMVisionSupport() throws {
+    /// FM の段(fmTextOcclusionCheck)と OCR の段は独立: どちらも無いときだけ早期 return。FM を撃てるかは
+    /// fmAvailable の1箇所(設定 × macOS 27+ × 注入なし)で決める
+    func testFMAndOCRStagesAreIndependentGates() throws {
         let text = source
         XCTAssertFalse(text.isEmpty, "走査対象が読めていない")
-        XCTAssertTrue(text.contains("guard let delegate else { return nil }"),
-                      "delegate の nil チェックは FMVisionSupport と切り離されているはず")
+        XCTAssertTrue(text.contains("let fmConfigured = fmVisibilityCheckEnabled && delegate != nil"))
+        XCTAssertTrue(text.contains("guard fmConfigured || occlusionOCRMode != .off else { return nil }"),
+                      "FM が無くても OCR の段があれば guard は続くはず")
+        XCTAssertFalse(text.contains("guard let delegate else { return nil }"),
+                       "delegate が無いだけで guard を止めると OCR だけの検証が効かない")
         XCTAssertTrue(text.contains(
-            "let fmAvailable = FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive()"),
-            "FM を撃てるかは fmAvailable の1箇所で決めるはず")
-        XCTAssertTrue(text.contains("if fmAvailable { delegate.prewarmVisibilityCheck() }"),
+            "let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive()"))
+        XCTAssertTrue(text.contains("if fmAvailable { delegate?.prewarmVisibilityCheck() }"),
                       "暖機も fmAvailable でだけ撃つはず")
     }
 
-    /// fmAvailable が false のとき FM を呼ばず OCROnlyVisibility へ落ち、
-    /// FM に訊いていないので countsAsSkipped: false
+    /// FM の段を使わない / 使えないとき FM を呼ばず OCROnlyVisibility へ落ち、FM に訊いていないので
+    /// countsAsSkipped: false。文言の「FM gave no verdict」は FM を使う設定のときだけ(fmConfigured)
     func testUnavailableFMFallsBackWithoutCountingAsSkipped() throws {
-        let block = try body(from: "guard fmAvailable else {",
+        let block = try body(from: "guard fmAvailable, let delegate else {",
                              to: "let memoKey = VisibilityVerdictMemo.key(", in: source)
         XCTAssertTrue(block.contains("applyOCROnlyVisibility("), block)
         XCTAssertTrue(block.contains("countsAsSkipped: false"), block)
+        XCTAssertTrue(block.contains("fmGaveNoVerdict: fmConfigured"), block)
     }
 
-    /// OCR だけで不可視と言い切れた回は **FM の有無に関わらず** FM より前で赤にする(ユーザー決定)。
-    /// on のときだけ(measure は FM と並べて採取する)・FM に訊いていないので countsAsSkipped: false
-    func testOCRNotVisibleShortCircuitsBeforeFM() throws {
+    /// **FM の段が使えるときは OCR の赤でも FM に回す**(ユーザー決定)。OCR の結果で FM より前に
+    /// 返る分岐を置かない。FM の判定の後で merge に通す(on のときだけ。measure は FM の判定を採取する)
+    func testOCRRedStillGoesToFMAndIsMergedAfter() throws {
         let text = source
-        // body(from:) はマーカーが無いと skip する —— 短絡ごと消されたら落とす
-        XCTAssertTrue(text.contains("let ocrOnly = ocrOnlyOutcome("), "OCR の赤の短絡が消えている")
         let block = try body(from: "let ocrOnly = ocrOnlyOutcome(",
-                             to: "guard fmAvailable else {", in: text)
-        XCTAssertTrue(block.contains("if occlusionOCRMode == .on, case .notVisible = ocrOnly.outcome {"), block)
-        XCTAssertTrue(block.contains("applyOCROnlyVisibility(ocrOnly,"), block)
-        XCTAssertTrue(block.contains("countsAsSkipped: false"), block)
-        XCTAssertFalse(block.contains("verifyElementVisible("), "FM より前に置くはず")
-        guard let shortCircuit = text.range(of: "let ocrOnly = ocrOnlyOutcome("),
-              let fmCall = text.range(of: "delegate.verifyElementVisible(")
+                             to: "guard fmAvailable, let delegate else {", in: text)
+        XCTAssertFalse(block.contains("return "), "OCR の判定で FM より前に返っている: \(block)")
+        XCTAssertTrue(text.contains("ocr: occlusionOCRMode == .on ? ocrOnly.outcome : .undetermined)"))
+        guard let fmCall = text.range(of: "delegate.verifyElementVisible("),
+              let merge = text.range(of: "OCROnlyVisibility.merge(")
         else { return XCTFail("マーカーが見つからない") }
-        XCTAssertLessThan(shortCircuit.lowerBound, fmCall.lowerBound, "OCR の赤は FM を呼ぶ前に判定するはず")
+        XCTAssertLessThan(fmCall.lowerBound, merge.lowerBound, "突き合わせは FM の判定の後")
+        XCTAssertTrue(text.contains("if let note = merged.disagreement { noteCodesThisStep.insert(note) }"))
     }
 
     /// FM に実際に訊いたのに答えが無かったときは countsAsSkipped: true

@@ -272,7 +272,7 @@
   "record": true,
   "scenarioTimeout": 180,
   "screenLooksLike": true,
-  "textVisualCheck": true,
+  "fmTextOcclusionCheck": true,
   "updateWebView": true,
   "wipeDataOnBloat": true
 }

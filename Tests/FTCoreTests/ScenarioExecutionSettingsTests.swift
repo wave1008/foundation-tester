@@ -39,10 +39,10 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
 
     func testDeviceIndependentRunSettingsMappingCarriesEveryField() {
         let nonDefault = DeviceIndependentRunSettings(
-            fm: FMConfig(enabled: false, textVisualCheck: true,
+            fm: FMConfig(enabled: false, fmTextOcclusionCheck: true,
                         screenLooksLike: false),
             heal: true,
-            ocrTextVisualCheck: false,
+            ocrTextOcclusionCheck: false,
             preferCheckStateClassifier: false,
             iosFastInput: true,
             iosPreActionWarmup: false,
@@ -63,7 +63,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
     /// profile-less の変換は `profileName` を nil のまま運ぶ(LastResultsStore.noProfileKey の区分へ)
     func testDeviceIndependentRunSettingsMappingLeavesProfileNameNil() {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
-            fm: FMConfig(), heal: false, ocrTextVisualCheck: true, preferCheckStateClassifier: true,
+            fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
             iosFastInput: false,
             iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
@@ -79,14 +79,14 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             project: TestProject(name: "dummy", rootURL: URL(fileURLWithPath: "/tmp/dummy")),
             runName: "run", appName: "app", apps: [:],
             devices: [],
-            fm: FMConfig(enabled: false, textVisualCheck: true,
+            fm: FMConfig(enabled: false, fmTextOcclusionCheck: true,
                         screenLooksLike: false),
             heal: true,
             reportDir: URL(fileURLWithPath: "/tmp/dummy/reports"),
             defaultTimeout: 12.5, scenarioTimeout: 42, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
             iosFastInput: false, iosPreActionWarmup: true, containerInference: false,
-            ocrTextVisualCheck: false,
+            ocrTextOcclusionCheck: false,
             preferCheckStateClassifier: false,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,

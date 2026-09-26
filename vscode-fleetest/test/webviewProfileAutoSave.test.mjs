@@ -84,10 +84,10 @@ const RUN_FIELDS = {
   app: "sampleapp",
   devices: [{ platform: "ios", name: "シミュ1", enabled: true, model: "iPhone 16", osVersion: "iOS 18.0", udid: "U1" }],
   heal: true,
-  textVisualCheck: true,
+  fmTextOcclusionCheck: true,
   screenLooksLike: true,
   containerInference: true,
-  ocrTextVisualCheck: true,
+  ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
   iosInappEngine: true,
   iosFastInput: false,
@@ -144,9 +144,9 @@ test("Advanced Features セクションは heal を先頭に5トグルがフラ�
 
   const ids = [
     "run-profile-heal",
-    "run-profile-ocr-text-visual-check",
+    "run-profile-ocr-text-occlusion-check",
     "run-profile-prefer-check-state-classifier",
-    "run-profile-text-visual-check",
+    "run-profile-fm-text-occlusion-check",
     "run-profile-screen-looks-like",
   ];
   const section = document.getElementById(ids[0]).closest(".run-profile-section-group");

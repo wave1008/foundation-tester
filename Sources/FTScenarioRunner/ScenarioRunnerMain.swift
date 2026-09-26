@@ -162,8 +162,8 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (text visual verification / screenLooksLike)")
     var noFM = false
 
-    @Flag(name: .customLong("no-text-visual-check"), help: "Disable text visual verification (occlusion guard)")
-    var noTextVisualCheck = false
+    @Flag(name: .customLong("no-fm-text-occlusion-check"), help: "Disable the FM stage of text visual verification (the occlusion guard runs on OCR alone unless --no-occlusion-ocr)")
+    var noFMTextOcclusionCheck = false
 
     @Flag(name: .customLong("no-screen-looks-like"), help: "Disable screenLooksLike (screenMatches)")
     var noScreenLooksLike = false
@@ -174,7 +174,7 @@ struct RunScenario: AsyncParsableCommand {
           help: "Disable corrections that infer the scroll container from the tree")
     var noContainerInference = false
 
-    @Flag(name: .customLong("no-occlusion-ocr"), help: "Disable the Vision OCR tier of the occlusion guard (use FM only)")
+    @Flag(name: .customLong("no-occlusion-ocr"), help: "Disable the Vision OCR stage of the occlusion guard (FM only; with --no-fm-text-occlusion-check too, no guard)")
     var noOcclusionOCR = false
 
     @Flag(name: .customLong("no-prefer-check-state-classifier"),
@@ -479,7 +479,7 @@ struct RunScenario: AsyncParsableCommand {
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal,
-                               textVisualCheckEnabled: !noTextVisualCheck,
+                               fmTextOcclusionCheckEnabled: !noFMTextOcclusionCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
                                occlusionOCREnabled: !noOcclusionOCR,

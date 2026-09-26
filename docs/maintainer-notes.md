@@ -1043,8 +1043,11 @@ heal 無効」警告(§21 で heal 有効時だけに絞ったばかりだった
 
 **同日の改名**(ユーザー決定): 利用者向けの名前を「テキストの視覚検証」に統一したのに合わせ、キー
 `falsePositiveCheck` / `ocrFalsePositiveCheck` を `textVisualCheck` / `ocrTextVisualCheck` に改名した
-(`--set`・run.json の `fmSettings`・拡張の欄・実行バイナリの `--no-text-visual-check` とも)。
-**run.json だけは旧キーも読む**(記録は受け手の資産で、読めないと run.json 全体が読めなくなる)。
+(`--set`・run.json の `fmSettings`・拡張の欄・実行バイナリのフラグとも)。2026-09-26 に FM の段と OCR の段を
+独立させたのに合わせ、さらに `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` へ改名した(§54)。
+**run.json の旧キーを読む互換は無い** —— `FMSettingsRecord` は欄が必須で、旧キーの run.json は
+`RunResultsStore` が `try?` で丸ごと読み飛ばす(stderr に件数の1行だけ)。この日の改名の前の形
+(`falsePositiveCheck`)の run.json は移行しておらず、読めない。
 プロファイルは読み替えない(未公開)—— この Mac 上のプロファイルは TestProjects・受け手パッケージとも移行済み。
 
 ## 24. 親の死を知らせる1行が、親の死のたびに子を abort させていた(2026-09-16)
@@ -2682,3 +2685,20 @@ MCP 使用中の実機ブリッジが落ちる。直し: 共有の `BridgeDiscov
 - **ファズの手動の MCP 呼び出しも持ち主の衝突を起こす**(53.9 の発見は、私が手で撃った1回のセッションが引き金だった)
 - `git apply` は**シンボリックリンクの書き込み失敗で途中まで書いて止まる**(全体が失敗しても一部のファイルは消える)。
   ワークツリーから本線へ移すときは `git add -N .` で余計な物(`node_modules` のリンク)を拾わないこと
+
+## 54. 記録(run.json)のキーの改名は、移行しないと履歴が黙って消える(2026-09-26)
+
+`textVisualCheck` / `ocrTextVisualCheck` を `fmTextOcclusionCheck` / `ocrTextOcclusionCheck` へ改名した
+(FM の段と OCR の段を独立させたため。挙動は docs/poc-fm-occlusion-guard.md §5.22)。設定キー・`--set`・拡張・
+実行バイナリのフラグは互換を置かず一度に寄せたが、**run.json の `fmSettings` は既に書かれた記録**で、
+`FMSettingsRecord` の欄は必須・`RunResultsStore` は `try?` で読むので、**旧キーの run.json は run ごと読み飛ばされる**
+(LPT の並べ替え・`fleetest results`・実行履歴から消え、stderr に件数の1行が出るだけ)。実測で手元の 17,034 件中
+6,961 件が該当し、改名だけのビルドでは E2E-iOS 1,630 件・E2E-Android 938 件・sut-ec-mobile 199 件が落ちた。
+
+- **読み替えは置かず、記録を書き換えた**(`Scripts/migrate-run-json-occlusion-keys.sh`。冪等。キーは引用符つきの完全一致
+  だけを置換)。**リモートは align と同時に流す** —— 先に書き換えると、旧いバイナリが逆に読めなくなる
+- **記録に残るキーを改名するときは、移行を同じ変更に入れる**(拡張の `recordingsStore` は欠けた欄を null で読むので
+  拡張側では気付かない。落ちるのは Swift 側だけ)。確かめ方: 改名したビルドで `fleetest results list --project <P>`
+  の stderr の件数を移行前後で比べる(移行後に残るのは、それより前の形の記録)
+- 9/15 以前の形(`falsePositiveCheck` / `ocrFalsePositiveCheck`)の run.json は、その時の改名で既に読めなくなっており、
+  今回も移行していない(E2E-iOS 341 件・E2E-Android 214 件・sut-ec-mobile 107 件)

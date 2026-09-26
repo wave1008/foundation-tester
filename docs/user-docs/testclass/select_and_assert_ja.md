@@ -56,7 +56,7 @@ exist("#total")
 
 `requireVisible: false` を渡すと、`exist`(通常は覆われ・見切れを検出して検証結果を失敗に
 反転させる)と `select`(通常は空要素を返す)を裏で支えている可視性確認を省きます。
-この追加の可視性照合は、実行プロファイルで `textVisualCheck: true` にした run でだけ
+この追加の可視性照合は、実行プロファイルで `fmTextOcclusionCheck` か `ocrTextOcclusionCheck` を `true` にした run でだけ
 実際に走ります —— それ以外の run では、このフラグ自体に省くべき処理がありません。
 
 ### Link

@@ -137,6 +137,6 @@
   "iosInappEngine": true,
   "record": true,
   "screenLooksLike": true,
-  "textVisualCheck": true,
+  "fmTextOcclusionCheck": true,
   "wipeDataOnBloat": true
 }

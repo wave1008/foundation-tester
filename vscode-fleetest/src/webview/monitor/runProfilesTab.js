@@ -32,9 +32,9 @@ const runProfilePlaceholder = document.getElementById('run-profile-placeholder')
 const runProfileEditor = document.getElementById('run-profile-editor');
 const runProfileApp = document.getElementById('run-profile-app');
 const runProfileHeal = document.getElementById('run-profile-heal');
-const runProfileTextVisualCheck = document.getElementById('run-profile-text-visual-check');
+const runProfileFmTextOcclusionCheck = document.getElementById('run-profile-fm-text-occlusion-check');
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
-const runProfileOcrTextVisualCheck = document.getElementById('run-profile-ocr-text-visual-check');
+const runProfileOcrTextOcclusionCheck = document.getElementById('run-profile-ocr-text-occlusion-check');
 const runProfilePreferCheckStateClassifier = document.getElementById('run-profile-prefer-check-state-classifier');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
@@ -244,9 +244,9 @@ function renderRunProfileEditor(fields) {
   renderRunProfileAppSelect(fields.app);
   renderDeviceRows(fields.devices);
   runProfileHeal.checked = fields.heal;
-  runProfileTextVisualCheck.checked = fields.textVisualCheck;
+  runProfileFmTextOcclusionCheck.checked = fields.fmTextOcclusionCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
-  runProfileOcrTextVisualCheck.checked = fields.ocrTextVisualCheck;
+  runProfileOcrTextOcclusionCheck.checked = fields.ocrTextOcclusionCheck;
   runProfilePreferCheckStateClassifier.checked = fields.preferCheckStateClassifier;
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
@@ -349,9 +349,9 @@ function runProfileValuesEqual(fields) {
     runProfileApp.value === fields.app &&
     runProfileDevicesEqual(currentDeviceEntries(), fields.devices) &&
     runProfileHeal.checked === fields.heal &&
-    runProfileTextVisualCheck.checked === fields.textVisualCheck &&
+    runProfileFmTextOcclusionCheck.checked === fields.fmTextOcclusionCheck &&
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
-    runProfileOcrTextVisualCheck.checked === fields.ocrTextVisualCheck &&
+    runProfileOcrTextOcclusionCheck.checked === fields.ocrTextOcclusionCheck &&
     runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
@@ -442,9 +442,9 @@ function collectRunProfileFields() {
     app: runProfileApp.value.trim(),
     devices: currentDeviceEntries(),
     heal: runProfileHeal.checked,
-    textVisualCheck: runProfileTextVisualCheck.checked,
+    fmTextOcclusionCheck: runProfileFmTextOcclusionCheck.checked,
     screenLooksLike: runProfileScreenLooksLike.checked,
-    ocrTextVisualCheck: runProfileOcrTextVisualCheck.checked,
+    ocrTextOcclusionCheck: runProfileOcrTextOcclusionCheck.checked,
     preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
     iosInappEngine: runProfileIosInappEngine.checked,
     iosFastInput: runProfileIosFastInput.checked,

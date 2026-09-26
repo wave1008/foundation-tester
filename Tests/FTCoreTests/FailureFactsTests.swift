@@ -12,7 +12,7 @@ import XCTest
 
 /// この種のテストが finish() へ渡す fmSettings は値そのものを検査しないので固定の1値でよい
 private let testFMSettings = FMSettingsRecord(
-    heal: false, textVisualCheck: false, screenLooksLike: true, ocrTextVisualCheck: true)
+    heal: false, fmTextOcclusionCheck: false, screenLooksLike: true, ocrTextOcclusionCheck: true)
 
 /// 呼ばれない前提のドライバ(このテストは worker の識別子だけを見る)
 private struct QuietDriver: AppDriver {

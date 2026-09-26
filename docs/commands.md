@@ -14,7 +14,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | 引数 | 意味 |
 |---|---|
 | `waitSeconds: 秒` | 待つ上限。**小数可**(`waitSeconds: 1.2`)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に)。**省略時の値はコマンドの系統で違う**(下表。Shirates の既定を踏襲) |
-| `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true。確認が実際に走るのは実行プロファイルの `textVisualCheck`(**既定 true**。2026-09-03 にオプトインをやめた)が有効な run。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②視覚照合** — 端末の OCR(Vision)が期待テキストを丸ごと読めれば通り、OCR の読み(何も読めなければ領域のインク量)だけで見えていないと言い切れれば FM を呼ばずに赤(失敗文言に `judged by OCR`)、どちらとも言えなければ FM が**描かれている文字を転写**し、期待テキストと突き合わせる(FM に期待テキストは渡さない。覆い・空白・別の文字はここで赤になる)。**先頭だけが描かれている**ときは、末尾に省略記号(`…`。日本語フォントの点の列も含む)があればアプリの意図した省略として緑 + 注記 `text-ellipsized`、無ければ描かれた割合が半分より多いと緑 + 注記 `text-partially-hidden`・半分以下で赤(`most of the text is hidden`)。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開・macOS 26)は、OCR の段が読んだ文字(何も読めなければ領域のインク量)で同じ規則を当て、見えていないと判定したら FM の反転と同じく見えるまで撮り直し、尽きたら赤(失敗文言は `judged by OCR alone because FM gave no verdict`)。FM に実際に訊いて答えが無かった回は結果 JSON の `notes` に **`visibility-guard-skipped`** も残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `textVisualCheck:false` の静的に無効な構成では出ない)。**`launchApp` / `restartApp` の直後だけ猶予がある** —— 画面がまだ launch storyboard(全画素同一の未描画フレーム)なら、この待ち時間を**もう一度だけ**払って待ち直し `first-frame-pending` を残す(スプラッシュのあるアプリで起動直後の `exist` が赤くならないため)。それでも一様色のままなら赤にして `first-frame-timeout` を添える |
+| `requireVisible: false` | 可視性確認を省く。**`exist` は見えていないと失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true。確認が実際に走るのは実行プロファイルの `fmTextOcclusionCheck`(FM の段)か `ocrTextOcclusionCheck`(OCR の段)が有効な run(どちらも**既定 true**)。確認は2段: **①幾何(FM 不要・決定的)** — 木に居ても**収まる軸の中心が画面外**なら不可視(iOS の木は画面外の要素も frame ごと残すので、通り過ぎた要素への `exist` がこれで止まる。`scroll:` 探索の「見つかった」判定と同じ述語)/ **②視覚照合** — 端末の OCR(Vision)が期待テキストを丸ごと読めれば通り、それ以外は FM が**描かれている文字を転写**して期待テキストと突き合わせ(FM に期待テキストは渡さない)、OCR の読み(何も読めなければ領域のインク量)の判定と合わせて**どちらかが期待テキストを読めれば緑・両方が見えないと言ったときだけ赤**(覆い・空白・別の文字はここで赤になる。割れた回は注記 `ocr-read-what-fm-missed` / `fm-read-what-ocr-missed`)。実行プロファイルの `fmTextOcclusionCheck`(FM の段)と `ocrTextOcclusionCheck`(OCR の段)は独立で、FM の段を切ると OCR の読みだけで判定する(失敗文言に `judged by OCR`)。**先頭だけが描かれている**ときは、末尾に省略記号(`…`。日本語フォントの点の列も含む)があればアプリの意図した省略として緑 + 注記 `text-ellipsized`、無ければ描かれた割合が半分より多いと緑 + 注記 `text-partially-hidden`・半分以下で赤(`most of the text is hidden`)。FM が判定を返さなかったステップ(実呼び出しの失敗・ブレーカ開・macOS 26)は、OCR の段が読んだ文字(何も読めなければ領域のインク量)で同じ規則を当て、見えていないと判定したら FM の反転と同じく見えるまで撮り直し、尽きたら赤(失敗文言は `judged by OCR alone because FM gave no verdict`)。FM に実際に訊いて答えが無かった回は結果 JSON の `notes` に **`visibility-guard-skipped`** も残る(「検証したつもりで検証していない緑」を run 横断で拾える。macOS 26 / `fmTextOcclusionCheck:false` の静的に無効な構成では出ない)。**`launchApp` / `restartApp` の直後だけ猶予がある** —— 画面がまだ launch storyboard(全画素同一の未描画フレーム)なら、この待ち時間を**もう一度だけ**払って待ち直し `first-frame-pending` を残す(スプラッシュのあるアプリで起動直後の `exist` が赤くならないため)。それでも一様色のままなら赤にして `first-frame-timeout` を添える |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
 **`waitSeconds:` を省略したときの値**:
@@ -383,7 +383,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 | コマンド | 説明 |
 |---|---|
-| `exist(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `textVisualCheck: true`)では**実際に見えていること**も確認する(幾何 → FM の2段。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
+| `exist(sel, requireVisible:waitSeconds:scroll:maxSwipes:)` | 存在検証。テキストの視覚検証を有効にした run(実行プロファイル `fmTextOcclusionCheck`(FM の段)か `ocrTextOcclusionCheck`(OCR の段)が true)では**実際に見えていること**も確認する(幾何 → OCR / FM の視覚照合。§共通の引数 `requireVisible`)。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断。**判定は `exist` と同じ可視性込み**(コマンド名 displayed の意味に沿わせている)で、**`exist` の `requireVisible: false` に当たる逃げ道は無い** — 覆われ検出を外したいなら `exist(sel, requireVisible: false, waitSeconds: 15)` を使う |
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
 | `notExist(sel, waitSeconds:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
@@ -395,7 +395,7 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `screenLooksLike("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `screenLooksLike:false` の場合はスキップ(素通り) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
-> `screenLooksLike` とテキストの視覚検証の FM 段(`requireVisible` / `textVisualCheck`)は FM に画像を渡すため
+> `screenLooksLike` とテキストの視覚検証の FM 段(`requireVisible` / `fmTextOcclusionCheck`)は FM に画像を渡すため
 > **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `fleetest doctor`)。
 > テキストの視覚検証の**幾何の段(中心が画面外の一致を可視と呼ばない)は FM 無しでも効く**。
 
@@ -530,7 +530,7 @@ lastElement.textIs("1,500")           // 掴んだ値は古い → 取り直し�
   掴んでいない状態で暗黙形を書くと空要素 + 警告になり、検証は落ちます
 - **`checkIsON` / `checkIsOFF` は対象外**です（「checked を実際に観測したか」の追跡が
   デバイス経路にあり、飛ばすと *状態を持たない要素を指している* 誤用警告が出なくなるため）
-- **可視性照合が走る run（実行プロファイルの `textVisualCheck: true`）では対象外**です
+- **可視性照合が走る run（実行プロファイルの `fmTextOcclusionCheck` か `ocrTextOcclusionCheck` が true）では対象外**です
   （見えているかは掴んだ値から言えないので、覆われ検出が静かに消えないようデバイスを見ます）
 - **注意**: 掴んでから時間が空くほど「古い値のまま通る」向きの誤りが増えます。とくに
   `lastElement` は掴んだ場所から離れるほど危険です（`textIs` は *期待どおりになるまで待つ* 検証なので、

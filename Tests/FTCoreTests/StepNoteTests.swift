@@ -29,6 +29,8 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.actedOutsideContainer.rawValue, "acted-outside-container")
         XCTAssertEqual(StepNote.unchangedTapBeforeFailure.rawValue, "unchanged-tap-before-failure")
         XCTAssertEqual(StepNote.launchActivatedBeforeForeground.rawValue, "launch-activated-before-foreground")
+        XCTAssertEqual(StepNote.ocrReadWhatFMMissed.rawValue, "ocr-read-what-fm-missed")
+        XCTAssertEqual(StepNote.fmReadWhatOCRMissed.rawValue, "fm-read-what-ocr-missed")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

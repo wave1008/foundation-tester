@@ -61,7 +61,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .alive, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                textVisualCheck: true, screenLooksLike: true))
+                                                fmTextOcclusionCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines.count, 1, "1経路の死に1行。\(lines)")
         let line = try XCTUnwrap(lines.first)
         XCTAssertTrue(line.contains("vision path"), line)
@@ -77,11 +77,11 @@ final class FMDegradedWarningTests: XCTestCase {
     /// 有効にした機能だけを挙げる(使っていない機能を「無効」と言わない)
     func testVisionLossNamesOnlyTheEnabledFeatures() {
         let guardOnly = ProfileRunner.visionLossDescription(
-            FMConfig(enabled: true, textVisualCheck: true, screenLooksLike: false))
+            FMConfig(enabled: true, fmTextOcclusionCheck: true, screenLooksLike: false))
         XCTAssertTrue(guardOnly.contains("occlusion-guard"), guardOnly)
         XCTAssertFalse(guardOnly.contains("screenLooksLike"), guardOnly)
         let looksLikeOnly = ProfileRunner.visionLossDescription(
-            FMConfig(enabled: true, textVisualCheck: false, screenLooksLike: true))
+            FMConfig(enabled: true, fmTextOcclusionCheck: false, screenLooksLike: true))
         XCTAssertTrue(looksLikeOnly.contains("screenLooksLike"), looksLikeOnly)
         XCTAssertFalse(looksLikeOnly.contains("occlusion-guard"), looksLikeOnly)
     }
@@ -93,7 +93,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .dead, vision: .alive)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                textVisualCheck: true, screenLooksLike: true))
+                                                fmTextOcclusionCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 
@@ -103,7 +103,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .dead, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                textVisualCheck: true, screenLooksLike: true))
+                                                fmTextOcclusionCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines.count, 1, "\(lines)")
         XCTAssertTrue(lines.contains { $0.contains("vision path") }, "\(lines)")
         XCTAssertFalse(lines.contains { $0.contains("text path") }, "\(lines)")
@@ -115,7 +115,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .alive, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                textVisualCheck: false, screenLooksLike: false))
+                                                fmTextOcclusionCheck: false, screenLooksLike: false))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 
@@ -130,7 +130,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .alive, vision: .alive)
         }
         let lines = await warnings(fm: FMConfig(enabled: true,
-                                                textVisualCheck: true, screenLooksLike: true))
+                                                fmTextOcclusionCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 
@@ -138,8 +138,8 @@ final class FMDegradedWarningTests: XCTestCase {
     /// 既定の `FMLivenessProbe.refresh` は台帳が古いと FM を実際に呼ぶ(0.7〜4.7 秒・FMLock を取る)ので、
     /// 結果を捨てる run で払わせない。FM ごと切った run も同じ
     func testRunsThatDoNotUseVisionNeverReadTheLiveness() async {
-        for fm in [FMConfig(enabled: true, textVisualCheck: false, screenLooksLike: false),
-                   FMConfig(enabled: false, textVisualCheck: true, screenLooksLike: true)] {
+        for fm in [FMConfig(enabled: true, fmTextOcclusionCheck: false, screenLooksLike: false),
+                   FMConfig(enabled: false, fmTextOcclusionCheck: true, screenLooksLike: true)] {
             var reads = 0
             var lines: [String] = []
             await ProfileRunner.warnIfFMDegraded(fm: fm, readLiveness: {
@@ -152,7 +152,7 @@ final class FMDegradedWarningTests: XCTestCase {
         // 陽性対照: 視覚系を使う run では読む(macOS 26 では視覚非対応の警告で先に抜ける)
         var reads = 0
         await ProfileRunner.warnIfFMDegraded(
-            fm: FMConfig(enabled: true, textVisualCheck: true, screenLooksLike: false),
+            fm: FMConfig(enabled: true, fmTextOcclusionCheck: true, screenLooksLike: false),
             readLiveness: { reads += 1; return FMLiveness.Reading(text: nil, vision: nil) }) { _ in }
         XCTAssertEqual(reads, FMVisionSupport.isSupported ? 1 : 0)
     }
@@ -164,7 +164,7 @@ final class FMDegradedWarningTests: XCTestCase {
             try inject(text: .dead, vision: .dead)
         }
         let lines = await warnings(fm: FMConfig(enabled: false,
-                                                textVisualCheck: true, screenLooksLike: true))
+                                                fmTextOcclusionCheck: true, screenLooksLike: true))
         XCTAssertEqual(lines, [], "\(lines)")
     }
 }

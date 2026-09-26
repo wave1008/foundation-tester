@@ -932,7 +932,7 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
 
 FM の実呼び出しが全滅していると、**`screenLooksLike` は黙って素通りし、occlusion-guard(`exist` の既定
 requireVisible)は OCR だけで判定する**(`OCROnlyVisibility`。OCR が判定できない形は素通り・
-`ocrTextVisualCheck` が off なら全部素通り)。つまりその run の緑は
+`ocrTextOcclusionCheck` が off なら全部素通り)。つまりその run の緑は
 **「守りが効いた緑」ではない**し、赤は FM 起因かもしれない。**自己修復(ロケータの指紋照合)は
 2026-09-15 に FM を呼ばなくなった**ため、この節の対象から外れた(→ maintainer-notes §22)。
 
@@ -957,7 +957,7 @@ requireVisible)は OCR だけで判定する**(`OCROnlyVisibility`。OCR が判�
 ```
 ⚠️ FM is dead on this machine (vision): a green here is not a fully guarded green —
    screenLooksLike was skipped and the occlusion-guard judged from on-device OCR alone
-   (text OCR cannot judge passes unchecked; with ocrTextVisualCheck off the guard passes through).
+   (text OCR cannot judge passes unchecked; with ocrTextOcclusionCheck off the guard passes through).
    vision: …
 ```
 
@@ -2671,7 +2671,7 @@ screenLooksLike は FM 失敗時に nil を返して**素通りする**(呼び�
 自己修復は 2026-09-15 に FM を呼ばなくなったため対象外 → maintainer-notes §22)。
 occlusion-guard は **OCR の読み(読めなければインク量)だけで判定する**(`OCROnlyVisibility`)——
 空白・全面の覆い・別の文字は赤にできるが、**OCR が判定できない形(読めない × インクが多い = 図形・
-WebView・一部だけ残った文字)は素通り**で、`ocrTextVisualCheck` が off なら読みが無いので全部素通り。
+WebView・一部だけ残った文字)は素通り**で、`ocrTextOcclusionCheck` が off なら読みが無いので全部素通り。
 実測(OCR が判定不能にした見えない標本 72 件は FM なら全部赤)は docs/poc-fm-occlusion-guard.md §5.19。
 run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールド、それに
 ステップ単位の `notes: ["visibility-guard-skipped"]`(occlusion-guard だけ)が手がかり。
@@ -2679,7 +2679,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 - **切り分けの起点は `fleetest doctor`**。availability は「端末が対応しているか」しか見ておらず、
   資産側の理由で全滅していても `available` を返すので、**実呼び出し(checkLive)の結果で判断する**
 - **FM 依存の変更は「FM を呼ぶシナリオ」で検証する**。まず前提として、テキストの視覚検証
-  (occlusion-guard)は**実行プロファイル既定 ON**(切るなら `textVisualCheck: false`)だが、
+  (occlusion-guard)は**実行プロファイル既定 ON**(切るなら `fmTextOcclusionCheck` と `ocrTextOcclusionCheck` を両方 `false`)だが、
   `OcclusionSuspicion` が疑いを立てたときだけ発火するので、シナリオを選ばないと `fm: null` で
   **空振りする**(実害: セレクタ画面・テキスト入力のシナリオで2回続けて空振りし、検証したつもりになった)。
   実測で FM 呼び出しが最も多いのは `ジェスチャが正しく検出されること`。
@@ -2756,7 +2756,7 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
   **対象がテキストであることも必須** —— `OcclusionEligibility` はテキスト型だけを FM に回すので、
   Button 版では guard が 6ms で素通りし FM 呼び出しは 0 だった(これも実測)。
   陽性対照は `TestProjects/E2E-iOS/scenarios/_disabled/96_遮蔽の反転.swift`
-  (`textVisualCheck: true` のプロファイルで回す。**S0010 は落ちるのが正常**)。
+  (`fmTextOcclusionCheck: true` のプロファイルで回す。**S0010 は落ちるのが正常**)。
   実測では失敗文言に reason と crop が付き、`fm.byKind.occlusion.calls` が**2**(等倍の転写 +
   2 倍の読み直し)になることまで確認した。**FM 段の形を触るときは、この対照とコーパスの両方で照合すること**
   (docs/poc-fm-occlusion-guard.md §5.18)

@@ -72,7 +72,7 @@ extension StepExecutor {
 
     /// 可視性照合(`requireVisible`)がこのステップで効くか。ステップ指定(DSL の requireVisible)
     /// 優先、無ければ executor 既定。`occlusionGuardEnabled` はどちらより上位の実行プロファイル由来
-    /// マスタースイッチ(`textVisualCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
+    /// マスタースイッチ(`fmTextOcclusionCheck || ocrTextOcclusionCheck`)。**FM の有無は含めない** —— 幾何の Tier-0 は FM 無しで
     /// 効くので、FTRuntime の保持値の高速経路もこれを見て「照合が走る設定なら実機を見に行く」と決める
     /// (FM 前提の条件で判定すると、FM の無いホストで幾何の照合が静かに1つ消える)
     public func visibilityGuardActive(perStepGuard: Bool?) -> Bool {
@@ -86,7 +86,9 @@ extension StepExecutor {
     ///     同じ述語)。iOS の木は画面外の要素も frame ごと残すので、これが無いと通り過ぎた要素への
     ///     exist が通る。FM 側は crop が画像の外に落ちると nil = 素通りなので、**FM が生きていても
     ///     この形は FM では塞がらない**(受け手報告・横スクロール区画の実例)
-    ///   Tier-1〜 FM: 覆われ/減光/不在。判定が返らなければ `visibilityGuardSkipped` を立てて素通り
+    ///   Tier-1〜 OCR の段(ocrTextOcclusionCheck)と FM の段(fmTextOcclusionCheck = fmVisibilityCheckEnabled)は独立:
+    ///     OCR が丸ごと読めれば緑 / それ以外は FM と突き合わせて見えていると読めた側を採る(OCROnlyVisibility.merge)/
+    ///     FM の段が無い・使えないときは OCR の判定だけ。FM に訊いて答えが無ければ `visibilityGuardSkipped`
     /// 呼び出し側(exists/textEquals)は不可視を即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
     /// launch storyboard を「何も描かれていない」と読む crop の輝度 stdDev の上限。
@@ -112,7 +114,9 @@ extension StepExecutor {
                            + " (\(Int(c.x)), \(Int(c.y))) is outside the screen, so it is not visible"
                            + " (scroll it into view before this step)")
         }
-        guard let delegate else { return nil }
+        // FM の段(fmTextOcclusionCheck)と OCR の段(ocrTextOcclusionCheck)は独立。**どちらも無ければ Tier-0 の幾何だけ**
+        let fmConfigured = fmVisibilityCheckEnabled && delegate != nil
+        guard fmConfigured || occlusionOCRMode != .off else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
         guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
@@ -125,7 +129,7 @@ extension StepExecutor {
         // FM に画像を渡せるか(macOS 27+、かつ陽性対照の注入が無いこと)。false でも
         // スクショ・ink・OCR 近道までは進み、FM だけを撃たずに OCROnlyVisibility へ落ちる
         // (下の `guard fmAvailable` 参照)。
-        let fmAvailable = FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive()
+        let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive()
         // **FM に訊くと決まったのでモデルの積み込みを先に始める**。効くのは「重ねられる作業の
         // 長さ」ぶんだけで(実測: リード 1000ms で −14% / 250ms で −8% / 直前では ±0。
         // docs/performance-tuning.md §3.5.1)、重ねられるのはこの下のスクショ往復・stale 判定・
@@ -133,7 +137,7 @@ extension StepExecutor {
         // Tier-1(下のインク足切り)で FM を省く回は空振りになるが、暖機は生成を伴わないので
         // 「効かない回に払う」より「効く回に効かせる」を採る。FM が死んでいるときに暖めない
         // ようブレーカだけは delegate 側で見る(FMGate は通らない = 門の外)。
-        if fmAvailable { delegate.prewarmVisibilityCheck() }
+        if fmAvailable { delegate?.prewarmVisibilityCheck() }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
         let captured = try await guardScreenshot(phase: &phase)
         var screenshot = captured.data
@@ -177,7 +181,7 @@ extension StepExecutor {
         }
         // Tier-2(FM の手前): 期待テキストが Vision OCR で丸ごと読めれば見えている(FM を呼ばず素通り)。
         // 実 run で FM の段に届いた crop の 97% がここで片付く(p50 92ms。FM は 1.3〜2.8s)。
-        // 丸ごと読めなかったこと自体は反転の根拠にしない(反転は下の OCROnlyVisibility が言い切れた回か FM)。
+        // 丸ごと読めなかったこと自体は反転の根拠にしない(反転は下の FM との突き合わせか、FM の段が無いときの OCROnlyVisibility)。
         // 詳細は RegionText のコメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
@@ -224,22 +228,14 @@ extension StepExecutor {
             // 落ちて反転した回に、未 warm か予算切れの読みが残っていたかを後から切り分けるため)
             noteCodesThisStep.insert(RegionText.isWarm ? .ocrShortcutBusy : .ocrShortcutNotWarm)
         }
-        // **OCR だけで不可視と言い切れる回は FM の有無に関わらず FM に回さない**(ユーザー決定)。
-        // FM へ上げるのは判定不能(読めない × インクが多い)と、見えるが丸ごとは読めなかった回だけ。
-        // 根拠: 見えている実 crop 290 件で誤った赤 0(docs/poc-fm-occlusion-guard.md §5.21)。
-        // measure は FM と並べて採取するのが目的なので止めない。読んでいない(nil)は judge が判定不能を返す
+        // OCR の読みだけの判定。**FM の段が使えるときは赤でも FM に回す**(ユーザー決定。最終判定は下の突き合わせ)。
+        // 読んでいない(nil)は judge が判定不能を返す
         let ocrOnly = ocrOnlyOutcome(ocrReading: ocrReading, expectedText: expectedText, sd: sd,
                                      screenshot: screenshot, element: element, screen: screen)
-        if occlusionOCRMode == .on, case .notVisible = ocrOnly.outcome {
-            return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
-                                          element: element, screen: screen, countsAsSkipped: false,
-                                          fmGaveNoVerdict: !fmAvailable)
-        }
-        // FM に画像を渡せないなら(macOS 26・陽性対照の注入)FM は撃たない。
-        // 「訊いたのに答えが無い」のと同じ扱いで OCR/インクだけの代替判定へ落ちるが、
-        // **訊いてすらいない**ので visibilityGuardSkipped は立てない
+        // FM の段を使わない(fmTextOcclusionCheck off・delegate 無し)/ 使えない(macOS 26・陽性対照の注入)なら
+        // OCR の読みだけで決める。**訊いてすらいない**ので visibilityGuardSkipped は立てない
         // (「静的に無効な構成では出ない」契約を保つ。applyOCROnlyVisibility の countsAsSkipped)
-        guard fmAvailable else {
+        guard fmAvailable, let delegate else {
             if occlusionOCRMode == .measure {
                 dumpOCRCorpus(tier: geo ? "geo" : "ink", sd: sd, ocrReading: ocrReading,
                               ocrReadable: ocrReadable, expectedText: expectedText,
@@ -248,7 +244,7 @@ extension StepExecutor {
             }
             return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
                                           element: element, screen: screen, countsAsSkipped: false,
-                                          fmGaveNoVerdict: true)
+                                          fmGaveNoVerdict: fmConfigured)
         }
         // 同じスクショ(バイト同一)・同じ frame・同じ期待文字列なら FM に訊き直さない
         // (VisibilityVerdictMemo。答えは同じで、払うのは FM の数秒だけ)
@@ -294,9 +290,16 @@ extension StepExecutor {
         // (nil にして素通りさせると誤った緑になる。呼び出し側の poll ループが deadline を
         // 一度だけ延ばす)。sd は Tier-1 を通らなかった経路(幾何が疑い有り / 閾値 0)では
         // 未計算なので、**門が開いている回だけ**ここで測る(常時は払わない)
-        consumeFirstFrameGate(visible: v.visible, sd: sd, screenshot: screenshot, element: element, screen: screen)
-        if v.visible {
-            notePartialVisibility(TranscriptMatch.State(rawValue: v.state))
+        // **OCR と FM の突き合わせ: 見えていると読めた側を採る**(赤はどちらも見えないと言った回だけ)。
+        // どちらも期待文字列を知らずに読んだ文字を同じ TranscriptMatch で照合するので、「読めた」は描かれている
+        // 直接の証拠で、「読めなかった」は読み手の失敗でも起きる(OCR の短い文字列の誤読・FM の字形の取り違え)。
+        // 根拠と実測は docs/poc-fm-occlusion-guard.md §5.22。measure は FM の判定を採取するので突き合わせない
+        let merged = OCROnlyVisibility.merge(fmVisible: v.visible, fmState: TranscriptMatch.State(rawValue: v.state),
+                                             ocr: occlusionOCRMode == .on ? ocrOnly.outcome : .undetermined)
+        if let note = merged.disagreement { noteCodesThisStep.insert(note) }
+        consumeFirstFrameGate(visible: merged.visible, sd: sd, screenshot: screenshot, element: element, screen: screen)
+        if merged.visible {
+            notePartialVisibility(merged.state)
             return nil
         }
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」

@@ -9,7 +9,7 @@ matched in the tree is actually drawn on screen, and fails the step when it is n
 
 - Commands it applies to: `exist` / `waitForDisplay` / `select` (returns an empty element when the text
   is not visible) / the positive text and value assertions (`textIs` / `textContains` / `valueIs`, …)
-- Settings: `textVisualCheck` (default `true`) and `ocrTextVisualCheck` (default `true`) in the run
+- Settings: `fmTextOcclusionCheck` (default `true`) and `ocrTextOcclusionCheck` (default `true`) in the run
   profile ([Run profile settings](../project/run_profile.md))
 - To turn it off for one step, pass `requireVisible: false`
 
@@ -18,13 +18,18 @@ tree check, so a different value is not its concern.
 
 ## How it decides
 
+The two run profile settings (`ocrTextOcclusionCheck` for OCR and `fmTextOcclusionCheck` for FM) are independent,
+and the check runs while either is on. With both on (the default):
+
 1. When the device's **OCR** reads the whole expected text, the step passes right there (fast).
-2. When the OCR reading (or, if nothing is legible, the amount of ink in the region) alone shows that the
-   text is not visible, the step fails right there without calling FM (fast).
-3. Otherwise **FM** (Foundation Models) transcribes the text that is drawn, and the transcript is matched
-   against the expected text.
-4. When FM is unavailable (macOS 26, or FM failing), the cases in step 3 are judged from the **OCR reading
-   alone** with the same rules.
+2. Otherwise **FM** (Foundation Models) also transcribes the text that is drawn, and both the transcript and
+   the OCR reading (or, if nothing is legible, the amount of ink in the region) are matched against the
+   expected text. **The step passes if either reads the expected text** and fails only when both find it not
+   visible (reading the text is direct evidence it is drawn, while failing to read it also happens on a misread).
+3. When FM is unavailable (macOS 26, or FM failing), the same rules are applied to the **OCR reading alone**.
+
+With FM turned off (`fmTextOcclusionCheck: false`) the OCR reading alone decides; with OCR turned off
+(`ocrTextOcclusionCheck: false`) FM alone decides.
 
 An element whose centre is off the screen fails before any image is looked at.
 
@@ -70,8 +75,8 @@ tolerated.
 | <img src="../images/text_visual_check/en/other_text.png" width="187" alt="other text"> | `Game Center` | `Walpaper` | Unrelated text is drawn there (`textMismatch`) |
 
 The failure message is `false positive (occlusion): present in the tree but not visually visible
-[<reason>] ...`. When the OCR reading decided the failure it adds `judged by OCR`, and when FM was unavailable
-and OCR alone decided it adds `judged by OCR alone because FM gave no verdict`. In both cases the step does not fail at once: it keeps taking new screenshots for its
+[<reason>] ...`. When FM is turned off and the OCR reading decided the failure it adds `judged by OCR`, and when FM
+is turned on but was unavailable and OCR alone decided it adds `judged by OCR alone because FM gave no verdict`. In both cases the step does not fail at once: it keeps taking new screenshots for its
 wait time (`waitSeconds`) and passes if the text becomes visible.
 
 ### Shapes OCR cannot judge: FM decides

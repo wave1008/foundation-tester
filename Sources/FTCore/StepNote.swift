@@ -136,7 +136,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 到達待ちの書き方(`waitForDisplay` の対象)を見直す材料になる
     case waitedForEnabled = "waited-for-enabled"
 
-    /// 可視性照合(`requireVisible`。実行プロファイル `textVisualCheck` で有効)が **FM まで
+    /// 可視性照合(`requireVisible`。実行プロファイル `fmTextOcclusionCheck` で有効)が **FM まで
     /// 到達したのに判定が返らなかった**(実呼び出しの失敗・ブレーカ開・直列化待ちの期限切れ・
     /// 画像の不正)。このステップは幾何の Tier-0(中心が画面外でないこと)だけで通っている。
     /// **立てるのは FM に訊いた回だけ** —— マスタースイッチ OFF・macOS 26・インクゲートで
@@ -153,6 +153,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// occlusion-guard が緑と判定し、読めた文字の末尾に省略記号があった(`TranscriptMatch.State.ellipsized`)。
     /// アプリの意図した省略なので判定は変えない —— 率を見ると省略表示の画面が分かる
     case textEllipsized = "text-ellipsized"
+
+    /// occlusion-guard の OCR と FM の判定が割れ、**FM は見えないと言ったが OCR は期待の文字を読めた**ので
+    /// 緑にした(見えていると読めた側を採る。docs/poc-fm-occlusion-guard.md §5.22)。
+    /// **率を見たい注記**: 多ければ FM の書き起こしの取りこぼし、あるいは OCR が見逃しを作っている疑い
+    case ocrReadWhatFMMissed = "ocr-read-what-fm-missed"
+
+    /// occlusion-guard の OCR と FM の判定が割れ、**OCR は見えないと言ったが FM は期待の文字を読めた**ので
+    /// 緑にした。多ければ OCR の読み違い(短い文字列・字形)を疑う
+    case fmReadWhatOCRMissed = "fm-read-what-ocr-missed"
 
 
     /// **`iosAlertHandler` の登録が無い**のに、OS のシステムアラートがアプリの前面に出ていた
@@ -329,6 +338,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
                 + " on-screen geometry alone"
         case .textPartiallyHidden: return "part of the text is hidden"
         case .textEllipsized: return "the text is truncated with an ellipsis"
+        case .ocrReadWhatFMMissed: return "FM judged the text not visible but OCR read it, so it passed"
+        case .fmReadWhatOCRMissed: return "OCR judged the text not visible but FM read it, so it passed"
         case .healUnwritable:
             return "self-heal found a stand-in element but no selector picks it out uniquely on this"
                 + " screen, so the fix was not written back — give the element a stable id"

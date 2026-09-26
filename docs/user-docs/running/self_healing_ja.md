@@ -19,7 +19,7 @@
   プロファイルを書き換えずに1回の実行だけどちらの既定も上書きできます(`--set` については
   [running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
 - 実行プロファイル自体では、`heal`(既定 `true`)は FM・OCR 系のトグル
-  (`textVisualCheck`・`screenLooksLike`・`ocrTextVisualCheck`)から独立した単独のトグルです
+  (`fmTextOcclusionCheck`・`screenLooksLike`・`ocrTextOcclusionCheck`)から独立した単独のトグルです
   ([run_profile_ja.md](../project/run_profile_ja.md)参照)。
 - VSCode 拡張では、設定 `fleetest.heal` が Test Explorer の「実行」「デバッグ」の呼び出しに
   `--set heal=true` を付与します(「実行 (dry-run)」には付与されません。dry-run はデバイスに

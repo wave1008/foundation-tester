@@ -236,7 +236,7 @@ TestProjects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
-// FM 機能のトグル: textVisualCheck(テキストの視覚検証)/ screenLooksLike は
+// FM 機能のトグル: fmTextOcclusionCheck(テキストの視覚検証)/ screenLooksLike は
 // いずれも既定 true(詳細は docs/design.md §11.2)。FM が呼ばれるのはどちらかが true のときだけ。
 // heal(自己修復)はこれらから独立した既定 true
 // avd は AVD の ID と表示名のどちらでも可

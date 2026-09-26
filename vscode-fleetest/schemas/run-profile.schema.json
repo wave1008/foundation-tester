@@ -90,14 +90,14 @@
       "description": "セレクタの自己修復(指紋照合方式。同じ type + label の要素を1件だけ探して当てる)を許可するか。FM は使わない(既定 true)。",
       "default": true
     },
-    "textVisualCheck": {
+    "fmTextOcclusionCheck": {
       "type": "boolean",
       "description": "FM によるテキストの視覚検証(occlusion guard)を有効にするか(既定 true)。",
       "default": true
     },
-    "ocrTextVisualCheck": {
+    "ocrTextOcclusionCheck": {
       "type": "boolean",
-      "description": "OCR を使ったテキストの視覚検証(occlusion guard の前段。既定 true)。false で従来どおり FM だけで判定する。textVisualCheck が false の run では guard 自体が走らないため効かない。",
+      "description": "OCR を使ったテキストの視覚検証(occlusion guard の前段。既定 true)。false で従来どおり FM だけで判定する。fmTextOcclusionCheck が false の run では guard 自体が走らないため効かない。",
       "default": true
     },
     "screenLooksLike": {

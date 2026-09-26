@@ -89,3 +89,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
   `fleetest.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
   (`lptDefaultSync.test.mjs` が検出)
+- **run.json(記録)に残るキーを改名・必須化するときは、既存の記録の移行を同じ変更に入れる**(互換の読み替えは置かない)。
+  `RunResultsStore` は `try?` で読むので、読めない run.json は run ごと LPT・`fleetest results`・履歴から黙って消える
+  (拡張は欠けた欄を null で読むので気付かない)。移行前後で `fleetest results list` の stderr の件数を比べて確かめ、
+  リモートは align と同時に流す(先に書き換えると旧いバイナリが読めなくなる)→ maintainer-notes §54
