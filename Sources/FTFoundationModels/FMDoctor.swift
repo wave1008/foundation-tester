@@ -76,7 +76,8 @@ public enum FMDoctor {
             ? Report(available: true, detail: "FM visual verification (image input): available")
             : Report(available: false,
                      detail: "FM visual verification (image input): unavailable (\(FMVisionSupport.requirement))"
-                         + ". occlusion-guard (text visual verification) and screenLooksLike are disabled"
+                         + ". screenLooksLike is disabled, and the occlusion-guard (text visual verification)"
+                         + " judges from on-device OCR alone — text OCR cannot judge passes unchecked"
                          + " (scenario drafting and naming keep working — they are text-only)")
     }
 
@@ -84,8 +85,9 @@ public enum FMDoctor {
     /// 「unavailable」だけでは、シナリオの書き方をどう変えればよいか分からない
     /// (外部フィードバック)。visionReport が視覚系について同じことをしている。
     public static let unavailableImpact =
-        "Disabled: screenLooksLike, the occlusion-guard (the requireVisible check of exist), and"
-        + " FM-based scenario drafting and naming. Everything deterministic keeps working (self-healing"
+        "Disabled: screenLooksLike and FM-based scenario drafting and naming. The occlusion-guard"
+        + " (the requireVisible check of exist) judges from on-device OCR alone — text OCR cannot judge"
+        + " passes unchecked. Everything deterministic keeps working (self-healing"
         + " by locator fingerprint does not use FM) — write textIs / valueIs / exist assertions instead"
         + " of screenLooksLike."
 

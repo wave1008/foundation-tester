@@ -166,16 +166,16 @@ extension MCPServer {
     /// 台帳が古ければ実呼び出しで取り直すが、**誰かが FM を使っている間は撃たない**
     /// (FMLivenessProbe.refresh の門)ので、ft_status が FM の枠を奪って run を遅らせることはない。
     /// ここで出さないと、エージェントは「occlusion-guard が効いていない画面」を
-    /// **健全な画面と同じ形で受け取る**(FM の失敗は握りつぶして素通りする契約のため)
+    /// **健全な画面と同じ形で受け取る**(FM の失敗は screenLooksLike では素通り・occlusion-guard では OCR だけの判定になる)
     static func fmLivenessNote() async -> String {
         let reading = await FMLivenessProbe.refresh()
         guard let reason = reading.deadSummary(limit: 200) else { return "" }
         // text 経路を使うのはシナリオの下書き・命名だけ(run の中では使わない)
         let disabled = reading.deadPaths == ["vision"]
-            ? "the occlusion-guard and screenLooksLike are silently disabled"
+            ? "screenLooksLike is silently skipped and the occlusion-guard of runs judges from on-device OCR alone (text OCR cannot judge passes unchecked)"
             : reading.deadPaths == ["text"]
                 ? "FM-based scenario drafting and naming (draft-scenario / gen-scenario) are unavailable"
-                : "the occlusion-guard and screenLooksLike are silently disabled, and FM-based"
+                : "screenLooksLike is silently skipped and the occlusion-guard of runs judges from on-device OCR alone (text OCR cannot judge passes unchecked), and FM-based"
                     + " scenario drafting and naming (draft-scenario / gen-scenario) are unavailable"
         return "\n⚠️ FM is dead on this machine (\(reading.deadPaths.joined(separator: " + "))):"
             + " \(disabled). \(reason)"

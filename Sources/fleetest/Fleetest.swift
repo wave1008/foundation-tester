@@ -867,8 +867,8 @@ struct RunScenarios: AsyncParsableCommand {
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
                   : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
-            // **合否は変えず、劣化だけ伝える**。FM(vision 経路)が死んでいると occlusion-guard・
-            // screenLooksLike が黙って素通りするので、緑は「守りが効いた緑」ではない。
+            // **合否は変えず、劣化だけ伝える**。FM(vision 経路)が死んでいると screenLooksLike は素通りし、
+            // occlusion-guard は OCR だけで判定する(OCR が判定できない形は素通り)ので、緑は「守りが効いた緑」ではない。
             // **text 経路の死は言わない** —— run の中で text 経路を使う機能は無い
             // 赤のときも、切り分けの出発点として先に知りたい情報(自分の変更か FM か)
             //
@@ -879,13 +879,14 @@ struct RunScenarios: AsyncParsableCommand {
             let fmReading = FMLiveness.current()
             if fmReading.deadPaths.contains("vision"), let reason = fmReading.deadSummary() {
                 ConsoleOut.out("⚠️ FM is dead on this machine (\(fmReading.deadPaths.joined(separator: " + "))):"
-                    + " a green here is not a guarded green — the occlusion-guard and"
-                    + " screenLooksLike passed through silently."
+                    + " a green here is not a fully guarded green — screenLooksLike was skipped and the"
+                    + " occlusion-guard judged from on-device OCR alone" + ProfileRunner.ocrFallbackCaveat + "."
                     + "\n   \(reason)")
             }
             if runSummary.fmUnavailableScenarios > 0 {
                 ConsoleOut.out("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
-                    + " with occlusion-guard / screenLooksLike silently disabled."
+                    + " with screenLooksLike skipped and the occlusion-guard judging from on-device OCR alone"
+                    + ProfileRunner.ocrFallbackCaveat + "."
                     + " Read this run's result with that in mind"
                     + " (confirm with: fleetest doctor --fm-only)")
             }

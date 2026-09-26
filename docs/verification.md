@@ -930,8 +930,9 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
 
 ## FM が死んでいる run は「守りが効いていない run」(2026-08-20 に可視化)
 
-FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既定 requireVisible)・
-`screenLooksLike` は黙って素通りする**(各呼び出し箇所が nil を返して通す契約)。つまりその run の緑は
+FM の実呼び出しが全滅していると、**`screenLooksLike` は黙って素通りし、occlusion-guard(`exist` の既定
+requireVisible)は OCR だけで判定する**(`OCROnlyVisibility`。OCR が判定できない形は素通り・
+`ocrTextVisualCheck` が off なら全部素通り)。つまりその run の緑は
 **「守りが効いた緑」ではない**し、赤は FM 起因かもしれない。**自己修復(ロケータの指紋照合)は
 2026-09-15 に FM を呼ばなくなった**ため、この節の対象から外れた(→ maintainer-notes §22)。
 
@@ -940,8 +941,8 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 いまは `fleetest run` のまとめに1行出る:
 
 ```
-⚠️ FM unavailable: 3 scenario(s) ran with occlusion-guard / screenLooksLike
-   silently disabled. Read this run's result with that in mind (confirm with: fleetest doctor --fm-only)
+⚠️ FM unavailable: 3 scenario(s) ran with screenLooksLike skipped and the occlusion-guard judging
+   from on-device OCR alone (…). Read this run's result with that in mind (confirm with: fleetest doctor --fm-only)
 ```
 
 **合否は変えない**(FM と無関係な失敗を隠す方が危険)。数えるのは
@@ -954,8 +955,9 @@ FM の実呼び出しが全滅していると、**occlusion-guard(`exist` の既
 根拠が別なので両方出す:
 
 ```
-⚠️ FM is dead on this machine (vision): a green here is not a guarded green — the
-   occlusion-guard and screenLooksLike passed through silently.
+⚠️ FM is dead on this machine (vision): a green here is not a fully guarded green —
+   screenLooksLike was skipped and the occlusion-guard judged from on-device OCR alone
+   (text OCR cannot judge passes unchecked; with ocrTextVisualCheck off the guard passes through).
    vision: …
 ```
 

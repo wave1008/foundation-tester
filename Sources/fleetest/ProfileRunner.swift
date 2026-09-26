@@ -687,16 +687,22 @@ enum ProfileRunner {
         let usesVision = fm.textVisualCheck || fm.screenLooksLike
         guard fm.enabled, usesVision else { return }
         guard FMVisionSupport.isSupported else {
-            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenLooksLike are disabled for this run")
+            log("⚠️ \(FMVisionSupport.requirement): screenLooksLike is disabled for this run, and the"
+                + " occlusion-guard judges from on-device OCR alone" + ocrFallbackCaveat)
             return
         }
         let reading = await readLiveness()
         if let vision = reading.vision, vision.state == .dead {
-            log("⚠️ FM is dead on this machine (vision path): the occlusion-guard"
-                + " (the default requireVisible of exist) and screenLooksLike are disabled for this run"
-                + " — a green result is not a guarded green." + reasonSuffix(vision))
+            log("⚠️ FM is dead on this machine (vision path): screenLooksLike is skipped, and the"
+                + " occlusion-guard (the default requireVisible of exist) judges from on-device OCR alone"
+                + ocrFallbackCaveat + " — a green result is not a fully guarded green." + reasonSuffix(vision))
         }
     }
+
+    /// FM が使えない run の occlusion-guard は OCR だけで判定する(OCROnlyVisibility)。**この文は
+    /// ocrTextVisualCheck を知らない呼び手でも真になる形で書く**(off なら読みが無く素通り)。run 後の
+    /// 要約(Fleetest.swift)も同じ但し書きを使う
+    static let ocrFallbackCaveat = " (text OCR cannot judge passes unchecked; with ocrTextVisualCheck off the guard passes through)"
 
     /// 死の理由を1行に畳む。**「いつ・何を根拠に」まで出す** —— 台帳は最大
     /// FMLiveness.freshSeconds ぶん古くなりうるので、断定の強さを読み手が測れるようにする
