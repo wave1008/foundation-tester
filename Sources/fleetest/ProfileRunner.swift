@@ -687,22 +687,27 @@ enum ProfileRunner {
         let usesVision = fm.textVisualCheck || fm.screenLooksLike
         guard fm.enabled, usesVision else { return }
         guard FMVisionSupport.isSupported else {
-            log("⚠️ \(FMVisionSupport.requirement): screenLooksLike is disabled for this run, and the"
-                + " occlusion-guard judges from on-device OCR alone" + ocrFallbackCaveat)
+            log("⚠️ \(FMVisionSupport.requirement): \(visionLossDescription(fm))")
             return
         }
         let reading = await readLiveness()
         if let vision = reading.vision, vision.state == .dead {
-            log("⚠️ FM is dead on this machine (vision path): screenLooksLike is skipped, and the"
-                + " occlusion-guard (the default requireVisible of exist) judges from on-device OCR alone"
-                + ocrFallbackCaveat + " — a green result is not a fully guarded green." + reasonSuffix(vision))
+            log("⚠️ FM is dead on this machine (vision path): \(visionLossDescription(fm))"
+                + " — a green result is not a fully guarded green." + reasonSuffix(vision))
         }
     }
 
-    /// FM が使えない run の occlusion-guard は OCR だけで判定する(OCROnlyVisibility)。**この文は
-    /// ocrTextVisualCheck を知らない呼び手でも真になる形で書く**(off なら読みが無く素通り)。run 後の
-    /// 要約(Fleetest.swift)も同じ但し書きを使う
-    static let ocrFallbackCaveat = " (text OCR cannot judge passes unchecked; with ocrTextVisualCheck off the guard passes through)"
+    /// vision 経路が使えない run で**この run が有効にした機能だけ**を挙げる(使っていない機能を
+    /// 「無効」と言わない)。occlusion-guard は無効ではなく OCR だけの判定へ落ちる
+    static func visionLossDescription(_ fm: FMConfig) -> String {
+        var parts: [String] = []
+        if fm.screenLooksLike { parts.append("screenLooksLike is skipped") }
+        if fm.textVisualCheck {
+            parts.append("the occlusion-guard (the default requireVisible of exist) judges from on-device OCR alone"
+                         + OCROnlyVisibility.fmFallbackCaveat)
+        }
+        return parts.joined(separator: ", and ")
+    }
 
     /// 死の理由を1行に畳む。**「いつ・何を根拠に」まで出す** —— 台帳は最大
     /// FMLiveness.freshSeconds ぶん古くなりうるので、断定の強さを読み手が測れるようにする

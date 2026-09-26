@@ -116,8 +116,8 @@ export const webviewMonitorBStrings = {
     en: "FM {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
   },
   "wvMonitor2.hostCharts.fmDeadLine": {
-    ja: "⚠︎ FM 全滅: 直近{seconds}秒で{failures}回すべて失敗(screenLooksLike は無効・テキストの視覚検証は OCR だけで判定)",
-    en: "⚠︎ FM dead: all {failures} calls failed in the last {seconds}s (screenLooksLike is disabled; text visual verification judges from OCR alone)",
+    ja: "⚠︎ FM 全滅: 直近{seconds}秒で{failures}回すべて失敗(screenLooksLike は無効・テキストの視覚検証は OCR だけで判定。OCR 段が off なら素通り)",
+    en: "⚠︎ FM dead: all {failures} calls failed in the last {seconds}s (screenLooksLike is disabled; text visual verification judges from OCR alone, or passes through when its OCR stage is off)",
   },
   // 台帳(FMLiveness)由来の死。窓の全滅(fmDeadLine)と違い**呼び出し0件でも出る** ——
   // 誰も FM を使っていない間に死んでいることを知らせるのがこの行の役目

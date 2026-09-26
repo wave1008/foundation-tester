@@ -880,13 +880,13 @@ struct RunScenarios: AsyncParsableCommand {
             if fmReading.deadPaths.contains("vision"), let reason = fmReading.deadSummary() {
                 ConsoleOut.out("⚠️ FM is dead on this machine (\(fmReading.deadPaths.joined(separator: " + "))):"
                     + " a green here is not a fully guarded green — screenLooksLike was skipped and the"
-                    + " occlusion-guard judged from on-device OCR alone" + ProfileRunner.ocrFallbackCaveat + "."
+                    + " occlusion-guard judged from on-device OCR alone" + OCROnlyVisibility.fmFallbackCaveat + "."
                     + "\n   \(reason)")
             }
             if runSummary.fmUnavailableScenarios > 0 {
                 ConsoleOut.out("⚠️ FM unavailable: \(runSummary.fmUnavailableScenarios) scenario(s) ran"
                     + " with screenLooksLike skipped and the occlusion-guard judging from on-device OCR alone"
-                    + ProfileRunner.ocrFallbackCaveat + "."
+                    + OCROnlyVisibility.fmFallbackCaveat + "."
                     + " Read this run's result with that in mind"
                     + " (confirm with: fleetest doctor --fm-only)")
             }

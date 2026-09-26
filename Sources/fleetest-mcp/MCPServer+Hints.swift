@@ -172,10 +172,10 @@ extension MCPServer {
         guard let reason = reading.deadSummary(limit: 200) else { return "" }
         // text 経路を使うのはシナリオの下書き・命名だけ(run の中では使わない)
         let disabled = reading.deadPaths == ["vision"]
-            ? "screenLooksLike is silently skipped and the occlusion-guard of runs judges from on-device OCR alone (text OCR cannot judge passes unchecked)"
+            ? "screenLooksLike is silently skipped and the occlusion-guard of runs judges from on-device OCR alone" + OCROnlyVisibility.fmFallbackCaveat
             : reading.deadPaths == ["text"]
                 ? "FM-based scenario drafting and naming (draft-scenario / gen-scenario) are unavailable"
-                : "screenLooksLike is silently skipped and the occlusion-guard of runs judges from on-device OCR alone (text OCR cannot judge passes unchecked), and FM-based"
+                : "screenLooksLike is silently skipped and the occlusion-guard of runs judges from on-device OCR alone" + OCROnlyVisibility.fmFallbackCaveat + ", and FM-based"
                     + " scenario drafting and naming (draft-scenario / gen-scenario) are unavailable"
         return "\n⚠️ FM is dead on this machine (\(reading.deadPaths.joined(separator: " + "))):"
             + " \(disabled). \(reason)"

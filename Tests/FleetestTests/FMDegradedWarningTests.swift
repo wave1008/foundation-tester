@@ -66,9 +66,24 @@ final class FMDegradedWarningTests: XCTestCase {
         let line = try XCTUnwrap(lines.first)
         XCTAssertTrue(line.contains("vision path"), line)
         XCTAssertTrue(line.contains("occlusion-guard"), line)
+        // guard は無効ではなく OCR だけの判定へ落ちる(「無効」と言うと事実と違う)
+        XCTAssertTrue(line.contains("judges from on-device OCR alone"), line)
+        XCTAssertFalse(line.contains("disabled"), line)
         XCTAssertTrue(line.contains("screenLooksLike"), line)
         XCTAssertFalse(line.contains("self-healing"), "FM を使わない自己修復を無効と言わない。\(line)")
         XCTAssertTrue(line.contains("vision boom"), "理由まで出す。\(line)")
+    }
+
+    /// 有効にした機能だけを挙げる(使っていない機能を「無効」と言わない)
+    func testVisionLossNamesOnlyTheEnabledFeatures() {
+        let guardOnly = ProfileRunner.visionLossDescription(
+            FMConfig(enabled: true, textVisualCheck: true, screenLooksLike: false))
+        XCTAssertTrue(guardOnly.contains("occlusion-guard"), guardOnly)
+        XCTAssertFalse(guardOnly.contains("screenLooksLike"), guardOnly)
+        let looksLikeOnly = ProfileRunner.visionLossDescription(
+            FMConfig(enabled: true, textVisualCheck: false, screenLooksLike: true))
+        XCTAssertTrue(looksLikeOnly.contains("screenLooksLike"), looksLikeOnly)
+        XCTAssertFalse(looksLikeOnly.contains("occlusion-guard"), looksLikeOnly)
     }
 
     /// text だけ死。**run の中で text の経路を使う機能は無い**ので、FM を全部有効にした run でも黙る

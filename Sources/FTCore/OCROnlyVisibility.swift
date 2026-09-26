@@ -19,6 +19,12 @@ public enum OCROnlyVisibility {
         case undetermined
     }
 
+    /// FM が判定を返さない run の occlusion-guard を説明する但し書き(括弧つき・先頭空白つき)。CLI の警告・
+    /// FMHealth・doctor・ft_status が共有する。**ocrTextVisualCheck を知らない呼び手でも真になる形**
+    /// (off なら読みが無く judge は常に判定不能 = 素通り)
+    public static let fmFallbackCaveat =
+        " (text that OCR cannot judge passes unchecked; with ocrTextVisualCheck off the guard passes through)"
+
     /// `lines` が nil(読んでいない)なら判定不能。空でなければ `TranscriptMatch.judge` へそのまま回す。
     /// 空なら `inkStdDev` で「描かれていない」か「判定不能」かだけを分ける。
     public static func judge(lines: [String]?, expected: String,

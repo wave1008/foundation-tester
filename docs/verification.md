@@ -2667,10 +2667,12 @@ RN のディープリンク不達を「JS 購読前の競合」と誤診し、�
 
 ## FM(Foundation Models)が全滅したら
 
-occlusion-guard・screenLooksLike は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす。
+screenLooksLike は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす。
 自己修復は 2026-09-15 に FM を呼ばなくなったため対象外 → maintainer-notes §22)。
-**OCR の段(Tier-2)があっても同じ** —— OCR は「読めたから見えている」= 素通りの根拠にしかならず、
-反転は必ず FM が決めるので、**FM が死んでいる間は誤った緑を1件も捕まえられない**。
+occlusion-guard は **OCR の読み(読めなければインク量)だけで判定する**(`OCROnlyVisibility`)——
+空白・全面の覆い・別の文字は赤にできるが、**OCR が判定できない形(読めない × インクが多い = 図形・
+WebView・一部だけ残った文字)は素通り**で、`ocrTextVisualCheck` が off なら読みが無いので全部素通り。
+実測(OCR が判定不能にした見えない標本 72 件は FM なら全部赤)は docs/poc-fm-occlusion-guard.md §5.19。
 run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールド、それに
 ステップ単位の `notes: ["visibility-guard-skipped"]`(occlusion-guard だけ)が手がかり。
 

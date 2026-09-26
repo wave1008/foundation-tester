@@ -257,15 +257,17 @@ public enum FMHealth {
         if s.failures == 0 {
             return "⚠️ Skipped \(s.skipped) FM call(s)"
                 + " (circuit breaker open, or the serialisation wait ran out. "
-                + "On those steps screenLooksLike passed unchecked and the occlusion-guard judged from OCR alone)"
+                + "On those steps screenLooksLike passed unchecked and the occlusion-guard judged from OCR alone"
+                + OCROnlyVisibility.fmFallbackCaveat + ")"
         }
         if s.allFailed {
             text = "⚠️ Every FM call failed (\(s.failures)). "
                 + "screenLooksLike was effectively disabled for this run, and the occlusion-guard "
-                + "(the default requireVisible of exist) judged from OCR alone (text OCR could not judge passed unchecked)"
+                + "(the default requireVisible of exist) judged from OCR alone" + OCROnlyVisibility.fmFallbackCaveat
         } else {
             text = "⚠️ Some FM calls failed (\(s.failures) failed / \(s.successes) succeeded). "
                 + "On those steps screenLooksLike passed unchecked and the occlusion-guard judged from OCR alone"
+                + OCROnlyVisibility.fmFallbackCaveat
         }
         if s.skipped > 0 {
             text += ". A further \(s.skipped) were skipped"
