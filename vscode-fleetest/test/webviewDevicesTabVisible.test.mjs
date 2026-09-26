@@ -159,7 +159,21 @@ test("設定タブ: LPT チェックボックスの操作が setLptScheduling �
   assert.equal(messages[0].value, false);
 });
 
-test("設定タブ: LPT 実績件数は既定値でも値として入る(空欄にしない)", (t) => {
+test("設定タブ: LPT 実績件数が未設定なら空欄 + 既定のプレースホルダ", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: { type: "lptHistoryRuns", value: null, default: 5 },
+  }));
+
+  const input = document.getElementById("settings-lpt-history");
+  assert.ok(input, "LPT チェックボックスの下に件数入力がある");
+  assert.equal(input.value, "", "未設定は値を入れない");
+  assert.equal(input.placeholder, "5", "既定値はプレースホルダに出す");
+});
+
+test("設定タブ: 既定と同じ値でも明示設定なら値として入る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -167,10 +181,7 @@ test("設定タブ: LPT 実績件数は既定値でも値として入る(空欄�
     data: { type: "lptHistoryRuns", value: 5, default: 5 },
   }));
 
-  const input = document.getElementById("settings-lpt-history");
-  assert.ok(input, "LPT チェックボックスの下に件数入力がある");
-  assert.equal(input.value, "5", "実際に使う件数が常に見えている");
-  assert.equal(input.placeholder, "5", "入力を消した一瞬の保険として既定値も出す");
+  assert.equal(document.getElementById("settings-lpt-history").value, "5");
 });
 
 test("設定タブ: 既定と異なる値は入力欄に表示される", (t) => {
@@ -200,7 +211,7 @@ test("設定タブ: 件数を入れると setLptHistoryRuns が送られる", (t
   assert.equal(messages[0].value, 50);
 });
 
-test("設定タブ: 空欄・不正値は null(既定へ戻す)を送り入力欄に既定値を入れ直す", (t) => {
+test("設定タブ: 空欄・不正値は null(既定へ戻す)を送り入力欄を空欄にする", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   const input = document.getElementById("settings-lpt-history");
@@ -216,6 +227,7 @@ test("設定タブ: 空欄・不正値は null(既定へ戻す)を送り入力�
     const messages = posted.filter((m) => m?.type === "setLptHistoryRuns");
     assert.equal(messages.length, 1, `"${raw}" で1件送る`);
     assert.equal(messages[0].value, null, `"${raw}" は既定へ戻す`);
-    assert.equal(input.value, "5", `"${raw}" は入力欄に既定値を入れ直す`);
+    assert.equal(input.value, "", `"${raw}" は空欄にする(既定値はプレースホルダ)`);
+    assert.equal(input.placeholder, "5");
   }
 });

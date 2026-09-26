@@ -25,12 +25,7 @@ import { activateTab, switchTab } from './tabs.js';
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
 const lptCheckbox = document.getElementById('settings-lpt');
 const lptHistoryInput = document.getElementById('settings-lpt-history');
-// 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
-let lptHistoryDefault = null;
 const remoteWaitLockInput = document.getElementById('settings-remote-wait-lock');
-// 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
-// **0 は正当な値**(待たない)なので、この null(= 既定が未着)と混ぜない。
-let remoteWaitLockDefault = null;
 const languageSelect = document.getElementById('settings-language');
 const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
 const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
@@ -63,22 +58,21 @@ lptHistoryInput.addEventListener('change', () => {
   const parsed = Number(raw);
   const valid = raw !== '' && Number.isInteger(parsed) && parsed >= 1;
   if (!valid) {
-    // 空欄のままにせず既定値を入れ直す(UI 上は常に実際に使う件数が見えている状態にする)
-    lptHistoryInput.value = lptHistoryDefault === null ? '' : String(lptHistoryDefault);
+    // 空欄 = 未設定(既定値はプレースホルダに見えている)
+    lptHistoryInput.value = '';
   }
   vscode.postMessage({ type: 'setLptHistoryRuns', value: valid ? parsed : null });
 });
 
-// リモート実行の順番待ち上限(秒)。lptHistoryInput と同じ流儀 —— 入力欄には常に実際に使う
-// 秒数を入れ、空欄・不正値のときは null を送って設定を消し UI にも既定値を入れ直す。
-// **0 は受け付ける**(待たずに失敗する、という選択)。
+// リモート実行の順番待ち上限(秒)。空欄・不正値のときは null を送って設定を消し、欄は空欄にする
+// (既定値はプレースホルダに見えている)。**0 は受け付ける**(待たずに失敗する、という選択)。
 remoteWaitLockInput.addEventListener('change', () => {
   const raw = remoteWaitLockInput.value.trim();
   // parseInt は "2.5" を 2 に切り詰めて黙って別の値にしてしまうので Number() で厳密に見る
   const parsed = Number(raw);
   const valid = raw !== '' && Number.isInteger(parsed) && parsed >= 0;
   if (!valid) {
-    remoteWaitLockInput.value = remoteWaitLockDefault === null ? '' : String(remoteWaitLockDefault);
+    remoteWaitLockInput.value = '';
   }
   vscode.postMessage({ type: 'setRemoteWaitLock', value: valid ? parsed : null });
 });
@@ -171,7 +165,7 @@ function makeEnabledCell(tr, checked) {
   return input;
 }
 
-/** FM 並列枠の入力欄。**「直近 N 件までの履歴を使用する」と同じ作り**(`type=number` +
+/** FM 並列枠の入力欄。**「使用する履歴数」と同じ作り**(`type=number` +
  *  `.settings-number`)。**行の種類を問わずこの関数を通す** —— 固定行(この機械)と可変行で
  *  別々に組むと片方だけ制限や見た目が漏れる。
  *
@@ -186,20 +180,12 @@ function makeFMConcurrencyInput(value) {
   input.min = '1';
   input.max = '9';
   input.step = '1';
-  // **未設定(0)のときは既定値を実値として出す** —— 空欄だと「何枠で走るのか」が画面から
-  // 読めない。空欄にすれば未設定へ戻せる(送るのは 0 で、CLI が既定へ倒し、次の描画で
-  // またこの既定が入る)。既定が読めないときだけウォーターマークに落とす。
-  // **見せているだけの既定は送らない** —— `dataset.unset` が立っている間は payload が 0 を送る
-  // (fmConcurrencyValue)。これが無いと、他の欄を直しただけで全ての未設定行に今日の既定が
-  // 明示値として書き込まれ、既定を変えても二度と追従しない。利用者がこの欄を打った瞬間に外す
-  input.value = value > 0 ? String(value)
-    : (defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency));
+  // 未設定(0)は空欄 + 既定値のプレースホルダ(空欄は 0 = 未設定として送られ、CLI が既定へ倒す)。
+  // **既定を実値として入れない** —— 入れると他の欄を直しただけで今日の既定が明示値として書き込まれ、
+  // 既定を変えても二度と追従しない
+  input.value = value > 0 ? String(value) : '';
   input.placeholder = defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency);
-  if (!(value > 0)) {
-    input.dataset.unset = '1';
-  }
   input.addEventListener('input', () => {
-    delete input.dataset.unset;
     const kept = input.value.replace(/[^1-9]/g, '').slice(0, 1);
     if (kept !== input.value) {
       input.value = kept;
@@ -208,12 +194,8 @@ function makeFMConcurrencyInput(value) {
   return input;
 }
 
-/** 送る FM 並列枠。未設定のまま(dataset.unset)なら 0。空欄・非数値・0 以下も 0 = 解除
- *  (CLI 側が 0 を「未設定」に倒す)。 */
+/** 送る FM 並列枠。空欄・非数値・0 以下は 0 = 未設定(CLI 側が既定へ倒す)。 */
 function fmConcurrencyValue(input) {
-  if (input.dataset.unset === '1') {
-    return 0;
-  }
   const n = Number.parseInt(input.value.trim(), 10);
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
@@ -740,14 +722,13 @@ function cleanupDefaultValue(field) {
 }
 
 for (const row of cleanupRows) {
-  // **入力欄を空欄のまま残さない**(実際に効いている上限が常に見えている状態にする)。
-  // 不正値は null を送って CLI 側を既定へ戻し、UI にも既定値を入れ直す。
+  // 空欄 = 明示設定なし(既定値はプレースホルダに見えている)。空欄・不正値は null を送って
+  // CLI 側を既定へ戻し、欄は空欄にする。
   // **0 は有効な指定**(保持しない)なので弾かない。判定は parseRetentionInput の1箇所。
   row.input.addEventListener('change', () => {
     const parsed = parseRetentionInput(row.input.value);
     if (parsed === null) {
-      const fallback = cleanupDefaultValue(row.field);
-      row.input.value = fallback === undefined ? '' : String(fallback);
+      row.input.value = '';
     }
     vscode.postMessage({
       type: 'setRetention',
@@ -830,9 +811,11 @@ function applyRetention(message) {
     row.input.disabled = !available;
     const fallback = cleanupDefaultValue(row.field);
     row.input.placeholder = fallback === undefined ? '' : String(fallback);
-    const current = available ? policy[row.field.key] : undefined;
-    if (typeof current === 'number') {
-      row.input.value = String(bytesToUnitValue(current, row.field.unit));
+    // 欄に入れるのは**明示設定だけ**(configured)。未設定(null)は空欄にしてプレースホルダの既定値を見せる。
+    // policy(実効値)を入れると、既定と明示の区別が画面から消える
+    if (available && message.configured) {
+      const configured = message.configured[row.field.key];
+      row.input.value = typeof configured === 'number' ? String(bytesToUnitValue(configured, row.field.unit)) : '';
     }
     const used = message.usage ? message.usage[row.field.usageKey] : undefined;
     if (typeof used === 'number') {
@@ -870,16 +853,13 @@ export function applySettings(message) {
   } else if (message.type === 'lptScheduling') {
     lptCheckbox.checked = !!message.value;
   } else if (message.type === 'lptHistoryRuns') {
-    // 実際に使う件数を常に値として入れる(既定でも空欄にしない)。placeholder は
-    // 入力を消した一瞬に既定値が見えるようにするための保険。
-    lptHistoryDefault = message.default;
+    // 値は明示設定だけ。未設定(null)は空欄にして既定値をプレースホルダで見せる
     lptHistoryInput.placeholder = String(message.default);
-    lptHistoryInput.value = String(message.value);
+    lptHistoryInput.value = message.value === null ? '' : String(message.value);
   } else if (message.type === 'remoteWaitLock') {
-    // lptHistoryRuns と同じ(実際に使う秒数を常に値として入れる。placeholder は保険)
-    remoteWaitLockDefault = message.default;
+    // 値は明示設定だけ。未設定(null)は空欄にして既定値をプレースホルダで見せる(0 = 待たない は値)
     remoteWaitLockInput.placeholder = String(message.default);
-    remoteWaitLockInput.value = String(message.value);
+    remoteWaitLockInput.value = message.value === null ? '' : String(message.value);
   } else if (message.type === 'language') {
     languageSelect.value = message.value;
   } else if (message.type === 'remoteConfig') {

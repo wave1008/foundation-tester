@@ -3230,7 +3230,7 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   outline: 2px solid var(--vscode-focusBorder, #007fd4);
   outline-offset: 1px;
 }
-/* FM の入力欄は .settings-number(「直近 N 件までの履歴を使用する」と同じ)。
+/* FM の入力欄は .settings-number(「使用する履歴数」と同じ)。
    .settings-remote-hosts-input(width:100% / min-width:90px)は当てない —— 当てると
    幅指定が上書きされて列が広がる。幅そのものは .settings-number が持つ(片方だけ変えない) */
 .settings-remote-hosts-fm-input {

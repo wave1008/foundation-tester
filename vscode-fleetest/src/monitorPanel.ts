@@ -1134,7 +1134,7 @@ export class MonitorPanelController implements vscode.Disposable {
         this.deviceStream.reapply();
         break;
       case "setLptHistoryRuns":
-        // null = 入力欄が空・不正値 → 設定を消して既定へ戻す(webview 側は入力欄に既定値を入れ直す)
+        // null = 入力欄が空・不正値 → 設定を消して既定へ戻す(webview 側は入力欄を空欄にする)
         void vscode.workspace
           .getConfiguration("fleetest")
           .update("lptHistoryRuns", message.value ?? undefined, vscode.ConfigurationTarget.Global);
@@ -1330,18 +1330,23 @@ export class MonitorPanelController implements vscode.Disposable {
       type: "lptScheduling",
       value: vscode.workspace.getConfiguration("fleetest").get<boolean>("lptScheduling", true),
     });
-    // default は設定タブの初期値・空欄時の戻り先に使う(Swift 側 LPTOrdering.defaultHistoryRuns と
+    // default は設定タブのプレースホルダに使う(Swift 側 LPTOrdering.defaultHistoryRuns と
     // package.json の既定値に一致させること。lptDefaultSync.test.mjs が検証)
+    // value は明示設定だけ(未設定は null = 設定タブは空欄 + 既定のプレースホルダ)。get() は既定で
+    // 埋めるので「既定と同じ値を明示」と「未設定」を区別できない → inspect の各層を見る
+    const lptHistory = vscode.workspace.getConfiguration("fleetest").inspect<number>("lptHistoryRuns");
     this.post({
       type: "lptHistoryRuns",
-      value: vscode.workspace.getConfiguration("fleetest").get<number>("lptHistoryRuns", 5),
+      value: lptHistory?.workspaceFolderValue ?? lptHistory?.workspaceValue ?? lptHistory?.globalValue ?? null,
       default: 5,
     });
-    // default は設定タブの初期値・空欄時の戻り先(package.json の fleetest.remoteWaitLock.default・
-    // config.ts の readConfig と一致させること。remoteWaitLockDefaultSync.test.mjs が検証)
+    // default は設定タブのプレースホルダ(package.json の fleetest.remoteWaitLock.default・
+    // config.ts の readConfig と一致させること。remoteWaitLockDefaultSync.test.mjs が検証)。
+    // value は lptHistoryRuns と同じく明示設定だけ(0 = 待たない は明示値なので ?? で null へ倒さない)
+    const waitLock = vscode.workspace.getConfiguration("fleetest").inspect<number>("remoteWaitLock");
     this.post({
       type: "remoteWaitLock",
-      value: vscode.workspace.getConfiguration("fleetest").get<number>("remoteWaitLock", 3600),
+      value: waitLock?.workspaceFolderValue ?? waitLock?.workspaceValue ?? waitLock?.globalValue ?? null,
       default: 3600,
     });
     this.post({

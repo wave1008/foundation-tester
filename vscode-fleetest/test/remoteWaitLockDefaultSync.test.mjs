@@ -42,11 +42,4 @@ test("リモートの順番待ち秒数の既定が package.json / config.ts / �
   assert.ok(panelMatch, "monitorPanel.ts から remoteWaitLock の default を抽出できません");
   assert.equal(Number(panelMatch[1]), EXPECTED_DEFAULT_SECONDS,
     "設定タブへ送る既定値が他の2箇所とズレています");
-
-  // 設定タブが読む現在値も同じ既定で引くこと(default だけ直して get の既定を忘れると、
-  // 未設定のときに入力欄と実際の値が食い違う)
-  const panelGet = panel.match(/get<number>\("remoteWaitLock",\s*(\d+)\)/);
-  assert.ok(panelGet, "monitorPanel.ts から remoteWaitLock の現在値取得を抽出できません");
-  assert.equal(Number(panelGet[1]), EXPECTED_DEFAULT_SECONDS,
-    "設定タブへ送る現在値の既定が default とズレています");
 });

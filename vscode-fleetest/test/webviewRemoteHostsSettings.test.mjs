@@ -247,7 +247,7 @@ test("未設定(0)は空欄で描かれる", (t) => {
 
 // ウォーターマークは **CLI が返す既定値**。拡張側に数字を持たせない(二重管理にすると
 // FMLock.defaultConcurrency を変えたときにウォーターマークだけ嘘になる)
-test("未設定の FM 並列枠には CLI が返した既定値が実値として入る", (t) => {
+test("未設定の FM 並列枠は空欄で、CLI が返した既定値をプレースホルダに出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
@@ -256,12 +256,12 @@ test("未設定の FM 並列枠には CLI が返した既定値が実値とし�
     defaultFMConcurrency: 5,
     local: { machine: "local", host: "wave1008@localhost", fmConcurrency: 0 } });
 
-  // 固定行・可変行のどちらも空欄にしない(空欄だと「何枠で走るのか」が画面から読めない)
+  // 固定行・可変行の両方(片方だけ書くと漏れる)
   for (const [label, row] of [["固定行", 0], ["可変行", 1]]) {
     const fm = document.querySelectorAll("#settings-remote-hosts-body tr")[row]
       .querySelectorAll("input")[FM];
-    assert.equal(fm.value, "5", `${label}: 既定値が入る`);
-    assert.equal(fm.placeholder, "5", `${label}: ウォーターマークも既定値`);
+    assert.equal(fm.value, "", `${label}: 既定値を実値として入れない`);
+    assert.equal(fm.placeholder, "5", `${label}: ウォーターマークは既定値`);
   }
 });
 
@@ -421,7 +421,7 @@ test("FM 並列枠は 1〜9 の1桁だけ受け付ける(可変行)", (t) => {
   assert.equal(fm.maxLength, -1, "maxLength に頼っていないこと");
 });
 
-// 「直近 N 件までの履歴を使用する」と同じ作り。**.settings-remote-hosts-input は当てない**
+// 「使用する履歴数」と同じ作り。**.settings-remote-hosts-input は当てない**
 // (width:100% / min-width:90px が .settings-number の 80px 固定を上書きして列が広がる)
 test("FM 並列枠の入力欄は履歴件数と同じデザイン(type=number + .settings-number)", (t) => {
   const { window, document } = createWebview();
@@ -507,7 +507,7 @@ test("未設定の FM 並列枠は既定値を見せていても、他の欄を�
 
   const rows = document.querySelectorAll("#settings-remote-hosts-body tr");
   const unsetFM = rows[2].querySelectorAll("input")[FM];
-  assert.equal(unsetFM.value, "5", "前提: 未設定行には既定値が見えている");
+  assert.equal(unsetFM.value, "", "前提: 未設定行は空欄(既定はプレースホルダ)");
 
   // 別の行(M1Ultra)のディレクトリを直す → 未設定行の 5 は送らない
   fillAndCommit(window, rows[1].querySelectorAll("input")[DIR], "~/runner");
@@ -876,11 +876,15 @@ test("順番待ちの欄がマシンセクションにあり、値と既定が�
   assert.equal(input.min, "0", "0 = 待たない を選べる");
 
   post(window, { type: "remoteWaitLock", value: 900, default: 3600 });
-  assert.equal(input.value, "900", "実際に使う秒数が常に見えている(既定でも空欄にしない)");
-  assert.equal(input.placeholder, "3600", "入力を消した一瞬の保険として既定値も出す");
+  assert.equal(input.value, "900", "明示設定は値として出す");
+  assert.equal(input.placeholder, "3600", "既定値はプレースホルダ");
 
   post(window, { type: "remoteWaitLock", value: 0, default: 3600 });
-  assert.equal(input.value, "0", "0(待たない)は空欄ではなく 0 と描く");
+  assert.equal(input.value, "0", "0(待たない)は明示値なので空欄ではなく 0 と描く");
+
+  post(window, { type: "remoteWaitLock", value: null, default: 3600 });
+  assert.equal(input.value, "", "未設定は空欄(既定はプレースホルダ)");
+  assert.equal(input.placeholder, "3600");
 });
 
 test("順番待ちの秒数を入れると setRemoteWaitLock が送られ、拡張側のゲートを通る", (t) => {
@@ -899,7 +903,7 @@ test("順番待ちの秒数を入れると setRemoteWaitLock が送られ、拡�
   }
 });
 
-test("順番待ちの空欄・不正値は null(既定へ戻す)を送り、入力欄に既定値を入れ直す", (t) => {
+test("順番待ちの空欄・不正値は null(既定へ戻す)を送り、入力欄を空欄にする", (t) => {
   const posted = [];
   const { window, document } = createWebview((m) => posted.push(m));
   t.after(() => window.close());
@@ -914,7 +918,7 @@ test("順番待ちの空欄・不正値は null(既定へ戻す)を送り、入�
     assert.equal(messages.length, 1, `"${raw}" で1件送る`);
     assert.equal(messages[0].value, null, `"${raw}" は既定へ戻す`);
     assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
-    assert.equal(input.value, "3600", `"${raw}" は入力欄に既定値を入れ直す`);
+    assert.equal(input.value, "", `"${raw}" は空欄にする(既定値はプレースホルダ)`);
   }
 });
 

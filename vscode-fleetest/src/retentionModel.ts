@@ -4,7 +4,7 @@
 // 両方が読む。i18n/index.ts は import しない —— webview バンドルが壊れる)。
 //
 // 契約(CLI 側と並行実装):
-//   fleetest api retention                    → {"policy":{…},"defaults":{…},"usage":{…}}
+//   fleetest api retention                    → {"policy":{…},"configured":{…},"defaults":{…},"usage":{…}}
 //   fleetest api retention --import '<JSON>'  → 同じ形(渡した鍵だけ上書き・null で既定へ戻す)
 //   fleetest api clean [--dry-run]            → 1行 JSON(「消した合計バイト数」と「エラー文字列」
 //                                               だけを読む。想定外の鍵は無視する)
@@ -19,6 +19,8 @@ export type RetentionUnit = "GB" | "MB";
 
 /** policy/defaults の値。鍵は CLI の JSON と1文字も同じ(kebab 変換をしない)。 */
 export type RetentionValues = Readonly<Record<string, number | boolean>>;
+/** configured の値。null = 設定ファイルに無い(既定が効いている)。 */
+export type RetentionConfigured = Readonly<Record<string, number | boolean | null>>;
 /** usage の値(バイト)。 */
 export type RetentionUsage = Readonly<Record<string, number>>;
 /** setRetention で送る差分。null = その鍵を既定へ戻す。 */
@@ -108,6 +110,18 @@ function asValues(value: unknown): RetentionValues | undefined {
   return value as RetentionValues;
 }
 
+function asConfigured(value: unknown): RetentionConfigured | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const entry of Object.values(value)) {
+    if (entry !== null && typeof entry !== "boolean" && !(typeof entry === "number" && Number.isFinite(entry))) {
+      return undefined;
+    }
+  }
+  return value as RetentionConfigured;
+}
+
 /** CLI は `--usage` を付けたときだけ実測を返し、付けないときは**鍵ごと null**(集計は実測 21 秒
  * かかるので、設定タブは先に上限だけ出して使用量を後から埋める)。null は「測っていない」で
  * 0 とは別なので、鍵ごと落として `undefined` のままにする。 */
@@ -130,12 +144,14 @@ function asUsage(value: unknown): RetentionUsage | undefined {
 
 export interface RetentionResponse {
   readonly policy: RetentionValues;
+  /** 入力欄に入れる値はこちら(未設定は null = 空欄 + 既定のプレースホルダ) */
+  readonly configured: RetentionConfigured;
   readonly defaults: RetentionValues;
   readonly usage: RetentionUsage;
 }
 
 /**
- * `api retention` の1行 JSON を読む。**policy と defaults の両方が読めたときだけ成功**
+ * `api retention` の1行 JSON を読む。**policy・configured・defaults が読めたときだけ成功**
  * (defaults が無いと空欄・不正値の戻り先が無く、画面が既定を知らないまま動く)。
  * usage は欠けていても空として扱う(表示が消えるだけで設定は編集できる)。
  * 知らない鍵は素通しする —— CLI が欄を足しても拡張の更新を待たずに読める。
@@ -145,11 +161,12 @@ export function parseRetentionResponse(json: unknown): RetentionResponse | undef
     return undefined;
   }
   const policy = asValues(json.policy);
+  const configured = asConfigured(json.configured);
   const defaults = asValues(json.defaults);
-  if (policy === undefined || defaults === undefined) {
+  if (policy === undefined || configured === undefined || defaults === undefined) {
     return undefined;
   }
-  return { policy, defaults, usage: asUsage(json.usage) ?? {} };
+  return { policy, configured, defaults, usage: asUsage(json.usage) ?? {} };
 }
 
 /** `api clean` の結果のうち拡張が読む欄。**他の鍵(dryRun・categories 等)は無視する** ——

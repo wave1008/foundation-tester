@@ -4,7 +4,8 @@
 //
 // 縛るのは3つ:
 // - **画面は GB / MB、契約はバイト**。変換は retentionModel.ts の1経路だけを通り、往復で値が変わらない
-// - **不正値(空欄・負・非数)は null**(CLI 側を既定へ戻す)+ 入力欄に既定値を入れ直す。
+// - **欄に入るのは明示設定(configured)だけ**。未設定は空欄 + 既定値のプレースホルダ。
+//   **不正値(空欄・負・非数)は null**(CLI 側を既定へ戻す)+ 入力欄を空欄にする。
 //   **0 は有効な指定**(保持しない)なので 0 として送る
 // - webview が送る payload が拡張側の最終ゲート(isMonitorFromWebviewMessage)を通る
 //   —— 片側だけ鍵を変えるとメッセージごと捨てられ、打った値が黙って届かなくなる
@@ -23,6 +24,7 @@ import {
   bytesToUnitValue,
   formatBytes,
   parseRetentionInput,
+  parseRetentionResponse,
   unitValueToBytes,
 } from "../src/retentionModel";
 
@@ -97,6 +99,15 @@ const RESPONSE = {
     xcresultMaxBytes: 5368709120,
     sweepAfterRun: true,
   },
+  // 明示設定。recordings と xcresult は未設定(null)= 空欄 + 既定のプレースホルダ
+  configured: {
+    deviceCapturesMaxBytes: 21474836480,
+    recordingsMaxBytes: null,
+    reportsMaxBytes: 1048576000,
+    logsMaxBytes: 524288000,
+    xcresultMaxBytes: null,
+    sweepAfterRun: true,
+  },
   defaults: {
     deviceCapturesMaxBytes: 21474836480,
     recordingsMaxBytes: 107374182400,
@@ -148,17 +159,21 @@ test("入力の判定: 0 は有効・負と非数と空欄だけが不正", () =
   assert.equal(parseRetentionInput("Infinity"), null);
 });
 
-test("クリーンアップ: CLI の実効値が入力欄と使用量に入る", (t) => {
+test("クリーンアップ: 明示設定は入力欄に入り、未設定は空欄 + 既定のプレースホルダ・使用量も入る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
 
   post(window, RESPONSE);
 
   assert.equal(document.getElementById(INPUT_IDS.deviceCapturesMaxBytes).value, "20", "20 GB");
-  assert.equal(document.getElementById(INPUT_IDS.recordingsMaxBytes).value, "100", "100 GB");
   assert.equal(document.getElementById(INPUT_IDS.reportsMaxBytes).value, "1000", "1000 MB");
   assert.equal(document.getElementById(INPUT_IDS.logsMaxBytes).value, "500", "500 MB");
-  assert.equal(document.getElementById(INPUT_IDS.xcresultMaxBytes).value, "5", "5 GB");
+  const recordings = document.getElementById(INPUT_IDS.recordingsMaxBytes);
+  assert.equal(recordings.value, "", "未設定は値を入れない(実効値で埋めない)");
+  assert.equal(recordings.placeholder, "100", "既定値(100 GB)はプレースホルダに出す");
+  const xcresult = document.getElementById(INPUT_IDS.xcresultMaxBytes);
+  assert.equal(xcresult.value, "");
+  assert.equal(xcresult.placeholder, "5");
   assert.equal(document.getElementById("settings-cleanup-enabled").checked, true);
 
   const usage = document.getElementById(`${INPUT_IDS.deviceCapturesMaxBytes}-usage`).textContent;
@@ -206,11 +221,11 @@ test("クリーンアップ: 0 は 0 として送る(null に丸めない)", (t)
   assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
 });
 
-test("クリーンアップ: 空欄・負・非数は null を送り入力欄に既定値を入れ直す", (t) => {
+test("クリーンアップ: 空欄・負・非数は null を送り入力欄を空欄にする", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   post(window, RESPONSE);
-  const input = document.getElementById(INPUT_IDS.recordingsMaxBytes);
+  const input = document.getElementById(INPUT_IDS.deviceCapturesMaxBytes);
 
   for (const raw of ["", "-3", "abc"]) {
     posted.length = 0;
@@ -218,10 +233,31 @@ test("クリーンアップ: 空欄・負・非数は null を送り入力欄に
 
     const messages = posted.filter((m) => m?.type === "setRetention");
     assert.equal(messages.length, 1, `"${raw}" で1件送る`);
-    assert.equal(messages[0].patch.recordingsMaxBytes, null, `"${raw}" は既定へ戻す`);
-    assert.equal(input.value, "100", `"${raw}" は入力欄に既定値(100 GB)を入れ直す`);
+    assert.equal(messages[0].patch.deviceCapturesMaxBytes, null, `"${raw}" は既定へ戻す`);
+    assert.equal(input.value, "", `"${raw}" は空欄にする(既定値はプレースホルダ)`);
+    assert.equal(input.placeholder, "20");
     assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
   }
+});
+
+test("クリーンアップ: 既定へ戻した応答(configured が null)で欄が空欄に戻る", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, RESPONSE);
+  const input = document.getElementById(INPUT_IDS.logsMaxBytes);
+  assert.equal(input.value, "500");
+
+  post(window, { ...RESPONSE, configured: { ...RESPONSE.configured, logsMaxBytes: null } });
+  assert.equal(input.value, "", "実効値(policy)で埋め直さない");
+  assert.equal(input.placeholder, "500");
+});
+
+test("応答の解釈: configured が無い応答は読めない扱い(古い CLI の形を吸わない)", () => {
+  const { type: _type, ...json } = RESPONSE;
+  assert.notEqual(parseRetentionResponse(json), undefined);
+  const { configured: _configured, ...withoutConfigured } = json;
+  assert.equal(parseRetentionResponse(withoutConfigured), undefined);
+  assert.equal(parseRetentionResponse({ ...json, configured: { logsMaxBytes: "500" } }), undefined, "値の型も検める");
 });
 
 test("クリーンアップ: トグルの切替が setRetention として送られる", (t) => {
@@ -308,6 +344,7 @@ test("クリーンアップ: 使用量は後から届く(上限だけ先に出�
   post(window, {
     type: "retention",
     policy: RESPONSE.policy,
+    configured: RESPONSE.configured,
     defaults: RESPONSE.defaults,
     usage: { deviceCaptures: null, recordings: null, reports: null, logs: null, xcresult: null },
   });
@@ -337,6 +374,7 @@ test("クリーンアップ: 設定を変えた応答(使用量を測ってい�
   const writeResponse = {
     type: "retention",
     policy: { ...RESPONSE.policy, sweepAfterRun: false },
+    configured: { ...RESPONSE.configured, sweepAfterRun: false },
     defaults: RESPONSE.defaults,
     usage: {},
   };

@@ -337,12 +337,11 @@ export type MonitorToWebviewMessage =
   | { readonly type: "pollingMode"; readonly value: boolean }
   // 設定タブのスケジューリング section。fleetest.lptScheduling の現在値(拡張→webview)
   | { readonly type: "lptScheduling"; readonly value: boolean }
-  // LPT の実績走査 run 数。default は設定タブの初期値・空欄時の戻り先に使う
-  | { readonly type: "lptHistoryRuns"; readonly value: number; readonly default: number }
-  // 設定タブ「マシン」section の順番待ち上限(秒)。fleetest.remoteWaitLock の現在値。
-  // default は lptHistoryRuns と同じく初期値・空欄時の戻り先(**0 も正当な値**なので
-  // 「空欄 = 0」にはしない)
-  | { readonly type: "remoteWaitLock"; readonly value: number; readonly default: number }
+  // LPT の実績走査 run 数。value は**明示設定だけ**(null = 未設定 → 空欄 + default のプレースホルダ)
+  | { readonly type: "lptHistoryRuns"; readonly value: number | null; readonly default: number }
+  // 設定タブ「マシン」section の順番待ち上限(秒)。value は明示設定だけ(null = 未設定 → 空欄 +
+  // default のプレースホルダ)。**0 も正当な明示値**(待たない)なので null と混ぜない
+  | { readonly type: "remoteWaitLock"; readonly value: number | null; readonly default: number }
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(fleetest.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }

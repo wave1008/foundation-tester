@@ -2,9 +2,10 @@
 // (fleetest api retention)。stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。
 // ApiRemoteHostsCommand.swift と同じ流儀)。
 //
-// **拡張側と1:1の契約**: policy / defaults / usage の3つとも**全キーを必ず出す**
+// **拡張側と1:1の契約**: policy / configured / defaults / usage の4つとも**全キーを必ず出す**
 // (省略可能フィールドでも undefined 判定を書かせない)。`policy` は nil を既定で埋めた
-// **実効値** —— 拡張は「今なにが効いているか」を表示するので、未設定と既定の差は出さない。
+// **実効値**、`configured` は設定ファイルに明示された値だけ(未設定は null)。拡張は configured を
+// 入力欄に入れ、未設定の欄は空欄 + 既定値のプレースホルダにする(値が既定と同じでも明示は明示)。
 
 import ArgumentParser
 import Foundation
@@ -39,7 +40,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         }
         let policy = config.retention ?? RetentionPolicy()
         let usage = withUsage ? RetentionSweeper.usage(roots: roots) : nil
-        Self.emit(policy: policy, usage: usage)
+        if let line = Self.outputLine(policy: policy, usage: usage) { ConsoleOut.out(line) }
     }
 
     /// **キーが無い = 据え置き / null = 既定へ戻す(LocalConfig から消す)/ 値 = 上書き**。
@@ -118,17 +119,17 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         }
     }
 
-    private static func emit(policy: RetentionPolicy, usage: [RetentionSweeper.Category: Int64]?) {
+    static func outputLine(policy: RetentionPolicy, usage: [RetentionSweeper.Category: Int64]?) -> String? {
         let output = Output(
-            policy: PolicyOutput(policy.resolved), defaults: PolicyOutput(RetentionPolicy.defaults),
+            policy: PolicyOutput(policy.resolved), configured: ConfiguredOutput(policy),
+            defaults: PolicyOutput(RetentionPolicy.defaults),
             usage: UsageOutput(
                 deviceCaptures: usage?[.deviceCaptures], recordings: usage?[.recordings],
                 reports: usage?[.reports], logs: usage?[.logs], xcresult: usage?[.xcresult]))
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
-        guard let data = try? encoder.encode(output),
-              let line = String(data: data, encoding: .utf8) else { return }
-        ConsoleOut.out(line)
+        guard let data = try? encoder.encode(output) else { return nil }
+        return String(data: data, encoding: .utf8)
     }
 
     /// 実効値なので Optional を持たない(RetentionPolicy をそのまま encode すると
@@ -148,6 +149,30 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             logsMaxBytes = policy.effectiveLogsMaxBytes
             xcresultMaxBytes = policy.effectiveXcresultMaxBytes
             sweepAfterRun = policy.effectiveSweepAfterRun
+        }
+    }
+
+    /// 設定ファイルに明示された値。**未設定は null で必ず出す**(キーを落とすと未設定と契約違反が
+    /// 区別できない)。`policy` 側の実効値と畳まない —— 既定と同じ値を明示したのか未設定なのかは
+    /// 実効値からは分からない
+    private struct ConfiguredOutput: Encodable {
+        let policy: RetentionPolicy
+
+        init(_ policy: RetentionPolicy) { self.policy = policy }
+
+        func encode(to encoder: Encoder) throws {
+            var c = encoder.container(keyedBy: CodingKeys.self)
+            try c.encode(policy.deviceCapturesMaxBytes, forKey: .deviceCapturesMaxBytes)
+            try c.encode(policy.recordingsMaxBytes, forKey: .recordingsMaxBytes)
+            try c.encode(policy.reportsMaxBytes, forKey: .reportsMaxBytes)
+            try c.encode(policy.logsMaxBytes, forKey: .logsMaxBytes)
+            try c.encode(policy.xcresultMaxBytes, forKey: .xcresultMaxBytes)
+            try c.encode(policy.sweepAfterRun, forKey: .sweepAfterRun)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case deviceCapturesMaxBytes, recordingsMaxBytes, reportsMaxBytes, logsMaxBytes
+            case xcresultMaxBytes, sweepAfterRun
         }
     }
 
@@ -176,6 +201,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
 
     private struct Output: Encodable {
         let policy: PolicyOutput
+        let configured: ConfiguredOutput
         let defaults: PolicyOutput
         let usage: UsageOutput
     }

@@ -104,4 +104,23 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertNil(RetentionSweeper.reportDay(of: "scenario-20260723-0244-308-x.md"))
         XCTAssertNil(RetentionSweeper.reportDay(of: "my-scenario-20260723-024446-308-x.md"))
     }
+
+    /// `configured` は明示した欄だけ値・未設定は null で、**全キーを必ず出す**(拡張は null を
+    /// 空欄 + プレースホルダにする)。`policy` 側は未設定も既定で埋めた実効値のまま
+    func testConfiguredCarriesOnlyExplicitValuesAndNullsTheRest() throws {
+        let line = try XCTUnwrap(ApiRetentionCommand.outputLine(
+            policy: RetentionPolicy(logsMaxBytes: 7, sweepAfterRun: true), usage: nil))
+        let json = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        let configured = try XCTUnwrap(json["configured"] as? [String: Any])
+        XCTAssertEqual(Set(configured.keys), [
+            "deviceCapturesMaxBytes", "recordingsMaxBytes", "reportsMaxBytes", "logsMaxBytes",
+            "xcresultMaxBytes", "sweepAfterRun",
+        ])
+        XCTAssertEqual(configured["logsMaxBytes"] as? Int, 7)
+        XCTAssertEqual(configured["sweepAfterRun"] as? Bool, true)
+        XCTAssertTrue(configured["recordingsMaxBytes"] is NSNull)
+        let policy = try XCTUnwrap(json["policy"] as? [String: Any])
+        XCTAssertEqual(policy["recordingsMaxBytes"] as? Int, 53_687_091_200)
+    }
 }

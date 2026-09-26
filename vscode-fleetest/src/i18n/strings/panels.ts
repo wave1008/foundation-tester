@@ -244,8 +244,8 @@ export const panelsStrings = {
     en: "Dispatches scenarios longest-first based on measured history to shorten total time. Scenarios with no history go first.",
   },
   "panels.settings.lptHistoryRunsLabel": {
-    ja: "直近 N 件までの履歴を使用する",
-    en: "Use history from the latest N runs",
+    ja: "使用する履歴数",
+    en: "History runs to use",
   },
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
