@@ -72,6 +72,12 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         XCTAssertTrue(notVisibleBody.contains(".ocrOnlyWouldFlip"),
                       "不可視側は無条件に ocrOnlyWouldFlip を立てるはず")
         XCTAssertTrue(notVisibleBody.contains("if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }"))
+        // 警告の段階: 不可視でも赤にしない(新しい検知は警告から。赤へ上げるのは誤検知 0 を確かめてから)
+        XCTAssertTrue(notVisibleBody.contains("return nil"), "不可視側は素通り(return nil)のはず")
+        XCTAssertFalse(block.contains(".failed("), "OCR だけの判定で赤にしている")
+        // 読んでいない(nil)を「読んで何も無かった」([])へ畳まない(畳むとインク量だけで不可視と言う)
+        XCTAssertTrue(block.contains("OCROnlyVisibility.judge(lines: ocrReading?.lines,"))
+        XCTAssertFalse(block.contains("ocrReading?.lines ?? []"))
         XCTAssertFalse(undeterminedBody.contains(".ocrOnlyWouldFlip"),
                        "判定不能は不可視ではないので ocrOnlyWouldFlip を立てないはず")
         XCTAssertTrue(undeterminedBody.contains("if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }"))

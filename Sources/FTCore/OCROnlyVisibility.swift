@@ -1,7 +1,8 @@
 // occlusion-guard: FM が判定を返さなかったとき(macOS 26 で画像を渡せない・実呼び出しの失敗・
 // 直列化待ちの期限切れ・陽性対照の注入)の代替判定。使う材料は同じ呼び出しの中で Tier-2 の近道が
 // **既に読んだ** OCR の行(lines)と、Tier-1 のインク量だけ —— 追加の OCR は撃たない
-// (近道が撃たれていない回は lines が空のまま渡ってくる)。
+// (近道が撃たれていない回は lines = nil = 判定不能。「読んで何も無かった」[] と混ぜると、読んでいない
+// のにインク量だけで不可視と言う —— E2E の暖機前のステップで実際に出た)。
 //
 // **不可視と判定しても今は赤にしない**(呼び手が `.ocrOnlyWouldFlip` を残して素通りする)。
 // 新しい検知は警告から入れる規律(ユーザー決定)で、デバイス実行で誤検知 0 を確かめてから赤へ上げる。
@@ -18,10 +19,11 @@ public enum OCROnlyVisibility {
         case undetermined
     }
 
-    /// `lines` が空でなければ `TranscriptMatch.judge` へそのまま回す。空なら `inkStdDev` で
-    /// 「描かれていない」か「判定不能」かだけを分ける(丸ごと読めた/一部読めたの判定はできない)。
-    public static func judge(lines: [String], expected: String,
+    /// `lines` が nil(読んでいない)なら判定不能。空でなければ `TranscriptMatch.judge` へそのまま回す。
+    /// 空なら `inkStdDev` で「描かれていない」か「判定不能」かだけを分ける。
+    public static func judge(lines: [String]?, expected: String,
                              inkStdDev: Double?, inkThreshold: Double) -> Outcome {
+        guard let lines else { return .undetermined }
         if !lines.isEmpty {
             let verdict = TranscriptMatch.judge(transcript: lines.joined(separator: " "), expected: expected)
             return verdict.visible ? .visible(verdict.state) : .notVisible(verdict.state)

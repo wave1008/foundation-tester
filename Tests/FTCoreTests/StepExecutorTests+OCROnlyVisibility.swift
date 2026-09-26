@@ -1,17 +1,17 @@
 // occlusion-guard: FM が判定を返さないとき(実呼び出しの失敗・陽性対照の注入)の代替判定
 // (OCROnlyVisibility)を実際の StepExecutor.execute 経由で駆動する。ここで確定的に再現できるのは
-// インク経由の notVisible/undetermined だけ(lines 経由の visible は Vision の実読みが要るため、
-// 純関数テストは Tests/FTCoreTests/OCROnlyVisibilityTests.swift、配線は
-// Tests/FTCoreTests/OCROnlyVisibilityWiringTests.swift のソース走査で固定する)。
+// 「読みが無い(OCR が off・近道が撃たれていない)なら判定しない」側だけ(読みのある判定は Vision の
+// 実読みが要り、本番の読みの経路には差し替え口が無いため、純関数テストは
+// Tests/FTCoreTests/OCROnlyVisibilityTests.swift、配線は OCROnlyVisibilityWiringTests のソース走査で固定する)。
 import XCTest
 @testable import FTCore
 
 extension StepExecutorTests {
 
-    /// FM に実際に訊いたが答えが無く(NoVerdictVisibilityDelegate)、低インク(Self.blankPNG)なら
-    /// OCROnlyVisibility が notVisible と判定する。**赤にはしない**(素通りで pass)。
-    /// FM に訊いた回なので visibilityGuardSkipped も立つ
-    func testNoVerdictFromFMWithLowInkPassesQuietlyWithBothNotes() async throws {
+    /// FM に実際に訊いたが答えが無く(NoVerdictVisibilityDelegate)、OCR の読みも無い(off)。
+    /// **低インク(Self.blankPNG)でも不可視とは言わない** —— 読んでいないのにインク量だけで判定していた
+    /// (E2E の暖機前のステップで ocr-only-would-flip が出た)。FM に訊いた回なので visibilityGuardSkipped は立つ
+    func testNoVerdictFromFMWithoutOCRReadingDoesNotJudgeByInkAlone() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
@@ -25,9 +25,9 @@ extension StepExecutorTests {
         let outcome = await executor.execute(step)
 
         guard case .passed = outcome.status else {
-            XCTFail("不可視でも赤にはしないはず。実際は \(outcome.status)"); return
+            XCTFail("実際は \(outcome.status)"); return
         }
-        XCTAssertTrue(outcome.notes.contains(.ocrOnlyWouldFlip), "\(outcome.notes)")
+        XCTAssertFalse(outcome.notes.contains(.ocrOnlyWouldFlip), "読みが無いのに判定した: \(outcome.notes)")
         XCTAssertTrue(outcome.notes.contains(.visibilityGuardSkipped), "FM に訊いた回なので立つはず: \(outcome.notes)")
         XCTAssertEqual(delegate.visibleCalls, 1)
     }
@@ -53,7 +53,8 @@ extension StepExecutorTests {
     }
 
     /// 陽性対照の注入(FT_FAKE_FM_NO_VERDICT=1): FM を撃たずに OCR/インクだけの代替判定へ落ちる。
-    /// **訊いてすらいない**ので visibilityGuardSkipped は立たない(macOS 26 と同じ契約)
+    /// **訊いてすらいない**ので visibilityGuardSkipped は立たない(macOS 26 と同じ契約)。
+    /// OCR が off なので読みが無く、不可視とも言わない
     func testFMNoVerdictInjectionSkipsFMEntirely() async throws {
         let saved = ProcessInfo.processInfo.environment[FMNoVerdictInjection.environmentKey]
         setenv(FMNoVerdictInjection.environmentKey, "1", 1)
@@ -77,7 +78,7 @@ extension StepExecutorTests {
 
         guard case .passed = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
         XCTAssertEqual(delegate.visibleCalls, 0, "注入が効いていれば FM を一切呼ばないはず")
-        XCTAssertTrue(outcome.notes.contains(.ocrOnlyWouldFlip), "\(outcome.notes)")
+        XCTAssertFalse(outcome.notes.contains(.ocrOnlyWouldFlip), "\(outcome.notes)")
         XCTAssertFalse(outcome.notes.contains(.visibilityGuardSkipped),
                        "訊いてすらいないので立たないはず: \(outcome.notes)")
     }

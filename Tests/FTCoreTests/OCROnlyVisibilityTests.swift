@@ -27,6 +27,12 @@ final class OCROnlyVisibilityTests: XCTestCase {
         XCTAssertEqual(outcome, .notVisible(.mostlyHidden))
     }
 
+    /// 読んでいない(近道が撃たれていない)なら、低インクでも判定しない
+    func testNoReadingIsUndeterminedEvenWithLowInk() {
+        XCTAssertEqual(OCROnlyVisibility.judge(lines: nil, expected: "ログイン", inkStdDev: 2, inkThreshold: threshold),
+                       .undetermined)
+    }
+
     func testNoLinesWithLowInkAreNotVisible() {
         let outcome = OCROnlyVisibility.judge(lines: [], expected: "ログイン",
                                               inkStdDev: 2, inkThreshold: threshold)

@@ -229,6 +229,12 @@ extension StepExecutor {
         // **訊いてすらいない**ので visibilityGuardSkipped は立てない
         // (「静的に無効な構成では出ない」契約を保つ。applyOCROnlyVisibility の countsAsSkipped)
         guard fmAvailable else {
+            if occlusionOCRMode == .measure {
+                dumpOCRCorpus(tier: geo ? "geo" : "ink", sd: sd, ocrReading: ocrReading,
+                              ocrReadable: ocrReadable, expectedText: expectedText,
+                              screenshot: screenshot, element: element, screen: screen,
+                              fmVisible: nil, fmState: nil, fmObserved: nil)
+            }
             return applyOCROnlyVisibility(ocrReading: ocrReading, expectedText: expectedText, sd: sd,
                                           screenshot: screenshot, element: element, screen: screen,
                                           countsAsSkipped: false)
@@ -307,7 +313,7 @@ extension StepExecutor {
     }
 
     /// FM が判定を返せない(macOS 26・陽性対照の注入・実呼び出しの失敗)ときの代替判定。
-    /// 使うのは同じ呼び出しの中で既に読んだ `ocrReading`(近道が撃たれていなければ空)と
+    /// 使うのは同じ呼び出しの中で既に読んだ `ocrReading`(近道が撃たれていなければ nil = 判定不能)と
     /// `sd`(無ければここで測る)だけ —— **追加の OCR は撃たない**。
     /// **不可視と判定しても赤にしない**(`.ocrOnlyWouldFlip` を残して素通り)。
     /// `countsAsSkipped` は FM に**実際に訊いた**回だけ true
@@ -316,7 +322,7 @@ extension StepExecutor {
                                         sd: Double?, screenshot: Data, element: ElementInfo,
                                         screen: FTRect, countsAsSkipped: Bool) -> StepResult.Status? {
         let ink = sd ?? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen)
-        switch OCROnlyVisibility.judge(lines: ocrReading?.lines ?? [], expected: expectedText,
+        switch OCROnlyVisibility.judge(lines: ocrReading?.lines, expected: expectedText,
                                        inkStdDev: ink, inkThreshold: occlusionInkThreshold) {
         case .visible(let state):
             notePartialVisibility(state)
