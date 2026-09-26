@@ -81,6 +81,15 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// その掃除より後に生まれた分か掃除の間隔が空いた分だけ
     public static let defaultXcresultMaxBytes: Int64 = 5 * 1_073_741_824
 
+    // MARK: - 最小値(ユーザー決定。これより小さい上限は受け付けない)
+
+    /// `api retention --import` はこれ未満を断る。拡張は `api retention` の `minimums` を欄の下限に使う
+    public static let minDeviceCapturesMaxBytes: Int64 = 1 * 1_073_741_824   // 1 GiB
+    public static let minRecordingsMaxBytes: Int64 = 2 * 1_073_741_824      // 2 GiB
+    public static let minReportsMaxBytes: Int64 = 100 * 1_048_576           // 100 MiB
+    public static let minLogsMaxBytes: Int64 = 10 * 1_048_576               // 10 MiB
+    public static let minXcresultMaxBytes: Int64 = 1 * 1_073_741_824        // 1 GiB
+
     /// 既定で run の完了後に掃除する。**背景の別プロセス**で走るのでテストの実行時間には乗らない
     public static let defaultSweepAfterRun = true
 
@@ -115,8 +124,9 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     }
     public var effectiveSweepAfterRun: Bool { sweepAfterRun ?? Self.defaultSweepAfterRun }
 
-    /// 実効値に nil は無い。**0 と負を混ぜない** —— 0 は「保持しない」という有効な指定で、
-    /// 負だけが無効(既定へ倒す)
+    /// 実効値に nil は無い。**0 と負を混ぜない** —— 負だけが無効(既定へ倒す)。最小値は書き込みの
+    /// 門(`api retention --import`・設定タブ)でだけ効かせ、ここでは引き上げない(掃除のテストは
+    /// 小さな上限で経路を通す。手で書いた設定ファイルの値はそのまま効く)
     static func effective(_ value: Int64?, default fallback: Int64) -> Int64 {
         guard let value, value >= 0 else { return fallback }
         return value

@@ -16,6 +16,14 @@ final class RetentionPolicyTests: XCTestCase {
         XCTAssertTrue(RetentionPolicy.defaultSweepAfterRun)
     }
 
+    func testMinimumsArePinned() {
+        XCTAssertEqual(RetentionPolicy.minDeviceCapturesMaxBytes, 1_073_741_824)  // 1 GiB
+        XCTAssertEqual(RetentionPolicy.minRecordingsMaxBytes, 2_147_483_648)      // 2 GiB
+        XCTAssertEqual(RetentionPolicy.minReportsMaxBytes, 104_857_600)           // 100 MiB
+        XCTAssertEqual(RetentionPolicy.minLogsMaxBytes, 10_485_760)               // 10 MiB
+        XCTAssertEqual(RetentionPolicy.minXcresultMaxBytes, 1_073_741_824)        // 1 GiB
+    }
+
     /// 未設定(全欄 nil)のとき、実効値が既定と1バイトも違わない
     func testUnsetPolicyFallsBackToTheDefaults() {
         let policy = RetentionPolicy()
@@ -28,8 +36,8 @@ final class RetentionPolicyTests: XCTestCase {
         XCTAssertEqual(RetentionPolicy.defaults, policy.resolved)
     }
 
-    /// **0 は「保持しない」という有効な指定**。既定へ倒してはいけない
-    func testZeroMeansKeepNothingAndIsNotReplacedByTheDefault() {
+    /// 0 は負と違って既定へ倒さない(最小値は書き込みの門で効かせ、実効値では引き上げない)
+    func testZeroIsNotReplacedByTheDefault() {
         let policy = RetentionPolicy(deviceCapturesMaxBytes: 0, recordingsMaxBytes: 0,
                                      reportsMaxBytes: 0, logsMaxBytes: 0, xcresultMaxBytes: 0,
                                      sweepAfterRun: false)

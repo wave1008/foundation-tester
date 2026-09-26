@@ -6,7 +6,7 @@
 // - **画面は GB / MB、契約はバイト**。変換は retentionModel.ts の1経路だけを通り、往復で値が変わらない
 // - **欄に入るのは明示設定(configured)だけ**。未設定は空欄 + 既定値のプレースホルダ。
 //   **不正値(空欄・負・非数)は null**(CLI 側を既定へ戻す)+ 入力欄を空欄にする。
-//   **0 は有効な指定**(保持しない)なので 0 として送る
+//   **最小値(CLI の minimums)未満は最小値へ引き上げて送る**(CLI は未満を断る)
 // - webview が送る payload が拡張側の最終ゲート(isMonitorFromWebviewMessage)を通る
 //   —— 片側だけ鍵を変えるとメッセージごと捨てられ、打った値が黙って届かなくなる
 
@@ -116,6 +116,14 @@ const RESPONSE = {
     xcresultMaxBytes: 5368709120,
     sweepAfterRun: true,
   },
+  // CLI の RetentionPolicy.min…(1 GB / 2 GB / 100 MB / 10 MB / 1 GB)
+  minimums: {
+    deviceCapturesMaxBytes: 1073741824,
+    recordingsMaxBytes: 2147483648,
+    reportsMaxBytes: 104857600,
+    logsMaxBytes: 10485760,
+    xcresultMaxBytes: 1073741824,
+  },
   usage: {
     deviceCaptures: 934000000000,
     recordings: 2900000000,
@@ -205,20 +213,36 @@ test("クリーンアップ: 入力した上限はバイトで送られ、ゲー
   }
 });
 
-test("クリーンアップ: 0 は 0 として送る(null に丸めない)", (t) => {
+test("クリーンアップ: 最小値未満(0 を含む)は最小値へ引き上げて送り、欄の下限も最小値", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
   post(window, RESPONSE);
-  posted.length = 0;
 
-  const input = document.getElementById(INPUT_IDS.reportsMaxBytes);
-  change(window, input, "0");
-
-  const messages = posted.filter((m) => m?.type === "setRetention");
-  assert.equal(messages.length, 1);
-  assert.equal(messages[0].patch.reportsMaxBytes, 0, "「保持しない」は有効な指定");
-  assert.equal(input.value, "0", "入力欄も 0 のまま(既定へ戻さない)");
-  assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
+  const cases = [
+    [INPUT_IDS.deviceCapturesMaxBytes, "1"],
+    [INPUT_IDS.recordingsMaxBytes, "2"],
+    [INPUT_IDS.reportsMaxBytes, "100"],
+    [INPUT_IDS.logsMaxBytes, "10"],
+    [INPUT_IDS.xcresultMaxBytes, "1"],
+  ];
+  for (const [id, minShown] of cases) {
+    const input = document.getElementById(id);
+    const key = Object.keys(INPUT_IDS).find((k) => INPUT_IDS[k] === id);
+    assert.equal(input.min, minShown, `${id}: 欄の下限`);
+    for (const raw of ["0", String(Number(minShown) / 2)]) {
+      posted.length = 0;
+      change(window, input, raw);
+      const messages = posted.filter((m) => m?.type === "setRetention");
+      assert.equal(messages.length, 1);
+      assert.equal(messages[0].patch[key], RESPONSE.minimums[key], `${id}: "${raw}" は最小値で送る`);
+      assert.equal(input.value, minShown, `${id}: 欄にも最小値を入れ直す`);
+      assert.equal(isMonitorFromWebviewMessage(messages[0]), true);
+    }
+    // ちょうど最小値はそのまま
+    posted.length = 0;
+    change(window, input, minShown);
+    assert.equal(posted.filter((m) => m?.type === "setRetention")[0].patch[key], RESPONSE.minimums[key]);
+  }
 });
 
 test("クリーンアップ: 空欄・負・非数は null を送り入力欄を空欄にする", (t) => {
@@ -252,11 +276,13 @@ test("クリーンアップ: 既定へ戻した応答(configured が null)で欄
   assert.equal(input.placeholder, "500");
 });
 
-test("応答の解釈: configured が無い応答は読めない扱い(古い CLI の形を吸わない)", () => {
+test("応答の解釈: configured・minimums が無い応答は読めない扱い(古い CLI の形を吸わない)", () => {
   const { type: _type, ...json } = RESPONSE;
   assert.notEqual(parseRetentionResponse(json), undefined);
   const { configured: _configured, ...withoutConfigured } = json;
   assert.equal(parseRetentionResponse(withoutConfigured), undefined);
+  const { minimums: _minimums, ...withoutMinimums } = json;
+  assert.equal(parseRetentionResponse(withoutMinimums), undefined, "minimums も必須");
   assert.equal(parseRetentionResponse({ ...json, configured: { logsMaxBytes: "500" } }), undefined, "値の型も検める");
 });
 
@@ -398,4 +424,50 @@ test("クリーンアップ: 設定を変えた応答(使用量を測ってい�
   // 欄が使えなくなったら使用量も出さない
   post(window, { type: "retention", error: "unknown subcommand: retention" });
   assert.equal(logsUsage(), "");
+});
+
+// 空欄(既定値はプレースホルダ)でスピンボタン/↑↓キーを押したら既定値から増減する。jsdom はスピンの
+// 増減そのものを実装しないので、縛るのは「押した瞬間に既定値が仮に入る」「増減が起きなければ空欄へ戻す」
+test("空欄の数値欄は押した瞬間に既定値を起点として入れ、増減が起きなければ空欄へ戻す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, RESPONSE);
+  post(window, { type: "lptHistoryRuns", value: null, default: 5 });
+  post(window, { type: "remoteWaitLock", value: null, default: 3600 });
+  post(window, { type: "remoteConfig", hosts: [], defaultFMConcurrency: 4,
+    local: { machine: "local", host: "me@localhost", fmConcurrency: 0 } });
+
+  const cases = [
+    [document.getElementById(INPUT_IDS.recordingsMaxBytes), "100"],
+    [document.getElementById("settings-lpt-history"), "5"],
+    [document.getElementById("settings-remote-wait-lock"), "3600"],
+    [document.querySelector(".settings-remote-hosts-fm-input"), "4"],
+  ];
+  for (const [input, expected] of cases) {
+    assert.equal(input.value, "", `${input.id || input.className}: 前提は空欄`);
+
+    // 文字部分をクリックしただけ(input が来ない)→ 空欄へ戻す
+    input.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    assert.equal(input.value, expected, "押した瞬間は既定値が起点として入る");
+    input.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    assert.equal(input.value, "", "増減が起きなければ空欄へ戻す");
+
+    // スピンボタン(mousedown の既定動作で増減 → input)→ 残す
+    input.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+    input.value = String(Number(expected) + 1);
+    input.dispatchEvent(new window.Event("input", { bubbles: true }));
+    input.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true }));
+    assert.equal(input.value, String(Number(expected) + 1), "増減した値は残す");
+
+    // ↑↓キーも既定値から
+    input.value = "";
+    input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    assert.equal(input.value, expected, "↓キーでも既定値が起点");
+    input.value = "";
+  }
+
+  // 明示値がある欄には触らない
+  const explicit = document.getElementById(INPUT_IDS.logsMaxBytes);
+  explicit.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true }));
+  assert.equal(explicit.value, "500");
 });

@@ -27,10 +27,18 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertNil(merged?.recordingsMaxBytes)
     }
 
-    /// 0 は有効な指定なので欄として残る(null と混ぜない)
-    func testZeroIsStoredAndIsNotTreatedAsAReset() throws {
-        let merged = try merge(nil, #"{"logsMaxBytes":0}"#)
-        XCTAssertEqual(merged?.logsMaxBytes, 0)
+    /// 最小値未満は断る(0 も含む)。ちょうど最小値・null(既定へ戻す)・キー欠落は通す
+    func testImportBelowTheMinimumIsRejected() throws {
+        func validate(_ json: String) throws {
+            try ApiRetentionCommand.validateMinimums(try ApiRetentionCommand.decode(json))
+        }
+        for json in [#"{"deviceCapturesMaxBytes":1073741823}"#, #"{"recordingsMaxBytes":2147483647}"#,
+                     #"{"reportsMaxBytes":104857599}"#, #"{"logsMaxBytes":10485759}"#,
+                     #"{"xcresultMaxBytes":1073741823}"#, #"{"logsMaxBytes":0}"#] {
+            XCTAssertThrowsError(try validate(json), json)
+        }
+        XCTAssertNoThrow(try validate(#"{"deviceCapturesMaxBytes":1073741824,"recordingsMaxBytes":2147483648,"reportsMaxBytes":104857600,"logsMaxBytes":10485760,"xcresultMaxBytes":1073741824}"#))
+        XCTAssertNoThrow(try validate(#"{"logsMaxBytes":null,"sweepAfterRun":false}"#))
     }
 
     /// 全欄が既定へ戻ったら retention 欄ごと消す(既定だけの設定を残さない)
@@ -122,5 +130,8 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertTrue(configured["recordingsMaxBytes"] is NSNull)
         let policy = try XCTUnwrap(json["policy"] as? [String: Any])
         XCTAssertEqual(policy["recordingsMaxBytes"] as? Int, 53_687_091_200)
+        let minimums = try XCTUnwrap(json["minimums"] as? [String: Any])
+        XCTAssertEqual(minimums["reportsMaxBytes"] as? Int, 104_857_600)
+        XCTAssertEqual(minimums.count, 5, "上限5欄すべて")
     }
 }

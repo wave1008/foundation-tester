@@ -32,13 +32,17 @@ run の**完了後に、別プロセスの背景で**保持容量の掃除が走
 **消す処理は機械で同時に1本**(`FTCore.RetentionSweepLock` = `~/.fleetest/retention-sweep.lock` の flock)。
 背景の掃除は先客がいれば黙って抜け、手動の掃除は先客の pid を名指しして断る。
 
-| カテゴリ | 対象 | 削除の単位 | 既定の上限 |
-|---|---|---|---|
-| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 2 GiB |
-| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 50 GiB |
-| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 2000 MiB |
-| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 100 MiB |
-| `xcresult` | `<repoRoot>/.fleetest/xcresult/`(XCUITest ランナーの結果の束) | 束1つ(起動1回ぶん) | 5 GiB |
+| カテゴリ | 対象 | 削除の単位 | 既定の上限 | 最小値 |
+|---|---|---|---|---|
+| `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 2 GiB | 1 GiB |
+| `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 50 GiB | 2 GiB |
+| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 2000 MiB | 100 MiB |
+| `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 100 MiB | 10 MiB |
+| `xcresult` | `<repoRoot>/.fleetest/xcresult/`(XCUITest ランナーの結果の束) | 束1つ(起動1回ぶん) | 5 GiB | 1 GiB |
+
+**最小値は書き込みの門だけで効かせる**(`api retention --import` が未満を断り、設定タブは欄の下限で
+最小値へ引き上げて送る)。定義元は `RetentionPolicy.min…`、拡張へは `api retention` の `minimums` で渡す。
+実効値(掃除が使う値)は設定ファイルの値を引き上げない。
 
 **結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
 フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の

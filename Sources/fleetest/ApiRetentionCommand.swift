@@ -2,7 +2,7 @@
 // (fleetest api retention)。stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。
 // ApiRemoteHostsCommand.swift と同じ流儀)。
 //
-// **拡張側と1:1の契約**: policy / configured / defaults / usage の4つとも**全キーを必ず出す**
+// **拡張側と1:1の契約**: policy / configured / defaults / minimums / usage の5つとも**全キーを必ず出す**
 // (省略可能フィールドでも undefined 判定を書かせない)。`policy` は nil を既定で埋めた
 // **実効値**、`configured` は設定ファイルに明示された値だけ(未設定は null)。拡張は configured を
 // 入力欄に入れ、未設定の欄は空欄 + 既定値のプレースホルダにする(値が既定と同じでも明示は明示)。
@@ -35,7 +35,9 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         let roots = try RetentionSweeper.Roots.resolve()
         var config = LocalConfig.load()
         if let importJSON {
-            config.retention = Self.merge(config.retention, with: try Self.decode(importJSON))
+            let update = try Self.decode(importJSON)
+            try Self.validateMinimums(update)
+            config.retention = Self.merge(config.retention, with: update)
             try config.save()
         }
         let policy = config.retention ?? RetentionPolicy()
@@ -55,6 +57,23 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         update.xcresultMaxBytes.apply(to: &policy.xcresultMaxBytes)
         update.sweepAfterRun.apply(to: &policy.sweepAfterRun)
         return policy.isEmpty ? nil : policy
+    }
+
+    /// 最小値(`RetentionPolicy.min…`)未満の上限は**断る**(黙って引き上げると打った値と違う値が
+    /// 保存される)。拡張は欄の下限で先に止めるので、ここに来るのは CLI を直接叩いたときだけ
+    static func validateMinimums(_ update: Import) throws {
+        let checks: [(String, Field<Int64>, Int64)] = [
+            ("deviceCapturesMaxBytes", update.deviceCapturesMaxBytes, RetentionPolicy.minDeviceCapturesMaxBytes),
+            ("recordingsMaxBytes", update.recordingsMaxBytes, RetentionPolicy.minRecordingsMaxBytes),
+            ("reportsMaxBytes", update.reportsMaxBytes, RetentionPolicy.minReportsMaxBytes),
+            ("logsMaxBytes", update.logsMaxBytes, RetentionPolicy.minLogsMaxBytes),
+            ("xcresultMaxBytes", update.xcresultMaxBytes, RetentionPolicy.minXcresultMaxBytes),
+        ]
+        for (key, field, minimum) in checks {
+            if case .set(let value) = field, value < minimum {
+                throw ValidationError("\(key) must be at least \(minimum) bytes (got \(value))")
+            }
+        }
     }
 
     static func decode(_ json: String) throws -> Import {
@@ -123,6 +142,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         let output = Output(
             policy: PolicyOutput(policy.resolved), configured: ConfiguredOutput(policy),
             defaults: PolicyOutput(RetentionPolicy.defaults),
+            minimums: MinimumsOutput(),
             usage: UsageOutput(
                 deviceCaptures: usage?[.deviceCaptures], recordings: usage?[.recordings],
                 reports: usage?[.reports], logs: usage?[.logs], xcresult: usage?[.xcresult]))
@@ -176,6 +196,15 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         }
     }
 
+    /// 上限ごとの最小値(拡張は欄の下限に使う。定義元は RetentionPolicy.min…)
+    private struct MinimumsOutput: Encodable {
+        let deviceCapturesMaxBytes = RetentionPolicy.minDeviceCapturesMaxBytes
+        let recordingsMaxBytes = RetentionPolicy.minRecordingsMaxBytes
+        let reportsMaxBytes = RetentionPolicy.minReportsMaxBytes
+        let logsMaxBytes = RetentionPolicy.minLogsMaxBytes
+        let xcresultMaxBytes = RetentionPolicy.minXcresultMaxBytes
+    }
+
     /// **`--usage` を付けなかったときは全欄 null**(0 と混ぜない)。
     /// 欄は必ず出す(拡張に undefined 判定を書かせない。ApiRemoteHostsCommand と同じ流儀)
     private struct UsageOutput: Encodable {
@@ -203,6 +232,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         let policy: PolicyOutput
         let configured: ConfiguredOutput
         let defaults: PolicyOutput
+        let minimums: MinimumsOutput
         let usage: UsageOutput
     }
 }

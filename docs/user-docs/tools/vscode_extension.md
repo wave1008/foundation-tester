@@ -174,15 +174,16 @@ settings, so they also apply to tests you run directly from a terminal.
 - **"Clean up in the background after a test run"** (on by default): cleanup runs in the
   background after each test run. It does not count toward the test run time.
 - **Limits**: only a category whose usage reaches 90% of its limit is trimmed, oldest first, back
-  down to 90%. `0` means keep nothing; clearing a field resets just that item to its default.
+  down to 90%. Clearing a field resets just that item to its default (the default is shown faintly
+  in the field). A value below the minimum becomes the minimum.
 
-  | Item | Default limit |
-  |---|---|
-  | Device recordings and screenshots | 2 GB |
-  | Recordings | 50 GB |
-  | Reports | 2000 MB |
-  | Logs | 100 MB |
-  | Bridge diagnostics | 5 GB |
+  | Item | Default limit | Minimum |
+  |---|---|---|
+  | Device recordings and screenshots | 2 GB | 1 GB |
+  | Recordings | 50 GB | 2 GB |
+  | Reports | 2000 MB | 100 MB |
+  | Logs | 100 MB | 10 MB |
+  | Bridge diagnostics | 5 GB | 1 GB |
 
 - Each row shows the **current usage** on its right. Measuring takes about 20 seconds; until then
   it reads "Now - GB".

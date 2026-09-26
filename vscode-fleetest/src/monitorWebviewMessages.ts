@@ -840,7 +840,7 @@ export type MonitorFromWebviewMessage =
   // window.confirm が効かない)。確認されたら remoteHostRemoveConfirmed を返す
   | { readonly type: "requestRemoveRemoteHost"; readonly rowId: number; readonly machine: string }
   // 設定タブ「ログ・録画」のクリーンアップ欄の欄変更(settingsTab.js)。**渡した鍵だけ**を CLI へ送り、
-  // null はその鍵を既定へ戻す(空欄・不正値のとき)。0 は「保持しない」の有効な指定。
+  // null はその鍵を既定へ戻す(空欄・不正値のとき)。最小値未満は CLI が断る(webview は欄の下限で先に止める)。
   | { readonly type: "setRetention"; readonly patch: RetentionPatch }
   // 設定タブ「今すぐクリーンアップ」。dryRun=true は見積もるだけ。**確認はホスト側**(webview では
   // window.confirm が効かない)—— dryRun=false でも monitorPanel.ts が先に見積もりを撃ち、

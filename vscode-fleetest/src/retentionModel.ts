@@ -4,7 +4,7 @@
 // 両方が読む。i18n/index.ts は import しない —— webview バンドルが壊れる)。
 //
 // 契約(CLI 側と並行実装):
-//   fleetest api retention                    → {"policy":{…},"configured":{…},"defaults":{…},"usage":{…}}
+//   fleetest api retention                    → {"policy":{…},"configured":{…},"defaults":{…},"minimums":{…},"usage":{…}}
 //   fleetest api retention --import '<JSON>'  → 同じ形(渡した鍵だけ上書き・null で既定へ戻す)
 //   fleetest api clean [--dry-run]            → 1行 JSON(「消した合計バイト数」と「エラー文字列」
 //                                               だけを読む。想定外の鍵は無視する)
@@ -62,7 +62,7 @@ export function unitValueToBytes(value: number, unit: RetentionUnit): number {
 
 /**
  * 入力欄の生文字列 → 数値。不正(空欄・負・非数)は null。
- * **0 は有効**(「保持しない」の意味)なので弾かない。`parseInt` は使わない ——
+ * 最小値の判定はしない(最小値は CLI 応答の minimums で、呼び手が引き上げる)。`parseInt` は使わない ——
  * "2.5" を黙って 2 にすると打った値と違う上限が保存される。
  */
 export function parseRetentionInput(raw: string): number | null {
@@ -147,11 +147,13 @@ export interface RetentionResponse {
   /** 入力欄に入れる値はこちら(未設定は null = 空欄 + 既定のプレースホルダ) */
   readonly configured: RetentionConfigured;
   readonly defaults: RetentionValues;
+  /** 上限ごとの最小値(バイト)。欄の下限(未満は最小値へ引き上げて送る)。定義元は CLI の RetentionPolicy.min… */
+  readonly minimums: RetentionValues;
   readonly usage: RetentionUsage;
 }
 
 /**
- * `api retention` の1行 JSON を読む。**policy・configured・defaults が読めたときだけ成功**
+ * `api retention` の1行 JSON を読む。**policy・configured・defaults・minimums が読めたときだけ成功**
  * (defaults が無いと空欄・不正値の戻り先が無く、画面が既定を知らないまま動く)。
  * usage は欠けていても空として扱う(表示が消えるだけで設定は編集できる)。
  * 知らない鍵は素通しする —— CLI が欄を足しても拡張の更新を待たずに読める。
@@ -163,10 +165,11 @@ export function parseRetentionResponse(json: unknown): RetentionResponse | undef
   const policy = asValues(json.policy);
   const configured = asConfigured(json.configured);
   const defaults = asValues(json.defaults);
-  if (policy === undefined || configured === undefined || defaults === undefined) {
+  const minimums = asValues(json.minimums);
+  if (policy === undefined || configured === undefined || defaults === undefined || minimums === undefined) {
     return undefined;
   }
-  return { policy, configured, defaults, usage: asUsage(json.usage) ?? {} };
+  return { policy, configured, defaults, minimums, usage: asUsage(json.usage) ?? {} };
 }
 
 /** `api clean` の結果のうち拡張が読む欄。**他の鍵(dryRun・categories 等)は無視する** ——

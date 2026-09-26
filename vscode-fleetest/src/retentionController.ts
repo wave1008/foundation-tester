@@ -3,7 +3,7 @@
 // 拡張は値を保持しない(remoteHostsController.ts と同じ原則)。
 //
 // 契約(CLI 側と並行実装。解釈は retentionModel.ts):
-//   fleetest api retention                    → {"policy":{…},"configured":{…},"defaults":{…},"usage":{…}}
+//   fleetest api retention                    → {"policy":{…},"configured":{…},"defaults":{…},"minimums":{…},"usage":{…}}
 //   fleetest api retention --import '<JSON>'  → 同じ形(渡した鍵だけ上書き・null で既定へ戻す)
 //   fleetest api clean [--dry-run]            → 1行 JSON(合計バイト数とエラー文字列だけ読む)
 // 出力は1行 JSON、失敗は非ゼロ終了(oneShotCli.ts の runOneShot が spawn+JSON.parse を担う)。
@@ -31,11 +31,12 @@ export interface RetentionCliDeps {
   registerChild(proc: PipeProcess): void;
 }
 
-/** 呼び出し1回の結果。成功時は policy/configured/defaults/usage、失敗時は error(設定タブへそのまま出す)。 */
+/** 呼び出し1回の結果。成功時は policy/configured/defaults/minimums/usage、失敗時は error(設定タブへそのまま出す)。 */
 export interface RetentionCliOutcome {
   readonly policy?: RetentionValues;
   readonly configured?: RetentionConfigured;
   readonly defaults?: RetentionValues;
+  readonly minimums?: RetentionValues;
   readonly usage?: RetentionUsage;
   readonly error?: string;
 }

@@ -21,6 +21,7 @@ import {
   unitValueToBytes,
 } from '../../retentionModel';
 import { activateTab, switchTab } from './tabs.js';
+import { stepFromPlaceholder } from './placeholderStep.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
 const lptCheckbox = document.getElementById('settings-lpt');
@@ -52,6 +53,7 @@ lptCheckbox.addEventListener('change', () => {
 
 // 実績走査の run 数。**入力欄には常に実際に使う件数を入れる**(既定でも空欄にしない)。
 // 空欄や不正値のときは null を送って拡張側の設定を消し、UI にも既定値を入れ直す。
+stepFromPlaceholder(lptHistoryInput);
 lptHistoryInput.addEventListener('change', () => {
   const raw = lptHistoryInput.value.trim();
   // parseInt は "2.5" を 2 に切り詰めて黙って別の値にしてしまうので Number() で厳密に見る
@@ -66,6 +68,7 @@ lptHistoryInput.addEventListener('change', () => {
 
 // リモート実行の順番待ち上限(秒)。空欄・不正値のときは null を送って設定を消し、欄は空欄にする
 // (既定値はプレースホルダに見えている)。**0 は受け付ける**(待たずに失敗する、という選択)。
+stepFromPlaceholder(remoteWaitLockInput);
 remoteWaitLockInput.addEventListener('change', () => {
   const raw = remoteWaitLockInput.value.trim();
   // parseInt は "2.5" を 2 に切り詰めて黙って別の値にしてしまうので Number() で厳密に見る
@@ -185,6 +188,7 @@ function makeFMConcurrencyInput(value) {
   // 既定を変えても二度と追従しない
   input.value = value > 0 ? String(value) : '';
   input.placeholder = defaultFMConcurrency === undefined ? '' : String(defaultFMConcurrency);
+  stepFromPlaceholder(input);
   input.addEventListener('input', () => {
     const kept = input.value.replace(/[^1-9]/g, '').slice(0, 1);
     if (kept !== input.value) {
@@ -704,6 +708,8 @@ const cleanupResult = document.getElementById('settings-cleanup-result');
 const cleanupError = document.getElementById('settings-cleanup-error');
 // 拡張から届く既定値(空欄・不正値のときに入力欄へ入れ直す値)。届くまでは undefined。
 let cleanupDefaults;
+// CLI が返す上限ごとの最小値(バイト)。未着の間は undefined(下限を当てず CLI の門に任せる)
+let cleanupMinimums;
 // CLI からポリシーを読めているか(読めていなければ欄も「今すぐクリーンアップ」も押せない)。
 let cleanupAvailable = false;
 
@@ -722,17 +728,27 @@ function cleanupDefaultValue(field) {
 }
 
 for (const row of cleanupRows) {
+  stepFromPlaceholder(row.input);
   // 空欄 = 明示設定なし(既定値はプレースホルダに見えている)。空欄・不正値は null を送って
   // CLI 側を既定へ戻し、欄は空欄にする。
-  // **0 は有効な指定**(保持しない)なので弾かない。判定は parseRetentionInput の1箇所。
+  // 最小値(CLI の minimums)未満は最小値へ引き上げて送り、欄にも最小値を入れ直す
+  // (CLI は最小値未満を断るので、そのまま送ると保存に失敗する)。
   row.input.addEventListener('change', () => {
     const parsed = parseRetentionInput(row.input.value);
+    let bytes = null;
     if (parsed === null) {
       row.input.value = '';
+    } else {
+      bytes = unitValueToBytes(parsed, row.field.unit);
+      const minimum = cleanupMinimums ? cleanupMinimums[row.field.key] : undefined;
+      if (typeof minimum === 'number' && bytes < minimum) {
+        bytes = minimum;
+        row.input.value = String(bytesToUnitValue(minimum, row.field.unit));
+      }
     }
     vscode.postMessage({
       type: 'setRetention',
-      patch: { [row.field.key]: parsed === null ? null : unitValueToBytes(parsed, row.field.unit) },
+      patch: { [row.field.key]: bytes },
     });
   });
 }
@@ -801,6 +817,9 @@ function applyRetention(message) {
   if (message.defaults) {
     cleanupDefaults = message.defaults;
   }
+  if (message.minimums) {
+    cleanupMinimums = message.minimums;
+  }
   cleanupEnabledCheckbox.disabled = !available;
   cleanupNowButton.disabled = !available;
   // 使用量の欠け = CLI が測っていない(--usage 無しの応答。書き込みの応答は必ずこれ)で、0 ではない。
@@ -811,6 +830,8 @@ function applyRetention(message) {
     row.input.disabled = !available;
     const fallback = cleanupDefaultValue(row.field);
     row.input.placeholder = fallback === undefined ? '' : String(fallback);
+    const minimum = cleanupMinimums ? cleanupMinimums[row.field.key] : undefined;
+    row.input.min = typeof minimum === 'number' ? String(bytesToUnitValue(minimum, row.field.unit)) : '0';
     // 欄に入れるのは**明示設定だけ**(configured)。未設定(null)は空欄にしてプレースホルダの既定値を見せる。
     // policy(実効値)を入れると、既定と明示の区別が画面から消える
     if (available && message.configured) {
