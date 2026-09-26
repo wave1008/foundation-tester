@@ -12,6 +12,7 @@ paths:
   - "Sources/FTCore/FMHealth.swift"
   - "Sources/FTCore/FMLiveness.swift"
   - "Sources/FTCore/FMUsageLedger.swift"
+  - "Sources/FTCore/OCROnlyVisibility.swift"
   - "Sources/FTCore/OcclusionCrop.swift"
   - "Sources/FTCore/OverlayWindowOcclusion.swift"
   - "Sources/FTCore/RegionText*.swift"
@@ -32,7 +33,9 @@ paths:
   - "Tests/FTCoreTests/FMHealthTests.swift"
   - "Tests/FTCoreTests/FMLivenessTests.swift"
   - "Tests/FTCoreTests/FMUsageLedgerTests.swift"
+  - "Tests/FTCoreTests/OCROnlyVisibility*.swift"
   - "Tests/FTCoreTests/OCRShortcutSkipNoteTests.swift"
+  - "Tests/FTCoreTests/StepExecutorTests+OCROnlyVisibility.swift"
   - "Tests/FTCoreTests/OCRShortcutWiringTests.swift"
   - "Tests/FTCoreTests/OCRToggleWiringTests.swift"
   - "Tests/FTCoreTests/OCRWarmupWaitGateTests.swift"
@@ -110,6 +113,15 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (OS の既定に従う)—— 版・認識レベル・言語補正・言語規則が動いたことの検出は、実 crop の固定
   コーパス `Tests/Fixtures/OcclusionCrops/` が読みと撃つ回数を等号で固定して担う。
   crop 矩形は `FTCore.OcclusionCrop` を FM と共有する(別々に持つと同じ画面で判断が食い違う)
+- **例外は FM が判定を返さないときだけ**(macOS 26・実呼び出しの失敗・`FT_FAKE_FM_NO_VERDICT=1`)——
+  近道が既に読んだ行を `TranscriptMatch.judge` に通し、行が無ければインク量(`occlusionInkThreshold`)で
+  「描かれていない / 判定不能」を分ける(`FTCore.OCROnlyVisibility`。**追加の OCR は撃たない**)。
+  **不可視でも今は赤にしない**(注記 `ocr-only-would-flip`。新しい検知は警告から —— デバイス実行で誤検知 0 を
+  確かめてから赤へ上げる)。実測は docs/poc-fm-occlusion-guard.md §5.19(見えている実 crop 290 件で誤った赤 0)
+- **先頭だけ読めた形の判定は `TranscriptMatch` の1か所**(FM と OCR で共有): 省略記号 → 緑(`text-ellipsized`)/
+  割合 > `mostlyHiddenRatio`(0.5・ユーザー決定)→ 緑(`text-partially-hidden`)/ 以下 → 赤。**省略記号は点の列でも
+  受ける**(ヒラギノの `…` を OCR は `•••`・`・・・` と読む。`RegionText.ellipsisTailLength`)。**誤読を許す先頭一致は
+  省略記号があるときだけ** —— 無いときに許すと値だけ違う読み(`tap=0` に `tap=3`)が「一部が隠れている」に化ける
 - **木からは原理的に判定できない遮蔽は「ブリッジの申告」+ 専用の型** —— キーボードは
   `KeyboardOcclusion`(`keyboardFrame`)、**それ以外の別ウィンドウは
   `FTCore.OverlayWindowOcclusion`(`overlayWindowFrames`)**。Android の木の根は

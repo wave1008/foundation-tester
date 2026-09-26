@@ -17,6 +17,14 @@ public enum TranscriptMatch {
     public enum State: String, Sendable {
         /// 期待文字列(またはその先頭)が転写に含まれる
         case fullyVisible
+        /// 転写が期待文字列の真の先頭部分で、生の転写(正規化前)の末尾に省略記号(`…`/`...`)がある
+        /// = アプリの意図した省略。読めた割合に関わらず緑
+        case ellipsized
+        /// 転写が期待文字列の真の先頭部分で、省略記号は無いが読めた割合が `mostlyHiddenRatio` を
+        /// 超える(緑・一部だけ隠れている)
+        case partiallyHidden
+        /// 転写が期待文字列の真の先頭部分だが、読めた割合が `mostlyHiddenRatio` 以下(赤)
+        case mostlyHidden
         /// 転写は期待文字列の途中〜末尾だけ = 先頭側が覆われている(左から覆う形の実測: 「キーボード」→「ボード」)
         case covered
         /// 転写が空 = その位置に読める文字が描かれていない(覆い・空白・画面外はここに畳む)
@@ -36,9 +44,16 @@ public enum TranscriptMatch {
         }
     }
 
-    /// 切り詰めとして認める転写の最短長(正規化後の文字数)。1 文字だけの一致は偶然が多すぎる
-    /// (「一」「A」のような 1 文字は期待文字列の先頭に頻出する)ので 2 文字から
+    /// **末尾だけ読めた `covered` 判定だけで使う**最短長(正規化後の文字数)。1 文字だけの一致は
+    /// 偶然が多すぎる(「一」「A」のような 1 文字は期待文字列の末尾に頻出する)ので 2 文字から。
+    /// 先頭一致(`mostlyHidden`/`partiallyHidden`/`ellipsized`)の分岐はこれを使わない ——
+    /// 期待が2文字以上なら1文字の先頭一致は必ず比 ≤ `mostlyHiddenRatio` で赤になるので包含される
     public static let truncatedPrefixMinimum = 2
+
+    /// 先頭一致の読めた割合がこれ以下なら赤(`mostlyHidden`)、これを超えれば緑(`partiallyHidden`)。
+    /// 根拠: ユーザー決定(読めたのが期待テキストの半分以下なら赤)。単位は正規化後の文字数の比。
+    /// 「以下」なので境界ちょうど 0.5 は赤
+    public static let mostlyHiddenRatio = 0.5
 
     /// 許す誤読の文字数 = 正規化後の期待文字列の長さ ÷ この値(切り捨て)。
     /// 実測の誤読は 1 文字の置換・挿入(「ここに」→「こちらに」・「辞書」→「辞典」・「ォ」→「オ」)で、
@@ -63,13 +78,33 @@ public enum TranscriptMatch {
         if o.contains(e) {
             return Verdict(visible: true, state: .fullyVisible, reason: "")
         }
-        if o.count >= truncatedPrefixMinimum, e.hasPrefix(o) {
-            return Verdict(visible: true, state: .fullyVisible, reason: "")
+        // 先頭一致(o は e の真の先頭部分。o == e は上の contains(e) が既に拾っている)。
+        // 省略記号 → 割合次第で緑/赤の3分岐。
+        // **省略記号があるときだけ先頭一致に誤読を許す**(長さ÷misreadDivisor 文字)—— 長い省略で
+        // 1 文字を読み落とした形(「全体的な設定や自…」→「全体な設定や自…」)が「別の文字」で赤になっていた。
+        // 省略記号が無いときに許すと、値だけ違う読み(「tap=0」に「tap=3」)が「一部が隠れている」に化ける
+        let ellipsized = RegionText.endsWithEllipsis(transcript)
+        let prefixLength = e.hasPrefix(o) ? o.count
+            : (ellipsized ? approximatePrefixLength(of: o, in: e) : nil)
+        if let prefixLength, prefixLength < e.count {
+            if ellipsized {
+                return Verdict(visible: true, state: .ellipsized, reason: "")
+            }
+            let ratio = Double(prefixLength) / Double(e.count)
+            if ratio > mostlyHiddenRatio {
+                return Verdict(visible: true, state: .partiallyHidden, reason: "")
+            }
+            return Verdict(visible: false, state: .mostlyHidden,
+                           reason: "most of the text is hidden")
         }
-        // 誤読の許容。**期待文字列の先頭の文字が転写に無ければ許さない** —— 先頭が読めていない形は
-        // 左からの覆い(「About」→「bout」)で、1 文字の欠けとして通すと覆いを見逃す
+        // 誤読の許容。**転写が期待より短いときだけ、期待文字列の先頭の文字が転写に無ければ許さない**
+        // —— 短くなる形は左からの覆い(「About」→「bout」)で、1 文字の欠けとして通すと覆いを
+        // 見逃す。**転写が期待と同じ長さ以上ならこの条件を課さない** —— 同じ長さでの先頭 1 文字の
+        // 誤読(「iCloud」→「¡Cloud」)まで赤にしていた(覆いなら必ず短くなるので、同じ長さ以上は
+        // 覆いではなく誤読)
         let tolerance = e.count / misreadDivisor
-        if tolerance > 0, let head = e.first, o.contains(head),
+        let headOK = o.count >= e.count || (e.first.map { o.contains($0) } ?? false)
+        if tolerance > 0, headOK,
            approximateSubstringDistance(haystack: o, needle: e) <= tolerance {
             return Verdict(visible: true, state: .fullyVisible, reason: "")
         }
@@ -91,6 +126,35 @@ public enum TranscriptMatch {
         let e = RegionText.normalize(expected)
         guard !o.isEmpty, !e.isEmpty else { return false }
         return approximateSubstringDistance(haystack: o, needle: e) <= max(1, e.count / misreadDivisor)
+    }
+
+    /// `transcript` が `expected` の先頭(誤読 transcript.count ÷ misreadDivisor 文字まで)に当たるなら、
+    /// 当たった先頭の長さ。許容が 0 文字(5 文字未満)なら厳密な先頭一致だけ = 呼び手の hasPrefix と同じなので nil
+    static func approximatePrefixLength(of transcript: String, in expected: String) -> Int? {
+        let o = Array(transcript), e = Array(expected)
+        let tolerance = o.count / misreadDivisor
+        let lower = max(1, o.count - tolerance), upper = min(e.count, o.count + tolerance)
+        guard tolerance > 0, lower <= upper else { return nil }
+        var best: (distance: Int, length: Int)?
+        for length in lower...upper {
+            let d = editDistance(o, Array(e[0..<length]))
+            if d <= tolerance, d < (best?.distance ?? .max) { best = (d, length) }
+        }
+        return best?.length
+    }
+
+    static func editDistance(_ a: [Character], _ b: [Character]) -> Int {
+        guard !a.isEmpty else { return b.count }
+        guard !b.isEmpty else { return a.count }
+        var previous = Array(0...b.count)
+        for (i, ca) in a.enumerated() {
+            var current = [i + 1]
+            for (j, cb) in b.enumerated() {
+                current.append(min(previous[j + 1] + 1, current[j] + 1, previous[j] + (ca == cb ? 0 : 1)))
+            }
+            previous = current
+        }
+        return previous[b.count]
     }
 
     /// 期待文字列と、転写の任意の部分文字列との最小編集距離(開始・終了は自由)。転写に前後の

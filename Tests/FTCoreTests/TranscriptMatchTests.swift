@@ -10,6 +10,7 @@ final class TranscriptMatchTests: XCTestCase {
     func testConstantsArePinned() {
         XCTAssertEqual(TranscriptMatch.truncatedPrefixMinimum, 2)
         XCTAssertEqual(TranscriptMatch.misreadDivisor, 5)
+        XCTAssertEqual(TranscriptMatch.mostlyHiddenRatio, 0.5)
     }
 
     func testExactAndContainedTranscriptsAreVisible() {
@@ -28,6 +29,68 @@ final class TranscriptMatchTests: XCTestCase {
         XCTAssertFalse(TranscriptMatch.judge(transcript: "家", expected: "家電・電化製品").visible)
     }
 
+    /// 先頭一致の3分岐: 省略記号 → 常に緑(ellipsized)/ 比 > 0.5 → 緑(partiallyHidden)/
+    /// 比 ≤ 0.5(境界含む)→ 赤(mostlyHidden)
+    func testPrefixMatchSplitsByRatioAndEllipsis() {
+        // 比 0.625 (5/8) > 0.5 → 緑・partiallyHidden
+        let mostlyOK = TranscriptMatch.judge(transcript: "abcde", expected: "abcdefgh")
+        XCTAssertTrue(mostlyOK.visible)
+        XCTAssertEqual(mostlyOK.state, .partiallyHidden)
+
+        // 比 ちょうど 0.5 (2/4) → 「以下」なので赤・mostlyHidden
+        let exactlyHalf = TranscriptMatch.judge(transcript: "ab", expected: "abcd")
+        XCTAssertFalse(exactlyHalf.visible)
+        XCTAssertEqual(exactlyHalf.state, .mostlyHidden)
+
+        // 比 0.25 (2/8) < 0.5 → 赤・mostlyHidden
+        let mostlyHidden = TranscriptMatch.judge(transcript: "ab", expected: "abcdefgh")
+        XCTAssertFalse(mostlyHidden.visible)
+        XCTAssertEqual(mostlyHidden.state, .mostlyHidden)
+
+        // 生の転写の末尾に省略記号があれば、読めたのが 1/5 でも常に緑・ellipsized
+        let ellipsisDots = TranscriptMatch.judge(transcript: "a...", expected: "abcde")
+        XCTAssertTrue(ellipsisDots.visible)
+        XCTAssertEqual(ellipsisDots.state, .ellipsized)
+        let ellipsisChar = TranscriptMatch.judge(transcript: "a…", expected: "abcde")
+        XCTAssertTrue(ellipsisChar.visible)
+        XCTAssertEqual(ellipsisChar.state, .ellipsized)
+
+        // 丸ごと含む(o.contains(e))なら先頭一致の分岐より前で fullyVisible のまま
+        let full = TranscriptMatch.judge(transcript: "prefix abcdefgh suffix", expected: "abcdefgh")
+        XCTAssertTrue(full.visible)
+        XCTAssertEqual(full.state, .fullyVisible)
+    }
+
+    /// 省略記号があるときだけ、先頭一致に誤読(読めた長さ ÷5 文字)を許す。合成で実測した読み:
+    /// 長い省略で 1 文字を読み落とした形・ヒラギノの `…` を点の列で読んだ形
+    func testEllipsizedPrefixToleratesMisread() {
+        let expected = "ソフトウェアアップデート、デバイスの言語、CarPlay、AirDropなど、iPhoneの全体的な設定や管理を行います。"
+        let dropped = TranscriptMatch.judge(
+            transcript: "ソフトウェアアップデート、デバイスの言語、CarPlay、AirDropなど、iPhoneの全体な設定や自・・・",
+            expected: expected)
+        XCTAssertTrue(dropped.visible)
+        XCTAssertEqual(dropped.state, .ellipsized)
+        XCTAssertEqual(TranscriptMatch.judge(transcript: "画面⋯•", expected: "画面表示と明るさ").state, .ellipsized)
+        // 5 文字未満の読みには誤読を許さない(許容 0 = 厳密な先頭一致だけ)
+        XCTAssertEqual(TranscriptMatch.judge(transcript: "7・・・", expected: "フォント").state, .textMismatch)
+    }
+
+    /// 省略記号が無いときは先頭一致に誤読を許さない —— 値だけ違う読みが「一部が隠れている」に化けない
+    /// (同じ長さなので誤読の許容で fullyVisible。値の正しさは木が保証する)
+    func testValueDifferenceWithoutEllipsisIsNotPartiallyHidden() {
+        let v = TranscriptMatch.judge(transcript: "tap=3", expected: "tap=0")
+        XCTAssertTrue(v.visible)
+        XCTAssertEqual(v.state, .fullyVisible)
+    }
+
+    func testApproximatePrefixLength() {
+        XCTAssertEqual(TranscriptMatch.approximatePrefixLength(of: "abcdxfgh", in: "abcdefghij"), 8)
+        XCTAssertNil(TranscriptMatch.approximatePrefixLength(of: "abcd", in: "abcdefghij"), "4 文字は許容 0")
+        XCTAssertNil(TranscriptMatch.approximatePrefixLength(of: "zzzzzzzz", in: "abcdefghij"))
+        // 読みが期待より長くても落ちない(範囲の下限 > 上限)
+        XCTAssertNil(TranscriptMatch.approximatePrefixLength(of: "abcdefghijklmnop", in: "abc"))
+    }
+
     /// 実測の誤読: 5 文字以上なら 1 文字(÷5 切り捨て)、10 文字以上なら 2 文字まで許す
     func testSmallMisreadIsTolerated() {
         XCTAssertTrue(TranscriptMatch.judge(transcript: "最近開いた書類はこちらに表示されます。",
@@ -42,6 +105,25 @@ final class TranscriptMatchTests: XCTestCase {
         XCTAssertFalse(TranscriptMatch.judge(transcript: "擴張", expected: "拡張").visible)
         // 2 文字の誤読は 10 文字未満では許さない
         XCTAssertFalse(TranscriptMatch.judge(transcript: "ユーザ辞典集", expected: "ユーザ辞書帳").visible)
+    }
+
+    /// 転写が期待と同じ長さ以上なら、先頭の文字が転写に無くても誤読の許容を当てる
+    /// (実アプリのコーパスで見つかった誤った赤: 「iCloud」→「¡Cloud」)。
+    /// 全角引用符は半角へ畳んでから比較する(実例: iOS 設定「"カレンダー"の新機能」)
+    func testMisreadToleratedWithoutHeadMatchWhenTranscriptIsNotShorter() {
+        XCTAssertTrue(TranscriptMatch.judge(transcript: "¡Cloud", expected: "iCloud").visible)
+    }
+
+    func testFullWidthQuotesFoldToHalfWidthBeforeMatching() {
+        XCTAssertTrue(TranscriptMatch.judge(transcript: "\"カレンダー\"の新機能",
+                                            expected: "\u{201C}カレンダー\u{201D}の新機能").visible)
+    }
+
+    /// 左からの覆いで短くなった読みは、対で相変わらず不可視(covered)のまま
+    /// (誤読の許容を緩めても、短くなる形の覆いは見逃さない)
+    func testShortenedByCoverageStaysInvisible() {
+        XCTAssertEqual(TranscriptMatch.judge(transcript: "bout", expected: "About").state, .covered)
+        XCTAssertFalse(TranscriptMatch.judge(transcript: "bout", expected: "About").visible)
     }
 
     /// 先頭の文字が読めていない形は誤読ではなく左からの覆い(1 文字の欠けとして通さない)

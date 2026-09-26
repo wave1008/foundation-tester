@@ -30,6 +30,14 @@ expectation {
   [Value Assertion](./value_assertion.md), [idIs](./id_assertion.md).
 - `exist` / `notExist` / `countIs` always take a selector — they are the commands that resolve
   more than one element, so there is no implicit form that operates on the last grabbed element.
+- The "actually visible" check compares the text drawn on screen with the expected text. When
+  **only the beginning is drawn** (the same holds for text and value assertions):
+  - an ellipsis (`…`) is drawn at the end → green, as truncation the app intended; the step gets
+    the note `text-ellipsized`
+  - no ellipsis, and more than half of the expected text is drawn → green; the step gets the note
+    `text-partially-hidden` (part of the text is hidden)
+  - no ellipsis, and half or less is drawn → failed (`most of the text is hidden`). For a screen
+    that hides most of a text on purpose, use `requireVisible: false`
 
 ### Link
 - [index](../index.md)

@@ -23,7 +23,7 @@ public protocol ReplayDelegate: AnyObject {
     /// occlusion-guard: ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
     /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を誤った緑として反転する。
     /// 戻り nil = 判定不能(FM 不可・画像不正)で、ガードは何もしない(pass のまま)。
-    /// state は fullyVisible/covered/dimmed/notRendered/textMismatch のいずれか(FTCore は FM 非依存
+    /// state は TranscriptMatch.State の rawValue のいずれか(FTCore は FM 非依存
     /// のため文字列で受ける)。既定実装は nil(ガード無効時・非対応 delegate は素通り)。
     /// observedText は FM が実際に読み取れた文字列(切り分け用。空 = 何も読めなかった)。
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,

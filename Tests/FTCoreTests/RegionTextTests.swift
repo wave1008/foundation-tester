@@ -64,6 +64,39 @@ final class RegionTextTests: XCTestCase {
         XCTAssertTrue(RegionText.readable(expected: "ログインしてください", lines: ["ログインして", "ください"]))
     }
 
+    // MARK: - normalize / endsWithEllipsis
+
+    /// `endsWithEllipsis` は `normalize` が末尾から除く判定と同じ集合を見る
+    /// (TranscriptMatch.judge はこれを正規化前の生の転写に使う)
+    func testEndsWithEllipsisMatchesWhatNormalizeStrips() {
+        for s in ["家電・電化…", "ab...", "Something…", "trailing ... ", "微妙な…　", "abc.."] {
+            XCTAssertTrue(RegionText.endsWithEllipsis(s), s)
+            XCTAssertFalse(RegionText.normalize(s).hasSuffix("."), "normalize が末尾を削っていない: \(s)")
+        }
+        for s in ["abc", "plain text", "三点リーダなし", "Inc.", "名前:", "名前：", "保存します。", "・項目"] {
+            XCTAssertFalse(RegionText.endsWithEllipsis(s), s)
+        }
+    }
+
+    /// ヒラギノの `…`(点が字の中央の高さ)を OCR が点の列として読んだ形(合成で実測した読み)も
+    /// 省略記号と見る。`⋯` は 1 文字でも省略
+    func testEllipsisReadAsDotRunsFromJapaneseFonts() {
+        let readings = ["tap•••": "tap", "last=t••": "last=t", "画面⋯•": "画面", "App：・・": "app",
+                        "ス⋯": "ス", "設定や自・・・": "設定や自", "pr**•": "pr"]
+        for (reading, stripped) in readings {
+            XCTAssertTrue(RegionText.endsWithEllipsis(reading), reading)
+            XCTAssertEqual(RegionText.normalize(reading), stripped, reading)
+        }
+    }
+
+    /// 全角引用符は半角へ畳む(NFKC では揃わない。実例は TranscriptMatch のテスト)
+    func testNormalizeFoldsFullWidthQuotesToHalfWidth() {
+        XCTAssertEqual(RegionText.normalize("\u{201C}カレンダー\u{201D}"), "\"カレンダー\"")
+        XCTAssertEqual(RegionText.normalize("\u{2018}Off\u{2019}"), "'off'")
+        XCTAssertEqual(RegionText.normalize("\u{201E}x\u{201F}"), "\"x\"")
+        XCTAssertEqual(RegionText.normalize("\u{201A}x\u{201B}"), "'x'")
+    }
+
     // MARK: - mode(environment:)
 
     func testModeOnValues() {

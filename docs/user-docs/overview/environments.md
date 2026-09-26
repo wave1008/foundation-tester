@@ -38,12 +38,15 @@ switches to the cloud.
   Japanese included, and the Mac's system language can stay Japanese (confirmed on macOS 27.0).
   Accuracy against Japanese-language app UIs and Japanese `screenLooksLike` descriptions has not
   been measured yet.
-- On macOS 26, only visual verification (`screenLooksLike` and text visual verification) is
-  unavailable, because image input requires macOS 27+. It is disabled automatically; everything
-  else works without restriction.
-- When FM is unavailable, these two features are **skipped**, not failed. The run stays green with
-  the features silently off, so confirm they actually work with `fleetest doctor --fm-only`,
-  which performs one real inference on each of the text and vision paths and exits 1 when
+- On macOS 26, `screenLooksLike` is unavailable, because image input requires macOS 27+. It is
+  disabled automatically; everything else works without restriction. Text visual verification
+  runs without its FM stage (see below).
+- When FM is unavailable, `screenLooksLike` is **skipped**, not failed. Text visual verification
+  judges from the on-device OCR reading (`ocrTextVisualCheck`) instead of FM, and a step whose
+  element OCR reads as not visible gets the note `ocr-only-would-flip` (**it is not failed for
+  now**; the step stays green with the note). Either way the run can stay green, so confirm
+  that FM actually works with `fleetest doctor --fm-only`, which performs one real inference on
+  each of the text and vision paths and exits 1 when
   either is dead. Details in
   [Troubleshooting](../in_action/troubleshooting.md).
 

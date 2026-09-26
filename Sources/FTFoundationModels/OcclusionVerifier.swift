@@ -34,7 +34,7 @@ public struct OcclusionVerifier {
     /// FTCore(FM 非依存)へ返す平坦な結果。
     public struct Result: Sendable {
         public let visible: Bool
-        /// fullyVisible / covered / notRendered / textMismatch(TranscriptMatch.State)
+        /// TranscriptMatch.State の rawValue
         public let state: String
         public let observedText: String
         public let reason: String

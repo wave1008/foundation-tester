@@ -294,6 +294,8 @@ final class FakeVisibilityDelegate: ReplayDelegate {
     var visible: Bool
     /// true の間は「答え無し」(nil)を返す。控えに nil が入らないことを見るテストが使う
     var answersNothing = false
+    /// 可視のときに返す state(TranscriptMatch.State の rawValue)。nil なら fullyVisible
+    var visibleState: String?
     private(set) var visibleCalls = 0
     init(visible: Bool) { self.visible = visible }
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
@@ -302,7 +304,7 @@ final class FakeVisibilityDelegate: ReplayDelegate {
         -> (visible: Bool, state: String, reason: String, observedText: String)? {
         visibleCalls += 1
         if answersNothing { return nil }
-        return (visible, visible ? "fullyVisible" : "covered", "test", "")
+        return (visible, visible ? (visibleState ?? "fullyVisible") : "covered", "test", "")
     }
 }
 

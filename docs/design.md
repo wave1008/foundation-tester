@@ -61,6 +61,12 @@ Tier-0 幾何 = 収まる軸の中心が画面外なら不可視(`TapTargetGeome
 版(revision)は固定せず OS の既定に従い、**版・認識レベル・言語補正・言語規則が動いたことの検出は
 実 crop の固定コーパス**(`Tests/Fixtures/OcclusionCrops/`)が担う。既定 on・殺しスイッチは
 `FT_OCCLUSION_OCR=0`・`measure` でコーパス採取(実測は docs/poc-fm-occlusion-guard.md §5.17)。
+**①の例外は FM が判定を返さないときだけ**(2026-09-26。macOS 26・実呼び出しの失敗):
+近道が読んだ行を `TranscriptMatch.judge` に通し、行が無ければインク量で分ける(`FTCore.OCROnlyVisibility`)。
+不可視と判定しても**今は赤にせず注記 `ocr-only-would-flip` だけ**(新しい検知は警告から。
+実測は同 §5.19・見えている実 crop 290 件で誤った赤 0)。
+**先頭だけ描かれた形**は `TranscriptMatch` が FM と OCR で共通に分ける: 省略記号 → 緑(`text-ellipsized`)/
+割合 > 0.5 → 緑(`text-partially-hidden`)/ 以下 → 赤(ユーザー決定)。
 
 **FM 段は転写 + ホスト照合**(2026-09-15): OCR で読めなかった crop に FM が答えるが、**FM に期待文字列は
 渡さない**。訊くのは「何が描かれているか」(転写 1 欄・prompt は定数)だけで、可否は `FTCore.TranscriptMatch`

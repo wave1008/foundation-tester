@@ -683,18 +683,47 @@ public enum RegionText {
         c.isASCII && (c.isLetter || c.isNumber)
     }
 
-    /// NFKC 互換合成 → 空白(半角・全角・改行・タブ)除去 → 小文字化 → 末尾の省略記号
-    /// (`…` / `...`)除去。
+    /// 省略記号として読まれる点の類(NFKC 後の字で持つ。`…` は NFKC で `...`、`‥` は `..`、
+    /// `･` は `・`、`：` は `:` になる)。日本語フォント(ヒラギノ)の `…` は点が字の中央の高さに
+    /// 並ぶ字形で、OCR は `…` と読まず `•••`・`・・・`・`⋯・`・`:・・` のような点の列として読む
+    /// (合成実測: 列として受けないと先頭 5 文字以上の省略でも ja の約 9 割が「別の文字」で赤)
+    private static let ellipsisDots: Set<Character> = [".", "•", "・", "·", "*", ":", "⋯"]
+
+    /// NFKC・空白除去済みの文字列の末尾にある省略記号の長さ(無ければ 0)。点の類が **2 つ以上
+    /// 続くか `⋯` を含む**ときだけ省略と見る —— 1 つだけの `.`・`:` は文末や「Inc.」「名前:」に
+    /// 普通に現れる。`。` は日本語の文末なので点の類に入れない
+    static func ellipsisTailLength(_ t: String) -> Int {
+        let tail = t.reversed().prefix { ellipsisDots.contains($0) }
+        return tail.count >= 2 || tail.contains("⋯") ? tail.count : 0
+    }
+
+    /// 末尾に省略記号があるか(正規化の前の生の文字列で判定する)。**`normalize` はこれと同じ
+    /// `ellipsisTailLength` で除去する** —— 片方だけ変えると「normalize が削った」と
+    /// 「TranscriptMatch が省略と見た」が食い違う
+    public static func endsWithEllipsis(_ s: String) -> Bool {
+        ellipsisTailLength(s.precomposedStringWithCompatibilityMapping
+            .components(separatedBy: .whitespacesAndNewlines)
+            .joined()) > 0
+    }
+
+    /// 全角引用符 → 半角(NFKC では揃わない)。実例(iOS 設定「"リサーチ"の…」「"カレンダー"の新機能」):
+    /// 木(期待値)は全角の“…”だが OCR/FM の読みは半角の "…" になり、畳まないと誤った赤になっていた
+    private static let quoteFoldMap: [Character: Character] = [
+        "\u{201C}": "\"", "\u{201D}": "\"", "\u{201E}": "\"", "\u{201F}": "\"",
+        "\u{2018}": "'", "\u{2019}": "'", "\u{201A}": "'", "\u{201B}": "'",
+    ]
+
+    private static func foldQuotes(_ s: String) -> String {
+        String(s.map { quoteFoldMap[$0] ?? $0 })
+    }
+
+    /// NFKC 互換合成 → 引用符の半角化 → 空白(半角・全角・改行・タブ)除去 → 末尾の省略記号
+    /// (`ellipsisTailLength`)除去 → 小文字化。
     public static func normalize(_ s: String) -> String {
-        var t = s.precomposedStringWithCompatibilityMapping
+        var t = foldQuotes(s.precomposedStringWithCompatibilityMapping)
             .components(separatedBy: .whitespacesAndNewlines)
             .joined()
-            .lowercased()
-        if t.hasSuffix("...") {
-            t.removeLast(3)
-        } else if t.hasSuffix("…") {
-            t.removeLast()
-        }
-        return t
+        t.removeLast(ellipsisTailLength(t))
+        return t.lowercased()
     }
 }
