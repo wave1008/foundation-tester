@@ -19,6 +19,10 @@
 //   (ResultsOutputCache.compose)。body は既存の集計をそのまま JSON にしたもの
 // - trend(--scenario)は body に入れず、scenarioID → 記録ファイルの索引を別ファイルに持つ。
 //   ヒット時はそのファイルだけ読んで trend を計算する(索引は指紋が同じ間だけ有効)
+//
+// この出力キャッシュが外れた(run が1本進んだだけ)ときの再計算そのものを速くするのが
+// `RunRecordPack`(<project>/.fleetest/results-cache/record-packs/。同じ `record-packs` の隣に置く)。
+// 完了 run のデコード結果を run 単位で束ね、`executableFingerprint` をここと共有する
 
 import Foundation
 
@@ -78,22 +82,20 @@ public enum ResultsOutputCache {
 
     // MARK: - 鍵
 
-    /// 引数と実行ファイルの識別を1つの文字列に畳む。`executable` は Bundle.main.executableURL
-    /// (nil なら実行ファイルを鍵にできない = 常にミス側へ倒すため乱数を混ぜる)
+    /// 実行ファイルの識別(mtime(ns)+size)。`executable` は Bundle.main.executableURL
+    /// (nil・stat 不能なら実行ファイルを鍵にできない = 常にミス側へ倒すため乱数を混ぜる)。
+    /// RunRecordPack の鍵(`executableKey`)もこの形式を共有する
+    public static func executableFingerprint(executable: URL?) -> String {
+        guard let executable else { return "exe=unknown:\(UUID().uuidString)" }
+        var status = stat()
+        guard stat(executable.path, &status) == 0 else { return "exe=unstattable:\(UUID().uuidString)" }
+        let mtime = status.st_mtimespec
+        return "exe=\(mtime.tv_sec).\(mtime.tv_nsec):\(status.st_size)"
+    }
+
+    /// 引数と実行ファイルの識別を1つの文字列に畳む
     public static func argumentsKey(arguments: [String], executable: URL?) -> String {
-        var parts = arguments
-        if let executable {
-            var status = stat()
-            if stat(executable.path, &status) == 0 {
-                let mtime = status.st_mtimespec
-                parts.append("exe=\(mtime.tv_sec).\(mtime.tv_nsec):\(status.st_size)")
-            } else {
-                parts.append("exe=unstattable:\(UUID().uuidString)")
-            }
-        } else {
-            parts.append("exe=unknown:\(UUID().uuidString)")
-        }
-        return parts.joined(separator: "\u{1}")
+        (arguments + [executableFingerprint(executable: executable)]).joined(separator: "\u{1}")
     }
 
     // MARK: - 有効判定(純関数)

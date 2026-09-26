@@ -225,10 +225,61 @@ public enum RunResultsStore {
         for line in skipWarningLines(counts, kind: kind) { ConsoleOut.err(line) }
     }
 
+    /// startedAt を窓(since/until)へ当てた結果。**「分からないので含める」は選ばない** ——
+    /// 窓の外にあるかもしれない記録を黙って読むと、「窓から落ちた記録が無い」前提の
+    /// docs/results-json.md の判定が誤る
+    enum WindowMatch: Equatable {
+        case included
+        case excluded
+        /// 窓の指定があるのに startedAt がパースできない(除外側と同じだが理由が違うので数える)
+        case unparseable
+    }
+
+    /// `windowKey` と同じ正準形("yyyy-MM-ddTHH:mm:ssZ"。ミリ秒無し・区切りの位置固定)かどうかを
+    /// 文字位置だけで判定する(NSRegularExpression より軽い)。RunRecorder が書く startedAt は
+    /// 通常この形なので、**一致する間は文字列比較で足りる**(辞書順=時系列。windowKey の doc と
+    /// 同じ ±1秒未満の imprecision を受け入れる —— 境界(since/until)自身も windowKey で
+    /// ミリ秒無しへ丸めているので、記録側がミリ秒無しなら扱いは揃う)。
+    /// 一致しない(ミリ秒付き・旧形式等)ときだけ実際に Date へパースする —— この分岐が要る理由は
+    /// `ISO8601DateFormatter.date(from:)` の実測コスト(E2E-CMP の run.json 5,700 件で
+    /// scanRuns 相当の所要の主要因。docs/results-json.md §出力キャッシュ)
+    static func isCanonicalISO8601Z(_ value: String) -> Bool {
+        let bytes = Array(value.utf8)
+        guard bytes.count == 20,
+              bytes[4] == UInt8(ascii: "-"), bytes[7] == UInt8(ascii: "-"),
+              bytes[10] == UInt8(ascii: "T"), bytes[13] == UInt8(ascii: ":"),
+              bytes[16] == UInt8(ascii: ":"), bytes[19] == UInt8(ascii: "Z") else { return false }
+        for i in [0, 1, 2, 3, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18] {
+            guard bytes[i] >= UInt8(ascii: "0"), bytes[i] <= UInt8(ascii: "9") else { return false }
+        }
+        return true
+    }
+
+    /// scanRuns と RunRecordPack 経由の run.json 判定が共有する唯一の窓判定(別実装にすると
+    /// 「パック無し」と「パック有り」で通る・落ちるが食い違う)。`sinceKey`/`untilKey` は
+    /// `windowKey` 済みの境界(呼び手が1回だけ計算して渡す。record ごとに作り直さない)。
+    /// `formatter` も呼び手が1個だけ持って渡す(ISO8601DateFormatter の構築コストを再掲)
+    static func windowMatch(startedAt: String, since: Date?, until: Date?,
+                            sinceKey: String?, untilKey: String?,
+                            formatter: ISO8601DateFormatter) -> WindowMatch {
+        guard since != nil || until != nil else { return .included }
+        if isCanonicalISO8601Z(startedAt) {
+            if let sinceKey, startedAt < sinceKey { return .excluded }
+            if let untilKey, startedAt > untilKey { return .excluded }
+            return .included
+        }
+        guard let started = formatter.date(from: startedAt) else { return .unparseable }
+        if let since, started < since { return .excluded }
+        if let until, started > until { return .excluded }
+        return .included
+    }
+
     /// since/until は startedAt(ISO8601)でフィルタ。両方 nil なら全件
     public static func scanRuns(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> [RunMetaRecord] {
         let decoder = JSONDecoder()
         let formatter = ISO8601DateFormatter()
+        let sinceKey = since.map(windowKey)
+        let untilKey = until.map(windowKey)
         var results: [RunMetaRecord] = []
         var skipped = SkipCounts()
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
@@ -243,20 +294,12 @@ public enum RunResultsStore {
                     skipped.schemaTooNew += 1
                     continue
                 }
-                // 窓の指定があるのに startedAt がパースできない場合は**除外**する
-                // (scanRecords は文字列比較なので自然に除外側へ倒れるが、こちらは Date へ
-                // パースしてから比較するため、`if let` が失敗すると素通りしてしまっていた —— 窓の
-                // 外にあるかもしれないレコードを「分からないので含める」と黙って読むと、
-                // 「窓から落ちた記録が無い」前提の docs/results-json.md の判定が誤る)
-                if since != nil || until != nil {
-                    guard let started = formatter.date(from: meta.startedAt) else {
-                        skipped.windowStartedAtUnparseable += 1
-                        continue
-                    }
-                    if let since, started < since { continue }
-                    if let until, started > until { continue }
+                switch windowMatch(startedAt: meta.startedAt, since: since, until: until,
+                                   sinceKey: sinceKey, untilKey: untilKey, formatter: formatter) {
+                case .included: results.append(meta)
+                case .excluded: continue
+                case .unparseable: skipped.windowStartedAtUnparseable += 1
                 }
-                results.append(meta)
             }
         }
         warnSkipped(skipped, kind: "run.json")
@@ -379,7 +422,9 @@ public enum RunResultsStore {
         public let record: ScenarioRunRecord
     }
 
-    /// scanRecords(キャップ無し)と同じ集合を、元ファイルの URL 付きで返す
+    /// scanRecords(キャップ無し)と同じ集合を、元ファイルの URL 付きで返す(パック無し。
+    /// `fleetest api results` はパック経由の `scanRunsAndRecords` を使う。ここはそれ以外の
+    /// 呼び手向けに元の全件直接デコード経路のまま残す)
     public static func scanRecordEntries(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> [ScannedRecord] {
         var targetRunDirs: [URL] = []
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
@@ -388,10 +433,6 @@ public enum RunResultsStore {
         return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until)
     }
 
-    /// scanRecords のキャップ無し経路。デコードが所要の大半を占める
-    /// (実測: E2E-CMP 90日分の逐次走査で 114s。1 プロジェクト 2万ファイル規模)ため、
-    /// ファイル単位で並列にデコードする。読み飛ばし規律(壊れたファイル・新しすぎる
-    /// schemaVersion・since/until)は逐次経路と同一。順序は最後のソートで決定的
     /// n 件を chunkCount 以下の連続範囲に割る(**空の範囲は作らない**)。
     /// `ceil(n/chunks)` 幅で `chunkIndex * size` を始点にすると、末尾のチャンクが `start > end` になり
     /// Range 生成で trap する(24 コアで記録 25〜45 件 = 受け手の新しいプロジェクトが最初に踏む形)
@@ -402,6 +443,10 @@ public enum RunResultsStore {
         return stride(from: 0, to: count, by: size).map { $0..<min($0 + size, count) }
     }
 
+    /// scanRecords のキャップ無し経路。デコードが所要の大半を占める
+    /// (実測: E2E-CMP 90日分の逐次走査で 114s。1 プロジェクト 2万ファイル規模)ため、
+    /// ファイル単位で並列にデコードする。読み飛ばし規律(壊れたファイル・新しすぎる
+    /// schemaVersion・since/until)は逐次経路と同一。順序は最後のソートで決定的
     private static func scanRecordsConcurrently(runDirs: [URL], since: Date?, until: Date?) -> [ScannedRecord] {
         var files: [URL] = []
         for runDir in runDirs {
@@ -464,7 +509,206 @@ public enum RunResultsStore {
             }
     }
 
+    // MARK: - run.json + scenario 記録をまとめて読む(`fleetest api results` 専用・パック経由)
+
+    /// `fleetest api results` の非キャッシュ経路。**scanRuns と scanRecords(キャップ無し)を
+    /// 別々に呼ばない** —— 両方を1回の run 単位走査に畳み、完了 run は run.json と
+    /// scenarios/*.json をまとめて1つの `RunRecordPack` に書く(2パスに分けると片方が先に
+    /// 書いたパックをもう片方が上書きし、後で書いたほうの分が消える)。
+    /// `packCacheDir`/`executableKey` を渡さない呼び手はいない想定(このプロジェクト内は
+    /// ApiResultsCommand だけが呼ぶ)が、nil の場合は常に直接デコードする。
+    /// 返す `runs`/`entries` は scanRuns/scanRecordEntries と同じ集合・同じ並び順・
+    /// 同じ読み飛ばし警告(kind は "run.json" と "scenario record" の2本、従来と同じ文言)。
+    /// **entries の record は、パック経由の完了 run では `RunRecordPack.trimmedForStorage` で
+    /// 縮小済み**(timeline が notes 付きステップだけ・4欄だけに縮む)。この配列を集計以外に
+    /// 使ってはいけない(trend は呼び手が entries.url から元ファイルを読み直す。理由と縮小規則は
+    /// RunRecordPack.swift)
+    public static func scanRunsAndRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil,
+                                          packCacheDir: URL? = nil,
+                                          executableKey: String? = nil) -> (runs: [RunMetaRecord], entries: [ScannedRecord]) {
+        if let packCacheDir {
+            RunRecordPack.sweepOrphans(cacheDir: packCacheDir, runsDir: resultsDir.appendingPathComponent("runs"))
+        }
+        var targetRunDirs: [URL] = []
+        for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
+            targetRunDirs += runDirs(in: monthDir)
+        }
+        guard !targetRunDirs.isEmpty else { return ([], []) }
+
+        let ranges = chunkRanges(count: targetRunDirs.count,
+                                 chunkCount: ProcessInfo.processInfo.activeProcessorCount)
+        let chunkCount = ranges.count
+        var chunkRuns = [[RunMetaRecord]](repeating: [], count: chunkCount)
+        var chunkEntries = [[ScannedRecord]](repeating: [], count: chunkCount)
+        var chunkMetaSkipped = [SkipCounts](repeating: SkipCounts(), count: chunkCount)
+        var chunkRecordSkipped = [SkipCounts](repeating: SkipCounts(), count: chunkCount)
+        let sinceKey = since.map(windowKey)
+        let untilKey = until.map(windowKey)
+
+        chunkRuns.withUnsafeMutableBufferPointer { runsBuffer in
+            chunkEntries.withUnsafeMutableBufferPointer { entriesBuffer in
+                chunkMetaSkipped.withUnsafeMutableBufferPointer { metaSkippedBuffer in
+                    chunkRecordSkipped.withUnsafeMutableBufferPointer { recordSkippedBuffer in
+                        DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
+                            // ISO8601DateFormatter はチャンクごとに1個(スレッド間で共有しない)
+                            let formatter = ISO8601DateFormatter()
+                            var localRuns: [RunMetaRecord] = []
+                            var localEntries: [ScannedRecord] = []
+                            var localMetaSkipped = SkipCounts()
+                            var localRecordSkipped = SkipCounts()
+                            for runDir in targetRunDirs[ranges[chunkIndex]] {
+                                let outcome = runOutcome(runDir: runDir, packCacheDir: packCacheDir,
+                                                         executableKey: executableKey)
+                                localEntries += outcome.entries
+                                localRecordSkipped.add(outcome.recordSkipped)
+                                if let meta = outcome.meta {
+                                    switch windowMatch(startedAt: meta.startedAt, since: since, until: until,
+                                                       sinceKey: sinceKey, untilKey: untilKey, formatter: formatter) {
+                                    case .included: localRuns.append(meta)
+                                    case .excluded: break
+                                    case .unparseable: localMetaSkipped.windowStartedAtUnparseable += 1
+                                    }
+                                } else if let metaSkip = outcome.metaSkip {
+                                    switch metaSkip {
+                                    case .decodeFailure: localMetaSkipped.decodeFailure += 1
+                                    case .schemaTooNew: localMetaSkipped.schemaTooNew += 1
+                                    }
+                                }
+                            }
+                            runsBuffer[chunkIndex] = localRuns
+                            entriesBuffer[chunkIndex] = localEntries
+                            metaSkippedBuffer[chunkIndex] = localMetaSkipped
+                            recordSkippedBuffer[chunkIndex] = localRecordSkipped
+                        }
+                    }
+                }
+            }
+        }
+
+        var totalMetaSkipped = SkipCounts()
+        for c in chunkMetaSkipped { totalMetaSkipped.add(c) }
+        warnSkipped(totalMetaSkipped, kind: "run.json")
+        var totalRecordSkipped = SkipCounts()
+        for c in chunkRecordSkipped { totalRecordSkipped.add(c) }
+        warnSkipped(totalRecordSkipped, kind: "scenario record")
+
+        let runs = chunkRuns.flatMap { $0 }.sorted { $0.runID < $1.runID }
+        let flattenedEntries: [ScannedRecord] = chunkEntries.flatMap { $0 }
+        let windowedEntries: [ScannedRecord] = flattenedEntries.filter { (entry: ScannedRecord) -> Bool in
+            if let sinceKey, entry.record.startedAt < sinceKey { return false }
+            if let untilKey, entry.record.startedAt > untilKey { return false }
+            return true
+        }
+        let entries: [ScannedRecord] = windowedEntries.sorted { (lhs: ScannedRecord, rhs: ScannedRecord) -> Bool in
+            lhs.record.runID == rhs.record.runID ? lhs.record.scenarioID < rhs.record.scenarioID
+                                                 : lhs.record.runID < rhs.record.runID
+        }
+        return (runs, entries)
+    }
+
+    /// 1 run 分の run.json 判定 + scenario 記録。パックが有効ならそこから読み、無ければ
+    /// run.json と scenarios/*.json を直接デコードして**完了 run のときだけ**1つのパックへ書く
+    /// (進行中の run は書かない。判定は `runStat` と同じ)。
+    /// meta の since/until 判定はここでは行わない(呼び手が `windowMatch` を1回だけ計算した
+    /// formatter/sinceKey/untilKey で行う。ここは「読めたか・版が対応内か」だけを返す)
+    private struct RunOutcome {
+        var meta: RunMetaRecord?
+        var metaSkip: RunRecordPack.MetaSkipReason?
+        var entries: [ScannedRecord]
+        var recordSkipped: SkipCounts
+    }
+
+    private static func runOutcome(runDir: URL, packCacheDir: URL?,
+                                   executableKey: String?) -> RunOutcome {
+        let snapshot = runStat(runDir: runDir)
+        let scenariosDir = runDir.appendingPathComponent("scenarios")
+
+        if !snapshot.inProgress, let packCacheDir, let executableKey,
+           let pack = RunRecordPack.read(cacheDir: packCacheDir, runDir: runDir,
+                                         executableKey: executableKey, runStatKey: snapshot.key) {
+            let entries = pack.entries.map {
+                ScannedRecord(url: scenariosDir.appendingPathComponent($0.fileName), record: $0.record)
+            }
+            return RunOutcome(meta: pack.meta, metaSkip: pack.metaSkipReason, entries: entries,
+                              recordSkipped: SkipCounts(decodeFailure: pack.decodeFailureCount,
+                                                        schemaTooNew: pack.schemaTooNewCount))
+        }
+
+        let decoder = JSONDecoder()
+        var meta: RunMetaRecord?
+        var metaSkip: RunRecordPack.MetaSkipReason?
+        let metaURL = runDir.appendingPathComponent("run.json")
+        if let data = try? Data(contentsOf: metaURL),
+           let decoded = try? decoder.decode(RunMetaRecord.self, from: data) {
+            if decoded.schemaVersion <= RunRecordSchema.current {
+                meta = decoded
+            } else {
+                metaSkip = .schemaTooNew
+            }
+        } else {
+            metaSkip = .decodeFailure
+        }
+
+        var entries: [ScannedRecord] = []
+        var packEntries: [RunRecordPack.Entry] = []
+        var recordSkipped = SkipCounts()
+        if let files = jsonFiles(in: scenariosDir) {
+            for file in files {
+                guard let data = try? Data(contentsOf: file),
+                      let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
+                    recordSkipped.decodeFailure += 1
+                    continue
+                }
+                guard record.schemaVersion <= RunRecordSchema.current else {
+                    recordSkipped.schemaTooNew += 1
+                    continue
+                }
+                entries.append(ScannedRecord(url: file, record: record))
+                packEntries.append(RunRecordPack.Entry(fileName: file.lastPathComponent,
+                                                       record: RunRecordPack.trimmedForStorage(record)))
+            }
+        }
+
+        if !snapshot.inProgress, let packCacheDir, let executableKey {
+            RunRecordPack.write(
+                RunRecordPack.Contents(executableKey: executableKey, runRecordSchemaVersion: RunRecordSchema.current,
+                                       runStatKey: snapshot.key, meta: meta, metaSkipReason: metaSkip,
+                                       entries: packEntries, decodeFailureCount: recordSkipped.decodeFailure,
+                                       schemaTooNewCount: recordSkipped.schemaTooNew),
+                cacheDir: packCacheDir, runDir: runDir)
+        }
+        return RunOutcome(meta: meta, metaSkip: metaSkip, entries: entries, recordSkipped: recordSkipped)
+    }
+
     // MARK: - 指紋(ResultsOutputCache の鍵)
+
+    /// 1 run の完了/進行中判定と、完了時の stat 鍵。**scanFingerprint と RunRecordPack(パック)の
+    /// 有効判定が共有する唯一の実装** —— 別々に実装すると「読む集合」とキャッシュの鍵がずれる。
+    /// run.json と scenarios/ ディレクトリの mtime(ns)+size を stat 2回だけ比較し、scenarios/ の
+    /// ほうが新しければ finish() の上書きがまだ無い = 進行中(このとき `key` は使わないので空文字)
+    struct RunStat: Equatable {
+        let inProgress: Bool
+        let key: String
+    }
+
+    private static func runStat(runDir: URL) -> RunStat {
+        struct Stat { let exists: Bool; let sec: Int; let nsec: Int; let size: Int }
+        func statOf(_ path: String) -> Stat {
+            var status = stat()
+            guard stat(path, &status) == 0 else { return Stat(exists: false, sec: 0, nsec: 0, size: 0) }
+            let mtime = status.st_mtimespec
+            return Stat(exists: true, sec: Int(mtime.tv_sec), nsec: Int(mtime.tv_nsec), size: Int(status.st_size))
+        }
+        func render(_ entry: Stat) -> String {
+            entry.exists ? "\(entry.sec).\(entry.nsec) \(entry.size)" : "-"
+        }
+        let base = runDir.path
+        let metaStat = statOf(base + "/run.json")
+        let scenariosStat = statOf(base + "/scenarios")
+        let inProgress = metaStat.exists && scenariosStat.exists
+            && (scenariosStat.sec, scenariosStat.nsec) > (metaStat.sec, metaStat.nsec)
+        return RunStat(inProgress: inProgress, key: inProgress ? "" : "\(render(metaStat)) \(render(scenariosStat))")
+    }
 
     /// scanRuns / scanRecords(キャップ無し)が読む入力集合の指紋(SHA256 hex)。
     /// 走査する月・run ディレクトリは scanRecords と同じ relevantMonthDirs / runDirs を通す
@@ -495,28 +739,14 @@ public enum RunResultsStore {
     public static func scanFingerprint(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> String {
         var hasher = SHA256()
         var lines = ""
-        struct Stat { let exists: Bool; let sec: Int; let nsec: Int; let size: Int }
-        func statOf(_ path: String) -> Stat {
-            var status = stat()
-            guard stat(path, &status) == 0 else { return Stat(exists: false, sec: 0, nsec: 0, size: 0) }
-            let mtime = status.st_mtimespec
-            return Stat(exists: true, sec: Int(mtime.tv_sec), nsec: Int(mtime.tv_nsec), size: Int(status.st_size))
-        }
-        func render(_ entry: Stat) -> String {
-            entry.exists ? "\(entry.sec).\(entry.nsec) \(entry.size)" : "-"
-        }
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
             lines += "month \(monthDir.lastPathComponent)\n"
             for runDir in runDirs(in: monthDir) {
-                let base = runDir.path
-                let metaStat = statOf(base + "/run.json")
-                let scenariosStat = statOf(base + "/scenarios")
-                let inProgress = metaStat.exists && scenariosStat.exists
-                    && (scenariosStat.sec, scenariosStat.nsec) > (metaStat.sec, metaStat.nsec)
-                if inProgress {
+                let snapshot = runStat(runDir: runDir)
+                if snapshot.inProgress {
                     lines += "run \(runDir.lastPathComponent) in-progress\n"
                 } else {
-                    lines += "run \(runDir.lastPathComponent) \(render(metaStat)) \(render(scenariosStat))\n"
+                    lines += "run \(runDir.lastPathComponent) \(snapshot.key)\n"
                 }
             }
         }

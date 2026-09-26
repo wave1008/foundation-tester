@@ -73,6 +73,40 @@ export const webviewDashboardStrings = {
   "wvDashboard.runDetail.buttonOpenReport": { ja: "レポートを開く", en: "Open Report" },
   "wvDashboard.runDetail.buttonTrend": { ja: "実行履歴", en: "Run History" },
 
+  // triage.js
+  "wvDashboard.triage.summary": {
+    ja: "期間内の失敗 {count} 件(うちステップに到達しなかった {unreached} 件)",
+    en: "{count} failures in the period ({unreached} that never reached a step)",
+  },
+  "wvDashboard.triage.showAll": { ja: "すべて表示({count} 行)", en: "Show all ({count} rows)" },
+  "wvDashboard.triage.showLess": { ja: "折りたたむ", en: "Show less" },
+
+  // devices.js
+  "wvDashboard.devices.notRecorded": { ja: "(記録なし)", en: "(not recorded)" },
+  "wvDashboard.devices.notRecordedTitle": { ja: "worker 欄を持たない古い記録", en: "An old record with no worker field" },
+  "wvDashboard.devices.showAll": { ja: "すべて表示({count} 行)", en: "Show all ({count} rows)" },
+  "wvDashboard.devices.showLess": { ja: "折りたたむ", en: "Show less" },
+
+  // insights.js
+  "wvDashboard.insights.severityCritical": { ja: "重大", en: "Critical" },
+  "wvDashboard.insights.severityWarn": { ja: "警告", en: "Warning" },
+  "wvDashboard.insights.severityInfo": { ja: "情報", en: "Info" },
+  "wvDashboard.insights.moreCount": { ja: "他 {count} 件", en: "{count} more" },
+  "wvDashboard.insights.showDevice": { ja: "→ デバイス別で見る({worker})", en: "→ show in By Device ({worker})" },
+
+  // headlineDiff.js
+  "wvDashboard.headlineDiff.newFailuresHeading": {
+    ja: "前回(同じプロファイルの直前の実行)から新たに失敗したシナリオ",
+    en: "Scenarios newly failing since the previous run (same profile)",
+  },
+  "wvDashboard.headlineDiff.recoveredHeading": {
+    ja: "回復したシナリオ",
+    en: "Scenarios recovered since the previous run",
+  },
+
+  // summaryTable.js
+  "wvDashboard.summary.countText": { ja: "{total}件中{shown}件", en: "{shown} of {total}" },
+
   // trend.js
   "wvDashboard.trend.title": { ja: "実行履歴: {scenarioID}", en: "Run History: {scenarioID}" },
   "wvDashboard.trend.loading": { ja: "読み込み中...", en: "Loading..." },

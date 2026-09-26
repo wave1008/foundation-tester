@@ -1,25 +1,22 @@
 // テーブル/ヘッドラインの DOM 組み立て(charts.js の日別チャートを除く表示ロジック一式)。
 // innerHTML は使わず createElement/textContent で組み立てる(値にシナリオID等の外部由来文字列を
-// 含むため)。run 詳細/実行履歴セクション自体の組み立ては runDetail.js/trend.js に分離してある
-// (このファイルが肥大しないように。ここは runs/flaky/summary 等のクリックの起点だけ持つ)。
+// 含むため)。run 詳細/実行履歴セクションは runDetail.js/trend.js、シナリオ別サマリは
+// summaryTable.js、注意喚起は insights.js、失敗の内訳は triage.js、デバイス別は devices.js、
+// 前回比は headlineDiff.js に分離してある(このファイルが肥大しないように)。scenarioIdCell は
+// それらから import される共用ヘルパー。
 
 import {
   formatDeltaPercent,
   formatDurationHuman,
-  formatDurationSeconds,
   formatLocalDateTime,
   formatPercent,
-  formatPercentInteger,
-  passFailMark,
   recentResultsMarks,
 } from './format.js';
 import { t } from '../i18n.js';
-import { clearChildren, td, tdMid, tdNum } from './domUtil.js';
+import { clearChildren, td, tdNum } from './domUtil.js';
 import { machineLabels } from './machineNames.js';
 import { requestRunDetail } from './runDetail.js';
 import { requestTrend } from './trend.js';
-
-const SEVERITY_ICON = { critical: '🔴', warn: '🟡', info: '🔵' };
 
 /** latestGroup = groupRuns(runs)[0](最新の実行の構成 run 配列)。 */
 export function renderHeadline(latestGroup) {
@@ -218,7 +215,8 @@ export function renderRunsTable(groups, statsByRunID) {
   }
 }
 
-function scenarioIdCell(scenarioID) {
+/** summaryTable.js/flaky テーブルで共用(クリックで requestTrend)。 */
+export function scenarioIdCell(scenarioID) {
   const cell = document.createElement('td');
   cell.textContent = scenarioID;
   cell.className = 'scenario-id-clickable';
@@ -239,52 +237,6 @@ export function renderFlakyTable(flaky) {
       td(recentResultsMarks(row.recentResults)),
     );
     body.appendChild(tr);
-  }
-}
-
-export function renderSummaryTable(summary) {
-  const body = document.getElementById('table-summary-body');
-  clearChildren(body);
-  for (const row of summary) {
-    const tr = document.createElement('tr');
-    // 列の順序は monitorHtml.ts renderDashboardPanel() の #table-summary の見出しと1:1
-    // (位置で対応するので片方だけ並べ替えると値が別の見出しの下に出る)
-    tr.append(
-      scenarioIdCell(row.scenarioID),
-      tdMid(typeof row.lastPassed === 'boolean' ? passFailMark(row.lastPassed) : '–'),
-      td(formatLocalDateTime(row.lastRunAt)),
-      tdNum(String(row.runs)),
-      tdNum(formatPercentInteger(row.successRate)),
-      tdNum(formatDurationSeconds(row.avgDurationMs)),
-    );
-    body.appendChild(tr);
-  }
-}
-
-export function renderInsights(insights) {
-  const list = document.getElementById('insights-list');
-  const emptyEl = document.getElementById('insights-empty');
-  const heading = document.getElementById('insights-heading');
-  clearChildren(list);
-  const hasCritical = insights.some((insight) => insight.severity === 'critical');
-  heading.classList.toggle('insights-heading-critical', hasCritical);
-  if (insights.length === 0) {
-    list.style.display = 'none';
-    emptyEl.style.display = 'block';
-    return;
-  }
-  list.style.display = 'flex';
-  emptyEl.style.display = 'none';
-  for (const insight of insights) {
-    const li = document.createElement('li');
-    li.className = 'insight-item';
-    const icon = document.createElement('span');
-    icon.className = 'insight-icon';
-    icon.textContent = SEVERITY_ICON[insight.severity] || SEVERITY_ICON.info;
-    const message = document.createElement('span');
-    message.textContent = insight.message;
-    li.append(icon, message);
-    list.appendChild(li);
   }
 }
 

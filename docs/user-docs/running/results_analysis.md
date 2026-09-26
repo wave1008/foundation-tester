@@ -96,9 +96,11 @@ jq -r 'select(.passed==false) | .failedSteps[0]
 
 ## In VS Code
 
-The command palette's **"fleetest: Open Results Dashboard"** opens a panel showing recent runs,
-per-scenario pass rate/duration, flaky scenarios, per-device/worker aggregates, a daily trend and
-insights — backed by the same `fleetest results` data. See the "結果ダッシュボード" section of
+The command palette's **"fleetest: Open Results Dashboard"** opens a panel showing notable issues,
+the comparison with the previous run, a failure breakdown, recent runs, a filterable/sortable
+per-scenario summary, flaky scenarios, a device/OS breakdown, and a daily trend — backed by the
+same `fleetest results` data (a toolbar control switches the aggregation period between 7/30/90
+days). See the "結果ダッシュボード" section of
 [vscode-fleetest/README.md](../../../vscode-fleetest/README.md) (Japanese).
 
 ## CI

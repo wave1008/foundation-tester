@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isApiResultsPayload, isApiResultsRunPayload, isDashboardFromWebviewMessage } from "../src/dashboardModel";
+import { isApiResultsPayload, isApiResultsRunPayload, isDashboardFromWebviewMessage, isSinceOption } from "../src/dashboardModel";
 
 function validPayload(overrides = {}) {
   return {
@@ -310,6 +310,60 @@ test("isDashboardFromWebviewMessage: selectProject を project が string のと
   assert.equal(isDashboardFromWebviewMessage({ type: "selectProject", project: "E2E-iOS" }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "selectProject", project: 42 }), false);
   assert.equal(isDashboardFromWebviewMessage({ type: "selectProject" }), false);
+});
+
+// ---- openSource ---------------------------------------------------------------
+
+test("isDashboardFromWebviewMessage: openSource は file が string・line が 1 以上の整数のときのみ true", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift", line: 1 }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift", line: 42 }), true);
+});
+
+test("isDashboardFromWebviewMessage: openSource は file 欠落・line 欠落・line<1・line が小数/文字列なら false", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", line: 1 }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift" }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift", line: 0 }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift", line: -1 }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift", line: 1.5 }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: "Login.swift", line: "1" }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "openSource", file: 42, line: 1 }), false);
+});
+
+// ---- headlineDiff --------------------------------------------------------------
+
+test("isDashboardFromWebviewMessage: headlineDiff は latestRunIDs/previousRunIDs が string[] のときのみ true", () => {
+  assert.equal(
+    isDashboardFromWebviewMessage({ type: "headlineDiff", latestRunIDs: ["R1"], previousRunIDs: ["R0"] }),
+    true,
+  );
+  assert.equal(isDashboardFromWebviewMessage({ type: "headlineDiff", latestRunIDs: [], previousRunIDs: [] }), true);
+});
+
+test("isDashboardFromWebviewMessage: headlineDiff は配列でない・要素が非文字列・欠落なら false", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "headlineDiff", latestRunIDs: "R1", previousRunIDs: ["R0"] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "headlineDiff", latestRunIDs: ["R1"], previousRunIDs: [42] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "headlineDiff", latestRunIDs: ["R1"] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "headlineDiff" }), false);
+});
+
+// ---- setSince -------------------------------------------------------------------
+
+test("isSinceOption: 7d/30d/90d のみ true", () => {
+  assert.equal(isSinceOption("7d"), true);
+  assert.equal(isSinceOption("30d"), true);
+  assert.equal(isSinceOption("90d"), true);
+  assert.equal(isSinceOption("1d"), false);
+  assert.equal(isSinceOption(90), false);
+  assert.equal(isSinceOption(undefined), false);
+});
+
+test("isDashboardFromWebviewMessage: setSince は since が 7d/30d/90d のときのみ true", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "7d" }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "30d" }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "90d" }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "1d" }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: 90 }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "setSince" }), false);
 });
 
 // ---- triage(ApiResultsPayload の追加キー) --------

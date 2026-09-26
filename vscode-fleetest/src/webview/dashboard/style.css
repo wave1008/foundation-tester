@@ -39,12 +39,21 @@
 .dash-title {
   font-weight: 600;
 }
-select.dash-project {
+select.dash-project, select.dash-since {
   background: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
   border: 1px solid var(--vscode-dropdown-border, transparent);
   border-radius: 2px;
   padding: 1px 4px;
+}
+/* 更新中はデータを隠さず、ここだけ出す(更新エラーは #dash-update-error) */
+.dash-updating {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+.dash-update-error {
+  padding: 6px 0;
+  text-align: left;
 }
 .dash-generated-at {
   margin-left: auto;
@@ -153,6 +162,84 @@ select.dash-project {
 }
 .insight-icon {
   flex: none;
+}
+/* 重大度ごとの見出し(kind のグルーピングはインデントせず、見た目は文字色だけで区切る) */
+.insight-severity-heading {
+  font-weight: 600;
+  margin-top: 4px;
+}
+.insight-severity-heading:first-child {
+  margin-top: 0;
+}
+.insight-more {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+}
+
+/* 失敗の内訳セクションの要約文 */
+.triage-summary {
+  margin-bottom: 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 前回比(新規失敗/回復したシナリオ) */
+.headline-diff-group {
+  margin-top: 8px;
+}
+.headline-diff-heading {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.headline-diff-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* シナリオ別サマリの絞り込みツールバー */
+.summary-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.summary-filter {
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  padding: 2px 6px;
+}
+.summary-failures-only-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.summary-count {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.9em;
+  margin-left: auto;
+}
+/* 並べ替え可能な列見出し。矢印は現在の並び順だけに出す */
+.dash-table th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+}
+.dash-table th[data-sort-key].sort-asc::after {
+  content: " \25B2";
+}
+.dash-table th[data-sort-key].sort-desc::after {
+  content: " \25BC";
+}
+
+/* worker 行の一時的な強調(insights.js の deviceBias リンクから) */
+.row-highlight {
+  background-color: var(--vscode-list-activeSelectionBackground, rgba(127, 127, 127, 0.3));
+  transition: background-color 0.3s;
 }
 
 .delta-badge {

@@ -468,6 +468,61 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
   一致すること(`generatedAt` 以外)が正しさの確認手段
 - 書けない環境では毎回計算するだけ(失敗にしない)
 
+### 出力キャッシュが外れたときの再計算そのものを速くする(`RunRecordPack`)
+
+上の出力キャッシュは **run が1本進むだけで外れる**(scanDigest が動く)。外れたときの再計算は
+`run.json`/`scenarios/*.json` 全件の opendir/open/decode が所要の大半(E2E-CMP 90 日分・
+run 約 5,700・記録約 90,700 件で実測 15〜20 秒)なので、これを run 単位でキャッシュする。
+定義元は `Sources/FTCore/RunRecordPack.swift`(パック本体)と
+`Sources/FTCore/RunResultsStore.swift` の `scanRunsAndRecords`(scanRuns と
+scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results` の非キャッシュ経路専用 ——
+2パスに分けると片方が先に書いたパックをもう片方が上書きしてしまう)。
+
+- **置き場所**: `<project>/.fleetest/results-cache/record-packs/<YYYY-MM>/<runID>.json`
+  (`results-cache/` の隣。1 run = 1 ファイル。run.json とシナリオ記録を1つに束ねる)
+- **中身**: `run.json` の decode 結果(`RunMetaRecord`。読めない/版が対応外なら理由 `MetaSkipReason`)+
+  その run の `scenarios/*.json` を decode した記録の配列(ファイル名付き)+
+  読み飛ばし件数(decodeFailure / schemaTooNew)。**since/until には依存しない** —— 窓は
+  パックを読んだ後に一律に掛ける(パック自体は窓ごとに作り直さない)
+- **有効条件**(全部一致。1つでも既定値を置かない): パックの形式版 / 実行ファイルの素性
+  (`ResultsOutputCache.executableFingerprint` と同じ形式 —— **型が変わったビルドの書いたパックを
+  新しいビルドが読むと、元ファイルにある欄を黙って落とす**ため必須)/ `RunRecordSchema.current` /
+  run ごとの stat 鍵(`RunResultsStore` 内部の `runStat(runDir:)` —— **`scanFingerprint` と同じ
+  実装を共有する**。別々に stat を取ると「読む集合」とパックの鍵がずれる)。どれか1つでも
+  食い違えば読み直して書き直す
+- **進行中の run(`scenarios/` の mtime が `run.json` より新しい)はパックを作らない・読まない**
+  (出力キャッシュの「進行中は鍵に中身を入れない」と同じ理由 —— 途中経過を束ねても finish() まで
+  使われない)。常に直接 decode する
+- **シナリオ記録は縮小して格納する**(`RunRecordPack.trimmedForStorage`)。記録のバイト数の
+  84% を占めるのが `timeline` で、api results の集計(`RunResultsQuery`)がそこから読むのは
+  `notes` だけ(`unsettledStepsInsight`)なので、`notes` を持たないステップは丸ごと落とし、
+  残すステップも `index`/`description`/`status`/`notes` の4欄だけに縮める。
+  **この縮小記録を使ってよいのは api results の集計だけ** —— `--scenario`(trend)は元記録全体
+  (timeline の計時欄も含む)を返す契約なので、`ApiResultsCommand.trendRecords` が
+  対象シナリオぶんだけ元ファイル(`entries.url`)を読み直す(キャッシュ経路の trend 索引と同じ
+  「url から読み直す」方式)。**`RunResultsQuery` が timeline から読む欄が増えたら縮小規則も
+  直すこと** —— `TimelineNotesOnlyScanTests` がソース走査で検出する
+- **窓判定(since/until)の近道**: `startedAt` が `windowKey` と同じ正準形
+  ("yyyy-MM-ddTHH:mm:ssZ"・ミリ秒無し)なら文字列比較で済ませ、`ISO8601DateFormatter.date(from:)`
+  を呼ばない(`RunResultsStore.windowMatch`/`isCanonicalISO8601Z`。E2E-CMP の run.json 5,700 件で
+  実測した所要の主要因だった)。正準形でないときだけ実際に Date へパースする。scanRuns と
+  パック経由の run.json 判定はこの1つの実装を共有する(`WindowMatchFastPathTests` が近道と
+  実パースの一致を固定)
+- **書き込みは atomic**(temp 作成 + rename)。**読み込み失敗(壊れている・無効)は黙って
+  直接読みへ倒す**(誤った結果を返すより遅い方がよい)
+- **掃除**: 対応する run ディレクトリが無くなったパックは `scanRunsAndRecords` のついでに掃く
+  (`RunRecordPack.sweepOrphans`。デコードはせず opendir 経由の存在確認だけ)。月ディレクトリ自体が
+  無い(`git rm -r` による月単位の間引き。§git での扱い参照)場合はパックの月ごと削除、
+  月はあるが個々の run ディレクトリが無い場合はその run のパックだけ削除する。
+  **保持容量の掃除(`RetentionSweeper`)は run.json/scenarios/ 自体を消さない**
+  (消すのは recordings/ 等 —— docs 上部の §保持容量)ので、通常の掃除経路ではパックが孤児化
+  しない。孤児化するのは上記の月単位の間引きのような手動操作のときだけ
+- 適用範囲は `fleetest api results` の非キャッシュ経路(`scanRunsAndRecords`)だけ。
+  素の `scanRuns`/`scanRecordEntries`/`scanRecords`(LPT 等の他の呼び手)は変えていない
+  (パック無し・従来どおりの全件直接デコード)
+- 確認方法は出力キャッシュと同じ: `--no-cache` の出力(パックを作る回・パックから読む回のどちらも)
+  と一致すること(`generatedAt` 以外。`--scenario` の trend は timeline を含めて一致すること)
+
 ## git での扱い
 
 **1 run = 1 ディレクトリ・1 シナリオ実行 = 1 ファイルの追加専用レイアウト**なので、

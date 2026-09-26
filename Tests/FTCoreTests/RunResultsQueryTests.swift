@@ -709,6 +709,8 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(row?.severity, "warn")
         XCTAssertEqual(row?.worker, "ios:A")
         XCTAssertEqual(row?.count, 8)
+        // 語の境界に空白が抜けていないこと("vs overall26%" のような詰まりを再発させない)
+        XCTAssertEqual(row?.message, "Foo.a [ios]: failures cluster on ios:A (its failure rate is 67% vs overall 25%)")
     }
 
     /// **率だけでは出さない**。単発〜数件の失敗は率を跳ね上げるが偏りの証拠にならない

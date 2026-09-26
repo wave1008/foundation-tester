@@ -392,6 +392,13 @@ export interface RunStatsRow {
   readonly maxScenarioID?: string | null;
 }
 
+/** 集計期間の選択肢(webview の許可リスト)。既定 "90d" は MonitorDashboardController.since。 */
+export type SinceOption = "7d" | "30d" | "90d";
+
+export function isSinceOption(value: unknown): value is SinceOption {
+  return value === "7d" || value === "30d" || value === "90d";
+}
+
 // ---- webview ⇔ 拡張のメッセージ契約 ----------------------------------------------------
 // 対向: src/webview/monitor/dashboardTab.js のメッセージハンドラ(手書き複製ではなくそのまま参照する
 // 契約なので、フィールドを増減したら両方直すこと)。
@@ -403,7 +410,13 @@ export type DashboardFromWebviewMessage =
   | { readonly type: "runDetail"; readonly runID: string; readonly runIDs?: readonly string[] }
   | { readonly type: "trend"; readonly scenarioID: string }
   | { readonly type: "openReport"; readonly path: string }
-  | { readonly type: "selectProject"; readonly project: string };
+  /** 失敗ステップの file:line クリック。line は 1 始まり。 */
+  | { readonly type: "openSource"; readonly file: string; readonly line: number }
+  | { readonly type: "selectProject"; readonly project: string }
+  /** 前回比。latestRunIDs/previousRunIDs は groupRuns() の1グループの構成 run 全部。 */
+  | { readonly type: "headlineDiff"; readonly latestRunIDs: readonly string[]; readonly previousRunIDs: readonly string[] }
+  /** 集計期間の切り替え。 */
+  | { readonly type: "setSince"; readonly since: SinceOption };
 
 export type DashboardToWebviewMessage =
   | { readonly type: "loading" }
@@ -414,8 +427,12 @@ export type DashboardToWebviewMessage =
   | { readonly type: "runDetailError"; readonly runID: string; readonly message: string }
   | { readonly type: "trend"; readonly scenarioID: string; readonly records: readonly ScenarioRunRecord[] }
   | { readonly type: "trendError"; readonly scenarioID: string; readonly message: string }
-  /** TestProjects/ 直下の候補と現在の解決結果(未解決なら "")。refresh のたびに送る。 */
-  | { readonly type: "projects"; readonly projects: readonly string[]; readonly current: string };
+  /** TestProjects/ 直下の候補と現在の解決結果(未解決なら "")+ 現在の集計期間(webview 再読込で
+   * 選択が既定へ戻るのを防ぐため、refresh のたびにホストの保持値を載せる)。 */
+  | { readonly type: "projects"; readonly projects: readonly string[]; readonly current: string; readonly since: SinceOption }
+  /** 前回比。latest/previous は groupRuns() の構成 run ごとの results-run 応答。 */
+  | { readonly type: "headlineDiff"; readonly latest: readonly ApiResultsRunPayload[]; readonly previous: readonly ApiResultsRunPayload[] }
+  | { readonly type: "headlineDiffError"; readonly message: string };
 
 // ---- 型ガード ---------------------------------------------------------------------
 
@@ -844,6 +861,23 @@ export function isDashboardFromWebviewMessage(value: unknown): value is Dashboar
   }
   if (value.type === "trend") return typeof value.scenarioID === "string";
   if (value.type === "openReport") return typeof value.path === "string";
+  if (value.type === "openSource") {
+    return (
+      typeof value.file === "string" &&
+      typeof value.line === "number" &&
+      Number.isInteger(value.line) &&
+      value.line >= 1
+    );
+  }
   if (value.type === "selectProject") return typeof value.project === "string";
+  if (value.type === "headlineDiff") {
+    return (
+      Array.isArray(value.latestRunIDs) &&
+      value.latestRunIDs.every((id) => typeof id === "string") &&
+      Array.isArray(value.previousRunIDs) &&
+      value.previousRunIDs.every((id) => typeof id === "string")
+    );
+  }
+  if (value.type === "setSince") return isSinceOption(value.since);
   return false;
 }

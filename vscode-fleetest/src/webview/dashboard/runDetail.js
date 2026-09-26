@@ -161,9 +161,23 @@ function renderAnomalies(run) {
   return frag;
 }
 
+/** file:line セルはクリックでエディタに開く(line 欠落は先頭行扱い = 1)。 */
+function fileLineCell(step) {
+  if (!step.file) {
+    return td('–');
+  }
+  const cell = document.createElement('td');
+  cell.textContent = step.file + (typeof step.line === 'number' ? ':' + step.line : '');
+  cell.className = 'scenario-id-clickable';
+  const line = typeof step.line === 'number' ? step.line : 1;
+  cell.addEventListener('click', () => {
+    vscode.postMessage({ type: 'openSource', file: step.file, line });
+  });
+  return cell;
+}
+
 function failedStepRow(step) {
   const tr = document.createElement('tr');
-  const fileLine = step.file ? step.file + (typeof step.line === 'number' ? ':' + step.line : '') : '–';
   tr.append(
     tdNum(String(step.index)),
     td(step.description),
@@ -172,7 +186,7 @@ function failedStepRow(step) {
     td(step.failureKind || '–'),
     td(step.notes && step.notes.length > 0 ? step.notes.join(', ') : '–'),
     td(step.detail || '–'),
-    td(fileLine),
+    fileLineCell(step),
   );
   return tr;
 }

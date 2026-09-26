@@ -80,8 +80,14 @@ struct ApiResultsCommand: AsyncParsableCommand {
             return
         }
 
-        let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)
-        let entries = RunResultsStore.scanRecordEntries(resultsDir: resultsDir, since: sinceDate)
+        let (runs, entries) = RunResultsStore.scanRunsAndRecords(
+            resultsDir: resultsDir, since: sinceDate,
+            packCacheDir: RunRecordPack.cacheDir(stateDir: stateDir),
+            executableKey: ResultsOutputCache.executableFingerprint(executable: Bundle.main.executableURL))
+        // パック経由の record は集計用に縮小済み(RunRecordPack.trimmedForStorage)。
+        // 集計(summary/flaky/devices/daily/slow/insights/matrix/triage/performance/runStats)は
+        // その縮小で困らない(timeline から読むのは notes だけ。TimelineNotesOnlyScanTests が保証)。
+        // trend(--scenario)だけは元ファイルを読み直す(trendRecords)
         let records = entries.map(\.record)
         let recentRuns = RunResultsQuery.recentRuns(runs, limit: limit)
 
@@ -108,7 +114,8 @@ struct ApiResultsCommand: AsyncParsableCommand {
         let encoder = Self.makeEncoder()
         let bodyJSON = String(decoding: try encoder.encode(body), as: UTF8.self)
         let trendJSON = try scenario.map { id in
-            String(decoding: try encoder.encode(RunResultsQuery.trend(records, scenarioID: id)), as: UTF8.self)
+            let fullRecords = Self.trendRecords(entries: entries, scenarioID: id)
+            return String(decoding: try encoder.encode(RunResultsQuery.trend(fullRecords, scenarioID: id)), as: UTF8.self)
         }
 
         // 窓に含めた最古の startedAt(run.json と記録の両方。どちらかが落ちれば出力が変わる)
@@ -189,6 +196,20 @@ struct ApiResultsCommand: AsyncParsableCommand {
                   let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
                   record.schemaVersion <= RunRecordSchema.current,
                   record.startedAt >= sinceKey else { return nil }
+            return record
+        }
+    }
+
+    /// trend(--scenario)専用: `entries` の record を使わず、対象シナリオぶんだけ `entries.url`
+    /// (元の scenarios/*.json)を読み直す。**パック経由の record は timeline を縮小済み**
+    /// (RunRecordPack.trimmedForStorage)なので、trend が返す timeline 付きの記録には使えない。
+    /// キャッシュ経路(上の `records(index:...)`)も同じ「url から読み直す」方式なので、
+    /// ヒット/ミスで trend の中身が変わらない
+    private static func trendRecords(entries: [RunResultsStore.ScannedRecord], scenarioID: String) -> [ScenarioRunRecord] {
+        let decoder = JSONDecoder()
+        return entries.filter { $0.record.scenarioID == scenarioID }.compactMap { entry -> ScenarioRunRecord? in
+            guard let data = try? Data(contentsOf: entry.url),
+                  let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else { return nil }
             return record
         }
     }

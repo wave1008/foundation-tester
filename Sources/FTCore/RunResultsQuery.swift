@@ -1190,7 +1190,7 @@ public enum RunResultsQuery {
             return InsightRow(
                 kind: "deviceBias", severity: "warn", scenarioID: scenarioID, platform: platform, worker: worker,
                 message: "\(scenarioLabel(scenarioID, platform)): failures cluster on \(worker) (its failure rate is "
-                    + "\(String(format: "%.0f", workerFailureRate * 100))% vs overall"
+                    + "\(String(format: "%.0f", workerFailureRate * 100))% vs overall "
                     + "\(String(format: "%.0f", overallFailureRate * 100))%)",
                 count: workerFailed, deltaPct: nil)
         }

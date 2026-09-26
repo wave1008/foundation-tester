@@ -18,17 +18,32 @@ import * as vscode from "vscode";
 import { type FleetestConfig, listProjectCandidates, resolveProjectName } from "./config";
 import { t } from "./i18n";
 import {
+  type ApiResultsPayload,
   type ApiResultsRunPayload,
   type DashboardFromWebviewMessage,
   type DashboardToWebviewMessage,
+  type SinceOption,
   isApiResultsPayload,
   isApiResultsRunPayload,
 } from "./dashboardModel";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
 import { selectWorkspaceProject } from "./projectSelection";
 
-const RESULTS_SINCE = "90d";
 const RESULTS_MIN_RUNS = 3;
+
+/** webview 由来の相対パスを workspaceRoot に対して解決し、配下かつ拡張子が一致するか検証する
+ * (webview のクリックはユーザー由来だが値そのものは信頼しない)。合格なら絶対パス、
+ * 不合格なら null。handleOpenReport(.md)/handleOpenSource(.swift)で共有する純粋関数
+ * (vscode 非依存なので単体テストで直接呼べる)。 */
+export function resolveWorkspaceRelativeFile(workspaceRoot: string, rawPath: string, requiredExt: string): string | null {
+  const resolved = path.resolve(path.isAbsolute(rawPath) ? rawPath : path.join(workspaceRoot, rawPath));
+  const root = path.resolve(workspaceRoot);
+  const withinRoot = resolved === root || resolved.startsWith(root + path.sep);
+  if (!withinRoot || path.extname(resolved) !== requiredExt) {
+    return null;
+  }
+  return resolved;
+}
 
 /** MonitorDashboardController が使う狭い窓口。 */
 export interface MonitorDashboardControllerDeps {
@@ -60,6 +75,15 @@ export class MonitorDashboardController {
   private detailFetching = false;
   /** trend 版の同型ガード(scenarioID クリック連打対策)。 */
   private trendFetching = false;
+  private headlineDiffFetching = false;
+  private headlineDiffQueued: { latestRunIDs: readonly string[]; previousRunIDs: readonly string[] } | null = null;
+  /** (project, since) ごとの直近ペイロード(メモリのみ)。パネルを閉じて開き直すと
+   * webview の DOM は失われるが、この Map は MonitorDashboardController の生存中は残るので、
+   * refresh() の冒頭で即座に再送できる(再取得の 15〜20 秒を待たせない)。 */
+  private readonly resultsCache = new Map<string, ApiResultsPayload>();
+  /** 集計期間。webview 再読込(言語切替)で選択が既定へ戻るのを防ぐため、'projects' 送信時に
+   * 毎回載せて webview に合わせさせる。既定は従来と同じ 90d。 */
+  private since: SinceOption = "90d";
 
   constructor(private readonly deps: MonitorDashboardControllerDeps) {}
 
@@ -115,10 +139,24 @@ export class MonitorDashboardController {
       case "openReport":
         void this.handleOpenReport(message.path);
         break;
+      case "openSource":
+        void this.handleOpenSource(message.file, message.line);
+        break;
       case "selectProject":
         void this.handleSelectProject(message.project);
         break;
+      case "headlineDiff":
+        void this.handleHeadlineDiff(message.latestRunIDs, message.previousRunIDs);
+        break;
+      case "setSince":
+        this.since = message.since;
+        void this.refresh();
+        break;
     }
+  }
+
+  private cacheKey(project: string): string {
+    return project + "\u0000" + this.since;
   }
 
   /** webview のドロップダウンからのプロジェクト切替(refresh は onProjectSettingChanged 経由)。 */
@@ -152,11 +190,13 @@ export class MonitorDashboardController {
     try {
       const config = this.deps.getConfig();
       const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-      // 候補は毎回送る(未解決でもドロップダウンからの選択で復帰できるように)
+      // 候補は毎回送る(未解決でもドロップダウンからの選択で復帰できるように)。since も毎回載せる
+      // (webview 再読込で選択が既定へ戻るのを防ぐ)。
       this.deps.post({
         type: "projects",
         projects: listProjectCandidates(this.deps.workspaceRoot),
         current: resolution.kind === "resolved" ? resolution.project : "",
+        since: this.since,
       });
       if (resolution.kind !== "resolved") {
         this.deps.post({
@@ -165,13 +205,19 @@ export class MonitorDashboardController {
         });
         return;
       }
+      // 直近ペイロードがあれば取得完了を待たず即座に再送する(パネルを開き直した webview は
+      // DOM を持たないので、この再送が無いと結果が出るまで毎回 15〜20 秒空白になる)。
+      const cached = this.resultsCache.get(this.cacheKey(resolution.project));
+      if (cached) {
+        this.deps.post({ type: "data", payload: cached });
+      }
       const args = [
         "api",
         "results",
         "--project",
         resolution.project,
         "--since",
-        RESULTS_SINCE,
+        this.since,
         "--min-runs",
         String(RESULTS_MIN_RUNS),
         // マトリクスのセクションは無いので計算も転送もさせない(0 = matrix キー自体を出さない)
@@ -187,6 +233,7 @@ export class MonitorDashboardController {
         });
         return;
       }
+      this.resultsCache.set(this.cacheKey(resolution.project), result.json);
       this.deps.post({ type: "data", payload: result.json });
     } catch (error) {
       this.deps.post({
@@ -261,7 +308,7 @@ export class MonitorDashboardController {
         "--project",
         resolution.project,
         "--since",
-        RESULTS_SINCE,
+        this.since,
         "--min-runs",
         String(RESULTS_MIN_RUNS),
         "--matrix-runs",
@@ -294,12 +341,8 @@ export class MonitorDashboardController {
   /** webview 由来の相対パスを workspaceRoot に対して解決し、配下かつ .md であることを検証してから
    * 開く(webview のクリックはユーザー由来だが値そのものは信頼しない)。 */
   private async handleOpenReport(rawPath: string): Promise<void> {
-    const resolved = path.resolve(
-      path.isAbsolute(rawPath) ? rawPath : path.join(this.deps.workspaceRoot, rawPath),
-    );
-    const root = path.resolve(this.deps.workspaceRoot);
-    const withinRoot = resolved === root || resolved.startsWith(root + path.sep);
-    if (!withinRoot || path.extname(resolved) !== ".md") {
+    const resolved = resolveWorkspaceRelativeFile(this.deps.workspaceRoot, rawPath, ".md");
+    if (!resolved) {
       return;
     }
     const uri = vscode.Uri.file(resolved);
@@ -311,5 +354,74 @@ export class MonitorDashboardController {
     }
     const doc = await vscode.workspace.openTextDocument(uri);
     await vscode.window.showTextDocument(doc);
+  }
+
+  /** 失敗ステップの file:line クリック。workspaceRoot 配下・.swift・実在を検証してから開き、
+   * line(1始まり)へ移動する。handleOpenReport と同じ流儀(検証は resolveWorkspaceRelativeFile 共有)。 */
+  private async handleOpenSource(rawFile: string, line: number): Promise<void> {
+    const resolved = resolveWorkspaceRelativeFile(this.deps.workspaceRoot, rawFile, ".swift");
+    if (!resolved) {
+      return;
+    }
+    const uri = vscode.Uri.file(resolved);
+    try {
+      await vscode.workspace.fs.stat(uri);
+    } catch {
+      void vscode.window.showWarningMessage(t("exploreHeal.dashboard.sourceNotFound"));
+      return;
+    }
+    const doc = await vscode.workspace.openTextDocument(uri);
+    const editor = await vscode.window.showTextDocument(doc);
+    const position = new vscode.Position(Math.max(0, line - 1), 0);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+  }
+
+  /** 前回比。latest/previous それぞれの構成 run 全部の results-run 応答を集めて生のまま返す
+   * (突き合わせ判定は webview 側の純粋関数 headlineDiffLogic.js が持つ。判定を1箇所にする方針)。 */
+  private async handleHeadlineDiff(latestRunIDs: readonly string[], previousRunIDs: readonly string[]): Promise<void> {
+    if (this.headlineDiffFetching) {
+      // 捨てない: 控えの即時再送 → 取り直し の2回の data で依頼が続けて来る。後の依頼を捨てると
+      // 先の応答は webview に古いと捨てられ、前回比が出ないまま残る。最新の1件だけ持ち越す
+      this.headlineDiffQueued = { latestRunIDs, previousRunIDs };
+      return;
+    }
+    this.headlineDiffFetching = true;
+    try {
+      const config = this.deps.getConfig();
+      const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+      if (resolution.kind !== "resolved") {
+        this.deps.post({ type: "headlineDiffError", message: t("exploreHeal.common.projectUnresolved") });
+        return;
+      }
+      const fetchAll = async (ids: readonly string[]): Promise<ApiResultsRunPayload[] | null> => {
+        const payloads: ApiResultsRunPayload[] = [];
+        for (const id of ids) {
+          const args = ["api", "results-run", "--project", resolution.project, "--run-id", id];
+          const result = await this.runOneShotTracked(args);
+          if (!isApiResultsRunPayload(result.json)) {
+            return null;
+          }
+          payloads.push(result.json);
+        }
+        return payloads;
+      };
+      const latest = await fetchAll(latestRunIDs);
+      const previous = latest ? await fetchAll(previousRunIDs) : null;
+      if (!latest || !previous) {
+        this.deps.post({ type: "headlineDiffError", message: t("exploreHeal.dashboard.headlineDiffFetchFailed") });
+        return;
+      }
+      this.deps.post({ type: "headlineDiff", latest, previous });
+    } catch (error) {
+      this.deps.post({ type: "headlineDiffError", message: t("exploreHeal.dashboard.fetchFailedError", { error: errorMessage(error) }) });
+    } finally {
+      this.headlineDiffFetching = false;
+      const queued = this.headlineDiffQueued;
+      this.headlineDiffQueued = null;
+      if (queued) {
+        void this.handleHeadlineDiff(queued.latestRunIDs, queued.previousRunIDs);
+      }
+    }
   }
 }

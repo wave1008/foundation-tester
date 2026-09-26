@@ -1,4 +1,4 @@
-// 「シナリオ別サマリ」の見出し(monitorHtml.ts)とセル(render.js)は**位置で対応する**契約。
+// 「シナリオ別サマリ」の見出し(monitorHtml.ts)とセル(summaryTable.js)は**位置で対応する**契約。
 // 片方だけ並べ替えると値が別の見出しの下に出るが、**描画もテストも通る**(型も見ない)ので、
 // 期待する順序をここ1箇所に置いて両側を突き合わせる。列を増減したら EXPECTED を直す。
 import assert from "node:assert/strict";
@@ -27,9 +27,9 @@ function headerKeys() {
 }
 
 function cellFields() {
-  const js = readFileSync(path.join(ROOT, "src/webview/dashboard/render.js"), "utf8");
-  const fn = js.slice(js.indexOf("export function renderSummaryTable"));
-  const append = fn.slice(fn.indexOf("tr.append("), fn.indexOf("body.appendChild"));
+  const js = readFileSync(path.join(ROOT, "src/webview/dashboard/summaryTable.js"), "utf8");
+  const fn = js.slice(js.indexOf("function summaryRow"));
+  const append = fn.slice(fn.indexOf("tr.append("), fn.indexOf("return tr"));
   return EXPECTED.map(([, field]) => ({ field, at: append.indexOf(field) }))
     .filter((e) => e.at >= 0)
     .sort((a, b) => a.at - b.at)
@@ -54,9 +54,9 @@ test("最終結果は見出しもセルも中央寄せ(mid)の対になってい
   const lastResultTh = row.split("<th").find((th) => th.includes("colLastResult"));
   assert.ok(lastResultTh.includes('class="mid"'), "最終結果の見出しに class=\"mid\" が無い");
 
-  const js = readFileSync(path.join(ROOT, "src/webview/dashboard/render.js"), "utf8");
-  const fn = js.slice(js.indexOf("export function renderSummaryTable"));
-  const append = fn.slice(fn.indexOf("tr.append("), fn.indexOf("body.appendChild"));
+  const js = readFileSync(path.join(ROOT, "src/webview/dashboard/summaryTable.js"), "utf8");
+  const fn = js.slice(js.indexOf("function summaryRow"));
+  const append = fn.slice(fn.indexOf("tr.append("), fn.indexOf("return tr"));
   const cell = append.split("\n").find((line) => line.includes("row.lastPassed"));
   assert.match(cell, /tdMid\(/, "最終結果のセルが tdMid ではない");
 
