@@ -42,8 +42,9 @@ struct CleanCommand: AsyncParsableCommand {
 
     @Flag(name: .customLong("simulator-poster-cache"),
           help: """
-              Purge the PosterBoard wallpaper-gallery snapshot cache (SnapshotCache.cachedb) of \
-              every stopped iOS Simulator on this Mac (booted simulators are skipped). Only runs \
+              Purge the PosterBoard wallpaper snapshots (SnapshotCache.cachedb and the home-screen \
+              RuntimeSnapshot files) of every stopped iOS Simulator on this Mac (booted simulators \
+              are skipped). Only runs \
               when this flag is passed — never part of the background auto-sweep
               """)
     var simulatorPosterCache = false

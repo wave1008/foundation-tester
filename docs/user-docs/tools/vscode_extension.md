@@ -207,7 +207,8 @@ settings, so they also apply to tests you run directly from a terminal.
 ### iOS Simulator wallpaper cache (CLI only)
 
 On iOS 27 Simulators, PosterBoard (the wallpaper gallery) writes a new snapshot cache each time it
-rebuilds a wallpaper version, and never deletes the older ones. With frequent reboots a single
+rebuilds a wallpaper version, and never deletes the older ones. Home-screen rendering snapshots pile up
+the same way. With frequent reboots a single
 Simulator can reach tens of GB. fleetest purges a Simulator's accumulated cache right before it boots
 that Simulator (wallpaper settings and other data are left untouched).
 

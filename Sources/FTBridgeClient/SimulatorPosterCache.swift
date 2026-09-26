@@ -10,8 +10,12 @@
 // 壊しうる。呼び出し側の保証をあてにせず、この関数自身が simctl の実状態を確かめる
 // (一覧が読めないときも安全側で撃たない)。
 //
-// 消すのは `SnapshotCache.cachedb` という名前のディレクトリだけ(丸ごと・中には降りない)。
-// それ以外(configurations・descriptors 本体・壁紙の設定)には一切触れない。
+// 消すのは2種類だけ: ①`SnapshotCache.cachedb` という名前のディレクトリ(丸ごと・中には降りない)
+// ②名前が `RuntimeSnapshot` で始まるファイル(ホーム画面の描画スナップショット `RuntimeSnapshot-<hash>-home.atx`
+// と対のメタデータ plist。今の壁紙の `configurations/<UUID>/versions/<N>/` の直下にハッシュ違いで作り足され、
+// 古いものが消えない。1枚約 3MB・1台 81〜271 枚を実測)。どちらも停止中に全部消して起動すると、今の分だけが
+// 作り直され、ホーム画面・壁紙・シナリオが正常だった(docs/design.md §12.4.2)。
+// それ以外(configurations・descriptors の本体・壁紙の設定・データベース)には一切触れない。
 // 失敗(権限・途中で消えた等)は無視して次へ進む(起動を止めない)。
 
 import FTCore
@@ -21,15 +25,22 @@ public enum SimulatorPosterCache {
 
     public struct PurgeResult: Sendable, Equatable {
         public let directoriesRemoved: Int
+        /// 消した `RuntimeSnapshot*` ファイルの数(画像とメタデータ plist の合計)
+        public let runtimeSnapshotFilesRemoved: Int
         public let bytesFreed: Int64
         /// true = Booted だったので何も見ていない(消せる/消せないの判定ではない)
         public let skippedBooted: Bool
 
-        public init(directoriesRemoved: Int, bytesFreed: Int64, skippedBooted: Bool) {
+        public init(directoriesRemoved: Int, runtimeSnapshotFilesRemoved: Int, bytesFreed: Int64,
+                    skippedBooted: Bool) {
             self.directoriesRemoved = directoriesRemoved
+            self.runtimeSnapshotFilesRemoved = runtimeSnapshotFilesRemoved
             self.bytesFreed = bytesFreed
             self.skippedBooted = skippedBooted
         }
+
+        static let nothing = PurgeResult(directoriesRemoved: 0, runtimeSnapshotFilesRemoved: 0, bytesFreed: 0,
+                                         skippedBooted: false)
     }
 
     /// `dryRun`: 消さずに数だけ数える(`fleetest clean --dry-run` 用)。
@@ -50,17 +61,18 @@ public enum SimulatorPosterCache {
                       logOnRemoval: Bool = true, measureBytes: Bool = false,
                       home: URL = FileManager.default.homeDirectoryForCurrentUser) -> PurgeResult {
         guard shouldPurge(observation: observation) else {
-            return PurgeResult(directoriesRemoved: 0, bytesFreed: 0, skippedBooted: true)
+            return PurgeResult(directoriesRemoved: 0, runtimeSnapshotFilesRemoved: 0, bytesFreed: 0,
+                               skippedBooted: true)
         }
         let store = posterStoreDirectory(udid: udid, home: home)
         let start = Date()
         let result = purgeCacheDirectories(under: store, dryRun: dryRun, measureBytes: measureBytes)
-        if logOnRemoval, !dryRun, result.directoriesRemoved > 0 {
+        if logOnRemoval, !dryRun, result.directoriesRemoved + result.runtimeSnapshotFilesRemoved > 0 {
             let elapsed = Date().timeIntervalSince(start)
             let size = measureBytes ? " (\(bytesText(result.bytesFreed)))" : ""
             ConsoleOut.err("[fleetest] removed \(result.directoriesRemoved) PosterBoard snapshot"
-                + " cache dir(s)\(size) for simulator \(udid)"
-                + " in \(String(format: "%.1f", elapsed))s")
+                + " cache dir(s) and \(result.runtimeSnapshotFilesRemoved) runtime snapshot file(s)\(size)"
+                + " for simulator \(udid) in \(String(format: "%.1f", elapsed))s")
         }
         return result
     }
@@ -80,45 +92,57 @@ public enum SimulatorPosterCache {
     /// `measureBytes` が false のとき bytesFreed は 0(数えていない = 0 バイトという意味ではない)
     static func purgeCacheDirectories(under store: URL, dryRun: Bool = false,
                                       measureBytes: Bool = true) -> PurgeResult {
-        guard FileManager.default.fileExists(atPath: store.path) else {
-            return PurgeResult(directoriesRemoved: 0, bytesFreed: 0, skippedBooted: false)
-        }
+        guard FileManager.default.fileExists(atPath: store.path) else { return .nothing }
+        let targets = findPurgeTargets(under: store)
         var removed = 0
+        var filesRemoved = 0
         var freed: Int64 = 0
-        for dir in findSnapshotCacheDirectories(under: store) {
+        for dir in targets.cacheDirectories {
             let bytes = measureBytes ? directorySize(dir) : 0
-            if dryRun {
-                removed += 1
-                freed += bytes
-                continue
-            }
-            guard (try? FileManager.default.removeItem(at: dir)) != nil else { continue }
+            if !dryRun, (try? FileManager.default.removeItem(at: dir)) == nil { continue }
             removed += 1
             freed += bytes
         }
-        return PurgeResult(directoriesRemoved: removed, bytesFreed: freed, skippedBooted: false)
+        for file in targets.runtimeSnapshotFiles {
+            let bytes = measureBytes ? Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) : 0
+            if !dryRun, (try? FileManager.default.removeItem(at: file)) == nil { continue }
+            filesRemoved += 1
+            freed += bytes
+        }
+        return PurgeResult(directoriesRemoved: removed, runtimeSnapshotFilesRemoved: filesRemoved,
+                           bytesFreed: freed, skippedBooted: false)
     }
 
     /// `root` の下を歩いて名前が `SnapshotCache.cachedb` のディレクトリを探す。
     /// **見つけたらその中には降りない**(入れ子の同名ディレクトリがあっても外側の1個を対象にする)
     static func findSnapshotCacheDirectories(under root: URL) -> [URL] {
-        var result: [URL] = []
+        findPurgeTargets(under: root).cacheDirectories
+    }
+
+    /// 1回の走査で両方を集める。`SnapshotCache.cachedb` の中には降りない(丸ごと消すので中の
+    /// `RuntimeSnapshot*` も一緒に消える = 二重に数えない)
+    static func findPurgeTargets(under root: URL) -> (cacheDirectories: [URL], runtimeSnapshotFiles: [URL]) {
+        var directories: [URL] = []
+        var files: [URL] = []
         var stack: [URL] = [root]
         while let dir = stack.popLast() {
             guard let entries = try? FileManager.default.contentsOfDirectory(
                 at: dir, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])
             else { continue }
             for entry in entries {
-                guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-                else { continue }
-                if entry.lastPathComponent == "SnapshotCache.cachedb" {
-                    result.append(entry)
-                } else {
-                    stack.append(entry)
+                let isDirectory = (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                if isDirectory {
+                    if entry.lastPathComponent == "SnapshotCache.cachedb" {
+                        directories.append(entry)
+                    } else {
+                        stack.append(entry)
+                    }
+                } else if entry.lastPathComponent.hasPrefix("RuntimeSnapshot") {
+                    files.append(entry)
                 }
             }
         }
-        return result
+        return (directories, files)
     }
 
     static func directorySize(_ dir: URL) -> Int64 {

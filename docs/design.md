@@ -4567,8 +4567,13 @@ iOS 26 で溜まらないとは言えない)・iOS 18 の台にはこのキャ�
 - **Booted の台には撃たない** —— PosterBoard が動いている最中に消すと書き込み中のファイルを
   壊しうる。呼び出し側の保証をあてにせず、`purge` 自身が `SimulatorCatalog.shutdownObservation`
   で実状態を確かめる(一覧が読めない `.unreadable` も安全側で撃たない)
-- **消すのは `SnapshotCache.cachedb` という名前のディレクトリだけ**(見つけたら丸ごと・中には
-  降りない)。それ以外(configurations・descriptors 本体・壁紙の設定)には一切触れない。
+- **消すのは2種類だけ**: ①`SnapshotCache.cachedb` という名前のディレクトリ(見つけたら丸ごと・中には
+  降りない) ②名前が `RuntimeSnapshot` で始まるファイル(ホーム画面の描画スナップショット
+  `RuntimeSnapshot-<hash>-home.atx` と対のメタデータ plist)。②は今の壁紙の `configurations/<UUID>/versions/<N>/`
+  の直下にハッシュ違いで作り足され古いものが消えない(1枚約 3MB・1台 81〜271 枚・最大約 860MB を実測)。
+  停止中に全部消して起動すると今の分(1枚)だけ作り直され、ホーム画面・壁紙・シナリオ1本が正常だった
+  (手で消した `-09` と、実経路で 109 ファイルを 0.7 秒で消した `-10`)。
+  それ以外(configurations・descriptors の本体・壁紙の設定・データベース)には一切触れない。
   失敗(権限・途中で消えた等)は無視して先へ進む(起動を止めない)
 - **検証**: 停止中の Simulator で `find <store> -type d -name SnapshotCache.cachedb
   -prune -exec rm -rf {} +` → 起動 → ホーム画面・壁紙・ウィジェット正常・シナリオ1本緑・

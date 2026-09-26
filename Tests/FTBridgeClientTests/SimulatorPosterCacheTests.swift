@@ -1,4 +1,4 @@
-// SimulatorPosterCache: SnapshotCache.cachedb だけを消す・入れ子には降りない・
+// SimulatorPosterCache: SnapshotCache.cachedb と RuntimeSnapshot* だけを消す・入れ子には降りない・
 // Booted の台には撃たない(状態注入。simctl は撃たない)。
 
 import XCTest
@@ -30,6 +30,46 @@ final class SimulatorPosterCacheTests: XCTestCase {
         guard let resolved = realpath(url.path, nil) else { return url.path }
         defer { free(resolved) }
         return String(cString: resolved)
+    }
+
+    // MARK: - ホーム画面の描画スナップショット(RuntimeSnapshot*)
+
+    func testRemovesRuntimeSnapshotFilesButKeepsTheRestOfTheVersionDirectory() throws {
+        let store = root.appendingPathComponent("PRBPosterExtensionDataStore")
+        let version = store.appendingPathComponent(
+            "61/Extensions/com.apple.MercuryPoster/configurations/UUID/versions/0")
+        let hash = String(repeating: "a", count: 64)
+        let image = version.appendingPathComponent("RuntimeSnapshot-\(hash)-home.atx")
+        let metadata = version.appendingPathComponent("RuntimeSnapshotMetadata-\(hash)-home.plist")
+        let colorStats = version.appendingPathComponent("RuntimeSnapshotColorStatisticsMetadata-\(hash)-home.plist")
+        let rendering = version.appendingPathComponent(
+            "com.apple.posterkit.provider.instance.renderingConfiguration.plist")
+        for url in [image, metadata, colorStats] { try write("snapshot", at: url) }
+        try write("keep-me", at: rendering)
+        // cachedb の中の同名は、cachedb ごと消えるので別に数えない
+        try write("in-cache", at: version.appendingPathComponent(
+            "scratch/SnapshotCache.cachedb/RuntimeSnapshot-\(hash)-home.atx"))
+
+        let result = SimulatorPosterCache.purgeCacheDirectories(under: store)
+
+        XCTAssertEqual(result.directoriesRemoved, 1)
+        XCTAssertEqual(result.runtimeSnapshotFilesRemoved, 3)
+        for url in [image, metadata, colorStats] {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path), url.lastPathComponent)
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: rendering.path), "壁紙の設定は消さない")
+    }
+
+    func testDryRunCountsRuntimeSnapshotsWithoutDeleting() throws {
+        let store = root.appendingPathComponent("PRBPosterExtensionDataStore")
+        let image = store.appendingPathComponent("c/versions/0/RuntimeSnapshot-x-home.atx")
+        try write("snapshot", at: image)
+
+        let result = SimulatorPosterCache.purgeCacheDirectories(under: store, dryRun: true)
+
+        XCTAssertEqual(result.runtimeSnapshotFilesRemoved, 1)
+        XCTAssertGreaterThan(result.bytesFreed, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: image.path))
     }
 
     // MARK: - 削除対象の選別

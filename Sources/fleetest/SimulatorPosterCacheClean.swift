@@ -14,6 +14,7 @@ enum SimulatorPosterCacheClean {
             return
         }
         var totalDirs = 0
+        var totalFiles = 0
         var totalFreed: Int64 = 0
         for sim in devices {
             if sim.booted {
@@ -23,12 +24,13 @@ enum SimulatorPosterCacheClean {
             let result = SimulatorPosterCache.purge(udid: sim.udid, dryRun: dryRun, logOnRemoval: false,
                                                     measureBytes: true)
             totalDirs += result.directoriesRemoved
+            totalFiles += result.runtimeSnapshotFilesRemoved
             totalFreed += result.bytesFreed
             log("· \(sim.name) (\(sim.udid)): "
                 + (dryRun ? "would free " : "freed ") + RetentionSweeper.bytesText(result.bytesFreed)
-                + " (\(result.directoriesRemoved) cache dir(s))")
+                + " (\(result.directoriesRemoved) cache dir(s), \(result.runtimeSnapshotFilesRemoved) runtime snapshot file(s))")
         }
         log((dryRun ? "🔍 would free " : "🧹 freed ") + RetentionSweeper.bytesText(totalFreed)
-            + " of PosterBoard snapshot cache across \(totalDirs) director" + (totalDirs == 1 ? "y" : "ies"))
+            + " of PosterBoard snapshots (\(totalDirs) cache dir(s), \(totalFiles) runtime snapshot file(s))")
     }
 }
