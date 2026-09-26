@@ -9,7 +9,6 @@
 
 import { vscode as monitorVscode } from './vscodeApi.js';
 import { vscode, setDashboardTransport } from '../dashboard/vscodeApi.js';
-import { initDailyChart, renderDailyChart } from '../dashboard/charts.js';
 import { formatLocalDateTime } from '../dashboard/format.js';
 import { t } from '../i18n.js';
 import {
@@ -21,7 +20,6 @@ import {
 } from '../dashboard/render.js';
 import { renderSummaryTable } from '../dashboard/summaryTable.js';
 import { renderInsights } from '../dashboard/insights.js';
-import { renderTriage } from '../dashboard/triage.js';
 import { renderDevices } from '../dashboard/devices.js';
 import { renderPerformance } from '../dashboard/performance.js';
 import { setMachineAliases } from '../dashboard/machineNames.js';
@@ -132,7 +130,6 @@ function applyData(payload) {
   // devices は insights より先に描く: deviceBias リンクの可否(hasWorkerRow)が devices.js の
   // currentWorkers を参照するため
   renderDevices(payload.devices);
-  renderTriage(payload.triage);
   renderRunsTable(runGroups, statsByRunID);
   // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
   renderPerformance(payload.performance);
@@ -140,7 +137,6 @@ function applyData(payload) {
   renderSlowTable(payload.slow || []);
   renderInsights(payload.insights || []);
   renderFlakyTable(payload.flaky);
-  renderDailyChart(payload.daily);
   renderSummaryTable(payload.summary);
 }
 
@@ -229,5 +225,4 @@ sinceSelect.addEventListener('change', () => {
   vscode.postMessage({ type: 'setSince', since: sinceSelect.value });
 });
 
-initDailyChart();
 vscode.postMessage({ type: 'ready' });

@@ -1,7 +1,6 @@
 // webviewDashboardExtras.test.mjs
 // ダッシュボードタブ(webview)の追加項目を実 HTML+実バンドルで動かす DOM E2E(jsdom。方式は
-// webviewDashboardTrendClick.test.mjs と同じ)。対象: 失敗の内訳(欠けた欄は「–」)・
-// 注意喚起の折りたたみとリンク・シナリオ別サマリの並べ替え・絞り込み・
+// webviewDashboardTrendClick.test.mjs と同じ)。対象: 注意喚起の折りたたみとリンク・シナリオ別サマリの並べ替え・絞り込み・
 // 失敗ステップの file:line クリックでエディタを開く。
 
 import assert from "node:assert/strict";
@@ -69,86 +68,6 @@ function basePayload(overrides = {}) {
     ...overrides,
   };
 }
-
-// ---- 失敗の内訳(欠けた欄は「–」・「その他」に丸めない) --------------------------------
-
-test("triage: section が欠けた行は「–」で出す(丸めない)", (t) => {
-  const { window, sendToWebview } = createWebview();
-  t.after(() => window.close());
-  const payload = basePayload({
-    triage: {
-      totalFailed: 7,
-      unreachedCount: 1,
-      rows: [
-        { command: "exist", failureKind: "assertionFailed", count: 2, scenarioCount: 2, scenarioIDs: ["D"] },
-        { section: "action", command: "tap", failureKind: "elementNotFound", count: 5, scenarioCount: 3, scenarioIDs: ["A", "B", "C"] },
-      ],
-      noteCounts: [{ note: "interruption-dismissed", count: 3 }],
-    },
-  });
-  sendToWebview({ type: "dashboard", message: { type: "data", payload } });
-
-  const section = window.document.getElementById("section-triage");
-  assert.equal(section.style.display, "block");
-  const rows = window.document.querySelectorAll("#table-triage-body tr");
-  assert.equal(rows.length, 2);
-  const firstCells = [...rows[0].children].map((c) => c.textContent);
-  assert.equal(firstCells[0], "–", "section 欠落は「–」");
-  assert.notEqual(firstCells[0], "その他");
-  assert.equal(firstCells[1], "exist");
-  assert.equal(firstCells[2], "assertionFailed");
-  assert.equal(firstCells[3], "2");
-
-  const summaryText = window.document.getElementById("triage-summary").textContent;
-  assert.match(summaryText, /7/);
-  assert.match(summaryText, /1/);
-
-  const noteRows = window.document.querySelectorAll("#table-triage-notes-body tr");
-  assert.equal(noteRows.length, 1);
-  assert.equal(noteRows[0].children[0].textContent, "interruption-dismissed");
-});
-
-test("triage: scenarioIDs 欠落は「–」、シナリオ例セルのクリックで実行履歴を開く", (t) => {
-  const { window, posts, sendToWebview } = createWebview();
-  t.after(() => window.close());
-  const payload = basePayload({
-    triage: {
-      totalFailed: 1,
-      unreachedCount: 0,
-      rows: [{ count: 1, scenarioCount: 0, scenarioIDs: [] }],
-      noteCounts: [],
-    },
-  });
-  sendToWebview({ type: "dashboard", message: { type: "data", payload } });
-  const row = window.document.querySelector("#table-triage-body tr");
-  assert.equal(row.children[5].textContent, "–");
-
-  const payload2 = basePayload({
-    triage: {
-      totalFailed: 1,
-      unreachedCount: 0,
-      rows: [{ section: "action", command: "tap", failureKind: "x", count: 1, scenarioCount: 1, scenarioIDs: ["Foo.S0010"] }],
-      noteCounts: [],
-    },
-  });
-  sendToWebview({ type: "dashboard", message: { type: "data", payload: payload2 } });
-  const cell = window.document.querySelector("#table-triage-body tr .scenario-id-clickable");
-  assert.ok(cell);
-  cell.click();
-  const trendPost = posts.find((p) => p.type === "dashboard" && p.message?.type === "trend");
-  // jsdom の realm で作られたオブジェクトなので JSON で Node 側へ写してから比べる
-  // (webviewDashboardTrendClick.test.mjs と同じ理由)。
-  assert.deepEqual(JSON.parse(JSON.stringify(trendPost.message)), { type: "trend", scenarioID: "Foo.S0010" });
-});
-
-test("triage: triage キーが無いペイロードではセクションを隠す(旧 CLI)", (t) => {
-  const { window, sendToWebview } = createWebview();
-  t.after(() => window.close());
-  const payload = basePayload();
-  delete payload.triage;
-  sendToWebview({ type: "dashboard", message: { type: "data", payload } });
-  assert.equal(window.document.getElementById("section-triage").style.display, "none");
-});
 
 // ---- 注意喚起の折りたたみとリンク ----------------------------------------------------
 
@@ -364,4 +283,24 @@ test("run 詳細: line 欠落は 1 を既定にして openSource を送る", (t)
   window.document.querySelector("#run-detail-body td.scenario-id-clickable").click();
   const openSourcePost = posts.find((p) => p.type === "dashboard" && p.message?.type === "openSource");
   assert.deepEqual(JSON.parse(JSON.stringify(openSourcePost.message)), { type: "openSource", file: "Foo.swift", line: 1 });
+});
+
+// ---- デバイス別: worker 欄の無い古い記録の束は出さない ------------------------------------
+
+test("devices: CLI が worker 欄の無い記録を束ねた \"(unknown worker)\" 行は表に出さない(Swift 側の定数と同じ文字列)", async (t) => {
+  const fs = await import("node:fs");
+  const swift = fs.readFileSync(path.resolve("../Sources/FTCore/RunResultsQuery.swift"), "utf8");
+  assert.match(swift, /unknownWorkerLabel = "\(unknown worker\)"/, "CLI 側の定数が変わったら devices.js の UNKNOWN_WORKER も直す");
+
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const payload = basePayload({
+    devices: { byPlatform: [], byWorker: [
+      { worker: "(unknown worker)", runs: 680, successRate: 10 },
+      { worker: "ios:iPhone 15", runs: 3, successRate: 33 },
+    ] },
+  });
+  sendToWebview({ type: "dashboard", message: { type: "data", payload } });
+  const rows = [...window.document.querySelectorAll("#table-devices-worker-body tr")].map((tr) => tr.dataset.worker);
+  assert.deepEqual(rows, ["ios:iPhone 15"]);
 });

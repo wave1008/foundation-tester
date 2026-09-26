@@ -89,8 +89,6 @@ export const exploreHealStrings = {
     ja: "テストプロジェクト",
     en: "Test Project",
   },
-  "exploreHeal.dashboard.chartScrollOlder": { ja: "過去の日へスクロール", en: "Scroll to older days" },
-  "exploreHeal.dashboard.chartScrollNewer": { ja: "新しい日へスクロール", en: "Scroll to newer days" },
   "exploreHeal.dashboard.refreshButton": {
     ja: "更新",
     en: "Refresh",
@@ -126,22 +124,7 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.sinceOption7d": { ja: "直近7日", en: "Last 7 days" },
   "exploreHeal.dashboard.sinceOption30d": { ja: "直近30日", en: "Last 30 days" },
   "exploreHeal.dashboard.sinceOption90d": { ja: "直近90日", en: "Last 90 days" },
-  "exploreHeal.dashboard.headingTriage": {
-    ja: "失敗の内訳",
-    en: "Failure Breakdown",
-  },
-  "exploreHeal.dashboard.colTriageSection": { ja: "工程", en: "Phase" },
-  "exploreHeal.dashboard.colTriageCommand": { ja: "コマンド", en: "Command" },
-  "exploreHeal.dashboard.colTriageFailureKind": { ja: "失敗の種類", en: "Failure Kind" },
-  "exploreHeal.dashboard.colTriageCount": { ja: "件数", en: "Count" },
-  "exploreHeal.dashboard.colTriageScenarioCount": { ja: "シナリオ数", en: "Scenario Count" },
-  "exploreHeal.dashboard.colTriageScenarioExamples": { ja: "シナリオ例", en: "Example Scenarios" },
-  "exploreHeal.dashboard.headingTriageNotes": { ja: "注記", en: "Notes" },
-  "exploreHeal.dashboard.colNote": { ja: "注記", en: "Note" },
-  "exploreHeal.dashboard.triageEmpty": { ja: "失敗はありません。", en: "No failures." },
   "exploreHeal.dashboard.headingDevices": { ja: "デバイス別", en: "By Device" },
-  "exploreHeal.dashboard.headingDevicesByPlatform": { ja: "OS別", en: "By OS" },
-  "exploreHeal.dashboard.headingDevicesByWorker": { ja: "端末別", en: "By Worker" },
   "exploreHeal.dashboard.colWorker": { ja: "worker", en: "worker" },
   "exploreHeal.dashboard.devicesEmpty": { ja: "デバイスの記録がありません。", en: "No device records." },
   "exploreHeal.dashboard.summaryFilterPlaceholder": { ja: "シナリオIDで絞り込み", en: "Filter by scenario ID" },
@@ -235,10 +218,6 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.slowEmpty": {
     ja: "遅いテストはありません。",
     en: "No slow tests.",
-  },
-  "exploreHeal.dashboard.headingDaily": {
-    ja: "日別成功率",
-    en: "Daily Success Rate",
   },
   "exploreHeal.dashboard.headingSummary": {
     ja: "シナリオ別サマリ(直近10回)",

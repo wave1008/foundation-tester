@@ -126,12 +126,11 @@ compile it is parked under `scenarios/_disabled/` instead of being added to the 
 
 Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **Dashboard** tab, a summary of
 `fleetest api results` for the project, top to bottom: the latest-run headline (with scenarios newly
-failing and scenarios recovered since the previous run of the same profile), notable issues (insights,
-grouped by severity and collapsed when 4 or more of the same kind appear), a failure breakdown (by
-phase/command/failure kind, with example scenarios), the recent-runs table, run detail, flaky scenarios,
-scenario history, the daily trend, a scenario summary (filterable by scenario ID, a "failures only"
-checkbox, and sortable by clicking column headers), a device/OS breakdown, slow scenarios, and
-performance measurements. A toolbar control switches the aggregation period (last 7/30/90 days), and
+failing and scenarios recovered since the previous run of the same profile), the recent-runs table,
+run detail, notable issues (insights, grouped by severity and collapsed when 4 or more of the same kind
+appear), flaky scenarios, scenario history, a per-device breakdown, slow scenarios, performance
+measurements, and a scenario summary (filterable by scenario ID, a "failures only" checkbox, and
+sortable by clicking column headers). A toolbar control switches the aggregation period (last 7/30/90 days), and
 refreshing keeps the current view visible while it re-fetches in the background. A failed step's
 file:line in the run detail is clickable and opens that line in the editor.
 

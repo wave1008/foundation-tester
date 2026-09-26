@@ -1,6 +1,6 @@
 // devices.js
 // 「デバイス別」セクション(#section-devices、monitorHtml.ts の renderDashboardPanel() が静的
-// スケルトンを持つ)。OS 別(devices.byPlatform)とデバイス別(devices.byWorker)の2表を描く。
+// スケルトンを持つ)。デバイス別(devices.byWorker)の表を描く(byPlatform は描かない)。
 // worker 行は insights.js の deviceBias リンクから revealWorkerRow() で参照される
 // (完全一致だけで結ぶ。一致しなければ insights.js 側がリンクにしない)。
 
@@ -9,11 +9,11 @@ import { clearChildren, td, tdNum } from './domUtil.js';
 import { revealSection } from './domUtil.js';
 import { formatDurationSeconds, formatPercentInteger } from './format.js';
 
+// worker 欄を持たない古い記録の束(CLI の RunResultsQuery.unknownWorkerLabel)。どの台か言えないので出さない
 const UNKNOWN_WORKER = '(unknown worker)';
 const COLLAPSE_LIMIT = 15;
 
 const section = document.getElementById('section-devices');
-const platformBody = document.getElementById('table-devices-platform-body');
 const workerBody = document.getElementById('table-devices-worker-body');
 const toggleBtn = document.getElementById('devices-toggle-all');
 const emptyEl = document.getElementById('devices-empty');
@@ -21,19 +21,11 @@ const emptyEl = document.getElementById('devices-empty');
 let expanded = false;
 let currentWorkers = [];
 
-function workerLabel(worker) {
-  return worker === UNKNOWN_WORKER ? t('wvDashboard.devices.notRecorded') : worker;
-}
-
 function workerRow(row) {
   const tr = document.createElement('tr');
   tr.dataset.worker = row.worker;
-  const nameCell = td(workerLabel(row.worker));
-  if (row.worker === UNKNOWN_WORKER) {
-    nameCell.title = t('wvDashboard.devices.notRecordedTitle');
-  }
   tr.append(
-    nameCell,
+    td(row.worker),
     tdNum(String(row.runs)),
     tdNum(formatPercentInteger(row.successRate)),
     tdNum(formatDurationSeconds(row.avgDurationMs)),
@@ -63,21 +55,10 @@ toggleBtn.addEventListener('click', () => {
 });
 
 export function renderDevices(devices) {
-  clearChildren(platformBody);
-  for (const row of devices.byPlatform) {
-    const tr = document.createElement('tr');
-    tr.append(
-      td(row.platform),
-      tdNum(String(row.runs)),
-      tdNum(formatPercentInteger(row.successRate)),
-      tdNum(formatDurationSeconds(row.avgDurationMs)),
-    );
-    platformBody.appendChild(tr);
-  }
   expanded = false;
-  currentWorkers = devices.byWorker;
+  currentWorkers = devices.byWorker.filter((row) => row.worker !== UNKNOWN_WORKER);
   renderWorkerRows();
-  const empty = devices.byPlatform.length === 0 && devices.byWorker.length === 0;
+  const empty = currentWorkers.length === 0;
   emptyEl.style.display = empty ? 'block' : 'none';
 }
 

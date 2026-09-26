@@ -1,7 +1,7 @@
-// テーブル/ヘッドラインの DOM 組み立て(charts.js の日別チャートを除く表示ロジック一式)。
+// テーブル/ヘッドラインの DOM 組み立て。
 // innerHTML は使わず createElement/textContent で組み立てる(値にシナリオID等の外部由来文字列を
 // 含むため)。run 詳細/実行履歴セクションは runDetail.js/trend.js、シナリオ別サマリは
-// summaryTable.js、注意喚起は insights.js、失敗の内訳は triage.js、デバイス別は devices.js、
+// summaryTable.js、注意喚起は insights.js、デバイス別は devices.js、
 // 前回比は headlineDiff.js に分離してある(このファイルが肥大しないように)。scenarioIdCell は
 // それらから import される共用ヘルパー。
 

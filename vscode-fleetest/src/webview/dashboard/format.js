@@ -1,9 +1,4 @@
-// 表示整形の純関数群(dashboard 内の render.js/charts.js/main.js が共用)。
-
-export function isLightTheme() {
-  return document.body.classList.contains('vscode-light') ||
-    document.body.classList.contains('vscode-high-contrast-light');
-}
+// 表示整形の純関数群(dashboard 内の render.js/main.js が共用)。
 
 export function formatPercent(rate) {
   return typeof rate === 'number' ? rate.toFixed(1) + '%' : '–';

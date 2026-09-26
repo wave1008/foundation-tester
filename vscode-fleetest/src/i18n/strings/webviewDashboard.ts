@@ -5,11 +5,6 @@
 import type { MessageDict } from "../core";
 
 export const webviewDashboardStrings = {
-  // charts.js
-  "wvDashboard.chart.noRuns": { ja: "(実行なし)", en: "(No runs)" },
-  "wvDashboard.chart.yAxisTitle": { ja: "成功率 (%)", en: "Success rate (%)" },
-  "wvDashboard.chart.failedCount": { ja: " / 失敗 {count}", en: " / failed {count}" },
-
   // main.js
   "wvDashboard.main.generatedAt": { ja: "更新: {time}", en: "Updated: {time}" },
   "wvDashboard.main.projectPlaceholder": { ja: "(プロジェクトを選択)", en: "(Select a project)" },
@@ -73,17 +68,7 @@ export const webviewDashboardStrings = {
   "wvDashboard.runDetail.buttonOpenReport": { ja: "レポートを開く", en: "Open Report" },
   "wvDashboard.runDetail.buttonTrend": { ja: "実行履歴", en: "Run History" },
 
-  // triage.js
-  "wvDashboard.triage.summary": {
-    ja: "期間内の失敗 {count} 件(うちステップに到達しなかった {unreached} 件)",
-    en: "{count} failures in the period ({unreached} that never reached a step)",
-  },
-  "wvDashboard.triage.showAll": { ja: "すべて表示({count} 行)", en: "Show all ({count} rows)" },
-  "wvDashboard.triage.showLess": { ja: "折りたたむ", en: "Show less" },
-
   // devices.js
-  "wvDashboard.devices.notRecorded": { ja: "(記録なし)", en: "(not recorded)" },
-  "wvDashboard.devices.notRecordedTitle": { ja: "worker 欄を持たない古い記録", en: "An old record with no worker field" },
   "wvDashboard.devices.showAll": { ja: "すべて表示({count} 行)", en: "Show all ({count} rows)" },
   "wvDashboard.devices.showLess": { ja: "折りたたむ", en: "Show less" },
 
