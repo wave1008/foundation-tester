@@ -20,7 +20,7 @@ import {
 } from '../dashboard/render.js';
 import { renderSummaryTable } from '../dashboard/summaryTable.js';
 import { renderInsights } from '../dashboard/insights.js';
-import { renderDevices } from '../dashboard/devices.js';
+import { applyDeviceCatalog, renderDeviceHealth } from '../dashboard/deviceHealth.js';
 import { renderPerformance } from '../dashboard/performance.js';
 import { setMachineAliases } from '../dashboard/machineNames.js';
 import { showRunDetailData, showRunDetailError } from '../dashboard/runDetail.js';
@@ -127,9 +127,9 @@ function applyData(payload) {
   const statsByRunID = new Map((payload.runStats || []).map((s) => [s.runID, s]));
   renderHeadline(runGroups[0]);
   requestHeadlineDiff(runGroups);
-  // devices は insights より先に描く: deviceBias リンクの可否(hasWorkerRow)が devices.js の
-  // currentWorkers を参照するため
-  renderDevices(payload.devices);
+  // デバイスの健全性は insights より先に描く: deviceBias リンクの可否(hasWorkerRow)が
+  // deviceHealth.js の currentRows を参照するため
+  renderDeviceHealth(payload.deviceHealth);
   renderRunsTable(runGroups, statsByRunID);
   // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
   renderPerformance(payload.performance);
@@ -205,6 +205,9 @@ export function handleDashboardMessage(message) {
       break;
     case 'projects':
       applyProjects(message.projects, message.current, message.since);
+      break;
+    case 'deviceCatalog':
+      applyDeviceCatalog(message.devices);
       break;
     default:
       break;

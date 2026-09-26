@@ -40,6 +40,14 @@ struct CleanCommand: AsyncParsableCommand {
     @Flag(help: "Sweep .fleetest/xcresult (XCUITest runner result bundles; live bridges are never swept)")
     var xcresult = false
 
+    @Flag(name: .customLong("simulator-poster-cache"),
+          help: """
+              Purge the PosterBoard wallpaper-gallery snapshot cache (SnapshotCache.cachedb) of \
+              every stopped iOS Simulator on this Mac (booted simulators are skipped). Only runs \
+              when this flag is passed — never part of the background auto-sweep
+              """)
+    var simulatorPosterCache = false
+
     /// run の完了時に `RunCompletionSweep` が起こす背景の掃除(利用者は打たない)
     @Flag(name: .customLong("background"), help: .hidden)
     var background = false
@@ -54,13 +62,19 @@ struct CleanCommand: AsyncParsableCommand {
             RunCompletionSweep.runInBackground(roots: roots, activeRunID: activeRunID)
             return
         }
+        if simulatorPosterCache {
+            SimulatorPosterCacheClean.run(dryRun: dryRun, log: { ConsoleOut.out($0) })
+        }
+        let categories = Self.categories(recordings: recordings, reports: reports, logs: logs,
+                                         deviceCaptures: deviceCaptures, xcresult: xcresult,
+                                         otherActionsRequested: simulatorPosterCache)
+        guard !categories.isEmpty else { return }
         // 錠は消す処理だけが取る。**変数に束縛して run の終わりまで保持する**(捨てると即座に閉じて外れる)
         let lock = dryRun ? nil : try Self.acquireLockOrExplain()
         defer { withExtendedLifetime(lock) {} }
         let report = RetentionSweeper.clean(
             roots: roots,
-            categories: Self.categories(recordings: recordings, reports: reports, logs: logs,
-                                        deviceCaptures: deviceCaptures, xcresult: xcresult),
+            categories: categories,
             policy: LocalConfig.load().retention ?? RetentionPolicy(),
             dryRun: dryRun,
             log: { ConsoleOut.out($0) }, notice: { ConsoleOut.out($0) })
@@ -87,16 +101,21 @@ struct CleanCommand: AsyncParsableCommand {
     }
 
     /// **カテゴリ無指定は全部**(掃除は run の開始時に自動でも走るので、素の `fleetest clean` が
-    /// 一部しか見ないと利用者の期待とずれる)
+    /// 一部しか見ないと利用者の期待とずれる)。**ただし他の掃除アクション
+    /// (`--simulator-poster-cache`)だけを頼まれたときは、それ以外の何も指定していない**ので
+    /// 全部への既定を出さない —— でなければ「壁紙キャッシュだけ消したい」で録画・レポートまで
+    /// 消えてしまう
     static func categories(recordings: Bool, reports: Bool, logs: Bool,
-                           deviceCaptures: Bool, xcresult: Bool = false) -> [RetentionSweeper.Category] {
+                           deviceCaptures: Bool, xcresult: Bool = false,
+                           otherActionsRequested: Bool = false) -> [RetentionSweeper.Category] {
         var selected: [RetentionSweeper.Category] = []
         if deviceCaptures { selected.append(.deviceCaptures) }
         if recordings { selected.append(.recordings) }
         if reports { selected.append(.reports) }
         if logs { selected.append(.logs) }
         if xcresult { selected.append(.xcresult) }
-        return selected.isEmpty ? RetentionSweeper.Category.allCases : selected
+        if selected.isEmpty, !otherActionsRequested { return RetentionSweeper.Category.allCases }
+        return selected
     }
 }
 

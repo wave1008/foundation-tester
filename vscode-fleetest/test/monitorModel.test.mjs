@@ -258,6 +258,47 @@ test("isMonitorEvent: monitorDevices の bridgeRunning は true/false を区別�
   assert.equal(value.devices[2].bridgeRunning, undefined);
 });
 
+test("isMonitorEvent: monitorDevices の storage は欠落・null・型不正を undefined に正規化する(0 に丸めない)", () => {
+  for (const raw of [undefined, null, "not-an-object", { usedBytes: 1 }, { usedBytes: 1, freeScope: "unknown", measuredAt: "t" }]) {
+    const device = { id: "d1", name: "d1", platform: "android", state: "connected", detail: "" };
+    if (raw !== undefined) {
+      device.storage = raw;
+    }
+    const value = { kind: "monitorDevices", devices: [device] };
+    assert.equal(isMonitorEvent(value), true);
+    assert.equal(value.devices[0].storage, undefined, `storage=${JSON.stringify(raw)}`);
+  }
+});
+
+test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま保持する(freeBytes 省略・null 明示も可)", () => {
+  const withFree = {
+    kind: "monitorDevices",
+    devices: [
+      {
+        id: "d1", name: "d1", platform: "android", state: "connected", detail: "",
+        storage: { usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z" },
+      },
+    ],
+  };
+  assert.equal(isMonitorEvent(withFree), true);
+  assert.deepEqual(withFree.devices[0].storage, {
+    usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z",
+  });
+
+  const noFree = {
+    kind: "monitorDevices",
+    devices: [
+      {
+        id: "d2", name: "d2", platform: "ios", state: "connected", detail: "",
+        storage: { usedBytes: 500, freeBytes: null, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z" },
+      },
+    ],
+  };
+  assert.equal(isMonitorEvent(noFree), true);
+  assert.equal(noFree.devices[0].storage.freeBytes, undefined, "freeBytes の null 明示は undefined へ(測れなかったのと同じ扱い)");
+  assert.equal(noFree.devices[0].storage.freeScope, "hostVolume");
+});
+
 test("isMonitorEvent: monitorFrame は width/height が欠落/非数値なら false", () => {
   assert.equal(
     isMonitorEvent({ kind: "monitorFrame", device: "d", jpegBase64: "A", height: 100 }),

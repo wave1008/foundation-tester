@@ -198,6 +198,63 @@ final class FailureFactsTests: XCTestCase {
         XCTAssertFalse(text.contains("workerAnomalies"))
     }
 
+    /// cause/recovery は enum から rawValue へ変換され、JSON を round-trip できる
+    /// (WorkerAnomalyCause/WorkerRecoveryKind の値の集合の固定)
+    func testWorkerAnomalyCauseAndRecoveryRoundTrip() throws {
+        let anomaly = WorkerAnomalyRecord(
+            kind: "degraded", worker: "ios:iPhone 17", label: "iPhone 17",
+            reason: "dropped out because of a frozen screen", cause: .frozen)
+        let data = try JSONEncoder().encode(anomaly)
+        let decoded = try JSONDecoder().decode(WorkerAnomalyRecord.self, from: data)
+        XCTAssertEqual(decoded.cause, "frozen")
+        XCTAssertNil(decoded.recovery)
+
+        let recovered = WorkerAnomalyRecord(
+            kind: "recovered", worker: "ios:iPhone 17", label: "iPhone 17",
+            reason: "restarted the xcuitest bridge", recovery: .runnerRestart)
+        let recoveredData = try JSONEncoder().encode(recovered)
+        let recoveredDecoded = try JSONDecoder().decode(WorkerAnomalyRecord.self, from: recoveredData)
+        XCTAssertEqual(recoveredDecoded.recovery, "runnerRestart")
+        XCTAssertNil(recoveredDecoded.cause)
+    }
+
+    /// 写像できない reason(cause 省略)は nil のまま残る(「その他」に丸めない)
+    func testWorkerAnomalyCauseIsOmittedWhenNotGiven() {
+        let anomaly = WorkerAnomalyRecord(kind: "degraded", worker: "ios:iPhone 17",
+                                          label: "iPhone 17", reason: "some future reason")
+        XCTAssertNil(anomaly.cause)
+        XCTAssertNil(anomaly.recovery)
+    }
+
+    // MARK: - preRunTriage
+
+    /// 除外・修復した台そのものから worker 鍵つき anomaly を作る(label から台を引き直さない)
+    func testPreRunTriageUsesTheWorkersThemselves() {
+        let excludedWorker = RunWorker(
+            label: "iPhone 17(ios:8100)", platform: "ios", driver: QuietDriver(),
+            connection: DriverConnection(platform: "ios", physical: false), logicalName: "iPhone 17")
+        let repairedWorker = RunWorker(
+            label: "Pixel 9(android:emulator-5554)", platform: "android", driver: QuietDriver(),
+            connection: DriverConnection(platform: "android", physical: false), logicalName: "Pixel 9")
+        let records = WorkerAnomalyRecord.preRunTriage(excluded: [excludedWorker], repaired: [repairedWorker])
+
+        XCTAssertEqual(records.count, 2)
+        let excluded = records.first { $0.kind == "preRunExcluded" }
+        XCTAssertEqual(excluded?.worker, "ios:iPhone 17")
+        XCTAssertEqual(excluded?.label, "iPhone 17(ios:8100)")
+        let repaired = records.first { $0.kind == "preRunRepaired" }
+        XCTAssertEqual(repaired?.worker, "android:Pixel 9")
+    }
+
+    /// 論理名を持たない台(--port 等)は worker: nil のまま残す(集計側が数えないだけ。事実は落とさない)
+    func testPreRunTriageKeepsWorkersWithoutALogicalName() {
+        let worker = RunWorker(label: "ios:8199", platform: "ios", driver: QuietDriver(),
+                               connection: DriverConnection(platform: "ios", physical: false))
+        let records = WorkerAnomalyRecord.preRunTriage(excluded: [worker], repaired: [])
+        XCTAssertEqual(records.count, 1)
+        XCTAssertNil(records.first?.worker)
+    }
+
     // MARK: -
 
     private func stepEvent(index: Int, status: String, section: String?,

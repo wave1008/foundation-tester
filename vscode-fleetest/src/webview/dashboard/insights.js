@@ -1,13 +1,13 @@
 // insights.js
 // 「注意が必要な現象」セクション(#section-insights、monitorHtml.ts の renderDashboardPanel() が
 // 静的スケルトンを持つ)。重大度(critical→warn→info)ごとに見出しを分け、その中で kind ごとに
-// まとめる。scenarioID を持つ行は requestTrend、worker を持つ行(deviceBias)は devices.js の
+// まとめる。scenarioID を持つ行は requestTrend、worker を持つ行(deviceBias)は deviceHealth.js の
 // revealWorkerRow へリンクする(一致する行が無ければリンクにしない)。
 
 import { t } from '../i18n.js';
 import { clearChildren } from './domUtil.js';
 import { requestTrend } from './trend.js';
-import { hasWorkerRow, revealWorkerRow } from './devices.js';
+import { hasWorkerRow, revealWorkerRow } from './deviceHealth.js';
 
 const SEVERITY_ICON = { critical: '🔴', warn: '🟡', info: '🔵' };
 const SEVERITY_ORDER = ['critical', 'warn', 'info'];

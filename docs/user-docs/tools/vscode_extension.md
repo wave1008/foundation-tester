@@ -125,14 +125,21 @@ compile it is parked under `scenarios/_disabled/` instead of being added to the 
 ## Results Dashboard
 
 Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **Dashboard** tab, a summary of
-`fleetest api results` for the project, top to bottom: the latest-run headline (with scenarios newly
-failing and scenarios recovered since the previous run of the same profile), the recent-runs table,
-run detail, notable issues (insights, grouped by severity and collapsed when 4 or more of the same kind
-appear), flaky scenarios, scenario history, a per-device breakdown, slow scenarios, performance
-measurements, and a scenario summary (filterable by scenario ID, a "failures only" checkbox, and
-sortable by clicking column headers). A toolbar control switches the aggregation period (last 7/30/90 days), and
-refreshing keeps the current view visible while it re-fetches in the background. A failed step's
-file:line in the run detail is clickable and opens that line in the editor.
+`fleetest api results` for the project. Sections, top to bottom:
+
+- **Latest run**: scenarios newly failing and scenarios recovered since the previous run of the same profile
+- **Recent runs**: click a row to open run detail; a failed step's file:line opens that line in the editor
+- **Notable issues** (insights): grouped by severity, collapsed when 4 or more of the same kind appear
+- **Flaky scenarios** and scenario history
+- **Device health**: one row per device, grouped by a Machine column. Shows the Device Monitor's current
+  state (color-coded) and storage usage alongside counts from run history (excluded from run, requeued,
+  pre-run exclude/repair, recovery operations, app crashes). Missing values show as "–". While
+  "Show active devices" is on (the default), devices that are not started or not seen by the monitor are hidden
+- **Slow scenarios** and performance measurements
+- **Scenario summary**: filterable by scenario ID, a "failures only" checkbox, sortable by clicking column headers
+
+A toolbar control switches the aggregation period (last 7/30/90 days). Refreshing keeps the current view
+visible while it re-fetches in the background.
 
 ## Rerunning Failures and Reports
 
@@ -196,6 +203,18 @@ settings, so they also apply to tests you run directly from a terminal.
 - **"Clean up now"**: deletes right away using the same rule. Before deleting, a confirmation
   dialog shows the total that will be removed.
 - Result records (the pass/fail and timing JSON) are never deleted.
+
+### iOS Simulator wallpaper cache (CLI only)
+
+On iOS 27 Simulators, PosterBoard (the wallpaper gallery) writes a new snapshot cache each time it
+rebuilds a wallpaper version, and never deletes the older ones. With frequent reboots a single
+Simulator can reach tens of GB. fleetest purges a Simulator's accumulated cache right before it boots
+that Simulator (wallpaper settings and other data are left untouched).
+
+To purge it for Simulators that are not being booted, run `fleetest clean --simulator-poster-cache`
+from a terminal (`--dry-run` shows the amount without deleting). It purges every **stopped**
+Simulator on this Mac and skips booted ones, naming them in the output. This isn't part of the
+categories above or the Settings tab.
 
 ## Key Settings
 

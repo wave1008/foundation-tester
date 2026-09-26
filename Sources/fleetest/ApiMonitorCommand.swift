@@ -160,6 +160,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
+        // ストレージ(monitorDevices[].storage)。key = udid(iOS)/serial(Android)。計測は裏で回し、
+        // 周期は控えを読むだけ(DeviceStorageSampler の doc)。run 中かは機械グローバルの台帳で見る
+        let storageRunProgressDir = RunProgressLedger.directory()
+        let storageSampler = DeviceStorageSampler(
+            probeIOS: { SimulatorStorageProbe.probe(udid: $0) },
+            probeAndroid: { AndroidStorageProbe.probe(serial: $0) },
+            isRunActive: { !RunProgressLedger.readAll(directory: storageRunProgressDir).isEmpty })
 
         // run/recording lease の読み取り用(.fleetest/{run,recording}-<key>.lease で inRun/recording を
         // 判定)。best-effort: リポジトリ外実行等で root が取れない場合は両者 false に倒す
@@ -345,6 +352,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 return result
             }
 
+            // ストレージ: 仮想デバイスの connected で run 中でない台だけ(実機はここで測れない)
+            storageSampler.schedule(candidates: states.compactMap { state in
+                guard state.state == "connected", !state.target.spec.isPhysical,
+                      let key = state.iosUdid ?? state.androidSerial else { return nil }
+                let inRun = leaseStateDir.map { RunLease.isFresh(stateDir: $0, key: key) } ?? false
+                return inRun ? nil : (key, state.target.platform)
+            }, now: Date())
+            storageSampler.forget(keysNotIn: Set(states.compactMap { $0.iosUdid ?? $0.androidSerial }))
+            let storageCache = storageSampler.snapshot()
+
             // 手元の二重配信の判定に使う 1 周期ぶんのプロセス一覧(FTCore.LocalStreamHolder)。
             // 台ごとに ps を撃たない
             let processRows = states.isEmpty ? [] : LocalStreamHolder.snapshot()
@@ -386,7 +403,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
                                    inRun: inRun, recording: recording, host: bridgeHost,
                                    frozen: frozenVerdict.isFrozen, streamedByOther: streamedByOther,
-                                   bridgeRunning: bridgeRunning)
+                                   bridgeRunning: bridgeRunning,
+                                   storage: leaseKey.flatMap { storageCache[$0] })
             }
             emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
                 listedTargets: listedTargets, observed: observedInfos,
@@ -644,7 +662,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
             machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil,
-            streamedByOther: nil, bridgeRunning: nil)
+            streamedByOther: nil, bridgeRunning: nil, storage: nil)
     }
 
     /// `MachineInventory.merge` へ渡す「その台の実体がこの機械にあるか」の述語。
@@ -799,7 +817,8 @@ struct DeviceRuntimeState {
     func info(health: [String]?, renderMode: String?, inRun: Bool,
                           recording: Bool, host: String? = nil,
                           frozen: Bool = false, streamedByOther: Bool? = nil,
-                          bridgeRunning: Bool? = nil) -> ApiMonitorDeviceInfo {
+                          bridgeRunning: Bool? = nil,
+                          storage: DeviceStorageInfo? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
@@ -809,7 +828,7 @@ struct DeviceRuntimeState {
                              recording: recording, registered: target.registered,
                              machine: MachineDispatch.normalize(target.spec.machine),
                              frozen: frozen, wired: wired, streamedByOther: streamedByOther,
-                             bridgeRunning: bridgeRunning)
+                             bridgeRunning: bridgeRunning, storage: storage)
     }
 }
 

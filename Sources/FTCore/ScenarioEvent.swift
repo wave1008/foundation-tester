@@ -112,6 +112,9 @@ public struct ScenarioEvent: Codable, Sendable {
     /// 判定を通ったか(StepOutcome.guardEntered)。action など occlusionFlip を通らないステップでは
     /// false(意味を持つのは assert のみ)。後発の追加フィールドで Optional = 旧クライアント互換
     public var guarded: Bool?
+    /// kind == scenarioFinished。検出できたときだけのアプリのクラッシュ事実
+    /// (LastAppCrash.shared.snapshot()。検出無しなら nil = キーごと省略)
+    public var appCrash: AppCrashRecord?
 
     public init(kind: String) {
         self.kind = kind

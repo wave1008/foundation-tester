@@ -231,6 +231,115 @@ public enum RunResultsQuery {
         return DevicesReport(byWorker: byWorker, byPlatform: byPlatform)
     }
 
+    // MARK: - device health
+
+    /// デバイスの健全性(ダッシュボードの「デバイス別」を作り直したもの。docs/results-json.md)。
+    /// `deviceSummary`(実行回数・成功率・平均sec)とは独立に置く —— あちらは
+    /// `fleetest results devices` が使い続ける
+    public struct DeviceHealthRow: Codable, Sendable, Equatable {
+        /// run.json の host(記録の鍵。表示は machines で読み替える)
+        public let host: String
+        /// "<platform>:<デバイス論理名>"
+        public let worker: String
+        /// run から外された回数(kind == "degraded" の件数。cause の無い古い記録も数える)
+        public let removed: Int
+        /// removed のうち cause を持つものだけの内訳(WorkerAnomalyCause.rawValue → 件数)
+        public let removedByCause: [String: Int]
+        /// この台から振り直しに回したシナリオ数(kind == "requeued")
+        public let requeued: Int
+        /// run 前の blank 判定で除外した回数(kind == "preRunExcluded")
+        public let preRunExcluded: Int
+        /// run 前の blank 判定で修復して復帰させた回数(kind == "preRunRepaired")
+        public let preRunRepaired: Int
+        /// run 中の回復操作を実行した回数(kind == "recovered")
+        public let recovered: Int
+        /// recovered のうち recovery を持つものだけの内訳(WorkerRecoveryKind.rawValue → 件数)
+        public let recoveredByKind: [String: Int]
+        /// appCrash を持つシナリオ記録の数
+        public let appCrashes: Int
+        /// 上の事象のうち最新の時刻(run.json の startedAt / scenarios/*.json の startedAt。
+        /// 一度も起きていなければ nil)
+        public let lastEventAt: String?
+    }
+
+    /// worker 単位の可変集計(deviceHealth の内部専用)
+    private struct DeviceHealthAccumulator {
+        var removed = 0
+        var removedByCause: [String: Int] = [:]
+        var requeued = 0
+        var preRunExcluded = 0
+        var preRunRepaired = 0
+        var recovered = 0
+        var recoveredByKind: [String: Int] = [:]
+        var appCrashes = 0
+        var lastEventAt: String?
+    }
+
+    /// `runs`/`records` は呼び手が既に `--since` の窓で絞ったもの(deviceSummary と同じ前提)。
+    /// **worker 欄の無い記録・host が空の記録は数えない**(どの台か言えないので古い記録は省く)。
+    /// **全部 0 の台は出さない**(今の状態は拡張がモニターから出す)
+    public static func deviceHealth(runs: [RunMetaRecord], records: [ScenarioRunRecord]) -> [DeviceHealthRow] {
+        // 鍵は (host, worker)。フリートでは同じ論理名の台が機械ごとに居るので worker だけで束ねない
+        struct Key: Hashable { let host: String; let worker: String }
+        var byDevice: [Key: DeviceHealthAccumulator] = [:]
+
+        /// 数えた事象だけが lastEventAt を進める(どの欄にも当たらない事象で時刻だけ動かさない)
+        func count(_ worker: String, host: String, at: String, mutate: (inout DeviceHealthAccumulator) -> Void) {
+            // host が空の古い記録はどの機械の台か言えないので数えない(worker 欄の無い記録と同じ扱い)
+            guard !host.isEmpty else { return }
+            let key = Key(host: host, worker: worker)
+            var acc = byDevice[key] ?? DeviceHealthAccumulator()
+            mutate(&acc)
+            if acc.lastEventAt == nil || at > acc.lastEventAt! { acc.lastEventAt = at }
+            byDevice[key] = acc
+        }
+
+        for run in runs {
+            for anomaly in run.workerAnomalies ?? [] {
+                guard let worker = anomaly.worker else { continue }
+                switch anomaly.kind {
+                case "degraded":
+                    count(worker, host: run.host, at: run.startedAt) { acc in
+                        acc.removed += 1
+                        if let cause = anomaly.cause { acc.removedByCause[cause, default: 0] += 1 }
+                    }
+                case "requeued":
+                    count(worker, host: run.host, at: run.startedAt) { $0.requeued += 1 }
+                case "preRunExcluded":
+                    count(worker, host: run.host, at: run.startedAt) { $0.preRunExcluded += 1 }
+                case "preRunRepaired":
+                    count(worker, host: run.host, at: run.startedAt) { $0.preRunRepaired += 1 }
+                case "recovered":
+                    count(worker, host: run.host, at: run.startedAt) { acc in
+                        acc.recovered += 1
+                        if let recovery = anomaly.recovery { acc.recoveredByKind[recovery, default: 0] += 1 }
+                    }
+                default:
+                    // "retryLimit"(離脱でも振り直しでもない)・"circuitHeld"(明示的に保持=離脱していない)は
+                    // この行のどの欄にも当たらない。事実は run.json に残る
+                    break
+                }
+            }
+        }
+        for record in records {
+            guard let worker = record.worker, record.appCrash != nil else { continue }
+            count(worker, host: record.host, at: record.startedAt) { $0.appCrashes += 1 }
+        }
+
+        return byDevice.map { key, acc in
+            DeviceHealthRow(host: key.host, worker: key.worker, removed: acc.removed,
+                            removedByCause: acc.removedByCause, requeued: acc.requeued,
+                            preRunExcluded: acc.preRunExcluded, preRunRepaired: acc.preRunRepaired,
+                            recovered: acc.recovered, recoveredByKind: acc.recoveredByKind,
+                            appCrashes: acc.appCrashes, lastEventAt: acc.lastEventAt)
+        }
+        .filter { row in
+            row.removed != 0 || row.requeued != 0 || row.preRunExcluded != 0 || row.preRunRepaired != 0
+                || row.recovered != 0 || row.appCrashes != 0
+        }
+        .sorted { $0.worker == $1.worker ? $0.host < $1.host : $0.worker < $1.worker }
+    }
+
     // MARK: - slow
 
     /// シナリオ単位の集計(slowTests/insights)を束ねる鍵。E2E-CMP のように同じ scenarioID を

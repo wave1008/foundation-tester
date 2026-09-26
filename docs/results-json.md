@@ -276,14 +276,41 @@ FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で�
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し。その回の `scenarios/*.json` は消える。**Android のドライバ不達(ブリッジ断)も 2026-09-16 よりここに入る**)/ `retryLimit`(上限到達。**最後の失敗記録はそのまま残る** —— `failedSteps` / `errorLogs` / `timeline` を持つ実物で、合成の skipped 記録には置き換えない)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件) |
+| kind | String | `degraded`(劣化・離脱)/ `requeued`(振り直し。その回の `scenarios/*.json` は消える。**Android のドライバ不達(ブリッジ断)も 2026-09-16 よりここに入る**)/ `retryLimit`(上限到達。**最後の失敗記録はそのまま残る** —— `failedSteps` / `errorLogs` / `timeline` を持つ実物で、合成の skipped 記録には置き換えない)/ `circuitHeld`(連続失敗が閾値に達したが、その間に他のレーンが1本も通っていないので離脱させなかった。streak ごとに1件)/ `preRunExcluded`(run **前**の blank 判定で除外した。2026-09-27 より)/ `preRunRepaired`(run **前**の blank 判定で修復して復帰させた。2026-09-27 より)/ `recovered`(run **中**の回復操作を1回実行した。効いたかは判定しない。2026-09-27 より) |
 | worker | String? | `"<platform>:<デバイス論理名>"`。**`scenarios/*.json` の `worker` と同じ規則 = join できる** |
 | label | String | 表示用の識別子(`degradedWorkers` の1行と同一) |
-| scenarioID | String? | `requeued` / `retryLimit` の対象 |
+| scenarioID | String? | `requeued` / `retryLimit` / `circuitHeld` の対象 |
 | reason | String | 英語・人間可読 |
+| cause | String? | **`degraded`/`requeued`/`retryLimit`/`circuitHeld` だけ持つ**理由の分類(生成箇所が型から決める。`reason` の文字列を後から解析しない)。値は `frozen`(画面の凍結)/ `deviceGone`(デバイスが消えた。offline/not found)/ `bridgeUnreachable`(ブリッジに届かない)/ `bridgeTakenOver`(ブリッジが別のデバイスのものになった)/ `consecutiveFailures`(連続失敗)/ `accessibilityFault`(一時的なアクセシビリティ異常)/ `noResponse`(接続できない・status に応答しない)。**写像できない reason は省略**(2026-09-27 より前の記録には無い) |
+| recovery | String? | **`recovered` だけ持つ**回復の種類。値は `runnerRestart`(XCUITest ランナーを同じポートで建て直した)/ `workerRevive`(離脱したワーカーの論理デバイスを復帰させた)。**実装にある回復経路のうち、この2つだけを構造化している**(下記の注記参照。2026-09-27 より) |
 
 **`degradedWorkers` と `workerAnomalies` は同じ事象**(前者が人向けの1行、後者が機械可読)。
 片方だけ増えることはない。
+
+**`preRunExcluded` / `preRunRepaired` は既存の `blankExclusions` / `blankRepairs`(label だけの表示用の2欄)と同じ事実の worker 鍵つき版**(既存の2欄は消さない)。**生成は triage 直後・triage 前のワーカー一覧(label→論理名が引ける)がまだ手元にある場所でだけ行う**(`WorkerAnomalyRecord.preRunTriage`)。**既知の非対称が1つある**: `fleetest run --profile`(非 `api run`)の iOS 経路(`ProfileRunner.buildIOSLane`)は、除外された台の label を**表示用の `blankExclusions` へは元から集めていない**(既存のコード。この版で直すものではない)。`workerAnomalies` の `preRunExcluded` は生成箇所が別なのでこの欠落を持たず、iOS の pre-run 除外もこちらには載る —— つまり `fleetest run --profile` では `blankExclusions`(prose)より `workerAnomalies` の `preRunExcluded`(構造化)のほうが**多く**なることがある。
+
+**`recovered`/`recovery` が捉えるのは実装にある回復経路のうち2つだけ**(`runnerRestart` / `workerRevive`)。
+Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試みる sleep/wake 修復は、
+成否が「このシナリオ失敗を凍結起因と判定するか」の bool 1つに畳み込まれてしまい、run.json へ
+「修復が効いたか」を別に運ぶ経路が無いため、**この版では `recovered` に含めていない**
+(修復を試みたことは workerLog の1行にだけ残る)。`simulatorRestart` という名前の recovery 種別は
+置いていない —— iOS の run 前 blank 回復(simctl shutdown→boot)は `preRunRepaired` の側で
+既に表現されており、run **中**にシミュレータそのものを再起動する経路は無い(`workerRevive` が
+ブリッジを張り直す際に供給側で再利用/再起動するかは供給の内部実装で、呼び出し側からは
+見分けが付かない)。
+
+### appCrash(`AppCrashRecord`。`scenarios/*.json` のみ)
+
+検出できたときだけ置く(自由文の後解析はしない。検出箇所から型で運ぶ)。
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| evidence | String | `crashReport`(iOS in-app エンジン。`SimulatorCrashReport` が直近の `.ips` を見つけた)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた) |
+| path | String? | iOS のみ。見つかった `.ips` のパス |
+| summary | String? | iOS = クラッシュ理由の1行 / Android = FATAL EXCEPTION ブロックの先頭行 |
+
+**XCUITest エンジン(hybrid/xcuitest)の iOS クラッシュはこの版では検出しない**(検出箇所が
+`InAppDriver`/`InAppLauncher` の in-app 経路だけのため)。2026-09-27 より前の記録には無い。
 
 ---
 
@@ -432,6 +459,39 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
 冷えた1周目の遅さを run 横断で比べるときは、この日を境に扱いが変わることに注意する。
 
 ---
+
+## デバイスの健全性(`fleetest api results` の `deviceHealth`)
+
+2026-09-27 より、`fleetest api results` の出力の `devices`(`DevicesReport`。実行回数・成功率・
+平均sec)は**削除**し、代わりに `deviceHealth: [DeviceHealthRow]` を返す(プロトコル版 27→28)。
+**`fleetest results devices`(CLI サブコマンド)と `RunResultsQuery.deviceSummary` は変えていない**
+——実行回数・成功率・平均sec を見たいときはこちらを使う。`deviceHealth` は事実の回数と値だけを
+並べる(「不健全」「環境要因」等の判定・総合点・分類は置かない)。
+
+| フィールド | 型 | 意味 |
+|---|---|---|
+| host | String | run.json の `host`(記録の鍵) |
+| worker | String | `"<platform>:<デバイス論理名>"` |
+| removed | Int | run から外された回数。**`workerAnomalies` の `kind == "degraded"` の件数**(cause の無い古い記録も数える) |
+| removedByCause | [String: Int] | `removed` のうち `cause` を持つものだけの内訳(キーは `cause` の値。上表参照) |
+| requeued | Int | この台から振り直しに回したシナリオ数(`kind == "requeued"`) |
+| preRunExcluded | Int | run 前の blank 判定で除外した回数(`kind == "preRunExcluded"`) |
+| preRunRepaired | Int | run 前の blank 判定で修復して復帰させた回数(`kind == "preRunRepaired"`) |
+| recovered | Int | run 中の回復操作を実行した回数(`kind == "recovered"`) |
+| recoveredByKind | [String: Int] | `recovered` のうち `recovery` を持つものだけの内訳 |
+| appCrashes | Int | `appCrash` を持つシナリオ記録の数 |
+| lastEventAt | String? | 上の事象のうち最新の時刻(run.json / scenarios/\*.json の `startedAt`。イベント自体の時刻は
+持たないので run 単位の近似)。一度も起きていなければ省略 |
+
+**数えないもの**: `kind == "retryLimit"`(離脱でも振り直しでもない = 最後の失敗記録がそのまま残る)と
+`kind == "circuitHeld"`(明示的にレーンを保持 = 離脱していない)。両方とも `run.json` の
+`workerAnomalies` には残るが、このスキーマには対応する欄が無いため集計に出てこない
+(事実は消えていない。読みたいときは run.json を直接見る)。
+
+**行は「どれか1つでも 0 でない」台だけ**(全部 0 の台は出さない。今の状態はダッシュボードが
+モニターの `monitorDevices` から出す)。**`--since` の窓は `fleetest api results` の他の集計と同じ**
+(呼び手が既に絞った `runs`/`records` を渡す。`deviceHealth` 自身は日付を見ない)。
+**worker 欄の無い記録・host が空の記録は数えない**(古い記録・`--port` 等の非プロファイル経路。どの台か言えない)。
 
 ## `fleetest api results` の出力キャッシュ
 

@@ -4529,6 +4529,59 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   警告する(自分と親の pid の印は数えない・dry-run は見ない)。逆向きは MCP が run-lease のある台を触った応答
   (成功・失敗とも)の先頭で1行言う(断らない)。**差し替えドライバの MCP は印を置かない**
 
+
+### 12.4.1 デバイスのストレージ計測(ダッシュボード「デバイスの健全性」)
+
+monitor が `monitorDevices[].storage`(`usedBytes` / `freeBytes` / `freeScope` / `measuredAt`)を配る。
+契約は `Sources/fleetest/ApiMonitorEvents.swift` の `ApiMonitorDeviceInfo.storage`。
+
+- **対象**: connected な仮想デバイスで、run 中(run lease)でない台だけ。実機は測らない(欄を省く)。
+  測れなかった・撃たなかった回は前回値を配り続ける(0 で埋めない)。
+- **Android**: `adb shell df /data`(`AndroidStorageProbe`。5 分おき)。`freeScope: "device"`。
+- **iOS Simulator**: `taskpolicy -b du -sk <データディレクトリ>` + ホストのボリュームの空き
+  (`SimulatorStorageProbe`。30 分おき・締切 300 秒)。`freeScope: "hostVolume"`(Simulator は
+  ホストのディスクを間借りしているので、空きはホスト側の値)。du は 1 台 27〜35 秒(データ 30〜37GB の実測)。
+- **配信の周期で計測を待たない**(`DeviceStorageSampler`): 周期は期限の来た台を裏のキューへ積んで
+  控えを読むだけ。計測は同期の子プロセスなので Swift の協調スレッドにも載せない。du は 1 台ずつ、
+  **この Mac で run が動いている間は撃たない**(積んだ後に run が始まった場合も実行直前に確かめる)。
+  別の台の run にも I/O で響くため。
+
+### 12.4.2 iOS Simulator の PosterBoard スナップショットキャッシュの掃除(起動前・2026-09-27)
+
+iOS 27 Simulator の PosterBoard(壁紙ギャラリー拡張)は、壁紙の版(`versions/<N>`)を作り直すたびに
+`<data>/Library/Application Support/PRBPosterExtensionDataStore/…/versions/<N>/scratch/
+SnapshotCache.cachedb`(壁紙プレビュー画像のキャッシュ。`Snapshot.pks/Resources/*.atx`)を作り、
+**古い版の分を消さない**(Apple の公式な認知は確認できていない。実測 15 台で合計約 187GB・1台最大 30GB)。
+束の `Info.plist` は作られた起動 ID(`BootSessionIdentifier`)を持つ(調べた1台で 67 起動ぶん・1起動あたり
+約 140 束・平均 327MB)が、**起動のたびに増えるのではない** —— 消さずに再起動した回は束が増えず、版の数
+(`SnapshotCache.cachedb` の個数)が 99 → 105 に増えた。ツールは起動を繰り返すので版が作り直される機会が多い。
+**boot する直前に消す**ことで溜まる量を抑える。iOS 26 の台は同じフォルダが約 100MB(起動回数が少ない台なので、
+iOS 26 で溜まらないとは言えない)・iOS 18 の台にはこのキャッシュ自体が無い
+
+- **定義元は `FTBridgeClient.SimulatorPosterCache.purge(udid:)`**。simctl で boot / bootstatus -b
+  (Shutdown なら boot する)を撃つ関数は、必ず同じ関数の中でこれを呼ぶ
+  (`Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift` が Sources 全体を走査して固定する。
+  2026-09-27 時点の呼び出し口は `SimulatorBoot.ensureBooted` / `DeviceBooter.bootOne` /
+  `ProfileWorkerFactory.recoverFrozenIOSWorkers`(凍結回復の shutdown→boot) /
+  `BridgeProvisioner.rebootSimulator`(遅いランナーの台ごと再起動)の4箇所)
+- **Booted の台には撃たない** —— PosterBoard が動いている最中に消すと書き込み中のファイルを
+  壊しうる。呼び出し側の保証をあてにせず、`purge` 自身が `SimulatorCatalog.shutdownObservation`
+  で実状態を確かめる(一覧が読めない `.unreadable` も安全側で撃たない)
+- **消すのは `SnapshotCache.cachedb` という名前のディレクトリだけ**(見つけたら丸ごと・中には
+  降りない)。それ以外(configurations・descriptors 本体・壁紙の設定)には一切触れない。
+  失敗(権限・途中で消えた等)は無視して先へ進む(起動を止めない)
+- **検証**: 停止中の Simulator で `find <store> -type d -name SnapshotCache.cachedb
+  -prune -exec rm -rf {} +` → 起動 → ホーム画面・壁紙・ウィジェット正常・シナリオ1本緑・
+  キャッシュは現在の版だけ作り直された。所要は初回(22 起動ぶん・7.9GB・約 7 千束)48 秒、
+  2回目以降 1.5 秒。実経路(run の供給で起動する直前)では 112 か所・6.6GB を 28.5 秒で消し、シナリオ緑
+- **起動の直前は容量を数えない**(`measureBytes` は `fleetest clean` だけが true)—— 数えると全ファイルを
+  もう一周なめるので、溜まった台の初回は削除と同程度の時間が上乗せされ、供給が遅れる
+- 消して確かめたのは 2 台(停止中に手で消した `-09` と、実経路の `-10`)。「15 台で約 187GB」は
+  溜まり方を見た台数で、消して確かめた台数ではない
+- **既に溜まった分**は `fleetest clean --simulator-poster-cache` が停止中の全 Simulator ぶんを
+  消す(§保持容量とは別枠 —— `RetentionSweeper.Category` には入れず、このフラグを付けたときだけ動く。
+  背景の自動掃除には含まれない)。Booted の台は名前だけ出して飛ばす
+
 ### 12.5 タイルペインの auto-fit と「非表示中は実測しない」規律(2026-07-30/31)
 
 > **auto-fit は廃止した**(2026-09-17 ユーザー決定)。ボタン・`tileFitModel.js`・`tileAutoFit` の保存は無い。

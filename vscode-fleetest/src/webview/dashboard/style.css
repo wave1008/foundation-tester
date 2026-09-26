@@ -361,3 +361,41 @@ select.dash-project, select.dash-since {
   margin-bottom: 8px;
 }
 
+
+/* デバイスの健全性: 今の状態。点の色は補助(文字も必ず出す)。色はモニターのタイルと同じトークン */
+.dh-state {
+  white-space: nowrap;
+}
+.dh-state > * + * {
+  margin-left: 6px;
+}
+.dh-state-dot {
+  font-size: 10px;
+}
+.dh-state-connected { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green, #388a34)); }
+.dh-state-booted { color: var(--vscode-editorWarning-foreground, #cca700); }
+.dh-state-offline,
+.dh-state-unknown { color: var(--vscode-descriptionForeground); }
+.dh-chip-running {
+  background-color: var(--vscode-charts-blue, #0078d4);
+  color: #ffffff;
+}
+.dh-chip-frozen {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+.dh-chip-health {
+  background-color: var(--vscode-editorWarning-foreground, #cca700);
+  color: #1e1e1e;
+}
+.dh-platform {
+  margin-right: 6px;
+  font-size: 10px;
+  color: #ffffff;
+}
+#table-device-health tr.dh-machine-start td {
+  border-top: 2px solid var(--vscode-panel-border, var(--vscode-editorGroup-border));
+}
+.dh-toolbar {
+  display: flex;
+  margin-bottom: 6px;
+}

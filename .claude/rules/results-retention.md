@@ -93,3 +93,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `RunResultsStore` は `try?` で読むので、読めない run.json は run ごと LPT・`fleetest results`・履歴から黙って消える
   (拡張は欠けた欄を null で読むので気付かない)。移行前後で `fleetest results list` の stderr の件数を比べて確かめ、
   リモートは align と同時に流す(先に書き換えると旧いバイナリが読めなくなる)→ maintainer-notes §54
+- **台の事象(`workerAnomalies` の `cause` / `recovery`・run 前の `preRunExcluded` / `preRunRepaired`)と
+  アプリのクラッシュ(`appCrash`)は、起きた箇所で型として立てる**(reason・失敗文言の後解析で作らない)。
+  run 前の点検の結果は**台そのもの**(`excludedWorkers` / `repairedWorkers`)から変換する —— iOS は回復で
+  ポートが変わり label も変わるので、label から台を引き直すと修復した台が黙って数から落ちる → maintainer-notes §55.2。
+  集計(`RunResultsQuery.deviceHealth`)の鍵は (host, worker)(worker だけだとフリートの同名の台が混ざる)

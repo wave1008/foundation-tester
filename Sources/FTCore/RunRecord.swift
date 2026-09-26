@@ -11,12 +11,46 @@ public enum RunRecordSchema {
     public static let current = 1
 }
 
+/// `WorkerAnomalyRecord.cause`(任意)の値の集合。degraded/requeued/retryLimit/circuitHeld を
+/// **生む箇所で型から決めて渡す**(reason の文字列を後から解析しない。CLAUDE.md の規律)。
+/// 写像できない reason は cause を省く(「その他」に丸めない)。
+/// 値は実装の実態に合わせて確定(docs/results-json.md 参照。生成箇所は RunOrchestrator.swift)
+public enum WorkerAnomalyCause: String, Codable, Sendable {
+    /// 画面の凍結
+    case frozen
+    /// デバイスが消えた(offline / not found)
+    case deviceGone
+    /// ブリッジに届かない
+    case bridgeUnreachable
+    /// ブリッジが別のデバイスのものになった
+    case bridgeTakenOver
+    /// 連続失敗(ワーカー・サーキットブレーカの trip/held)
+    case consecutiveFailures
+    /// 一時的なアクセシビリティ異常(kAXErrorAPIDisabled 等)
+    case accessibilityFault
+    /// 接続できない(status に応答しない)
+    case noResponse
+}
+
+/// `WorkerAnomalyRecord.recovery`(任意。kind == "recovered" のときだけ持つ)の値の集合。
+/// **実行した事実だけ**(効いたかは判定しない)。値は実装にある回復経路に合わせて確定
+/// (docs/results-json.md 参照)
+public enum WorkerRecoveryKind: String, Codable, Sendable {
+    /// XCUITest ランナーを同じポートで建て直した(RunnerMidRunRecheck.recheck の `.restarted`)
+    case runnerRestart
+    /// 離脱したワーカーの論理デバイスを復帰させた(superviseWorker の revive 成功)
+    case workerRevive
+}
+
 /// run 中に起きたワーカーの異常。**prose の degradedWorkers / freezeRetries と同じ事実を
 /// 機械可読な形で持つ**(あちらは人が読む1行。こちらは「この run を除外するか」を
 /// コードで判断するための欄)。**判定はしない** —— 起きた事実だけを置く。
 public struct WorkerAnomalyRecord: Codable, Sendable {
     /// "degraded"(劣化・離脱)/ "requeued"(結果取り消し+振り直し)/
-    /// "retryLimit"(振り直しの上限に達し、失敗として記録した)
+    /// "retryLimit"(振り直しの上限に達し、失敗として記録した)/ "circuitHeld"(連続失敗中だが
+    /// 他レーンが1本も通っていないためレーンを保持した)/ "preRunExcluded"(run 前の blank 判定で
+    /// 除外)/ "preRunRepaired"(run 前の blank 判定で修復して復帰)/ "recovered"(run 中の回復操作を
+    /// 1回実行した)
     public var kind: String
     /// ScenarioRunRecord.worker と**同じ規則**("<platform>:<デバイス論理名>")。
     /// 論理名を持たない経路(--port 等)では nil = label だけで照合する
@@ -27,14 +61,39 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
     public var scenarioID: String?
     /// 英語・人間可読(prose 側と同じ文)
     public var reason: String
+    /// degraded/requeued/retryLimit/circuitHeld の理由の分類(WorkerAnomalyCause.rawValue)。
+    /// 写像できない reason は nil。他の kind では常に nil
+    public var cause: String?
+    /// kind == "recovered" のときだけの回復の種類(WorkerRecoveryKind.rawValue)
+    public var recovery: String?
 
     public init(kind: String, worker: String?, label: String,
-                scenarioID: String? = nil, reason: String) {
+                scenarioID: String? = nil, reason: String,
+                cause: WorkerAnomalyCause? = nil, recovery: WorkerRecoveryKind? = nil) {
         self.kind = kind
         self.worker = worker
         self.label = label
         self.scenarioID = scenarioID
         self.reason = reason
+        self.cause = cause?.rawValue
+        self.recovery = recovery?.rawValue
+    }
+
+    /// run **前**の blank triage(`BlankWorkerTriage.excludeBlankScreenWorkers` /
+    /// `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers`)が除外・修復した**台そのもの**を
+    /// worker 鍵つきの anomaly に変換する。**label から台を引き直さない** —— iOS は回復でポートが
+    /// 変わり label も変わるので、triage 前の一覧で引くと修復した台が黙って数から落ちる
+    public static func preRunTriage(excluded: [RunWorker], repaired: [RunWorker]) -> [WorkerAnomalyRecord] {
+        func make(_ workers: [RunWorker], kind: String, reason: String) -> [WorkerAnomalyRecord] {
+            workers.map { worker in
+                WorkerAnomalyRecord(
+                    kind: kind, worker: worker.logicalName.map { "\(worker.platform):\($0)" },
+                    label: worker.label, reason: reason)
+            }
+        }
+        return make(excluded, kind: "preRunExcluded",
+                    reason: "excluded before the run started: the screen was frozen and could not be recovered")
+            + make(repaired, kind: "preRunRepaired", reason: "recovered before the run started")
     }
 }
 
@@ -511,7 +570,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, runID, scenarioID, title, platform, worker, host, profile
         case passed, timedOut, startedAt, durationMs, scenes, steps, reportPath, failedSteps
-        case fixSuggestions, errorLogs, fm, timeline, skipKind, interrupted
+        case fixSuggestions, errorLogs, fm, timeline, skipKind, interrupted, appCrash
     }
 
     public init(from decoder: Decoder) throws {
@@ -538,6 +597,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         timeline = try c.decodeIfPresent([TimelineStepRecord].self, forKey: .timeline)
         skipKind = try c.decodeIfPresent(ScenarioSkipKind.self, forKey: .skipKind)
         interrupted = try c.decodeIfPresent(Bool.self, forKey: .interrupted)
+        appCrash = try c.decodeIfPresent(AppCrashRecord.self, forKey: .appCrash)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -564,6 +624,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         try c.encodeIfPresent(timeline, forKey: .timeline)
         try c.encodeIfPresent(skipKind, forKey: .skipKind)
         try c.encodeIfPresent(interrupted, forKey: .interrupted)
+        try c.encodeIfPresent(appCrash, forKey: .appCrash)
     }
 
     public var schemaVersion: Int
@@ -607,6 +668,10 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// insights・flaky はこの記録を履歴から外す(`RunResultsQuery.isInterruptedRecord`)。
     /// 始まらなかった分は `skipKind: interrupted` のほう(RunRecorder.markInterrupted が付ける)
     public var interrupted: Bool?
+    /// 検出できたときだけのアプリのクラッシュ事実(検出箇所から型で運ぶ。自由文の後解析はしない)。
+    /// iOS(in-app エンジン)= SimulatorCrashReport が見つけた直近の .ips /
+    /// Android = crash バッファの FATAL EXCEPTION。旧レコードも nil
+    public var appCrash: AppCrashRecord?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,
@@ -618,7 +683,8 @@ public struct ScenarioRunRecord: Codable, Sendable {
                 errorLogs: [String]? = nil,
                 fm: FMUsageRecord? = nil,
                 timeline: [TimelineStepRecord]? = nil,
-                skipKind: ScenarioSkipKind? = nil) {
+                skipKind: ScenarioSkipKind? = nil,
+                appCrash: AppCrashRecord? = nil) {
         self.fm = fm
         self.skipKind = skipKind
         self.schemaVersion = schemaVersion
@@ -640,6 +706,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         self.fixSuggestions = fixSuggestions
         self.errorLogs = errorLogs
         self.timeline = timeline
+        self.appCrash = appCrash
     }
 }
 
@@ -658,6 +725,7 @@ public struct ScenarioRecordBuilder {
     private var fixSuggestions: [FixSuggestionRecord] = []
     private var reportPath: String?
     private var fm: FMUsageRecord?
+    private var appCrash: AppCrashRecord?
     /// 全ステップのタイムライン(成否によらず到着順で蓄積。build() で timeline へ)
     private var timeline: [TimelineStepRecord] = []
 
@@ -691,6 +759,7 @@ public struct ScenarioRecordBuilder {
         case "scenarioFinished":
             reportPath = event.reportPath
             fm = event.fm
+            appCrash = event.appCrash
         case "log":
             if let message = event.message,
                message.hasPrefix("❌") || message.hasPrefix("⚠️") || message.hasPrefix("⏱") {
@@ -793,7 +862,10 @@ public struct ScenarioRecordBuilder {
             // FM 実測は成否によらず残す(コスト分析は成功実行こそ必要)
             fm: fm,
             // timeline も成否によらず残す(録画再生 UI は成功シナリオでもステップツリーを出す)
-            timeline: timeline.isEmpty ? nil : timeline)
+            timeline: timeline.isEmpty ? nil : timeline,
+            // アプリのクラッシュも成否によらず残す(検出は失敗経路でしか起きないが、fm/timeline と
+            // 同じ規律で条件分岐を増やさない)
+            appCrash: appCrash)
     }
 
     private static func relativize(_ path: String?, packageRoot: URL?) -> String? {

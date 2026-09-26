@@ -21,15 +21,19 @@ import Foundation
 public enum BlankWorkerTriage {
 
     /// 判定結果。excluded/repaired はワーカー label(呼び出し側がログ・監査に使う)。
-    /// repaired = 開始時に凍結していて `recover` で戻った台(run.json の blankRepairs へ渡す)
+    /// repaired = 開始時に凍結していて `recover` で戻った台(run.json の blankRepairs へ渡す)。
+    /// **excludedWorkers / repairedWorkers は台そのもの** —— 回復でポートが変わると label も変わるので、
+    /// label から台を引き直さない(WorkerAnomalyRecord.preRunTriage はこちらを使う)
     public struct Result {
         public let workers: [RunWorker]
-        public let excluded: [String]
-        public let repaired: [String]
-        public init(workers: [RunWorker], excluded: [String], repaired: [String] = []) {
+        public let excludedWorkers: [RunWorker]
+        public let repairedWorkers: [RunWorker]
+        public var excluded: [String] { excludedWorkers.map(\.label) }
+        public var repaired: [String] { repairedWorkers.map(\.label) }
+        public init(workers: [RunWorker], excludedWorkers: [RunWorker], repairedWorkers: [RunWorker]) {
             self.workers = workers
-            self.excluded = excluded
-            self.repaired = repaired
+            self.excludedWorkers = excludedWorkers
+            self.repairedWorkers = repairedWorkers
         }
     }
 
@@ -48,10 +52,10 @@ public enum BlankWorkerTriage {
     /// `blankByLabel` は「そのワーカーが恒常 blank か」。元の順序を保ったまま除外する
     public static func exclude(_ workers: [RunWorker],
                                blankByLabel: [String: Bool]) -> Result {
-        let excluded = workers.map(\.label).filter { blankByLabel[$0] == true }
-        guard !excluded.isEmpty else { return Result(workers: workers, excluded: []) }
+        let excluded = workers.filter { blankByLabel[$0.label] == true }
+        guard !excluded.isEmpty else { return Result(workers: workers, excludedWorkers: [], repairedWorkers: []) }
         let kept = workers.filter { blankByLabel[$0.label] != true }
-        return Result(workers: kept, excluded: excluded)
+        return Result(workers: kept, excludedWorkers: excluded, repairedWorkers: [])
     }
 
     /// 除外・回復まで行う本体(`excludeBlankScreenWorkers`)が対象にするワーカーか。
@@ -307,7 +311,7 @@ public enum BlankWorkerTriage {
         // simctl shutdown/boot を撃つと対照実験のたびにフリートを再起動することになる
         var blankLabels = verdicts
             .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()
-        guard !blankLabels.isEmpty else { return Result(workers: current, excluded: []) }
+        guard !blankLabels.isEmpty else { return Result(workers: current, excludedWorkers: [], repairedWorkers: []) }
         // **deviceKey(udid/serial)で追跡する** —— 回復するとブリッジを張り直すので label(ポート)が
         // 変わりうる。label のまま差分を取ると回復した機を「別の未知の機」として見失う
         let originalBlankKeys = deviceKeys(for: blankLabels, in: current)
@@ -326,9 +330,9 @@ public enum BlankWorkerTriage {
                     .filter { $0.value.isFrozen && !$0.value.isInjectedOnly }.keys.sorted()
                 if blankLabels.isEmpty {
                     log("✅ every frozen device recovered — starting with all lanes")
-                    return Result(workers: current, excluded: [],
-                                  repaired: repairedLabels(originalBlankKeys: originalBlankKeys,
-                                                           stillBlankLabels: [], in: current))
+                    return Result(workers: current, excludedWorkers: [],
+                                  repairedWorkers: repairedWorkers(originalBlankKeys: originalBlankKeys,
+                                                                   stillBlankLabels: [], in: current))
                 }
             }
         }
@@ -340,11 +344,11 @@ public enum BlankWorkerTriage {
                 + " do not land) — could not recover it, so it is excluded from dispatch."
                 + " Recover it with: xcrun simctl shutdown <udid> && xcrun simctl boot <udid>")
         }
-        let repaired = repairedLabels(originalBlankKeys: originalBlankKeys,
-                                      stillBlankLabels: blankLabels, in: current)
+        let repaired = repairedWorkers(originalBlankKeys: originalBlankKeys,
+                                       stillBlankLabels: blankLabels, in: current)
         let outcome = exclude(current, blankByLabel: Dictionary(
             uniqueKeysWithValues: blankLabels.map { ($0, true) }))
-        return Result(workers: outcome.workers, excluded: outcome.excluded, repaired: repaired)
+        return Result(workers: outcome.workers, excludedWorkers: outcome.excludedWorkers, repairedWorkers: repaired)
     }
 
     /// label → deviceKey(udid/serial)。回復で label が変わっても同一デバイスを追跡するための対応表
@@ -356,13 +360,13 @@ public enum BlankWorkerTriage {
 
     /// 開始時に凍結していて終了時に凍結していない台を「回復した」と数える(deviceKey で照合。
     /// label の単純な差し引きはしない —— 回復でポートが変わり label が変わるため)
-    private static func repairedLabels(originalBlankKeys: Set<String>, stillBlankLabels: [String],
-                                       in workers: [RunWorker]) -> [String] {
+    private static func repairedWorkers(originalBlankKeys: Set<String>, stillBlankLabels: [String],
+                                        in workers: [RunWorker]) -> [RunWorker] {
         guard !originalBlankKeys.isEmpty else { return [] }
         let stillBlankKeys = deviceKeys(for: stillBlankLabels, in: workers)
         let repairedKeys = originalBlankKeys.subtracting(stillBlankKeys)
         guard !repairedKeys.isEmpty else { return [] }
         return workers.filter { deviceKey($0).map(repairedKeys.contains) == true }
-            .map(\.label).sorted()
+            .sorted { $0.label < $1.label }
     }
 }

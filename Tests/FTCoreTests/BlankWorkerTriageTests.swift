@@ -484,7 +484,8 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         func w(_ label: String, port: UInt16, frozen: Bool) -> RunWorker {
             RunWorker(label: label, platform: "ios", driver: SwitchableDriver(frozen: frozen),
                       connection: DriverConnection(platform: "ios", port: port, serial: nil,
-                                                   udid: "UDID-fixed"))
+                                                   udid: "UDID-fixed"),
+                      logicalName: "dead")
         }
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             [w("dead(ios:8100)", port: 8100, frozen: true)],
@@ -496,6 +497,13 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         XCTAssertTrue(result.excluded.isEmpty)
         XCTAssertEqual(result.repaired, ["dead(ios:8210)"],
                        "回復後の label(実際に run で使う方)で報告すること")
+        // run.json の workerAnomalies へも台の鍵つきで載る(label から引き直すと、回復前の一覧には
+        // 回復後の label が無く、修復した台が黙って数から落ちていた)
+        let anomalies = WorkerAnomalyRecord.preRunTriage(
+            excluded: result.excludedWorkers, repaired: result.repairedWorkers)
+        XCTAssertEqual(anomalies.map(\.kind), ["preRunRepaired"])
+        XCTAssertEqual(anomalies.first?.worker, "ios:dead")
+        XCTAssertEqual(anomalies.first?.label, "dead(ios:8210)")
     }
 
     /// 回復を渡さない呼び出しは**従来どおり弾くだけ**(既存の呼び出し元を壊さない)

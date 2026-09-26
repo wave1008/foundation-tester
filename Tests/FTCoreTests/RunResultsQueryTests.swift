@@ -257,6 +257,116 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(androidRow?.successRate, 100)
     }
 
+    // MARK: - deviceHealth
+
+    /// degraded → removed(+cause の内訳)/ requeued → requeued / preRunExcluded・preRunRepaired・
+    /// recovered はそのまま件数(+recoveredByKind)。worker の無い記録・retryLimit・circuitHeld は
+    /// どの欄にも当たらない
+    func testDeviceHealthCountsByKindAndCause() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", host: "mac1", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "degraded", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "dropped out because of a frozen screen", cause: .frozen),
+                WorkerAnomalyRecord(kind: "requeued", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    scenarioID: "Foo.a", reason: "an unreachable bridge",
+                                    cause: .bridgeUnreachable),
+                // worker 欄が無い記録は数えない
+                WorkerAnomalyRecord(kind: "degraded", worker: nil, label: "ios:8100", reason: "cannot connect"),
+                // retryLimit / circuitHeld はどの欄にも当たらない
+                WorkerAnomalyRecord(kind: "retryLimit", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    scenarioID: "Foo.b", reason: "retry limit reached"),
+                WorkerAnomalyRecord(kind: "circuitHeld", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    scenarioID: "Foo.c", reason: "held", cause: .consecutiveFailures),
+            ]),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", host: "mac1", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "preRunExcluded", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "excluded before the run started"),
+                WorkerAnomalyRecord(kind: "preRunRepaired", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "recovered before the run started"),
+                WorkerAnomalyRecord(kind: "recovered", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "worker revived", recovery: .workerRevive),
+            ]),
+        ]
+        let rows = RunResultsQuery.deviceHealth(runs: runs, records: [])
+
+        XCTAssertEqual(rows.count, 1)
+        let row = rows[0]
+        XCTAssertEqual(row.host, "mac1")
+        XCTAssertEqual(row.worker, "ios:iPhone 17")
+        XCTAssertEqual(row.removed, 1)
+        XCTAssertEqual(row.removedByCause, ["frozen": 1])
+        XCTAssertEqual(row.requeued, 1)
+        XCTAssertEqual(row.preRunExcluded, 1)
+        XCTAssertEqual(row.preRunRepaired, 1)
+        XCTAssertEqual(row.recovered, 1)
+        XCTAssertEqual(row.recoveredByKind, ["workerRevive": 1])
+        XCTAssertEqual(row.appCrashes, 0)
+        XCTAssertEqual(row.lastEventAt, "2026-01-02T00:00:00Z")
+    }
+
+    /// appCrash を持つシナリオ記録の数を worker 別に数える(appCrash が無ければ数えない)
+    /// フリートでは同じ論理名の台が機械ごとに居る。worker だけで束ねると別の機械の台が1行に混ざる
+    func testDeviceHealthKeepsTheSameWorkerOnDifferentHostsApart() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", host: "mac1", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "degraded", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "dropped out", cause: .frozen),
+            ]),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", host: "mac2", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "requeued", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    scenarioID: "Foo.a", reason: "requeued", cause: .frozen),
+                // 数えない種類は「最後の事象」の時刻も動かさない
+                WorkerAnomalyRecord(kind: "circuitHeld", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    scenarioID: "Foo.b", reason: "held"),
+            ]),
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", host: "mac2", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "circuitHeld", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    scenarioID: "Foo.c", reason: "held"),
+            ]),
+        ]
+        let rows = RunResultsQuery.deviceHealth(runs: runs, records: [])
+        XCTAssertEqual(rows.map(\.host), ["mac1", "mac2"])
+        XCTAssertEqual(rows.map(\.removed), [1, 0])
+        XCTAssertEqual(rows.map(\.requeued), [0, 1])
+        XCTAssertEqual(rows[1].lastEventAt, "2026-01-02T00:00:00Z")
+    }
+
+    func testDeviceHealthSkipsRecordsWithoutAHost() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", host: "", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "degraded", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "dropped out", cause: .frozen),
+            ]),
+        ]
+        XCTAssertTrue(RunResultsQuery.deviceHealth(runs: runs, records: []).isEmpty)
+    }
+
+    func testDeviceHealthCountsAppCrashesByWorker() {
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                      platform: "android", worker: "android:Pixel",
+                      appCrash: AppCrashRecord(evidence: .fatalException, summary: "FATAL EXCEPTION: main")),
+            makeRecord(scenarioID: "Foo.b", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                      platform: "android", worker: "android:Pixel"),
+        ]
+        let rows = RunResultsQuery.deviceHealth(runs: [], records: records)
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0].worker, "android:Pixel")
+        XCTAssertEqual(rows[0].appCrashes, 1)
+    }
+
+    /// 全部 0 の台は出さない(worker 欄はあるが、数えられる事象が1件も無い)
+    func testDeviceHealthOmitsAllZeroRows() {
+        let runs = [
+            makeMeta(runID: "R1", workerAnomalies: [
+                WorkerAnomalyRecord(kind: "circuitHeld", worker: "ios:iPhone 17", label: "iPhone 17",
+                                    reason: "held"),
+            ]),
+        ]
+        XCTAssertEqual(RunResultsQuery.deviceHealth(runs: runs, records: []).count, 0)
+    }
+
     // MARK: - slowTests
 
     func testSlowTestsComputesAvgP90AndSortsDescending() {
@@ -1341,13 +1451,15 @@ final class RunResultsQueryTests: XCTestCase {
         runID: String, startedAt: String = "2026-01-01T00:00:00Z", finishedAt: String? = nil, total: Int? = 1,
         profile: String? = nil, host: String = "testmachine",
         performanceMode: Bool? = nil, measurementInvalid: Bool? = nil,
-        passed: Int? = nil, failed: Int? = nil, runGroup: String? = nil
+        passed: Int? = nil, failed: Int? = nil, runGroup: String? = nil,
+        workerAnomalies: [WorkerAnomalyRecord]? = nil
     ) -> RunMetaRecord {
         RunMetaRecord(
             runID: runID, project: "SampleApp", profile: profile, host: host,
             trigger: "cli", startedAt: startedAt, finishedAt: finishedAt, total: total,
             passed: passed, failed: failed,
-            measurementInvalid: measurementInvalid, runGroup: runGroup,
+            measurementInvalid: measurementInvalid,
+            workerAnomalies: workerAnomalies, runGroup: runGroup,
             performanceMode: performanceMode)
     }
 
@@ -1357,13 +1469,15 @@ final class RunResultsQueryTests: XCTestCase {
         timedOut: Bool? = nil, scenes: [SceneResultRecord] = [],
         failedSteps: [FailedStepRecord]? = nil, errorLogs: [String]? = nil,
         runID: String = "", title: String? = nil,
-        fixSuggestions: [FixSuggestionRecord]? = nil
+        fixSuggestions: [FixSuggestionRecord]? = nil,
+        appCrash: AppCrashRecord? = nil
     ) -> ScenarioRunRecord {
         ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
             host: "testmachine",
             passed: passed, timedOut: timedOut, startedAt: startedAt, durationMs: durationMs,
             scenes: scenes, steps: steps ?? StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1),
-            failedSteps: failedSteps, fixSuggestions: fixSuggestions, errorLogs: errorLogs)
+            failedSteps: failedSteps, fixSuggestions: fixSuggestions, errorLogs: errorLogs,
+            appCrash: appCrash)
     }
 }

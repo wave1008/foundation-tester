@@ -61,7 +61,7 @@ function basePayload(overrides = {}) {
     runs: [RUN],
     summary: [],
     flaky: [],
-    devices: { byPlatform: [], byWorker: [] },
+    deviceHealth: [],
     slow: [], insights: [],
     machines: [], runStats: [],
     ...overrides,
@@ -107,9 +107,15 @@ test("insights: severity ごとに見出しを分ける(critical→warn→info �
 test("insights: scenarioID を持つ行は本文クリックで実行履歴、worker は一致する行があるときだけ別のリンクを添える", (t) => {
   const { window, posts, sendToWebview } = createWebview();
   t.after(() => window.close());
+  showAllDevices(window);
   // 実データの deviceBias は scenarioID と worker の両方を持つ
   const payload = basePayload({
-    devices: { byPlatform: [], byWorker: [{ worker: "ios:iPhone 15", runs: 3, successRate: 33 }] },
+    deviceHealth: [
+      {
+        host: "H", worker: "ios:iPhone 15", removed: 3, removedByCause: {}, requeued: 0,
+        preRunExcluded: 0, preRunRepaired: 0, recovered: 0, recoveredByKind: {}, appCrashes: 0,
+      },
+    ],
     insights: [
       { kind: "newFailure", severity: "critical", scenarioID: "Foo.S0010", platform: "ios", message: "critical msg" },
       { kind: "deviceBias", severity: "warn", scenarioID: "Bar.S0010", platform: "ios", worker: "ios:iPhone 15", message: "device bias matched" },
@@ -131,7 +137,7 @@ test("insights: scenarioID を持つ行は本文クリックで実行履歴、wo
   const trendPost = posts.find((p) => p.type === "dashboard" && p.message?.type === "trend");
   assert.deepEqual(JSON.parse(JSON.stringify(trendPost.message)), { type: "trend", scenarioID: "Bar.S0010" });
 
-  const workerRow = [...window.document.querySelectorAll("#table-devices-worker-body tr")]
+  const workerRow = [...window.document.querySelectorAll("#table-device-health-body tr")]
     .find((tr) => tr.dataset.worker === "ios:iPhone 15");
   matchedItem.querySelector(".insight-worker-link").click();
   assert.ok(workerRow.classList.contains("row-highlight"), "一致する worker 行を一時的に強調する");
@@ -284,22 +290,338 @@ test("run 詳細: line 欠落は 1 を既定にして openSource を送る", (t)
   assert.deepEqual(JSON.parse(JSON.stringify(openSourcePost.message)), { type: "openSource", file: "Foo.swift", line: 1 });
 });
 
-// ---- デバイス別: worker 欄の無い古い記録の束は出さない ------------------------------------
+// ---- デバイスの健全性: モニター(今の状態)と api results(deviceHealth)の結合 ------------------
 
-test("devices: CLI が worker 欄の無い記録を束ねた \"(unknown worker)\" 行は表に出さない(Swift 側の定数と同じ文字列)", async (t) => {
-  const fs = await import("node:fs");
-  const swift = fs.readFileSync(path.resolve("../Sources/FTCore/RunResultsQuery.swift"), "utf8");
-  assert.match(swift, /unknownWorkerLabel = "\(unknown worker\)"/, "CLI 側の定数が変わったら devices.js の UNKNOWN_WORKER も直す");
+/** 「アクティブなデバイスを表示」(既定 ON)を外し、全台を出す(表の中身を確かめるテスト用) */
+function showAllDevices(window) {
+  const toggle = window.document.getElementById("chk-device-health-active-only");
+  toggle.checked = false;
+  toggle.dispatchEvent(new window.Event("change"));
+}
 
+function healthRow(overrides = {}) {
+  return {
+    host: "H", worker: "android:Pixel 8", removed: 0, removedByCause: {}, requeued: 0,
+    preRunExcluded: 0, preRunRepaired: 0, recovered: 0, recoveredByKind: {}, appCrashes: 0,
+    ...overrides,
+  };
+}
+
+function monitorDevice(overrides = {}) {
+  return { id: "id", name: "Pixel 8", platform: "android", state: "connected", detail: "", ...overrides };
+}
+
+test("デバイスの健全性: モニターだけ・履歴だけ・両方の台が行に出て、片方にしか無い値は「–」になる", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
+  showAllDevices(window);
+
+  // "H" というホストで走った run は、この Mac(手元)自身の run(machineAlias が "local" を書く実装。
+  // DeviceMachineGrouping.localDisplayName)を想定して local へ揃える。
   const payload = basePayload({
-    devices: { byPlatform: [], byWorker: [
-      { worker: "(unknown worker)", runs: 680, successRate: 10 },
-      { worker: "ios:iPhone 15", runs: 3, successRate: 33 },
-    ] },
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [
+      healthRow({ worker: "android:history-only", removed: 2 }),
+      healthRow({ worker: "ios:both", removed: 1 }),
+    ],
   });
   sendToWebview({ type: "dashboard", message: { type: "data", payload } });
-  const rows = [...window.document.querySelectorAll("#table-devices-worker-body tr")].map((tr) => tr.dataset.worker);
-  assert.deepEqual(rows, ["ios:iPhone 15"]);
+  sendToWebview({
+    type: "devices",
+    filter: "all",
+    devices: [
+      monitorDevice({ id: "ios:monitor-only", name: "monitor-only", platform: "ios" }),
+      monitorDevice({ id: "ios:both", name: "both", platform: "ios", state: "offline" }),
+    ],
+  });
+
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  const byWorker = (worker) => rows.find((tr) => tr.dataset.worker === worker);
+
+  const historyOnly = byWorker("android:history-only");
+  assert.ok(historyOnly, "履歴だけの台も行に出る");
+  assert.equal(historyOnly.children[2].textContent, "–", "モニターに居ない台の状態は「–」");
+  assert.equal(historyOnly.children[4].textContent, "2");
+
+  const monitorOnly = byWorker("ios:monitor-only");
+  assert.ok(monitorOnly, "モニターだけの台も行に出る");
+  assert.notEqual(monitorOnly.children[2].textContent, "–", "モニターに居る台の状態は出す");
+  assert.equal(monitorOnly.children[4].textContent, "–", "deviceHealth に居ない台の回数は「–」");
+
+  const both = byWorker("ios:both");
+  assert.ok(both, "両方に居る台は1行に結合される");
+  assert.notEqual(both.children[2].textContent, "–");
+  assert.equal(both.children[4].textContent, "1");
+});
+
+test("デバイスの健全性: ストレージは使用量だけを出し、空き(母数が OS で違う)は出さない", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload() } });
+  sendToWebview({
+    type: "devices",
+    filter: "all",
+    devices: [
+      monitorDevice({
+        id: "android:device-scope", name: "device-scope",
+        storage: { usedBytes: 1500000000, freeBytes: 3000000000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z" },
+      }),
+      monitorDevice({
+        id: "android:host-volume", name: "host-volume",
+        storage: { usedBytes: 1500000000, freeBytes: 3000000000, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z" },
+      }),
+      monitorDevice({ id: "android:no-storage", name: "no-storage" }),
+    ],
+  });
+
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  const byWorker = (worker) => rows.find((tr) => tr.dataset.worker === worker);
+
+  const deviceScope = byWorker("android:device-scope").children[3].textContent;
+  const hostVolume = byWorker("android:host-volume").children[3].textContent;
+  const noStorage = byWorker("android:no-storage").children[3].textContent;
+
+  assert.equal(deviceScope, "1.4 GB 使用");
+  assert.equal(hostVolume, "1.4 GB 使用", "iOS のホストの空きも出さない");
+  assert.equal(noStorage, "–", "測れていない台は「–」(0 で埋めない)");
+});
+
+// ---- デバイスの健全性: モニターの台名を deviceCatalog で実行プロファイルの name へ揃える ------
+
+function sendDeviceCatalog(sendToWebview, devices) {
+  sendToWebview({ type: "dashboard", message: { type: "deviceCatalog", devices } });
+}
+
+test("デバイスの健全性: registered の台は name をそのままプロファイルの name として結合する", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "dashboard",
+    message: {
+      type: "data",
+      payload: basePayload({
+        machines: [{ host: "H", machine: "local" }],
+        deviceHealth: [healthRow({ worker: "ios:iPhone 15 Pro", removed: 1 })],
+      }),
+    },
+  });
+  sendToWebview({
+    type: "devices", filter: "all",
+    devices: [monitorDevice({ id: "ios:iPhone 15 Pro", name: "iPhone 15 Pro", platform: "ios", registered: true })],
+  });
+
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  assert.equal(rows.length, 1, "同じ台が2行に分かれない");
+  assert.equal(rows[0].dataset.worker, "ios:iPhone 15 Pro");
+  assert.equal(rows[0].children[4].textContent, "1");
+  assert.notEqual(rows[0].children[2].textContent, "–");
+});
+
+test("デバイスの健全性: 未登録の iOS は udid で deviceCatalog を引いてプロファイルの name に揃える", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "dashboard",
+    message: {
+      type: "data",
+      payload: basePayload({
+        machines: [{ host: "H", machine: "local" }],
+        deviceHealth: [healthRow({ worker: "ios:iPhone 15 Pro", removed: 1 })],
+      }),
+    },
+  });
+  sendDeviceCatalog(sendToWebview, [{ platform: "ios", name: "iPhone 15 Pro", udid: "UDID-1" }]);
+  sendToWebview({
+    type: "devices", filter: "all",
+    devices: [
+      // 未登録の iOS の台はモニターの name がシミュレータの名前になる(たまたまプロファイルの
+      // name と同じ字面になることもあるが保証はない、という実測に合わせて別の字面にする)。
+      monitorDevice({ id: "ios:sim-name", name: "iPhone 15 Pro (Clone)", platform: "ios", udid: "UDID-1", registered: false }),
+    ],
+  });
+
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  assert.equal(rows.length, 1, "udid が一致すれば1行に結合される");
+  assert.equal(rows[0].dataset.worker, "ios:iPhone 15 Pro");
+  assert.equal(rows[0].children[4].textContent, "1");
+  assert.notEqual(rows[0].children[2].textContent, "–");
+});
+
+test("デバイスの健全性: 未登録の Android は avd(+machine)で deviceCatalog を引いてプロファイルの name に揃える", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "dashboard",
+    message: {
+      type: "data",
+      payload: basePayload({
+        machines: [{ host: "H", machine: "local" }],
+        deviceHealth: [healthRow({ worker: "android:Pixel 9(Android 15)-01", removed: 1 })],
+      }),
+    },
+  });
+  // 実際のプロファイルは手元を "local" と書き、モニターは手元の machine を省く(実測)。
+  // 同じ AVD 名の台が別の機械にもあるので、machine で手元の台を選ぶ
+  sendDeviceCatalog(sendToWebview, [
+    { platform: "android", machine: "M1Max", name: "Pixel 9(Android 15)-01 on M1Max", avd: "Pixel_9_Android_15_-01" },
+    { platform: "android", machine: "local", name: "Pixel 9(Android 15)-01", avd: "Pixel_9_Android_15_-01" },
+  ]);
+  sendToWebview({
+    type: "devices", filter: "all",
+    devices: [
+      // 未登録の Android Emulator はモニターの name が AVD 名そのものになる(実測)。
+      monitorDevice({ id: "android:Pixel_9_Android_15_-01", name: "Pixel_9_Android_15_-01", platform: "android", registered: false }),
+    ],
+  });
+
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  assert.equal(rows.length, 1, "avd(+machine)が一致すれば1行に結合される");
+  assert.equal(rows[0].dataset.worker, "android:Pixel 9(Android 15)-01");
+  assert.equal(rows[0].children[4].textContent, "1");
+  assert.notEqual(rows[0].children[2].textContent, "–");
+});
+
+test("デバイスの健全性: deviceCatalog に当たらない未登録の台は name を推測で変えず、別の行のままにする", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendToWebview({
+    type: "dashboard",
+    message: {
+      type: "data",
+      payload: basePayload({
+        machines: [{ host: "H", machine: "local" }],
+        deviceHealth: [healthRow({ worker: "android:Pixel 9(Android 15)-01", removed: 1 })],
+      }),
+    },
+  });
+  // deviceCatalog は空(またはこの台の avd に当たる記載が無い) —— 当てられないので推測しない。
+  sendDeviceCatalog(sendToWebview, []);
+  sendToWebview({
+    type: "devices", filter: "all",
+    devices: [
+      monitorDevice({ id: "android:Pixel_9_Android_15_-01", name: "Pixel_9_Android_15_-01", platform: "android", registered: false }),
+    ],
+  });
+
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  assert.equal(rows.length, 2, "当てられない台は履歴の行とは別の行のまま(推測で結合しない)");
+  const workers = rows.map((tr) => tr.dataset.worker).sort();
+  assert.deepEqual(workers, ["android:Pixel 9(Android 15)-01", "android:Pixel_9_Android_15_-01"]);
+});
+
+test("デバイスの健全性: 今の状態は色の点+文字、実行中・凍結・異常フラグはチップで出し、metal-errors は出さない", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ deviceHealth: [] }) } });
+  sendToWebview({
+    type: "devices", filter: "all",
+    devices: [
+      monitorDevice({ id: "android:a", name: "a", state: "connected", inRun: true, frozen: true,
+        health: ["wifi-disabled", "metal-errors", "new-flag"] }),
+      monitorDevice({ id: "android:b", name: "b", state: "booted" }),
+      monitorDevice({ id: "android:c", name: "c", state: "offline" }),
+      monitorDevice({ id: "android:d", name: "d", state: "weird" }),
+    ],
+  });
+  const cellOf = (name) => [...window.document.querySelectorAll("#table-device-health-body tr")]
+    .find((tr) => tr.dataset.worker === "android:" + name).children[2];
+
+  const a = cellOf("a");
+  assert.ok(a.querySelector(".dh-state-dot.dh-state-connected"));
+  assert.match(a.textContent, /接続中/, "色だけでなく文字も出す");
+  assert.ok(a.querySelector(".dh-chip-running"));
+  assert.match(a.querySelector(".dh-chip-frozen").textContent, /❄️/);
+  const flags = [...a.querySelectorAll(".dh-chip-health")].map((c) => c.textContent);
+  assert.deepEqual(flags, ["⚠ Wi-Fi 無効", "⚠ new-flag"], "既知は訳し、未知は原文、metal-errors は出さない");
+
+  assert.ok(cellOf("b").querySelector(".dh-state-booted"));
+  assert.ok(cellOf("c").querySelector(".dh-state-offline"));
+  assert.ok(cellOf("d").querySelector(".dh-state-unknown"), "未知の state は不明として出す");
+  assert.equal(cellOf("b").querySelector(".dh-chip-running"), null);
+});
+
+test("デバイスの健全性: マシンは独立した列で、機械が変わる行に区切りを付け、デバイス列は名前と OS のラベル", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }, { host: "R", machine: "M1Max" }],
+    deviceHealth: [
+      healthRow({ host: "R", worker: "ios:iPhone 17", removed: 1 }),
+      healthRow({ host: "H", worker: "ios:iPhone 17", removed: 2 }),
+      healthRow({ host: "H", worker: "android:Pixel 9", removed: 3 }),
+    ],
+  }) } });
+  const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
+  assert.deepEqual(rows.map((tr) => tr.children[0].textContent), ["local", "local", "M1Max"]);
+  assert.deepEqual(rows.map((tr) => tr.children[1].textContent), ["AndroidPixel 9", "iOSiPhone 17", "iOSiPhone 17"]);
+  assert.deepEqual(rows.map((tr) => tr.classList.contains("dh-machine-start")), [false, false, true]);
+  // デバイスモニターと同じバッジ: マシンは .badge-remote(手元は data-machine を持たない = 既定色)、
+  // OS はタイルの名前ピルと同じ色のクラス
+  assert.ok(rows[0].children[0].querySelector(".badge.badge-remote"));
+  assert.equal(rows[0].children[0].querySelector(".badge-remote").dataset.machine, undefined);
+  assert.equal(rows[2].children[0].querySelector(".badge-remote").dataset.machine, "M1Max");
+  assert.ok(rows[0].children[1].querySelector(".tile-name-android"));
+  assert.ok(rows[1].children[1].querySelector(".tile-name-ios"));
+});
+
+test("デバイスの健全性: 「アクティブなデバイスを表示」は既定 ON で未起動とモニターに居ない台を隠し、OFF で全部出す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [healthRow({ worker: "android:history-only", removed: 1 })],
+  }) } });
+  sendToWebview({
+    type: "devices", filter: "all",
+    devices: [
+      monitorDevice({ id: "android:on", name: "on", state: "connected" }),
+      monitorDevice({ id: "android:booted", name: "booted", state: "booted" }),
+      monitorDevice({ id: "android:off", name: "off", state: "offline" }),
+    ],
+  });
+  const workers = () => [...window.document.querySelectorAll("#table-device-health-body tr")].map((tr) => tr.dataset.worker).sort();
+  const toggle = window.document.getElementById("chk-device-health-active-only");
+  assert.equal(toggle.checked, true, "既定は ON");
+  assert.deepEqual(workers(), ["android:booted", "android:on"]);
+  toggle.checked = false;
+  toggle.dispatchEvent(new window.Event("change"));
+  assert.deepEqual(workers(), ["android:booted", "android:history-only", "android:off", "android:on"]);
+});
+
+test("デバイスの健全性: 注意喚起から隠れている台へ飛ぶと、絞り込みを外してその行を強調する", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [healthRow({ worker: "ios:iPhone 15", removed: 1 })],
+    insights: [{ kind: "deviceBias", severity: "warn", scenarioID: "Bar.S0010", platform: "ios",
+      worker: "ios:iPhone 15", message: "device bias" }],
+  }) } });
+  const toggle = window.document.getElementById("chk-device-health-active-only");
+  assert.equal(window.document.querySelector('#table-device-health-body tr[data-worker="ios:iPhone 15"]'), null,
+    "モニターに居ない台は既定で隠れている");
+  window.document.querySelector("#insights-list .insight-worker-link").click();
+  assert.equal(toggle.checked, false);
+  const row = window.document.querySelector('#table-device-health-body tr[data-worker="ios:iPhone 15"]');
+  assert.ok(row && row.classList.contains("row-highlight"));
+});
+
+test("デバイスの健全性: モニターの周期で表に出る値が変わらなければ描き直さない", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ deviceHealth: [] }) } });
+  const devices = [monitorDevice({ id: "android:a", name: "a", state: "connected" })];
+  sendToWebview({ type: "devices", filter: "all", devices });
+  const first = window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]');
+  sendToWebview({ type: "devices", filter: "all", devices });
+  assert.equal(window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]'), first,
+    "同じ内容の周期では行を作り直さない");
+  sendToWebview({ type: "devices", filter: "all", devices: [monitorDevice({ id: "android:a", name: "a", state: "offline" })] });
+  const after = window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]');
+  assert.notEqual(after, first, "状態が変われば描き直す");
+  assert.match(after.children[2].textContent, /未起動/);
 });

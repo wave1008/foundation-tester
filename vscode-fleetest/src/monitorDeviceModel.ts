@@ -45,6 +45,21 @@ export type MonitorDeviceState = "connected" | "booted" | "offline" | "unknown";
 /** デバイスの実体種別(ApiMonitorCommand の kind。旧 CLI 互換のため欠落時は virtual 扱い)。 */
 export type MonitorDeviceKind = "virtual" | "physical";
 
+/** freeBytes の意味。"device" = デバイス自身の空き(Android df /data)、
+ * "hostVolume" = デバイスのデータ領域が乗っているホスト側ボリュームの空き
+ * (iOS Simulator。statfs はデバイス専用の空きを持たない)。 */
+export type MonitorDeviceStorageScope = "device" | "hostVolume";
+
+/** デバイスモニターのストレージ計測(契約は Sources/fleetest/ApiMonitorEvents.swift の ApiMonitorDeviceInfo.storage)。
+ * 実機・未計測・タイムアウトは欄自体が省略される(0 で埋めない)。 */
+export interface MonitorDeviceStorage {
+  readonly usedBytes: number;
+  /** iOS Simulator は測れる場合のみ(ホストの statfs)。省略 = 測れなかった。 */
+  readonly freeBytes?: number;
+  readonly freeScope: MonitorDeviceStorageScope;
+  readonly measuredAt: string;
+}
+
 export interface MonitorDevice {
   readonly id: string;
   readonly name: string;
@@ -108,6 +123,10 @@ export interface MonitorDevice {
    * pidof がたまたま失敗しただけの回にタイルの絵が消える(誤って「ブリッジが無い」と断定する)。
    * (契約は Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.bridgeRunning) */
   readonly bridgeRunning?: boolean;
+  /** 直近のストレージ計測(devices サイクルに乗る。§3 の間隔・inRun 中は撃たない等の規律は
+   * 送信側=Swift の話でここでは関与しない)。測れなかった台は欠落(undefined)のまま —— 0 に
+   * 正規化しない(ダッシュボードの「デバイスの健全性」表が「–」と 0 を区別するため)。 */
+  readonly storage?: MonitorDeviceStorage;
 }
 
 /** run ボードの1レーン(台1枚)。docs/design.md §18.1/§18.2。key は udid(iOS)/serial(Android)で、
@@ -202,6 +221,19 @@ export type MonitorEvent =
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
 const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline", "unknown"]);
 
+function isMonitorDeviceStorage(value: unknown): value is MonitorDeviceStorage {
+  if (!isRecord(value)) return false;
+  if (value.freeBytes === null) {
+    value.freeBytes = undefined;
+  }
+  return (
+    typeof value.usedBytes === "number" &&
+    (value.freeBytes === undefined || typeof value.freeBytes === "number") &&
+    (value.freeScope === "device" || value.freeScope === "hostVolume") &&
+    typeof value.measuredAt === "string"
+  );
+}
+
 function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (!isRecord(value)) {
     return false;
@@ -261,6 +293,10 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // 生きているブリッジのフレームまで消してしまう。
     value.bridgeRunning = undefined;
   }
+  if (value.storage === null || !isMonitorDeviceStorage(value.storage)) {
+    // 欠落・null・型不正はすべて「測れなかった」と同じ undefined に寄せる(0 には丸めない)。
+    value.storage = undefined;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -278,7 +314,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     typeof value.recording === "boolean" &&
     typeof value.registered === "boolean" &&
     typeof value.frozen === "boolean" &&
-    (value.bridgeRunning === undefined || typeof value.bridgeRunning === "boolean")
+    (value.bridgeRunning === undefined || typeof value.bridgeRunning === "boolean") &&
+    (value.storage === undefined || isMonitorDeviceStorage(value.storage))
   );
 }
 

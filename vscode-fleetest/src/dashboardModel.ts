@@ -81,23 +81,24 @@ export interface FlakyRow {
   readonly recentResults: readonly boolean[];
 }
 
-export interface DeviceWorkerRow {
+/** デバイスの健全性(ダッシュボード「デバイスの健全性」セクション)の1台ぶん。
+ * Swift 側 `ApiResultsCommand.DeviceHealthRow` と対(docs/results-json.md)。
+ * `host` は記録の鍵(表示は machines で machine へ読み替える)、`worker` は
+ * "<platform>:<論理名>"(machine を含まない。ScenarioRunRecord.worker と同じ形)。
+ * 期間内に事象が1つも無い台の行はそもそも届かない(Swift 側が省く)。
+ * cause/recovery を持たない古い記録は removedByCause/recoveredByKind に数えない。 */
+export interface DeviceHealthRow {
+  readonly host: string;
   readonly worker: string;
-  readonly runs: number;
-  readonly successRate: number;
-  readonly avgDurationMs?: number | null;
-}
-
-export interface DevicePlatformRow {
-  readonly platform: string;
-  readonly runs: number;
-  readonly successRate: number;
-  readonly avgDurationMs?: number | null;
-}
-
-export interface DeviceSummary {
-  readonly byWorker: readonly DeviceWorkerRow[];
-  readonly byPlatform: readonly DevicePlatformRow[];
+  readonly removed: number;
+  readonly removedByCause: Readonly<Record<string, number>>;
+  readonly requeued: number;
+  readonly preRunExcluded: number;
+  readonly preRunRepaired: number;
+  readonly recovered: number;
+  readonly recoveredByKind: Readonly<Record<string, number>>;
+  readonly appCrashes: number;
+  readonly lastEventAt?: string | null;
 }
 
 export interface SceneResultRecord {
@@ -294,7 +295,8 @@ export interface ApiResultsPayload {
   readonly summary: readonly ScenarioSummaryRow[];
   /** 不安定度降順 */
   readonly flaky: readonly FlakyRow[];
-  readonly devices: DeviceSummary;
+  /** デバイスの健全性(§4)。期間内に事象が1つも無い台は含まれない(0件は空配列)。 */
+  readonly deviceHealth: readonly DeviceHealthRow[];
   readonly trend?: readonly ScenarioRunRecord[];
   /** avgDurationMs 降順、最大10件。本フィールド追加前の CLI ではキー欠落(古い CLI との互換で必須にしない)。 */
   readonly slow?: readonly SlowScenarioRow[];
@@ -356,6 +358,21 @@ export type DashboardFromWebviewMessage =
   /** 集計期間の切り替え。 */
   | { readonly type: "setSince"; readonly since: SinceOption };
 
+/** デバイスの健全性(deviceHealth.js)がモニターの台を api results の worker(実行プロファイルの
+ * 台の name)へ揃えるための和集合(config.ts `listProjectDeviceCatalog`/`MachineDeviceEntry` の
+ * うち解決に要る欄だけ)。1件 = 実行プロファイルに載っている台1台。 */
+export interface DeviceCatalogEntry {
+  readonly platform: string;
+  /** undefined = 手元。 */
+  readonly machine?: string;
+  /** 実行プロファイルの name(= 結果の記録の worker が使う論理名)。 */
+  readonly name: string;
+  /** Android のみ。 */
+  readonly avd?: string;
+  /** iOS のみ。 */
+  readonly udid?: string;
+}
+
 export type DashboardToWebviewMessage =
   | { readonly type: "loading" }
   | { readonly type: "error"; readonly message: string }
@@ -368,6 +385,9 @@ export type DashboardToWebviewMessage =
   /** TestProjects/ 直下の候補と現在の解決結果(未解決なら "")+ 現在の集計期間(webview 再読込で
    * 選択が既定へ戻るのを防ぐため、refresh のたびにホストの保持値を載せる)。 */
   | { readonly type: "projects"; readonly projects: readonly string[]; readonly current: string; readonly since: SinceOption }
+  /** デバイスの健全性が結合鍵を揃えるための、対象プロジェクトの実行プロファイル devices[] の
+   * 和集合(refresh のたびに送る)。未解決のときは送らない(deviceHealth.js は前回の値を保つ)。 */
+  | { readonly type: "deviceCatalog"; readonly devices: readonly DeviceCatalogEntry[] }
   /** 前回比。latest/previous は groupRuns() の構成 run ごとの results-run 応答。 */
   | { readonly type: "headlineDiff"; readonly latest: readonly ApiResultsRunPayload[]; readonly previous: readonly ApiResultsRunPayload[] }
   /** 前回比の取得失敗(webview は前回比を畳むだけで文言は出さない)。 */
@@ -434,33 +454,26 @@ function isFlakyRow(value: unknown): value is FlakyRow {
   );
 }
 
-function isDeviceWorkerRow(value: unknown): value is DeviceWorkerRow {
+/** removedByCause/recoveredByKind(任意の文字列コード→回数)。値は全部 number であること。 */
+function isStringNumberRecord(value: unknown): value is Readonly<Record<string, number>> {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((v) => typeof v === "number");
+}
+
+function isDeviceHealthRow(value: unknown): value is DeviceHealthRow {
   if (!isRecord(value)) return false;
   return (
+    typeof value.host === "string" &&
     typeof value.worker === "string" &&
-    typeof value.runs === "number" &&
-    typeof value.successRate === "number" &&
-    isOptNumber(value.avgDurationMs)
-  );
-}
-
-function isDevicePlatformRow(value: unknown): value is DevicePlatformRow {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.platform === "string" &&
-    typeof value.runs === "number" &&
-    typeof value.successRate === "number" &&
-    isOptNumber(value.avgDurationMs)
-  );
-}
-
-function isDeviceSummary(value: unknown): value is DeviceSummary {
-  if (!isRecord(value)) return false;
-  return (
-    Array.isArray(value.byWorker) &&
-    value.byWorker.every(isDeviceWorkerRow) &&
-    Array.isArray(value.byPlatform) &&
-    value.byPlatform.every(isDevicePlatformRow)
+    typeof value.removed === "number" &&
+    isStringNumberRecord(value.removedByCause) &&
+    typeof value.requeued === "number" &&
+    typeof value.preRunExcluded === "number" &&
+    typeof value.preRunRepaired === "number" &&
+    typeof value.recovered === "number" &&
+    isStringNumberRecord(value.recoveredByKind) &&
+    typeof value.appCrashes === "number" &&
+    isOptString(value.lastEventAt)
   );
 }
 
@@ -670,7 +683,7 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   if (!Array.isArray(value.runs) || !value.runs.every(isRunMetaRecord)) return false;
   if (!Array.isArray(value.summary) || !value.summary.every(isScenarioSummaryRow)) return false;
   if (!Array.isArray(value.flaky) || !value.flaky.every(isFlakyRow)) return false;
-  if (!isDeviceSummary(value.devices)) return false;
+  if (!Array.isArray(value.deviceHealth) || !value.deviceHealth.every(isDeviceHealthRow)) return false;
   // slow/insights はキー欠落(古い CLI)を許容するため undefined のみ特別扱いする。
   if (value.slow !== undefined && (!Array.isArray(value.slow) || !value.slow.every(isSlowScenarioRow))) {
     return false;

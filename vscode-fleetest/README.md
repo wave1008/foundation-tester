@@ -44,7 +44,7 @@ fleetest(Swift 製の iOS/Android UI テストツール。リポジトリルー�
 - 結果ダッシュボード(`src/monitorDashboardController.ts` / `src/dashboardModel.ts`)。コマンド
   **「fleetest: 結果ダッシュボードを開く」**(`fleetest.showResultsDashboard`)で開くデバイスモニターの
   「ダッシュボード」タブで、`fleetest api results --project <名> ...` の集計結果(シナリオ別成功率・不安定
-  (flaky)シナリオ・デバイス別集計など)を表示する
+  (flaky)シナリオ・デバイスの健全性など)を表示する
   (詳細は下記「結果ダッシュボード」)
 - 失敗テストの再実行・レポート導線(`src/lastResults.ts` / `src/lastResultsSync.ts` /
   `src/scenarioReports.ts` / `src/reportCodeLens.ts` / `src/copyTestName.ts`)。コマンド
@@ -691,7 +691,11 @@ SPM のビルドロック対策として同時に2プロセス走らせない設
 - 表示内容: 直近の実行一覧(`runs`)、シナリオ別の成功率・平均/中央実行時間サマリ(`summary`。
   シナリオIDの部分一致絞り込み・「失敗を含むものだけ」・列見出しクリックでの並べ替えは
   `summaryTable.js`)、不安定(flaky)シナリオ(`flaky`。失敗率・不安定度スコア・直近結果の並び)、
-  デバイス/ワーカー別集計(`devices`。`devices.js`)、実行時間が長い
+  デバイスの健全性(`deviceHealth`。`deviceHealth.js`。1行 = 1台(machine + worker)。
+  今の状態・ストレージは同じ webview のモニター(`monitor/deviceTiles.js` の
+  `monitorDevices()`/`onMonitorDevicesChanged()` を読み取り専用で参照)から、
+  run から除外された回数・振り直し・run 前の除外/修復・回復操作・アプリのクラッシュは
+  `deviceHealth` から取り、無い側の値は 0 で埋めず「–」にする)、実行時間が長い
   シナリオ(`slow`)、注意喚起(`insights`。重大度→
   種類でグルーピングし4件以上は折りたたむ。`insights.js`)、前回(同じ profile の直前の実行)との
   差分(新規失敗・回復したシナリオ。`headlineDiff.js`/`headlineDiffLogic.js`。判定は
@@ -708,7 +712,7 @@ SPM のビルドロック対策として同時に2プロセス走らせない設
   配下・`.swift` であることを検証してから開く。`handleOpenReport` と検証ロジックを共有)。
 - webview 資産は `src/webview/dashboard/`(`main.js`/`render.js`/`format.js`/
   `domUtil.js`/`machineNames.js`/`runDetail.js`/`trend.js`/`performance.js`/`summaryTable.js`/
-  `devices.js`/`insights.js`/`headlineDiff.js`/`headlineDiffLogic.js`/`style.css`)。
+  `deviceHealth.js`/`insights.js`/`headlineDiff.js`/`headlineDiffLogic.js`/`style.css`)。
 
 ## 手動確認チェックリスト
 
@@ -1100,7 +1104,7 @@ vscode-fleetest/
 │   └── webview/
 │       ├── i18n.js                # webview 側 i18n ランタイム(locale は <html lang> 経由)
 │       ├── monitor/               # デバイスモニターの webview 資産(main.js/tabs.js/deviceTiles.js/liveTab.js/各プロファイルタブ/h264Decoder.js 等。liveTab.js が「ライブ操作」タブの UI 本体)
-│       ├── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/format.js/summaryTable.js/devices.js/insights.js/headlineDiff.js/headlineDiffLogic.js/style.css 等。monitor/dashboardTab.js が読む)
+│       ├── dashboard/             # 結果ダッシュボードの webview モジュール(render.js/format.js/summaryTable.js/deviceHealth.js/insights.js/headlineDiff.js/headlineDiffLogic.js/style.css 等。monitor/dashboardTab.js が読む)
 │       └── healReview/            # 自己修復の確認パネルの webview 資産(main.js/style.css。healModel.ts を直接 import する)
 └── test/
     ├── ndjson.test.mjs           # NdjsonParser のユニットテスト(node:test)

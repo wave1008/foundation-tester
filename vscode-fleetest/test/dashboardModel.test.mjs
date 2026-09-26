@@ -34,10 +34,21 @@ function validPayload(overrides = {}) {
     flaky: [
       { scenarioID: "Checkout", runs: 8, failureRate: 25.0, flakinessScore: 0.42, recentResults: [true, false, true, true] },
     ],
-    devices: {
-      byWorker: [{ worker: "ios:iPhone 15", runs: 10, successRate: 90.0, avgDurationMs: 1500 }],
-      byPlatform: [{ platform: "ios", runs: 10, successRate: 90.0, avgDurationMs: 1500 }],
-    },
+    deviceHealth: [
+      {
+        host: "M2Ultra",
+        worker: "ios:iPhone 15",
+        removed: 2,
+        removedByCause: { frozen: 1, deviceGone: 1 },
+        requeued: 1,
+        preRunExcluded: 0,
+        preRunRepaired: 1,
+        recovered: 1,
+        recoveredByKind: { runnerRestart: 1 },
+        appCrashes: 0,
+        lastEventAt: "2026-07-16T00:00:00Z",
+      },
+    ],
     ...overrides,
   };
 }
@@ -199,16 +210,50 @@ test("isApiResultsPayload: flaky.recentResults が boolean[] でなければ fal
   assert.equal(isApiResultsPayload(payload), false);
 });
 
-test("isApiResultsPayload: devices.byWorker/byPlatform の必須フィールド欠落は false", () => {
+test("isApiResultsPayload: deviceHealth[] の必須フィールド(host/worker/removed 等)欠落は false", () => {
   const payload = validPayload();
-  delete payload.devices.byWorker[0].successRate;
+  delete payload.deviceHealth[0].removed;
   assert.equal(isApiResultsPayload(payload), false);
 });
 
-test("isApiResultsPayload: devices が欠落していれば false", () => {
+test("isApiResultsPayload: deviceHealth が欠落していれば false", () => {
   const payload = validPayload();
-  delete payload.devices;
+  delete payload.deviceHealth;
   assert.equal(isApiResultsPayload(payload), false);
+});
+
+test("isApiResultsPayload: deviceHealth が配列でなければ false", () => {
+  const payload = validPayload({ deviceHealth: "not-an-array" });
+  assert.equal(isApiResultsPayload(payload), false);
+});
+
+test("isApiResultsPayload: deviceHealth[].removedByCause/recoveredByKind の値が数値以外なら false", () => {
+  const badRemoved = validPayload();
+  badRemoved.deviceHealth[0].removedByCause = { frozen: "1" };
+  assert.equal(isApiResultsPayload(badRemoved), false);
+
+  const badRecovered = validPayload();
+  badRecovered.deviceHealth[0].recoveredByKind = { runnerRestart: "1" };
+  assert.equal(isApiResultsPayload(badRecovered), false);
+});
+
+test("isApiResultsPayload: deviceHealth[].removedByCause/recoveredByKind は空オブジェクトでも true(cause の無い古い記録相当)", () => {
+  const payload = validPayload();
+  payload.deviceHealth[0].removedByCause = {};
+  payload.deviceHealth[0].recoveredByKind = {};
+  assert.equal(isApiResultsPayload(payload), true);
+});
+
+test("isApiResultsPayload: deviceHealth[].lastEventAt は省略・null・string のいずれでも true", () => {
+  for (const lastEventAt of [undefined, null, "2026-07-16T00:00:00Z"]) {
+    const payload = validPayload();
+    if (lastEventAt === undefined) {
+      delete payload.deviceHealth[0].lastEventAt;
+    } else {
+      payload.deviceHealth[0].lastEventAt = lastEventAt;
+    }
+    assert.equal(isApiResultsPayload(payload), true, `lastEventAt=${String(lastEventAt)}`);
+  }
 });
 
 test("isApiResultsPayload: 空配列群(0件実行相当)は true", () => {
@@ -216,7 +261,7 @@ test("isApiResultsPayload: 空配列群(0件実行相当)は true", () => {
     runs: [],
     summary: [],
     flaky: [],
-    devices: { byWorker: [], byPlatform: [] },
+    deviceHealth: [],
   });
   assert.equal(isApiResultsPayload(payload), true);
 });

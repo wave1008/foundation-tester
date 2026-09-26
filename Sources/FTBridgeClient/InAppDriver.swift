@@ -292,6 +292,7 @@ public final class InAppDriver: AppDriver {
             // 今しがた切断したのだから、対象は数秒以内のものだけでよい。
             if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, within: 10) {
                 let suffix = hit.reason.map { " (\($0))" } ?? ""
+                LastAppCrash.shared.record(AppCrashRecord(evidence: .crashReport, path: hit.path, summary: hit.reason))
                 return detail + " / the app crashed: \(hit.path)\(suffix)"
             }
             if attempt < 7 { try? await Task.sleep(for: .milliseconds(500)) }

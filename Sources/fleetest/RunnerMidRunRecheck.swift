@@ -20,12 +20,15 @@ enum RunnerMidRunRecheck {
         return (udid, port)
     }
 
+    /// 戻り値: 実際にブリッジを建て直したか(RunOrchestrator が WorkerAnomalyRecord
+    /// kind:"recovered" recovery:.runnerRestart を記録する材料。健全・未測定・対象外・
+    /// 建て直し失敗はいずれも false)
     static func recheck(worker: RunWorker, maxStepSnapshotMs: Int?, repoRoot: URL,
-                        log: @escaping @Sendable (String) -> Void) async {
-        guard let target = target(of: worker.connection) else { return }
+                        log: @escaping @Sendable (String) -> Void) async -> Bool {
+        guard let target = target(of: worker.connection) else { return false }
         let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(target.port)
         guard RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: maxStepSnapshotMs,
-                                                      injected: injected) else { return }
+                                                      injected: injected) else { return false }
         let name = worker.connection.deviceName ?? worker.label
         let result = await BridgeProvisioner(repoRoot: repoRoot).recheckRunner(
             name: name, udid: target.udid, port: target.port, injected: injected, log: log)
@@ -34,17 +37,20 @@ enum RunnerMidRunRecheck {
             log(RunnerAccessibilityHealth.leftRunningMessage(
                 name: name, port: target.port, maxStepSnapshotMs: maxStepSnapshotMs,
                 probeSeconds: result.probeSeconds))
+            return false
         case .restarted(let afterSeconds):
             let now = afterSeconds.map { "; a one-element query now takes \(String(format: "%.2f", $0))s" } ?? ""
             log("✅ \(name): restarted the xcuitest bridge on port \(target.port)\(now) — the lane continues")
+            return true
         case .restartDidNotHelp, .skipped:
             // 前者は restartRunner が 1 行出し済み・後者はその 1 行が既に出ている
-            break
+            return false
         case .restartFailed(let reason):
             // レーンは離脱させない: ランナーが本当に使えなければ次のシナリオが落ち、
             // 既存の事後プローブ(bridgeUnreachable → 離脱 → revive)が拾う
             log("⚠️ \(name): could not restart the xcuitest bridge on port \(target.port) (\(reason))"
                 + " — the lane continues as it is")
+            return false
         }
     }
 }

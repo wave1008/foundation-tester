@@ -98,7 +98,9 @@ jq -r 'select(.passed==false) | .failedSteps[0]
 
 The command palette's **"fleetest: Open Results Dashboard"** opens a panel showing notable issues,
 the comparison with the previous run, recent runs, a filterable/sortable
-per-scenario summary, flaky scenarios, and a per-device breakdown — backed by the
+per-scenario summary, flaky scenarios, and device health (current state/storage from the Device
+Monitor combined with run-history counts: excluded from run, requeued, pre-run exclude/repair,
+recovery operations, app crashes) — backed by the
 same `fleetest results` data (a toolbar control switches the aggregation period between 7/30/90
 days). See the "結果ダッシュボード" section of
 [vscode-fleetest/README.md](../../../vscode-fleetest/README.md) (Japanese).

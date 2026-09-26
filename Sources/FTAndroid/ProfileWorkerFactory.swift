@@ -248,10 +248,14 @@ public enum ProfileWorkerFactory {
     /// (RunSummary → RunMetaRecord(run.json)に監査記録として残る)。
     /// repaired は sleep/wake 修復と guest reboot 修復の両方を含む(run.json のスキーマは
     /// 「run 前に凍結を修復した個体」の1枠のまま。手段の別はログにのみ残す)
+    /// excludedWorkers / repairedWorkers は台そのもの(label から引き直さない。
+    /// WorkerAnomalyRecord.preRunTriage はこちらを使う)
     public struct BlankScreenTriage {
         public let workers: [RunWorker]
-        public let repaired: [String]
-        public let excluded: [String]
+        public let repairedWorkers: [RunWorker]
+        public let excludedWorkers: [RunWorker]
+        public var repaired: [String] { repairedWorkers.map(\.label) }
+        public var excluded: [String] { excludedWorkers.map(\.label) }
     }
 
     /// guest reboot 後にブート完了を待つ上限(秒)。実測 ~60s。超過分を待ち続けても run 開始が
@@ -295,7 +299,7 @@ public enum ProfileWorkerFactory {
                 && !$0.element.connection.physical
         }
         guard !candidates.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: [], excluded: [])
+            return BlankScreenTriage(workers: workers, repairedWorkers: [], excludedWorkers: [])
         }
 
         // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
@@ -355,9 +359,14 @@ public enum ProfileWorkerFactory {
         for device in repairedDevices {
             log("🔧 \(device.label): recovered a frozen (blank) screen with sleep/wake")
         }
+        // repairedDevices の label は同じ `workers` から作ったもの(Android の修復は serial を変えない)
+        func repairedWorkers() -> [RunWorker] {
+            let labels = Set(repairedDevices.map(\.label))
+            return workers.filter { labels.contains($0.label) }
+        }
         let stubbornIndices = outcomes.filter { !$0.repaired }.map(\.index).sorted()
         guard !stubbornIndices.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: repairedDevices.map(\.label), excluded: [])
+            return BlankScreenTriage(workers: workers, repairedWorkers: repairedWorkers(), excludedWorkers: [])
         }
 
         // sleep/wake 不発の難治型を guest reboot で本 run 内に復帰させる。1台ずつ直列に処理する
@@ -421,12 +430,12 @@ public enum ProfileWorkerFactory {
             log("⚠️ \(worker.label): the screen is still blank after a guest restart — excluding it from dispatch")
         }
         guard !excludedIndices.isEmpty else {
-            return BlankScreenTriage(workers: workers, repaired: repairedDevices.map(\.label), excluded: [])
+            return BlankScreenTriage(workers: workers, repairedWorkers: repairedWorkers(), excludedWorkers: [])
         }
         return BlankScreenTriage(
             workers: workers.enumerated().filter { !excludedIndices.contains($0.offset) }.map(\.element),
-            repaired: repairedDevices.map(\.label),
-            excluded: excludedIndices.sorted().map { workers[$0].label })
+            repairedWorkers: repairedWorkers(),
+            excludedWorkers: excludedIndices.sorted().map { workers[$0] })
     }
 
     /// flap 検知の根拠を1行にした文(純粋関数。単体テスト対象)。
@@ -848,6 +857,9 @@ public enum ProfileWorkerFactory {
                         // 止めるのは**この udid のブリッジだけ**(他機・他セッションは巻き込まない)
                         _ = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
                         _ = try? Shell.run(["xcrun", "simctl", "shutdown", udid])
+                        // shutdown の成否に関わらず purge 自身が Shutdown を確かめる
+                        // (PosterBoard のスナップショットキャッシュ掃除)
+                        SimulatorPosterCache.purge(udid: udid)
                         _ = try? Shell.run(["xcrun", "simctl", "boot", udid])
                         // boot 完了まで待つ(待たずに注入すると launch が失敗する)
                         _ = try? Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])

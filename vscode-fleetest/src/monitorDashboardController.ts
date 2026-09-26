@@ -15,7 +15,7 @@
 
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { type FleetestConfig, listProjectCandidates, resolveProjectName } from "./config";
+import { type FleetestConfig, listProjectCandidates, listProjectDeviceCatalog, resolveProjectName } from "./config";
 import { t } from "./i18n";
 import {
   type ApiResultsPayload,
@@ -205,6 +205,19 @@ export class MonitorDashboardController {
         });
         return;
       }
+      // デバイスの健全性が結合鍵(モニターの台 → 実行プロファイルの name)を揃えるための和集合。
+      // 'data' より先に送る(結合し直しは deviceHealth.js 側で持ち越すが、揃った状態で最初の
+      // 描画をさせたい)。
+      this.deps.post({
+        type: "deviceCatalog",
+        devices: listProjectDeviceCatalog(this.deps.workspaceRoot, resolution.project).map((device) => ({
+          platform: device.platform,
+          machine: device.machine,
+          name: device.name,
+          avd: device.avd,
+          udid: device.udid,
+        })),
+      });
       // 直近ペイロードがあれば取得完了を待たず即座に再送する(パネルを開き直した webview は
       // DOM を持たないので、この再送が無いと結果が出るまで毎回 15〜20 秒空白になる)。
       const cached = this.resultsCache.get(this.cacheKey(resolution.project));

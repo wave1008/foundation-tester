@@ -89,6 +89,23 @@ final class RetentionCommandTests: XCTestCase {
             [.xcresult])
     }
 
+    /// `--simulator-poster-cache` だけを頼まれたときは、無指定=全部の既定を出さない
+    /// (でなければ壁紙キャッシュだけ消したいのに録画・レポートまで消える)
+    func testSimulatorPosterCacheAloneSelectsNoRetentionCategories() {
+        XCTAssertEqual(
+            CleanCommand.categories(recordings: false, reports: false, logs: false,
+                                    deviceCaptures: false, otherActionsRequested: true),
+            [])
+    }
+
+    /// `--simulator-poster-cache` と明示のカテゴリの併用は、そのカテゴリだけ
+    func testSimulatorPosterCacheWithAnExplicitCategoryKeepsOnlyThatCategory() {
+        XCTAssertEqual(
+            CleanCommand.categories(recordings: true, reports: false, logs: false,
+                                    deviceCaptures: false, otherActionsRequested: true),
+            [.recordings])
+    }
+
     // MARK: - レポートのファイル名から日付を取る
 
     func testReportDayIsTakenFromTheScenarioFileNameStamp() {

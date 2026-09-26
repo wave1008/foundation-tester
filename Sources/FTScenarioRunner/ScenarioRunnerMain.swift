@@ -522,6 +522,11 @@ struct RunScenario: AsyncParsableCommand {
             core.appProcessEvidence = {
                 guard let evidence = AndroidAppProcessEvidenceQuery.query(package: package, serial: serial),
                       !evidence.running else { return [] }
+                // crash バッファに FATAL EXCEPTION が見つかった = 構造化した事実として記録
+                // (ScenarioRunRecord.appCrash。先頭行だけを summary に持つ)
+                if let firstLine = evidence.crashSummary.first {
+                    LastAppCrash.shared.record(AppCrashRecord(evidence: .fatalException, summary: firstLine))
+                }
                 return ["process not running"] + evidence.crashSummary
             }
         }
@@ -626,6 +631,9 @@ struct RunScenario: AsyncParsableCommand {
         // FM 実測を親へ運ぶ(→ ScenarioRecordBuilder → 結果 JSON の fm)。run 全体で合算すると
         // 「FM 直列化による実行時間の下限」が出る。ANE 負荷率では測れない(FMHealth の doc 参照)
         finished.fm = FMHealth.usage()
+        // このプロセス(1 シナリオ)で検出したアプリのクラッシュ証跡(LastAppCrash。iOS の
+        // crashAnnotated 経路 / Android の appProcessEvidence 経路が見つけたときだけ非 nil)
+        finished.appCrash = LastAppCrash.shared.snapshot()
         emit(finished)
 
         // FM 失敗は各呼び出し箇所が nil を返して素通りさせる契約のため、結果からは見えない。

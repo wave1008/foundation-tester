@@ -1367,6 +1367,7 @@ export function clearTilesForRestart() {
   selectedDeviceIds.clear();
   setDevicesWaiting(true);
   renderSelectAllButton();
+  notifyMonitorDevicesChanged();
   // 下のペインの拡大表示も畳む。**タイルを消すだけでは消えない** —— 拡大表示はレーン側の
   // DOM に居て、再起動の間は新しいフレームが来ないので最後の1枚が出たまま残る
   // (レーン自体は run の状態なので消さない。tiles が空になったこの時点で
@@ -1387,6 +1388,27 @@ let lastDevices = [];
 // (ユーザー決定。docs/design.md §18.5)。**知らない値は 'all' へ倒す**
 let deviceStateFilter = 'all';
 const platformFilterListeners = [];
+// ダッシュボードの「デバイスの健全性」表(dashboard/deviceHealth.js)向けの読み取り専用の窓口。
+// **可変状態(lastDevices)はこのモジュールに残す**(書き込み箇所と同じモジュールに置く規律)—— 他モジュールは
+// monitorDevices()/onMonitorDevicesChanged() 経由でだけ触る。値は表示フィルタ前の全台(タイルの
+// フィルタは見た目だけの絞り込みで、健全性の表はフィルタと無関係に全台を出すため)。
+const monitorDevicesChangeListeners = [];
+
+/** 直近の devices サイクルで受け取った全台(表示フィルタ前)。呼び出し側は書き換えないこと。 */
+export function monitorDevices() {
+  return lastDevices;
+}
+
+/** devices サイクルを受けるたび(台の増減・state/storage 等の更新)に呼ぶ。 */
+export function onMonitorDevicesChanged(listener) {
+  monitorDevicesChangeListeners.push(listener);
+}
+
+function notifyMonitorDevicesChanged() {
+  for (const listener of monitorDevicesChangeListeners) {
+    listener();
+  }
+}
 
 export function isPlatformVisible(platform) {
   return platformFilter === PLATFORM_FILTER_ALL || platformFilter === platform;
@@ -1443,6 +1465,7 @@ export function applyDevices(devices, filter) {
   lastDevices = devices;
   deviceStateFilter = filter === 'running' ? 'running' : 'all';
   applyVisibleDevices(tileDevices());
+  notifyMonitorDevicesChanged();
 }
 
 /** タイルに出す台(= 表示フィルタを両方通したもの)。run ボードのツリーは通さない。 */

@@ -68,16 +68,40 @@ export const webviewDashboardStrings = {
   "wvDashboard.runDetail.buttonOpenReport": { ja: "レポートを開く", en: "Open Report" },
   "wvDashboard.runDetail.buttonTrend": { ja: "実行履歴", en: "Run History" },
 
-  // devices.js
+  // deviceHealth.js
   "wvDashboard.devices.showAll": { ja: "すべて表示({count} 行)", en: "Show all ({count} rows)" },
   "wvDashboard.devices.showLess": { ja: "折りたたむ", en: "Show less" },
+  "wvDashboard.deviceHealth.stateConnected": { ja: "接続中", en: "Connected" },
+  "wvDashboard.deviceHealth.stateBooted": { ja: "起動済み(未接続)", en: "Booted (not connected)" },
+  "wvDashboard.deviceHealth.stateOffline": { ja: "未起動", en: "Not started" },
+  "wvDashboard.deviceHealth.stateUnknown": { ja: "不明", en: "Unknown" },
+  "wvDashboard.deviceHealth.frozen": { ja: "凍結中", en: "Frozen" },
+  "wvDashboard.deviceHealth.inRun": { ja: "実行中", en: "Running" },
+  "wvDashboard.deviceHealth.healthWifiDisabled": { ja: "Wi-Fi 無効", en: "Wi-Fi off" },
+  "wvDashboard.deviceHealth.healthClockSkew": { ja: "時計のずれ", en: "Clock skew" },
+  "wvDashboard.deviceHealth.healthBlankScreen": { ja: "黒画面", en: "Blank screen" },
+  "wvDashboard.deviceHealth.storageUsedOnly": { ja: "{used} 使用", en: "{used} used" },
+  "wvDashboard.deviceHealth.measuredAtTitle": { ja: "計測: {time}", en: "Measured: {time}" },
+  "wvDashboard.deviceHealth.preRunTitle": { ja: "除外 / 修復", en: "Excluded / Repaired" },
+  "wvDashboard.deviceHealth.cause.frozen": { ja: "画面の凍結", en: "Screen frozen" },
+  "wvDashboard.deviceHealth.cause.deviceGone": { ja: "デバイスが消えた", en: "Device gone" },
+  "wvDashboard.deviceHealth.cause.bridgeUnreachable": { ja: "ブリッジに届かない", en: "Bridge unreachable" },
+  "wvDashboard.deviceHealth.cause.bridgeTakenOver": { ja: "ブリッジが別デバイスのものに", en: "Bridge taken over" },
+  "wvDashboard.deviceHealth.cause.consecutiveFailures": { ja: "連続失敗", en: "Consecutive failures" },
+  "wvDashboard.deviceHealth.cause.accessibilityFault": { ja: "アクセシビリティ異常", en: "Accessibility fault" },
+  "wvDashboard.deviceHealth.cause.noResponse": { ja: "応答なし", en: "No response" },
+  "wvDashboard.deviceHealth.recovery.runnerRestart": { ja: "ランナーの建て直し", en: "Runner restart" },
+  "wvDashboard.deviceHealth.recovery.workerRevive": { ja: "ワーカーの復帰", en: "Worker revive" },
 
   // insights.js
   "wvDashboard.insights.severityCritical": { ja: "重大", en: "Critical" },
   "wvDashboard.insights.severityWarn": { ja: "警告", en: "Warning" },
   "wvDashboard.insights.severityInfo": { ja: "情報", en: "Info" },
   "wvDashboard.insights.moreCount": { ja: "他 {count} 件", en: "{count} more" },
-  "wvDashboard.insights.showDevice": { ja: "→ デバイス別で見る({worker})", en: "→ show in By Device ({worker})" },
+  "wvDashboard.insights.showDevice": {
+    ja: "→ デバイスの健全性で見る({worker})",
+    en: "→ show in Device Health ({worker})",
+  },
 
   // headlineDiff.js
   "wvDashboard.headlineDiff.newFailuresHeading": {

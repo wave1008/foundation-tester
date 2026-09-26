@@ -585,8 +585,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
                 let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
+                triageBox.add(repaired: triage.repaired, excluded: triage.excluded,
+                              anomalies: WorkerAnomalyRecord.preRunTriage(
+                excluded: triage.excludedWorkers, repaired: triage.repairedWorkers))
                 workers = triage.workers
-                triageBox.add(repaired: triage.repaired, excluded: triage.excluded)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
@@ -632,14 +634,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                             nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                             log: { logSupply($0) })
+                        // F10: iOS の回復も android task と合流させる(add は上書きしない)
+                        triageBox.add(repaired: iosTriage.repaired, excluded: iosTriage.excluded,
+                                      anomalies: WorkerAnomalyRecord.preRunTriage(
+                                        excluded: iosTriage.excludedWorkers,
+                                        repaired: iosTriage.repairedWorkers))
                         workers = iosTriage.workers
                         // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
                         // (HostRecordingProbe。ProfileRunner と同じ)
                         workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
                             workers: workers, resolved: resolved, repoRoot: repoRoot,
                             apps: resolved.apps) { logSupply($0) }
-                        // F10: iOS の回復も android task と合流させる(add は上書きしない)
-                        triageBox.add(repaired: iosTriage.repaired, excluded: iosTriage.excluded)
                         await ProfileWorkerFactory.prepareDevicesOnStart(
                             workers, homeOnStart: resolved.homeOnStart) { logSupply($0) }
                         logSupply("🚀 \(workers.count) iOS worker(s) joined")
@@ -852,6 +857,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         let boxTriage = triageBox.get()
         if outcome.blankRepairs.isEmpty { outcome.blankRepairs = boxTriage.repaired }
         if outcome.blankExclusions.isEmpty { outcome.blankExclusions = boxTriage.excluded }
+        // workerAnomalies は sequential(直接 outcome へ)と並列(box 経由)が排他的に埋めるので、
+        // 加算しても二重にならない(box は sequential 経路では常に空)
+        outcome.workerAnomalies += triageBox.getAnomalies()
         // performanceMode: レーン数が run 中に変わっていたら所要時間は計測に使えない
         // (MeasurementValidity の宣言参照。既定モードは判定しない=印を付けない)
         let validity = MeasurementValidity.verdict(
@@ -1069,6 +1077,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
 
         var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
+        var preRunAnomalies: [WorkerAnomalyRecord] = []
         var workers: [RunWorker] = []
         // 供給フェーズ(install・凍結triage)の間も run-lease を保つ(理由は並列経路の同処理を参照)
         let supplyLease = (try? RepoRoot.find())
@@ -1106,6 +1115,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { logSupply($0) }
+            preRunAnomalies += WorkerAnomalyRecord.preRunTriage(
+                excluded: triage.excludedWorkers, repaired: triage.repairedWorkers)
             workers = triage.workers
             // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
             // `adb reboot` を撃つ)。観測と無害な修復(画面の sleep/wake)だけをここで通す。
@@ -1129,6 +1140,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                             nudge: { @Sendable [bundleID = ProfileWorkerFactory.iosBundleID(apps: resolved.apps)] in
                                 await ProfileWorkerFactory.nudgeIOSScreen(worker: $0, restoring: bundleID) },
                 log: { logSupply($0) })
+            preRunAnomalies += WorkerAnomalyRecord.preRunTriage(
+                excluded: iosTriage.excludedWorkers, repaired: iosTriage.repairedWorkers)
             workers = iosTriage.workers
             // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
             // (HostRecordingProbe。ProfileRunner と同じ)
@@ -1220,6 +1233,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                           scenarioTotalSeconds: timing.scenarioTotalSeconds,
                           blankRepairs: blankTriage.repaired,
                           blankExclusions: blankTriage.excluded,
+                          workerAnomalies: preRunAnomalies,
                           interrupted: interruptState.isStopped)
     }
 
@@ -1801,14 +1815,16 @@ final class BlankTriageBox: @unchecked Sendable {
     private let lock = NSLock()
     private var repaired: [String] = []
     private var excluded: [String] = []
-    func add(repaired: [String], excluded: [String]) {
+    private var anomalies: [WorkerAnomalyRecord] = []
+    func add(repaired: [String], excluded: [String], anomalies new: [WorkerAnomalyRecord] = []) {
         lock.lock(); defer { lock.unlock() }
-        self.repaired += repaired; self.excluded += excluded
+        self.repaired += repaired; self.excluded += excluded; self.anomalies += new
     }
     func get() -> (repaired: [String], excluded: [String]) {
         lock.lock(); defer { lock.unlock() }
         return (repaired, excluded)
     }
+    func getAnomalies() -> [WorkerAnomalyRecord] { lock.lock(); defer { lock.unlock() }; return anomalies }
 }
 
 /// flowStarted〜flowFinished から testSeconds(最初の開始〜最後の完了)と

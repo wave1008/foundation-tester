@@ -146,6 +146,7 @@ public struct InAppLauncher {
                 + " the app process may have been killed without one, or never launched)"
         }
         let suffix = hit.reason.map { " (\($0))" } ?? ""
+        LastAppCrash.shared.record(AppCrashRecord(evidence: .crashReport, path: hit.path, summary: hit.reason))
         return detail + " / the app crashed on launch: \(hit.path)\(suffix)"
     }
 

@@ -163,11 +163,26 @@ function renderDashboardPanel(): string {
 
     <section id="section-devices" class="dash-section">
       <h2>${t("exploreHeal.dashboard.headingDevices")}</h2>
-      <table id="table-devices-worker" class="dash-table">
+      <!-- 見た目はデバイスモニターの「ライブ更新」と同じ(.header-toggle + .toggle-switch)。絞り込みは deviceHealth.js -->
+      <div class="dh-toolbar">
+        <label class="profile-label header-toggle" title="${t("exploreHeal.dashboard.deviceHealthActiveOnlyTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-device-health-active-only" checked>${t("exploreHeal.dashboard.deviceHealthActiveOnly")}</label>
+      </div>
+      <table id="table-device-health" class="dash-table">
         <thead>
-          <tr><th>${t("exploreHeal.dashboard.colWorker")}</th><th class="num">${t("exploreHeal.dashboard.colRuns")}</th><th class="num">${t("exploreHeal.dashboard.colSuccessRate")}</th><th class="num">${t("exploreHeal.dashboard.colAvgSec")}</th></tr>
+          <tr>
+            <th>${t("exploreHeal.dashboard.colMachine")}</th>
+            <th>${t("exploreHeal.dashboard.colDevice")}</th>
+            <th>${t("exploreHeal.dashboard.colDeviceState")}</th>
+            <th>${t("exploreHeal.dashboard.colStorage")}</th>
+            <th class="num">${t("exploreHeal.dashboard.colRemoved")}</th>
+            <th class="num">${t("exploreHeal.dashboard.colRequeued")}</th>
+            <th>${t("exploreHeal.dashboard.colPreRun")}</th>
+            <th class="num">${t("exploreHeal.dashboard.colRecovered")}</th>
+            <th class="num">${t("exploreHeal.dashboard.colAppCrashes")}</th>
+            <th>${t("exploreHeal.dashboard.colLastEvent")}</th>
+          </tr>
         </thead>
-        <tbody id="table-devices-worker-body"></tbody>
+        <tbody id="table-device-health-body"></tbody>
       </table>
       <button id="devices-toggle-all" type="button" style="display: none;"></button>
       <div id="devices-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.devicesEmpty")}</div>

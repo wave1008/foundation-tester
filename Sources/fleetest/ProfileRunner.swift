@@ -462,6 +462,10 @@ enum ProfileRunner {
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(
                 workers, stateDir: (try? RepoRoot.find())?.appendingPathComponent(".fleetest")) { ConsoleOut.out($0) }
+        // run.json の workerAnomalies へ preRunExcluded/preRunRepaired として持たせる
+        // (表示用の blankRepairs/blankExclusions は変えない)
+        var preRunAnomalies = WorkerAnomalyRecord.preRunTriage(
+                excluded: triage.excludedWorkers, repaired: triage.repairedWorkers)
         workers = triage.workers
         // **実機はあちらの対象外**(閾値がエミュレータ較正で、誤判定すると健全な実機へ
         // `adb reboot` を撃つ)。観測だけはここで通す —— 実機の判定は `.darkScreenPhysical`
@@ -650,6 +654,7 @@ enum ProfileRunner {
         }
         // run 前の blank triage(orchestrator は関与しない)を summary に載せ替えて返す
         // (RunScenarios が recorder.finish で run.json に記録する)
+        preRunAnomalies += iosBlankRepairBox.getAnomalies()
         let resultSummary = RunSummary(total: finalSummary.total, failed: finalSummary.failed,
                                        degradedWorkers: finalSummary.degradedWorkers,
                                  freezeRetries: finalSummary.freezeRetries,
@@ -658,7 +663,7 @@ enum ProfileRunner {
                                  measurementInvalid: validity.invalid,
                                  measurementInvalidReasons: validity.reasons,
                                  fmUnavailableScenarios: finalSummary.fmUnavailableScenarios,
-                                 workerAnomalies: finalSummary.workerAnomalies,
+                                 workerAnomalies: finalSummary.workerAnomalies + preRunAnomalies,
                                  performanceMode: performanceMode,
                                  fmSettings: fmSettings,
                                  interrupted: finalSummary.interrupted)
@@ -724,8 +729,13 @@ enum ProfileRunner {
     private final class IOSBlankRepairBox: @unchecked Sendable {
         private let lock = NSLock()
         private var labels: [String] = []
+        private var anomalies: [WorkerAnomalyRecord] = []
         func add(_ new: [String]) { lock.lock(); defer { lock.unlock() }; labels += new }
+        func add(anomalies new: [WorkerAnomalyRecord]) {
+            lock.lock(); defer { lock.unlock() }; anomalies += new
+        }
         func get() -> [String] { lock.lock(); defer { lock.unlock() }; return labels }
+        func getAnomalies() -> [WorkerAnomalyRecord] { lock.lock(); defer { lock.unlock() }; return anomalies }
     }
 
     /// iOS レーンの構築(供給→インストール→凍結 triage→home)。**通常は `lateWorkers` provider
@@ -783,6 +793,8 @@ enum ProfileRunner {
             // run.json の blankRepairs へ渡す(F10)。buildIOSLane は eager / lateWorkers.provider の
             // どちらから呼ばれても run() 側で読めるよう、箱経由で運ぶ(戻り値の型は変えない)
             blankRepairBox.add(recovered.repaired)
+            blankRepairBox.add(anomalies: WorkerAnomalyRecord.preRunTriage(
+                excluded: recovered.excludedWorkers, repaired: recovered.repairedWorkers))
             ws = recovered.workers
             // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
             // (HostRecordingProbe。凍結の回復と同じくブリッジごと張り直す)

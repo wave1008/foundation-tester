@@ -1015,10 +1015,12 @@ public final class RunOrchestrator {
     /// そのレーンへ 1 行出す口。測るか・どう建て直すかは FTBridgeClient 側の知識なので
     /// isDeviceFrozen と同じ理由で注入。**未注入は合法なので配線漏れはコンパイルで止まらない**
     /// (`RunnerMidRunRecheckTests` が 2 経路を固定)。
-    /// 供給時の再利用でしか測っていなかった頃は、run の途中で劣化したレーンが最後まで 1 問 3.7 秒を払った
+    /// 供給時の再利用でしか測っていなかった頃は、run の途中で劣化したレーンが最後まで 1 問 3.7 秒を払った。
+    /// **戻り値 true = 実際に建て直した**(WorkerAnomalyRecord kind:"recovered" recovery:.runnerRestart の
+    /// 生成に使う。健全・未測定・建て直し失敗はいずれも false)
     private let recheckRunner: RunnerRecheck?
     public typealias RunnerRecheck =
-        @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> Void
+        @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> Bool
     /// 遅延参加ワーカー(iOS ブリッジ供給待ち)。platforms は「後から必ず来る platform」の宣言で、
     /// これが無いと初期ワーカーに iOS が居ない時点で iOS シナリオが「担当ワーカーなし」で即失敗する。
     /// provider は供給完了時にワーカー群を返す(失敗時は空配列。キューに残った分は run 末尾の
@@ -1064,11 +1066,15 @@ public final class RunOrchestrator {
     private let registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)?
 
     /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
-    private func reportWorkerFailed(_ worker: RunWorker, _ message: String) async {
+    /// **cause は呼び出し側が型から決めて渡す**(message の文字列を後から解析しない。既定値を置かない =
+    /// 新しい呼び出し元の渡し忘れをコンパイルで止める)
+    private func reportWorkerFailed(_ worker: RunWorker, _ message: String,
+                                    cause: WorkerAnomalyCause?) async {
         continuation.yield(.workerFailed(worker: worker.label, message: message))
         await degraded.add("\(worker.label): \(message)")
         await anomalies.add(WorkerAnomalyRecord(
-            kind: "degraded", worker: Self.workerID(worker), label: worker.label, reason: message))
+            kind: "degraded", worker: Self.workerID(worker), label: worker.label, reason: message,
+            cause: cause))
     }
 
     /// シナリオ記録(ScenarioRunRecord.worker)と join できる形。論理名が無い経路では nil
@@ -1468,7 +1474,8 @@ public final class RunOrchestrator {
     /// (置き換えると最後の失敗の証拠が消え、durationMs:0 の埋め合わせだけが残る)
     private func discardAndRequeue(_ item: ScenarioRunItem, worker: RunWorker,
                                    queue: ScenarioQueue, reason: String,
-                                   discardRecord: Bool = true) async -> Bool {
+                                   discardRecord: Bool = true,
+                                   cause: WorkerAnomalyCause?) async -> Bool {
         if let attempt = await Self.requeueDiscardingRecord(
             item, queue: queue, recorder: recorder,
             worker: ScenarioRunner.recordingWorker(worker), discardRecord: discardRecord) {
@@ -1476,7 +1483,7 @@ public final class RunOrchestrator {
             await anomalies.add(WorkerAnomalyRecord(
                 kind: "requeued", worker: Self.workerID(worker), label: worker.label,
                 scenarioID: item.info.id,
-                reason: "\(reason) (attempt \(attempt)/\(MAX_FREEZE_RETRIES))"))
+                reason: "\(reason) (attempt \(attempt)/\(MAX_FREEZE_RETRIES))", cause: cause))
             continuation.yield(.flowRequeued(worker: worker.label, flowURL: item.url,
                                              reason: reason, attempt: attempt,
                                              limit: MAX_FREEZE_RETRIES))
@@ -1486,7 +1493,7 @@ public final class RunOrchestrator {
         await retries.add("\(item.info.id): \(message) (\(worker.label))")
         await anomalies.add(WorkerAnomalyRecord(
             kind: "retryLimit", worker: Self.workerID(worker), label: worker.label,
-            scenarioID: item.info.id, reason: message))
+            scenarioID: item.info.id, reason: message, cause: cause))
         // flowSkipped は出さない —— runOne が flowStarted〜flowFinished(passed:false) を既に流して
         // おり、重ねると NDJSON 側(ApiRunCommand)が同じシナリオの scenarioStarted/Finished を
         // もう1組合成する
@@ -1553,6 +1560,10 @@ public final class RunOrchestrator {
                 continuation.yield(.workerLog(worker: newWorker.label,
                     message: "✅ Worker revived — resuming the run"))
                 continuation.yield(.workerReady(worker: newWorker.label))
+                await anomalies.add(WorkerAnomalyRecord(
+                    kind: "recovered", worker: Self.workerID(newWorker), label: newWorker.label,
+                    reason: "worker revived after \(retired.label) dropped out",
+                    recovery: .workerRevive))
                 current = newWorker
             }
         }
@@ -1561,7 +1572,7 @@ public final class RunOrchestrator {
     private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> WorkerExit {
         // 期限付き(ウェッジしたブリッジで 120s×N 待たないため。withDeadline 参照)。
         guard await withDeadline(seconds: 10, { try await worker.driver.status() }) != nil else {
-            await reportWorkerFailed(worker, "cannot connect (no response to status)")
+            await reportWorkerFailed(worker, "cannot connect (no response to status)", cause: .noResponse)
             // 接続不能もデバイス使用不能の一種として復帰トライの対象にする(監視側の再起動待ち等)。
             // lease の扱いは superviseWorker が決める(離脱の lease は復帰を諦めるまで保つ)
             return .retired(failed: 0, worker: worker)
@@ -1652,8 +1663,14 @@ public final class RunOrchestrator {
                 // 失敗の経路は除く —— 離脱すれば revive が供給を通り、そこで同じ 1 問が測る。
                 // 中断中・残りが無いときは撃たない(建て直しは数十秒かかり、次の run の再利用が測る)
                 if let recheckRunner, await !interruptRequested.isRequested(), await queue.hasItems() {
-                    await recheckRunner(worker, slowestStep.value) { [continuation] message in
+                    let restarted = await recheckRunner(worker, slowestStep.value) { [continuation] message in
                         continuation.yield(.workerLog(worker: worker.label, message: message))
+                    }
+                    if restarted {
+                        await anomalies.add(WorkerAnomalyRecord(
+                            kind: "recovered", worker: Self.workerID(worker), label: worker.label,
+                            reason: "restarted the xcuitest bridge after a mid-run degradation",
+                            recovery: .runnerRestart))
                     }
                 }
                 continue
@@ -1668,7 +1685,8 @@ public final class RunOrchestrator {
             // 離脱させずに振り直し続ける**ことになる
             if outcome == .environmentFault {
                 let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
-                                                       reason: "a transient accessibility fault")
+                                                       reason: "a transient accessibility fault",
+                                                       cause: .accessibilityFault)
                 if requeued {
                     await progressState?.laneIdled(laneKey: progressLaneKey)
                 } else {
@@ -1683,6 +1701,8 @@ public final class RunOrchestrator {
             // iOS はブリッジ /status の生存確認(ブリッジのウェッジ=シナリオ途中から全ステップが
             // 接続エラーになる実害があり、Android のプローブでは拾えない)。
             var unusableReason: String? = outcome == .frozen ? "a frozen screen" : nil
+            // unusableReason と**同時に**決める(型から。文言の後解析はしない)
+            var unusableCause: WorkerAnomalyCause? = outcome == .frozen ? .frozen : nil
             if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
                worker.platform == "android",
                let serial = worker.connection.serial {
@@ -1694,10 +1714,12 @@ public final class RunOrchestrator {
                     unusableReason = "the device disappeared (offline/not found)"
                         + (worker.connection.physical ? ""
                            : EmulatorLog.dropoutHint(deviceName: worker.connection.deviceName))
+                    unusableCause = .deviceGone
                 } else if !worker.connection.physical, await deviceFrozen(serial) {
                     // 凍結判定はエミュレータ限定(閾値が解像度依存。ProfileWorkerFactory の
                     // excludeOrRepairBlankScreenWorkers と同じ理由)
                     unusableReason = "a frozen screen"
+                    unusableCause = .frozen
                 }
             }
             // **iOS はドライバ不達(driverUnreachable)も .failed と同じ経路を通す**
@@ -1707,10 +1729,14 @@ public final class RunOrchestrator {
             if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
                worker.platform == "ios",
                await bridgeUnreachable(worker) {
-                unusableReason = lastBridgeIdentityMismatch.map {
-                    "a bridge that now belongs to another device (\($0))"
-                } ?? lastBridgeUnreachableDetail.map { "an unreachable bridge (\($0))" }
-                    ?? "an unreachable bridge"
+                if let mismatch = lastBridgeIdentityMismatch {
+                    unusableReason = "a bridge that now belongs to another device (\(mismatch))"
+                    unusableCause = .bridgeTakenOver
+                } else {
+                    unusableReason = lastBridgeUnreachableDetail.map { "an unreachable bridge (\($0))" }
+                        ?? "an unreachable bridge"
+                    unusableCause = .bridgeUnreachable
+                }
             }
             // **Android のドライバ不達で、台は生きている**(消失でも凍結でもない)= ブリッジだけが
             // 一過性に切れた形(adb kill-server・ブリッジの force-stop・adb: device offline・実機の
@@ -1730,9 +1756,11 @@ public final class RunOrchestrator {
                 switch ScenarioRunner.unreachableLaneAction(verdict: verdict) {
                 case .retire(let reason):
                     unusableReason = reason
+                    unusableCause = .consecutiveFailures
                 case .requeue:
                     let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
-                                                           reason: "an unreachable bridge")
+                                                           reason: "an unreachable bridge",
+                                                           cause: .bridgeUnreachable)
                     if requeued {
                         await progressState?.laneIdled(laneKey: progressLaneKey)
                     } else {
@@ -1751,6 +1779,7 @@ public final class RunOrchestrator {
                     break
                 case .trip(let consecutive):
                     unusableReason = "\(consecutive) consecutive worker failures"
+                    unusableCause = .consecutiveFailures
                 case .held(let consecutive, let announce):
                     if announce {
                         let message = "\(consecutive) consecutive failures on this lane while no other lane"
@@ -1759,19 +1788,20 @@ public final class RunOrchestrator {
                         continuation.yield(.workerLog(worker: worker.label, message: "⚠️ \(message)"))
                         await anomalies.add(WorkerAnomalyRecord(
                             kind: "circuitHeld", worker: Self.workerID(worker), label: worker.label,
-                            scenarioID: item.info.id, reason: message))
+                            scenarioID: item.info.id, reason: message, cause: .consecutiveFailures))
                     }
                 }
             }
             if let reason = unusableReason {
-                let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason)
+                let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason,
+                                                        cause: unusableCause)
                 if requeued {
                     await progressState?.laneIdled(laneKey: progressLaneKey)
                 } else {
                     await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
                 }
                 if !requeued { failed += 1 }
-                await reportWorkerFailed(worker, "dropped out because of \(reason)")
+                await reportWorkerFailed(worker, "dropped out because of \(reason)", cause: unusableCause)
                 // このレーンはもう走らない(復帰できれば superviseWorker が新しい runWorker で
                 // laneJoined を呼び直す)
                 await progressState?.laneLeft(key: progressLaneKey)
