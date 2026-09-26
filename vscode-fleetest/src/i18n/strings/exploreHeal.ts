@@ -133,10 +133,6 @@ export const exploreHealStrings = {
     ja: "ファイルを開けません。シナリオのファイルが見つかりません(改名・削除されている可能性があります)。",
     en: "Can't open the file. The scenario file couldn't be found (it may have been renamed or removed).",
   },
-  "exploreHeal.dashboard.headlineDiffFetchFailed": {
-    ja: "前回比の取得に失敗しました。出力パネル「fleetest」を確認してください。",
-    en: "Failed to fetch the comparison with the previous run. Check the “fleetest” output panel.",
-  },
   "exploreHeal.dashboard.headingRecentRuns": {
     ja: "直近の実行",
     en: "Recent Runs",

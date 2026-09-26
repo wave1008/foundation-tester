@@ -62,7 +62,7 @@ const PAYLOAD = {
   summary: [{ scenarioID: "Foo.S0010", runs: 4, successRate: 50, avgDurationMs: 100, medianDurationMs: 100 }],
   flaky: [{ scenarioID: "Foo.S0010", runs: 4, failureRate: 50, flakinessScore: 0.5, recentResults: [true, false, true, false] }],
   devices: { byPlatform: [], byWorker: [] },
-  daily: [], slow: [], insights: [], triage: { totalFailed: 0, unreachedCount: 0, rows: [], noteCounts: [] },
+  slow: [], insights: [],
   performance: { runs: [], comparisons: [] }, machines: [], runStats: [],
 };
 

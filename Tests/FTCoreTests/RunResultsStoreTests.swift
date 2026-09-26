@@ -258,13 +258,14 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertNil(RunResultsStore.jsonFiles(in: dir.appendingPathComponent("missing")))
     }
 
-    func testScanRecordEntriesCarryTheSourceFile() {
+    /// packCacheDir を渡さない = 直接読み(パック無し)。同じ性質を scanRunsAndRecords で確認する
+    func testScanRunsAndRecordsEntriesCarryTheSourceFileWithoutAPack() {
         let runID = "20260101-000000Z-mach-0011"
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         RunResultsStore.writeMeta(makeMeta(runID: runID, startedAt: "2026-01-01T00:00:00Z"), runDir: runDir)
         let written = RunResultsStore.writeScenario(makeScenarioRecord(scenarioID: "Foo.bar", runID: runID),
                                                     runDir: runDir, fileName: "Foo.bar")
-        let entries = RunResultsStore.scanRecordEntries(resultsDir: resultsDir)
+        let entries = RunResultsStore.scanRunsAndRecords(resultsDir: resultsDir).entries
         XCTAssertEqual(entries.map(\.record.scenarioID), ["Foo.bar"])
         XCTAssertEqual(entries.first?.url.standardizedFileURL, written?.standardizedFileURL)
     }

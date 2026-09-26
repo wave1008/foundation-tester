@@ -38,7 +38,6 @@ function validPayload(overrides = {}) {
       byWorker: [{ worker: "ios:iPhone 15", runs: 10, successRate: 90.0, avgDurationMs: 1500 }],
       byPlatform: [{ platform: "ios", runs: 10, successRate: 90.0, avgDurationMs: 1500 }],
     },
-    daily: [{ date: "2026-07-16", total: 10, passed: 9, failed: 1 }],
     ...overrides,
   };
 }
@@ -147,53 +146,6 @@ test("isApiResultsPayload: slow/insights の platform が文字列以外なら f
   assert.equal(isApiResultsPayload(badInsight), false);
 });
 
-test("isApiResultsPayload: matrix を含む完全な値も true と判定する", () => {
-  const payload = validPayload({
-    matrix: {
-      runs: [
-        { runID: "20260716-000000", startedAt: "2026-07-16T00:00:00Z", profile: "default" },
-        { runID: "20260715-000000", startedAt: "2026-07-15T00:00:00Z" },
-      ],
-      scenarios: [
-        { scenarioID: "Login", title: "Login flow", cells: [1, 0] },
-        { scenarioID: "Checkout", cells: [null, 1] },
-      ],
-    },
-  });
-  assert.equal(isApiResultsPayload(payload), true);
-});
-
-test("isApiResultsPayload: matrix が欠落(--matrix-runs 0 相当)でも true と判定する", () => {
-  const payload = validPayload();
-  assert.equal(isApiResultsPayload(payload), true);
-  assert.equal("matrix" in payload, false);
-});
-
-test("isApiResultsPayload: matrix.scenarios[].cells に数値/null以外が混じれば false", () => {
-  const payload = validPayload({
-    matrix: {
-      runs: [{ runID: "R1", startedAt: "2026-07-16T00:00:00Z" }],
-      scenarios: [{ scenarioID: "Login", cells: ["true"] }],
-    },
-  });
-  assert.equal(isApiResultsPayload(payload), false);
-});
-
-test("isApiResultsPayload: matrix.runs[] の必須フィールド欠落は false", () => {
-  const payload = validPayload({
-    matrix: {
-      runs: [{ startedAt: "2026-07-16T00:00:00Z" }],
-      scenarios: [],
-    },
-  });
-  assert.equal(isApiResultsPayload(payload), false);
-});
-
-test("isApiResultsPayload: matrix が object でなければ false", () => {
-  const payload = validPayload({ matrix: "not-an-object" });
-  assert.equal(isApiResultsPayload(payload), false);
-});
-
 test("isApiResultsPayload: slow/insights が欠落(旧 CLI 相当)でも true と判定する", () => {
   const payload = validPayload();
   delete payload.slow;
@@ -259,18 +211,12 @@ test("isApiResultsPayload: devices が欠落していれば false", () => {
   assert.equal(isApiResultsPayload(payload), false);
 });
 
-test("isApiResultsPayload: daily の必須フィールド欠落は false", () => {
-  const payload = validPayload({ daily: [{ date: "2026-07-16", total: 10, passed: 9 }] });
-  assert.equal(isApiResultsPayload(payload), false);
-});
-
 test("isApiResultsPayload: 空配列群(0件実行相当)は true", () => {
   const payload = validPayload({
     runs: [],
     summary: [],
     flaky: [],
     devices: { byWorker: [], byPlatform: [] },
-    daily: [],
   });
   assert.equal(isApiResultsPayload(payload), true);
 });
@@ -364,61 +310,6 @@ test("isDashboardFromWebviewMessage: setSince は since が 7d/30d/90d のとき
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: "1d" }), false);
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince", since: 90 }), false);
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince" }), false);
-});
-
-// ---- triage(ApiResultsPayload の追加キー) --------
-
-test("isApiResultsPayload: triage を含む完全な値も true と判定する", () => {
-  const payload = validPayload({
-    triage: {
-      totalFailed: 12,
-      unreachedCount: 3,
-      rows: [
-        {
-          section: "action",
-          command: "tap",
-          failureKind: "elementNotFound",
-          count: 5,
-          scenarioCount: 4,
-          scenarioIDs: ["Login", "Checkout"],
-        },
-        // section 欠落(言えないとき欄ごと省く)。
-        { command: "exist", failureKind: "assertionFailed", count: 2, scenarioCount: 2, scenarioIDs: ["Login"] },
-      ],
-      noteCounts: [{ note: "interruption-dismissed", count: 4 }],
-    },
-  });
-  assert.equal(isApiResultsPayload(payload), true);
-});
-
-test("isApiResultsPayload: triage が欠落(旧 CLI 相当)でも true と判定する", () => {
-  const payload = validPayload();
-  assert.equal(isApiResultsPayload(payload), true);
-  assert.equal("triage" in payload, false);
-});
-
-test("isApiResultsPayload: triage.rows は section/command/failureKind 全欠落でも true(欄の後発追加より前の記録は3欄とも無い。必須にすると実データでペイロード全体が弾かれる)", () => {
-  const payload = validPayload({
-    triage: {
-      totalFailed: 1,
-      unreachedCount: 0,
-      rows: [{ count: 1, scenarioCount: 1, scenarioIDs: [] }],
-      noteCounts: [],
-    },
-  });
-  assert.equal(isApiResultsPayload(payload), true);
-});
-
-test("isApiResultsPayload: triage.rows の count が数値でなければ false", () => {
-  const payload = validPayload({
-    triage: {
-      totalFailed: 1,
-      unreachedCount: 0,
-      rows: [{ count: "1", scenarioCount: 1, scenarioIDs: [] }],
-      noteCounts: [],
-    },
-  });
-  assert.equal(isApiResultsPayload(payload), false);
 });
 
 test("isApiResultsPayload: machines(host→machine 読み替え表)を含む値・欠落(旧 CLI)の両方を true と判定する", () => {

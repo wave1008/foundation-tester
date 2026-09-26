@@ -269,7 +269,8 @@ final class RunRecordPackTests: XCTestCase {
             runDir: runDir, fileName: "Foo.a")
         try markRunCompleted(runDir)
 
-        let direct = RunResultsStore.scanRecordEntries(resultsDir: resultsDir).map(\.record)
+        // packCacheDir を渡さない = パック無しの直接読み(縮小前の記録がそのまま返る基準値)
+        let direct = RunResultsStore.scanRunsAndRecords(resultsDir: resultsDir).entries.map(\.record)
         // 1回目はまだパックが無いので直接デコード(= 縮小前の記録がそのまま返る)
         let firstPass = scan().map(\.record)
         // 2回目からはパック経由(= 縮小済みの記録が返る)

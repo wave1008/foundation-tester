@@ -1117,7 +1117,7 @@ MCP には届かず、同じ処理の2つ目の実装が育つ)。
 |---|---|---|---|
 | **M1** | ブリッジ + 手動駆動 | CLI から SampleApp を起動し、curl 相当で tap/type/snapshot/screenshot が通る | 達成済み |
 | **M2** | FM 探索によるシナリオ自動生成(`fleetest explore`) | — | 廃止済み(§1.2) |
-| **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで TriageReport が出る | 自己修復は指紋照合で達成(§10「ロケータの指紋」)。**FM ヒール(採用門 confidence == high)は本番で実測 0/272 しか開かず、2026-09-15 にヒールキャッシュごと撤去**(§10・maintainer-notes §22)。FM トリアージは同日撤去 → maintainer-notes §21 |
+| **M3** | 決定的再生 + 自己修復 + トリアージ | id 変更を仕込んだ SampleApp でシナリオが自己修復され、意図的バグで失敗が section/command/failureKind 付きで記録に残る | 自己修復は指紋照合で達成(§10「ロケータの指紋」)。**FM ヒール(採用門 confidence == high)は本番で実測 0/272 しか開かず、2026-09-15 にヒールキャッシュごと撤去**(§10・maintainer-notes §22)。FM トリアージは同日撤去 → maintainer-notes §21 |
 | **M4** | Android ブリッジ + ドライバ | `AndroidDriver` で FTFoundationModels/FTCore を無変更のまま Android アプリのシナリオを再生する(実装は自作 instrumentation ブリッジ。UIAutomator2/Appium は不採用。§4.5, §8.7) | 達成済み |
 
 M1・M3・M4 は達成済み(M2 の FM 探索機能は後に廃止。§1.2)。2026-07 には固定 sleep をブリッジ内蔵の a11y 静穏検知に置き換える高速化を実施し、
@@ -1432,9 +1432,8 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
    accessibility identifier 付き)をリポジトリに同梱
 2. M1: `fleetest bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る
 3. M3: SampleApp の identifier を 1 つ改名 → `fleetest run --set heal=true` で修復・成功。
-   意図的にログインを失敗させるビルド → `fleetest results` の TriageReport が
-   (section, command, failureKind) の組で失敗をグルーピングして出す
-   (FM による `appBug` 等の分類は 2026-09-15 に撤去 → maintainer-notes §21)
+   意図的にログインを失敗させるビルド → 結果 JSON に失敗した section/command/failureKind が
+   事実として残る(FM による `appBug` 等の分類は 2026-09-15 に撤去 → maintainer-notes §21)
 4. 性能の検証・回帰比較は `Scripts/bench.swift` の計測基盤で行う。壁時計中央値・
    シナリオ/ステップ内訳・成功率・ホスト CPU/GPU/MEM を `summary.md` に出力し、
    変更前後を比較する。手順・指標の読み方は

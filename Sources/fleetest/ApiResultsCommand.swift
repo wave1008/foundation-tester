@@ -12,7 +12,7 @@ import FTRemote
 struct ApiResultsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "results",
-        abstract: "Aggregate the run-results database (results/) — runs/summary/flaky/devices/daily/trend/slow/insights/matrix —"
+        abstract: "Aggregate the run-results database (results/) — runs/summary/flaky/devices/trend/slow/insights —"
             + " and print it all as JSON on stdout (diagnostics on stderr only)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
@@ -31,9 +31,6 @@ struct ApiResultsCommand: AsyncParsableCommand {
 
     @Option(help: "Scenario ID whose trend (run history) to output; omitted unless given")
     var scenario: String?
-
-    @Option(name: .customLong("matrix-runs"), help: "How many recent runs to include in the scenario-by-run pass/fail matrix (0 omits the matrix)")
-    var matrixRuns: Int = 20
 
     @Flag(name: .customLong("no-cache"),
           help: "Recompute instead of reading the output cache (<project>/.fleetest/results-cache/); the cache is rewritten either way")
@@ -67,8 +64,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
         let scenariosDigest = ScenarioFolders.directorySignature(scenariosDir: testProject.scenariosDir)
             .joined(separator: "\u{1}")
         let key = ResultsOutputCache.argumentsKey(
-            arguments: [testProject.name, since, String(limit), String(minRuns), String(matrixRuns),
-                        scenariosDigest],
+            arguments: [testProject.name, since, String(limit), String(minRuns), scenariosDigest],
             executable: Bundle.main.executableURL)
         // 指紋は走査より先に取る(順序の理由は scanFingerprint の doc)
         let scanDigest = RunResultsStore.scanFingerprint(resultsDir: resultsDir, since: sinceDate)
@@ -85,7 +81,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
             packCacheDir: RunRecordPack.cacheDir(stateDir: stateDir),
             executableKey: ResultsOutputCache.executableFingerprint(executable: Bundle.main.executableURL))
         // パック経由の record は集計用に縮小済み(RunRecordPack.trimmedForStorage)。
-        // 集計(summary/flaky/devices/daily/slow/insights/matrix/triage/performance/runStats)は
+        // 集計(summary/flaky/devices/slow/insights/performance/runStats)は
         // その縮小で困らない(timeline から読むのは notes だけ。TimelineNotesOnlyScanTests が保証)。
         // trend(--scenario)だけは元ファイルを読み直す(trendRecords)
         let records = entries.map(\.record)
@@ -100,12 +96,9 @@ struct ApiResultsCommand: AsyncParsableCommand {
             flaky: RunResultsQuery.flakyScenarios(
                 records, minRuns: minRuns, recentRuns: RunResultsQuery.recentScenarioRunsWindow),
             devices: RunResultsQuery.deviceSummary(records),
-            daily: RunResultsQuery.dailyRates(records),
             slow: RunResultsQuery.slowTests(records, limit: 10),
             insights: RunResultsQuery.insights(records: records, runs: runs,
                                                definedClasses: definedScenarioClasses(of: testProject)),
-            matrix: matrixRuns > 0 ? RunResultsQuery.matrix(records: records, runs: runs, limit: matrixRuns) : nil,
-            triage: RunResultsQuery.triage(records),
             performance: RunResultsQuery.performanceReport(records: records, runs: runs),
             machines: RemoteHostFactsStore.aliasPairs(dir: RemoteHostFactsStore.dir(project: testProject))
                 .map { MachineAliasEntry(host: $0.host, machine: $0.machine) },
@@ -216,9 +209,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
 }
 
 /// fleetest api results の出力のうち、呼ぶたびに変わる since/generatedAt と --scenario 依存の trend を
-/// 除いた部分(= キャッシュの body)。matrix は --matrix-runs 0 指定時にキー自体を出さない
-/// (null ではなくキー欠落。TS 側はキーの有無で指定の有無を判定する契約)。
-/// 印字形は ResultsOutputCache.compose が組む
+/// 除いた部分(= キャッシュの body)。印字形は ResultsOutputCache.compose が組む
 private struct ApiResultsBody: Encodable {
     let schemaVersion: Int
     let project: String
@@ -226,11 +217,8 @@ private struct ApiResultsBody: Encodable {
     let summary: [RunResultsQuery.ScenarioSummaryRow]
     let flaky: [RunResultsQuery.FlakyRow]
     let devices: RunResultsQuery.DevicesReport
-    let daily: [RunResultsQuery.DailyRow]
     let slow: [RunResultsQuery.SlowTestRow]
     let insights: [RunResultsQuery.InsightRow]
-    let matrix: RunResultsQuery.MatrixReport?
-    let triage: RunResultsQuery.TriageReport
     let performance: RunResultsQuery.PerformanceReport
     /// 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来)。
     /// 記録・runID は host のまま —— エイリアスは改名されうるので表示時にだけ引く
@@ -239,8 +227,8 @@ private struct ApiResultsBody: Encodable {
     let runStats: [RunResultsQuery.RunStatsRow]
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, project, runs, summary, flaky, devices, daily,
-             slow, insights, matrix, triage, performance, machines, runStats
+        case schemaVersion, project, runs, summary, flaky, devices,
+             slow, insights, performance, machines, runStats
     }
 
     func encode(to encoder: Encoder) throws {
@@ -251,13 +239,8 @@ private struct ApiResultsBody: Encodable {
         try container.encode(summary, forKey: .summary)
         try container.encode(flaky, forKey: .flaky)
         try container.encode(devices, forKey: .devices)
-        try container.encode(daily, forKey: .daily)
         try container.encode(slow, forKey: .slow)
         try container.encode(insights, forKey: .insights)
-        if let matrix {
-            try container.encode(matrix, forKey: .matrix)
-        }
-        try container.encode(triage, forKey: .triage)
         try container.encode(performance, forKey: .performance)
         try container.encode(machines, forKey: .machines)
         try container.encode(runStats, forKey: .runStats)

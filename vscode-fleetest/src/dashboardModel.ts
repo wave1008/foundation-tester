@@ -100,13 +100,6 @@ export interface DeviceSummary {
   readonly byPlatform: readonly DevicePlatformRow[];
 }
 
-export interface DailyRow {
-  readonly date: string; // "yyyy-MM-dd"
-  readonly total: number;
-  readonly passed: number;
-  readonly failed: number;
-}
-
 export interface SceneResultRecord {
   readonly scene: number;
   readonly title: string;
@@ -229,55 +222,6 @@ export interface InsightRecord {
   readonly deltaPct?: number | null;
 }
 
-export interface MatrixRunColumn {
-  readonly runID: string;
-  readonly startedAt: string;
-  readonly profile?: string | null;
-}
-
-export interface MatrixScenarioRow {
-  readonly scenarioID: string;
-  readonly title?: string | null;
-  /** runs と同順・同数。1=passed 0=failed null=その run にこのシナリオの記録が無い */
-  readonly cells: readonly (number | null)[];
-}
-
-export interface MatrixReport {
-  /** newest-first(startedAt 降順) */
-  readonly runs: readonly MatrixRunColumn[];
-  /** flaky(pass/fail混在)→ all-fail → all-pass、各グループ内は scenarioID 昇順 */
-  readonly scenarios: readonly MatrixScenarioRow[];
-}
-
-/** count 降順。section/command/failureKind は言えないとき欄ごと省く(「その他」に丸めない)。
- * failureKind/command の欄が無い失敗は過去の記録に必ずある(欄の後発追加)ので、
- * 必須にすると実データでペイロード全体が弾かれる。 */
-export interface TriageRow {
-  readonly section?: string | null;
-  readonly command?: string | null;
-  readonly failureKind?: string | null;
-  readonly count: number;
-  readonly scenarioCount: number;
-  /** 最大5件。 */
-  readonly scenarioIDs: readonly string[];
-}
-
-export interface TriageNoteCount {
-  readonly note: string;
-  readonly count: number;
-}
-
-/** `fleetest api results` の失敗の仕分け(窓内の失敗シナリオレコードの集計)。 */
-export interface TriageReport {
-  readonly totalFailed: number;
-  /** うち failedSteps 無し(ステップ未到達)。 */
-  readonly unreachedCount: number;
-  /** count 降順。 */
-  readonly rows: readonly TriageRow[];
-  /** count 降順。 */
-  readonly noteCounts: readonly TriageNoteCount[];
-}
-
 /** `--performance` run 1本(`fleetest api results` の performance.runs[])。 */
 export interface PerfRunRow {
   /** グループ鍵(フリート計測は runGroup で1行に畳まれる。単機 run はその runID)。 */
@@ -351,17 +295,11 @@ export interface ApiResultsPayload {
   /** 不安定度降順 */
   readonly flaky: readonly FlakyRow[];
   readonly devices: DeviceSummary;
-  /** date 昇順 */
-  readonly daily: readonly DailyRow[];
   readonly trend?: readonly ScenarioRunRecord[];
   /** avgDurationMs 降順、最大10件。本フィールド追加前の CLI ではキー欠落(古い CLI との互換で必須にしない)。 */
   readonly slow?: readonly SlowScenarioRow[];
   /** severity 順(critical→warn→info)。本フィールド追加前の CLI ではキー欠落。 */
   readonly insights?: readonly InsightRecord[];
-  /** シナリオ×直近N run の成否マトリクス。--matrix-runs 0 指定時・本フィールド追加前の CLI ではキー欠落。 */
-  readonly matrix?: MatrixReport;
-  /** 失敗の仕分け。本フィールド追加前の CLI ではキー欠落。 */
-  readonly triage?: TriageReport;
   /** `--performance` run の集計。本フィールド追加前の CLI ではキー欠落。 */
   readonly performance?: PerformanceReport;
   /** 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来。
@@ -432,7 +370,8 @@ export type DashboardToWebviewMessage =
   | { readonly type: "projects"; readonly projects: readonly string[]; readonly current: string; readonly since: SinceOption }
   /** 前回比。latest/previous は groupRuns() の構成 run ごとの results-run 応答。 */
   | { readonly type: "headlineDiff"; readonly latest: readonly ApiResultsRunPayload[]; readonly previous: readonly ApiResultsRunPayload[] }
-  | { readonly type: "headlineDiffError"; readonly message: string };
+  /** 前回比の取得失敗(webview は前回比を畳むだけで文言は出さない)。 */
+  | { readonly type: "headlineDiffError" };
 
 // ---- 型ガード ---------------------------------------------------------------------
 
@@ -525,16 +464,6 @@ function isDeviceSummary(value: unknown): value is DeviceSummary {
   );
 }
 
-function isDailyRow(value: unknown): value is DailyRow {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.date === "string" &&
-    typeof value.total === "number" &&
-    typeof value.passed === "number" &&
-    typeof value.failed === "number"
-  );
-}
-
 function isSlowScenarioRow(value: unknown): value is SlowScenarioRow {
   if (!isRecord(value)) return false;
   return (
@@ -582,63 +511,8 @@ function isInsightRecord(value: unknown): value is InsightRecord {
   );
 }
 
-function isMatrixRunColumn(value: unknown): value is MatrixRunColumn {
-  if (!isRecord(value)) return false;
-  return typeof value.runID === "string" && typeof value.startedAt === "string" && isOptString(value.profile);
-}
-
-function isMatrixScenarioRow(value: unknown): value is MatrixScenarioRow {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.scenarioID === "string" &&
-    isOptString(value.title) &&
-    Array.isArray(value.cells) &&
-    value.cells.every((c) => c === null || typeof c === "number")
-  );
-}
-
-function isMatrixReport(value: unknown): value is MatrixReport {
-  if (!isRecord(value)) return false;
-  return (
-    Array.isArray(value.runs) &&
-    value.runs.every(isMatrixRunColumn) &&
-    Array.isArray(value.scenarios) &&
-    value.scenarios.every(isMatrixScenarioRow)
-  );
-}
-
 function isOptStringArray(value: unknown): value is readonly string[] | undefined | null {
   return value === undefined || value === null || (Array.isArray(value) && value.every((v) => typeof v === "string"));
-}
-
-function isTriageRow(value: unknown): value is TriageRow {
-  if (!isRecord(value)) return false;
-  return (
-    isOptString(value.section) &&
-    isOptString(value.command) &&
-    isOptString(value.failureKind) &&
-    typeof value.count === "number" &&
-    typeof value.scenarioCount === "number" &&
-    Array.isArray(value.scenarioIDs) &&
-    value.scenarioIDs.every((s) => typeof s === "string")
-  );
-}
-
-function isTriageNoteCount(value: unknown): value is TriageNoteCount {
-  if (!isRecord(value)) return false;
-  return typeof value.note === "string" && typeof value.count === "number";
-}
-
-function isTriageReport(value: unknown): value is TriageReport {
-  if (!isRecord(value)) return false;
-  return (
-    typeof value.totalFailed === "number" &&
-    typeof value.unreachedCount === "number" &&
-    Array.isArray(value.rows) &&
-    value.rows.every(isTriageRow) &&
-    Array.isArray(value.noteCounts) &&
-    value.noteCounts.every(isTriageNoteCount)
-  );
 }
 
 function isSceneResultRecord(value: unknown): value is SceneResultRecord {
@@ -797,20 +671,11 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   if (!Array.isArray(value.summary) || !value.summary.every(isScenarioSummaryRow)) return false;
   if (!Array.isArray(value.flaky) || !value.flaky.every(isFlakyRow)) return false;
   if (!isDeviceSummary(value.devices)) return false;
-  if (!Array.isArray(value.daily) || !value.daily.every(isDailyRow)) return false;
   // slow/insights はキー欠落(古い CLI)を許容するため undefined のみ特別扱いする。
   if (value.slow !== undefined && (!Array.isArray(value.slow) || !value.slow.every(isSlowScenarioRow))) {
     return false;
   }
   if (value.insights !== undefined && (!Array.isArray(value.insights) || !value.insights.every(isInsightRecord))) {
-    return false;
-  }
-  // matrix はキー欠落(--matrix-runs 0・古い CLI)を許容するため undefined のみ特別扱いする。
-  if (value.matrix !== undefined && !isMatrixReport(value.matrix)) {
-    return false;
-  }
-  // triage はキー欠落(旧 CLI)を許容するため undefined のみ特別扱いする。
-  if (value.triage !== undefined && !isTriageReport(value.triage)) {
     return false;
   }
   if (

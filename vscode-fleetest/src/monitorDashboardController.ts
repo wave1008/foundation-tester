@@ -220,9 +220,6 @@ export class MonitorDashboardController {
         this.since,
         "--min-runs",
         String(RESULTS_MIN_RUNS),
-        // マトリクスのセクションは無いので計算も転送もさせない(0 = matrix キー自体を出さない)
-        "--matrix-runs",
-        "0",
       ];
       const result = await this.runOneShotTracked(args);
       if (!isApiResultsPayload(result.json)) {
@@ -311,8 +308,6 @@ export class MonitorDashboardController {
         this.since,
         "--min-runs",
         String(RESULTS_MIN_RUNS),
-        "--matrix-runs",
-        "0",
         "--scenario",
         scenarioID,
       ];
@@ -391,7 +386,7 @@ export class MonitorDashboardController {
       const config = this.deps.getConfig();
       const resolution = resolveProjectName(this.deps.workspaceRoot, config);
       if (resolution.kind !== "resolved") {
-        this.deps.post({ type: "headlineDiffError", message: t("exploreHeal.common.projectUnresolved") });
+        this.deps.post({ type: "headlineDiffError" });
         return;
       }
       const fetchAll = async (ids: readonly string[]): Promise<ApiResultsRunPayload[] | null> => {
@@ -409,12 +404,12 @@ export class MonitorDashboardController {
       const latest = await fetchAll(latestRunIDs);
       const previous = latest ? await fetchAll(previousRunIDs) : null;
       if (!latest || !previous) {
-        this.deps.post({ type: "headlineDiffError", message: t("exploreHeal.dashboard.headlineDiffFetchFailed") });
+        this.deps.post({ type: "headlineDiffError" });
         return;
       }
       this.deps.post({ type: "headlineDiff", latest, previous });
-    } catch (error) {
-      this.deps.post({ type: "headlineDiffError", message: t("exploreHeal.dashboard.fetchFailedError", { error: errorMessage(error) }) });
+    } catch {
+      this.deps.post({ type: "headlineDiffError" });
     } finally {
       this.headlineDiffFetching = false;
       const queued = this.headlineDiffQueued;

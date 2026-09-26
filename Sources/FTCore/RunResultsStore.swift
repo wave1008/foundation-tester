@@ -422,17 +422,6 @@ public enum RunResultsStore {
         public let record: ScenarioRunRecord
     }
 
-    /// scanRecords(キャップ無し)と同じ集合を、元ファイルの URL 付きで返す(パック無し。
-    /// `fleetest api results` はパック経由の `scanRunsAndRecords` を使う。ここはそれ以外の
-    /// 呼び手向けに元の全件直接デコード経路のまま残す)
-    public static func scanRecordEntries(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> [ScannedRecord] {
-        var targetRunDirs: [URL] = []
-        for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
-            targetRunDirs += runDirs(in: monthDir)
-        }
-        return scanRecordsConcurrently(runDirs: targetRunDirs, since: since, until: until)
-    }
-
     /// n 件を chunkCount 以下の連続範囲に割る(**空の範囲は作らない**)。
     /// `ceil(n/chunks)` 幅で `chunkIndex * size` を始点にすると、末尾のチャンクが `start > end` になり
     /// Range 生成で trap する(24 コアで記録 25〜45 件 = 受け手の新しいプロジェクトが最初に踏む形)
@@ -517,7 +506,7 @@ public enum RunResultsStore {
     /// 書いたパックをもう片方が上書きし、後で書いたほうの分が消える)。
     /// `packCacheDir`/`executableKey` を渡さない呼び手はいない想定(このプロジェクト内は
     /// ApiResultsCommand だけが呼ぶ)が、nil の場合は常に直接デコードする。
-    /// 返す `runs`/`entries` は scanRuns/scanRecordEntries と同じ集合・同じ並び順・
+    /// 返す `runs`/`entries` は scanRuns/scanRecords(キャップ無し)と同じ集合・同じ並び順・
     /// 同じ読み飛ばし警告(kind は "run.json" と "scenario record" の2本、従来と同じ文言)。
     /// **entries の record は、パック経由の完了 run では `RunRecordPack.trimmedForStorage` で
     /// 縮小済み**(timeline が notes 付きステップだけ・4欄だけに縮む)。この配列を集計以外に

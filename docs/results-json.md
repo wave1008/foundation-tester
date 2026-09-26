@@ -441,7 +441,7 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
 定義元は `Sources/FTCore/ResultsOutputCache.swift`(有効判定・合成)と
 `RunResultsStore.scanFingerprint`(入力の指紋)。
 
-- **鍵**: 引数(project / `--since` の文字列 / limit / min-runs / matrix-runs)+
+- **鍵**: 引数(project / `--since` の文字列 / limit / min-runs)+
   **シナリオソースの指紋**(`ScenarioFolders.directorySignature(scenariosDir:)`。TestProjects の
   `scenarios/` 配下の .swift のパス・mtime・size)+ 実行ファイルの
   mtime・size(建て直せば必ず外れる = 集計や契約を変えたときにキャッシュの版を手で上げる規律に
@@ -518,7 +518,7 @@ scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results
   (消すのは recordings/ 等 —— docs 上部の §保持容量)ので、通常の掃除経路ではパックが孤児化
   しない。孤児化するのは上記の月単位の間引きのような手動操作のときだけ
 - 適用範囲は `fleetest api results` の非キャッシュ経路(`scanRunsAndRecords`)だけ。
-  素の `scanRuns`/`scanRecordEntries`/`scanRecords`(LPT 等の他の呼び手)は変えていない
+  素の `scanRuns`/`scanRecords`(LPT 等の他の呼び手)は変えていない
   (パック無し・従来どおりの全件直接デコード)
 - 確認方法は出力キャッシュと同じ: `--no-cache` の出力(パックを作る回・パックから読む回のどちらも)
   と一致すること(`generatedAt` 以外。`--scenario` の trend は timeline を含めて一致すること)

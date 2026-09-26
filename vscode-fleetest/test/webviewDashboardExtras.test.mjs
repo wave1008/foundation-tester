@@ -62,8 +62,7 @@ function basePayload(overrides = {}) {
     summary: [],
     flaky: [],
     devices: { byPlatform: [], byWorker: [] },
-    daily: [], slow: [], insights: [],
-    triage: { totalFailed: 0, unreachedCount: 0, rows: [], noteCounts: [] },
+    slow: [], insights: [],
     machines: [], runStats: [],
     ...overrides,
   };
