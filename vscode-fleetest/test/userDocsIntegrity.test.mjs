@@ -40,6 +40,13 @@ function relativeLinks(source) {
     if (/^(https?:|mailto:|#)/.test(raw)) continue;
     targets.push(raw.replace(/#.*$/, ""));
   }
+  // 画像を実寸(端末の倍率で割った幅)で出すために `<img src="…" width="…">` を使うページがある。
+  // Markdown 記法だけを見ると、その画像が消えても切れたリンクとして落ちない
+  for (const m of body.matchAll(/<img\s[^>]*src="([^"]+)"/g)) {
+    const raw = m[1];
+    if (/^(https?:|data:)/.test(raw)) continue;
+    targets.push(raw);
+  }
   return targets;
 }
 

@@ -41,6 +41,7 @@ FM を使いません。テストはエージェント(MCP)に
 
 - [テストクラスの作成](testclass/creating_testclass_ja.md)
 - [要素の選択と検証](testclass/select_and_assert_ja.md)
+- [テキストの視覚検証の判定](testclass/text_visual_check_ja.md)
 - [テストコードの構造](testclass/testcode_structure_ja.md)
 - [独自コマンド](testclass/custom_commands_ja.md)
 - [テスト結果ファイル](testclass/test_result_files_ja.md)

@@ -38,6 +38,7 @@ expectation {
     (テキストの一部が隠れています)が付きます
   - 省略記号が無く、描かれたのが半分以下 → 失敗(`most of the text is hidden`)。
     わざと大部分を隠す画面では `requireVisible: false` を使ってください
+  - 判定の例(画像つき)は [テキストの視覚検証の判定](../testclass/text_visual_check_ja.md) を参照してください
 
 ### Link
 - [index](../index_ja.md)

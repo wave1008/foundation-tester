@@ -38,6 +38,7 @@ expectation {
     `text-partially-hidden` (part of the text is hidden)
   - no ellipsis, and half or less is drawn → failed (`most of the text is hidden`). For a screen
     that hides most of a text on purpose, use `requireVisible: false`
+  - For examples with images, see [How text visual verification decides](../testclass/text_visual_check.md)
 
 ### Link
 - [index](../index.md)
