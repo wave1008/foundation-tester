@@ -129,7 +129,13 @@ VSCode を終了してから Finder や `rm` で削除します。
 
 ### 残るファイルとプロセス
 
-必要なら `~/.config/fleetest/config.json` も削除します。
+fleetest のプロセスを止めてから(下のコマンド)、次のものも削除します。
+
+- fleetest のクローン(既定では作業フォルダの隣の `foundation-tester`。ビルドフォルダを含めて数 GB あります)
+- `~/.fleetest`(この Mac での実行の記録など)と `~/Library/Logs/fleetest`(ログ)
+- 必要なら `~/.config/fleetest/config.json`
+- fleetest のために作った仮想デバイスが不要なら、Xcode の「Devices and Simulators」や Android Studio の
+  Device Manager から削除します
 
 作業フォルダを削除しても `.build` が復活する場合は、fleetest のプロセスが残っています。
 

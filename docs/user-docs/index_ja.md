@@ -131,6 +131,7 @@ FM を使いません。テストはエージェント(MCP)に
 - [リモートランナーのセットアップ](in_action/remote_runner_setup_ja.md)
 - [ネットワークの露出とセキュリティ](in_action/network_security_ja.md)
 - [トラブルシューティング](in_action/troubleshooting_ja.md)
+- [長く使うためのメンテナンス](in_action/maintenance_ja.md)
 
 ## リファレンス
 

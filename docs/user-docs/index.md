@@ -132,6 +132,7 @@ needs no changes ([details](overview/about.md)).
 - [Setting up a remote runner](in_action/remote_runner_setup.md)
 - [Network exposure and security](in_action/network_security.md)
 - [Troubleshooting](in_action/troubleshooting.md)
+- [Maintenance for long-term use](in_action/maintenance.md)
 
 ## Reference
 

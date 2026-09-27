@@ -133,7 +133,13 @@ yourself, remove that configuration too.
 
 ### Leftover files and processes
 
-Optionally delete `~/.config/fleetest/config.json` as well.
+After stopping the fleetest processes (commands below), also delete the following.
+
+- The fleetest clone (by default `foundation-tester` next to your work folder; with its build folder it takes a few GB)
+- `~/.fleetest` (records of runs on this Mac and the like) and `~/Library/Logs/fleetest` (logs)
+- Optionally `~/.config/fleetest/config.json`
+- Virtual devices you created for fleetest, if you no longer need them — delete them from Xcode's
+  "Devices and Simulators" or Android Studio's Device Manager
 
 If `.build` reappears after you delete the work folder, fleetest processes are still running.
 
