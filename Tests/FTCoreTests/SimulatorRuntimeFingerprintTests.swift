@@ -40,7 +40,7 @@ final class SimulatorRuntimeFingerprintTests: XCTestCase {
                        "iOS 27.0: 24A434")
     }
 
-    /// SDK と同じ版が1つも無い(= その Xcode ではどの台も起動できない)
+    /// SDK と同じ版が1つも無い(= その Xcode ではどのデバイスも起動できない)
     func testNoRuntimeForTheSDKVersion() {
         let list = [header, line("26.2", "23C54")].joined(separator: "\n")
         XCTAssertEqual(SimulatorRuntimeFingerprint.compose(sdkVersion: "27.0", runtimeList: list),

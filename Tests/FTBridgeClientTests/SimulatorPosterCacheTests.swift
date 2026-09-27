@@ -1,5 +1,5 @@
 // SimulatorPosterCache: SnapshotCache.cachedb と RuntimeSnapshot* だけを消す・入れ子には降りない・
-// Booted の台には撃たない(状態注入。simctl は撃たない)。
+// Booted のデバイスには撃たない(状態注入。simctl は撃たない)。
 
 import XCTest
 @testable import FTBridgeClient
@@ -136,7 +136,7 @@ final class SimulatorPosterCacheTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: cache.path), "dry run は消してはいけない")
     }
 
-    // MARK: - Booted の台には撃たない(状態注入)
+    // MARK: - Booted のデバイスには撃たない(状態注入)
 
     func testShouldPurgeOnlyWhenStopped() {
         XCTAssertTrue(SimulatorPosterCache.shouldPurge(observation: .stopped))

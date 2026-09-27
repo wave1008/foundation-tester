@@ -359,7 +359,7 @@ function renderDevicesPanel(): string {
 
     <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.splitterAriaLabel")}"></div>
 
-    <!-- グリッドビュー(選択した台の拡大表示。1台だけ選択のときは実行ログの複製も並べる)。
+    <!-- グリッドビュー(選択したデバイスの拡大表示。1台だけ選択のときは実行ログの複製も並べる)。
          id は据え置き(旧・出力ペイン)。開閉は splitter.js(gridViewVisible) -->
     <div id="output-pane" class="output-pane">
       <div id="grid-view-header" class="lanes-header pane-header">
@@ -377,7 +377,7 @@ function renderDevicesPanel(): string {
 
     <div id="splitter-log" class="splitter" role="separator" aria-orientation="horizontal" aria-label="${t("panels.devices.logSplitterAriaLabel")}"></div>
 
-    <!-- 実行ログビュー(常設。台ごとのログ。選択中は選択した台だけに絞る)。開閉・高さの調整は
+    <!-- 実行ログビュー(常設。デバイスごとのログ。選択中は選択したデバイスだけに絞る)。開閉・高さの調整は
          splitter.js(logViewVisible / logPaneHeight)。レーンの DOM 管理は laneLog.js -->
     <div id="log-pane" class="output-pane log-pane">
       <div id="log-view-header" class="lanes-header pane-header">
@@ -813,7 +813,7 @@ function renderRecordingsPanel(): string {
         <div class="recordings-video-pane">
           <video id="recordings-video" class="recordings-video" playsinline></video>
           <div class="recordings-now-playing">
-            <!-- 再生中のシナリオを撮った台(index.json の worker)。空なら非表示 -->
+            <!-- 再生中のシナリオを撮ったデバイス(index.json の worker)。空なら非表示 -->
             <div id="recordings-now-playing-device" class="recordings-now-playing-device" style="display: none;"></div>
             <div id="recordings-now-playing-class" class="recordings-now-playing-line"></div>
             <div id="recordings-now-playing-detail" class="recordings-now-playing-line recordings-now-playing-detail"></div>

@@ -112,7 +112,7 @@ final class BlankWorkerTriageTests: XCTestCase {
         }
     }
 
-    /// **修復は「起きているのに一様」の台にだけ撃つ**。消灯かもしれない台には撃たない
+    /// **修復は「起きているのに一様」のデバイスにだけ撃つ**。消灯かもしれないデバイスには撃たない
     func testRepairFiresOnlyForTheAwakeButBlankDevice() async {
         let awakeWorker = worker("pixel-awake", platform: "android",
                                  physical: true, shot: Self.blankPNG)
@@ -407,7 +407,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         XCTAssertEqual(recoverCalls.value, 1)
         XCTAssertTrue(result.excluded.isEmpty, "回復したのに外している: \(result.excluded)")
         XCTAssertEqual(result.workers.count, 2)
-        // F10: 回復した台の label が run.json の blankRepairs に乗る欄(repaired)へ出ること。
+        // F10: 回復したデバイスの label が run.json の blankRepairs に乗る欄(repaired)へ出ること。
         // 最初から健全だった "b" は含めない
         XCTAssertEqual(result.repaired, ["a"], "回復した台が repaired に出ていない")
     }
@@ -429,7 +429,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
                        "上限まで試していない")
         XCTAssertEqual(result.excluded, ["dead"])
         XCTAssertEqual(result.workers.map(\.label), ["ok"], "健全機まで巻き込んで外している")
-        // F10: 戻らなかった台を回復扱いにしない(excluded と repaired の両方に出てはいけない)
+        // F10: 戻らなかったデバイスを回復扱いにしない(excluded と repaired の両方に出てはいけない)
         XCTAssertTrue(result.repaired.isEmpty, "戻らなかった台を repaired に出している")
     }
 
@@ -477,7 +477,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
                        "2回目は**張り直し後**の一覧でなければ label を引けない")
     }
 
-    /// F10: 回復で label(ポート)が変わっても、同じ udid の台は同じ1台として repaired に数える。
+    /// F10: 回復で label(ポート)が変わっても、同じ udid のデバイスは同じ1台として repaired に数える。
     /// label をそのまま差し引く実装だと、回復した機は「別の未知の機」として見失われ
     /// run.json の blankRepairs に一度も乗らない(実害: M1Ultra の -02 が blankRepairs: null のまま)
     func testRepairedTrackingSurvivesALabelChangeFromRecovery() async {
@@ -497,8 +497,8 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         XCTAssertTrue(result.excluded.isEmpty)
         XCTAssertEqual(result.repaired, ["dead(ios:8210)"],
                        "回復後の label(実際に run で使う方)で報告すること")
-        // run.json の workerAnomalies へも台の鍵つきで載る(label から引き直すと、回復前の一覧には
-        // 回復後の label が無く、修復した台が黙って数から落ちていた)
+        // run.json の workerAnomalies へもデバイスの鍵つきで載る(label から引き直すと、回復前の一覧には
+        // 回復後の label が無く、修復したデバイスが黙って数から落ちていた)
         let anomalies = WorkerAnomalyRecord.preRunTriage(
             excluded: result.excludedWorkers, repaired: result.repairedWorkers)
         XCTAssertEqual(anomalies.map(\.kind), ["preRunRepaired"])

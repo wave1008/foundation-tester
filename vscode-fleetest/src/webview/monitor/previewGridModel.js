@@ -14,7 +14,7 @@ const TIE_PX = 0.5;
 /**
  * @param {{paneWidth:number, paneHeight:number, count:number, aspect:number,
  *          gap:number, chromeHeight:number}} m 実測値。
- *   aspect は絵の 幅/高さ(選択した台のうち一番横に広いもの)、chromeHeight は
+ *   aspect は絵の 幅/高さ(選択したデバイスのうち一番横に広いもの)、chromeHeight は
  *   1セルのうち絵以外(タグ段+その下の間隔)の高さ。
  * @returns {{columns:number, rows:number}} 段組み。測れない(タブ非表示・初回描画前)
  *   ときは従来どおりの横一列を返す —— 次の再計算で本来の形になる。

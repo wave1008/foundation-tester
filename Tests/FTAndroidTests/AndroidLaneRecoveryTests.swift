@@ -91,7 +91,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         XCTAssertEqual(result.failed.map(\.name), ["d1"])
     }
 
-    /// 失敗した台は3回まで試す。**期待値に production の定数を書かない** ——
+    /// 失敗したデバイスは3回まで試す。**期待値に production の定数を書かない** ——
     /// `count == AndroidLaneRecovery.maxBootAttempts` だと定数を変えたとき両辺が一緒に動き、
     /// 回数の変異を1つも殺せない(2026-08-16 の変異チェックで実際に生き残った)
     func testRetriesUpToMaxBootAttemptsForAFailingDevice() async {
@@ -116,7 +116,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
         XCTAssertEqual(result.failed.map(\.name), ["d1"])
     }
 
-    /// 進行は**台ごとに開始と結果の2行**を (i/N) 付きで出す。直列で1台に1分近くかかるため、
+    /// 進行は**デバイスごとに開始と結果の2行**を (i/N) 付きで出す。直列で1台に1分近くかかるため、
     /// 完了行だけだと待っている間ずっと無音になる(読み手は拡張の「デバイスモニター」タブ)。
     func testLogsPerDeviceProgressBeforeAndAfterEachBoot() async {
         let lines = LockedBox([String]())
@@ -125,7 +125,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
             devices: devices, locale: "ja_JP",
             log: { line in lines.mutate { $0.append(line) } },
             boot: { _, _ in })
-        // 冒頭の "Reviving N dead lane(s)" も starting を含むので、台ごとの2行だけを取る
+        // 冒頭の "Reviving N dead lane(s)" も starting を含むので、デバイスごとの2行だけを取る
         let progress = lines.value.filter { $0.hasPrefix("▶️") || $0.hasPrefix("✅") }
         XCTAssertEqual(progress.count, 6, "3台なら開始3行 + 結果3行")
         for (index, name) in ["d1", "d2", "d3"].enumerated() {
@@ -137,7 +137,7 @@ final class AndroidLaneRecoveryTests: XCTestCase {
                 && $0.contains("revived") },
                           "\(name) の結果行に \(counter) が無い: \(progress)")
         }
-        // 開始行は必ずその台の結果行より前(待っている間に出るための順序)
+        // 開始行は必ずそのデバイスの結果行より前(待っている間に出るための順序)
         XCTAssertLessThan(progress.firstIndex { $0.contains("starting") && $0.contains("d2") } ?? -1,
                           progress.firstIndex { $0.contains("revived") && $0.contains("d2") } ?? -1)
     }

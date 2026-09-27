@@ -40,7 +40,7 @@ final class MonitorFrozenDebounceTests: XCTestCase {
         XCTAssertFalse(debounce.verdict(id: "ios:01").isFrozen)
     }
 
-    /// デバイスごとに独立(1台の凍結が他台の判定を汚さない)
+    /// デバイスごとに独立(1台の凍結が他デバイスの判定を汚さない)
     func testStreaksAreTrackedPerDevice() {
         var debounce = MonitorFrozenDebounce(confirmThreshold: 2)
         debounce.record(uniformBlank: true, id: "ios:01")

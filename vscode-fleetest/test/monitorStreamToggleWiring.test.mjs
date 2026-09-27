@@ -2,7 +2,7 @@
 // src/monitorPanel.ts のソースで縛る(MonitorPanelController は vscode 依存で実体を作れないため)。
 // 守る2つ: 配信を動かす条件(applyDeviceStreamVisibility)にチェックボックスの値が入っている /
 // 切り替えの受け口(setShowStreamDuringRun)が次の monitorDevices を待たずにその条件を当て直す。
-// 条件が外れると OFF は run 中の台しか止めず、負荷は下がらない(緑のまま通る)。
+// 条件が外れると OFF は run 中のデバイスしか止めず、負荷は下がらない(緑のまま通る)。
 
 import assert from "node:assert/strict";
 import fs from "node:fs";

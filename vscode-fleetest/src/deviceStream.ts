@@ -69,7 +69,7 @@ const WEDGE_TIMEOUT_MS = 15000;
  * kVTSessionMalfunctionErr、mjpeg は "JPEG encode failed")、**15秒ごとの再起動を無限に
  * 繰り返した**。再起動そのものが CPU を食うので、資源不足が原因のときは事態を悪化させる。
  * 「一度も映像が来ていない」= 一時的な固着ではなく構造的に無理、と判断してよい
- * (一度でも届いた台はこれまでどおり何度でも張り直す —— そちらは本当の wedge だから)。
+ * (一度でも届いたデバイスはこれまでどおり何度でも張り直す —— そちらは本当の wedge だから)。
  * **2 の根拠**: 1枚目は実測で約1秒(4秒で 8 AU)。15秒待って1枚も来ず、作り直してもまた
  * 来ないなら、待てば直るものではない */
 const NO_FRAME_WEDGE_LIMIT = 2;
@@ -436,7 +436,7 @@ export class StreamPipeline implements LiveStreamPipeline {
   }
 
   /** このパイプラインの寿命(再起動を跨ぐ)で1フレームでも受け取ったか。**wedge の扱いを
-   * 分けるために要る** —— 一度も来ていない台を無限に張り直しても直らない */
+   * 分けるために要る** —— 一度も来ていないデバイスを無限に張り直しても直らない */
   private everDeliveredFrame = false;
   /** 1フレームも受け取れないまま wedge で kill した回数 */
   private noFrameWedges = 0;

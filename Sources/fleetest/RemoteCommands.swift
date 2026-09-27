@@ -110,7 +110,7 @@ struct RemoteCommand: AsyncParsableCommand {
                         + " (here: \(localRuntime ?? "?"), there: \(r.status?.simulatorRuntime ?? "?"))."
                         + " Simulators may fail to start there; on that machine run: xcodebuild -downloadPlatform iOS")
                 }
-                // **一致していても言う**(上の行とは別の事実 = その SDK の台はどこでも作れない)
+                // **一致していても言う**(上の行とは別の事実 = その SDK のデバイスはどこでも作れない)
                 for r in reports {
                     guard let runtime = r.status?.simulatorRuntime,
                           SimulatorRuntimeFingerprint.hasNoMatchingRuntime(runtime) else { continue }
@@ -526,7 +526,7 @@ struct RemoteCommand: AsyncParsableCommand {
             // **走っている run を殺さない**(docs/remote-runner.md §18.1 #6)。共有フリートでは
             // 掃除の相手が他人の実行中の環境でありうるので、デバイスに触る前に占有を見る。
             // **dry-run でも読む**(読むだけ・解放や変更はしない) —— 読まずに素通しすると、
-            // 本番なら refuse する台でも dry-run だけ「掃除する」と予告してしまう
+            // 本番なら refuse するデバイスでも dry-run だけ「掃除する」と予告してしまう
             // (実測: ランナーが run 中でも dry-run は rc=0 で予告していた)
             let decision = RemoteDestructiveGuard.decide(
                 probe: probeLock(target: target, layout: layout), ignoreLock: ignoreLock)
@@ -890,9 +890,9 @@ enum RemoteHostResolver {
     }
 }
 
-// MARK: - --runner ⊕ 実行プロファイルの台の machine(共有。run/api run が使う)
+// MARK: - --runner ⊕ 実行プロファイルのデバイスの machine(共有。run/api run が使う)
 
-/// 明示の宛先(`--runner`)と、`--profile` の enabled の台が**全部同じリモートに居る**ときの
+/// 明示の宛先(`--runner`)と、`--profile` の enabled のデバイスが**全部同じリモートに居る**ときの
 /// その機械(自動)を統合した実効ディスパッチ先。`rawTarget` の由来で登録簿引きの規則が変わる
 /// (下記 resolveRemoteTarget)
 struct EffectiveDispatchTarget {
@@ -911,7 +911,7 @@ struct EffectiveDispatchTarget {
 /// 実効ディスパッチ先を決める(明示の判定は FTCore.MachineDispatch の純粋関数に委譲。ここは I/O だけ)。
 ///
 /// - `--runner` が明示されていればそれ(`local` は nil = ここで走らせる)
-/// - 未指定で `requireProfileMachine` なら、実行プロファイルの enabled の台が**全部同じリモート**に
+/// - 未指定で `requireProfileMachine` なら、実行プロファイルの enabled のデバイスが**全部同じリモート**に
 ///   居るときだけその機械へ自動ディスパッチする(複数の機械にまたがる場合はここへ来る前に
 ///   DeviceMachineRunner が引き取っている)。読めなければ nil(ローカル実行の経路が同じ理由で落ちる)
 /// - `requireProfileMachine: false` かつ `--runner` 未指定なら常に nil(dry-run 等)
@@ -930,8 +930,8 @@ func resolveEffectiveDispatchTarget(
     return EffectiveDispatchTarget(rawTarget: machine, requiresRegisteredName: true)
 }
 
-/// 実行プロファイルの enabled の台が全部同じ機械に居ればその機械(手元なら nil)。
-/// 台が無い・複数の機械にまたがるなら nil
+/// 実行プロファイルの enabled のデバイスが全部同じ機械に居ればその機械(手元なら nil)。
+/// デバイスが無い・複数の機械にまたがるなら nil
 private func profileSoleMachine(profile: String, project: TestProject) -> String? {
     let devices = ProfileResolver.runDeviceMachines(project: project, runProfileName: profile)
     let machines = Set(devices.map { DeviceMachineGrouping.display($0.machine) })
@@ -964,8 +964,8 @@ func resolveRemoteTarget(_ dispatch: EffectiveDispatchTarget, remoteDirOverride:
 /// マシン混在プロファイルの単一マシンディスパッチに付ける --device/--device-machine を決める
 /// (判定は FTRemote.RemoteDispatchDeviceScope / 明示 --device 付きは RemoteDispatchExplicitDeviceScope)。
 /// 呼び出し側が既に --device-machine を持つときは呼ばないこと。`requestedDevices` は利用者の
-/// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのマシンの台に限定して渡す
-/// (同名の台が他の機械にもあると、名前だけでは全機械ぶんを拾う)。
+/// 明示 `--device`(空 = 無し)—— 混在プロファイルではそのマシンのデバイスに限定して渡す
+/// (同名のデバイスが他の機械にもあると、名前だけでは全機械ぶんを拾う)。
 /// プロファイルが読めないときは丸ごと(名前はそのまま・machine は付けない)
 func machineScopedDeviceFilter(
     project: TestProject, profile: String, targetMachine: String, requestedDevices: [String] = []

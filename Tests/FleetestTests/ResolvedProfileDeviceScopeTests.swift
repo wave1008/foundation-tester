@@ -4,7 +4,7 @@
 // `--device <名前…>` だけを渡していた。**一意なのは name 単体ではなく (host, name)** で、
 // フリートの各機は同じ命名規則でシミュレータを作る = 同名は例外ではなく通常なので、
 // 手元のサブ実行が3機ぶんの "iPhone 17 Pro(iOS 27.0)-01" を全部拾い、
-// **4台のはずが8台**になった(手元に同名の台があれば、それを別の機械の台として操作する)。
+// **4台のはずが8台**になった(手元に同名のデバイスがあれば、それを別の機械のデバイスとして操作する)。
 //
 // さらにリモートへの中継(`RemoteRunArgs.build`)は `--device` を**1つも渡していなかった**ので、
 // 向こうは12台すべてを自分のものとして解決しようとしていた。
@@ -22,7 +22,7 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
         return ResolvedDevice(platform: platform, spec: spec)
     }
 
-    /// 同名の台が3機にある + 名前の違う Android、という実物と同じ形
+    /// 同名のデバイスが3機にある + 名前の違う Android、という実物と同じ形
     private func profile() -> ResolvedProfile {
         make(devices: [
             device("iPhone-01", host: nil), device("iPhone-02", host: nil),

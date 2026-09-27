@@ -252,7 +252,7 @@ function applyDevices(devices, selectedId) {
   for (const d of devices) {
     const opt = document.createElement('option');
     opt.value = d.id;
-    // 他の機械の台は機械名も出す(同じ名前の台がこの Mac にも居ることがある)
+    // 他の機械のデバイスは機械名も出す(同じ名前のデバイスがこの Mac にも居ることがある)
     opt.textContent = d.name + '(' + d.platform + (d.machine ? ' / ' + d.machine : '') + ') - '
       + (STATE_LABEL[d.state] || d.state);
     deviceSelect.appendChild(opt);
@@ -464,7 +464,7 @@ function deferBoxesUntilSettled() {
   cancelBoxesSettleCap();
   armBoxesSettleCap(BOXES_SETTLE_CAP_MS);
 }
-// **busy 中に鳴ったら諦めずに待ち直す**(遅い台 = リモート・実機は1操作に数秒かかり、静定も打ち切りも
+// **busy 中に鳴ったら諦めずに待ち直す**(遅いデバイス = リモート・実機は1操作に数秒かかり、静定も打ち切りも
 // 必ず busy 中に鳴る)。諦めると、操作の結果が失敗(木が来ない)だった回は枠が永久に出ず、
 // トグルを入れ直しても撮り直しが飛ばなかった(実地で確認: M1Ultra 経由の iPhone wave)
 function armBoxesSettleCap(delayMs) {
@@ -1202,9 +1202,9 @@ export function applyLiveMessage(message) {
       applySnapshot(message);
       break;
     case 'clearSnapshot':
-      // host がデバイスを切り替えた。前の台のデコーダも捨てる —— 残すと、デコード待ちだった
-      // 前の台のフレームが描けた時点で onFrameRendered が canvas を前面へ戻し、新しい台の絵が
-      // 来るまで(来なければずっと)前の台の画面が出たままになる
+      // host がデバイスを切り替えた。前のデバイスのデコーダも捨てる —— 残すと、デコード待ちだった
+      // 前のデバイスのフレームが描けた時点で onFrameRendered が canvas を前面へ戻し、新しいデバイスの絵が
+      // 来るまで(来なければずっと)前のデバイスの画面が出たままになる
       clearSnapshot();
       disposeLiveH264();
       liveH264ErrorSent = false;
@@ -1298,8 +1298,8 @@ export function setLiveVisible(visible) {
 
 /** デバイスタイル右クリック「ライブ操作」(受信元: deviceTiles.js → liveTabHost.ts → ここ)。 */
 export function openLiveDevice(id) {
-  // 別の台へ移るなら前の台の絵・木をその場で捨てる(セレクトの change と同じ)。捨てずに
-  // disposeLiveH264 を呼ぶと、残った src(前の台の静止画)を前面へ戻してしまう
+  // 別のデバイスへ移るなら前のデバイスの絵・木をその場で捨てる(セレクトの change と同じ)。捨てずに
+  // disposeLiveH264 を呼ぶと、残った src(前のデバイスの静止画)を前面へ戻してしまう
   if (deviceSelect.value !== id) {
     clearSnapshot();
   }

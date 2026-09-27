@@ -544,7 +544,7 @@ public final class AndroidDriver: AppDriver {
     /// **BACK は出ていないときに撃つと画面が戻ってしまう**ため、必ず dumpsys で可視を確かめてから
     /// 撃つ(hideKeyboard は冪等が契約。出ていなければ no-op)
     public func hideKeyboard() async throws {
-        // **読めないを「出ていない」に畳まない**(台が居ない・adb が詰まった回に成功を返していた)
+        // **読めないを「出ていない」に畳まない**(デバイスが居ない・adb が詰まった回に成功を返していた)
         let dumpsys = try adb(["shell", "dumpsys", "window", "windows"])
         guard dumpsys.status == 0 else {
             throw DriverError.badResponse(status: Int(dumpsys.status),
@@ -1053,7 +1053,7 @@ public final class AndroidDriver: AppDriver {
     public func terminate() async throws {
         restoreStateIfNeeded()
         if let package = currentPackage {
-            // 動いていないアプリの force-stop も 0 を返すので、非 0 は adb 自体の失敗(台が居ない等)
+            // 動いていないアプリの force-stop も 0 を返すので、非 0 は adb 自体の失敗(デバイスが居ない等)
             let result = try adb(["shell", "am", "force-stop", package])
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),

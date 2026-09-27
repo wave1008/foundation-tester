@@ -139,7 +139,7 @@ export interface MonitorPanelDeps {
    * (workspaceState の "monitor.pollingMode" を共有する liveTabHost.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
   /** 「デバイスモニター」タブの「ライブ更新」チェックボックス(workspaceState の
-   * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中の台の配信を畳む。 */
+   * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中のデバイスの配信を畳む。 */
   isShowStreamDuringRun(): boolean;
   /** MonitorProfilesController.postProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyProjectDeviceCatalogChanged(): void;
@@ -339,7 +339,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.fleetVisible = workspaceState.get<boolean>("monitor.fleetVisible", true);
     this.logPaneHeight = workspaceState.get<number>("monitor.logPaneHeight");
     this.runBoardHeight = workspaceState.get<number>("monitor.runBoardHeight");
-    // **知らない値は "all" へ倒す**(古い形の保存値もここで落ちる) —— 台が黙って消えるより
+    // **知らない値は "all" へ倒す**(古い形の保存値もここで落ちる) —— デバイスが黙って消えるより
     // 出しすぎるほうが安全
     const savedFilter = workspaceState.get<unknown>("monitor.platformFilter");
     this.platformFilter = isPlatformFilter(savedFilter) ? savedFilter : "all";
@@ -1006,7 +1006,7 @@ export class MonitorPanelController implements vscode.Disposable {
         this.deviceOps.cancelDeviceUp(message.name, message.machine);
         break;
       case "deviceOp":
-        // 「マシン有効」off の機械の台は起動しない(webview のメニューも無効化している。これは古い
+        // 「マシン有効」off の機械のデバイスは起動しない(webview のメニューも無効化している。これは古い
         // メニュー状態から届いた要求の門)。登録簿を読めていなければ通す(不明を無効と読まない)
         if (message.op === "up" && this.remoteHostsLoaded
             && disabledMachineSet(this.lastKnownRemoteHosts, this.lastKnownLocalMachine)
@@ -1305,8 +1305,8 @@ export class MonitorPanelController implements vscode.Disposable {
         return;
       }
     }
-    // 自分のライブ操作の台の印は自分で畳んでから撃つ(印が1本でもあると全掃討は丸ごと断られ、
-    // プロファイル指定でもその台だけ「MCP session が駆動中」で残る)。掃討が終わったら立て直す
+    // 自分のライブ操作のデバイスの印は自分で畳んでから撃つ(印が1本でもあると全掃討は丸ごと断られ、
+    // プロファイル指定でもそのデバイスだけ「MCP session が駆動中」で残る)。掃討が終わったら立て直す
     await this.live.suspendServeForSweep();
     this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "down" });
     await this.deviceOps.whenLifecycleQueueIdle();

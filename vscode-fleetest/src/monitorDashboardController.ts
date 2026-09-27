@@ -210,7 +210,7 @@ export class MonitorDashboardController {
         });
         return;
       }
-      // デバイスの健全性が結合鍵(モニターの台 → 実行プロファイルの name)を揃えるための和集合。
+      // デバイスの健全性が結合鍵(モニターのデバイス → 実行プロファイルの name)を揃えるための和集合。
       // 'data' より先に送る(結合し直しは deviceHealth.js 側で持ち越すが、揃った状態で最初の
       // 描画をさせたい)。
       this.deps.post({

@@ -1,6 +1,6 @@
 // 名前で指したシミュレータの解決(SimulatorCatalog.resolve)。規則(起動中 → 新しい OS)で決まらない
-// 同名の台が複数あるときは、黙って1台目を選ばず UDID を並べて断る(同名が2台ある機で
-// `bridge up --device <名前>` が、プロファイルが UDID で指していない方の台を起こした)。
+// 同名のデバイスが複数あるときは、黙って1台目を選ばず UDID を並べて断る(同名が2台ある機で
+// `bridge up --device <名前>` が、プロファイルが UDID で指していない方のデバイスを起こした)。
 
 import XCTest
 import FTCore
@@ -54,7 +54,7 @@ final class SimulatorCatalogResolveTests: XCTestCase {
 
     // MARK: - modelNames(simctlJSON:)
 
-    /// UDID → Xcode の Model(device type 名)。型の分からない台・型表に無い台は載せない
+    /// UDID → Xcode の Model(device type 名)。型の分からないデバイス・型表に無いデバイスは載せない
     func testModelNamesMapUDIDsToDeviceTypeNames() {
         let json: [String: Any] = [
             "devicetypes": [

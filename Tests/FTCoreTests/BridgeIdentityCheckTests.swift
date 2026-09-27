@@ -1,4 +1,4 @@
-// ポート奪取(同じポートを別の台のブリッジが答える)の検知。シナリオ実行プロセスの事前確認と
+// ポート奪取(同じポートを別のデバイスのブリッジが答える)の検知。シナリオ実行プロセスの事前確認と
 // ホスト側 bridgeUnreachable の再プローブ(BridgeProbeOutcome.hijacked)の両方が同じ判定を呼ぶ。
 // BridgeIdentityCheck.verdict / expected(for:) は純粋関数なのでデバイス無しで固定できる。
 
@@ -135,7 +135,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
             .differentDevice, "fallback ポートが in-app を名乗っているのに一致と判定した")
     }
 
-    /// 同じ台(udid 一致)の in-app ブリッジが予備ポートに居る形は **sameDeviceEngineChanged**
+    /// 同じデバイス(udid 一致)の in-app ブリッジが予備ポートに居る形は **sameDeviceEngineChanged**
     /// (別デバイスではない —— MCP はこれを ref 依存呼び出しだけ拒否・非依存は黙って作り直す)
     func testHybridFallbackDriftDetectsSameDeviceInAppOnTheFallbackPortAsEngineChanged() {
         XCTAssertEqual(BridgeIdentityCheck.hybridFallbackDrift(

@@ -74,8 +74,8 @@ final class MCPServer {
     /// 保持する世代数の上限。**5**: 「1つ前の木」だけを見る設計より十分に厚いが、
     /// 無制限にするとセッションが長引くほど探索コストと保持量が線形に増える
     static let maxRefGenerations = 5
-    /// 台の印(`MCPDeviceLease`)と run の lease を読む場所(run と同じ `RepoRoot/.fleetest`)。
-    /// nil = 印を置かない。**差し替えドライバ(テスト)では既定 nil** —— 既定のままだと偽の台の印を本物の
+    /// デバイスの印(`MCPDeviceLease`)と run の lease を読む場所(run と同じ `RepoRoot/.fleetest`)。
+    /// nil = 印を置かない。**差し替えドライバ(テスト)では既定 nil** —— 既定のままだと偽のデバイスの印を本物の
     /// `.fleetest/` へ書き散らす(実際に `mcp-emulator-5554.lease` が残った)。テストは一時フォルダを渡す
     var deviceLeaseStateDir: URL?
     /// **セッション(プロセス)を通じて1度だけ**満額で説明した注記の鍵。以後は短縮形にする
@@ -151,7 +151,7 @@ final class MCPServer {
             guard let message = Self.parseMessage(line) else { continue }
             await handle(message)
         }
-        // stdin EOF = セッションの終わり。台の印を残すと、使っていない台を run が避け続ける
+        // stdin EOF = セッションの終わり。デバイスの印を残すと、使っていないデバイスを run が避け続ける
         if let deviceLeaseStateDir {
             MCPDeviceLease.removeAll(stateDir: deviceLeaseStateDir, pid: ProcessInfo.processInfo.processIdentifier)
         }

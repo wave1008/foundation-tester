@@ -25,7 +25,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     private static let maxRestarts = 5
     /// **録画の開始が一過性に空振りするときの再試行**。直前セッションの CoreSimulator io 解放が
     /// 間に合わない形(spawnNextPart の宣言)と、run 開始直後の負荷で撮れない形(実測:
-    /// M1Ultra の6台が同時に空になり、数分後には同じ台で 1 秒 66KB が撮れた。並列6本でも
+    /// M1Ultra の6台が同時に空になり、数分後には同じデバイスで 1 秒 66KB が撮れた。並列6本でも
     /// 空いていれば全部成功)は同じ一過性なので、**予算はここ1箇所**にして smokeCheck と共有する
     private static let startAttempts = 3
     private static let startRetryBackoffSeconds: Double = 2
@@ -59,7 +59,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             switch failure {
             case .hostRecordingBusy:
                 // 録画ありの run は供給の段階で再起動して解いている(HostRecordingProbe)。ここへ来るのは
-                // 再起動しても解けなかった台か、その検査を通らない経路
+                // 再起動しても解けなかったデバイスか、その検査を通らない経路
                 warn("this simulator holds a host recording session (simctl: \"Host recording is already"
                      + " in progress\"). It survives the client process, so shut the device down and boot"
                      + " it again (fleetest api stop-device --udid \(udid) then start-device --name <name>,"
@@ -156,7 +156,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         try? await Task.sleep(nanoseconds: UInt64(Self.smokeSeconds * 1_000_000_000))
         // **停止は SIGINT**(SIGTERM/SIGKILL だと moov が書かれず、健全な端末でも空に見える)。
         // **猶予が尽きても SIGKILL しない**(実測): SIGINT 以外で殺した recordVideo は
-        // **端末側のセッションを握ったまま**になり、その台は再起動するまで録画できなくなる ——
+        // **端末側のセッションを握ったまま**になり、そのデバイスは再起動するまで録画できなくなる ——
         // 以後の録画は "Host recording is already in progress" で全部落ち、ツール自身が
         // 「セッションが残っている」と警告する自作自演になっていた。止まらない個体は放置する
         // (次の recordVideo は busy で落ちるが、セッションを増やさない)
@@ -227,7 +227,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         }
         guard let observedStart = observedStartOrNil else {
             // **SIGKILL しない**(smokeCheck と同じ理由): SIGINT 以外で殺すと端末側のセッションが
-            // 残り、その台は再起動まで録画できなくなる
+            // 残り、そのデバイスは再起動まで録画できなくなる
             if process.isRunning { process.interrupt() }
             _ = await raceWithDeadline(seconds: Self.smokeStopGraceSeconds, onTimeout: ()) {
                 for await _ in exitStream {}
@@ -304,7 +304,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     /// 同じ udid への stale な recordVideo(client プロセス)を起動前に best-effort で止める。
     /// **SIGINT で止める**(既定の SIGTERM だと moov が書かれないうえ、端末側のセッションが
-    /// 握られたまま残り、その台が再起動まで録画できなくなる。実測)。
+    /// 握られたまま残り、そのデバイスが再起動まで録画できなくなる。実測)。
     /// **端末側に残るセッションはこれでは解けない** —— プロセスが1つも無いのに録画が始まらない形が
     /// あり、そちらは smokeCheck が busy として報告する
     private func killStaleRecording() {

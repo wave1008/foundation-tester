@@ -97,7 +97,7 @@ test("ライフサイクルキューが busy(一括起動/停止)の間は数え
     h.watchdog.observe([device("Sim1", "booted")]);
   }
   // 供給中の booted は「まだ起動しきっていない」だけ(実害 2026-09-09: 10秒後に xcuitest bridge
-  // ready になる台へ「ブリッジ無応答」を出していた)。inRun と同じく streak ごと 0 に戻す。
+  // ready になるデバイスへ「ブリッジ無応答」を出していた)。inRun と同じく streak ごと 0 に戻す。
   assert.deepEqual(h.posts, [], "busy 中は unresponsive を宣言しない");
   assert.deepEqual(h.logs, [], "誤検知の警告を出さない");
   assert.deepEqual(h.jobs, [], "busy 中は start-device を積まない");
@@ -273,14 +273,14 @@ test("複数デバイスは独立して状態管理される", () => {
   assert.deepEqual(h.jobs, [{ kind: "device", name: "Sim1", op: "up" }]);
 });
 
-// 別の機械の台は見ない。**修復手段が手元にしか効かない**のに加え、entries が name 単位なので
-// 同名の台が2機にあると「向こうの connected が手元のハングを隠す」「向こうの booted が
-// 手元の健全な台を再起動する」の両方が起きる(2026-08-17 のレビュー指摘)。
+// 別の機械のデバイスは見ない。**修復手段が手元にしか効かない**のに加え、entries が name 単位なので
+// 同名のデバイスが2機にあると「向こうの connected が手元のハングを隠す」「向こうの booted が
+// 手元の健全なデバイスを再起動する」の両方が起きる(2026-08-17 のレビュー指摘)。
 // 旧題は「リモートのデバイスは観測しない」だった。**観測するようになった今もアサーション自体は
 // 正しい**(向こうの状態が手元の判定を汚さない)ので、題だけを実際に確かめている性質へ直す。
 test("向こうの connected が手元のハングを隠さない(記録の鍵は machine 込み)", () => {
   const h = createHarness();
-  // 手元の台が booted のまま張り付く = 本来なら修復が積まれる状況
+  // 手元のデバイスが booted のまま張り付く = 本来なら修復が積まれる状況
   for (let i = 0; i < 6; i++) {
     h.watchdog.observe([device("Sim1", "connected")]);
     break;
@@ -294,7 +294,7 @@ test("向こうの connected が手元のハングを隠さない(記録の鍵�
   assert.ok(h.jobs.length > 0, "向こうの connected が手元のハングを隠してはいけない");
 });
 
-// **リモートの台も見る**(2026-09-25。旧: 除外)。修復は lifecycle ジョブが machine を運び、
+// **リモートのデバイスも見る**(2026-09-25。旧: 除外)。修復は lifecycle ジョブが machine を運び、
 // リモートは `remote exec <machine> -- api start-device … --device-machine local` で回る。
 test("リモートのデバイスも修復する。ジョブと post には machine が載る", () => {
   const h = createHarness();
@@ -310,8 +310,8 @@ test("リモートのデバイスも修復する。ジョブと post には mach
     "タイルを引くのは (machine, name) なので post にも要る");
 });
 
-// **同名の台が別の機械に居るのはフリートでは通常**。記録の鍵が name だった頃は
-// 「向こうの connected が手元のハングを隠す / 向こうの booted が手元の健全な台を再起動する」が
+// **同名のデバイスが別の機械に居るのはフリートでは通常**。記録の鍵が name だった頃は
+// 「向こうの connected が手元のハングを隠す / 向こうの booted が手元の健全なデバイスを再起動する」が
 // 起きた。鍵は device.id(machine 込みで一意)。
 test("同名の台が2機に居ても記録が混ざらない", () => {
   const h = createHarness();
@@ -328,7 +328,7 @@ test("同名の台が2機に居ても記録が混ざらない", () => {
   assert.equal(repairing[0].machine, undefined, "手元の post に machine は載せない");
 });
 
-// **run の最中の台は修復しない**。inRun は RunLease 由来なので、CLI や別の機械から起こした
+// **run の最中のデバイスは修復しない**。inRun は RunLease 由来なので、CLI や別の機械から起こした
 // run も含む(isAnyRunActive は拡張自身のレーンしか見ない)。run が自分でブリッジを供給し直す
 // 間の booted に start-device を重ねると、run のブリッジを横から入れ替えることになる
 // (monitorHealthWatchdog の inRun 保留と同じ規律)。

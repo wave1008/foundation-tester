@@ -715,7 +715,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertNil(meta.guardStaleFrame)
     }
 
-    // MARK: - RunRecorder: 台そのものが遅いことの観測(SlowWorkerDetector)
+    // MARK: - RunRecorder: デバイスそのものが遅いことの観測(SlowWorkerDetector)
 
     private func timeline(snapshotSamples: [Int]) -> [TimelineStepRecord] {
         snapshotSamples.enumerated().map { index, ms in
@@ -723,7 +723,7 @@ final class RunRecordTests: XCTestCase {
         }
     }
 
-    /// finish() は引数を足さず、自分が書いた scenarios/*.json を読み直して遅い台を検出する
+    /// finish() は引数を足さず、自分が書いた scenarios/*.json を読み直して遅いデバイスを検出する
     /// (`fleetest run`/`api run` の渡し忘れを作らないため)。run.json と戻り値の両方に載る
     func testFinishRecordsSlowWorkersWhenOneLaneIsSlow() throws {
         let (recorder, cleanup) = try runRecorder()
@@ -750,7 +750,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertTrue(slowWorkers[0].contains("4300ms"))
     }
 
-    /// 遅い台が無ければ欄そのものを省略する(degradedWorkers と同じ「事実が無ければ省く」規律。
+    /// 遅いデバイスが無ければ欄そのものを省略する(degradedWorkers と同じ「事実が無ければ省く」規律。
     /// 空配列を書かない)
     func testFinishOmitsSlowWorkersWhenNoneAreSlow() throws {
         let (recorder, cleanup) = try runRecorder()

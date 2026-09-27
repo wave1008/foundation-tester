@@ -4,7 +4,7 @@
 // 実地 2026-09-24: iPhone wave(実機)は Wi-Fi 越しに M1Ultra からも見えるので、モニターに
 // 「この Mac の iPhone wave」(booted = ブリッジ未起動)と「M1Ultra の iPhone wave」の2枚が並ぶ。
 // どちらのタイルからでも開けるようにする: connected か **iOS の booted**(開けばブリッジを自動起動する)。
-// **他の機械の台は serve をその機械で起こす**ので、開くのに要る属性(machine・udid 等)を
+// **他の機械のデバイスは serve をその機械で起こす**ので、開くのに要る属性(machine・udid 等)を
 // openLiveForDevice の remote で運ぶ(この Mac の list-devices には居ない)。
 
 import assert from "node:assert/strict";

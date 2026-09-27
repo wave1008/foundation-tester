@@ -157,7 +157,7 @@ test("remoteConfig が devices より後に届いても、既存のバッジが�
   assert.notEqual(after.style.backgroundColor, "", "後着の config で塗られる");
 });
 
-// 手元の台に切り替わったら(machine が無くなったら)dataset/色の両方を外す
+// 手元のデバイスに切り替わったら(machine が無くなったら)dataset/色の両方を外す
 test("手元の台に切り替わるとバッジの色・data-machine が外れる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

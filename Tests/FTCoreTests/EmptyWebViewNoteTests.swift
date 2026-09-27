@@ -102,7 +102,7 @@ final class EmptyWebViewNoteTests: XCTestCase {
     //
     // `delegated-empty` は「委譲したが中身が出なかった」。こちらは **委譲する前に諦めた** ——
     // in-app が WKWebView の DOM を1つも読めず、ネイティブだけの木を返した形。
-    // `iosInappEngine` の台には委譲先の XCUITest が居ないので、黙ると
+    // `iosInappEngine` のデバイスには委譲先の XCUITest が居ないので、黙ると
     // **実在する web 要素に対する exist が満了まで落ち続け、理由が1バイトも残らない**
     // (E2E-CMP の WebView シナリオが並列負荷で約 39% 落ちていた。2026-08-30)
 

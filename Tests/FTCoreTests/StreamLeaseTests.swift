@@ -1,6 +1,6 @@
-// 同じ台の二重配信を防ぐ控え(docs/remote-runner.md §18.2 M2)。
+// 同じデバイスの二重配信を防ぐ控え(docs/remote-runner.md §18.2 M2)。
 // **鍵の綴り**は `api device-stream`(書く側)と `api monitor`(読む側)の契約なので、
-// 別の台が同じ鍵にならないことをここで固定する ―― 衝突すると互いの配信を止め合う。
+// 別のデバイスが同じ鍵にならないことをここで固定する ―― 衝突すると互いの配信を止め合う。
 
 import XCTest
 @testable import FTCore
@@ -9,7 +9,7 @@ import FTRemote
 final class StreamLeaseTests: XCTestCase {
 
     /// 名前は空白・括弧・"/" を含む(実在例: "Pixel 10(Android 14(API 34) / arm64-v8a)-01")。
-    /// ファイル名に使える形へ畳んでも**別の台は別の鍵**になること
+    /// ファイル名に使える形へ畳んでも**別のデバイスは別の鍵**になること
     func testKeysAreFilesystemSafeAndDistinct() {
         let a = StreamLease.key(platform: "android", name: "Pixel 10(API 34 / arm64-v8a)-01")
         let b = StreamLease.key(platform: "android", name: "Pixel 10(API 34 / arm64-v8a)-02")

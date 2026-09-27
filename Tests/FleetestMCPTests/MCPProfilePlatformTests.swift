@@ -1,5 +1,5 @@
 // `profile:` だけを渡した呼び出しの platform 解決。driver() は resolveProfileTarget で Android の
-// 台に解決するのに、platformName が既定の iOS を返していた —— ft_list_apps が simctl へ落ち、
+// デバイスに解決するのに、platformName が既定の iOS を返していた —— ft_list_apps が simctl へ落ち、
 // ft_rotate / ft_logs / verifiedRef が iOS 側の記録・言い回しになる。
 // プロジェクトは FT_PACKAGE_ROOT(ScenarioHost.packageRoot が cwd 探索より優先)で一時ディレクトリへ
 // 差し替える。env はプロセス全体の状態なので必ず戻す。
@@ -25,7 +25,7 @@ final class MCPProfilePlatformTests: XCTestCase {
         let sim = #"{"platform":"ios","machine":"local","name":"Sim","osVersion": "iOS 27.0"}"#
         try #"{"app":"app","devices":[\#(emu)]}"#
             .write(to: profiles.appendingPathComponent("runs/android-run.json"), atomically: true, encoding: .utf8)
-        // 無効の台は先頭でも数えない(実際に走る最初の台の platform)
+        // 無効のデバイスは先頭でも数えない(実際に走る最初のデバイスの platform)
         try #"{"app":"app","devices":[{"platform":"android","machine":"local","name":"Off","enabled":false},\#(sim)]}"#
             .write(to: profiles.appendingPathComponent("runs/ios-run.json"), atomically: true, encoding: .utf8)
         try #"{"app":"app","devices":[\#(emu),\#(sim)]}"#
@@ -40,7 +40,7 @@ final class MCPProfilePlatformTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    /// 本丸: Android の台だけを持つ実行プロファイルを profile: で名指しすると android
+    /// 本丸: Android のデバイスだけを持つ実行プロファイルを profile: で名指しすると android
     func testProfileWithAndroidDevicesResolvesToAndroid() {
         XCTAssertEqual(MCPServer.platformName(["profile": "android-run"]), "android")
         XCTAssertEqual(MCPServer.platformName(["profile": "android-run", "project": "p"]), "android")
@@ -50,7 +50,7 @@ final class MCPProfilePlatformTests: XCTestCase {
         XCTAssertEqual(MCPServer.platformName(["profile": "ios-run"]), "ios")
     }
 
-    /// 混在プロファイルは **最初の台**(resolveProfileTarget の `devices.first` と同じ規則)
+    /// 混在プロファイルは **最初のデバイス**(resolveProfileTarget の `devices.first` と同じ規則)
     func testMixedProfileFollowsTheFirstDevice() {
         XCTAssertEqual(MCPServer.platformName(["profile": "mixed-run"]), "android")
     }

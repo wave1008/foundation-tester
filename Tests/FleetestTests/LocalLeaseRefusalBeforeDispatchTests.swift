@@ -1,8 +1,8 @@
-// 機械分担の run は、手元の台の二重使用を**どの機械へも配る前に**断る
+// 機械分担の run は、手元のデバイスの二重使用を**どの機械へも配る前に**断る
 // (ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。実害(2026-09-17 負荷テスト M12):
 // 手元分が「already in use」で断られた後にリモート3機のロックを取って残りを走らせ、
 // 同時刻に始まった本来の run のリモート分を丸ごと弾いた。
-// 台の鍵を simctl/adb を引かずに決めるため、手元の台は物理 iOS(udid の記載をそのまま使う)で組む。
+// デバイスの鍵を simctl/adb を引かずに決めるため、手元のデバイスは物理 iOS(udid の記載をそのまま使う)で組む。
 
 import XCTest
 @testable import FTCore
@@ -49,7 +49,7 @@ final class LocalLeaseRefusalBeforeDispatchTests: XCTestCase {
             broadcast: false, leaseStateDir: stateDir)
     }
 
-    /// 手元の台を別の生きた run が握っていれば、台と保持者を名指しして断る
+    /// 手元のデバイスを別の生きた run が握っていれば、デバイスと保持者を名指しして断る
     func testRefusesWhenALocalDeviceIsHeldByAnotherRun() {
         RunLease.write(stateDir: stateDir, key: "UA", pid: otherLivePID)
         XCTAssertThrowsError(try check(scenarios: 1)) { error in
@@ -65,7 +65,7 @@ final class LocalLeaseRefusalBeforeDispatchTests: XCTestCase {
         XCTAssertNoThrow(try check(scenarios: 1))
     }
 
-    /// 別の機械の台(R)の lease はこの機械の判定に数えない(その機械の子が自分で見る)
+    /// 別の機械のデバイス(R)の lease はこの機械の判定に数えない(その機械の子が自分で見る)
     func testIgnoresLeasesOfDevicesOnOtherMachines() {
         RunLease.write(stateDir: stateDir, key: "UR", pid: otherLivePID)
         XCTAssertNoThrow(try check(scenarios: 2))

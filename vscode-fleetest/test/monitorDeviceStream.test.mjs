@@ -221,7 +221,7 @@ test("Android 実機も devicepoll に振り分けられる(--serial 付き)", a
   }
 });
 
-// Android 実機のブリッジが未起動(bridgeRunning===false)と確定している台は devicepoll を
+// Android 実機のブリッジが未起動(bridgeRunning===false)と確定しているデバイスは devicepoll を
 // 起こさない(絵を捨てるだけのプロセスを走らせない。タイル側は deviceTiles.js の
 // bridgeNotRunning がフレームを畳む)。上のテストは bridgeRunning 省略(=不明)で devicepoll が
 // 起動することを確認済みなので、ここでは false のときだけを見る(往復の反対側)。
@@ -262,7 +262,7 @@ test("シミュレータは従来どおり simstream(実機振り分けの巻き
 
 // --- リモートのデバイス ---------------------------------------------------------------
 // 手元のヘルパーは udid/adb serial で当てるが、**それは向こうの機械の識別子**なので、
-// 同名の台が手元にあると**別の機械の画面が映る**((host, name) が一意なら同名は正常な構成)。
+// 同名のデバイスが手元にあると**別の機械の画面が映る**((host, name) が一意なら同名は正常な構成)。
 // 代わりにその機械で `api device-stream` を起こし、向こうがヘルパーへ exec で化ける
 // (契約: Sources/fleetest/ApiDeviceStreamCommand.swift)。stdout の形は同じなので
 // StreamPipeline も codec も失敗時のポーリング復帰もそのまま使える。
@@ -308,7 +308,7 @@ test("占有中の機械の配信は起こさず、張っていれば畳む", as
   }
 });
 
-// 同じ台を2人が眺めると端末側の捕捉コストが人数ぶん重なる(FTCore.StreamLease)。
+// 同じデバイスを2人が眺めると端末側の捕捉コストが人数ぶん重なる(FTCore.StreamLease)。
 // **起こしてから断られる形にしない** = 監視が配る事実を見て起こさないだけ(ssh を張らない)
 test("他の発行者が配信中の台は起こさない", async () => {
   const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest"]);
@@ -329,7 +329,7 @@ test("他の発行者が配信中の台は起こさない", async () => {
   }
 });
 
-// 手元でも同じ: 同じ Mac の別ウィンドウ(別の拡張ホスト)が同じ台のヘルパーを持っていれば、監視が
+// 手元でも同じ: 同じ Mac の別ウィンドウ(別の拡張ホスト)が同じデバイスのヘルパーを持っていれば、監視が
 // FTCore.LocalStreamHolder(`ps -E` のプロセスの実体)で streamedByOther を配り、こちらは起こさない
 test("同じ Mac の別ウィンドウが配信中の手元の台は起こさない", async () => {
   const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream"]);
@@ -361,7 +361,7 @@ test("リモートのデバイスは remote exec 経由の device-stream で配�
     assert.ok(argv, "fleetest(remote exec)が起動されること");
     assert.match(argv, /remote exec M1Max -- api device-stream/, "その機械の上で解決させる");
     // **エイリアスではなく "local"** —— 転送したプロファイルは畳んであり(RunnerProfileView)、
-    // 向こうでは自分の台が machine:"local"。M1Max で絞ると1台も残らず配信が張れない
+    // 向こうでは自分のデバイスが machine:"local"。M1Max で絞ると1台も残らず配信が張れない
     // (fan-out の子が `--device-machine local` を渡すのと同じ理由)
     assert.match(argv, /--device-machine local/, "畳んだプロファイルは local で引く");
     assert.doesNotMatch(argv, /--device-machine M1Max/, "エイリアスで絞ると向こうで1台も残らない");
@@ -447,8 +447,8 @@ test("リモートの実機は設定に関わらず MJPEG で張る — h264 を
   }
 });
 
-// --- run 中の台の配信退避(手元・リモート共通の inRun 信号) -----------------------------
-// occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は粒度が違う信号で、
+// --- run 中のデバイスの配信退避(手元・リモート共通の inRun 信号) -----------------------------
+// occupiedMachines(機械単位。dispatch.lock)と inRun(デバイス単位。RunLease)は粒度が違う信号で、
 // どちらか一方が立てば畳む。**手元も両方の信号を持つ**(2026-09-21 に手元の占有も配るように
 // なった)が、inRun が無いと「手元だけ run 中も配信が張りっぱなし」になる
 // (実測: 手元 8 台の stale-screenshot 注記がリモートの 5〜14 倍)。
@@ -468,7 +468,7 @@ test("inRun:true の手元の台は配信を起こさない", async () => {
 });
 
 // **手元の占有(dispatch.lock)でも畳む**(2026-09-21)。他人がこの Mac へディスパッチしている
-// ときは手元の RunLease が立たない台もあるので、機械単位の信号がここで効く。手元の台は
+// ときは手元の RunLease が立たないデバイスもあるので、機械単位の信号がここで効く。手元のデバイスは
 // machine 欄が無いので LOCAL_MACHINE_KEY(空文字)で引く
 test("手元の占有(空文字の機械)でも配信を起こさない", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
@@ -516,7 +516,7 @@ test("配信中の台が inRun:true になったら既存の配信を畳む", as
   }
 });
 
-// 陰性対照: inRun が false・欠落の台は従来どおり配信する(この変更が「常に畳む」側へ
+// 陰性対照: inRun が false・欠落のデバイスは従来どおり配信する(この変更が「常に畳む」側へ
 // 倒れていないことの確認)
 test("inRun:false・欠落の台は従来どおり配信する(陰性対照)", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
@@ -538,7 +538,7 @@ test("inRun:false・欠落の台は従来どおり配信する(陰性対照)", a
   }
 });
 
-// machine 単位の occupiedMachines と台単位の inRun は独立に効く(片方だけでも畳む)
+// machine 単位の occupiedMachines とデバイス単位の inRun は独立に効く(片方だけでも畳む)
 test("機械の占有(occupiedMachines)と台の inRun は独立に配信を畳む", async () => {
   const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream", "fleetest"]);
   const { deps } = makeDeps(binaryPath);
@@ -571,7 +571,7 @@ test("機械の占有(occupiedMachines)と台の inRun は独立に配信を畳�
   }
 });
 
-// 「画面更新」が ON(既定)なら run 中の台も配信する。OFF で畳む側は上の3本が
+// 「画面更新」が ON(既定)なら run 中のデバイスも配信する。OFF で畳む側は上の3本が
 // makeDeps の isShowStreamDuringRun: false で見ている
 test("「画面更新」が ON なら inRun:true の台も配信する", async () => {
   const { dir, binaryPath } = makeMockBinaryDir();
@@ -636,7 +636,7 @@ test("非表示の間は全台を抑止し、再表示で配信の集合(直後�
       "空集合を送ると全台の撮影が見えない画面へ流れる");
     assert.ok(!hidden.some((c) => c.devices.length === 0), "途中でも空集合を挟まない(1周期ぶん撮影が流れる)");
 
-    // 隠れている間に増えた台も抑止へ入る
+    // 隠れている間に増えたデバイスも抑止へ入る
     const third = { ...iosDevice, id: "sim-udid-3", udid: "CCCCCCCC-DDDD-EEEE-FFFF-000000000000" };
     controller.applyDevices([iosDevice, other, third]);
     assert.deepEqual([...controls.filter((c) => c.cmd === "suppressFrames").at(-1).devices].sort(),

@@ -2,7 +2,7 @@
 //
 // 1本のシナリオでもプロファイルの全台にブリッジを供給しアプリの版を確認していたため、
 // 実測で iOS の固定費が 14.8s(合計 21.8s のうちテスト実行は 7.0s)あった。絞ると 2.9s。
-// 守るのは両方向 —— **絞りすぎ**(全件実行で並列度が死ぬ)と**予備なし**(用意した台が
+// 守るのは両方向 —— **絞りすぎ**(全件実行で並列度が死ぬ)と**予備なし**(用意したデバイスが
 // blank/frozen で弾かれると run ごと落ちる)の両方を落とす。
 
 import XCTest
@@ -15,7 +15,7 @@ final class ResolvedProfileDeviceLimitTests: XCTestCase {
         XCTAssertEqual(ResolvedProfile.deviceKeepCount(available: 10, scenarios: 1), 2)
     }
 
-    /// **予備を必ず1台残す**(用意した台が弾かれても run が続く)
+    /// **予備を必ず1台残す**(用意したデバイスが弾かれても run が続く)
     func testKeepsOneSpareBeyondTheScenarioCount() {
         XCTAssertEqual(ResolvedProfile.deviceKeepCount(available: 10, scenarios: 3), 4)
     }

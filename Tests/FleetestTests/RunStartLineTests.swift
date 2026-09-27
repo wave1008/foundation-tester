@@ -18,7 +18,7 @@ final class RunStartLineTests: XCTestCase {
             "🚀 Starting with 3 Android worker(s)")
     }
 
-    /// 実測(9/16): iOS の台が1台も無いプロファイルで「iOS joins…」が固定で出ていた
+    /// 実測(9/16): iOS のデバイスが1台も無いプロファイルで「iOS joins…」が固定で出ていた
     func testIOSOnlyEagerNeverMentionsAndroid() {
         XCTAssertEqual(
             RunStartLine.text(androidWorkers: 0, eagerIOSWorkers: 4, hasLateIOS: false),

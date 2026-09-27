@@ -167,8 +167,8 @@ export class MonitorDeviceOps {
 
   /** プロファイルタブのデバイス行右クリック「Wipe Data」: 対象を1台ずつ device ジョブとして積む
    * (実処理は `fleetest api wipe-device`)。**確認は runWipeDevices で済ませてから呼ぶ**
-   * (この関数自体は聞かない)。既に同じ台のジョブがキューに居れば無視する
-   * (引き当ては (machine, name) —— 別の機械の同名の台は別の台)。
+   * (この関数自体は聞かない)。既に同じデバイスのジョブがキューに居れば無視する
+   * (引き当ては (machine, name) —— 別の機械の同名のデバイスは別のデバイス)。
    * 積めた台数を返す(0 = 全部が既に処理中)。 */
   enqueueWipe(devices: readonly WipeTargetDevice[]): number {
     let queued = 0;
@@ -215,7 +215,7 @@ export class MonitorDeviceOps {
       if (device.platform !== "android" || device.state !== "connected") {
         continue;
       }
-      // 名簿は手元の watchdog のもの(name 単位)。リモートの同名の台が GPU で connected でも
+      // 名簿は手元の watchdog のもの(name 単位)。リモートの同名のデバイスが GPU で connected でも
       // 手元の記憶を落とさない
       if (device.machine !== undefined) {
         continue;
@@ -251,8 +251,8 @@ export class MonitorDeviceOps {
    * 進まない」。後始末(チップ剥がし・busy 解除・次ジョブ実行)は既存の close→finishLifecycleQueueHead
    * 経路が担う。キュー待ち(未実行)の bulk up はキューから除去する。 */
   /** タイルの「起動をキャンセル」: 1台の起動を止めて未起動へ戻す。待機中ならキューから外すだけ。
-   * 実行中なら再試行を止めて start-device を SIGTERM し、終わったら同じ台の停止ジョブを積む ——
-   * エミュレータ/simctl の起動は detach 済みで、プロセスを止めても台は起動しきってしまうため。 */
+   * 実行中なら再試行を止めて start-device を SIGTERM し、終わったら同じデバイスの停止ジョブを積む ——
+   * エミュレータ/simctl の起動は detach 済みで、プロセスを止めてもデバイスは起動しきってしまうため。 */
   cancelDeviceUp(name: string, machine?: string): void {
     const queued = removeQueuedDeviceUpJob(this.lifecycleQueue, name, machine);
     if (queued.removed) {
@@ -296,13 +296,13 @@ export class MonitorDeviceOps {
     }
   }
 
-  /** CPU 描画フォールバックの記憶を解除し、手元の台は restart-devices(2台ずつ並行の down→up)
+  /** CPU 描画フォールバックの記憶を解除し、手元のデバイスは restart-devices(2台ずつ並行の down→up)
    * 1ジョブでまとめて再起動する。次回起動は --gpu が付かず host(GPU)。以後また画面凍結して
    * watchdog の自動フォールバックが走れば CPU に戻る(既知のトレードオフ。docs/design.md §12.4)。
-   * **別の機械の台はその機械で down→up する**(タイルの起動/停止と同じ device ジョブ =
+   * **別の機械のデバイスはその機械で down→up する**(タイルの起動/停止と同じ device ジョブ =
    * `remote exec <machine> -- api stop-device/start-device … --device-machine local`)。
    * `restart-devices` は手元専用(ApiDevicesRestart の foreign: .notHandled)で、名前だけで
-   * 積むとリモートのタイルの「GPU で再起動」が**手元の同名の台**を再起動する。
+   * 積むとリモートのタイルの「GPU で再起動」が**手元の同名のデバイス**を再起動する。
    * 直列キューに既に載っているデバイスは除外(連打防止の既存方針)。 */
   restartWithGpuBatch(targets: readonly GpuRestartTarget[]): void {
     const localNames: string[] = [];
@@ -376,7 +376,7 @@ export class MonitorDeviceOps {
   private postDeviceLifecycleStatus(name: string, machine?: string): void {
     const status = deviceLifecycleStatusFor(this.lifecycleQueue, name, machine);
     // **machine も載せる** —— 載せないと webview が同名の先頭のタイル(= 手元)を書き換え、
-    // 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」と出る(実害)
+    // 「M2Ultra のデバイスを停止」が手元のタイルに「シャットダウン中」と出る(実害)
     // op:"up" を返すのは device ジョブだけ(bulk / restartBatch は down の順番待ちで返る)= 取り消せる
     this.deps.post({
       type: "deviceOpBusy", name, machine, op: status?.op ?? null, status: status?.status ?? null,
@@ -439,7 +439,7 @@ export class MonitorDeviceOps {
     } else {
       // 「実行中」バッジへ更新(running へ昇格済みのため statusFor が running を返す)。
       this.postDeviceLifecycleStatus(job.name, job.machine);
-      // wipe も中で必ず止めるので、down と同じくストリームを先に畳む(残すと消えた台の
+      // wipe も中で必ず止めるので、down と同じくストリームを先に畳む(残すと消えたデバイスの
       // 最終フレームが stall 自己修復まで固まって見える)。
       if (job.op === "down" || job.op === "wipe") {
         this.deps.stopDeviceStreams(job.name, job.machine);
@@ -614,7 +614,7 @@ export class MonitorDeviceOps {
     // このジョブのクロージャ内だけで有効な「操作を掴んだがまだ完了していないデバイス」集合。
     // close 時に残っていればクラッシュ・kill とみなし、deviceOpBusy(null) で表示を剥がす
     // (正常終了なら deviceFinished で空になっているはずなので no-op)。
-    // **鍵は (machine, name)** —— 名前だけだと、リモートの台の deviceFinished が同名の手元の台を
+    // **鍵は (machine, name)** —— 名前だけだと、リモートのデバイスの deviceFinished が同名の手元のデバイスを
     // 集合から消し、手元がクラッシュしたときに表示が剥がれずに残る
     const started = new Map<string, { readonly name: string; readonly machine?: string }>();
     const startedKey = (name: string, machine?: string): string => `${machine ?? ""}\t${name}`;
@@ -898,7 +898,7 @@ export class MonitorDeviceOps {
     // **up の直指定は --udid だけ** —— 実機のブリッジ起動(start-device --udid)がそれ。
     // serial(Android)の up は端末の電源を入れる操作になり存在しないので down のみ。
     const direct = udid !== undefined || (op === "down" && serial !== undefined);
-    // **別の機械の台はその機械で操作する** —— 手元で `--name` を渡すと、手元の実行
+    // **別の機械のデバイスはその機械で操作する** —— 手元で `--name` を渡すと、手元の実行
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
     const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
@@ -928,14 +928,14 @@ export class MonitorDeviceOps {
         args.push("--profile", config.profile);
       }
       // **常に "local"**(リモートでも)。宛先はもう `remote exec <machine>` で選んでおり、
-      // 向こうへ送ったプロファイルは**自分の台を machine:"local" に畳んである**
+      // 向こうへ送ったプロファイルは**自分のデバイスを machine:"local" に畳んである**
       // (FTCore.RunnerProfileView。転送物にも引数にもエイリアスは出ない = CLAUDE.md の規律)。
       // エイリアスを渡すと向こうで一致するエントリが無く
       // `device not found: <名前> on <machine>` になる(fan-out の子・device-stream も local で走る)。
-      // 手元でも渡す = 同名のリモート機の台を引かないための絞り込み
+      // 手元でも渡す = 同名のリモート機のデバイスを引かないための絞り込み
       args.push("--device-machine", "local");
     }
-    // 名簿は手元の watchdog のもの(name 単位)。別の機械の同名の台に付けると、向こうを
+    // 名簿は手元の watchdog のもの(name 単位)。別の機械の同名のデバイスに付けると、向こうを
     // 理由なく CPU 描画で起こす(= リモートの「GPU で再起動」が GPU で上がらない)
     if (op === "up" && machine === undefined && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");
@@ -977,7 +977,7 @@ export class MonitorDeviceOps {
           }),
         );
         setTimeout(
-          // **machine を落とさない** —— 落とすと再試行だけ手元で走り、別の機械の台に対して
+          // **machine を落とさない** —— 落とすと再試行だけ手元で走り、別の機械のデバイスに対して
           // 「そんな UDID の実機は無い(認識しているのは…)」という**見当違いのエラー**が
           // 最後に出て、本当の失敗理由(向こうの署名エラー等)が隠れる(実害)
           () => this.runDeviceOpAttempt(job, attempt + 1, finishOnce),

@@ -1,5 +1,5 @@
 // シミュレータのソフトキーボードを縮めない設定(IOSSoftwareKeyboard)。Mac の再起動の後、
-// AutomaticMinimizationEnabled が true の台だけ keyboardIsShown が決定的に赤になった(2026-09-19)。
+// AutomaticMinimizationEnabled が true のデバイスだけ keyboardIsShown が決定的に赤になった(2026-09-19)。
 
 import XCTest
 @testable import FTBridgeClient

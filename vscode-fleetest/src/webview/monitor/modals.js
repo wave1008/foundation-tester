@@ -608,7 +608,7 @@ export function parseBatchCount(raw) {
 
 // 進行窓に出す行(index → { row, state })。started で組み直す
 let batchRows = [];
-// finished で受けた「作れた台」。OK を押した時点で pendingAutoChecks へ移す
+// finished で受けた「作れたデバイス」。OK を押した時点で pendingAutoChecks へ移す
 let batchCreatedDevices = [];
 let batchTotal = 0;
 let batchDone = 0;
@@ -933,7 +933,7 @@ let devicePickIosRows = [];
 let devicePickAndroidRows = [];
 // register:false で作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
 // 識別子(iOS=udid/Android=avd の id)。**当たった行のぶんだけ**空にする(一度きりの適用だが、
-// まだ一覧に出ていない台は次の再描画まで残す)。**配列**なのはバッチ作成のため
+// まだ一覧に出ていないデバイスは次の再描画まで残す)。**配列**なのはバッチ作成のため
 // (単発作成は1件だけ入れる)。
 let pendingAutoChecks = [];
 // 行右クリック「削除」メニュー(#device-pick-delete-menu)を開いている対象
@@ -1273,7 +1273,7 @@ function applyPendingAutoCheck() {
     return;
   }
   const targets = pendingAutoChecks;
-  // **当たった行のぶんだけ消費する**。一覧にまだ出ていない台(取得の行き違い)を
+  // **当たった行のぶんだけ消費する**。一覧にまだ出ていないデバイス(取得の行き違い)を
   // 消してしまうと、次の再描画で永久にチェックが入らない
   pendingAutoChecks = [];
   const unmatched = [];

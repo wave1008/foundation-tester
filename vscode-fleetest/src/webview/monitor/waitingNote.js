@@ -14,7 +14,7 @@ let gridViewHidden = false;
 function render() {
   const shown = waiting && lineViewHidden && !gridViewHidden;
   lanesWaiting.style.display = shown ? 'flex' : 'none';
-  // 同じ場所に重ねる「デバイスを選択して下さい」(#preview-empty)を隠す合図。台がまだ来ていない間は
+  // 同じ場所に重ねる「デバイスを選択して下さい」(#preview-empty)を隠す合図。デバイスがまだ来ていない間は
   // 選べるものが無いので、待機の案内だけを出す(両方出すと文字が重なる)
   lanesWaiting.closest('#panel-devices')?.classList.toggle('lanes-waiting-shown', shown);
 }

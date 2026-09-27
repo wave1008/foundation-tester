@@ -80,9 +80,9 @@ public struct WorkerAnomalyRecord: Codable, Sendable {
     }
 
     /// run **前**の blank triage(`BlankWorkerTriage.excludeBlankScreenWorkers` /
-    /// `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers`)が除外・修復した**台そのもの**を
-    /// worker 鍵つきの anomaly に変換する。**label から台を引き直さない** —— iOS は回復でポートが
-    /// 変わり label も変わるので、triage 前の一覧で引くと修復した台が黙って数から落ちる
+    /// `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers`)が除外・修復した**デバイスそのもの**を
+    /// worker 鍵つきの anomaly に変換する。**label からデバイスを引き直さない** —— iOS は回復でポートが
+    /// 変わり label も変わるので、triage 前の一覧で引くと修復したデバイスが黙って数から落ちる
     public static func preRunTriage(excluded: [RunWorker], repaired: [RunWorker]) -> [WorkerAnomalyRecord] {
         func make(_ workers: [RunWorker], kind: String, reason: String) -> [WorkerAnomalyRecord] {
             workers.map { worker in
@@ -300,7 +300,7 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 正常終了・中断(interrupted)のときは nil。**finishedAt はこの場合も必ず書く**
     /// (この欄が唯一の追加情報 —— 無いと理由がログにしか残らない)
     public var abortReason: String?
-    /// **台そのものが遅い**ことの観測(`FTCore.SlowWorkerDetector`。`SlowWorkerFinding.summary`
+    /// **デバイスそのものが遅い**ことの観測(`FTCore.SlowWorkerDetector`。`SlowWorkerFinding.summary`
     /// の配列)。**除外も自動修復もしない・警告のみ** —— 既存の劣化検知(XCUITestランナーの
     /// 建て直し・凍結トリアージ)はこの帯(ステップtimeout未満の遅さ)を原理的に見ないため、
     /// この欄だけが痕跡になる。空/未観測は nil(degradedWorkers と同じ規律)。

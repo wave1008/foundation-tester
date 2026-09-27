@@ -1,7 +1,7 @@
 // 供給フェーズの lease(SupplyLeaseHolder)を orchestrator へ手放す配線を固定する。
 //
 // **型では守れない継ぎ目**: 注入する writeRunLease から handOff を落としても run は緑のまま通り、
-// 担当を終えた台の lease を供給側のハートビートが run の最後まで書き戻す(モニターの配信が
+// 担当を終えたデバイスの lease を供給側のハートビートが run の最後まで書き戻す(モニターの配信が
 // 張られては畳まれる)。注入は `fleetest run` / `fleetest api run` が共有する ProfileRunOrchestrator の1箇所
 // (2経路がそこを通ることは ProfileRunOrchestratorWiringTests)。
 

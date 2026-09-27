@@ -1,5 +1,5 @@
 // 子(ランナー)が名乗るタイル id を、親が (host, name) の id へ直すこと。
-// **畳んだプロファイルを送る**(FTCore.RunnerProfileView)ので子は自分の台を "local" と名乗り、
+// **畳んだプロファイルを送る**(FTCore.RunnerProfileView)ので子は自分のデバイスを "local" と名乗り、
 // id にホストが入らない。直さないと状態も映像もタイルに届かない
 // (実害 2026-08-26: 畳み込みを入れた直後、リモートのタイルが全部「状態不明」になった)。
 
@@ -12,7 +12,7 @@ import FTTestSupport
 final class RemoteMonitorFanoutIDTests: XCTestCase {
 
     /// 子の monitorDevices は **id もマシンバッジ(machine)も持たない**(畳んだプロファイルでは
-    /// 自分の台は "local")。親が両方を埋める —— 埋め忘れるとタイルが特定できない/バッジが消える
+    /// 自分のデバイスは "local")。親が両方を埋める —— 埋め忘れるとタイルが特定できない/バッジが消える
     func testRemoteDevicesGetBothTheScopedIDAndTheMachineBadge() throws {
         let line = #"""
         {"kind":"monitorDevices","devices":[{"id":"android:Pixel 3a","name":"Pixel 3a","platform":"android","state":"connected","detail":"S","udid":null,"serial":"S","health":null,"renderMode":null,"inRun":false,"kind":"physical","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machine":null,"storageMeasuring":false}]}
@@ -60,7 +60,7 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
     }
 
     /// **デバイス名が "/" を含むのは普通**(例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")。
-    /// "/" の有無で「もうホスト付き」と判定すると、その台だけ id が直らず映像が届かない
+    /// "/" の有無で「もうホスト付き」と判定すると、そのデバイスだけ id が直らず映像が届かない
     func testDeviceNameContainingSlashIsStillScoped() {
         let line = #"{"kind":"monitorFrame","device":"android:Pixel 10(API 34 / arm64)-01","jpegBase64":"A"}"#
         XCTAssertEqual(

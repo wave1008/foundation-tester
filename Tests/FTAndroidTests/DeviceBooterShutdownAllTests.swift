@@ -64,7 +64,7 @@ final class DeviceBooterShutdownAllTests: XCTestCase {
 
     /// 実機は端末が生き続けるので deviceStopping/deviceFinished を出すとタイルがちらつく
     /// (「停止した」→次の観測で「接続中」に戻る)。**outcomes には実機も含める**
-    /// (停止を試みた台の母数に入るため。要約の分母がここで狂うと全滅判定がずれる)
+    /// (停止を試みたデバイスの母数に入るため。要約の分母がここで狂うと全滅判定がずれる)
     func testProgressIsNotEmittedForPhysicalDevices() async {
         let profile = machine(
             ios: [DeviceSpec(name: "iPhone-Virtual", kind: .virtual),

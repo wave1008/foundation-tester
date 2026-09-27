@@ -1,18 +1,18 @@
 // MachineInventory.swift
 // **実行プロファイルを選んでいないときの監視対象**(拡張の「(プロファイルなし)」)を決める。
 //
-// 台帳は**実行プロファイルの devices**(enabled: false の台も含む)で、1つのプロジェクトに複数ある。
+// 台帳は**実行プロファイルの devices**(enabled: false のデバイスも含む)で、1つのプロジェクトに複数ある。
 // 実行プロファイルを選んでいれば台帳は一意に決まるが、選んでいないときは決められない。
 //
-// 決め方は「どれか1つを選ぶ」ではなく **全部の台帳を畳んで、観測できるマシンの台だけ残す**:
+// 決め方は「どれか1つを選ぶ」ではなく **全部の台帳を畳んで、観測できるマシンのデバイスだけ残す**:
 //   - **観測できるマシン = 手元 + リモート実行の登録簿にあるマシン**(設定タブのホスト表。
-//     ユーザー決定)。登録簿に無いマシンの台は、監視の fan-out が張られないので
+//     ユーザー決定)。登録簿に無いマシンのデバイスは、監視の fan-out が張られないので
 //     状態が永久に "unknown" のタイルになるだけ = 出す意味が無い
-//   - 重複((platform, machine, name)が同じ)は**最初の1件**。実行プロファイルをまたいで同じ台を
+//   - 重複((platform, machine, name)が同じ)は**最初の1件**。実行プロファイルをまたいで同じデバイスを
 //     書くのは普通なので、重複はエラーではない。**入力の順序で決まる**ので
 //     呼び出し側はファイル名順など安定した順で渡すこと
-//   - **ただし重複が「同じ台」とは限らない** —— 実体(udid/avd/serial)が食い違うときは
-//     IdentityConflict を添えて返す(merge)。**手元の台は「この機械に実在するほう」で決める**
+//   - **ただし重複が「同じデバイス」とは限らない** —— 実体(udid/avd/serial)が食い違うときは
+//     IdentityConflict を添えて返す(merge)。**手元のデバイスは「この機械に実在するほう」で決める**
 //     (判定は呼び手が注入する述語。実在しないほうが勝つと、起動中の本物が id 衝突で監視から
 //     消える)。決められないときは先頭優先のまま警告する
 //
@@ -40,8 +40,8 @@ public enum MachineInventory {
     }
 
     /// 同じ (platform, machine, name) を2枚の台帳が**別の実体**として書いている。畳み込みは
-    /// 先頭を採るので、負けたほうの台は一覧から消える —— **手元に実在しないほうが勝つと、
-    /// 実在して起動中の台が「id 衝突」で落ちて監視から消える**(実害: ランナー機の
+    /// 先頭を採るので、負けたほうのデバイスは一覧から消える —— **手元に実在しないほうが勝つと、
+    /// 実在して起動中のデバイスが「id 衝突」で落ちて監視から消える**(実害: ランナー機の
     /// 視点で書かれた台帳が `machine: "local"` のまま手元の台帳と同居していた)
     public struct IdentityConflict: Equatable, Sendable {
         public let platform: String
@@ -53,7 +53,7 @@ public enum MachineInventory {
         public let ignoredProfile: String
         public let ignoredIdentity: String
         /// 採ったほうが**この機械に実在する**ことで決着したか。false = 決められなかった
-        /// (材料が無い / 両方実在 / 両方不在 / 他機の台)ので先頭優先のまま
+        /// (材料が無い / 両方実在 / 両方不在 / 他機のデバイス)ので先頭優先のまま
         public let resolvedByLocalPresence: Bool
 
         public var message: String {
@@ -119,7 +119,7 @@ public enum MachineInventory {
     /// `existsLocally` は「その spec の実体がこの機械にあるか」の述語(nil = 判定材料が無い)。
     /// **既定値は置かない** —— 渡し忘れをコンパイルで止める。**この関数は I/O を持たない**ので、
     /// 材料の採取(simctl / adb)は呼び手が起動時に1回だけ済ませて畳んで渡すこと。
-    /// 決着できない食い違い(材料が無い・両方実在・両方不在・**他機の台**)は先頭を
+    /// 決着できない食い違い(材料が無い・両方実在・両方不在・**他機のデバイス**)は先頭を
     /// 採って警告する —— 同居自体は誤りではない(構成の使い分け)
     public static func merge(sources: [Source], registry: [String],
                              existsLocally: ((DeviceSpec) -> Bool)?) -> Merged {
@@ -144,11 +144,11 @@ public enum MachineInventory {
                     continue
                 }
                 // **両方が実体を名乗っていて、それが違うときだけ** —— 片方が名前だけで書いて
-                // いるのは同じ台の粗い記述なので黙る(誤検知を出さない側に倒す)
+                // いるのは同じデバイスの粗い記述なので黙る(誤検知を出さない側に倒す)
                 guard let identity, let keptIdentity = kept.identity, identity != keptIdentity else {
                     continue
                 }
-                // **実在で決められるのは手元の台だけ** —— 他機の台の実体はこの機械から見えない
+                // **実在で決められるのは手元のデバイスだけ** —— 他機のデバイスの実体はこの機械から見えない
                 if entry.machine == nil, let existsLocally,
                    !existsLocally(result[kept.index].spec), existsLocally(entry.spec) {
                     result[kept.index] = entry
@@ -175,7 +175,7 @@ public enum MachineInventory {
     }
 
     /// 同定に使う実体だけ(udid / avd / serial)。`simulator` / `os` は入れない ——
-    /// 同じ台を粗く書いた台帳(serial だけ / serial + os)が食い違いに化ける
+    /// 同じデバイスを粗く書いた台帳(serial だけ / serial + os)が食い違いに化ける
     private static func identity(of spec: DeviceSpec) -> String? {
         if let udid = spec.udid { return "udid \(udid)" }
         if let avd = spec.avd { return "avd \(avd)" }

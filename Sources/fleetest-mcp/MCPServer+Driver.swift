@@ -857,7 +857,7 @@ extension MCPServer {
 
     /// **profile と明示の宛先(udid/port/serial)は併用させない**。profile の枝は宛先を
     /// ft_run_scenario と同じ規則でプロファイルから決め、明示の宛先を1度も見ないので、黙って通すと
-    /// **名指ししていない台**(プロファイルが選ぶ台)を操作する(実測: udid で -08 を名指ししたのに
+    /// **名指ししていないデバイス**(プロファイルが選ぶデバイス)を操作する(実測: udid で -08 を名指ししたのに
     /// プロファイルの -01 でアプリを起動した)。platform は併用してよい(プロファイル内の OS を選ぶ)
     /// —— ここがシナリオ系の `profileConflict` と違う点。呼ぶのは `call()` の入口(udid を畳む前)。
     /// 記憶の注入は profile 指定時に働かない
@@ -1018,8 +1018,8 @@ extension MCPServer {
     ///   ドライバで再解決させれば足りるので、利用者に「撮り直せ」と言う理由が無い
     ///   (`ft_terminate` はまさにこの形 = 黙って直った状態で続行してよい)
     /// - `.differentDevice`: **ref の有無を問わず必ず拒否**する。ここで黙って作り直すと、
-    ///   ref を使わない呼び出し(`ft_tap x/y`・`ft_type` 等)が警告なしで別の台へ効き続け、
-    ///   以後のセッションがその台に固定される
+    ///   ref を使わない呼び出し(`ft_tap x/y`・`ft_type` 等)が警告なしで別のデバイスへ効き続け、
+    ///   以後のセッションがそのデバイスに固定される
     enum PrimaryEngineCheck: Equatable {
         case unchanged, rebuildSilently, refuse(String)
     }
@@ -1035,7 +1035,7 @@ extension MCPServer {
         case .none:
             return .unchanged
         case .differentDevice:
-            // args の udid は呼び手の明示だけ(記憶の補完は port しか書かない)= 今そのポートに居る台を
+            // args の udid は呼び手の明示だけ(記憶の補完は port しか書かない)= 今そのポートに居るデバイスを
             // 名指しした同意なので作り直してよい。明示が無ければ断り続ける(primaryEngineCheck が記憶を残す)
             guard !callerNamedUDID else { return .rebuildSilently }
             return .refuse(differentDeviceRefusal(port: port, expectedUDID: expectedUDID))
@@ -1048,8 +1048,8 @@ extension MCPServer {
     /// `primaryEngineOutcome` の I/O 込みの入口。**`.unchanged` 以外は `forgetDeviceState`**
     /// (旧エンジンの ref はどの道無効。`.rebuildSilently` でも捨てる — 呼び出し元はこの call を
     /// 下の生成で再解決させるだけで、拒否文を返す理由は無い)。
-    /// **例外は別の台を断ったとき**: 記憶(udid・キャッシュ)を捨てると次の同じ呼び出しが生成経路へ落ち、
-    /// `keyChangedDevice` の previous が nil になって**黙って別の台に固定される**。残して毎回断る
+    /// **例外は別のデバイスを断ったとき**: 記憶(udid・キャッシュ)を捨てると次の同じ呼び出しが生成経路へ落ち、
+    /// `keyChangedDevice` の previous が nil になって**黙って別のデバイスに固定される**。残して毎回断る
     func primaryEngineCheck(_ key: String, args: [String: Any]) async -> PrimaryEngineCheck {
         let drift = await primaryEngineDrift(key)
         let callerNamedUDID = (args["udid"] as? String).map { !$0.isEmpty } ?? false

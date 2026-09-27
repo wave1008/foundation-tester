@@ -1,11 +1,11 @@
 // HostRecordingProbe.swift
 // run の**開始前**に、iOS シミュレータに「端末側の録画セッション」が残っていないかを確かめる。
 //
-// 残っている台では `simctl io recordVideo` が即座に EBUSY("Host recording is already in progress")
+// 残っているデバイスでは `simctl io recordVideo` が即座に EBUSY("Host recording is already in progress")
 // で落ち、**client プロセスが1つも無くても解けない**(シミュレータの shutdown → boot でだけ解ける。
 // 実測: 停止 5 秒 + 起動・ブリッジ 28 秒で解消)。録画の開始時(IOSSimulatorVideoRecorder.start)に
-// 気付いてもブリッジが張られた後なので再起動できず、その台の録画は run の間ずっと欠ける。
-// そこで供給の段階でここを通し、busy の台だけを再起動させる(呼び出しは ProfileWorkerFactory)。
+// 気付いてもブリッジが張られた後なので再起動できず、そのデバイスの録画は run の間ずっと欠ける。
+// そこで供給の段階でここを通し、busy のデバイスだけを再起動させる(呼び出しは ProfileWorkerFactory)。
 //
 // 作り方の規律は IOSSimulatorVideoRecorder と同じ: **停止は SIGINT だけ**(SIGKILL/SIGTERM で殺した
 // recordVideo はそれ自体が端末側のセッションを残す = この検査がこの状態を作ってしまう)。
@@ -13,7 +13,7 @@
 import Foundation
 
 public enum HostRecordingProbe {
-    /// 検査の結果。**不明を空きと混ぜない**(不明の台は再起動しない = 何もしないのと同じ)
+    /// 検査の結果。**不明を空きと混ぜない**(不明のデバイスは再起動しない = 何もしないのと同じ)
     public enum Outcome: Sendable, Equatable {
         /// 録画を始められた(テスト用の録画は SIGINT で閉じた)
         case free

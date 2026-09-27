@@ -43,7 +43,7 @@ final class RunnerProfileViewTests: XCTestCase {
     }
 
     /// 注記の無いプロジェクト(全台が手元 = `profile setup` の素の出力)。
-    /// **全台を alias の台として残す**(落とすと向こうで0台になる)
+    /// **全台を alias のデバイスとして残す**(落とすと向こうで0台になる)
     func testUnannotatedProjectKeepsEveryDeviceAsLocal() {
         let profile = json("""
         {"devices": [{"platform": "ios", "name": "iPhone-01", "udid": "AAA"},
@@ -58,8 +58,8 @@ final class RunnerProfileViewTests: XCTestCase {
         XCTAssertFalse(text(view).contains("M1Max"), "エイリアスが1文字も残ってはいけない")
     }
 
-    /// 同じ全台手元のプロファイルでも**注記済みプロジェクト**なら 0 台に畳む(発行側の台)。
-    /// 丸ごと送るとランナー機の台として再スタンプされ、実在する台と id が衝突する
+    /// 同じ全台手元のプロファイルでも**注記済みプロジェクト**なら 0 台に畳む(発行側のデバイス)。
+    /// 丸ごと送るとランナー機のデバイスとして再スタンプされ、実在するデバイスと id が衝突する
     func testAllLocalProfileIsDroppedWhenTheProjectIsAnnotated() {
         let profile = json("""
         {"devices": [{"platform": "ios", "machine": "local", "name": "A"},
@@ -70,7 +70,7 @@ final class RunnerProfileViewTests: XCTestCase {
         XCTAssertTrue(devices(view).isEmpty)
     }
 
-    /// 混在のプロファイル: 注記の無い台は発行側の台として落とす
+    /// 混在のプロファイル: 注記の無いデバイスは発行側のデバイスとして落とす
     func testMixedProfileDropsLocalDevicesForEveryRunner() {
         let profile = json("""
         {"devices": [{"platform": "ios", "machine": "M1Max", "name": "A"},
@@ -106,7 +106,7 @@ final class RunnerProfileViewTests: XCTestCase {
         XCTAssertFalse(RunnerProfileView.isMachineAnnotated(runProfiles: [unannotated, allLocal, [:]]))
     }
 
-    /// 1枚でも別マシン名を持つ台が居れば注記済み(無効の台でも)
+    /// 1枚でも別マシン名を持つデバイスが居れば注記済み(無効のデバイスでも)
     func testProjectIsAnnotatedWhenAnyProfileNamesAnotherMachine() {
         let allLocal = json(#"{"devices": [{"platform": "ios", "machine": "local", "name": "A"}]}"#)
         let remote = json("""

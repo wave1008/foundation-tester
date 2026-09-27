@@ -34,7 +34,7 @@ final class DeviceInventoryTests: XCTestCase {
     // MARK: - allRunProfilesLabel(純粋関数。M17: 見出しにプロジェクト名を入れる)
 
     /// project: 無指定でも既定の1プロジェクトしか読まないため、見出しにその名前を入れる
-    /// (実測: E2E-* のプロファイルに載っている台が default プロジェクトの ft_list_devices では
+    /// (実測: E2E-* のプロファイルに載っているデバイスが default プロジェクトの ft_list_devices では
     /// 「unregistered」と表示され、どのプロジェクトの台帳を見ているか分からなかった)
     func testAllRunProfilesLabelNamesTheProject() {
         XCTAssertEqual(DeviceInventory.allRunProfilesLabel(projectName: "default"),
@@ -420,7 +420,7 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertTrue(movedAway.isEmpty)
     }
 
-    /// リモートの台は movedAway、"local" 明示は手元
+    /// リモートのデバイスは movedAway、"local" 明示は手元
     func testLocalDevicesSplitsRemoteFromExplicitLocal() {
         let profile = DeviceRoster(ios: DeviceRosterList(devices: [
             DeviceSpec(name: "iPhone-01", machine: "M2Ultra"),
@@ -474,7 +474,7 @@ final class DeviceInventoryTests: XCTestCase {
         XCTAssertEqual(merged.count, 1, "同じ識別子の合成行が二重に出ている")
     }
 
-    /// 識別子 nil の登録行(起動していない台)は衝突判定に参加しない —— 未登録行は素通りする
+    /// 識別子 nil の登録行(起動していないデバイス)は衝突判定に参加しない —— 未登録行は素通りする
     func testMergingIsNotBlockedByARegisteredRowWithNoIdentifier() {
         let registered = [row(identifier: nil, registered: true)]
         let unregistered = [row(identifier: "SIM-9", registered: false)]

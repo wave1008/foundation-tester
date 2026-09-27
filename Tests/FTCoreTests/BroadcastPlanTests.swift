@@ -1,7 +1,7 @@
 // `fleetest run --broadcast`(ブロードキャスト)の分配計画を固定する。
 // デバイスが要る部分(供給・復帰)は通常 run と同じ経路なので、ここで固めるのは
 // 「誰が何本回すか」「(シナリオ × デバイス) が別キーになるか」だけ。
-// 破れ方はどれも**緑の run に現れない**(台が1つ抜けても残りが緑・キーが重なっても
+// 破れ方はどれも**緑の run に現れない**(デバイスが1つ抜けても残りが緑・キーが重なっても
 // 最後に走った1本の結果だけが残る)ので、単体で固定する価値がある。
 
 import XCTest
@@ -110,7 +110,7 @@ final class BroadcastPlanTests: XCTestCase {
 
     // MARK: - ワーカーとレーンの突き合わせ
 
-    /// プロファイル経路は logicalName(復帰でポート=label が変わっても同じ台は同じレーン)。
+    /// プロファイル経路は logicalName(復帰でポート=label が変わっても同じデバイスは同じレーン)。
     /// 非プロファイル経路は label
     func testLaneKeyUsesLogicalNameAndFallsBackToLabel() {
         let profiled = RunWorker(label: "iPhone-01(ios:8123)", platform: "ios", driver: UnusedDriver(),

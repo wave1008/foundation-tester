@@ -13,7 +13,7 @@ public enum AndroidDataWiperError: Error, LocalizedError, Equatable {
     /// 下からイメージを抜くと qemu がクラッシュして AVD が壊れるので、確認が取れないなら中止する
     case stopNotConfirmed(device: String, serial: String, seconds: Int)
     /// 走っているかどうかを決められない(**1バイトも消していない**)。qemu のプロセスは居るのに
-    /// adb が serial を出さない・ps が読めず offline の台がある等、止める宛先を引けない形
+    /// adb が serial を出さない・ps が読めず offline のデバイスがある等、止める宛先を引けない形
     case runningStateUnknown(device: String, avd: String, reason: String)
 
     public var errorDescription: String? {
@@ -109,7 +109,7 @@ public enum AndroidDataWiper {
 
     /// 1台ぶんの Wipe Data(しきい値を見ない。手元/リモートの手動実行 =
     /// `fleetest api wipe-device` から DeviceWiper 経由で呼ぶ)。**肥大化チェックの経路と
-    /// 同じ本体**(performWipe)を通す —— 停止できたときだけ消す・稼働中だった台だけ起こし直す、
+    /// 同じ本体**(performWipe)を通す —— 停止できたときだけ消す・稼働中だったデバイスだけ起こし直す、
     /// という規律を2箇所に持たない。AVD ディレクトリが見つからないのは失敗
     /// (自動チェックは毎 run のノイズになるので警告して飛ばすが、人が選んで撃った1台は黙って
     /// 成功にしてはいけない)。
@@ -136,7 +136,7 @@ public enum AndroidDataWiper {
         }
     }
 
-    /// 1台ぶんの本体: 停止 → 削除 → (稼働中だった台だけ)再起動+ロケール適用。
+    /// 1台ぶんの本体: 停止 → 削除 → (稼働中だったデバイスだけ)再起動+ロケール適用。
     /// **停止を確認できなければ1バイトも消さない**(稼働中エミュレータの下からイメージを
     /// 抜くと qemu がクラッシュし、AVD が壊れて作り直しになる)。戻り値は消したかどうか。
     private static func performWipe(
@@ -148,7 +148,7 @@ public enum AndroidDataWiper {
         status?("stopping")
         // 停止を確認できなければ **throw**(呼び手が失敗として扱う)。**false を返して成功扱いに
         // しない** —— 「消えていないのに成功」は、この案件で最も避けたい誤った緑そのもの
-        // (実際に起きた: 台が止まっただけで中身は残り、利用者には ok:true が返った)
+        // (実際に起きた: デバイスが止まっただけで中身は残り、利用者には ok:true が返った)
         let running = try await stopIfRunning(avdID: avdID, deviceName: name, log: log)
 
         for target in targets {
@@ -187,7 +187,7 @@ public enum AndroidDataWiper {
     ) async throws -> RunningState {
         // adb が失敗したら「空」として扱い、判定は発見ファイル・ps に委ねる(adb 死 = 走っていない、
         // ではない)。発見ファイルは pid 生存確認済み(EmulatorEndpoints.all)= adb を通さない
-        // serial→AVD の写像で、offline の台や adb が見失った台もここで引ける
+        // serial→AVD の写像で、offline のデバイスや adb が見失ったデバイスもここで引ける
         let running = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
         let all = (try? AndroidDeviceCatalog.allEmulatorSerials()) ?? []
         var discovered: [String: String] = [:]
@@ -212,8 +212,8 @@ public enum AndroidDataWiper {
 
         let deadline = Date().addingTimeInterval(TimeInterval(stopConfirmSeconds))
         while Date() < deadline {
-            // ①は **offline を含む一覧**で見る(state=device だけだと、offline の台は最初から
-            // 「消えている」= 生きた qemu の下で削除へ進む。停止中の台も device→offline→消失と
+            // ①は **offline を含む一覧**で見る(state=device だけだと、offline のデバイスは最初から
+            // 「消えている」= 生きた qemu の下で削除へ進む。停止中のデバイスも device→offline→消失と
             // 遷移するので、offline の段で消えたと見ない)。adb が読めなければ「まだ居る」に倒す
             let present = (try? AndroidDeviceCatalog.allEmulatorSerials()) ?? [serial]
             if !present.contains(serial) { return .wasRunning }
@@ -239,7 +239,7 @@ public enum AndroidDataWiper {
     /// **offline も走っている** —— ブート中・adbd が詰まったゲストは `adb devices` に offline で
     /// 載る(runningAVDs は state=device だけなので、それだけ見ると生きた qemu の下から
     /// イメージを抜く)。優先順: state=device の照合 → 発見ファイル(serial→AVD。offline や
-    /// adb が見失った台もここで引ける)→ qemu プロセスの有無(居るのに serial が無い = unknown)
+    /// adb が見失ったデバイスもここで引ける)→ qemu プロセスの有無(居るのに serial が無い = unknown)
     /// → ps が読めず未解決の offline がある = unknown → notRunning
     static func runningVerdict(
         avdID: String, runningAVDs: [String: String], allEmulatorSerials: [String],

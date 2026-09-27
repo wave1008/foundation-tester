@@ -66,7 +66,7 @@ public enum SimulatorRuntimeFingerprint {
     static let noneMarker = "none"
 
     /// 選んだ Xcode の SDK に対応するランタイムが1本も無い指紋か。
-    /// **手元と一致していても警告する** —— 全機が等しく「無い」と一致 = ✅ になり、その SDK の台を
+    /// **手元と一致していても警告する** —— 全機が等しく「無い」と一致 = ✅ になり、その SDK のデバイスを
     /// 要求した run が供給で落ちるまで誰も気づかない(Xcode 27.2 beta を
     /// 自動選択した実機で観測。ランタイムは Xcode に付いてこないので、この状態は普通に起きる)
     public static func hasNoMatchingRuntime(_ fingerprint: String) -> Bool {

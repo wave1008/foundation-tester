@@ -81,9 +81,9 @@ export type MonitorToWebviewMessage =
        * ack でポーリング抑止を発動する契約は monitorDeviceStreamController.ts 冒頭参照) */
       readonly stream?: boolean;
     }
-  // その台の配信ヘルパーを落とした(畳み・破棄・パネル非表示)。**黙って落とさない** —— webview は
+  // そのデバイスの配信ヘルパーを落とした(畳み・破棄・パネル非表示)。**黙って落とさない** —— webview は
   // h264 を描いている間ポーリングのフレームを隠れた img にしか入れないので、知らせないとタイルは
-  // 最後に復号した絵のまま止まる(「畳んだ台はポーリングのフレームで更新され続ける」という
+  // 最後に復号した絵のまま止まる(「畳んだデバイスはポーリングのフレームで更新され続ける」という
   // monitorDeviceStreamController.ts の契約が破れる)。受け手: webview/monitor/deviceTiles.js の applyStreamStopped。
   | { readonly type: "streamStopped"; readonly device: string }
   // 配信を諦めた(unavailable:true)/対象から外れて解除した(false)。
@@ -431,14 +431,14 @@ export type MonitorToWebviewMessage =
   | { readonly type: "platformFilter"; readonly value: string }
   // 「デバイスモニター」タブの全選択トグルの状態(true = 全デバイス選択)。永続化の理由と経路は
   // tilePaneHeight と同じ(setSelectAllDevices と対の契約)。**0枚でも復元する** ——
-  // ready 直後はモニターがまだ台を出しておらず、出てきた台を webview 側が選び直す。
+  // ready 直後はモニターがまだデバイスを出しておらず、出てきたデバイスを webview 側が選び直す。
   | { readonly type: "selectAllDevices"; readonly value: boolean }
   // 「デバイスモニター」タブの「ライブ更新」チェックボックスの状態(false = 全台の配信と画面の取り込みを止める)。
   // 永続化の経路は selectAllDevices と同じ(setShowStreamDuringRun と対の契約。受け手は streamToggle.js)。
   | { readonly type: "showStreamDuringRun"; readonly value: boolean }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
   // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
-  // machine はそのデバイスが居る機械(省略=手元)。**リモートの台も見るようになったので必ず載せる**
+  // machine はそのデバイスが居る機械(省略=手元)。**リモートのデバイスも見るようになったので必ず載せる**
   // —— 名前だけだと webview が同名の手元タイルを書き換える(wipeStatus と同じ理由)。
   | {
       readonly type: "bridgeWatch";
@@ -551,7 +551,7 @@ export type MonitorToWebviewMessage =
   // 判定を webview 側 main.js が両方の AND で行う。対向: src/webview/monitor/liveTab.js の setLiveVisible)。
   | { readonly type: "panelVisible"; readonly visible: boolean };
 
-/** 台の一覧は表示フィルタを**畳まずに**送る(`filter` を添えて webview に判断させる) ——
+/** デバイスの一覧は表示フィルタを**畳まずに**送る(`filter` を添えて webview に判断させる) ——
  * run ボードのツリーは「起動中のデバイス」で消してはいけないため。toWebviewMessage は
  * monitorDevices を受け取らない形にしてあるので、この口を通し忘れたらコンパイルで止まる。 */
 export function devicesToWebviewMessage(
@@ -567,7 +567,7 @@ export function devicesToWebviewMessage(
 export function toWebviewMessage(
   // monitorHold / monitorLock / monitorDevices / monitorStorage は webview へ素通ししない(順に OUTPUT だけ・
   // monitorProcessManager が machineLock メッセージへ畳む・表示フィルタを添える
-  // devicesToWebviewMessage を通す・その台を差し替えた一覧として同じ経路)。**Exclude で受け取らない形にする**
+  // devicesToWebviewMessage を通す・そのデバイスを差し替えた一覧として同じ経路)。**Exclude で受け取らない形にする**
   // = 呼び出し側が畳み忘れたらコンパイルで止まる
   event: Exclude<
     MonitorEvent,
@@ -632,7 +632,7 @@ export type MonitorFromWebviewMessage =
     }
   // デバイスタイル右クリック「ライブ操作」: 「ライブ操作」タブへ切り替えて id のデバイスを
   // 選択させる(受け手: monitorPanel.ts → LiveTabHost の openForDevice)。
-  // remote: **他の機械のタイル**のときだけ付く(その台はこの Mac の list-devices に居ないので、
+  // remote: **他の機械のタイル**のときだけ付く(そのデバイスはこの Mac の list-devices に居ないので、
   // 開くのに要る属性をタイルから運ぶ。LiveTabHost.openForDevice → registerRemoteDevice)
   | {
       readonly type: "openLiveForDevice";
@@ -650,7 +650,7 @@ export type MonitorFromWebviewMessage =
   // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
   // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
   // machine: そのデバイスが居る機械(手元は省略)。**名前だけで受けない** —— リモートの
-  // タイルから撃つと手元の同名の台を再起動する(deviceOp と同じ規律。monitorDeviceOps.ts が
+  // タイルから撃つと手元の同名のデバイスを再起動する(deviceOp と同じ規律。monitorDeviceOps.ts が
   // machine 付きはその機械の down→up へ回す)
   | { readonly type: "deviceRestartGpu"; readonly name: string; readonly machine?: string }
   // deviceRestartGpu の複数選択版(バッチ再起動)。devices はタイル複数選択の対象(machine 付き)。
@@ -728,7 +728,7 @@ export type MonitorFromWebviewMessage =
       readonly overwriteNames: readonly string[];
       /** バッチ全体で共有する OS バージョンがダウンロードが要るときだけ載る(createDevice の
        * installSystemImage と同じ形・同じ扱い)。バッチは全台が同じ model/os で作られるため、
-       * 導入は1回だけ行い、成功後に台ごとの create-device ループへ進む。 */
+       * 導入は1回だけ行い、成功後にデバイスごとの create-device ループへ進む。 */
       readonly installSystemImage?: {
         readonly package: string;
         readonly sizeBytes: number | null;

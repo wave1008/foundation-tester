@@ -352,9 +352,9 @@ extension ApiMonitorCommand {
     /// 両方がこれを見る** —— 別々に書くと片方だけ直したときに「撮る対象なのに毎サイクル時計を
     /// 捨てる」= 順繰りが回らない、が起きる。
     ///
-    /// **"booted" も対象**: ブリッジの無い台の state は登録の有無で割れる —— 未登録の合成
-    /// デバイスは "connected"、**台帳に載っている台は "booted"**。connected だけを見ていた頃は、
-    /// 台帳に載っていてブリッジを持たない台の絵の出所がゼロで、タイルが「接続中」のまま
+    /// **"booted" も対象**: ブリッジの無いデバイスの state は登録の有無で割れる —— 未登録の合成
+    /// デバイスは "connected"、**台帳に載っているデバイスは "booted"**。connected だけを見ていた頃は、
+    /// 台帳に載っていてブリッジを持たないデバイスの絵の出所がゼロで、タイルが「接続中」のまま
     /// 永久に埋まらなかった。実機は simctl で撮れないので対象外
     /// (そちらは devicepoll がブリッジ経由で撮る)。I/O を持たない pure 関数
     static func isSimctlCaptureTarget(state: DeviceRuntimeState) -> Bool {
@@ -366,7 +366,7 @@ extension ApiMonitorCommand {
     }
 
     /// ブリッジを持たない iOS シミュレータを **1サイクルに1台だけ** simctl で撮るための選択。
-    /// **最後に撮ってから最も経った台**を返し、その台の時計を進める(順繰り)。
+    /// **最後に撮ってから最も経ったデバイス**を返し、そのデバイスの時計を進める(順繰り)。
     ///
     /// **更新間隔の定数は置かない** —— `xcrun simctl io <udid> screenshot` は実測 1.7 秒
     /// (M2 Ultra・iPhone 17 Pro シミュレータ)で、既定の interval(2秒)より長い。1サイクル1台に
@@ -390,7 +390,7 @@ extension ApiMonitorCommand {
     /// ②を見るのが要点 —— run は9台の凍結を見つけて回復まで走っていたのに、
     /// モニターは自前の観測しか持たず `Frozen: 0` を出し続けた。純粋関数にしてあるのは、
     /// この「run が知っていることをモニターが知る」経路を陽性対照で毎回通すため
-    /// 配信ヘルパーが台を名指しする綴り(LocalStreamHolder.DeviceIdentity)。ヘルパーが張れない
+    /// 配信ヘルパーがデバイスを名指しする綴り(LocalStreamHolder.DeviceIdentity)。ヘルパーが張れない
     /// 状態(ブリッジ無し・未接続)は nil = 二重の判定をしない
     static func streamIdentity(_ state: DeviceRuntimeState) -> LocalStreamHolder.DeviceIdentity? {
         if state.target.platform == "ios" {
@@ -404,7 +404,7 @@ extension ApiMonitorCommand {
     /// **実機の一様フレームは消灯でも出る**ので `.uniformBlank`(確定)にしてはいけない ——
     /// ここを分けないと、夜間に消灯しているだけの実機がタイルで ❄️ になる。
     /// 写し方の規則は `FrozenVerdict.observe(uniformBlank:injected:physical:)` の1箇所
-    /// (run 前トリアージと同じものを通す = 同じ台について答えが食い違わない)
+    /// (run 前トリアージと同じものを通す = 同じデバイスについて答えが食い違わない)
     static func frozenVerdict(id: String, key: String?,
                               debounce: MonitorFrozenDebounce,
                               stateDir: URL?,

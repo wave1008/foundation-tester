@@ -476,7 +476,7 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError("--performance requires --profile or --fleet")
         }
         // 明示 --runner("local" を除く)は --profile が無いと dispatchToRemoteHost の冒頭で
-        // 必ず落ちる。台の machine による自動ディスパッチは --profile がある側でしか
+        // 必ず落ちる。デバイスの machine による自動ディスパッチは --profile がある側でしか
         // 見ないので、ここは引数だけから決まる(ファイル I/O が要らない = validate() に置ける)。
         // **api run と同じ規則・同じ文言**(RunRejectionParityTests が両者の一致を固定する)
         if profile == nil, fleet == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
@@ -605,9 +605,9 @@ struct RunScenarios: AsyncParsableCommand {
         // dispatch.lock で守っていた不変条件を、手元で直接打った run にも同じロックで掛ける。
         // **ビルドより前**に置くのは `swift build` 自体が重い負荷だから(CLAUDE.md
         // 「E2E 実行中に swift build を打たない」)。`--dry-run` はデバイスに触らないので取らない。
-        // **run-lease(台ごと)との上下**: ここが**マシン全体**の門で、台ごとの二重使用は
+        // **run-lease(デバイスごと)との上下**: ここが**マシン全体**の門で、デバイスごとの二重使用は
         // この後の `ProfileRunner` / `RunLeaseGuard` が見る —— MCP のセッション
-        // (`mcp-<鍵>.lease`)は dispatch.lock を取らないので、台ごとの調停はこのロックでは代替できない
+        // (`mcp-<鍵>.lease`)は dispatch.lock を取らないので、デバイスごとの調停はこのロックでは代替できない
         // **中断(SIGINT/SIGTERM/SIGHUP)の登録は、この Mac のロックを取るより前**(1プロセス1組。
         // .claude/rules/process-lifecycle.md「割り込みの登録は run の記録開始の直後・供給より前」)。recorder はまだ無い
         // (`RunRecorder.begin` はビルド後にしか作れない)ので nil で構築し、後で確定したら
@@ -790,9 +790,9 @@ struct RunScenarios: AsyncParsableCommand {
 
         if let profile {
             // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
-            // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
+            // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しないデバイスを掴む。
             // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
-            // **明示 --device があっても絞る** —— 名前だけでは同名の台が別の機械にもあるとき
+            // **明示 --device があっても絞る** —— 名前だけでは同名のデバイスが別の機械にもあるとき
             // そちらのエントリに解決し、向こうの UDID を手元で探して
             // "no simulator with that UDID" で止まる(受け手報告)。判定は
             // --runner <リモート> と同じ machineScopedDeviceFilter(RemoteDispatchExplicitDeviceScope)
@@ -895,7 +895,7 @@ struct RunScenarios: AsyncParsableCommand {
                     + " Read this run's result with that in mind"
                     + " (confirm with: fleetest doctor --fm-only)")
             }
-            // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
+            // デバイスそのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
             for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
             if failedCount > 0 { throw ExitCode(1) }
             return
@@ -968,7 +968,7 @@ struct RunScenarios: AsyncParsableCommand {
               ? "✅ All \(items.count) scenario(s) passed"
               : "❌ \(failedCount) of \(items.count) scenario(s) failed"
                 + (interrupted ? Self.interruptedCountNote : ""))
-        // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
+        // デバイスそのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
         for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
         if failedCount > 0 {
             throw ExitCode(1)

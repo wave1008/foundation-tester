@@ -297,10 +297,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 別の機械の同名デバイスまで掴む。filteringDevices の宣言)
         //
         // 明示 --runner local はこの機械で走らせる指定なので、ホスト混在プロファイルでは
-        // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しない台を掴む。
+        // local 枠だけに絞る(他ホスト担当分まで手元で解決すると存在しないデバイスを掴む。
         // マシン別サブ実行は --device/--device-machine を持つのでこの分岐に入らない)。
         // **明示 --device があっても絞る**(RunScenarios.run と同型。受け手報告:
-        // 名前だけでは同名の台が別の機械のエントリに解決し、向こうの UDID を手元で探す)
+        // 名前だけでは同名のデバイスが別の機械のエントリに解決し、向こうの UDID を手元で探す)
         var effectiveDevices = devices
         var effectiveDeviceHost = deviceMachine
         if deviceMachine == nil, MachineDispatch.isExplicitLocal(runner) {
@@ -342,7 +342,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // リモートのプロファイルはローカルでは何も実行せずリモートの出力を中継するだけなので、
         // 必ずそれより前に分岐する。--runner 明示 + --dry-run は dispatchToRemoteHost が明示的に
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(--runner 未指定)は dry-run のとき
-        // 台の machine を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る
+        // デバイスの machine を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
         // run --runner <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
         // (docs/remote-runner.md §13)。--runner 明示や全台が同じ機械なら nil が返り通常経路のまま。
@@ -403,7 +403,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // ここはワークスペースのステージング・run フック・供給の**すべてより前**で、NDJSON を
         // 1行も出していない地点でもある(取れなければ runStarted 無しで stderr + 非0 = 単機の
         // 事前検証の失敗と同じ形)。`--dry-run` はデバイスに触らないので取らない。
-        // **run-lease(台ごと)との上下**は `fleetest run` の同じ箇所のコメント参照
+        // **run-lease(デバイスごと)との上下**は `fleetest run` の同じ箇所のコメント参照
         var dispatchLock: LocalDispatchLock.Holder?
         if !dryRun {
             // **待っていることは NDJSON にも出す**(`emitWaiting`。`fleetest run` は渡さない) ——
@@ -466,7 +466,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // 1つの ID は高々1本なので本数が決まる。クラス名指定・全件は絞らない
             // (そこは並列度が要る場面で、絞ると遅くなる)。platform はまだ分からないので両方に同じ数を使う
             let exactCount = ApiRun.exactScenarioCount(scenarios)
-            // dry-run はデバイスに触らないので MCP の台を避ける理由が無い(印を読むと simctl/adb を引き、
+            // dry-run はデバイスに触らないので MCP のデバイスを避ける理由が無い(印を読むと simctl/adb を引き、
             // 「奪う」と嘘の警告を出す)
             let (resolved, mcpWarnings) = ProfileRunner.limitingDevicesAvoidingMCP(
                 full, iosScenarios: exactCount, androidScenarios: exactCount, trim: true,
@@ -483,7 +483,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 開始/終了スクリプト(docs/remote-runner.md §17。ProfileRunner.run と同じ規律 ——
         // デバイスに触る前に撃ち、終了スクリプトは defer で必ず撃つ)。**resolvedAll ではなく
         // 絞り込み後の resolved を渡す**(スクリプトが受け取るデバイス一覧は、この run が実際に
-        // 使う台と一致していないと `adb reverse` の宛先がずれる)
+        // 使うデバイスと一致していないと `adb reverse` の宛先がずれる)
         var hookSession: RunHookSession?
         if let resolved = resolvedProfile {
             let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
@@ -602,7 +602,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     do {
                         // 供給(buildIOSWorkers)より前に lease を前倒しして持つ(Android 側の
                         // コメント参照)。ここで throw すると下の catch が「❌ Failed to build iOS
-                        // workers: …」として拒否理由(台+保持者 pid)を出す(iOS 供給失敗は run
+                        // workers: …」として拒否理由(デバイス+保持者 pid)を出す(iOS 供給失敗は run
                         // 全体を落とさない既存の規律のまま=このレーンだけ空になる)
                         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
                         var workers = try await ProfileRunner.buildWorkersWithFrontLoadedLease(
@@ -640,7 +640,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                                         excluded: iosTriage.excludedWorkers,
                                         repaired: iosTriage.repairedWorkers))
                         workers = iosTriage.workers
-                        // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
+                        // 録画ありの run では、端末側に録画セッションが残ったデバイスを再起動して解く
                         // (HostRecordingProbe。ProfileRunner と同じ)
                         workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
                             workers: workers, resolved: resolved, repoRoot: repoRoot,
@@ -882,7 +882,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
         }
-        // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
+        // デバイスそのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
         for finding in slowWorkers { logStderr(finding.consoleWarning) }
         if !outcome.freezeRetries.isEmpty {
             logStderr("🔁 Results discarded and requeued (\(outcome.freezeRetries.count)):")
@@ -1143,7 +1143,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             preRunAnomalies += WorkerAnomalyRecord.preRunTriage(
                 excluded: iosTriage.excludedWorkers, repaired: iosTriage.repairedWorkers)
             workers = iosTriage.workers
-            // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
+            // 録画ありの run では、端末側に録画セッションが残ったデバイスを再起動して解く
             // (HostRecordingProbe。ProfileRunner と同じ)
             workers = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
                 workers: workers, resolved: resolved, repoRoot: iosRepoRoot,

@@ -1,4 +1,4 @@
-// 実行プロファイルの enabled の台を台帳にする経路。
+// 実行プロファイルの enabled のデバイスを台帳にする経路。
 // `api monitor --profile` と `devices up/down --profile` が共有する経路で、ここが誤ると
 // 「意図しないデバイスを起動・停止する」「監視対象が欠ける」という形で実機側に影響が出る。
 // 実機なしで固められる部分なので単体テストで押さえる。
@@ -50,7 +50,7 @@ final class RunProfileScopeTests: XCTestCase {
         XCTAssertEqual(result.android?.devices?.map(\.name), ["エミュ2"])
     }
 
-    /// 名前で1台を引く単体操作は無効の台も見る(一覧に出ている台は操作できるべき)
+    /// 名前で1台を引く単体操作は無効のデバイスも見る(一覧に出ているデバイスは操作できるべき)
     func testEnabledOnlyFalseKeepsDisabledDevices() throws {
         try writeRunProfile("mixed", devices: [
             device("ios", "シミュ1"), device("ios", "シミュ2", enabled: false),

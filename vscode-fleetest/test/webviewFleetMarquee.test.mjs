@@ -281,10 +281,10 @@ test("タイルの中ならどこを押しても選択トグル(見出し・脚�
   // 画像の上(見出しの帯 y 0〜30)
   clickAt(window, document.querySelector("#grid .tile .tile-header"), 50, 10);
   assert.deepEqual(selectedNames(document), ["Dev 0"]);
-  // タイルの角(x は画像の外・y は画像より下)。同じ台なのでトグルで外れる
+  // タイルの角(x は画像の外・y は画像より下)。同じデバイスなのでトグルで外れる
   clickAt(window, tileOf(document, 0), 95, 190);
   assert.deepEqual(selectedNames(document), []);
-  // 別の台の脚
+  // 別のデバイスの脚
   clickAt(window, tileOf(document, 1), 150, 180);
   assert.deepEqual(selectedNames(document), ["Dev 1"]);
 });
@@ -372,7 +372,7 @@ test("画像の下(脚)のクリックもそのデバイスのクリック", (t)
   // 画像は y 30〜170、その下(y 180)もタイルの中
   clickAt(window, tileOf(document, 1), 150, 180);
   assert.deepEqual(selectedNames(document), [], "同じ台なのでトグルで外れる");
-  // 未選択の台の脚を押せば選ばれる
+  // 未選択のデバイスの脚を押せば選ばれる
   clickAt(window, tileOf(document, 2), 260, 180);
   assert.deepEqual(selectedNames(document), ["Dev 2"]);
 });

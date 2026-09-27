@@ -10,7 +10,7 @@ import { hostname } from "node:os";
 export const PARENT_PID_ENV = "FT_PARENT_PID";
 
 /** 画面配信の所有者の印(FTCore.StreamOwner)。この拡張ホストが起こした配信ヘルパーと監視が
- * 同じ値を持ち、監視は「同じ台のヘルパーを別の印が持っていれば起こさない」と判定する。
+ * 同じ値を持ち、監視は「同じデバイスのヘルパーを別の印が持っていれば起こさない」と判定する。
  * FT_PARENT_PID は子が自分の pid で上書きして継ぐ(fan-out の子)し ssh 越しにも運べないので、
  * 同一性は別の変数で運ぶ。値は `<hostname>:<pid>`(同じランナーを別の Mac から眺めても衝突しない)。 */
 export const STREAM_OWNER_ENV = "FT_STREAM_OWNER";

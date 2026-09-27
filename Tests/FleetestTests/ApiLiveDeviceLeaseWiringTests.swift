@@ -1,8 +1,8 @@
 import XCTest
 
-/// api live serve が台の印(LiveDeviceLease)を書く配線(実地 B5): ライブ操作が印を1つも
+/// api live serve がデバイスの印(LiveDeviceLease)を書く配線(実地 B5): ライブ操作が印を1つも
 /// 書いていなかったため、`api stop-device` 等の門(run-lease / MCP の印しか読まない)が
-/// ライブ操作中の台を無言で止めていた。印そのものの読み書きは
+/// ライブ操作中のデバイスを無言で止めていた。印そのものの読み書きは
 /// Tests/FleetestTests/LiveDeviceLeaseTests.swift が固定するので、ここは配線
 /// (作る・毎コマンド更新する・終了時に消す)をソース走査で縛る。
 final class ApiLiveDeviceLeaseWiringTests: XCTestCase {
@@ -63,7 +63,7 @@ final class ApiLiveDeviceLeaseWiringTests: XCTestCase {
                       "run() は handle へ deviceLease を渡すこと")
     }
 
-    /// serve の終了(stdin EOF / シグナル)で自分の印を消すこと。消さないと、使っていない台を
+    /// serve の終了(stdin EOF / シグナル)で自分の印を消すこと。消さないと、使っていないデバイスを
     /// 他プロセスが「対話セッションが使用中」として避け続ける
     func testServeReleasesTheLeaseAfterTheCommandLoopEnds() throws {
         let code = try source()

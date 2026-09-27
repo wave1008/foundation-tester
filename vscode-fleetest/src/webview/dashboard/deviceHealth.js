@@ -4,13 +4,13 @@
 // (renderDeviceHealth の引数)、今の状態とストレージは同じ webview 内のモニター
 // (monitor/deviceTiles.js。monitorDevices()/onMonitorDevicesChanged() で読み取り専用に参照する
 // —— 可変状態はあちらのモジュールに残す規律)。結合の鍵は machine + worker
-// ("<platform>:<論理名>"。machine は含まない)。**モニターにしか居ない台(事象0)・
-// 履歴にしか居ない台(今は居ない)も行に出す**。欠けている値は「–」(0 で埋めない)。
+// ("<platform>:<論理名>"。machine は含まない)。**モニターにしか居ないデバイス(事象0)・
+// 履歴にしか居ないデバイス(今は居ない)も行に出す**。欠けている値は「–」(0 で埋めない)。
 //
 // worker 行は insights.js の deviceBias リンクから revealWorkerRow() で参照される
 // (insight.worker は machine を持たないため、一致する行が複数機械にあれば最初の行へ飛ぶ)。
 //
-// モニターの台の name は、その台が選択中の実行プロファイルに載っていない(registered:false)
+// モニターのデバイスの name は、そのデバイスが選択中の実行プロファイルに載っていない(registered:false)
 // ときだけ実体(iOS は Simulator 名・Android は AVD 名)になり、結果の記録の worker が使う
 // プロファイルの name と食い違う(実測)。resolveDeviceName() が
 // 'deviceCatalog'(monitorDashboardController.ts 経由。applyDeviceCatalog)で登録済みの名前へ
@@ -34,7 +34,7 @@ const section = document.getElementById('section-devices');
 const body = document.getElementById('table-device-health-body');
 const toggleBtn = document.getElementById('devices-toggle-all');
 const emptyEl = document.getElementById('devices-empty');
-// 空のときの文言。**モニターの台の一覧と結果の履歴の両方が1回ずつ届くまでは「確認中」** —— 開いた直後は
+// 空のときの文言。**モニターのデバイスの一覧と結果の履歴の両方が1回ずつ届くまでは「確認中」** —— 開いた直後は
 // どちらもまだ無く(モニターは数秒〜10 秒・履歴は 15〜20 秒)、「記録がありません」と断定してしまう
 const noRecordsText = emptyEl ? emptyEl.textContent : '';
 let monitorDevicesSeen = false;
@@ -51,7 +51,7 @@ let expanded = false;
 let lastHealthRows = [];
 let currentRows = [];
 // 対象プロジェクトの実行プロファイル devices[] の和集合(monitorDashboardController.ts が
-// refresh のたびに送る 'deviceCatalog'。applyDeviceCatalog で更新)。モニターの台の name を
+// refresh のたびに送る 'deviceCatalog'。applyDeviceCatalog で更新)。モニターのデバイスの name を
 // 結果の記録の worker(実行プロファイルの name)へ揃えるためだけに使う。
 let deviceCatalog = [];
 
@@ -65,12 +65,12 @@ function keyOf(machine, worker) {
   return machine + '\u0000' + worker;
 }
 
-// モニターの台が実際にどの実行プロファイルの台なのかを解決する。**推測で名前を作らない**
+// モニターのデバイスが実際にどの実行プロファイルのデバイスなのかを解決する。**推測で名前を作らない**
 // (AVD 名の変換規則を JS に写さない) —— 当たらなければ今の name のままにする。
 //
-// - registered(そのプロファイルに載っている台)は name がそのままプロファイルの name。
+// - registered(そのプロファイルに載っているデバイス)は name がそのままプロファイルの name。
 // - 未登録(registered===false。別プラットフォーム用のプロファイルを選んでいるときに合成される
-//   台など)の iOS は udid で、Android は avd(モニターの name が AVD 名そのものになっている)で
+//   デバイスなど)の iOS は udid で、Android は avd(モニターの name が AVD 名そのものになっている)で
 //   deviceCatalog を引く。
 function resolveDeviceName(device) {
   if (device.registered !== false) {
@@ -104,9 +104,9 @@ function machineOfDevice(device) {
   return device.machine || LOCAL_MACHINE_LABEL;
 }
 
-// デバイスモニター(タイル)と同じ並び(compareMonitorDeviceOrder を共有)。モニターに居る台はモニターの
-// name で比べる(resolveDeviceName で揃えた worker ではなく)—— タイルと同じ名前で比べないと、未登録の台で
-// 順が割れる。履歴にしか居ない台は worker("<platform>:<name>")から取り出して比べる
+// デバイスモニター(タイル)と同じ並び(compareMonitorDeviceOrder を共有)。モニターに居るデバイスはモニターの
+// name で比べる(resolveDeviceName で揃えた worker ではなく)—— タイルと同じ名前で比べないと、未登録のデバイスで
+// 順が割れる。履歴にしか居ないデバイスは worker("<platform>:<name>")から取り出して比べる
 function orderKey(row) {
   const machine = row.machine === LOCAL_MACHINE_LABEL ? undefined : row.machine;
   // 実機かはバッジと同じ判定(モニターの kind、居なければプロファイルの kind)
@@ -163,7 +163,7 @@ function machineCell(machine) {
   return cell;
 }
 
-/** 実機か。モニターに居る台はモニターの kind、居ない台(履歴だけ)は実行プロファイルの kind で決める。
+/** 実機か。モニターに居るデバイスはモニターの kind、居ないデバイス(履歴だけ)は実行プロファイルの kind で決める。
  * どちらも言えなければ付けない(推測しない) */
 function isPhysical(row) {
   if (row.monitor && row.monitor.kind) {
@@ -177,7 +177,7 @@ function isPhysical(row) {
   return !!entry && entry.kind === 'physical';
 }
 
-/** 台の名前と OS のラベル(worker = "<platform>:<name>")。機械は別の列が持つ */
+/** デバイスの名前と OS のラベル(worker = "<platform>:<name>")。機械は別の列が持つ */
 function deviceCell(row) {
   const cell = document.createElement('td');
   const sep = row.worker.indexOf(':');
@@ -285,14 +285,14 @@ function storageCell(monitor) {
 }
 
 // ---- 「ストレージ使用を更新」の進捗 --------------------------------------------------------------
-// 押した時刻を要求 id にしてモニターへ送り、台ごとの storageRefreshId / storageMeasuring で数える
+// 押した時刻を要求 id にしてモニターへ送り、デバイスごとの storageRefreshId / storageMeasuring で数える
 // (契約は Sources/fleetest/ApiMonitorEvents.swift)。**待ち時間の定数を置かない** —— 「自分の id 以上を
 // 受け取った かつ 測定中でない」だけで終わりを決める。押し直すと新しい id で数え直す(モニターが要求を
 // 受け取れなかったとき = 0 台のまま進まないときの逃げ道)。
 let storageRequestId = null;
 let storageFinishedAt = null;
-// 押してから、モニターが要求を受け取った(いずれかの台が id 以上を返した)と分かるまで true。
-// **測定中は押せない**(ユーザー決定)= この間 と いずれかの台が storageMeasuring の間はボタンを止める。
+// 押してから、モニターが要求を受け取った(いずれかのデバイスが id 以上を返した)と分かるまで true。
+// **測定中は押せない**(ユーザー決定)= この間 と いずれかのデバイスが storageMeasuring の間はボタンを止める。
 // 要求が失われた(モニターの起動し直し)ときは storageProgressReset で解く
 let awaitingStorageAck = false;
 
@@ -307,7 +307,7 @@ export function resetStorageProgress() {
   renderRows();
 }
 
-/** モニターが測る台と同じ(DeviceStorageSampler の候補: 動いている仮想デバイス) */
+/** モニターが測るデバイスと同じ(DeviceStorageSampler の候補: 動いている仮想デバイス) */
 function isStorageTarget(device) {
   return (device.state === 'connected' || device.state === 'booted') && device.kind !== 'physical';
 }
@@ -347,7 +347,7 @@ function renderStorageProgress() {
     return;
   }
   if (storageRequestId === null) {
-    // 押す前(画面を開いたとき): 各台の値の計測時刻のうち最も新しいもの(前回値 = 前のモニターが測った値も含む)
+    // 押す前(画面を開いたとき): 各デバイスの値の計測時刻のうち最も新しいもの(前回値 = 前のモニターが測った値も含む)
     const latest = latestMeasuredAt(monitorDevices());
     el.textContent = latest ? t('wvDashboard.deviceHealth.storageDone', { time: formatLocalDateTime(latest) }) : '';
     return;
@@ -440,8 +440,8 @@ function rowElement(row) {
   return tr;
 }
 
-/** 「アクティブなデバイスを表示」: モニターが未起動(offline)以外を出している台だけ。
- * モニターに居ない台(履歴だけ)も今は動いていないので隠す */
+/** 「アクティブなデバイスを表示」: モニターが未起動(offline)以外を出しているデバイスだけ。
+ * モニターに居ないデバイス(履歴だけ)も今は動いていないので隠す */
 function visibleRows() {
   if (!activeOnlyToggle || !activeOnlyToggle.checked) {
     return currentRows;

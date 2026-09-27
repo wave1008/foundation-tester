@@ -32,9 +32,9 @@ public enum DeviceWiperError: Error, LocalizedError, Equatable {
 /// iOS の Wipe Data(`simctl erase`)は `AppleLanguages`/`AppleLocale` も
 /// 巻き添えにして消し、ホスト Mac の既定へ戻してしまう(実測: ja-JP → erase → ("en-US","ja-JP"))。
 /// Android は `AndroidDataWiper` が `-change-locale` で戻しているのに、iOS だけ書き戻す経路が
-/// 無かった。**読み書きとも `simctl spawn`(公式インタフェース)を使う** —— これは稼働中の台にしか
-/// 効かないので、**稼働中だった台だけ元へ戻す**(`AndroidDataWiper` と同じ「稼働中だった台だけ
-/// 起こし直す」規律。停止中だった台はこの後も再起動しないので、書き戻す機会自体が無い)。
+/// 無かった。**読み書きとも `simctl spawn`(公式インタフェース)を使う** —— これは稼働中のデバイスにしか
+/// 効かないので、**稼働中だったデバイスだけ元へ戻す**(`AndroidDataWiper` と同じ「稼働中だったデバイスだけ
+/// 起こし直す」規律。停止中だったデバイスはこの後も再起動しないので、書き戻す機会自体が無い)。
 /// コマンド列の組み立てと出力の解析だけを純粋関数にして `DeviceWiperTests` で固定する
 /// (実際に simctl を叩く部分はデバイスが要るのでテストしない)
 enum SimulatorLocalePreservation {
@@ -61,7 +61,7 @@ enum SimulatorLocalePreservation {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// 読めなかったとき(停止中だった台/未設定)の組み立て。**引数の `locale`("ja_JP" 形)から作る**
+    /// 読めなかったとき(停止中だったデバイス/未設定)の組み立て。**引数の `locale`("ja_JP" 形)から作る**
     /// (AppleLanguages はハイフン形を先頭に、英語をフォールバックとして添える —— 言語だけ変えて
     /// 英語の文言が一切出せなくなる事態を避ける)
     static func fallback(locale: String) -> Snapshot {
@@ -109,7 +109,7 @@ public enum DeviceWiper {
         }
     }
 
-    /// 1台を初期化する。**稼働中だった台だけ起こし直す**(止まっていた台を勝手に起動しない)。
+    /// 1台を初期化する。**稼働中だったデバイスだけ起こし直す**(止まっていたデバイスを勝手に起動しない)。
     /// status のフェーズ集合は AndroidDataWiper と同じ("stopping"/"rebooting"/"done"/"failed")——
     /// 拡張はどちらの経路でも同じタイル表示を使う。
     /// **消す前に run-lease を確認する**(規律④「他人の run を殺す操作はロックを読む」。Wipe は
@@ -148,9 +148,9 @@ public enum DeviceWiper {
         }
     }
 
-    /// iOS: ブリッジ停止 → simctl shutdown → simctl erase →(稼働中だった台だけ)再ブート+ブリッジ供給。
+    /// iOS: ブリッジ停止 → simctl shutdown → simctl erase →(稼働中だったデバイスだけ)再ブート+ブリッジ供給。
     /// **erase は shutdown 済みでないと拒否される**ので停止は必須(shutdownOne が停止済みなら no-op)。
-    /// 稼働中だった台は、消す前に `AppleLanguages`/`AppleLocale` を読んでおき、
+    /// 稼働中だったデバイスは、消す前に `AppleLanguages`/`AppleLocale` を読んでおき、
     /// erase 後の再起動で書き戻す(`SimulatorLocalePreservation`)
     private static func eraseSimulator(
         spec: DeviceSpec, repoRoot: URL?, locale: String, force: Bool,
@@ -160,8 +160,8 @@ public enum DeviceWiper {
     ) async throws {
         let sim = try SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices())
         let wasBooted = sim.booted
-        // simctl spawn は稼働中の台にしか効かないので、読めるのは稼働中だった台だけ。
-        // 停止中だった台や読み取り自体が失敗した台は `locale` 引数から組み立てる
+        // simctl spawn は稼働中のデバイスにしか効かないので、読めるのは稼働中だったデバイスだけ。
+        // 停止中だったデバイスや読み取り自体が失敗したデバイスは `locale` 引数から組み立てる
         let preservedLocale: SimulatorLocalePreservation.Snapshot =
             (wasBooted ? readSimulatorLocale(udid: sim.udid) : nil)
             ?? SimulatorLocalePreservation.fallback(locale: locale)
@@ -186,7 +186,7 @@ public enum DeviceWiper {
                 // ユーザーデフォルトを書き換えるだけで、既にこの起動で立ち上がった
                 // SpringBoard・権限アラート等のシステム UI には効かない —— それらへ反映させるには
                 // 書いた後にもう一度起動し直す必要がある(起動前に書ければ1回で済むが、simctl
-                // spawn は稼働中の台にしか使えないため確認できていない。要デバイス確認)
+                // spawn は稼働中のデバイスにしか使えないため確認できていない。要デバイス確認)
                 writeSimulatorLocale(udid: sim.udid, snapshot: preservedLocale, log: log)
                 try await DeviceBooter.shutdownOne(
                     spec: spec, platform: "ios", repoRoot: repoRoot, force: force,
@@ -209,7 +209,7 @@ public enum DeviceWiper {
         }
     }
 
-    /// simctl spawn で現在のロケールを読む(稼働中の台にしか効かない)。片方でも読めなければ nil
+    /// simctl spawn で現在のロケールを読む(稼働中のデバイスにしか効かない)。片方でも読めなければ nil
     /// (部分的な値で上書きするより、丸ごと `locale` 引数からの組み立てへ倒す)
     private static func readSimulatorLocale(udid: String) -> SimulatorLocalePreservation.Snapshot? {
         guard let languagesResult = try? Shell.run(

@@ -123,8 +123,8 @@ export function isConfirmedHeld(lock: MachineLock | undefined): boolean {
   return lock?.observed === true && lock.held;
 }
 
-/** **手元で run が使っている台**の名前(`inRun` = RunLease 由来なので CLI から起こした run も写る)。
- * リモートの台は含めない(あちらは dispatch.lock = occupiedMachines で見る)。
+/** **手元で run が使っているデバイス**の名前(`inRun` = RunLease 由来なので CLI から起こした run も写る)。
+ * リモートのデバイスは含めない(あちらは dispatch.lock = occupiedMachines で見る)。
  * 一覧を未観測(undefined)なら空 = 黙る(CLI 側の門が最後に断る)。 */
 export function localDevicesInRun(devices: readonly MonitorDevice[] | undefined): readonly string[] {
   return (devices ?? []).filter((d) => d.machine === undefined && d.inRun === true).map((d) => d.name);
@@ -138,7 +138,7 @@ export type BulkDownGate =
   | { readonly kind: "proceed" };
 
 /** 「全て終了」を押したときの門。**手元の run は全掃討(プロファイル未選択)のときだけ止める** ——
- * プロファイル選択時の一括停止は CLI が使用中の台だけ飛ばして残りを止める(stopRefusal)ので、
+ * プロファイル選択時の一括停止は CLI が使用中のデバイスだけ飛ばして残りを止める(stopRefusal)ので、
  * 押すこと自体は妨げない。 */
 export function bulkDownGate(input: {
   readonly profileSelected: boolean;

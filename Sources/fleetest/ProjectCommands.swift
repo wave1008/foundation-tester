@@ -298,7 +298,7 @@ struct ProfileCommand: AsyncParsableCommand {
             for run in runs {
                 do {
                     let resolved = try ProfileResolver.resolve(project: testProject, runName: run)
-                    // 手元の台は名前だけ、他の機械の台は machine/name で出す
+                    // 手元のデバイスは名前だけ、他の機械のデバイスは machine/name で出す
                     let devices = resolved.devices
                         .map { device -> String in
                             let machine = MachineDispatch.normalize(device.spec.machine)

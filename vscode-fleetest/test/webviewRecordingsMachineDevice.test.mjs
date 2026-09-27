@@ -1,11 +1,11 @@
 // webviewRecordingsMachineDevice.test.mjs
-// 「録画」タブが**どのマシンのどの台で撮ったか**を出すことの DOM E2E(jsdom)。
+// 「録画」タブが**どのマシンのどのデバイスで撮ったか**を出すことの DOM E2E(jsdom)。
 // ハーネスの作り(renderHtml を vscode スタブ付きで bundle → main.js を window.eval)は
 // test/webviewRecordingsTab.test.mjs と同じ。
 //
 // 供給元: recordingsSessions の machine/devices(run.json + recordings/index.json。recordingsStore.ts)と
 // recordingsSession の machine/devices(scenarioID ごと。monitorRecordingsController.ts)。
-// マシンはホスト名なのでタイル/デバイス一覧と同じ .badge-remote、台は同じ配色ピル .tile-name。
+// マシンはホスト名なのでタイル/デバイス一覧と同じ .badge-remote、デバイスは同じ配色ピル .tile-name。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -91,7 +91,7 @@ test("セッション一覧の行に実行マシンのバッジを出す(台は�
   const meta = sessionRows(window)[0].querySelector(".recordings-session-meta");
   assert.ok(meta, "マシンの段がある");
   assert.deepEqual([...meta.querySelectorAll(".badge-remote")].map((b) => b.textContent), ["M1Max"]);
-  // 台は動画ごとに違うので行には出さない(2026-08-26 指示)。見るのは再生ビュー
+  // デバイスは動画ごとに違うので行には出さない(2026-08-26 指示)。見るのは再生ビュー
   assert.equal(meta.querySelector(".tile-name"), null);
 });
 
@@ -155,7 +155,7 @@ test("再生ビューは見出しに実行マシン、再生中の台を動画�
   const deviceEl = window.document.getElementById("recordings-now-playing-device");
   assert.equal(deviceEl.querySelector(".tile-name").textContent, "iPhone 16");
 
-  // 次のテストへ移ると台の表示もその動画のものへ変わる
+  // 次のテストへ移るとデバイスの表示もその動画のものへ変わる
   window.document.getElementById("recordings-next-test").click();
   const pill = deviceEl.querySelector(".tile-name");
   assert.equal(pill.textContent, "Pixel 9-01");

@@ -1,7 +1,7 @@
 // `MCPServer.defaultAppFromProjectApps` — profile 引数の無い ft_run_scenario 呼び出しで、
 // @TestClass(app:) を書いていないシナリオの既定アプリをプロジェクトのアプリプロファイル
 // (profiles/apps/*.json)から解決する判定(ディスク走査(loadAppProfiles)から切り出した純粋関数)。
-// この解決が無いと、profile を付けずに「今自分が駆動している台」でシナリオを回す手段が無く、
+// この解決が無いと、profile を付けずに「今自分が駆動しているデバイス」でシナリオを回す手段が無く、
 // 案内どおり profile を足すと今度は「profile は udid と併用できない」で行き止まりになっていた。
 
 import XCTest

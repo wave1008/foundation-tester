@@ -1,6 +1,6 @@
 // 「全て終了」の前に拡張が自分のライブ操作の serve を畳み、終わったら立て直すことのソース走査。
 //
-// serve は台の印(`.fleetest/mcp-<鍵>.lease`)を書くので、畳まずに全掃討(`devices down`)を撃つと
+// serve はデバイスの印(`.fleetest/mcp-<鍵>.lease`)を書くので、畳まずに全掃討(`devices down`)を撃つと
 // CLI の sweepRefusal がその印で丸ごと断り、「MCP session が駆動中(fleetest-mcp pid …)」という
 // 事実と違う名指しのトーストだけが出て1台も止まらない(実地 2026-09-24: ライブ操作タブで実機
 // iPhone を開いたまま「全て終了」)。

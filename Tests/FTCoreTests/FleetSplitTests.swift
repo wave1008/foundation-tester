@@ -65,7 +65,7 @@ final class FleetSplitTests: XCTestCase {
         }
     }
 
-    // MARK: - 対象外(宣言 platform の台が fleet に無い)
+    // MARK: - 対象外(宣言 platform のデバイスが fleet に無い)
 
     func testApplicabilitySkipsDeclaredPlatformsTheFleetCannotRun() {
         let split = FleetSplit.applicability(

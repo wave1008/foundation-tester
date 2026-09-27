@@ -74,7 +74,7 @@ final class BootOutcomeSummarizerTests: XCTestCase {
                        + " simulator runtime is not available. / runtime path not found")
     }
 
-    /// 理由が違う台は理由ごとに束ねる(初出順)。理由の無い失敗は名前だけ
+    /// 理由が違うデバイスは理由ごとに束ねる(初出順)。理由の無い失敗は名前だけ
     func testDifferentReasonsAreGroupedInFirstSeenOrder() {
         let summary = DeviceBooter.BootOutcomeSummarizer.summarize([
             DeviceBooter.BootOutcome(name: "A", platform: "ios", failure: "runtime missing"),
@@ -146,7 +146,7 @@ final class StaleAVDLockTests: XCTestCase {
 
 /// 「すでに停止している」を停止の失敗として数えない(実害 2026-09-10)。
 /// iOS は `sim.booted` の guard で成功扱いなのに、Android は serial の解決が
-/// `avdNotRunning` で throw するため停止済みの台が「停止に失敗」に化け、全台停止済みの機械で
+/// `avdNotRunning` で throw するため停止済みのデバイスが「停止に失敗」に化け、全台停止済みの機械で
 /// 一括停止が `every device failed to stop` を出していた(全滅だけを失敗と伝えるように
 /// なって表面化した)。**プロファイルの誤り(avd 未記載)は失敗のまま**。
 final class DeviceBooterAlreadyStoppedTests: XCTestCase {

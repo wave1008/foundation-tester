@@ -15,15 +15,15 @@ final class ApiLiveDriftOutcomeTests: XCTestCase {
         XCTAssertEqual(outcome, .unchanged)
     }
 
-    /// 同じ台のブリッジがエンジンだけ入れ替わった形は、現状どおり差し替える(rebuild)
+    /// 同じデバイスのブリッジがエンジンだけ入れ替わった形は、現状どおり差し替える(rebuild)
     func testRebuildsWhenTheSameDeviceChangedEngine() {
         let outcome = ApiLiveServe.liveDriftOutcome(
             drift: .sameDeviceEngineChanged, port: 8123, expectedUDID: "SIM-1")
         XCTAssertEqual(outcome, .rebuild)
     }
 
-    /// **本題**: ポートの中身が別の台に替わったら、同じポートで作り直さず断る
-    /// (黙って建て直すと別の台を触り続ける実害があった)
+    /// **本題**: ポートの中身が別のデバイスに替わったら、同じポートで作り直さず断る
+    /// (黙って建て直すと別のデバイスを触り続ける実害があった)
     func testRefusesWhenADifferentDeviceNowAnswers() {
         let outcome = ApiLiveServe.liveDriftOutcome(
             drift: .differentDevice, port: 8123, expectedUDID: "SIM-1")
@@ -43,7 +43,7 @@ final class ApiLiveDriftOutcomeTests: XCTestCase {
         XCTAssertFalse(message.contains("ft_"), "MCP 向けの文言(ft_* ツール名)を人間向けに出さない: \(message)")
     }
 
-    /// 毎コマンド同じ材料を渡せば同じ判定になること(黙って片方の台に固定されない ——
+    /// 毎コマンド同じ材料を渡せば同じ判定になること(黙って片方のデバイスに固定されない ——
     /// run() は driver/port/primaryEngine を書き換えずに次のコマンドへ進む)
     func testSameDriftAlwaysProducesTheSameOutcome() {
         let first = ApiLiveServe.liveDriftOutcome(drift: .differentDevice, port: 8123, expectedUDID: "SIM-1")

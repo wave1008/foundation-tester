@@ -35,7 +35,7 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
     }
 
     /// 再利用のときだけ「今動いているポートを止めて撃ち直せ」と言ってよい
-    /// (この台にはそのポートで既にブリッジがあったので、止めて再実行すれば要求ポートに戻れる)
+    /// (このデバイスにはそのポートで既にブリッジがあったので、止めて再実行すれば要求ポートに戻れる)
     func testTheReusedMessageNamesTheActualPortAsTheOneToStop() {
         let text = Bridge.Up.portMismatchMessage(actualPort: 8130, requestedPort: 8123,
                                                   reason: .reusedExistingBridge,
@@ -45,7 +45,7 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
     }
 
     /// 本命(M11): 新規起動のときは「再利用」と言わず、止める案内も出さない
-    /// (要求ポートを塞いでいるのは別の台のブリッジのことがある = 実測では iPhone 13 の LAN ブリッジ)
+    /// (要求ポートを塞いでいるのは別のデバイスのブリッジのことがある = 実測では iPhone 13 の LAN ブリッジ)
     func testTheNewLaunchMessageDoesNotClaimReuseOrSuggestStoppingAnything() {
         let text = Bridge.Up.portMismatchMessage(actualPort: 8128, requestedPort: 8123,
                                                   reason: .startedOnAnotherPort,
@@ -55,7 +55,7 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
         XCTAssertFalse(text.contains("bridge down"), text)
     }
 
-    /// N1(2026-09-18): 再利用でも、要求ポートを別の台が握っているなら止める案内は出さない
+    /// N1(2026-09-18): 再利用でも、要求ポートを別のデバイスが握っているなら止める案内は出さない
     /// (今のポートを止めても要求ポートは空かない。実測では既定 8123 が USB 実機のトンネル)
     func testTheReusedMessageDoesNotSuggestStoppingWhenTheRequestedPortBelongsToAnotherBridge() {
         let text = Bridge.Up.portMismatchMessage(actualPort: 8129, requestedPort: 8123,

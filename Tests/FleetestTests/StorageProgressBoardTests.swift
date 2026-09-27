@@ -1,5 +1,5 @@
-// ストレージ更新の進捗通知(monitorStorage): 積んだ瞬間に全台の「測定中」を出し、終わった台から「測り終えた」を出す。
-// 周期の一覧を待つと、速い台(Android)の「測り終えた」だけが先に届き、拡張には測定中の台が無く見えた(ボタンが一瞬押せた)。
+// ストレージ更新の進捗通知(monitorStorage): 積んだ瞬間に全台の「測定中」を出し、終わったデバイスから「測り終えた」を出す。
+// 周期の一覧を待つと、速いデバイス(Android)の「測り終えた」だけが先に届き、拡張には測定中のデバイスが無く見えた(ボタンが一瞬押せた)。
 
 import FTCore
 import XCTest
@@ -40,7 +40,7 @@ final class StorageProgressBoardTests: XCTestCase {
         XCTAssertEqual(last["ios:iPhone"]?.storage?.usedBytes, 1)
     }
 
-    /// 周期の一覧に居ない台(id が引けない)は出さない
+    /// 周期の一覧に居ないデバイス(id が引けない)は出さない
     func testUnknownDeviceIsNotPublished() {
         let lines = BoardLines()
         let board = StorageProgressBoard(write: { lines.append($0) })

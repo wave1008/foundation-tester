@@ -18,7 +18,7 @@ public enum MachineEnablement {
         return result
     }
 
-    /// 台を有効な機械のものと無効な機械のものに分ける。excluded は無効で外した機械(出現順・重複なし)
+    /// デバイスを有効な機械のものと無効な機械のものに分ける。excluded は無効で外した機械(出現順・重複なし)
     public static func partition(
         _ devices: [RunDeviceMachine], disabled: Set<String>
     ) -> (kept: [RunDeviceMachine], excludedMachines: [String]) {

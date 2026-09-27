@@ -25,7 +25,7 @@ final class RemoteStatusRuntimeCellTests: XCTestCase {
     }
 
     /// **`none`(その SDK のランタイムが1本も無い)は一致していても ⚠️** —— 全機が等しく「無い」ときに
-    /// ✅ を出すと、その iOS の台を要求した run が供給で落ちるまで誰も気づかない。
+    /// ✅ を出すと、その iOS のデバイスを要求した run が供給で落ちるまで誰も気づかない。
     /// 自動選択が入って到達しやすくなった状態(2026-09-21 に Xcode 27.2 beta の実機で観測)
     func testNoMatchingRuntimeWarnsEvenWhenBothSidesAgree() {
         XCTAssertEqual(RemoteCommand.Status.runtimeMatches(local: "iOS 27.2: none",

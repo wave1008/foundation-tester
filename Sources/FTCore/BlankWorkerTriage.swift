@@ -21,9 +21,9 @@ import Foundation
 public enum BlankWorkerTriage {
 
     /// 判定結果。excluded/repaired はワーカー label(呼び出し側がログ・監査に使う)。
-    /// repaired = 開始時に凍結していて `recover` で戻った台(run.json の blankRepairs へ渡す)。
-    /// **excludedWorkers / repairedWorkers は台そのもの** —— 回復でポートが変わると label も変わるので、
-    /// label から台を引き直さない(WorkerAnomalyRecord.preRunTriage はこちらを使う)
+    /// repaired = 開始時に凍結していて `recover` で戻ったデバイス(run.json の blankRepairs へ渡す)。
+    /// **excludedWorkers / repairedWorkers はデバイスそのもの** —— 回復でポートが変わると label も変わるので、
+    /// label からデバイスを引き直さない(WorkerAnomalyRecord.preRunTriage はこちらを使う)
     public struct Result {
         public let workers: [RunWorker]
         public let excludedWorkers: [RunWorker]
@@ -105,7 +105,7 @@ public enum BlankWorkerTriage {
     /// 「無害な入力」が存在しない。能動プローブを持てない代わりに判定を確定させない
     /// (`.darkScreenPhysical`)ことで釣り合いを取る
     /// `awake` は実機のときだけ引く**端末側の申告**(Android の `mWakefulness`)。
-    /// **一様が確定してから引く** —— 健全な台に毎回 `dumpsys` を撃たないため
+    /// **一様が確定してから引く** —— 健全なデバイスに毎回 `dumpsys` を撃たないため
     public static func observedVerdict(
         key: String?,
         screenshot: () async -> Data?,
@@ -205,12 +205,12 @@ public enum BlankWorkerTriage {
     /// 呼ぶのは「あちらのトリアージが実機を対象外にしている」Android ワーカーの経路だけでよい
     /// (`api run` はワーカーが混在リストなので既存の1本で両 OS を拾う)。
     ///
-    /// **公表(DeviceFrozenStore)はしない** —— `syncStore` は clearAll してから自分が見た台だけを
+    /// **公表(DeviceFrozenStore)はしない** —— `syncStore` は clearAll してから自分が見たデバイスだけを
     /// publish するので、後続の iOS レーンの公表と潰し合う。モニターは自分の受動観測から
     /// 同じ根拠を組み立てるので、ここで公表しなくてもタイルの答えは変わらない
     /// `awake` / `repair` は Android 実機でだけ渡る(iOS 実機は点灯状態を取る手段が無い)。
     /// **修復を撃つのは「起きていると申告しているのに一様」= `.awakeButBlankPhysical` のときだけ** ——
-    /// 消灯かもしれない台(`.darkScreenPhysical`)には撃たない。撃つのは画面の sleep/wake だけで、
+    /// 消灯かもしれないデバイス(`.darkScreenPhysical`)には撃たない。撃つのは画面の sleep/wake だけで、
     /// 戻らなくても**レーンからは外さない**(実機を run から落とす判断はしない)
     public static func observePhysicalScreens(
         _ workers: [RunWorker],
@@ -358,7 +358,7 @@ public enum BlankWorkerTriage {
         return Set(labels.compactMap { keysByLabel[$0] })
     }
 
-    /// 開始時に凍結していて終了時に凍結していない台を「回復した」と数える(deviceKey で照合。
+    /// 開始時に凍結していて終了時に凍結していないデバイスを「回復した」と数える(deviceKey で照合。
     /// label の単純な差し引きはしない —— 回復でポートが変わり label が変わるため)
     private static func repairedWorkers(originalBlankKeys: Set<String>, stillBlankLabels: [String],
                                         in workers: [RunWorker]) -> [RunWorker] {

@@ -6,7 +6,7 @@ import XCTest
 
 final class HostRecordingProbeTests: XCTestCase {
 
-    /// simctl が実際に出した行(残留セッションの台で採取)
+    /// simctl が実際に出した行(残留セッションのデバイスで採取)
     func testBusyLineFromSimctlIsBusy() {
         let line = "Error starting video recorder: Error Domain=NSPOSIXErrorDomain Code=16 \"Resource busy\""
             + " UserInfo={NSLocalizedFailureReason=Host recording is already in progress}."

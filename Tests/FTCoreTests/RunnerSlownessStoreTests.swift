@@ -3,7 +3,7 @@ import XCTest
 
 /// XCUITest ランナーの劣化が run をまたいで放置される問題に対する印(RunnerSlownessStore)。
 /// DeviceFrozenStore と同じ棚(.fleetest/)・同じキー体系(UDID)だが、鮮度(pid 生存・mtime)は
-/// 持たない(この印は特定の観測者に紐付かない「その台の実測結果」なので)。
+/// 持たない(この印は特定の観測者に紐付かない「そのデバイスの実測結果」なので)。
 final class RunnerSlownessStoreTests: XCTestCase {
     private var stateDir: URL!
 
@@ -51,7 +51,7 @@ final class RunnerSlownessStoreTests: XCTestCase {
         XCTAssertNil(RunnerSlownessStore.current(stateDir: stateDir, key: "udid-missing"))
     }
 
-    /// 別の台には及ばない(キーごとに独立)
+    /// 別のデバイスには及ばない(キーごとに独立)
     func testDoesNotLeakAcrossKeys() {
         RunnerSlownessStore.mark(stateDir: stateDir, key: "udid-a", state: .runnerRestartDidNotHelp)
         XCTAssertNil(RunnerSlownessStore.current(stateDir: stateDir, key: "udid-b"))

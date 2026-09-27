@@ -85,7 +85,7 @@ export interface FlakyRow {
  * Swift 側 `ApiResultsCommand.DeviceHealthRow` と対(docs/results-json.md)。
  * `host` は記録の鍵(表示は machines で machine へ読み替える)、`worker` は
  * "<platform>:<論理名>"(machine を含まない。ScenarioRunRecord.worker と同じ形)。
- * 期間内に事象が1つも無い台の行はそもそも届かない(Swift 側が省く)。
+ * 期間内に事象が1つも無いデバイスの行はそもそも届かない(Swift 側が省く)。
  * cause/recovery を持たない古い記録は removedByCause/recoveredByKind に数えない。 */
 export interface DeviceHealthRow {
   readonly host: string;
@@ -295,7 +295,7 @@ export interface ApiResultsPayload {
   readonly summary: readonly ScenarioSummaryRow[];
   /** 不安定度降順 */
   readonly flaky: readonly FlakyRow[];
-  /** デバイスの健全性(§4)。期間内に事象が1つも無い台は含まれない(0件は空配列)。 */
+  /** デバイスの健全性(§4)。期間内に事象が1つも無いデバイスは含まれない(0件は空配列)。 */
   readonly deviceHealth: readonly DeviceHealthRow[];
   readonly trend?: readonly ScenarioRunRecord[];
   /** avgDurationMs 降順、最大10件。本フィールド追加前の CLI ではキー欠落(古い CLI との互換で必須にしない)。 */
@@ -358,12 +358,12 @@ export type DashboardFromWebviewMessage =
   /** 集計期間の切り替え。 */
   | { readonly type: "setSince"; readonly since: SinceOption }
   /** デバイスの健全性の「ストレージ使用を更新」。モニターへ storageRefresh を送る(api results は叩かない)。
-   * id = 押した時刻(Date.now())。モニターが台ごとに storageRefreshId として返し、進捗の終わりを判定する */
+   * id = 押した時刻(Date.now())。モニターがデバイスごとに storageRefreshId として返し、進捗の終わりを判定する */
   | { readonly type: "refreshStorage"; readonly id: number };
 
-/** デバイスの健全性(deviceHealth.js)がモニターの台を api results の worker(実行プロファイルの
- * 台の name)へ揃えるための和集合(config.ts `listProjectDeviceCatalog`/`MachineDeviceEntry` の
- * うち解決に要る欄だけ)。1件 = 実行プロファイルに載っている台1台。 */
+/** デバイスの健全性(deviceHealth.js)がモニターのデバイスを api results の worker(実行プロファイルの
+ * デバイスの name)へ揃えるための和集合(config.ts `listProjectDeviceCatalog`/`MachineDeviceEntry` の
+ * うち解決に要る欄だけ)。1件 = 実行プロファイルに載っているデバイス1台。 */
 export interface DeviceCatalogEntry {
   readonly platform: string;
   /** undefined = 手元。 */
@@ -374,7 +374,7 @@ export interface DeviceCatalogEntry {
   readonly avd?: string;
   /** iOS のみ。 */
   readonly udid?: string;
-  /** 実行プロファイルの kind(省略 = virtual)。モニターに居ない台の「実機」バッジに使う。 */
+  /** 実行プロファイルの kind(省略 = virtual)。モニターに居ないデバイスの「実機」バッジに使う。 */
   readonly kind?: "virtual" | "physical";
 }
 

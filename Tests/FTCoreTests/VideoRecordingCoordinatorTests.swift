@@ -373,7 +373,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         let worker = makeWorker(1)
         let started = await coordinator.start(worker)
         XCTAssertTrue(started, "開始自体は成功する")
-        // シナリオ区間を1つも登録しない = 予備の台
+        // シナリオ区間を1つも登録しない = 予備のデバイス
         await coordinator.finish()
 
         let indexURL = tmp.appendingPathComponent("recordings/index.json")
@@ -381,7 +381,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
                        "アイドルだけの run は失敗 0 件なので index を書かない")
     }
 
-    /// 逆向き: **実際にシナリオを回した台の空ソースは数える**(全滅の検出はこちらが担う)。
+    /// 逆向き: **実際にシナリオを回したデバイスの空ソースは数える**(全滅の検出はこちらが担う)。
     /// 片方向だけだと「常に数えない」変異を素通しする
     func testWorkerThatRanScenariosWithEmptySourceIsCounted() async throws {
         let tmp = try makeTempDir()

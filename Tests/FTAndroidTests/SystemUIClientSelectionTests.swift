@@ -2,7 +2,7 @@
 //
 // **実害 2026-09-09**: `RunWorker.driver` は in-app ブリッジ宛の BridgeClient で、in-app には
 // `/home` のルートが無い。hybrid でもそれを撃っていたため homeOnStart が 18 台すべてで 0/N=不発
-// だった(しかも「inapp 固定の台だけができない」と誤って説明していた)。宛先の決定は
+// だった(しかも「inapp 固定のデバイスだけができない」と誤って説明していた)。宛先の決定は
 // `ProfileWorkerFactory.systemUIClient` の1箇所に寄せてある。
 
 import XCTest
@@ -14,7 +14,7 @@ final class SystemUIClientSelectionTests: XCTestCase {
 
     // MARK: - homeOnStart の対象
 
-    /// **in-app ブリッジを持つ台には撃たない**(実測 2026-09-09): home でアプリが背面に回ると
+    /// **in-app ブリッジを持つデバイスには撃たない**(実測 2026-09-09): home でアプリが背面に回ると
     /// in-app ブリッジが無応答になり、供給が壊れたブリッジと見て張り直す(3機で13台が脱落)。
     /// hybrid は xcuiPort も持つので、**xcuiPort の有無で判定してはいけない**。
     func testHybridAndInappAreSkippedEvenWhenTheyHaveAnXcuitestBridge() {
@@ -29,7 +29,7 @@ final class SystemUIClientSelectionTests: XCTestCase {
         XCTAssertEqual(plan.skipped.count, 2)
     }
 
-    /// xcuitest 単独の iOS と Android は撃つ(engine を宣言しない台も従来どおり対象)
+    /// xcuitest 単独の iOS と Android は撃つ(engine を宣言しないデバイスも従来どおり対象)
     func testXcuitestAndAndroidStayTargets() {
         let xcuitest = worker(platform: "ios",
                               connection: DriverConnection(platform: "ios", port: 8123, udid: "U1"))

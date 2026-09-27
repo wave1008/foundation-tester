@@ -1,23 +1,23 @@
 // `api start-device/down --name` がどのデバイスに当たるか。
 //
-// 実害(2026-08-17): フリートでは**同名の台が複数の機械にある**のが通常((host, name) が一意)。
-// 名前だけで引くと最初の一致 = 手元の台に当たるので、**M1Max のタイルから停止したのに
+// 実害(2026-08-17): フリートでは**同名のデバイスが複数の機械にある**のが通常((host, name) が一意)。
+// 名前だけで引くと最初の一致 = 手元のデバイスに当たるので、**M1Max のタイルから停止したのに
 // 手元のシミュレータが止まった**(しかも ok:true で「成功」に見えた)。
 //
 // 実害(maintainer-notes §51.9): `findDevice` は (machine, name) を正しく解決しても、
 // **呼び出し側(ApiDeviceOperation.run / ApiRestartDevicesCommand)は常にこの機械で
-// 操作を実行する**(ssh 越しに投げる経路を持たない)。解決した台が他の機械のものでも
-// `.found` を返していたため、`--device-machine M1Max` を渡すと M1Max の台の**設定**で
-// **この Mac の同名の台**を操作してしまっていた(Android は AVD 名が機械を跨いで同じなので、
+// 操作を実行する**(ssh 越しに投げる経路を持たない)。解決したデバイスが他の機械のものでも
+// `.found` を返していたため、`--device-machine M1Max` を渡すと M1Max のデバイスの**設定**で
+// **この Mac の同名のデバイス**を操作してしまっていた(Android は AVD 名が機械を跨いで同じなので、
 // iOS と違い UDID 不一致で無害に失敗しない)。`.ambiguous` の案内がまさにこの
 // `--device-machine` を勧めていたため、案内どおりに従うと事故る形だった。
 //
 // 規律は3つ:
-//  - `--device-machine` を渡したら、**その機械の台だけ**を見る(他機の同名には当たらない)
+//  - `--device-machine` を渡したら、**その機械のデバイスだけ**を見る(他機の同名には当たらない)
 //  - 渡さなかったら、**候補が1つのときだけ**採る。2つ以上なら候補を挙げて止める ——
 //    黙って片方を選ぶと「別の機械のデバイスを操作した」になり、気づけない
 //    (実行プロファイルの参照解決 `DeviceMachineGrouping.resolve` と同じ規律)
-//  - **解決した台が手元(machine が nil)でなければ `.found` を返さない** ——
+//  - **解決したデバイスが手元(machine が nil)でなければ `.found` を返さない** ——
 //    どちらの経路(明示 / 省略して一意)で解決したかに関わらず `.foreign` で断る
 
 import FTCore
@@ -45,7 +45,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
             android: DeviceRosterList(devices: [spec("Pixel-01", host: "M1Max")]))
     }
 
-    /// **maintainer-notes §51.9**: `--device-machine M1Max` を明示しても、その機械の台をこの機械で
+    /// **maintainer-notes §51.9**: `--device-machine M1Max` を明示しても、その機械のデバイスをこの機械で
     /// 実行してはならない —— `.found` ではなく `.foreign` で断る(body は呼ばれない)
     func testHostGivenRefusesThatMachinesDeviceAsForeign() {
         guard case .foreign(let host, let spec, let platform) = ApiDeviceOperation.findDevice(
@@ -70,7 +70,7 @@ final class ApiDeviceLookupHostTests: XCTestCase {
     }
 
     /// **maintainer-notes §51.9 同型**: `--device-machine` 省略でも、候補が1つしかなければ黙って `.found` にしていた。
-    /// その1つが他機の台なら(Android の AVD 名は機械を跨いで同名になりうる)、同名の手元の台を
+    /// その1つが他機のデバイスなら(Android の AVD 名は機械を跨いで同名になりうる)、同名の手元のデバイスを
     /// 他機の設定で操作してしまう —— 候補が1つでも手元でなければ `.foreign` で断る
     func testNoHostStillRefusesTheUniqueCandidateWhenItIsOnAnotherMachine() {
         guard case .foreign(let host, let spec, let platform) = ApiDeviceOperation.findDevice(

@@ -7,7 +7,7 @@ import FTCore
 
 public enum RemoteDispatchError: Error, LocalizedError {
     case invalidHost(String)
-    /// 宛先そのものは妥当だが、そのマシンに割り当てられた台が無い(--runner の絞り込み)
+    /// 宛先そのものは妥当だが、そのマシンに割り当てられたデバイスが無い(--runner の絞り込み)
     case invalidMachine(String)
     case invalidDevice(String)
     case invalidRemoteDir(String)
@@ -683,16 +683,16 @@ public enum RemoteRunArgs {
                              reportDir: String?, workspace: String? = nil,
                              runGroup: String? = nil) -> [String] {
         // **リモート側は必ず「ここで走らせる」**(--runner local)。省略すると、向こうの fleetest が
-        // 転送された実行プロファイルの台の machine を読んで**もう一度ディスパッチしようとする**
+        // 転送された実行プロファイルのデバイスの machine を読んで**もう一度ディスパッチしようとする**
         // 余地を残す。"local" は MachineDispatch.resolve が明示指定として止める
         // (FleetRunner が "local" エントリに --runner local を渡すのと同じ理由)
         var args = ["run", "--project", project, "--profile", profile, "--quiet", "--runner", "local"]
         if let reportDir { args += ["--report-dir", reportDir] }
         // **デバイスの絞り込みは中継しないと効かない** —— 向こうは同じ実行プロファイルを
-        // 受け取るので、渡さないと**全ホストぶんの台**を自分のものとして解決しようとする
+        // 受け取るので、渡さないと**全ホストぶんのデバイス**を自分のものとして解決しようとする
         // (同名は別の機械にも居るのが通常。実走で確認)。
         // **値は常に "local"** —— 転送したプロファイルは RunnerProfileTransfer が
-        // 「そのランナーから見た姿」へ畳んであり、向こうの台は local になっている。
+        // 「そのランナーから見た姿」へ畳んであり、向こうのデバイスは local になっている。
         // ローカルエイリアス(M1Ultra 等)は発行側だけの概念なのでリモートへ出さない
         // (用語の定義は FTCore.RunnerProfileView。ユーザー決定)
         if !deviceNames.isEmpty { args += ["--device"] + deviceNames }
@@ -1119,7 +1119,7 @@ public enum RemoteCleanPlan {
         // 配信の控え(FTCore.StreamLease)。**機械に1箇所**(`~/.fleetest/streams`。`<base>` 配下
         // ではない = base が2つあっても控えは割れない)で、書いた側は execv で化けるので自分では
         // 消せない —— 死んだ pid の控えが溜まる(読む側は無視するが、**pid が一巡して別プロセスに
-        // 当たると、その台の配信が誰にも張れなくなる**)。ここで保持ポリシーに掛けて上限を作る
+        // 当たると、そのデバイスの配信が誰にも張れなくなる**)。ここで保持ポリシーに掛けて上限を作る
         // (数日前の配信は必ず終わっている)
         let streams = aged(RemoteShell.quote(StreamLease.directory(home: layout.home)), depth: 1)
         let works = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null) \(legacy)"

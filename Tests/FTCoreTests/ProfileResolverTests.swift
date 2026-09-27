@@ -373,7 +373,7 @@ final class ProfileResolverTests: XCTestCase {
                       "common の autoInstall は正当な設定場所なので警告は出ないはず: \(warnings)")
     }
 
-    /// enabled: false の台は解決対象から外す(警告も出さない = 意図した状態)
+    /// enabled: false のデバイスは解決対象から外す(警告も出さない = 意図した状態)
     func testDisabledDeviceIsNotRun() throws {
         try writeStandardFixture()
         let resolved = try ProfileResolver.resolve(project: project, runName: "all")
@@ -1129,7 +1129,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(fpcOffOnly.fm.fmTextOcclusionCheck)
     }
 
-    /// 実機の検査は enabled の台だけ(無効の台の不備で保存・実行を止めない)
+    /// 実機の検査は enabled のデバイスだけ(無効のデバイスの不備で保存・実行を止めない)
     func testValidateRunReportsPhysicalErrorsOnlyForEnabledDevices() throws {
         let data = #"""
         { "app": "a", "devices": [

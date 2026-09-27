@@ -133,7 +133,7 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
         "BridgeProvisioner.executeBridge",
         "BridgeProvisioner.stopAndRelaunch",
         // ①この run 自身が今使っている凍結ワーカーの自己回復(BlankWorkerTriage.recover)。
-        // 他プロセスの台は触らない
+        // 他プロセスのデバイスは触らない
         "ProfileWorkerFactory.recoverFrozenIOSWorkers",
         // ②呼び出し元 DeviceWiper.wipeOne(android) が deviceInUseRefusal を通した後にだけ呼ぶ
         // 実体部分(関数分割の内側。単体では判定語彙が現れない)
@@ -146,7 +146,7 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
 
     /// **戻すと落ちる根拠**: 新しい停止経路が run-lease / MCP の印のどちらも確認せずに
     /// simctl shutdown/erase・adb emu kill・BridgeLauncher.stop 系を撃つと、他プロセス
-    /// (走っている run・MCP セッション)の台を無言で落とす
+    /// (走っている run・MCP セッション)のデバイスを無言で落とす
     func testEveryDeviceStopPrimitiveIsGuardedByAnOwnershipCheck() throws {
         var sawAnyHit = false
         for url in try allSwiftFiles() {

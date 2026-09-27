@@ -194,8 +194,8 @@ public enum SimulatorCatalog {
                 name: name, os: os,
                 available: Array(Set(devices.map(\.name))).sorted())
         }
-        // **起動状態も OS も同じ同名の台が複数なら規則では決まらない** —— 黙って1台目を選ぶと、
-        // 同名の別の台(プロファイルが UDID で指している方)を起動して使う(実例: 同名が2台ある機で
+        // **起動状態も OS も同じ同名のデバイスが複数なら規則では決まらない** —— 黙って1台目を選ぶと、
+        // 同名の別のデバイス(プロファイルが UDID で指している方)を起動して使う(実例: 同名が2台ある機で
         // `bridge up --device <名前>` が別の1台を起こした)。起動中の1台・新しい OS を選ぶ規則は残す
         let tied = candidates.filter { $0.booted == best.booted && $0.os == best.os }
         guard tied.count == 1 else {
@@ -285,7 +285,7 @@ public enum SimulatorShutdownObservation: Equatable, Sendable {
 }
 
 extension SimulatorCatalog {
-    /// udid: nil なら「起動中の台が1台も無いか」、指定ならその台だけを見る(一覧から消えた台は停止扱い)。
+    /// udid: nil なら「起動中のデバイスが1台も無いか」、指定ならそのデバイスだけを見る(一覧から消えたデバイスは停止扱い)。
     /// **途中の状態(Shutting Down 等)は停止ではない** —— 停止と数えると、起動前の掃除が書き込み中の
     /// PosterBoard・logd のファイルを消し、shutdown の再試行が 30 秒の時限で切れた回を「止まった」と言う
     public static func shutdownObservation(

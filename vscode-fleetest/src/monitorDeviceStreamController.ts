@@ -49,7 +49,7 @@ interface StreamEntry {
 }
 
 /** MonitorTarget.id("<platform>:<name>" / リモートは "<platform>:<machine>/<name>")が
- * (machine, name) と一致するか。**名前だけで引かない** —— 同名の台が別の機械にも居るのは通常で、
+ * (machine, name) と一致するか。**名前だけで引かない** —— 同名のデバイスが別の機械にも居るのは通常で、
  * 手元の停止でリモートの配信まで畳む(逆も同じ)。machine 省略は「手元」の意味
  * (id の綴りは Swift 側 DeviceMachineGrouping.workerID が決める) */
 function matchesDeviceName(deviceId: string, name: string, machine?: string): boolean {
@@ -113,8 +113,8 @@ export class MonitorDeviceStreamController {
   applyDevices(devices: readonly MonitorDevice[]): void {
     this.lastDevices = devices;
     if (!this.visible) {
-      // 非表示中は setVisible(false) で全破棄・全台抑止済み。**隠れている間に増えた台も抑止へ入れる**
-      // (抜けるとその台だけ見えない画面へ撮影が流れ続ける)。再開は次の setVisible(true) 後に任せる
+      // 非表示中は setVisible(false) で全破棄・全台抑止済み。**隠れている間に増えたデバイスも抑止へ入れる**
+      // (抜けるとそのデバイスだけ見えない画面へ撮影が流れ続ける)。再開は次の setVisible(true) 後に任せる
       this.sendSuppress(new Set(devices.map((device) => device.id)));
       return;
     }
@@ -162,10 +162,10 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
-      // **占有中の機械・その台自身が run 中・他の発行者が配信中の台は起こさない**(共有ランナー。
+      // **占有中の機械・そのデバイス自身が run 中・他の発行者が配信中のデバイスは起こさない**(共有ランナー。
       // 「ライブ更新」が ON のとき、occupiedMachines は自分の run のぶんを含まず inRun も見ない。
-      // §18.7 M2)。occupiedMachines(機械単位。dispatch.lock)と inRun(台単位。RunLease)は
-      // 粒度が違う信号で、**どちらか一方が立てば畳む**。**手元も機械単位で判定する**(台の
+      // §18.7 M2)。occupiedMachines(機械単位。dispatch.lock)と inRun(デバイス単位。RunLease)は
+      // 粒度が違う信号で、**どちらか一方が立てば畳む**。**手元も機械単位で判定する**(デバイスの
       // machine 欠落は LOCAL_MACHINE_KEY)—— 他人がこの Mac へディスパッチして保持していると
       // inRun は立たない(RunLease は同じ機械の run が置くが、畳むべき根拠は機械のロック)。
       // qualifying に入れない = 既存のパイプラインも下の破棄ループが畳み、タイルはポーリングの
@@ -185,7 +185,7 @@ export class MonitorDeviceStreamController {
       }
       if (device.machine) {
         // **別の機械のデバイス**。udid も adb serial も向こうのものなので、手元でヘルパーを
-        // 起こしても当たらない(同名の手元の台に当たると**別の機械の画面が映る**)。代わりに
+        // 起こしても当たらない(同名の手元のデバイスに当たると**別の機械の画面が映る**)。代わりに
         // その機械で `api device-stream` を起こす —— 向こうは宛先を解決してヘルパーへ exec で
         // 化けるので、**stdout に流れるバイト列はここで直接起こしたときと同じ**。だから
         // StreamPipeline も codec の扱いも失敗時のポーリング復帰もそのまま使える
@@ -214,7 +214,7 @@ export class MonitorDeviceStreamController {
           args: [
             "remote", "exec", device.machine, "--",
             // **向こうでは "local"**。転送したプロファイルは RunnerProfileView が「そのランナーから
-            // 見た姿」へ畳んである(自分の台は machine:"local"・他機の台は削除)ので、エイリアスで
+            // 見た姿」へ畳んである(自分のデバイスは machine:"local"・他機のデバイスは削除)ので、エイリアスで
             // 絞ると1台も残らず "no ios device named …" で落ちる。fan-out の子
             // (Sources/fleetest/RemoteMonitorFanout.swift)が `--device-machine local` を渡すのと同じ理由 ——
             // **片方だけ直さない**(この経路は 8ef49815 で追随が漏れていた)
@@ -299,7 +299,7 @@ export class MonitorDeviceStreamController {
       }
     }
     // **リモートは一斉に張らない**(1機械あたり ssh が N+2 本になり sshd の MaxStartups に
-    // 当たる。remoteStreamAdmission.ts)。見送った台はこの reapply が次のモニター更新で
+    // 当たる。remoteStreamAdmission.ts)。見送ったデバイスはこの reapply が次のモニター更新で
     // また拾うので、取りこぼしにはならない
     const pending = [...qualifying]
       .filter(([deviceId]) => !this.pipelines.has(deviceId) && !this.gaveUpDeviceIds.has(deviceId))
@@ -391,7 +391,7 @@ export class MonitorDeviceStreamController {
     const pipeline = new StreamPipeline({
       command: target.command,
       args: target.args,
-      // 台名を入れる —— helper の stderr(encode 失敗・wedge)は全部この prefix で出るので、
+      // デバイス名を入れる —— helper の stderr(encode 失敗・wedge)は全部この prefix で出るので、
       // 無いと数十本のどれが壊れたか分からない(実際に iOS 4本の同時失敗が特定できなかった)
       logPrefix: `${target.platform === "ios" ? "ios-stream" : "android-stream"} ${deviceId}`,
       outputChannel: this.deps.outputChannel,
@@ -436,7 +436,7 @@ export class MonitorDeviceStreamController {
 
   /** パイプラインを1本落として webview へも知らせる(streamStopped)。**知らせるのが要点** ——
    * 落としたことを伝えないと、タイルは最後に復号した h264 の絵を出したままポーリングのフレームを
-   * 隠れた img へ入れ続ける(= 前の画像が残る)。畳んだ台の絵の出所はポーリングだけなので、
+   * 隠れた img へ入れ続ける(= 前の画像が残る)。畳んだデバイスの絵の出所はポーリングだけなので、
    * 落とす3経路(個別破棄・全破棄・非表示)が全部ここを通る。 */
   private dropPipeline(deviceId: string): void {
     this.pipelines.get(deviceId)?.pipeline.dispose();
@@ -463,7 +463,7 @@ export class MonitorDeviceStreamController {
 
   /** 描画 ack は webview から1本ずつ別メッセージで届く(起動時は数十本が連続)ので、送信を
    * **monitor の polling 間隔1つ分**だけ溜めてまとめる。窓がこの値なのは、抑止がその cadence で
-   * しか効かないため —— 遅らせる代償は台ごとに最大1枚余分にポーリングするだけ。
+   * しか効かないため —— 遅らせる代償はデバイスごとに最大1枚余分にポーリングするだけ。
    * (microtask ではメッセージを跨いで畳めず、実運用で 31 行/秒のままだった) */
   private suppressSyncTimer: ReturnType<typeof setTimeout> | undefined;
   private syncSuppressFrames(): void {

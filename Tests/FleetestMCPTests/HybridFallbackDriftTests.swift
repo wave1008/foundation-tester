@@ -105,7 +105,7 @@ final class HybridFallbackDriftTests: XCTestCase {
         XCTAssertTrue(message.contains("ft_snapshot"), message)
     }
 
-    /// **本題**: ポートの中身が別の台に替わった(differentDevice)なら、ref を使わない
+    /// **本題**: ポートの中身が別のデバイスに替わった(differentDevice)なら、ref を使わない
     /// 呼び出しでも黙って作り直さず断る —— 別の実体を黙って操作し続けさせない
     func testPrimaryEngineOutcomeRefusesDifferentDeviceEvenWithoutRememberedState() {
         let outcome = MCPServer.primaryEngineOutcome(
@@ -128,7 +128,7 @@ final class HybridFallbackDriftTests: XCTestCase {
         }
     }
 
-    /// 呼び手が udid を明示したら(記憶の補完は port しか書かない)今そのポートの台への同意なので作り直す。
+    /// 呼び手が udid を明示したら(記憶の補完は port しか書かない)今そのポートのデバイスへの同意なので作り直す。
     /// これが無いと断り続けて抜けられない
     func testPrimaryEngineOutcomeRebuildsDifferentDeviceWhenTheCallerNamedAUDID() {
         let outcome = MCPServer.primaryEngineOutcome(

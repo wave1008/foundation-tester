@@ -2,8 +2,8 @@ import FTCore
 import Foundation
 
 /// シミュレータを止めるときの**手順と定数の唯一の定義元**。`DeviceBooter.shutdownOne`(一括停止・
-/// 凍結台の回復)と `BridgeProvisioner` の「遅いランナーの台ごと再起動」が同じ土台を使う ——
-/// 別々に持つと、片方だけ retry 回数や時限を直したときに同じ台で挙動が食い違う。
+/// 凍結デバイスの回復)と `BridgeProvisioner` の「遅いランナーのデバイスごと再起動」が同じ土台を使う ——
+/// 別々に持つと、片方だけ retry 回数や時限を直したときに同じデバイスで挙動が食い違う。
 /// **文言とエラー型は呼び手ごと**(共有するのは判定と手順だけ)。
 public enum SimulatorShutdownRetry {
     /// 実状態で止まったと確かめるまでの試行回数

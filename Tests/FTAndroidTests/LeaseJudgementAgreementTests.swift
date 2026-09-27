@@ -2,11 +2,11 @@ import XCTest
 @testable import FTAndroid
 @testable import FTBridgeClient
 
-/// 「その台を他人が使っているか」の判定は**2箇所にある**: 台を止める操作の門
-/// (`DeviceBooter.deviceInUseRefusal`)と、遅いランナーの台ごと再起動の門
+/// 「そのデバイスを他人が使っているか」の判定は**2箇所にある**: デバイスを止める操作の門
+/// (`DeviceBooter.deviceInUseRefusal`)と、遅いランナーのデバイスごと再起動の門
 /// (`RunnerAccessibilityHealth.hasForeignLease`)。FTAndroid → FTBridgeClient の依存方向のため
 /// あちらからこちらを呼べず関数を共有できないので、**答えが割れたらここで落とす**。
-/// 割れると同じ台に対して「止めるのは断る」のに「再起動はする」が同時に成り立つ。
+/// 割れると同じデバイスに対して「止めるのは断る」のに「再起動はする」が同時に成り立つ。
 final class LeaseJudgementAgreementTests: XCTestCase {
     func testBothGatesAgreeOnEveryHolderCombination() {
         let selfPID: Int32 = 4242

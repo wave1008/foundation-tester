@@ -79,7 +79,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
             + " bridge on port 8124 did not answer a one-element accessibility query (not measured) — left running")
     }
 
-    // MARK: - 建て直しても直らなかった台(RunnerRestartFutility)
+    // MARK: - 建て直しても直らなかったデバイス(RunnerRestartFutility)
 
     func testFutilityIsRememberedPerUDIDUntilCleared() {
         let futility = RunnerRestartFutility()
@@ -142,7 +142,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
             .restartSimulator)
     }
 
-    /// **変異②「lease がある台を除外しない」の陽性対照**: リースがあれば、印があっても
+    /// **変異②「lease があるデバイスを除外しない」の陽性対照**: リースがあれば、印があっても
     /// 絶対にシミュレータへ触らない(reuseWithoutRestarting に倒れる)
     func testRunnerRestartFailedMarkWithLeaseNeverTouchesTheDevice() {
         XCTAssertEqual(
@@ -171,7 +171,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
             runLeaseHolder: nil, mcpLeaseHolder: nil, selfPID: 100))
     }
 
-    /// 自分自身が持つ run-lease は「使用中」に数えない(この run 自身が供給の中で自分の台に触るのは正常)
+    /// 自分自身が持つ run-lease は「使用中」に数えない(この run 自身が供給の中で自分のデバイスに触るのは正常)
     func testOwnRunLeaseIsNotForeign() {
         XCTAssertFalse(RunnerAccessibilityHealth.hasForeignLease(
             runLeaseHolder: 100, mcpLeaseHolder: nil, selfPID: 100))

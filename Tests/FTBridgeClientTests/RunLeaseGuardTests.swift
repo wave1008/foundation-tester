@@ -1,4 +1,4 @@
-// run が同じ台へ二重に走らないよう、供給フェーズが lease を書く前に拒否する判定
+// run が同じデバイスへ二重に走らないよう、供給フェーズが lease を書く前に拒否する判定
 // (RunLeaseGuard.conflicts)の契約。純粋関数なのでファイル I/O は holderPID クロージャで注入する。
 
 import XCTest
@@ -23,7 +23,7 @@ final class RunLeaseGuardTests: XCTestCase {
         XCTAssertTrue(conflicts.isEmpty)
     }
 
-    // 戻すと落ちる根拠: 生きた別プロセスの lease を無視して素通しするようになる(同じ台へ2つの run が無警告で当たる)
+    // 戻すと落ちる根拠: 生きた別プロセスの lease を無視して素通しするようになる(同じデバイスへ2つの run が無警告で当たる)
     func testOtherLivePIDIsAConflict() {
         let conflicts = RunLeaseGuard.conflicts(
             devices: [(device: "Pixel 9 -01", key: "emulator-5554")],
@@ -51,7 +51,7 @@ final class RunLeaseGuardTests: XCTestCase {
         XCTAssertEqual(conflicts.count, 1)
     }
 
-    // ユーザー決定「拒否して止める」: メッセージは台名と保持者 pid を名指しする
+    // ユーザー決定「拒否して止める」: メッセージはデバイス名と保持者 pid を名指しする
     func testMessageNamesDeviceAndHolderPID() {
         let message = RunLeaseGuard.message([
             RunLeaseGuard.Conflict(device: "Pixel 9 -01", key: "emulator-5554", holderPID: 4242)])

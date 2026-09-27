@@ -14,9 +14,9 @@
 //   機械の登録名)が書いてあり、CLI には「自分が誰か」を知る手段が無い(マシン登録名は持たない)。
 //   親が明示することで、向こうは自分のデバイスを「手元のもの」として扱える
 // - 子の stdout は NDJSON のまま中継するが、**per-device の行には親が machine を入れる** ——
-//   子は `--device-machine local` で走る(エイリアスはリモートへ出さない規律)ので、自分の台を
+//   子は `--device-machine local` で走る(エイリアスはリモートへ出さない規律)ので、自分のデバイスを
 //   machine:null と名乗る。入れずに流すと受け手(拡張)が**同名の手元のタイル**を書き換え、
-//   リモートの台が1枚も進まないように見える(= 機械ごとに2台ずつ起きていても「全体で2台」に
+//   リモートのデバイスが1枚も進まないように見える(= 機械ごとに2台ずつ起きていても「全体で2台」に
 //   見える)。RemoteMonitorFanout.ingest / ApiRunMachineFanout の rehost と同じ規律
 
 import FTCore
@@ -30,7 +30,7 @@ enum RemoteDeviceFanout {
         guard deviceMachine == nil else { return [] }
         guard let testProject = try? ScenarioHost.project(named: project) else { return [] }
         // **実行プロファイル未選択でも分散する** —— 台帳を1つに決めず runs/ を畳み、
-        // 登録簿にあるマシンの台を持つ機械へ投げる(監視の fan-out と同じ集合)。
+        // 登録簿にあるマシンのデバイスを持つ機械へ投げる(監視の fan-out と同じ集合)。
         // ここで [] を返していたため、「(プロファイルなし)」での「デバイスを全て起動」は
         // **手元しか起きなかった**(実害)
         guard let profile else {
@@ -85,7 +85,7 @@ enum RemoteDeviceFanout {
     /// `fleetest devices down`(実行プロファイル無し = 全ブリッジ停止 + シミュレータ/エミュレータの
     /// 全終了)を投げる先。**集合の正はモニターの fan-out と同じ**(プロファイル未選択なら
     /// 登録簿の全マシン。`ApiMonitorCommand.fanoutMachines`)—— 別に持つと「タイルには出ているのに
-    /// 『全て終了』では止まらない」台が生まれる。`deviceMachine` 指定時は [] = 子は分散しない
+    /// 『全て終了』では止まらない」デバイスが生まれる。`deviceMachine` 指定時は [] = 子は分散しない
     static func sweepMachines(deviceMachine: String?) -> [String] {
         sweepMachines(registry: (LocalConfig.load().remoteHosts ?? []).map(\.machine),
                       deviceMachine: deviceMachine)
@@ -125,7 +125,7 @@ enum RemoteDeviceFanout {
     }
 
     /// 中継する1行を受け手向けに直す(nil = 流さない)。3つだけ:
-    /// - per-device の行に `machine` を入れる。**子は自分の台を machine:null と名乗る**
+    /// - per-device の行に `machine` を入れる。**子は自分のデバイスを machine:null と名乗る**
     ///   (`--device-machine local`)ので、入れないと受け手が同名の手元のタイルを書き換える
     ///   (ファイル冒頭の規律)
     /// - log 行の先頭に `[<machine>]` を付ける(手元の行と混ざるとどの機械の声か読めない)

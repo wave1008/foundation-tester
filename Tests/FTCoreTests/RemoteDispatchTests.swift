@@ -437,7 +437,7 @@ final class RemoteDispatchTests: XCTestCase {
     }
 
     /// **リモートのサブ実行はデバイスの絞り込みを中継しないと効かない**(2026-08-17 の実走)。
-    /// 向こうは同じマシンプロファイルを受け取るので、渡さないと全ホストぶんの台を自分のものと
+    /// 向こうは同じマシンプロファイルを受け取るので、渡さないと全ホストぶんのデバイスを自分のものと
     /// して解決しようとする。**ただし渡すのは "local" 固定** —— ローカルエイリアスは発行側だけの
     /// 概念でリモートへ出さない(転送時に RunnerProfileView が畳む。2026-08-26 ユーザー決定)
     func testRemoteRunArgsRelaysTheDeviceScope() {
@@ -958,7 +958,7 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// ApiRunMachineFanout がホストごとの子(`api run --runner <label>`)を立てるようになったため、
     /// `api run --runner` のリモート実行にも `run --runner` と同じデバイス絞り込みの中継が要る
-    /// (testRemoteRunArgsRelaysTheDeviceScope と対。渡さないと向こうが全ホストぶんの台を掴む)
+    /// (testRemoteRunArgsRelaysTheDeviceScope と対。渡さないと向こうが全ホストぶんのデバイスを掴む)
     func testBuildApiRelaysTheDeviceScope() {
         let args = RemoteRunArgs.buildApi(
             project: "E2E", profile: "mixed", scenarios: ["Login.S0010"],
@@ -1235,7 +1235,7 @@ final class RemoteDispatchTests: XCTestCase {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         // 配信の控えは**機械に1箇所**(`~/.fleetest/streams` = `<base>` 配下ではない)。
-        // **死んだ pid の控えが溜まると、pid が一巡したときにその台の配信が誰にも張れなくなる**
+        // **死んだ pid の控えが溜まると、pid が一巡したときにそのデバイスの配信が誰にも張れなくなる**
         // ので上限を作る。掃除先は `RemoteLayout.home` 基準 —— base を変えても同じ1箇所
         XCTAssertTrue(commands[0].contains("'/Users/ci/.fleetest/streams' -mindepth 1 -maxdepth 1"),
                       commands[0])

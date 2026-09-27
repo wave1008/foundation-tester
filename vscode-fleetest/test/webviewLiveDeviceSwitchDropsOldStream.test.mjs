@@ -1,14 +1,14 @@
-// ライブ操作タブでデバイスを切り替えたとき、**前の台の画面を出し続けない**ことの DOM E2E(jsdom)。
+// ライブ操作タブでデバイスを切り替えたとき、**前のデバイスの画面を出し続けない**ことの DOM E2E(jsdom)。
 // harness とフェイク(getContext / VideoDecoder / EncodedVideoChunk)は
 // webviewLiveSnapshotKeepsH264.test.mjs と同型。ただし VideoDecoder は **decode しても即 output せず、
-// flush() を呼ぶまで溜める** —— 実物のデコードは非同期なので、切り替えの瞬間にも前の台のフレームが
+// flush() を呼ぶまで溜める** —— 実物のデコードは非同期なので、切り替えの瞬間にも前のデバイスのフレームが
 // デコード待ちで残っている。close() 後は実物と同じく output しない。
 //
 // 実害(2026-09-24): Android の実機を見た後、タイル右クリックで iOS 実機の「ライブ操作」を選ぶと、
 // 画面が Android のまま変わらなかった。host の clearSnapshot で絵は捨てていたが、デコーダを
 // 残していたため、デコード待ちだった Android のフレームが描けた時点で onFrameRendered が
 // canvas を前面へ戻していた(iOS 実機は simstream を使えず新しい絵が来るまで時間がかかるので、
-// その間ずっと前の台の画面が出ていた)。
+// その間ずっと前のデバイスの画面が出ていた)。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -99,7 +99,7 @@ function sendDevices(window, selectedId) {
   });
 }
 
-// 前の台(Android)の配信が h264 で canvas に出ている状態を作る
+// 前のデバイス(Android)の配信が h264 で canvas に出ている状態を作る
 async function showAndroidStream(window, document, flushAll) {
   sendDevices(window, "android:Pixel");
   post(window, { type: "liveH264Chunk", keyframe: true, width: 0, height: 0, data: KEYFRAME });
@@ -116,7 +116,7 @@ test("host が台を切り替えた(clearSnapshot)あとに、前の台のデコ
   // 描画間引き(DRAW_INTERVAL_MS=66ms)を跨がせる = 溜めたフレームが本当に描かれる条件にする
   const base = window.performance.now();
   window.performance.now = () => base + 1000;
-  // 切り替えの直前に届いた前の台のデルタ(デコード待ちのまま残る)
+  // 切り替えの直前に届いた前のデバイスのデルタ(デコード待ちのまま残る)
   post(window, { type: "liveH264Chunk", keyframe: false, width: 0, height: 0, data: KEYFRAME });
   await settle();
 
@@ -134,7 +134,7 @@ test("タイル右クリックの「ライブ操作」で別の台を開いた�
   const { window, document, posts, flushAll } = createWebview();
   t.after(() => window.close());
   await showAndroidStream(window, document, flushAll);
-  // 前の台の一枚絵(操作結果の snapshot)も持っている状態
+  // 前のデバイスの一枚絵(操作結果の snapshot)も持っている状態
   post(window, {
     type: "live",
     message: { type: "snapshot", screen: { width: 400, height: 800 }, image: "ANDROID", elements: [] },

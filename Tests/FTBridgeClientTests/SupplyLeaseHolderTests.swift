@@ -65,7 +65,7 @@ final class SupplyLeaseHolderTests: XCTestCase {
     }
 
     /// orchestrator へ手放したキーは、orchestrator が消した後に書き戻さない
-    /// (書き戻すと担当を終えた台が run の最後まで run 中に見え、モニターの配信が明滅する)
+    /// (書き戻すと担当を終えたデバイスが run の最後まで run 中に見え、モニターの配信が明滅する)
     func testHandedOffKeyIsNotRewrittenAfterItsOwnerRemovesIt() async throws {
         let holder = SupplyLeaseHolder(stateDir: stateDir, heartbeatSeconds: 0.05)
         holder.hold(keys: ["emulator-5554", "emulator-5556"])
@@ -83,7 +83,7 @@ final class SupplyLeaseHolderTests: XCTestCase {
     }
 
     /// releaseKeys は名指ししたキーだけ消す(残りは hold されたまま = 供給に失敗してレーンから
-    /// 外れた台だけ手放し、実際に建った台の lease はそのまま)
+    /// 外れたデバイスだけ手放し、実際に建ったデバイスの lease はそのまま)
     func testReleaseKeysRemovesOnlyNamedKeysAndLeavesOthersHeld() async throws {
         let holder = SupplyLeaseHolder(stateDir: stateDir, heartbeatSeconds: 0.05)
         holder.hold(keys: ["UDID-A", "UDID-B"])

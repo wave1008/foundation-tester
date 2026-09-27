@@ -394,8 +394,8 @@ export class MonitorProcessManager {
           return;
         }
         if (value.kind === "monitorStorage") {
-          // 1台の計測の終わり: その台の3欄だけ差し替えて、monitorDevices と同じ経路で配る
-          // (周期の monitorDevices を待つと、終わった台がまとめて変わる)。一覧に居ない台は捨てる
+          // 1台の計測の終わり: そのデバイスの3欄だけ差し替えて、monitorDevices と同じ経路で配る
+          // (周期の monitorDevices を待つと、終わったデバイスがまとめて変わる)。一覧に居ないデバイスは捨てる
           if (!this.latestDevices?.some((device) => device.id === value.device)) {
             return;
           }
@@ -751,7 +751,7 @@ export class MonitorProcessManager {
   }
 
   /** いま run が走っている機械の一覧(一括停止の確認が読む)。 */
-  /** 手元で run が使っている台の名前(直近の monitorDevices。表示フィルタは通さない) */
+  /** 手元で run が使っているデバイスの名前(直近の monitorDevices。表示フィルタは通さない) */
   localDevicesInRun(): readonly string[] {
     return localDevicesInRun(this.latestDevices);
   }
@@ -1042,7 +1042,7 @@ export class MonitorProcessManager {
     // リモート機の host-metrics(行が増える)。表示フィルタ前の一覧で判定する
     this.syncHostMetricsMachines(this.latestDevices);
     // **表示フィルタは畳まずに送る** —— run ボードのツリーはこのフィルタを通さない
-    // (ビルド中・停止中の台も出す。docs/design.md §18.5)。落とすのは webview の入口。
+    // (ビルド中・停止中のデバイスも出す。docs/design.md §18.5)。落とすのは webview の入口。
     this.deps.post(
       devicesToWebviewMessage(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
     );

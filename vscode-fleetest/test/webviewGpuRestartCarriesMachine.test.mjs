@@ -1,10 +1,10 @@
 // タイルの「GPU で再起動」が **(machine, name)** で宛先を言うことの DOM テスト。
 //
 // 実害の形: リモートのタイルも CPU バッジ(renderMode==='cpu')を出すのでメニューは出るが、
-// 名前だけを送っていたため、拡張は手元の `api restart-devices --name` を撃ち**手元の同名の台**が
+// 名前だけを送っていたため、拡張は手元の `api restart-devices --name` を撃ち**手元の同名のデバイス**が
 // 再起動された。deviceOp(起動/停止)は machine を載せていたのに、この経路だけ落ちていた。
 // 一括起動の restartNames(start-all-devices --restart)は手元へしか中継されないので、リモートの
-// CPU バッジ機は含めない(含めると同じ形で手元の同名の台が再起動される)。
+// CPU バッジ機は含めない(含めると同じ形で手元の同名のデバイスが再起動される)。
 //
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewRemoteTilePlaceholder.test.mjs と同じ。
 
@@ -136,7 +136,7 @@ test("「デバイスを全て起動」の restartNames にリモートの CPU �
     "start-all-devices --restart は手元へしか中継されないので、リモートの名前は手元の同名の台を再起動してしまう");
 });
 
-// 「マシン有効」off の機械の台は、タイルの右クリックから起動できない(停止は残す)
+// 「マシン有効」off の機械のデバイスは、タイルの右クリックから起動できない(停止は残す)
 test("マシン有効が off の機械の台は、右クリックの「起動」が理由付きで押せない(停止・有効な機械は従来どおり)", (t) => {
   const { window, document, sent } = createWebview();
   t.after(() => window.close());
@@ -175,7 +175,7 @@ test("マシン有効が off の機械の台は、右クリックの「起動」
   assert.equal(item.dataset.op, "up");
 });
 
-// 起動中・起動待ちの1台は右クリックから取り消せる(一括起動・再起動のバッチの台は取り消せない)
+// 起動中・起動待ちの1台は右クリックから取り消せる(一括起動・再起動のバッチのデバイスは取り消せない)
 test("起動中の1台は「起動をキャンセル」で deviceUpCancel を machine 付きで送る・cancellable 無しは押せない", (t) => {
   const { window, document, sent } = createWebview();
   t.after(() => window.close());
@@ -208,7 +208,7 @@ test("起動中の1台は「起動をキャンセル」で deviceUpCancel を ma
   assert.equal(item.dataset.op, "up");
 });
 
-// 待機中の台の起動をキャンセルしたとき、「起動中」を経ずに「キャンセル中」→「未起動」になる
+// 待機中のデバイスの起動をキャンセルしたとき、「起動中」を経ずに「キャンセル中」→「未起動」になる
 test("起動待ちをキャンセルすると「キャンセル中」を出し、busy が外れたら「起動中」を挟まず未起動へ戻る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

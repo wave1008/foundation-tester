@@ -126,7 +126,7 @@ function ensureLane(id, name, platform, updateLabel, machine) {
   const preview = document.createElement('div');
   preview.className = 'lane-preview';
   preview.style.display = 'none';
-  // グリッドビューのダブルクリック: その台だけの選択にする(1台なら左に絵・右にログの複製)。
+  // グリッドビューのダブルクリック: そのデバイスだけの選択にする(1台なら左に絵・右にログの複製)。
   // 「このデバイスのみ選択」の直後にもう一度押すと、その前の選択へ戻す(deviceTiles.js)
   preview.addEventListener('dblclick', () => toggleSelectOnlyDevice(id));
   preview.addEventListener('contextmenu', (event) => {
@@ -278,8 +278,8 @@ function syncLogMirror(mirrorId) {
 }
 
 export function updateLaneVisibility() {
-  // 実行ログビューに出すのは**ラインビューで選択した台だけ**(ユーザー決定)。
-  // 選択0台なら1本も出さない。**全体レーン(__overall__)は台ではない**ので選択に関わらず残す ——
+  // 実行ログビューに出すのは**ラインビューで選択したデバイスだけ**(ユーザー決定)。
+  // 選択0台なら1本も出さない。**全体レーン(__overall__)はデバイスではない**ので選択に関わらず残す ——
   // ここに供給フェーズの進行(worker を持たないイベント)が積まれるので、消すと run の進みが読めなくなる。
   const activeIds = [...lanes.keys()].filter((id) => id === OVERALL_LANE_ID || selectedDeviceIds.has(id));
   for (const [id, lane] of lanes) {
@@ -355,7 +355,7 @@ function relayoutPreviewGrid(previewIds) {
     previewGrid.style.gridTemplateRows = '';
     return;
   }
-  // 一番横に広い台に合わせる(狭い台はその枠の中で letterbox される)。
+  // 一番横に広いデバイスに合わせる(狭いデバイスはその枠の中で letterbox される)。
   let aspect = 0;
   for (const id of previewIds) {
     const value = parseFloat(tiles.get(id)?.tileAspect);

@@ -3,7 +3,7 @@
 // 型では守れない継ぎ目(2つの手写しの実装・関数のどこに置くか・dry-run の除外)なので
 // ソース走査で縛る。緑の run では**取れた**経路しか通らないので、位置がずれていても
 // E2E は何も言わない —— ずれると「デバイスに触ってからロックを取る」形になり、
-// 断られる run が既に台を消去・再起動したあとになる。
+// 断られる run が既にデバイスを消去・再起動したあとになる。
 
 import Foundation
 import XCTest
@@ -73,9 +73,9 @@ final class LocalDispatchLockWiringTests: XCTestCase {
         }
     }
 
-    /// **run-lease(台ごと)より先に取る** —— dispatch.lock はマシン全体の門で、台ごとの
+    /// **run-lease(デバイスごと)より先に取る** —— dispatch.lock はマシン全体の門で、デバイスごとの
     /// 二重使用(= MCP のセッションとの調停)はその内側。逆順にすると、断られる run が
-    /// 先に台を掴みに行く
+    /// 先にデバイスを掴みに行く
     func testTheMachineLockComesBeforeThePerDeviceLease() throws {
         let text = try source("Sources/fleetest/ApiRunCommand.swift")
         let acquire = try XCTUnwrap(text.range(of: "LocalDispatchLock("))

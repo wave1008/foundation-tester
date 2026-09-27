@@ -120,7 +120,7 @@ final class RequeueRecordDiscardTests: XCTestCase {
             item, queue: queue, recorder: recorder, worker: "android:Pixel", discardRecord: true)
         XCTAssertEqual(first, 1)
         _ = await queue.next()
-        // 2回目: 別の台でまた落ちた → 上限
+        // 2回目: 別のデバイスでまた落ちた → 上限
         recordFailure(recorder, id: "Foo.bar", worker: "android:Pixel-02")
 
         let second = await RunOrchestrator.requeueDiscardingRecord(

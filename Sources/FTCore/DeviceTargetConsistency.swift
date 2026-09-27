@@ -31,8 +31,8 @@ public enum DeviceTargetConsistency {
     }
 
     /// platform 省略時の既定。**Android の宛先(serial)だけが与えられたら android、それ以外は ios**。
-    /// `platform ?? "ios"` に倒すと `--serial emulator-5554` だけの呼び出しが既定ポートの iOS の台
-    /// (別の台)を操作する。MCP の `MCPServer.platformName` と同じ推定(片方だけ変えない)
+    /// `platform ?? "ios"` に倒すと `--serial emulator-5554` だけの呼び出しが既定ポートの iOS のデバイス
+    /// (別のデバイス)を操作する。MCP の `MCPServer.platformName` と同じ推定(片方だけ変えない)
     public static func defaultPlatform(explicit: String?, gaveIOSTarget: Bool, gaveAndroidTarget: Bool) -> String {
         if let explicit { return explicit }
         return gaveAndroidTarget && !gaveIOSTarget ? "android" : "ios"

@@ -27,7 +27,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceOpMenu.cancelStart": { ja: "起動をキャンセル", en: "Cancel Start" },
   // 「起動をキャンセル」を押してから取り消しが終わるまでのタイルの表示(deviceTiles.js の cancellingUp)
   "wvMonitor.tile.cancellingStart": { ja: "キャンセル中", en: "Cancelling" },
-  // 「マシン有効」off の機械の台は起動させない(deviceTiles.js の renderDeviceOpMenuItem)
+  // 「マシン有効」off の機械のデバイスは起動させない(deviceTiles.js の renderDeviceOpMenuItem)
   "wvMonitor.deviceOpMenu.startMachineDisabled": { ja: "起動できません(マシン無効)", en: "Cannot start (machine off)" },
   "wvMonitor.deviceOpMenu.stop": { ja: "停止", en: "Stop" },
   // 実機は端末そのものを起動・停止しない(操作対象はブリッジだけ)ので別ラベルにする
@@ -144,8 +144,8 @@ export const webviewMonitorAStrings = {
 
   "wvMonitor.bulk.cancelStart": { ja: "デバイスの起動を中断", en: "Cancel Starting Devices" },
   "wvMonitor.bulk.startAll": { ja: "デバイスを全て起動", en: "Start All Devices" },
-  // 中断を押した後、bootBusy が返るまでの表示。中断は「以降の台へ進まない」の意味で、
-  // 実行中の台(最大2)はエミュレータ/simctl が detach 済みなので完走しうる。
+  // 中断を押した後、bootBusy が返るまでの表示。中断は「以降のデバイスへ進まない」の意味で、
+  // 実行中のデバイス(最大2)はエミュレータ/simctl が detach 済みなので完走しうる。
   "wvMonitor.bulk.cancelling": { ja: "中断しています…", en: "Cancelling…" },
   "wvMonitor.bulk.cancellingTitle": {
     ja: "中断を要求しました(実行中のデバイスは起動を終えることがあります)。変わらないときはもう一度押すと再送します。",

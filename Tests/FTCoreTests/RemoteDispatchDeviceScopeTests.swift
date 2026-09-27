@@ -53,7 +53,7 @@ final class RemoteDispatchDeviceScopeTests: XCTestCase {
     }
 }
 
-/// `--runner H --device <名前>`(--device-machine 無し)は H の台に限定する。同名の台が3機に
+/// `--runner H --device <名前>`(--device-machine 無し)は H のデバイスに限定する。同名のデバイスが3機に
 /// あるプロファイルで名前だけを渡すと、子が3機ぶんを拾って手元の UDID を向こうで探す
 /// (受け手報告 2026-08-23)
 final class RemoteDispatchExplicitDeviceScopeTests: XCTestCase {

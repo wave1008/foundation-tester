@@ -2,7 +2,7 @@ import XCTest
 @testable import fleetest
 
 /// 子(リモート機の `api start-all-devices` / `stop-all-devices`)は `--device-machine local` で走るので
-/// 自分の台を machine:null と名乗る。**親が machine を入れる**ことを固定する ——
+/// 自分のデバイスを machine:null と名乗る。**親が machine を入れる**ことを固定する ——
 /// 入れないと受け手が同名の手元のタイルを書き換え、機械ごとに2台ずつ起きていても
 /// 「全体で2台しか起動していない」ように見える。
 final class RemoteDeviceFanoutTests: XCTestCase {
@@ -96,7 +96,7 @@ final class RemoteDeviceFanoutTests: XCTestCase {
     // MARK: - 掃討(profile 無しの `devices down`)の分散
 
     /// 「全て終了」(実行プロファイル未選択)は**登録簿の全マシン**へ投げる —— 監視の fan-out と
-    /// 同じ集合。ここが手元だけだと、タイルに出ているリモートの台が消えない(実害 2026-08-30)
+    /// 同じ集合。ここが手元だけだと、タイルに出ているリモートのデバイスが消えない(実害 2026-08-30)
     func testSweepReachesEveryMachineInTheRegistry() {
         XCTAssertEqual(
             RemoteDeviceFanout.sweepMachines(registry: ["M1Max", "M1Ultra"], deviceMachine: nil),

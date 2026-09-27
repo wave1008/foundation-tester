@@ -245,7 +245,7 @@ public enum RunResultsQuery {
         public let removed: Int
         /// removed のうち cause を持つものだけの内訳(WorkerAnomalyCause.rawValue → 件数)
         public let removedByCause: [String: Int]
-        /// この台から振り直しに回したシナリオ数(kind == "requeued")
+        /// このデバイスから振り直しに回したシナリオ数(kind == "requeued")
         public let requeued: Int
         /// run 前の blank 判定で除外した回数(kind == "preRunExcluded")
         public let preRunExcluded: Int
@@ -276,16 +276,16 @@ public enum RunResultsQuery {
     }
 
     /// `runs`/`records` は呼び手が既に `--since` の窓で絞ったもの(deviceSummary と同じ前提)。
-    /// **worker 欄の無い記録・host が空の記録は数えない**(どの台か言えないので古い記録は省く)。
-    /// **全部 0 の台は出さない**(今の状態は拡張がモニターから出す)
+    /// **worker 欄の無い記録・host が空の記録は数えない**(どのデバイスか言えないので古い記録は省く)。
+    /// **全部 0 のデバイスは出さない**(今の状態は拡張がモニターから出す)
     public static func deviceHealth(runs: [RunMetaRecord], records: [ScenarioRunRecord]) -> [DeviceHealthRow] {
-        // 鍵は (host, worker)。フリートでは同じ論理名の台が機械ごとに居るので worker だけで束ねない
+        // 鍵は (host, worker)。フリートでは同じ論理名のデバイスが機械ごとに居るので worker だけで束ねない
         struct Key: Hashable { let host: String; let worker: String }
         var byDevice: [Key: DeviceHealthAccumulator] = [:]
 
         /// 数えた事象だけが lastEventAt を進める(どの欄にも当たらない事象で時刻だけ動かさない)
         func count(_ worker: String, host: String, at: String, mutate: (inout DeviceHealthAccumulator) -> Void) {
-            // host が空の古い記録はどの機械の台か言えないので数えない(worker 欄の無い記録と同じ扱い)
+            // host が空の古い記録はどの機械のデバイスか言えないので数えない(worker 欄の無い記録と同じ扱い)
             guard !host.isEmpty else { return }
             let key = Key(host: host, worker: worker)
             var acc = byDevice[key] ?? DeviceHealthAccumulator()

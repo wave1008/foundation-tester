@@ -479,7 +479,7 @@ function toRunProfileDeviceEntry(value: unknown): MachineDeviceEntry | undefined
 /**
  * プロジェクトの「デバイスカタログ」= 全実行プロファイル(profiles/runs/*.json、enabled:false の
  * ものも含む)の devices[] の和集合。鍵は (platform, machine, name)、**ファイル名順に読み、
- * 先に見つかった方を採用する**(同じ台を複数の実行プロファイルが参照するのは通常。
+ * 先に見つかった方を採用する**(同じデバイスを複数の実行プロファイルが参照するのは通常。
  * どちらの本体で表現しても同じ実体を指す)。1ファイルの読み取り/解析失敗はそのファイル分だけ
  * 空として扱う(1件の不備で一覧全体を空にしない)。
  */

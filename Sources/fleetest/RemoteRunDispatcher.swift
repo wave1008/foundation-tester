@@ -836,8 +836,8 @@ struct RemoteRunDispatcher {
             throw RemoteDispatchError.remoteSetupFailed("rsync exited with status \(status)")
         }
         // **ローカルエイリアスをランナーへ残さない**(FTCore.RunnerProfileView)。転送した
-        // profiles/ を「そのランナーから見た姿」へ差し替える —— 向こうの台は "local" になり、
-        // 他機の台は消える。子へ渡す --device-machine も local になる(RemoteRunArgs)
+        // profiles/ を「そのランナーから見た姿」へ差し替える —— 向こうのデバイスは "local" になり、
+        // 他機のデバイスは消える。子へ渡す --device-machine も local になる(RemoteRunArgs)
         // hostLabel が無い構築箇所(旧経路)では畳めない —— 畳む鍵はプロファイルが書く
         // エイリアスそのものなので、生の ssh 宛先しか無いときは差し替えずそのまま送る
         if let hostLabel, let failure = RunnerProfileTransfer.localizeAndUpload(
@@ -1157,7 +1157,7 @@ struct RemoteRunDispatcher {
     }
 
     /// この stamp の回収済みレコードに乗っている "worker" の相異なる**デバイス**の個数
-    /// (worker label はブリッジのポートを含み回復で変わるので RunWorker.laneKey で台に寄せる。
+    /// (worker label はブリッジのポートを含み回復で変わるので RunWorker.laneKey でデバイスに寄せる。
     /// 0 = 何も取れなかった = 呼び出し側で既存値を保持させる)
     private func recordedConcurrentDevices(texts: [(url: URL, text: String)]) -> Int? {
         var workers = Set<String>()

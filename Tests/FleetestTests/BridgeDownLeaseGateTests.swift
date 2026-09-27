@@ -150,8 +150,8 @@ final class BridgeDownLeaseGateTests: XCTestCase {
         else { return XCTFail("struct Down が見つからない") }
         let body = code[downRange.upperBound..<nextStruct.lowerBound]
         // **本数で固定する** —— 「1回でも呼んでいれば合格」にすると、4経路のうち1つから
-        // 門が消えても別の経路の呼び出しが残って素通りする(android・--port(応答した台)・
-        // --port(応答しないが listener から udid が読めた台)が同じ関数を呼ぶ。B5)
+        // 門が消えても別の経路の呼び出しが残って素通りする(android・--port(応答したデバイス)・
+        // --port(応答しないが listener から udid が読めたデバイス)が同じ関数を呼ぶ。B5)
         XCTAssertEqual(body.components(separatedBy: "DeviceBooter.deviceInUseRefusal(").count - 1, 3,
                        "android・--port(応答あり)・--port(応答なしだが udid が読めた)の3経路が"
                        + " DeviceBooter.deviceInUseRefusal を通す")

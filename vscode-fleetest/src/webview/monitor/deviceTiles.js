@@ -69,7 +69,7 @@ const WIPE_STATUS_LABEL = {
 // 「接続中」のまま何もできない状態になる実害)
 function deviceOpMenuItem(state, busy, physical) {
   // 起動中・起動待ちの1台は取り消せる(未起動へ戻す。MonitorDeviceOps.cancelDeviceUp)。
-  // 一括起動・再起動のバッチの台(cancellable 無し)は従来どおり押せない「起動中」
+  // 一括起動・再起動のバッチのデバイス(cancellable 無し)は従来どおり押せない「起動中」
   if (busy && busy.op === 'up' && busy.cancellable) { return { label: t('wvMonitor.deviceOpMenu.cancelStart'), op: 'cancelUp', disabled: false }; }
   if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
@@ -129,9 +129,9 @@ export const tiles = new Map();
 let bulkOpActive = null;
 // 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
-// 「デバイスをすべて選択」が入っているか。台が1枚でも居る間は**選択の集合から導く**
+// 「デバイスをすべて選択」が入っているか。デバイスが1枚でも居る間は**選択の集合から導く**
 // (トグルの向きと挙動を2箇所に持たない)が、**ラインビューが空の間だけ据え置く** ——
-// モニター再起動や「すべて終了」で0枚になっても ON を落とさない = 戻ってきた台を選び直させない。
+// モニター再起動や「すべて終了」で0枚になっても ON を落とさない = 戻ってきたデバイスを選び直させない。
 // 初期値はホストが ready 後に送る 'selectAllDevices' で上書きされる(前回の値の復元)。
 let selectAllOn = false;
 
@@ -235,7 +235,7 @@ function measureTileImageHeight() {
 // タイル上でも明示する(停止・ライブ操作は可)。
 // **バッジは「他と違う」ことを示すもの**なので、区別しないときは出さない:
 //   - 「(起動中のデバイス)」を選んでいる間(ユーザー決定)—— このフィルタは登録に依らず
-//     動いている台を見るためのもので、そこでは未登録は例外ではなく普通の状態。
+//     動いているデバイスを見るためのもので、そこでは未登録は例外ではなく普通の状態。
 //   - **1台も登録済みが居ないとき** —— 実行プロファイルが2つ以上ある案件では
 //     `api monitor` が対象デバイスの一覧を1つに決められず全台を未登録として出す(monitorDeviceModel.ts の
 //     filterMonitorDevices 参照)。全タイルに同じバッジが並ぶだけで何も区別しない。
@@ -284,7 +284,7 @@ function createTile(device) {
   name.className = 'tile-name';
   // 手元でないデバイスのホスト名(実行プロファイルの一覧と同じバッジ)。
   // **モニターは手元のデバイスしか触れない**ので、リモートのタイルは状態を観測できない ——
-  // 「どの機械の台か」を出さないと、未起動表示の理由が分からない
+  // 「どの機械のデバイスか」を出さないと、未起動表示の理由が分からない
   const remoteBadge = document.createElement('span');
   remoteBadge.className = 'badge badge-remote';
   const kindBadge = document.createElement('span');
@@ -477,7 +477,7 @@ function renderFrame(entry) {
   const awaitingAction = physicalBridgeStarting ? entry.deviceAction : null;
   // **Wipe Data 中は最後のフレームを出さない**。中身を消して(場合によっては数分かけて)
   // 作り直している最中に、消える前の画面を映し続けることになる —— しかも down と違って
-  // 状態が offline へ倒れるとは限らない(止めずに終わる台もある)ので、放っておくと
+  // 状態が offline へ倒れるとは限らない(止めずに終わるデバイスもある)ので、放っておくと
   // 「押したのに何も起きていない」ようにしか見えない。進捗はフェーズ(停止中/再起動中)で出す。
   const wiping = entry.opBusy?.op === 'wipe' && entry.opBusy.status === 'running';
   if (!offline && !shuttingDown && !wiping && (entry.frameSrc || entry.usingH264)) {
@@ -509,7 +509,7 @@ function renderFrame(entry) {
       && !wiping && !shuttingDown && !waitingUp && !upRunning;
     const unobservableRemote = entry.device.state === 'unknown' && !monitorPaused
       && !wiping && !shuttingDown && !waitingUp && !upRunning;
-    // 配信を諦めた台は「接続中」と言わない(待っても来ない)
+    // 配信を諦めたデバイスは「接続中」と言わない(待っても来ない)
     const streamUnavailable = !!entry.streamUnavailable && !wiping && !shuttingDown && !waitingUp
       && !upRunning && !offline;
     // **タイルの文言は短く**(幅は 60px 程度しかなく、長い文は1文字ずつ折り返して潰れる。
@@ -594,9 +594,9 @@ function renderMirror(entry) {
 
 // 絵の上のタグ段。タイルのヘッダ(実機バッジ・デバイス名のピル・未登録バッジ)をそのまま複製する
 // —— ラインビューと同じ見た目・同じ内容にするため(組み立て直すと renderMeta の切替と食い違う)。
-// ホスト名の段(タイルと同じく名前の下)は**常に置く**。リモートの台にだけ段を足すと、
-// その台だけ絵の上端が下がって手元と高さが揃わない(ユーザー指摘)。
-// 手元の台には**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
+// ホスト名の段(タイルと同じく名前の下)は**常に置く**。リモートのデバイスにだけ段を足すと、
+// そのデバイスだけ絵の上端が下がって手元と高さが揃わない(ユーザー指摘)。
+// 手元のデバイスには**見えないダミーのバッジ**を入れて高さだけ合わせる(中身が空の段は高さ 0)。
 function renderMirrorHeader(entry, mirror) {
   mirror.headerEl.textContent = '';
   // **タイルと同じ順**(機械名の段が上)。手元にも実体のあるバッジが出るので、段の高さを
@@ -630,7 +630,7 @@ function copyMirrorFrame(entry) {
 
 // laneLog.js から: 選択デバイスのレーンに拡大表示を付ける/外す。同じ wrapEl への再 attach は
 // 要素を作り直さない(devices サイクルのたびに呼ばれるため)。
-// 登録の寿命はレーンの寿命と同じ(タイルが消えた台は laneLog.js の removeLane が detach する)。
+// 登録の寿命はレーンの寿命と同じ(タイルが消えたデバイスは laneLog.js の removeLane が detach する)。
 // ここで tiles の削除に合わせて外すと所有者が2つになる。
 export function attachDeviceMirror(deviceId, wrapEl) {
   const entry = tiles.get(deviceId);
@@ -703,7 +703,7 @@ function renderMeta(entry) {
     entry.device.frozen && entry.device.state === 'connected' ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
-  // **手元も含めて必ず出す**(ユーザー決定)—— どの機械の台かは全タイルで同じ形で
+  // **手元も含めて必ず出す**(ユーザー決定)—— どの機械のデバイスかは全タイルで同じ形で
   // 読めるほうがよい。色は machineColors が機械ごとに持つ(手元は 'local' の鍵)
   entry.remoteBadgeEl.textContent = entry.device.machine || LOCAL_MACHINE_LABEL;
   entry.remoteBadgeEl.style.display = 'inline-block';
@@ -811,7 +811,7 @@ export function renderDeviceOpMenuItem() {
     return;
   }
   deviceOpMenuItemBtn.style.display = '';
-  // 「マシン有効」off の機械の台は起動させない(実機のブリッジ起動も同じ)。停止は残す。
+  // 「マシン有効」off の機械のデバイスは起動させない(実機のブリッジ起動も同じ)。停止は残す。
   // 項目は隠さず理由を出す(隠すと「なぜ起動が無いか」が分からない)。拡張側にも同じ門がある(monitorPanel.ts の deviceOp)
   const machineOff = item.op === 'up' && !item.disabled && isMachineDisabled(device.machine);
   // ラベルはspanに書く(ボタン直のtextContent代入はアイコンSVGを消す)。data-opはCSSのアイコン切替も担う。
@@ -887,10 +887,10 @@ function openDeviceOpMenu(entry, clientX, clientY, { selectAllOnly = false } = {
   // GPU再起動は実行プロファイルへの記載前提(name 解決)のため未登録では出さない
   // (起動/停止項目は renderDeviceOpMenuItem 側、ライブ操作は下で個別に扱う)。
   const unregistered = entry.device.registered === false;
-  // state は connected に加えて **iOS の booted**(台は起動済み・ブリッジ未接続)も出す —— 開けば
+  // state は connected に加えて **iOS の booted**(デバイスは起動済み・ブリッジ未接続)も出す —— 開けば
   // ライブ操作が観測を撃ち、serve がブリッジを自動起動する(monitorLiveController.requestOpenObservation。
   // 自動起動は iOS の --udid 経路だけ)。未登録でも udid/serial 直指定で動くので registered は見ない。
-  // **他の機械の台も出す**(serve をその機械で起こす。openLiveForDevice の remote)
+  // **他の機械のデバイスも出す**(serve をその機械で起こす。openLiveForDevice の remote)
   const liveOpenable = entry.device.state === 'connected'
     || (entry.device.state === 'booted' && entry.device.platform === 'ios');
   deviceOpMenuLiveBtn.style.display = liveOpenable ? '' : 'none';
@@ -925,7 +925,7 @@ export function openSelectAllOnlyMenu(clientX, clientY) {
 }
 
 // 「すべて選択」「すべて解除」は今の状態で押せるかが決まる(結果が変わらないなら押させない)。
-// 判定はツールバーのトグルと同じ旗で行う —— 0枚でも ON/OFF は意味を持つ(出てきた台を
+// 判定はツールバーのトグルと同じ旗で行う —— 0枚でも ON/OFF は意味を持つ(出てきたデバイスを
 // 選ぶかどうか)ので、台数では無効化しない。
 function renderSelectionMenuItems() {
   deviceOpMenuSelectAllBtn.disabled = selectAllOn;
@@ -948,7 +948,7 @@ const selectAllLabel = btnSelectAll.closest('label');
 
 // ラインビューの見出しの台数は**選択に関係なく全台**(ユーザー決定)。
 // **0 台でも「0台」を出す** —— 欄が消えるとトグルの位置が動く。
-// **台が1枚も来ていない時点でも出す**ので初期化でも1回呼ぶ(applyDevices は最初の devices
+// **デバイスが1枚も来ていない時点でも出す**ので初期化でも1回呼ぶ(applyDevices は最初の devices
 // まで走らない)
 function renderDeviceCount() {
   lineViewSelection.textContent = t('wvMonitor.lineView.deviceCount', {
@@ -957,7 +957,7 @@ function renderDeviceCount() {
 }
 renderDeviceCount();
 
-// **0枚でも押せる**(disabled にしない) —— 台を待っている間に入れておけば、出てきた台が
+// **0枚でも押せる**(disabled にしない) —— デバイスを待っている間に入れておけば、出てきたデバイスが
 // 選択された状態で並ぶ。押せなくすると「待機しています」の間だけ切り替えられない。
 function renderSelectAllButton() {
   const deselect = selectAllIsDeselect();
@@ -986,7 +986,7 @@ function deselectAllDevices(persist = true) {
 }
 
 // ホストが ready 後に1回送る前回値の復元(workspaceState)。**0枚でも旗だけは立てる** ——
-// 復元時点ではモニターがまだ台を出しておらず、applyDevices が出てきた台を選び直す。
+// 復元時点ではモニターがまだデバイスを出しておらず、applyDevices が出てきたデバイスを選び直す。
 export function applySelectAllDevices(value) {
   if (value) {
     selectAllDevices(false);
@@ -1131,13 +1131,13 @@ export function deviceIdForLane(machine, laneKey) {
   return undefined;
 }
 
-// run ボード(runBoard.js)のツリー用: その機械が持つ台を**ラインビューと同じ並び**で返す。
+// run ボード(runBoard.js)のツリー用: その機械が持つデバイスを**ラインビューと同じ並び**で返す。
 // machine は MonitorDevice の規約そのまま(undefined = 手元)。laneKey は monitorRuns の
 // MonitorRunLane.key と突き合わせる鍵(iOS は udid・Android は serial)。
 export function devicesOnMachine(machine) {
   const out = [];
   // **タイルではなく生の一覧から採る** —— タイルは「起動中のデバイス」で絞られているので、
-  // ビルド中(台がまだ起動していない)の run の下から台が消える。ツリーからは消さない
+  // ビルド中(デバイスがまだ起動していない)の run の下からデバイスが消える。ツリーからは消さない
   // (ユーザー決定)。プラットフォームの表示フィルタだけは通す
   // (選んでいない側を4つのセクションから同時に隠すのが、あちらの決定事項)。
   for (const device of lastDevices) {
@@ -1153,7 +1153,7 @@ export function devicesOnMachine(machine) {
 }
 
 // run ボード(runBoard.js)のツリー用: run が走っていない機械の行に出す「何を見ているか」。
-// モニターが台を並べる範囲そのもの(`api monitor --project <P> [--profile <run>]`)なので、
+// モニターがデバイスを並べる範囲そのもの(`api monitor --project <P> [--profile <run>]`)なので、
 // ツールバーの選択をそのまま返す。**予約値(@running)と未選択は profile 無し**として扱う。
 export function currentMonitorScope() {
   const profile = profileSelect.value;
@@ -1165,7 +1165,7 @@ export function currentMonitorScope() {
 
 // run ボード(runBoard.js)の行クリック用: 複数台を一括で選び直す(selectOnlyDevice の複数版。
 // 「このデバイスのみ選択」の直前選択に戻す仕組みは1台前提なので流用しない = restore は捨てる)。
-// 一致するタイルが1枚も無ければ何もしない(消えた台の run 行を押しても選択を崩さない)。
+// 一致するタイルが1枚も無ければ何もしない(消えたデバイスの run 行を押しても選択を崩さない)。
 export function selectOnlyDevices(deviceIds) {
   const ids = deviceIds.filter((id) => tiles.has(id));
   if (ids.length === 0) {
@@ -1184,7 +1184,7 @@ export function selectOnlyDevices(deviceIds) {
 // 選択が一度でも変わったら捨てる(updateSelectionUi。戻す先はもう意味が無い)
 let selectOnlyRestore = null;
 
-// グリッドビューのダブルクリック(laneLog.js)。その台だけを表示している直後なら直前の選択へ戻し、
+// グリッドビューのダブルクリック(laneLog.js)。そのデバイスだけを表示している直後なら直前の選択へ戻し、
 // それ以外は「このデバイスのみ選択」
 export function toggleSelectOnlyDevice(deviceId) {
   const restore = selectOnlyRestore;
@@ -1195,7 +1195,7 @@ export function toggleSelectOnlyDevice(deviceId) {
   }
   selectOnlyRestore = null;
   if (restore.wasSelectAll) {
-    // 全選択は旗ごと戻す(その後に現れた台も選ばれる = 全選択の意味のまま)
+    // 全選択は旗ごと戻す(その後に現れたデバイスも選ばれる = 全選択の意味のまま)
     selectAllDevices();
   } else {
     selectedDeviceIds.clear();
@@ -1243,7 +1243,7 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     renderFrame(entry);
     return;
   }
-  // **machine も載せる** —— 同名の台が別の機械にも居るのは通常で、名前だけだと
+  // **machine も載せる** —— 同名のデバイスが別の機械にも居るのは通常で、名前だけだと
   // 手元の実行プロファイルの同名エントリを引いて**別の機械の設定でこの Mac に1台作る**
   // (machine は api monitor のワイヤ名。値はマシン名 = エイリアス)
   const message = {
@@ -1267,7 +1267,7 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
 
 // CPU 描画フォールバックを解除して host GPU で再起動(受け手は monitorPanel.ts の deviceRestartGpu)。
 // **machine も載せる**(deviceOp と同じ理由) —— 名前だけだとリモートのタイルの「GPU で再起動」が
-// 手元の同名の台を再起動する
+// 手元の同名のデバイスを再起動する
 deviceOpMenuGpuBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (!deviceOpMenuEntry) {
@@ -1285,7 +1285,7 @@ deviceOpMenuLiveBtn.addEventListener('click', (event) => {
     return;
   }
   const device = deviceOpMenuEntry.device;
-  // 他の機械の台はこの Mac の list-devices に居ないので、開くのに要る属性を運ぶ
+  // 他の機械のデバイスはこの Mac の list-devices に居ないので、開くのに要る属性を運ぶ
   // (契約: monitorWebviewMessages.ts の openLiveForDevice)
   const remote = device.machine
     ? {
@@ -1326,7 +1326,7 @@ document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 // 応答(deviceOpBusy 等)は (name, machine) で引く。**machine 省略は「手元」の意味**であって
 // 「どれでもよい」ではない —— 同名のデバイスが別の機械にも居るのは通常なので、省略を
 // ワイルドカードにすると**先頭のタイル(= 手元)を書き換える**。実際
-// 「M2Ultra の台を停止」で手元のタイルに「シャットダウン中」が出た。
+// 「M2Ultra のデバイスを停止」で手元のタイルに「シャットダウン中」が出た。
 // 手元だけの構成では machine が全て undefined なので挙動は変わらない。
 // bridgeWatch/healthWatch/wipeStatus は手元のデバイスにしか出さないので machine を持たない
 function findTileByName(name, machine) {
@@ -1354,7 +1354,7 @@ function clearTileError(entry) {
 }
 
 // モニター再起動でタイルを作り直す前の掃除(呼び手は main.js の再起動ボタン)。
-// **selectAllOn は畳まない** —— 0枚の間だけ据え置き、戻ってきた台を applyDevices が選び直す
+// **selectAllOn は畳まない** —— 0枚の間だけ据え置き、戻ってきたデバイスを applyDevices が選び直す
 // (再起動のたびに全選択が外れると、8台構成では毎回押し直しになる)。
 export function clearTilesForRestart() {
   closeDeviceOpMenu();
@@ -1383,8 +1383,8 @@ const PLATFORM_FILTER_ALL = 'all';
 let platformFilter = PLATFORM_FILTER_ALL;
 let lastDevices = [];
 // 「起動中のデバイス」(設定 fleetest.monitorDeviceFilter)。**ここで落とすのはタイル側だけ** ——
-// run ボードのツリー(devicesOnMachine)はこの値を見ない。停止中・観測できない台を消すと、
-// ビルド中の run の下から台が丸ごと消えてフリートに何が居るのか分からなくなる
+// run ボードのツリー(devicesOnMachine)はこの値を見ない。停止中・観測できないデバイスを消すと、
+// ビルド中の run の下からデバイスが丸ごと消えてフリートに何が居るのか分からなくなる
 // (ユーザー決定。docs/design.md §18.5)。**知らない値は 'all' へ倒す**
 let deviceStateFilter = 'all';
 const platformFilterListeners = [];
@@ -1399,7 +1399,7 @@ export function monitorDevices() {
   return lastDevices;
 }
 
-/** devices サイクルを受けるたび(台の増減・state/storage 等の更新)に呼ぶ。 */
+/** devices サイクルを受けるたび(デバイスの増減・state/storage 等の更新)に呼ぶ。 */
 export function onMonitorDevicesChanged(listener) {
   monitorDevicesChangeListeners.push(listener);
 }
@@ -1419,7 +1419,7 @@ export function onPlatformFilterChanged(listener) {
   platformFilterListeners.push(listener);
 }
 
-/** 選んでいるものだけ色付き(iOS / Android は台のピルと同じ色・「すべて」は白)、
+/** 選んでいるものだけ色付き(iOS / Android はデバイスのピルと同じ色・「すべて」は白)、
  *  選んでいないものは灰色(ユーザー決定)。色は CSS が `.selected` で持つ。 */
 function paintPlatformBadges() {
   for (const badge of platformFilterBadges) {
@@ -1442,7 +1442,7 @@ function applyPlatformFilterState(next, persist) {
 }
 
 /** host からの復元値(sendInitialState)。**投げ返さない**(applySelectAllDevices と同じ規律)。
- *  **知らない値は「すべて」へ倒す** —— 台が黙って消えるより出しすぎるほうが安全。 */
+ *  **知らない値は「すべて」へ倒す** —— デバイスが黙って消えるより出しすぎるほうが安全。 */
 export function applyPlatformFilter(message) {
   const known = platformFilterBadges.some((badge) => badge.dataset.value === message.value);
   applyPlatformFilterState(known ? message.value : PLATFORM_FILTER_ALL, false);
@@ -1458,7 +1458,7 @@ for (const badge of platformFilterBadges) {
 }
 
 // 既定(「すべて」)の見た目を初期化する —— host の復元値(applyPlatformFilter)が来るまでの間も
-// バッジの色が状態と食い違わないようにする(**台の一覧には触らない**ので描き直しは走らせない)
+// バッジの色が状態と食い違わないようにする(**デバイスの一覧には触らない**ので描き直しは走らせない)
 paintPlatformBadges();
 
 export function applyDevices(devices, filter) {
@@ -1468,7 +1468,7 @@ export function applyDevices(devices, filter) {
   notifyMonitorDevicesChanged();
 }
 
-/** タイルに出す台(= 表示フィルタを両方通したもの)。run ボードのツリーは通さない。 */
+/** タイルに出すデバイス(= 表示フィルタを両方通したもの)。run ボードのツリーは通さない。 */
 function tileDevices() {
   return filterMonitorDevices(
     lastDevices.filter((device) => isPlatformVisible(device.platform)),
@@ -1481,7 +1481,7 @@ function applyVisibleDevices(devices) {
   // = フリートが増えても「全部選択」のままにする(ユーザー要求)。判定は
   // タイルを増やす前に採る —— 1台でも足すと等号が崩れて ON が読めなくなる。
   // **selectAllIsDeselect() ではなく旗そのものを読む** —— 再起動直後は0枚なのであちらは
-  // 常に OFF を返し、戻ってきた台が選ばれない。
+  // 常に OFF を返し、戻ってきたデバイスが選ばれない。
   const wasAllSelected = selectAllOn;
   let selectionGrew = false;
   const seen = new Set();
@@ -1569,7 +1569,7 @@ function applyVisibleDevices(devices) {
     renderSelectAllButton();
   }
   // 台数は選択と無関係なので、**選択の経路(updateSelectionUi)ではなくここで**書く ——
-  // 台が減っただけのときは updateSelectionUi を通らない
+  // デバイスが減っただけのときは updateSelectionUi を通らない
   renderDeviceCount();
   relayoutTiles();
   syncLanesToDevices(devices);
@@ -1627,7 +1627,7 @@ function ackStreamRendered(entry) {
 
 // h264Chunk(タイル用ストリーム)。デバイス毎にレンダラ/canvas を遅延生成し、初回描画(onFirstFrame)
 // で img→canvas に切り替える。h264ErrorSent 済みなら以後は無視(host が mjpeg に切替済みの前提)。
-// 契約: { type:'streamUnavailable', device, unavailable }。配信を諦めた台は「接続中」を出さない
+// 契約: { type:'streamUnavailable', device, unavailable }。配信を諦めたデバイスは「接続中」を出さない
 // —— プロファイル未選択(未登録デバイス)の iOS はブリッジが無くポーリングのフレームも来ないので、
 // 黙っていると永久に「接続中」に見える(実害あり)
 export function applyStreamUnavailable(message) {
@@ -1640,7 +1640,7 @@ export function applyStreamUnavailable(message) {
 }
 
 /** host が配信ヘルパーを落とした(畳み・破棄・パネル非表示)。**ここでは破棄しない** ——
- * まだ1枚もポーリングのフレームを受けていない台で破棄すると、絵を出せず「接続中」へ落ちる。
+ * まだ1枚もポーリングのフレームを受けていないデバイスで破棄すると、絵を出せず「接続中」へ落ちる。
  * 印だけ立て、次に届いたフレームで applyFrame が入れ替える。契約: monitorWebviewMessages.ts。 */
 export function applyStreamStopped(message) {
   const entry = tiles.get(message.device);
@@ -1746,7 +1746,7 @@ export function applyDeviceOpBusy(message) {
   // (observedBridgeStillRunning のコメント)。仮想デバイスは対象外 —— 仮想機は state が
   // 'offline' に落ちるので既存の offline 判定だけで足りる(applyDeviceDownFinished と同型)。
   // **失敗したときは立てない**(up 側の lastOpFailed と同じ理由)—— 止まっていないのに
-  // 「停止した」と先読みすると、まだ動いている台を「未起動」と偽って表示し続ける
+  // 「停止した」と先読みすると、まだ動いているデバイスを「未起動」と偽って表示し続ける
   if (prev?.op === 'down' && !entry.opBusy && !entry.lastOpFailed
       && entry.device.kind === 'physical') {
     entry.bridgeStoppedLocally = true;
@@ -1787,7 +1787,7 @@ export function applyDeviceDownFinished(message) {
 
 // 契約: { type: 'bridgeWatch', name, machine, phase }(name は deviceOpBusy と同じ device.name
 // 名前空間。machine 省略 = 手元)。**machine で引く** —— 一意なのは (machine, name) で、
-// リモートの台も watchdog の対象になったため、名前だけで引くと手元の同名タイルに当たる。
+// リモートのデバイスも watchdog の対象になったため、名前だけで引くと手元の同名タイルに当たる。
 export function applyBridgeWatch(message) {
   const entry = findTileByName(message.name, message.machine);
   if (!entry) {
@@ -1901,7 +1901,7 @@ let runningFilterActive = false;
 // 一括起動の最中は候補があっても触らせないので、判定は refreshBulkButtons に集める。
 let projectCandidateCount = 0;
 // 「デバイスの起動を中断」を押した後、bootBusy が返るまでの間だけ立てる旗。SIGTERM の後始末
-// (実行中の台の完走待ち)で数秒かかるので、押されたことを webview 側で見せる必要がある。
+// (実行中のデバイスの完走待ち)で数秒かかるので、押されたことを webview 側で見せる必要がある。
 let upCancelRequested = false;
 // GUI 実行(testRunActive)の進行と、その中断を押したかどうか。中断も完了まで数秒かかるので
 // 起動キューの中断と同じ形で受理を見せる。
@@ -1929,7 +1929,7 @@ function refreshBulkButtons() {
   // 「起動中のデバイス」表示中の一括起動は禁止(一覧に出ていない未起動デバイスまで起動するため)。
   // 中断ボタンとして使っている間は無効化しない(進行中のジョブを止める導線を残す)。
   const blockedByFilter = runningFilterActive && !upCancelMode;
-  // 実行中は一括操作も対象の切り替えも止める(走っている run の下から台と名簿を外さない)。
+  // 実行中は一括操作も対象の切り替えも止める(走っている run の下からデバイスと名簿を外さない)。
   btnUp.disabled = (bulkBusy && !upCancelMode) || blockedByFilter || testRunActive;
   // 中断の間だけ赤系にする(同じ位置・同じボタンが別の操作になるので、色で気付けるようにする。
   // 見た目の定義は style.css の button.bulk-cancel)
@@ -2062,7 +2062,7 @@ profileSelect.addEventListener('change', () => {
 // 押せるのは実体のある実行プロファイルが選ばれている間だけ。**判定は profiles の集合で行う**
 // —— 未選択('')・表示フィルタ(@running)に加えて、設定に名前はあるがファイルが無い
 // (applyProfileInfo の unknownOption)も弾く必要があり、値の形では見分けられない。
-// 一括操作(全て起動 / 全て終了)が動いている間も押せない —— 台が揃う前・畳んでいる最中に
+// 一括操作(全て起動 / 全て終了)が動いている間も押せない —— デバイスが揃う前・畳んでいる最中に
 // 走らせることになる。判定は btnUp のラベルではなく同じ入力(setBusy の bulkBusy/bulkBusyOp)
 // から採る(表示から状態を読み戻すと i18n の差し替えで黙って壊れる)。
 function refreshRunTestsButton() {
@@ -2243,7 +2243,7 @@ function applyTileClickAt(x, y) {
   if (deviceBandContainsY(y)) {
     return;
   }
-  // 台が居る間はここで旗も落ちる(選択が空 ≠ 台数 → refreshSelectAllState が OFF にする)。
+  // デバイスが居る間はここで旗も落ちる(選択が空 ≠ 台数 → refreshSelectAllState が OFF にする)。
   // **0枚のときは触らない** —— 見えている選択が無いので、待機中に入れておいた ON を
   // 空きエリアのクリックで黙って外さない(外す口はトグルとメニューの「すべて解除」)。
   if (selectedDeviceIds.size > 0) {

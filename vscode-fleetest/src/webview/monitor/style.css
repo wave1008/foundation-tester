@@ -588,7 +588,7 @@ html[lang="en"] .header-count {
   color: #1e1e1e;
 }
 /* 走っていない機械をまとめる根も run 行と同じ作り(.run-board-row)。**見出しの1行だけ控えめに**
-   —— run の行が主役だが、下に並ぶ機械と台のツリーまで薄くすると読みにくい */
+   —— run の行が主役だが、下に並ぶ機械とデバイスのツリーまで薄くすると読みにくい */
 .run-board-row-scope > .run-board-row-summary {
   opacity: 0.75;
 }
@@ -677,7 +677,7 @@ html[lang="en"] .header-count {
   min-width: 0;
 }
 
-/* 2カラム(ユーザー決定): 左 = ツリー(機械・台の名前)、右 = ステータス。
+/* 2カラム(ユーザー決定): 左 = ツリー(機械・デバイスの名前)、右 = ステータス。
    **境目を全行で1本に見せる**ための約束が3つ: ①行の左右 padding は 8px で揃える
    ②階層のインデントは左カラムの padding で表す ③レーンのガイド線は背景で引く
    (border/margin は箱の幅を変えるので境目が行ごとにずれる)。
@@ -716,8 +716,8 @@ html[lang="en"] .header-count {
   padding-left: 72px;   /* 行の 8px と合わせて 80px(機械の名前 64px のさらに内側) */
   gap: 6px;             /* アイコンと名前の間だけは詰める(既定の 8px は離れすぎる) */
 }
-/* 台のアイコン。**色はプラットフォームのバッジと同じ値**(.platform-badge-ios / -android。
-   変更時は揃えること)。platform が無い台は色を付けない = 既定の文字色のまま */
+/* デバイスのアイコン。**色はプラットフォームのバッジと同じ値**(.platform-badge-ios / -android。
+   変更時は揃えること)。platform が無いデバイスは色を付けない = 既定の文字色のまま */
 .run-board-lane-icon {
   flex: 0 0 auto;
 }
@@ -841,7 +841,7 @@ html[lang="en"] .header-count {
 }
 .run-board-lane-machine-header > .run-board-col-left {
   /* 行の 8px と合わせて三角が 40px、バッジが 64px。**3段が 16px 刻みで並ぶ**:
-     根(三角 24px・名前 48px)→ 機械(三角 40px・名前 64px)→ 台(名前 80px) */
+     根(三角 24px・名前 48px)→ 機械(三角 40px・名前 64px)→ デバイス(名前 80px) */
   padding-left: 32px;
 }
 .run-board-lane {
@@ -853,7 +853,7 @@ html[lang="en"] .header-count {
      高さが変わると、レーンが増減したように見えて目が滑る */
   line-height: 18px;
   min-height: 18px;
-  /* **押せる面にしない**(ユーザー決定)—— 台の行はクリックで何も起きないので、
+  /* **押せる面にしない**(ユーザー決定)—— デバイスの行はクリックで何も起きないので、
      cursor も hover の地色も付けない(付けると押せるように見える) */
 }
 .run-board-lane-name {
@@ -881,7 +881,7 @@ html[lang="en"] .header-count {
   font-variant-numeric: tabular-nums;
   color: var(--vscode-descriptionForeground);
 }
-/* 畳んだ枝は台だけを隠す(見出しは残る = その機械が居ることは消さない) */
+/* 畳んだ枝はデバイスだけを隠す(見出しは残る = その機械が居ることは消さない) */
 .run-board-lane-group-collapsed > .run-board-lane {
   display: none;
 }
@@ -1089,8 +1089,8 @@ html.select-all-guard * {
    決めないようにする。無いとタイルが画像より広がり並ぶ台数が減る。 */
 /* **タイルの幅は画面(.frame-wrap)だけで決める** —— この3つは中身が長くても幅を押し広げない
    (width:0 + min-width:100% で「幅の計算に寄与しないが表示は親いっぱい」)。**新しい段を足したら
-   必ずここへ加える** —— 外すとバッジの文字数でタイルの幅が変わり、同じ機種の台が不揃いに並ぶ
-   (.tile-machine-row を足したときに漏れ、M1Ultra の台だけ広くなった) */
+   必ずここへ加える** —— 外すとバッジの文字数でタイルの幅が変わり、同じ機種のデバイスが不揃いに並ぶ
+   (.tile-machine-row を足したときに漏れ、M1Ultra のデバイスだけ広くなった) */
 .tile-header,
 .tile-footer,
 .tile-machine-row {
@@ -1480,7 +1480,7 @@ html.select-all-guard * {
   gap: 4px;
   min-width: 0;
   min-height: 0;
-  /* **1台ぶんを薄い枠で囲う**。台が増えると段組みが細かくなり、タグ段(バッジ)が隣の台の
+  /* **1台ぶんを薄い枠で囲う**。デバイスが増えると段組みが細かくなり、タグ段(バッジ)が隣のデバイスの
      ぶんと地続きに見えて境界が読めなくなる。枠はログだけのとき(.lane)と同じトークン・
      同じ角丸なので、表示が切り替わっても見え方が揃う。縦にも並ぶので、列と列だけでなく
      行と行の境にも要る。
@@ -1490,8 +1490,8 @@ html.select-all-guard * {
   border-radius: 4px;
   padding: 4px;
 }
-/* タグ段(上=実機・デバイス名・未登録 / 下=ホスト名)。段数は台によらず常に2段
-   —— 手元の台には見えないダミーのバッジが入る(deviceTiles.js renderMirrorHeader)。
+/* タグ段(上=実機・デバイス名・未登録 / 下=ホスト名)。段数はデバイスによらず常に2段
+   —— 手元のデバイスには見えないダミーのバッジが入る(deviceTiles.js renderMirrorHeader)。
    中身はタイルのヘッダの複製なので、見た目はラインビューのタイルと同じ CSS(.tile-name/.badge)が
    そのまま効く。タイル側の固定高・幅(タイル幅を膨らませないための width:0)だけ打ち消す。 */
 .lane-preview-header {
@@ -3850,7 +3850,7 @@ button.settings-remote-hosts-color-swatch:focus-visible {
   flex: 0 0 auto;
   margin-right: 8px;
 }
-/* 再生中の動画を撮った台(最上段)。ステップが変わっても消えない = 動画の属性。 */
+/* 再生中の動画を撮ったデバイス(最上段)。ステップが変わっても消えない = 動画の属性。 */
 .recordings-now-playing-device {
   display: flex;
   align-items: center;

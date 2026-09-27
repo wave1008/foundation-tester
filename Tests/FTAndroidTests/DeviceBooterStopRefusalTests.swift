@@ -39,7 +39,7 @@ final class DeviceBooterStopRefusalTests: XCTestCase {
             deviceName: "d", key: "k", selfPID: 100, force: true, holderPID: { _ in 4242 }))
     }
 
-    // 台の実体(serial/UDID)が引けない = その台に居るはずの lease も引けない。安全側(素通り)
+    // デバイスの実体(serial/UDID)が引けない = そのデバイスに居るはずの lease も引けない。安全側(素通り)
     func testUnresolvableKeyDoesNotRefuse() {
         XCTAssertNil(DeviceBooter.stopRefusal(
             deviceName: "d", key: nil, selfPID: 100, force: false, holderPID: { _ in 4242 }))
@@ -69,7 +69,7 @@ final class DeviceBooterStopRefusalTests: XCTestCase {
     }
 }
 
-/// 全掃討(`devices down` のプロファイル無し)の門。台を選べないので、生きた lease が1本でもあれば
+/// 全掃討(`devices down` のプロファイル無し)の門。デバイスを選べないので、生きた lease が1本でもあれば
 /// 掃討ごと断る(戻すと落ちる根拠: 変更前は掃討が run-lease を1度も読まず、手元で回っている run を
 /// 確認なしで落としていた)
 final class DeviceBooterSweepRefusalTests: XCTestCase {
@@ -177,7 +177,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         XCTAssertTrue(message.contains("UNRESOLVABLE-KEY (held by pid \(getppid()))"), message)
     }
 
-    // MARK: - MCP(fleetest-mcp)が操作中の台(2026-09-17 負荷テスト M10)
+    // MARK: - MCP(fleetest-mcp)が操作中のデバイス(2026-09-17 負荷テスト M10)
     // MCP の印は「pid + 開始時刻」で生死を見るので、保持者には常に生きている launchd(1)を使う
     // (親の pid は「MCP が起こしたコマンド」として数えない設計なので使えない)
 
@@ -199,7 +199,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
             deviceName: "iPhone 17", keys: ["U1"], force: false, mcpHolderPID: { _ in nil }))
     }
 
-    /// 台を止める経路(停止・一括停止)は MCP の印を読んで断る。印の無い台は止める
+    /// デバイスを止める経路(停止・一括停止)は MCP の印を読んで断る。印の無いデバイスは止める
     func testShutdownAllRefusesADeviceTheMCPIsDriving() async throws {
         let dir = makeStateDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -244,7 +244,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
             + " An MCP session is driving"), "見出しの後に run → MCP の順で本文が並ぶ: \(both)")
     }
 
-    /// 自分(と親)の印は数えない(MCP が起こしたコマンドが自分の台を断らない)
+    /// 自分(と親)の印は数えない(MCP が起こしたコマンドが自分のデバイスを断らない)
     func testOwnMCPLeaseDoesNotRefuse() {
         let dir = makeStateDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -374,7 +374,7 @@ final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
     }
 
     // getppid() は自分の pid とは別で、テストプロセスが生きている間ずっと生存している
-    // (ProcessLiveness.isAlive を満たす)ので、「生きた別プロセスが台を握っている」を
+    // (ProcessLiveness.isAlive を満たす)ので、「生きた別プロセスがデバイスを握っている」を
     // 実プロセスを新たに起こさずに再現できる
     func testOneHeldDeviceIsRefusedWhileOthersProceed() async throws {
         let dir = makeStateDir()

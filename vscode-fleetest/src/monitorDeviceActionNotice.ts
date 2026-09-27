@@ -3,7 +3,7 @@
 // **待ちが終わったら(action:null)通知を消す**(ユーザー指示)。拡張から閉じられるのは
 // 進捗型(withProgress)だけなので、それで出す(showWarningMessage は閉じられず、解除後も残る)。
 // 出したことは OUTPUT にも残す(通知が見えなかったとき「作られたか」を後から確かめるため)。
-// 鍵は (machine, name)。同じ台・同じ action が重なっても通知は1枚。action が変われば張り替える
+// 鍵は (machine, name)。同じデバイス・同じ action が重なっても通知は1枚。action が変われば張り替える
 // (ロック解除の直後に承認プロンプトが出る順が普通)。
 // **CLI が action:null を出さずに終わった(クラッシュ・kill)ときは呼び手が release する**
 // (monitorDeviceOps.ts の close ハンドラ)。放っておくと通知が消えない。

@@ -108,13 +108,13 @@ export interface MonitorDevice {
   readonly frozen?: boolean;
   /** このデバイスが居る機械(登録名。手元は undefined)。**`host` はブリッジ宛先の IP で別物**。
    * モニターは手元のデバイスしか触れないので、リモートのタイルは状態を観測できない ——
-   * タイルにホスト名を出して「どの機械の台か」を分かるようにする
+   * タイルにホスト名を出して「どの機械のデバイスか」を分かるようにする
    * (Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.machine と対)。 */
   readonly machine?: string;
-  /** **他の発行者(共有ランナーの別の利用者)がこの台の画面配信を張っている**
+  /** **他の発行者(共有ランナーの別の利用者)がこのデバイスの画面配信を張っている**
    * (Sources/FTCore/StreamLease.swift)。true の間は配信を起こさずポーリングのままにする ——
-   * 同じ台を人数ぶん捕捉するとランナーが痛む(docs/remote-runner.md §18.2)。
-   * 手元の台・単独利用・旧 CLI は欠落 = undefined(false と同義)。 */
+   * 同じデバイスを人数ぶん捕捉するとランナーが痛む(docs/remote-runner.md §18.2)。
+   * 手元のデバイス・単独利用・旧 CLI は欠落 = undefined(false と同義)。 */
   readonly streamedByOther?: boolean;
   /** Android 実機のブリッジ(常駐 APK)が生きているか。**設定されるのは Android 実機の
    * connected のみ**(ApiMonitorCommand.shouldProbeBridge)。iOS 実機は state==="booted" で
@@ -126,18 +126,18 @@ export interface MonitorDevice {
    * (契約は Sources/fleetest/ApiMonitorCommand.swift の ApiMonitorDeviceInfo.bridgeRunning) */
   readonly bridgeRunning?: boolean;
   /** 直近のストレージ計測(devices サイクルに乗る。§3 の間隔・inRun 中は撃たない等の規律は
-   * 送信側=Swift の話でここでは関与しない)。測れなかった台は欠落(undefined)のまま —— 0 に
+   * 送信側=Swift の話でここでは関与しない)。測れなかったデバイスは欠落(undefined)のまま —— 0 に
    * 正規化しない(ダッシュボードの「デバイスの健全性」表が「–」と 0 を区別するため)。 */
   readonly storage?: MonitorDeviceStorage;
-  /** この台のストレージを今測っている(契約は Sources/fleetest/ApiMonitorEvents.swift の
+  /** このデバイスのストレージを今測っている(契約は Sources/fleetest/ApiMonitorEvents.swift の
    * ApiMonitorDeviceInfo.storageMeasuring)。欠落・型不正は false */
   readonly storageMeasuring: boolean;
-  /** この台のモニターが最後に受け取った storageRefresh の id。受け取っていなければ undefined。
+  /** このデバイスのモニターが最後に受け取った storageRefresh の id。受け取っていなければ undefined。
    * 「自分の要求 id 以上 かつ storageMeasuring が false」= 測り終えた(deviceHealth.js の進捗) */
   readonly storageRefreshId?: number;
 }
 
-/** run ボードの1レーン(台1枚)。docs/design.md §18.1/§18.2。key は udid(iOS)/serial(Android)で、
+/** run ボードの1レーン(デバイス1枚)。docs/design.md §18.1/§18.2。key は udid(iOS)/serial(Android)で、
  * webview 側(runBoard.js)がラインビューのタイル(MonitorDevice.udid/serial)と突き合わせて
  * デバイス選択に使う(MonitorDevice.id とは別物 — id は "platform:name" 形で udid/serial ではない)。
  * **`remaining`(レーンごとの残り本数)は持たない** —— shared dispatch は同一 platform のレーンが
@@ -191,7 +191,7 @@ export interface MonitorRunEntry {
 export type MonitorEvent =
   | { readonly kind: "monitorDevices"; readonly devices: readonly MonitorDevice[] }
   // 1台のストレージ計測が終わった瞬間(契約は Sources/fleetest/ApiMonitorEvents.swift の ApiMonitorStorageEvent)。
-  // MonitorProcessManager がその台の storage / storageMeasuring / storageRefreshId だけを差し替えて配る
+  // MonitorProcessManager がそのデバイスの storage / storageMeasuring / storageRefreshId だけを差し替えて配る
   | {
       readonly kind: "monitorStorage";
       readonly device: string;
@@ -469,7 +469,7 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
 /**
  * デバイス一覧を整列する: **手元が先 → 機械名順 → ios→android → 仮想デバイス→実機 → name 順**
  * (ユーザー決定)。
- * **機械が外側**なのは、台は機械ごとに起動・停止し、run も機械ごとに配られるため ——
+ * **機械が外側**なのは、デバイスは機械ごとに起動・停止し、run も機械ごとに配られるため ——
  * タイルは1列なので、外側 = 左右のかたまりになる。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
  * (タイル・拡大表示・実行ログ・run ボードのツリー)はこの順で受け取る。
@@ -479,8 +479,8 @@ export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDe
 }
 
 /** 周期の monitorDevices が、先に届いた monitorStorage(1台の計測の終わり)を巻き戻さないようにする。
- * 周期はストレージの状態を読んでから書き出すまでに数秒かかる(実測約 2 秒)ので、その間に終わった台を
- * 「測定中」のまま出してくる(リモートの子の中継でも同じ)。**同じ要求 id で一度「測り終えた」台は、
+ * 周期はストレージの状態を読んでから書き出すまでに数秒かかる(実測約 2 秒)ので、その間に終わったデバイスを
+ * 「測定中」のまま出してくる(リモートの子の中継でも同じ)。**同じ要求 id で一度「測り終えた」デバイスは、
  * 同じ id のまま「測定中」と言う一覧が来ても前の3欄を残す** —— 同じ id で測定中へ戻ることは無い
  * (測り直しは必ず新しい id = 押した時刻)。id が変わったら新しい一覧をそのまま採る */
 export function keepFinishedStorage(
@@ -498,7 +498,7 @@ export function keepFinishedStorage(
   });
 }
 
-/** 台の表示順(機械 → プラットフォーム → 仮想デバイスが先・実機が後 → 名前)の唯一の定義元。
+/** デバイスの表示順(機械 → プラットフォーム → 仮想デバイスが先・実機が後 → 名前)の唯一の定義元。
  * デバイスモニターのタイルとダッシュボード「デバイスの健全性」(webview/dashboard/deviceHealth.js の
  * sortRows)が共有する —— 別々に持つと2つの一覧の並びが食い違う。machine は手元なら undefined/空文字。
  * kind は "physical" だけを実機と読む(欠落は仮想デバイス = isMonitorDevice の正規化と同じ) */
@@ -538,7 +538,7 @@ export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
  * registered===false を "all" で落とすと「(プロファイルなし)で1台も出ない」を再発する(実害):
  * 実行プロファイルが2つ以上ある案件では `--profile` 無しの `api monitor` は対象デバイスの一覧を
  * 1つに決められず、「起動中のデバイスだけを見る」に縮退して**全台を registered:false で出す**
- * (ApiMonitorCommand の includeUnregistered)。実行プロファイルが複数あるとき「登録済みの台の
+ * (ApiMonitorCommand の includeUnregistered)。実行プロファイルが複数あるとき「登録済みのデバイスの
  * 一覧」は一意に決まらないので、この縮退は正しい —— registered===false を落とす側が誤り。
  *
  * **ブリッジ不在の iOS 実機(state==="booted")も出す** —— `api monitor` が接続中の実機を合成する

@@ -34,7 +34,7 @@ public enum BridgeToolchainLedger {
         return stored.trimmingCharacters(in: .whitespacesAndNewlines) == current
     }
 
-    /// 生きているブリッジを再利用してよいか。**リースのある台には触らない**
+    /// 生きているブリッジを再利用してよいか。**リースのあるデバイスには触らない**
     /// (supplySlownessAction と同じ規律 —— 他プロセスの run・MCP が使用中のブリッジを
     /// 版差だけで殺すとその run を壊す)。**止められないときも黙って使わない** ——
     /// 版の違うブリッジを駆動している事実は変わらないので、呼び手は1行言う

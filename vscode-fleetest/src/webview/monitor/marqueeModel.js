@@ -36,7 +36,7 @@ export function rectContains(rect, point) {
 
 /**
  * 矩形選択の結果。Ctrl/Cmd を押している間は前の選択を残して足す(押していなければ置き換え)。
- * base を先に並べるので、既に選ばれていた台の順序は変わらない。
+ * base を先に並べるので、既に選ばれていたデバイスの順序は変わらない。
  * @param {ReadonlyArray<string>} baseIds ドラッグを始めた時点の選択
  * @param {ReadonlyArray<string>} hitIds 矩形と重なった id
  * @param {boolean} additive Ctrl/Cmd を押しているか

@@ -151,7 +151,7 @@ function showPlayerView() {
 
 /** デバイス名ピル(タイル/レーン/実行プロファイルと同じ配色クラスを共用)。
  *  長い論理名は CSS で省略されるので、肩書きと一緒に全文を title に持たせる。
- *  **同じ台の名前は機械をまたいで重複する**ので、machine があれば title に併記する。 */
+ *  **同じデバイスの名前は機械をまたいで重複する**ので、machine があれば title に併記する。 */
 function deviceNamePill(ref) {
   const pill = document.createElement('span');
   pill.className = 'tile-name ' + (ref.platform ? 'tile-name-' + ref.platform : 'tile-name-unknown');
@@ -181,8 +181,8 @@ function sessionMachines(message) {
   return typeof message.machine === 'string' && message.machine !== '' ? [message.machine] : [];
 }
 
-/** セッション行の3カラム目「実行マシン」のバッジ群。**台は出さない**(ユーザー指示)——
- *  台は動画ごとに違うので、行では機械だけを見せて中身は再生ビューで見る。
+/** セッション行の3カラム目「実行マシン」のバッジ群。**デバイスは出さない**(ユーザー指示)——
+ *  デバイスは動画ごとに違うので、行では機械だけを見せて中身は再生ビューで見る。
  *  マシンが読めない古い記録では null(段を作らない)。 */
 function buildSessionMeta(session) {
   const machines = sessionMachines(session);
@@ -269,7 +269,7 @@ function renderSessions(sessions) {
       failures.appendChild(clipsFailed);
     }
 
-    // **録画そのものが取れなかった台**(切り出し失敗とは別物)。これを出さないと、
+    // **録画そのものが取れなかったデバイス**(切り出し失敗とは別物)。これを出さないと、
     // 録画が全滅した run が「動画0本の空セッション」に見えて理由が分からない
     if (session.sourcesFailed !== null && session.sourcesFailed > 0) {
       const sourcesFailed = document.createElement('span');
@@ -530,8 +530,8 @@ function scenarioCaptionParts(scenario) {
   };
 }
 
-/** 再生中の動画を撮った台を出す(動画の属性なのでステップが変わっても消さない)。
- *  **束ねたセッション(マシン2台以上)ではマシン名も前置する** —— 同じ台の名前は機械を
+/** 再生中の動画を撮ったデバイスを出す(動画の属性なのでステップが変わっても消さない)。
+ *  **束ねたセッション(マシン2台以上)ではマシン名も前置する** —— 同じデバイスの名前は機械を
  *  またいで重複するので、名前だけだとどの機械の録画か分からない。 */
 function renderNowPlayingDevice(scenarioID) {
   const device = currentDetail ? currentDetail.devicesByScenario.get(scenarioID) : undefined;
@@ -966,7 +966,7 @@ export function applyRecordingsSession(message) {
   exportBtn.disabled = false;
   currentDetail = {
     videosByScenario: new Map(videos.map((v) => [v.scenarioID, v.videoUri])),
-    // scenarioID → 撮った台(録画のあるシナリオのぶんだけ。無い記録では空)
+    // scenarioID → 撮ったデバイス(録画のあるシナリオのぶんだけ。無い記録では空)
     devicesByScenario: new Map((message.devices || []).map((d) => [d.scenarioID, d])),
     // 束ねたセッションかどうかの判定に使う(2台以上ならタイルにマシン名も出す)
     machines,

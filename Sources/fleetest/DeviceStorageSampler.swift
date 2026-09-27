@@ -1,7 +1,7 @@
 // api monitor のストレージ計測(monitorDevices[].storage)を配信周期から切り離す。
-// 周期は schedule()(更新の要求があれば台を裏のキューへ積むだけ・待たない)と snapshot()(控えを読む)しか呼ばない。
+// 周期は schedule()(更新の要求があればデバイスを裏のキューへ積むだけ・待たない)と snapshot()(控えを読む)しか呼ばない。
 // **測る契機は利用者の更新ボタンだけ**(ユーザー決定。stdin の storageRefresh → requestRefresh)。
-// 間隔・台の起動し直し・モニターの起動・run の有無では測らない/止めない。
+// 間隔・デバイスの起動し直し・モニターの起動・run の有無では測らない/止めない。
 // **周期の中で計測を await しない**: iOS Simulator の走査は並列でも 1 台数秒(単一スレッドの du は
 // 27〜35 秒)かかり、周期内で待つとタイル・凍結判定が止まる。計測は同期呼び出し(Android は Shell.run・
 // iOS はスレッドを待つ)なので Swift の協調スレッドにも載せない(専用の DispatchQueue)。
@@ -21,7 +21,7 @@ final class DeviceStorageSampler: @unchecked Sendable {
     private var inFlight: Set<String> = []
     /// 更新ボタンが押され、次の schedule で積む
     private var refreshRequested = false
-    /// iOS は 1 台ずつ(1 台の走査が既にコア数の半分のスレッドを使う。台も並列にすると I/O が重なる)
+    /// iOS は 1 台ずつ(1 台の走査が既にコア数の半分のスレッドを使う。デバイスも並列にすると I/O が重なる)
     private let iosQueue = DispatchQueue(label: "fleetest.monitor.storage.ios", qos: .utility)
     private let androidQueue = DispatchQueue(label: "fleetest.monitor.storage.android", qos: .utility)
     private let probeIOS: Probe
@@ -32,7 +32,7 @@ final class DeviceStorageSampler: @unchecked Sendable {
     /// 書き込みの順序を保つ(iOS と Android のキューが同時に終えると、古い控えを後から書きうる)
     private let storeWriteLock = NSLock()
     /// 1台の計測が終わるたび(測れなかった回も)、測定中から外して値を入れた**後**に計測キューのスレッドで呼ぶ。
-    /// モニターはここで monitorStorage を出す(周期を待たずに終わった台から画面を変える)
+    /// モニターはここで monitorStorage を出す(周期を待たずに終わったデバイスから画面を変える)
     private let onMeasured: @Sendable (String) -> Void
 
     init(probeIOS: @escaping Probe, probeAndroid: @escaping Probe, storeURL: URL?,
@@ -57,8 +57,8 @@ final class DeviceStorageSampler: @unchecked Sendable {
     }
 
     /// candidates = 動いている仮想デバイス(key = udid / serial)。更新の要求が無ければ何もしない。
-    /// **計測中の台は積まない**(同じ台を二重に歩かない。その台は進行中の計測の値になる)。
-    /// 戻り値 = 今回積んだ台(モニターはすぐ「測定中」を知らせる)
+    /// **計測中のデバイスは積まない**(同じデバイスを二重に歩かない。そのデバイスは進行中の計測の値になる)。
+    /// 戻り値 = 今回積んだデバイス(モニターはすぐ「測定中」を知らせる)
     @discardableResult
     func schedule(candidates: [(key: String, platform: String)]) -> [String] {
         var jobs: [(key: String, isIOS: Bool)] = []
@@ -101,7 +101,7 @@ final class DeviceStorageSampler: @unchecked Sendable {
         try? data.write(to: storeURL, options: .atomic)
     }
 
-    /// 値と計測中の台を同じロックで読む(別々に読むと、間で終わった台が「古い値のまま測定中でない」に見える)
+    /// 値と計測中のデバイスを同じロックで読む(別々に読むと、間で終わったデバイスが「古い値のまま測定中でない」に見える)
     func progressSnapshot() -> (values: [String: DeviceStorageInfo], measuring: Set<String>) {
         lock.lock()
         defer { lock.unlock() }
@@ -114,7 +114,7 @@ final class DeviceStorageSampler: @unchecked Sendable {
         return cache
     }
 
-    /// 居なくなった台の控えを捨てる(health/renderMode キャッシュと同じ規律)
+    /// 居なくなったデバイスの控えを捨てる(health/renderMode キャッシュと同じ規律)
     func forget(keysNotIn live: Set<String>) {
         lock.lock()
         for key in Set(cache.keys).subtracting(live) {

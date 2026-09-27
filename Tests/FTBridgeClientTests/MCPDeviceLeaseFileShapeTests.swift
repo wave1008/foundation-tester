@@ -1,6 +1,6 @@
 // MCPDeviceLease は「1台1ファイル」だった頃、後から同じ鍵を触った別の生きたセッションが
 // 先のセッションの印を上書きし、そのセッションの終了処理(removeAll)がファイルごと消して
-// 先の生きた保持者を消していた(実害: ライブ操作が保持していた台へ、別の対話セッションの
+// 先の生きた保持者を消していた(実害: ライブ操作が保持していたデバイスへ、別の対話セッションの
 // 終了処理を経由して stop-device が通ってしまった)。この一群は、いま「鍵 × pid」で1ファイル
 // (`mcp-<鍵>@<pid>.lease`)になっていて、書き手が自分のファイルしか触らないことを固定する。
 // RunLeaseTests.swift と同型: 実プロセス起動不要で、自プロセスの pid と launchd(1)を
@@ -19,7 +19,7 @@ final class MCPDeviceLeaseFileShapeTests: XCTestCase {
         FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     }
 
-    /// **本命**: 2つの生きたセッションが同じ台を触っても、後発の終了処理は先発の印を巻き込まない。
+    /// **本命**: 2つの生きたセッションが同じデバイスを触っても、後発の終了処理は先発の印を巻き込まない。
     /// 「1台1ファイル」だった頃はここで holderPID が nil になっていた(B の removeAll が
     /// ファイルごと消していたため)
     func testRemoveAllByOneHolderDoesNotEraseAnotherLiveHolderOfTheSameKey() {

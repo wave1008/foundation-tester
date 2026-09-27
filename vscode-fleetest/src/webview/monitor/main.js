@@ -97,7 +97,7 @@ window.addEventListener('message', (event) => {
       // **一覧は表示フィルタ前の全台**(絞り込みは deviceTiles.js の入口。
       // 契約: monitorWebviewMessages.ts の devicesToWebviewMessage)
       applyDevices(message.devices, message.filter);
-      // run ボードのツリーは台の一覧から作る(runBoard.js)—— 呼ばないと古い台が残る
+      // run ボードのツリーはデバイスの一覧から作る(runBoard.js)—— 呼ばないと古いデバイスが残る
       refreshRunBoardDevices();
       break;
     case 'frame':
@@ -199,7 +199,7 @@ window.addEventListener('message', (event) => {
       // renderRunProfileEditor が devices 一覧を組み立てるときに最新のカタログを読む必要がある。
       applyProjectDeviceCatalog(message);
       applyRunProfileInfo(message);
-      // run が無い機械の行は「何を見ている台か」にツールバーの選択を出す(runBoard.js)
+      // run が無い機械の行は「何を見ているデバイスか」にツールバーの選択を出す(runBoard.js)
       refreshRunBoardDevices();
       break;
     case 'deviceCatalog':
@@ -384,8 +384,8 @@ btnUp.addEventListener('click', () => {
   // CPU 描画フォールバック中(CPUバッジ)の Android は restartNames として渡し、未起動機のブートと
   // 同一キュー(start-all-devices --restart。1ジョブ・2台ずつ並行)で down→up される。ジョブを分けないので
   // 種別を問わず常に最大2台だけが起動処理中(受信側: monitorPanel.ts → monitorDeviceOps.bulkUpWithRestarts)。
-  // **手元の台だけ** —— `start-all-devices --restart` は手元の名簿で、リモートへ中継されない
-  // (ApiDevicesUp)。リモートの CPU バッジ機の名前を混ぜると、手元の同名の台が再起動される
+  // **手元のデバイスだけ** —— `start-all-devices --restart` は手元の名簿で、リモートへ中継されない
+  // (ApiDevicesUp)。リモートの CPU バッジ機の名前を混ぜると、手元の同名のデバイスが再起動される
   const cpuNames = [...tiles.values()]
     .filter((entry) => entry.device.platform === 'android' && entry.device.renderMode === 'cpu'
       && !entry.device.machine)

@@ -17,8 +17,8 @@ public final class InAppDriver: AppDriver {
     /// **simulatorUDID を渡し切る**: install/uninstall/clearAppData は simctl 経路で、宛先を
     /// 知らないと `/status` に聞きに行く。in-app ブリッジは対象アプリのプロセス内に住むので、
     /// 前のシナリオがアプリを終了した直後の `removeApp` は「接続拒否」で落ちる
-    /// (受け手報告: シナリオ先頭の removeApp が同じ台で連続して driver-unreachable)。
-    /// "booted" は UDID ではないので渡さない(台が複数 booted だと simctl の宛先として曖昧)
+    /// (受け手報告: シナリオ先頭の removeApp が同じデバイスで連続して driver-unreachable)。
+    /// "booted" は UDID ではないので渡さない(デバイスが複数 booted だと simctl の宛先として曖昧)
     public init(repoRoot: URL, udid: String, port: UInt16) {
         let simulatorUDID = udid == "booted" ? nil : udid
         self.simulatorUDID = simulatorUDID

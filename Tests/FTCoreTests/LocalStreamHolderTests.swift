@@ -1,4 +1,4 @@
-// 同じ Mac の別ウィンドウが同じ台の配信を持っているかの判定(FTCore.LocalStreamHolder)。
+// 同じ Mac の別ウィンドウが同じデバイスの配信を持っているかの判定(FTCore.LocalStreamHolder)。
 // 判定は純粋関数なので ps の行を合成して両方向に固定する。
 
 import XCTest
@@ -19,7 +19,7 @@ final class LocalStreamHolderTests: XCTestCase {
     private let sim = LocalStreamHolder.DeviceIdentity.iosSimulator(udid: "AAAA-1111")
     private let simstream = "/repo/.build/debug/fleetest-simstream --udid AAAA-1111 --fps 12 --max-width 960 --codec h264"
 
-    // MARK: - 台の識別
+    // MARK: - デバイスの識別
 
     func testMatchesEachHelperByItsIdentifyingArgument() {
         let rows = [
@@ -37,7 +37,7 @@ final class LocalStreamHolderTests: XCTestCase {
         XCTAssertEqual(LocalStreamHolder.helpers(for: .iosPhysical(port: 8124), in: rows), [])
     }
 
-    /// 値の前方一致・部分一致で別の台を掴まない(`--serial 1414` が `14141J` に当たらない)
+    /// 値の前方一致・部分一致で別のデバイスを掴まない(`--serial 1414` が `14141J` に当たらない)
     func testIdentifyingValueMustMatchExactly() {
         let rows = [row(4, elapsed: 10, "/x/fleetest-devicepoll --platform android --serial 14141J --adb /adb")]
         XCTAssertEqual(LocalStreamHolder.helpers(for: .android(serial: "1414"), in: rows), [])
@@ -75,7 +75,7 @@ final class LocalStreamHolderTests: XCTestCase {
         XCTAssertTrue(LocalStreamHolder.heldByOther(identity: sim, rows: rows, myOwner: "555"))
     }
 
-    /// 所有の印がどちらかに無ければ別人(手で nohup したヘルパーの台に拡張は重ねない /
+    /// 所有の印がどちらかに無ければ別人(手で nohup したヘルパーのデバイスに拡張は重ねない /
     /// CLI の監視から見たヘルパーは全部他人)
     func testMissingOwnerOnEitherSideCountsAsSomeoneElse() {
         let manual = [row(10, elapsed: 20, simstream)]
@@ -120,7 +120,7 @@ final class LocalStreamHolderTests: XCTestCase {
 
     /// 実プロセスで1回: 本物のヘルパー(fleetest-devicepoll。自前のバイナリなので `ps -E` に env が載る。
     /// システムのバイナリは env を隠すのでシェルスクリプトや sleep では代用できない)を所有の印付きで
-    /// 起こし、snapshot → 判定まで通す。宛先はブリッジの無いポート 1(実在の台と衝突しない。
+    /// 起こし、snapshot → 判定まで通す。宛先はブリッジの無いポート 1(実在のデバイスと衝突しない。
     /// 接続失敗を 10 回数えるまで生きる = fps 0.1 で 100 秒)
     func testSnapshotSeesARealHelperWithItsOwnerMark() throws {
         let binary = URL(fileURLWithPath: #filePath)

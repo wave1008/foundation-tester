@@ -2,7 +2,7 @@
 // PosterBoard のスナップショットキャッシュ(FTBridgeClient.SimulatorPosterCache)を消す。
 // **RetentionSweeper.Category には入れない** —— このオプションを付けたときだけ動く
 // (背景の自動掃除・素の `fleetest clean` には含まれない。ユーザー方針)。
-// Booted の台は名前だけ出して飛ばす。消した量は台ごとに表示する。
+// Booted のデバイスは名前だけ出して飛ばす。消した量はデバイスごとに表示する。
 
 import FTBridgeClient
 import Foundation

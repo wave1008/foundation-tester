@@ -6,7 +6,7 @@
 //   ①送る名前が「デバイス名-連番2桁・-01 始まり」であること(表示と作られる名前がズレると上書き確認が嘘になる)
 //   ②台数の範囲(1-99)を **JS でも** 弾くこと(number 入力は手打ちで範囲外を通す)
 //   ③衝突している名前だけ overwriteNames に載ること(ホスト側の上書き確認の入力そのもの)
-//   ④開始→進行→完了→OK で「デバイスを選択」へ戻り、**作成できた台すべて**にチェックが入ること
+//   ④開始→進行→完了→OK で「デバイスを選択」へ戻り、**作成できたデバイスすべて**にチェックが入ること
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -392,7 +392,7 @@ test("一覧にまだ出ていない台のぶんは持ち越す(次の再描画�
   });
   click(window, document.getElementById("device-batch-ok"));
 
-  // 取得の行き違いで、作った台がまだ載っていない一覧が返ってきた場合
+  // 取得の行き違いで、作ったデバイスがまだ載っていない一覧が返ってきた場合
   post(window, installedDevices([{ name: "無関係", udid: "SIM-C", os: "27.0" }]));
   assert.equal(
     [...document.querySelectorAll("#device-pick-ios-body .device-pick-row")]

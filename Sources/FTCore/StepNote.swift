@@ -272,7 +272,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// (`FastLaunchDriver`。ランナーが 5 秒待っても前面にならなかった)。activate はアプリを
     /// 「動いていない」と見ると起動し直し、その起動が時間切れになるとランナーごと落ちる
     /// (負荷テスト L18)。**立つだけでは失敗ではない**(activate が通れば緑)。
-    /// **率が上がったら起動の遅い台・高負荷**で、ランナー喪失の手前にいる
+    /// **率が上がったら起動の遅いデバイス・高負荷**で、ランナー喪失の手前にいる
     case launchActivatedBeforeForeground = "launch-activated-before-foreground"
 
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)

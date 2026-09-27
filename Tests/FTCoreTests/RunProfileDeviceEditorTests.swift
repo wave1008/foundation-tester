@@ -38,7 +38,7 @@ final class RunProfileDeviceEditorTests: XCTestCase {
         XCTAssertEqual(try devices(updated)[0]["extra"] as? String, "維持")
     }
 
-    /// 同じ機械の同名は platform を跨いでも重複(無効の台も数える)
+    /// 同じ機械の同名は platform を跨いでも重複(無効のデバイスも数える)
     func testAddingDeviceRejectsDuplicateNameOnTheSameMachineAcrossPlatforms() {
         let object: [String: Any] = [
             "devices": [["platform": "ios", "machine": "local", "name": "重複", "enabled": false]],

@@ -110,7 +110,7 @@ test("選択0台では実行ログも拡大表示も出さない", (t) => {
   assert.equal(document.getElementById("preview-grid").children.length, 0);
 });
 
-// 全体レーンは台ではない(タイルも無い)ので選択に従わせない —— 消すと供給フェーズの進行
+// 全体レーンはデバイスではない(タイルも無い)ので選択に従わせない —— 消すと供給フェーズの進行
 // (worker を持たないイベント)が読めなくなる。
 test("全体レーン(__overall__)は選択0台でも残る", (t) => {
   const { window, document } = createWebview();
@@ -159,7 +159,7 @@ test("1台選択でグリッドビューにログの複製が出て、実行ロ�
   const mainBody = visibleLogs(document)[0].querySelector(".lane-body");
   assert.deepEqual([...mainBody.querySelectorAll(".lane-line")].map((el) => el.textContent), ["line A"]);
 
-  // 選択していない台(d1)宛ての行はミラーに届かない
+  // 選択していないデバイス(d1)宛ての行はミラーに届かない
   post(window, { type: "runEvent", action: { type: "line", laneId: "d1", text: "line B" } });
   assert.deepEqual(
     [...mirrorBody.querySelectorAll(".lane-line")].map((el) => el.textContent),

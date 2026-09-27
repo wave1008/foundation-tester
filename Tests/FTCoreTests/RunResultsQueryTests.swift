@@ -305,7 +305,7 @@ final class RunResultsQueryTests: XCTestCase {
     }
 
     /// appCrash を持つシナリオ記録の数を worker 別に数える(appCrash が無ければ数えない)
-    /// フリートでは同じ論理名の台が機械ごとに居る。worker だけで束ねると別の機械の台が1行に混ざる
+    /// フリートでは同じ論理名のデバイスが機械ごとに居る。worker だけで束ねると別の機械のデバイスが1行に混ざる
     func testDeviceHealthKeepsTheSameWorkerOnDifferentHostsApart() {
         let runs = [
             makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", host: "mac1", workerAnomalies: [
@@ -356,7 +356,7 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(rows[0].appCrashes, 1)
     }
 
-    /// 全部 0 の台は出さない(worker 欄はあるが、数えられる事象が1件も無い)
+    /// 全部 0 のデバイスは出さない(worker 欄はあるが、数えられる事象が1件も無い)
     func testDeviceHealthOmitsAllZeroRows() {
         let runs = [
             makeMeta(runID: "R1", workerAnomalies: [

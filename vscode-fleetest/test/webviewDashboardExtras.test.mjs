@@ -365,7 +365,7 @@ test("デバイスの健全性: 並びはデバイスモニターと同じ(手�
   showAllDevices(window);
   const payload = basePayload({
     machines: [{ host: "H", machine: "local" }],
-    // 履歴にしか居ない台も同じ規則で混ざる
+    // 履歴にしか居ないデバイスも同じ規則で混ざる
     deviceHealth: [healthRow({ worker: "android:Pixel-00" })],
   });
   sendToWebview({ type: "dashboard", message: { type: "data", payload } });
@@ -514,7 +514,7 @@ test("デバイスの健全性: 更新の進捗は「自分の id 以上を受�
   const devices = (a, b) => [
     monitorDevice({ id: "android:a", name: "a", kind: "virtual", storageMeasuring: false, ...a }),
     monitorDevice({ id: "android:b", name: "b", kind: "virtual", storageMeasuring: false, ...b }),
-    // 実機と止まっている台は数えない(モニターが測らない台)
+    // 実機と止まっているデバイスは数えない(モニターが測らないデバイス)
     monitorDevice({ id: "android:phys", name: "phys", kind: "physical", storageMeasuring: false }),
     monitorDevice({ id: "android:off", name: "off", kind: "virtual", state: "offline", storageMeasuring: false }),
   ];
@@ -538,7 +538,7 @@ test("デバイスの健全性: 更新の進捗は「自分の id 以上を受�
   assert.equal(cellOf("android:b").textContent, "測定中", "測定中は値を出さない");
   assert.equal(cellOf("android:a").textContent, "1.4 GB");
 
-  // 前の要求の id しか受け取っていない台は、測定中でなくても未完了
+  // 前の要求の id しか受け取っていないデバイスは、測定中でなくても未完了
   sendToWebview({ type: "devices", filter: "all", devices: devices(
     { storageRefreshId: id }, { storageRefreshId: id - 1 },
   ) });
@@ -636,7 +636,7 @@ test("デバイスの健全性: 前回値(carriedOver)のストレージだけ�
   assert.ok(!cellOf("android:carried").classList.contains("dh-storage-carried-over"));
 });
 
-// ---- デバイスの健全性: モニターの台名を deviceCatalog で実行プロファイルの name へ揃える ------
+// ---- デバイスの健全性: モニターのデバイス名を deviceCatalog で実行プロファイルの name へ揃える ------
 
 function sendDeviceCatalog(sendToWebview, devices) {
   sendToWebview({ type: "dashboard", message: { type: "deviceCatalog", devices } });
@@ -684,7 +684,7 @@ test("デバイスの健全性: 未登録の iOS は udid で deviceCatalog を�
   sendToWebview({
     type: "devices", filter: "all",
     devices: [
-      // 未登録の iOS の台はモニターの name がシミュレータの名前になる(たまたまプロファイルの
+      // 未登録の iOS のデバイスはモニターの name がシミュレータの名前になる(たまたまプロファイルの
       // name と同じ字面になることもあるが保証はない、という実測に合わせて別の字面にする)。
       monitorDevice({ id: "ios:sim-name", name: "iPhone 15 Pro (Clone)", platform: "ios", udid: "UDID-1", registered: false }),
     ],
@@ -711,7 +711,7 @@ test("デバイスの健全性: 未登録の Android は avd(+machine)で device
     },
   });
   // 実際のプロファイルは手元を "local" と書き、モニターは手元の machine を省く(実測)。
-  // 同じ AVD 名の台が別の機械にもあるので、machine で手元の台を選ぶ
+  // 同じ AVD 名のデバイスが別の機械にもあるので、machine で手元のデバイスを選ぶ
   sendDeviceCatalog(sendToWebview, [
     { platform: "android", machine: "M1Max", name: "Pixel 9(Android 15)-01 on M1Max", avd: "Pixel_9_Android_15_-01" },
     { platform: "android", machine: "local", name: "Pixel 9(Android 15)-01", avd: "Pixel_9_Android_15_-01" },
@@ -745,7 +745,7 @@ test("デバイスの健全性: deviceCatalog に当たらない未登録の台�
       }),
     },
   });
-  // deviceCatalog は空(またはこの台の avd に当たる記載が無い) —— 当てられないので推測しない。
+  // deviceCatalog は空(またはこのデバイスの avd に当たる記載が無い) —— 当てられないので推測しない。
   sendDeviceCatalog(sendToWebview, []);
   sendToWebview({
     type: "devices", filter: "all",

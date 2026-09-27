@@ -1,7 +1,7 @@
 // 自分の死んだディスパッチのロックを外す前に、ランナー上でその run がまだ生きていないかを見る
 // (RemoteDispatchUnlock.guardingLiveRemoteRun / RemoteDispatchLock.liveDispatchedRunsCommand)。
 // 手元の pid が死んでもリモートの run は最後まで流れることがあり(kill -9 で実測)、そこで外すと
-// 同じ台へ2本目が乗る。
+// 同じデバイスへ2本目が乗る。
 
 import Foundation
 import XCTest

@@ -78,6 +78,6 @@ test("release(CLI が action:null を出さずに終わった)でも消える", 
   notices.release("iPhone SE3", undefined);
   await tick();
   assert.equal(shown[0].closed, true);
-  // 開いていない台の release は何もしない
+  // 開いていないデバイスの release は何もしない
   notices.release("iPhone 13", undefined);
 });

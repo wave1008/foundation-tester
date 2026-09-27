@@ -399,7 +399,7 @@ export function updateRunProfileInObject(
   }
 
   // 既存エントリの未知キーは保つ。**引き当ては (platform, machine, name)** —— 名前だけだと、
-  // 同名が別の機械/別 OS に並ぶ台で別のエントリの未知キーを持ってきてしまう。
+  // 同名が別の機械/別 OS に並ぶデバイスで別のエントリの未知キーを持ってきてしまう。
   // チェックボックスの操作は enabled の有無・machine の正規化だけに触れ、それ以外の欄
   // (名前・機種/OS/UDID/AVD 等)は素通しする(runProfileDeviceRefKey/orderedDeviceEntry を
   // addDeviceRefsToRunProfile と共有)。

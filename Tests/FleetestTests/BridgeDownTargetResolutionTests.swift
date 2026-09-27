@@ -1,5 +1,5 @@
 // `bridge down --serial X`(--platform 省略)は platform の既定 "ios" のまま進み、serial を無視して
-// iOS の既定ポートのブリッジ(別の台)を止めていた(破壊的操作)。`platform`/`port` を Optional にして
+// iOS の既定ポートのブリッジ(別のデバイス)を止めていた(破壊的操作)。`platform`/`port` を Optional にして
 // 「明示されたか」を区別し、`--platform` 省略 + `--serial` だけのときは android と推定する
 // (MCP の `platformName`/`foldInRememberedDevice` と同じ既定推定)。食い違いの判定は
 // `FTCore.DeviceTargetConsistency`(MCP・DriverOptions と共有)。

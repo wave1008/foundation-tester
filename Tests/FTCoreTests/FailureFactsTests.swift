@@ -228,7 +228,7 @@ final class FailureFactsTests: XCTestCase {
 
     // MARK: - preRunTriage
 
-    /// 除外・修復した台そのものから worker 鍵つき anomaly を作る(label から台を引き直さない)
+    /// 除外・修復したデバイスそのものから worker 鍵つき anomaly を作る(label からデバイスを引き直さない)
     func testPreRunTriageUsesTheWorkersThemselves() {
         let excludedWorker = RunWorker(
             label: "iPhone 17(ios:8100)", platform: "ios", driver: QuietDriver(),
@@ -246,7 +246,7 @@ final class FailureFactsTests: XCTestCase {
         XCTAssertEqual(repaired?.worker, "android:Pixel 9")
     }
 
-    /// 論理名を持たない台(--port 等)は worker: nil のまま残す(集計側が数えないだけ。事実は落とさない)
+    /// 論理名を持たないデバイス(--port 等)は worker: nil のまま残す(集計側が数えないだけ。事実は落とさない)
     func testPreRunTriageKeepsWorkersWithoutALogicalName() {
         let worker = RunWorker(label: "ios:8199", platform: "ios", driver: QuietDriver(),
                                connection: DriverConnection(platform: "ios", physical: false))

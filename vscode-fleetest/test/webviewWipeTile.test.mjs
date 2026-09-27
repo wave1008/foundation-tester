@@ -1,7 +1,7 @@
 // Wipe Data 実行中のタイル表示の DOM テスト(deviceTiles.js の renderFrame/renderMeta)。
 //
-// 背景(2026-08-29 の報告): リモートの台を Wipe Data すると、タイルは**消える前の画面のまま**
-// 固まって見えた。down と違って状態が offline へ倒れるとは限らない(止めずに終わる台もある)し、
+// 背景(2026-08-29 の報告): リモートのデバイスを Wipe Data すると、タイルは**消える前の画面のまま**
+// 固まって見えた。down と違って状態が offline へ倒れるとは限らない(止めずに終わるデバイスもある)し、
 // 実行中はモニターを pause しているので新しい観測も来ない —— つまり放っておくと
 // 「押したのに何も起きていない」ようにしか見えない。
 //
@@ -67,7 +67,7 @@ function post(window, data) {
   window.dispatchEvent(new window.MessageEvent("message", { data }));
 }
 
-/** 手元と M1Ultra に同名の台。どちらも connected でフレームが載っている状態にする */
+/** 手元と M1Ultra に同名のデバイス。どちらも connected でフレームが載っている状態にする */
 function sendConnectedPairWithFrames(window) {
   post(window, {
     type: "devices",

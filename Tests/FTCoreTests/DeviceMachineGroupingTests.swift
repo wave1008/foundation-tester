@@ -48,7 +48,7 @@ final class DeviceMachineGroupingTests: XCTestCase {
         XCTAssertNil(DeviceMachineGrouping.firstDuplicate(in: entries))
     }
 
-    /// platform を跨いでも同じ機械の同名は重複。無効の台も数える
+    /// platform を跨いでも同じ機械の同名は重複。無効のデバイスも数える
     func testSameNameOnTheSameMachineIsADuplicateAcrossPlatforms() {
         let entries = DeviceMachineGrouping.entries(runDevices: [
             entry("ios", "iPhone-01", machine: "M1Ultra"),

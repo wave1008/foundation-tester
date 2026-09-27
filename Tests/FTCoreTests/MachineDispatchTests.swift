@@ -1,5 +1,5 @@
 // MachineDispatchTests.swift
-// `--runner` の正規化と、実行プロファイルの台が「どの機械に居るか」の読み取り
+// `--runner` の正規化と、実行プロファイルのデバイスが「どの機械に居るか」の読み取り
 // (ディスパッチ判定の材料。ProfileResolver.runDeviceMachines)の破ったら落ちるテスト。
 
 import XCTest
@@ -62,7 +62,7 @@ final class ProfileResolverRunDeviceMachinesTests: XCTestCase {
         try json.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("\(name).json"))
     }
 
-    /// enabled の台だけを、記述順・正規化済みの machine で返す
+    /// enabled のデバイスだけを、記述順・正規化済みの machine で返す
     func testReturnsEnabledDevicesWithNormalizedMachines() throws {
         try writeRun("""
         { "app": "a", "devices": [

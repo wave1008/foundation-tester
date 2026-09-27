@@ -99,7 +99,7 @@ final class WebViewShotCompositeTests: XCTestCase {
         XCTAssertTrue(WebViewShotComposite.blankCaptureWarning(
             serial: "x", hasWebViewNode: false, reason: .noDevtoolsSocket)
             .contains("most of the screen"), "木が無い場合の言い分けが無い")
-        // 理由ごとに案内が違う(アプリが起きていないだけの台にデバッグ設定を案内しない)
+        // 理由ごとに案内が違う(アプリが起きていないだけのデバイスにデバッグ設定を案内しない)
         let notRunning = WebViewShotComposite.blankCaptureWarning(
             serial: "x", hasWebViewNode: false, reason: .appNotRunning)
         XCTAssertTrue(notRunning.contains("not running"), notRunning)

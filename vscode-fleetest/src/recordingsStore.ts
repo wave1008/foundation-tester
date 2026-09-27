@@ -201,7 +201,7 @@ function mergeSessionsByRunGroup(sessions: readonly RecordingSessionSummary[]): 
   return merged;
 }
 
-/** 束ねた1件。件数は合計・開始時刻は最も早いもの・台とマシンは初出順で重複排除。 */
+/** 束ねた1件。件数は合計・開始時刻は最も早いもの・デバイスとマシンは初出順で重複排除。 */
 function combineSessions(
   first: RecordingSessionSummary,
   next: RecordingSessionSummary,

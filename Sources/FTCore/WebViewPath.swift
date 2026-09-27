@@ -15,8 +15,8 @@ public enum WebViewPath {
     /// DOM は読めたが interop(Compose/Flutter)ホスト配下 = 操作だけ XCUITest の実タッチへ回す
     public static let domInterop = "dom-interop"
     /// **WebView の中身を1つも読めなかった**(理由は snapshot の note)。`delegated` との差は
-    /// 「まだ委譲していない」こと —— XCUITest ブリッジが居る台ではホストがこの後で委譲するが、
-    /// `iosInappEngine` の台には委譲先が無い。**空の木を「中身が無い」の証拠にしてはいけない**
+    /// 「まだ委譲していない」こと —— XCUITest ブリッジが居るデバイスではホストがこの後で委譲するが、
+    /// `iosInappEngine` のデバイスには委譲先が無い。**空の木を「中身が無い」の証拠にしてはいけない**
     public static let domUnread = "dom-unread"
     /// 画面ごと XCUITest へ委譲した
     public static let delegated = "delegated"

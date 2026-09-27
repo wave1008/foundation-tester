@@ -353,7 +353,7 @@ test("isMonitorEvent: monitorError は message が欠落/非文字列なら fals
 
 // ---- toWebviewMessage: 変換 ----
 
-// 台の一覧だけは toWebviewMessage を通さない —— 表示フィルタ(「起動中のデバイス」)を
+// デバイスの一覧だけは toWebviewMessage を通さない —— 表示フィルタ(「起動中のデバイス」)を
 // **畳まずに** filter を添えて送り、落とすのは webview の入口(run ボードのツリーは通さない。
 // docs/design.md §18.5)。toWebviewMessage 側は Exclude してあるので通し忘れはコンパイルで止まる。
 test("devicesToWebviewMessage: 一覧は絞らず filter を添える", () => {
@@ -774,7 +774,7 @@ function promoted(state) {
 
 // 同時実行の上限は**機械ごと**。「2台同時でホスト CPU がほぼ飽和する」という実測はその機械の
 // CPU の話で、別の機械の起動を止める理由が無い。全機で共有していたため、M2Ultra の2台を
-// 起こしている間 M1Max の台が「起動待機」で止まった(2026-08-17 の実害)。
+// 起こしている間 M1Max のデバイスが「起動待機」で止まった(2026-08-17 の実害)。
 test("DeviceLifecycleQueue: 同時実行の上限は機械ごとに数える", () => {
   let state = createDeviceLifecycleQueueState();
   for (const job of [

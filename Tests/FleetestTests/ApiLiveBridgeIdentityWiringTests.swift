@@ -7,7 +7,7 @@ import XCTest
 /// (呼んでいるか・使う前に確かめているか)をソース走査で縛る。
 ///
 /// **一段目の直しの穴**: 不一致を即 throw すると、`--port` を明示していない(=拡張が
-/// ブリッジのまだ無い台を開く、まさに自動起動が想定する場面)ときに serve 自体が
+/// ブリッジのまだ無いデバイスを開く、まさに自動起動が想定する場面)ときに serve 自体が
 /// 起動しなくなり、ライブ操作が開けなくなる。`driverOptions.port == nil` かどうかで
 /// 断る/探す/自動起動へ回すを分けることを、ここで固定する。
 final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
@@ -89,7 +89,7 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         XCTAssertTrue(matchRange.upperBound < rerouteRange.lowerBound)
     }
 
-    /// **見つからなければ別の台のブリッジには触れず、空きポートへ自動起動を回す**
+    /// **見つからなければ別のデバイスのブリッジには触れず、空きポートへ自動起動を回す**
     /// (占有中の既定ポートを巻き込まない。実地 L1: 版差を理由に他人のブリッジを止めていた)
     func testNoMatchFallsBackToAFreePortWithoutTouchingTheOccupiedOne() throws {
         let code = try source("Sources/fleetest/ApiLiveCommand.swift")
@@ -110,7 +110,7 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
     }
 
     /// **無応答を「一致」に畳まない**(実地 2026-09-23): 既定ポートへのフォールバックで、
-    /// 誰かが待受しているのに /status が答えないポートは、この台のブリッジと決めつけない。
+    /// 誰かが待受しているのに /status が答えないポートは、このデバイスのブリッジと決めつけない。
     /// 決めつけると自動起動がそのポートへ自分のブリッジを立て、占有者の生きたランナーを
     /// 残骸として殺す(ブリッジを失った実機2台が既定ポート 8123 で殺し合った)
     func testSilentPortIsNotClaimedOnTheFallbackPort() throws {

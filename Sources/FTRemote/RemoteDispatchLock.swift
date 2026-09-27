@@ -213,7 +213,7 @@ public enum RemoteDispatchLock {
 
     /// 中断したディスパッチが**回収へ入る前に**ロックを外す 1 往復。このディスパッチの run が
     /// ランナーに残っていれば外さず `busy`、居なければ外して `released` を出す。**居るかを見るのは
-    /// 中断で ssh が先に切れうるから**(向こうの run はまだ後始末中かもしれない = 外すと同じ台に
+    /// 中断で ssh が先に切れうるから**(向こうの run はまだ後始末中かもしれない = 外すと同じデバイスに
     /// 2 本目が乗る)
     public static func releaseIfRunEndedCommand(home: String, reportDir: String) -> String {
         "if \(runAlivePgrepCondition(reportDir: reportDir)); then echo busy;"
@@ -338,7 +338,7 @@ public enum RemoteDispatchUnlock {
     /// 次のディスパッチの自動回収・モニター起動時の掃除・`remote unlock` が共有する)。
     /// **手元の pid が死んでいてもリモートの run は生きていることがある** —— `kill -9` 等で後始末が
     /// 走らないと、手元の ssh が孤児として残り、リモートの run は最後まで流れる(実測)。そこでロックを
-    /// 外すと同じ台へ2本目が乗る。`livePIDs == nil`(確かめられなかった)も外さない(不明を空きに倒さない)。
+    /// 外すと同じデバイスへ2本目が乗る。`livePIDs == nil`(確かめられなかった)も外さない(不明を空きに倒さない)。
     ///
     /// **`scope` は文言だけを分ける**(`RemoteDispatchLock.heldMessage` と同じ規律)。`.thisMachine`
     /// は「この Mac へ他人が撃ったディスパッチの run を手元の pgrep で見た」側で、逃げ道も違う ——

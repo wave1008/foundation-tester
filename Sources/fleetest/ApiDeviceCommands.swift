@@ -328,7 +328,7 @@ struct ApiStartAllDevicesCommand: AsyncParsableCommand {
                         name: name, machine: MachineDispatch.normalize(deviceMachine), action: action))
                 })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
-            // **手元の台が1台以上あって0台も起動できなかったときだけ ok:false**(部分失敗は
+            // **手元のデバイスが1台以上あって0台も起動できなかったときだけ ok:false**(部分失敗は
             // ok:true。「1台の失敗で全体を落とさない」規律は変えず、全滅だけを失敗として伝える —
             // 例外を握ったまま返すと、何を積んでも ok:true・exit 0 になる)。リモートの機械ごとの
             // 失敗は既存の machineFailed が別途伝える(ここでは手元の outcomes だけを見る)
@@ -392,8 +392,8 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
             var items: [RestartItem] = []
             for deviceName in name {
                 // machineProfile は DeviceRosterLoad.load が deviceMachine で絞った後なので、
-                // 通常はここに残っているのは「この機械の台」だけ(entries が host を焼き込んでいる)。
-                // ただし deviceMachine に**手元でない**登録名を渡されると、その機械の台だけに
+                // 通常はここに残っているのは「この機械のデバイス」だけ(entries が host を焼き込んでいる)。
+                // ただし deviceMachine に**手元でない**登録名を渡されると、その機械のデバイスだけに
                 // 絞られた上で残る(keepingDevices は「指定された machine を手元として扱う」
                 // だけで、実際にこの機械がその名前かは確かめない)—— restart-devices は
                 // 常にこの機械で body(down→up)を実行するので、その場合も実行してはならない
@@ -441,7 +441,7 @@ struct ApiRestartDevicesCommand: AsyncParsableCommand {
                 }
             }
             // physical だけの --name 集合(items が空)は誰も試みていないので全滅扱いにしない。
-            // それ以外は「渡した台が1台も再起動できなかった」ときだけ ok:false(部分失敗は ok:true。
+            // それ以外は「渡したデバイスが1台も再起動できなかった」ときだけ ok:false(部分失敗は ok:true。
             // 例外を握ったままだと常に ok:true・exit 0 になる)
             let summary = DeviceBooter.BootOutcomeSummarizer.summarize(await outcomes.all())
             if summary.allFailed {
@@ -570,7 +570,7 @@ struct ApiStopAllDevicesCommand: AsyncParsableCommand {
                                                    machine: MachineDispatch.normalize(deviceMachine)))
                 })
             await fanout  // リモート分の完走まで finished を出さない(受け手の「全部終わった」の合図)
-            // **手元の台が1台以上あって0台も停止できなかったときだけ ok:false**(部分失敗は
+            // **手元のデバイスが1台以上あって0台も停止できなかったときだけ ok:false**(部分失敗は
             // ok:true。「1台の失敗で全体を落とさない」規律は変えず、全滅だけを失敗として伝える —
             // 例外を握ったまま返すと、何を積んでも ok:true・exit 0 になる)。リモートの機械ごとの失敗は
             // 既存の機構が別途伝える(ここでは手元の outcomes だけを見る)
@@ -766,7 +766,7 @@ enum ApiDeviceDownDirectSpec {
 enum ApiDeviceOperation {
     /// profile: 無指定のときのエラー文言に出す見出し(純粋関数・テスト用)。**プロジェクト名を
     /// 入れる**(M17。project: 無指定でも既定の1プロジェクトしか読まないため、見出しがどの
-    /// プロジェクトの話かを言わないと、他プロジェクトの台が「見つからない」理由を読み間違える。
+    /// プロジェクトの話かを言わないと、他プロジェクトのデバイスが「見つからない」理由を読み間違える。
     /// fleetest-mcp 側の DeviceInventory.allRunProfilesLabel と同じ形)
     static func allRunProfilesLabel(projectName: String) -> String {
         "all run profiles of project \"\(projectName)\""
@@ -786,9 +786,9 @@ enum ApiDeviceOperation {
         // **台帳の決め方は実行プロファイルの有無で変わる**(監視 = ApiMonitorCommand と同じ規律):
         //   選んでいる: その実行プロファイルの devices(enabled: false も含む)
         //   選んでいない: **台帳を1つに決めない** —— runs/ を全部畳み、手元 +
-        //     リモート実行の登録簿にあるマシンの台から探す(MachineInventory)
+        //     リモート実行の登録簿にあるマシンのデバイスから探す(MachineInventory)
         //
-        // 決められないという理由で操作を断らない —— **タイルに出ている台は操作できるべき**
+        // 決められないという理由で操作を断らない —— **タイルに出ているデバイスは操作できるべき**
         // (実害: NDJSON を出さずに終わるので拡張には何も出なかった)
         let roster: DeviceRoster
         let rosterLabel: String
@@ -818,7 +818,7 @@ enum ApiDeviceOperation {
             platform = foundPlatform
         case .foreign(let machine, _, _):
             // **この関数は常にこの機械で body を実行する**(ssh 越しに投げる経路を持たない)。
-            // 見つかった台が他の機械のものなら、名前が同じだけの手元の台を触りかねないので
+            // 見つかったデバイスが他の機械のものなら、名前が同じだけの手元のデバイスを触りかねないので
             // 実行せず断る(CLAUDE.md「一括だけでなくタイル1枚の起動・停止もその機械へ回す」)
             emitFinished(ok: false, error: foreignMachineMessage(
                 subcommand: subcommand, name: name, machine: machine,
@@ -850,8 +850,8 @@ enum ApiDeviceOperation {
     }
 
     /// --name を台帳の ios/android 両方から検索する(ApiRestartDevicesCommand も利用するため fileprivate)。
-    /// **一意なのは name 単体ではなく (host, name)** —— 名前だけで引くと、同名の台が別の機械にも
-    /// 居るとき(フリートでは通常)**別の機械のつもりの操作が手元の台に当たる**。
+    /// **一意なのは name 単体ではなく (host, name)** —— 名前だけで引くと、同名のデバイスが別の機械にも
+    /// 居るとき(フリートでは通常)**別の機械のつもりの操作が手元のデバイスに当たる**。
     ///
     /// `deviceMachine` を渡さない(= nil)ときは**候補が1つのときだけ**採る。2つ以上あれば
     /// `.ambiguous` で止める —— 黙って手元を選ぶと「M1Max を止めたつもりで手元が止まる」に
@@ -859,16 +859,16 @@ enum ApiDeviceOperation {
     /// `--device-machine` を付けずに撃ち、手元の同名シミュレータが2台停止した)。
     ///
     /// **呼び出し側は常にこの機械で body を実行する**(ssh 越しに投げる経路を持たない)ので、
-    /// 見つかった台が他の機械のものなら `.found` を返さない —— 返すと Android は AVD 名が
-    /// 機械を跨いで同じため、**同名の手元の台を他の機械の設定で操作してしまう**(iOS は UDID が
-    /// 違うので無害に失敗するだけだが、Android は黙って手元の台に当たる。maintainer-notes §51.9)。明示の
+    /// 見つかったデバイスが他の機械のものなら `.found` を返さない —— 返すと Android は AVD 名が
+    /// 機械を跨いで同じため、**同名の手元のデバイスを他の機械の設定で操作してしまう**(iOS は UDID が
+    /// 違うので無害に失敗するだけだが、Android は黙って手元のデバイスに当たる。maintainer-notes §51.9)。明示の
     /// `deviceMachine` が他機を指すときも、省略して候補が1つだけ他機に居たときも同じく `.foreign`
-    /// へ倒す(`.found` の条件は「解決した台の machine が手元」だけ)
+    /// へ倒す(`.found` の条件は「解決したデバイスの machine が手元」だけ)
     enum DeviceLookup {
         case found(spec: DeviceSpec, platform: String)
         case missing
         case ambiguous(machines: [String])
-        /// 名前は一意に解決したが、その台は他の機械(`machine`。正規化済み・"local" ではない)に属する
+        /// 名前は一意に解決したが、そのデバイスは他の機械(`machine`。正規化済み・"local" ではない)に属する
         case foreign(machine: String, spec: DeviceSpec, platform: String)
     }
 

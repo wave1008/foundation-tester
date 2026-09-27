@@ -327,7 +327,7 @@ test("listRecordingSessions: run.json の machine を要約に載せる", async 
       schemaVersion: 2,
       recordings: [
         SAMPLE_INDEX.recordings[0],
-        { ...SAMPLE_INDEX.recordings[0], scenarioID: "クラス名.S0020" }, // 同じ台 → 畳まれる
+        { ...SAMPLE_INDEX.recordings[0], scenarioID: "クラス名.S0020" }, // 同じデバイス → 畳まれる
         {
           scenarioID: "クラス名.S0030",
           worker: "android:Pixel 9(Android 15)-01",
@@ -381,7 +381,7 @@ test("loadRecordingSessionDetail: machine を run.json から読む(欠落は nu
 // デバイスが複数の機械にまたがるプロファイルは機械ごとに別 run になる。束ねないとテストセッションが
 // Mac ごとに並ぶ(利用者報告)。**鍵を持たない run は束ねない**(推測で混ぜない)。
 
-/** 1機械ぶんの run を書く。worker は "<platform>:<台名>"。 */
+/** 1機械ぶんの run を書く。worker は "<platform>:<デバイス名>"。 */
 function writeMemberRun(root, project, runID, { machine, runGroup, device, scenarioID, passed, failed }) {
   const dir = runDir(root, project, runID);
   writeJson(path.join(dir, "recordings", "index.json"), {

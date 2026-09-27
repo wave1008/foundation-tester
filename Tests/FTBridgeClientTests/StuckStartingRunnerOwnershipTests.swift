@@ -1,5 +1,5 @@
 // sweepStuckStartingRunners の安全弁2つ: ①一度でも ready(BridgeReadyLedger)なら対象外
-// ②宛先の台に生きた run-lease/MCP の印があれば対象外。どちらも欠けると、負荷で isBound の
+// ②宛先のデバイスに生きた run-lease/MCP の印があれば対象外。どちらも欠けると、負荷で isBound の
 // 300ms 判定が外れたとき、今も応答している長寿ブリッジを「起動しきれないランナー」と誤認して撃つ。
 //
 // 実プロセスは xcodebuild を起動できないので、`ps` が拾う**コマンド文字列だけ**を模す

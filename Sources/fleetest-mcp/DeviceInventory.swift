@@ -68,7 +68,7 @@ enum DeviceInventory {
         var notes: [String] = []
         let lookup = resolveRoster(project: project, profile: profile, notes: &notes)
         if case .resolved(let resolved) = lookup {
-            // 別の機械の台はここから操作できないので落とす(CLI の ApiListDevicesCommand と同じ
+            // 別の機械のデバイスはここから操作できないので落とす(CLI の ApiListDevicesCommand と同じ
             // DeviceMachineGrouping 判定)。落とした台数・機械名は本文に残す(stderr は MCP
             // クライアントに見えないため)
             let entries = DeviceMachineGrouping.entries(roster: resolved.roster)
@@ -90,7 +90,7 @@ enum DeviceInventory {
             }
 
             // **合成は profile: 無指定のときだけ**(CLI の同じ規律。profile: 指定は絞り込みの意図
-            // なので未登録の台は足さない)。合成行は Row.registered=false のまま出るので、
+            // なので未登録のデバイスは足さない)。合成行は Row.registered=false のまま出るので、
             // line(_:) の "unregistered" だけで足りる(重複した「N 台は未登録」の1行は足さない)
             var rows = registeredRows
             if profile == nil {
@@ -116,7 +116,7 @@ enum DeviceInventory {
         return ([header] + notes + rows.map(line)).joined(separator: "\n")
     }
 
-    /// **手元に残る台と、別の機械へ移す台を分ける**(純粋関数・テスト用)。entries() が
+    /// **手元に残るデバイスと、別の機械へ移すデバイスを分ける**(純粋関数・テスト用)。entries() が
     /// effectiveMachine を解決して spec.machine へ書き戻し済みなので、ここでは再計算せず
     /// machine が nil かどうかだけを見る
     static func localDevices(entries: [DeviceMachineGrouping.CatalogEntry])
@@ -129,7 +129,7 @@ enum DeviceInventory {
         return (kept, movedAway)
     }
 
-    /// 別の機械へ落ちた台の案内文(純粋関数・テスト用)。stderr は MCP クライアントに見えないため
+    /// 別の機械へ落ちたデバイスの案内文(純粋関数・テスト用)。stderr は MCP クライアントに見えないため
     /// devicesText はこれを本文へ載せる
     static func movedAwayNote(count: Int, machines: [String]) -> String {
         "\(count) device(s) live on \(machines.joined(separator: ", "))"
@@ -147,7 +147,7 @@ enum DeviceInventory {
     /// 未登録の合成行(iosFallbackRows/androidFallbackRows)を、識別子(iOS=udid/Android=serial)が
     /// 登録行と重なるものを除いて末尾へ足す(純粋関数・テスト用)。platform を鍵に含めるのは
     /// udid と serial が万一同じ文字列になっても混同しないため。**identifier が nil の登録行
-    /// (起動していない台)は衝突しない** —— compactMap で鍵の集合から自然に落ちる
+    /// (起動していないデバイス)は衝突しない** —— compactMap で鍵の集合から自然に落ちる
     static func merging(registered: [Row], unregistered: [Row]) -> [Row] {
         let seen = Set(registered.compactMap { row -> String? in
             guard let id = row.identifier else { return nil }
@@ -227,7 +227,7 @@ enum DeviceInventory {
     }
 
     /// 台帳の解決(private)。走査は伴わない(プロファイルの読み直しだけ)。
-    /// profile: 指定 = その実行プロファイルの enabled の台(CLI の ApiListDevicesCommand と同じ)。
+    /// profile: 指定 = その実行プロファイルの enabled のデバイス(CLI の ApiListDevicesCommand と同じ)。
     /// 読めなければ理由を notes に書いて全実行プロファイルの和へ落ちる(壊れた実行プロファイルを黙って隠さない)
     private static func resolveRoster(project: String?, profile: String?,
                                       notes: inout [String]) -> MachineLookup {
@@ -249,7 +249,7 @@ enum DeviceInventory {
         var readErrors: [String] = []
         let sources = MachineInventory.loadAllNamed(project: testProject) { readErrors.append($0) }
         notes += readErrors
-        // 別の機械の台も残す(呼び手が movedAway として件数を言う)ので、見えた機械を全部登録簿扱いにする
+        // 別の機械のデバイスも残す(呼び手が movedAway として件数を言う)ので、見えた機械を全部登録簿扱いにする
         let machines = sources.flatMap { DeviceMachineGrouping.entries(roster: $0.profile) }
             .compactMap(\.machine)
         let merged = MachineInventory.merge(sources: sources, registry: machines, existsLocally: nil)
@@ -264,7 +264,7 @@ enum DeviceInventory {
 
     /// `resolveRoster` が profile: 無指定のとき組む見出し(純粋関数・テスト用)。**プロジェクト名を
     /// 入れる**(M17。project: 無指定でも既定の1プロジェクトしか読まないため、他プロジェクトの
-    /// 実行プロファイルの台は「unregistered」に見える —— 見出しがどのプロジェクトの話かを
+    /// 実行プロファイルのデバイスは「unregistered」に見える —— 見出しがどのプロジェクトの話かを
     /// 言わないと、その理由を読み間違える)
     static func allRunProfilesLabel(projectName: String) -> String {
         "all run profiles of project \"\(projectName)\""

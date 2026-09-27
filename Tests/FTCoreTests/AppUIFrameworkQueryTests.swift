@@ -143,7 +143,7 @@ final class AppUIFrameworkQueryTests: XCTestCase {
                                                                bundleID: "com.example.legacy", rules: current))
     }
 
-    /// simctl の控えは、その台の置き場で指紋も同じときだけ使う
+    /// simctl の控えは、そのデバイスの置き場で指紋も同じときだけ使う
     func testInstalledBundleCacheIsPerSimulatorAndFingerprint() {
         let udid = "11111111-2222-3333-4444-555555555555"
         let path = "/Users/x/Library/Developer/CoreSimulator/Devices/\(udid)/data/Containers/Bundle/Application/U/A.app"

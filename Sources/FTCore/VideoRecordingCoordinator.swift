@@ -104,7 +104,7 @@ actor VideoRecordingCoordinator {
     /// (実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
     /// 「local だけバッジが出ない」ように見えた)
     private var sourcesFailed = 0
-    /// sourcesFailed のうち「録れない台」(物理 iPhone)のぶん。finish の警告文を分けるためだけに持つ
+    /// sourcesFailed のうち「録れないデバイス」(物理 iPhone)のぶん。finish の警告文を分けるためだけに持つ
     /// (index の `sourcesFailed` には含める = 録画タブから消えない側)
     private var sourcesUnsupported = 0
 
@@ -145,7 +145,7 @@ actor VideoRecordingCoordinator {
         // クリップの最終ファイル名(scenarioID 由来)とは別名前空間(ソースは切り出し後に削除される一時物)
         let sourceStem = "src-\(uniqueSourceStem(for: workerID))"
 
-        // **録れない台は起動を試みず、数えて false**(警告は RunOrchestrator がワーカー起動時に出す)
+        // **録れないデバイスは起動を試みず、数えて false**(警告は RunOrchestrator がワーカー起動時に出す)
         if Self.unrecordableReason(platform: worker.platform, connection: worker.connection) != nil {
             sourcesFailed += 1
             sourcesUnsupported += 1
@@ -167,7 +167,7 @@ actor VideoRecordingCoordinator {
         return true
     }
 
-    /// **録画できない台の理由**(nil = 録れる)。`record: true` は `--set record=true` でも指定できるので、
+    /// **録画できないデバイスの理由**(nil = 録れる)。`record: true` は `--set record=true` でも指定できるので、
     /// 「指定したのに黙って効かない形を作らない」規律の対象 —— 物理 iPhone で 4 本緑・`recordings/` 無し・
     /// 警告 0 行だった(SE3・§19 P4)。RunOrchestrator がワーカー起動時にこれを `workerLog` で出し、
     /// `start` は数えて false を返す。**判定はここ1箇所**(defaultSession の nil と同じ条件)

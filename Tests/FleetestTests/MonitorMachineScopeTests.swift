@@ -2,11 +2,11 @@
 //
 // 守っているのは3つ:
 //  1. **他の機械のデバイスを走査しない** —— simctl/adb は手元にしか効かないので、走査すると
-//     同名の手元のシミュレータに解決して**別の機械の台の状態と画面**を出す((host, name) が
+//     同名の手元のシミュレータに解決して**別の機械のデバイスの状態と画面**を出す((host, name) が
 //     一意なら同名は正常な構成なので普通に起きる)
-//  2. **観測していない台を offline と言わない** —— 向こうで動いていても止まって見える
+//  2. **観測していないデバイスを offline と言わない** —— 向こうで動いていても止まって見える
 //     (2026-08-17 の実害。これが「起動しようとしたのか分からない」の正体)
-//  3. **子(--device-machine 付き)は自分のぶんだけを出す** —— 親も同じ台を並べるので、
+//  3. **子(--device-machine 付き)は自分のぶんだけを出す** —— 親も同じデバイスを並べるので、
 //     両方が出すと拡張側の Map(id が鍵)で潰し合う
 
 import FTCore
@@ -125,7 +125,7 @@ extension MonitorMachineScopeTests {
     }
 
     /// **未選択(起動中のデバイス)は登録簿の全マシン** —— マシンプロファイルを引かないので、
-    /// ここで張らないと「向こうで起動中の台」を知る手掛かりが無く一覧に出ない(2026-08-26 の報告)。
+    /// ここで張らないと「向こうで起動中のデバイス」を知る手掛かりが無く一覧に出ない(2026-08-26 の報告)。
     func testFanoutUsesTheRegistryWhenNoProfileIsSelected() {
         XCTAssertEqual(
             ApiMonitorCommand.fanoutMachines(
@@ -154,7 +154,7 @@ extension MonitorMachineScopeTests {
     }
 }
 
-// MARK: - mergedDevices(リモートの未登録の台)
+// MARK: - mergedDevices(リモートの未登録のデバイス)
 
 extension MonitorMachineScopeTests {
     private func remoteInfo(id: String, name: String, machine: String) -> ApiMonitorDeviceInfo {
@@ -168,8 +168,8 @@ extension MonitorMachineScopeTests {
         return info
     }
 
-    /// **マシンプロファイルに無いリモートの台も出す** —— プロファイル未選択(「起動中のデバイス」)は
-    /// listedTargets が手元のぶんしか無いので、ここで落とすと向こうで動いている台が一覧から消える。
+    /// **マシンプロファイルに無いリモートのデバイスも出す** —— プロファイル未選択(「起動中のデバイス」)は
+    /// listedTargets が手元のぶんしか無いので、ここで落とすと向こうで動いているデバイスが一覧から消える。
     func testMergedDevicesKeepsRemoteDevicesThatAreNotInTheMachineProfile() {
         let merged = ApiMonitorCommand.mergedDevices(
             listedTargets: [], observed: [],
@@ -218,7 +218,7 @@ extension MonitorMachineScopeTests {
                        "wired の分身が居ない WiFi の実機・別個体の wired は両方残る")
     }
 
-    /// listedTargets で既に使ったリモートの台を二重に足さない
+    /// listedTargets で既に使ったリモートのデバイスを二重に足さない
     func testMergedDevicesDoesNotDuplicateRemoteDevicesAlreadyListed() {
         let spec = DeviceSpec(name: "シミュ1", machine: "M1Max")
         let target = MonitorTarget(platform: "ios", spec: spec)

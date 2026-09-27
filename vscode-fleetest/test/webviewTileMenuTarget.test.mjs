@@ -122,7 +122,7 @@ function previews(document) {
   return [...document.querySelectorAll("#preview-grid .lane-preview")].filter((el) => el.style.display !== "none");
 }
 
-// 選択した台は グリッドビューにも拡大表示(.lane-preview)が出る。どちらを右クリックしても
+// 選択したデバイスは グリッドビューにも拡大表示(.lane-preview)が出る。どちらを右クリックしても
 // 同じデバイスのメニューなので、印も両方に付ける。
 test("選択した台はタイルと拡大表示の両方に印が付く(どちらを右クリックしても)", (t) => {
   const { window, document } = createWebview();

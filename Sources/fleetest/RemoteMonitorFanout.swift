@@ -7,7 +7,7 @@
 //   - `monitorDevices` は**保持する**(親が毎サイクル出す devices 配列へ、実行プロファイルの
 //     並び順のまま差し込む。子と親でサイクルが揃っていないので、そのまま素通しはできない)
 //   - `monitorFrame` / `monitorError` は **"device" だけマシン付きに直して**中継する
-//     (子は畳んだプロファイルを見るので自分の台を "local" と名乗り、id にマシンが入らない。
+//     (子は畳んだプロファイルを見るので自分のデバイスを "local" と名乗り、id にマシンが入らない。
 //     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.machineScoped)
 //   - stdin の制御行(pause/resume/suppressFrames/storageRefresh)は**全子へ素通しする**(id の集合で
 //     判定するだけなので、自分の持たない id が混ざっていても害はない)。**種類ごとの最新の行を覚え、
@@ -22,7 +22,7 @@
 // 短時間での失敗が続いたら**短間隔をやめる**(旧バイナリに `--device-machine` が無い機械で無限に
 // ssh を張らない)。**恒久停止にはしない** —— 短時間で落ち続ける原因は「非対応バイナリ(恒久)」と
 // 「ランナーが寝ている / 再起動中(一時)」の2つで区別できず、恒久停止にすると後者が戻っても
-// 台が `state:"unknown"`・占有が `observed:false` のまま = 配信も畳まれたままになる
+// デバイスが `state:"unknown"`・占有が `observed:false` のまま = 配信も畳まれたままになる
 // (拡張の host-metrics と同型。monitorProcessManager.ts HOST_METRICS_GIVE_UP_RETRY_MS)。
 // 諦めている間も中継は「未観測」のまま(状態を偽らない)。
 
@@ -44,7 +44,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     ///     ランナーの再起動は 2 分前後かかるので、速い段だけでは必ず取りこぼす
     ///   - 60 秒なら、死んだホストに払うのは「1 分に ssh 1 本(ConnectTimeout で 10 秒以内に返る)」
     ///     で churn にならず、戻ったランナーは 1 分以内に拾える。拡張の host-metrics(10 分)より
-    ///     短いのは、こちらの停滞は「台が不明・配信が畳まれたまま」で実害が桁違いに大きいため
+    ///     短いのは、こちらの停滞は「デバイスが不明・配信が畳まれたまま」で実害が桁違いに大きいため
     ///   - 尽きない(回数上限を置かない)。上限を置くと 2 回目の長い停止でまた恒久停止に戻る。
     ///     ログは 1 周期に 1 行だけ(諦めたときの 1 行)= 何日寝ていても spam にならない
     private static let slowRetrySeconds: UInt32 = 60
@@ -117,7 +117,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     }
 
     /// いま把握しているリモートのデバイス(id → 1台分)。**子から一度も届いていないマシンは
-    /// 含まれない** —— 呼び出し側は欠けている台を「状態を取得できない」として出す
+    /// 含まれない** —— 呼び出し側は欠けているデバイスを「状態を取得できない」として出す
     func snapshot() -> [String: ApiMonitorDeviceInfo] {
         lock.lock(); defer { lock.unlock() }
         var merged: [String: ApiMonitorDeviceInfo] = [:]
@@ -341,7 +341,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             return
         }
         // **子の id はマシンを含まない** —— 転送プロファイルを畳んである(RunnerProfileView)ので
-        // 向こうは自分の台を "local" と名乗る。親のタイルは (machine, name) で一意なので、ここで
+        // 向こうは自分のデバイスを "local" と名乗る。親のタイルは (machine, name) で一意なので、ここで
         // マシン付きの id へ直す。**直さないと状態も映像もタイルに届かない**(実害:
         // 畳み込みを入れた直後、リモートのタイルが全部「状態不明」になった)
         var byID: [String: ApiMonitorDeviceInfo] = [:]
@@ -372,7 +372,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         let name = String(value[value.index(after: colon)...])
         // **判定は「このマシン名で始まるか」**。デバイス名自体が "/" を含むのは普通
         // (例 "Pixel 10(Android 14(API 34) / arm64-v8a)-01")なので、"/" の有無では見ない
-        // —— 見ると、その名前の台だけ id が直らず状態も映像も届かなくなる
+        // —— 見ると、その名前のデバイスだけ id が直らず状態も映像も届かなくなる
         guard !name.hasPrefix(machine + "/") else { return line }
         let scoped = DeviceMachineGrouping.workerID(platform: platform, machine: machine, name: name)
         return line.replacingCharacters(in: valueStart..<quote.lowerBound, with: scoped)

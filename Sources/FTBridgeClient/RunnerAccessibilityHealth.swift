@@ -2,7 +2,7 @@
 //
 // 実測(台帳 §19.27): 3 時間生きたランナーが、SpringBoard の remote element(DragUI の druid)を
 // 引けなくなった後も参照し続け、**存在確認 1 回ごとに約 3.7 秒**(XCTest が remote element を諦める時間)
-// 待つようになった。同じ木の照会が隣の台では 0.03〜0.27 秒。run のすべての XCUITest 照会に乗るので、
+// 待つようになった。同じ木の照会が隣のデバイスでは 0.03〜0.27 秒。run のすべての XCUITest 照会に乗るので、
 // 1 シナリオ 6 秒が 22 秒になり、in-app の tap も(前面確認で fallback を引くため)0.5 秒が 4 秒になる。
 // ランナーを建て直すと直る(シミュレータの再起動は要らない)。druid を意図的に再起動しても再現しないため
 // 発生条件は未特定 —— だから**再利用の入口で 1 問だけ測って、遅ければ建て直す**。
@@ -13,10 +13,10 @@
 import FTCore
 import Foundation
 
-/// 建て直しても直らなかった台(udid)。**このプロセスの間だけ**覚える(run ごとに作り直される)。
-/// 実測: -01 は建て直すたびに新しいランナーでも 1 問 2.9〜3.0 秒のまま(同時刻の他の台は
+/// 建て直しても直らなかったデバイス(udid)。**このプロセスの間だけ**覚える(run ごとに作り直される)。
+/// 実測: -01 は建て直すたびに新しいランナーでも 1 問 2.9〜3.0 秒のまま(同時刻の他のデバイスは
 /// 0.03 秒)で、緑のシナリオのたびに約 10 秒の建て直しを空振りしていた。測って健全なら消す
-/// (長く生きるプロセス = MCP で、シミュレータを再起動して直った台を覚え続けないため)
+/// (長く生きるプロセス = MCP で、シミュレータを再起動して直ったデバイスを覚え続けないため)
 public final class RunnerRestartFutility: @unchecked Sendable {
     public static let shared = RunnerRestartFutility()
     private let lock = NSLock()
@@ -56,7 +56,7 @@ public enum RunnerAccessibilityHealth {
     }
 
     /// 1 問の所要。答えなかった・旧ランナー(404)は nil(不明 = 劣化と言わない)。
-    /// 供給時の再利用と run 中の測り直しが同じ関数を通る(測り方が割れると同じ台で判断が食い違う)
+    /// 供給時の再利用と run 中の測り直しが同じ関数を通る(測り方が割れると同じデバイスで判断が食い違う)
     public static func probe(port: UInt16, repoRoot: URL) async -> TimeInterval? {
         let client = BridgeClient(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot))
         let started = Date()
@@ -87,7 +87,7 @@ public enum RunnerAccessibilityHealth {
             + " — it is not restarted again in this run; rebooting the simulator is the next thing to try"
     }
 
-    /// 以前に建て直しても直らなかった台を、測り直さずにそのまま使うときの 1 行
+    /// 以前に建て直しても直らなかったデバイスを、測り直さずにそのまま使うときの 1 行
     public static func keptSlowRunnerMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (restarting it did not help earlier in this process)"
@@ -124,14 +124,14 @@ public enum RunnerAccessibilityHealth {
     // MARK: - 印を run をまたいで持ち越す(RunnerSlownessStore)
 
     /// 供給の入口で、run をまたいだ印(`RunnerSlownessStore`)から次に何を試すかを決める(純粋関数)。
-    /// **リースのある台には絶対に触らない**(ユーザー決定)—— 印があっても再起動を試みず、
+    /// **リースのあるデバイスには絶対に触らない**(ユーザー決定)—— 印があっても再起動を試みず、
     /// 「建て直さずそのまま使う」に落とす
     public enum SupplySlownessAction: Equatable, Sendable {
         /// 印なし。1 問プローブしてから必要なら建て直す
         case proceedNormally
         /// 印 = runnerRestartDidNotHelp かつリース無し。ブリッジを建てる前にシミュレータごと再起動する
         case restartSimulator
-        /// 印 = simulatorRestartDidNotHelp、またはリースがある台。何も撃たずそのまま使う
+        /// 印 = simulatorRestartDidNotHelp、またはリースがあるデバイス。何も撃たずそのまま使う
         case reuseWithoutRestarting
     }
 
@@ -144,7 +144,7 @@ public enum RunnerAccessibilityHealth {
     }
 
     /// run-lease / MCP の印のどちらかを**他プロセス**が持っているか(純粋関数)。自分自身が持つ
-    /// run-lease は「使用中」に数えない(この run 自身が供給の中で自分の台に触るのは正常)。
+    /// run-lease は「使用中」に数えない(この run 自身が供給の中で自分のデバイスに触るのは正常)。
     /// `DeviceBooter.deviceInUseRefusal`(docs/remote-runner.md §18.7 規律④)と同じ規律だが、
     /// FTAndroid → FTBridgeClient の依存方向のためあちらを直接呼べない(循環)。RunLease/MCPDeviceLease は
     /// 同じモジュール(FTBridgeClient)に居るので、判定だけをここへ複製する
@@ -154,7 +154,7 @@ public enum RunnerAccessibilityHealth {
     }
 
     /// I/O 版。selfPID/parentPID は既定値(本番はこのまま呼ぶ)。MCP の印は自分と親の分を数えない
-    /// (`DeviceBooter.mcpLeaseHolderPID` と同じ理由: MCP が起こしたコマンドが自分の台を
+    /// (`DeviceBooter.mcpLeaseHolderPID` と同じ理由: MCP が起こしたコマンドが自分のデバイスを
     /// 「他人が使用中」と誤読しない)
     static func hasForeignLease(udid: String, stateDir: URL,
                                 selfPID: Int32 = ProcessInfo.processInfo.processIdentifier,
@@ -183,14 +183,14 @@ public enum RunnerAccessibilityHealth {
             + " — nothing further is tried automatically for this device"
     }
 
-    /// 印 = simulatorRestartDidNotHelp の台を、触らずそのまま使うときの 1 行
+    /// 印 = simulatorRestartDidNotHelp のデバイスを、触らずそのまま使うときの 1 行
     public static func keptAfterSimulatorRestartFailedMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (rebooting the simulator did not help either, so nothing further is tried"
             + " automatically for this device)"
     }
 
-    /// 印はあるが、この台を今どこかのセッション(run または MCP)が使用中なので触らないときの 1 行
+    /// 印はあるが、このデバイスを今どこかのセッション(run または MCP)が使用中なので触らないときの 1 行
     public static func keptBecauseLeasedMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (it was slow in an earlier run, but another session is using this device right now,"

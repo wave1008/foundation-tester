@@ -4,7 +4,7 @@
 // (monitorProfilesDeviceMachineScope.test.mjs と同じ fake-deps パターン)。
 //
 // 順序の罠: 保存の直後にホストはフォームへ再ロードを送る。そこで指紋を置き直すと、続いて来る
-// watcher が「変化なし」と読み、devices を変えても再起動しない(タイルが古い台のまま残る)。
+// watcher が「変化なし」と読み、devices を変えても再起動しない(タイルが古いデバイスのまま残る)。
 
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -42,7 +42,7 @@ public struct BroadcastPlan: Sendable {
     ///   「全デバイスがそれぞれ準備される」ことなので、OS を問わないシナリオは全台に要る)。
     ///   明示 platform はその platform のレーンだけ
     /// - lanes: 同じ key が2つ以上あれば先勝ち(レーン = デバイス論理名で一意のはず。
-    ///   重ねると同じキューを2ワーカーが取り合い、片方の台に走らない本が出る)
+    ///   重ねると同じキューを2ワーカーが取り合い、片方のデバイスに走らない本が出る)
     public static func make(items: [ScenarioRunItem], lanes: [BroadcastLane]) -> BroadcastPlan {
         var seen = Set<String>()
         let uniqueLanes = lanes.filter { seen.insert($0.key).inserted }
@@ -62,7 +62,7 @@ public struct BroadcastPlan: Sendable {
     }
 
     /// ワーカーがどのレーンのぶんを回すか。プロファイル経路は `logicalName`(復帰で label =
-    /// ポートが変わっても同じ台は同じ key に戻る)。非プロファイル経路(--port)は label
+    /// ポートが変わっても同じデバイスは同じ key に戻る)。非プロファイル経路(--port)は label
     public static func laneKey(of worker: RunWorker) -> String {
         worker.logicalName ?? worker.label
     }

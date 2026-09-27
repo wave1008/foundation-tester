@@ -74,11 +74,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "monitor")
 
         let testProject = try ScenarioHost.project(named: project)
-        // 監視対象の台。**実行プロファイルを選んでいるかどうかで作り方が違う**:
-        //   選んでいる: その実行プロファイルの enabled の台
+        // 監視対象のデバイス。**実行プロファイルを選んでいるかどうかで作り方が違う**:
+        //   選んでいる: その実行プロファイルの enabled のデバイス
         //   選んでいない(拡張の「(プロファイルなし)」): **台帳を1つに決めない** —— runs/ を
-        //     全部畳み、手元 + リモート実行の登録簿にあるマシンの台だけを残す(MachineInventory)。
-        //     決められないからと「今動いている台」だけに縮退すると、**未起動の台が1台も出ない**
+        //     全部畳み、手元 + リモート実行の登録簿にあるマシンのデバイスだけを残す(MachineInventory)。
+        //     決められないからと「今動いているデバイス」だけに縮退すると、**未起動のデバイスが1台も出ない**
         //     (実害)
         // **実効マシンは spec に焼き込まれている**(id・帰属判定・拡張へ出す machine がすべてこの1つの値を見る)
         let targets: [MonitorTarget]
@@ -93,11 +93,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let sources = MachineInventory.loadAllNamed(project: testProject) { logStderr("[monitor] \($0)") }
             let merged = MachineInventory.merge(
                 sources: sources, registry: registry, existsLocally: Self.localPresencePredicate())
-            // **食い違いは黙って畳まない** —— 負けた台帳の台が実在するほうだと、起動中の台が
+            // **食い違いは黙って畳まない** —— 負けた台帳のデバイスが実在するほうだと、起動中のデバイスが
             // 下の unregisteredStates で「id 衝突」として落ち、画面から消える(実害)
             for conflict in merged.conflicts { logStderr("[monitor] \(conflict.message)") }
             targets = merged.entries.map { MonitorTarget(platform: $0.platform, spec: $0.spec) }
-            // **0台でも続ける**(起動中の台が現れたら出す)
+            // **0台でも続ける**(起動中のデバイスが現れたら出す)
             logStderr("[monitor] No run profile is selected — monitoring the devices registered for this"
                 + " machine and for every machine in the remote registry"
                 + " (\(targets.count) device(s) from \(sources.count) run profile(s);"
@@ -239,7 +239,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         : "[monitor] Hold released — resuming observation")
                 }
                 if holdActive {
-                    // **リモートの台も held にする**(remote: を空で渡す)。fanout の snapshot
+                    // **リモートのデバイスも held にする**(remote: を空で渡す)。fanout の snapshot
                     // (state=connected)を合流させると、拡張が qualifying 判定で device-stream を
                     // 張り続け、pause 中もリモートのタイルだけ映像が更新され続ける(報告)。
                     // fanout の子の観測は止めない —— 畳むのは配信段(この表示)だけ
@@ -376,14 +376,14 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                       let key = state.iosUdid ?? state.androidSerial else { return nil }
                 return (key, state.target.platform)
             })
-            // 積んだ台の「測定中」をすぐ知らせる —— 周期の一覧は書き出しまで数秒遅れ、その間に速い台
-            // (Android)の「測り終えた」だけが先に届くと、拡張には測定中の台が1台も無く見える(ボタンが一瞬押せた)
+            // 積んだデバイスの「測定中」をすぐ知らせる —— 周期の一覧は書き出しまで数秒遅れ、その間に速いデバイス
+            // (Android)の「測り終えた」だけが先に届くと、拡張には測定中のデバイスが1台も無く見える(ボタンが一瞬押せた)
             storageBoard.publish(keys: scheduledStorageKeys)
             storageSampler.forget(keysNotIn: Set(states.compactMap { $0.iosUdid ?? $0.androidSerial }))
             let (storageCache, storageMeasuring) = storageSampler.progressSnapshot()
 
             // 手元の二重配信の判定に使う 1 周期ぶんのプロセス一覧(FTCore.LocalStreamHolder)。
-            // 台ごとに ps を撃たない
+            // デバイスごとに ps を撃たない
             let processRows = states.isEmpty ? [] : LocalStreamHolder.snapshot()
             let observedInfos = states.map { state -> ApiMonitorDeviceInfo in
                 let confirmedIssues = state.androidSerial.map { healthDebounce.confirmed(serial: $0) } ?? []
@@ -404,12 +404,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     id: state.target.id, key: leaseKey,
                     debounce: frozenDebounce, stateDir: leaseStateDir, inRun: inRun,
                     physical: state.target.spec.isPhysical)
-                // 他の発行者がこの台を配信中か。控えは機械グローバル(~/.fleetest/streams)なので
-                // **手元でも読む** —— 台が居る機械の上で走るこのプロセスの $HOME が答えを持つ
+                // 他の発行者がこのデバイスを配信中か。控えは機械グローバル(~/.fleetest/streams)なので
+                // **手元でも読む** —— デバイスが居る機械の上で走るこのプロセスの $HOME が答えを持つ
                 let leasedByOther = StreamLease.heldByOther(
                     info: StreamLease.read(platform: state.target.platform, name: state.target.name),
                     myIssuer: myIssuer, pidAlive: ProcessLiveness.isAlive)
-                // 同じ Mac の別のウィンドウ(別の FT_PARENT_PID)がこの台のヘルパーを持っているか
+                // 同じ Mac の別のウィンドウ(別の FT_PARENT_PID)がこのデバイスのヘルパーを持っているか
                 let heldLocally = Self.streamIdentity(state).map { identity in
                     LocalStreamHolder.heldByOther(identity: identity, rows: processRows,
                                                   myOwner: LocalStreamHolder.myOwner())
@@ -441,7 +441,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 lastFrozenProbeAt.removeValue(forKey: state.target.id)
                 // **撮り続ける対象の時計は捨てない**(判定は候補と同じ述語 = 2つの規則が
                 // 食い違わない)。捨てると毎サイクル全台が「未撮影」に戻り、順繰り
-                // (最後に撮ってから最も経った台)が常に同じ1台を選び続ける
+                // (最後に撮ってから最も経ったデバイス)が常に同じ1台を選び続ける
                 if !Self.isSimctlCaptureTarget(state: state) {
                     lastSimctlCaptureAt.removeValue(forKey: state.target.id)
                 }
@@ -453,15 +453,15 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 state.state == "connected" && (state.target.platform != "ios" || state.iosPort != nil)
             }
             // **ブリッジを持たない iOS シミュレータは simctl で撮る**。通常は拡張の simstream が
-            // 映すので出番は無いが、**配信が張れない台ではここが唯一の絵の出所**になる
+            // 映すので出番は無いが、**配信が張れないデバイスではここが唯一の絵の出所**になる
             // (リモート機・ポーリングモード)。ここを塞がないと、
             // 「落ちたときはポーリングへ落ちる」が iOS では成立しない(実害)。
-            // 抑制中(= そのタイルは配信で映っている)の台は重い simctl を撃つ理由が無いので外す。
+            // 抑制中(= そのタイルは配信で映っている)のデバイスは重い simctl を撃つ理由が無いので外す。
             // 実機は simctl で撮れないので対象外(そちらは devicepoll がブリッジ経由で撮る)。
             //
-            // **"booted" も対象**。ブリッジの無い台の state は登録の有無で割れる ——
-            // 未登録の合成デバイスは "connected"、**台帳に載っている台は "booted"**。connected だけを
-            // 見ていたので、台帳に載っていてブリッジを持たない台は絵の出所がゼロになり、タイルが
+            // **"booted" も対象**。ブリッジの無いデバイスの state は登録の有無で割れる ——
+            // 未登録の合成デバイスは "connected"、**台帳に載っているデバイスは "booted"**。connected だけを
+            // 見ていたので、台帳に載っていてブリッジを持たないデバイスは絵の出所がゼロになり、タイルが
             // 「接続中」のまま永久に埋まらなかった(実行プロファイル未選択の一覧で顕在化)
             let simctlCandidates = states.filter { state in
                 Self.isSimctlCaptureTarget(state: state)
@@ -480,7 +480,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             var deliverIDs = Set(plan.filter(\.deliver).map(\.id))
             var plannedIDs = Set(plan.map(\.id))
             if let simctlPickID {
-                // 抑制されていない台だけを候補にしてあるので、撮ったら必ず配る
+                // 抑制されていないデバイスだけを候補にしてあるので、撮ったら必ず配る
                 deliverIDs.insert(simctlPickID)
                 plannedIDs.insert(simctlPickID)
             }
@@ -548,13 +548,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     }
 
     /// 監視対象の仕分け。**この機械が観測できるのは自分のデバイスだけ** —— 他の機械のぶんを
-    /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械の台の状態と画面を出す**
+    /// simctl/adb で見ると、同名の手元のシミュレータに解決して**別の機械のデバイスの状態と画面を出す**
     /// ((host, name) が一意なら同名は正常な構成なので普通に起きる)
     struct Scope {
-        /// この機械が simctl/adb で観測する台
+        /// この機械が simctl/adb で観測するデバイス
         let owned: [MonitorTarget]
-        /// 毎サイクル devices として出す台。親は全部(他の機械のぶんは fan-out か「取得できません」)、
-        /// **子(--device-machine 付き)は自分のぶんだけ** —— 親も同じ台を並べるので、両方が出すと
+        /// 毎サイクル devices として出すデバイス。親は全部(他の機械のぶんは fan-out か「取得できません」)、
+        /// **子(--device-machine 付き)は自分のぶんだけ** —— 親も同じデバイスを並べるので、両方が出すと
         /// 拡張の Map で潰し合う
         let listed: [MonitorTarget]
         /// fan-out 先(登場順・重複なし)
@@ -563,8 +563,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// fan-out 先の決定。**プロファイルを選んでいるときはその範囲**(scope が挙げた他機)、
     /// **選んでいないとき(拡張の「起動中のデバイス」)は登録簿の全マシン** ——
-    /// 実行プロファイルを引かない = どの台がどの機械に居るかを知る手掛かりが他に無いので、
-    /// 何もしないと**リモートで起動中の台が一覧に出ない**(報告)。
+    /// 実行プロファイルを引かない = どのデバイスがどの機械に居るかを知る手掛かりが他に無いので、
+    /// 何もしないと**リモートで起動中のデバイスが一覧に出ない**(報告)。
     /// **子(--device-machine 付き)は常に空** = 入れ子のディスパッチを作らない。
     /// 重複除去は登場順を保つ(表示とログの並びを入力から決まる形にする)。I/O を持たない pure 関数
     static func fanoutMachines(
@@ -640,10 +640,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// 出す1サイクルぶんの devices を組み立てる。**並びは台帳の順のまま**
     /// (拡張も並べ替えるが、順序の正はここ = 手元とリモートで別扱いにしない)。
-    /// - observed: この機械が simctl/adb で観測した台(未登録の起動中デバイスを含みうる)
-    /// - remote: 子(その機械の monitor)が報告してきた台。id は (platform, host, name) 由来で
+    /// - observed: この機械が simctl/adb で観測したデバイス(未登録の起動中デバイスを含みうる)
+    /// - remote: 子(その機械の monitor)が報告してきたデバイス。id は (platform, host, name) 由来で
     ///   親子で一致する
-    /// どちらにも無い台は **「状態を取得できない」** として出す —— 観測していないものを
+    /// どちらにも無いデバイスは **「状態を取得できない」** として出す —— 観測していないものを
     /// offline と言うと、向こうで動いていても止まって見える(実害)。
     /// I/O を持たない pure 関数(MonitorMachineScopeTests)
     static func mergedDevices(listedTargets: [MonitorTarget], observed: [ApiMonitorDeviceInfo],
@@ -653,11 +653,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var merged = listedTargets.map { target in
             observedByID[target.id] ?? remote[target.id] ?? unobservedInfo(target: target)
         }
-        // 台帳に無い台(determineStates が合成した起動中デバイス)を後ろへ足す
+        // 台帳に無いデバイス(determineStates が合成した起動中デバイス)を後ろへ足す
         let listedIDs = Set(listedTargets.map(\.id))
         merged += observed.filter { !listedIDs.contains($0.id) }
-        // **リモートの未登録の台も足す** —— プロファイル未選択(拡張の「起動中のデバイス」)では
-        // listedTargets が手元のぶんしか無いので、ここで足さないと**向こうで起動中の台が
+        // **リモートの未登録のデバイスも足す** —— プロファイル未選択(拡張の「起動中のデバイス」)では
+        // listedTargets が手元のぶんしか無いので、ここで足さないと**向こうで起動中のデバイスが
         // 一覧に出ない**(報告)。並びは id 順に固定する(辞書は順序を持たないため、
         // 揺らすと拡張のタイルが毎サイクル並べ替わる)
         let mergedIDs = Set(merged.map(\.id))
@@ -672,7 +672,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         return merged
     }
 
-    /// 誰も観測していない台。**state は "unknown"** で、offline(= 止まっている)とは区別する。
+    /// 誰も観測していないデバイス。**state は "unknown"** で、offline(= 止まっている)とは区別する。
     /// detail は hold(`fleetest monitor pause`)が理由を載せるための口(既定は空)。
     /// hold の値 "held (fleetest monitor resume)" は接頭辞 'held' を拡張の webview が
     /// 「モニタ停止中」表示の目印にする(vscode-fleetest/src/webview/monitor/deviceTiles.js と
@@ -688,7 +688,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             storageMeasuring: false, storageRefreshId: nil)
     }
 
-    /// `MachineInventory.merge` へ渡す「その台の実体がこの機械にあるか」の述語。
+    /// `MachineInventory.merge` へ渡す「そのデバイスの実体がこの機械にあるか」の述語。
     /// **呼ぶのは targets を組む起動時の1回だけ** —— 監視ループ(既定 2 秒周期)へ I/O を足さない
     /// ため、材料はここで畳んでからクロージャに閉じ込める。
     /// **判定できない種別に true を返さない**: 実機 iOS の列挙は devicectl(秒オーダー)が要るので
@@ -893,7 +893,7 @@ struct MonitorFrozenDebounce {
 
     /// PNG が読めなかった等でこのサイクルは判定不能(nil)のとき、
     /// **状態を一切変えず**確定を保つ(撮れなかったサイクルと同じ扱い) ——
-    /// 読めないフレームを「一様でない」の証拠にすると、壊れた絵を返し続けるブリッジの台で
+    /// 読めないフレームを「一様でない」の証拠にすると、壊れた絵を返し続けるブリッジのデバイスで
     /// 凍結が永久に確定しない
     @discardableResult
     mutating func record(blankness: Bool?, id: String) -> Bool {
@@ -975,11 +975,11 @@ final class MonitorOutput: @unchecked Sendable {
 
 
 /// ストレージの進捗を**計測が終わった瞬間に**1台ぶん出す(monitorStorage)。周期の monitorDevices は画面の
-/// スクショ等も含めて 1 周 10 秒前後かかる(実測)ので、それを待つと終わった台がまとめて変わる。
+/// スクショ等も含めて 1 周 10 秒前後かかる(実測)ので、それを待つと終わったデバイスがまとめて変わる。
 /// 計測キューのスレッドから呼ばれるので、周期が持つ「鍵 → タイル id」と「受け取った要求の番号」をここに写す
 final class StorageProgressBoard: @unchecked Sendable {
     private let lock = NSLock()
-    /// 状態を読んでから書き出すまでを1本ずつにする。**外すと同じ台の「測定中」(周期のスレッド)と
+    /// 状態を読んでから書き出すまでを1本ずつにする。**外すと同じデバイスの「測定中」(周期のスレッド)と
     /// 「測り終えた」(計測キューのスレッド)が、読んだ順と逆に書かれて「測定中」で終わりうる**
     private let publishLock = NSLock()
     private var idByKey: [String: String] = [:]
@@ -1014,7 +1014,7 @@ final class StorageProgressBoard: @unchecked Sendable {
         for key in keys { publish(key: key) }
     }
 
-    /// 周期の一覧に居ない台(居なくなった直後)は出さない —— id が引けない
+    /// 周期の一覧に居ないデバイス(居なくなった直後)は出さない —— id が引けない
     func publish(key: String) {
         lock.lock()
         let id = idByKey[key]

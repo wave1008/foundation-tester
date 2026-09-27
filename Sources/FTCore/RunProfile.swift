@@ -4,7 +4,7 @@
 //   runs/<name>.json     … 実行プロファイル(app 参照+デバイスの実体リスト+実行時設定)
 // ProfileResolver が 2 つを合成して ResolvedProfile(検証済み)を作る。
 // 実行コード(CLI/MCP)は ResolvedProfile のみを参照する。
-// **デバイスの台帳は実行プロファイルの devices だけ**(同じ台が複数の実行プロファイルに載る。
+// **デバイスの台帳は実行プロファイルの devices だけ**(同じデバイスが複数の実行プロファイルに載る。
 // 編集・削除は同じ (platform, machine, name) を持つ全ファイルへ伝播する = RunProfileDeviceEditor)。
 // JSON 形式は vscode-fleetest/schemas/{app,run}-profile.schema.json と同期を要する
 // (knownKeys・必須/任意フィールドを変更したらスキーマ側も更新する)。
@@ -168,7 +168,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// 実機か(kind 省略時は virtual)。デバイス種別の分岐はすべてこれを見ること
     public var isPhysical: Bool { kind == .physical }
 
-    /// 「どの台か」が名前以外に1つも書かれていない登録。iOS は name だけで探しに行くが、
+    /// 「どのデバイスか」が名前以外に1つも書かれていない登録。iOS は name だけで探しに行くが、
     /// 雛形の論理名(simulator1 等)は実在しないので起動時に落ちる。
     /// 見るキーは ProfileWriter.deviceBodyKeys と同集合(ProfileWriterTests が照合)
     public var lacksConcreteTarget: Bool {
@@ -245,7 +245,7 @@ public struct DeviceRoster: Codable, Sendable, Equatable {
 }
 
 /// `--runner`(CLI 明示)からディスパッチ先を決める純粋関数。プロファイル側には機械の既定を
-/// 持たない(台ごとの machine はマシン別サブ実行 = DeviceMachineGrouping で配る)。
+/// 持たない(デバイスごとの machine はマシン別サブ実行 = DeviceMachineGrouping で配る)。
 /// 呼び出し側(Sources/fleetest/RemoteCommands.swift)はここが返す名前を登録簿引きするだけ。
 public enum MachineDispatch {
     public struct Decision: Equatable {
@@ -288,7 +288,7 @@ public struct RunDeviceEntry: Codable, Sendable, Equatable {
     /// "ios" / "android"
     public var platform: String
     /// false = 一覧(拡張のチェックボックス)には残すが実行対象にしない。省略・true = 対象。
-    /// **false の台も台帳には載る**(プロファイルを選んでいないときの監視・起動の対象)
+    /// **false のデバイスも台帳には載る**(プロファイルを選んでいないときの監視・起動の対象)
     public var enabled: Bool?
     public var spec: DeviceSpec
 
@@ -375,7 +375,7 @@ public struct RemoteControlSection: Codable, Sendable, Equatable {
 public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// apps/<app>.json への参照
     public var app: String?
-    /// デバイスの実体(iOS/Android 混在可 = 両OS同時実行)。enabled=false の台は走らせない
+    /// デバイスの実体(iOS/Android 混在可 = 両OS同時実行)。enabled=false のデバイスは走らせない
     public var devices: [RunDeviceEntry]?
     /// ロケータ自己修復(指紋照合)を許可するか(既定 true)。FM は使わない
     public var heal: Bool?
@@ -401,7 +401,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var scenarioTimeout: Int?
     /// iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。
     /// true → iOS デバイスの実効エンジンを "hybrid"(in-app 主+XCUITest フォールバック)、
-    /// false → "xcuitest" にする。devices[] の台に engine を明示している場合は
+    /// false → "xcuitest" にする。devices[] のデバイスに engine を明示している場合は
     /// そちらが優先(resolve 参照)。Android には影響しない。
     public var iosInappEngine: Bool?
     /// 実行開始時に Android AVD の肥大化(wipe 対象ファイル合計サイズ)を検査し超過分を
@@ -1028,7 +1028,7 @@ public struct ResolvedProfile: Sendable {
     /// アプリ版チェックを払うのは丸損で、実測では iOS の固定費 14.8s のほとんどがこれだった
     /// (合計 21.8s のうちテスト実行は 7.0s)。
     ///
-    /// **予備を1台残す**(`+ 1`): 用意した台が blank/frozen で triage に弾かれると
+    /// **予備を1台残す**(`+ 1`): 用意したデバイスが blank/frozen で triage に弾かれると
     /// 「使えるワーカーが無い」で run ごと落ちる。10 台あった頃はその余裕が偶然あった。
     /// 台数が上限以下、または本数が 0(= platform 不明で絞れない)のときは何もしない
     /// 用意する台数。**判断はここだけ**(テストはこの純粋関数を直接叩く)。
@@ -1040,7 +1040,7 @@ public struct ResolvedProfile: Sendable {
 
     /// `run --device` の絞り込み(マシン別サブ実行が「自分のぶんのデバイス」だけを回すのに使う)。
     /// 空配列は「絞らない」。**1台も残らない指定は呼び出し側でエラーにする** ——
-    /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しない台で走る
+    /// ここで黙って全台に戻すと、名前を打ち間違えたときに意図しないデバイスで走る
     /// マシン別サブ実行のスコープ。**一意なのは name 単体ではなく (host, name)** なので、
     /// 名前だけで絞ると**別の機械の同名デバイスまで掴む**(フリートの各機は同じ命名規則で
     /// シミュレータを作るので、同名は例外ではなく通常。実走で確認 ——
@@ -1059,10 +1059,10 @@ public struct ResolvedProfile: Sendable {
         return filtered
     }
 
-    /// `avoiding` の台(MCP が操作している台。ユーザー決定「避けて、足りなければ警告して使う」)は、**ほかの台で
-    /// 本数ぶん足りるなら予備にも残さない** —— 残した台はシナリオを早い者勝ちで取り合うので、予備として残すと
-    /// 結局そこで走る。本数が分からない(0 = 絞らない)ときは、ほかに台があれば外す。足りないときだけ足りない
-    /// ぶんを加える。**既定値を置かない** —— 呼び出し元が渡し忘れると黙って MCP の台を使う形へ戻る
+    /// `avoiding` のデバイス(MCP が操作しているデバイス。ユーザー決定「避けて、足りなければ警告して使う」)は、**ほかのデバイスで
+    /// 本数ぶん足りるなら予備にも残さない** —— 残したデバイスはシナリオを早い者勝ちで取り合うので、予備として残すと
+    /// 結局そこで走る。本数が分からない(0 = 絞らない)ときは、ほかにデバイスがあれば外す。足りないときだけ足りない
+    /// ぶんを加える。**既定値を置かない** —— 呼び出し元が渡し忘れると黙って MCP のデバイスを使う形へ戻る
     public func limitingDevices(iosScenarios: Int, androidScenarios: Int,
                                 avoiding: (ResolvedDevice) -> Bool) -> ResolvedProfile {
         func keep(_ list: [ResolvedDevice], _ count: Int) -> [ResolvedDevice] {
@@ -1332,8 +1332,8 @@ public enum ProfileResolver {
             checkAppProfileKeys(json, context: "apps/\(appRef).json")
         }
 
-        // 3. デバイス(enabled の台だけ)。一意なのは (machine, name)。別マシンの同名は許す
-        // (DeviceMachineGrouping にすべての規則がある)。重複は無効の台も含めて見る(台帳として壊れている)
+        // 3. デバイス(enabled のデバイスだけ)。一意なのは (machine, name)。別マシンの同名は許す
+        // (DeviceMachineGrouping にすべての規則がある)。重複は無効のデバイスも含めて見る(台帳として壊れている)
         if let duplicate = DeviceMachineGrouping.firstDuplicate(
             in: DeviceMachineGrouping.entries(runDevices: deviceRefs, enabledOnly: false)) {
             throw ProfileError.duplicateDeviceName(
@@ -1346,11 +1346,11 @@ public enum ProfileResolver {
 
         // 4. iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
         // true → "hybrid"(高速な in-app 主+XCUITest フォールバック)、false → "xcuitest"。
-        // ただし台に engine を明示していればそちらが優先(上書きしない)。
+        // ただしデバイスに engine を明示していればそちらが優先(上書きしない)。
         let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
         var devices: [ResolvedDevice] = []
         for entry in enabledEntries {
-            // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別の台で黙って走る)。
+            // 実体の無い登録は走る前に言う(iOS は既定名へ落ちて別のデバイスで黙って走る)。
             // 止めはしない —— 既定に頼っている既存プロファイルを赤にしない
             if entry.spec.lacksConcreteTarget {
                 warnings.append(
@@ -1531,8 +1531,8 @@ public enum ProfileResolver {
             warnings: warnings)
     }
 
-    /// 実機デバイスの整合検査。enabled の台にのみ適用する
-    /// (無効の台の不備で run を止めない)
+    /// 実機デバイスの整合検査。enabled のデバイスにのみ適用する
+    /// (無効のデバイスの不備で run を止めない)
     private static func validatePhysical(_ device: ResolvedDevice, run: String) throws {
         guard device.spec.isPhysical else { return }
         let identifier = device.platform == "ios" ? device.spec.udid : device.spec.serial

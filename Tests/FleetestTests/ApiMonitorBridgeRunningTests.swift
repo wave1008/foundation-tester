@@ -82,7 +82,7 @@ final class ApiMonitorBridgeRunningTests: XCTestCase {
     }
 
     func testInfoOnNonAndroidPhysicalIsNilByConstruction() {
-        // 呼び出し元(ApiMonitorCommand のループ)は shouldProbeBridge を通った台の serial だけを
+        // 呼び出し元(ApiMonitorCommand のループ)は shouldProbeBridge を通ったデバイスの serial だけを
         // 引くので、iOS/仮想機には bridgeRunning を渡さない。ここでは「渡さなければ nil のまま」
         // という info() 側の既定を固定する(呼び出し側の絞り込みは shouldProbeBridge のテストで守る)
         let state = DeviceRuntimeState(target: iosPhysicalTarget(), state: "connected", detail: "",

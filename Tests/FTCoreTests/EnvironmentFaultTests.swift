@@ -77,7 +77,7 @@ final class EnvironmentFaultTests: XCTestCase {
 
     /// **ドライバ不達は OS を問わず振り直す**(2026-09-18 に揃えた)。iOS がここへ来るのは
     /// 事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後だけなので、
-    /// 「台は生きている」という前提は両 OS で同じ。死んでいれば呼び出し側が離脱経路へ回す
+    /// 「デバイスは生きている」という前提は両 OS で同じ。死んでいれば呼び出し側が離脱経路へ回す
     func testDriverUnreachableRequeuesWithoutRetiring() {
         XCTAssertTrue(ScenarioRunner.requeuesWithoutRetiring(outcome: .driverUnreachable))
     }
@@ -106,8 +106,8 @@ final class EnvironmentFaultTests: XCTestCase {
     }
 }
 
-/// ブリッジ不達で振り直す台の扱い(`ScenarioRunner.unreachableLaneAction`)。
-/// **振り直しはブレーカの数え上げを飛ばさない** —— 飛ばすと、張り直せない台が離脱せずに残り、
+/// ブリッジ不達で振り直すデバイスの扱い(`ScenarioRunner.unreachableLaneAction`)。
+/// **振り直しはブレーカの数え上げを飛ばさない** —— 飛ばすと、張り直せないデバイスが離脱せずに残り、
 /// 後続シナリオの再キュー枠を焼き潰す(2026-09-16 のレビュー指摘)
 final class UnreachableLaneActionTests: XCTestCase {
 
@@ -116,7 +116,7 @@ final class UnreachableLaneActionTests: XCTestCase {
     }
 
     func testHeldRequeues() {
-        // 他のレーンが1本も通っていない streak = 台ではなく run の問題なので離脱させない
+        // 他のレーンが1本も通っていない streak = デバイスではなく run の問題なので離脱させない
         XCTAssertEqual(ScenarioRunner.unreachableLaneAction(verdict: .held(consecutive: 3, announce: true)),
                        .requeue)
     }

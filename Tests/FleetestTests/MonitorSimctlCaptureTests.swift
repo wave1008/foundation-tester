@@ -4,7 +4,7 @@ import FTCore
 @testable import fleetest
 
 /// ブリッジを持たない iOS シミュレータの「1サイクル1台の順繰り」を固定する。
-/// この経路は**配信が張れない台にとって唯一の絵の出所**なので、選ばれなくなる退行は
+/// この経路は**配信が張れないデバイスにとって唯一の絵の出所**なので、選ばれなくなる退行は
 /// タイルが黙って真っ黒になる形で出る(2026-08-28 の実害と同じ見え方)。
 final class MonitorSimctlCaptureTests: XCTestCase {
 
@@ -16,7 +16,7 @@ final class MonitorSimctlCaptureTests: XCTestCase {
         XCTAssertTrue(last.isEmpty)
     }
 
-    /// 1サイクルに撮るのは1台だけ(戻り値が1つ・時計が進むのもその台だけ)
+    /// 1サイクルに撮るのは1台だけ(戻り値が1つ・時計が進むのもそのデバイスだけ)
     func testPicksOneDevicePerCycle() {
         var last: [String: Date] = [:]
         let pick = ApiMonitorCommand.simctlCapturePick(ids: ["a", "b", "c"],
@@ -25,7 +25,7 @@ final class MonitorSimctlCaptureTests: XCTestCase {
         XCTAssertEqual(last, ["a": t0])
     }
 
-    /// 順繰り: 3台なら3サイクルで一巡し、4サイクル目は最初の台へ戻る
+    /// 順繰り: 3台なら3サイクルで一巡し、4サイクル目は最初のデバイスへ戻る
     func testCyclesThroughEveryDevice() {
         var last: [String: Date] = [:]
         var picks: [String] = []
@@ -39,7 +39,7 @@ final class MonitorSimctlCaptureTests: XCTestCase {
         XCTAssertEqual(picks, ["a", "b", "c", "a"])
     }
 
-    /// 途中で増えた台は「一度も撮っていない」= 最優先で拾う(新しいタイルが一巡待ちで
+    /// 途中で増えたデバイスは「一度も撮っていない」= 最優先で拾う(新しいタイルが一巡待ちで
     /// 真っ黒のまま残らない)
     func testANewlyAppearedDeviceIsPickedFirst() {
         var last: [String: Date] = ["a": t0, "b": t0.addingTimeInterval(2)]
@@ -49,7 +49,7 @@ final class MonitorSimctlCaptureTests: XCTestCase {
         XCTAssertEqual(pick, "fresh")
     }
 
-    /// 候補から消えた台の時計は残っていても選択を歪めない(消えた台を選ばない)
+    /// 候補から消えたデバイスの時計は残っていても選択を歪めない(消えたデバイスを選ばない)
     func testDoesNotPickADeviceThatLeftTheCandidateSet() {
         var last: [String: Date] = ["gone": .distantPast, "a": t0]
         let pick = ApiMonitorCommand.simctlCapturePick(ids: ["a"], lastCapturedAt: &last,
@@ -59,9 +59,9 @@ final class MonitorSimctlCaptureTests: XCTestCase {
 }
 
 // ---- 撮る対象かの判定(isSimctlCaptureTarget)----
-// **ブリッジの無い台の state は登録の有無で割れる** —— 未登録の合成デバイスは "connected"、
-// 台帳に載っている台は "booted"。connected だけを見ていた頃は、台帳に載っていてブリッジを
-// 持たない台の絵の出所がゼロになり、タイルが「接続中」のまま永久に埋まらなかった(2026-08-29)。
+// **ブリッジの無いデバイスの state は登録の有無で割れる** —— 未登録の合成デバイスは "connected"、
+// 台帳に載っているデバイスは "booted"。connected だけを見ていた頃は、台帳に載っていてブリッジを
+// 持たないデバイスの絵の出所がゼロになり、タイルが「接続中」のまま永久に埋まらなかった(2026-08-29)。
 
 extension MonitorSimctlCaptureTests {
 
@@ -74,7 +74,7 @@ extension MonitorSimctlCaptureTests {
     }
 
     func testBridgelessSimulatorIsCapturedWhateverItsStateIsCalled() {
-        // 台帳に載っている台(booted)も、未登録の合成デバイス(connected)も同じ扱い
+        // 台帳に載っているデバイス(booted)も、未登録の合成デバイス(connected)も同じ扱い
         XCTAssertTrue(ApiMonitorCommand.isSimctlCaptureTarget(state: state("booted")))
         XCTAssertTrue(ApiMonitorCommand.isSimctlCaptureTarget(state: state("connected")))
     }

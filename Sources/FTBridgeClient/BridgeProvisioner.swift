@@ -47,7 +47,7 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case preinstallFailed(device: String, detail: String)
     /// 実機がロックされたまま解除を待ち切った(起動しても SpringBoard に拒否されるので撃たない)
     case deviceLocked(name: String, waited: TimeInterval)
-    /// 印(RunnerSlowness.runnerRestartDidNotHelp)がある台のシミュレータ再起動(shutdown/boot)が失敗した
+    /// 印(RunnerSlowness.runnerRestartDidNotHelp)があるデバイスのシミュレータ再起動(shutdown/boot)が失敗した
     case simulatorRebootFailed(name: String, detail: String)
 
     public var errorDescription: String? {
@@ -223,7 +223,7 @@ enum StaleLedgerSweep {
     /// 確定)のときだけ進む** —— `BridgeDiscovery.isBound` の 300ms 待ちは timeout/unknown も
     /// false に畳むため、負荷下で busy な(=生きている)リスナーを「居ない」と誤読しうる。
     /// 破壊的な判定はここだけ `connectProbe` の3値を直接見る(`isBound` の他の呼び手の意味は
-    /// 変えない)。**③宛先の台に生きた run/MCP セッションがあれば触らない**
+    /// 変えない)。**③宛先のデバイスに生きた run/MCP セッションがあれば触らない**
     static func sweepStuckStartingRunners(repoRoot: URL, log: (String) -> Void = { _ in }) {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -266,7 +266,7 @@ enum StaleLedgerSweep {
 
     /// 起動しきれないランナーを止めてよいか(純粋関数)。**4つとも揃ったときだけ** —— 一度でも
     /// ready になった(`.ready` の台帳)・待受が拒否でない(時間切れは busy の可能性 = 不明)・
-    /// 宛先の台に run/MCP の印がある、のどれかがあれば止めない
+    /// 宛先のデバイスに run/MCP の印がある、のどれかがあれば止めない
     static func shouldReapStuckRunner(readyMarked: Bool, connect: BridgeDiscovery.ConnectProbe,
                                       destinationHeld: Bool, verdict: StartingRunnerVerdict) -> Bool {
         !readyMarked && connect == .refused && !destinationHeld && verdict == .restart
@@ -992,7 +992,7 @@ public struct BridgeProvisioner {
     /// 測り直し(`recheckRunner`)の共通手順 —— 片方だけ直すと同じ劣化に 2 通りの直し方ができる。
     /// xcuitest の起動枝は bundleID / preinstallAppPath を使わない(in-app の枝だけが使う)。
     /// **建て直した直後にもう 1 問測る** —— 新しいランナーでも遅ければ遅さはランナーのプロセスに無く、
-    /// 建て直しは空振り(1 回約 10 秒)なので、その台はこのプロセスでもう建て直さない(RunnerRestartFutility)。
+    /// 建て直しは空振り(1 回約 10 秒)なので、そのデバイスはこのプロセスでもう建て直さない(RunnerRestartFutility)。
     /// **この事実は RunnerSlownessStore へも持ち越す**(run をまたいで残る印。次の run の供給は
     /// これを見てシミュレータごとの再起動を試す)
     private func restartRunner(name: String, sim: SimDeviceInfo, port: UInt16,
@@ -1016,12 +1016,12 @@ public struct BridgeProvisioner {
         return (restarted, false, after)
     }
 
-    /// 印(RunnerSlowness.runnerRestartDidNotHelp)がある台の次の一手: ランナーの建て直しだけでは
-    /// 直らなかったと分かっている台を、**シミュレータごと**再起動してから同じ手順(launch→probe)で
+    /// 印(RunnerSlowness.runnerRestartDidNotHelp)があるデバイスの次の一手: ランナーの建て直しだけでは
+    /// 直らなかったと分かっているデバイスを、**シミュレータごと**再起動してから同じ手順(launch→probe)で
     /// 測り直す。`DeviceBooter.shutdownOne`/`bootOne`(BlankWorkerTriage が文書化する回復手順と同じ
     /// shutdown→boot)は FTAndroid に居り、FTAndroid → FTBridgeClient の依存方向のためここから
     /// 呼べない(循環)。同じ土台(Shell + SimulatorCatalog.shutdownObservation)をここへ直接使う。
-    /// **リースのある台はここへ来る前に呼び手(supplySlownessAction)が弾く**
+    /// **リースのあるデバイスはここへ来る前に呼び手(supplySlownessAction)が弾く**
     private func restartSimulatorAndRunner(name: String, sim: SimDeviceInfo, port: UInt16,
                                            claimed: @escaping @Sendable () async -> Void,
                                            log: @escaping (String) -> Void) async throws
@@ -1073,7 +1073,7 @@ public struct BridgeProvisioner {
         case restarted(afterSeconds: TimeInterval?)
         /// 建て直したが新しいランナーでも遅い(1 行は restartRunner が出し済み)
         case restartDidNotHelp
-        /// 以前に建て直しても直らなかった台なので測らなかった
+        /// 以前に建て直しても直らなかったデバイスなので測らなかった
         case skipped
         case restartFailed(String)
     }
@@ -1087,7 +1087,7 @@ public struct BridgeProvisioner {
     public func recheckRunner(name: String, udid: String, port: UInt16, injected: Bool,
                               log: @escaping (String) -> Void) async
         -> (outcome: RunnerRecheckOutcome, probeSeconds: TimeInterval?) {
-        // 直らなかった台は測りもしない(劣化した台の 1 問は約 3 秒 = 緑のたびに払うことになる)
+        // 直らなかったデバイスは測りもしない(劣化したデバイスの 1 問は約 3 秒 = 緑のたびに払うことになる)
         guard !RunnerRestartFutility.shared.contains(udid: udid) else { return (.skipped, nil) }
         let probeSeconds = injected ? nil : await RunnerAccessibilityHealth.probe(port: port, repoRoot: repoRoot)
         guard injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: probeSeconds) else {
@@ -1124,7 +1124,7 @@ public struct BridgeProvisioner {
                     probeSeconds)
         } catch {
             await claim.fire()
-            // 建て直しに失敗した台を緑のたびに撃ち直さない(レーンは既存の事後プローブが見る)
+            // 建て直しに失敗したデバイスを緑のたびに撃ち直さない(レーンは既存の事後プローブが見る)
             RunnerRestartFutility.shared.mark(udid: udid)
             return (.restartFailed(error.localizedDescription), probeSeconds)
         }
@@ -1140,10 +1140,10 @@ public struct BridgeProvisioner {
             // 長く生きたランナーが SpringBoard の remote element を引けなくなった後も参照し続け、
             // 照会のたびに約 3.7 秒待つ状態に落ちる。run のすべての照会に乗るので建て直したほうが安い
             if engine == "xcuitest" {
-                // **run をまたいだ印(RunnerSlownessStore)を先に見る** —— 建て直しても直らなかった台は
+                // **run をまたいだ印(RunnerSlownessStore)を先に見る** —— 建て直しても直らなかったデバイスは
                 // 毎 run 同じ空振り(検知→建て直し→また検知)を繰り返す。印があれば通常のプローブより
                 // 先に、印の段階に応じた一手(シミュレータごと再起動 / 触らずそのまま使う)へ回す。
-                // リースのある台は絶対に触らない(supplySlownessAction が見る)
+                // リースのあるデバイスは絶対に触らない(supplySlownessAction が見る)
                 let persisted = RunnerSlownessStore.current(stateDir: fleetestStateDir, key: sim.udid)
                 let action = RunnerAccessibilityHealth.supplySlownessAction(
                     persisted: persisted,
@@ -1194,7 +1194,7 @@ public struct BridgeProvisioner {
                     }
                 }
             }
-            // **in-app の再利用は /status を 1 回引いてから**: 直前に同じ台の XCUITest ランナーを建て直した
+            // **in-app の再利用は /status を 1 回引いてから**: 直前に同じデバイスの XCUITest ランナーを建て直した
             // 回は、対象アプリごと落ちてブリッジが居ない(接続拒否)。**無応答は死と読まない**
             // (背面に回ったアプリは TCP を受けて答えない = InAppDriver.openURL と同じ規律)
             if engine == "inapp", bundleID != nil {
@@ -1210,7 +1210,7 @@ public struct BridgeProvisioner {
             }
             // **ツールチェーンが変わっていれば再利用しない**(BridgeToolchainLedger。起動時点の
             // 指紋と比べる。成果物の指紋と比べてはいけない理由は同ファイルの doc)
-            // 仕分けは BridgeToolchainLedger.decide の1箇所(リースのある台に触らない理由も同 doc)
+            // 仕分けは BridgeToolchainLedger.decide の1箇所(リースのあるデバイスに触らない理由も同 doc)
             switch BridgeToolchainLedger.decide(
                 toolchainMatches: BridgeToolchainLedger.matchesCurrent(
                     stateDir: fleetestStateDir, port: port),
@@ -1369,7 +1369,7 @@ public struct BridgeProvisioner {
             // **これから使うポートを今 LISTEN しているプロセス**を、記録の有無に関わらず確かめる。
             // 記録の無い残骸(別クローン・別デバイスで背面に回った in-app ブリッジ)は /status に
             // 答えないので scan に映らず、採番では空きに見える(全シミュレータはホストの loopback を
-            // 共有するのでポートは台を跨いで一意)。そのまま注入すると bind できず
+            // 共有するのでポートはデバイスを跨いで一意)。そのまま注入すると bind できず
             // 「did not respond in time」で落ち、原因が残骸だと分からない(受け手報告)。
             // 記録の有無に関わらず、実際に LISTEN されている場合のみ占有者の実体を確認して停止する
             // (記録どおりに blind に terminate すると同アプリの別ポートの現役ブリッジを誤殺する実害あり)

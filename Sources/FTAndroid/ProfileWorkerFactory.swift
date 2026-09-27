@@ -51,12 +51,12 @@ public enum ProfileWorkerFactory {
     /// 戻った)。この状態は本物の凍結と受動観測では見分けが付かないので、**先に1回入力を入れて
     /// 描画を動かしておく**。デバイスあたり1回なので実行時間への影響はほぼ無い。
     ///
-    /// **in-app ブリッジを持つ台には撃たない**(実測、3機18台)。`home` はアプリを背面へ
+    /// **in-app ブリッジを持つデバイスには撃たない**(実測、3機18台)。`home` はアプリを背面へ
     /// 送るが、**in-app ブリッジはそのアプリの中に居る**ので背面に回った瞬間に無応答になる ——
     /// 供給が「壊れたブリッジ」と見て停止・張り直しに入り、3機で13台がワーカーから脱落した
     /// (シナリオの結果は緑のままだが手元の run が 50s → 136s)。engine=inapp/hybrid は黙って飛ばす。
     ///
-    /// 撃てる台(xcuitest 単独の iOS・Android)は `systemUIClient` 経由で XCUITest ブリッジへ回す
+    /// 撃てるデバイス(xcuitest 単独の iOS・Android)は `systemUIClient` 経由で XCUITest ブリッジへ回す
     /// —— `RunWorker.driver` は in-app ブリッジ宛のことがあり、in-app に `/home` のルートは無い。
     ///
     /// **結果は正直に出す**: 最初の実装は `try?` で握り潰して台数だけログしており、
@@ -91,7 +91,7 @@ public enum ProfileWorkerFactory {
     }
 
     /// `pressHomeOnStart` の対象と除外。**デバイス不要の純粋関数**(規則はここだけ・テストが直接叩く)。
-    /// 除外は「in-app ブリッジを持つ台」だけ —— 判定は engine で行い、xcuiPort の有無では**決めない**
+    /// 除外は「in-app ブリッジを持つデバイス」だけ —— 判定は engine で行い、xcuiPort の有無では**決めない**
     /// (hybrid は両方のブリッジを持つので、xcuiPort があっても撃つとアプリが背面に落ちる)。
     static func homeOnStartPlan(
         _ workers: [RunWorker]
@@ -120,15 +120,15 @@ public enum ProfileWorkerFactory {
     /// run 開始時点で画面に残っているアラートを**警告する**(閉じない。理由と背景は
     /// FTCore.ResidualSystemAlertTriage)。閉じたいならシナリオの `iosAlertHandler`。
     ///
-    /// **SpringBoard を見られる接続でしか判定できない**ので、engine=inapp 単独の台は黙って飛ばす
+    /// **SpringBoard を見られる接続でしか判定できない**ので、engine=inapp 単独のデバイスは黙って飛ばす
     /// (in-app ブリッジは注入先アプリのプロセスしか見えない = 「アラートが無い」と誤って言える)。
     /// 固定費は iOS ワーカーあたり snapshot 1枚で、全台並行に撃つ。
     /// **失敗は握りつぶす** —— これは診断であって run を止める理由にはしない
     /// **アプリの外(SpringBoard)を触れる driver**。in-app ブリッジは注入先アプリしか見えず
     /// `/home` のルートも持たないので、hybrid でも必ず XCUITest ブリッジ側へ回す
     /// (`RunWorker.driver` は in-app ブリッジ宛なので、そのまま使うと 0/N になる。実害:
-    /// homeOnStart が hybrid の全台で不発だったのに「inapp 固定の台だけができない」と誤って説明していた)。
-    /// iOS 以外・XCUITest ブリッジを持たない台は nil(呼び手は黙って飛ばす)。
+    /// homeOnStart が hybrid の全台で不発だったのに「inapp 固定のデバイスだけができない」と誤って説明していた)。
+    /// iOS 以外・XCUITest ブリッジを持たないデバイスは nil(呼び手は黙って飛ばす)。
     /// 使い手は pressHomeOnStart と warnOnResidualSystemAlerts の2つ。
     static func systemUIClient(for worker: RunWorker) -> BridgeClient? {
         guard worker.platform == "ios" else { return nil }
@@ -248,7 +248,7 @@ public enum ProfileWorkerFactory {
     /// (RunSummary → RunMetaRecord(run.json)に監査記録として残る)。
     /// repaired は sleep/wake 修復と guest reboot 修復の両方を含む(run.json のスキーマは
     /// 「run 前に凍結を修復した個体」の1枠のまま。手段の別はログにのみ残す)
-    /// excludedWorkers / repairedWorkers は台そのもの(label から引き直さない。
+    /// excludedWorkers / repairedWorkers はデバイスそのもの(label から引き直さない。
     /// WorkerAnomalyRecord.preRunTriage はこちらを使う)
     public struct BlankScreenTriage {
         public let workers: [RunWorker]
@@ -512,7 +512,7 @@ public enum ProfileWorkerFactory {
     /// ここはその直後に、**実際に起こせた分だけ**を渡して呼ぶ
     /// (起こせなかったレーンの扱いは `FTCore.LaneGate` の責務なので待たない)。
     /// buildAndroidWorkers より前に呼ぶこと
-    /// **待ちは台ごとに並列**(実測: 直列だと冷起動が ≈28 秒/台の台数比例になり、
+    /// **待ちはデバイスごとに並列**(実測: 直列だと冷起動が ≈28 秒/デバイスの台数比例になり、
     /// 手元8台で run 開始まで 3分41秒 —— そのうち約半分がこの待ちだった)。
     /// **直列にする理由は起こす側にしか無い** —— `AndroidLaneRecovery.bootMissingDevices` が
     /// 1台ずつなのは「複数台の同時ブート描画が画面凍結の契機」だから。こちらは `/status` を
@@ -888,9 +888,9 @@ public enum ProfileWorkerFactory {
     /// (HostRecordingProbe の宣言)。再起動は凍結の回復と同じ `recover`(既定は
     /// recoverFrozenIOSWorkers = ブリッジ停止 → shutdown → boot → 張り直し)。
     ///
-    /// **台を外さない** —— 録画は付帯機能なので、解けなかった台もテストは走らせる(録画だけ
-    /// IOSSimulatorVideoRecorder.start が警告して飛ばす)。**不明の台は再起動しない**
-    /// (検査が言えなかったことを理由に台を落とさない)。録画しない run では何もしない
+    /// **デバイスを外さない** —— 録画は付帯機能なので、解けなかったデバイスもテストは走らせる(録画だけ
+    /// IOSSimulatorVideoRecorder.start が警告して飛ばす)。**不明のデバイスは再起動しない**
+    /// (検査が言えなかったことを理由にデバイスを落とさない)。録画しない run では何もしない
     /// (検査そのものが録画の開始・停止なので、要らない run に払わせない)。
     ///
     /// **iOS ワーカーの供給口3つ全部から呼ぶ**(recoverFrozenIOSWorkers と同じ。配線は
@@ -928,7 +928,7 @@ public enum ProfileWorkerFactory {
         return rebuilt
     }
 
-    /// busy の台の label(並列に検査する。対象は録画できる iOS シミュレータだけ = 実機と Android は見ない)
+    /// busy のデバイスの label(並列に検査する。対象は録画できる iOS シミュレータだけ = 実機と Android は見ない)
     static func busyRecordingLabels(
         _ workers: [RunWorker], probe: @escaping @Sendable (String) async -> HostRecordingProbe.Outcome
     ) async -> [String] {

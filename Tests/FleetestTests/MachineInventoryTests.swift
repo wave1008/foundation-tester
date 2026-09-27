@@ -1,6 +1,6 @@
 // MachineInventory(実行プロファイル未選択のときの監視対象)の単体テスト。
-// 台帳 = 全実行プロファイルの devices。1つに決められないという理由で「今動いている台」だけに
-// 縮退すると、未起動の台が1台も出ない(実害 2026-08-28)。
+// 台帳 = 全実行プロファイルの devices。1つに決められないという理由で「今動いているデバイス」だけに
+// 縮退すると、未起動のデバイスが1台も出ない(実害 2026-08-28)。
 
 import XCTest
 @testable import FTCore
@@ -36,12 +36,12 @@ final class MachineInventoryTests: XCTestCase {
     }
 
     func testMergesEveryRunProfileAndDropsDuplicates() {
-        // 同じ台は複数の実行プロファイルに居るのが普通。重複はエラーではなく1件に畳む
+        // 同じデバイスは複数の実行プロファイルに居るのが普通。重複はエラーではなく1件に畳む
         let onlyLocal = profile(ios: [DeviceSpec(name: "A"), DeviceSpec(name: "B")])
         let withRunners = profile(ios: [
             DeviceSpec(name: "A"),
             DeviceSpec(name: "C"),
-            DeviceSpec(name: "A", machine: "M1Max"),  // 同名でもマシンが違えば別の台
+            DeviceSpec(name: "A", machine: "M1Max"),  // 同名でもマシンが違えば別のデバイス
         ])
         let entries = MachineInventory.observableEntries(
             profiles: [onlyLocal, withRunners], registry: ["M1Max"])
@@ -49,7 +49,7 @@ final class MachineInventoryTests: XCTestCase {
     }
 
     func testSamePlatformIsRequiredForADuplicate() {
-        // プラットフォームが違えば同名でも別の台(iOS の "Pixel 9" という命名は普通ではないが、
+        // プラットフォームが違えば同名でも別のデバイス(iOS の "Pixel 9" という命名は普通ではないが、
         // 鍵から platform を落とすと片方が消えるので固定する)
         let entries = MachineInventory.observableEntries(
             profiles: [profile(ios: [DeviceSpec(name: "X")], android: [DeviceSpec(name: "X")])],
@@ -69,9 +69,9 @@ final class MachineInventoryTests: XCTestCase {
     // MARK: - identity の食い違い
     //
     // 実害 2026-09-03: ランナー機の視点で書かれた台帳(`machine: "local"` のまま)が手元の台帳と
-    // 同居し、手元に実在しない udid の台が (ios, local, 名前) を先に埋めた。負けた本物の
+    // 同居し、手元に実在しない udid のデバイスが (ios, local, 名前) を先に埋めた。負けた本物の
     // シミュレータは「未登録の起動中デバイス」として合成され、id 衝突で毎周期落ちていた
-    // (= 起動中の台が監視から消える)。
+    // (= 起動中のデバイスが監視から消える)。
 
     private func source(_ name: String,
                         ios: [DeviceSpec] = [], android: [DeviceSpec] = []) -> MachineInventory.Source {
@@ -96,7 +96,7 @@ final class MachineInventoryTests: XCTestCase {
     }
 
     func testTheSameDeviceInTwoLedgersIsNotAConflict() {
-        // 手元の台を両方の台帳に書くのは普通。**同じ実体なら黙る**
+        // 手元のデバイスを両方の台帳に書くのは普通。**同じ実体なら黙る**
         let merged = MachineInventory.merge(
             sources: [
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
@@ -107,7 +107,7 @@ final class MachineInventoryTests: XCTestCase {
     }
 
     func testALedgerThatNamesNoIdentityIsNotAConflict() {
-        // 片方が名前だけ(または model/os だけ)なのは同じ台の粗い記述 —— 誤検知を出さない
+        // 片方が名前だけ(または model/os だけ)なのは同じデバイスの粗い記述 —— 誤検知を出さない
         let merged = MachineInventory.merge(
             sources: [
                 source("a.json", ios: [DeviceSpec(name: "sim-01", udid: "AAA")]),
@@ -145,12 +145,12 @@ final class MachineInventoryTests: XCTestCase {
         XCTAssertEqual(merged.conflicts, [])
     }
 
-    // MARK: - 実在で決める(手元の台だけ)
+    // MARK: - 実在で決める(手元のデバイスだけ)
     //
     // 述語(existsLocally)は呼び手が起動時に1回だけ材料を採って畳んだもの
     // (ApiMonitorCommand.localPresencePredicate)。merge 自体は I/O を持たない。
 
-    /// 実害の witness: 先頭の台帳が手元に実在しない udid を名乗り、後続が実在する台を名乗る
+    /// 実害の witness: 先頭の台帳が手元に実在しない udid を名乗り、後続が実在するデバイスを名乗る
     func testTheLedgerWhoseDeviceExistsOnThisMachineWins() {
         let merged = MachineInventory.merge(
             sources: [
@@ -218,7 +218,7 @@ final class MachineInventoryTests: XCTestCase {
     }
 
     func testADeviceOnAnotherMachineIsNeverJudgedByLocalPresence() {
-        // 他機の台の実体はこの機械からは見えない —— 述語に訊きもしない
+        // 他機のデバイスの実体はこの機械からは見えない —— 述語に訊きもしない
         var asked: [String] = []
         let merged = MachineInventory.merge(
             sources: [
@@ -253,7 +253,7 @@ final class MachineInventoryTests: XCTestCase {
 
     /// **リポジトリの台帳全数に当てて誤検知0**(新しい検知の規律。CLAUDE.md §検知を足すとき)。
     /// 同時に**この型の再発を落とすゲート**でもある —— 食い違ったまま気付かないと、
-    /// 「(プロファイルなし)」の監視から実在する台が黙って消える
+    /// 「(プロファイルなし)」の監視から実在するデバイスが黙って消える
     func testTheCommittedLedgersOfThisRepositoryDoNotDisagree() throws {
         let repoRoot = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -295,7 +295,7 @@ final class MachineInventoryTests: XCTestCase {
 
     func testLoadAllReadsEveryLedgerInFileNameOrder() throws {
         // **並びが結果を決める**(observableEntries の重複解決は入力順で先頭を採る)ので固定する。
-        // enabled: false の台も台帳に載る(プロファイルを選んでいないときの監視・起動の対象)
+        // enabled: false のデバイスも台帳に載る(プロファイルを選んでいないときの監視・起動の対象)
         let project = try projectWithRuns([
             "zzz": #"{"devices":[{"platform":"ios","name":"Z"}]}"#,
             "aaa": #"{"devices":[{"platform":"ios","machine":"M1","name":"A","enabled":false}]}"#,

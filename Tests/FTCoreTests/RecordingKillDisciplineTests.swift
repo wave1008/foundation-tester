@@ -1,7 +1,7 @@
 // 録画(simctl io recordVideo)の停止規律のソース走査。
 //
 // **実測 2026-09-09**: SIGINT 以外で recordVideo の client を殺すと、**端末側のセッションが
-// 握られたまま残る**(実験: 該当台は "Host recording is already in progress" を返し続け、
+// 握られたまま残る**(実験: 該当デバイスは "Host recording is already in progress" を返し続け、
 // シャットダウンで初めて解けた)。ツールは猶予切れで SIGKILL していたため、**自分で作った
 // セッションを自分で「残っている」と警告する**形になっていた。
 //
@@ -52,7 +52,7 @@ final class RecordingKillDisciplineTests: XCTestCase {
     // MARK: - 再試行の仕分け
 
     /// **一過性の空振りだけ再試行する**(実測 2026-09-10: M1Ultra の6台が run 開始直後に同時に
-    /// 空になり、数分後には同じ台で 1 秒 66KB が撮れた)。端末側にセッションが残っている形は
+    /// 空になり、数分後には同じデバイスで 1 秒 66KB が撮れた)。端末側にセッションが残っている形は
     /// 待っても解けない(シャットダウンが要る)ので、繰り返して時間を捨てない。
     func testOnlyTransientSmokeFailuresAreRetried() {
         XCTAssertTrue(IOSSimulatorVideoRecorder.isTransient(.emptyFile))

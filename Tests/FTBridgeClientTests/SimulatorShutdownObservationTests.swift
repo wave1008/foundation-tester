@@ -30,12 +30,12 @@ final class SimulatorShutdownObservationTests: XCTestCase {
     func testSingleDeviceLooksOnlyAtThatDevice() {
         XCTAssertEqual(SimulatorCatalog.shutdownObservation(.success(sims), udid: "A"), .stopped)
         XCTAssertEqual(SimulatorCatalog.shutdownObservation(.success(sims), udid: "B"), .stillBooted)
-        // 一覧から消えた台は止まっている(削除済み)
+        // 一覧から消えたデバイスは止まっている(削除済み)
         XCTAssertEqual(SimulatorCatalog.shutdownObservation(.success(sims), udid: "GONE"), .stopped)
     }
 
     /// Shutting Down / Booting は停止ではない(起動前の掃除が書き込み中のファイルを消した実害。
-    /// 予備の台を `simctl shutdown &` の 0.3 秒後に start-device すると PosterBoard の束を消した)
+    /// 予備のデバイスを `simctl shutdown &` の 0.3 秒後に start-device すると PosterBoard の束を消した)
     func testTransitioningDeviceIsNotStopped() {
         let shuttingDown = SimDeviceInfo(udid: "C", name: "iPhone C", os: "iOS 27.0", booted: false,
                                          transitioning: true)

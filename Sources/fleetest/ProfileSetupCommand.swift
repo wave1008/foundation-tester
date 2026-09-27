@@ -135,7 +135,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             device["kind"] = "physical"
         }
         // iOS シミュレータは name をシミュレータ自身の名前に揃え、機種名(model)を控える。
-        // udid 指定ならその台、名前指定なら名前(+ os)で引く。見つからなければ下の登録済み検索へ落ちる
+        // udid 指定ならそのデバイス、名前指定なら名前(+ os)で引く。見つからなければ下の登録済み検索へ落ちる
         if platform == "ios", device["kind"] == nil, udid != nil || self.deviceName != nil,
            let simulators = try? SimulatorCatalog.devices().filter({ !$0.physical }) {
             let match: SimDeviceInfo?
@@ -151,7 +151,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         }
         deviceName = (device["name"] as? String) ?? deviceName
 
-        // 実体の指定が無い場合は「他の実行プロファイルに登録済みの手元の台を使う」意味にする
+        // 実体の指定が無い場合は「他の実行プロファイルに登録済みの手元のデバイスを使う」意味にする
         // (create-device が追記した直後など。無ければどう作ればよいか分からないのでエラー)
         if ProfileWriter.hasDeviceBody(device) {
             deviceDetail = "registered \(deviceName) (\(platform))"
@@ -177,7 +177,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             appName: appName ?? testProject.name, appID: appID, appPath: appPath)
         try ProfileWriter.json(updatedApp).write(to: appURL, options: .atomic)
 
-        // ---- 実行プロファイル(デバイスの実体を持つ。既存なら app を揃えて台を upsert) ----
+        // ---- 実行プロファイル(デバイスの実体を持つ。既存なら app を揃えてデバイスを upsert) ----
         try fm.createDirectory(at: testProject.runsDir, withIntermediateDirectories: true)
         let runURL = testProject.runsDir.appendingPathComponent("\(runName).json")
         let runObject: [String: Any]
@@ -233,7 +233,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         if let model { device["model"] = model }
     }
 
-    /// 登録済みの台(spec)を devices[] の1要素へ戻す(手元の台だけを渡すこと)
+    /// 登録済みのデバイス(spec)を devices[] の1要素へ戻す(手元のデバイスだけを渡すこと)
     static func entryObject(platform: String, spec: DeviceSpec) -> [String: Any] {
         var object: [String: Any] = [
             "platform": platform, "machine": DeviceMachineGrouping.localDisplayName, "name": spec.name,

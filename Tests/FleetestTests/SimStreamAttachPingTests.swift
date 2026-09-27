@@ -7,7 +7,7 @@
 // 繰り返し殺されていた(M1Ultra の6台で観測)。**デバイスを1台も要らずに**確かめられるよう、
 // 実在しない UDID を渡して「アタッチに失敗する前に ping が出ているか」を見る。
 //
-// **リモートの台には手前にもう1段ある**: 拡張は `remote exec <host> -- api device-stream` を起こし、
+// **リモートのデバイスには手前にもう1段ある**: 拡張は `remote exec <host> -- api device-stream` を起こし、
 // そのコマンドが向こうで宛先を解決してからヘルパーへ exec する。解決(determineStates)は起動
 // ストームの最中に十数秒かかり、実測ではヘルパーが起きる前に 15 秒の期限が切れていた。
 // よってその段でも ping を流す(`ApiDeviceStreamCommand` / `StreamResolvePing`)。

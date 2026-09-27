@@ -50,7 +50,7 @@ public enum ProfileWriter {
     }
 
     /// 新しい実行プロファイル。devices は RunDeviceEntry の形(platform / machine / name / 実体)の辞書。
-    /// 既存の実行プロファイルへ台を足すときは RunProfileDeviceEditor.upsertingDevice を使う。
+    /// 既存の実行プロファイルへデバイスを足すときは RunProfileDeviceEditor.upsertingDevice を使う。
     /// reportDir は書かない(未指定 = 既定の reports。拡張のフォームは既定を透かしで見せる)
     public static func runProfile(appRef: String, devices: [[String: Any]]) -> [String: Any] {
         [

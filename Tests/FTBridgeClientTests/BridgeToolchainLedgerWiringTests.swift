@@ -38,7 +38,7 @@ final class BridgeToolchainLedgerWiringTests: XCTestCase {
     }
 
     /// `.reuse` の仕分けは純粋関数を通すこと。**ソースの順序で縛らない** —— 順序は
-    /// リファクタで動くが、リースのある台に触らない規律は `decide` が持つ
+    /// リファクタで動くが、リースのあるデバイスに触らない規律は `decide` が持つ
     func testReuseRoutesTheDecisionThroughThePureFunction() throws {
         let code = try Self.source
         XCTAssertTrue(code.contains("BridgeToolchainLedger.decide("),

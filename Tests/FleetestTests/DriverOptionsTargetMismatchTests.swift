@@ -1,6 +1,6 @@
 // platform と宛先(--port/--serial・api live serve の --udid)の食い違いは parse 時点(validate())
 // で断る。実測: `fleetest api list-apps --platform ios --serial X` は --serial を黙って捨てて既定の
-// iOS ブリッジの台を返していた。判定は FTCore.DeviceTargetConsistency(MCP と共有)、
+// iOS ブリッジのデバイスを返していた。判定は FTCore.DeviceTargetConsistency(MCP と共有)、
 // この OptionGroup(DriverOptions)を持つ各コマンドが自分の validate() から呼ぶ
 // (ArgumentParser は OptionGroup の validate() を自動では呼ばない)。
 
@@ -102,7 +102,7 @@ final class DriverOptionsTargetMismatchTests: XCTestCase {
             ["--platform", "ios", "--udid", "257324AF-0000", "--port", "8200"]))
     }
 
-    /// `--serial` だけなら android へ解決する(ios に倒すと既定ポートの別の台を操作する)
+    /// `--serial` だけなら android へ解決する(ios に倒すと既定ポートの別のデバイスを操作する)
     func testSerialAloneResolvesToAndroid() throws {
         XCTAssertEqual(try ApiListApps.parse(["--serial", "emulator-5554"]).driverOptions.resolvedPlatform, "android")
         XCTAssertEqual(try Tap.parse(["--serial", "emulator-5554", "--ref", "1"]).driverOptions.resolvedPlatform, "android")

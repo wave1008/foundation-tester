@@ -1127,7 +1127,7 @@ test(
   },
 );
 
-// ---- 他の機械の台(remoteDeviceOption / sameLiveDeviceRef の machine) ----
+// ---- 他の機械のデバイス(remoteDeviceOption / sameLiveDeviceRef の machine) ----
 
 test("remoteDeviceOption: タイル id と machine を保ち、port は渡さない(向こうの serve が udid で探す)", () => {
   const option = remoteDeviceOption({

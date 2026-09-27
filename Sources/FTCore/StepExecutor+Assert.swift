@@ -493,7 +493,7 @@ extension StepExecutor {
         if snapshot.webViewPath == WebViewPath.delegatedEmpty {
             noteCodesThisStep.insert(.webViewNotRendered)
         }
-        // **読めなかった木も同じ扱い**。委譲先が居ない台(iosInappEngine)ではこちらしか立たない
+        // **読めなかった木も同じ扱い**。委譲先が居ないデバイス(iosInappEngine)ではこちらしか立たない
         if snapshot.webViewPath == WebViewPath.domUnread {
             noteCodesThisStep.insert(.webViewUnread)
         }

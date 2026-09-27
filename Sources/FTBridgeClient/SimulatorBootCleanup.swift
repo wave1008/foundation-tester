@@ -1,5 +1,5 @@
 // iOS Simulator を simctl で起動する直前の掃除の唯一の入口(呼び出し口の一覧と「起動より前」の順序は
-// Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift が固定する)。**Booted の台には何もしない**
+// Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift が固定する)。**Booted のデバイスには何もしない**
 // (状態は1回だけ確かめる。一覧が読めないときも安全側で撃たない)。
 //   1. PosterBoard のスナップショット(SimulatorPosterCache)
 //   2. 統合ログの Special ストア(`<data>/var/db/diagnostics/Special/*.tracev3`)の古いファイル

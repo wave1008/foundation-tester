@@ -41,7 +41,7 @@ final class PortHolderListenerIdentityTests: XCTestCase {
 /// 再利用するだけの純粋関数なので、境界は「識別子が読めるか」の1点だけ確かめる
 final class PortHolderUDIDFromListenerTests: XCTestCase {
 
-    /// シミュレータの XCUITest ランナー(実地の busy 台の形)
+    /// シミュレータの XCUITest ランナー(実地の busy デバイスの形)
     func testReadsTheUDIDFromASimulatorRunnerCommandLine() {
         let listener = "pid 1: xcodebuild -destination platform=iOS Simulator,"
             + "id=E38DCA93-95F2-4DDF-B1FE-29527205D3EE -resultBundlePath /x"
@@ -70,7 +70,7 @@ final class PortHolderUDIDFromListenerTests: XCTestCase {
 /// `/status` が答えないポートの占有者が別のデバイスか(プロセスの実体から)。
 /// **busy は正常**(XCUITest は駆動中に答えない)なので、**肯定的に別デバイスと読めたときだけ**
 /// true —— ここを「待受している」だけで true にすると、自分の busy なブリッジを見捨てて
-/// 2本目のランナーを立てる(同じ台に2本立つと先代が蹴り出される)
+/// 2本目のランナーを立てる(同じデバイスに2本立つと先代が蹴り出される)
 final class RunnerDestinationTokenTests: XCTestCase {
 
     func testTokensAreReadFromEveryShapeOfCommandLine() {

@@ -170,16 +170,16 @@ interface PendingServeRequest {
 
 export class MonitorLiveController implements vscode.Disposable {
   private devices: LiveDeviceOption[] = [];
-  /** タイル右クリックで開いた**他の機械の台**(registerRemoteDevice)。list-devices はこの Mac の台しか
+  /** タイル右クリックで開いた**他の機械のデバイス**(registerRemoteDevice)。list-devices はこの Mac のデバイスしか
    * 返さないので、一覧を取り直すたびに applyDevices がここから足し戻す(足さないと選択が消えて
-   * 先頭の台へ戻る)。 */
+   * 先頭のデバイスへ戻る)。 */
   private readonly remoteOptions = new Map<string, LiveDeviceOption>();
   private selectedDeviceId: string | undefined;
   /** openDevice 用: 次の applyDevices で優先選択する id(消費したら undefined に戻す)。
    * **busy が解けた時点でも消化する**(setBusy)—— busy の原因が refreshDevices でない(画面取得・
    * 操作の最中)と applyDevices が来ず、右クリックの「ライブ操作」が黙って捨てられていた。 */
   private pendingSelectId: string | undefined;
-  /** booted の台へ切り替えたときの観測1回(requestOpenObservation)。busy の間は撃てない
+  /** booted のデバイスへ切り替えたときの観測1回(requestOpenObservation)。busy の間は撃てない
    * (refreshSnapshot は busy なら何もしない)ので、ここに控えて setBusy(false) で撃つ。 */
   private openObservationPending = false;
   /** preferPlatform 用: Run Test 自動オープン(liveTabHost.ts)が「実行中シナリオの platform」を渡す。
@@ -242,7 +242,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * (rebindServeProcess でリセットされる。詳細はファイル冒頭のコメント参照)。 */
   private serveGaveUp = false;
   /** 「全て終了」(suspendServeForSweep)で畳んでから resumeServeAfterSweep までの間 true。
-   * この間は startServeProcess が起動しない(掃討の途中で serve が立ち直り、台の印を書き戻して
+   * この間は startServeProcess が起動しない(掃討の途中で serve が立ち直り、デバイスの印を書き戻して
    * 掃討に断られる・掃討中のブリッジと取り合う、を作らない)。 */
   private serveSuspendedForSweep = false;
   /** 送信中(応答待ち)の serve リクエスト。同時に1件のみ(enqueueServeSend で直列化されるため)。 */
@@ -338,12 +338,12 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  /** **booted(台は起動済み・ブリッジ未接続)の台へ切り替えたら観測を1回撃つ**。serve の自動起動
+  /** **booted(デバイスは起動済み・ブリッジ未接続)のデバイスへ切り替えたら観測を1回撃つ**。serve の自動起動
    * (LiveBridgeAutoStarter)の引き金は観測・操作の接続拒否だけで、自動のフレーム取得(frame)は
-   * 受動的な観測として起動を撃たない(ApiLiveCommand.emitFrame)。撃たないと、ブリッジの無い台
+   * 受動的な観測として起動を撃たない(ApiLiveCommand.emitFrame)。撃たないと、ブリッジの無いデバイス
    * (実機では普通)を開いても「接続できません」のまま何も始まらない(実地: iPhone wave)。
    * 切り替えの全経路(openDevice / selectDevice / applyDevices / preferPlatform)が通る
-   * ensureServeProcess から呼ぶ。offline は撃たない(台そのものが起きていない = start-device の役目) */
+   * ensureServeProcess から呼ぶ。offline は撃たない(デバイスそのものが起きていない = start-device の役目) */
   private requestOpenObservation(): void {
     if (this.selectedOption()?.state !== "booted") {
       return;
@@ -721,7 +721,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * openForDevice → 「ライブ操作」タブの liveTab.js openLiveDevice)。
    * id はモニターと共通の `platform:name`(Swift 側 MonitorTarget.id と devicesToOptions が同形式)。
    * 一覧に無ければ取得し直してから選択し、接続済みなら snapshot まで自動取得する。 */
-  /** タイル右クリック(liveTabHost.ts の openForDevice)で開く**他の機械の台**を選択肢に加える。
+  /** タイル右クリック(liveTabHost.ts の openForDevice)で開く**他の機械のデバイス**を選択肢に加える。
    * 続く openDevice が一覧を取り直さずにこの id で選べるよう、this.devices にもすぐ入れる */
   registerRemoteDevice(option: LiveDeviceOption): void {
     this.remoteOptions.set(option.id, option);
@@ -749,8 +749,8 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     if (this.selectedDeviceId !== id) {
       // 一覧取得失敗(フォールバック)は refreshDevices が banner を出し済み。取れた一覧に居ないのは
-      // **他の機械の台**(モニターのタイル id が `ios:<machine>/<name>`)か消えた台 —— 黙ると前の台の
-      // 画面が出続け、開いたつもりの台と違う画面になる(実地: M1Ultra の iPhone wave)
+      // **他の機械のデバイス**(モニターのタイル id が `ios:<machine>/<name>`)か消えたデバイス —— 黙ると前のデバイスの
+      // 画面が出続け、開いたつもりのデバイスと違う画面になる(実地: M1Ultra の iPhone wave)
       if (this.devices.every((device) => device.id !== id) && this.devices[0]?.id !== FALLBACK_DEVICE_ID) {
         this.post({ type: "banner", message: t("live.deviceNotOpenable", { id }) });
       }
@@ -900,7 +900,7 @@ export class MonitorLiveController implements vscode.Disposable {
     if (device.platform === "ios" && device.udid) {
       serveArgs.push("--udid", device.udid);
     }
-    // 他の機械の台は**向こうで** serve を起こす(その台を USB で握っているのはその機械。この Mac から
+    // 他の機械のデバイスは**向こうで** serve を起こす(そのデバイスを USB で握っているのはその機械。この Mac から
     // Wi-Fi で2本目のランナーを立てると1台に2本になり両方落ちる)。NDJSON は ssh の stdin/stdout を
     // そのまま通る(remote exec の到達確認は -n で stdin を読まない = RemoteSetupCommand.swift)
     const args = device.machine ? ["remote", "exec", device.machine, "--", ...serveArgs] : serveArgs;
@@ -983,11 +983,11 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /**
-   * 「全て終了」の直前に呼ぶ。serve を止めて終了(close)まで待つ —— serve は終了時に自分の台の印
+   * 「全て終了」の直前に呼ぶ。serve を止めて終了(close)まで待つ —— serve は終了時に自分のデバイスの印
    * (`.fleetest/mcp-<鍵>.lease`。Sources/fleetest/LiveDeviceLease.swift)を消すので、これで
    * 全掃討(`devices down` の sweepRefusal)がこの印で丸ごと断られなくなる。掴んだままだと
    * 「MCP session が駆動中」と名指しされて何も止まらない(実地)。
-   * 他の機械の台(remote exec 越しの serve)も同じに畳む: 掃討はその機械へも分散し、向こうの印は
+   * 他の機械のデバイス(remote exec 越しの serve)も同じに畳む: 掃討はその機械へも分散し、向こうの印は
    * 向こうの serve が stdin EOF で消す(こちらで待つのは手元の子の close まで)。
    * resumeServeAfterSweep が呼ばれるまで serve は起動しない。
    */
@@ -1020,7 +1020,7 @@ export class MonitorLiveController implements vscode.Disposable {
 
   /** 「全て終了」が終わったら呼ぶ。起動の抑止を解き、パネル再オープンと同じ経路
    * (refreshDevices → applyDevices → ensureServeProcessForSelection)で serve を立て直す
-   * (選んでいた台が落ちた・ブリッジが消えた後の扱いをそちらに任せる)。 */
+   * (選んでいたデバイスが落ちた・ブリッジが消えた後の扱いをそちらに任せる)。 */
   resumeServeAfterSweep(): void {
     if (!this.serveSuspendedForSweep) {
       return;
@@ -1036,7 +1036,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * 個別に this.serveProcess を扱うため、こちらは呼ばない)。 */
   private stopServeProcess(): void {
     // 表示ごと解く(予約だけ消すと「表示中」の記録が残り、次の serve も起動中だったとき
-    // 値が変わらず予約が掛からない = 同じ台の切り替えで「接続中」が残り続ける)
+    // 値が変わらず予約が掛からない = 同じデバイスの切り替えで「接続中」が残り続ける)
     this.applyBridgeStarting(false);
     if (this.serveRestartTimer) {
       clearTimeout(this.serveRestartTimer);
@@ -1310,10 +1310,10 @@ export class MonitorLiveController implements vscode.Disposable {
     const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
 
     // **iOS 実機は simstream を使わない**(CoreSimulator の私有 API = シミュレータ専用。実機の UDID は
-    // 「invalid UDID」で即終了し、再起動を繰り返す間はポーリングも止まる = 前の台の絵が残って見えた。
+    // 「invalid UDID」で即終了し、再起動を繰り返す間はポーリングも止まる = 前のデバイスの絵が残って見えた。
     // モニターのタイルと同じ規則: monitorDeviceStreamController.ts)。ポーリング(serve の frame)へ直行する
     const physical = this.selectedOption()?.kind === "physical";
-    // 他の機械の台も配信は張らない(simstream/androidstream はこの Mac の台しか映せない)。ポーリング
+    // 他の機械のデバイスも配信は張らない(simstream/androidstream はこの Mac のデバイスしか映せない)。ポーリング
     // (serve の frame)は serve ごと向こうで動くのでそのまま使える
     const remote = device?.machine !== undefined;
     if (!pollingForced && this.liveTabVisible && config.iosStreamEnabled && device?.platform === "ios" && device.udid

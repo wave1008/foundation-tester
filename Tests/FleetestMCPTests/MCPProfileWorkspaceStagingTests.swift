@@ -2,9 +2,9 @@
 // appPath の原本をワークスペースの apps/ へ運ぶこと。resolved.apps[].appPath は常にステージ先を
 // 指すので、運ばずにブリッジ準備へ渡すと autoInstall が存在しないパスを simctl install して落ちた
 // (CLI の ProfileRunner/ApiRunCommand だけが運んでいた)。
-// デバイスに触らないよう、Android の台だけのプロファイルに platformArg "ios" を渡して
-// 「台が無い」で抜けさせる —— ステージはその手前で済んでいなければならない
-// (resolved.apps は台の居る OS だけなので、運ばれるのは android の appPath)。
+// デバイスに触らないよう、Android のデバイスだけのプロファイルに platformArg "ios" を渡して
+// 「デバイスが無い」で抜けさせる —— ステージはその手前で済んでいなければならない
+// (resolved.apps はデバイスの居る OS だけなので、運ばれるのは android の appPath)。
 // プロジェクトは FT_PACKAGE_ROOT で一時ディレクトリへ差し替える(env はプロセス全体なので必ず戻す)。
 
 import XCTest

@@ -231,7 +231,7 @@ extension MCPServer {
             }
         }
 
-        // **実デバイスへ触る手前で MCP の台の印を書く**(MCPServer+Dispatch.swift の
+        // **実デバイスへ触る手前で MCP のデバイスの印を書く**(MCPServer+Dispatch.swift の
         // markDeviceInUse と同じ印・同じ鍵形式=生の UDID/serial だが、この経路は driver(args) を
         // 通らず udids[]/connectedAndroidSerials[] に何も記録しないため、resolveProfileTarget/
         // 直指定で得た `connection` から直接引く。dry-run(NullDriver・上の dryRun 関数)は

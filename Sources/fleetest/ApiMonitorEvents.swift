@@ -26,7 +26,7 @@ struct ApiMonitorDevicesEvent: Codable {
     let devices: [ApiMonitorDeviceInfo]
 }
 
-/// 1台のストレージ計測が終わった瞬間に出す(周期の monitorDevices を待たない = 終わった台から画面が変わる)。
+/// 1台のストレージ計測が終わった瞬間に出す(周期の monitorDevices を待たない = 終わったデバイスから画面が変わる)。
 /// 欄は ApiMonitorDeviceInfo の storage / storageMeasuring / storageRefreshId と同じ意味。`device` はタイルの id
 /// (**var** —— 子は "platform:name" で出し、中継する RemoteMonitorFanout がマシン付きに直して、保持している
 /// 子の monitorDevices も同じ値へ書き換える。書き換えないと親の次の周期で古い「測定中」に戻る)。
@@ -156,7 +156,7 @@ struct ApiMonitorRunsEvent: Codable, Equatable {
 /// ApiScenarioInfo 等の「省略可能フィールドは null を明示する」方針とは別)
 struct ApiMonitorDeviceInfo: Codable {
     /// **var なのは RemoteMonitorFanout が書き戻すため**。子(ランナー)は畳んだプロファイルを
-    /// 見るので自分の台を "local" と名乗り、id にホストが入らない。親が (host, name) の id へ
+    /// 見るので自分のデバイスを "local" と名乗り、id にホストが入らない。親が (host, name) の id へ
     /// 直してからタイルへ渡す(RemoteMonitorFanout.hostScoped)
     var id: String
     let name: String
@@ -197,7 +197,7 @@ struct ApiMonitorDeviceInfo: Codable {
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.machine)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// **var なのは id と同じ理由**(RemoteMonitorFanout が書き戻す)。子は畳んだプロファイルを
-    /// 見るので自分の台を "local" と見なし、machine が nil になる —— 親が自分の知っている
+    /// 見るので自分のデバイスを "local" と見なし、machine が nil になる —— 親が自分の知っている
     /// ホストラベルを入れないと、リモートのタイルからマシンのバッジが消える
     var machine: String?
     /// 画面が凍結している(一様フレームが2サイクル連続)。**この値は1サイクル遅れる** ——
@@ -210,9 +210,9 @@ struct ApiMonitorDeviceInfo: Codable {
     /// mergedDevices が WiFi 越しの分身の抑制に使う(拡張は読まない)。
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     let wired: Bool?
-    /// **他の発行者・他のウィンドウがこの台の画面配信を張っている**(共有ランナーは
+    /// **他の発行者・他のウィンドウがこのデバイスの画面配信を張っている**(共有ランナーは
     /// FTCore.StreamLease、同じ Mac の別ウィンドウは FTCore.LocalStreamHolder)。
-    /// 拡張はこの台の配信を起こさずポーリングのままにする —— 同じ台を人数ぶん捕捉すると
+    /// 拡張はこのデバイスの配信を起こさずポーリングのままにする —— 同じデバイスを人数ぶん捕捉すると
     /// ランナーが痛む(docs/remote-runner.md §18.2)。誰も張っていなければ false
     /// (どちらの判定もこの機械の中で完結するので「不明」は無い。nil は観測そのものを
     /// していない経路 = 合成デバイスの行だけ)。
@@ -220,7 +220,7 @@ struct ApiMonitorDeviceInfo: Codable {
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.streamedByOther)
     let streamedByOther: Bool?
     /// Android 実機のブリッジ(常駐 APK)が生きているか。**設定するのは
-    /// `shouldProbeBridge` が true の台(Android 実機の connected)だけ** —— iOS の
+    /// `shouldProbeBridge` が true のデバイス(Android 実機の connected)だけ** —— iOS の
     /// `state==="booted"`(ブリッジ無しの意味)と判定の出所が違う。Android の `state` は
     /// 「adb に見えるか」と「ブート完了か」しか表さず、ブリッジの有無とは無関係なので専用の欄にした。
     /// **観測できない(adb 失敗/timeout)ときは nil**(「不明」)—— false に丸めると、
@@ -234,10 +234,10 @@ struct ApiMonitorDeviceInfo: Codable {
     /// (データディレクトリの並列走査 + ホストボリュームの空き)。docs/results-json.md 対象外
     /// (results/ ではなく api monitor だけの欄)
     var storage: DeviceStorageInfo?
-    /// この台のストレージを今測っている(更新ボタンで積まれ、まだ終わっていない)。拡張の進捗表示が読む
+    /// このデバイスのストレージを今測っている(更新ボタンで積まれ、まだ終わっていない)。拡張の進捗表示が読む
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.storageMeasuring)
     var storageMeasuring: Bool
-    /// この台を観測しているモニターが最後に受け取った storageRefresh の id(受け取っていなければ nil)。
+    /// このデバイスを観測しているモニターが最後に受け取った storageRefresh の id(受け取っていなければ nil)。
     /// 拡張は「自分の要求 id 以上 かつ storageMeasuring == false」を測り終えたと数える
     var storageRefreshId: Int?
 }

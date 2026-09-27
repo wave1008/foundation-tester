@@ -1,7 +1,7 @@
-// 対話セッション(MCP / ライブ操作)が操作している台の印。RunLease の姉妹型(置き場所 `.fleetest/`・
-// 鍵 = iOS はシミュレータ UDID / Android は adb serial も同じ)。書き手: MCPServer.call(台を指す
+// 対話セッション(MCP / ライブ操作)が操作しているデバイスの印。RunLease の姉妹型(置き場所 `.fleetest/`・
+// 鍵 = iOS はシミュレータ UDID / Android は adb serial も同じ)。書き手: MCPServer.call(デバイスを指す
 // ツールが通るたびに上書き)・ApiLiveServe(コマンドが通るたびに上書き)。どちらも終了時に自分の印を消す。
-// 読み手: run の台の絞り込み(ProfileRunner.limitingDevicesAvoidingMCP)・台を止める操作の門
+// 読み手: run のデバイスの絞り込み(ProfileRunner.limitingDevicesAvoidingMCP)・デバイスを止める操作の門
 // (DeviceBooter.deviceInUseRefusal / sweepRefusal)・別の対話セッション(writeAndWarnIfInUse)。
 // 死んだ印の掃除は BridgeProvisioner.sweepStaleLeases。
 // **ファイル名接頭辞は `mcp-` のまま・書き手を区別しない**(読み手を増やさないため——ライブ操作が
@@ -9,8 +9,8 @@
 // 実装コストに見合わないので、ライブ操作も同じ「対話セッション」の一種として扱う簡易化であって誤りではない)。
 // **生死は「pid + そのプロセスの開始時刻」で見る(時間の閾値を置かない)** —— run はこの印を「避ける」だけで断らない
 // (ユーザー決定「避けて、足りなければ警告して使う」)ので、使い終わった後も対話セッションが生きている間は残る印の損は
-// 「その台を避ける」に収まる。閾値を置くと考え中のエージェントの台を run が奪う形が戻る。
-// 開始時刻まで見るのは、保持者が消えた後に同じ pid が別のプロセスへ再利用されると、印が生き返って台を避け続けるため。
+// 「そのデバイスを避ける」に収まる。閾値を置くと考え中のエージェントのデバイスを run が奪う形が戻る。
+// 開始時刻まで見るのは、保持者が消えた後に同じ pid が別のプロセスへ再利用されると、印が生き返ってデバイスを避け続けるため。
 //
 // **ファイルは「鍵 × pid」ごとに1つ**(`mcp-<鍵>@<pid>.lease`)。1台を複数の対話セッションが
 // 同時に触るのは正常(避けて・警告して使う、が両者の言い分)なので、1台1ファイルにすると後から
@@ -79,7 +79,7 @@ public enum MCPDeviceLease {
     /// 1つの鍵の生きている保持者(`excluding` の pid なら nil)。同じ鍵を複数の対話セッションが
     /// 同時に持つことがあるが、この API は1件しか返せないので**最小 pid** を返す(呼び手は
     /// 「使用中か」と代表の pid しか見ないので、どれを選んでも意味は変わらない)。
-    /// 台を止める操作の門(DeviceBooter)が使う
+    /// デバイスを止める操作の門(DeviceBooter)が使う
     public static func holderPID(stateDir: URL, key: String, excluding: Set<Int32>) -> Int32? {
         liveEntries(stateDir: stateDir, excluding: excluding)
             .filter { $0.key == key }.map { $0.pid }.min()
@@ -96,7 +96,7 @@ public enum MCPDeviceLease {
         return holders
     }
 
-    /// 印を書き、その台を run か**別の対話セッション**(pid 別。MCP でもライブ操作でも区別しない)が
+    /// 印を書き、そのデバイスを run か**別の対話セッション**(pid 別。MCP でもライブ操作でも区別しない)が
     /// 今使用中なら警告文を返す(`MCPServer.markDeviceInUse` / `ApiLiveServe` / ft_run_scenario の
     /// 共通口。断らない = run の衝突と同じ扱い)。write は自分の (key, pid) のファイルしか触らない
     /// ので、書いてから読んでも他人の印を消さない。**deviceKey は呼び手が解決済みの UDID/serial を

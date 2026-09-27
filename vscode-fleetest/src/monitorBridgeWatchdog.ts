@@ -6,7 +6,7 @@
 //
 // 契約: webview へは { type: "bridgeWatch", name, machine, phase } を post する(name は deviceOpBusy と
 // 同じ名前空間=デバイス論理名。monitorModel.ts の MonitorToWebviewMessage 参照)。
-// **machine を落とさない** —— 一意なのは (machine, name) で、同名の台が別の機械に居るのは通常。
+// **machine を落とさない** —— 一意なのは (machine, name) で、同名のデバイスが別の機械に居るのは通常。
 // 落とすと webview の findTileByName が手元の同名タイルに当たり、向こうの異常を手元に表示する。
 
 import { t } from "./i18n";
@@ -62,7 +62,7 @@ interface DeviceWatchEntry {
 }
 
 /** **machine は手元のとき欄ごと省く**(「省略 = 手元」が monitorDevices / wipeStatus と共通の綴り)。
- * `machine: undefined` を載せると、手元の台のメッセージが「machine を持つ」別の形になる */
+ * `machine: undefined` を載せると、手元のデバイスのメッセージが「machine を持つ」別の形になる */
 function watchMessage(name: string, machine: string | undefined,
                       phase: BridgeWatchMessage["phase"]): BridgeWatchMessage {
   return machine === undefined
@@ -107,12 +107,12 @@ export class MonitorBridgeWatchdog {
       if (device.kind === "physical") {
         continue;
       }
-      // **リモートの台も見る**。成立の条件は2つとも揃っている ——
+      // **リモートのデバイスも見る**。成立の条件は2つとも揃っている ——
       // ①修復手段: lifecycle ジョブは machine を運べ、リモートは
       //   `remote exec <machine> -- api start-device … --device-machine local` で回る
       // ②同名衝突: 記録の鍵を device.id にした(id は machine 込みで一意。
       //   `DeviceMachineGrouping.workerID`)。name で持っていた頃は「向こうの connected が
-      //   手元のハングを隠す / 向こうの booted が手元の健全な台を再起動する」が起きた
+      //   手元のハングを隠す / 向こうの booted が手元の健全なデバイスを再起動する」が起きた
       this.observeOne(device.id, device.name, device.machine, device.state, device.inRun);
     }
   }
@@ -168,8 +168,8 @@ export class MonitorBridgeWatchdog {
 
     if (this.deps.isDeviceLifecycleQueueBusy()) {
       // **一括起動/停止の最中は数えない・宣言しない**(inRun と同じ扱い。実害: 供給中の
-      // 台に「booted が5回連続したためブリッジ無応答とみなします」を出していた —— 10秒後には
-      // xcuitest bridge ready が来る、まだ起動しきっていないだけの台だった)。修復は下の門でも
+      // デバイスに「booted が5回連続したためブリッジ無応答とみなします」を出していた —— 10秒後には
+      // xcuitest bridge ready が来る、まだ起動しきっていないだけのデバイスだった)。修復は下の門でも
       // 止まるので実害は誤検知の警告だけだったが、**出ない警告に寄せる**(検知は誤検知0が条件)。
       entry.bootedStreak = 0;
       return;

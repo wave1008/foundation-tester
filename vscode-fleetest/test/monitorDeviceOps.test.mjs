@@ -393,7 +393,7 @@ test("同じ台に別の操作が載っている間は wipe を積まない(戻�
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "エミュ1", op: "down" });
     const target = { name: "エミュ1", platform: "android", identifier: "Pixel_8" };
     assert.equal(deviceOps.enqueueWipe([target]), 0);
-    // 別の機械の同名は別の台なので積める((machine, name) で引く)
+    // 別の機械の同名は別のデバイスなので積める((machine, name) で引く)
     assert.equal(deviceOps.enqueueWipe([{ ...target, machine: "M1Max" }]), 1);
     await waitUntilIdle(deviceOps);
   } finally {
@@ -403,7 +403,7 @@ test("同じ台に別の操作が載っている間は wipe を積まない(戻�
 
 // --- 別の機械のデバイスの単体操作 ---------------------------------------------------------
 // 実害の形(2026-08-17 のレビュー): `api start-device --name X` は**手元の**登録を
-// 名前だけで引く(ApiDeviceOperation.findDevice)。同名の台が別の機械にも居るのは通常なので、
+// 名前だけで引く(ApiDeviceOperation.findDevice)。同名のデバイスが別の機械にも居るのは通常なので、
 // リモートのタイルから起動すると**別の機械の設定でこの Mac にシミュレータが1台できる**
 // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律に揃える。
 
@@ -416,7 +416,7 @@ test("リモートのデバイスの起動はその機械で実行する(remote 
     await waitUntilIdle(deviceOps);
     const line = argvLines(dir).at(-1);
     assert.match(line, /^remote exec M1Max -- api start-device/, "その機械で起こす");
-    // **向こうでは "local"** —— 送ったプロファイルは自分の台を machine:"local" に畳んである
+    // **向こうでは "local"** —— 送ったプロファイルは自分のデバイスを machine:"local" に畳んである
     // (RunnerProfileView)。エイリアスを渡すと向こうで一致せず
     // "device not found: <名前> on M1Max" になる(2026-08-29 に実機で確認)
     assert.match(line, /--device-machine local/);
@@ -507,7 +507,7 @@ test("手元のデバイスは remote exec を経由せず、手元の台に絞�
 });
 
 // キュー状態(deviceOpBusy)は **(name, machine)** で宛先を決める。machine を載せないと webview が
-// 同名の先頭のタイル(= 手元)を書き換え、「別の機械の台を停止」で手元のタイルに
+// 同名の先頭のタイル(= 手元)を書き換え、「別の機械のデバイスを停止」で手元のタイルに
 // 「シャットダウン中」が出る(2026-08-17 の実害)。
 test("リモートのジョブのキュー状態には machine が載る", async () => {
   const { dir, binaryPath } = makeMockBinary();
@@ -539,8 +539,8 @@ test("手元のジョブのキュー状態は machine を持たない(= 手元�
   }
 });
 
-// 同名の台を2機で同時に操作しても、状態が混ざらないこと。**キューの照会が名前だけだと
-// 先に見つかったジョブの op を両方のタイルへ出す**(「起動中」のはずの台が「停止中」になる)。
+// 同名のデバイスを2機で同時に操作しても、状態が混ざらないこと。**キューの照会が名前だけだと
+// 先に見つかったジョブの op を両方のタイルへ出す**(「起動中」のはずのデバイスが「停止中」になる)。
 test("同名の台を2機で同時に操作しても、それぞれのタイルに自分の状態が出る", async () => {
   const { dir, binaryPath } = makeMockBinary();
   const { deps, posts } = makeDeps(binaryPath);
@@ -557,7 +557,7 @@ test("同名の台を2機で同時に操作しても、それぞれのタイル�
     assert.ok(remote.every((m) => m.op === "down"), "M1Max の台は停止中");
     assert.ok(local.every((m) => m.op === "up"), "手元の台は起動中");
     // **機械が違えば並行してよい** —— 同じデバイスへの二重操作を避けるガードを名前だけで
-    // 見ると、別の機械の同名の台が「同じデバイス」に見えて直列化される
+    // 見ると、別の機械の同名のデバイスが「同じデバイス」に見えて直列化される
     assert.ok(remote.some((m) => m.status === "running"), "M1Max の台は実行中まで進む");
     assert.ok(local.some((m) => m.status === "running"), "手元の台も待たされずに実行中まで進む");
     await waitUntilIdle(deviceOps);
@@ -631,7 +631,7 @@ test("起動待ち(キュー)をキャンセルするとキューから外すだ
   const { deps } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    // 同じ台の down が実行中の間、up は順番待ちになる(再起動の down→up と同じ形)
+    // 同じデバイスの down が実行中の間、up は順番待ちになる(再起動の down→up と同じ形)
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "Dev", op: "down" });
     deviceOps.enqueueLifecycleJob({ kind: "device", name: "Dev", op: "up" });
     deviceOps.cancelDeviceUp("Dev", undefined);
@@ -933,7 +933,7 @@ test("stderr が何も無ければ exit code だけでもバナーへ出す(黙�
 });
 
 // 「GPU で再起動」の宛先。`api restart-devices` は手元専用(ApiDevicesRestart の
-// foreign: .notHandled)なので、リモートのタイルから名前だけで積むと**手元の同名の台**を
+// foreign: .notHandled)なので、リモートのタイルから名前だけで積むと**手元の同名のデバイス**を
 // 再起動していた(実害: リモート機の CPU バッジ機に「GPU で再起動」→ この Mac のエミュレータが落ちる)。
 // リモートはタイルの起動/停止と同じ device ジョブ(remote exec + --device-machine local)へ回す。
 test("リモートのタイルの「GPU で再起動」はその機械で down→up し、手元の restart-devices を撃たない", async () => {
@@ -941,7 +941,7 @@ test("リモートのタイルの「GPU で再起動」はその機械で down�
   const { deps, stopDeviceStreamsCalls } = makeDeps(binaryPath);
   const deviceOps = new MonitorDeviceOps(deps);
   try {
-    // 手元の同名の台が CPU フォールバック中でも、向こうの up に --gpu を付けない
+    // 手元の同名のデバイスが CPU フォールバック中でも、向こうの up に --gpu を付けない
     deviceOps.markCpuRender("エミュ1");
     deviceOps.restartWithGpu("エミュ1", "M1Max");
     await waitUntilIdle(deviceOps);

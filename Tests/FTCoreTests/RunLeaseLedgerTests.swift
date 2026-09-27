@@ -120,8 +120,8 @@ final class RunLeaseLedgerTests: XCTestCase {
         }
     }
 
-    /// 離脱した台の run-lease は runWorker では外さず、superviseWorker が**復帰を諦めたときだけ**外す。
-    /// 離脱時に外すと、復帰(数十秒)の間にモニターの watchdog と配信がその台へ割り込む
+    /// 離脱したデバイスの run-lease は runWorker では外さず、superviseWorker が**復帰を諦めたときだけ**外す。
+    /// 離脱時に外すと、復帰(数十秒)の間にモニターの watchdog と配信がそのデバイスへ割り込む
     func testRetiredWorkerKeepsItsRunLeaseUntilTheSupervisorGivesUp() throws {
         let lines = try orchestratorCode
         guard let runWorker = body(of: "private func runWorker(", in: lines),

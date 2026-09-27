@@ -21,7 +21,7 @@ final class SlowWorkerDetectorTests: XCTestCase {
         let slow = record(worker: "ios:iPhone 17 Pro-04",
                           snapshotSamples: Array(repeating: 4300, count: 41))
         let fastSamples = [4, 6, 8, 10, 12, 14, 16, 18, 20, 12, 10, 8]
-        // 遅い台(-04)と同じ名前を他レーンに使わない(同名なら標本が 1 台にまとまる)
+        // 遅いデバイス(-04)と同じ名前を他レーンに使わない(同名なら標本が 1 台にまとまる)
         let others = [1, 2, 3, 5, 6, 7, 8].map { lane in
             record(worker: "ios:iPhone 17 Pro-0\(lane)", scenarioID: "Foo.other\(lane)",
                   snapshotSamples: fastSamples)
@@ -43,7 +43,7 @@ final class SlowWorkerDetectorTests: XCTestCase {
     }
 
     /// 全台が同じ速さで遅い(ホスト負荷)ときは、相対条件(他の10倍)を満たさないので
-    /// 1台のせいにしない —— 誤って特定の台を名指ししない
+    /// 1台のせいにしない —— 誤って特定のデバイスを名指ししない
     func testAllLanesEquallySlowUnderHostLoadDetectsNothing() {
         let records = (1...8).map { lane in
             record(worker: "ios:iPhone 17 Pro-0\(lane)", scenarioID: "Foo.host\(lane)",
@@ -101,7 +101,7 @@ final class SlowWorkerDetectorTests: XCTestCase {
         XCTAssertTrue(SlowWorkerDetector.detect(records: [noTimeline, others]).isEmpty)
     }
 
-    // MARK: - 間欠的な劣化(中央値は正常域でも一部の照会だけ遅い台)
+    // MARK: - 間欠的な劣化(中央値は正常域でも一部の照会だけ遅いデバイス)
 
     /// 実測の再現1(2026-09-16 負荷テスト・M1Max -04・21:55 ios-inapp run): 中央値は8msで
     /// 正常域なのに20/46の照会だけ3579ms(p90)に張り付く。他レーン(4台・計180標本)は
@@ -222,8 +222,8 @@ final class SlowWorkerDetectorTests: XCTestCase {
                       "標本9本中2本の遅延は間欠判定の最小本数(5)未満なので立たない")
     }
 
-    /// **警告は遅さの帰属(台かランナーか)を書かない**。入力はワーカーごとの snapshotMs だけで
-    /// 区別が付かず、2026-09-16 には同じ台について供給時プローブが「ランナーの stale remote
+    /// **警告は遅さの帰属(デバイスかランナーか)を書かない**。入力はワーカーごとの snapshotMs だけで
+    /// 区別が付かず、2026-09-16 には同じデバイスについて供給時プローブが「ランナーの stale remote
     /// element」と名指ししている run でこの警告が「ランナーではない」と言っていた。
     /// 両 Kind に掛ける(片方だけ直すと残った側から戻る)
     func testConsoleWarningStatesFactsWithoutAttributingTheCause() {

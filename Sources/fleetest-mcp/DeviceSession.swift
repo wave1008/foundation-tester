@@ -144,7 +144,7 @@ struct DeviceSession {
     var preparedPhysicalAndroid = false
     /// **このセッションで xcuitest ブリッジの自動建て直し(bridgeConnectionRefused からの復帰)を
     /// 一度試して失敗した**か。建て直しの成否に関わらず次にまた死んだら再挑戦してよいので、
-    /// 成功時は立てない(失敗のときだけ = 環境そのものが壊れている台へ分単位のビルドを
+    /// 成功時は立てない(失敗のときだけ = 環境そのものが壊れているデバイスへ分単位のビルドを
     /// 撃ち続けない。MCPServer+BridgeRecovery.swift 参照)
     var bridgeRecoveryFailed = false
     /// 版ズレの内容。ft_status が「失敗するが理由を返す」ために覚えておく

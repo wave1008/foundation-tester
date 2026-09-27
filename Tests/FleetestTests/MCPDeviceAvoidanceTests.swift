@@ -1,8 +1,8 @@
-// MCP(fleetest-mcp)が操作している台を run が黙って奪わない(ユーザー決定「避けて、足りなければ警告して使う」):
-// ①MCP は台を指すツールのたびに `.fleetest/mcp-<鍵>.lease` へ自分の pid を書く
-// ②run は印のある台を、ほかの台で本数ぶん足りるなら予備にも残さない。足りないときだけ使い、警告で名指しする
-// ③MCP は run の lease がある台を触ったら応答の先頭で言う(断らない)
-// 台の鍵を simctl/adb を引かずに決めるため、ここでは物理 iOS(udid の記載をそのまま使う)で組む。
+// MCP(fleetest-mcp)が操作しているデバイスを run が黙って奪わない(ユーザー決定「避けて、足りなければ警告して使う」):
+// ①MCP はデバイスを指すツールのたびに `.fleetest/mcp-<鍵>.lease` へ自分の pid を書く
+// ②run は印のあるデバイスを、ほかのデバイスで本数ぶん足りるなら予備にも残さない。足りないときだけ使い、警告で名指しする
+// ③MCP は run の lease があるデバイスを触ったら応答の先頭で言う(断らない)
+// デバイスの鍵を simctl/adb を引かずに決めるため、ここでは物理 iOS(udid の記載をそのまま使う)で組む。
 
 import XCTest
 @testable import FTCore
@@ -59,14 +59,14 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
         XCTAssertEqual(Set(kept.devices.map(\.name)), ["A", "B"])
     }
 
-    /// 予備にも残さない(残した台はシナリオを早い者勝ちで取り合うので、予備でも結局そこで走る)
+    /// 予備にも残さない(残したデバイスはシナリオを早い者勝ちで取り合うので、予備でも結局そこで走る)
     func testAnAvoidedDeviceIsNotKeptEvenAsTheSpare() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB")
         let kept = profile([a, b]).limitingDevices(iosScenarios: 1, androidScenarios: 0, avoiding: { $0 == a })
         XCTAssertEqual(kept.devices.map(\.name), ["B"])
     }
 
-    /// 本数が分からない(0 = 絞らない)ときも、ほかに台があれば外す / 全部が避ける台なら使う
+    /// 本数が分からない(0 = 絞らない)ときも、ほかにデバイスがあれば外す / 全部が避けるデバイスなら使う
     func testUntrimmedRunsDropAvoidedDevicesOnlyWhenOthersExist() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
         XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: 0, androidScenarios: 0,
@@ -75,7 +75,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
                                                        avoiding: { _ in true }).devices.map(\.name), ["A", "B"])
     }
 
-    /// 避ける台が無ければ従来と同じ(本数 + 予備1台)
+    /// 避けるデバイスが無ければ従来と同じ(本数 + 予備1台)
     func testNothingAvoidedKeepsTheOldTrimming() {
         let a = phone("A", udid: "UA"), b = phone("B", udid: "UB"), c = phone("C", udid: "UC")
         XCTAssertEqual(profile([a, b, c]).limitingDevices(iosScenarios: 1, androidScenarios: 0,
@@ -157,7 +157,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
     }
 
     /// **導出が成り立たない形では内訳を書かない**: `deviceKeepCount` は台数でクランプされる
-    /// (min(available, scenarios + 1))ので、本数より台が少ない run では needed が
+    /// (min(available, scenarios + 1))ので、本数よりデバイスが少ない run では needed が
     /// 「本数 + 予備1台」にならない。そこで括弧に「scenarios + 1 spare」と書くと嘘になる
     func testShortageReasonDoesNotDeriveWhenTheKeepCountIsClamped() {
         let text = ProfileRunner.shortageReason(needed: 3, scenarios: 10, free: 2)
@@ -173,8 +173,8 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
                        "no other device was free")
     }
 
-    /// 実測(06:39): 空いている台(1台)があっても、必要レーン数(本数+予備1台=3)に
-    /// 足りないと MCP の台を2台とも使う。文言は「空きが無い」ではなく数で言う
+    /// 実測(06:39): 空いているデバイス(1台)があっても、必要レーン数(本数+予備1台=3)に
+    /// 足りないと MCP のデバイスを2台とも使う。文言は「空きが無い」ではなく数で言う
     func testRunNamesTheRealShortageInTheWarning() {
         MCPDeviceLease.write(stateDir: stateDir, key: "UA", pid: otherLivePID)
         MCPDeviceLease.write(stateDir: stateDir, key: "UD", pid: otherLivePID)

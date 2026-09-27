@@ -7,7 +7,7 @@
 // 書く先は RunLease と同一ファイルなので、読み手(ApiMonitorCommand の inRun 判定)は変更不要。
 //
 // **orchestrator が書き始めたキーは handOff で手放す**(呼び出し側 = 注入する writeRunLease)。
-// 手放さないと、担当を終えたワーカーが消した lease をこちらのハートビートが書き戻し、その台は
+// 手放さないと、担当を終えたワーカーが消した lease をこちらのハートビートが書き戻し、そのデバイスは
 // run の最後まで run 中に見える(消えている数秒の間にモニターが配信を張り、書き戻しで畳む明滅になる)。
 
 import Foundation
@@ -59,8 +59,8 @@ public final class SupplyLeaseHolder: @unchecked Sendable {
         lock.unlock()
     }
 
-    /// 予定していたが結局この run では使わない台(供給失敗でレーンから外れた等)の lease を取り消す。
-    /// **`handOff` と違いファイルも消す** —— handOff は持ち主が orchestrator へ移るだけで台は
+    /// 予定していたが結局この run では使わないデバイス(供給失敗でレーンから外れた等)の lease を取り消す。
+    /// **`handOff` と違いファイルも消す** —— handOff は持ち主が orchestrator へ移るだけでデバイスは
     /// 引き続きこの run が使うが、これは「この run はもう使わない」ので lease ごと手放す
     public func releaseKeys(_ keysToRelease: [String]) {
         lock.lock()

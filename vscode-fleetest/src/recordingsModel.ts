@@ -71,9 +71,9 @@ export function firstRecordingEntryByScenario(
   return map;
 }
 
-/** 録画を撮った台。platform はエントリの申告(worker 接頭辞ではなく platform 欄が正)。
+/** 録画を撮ったデバイス。platform はエントリの申告(worker 接頭辞ではなく platform 欄が正)。
  *  machine は run.json 由来(その run を走らせた機械。読めない古い記録では null)——
- *  **同じ台の名前は機械をまたいで重複する**ので、束ねたセッションでは machine 込みで区別する。 */
+ *  **同じデバイスの名前は機械をまたいで重複する**ので、束ねたセッションでは machine 込みで区別する。 */
 export interface RecordingDeviceRef {
   readonly platform: "ios" | "android";
   readonly device: string;
@@ -95,7 +95,7 @@ export function deviceNameFromWorker(worker: string, platform: string): string {
   return (worker.startsWith(prefix) ? worker.slice(prefix.length) : worker).trim();
 }
 
-/** scenarioID → 実行した台(重複 scenarioID は firstRecordingEntryByScenario と同じ「最初の1件」)。 */
+/** scenarioID → 実行したデバイス(重複 scenarioID は firstRecordingEntryByScenario と同じ「最初の1件」)。 */
 export function buildScenarioDevices(
   recordings: readonly RecordingEntry[],
   machine: string | null = null,

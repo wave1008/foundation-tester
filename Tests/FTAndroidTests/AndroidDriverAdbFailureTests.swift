@@ -1,4 +1,4 @@
-// adb が失敗した回(台が居ない等)を成功に畳まない: hideKeyboard は dumpsys が読めないと
+// adb が失敗した回(デバイスが居ない等)を成功に畳まない: hideKeyboard は dumpsys が読めないと
 // 「キーボードは出ていない」と読み、terminate は force-stop の失敗を捨てて、どちらも成功を返していた
 // (負荷テスト: 居ない emulator-5560 へのライブ操作 terminate / hideKeyboard が ok:true)
 

@@ -33,7 +33,7 @@ final class SimulatorPosterCachePurgeWiringTests: XCTestCase {
                     offenders.append("\(url.lastPathComponent):\(index + 1) (enclosing func not found)")
                     continue
                 }
-                // **boot より前に**あること(後ろに置くと台は Booted なので purge は何もしない)
+                // **boot より前に**あること(後ろに置くとデバイスは Booted なので purge は何もしない)
                 if !codeLines[range.lowerBound...index].joined(separator: "\n").contains(Self.purgeCall) {
                     offenders.append("\(url.lastPathComponent):\(index + 1)")
                 }

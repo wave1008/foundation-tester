@@ -102,8 +102,8 @@
 // 理由に止めて建て直した実害がある)。**`--port` を明示していれば**不一致は
 // bridgeIdentityMismatch で断つ(利用者が決めた宛先を勝手に変えない)。**既定ポートへの
 // フォールバックなら**断らない —— `BridgeDiscovery.scan` でその udid のポートへ乗り換えるか、
-// 見つからなければ別の台のブリッジには触れず空きポートを充てて自動起動へ回す(でないと、
-// 自動起動が想定している「ブリッジ未着手の台を既定ポートで開く」場面そのものが塞がれる)。
+// 見つからなければ別のデバイスのブリッジには触れず空きポートを充てて自動起動へ回す(でないと、
+// 自動起動が想定している「ブリッジ未着手のデバイスを既定ポートで開く」場面そのものが塞がれる)。
 
 import ArgumentParser
 import FTAndroid
@@ -181,8 +181,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
         }
-        // **台の印(LiveDeviceLease)を起動直後から立てる**(実地 B5)。何も撃たないまま
-        // 他プロセスがこの台を止められる隙を作らないため、最初のコマンドを待たずに書く
+        // **デバイスの印(LiveDeviceLease)を起動直後から立てる**(実地 B5)。何も撃たないまま
+        // 他プロセスがこのデバイスを止められる隙を作らないため、最初のコマンドを待たずに書く
         let deviceLease = LiveDeviceLease.make(
             platform: driverOptions.resolvedPlatform, udid: udid,
             explicitAndroidSerial: driverOptions.serial, log: { logStderr($0) })
@@ -271,7 +271,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                     // **建て直しは「switched the driver」と同じ形**(再解決してから組み直す)。
                     // composeDriver は in-app 側の本人確認もその内側でやり直す。**ポートが動いていたら
                     // 追従しない** —— starter/deviceLease は元の port を見続けるので、ここで
-                    // 乗り換えると自動起動・台の印との整合が崩れる(乗り換えは makeLiveDriver の
+                    // 乗り換えると自動起動・デバイスの印との整合が崩れる(乗り換えは makeLiveDriver の
                     // 起動時ロジックの役目で、ここでは再現しない)
                     let resolution = await XCUIBridgeResolver.resolve(
                         preferred: port, repoRoot: repoRoot, autoStart: false,
@@ -307,7 +307,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                         staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
             ResidentProcessGuard.noteCommandEnd()
         }
-        // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていない台を他プロセスが
+        // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていないデバイスを他プロセスが
         // 「対話セッションが使用中」として避け続ける(MCPServer.run の後始末と同じ理由)
         deviceLease?.release()
     }
@@ -331,12 +331,12 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// `driverOptions.port == nil` = 利用者は宛先を決めていない):
     /// ①明示 かつ 不一致 → 断る(利用者が決めた宛先を勝手に変えない)/
     /// ②フォールバック かつ 不一致 → `BridgeDiscovery.scan` からその udid のポートを探し、
-    /// 見つかれば乗り換える / ③見つからなければ**別の台のブリッジは掴んだままにしない** ——
+    /// 見つかれば乗り換える / ③見つからなければ**別のデバイスのブリッジは掴んだままにしない** ——
     /// 空きポートを充てて「まだ居ない」の形(接続拒否)に落とし、自動起動
     /// (LiveBridgeAutoStarter)に委ねる。ここが無いと、自動起動が想定している
-    /// まさにその場面(ブリッジ未着手の台を既定ポートで開く)が塞がれる
+    /// まさにその場面(ブリッジ未着手のデバイスを既定ポートで開く)が塞がれる
     /// **4つ目の戻り値**(maintainer-notes §51.10): `port` の期待エンジン(composeDriver 参照)。**Android と、
-    /// 台がまだ無いプレースホルダ(自動起動待ち)は nil** —— どちらも「今 probe してよい
+    /// デバイスがまだ無いプレースホルダ(自動起動待ち)は nil** —— どちらも「今 probe してよい
     /// エンジンの期待」が無い(Android は engine の概念が無く、プレースホルダは
     /// 何も応答しない = 自動起動の成功を「switched the driver」が拾ってから初めて分かる)。
     /// run() の毎コマンド確認は nil のときは何もしない
@@ -371,7 +371,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         case .mismatch(let detail):
             mismatch = detail
         case .silent:
-            // **応答が無いことを「この台のブリッジ」と読まない**(§18.7「不明と空きを混ぜない」の同型)。
+            // **応答が無いことを「このデバイスのブリッジ」と読まない**(§18.7「不明と空きを混ぜない」の同型)。
             // ただし **busy は正常**(XCUITest は駆動中 /status に答えない)なので、
             // `/status` の代わりに**プロセスの実体**で占有者を見る —— **肯定的に別のデバイスと
             // 読めたときだけ**掴むのをやめる。決めつけて進むと、この後の自動起動がそのポートへ
@@ -402,7 +402,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 logger: { message in ConsoleOut.err("[live serve] " + message) })
             return try await composeDriver(resolution: rerouted, physical: physical, repoRoot: repoRoot)
         }
-        // この台のブリッジはまだ無い。既定ポートは別デバイスが使っているので**触らず**、
+        // このデバイスのブリッジはまだ無い。既定ポートは別デバイスが使っているので**触らず**、
         // 空きポートへ自動起動を回す(そのポートは何も応答しないので、最初の操作が
         // bridgeConnectionRefused を撃ち、既存の接続拒否経路がそのまま面倒を見る)
         logStderr("\(mismatch) — no existing bridge for \(udid); auto-starting on a free port instead")
@@ -471,7 +471,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 毎コマンドの本人確認(`HybridFallbackIdentity.drifted` の3値)から、この1コマンドを
     /// どう扱うかを決める。**走査から切り離した純粋関数**(MCP の `primaryEngineOutcome` と同じ
     /// 理由・テスト用): 実ブリッジ無しで「差し替える/断る/何もしない」の判定を固定できる。
-    /// `sameDeviceEngineChanged` は同じ台のブリッジがエンジンを変えただけなので差し替えて続ける。
+    /// `sameDeviceEngineChanged` は同じデバイスのブリッジがエンジンを変えただけなので差し替えて続ける。
     /// `differentDevice` は別の実体なので、同じポートへ作り直すと乗り換えたまま気付かず操作を
     /// 撃ち続ける —— 断る
     enum LiveDriftOutcome: Equatable {
@@ -495,16 +495,16 @@ struct ApiLiveServe: AsyncParsableCommand {
             + " Reopen live control for this device (or repoint --port/--udid) to continue."
     }
 
-    /// endpoint が本当に `requestedUDID` の台か(判定は run 側4経路と同じ
+    /// endpoint が本当に `requestedUDID` のデバイスか(判定は run 側4経路と同じ
     /// FTCore.BridgeIdentityCheck の1箇所。二つ目の実装を書かない)。
     /// **throw しない** —— 不一致をどう扱うか(断るか・乗り換えるか)は呼び出し元が
     /// `--port` の明示有無で決めるため、ここは事実だけを返す。
     /// **「応答しない」は第3の値**(`.silent`)にする —— nil(= 一致)に畳むと、待受している
     /// 他デバイスのブリッジを自分の宛先として掴み、自動起動がその占有者を残骸として殺す
     enum PortIdentity: Equatable {
-        /// 応答し、この台のブリッジだった
+        /// 応答し、このデバイスのブリッジだった
         case mine
-        /// 応答したが別の台だった(detail は利用者向けの説明)
+        /// 応答したが別のデバイスだった(detail は利用者向けの説明)
         case mismatch(String)
         /// 応答しない(不在か、駆動中で答えられない)。どちらかは呼び手が
         /// `PortHolder.isHeldByAnotherDevice`(プロセスの実体)で分ける
@@ -590,7 +590,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         follower: LiveSessionFollower?, ownAppBundleID: String?, deviceLease: LiveDeviceLease?,
         port: UInt16, staleFrameTracker: LiveStaleFrameTracker, screenMemo: LiveScreenMemo
     ) async {
-        // **コマンドが通るたびに台の印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
+        // **コマンドが通るたびにデバイスの印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
         // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する——駆動している事実に変わりはない)
         deviceLease?.refresh()
         if let decodeError = command.decodeError {

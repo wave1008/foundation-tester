@@ -1,28 +1,28 @@
 // LocalStreamHolder.swift
-// **同じ Mac で同じ台の画面配信を二重に張らない**ための判定(手元版)。VSCode のウィンドウを2つ
+// **同じ Mac で同じデバイスの画面配信を二重に張らない**ための判定(手元版)。VSCode のウィンドウを2つ
 // 開くと拡張ホストが2つ立ち、それぞれが監視(`api monitor`)と配信ヘルパー(`fleetest-simstream` /
-// `fleetest-androidstream` / `fleetest-devicepoll`)を起こすので、同じ台に配信が2本重なる
+// `fleetest-androidstream` / `fleetest-devicepoll`)を起こすので、同じデバイスに配信が2本重なる
 // (端末側の捕捉コストが2倍。Android は配信の重なりで run が赤になった実測がある。docs/verification.md)。
 //
 // 別の発行者(共有ランナー)の同型は `StreamLease`(台帳 + 発行者)だが、こちらは**台帳を置かず
 // プロセスの実体で判定する** —— 拡張はヘルパーを直接 spawn する(`api device-stream` を通らない)ので
 // 控えを書く口が無く、ヘルパーの環境には所有の印(`StreamOwner`: 拡張ホストが立てる
 // `FT_STREAM_OWNER`、無ければ `FT_PARENT_PID`)が既にある。`ps -E` で見える command + env から
-// 「その台のヘルパーを誰が持っているか」を読む。**ランナー機の上でも同じ判定が走る**(fan-out の
+// 「そのデバイスのヘルパーを誰が持っているか」を読む。**ランナー機の上でも同じ判定が走る**(fan-out の
 // `api monitor` と `api device-stream` は ssh 越しに同じ印を受け取る)ので、同じ利用者が2つの
-// ウィンドウから同じランナーの台を眺める形も止まる(発行者は同じなので StreamLease では区別できない)。
+// ウィンドウから同じランナーのデバイスを眺める形も止まる(発行者は同じなので StreamLease では区別できない)。
 //
 // 規律3つ:
-//   ① **拒否しない・殺さない**。監視が `streamedByOther` を配り、拡張がその台の配信を起こさない /
+//   ① **拒否しない・殺さない**。監視が `streamedByOther` を配り、拡張がそのデバイスの配信を起こさない /
 //      畳むだけ(リモート版と同じ形。拡張側は monitorDeviceStreamController.ts)
-//   ② **保持者は1本に決まる**(両方のウィンドウが同じ答えを出す): 同じ台のヘルパーが複数居たら
+//   ② **保持者は1本に決まる**(両方のウィンドウが同じ答えを出す): 同じデバイスのヘルパーが複数居たら
 //      **最も早く起動したもの**(etime が最大。同点は pid が小さいほう)を保持者とする。
 //      両方が「相手が保持者」と読んで両方畳む形にならない
 //   ③ **自分のヘルパーは自分のもの**: 保持者の印が自分の印と同じなら false。どちらかが無い
-//      (手で起こしたヘルパー / CLI の監視)場合は別人として扱う = 手で `nohup` した配信が居る台に
+//      (手で起こしたヘルパー / CLI の監視)場合は別人として扱う = 手で `nohup` した配信が居るデバイスに
 //      拡張は重ねない
 //
-// **iOS 実機の devicepoll はブリッジのポートで台を識別する**(udid を持たない)。ポートは
+// **iOS 実機の devicepoll はブリッジのポートでデバイスを識別する**(udid を持たない)。ポートは
 // 供給のたびに変わりうるが、監視が同じ周期で同じ状態から引くので綴りは一致する。
 
 import Foundation
@@ -45,7 +45,7 @@ public enum LocalStreamHolder {
         public var owner: String? { StreamOwner.owner(inTokens: tokens) }
     }
 
-    /// 台の識別(拡張・`api device-stream` が起こすヘルパーの引数と同じ綴り。
+    /// デバイスの識別(拡張・`api device-stream` が起こすヘルパーの引数と同じ綴り。
     /// 契約: vscode-fleetest/src/monitorDeviceStreamController.ts / ApiDeviceStreamCommand.helperArgv)
     public enum DeviceIdentity: Equatable, Sendable {
         case iosSimulator(udid: String)
@@ -67,7 +67,7 @@ public enum LocalStreamHolder {
         }
     }
 
-    /// その台を捕捉しているヘルパーの行(識別フラグの直後の値が一致するもの)
+    /// そのデバイスを捕捉しているヘルパーの行(識別フラグの直後の値が一致するもの)
     public static func helpers(for identity: DeviceIdentity, in rows: [ProcessRow]) -> [ProcessRow] {
         rows.filter { row in
             guard let program = row.tokens.first.map({ URL(fileURLWithPath: $0).lastPathComponent }) else {
@@ -90,7 +90,7 @@ public enum LocalStreamHolder {
         }
     }
 
-    /// **他のウィンドウ(別の所有者)がこの台を配信中か**(規律③)。純粋関数
+    /// **他のウィンドウ(別の所有者)がこのデバイスを配信中か**(規律③)。純粋関数
     public static func heldByOther(identity: DeviceIdentity, rows: [ProcessRow], myOwner: String?) -> Bool {
         guard let holder = holder(for: identity, in: rows) else { return false }
         guard let mine = myOwner, let theirs = holder.owner else { return true }

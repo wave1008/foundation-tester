@@ -235,7 +235,7 @@ export type DeviceLifecycleJob =
   // (Android の up は端末の電源を入れる操作になり存在しない)。name はタイル特定・
   // 重複排除キーとして直指定時も引き続き使う。
   // machine: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
-  // 同名の台が別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
+  // 同名のデバイスが別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
   // シミュレータを1台作ってしまう(simctl は無ければ作る)
   | { readonly kind: "device"; readonly name: string; readonly op: "up" | "down"; readonly machine?: string; readonly udid?: string; readonly serial?: string }
   // wipe は **識別子で撃つ**(`api wipe-device --platform … --udid/--avd`)。delete-device と同じく
@@ -255,7 +255,7 @@ export type DeviceLifecycleJob =
  * という実測は**その機械の CPU の話**で、別の機械の起動を止める理由が無い(起動は機械ごとに
  * 独立した資源[CPU・GPU・ディスク]を使う。一括起動が RemoteDeviceFanout で機械ごとに
  * 分散するのと同じ考え方)。全機で共有すると、M2Ultra の2台を起こしている間、
- * M1Max の台が「起動待機」で止まる(実害)。 */
+ * M1Max のデバイスが「起動待機」で止まる(実害)。 */
 export const DEVICE_LIFECYCLE_MAX_CONCURRENT = 2;
 
 /** スケジューラ状態(不変)。running が実行中、jobs が待機列(FIFO)。 */
@@ -277,7 +277,7 @@ export function enqueueDeviceLifecycleJob(
 }
 
 /** ジョブの同一性(finish の running 照合用)。device は (machine, name)+op、bulk は op、
- * restartBatch は names。**machine を入れないと**、同名の台を2機で同時に操作したとき
+ * restartBatch は names。**machine を入れないと**、同名のデバイスを2機で同時に操作したとき
  * 片方の完了がもう片方を running から外し、残ったジョブのバッジが剥がれない・
  * 二重に完了扱いになる(同型を掃討)。 */
 function sameLifecycleJob(a: DeviceLifecycleJob, b: DeviceLifecycleJob): boolean {
@@ -302,7 +302,7 @@ export function promoteDeviceLifecycleJobs(state: DeviceLifecycleQueueState): {
   const jobs = [...state.jobs];
   const started: DeviceLifecycleJob[] = [];
   /** その機械で走らせてよいか(上限は機械ごと・同じデバイスへの二重操作は避ける)。
-   * 判定は **(machine, name)** —— 名前だけだと、別の機械の同名の台が「同じデバイス」に見える */
+   * 判定は **(machine, name)** —— 名前だけだと、別の機械の同名のデバイスが「同じデバイス」に見える */
   const canStart = (job: DeviceLifecycleJob): boolean => {
     if (job.kind !== "device") {
       return false;
@@ -380,7 +380,7 @@ export function isDeviceLifecycleQueueBusy(state: DeviceLifecycleQueueState): bo
 export function hasDeviceLifecycleJobFor(
   state: DeviceLifecycleQueueState,
   name: string,
-  /** そのデバイスが居る機械(手元は undefined)。**名前だけで見ると、別の機械の同名の台の
+  /** そのデバイスが居る機械(手元は undefined)。**名前だけで見ると、別の機械の同名のデバイスの
    * ジョブが手元の操作を黙って握りつぶす**(同型を掃討)。
    * bulk / restartBatch は全機に触れうるので名前だけで見てよい。 */
   machine?: string,
@@ -444,7 +444,7 @@ export function deviceLifecycleStatusFor(
   state: DeviceLifecycleQueueState,
   name: string,
   /** そのデバイスが居る機械(手元は undefined)。**名前だけで引くと同名の別の機械のジョブに
-   * 当たる** —— 「M2Ultra の台を停止」が手元のタイルに「シャットダウン中」を出す
+   * 当たる** —— 「M2Ultra のデバイスを停止」が手元のタイルに「シャットダウン中」を出す
    * (実害。bulk/restartBatch は手元専用なので name のままでよい)。 */
   machine?: string,
 ): DeviceOpBusyState | undefined {
@@ -488,7 +488,7 @@ export type MonitorControlCommand =
 
 /** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。restartBatch は
  * up 系と同様 pause せずタイル上に進行を出す(GPU 再起動はタイル単位で見せたいため)。
- * **wipe も含む** —— 中でデバイスを止めてイメージを消すので、片付け中の台へスクショを
+ * **wipe も含む** —— 中でデバイスを止めてイメージを消すので、片付け中のデバイスへスクショを
  * 取りに行かせない(down と同じ理由)。 */
 export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): boolean {
   return job.kind !== "restartBatch" && (job.op === "down" || job.op === "wipe");

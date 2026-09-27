@@ -43,7 +43,7 @@ static int gEncodeFailures = 0;
 // 失敗か」を持ち帰る)。**失敗は1セッションにつき1回だけ数え、1回だけ出す** —— VT の出力
 // コールバックは非同期で、壊れたセッションに投入済みのフレームぶんが一度に返る。1本ごとに
 // 数えると作り直す前に閾値へ達し「作り直しても壊れた」を確かめずに exit 3 していた
-// (台ごとに -17691 が 8 行並んで即 exit)
+// (デバイスごとに -17691 が 8 行並んで即 exit)
 static uintptr_t gCompGeneration = 0;
 // 何回連続で失敗したら h264 を諦めて MJPEG へ落ちるか。**2 の根拠**: 1回目は
 // そのセッション固有の malfunction かもしれない(作り直しで直る)。作り直した直後に
@@ -155,7 +155,7 @@ static void ftWritePing(void) {
 // シミュレータ側が空(0x0)や無効なサーフェスを返しているときは MJPEG(CIContext)も同じ入力で
 // 失敗し、「この機械では h264 が無理」という診断が外れたまま再起動ループになる
 // (4台同時、直前まで同じ機械で h264 が動いていた)。無効な入力はエンコード
-// 失敗に数えず、次のトリガを待つ。ログは台ごとに1回(60Hz で鳴らさない)
+// 失敗に数えず、次のトリガを待つ。ログはデバイスごとに1回(60Hz で鳴らさない)
 static BOOL gBadSurfaceLogged = NO;
 static BOOL ftSurfaceUsable(IOSurfaceRef s) {
     size_t w = IOSurfaceGetWidth(s), h = IOSurfaceGetHeight(s);

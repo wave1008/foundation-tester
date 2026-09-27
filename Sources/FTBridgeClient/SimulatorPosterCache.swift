@@ -6,7 +6,7 @@
 // 起動の直前の呼び出しは `SimulatorBootCleanup.beforeBoot` が入口(呼び出し口の一覧は
 // Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift が固定する)。ここを直接呼ぶのは `fleetest clean`。
 //
-// **Booted の台には撃たない** —— PosterBoard が動いている最中に消すと書き込み中のファイルを
+// **Booted のデバイスには撃たない** —— PosterBoard が動いている最中に消すと書き込み中のファイルを
 // 壊しうる。呼び出し側の保証をあてにせず、この関数自身が simctl の実状態を確かめる
 // (一覧が読めないときも安全側で撃たない)。
 //
@@ -44,10 +44,10 @@ public enum SimulatorPosterCache {
     }
 
     /// `dryRun`: 消さずに数だけ数える(`fleetest clean --dry-run` 用)。
-    /// `logOnRemoval`: 実際に消せた回だけ stderr へ1行(英語)出す。呼び手が自前で台ごとの
+    /// `logOnRemoval`: 実際に消せた回だけ stderr へ1行(英語)出す。呼び手が自前でデバイスごとの
     /// 表示をする経路(`fleetest clean --simulator-poster-cache`)は false を渡して重複を避ける。
     /// `measureBytes`: 消す前に容量を数えるか。**起動の直前(既定)は数えない** —— 数えると全ファイルを
-    /// もう一周なめるので、溜まった台の初回は削除そのもの(実測 48 秒)に同程度が上乗せされ、供給が遅れる。
+    /// もう一周なめるので、溜まったデバイスの初回は削除そのもの(実測 48 秒)に同程度が上乗せされ、供給が遅れる。
     /// 容量を見せるのは人が打つ `fleetest clean` だけ
     @discardableResult
     public static func purge(udid: String, dryRun: Bool = false, logOnRemoval: Bool = true,

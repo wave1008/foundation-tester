@@ -70,7 +70,7 @@ final class DeviceWiperTests: XCTestCase {
         XCTAssertNil(SimulatorLocalePreservation.parseLocale("\n"))
     }
 
-    /// 停止中だった台/読み取り失敗時のフォールバック。**日本語だけにせず英語も残す**
+    /// 停止中だったデバイス/読み取り失敗時のフォールバック。**日本語だけにせず英語も残す**
     /// (言語を1つしか持たないと英語の文言が一切出せなくなる)
     func testFallbackBuildsFromTheLocaleArgument() {
         let snapshot = SimulatorLocalePreservation.fallback(locale: "ja_JP")

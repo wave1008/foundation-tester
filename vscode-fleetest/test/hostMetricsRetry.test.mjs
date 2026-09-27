@@ -67,7 +67,7 @@ test("observationRevivalPlan: 観測できない → 観測できる でだけ�
     observationRevivalPlan({ before: "unobserved", now: "observed", gaveUp: true }),
     { foldGiveUp: true },
   );
-  // 旧バイナリ相当: fanout の子も上がらないので台は unknown のまま = 合図が出ない
+  // 旧バイナリ相当: fanout の子も上がらないのでデバイスは unknown のまま = 合図が出ない
   assert.deepEqual(
     observationRevivalPlan({ before: "unobserved", now: "unobserved", gaveUp: true }),
     { foldGiveUp: false },

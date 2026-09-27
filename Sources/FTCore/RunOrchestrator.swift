@@ -119,7 +119,7 @@ public struct RunWorker {
 
     /// label からレーン(= デバイス)の識別子を戻す。プロファイル経路の label は末尾に
     /// "(<platform>:<id>)" を持ち、**iOS の id はブリッジのポートで回復のたびに変わる**ので、
-    /// label そのものでレーンを数えると同じ台が2レーンになる(リモート2台の run が
+    /// label そのものでレーンを数えると同じデバイスが2レーンになる(リモート2台の run が
     /// 「3 lane(s), 66% busy」と出た。受け手報告)。末尾の括弧群を落とした
     /// デバイス名をレーンの鍵にする。非プロファイル経路("ios:<port>")は label のまま
     public static func laneKey(fromLabel label: String) -> String {
@@ -444,9 +444,9 @@ public enum BridgeProbeOutcome: Sendable {
     case refused
     /// 期限内無応答(busy かウェッジかはこれだけでは未確定)
     case silent
-    /// 応答はあるが**別のデバイスのブリッジ**が答えた(同じポートを別の台が奪った。
+    /// 応答はあるが**別のデバイスのブリッジ**が答えた(同じポートを別のデバイスが奪った。
     /// 同じ bundle ID のアプリが載っていると /status 以外では見分けられない = 放置すると
-    /// このレーンのシナリオが別の台で緑になる)。detail は BridgeIdentityCheck の文言
+    /// このレーンのシナリオが別のデバイスで緑になる)。detail は BridgeIdentityCheck の文言
     case hijacked(detail: String)
 
     /// `.refused` を「ブリッジプロセス死亡」と即断してよい宛先か。ループバック(シミュレータ・
@@ -858,8 +858,8 @@ public enum ScenarioRunner {
     }
 
     /// **失敗を結果ごと捨てて振り直し、ワーカーは離脱させない**か(純粋関数)。
-    /// **driverUnreachable の呼び出しは事後プローブ(消失・凍結)の後** —— 台が生きていると
-    /// 分かってから訊く(台が消えた形も同じ failureKind で来るため。呼び出し側のコメント参照)。
+    /// **driverUnreachable の呼び出しは事後プローブ(消失・凍結)の後** —— デバイスが生きていると
+    /// 分かってから訊く(デバイスが消えた形も同じ failureKind で来るため。呼び出し側のコメント参照)。
     /// environmentFault は OS 問わず対象(既存)。driverUnreachable は **Android だけ**対象 —— Android のブリッジは
     /// 次の要求で黙って張り直されるため事後プローブ(deviceUnreachable/deviceFrozen)では拾えず、
     /// 落ちたシナリオが赤のまま残っていた(実測: adb kill-server 等で5本・force-stop で1本・
@@ -867,8 +867,8 @@ public enum ScenarioRunner {
     /// bridgeUnreachable プローブ→ワーカー離脱→復帰→再キューの経路(既存)をそのまま通す必要があり、
     /// ここで早期に振り直すとブリッジの建て直しが起きなくなる
     /// **iOS でこれが呼ばれるのは事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後だけ**
-    /// (呼び出し側の順序。Android にはその工程が無い)。生きている台で一過性に切れた 1 本を
-    /// 赤のまま残さず、台は残して振り直す —— ここを通さないと iOS は
+    /// (呼び出し側の順序。Android にはその工程が無い)。生きているデバイスで一過性に切れた 1 本を
+    /// 赤のまま残さず、デバイスは残して振り直す —— ここを通さないと iOS は
     /// Wi-Fi の瞬断・アプリが背面に回った回が赤になるか、生きたランナーの建て直しになる
     static func requeuesWithoutRetiring(outcome: ScenarioOutcome) -> Bool {
         switch outcome {
@@ -881,10 +881,10 @@ public enum ScenarioRunner {
         }
     }
 
-    /// ブリッジ不達で振り直す台の扱い(純粋関数)。**連続失敗がブレーカの閾値に達したら振り直さない**
-    /// —— ブリッジを二度と張り直せない台(adb には見えていて凍結もしていない形)が離脱せずに残ると、
+    /// ブリッジ不達で振り直すデバイスの扱い(純粋関数)。**連続失敗がブレーカの閾値に達したら振り直さない**
+    /// —— ブリッジを二度と張り直せないデバイス(adb には見えていて凍結もしていない形)が離脱せずに残ると、
     /// 後続のシナリオの再キュー枠(1本につき1回)を1つずつ焼き潰す。`held`(その streak の間に
-    /// 他のレーンが1本も通っていない = 台ではなく run の問題)は離脱させない既存の規律どおり
+    /// 他のレーンが1本も通っていない = デバイスではなく run の問題)は離脱させない既存の規律どおり
     enum UnreachableLaneAction: Equatable {
         case requeue
         case retire(reason: String)
@@ -1194,7 +1194,7 @@ public final class RunOrchestrator {
         let result = await withDeadline(seconds: 5) { () -> BridgeProbeOutcome in
             do {
                 let status = try await worker.driver.status()
-                // 到達できても相手が別の台なら「接続不能」と同じ扱い(奪った側は健全に答える)
+                // 到達できても相手が別のデバイスなら「接続不能」と同じ扱い(奪った側は健全に答える)
                 if worker.platform == "ios", let port = worker.connection.port,
                    case .mismatch(let detail) = BridgeIdentityCheck.verdict(
                        expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
@@ -1313,7 +1313,7 @@ public final class RunOrchestrator {
                                           uniquingKeysWith: { first, _ in first })
             drainInfo = { key, joined in
                 let platform = lanePlatform[key] ?? "?"
-                // 台ごとの事実だけ言う(never joined = 供給・triage で落ちて1度も参加しなかった /
+                // デバイスごとの事実だけ言う(never joined = 供給・triage で落ちて1度も参加しなかった /
                 // joined = 参加したが離脱し、復帰できないまま自分のぶんが残った)
                 return (platform, "\(platform):\(key)",
                         joined ? "device \(key) dropped out and could not be revived"
@@ -1399,7 +1399,7 @@ public final class RunOrchestrator {
             // 参加待ちの枠(下の admit ループ・遅延参加を抜けたら閉じる)
             await testingSlots.open()
             // キューが無いワーカー(shared: その platform のシナリオが無い / broadcast: レーンの
-            // ぶんが 0 本、または計画に無い台)は参加させない
+            // ぶんが 0 本、または計画に無いデバイス)は参加させない
             for worker in workers {
                 guard let queue = queues[queueKey(worker)] else { continue }
                 await joinedKeys.insert(queueKey(worker))
@@ -1409,7 +1409,7 @@ public final class RunOrchestrator {
             // 並行実行される(group スコープ内の await は子を止めない)ため、Android は先に走り出す。
             // **中断が来たら供給を待たない** —— 供給(シミュレータの起動・ブリッジのビルド)は数分かかりうり、
             // 待つと Ctrl-C が効かず、2回目の Ctrl-C が後始末を飛ばして即終了する。供給は背後で最後まで
-            // 走る(取り消す口が無い)が、その台にはシナリオを配らない(キュー残りは中断として記録される)
+            // 走る(取り消す口が無い)が、そのデバイスにはシナリオを配らない(キュー残りは中断として記録される)
             if let late = lateWorkers {
                 let joiners = await awaitUnlessInterrupted(
                     late.provider, interrupted: interruptRequested, fallback: [])
@@ -1432,7 +1432,7 @@ public final class RunOrchestrator {
         // 全ワーカー終了後に 1 回だけ index.json を書く(拡張側との契約。RecordingIndexIO 参照)
         await videoRecording?.finish()
 
-        // ワーカー全滅(broadcast: そのレーンの台が不在・復帰不能)でキューに残ったシナリオは失敗扱い。
+        // ワーカー全滅(broadcast: そのレーンのデバイスが不在・復帰不能)でキューに残ったシナリオは失敗扱い。
         // 中断による drain は「ワーカーが使えない」ではなく事実が違うので理由を差し替える
         // (results insights が誤って「デバイス側の問題」と読まないように)
         let joined = await joinedKeys.snapshot()
@@ -1505,7 +1505,7 @@ public final class RunOrchestrator {
     /// requeue の可否を先に決め、**成立したときだけ**直前の記録を消す(戻り値は何回目の再実行か。
     /// 上限なら nil で記録は触らない)。順序を逆にすると、上限到達の回で失敗記録を消した後に
     /// 戻せなくなる。worker は記録の `worker` と同じ文字列(`ScenarioRunner.recordingWorker`)——
-    /// broadcast では同じ ID を別の台が同時に書いているので名指しで消す
+    /// broadcast では同じ ID を別のデバイスが同時に書いているので名指しで消す
     static func requeueDiscardingRecord(_ item: ScenarioRunItem, queue: ScenarioQueue,
                                         recorder: RunRecorder?, worker: String?,
                                         discardRecord: Bool) async -> Int? {
@@ -1528,9 +1528,9 @@ public final class RunOrchestrator {
                 return totalFailed + f
             case .retired(let f, let retired):
                 totalFailed += f
-                // **離脱した台の run-lease は復帰を諦めるまで外さない**(runWorker は離脱時に外さない)。
+                // **離脱したデバイスの run-lease は復帰を諦めるまで外さない**(runWorker は離脱時に外さない)。
                 // 復帰(ブリッジの作り直しで数十秒)の間に外すと、モニターの watchdog と配信が
-                // その台へ割り込む —— 「供給フェーズの穴」(SupplyLeaseHolder)と同じ型
+                // そのデバイスへ割り込む —— 「供給フェーズの穴」(SupplyLeaseHolder)と同じ型
                 let retiredKey = Self.leaseKey(retired)
                 // ウェッジしたブリッジプロセスの停止は復帰の有無に関係なく必ず行う(プロパティ宣言の
                 // コメント参照)。復帰する場合も、供給前に旧プロセスを止めておく方が安全
@@ -1593,12 +1593,12 @@ public final class RunOrchestrator {
         // 未注入なので実質関係ない)でも記帳自体は続けられるよう label へ縮退する
         let progressLaneKey = leaseKey ?? worker.label
         // **名前はモニターのタイルと同じ logicalName**(実行プロファイルの devices[].name)——
-        // label はポート込み("…-01(ios:8130)")なので、同じ台がボードとタイルで別名に見える
+        // label はポート込み("…-01(ios:8130)")なので、同じデバイスがボードとタイルで別名に見える
         await progressState?.laneJoined(key: progressLaneKey,
                                         name: worker.logicalName ?? worker.label,
                                         platform: worker.platform)
 
-        // **録れない台(物理 iPhone)は run の頭で名指しして警告する**(`record: true` を指定したのに
+        // **録れないデバイス(物理 iPhone)は run の頭で名指しして警告する**(`record: true` を指定したのに
         // 黙って効かない形を作らない。判定は VideoRecordingCoordinator.unrecordableReason の1箇所)
         if videoRecording != nil,
            let reason = VideoRecordingCoordinator.unrecordableReason(platform: worker.platform,
@@ -1679,7 +1679,7 @@ public final class RunOrchestrator {
             // **ワーカーは離脱させない** —— 個体は健全で、ブリッジを作り直しても同じ確率で踏む
             // (実測でも再実行で必ず消えた)。連続失敗の数にも入れない = サーキットブレーカを
             // 環境ノイズで作動させない。
-            // **ドライバ不達(driverUnreachable)はここでは判定しない** —— 台が消えた/凍った形も
+            // **ドライバ不達(driverUnreachable)はここでは判定しない** —— デバイスが消えた/凍った形も
             // 同じ failureKind で来る(実測: エミュレータの qemu を kill すると driver-unreachable →
             // 消失)ので、下の事後プローブ(消失・凍結)を先に通してからでないと、**死んだレーンを
             // 離脱させずに振り直し続ける**ことになる
@@ -1738,17 +1738,17 @@ public final class RunOrchestrator {
                     unusableCause = .bridgeUnreachable
                 }
             }
-            // **Android のドライバ不達で、台は生きている**(消失でも凍結でもない)= ブリッジだけが
+            // **Android のドライバ不達で、デバイスは生きている**(消失でも凍結でもない)= ブリッジだけが
             // 一過性に切れた形(adb kill-server・ブリッジの force-stop・adb: device offline・実機の
             // 再起動で実測)。Android のブリッジは次の要求で黙って張り直されるので事後プローブでは
-            // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = 台は生きている**ので、
+            // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = デバイスは生きている**ので、
             // 結果を捨てて振り直し、ワーカーは残す。**iOS もここへ入る** —— 上の
-            // bridgeUnreachable がブリッジの生存を確かめた後なので「台は生きている」が成り立つ
+            // bridgeUnreachable がブリッジの生存を確かめた後なので「デバイスは生きている」が成り立つ
             // (死んでいれば unusableReason が入り、離脱→建て直し→再キューの既存経路へ行く)
-            // **ただし連続失敗はブレーカに数える** —— 数えないと、ブリッジを二度と張り直せない台
+            // **ただし連続失敗はブレーカに数える** —— 数えないと、ブリッジを二度と張り直せないデバイス
             // (adb には見えていて凍結もしていない形)が離脱もせずに残り、後続のシナリオの
             // 再キュー枠(1本につき1回)を1つずつ焼き潰す。ここで `.trip` したら振り直さずに
-            // 下の離脱経路へ落とす(`environmentFault` は数えないまま = あちらは台ではなく
+            // 下の離脱経路へ落とす(`environmentFault` は数えないまま = あちらはデバイスではなく
             // 環境ノイズという実測に基づく既存の判断)
             if unusableReason == nil, outcome == .driverUnreachable,
                ScenarioRunner.requeuesWithoutRetiring(outcome: outcome) {
@@ -1772,7 +1772,7 @@ public final class RunOrchestrator {
             }
             // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達し、その間に別の
             // レーンが通っていれば不調ワーカーとして離脱。誰も通っていなければ残す(全レーンが同時に
-            // 落ちている = 台ではなく run の問題。離脱させると revive を使い切って残りが未実行で赤になる)
+            // 落ちている = デバイスではなく run の問題。離脱させると revive を使い切って残りが未実行で赤になる)
             if unusableReason == nil {
                 switch breaker.recordFailure(runPasses: await runPasses.snapshot()) {
                 case .keep:
@@ -1857,8 +1857,8 @@ public enum RunLogFormatter {
         case .workerLog(let worker, let message):
             return ["ℹ️ [\(worker)] \(message)"]
         case .flowRequeued(_, _, let reason, let attempt, let limit):
-            // 復活した台へ再キューされることがあり、「別の台」と断定すると事実と違う
-            // (元の物理台のまま・ポートだけ新しいケースがある)
+            // 復活したデバイスへ再キューされることがあり、「別のデバイス」と断定すると事実と違う
+            // (元の物理デバイスのまま・ポートだけ新しいケースがある)
             return ["  🔁 Re-queued because of \(reason) (\(attempt)/\(limit))"]
         case .flowStarted(let worker, _, let flowName, let isDirty):
             var lines = ["▶ \(flowName) [\(worker)]"]

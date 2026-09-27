@@ -870,7 +870,7 @@ export interface LiveDeviceRef {
   readonly port: number | null;
   readonly serial: string | null;
   readonly udid: string | null;
-  /** その台が居る機械(登録簿の machine)。省略 = この Mac。あれば serve を
+  /** そのデバイスが居る機械(登録簿の machine)。省略 = この Mac。あれば serve を
    * `fleetest remote exec <machine> -- api live serve` で**向こうで**起こす(monitorLiveController.ts) */
   readonly machine?: string;
 }
@@ -933,7 +933,7 @@ export interface LiveDeviceOption {
   readonly machine?: string;
 }
 
-/** 他の機械の台(モニターのタイル)をライブ操作の選択肢にする。id はモニターのタイル id
+/** 他の機械のデバイス(モニターのタイル)をライブ操作の選択肢にする。id はモニターのタイル id
  * (`<platform>:<machine>/<name>`)のまま —— タイル右クリックの openDevice がこの id で引く。
  * **port は渡さない**: 向こうの serve が udid で自分のブリッジを探す(既定ポートの本人確認 →
  * 走査 → 無ければ空きポートで自動起動。ApiLiveCommand.makeLiveDriver)。 */

@@ -1,8 +1,8 @@
 // 実行ログビュー(#log-pane)・グリッドビュー(#output-pane)の DOM テスト。
 // 実 HTML + 実バンドルを jsdom で動かす方式は webviewTileRelayout.test.mjs と同じ。
 //
-// 契約(ユーザー要件 2026-09-21): 「デバイスモニター」タブは下段がグリッドビュー(選択した台の
-// 拡大表示)と実行ログビュー(**ラインビューで選択した台のログだけ**。どちらも選択0台では空)の
+// 契約(ユーザー要件 2026-09-21): 「デバイスモニター」タブは下段がグリッドビュー(選択したデバイスの
+// 拡大表示)と実行ログビュー(**ラインビューで選択したデバイスのログだけ**。どちらも選択0台では空)の
 // 2ペインに分かれる。**ちょうど1台選択のときだけ**、グリッドビューの中に 拡大表示|実行ログの複製
 // (ミラー)を並べる ―― ログ本体の DOM は実行ログビュー側から動かさない。
 //
@@ -137,7 +137,7 @@ const logHeaderName = (laneEl) => laneEl.querySelector(".lane-header").textConte
 test("選択が無い間はグリッドビューも実行ログビューも空にする", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  // 台が1枚も来ていない時点から出す(欄が後から現れると見出しの並びが動く)
+  // デバイスが1枚も来ていない時点から出す(欄が後から現れると見出しの並びが動く)
   assert.equal(document.getElementById("lanes-selection-status").textContent, "0台", "初期表示");
   sendDevices(window, [{}, {}, {}]);
   assert.equal(visibleLogs(document).length, 0, "選択した台だけを出すこと(0台なら1本も出さない)");
@@ -222,7 +222,7 @@ test("このデバイスのみ選択の後、その台をダブルクリック�
   assert.deepEqual(visiblePreviewNames(document), ["Dev 0", "Dev 2"], "直前の2台に戻る");
   assert.equal(selectedTileCount(document), 2);
 
-  // 戻した後のダブルクリックは再び「その台のみ」(行き来できる)
+  // 戻した後のダブルクリックは再び「そのデバイスのみ」(行き来できる)
   dblclick(window, visiblePreviews(document)[0]);
   assert.deepEqual(visiblePreviewNames(document), ["Dev 0"]);
 });
@@ -337,7 +337,7 @@ test("実機・未登録・マシン名のタグもラインビューと同じ�
   assert.ok(visibleBadges.some((el) => el.textContent === "m1max"), "ホスト名のタグを出すこと");
 });
 
-// 段数が台で変わると、その台だけ絵の上端が下がる(手元とリモートを並べると揃わない。
+// 段数がデバイスで変わると、そのデバイスだけ絵の上端が下がる(手元とリモートを並べると揃わない。
 // 2026-08-24 のユーザー指摘)。段は常に2つ —— **手元にも実体のある "local" のバッジが出る**
 // ので(ユーザー決定 2026-09-22)、高さを作るためのダミーはもう要らない。
 test("タグの段数は手元でもリモートでも同じで、手元は local のバッジ(絵の上端を揃える)", (t) => {
@@ -382,7 +382,7 @@ test("mjpeg のフレームはタイルと同じ絵が拡大表示にも出る",
   const img = preview.querySelector(".lane-preview-frame img.lane-preview-media");
   assert.ok(img, "拡大表示に img を置くこと");
   assert.equal(img.getAttribute("src"), "data:image/jpeg;base64,QUJD");
-  // 選択していない台の絵は拡大表示に出さない(レーンごと隠れている)
+  // 選択していないデバイスの絵は拡大表示に出さない(レーンごと隠れている)
   sendFrame(window, "d1", "WFla");
   assert.equal(visiblePreviews(document).length, 1);
 });

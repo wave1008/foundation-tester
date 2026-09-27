@@ -305,7 +305,7 @@ extension MCPServer {
         // 戻る(AndroidDriver.terminate)。target を知らずに「Terminated the app」と
         // 答えると、何も終了させていないのに成功したと誤解させる
         // **ドライバの terminate() は名指しできない**(attach 中のアプリを止めるだけ)。明示の
-        // bundleId が起動中のアプリと違えば断り、起動していない台への明示指定は「送った」まで
+        // bundleId が起動中のアプリと違えば断り、起動していないデバイスへの明示指定は「送った」まで
         // しか言わない(Android は currentPackage が無ければ何も撃たない)
         let terminateKey = Self.engineKey(args)
         let explicitBundleID = try Self.stringArgument(args, "bundleId", emptyHint: Self.attachedAppEmptyHint)

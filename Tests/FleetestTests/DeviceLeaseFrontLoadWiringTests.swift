@@ -1,4 +1,4 @@
-// buildAndroidWorkers/buildIOSWorkers/buildWorkers(供給。Wipe Data・古いブリッジ停止・凍結台の
+// buildAndroidWorkers/buildIOSWorkers/buildWorkers(供給。Wipe Data・古いブリッジ停止・凍結デバイスの
 // 再起動などの破壊的操作を含み数十秒かかりうる)は必ず
 // `ProfileRunner.buildWorkersWithFrontLoadedLease` 経由で呼ぶことをソース走査で固定する。
 //

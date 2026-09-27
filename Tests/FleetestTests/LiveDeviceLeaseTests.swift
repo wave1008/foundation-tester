@@ -1,5 +1,5 @@
-// ライブ操作の台の印(LiveDeviceLease)が MCPDeviceLease と同じファイル・鍵で読み書きすること
-// (実地 B5: 書いていなかったので DeviceBooter 等の門がライブ操作中の台を無言で止めていた)。
+// ライブ操作のデバイスの印(LiveDeviceLease)が MCPDeviceLease と同じファイル・鍵で読み書きすること
+// (実地 B5: 書いていなかったので DeviceBooter 等の門がライブ操作中のデバイスを無言で止めていた)。
 // 判定・警告文そのものは Tests/FleetestMCPTests/MCPDeviceLeaseTests.swift が固定するので、
 // ここは「LiveDeviceLease が同じ場所へ委譲しているか」だけを見る。
 
@@ -43,7 +43,7 @@ final class LiveDeviceLeaseTests: XCTestCase {
                        "release() は他プロセスの印を消さないこと")
     }
 
-    /// run(RunLease)が同じ台を持っていれば、既存の警告文をそのまま返すこと(新しい文言を作らない)
+    /// run(RunLease)が同じデバイスを持っていれば、既存の警告文をそのまま返すこと(新しい文言を作らない)
     func testRefreshWarnsWhenARunHoldsTheSameDevice() {
         RunLease.write(stateDir: stateDir, key: "UDID-LIVE", pid: 1)
         var logged: [String] = []

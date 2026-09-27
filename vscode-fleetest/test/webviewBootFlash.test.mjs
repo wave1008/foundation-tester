@@ -119,7 +119,7 @@ test("一括起動の実行中だけ、ボタンが中断表示 + 赤系クラ�
   assert.equal(btn.classList.contains("bulk-cancel"), false, "終わったら戻す");
 });
 
-// 中断の完了は bootBusy でしか分からず、SIGTERM の後始末(実行中の台の完走待ち)で数秒かかる。
+// 中断の完了は bootBusy でしか分からず、SIGTERM の後始末(実行中のデバイスの完走待ち)で数秒かかる。
 // その間ボタンが「デバイスの起動を中断」のままだと、押せたのかどうかが分からない(2026-09-09 の報告)。
 test("中断を押した瞬間に受理を見せる(文言・スピナー)。押せるままにして再送の口を残す", (t) => {
   const { window, document, posted } = createWebview();

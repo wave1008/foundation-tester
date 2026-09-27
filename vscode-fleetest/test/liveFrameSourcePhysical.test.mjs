@@ -2,7 +2,7 @@
 //
 // simstream は CoreSimulator の私有 API = シミュレータ専用で、実機の UDID は「invalid UDID」で即終了する。
 // それでも起こすと StreamPipeline が再起動を繰り返し、その間は frameTick が「配信中」と見て
-// ポーリングもしない = 新しい台の絵が来ず、前の台の画面が出たままになった(2026-09-24 の実害:
+// ポーリングもしない = 新しいデバイスの絵が来ず、前のデバイスの画面が出たままになった(2026-09-24 の実害:
 // Android 実機 → iOS 実機)。モニターのタイル(monitorDeviceStreamController.ts)は以前から
 // 実機を devicepoll へ分けている。
 //
@@ -37,7 +37,7 @@ test("iOS の simstream 分岐は実機を除く", () => {
     "iOS の simstream 分岐の条件に「実機でない」を含めること");
 });
 
-// ブリッジの無い台(booted)へ切り替えたら観測を1回撃つ。serve の自動起動の引き金は観測・操作の
+// ブリッジの無いデバイス(booted)へ切り替えたら観測を1回撃つ。serve の自動起動の引き金は観測・操作の
 // 接続拒否だけで、自動のフレーム取得は起動を撃たない(ApiLiveCommand.emitFrame)。撃たないと
 // 「接続できません」のまま何も始まらない(実地 2026-09-24: iPhone wave)。
 function methodBody(source, marker) {
@@ -67,8 +67,8 @@ test("busy が解けたら保留中の選択と観測を消化する", () => {
     "控えた観測を撃つこと");
 });
 
-// 一覧に無い台(他の機械のタイル = `ios:<machine>/<name>`)を指定されたら、黙って前の台を続けず理由を言う。
-// 黙ると前の台の画面が出続け、開いたつもりの台と違う画面になる(実地 2026-09-24: M1Ultra の iPhone wave)。
+// 一覧に無いデバイス(他の機械のタイル = `ios:<machine>/<name>`)を指定されたら、黙って前のデバイスを続けず理由を言う。
+// 黙ると前のデバイスの画面が出続け、開いたつもりのデバイスと違う画面になる(実地 2026-09-24: M1Ultra の iPhone wave)。
 test("一覧に無い台を開こうとしたらバナーで言う", () => {
   const source = codeOnly(fs.readFileSync(path.join(root, "src/monitorLiveController.ts"), "utf8"));
   const open = methodBody(source, "private async openDevice(id: string): Promise<void> {");
@@ -77,8 +77,8 @@ test("一覧に無い台を開こうとしたらバナーで言う", () => {
     "選べなかったときに live.deviceNotOpenable を出すこと");
 });
 
-// 他の機械の台は serve を向こうで起こし(remote exec)、配信(この Mac の台しか映せない)は張らない。
-// 一覧を取り直しても消えないよう applyDevices が足し戻す(消えると選択が先頭の台へ戻る)。
+// 他の機械のデバイスは serve を向こうで起こし(remote exec)、配信(この Mac のデバイスしか映せない)は張らない。
+// 一覧を取り直しても消えないよう applyDevices が足し戻す(消えると選択が先頭のデバイスへ戻る)。
 test("他の機械の台: serve は remote exec で起こし・配信は張らず・一覧の取り直しで消さない", () => {
   const source = codeOnly(fs.readFileSync(path.join(root, "src/monitorLiveController.ts"), "utf8"));
   assert.match(methodBody(source, "private startServeProcess(device: LiveDeviceRef): void {"),

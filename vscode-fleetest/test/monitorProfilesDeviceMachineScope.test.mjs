@@ -46,7 +46,7 @@ function makeController() {
 }
 
 // ---- 実体を消したあとの登録外し(unregisterDeletedDevice) ----
-// **引数の machine(その台が居る機械)と実行プロファイル名を取り違えない**。
+// **引数の machine(そのデバイスが居る機械)と実行プロファイル名を取り違えない**。
 test("unregisterDeletedDevice: その機械の登録だけを外す(実行プロファイル名と取り違えない)", () => {
   const { controller, readDevices } = makeController();
   const updated = controller.unregisterDeletedDevice("ios", "シミュ1", "M1Max");

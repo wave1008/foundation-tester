@@ -120,7 +120,7 @@ test("選んだプラットフォームだけが4つのセクションに残り�
   assert.deepEqual(logNames(document), ["iPhone-01", "iPhone-02"], "実行ログ");
   assert.equal(previewCount(document), 2, "選択したデバイス");
   // **次の監視サイクル(約2秒ごと)が来ても隠れたまま** —— 落とすのは applyDevices の入口なので、
-  // ここを通さないと隠した台が次のサイクルで戻ってくる
+  // ここを通さないと隠したデバイスが次のサイクルで戻ってくる
   sendDevices(window);
   assert.deepEqual(tileNames(document), ["iPhone-01", "iPhone-02"], "監視サイクル後も隠れたまま");
   assert.deepEqual(logNames(document), ["iPhone-01", "iPhone-02"], "監視サイクル後も隠れたまま(実行ログ)");
@@ -148,7 +148,7 @@ test("host の復元値はバッジに入り、投げ返さない", (t) => {
   assert.deepEqual(posted.filter((m) => m?.type === "setPlatformFilter"), [], "復元は送り返さない");
 });
 
-// 知らない値(古い形の保存値・壊れた設定)で**台が黙って消えない**こと
+// 知らない値(古い形の保存値・壊れた設定)で**デバイスが黙って消えない**こと
 test("知らない復元値は「すべて」へ倒す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

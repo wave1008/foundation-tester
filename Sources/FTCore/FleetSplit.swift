@@ -11,7 +11,7 @@
 //
 // platform 適合を守らない割り当ては「走ったつもりで走っていない」を静かに作るので、
 // 適合するエントリが1つも無いシナリオは黙って落とさず throw する。**ただし「宣言した platform の
-// 台が fleet に1台も無い」シナリオは対象外**(単機の run と同じ PlatformApplicability の規律)——
+// デバイスが fleet に1台も無い」シナリオは対象外**(単機の run と同じ PlatformApplicability の規律)——
 // 呼び手は partition の前に `applicability(scenarios:entryPlatforms:)` で外し、notApplicable を
 // スキップとして出す。ここで throw するのは設定ミス(platform 未宣言なのに受けるエントリが無い)だけ。
 // 対象外まで throw すると、iOS だけの混在プロファイルに Android 宣言が1本あるだけで

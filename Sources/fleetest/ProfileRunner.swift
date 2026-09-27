@@ -33,8 +33,8 @@ enum ProfileRunner {
             ocrTextOcclusionCheck: resolved.ocrTextOcclusionCheck)
     }
 
-    /// この run が使おうとしている台の run-lease(`.fleetest/run-<key>.lease`)に、
-    /// 生きた別プロセスが既に居ないか確かめて、居れば台+保持者 pid を名指しして拒否する
+    /// この run が使おうとしているデバイスの run-lease(`.fleetest/run-<key>.lease`)に、
+    /// 生きた別プロセスが既に居ないか確かめて、居ればデバイス+保持者 pid を名指しして拒否する
     /// (ユーザー決定「拒否して止める」)。
     /// **呼び出しは各供給フェーズが `supplyLease?.hold(keys:)` で自分の lease を書き始める直前**
     /// (書いた後だと自分の lease を自分と衝突と見なしてしまう)。判定自体は `RunLeaseGuard.conflicts`
@@ -51,10 +51,10 @@ enum ProfileRunner {
         try rejectIfDeviceLeased(devices: devices, leaseStateDir: leaseStateDir, selfPID: selfPID)
     }
 
-    /// devices 版(台はまだ RunWorker になっていないが、鍵だけ`leaseKeysByDevice`で解決できている
+    /// devices 版(デバイスはまだ RunWorker になっていないが、鍵だけ`leaseKeysByDevice`で解決できている
     /// 時点で使う)。**ブリッジ供給(buildIOSWorkers/buildAndroidWorkers)より前に lease を持つため**
-    /// —— 供給には Wipe Data・古いブリッジの停止・凍結台の再起動などの破壊的操作を含み数十秒かかりうるので、
-    /// worker が揃うのを待ってから hold すると、その間 lease が無く `stop-device` 等に台を奪われる
+    /// —— 供給には Wipe Data・古いブリッジの停止・凍結デバイスの再起動などの破壊的操作を含み数十秒かかりうるので、
+    /// worker が揃うのを待ってから hold すると、その間 lease が無く `stop-device` 等にデバイスを奪われる
     static func rejectIfDeviceLeased(
         devices: [(device: String, key: String)], leaseStateDir: URL?,
         selfPID: Int32 = ProcessInfo.processInfo.processIdentifier
@@ -71,8 +71,8 @@ enum ProfileRunner {
     /// 供給(buildAndroidWorkers/buildIOSWorkers/buildWorkers)より前に run-lease を前倒しして持つ
     /// 共通実装。手順は reject(planned) → hold(planned) → build() → reject(built) → hold(built) →
     /// release(planned - built) で固定(順序自体が対策 = 供給完了を待ってから hold すると、
-    /// 供給中(Wipe Data・古いブリッジ停止・凍結台の再起動などで数十秒かかりうる)は lease が無く
-    /// 別プロセスの `stop-device` 等に台を奪われる。負荷テスト実測: 供給中のシミュレータを
+    /// 供給中(Wipe Data・古いブリッジ停止・凍結デバイスの再起動などで数十秒かかりうる)は lease が無く
+    /// 別プロセスの `stop-device` 等にデバイスを奪われる。負荷テスト実測: 供給中のシミュレータを
     /// 奪われて run が落ちた)。`platforms` は前倒しで hold する lease キーを `resolved` から
     /// 絞り込むためだけに使う(実際に何を build するかは呼び出し側の `build` クロージャが決める)。
     /// **ProfileRunner と ApiRunCommand の全供給パスがこれを呼ぶ**(CLAUDE.md「run と api run は
@@ -88,20 +88,20 @@ enum ProfileRunner {
         try rejectIfDeviceLeased(devices: plannedKeys, leaseStateDir: leaseStateDir)
         supplyLease?.hold(keys: plannedKeys.map(\.key))
         let workers = try await build()
-        // 供給前に解決できなかった台(起動直後に serial が決まる AVD 等)も同じ規律で確保する
+        // 供給前に解決できなかったデバイス(起動直後に serial が決まる AVD 等)も同じ規律で確保する
         try rejectIfDeviceLeased(workers: workers, leaseStateDir: leaseStateDir)
         let builtKeys = workers.compactMap { $0.connection.serial ?? $0.connection.udid }
         supplyLease?.hold(keys: builtKeys)
-        // 予定したが実際には建たなかった台(供給失敗でレーンから外れた)の lease は取り消す
+        // 予定したが実際には建たなかったデバイス(供給失敗でレーンから外れた)の lease は取り消す
         let builtKeySet = Set(builtKeys)
         supplyLease?.releaseKeys(plannedKeys.map(\.key).filter { !builtKeySet.contains($0) })
         return workers
     }
 
-    /// **開始スクリプトと供給の前**に、使う台の lease キーを台の実体から引いて二重使用を断る。
-    /// 供給段は破壊的な準備(Wipe Data・GPU 復帰・古いブリッジの停止・凍結台の再起動)を含むので、
-    /// ワーカー構築後の判定(rejectIfDeviceLeased)だけだと、2本目が1本目の台を消去・再起動してから断る。
-    /// 引けない台(停止中のエミュレータ・一覧に無いシミュレータ)は飛ばす —— 生きた run はそこを掴めない。
+    /// **開始スクリプトと供給の前**に、使うデバイスの lease キーをデバイスの実体から引いて二重使用を断る。
+    /// 供給段は破壊的な準備(Wipe Data・GPU 復帰・古いブリッジの停止・凍結デバイスの再起動)を含むので、
+    /// ワーカー構築後の判定(rejectIfDeviceLeased)だけだと、2本目が1本目のデバイスを消去・再起動してから断る。
+    /// 引けないデバイス(停止中のエミュレータ・一覧に無いシミュレータ)は飛ばす —— 生きた run はそこを掴めない。
     /// ワーカー構築後の判定は残す(準備で serial が変わりうる)。ApiRunCommand と共用
     static func rejectIfDevicesLeasedBeforePreparation(
         resolved: ResolvedProfile, leaseStateDir: URL?,
@@ -116,8 +116,8 @@ enum ProfileRunner {
         }
     }
 
-    /// **機械分担の run がリモートへ配る前に**、手元の子と同じ規則(この機械の台へ絞る →
-    /// 本数+予備で絞る(MCP の台を避ける)→ lease 照合)で二重使用を断る(台+保持者 pid を名指しして throw)。
+    /// **機械分担の run がリモートへ配る前に**、手元の子と同じ規則(この機械のデバイスへ絞る →
+    /// 本数+予備で絞る(MCP のデバイスを避ける)→ lease 照合)で二重使用を断る(デバイス+保持者 pid を名指しして throw)。
     /// 手元の子の拒否より先にリモートの子がロックを取り、断られた run の半分が走って同時刻の
     /// 別 run のリモート分を丸ごと弾いていた(負荷テスト M12)。
     /// 判定材料が揃わない(プロファイル解決の失敗等)ときは何もしない = 手元の子の判定に任せる。
@@ -125,7 +125,7 @@ enum ProfileRunner {
     ///
     /// **`waitLock` があれば、この機械の dispatch.lock と同じ刻み(`WaitLockPolling`)で
     /// 待ってから再判定する**(この機械は dispatch.lock で1マシン1 run を守っているので、
-    /// 走行中の run が終われば台の lease は必ず空く = 待てば必ず解消する)。無ければ即座に断る
+    /// 走行中の run が終わればデバイスの lease は必ず空く = 待てば必ず解消する)。無ければ即座に断る
     /// (`LocalDeviceLeaseWaitPolicy.decide`)。上限に達しても空かなければ今と同じ文言で断る
     static func rejectIfLocalDevicesLeasedBeforeDispatch(
         project: TestProject, profileName: String, setOverrides: [String: RunProfileSetValue],
@@ -167,7 +167,7 @@ enum ProfileRunner {
         }
     }
 
-    /// 台 → lease キー(Android = serial / iOS = udid。RunWorker の `serial ?? udid` と同じ値)。
+    /// デバイス → lease キー(Android = serial / iOS = udid。RunWorker の `serial ?? udid` と同じ値)。
     /// 解決の規則はワーカー構築と同じもの(AndroidDeviceCatalog.canonicalAVDID + 起動中の AVD /
     /// SimulatorCatalog.resolve)。iOS 実機は devicectl を引かず udid の記載をそのまま使う
     static func leaseKeysBeforePreparation(resolved: ResolvedProfile) -> [(device: String, key: String)] {
@@ -207,12 +207,12 @@ enum ProfileRunner {
         return keys
     }
 
-    /// **回す本数に絞るとき、MCP(fleetest-mcp)が操作している台を避ける**(ユーザー決定「避けて、
+    /// **回す本数に絞るとき、MCP(fleetest-mcp)が操作しているデバイスを避ける**(ユーザー決定「避けて、
     /// 足りなければ警告して使う」。予備にも残さない理由は `ResolvedProfile.limitingDevices(avoiding:)`)。
-    /// それでも使う台は警告で名指しする(断らない = 新しい検知は警告から)。
-    /// 印(`MCPDeviceLease`)が1つも無ければ台の実体を引かない(simctl/adb の往復を払わない)。
+    /// それでも使うデバイスは警告で名指しする(断らない = 新しい検知は警告から)。
+    /// 印(`MCPDeviceLease`)が1つも無ければデバイスの実体を引かない(simctl/adb の往復を払わない)。
     /// 自分と親の pid が持つ印は数えない(MCP が起こした run が自分を「MCP が操作中」と言わない)。
-    /// `trim: false`(--broadcast)は絞らず、使う台の警告だけ返す
+    /// `trim: false`(--broadcast)は絞らず、使うデバイスの警告だけ返す
     static func limitingDevicesAvoidingMCP(
         _ full: ResolvedProfile, iosScenarios: Int, androidScenarios: Int, trim: Bool,
         leaseStateDir: URL?
@@ -250,7 +250,7 @@ enum ProfileRunner {
         return (resolved, warnings)
     }
 
-    /// 台が足りず MCP の台を使うときの理由を事実で組み立てる(純粋関数)。
+    /// デバイスが足りず MCP のデバイスを使うときの理由を事実で組み立てる(純粋関数)。
     /// `scenarios == 0` はレーン数を数で言えない(本数不明 = 絞りの計算に使わない)ときの
     /// 単純な言い方。`scenarios > 0` は必要レーン数(本数+予備1台)と空き台数を数で言う
     static func shortageReason(needed: Int, scenarios: Int, free: Int) -> String {
@@ -258,7 +258,7 @@ enum ProfileRunner {
         func plural(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         let freeClause = free == 1 ? "only 1 device was free" : "only \(free) devices were free"
         // **導出は成り立つときだけ書く**: `deviceKeepCount` は台数でクランプされる
-        // (min(available, scenarios + 1))ので、本数より台が少ない run では
+        // (min(available, scenarios + 1))ので、本数よりデバイスが少ない run では
         // 「(N scenarios + 1 spare)」が needed を生まない。そのときは数の内訳を出さない
         let derivation = needed == scenarios + 1
             ? " (\(plural(scenarios, "scenario")) + 1 spare)"
@@ -332,7 +332,7 @@ enum ProfileRunner {
         // OS 対象外(`@TestClass(platform:)` / `@Test(platform:)` がこの run に無い OS を指す)は
         // **キューへ入れる前に外す** —— 入れると RunOrchestrator の「担当ワーカーなし」に落ち、
         // 意図された対象外が失敗として数えられる(PlatformApplicability の宣言)。
-        // 台数の見積り(この下)より前に行う: 外した分の台は用意しなくてよい
+        // 台数の見積り(この下)より前に行う: 外した分のデバイスは用意しなくてよい
         let runPlatforms = Set(full.devices.map(\.platform))
         let applicability = PlatformApplicability.partition(items, runPlatforms: runPlatforms) {
             $0.info.platform
@@ -360,7 +360,7 @@ enum ProfileRunner {
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)。
-        // **--broadcast は絞らない** —— 各台で1回ずつ走らせるのが目的なので、絞ると回るべき台が落ちる
+        // **--broadcast は絞らない** —— 各デバイスで1回ずつ走らせるのが目的なので、絞ると回るべきデバイスが落ちる
         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
         let (resolved, mcpWarnings) = Self.limitingDevicesAvoidingMCP(
             full, iosScenarios: items.filter { $0.info.platform != "android" }.count,
@@ -378,7 +378,7 @@ enum ProfileRunner {
         // 開始スクリプト(docs/remote-runner.md §17)。**デバイスに触る前**に撃つ ——
         // 依存サービスが上がっていない状態でシミュレータを起こしてアプリを入れても、
         // 全シナリオが「アプリの不具合」の顔で落ちるだけ。渡すのは絞り込み後の resolved
-        // (スクリプトが受け取るデバイス一覧を、この run が実際に使う台と一致させる)。
+        // (スクリプトが受け取るデバイス一覧を、この run が実際に使うデバイスと一致させる)。
         // 終了スクリプトは defer で必ず撃つ(途中の throw・シナリオの失敗のいずれでも)。
         // プロセスごと殺された場合は lease が残り、次の run と `fleetest hooks reap` が代わりに撃つ
         let hookStateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
@@ -575,8 +575,8 @@ enum ProfileRunner {
         // 供給中に既に中断済みならここで即 orchestrator.requestInterrupt() が呼ばれる
         interruptState.attachLateSubscriber { orchestrator.requestInterrupt() }
         PhaseLog.mark("orchestrator-setup")
-        // レーン = 絞り込み後の全デバイス(供給に失敗して参加しなかった台のぶんは、orchestrator が
-        // 「never joined」でそのレーンの本数を失敗として残す = 準備できなかった台が緑に紛れない)
+        // レーン = 絞り込み後の全デバイス(供給に失敗して参加しなかったデバイスのぶんは、orchestrator が
+        // 「never joined」でそのレーンの本数を失敗として残す = 準備できなかったデバイスが緑に紛れない)
         let dispatch: ScenarioDispatch = broadcast
             ? .broadcast(lanes: resolved.devices.map { BroadcastLane(key: $0.name, platform: $0.platform) })
             : .shared
@@ -755,9 +755,9 @@ enum ProfileRunner {
             let leaseStateDir = repoRoot.appendingPathComponent(".fleetest")
             // 供給(buildIOSWorkers。シミュレータ起動+ブリッジ供給で数十秒〜数分かかりうる)より前に
             // lease を前倒しして持つ(buildWorkersWithFrontLoadedLease の宣言参照。前倒ししないと
-            // 供給中は run-lease が無く、`stop-device` に台を奪われてワーカーが離脱する。
+            // 供給中は run-lease が無く、`stop-device` にデバイスを奪われてワーカーが離脱する。
             // 実測: シナリオが requeue された)。ここで throw すると呼び出し元の do/catch が
-            // 「❌ Failed to build iOS workers: …」として拒否理由(台+保持者 pid)をそのまま出す
+            // 「❌ Failed to build iOS workers: …」として拒否理由(デバイス+保持者 pid)をそのまま出す
             // (iOS 供給失敗は run 全体を落とさない既存の規律はそのまま=このレーンだけ空になる)
             var ws = try await buildWorkersWithFrontLoadedLease(
                 resolved: resolved, platforms: ["ios"], leaseStateDir: leaseStateDir,
@@ -796,7 +796,7 @@ enum ProfileRunner {
             blankRepairBox.add(anomalies: WorkerAnomalyRecord.preRunTriage(
                 excluded: recovered.excludedWorkers, repaired: recovered.repairedWorkers))
             ws = recovered.workers
-            // 録画ありの run では、端末側に録画セッションが残った台を再起動して解く
+            // 録画ありの run では、端末側に録画セッションが残ったデバイスを再起動して解く
             // (HostRecordingProbe。凍結の回復と同じくブリッジごと張り直す)
             ws = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
                 workers: ws, resolved: resolved, repoRoot: repoRoot,

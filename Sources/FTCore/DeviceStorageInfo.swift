@@ -1,6 +1,6 @@
 // DeviceStorageInfo.swift
 // `fleetest api monitor` の monitorDevices[].storage(任意)。実機は測れないので省く
-// (測れなかった台も省く。0 で埋めない)。計測の実体は Android = FTAndroid.AndroidStorageProbe
+// (測れなかったデバイスも省く。0 で埋めない)。計測の実体は Android = FTAndroid.AndroidStorageProbe
 // (df /data)・iOS Simulator = FTBridgeClient.SimulatorStorageProbe(データディレクトリの並列走査 +
 // ホストボリュームの空き)。docs/results-json.md は対象外(この欄は results/ ではなく
 // api monitor の NDJSON だけに出る)。

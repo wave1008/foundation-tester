@@ -22,7 +22,7 @@ final class ApiDeviceWipeTargetTests: XCTestCase {
                        .android(avd: "Pixel_8"))
     }
 
-    /// **識別子が無いまま進めない** —— 進めると「何も消さずに成功」か、別の台を消すかのどちらかになる
+    /// **識別子が無いまま進めない** —— 進めると「何も消さずに成功」か、別のデバイスを消すかのどちらかになる
     func testResolveThrowsWhenTheIdentifierIsMissingOrEmpty() {
         XCTAssertThrowsError(try ApiDeviceWipeTarget.resolve(platform: "ios", udid: nil, avd: nil))
         XCTAssertThrowsError(try ApiDeviceWipeTarget.resolve(platform: "android", udid: nil, avd: nil))
@@ -30,7 +30,7 @@ final class ApiDeviceWipeTargetTests: XCTestCase {
         XCTAssertThrowsError(try ApiDeviceWipeTarget.resolve(platform: "android", udid: nil, avd: ""))
     }
 
-    /// platform と識別子の取り違えは黙って通さない(iOS に --avd を渡すと Android の台を指しかねない)
+    /// platform と識別子の取り違えは黙って通さない(iOS に --avd を渡すと Android のデバイスを指しかねない)
     func testResolveThrowsWhenTheIdentifierBelongsToTheOtherPlatform() {
         XCTAssertThrowsError(try ApiDeviceWipeTarget.resolve(platform: "ios", udid: nil, avd: "Pixel_8"))
         XCTAssertThrowsError(try ApiDeviceWipeTarget.resolve(platform: "android", udid: "ABCD-1234", avd: nil))

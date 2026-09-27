@@ -1,6 +1,6 @@
 // ディスパッチ判定(`DeviceMachineRunner.plan` / `machineScopedDeviceFilter` /
 // `resolveEffectiveDispatchTarget`)が実行プロファイルの devices[].machine だけから決まることを固定する。
-// どれも resolve() より前に呼ばれるので、ここがズレると「配る先」と「実際に走る台」が食い違う。
+// どれも resolve() より前に呼ばれるので、ここがズレると「配る先」と「実際に走るデバイス」が食い違う。
 
 import XCTest
 import FTCore
@@ -27,7 +27,7 @@ final class RunProfileMachineDispatchTests: XCTestCase {
             .write(to: project.runsDir.appendingPathComponent("\(name).json"))
     }
 
-    /// 手元 + リモート + 無効のリモート(別の機械)。無効の台は分割にも絞り込みにも入らない
+    /// 手元 + リモート + 無効のリモート(別の機械)。無効のデバイスは分割にも絞り込みにも入らない
     private func writeMixed() throws {
         try writeRun("multi", """
         [ { "platform": "ios", "machine": "local", "name": "ローカル機" },
@@ -75,7 +75,7 @@ final class RunProfileMachineDispatchTests: XCTestCase {
     }
 
     /// 外した結果が1機械でも分割計画を返す(nil だと単一経路がプロファイル丸ごとを見て、
-    /// 外した機械の台を手元で探す/外した機械へ自動ディスパッチする)
+    /// 外した機械のデバイスを手元で探す/外した機械へ自動ディスパッチする)
     func testPlanReturnsASingleGroupWhenDisablingLeavesOneMachine() throws {
         try writeMixed()
         let groups = try DeviceMachineRunner.plan(

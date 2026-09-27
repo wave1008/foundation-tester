@@ -439,7 +439,7 @@ test("validateNewDeviceName: 既存(ios/android横断)と重複するならエ�
 });
 
 // ---- removeDeviceFromRunProfile ----
-// 実体(シミュレータ/AVD)を消したあと、実行プロファイルが指す台も外すための関数。
+// 実体(シミュレータ/AVD)を消したあと、実行プロファイルが指すデバイスも外すための関数。
 // プロファイルタブの「除去」からも、(platform, machine, name) が一致する全実行プロファイルへ
 // 順に適用される形で使われる。
 

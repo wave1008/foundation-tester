@@ -30,7 +30,7 @@ struct ApiListDevices: AsyncParsableCommand {
 
     func run() async throws {
         let testProject = try ScenarioHost.project(named: project)
-        // --profile を渡されたら**そのプロファイルの enabled の台だけ**(モニターと同じ RunProfileScope)。
+        // --profile を渡されたら**そのプロファイルの enabled のデバイスだけ**(モニターと同じ RunProfileScope)。
         // 無ければ全実行プロファイルの和(MachineInventory。単発なので実在での決着はしない)
         let scoped: DeviceRoster
         if let profile {

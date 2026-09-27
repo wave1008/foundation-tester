@@ -1,5 +1,5 @@
 // 録画セッションが残った iOS シミュレータの再起動(ProfileWorkerFactory.recoverStaleRecordingIOSWorkers)。
-// 検査(simctl)と再起動は注入口で差し替え、「どの台を・いつ再起動し・何を返すか」だけを見る。
+// 検査(simctl)と再起動は注入口で差し替え、「どのデバイスを・いつ再起動し・何を返すか」だけを見る。
 
 import XCTest
 @testable import FTCore
@@ -83,7 +83,7 @@ final class StaleRecordingRecoveryTests: XCTestCase {
         XCTAssertEqual(result.map(\.label), ["a"])
     }
 
-    /// busy の台だけを再起動し、再起動後の一覧を返す(再起動した台は検査し直す)
+    /// busy のデバイスだけを再起動し、再起動後の一覧を返す(再起動したデバイスは検査し直す)
     func testOnlyBusySimulatorsAreRebootedAndTheRebuiltListIsReturned() async {
         let calls = Calls()
         let sink = LogSink()
@@ -126,7 +126,7 @@ final class StaleRecordingRecoveryTests: XCTestCase {
         XCTAssertEqual(recovered.first, ["a"])
     }
 
-    /// 検査が言えなかった台(unknown)は再起動しない
+    /// 検査が言えなかったデバイス(unknown)は再起動しない
     func testUnknownIsNotRebooted() async {
         let calls = Calls()
         let result = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(
@@ -139,7 +139,7 @@ final class StaleRecordingRecoveryTests: XCTestCase {
         XCTAssertEqual(result.map(\.label), ["a"])
     }
 
-    /// 再起動できなくても、解けなくても、台は外さない(録画だけが欠ける)
+    /// 再起動できなくても、解けなくても、デバイスは外さない(録画だけが欠ける)
     func testWorkersAreNeverDroppedWhenRecoveryFailsOrDoesNotHelp() async {
         let sink = LogSink()
         let failed = await ProfileWorkerFactory.recoverStaleRecordingIOSWorkers(

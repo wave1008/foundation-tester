@@ -95,7 +95,7 @@ enum WebViewShotComposite {
     }
 
     /// 補えなかった理由。**3つは別の事実**で、案内が違う(全部を「デバッグを有効に
-    /// しろ」に丸めると、アプリが起きていないだけの台にも同じ案内が出る)
+    /// しろ」に丸めると、アプリが起きていないだけのデバイスにも同じ案内が出る)
     enum BlankCaptureReason: Equatable {
         /// アプリの pid に devtools ソケットが無い = WebView 未生成 か デバッグ無効
         case noDevtoolsSocket
@@ -108,7 +108,7 @@ enum WebViewShotComposite {
 
     /// 補えなかったときに出す説明。**黙って空白の画像を返さない**ためのもので、
     /// 読み手には理由が見えない(画像は真っ白/真っ黒なだけ)。**serial を名指しし、確かめ方の
-    /// コマンドにも実 serial を埋める**(17 台並ぶモニターで「どの台か」が分からないと確認できない)
+    /// コマンドにも実 serial を埋める**(17 台並ぶモニターで「どのデバイスか」が分からないと確認できない)
     static func blankCaptureWarning(serial: String, hasWebViewNode: Bool,
                                     reason: BlankCaptureReason) -> String {
         let area = hasWebViewNode ? "the WebView area" : "most of the screen"

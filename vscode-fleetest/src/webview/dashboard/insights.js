@@ -38,7 +38,7 @@ function insightLine(insight) {
     message.addEventListener('click', () => requestTrend(insight.scenarioID));
   }
   li.append(icon, message);
-  // deviceBias は scenarioID と worker の両方を持つので、台へのリンクは本文と別に添える
+  // deviceBias は scenarioID と worker の両方を持つので、デバイスへのリンクは本文と別に添える
   if (insight.worker && hasWorkerRow(insight.worker)) {
     const workerLink = document.createElement('span');
     workerLink.className = 'scenario-id-clickable insight-worker-link';

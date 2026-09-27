@@ -33,7 +33,7 @@ final class DeviceRosterLoadTests: XCTestCase {
     }
 
     /// **分散する経路では「その機械で起動してください」と案内しない**。
-    /// 実害 2026-08-30: 一括起動のログで、この案内の 2 秒後に fan-out が同じ台を起動していた
+    /// 実害 2026-08-30: 一括起動のログで、この案内の 2 秒後に fan-out が同じデバイスを起動していた
     /// (利用者には「分散していない」ように読める)
     func testDispatchingCallersDoNotTellTheUserToStartThemManually() throws {
         let project = try projectWithRuns([
@@ -83,7 +83,7 @@ final class DeviceRosterLoadTests: XCTestCase {
     }
 
     /// 実行プロファイルが2つあっても、プロファイル未選択なら**落とさずに畳む**(押した操作を断らない)。
-    /// enabled: false の台も台帳に載る
+    /// enabled: false のデバイスも台帳に載る
     func testWithoutARunProfileEveryRunProfileIsMerged() throws {
         let project = try projectWithRuns([
             "aaa": #"{"devices":[{"platform":"ios","machine":"local","name":"A"}]}"#,
@@ -94,8 +94,8 @@ final class DeviceRosterLoadTests: XCTestCase {
         XCTAssertEqual(merged.android?.devices?.map(\.name), ["B"])
     }
 
-    /// 畳んだあとも「この機械が扱える台だけ」に絞る(別の機械の台へ simctl/adb は撃てない)。
-    /// 登録簿に居るリモートの台は fan-out がその機械で起こす
+    /// 畳んだあとも「この機械が扱えるデバイスだけ」に絞る(別の機械のデバイスへ simctl/adb は撃てない)。
+    /// 登録簿に居るリモートのデバイスは fan-out がその機械で起こす
     func testRemoteDevicesAreLeftToTheirOwnMachine() throws {
         let project = try projectWithRuns([
             "one": #"{"devices":[{"platform":"ios","name":"L"},{"platform":"ios","name":"R","machine":"M1Max"}]}"#,
@@ -104,7 +104,7 @@ final class DeviceRosterLoadTests: XCTestCase {
         XCTAssertEqual(merged.ios?.devices?.map(\.name), ["L"], "手元の台だけ残す")
     }
 
-    /// 登録簿に無い機械の台は畳んだ時点で落ちる(観測も操作もできない台を並べない)
+    /// 登録簿に無い機械のデバイスは畳んだ時点で落ちる(観測も操作もできないデバイスを並べない)
     func testDevicesOfUnregisteredMachinesAreDropped() throws {
         let project = try projectWithRuns([
             "one": #"{"devices":[{"platform":"ios","name":"L"},{"platform":"ios","name":"R","machine":"Ghost"}]}"#,
@@ -113,7 +113,7 @@ final class DeviceRosterLoadTests: XCTestCase {
         XCTAssertEqual(merged.ios?.devices?.map(\.name), ["L"])
     }
 
-    /// **選んでいるときはその実行プロファイルの enabled の台だけ**。
+    /// **選んでいるときはその実行プロファイルの enabled のデバイスだけ**。
     /// 存在しない実行プロファイル名なら落ちる = 畳む経路へすり替わっていないことの witness
     func testWithARunProfileOnlyItsEnabledDevicesAreUsed() throws {
         let project = try projectWithRuns([

@@ -127,8 +127,8 @@ extension MCPServer {
         // 述語は明示ターゲットの唯一の定義元(argsGaveIOSTarget/argsGaveAndroidTarget)
         if argsGaveAndroidTarget(args) { return "android" }
         if argsGaveIOSTarget(args) { return "ios" }
-        // **profile だけの呼び出しはプロファイルの台で決める**: driver() は resolveProfileTarget で
-        // Android の台に解決するのに、ここが既定の iOS を返すと ft_list_apps が simctl へ落ち、
+        // **profile だけの呼び出しはプロファイルのデバイスで決める**: driver() は resolveProfileTarget で
+        // Android のデバイスに解決するのに、ここが既定の iOS を返すと ft_list_apps が simctl へ落ち、
         // ft_rotate / ft_logs / verifiedRef が iOS 側の記録・言い回しになる。読めなければ既定へ
         // (driver() 側が改めて明確なエラーを出す)。**ドライバが手元にある呼び手は
         // `driver is AndroidDriver` を優先する**(ft_snapshot と同じ。ファイルを読み直さない)
@@ -139,9 +139,9 @@ extension MCPServer {
         return ProcessInfo.processInfo.environment["FLEETEST_PLATFORM"] ?? "ios"
     }
 
-    /// 実行プロファイルの**最初の台**の platform。resolveProfileTarget が使う
+    /// 実行プロファイルの**最初のデバイス**の platform。resolveProfileTarget が使う
     /// `resolved.devices.first?.platform` と同じ順序(ProfileResolver.runDeviceMachines は resolve()
-    /// と同じ devices の記述順で enabled の台を返す)を、アプリ解決・provision 抜きで読む。
+    /// と同じ devices の記述順で enabled のデバイスを返す)を、アプリ解決・provision 抜きで読む。
     /// プロジェクト/プロファイルが読めなければ nil
     static func profilePlatform(profile: String, project projectName: String?) -> String? {
         guard let project = try? ScenarioHost.project(named: projectName) else { return nil }
@@ -370,7 +370,7 @@ extension MCPServer {
             // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
             throw MCPToolFailure(content: await decorated(failure.content))
         } catch {
-            // run が台を使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの建て直し)ので、失敗にも言う
+            // run がデバイスを使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの建て直し)ので、失敗にも言う
             let runNote = Self.toolAcceptsDeviceTarget(tool) ? markDeviceInUse(args: resolved) : nil
             let hint = await connectionLostHint(error, args: resolved)
                 + Self.setTextRefusedHint(tool: tool, args: resolved,
@@ -394,9 +394,9 @@ extension MCPServer {
             + " remembered for the bundle id"
     }
 
-    /// **この MCP が操作している台に印を置き(run が後回しにする)、run が使用中なら1行で言う**
-    /// (ユーザー決定: run は MCP の台を避け、MCP は run の台を触ったら警告する = 断らない)。
-    /// 台の鍵は解決済みの記録(udids / connectedAndroidSerials)から採る = run の lease と同じ鍵。
+    /// **この MCP が操作しているデバイスに印を置き(run が後回しにする)、run が使用中なら1行で言う**
+    /// (ユーザー決定: run は MCP のデバイスを避け、MCP は run のデバイスを触ったら警告する = 断らない)。
+    /// デバイスの鍵は解決済みの記録(udids / connectedAndroidSerials)から採る = run の lease と同じ鍵。
     /// 記録が無い(接続する前に失敗した回)ときは引数の udid / serial。どれも無ければ何もしない
     func markDeviceInUse(args: [String: Any]) -> String? {
         let key = Self.engineKey(args)

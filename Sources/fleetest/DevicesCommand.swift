@@ -113,7 +113,7 @@ struct DevicesCommand: AsyncParsableCommand {
                 return
             }
 
-            // **掃討は台を選べないので、run が1本でも台を握っていれば丸ごと断る**(規律④)。
+            // **掃討はデバイスを選べないので、run が1本でもデバイスを握っていれば丸ごと断る**(規律④)。
             // リモートへ投げる前に判定する = 断ったときはどの機械も触らない。
             // リモートの子も同じコマンドなので、ランナー機の上で同じ判定が走る
             if let refusal = DeviceBooter.sweepRefusal(
@@ -122,7 +122,7 @@ struct DevicesCommand: AsyncParsableCommand {
                 throw ExitCode(1)
             }
 
-            // 手元だけ掃討しても**モニターに出ているリモートの台は残る**(「全て終了」を押しても
+            // 手元だけ掃討しても**モニターに出ているリモートのデバイスは残る**(「全て終了」を押しても
             // 消えない。実害)。監視と同じ集合(登録簿の全マシン)へ同じ掃討を投げる。
             // 子は `--device-machine local` で走るので入れ子にはならない
             async let fanout: Void = RemoteDeviceFanout.dispatchSweep(
@@ -225,14 +225,14 @@ struct DevicesCommand: AsyncParsableCommand {
 }
 
 /// devices up/down・api start-all-devices 共通: プロジェクト/実行プロファイルから台帳を読み込む
-/// (profile 指定時はそのプロファイルの enabled の台、無指定なら全実行プロファイルの和)。
+/// (profile 指定時はそのプロファイルの enabled のデバイス、無指定なら全実行プロファイルの和)。
 enum DeviceRosterLoad {
     /// - deviceMachine: **どの機械のデバイスを扱うか**(nil/"local" = 手元)。リモート機で自分の
     ///   デバイスを起こすときに使う —— CLI には「自分が誰か」を知る手段が無いため、
     ///   呼び出し側(親)が明示する。例: `remote exec M1Max -- devices up --profile p --device-machine M1Max`
     /// **他の機械のデバイスを呼び出し側がどう扱うか**。既定値を置かない —— 分散する経路で
     /// 「その機械で起動してください」と案内すると、直後にツール自身が起動するので嘘になる
-    /// (実害: 一括起動のログで、案内の 2 秒後に fan-out が同じ台を起動していた)
+    /// (実害: 一括起動のログで、案内の 2 秒後に fan-out が同じデバイスを起動していた)
     enum ForeignDevices {
         /// 呼び出し側が RemoteDeviceFanout でその機械へ回す(api start-all-devices / stop-all-devices)
         case dispatchedByCaller
@@ -254,7 +254,7 @@ enum DeviceRosterLoad {
                      registry: [String], foreign: ForeignDevices,
                      warn: (String) -> Void) throws -> DeviceRoster {
         // **実行プロファイルを選んでいなければ台帳を1つに決めない** —— runs/ を全部畳み、
-        // 手元 + リモート実行の登録簿にあるマシンの台を対象にする(監視 = ApiMonitorCommand・
+        // 手元 + リモート実行の登録簿にあるマシンのデバイスを対象にする(監視 = ApiMonitorCommand・
         // 単体操作 = ApiDeviceOperation と同じ規律)。決められないという理由で操作を断らない:
         // 台帳が2つある案件では「(プロファイルなし)」のまま「デバイスを全て起動」を押しても
         // 即死し、**画面には何も起きない**(実害)

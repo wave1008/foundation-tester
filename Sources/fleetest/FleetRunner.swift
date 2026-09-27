@@ -180,7 +180,7 @@ enum FleetRunner {
         let unknownDurationMs = medianMs(durations.map(\.medianMs)) ?? unknownDurationUnitWeight
         let machineContext = buildMachineContext(fleet: fleet, project: project, records: records)
 
-        // 宣言 platform の台が fleet のどのエントリにも無いシナリオは対象外(単機と同じ規律)
+        // 宣言 platform のデバイスが fleet のどのエントリにも無いシナリオは対象外(単機と同じ規律)
         let split = FleetSplit.applicability(
             scenarios: selected.map { (id: $0.id, platform: $0.platform) }, entryPlatforms: entryPlatforms)
         if !split.notApplicable.isEmpty {
@@ -456,7 +456,7 @@ enum FleetRunner {
         var args = ["run", "--project", project, "--profile", profile]
         // "local" エントリも常に --runner を渡す(欠陥3)。子プロセスは自分自身が
         // MachineDispatch を再適用するため、--runner を省略すると「未指定」と区別が付かず、
-        // entry.profile の台が全部リモートにあると子がそこへ自動ディスパッチしてしまい、
+        // entry.profile のデバイスが全部リモートにあると子がそこへ自動ディスパッチしてしまい、
         // {"host":"local"} と書いた意味が失われる(重複ホスト拒否も無意味になる)。"local" を明示すれば MachineDispatch.resolve がそこで止める
         // (RunProfile.swift 参照)。--force-lock は引き続きリモート子だけ —— "local" 子も
         // dispatch.lock を取るようになった(LocalDispatchLock)が、**親が先に取って印を渡す**

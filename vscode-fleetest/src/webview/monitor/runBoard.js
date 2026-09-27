@@ -45,13 +45,13 @@ let expandAll = false;
 const expandedGroups = new Set(
   Array.isArray(persistedState.runBoardExpandedGroups) ? persistedState.runBoardExpandedGroups : [],
 );
-// 機械の枝(「(マシン名) プロジェクト / 実行プロファイル」+ その機械の台)の開閉。
+// 機械の枝(「(マシン名) プロジェクト / 実行プロファイル」+ その機械のデバイス)の開閉。
 // **既定は開いた状態**(ユーザー決定)なので、run 行(既定は閉じ = expandedGroups に
 // 入っているものだけ開く)とは逆に**畳んだものを覚える**。寿命も同じ(webview の getState だけ)
 const collapsedBranches = new Set(
   Array.isArray(persistedState.runBoardCollapsedBranches) ? persistedState.runBoardCollapsedBranches : [],
 );
-// 走っていない機械をまとめる根(モニターが台を並べる範囲)。run の groupKey と同じ Map に入れる
+// 走っていない機械をまとめる根(モニターがデバイスを並べる範囲)。run の groupKey と同じ Map に入れる
 const SCOPE_ROW_KEY = '\u0000scope\u0000';
 
 // groupKey -> 行の DOM とブックキーピング。render() が groups の集合に合わせて足し引きする。
@@ -158,7 +158,7 @@ export function setRunBoardCollapsed(value) {
 }
 
 // 表示フィルタの切り替えでもツリーを描き直す(deviceTiles.js が入口で落とした一覧を読むので、
-// 呼ばないと隠したはずの台が次の監視サイクルまで残る)
+// 呼ばないと隠したはずのデバイスが次の監視サイクルまで残る)
 onPlatformFilterChanged(() => render());
 
 // ---- 2カラムの境目(ユーザー決定) ----
@@ -173,8 +173,8 @@ let desiredSplit = null;
 // 左右それぞれに最低これだけは残す(境目を端まで引き切って片方を潰さない)。
 const MIN_COLUMN_WIDTH = 80;
 // 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定)。
-// 比率ではないので、機械名・台名の長さで決まる。ドラッグするまでは毎回引き直す
-// (台が増えて名前が伸びたら追従する)。
+// 比率ではないので、機械名・デバイス名の長さで決まる。ドラッグするまでは毎回引き直す
+// (デバイスが増えて名前が伸びたら追従する)。
 function naturalLeftWidth() {
   // 測る間だけ左カラムを中身なりの幅にする(flex-basis が効いたままだと今の幅しか返らない)
   runBoardRows.classList.add('run-board-measuring');
@@ -253,8 +253,8 @@ runBoardSplit.addEventListener('pointercancel', endSplitDrag);
 runBoardSplit.addEventListener('click', (event) => event.stopPropagation());
 window.addEventListener('resize', () => renderSplit());
 
-/** 台の一覧・モニターの範囲(project/profile)が変わったら main.js から呼ぶ。
- * **run ボードは monitorRuns でしか描き直さない**ので、これが無いとツリーの台が古いまま残る。 */
+/** デバイスの一覧・モニターの範囲(project/profile)が変わったら main.js から呼ぶ。
+ * **run ボードは monitorRuns でしか描き直さない**ので、これが無いとツリーのデバイスが古いまま残る。 */
 export function refreshRunBoardDevices() {
   render();
 }
@@ -311,9 +311,9 @@ export function setRunBoardExpandAll(value) {
 
 // 走っていない機械をまとめる**根の行**(行の DOM は run 行と共有する = ensureRow)。
 // **構成は run の行と同じ**(ユーザー決定): 根 =「プロジェクト / 実行プロファイル」・
-// その下に機械の枝「(マシン名) プロジェクト / 実行プロファイル」・さらに下にその機械の台。
+// その下に機械の枝「(マシン名) プロジェクト / 実行プロファイル」・さらに下にその機械のデバイス。
 // **run のある機械はここに出さない** —— その機械は run の行として出ているので二重になる。
-// **台のツリーはデバイスの状態に関わらず出す**(停止中でも消さない)。
+// **デバイスのツリーはデバイスの状態に関わらず出す**(停止中でも消さない)。
 function updateScopeRow(row, entries) {
   row.group = null;
   row.machine = null;
@@ -331,7 +331,7 @@ function updateScopeRow(row, entries) {
   row.machineBadgeEl.style.display = 'none';
   paintMachineBadge(row.machineBadgeEl, undefined);
 
-  // 何を見ている台なのか = モニターが台を並べる範囲(ツールバーの選択)。run 行の scope と
+  // 何を見ているデバイスなのか = モニターがデバイスを並べる範囲(ツールバーの選択)。run 行の scope と
   // 同じ形で出す(あちらはその run の project/profile)
   const scope = currentMonitorScope();
   row.scopeEl.textContent = scope.profile ? `${scope.project} / ${scope.profile}` : scope.project;
@@ -353,7 +353,7 @@ function updateScopeRow(row, entries) {
   }
 }
 
-// 機械1つぶんの枝 = 見出し(マシン名のバッジ)+ その機械の台。
+// 機械1つぶんの枝 = 見出し(マシン名のバッジ)+ その機械のデバイス。
 // **run の行の中でも、空きの根の中でも同じ形**(ユーザー決定)—— 行の種類ごとに
 // 作りを変えるとインデントと2カラムの境目が割れ、ツリーに見えなくなる。
 // **プロジェクト / 実行プロファイルはここに出さない**(同日ユーザー決定)—— すぐ上の根が
@@ -366,7 +366,7 @@ function appendMachineBranch(row, { machine, status, run, expandKey }) {
   const devices = devicesOnMachine(machine);
   const laneByKey = new Map((run?.lanes ?? []).map((lane) => [lane.key, lane]));
   const used = new Set();
-  // 台の一覧に無いレーン(消えたタイル・観測窓の外)も落とさない —— 走っている事実は隠さない
+  // デバイスの一覧に無いレーン(消えたタイル・観測窓の外)も落とさない —— 走っている事実は隠さない
   const extraLanes = (run?.lanes ?? []).filter((lane) => {
     const hit = devices.some((device) => device.laneKey !== undefined && device.laneKey === lane.key);
     return !hit && !(lane.platform !== undefined && !isPlatformVisible(lane.platform));
@@ -419,15 +419,15 @@ function appendMachineBranch(row, { machine, status, run, expandKey }) {
     rightEl.appendChild(statusEl);
   }
   header.append(leftEl, rightEl);
-  // 見出しを押したらその機械の台だけを選ぶ(run 行が run の台を選ぶのと同じ扱い)
+  // 見出しを押したらその機械のデバイスだけを選ぶ(run 行が run のデバイスを選ぶのと同じ扱い)
   header.addEventListener('click', (event) => {
     event.stopPropagation();
     selectOnlyDevices(devices.map((device) => device.id));
   });
   groupEl.appendChild(header);
 
-  // **その機械の台を全部並べ、run が使っている台にだけシナリオを添える**(ユーザー決定)
-  // —— run に出ていない台も見えるようにする。台の一覧と並びはラインビュー(monitorDevices)から採る
+  // **その機械のデバイスを全部並べ、run が使っているデバイスにだけシナリオを添える**(ユーザー決定)
+  // —— run に出ていないデバイスも見えるようにする。デバイスの一覧と並びはラインビュー(monitorDevices)から採る
   for (const device of devices) {
     const lane = device.laneKey === undefined ? undefined : laneByKey.get(device.laneKey);
     if (lane) {
@@ -570,8 +570,8 @@ function ensureRow(groupKey) {
     if (current.group) {
       selectRunDevices(current.group);
     } else if (current.entries) {
-      // 空きの根を押したら、その下に並んでいる機械の台をまとめて選ぶ
-      // (run 行が run の台を選ぶのと同じ扱い。枝の見出しはその機械だけ)
+      // 空きの根を押したら、その下に並んでいる機械のデバイスをまとめて選ぶ
+      // (run 行が run のデバイスを選ぶのと同じ扱い。枝の見出しはその機械だけ)
       const ids = [];
       for (const entry of current.entries) {
         ids.push(...devicesOnMachine(machineKey(entry.machine)).map((d) => d.id));
@@ -617,7 +617,7 @@ function renderLaneTimes(row) {
 // diff はしない。作り直すのは展開したときと監視サイクルごとの update だけ(1秒ごとの秒読みは
 // renderLaneTimes が数字だけ書き換える)。
 // **機械が1つの run でも枝を作る**(ユーザー決定)—— 行の種類で作りを変えないので、
-// 「根 → (マシン名) プロジェクト / 実行プロファイル → 台」の形がどの run でも同じに見える
+// 「根 → (マシン名) プロジェクト / 実行プロファイル → デバイス」の形がどの run でも同じに見える
 function renderLanes(row, group) {
   row.lanesEl.textContent = '';
   row.laneRows = new Map();
@@ -630,14 +630,14 @@ function renderLanes(row, group) {
   renderLaneTimes(row);
 }
 
-// ツリーの1行(= 1台)。`lane` 省略 = その台は今の run に出ていない(名前だけ出す)。
+// ツリーの1行(= 1台)。`lane` 省略 = そのデバイスは今の run に出ていない(名前だけ出す)。
 // machine は machineList() の鍵でも monitorRuns の規約でも受ける(呼び手が揃える)。
 function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, platform) {
   const laneEl = document.createElement('div');
   laneEl.className = 'run-board-lane';
 
-  // 台のアイコン(ユーザー決定)。**色はプラットフォームのバッジと同じ**
-  // (iOS / Android。CSS の .run-board-lane-icon-* が持つ)。platform を持たない台は
+  // デバイスのアイコン(ユーザー決定)。**色はプラットフォームのバッジと同じ**
+  // (iOS / Android。CSS の .run-board-lane-icon-* が持つ)。platform を持たないデバイスは
   // 色を付けない(既定の文字色)—— 知らないものを iOS にも Android にも見せない
   const iconEl = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   iconEl.setAttribute('class', 'run-board-lane-icon'
@@ -687,7 +687,7 @@ function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, pla
   rightEl.className = 'run-board-col-right';
   rightEl.append(scenarioEl, elapsedEl);
   laneEl.append(leftEl, rightEl);
-  // **台の行は押しても何も起きない**(ユーザー決定)—— ここは実行状況を読む場所で、
+  // **デバイスの行は押しても何も起きない**(ユーザー決定)—— ここは実行状況を読む場所で、
   // ラインビューの選択を動かす口ではない(選択は run の行と機械の枝の見出しが持つ)
   container.appendChild(laneEl);
 

@@ -1,16 +1,16 @@
-// run が台を使い始める前(供給フェーズが自分の run-lease を書き始める前)に、その台の
+// run がデバイスを使い始める前(供給フェーズが自分の run-lease を書き始める前)に、そのデバイスの
 // run-lease を既に握っている生きた別プロセスがいないか確かめる(ユーザー決定「拒否して
 // 止める」)。
 //
 // **dispatch.lock との上下関係**:
 // - **dispatch.lock は「マシン全体」**(その Mac で同時に走る run は1本。手元の run も取る =
 //   Sources/fleetest/LocalDispatchLock.swift)。
-// - **run-lease は「台ごと」**で、dispatch.lock の**内側**。2つの run の直列化だけなら
+// - **run-lease は「デバイスごと」**で、dispatch.lock の**内側**。2つの run の直列化だけなら
 //   dispatch.lock で足りるが、**MCP のセッション(`mcp-<鍵>.lease`)と `start-device` 等の
-//   単発操作は dispatch.lock を取らない** —— 台ごとの調停はこちらでしか成立しないので残す。
-// - **順序は「マシンの門 → 台の門」**。run の入口(`RunScenarios.run` / `ApiRunCommand.run`)が
+//   単発操作は dispatch.lock を取らない** —— デバイスごとの調停はこちらでしか成立しないので残す。
+// - **順序は「マシンの門 → デバイスの門」**。run の入口(`RunScenarios.run` / `ApiRunCommand.run`)が
 //   先に dispatch.lock を取り、その後で供給段がこの判定を通る。逆順にすると、断られる側の run が
-//   先に台を掴みに行く(供給は Wipe Data・再起動など取り返しのつかない準備を含む)。
+//   先にデバイスを掴みに行く(供給は Wipe Data・再起動など取り返しのつかない準備を含む)。
 //   **例外は fan-out の事前判定**(`ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`)——
 //   あれは読み取りだけの先読みで、**どのロックも取る前に**断るためにわざと手前に置いてある
 //   (取ってから断ると、他人を待たせた挙句に自分が降りることになる)。**build 直列化のための
@@ -57,7 +57,7 @@ public enum RunLeaseGuard {
         return result
     }
 
-    /// 台と保持者 pid を名指しする拒否メッセージ(ユーザー決定「拒否して止める」。無警告で走らせない)
+    /// デバイスと保持者 pid を名指しする拒否メッセージ(ユーザー決定「拒否して止める」。無警告で走らせない)
     public static func message(_ conflicts: [Conflict]) -> String {
         let list = conflicts.map { "\($0.device) (held by pid \($0.holderPID))" }
             .joined(separator: ", ")

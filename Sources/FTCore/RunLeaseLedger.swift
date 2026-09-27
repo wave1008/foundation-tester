@@ -3,7 +3,7 @@
 // 呼べないので、fleetest ターゲットが注入する(nil = テストハーネス等。キーの記帳だけ行う)。
 
 /// **書き込みと削除は必ずアクターの中で行う**。外で行うと、ハートビートがキー一覧を取った直後に
-/// release が割り込み、消したばかりのファイルを書き戻す —— 担当を終えた台が lease の失効
+/// release が割り込み、消したばかりのファイルを書き戻す —— 担当を終えたデバイスが lease の失効
 /// (RunLease.stalenessSeconds)まで run 中に見え、モニターの配信が張られては畳まれる。
 actor RunLeaseLedger {
     private var keys: Set<String> = []

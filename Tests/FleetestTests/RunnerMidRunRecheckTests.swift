@@ -23,7 +23,7 @@ final class RunnerMidRunRecheckTests: XCTestCase {
         XCTAssertEqual(RunnerMidRunRecheck.target(of: connection)?.port, 8130)
     }
 
-    /// hybrid はランナーを建て直すと同じ台の in-app ブリッジも消えるので対象外
+    /// hybrid はランナーを建て直すと同じデバイスの in-app ブリッジも消えるので対象外
     func testHybridLaneIsNotTargeted() {
         let connection = DriverConnection(platform: "ios", port: 8135, engine: "hybrid",
                                           udid: "SIM-3", xcuiPort: 8136)
@@ -46,7 +46,7 @@ final class RunnerMidRunRecheckTests: XCTestCase {
         XCTAssertNil(RunnerMidRunRecheck.target(of: connection))
     }
 
-    /// udid が分からなければ建て直す台を引けないので対象外
+    /// udid が分からなければ建て直すデバイスを引けないので対象外
     func testLaneWithoutUDIDIsNotTargeted() {
         XCTAssertNil(RunnerMidRunRecheck.target(of: DriverConnection(platform: "ios", port: 8124)))
     }

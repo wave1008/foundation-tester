@@ -1,5 +1,5 @@
 // モニターの監視対象を決めるファイルが変わったときにモニターを再起動するかの判定。
-// `api monitor --profile P` は P の devices を**起動時に1回だけ**読むので、台を外しても
+// `api monitor --profile P` は P の devices を**起動時に1回だけ**読むので、デバイスを外しても
 // 再起動するまでタイルに残る。`--profile` 省略時は全実行プロファイルの和集合が対象になるため、
 // 選択中プロファイルが無い間はどの実行プロファイルの変化も監視対象になりうる。
 // 判定は vscode 非依存(monitorScopeFiles.test.mjs)。
@@ -51,7 +51,7 @@ export function runProfileNeedsRestart(change: {
   return !change.fromForm || change.editedOutsideBefore || runProfileScopeChanged(change.previousKey, change.nextKey);
 }
 
-/** ファイル変化をまとめる窓(ms)。台の削除は複数の実行プロファイルへ続けて書き、watcher は
+/** ファイル変化をまとめる窓(ms)。デバイスの削除は複数の実行プロファイルへ続けて書き、watcher は
  * 1書き込みごとに発火する。1回の再起動にまとめるための幅で、尽きたら(窓の後に来た変化は)
  * もう1回再起動するだけ。 */
 export const MONITOR_RESTART_DEBOUNCE_MS = 500;

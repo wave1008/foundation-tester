@@ -47,7 +47,7 @@ public enum AppUIFrameworkQuery {
         public var bundleID: String?
         /// ビルド済みの .app / .ipa / .apk(プロファイルの appPath / appPathPhysical・ft_install したもの)
         public var appPath: String?
-        /// シミュレータの UDID。physical・"booted"(台が複数だと宛先が曖昧)・Android では simctl を撃たない
+        /// シミュレータの UDID。physical・"booted"(デバイスが複数だと宛先が曖昧)・Android では simctl を撃たない
         public var udid: String?
         public var physical: Bool
 
@@ -171,7 +171,7 @@ public enum AppUIFrameworkQuery {
 
     // MARK: - ② シミュレータに入っているバンドル
 
-    /// simctl は 1 回 約 0.45 秒(実測)。前回引いた置き場の控えがこの台のもので指紋も同じなら撃たない
+    /// simctl は 1 回 約 0.45 秒(実測)。前回引いた置き場の控えがこのデバイスのもので指紋も同じなら撃たない
     static func installedBundleFramework(bundleID: String, udid: String) -> AppUIFramework? {
         let rules = UIFrameworkMarkers.rulesVersion
         if let entry = AppFrameworkLedger.load(bundleID: bundleID, platform: "ios"),
@@ -194,7 +194,7 @@ public enum AppUIFrameworkQuery {
         return framework
     }
 
-    /// 控えが使えるのは、置き場がこの台(`…/Devices/<udid>/…`)の中で指紋が一致するときだけ。
+    /// 控えが使えるのは、置き場がこのデバイス(`…/Devices/<udid>/…`)の中で指紋が一致するときだけ。
     /// 入れ直すと置き場(Bundle/Application/<UUID>)が変わるので古い控えは実在せず外れる
     static func installedBundleCacheHit(entry: AppFrameworkLedger.Entry, udid: String,
                                         fingerprint: (modified: Double, size: Int)?) -> AppUIFramework? {

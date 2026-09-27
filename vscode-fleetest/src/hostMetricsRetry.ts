@@ -5,7 +5,7 @@
 // 対向: Sources/fleetest/RemoteMonitorFanout.swift の `retryPlan`(同じ形の純粋関数。
 // あちらは fanout の子、こちらは host-metrics の子)。**名前と形を寄せてある**ので、
 // 片方を読めばもう片方の判断も追える。値そのものは別(停滞の実害が桁違い —— あちらが
-// 止まると台が不明・配信が畳まれたままになるので 60 秒、こちらは行が空になるだけ)。
+// 止まるとデバイスが不明・配信が畳まれたままになるので 60 秒、こちらは行が空になるだけ)。
 
 import type { MonitorDeviceState } from "./monitorDeviceModel";
 
@@ -52,13 +52,13 @@ export function retryPlan(args: {
 
 /**
  * その機械を**いま観測できているか**。供給元は monitorDevices の state だけで、新しい判定は
- * 作らない —— 「観測していない台は unknown」の既存の規律(monitorDeviceModel.ts の
+ * 作らない —— 「観測していないデバイスは unknown」の既存の規律(monitorDeviceModel.ts の
  * MonitorDeviceState)にそのまま乗る。**offline は観測できている**(止まっていると分かる)
  * ので unknown と混ぜない。
  */
 export type MachineObservation = "observed" | "unobserved";
 
-/** 機械名 → 観測できているか。machine を持たない台(手元)は含めない —— 合図で拾いたいのは
+/** 機械名 → 観測できているか。machine を持たないデバイス(手元)は含めない —— 合図で拾いたいのは
  *  リモートランナーの再起動だけで、手元の host-metrics はランナーの生死と無関係。 */
 export function machineObservations(
   devices: readonly { readonly machine?: string; readonly state: MonitorDeviceState }[],
@@ -95,9 +95,9 @@ export interface HostMetricsRevivalPlan {
  * stderr の文言での判定は書式が変われば静かに壊れるので採らない)。
  *
  * 一方で**再起動だけは別のデータに現れる**: ランナーが落ちると monitor の fanout の子も死に、
- * その機械の台は state:"unknown" になる。戻ると fanout が 60 秒以内に張り直して観測が戻る。
+ * その機械のデバイスは state:"unknown" になる。戻ると fanout が 60 秒以内に張り直して観測が戻る。
  * この遷移(unobserved → observed)を合図にすれば、区別できない2つは合図を出さない:
- *   - 旧バイナリ: fanout の子も上がらない = 台は unknown のまま = 合図が出ない
+ *   - 旧バイナリ: fanout の子も上がらない = デバイスは unknown のまま = 合図が出ない
  *   - 飽和: fanout の子は生きたまま host-metrics だけ落ちる = ずっと observed = 合図が出ない
  * 飽和で fanout まで落ちた場合だけは合図が出て1回余分に撃つが、失敗すればまた10分の経路へ
  * 戻るので許容する(ssh 1本ぶん)。

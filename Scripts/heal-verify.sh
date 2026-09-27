@@ -4,7 +4,7 @@
 #
 # 指紋照合は失敗経路でしか動かないので、緑の run では1度も実行されない = フル E2E を何度
 # 回しても守られない。そこで _disabled の 94_指紋照合 と 95_指紋照合の前提切替 を一時的に
-# 有効化し、**同じ台**で次の順に回す:
+# 有効化し、**同じデバイス**で次の順に回す:
 #   ① schema=v1 → 94 を1周(プライマリで解決して指紋を採る。修復は起きない)
 #   ② schema=v2 → 94 を2周(どちらも指紋で直って緑。2周目は「直った行の鍵が次の run まで
 #      刈られない」の確認 —— 2周だけだと踏まない不具合が実際にあった)
@@ -13,10 +13,10 @@
 #
 # 指紋の控え(<project>/.fleetest/locator-fingerprints.json)は退避して空から回し、最後に戻す
 # (過去の控えに結果を左右させない・この検証の控えを残さない)。
-# schema は台ごとのアプリデータなので、全段を --device で1台に固定する(省略時はプロファイルの先頭)。
+# schema はデバイスごとのアプリデータなので、全段を --device で1台に固定する(省略時はプロファイルの先頭)。
 # fm-verify.sh と同時に回さない(どちらも _disabled のシナリオを出し入れする)。
 #
-# 使い方: Scripts/heal-verify.sh [--project <名前>] [--profile <名前>] [--device <台の名前>]
+# 使い方: Scripts/heal-verify.sh [--project <名前>] [--profile <名前>] [--device <デバイスの名前>]
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -52,7 +52,7 @@ WITNESS="指紋でid変更を追従できること"
 SWITCH="指紋照合の前提を切り替える"
 SCHEMA_TOUCHED=0
 
-run_step() {  # 台を固定して1回回す(合否は問わない。結果は results/ から読む)
+run_step() {  # デバイスを固定して1回回す(合否は問わない。結果は results/ から読む)
   "$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" --device "$DEVICE" "$@"
 }
 

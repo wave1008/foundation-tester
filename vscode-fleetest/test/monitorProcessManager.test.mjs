@@ -598,7 +598,7 @@ test("monitorStorage はその台の3欄だけ差し替えて、周期を待た�
   assert.equal(byId["ios:B"].storage.usedBytes, 5);
   assert.equal(notified.length, 1);
 
-  // 一覧に居ない台は捨てる(配らない)
+  // 一覧に居ないデバイスは捨てる(配らない)
   posted.length = 0;
   feedLine(procs[0], { kind: "monitorStorage", device: "ios:gone", storageMeasuring: false });
   assert.equal(posted.length, 0);
@@ -848,7 +848,7 @@ test("観測できない→観測できるに戻ったら、諦めを畳んで�
   driveToGiveUp(t, remoteProcs.get("mac2"));
   assert.equal(remoteCalls(), 3, "諦めるまでに短間隔で2回張り直す");
 
-  // ランナーが落ちた: fanout の子も死ぬのでその機械の台は unknown になる
+  // ランナーが落ちた: fanout の子も死ぬのでその機械のデバイスは unknown になる
   feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2", state: "unknown" }]);
   t.mock.timers.tick(60000);
   assert.equal(remoteCalls(), 3, "落ちている間は張り直さない");
@@ -873,7 +873,7 @@ test("観測できないまま(旧バイナリ相当)では畳まない = 10分�
   manager.startAll();
   const remoteCalls = () => calls.filter((args) => args[0] === "remote").length;
 
-  // 旧バイナリの機械は fanout の子も上がらないので、最初から台は unknown
+  // 旧バイナリの機械は fanout の子も上がらないので、最初からデバイスは unknown
   feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2", state: "unknown" }]);
   assert.equal(remoteCalls(), 1);
   driveToGiveUp(t, remoteProcs.get("mac2"));
@@ -902,7 +902,7 @@ test("ずっと観測できている(飽和相当)では畳まない = 10分の�
   driveToGiveUp(t, remoteProcs.get("mac2"));
   assert.equal(remoteCalls(), 3);
 
-  // 飽和中も fanout の子は生きている(台は connected のまま)
+  // 飽和中も fanout の子は生きている(デバイスは connected のまま)
   for (let i = 0; i < 5; i += 1) {
     feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
     t.mock.timers.tick(60000);

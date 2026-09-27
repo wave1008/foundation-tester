@@ -65,7 +65,7 @@ final class LaneUtilizationTests: XCTestCase {
     }
 
     func testRecoveredBridgeWithNewPortIsStillTheSameLane() {
-        // iOS の label はブリッジのポートを含み、回復のたびに変わる。同じ台の新旧 label を
+        // iOS の label はブリッジのポートを含み、回復のたびに変わる。同じデバイスの新旧 label を
         // 別レーンに数えると分母が増えて稼働率が下がって見える(2台が「3 lane(s), 66%」)
         var tracker = ScenarioTimingTracker()
         run(&tracker, "A", worker: "iPhone 17 Pro(iOS 27.0)-02(ios:8123)", from: 0, to: 50)

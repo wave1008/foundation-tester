@@ -105,7 +105,7 @@ enum ProfileRunOrchestrator {
                         host: worker.connection.host ?? BridgeEndpoint.loopbackHost,
                         physicalUDID: worker.connection.physical ? worker.connection.udid : nil)
                         .status(timeout: 5)
-                    // 答えたのが別の台のブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
+                    // 答えたのが別のデバイスのブリッジなら接続不能と同じ扱い(BridgeProbeOutcome.hijacked)
                     if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
                         expected: BridgeIdentityCheck.expected(for: worker.connection, probedPort: port),
                         status: status, remedy: BridgeIdentityCheck.runLaneRemedy) {

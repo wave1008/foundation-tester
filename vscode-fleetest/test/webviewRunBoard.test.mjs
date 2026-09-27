@@ -101,7 +101,7 @@ const machineRows = (document) => [...document.querySelectorAll(
   el.querySelector(".run-board-machine-badge").textContent
     + el.querySelector(".run-board-idle-machine-status").textContent);
 
-/** その行のツリーに並ぶ台の名前。 */
+/** その行のツリーに並ぶデバイスの名前。 */
 const laneNames = (el) => [...el.querySelectorAll(".run-board-lane-name")].map((n) => n.textContent);
 
 /** 機械の枝(run の行の中 / 空きの根の中とも同じ作り)。 */
@@ -196,7 +196,7 @@ test("レーン行は高さを固定し、経過は折り返さない", () => {
 });
 
 // 走っていない機械の行は run 行と**同じ作り**(.run-board-row)を使うので、行の高さも
-// インデントも共有の宣言が効く。見出しの1行だけ控えめにし、**下の台のツリーは薄くしない**。
+// インデントも共有の宣言が効く。見出しの1行だけ控えめにし、**下のデバイスのツリーは薄くしない**。
 test("空きの根は run 行と同じ作りで、見出しだけ控えめにする", () => {
   const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
   const summary = css.slice(css.indexOf("\n.run-board-row-summary {"));   // 行頭で探す(子孫セレクタに当てない)
@@ -205,7 +205,7 @@ test("空きの根は run 行と同じ作りで、見出しだけ控えめにす
   const dim = css.slice(css.indexOf(".run-board-row-scope > .run-board-row-summary {"));
   assert.match(dim.slice(0, dim.indexOf("}")), /opacity:/, "見出しの1行だけ控えめにする");
   assert.equal(css.includes(".run-board-idle-machine {"), false, "専用の行の作りは残さない");
-  // 3段(根 → 機械 → 台)は 16px 刻みのインデントだけで読めること
+  // 3段(根 → 機械 → デバイス)は 16px 刻みのインデントだけで読めること
   const branch = css.slice(css.indexOf(".run-board-lane-machine-header > .run-board-col-left {"));
   assert.match(branch.slice(0, branch.indexOf("}")), /padding-left:\s*32px/);
   const lane = css.slice(css.indexOf(".run-board-lane > .run-board-col-left {"));
@@ -297,8 +297,8 @@ test("ヘッダの開閉も文字は回るだけ(行の chevron と同じ規律)
   assert.equal(toggle.getAttribute("aria-expanded"), "false");
 });
 
-// 台の行の左にはデバイスのアイコンを置き、**色はプラットフォームのバッジと同じ**にする
-// (ユーザー決定 2026-09-22)。platform を持たない台には色を付けない(知らないものを
+// デバイスの行の左にはデバイスのアイコンを置き、**色はプラットフォームのバッジと同じ**にする
+// (ユーザー決定 2026-09-22)。platform を持たないデバイスには色を付けない(知らないものを
 // iOS にも Android にも見せない)
 test("台の行にはプラットフォームの色のデバイスアイコンが付く", (t) => {
   const { window, document } = createWebview();
@@ -334,7 +334,7 @@ test("台の行にはプラットフォームの色のデバイスアイコン�
   }
 });
 
-// 台の行は**押しても何も起きない**(ユーザー決定 2026-09-22)—— 実行状況を読む場所であって、
+// デバイスの行は**押しても何も起きない**(ユーザー決定 2026-09-22)—— 実行状況を読む場所であって、
 // ラインビューの選択を動かす口ではない
 test("台の行を押してもラインビューの選択は動かない", (t) => {
   const { window, document } = createWebview();
@@ -437,9 +437,9 @@ test("他人の run(mine:false)は issuer を出す。自分の run では出さ
   assert.equal(issuerElAfter.style.display, "none", "自分の run では issuer 行を出さない");
 });
 
-// ---- 台のツリー(ユーザー決定 2026-09-22: 実行状態に関わらず出す) ----
+// ---- デバイスのツリー(ユーザー決定 2026-09-22: 実行状態に関わらず出す) ----
 
-/** 機械ごとの台。machine 省略 = 手元(MonitorDevice の規約)。 */
+/** 機械ごとのデバイス。machine 省略 = 手元(MonitorDevice の規約)。 */
 function sendDevices(window, devices) {
   post(window, {
     type: "devices",
@@ -450,7 +450,7 @@ function sendDevices(window, devices) {
   });
 }
 
-// run が1本も走っていなくても、認識した台は機械の行のツリーに出す(出さないと「何も無い」
+// run が1本も走っていなくても、認識したデバイスは機械の行のツリーに出す(出さないと「何も無い」
 // ボードになり、フリートに何が居るのかがここから分からない)。
 test("run が無い機械の行にも台がツリーで並ぶ", (t) => {
   const { window, document } = createWebview();
@@ -468,7 +468,7 @@ test("run が無い機械の行にも台がツリーで並ぶ", (t) => {
     ["local", "M1Max"]);
   assert.deepEqual(laneNames(machines[0]), ["iPhone 17 Pro-01", "iPhone 17 Pro-02"], "手元の台");
   assert.deepEqual(laneNames(machines[1]), ["iPhone 17 Pro-01"], "その機械の台だけ");
-  // 何を見ている台なのか = モニターの範囲(ツールバーの選択)。根も枝も同じ範囲を名乗る
+  // 何を見ているデバイスなのか = モニターの範囲(ツールバーの選択)。根も枝も同じ範囲を名乗る
   post(window, { type: "profileInfo", project: "sui-ec-mobile", projects: ["sui-ec-mobile"],
                  profiles: ["local+remote"], current: "local+remote" });
   assert.equal(document.querySelector(".run-board-row-scope .run-board-scope").textContent,
@@ -477,13 +477,13 @@ test("run が無い機械の行にも台がツリーで並ぶ", (t) => {
     ["local", "M1Max"]);
 });
 
-// run 中でも「その機械の台」を全部出す(ユーザー決定)。run が使っていない台も見える。
+// run 中でも「その機械のデバイス」を全部出す(ユーザー決定)。run が使っていないデバイスも見える。
 test("run の行にも機械の全台が並び、run が使う台にだけシナリオが添う", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [
     { name: "iPhone 17-01", udid: "UDID-1" },   // monitorRunsMessage のレーンと同じ鍵
-    { name: "iPhone 17-02", udid: "UDID-2" },   // run に出ていない台
+    { name: "iPhone 17-02", udid: "UDID-2" },   // run に出ていないデバイス
   ]);
   post(window, monitorRunsMessage());
   const row = document.querySelector(".run-board-row:not(.run-board-row-machine)");
@@ -492,19 +492,19 @@ test("run の行にも機械の全台が並び、run が使う台にだけシナ
   assert.deepEqual(scenarios, ["▶ 05_検索", ""], "run が使っている台にだけシナリオを添える");
 });
 
-// タイルが消えた台(観測窓の外)でも run の事実は残す —— レーンの側にしか無い台を落とすと、
+// タイルが消えたデバイス(観測窓の外)でも run の事実は残す —— レーンの側にしか無いデバイスを落とすと、
 // 走っているのにツリーから消える
 test("レーンにしか無い台も run の行に残る", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  sendDevices(window, [{ name: "iPhone 17-02", udid: "UDID-2" }]);   // レーンの台は居ない
+  sendDevices(window, [{ name: "iPhone 17-02", udid: "UDID-2" }]);   // レーンのデバイスは居ない
   post(window, monitorRunsMessage());
   const row = document.querySelector(".run-board-row:not(.run-board-row-machine)");
   assert.deepEqual(laneNames(row), ["iPhone 17-02", "iPhone 17-01"], "台の一覧のあとにレーンだけの台");
 });
 
 // 「起動中のデバイス」(設定 fleetest.monitorDeviceFilter)はタイル側だけの表示フィルタ ——
-// ツリーにも効かせると、**ビルド中の run の下から台が丸ごと消える**(供給前なのでどの台も
+// ツリーにも効かせると、**ビルド中の run の下からデバイスが丸ごと消える**(供給前なのでどのデバイスも
 // まだ起動していない)。ユーザー指摘 2026-09-22 / docs/design.md §18.5。
 test("「起動中のデバイス」で絞っていてもツリーの台は消えない(消えるのはタイルだけ)", (t) => {
   const { window, document } = createWebview();
@@ -519,7 +519,7 @@ test("「起動中のデバイス」で絞っていてもツリーの台は消�
         kind: "virtual", udid: "UDID-2", recording: false },
     ],
   });
-  // ビルド中 = レーンがまだ1本も無い。台の一覧だけがツリーの供給源になる
+  // ビルド中 = レーンがまだ1本も無い。デバイスの一覧だけがツリーの供給源になる
   post(window, { type: "monitorRuns", observed: true, runs: [{
     pid: 41233, runID: "run-1", mine: true, phase: "building", requeued: 0, laneDropouts: 0,
     project: "E2E-CMP", profile: "ios-inapp",
@@ -533,7 +533,7 @@ test("「起動中のデバイス」で絞っていてもツリーの台は消�
     ["iPhone 17-02"], "タイルは従来どおり起動中だけ");
 });
 
-// 上と対: 機械の行(run 無し)のツリーも同じ規律 —— 全台停止中の機械が「台が1枚も無い」に
+// 上と対: 機械の行(run 無し)のツリーも同じ規律 —— 全台停止中の機械が「デバイスが1枚も無い」に
 // 見えると、フリートに何が居るのかがここから分からない
 test("run が無い機械の枝でも、停止中の台がツリーに並ぶ", (t) => {
   const { window, document } = createWebview();
@@ -642,14 +642,14 @@ function giveLabelWidth(window, perChar) {
 }
 
 // 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定)。比率ではないので、
-// 台が増えて名前が伸びたら追従する(ドラッグするまでの間)。
+// デバイスが増えて名前が伸びたら追従する(ドラッグするまでの間)。
 test("境目の既定はいちばん長いラベルに合わせ、ドラッグで幅が変わる", (t) => {
   const { window, document, sent, getState } = createWebview();
   t.after(() => window.close());
   giveWidth(document);
   giveLabelWidth(window, 10);
   post(window, { type: "monitorRuns", observed: true, runs: [] });
-  // 機械の行の左カラムは "▶local"(6字)。**いちばん長い行に合わせる**ので、台が出ると
+  // 機械の行の左カラムは "▶local"(6字)。**いちばん長い行に合わせる**ので、デバイスが出ると
   // そちら("iPhone 17 Pro-01" = 16字)に広がる
   assert.equal(leftWidth(document), "80px", "6字 × 10 = 60 は下限 80 まで");
   sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-1" }]);

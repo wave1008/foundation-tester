@@ -40,8 +40,8 @@ public enum StartingRunnerVerdict: Equatable {
     ///   (BridgeStartupWait)ので、ログが伸びている間は起動側もまだ諦めていない = 引き取る側も待つ。
     ///   測れなければ elapsed だけで決める
     /// - simulatorBooted: 対象がシミュレータで Shutdown なら、ランナーが起動中であるはずがない(xcodebuild は
-    ///   ブートを待つ側で、落とされた台に張り付いたランナーは二度と announce しない)。**待たずに建て直す**
-    ///   (実測: 落とした台の引き取りが 180 秒待ってから建て直していた。台帳 §19.25)
+    ///   ブートを待つ側で、落とされたデバイスに張り付いたランナーは二度と announce しない)。**待たずに建て直す**
+    ///   (実測: 落としたデバイスの引き取りが 180 秒待ってから建て直していた。台帳 §19.25)
     public static func decide(elapsed: TimeInterval?, quietFor: TimeInterval? = nil,
                               simulatorBooted: Bool = true,
                               budget: TimeInterval) -> StartingRunnerVerdict {

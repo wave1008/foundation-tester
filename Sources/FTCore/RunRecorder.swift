@@ -49,7 +49,7 @@ public final class RunRecorder: @unchecked Sendable {
     private var fileNameCounts: [String: Int] = [:]
     /// baseName ごとの、いま残っているファイル名と書き手(ScenarioRunRecord.worker)。書いた順。
     /// **discardLast(worker:) がその書き手のぶんだけを消す**ための台帳 —— ブロードキャスト実行は
-    /// 同じ ID を N 台が同時に書くので、「この ID の最新」では別の台の記録を消す
+    /// 同じ ID を N 台が同時に書くので、「この ID の最新」では別のデバイスの記録を消す
     /// **ガードの計数も持つ** —— discardLast が取り消した記録のぶんを引けるようにするため
     /// (凍結・環境エラーの再実行で同じシナリオが2回書かれる。引かないと二重計上になる)
     private var liveFiles: [String: [(fileName: String, worker: String?,
@@ -202,7 +202,7 @@ public final class RunRecorder: @unchecked Sendable {
     /// - fmSettings: その run で実際に効いていた FM 設定(実効値)。**既定値を置かない** ——
     ///   `fleetest run` / `fleetest api run` は別実装で、既定値があると片方の呼び出し元が
     ///   渡し忘れてもコンパイルが通ってしまう(OverlayWindowOcclusion と同じ規律)
-    /// - Returns: `FTCore.SlowWorkerDetector` が検出した遅い台(除外・自動修復はしない観測のみ)。
+    /// - Returns: `FTCore.SlowWorkerDetector` が検出した遅いデバイス(除外・自動修復はしない観測のみ)。
     ///   **引数では受け取らない** —— 呼び出し元(`fleetest run`/`api run`)に集計を渡させると
     ///   片方が渡し忘れる型を作る。ここで書き終えた scenarios/*.json を読み直して自己完結させ、
     ///   呼び出し元は戻り値を「1台でも居れば警告を出す」ためだけに使う
@@ -245,7 +245,7 @@ public final class RunRecorder: @unchecked Sendable {
         let guardedValue: Int? = guardedSum > 0 ? guardedSum : nil
         let guardSkippedValue: Int? = guardedSum > 0 ? guardSkippedSum : nil
         let guardStaleFrameValue: Int? = guardedSum > 0 ? guardStaleFrameSum : nil
-        // 台そのものが遅いことの観測(SlowWorkerDetector.swift の doc 参照)。write(_:) で
+        // デバイスそのものが遅いことの観測(SlowWorkerDetector.swift の doc 参照)。write(_:) で
         // 既に scenarios/*.json へ書き終えた記録を読み直す(discardLast で取り消した分は
         // 既にファイルが消えているので二重に数えない)。**除外・自動修復はしない**
         let slowFindings = SlowWorkerDetector.detect(records: RunResultsStore.records(runDir: runDir))

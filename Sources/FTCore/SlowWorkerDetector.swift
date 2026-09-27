@@ -1,5 +1,5 @@
 // SlowWorkerDetector.swift
-// 「台そのものが遅い」ことの**観測だけ**を行う純粋関数(自動修復・除外はしない)。
+// 「デバイスそのものが遅い」ことの**観測だけ**を行う純粋関数(自動修復・除外はしない)。
 // 根拠(3時間負荷テスト): シミュレータ1台だけが3 run連続で in-app snapshot
 // 4.3〜4.4秒に張り付いた(通常は数十ms。他7台は15ラウンドで2秒超が3回以下)。ホストCPUでは
 // 説明が付かず(中央値56%・前後のラウンドと同等)、XCUITestランナーを建て直しても直らなかった。
@@ -7,10 +7,10 @@
 // 4.4秒はステップtimeout(`FTCore.DefaultWait.seconds`=5秒)未満
 // なので既存の `slow-snapshot` 注記(timeout超過)は立たず、所要以外に痕跡が残らない。
 //
-// 負荷テストで2つ目の形が見つかった: **中央値は正常なのに一部の照会だけ遅い**台
+// 負荷テストで2つ目の形が見つかった: **中央値は正常なのに一部の照会だけ遅い**デバイス
 // (中央値8ms・p90 3579ms・2秒超が43%)は上の中央値判定に1度も引っかからない。中央値側は
-// 変えず(両者の思想が違う: 中央値は「台が恒常的に遅い」、間欠側は「台がときどき詰まる」)、
-// 2つ目の判定を追加する。実測(M1Max -04、4 run連続でホストの壁時計を決めていた台):
+// 変えず(両者の思想が違う: 中央値は「デバイスが恒常的に遅い」、間欠側は「デバイスがときどき詰まる」)、
+// 2つ目の判定を追加する。実測(M1Max -04、4 run連続でホストの壁時計を決めていたデバイス):
 //   ios-inapp     46標本 中央値8ms   p90 3579ms 他レーン中央値6ms   2秒超43% 他レーン2秒超0%
 //   ios-xcuitest  40標本 中央値293ms p90 3741ms 他レーン中央値68ms  2秒超40% 他レーン2秒超0%
 //   ios-xcuitest  91標本 中央値167ms p90 3437ms 他レーン中央値62ms  2秒超26% 他レーン2秒超0%
@@ -27,9 +27,9 @@ import Foundation
 public struct SlowWorkerFinding: Sendable, Equatable {
     /// どちらの判定で立ったか。判定ごとに文言(summary/consoleWarning)を分ける
     public enum Kind: Sendable, Equatable {
-        /// 台そのものが恒常的に遅い(中央値が他レーン全体の中央値の `relativeFactor` 倍以上)
+        /// デバイスそのものが恒常的に遅い(中央値が他レーン全体の中央値の `relativeFactor` 倍以上)
         case median(medianMs: Int, fleetMedianMs: Int)
-        /// 台が間欠的に詰まる(中央値は正常域でも、一部の照会だけ `intermittentFloorMs` 以上)
+        /// デバイスが間欠的に詰まる(中央値は正常域でも、一部の照会だけ `intermittentFloorMs` 以上)
         case intermittent(slowSamples: Int, p90Ms: Int, fleetSlowSamples: Int, fleetSamples: Int)
     }
 
@@ -57,11 +57,11 @@ public struct SlowWorkerFinding: Sendable, Equatable {
 
     /// CLI 末尾の警告1行(英語)。**FrozenVerdict とは別の観測であること**と
     /// **自動では何もしないこと**を含める(受け手が誤って「ツールが直した」と読まないため)。
-    /// **遅さの帰属(台かランナーか)は書かない** —— 入力はワーカーごとの snapshotMs だけで
-    /// 区別が付かない。実際に逆を書いていたことがある: 同じ台が in-app のフル E2E では
+    /// **遅さの帰属(デバイスかランナーか)は書かない** —— 入力はワーカーごとの snapshotMs だけで
+    /// 区別が付かない。実際に逆を書いていたことがある: 同じデバイスが in-app のフル E2E では
     /// 1 度も鳴らず xcuitest でだけ鳴り、**同じ run の供給時プローブは「ランナーの stale remote
     /// element」と名指しして建て直していた**(`RunnerAccessibilityHealth`)ので、
-    /// 2 つの検知が同じ台について正反対の帰属を出した
+    /// 2 つの検知が同じデバイスについて正反対の帰属を出した
     public var consoleWarning: String {
         switch kind {
         case let .median(medianMs, fleetMedianMs):
@@ -94,7 +94,7 @@ public enum SlowWorkerDetector {
     public static let absoluteFloorMs = 1000
 
     /// 間欠的な劣化と言うための「遅い1照会」の下限(ms)。根拠(負荷テスト):
-    /// 劣化台の遅い照会は3.4〜4.0秒に張り付き、健全なレーンのp90は負荷下でも最大1562msだった。
+    /// 劣化デバイスの遅い照会は3.4〜4.0秒に張り付き、健全なレーンのp90は負荷下でも最大1562msだった。
     /// ステップtimeout(5秒)未満に置く —— それ以上は既に別の観測(slow-snapshot注記/timeout失敗)が
     /// 付くので、この判定が拾うべきなのはその手前の「timeoutには当たらないが遅い」帯
     public static let intermittentFloorMs = 2000
@@ -103,7 +103,7 @@ public enum SlowWorkerDetector {
     /// 出るが最大22標本中2本だった。5本以上なら偶発的な1〜2回の遅延と区別できる
     public static let intermittentMinSlowSamples = 5
 
-    /// 間欠的な劣化と言うための「遅い照会」の割合の下限。根拠: 劣化台は26〜43%だったのに対し、
+    /// 間欠的な劣化と言うための「遅い照会」の割合の下限。根拠: 劣化デバイスは26〜43%だったのに対し、
     /// 健全なレーンは負荷下(22標本中2本)でも最大9%だった
     public static let intermittentShare = 0.20
 
@@ -129,7 +129,7 @@ public enum SlowWorkerDetector {
             let fleetMedian = median(others)
             if workerMedian >= absoluteFloorMs, workerMedian >= fleetMedian * relativeFactor {
                 // 中央値判定が立ったら間欠判定は見ない(1台につき1件にまとめる。中央値のほうが
-                // 恒常的な劣化として既に事実を言い尽くしており、両方出すと同じ台が二重に出る)
+                // 恒常的な劣化として既に事実を言い尽くしており、両方出すと同じデバイスが二重に出る)
                 findings.append(SlowWorkerFinding(worker: worker, samples: samples.count,
                                                   kind: .median(medianMs: workerMedian, fleetMedianMs: fleetMedian)))
                 continue

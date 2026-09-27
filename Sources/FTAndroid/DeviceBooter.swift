@@ -34,7 +34,7 @@ public enum DeviceBooter {
     /// ブート完了分を束ねる供給バッチ化 ProvisionBatcher は速いが同時進行が上限を超えるため撤回。
     /// 再検討時は git 履歴参照)。
     /// deviceFinished は成否問わず必ず呼ばれる(呼び出し側の再スキャン契約。変更しない)。
-    /// **戻り値は台ごとの成否**(呼び出し側が exit code / 要約文言を決めるための材料。
+    /// **戻り値はデバイスごとの成否**(呼び出し側が exit code / 要約文言を決めるための材料。
     /// BootOutcomeSummarizer が純粋に要約する。deviceFinished の契約とは別軸)
     @discardableResult
     public static func bootAll(
@@ -108,11 +108,11 @@ public enum DeviceBooter {
     /// **実機(spec.isPhysical)には deviceStopping / deviceFinished を出さない** —— 端末そのものは
     /// 生き続けるので、出すと拡張のタイルが「停止した」と一瞬表示してから次の観測で「接続中」に
     /// 戻りちらつく(旧 stopPhysicalBridgeOnly の doc)。実機も outcomes には含める
-    /// (試みた台の母数に入れる)。**戻り値は台ごとの成否**(BootOutcomeSummarizer が要約する)。
-    /// **台ごとに run-lease を確認する**(規律④「他人の run を殺す操作はロックを読む」)—— 拒否された
-    /// 台は stopOne を呼ばずに失敗として数え、残りの台は続行する(1台の拒否で全体を止めない)。
+    /// (試みたデバイスの母数に入れる)。**戻り値はデバイスごとの成否**(BootOutcomeSummarizer が要約する)。
+    /// **デバイスごとに run-lease を確認する**(規律④「他人の run を殺す操作はロックを読む」)—— 拒否された
+    /// デバイスは stopOne を呼ばずに失敗として数え、残りのデバイスは続行する(1台の拒否で全体を止めない)。
     /// **実機 iOS は宣言値+解決後 UDID の両方を見る**(shutdownOne と同じ理由)。devicectl は
-    /// プロファイル全体で1回だけ呼んで使い回す(台数ぶん呼ばない。台ごとに shutdownOne へも
+    /// プロファイル全体で1回だけ呼んで使い回す(台数ぶん呼ばない。デバイスごとに shutdownOne へも
     /// その結果を渡すので、内部でも再取得しない)。
     @discardableResult
     public static func shutdownAll(
@@ -182,7 +182,7 @@ public enum DeviceBooter {
     /// **他人の run を殺さない**(docs/remote-runner.md §18.7 規律④「他人の run を殺す操作は
     /// ロックを読む」)。`key` は run 側の lease 鍵と同じ値(`leaseKey(spec:platform:)`)。
     /// force / 鍵が引けない(素通り=安全側)/ 保持者が居ない / 保持者が自分自身、のいずれかなら
-    /// nil(止めてよい)。それ以外は台名と保持者 pid を名指しした拒否文言を返す
+    /// nil(止めてよい)。それ以外はデバイス名と保持者 pid を名指しした拒否文言を返す
     static func stopRefusal(
         deviceName: String, key: String?, selfPID: Int32, force: Bool,
         holderPID: (String) -> Int32?
@@ -208,8 +208,8 @@ public enum DeviceBooter {
         return nil
     }
 
-    /// **MCP(fleetest-mcp)が操作中の台も止めない**(run と同じ規律④。run は MCP の台を避けるのに、
-    /// 止める側だけが印を読まずにエージェントの台を落としていた = 負荷テスト M10)。
+    /// **MCP(fleetest-mcp)が操作中のデバイスも止めない**(run と同じ規律④。run は MCP のデバイスを避けるのに、
+    /// 止める側だけが印を読まずにエージェントのデバイスを落としていた = 負荷テスト M10)。
     /// 文言は run の拒否と分ける(「run が使用中」は事実と違う)
     static func mcpStopRefusal(
         deviceName: String, keys: [String], force: Bool, mcpHolderPID: (String) -> Int32?
@@ -219,7 +219,7 @@ public enum DeviceBooter {
             + " Finish that session or point it at another device, or pass --force to stop it anyway."
     }
 
-    /// 台を止める操作の門(run-lease → MCP の印の順)。止める4経路(停止・一括停止・再起動・Wipe)に加え、
+    /// デバイスを止める操作の門(run-lease → MCP の印の順)。止める4経路(停止・一括停止・再起動・Wipe)に加え、
     /// `fleetest bridge down --port`(別モジュール。CLI の口だけに置く門)もここを通す
     public static func deviceInUseRefusal(
         deviceName: String, keys: [String], force: Bool, leaseStateDir: URL?
@@ -231,7 +231,7 @@ public enum DeviceBooter {
                               mcpHolderPID: { mcpLeaseHolderPID(leaseStateDir: leaseStateDir, key: $0) })
     }
 
-    /// 自分と親の印は数えない(MCP が起こしたコマンドが自分の台を「MCP が操作中」と断らない)
+    /// 自分と親の印は数えない(MCP が起こしたコマンドが自分のデバイスを「MCP が操作中」と断らない)
     static func mcpLeaseHolderPID(leaseStateDir: URL?, key: String) -> Int32? {
         let dir = leaseStateDir ?? (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
         guard let dir else { return nil }
@@ -263,8 +263,8 @@ public enum DeviceBooter {
     }
 
     /// 全掃討(`devices down` のプロファイル無し)の門。掃討は `simctl shutdown all`・全エミュレータ・
-    /// 全ブリッジを一括で落とし台を選べないので、**生きた run-lease が1本でもあれば掃討ごと断る**
-    /// (stopRefusal と同じ規律④。台ごとに除外する形にはしない)。describe: 鍵 → 表示名
+    /// 全ブリッジを一括で落としデバイスを選べないので、**生きた run-lease が1本でもあれば掃討ごと断る**
+    /// (stopRefusal と同じ規律④。デバイスごとに除外する形にはしない)。describe: 鍵 → 表示名
     public static func sweepRefusal(
         keys: [String], selfPID: Int32, force: Bool,
         holderPID: (String) -> Int32?, describe: (String) -> String
@@ -356,7 +356,7 @@ public enum DeviceBooter {
     /// run-lease の鍵(`ProfileRunner.leaseKeysByDevice` と同じ規則の唯一の定義元)。
     /// Android=serial(実機は宣言済み `spec.serial`・仮想は起動中 AVD と照合済みの serial)/
     /// iOS=UDID(実機は宣言済み `spec.udid`・仮想は `SimulatorCatalog` の解決済み UDID)。
-    /// 引けなければ nil(呼び出し元は素通りする=安全側。停止済み/未登録の台に居るはずの lease は無い)。
+    /// 引けなければ nil(呼び出し元は素通りする=安全側。停止済み/未登録のデバイスに居るはずの lease は無い)。
     /// **実機 iOS はここでは宣言値しか返さない** —— `SupplyLeaseHolder.hold(keys:)` は解決後の
     /// ハードウェア UDID で書くため、両方を見る必要がある呼び手(shutdownOne/shutdownAll)は
     /// `resolvedPhysicalIOSUDID` を別途足して `stopRefusal(keys:)` へ渡す
@@ -401,7 +401,7 @@ public enum DeviceBooter {
         public let name: String
         public let platform: String
         /// 失敗の理由(エラーの文言)。**nil = 成功**。成否はここから導く —— 別々に持つと
-        /// 「失敗なのに理由が無い」形が作れ、全滅の1行が台の名前だけになる(実害:
+        /// 「失敗なのに理由が無い」形が作れ、全滅の1行がデバイスの名前だけになる(実害:
         /// ランタイム欠落で4台とも落ちたのに、拡張のバナーには名前しか出なかった)
         public let failure: String?
         public var succeeded: Bool { failure == nil }
@@ -425,7 +425,7 @@ public enum DeviceBooter {
     public struct BootOutcomeSummary: Sendable, Equatable {
         public let total: Int
         public let succeededCount: Int
-        /// 失敗した台の名前(BootOutcome の登場順。並行実行の完了順なので呼び出しごとに揺れうる)
+        /// 失敗したデバイスの名前(BootOutcome の登場順。並行実行の完了順なので呼び出しごとに揺れうる)
         public let failedNames: [String]
         /// 失敗を理由ごとに束ねたもの(理由の初出順)
         public let failureGroups: [FailureGroup]
@@ -434,7 +434,7 @@ public enum DeviceBooter {
 
         /// 失敗の1行(`A, B — 理由1; C — 理由2`)。**同じ理由は1回だけ言う** —— 全台が同じ原因で
         /// 落ちる形(ランタイム欠落・Xcode 未選択)で理由を台数ぶん繰り返すと読めない。
-        /// 理由が空の台は名前だけ
+        /// 理由が空のデバイスは名前だけ
         public var failedDescription: String {
             failureGroups.map { group in
                 let names = group.names.joined(separator: ", ")
@@ -710,7 +710,7 @@ public enum DeviceBooter {
             }
             // macOS 27 beta 3: simctl shutdown は「Unable to shutdown...」(405)を返しつつ実際には
             // Booted のまま残るレースがあるため、exit code でなくカタログの実状態で成否判定する
-            // 手順と定数は SimulatorShutdownRetry(BridgeProvisioner の台ごと再起動と共有)
+            // 手順と定数は SimulatorShutdownRetry(BridgeProvisioner のデバイスごと再起動と共有)
             let outcome = await SimulatorShutdownRetry.shutdown(udid: sim.udid) { attempt, total in
                 log("→ \(spec.name): shutdown not confirmed yet — retrying (\(attempt)/\(total))...")
             }
@@ -730,7 +730,7 @@ public enum DeviceBooter {
         } else {
             // **「すでに停止している」は成功**(iOS の `guard sim.booted else { … already stopped }`
             // と同じ扱い)。Android は serial の解決が `avdNotRunning` で throw するため、
-            // 素通しすると停止済みの台が「停止に失敗」に化ける —— 全台停止済みの機械で
+            // 素通しすると停止済みのデバイスが「停止に失敗」に化ける —— 全台停止済みの機械で
             // 一括停止が `every device failed to stop` を出していた(実害。
             // 一括停止が全滅だけを失敗と伝えるようになって表面化した)。
             // **avd 未記載(noIdentifier)等はそのまま失敗**(プロファイルの誤りは黙らせない)
@@ -763,7 +763,7 @@ public enum DeviceBooter {
     }
 
     /// 停止の文脈で「もう止まっている」と読むべきエラーか。**デバイス不要の純粋関数**
-    /// (規則はここだけ・テストが直接叩く)。停止済みの台に停止を頼むのは成功で、
+    /// (規則はここだけ・テストが直接叩く)。停止済みのデバイスに停止を頼むのは成功で、
     /// プロファイルの誤り(avd 未記載)は失敗のまま
     static func isAlreadyStopped(_ error: Error) -> Bool {
         if case AndroidDeviceCatalogError.avdNotRunning = error { return true }
@@ -911,9 +911,9 @@ public enum DeviceBooter {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
         // -gpu host 必須: headless(-no-window)では hw.gpu.mode=auto が SwiftShader(CPU 描画)に
-        // フォールバックし、モーション時 qemu が約3コア/台を消費する(host=Metal なら約1/3。実測)
+        // フォールバックし、モーション時 qemu が約3コア/デバイスを消費する(host=Metal なら約1/3。実測)
         // gpuMode 既定は host。swiftshader_indirect は軽い修復で直らない凍結個体のみ呼び出し側が
-        // 指定する(CPU 描画は凍結を回避できるが上記の約3コア/台を払う)
+        // 指定する(CPU 描画は凍結を回避できるが上記の約3コア/デバイスを払う)
         // -no-snapshot 必須: ロード+セーブ両方の無効化=コールドブート保証。Quickboot スナップショットの
         // ロードはブート時黒画面の代表原因(-no-snapshot-save だけではセーブのみ無効で、Android Studio 等が
         // 残したスナップショットがあるとロードしてしまう。docs/performance-tuning.md §6 の Wipe Data 行参照)

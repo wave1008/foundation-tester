@@ -618,8 +618,8 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar~2.json").path))
     }
 
-    /// **worker を名指しした取り消しは、その台の記録だけを消す**。`--broadcast` では同じ ID を
-    /// N 台が同時に書くので、「この ID の最新」を消すと別の台の記録が消える
+    /// **worker を名指しした取り消しは、そのデバイスの記録だけを消す**。`--broadcast` では同じ ID を
+    /// N 台が同時に書くので、「この ID の最新」を消すと別のデバイスの記録が消える
     func testDiscardLastWithWorkerRemovesOnlyThatWorkersRecord() throws {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         recorder.record(makeScenarioRecord(scenarioID: "Warm.up", runID: "", passed: false, worker: "ios:A"))
@@ -645,7 +645,7 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertTrue(b.passed, "B の記録が A の再実行で上書きされた")
     }
 
-    /// 記録していない worker を名指しした取り消しは何も消さない(別の台の記録を消すくらいなら黙る)
+    /// 記録していない worker を名指しした取り消しは何も消さない(別のデバイスの記録を消すくらいなら黙る)
     func testDiscardLastWithUnknownWorkerIsNoop() {
         let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         recorder.record(makeScenarioRecord(scenarioID: "Warm.up", runID: "", passed: true, worker: "ios:A"))

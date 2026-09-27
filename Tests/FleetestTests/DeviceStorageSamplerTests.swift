@@ -1,5 +1,5 @@
 // api monitor のストレージ計測: 周期を止めないこと・測る契機は更新ボタン(requestRefresh)だけであること・
-// 計測中の台を二重に積まないこと・前回値を残すこと。計測関数は差し替え口から偽物を渡す。
+// 計測中のデバイスを二重に積まないこと・前回値を残すこと。計測関数は差し替え口から偽物を渡す。
 
 import FTCore
 import XCTest
@@ -60,7 +60,7 @@ final class DeviceStorageSamplerTests: XCTestCase {
         XCTAssertEqual(calls.value, 4, "押すたびに全台を測る")
     }
 
-    /// 計測中の台は積まない(同じ台を二重に歩かない)。計測中でない台は積む
+    /// 計測中のデバイスは積まない(同じデバイスを二重に歩かない)。計測中でないデバイスは積む
     func testInFlightDeviceIsNotScheduledAgain() {
         let calls = LockedCounter()
         let sampler = countingSampler(calls, delay: 0.3)
@@ -74,7 +74,7 @@ final class DeviceStorageSamplerTests: XCTestCase {
         XCTAssertEqual(Set(sampler.snapshot().keys), ["emu", "emu2"])
     }
 
-    /// 進捗: 積んだ台は終わるまで measuring に入り、終わったら値と同時に外れる(拡張の「測定中 n / m 台」)
+    /// 進捗: 積んだデバイスは終わるまで measuring に入り、終わったら値と同時に外れる(拡張の「測定中 n / m 台」)
     func testProgressSnapshotReportsMeasuringUntilTheProbeFinishes() {
         let calls = LockedCounter()
         let sampler = countingSampler(calls, delay: 0.3)
@@ -89,7 +89,7 @@ final class DeviceStorageSamplerTests: XCTestCase {
     }
 
     /// 1台終わるたびに onMeasured を呼ぶ(測れなかった回も)。呼ぶ時点で測定中から外れ、値は入っている
-    /// = モニターはこの瞬間の progressSnapshot でその台の monitorStorage を出せる
+    /// = モニターはこの瞬間の progressSnapshot でそのデバイスの monitorStorage を出せる
     func testOnMeasuredFiresPerDeviceAfterItLeavesMeasuring() {
         let seen = LockedStrings()
         let box = SamplerBox()

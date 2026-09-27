@@ -9,7 +9,7 @@
 // JUnit 結合・集計は FleetRunner の同じヘルパを共有する(prefix や中継の実装を二重に持たない)。
 //
 // 子には `--device <名前…>` と `--runner <ホスト|local>` を渡す。--runner を必ず渡すのは、
-// 子が自分で台の machine を読んで再ディスパッチするのを止めるため(FleetRunner と同じ)。
+// 子が自分でデバイスの machine を読んで再ディスパッチするのを止めるため(FleetRunner と同じ)。
 
 import ArgumentParser
 import FTCore
@@ -33,9 +33,9 @@ enum DeviceMachineRunner {
     /// **`--runner` を明示したときは常に nil** —— 明示指定は「今回はこの機械で走らせる」の意味で、
     /// 分散より強い(MachineDispatch と同じ「明示が勝つ」規律)。「マシン有効」も明示には効かない。
     ///
-    /// `disabledMachines`(`MachineEnablement.disabledMachines`)の機械の台は配らない。**1台でも外したら
+    /// `disabledMachines`(`MachineEnablement.disabledMachines`)の機械のデバイスは配らない。**1台でも外したら
     /// 残りが1機械でも分割計画を返す** —— nil を返すと単一経路がプロファイルを丸ごと見て、
-    /// 外した機械へ自動ディスパッチする/手元でリモートの台を探す。全部外れたら断る
+    /// 外した機械へ自動ディスパッチする/手元でリモートのデバイスを探す。全部外れたら断る
     static func plan(project: TestProject, profileName: String,
                      explicitHost: String?, deviceFilter: [String],
                      disabledMachines: Set<String>) throws -> [Group]? {
@@ -143,7 +143,7 @@ enum DeviceMachineRunner {
 
         let active: [(Int, Group, [String])]
         if broadcast {
-            // ブロードキャストは分割しない —— 各機械の各台が全件を回す(分けると「全台で1回ずつ」が
+            // ブロードキャストは分割しない —— 各機械の各デバイスが全件を回す(分けると「全台で1回ずつ」が
             // 機械ごとの部分集合に化ける)
             let ids = selected.map(\.id)
             active = groups.indices.map { ($0, groups[$0], ids) }
@@ -180,7 +180,7 @@ enum DeviceMachineRunner {
         localLock?.release()
         localLock = nil
 
-        // 手元の台の二重使用は**どの機械へも配る前に**断る(ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
+        // 手元のデバイスの二重使用は**どの機械へも配る前に**断る(ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
         // **dispatch.lock より手前なのは意図**(読み取りだけの先読み。上の localLock は既に
         // 手放し済みなので、ここでは何も持っていない。理由は FTBridgeClient/RunLeaseGuard.swift の冒頭)
         if let local = active.first(where: { $0.1.machine == nil }) {
@@ -301,7 +301,7 @@ enum DeviceMachineRunner {
     /// 総量で均すと台数の少ないホストが最後まで残る。実績が1件も無ければ全員同じ重みになり、
     /// 台数比での本数割りに退化する(FleetRunner.unknownDurationUnitWeight と同じ考え方)。
     /// internal: ApiRunMachineFanout も同じ割り当てを使う(二重実装しない)。
-    /// **宣言 platform の台がどの機械にも無いシナリオは対象外**(notApplicable)として割り当てから
+    /// **宣言 platform のデバイスがどの機械にも無いシナリオは対象外**(notApplicable)として割り当てから
     /// 外して返す(単機の ProfileRunner と同じ規律。FleetSplit.applicability の宣言)。呼び手は
     /// 単機と同じ文言でスキップを出す。子 run には渡さない —— api 経路の MachineFanoutMultiplexer は
     /// 子に渡した ID のうちイベントが来なかったものを failed に合成するため、渡すと赤になる

@@ -44,14 +44,14 @@ final class AndroidDataWiperTests: XCTestCase {
     }
 
     /// **前方一致で判定しない** —— 片方がもう片方の接頭辞になる AVD 名は普通にある。
-    /// 前方一致だと「-01 が動いているから -0 も動いている」と誤判定し、止まっている台の wipe を
+    /// 前方一致だと「-01 が動いているから -0 も動いている」と誤判定し、止まっているデバイスの wipe を
     /// 締切まで待たせる(逆に -0 の走査で -01 を消しにいくことはない = 安全側だが遅い)
     func testAVDProcessPresentDoesNotMatchAPrefixOfAnotherAVD() {
         XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9_Android_15_-0"))
         XCTAssertFalse(AndroidDataWiper.avdProcessPresent(psOutput: Self.psSample, avdID: "Pixel_9"))
     }
 
-    /// `emulator @<id>` の短縮形でも居ると判定する(`-avd` だけだと、短縮形で起動した台の
+    /// `emulator @<id>` の短縮形でも居ると判定する(`-avd` だけだと、短縮形で起動したデバイスの
     /// 停止確認②が「プロセスは消えた」と誤り、生きた qemu の下で削除へ進む)
     func testAVDProcessPresentAcceptsTheAtShortForm() {
         let ps = """
@@ -66,7 +66,7 @@ final class AndroidDataWiperTests: XCTestCase {
     }
 
     // MARK: - 走っているかの判定(runningVerdict)
-    // **offline も走っている**。state=device だけを見ると、ブート中/adbd が詰まった台が
+    // **offline も走っている**。state=device だけを見ると、ブート中/adbd が詰まったデバイスが
     // 「走っていない」に倒れ、生きた qemu の下からイメージを抜く(ファイル冒頭の禁則そのもの)
 
     private let avd = "Pixel_9_Android_15_-01"
@@ -78,7 +78,7 @@ final class AndroidDataWiperTests: XCTestCase {
         XCTAssertEqual(verdict, .running(serial: "emulator-5554"))
     }
 
-    /// 本丸: adb が offline としか言わない台でも、発見ファイルが AVD を名指しすれば「走っている」
+    /// 本丸: adb が offline としか言わないデバイスでも、発見ファイルが AVD を名指しすれば「走っている」
     /// (通常の停止経路へ進む。削除へは進まない)
     func testOfflineEmulatorNamedByTheDiscoveryFileIsRunning() {
         let verdict = AndroidDataWiper.runningVerdict(
@@ -87,7 +87,7 @@ final class AndroidDataWiperTests: XCTestCase {
         XCTAssertEqual(verdict, .running(serial: "emulator-5556"))
     }
 
-    /// adb が台を見失っていても(allEmulatorSerials に無い)、発見ファイルに居れば走っている
+    /// adb がデバイスを見失っていても(allEmulatorSerials に無い)、発見ファイルに居れば走っている
     func testEmulatorUnknownToAdbButDiscoveredIsRunning() {
         let verdict = AndroidDataWiper.runningVerdict(
             avdID: avd, runningAVDs: [:], allEmulatorSerials: [],
@@ -113,7 +113,7 @@ final class AndroidDataWiperTests: XCTestCase {
         guard case .unknown = verdict else { return XCTFail("\(verdict)") }
     }
 
-    /// ps が読めず、名指しできない offline の台がある = 不明(消さない)
+    /// ps が読めず、名指しできない offline のデバイスがある = 不明(消さない)
     func testUnreadablePsWithUnnamedOfflineEmulatorIsUnknown() {
         let verdict = AndroidDataWiper.runningVerdict(
             avdID: avd, runningAVDs: [:], allEmulatorSerials: ["emulator-5556"],

@@ -520,7 +520,7 @@ export const deviceOpsStrings = {
     ja: "[host-metrics] 行は出ているのに子プロセスが居なかったため起動し直しました。",
     en: "[host-metrics] The row was showing with no child process running — restarted it.",
   },
-  // ランナーの再起動を時間ではなくデータ(その機械の台が観測できるようになったこと)で拾った1行
+  // ランナーの再起動を時間ではなくデータ(その機械のデバイスが観測できるようになったこと)で拾った1行
   "deviceOps.log.hostMetricsObservedAgain": {
     ja: "[host-metrics] この機械のデバイスを再び観測できるようになったため、自動再起動を再開しました。",
     en: "[host-metrics] This machine's devices are observable again — resumed automatic restarts.",

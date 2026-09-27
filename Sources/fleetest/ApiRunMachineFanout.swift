@@ -120,12 +120,12 @@ enum ApiRunMachineFanout {
         localLock?.release()
         localLock = nil
 
-        // 手元の台の二重使用は runStarted と子の起動より前に断る(単機の api run の拒否と同じ形 =
+        // 手元のデバイスの二重使用は runStarted と子の起動より前に断る(単機の api run の拒否と同じ形 =
         // NDJSON を1行も出さず stderr + 非0。ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch)。
         // **dispatch.lock より手前なのは意図** —— 読み取りだけの先読みで、どのロックも取る前に
         // 断るためにここに置く(取ってから降りると他人を待たせた挙句に何も走らない)。上の
         // localLock は既に手放し済みなので、ここでは何も持っていない。取得そのものの上下は
-        // 「マシンの門(dispatch.lock)→ 台の門(run-lease)」= FTBridgeClient/RunLeaseGuard.swift の冒頭
+        // 「マシンの門(dispatch.lock)→ デバイスの門(run-lease)」= FTBridgeClient/RunLeaseGuard.swift の冒頭
         if let local = active.first(where: { $0.group.machine == nil }) {
             let ids = Set(local.ids)
             try ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch(

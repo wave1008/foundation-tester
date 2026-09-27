@@ -33,7 +33,7 @@ final class RunnerSlownessLeaseIOTests: XCTestCase {
             udid: "udid-a", stateDir: stateDir, selfPID: livePID, parentPID: 1))
     }
 
-    /// **変異②「lease がある台を除外しない」の陽性対照(I/O 版)**: 生きた他プロセスの run-lease は
+    /// **変異②「lease があるデバイスを除外しない」の陽性対照(I/O 版)**: 生きた他プロセスの run-lease は
     /// foreign(selfPID を書き手と別にずらして「他人」を模す)
     func testForeignRunLeaseFileIsForeign() {
         RunLease.write(stateDir: stateDir, key: "udid-a", pid: livePID)
@@ -89,7 +89,7 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
                       "印は通常の 1 問プローブより先に読まれていなければならない")
     }
 
-    /// **変異②「lease がある台を除外しない」の陽性対照(配線側)**: 次に何をするかは
+    /// **変異②「lease があるデバイスを除外しない」の陽性対照(配線側)**: 次に何をするかは
     /// hasForeignLease(実ファイルを読む I/O 版)の結果から決めている(定数へすり替えられていない)
     func testSupplyActionIsBuiltFromTheRealForeignLeaseCheck() throws {
         let text = compact(try source())
@@ -99,7 +99,7 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
             + "udid: sim.udid, stateDir: fleetestStateDir))")))
     }
 
-    /// リースのある台には触らない(.restartSimulator のときだけシミュレータを再起動する)。
+    /// リースのあるデバイスには触らない(.restartSimulator のときだけシミュレータを再起動する)。
     /// reuseWithoutRestarting はシミュレータへ何もしない経路であることをケース名で確かめる
     func testOnlyRestartSimulatorCaseTouchesTheSimulator() throws {
         let text = compact(try source())

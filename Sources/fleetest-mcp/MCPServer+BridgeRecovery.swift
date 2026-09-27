@@ -44,7 +44,7 @@ extension MCPServer {
     /// **純粋関数**: xcuitest ブリッジの自動建て直しを試すかの判定材料を1箇所にまとめる
     /// (I/O 抜きでテストできる。attemptXCUITestBridgeRecovery が I/O 込みで呼ぶ)。
     /// このセッションで一度失敗した engineKey は再挑戦しない(`bridgeRecoveryFailed`。1回のビルド
-    /// 失敗に分単位を払う経路なので、環境そのものが壊れている台へ毎呼び出し撃ち続けない ——
+    /// 失敗に分単位を払う経路なので、環境そのものが壊れているデバイスへ毎呼び出し撃ち続けない ——
     /// LiveBridgeAutoStarter.maxConsecutiveFailures と同じ「無限リトライにしない」規律だが、
     /// MCP は1呼び出しで完結するので上限は1回で足りる)。実機は provision() の対象外
     static func shouldAttemptXCUITestBridgeRecovery(
@@ -55,7 +55,7 @@ extension MCPServer {
     }
 
     /// 建て直しの実行。判定は `shouldAttemptXCUITestBridgeRecovery` の1箇所(重複条件を書かない)。
-    /// 成功時は `bridgeRecoveryFailed` へ insert しない——同じ台が後で再び死んだら、そのときはまた試してよい
+    /// 成功時は `bridgeRecoveryFailed` へ insert しない——同じデバイスが後で再び死んだら、そのときはまた試してよい
     func attemptXCUITestBridgeRecovery(args: [String: Any], error: Error) async -> Bool {
         guard makeDriver == nil else { return false }
         let isConnectionRefused: Bool
@@ -95,9 +95,9 @@ extension MCPServer {
         return RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: maxStepSnapshotMs, injected: injected)
     }
 
-    /// 呼び出し1回の所要が劣化の閾値を跨いだときだけ、その台のランナーを1問測り直して劣化していれば
+    /// 呼び出し1回の所要が劣化の閾値を跨いだときだけ、そのデバイスのランナーを1問測り直して劣化していれば
     /// 建て直す(`RunnerAccessibilityHealth.probe`/`BridgeProvisioner.recheckRunner`。run 側の
-    /// `RunnerMidRunRecheck` と同じ材料・同じ閾値を共有する)。建て直しても直らなかった台を覚えて
+    /// `RunnerMidRunRecheck` と同じ材料・同じ閾値を共有する)。建て直しても直らなかったデバイスを覚えて
     /// 空振りを繰り返さないのは `RunnerRestartFutility`(プロセス共有の帳簿。recheckRunner の内側で
     /// 参照する——ここでは何も持たない)
     func recheckXCUITestRunnerIfSlow(args: [String: Any], elapsedMs: Int) async {

@@ -1,5 +1,5 @@
 // ft_run_scenario は ScenarioHost.run(実デバイス)を直接呼ぶだけで MCPDeviceLease を書いておらず、
-// 並行する `fleetest run` がこの台を避けられず、他の MCP セッションへも警告が出なかった(台帳 §19.3)。
+// 並行する `fleetest run` がこのデバイスを避けられず、他の MCP セッションへも警告が出なかった(台帳 §19.3)。
 // デバイス/ビルドが要る実行なので単体テストでは撃てず、配線をソース走査で固定する
 // (MCPRotateSettleTests.testRestoreCallIsGatedToAndroidInSource と同じ手法)。
 
@@ -47,7 +47,7 @@ final class MCPRunScenarioLeaseTests: XCTestCase {
                       + "(udids[]/connectedAndroidSerials[] はこの経路では埋まらない)")
     }
 
-    /// dry-run(NullDriver。ロケータ構文だけを確かめ実機に触れない)は台の印を書かない
+    /// dry-run(NullDriver。ロケータ構文だけを確かめ実機に触れない)はデバイスの印を書かない
     func testDryRunDoesNotWriteALease() throws {
         let body = try functionBody("dryRun", in: try sourceCode())
         XCTAssertFalse(body.contains("MCPDeviceLease"),

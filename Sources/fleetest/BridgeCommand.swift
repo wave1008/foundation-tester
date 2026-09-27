@@ -68,14 +68,14 @@ struct Bridge: AsyncParsableCommand {
         }
 
         /// M11: 要求ポートと違うポートで起動したときの理由。provision() の戻り値自体は
-        /// 再利用/新規起動を教えないため、**provision() を呼ぶ前にこの台が既に使っていたポート**
+        /// 再利用/新規起動を教えないため、**provision() を呼ぶ前にこのデバイスが既に使っていたポート**
         /// (`preexistingPorts`)にあるかどうかだけで判定する
         enum PortMismatchReason: Equatable {
-            /// この台には呼び出し前から稼働中のブリッジがあり、それを再利用した
+            /// このデバイスには呼び出し前から稼働中のブリッジがあり、それを再利用した
             case reusedExistingBridge
-            /// この台には呼び出し前は無く、要求ポートが別ブリッジに塞がれていたので別ポートで新規起動した
+            /// このデバイスには呼び出し前は無く、要求ポートが別ブリッジに塞がれていたので別ポートで新規起動した
             case startedOnAnotherPort
-            /// この台の旧ビルドのブリッジが居たポートで、それを止めて建て直した(再利用ではない)
+            /// このデバイスの旧ビルドのブリッジが居たポートで、それを止めて建て直した(再利用ではない)
             case restartedOlderBuild
         }
 
@@ -89,7 +89,7 @@ struct Bridge: AsyncParsableCommand {
 
         /// **「stop it and run again」の案内は再利用のときだけ出す** —— 新規起動のケースでは
         /// 案内どおりに今のポートを止めても要求ポートは空かない(塞いでいるのは別のブリッジ)
-        /// requestedPortHeldByOther: 要求ポートを**別の台の**ブリッジ(台帳 .pid/.inapp・実機の iproxy)が
+        /// requestedPortHeldByOther: 要求ポートを**別のデバイスの**ブリッジ(台帳 .pid/.inapp・実機の iproxy)が
         /// 握っているか。握られていれば再利用でも止める案内は出さない —— 今のポートを止めても
         /// 要求ポートは空かない(実測: 既定 8123 が USB 実機のトンネルだった)
         static func portMismatchMessage(actualPort: UInt16, requestedPort: UInt16,
@@ -107,7 +107,7 @@ struct Bridge: AsyncParsableCommand {
                 return "⚠️ Stopped this device's bridge from an older build on port \(actualPort) and restarted it there"
                     + " (the requested/default port \(requestedPort) is in use by another bridge)."
             case .startedOnAnotherPort:
-                // 塞いでいるのは別の台(実機の LAN ブリッジ等)のことがあるので、止める案内は出さない
+                // 塞いでいるのは別のデバイス(実機の LAN ブリッジ等)のことがあるので、止める案内は出さない
                 return "⚠️ Started the bridge on port \(actualPort) because port \(requestedPort) is in use "
                     + "by another bridge. Pass --port with a free port to choose it explicitly."
             }
@@ -138,7 +138,7 @@ struct Bridge: AsyncParsableCommand {
                 ConsoleOut.out("→ Building and installing SampleApp...")
                 try launcher.installSampleApp()
             }
-            // M11 の判定材料: provision() を呼ぶ前に、この台が既に使っているポートを控えておく
+            // M11 の判定材料: provision() を呼ぶ前に、このデバイスが既に使っているポートを控えておく
             // (呼んだ後では「元から有ったのか、今建てたのか」が区別できない)
             let preexistingPorts = Set(BridgeLauncher.portsMatching(udid: resolvedUDID, repoRoot: root))
             // 旧版を名乗るもの(provision が止めて建て直す)。応答しないものは判定材料が無いので含めない
@@ -229,7 +229,7 @@ struct Bridge: AsyncParsableCommand {
         func run() async throws {
             if resolvedPlatform == "android" {
                 let serials = try AndroidBridgeCLI.serials(only: serial)
-                // **止める前に全台ぶん見る** —— 途中で断ると、断られる前の台だけ止まった
+                // **止める前に全台ぶん見る** —— 途中で断ると、断られる前のデバイスだけ止まった
                 // 半端な状態になる(鍵は serial。run-lease / MCP の印と同じ鍵)
                 let androidLeaseDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
                 if let refusal = serials.compactMap({ serial in

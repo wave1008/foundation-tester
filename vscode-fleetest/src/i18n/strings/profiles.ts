@@ -68,7 +68,7 @@ export const profilesStrings = {
     en: "Delete app profile \"{name}\"? This action cannot be undone.",
   },
   // 除去ログでデバイスを名指しするときの表記。**必ずホストを添える** —— 同名のデバイスが別の
-  // 機械に並ぶのは通常で、名前だけでは「どの Mac の台か」が分からない(一意なのは (host, name))。
+  // 機械に並ぶのは通常で、名前だけでは「どの Mac のデバイスか」が分からない(一意なのは (host, name))。
   // ホストの語は deviceOps.hostLocalLabel と共有する(実体削除の確認と同じ語彙にする)。
   "profiles.deviceMachineQualified": {
     ja: "{name}({machine})",

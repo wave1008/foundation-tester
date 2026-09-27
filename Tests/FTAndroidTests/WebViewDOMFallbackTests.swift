@@ -209,7 +209,7 @@ final class WebViewDOMFallbackTests: XCTestCase {
                        "結論が出たあとも問い合わせ・警告を繰り返す")
     }
 
-    /// 台が違えば別に診断する(同じ台で package が違っても別)
+    /// デバイスが違えば別に診断する(同じデバイスで package が違っても別)
     func testDiagnosisMemoIsKeyedBySerialAndPackage() {
         WebViewDOMFallback.markDiagnosed(serial: "s1", package: "p")
         XCTAssertTrue(WebViewDOMFallback.needsDiagnosis(serial: "s2", package: "p"))

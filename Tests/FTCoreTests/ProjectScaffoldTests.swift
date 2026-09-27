@@ -175,7 +175,7 @@ final class ProjectScaffoldTests: XCTestCase {
             ["README.md", "ios.json"])
     }
 
-    /// run にトップレベルの machine を書かない(台ごとに持つ)
+    /// run にトップレベルの machine を書かない(デバイスごとに持つ)
     func testRunProfilesHaveNoTopLevelMachine() throws {
         let project = makeProject()
         try ProjectScaffold.create(project: project, app: "com.example.myapp",
