@@ -143,6 +143,27 @@ ISOLATION_SETTINGS='{"autoMemoryEnabled":false}'
 # 作業場所は git の外(上の①)。測る対象のクローンごとに分ける(前後の比較で依存先が違う)
 PKG="$BENCH_HOME/authoring-pkg/$(printf '%s' "$TOOL_ROOT" | shasum | cut -c1-12)/authoring-pkg"
 PKG_PROJECT=BenchAuthoring
+
+# 束(<ハッシュ>/)は .build ごと使い回すので1つ約 2 GB。--tool-root に渡した worktree を消すと
+# その束は二度と使われないまま残る(保持容量の掃除は ~/.fleetest/bench を見ない)。
+# 束ごとに測った対象を `tool-root` に控え、**その場所が消えた束だけ**を消す。
+# 控えの無い束は何を測ったか判断できないので触らない。ハッシュは逆算できないので控えが要る
+prune_orphan_pkgs() {
+  local dir root
+  for dir in "$BENCH_HOME"/authoring-pkg/*/; do
+    dir="${dir%/}"
+    [ -f "$dir/tool-root" ] || continue
+    root="$(cat "$dir/tool-root")"
+    [ -n "$root" ] && [ ! -d "$root" ] || continue
+    say "==> 測った対象が無くなった作業場所を消す($dir ← $root)"
+    rm -rf "$dir"
+  done
+}
+if [ "$DRY_RUN" = 0 ]; then
+  mkdir -p "$(dirname "$PKG")"
+  printf '%s\n' "$TOOL_ROOT" > "$(dirname "$PKG")/tool-root"
+  prune_orphan_pkgs
+fi
 has_authoring=0
 pkg_app=""
 for id in "${TASKS[@]}"; do

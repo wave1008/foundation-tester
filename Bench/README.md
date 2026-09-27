@@ -104,7 +104,10 @@ Bench/measurements.md)。使い道は**探索が「再生できるシナリオ�
   計測と比べられる)
 - **作業場所**: `~/.fleetest/bench/authoring-pkg/<tool-root のハッシュ>/authoring-pkg`(台本が
   `fleetest init` で作る外部パッケージ。受け手と同じ構成で、git の外・**TestProjects/ には触らない**)。`init` が置く `.claude/` と
-  `.vscode/` は消す(まっさらな読み手の条件)。初回は外部パッケージの cold build に約2分かかる
+  `.vscode/` は消す(まっさらな読み手の条件)。初回は外部パッケージの cold build に約2分かかる。
+  `.build` ごと使い回すので束1つで約 2 GB —— 束ごとに測った対象を `<ハッシュ>/tool-root` に控え、
+  **その場所が消えた束(消した worktree の分)は次の起動時に台本が消す**(保持容量の掃除は
+  `~/.fleetest/bench` を見ない。控えの無い束には触らない)
 - **run のたびに盤面を戻す**: `Bench/fixtures/<fixture>/` の .swift を置き直し、`.fleetest/`
   (`#id` の台帳・指紋)とレポートを消す。前の run の学習が次へ漏れると手数が下がって見える
 - **完了は自己申告を見ない**(`RESULT:` 行は読まない)。3つ揃ったときだけ完了 ——
