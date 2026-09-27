@@ -4586,7 +4586,7 @@ SnapshotCache.cachedb`(壁紙プレビュー画像のキャッシュ。`Snapshot
 iOS 26 で溜まらないとは言えない)・iOS 18 のデバイスにはこのキャッシュ自体が無い
 
 - **起動の直前の入口は `FTBridgeClient.SimulatorBootCleanup.beforeBoot(udid:)`**(中身は
-  `SimulatorPosterCache.purge` と §12.4.3 のログの整理)。simctl で boot / bootstatus -b
+  `SimulatorPosterCache.purge` と §12.4.3 のログの整理と §12.4.4 のニュースのウィジェット)。simctl で boot / bootstatus -b
   (Shutdown なら boot する)を撃つ関数は、必ず同じ関数の中でこれを呼ぶ
   (`Tests/FTCoreTests/SimulatorPosterCachePurgeWiringTests.swift` が Sources 全体を走査して固定する。
   2026-09-27 時点の呼び出し口は `SimulatorBoot.ensureBooted` / `DeviceBooter.bootOne` /
@@ -4630,6 +4630,32 @@ backboardd のこのエラーは、モニターが画面を配信しているデ
   書かれ・`log show` で読め・ホーム画面・シナリオ1本が正常。logd の `Failed to get persona` は削除前から出ている
   (手を入れていないデバイスにもある)
 - Persist / HighVolume / Signpost は logd が容量でローテーションしているので触らない
+
+### 12.4.4 iOS Simulator のニュースのウィジェットのタイムライン項目の掃除(起動前)
+
+`<data>/Library/News/com.apple.news.public-com.apple.news.private-production/referralItems/com.apple.news.widget/`
+には、今日の表示に置かれたニュースのウィジェット(systemSmall・systemExtraLargePortrait)がタイムラインを
+更新するたびに `today--<大きさ>-<UUID>/`(記事の JSON `entry` と画像)を1つ足し、**古いものを消さない**。
+`-01` の実測で 7/22 から 18,400 フォルダ・8.3 万ファイル・1.1GB、1日あたり約 1,200 ファイル・13MB で一定に増えていた
+(1年で約 5GB。ファイル数が多いのでストレージ計測の走査も遅くする)。
+
+- **起動の直前に `<data>/Library/News/*/referralItems` を丸ごと消す**
+  (`SimulatorBootCleanup.purgeNewsWidgetReferrals`)。同じ階層のほかの物には触れない。ログに出す件数は
+  `referralItems/<種類>/` 直下の項目数(2段の一覧だけ数え、中へは降りない)
+- 検証(2026-09-27): 停止中の Simulator(3,486 フォルダ)を2つ複製し、片方だけ停止中に丸ごと消した(6 秒)→
+  2台を同時に起動を2回。消した側は起動で 6 個だけ作り直され、2回目の起動では増えなかった(対照も 2 回目は増えない)。
+  ホーム画面の撮影は2回とも対照と md5 が一致。ニュース関連のエラーは 164 件 / 対照 176 件で上位の種類は同じ。
+  クラッシュレポートは両方に同じ種類(intelligencetasksd・AppIntentsLiveEntityService・PosterBoard 等)。
+  消した側だけに出たのは1回目の起動中の2件(`com.apple.news.TodayFeedConfigDecoder` への XPC 接続失敗・
+  CloudKit の My Articles 取得失敗。どちらも referralItems に触れない内容。1回ずつの比較なので揺れと切り分けていない)。
+  実経路(停止した `-08` を `run --device` の供給が起動する直前)では 13,951 項目を **43.9 秒**で消し
+  (溜まった台の初回だけ。2回目以降は数項目)、E2E-iOS の S0010 が緑、run の後に作り直されたのは 2 項目
+  (systemSmall・systemExtraLargePortrait = 手を入れていない `-01` と同じ組み合わせ = ウィジェットの配置は残る)。
+  今日の表示のニュースのウィジェットは枠が出て「No Stories」—— 消していない `-07` も同じ表示(Simulator では
+  記事が取れない)
+- 同じ棚卸しで見た残りは触らない: `private/var/MobileAsset`(Siri・言語などの資産 2.6〜2.8GB。消しても
+  落とし直すだけ)/ `var/db/uuidtext`(ログの文字列表。古いランタイムの `dsc` が更新1回あたり約 90MB 残るが、
+  使っていないものの判定が重く量も小さい)/ `Library/Caches`(寄せ集めで最大 163MB)
 
 ### 12.5 タイルペインの auto-fit と「非表示中は実測しない」規律(2026-07-30/31)
 

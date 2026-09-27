@@ -215,6 +215,8 @@ the same way. With frequent reboots a single
 Simulator can reach tens of GB. fleetest purges a Simulator's accumulated cache right before it boots
 that Simulator (wallpaper settings and other data are left untouched). At the same time it trims the
 iOS diagnostic log store that has no size limit (Special), keeping only the newest 100 files (about 0.2 GB).
+It also removes the article copies the News widget keeps adding on every refresh and never deletes
+(about 13 MB a day); the widget rebuilds what it needs after the boot.
 
 To purge it for Simulators that are not being booted, run `fleetest clean --simulator-poster-cache`
 from a terminal (`--dry-run` shows the amount without deleting). It purges every **stopped**

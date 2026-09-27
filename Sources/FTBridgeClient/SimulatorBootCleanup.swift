@@ -8,6 +8,9 @@
 //      1台 1.2〜1.9GB に達していた。新しい `specialLogFilesToKeep` 個だけ残す(iOS 内部の診断ログだけで、
 //      fleetest のレポート・録画には関係しない)。停止中に消して起動 → ログは続けて書かれ・読め、
 //      ホーム画面・シナリオ1本が正常だった(docs/design.md §12.4.3)
+//   3. ニュースのウィジェットのタイムライン項目(`<data>/Library/News/<container>/referralItems`)を丸ごと
+//      —— 更新のたびに記事の JSON と画像のフォルダを足して消さない(実測 1日約 1,200 ファイル・13MB、
+//      2か月で 18,400 フォルダ・1.1GB)。消して起動すると数個だけ作り直される(docs/design.md §12.4.4)
 
 import FTCore
 import Foundation
@@ -28,6 +31,41 @@ public enum SimulatorBootCleanup {
             ConsoleOut.err("[fleetest] removed \(removed) old unified-log file(s) (Special) for simulator \(udid)"
                 + " in \(String(format: "%.1f", Date().timeIntervalSince(start)))s")
         }
+        let newsStart = Date()
+        let newsRemoved = purgeNewsWidgetReferrals(udid: udid)
+        if newsRemoved > 0 {
+            ConsoleOut.err("[fleetest] removed \(newsRemoved) News widget timeline item(s) for simulator \(udid)"
+                + " in \(String(format: "%.1f", Date().timeIntervalSince(newsStart)))s")
+        }
+    }
+
+    static func newsDirectory(udid: String,
+                              home: URL = FileManager.default.homeDirectoryForCurrentUser) -> URL {
+        home.appendingPathComponent("Library/Developer/CoreSimulator/Devices/\(udid)/data/Library/News")
+    }
+
+    @discardableResult
+    static func purgeNewsWidgetReferrals(udid: String,
+                                         home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Int {
+        purgeNewsWidgetReferrals(inNewsDirectory: newsDirectory(udid: udid, home: home))
+    }
+
+    /// `<newsDir>/*/referralItems` を丸ごと消す(同じ階層のほかの物には触れない)。戻り値は消えた
+    /// `referralItems/<種類>/` 直下の項目数(ログ用。数えるのは2段の一覧だけで中へは降りない)。
+    /// 失敗は飛ばす = 起動を止めない
+    static func purgeNewsWidgetReferrals(inNewsDirectory newsDir: URL) -> Int {
+        let fm = FileManager.default
+        guard let containers = try? fm.contentsOfDirectory(atPath: newsDir.path) else { return 0 }
+        var removed = 0
+        for container in containers {
+            let referrals = newsDir.appendingPathComponent(container).appendingPathComponent("referralItems")
+            guard let kinds = try? fm.contentsOfDirectory(atPath: referrals.path) else { continue }
+            let items = kinds.reduce(0) { total, kind in
+                total + ((try? fm.contentsOfDirectory(atPath: referrals.appendingPathComponent(kind).path))?.count ?? 0)
+            }
+            if (try? fm.removeItem(at: referrals)) != nil { removed += items }
+        }
+        return removed
     }
 
     static func specialLogDirectory(udid: String,
