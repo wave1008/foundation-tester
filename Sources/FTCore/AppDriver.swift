@@ -221,6 +221,12 @@ public protocol AppDriver {
     /// **ラッパードライバは実際に type を実行する側の値へ転送すること**(既定 false に落とすと
     /// 無害だが、既に検証済みの経路にも二重読み返しの固定費が乗る)
     var verifiesTypedText: Bool { get }
+    /// ジェスチャナビゲーションが back として奪う画面物理端からの帯幅(px。左右)。
+    /// 既定 nil = 除外なし(iOS・3ボタン navigation)。**プロトコル要件として宣言すること**
+    /// (install(packagePath:) と同じ理由)。**ラッパードライバは base の値を透過すること**
+    /// (既定 nil に落とすと、gesture navigation の端末で swipeBy がこの帯の中に始点/終点を
+    /// 置き back に化ける。`ScrollGeometry.panPath` の `backGestureEdgeWidths` 参照)
+    func backGestureEdgeWidths() async -> (left: Double, right: Double)?
 }
 
 extension DriverError: StepFailureKindProviding {
@@ -442,6 +448,9 @@ public extension AppDriver {
 
     /// 既定は 1(木が pt = iOS 系)。px で木を返す Android だけが密度を申告する
     var pointScale: Double { 1 }
+
+    /// 既定は nil(除外なし)。答えられるのは Android(AndroidDriver)だけ
+    func backGestureEdgeWidths() async -> (left: Double, right: Double)? { nil }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)

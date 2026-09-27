@@ -175,6 +175,9 @@ public final class SessionRecoveryDriver: AppDriver {
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public var pointScale: Double { base.pointScale }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+        await base.backGestureEdgeWidths()
+    }
     public func tap(x: Double, y: Double) async throws { try await withRecovery { try await base.tap(x: x, y: y) } }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withRecovery { try await base.swipe(direction) }

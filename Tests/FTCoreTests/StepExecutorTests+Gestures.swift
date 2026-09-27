@@ -633,6 +633,19 @@ extension StepExecutorTests {
         XCTAssertEqual(primary.lastDragArgs?.durationSeconds, FlowStep.defaultSwipeDurationSeconds)
     }
 
+    /// **witness**: 比率の上限(0.9)を超えた指定は丸めて注記を残す(黙って丸めると、小さい要素で
+    /// 「14 倍払った」つもりが数 pt しか動かず緑になる。E2EX-CMP のシートの見出しで実測)。逆向きも見る
+    func testSwipeByNotesACappedRatio() async throws {
+        let capped = await StepExecutor(
+            driver: FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[]]), isAndroid: false)
+            .execute(FlowStep(action: "swipeBy", dxRatio: 0, dyRatio: 14))
+        XCTAssertTrue(capped.notes.contains(.swipeByRatioCapped), "\(capped.notes)")
+        let withinCap = await StepExecutor(
+            driver: FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[]]), isAndroid: false)
+            .execute(FlowStep(action: "swipeBy", dxRatio: 0, dyRatio: -0.9))
+        XCTAssertFalse(withinCap.notes.contains(.swipeByRatioCapped), "\(withinCap.notes)")
+    }
+
     /// 移動量が小さすぎて指が動かないときは**成功にしない**(比率の書き間違いに気付けなくなる)
     func testSwipeByFailsWhenTheOffsetIsTooSmallToMove() async throws {
         let log = CallLog()
@@ -646,6 +659,27 @@ extension StepExecutorTests {
             XCTFail("動かない swipeBy は failed を期待したが \(outcome.status) だった"); return
         }
         XCTAssertNil(primary.lastDragArgs, "撃たないこと")
+    }
+
+    /// Android のジェスチャナビゲーション帯を申告するドライバでは、swipeBy の両端がその帯の外に
+    /// 収まること(実機実測: 全幅の座標ドラッグが back として奪われ、シナリオはアプリを離れたまま
+    /// passed で記録されていた。ScrollGeometry.panPath の backGestureEdgeWidths 参照)
+    func testSwipeByOnAndroidKeepsBothEndpointsOutsideTheBackGestureEdges() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        primary.backGestureEdgeWidthsValue = (left: 78, right: 78)
+        let executor = StepExecutor(driver: primary, isAndroid: true)
+        // 画面 400x800(FakeAppDriver.snapshot)の全幅を使う最大比率のドラッグ
+        let step = FlowStep(action: "swipeBy", dxRatio: 0.9, dyRatio: 0)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("swipeBy の passed を期待したが \(outcome.status) だった"); return
+        }
+        let args = try XCTUnwrap(primary.lastDragArgs)
+        XCTAssertGreaterThanOrEqual(min(args.fromX, args.toX), 78)
+        XCTAssertLessThanOrEqual(max(args.fromX, args.toX), 400 - 78)
     }
 
     // MARK: - スクロール探索終端の空打ち可否(pointIsTakenByFrontElement)

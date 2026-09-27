@@ -126,6 +126,15 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// `typeRetyped` と対で立つ。**これが立つ欄は打鍵の落ちではない** —— `textIs` で値を別途確かめる
     case typeRetypeAbandoned = "type-retype-abandoned"
 
+    /// 読み返しの値が**入力の前から1文字も動かなかった**が、打った文字は欄の領域に描かれていた(OCR)ので、
+    /// 欄の値が入力を映さないものとして追送せずに受理した(M3 SearchBar の iOS は value に説明文を出す。
+    /// 追送すると入力が重複する)。**値そのものは読み返していない** —— 必要なら後段で確かめる
+    case typeReadbackUnchanged = "type-readback-unchanged"
+
+    /// `swipeBy` の比率が片側 `ScrollGeometry.maxPanRatio` を超えていたので丸めた(比率は対象の大きさに対する
+    /// 割合)。**新しい検知なので警告から**。対象より遠くへ払いたい指定の書き誤り
+    case swipeByRatioCapped = "swipe-by-ratio-capped"
+
     /// `launchApp(url:)` が、既定の待ち時間のあいだ**利用者が触れる要素が木に載らないまま** URL を配送した
     /// (LaunchURLReadiness)。触れる要素の無い最初の画面もあり得るので失敗にはしないが、React Native の
     /// ように JS が listener を登録するまで URL を捨てるアプリでは、この注記の付いた配送は届いていない疑いがある
@@ -317,6 +326,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .typeRetypeAbandoned:
             return "the field still lost the same characters after retyping, so the value was accepted"
                 + " as input the app transforms"
+        case .swipeByRatioCapped:
+            return "dxRatio/dyRatio beyond ±0.9 were capped to 0.9 (the ratio is relative to the target's"
+                + " size); to move farther than the target, use swipeElementToElement or swipePointToPoint"
+        case .typeReadbackUnchanged:
+            return "the field's value did not reflect the input, but the typed text was seen in the"
+                + " field on screen (OCR), so it was not sent again"
         case .launchURLBeforeInteractiveUI:
             return "the URL was delivered before any tappable element appeared, so the app may not"
                 + " have been listening yet"

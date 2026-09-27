@@ -128,7 +128,8 @@ final class ScrollRegionMatchTests: XCTestCase {
                                        startMarginRatio: 0.2, endMarginRatio: 0.2)
         XCTAssertEqual(path?.region, carousel)
         XCTAssertNotNil(path)
-        let pan = ScrollGeometry.panPath(container: list, viewport: viewport, dxRatio: 0.3, dyRatio: 0)
+        let pan = ScrollGeometry.panPath(container: list, viewport: viewport, dxRatio: 0.3, dyRatio: 0,
+                                         backGestureEdgeWidths: (0, 0))
         XCTAssertNotNil(pan)
         XCTAssertNil(pan?.region, "pan はジェスチャが目的 = AX のスクロールで代行させない")
         let flick = ScrollGeometry.flickPath(container: list, viewport: viewport, kind: .bottomToTop,

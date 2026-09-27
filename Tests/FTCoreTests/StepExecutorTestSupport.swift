@@ -188,6 +188,13 @@ final class FakeAppDriver: AppDriver {
                                     pressSeconds: Double, durationSeconds: Double)?
     /// 全 drag 呼び出し(空打ちが撃たれたかの検証用。lastDragArgs は最後の1件しか残らない)
     private(set) var dragCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
+    /// `backGestureEdgeWidths()` の擬似(Android のジェスチャナビゲーション端末を模す)。
+    /// 既定 nil = 除外なし(AppDriver の既定と同じ)
+    var backGestureEdgeWidthsValue: (left: Double, right: Double)?
+
+    func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+        backGestureEdgeWidthsValue
+    }
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {

@@ -895,11 +895,15 @@ extension StepExecutor {
                                  typedOnly: String,
                                  phase: inout PhaseAccumulator) async throws -> String? {
         let clock = ContinuousClock()
-        let deadline = Date().addingTimeInterval(Self.typeVerifyBudgetSeconds)
+        // var: OCR の暖機を待った分だけ後ろへずらす(アプリの応答ではない待ちを予算から引かない)
+        var deadline = Date().addingTimeInterval(Self.typeVerifyBudgetSeconds)
         var rounds = 0
         var stagnantRounds = 0
         var previous: String?
         var retypes = 0
+        // 直前の追送を撃った時点の値。追送の後も同じ値なら、それ以上撃っても重複するだけ
+        var valueAtLastResend: String?
+        var checkedScreenForTypedText = false
         // 不可視文字を正規化する: MCP の replaceVerificationNote/appendVerificationNote
         // と同じ規律。実データが混入させるゼロ幅文字(Flow.swift 参照)だけで、実質同じ文字列が
         // `TypeReadback.plan` の前方一致から外れる。**壊れ方は混入位置で2つに割れる**:
@@ -926,7 +930,27 @@ extension StepExecutor {
             switch plan {
             case .done, .unverifiable:
                 return nil
+            case .resend where valueAtLastResend == actual:
+                // **追送しても値が動かなければ2回目は撃たない**(撃つたびに重複しうる。実測
+                // `ap` → `apapapapap`)。値は入力を映しているのに正しくない = 失敗
+                return "type reported success but the value did not change after re-sending the"
+                    + " missing text (expected \(expected.count) character(s))"
             case .resend(let missing):
+                // **1文字も動いていない**(足りない分が打った全文)なら、追送の前に画面を見る。
+                // 届かなかったのか、欄の値が入力を映さない(M3 SearchBar の iOS は value に説明文を
+                // 出す)のかは値からは区別できず、後者で追送すると入力が重複する。欄に打った文字が
+                // 描かれていれば後者として受理する。読めなければ届かなかった側として追送する(1回まで)
+                if !checkedScreenForTypedText, missing == typedOnly || missing == target {
+                    checkedScreenForTypedText = true
+                    let seen = await typedTextIsOnScreen(driver, element: element, text: typedOnly,
+                                                         deadline: deadline)
+                    deadline = deadline.addingTimeInterval(seen.warmupWaitSeconds)
+                    if seen.visible {
+                        noteCodesThisStep.insert(.typeReadbackUnchanged)
+                        return nil
+                    }
+                }
+                valueAtLastResend = actual
                 // target は正規化済み(readbackTarget)なので missing も正規化済み = 不可視文字を
                 // 落とした形。**原文の不可視文字は再現できない**(expected は既存値+本文の連結で、
                 // どちらの由来かここでは分からない)が、不可視文字は表示に現れないので、
@@ -960,6 +984,42 @@ extension StepExecutor {
             }
         }
     }
+
+    /// 打った文字が欄の領域に描かれているかを OCR で見る(`verifyTypedText` の「値が1文字も動かない」形の
+    /// 判別だけに使う)。**認識器の暖機が終わるまで待ってから読む**(冷えたまま読むと読み返しの予算を
+    /// 使い切って届かなかった側へ倒れ、追送で重複した。実測 `apap`)。待った時間は `DeadlineExclusion` が
+    /// ステップの締め切りから引き、呼び手は読み返しの締め切りをずらす。読みの予算は読み返しの締め切りの
+    /// 残り(新しい定数を置かない)。**ocrTextOcclusionCheck を見ない**(視覚検証の OCR 段のスイッチ。
+    /// 近い誤読の読み直しと同じく精度側の用途)。撮れない・読めない・予算切れは visible=false
+    func typedTextIsOnScreen(_ driver: AppDriver, element: ElementInfo, text: String,
+                             deadline: Date) async -> (visible: Bool, warmupWaitSeconds: TimeInterval) {
+        if let override = Self.typedTextOnScreenOverrideForTesting { return (override(text), 0) }
+        guard !text.isEmpty,
+              let snapshot = try? await driver.snapshot(),
+              let png = try? await driver.screenshot() else { return (false, 0) }
+        let waited: TimeInterval
+        switch await RegionText.awaitPrewarm(mode: .on) {
+        case .alreadyWarm: waited = 0
+        case .warmed(let d), .finishedCold(let d), .capped(let d):
+            waited = Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
+        }
+        let deadline = deadline.addingTimeInterval(waited)
+        let frame = snapshot.elements.first { $0.ref == element.ref || $0.identifier == element.identifier
+            && element.identifier?.isEmpty == false }?.frame ?? element.frame
+        let remaining = max(0, deadline.timeIntervalSinceNow)
+        let result = await RegionText.resolveWithinBudget(
+            expected: text, pngData: png, frame: frame, screen: snapshot.screen,
+            budget: .milliseconds(Int(remaining * 1000)))
+        guard case .read(let readable, let reading) = result else { return (false, waited) }
+        if readable { return (true, waited) }
+        // 英語モデルの同形異字(`ap` → `аpар`)は畳んでから見直す(OCRHomoglyphs)
+        guard text.allSatisfy(\.isASCII) else { return (false, waited) }
+        return (RegionText.readable(expected: text, lines: reading.lines.map(OCRHomoglyphs.foldToLatin)),
+                waited)
+    }
+
+    /// テスト用(本番では nil)。OCR を撃たずに「描かれていたか」を差し替える
+    nonisolated(unsafe) static var typedTextOnScreenOverrideForTesting: ((String) -> Bool)?
 
     /// 値が期待値になる/変わらなくなる(stableSeconds)/期限切れ、のいずれかまで snapshot を撮り直して
     /// 読む。awaitCommit(BridgeRouter)と同じ二重終了条件だが、取得手段がスナップショット1枚
@@ -1378,9 +1438,13 @@ extension StepExecutor {
             viaXCUITest = try await doubleTapWithFallback(x: target.centerX, y: target.centerY,
                                                           phase: &phase)
         case "swipeBy":
+            // iOS/3ボタン navigation は nil → 除外なし(0, 0)。既定値を panPath 側に置かないのは
+            // この分岐に確実に決めさせるため(ScrollGeometry.panPath の doc 参照)
+            let backGestureEdgeWidths = await driver.backGestureEdgeWidths() ?? (left: 0, right: 0)
             guard let path = ScrollGeometry.panPath(container: target, viewport: viewport,
                                                     dxRatio: step.dxRatio ?? 0,
-                                                    dyRatio: step.dyRatio ?? 0) else {
+                                                    dyRatio: step.dyRatio ?? 0,
+                                                    backGestureEdgeWidths: backGestureEdgeWidths) else {
                 // 動かないドラッグを撃って「成功」と記録すると、比率の書き間違いに気付けない
                 return StepOutcome(status: .failed(
                     "swipeBy cannot build a usable path (the target area is off-screen, "
@@ -1410,6 +1474,12 @@ extension StepExecutor {
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
         if !settled { note(.settleCapped, into: &notes) }
+        // 比率は対象の大きさに対する割合で片側 maxPanRatio が上限。超えた指定を黙って丸めると、小さい要素で
+        // 「14 倍払った」つもりが数 pt しか動かず緑になる(実測: シートの見出しで閉じなかった)
+        if action == "swipeBy",
+           [step.dxRatio, step.dyRatio].contains(where: { abs($0 ?? 0) > ScrollGeometry.maxPanRatio }) {
+            note(.swipeByRatioCapped, into: &notes)
+        }
         return StepOutcome(status: .passed,
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }

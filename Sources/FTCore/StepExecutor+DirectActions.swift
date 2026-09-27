@@ -161,6 +161,17 @@ extension StepExecutor {
                     Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
             }
             previous = contentSignature
+            // **Android の AX 申告で「もう動かせない」と分かるなら、確かめの1本を送らずに端と確定する**
+            // (driver.reachedEdgeOnLastSwipe は撃った後にしか分からない。PullToRefreshBox の先頭で
+            // 確認の1本を送ると引っ張り更新に化ける実測があるため、送る前に分かるものは送らない)。
+            // 容器を一意に決められない・申告が無い(iOS・旧ブリッジ)ときは nil のままなので
+            // 今までどおり撃って確かめる
+            if let scrollingElement = Self.scrollContainerElement(step: step, in: settled.snapshot),
+               ScrollActionAvailability.atEdge(scrollActions: scrollingElement.scrollActions,
+                                               forSwipe: direction) {
+                reachedEdge = true
+                break
+            }
             if let jump, let container = Self.webViewContainer(in: settled.snapshot),
                await hintDrag(jump: jump, container: container,
                               viewport: settled.snapshot.screen, phase: &phase) {
@@ -296,6 +307,22 @@ extension StepExecutor {
         let start = clock.now
         let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
         var note: String?
+        // **自前描画(か判定不明)のアプリで、木のどの要素も含まない点は最初から XCUITest で撃つ**。
+        // in-app の合成タッチは要素の無い点で届いた確証が無く、Compose の Popup の「外側タップで閉じる」に
+        // 届かないまま成功を返していた(実測: E2EX-CMP のメニュー。XCUITest では閉じる)
+        if let td = typeDriver, uiFramework?.isSelfRendered != false {
+            let snapshot = try await driver.snapshot()
+            if !snapshot.elements.contains(where: { Self.frame($0.frame, containsX: x, y: y) }) {
+                if hold > 0 {
+                    try await td.press(x: x, y: y, duration: hold)
+                } else {
+                    try await td.tap(x: x, y: y)
+                }
+                phase.actionMs += Self.ms(clock.now - start)
+                return StepOutcome(status: .passed,
+                                   driverFallback: "sent via XCUITest (no element at this point in the tree)")
+            }
+        }
         do {
             if hold > 0 {
                 try await driver.press(x: x, y: y, duration: hold)
@@ -314,6 +341,11 @@ extension StepExecutor {
         }
         phase.actionMs += Self.ms(clock.now - start)
         return StepOutcome(status: .passed, driverFallback: note)
+    }
+
+    /// 端ちょうどは含む(in-app ブリッジの画面内判定と同じ閉区間)
+    static func frame(_ frame: FTRect, containsX x: Double, y: Double) -> Bool {
+        x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height
     }
 
     /// 座標どうしのドラッグ(DSL の `swipePointToPoint` / ft_batch)。**撃つのは `dragWithFallback` だけ**

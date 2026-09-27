@@ -763,14 +763,26 @@ public struct ElementInfo: Codable, Sendable {
     /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(webViewPath と同じ方針)
     public var axClass: String?
 
+    /// **scrollable な容器がこの瞬間に動かせる方向**(scrollable と同じ省略規約: 非scrollableは省略)。
+    /// **Android だけが埋める**(`AccessibilityNodeInfo` の action 一覧から
+    /// `ACTION_SCROLL_BACKWARD`/`FORWARD` と方向つき `ACTION_SCROLL_UP`/`DOWN`/`LEFT`/`RIGHT` のうち
+    /// 実際に持つものだけを名前で送る。空配列 = 容器だが今はどちらへも動けない、nil = 非scrollable
+    /// または申告なし)。**iOS の2ブリッジは送らない**(木を動的に問わずに端かどうかを知る API を
+    /// 持たない)ので、**nil を「まだ動かせる」と読んではいけない** —— 使ってよいのは値が
+    /// 入っているときだけ(scrollToEdge が端で無駄な1回を送らずに済ませる判定に使う。
+    /// `ScrollActionAvailability` 参照)。追加 optional フィールドのみなので bridgeProtocolVersion は
+    /// 据え置き(axClass と同じ方針。Android は AndroidBridge.expectedBridgeVersionCode を上げる)
+    public var scrollActions: [String]?
+
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
                 checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil,
                 scrollable: Bool? = nil, z: Int? = nil, range: String? = nil,
-                axClass: String? = nil) {
+                axClass: String? = nil, scrollActions: [String]? = nil) {
         self.range = range
         self.axClass = axClass
         self.scrollable = scrollable
+        self.scrollActions = scrollActions
         self.z = z
         self.ref = ref
         self.type = Self.normalizedType(type)
@@ -804,6 +816,7 @@ public struct ElementInfo: Codable, Sendable {
         z = try container.decodeIfPresent(Int.self, forKey: .z)
         range = try container.decodeIfPresent(String.self, forKey: .range)
         axClass = try container.decodeIfPresent(String.self, forKey: .axClass)
+        scrollActions = try container.decodeIfPresent([String].self, forKey: .scrollActions)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全

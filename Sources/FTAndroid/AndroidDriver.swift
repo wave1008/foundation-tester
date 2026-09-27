@@ -40,6 +40,9 @@ public final class AndroidDriver: AppDriver {
     /// `pointScale` の1度きりの実測値(端末ごとに固定)
     private var cachedPointScale: Double?
 
+    /// `backGestureEdgeWidths()` の読めた値(端末ごとに固定)。読めなかった回は控えない
+    private var cachedBackGestureEdgeWidths: (left: Double, right: Double)?
+
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
@@ -397,6 +400,18 @@ public final class AndroidDriver: AppDriver {
 
     /// InputInjector が ACTION_SET_TEXT のたび自前で読み返す(docs/design.md §Android のテキスト注入の規律)
     public var verifiesTypedText: Bool { true }
+
+    /// 読めた値(3ボタン navigation の (0,0) を含む)は端末ごとに1度だけ控える。**読めなかった回は
+    /// 控えない** —— adb の一時的な失敗を控えると、その端末では以後ずっと帯を避けなくなる。
+    /// 失敗は投げず除外なし側へ倒す(`AndroidBackGestureEdges.parse` 参照)
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+        if let cachedBackGestureEdgeWidths { return cachedBackGestureEdgeWidths }
+        let result = try? adb(["shell", "dumpsys", "activity", "service",
+                               "com.android.systemui/.SystemUIService"])
+        let value = result?.outputIfSucceeded.flatMap(AndroidBackGestureEdges.parse)
+        if let value { cachedBackGestureEdgeWidths = value }
+        return value
+    }
 
     public func snapshot() async throws -> SnapshotResponse {
         try await snapshot(bypassingCache: false)

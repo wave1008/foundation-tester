@@ -49,6 +49,12 @@ type("#note", "new contents", replace: true)
   characters go missing again, the app itself is transforming the input (a digits-only field
   discarding letters, for example), so verification is abandoned and the value is accepted
   (note `type-retype-abandoned`; check the value separately with `textIs`).
+- **If the value does not move at all, the screen is checked first**, because some fields do
+  not reflect the input in their value (a Material3 SearchBar on iOS reports a description).
+  If the typed text is drawn in the field (OCR), it is accepted without retyping (note
+  `type-readback-unchanged`). If not, the input is treated as lost and re-sent. **The re-send
+  happens at most once**; if the value still does not move, the step fails (repeating the
+  re-send could duplicate the input).
 
 ### Link
 - [index](../index.md)

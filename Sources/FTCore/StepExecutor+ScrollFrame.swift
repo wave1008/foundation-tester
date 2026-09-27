@@ -286,6 +286,21 @@ extension StepExecutor {
         return nil
     }
 
+    /// `scrollContainer` と同じ解決規則で、rect ではなく**この swipe が当たる要素そのもの**を返す
+    /// (`ElementInfo.scrollActions` を読むため。scrollToEdge の空振り回避に使う)。
+    /// **未指定(scrollFrame も rect も無い)は、画面に scrollable がちょうど1つのときだけ確定**
+    /// (2つ以上・0個は「どれに当たるか分からない」ので nil = 呼び手は今までどおり撃って確かめる)
+    static func scrollContainerElement(step: FlowStep, in snapshot: SnapshotResponse) -> ElementInfo? {
+        if let rect = step.scrollFrameRect {
+            return snapshot.elements.first { $0.scrollable == true && ContainerGeometry.sameFrame($0.frame, rect) }
+        }
+        if let locator = step.scrollFrame {
+            return LocatorResolver.match(locator, in: snapshot)
+        }
+        let scrollable = snapshot.elements.filter { $0.scrollable == true }
+        return scrollable.count == 1 ? scrollable.first : nil
+    }
+
     /// 自己補正の倍率をマージンへ写す。span = 1 - start - end を scale 倍し、両端へ等分に戻す
     static func scaledMargins(start: Double, end: Double, scale: Double)
         -> (start: Double, end: Double) {

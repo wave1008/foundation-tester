@@ -88,15 +88,36 @@ public enum ScrollGeometry {
     /// 経路は領域の中心を挟んで対称に取る(始点 = 中心 − 移動量/2、終点 = 中心 + 移動量/2)。
     /// **片側 0.9 で頭打ち**にするのは、半分ずつ振り分けても端が領域内に収まるようにするため
     /// (0.9 → 中心 ±0.45 = 縁の内側)。戻り値 nil は `path` と同じ2条件
-    /// (交差なし / 移動距離が minUsableDistance 未満)
+    /// (交差なし / 移動距離が minUsableDistance 未満)。
+    ///
+    /// - Parameter backGestureEdgeWidths: Android のジェスチャナビゲーションが back として奪う
+    ///   画面物理端からの帯幅(px。`AndroidBackGestureEdges.parse` の戻り値。iOS/3ボタン
+    ///   navigation は (0, 0))。**area(container ∩ viewport)の縁ではなく viewport(画面)の縁から
+    ///   詰める**(対象領域が画面端まで届いていなければ無関係)。詰め切って幅が残らなければ
+    ///   従来と同じ nil。**既定値を置かない**(swipeBy の全経路に確実に渡させる)
     public static func panPath(container: FTRect, viewport: FTRect,
-                               dxRatio: Double, dyRatio: Double) -> FTSwipePath? {
-        guard let area = intersection(container, viewport) else { return nil }
+                               dxRatio: Double, dyRatio: Double,
+                               backGestureEdgeWidths: (left: Double, right: Double)) -> FTSwipePath? {
+        guard let intersected = intersection(container, viewport),
+              let area = excludingBackGestureEdges(intersected, viewport: viewport,
+                                                    widths: backGestureEdgeWidths) else { return nil }
         let dx = area.width * clampPanRatio(dxRatio)
         let dy = area.height * clampPanRatio(dyRatio)
         let path = FTSwipePath(fromX: area.centerX - dx / 2, fromY: area.centerY - dy / 2,
                                toX: area.centerX + dx / 2, toY: area.centerY + dy / 2)
         return path.distance >= minUsableDistance ? path : nil
+    }
+
+    /// `panPath` の水平除外。viewport(画面)の物理端から詰めるので、対象領域が画面端まで
+    /// 届いていない場合は影響しない。両側から詰め切って幅が残らなければ nil
+    static func excludingBackGestureEdges(_ area: FTRect, viewport: FTRect,
+                                          widths: (left: Double, right: Double)) -> FTRect? {
+        let left = max(widths.left, 0)
+        let right = max(widths.right, 0)
+        let minX = max(area.x, viewport.x + left)
+        let maxX = min(area.x + area.width, viewport.x + viewport.width - right)
+        guard maxX > minX else { return nil }
+        return FTRect(x: minX, y: area.y, width: maxX - minX, height: area.height)
     }
 
     /// 比率の上限(片側)。非有限は 0(= 動かさない)に倒す

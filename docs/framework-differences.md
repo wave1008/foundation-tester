@@ -273,6 +273,43 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 
 ---
 
+## 5.1 Compose Multiplatform の固有部品(E2EXAppCMP で実測・2026-09-28)
+
+共通契約の SUT には載らない Material3 の定番部品は、別の SUT `E2EXAppCMP/`(契約は同ディレクトリの
+`docs/ui-contract.md`)とシナリオ `TestProjects/E2EX-CMP/` で確かめる。**利用者向けの書き方は
+`docs/user-docs/in_action/ui_component_patterns_ja.md` が正典**(ここは結論だけ)。
+
+| 部品 | 違い | 区分 |
+|---|---|---|
+| ドロワー・DropdownMenu(両 OS)・ModalBottomSheet(iOS) | 開いている間、背後の画面が木から丸ごと消える(スクリムの「閉じる」ボタンだけ残る)。背後の echo は閉じてから読み、外側タップは座標でしか書けない | B |
+| ExposedDropdownMenuBox の読み取り専用 TextField | 中身は `value`。`.text` は iOS = ラベル・Android = nil | B |
+| アイコンの代わりに `Text` を置いた IconButton | iOS のラベルが contentDescription と文字の連結(`戻る, ←`)になる。`Icon(contentDescription=)` なら連結しない | B |
+| HorizontalPager・ScrollableTabRow | 横の探索は `scrollFrame:` 必須(既定は画面中央を払う)。「scrollFrame を渡せ」の示唆は Android の失敗文言にだけ出る | B |
+| Android(ジェスチャーナビゲーション) | 画面端から始めた横の払いは OS の戻る。ドロワーを `startMarginRatio: 0.05` で払うと前の画面へ戻る | B |
+| TooltipBox(Android) | 押している間だけ出て指を離すと消える(adb の実タッチで確認: 押下中 `tooltip=shown`・離すと `hidden`)。表示中も文字は別ウィンドウで木に無い → DSL(離してから検証)では確かめられない。ツールの不具合ではない | B |
+| DatePicker の日付セル・Snackbar の中身 | testTag を付けられない → ラベルで指す(両 OS で緑) | — |
+
+**ツール側で見つけて直した不具合(どれも黙って誤る型。回帰テストは `TestProjects/E2EX-CMP/scenarios/90_不具合の回帰.swift` と `15_検索バー.swift`)**:
+
+| 回帰テスト | 症状 → 直し方 | 起きた構成 |
+|---|---|---|
+| 15 S0010/S0020 | M3 SearchBar は入力欄の value に説明文を出す → `type` の読み返しが追送を繰り返して入力が重複(`apapapapap`)→ **値が1文字も動かなければ先に画面を OCR で見る**(描かれていれば受理・注記 `type-readback-unchanged`)。**追送は1回まで**、追送しても動かなければ失敗。OCR は暖機を待ち(締め切りから除外)、英語モデルのキリル同形異字(`ap`→`аpар`)を `OCRHomoglyphs` で畳む | iOS hybrid |
+| 90 S0010 | HorizontalPager の `scrollToLeftEdge` が page=4→2 で端と判定して緑 → 端の署名(`edgeSignature`)に id とラベルを入れた(型と座標だけだと同じレイアウトの面を区別できない) | 全エンジン |
+| 90 S0020 | PullToRefresh の一覧で `scrollToTop` が端の確認の送りで更新を 1 回余分に走らせる → Android ブリッジ(v74)が容器の `scrollActions` を申告し、その向きに送れない容器なら送らずに端と確定(`ScrollActionAvailability`)。**iOS XCUITest は未修正**(容器の申告が無い) | Android(修正)・iOS XCUITest(残る) |
+| 90 S0040 | in-app の `tap(x:y:)` が Compose の Popup の外側タップ閉じに届かないのに緑 → 自前描画(か判定不明)で木のどの要素も含まない点は最初から XCUITest で撃つ | iOS hybrid |
+| 90 S0050 | `swipeBy` の経路は中心対称なので、幅いっぱいの要素に 0.9 を渡すと始点が OS の戻るの帯(78px)に入り戻るが走って緑 → 帯の幅を端末の SystemUI の dump から読み(`AndroidBackGestureEdges`)、経路を帯の外へ寄せる | Android |
+| — | `swipeBy` の比率が上限(片側 0.9)を超えても黙って丸めていた(小さい見出しで「14 倍」が数 pt)→ 注記 `swipe-by-ratio-capped`(警告から) | 全エンジン |
+
+**不具合ではなかったもの**: iOS でボトムシートを払って閉じられなかったのは `swipeBy` の比率の意味(対象の大きさに
+対する割合)を取り違えたシナリオの誤り(`swipeElementToElement` なら閉じる)。Android のツールチップは上の B の行。
+
+**同じ型の残り(未対処・再現していない)**: テキストの視覚検証の OCR 段(`RegionText` → `TranscriptMatch`)も英語モデルの
+キリル同形異字で「丸ごと読めない」になりうる(近道を逃して FM へ回るだけなら無害だが、FM の段が無い構成の
+`OCROnlyVisibility` では誤った赤になりうる)。固定コーパス `Tests/Fixtures/OcclusionCrops/` が読みを等号で固定しているので、
+畳むならコーパスの読みの変化を1件ずつ見てから
+
+---
+
 ## 6. ツールの変更で差を詰めた履歴(新しい順)
 
 | 版・コミット | 内容 |

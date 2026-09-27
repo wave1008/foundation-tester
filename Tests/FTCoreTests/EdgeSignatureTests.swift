@@ -32,6 +32,26 @@ final class EdgeSignatureTests: XCTestCase {
                           StepExecutor.edgeSignature(try fixture("moved")))
     }
 
+    /// **witness**: 同じレイアウトの面が同じ位置へスナップする容器(E2EX-CMP の HorizontalPager)。
+    /// 型と座標は同じでも id とラベルが違えば「動いた」(型と座標だけだと page=4 → 2 で端と誤認した)
+    func testPagesWithTheSameLayoutButDifferentContentDiffer() {
+        func page(_ n: Int) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                             elements: [
+                                ElementInfo(ref: 1, type: "staticText", identifier: "txt_page_\(n)",
+                                            label: "ページ \(n)", value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 16, y: 200, width: 100, height: 24), depth: 1),
+                                ElementInfo(ref: 2, type: "button", identifier: "btn_page_\(n)",
+                                            label: "ページ \(n) のボタン", value: nil, placeholder: nil,
+                                            enabled: true,
+                                            frame: FTRect(x: 16, y: 240, width: 180, height: 48), depth: 1),
+                             ],
+                             truncatedCount: 0)
+        }
+        XCTAssertNotEqual(StepExecutor.edgeSignature(page(4)), StepExecutor.edgeSignature(page(3)))
+        XCTAssertEqual(StepExecutor.edgeSignature(page(3)), StepExecutor.edgeSignature(page(3)))
+    }
+
     /// **配線**: 先頭で木が揺れ続けても scrollToTop が上限まで払い切らない
     func testScrollToTopStopsAtTheTopDespiteTheFlickeringTree() async throws {
         let driver = try FlickeringTopDriver()

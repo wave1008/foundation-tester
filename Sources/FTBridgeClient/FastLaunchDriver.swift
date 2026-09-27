@@ -124,6 +124,9 @@ public final class FastLaunchDriver: AppDriver {
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public var pointScale: Double { base.pointScale }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+        await base.backGestureEdgeWidths()
+    }
     public func tap(ref: Int) async throws { try await base.tap(ref: ref) }
     public func tap(x: Double, y: Double) async throws { try await base.tap(x: x, y: y) }
     public func type(ref: Int?, text: String) async throws { try await base.type(ref: ref, text: text) }

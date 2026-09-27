@@ -93,6 +93,52 @@ final class TypeReadbackTargetTests: XCTestCase {
         XCTAssertFalse(outcome.notes.contains(.typeRetypeAbandoned), "\(outcome.notes)")
     }
 
+    // ---- 値が入力を映さない欄と、届かなかった入力の判別(E2EX-CMP の 15_検索バー。2026-09-28) ----
+
+    private func typeStep(values: [String], text: String,
+                          onScreen: Bool?) async -> (StepOutcome, ReadbackSequenceDriver) {
+        StepExecutor.typedTextOnScreenOverrideForTesting = onScreen.map { visible in { _ in visible } }
+        defer { StepExecutor.typedTextOnScreenOverrideForTesting = nil }
+        let driver = ReadbackSequenceDriver(values: values)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+            FlowStep(action: "type", locator: FlowLocator(id: "field"), text: text))
+        return (outcome, driver)
+    }
+
+    /// **witness**: M3 SearchBar の iOS は入力欄の value に説明文を出し、打っても動かない。
+    /// 追送すると周回ぶん入力が重複した(`ap` → `apapapapap`)。打った文字が欄に描かれていれば受理する
+    func testAcceptsWithoutResendingWhenTheTypedTextIsOnScreen() async {
+        let hint = "検索候補は次のとおりです"
+        let (outcome, driver) = await typeStep(values: [hint, hint, hint, hint], text: "ap", onScreen: true)
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertEqual(driver.typedTexts, ["ap"])
+        XCTAssertTrue(outcome.notes.contains(.typeReadbackUnchanged), "\(outcome.notes)")
+    }
+
+    /// 画面にも無ければ届かなかった側: 追送は1回だけ、それでも動かなければ失敗(緑にしない)
+    func testResendsOnceAndFailsWhenNothingArrivedAndNothingIsOnScreen() async {
+        let (outcome, driver) = await typeStep(values: ["", "", "", ""], text: "hello", onScreen: false)
+        guard case .failed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.typedTexts, ["hello", "hello"])
+        XCTAssertFalse(outcome.notes.contains(.typeReadbackUnchanged), "\(outcome.notes)")
+    }
+
+    /// 一部が届いて止まった欄: 追送は1回だけ、動かなければ失敗(値は入力を映している = 赤が正しい)
+    func testResendsOnlyOnceAndFailsWhenTheResendDoesNotMoveTheValue() async {
+        let (outcome, driver) = await typeStep(values: ["", "he", "he", "he", "he"], text: "hello",
+                                               onScreen: true)
+        guard case .failed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.typedTexts, ["hello", "llo"], "一部が届いた形では画面を見ずに追送する")
+    }
+
+    /// 逆向き: 末尾の欠落は今までどおり追送で埋まり、注記は立たない
+    func testTailDropIsStillRepairedByResending() async {
+        let (outcome, driver) = await typeStep(values: ["", "he", "hello"], text: "hello", onScreen: nil)
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertEqual(driver.typedTexts, ["hello", "llo"])
+        XCTAssertFalse(outcome.notes.contains(.typeReadbackUnchanged), "\(outcome.notes)")
+    }
+
     /// **ランナーと共有する純粋関数**(正規化なし)の順序: ヒント欄では本文だけへ採り直し、
     /// 両方が .retype なら expected、どちらでもなければ expected
     func testSharedReadbackTargetOrdering() {

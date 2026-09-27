@@ -105,6 +105,9 @@ public final class SystemUIDriver: AppDriver {
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
     public var pointScale: Double { client.pointScale }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+        await client.backGestureEdgeWidths()
+    }
 
     /// **直前の snapshot と同じ名前空間の ref を使う**(scoped は `systemRefFrames`、
     /// 旧経路は session を springboard へ移したうえでの `refFrames`)

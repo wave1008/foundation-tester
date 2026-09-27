@@ -301,7 +301,11 @@ extension StepExecutor {
     /// 1つずつ揺れ、しかも整定の判定の後から遅れて出入りする(実測: E2E-iOS の一覧の先頭に止まったまま
     /// 63 ↔ 64 要素)ので、素の署名では端に着いても「不変」が成立せず上限まで払い切っていた
     /// (E2E-iOS の scrollToTop が 17 回中 9 回・1 回約 32 秒)。**整定の判定(`settledSignature`)には
-    /// 使わない** —— あちらは「動いている最中か」を見るので、残骸の動きも動きとして数えてよい
+    /// 使わない** —— あちらは「動いている最中か」を見るので、残骸の動きも動きとして数えてよい。
+    ///
+    /// **id とラベルも入れる**: 型と座標だけだと、同じレイアウトの面が同じ位置へスナップする容器
+    /// (HorizontalPager・カルーセル)では送っても署名が変わらず、途中で端と誤認して緑のまま止まる
+    /// (実測: E2EX-CMP のページャで page=4 → 2)。value は入れない(スライダー等が送りと無関係に動く)
     static func edgeSignature(_ snapshot: SnapshotResponse) -> String {
         let stacked = OcclusionGeometry.stackedRefs(snapshot.elements)
         return snapshot.elements
@@ -310,7 +314,7 @@ extension StepExecutor {
                     && TapTargetGeometry.outsideDeclaredScroller(
                         element, in: snapshot.elements, screen: snapshot.screen) == nil
             }
-            .map { "\($0.type)|\($0.frame.x),\($0.frame.y)" }
+            .map { "\($0.type)|\($0.frame.x),\($0.frame.y)|\($0.identifier ?? "")|\($0.label ?? "")" }
             .joined(separator: ",")
     }
 

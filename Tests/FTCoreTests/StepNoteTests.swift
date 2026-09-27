@@ -18,6 +18,8 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.systemAlertProbeFailed.rawValue, "system-alert-probe-failed")
         XCTAssertEqual(StepNote.typeRetyped.rawValue, "type-retyped")
         XCTAssertEqual(StepNote.typeRetypeAbandoned.rawValue, "type-retype-abandoned")
+        XCTAssertEqual(StepNote.typeReadbackUnchanged.rawValue, "type-readback-unchanged")
+        XCTAssertEqual(StepNote.swipeByRatioCapped.rawValue, "swipe-by-ratio-capped")
         XCTAssertEqual(StepNote.launchURLBeforeInteractiveUI.rawValue, "launch-url-before-interactive-ui")
         XCTAssertEqual(StepNote.slowSnapshot.rawValue, "slow-snapshot")
         XCTAssertEqual(StepNote.guardRetaken.rawValue, "guard-retaken")

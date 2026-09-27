@@ -79,6 +79,9 @@ final class SnapshotBuilder {
         boolean focused;
         /** スクロールできる容器か(BridgeDTO.ElementInfo.scrollable 参照) */
         boolean scrollable;
+        /** scrollable な容器がこの瞬間に持つスクロール系アクション(BridgeDTO.ElementInfo.scrollActions
+         *  参照)。null = 非 scrollable。空リストは「容器だが今はどちらへも動けない」で null とは区別する */
+        List<String> scrollActions;
         /** 根から自分までの描画順の並び(各段は API24+ の getDrawingOrder)。
          *  **preorder は描画順ではない** —— ViewGroup は elevation で子を並べ替えるので、
          *  木で後に出る要素が奥にあることがある(実測: Google マップは地図の FAB を
@@ -368,6 +371,7 @@ final class SnapshotBuilder {
         n.selected = node.isSelected();
         n.focused = node.isFocused();
         n.scrollable = node.isScrollable();
+        if (n.scrollable) n.scrollActions = scrollActionNames(node);
         AccessibilityNodeInfo.RangeInfo range = node.getRangeInfo();
         if (range != null) {
             n.hasRange = true;
@@ -406,6 +410,31 @@ final class SnapshotBuilder {
 
     private static String charSeq(CharSequence cs) {
         return cs == null ? "" : cs.toString();
+    }
+
+    /** scrollActionNames が name 配列と同じ並びで引く AccessibilityAction(id 一致で contains 判定) */
+    private static final AccessibilityNodeInfo.AccessibilityAction[] SCROLL_ACTIONS = {
+        AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD,
+        AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD,
+        AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP,
+        AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN,
+        AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT,
+        AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT,
+    };
+    private static final String[] SCROLL_ACTION_NAMES = {"backward", "forward", "up", "down", "left", "right"};
+
+    /**
+     * scrollable な容器がこの瞬間に申告しているスクロール系アクションだけを名前で返す
+     * (BridgeDTO.ElementInfo.scrollActions 参照。Compose / RecyclerView とも既に端まで動かせない
+     * 方向のアクションを申告リストから外す)。minSdk 26 なので API23 の方向つきアクションは常に使える
+     */
+    private static List<String> scrollActionNames(AccessibilityNodeInfo node) {
+        List<AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
+        List<String> names = new ArrayList<>();
+        for (int i = 0; i < SCROLL_ACTIONS.length; i++) {
+            if (actions.contains(SCROLL_ACTIONS[i])) names.add(SCROLL_ACTION_NAMES[i]);
+        }
+        return names;
     }
 
     /**
@@ -655,6 +684,12 @@ final class SnapshotBuilder {
         if (node.focused) info.put("focused", true);
         // scrollable も同じ省略規約(scrollFrame の空振り検出用)
         if (node.scrollable) info.put("scrollable", true);
+        // scrollActions は scrollable な容器だけ(端で撃つ空振りの回避に使う。BridgeDTO.ElementInfo 参照)
+        if (node.scrollActions != null) {
+            JSONArray actions = new JSONArray();
+            for (String action : node.scrollActions) actions.put(action);
+            info.put("scrollActions", actions);
+        }
         if (range != null) info.put("range", range);
         // 塗り順は**常に**送る(0 も有効な値。省略すると「奥から数えて0番目」と
         // 「申告なし」が区別できなくなる)

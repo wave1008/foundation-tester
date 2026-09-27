@@ -34,7 +34,8 @@ final class ElementInfoCodingTests: XCTestCase {
             scrollable: true,
             z: 124,
             range: "0-100",
-            axClass: "UIAccessibilityElement")
+            axClass: "UIAccessibilityElement",
+            scrollActions: ["backward", "forward"])
     }
 
     func testEveryFieldSurvivesAnEncodeDecodeRoundTrip() throws {

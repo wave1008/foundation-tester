@@ -79,6 +79,10 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
     /// **どちらの経路でも同じ端末**なので mode を見ない(委譲へ落ちた回だけ床が変わるのを防ぐ)
     public var pointScale: Double { primary.pointScale }
+    /// pointScale と同じ理由(端末の性質。mode を見ない)
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+        await primary.backGestureEdgeWidths()
+    }
 
     /// **両方へ立てる**(supportsCacheBypass と違い、こちらは撮る前に決める必要がある):
     /// mode は「直前の snapshot」が決めた値で、次の1回がどちらから読まれるかは
