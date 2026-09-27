@@ -3080,7 +3080,7 @@ input[type="radio"]:focus-visible {
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
-/* クリーンアップ(設定タブ)。4行を「ラベル | 入力 | 単位 | 使用量」の列に揃える。
+/* クリーンアップ(設定タブ)。各行を「ラベル | 入力 | 単位 | 使用量」の列に揃える。
    各行は label のまま subgrid で親の列を借りる(display:contents にすると label の箱が消え、
    クリック範囲・cursor が文字の上だけになる)。 */
 .settings-cleanup-grid {
@@ -3096,6 +3096,10 @@ input[type="radio"]:focus-visible {
   grid-template-columns: subgrid;
   align-items: center;
   cursor: default;
+}
+/* 単位が GB → MB に変わる境目。行の並び(monitorHtml.ts)を変えたらこのクラスの付け先も見直す */
+.settings-cleanup-grid > .settings-cleanup-group-start {
+  margin-top: 10px;
 }
 /* .settings-number(56px = FM 並列枠の1桁用)では既定の「1000」MB がスピナーに食われて見切れる。
    4桁 + 小数1桁 + スピナーが収まる幅 */

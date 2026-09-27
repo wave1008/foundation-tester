@@ -307,15 +307,15 @@ export const panelsStrings = {
     ja: "デバイスの録画・スクショの上限",
     en: "Limit for device recordings and screenshots",
   },
-  "panels.settings.cleanupRecordingsLabel": { ja: "録画の上限", en: "Limit for recordings" },
-  "panels.settings.cleanupEventLogsLabel": { ja: "実行ログの上限", en: "Limit for run logs" },
-  "panels.settings.cleanupReportsLabel": { ja: "レポートの上限", en: "Limit for reports" },
-  "panels.settings.cleanupLogsLabel": { ja: "ログの上限", en: "Limit for logs" },
+  "panels.settings.cleanupRecordingsLabel": { ja: "録画の上限(*.mp4)", en: "Limit for recordings (*.mp4)" },
+  "panels.settings.cleanupEventLogsLabel": { ja: "実行ログの上限(*.ndjson)", en: "Limit for run logs (*.ndjson)" },
+  "panels.settings.cleanupReportsLabel": { ja: "レポートの上限(reports)", en: "Limit for reports (reports)" },
+  "panels.settings.cleanupLogsLabel": { ja: "ログの上限(*.log)", en: "Limit for logs (*.log)" },
   // 生きているブリッジぶんの束は消せない(guarded)ので、この上限は「保持量を抑える線」ではなく
   // 「立てっぱなしに気付かせる線」。docs/results-json.md §保持容量
   "panels.settings.cleanupXcresultLabel": {
-    ja: "ブリッジ診断ログの上限",
-    en: "Limit for bridge diagnostics",
+    ja: "ブリッジ診断ログの上限(*.xcresult)",
+    en: "Limit for bridge diagnostics (*.xcresult)",
   },
   // 上限の各行のツールチップ(label の title)。中身の定義は docs/results-json.md §保持容量
   "panels.settings.cleanupDeviceCapturesTooltip": {

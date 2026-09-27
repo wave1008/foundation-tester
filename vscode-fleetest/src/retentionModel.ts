@@ -36,12 +36,12 @@ export interface RetentionField {
 
 /** 上限6欄。**この順に画面へ並べる**(HTML の id は settingsTab.js の CLEANUP_INPUT_IDS と対)。 */
 export const RETENTION_FIELDS: readonly RetentionField[] = [
-  { key: "deviceCapturesMaxBytes", usageKey: "deviceCaptures", unit: "GB" },
   { key: "recordingsMaxBytes", usageKey: "recordings", unit: "GB" },
+  { key: "deviceCapturesMaxBytes", usageKey: "deviceCaptures", unit: "GB" },
   { key: "eventLogsMaxBytes", usageKey: "eventLogs", unit: "GB" },
+  { key: "xcresultMaxBytes", usageKey: "xcresult", unit: "GB" },
   { key: "reportsMaxBytes", usageKey: "reports", unit: "MB" },
   { key: "logsMaxBytes", usageKey: "logs", unit: "MB" },
-  { key: "xcresultMaxBytes", usageKey: "xcresult", unit: "GB" },
 ];
 
 /** 上限ではない真偽値の鍵(run 完了後に背景で掃除するか。発動は上限の 90% 超)。 */
