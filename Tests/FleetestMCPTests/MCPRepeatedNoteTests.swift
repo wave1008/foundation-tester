@@ -61,7 +61,7 @@ final class MCPRepeatedCoordinateNoteTests: XCTestCase {
                                    frame: FTRect(x: 10, y: 20, width: 100, height: 40), depth: 1)],
             truncatedCount: 0)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
-        _ = try await server.call(tool: "ft_drag", args: ["fromRef": 1, "dy": -50.0])
+        _ = try await server.call(tool: "ft_drag", args: ["fromRef": 1, "dy": -30.0])
 
         let coordinateDrag = try await server.call(
             tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "toX": 30.0, "toY": 40.0])

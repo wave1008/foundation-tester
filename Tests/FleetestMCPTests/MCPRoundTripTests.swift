@@ -69,7 +69,7 @@ final class MCPRoundTripTests: XCTestCase {
             tool: "ft_type", args: ["text": "abc", "snapshotAfter": true]))
         XCTAssertTrue(typed.contains("screen: 390x844"), typed)
         let dragged = bodyText(try await server.call(
-            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0,
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 200.0, "dy": -100.0,
                                     "snapshotAfter": true]))
         XCTAssertTrue(dragged.contains("screen: 390x844"), dragged)
     }
@@ -137,10 +137,10 @@ final class MCPRoundTripTests: XCTestCase {
             screen: FTRect(x: 0, y: 0, width: 390, height: 844),
             elements: pins, truncatedCount: 0)
         let folded = bodyText(try await server.call(
-            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0, "snapshotAfter": true]))
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 200.0, "dy": -100.0, "snapshotAfter": true]))
         XCTAssertTrue(folded.contains("id=poi ×25 collapsed"), folded)
         let expanded = bodyText(try await server.call(
-            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0,
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 200.0, "dy": -100.0,
                                     "snapshotAfter": true, "expandBulk": true]))
         XCTAssertFalse(expanded.contains("×25 collapsed"), expanded)
         XCTAssertEqual(expanded.components(separatedBy: "id=poi").count - 1, 25, expanded)
@@ -189,10 +189,10 @@ final class MCPRoundTripTests: XCTestCase {
     /// drag は DSL の swipePointToPoint として下書きに残る(実行できる行 + セレクタへ置き換えよの注記)
     func testDragIsRecordedAsSwipePointToPoint() async throws {
         _ = try await server.call(tool: "ft_drag",
-                                  args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0, "durationSeconds": 0.3])
+                                  args: ["fromX": 10.0, "fromY": 200.0, "dy": -100.0, "durationSeconds": 0.3])
         let draft = bodyText(try await server.call(tool: "ft_draft_scenario", args: ["all": true]))
         XCTAssertTrue(draft.contains(
-            "swipePointToPoint(startX: 10, startY: 20, endX: 10, endY: -80, durationSeconds: 0.3)"), draft)
+            "swipePointToPoint(startX: 10, startY: 200, endX: 10, endY: 100, durationSeconds: 0.3)"), draft)
         XCTAssertTrue(draft.contains("replace with a selector"), draft)
     }
 
@@ -200,7 +200,7 @@ final class MCPRoundTripTests: XCTestCase {
     /// 「待たなかった」と言う(他の操作系と同じ note。黙って落とすと待ったつもりで読まれる)
     func testDragWaitForWithoutSnapshotAfterSaysItWasIgnored() async throws {
         let text = bodyText(try await server.call(
-            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 20.0, "dy": -100.0,
+            tool: "ft_drag", args: ["fromX": 10.0, "fromY": 200.0, "dy": -100.0,
                                     "waitFor": "#sheet_title"]))
         XCTAssertTrue(text.contains("waitFor requires snapshotAfter: true"), text)
     }

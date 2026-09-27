@@ -482,7 +482,7 @@ final class MCPReproductionSelectorTests: XCTestCase {
                              ("ft_double_tap", ["ref": 1]),
                              ("ft_clear_input", ["ref": 1]),
                              ("ft_type", ["ref": 1, "text": "abc"]),
-                             ("ft_drag", ["fromRef": 1, "dy": -50.0]),
+                             ("ft_drag", ["fromRef": 1, "dy": -30.0]),
                              ("ft_pinch", ["ref": 1, "scale": 2.0])] {
             _ = try await server.call(tool: "ft_snapshot", args: [:])
             let text = body(try await server.call(tool: tool, args: args))
