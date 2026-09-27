@@ -144,6 +144,77 @@ final class MCPOffscreenCoordinateGuardTests: XCTestCase {
         XCTAssertFalse(driver.calls.contains { $0.hasPrefix("drag(") }, "\(driver.calls)")
     }
 
+    /// **終点も断る**(始点だけ門に通していた。ライブ操作の drag は両端を見る = 同じ座標が
+    /// 一方でだけ断られていた)。絶対指定(toX/toY)と相対指定(dx/dy)の両方
+    func testRejectsOffscreenDragEnd() async throws {
+        try await takeSnapshot()
+        for end in [["toX": 5000.0, "toY": 100.0], ["dx": 0.0, "dy": 2000.0]] {
+            do {
+                _ = try await server.call(tool: "ft_drag",
+                                          args: ["fromX": 50.0, "fromY": 100.0].merging(end) { $1 })
+                XCTFail("画面外の終点へ drag を撃ってはいけない: \(end)")
+            } catch let error as MCPError {
+                XCTAssertTrue(error.localizedDescription.contains("outside the screen"),
+                              error.localizedDescription)
+            }
+        }
+        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("drag(") }, "\(driver.calls)")
+    }
+
+    // MARK: - 座標の引数は1つ残らず門を通る(§56.6 の型: ツールは門を通すのに一部の引数が漏れる)
+
+    /// スキーマの座標引数(点を表す数値)。**集合はスキーマから導出する**ので、座標を取る引数を
+    /// 足すと下の表に行が無くて落ちる = 門を通し忘れた引数が黙って通らない
+    private static let coordinateNames: Set<String> = ["x", "y", "fromX", "fromY", "toX", "toY", "dx", "dy"]
+
+    /// (ツール, 引数) → その引数**だけ**を画面外(390x844 の外)にした呼び出し
+    private static let offscreenCalls: [String: [String: Any]] = [
+        "ft_tap.x": ["x": 5000.0, "y": 10.0],
+        "ft_tap.y": ["x": 10.0, "y": 5000.0],
+        "ft_double_tap.x": ["x": -1.0, "y": 10.0],
+        "ft_double_tap.y": ["x": 10.0, "y": -1.0],
+        "ft_long_press.x": ["x": 5000.0, "y": 10.0],
+        "ft_long_press.y": ["x": 10.0, "y": 5000.0],
+        "ft_pinch.x": ["x": -500.0, "y": 100.0, "scale": 0.5],
+        "ft_pinch.y": ["x": 100.0, "y": -800.0, "scale": 0.5],
+        "ft_drag.fromX": ["fromX": -50.0, "fromY": 100.0, "dx": 0.0, "dy": 10.0],
+        "ft_drag.fromY": ["fromX": 50.0, "fromY": -100.0, "dx": 0.0, "dy": 10.0],
+        "ft_drag.toX": ["fromX": 50.0, "fromY": 100.0, "toX": 5000.0, "toY": 100.0],
+        "ft_drag.toY": ["fromX": 50.0, "fromY": 100.0, "toX": 50.0, "toY": 5000.0],
+        "ft_drag.dx": ["fromX": 50.0, "fromY": 100.0, "dx": 5000.0],
+        "ft_drag.dy": ["fromX": 50.0, "fromY": 100.0, "dy": 5000.0],
+    ]
+
+    func testEveryCoordinateArgumentInTheSchemaIsCovered() {
+        var declared: Set<String> = []
+        for tool in MCPServer.toolDefinitions {
+            guard let name = tool["name"] as? String,
+                  let schema = tool["inputSchema"] as? [String: Any],
+                  let properties = schema["properties"] as? [String: Any] else { continue }
+            for (key, value) in properties where Self.coordinateNames.contains(key) {
+                guard (value as? [String: Any])?["type"] as? String == "number" else { continue }
+                declared.insert("\(name).\(key)")
+            }
+        }
+        XCTAssertGreaterThan(declared.count, 10, "座標引数をほとんど見つけていない — 走査が壊れている")
+        XCTAssertEqual(declared, Set(Self.offscreenCalls.keys),
+                       "座標を取る引数が増えた/減った。その引数を画面外にした呼び出しを offscreenCalls に足し、門を通すこと")
+    }
+
+    func testEveryCoordinateArgumentRejectsAnOffscreenValue() async throws {
+        try await takeSnapshot()
+        for (key, args) in Self.offscreenCalls.sorted(by: { $0.key < $1.key }) {
+            let tool = String(key.prefix { $0 != "." })
+            do {
+                _ = try await server.call(tool: tool, args: args)
+                XCTFail("\(key): 画面外の値で撃ってはいけない")
+            } catch let error as MCPError {
+                XCTAssertTrue(error.localizedDescription.contains("outside the screen"),
+                              "\(key): \(error.localizedDescription)")
+            }
+        }
+    }
+
     // MARK: - Android は iOS 専用の概念を名指ししない(§19.3 M5)
 
     /// in-app ブリッジの hit-test の仕組みは iOS(inapp/hybrid)だけの実態。Android の拒否に

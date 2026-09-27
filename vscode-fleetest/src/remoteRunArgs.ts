@@ -15,7 +15,7 @@
 
 export interface RemoteHostEntry {
   /** マシン名(設定タブで付ける名前)。プロファイルの `machine` 欄・`--runner` に書くのはこれ。
-   * **JSON キーは "machine"**(改名。CLI が旧キー "name" も読む)。 */
+   * **JSON キーは "machine"**(CLI の --import は未知のキーを断る = 旧キー "name" も通らない)。 */
   readonly machine: string;
   readonly host: string;
   /** リモート専用ベースディレクトリ(tool/ = クローン, work/ = Projects・results・.build。

@@ -117,6 +117,16 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
         guard let data = json.data(using: .utf8) else {
             throw ValidationError("--import is not valid UTF-8")
         }
+        // 知らないキーは断る(`api retention --import` と同じ)。綴りを誤った fmConcurrency は
+        // 「キーが無い = 既存を保つ」に化け、設定は変わらないのに exit 0 で一覧を返していた
+        if let rows = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+            let known = Set(ApiRemoteHostImportEntry.knownKeys)
+            let unknown = Set(rows.flatMap(\.keys)).subtracting(known).sorted()
+            if !unknown.isEmpty {
+                throw ValidationError("--import has unknown key(s): \(unknown.joined(separator: ", "))"
+                    + " (known: \(ApiRemoteHostImportEntry.knownKeys.joined(separator: ", ")))")
+            }
+        }
         do {
             return try JSONDecoder().decode([ApiRemoteHostImportEntry].self, from: data)
         } catch {
@@ -166,6 +176,13 @@ struct ApiRemoteHostImportEntry: Decodable {
     /// "" は「明示的に pin を外したい」(dir/color と違い、こちらは常に消去の意味に倒す ——
     /// 「空文字は既存を保つ」にすると、この API からは pin を一度外すと二度と消せなくなる)
     let developerDir: String?
+
+    /// 未知のキーの検査に使う(デコーダの鍵そのもの = 欄を足しても一覧が食い違わない)
+    static let knownKeys = CodingKeys.allCases.map(\.rawValue)
+
+    private enum CodingKeys: String, CodingKey, CaseIterable {
+        case machine, host, dir, fmConcurrency, color, enabled, developerDir
+    }
 
     var entry: RemoteHostEntry {
         let given = (machine ?? "").trimmingCharacters(in: .whitespacesAndNewlines)

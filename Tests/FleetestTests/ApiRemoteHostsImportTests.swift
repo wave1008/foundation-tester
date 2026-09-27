@@ -20,11 +20,22 @@ final class ApiRemoteHostsImportTests: XCTestCase {
         XCTAssertNil(entries[0].dir, "空文字の dir は未設定として扱う")
     }
 
-    /// 旧キー "name" はもう読まない。指定されても未知キーとして無視され、
-    /// machine 省略時と同じ既定(host のホスト部)に落ちる
-    func testLegacyNameKeyIsIgnoredAndFallsBackToTheHostPart() throws {
-        let entries = try decode(#"[{"name":"old","host":"user@legacy"}]"#)
-        XCTAssertEqual(entries.map(\.machine), ["legacy"])
+    /// **未知のキーは断る**(旧キー "name" も)。黙って捨てると、名前は host のホスト部に化け、
+    /// 綴りを誤った fmConcurrency は「キーが無い = 既存を保つ」になって、設定は変わらないのに成功で返る
+    func testUnknownKeysAreRefusedByName() {
+        for json in [#"[{"name":"old","host":"user@legacy"}]"#,
+                     #"[{"machine":"M1Max","host":"user@h","fmConcurency":1}]"#] {
+            XCTAssertThrowsError(try decode(json), json) { error in
+                XCTAssertTrue("\(error)".contains("unknown key"), "\(error)")
+            }
+        }
+    }
+
+    /// 拡張の設定タブが実際に送る形(settingsTab.js の currentHostsPayload = 通常の行と手元の固定行)は通る
+    func testTheSettingsTabPayloadIsAccepted() throws {
+        let json = #"[{"machine":"local","host":"me@localhost","dir":"","fmConcurrency":0,"enabled":true},"#
+            + #"{"machine":"M1Max","host":"user@h","dir":"","fmConcurrency":2,"color":"","enabled":true}]"#
+        XCTAssertNoThrow(try ApiRemoteHostsCommand.decodeImportEntries(json))
     }
 
     /// **マシン名は省略可**: 無ければ host のホスト部(user@ を落とす)を名前にする

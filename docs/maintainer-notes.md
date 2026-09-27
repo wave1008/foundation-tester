@@ -2810,6 +2810,16 @@ E2E-Flutter の iOS in-app で 3 台が同時に `observed=""` の notRendered�
 `AndroidDeviceCatalog.connectedSerials` / `allEmulatorSerials` は非ゼロで `adbFailed` を投げる。
 `ToolOutputStatusScanTests` が素の読みの再混入を落とす(免除3件は理由つき・免除が当たらなくなっても落ちる)。
 陽性対照: 失敗する偽の adb(`ANDROID_HOME`)で doctor が ❌ と理由を出し exit 1
+
+### 56.11 残りの再発型の掃討: 黙って受理する(§56.5)・座標引数の門の漏れ(§56.6)
+- **`api remote-machines --import` も未知のキーを捨てていた**(§56.5 の retention と同じ型)。綴りを誤った
+  `fmConcurrency` は「キーが無い = 既存を保つ」に化けて exit 0、旧キー `name` は機械名が host に化けた。
+  retention と同じくデコーダの `CodingKeys` から既知のキーを導いて断る。**人が書く JSON の口はこの2つだけ**
+  (他の `JSONDecoder` は拡張 ⇄ CLI = 同時配布・プロトコル版で揃う、か自分で書いた控え)
+- **`ft_drag` は始点だけを門に通し、終点(toX/toY・dx/dy)は通していなかった**(ライブ操作の drag は両端)。
+  ツール単位で見ると「門を通している」ので**ツールの集合を固定しても捕まらない** —— スキーマから座標引数を
+  導出し、**引数ごと**に画面外の値で断られることを等号で固定した(`MCPOffscreenCoordinateGuardTests`)。
+  陽性対照: 生きたブリッジ(ホーム画面)で終点 (100, 5000) が撃つ前に断られた
 - 観察: `clean --dry-run --simulator-poster-cache` が負荷下で 149 → 388 秒(全 Simulator の容量を数える仕様)/
   FM だけの構成(OCR off)で M1Ultra の FM 1 回が中央値 45 秒・門の待ち 38 秒 / 実機 SE3 の `ft_launch`(再開)が
   90 回中1回 45 秒(内訳は未計測)/ iOS の `devices down` が1回だけ 299 秒(他は 34〜60 秒。内訳は未計測)

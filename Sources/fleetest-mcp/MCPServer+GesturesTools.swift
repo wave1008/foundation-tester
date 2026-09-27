@@ -417,6 +417,11 @@ extension MCPServer {
         guard toX != from.x || toY != from.y else {
             throw MCPError("the drag does not move: pass toX/toY, or dx/dy")
         }
+        // **終点も門に通す**(ライブ操作の drag は始点・終点の両方を見る = 片方だけだと同じ座標が
+        // 一方でだけ断られる)。fromRef で始めても終点は座標
+        if let offscreen = Self.offscreenCoordinateError(
+            x: toX, y: toY, screen: await coordinateScreen(dragDriver, args: args),
+            engine: engines[Self.engineKey(args)]) { throw offscreen }
         let fromX = from.x
         let fromY = from.y
         let durationSeconds = try Self.doubleArgument(args, "durationSeconds") ?? FlowStep.defaultSwipeDurationSeconds
