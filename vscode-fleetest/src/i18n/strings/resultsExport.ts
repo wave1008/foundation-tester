@@ -58,7 +58,7 @@ export const resultsExportStrings = {
   "resultsExport.scenarios.header.method": { ja: "シナリオ", en: "Scenario" },
   "resultsExport.scenarios.header.title": { ja: "タイトル", en: "Title" },
   "resultsExport.scenarios.header.os": { ja: "OS", en: "OS" },
-  "resultsExport.scenarios.header.worker": { ja: "台", en: "Device" },
+  "resultsExport.scenarios.header.worker": { ja: "デバイス", en: "Device" },
   "resultsExport.scenarios.header.machine": { ja: "マシン", en: "Machine" },
   "resultsExport.scenarios.header.result": { ja: "結果", en: "Result" },
   "resultsExport.scenarios.header.durationSeconds": { ja: "所要(秒)", en: "Duration (s)" },

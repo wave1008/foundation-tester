@@ -131,7 +131,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.wipeStopping": { ja: "Wipe: 停止中", en: "Wipe: stopping" },
   "wvMonitor.tile.wipeRebooting": { ja: "Wipe: 再起動中", en: "Wipe: restarting" },
   "wvMonitor.tile.wipingTip": {
-    ja: "データを消去しています。停止 → 消去 → (起動していた台だけ)再起動の順で進みます(Android の初回起動は再構築で数分かかります)。",
+    ja: "データを消去しています。停止 → 消去 → (起動していたデバイスだけ)再起動の順で進みます(Android の初回起動は再構築で数分かかります)。",
     en: "Wiping the device's data: stop → wipe → start again (only if it was running). On Android the first boot rebuilds and takes minutes.",
   },
   "wvMonitor.tile.queuedStart": { ja: "起動待機", en: "Start pending" },

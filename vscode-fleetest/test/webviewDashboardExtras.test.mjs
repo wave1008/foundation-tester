@@ -299,6 +299,11 @@ function showAllDevices(window) {
   toggle.dispatchEvent(new window.Event("change"));
 }
 
+/** 説明は自前のツールチップ(hoverTip.js の data-hover-tip)で出す。ネイティブ title は空にする */
+function tip(el) {
+  return el.getAttribute("data-hover-tip");
+}
+
 function healthRow(overrides = {}) {
   return {
     host: "H", worker: "android:Pixel 8", removed: 0, removedByCause: {}, requeued: 0,
@@ -415,6 +420,47 @@ test("デバイスの健全性: モニターの台の一覧が届くまでは「
   sendToWebview({ type: "devices", filter: "all", devices: [] });
   assert.equal(empty().style.display, "block");
   assert.equal(empty().textContent, "デバイスの記録がありません。");
+});
+
+test("デバイスの健全性: 回数の内訳は記録の無い分も「記録なし」として出す・列見出しに意味を出す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [
+      healthRow({ worker: "android:old", removed: 3, removedByCause: {}, recovered: 1, recoveredByKind: {} }),
+      healthRow({ worker: "android:mixed", removed: 3, removedByCause: { frozen: 1 },
+        recovered: 2, recoveredByKind: { runnerRestart: 2 } }),
+    ],
+  }) } });
+  const cells = (worker) => window.document
+    .querySelector(`#table-device-health-body tr[data-worker="${worker}"]`).children;
+  // 内訳を持たない古い記録だけでも、件数があればマウスで説明が出る(以前は空で何も出なかった)
+  assert.equal(tip(cells("android:old")[4]), "原因の記録なし: 3");
+  assert.equal(tip(cells("android:old")[7]), "種類の記録なし: 1");
+  assert.equal(tip(cells("android:mixed")[4]), "画面の凍結: 1\n原因の記録なし: 2");
+  assert.equal(tip(cells("android:mixed")[7]), "ランナーの建て直し: 2", "全部記録があれば「記録なし」は足さない");
+
+  const headers = [...window.document.querySelectorAll("#table-device-health thead th")];
+  for (const index of [4, 5, 6, 7, 8, 9]) {
+    assert.ok(tip(headers[index]).length > 0, `列見出し ${headers[index].textContent} に説明がある`);
+    assert.equal(headers[index].title, "", "ネイティブ title は空(自前と二重に出さない)");
+  }
+});
+
+test("デバイスの健全性: 「run 前の除外・修復」(0 / 0)は他の数値列と同じく右寄せ(見出しも)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [healthRow({ worker: "android:a", removed: 1 })],
+  }) } });
+  const cell = window.document.querySelector('#table-device-health-body tr[data-worker="android:a"]').children[6];
+  assert.equal(cell.textContent, "0 / 0");
+  assert.ok(cell.classList.contains("num"));
+  assert.ok(window.document.querySelectorAll("#table-device-health thead th")[6].classList.contains("num"));
 });
 
 test("デバイスの健全性: ストレージは使用量だけを出し、空き(母数が OS で違う)は出さない", (t) => {
@@ -559,7 +605,7 @@ test("デバイスの健全性: 測れる台が無いときは押した直後に
   ] });
   window.document.getElementById("btn-device-health-refresh-storage").click();
   assert.equal(window.document.getElementById("dh-storage-progress").textContent,
-    "測れる台がありません(動いている仮想デバイスだけを測る)");
+    "測れるデバイスがありません(動いている仮想デバイスだけを測る)");
 });
 
 test("デバイスの健全性: 前回値(carriedOver)のストレージだけ灰色にし、title で前回値と言う", (t) => {
@@ -581,9 +627,9 @@ test("デバイスの健全性: 前回値(carriedOver)のストレージだけ�
 
   sendToWebview({ type: "devices", filter: "all", devices: devices(true) });
   assert.ok(cellOf("android:carried").classList.contains("dh-storage-carried-over"));
-  assert.match(cellOf("android:carried").title, /前回値/);
+  assert.match(tip(cellOf("android:carried")), /前回値/);
   assert.ok(!cellOf("android:fresh").classList.contains("dh-storage-carried-over"));
-  assert.doesNotMatch(cellOf("android:fresh").title, /前回値/);
+  assert.doesNotMatch((tip(cellOf("android:fresh")) ?? ""), /前回値/);
 
   // 測り直して使用量が同じでも灰色が外れる(描き直しの判定に carriedOver を含める)
   sendToWebview({ type: "devices", filter: "all", devices: devices(false) });

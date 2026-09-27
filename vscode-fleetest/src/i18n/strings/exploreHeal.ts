@@ -126,7 +126,7 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.sinceOption90d": { ja: "直近90日", en: "Last 90 days" },
   "exploreHeal.dashboard.deviceHealthActiveOnly": { ja: "アクティブなデバイスを表示", en: "Show active devices" },
   "exploreHeal.dashboard.deviceHealthActiveOnlyTitle": {
-    ja: "オンのときはデバイスモニターで未起動以外の台だけを表示します(モニターに居ない台も隠します)。オフのときはすべて表示します",
+    ja: "オンのときはデバイスモニターで未起動以外のデバイスだけを表示します(モニターに居ないデバイスも隠します)。オフのときはすべて表示します",
     en: "When on, only devices the Device Monitor shows as anything other than Not started are listed (devices the monitor does not see are hidden too). When off, all devices are listed",
   },
   "exploreHeal.dashboard.headingDevices": { ja: "デバイスの健全性", en: "Device Health" },
@@ -143,6 +143,31 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.colPreRun": { ja: "run 前の除外・修復", en: "Pre-run Exclude/Repair" },
   "exploreHeal.dashboard.colRecovered": { ja: "回復操作", en: "Recovery" },
   "exploreHeal.dashboard.colAppCrashes": { ja: "アプリのクラッシュ", en: "App Crashes" },
+  // 列見出しの説明(title)。回数は集計期間内の run の記録から数えた累計(RunResultsQuery.DeviceHealthRow)
+  "exploreHeal.dashboard.colRemovedTitle": {
+    ja: "run の途中で、このデバイスを使えないと判断して run から外した回数",
+    en: "Times this device was taken out of a run mid-run as unusable",
+  },
+  "exploreHeal.dashboard.colRequeuedTitle": {
+    ja: "このデバイスで走っていたシナリオの結果を取り消し、別のデバイスでやり直させた数",
+    en: "Scenarios whose result on this device was discarded and rerun on another device",
+  },
+  "exploreHeal.dashboard.colPreRunTitle": {
+    ja: "run を始める前の検査で、画面だけ止まったデバイスを除外した回数 / 直して使った回数",
+    en: "Before a run: times a device with a dead screen was excluded / repaired and used",
+  },
+  "exploreHeal.dashboard.colRecoveredTitle": {
+    ja: "run の途中で、止まりかけたデバイスを回復させる操作を実行した回数",
+    en: "Recovery actions run on this device mid-run",
+  },
+  "exploreHeal.dashboard.colAppCrashesTitle": {
+    ja: "このデバイスのシナリオで、テスト対象アプリのクラッシュを検出した数(iOS は in-app エンジンのときだけ検出)",
+    en: "Scenarios on this device where an app crash was detected (on iOS, detected only with the in-app engine)",
+  },
+  "exploreHeal.dashboard.colLastEventTitle": {
+    ja: "左の出来事のうち最も新しい時刻",
+    en: "Time of the most recent of the events to the left",
+  },
   "exploreHeal.dashboard.colLastEvent": { ja: "最後の事象", en: "Last Event" },
   "exploreHeal.dashboard.devicesEmpty": { ja: "デバイスの記録がありません。", en: "No device records." },
   "exploreHeal.dashboard.summaryFilterPlaceholder": { ja: "シナリオIDで絞り込み", en: "Filter by scenario ID" },

@@ -89,7 +89,7 @@ export const webviewDashboardStrings = {
   },
   "wvDashboard.deviceHealth.storageDone": { ja: "最終更新: {time}", en: "Last updated: {time}" },
   "wvDashboard.deviceHealth.storageNoTargets": {
-    ja: "測れる台がありません(動いている仮想デバイスだけを測る)",
+    ja: "測れるデバイスがありません(動いている仮想デバイスだけを測る)",
     en: "Nothing to measure (only running virtual devices are measured)",
   },
   "wvDashboard.deviceHealth.storageCarriedOverTitle": {
@@ -98,6 +98,8 @@ export const webviewDashboardStrings = {
   },
   "wvDashboard.deviceHealth.preRunTitle": { ja: "除外 / 修復", en: "Excluded / Repaired" },
   "wvDashboard.deviceHealth.cause.frozen": { ja: "画面の凍結", en: "Screen frozen" },
+  "wvDashboard.deviceHealth.cause.unrecorded": { ja: "原因の記録なし", en: "Cause not recorded" },
+  "wvDashboard.deviceHealth.recovery.unrecorded": { ja: "種類の記録なし", en: "Kind not recorded" },
   "wvDashboard.deviceHealth.cause.deviceGone": { ja: "デバイスが消えた", en: "Device gone" },
   "wvDashboard.deviceHealth.cause.bridgeUnreachable": { ja: "ブリッジに届かない", en: "Bridge unreachable" },
   "wvDashboard.deviceHealth.cause.bridgeTakenOver": { ja: "ブリッジが別デバイスのものに", en: "Bridge taken over" },

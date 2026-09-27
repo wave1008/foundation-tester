@@ -3,6 +3,9 @@
 //
 // 使い方: setHoverTip(el, text)。text が空なら解除。ホバー検出は document への委譲なので、
 // 対象要素は後から差し替えても再登録は要らない。
+// **ネイティブ title を書いた要素も、マウスが載った瞬間にここへ移す**(下の mouseover)。ネイティブの
+// ツールチップは VSCode の webview では出ない/約 1 秒待つので、title を書いた箇所が毎回「説明が出ない」
+// 不具合になっていた(書き手ごとに setHoverTip を思い出す規律では再発した)。書き手は title を書くだけでよい
 //
 // **position:fixed で body 直下に出す**のが要点。ピル(.tile-name/.lane-name)の親は
 // overflow:hidden(.tile-header/.lane-header)なので、::after 等の子要素方式だと切り取られる。
@@ -104,7 +107,21 @@ export function flashTip(el, text) {
   }, FLASH_MS);
 }
 
+/// マウスが載った要素(祖先を含む)のネイティブ title を自前へ移す。**最寄りの title だけを見る** ——
+/// title="" はネイティブでも祖先の説明を打ち切る印なので、その先は探さない。title を後から書き換えた
+/// 要素も、次に載ったときに移し直す(setHoverTip が title を空にするので二重にはならない)
+function adoptNativeTitle(el) {
+  const titled = el.closest('[title]');
+  const text = titled ? titled.getAttribute('title') : '';
+  if (titled && text) {
+    setHoverTip(titled, text);
+  }
+}
+
 document.addEventListener('mouseover', (e) => {
+  if (e.target instanceof Element) {
+    adoptNativeTitle(e.target);
+  }
   const target = e.target instanceof Element ? e.target.closest('[' + ATTR + ']') : null;
   if (target === current) { return; }
   hide();

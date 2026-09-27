@@ -176,12 +176,12 @@ function renderDashboardPanel(): string {
             <th>${t("exploreHeal.dashboard.colDevice")}</th>
             <th>${t("exploreHeal.dashboard.colDeviceState")}</th>
             <th>${t("exploreHeal.dashboard.colStorage")}</th>
-            <th class="num">${t("exploreHeal.dashboard.colRemoved")}</th>
-            <th class="num">${t("exploreHeal.dashboard.colRequeued")}</th>
-            <th>${t("exploreHeal.dashboard.colPreRun")}</th>
-            <th class="num">${t("exploreHeal.dashboard.colRecovered")}</th>
-            <th class="num">${t("exploreHeal.dashboard.colAppCrashes")}</th>
-            <th>${t("exploreHeal.dashboard.colLastEvent")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colRemovedTitle")}">${t("exploreHeal.dashboard.colRemoved")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colRequeuedTitle")}">${t("exploreHeal.dashboard.colRequeued")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colPreRunTitle")}">${t("exploreHeal.dashboard.colPreRun")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colRecoveredTitle")}">${t("exploreHeal.dashboard.colRecovered")}</th>
+            <th class="num" title="${t("exploreHeal.dashboard.colAppCrashesTitle")}">${t("exploreHeal.dashboard.colAppCrashes")}</th>
+            <th title="${t("exploreHeal.dashboard.colLastEventTitle")}">${t("exploreHeal.dashboard.colLastEvent")}</th>
           </tr>
         </thead>
         <tbody id="table-device-health-body"></tbody>

@@ -26,7 +26,7 @@ export const liveStrings = {
     en: "Could not resolve the target test project. Check the fleetest.project setting.",
   },
   "live.deviceNotOpenable": {
-    ja: "{id} はこの Mac のライブ操作の一覧に無いため開けません(ライブ操作で扱えるのはこの Mac につながっている台だけです)。",
+    ja: "{id} はこの Mac のライブ操作の一覧に無いため開けません(ライブ操作で扱えるのはこの Mac につながっているデバイスだけです)。",
     en: "{id} is not in this Mac's Live Control device list, so it cannot be opened (Live Control only drives devices connected to this Mac).",
   },
   "live.projectUnresolvedShort": {

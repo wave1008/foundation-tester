@@ -24,6 +24,7 @@ import { formatLocalDateTime } from './format.js';
 import { machineLabel } from './machineNames.js';
 import { monitorDevices, onMonitorDevicesChanged } from '../monitor/deviceTiles.js';
 import { LOCAL_MACHINE_LABEL, paintMachineBadge } from '../monitor/machineColors.js';
+import { adoptTitleHoverTips, setHoverTip } from '../monitor/hoverTip.js';
 import { formatBytesAuto } from '../../retentionModel';
 import { compareMonitorDeviceOrder } from '../../monitorDeviceModel';
 
@@ -39,6 +40,9 @@ const noRecordsText = emptyEl ? emptyEl.textContent : '';
 let monitorDevicesSeen = false;
 let healthRowsSeen = false;
 const activeOnlyToggle = document.getElementById('chk-device-health-active-only');
+
+// 静的 HTML(monitorHtml.ts)が title で書いた列見出し・ボタン等の説明も自前のツールチップへ移す
+adoptTitleHoverTips('#section-devices [title]');
 
 let expanded = false;
 // api results から届いた最新の deviceHealth(renderDeviceHealth のたびに更新)。
@@ -192,7 +196,7 @@ function deviceCell(row) {
     const physical = document.createElement('span');
     physical.className = 'badge badge-kind dh-kind';
     physical.textContent = t('wvMonitor.tile.physicalBadge');
-    physical.title = t('wvMonitor.tile.physicalBadgeTitle');
+    setHoverTip(physical, t('wvMonitor.tile.physicalBadgeTitle'));
     cell.appendChild(physical);
   }
   cell.appendChild(document.createTextNode(name));
@@ -371,21 +375,24 @@ function countText(health, field) {
 
 // cause/recovery の内訳を title へ(未知のコードは翻訳せず生の文字列のまま出す ——
 // t() は未知キーをキー文字列のまま返すので、それを検出して生コードへ倒す)。
-function breakdownTitle(breakdown, namespace) {
-  if (!breakdown) {
-    return '';
+// total = その欄の件数。内訳を持たない分(2026-09-27 より前の記録・写像できない理由)は
+// 「原因の記録なし: n」として足す —— 足さないと、件数はあるのにマウスを載せても何も出なかった
+function breakdownTitle(breakdown, namespace, total) {
+  const entries = Object.entries(breakdown || {}).filter(([, count]) => count > 0);
+  const lines = entries.map(([code, count]) => {
+    const key = 'wvDashboard.deviceHealth.' + namespace + '.' + code;
+    const label = t(key);
+    return (label === key ? code : label) + ': ' + count;
+  });
+  const unrecorded = (total || 0) - entries.reduce((sum, [, count]) => sum + count, 0);
+  if (unrecorded > 0) {
+    // キーは組み立てずに書く(i18n.test.mjs が t() の字面でキーの実在を確かめる)
+    const label = namespace === 'cause'
+      ? t('wvDashboard.deviceHealth.cause.unrecorded')
+      : t('wvDashboard.deviceHealth.recovery.unrecorded');
+    lines.push(label + ': ' + unrecorded);
   }
-  const entries = Object.entries(breakdown).filter(([, count]) => count > 0);
-  if (entries.length === 0) {
-    return '';
-  }
-  return entries
-    .map(([code, count]) => {
-      const key = 'wvDashboard.deviceHealth.' + namespace + '.' + code;
-      const label = t(key);
-      return (label === key ? code : label) + ': ' + count;
-    })
-    .join('\n');
+  return lines.join('\n');
 }
 
 function preRunText(health) {
@@ -399,9 +406,11 @@ function lastEventText(health) {
   return health && health.lastEventAt ? formatLocalDateTime(health.lastEventAt) : '–';
 }
 
+// 説明はネイティブ title ではなく自前のツールチップ(hoverTip.js。0.2 秒で出る)で出す ——
+// ネイティブは約 1 秒待つうえ遅延を指定できず、「マウスを載せても出ない」と見えた
 function withTitle(cell, title) {
   if (title) {
-    cell.title = title;
+    setHoverTip(cell, title);
   }
   return cell;
 }
@@ -417,13 +426,13 @@ function rowElement(row) {
     storageCell(row.monitor),
     withTitle(
       tdNum(countText(row.health, 'removed')),
-      breakdownTitle(row.health && row.health.removedByCause, 'cause'),
+      breakdownTitle(row.health && row.health.removedByCause, 'cause', row.health && row.health.removed),
     ),
     tdNum(countText(row.health, 'requeued')),
-    withTitle(td(preRunText(row.health)), t('wvDashboard.deviceHealth.preRunTitle')),
+    withTitle(tdNum(preRunText(row.health)), t('wvDashboard.deviceHealth.preRunTitle')),
     withTitle(
       tdNum(countText(row.health, 'recovered')),
-      breakdownTitle(row.health && row.health.recoveredByKind, 'recovery'),
+      breakdownTitle(row.health && row.health.recoveredByKind, 'recovery', row.health && row.health.recovered),
     ),
     tdNum(countText(row.health, 'appCrashes')),
     td(lastEventText(row.health)),

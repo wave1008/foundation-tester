@@ -25,6 +25,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - コントローラ分割は、必要なコールバックだけを束ねた狭い deps インターフェースをコンストラクタ注入し、サブコントローラ同士は直接参照しない(実例: monitorPanel.ts の MonitorPanelDeps)
 - 可変状態は書き込み箇所と同じモジュールに置き、他モジュールへは読み取り専用で公開する(実例: src/webview/monitor/ の各モジュール)
 - webview 資産(CSS/JS)はテンプレートリテラルに内蔵せず src/webview/ の実ファイル+esbuild バンドル(media/ 出力)にする
+- **モニター webview の説明(ツールチップ)は title を書くだけでよい** —— ネイティブ title は VSCode の webview で
+  出ない/約 1 秒待つので、`hoverTip.js` が mouseover で自前のツールチップ(0.2 秒)へ移す。**ネイティブの表示に
+  頼る実装・テストを書かない**(テストは `data-hover-tip` か表示された `.hover-tip` を見る)。
+  title を書いた箇所が毎回「説明が出ない」になっていた(`webviewHoverTip.test.mjs` が乗り換えを固定)
 - エスケープ文脈が変わる逐語移動(テンプレートリテラル⇔実ファイル)では二重エスケープの残存を機械チェックする(`grep '\\\\[dswb]'` 等。過去に `\\d` が検証不能バグとして実害化)
 - 辞書は `src/i18n/strings/<namespace>.ts` に `{ "ns.key": { ja, en } } satisfies MessageDict`。**ja は表示文字列と byte 一致**(未初期化時の既定 locale が "ja"・既存テストが日本語をアサートするため)。プレースホルダは名前付き `{name}` で ja/en 同集合。namespace とファイルは1対1。
 - 拡張側: `import { t } from "./i18n"`(`MessageKey` 型で typo を tsc 検出)。activate 冒頭で `initI18n()`。webview 側: `import { t } from '../i18n.js'`(locale は `<html lang>` 経由)。静的 HTML(monitorHtml.ts 等)は拡張側 `t()` で描画する。
