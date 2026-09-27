@@ -64,6 +64,41 @@ public enum BlankFrameDetector {
         guard let fraction else { return nil }
         return fraction >= uniformFraction
     }
+
+    /// 下端の帯を除いて**画面全体が黒い**か(occlusion-guard が「描かれていない」の根拠にしないための判定)。
+    /// 絵が撮れていない・表示が凍結した回は、ホームインジケータ / ナビゲーションハンドルの1本だけが残り
+    /// `isUniformBlank` の 0.995 に届かない(実測 16x16 中 4 セルが割れて 0.984。iOS in-app と Android Emulator)。
+    /// **凍結の確定(回復を撃つ根拠)には使わない**。32 x 32 で見るのは、16 x 16 だと暗い画面の小さな文字が
+    /// セルの平均に薄まって黒に紛れるため
+    public static func isBlackApartFromBottomStrip(pngData: Data) -> Bool {
+        let grid = blackFrameGrid
+        guard let source = CGImageSourceCreateWithData(pngData as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let context = CGContext(data: nil, width: grid, height: grid, bitsPerComponent: 8,
+                                      bytesPerRow: grid * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: grid, height: grid))
+        guard let data = context.data else { return false }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: grid * grid * 4)
+        // メモリの行 0 が画像の上端。下端 blackFrameIgnoredBottomRows 行(帯)は見ない
+        for row in 0..<(grid - blackFrameIgnoredBottomRows) {
+            for column in 0..<grid {
+                let offset = (row * grid + column) * 4
+                if max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) > blackFrameMaxChannel {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    /// 32 x 32 の下端 2 行 = 画面の約 6%。ホームインジケータ(iPhone 下端 約 5pt 高)・ナビゲーションハンドルが
+    /// 収まる高さ(実測の黒い絵では割れたセルは最下行だけ)
+    static let blackFrameGrid = 32
+    static let blackFrameIgnoredBottomRows = 2
+    /// セル平均の各チャンネルの上限。実測の黒い絵は 0。暗いテーマの文字入りのセルは 32 x 32 でもこれを超える
+    static let blackFrameMaxChannel: UInt8 = 12
 }
 
 /// **白フレームを凍結の根拠にしてよいか**。前面にシステムアラートがある

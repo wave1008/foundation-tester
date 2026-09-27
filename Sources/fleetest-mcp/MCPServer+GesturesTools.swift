@@ -471,8 +471,11 @@ extension MCPServer {
             // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
             // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
             // ft_tap / ft_long_press / ft_drag と同じく座標を受ける
+            // 画面外の中心は撃たない(ft_tap / ft_drag 等と同じ門。snapshot 前でも画面を読んで判定する)
+            let pinchScreen = await coordinateScreen(pinchDriver, args: args)
+            if let offscreen = Self.offscreenCoordinateError(
+                x: x, y: y, screen: pinchScreen, engine: engines[Self.engineKey(args)]) { throw offscreen }
             pinchCoordinate = (x, y)
-            let pinchScreen = lastSnapshots[Self.engineKey(args)]?.screen
             var pinchRadius = try Self.doubleArgument(args, "radius")
             // Android は最小スケール距離(27 mm)に届く半径まで既定を広げる(pinchRadiusHonouringMinimumSpan の doc)
             if pinchRadius == nil, let android = pinchDriver as? AndroidDriver,
@@ -483,15 +486,26 @@ extension MCPServer {
                                                                   minimumSpan: minimumSpan)
                 if widened > defaultRadius {
                     pinchRadius = widened
-                    pinchSelector += " (radius widened to \(Int(widened)) px so the fingers exceed"
-                        + " Android's minimum scaling span of \(Int(minimumSpan)) px — pass radius"
-                        + " to override)"
                 }
             }
             // **どの経路も領域を受け取れる**(XCUITest は非公開 API の座標ピンチ
             // `CoordinatePinch` で撃つ)。**使えない Xcode だけ**要素ピンチへ縮退し、
             // そのことはブリッジが注記で返す —— ここで先回りして「無視した」と言わない
-            frame = Self.pinchArea(x: x, y: y, radius: pinchRadius, screen: pinchScreen)
+            let area = Self.pinchArea(x: x, y: y, radius: pinchRadius, screen: pinchScreen)
+            frame = area
+            // 広げた半径は画面の余白で詰め直されうる = 実際に撃つ半径で言う(広げたと言って縮めていた)
+            if args["radius"] == nil, let android = pinchDriver as? AndroidDriver,
+               let minimumSpan = android.minimumScalingSpanPx(), let widened = pinchRadius {
+                if area.width / 2 >= widened {
+                    pinchSelector += " (radius widened to \(Int(widened)) px so the fingers exceed"
+                        + " Android's minimum scaling span of \(Int(minimumSpan)) px — pass radius"
+                        + " to override)"
+                } else {
+                    pinchSelector += " (the fingers span only \(Int(area.width)) px here — the screen edge"
+                        + " is closer than Android's minimum scaling span of \(Int(minimumSpan)) px, so the"
+                        + " zoom may not register; pinch nearer the middle)"
+                }
+            }
         } else if !(pinchDriver is AndroidDriver),
                   let snapshot = lastSnapshots[Self.engineKey(args)] {
             // **直近の木から、両方の指が同じものに載る位置を選ぶ**(画面全体だと指が端に着き、

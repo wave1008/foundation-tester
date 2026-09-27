@@ -55,4 +55,34 @@ final class PortHolderClassifyTests: XCTestCase {
             PortHolder.classifyIproxy(recordedDeviceUDID: "SE3-UDID", ownerUDID: nil),
             .foreign)
     }
+
+    // MARK: - foreignInAppHolder(command:ownerUDID:)。実地の負荷テストで確認: 引き取ったレーンの
+    // 供給が別レーンの生きた in-app ブリッジを「残留」として kill した(2026-09-27)
+
+    func testAnotherSimulatorAppPathReturnsOtherUDID() {
+        let other = "B422AB58-0000-0000-0000-000000000000"
+        let command = "/Users/x/Library/Developer/CoreSimulator/Devices/\(other)"
+            + "/data/Containers/Bundle/Application/AAAA/FTE2E.app/iosApp"
+        XCTAssertEqual(
+            PortHolder.foreignInAppHolder(command: command, ownerUDID: "OWNER-UDID"), other)
+    }
+
+    func testSameSimulatorReturnsNil() {
+        let udid = "OWNER-UDID"
+        let command = "/Users/x/Library/Developer/CoreSimulator/Devices/\(udid)"
+            + "/data/Containers/Bundle/Application/AAAA/FTE2E.app/iosApp"
+        XCTAssertNil(PortHolder.foreignInAppHolder(command: command, ownerUDID: udid))
+    }
+
+    func testOwnerUDIDNilReturnsNil() {
+        let command = "/Users/x/Library/Developer/CoreSimulator/Devices/OTHER-UDID"
+            + "/data/Containers/Bundle/Application/AAAA/FTE2E.app/iosApp"
+        XCTAssertNil(PortHolder.foreignInAppHolder(command: command, ownerUDID: nil))
+    }
+
+    func testNonSimulatorCommandReturnsNil() {
+        XCTAssertNil(PortHolder.foreignInAppHolder(
+            command: "/usr/bin/xcodebuild test-without-building -destination id=8138",
+            ownerUDID: "OWNER-UDID"))
+    }
 }

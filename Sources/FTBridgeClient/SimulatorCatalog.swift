@@ -14,6 +14,9 @@ public struct SimDeviceInfo: Sendable, Hashable, Identifiable {
     /// "iOS 27.0" 形式
     public let os: String
     public let booted: Bool
+    /// Booted でも Shutdown でもない途中の状態(Booting / Shutting Down / Creating)。
+    /// **停止とは数えない** —— Shutting Down の間も PosterBoard・logd は書いている(shutdownObservation)
+    public let transitioning: Bool
     /// 実機か。simctl / CoreSimulator を叩く経路はすべてこれで分岐する
     public let physical: Bool
     /// USB 接続か(devicectl の transportType == "wired")。実機のトランスポート選択に使う。
@@ -21,12 +24,13 @@ public struct SimDeviceInfo: Sendable, Hashable, Identifiable {
     public let wired: Bool
     public var id: String { udid }
 
-    public init(udid: String, name: String, os: String, booted: Bool, physical: Bool = false,
-                wired: Bool = true) {
+    public init(udid: String, name: String, os: String, booted: Bool, transitioning: Bool = false,
+                physical: Bool = false, wired: Bool = true) {
         self.udid = udid
         self.name = name
         self.os = os
         self.booted = booted
+        self.transitioning = transitioning
         self.physical = physical
         self.wired = wired
     }
@@ -82,8 +86,10 @@ public enum SimulatorCatalog {
             guard let udid = entry["udid"] as? String,
                   let name = entry["name"] as? String,
                   let os = entry["os"] as? String,
-                  let booted = entry["booted"] as? Bool else { return nil }
-            return SimDeviceInfo(udid: udid, name: name, os: os, booted: booted)
+                  let booted = entry["booted"] as? Bool,
+                  let stopped = entry["stopped"] as? Bool else { return nil }
+            return SimDeviceInfo(udid: udid, name: name, os: os, booted: booted,
+                                 transitioning: !booted && !stopped)
         }
         return sorted(found)
     }
@@ -110,8 +116,10 @@ public enum SimulatorCatalog {
                 guard (device["isAvailable"] as? Bool) == true,
                       let udid = device["udid"] as? String,
                       let name = device["name"] as? String else { continue }
-                let booted = (device["state"] as? String) == "Booted"
-                found.append(SimDeviceInfo(udid: udid, name: name, os: os, booted: booted))
+                let state = device["state"] as? String
+                let booted = state == "Booted"
+                found.append(SimDeviceInfo(udid: udid, name: name, os: os, booted: booted,
+                                           transitioning: !booted && state != "Shutdown"))
             }
         }
         return sorted(found)
@@ -277,7 +285,9 @@ public enum SimulatorShutdownObservation: Equatable, Sendable {
 }
 
 extension SimulatorCatalog {
-    /// udid: nil なら「起動中の台が1台も無いか」、指定ならその台だけを見る(一覧から消えた台は停止扱い)
+    /// udid: nil なら「起動中の台が1台も無いか」、指定ならその台だけを見る(一覧から消えた台は停止扱い)。
+    /// **途中の状態(Shutting Down 等)は停止ではない** —— 停止と数えると、起動前の掃除が書き込み中の
+    /// PosterBoard・logd のファイルを消し、shutdown の再試行が 30 秒の時限で切れた回を「止まった」と言う
     public static func shutdownObservation(
         _ read: Result<[SimDeviceInfo], Error>, udid: String?
     ) -> SimulatorShutdownObservation {
@@ -287,9 +297,9 @@ extension SimulatorCatalog {
         case .success(let devices):
             let booted: Bool
             if let udid {
-                booted = devices.first(where: { $0.udid == udid })?.booted ?? false
+                booted = devices.first(where: { $0.udid == udid }).map { $0.booted || $0.transitioning } ?? false
             } else {
-                booted = devices.contains(where: \.booted)
+                booted = devices.contains { $0.booted || $0.transitioning }
             }
             return booted ? .stillBooted : .stopped
         }

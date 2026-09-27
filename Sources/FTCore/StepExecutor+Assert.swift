@@ -179,6 +179,12 @@ extension StepExecutor {
                 return nil
             }
         }
+        // 黒い絵(撮れていない・表示の凍結)は FM も OCR も「描かれていない」と読むので判定の根拠にしない。
+        // Tier-1 の後ろに置く = 素通りの回(大半)は PNG をもう一度復号しない
+        if BlankFrameDetector.isBlackApartFromBottomStrip(pngData: screenshot) {
+            noteCodesThisStep.insert(.blankScreenshot)
+            return nil
+        }
         // Tier-2(FM の手前): 期待テキストが Vision OCR で丸ごと読めれば見えている(FM を呼ばず素通り)。
         // 実 run で FM の段に届いた crop の 97% がここで片付く(p50 92ms。FM は 1.3〜2.8s)。
         // 丸ごと読めなかったこと自体は反転の根拠にしない(反転は下の FM との突き合わせか、FM の段が無いときの OCROnlyVisibility)。

@@ -225,6 +225,10 @@ struct RunScenarios: AsyncParsableCommand {
         commandName: "run",
         abstract: "Run Swift DSL scenarios (TestProjects/<name>/scenarios/). FM only steps in on failure")
 
+    /// 中断した run の要約行の但し書き。始まらなかった分も失敗数に入る(RunRecorder.recordInterruptedBeforeStart
+    /// = exit を非ゼロにするため)ので、言わないと「16 of 16 failed」が1本も走っていない run に付く
+    static let interruptedCountNote = " — the run was interrupted; scenarios that never started count as failed"
+
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
@@ -866,7 +870,8 @@ struct RunScenarios: AsyncParsableCommand {
             let unit = broadcast ? "scenario run(s) (one per scenario per device)" : "scenario(s)"
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(ranCount) \(unit) passed\(skippedSuffix)"
-                  : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)")
+                  : "❌ \(failedCount) of \(ranCount) \(unit) failed\(skippedSuffix)"
+                    + (runSummary.interrupted ? Self.interruptedCountNote : ""))
             // **合否は変えず、劣化だけ伝える**。FM(vision 経路)が死んでいると screenLooksLike は素通りし、
             // occlusion-guard は OCR だけで判定する(OCR が判定できない形は素通り)ので、緑は「守りが効いた緑」ではない。
             // **text 経路の死は言わない** —— run の中で text 経路を使う機能は無い
@@ -961,7 +966,8 @@ struct RunScenarios: AsyncParsableCommand {
 
         ConsoleOut.out(failedCount == 0
               ? "✅ All \(items.count) scenario(s) passed"
-              : "❌ \(failedCount) of \(items.count) scenario(s) failed")
+              : "❌ \(failedCount) of \(items.count) scenario(s) failed"
+                + (interrupted ? Self.interruptedCountNote : ""))
         // 台そのものが遅いことの観測(SlowWorkerDetector)。自動では何もしない・除外もしない
         for finding in slowWorkers { ConsoleOut.out(finding.consoleWarning) }
         if failedCount > 0 {

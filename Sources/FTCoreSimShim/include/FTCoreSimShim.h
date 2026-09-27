@@ -6,7 +6,7 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /// 利用可能な iOS シミュレータの列挙。各要素は
-/// @{ @"udid": NSString, @"name": NSString, @"os": NSString(例 "iOS 27.0"), @"booted": NSNumber(BOOL) }。
+/// @{ @"udid": NSString, @"name": NSString, @"os": NSString(例 "iOS 27.0"), @"booted": NSNumber(BOOL), @"stopped": NSNumber(BOOL) }。
 /// CoreSimulator が使えない環境(クラス/セレクタ欠落・ctx 取得失敗)では nil。
 /// 初期化(dlopen+SimServiceContext ~470ms)は初回のみ。保持する deviceSet は
 /// boot/shutdown に live 追従する(実測)ため再初期化不要。

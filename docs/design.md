@@ -2574,7 +2574,10 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   なら1回だけ撮り直し、なお stale なら**誤った緑への反転を宣言せず素通り**する(`StepNote.staleScreenshot`)。
   **判定は新規撮影のときだけ**(`guardScreenshot` の 200ms キャッシュ供給は同一 Data を返すため、
   比較すると木の揺れで必ず偽 stale になる)。`FrozenVerdict` には接続しない(凍結判定の定義元は
-  あちらのまま。これはスクショ経路のローカルな鮮度確認)
+  あちらのまま。これはスクショ経路のローカルな鮮度確認)。**絵が下端の帯(ホームインジケータ /
+  ナビゲーションハンドル)を除いて真っ黒なら判定の根拠にせず素通り**する(`StepNote.blankScreenshot`・
+  `BlankFrameDetector.isBlackApartFromBottomStrip`)。FM も OCR も黒い絵には「描かれていない」と答えるので、
+  撮れていない絵・固まった表示が赤になる。凍結の確定(回復を撃つ `uniformBlank`)には使わない
 - **pressEnter は焦点の合図を待ってから撃つ**(`FocusWait` を MCP `awaitFocus` と共有)。
   木のどこかの `focused` 申告か `keyboardShown` を合図に最大 1.5s。合図が無ければ警告注記+実行
   (拒否しない)。keyboardShown を第二の合図に持つのは Compose iOS(in-app は UIResponder でない

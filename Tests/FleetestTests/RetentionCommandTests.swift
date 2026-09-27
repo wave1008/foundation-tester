@@ -66,6 +66,14 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertThrowsError(try ApiRetentionCommand.decode(#"{"logsMaxBytes":"big"}"#))
     }
 
+    /// 綴り誤りのキーを黙って捨てない(負荷テストで `{"bogusKey":-1}` が exit 0 で通っていた)
+    func testUnknownImportKeyIsRejected() {
+        XCTAssertThrowsError(try ApiRetentionCommand.decode(#"{"logMaxBytes":10485760}"#)) { error in
+            XCTAssertTrue("\(error)".contains("logMaxBytes"), "\(error)")
+        }
+        XCTAssertNoThrow(try ApiRetentionCommand.decode(#"{"logsMaxBytes":10485760,"sweepAfterRun":null}"#))
+    }
+
     // MARK: - カテゴリ選択
 
     func testNoCategoryFlagsMeansEveryCategory() {

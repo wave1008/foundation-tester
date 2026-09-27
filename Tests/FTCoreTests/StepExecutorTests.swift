@@ -261,6 +261,27 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "stale-screenshot 注記が付くはず: \(outcome.notes)")
     }
 
+    /// 黒い絵(撮れていない・表示の凍結)は判定の根拠にしない: FM にも訊かず、赤にせず、注記を残す
+    /// (負荷テスト 2026-09-27: 黒い絵で OCR だけの判定が notRendered の赤を 3 台同時に出した)
+    func testBlackScreenshotSkipsTheGuardWithANote() async throws {
+        let blackPNG = Self.makePNG { context in
+            context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        }
+        let primary = FakeAppDriver(name: "primary", log: CallLog(),
+                                    snapshotElements: [[textElement(id: "msg", label: "A")]],
+                                    screenshots: [blackPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                      timeout: 1, occlusionGuard: true))
+        guard case .passed = outcome.status else {
+            XCTFail("黒い絵を「描かれていない」の根拠にして赤にした: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0, "黒い絵は FM に訊かない")
+        XCTAssertTrue(outcome.notes.contains(.blankScreenshot), "\(outcome.notes)")
+    }
+
     /// #2 修正: textEquals の期待値(ユーザーリテラル)は結合 `, ` 規則を外す(句読点入りテキストを守る)
     func testEligibilityAllowsCommaInUserText() {
         // 実 label(exist)では `, ` を結合セマンティクスとして除外

@@ -2723,3 +2723,75 @@ iOS の `BlankWorkerTriage` は回復でポートが変わるので、結果の 
 無い —— 修復した台が `preRunRepaired` から黙って落ちる(F10 の `blankRepairs` と同じ型の、label が変わる罠)。
 点検の結果に**台そのもの**(`excludedWorkers` / `repairedWorkers`)を持たせ、変換はそれだけを受け取る形に直した
 (`BlankWorkerTriageTests.testRepairedTrackingSurvivesALabelChangeFromRecovery` が回復後の台の鍵まで固定)
+
+## 56. 3時間負荷テストで出た穴(2026-09-27)
+
+構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini、`--set` で `fmTextOcclusionCheck` / `ocrTextOcclusionCheck`
+の組を周回ごとに切り替え・3 本に1本は手元の台を `devices down` して起動前の掃除を通す・7 本に1本は途中で INT)+
+MCP ファズ(実機 iPhone SE3・Pixel 4a・Pixel 3a、フリートと取り合う sim -08 / emulator-5562)+ ライブ操作ファズ
+(予備の sim -10・emulator-5560)+ CLI ファズ(results / retention / clean / `--set` の不正値 / 使用中の台の再起動)。
+直近の変更(起動前の掃除・ストレージ計測・健全性・視覚検証の FM/OCR 独立・保持容量)を重点にした。
+
+**新規の型は無し**。すべて既知の型の再発: 途中/不明を確定に畳む(56.1・56.7)・共有資源の持ち主(56.3)・
+MCP と DSL で判定を共有していない(56.4・56.6)・黙って受理する(56.5)。
+
+### 56.1 起動前の掃除が "Shutting Down" の台を停止済みと見て撃っていた(途中を確定に畳む型)
+`SimDeviceInfo.booted` は `state == Booted` だけで、`shutdownObservation` は `!booted` を `.stopped` にしていた。
+予備の台を `simctl shutdown &` の 0.3 秒後に `api start-device` すると、Shutting Down の間に PosterBoard の束
+(107 個)を消した(`SimulatorPosterCache` 自身が「動いている台には撃たない」と書いている不変条件の違反)。
+同じ判定を `SimulatorShutdownRetry`(shutdown を 30 秒で切る = ランナー付きの約 50 秒の shutdown の途中を
+「止まった」と言う)・`devices down` の全停止確認・`rebootSimulator` も使う。直し: シムが状態値から
+`stopped`(1 = Shutdown)を返し、Booted でも Shutdown でもない途中の状態を `transitioning` として停止と数えない
+(実機の CoreSimulator で Shutting Down → `stillBooted` → `stopped` の遷移を確認)
+
+### 56.2 中断で1本も始まらなかった run の要約が「❌ 16 of 16 scenario(s) failed」
+始まらなかった分を失敗数に入れるのは exit を非ゼロにするための設計(`recordInterruptedBeforeStart`)なので
+数え方は変えず、要約行に「中断した・始まらなかった分も失敗に数える」と但し書きを付けた
+
+### 56.3 復活したレーンが、同じ run の別レーンの現役 in-app ブリッジを「残骸」として止めた(持ち主の型)
+-03 が in-app を port 8128 で起動 → -08 が離脱して復活 → 採番が 8128 を選び、`PortHolder.stopIfOwnedBridge` が
+-03 の Simulator のアプリを「leftover」として kill した。xcodebuild ランナーには「別デバイスのランナーは残骸では
+ない」の門があるのに、in-app(Simulator 内のアプリ)の分岐には `ownerUDID` の確認が無かった。採番も
+`.pid` / iproxy / `.inapp`(1巡目だけ)しか見ず、/status に一瞬答えない in-app は `used` に乗らず空きに見える。
+直し: in-app 分岐も別デバイスと読めたら `.foreign`(`foreignInAppHolder`)・`assignPort` は別デバイスが握る
+ポートを飛ばす(`PortHolder.isHeldByAnotherDevice` を注入可能な述語で)
+
+### 56.4 MCP がセレクタの構文検査を通していなかった(判定を共有していない型)
+`ft_scroll_to selector:"#"` が `id=""` を 46 秒探した(DSL は `emptyIdError` で実行前に落とす)。MCP の
+`FTSelector.parse(` 12 か所に `validationError` の呼び出しは 0 だった。直し: `parseSelectorArgument` の1箇所に
+寄せ、selector / scrollFrame / waitFor / ft_batch の各行を通す。`SelectorParseSourceScanTests` が生の parse の
+再混入を落とす(内部で作る文字列だけ理由付きで許可)
+
+### 56.5 `api retention --import` が未知のキーを黙って捨てて exit 0
+`{"logMaxBytes":…}` のような綴り誤りが「反映された」ように見えていた。未知のキーを名指しで断る
+
+### 56.6 `ft_pinch` だけが画面外の座標を断らなかった(MCP の座標ツール間の取りこぼし)
+tap / double_tap / drag / long_press は `offscreenCoordinateError` + `coordinateScreen` を通すのに、pinch の座標形
+だけ通さず、(-500,-800) が「pinch done」だった。「半径を 325px に広げた」の注記も、直後に画面の余白で半径 1 に
+詰め直していたので事実と違った。直し: 同じ門を通し、注記は実際に撃つ半径で言う
+
+### 56.7 Android の hideKeyboard / terminate / keyboardShown が adb の失敗を成功・確定に畳んでいた
+居ない台へのライブ操作 `hideKeyboard` が ok:true(dumpsys が読めない → 「出ていない」)。`terminate` は
+force-stop の終了コードを捨てていた。snapshot の `keyboardShown` も dumpsys の失敗出力を解析して false に
+確定していた(`keyboardNotShown` が誤って緑になりうる。再現はしていない)。非 0 は throw・不明は nil のまま。
+`terminate` の「セッションにアプリが無ければ何もしない」は DSL の後始末が頼っている可能性があるので残した
+
+### 56.8 黒い絵で視覚検証が「描かれていない」の赤を出していた(直した・ユーザー決定: 判定不能に倒す)
+E2E-Flutter の iOS in-app で 3 台が同時に `observed=""` の notRendered、Android Emulator でも同じ。絵は全面黒 +
+下端のホームインジケータ / ナビゲーションハンドルで、「絵が撮れていない・表示が固まった」を遮蔽の根拠にしていた
+(FM も黒い絵には何も描かれていないと答える)。視覚検証の入口(Tier-1 の後ろ)で `isBlackApartFromBottomStrip`
+(32x32・下端 2 行を除く全セルの各チャンネル ≤ 12)なら素通りして注記 `blank-screenshot`。16x16 だと暗い画面の
+小さな文字がセル平均に薄まって黒に紛れる。既存のレポートのスクショ 4,896 枚に当てて 138 枚が該当し、全部が
+下端以外の明るい画素 0.17% 以下の中身の無い絵だった(誤検知 0)
+
+### 56.9 直していないもの
+- **表示が凍結した Android エミュレータを `uniformBlank` が見逃す**: アプリの層は真っ黒でも SystemUI の
+  ナビゲーションハンドルが残り、16×16 中 4 セル(明るさ 12〜14)が割れて 0.984 < 0.995。モニターは
+  `frozen:false`、run の復活でも素通りし、症状は「OCR だけで notRendered」の赤として出た(帰属が遮蔽になる)。
+  `uniformBlank` は回復操作を撃つ確定的な根拠なので、閾値や下端の除外は誤検知で再起動を撃ちうる ——
+  新しい根拠(警告)として入れ、既存資産で誤検知 0 を確かめてから上げるのが筋
+- **`SimulatorCrashReport.findRecent` は bundleID と時刻窓だけで絞る**: 同じアプリを並行で回す run で、別の台の
+  `.ips` を失敗した台へ帰属しうる(appCrash・健全性のクラッシュ件数)。再現用の `.ips` が得られず未確認
+- 観察: `clean --dry-run --simulator-poster-cache` が負荷下で 149 → 388 秒(全 Simulator の容量を数える仕様)/
+  FM だけの構成(OCR off)で M1Ultra の FM 1 回が中央値 45 秒・門の待ち 38 秒 / 実機 SE3 の `ft_launch`(再開)が
+  90 回中1回 45 秒(内訳は未計測)/ iOS の `devices down` が1回だけ 299 秒(他は 34〜60 秒。内訳は未計測)

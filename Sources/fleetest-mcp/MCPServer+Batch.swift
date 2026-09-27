@@ -104,7 +104,7 @@ extension MCPServer {
                 throw MCPError("type requires text — to empty a field use clearInput,"
                     + " or pass replace: true with an empty string")
             }
-            let selector = optionalBatchSelector(raw)
+            let selector = try optionalBatchSelector(raw)
             let search = try batchSearch(raw, command: "type", hasSelector: selector != nil)
             var step = FlowStep(action: "type", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks), text: text,
@@ -129,7 +129,7 @@ extension MCPServer {
             (FlowStep(action: "hideKeyboard"), "hideKeyboard")
         },
         "clearInput": BatchStepBuilder(keys: ["selector", "waitSeconds", "scroll", "maxSwipes"]) { raw in
-            let selector = optionalBatchSelector(raw)
+            let selector = try optionalBatchSelector(raw)
             let search = try batchSearch(raw, command: "clearInput", hasSelector: selector != nil)
             let step = FlowStep(action: "clearInput", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
@@ -145,7 +145,7 @@ extension MCPServer {
             return (FlowStep(action: "swipe", direction: direction.rawValue), "swipe \(direction.rawValue)")
         },
         "doubleTap": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
-            let selector = optionalBatchSelector(raw)
+            let selector = try optionalBatchSelector(raw)
             let step = FlowStep(action: "doubleTap", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
                                 timeout: raw["waitSeconds"] as? Double)
@@ -154,12 +154,12 @@ extension MCPServer {
         "pinchOut": BatchStepBuilder(
             keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
         ) {
-            batchPinchStep("pinchOut", defaultScale: FlowStep.defaultPinchOutScale, raw: $0)
+            try batchPinchStep("pinchOut", defaultScale: FlowStep.defaultPinchOutScale, raw: $0)
         },
         "pinchIn": BatchStepBuilder(
             keys: ["selector", "scale", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
         ) {
-            batchPinchStep("pinchIn", defaultScale: FlowStep.defaultPinchInScale, raw: $0)
+            try batchPinchStep("pinchIn", defaultScale: FlowStep.defaultPinchInScale, raw: $0)
         },
         "swipeBy": BatchStepBuilder(
             keys: ["selector", "dxRatio", "dyRatio", "durationSeconds", "maxGestureSeconds", "waitSeconds"]
@@ -167,7 +167,7 @@ extension MCPServer {
             guard let dxRatio = raw["dxRatio"] as? Double, let dyRatio = raw["dyRatio"] as? Double else {
                 throw MCPError("swipeBy requires dxRatio and dyRatio")
             }
-            let selector = optionalBatchSelector(raw)
+            let selector = try optionalBatchSelector(raw)
             let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultSwipeDurationSeconds
             let step = FlowStep(action: "swipeBy", locator: selector?.primary,
                                 fallbacks: selector.flatMap(batchFallbacks),
@@ -185,7 +185,7 @@ extension MCPServer {
             guard let toText = raw["to"] as? String, !toText.isEmpty else {
                 throw MCPError("swipeElementToElement requires to (the end selector)")
             }
-            let to = FTSelector.parse(toText)
+            let to = try MCPServer.parseSelectorArgument(toText, argument: "to")
             let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultSwipeDurationSeconds
             let step = FlowStep(action: "swipeElementToElement", locator: from.primary,
                                 fallbacks: batchFallbacks(from), endLocator: to.primary,
@@ -220,32 +220,32 @@ extension MCPServer {
             let step = FlowStep(action: "scrollTo", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector), direction: direction.swipe.rawValue,
                                 maxSwipes: raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
-                                scrollFrame: batchScrollFrame(raw))
+                                scrollFrame: try batchScrollFrame(raw))
             return (step, "scrollTo \"\(selector.text)\"")
         },
         "scrollDown": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
-            batchScrollStep(.down, raw: $0)
+            try batchScrollStep(.down, raw: $0)
         },
         "scrollUp": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
-            batchScrollStep(.up, raw: $0)
+            try batchScrollStep(.up, raw: $0)
         },
         "scrollRight": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
-            batchScrollStep(.right, raw: $0)
+            try batchScrollStep(.right, raw: $0)
         },
         "scrollLeft": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
-            batchScrollStep(.left, raw: $0)
+            try batchScrollStep(.left, raw: $0)
         },
         "scrollToBottom": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
-            batchScrollEdgeStep(.down, name: "scrollToBottom", raw: $0)
+            try batchScrollEdgeStep(.down, name: "scrollToBottom", raw: $0)
         },
         "scrollToTop": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
-            batchScrollEdgeStep(.up, name: "scrollToTop", raw: $0)
+            try batchScrollEdgeStep(.up, name: "scrollToTop", raw: $0)
         },
         "scrollToRightEdge": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
-            batchScrollEdgeStep(.right, name: "scrollToRightEdge", raw: $0)
+            try batchScrollEdgeStep(.right, name: "scrollToRightEdge", raw: $0)
         },
         "scrollToLeftEdge": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
-            batchScrollEdgeStep(.left, name: "scrollToLeftEdge", raw: $0)
+            try batchScrollEdgeStep(.left, name: "scrollToLeftEdge", raw: $0)
         },
     ]
 
@@ -253,7 +253,7 @@ extension MCPServer {
         guard let text = raw["selector"] as? String, !text.isEmpty else {
             throw MCPError("\(command) requires selector (same syntax as the DSL: #id, a label, .type, a||b)")
         }
-        return FTSelector.parse(text)
+        return try Self.parseSelectorArgument(text, argument: "selector")
     }
 
     /// `scroll:`(DSL の `FTScrollOption`)と `maxSwipes:` を FlowStep の探索欄へ写す(DSL の tapImpl 等と同じ規則:
@@ -276,23 +276,23 @@ extension MCPServer {
         return (direction.swipe.rawValue, raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes)
     }
 
-    private static func optionalBatchSelector(_ raw: [String: Any]) -> FTSelector? {
+    private static func optionalBatchSelector(_ raw: [String: Any]) throws -> FTSelector? {
         guard let text = raw["selector"] as? String, !text.isEmpty else { return nil }
-        return FTSelector.parse(text)
+        return try Self.parseSelectorArgument(text, argument: "selector")
     }
 
     private static func batchFallbacks(_ selector: FTSelector) -> [FlowLocator]? {
         selector.fallbacks.isEmpty ? nil : selector.fallbacks
     }
 
-    private static func batchScrollFrame(_ raw: [String: Any]) -> FlowLocator? {
+    private static func batchScrollFrame(_ raw: [String: Any]) throws -> FlowLocator? {
         guard let text = raw["scrollFrame"] as? String, !text.isEmpty else { return nil }
-        return FTSelector.parse(text).primary
+        return try Self.parseSelectorArgument(text, argument: "scrollFrame").primary
     }
 
     private static func batchPinchStep(_ action: String, defaultScale: Double, raw: [String: Any])
-        -> (step: FlowStep, summary: String) {
-        let selector = optionalBatchSelector(raw)
+        throws -> (step: FlowStep, summary: String) {
+        let selector = try optionalBatchSelector(raw)
         let scale = raw["scale"] as? Double ?? defaultScale
         let duration = raw["durationSeconds"] as? Double ?? FlowStep.defaultPinchDurationSeconds
         let step = FlowStep(action: action, locator: selector?.primary,
@@ -306,19 +306,19 @@ extension MCPServer {
     }
 
     private static func batchScrollStep(_ direction: FTScrollDirection, raw: [String: Any])
-        -> (step: FlowStep, summary: String) {
+        throws -> (step: FlowStep, summary: String) {
         let times = raw["repeat"] as? Int ?? 1
         let step = FlowStep(action: "scroll", direction: direction.swipe.rawValue,
-                            maxSwipes: max(1, times), scrollFrame: batchScrollFrame(raw))
+                            maxSwipes: max(1, times), scrollFrame: try batchScrollFrame(raw))
         let name = "scroll\(direction.rawValue.capitalized)"
         return (step, times > 1 ? "\(name) ×\(times)" : name)
     }
 
     private static func batchScrollEdgeStep(_ direction: FTScrollDirection, name: String,
-                                            raw: [String: Any]) -> (step: FlowStep, summary: String) {
+                                            raw: [String: Any]) throws -> (step: FlowStep, summary: String) {
         let step = FlowStep(action: "scrollToEdge", direction: direction.swipe.rawValue,
                             maxSwipes: raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxEdgeSwipes,
-                            scrollFrame: batchScrollFrame(raw))
+                            scrollFrame: try batchScrollFrame(raw))
         return (step, name)
     }
 

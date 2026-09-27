@@ -43,6 +43,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// (StepExecutor+Assert.swift の occlusionFlip)
     case staleScreenshot = "stale-screenshot"
 
+    /// occlusion-guard のスクショが下端の帯を除いて真っ黒(`BlankFrameDetector.isBlackApartFromBottomStrip`)。
+    /// 絵が撮れていない・表示が凍結した回で、FM も OCR も「何も描かれていない」と読むので、判定不能として
+    /// 素通りする(赤にしない)
+    case blankScreenshot = "blank-screenshot"
+
     /// 探索のどこか1周で木が**要素上限で打ち切られていた**。実在する行が候補から
     /// 落ちていた可能性があるので、「見つからない」を不在の証拠にしてはいけない。
     /// **最終木では消えている情報**(ScrollSearchResult.maxTruncatedDuringSearch 参照)なので
@@ -287,6 +292,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"
         case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
+        case .blankScreenshot:
+            return "the occlusion-guard screenshot was black apart from the bottom system bar, so the check was skipped"
         case .truncatedDuringSearch:
             return "the tree hit the element limit during the search, so the target may have been dropped from it"
         case .webViewNotRendered:

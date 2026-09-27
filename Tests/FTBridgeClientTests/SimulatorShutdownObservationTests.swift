@@ -34,6 +34,16 @@ final class SimulatorShutdownObservationTests: XCTestCase {
         XCTAssertEqual(SimulatorCatalog.shutdownObservation(.success(sims), udid: "GONE"), .stopped)
     }
 
+    /// Shutting Down / Booting は停止ではない(起動前の掃除が書き込み中のファイルを消した実害。
+    /// 予備の台を `simctl shutdown &` の 0.3 秒後に start-device すると PosterBoard の束を消した)
+    func testTransitioningDeviceIsNotStopped() {
+        let shuttingDown = SimDeviceInfo(udid: "C", name: "iPhone C", os: "iOS 27.0", booted: false,
+                                         transitioning: true)
+        XCTAssertEqual(SimulatorCatalog.shutdownObservation(.success([shuttingDown]), udid: "C"), .stillBooted)
+        XCTAssertEqual(SimulatorCatalog.shutdownObservation(.success([sims[0], shuttingDown]), udid: nil),
+                       .stillBooted)
+    }
+
     /// 同じ形(読めないと false = 停止)を Sources に戻さない
     func testNoSourceReadsAnUnreadableCatalogAsNotBooted() throws {
         let sources = URL(fileURLWithPath: #filePath)

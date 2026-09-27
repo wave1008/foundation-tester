@@ -407,6 +407,16 @@ extension MCPServer {
         "\(key) must be a string (got \(describeArgumentValue(raw))) — pass a JSON string, not a number"
     }
 
+    /// **セレクタ構文検査の唯一の入口**。呼び手が渡すセレクタ文字列(selector/scrollFrame/waitFor/to)は
+    /// すべてここを通す —— DSL は `FTSelector.preflightError` を実行前に通すが(Sources/FTDSL/
+    /// Commands.swift)、MCP は FlowStep を組んで StepExecutor へ直接渡すので同じ経路を通らない。
+    /// 通さないと `selector: "#"` のような構文誤りが「id が空の要素」として素通りし、見つからないまま
+    /// 探索を最後まで振り切る(実測46秒)。判定は `FTSelector.validationError` の1箇所を共有する
+    static func parseSelectorArgument(_ text: String, argument: String) throws -> FTSelector {
+        if let error = FTSelector.validationError(text) { throw MCPError("\(argument): \(error)") }
+        return FTSelector.parse(text)
+    }
+
     /// ft_terminate/ft_logs の bundleId のように「省略すればこのセッションが繋がっている
     /// アプリを使う」引数が空文字を断るときの補足文言(1箇所に集約 — 3箇所で複製しない)
     static let attachedAppEmptyHint = "omit it to use the app this session is attached to"

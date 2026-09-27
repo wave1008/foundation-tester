@@ -82,6 +82,19 @@ public enum PortHolder {
         return !tokens.contains { $0.caseInsensitiveCompare(udid) == .orderedSame }
     }
 
+    /// stopIfOwnedBridge の in-app 分岐の所有判定(純粋関数)。ownerUDID が分かっていて、かつ
+    /// listener が肯定的に別のシミュレータと読めたときだけ、その別デバイスの udid を返す
+    /// (呼び手はこれを .foreign へ倒す)。それ以外(same-device / ownerUDID 不明 / 別デバイスと
+    /// 読めない)は nil = 殺してよい。**2つ目のパーサは書かず**
+    /// `SafariWebInspector.udid(fromLaunchdSimCommandLine:)` の CoreSimulator/Devices/<UDID>/
+    /// 抽出を再利用する
+    static func foreignInAppHolder(command: String, ownerUDID: String?) -> String? {
+        guard let ownerUDID, listenerIsAnotherSimulator(listener: command, recordedUDID: ownerUDID)
+        else { return nil }
+        // 別のシミュレータと読めた時点で断る側に倒す(udid の桁が読めないことを「殺してよい」にしない)
+        return SafariWebInspector.udid(fromLaunchdSimCommandLine: command) ?? "unknown"
+    }
+
     /// 記録された in-app ブリッジ(`.inapp`)から見て、**今そのポートを握っているのが別のデバイスか**。
     /// 判定は**肯定的に別のシミュレータと読めたときだけ** true —— 実機の in-app(ポートを握るのは
     /// iproxy)や、形の分からない占有者は false(= 「生きている」側)に倒す。
@@ -140,9 +153,11 @@ public enum PortHolder {
     /// それ以外(.foreign)は kill しない。
     /// - ownerUDID: 呼び手が「今回このポートに供給しようとしているデバイス」の UDID を分かって
     ///   いれば渡す。既定 nil = iproxy 分岐は常に .foreign(確認できない資産は殺さない安全側)。
-    ///   xcodebuild 分岐では**肯定的に別デバイスと読めた回だけ** .foreign へ倒す
-    ///   (RunnerDestination。xctestrun のファイル名はポートしか持たないので、同じポートに居る
-    ///   別デバイスの生きたランナーを残骸として殺していた)。in-app 分岐では使わない
+    ///   xcodebuild 分岐・in-app 分岐とも**肯定的に別デバイスと読めた回だけ** .foreign へ倒す
+    ///   (RunnerDestination / foreignInAppHolder。xctestrun のファイル名や .inapp の記録はポート
+    ///   しか持たないので、同じポートに居る別デバイスの生きたランナー/ブリッジを残骸として
+    ///   殺していた。in-app は実地の負荷テストで確認: 引き取ったレーンの供給が別レーンの
+    ///   生きた in-app ブリッジを「残留」として kill した)
     public static func stopIfOwnedBridge(port: UInt16, stateDir: URL,
                                          derivedDataPath: URL,
                                          ownerUDID: String? = nil) -> PortHolderOutcome {
@@ -150,6 +165,9 @@ public enum PortHolder {
         let description = "pid \(pid): \(command)"
 
         if command.contains("/CoreSimulator/Devices/"), command.contains("/data/Containers/Bundle/") {
+            if let other = Self.foreignInAppHolder(command: command, ownerUDID: ownerUDID) {
+                return .foreign(description: "another device's in-app bridge (udid \(other))")
+            }
             // .inapp は記録 udid が占有プロセスの実パスの udid と一致するときだけ信用する
             // (別デバイスの stale .inapp を頼ると無関係アプリを terminate して実占有者が残る)
             let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)

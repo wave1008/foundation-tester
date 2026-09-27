@@ -1072,6 +1072,11 @@ extension MCPServer {
             throw MCPError("scrollFrame must be a selector string (e.g. \"#list_rows\") or an"
                 + " ft_snapshot ref (an integer)")
         }
+        // 構文検査も型検査と同じ入口(ドライバ取得より前)で —— resolveScrollFrameArg 側の
+        // 検査だけだと ft_swipe/ft_scroll_to の driver(args) を先に払ってしまう
+        if let text = args["scrollFrame"] as? String {
+            _ = try Self.parseSelectorArgument(text, argument: "scrollFrame")
+        }
     }
 
     /// **ref はセレクタが書けない容器のための逃げ道**(id の重複・欠落)。
@@ -1120,7 +1125,7 @@ extension MCPServer {
             }
         }
         if let text = args["scrollFrame"] as? String {
-            return ScrollFrameArg(locator: FTSelector.parse(text).primary)
+            return ScrollFrameArg(locator: try Self.parseSelectorArgument(text, argument: "scrollFrame").primary)
         }
         return ScrollFrameArg()
     }
@@ -1233,13 +1238,15 @@ extension MCPServer {
         guard let direction = FTScrollDirection(rawValue: args["direction"] as? String ?? "down") else {
             throw MCPError("direction must be one of down/up/right/left (content direction)")
         }
+        // **構文検査はデバイスに触る前**: `selector: "#"` のような誤りを通すと、見つからないまま
+        // 探索が最後まで振り切る(実測46秒)。ここで落とせば driver(args) すら要らない
+        let selector = try Self.parseSelectorArgument(selectorText, argument: "selector")
         try Self.validateScrollFrameArg(args)
         let scrollDriver = try await driver(args)
         // **曖昧さは「渡す前に見えていた画面」で判定する**: 探索後の木で数えると、リストが
         // 読み込み直しに入っている回に同名の容器が1つしか残らず黙ってしまう
         // (実測。Google マップは探索スワイプのたびに結果を組み直す)
         let beforeScroll = lastSnapshots[Self.engineKey(args)]
-        let selector = FTSelector.parse(selectorText)
         let scrollFrameArg = try await resolveScrollFrameArg(args, driver: scrollDriver)
         var step = FlowStep(
             action: "scrollTo", locator: selector.primary,

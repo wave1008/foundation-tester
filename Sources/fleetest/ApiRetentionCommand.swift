@@ -80,6 +80,14 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         guard let data = json.data(using: .utf8) else {
             throw ValidationError("--import is not valid UTF-8")
         }
+        // 知らないキーは断る(綴りを誤ったキーを黙って捨てると、設定は変わらないのに exit 0 で返る)
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let unknown = Set(object.keys).subtracting(Import.knownKeys).sorted()
+            if !unknown.isEmpty {
+                throw ValidationError("--import has unknown key(s): \(unknown.joined(separator: ", "))"
+                    + " (known: \(Import.knownKeys.joined(separator: ", ")))")
+            }
+        }
         do {
             return try JSONDecoder().decode(Import.self, from: data)
         } catch {
@@ -112,7 +120,9 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         var xcresultMaxBytes: Field<Int64>
         var sweepAfterRun: Field<Bool>
 
-        private enum CodingKeys: String, CodingKey {
+        static let knownKeys = CodingKeys.allCases.map(\.rawValue)
+
+        private enum CodingKeys: String, CodingKey, CaseIterable {
             case deviceCapturesMaxBytes, recordingsMaxBytes, reportsMaxBytes, logsMaxBytes
             case xcresultMaxBytes, sweepAfterRun
         }

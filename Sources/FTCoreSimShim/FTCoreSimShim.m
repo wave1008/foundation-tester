@@ -151,8 +151,9 @@ NSArray<NSDictionary<NSString *, id> *> *FTCoreSimListDevices(void) {
         long state = ((long (*)(id, SEL))objc_msgSend)(device, sel_registerName("state"));
         NSString *name = ftMsg0(device, "name");
         if (![name isKindOfClass:[NSString class]]) continue;
+        // SimDeviceState: 0 Creating / 1 Shutdown / 2 Booting / 3 Booted / 4 Shutting Down
         [result addObject:@{ @"udid": uuid.UUIDString, @"name": name,
-                             @"os": runtimeName, @"booted": @(state == 3) }];
+                             @"os": runtimeName, @"booted": @(state == 3), @"stopped": @(state == 1) }];
     }
     return result;
 }

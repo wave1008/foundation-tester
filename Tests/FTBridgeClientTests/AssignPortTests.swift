@@ -6,6 +6,7 @@ import XCTest
 
 final class AssignPortTests: XCTestCase {
     private var repoRoot: URL!
+    private let ownerUDID = "OWNER-UDID"
 
     override func setUpWithError() throws {
         repoRoot = FileManager.default.temporaryDirectory
@@ -16,6 +17,14 @@ final class AssignPortTests: XCTestCase {
 
     override func tearDownWithError() throws {
         try? FileManager.default.removeItem(at: repoRoot)
+    }
+
+    /// 既定は「どのポートも別デバイスに握られていない」(lsof を伴う本番判定を注入で避ける)。
+    private func provisioner(portRange: ClosedRange<UInt16> = 8123...8130,
+                             heldByAnotherDevice: @escaping @Sendable (UInt16, String) -> Bool
+                                 = { _, _ in false }) -> BridgeProvisioner {
+        BridgeProvisioner(repoRoot: repoRoot, portRange: portRange,
+                          portHeldByAnotherDevice: heldByAnotherDevice)
     }
 
     private func writePidFile(port: UInt16) throws {
@@ -31,68 +40,75 @@ final class AssignPortTests: XCTestCase {
     }
 
     func testPrefersUnusedPreferred() throws {
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        XCTAssertEqual(try provisioner.assignPort(preferred: 8127, used: &used), 8127)
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: 8127, used: &used, ownerUDID: ownerUDID), 8127)
         XCTAssertTrue(used.contains(8127))
     }
 
     func testSkipsPreferredWhenUsedAndFallsToRangeHead() throws {
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = [8123]
         // preferred 8123 は used のため範囲先頭の空き 8124 へ
-        XCTAssertEqual(try provisioner.assignPort(preferred: 8123, used: &used), 8124)
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: 8123, used: &used, ownerUDID: ownerUDID), 8124)
     }
 
     func testSkipsPreferredWithStalePidFile() throws {
         try writePidFile(port: 8127)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        let port = try provisioner.assignPort(preferred: 8127, used: &used)
+        let port = try provisioner.assignPort(preferred: 8127, used: &used, ownerUDID: ownerUDID)
         XCTAssertNotEqual(port, 8127, "pid ファイルのある preferred は honor しない")
         XCTAssertEqual(port, 8123, "自動採番で範囲先頭の空きへ")
     }
 
     func testPreferredWithPidFileHonoredWhenIgnored() throws {
         try writePidFile(port: 8127)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
         // 同ポート再起動(ignoringPidFileFor)なら pid ファイルがあっても preferred を honor する
         XCTAssertEqual(
-            try provisioner.assignPort(preferred: 8127, used: &used, ignoringPidFileFor: 8127), 8127)
+            try provisioner.assignPort(preferred: 8127, used: &used, ownerUDID: ownerUDID,
+                                       ignoringPidFileFor: 8127), 8127)
     }
 
     func testSkipsPortsWithPidFile() throws {
         try writePidFile(port: 8123)
         try writePidFile(port: 8124)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8125,
-                       "pid ファイルのある 8123/8124 はスキップされる")
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8125,
+            "pid ファイルのある 8123/8124 はスキップされる")
     }
 
     func testIgnoringPidFileForReusesThatPort() throws {
         try writePidFile(port: 8123)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
         // 8123 は pid ファイルがあるが ignoringPidFileFor で空き扱いになる(同ポート再起動用)
         XCTAssertEqual(
-            try provisioner.assignPort(preferred: nil, used: &used, ignoringPidFileFor: 8123), 8123)
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID,
+                                       ignoringPidFileFor: 8123), 8123)
     }
 
     func testUsedSetPreventsSameAssignmentTwice() throws {
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        let first = try provisioner.assignPort(preferred: nil, used: &used)
-        let second = try provisioner.assignPort(preferred: nil, used: &used)
+        let first = try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID)
+        let second = try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID)
         XCTAssertNotEqual(first, second, "used が引き継がれ同一ポートを二度返さない")
     }
 
     func testNoFreePortThrows() throws {
         for port: UInt16 in 8123...8125 { try writePidFile(port: port) }
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8125)
+        let provisioner = provisioner(portRange: 8123...8125)
         var used: Set<UInt16> = []
-        XCTAssertThrowsError(try provisioner.assignPort(preferred: nil, used: &used)) { error in
+        XCTAssertThrowsError(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID)
+        ) { error in
             guard case BridgeProvisionerError.noFreePort = error else {
                 return XCTFail("noFreePort を期待: \(error)")
             }
@@ -110,27 +126,30 @@ final class AssignPortTests: XCTestCase {
     func testInAppOnlyPortsAreDeferred() throws {
         try writeInAppFile(port: 8123)
         try writeInAppFile(port: 8124)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8125,
-                       ".inapp のある 8123/8124 は後回しにされる")
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8125,
+            ".inapp のある 8123/8124 は後回しにされる")
     }
 
     func testInAppPortsUsedWhenAllPortsHaveInApp() throws {
         for port: UInt16 in 8123...8125 { try writeInAppFile(port: port) }
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8125)
+        let provisioner = provisioner(portRange: 8123...8125)
         var used: Set<UInt16> = []
         // 全ポートに .inapp が残っていても枯渇せず(.inapp のみの)最初のポートを返す
-        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8123)
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8123)
     }
 
     func testPidFileExcludesPortEvenWithInApp() throws {
         try writePidFile(port: 8123)
         try writeInAppFile(port: 8123)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
         // .pid のあるポートは .inapp の有無に関係なく常に除外される
-        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8124)
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8124)
     }
 
     // MARK: - iproxy(実機 USB トンネル)台帳の生死。F8: bridge-<port>.pid とは別の台帳なので
@@ -158,10 +177,11 @@ final class AssignPortTests: XCTestCase {
             to: IOSDeviceTransport.pidURL(hostPort: 8123, repoRoot: repoRoot),
             atomically: true, encoding: .utf8)
 
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8124,
-                       "生きている実機トンネルのポート 8123 は飛ばして次の空きへ")
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8124,
+            "生きている実機トンネルのポート 8123 は飛ばして次の空きへ")
     }
 
     func testDeadIproxyPidFileDoesNotExcludePort() throws {
@@ -173,10 +193,44 @@ final class AssignPortTests: XCTestCase {
         try String(process.processIdentifier).write(
             to: IOSDeviceTransport.pidURL(hostPort: 8123, repoRoot: repoRoot),
             atomically: true, encoding: .utf8)
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = provisioner()
         var used: Set<UInt16> = []
-        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8123,
-                       "死んだ iproxy pid ファイルは空き扱い")
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8123,
+            "死んだ iproxy pid ファイルは空き扱い")
+    }
+
+    // MARK: - 別デバイスの in-app ブリッジ(/status 無応答で `used` に乗らない)を弾く
+
+    func testFirstPassSkipsPortHeldByAnotherDevice() throws {
+        var seenArgs: [(UInt16, String)] = []
+        let provisioner = provisioner { port, udid in
+            seenArgs.append((port, udid))
+            return port == 8123
+        }
+        var used: Set<UInt16> = []
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8124,
+            "別デバイスに握られている 8123 は飛ばして次の空きへ")
+        XCTAssertTrue(seenArgs.contains { $0 == (8123, ownerUDID) },
+                      "ownerUDID がそのまま述語へ渡ること")
+    }
+
+    func testSecondPassAlsoSkipsPortHeldByAnotherDevice() throws {
+        for port: UInt16 in 8123...8125 { try writeInAppFile(port: port) }
+        let provisioner = provisioner(portRange: 8123...8125) { port, _ in port == 8123 }
+        var used: Set<UInt16> = []
+        // 全ポートに .inapp が残る 2nd パスでも、別デバイス保有と読める 8123 は避ける
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8124)
+    }
+
+    func testPreferredHeldByAnotherDeviceIsNotHonored() throws {
+        let provisioner = provisioner { port, _ in port == 8127 }
+        var used: Set<UInt16> = []
+        let port = try provisioner.assignPort(preferred: 8127, used: &used, ownerUDID: ownerUDID)
+        XCTAssertNotEqual(port, 8127, "別デバイスに握られている preferred は honor しない")
+        XCTAssertEqual(port, 8123, "自動採番で範囲先頭の空きへ")
     }
 
     func testStopIfOwnedBridgeNotFoundForUnusedPort() throws {

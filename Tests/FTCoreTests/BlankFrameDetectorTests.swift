@@ -98,6 +98,53 @@ final class BlankFrameDetectorTests: XCTestCase {
 
     // MARK: - テスト用 PNG 合成
 
+    // MARK: - 下端の帯を除いて黒い絵(occlusion-guard の素通り判定)
+
+    private static let blackFrames = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("Tests/Fixtures/BlackFrames")
+
+    /// 実際に出た黒い絵(負荷テスト 2026-09-27)
+    func testRealBlackFramesWithABottomBarAreBlack() throws {
+        for name in ["android-emulator-black-with-nav-handle.png", "ios-inapp-black-with-home-indicator.png"] {
+            let png = try Data(contentsOf: Self.blackFrames.appendingPathComponent(name))
+            XCTAssertTrue(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png), name)
+        }
+        // Android のナビゲーションハンドルは一様判定を割る(= この判定が要る理由)
+        let android = try Data(contentsOf: Self.blackFrames
+            .appendingPathComponent("android-emulator-black-with-nav-handle.png"))
+        XCTAssertFalse(BlankFrameDetector.isUniformBlank(pngData: android))
+    }
+
+    /// 一部だけ黒い実画面(WebView の下に黒い帯)は黒い絵ではない
+    func testRealPartlyBlackScreenIsNotBlack() throws {
+        let png = try Data(contentsOf: Self.blackFrames.appendingPathComponent("ios-partly-black-webview.png"))
+        XCTAssertFalse(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
+    }
+
+    /// 暗い画面に小さな文字が1語だけ = 黒い絵ではない(16x16 だとセル平均に薄まって黒に紛れる大きさ)
+    func testDarkScreenWithOneSmallWordIsNotBlack() {
+        let png = Self.makePNG(width: 1080, height: 2340) { context in
+            context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 1080, height: 2340))
+            context.setFillColor(CGColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1))
+            context.fill(CGRect(x: 60, y: 1500, width: 70, height: 30))
+        }
+        XCTAssertFalse(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
+    }
+
+    /// 上端(ステータスバー)に何か描かれていれば黒い絵ではない = 見ないのは下端だけ
+    func testContentInTheTopRowIsNotIgnored() {
+        let png = Self.makePNG(width: 400, height: 800) { context in
+            context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 400, height: 800))
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            // CG の原点は左下 = y 780 は画像の上端
+            context.fill(CGRect(x: 150, y: 780, width: 100, height: 20))
+        }
+        XCTAssertFalse(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
+    }
+
     private static func makePNG(width: Int, height: Int, draw: (CGContext) -> Void) -> Data {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(data: nil, width: width, height: height,

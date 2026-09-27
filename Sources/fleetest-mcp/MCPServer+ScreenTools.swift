@@ -30,6 +30,9 @@ extension MCPServer {
         // **待つのはホスト側の仕事**: エージェントに snapshot を撃ち直させると、待った
         // 回数だけ画面一覧が文脈に積まれる(1回あたり数千トークン)
         if let waitFor = args["waitFor"] as? String {
+            // 構文誤りはポーリングへ入る前に落とす(`waitFor "#"` は見つからないまま
+            // waitSeconds いっぱい振り切る — ft_scroll_to の selector と同じ形の穴)
+            _ = try Self.parseSelectorArgument(waitFor, argument: "waitFor")
             let seconds = try Self.doubleArgument(args, "waitSeconds") ?? Self.defaultWaitSeconds
             let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
                                                 first: snapshot, seconds: seconds,
@@ -413,6 +416,10 @@ extension MCPServer {
         let classifier = try Self.requiredStringArgument(args, "classifier")
         let label = try Self.requiredStringArgument(args, "label")
         if let issue = VisionSample.labelIssue(classifier: classifier, label: label) { throw MCPError(issue) }
+        // 構文検査はデバイスに触る前(ref/selector どちらを使うか決まるより先)
+        if let raw = args["selector"] as? String {
+            _ = try Self.parseSelectorArgument(raw, argument: "selector")
+        }
         let project = try ScenarioHost.project(named: args["project"] as? String)
         let d = try await driver(args)
         let element: ElementInfo
@@ -429,7 +436,7 @@ extension MCPServer {
             refNote = target.note
         } else if let selector = args["selector"] as? String {
             let snapshot = try await freshSnapshot(d, args: args)
-            let parsed = FTSelector.parse(selector)
+            let parsed = try Self.parseSelectorArgument(selector, argument: "selector")
             let step = FlowStep(assert: "exists", locator: parsed.primary,
                                 fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks)
             guard let (found, _) = StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) else {

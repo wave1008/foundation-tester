@@ -26,6 +26,21 @@ final class MCPOffscreenCoordinateGuardTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
     }
 
+    // MARK: - ft_pinch
+
+    /// ft_pinch の座標形だけが門を通さず、画面外の中心で「pinch done」を返していた(負荷テスト:
+    /// 実機 Pixel 4a で (-500,-800) が成功扱い。同じ座標の ft_tap は拒否)
+    func testRejectsOffscreenPinchCentreEvenBeforeASnapshot() async throws {
+        do {
+            _ = try await server.call(tool: "ft_pinch", args: ["x": -500.0, "y": -800.0, "scale": 0.5])
+            XCTFail("画面外の中心でピンチを撃ってはいけない")
+        } catch let error as MCPError {
+            XCTAssertTrue(error.localizedDescription.contains("outside the screen"),
+                          error.localizedDescription)
+        }
+        XCTAssertFalse(driver.calls.contains { $0.hasPrefix("pinch") }, "\(driver.calls)")
+    }
+
     // MARK: - ft_tap
 
     func testRejectsOffscreenTapWhenScreenIsKnown() async throws {

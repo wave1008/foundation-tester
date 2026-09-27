@@ -106,6 +106,9 @@ left. FM judges those. Where FM is unavailable, they pass unverified.
 - A short truncation that shows only the first few characters can fail: OCR may read `…` as a single
   dot, which does not count as an ellipsis.
 - A translucent overlay counts as visible as long as the text under it can be read.
+- When the screenshot is black everywhere except the bottom edge (the home indicator or navigation bar),
+  the picture was not captured or the display is frozen, so the check is skipped (the result JSON note
+  `blank-screenshot`).
 - Where FM is unavailable, shapes OCR cannot judge (the "FM decides" shape above) are not verified.
   `fleetest doctor --fm-only` tells you whether FM is available.
 

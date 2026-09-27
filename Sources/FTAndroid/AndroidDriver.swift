@@ -80,6 +80,12 @@ public final class AndroidDriver: AppDriver {
         self.serial = serial
     }
 
+    /// テスト用(偽の adb を差し込む)
+    init(serial: String?, adbPath: String) {
+        self.adbPath = adbPath
+        self.serial = serial
+    }
+
     public static func findADB() throws -> String {
         let candidates = [
             ProcessInfo.processInfo.environment["ANDROID_HOME"].map { $0 + "/platform-tools/adb" },
@@ -482,8 +488,9 @@ public final class AndroidDriver: AppDriver {
         // 立てたときだけ払う(採らなかった snapshot は keyboardShown == nil = 不明のまま)
         if captureKeyboardOnNextSnapshot {
             captureKeyboardOnNextSnapshot = false
-            if let dumpsys = try? adb(["shell", "dumpsys", "window", "windows"]).output {
-                snapshot.keyboardShown = AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys)
+            // 失敗(非 0)の出力を解析すると「出ていない」と確定してしまう = 不明(nil)のまま残す
+            if let dumpsys = try? adb(["shell", "dumpsys", "window", "windows"]), dumpsys.status == 0 {
+                snapshot.keyboardShown = AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys.output)
             }
         }
         return snapshot
@@ -537,8 +544,13 @@ public final class AndroidDriver: AppDriver {
     /// **BACK は出ていないときに撃つと画面が戻ってしまう**ため、必ず dumpsys で可視を確かめてから
     /// 撃つ(hideKeyboard は冪等が契約。出ていなければ no-op)
     public func hideKeyboard() async throws {
-        guard let dumpsys = try? adb(["shell", "dumpsys", "window", "windows"]).output,
-              AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys) else { return }
+        // **読めないを「出ていない」に畳まない**(台が居ない・adb が詰まった回に成功を返していた)
+        let dumpsys = try adb(["shell", "dumpsys", "window", "windows"])
+        guard dumpsys.status == 0 else {
+            throw DriverError.badResponse(status: Int(dumpsys.status),
+                body: "could not read whether the keyboard is showing (dumpsys window): \(dumpsys.tail)")
+        }
+        guard AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys.output) else { return }
         let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
@@ -1041,7 +1053,12 @@ public final class AndroidDriver: AppDriver {
     public func terminate() async throws {
         restoreStateIfNeeded()
         if let package = currentPackage {
-            _ = try adb(["shell", "am", "force-stop", package])
+            // 動いていないアプリの force-stop も 0 を返すので、非 0 は adb 自体の失敗(台が居ない等)
+            let result = try adb(["shell", "am", "force-stop", package])
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "failed to stop \(package): \(result.tail)")
+            }
             currentPackage = nil
             persistState()  // 消さないと別プロセスの再 terminate が古い package を force-stop する
         }

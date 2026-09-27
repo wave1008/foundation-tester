@@ -372,6 +372,9 @@ public struct BridgeProvisioner {
     /// モニターのタイルと通知へ出す `api start-device` / `start-all-devices` だけが渡す
     /// (run はログがそのまま実行ログビューに出る)
     let userAction: (@Sendable (String, DeviceUserAction?) -> Void)?
+    /// assignPort が候補ポートを弾くための判定(lsof を伴うので production は
+    /// `PortHolder.isHeldByAnotherDevice`。テストは注入して lsof を避ける)
+    let portHeldByAnotherDevice: @Sendable (UInt16, String) -> Bool
 
     /// run-lease / MCP の印 / RunnerSlownessStore が共有する棚
     var fleetestStateDir: URL { repoRoot.appendingPathComponent(".fleetest") }
@@ -379,10 +382,14 @@ public struct BridgeProvisioner {
     public init(repoRoot: URL,
                 portRange: ClosedRange<UInt16> =
                     BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31),
-                userAction: (@Sendable (String, DeviceUserAction?) -> Void)? = nil) {
+                userAction: (@Sendable (String, DeviceUserAction?) -> Void)? = nil,
+                portHeldByAnotherDevice: @escaping @Sendable (UInt16, String) -> Bool = {
+                    PortHolder.isHeldByAnotherDevice(port: $0, udid: $1)
+                }) {
         self.repoRoot = repoRoot
         self.portRange = portRange
         self.userAction = userAction
+        self.portHeldByAnotherDevice = portHeldByAnotherDevice
     }
 
     /// 1 デバイス・1 エンジン分の供給プラン。planBridge(副作用なし・await なし)が確定し、
@@ -853,7 +860,7 @@ public struct BridgeProvisioner {
             claimed.insert(stale.key)
             stopStalePort = stale.key
         }
-        let port = try assignPort(preferred: preferred, used: &usedPorts,
+        let port = try assignPort(preferred: preferred, used: &usedPorts, ownerUDID: sim.udid,
                                   ignoringPidFileFor: stopStalePort)
         claimed.insert(port)
         // in-app の新規起動には注入対象アプリの bundleID が要る。無ければ XCUITest に
@@ -1679,8 +1686,12 @@ public struct BridgeProvisioner {
     /// 2パスで探す(.pid のあるポートはどちらのパスでも常に除外)。
     /// ignoringPidFileFor: このポートだけ pid ファイルが残っていても空き扱いにする
     /// (停止予定の旧版 xcuitest ブリッジの「同ポート再起動」用。停止はプランニング後の
-    /// 並列実行フェーズで行われるため、プランニング時点では pid ファイルがまだ残っている)
-    func assignPort(preferred: UInt16?, used: inout Set<UInt16>,
+    /// 並列実行フェーズで行われるため、プランニング時点では pid ファイルがまだ残っている)。
+    /// ownerUDID: 今回このポートに供給しようとしているデバイス。**別レーンの in-app ブリッジは
+    /// /status に一瞬答えないと(背面に回った・負荷で遅い)`used`(稼働中スキャン)に乗らない**ので、
+    /// それだけでは空きに見える —— 採ってしまうと次の段の PortHolder.stopIfOwnedBridge が
+    /// その生きたブリッジを「残留」として kill する(実地の負荷テストで確認)
+    func assignPort(preferred: UInt16?, used: inout Set<UInt16>, ownerUDID: String,
                     ignoringPidFileFor: UInt16? = nil) throws -> UInt16 {
         func isPidFree(_ port: UInt16) -> Bool {
             port == ignoringPidFileFor
@@ -1701,22 +1712,31 @@ public struct BridgeProvisioner {
             FileManager.default.fileExists(atPath: InAppBridgeState.url(
                 stateDir: repoRoot.appendingPathComponent(".fleetest"), port: port).path)
         }
+        // lsof を伴うので他の判定が全部通った候補にだけ最後に評価する(&& は短絡評価)。
+        // ignoringPidFileFor の対象は常に同一デバイスの旧ブリッジ(planBridge が sameDevice で
+        // 絞ってから渡す)なのでバイパスは要らない —— 別デバイスと読めることはない
+        func isFreeOfOtherDevice(_ port: UInt16) -> Bool {
+            !portHeldByAnotherDevice(port, ownerUDID)
+        }
         // preferred も pid ファイル(=別ブリッジ稼働/stale)があれば honor しない(自動採番と同じ空き判定)。
         // .inapp のみは 2nd パス同様に許可(呼び出し元 planBridge が reclaimInApp で回収する)。
-        if let preferred, !used.contains(preferred), isPidFree(preferred), isIproxyFree(preferred) {
+        if let preferred, !used.contains(preferred), isPidFree(preferred), isIproxyFree(preferred),
+           isFreeOfOtherDevice(preferred) {
             used.insert(preferred)
             return preferred
         }
         // 1st パス: .pid も .inapp も無いポートを優先
         for port in portRange
-        where !used.contains(port) && isPidFree(port) && isIproxyFree(port) && !hasInApp(port) {
+        where !used.contains(port) && isPidFree(port) && isIproxyFree(port) && !hasInApp(port)
+            && isFreeOfOtherDevice(port) {
             used.insert(port)
             return port
         }
         // 2nd パス: .inapp のみ残るポートを許可(呼び出し元 planBridge が起動前に回収する)。
         // 「.inapp の存在=予約」にはしない: ウェッジした in-app ブリッジが採番範囲全部に
         // 残ることが実際にあり、予約扱いだと即 noFreePort で枯渇するため後回しにするだけに留める
-        for port in portRange where !used.contains(port) && isPidFree(port) && isIproxyFree(port) {
+        for port in portRange where !used.contains(port) && isPidFree(port) && isIproxyFree(port)
+            && isFreeOfOtherDevice(port) {
             used.insert(port)
             return port
         }
