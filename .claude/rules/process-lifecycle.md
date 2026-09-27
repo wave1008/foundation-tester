@@ -99,10 +99,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   中間物(CGImage / CGImageSource)を毎周作るのに pool が無く、**1 時間 15 分で 71 GB(≒ 55 GB/時)**
   溜めて物理 192 GB の Mac をメモリ不足にした(2026-09-22。`api monitor` の 630 MB/時 と同型だが
   **画像なので桁が2つ違う**)。**`sleep` は pool の外に置く**(待っている間 1 周ぶんを抱えない)。
-  ObjC のヘルパー(`fleetest-simstream` / `fleetest-androidstream` = `main.m`)は `@autoreleasepool` で
-  main 全体を囲む慣例で守られており、**欠けていたのは Swift の `main.swift` だけ**だった ——
-  Swift のトップレベルには pool が1つも無い。`StreamingHelperAutoreleaseScanTests` が
-  取り込みヘルパーの集合と「画像を作る行が pool の内側にあること」を固定する → maintainer-notes §43。
+  ObjC のヘルパー(`fleetest-simstream` / `fleetest-androidstream` = `main.m`)の main を囲む pool は
+  **戻らない `dispatch_main()` も囲むので一度も空にならない** —— フレームは gQueue(GCD)の上で処理され、
+  暗黙の pool はキューが空になるまで空かないので、**1フレームごとに入る関数の本体を pool で始める**
+  (Swift のトップレベルには pool が1つも無い。どちらの言語も区切りは自分で置く)。`StreamingHelperAutoreleaseScanTests` が
+  取り込みヘルパーの集合と「画像を作る行が pool の内側にあること」(ObjC は1フレームごとの関数を名前で固定)を固定する → maintainer-notes §43。
   **グループの残存は直接の子の終了と独立に見る**(Codex 指摘 2026-09-06: 子が SIGTERM で素直に
   終わっても `trap '' TERM` の孫は残る。猶予が尽きたら `killpg(pgid, 0)` で残りを確かめ SIGKILL)。
   witness は `ShellTimeoutTests` の孫3本

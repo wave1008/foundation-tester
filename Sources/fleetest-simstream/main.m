@@ -213,31 +213,34 @@ static NSData *ftEncodeJPEG(CIImage *ci, IOSurfaceRef s) {
 
 // gQueue 上でのみ呼ぶこと(CIContext・gLastEmit・gTrailingArmed の直列性が前提)。
 static void ftEmitNow(void) {
-    id so = ftMsg0(gDesc, "framebufferSurface");
-    if (!so) return;  // 起動直後などまだサーフェス未生成。次のトリガ待ち
-    IOSurfaceRef s = (__bridge IOSurfaceRef)so;
-    if (!ftSurfaceUsable(s)) return;
-    CVPixelBufferRef pb = NULL;
-    if (CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, s, NULL, &pb) != kCVReturnSuccess || !pb) {
-        ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
-        return;
+    // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
+    @autoreleasepool {
+        id so = ftMsg0(gDesc, "framebufferSurface");
+        if (!so) return;  // 起動直後などまだサーフェス未生成。次のトリガ待ち
+        IOSurfaceRef s = (__bridge IOSurfaceRef)so;
+        if (!ftSurfaceUsable(s)) return;
+        CVPixelBufferRef pb = NULL;
+        if (CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, s, NULL, &pb) != kCVReturnSuccess || !pb) {
+            ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
+            return;
+        }
+        CIImage *ci = [CIImage imageWithCVPixelBuffer:pb];
+        size_t w = IOSurfaceGetWidth(s);
+        size_t h = IOSurfaceGetHeight(s);
+        uint16_t outW = (uint16_t)w;
+        uint16_t outH = (uint16_t)h;
+        if (gMaxWidth > 0 && (size_t)gMaxWidth < w) {
+            double scale = (double)gMaxWidth / (double)w;
+            ci = [ci imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+            outW = (uint16_t)llround((double)w * scale);
+            outH = (uint16_t)llround((double)h * scale);
+        }
+        NSData *jpeg = ftEncodeJPEG(ci, s);
+        CVPixelBufferRelease(pb);
+        if (!jpeg) return;
+        ftWriteFrame(jpeg, outW, outH);
+        gLastEmit = ftNow();
     }
-    CIImage *ci = [CIImage imageWithCVPixelBuffer:pb];
-    size_t w = IOSurfaceGetWidth(s);
-    size_t h = IOSurfaceGetHeight(s);
-    uint16_t outW = (uint16_t)w;
-    uint16_t outH = (uint16_t)h;
-    if (gMaxWidth > 0 && (size_t)gMaxWidth < w) {
-        double scale = (double)gMaxWidth / (double)w;
-        ci = [ci imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-        outW = (uint16_t)llround((double)w * scale);
-        outH = (uint16_t)llround((double)h * scale);
-    }
-    NSData *jpeg = ftEncodeJPEG(ci, s);
-    CVPixelBufferRelease(pb);
-    if (!jpeg) return;
-    ftWriteFrame(jpeg, outW, outH);
-    gLastEmit = ftNow();
 }
 
 #pragma mark - H.264 encode (--codec h264)
@@ -314,57 +317,60 @@ static void ftEnsureCompressionSession(size_t w, size_t h) {
 // gQueue上で呼ぶこと(ftWriteAllの直列性が前提)。AVCCの長さプレフィックス(NALUnitHeaderLength
 // バイト)をAnnex-Bの4バイト開始コードへ変換し、キーフレームはSPS+PPSを前置してv2で書き出す。
 static void ftHandleEncodedSample(CMSampleBufferRef sampleBuffer) {
-    CMFormatDescriptionRef fmt = CMSampleBufferGetFormatDescription(sampleBuffer);
-    if (!fmt) return;
-    CMVideoDimensions dims = CMVideoFormatDescriptionGetDimensions(fmt);
+    // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
+    @autoreleasepool {
+        CMFormatDescriptionRef fmt = CMSampleBufferGetFormatDescription(sampleBuffer);
+        if (!fmt) return;
+        CMVideoDimensions dims = CMVideoFormatDescriptionGetDimensions(fmt);
 
-    BOOL keyframe = YES;
-    CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, false);
-    if (attachments && CFArrayGetCount(attachments) > 0) {
-        CFDictionaryRef a = (CFDictionaryRef)CFArrayGetValueAtIndex(attachments, 0);
-        keyframe = !CFDictionaryContainsKey(a, kCMSampleAttachmentKey_NotSync);
-    }
-
-    static const uint8_t kStartCode[4] = {0, 0, 0, 1};
-    NSMutableData *annexB = [NSMutableData data];
-    int nalHeaderLen = 4;
-    size_t paramCount = 0;
-    CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fmt, 0, NULL, NULL, &paramCount, &nalHeaderLen);
-    if (keyframe) {
-        for (size_t i = 0; i < paramCount; i++) {
-            const uint8_t *ps = NULL;
-            size_t psLen = 0;
-            if (CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fmt, i, &ps, &psLen, NULL, NULL) != noErr) continue;
-            [annexB appendBytes:kStartCode length:4];
-            [annexB appendBytes:ps length:psLen];
+        BOOL keyframe = YES;
+        CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, false);
+        if (attachments && CFArrayGetCount(attachments) > 0) {
+            CFDictionaryRef a = (CFDictionaryRef)CFArrayGetValueAtIndex(attachments, 0);
+            keyframe = !CFDictionaryContainsKey(a, kCMSampleAttachmentKey_NotSync);
         }
-    }
 
-    CMBlockBufferRef bb = CMSampleBufferGetDataBuffer(sampleBuffer);
-    size_t totalLen = bb ? CMBlockBufferGetDataLength(bb) : 0;
-    if (bb && totalLen > 0) {
-        uint8_t *raw = malloc(totalLen);
-        if (raw) {
-            if (CMBlockBufferCopyDataBytes(bb, 0, totalLen, raw) == kCMBlockBufferNoErr) {
-                size_t offset = 0;
-                while (offset + (size_t)nalHeaderLen <= totalLen) {
-                    uint32_t nalLen = 0;
-                    for (int i = 0; i < nalHeaderLen; i++) nalLen = (nalLen << 8) | raw[offset + i];
-                    offset += (size_t)nalHeaderLen;
-                    if (offset + nalLen > totalLen) break;
-                    [annexB appendBytes:kStartCode length:4];
-                    [annexB appendBytes:raw + offset length:nalLen];
-                    offset += nalLen;
-                }
-            } else {
-                fprintf(stderr, "warning: CMBlockBufferCopyDataBytes failed\n");
+        static const uint8_t kStartCode[4] = {0, 0, 0, 1};
+        NSMutableData *annexB = [NSMutableData data];
+        int nalHeaderLen = 4;
+        size_t paramCount = 0;
+        CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fmt, 0, NULL, NULL, &paramCount, &nalHeaderLen);
+        if (keyframe) {
+            for (size_t i = 0; i < paramCount; i++) {
+                const uint8_t *ps = NULL;
+                size_t psLen = 0;
+                if (CMVideoFormatDescriptionGetH264ParameterSetAtIndex(fmt, i, &ps, &psLen, NULL, NULL) != noErr) continue;
+                [annexB appendBytes:kStartCode length:4];
+                [annexB appendBytes:ps length:psLen];
             }
-            free(raw);
         }
-    }
 
-    ftWriteH264AU(annexB, keyframe, (uint16_t)dims.width, (uint16_t)dims.height);
-    gEncodeFailures = 0;  // 1本書けたらセッションは生きている
+        CMBlockBufferRef bb = CMSampleBufferGetDataBuffer(sampleBuffer);
+        size_t totalLen = bb ? CMBlockBufferGetDataLength(bb) : 0;
+        if (bb && totalLen > 0) {
+            uint8_t *raw = malloc(totalLen);
+            if (raw) {
+                if (CMBlockBufferCopyDataBytes(bb, 0, totalLen, raw) == kCMBlockBufferNoErr) {
+                    size_t offset = 0;
+                    while (offset + (size_t)nalHeaderLen <= totalLen) {
+                        uint32_t nalLen = 0;
+                        for (int i = 0; i < nalHeaderLen; i++) nalLen = (nalLen << 8) | raw[offset + i];
+                        offset += (size_t)nalHeaderLen;
+                        if (offset + nalLen > totalLen) break;
+                        [annexB appendBytes:kStartCode length:4];
+                        [annexB appendBytes:raw + offset length:nalLen];
+                        offset += nalLen;
+                    }
+                } else {
+                    fprintf(stderr, "warning: CMBlockBufferCopyDataBytes failed\n");
+                }
+                free(raw);
+            }
+        }
+
+        ftWriteH264AU(annexB, keyframe, (uint16_t)dims.width, (uint16_t)dims.height);
+        gEncodeFailures = 0;  // 1本書けたらセッションは生きている
+    }
 }
 
 // VTの出力コールバックはgQueueとは別スレッドから来る。書き込みの直列性を保つためgQueueへhopする。
@@ -386,27 +392,30 @@ static void ftCompressionOutputCB(void *outputCallbackRefCon, void *sourceFrameR
 
 // gQueue 上でのみ呼ぶこと(ftEnsureCompressionSession/VTCompressionSessionEncodeFrame の直列性が前提)。
 static void ftEmitNowH264(void) {
-    id so = ftMsg0(gDesc, "framebufferSurface");
-    if (!so) return;  // 起動直後などまだサーフェス未生成。次のトリガ待ち
-    IOSurfaceRef s = (__bridge IOSurfaceRef)so;
-    if (!ftSurfaceUsable(s)) return;
-    CVPixelBufferRef pb = NULL;
-    if (CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, s, NULL, &pb) != kCVReturnSuccess || !pb) {
-        ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
-        return;
-    }
-    size_t w = IOSurfaceGetWidth(s);
-    size_t h = IOSurfaceGetHeight(s);
-    ftEnsureCompressionSession(w, h);
-    if (gCompSession) {
-        CMTime pts = CMTimeMakeWithSeconds(CACurrentMediaTime(), 90000);
-        OSStatus st = VTCompressionSessionEncodeFrame(gCompSession, pb, pts, kCMTimeInvalid, NULL, NULL, NULL);
-        if (st != noErr) {
-            fprintf(stderr, "warning: VTCompressionSessionEncodeFrame failed status=%d\n", (int)st);
-            ftNoteEncodeFailure(gCompGeneration, st);  // 既に gQueue 上
+    // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
+    @autoreleasepool {
+        id so = ftMsg0(gDesc, "framebufferSurface");
+        if (!so) return;  // 起動直後などまだサーフェス未生成。次のトリガ待ち
+        IOSurfaceRef s = (__bridge IOSurfaceRef)so;
+        if (!ftSurfaceUsable(s)) return;
+        CVPixelBufferRef pb = NULL;
+        if (CVPixelBufferCreateWithIOSurface(kCFAllocatorDefault, s, NULL, &pb) != kCVReturnSuccess || !pb) {
+            ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
+            return;
         }
+        size_t w = IOSurfaceGetWidth(s);
+        size_t h = IOSurfaceGetHeight(s);
+        ftEnsureCompressionSession(w, h);
+        if (gCompSession) {
+            CMTime pts = CMTimeMakeWithSeconds(CACurrentMediaTime(), 90000);
+            OSStatus st = VTCompressionSessionEncodeFrame(gCompSession, pb, pts, kCMTimeInvalid, NULL, NULL, NULL);
+            if (st != noErr) {
+                fprintf(stderr, "warning: VTCompressionSessionEncodeFrame failed status=%d\n", (int)st);
+                ftNoteEncodeFailure(gCompGeneration, st);  // 既に gQueue 上
+            }
+        }
+        CVPixelBufferRelease(pb);
     }
-    CVPixelBufferRelease(pb);
 }
 
 static void ftEmitCurrent(void) {

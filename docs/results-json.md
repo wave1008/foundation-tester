@@ -36,7 +36,7 @@ run の**完了後に、別プロセスの背景で**保持容量の掃除が走
 |---|---|---|---|---|
 | `deviceCaptures` | シミュレータ内の XCUITest 添付(Apple の仕組みが勝手に撮る録画・スクショ) | ブリッジのセッション | 2 GiB | 1 GiB |
 | `recordings` | fleetest の録画 `results/runs/<月>/<runID>/recordings/` | run 1件 | 50 GiB | 2 GiB |
-| `reports` | `<project>/reports/` の `.md` と `.png` | 日 1件 | 2000 MiB | 100 MiB |
+| `reports` | `<project>/reports/` と、実行プロファイルの `reportDir` が指す置き場の `.md`・`.png`・`.failure.json`(直下の `scenario-<日付>-…` の命名に合うものだけ。1回きりの `--report-dir` は記録が無いので見ない) | 日 1件 | 2000 MiB | 100 MiB |
 | `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 100 MiB | 10 MiB |
 | `xcresult` | `<repoRoot>/.fleetest/xcresult/`(XCUITest ランナーの結果の束) | 束1つ(起動1回ぶん) | 5 GiB | 1 GiB |
 
@@ -44,7 +44,8 @@ run の**完了後に、別プロセスの背景で**保持容量の掃除が走
 最小値へ引き上げて送る)。定義元は `RetentionPolicy.min…`、拡張へは `api retention` の `minimums` で渡す。
 実効値(掃除が使う値)は設定ファイルの値を引き上げない。
 
-**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json` は残るので、
+**結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json`、
+`host-metrics.ndjson`(1本の上限 16 MB・超えたら `.1` へ1回だけ回す = 1 run 最大 32 MB)は残るので、
 フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
 `reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
 存在を確かめてから開く)。

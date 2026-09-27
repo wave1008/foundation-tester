@@ -230,6 +230,8 @@ export function registerMonitorPanel(
  * 生成経路は registerMonitorPanel のみ(シングルトン方針は変えない)。 */
 export class MonitorPanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
+  /** refreshResidentProcesses の実行中か(1秒ごとの要求を重ねない) */
+  private residentRefreshInFlight = false;
   private readonly deps: MonitorPanelDeps;
   private readonly processManager: MonitorProcessManager;
   private readonly profiles: MonitorProfilesController;
@@ -1484,7 +1486,9 @@ export class MonitorPanelController implements vscode.Disposable {
   private async listResidentProcesses(simulatorNames: Record<string, string> = {}): Promise<ResidentProcess[]> {
     const [stdout, inappBridges, androidBridges] = await Promise.all([
       new Promise<string>((resolve) => {
-        execFile("ps", ["-axo", "pid=,ppid=,state=,command="], { maxBuffer: 8 * 1024 * 1024, env: childEnv() }, (err, out) => {
+        // timeout: 固まった ps で1秒ごとの更新が永久に止まらないように(ps は通常 0.1 秒未満。
+        // 失敗は空 = 掃除の経路では「何も止めない」側に倒れる)
+        execFile("ps", ["-axo", "pid=,ppid=,state=,command="], { maxBuffer: 8 * 1024 * 1024, env: childEnv(), timeout: 5000 }, (err, out) => {
           resolve(err ? "" : out);
         });
       }),
@@ -1544,9 +1548,20 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   private async refreshResidentProcesses(): Promise<void> {
-    await this.ensureSimulatorNames();
-    const items = await this.listResidentProcesses(this.simulatorNames);
-    this.post({ type: "residentProcesses", items, ts: Date.now() });
+    // webview は1秒ごとに頼むが、1回は ps + adb(シリアルごと最大4秒)で1秒を超えうる。
+    // 走っている間の要求は捨てる(次の tick がまた頼む)—— 重ねると adb が遅いとき ps/adb が
+    // 同時に何組も走る。パネルが他のタブの裏で見えない間も webview は生きて頼み続けるので断る
+    if (this.residentRefreshInFlight || !this.panel?.visible) {
+      return;
+    }
+    this.residentRefreshInFlight = true;
+    try {
+      await this.ensureSimulatorNames();
+      const items = await this.listResidentProcesses(this.simulatorNames);
+      this.post({ type: "residentProcesses", items, ts: Date.now() });
+    } finally {
+      this.residentRefreshInFlight = false;
+    }
   }
 
   /** fleetest CLI を1回実行して完了(または 120s タイムアウト)まで待つ。exitCode は呼び手が見る

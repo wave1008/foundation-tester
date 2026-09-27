@@ -62,12 +62,12 @@ final class StreamingHelperAutoreleaseScanTests: XCTestCase {
             for case let url as URL in files where ["swift", "m"].contains(url.pathExtension) {
                 let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
                 let code = lines.map { $0.components(separatedBy: "//")[0] }
-                // ObjC は `main` 全体を `@autoreleasepool` で囲むのが慣例なので、ファイルに1つあれば足りる
+                // ObjC: `main` を囲む pool は戻らない `dispatch_main()` も囲むので**一度も空にならない**。
+                // フレームの処理は gQueue(GCD)の上で、暗黙の pool はキューが空になるまで空かない。
+                // だから1フレームごとに入る関数の本体を pool で始める(下の objcFrameEntries)
                 if url.pathExtension == "m" {
-                    if !code.contains(where: { $0.contains("@autoreleasepool") }) {
-                        offenders.append("\(helper)/\(url.lastPathComponent) (@autoreleasepool が無い)")
-                    }
                     captures += 1
+                    offenders += Self.objcOffenders(helper: helper, file: url.lastPathComponent, code: code)
                     continue
                 }
                 for (index, line) in code.enumerated() where line.contains("ImageDownscale.") {
@@ -84,5 +84,54 @@ final class StreamingHelperAutoreleaseScanTests: XCTestCase {
                        "1周ごとに作る画像を autoreleasepool の外で作っている(抜けないループでは1枚も"
                        + "解放されない。2026-09-22: devicepoll が 55 GB/時): "
                        + offenders.joined(separator: ", "))
+    }
+
+    /// ObjC ヘルパーで**1フレームごとに入る関数**。本体の最初の文が `@autoreleasepool` であること。
+    /// 増えたら足す(画像を作る行がこの外にあると下の走査が落とす)
+    private static let objcFrameEntries: [String: Set<String>] = [
+        "fleetest-simstream": ["ftEmitNow", "ftEmitNowH264", "ftHandleEncodedSample"],
+        "fleetest-androidstream": ["ftEncodeAndEmit", "processChunk"],
+    ]
+
+    /// 1フレームごとに作る autoreleased な画像の目印(CIImage を CVBuffer から作る呼び出し)
+    private static let objcFrameImageMarkers = ["imageWithCVPixelBuffer", "imageWithCVImageBuffer"]
+
+    static func objcOffenders(helper: String, file: String, code: [String]) -> [String] {
+        var offenders: [String] = []
+        let entries = objcFrameEntries[helper] ?? []
+        /// `static <型> name(` の定義行(前方宣言 `;` は除く)
+        func definition(of line: String) -> String? {
+            guard line.hasPrefix("static "), !line.trimmingCharacters(in: .whitespaces).hasSuffix(";"),
+                  let paren = line.firstIndex(of: "(") else { return nil }
+            return line[..<paren].split(whereSeparator: { $0 == " " || $0 == "*" }).last.map(String.init)
+        }
+        var found: Set<String> = []
+        for (index, line) in code.enumerated() {
+            guard let name = definition(of: line), entries.contains(name) else { continue }
+            found.insert(name)
+            let firstStatement = code[(index + 1)...].first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+            if firstStatement?.trimmingCharacters(in: .whitespaces).hasPrefix("@autoreleasepool") != true {
+                offenders.append("\(helper)/\(file):\(index + 1) \(name) の本体が @autoreleasepool で始まらない")
+            }
+        }
+        for missing in entries.subtracting(found).sorted() {
+            offenders.append("\(helper)/\(file): \(missing) が見つからない(改名したら objcFrameEntries も直す)")
+        }
+        for (index, line) in code.enumerated() {
+            if objcFrameImageMarkers.contains(where: { line.contains($0) }) {
+                let owner = code[...index].reversed().lazy.compactMap(definition).first
+                if !(owner.map(entries.contains) ?? false) {
+                    offenders.append("\(helper)/\(file):\(index + 1) 1フレームごとの画像を"
+                        + " objcFrameEntries の外(\(owner ?? "?"))で作っている")
+                }
+            }
+            if line.contains(".availableData") {
+                let window = code[max(0, index - 2)..<index]
+                if !window.contains(where: { $0.contains("@autoreleasepool") }) {
+                    offenders.append("\(helper)/\(file):\(index + 1) availableData が @autoreleasepool の外")
+                }
+            }
+        }
+        return offenders
     }
 }

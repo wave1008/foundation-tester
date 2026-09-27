@@ -206,6 +206,8 @@ settings, so they also apply to tests you run directly from a terminal.
 - **"Clean up now"**: deletes right away using the same rule. Before deleting, a confirmation
   dialog shows the total that will be removed.
 - Result records (the pass/fail and timing JSON) are never deleted.
+- Reports are also cleaned up in the output folder a run profile sets with `reportDir`. A folder
+  given once with the command's `--report-dir` is not cleaned up.
 
 ### iOS Simulator wallpaper cache (CLI only)
 

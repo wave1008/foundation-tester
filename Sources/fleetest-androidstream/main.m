@@ -131,21 +131,24 @@ static NSData *ftEncodeJPEG(CIImage *ci) {
 
 // gQueue上でのみ呼ぶこと(gLatest/gLastEmit/gTrailingArmedの直列性が前提)。
 static void ftEncodeAndEmit(void) {
-    CVImageBufferRef img = gLatest;
-    if (!img) return;
-    CIImage *ci = [CIImage imageWithCVImageBuffer:img];
-    size_t w = CVPixelBufferGetWidth(img), h = CVPixelBufferGetHeight(img);
-    uint16_t outW = (uint16_t)w, outH = (uint16_t)h;
-    if (gMaxWidth > 0 && (size_t)gMaxWidth < w) {
-        double scale = (double)gMaxWidth / (double)w;
-        ci = [ci imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
-        outW = (uint16_t)llround((double)w * scale);
-        outH = (uint16_t)llround((double)h * scale);
+    // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
+    @autoreleasepool {
+        CVImageBufferRef img = gLatest;
+        if (!img) return;
+        CIImage *ci = [CIImage imageWithCVImageBuffer:img];
+        size_t w = CVPixelBufferGetWidth(img), h = CVPixelBufferGetHeight(img);
+        uint16_t outW = (uint16_t)w, outH = (uint16_t)h;
+        if (gMaxWidth > 0 && (size_t)gMaxWidth < w) {
+            double scale = (double)gMaxWidth / (double)w;
+            ci = [ci imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
+            outW = (uint16_t)llround((double)w * scale);
+            outH = (uint16_t)llround((double)h * scale);
+        }
+        NSData *jpeg = ftEncodeJPEG(ci);
+        if (!jpeg) return;
+        ftWriteFrame(jpeg, outW, outH);
+        gLastEmit = ftNow();
     }
-    NSData *jpeg = ftEncodeJPEG(ci);
-    if (!jpeg) return;
-    ftWriteFrame(jpeg, outW, outH);
-    gLastEmit = ftNow();
 }
 
 // デコード済みフレームはfps間隔でスロットルしてencode+emit(60fps超で来ても間引く)。
@@ -262,20 +265,23 @@ static long findStart(const uint8_t *d, long n, long from) {
 
 // gQueue上でのみ呼ぶこと(gBufの直列性が前提。adbの readabilityHandler からdispatch_asyncで入る)。
 static void processChunk(NSData *chunk) {
-    [gBuf appendData:chunk];
-    const uint8_t *d = gBuf.bytes; long n = gBuf.length;
-    long first = findStart(d, n, 0);
-    if (first < 0) return;
-    long nalStart = first + 3;
-    long consumed = first;
-    for (;;) {
-        long next = findStart(d, n, nalStart);
-        if (next < 0) break; // 現在のNALは未完(続きを待つ)
-        handleNAL(d + nalStart, next - nalStart);
-        consumed = next;
-        nalStart = next + 3;
+    // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
+    @autoreleasepool {
+        [gBuf appendData:chunk];
+        const uint8_t *d = gBuf.bytes; long n = gBuf.length;
+        long first = findStart(d, n, 0);
+        if (first < 0) return;
+        long nalStart = first + 3;
+        long consumed = first;
+        for (;;) {
+            long next = findStart(d, n, nalStart);
+            if (next < 0) break; // 現在のNALは未完(続きを待つ)
+            handleNAL(d + nalStart, next - nalStart);
+            consumed = next;
+            nalStart = next + 3;
+        }
+        if (consumed > 0) [gBuf replaceBytesInRange:NSMakeRange(0, consumed) withBytes:NULL length:0];
     }
-    if (consumed > 0) [gBuf replaceBytesInRange:NSMakeRange(0, consumed) withBytes:NULL length:0];
 }
 
 #pragma mark - adb path resolution
@@ -289,9 +295,12 @@ static NSData *ftReadOutputWithTimeout(NSTask *task, NSPipe *pipe, NSTimeInterva
     NSMutableData *buffer = [NSMutableData data];
     dispatch_semaphore_t done = dispatch_semaphore_create(0);
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        NSData *chunk;
-        while ((chunk = reader.availableData).length > 0) {
-            @synchronized (buffer) { [buffer appendData:chunk]; }
+        for (;;) {
+            @autoreleasepool {
+                NSData *chunk = reader.availableData;
+                if (chunk.length == 0) break;
+                @synchronized (buffer) { [buffer appendData:chunk]; }
+            }
         }
         dispatch_semaphore_signal(done);
     });
@@ -474,24 +483,28 @@ int main(int argc, char **argv) {
 
     NSFileHandle *outHandle = outPipe.fileHandleForReading;
     outHandle.readabilityHandler = ^(NSFileHandle *h) {
-        NSData *chunk = h.availableData;
-        if (chunk.length == 0) return; // EOF自体はtask終了として terminationHandler 側で扱う
-        dispatch_async(gQueue, ^{ processChunk(chunk); });
+        @autoreleasepool {  // availableData は autoreleased(AvailableDataAutoreleaseScanTests と同じ規律)
+            NSData *chunk = h.availableData;
+            if (chunk.length == 0) return; // EOF自体はtask終了として terminationHandler 側で扱う
+            dispatch_async(gQueue, ^{ processChunk(chunk); });
+        }
     };
 
     __block NSString *errTail = @"";
     NSFileHandle *errHandle = errPipe.fileHandleForReading;
     errHandle.readabilityHandler = ^(NSFileHandle *h) {
-        NSData *chunk = h.availableData;
-        if (chunk.length == 0) return;
-        NSString *text = [[NSString alloc] initWithData:chunk encoding:NSUTF8StringEncoding];
-        if (text.length == 0) return;
-        NSString *combined = [errTail stringByAppendingString:text];
-        NSArray<NSString *> *lines = [combined componentsSeparatedByString:@"\n"];
-        errTail = lines.lastObject ?: @"";
-        NSUInteger completeCount = lines.count - 1;
-        for (NSUInteger i = 0; i < completeCount; i++) {
-            fprintf(stderr, "[adb] %s\n", lines[i].UTF8String);
+        @autoreleasepool {
+            NSData *chunk = h.availableData;
+            if (chunk.length == 0) return;
+            NSString *text = [[NSString alloc] initWithData:chunk encoding:NSUTF8StringEncoding];
+            if (text.length == 0) return;
+            NSString *combined = [errTail stringByAppendingString:text];
+            NSArray<NSString *> *lines = [combined componentsSeparatedByString:@"\n"];
+            errTail = lines.lastObject ?: @"";
+            NSUInteger completeCount = lines.count - 1;
+            for (NSUInteger i = 0; i < completeCount; i++) {
+                fprintf(stderr, "[adb] %s\n", lines[i].UTF8String);
+            }
         }
     };
 
