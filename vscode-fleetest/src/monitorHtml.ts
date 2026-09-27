@@ -938,6 +938,12 @@ function renderSettingsPanel(): string {
             <span class="settings-unit">GB</span>
             <span id="settings-cleanup-recordings-usage" class="settings-hint settings-cleanup-usage"></span>
           </label>
+          <label class="settings-item settings-cleanup-row" for="settings-cleanup-event-logs" title="${t("panels.settings.cleanupEventLogsTooltip")}">
+            <span>${t("panels.settings.cleanupEventLogsLabel")}</span>
+            <input type="number" id="settings-cleanup-event-logs" class="settings-number settings-cleanup-number" min="0" step="any">
+            <span class="settings-unit">GB</span>
+            <span id="settings-cleanup-event-logs-usage" class="settings-hint settings-cleanup-usage"></span>
+          </label>
           <label class="settings-item settings-cleanup-row" for="settings-cleanup-reports" title="${t("panels.settings.cleanupReportsTooltip")}">
             <span>${t("panels.settings.cleanupReportsLabel")}</span>
             <input type="number" id="settings-cleanup-reports" class="settings-number settings-cleanup-number" min="0" step="any">

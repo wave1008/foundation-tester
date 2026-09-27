@@ -356,6 +356,12 @@ public enum ScenarioHost {
             ? ScenarioRecordBuilder(scenarioID: scenarioID, platform: connection.platform,
                                     title: recording?.title, worker: recording?.worker)
             : nil
+        // シナリオ単位の実行ログ(events/<fileBase>.ndjson)。builder と同じゲート(recording != nil
+        // かつ dry-run でない)で作る —— 両方が同時に nil/non-nil であることに、下の3箇所の
+        // `if let recording, let builder { … eventLog?.finish(…) }` が依存する。
+        // **FT_EVENT_LOG_PATH / EventLogAppender(下のベンチ用)とは無関係の別物**
+        let eventLog: ScenarioEventLog? = (dryRun ? nil : recording)
+            .flatMap { ScenarioEventLog.start(runDir: $0.recorder.runDir) }
         let emit: (ScenarioEvent) -> Void = { event in
             builder?.consume(event)
             onEvent(event)
@@ -365,27 +371,34 @@ public enum ScenarioHost {
         // 子は1行も出さないので、失敗ステップ + scenarioFinished(passed:false) を合成して通常の
         // 失敗と同じ経路(builder → recorder / LastResultsStore)へ流す。**failureKind は付けない**
         // —— ドライバにもアプリにも触っていない失敗で、既存の種別(driver-unreachable 等)は
-        // どれも事実と違う(結果 JSON は事実だけ。言えないときは欄ごと省く)
+        // どれも事実と違う(結果 JSON は事実だけ。言えないときは欄ごと省く)。
+        // ここで合成する3イベントは子の stdout 由来ではない(まだ子すら起きていない)ので
+        // eventLog へは stream:"host" で書く(appendStdout との二重書きにはならない)
         let abortBeforeLaunch: (String) -> Bool = { reason in
-            emit(.log("❌ \(reason)"))
+            let logEvent = ScenarioEvent.log("❌ \(reason)")
+            eventLog?.appendHost(logEvent)
+            emit(logEvent)
             var step = ScenarioEvent(kind: "step")
             step.scenario = scenarioID
             step.index = 0
             step.status = "failed"
             step.description = reason
+            eventLog?.appendHost(step)
             emit(step)
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.scenario = scenarioID
             finished.passed = false
+            eventLog?.appendHost(finished)
             emit(finished)
             if !dryRun {
                 LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
                                         profile: settings.profileName)
             }
             if let recording, let builder {
-                recording.recorder.record(builder.build(
+                let fileName = recording.recorder.record(builder.build(
                     passed: false, timedOut: false, startedAt: startedAt,
                     durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
+                eventLog?.finish(fileBase: fileName)
             }
             return false
         }
@@ -510,11 +523,14 @@ public enum ScenarioHost {
             }
         }
 
-        // stderr は並行して読む(パイプ詰まりによるサブプロセスのブロック防止)
+        // stderr は並行して読む(パイプ詰まりによるサブプロセスのブロック防止)。
+        // eventLog への書き込みは届いた時点で行う(最後にまとめて emit する errLines とは別経路 ——
+        // あちらは ⚠️ を付けて onEvent/builder へ流すための整形済みコピーで、ここは生の到着記録)
         let stderrTask = Task.detached { () -> [String] in
             var lines: [String] = []
             for await line in lineStream(stderr.fileHandleForReading) {
                 lines.append(line)
+                if !line.isEmpty { eventLog?.appendStderr(line) }
             }
             return lines
         }
@@ -532,6 +548,9 @@ public enum ScenarioHost {
             if !line.isEmpty, eventLogEnabled {
                 await EventLogAppender.shared.append(line)
             }
+            // 子の stdout の生の1行は、kind 別の分岐(installRequest/deadlineExclusion は
+            // onEvent へ出ない)に関わらず必ず記録する —— events/*.ndjson は分岐前の生の到着記録
+            if !line.isEmpty { eventLog?.appendStdout(line) }
             if let event = ScenarioEvent.decode(line: line) {
                 if event.kind == "installRequest" {
                     await handleInstallRequest(event, installHandler: installHandler, stdinPipe: stdinPipe)
@@ -574,19 +593,23 @@ public enum ScenarioHost {
         // 合成 scenarioFinished(passed:false) を emit で流し、通常失敗と同じ経路で集計・
         // モニタ表示させる(戻り値も false)。レポート(.md)は子専管のため書かない=クラッシュ相当。
         if timedOut, let watchdogSeconds {
-            emit(.log("⏱ The scenario exceeded \(watchdogSeconds)s and was killed"))
+            let logEvent = ScenarioEvent.log("⏱ The scenario exceeded \(watchdogSeconds)s and was killed")
+            eventLog?.appendHost(logEvent)
+            emit(logEvent)
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.scenario = scenarioID
             finished.passed = false
+            eventLog?.appendHost(finished)
             emit(finished)
             if !dryRun {
                 LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
                                         profile: settings.profileName)
             }
             if let recording, let builder {
-                recording.recorder.record(builder.build(
+                let fileName = recording.recorder.record(builder.build(
                     passed: false, timedOut: true, startedAt: startedAt,
                     durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
+                eventLog?.finish(fileBase: fileName)
             }
             return false
         }
@@ -598,9 +621,10 @@ public enum ScenarioHost {
                                     profile: settings.profileName)
         }
         if let recording, let builder {
-            recording.recorder.record(builder.build(
+            let fileName = recording.recorder.record(builder.build(
                 passed: result, timedOut: false, startedAt: startedAt,
                 durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
+            eventLog?.finish(fileBase: fileName)
         }
         return result
     }

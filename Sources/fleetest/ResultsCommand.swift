@@ -19,6 +19,7 @@ struct ResultsCommand: AsyncParsableCommand {
             ResultsDevicesCommand.self,
             ResultsSlowCommand.self,
             ResultsInsightsCommand.self,
+            ResultsLogCommand.self,
         ])
 }
 

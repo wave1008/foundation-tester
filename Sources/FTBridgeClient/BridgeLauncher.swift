@@ -28,6 +28,10 @@ public struct BridgeLauncher {
     }
     // ポート別に分離(複数ブリッジ=複数シミュレータの並列運用のため)
     var logPath: URL { stateDir.appendingPathComponent("bridge-\(port).log") }
+    /// 直前の起動試行のログ(`startDetached` が作り直す前に退避する。読むのは人間の事後調査だけ
+    /// —— `waitUntilReady` / `IOSDeviceTransport` の診断は `logPath` の固定名しか読まないので、
+    /// この名前を読みに行くコードを新設しないこと)
+    var prevLogPath: URL { stateDir.appendingPathComponent("bridge-\(port).prev.log") }
     var pidPath: URL { stateDir.appendingPathComponent("bridge-\(port).pid") }
     /// `test-without-building` の結果の束。**ポートごとに1つを固定し、起動のたびに作り直す**。
     /// 指定しないと Xcode は既定の DerivedData に起動ごとの新しいフォルダ
@@ -308,6 +312,9 @@ public struct BridgeLauncher {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         let xctestrun = try injectPort(into: original)
 
+        // 直前の失敗ログを1世代だけ残す(自動の建て直しで毎回消えていた)。移動に失敗しても起動は止めない
+        try? FileManager.default.removeItem(at: prevLogPath)
+        try? FileManager.default.moveItem(at: logPath, to: prevLogPath)
         FileManager.default.createFile(atPath: logPath.path, contents: nil)
         let logHandle = try FileHandle(forWritingTo: logPath)
         // 子は run() で fd を複製して持つので、親の分は閉じる(閉じないと起動・建て直しのたびに

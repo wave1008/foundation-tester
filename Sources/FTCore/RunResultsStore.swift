@@ -90,6 +90,40 @@ public enum RunResultsStore {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// discardLast(凍結・環境エラーの再実行による取り消し)専用。**消さず退避する** ——
+    /// scenarios/<fileName>.json → superseded/<fileName>.<k>.json へ移動し、対応する
+    /// events/<fileName>.ndjson(ScenarioEventLog.finish が確定させたもの)があれば
+    /// events/superseded/<fileName>.<k>.ndjson へも**同じ k**で移動する(json と events を
+    /// 同じ退避で対にするため、k は json 側の superseded/ を見て1回だけ決める)。
+    /// k は1から・既存と衝突しない最小の番号(discardLast は連番を巻き戻すので同じ fileName が
+    /// 再利用されうる = 上書きを避ける)。scenarios/ 側が無ければ何もしない(events 側も動かさない)。
+    /// 定義元はここ(結果 JSON のレイアウト)—— Sources/fleetest/RetentionSweeper.swift の
+    /// eventLogsDirectoryName は文字列だけを共有する
+    public static func supersedeScenario(runDir: URL, fileName: String) {
+        let scenarioSource = runDir.appendingPathComponent("scenarios").appendingPathComponent("\(fileName).json")
+        guard FileManager.default.fileExists(atPath: scenarioSource.path) else { return }
+        let supersededDir = runDir.appendingPathComponent("superseded")
+        try? FileManager.default.createDirectory(at: supersededDir, withIntermediateDirectories: true)
+        let k = nextSupersededIndex(dir: supersededDir, fileBase: fileName, ext: "json")
+        let scenarioDest = supersededDir.appendingPathComponent("\(fileName).\(k).json")
+        guard (try? FileManager.default.moveItem(at: scenarioSource, to: scenarioDest)) != nil else { return }
+
+        let eventsSource = runDir.appendingPathComponent("events").appendingPathComponent("\(fileName).ndjson")
+        guard FileManager.default.fileExists(atPath: eventsSource.path) else { return }
+        let eventsSupersededDir = runDir.appendingPathComponent("events").appendingPathComponent("superseded")
+        try? FileManager.default.createDirectory(at: eventsSupersededDir, withIntermediateDirectories: true)
+        let eventsDest = eventsSupersededDir.appendingPathComponent("\(fileName).\(k).ndjson")
+        try? FileManager.default.moveItem(at: eventsSource, to: eventsDest)
+    }
+
+    private static func nextSupersededIndex(dir: URL, fileBase: String, ext: String) -> Int {
+        var k = 1
+        while FileManager.default.fileExists(atPath: dir.appendingPathComponent("\(fileBase).\(k).\(ext)").path) {
+            k += 1
+        }
+        return k
+    }
+
     // MARK: - 読み取り(スキャン)
 
     /// opendir/readdir による列挙(隠しエントリは除く。順序は不定 = 呼び手がソートする)。
@@ -704,7 +738,8 @@ public enum RunResultsStore {
     /// (別に列挙すると「読む集合」と「鍵」がずれる)。run ごとに畳むのは stat 2回だけ:
     /// - `run.json` の mtime(ns)と size(finish() が上書きする唯一のファイル)
     /// - `scenarios/` ディレクトリ自身の mtime(ns)。記録の追加(atomic 書き = temp 作成 + rename)・
-    ///   削除(removeScenario)・rsync の回収はどれもエントリの作成/rename/削除なので必ず更新される。
+    ///   削除・退避(removeScenario/supersedeScenario)・rsync の回収はどれもエントリの
+    ///   作成/rename/削除なので必ず更新される。
     ///   **ファイルの中身を rename 無しで in-place 書き換えした場合だけ捕まえない**(記録の規律 =
     ///   追加専用の外なので許容)
     /// scenarios/ の中は列挙しない —— readdir だけで 2万エントリに 0.23s、URL 化まで含めて約 1s

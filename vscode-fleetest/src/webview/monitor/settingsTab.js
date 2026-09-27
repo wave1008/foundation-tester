@@ -698,6 +698,7 @@ function applyUpdateStatus(message) {
 const CLEANUP_INPUT_IDS = {
   deviceCapturesMaxBytes: 'settings-cleanup-device-captures',
   recordingsMaxBytes: 'settings-cleanup-recordings',
+  eventLogsMaxBytes: 'settings-cleanup-event-logs',
   reportsMaxBytes: 'settings-cleanup-reports',
   logsMaxBytes: 'settings-cleanup-logs',
   xcresultMaxBytes: 'settings-cleanup-xcresult',

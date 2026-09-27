@@ -15,6 +15,9 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var deviceCapturesMaxBytes: Int64?
     /// results/runs/<月>/<runID>/recordings/ の上限。nil = 既定
     public var recordingsMaxBytes: Int64?
+    /// results/runs/<月>/<runID>/events/ の上限(シナリオごとの実行ログ。確定分・書き込み中の
+    /// `.inflight-*.ndjson`・凍結の振り直しで退避した `superseded/` を含めてディレクトリ丸ごと)。nil = 既定
+    public var eventLogsMaxBytes: Int64?
     /// TestProjects/<project>/reports/ の .md と .png の上限。nil = 既定
     public var reportsMaxBytes: Int64?
     /// <repoRoot>/.fleetest/*.log の上限。nil = 既定
@@ -26,12 +29,14 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
 
     public init(deviceCapturesMaxBytes: Int64? = nil,
                 recordingsMaxBytes: Int64? = nil,
+                eventLogsMaxBytes: Int64? = nil,
                 reportsMaxBytes: Int64? = nil,
                 logsMaxBytes: Int64? = nil,
                 xcresultMaxBytes: Int64? = nil,
                 sweepAfterRun: Bool? = nil) {
         self.deviceCapturesMaxBytes = deviceCapturesMaxBytes
         self.recordingsMaxBytes = recordingsMaxBytes
+        self.eventLogsMaxBytes = eventLogsMaxBytes
         self.reportsMaxBytes = reportsMaxBytes
         self.logsMaxBytes = logsMaxBytes
         self.xcresultMaxBytes = xcresultMaxBytes
@@ -40,8 +45,9 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
 
     /// 全欄が未設定か(`api retention --import` が既定へ戻したとき、LocalConfig から欄ごと消すため)
     public var isEmpty: Bool {
-        deviceCapturesMaxBytes == nil && recordingsMaxBytes == nil && reportsMaxBytes == nil
-            && logsMaxBytes == nil && xcresultMaxBytes == nil && sweepAfterRun == nil
+        deviceCapturesMaxBytes == nil && recordingsMaxBytes == nil && eventLogsMaxBytes == nil
+            && reportsMaxBytes == nil && logsMaxBytes == nil && xcresultMaxBytes == nil
+            && sweepAfterRun == nil
     }
 
     // MARK: - 既定値(単位: バイト。1 GiB = 1_073_741_824 / 1 MiB = 1_048_576)
@@ -56,6 +62,11 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// 1 日平均約 0.35 GB / 最大 0.89 GB(負荷テスト + フル E2E の日)。重い日が続いても約 2 か月残る。
     /// 尽きたら古い run から run 単位で消える(結果 JSON は消さないので run 自体は残る)
     public static let defaultRecordingsMaxBytes: Int64 = 50 * 1_073_741_824
+
+    /// 2 GiB。実測(E2E-iOS 42 本 / E2E-Android 31 本・全緑): 1 シナリオ中央値 7〜15 KB /
+    /// 最大 87 KB、1 run 約 0.6 MB = 約 3,500 run 分(録画の上限より長く残る)。
+    /// 尽きたら古い run から run 単位で `events/` ごと消える(結果 JSON は消さない)
+    public static let defaultEventLogsMaxBytes: Int64 = 2 * 1_073_741_824
 
     /// 2000 MiB。レポートは Markdown + 失敗時のスクリーンショット PNG。実測: 負荷テストの日で
     /// 1 日 60〜95 MB(1000 MiB では約 19 日で掃除が始まった)。約 1 か月残る量。
@@ -86,6 +97,7 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     /// `api retention --import` はこれ未満を断る。拡張は `api retention` の `minimums` を欄の下限に使う
     public static let minDeviceCapturesMaxBytes: Int64 = 1 * 1_073_741_824   // 1 GiB
     public static let minRecordingsMaxBytes: Int64 = 2 * 1_073_741_824      // 2 GiB
+    public static let minEventLogsMaxBytes: Int64 = 100 * 1_048_576         // 100 MiB
     public static let minReportsMaxBytes: Int64 = 100 * 1_048_576           // 100 MiB
     public static let minLogsMaxBytes: Int64 = 10 * 1_048_576               // 10 MiB
     public static let minXcresultMaxBytes: Int64 = 1 * 1_073_741_824        // 1 GiB
@@ -113,6 +125,9 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var effectiveRecordingsMaxBytes: Int64 {
         Self.effective(recordingsMaxBytes, default: Self.defaultRecordingsMaxBytes)
     }
+    public var effectiveEventLogsMaxBytes: Int64 {
+        Self.effective(eventLogsMaxBytes, default: Self.defaultEventLogsMaxBytes)
+    }
     public var effectiveReportsMaxBytes: Int64 {
         Self.effective(reportsMaxBytes, default: Self.defaultReportsMaxBytes)
     }
@@ -136,6 +151,7 @@ public struct RetentionPolicy: Codable, Sendable, Equatable {
     public var resolved: RetentionPolicy {
         RetentionPolicy(deviceCapturesMaxBytes: effectiveDeviceCapturesMaxBytes,
                         recordingsMaxBytes: effectiveRecordingsMaxBytes,
+                        eventLogsMaxBytes: effectiveEventLogsMaxBytes,
                         reportsMaxBytes: effectiveReportsMaxBytes,
                         logsMaxBytes: effectiveLogsMaxBytes,
                         xcresultMaxBytes: effectiveXcresultMaxBytes,

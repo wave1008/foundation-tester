@@ -1,4 +1,4 @@
-// ログ・録画・レポート・デバイス添付・xcresult の保持容量クリーンアップ(`fleetest clean` /
+// ログ・録画・実行ログ・レポート・デバイス添付・xcresult の保持容量クリーンアップ(`fleetest clean` /
 // `fleetest api clean`)。
 //
 // **中核は `RetentionSweeper.clean` の1箇所**で、この2コマンドはどちらも引数の解釈と
@@ -17,8 +17,8 @@ import FTCore
 struct CleanCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "clean",
-        abstract: "Delete old recordings, reports, logs, simulator attachments and xcresult bundles:"
-            + " any category above 90% of its limit is swept back down to 90%"
+        abstract: "Delete old recordings, event logs, reports, logs, simulator attachments and"
+            + " xcresult bundles: any category above 90% of its limit is swept back down to 90%"
             + " (limits: fleetest api retention)")
 
     @Flag(help: "List what would be deleted without deleting anything")
@@ -26,6 +26,10 @@ struct CleanCommand: AsyncParsableCommand {
 
     @Flag(help: "Sweep results/runs/*/*/recordings (the result JSON is never deleted)")
     var recordings = false
+
+    @Flag(name: .customLong("event-logs"),
+          help: "Sweep results/runs/*/*/events (per-scenario event logs; the result JSON is never deleted)")
+    var eventLogs = false
 
     @Flag(help: "Sweep TestProjects/*/reports (.md and their .png)")
     var reports = false
@@ -68,6 +72,7 @@ struct CleanCommand: AsyncParsableCommand {
         }
         let categories = Self.categories(recordings: recordings, reports: reports, logs: logs,
                                          deviceCaptures: deviceCaptures, xcresult: xcresult,
+                                         eventLogs: eventLogs,
                                          otherActionsRequested: simulatorPosterCache)
         guard !categories.isEmpty else { return }
         // 錠は消す処理だけが取る。**変数に束縛して run の終わりまで保持する**(捨てると即座に閉じて外れる)
@@ -108,10 +113,12 @@ struct CleanCommand: AsyncParsableCommand {
     /// 消えてしまう
     static func categories(recordings: Bool, reports: Bool, logs: Bool,
                            deviceCaptures: Bool, xcresult: Bool = false,
+                           eventLogs: Bool = false,
                            otherActionsRequested: Bool = false) -> [RetentionSweeper.Category] {
         var selected: [RetentionSweeper.Category] = []
         if deviceCaptures { selected.append(.deviceCaptures) }
         if recordings { selected.append(.recordings) }
+        if eventLogs { selected.append(.eventLogs) }
         if reports { selected.append(.reports) }
         if logs { selected.append(.logs) }
         if xcresult { selected.append(.xcresult) }

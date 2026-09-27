@@ -33,11 +33,12 @@ final class RetentionCommandTests: XCTestCase {
             try ApiRetentionCommand.validateMinimums(try ApiRetentionCommand.decode(json))
         }
         for json in [#"{"deviceCapturesMaxBytes":1073741823}"#, #"{"recordingsMaxBytes":2147483647}"#,
+                     #"{"eventLogsMaxBytes":104857599}"#,
                      #"{"reportsMaxBytes":104857599}"#, #"{"logsMaxBytes":10485759}"#,
                      #"{"xcresultMaxBytes":1073741823}"#, #"{"logsMaxBytes":0}"#] {
             XCTAssertThrowsError(try validate(json), json)
         }
-        XCTAssertNoThrow(try validate(#"{"deviceCapturesMaxBytes":1073741824,"recordingsMaxBytes":2147483648,"reportsMaxBytes":104857600,"logsMaxBytes":10485760,"xcresultMaxBytes":1073741824}"#))
+        XCTAssertNoThrow(try validate(#"{"deviceCapturesMaxBytes":1073741824,"recordingsMaxBytes":2147483648,"eventLogsMaxBytes":104857600,"reportsMaxBytes":104857600,"logsMaxBytes":10485760,"xcresultMaxBytes":1073741824}"#))
         XCTAssertNoThrow(try validate(#"{"logsMaxBytes":null,"sweepAfterRun":false}"#))
     }
 
@@ -47,12 +48,20 @@ final class RetentionCommandTests: XCTestCase {
         XCTAssertNil(try merge(current, #"{"logsMaxBytes":null}"#))
     }
 
-    /// xcresult も他の上限4欄と同じ3値(欠落/null/値)で合流する
+    /// xcresult も他の上限欄と同じ3値(欠落/null/値)で合流する
     func testXcresultMaxBytesIsMergedLikeTheOtherByteCaps() throws {
         let current = RetentionPolicy(xcresultMaxBytes: 10)
         XCTAssertEqual(try merge(current, #"{"xcresultMaxBytes":99}"#)?.xcresultMaxBytes, 99)
         XCTAssertNil(try merge(current, #"{"xcresultMaxBytes":null}"#)?.xcresultMaxBytes)
         XCTAssertEqual(try merge(current, #"{}"#)?.xcresultMaxBytes, 10, "キー無しは据え置く")
+    }
+
+    /// eventLogs(シナリオごとの実行ログ)も同じ3値で合流する
+    func testEventLogsMaxBytesIsMergedLikeTheOtherByteCaps() throws {
+        let current = RetentionPolicy(eventLogsMaxBytes: 10)
+        XCTAssertEqual(try merge(current, #"{"eventLogsMaxBytes":99}"#)?.eventLogsMaxBytes, 99)
+        XCTAssertNil(try merge(current, #"{"eventLogsMaxBytes":null}"#)?.eventLogsMaxBytes)
+        XCTAssertEqual(try merge(current, #"{}"#)?.eventLogsMaxBytes, 10, "キー無しは据え置く")
     }
 
     func testSweepAfterRunIsMergedLikeTheByteCaps() throws {
@@ -95,6 +104,13 @@ final class RetentionCommandTests: XCTestCase {
             CleanCommand.categories(recordings: false, reports: false, logs: false,
                                     deviceCaptures: false, xcresult: true),
             [.xcresult])
+    }
+
+    func testEventLogsFlagSelectsOnlyEventLogs() {
+        XCTAssertEqual(
+            CleanCommand.categories(recordings: false, reports: false, logs: false,
+                                    deviceCaptures: false, eventLogs: true),
+            [.eventLogs])
     }
 
     /// `--simulator-poster-cache` だけを頼まれたときは、無指定=全部の既定を出さない
@@ -147,16 +163,19 @@ final class RetentionCommandTests: XCTestCase {
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
         let configured = try XCTUnwrap(json["configured"] as? [String: Any])
         XCTAssertEqual(Set(configured.keys), [
-            "deviceCapturesMaxBytes", "recordingsMaxBytes", "reportsMaxBytes", "logsMaxBytes",
-            "xcresultMaxBytes", "sweepAfterRun",
+            "deviceCapturesMaxBytes", "recordingsMaxBytes", "eventLogsMaxBytes", "reportsMaxBytes",
+            "logsMaxBytes", "xcresultMaxBytes", "sweepAfterRun",
         ])
         XCTAssertEqual(configured["logsMaxBytes"] as? Int, 7)
         XCTAssertEqual(configured["sweepAfterRun"] as? Bool, true)
         XCTAssertTrue(configured["recordingsMaxBytes"] is NSNull)
+        XCTAssertTrue(configured["eventLogsMaxBytes"] is NSNull)
         let policy = try XCTUnwrap(json["policy"] as? [String: Any])
         XCTAssertEqual(policy["recordingsMaxBytes"] as? Int, 53_687_091_200)
+        XCTAssertEqual(policy["eventLogsMaxBytes"] as? Int, 2_147_483_648)
         let minimums = try XCTUnwrap(json["minimums"] as? [String: Any])
         XCTAssertEqual(minimums["reportsMaxBytes"] as? Int, 104_857_600)
-        XCTAssertEqual(minimums.count, 5, "上限5欄すべて")
+        XCTAssertEqual(minimums["eventLogsMaxBytes"] as? Int, 104_857_600)
+        XCTAssertEqual(minimums.count, 6, "上限6欄すべて")
     }
 }

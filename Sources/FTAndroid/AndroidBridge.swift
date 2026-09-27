@@ -16,6 +16,9 @@ extension AndroidDriver {
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
     public static let expectedBridgeVersionCode = 73
+    /// am instrument の起動コマンド自身の stdout/stderr の逃がし先(デバイス側。shell が書ける
+    /// /data/local/tmp)。起動失敗時だけホストへ pull する(persistInstrumentFailureLog)
+    static let instrumentDeviceLogPath = "/data/local/tmp/ftbridge-instrument.log"
 
     enum BridgeState {
         case active(BridgeClient)
@@ -252,15 +255,20 @@ extension AndroidDriver {
         // -w 必須(UiAutomationConnection は am プロセス側に生成される)。
         // デバイス内でバックグラウンド化するので adb 切断後も常駐する
         let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"])
+        let repoRoot = try? RepoRoot.find()
         // 起動元の自己申告(/status の ownerRepo。doctor の診断用)。シングルクォートで
         // スペースを含むパスを守る(パス中の ' は稀なので非対応)
-        let owner = (try? RepoRoot.find()).map { " -e owner '\($0.path)'" } ?? ""
+        let owner = repoRoot.map { " -e owner '\($0.path)'" } ?? ""
         // ブリッジ内の所要内訳ログ(既定 off)。iOS 側の FT_BRIDGE_TIMING と同じスイッチで、
         // あちらは環境変数・こちらは instrumentation 引数として渡す
         let timing = timingRequested ? " -e timing 1" : ""
+        // am instrument 自身の stdout/stderr は **デバイス側**の /dev/null を経由するので、
+        // ホストからは事後に読めない。デバイス側の一時ファイルへ逃がし、起動失敗のときだけ
+        // ホストへ pull する(健全なブリッジは何も出力しないので溜まらない=AndroidRunner の
+        // Java 側に println/sendStatus が無い)
         _ = try adb(["shell",
                      "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner)\(timing) "
-                     + "\(Self.bridgeComponent) </dev/null >/dev/null 2>&1 &"])
+                     + "\(Self.bridgeComponent) </dev/null >\(Self.instrumentDeviceLogPath) 2>&1 &"])
 
         // ready 待ち(200ms 間隔・最大 10 秒)。起動直後は導入したての APK なので版照合は不要
         for _ in 0..<50 {
@@ -269,7 +277,31 @@ extension AndroidDriver {
         }
         throw DriverError.bridgeUnreachable(
             context: androidContext(),
-            detail: "the Android bridge will not start (check adb logcat -s FTBridge)")
+            detail: "the Android bridge will not start (check adb logcat -s FTBridge)"
+                + persistInstrumentFailureLog(repoRoot: repoRoot))
+    }
+
+    /// am instrument が失敗時にだけ出す診断(デバイス側の一時ファイル)を pull してホストの
+    /// `.fleetest/` へ残す(起動ごとに作り直し、直前は `.prev.log` へ。BridgeLauncher.logPath と
+    /// 同じ方式)。repoRoot が引けない/pull できない/中身が空のときは何もせず空文字を返す
+    /// (エラー文言に添えられないだけで、起動失敗そのものは変わらず投げる)
+    private func persistInstrumentFailureLog(repoRoot: URL?) -> String {
+        // **終了コードで見る**(`cat` が対象無しで失敗した回の stderr を診断として書かない。
+        // Shell.run は非ゼロで投げないので outputIfSucceeded で弾く)
+        guard let repoRoot,
+              let deviceLog = (try? adb(["shell", "cat", Self.instrumentDeviceLogPath]))?.outputIfSucceeded,
+              !deviceLog.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        let safeSerial = String((serial ?? "default").map { ch in
+            ch.isLetter || ch.isNumber || ch == "." || ch == "-" || ch == "_" ? ch : "_"
+        })
+        let logPath = stateDir.appendingPathComponent("android-bridge-\(safeSerial).log")
+        let prevLogPath = stateDir.appendingPathComponent("android-bridge-\(safeSerial).prev.log")
+        try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: prevLogPath)
+        try? FileManager.default.moveItem(at: logPath, to: prevLogPath)
+        guard (try? deviceLog.write(to: logPath, atomically: true, encoding: .utf8)) != nil else { return "" }
+        return " (see \(logPath.path))"
     }
 
     /// 実機に対する設定変更は端末のグローバル設定を**永続的に**書き換える(使い捨ての

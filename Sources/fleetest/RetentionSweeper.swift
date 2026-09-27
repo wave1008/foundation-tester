@@ -1,7 +1,7 @@
 // RetentionSweeper.swift
 // 保持容量の掃除の I/O 側。**判定は持たない** —— 新しい順に積んで上限を超えた分を落とす規則は
 // `FTCore.RetentionSweep.plan`(純粋関数)が唯一の定義元で、ここは
-// ①5系統の「セッション」を採ってくる ②plan の結果のパスを消す、の2つだけを行う。
+// ①6系統の「セッション」を採ってくる ②plan の結果のパスを消す、の2つだけを行う。
 //
 // 消してよい/いけないの境界(guarded)は系統ごとに違うが、**採取したセッションを消すのは
 // `apply` 1箇所**に閉じる —— 系統ごとに削除を書くと、どれかが「結果 JSON も消す」ような
@@ -14,12 +14,13 @@ import Foundation
 enum RetentionSweeper {
 
     enum Category: String, CaseIterable, Sendable {
-        case deviceCaptures, recordings, reports, logs, xcresult
+        case deviceCaptures, recordings, eventLogs, reports, logs, xcresult
 
         func maxBytes(_ policy: RetentionPolicy) -> Int64 {
             switch self {
             case .deviceCaptures: return policy.effectiveDeviceCapturesMaxBytes
             case .recordings: return policy.effectiveRecordingsMaxBytes
+            case .eventLogs: return policy.effectiveEventLogsMaxBytes
             case .reports: return policy.effectiveReportsMaxBytes
             case .logs: return policy.effectiveLogsMaxBytes
             case .xcresult: return policy.effectiveXcresultMaxBytes
@@ -63,6 +64,7 @@ enum RetentionSweeper {
         switch category {
         case .deviceCaptures: return deviceCaptureSessions(toolRoot: roots.tool)
         case .recordings: return recordingSessions(packageRoot: roots.package, activeRunID: activeRunID)
+        case .eventLogs: return eventLogSessions(packageRoot: roots.package, activeRunID: activeRunID)
         case .reports: return reportSessions(packageRoot: roots.package, activeRunID: activeRunID)
         case .logs: return logSessions(roots: roots)
         case .xcresult: return xcresultSessions(toolRoot: roots.tool)
@@ -78,6 +80,32 @@ enum RetentionSweeper {
         for project in ProjectStore.all(repoRoot: packageRoot) {
             for runDir in runDirectories(project: project) {
                 let dir = runDir.appendingPathComponent(RecordingIndexIO.directoryName)
+                guard let measured = measure(directory: dir) else { continue }
+                sessions.append(RetentionSweep.Session(
+                    id: runDir.lastPathComponent, bytes: measured.bytes,
+                    newestModified: measured.newest, paths: [dir],
+                    guarded: runIsGuarded(runDir: runDir, activeRunID: activeRunID)))
+            }
+        }
+        return sessions
+    }
+
+    // MARK: - (a2) シナリオごとの実行ログ(events)
+
+    /// `<runDir>/events/` の名前(確定分の `.ndjson`・書き込み中/kill されて残った
+    /// `.inflight-<UUID>.ndjson`・凍結の振り直しで退避した `superseded/` を含む)。
+    /// 定義元は結果 JSON 側(docs/results-json.md)で、ここは文字列だけを共有する
+    private static let eventLogsDirectoryName = "events"
+
+    /// 単位は run 1件。**消すのは `events/` だけ** —— recordingSessions と同じ規律
+    /// (run.json・scenarios/ は残す)。guarded の判定も recordings と同じ `runIsGuarded`
+    /// (進行中の run の events/ は消さない。`.inflight-*.ndjson` も run のディレクトリごと守られるので
+    /// 個別に扱わない)
+    static func eventLogSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
+        var sessions: [RetentionSweep.Session] = []
+        for project in ProjectStore.all(repoRoot: packageRoot) {
+            for runDir in runDirectories(project: project) {
+                let dir = runDir.appendingPathComponent(eventLogsDirectoryName)
                 guard let measured = measure(directory: dir) else { continue }
                 sessions.append(RetentionSweep.Session(
                     id: runDir.lastPathComponent, bytes: measured.bytes,
@@ -174,6 +202,11 @@ enum RetentionSweeper {
         return sessions
     }
 
+    /// **`bridge-<port>.prev.log`(直前の1世代の退避)は「生きている」に当たらない** ——
+    /// 拡張子を1つ剥がした残り(`bridge-<port>.prev`)からポート番号を取り出せないので port の
+    /// パースが失敗し、素通しで false(消してよい)に落ちる。前世代を守りたくなって正規表現等へ
+    /// 緩めると、生きているポートの前世代ログが永久に guarded になり消えなくなる
+    /// (`RetentionSweeperLogPrevGuardTests` が固定)
     private static func bridgeLogIsLive(url: URL, stateDir: URL) -> Bool {
         let name = url.deletingPathExtension().lastPathComponent
         guard name.hasPrefix("bridge-"),

@@ -976,6 +976,9 @@ public enum DeviceBooter {
         try? FileManager.default.createDirectory(at: EmulatorLog.directory,
                                                  withIntermediateDirectories: true)
         let url = EmulatorLog.url(avdID: avd)
+        // 直前の起動試行のログを1世代だけ残す(truncate で毎回消えていた)。失敗しても起動は止めない
+        try? FileManager.default.removeItem(at: EmulatorLog.prevURL(avdID: avd))
+        try? FileManager.default.moveItem(at: url, to: EmulatorLog.prevURL(avdID: avd))
         let header = "=== \(ISO8601DateFormatter().string(from: Date())) emulator \(arguments.joined(separator: " "))\n"
         guard FileManager.default.createFile(atPath: url.path, contents: Data(header.utf8)),
               let handle = try? FileHandle(forWritingTo: url) else { return nil }

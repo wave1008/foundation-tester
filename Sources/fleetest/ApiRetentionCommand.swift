@@ -52,6 +52,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         var policy = current ?? RetentionPolicy()
         update.deviceCapturesMaxBytes.apply(to: &policy.deviceCapturesMaxBytes)
         update.recordingsMaxBytes.apply(to: &policy.recordingsMaxBytes)
+        update.eventLogsMaxBytes.apply(to: &policy.eventLogsMaxBytes)
         update.reportsMaxBytes.apply(to: &policy.reportsMaxBytes)
         update.logsMaxBytes.apply(to: &policy.logsMaxBytes)
         update.xcresultMaxBytes.apply(to: &policy.xcresultMaxBytes)
@@ -65,6 +66,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         let checks: [(String, Field<Int64>, Int64)] = [
             ("deviceCapturesMaxBytes", update.deviceCapturesMaxBytes, RetentionPolicy.minDeviceCapturesMaxBytes),
             ("recordingsMaxBytes", update.recordingsMaxBytes, RetentionPolicy.minRecordingsMaxBytes),
+            ("eventLogsMaxBytes", update.eventLogsMaxBytes, RetentionPolicy.minEventLogsMaxBytes),
             ("reportsMaxBytes", update.reportsMaxBytes, RetentionPolicy.minReportsMaxBytes),
             ("logsMaxBytes", update.logsMaxBytes, RetentionPolicy.minLogsMaxBytes),
             ("xcresultMaxBytes", update.xcresultMaxBytes, RetentionPolicy.minXcresultMaxBytes),
@@ -115,6 +117,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
     struct Import: Decodable {
         var deviceCapturesMaxBytes: Field<Int64>
         var recordingsMaxBytes: Field<Int64>
+        var eventLogsMaxBytes: Field<Int64>
         var reportsMaxBytes: Field<Int64>
         var logsMaxBytes: Field<Int64>
         var xcresultMaxBytes: Field<Int64>
@@ -123,14 +126,15 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         static let knownKeys = CodingKeys.allCases.map(\.rawValue)
 
         private enum CodingKeys: String, CodingKey, CaseIterable {
-            case deviceCapturesMaxBytes, recordingsMaxBytes, reportsMaxBytes, logsMaxBytes
-            case xcresultMaxBytes, sweepAfterRun
+            case deviceCapturesMaxBytes, recordingsMaxBytes, eventLogsMaxBytes, reportsMaxBytes
+            case logsMaxBytes, xcresultMaxBytes, sweepAfterRun
         }
 
         init(from decoder: Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             deviceCapturesMaxBytes = try Self.field(container, .deviceCapturesMaxBytes)
             recordingsMaxBytes = try Self.field(container, .recordingsMaxBytes)
+            eventLogsMaxBytes = try Self.field(container, .eventLogsMaxBytes)
             reportsMaxBytes = try Self.field(container, .reportsMaxBytes)
             logsMaxBytes = try Self.field(container, .logsMaxBytes)
             xcresultMaxBytes = try Self.field(container, .xcresultMaxBytes)
@@ -155,6 +159,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             minimums: MinimumsOutput(),
             usage: UsageOutput(
                 deviceCaptures: usage?[.deviceCaptures], recordings: usage?[.recordings],
+                eventLogs: usage?[.eventLogs],
                 reports: usage?[.reports], logs: usage?[.logs], xcresult: usage?[.xcresult]))
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -167,6 +172,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
     private struct PolicyOutput: Encodable {
         let deviceCapturesMaxBytes: Int64
         let recordingsMaxBytes: Int64
+        let eventLogsMaxBytes: Int64
         let reportsMaxBytes: Int64
         let logsMaxBytes: Int64
         let xcresultMaxBytes: Int64
@@ -175,6 +181,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         init(_ policy: RetentionPolicy) {
             deviceCapturesMaxBytes = policy.effectiveDeviceCapturesMaxBytes
             recordingsMaxBytes = policy.effectiveRecordingsMaxBytes
+            eventLogsMaxBytes = policy.effectiveEventLogsMaxBytes
             reportsMaxBytes = policy.effectiveReportsMaxBytes
             logsMaxBytes = policy.effectiveLogsMaxBytes
             xcresultMaxBytes = policy.effectiveXcresultMaxBytes
@@ -194,6 +201,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             var c = encoder.container(keyedBy: CodingKeys.self)
             try c.encode(policy.deviceCapturesMaxBytes, forKey: .deviceCapturesMaxBytes)
             try c.encode(policy.recordingsMaxBytes, forKey: .recordingsMaxBytes)
+            try c.encode(policy.eventLogsMaxBytes, forKey: .eventLogsMaxBytes)
             try c.encode(policy.reportsMaxBytes, forKey: .reportsMaxBytes)
             try c.encode(policy.logsMaxBytes, forKey: .logsMaxBytes)
             try c.encode(policy.xcresultMaxBytes, forKey: .xcresultMaxBytes)
@@ -201,8 +209,8 @@ struct ApiRetentionCommand: AsyncParsableCommand {
         }
 
         enum CodingKeys: String, CodingKey {
-            case deviceCapturesMaxBytes, recordingsMaxBytes, reportsMaxBytes, logsMaxBytes
-            case xcresultMaxBytes, sweepAfterRun
+            case deviceCapturesMaxBytes, recordingsMaxBytes, eventLogsMaxBytes, reportsMaxBytes
+            case logsMaxBytes, xcresultMaxBytes, sweepAfterRun
         }
     }
 
@@ -210,6 +218,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
     private struct MinimumsOutput: Encodable {
         let deviceCapturesMaxBytes = RetentionPolicy.minDeviceCapturesMaxBytes
         let recordingsMaxBytes = RetentionPolicy.minRecordingsMaxBytes
+        let eventLogsMaxBytes = RetentionPolicy.minEventLogsMaxBytes
         let reportsMaxBytes = RetentionPolicy.minReportsMaxBytes
         let logsMaxBytes = RetentionPolicy.minLogsMaxBytes
         let xcresultMaxBytes = RetentionPolicy.minXcresultMaxBytes
@@ -220,6 +229,7 @@ struct ApiRetentionCommand: AsyncParsableCommand {
     private struct UsageOutput: Encodable {
         let deviceCaptures: Int64?
         let recordings: Int64?
+        let eventLogs: Int64?
         let reports: Int64?
         let logs: Int64?
         let xcresult: Int64?
@@ -228,13 +238,14 @@ struct ApiRetentionCommand: AsyncParsableCommand {
             var c = encoder.container(keyedBy: CodingKeys.self)
             try c.encode(deviceCaptures, forKey: .deviceCaptures)
             try c.encode(recordings, forKey: .recordings)
+            try c.encode(eventLogs, forKey: .eventLogs)
             try c.encode(reports, forKey: .reports)
             try c.encode(logs, forKey: .logs)
             try c.encode(xcresult, forKey: .xcresult)
         }
 
         enum CodingKeys: String, CodingKey {
-            case deviceCaptures, recordings, reports, logs, xcresult
+            case deviceCaptures, recordings, eventLogs, reports, logs, xcresult
         }
     }
 

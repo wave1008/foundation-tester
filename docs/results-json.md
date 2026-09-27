@@ -9,6 +9,10 @@ results/runs/<YYYY-MM>/<runID>/
   scenarios/<シナリオID>.json  ... シナリオ 1 回分(ScenarioRunRecord)
   scenarios/<シナリオID>~2.json ... 同一 run 内の再実行(連番)
   host-metrics.ndjson        ... 実行中のホスト負荷(cpu/gpu/mem)と FM(回数・死活)/Vision(回数。OCR・画像分類器)
+  events/<シナリオID>[~N].ndjson ... シナリオ 1 回分の実行ログ(時刻付き。scenarios/ と同じ名前で対になる)
+  events/.inflight-<UUID>.ndjson ... 書き込み中、または途中で kill されて確定しなかった実行ログ
+  superseded/<シナリオID>[~N].<k>.json ... 凍結・環境エラーの振り直しで取り消した記録(消さず退避)
+  events/superseded/<シナリオID>[~N].<k>.ndjson ... 同じ取り消しの実行ログ(json と同じ k)
 ```
 
 `runID` = `<yyyyMMdd-HHmmss(UTC)>Z-<乱数8hex>`(固定幅なので**辞書順 = 時系列順**)。
@@ -39,6 +43,7 @@ run の**完了後に、別プロセスの背景で**保持容量の掃除が走
 | `reports` | `<project>/reports/` と、実行プロファイルの `reportDir` が指す置き場の `.md`・`.png`・`.failure.json`(直下の `scenario-<日付>-…` の命名に合うものだけ。1回きりの `--report-dir` は記録が無いので見ない) | 日 1件 | 2000 MiB | 100 MiB |
 | `logs` | `<repoRoot>/.fleetest/*.log` | ファイル1本 | 100 MiB | 10 MiB |
 | `xcresult` | `<repoRoot>/.fleetest/xcresult/`(XCUITest ランナーの結果の束) | 束1つ(起動1回ぶん) | 5 GiB | 1 GiB |
+| `eventLogs` | 実行ログ `results/runs/<月>/<runID>/events/`(`.inflight-*`・`superseded/` を含む) | run 1件 | 2 GiB | 100 MiB |
 
 **最小値は書き込みの門だけで効かせる**(`api retention --import` が未満を断り、設定タブは欄の下限で
 最小値へ引き上げて送る)。定義元は `RetentionPolicy.min…`、拡張へは `api retention` の `minimums` で渡す。
@@ -46,7 +51,7 @@ run の**完了後に、別プロセスの背景で**保持容量の掃除が走
 
 **結果 JSON は消えない**。`recordings/` を落としても `run.json` と `scenarios/*.json`、
 `host-metrics.ndjson`(1本の上限 16 MB・超えたら `.1` へ1回だけ回す = 1 run 最大 32 MB)は残るので、
-フレークの推移も LPT の実績も過去に遡れる。**消えるのは録画とレポートだけ** —— 古い run の
+フレークの推移も LPT の実績も過去に遡れる。`superseded/` の json も消さない。**消えるのは録画・レポート・実行ログ(`events/`)だけ** —— 古い run の
 `reportPath` が指す `.md` は消えている場合があり、読み手は不在に耐えること(拡張の2経路は
 存在を確かめてから開く)。
 
@@ -209,6 +214,31 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 読める推移は、欄が無かっただけのことがある。**
 
 ---
+
+## events/\*.ndjson(実行ログ)
+
+シナリオ 1 回分の**生の到着記録**(子プロセスの stdout の NDJSON・stderr・ホストが合成したイベント)。
+書き手は `FTCore.ScenarioEventLog`(配線は `ScenarioHost.run`。`recording` がある run / api run /
+機械分担の経路だけが書く = MCP・dry-run は書かない)。人が読む口は `fleetest results log <runID>`
+(整形は `FTCore.EventLogFormat`、`--raw` で原文)。
+
+- **1行 = 1 JSON**: `{"t":"2026-09-28T00:14:03.123Z","stream":"stdout","event":{…}}`。
+  `t` は**ホストが行を受け取った時刻**(UTC・ミリ秒)。`stream` は `stdout` / `stderr` / `host`
+  (`host` = 起動前の中止・タイムアウトでホストが合成したもの)。stdout の行が JSON オブジェクトなら
+  **原文のまま** `event` に入れる(`ScenarioEvent` に再エンコードしない = 未知の欄も残る)。
+  それ以外(stderr・JSON でない行)は `event` の代わりに `"text":"…"`
+- **確定の手順**: 書いている間は `events/.inflight-<UUID>.ndjson`。記録(`scenarios/*.json`)を
+  書いた直後に、stderr を読み終えてから `<fileBase>.ndjson` へ rename する。**kill されると
+  `.inflight-*` のまま残る** —— 中途の証跡なので消さない(どのシナリオかは中の `event.scenario` で分かる)
+- **対応**: `events/<fileBase>.ndjson` ⇔ `scenarios/<fileBase>.json`(`RunRecorder.record` の戻り値を共有)
+- **振り直しの退避**: `RunRecorder.discardLast` は取り消す記録を削除せず `superseded/<fileBase>.<k>.json` と
+  `events/superseded/<fileBase>.<k>.ndjson` へ**同じ k** で移す(`RunResultsStore.supersedeScenario`)。
+  k は 1 からの空き番号(discardLast は連番を巻き戻すので同じ fileBase が再利用される)。
+  集計・LPT・JUnit は `scenarios/` だけを読むので、退避した記録は数に入らない
+- **量**(2026-09-28 実測・全緑): 1 シナリオ中央値 7〜15 KB / 最大 87 KB、1 run 約 0.6 MB。
+  保持カテゴリ `eventLogs` が古い run から `events/` ごと消す
+- **api の NDJSON 契約とは別物**: api run が stdout に流すイベントには時刻・通し番号の欄が無い。
+  時系列を追うのはこのファイルの `t` で行う
 
 ## run.json(`RunMetaRecord`)
 

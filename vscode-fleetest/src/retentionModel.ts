@@ -34,10 +34,11 @@ export interface RetentionField {
   readonly unit: RetentionUnit;
 }
 
-/** 上限5欄。**この順に画面へ並べる**(HTML の id は settingsTab.js の CLEANUP_INPUT_IDS と対)。 */
+/** 上限6欄。**この順に画面へ並べる**(HTML の id は settingsTab.js の CLEANUP_INPUT_IDS と対)。 */
 export const RETENTION_FIELDS: readonly RetentionField[] = [
   { key: "deviceCapturesMaxBytes", usageKey: "deviceCaptures", unit: "GB" },
   { key: "recordingsMaxBytes", usageKey: "recordings", unit: "GB" },
+  { key: "eventLogsMaxBytes", usageKey: "eventLogs", unit: "GB" },
   { key: "reportsMaxBytes", usageKey: "reports", unit: "MB" },
   { key: "logsMaxBytes", usageKey: "logs", unit: "MB" },
   { key: "xcresultMaxBytes", usageKey: "xcresult", unit: "GB" },

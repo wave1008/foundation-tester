@@ -112,14 +112,17 @@ public final class RunRecorder: @unchecked Sendable {
         return recorder
     }
 
-    /// scenarioID の 2 回目以降が同一ファイルを上書きしないよう `<ID>~2.json` のように連番採番する
-    public func record(_ record: ScenarioRunRecord) {
+    /// scenarioID の 2 回目以降が同一ファイルを上書きしないよう `<ID>~2.json` のように連番採番する。
+    /// 戻り値は書いたファイル名(拡張子なし。events/<fileBase>.ndjson の `<fileBase>` と同じ値) ——
+    /// ScenarioHost.run が ScenarioEventLog.finish(fileBase:) へそのまま渡す
+    @discardableResult
+    public func record(_ record: ScenarioRunRecord) -> String {
         var record = record
         record.runID = runID
         record.host = machine
         record.profile = profile
         if !record.passed, record.skipKind == nil, isInterrupted { record.interrupted = true }
-        write(record)
+        return write(record)
     }
 
     /// run が中断された(SIGINT/SIGTERM)。以後に書く**失敗**の記録に `interrupted: true` を付ける
@@ -171,7 +174,11 @@ public final class RunRecorder: @unchecked Sendable {
         }
     }
 
-    /// 凍結・環境エラーによる再実行時に直前の記録を取り消す。
+    /// 凍結・環境エラーによる再実行時に直前の記録を取り消す。**消さず退避する**
+    /// (scenarios/<fileName>.json → superseded/<fileName>.<k>.json。対応する
+    /// events/<fileName>.ndjson があれば events/superseded/<fileName>.<k>.ndjson へも同じ k で
+    /// 退避する。RunResultsStore.supersedeScenario の doc 参照)—— 振り直しで捨てる直前の記録は
+    /// 事故の証跡なので、失敗の記録と同じく残す。
     /// - worker: 消してよい書き手(`ScenarioRunner.recordingWorker` = 記録の `worker` と同じ文字列)。
     ///   **並列の呼び手は必ず渡す** —— nil は「この ID の最新」を消す(逐次実行・旧呼び手向け)。
     /// 連番は「消したのが最新」のときだけ巻き戻す(途中を消したときは欠番のまま残す。巻き戻すと
@@ -196,7 +203,7 @@ public final class RunRecorder: @unchecked Sendable {
             fileNameCounts[baseName] = count - 1
         }
         lock.unlock()
-        RunResultsStore.removeScenario(runDir: runDir, fileName: removed.fileName)
+        RunResultsStore.supersedeScenario(runDir: runDir, fileName: removed.fileName)
     }
 
     /// - fmSettings: その run で実際に効いていた FM 設定(実効値)。**既定値を置かない** ——
@@ -303,7 +310,8 @@ public final class RunRecorder: @unchecked Sendable {
                                   vision: withBreakerFallback(reading.vision))
     }
 
-    private func write(_ record: ScenarioRunRecord) {
+    @discardableResult
+    private func write(_ record: ScenarioRunRecord) -> String {
         let baseName = Self.sanitizeFileName(record.scenarioID)
         lock.lock()
         let count = (fileNameCounts[baseName] ?? 0) + 1
@@ -322,6 +330,7 @@ public final class RunRecorder: @unchecked Sendable {
         guardStaleFrameTotal += guardStaleFrame
         lock.unlock()
         RunResultsStore.writeScenario(record, runDir: runDir, fileName: fileName)
+        return fileName
     }
 
     private static func fileName(_ baseName: String, count: Int) -> String {

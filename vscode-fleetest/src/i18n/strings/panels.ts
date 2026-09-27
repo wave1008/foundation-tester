@@ -308,6 +308,7 @@ export const panelsStrings = {
     en: "Limit for device recordings and screenshots",
   },
   "panels.settings.cleanupRecordingsLabel": { ja: "録画の上限", en: "Limit for recordings" },
+  "panels.settings.cleanupEventLogsLabel": { ja: "実行ログの上限", en: "Limit for run logs" },
   "panels.settings.cleanupReportsLabel": { ja: "レポートの上限", en: "Limit for reports" },
   "panels.settings.cleanupLogsLabel": { ja: "ログの上限", en: "Limit for logs" },
   // 生きているブリッジぶんの束は消せない(guarded)ので、この上限は「保持量を抑える線」ではなく
@@ -324,6 +325,10 @@ export const panelsStrings = {
   "panels.settings.cleanupRecordingsTooltip": {
     ja: "テスト実行中に fleetest が撮った画面録画です。",
     en: "Screen recordings fleetest captured during test runs.",
+  },
+  "panels.settings.cleanupEventLogsTooltip": {
+    ja: "シナリオごとの実行ログ(時刻付きのイベントと標準エラー)です。古い run から消えます。",
+    en: "Per-scenario run logs (timestamped events and stderr). Removed from the oldest run first.",
   },
   "panels.settings.cleanupReportsTooltip": {
     ja: "テスト結果のレポート(Markdown と失敗時のスクリーンショット)です。",

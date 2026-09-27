@@ -16,6 +16,13 @@ enum RemoteDispatchMode {
     case apiRun
 }
 
+/// `runInherited` の子(rsync・`ssh … mkdir -p`)の stdout をどちらへ流すか(純粋関数)。
+/// apiRun の親の stdout は NDJSON 専用の契約なので、混入を防げない経路(ssh 越しの
+/// シェル初期化ファイルの出力等)は stderr へ逃がす。cliRun は人間向けの対話出力のまま継承する
+func runInheritedStdoutGoesToStderr(mode: RemoteDispatchMode) -> Bool {
+    mode == .apiRun
+}
+
 /// このディスパッチが自分から中断された(SIGINT/SIGTERM を受けて `InterruptRelay` が
 /// 実行中の ssh へ SIGTERM を回した)かどうかの印。**参照型が要る** —— `dispatch()`/
 /// `dispatchApi()` は struct(`RemoteRunDispatcher`)の非 mutating メソッドで、
@@ -1368,15 +1375,19 @@ struct RemoteRunDispatcher {
         return result.output.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// stdout/stderr を継承して起動する(バッファせずそのまま端末へ流す。rsync 転送は
-    /// 進行を人間が見る対話用途のため両モード共通でそのまま継承する — 既定の rsyncArgs
-    /// (-az --delete のみ)は成功時 stdout に何も出さないため apiRun の NDJSON 契約を汚さない)
+    /// stdout/stderr を継承して起動する(バッファせずそのまま端末へ流す。rsync/ssh 転送は
+    /// 進行を人間が見る対話用途)。**apiRun では stdout を親の stderr へ逃がす**
+    /// (`runInheritedStdoutGoesToStderr`)—— 既定の rsyncArgs(-az --delete のみ)は成功時 stdout に
+    /// 何も出さないが、この関数は `ssh … mkdir -p` にも使われ、ランナー機のシェル初期化ファイル
+    /// (.zshenv の echo 等)が出したものは止められない。apiRun の stdout は NDJSON 専用の契約
+    /// (RemoteDispatchMode の doc)なので、混入を防げない経路はそちらへ寄せる
     @discardableResult
     private func runInherited(_ argv: [String]) throws -> Int32 {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = argv
-        process.standardOutput = FileHandle.standardOutput
+        process.standardOutput = runInheritedStdoutGoesToStderr(mode: mode)
+            ? FileHandle.standardError : FileHandle.standardOutput
         process.standardError = FileHandle.standardError
         let waitForExit = ProcessExitWait.prepareBlocking(process)
         try process.run()

@@ -93,7 +93,8 @@ final class EmulatorLogHintTests: XCTestCase {
         XCTAssertEqual(EmulatorLog.fatalLines(in: "info\nMetal command buffer error\n"), [])
     }
 
-    /// ログは起動ごとに見出しを付けて追記される。前の起動の FATAL を今回の理由として引かない
+    /// 見出しが複数並んだ入力でも、前の区間の FATAL を今回の理由として引かない(ログは起動ごとに
+    /// 作り直すので通常は見出し1つ。作り直しに失敗した等の壊れた入力への保険)
     func testFatalLinesLooksOnlyAtTheLastBootSession() {
         let text = """
             === 2026-09-10T19:58:00Z emulator -avd Pixel_9_Android_15_-01

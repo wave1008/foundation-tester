@@ -16,6 +16,12 @@ public enum EmulatorLog {
         directory.appendingPathComponent(avdID.replacingOccurrences(of: "/", with: "_") + ".log")
     }
 
+    /// 直前の起動試行のログ(`DeviceBooter.emulatorLogHandle` が truncate する前に退避する)。
+    /// 読むのは人間の事後調査だけ —— `fatalLines` 等の自動読み手は `url(avdID:)` の固定名しか読まない
+    public static func prevURL(avdID: String) -> URL {
+        directory.appendingPathComponent(avdID.replacingOccurrences(of: "/", with: "_") + ".prev.log")
+    }
+
     /// デバイスの論理名から実在するログファイルを引く。**AVD id は論理名と一致するとは限らない**
     /// (AndroidDeviceCatalog.canonicalAVDID は非英数字を "_" に畳んだ候補や displayName 一致でも
     /// 解決する)ので、素の名前 → 畳んだ名前の順に見て、**実在するものだけ**返す。
@@ -36,8 +42,10 @@ public enum EmulatorLog {
 
     /// ログ本文から FATAL/ERROR 行を拾う(emulator 自身の終了理由。`kill -9` 等の外的な終了は
     /// ログに何も残さないので、ここが空なら「理由は記録されていない」ということ)。純粋関数。
-    /// **見るのは最後の起動の区間だけ** —— ログは起動ごとに `=== <時刻> emulator …` の見出しを付けて
-    /// 追記される(DeviceBooter.startEmulator)ので、全体を見ると何日も前の起動の FATAL を今回の理由として引く。
+    /// **見出し(`=== <時刻> emulator …`)以降だけを対象にする** —— ファイル先頭コメントのとおり
+    /// truncate は emulator プロセス起動時にしか起きないので、見出しは通常このファイルに1個しか
+    /// 無い(guest reboot はこの見出しを増やさず末尾に書き足すだけ)。対象を絞るのは、
+    /// truncate に失敗して古い見出しが残ったなど壊れた入力に備える保険。
     /// DeviceBooter.fatalLines もここへ委ねる(判定を2箇所に持たない)
     public static func fatalLines(in logText: String, limit: Int = 3) -> [String] {
         let session = lastSession(of: logText)

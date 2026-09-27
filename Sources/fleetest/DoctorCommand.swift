@@ -64,6 +64,22 @@ struct Doctor: AsyncParsableCommand {
     @Flag(name: .long, help: "Load-test with image input (occlusion-guard's path) instead of text")
     var fmLoadVision = false
 
+    // 障害報告用。散らばった診断ログを1つの zip にまとめるだけ(送信はしない)。
+    // 収集・zip 化の実体は DoctorBundle
+    @Option(name: .long, help: ArgumentHelp("Write a zip of diagnostic logs (bridge logs, cleanup/install logs, "
+        + "emulator logs, recent run results, and tool/OS versions) to this path, for you to attach when "
+        + "reporting a problem. Also includes the output of --roots-only and --fm-only "
+        + "(the checks that do not stop bridges). "
+        + "Nothing is sent anywhere by this command"))
+    var bundle: String?
+
+    @Option(name: .long, help: "How many of the most recent runs to include with --bundle (default: 3)")
+    var runs: Int?
+
+    @Option(name: .long, help: ArgumentHelp("Test project to pull run results from with --bundle"
+        + " (defaults to the only one in TestProjects/, or the default project)"))
+    var project: String?
+
     // occlusion guard は**リサイズせず**スクリーンショットの切り出しを渡す(最大でスクショ全体
     // ≈1200x2600px)。合成の 64x64 とは推論コストが桁で違うので、本番の寸法で振れるようにする
     @Option(name: .long, help: ArgumentHelp("Image size for --fm-load-vision as WxH (default 64x64). "
@@ -83,9 +99,23 @@ struct Doctor: AsyncParsableCommand {
         }
         // run() は --roots-only を先に見て抜けるので、併用すると --fm-only が黙って効かない
         if fmOnly, rootsOnly { throw ValidationError("--fm-only cannot be combined with --roots-only") }
+
+        if bundle == nil {
+            if runs != nil { throw ValidationError("--runs requires --bundle") }
+            if project != nil { throw ValidationError("--project requires --bundle") }
+        } else {
+            if fmOnly { throw ValidationError("--bundle cannot be combined with --fm-only") }
+            if rootsOnly { throw ValidationError("--bundle cannot be combined with --roots-only") }
+            if fmLoad { throw ValidationError("--bundle cannot be combined with --fm-load") }
+            if let runs, runs < 1 { throw ValidationError("--runs must be at least 1") }
+        }
     }
 
     func run() async throws {
+        if let bundle {
+            try runBundle(outputPath: bundle)
+            return
+        }
         if fmLoad {
             try await runFMLoad()
             return
@@ -475,6 +505,20 @@ struct Doctor: AsyncParsableCommand {
             + "(FMHealth.record feeds ~/.fleetest/fm-usage/<pid>.json, which `api host-metrics` reads).")
 
         if summary.calls > 0, summary.failures == summary.calls {
+            throw ExitCode(1)
+        }
+    }
+
+    /// `--bundle`: 診断ログを1つの zip にまとめる(選定・zip 化の実体は DoctorBundle)
+    private func runBundle(outputPath: String) throws {
+        let outputURL = URL(fileURLWithPath: outputPath)
+        do {
+            let result = try DoctorBundle.build(outputPath: outputURL, runCount: runs ?? 3, projectName: project)
+            ConsoleOut.out("✅ Wrote \(result.zipURL.path) (\(RetentionSweeper.bytesText(result.sizeBytes)))")
+            ConsoleOut.out("The bundle can contain on-screen text from your app (step labels, element lists)."
+                + " Review it before sharing — it is not sent anywhere by this command.")
+        } catch {
+            ConsoleOut.out("❌ Could not create the diagnostic bundle: \(error.localizedDescription)")
             throw ExitCode(1)
         }
     }

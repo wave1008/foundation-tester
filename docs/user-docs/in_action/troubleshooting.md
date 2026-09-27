@@ -16,5 +16,15 @@ Common problems and how to resolve them.
 If none of this resolves the issue, ask your agent to investigate — it can read bridge/run logs
 and the failure report directly.
 
+### Reporting a problem
+
+Run `fleetest doctor --bundle fleetest-diag.zip` and attach the resulting zip when you report a
+problem to the maintainer. It collects bridge/install/cleanup/emulator logs, the most recent run
+results (`--runs`, default 3, from `--project` or the default project) including each scenario's
+run log, tool/OS versions, and the output of `fleetest doctor --roots-only` / `--fm-only` into one
+file. It does not stop or restart any bridge, and nothing is sent anywhere by the command itself.
+**The bundle can contain on-screen text from your app** (step labels, element lists) — review it
+before sharing.
+
 ### Link
 - [index](../index.md)

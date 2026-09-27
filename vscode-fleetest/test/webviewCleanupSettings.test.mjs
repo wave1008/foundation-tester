@@ -97,6 +97,7 @@ const RESPONSE = {
     reportsMaxBytes: 1048576000,
     logsMaxBytes: 524288000,
     xcresultMaxBytes: 5368709120,
+    eventLogsMaxBytes: 2147483648,
     sweepAfterRun: true,
   },
   // 明示設定。recordings と xcresult は未設定(null)= 空欄 + 既定のプレースホルダ
@@ -106,6 +107,7 @@ const RESPONSE = {
     reportsMaxBytes: 1048576000,
     logsMaxBytes: 524288000,
     xcresultMaxBytes: null,
+    eventLogsMaxBytes: null,
     sweepAfterRun: true,
   },
   defaults: {
@@ -114,15 +116,17 @@ const RESPONSE = {
     reportsMaxBytes: 1048576000,
     logsMaxBytes: 524288000,
     xcresultMaxBytes: 5368709120,
+    eventLogsMaxBytes: 2147483648,
     sweepAfterRun: true,
   },
-  // CLI の RetentionPolicy.min…(1 GB / 2 GB / 100 MB / 10 MB / 1 GB)
+  // CLI の RetentionPolicy.min…(1 GB / 2 GB / 100 MB / 10 MB / 1 GB / 100 MB)
   minimums: {
     deviceCapturesMaxBytes: 1073741824,
     recordingsMaxBytes: 2147483648,
     reportsMaxBytes: 104857600,
     logsMaxBytes: 10485760,
     xcresultMaxBytes: 1073741824,
+    eventLogsMaxBytes: 104857600,
   },
   usage: {
     deviceCaptures: 934000000000,
@@ -130,6 +134,7 @@ const RESPONSE = {
     reports: 1430000000,
     logs: 7340032,
     xcresult: 1200000000,
+    eventLogs: 610000000,
   },
 };
 
@@ -139,6 +144,7 @@ const INPUT_IDS = {
   reportsMaxBytes: "settings-cleanup-reports",
   logsMaxBytes: "settings-cleanup-logs",
   xcresultMaxBytes: "settings-cleanup-xcresult",
+  eventLogsMaxBytes: "settings-cleanup-event-logs",
 };
 
 test("単位変換は往復で値が変わらない(GB/MB ⇄ バイト)", () => {

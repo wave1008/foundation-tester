@@ -12,6 +12,7 @@ results/runs/<YYYY-MM>/<runID>/
   run.json                     ... this run as a whole
   scenarios/<scenarioID>.json  ... one scenario execution
   scenarios/<scenarioID>~2.json ... a re-run within the same run (numbered)
+  events/<scenarioID>.ndjson   ... that scenario's execution log (see `fleetest results log` below)
   host-metrics.ndjson          ... host load (cpu/gpu/mem) during the run
 ```
 
@@ -29,10 +30,27 @@ suffix, so results from different machines/branches merge without conflicts.
 | `fleetest results devices` | Run count and pass rate per worker (device) and per platform |
 | `fleetest results slow [--limit <n>]` | Scenarios by average duration, slowest first |
 | `fleetest results insights` | Ten checks over the run history — see [What `insights` detects](#what-insights-detects) |
+| `fleetest results log <runID> [--scenario <id>]` | A run's per-scenario execution log — see [Reading a scenario's execution log](#reading-a-scenarios-execution-log) |
 
-All of them accept `--project`, `--since <period>` (a relative value like `30d`/`12h`, or
-`YYYY-MM-DD`; default `90d`), and `--json` for single-line JSON output. Run
+All of them accept `--project`, and (except `log`) `--since <period>` (a relative value like
+`30d`/`12h`, or `YYYY-MM-DD`; default `90d`) and `--json` for single-line JSON output. Run
 `fleetest results <subcommand> --help` for the exact flags.
+
+## Reading a scenario's execution log
+
+`fleetest results log <runID>` prints, scenario by scenario, everything that scenario's execution
+wrote — the same lines you'd see scroll by during `fleetest run` (steps with their pass/fail
+symbol, scenes, `print()` output on stdout/stderr, host-side notices such as a watchdog timeout),
+reconstructed from `events/<scenarioID>.ndjson`. `<runID>` also accepts `latest`. Use `--scenario
+<id>` to show only one scenario, and `--raw` to print the underlying NDJSON lines unformatted (the per-scenario headings then go to stderr, so stdout stays pure NDJSON)
+instead.
+
+Runs recorded before this feature existed, or whose `events/` was already cleared by retention
+cleanup (see [../../results-json.md](../../results-json.md), Japanese), have no execution log —
+the command reports that on stderr and exits non-zero.
+A scenario that was superseded by a re-run (frozen device, environment error) still shows under an
+extra "(superseded)" heading, and a log that was still being written when the run was killed shows
+under "(incomplete)".
 
 ## What `insights` detects
 

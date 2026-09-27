@@ -12,6 +12,7 @@ results/runs/<YYYY-MM>/<runID>/
   run.json                     ... この run 全体
   scenarios/<シナリオID>.json  ... シナリオ1回分の実行結果
   scenarios/<シナリオID>~2.json ... 同一 run 内の再実行(連番)
+  events/<シナリオID>.ndjson   ... そのシナリオの実行ログ(後述の `fleetest results log` 参照)
   host-metrics.ndjson          ... 実行中のホスト負荷(cpu/gpu/mem)
 ```
 
@@ -29,10 +30,24 @@ results/runs/<YYYY-MM>/<runID>/
 | `fleetest results devices` | ワーカー(デバイス)別・プラットフォーム別の実行回数と成功率を集計する |
 | `fleetest results slow [--limit <n>]` | シナリオを平均所要時間が長い順に一覧する |
 | `fleetest results insights` | 実行履歴に対する10種の検査 —— [`insights` が検知するもの](#insights-が検知するもの)を参照 |
+| `fleetest results log <runID> [--scenario <id>]` | run のシナリオごとの実行ログ —— [シナリオの実行ログを読む](#シナリオの実行ログを読む)を参照 |
 
-すべて `--project`、`--since <期間>`(`30d`/`12h` のような相対値、または `YYYY-MM-DD`。既定
-`90d`)、単一行 JSON で出す `--json` を受け付けます。正確なフラグは
+すべて `--project` を受け付け、`log` 以外は `--since <期間>`(`30d`/`12h` のような相対値、または
+`YYYY-MM-DD`。既定 `90d`)と単一行 JSON で出す `--json` も受け付けます。正確なフラグは
 `fleetest results <サブコマンド> --help` で確認してください。
+
+## シナリオの実行ログを読む
+
+`fleetest results log <runID>` は、`events/<シナリオID>.ndjson` から組み立て直して、シナリオごとに
+そのシナリオの実行が書いたもの全部 —— `fleetest run` 実行中に流れるのと同じ行(合否の記号付きの
+各ステップ・scene・stdout/stderr への `print()` 出力・watchdog タイムアウトのようなホスト側の通知) ——
+を表示します。`<runID>` は `latest` も受け付けます。`--scenario <id>` で1シナリオだけに絞り、
+`--raw` で整形せずに元の NDJSON 行をそのまま出せます(このときシナリオごとの見出しは stderr へ出るので、stdout は NDJSON だけになります)。
+
+この機能より前に走った run、または[保持容量の掃除](../../results-json.md)で `events/` が
+既に消された run には実行ログが無く、その旨を stderr に出して非ゼロで終了します。再実行
+(凍結・環境エラー)で振り直された記録は「(superseded)」という追加の見出しで、run が kill されて
+書き込み中のまま残ったログは「(incomplete)」という見出しで、それぞれ引き続き表示されます。
 
 ## `insights` が検知するもの
 
