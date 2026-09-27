@@ -6,11 +6,18 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import UniformTypeIdentifiers
+import FTTestSupport
 import XCTest
 @testable import FTCore
 @testable import FTDSL
 
 final class ExistImageDSLTests: XCTestCase {
+
+    /// Vision / Core ML は複数プロセスが同時に撃つと答えを誤る(SharedResource.visionML の doc)。
+    /// `swift test --parallel` でもこのクラスのテストは1本ずつ走らせる
+    override func invokeTest() {
+        do { try SharedResource.visionML.locked { super.invokeTest() } } catch { XCTFail("\(error)") }
+    }
 
     private static let screen = FTRect(x: 0, y: 0, width: 300, height: 100)
 

@@ -3,10 +3,17 @@
 
 import CoreGraphics
 import Vision
+import FTTestSupport
 import XCTest
 @testable import FTCore
 
 final class TemplatePrintStoreTests: XCTestCase {
+
+    /// Vision / Core ML は複数プロセスが同時に撃つと答えを誤る(SharedResource.visionML の doc)。
+    /// `swift test --parallel` でもこのクラスのテストは1本ずつ走らせる
+    override func invokeTest() {
+        do { try SharedResource.visionML.locked { super.invokeTest() } } catch { XCTFail("\(error)") }
+    }
 
     private var root: URL!
 

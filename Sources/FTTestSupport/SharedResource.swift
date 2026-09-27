@@ -20,6 +20,12 @@ public struct SharedResource: Sendable {
     public static let androidEmulatorHost = SharedResource(key: "android-emulator-host")
     /// ~/Library/Caches/fleetest 配下(隔離できないときの受け皿)
     public static let hostCaches = SharedResource(key: "host-caches")
+    /// Vision / Core ML の実呼び出し(Create ML の学習と推論・特徴量・OCR)。**複数のテストプロセスが同時に撃つと
+    /// 答えを誤る**(置き場はテストごとの一時フォルダで分かれている = ファイルの共有ではない。OS 内の仕組みは未特定)。
+    /// 実測: 分類器のテストは並列 10 回中 6〜7 回・findImage と OCR のテストは並列 3 回とも、どれかが
+    /// 自分の見本に逆のラベルを確信度 1.00 で答える / 違う画像に同じ特徴量を返す(本番の門が捕まえる形)で落ち、
+    /// 直列ではそれぞれ 7 回・3 回とも緑。実際に撃つクラスは `invokeTest` ごとこれで包む(各クラスは直列で数秒)
+    public static let visionML = SharedResource(key: "vision-ml")
 
     private init(key: String) {
         self.key = key

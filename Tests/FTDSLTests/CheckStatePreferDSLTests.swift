@@ -7,11 +7,18 @@
 import CoreGraphics
 import ImageIO
 import UniformTypeIdentifiers
+import FTTestSupport
 import XCTest
 @testable import FTCore
 @testable import FTDSL
 
 final class CheckStatePreferDSLTests: XCTestCase {
+
+    /// Vision / Core ML は複数プロセスが同時に撃つと答えを誤る(SharedResource.visionML の doc)。
+    /// `swift test --parallel` でもこのクラスのテストは1本ずつ走らせる
+    override func invokeTest() {
+        do { try SharedResource.visionML.locked { super.invokeTest() } } catch { XCTFail("\(error)") }
+    }
 
     /// オン = 塗りつぶした箱、オフ = 枠だけの箱(FTCoreTests の CheckStateClassifierTests と同じ描き方)
     private static func checkboxPNG(on: Bool, shift: Int) -> Data {
