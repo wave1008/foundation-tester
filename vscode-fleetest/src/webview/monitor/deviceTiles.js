@@ -75,6 +75,11 @@ function deviceOpMenuItem(state, busy, physical) {
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
   if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
   if (busy && busy.op === 'wipe') { return { label: t('wvMonitor.deviceOpMenu.wiping'), op: 'wipe', disabled: true }; }
+  // restartBridge は自動修復専用(monitorBridgeLogRotation.ts)でタイル右クリックからは撃てない。
+  // 進行中に「起動/停止」を出すと二重操作の入口になるため busy 表示だけ足す。
+  if (busy && busy.op === 'restartBridge') {
+    return { label: t('wvMonitor.deviceOpMenu.restartingBridge'), op: 'restartBridge', disabled: true };
+  }
   if (state === 'offline' || state === 'unknown') {
     return {
       label: t(physical ? 'wvMonitor.deviceOpMenu.startBridge' : 'wvMonitor.deviceOpMenu.start'),
@@ -769,9 +774,11 @@ function renderMeta(entry) {
     const physicalQueued = entry.device.kind === 'physical';
     queuedText = entry.opBusy.op === 'wipe'
       ? t('wvMonitor.tile.queuedWipe')
-      : entry.opBusy.op === 'down'
-        ? (physicalQueued ? t('wvMonitor.tile.queuedBridgeStop') : t('wvMonitor.tile.queuedRestart'))
-        : (physicalQueued ? t('wvMonitor.tile.queuedBridgeStart') : t('wvMonitor.tile.queuedStart'));
+      : entry.opBusy.op === 'restartBridge'
+        ? t('wvMonitor.tile.queuedBridgeRestart')
+        : entry.opBusy.op === 'down'
+          ? (physicalQueued ? t('wvMonitor.tile.queuedBridgeStop') : t('wvMonitor.tile.queuedRestart'))
+          : (physicalQueued ? t('wvMonitor.tile.queuedBridgeStart') : t('wvMonitor.tile.queuedStart'));
   } else if (!entry.opBusy && !entry.awaitingStateAfterUp && bulkOpActive === 'up'
              && (entry.device.state === 'offline' || bridgeNotRunning(entry))) {
     // bridgeNotRunning は physical 以外では常に false(deviceBridgeNotRunning/

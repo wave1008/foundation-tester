@@ -819,6 +819,29 @@ public struct BridgeLauncher {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
+        var stopped = stopRunnersMatching(udid: udid, entries: entries)
+        // in-app ブリッジ(pid ファイルを持たない。/status 無応答のウェッジも含めて udid 一致だけで判定)
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "inapp" {
+            guard let state = InAppBridgeState.read(at: entry), state.udid == udid else { continue }
+            InAppBridgeState.terminateAndRemove(at: entry)
+            stopped.append(entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: ""))
+        }
+        return stopped.sorted()
+    }
+
+    /// `stopMatching` のうち **XCUITest ランナーだけ**(in-app ブリッジには触らない = 注入した
+    /// アプリを起こし直さない)。結果の束(xcresult)を書くのはランナーだけなので、束を孤児にする
+    /// 建て直し(`api restart-bridge`)はこちらを使う。戻り値=停止ポート一覧
+    public static func stopRunnersMatching(udid: String, repoRoot: URL) -> [String] {
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return [] }
+        return stopRunnersMatching(udid: udid, entries: entries).sorted()
+    }
+
+    private static func stopRunnersMatching(udid: String, entries: [URL]) -> [String] {
         var stopped: [String] = []
         var terminated: [Int32] = []
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
@@ -843,15 +866,7 @@ public struct BridgeLauncher {
         }
         // 直後の simctl shutdown と XCUITest teardown の競合防止(confirmDeaths のコメント参照)
         confirmDeaths(pids: terminated, timeout: 5)
-        // in-app ブリッジ(pid ファイルを持たない。/status 無応答のウェッジも含めて udid 一致だけで判定)
-        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
-            && entry.pathExtension == "inapp" {
-            guard let state = InAppBridgeState.read(at: entry), state.udid == udid else { continue }
-            InAppBridgeState.terminateAndRemove(at: entry)
-            stopped.append(entry.deletingPathExtension().lastPathComponent
-                .replacingOccurrences(of: "bridge-", with: ""))
-        }
-        return stopped.sorted()
+        return stopped
     }
 
     /// 死んだランナーの pid ファイルを掃除する(停止はしない)。TTL 自主終了(design.md §4.1)は

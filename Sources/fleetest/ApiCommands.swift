@@ -17,6 +17,7 @@ struct ApiCommand: AsyncParsableCommand {
                       ApiWipeDeviceCommand.self,
                       ApiStartAllDevicesCommand.self,
                       ApiStopAllDevicesCommand.self, ApiRestartDevicesCommand.self,
+                      ApiRestartBridgeCommand.self,
                       ApiValidateProfile.self,
                       ApiLiveCommand.self,
                       ApiDeviceCatalogCommand.self, ApiCreateDeviceCommand.self,

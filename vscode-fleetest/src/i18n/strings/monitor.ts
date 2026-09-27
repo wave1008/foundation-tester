@@ -1,6 +1,6 @@
 // バッチC 辞書。namespace: monitor.
 // 対象ソース: monitorModel.ts, monitorPanel.ts, monitorHealthWatchdog.ts,
-//   monitorBridgeWatchdog.ts, monitorDeviceStreamController.ts
+//   monitorBridgeWatchdog.ts, monitorBridgeLogRotation.ts, monitorDeviceStreamController.ts
 // キーは "monitor." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";
 
@@ -10,6 +10,7 @@ export const monitorStrings = {
   "monitor.deviceOp.labelStarting": { ja: "起動中...", en: "Starting..." },
   "monitor.deviceOp.labelStopping": { ja: "停止中...", en: "Stopping..." },
   "monitor.deviceOp.labelWiping": { ja: "Wipe Data 実行中...", en: "Wiping data..." },
+  "monitor.deviceOp.labelRestartingBridge": { ja: "ブリッジ建て直し中...", en: "Restarting bridge..." },
   "monitor.deviceOp.labelStart": { ja: "起動", en: "Start" },
   "monitor.deviceOp.labelStop": { ja: "停止", en: "Stop" },
 
@@ -226,6 +227,12 @@ export const monitorStrings = {
   "monitor.bridgeWatch.repairDeferredInRun": {
     ja: "実行中のためブリッジの修復を保留します。",
     en: "Deferring bridge repair because a run is in progress.",
+  },
+
+  // ---- monitorBridgeLogRotation.ts ----
+  "monitor.bridgeLogRotation.restarting": {
+    ja: "ブリッジ診断ログが上限({limit})を超えたため、{name} のブリッジを建て直します(束 {bundle})。",
+    en: "Bridge diagnostic logs exceeded the limit ({limit}); restarting the bridge for {name} (bundle {bundle}).",
   },
 
   // ---- monitorDeviceStreamController.ts ----

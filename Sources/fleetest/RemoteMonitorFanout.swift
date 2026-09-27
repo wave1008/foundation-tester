@@ -312,6 +312,12 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             relayLine(text)
             return
         }
+        if kind == "monitorBridgeLogRotation" {
+            // **中継しない**——この機械の拡張はランナー機のブリッジを建て直せないので、そこの候補を
+            // 手元へ流すと拡張が向こうのデバイス名で手元へ撃つ(ApiMonitorBridgeLogRotationEvent の doc)。
+            // 子は `--device-machine local` で自分のぶんを判定・出力しているが、親はここで飲み込む
+            return
+        }
         if kind == "monitorStorage" {
             // 1台の計測の終わり(ApiMonitorStorageEvent の doc)。id をマシン付きに直して中継し、
             // **保持している子の monitorDevices も同じ値へ書き換える** —— 書き換えないと、親の次の周期が

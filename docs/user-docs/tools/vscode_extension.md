@@ -206,6 +206,10 @@ settings, so they also apply to tests you run directly from a terminal.
 - **"Clean up now"**: deletes right away using the same rule. Before deleting, a confirmation
   dialog shows the total that will be removed.
 - Result records (the pass/fail and timing JSON) are never deleted.
+- **Bridge diagnostics** of a running bridge can't be deleted. So when this category goes over its
+  limit, a bridge that no test, MCP session, or live control is using is rebuilt automatically and its
+  old log is removed (that device's screen pauses for tens of seconds meanwhile). Turning off
+  "Clean up in the background after a test run" also turns this off.
 - Reports are also cleaned up in the output folder a run profile sets with `reportDir`. A folder
   given once with the command's `--report-dir` is not cleaned up.
 

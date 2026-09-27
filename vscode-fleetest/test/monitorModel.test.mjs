@@ -72,6 +72,41 @@ test("isMonitorEvent: monitorError は device 省略でも true(契約上 device
   assert.equal(isMonitorEvent(value), true);
 });
 
+test("isMonitorEvent: monitorBridgeLogRotation は candidate:null / 正常な候補を true と判定する", () => {
+  assert.equal(isMonitorEvent({ kind: "monitorBridgeLogRotation", candidate: null }), true);
+  const value = {
+    kind: "monitorBridgeLogRotation",
+    candidate: {
+      deviceId: "ios:Sim1", name: "Sim1", port: 8100,
+      bundleBytes: 3_000_000_000, usageBytes: 2_700_000_000, limitBytes: 2_500_000_000,
+    },
+  };
+  assert.equal(isMonitorEvent(value), true);
+});
+
+test("isMonitorEvent: monitorBridgeLogRotation は candidate のフィールド欠落・型不正で false", () => {
+  assert.equal(isMonitorEvent({ kind: "monitorBridgeLogRotation" }), false);
+  assert.equal(isMonitorEvent({
+    kind: "monitorBridgeLogRotation",
+    candidate: { deviceId: "ios:Sim1", name: "Sim1", port: 8100, bundleBytes: 1, usageBytes: 1 },
+  }), false, "limitBytes 欠落は false");
+});
+
+// **二重の備え**: 契約上ここに machine は乗らない(このマシンのデバイスだけ・リモート中継なし)。
+// 万一乗っていたら行/候補ごと丸ごと弾く(monitorBridgeLogRotation.ts 側の観測もクラス内で無視する)。
+test("isMonitorEvent: monitorBridgeLogRotation は machine を持つ行・candidate を false にする", () => {
+  const goodCandidate = {
+    deviceId: "ios:Sim1", name: "Sim1", port: 8100,
+    bundleBytes: 3_000_000_000, usageBytes: 2_700_000_000, limitBytes: 2_500_000_000,
+  };
+  assert.equal(isMonitorEvent({
+    kind: "monitorBridgeLogRotation", candidate: goodCandidate, machine: "M1Max",
+  }), false, "行に machine が乗っていたら丸ごと弾く");
+  assert.equal(isMonitorEvent({
+    kind: "monitorBridgeLogRotation", candidate: { ...goodCandidate, machine: "M1Max" },
+  }), false, "candidate に machine が乗っていたら丸ごと弾く");
+});
+
 // ---- isMonitorEvent: 不正kind ----
 
 test("isMonitorEvent: 未知の kind は false", () => {
@@ -748,6 +783,19 @@ test("deviceOpMenuItem: busy.op='wipe' は「Wipe Data 実行中...」(タイル
   assert.deepEqual(deviceOpMenuItem("offline", { op: "wipe", status: "running" }), {
     label: "Wipe Data 実行中...",
     op: "wipe",
+    disabled: true,
+  });
+});
+
+test("deviceOpMenuItem: busy.op='restartBridge' は「ブリッジ建て直し中...」(タイルからの起動/停止を塞ぐ)", () => {
+  assert.deepEqual(deviceOpMenuItem("connected", { op: "restartBridge", status: "running" }), {
+    label: "ブリッジ建て直し中...",
+    op: "restartBridge",
+    disabled: true,
+  });
+  assert.deepEqual(deviceOpMenuItem("booted", { op: "restartBridge", status: "running" }), {
+    label: "ブリッジ建て直し中...",
+    op: "restartBridge",
     disabled: true,
   });
 });

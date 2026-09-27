@@ -181,6 +181,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let monitorRepoRoot = try? RepoRoot.find()
         let leaseStateDir = monitorRepoRoot?.appendingPathComponent(".fleetest")
 
+        // xcresult 保持容量の建て直し候補(BridgeLogRotationSampler の doc)。**手元でも子でも作る**——
+        // 中継の可否(RemoteMonitorFanout が子のぶんを飲み込む)は出す側でなく親側の役割
+        let bridgeLogRotationSampler = BridgeLogRotationSampler(toolRoot: monitorRepoRoot)
+        var lastBridgeLogRotationCandidate: ApiMonitorBridgeLogRotationEvent.Candidate?
+        var hasEmittedBridgeLogRotation = false
+
         // 直近の hold 状態(変化したときだけ monitorHold イベントと stderr を出す)
         var lastHoldActive = false
         // 直近サイクルで id 衝突により落とした合成デバイスの警告(変化したときだけ出す)
@@ -207,6 +213,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // (monitorLock の lastOccupancy が Optional なのと同じ理由)
         var lastRunRecords: [RunProgressRecord]?
         while !stop.isSet {
+            // 待たない(BridgeLogRotationSampler の doc)。間隔が経っていれば背景で測り始めるだけ
+            bridgeLogRotationSampler.scheduleIfDue()
             let occupancy = HostOccupancy.read(myIssuer: myIssuer)
             if occupancy != lastOccupancy {
                 lastOccupancy = occupancy
@@ -288,6 +296,17 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
             let states = Self.debounce(observed, confirmed: &confirmed) { message in
                 self.logStderr(message)
+            }
+
+            // xcresult 保持容量の建て直し候補。ポート→デバイスの対応はこの周期の states(iosPort)
+            // からだけ引く(このマシンのデバイスに絞るため)。変わったとき(と最初の1回)だけ出す
+            let bridgeLogRotationCandidate = BridgeLogRotationCandidateMapping.candidate(
+                raw: bridgeLogRotationSampler.snapshot(), states: states)
+            if !hasEmittedBridgeLogRotation
+                || bridgeLogRotationCandidate != lastBridgeLogRotationCandidate {
+                hasEmittedBridgeLogRotation = true
+                lastBridgeLogRotationCandidate = bridgeLogRotationCandidate
+                emitLine(ApiMonitorBridgeLogRotationEvent(candidate: bridgeLogRotationCandidate))
             }
 
             // connected な Android エミュレータのみ対象(実機は Wi-Fi オフが意図的でありうるため除外)

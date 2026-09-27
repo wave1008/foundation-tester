@@ -61,9 +61,11 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
 - **Recordings, reports, and logs**: These are deleted automatically. To free space right away, use
   "Clean up now" on the extension's Settings tab, or run `fleetest clean` in a terminal (add `--dry-run`
   to see the amount without deleting anything).
-- **Bridge diagnostic logs**: If you keep a bridge running, as with a physical device's bridge or an MCP
-  session, the log grows by about 6 GB per device per day. The log of a running bridge can't be deleted
-  automatically. When it goes over the limit, stop the bridges you are not using
+- **Bridge diagnostic logs**: If a bridge keeps running, for example while you stream a physical device's
+  screen or keep an MCP session going, the log grows by a few GB per device per day. While the VSCode
+  extension is open, a bridge that goes over the limit is rebuilt automatically, as long as no test, MCP
+  session, or live control is using it (that device's screen pauses for tens of seconds meanwhile). If you
+  use fleetest without the extension, stop the bridges you are not using when the log goes over the limit
   (`fleetest bridge down --port <port>`).
 - **Wallpaper cache of stopped Simulators**: `fleetest clean --simulator-poster-cache` clears it for every
   stopped Simulator at once.

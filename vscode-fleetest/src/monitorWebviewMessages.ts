@@ -565,13 +565,18 @@ export function devicesToWebviewMessage(
 // monitorHold は webview へ送らない(monitorProcessManager.ts が OUTPUT ログで処理して return する)
 // ため、ここでは型から除外して switch の網羅性を保つ
 export function toWebviewMessage(
-  // monitorHold / monitorLock / monitorDevices / monitorStorage は webview へ素通ししない(順に OUTPUT だけ・
-  // monitorProcessManager が machineLock メッセージへ畳む・表示フィルタを添える
-  // devicesToWebviewMessage を通す・そのデバイスを差し替えた一覧として同じ経路)。**Exclude で受け取らない形にする**
+  // monitorHold / monitorLock / monitorDevices / monitorStorage / monitorBridgeLogRotation は webview へ
+  // 素通ししない(順に OUTPUT だけ・monitorProcessManager が machineLock メッセージへ畳む・表示フィルタを
+  // 添える devicesToWebviewMessage を通す・そのデバイスを差し替えた一覧として同じ経路・
+  // MonitorBridgeLogRotation へ委譲するだけでタイル表示を持たない)。**Exclude で受け取らない形にする**
   // = 呼び出し側が畳み忘れたらコンパイルで止まる
   event: Exclude<
     MonitorEvent,
-    { kind: "monitorHold" } | { kind: "monitorLock" } | { kind: "monitorDevices" } | { kind: "monitorStorage" }
+    | { kind: "monitorHold" }
+    | { kind: "monitorLock" }
+    | { kind: "monitorDevices" }
+    | { kind: "monitorStorage" }
+    | { kind: "monitorBridgeLogRotation" }
   >,
 ): MonitorToWebviewMessage {
   switch (event.kind) {

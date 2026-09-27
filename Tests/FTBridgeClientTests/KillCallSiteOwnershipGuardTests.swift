@@ -19,9 +19,10 @@ final class KillCallSiteOwnershipGuardTests: XCTestCase {
     private static let exemptFunctions: Set<String> = [
         "BridgeLauncher.confirmDeathThenRemovePidFile",
         "BridgeLauncher.confirmDeaths",
-        // stopMatching は udid 文字列がコマンドラインに含まれることを確認してから撃つ
-        // (このバグ修正のスコープ外。CLAUDE.md 指示によりここは変更しない)
+        // stopMatching / stopRunnersMatching は udid 文字列がコマンドラインに含まれることを確認してから撃つ
+        // (kill はランナーだけを止める stopRunnersMatching にあり、stopMatching はそれを呼ぶ)
         "BridgeLauncher.stopMatching",
+        "BridgeLauncher.stopRunnersMatching",
     ]
 
     private func repoRoot() -> URL {

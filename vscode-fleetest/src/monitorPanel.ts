@@ -44,6 +44,7 @@ import { type FleetestConfig, resolveAdb, resolveProjectName } from "./config";
 import { currentLocale, t } from "./i18n";
 import {
   isMonitorFromWebviewMessage,
+  type MonitorBridgeLogRotationCandidate,
   type MonitorControlCommand,
   disabledMachineSet,
   type MonitorDevice,
@@ -52,6 +53,7 @@ import {
   isPlatformFilter,
 } from "./monitorModel";
 import { type MachineLock, bulkDownGate, streamFoldMachines } from "./machineLockModel";
+import { MonitorBridgeLogRotation } from "./monitorBridgeLogRotation";
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDashboardController } from "./monitorDashboardController";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
@@ -126,6 +128,9 @@ export interface MonitorPanelDeps {
   /** monitorDevicesイベントをMonitorDeviceStreamControllerへ渡す(パイプラインの張り替え判定に使う。
    * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
   notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
+  /** monitorBridgeLogRotationイベントをMonitorBridgeLogRotationへ渡す(monitorProcessManager.tsの
+   * monitorBridgeLogRotation処理から呼ぶ)。 */
+  notifyBridgeLogRotationCandidate(candidate: MonitorBridgeLogRotationCandidate | null): void;
   /** 機械の占有(dispatch.lock)が変わったときに MonitorProcessManager が呼ぶ。
    * **手元も含む**(キーは runBoardModel の LOCAL_MACHINE_KEY)。**配信の自動退避**
    * (占有中の機械のライブ配信を畳んでポーリングへ落とす)の入口
@@ -237,6 +242,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private readonly profiles: MonitorProfilesController;
   private readonly deviceOps: MonitorDeviceOps;
   private readonly bridgeWatchdog: MonitorBridgeWatchdog;
+  private readonly bridgeLogRotation: MonitorBridgeLogRotation;
   private readonly healthWatchdog: MonitorHealthWatchdog;
   private readonly deviceStream: MonitorDeviceStreamController;
   private readonly recordings: MonitorRecordingsController;
@@ -378,7 +384,11 @@ export class MonitorPanelController implements vscode.Disposable {
         this.deviceStream.applyDevices(devices);
         this.bridgeWatchdog.observe(devices);
         this.healthWatchdog.observe(devices);
+        // 撃てなかった直近の候補(busy/クールダウンで見送った分)を、devices サイクル毎に拾い直す
+        // (bridgeWatchdog/healthWatchdog と同じ呼ばれ方)。
+        this.bridgeLogRotation.reevaluate();
       },
+      notifyBridgeLogRotationCandidate: (candidate) => this.bridgeLogRotation.observe(candidate),
       notifyMachineLocks: (locks) => {
         // 占有が変わった瞬間に畳む/戻す(次の monitorDevices を待たない = run の開始直後に
         // 配信が残っている時間を作らない)
@@ -456,6 +466,13 @@ export class MonitorPanelController implements vscode.Disposable {
       log: (message) => this.outputChannel.appendLine(message),
       enqueueLifecycleJob: (job) => this.deviceOps.enqueueLifecycleJob(job),
       isAutoRepairEnabled: () => this.getConfig().autoRepairBridge,
+      isAnyRunActive: () => isAnyLaneRunning(this.laneState),
+      isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
+    });
+    // enqueueLifecycleJob 委譲のため deviceOps より後に生成する(bridgeWatchdog と同じ理由)。
+    this.bridgeLogRotation = new MonitorBridgeLogRotation({
+      log: (message) => this.outputChannel.appendLine(message),
+      enqueueLifecycleJob: (job) => this.deviceOps.enqueueLifecycleJob(job),
       isAnyRunActive: () => isAnyLaneRunning(this.laneState),
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
     });

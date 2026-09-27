@@ -825,12 +825,14 @@ export class MonitorDeviceOps {
     });
   }
 
-  /** device ジョブの op から、実際に叩く CLI サブコマンド名(ログ・失敗メッセージの表示用)。 */
-  private static deviceOpCommandName(op: "up" | "down" | "wipe"): string {
+  /** device ジョブの op から、実際に叩く CLI サブコマンド名(ログ・失敗メッセージの表示用、
+   * および CLI へ渡す引数の組み立て双方で使う唯一の対応表)。 */
+  private static deviceOpCommandName(op: "up" | "down" | "wipe" | "restartBridge"): string {
     switch (op) {
       case "up": return "start-device";
       case "down": return "stop-device";
       case "wipe": return "wipe-device";
+      case "restartBridge": return "restart-bridge";
     }
   }
 
@@ -902,7 +904,7 @@ export class MonitorDeviceOps {
     // プロファイルの同名エントリを引いて**別の機械の設定でこの Mac にシミュレータを作る**
     // (simctl は無ければ作る)。一括起動が RemoteDeviceFanout で分散するのと同じ規律
     const args: string[] = machine ? ["remote", "exec", machine, "--"] : [];
-    args.push("api", op === "up" ? "start-device" : op === "down" ? "stop-device" : "wipe-device");
+    args.push("api", MonitorDeviceOps.deviceOpCommandName(op));
     // **wipe は識別子だけで撃つ**(delete-device と同じ契約: プロジェクトも実行プロファイルも
     // 参照しない)。名前で引く形にすると、リモートでは向こうのプロファイル複製が古いと
     // `device not found` で必ず失敗し、操作のたびにプロジェクトを送り直す羽目になる

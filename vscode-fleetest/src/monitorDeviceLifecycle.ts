@@ -16,7 +16,10 @@ import { isRecord, type MonitorDeviceState } from "./monitorDeviceModel";
 // wipe = 仮想デバイス1台の初期化(`fleetest api wipe-device`)。up/down と同じ device ジョブとして
 // 直列キューに載せる —— 中で停止と再起動をするので、一括起動や個別の起動/停止と重なると
 // simctl/adb・ブリッジ供給が競合する。
-export type DeviceOpKind = "up" | "down" | "wipe";
+// restartBridge = ブリッジ診断ログの合計超過による自動建て直し(`fleetest api restart-bridge`。
+// monitorBridgeLogRotation.ts)。デバイス本体は触らずブリッジだけ止めて供給し直す —— up/down/wipe
+// と同じ直列キューに載せるのは simctl/adb・ブリッジ供給の競合を避けるため(理由は同じ)。
+export type DeviceOpKind = "up" | "down" | "wipe" | "restartBridge";
 
 export interface DeviceOpLogEvent {
   readonly kind: "log";
@@ -203,6 +206,11 @@ export function deviceOpMenuItem(
   if (busy?.op === "wipe") {
     return { label: t("monitor.deviceOp.labelWiping"), op: "wipe", disabled: true };
   }
+  if (busy?.op === "restartBridge") {
+    // restartBridge は自動修復専用(monitorBridgeLogRotation.ts)でタイル右クリックからは
+    // 撃てない。進行中に「起動/停止」を出すと二重操作の入口になるため busy 表示だけ足す。
+    return { label: t("monitor.deviceOp.labelRestartingBridge"), op: "restartBridge", disabled: true };
+  }
   // unknown(リモートで観測できていない)は「起動」を出す —— 止めようがない状態で「停止」を
   // 出すより、起動を撃てるほうが役に立つ(起動は fan-out でその機械へ届く)
   return state === "offline" || state === "unknown"
@@ -237,7 +245,9 @@ export type DeviceLifecycleJob =
   // machine: そのデバイスが居る機械(手元は undefined)。**名前だけで CLI に渡さない** ——
   // 同名のデバイスが別の機械にも居るのは通常で、手元の同名エントリを引いて別の機械の設定で
   // シミュレータを1台作ってしまう(simctl は無ければ作る)
-  | { readonly kind: "device"; readonly name: string; readonly op: "up" | "down"; readonly machine?: string; readonly udid?: string; readonly serial?: string }
+  // restartBridge: udid/serial は**常に省略**(`fleetest api restart-bridge` は --name 直指定を
+  // 持たない。monitorBridgeLogRotation.ts が積む候補は常に登録済みデバイス)。
+  | { readonly kind: "device"; readonly name: string; readonly op: "up" | "down" | "restartBridge"; readonly machine?: string; readonly udid?: string; readonly serial?: string }
   // wipe は **識別子で撃つ**(`api wipe-device --platform … --udid/--avd`)。delete-device と同じく
   // プロジェクトも実行プロファイルも参照しない —— 名前で引く形にすると、リモートでは向こうの
   // 複製が古いと `device not found` で必ず失敗する(複製が更新されるのはモニターの fan-out

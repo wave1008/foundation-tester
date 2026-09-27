@@ -172,6 +172,19 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
         XCTAssertTrue(line.contains(#""runs":[]"#), line)
     }
 
+    /// **この拡張はランナー機のブリッジを建て直せない**ので、子(--device-machine 付き)の
+    /// xcresult 建て直し候補は手元へ中継しない(手元の拡張が向こうのデバイス名で手元へ撃つのを防ぐ)
+    func testBridgeLogRotationLineFromAChildIsNotRelayed() {
+        let relayed = LockedBox<[String]>([])
+        let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
+                                         interval: 2, maxWidth: 960,
+                                         log: { _ in }, relayLine: { line in relayed.mutate { $0.append(line) } })
+        fanout.ingest(
+            line: #"{"kind":"monitorBridgeLogRotation","candidate":{"deviceId":"ios:iPhone 17","name":"iPhone 17","port":8123,"bundleBytes":1,"usageBytes":2,"limitBytes":3}}"#,
+            machine: "M1Ultra")
+        XCTAssertTrue(relayed.value.isEmpty, "relayed: \(relayed.value)")
+    }
+
     func testUnexpectedLinesPassThroughUnchanged() {
         for line in [#"{"kind":"monitorFrame"}"#, "not json", #"{"device":"noplatform"}"#] {
             XCTAssertEqual(RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"), line, line)

@@ -233,7 +233,25 @@ export type MonitorEvent =
       readonly machine?: string;
       readonly observed: boolean;
       readonly runs: readonly MonitorRunEntry[];
-    };
+    }
+  // ブリッジ診断ログの合計が上限を超え、建て直しの候補になったデバイス(§背景・
+  // monitorBridgeLogRotation.ts が消費)。候補が変わったとき/最初の1回だけ届く(周期毎ではない)。
+  // 契約: Sources/fleetest/ApiMonitorCommand.swift の計測器と対。**このマシンのデバイスだけ**
+  // (リモートの中継には乗らない)
+  | { readonly kind: "monitorBridgeLogRotation"; readonly candidate: MonitorBridgeLogRotationCandidate | null };
+
+/** monitorBridgeLogRotation イベントの候補1件。deviceId は devices[].id と同じ(突き合わせ用)。 */
+export interface MonitorBridgeLogRotationCandidate {
+  readonly deviceId: string;
+  readonly name: string;
+  readonly port: number;
+  readonly bundleBytes: number;
+  readonly usageBytes: number;
+  readonly limitBytes: number;
+  /** 契約上ここには乗らない(このマシンのデバイスだけ。リモートの中継には乗らない)。万一乗っていたら
+   * monitorBridgeLogRotation.ts が無視する(二重の備えの一方。もう一方はこのファイルの isMonitorEvent)。 */
+  readonly machine?: string;
+}
 
 const PLATFORMS: ReadonlySet<string> = new Set<MonitorPlatform>(["ios", "android"]);
 const STATES: ReadonlySet<string> = new Set<MonitorDeviceState>(["connected", "booted", "offline", "unknown"]);
@@ -365,6 +383,19 @@ function isMonitorRunLane(value: unknown): value is MonitorRunLane {
   );
 }
 
+function isMonitorBridgeLogRotationCandidate(value: unknown): value is MonitorBridgeLogRotationCandidate {
+  return (
+    isRecord(value) &&
+    typeof value.deviceId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.port === "number" &&
+    typeof value.bundleBytes === "number" &&
+    typeof value.usageBytes === "number" &&
+    typeof value.limitBytes === "number" &&
+    (value.machine === undefined || typeof value.machine === "string")
+  );
+}
+
 function isMonitorRunEntry(value: unknown): value is MonitorRunEntry {
   if (!isRecord(value)) {
     return false;
@@ -461,6 +492,18 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
         Array.isArray(value.runs) &&
         value.runs.every(isMonitorRunEntry)
       );
+    case "monitorBridgeLogRotation":
+      // 契約上ここに machine は乗らない(このマシンのデバイスだけ・リモート中継なし)。
+      // 万一乗っていたら行ごと丸ごと捨てる(二重の備えの一方。もう一方は candidate 側の下)
+      if ("machine" in value) {
+        return false;
+      }
+      if (value.candidate === null) {
+        return true;
+      }
+      return isRecord(value.candidate)
+        && !("machine" in value.candidate)
+        && isMonitorBridgeLogRotationCandidate(value.candidate);
     default:
       return false;
   }

@@ -4198,6 +4198,26 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
   `remote exec <machine> -- api start-device … --device-machine local` で向こうへ回す。記録の鍵は
   `device.id`(machine 込みで一意。name で持つと、向こうの connected が手元のハングを隠し、向こうの
   booted が手元の健全なデバイスを再起動する)。webview へ出す `bridgeWatch` にも machine を載せる(省略 = 手元)。
+- **ブリッジ診断ログ(xcresult)の建て直し**(`vscode-fleetest/src/monitorBridgeLogRotation.ts`・
+  `Sources/fleetest/BridgeLogRotationSampler.swift`・判定は `FTCore.BridgeLogRotation`): 生きたランナーの束は
+  guarded で消せない(docs/results-json.md §保持容量)ので、**束が大きいブリッジを建て直して孤児にし、
+  既存の掃除に消させる**。原因は XCTest がランナー経由のスクショ1回ごとに約 5KB の内部ログを書くこと
+  (`getting screen bounds` ×6 ほか。xctestrun の `OS_ACTIVITY_DT_MODE` を外しても `-XCTEmitOSLogs NO` でも
+  減らないと実測で確認)で、実機の画面を配信し続けると 1 台 1 日約 2.6GB。
+  - 観測: `api monitor` が **10 分おきに裏で**束を測り(周期は控えを読むだけ)、判定を
+    `RetentionSweeper.clean` の notice と同じ条件(`RetentionSweep.plan` の `overCapAfterGuards`)で行い、
+    guarded で最大の束のデバイスを `monitorBridgeLogRotation` 行で出す(変わったときだけ・候補無しは
+    `"candidate":null`)。**この機械のデバイスだけ**(`RemoteMonitorFanout` は中継しない)。
+    **`sweepAfterRun` が false なら候補を出さない**(利用者の止めるスイッチを共有する)。
+    控えを返すたびに束の実在を確かめる(建て直し後に古いポートを別のデバイスが使っても、そのデバイスを指さない)
+  - 撃つ: 拡張が lifecycle ジョブ `restartBridge` → `api restart-bridge --name` を積む。run 実行中・
+    待ち行列 busy・同じデバイスに 20 分以内に撃った(計測 2 周期ぶん)ときは撃たない。`machine` 付きは無視
+  - `api restart-bridge`: run・MCP・ライブ操作の印があれば断る(`DeviceBooter.deviceInUseRefusal`)→
+    **XCUITest ランナーだけ**を止める(`BridgeLauncher.stopRunnersMatching`。in-app ブリッジと注入した
+    アプリは起こし直さない)→ 供給し直す。デバイス本体は触らない。古い束は同じポートなら起動時の掃除、
+    別ポートなら `sweepOrphanResultBundles` が消す
+  - 陽性対照(2026-09-27): 上限を最小(1GB)にし、生きた束へ 1.1GB の実データを足す → モニターが候補を出す →
+    `api restart-bridge` が 16.6 秒で建て直し、1.1GB の束が消え、in-app ブリッジは起動し直されなかった
   **実機は見ない**(供給に数分かかり枠を専有する)。健全性の watchdog(`monitorHealthWatchdog`)は
   まだ手元だけ(Wi-Fi 修復に相当する `api` の口が無く、手元の adb を直接叩くため)
 - **残骸掃除**: `BridgeLauncher.startDetached` は起動前に同一ポートの xctestrun

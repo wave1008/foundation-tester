@@ -360,7 +360,7 @@ public enum DeviceBooter {
     /// **実機 iOS はここでは宣言値しか返さない** —— `SupplyLeaseHolder.hold(keys:)` は解決後の
     /// ハードウェア UDID で書くため、両方を見る必要がある呼び手(shutdownOne/shutdownAll)は
     /// `resolvedPhysicalIOSUDID` を別途足して `stopRefusal(keys:)` へ渡す
-    static func leaseKey(spec: DeviceSpec, platform: String) -> String? {
+    public static func leaseKey(spec: DeviceSpec, platform: String) -> String? {
         if spec.isPhysical {
             return platform == "ios" ? spec.udid : spec.serial
         }
@@ -374,7 +374,7 @@ public enum DeviceBooter {
     /// (別 UUID)のときに一致させるため)。**到達性は問わない** —— 停止/lease 判定は接続の有無に
     /// 関係なく行うべきなので、`IOSPhysicalDeviceCatalog.resolve` の probe(devicectl 追加1回)は
     /// 呼ばない。一致しなければ nil。純粋関数(devices は呼び出し側が集めた一覧を渡す)
-    static func resolvedPhysicalIOSUDID(spec: DeviceSpec, in devices: [IOSPhysicalDeviceInfo]) -> String? {
+    public static func resolvedPhysicalIOSUDID(spec: DeviceSpec, in devices: [IOSPhysicalDeviceInfo]) -> String? {
         let declared = spec.udid ?? ""
         guard !declared.isEmpty else { return nil }
         return devices.first(where: { $0.udid == declared || $0.deviceCtlIdentifier == declared })?.udid

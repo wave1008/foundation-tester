@@ -421,6 +421,12 @@ export class MonitorProcessManager {
           this.publishDevices(keepFinishedStorage(this.latestDevices, sortMonitorDevices(value.devices)));
           return;
         }
+        if (value.kind === "monitorBridgeLogRotation") {
+          // webview へは送らない(この自動修復はタイル表示を持たない)。MonitorBridgeLogRotation へ
+          // 委譲するだけ(monitorBridgeLogRotation.ts)。
+          this.deps.notifyBridgeLogRotationCandidate(value.candidate);
+          return;
+        }
         // monitorFrame は state==connected のデバイスにしか来ない(ApiMonitorCommand.swift)ため、
         // "running" フィルタで消える対象(offline / unknown)とは重ならない。フレーム側の絞り込みは不要。
         if (value.kind === "monitorFrame" && this.deps.isDeviceStreaming(value.device)) {

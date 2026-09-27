@@ -250,3 +250,36 @@ struct ApiMonitorFrameEvent: Encodable {
     let width: Int
     let height: Int
 }
+
+/// xcresult(XCUITest ランナーの結果の束)の保持容量が guarded(生きているブリッジ)だけで
+/// 超過したとき、建て直す価値がある1台を知らせる(`fleetest api restart-bridge` の入力)。
+/// 判定は `FTCore.BridgeLogRotation.candidate`(RetentionSweeper.clean の notice と同じ条件)。
+/// **手元でも出す**(この機械のブリッジしか建て直せないので、リモートの子が出しても
+/// `RemoteMonitorFanout` は中継しない——`machine` 欄は持たない)。
+/// 変わったとき(と最初の1回)だけ出す。同期相手: vscode-fleetest/src/monitorBridgeLogRotation.ts
+struct ApiMonitorBridgeLogRotationEvent: Codable, Equatable {
+    let kind = "monitorBridgeLogRotation"
+    let candidate: Candidate?
+
+    private enum CodingKeys: String, CodingKey { case kind, candidate }
+
+    /// **候補が無いときも `"candidate":null` を書く**(合成の Encodable は nil の欄を省く。
+    /// 拡張の isMonitorEvent は欄の存在を検査するので、省くと「候補が消えた」が届かない)
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(candidate, forKey: .candidate)
+    }
+
+    struct Candidate: Codable, Equatable {
+        /// devices[] の id と同じ値(拡張がタイルを特定する)
+        let deviceId: String
+        let name: String
+        let port: UInt16
+        /// 建て直せば孤児になり消える束そのもののバイト数
+        let bundleBytes: Int64
+        /// xcresult 系統の使用量合計(guarded 込み。`api retention` の usageBytes と同じ意味)
+        let usageBytes: Int64
+        let limitBytes: Int64
+    }
+}
