@@ -3,7 +3,7 @@ import XCTest
 
 /// StepExecutor+Actions.swift の指紋解決(~line 730)は `hasClampedCoordinates` で除外した
 /// プールを渡さないと、クランプされた幽霊要素(未実体化行が容器の原点へ積み上がったもの)へ
-/// 静かに解決し得た。`candidates`(StepExecutor+Resolve.swift)が同じ除外を最後に必ず引くのと
+/// 静かに解決し得た。`candidates`(LocatorResolver.swift)が同じ除外を最後に必ず引くのと
 /// 対称にする修正の回帰テスト
 final class LocatorFingerprintClampedResolutionTests: XCTestCase {
 

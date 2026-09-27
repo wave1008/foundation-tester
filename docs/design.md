@@ -329,7 +329,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   ロックされたまま起動しようとした場合は `IOSPhysicalDeviceLock` と
   `IOSDeviceTransport.blockingCondition` が名指しで止める。
   処理中(`inFlight > 0`)は撃たない(accept スレッドと XCUITest を同時に叩かないため)
-- **容器推定は scrollable 申告の祖先を優先する(2026-08-23)**: `StepExecutor.clippingContainer` は
+- **容器推定は scrollable 申告の祖先を優先する(2026-08-23)**: `ContainerGeometry.clippingContainer` は
   「同じ深さの子を2つ以上持つ直近の祖先」を容器とみなす規則(Compose iOS は xcuitest で scrollable を
   申告できないための近似)だが、申告のある木ではそれが**カード**を容器に選ぶ(カルーセル > カード >
   ラベル+バッジ)。クリップするのはカードではなくスクロール容器なので、祖先の連鎖に
@@ -927,7 +927,7 @@ Android のアプリ内 WebView・ブラウザ)と、a11y が id を出す構成
 という原則は維持する)。
 
 **`#x` は identifier で引けなければ placeholder を引く**(2026-08-15 ユーザー指示。
-判定は `StepExecutor.candidates` の1箇所)。**構成ごとに意味を変える例外ではない** ——
+判定は `LocatorResolver.candidates` の1箇所)。**構成ごとに意味を変える例外ではない** ——
 規則はどの OS・エンジンでも同じで、`#` が指す名前の集合が「identifier ∪(identifier で
 引けないときの)placeholder」になる。入力欄はまさにここが経路で割れる(xcuitest は HTML id を
 出さないが placeholder は出す / Android は WebView の版で **id と placeholder が入れ替わる**)ので、
@@ -1537,7 +1537,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   (2026-07-26 に Shirates(Classic) の記法へ、2026-07-27 に `||` の意味も寄せた。
   優先順位は `&&` > `>>` > `||`)。**要素を1つ選ぶコマンドは和集合の先頭**(節の順 →
   節内のツリー順)を採るので、`#id||ラベル` はヒール連鎖としても従来どおり働く。
-  唯一の解釈者は `StepExecutor.unionCandidates` / `resolveDetailed`。
+  唯一の解釈者は `LocatorResolver.unionCandidates` / `resolveDetailed`。
   短縮形と完全形の対応:
 
   | 短縮形 | 完全形 | 意味 |
@@ -1572,10 +1572,10 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   **短いラベルが長いラベルに黙って当たる**(`許可` が `通知を許可` に当たる / 別項目の要約にも
   当たって「曖昧解決不能」で throw)ため、部分一致は `*語*` 等で明示させる。
   解決に失敗し**部分一致なら在る**ときは失敗メッセージが `"*語*" と書くと拾える` を出す
-  (`StepExecutor.partialMatchHint`)
+  (`LocatorResolver.partialMatchHint`)
 - **画面には出ているのに当たらない**残りの形として、**本文が複数ノードに割れている**ときは
   失敗メッセージが `the text is split across N elements ("2026年" + "2月18日")` を出す
-  (`StepExecutor.splitTextHint`。DSL と MCP が共有)。Web の本文は `<span>` や強調で普通に割れ、
+  (`LocatorResolver.splitTextHint`。DSL と MCP が共有)。Web の本文は `<span>` や強調で普通に割れ、
   **インラインだけの塊は DOM 側で1ノードへ畳んでいる**(`WebViewDOMSnapshot.isInlineTextBlock`)が、
   間に役割を持つ要素やブロック級の子が挟まると畳めない。**畳めないものを無理に畳むと
   操作対象を潰す**ので、木は変えず言葉で伝える。繋いで見るのは**連続する最大4件**まで
@@ -1612,7 +1612,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   **既知の非対応**: `(a|b)&&[2]` は「各節の 2 番目」であって「和集合の 2 番目」ではない
   (Shirates は後者。節ごとに `[n]` を持つ fleetest の構造をそのまま使うため)
 - **否定フィルタ `属性!=値` と短縮形 `!値`**(2026-07-27): `FlowLocator.not` に
-  「属性1つだけのロケータ」を並べ、肯定フィルタで絞ったあとに引く(`StepExecutor.candidates`)。
+  「属性1つだけのロケータ」を並べ、肯定フィルタで絞ったあとに引く(`LocatorResolver.candidates`)。
   一致方法も使える(`textContains!=済`)。**短縮形は Shirates 準拠**で、中身を肯定と同じ経路で
   解釈して `not` に入れるだけ(`!保存` = `text!=保存` / `!#id` / `!.button`)。
   `=` エスケープ(`=!先頭が感嘆符のラベル`)で回避できるので記法の衝突は起きない。
@@ -1625,7 +1625,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 - **スコープ `祖先 >> 子孫`**: `#list >> .clickable[2]` は `#list` で解決した要素の**子孫だけ**を
   候補にし、序数もスコープ内で数える(画面クロム・スクロール位置で序数がずれる問題への対処)。多段可。
   子孫判定は「スナップショットは pre-order + 元ツリーの depth」という 3 ブリッジ共通の規約に依存する
-  (`StepExecutor.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
+  (`LocatorResolver.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
   **スコープ付きロケータはアサーションのフォールバック連鎖から除外されない**(id/label 無しの
   type+index でも容器に錨があるため。`FlowLocator.isWeakForAssert`)
 - **スコープはプラットフォーム非依存**(4 SUT × iOS/Android 実測・2026-07-26)。成立条件は
@@ -1661,7 +1661,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
     スコープは括弧の外(`#row >> <数量>:rightButton`)
   - 接尾辞なしの `:right` の既定フィルタは `.widget`(役割が確定した要素だけ = 容器を掴まない)
   - **連鎖できる**(`見出し:right:belowButton`)。各ステップの結果が次の基準になる
-  - 判定規則は3条件のみで調整値を持たない(`StepExecutor.directionalCandidates` が唯一の解釈者):
+  - 判定規則は3条件のみで調整値を持たない(`LocatorResolver.directionalCandidates` が唯一の解釈者):
     ①候補の中心が基準 frame をその軸方向へ伸ばした帯に入る ②候補の中心が基準の中心よりその方向に
     ある ③満たすものを方向軸の中心間距離の昇順に並べ、序数(既定 1)番目を採る(同距離はツリー順)
   - **条件を満たす候補が無ければ解決失敗**(「最も近いものを必ず返す」ことはしない。
@@ -1689,7 +1689,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   相対セレクタが調整値ゼロなのは帯を**基準自身の frame** から取っているからで、この性質を壊さない。
   ツリー順(pre-order)で定義すれば調整値は不要だが、ツリーの形はフレームワークごとに違うので
   「見た目の次の入力欄」と食い違う。**方向セレクタで取れなかった実例が出てから**再検討する
-- **一致品質(exact/substring)は記法ではなく掴んだ要素で決まる**(`StepExecutor.quality`)。
+- **一致品質(exact/substring)は記法ではなく掴んだ要素で決まる**(`LocatorResolver.quality`)。
   `*ログイン*` が `"ログインに失敗しました"` を掴めば substring、`"ログイン"` を掴めば exact。
   読み手は**hybrid の tap アクションだけ**で、primary が substring 止まりなら fallback を照会し
   fallback の exact を優先する(§performance-tuning「フォールバック検証の誤検知」)
@@ -2114,7 +2114,7 @@ select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取
 **ユーザー決定**(2026-08-04。それ以前はチェーンも毎回セレクタから解決し直していた)。
 
 - **判定できるアサートの表は `FTCore/HeldElementAssert`**。比較そのものは
-  `StepExecutor.matchedText` / `negativeAssertSatisfied` を**呼ぶ**(独自に書くと、同じアサートが
+  `LocatorResolver.matchedText` / `negativeAssertSatisfied` を**呼ぶ**(独自に書くと、同じアサートが
   チェーン経路と実機経路で違う答えを出す)。値ベース(text/value/id/enabled)だけが対象
 - **除外**: `exists` / `notExists` / `count`(今の画面の話で過去の値から言えない)、
   `checked` / `notChecked`(実機経路が「checked を観測したか」を追跡しており、飛ばすと
@@ -2240,7 +2240,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   マッチしても1度だけ)。スコープと併用してリスト件数を数えるのが主用途。
   **失敗時は節ごとの内訳を出す**(`実際 4(内訳: text=許可 2件 / text=別名 2件)`)。
   総数だけだと「どの節が想定より多く拾ったのか」が分からず、直すのに snapshot の取り直しが要る。
-  重複は先に現れた節に数えるので**内訳の合計は必ず表示件数と一致する**(`StepExecutor.unionByClause`)。
+  重複は先に現れた節に数えるので**内訳の合計は必ず表示件数と一致する**(`LocatorResolver.unionByClause`)。
   **親子で同じ条件に当たっているとき**(ボタンとその内側の Text)は、直し方まで添える
   (`型で絞ると 3 件(例 .button&&…)`)。フレームワーク一般の性質で利用者は必ず一度は踏むが、
   メッセージが無いと `countIs("項目", 3)` が 6 を返す理由に辿り着けない(`StepExecutor.nestingHint`)
@@ -2253,11 +2253,11 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - **`textContains` / `textMatches` / `textStartsWith` / `textEndsWith`** は `textIs` と同じ経路
   (可視性ガードつき)。`textMatches` は**部分一致の正規表現**(全体一致は `^...$`)。
   occlusion-guard には**実際に一致した部分文字列**を渡す(パターン文字列は画面に出ないため。
-  `StepExecutor.matchedText` が唯一の判定者)
+  `LocatorResolver.matchedText` が唯一の判定者)
 - **否定・`value` 側の全対称**(2026-07-27。Shirates 準拠): `text*` の各モードに `*Not` を、
   さらに `text*` の全てに `value*` を対で持つ(`textIsNot` `textContainsNot` `textStartsWithNot`
   `textEndsWithNot` `textMatchesNot` `textIsEmpty` `textIsNotEmpty` `textMatchesDateFormat` と、
-  同名の `value…` 一式)。判定は `StepExecutor.negativeAssertSatisfied` に**1箇所だけ**置く。
+  同名の `value…` 一式)。判定は `LocatorResolver.negativeAssertSatisfied` に**1箇所だけ**置く。
   要素は在る前提でタイムアウトまで**値の変化を待つ**。
   **否定系と Empty 系は可視性(occlusion)を見ない** — 「見えていないこと」「空であること」は
   画面照合できないため(`requireVisible` 引数も持たせない)。「見つからない」と「条件不成立」は
@@ -2431,7 +2431,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **未指定でも見切れ判定は容器基準で行う**: Compose は**容器の外に子(ghost)を報告する**ので、
   viewport を画面全体にすると容器の外の要素を「見えている」と誤判定して探索がそこで止まり、
   タップが飲まれる。`scrollable` の申告が無くても、スナップショットの `depth` から
-  **clip 元の祖先を復元**して viewport に使う(`StepExecutor.clippingContainer`。
+  **clip 元の祖先を復元**して viewport に使う(`ContainerGeometry.clippingContainer`。
   **これは見切れ判定専用で、スワイプ座標には使わない**)。2026-08-03 修正・
   詳細は docs/verification.md「Compose の探索直後タップ」。
   **スクロールできない領域を指定したときは注記で申告する**(座標は正しく作られ 200 が返るが
@@ -2447,7 +2447,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 
 ### 失敗時に返す情報(2026-07-26)
 
-- **解決失敗のメッセージに「近い候補」を最大3件**添える(`StepExecutor.candidateHint`。
+- **解決失敗のメッセージに「近い候補」を最大3件**添える(`LocatorResolver.candidateHint`。
   id/ラベルの近さ(`FTCore.SimilarLabels`。強い一致 > 操作可能 > 文書順)→ 同型の順)。
   直すための snapshot 取り直しを1往復減らす
 - **レポートに失敗時点の要素一覧**を折りたたみで載せる(`SceneRecordData.failureElements`)。
@@ -2644,7 +2644,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   (iOS=1 / Android=`wm density`。**ラッパーは透過必須** ——
   `SnapshotCacheBypassForwardingTests` が全ラッパーで見張る)。
   pt(1/163 inch)と dp(1/160 inch)は物理的にほぼ同じなので、pt で測った床は dp として通用する
-- **座標が壊れている要素は解決候補にしない**(2026-08-05。`StepExecutor.hasClampedCoordinates`)。
+- **座標が壊れている要素は解決候補にしない**(2026-08-05。`ContainerGeometry.hasClampedCoordinates`)。
   フレームワークは**容器の可視域を外れた子孫の frame の原点を容器の原点へクランプする**ため、
   掴むと `tap` が別の要素へ落ち(可視性ガードを通らないので沈黙)、`exist` は画面外なのに真を返す
   (「exist は非スクロール」の契約に反する)。判定は**症状ではなく機構**で書く
@@ -3050,7 +3050,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     覚えた要素の同一性(identifier → ラベル+型 → 型+frame)で引き直し、
     **動いていれば新しい ref へ撃ち直す/消えていれば撃たずに理由を返す**。
     identifier を持つ要素がその identifier で引けないときは**ラベルへ落ちない**(別要素を掴む)。
-    ghost 判定は `StepExecutor.isOutsideContainer` を共有する(MCP 側に別の閾値を置くと
+    ghost 判定は `ContainerGeometry.isOutsideContainer` を共有する(MCP 側に別の閾値を置くと
     DSL と「ghost の定義」が割れる)。**ghost は撃つが黙っては撃たない**(下記)。
     **identifier で引き直したらラベルの変化も見る**(`RefGuard.labelChangeNote`。2026-08-10)。
     identifier だけで引き直すと、検索候補が更新された画面では**同じ id・別の行**を掴むことがある
@@ -3144,7 +3144,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     **幾何条件を落とさないこと** —— 素の「最長反復区間」にすると、**1ページ内の2つの表が
     同じ見出し行を共有しているだけ**の形を掴む(実測で11行。設計中に気付いて足した)。
     実測は witness 10 に対し他フィクスチャ最大3。
-    `StepExecutor.hasClampedCoordinates` は流用できない(あちらは**同一矩形・同深さ3個以上**が
+    `ContainerGeometry.hasClampedCoordinates` は流用できない(あちらは**同一矩形・同深さ3個以上**が
     条件で、ここは矩形が違い x だけ揃う形)
   - **「変わっていない」の判定は木の**外**の数字も見る**(2026-08-13。`looksUnchanged`)。
     `SnapshotResponse.elements` は**ブリッジが上限で切った後**の列で、落とした数は
@@ -3272,7 +3272,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     `#PinnedItemSection` ← `#PinnedTile`(帯を撃つとタイルが開く = 真陽性)の1件だけ。
     非対話の容器は `missesItsOwnContent` の担当なので**排他**(二重に言わない)。警告のみ
   - **申告されたスクロール容器の外へ送り出された行**(2026-08-09。
-    `TapTargetGeometry.outsideDeclaredScroller`)。ghost 判定(`StepExecutor.isOutsideContainer`)は
+    `TapTargetGeometry.outsideDeclaredScroller`)。ghost 判定(`ContainerGeometry.isOutsideContainer`)は
     容器を**木の並びから推測する**ので、申告のある UIKit/SwiftUI では推測が中間ノードに当たって
     nil に落ち、1件も付いていなかった。実測(Apple マップの場所カード): カードを送ると
     `#MUScrollableStackView` (0,72 402x802) の上へ抜けた行が frame ごと木に残り、

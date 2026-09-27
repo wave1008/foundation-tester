@@ -1,9 +1,9 @@
-// StepExecutor+Resolve.swift
-// ロケータ解決(決定的)とテキスト照合・候補ヒント。本体は StepExecutor.swift(instance 状態はそちらに置く)
+// LocatorResolver.swift
+// ロケータ解決(決定的)とテキスト照合・候補ヒント。純粋な判定関数だけを持つ(instance 状態は StepExecutor.swift)
 
 import Foundation
 
-extension StepExecutor {
+public enum LocatorResolver {
 
     // MARK: - ロケータ解決(決定的)
 
@@ -32,7 +32,7 @@ extension StepExecutor {
         }
 
         // **ステップの実効値を解決経路へ流す**(execute の入口で畳んである。nil = 既定 on)
-        let inferring = step.containerInference ?? containerInferenceEnabled
+        let inferring = step.containerInference ?? ContainerGeometry.containerInferenceEnabled
         for (locator, isPrimary) in chain {
             if let (element, quality) = matchDetailed(locator, in: snapshot, inferring: inferring) {
                 return (element, isPrimary ? nil : locator, quality)
@@ -46,7 +46,7 @@ extension StepExecutor {
     }
 
     public static func matchDetailed(_ locator: FlowLocator, in snapshot: SnapshotResponse,
-                                     inferring: Bool = containerInferenceEnabled)
+                                     inferring: Bool = ContainerGeometry.containerInferenceEnabled)
         -> (ElementInfo, MatchQuality)? {
         matchDetailed(locator, elements: snapshot.elements, inferring: inferring)
     }
@@ -55,7 +55,7 @@ extension StepExecutor {
     /// 属性フィルタ(全て AND)で絞る → `[n]` 番目を採る → 相対ステップがあれば順に辿る。
     /// 相対セレクタ(`通知:rightSwitch`)では属性フィルタが**対象ではなく基準**を指す。
     public static func matchDetailed(_ locator: FlowLocator, elements: [ElementInfo],
-                                     inferring: Bool = containerInferenceEnabled)
+                                     inferring: Bool = ContainerGeometry.containerInferenceEnabled)
         -> (ElementInfo, MatchQuality)? {
         guard let matches = candidates(locator, elements: elements, inferring: inferring),
               !matches.isEmpty else {
@@ -210,7 +210,7 @@ extension StepExecutor {
     /// 相対ステップ(`relative`)と序数(`index`)はここでは見ない —
     /// 呼び手(matchDetailed)が基準を決めてから辿る。
     public static func candidates(_ locator: FlowLocator, elements: [ElementInfo],
-                                  inferring: Bool = containerInferenceEnabled) -> [ElementInfo]? {
+                                  inferring: Bool = ContainerGeometry.containerInferenceEnabled) -> [ElementInfo]? {
         guard var pool = scopedPool(locator.scope, elements: elements) else { return [] }
         if locator.hasNoFilter, locator.scope?.isEmpty ?? true { return nil }
         // 素の文字列は**完全一致**。部分一致は `*x*` 等で明示したときだけ
@@ -258,7 +258,7 @@ extension StepExecutor {
         // 計算量は O(|pool| × |elements|) だが、要素数の多い WebView 画面(200 程度)でも
         // 数万回の矩形比較 = 1ms 未満で、snapshot 1枚の往復(数百 ms)に対して無視できる。
         // 群ごとに1回だけ判定する形へ畳むこともできるが、規則の実装が2つに割れる方が高くつく
-        return pool.filter { !Self.hasClampedCoordinates($0, in: elements, inferring: inferring) }
+        return pool.filter { !ContainerGeometry.hasClampedCoordinates($0, in: elements, inferring: inferring) }
     }
 
     /// 否定系アサート(`*Not` / `*IsEmpty` / `*IsNotEmpty`)の判定。
@@ -412,7 +412,7 @@ extension StepExecutor {
     static func clampedStackHint(for locator: FlowLocator, in elements: [ElementInfo]) -> String? {
         // 「フィルタには一致するが座標が壊れている」要素だけを数える(素の一致は上の近傍候補が出す)
         let broken = elements.filter { element in
-            guard hasClampedCoordinates(element, in: elements) else { return false }
+            guard ContainerGeometry.hasClampedCoordinates(element, in: elements) else { return false }
             if let id = locator.id, element.identifier != id { return false }
             if let label = locator.label, element.label != label { return false }
             return locator.id != nil || locator.label != nil
@@ -421,7 +421,7 @@ extension StepExecutor {
         let frame = sample.frame
         // 同じ場所に積み上がっている数(**sample と同じ矩形のものだけ**を数える。
         // 画面に複数のスタックがあっても、利用者が指した要素の話に閉じる)
-        let stacked = elements.filter { Self.sameFrame($0.frame, frame) && $0.depth == sample.depth }
+        let stacked = elements.filter { ContainerGeometry.sameFrame($0.frame, frame) && $0.depth == sample.depth }
         return "it is in the tree but its coordinates are unusable"
             + " — \(stacked.count) elements are"
             + " stacked at the same spot (\(Int(frame.x)),\(Int(frame.y))"

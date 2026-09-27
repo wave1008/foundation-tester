@@ -48,39 +48,39 @@ final class SelectorScopeTests: XCTestCase {
     func testDescendantsUsesPreOrderAndDepth() {
         let elements = tree
         let list = elements[3]
-        XCTAssertEqual(StepExecutor.descendants(of: list, in: elements).map(\.ref), [4, 5, 6])
+        XCTAssertEqual(LocatorResolver.descendants(of: list, in: elements).map(\.ref), [4, 5, 6])
         let header = elements[1]
-        XCTAssertEqual(StepExecutor.descendants(of: header, in: elements).map(\.ref), [2])
+        XCTAssertEqual(LocatorResolver.descendants(of: header, in: elements).map(\.ref), [2])
         // 葉には子孫がいない
-        XCTAssertTrue(StepExecutor.descendants(of: elements[6], in: elements).isEmpty)
+        XCTAssertTrue(LocatorResolver.descendants(of: elements[6], in: elements).isEmpty)
     }
 
     func testScopeMakesOrdinalRelativeToContainer() {
         // スコープ無しの .clickable[2] は画面全体の 2 番目(= ヘッダ配下を含むので "りんご")
         let global = FlowLocator(type: "clickable", index: 1)
-        XCTAssertEqual(StepExecutor.matchDetailed(global, elements: tree)?.0.label, "りんご")
+        XCTAssertEqual(LocatorResolver.matchDetailed(global, elements: tree)?.0.label, "りんご")
         // スコープ付きは容器の中で数えるので "みかん"
         let scoped = FlowLocator(type: "clickable", index: 1, scope: [FlowLocator(id: "list")])
-        XCTAssertEqual(StepExecutor.matchDetailed(scoped, elements: tree)?.0.label, "みかん")
+        XCTAssertEqual(LocatorResolver.matchDetailed(scoped, elements: tree)?.0.label, "みかん")
     }
 
     /// 序数は型に限らずどのフィルタの組み合わせにも効く(`#list >> [2]` も書ける)
     func testOrdinalAppliesWithoutTypeFilter() {
         let scoped = FlowLocator(index: 1, scope: [FlowLocator(id: "list")])
-        XCTAssertEqual(StepExecutor.matchDetailed(scoped, elements: tree)?.0.label, "みかん")
+        XCTAssertEqual(LocatorResolver.matchDetailed(scoped, elements: tree)?.0.label, "みかん")
     }
 
     func testScopeExcludesElementsOutsideContainer() {
         let scoped = FlowLocator(label: "先頭", scope: [FlowLocator(id: "list")])
-        XCTAssertNil(StepExecutor.matchDetailed(scoped, elements: tree))
+        XCTAssertNil(LocatorResolver.matchDetailed(scoped, elements: tree))
         let inHeader = FlowLocator(label: "先頭", scope: [FlowLocator(id: "header")])
         XCTAssertEqual(inHeader.summary, "id=header >> text=先頭")
-        XCTAssertEqual(StepExecutor.matchDetailed(inHeader, elements: tree)?.0.ref, 2)
+        XCTAssertEqual(LocatorResolver.matchDetailed(inHeader, elements: tree)?.0.ref, 2)
     }
 
     func testUnresolvableScopeYieldsNoMatch() {
         let scoped = FlowLocator(type: "clickable", scope: [FlowLocator(id: "存在しない")])
-        XCTAssertNil(StepExecutor.matchDetailed(scoped, elements: tree))
+        XCTAssertNil(LocatorResolver.matchDetailed(scoped, elements: tree))
     }
 
     // MARK: - 部分一致は明示したときだけ
@@ -90,10 +90,10 @@ final class SelectorScopeTests: XCTestCase {
             node(1, "staticText", depth: 1, label: "通知を許可"),
             node(2, "staticText", depth: 1, label: "許可"),
         ]
-        XCTAssertEqual(StepExecutor.candidates(FlowLocator(label: "許可"), elements: elements)?
+        XCTAssertEqual(LocatorResolver.candidates(FlowLocator(label: "許可"), elements: elements)?
             .map(\.ref), [2])
         // 完全一致が無ければ「部分一致で拾う」ことはもうしない(暗黙フォールバックの廃止)
-        XCTAssertEqual(StepExecutor.candidates(FlowLocator(label: "を許"), elements: elements)?
+        XCTAssertEqual(LocatorResolver.candidates(FlowLocator(label: "を許"), elements: elements)?
             .count, 0)
     }
 
@@ -103,7 +103,7 @@ final class SelectorScopeTests: XCTestCase {
             node(2, "staticText", depth: 1, label: "許可"),
         ]
         func refs(_ locator: FlowLocator) -> [Int] {
-            StepExecutor.candidates(locator, elements: elements)?.map(\.ref) ?? []
+            LocatorResolver.candidates(locator, elements: elements)?.map(\.ref) ?? []
         }
         XCTAssertEqual(refs(FlowLocator(label: "許可", labelMatch: .contains)), [1, 2])
         XCTAssertEqual(refs(FlowLocator(label: "通知", labelMatch: .startsWith)), [1])
@@ -118,7 +118,7 @@ final class SelectorScopeTests: XCTestCase {
             node(2, "button", depth: 1, id: "save"),
         ]
         func refs(_ locator: FlowLocator) -> [Int] {
-            StepExecutor.candidates(locator, elements: elements)?.map(\.ref) ?? []
+            LocatorResolver.candidates(locator, elements: elements)?.map(\.ref) ?? []
         }
         XCTAssertEqual(refs(FlowLocator(id: "save", idMatch: .contains)), [1, 2])
         XCTAssertEqual(refs(FlowLocator(id: "btn", idMatch: .startsWith)), [1])
@@ -133,9 +133,9 @@ final class SelectorScopeTests: XCTestCase {
         let partial = FlowLocator(label: "許可", labelMatch: .contains)
         let long = node(1, "staticText", depth: 1, label: "通知を許可")
         let short = node(2, "staticText", depth: 1, label: "許可")
-        XCTAssertEqual(StepExecutor.quality(of: long, for: partial), .substring)
-        XCTAssertEqual(StepExecutor.quality(of: short, for: partial), .exact)
-        XCTAssertEqual(StepExecutor.quality(of: long, for: FlowLocator(type: "staticText")), .exact)
+        XCTAssertEqual(LocatorResolver.quality(of: long, for: partial), .substring)
+        XCTAssertEqual(LocatorResolver.quality(of: short, for: partial), .exact)
+        XCTAssertEqual(LocatorResolver.quality(of: long, for: FlowLocator(type: "staticText")), .exact)
     }
 
     // MARK: - 属性フィルタの AND 合成
@@ -148,7 +148,7 @@ final class SelectorScopeTests: XCTestCase {
             node(4, "switch", depth: 1, id: "sw2", enabled: false),
         ]
         func refs(_ locator: FlowLocator) -> [Int] {
-            StepExecutor.candidates(locator, elements: elements)?.map(\.ref) ?? []
+            LocatorResolver.candidates(locator, elements: elements)?.map(\.ref) ?? []
         }
         XCTAssertEqual(refs(FlowLocator(value: "太郎")), [1])
         XCTAssertEqual(refs(FlowLocator(placeholder: "フリガナ")), [2])
@@ -167,7 +167,7 @@ final class SelectorScopeTests: XCTestCase {
             node(4, "button", depth: 1, id: "d"),
         ]
         func refs(_ type: String) -> [Int] {
-            StepExecutor.candidates(FlowLocator(type: type), elements: elements)?.map(\.ref) ?? []
+            LocatorResolver.candidates(FlowLocator(type: type), elements: elements)?.map(\.ref) ?? []
         }
         XCTAssertEqual(refs("input"), [1, 2])
         // widget は役割が確定した型だけ(役割不明の clickable は入れない)
@@ -190,9 +190,9 @@ final class SelectorScopeTests: XCTestCase {
 
     func testDirectionPicksCandidateInAnchorBand() {
         let notify = relative(FlowLocator(label: "通知"), .right, type: "switch")
-        XCTAssertEqual(StepExecutor.matchDetailed(notify, elements: rows)?.0.identifier, "sw_notify")
+        XCTAssertEqual(LocatorResolver.matchDetailed(notify, elements: rows)?.0.identifier, "sw_notify")
         let location = relative(FlowLocator(label: "位置情報"), .right, type: "switch")
-        XCTAssertEqual(StepExecutor.matchDetailed(location, elements: rows)?.0.identifier,
+        XCTAssertEqual(LocatorResolver.matchDetailed(location, elements: rows)?.0.identifier,
                        "sw_location")
     }
 
@@ -200,11 +200,11 @@ final class SelectorScopeTests: XCTestCase {
     /// これが `:near` を廃した理由そのもの — レイアウト変更時に黙って別要素を掴ませない
     func testDirectionFailsInsteadOfPickingNearest() {
         let toLeft = relative(FlowLocator(label: "通知"), .left, type: "switch")
-        XCTAssertNil(StepExecutor.matchDetailed(toLeft, elements: rows))
+        XCTAssertNil(LocatorResolver.matchDetailed(toLeft, elements: rows))
         // 帯の外(別の行)にしか候補が無い場合も同様
         let outOfBand = [rows[0], rows[3]]
         let right = relative(FlowLocator(label: "通知"), .right, type: "switch")
-        XCTAssertNil(StepExecutor.matchDetailed(right, elements: outOfBand))
+        XCTAssertNil(LocatorResolver.matchDetailed(right, elements: outOfBand))
     }
 
     func testDirectionAboveAndBelowUseHorizontalBand() {
@@ -214,9 +214,9 @@ final class SelectorScopeTests: XCTestCase {
             node(3, "button", depth: 1, id: "far_right", x: 300, y: 40, width: 60, height: 20),
         ]
         let below = relative(FlowLocator(label: "見出し"), .below, type: "button")
-        XCTAssertEqual(StepExecutor.matchDetailed(below, elements: elements)?.0.identifier, "under")
+        XCTAssertEqual(LocatorResolver.matchDetailed(below, elements: elements)?.0.identifier, "under")
         let above = relative(FlowLocator(label: "見出し"), .above, type: "button")
-        XCTAssertNil(StepExecutor.matchDetailed(above, elements: elements))
+        XCTAssertNil(LocatorResolver.matchDetailed(above, elements: elements))
     }
 
     func testDirectionPicksNearestThenTreeOrder() {
@@ -228,7 +228,7 @@ final class SelectorScopeTests: XCTestCase {
             node(4, "button", depth: 1, id: "tie", x: 100, y: 10, width: 40, height: 20),
         ]
         let locator = relative(FlowLocator(label: "数量"), .right, type: "button")
-        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier, "near")
+        XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.identifier, "near")
     }
 
     /// 序数(`数量:rightButton(2)`)は「近い順」の n 番目。同距離はツリー順
@@ -240,12 +240,12 @@ final class SelectorScopeTests: XCTestCase {
         ]
         for (ordinal, expected) in [(1, "near"), (2, "far")] {
             let locator = relative(FlowLocator(label: "数量"), .right, type: "button", ordinal: ordinal)
-            XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier,
+            XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.identifier,
                            expected, "ordinal=\(ordinal)")
         }
         // 足りなければ解決失敗(手前の要素を返さない)
         let tooFar = relative(FlowLocator(label: "数量"), .right, type: "button", ordinal: 3)
-        XCTAssertNil(StepExecutor.matchDetailed(tooFar, elements: elements))
+        XCTAssertNil(LocatorResolver.matchDetailed(tooFar, elements: elements))
     }
 
     /// フィルタ省略時の既定は `.widget` = 役割が確定した型だけ(容器を掴まない)
@@ -257,7 +257,7 @@ final class SelectorScopeTests: XCTestCase {
         ]
         var locator = FlowLocator(label: "数量")
         locator.relative = [FlowRelativeStep(direction: .right)]
-        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier, "plus")
+        XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.identifier, "plus")
     }
 
     func testRelativeStepsChain() {
@@ -271,7 +271,7 @@ final class SelectorScopeTests: XCTestCase {
             FlowRelativeStep(direction: .right),
             FlowRelativeStep(direction: .below, filter: [FlowLocator(type: "button")]),
         ]
-        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier, "goal")
+        XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.identifier, "goal")
     }
 
     func testDirectionExcludesAnchorItself() {
@@ -282,12 +282,12 @@ final class SelectorScopeTests: XCTestCase {
         // 同一ラベルが並ぶ場合でも、基準として解決した要素自身は候補にしない
         var locator = FlowLocator(label: "合計")
         locator.relative = [FlowRelativeStep(direction: .right, filter: [FlowLocator(label: "合計")])]
-        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.ref, 2)
+        XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.ref, 2)
     }
 
     func testDirectionWithUnresolvableAnchorFails() {
         let locator = relative(FlowLocator(id: "居ない"), .right, type: "clickable")
-        XCTAssertNil(StepExecutor.matchDetailed(locator, elements: tree))
+        XCTAssertNil(LocatorResolver.matchDetailed(locator, elements: tree))
     }
 
     /// スコープは節の中の**基準にも対象にも**効く(容器の外の同名ラベルを基準にしない)
@@ -302,20 +302,20 @@ final class SelectorScopeTests: XCTestCase {
         ]
         var locator = relative(FlowLocator(label: "数量"), .right, type: "button")
         locator.scope = [FlowLocator(id: "row")]
-        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier, "inside")
+        XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.identifier, "inside")
     }
 
     /// countIs 等の「集合を数える」経路は相対ステップを解決してから数える
     /// (基準の個数で数えてしまうと `通知:rightSwitch` が常に 1 以上になる)
     func testResolvedCandidatesCountsRelativeResult() {
         let locator = relative(FlowLocator(label: "通知"), .right, type: "switch")
-        XCTAssertEqual(StepExecutor.resolvedCandidates(locator, elements: rows)?.map(\.identifier),
+        XCTAssertEqual(LocatorResolver.resolvedCandidates(locator, elements: rows)?.map(\.identifier),
                        ["sw_notify"])
         // 属性フィルタだけを見る candidates は基準(staticText 1件)しか知らない
-        XCTAssertEqual(StepExecutor.candidates(locator, elements: rows)?.count, 1)
+        XCTAssertEqual(LocatorResolver.candidates(locator, elements: rows)?.count, 1)
         // 解決できなければ 0 件(「数えられない」nil ではない = notExist/countIs(x,0) が働く)
         let toLeft = relative(FlowLocator(label: "通知"), .left, type: "switch")
-        XCTAssertEqual(StepExecutor.resolvedCandidates(toLeft, elements: rows)?.count, 0)
+        XCTAssertEqual(LocatorResolver.resolvedCandidates(toLeft, elements: rows)?.count, 0)
     }
 
     /// `||` は候補集合の和(Shirates 準拠)。順序は「節の順 → 節内のツリー順」で、重複は先勝ち
@@ -325,11 +325,11 @@ final class SelectorScopeTests: XCTestCase {
             node(2, "switch", depth: 1, id: "sw"),
             node(3, "button", depth: 1, id: "cancel"),
         ]
-        let union = StepExecutor.unionCandidates(
+        let union = LocatorResolver.unionCandidates(
             [FlowLocator(type: "switch"), FlowLocator(type: "button")], elements: elements)
         XCTAssertEqual(union.map(\.identifier), ["sw", "save", "cancel"])
         // 同じ要素を指す節が並んでも1度だけ
-        let overlapping = StepExecutor.unionCandidates(
+        let overlapping = LocatorResolver.unionCandidates(
             [FlowLocator(id: "save"), FlowLocator(label: "保存")], elements: elements)
         XCTAssertEqual(overlapping.map(\.identifier), ["save"])
     }
@@ -345,23 +345,23 @@ final class SelectorScopeTests: XCTestCase {
         locator.relative = [FlowRelativeStep(
             direction: .right,
             filter: [FlowLocator(type: "button"), FlowLocator(type: "switch")], ordinal: nil)]
-        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier,
+        XCTAssertEqual(LocatorResolver.matchDetailed(locator, elements: elements)?.0.identifier,
                        "near_switch", "節の順ではなく距離で決まる")
         // 序数は和集合に対して数える
         var second = locator
         second.relative?[0].ordinal = 2
-        XCTAssertEqual(StepExecutor.matchDetailed(second, elements: elements)?.0.identifier,
+        XCTAssertEqual(LocatorResolver.matchDetailed(second, elements: elements)?.0.identifier,
                        "far_button")
     }
 
     func testCandidatesCountsWithinScope() {
-        let all = StepExecutor.candidates(FlowLocator(type: "clickable"), elements: tree)
+        let all = LocatorResolver.candidates(FlowLocator(type: "clickable"), elements: tree)
         XCTAssertEqual(all?.count, 4)
-        let scoped = StepExecutor.candidates(
+        let scoped = LocatorResolver.candidates(
             FlowLocator(type: "clickable", scope: [FlowLocator(id: "list")]), elements: tree)
         XCTAssertEqual(scoped?.count, 3)
         // 絞り込み条件が1つも無いロケータは「数えられない」= nil
-        XCTAssertNil(StepExecutor.candidates(FlowLocator(), elements: tree))
+        XCTAssertNil(LocatorResolver.candidates(FlowLocator(), elements: tree))
     }
 
     func testScopedTypeLocatorIsNotWeakForAssert() {
@@ -378,11 +378,11 @@ final class SelectorScopeTests: XCTestCase {
     /// 完全一致で外したが部分一致なら在るときは、書き換え方を失敗メッセージに出す
     func testPartialMatchHintSuggestsWildcard() {
         let elements = [node(1, "staticText", depth: 1, label: "通知を許可")]
-        let hint = StepExecutor.partialMatchHint(for: FlowLocator(label: "許可"), in: elements)
+        let hint = LocatorResolver.partialMatchHint(for: FlowLocator(label: "許可"), in: elements)
         XCTAssertEqual(hint, "present as a partial match: writing \"*許可*\" would find it")
-        XCTAssertNil(StepExecutor.partialMatchHint(for: FlowLocator(label: "通知を許可"),
+        XCTAssertNil(LocatorResolver.partialMatchHint(for: FlowLocator(label: "通知を許可"),
                                                    in: elements))
-        XCTAssertNil(StepExecutor.partialMatchHint(for: FlowLocator(label: "許可",
+        XCTAssertNil(LocatorResolver.partialMatchHint(for: FlowLocator(label: "許可",
                                                                     labelMatch: .contains),
                                                    in: elements))
     }
@@ -396,7 +396,7 @@ final class SelectorScopeTests: XCTestCase {
             node(3, "staticText", depth: 1, label: "キャンセル"),
         ]
         let locator = FlowLocator(type: "button", not: [FlowLocator(label: "キャンセル")])
-        XCTAssertEqual(StepExecutor.candidates(locator, elements: elements)?.map(\.identifier),
+        XCTAssertEqual(LocatorResolver.candidates(locator, elements: elements)?.map(\.identifier),
                        ["save"])
     }
 
@@ -408,7 +408,7 @@ final class SelectorScopeTests: XCTestCase {
         ]
         let locator = FlowLocator(type: "button",
                                   not: [FlowLocator(label: "削除"), FlowLocator(label: "編集")])
-        XCTAssertEqual(StepExecutor.candidates(locator, elements: elements)?.map(\.identifier),
+        XCTAssertEqual(LocatorResolver.candidates(locator, elements: elements)?.map(\.identifier),
                        ["a"])
     }
 
@@ -419,7 +419,7 @@ final class SelectorScopeTests: XCTestCase {
         ]
         let locator = FlowLocator(type: "cell",
                                   not: [FlowLocator(label: "済", labelMatch: .contains)])
-        XCTAssertEqual(StepExecutor.candidates(locator, elements: elements)?.map(\.identifier),
+        XCTAssertEqual(LocatorResolver.candidates(locator, elements: elements)?.map(\.identifier),
                        ["r2"])
     }
 

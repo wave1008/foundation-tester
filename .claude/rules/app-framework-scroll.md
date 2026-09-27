@@ -7,6 +7,7 @@ paths:
   - "Sources/FTCore/AppUIFramework*.swift"
   - "Sources/FTCore/AppUIFrameworkQuery.swift"
   - "Sources/FTCore/BridgeDTO.swift"
+  - "Sources/FTCore/ContainerGeometry.swift"
   - "Sources/FTCore/StepExecutor*.swift"
   - "Sources/FTCore/UIFrameworkMarkers*.swift"
   - "Sources/FTCore/UIFrameworkMarkers.swift"
@@ -45,7 +46,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **呼び手は「自前描画か」(`isSelfRendered`)で分岐する** —— 個別の値(`== .uikit` 等)で分けると語彙を
   足した日に黙って外れる(RN / SwiftUI を uikit から分けたとき、in-app の木の正規化はそれらにも掛け続ける必要があった)。
   Android の compose は「Compose を含む」であって全画面が Compose とは限らない(View/XML に混ぜた E2EAppAndroid もこちら)
-- **容器推定(`StepExecutor.clippingContainer`)は scrollable 申告の祖先を優先する**。
+- **容器推定(`ContainerGeometry.clippingContainer`)は scrollable 申告の祖先を優先する**。
   この関数はタップの座標補正・ghost 判定・MCP にも効くので、触ったら 5 SUT のフル E2E
   **+ `--ios-xcuitest`**。**フルスイートは iOS を in-app で回すので、これだけでは守れない** ——
   現にこの規則の導入(`8a416bc0`)が xcuitest 限定の退行を入れ、フル E2E 緑のまま通った

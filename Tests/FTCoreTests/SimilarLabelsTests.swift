@@ -1,5 +1,5 @@
 // 「近いラベル/id を挙げる」候補選定(FTCore.SimilarLabels)と、その利用者である
-// StepExecutor.candidateHint の回帰テスト。
+// LocatorResolver.candidateHint の回帰テスト。
 //
 // 2026-08-15: MCPServer+Hints.swift の similarLabelsHint(2026-08-10 に書き直された版)から
 // FTCore へ降ろした。DSL 側の旧 candidateHint(部分文字列一致だけ・装飾葉を除かず・
@@ -80,7 +80,7 @@ final class SimilarLabelsTests: XCTestCase {
     }
 }
 
-// MARK: - StepExecutor.candidateHint(この選定の利用者)
+// MARK: - LocatorResolver.candidateHint(この選定の利用者)
 
 final class CandidateHintTests: XCTestCase {
 
@@ -97,7 +97,7 @@ final class CandidateHintTests: XCTestCase {
             node(4, type: "button", label: "計画"),
         ])
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "経路"), timeout: 0)
-        let hint = StepExecutor.candidateHint(for: step, in: tree)
+        let hint = LocatorResolver.candidateHint(for: step, in: tree)
         XCTAssertNotNil(hint)
         XCTAssertTrue(hint!.contains("計画"), hint!)
         XCTAssertFalse(hint!.contains("南口"), hint!)
@@ -108,7 +108,7 @@ final class CandidateHintTests: XCTestCase {
     func testCandidateHintStillFindsANearIdMatch() {
         let tree = snapshot([node(1, type: "button", id: "btn_submit", label: "送信")])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_submitt"), timeout: 0)
-        let hint = StepExecutor.candidateHint(for: step, in: tree)
+        let hint = LocatorResolver.candidateHint(for: step, in: tree)
         XCTAssertNotNil(hint)
         XCTAssertTrue(hint!.contains("btn_submit"), hint!)
     }
@@ -119,7 +119,7 @@ final class CandidateHintTests: XCTestCase {
     func testCandidateHintFallsBackToTypeMatchesWhenLocatorHasNoIdOrLabel() {
         let tree = snapshot([node(1, type: "textField", id: "search_box", label: nil)])
         let step = FlowStep(action: "tap", locator: FlowLocator(type: "input"), timeout: 0)
-        let hint = StepExecutor.candidateHint(for: step, in: tree)
+        let hint = LocatorResolver.candidateHint(for: step, in: tree)
         XCTAssertNotNil(hint)
         XCTAssertTrue(hint!.contains("search_box"), hint!)
     }
@@ -128,6 +128,6 @@ final class CandidateHintTests: XCTestCase {
     func testCandidateHintStaysNilWithNoCandidate() {
         let tree = snapshot([node(1, type: "staticText", label: "設定確認画面")])
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "経路"), timeout: 0)
-        XCTAssertNil(StepExecutor.candidateHint(for: step, in: tree))
+        XCTAssertNil(LocatorResolver.candidateHint(for: step, in: tree))
     }
 }

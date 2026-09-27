@@ -55,7 +55,7 @@ extension StepExecutor {
         var tally: [String: (rect: FTRect, count: Int)] = [:]
         for element in after.elements {
             guard let id = element.identifier, !id.isEmpty, !known.contains(id),
-                  let container = clippingContainer(of: element, in: after.elements,
+                  let container = ContainerGeometry.clippingContainer(of: element, in: after.elements,
                                                     inferring: true)
             else { continue }
             let key = "\(container.x),\(container.y),\(container.width),\(container.height)"
@@ -78,7 +78,7 @@ extension StepExecutor {
             guard let id = element.identifier, let old = index[id] else { continue }
             let delta = vertical ? element.frame.y - old.frame.y : element.frame.x - old.frame.x
             guard abs(delta) > 1,
-                  let container = clippingContainer(of: element, in: after.elements,
+                  let container = ContainerGeometry.clippingContainer(of: element, in: after.elements,
                                                     inferring: true)
             else { continue }
             let key = "\(container.x),\(container.y),\(container.width),\(container.height)"
@@ -101,7 +101,7 @@ extension StepExecutor {
     static func overflowingContainer(in snapshot: SnapshotResponse) -> FTRect? {
         var tally: [String: (rect: FTRect, count: Int)] = [:]
         for element in snapshot.elements {
-            guard let container = clippingContainer(of: element, in: snapshot.elements,
+            guard let container = ContainerGeometry.clippingContainer(of: element, in: snapshot.elements,
                                                     inferring: true),
                   // 完全に外 = スクロールで押し出された子(またぎは数えない)
                   ScrollGeometry.intersection(element.frame, container) == nil
@@ -159,7 +159,7 @@ extension StepExecutor {
     static func ambiguousScrollFrameNote(_ locator: FlowLocator, picked: ElementInfo,
                                          in snapshot: SnapshotResponse) -> String? {
         guard locator.index == nil,
-              let matches = candidates(locator, elements: snapshot.elements),
+              let matches = LocatorResolver.candidates(locator, elements: snapshot.elements),
               matches.count >= 2 else { return nil }
         let f = picked.frame
         return "the scrollFrame selector matched \(matches.count) elements; the first one"
@@ -253,7 +253,7 @@ extension StepExecutor {
         // これを先に返すだけで fail-fast を素通りできる — 別途の分岐は要らない
         if let rect = step.scrollFrameRect { return rect }
         if let locator = step.scrollFrame {
-            guard let element = Self.match(locator, in: snapshot) else {
+            guard let element = LocatorResolver.match(locator, in: snapshot) else {
                 // **未解決は呼び手(runScrollSearch / scroll・scrollToEdge・flick アクション)が
                 // fail-fast する**(全画面スワイプへの黙った退化がカードのボタン等を
                 // 誤発火させた実害があったため)。この関数自身は判定せず nil を返すだけでよい
@@ -299,19 +299,5 @@ extension StepExecutor {
     /// 固定比率(従来経路)へ丸ごと戻す
     static let coordinateScrollEnabled =
         ProcessInfo.processInfo.environment["FT_SCROLL_TARGET"] != "legacy"
-
-    /// **容器をツリーから推測して行う補正**の殺しスイッチ。`FT_CONTAINER_INFERENCE=off` で
-    /// まとめて止め、推測を持たなかった頃の挙動(見切れ判定は画面基準・掴み直し無し・
-    /// 座標補正無し・候補の除外無し)へ戻す。
-    ///
-    /// **なぜ要るか**: 容器は「pre-order で直前にある depth の小さい要素」+「同 depth の兄弟が
-    /// 2つ以上その中に居る」という**推測**で決めている(`clippingContainer`)。E2E は 4 SUT しか
-    /// 見ていないので、想定外のツリーでは推測が外れ得る。外れたときに起きるのは
-    /// **より悪い事態**(別の場所を叩く・明後日の方向へ送る・正当な要素が候補から消える)なので、
-    /// 利用者が1つの環境変数で全部止められるようにしておく。
-    /// 影響範囲を1箇所に閉じるため、**推測の入口(`clippingContainer`)と
-    /// `hasClampedCoordinates` の2箇所だけ**でこのフラグを見る
-    public static let containerInferenceEnabled =
-        ProcessInfo.processInfo.environment["FT_CONTAINER_INFERENCE"] != "off"
 
 }

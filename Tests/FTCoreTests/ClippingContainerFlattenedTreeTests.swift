@@ -1,4 +1,4 @@
-// 容器推定(StepExecutor.clippingContainer)が**間引かれた preorder 木で兄弟の見出しラベルを
+// 容器推定(ContainerGeometry.clippingContainer)が**間引かれた preorder 木で兄弟の見出しラベルを
 // 親と誤認しない**ことの固定(実機 iPhone 13・2026-08-31)。
 //
 // 実機の木(アカウント画面、Compose):
@@ -31,7 +31,7 @@ final class ClippingContainerFlattenedTreeTests: XCTestCase {
             el(22, "button", 12, 16, 687, 358, 43, id: "btn_logout"),
         ]
         let logout = tree[3]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: logout, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: logout, in: tree, inferring: true),
                        FTRect(x: 0, y: 47, width: 390, height: 683),
                        "見出し(交差しない d11)を飛び越えて画面容器(d10)を採ること")
     }
@@ -45,7 +45,7 @@ final class ClippingContainerFlattenedTreeTests: XCTestCase {
             el(3, "button", 12, 16, 270, 358, 50, id: "row_2"),
         ]
         let target = tree[2]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: target, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true),
                        FTRect(x: 0, y: 200, width: 390, height: 200))
     }
 
@@ -61,14 +61,14 @@ final class ClippingContainerFlattenedTreeTests: XCTestCase {
             el(5, "button", 12, 16, 120, 358, 50, id: "target"),
         ]
         let target = tree[4]
-        XCTAssertNil(StepExecutor.clippingContainer(of: target, in: tree, inferring: true),
+        XCTAssertNil(ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true),
                      "wrap_b は交差するが兄弟が1つだけ = nil。outer まで辿って兄弟2つに揃えてはいけない")
     }
 
     /// 祖先が1つも無い要素は nil
     func testElementWithNoAncestorsReturnsNil() {
         let tree = [el(1, "button", 0, 0, 0, 100, 40, id: "lone")]
-        XCTAssertNil(StepExecutor.clippingContainer(of: tree[0], in: tree, inferring: true))
+        XCTAssertNil(ContainerGeometry.clippingContainer(of: tree[0], in: tree, inferring: true))
     }
 
     /// **ghost(容器の完全に外へ報告された行)の容器も引けること**。「要素と交差する祖先だけ」を
@@ -82,10 +82,10 @@ final class ClippingContainerFlattenedTreeTests: XCTestCase {
             el(4, "cell", 2, 0, 783, 390, 60, id: "row_30"),
         ]
         let ghost = tree[3]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: ghost, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: ghost, in: tree, inferring: true),
                        FTRect(x: 0, y: 230, width: 390, height: 462),
                        "容器の外に居る行でも、行を2件以上含む容器は引けること(ghost 検知の前提)")
-        XCTAssertTrue(StepExecutor.isOutsideContainer(
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(
             ghost, in: tree, screen: FTRect(x: 0, y: 0, width: 390, height: 844)))
     }
 }

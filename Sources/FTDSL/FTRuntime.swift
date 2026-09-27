@@ -1252,7 +1252,7 @@ public final class FTDriveCore {
         repeat {
             let snapshot = FTSync.run { try? await driver.snapshot() } ?? nil
             if let snapshot,
-               StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
+               LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
                 return result(true)
             }
             // **宣言された割り込みが覆っていたら閉じて見直す**(受け手報告)。
@@ -1262,7 +1262,7 @@ public final class FTDriveCore {
             if let snapshot,
                let closed = FTSync.run({ await executor.dismissDeclaredInterruption(in: snapshot) }) ?? nil {
                 dismissed = (closed.key, closed.count)
-                if StepExecutor.resolve(step: step, in: closed.snapshot,
+                if LocatorResolver.resolve(step: step, in: closed.snapshot,
                                         strictForAssert: true) != nil {
                     return result(true)
                 }
@@ -1282,7 +1282,7 @@ public final class FTDriveCore {
         // springboard 再session の数百 ms が待ちを支配する)
         guard let fb = executor.fallbackDriver,
               let fsnap = FTSync.run({ try? await fb.snapshot() }) ?? nil else { return result(false) }
-        if StepExecutor.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
+        if LocatorResolver.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
             return result(true)
         }
         // **どちらにも無いなら、システム許可アラートが被さっていないかを見る**。
@@ -1295,7 +1295,7 @@ public final class FTDriveCore {
             return result(false)
         }
         guard let after = FTSync.run({ try? await driver.snapshot() }) ?? nil else { return result(false) }
-        return result(StepExecutor.resolve(step: step, in: after, strictForAssert: true) != nil)
+        return result(LocatorResolver.resolve(step: step, in: after, strictForAssert: true) != nil)
     }
 
     // MARK: - スレッド安全性(DSL スレッド外からの誤呼び出し対策)

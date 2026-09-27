@@ -732,7 +732,7 @@ FOUND / DRAG / TAP を出す版では 13 周回して一度も再現しなかっ
   余地がある(未実装・未検証)
 
 **修正**: スナップショットは pre-order + depth なので、**直前にある depth の小さい要素**が祖先。
-これを復元して見切れ判定の viewport に使う(`StepExecutor.clippingContainer`)。
+これを復元して見切れ判定の viewport に使う(`ContainerGeometry.clippingContainer`)。
 ブリッジは要素を間引くので候補が叔父のことがあり、**同じ depth の兄弟が2つ以上その中に居る**
 ことを確かめてから採用する。**スクロールの座標化には使わない** —— 暗黙の座標化とは別物で、
 あちらは2度撤回済み(3度目は無い)。回帰テストは **CMP の S0110**(領域指定なしの形)。
@@ -2490,7 +2490,7 @@ viewport が画面全体になり**、「見えている」と誤判定して探
 どちらも「同じ depth の兄弟が2つ以上その中に居る」ことを確かめてから容器を採る(叔父を掴んだ
 ときに nil へ落とすため)。[[compose-ios-ax-frame-clamp]]
 
-**対処(2026-08-05 実装)**: **ホスト側で解決候補から外す**(`StepExecutor.hasClampedCoordinates`)。
+**対処(2026-08-05 実装)**: **ホスト側で解決候補から外す**(`ContainerGeometry.hasClampedCoordinates`)。
 ブリッジ側で落とす案は採らなかった —— 要素集合が変わって `.型[n]` の序数・ref・`truncatedCount`
 まで動くため。ホスト側なら候補の選び方だけが変わる。
 

@@ -46,7 +46,7 @@ struct VisionCapture: AsyncParsableCommand {
         let parsed = FTSelector.parse(selector)
         let step = FlowStep(assert: "exists", locator: parsed.primary,
                             fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks)
-        guard let (element, _) = StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) else {
+        guard let (element, _) = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) else {
             throw ValidationError("no element matches \(selector) on the current screen")
         }
         let png = try await driver.screenshot()

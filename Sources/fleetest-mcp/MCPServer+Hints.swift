@@ -63,7 +63,7 @@ extension MCPServer {
     /// (外して実測)、これが無いと**描かれていない一致で救済を打ち切る**
     static func visibleAfterExpansion(step: FlowStep, in snapshot: SnapshotResponse) -> ElementInfo? {
         guard let locator = step.locator,
-              let hit = StepExecutor.match(locator, in: snapshot),
+              let hit = LocatorResolver.match(locator, in: snapshot),
               hit.frame.width > 0, hit.frame.height > 0,
               TapTargetGeometry.offscreenAdvisory(for: hit, screen: snapshot.screen) == nil
         else { return nil }
@@ -520,7 +520,7 @@ extension MCPServer {
         // 探索ループの条件分岐の中でしか埋まらず、空振りのまま失敗する回では nil のままになる
         if let frame = args["scrollFrame"] as? String {
             let locator = FTSelector.parse(frame).primary
-            let matches = StepExecutor.candidates(locator, elements: snapshot.elements) ?? []
+            let matches = LocatorResolver.candidates(locator, elements: snapshot.elements) ?? []
             // **1件も当たらないなら、その事実こそ言う**: 誤字や範囲外の添字でも
             // `scrollContainer` は nil を返し、**探索そのものを打ち切る(fail-fast)**
             // (全画面スワイプへ退化させるとカードのボタン等を誤発火させる実害があった。
@@ -557,7 +557,7 @@ extension MCPServer {
     }
 
     /// 候補選定の規則(装飾葉の除外・スコア付け・編集距離)は `FTCore.SimilarLabels` が唯一の
-    /// 定義元(DSL 側の `StepExecutor.candidateHint` と共有する)。
+    /// 定義元(DSL 側の `LocatorResolver.candidateHint` と共有する)。
     /// ここは MCP 応答の文言(`"note: similar labels on screen: …"`)の組み立てだけを持つ ——
     /// **この文言は既存の MCP テスト・NoteBudgetTests のバイト数ゲート対象で1文字も変えない**
     static func isSimilarText(_ a: String, _ b: String) -> Bool {
@@ -588,7 +588,7 @@ extension MCPServer {
     /// セレクタの**記法**が原因で外れたときだけ出す助言。無条件に「\* で囲め」と言うと
     /// 誤った助言を2形返す(Google マップで実測): 既に `*寿司*` を渡した相手に
     /// 同じ `*寿司*` を勧める / `#no_such_id` に**ラベル部分一致**の `*no_such_id*` を勧める。
-    /// 判定は DSL と同じ `StepExecutor.partialMatchHint` に委ねる(3条件そろったときだけ返る)。
+    /// 判定は DSL と同じ `LocatorResolver.partialMatchHint` に委ねる(3条件そろったときだけ返る)。
     /// 切り詰めラベルの取り違えはそれとは別の形なので独立に足す
     static func notationHint(_ selectorText: String, in snapshot: SnapshotResponse) -> String {
         var parts: [String] = []
@@ -596,15 +596,15 @@ extension MCPServer {
             parts.append(hint)
         }
         let locator = FTSelector.parse(selectorText).primary
-        if let hint = StepExecutor.partialMatchHint(for: locator, in: snapshot.elements) {
+        if let hint = LocatorResolver.partialMatchHint(for: locator, in: snapshot.elements) {
             parts.append(" The element is \(hint).")
         }
         if let hint = partialMatchFormHint(locator, in: snapshot.elements) {
             parts.append(hint)
         }
         // 「画面には出ているのに当たらない」の残りの形: **本文が複数ノードに割れている**。
-        // 判定は DSL と同じ StepExecutor.splitTextHint(素で当たるものがあれば黙る)
-        if let hint = StepExecutor.splitTextHint(for: locator, in: snapshot.elements) {
+        // 判定は DSL と同じ LocatorResolver.splitTextHint(素で当たるものがあれば黙る)
+        if let hint = LocatorResolver.splitTextHint(for: locator, in: snapshot.elements) {
             parts.append(" \(hint.prefix(1).uppercased())\(hint.dropFirst()).")
         }
         return parts.joined()
@@ -653,7 +653,7 @@ extension MCPServer {
     }
 
     /// **記法の形違い**による部分一致の空振り。実測: `*武蔵野線`(endsWith)を渡して
-    /// 7スクロール空振りした(正解は `*武蔵野線*`)。StepExecutor.partialMatchHint は
+    /// 7スクロール空振りした(正解は `*武蔵野線*`)。LocatorResolver.partialMatchHint は
     /// 「素の完全一致指定が部分一致なら在る」しか見ないので、**既に endsWith/startsWith を
     /// 指定した相手が別の部分一致形でなら当たる**ケースはここで別に見る。
     /// **既に contains 形(`*x*`)を渡している相手には出ない**(mode が endsWith/startsWith

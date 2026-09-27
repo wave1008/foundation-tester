@@ -101,8 +101,8 @@ final class CheckStateTests: XCTestCase {
     func testSelectorCheckedFilterUsesTheDerivedState() {
         let elements = [el("switch", value: "1", id: "a", ref: 1), el("switch", value: "0", id: "b", ref: 2),
                         el("switch", value: "2", id: "c", ref: 3), el("button", id: "d", ref: 4)]
-        XCTAssertEqual(StepExecutor.candidates(FlowLocator(checked: true), elements: elements)?.map(\.ref), [1])
-        XCTAssertEqual(StepExecutor.candidates(FlowLocator(checked: false), elements: elements)?.map(\.ref), [2, 4],
+        XCTAssertEqual(LocatorResolver.candidates(FlowLocator(checked: true), elements: elements)?.map(\.ref), [1])
+        XCTAssertEqual(LocatorResolver.candidates(FlowLocator(checked: false), elements: elements)?.map(\.ref), [2, 4],
                        "checked=false はオフと状態を持たない要素(indeterminate は含めない)")
     }
 

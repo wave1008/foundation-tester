@@ -129,7 +129,7 @@ extension StepExecutor {
         // FM に画像を渡せるか(macOS 27+、かつ陽性対照の注入が無いこと)。false でも
         // スクショ・ink・OCR 近道までは進み、FM だけを撃たずに OCROnlyVisibility へ落ちる
         // (下の `guard fmAvailable` 参照)。
-        let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive()
+        let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive(environment: ProcessInfo.processInfo.environment)
         // **FM に訊くと決まったのでモデルの積み込みを先に始める**。効くのは「重ねられる作業の
         // 長さ」ぶんだけで(実測: リード 1000ms で −14% / 250ms で −8% / 直前では ±0。
         // docs/performance-tuning.md §3.5.1)、重ねられるのはこの下のスクショ往復・stale 判定・
@@ -730,11 +730,11 @@ extension StepExecutor {
             // 誤った成功ではないので優先度は下だが、直す手段は同じファイルに既にある。
             // 撮り直しは切り詰められていて解決できなかったときだけ(通る側の固定費はゼロ)。
             // 解決は1周1回(撮り直した周だけ2回)—— ゲートと本判定で同じ木に2回払わない
-            var resolvedDetail = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
+            var resolvedDetail = LocatorResolver.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
             if resolvedDetail == nil, snapshot.truncatedCount > 0, !needsCeiling {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
-                resolvedDetail = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
+                resolvedDetail = LocatorResolver.resolveDetailed(step: step, in: snapshot, strictForAssert: true)
             }
             lastSnapshot = snapshot
             // アサーションでは type+index のみのフォールバックを使わない。
@@ -767,7 +767,7 @@ extension StepExecutor {
                     start = clock.now
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - start)
-                    if let (element, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
+                    if let (element, fallback) = LocatorResolver.resolve(step: step, in: fsnap, strictForAssert: true) {
                         resolvedElementThisStep = element
                         // **SpringBoard 側で解決した** = この検証はアラート自身が対象
                         resolvedViaSystemUIThisStep = true
@@ -879,12 +879,12 @@ extension StepExecutor {
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
             if snapshot.truncatedCount > 0, !needsCeiling,
-               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+               LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             }
             lastSnapshot = snapshot
-            var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+            var candidate = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true)
             var fromFallbackDriver = false
             if candidate == nil { primaryMisses += 1 }
             // driver フォールバック(ハイブリッド): primary で見つからなければシステム UI を確認。
@@ -894,7 +894,7 @@ extension StepExecutor {
                 start = clock.now
                 let fsnap = try await fb.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
-                candidate = Self.resolve(step: step, in: fsnap, strictForAssert: true)
+                candidate = LocatorResolver.resolve(step: step, in: fsnap, strictForAssert: true)
                 fromFallbackDriver = candidate != nil
                 // **SpringBoard 側で解決した** = この検証はアラート自身が対象(exists と同じ)。
                 // 立てないと executeAssert の門が「覆われている」と読んで、いま検証した
@@ -914,7 +914,7 @@ extension StepExecutor {
                 lastScreen = snapshot.screen
                 // 一致したテキスト。occlusion-guard には**実際に一致した文字列**を渡す
                 // (textMatches の期待値は正規表現で、そのまま画面と照合しても意味がないため)
-                let matched = Self.matchedText(actual, expected: expected, assert: assert,
+                let matched = LocatorResolver.matchedText(actual, expected: expected, assert: assert,
                                                normalization: Self.textNormalization(for: step))
                 if let expectedForGuard = matched {
                     // ロケータを label 指定していて実 label と不一致=部分一致で掴んだ疑い
@@ -996,7 +996,7 @@ extension StepExecutor {
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
                       // **どちらの規則なら一致したか**を必ず添える(ユーザー指示)。
                       // 「見えない差で落ちたのか、本当に違う文字列なのか」で次の一手が変わる
-                      + Self.normalizationVerdict(actual: lastActual, expected: expected,
+                      + LocatorResolver.normalizationVerdict(actual: lastActual, expected: expected,
                                                   assert: assert)
                       + Self.coveringHint(element: lastElement, elements: lastElements,
                                           screen: lastScreen)
@@ -1086,13 +1086,13 @@ extension StepExecutor {
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             noteEmptyWebView(snapshot)
-            var resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+            var resolved = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true)
             // **見つからないのは上限で間引かれたからかもしれない**。切り詰められた木で
             // 不在に見えたときだけ天井まで上げて撮り直す(retakenAtElementLimitCeiling)
             if resolved == nil, snapshot.truncatedCount > 0, !needsCeiling {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
-                resolved = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+                resolved = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true)
             }
             lastElements = snapshot.elements
             if resolved == nil {
@@ -1124,7 +1124,7 @@ extension StepExecutor {
                     let fbStart = clock.now
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - fbStart)
-                    if Self.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
+                    if LocatorResolver.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
                         // アラート自身の不在を検証している = 門に閉じさせない(exists と同じ規律。
                         // 閉じると「まだ在る」が正しい赤を、閉じた後の再判定で緑にすり替える)
                         resolvedViaSystemUIThisStep = true
@@ -1203,13 +1203,13 @@ extension StepExecutor {
             // **要素は在ることが前提の経路**: 未発見のときだけ撮り直す(exists 側 331〜334行と同じ型)。
             // 発見済みで値の変化を待っている周には不要
             if snapshot.truncatedCount > 0, !needsCeiling,
-               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+               LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             }
             lastSeenElements = snapshot.elements
             lastSnapshot = snapshot
-            if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+            if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
                 let actual = assert.hasPrefix("value") ? element.value : element.label
@@ -1217,7 +1217,7 @@ extension StepExecutor {
                 lastElement = element
                 lastElements = snapshot.elements
                 lastScreen = snapshot.screen
-                let satisfied = Self.negativeAssertSatisfied(
+                let satisfied = LocatorResolver.negativeAssertSatisfied(
                     assert, actual: actual, expected: step.expected,
                     normalization: Self.textNormalization(for: step))
                 if satisfied {
@@ -1313,12 +1313,12 @@ extension StepExecutor {
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
             if snapshot.truncatedCount > 0, !needsCeiling,
-               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+               LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             }
             lastSnapshot = snapshot
-            if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+            if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
                 if element.enabled == wantEnabled {
@@ -1449,12 +1449,12 @@ extension StepExecutor {
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // 見つからないのは上限で間引かれたからかもしれない(exists 側 331〜334行と同じ型)
             if snapshot.truncatedCount > 0, !needsCeiling,
-               Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+               LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
                 needsCeiling = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             }
             lastSnapshot = snapshot
-            if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+            if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
                 var state = checkState(of: element, step: step)
@@ -1533,7 +1533,7 @@ extension StepExecutor {
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastSnapshot = snapshot
-            if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+            if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) {
                 found = true
                 lastClassification = await classifyElementImage(element, screen: snapshot.screen, with: classifier)
                 if let label = lastClassification?.label, DefaultClassifier.matches(label: label, expected: expected) {
@@ -1689,9 +1689,9 @@ extension StepExecutor {
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
             }
             lastSnapshot = snapshot
-            breakdown = Self.unionByClause(chain, elements: snapshot.elements)
+            breakdown = LocatorResolver.unionByClause(chain, elements: snapshot.elements)
             actual = breakdown.reduce(0) { $0 + $1.elements.count }
-            nestingHint = Self.nestingHint(breakdown.flatMap(\.elements),
+            nestingHint = LocatorResolver.nestingHint(breakdown.flatMap(\.elements),
                                            in: snapshot.elements)
             if actual == expectedCount {
                 // **一致した周でだけ評価する**(notExists と同じ理由。不一致はそのまま赤くなるので

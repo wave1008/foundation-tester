@@ -26,7 +26,7 @@ final class IdMatchesPlaceholderTests: XCTestCase {
     }
 
     private func match(_ selector: String, _ elements: [ElementInfo]) -> ElementInfo? {
-        StepExecutor.match(FlowLocator(id: String(selector.dropFirst())), in: snapshot(elements))
+        LocatorResolver.match(FlowLocator(id: String(selector.dropFirst())), in: snapshot(elements))
     }
 
     /// **本題**: identifier に出ない欄を placeholder で引ける
@@ -56,7 +56,7 @@ final class IdMatchesPlaceholderTests: XCTestCase {
     func testWildcardIdAlsoMatchesPlaceholder() {
         let elements = [element(1, placeholder: "WebView 入力")]
         let locator = FlowLocator(id: "入力", idMatch: .contains)   // `#*入力*` の解析結果
-        XCTAssertEqual(StepExecutor.match(locator, in: snapshot(elements))?.ref, 1)
+        XCTAssertEqual(LocatorResolver.match(locator, in: snapshot(elements))?.ref, 1)
     }
 
     /// **序数と件数はどちらか片方の集合の中だけで数える** —— identifier で1件でも当たれば
@@ -65,7 +65,7 @@ final class IdMatchesPlaceholderTests: XCTestCase {
         let elements = [element(1, id: "row", placeholder: "row"),
                         element(2, placeholder: "row"),
                         element(3, placeholder: "row")]
-        let candidates = StepExecutor.candidates(FlowLocator(id: "row"), elements: elements) ?? []
+        let candidates = LocatorResolver.candidates(FlowLocator(id: "row"), elements: elements) ?? []
         XCTAssertEqual(candidates.map(\.ref), [1], "placeholder 側が混ざっている")
     }
 

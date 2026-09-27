@@ -9,6 +9,7 @@ paths:
   - "Sources/FTCore/HealFixApplier.swift"
   - "Sources/FTCore/LocatorFingerprint*.swift"
   - "Sources/FTCore/LocatorFingerprint.swift"
+  - "Sources/FTCore/LocatorResolver.swift"
   - "Sources/FTCore/ScenarioCodeGen.swift"
   - "Sources/FTCore/SelectorNaming*.swift"
   - "Sources/FTCore/SelectorNaming.swift"

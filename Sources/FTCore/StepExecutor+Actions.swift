@@ -197,7 +197,7 @@ extension StepExecutor {
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
         try await dismissInterruption(in: &snapshot, phase: &phase)
-        var resolved = Self.resolve(step: step, in: snapshot)
+        var resolved = LocatorResolver.resolve(step: step, in: snapshot)
         // **切り詰めが原因の未発見に、リトライ/ghost 救済の予算を燃やさない**。
         // ここで撮り直さないと、下のリトライループが全予算(バックオフ3回 or step.timeout 全部)を
         // 当たるはずのない既定上限のスナップショットで使い切ってから、ループを抜けた後の
@@ -207,7 +207,7 @@ extension StepExecutor {
         if resolved == nil, snapshot.truncatedCount > 0, !elementLimitCeilingLatchedThisStep {
             elementLimitCeilingLatchedThisStep = true
             snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
-            resolved = Self.resolve(step: step, in: snapshot)
+            resolved = LocatorResolver.resolve(step: step, in: snapshot)
         }
         // **探索の直後は容器の外に並ぶ ghost 行を掴むことがある**(Compose iOS は容器の外にも
         // 子を報告する。docs/verification.md「Compose の探索直後タップ」)。掴んだままタップすると
@@ -230,7 +230,7 @@ extension StepExecutor {
         func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
             guard let element = candidate?.0, step.containerInference ?? true
             else { return false }
-            return Self.isOutsideContainer(element, in: snapshot.elements, screen: snapshot.screen)
+            return ContainerGeometry.isOutsideContainer(element, in: snapshot.elements, screen: snapshot.screen)
         }
         var ghostRetries = 0
         var ghostSwipes = 0
@@ -250,7 +250,7 @@ extension StepExecutor {
                         snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                         phase.snapshotMs += Self.ms(clock.now - start)
                         let previous = resolved
-                        resolved = Self.resolve(step: step, in: snapshot)
+                        resolved = LocatorResolver.resolve(step: step, in: snapshot)
                         if previous != nil { ghostRetries += 1 }
                     }
                 }
@@ -271,7 +271,7 @@ extension StepExecutor {
                     if attempt > 0, grabbedGhost(resolved),
                        let element = resolved?.0 {
                         let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
-                        let container = Self.clippingContainer(
+                        let container = ContainerGeometry.clippingContainer(
                             of: element, in: snapshot.elements,
                             inferring: step.containerInference ?? true)
                         // **距離を測ってその分だけ動かす**(recoveryJump 参照)。全画面スワイプだと
@@ -287,7 +287,7 @@ extension StepExecutor {
                             snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                             phase.snapshotMs += Self.ms(clock.now - start)
                             let previous = resolved
-                            resolved = Self.resolve(step: step, in: snapshot)
+                            resolved = LocatorResolver.resolve(step: step, in: snapshot)
                             if previous != nil { ghostRetries += 1 }
                             if resolved != nil, !grabbedGhost(resolved) { break }
                             continue
@@ -311,7 +311,7 @@ extension StepExecutor {
                     snapshot = try await freshSnapshot(.repoll(afterSearchSwiped: searchSwiped))
                     phase.snapshotMs += Self.ms(clock.now - start)
                     let previous = resolved
-                    resolved = Self.resolve(step: step, in: snapshot)
+                    resolved = LocatorResolver.resolve(step: step, in: snapshot)
                     if previous != nil { ghostRetries += 1 }
                     if resolved != nil, !grabbedGhost(resolved) { break }
                 }
@@ -353,7 +353,7 @@ extension StepExecutor {
                 // (物理 iPhone 13: 空打ちで診断画面へ遷移 → 古い ref が #tab_home を押して
                 // ホームへ戻り ok)。救済(キャッシュ・指紋・FM)にも回さない —— 変わった画面で
                 // 別の要素へ「修復」するのも同じ誤った緑。撃ち直しもしない(吸われた操作と同じ規律)
-                guard let refreshed = Self.resolve(step: step, in: snapshot) else {
+                guard let refreshed = LocatorResolver.resolve(step: step, in: snapshot) else {
                     return StepOutcome(status: failed(.notFound,
                         "the element was found, but the relief drag after \(ghostSwipes) extra swipe(s)"
                         + " changed the screen and it is gone from the tree (the drag may have fired a"
@@ -398,12 +398,12 @@ extension StepExecutor {
             // 拾えた対象がまた落ちる
             elementLimitCeilingLatchedThisStep = true
             snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
-            resolved = Self.resolve(step: step, in: snapshot)
+            resolved = LocatorResolver.resolve(step: step, in: snapshot)
         }
 
         var actingDriver: AppDriver = driver
         if action != "select", let fb = fallbackDriver {
-            let primaryQuality = resolved == nil ? nil : Self.resolveDetailed(step: step, in: snapshot)?.quality
+            let primaryQuality = resolved == nil ? nil : LocatorResolver.resolveDetailed(step: step, in: snapshot)?.quality
             if resolved == nil || primaryQuality == .substring {
                 start = clock.now
                 var fsnap = try await fb.snapshot()
@@ -411,15 +411,15 @@ extension StepExecutor {
                 // **どちらでも解決できないときだけ**システム許可アラートを閉じる(閉じたら
                 // 木を取り直して1回やり直す)。解決できているならシナリオ自身がそのアラートを
                 // 操作しようとしているので奪わない(dismissSystemAlert の宣言)
-                if resolved == nil, Self.resolveDetailed(step: step, in: fsnap) == nil,
+                if resolved == nil, LocatorResolver.resolveDetailed(step: step, in: fsnap) == nil,
                    await dismissSystemAlert(in: fsnap, via: fb) != nil {
                     start = clock.now
                     fsnap = (try? await fb.snapshot()) ?? fsnap
                     phase.snapshotMs += Self.ms(clock.now - start)
                     snapshot = (try? await driver.snapshot()) ?? snapshot
-                    resolved = Self.resolve(step: step, in: snapshot)
+                    resolved = LocatorResolver.resolve(step: step, in: snapshot)
                 }
-                if let r = Self.resolveDetailed(step: step, in: fsnap),
+                if let r = LocatorResolver.resolveDetailed(step: step, in: fsnap),
                    resolved == nil || r.quality == .exact {
                     resolved = (r.element, r.usedFallback)
                     snapshot = fsnap
@@ -446,7 +446,7 @@ extension StepExecutor {
             return StepOutcome(status: .skipped(Self.selectNotFoundReason))
         } else if let fingerprint,
                   let found = fingerprint.resolve(in: snapshot.elements.filter {
-                      !Self.hasClampedCoordinates($0, in: snapshot.elements,
+                      !ContainerGeometry.hasClampedCoordinates($0, in: snapshot.elements,
                                                   inferring: step.containerInference ?? true)
                   }) {
             // ロケータ指紋: 前回このロケータが解決できた要素の type+label が現在の木に
@@ -480,7 +480,7 @@ extension StepExecutor {
         } else {
             // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
-            let hint = Self.candidateHint(for: step, in: snapshot)
+            let hint = LocatorResolver.candidateHint(for: step, in: snapshot)
             return StepOutcome(status: failed(
                 .notFound,
                 "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
@@ -500,7 +500,7 @@ extension StepExecutor {
         // 定義部の実害参照)+ `slowDrag`(フリングを出さない)なので
         // 行き過ぎない。**1回だけ**(収束しなければ見えている部分を撃つ)
         if Self.interactsByTouch(action), step.containerInference ?? true,
-           let container = Self.clippingContainer(of: element, in: snapshot.elements,
+           let container = ContainerGeometry.clippingContainer(of: element, in: snapshot.elements,
                                                   inferring: true),
            ScrollGeometry.intersection(element.frame, container) != nil,
            Self.isClippedByViewport(element, screen: container),
@@ -508,7 +508,7 @@ extension StepExecutor {
            await slowDrag(jump: jump, container: container, phase: &phase) {
             _ = try await settledSignature(phase: &phase)
             let refreshed = try await freshSnapshot(.afterOwnMove)
-            if let (moved, _) = Self.resolve(step: step, in: refreshed) {
+            if let (moved, _) = LocatorResolver.resolve(step: step, in: refreshed) {
                 snapshot = refreshed
                 element = moved
                 resolvedElementThisStep = element
@@ -820,21 +820,21 @@ extension StepExecutor {
             var endStep = step
             endStep.locator = endLocator
             endStep.fallbacks = nil
-            var endResolved = Self.resolve(step: endStep, in: snapshot)
+            var endResolved = LocatorResolver.resolve(step: endStep, in: snapshot)
             // **終点も上限で間引かれているなら撮り直す**(始点(上の truncatedCount
             // ブロック)だけ救済される非対称を埋める)。**始点も同じ撮り直した木から取り直す** ——
             // 片方だけ別の読みの座標のままだと frame の世代が混ざる
             if endResolved == nil, snapshot.truncatedCount > 0 {
                 elementLimitCeilingLatchedThisStep = true
                 snapshot = try await retakenAtElementLimitCeiling(snapshot, phase: &phase)
-                endResolved = Self.resolve(step: endStep, in: snapshot)
-                if let (refreshedStart, _) = Self.resolve(step: step, in: snapshot) {
+                endResolved = LocatorResolver.resolve(step: endStep, in: snapshot)
+                if let (refreshedStart, _) = LocatorResolver.resolve(step: step, in: snapshot) {
                     element = refreshedStart
                     resolvedElementThisStep = element
                 }
             }
             guard let (endElement, _) = endResolved else {
-                let hint = Self.candidateHint(for: endStep, in: snapshot)
+                let hint = LocatorResolver.candidateHint(for: endStep, in: snapshot)
                 return StepOutcome(status: .failed(
                     "cannot resolve the end locator: \(endStep.locatorSummary)"
                         + (hint.map { ". \($0)" } ?? "")
@@ -875,7 +875,7 @@ extension StepExecutor {
         var start = clock.now
         let snapshot = try await td.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)
-        guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
+        guard let resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return false }
         start = clock.now
         try await td.type(ref: resolved.element.ref, text: step.text ?? "")
         phase.actionMs += Self.ms(clock.now - start)
@@ -1042,7 +1042,7 @@ extension StepExecutor {
         var start = clock.now
         let snapshot = try await td.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)
-        guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
+        guard let resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return false }
         start = clock.now
         try await td.press(ref: resolved.element.ref,
                            duration: step.duration ?? FlowStep.defaultTapHoldSeconds)
@@ -1058,7 +1058,7 @@ extension StepExecutor {
         var start = clock.now
         let snapshot = try await td.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)
-        guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
+        guard let resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return false }
         start = clock.now
         try await td.clearInput(ref: resolved.element.ref)
         phase.actionMs += Self.ms(clock.now - start)
@@ -1225,7 +1225,7 @@ extension StepExecutor {
         let snapshot = try await clearDriver.snapshot(bypassingCache: true)
         phase.snapshotMs += Self.ms(clock.now - start)
         // 撃つ前に消えた/解決できないときは、判定を弱めるより解決時の値を残す
-        guard let (found, _) = Self.resolve(step: step, in: snapshot) else { return element.value }
+        guard let (found, _) = LocatorResolver.resolve(step: step, in: snapshot) else { return element.value }
         return found.value
     }
 
@@ -1248,7 +1248,7 @@ extension StepExecutor {
     /// (検証できないことを失敗にしない)
     private static func residualClearValue(step: FlowStep, before: String?,
                                           in snapshot: SnapshotResponse) -> String? {
-        guard let (found, _) = Self.resolve(step: step, in: snapshot) else { return nil }
+        guard let (found, _) = LocatorResolver.resolve(step: step, in: snapshot) else { return nil }
         return Self.residualClearValue(before: before, after: found.value,
                                        placeholder: found.placeholder)
     }
@@ -1433,7 +1433,7 @@ extension StepExecutor {
         var coverName: String?
         let clock = ContinuousClock()
         for _ in 0..<maxLifts {
-            guard let container = Self.clippingContainer(
+            guard let container = ContainerGeometry.clippingContainer(
                     of: current, in: currentSnapshot.elements,
                     inferring: step.containerInference ?? true) else { return nil }
             let keyboard = KeyboardOcclusion.resolve(reported: currentSnapshot.keyboardFrame,
@@ -1467,7 +1467,7 @@ extension StepExecutor {
             let start = clock.now
             let after = try await freshSnapshot(.afterOwnMove)
             phase.snapshotMs += Self.ms(clock.now - start)
-            guard let (moved, _) = Self.resolve(step: step, in: after) else { return nil }
+            guard let (moved, _) = LocatorResolver.resolve(step: step, in: after) else { return nil }
             let afterBand = KeyboardOcclusion.resolve(reported: after.keyboardFrame,
                                                       in: after.elements).frame
                 ?? TapTargetGeometry.keyboardBandFromChrome(in: after.elements, screen: after.screen)
@@ -1545,8 +1545,8 @@ extension StepExecutor {
         var start = clock.now
         let snapshot = try await td.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)
-        guard let (from, _) = Self.resolve(step: step, in: snapshot),
-              let (to, _) = Self.resolve(step: endStep, in: snapshot) else { return false }
+        guard let (from, _) = LocatorResolver.resolve(step: step, in: snapshot),
+              let (to, _) = LocatorResolver.resolve(step: endStep, in: snapshot) else { return false }
         start = clock.now
         try await td.drag(fromX: from.frame.centerX, fromY: from.frame.centerY,
                           toX: to.frame.centerX, toY: to.frame.centerY,
@@ -1611,7 +1611,7 @@ extension StepExecutor {
             let fsnap = try await fb.snapshot()
             phase.snapshotMs += Self.ms(clock.now - start)
             // ① シナリオ自身がアラートを操作している
-            if Self.resolveDetailed(step: step, in: fsnap) != nil { return nil }
+            if LocatorResolver.resolveDetailed(step: step, in: fsnap) != nil { return nil }
             // ② 宣言があれば閉じる。**閉じたら戻らずに確かめ直す** —— 権限アラートは
             //    重なることがあり(位置情報の直後に通知など)、1枚閉じただけで進むと
             //    2枚目に覆われたまま撃つことになる
@@ -1689,7 +1689,7 @@ extension StepExecutor {
             // ことになる(有効になった瞬間に覆いの上を撃つ)。解決の前に閉じるのは
             // executeAction 入口と同じ規律。宣言が無ければコストゼロ
             try await dismissInterruption(in: &snapshot, phase: &phase)
-            guard let (element, _) = Self.resolve(step: step, in: snapshot) else { continue }
+            guard let (element, _) = LocatorResolver.resolve(step: step, in: snapshot) else { continue }
             if element.enabled {
                 return (element, snapshot, Self.ms(clock.now - began))
             }

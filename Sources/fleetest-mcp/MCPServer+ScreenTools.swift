@@ -439,7 +439,7 @@ extension MCPServer {
             let parsed = try Self.parseSelectorArgument(selector, argument: "selector")
             let step = FlowStep(assert: "exists", locator: parsed.primary,
                                 fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks)
-            guard let (found, _) = StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) else {
+            guard let (found, _) = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) else {
                 throw MCPError("no element matches \(selector) on the current screen")
             }
             element = found

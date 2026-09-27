@@ -1,6 +1,6 @@
 // SimilarLabels.swift
 // 「セレクタが外れたときに近いラベル/id を挙げる」候補選定。MCP(similarLabelsHint)と
-// DSL(StepExecutor+Resolve.candidateHint)が共有する唯一の定義元。
+// DSL(LocatorResolver.candidateHint)が共有する唯一の定義元。
 //
 // **文言はここでは組み立てない**: MCP の応答文言("note: similar labels on screen: …")は
 // 既存の MCP テスト・NoteBudgetTests のバイト数ゲート対象で1文字も変えられない。

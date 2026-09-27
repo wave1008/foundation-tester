@@ -444,7 +444,7 @@ public final class StepExecutor {
     /// ロケータ列を順に照合し、最初に当たった要素を返す(`||` の規則)
     public static func matchFirst(_ locators: [FlowLocator], in snapshot: SnapshotResponse) -> ElementInfo? {
         for locator in locators {
-            if let element = match(locator, in: snapshot) { return element }
+            if let element = LocatorResolver.match(locator, in: snapshot) { return element }
         }
         return nil
     }
@@ -625,7 +625,7 @@ public final class StepExecutor {
         // **入口で1回だけ実効値へ畳む**(下流は `step.containerInference` だけを見る)。
         // 優先順位: 環境変数の殺しスイッチ > ステップ指定 > 実行プロファイル既定
         var step = original
-        step.containerInference = Self.containerInferenceEnabled
+        step.containerInference = ContainerGeometry.containerInferenceEnabled
             && (original.containerInference ?? containerInference)
         let clock = ContinuousClock()
         let start = clock.now
@@ -1055,12 +1055,12 @@ public final class StepExecutor {
     /// 送る方向は 2/10 → 5/10 の自傷を実測済み(grabbedGhost の記録)。
     /// 残るのは**座標そのものを直す**ことだけで、見えている部分は実在するのでそこを撃てば当たる
     static func visibleTapRect(for element: ElementInfo, in elements: [ElementInfo],
-                               inferring: Bool = containerInferenceEnabled,
+                               inferring: Bool = ContainerGeometry.containerInferenceEnabled,
                                scale: Double = 1) -> FTRect? {
         // **床は木の単位へ換算してから比べる**(scale = AppDriver.pointScale。iOS=1・Android=密度)。
         // 換算しないと 3倍密度で床が約3倍緩くなり、この guard が防ぐはずの誤タップが素通りする
-        let floor = Self.minimumVisibleTapExtent * scale
-        guard let container = clippingContainer(of: element, in: elements, inferring: inferring),
+        let floor = TapTargetGeometry.minimumVisibleTapExtent * scale
+        guard let container = ContainerGeometry.clippingContainer(of: element, in: elements, inferring: inferring),
               let visible = ScrollGeometry.intersection(element.frame, container),
               // **細すぎる帯は撃たない**。容器の推測が外れていた場合、わずかな重なりを
               // 「見えている部分」と信じて叩くと**より悪い場所**へ当たる。実測の対象は
@@ -1078,13 +1078,6 @@ public final class StepExecutor {
     static func interactsByTouch(_ action: String) -> Bool {
         action == "tap" || action == "press" || action == "doubleTap"
     }
-
-    /// 「見えている部分」を撃つと言えるだけの最小の幅・高さ。**単位は pt/dp**(物理では約 1.25mm。
-    /// iOS の pt = 1/163 inch と Android の dp = 1/160 inch はほぼ同じ大きさなので同じ数で足りる)。
-    /// 容器の推測が外れたときに、わずかな重なりへ突っ込まないための床。
-    /// **木の単位へは呼び手が換算する**(`visibleTapRect(scale:)` = `AppDriver.pointScale`)——
-    /// Android の木は px なので、そのまま比べると密度ぶん床が緩む
-    static let minimumVisibleTapExtent: Double = 8
 
     /// 飲まれたタップの証跡を採る(LastInteraction 参照)。**追加のスナップショットは撮らない** ——
     /// 解決に使った木をそのまま基準にする。前面要素の判定も同じ木の上の計算だけ

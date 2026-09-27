@@ -84,7 +84,7 @@ final class LabelLineFoldingTests: XCTestCase {
         XCTAssertFalse(folded.contains("\n"), "畳み込みが恒等関数に退化していないか")
 
         let locator = FlowLocator(label: folded)
-        let resolved = StepExecutor.resolvedCandidates(locator, elements: [target, other])
+        let resolved = LocatorResolver.resolvedCandidates(locator, elements: [target, other])
         XCTAssertEqual(resolved?.count, 1)
         XCTAssertEqual(resolved?.first?.ref, target.ref)
     }

@@ -77,11 +77,11 @@ final class RegionTextTests: XCTestCase {
     /// (TranscriptMatch.judge はこれを正規化前の生の転写に使う)
     func testEndsWithEllipsisMatchesWhatNormalizeStrips() {
         for s in ["家電・電化…", "ab...", "Something…", "trailing ... ", "微妙な…　", "abc.."] {
-            XCTAssertTrue(RegionText.endsWithEllipsis(s), s)
-            XCTAssertFalse(RegionText.normalize(s).hasSuffix("."), "normalize が末尾を削っていない: \(s)")
+            XCTAssertTrue(TranscriptMatch.endsWithEllipsis(s), s)
+            XCTAssertFalse(TranscriptMatch.normalize(s).hasSuffix("."), "normalize が末尾を削っていない: \(s)")
         }
         for s in ["abc", "plain text", "三点リーダなし", "Inc.", "名前:", "名前：", "保存します。", "・項目"] {
-            XCTAssertFalse(RegionText.endsWithEllipsis(s), s)
+            XCTAssertFalse(TranscriptMatch.endsWithEllipsis(s), s)
         }
     }
 
@@ -91,17 +91,17 @@ final class RegionTextTests: XCTestCase {
         let readings = ["tap•••": "tap", "last=t••": "last=t", "画面⋯•": "画面", "App：・・": "app",
                         "ス⋯": "ス", "設定や自・・・": "設定や自", "pr**•": "pr"]
         for (reading, stripped) in readings {
-            XCTAssertTrue(RegionText.endsWithEllipsis(reading), reading)
-            XCTAssertEqual(RegionText.normalize(reading), stripped, reading)
+            XCTAssertTrue(TranscriptMatch.endsWithEllipsis(reading), reading)
+            XCTAssertEqual(TranscriptMatch.normalize(reading), stripped, reading)
         }
     }
 
     /// 全角引用符は半角へ畳む(NFKC では揃わない。実例は TranscriptMatch のテスト)
     func testNormalizeFoldsFullWidthQuotesToHalfWidth() {
-        XCTAssertEqual(RegionText.normalize("\u{201C}カレンダー\u{201D}"), "\"カレンダー\"")
-        XCTAssertEqual(RegionText.normalize("\u{2018}Off\u{2019}"), "'off'")
-        XCTAssertEqual(RegionText.normalize("\u{201E}x\u{201F}"), "\"x\"")
-        XCTAssertEqual(RegionText.normalize("\u{201A}x\u{201B}"), "'x'")
+        XCTAssertEqual(TranscriptMatch.normalize("\u{201C}カレンダー\u{201D}"), "\"カレンダー\"")
+        XCTAssertEqual(TranscriptMatch.normalize("\u{2018}Off\u{2019}"), "'off'")
+        XCTAssertEqual(TranscriptMatch.normalize("\u{201E}x\u{201F}"), "\"x\"")
+        XCTAssertEqual(TranscriptMatch.normalize("\u{201A}x\u{201B}"), "'x'")
     }
 
     // MARK: - mode(environment:)

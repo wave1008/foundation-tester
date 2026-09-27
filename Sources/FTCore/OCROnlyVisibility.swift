@@ -64,7 +64,7 @@ public enum OCROnlyVisibility {
 public enum FMNoVerdictInjection {
     public static let environmentKey = "FT_FAKE_FM_NO_VERDICT"
 
-    public static func isActive(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+    public static func isActive(environment: [String: String]) -> Bool {
         environment[environmentKey] == "1"
     }
 }

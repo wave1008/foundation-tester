@@ -84,7 +84,7 @@ public struct SelectorNaming {
                                    in snapshot: SnapshotResponse,
                                    label: String) -> (plain: Int, typed: Int) {
         var plain = 0, typed = 0
-        for e in StepExecutor.descendants(of: scope, in: snapshot.elements)
+        for e in LocatorResolver.descendants(of: scope, in: snapshot.elements)
         where SnapshotRenderer.displayText(e.label ?? "") == label {
             plain += 1
             if e.type == element.type { typed += 1 }
@@ -275,7 +275,7 @@ public extension SelectorNaming {
                              in snapshot: SnapshotResponse) -> Bool {
         let parsed = FTSelector.parse(selector)
         guard parsed.fallbacks.isEmpty else { return false }
-        return StepExecutor.matchDetailed(parsed.primary,
+        return LocatorResolver.matchDetailed(parsed.primary,
                                           elements: snapshot.elements)?.0.ref == element.ref
     }
 
@@ -289,7 +289,7 @@ public extension SelectorNaming {
                              in snapshot: SnapshotResponse) -> Bool {
         guard picksExactly(element, with: selector, in: snapshot) else { return false }
         let parsed = FTSelector.parse(selector)
-        return StepExecutor.resolvedCandidates(parsed.primary, elements: snapshot.elements)?.count == 1
+        return LocatorResolver.resolvedCandidates(parsed.primary, elements: snapshot.elements)?.count == 1
     }
 
     /// 画面内の id 出現回数。**uniqueScopeID とページャ案内(pagerScrollFrameHint)が共有する
@@ -352,7 +352,7 @@ public extension SelectorNaming {
     static func scopedSelector(scope: ElementInfo, for element: ElementInfo,
                                in snapshot: SnapshotResponse) -> String? {
         guard let scopeID = scope.identifier else { return nil }
-        let siblings = StepExecutor.descendants(of: scope, in: snapshot.elements)
+        let siblings = LocatorResolver.descendants(of: scope, in: snapshot.elements)
             .filter { $0.type == element.type }
         guard let position = siblings.firstIndex(where: { $0.ref == element.ref }) else { return nil }
         return "#\(scopeID) >> .\(element.type)[\(position + 1)]"

@@ -277,7 +277,7 @@ final class MCPProductionAppShapesTests: XCTestCase {
     /// 勧めており、id には一生当たらない書き方を案内していた
     func testIdSelectorGetsTheIdPartialMatchNotationNotTheLabelOne() {
         let elements = [element(1, "search_omnibox_text_box", depth: 2, 0, 0, 100, 40)]
-        let hint = StepExecutor.partialMatchHint(for: FTSelector.parse("#omnibox").primary,
+        let hint = LocatorResolver.partialMatchHint(for: FTSelector.parse("#omnibox").primary,
                                                  in: elements)
         XCTAssertEqual(hint, "present as a partial id match: writing \"#*omnibox*\" would find it")
     }
@@ -285,7 +285,7 @@ final class MCPProductionAppShapesTests: XCTestCase {
     /// **既に部分一致で書いてある相手には黙る**(同じものを勧め返さない)
     func testAlreadyPartialSelectorGetsNoNotationAdvice() {
         let elements = [element(1, "row", depth: 2, type: "staticText", 0, 0, 100, 40, label: "寿司屋")]
-        XCTAssertNil(StepExecutor.partialMatchHint(for: FTSelector.parse("*寿司*").primary,
+        XCTAssertNil(LocatorResolver.partialMatchHint(for: FTSelector.parse("*寿司*").primary,
                                                    in: elements))
     }
 

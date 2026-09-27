@@ -129,7 +129,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   実測は docs/poc-fm-occlusion-guard.md §5.19・§5.22
 - **先頭だけ読めた形の判定は `TranscriptMatch` の1か所**(FM と OCR で共有): 省略記号 → 緑(`text-ellipsized`)/
   割合 > `mostlyHiddenRatio`(0.5・ユーザー決定)→ 緑(`text-partially-hidden`)/ 以下 → 赤。**省略記号は点の列でも
-  受ける**(ヒラギノの `…` を OCR は `•••`・`・・・` と読む。`RegionText.ellipsisTailLength`)。**誤読を許す先頭一致は
+  受ける**(ヒラギノの `…` を OCR は `•••`・`・・・` と読む。`TranscriptMatch.ellipsisTailLength`)。**誤読を許す先頭一致は
   省略記号があるときだけ** —— 無いときに許すと値だけ違う読み(`tap=0` に `tap=3`)が「一部が隠れている」に化ける
 - **木からは原理的に判定できない遮蔽は「ブリッジの申告」+ 専用の型** —— キーボードは
   `KeyboardOcclusion`(`keyboardFrame`)、**それ以外の別ウィンドウは

@@ -14,6 +14,13 @@ public enum TapTargetGeometry {
     /// 全画面の toolbar/collectionView・`#AdditionalDimmingOverlay` は 100% なので下回らない
     public static let fullScreenContainerAreaRatio = 0.5
 
+    /// 「見えている部分」を撃つと言えるだけの最小の幅・高さ。**単位は pt/dp**(物理では約 1.25mm。
+    /// iOS の pt = 1/163 inch と Android の dp = 1/160 inch はほぼ同じ大きさなので同じ数で足りる)。
+    /// 容器の推測が外れたときに、わずかな重なりへ突っ込まないための床。
+    /// **木の単位へは呼び手が換算する**(`visibleTapRect(scale:)` = `AppDriver.pointScale`)——
+    /// Android の木は px なので、そのまま比べると密度ぶん床が緩む
+    static let minimumVisibleTapExtent: Double = 8
+
     /// タップを受け止める型(ブリッジの型語彙。`other` は含めない)
     public static let interactiveTypes: Set<String> = [
         "clickable", "button", "cell", "link", "switch", "checkBox", "radioButton", "tab",
@@ -76,7 +83,7 @@ public enum TapTargetGeometry {
     public static func missesItsOwnContent(_ element: ElementInfo, in elements: [ElementInfo],
                                     screen: FTRect) -> ElementInfo? {
         guard element.type == "other" else { return nil }
-        let children = StepExecutor.descendants(of: element, in: elements)
+        let children = LocatorResolver.descendants(of: element, in: elements)
         guard !children.isEmpty else { return nil }
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
@@ -131,7 +138,7 @@ public enum TapTargetGeometry {
         guard area > 0 else { return nil }
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
-        return StepExecutor.descendants(of: element, in: elements)
+        return LocatorResolver.descendants(of: element, in: elements)
             .filter { child in
                 guard interactiveTypes.contains(child.type) else { return false }
                 let f = child.frame
@@ -143,7 +150,7 @@ public enum TapTargetGeometry {
 
     /// **スクロール容器の外へ送り出された要素**。返すのはその容器(名指しに使う)。
     ///
-    /// `StepExecutor.isOutsideContainer` とは**容器の採り方が違う**: あちらは申告が無い
+    /// `ContainerGeometry.isOutsideContainer` とは**容器の採り方が違う**: あちらは申告が無い
     /// Compose/Flutter のために「木の並びから容器を推測する」ので、推測が当たらない木では
     /// nil に落ちる。ここは逆に **`scrollable` を申告している祖先だけ**を見る ——
     /// 推測しないぶん取りこぼすが、当たったときは確実で、実アプリのコーパス全数で
@@ -153,7 +160,7 @@ public enum TapTargetGeometry {
     /// **上へ抜けた行が frame ごと木に残る**(`#PlaceCollectionCell` (16,-169 171x217) 等)。
     /// 一覧では可視の行と見分けが付かず、ref タップは "done" を返して何も起きない
     ///
-    /// **容器の外側の帯に固定された chrome は除く**(`StepExecutor.isChromePinnedOutside` の doc)。
+    /// **容器の外側の帯に固定された chrome は除く**(`ContainerGeometry.isChromePinnedOutside` の doc)。
     /// ここで見つかる `scroller` は定義上 `scrollable == true` を申告しているので、
     /// `containerIsViewport` は常に true(推測容器と違い viewport かどうかで悩む余地が無い)
     public static func outsideDeclaredScroller(_ element: ElementInfo,
@@ -164,7 +171,7 @@ public enum TapTargetGeometry {
                   .first(where: { $0.scrollable == true }),
               ScrollGeometry.intersection(element.frame, scroller.frame) == nil,
               hasSiblingsInside(at: element.depth, inside: scroller, in: elements),
-              !StepExecutor.isChromePinnedOutside(element, container: scroller.frame,
+              !ContainerGeometry.isChromePinnedOutside(element, container: scroller.frame,
                                                   containerIsViewport: true,
                                                   in: elements, screen: screen)
         else { return nil }
@@ -184,7 +191,7 @@ public enum TapTargetGeometry {
     /// 間引きで繋がっただけの相手は、その depth の仲間が容器の中に1つも居ない
     static func hasSiblingsInside(at depth: Int, inside scroller: ElementInfo,
                                    in elements: [ElementInfo]) -> Bool {
-        StepExecutor.descendants(of: scroller, in: elements)
+        LocatorResolver.descendants(of: scroller, in: elements)
             .filter { $0.depth == depth
                 && ScrollGeometry.intersection($0.frame, scroller.frame) != nil }
             .count >= 2
@@ -297,7 +304,7 @@ public enum TapTargetGeometry {
     /// 高さ不足の根拠(shortfall witness)は2通り: ⒜ 同じ depth・同じ型の兄弟が2件以上、
     /// 容器の中に収まっていて自分より `containerEdgeShortfallFloor` を超えて高い
     /// (「本来の行の高さ」を他の行から推測する)/ ⒝ 子孫のラベルが同じ縁で
-    /// `StepExecutor.minimumVisibleTapExtent` 未満に潰れている(実測: `#btn_save` (16,759 358x48)
+    /// `TapTargetGeometry.minimumVisibleTapExtent` 未満に潰れている(実測: `#btn_save` (16,759 358x48)
     /// の中の staticText "保存" (181,755 28x3) — 行自体は普通の高さでも中の文字だけが
     /// 縁で潰れる形。⒜ が使えない)。
     ///
@@ -305,7 +312,7 @@ public enum TapTargetGeometry {
     static func clippedAtContainerEdge(_ element: ElementInfo,
                                        in elements: [ElementInfo]) -> ElementInfo? {
         guard platformShouldResolve(element) else { return nil }
-        // **容器は「要素を幾何的に含む祖先」を近い順に**(`StepExecutor.clippingContainer` は
+        // **容器は「要素を幾何的に含む祖先」を近い順に**(`ContainerGeometry.clippingContainer` は
         // 使わない): あちらの「直前で depth が浅い要素 = 親」の近似は、平坦化された Compose の木で
         // 直前の見出しラベル(実測: `staticText "アカウント"` d11・95x22)を親と誤認して nil を返す。
         // 含んでいない祖先は縁の一致を論じる相手ではない
@@ -336,10 +343,10 @@ public enum TapTargetGeometry {
         if taller.count >= 2 { return true }
 
         let tol = 1.0
-        return StepExecutor.descendants(of: element, in: elements).contains { child in
+        return LocatorResolver.descendants(of: element, in: elements).contains { child in
             guard let label = child.label,
                   !FlowMatchMode.normalizeInvisibleCharacters(label).isEmpty,
-                  child.frame.height < StepExecutor.minimumVisibleTapExtent,
+                  child.frame.height < TapTargetGeometry.minimumVisibleTapExtent,
                   child.frame.x >= element.frame.x - tol,
                   child.frame.x + child.frame.width <= element.frame.x + element.frame.width + tol
             else { return false }
@@ -447,7 +454,7 @@ public enum TapTargetGeometry {
         else { return false }
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
-        let inner = Set(StepExecutor.descendants(of: element, in: elements).map(\.ref))
+        let inner = Set(LocatorResolver.descendants(of: element, in: elements).map(\.ref))
         // ⑷ 中心を覆う相手が居て、**木の順序ではそれが下**にあること(クランプ残骸は
         //    「描かれていない」ので数えない)。子孫と、**自分を丸ごと収める相手**は
         //    普通の入れ子なので除く。
@@ -888,7 +895,7 @@ public struct KeyboardOcclusion: Sendable {
         var excluded: Set<Int> = []
         for c in chrome {
             excluded.insert(c.ref)
-            excluded.formUnion(StepExecutor.descendants(of: c, in: elements).map(\.ref))
+            excluded.formUnion(LocatorResolver.descendants(of: c, in: elements).map(\.ref))
         }
         return KeyboardOcclusion(frame: expanded, excluded: excluded,
                                   windowResizedAboveKeyboard: resizedAboveKeyboard(

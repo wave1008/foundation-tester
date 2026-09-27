@@ -460,7 +460,7 @@ public final class AndroidDriver: AppDriver {
                         if route == .appWebView {
                             domBridgeRefs = AndroidWebViewDOM.bridgeRefMap(
                                 dom: added,
-                                droppedA11y: StepExecutor.descendants(of: webView, in: snapshot.elements))
+                                droppedA11y: LocatorResolver.descendants(of: webView, in: snapshot.elements))
                         }
                         kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
                     }

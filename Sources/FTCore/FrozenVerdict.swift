@@ -166,7 +166,7 @@ public enum FrozenInjection {
     public static let environmentKey = "FT_FAKE_FROZEN_KEYS"
 
     public static func keys(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String]
     ) -> Set<String> {
         guard let raw = environment[environmentKey] else { return [] }
         return Set(raw.split(separator: ",")
@@ -178,7 +178,7 @@ public enum FrozenInjection {
     /// 「全部凍結」の暴発を防ぐため、必ず明示のキー一致だけで効かせる
     public static func isInjected(
         key: String?,
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String]
     ) -> Bool {
         guard let key, !key.isEmpty else { return false }
         return keys(environment: environment).contains(key)

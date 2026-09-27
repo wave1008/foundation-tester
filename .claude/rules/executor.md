@@ -5,6 +5,7 @@ paths:
   - ""TestProjects/E2E-RN/scenarios/15_OCR\343\201\247\350\252\255\343\202\201\343\202\213\350\226\204\343\201\204\343\203\206\343\202\255\343\202\271\343\203\210.swift""
   - ""TestProjects/E2E-iOS/scenarios/19_OCR\343\201\247\350\252\255\343\202\201\343\202\213\350\226\204\343\201\204\343\203\206\343\202\255\343\202\271\343\203\210.swift""
   - "Sources/FTCore/AppDriver.swift"
+  - "Sources/FTCore/LocatorResolver.swift"
   - "Sources/FTCore/RunOrchestrator.swift"
   - "Sources/FTCore/RunProfile.swift"
   - "Sources/FTCore/ScenarioExecutionSettings*.swift"

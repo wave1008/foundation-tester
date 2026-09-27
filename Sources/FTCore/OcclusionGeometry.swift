@@ -28,14 +28,14 @@ public enum OcclusionGeometry {
             // 外に出ている(= 残像)なら、矩形が重なっていても実際にはそこに無い(実例: 画面外へ出た
             // リスト行の容器が「閉じる」を誤って遮蔽扱いした)。**この判定を先に置く**のが要点 ——
             // 包含判定は 1pt 差で外れるほど際どく、閾値では守り切れない
-            if StepExecutor.isOutsideContainer(other, in: elements, screen: screen) { return false }
+            if ContainerGeometry.isOutsideContainer(other, in: elements, screen: screen) { return false }
             // **容器の内側でも、原点へ潰れているだけなら描かれていない**。`isOutsideContainer` は容器の
             // **外**しか見ないため、容器の**原点にクランプ**された残骸(同じ原点の同 depth 兄弟が3つ以上=
             // `hasClampedCoordinates` と同じ現象)を素通ししていた(実測・ios-news_feed: overlay 警告52件中
             // 30件がこのクランプ幽霊を誤って犯人扱いしていた)。`stackedRefs` の絞り込みは警告の表示側の話で
             // 条件を合わせない。**矩形完全一致(hasClampedCoordinates)と原点一致・大きさ違い(isOriginClamped)の
             // 両方を通す** —— 片方だけだと印は付くのに犯人としては名指しされ続ける食い違いが残る
-            if StepExecutor.hasClampedCoordinates(other, in: elements) { return false }
+            if ContainerGeometry.hasClampedCoordinates(other, in: elements) { return false }
             if isOriginClamped(other, in: elements) { return false }
             // **スクロール容器は、その点に自分の中身が無いなら何も隠していない**。iOS は z を出さないので
             // 塗り順は木の順序で代用するしかなく、content inset を持つ表がタブ帯を「覆っている」と誤報していた
@@ -107,7 +107,7 @@ public enum OcclusionGeometry {
     /// 何も重ならない(通す)。
     public static func isUntappableGhost(_ element: ElementInfo, in elements: [ElementInfo],
                                   screen: FTRect) -> Bool {
-        guard StepExecutor.isOutsideContainer(element, in: elements, screen: screen) else { return false }
+        guard ContainerGeometry.isOutsideContainer(element, in: elements, screen: screen) else { return false }
         return occluder(of: element, in: elements, screen: screen) != nil
     }
 
@@ -157,7 +157,7 @@ public enum OcclusionGeometry {
     /// witness の `ios-news_feed` だけが +18(全部 (0,103) のクランプ広告コピー)。
     ///
     /// **これは警告であって拒否ではない**(新しい検知は警告から)。DSL の候補除外
-    /// (`StepExecutor.hasClampedCoordinates`)は**広げていない** —— あちらは解決そのものを
+    /// (`ContainerGeometry.hasClampedCoordinates`)は**広げていない** —— あちらは解決そのものを
     /// 拒む強い経路なので、同じ根拠で格上げする前に別途 witness が要る
     static func originClampedRefs(_ elements: [ElementInfo]) -> Set<Int> {
         Set(elements.filter { isOriginClamped($0, in: elements) }.map(\.ref))
@@ -267,7 +267,7 @@ public enum OcclusionGeometry {
         // **祖先は数える**(むしろ本命): `#MapsSearchTextField` を包む `#MapsSearchBar` は
         // その祖先で、それごと包む `#HomeView` が外枠だと分かる。
         // 除くのは自分と子孫だけ —— 同一矩形の子を「内側の入れ物」と数えると何でも外枠になる
-        let descendants = Set(StepExecutor.descendants(of: element, in: elements).map(\.ref))
+        let descendants = Set(LocatorResolver.descendants(of: element, in: elements).map(\.ref))
         let candidateArea = candidate.frame.width * candidate.frame.height
         return elements.contains { inner in
             guard inner.ref != candidate.ref, inner.ref != element.ref,

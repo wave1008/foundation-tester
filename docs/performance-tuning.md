@@ -1638,7 +1638,7 @@ fleetest results insights --project <name>     # 🟡 unsettledSteps の行を�
 | GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiStartDeviceCommand `--gpu` / ApiStartAllDevicesCommand `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/デバイス)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/デバイス。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk `start-all-devices` も `--cpu-render <論理名>` で維持される。host への意図的復帰は `restart-devices`) |
 | 探索の打ち切り(`unmovedRoundsToStopSearch`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 2 周連続で木が不変なら打ち切り | 端に着いた後も上限まで振り続けるのをやめる。**見つからない探索が 7.40s → 2.05s**(実測 2026-08-06)。1 にすると遅れて描画される行を取りこぼす |
 | 逆走査(`reverseSweepSpanRatio` / `MaxSwipes` / `DragSpeed`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 容器の 0.5 ぶん / 8 本 / 120px/s | 端に着いても見つからないときだけ、逆向きに細刻みで戻って拾い直す。**失敗が確定してからしか撃たない**ので通常経路のコストは 0。速度を上げるとフリングになって反対の端まで走る(実測: 189px 指定が約 700px 走った)。**MCP の ft_scroll_to の1回目だけは半開きシートの停滞で逆走査を撃たない**(`defersPartialSheetRecovery`。シートを展開して再試行する側の逆走査が救済を引き継ぐ。実測: 畳まれた経路カードで 7.8s の丸損 → 同一シナリオ 21s → 10.7s。2026-08-10) |
-| `FT_CONTAINER_INFERENCE` | 環境変数(`StepExecutor.containerInferenceEnabled`) | 既定 on / `off` で無効 | **容器をツリーから推測して行う補正の殺しスイッチ**。見切れ判定・ghost の掴み直し・救済ドラッグ・座標補正(見えている部分を撃つ)・壊れた座標の候補除外が**まとめて止まり**、推測を持たなかった頃の挙動へ戻る。容器は「pre-order で直前の depth の小さい要素 + 同 depth の兄弟が2つ以上中に居る」という推測なので、**想定外のツリーでは外れ得る**(外れると別の場所を叩く・明後日へ送る・正当な要素が消える)。E2E は 4 SUT しか見ていないので利用者の逃げ道として置く。**run 全体を殺す最上位のスイッチ**で、より細かい単位は実行プロファイルの `containerInference` と DSL の `tap(containerInference:)` / `withoutContainerInference { }`(docs/commands.md) |
+| `FT_CONTAINER_INFERENCE` | 環境変数(`ContainerGeometry.containerInferenceEnabled`) | 既定 on / `off` で無効 | **容器をツリーから推測して行う補正の殺しスイッチ**。見切れ判定・ghost の掴み直し・救済ドラッグ・座標補正(見えている部分を撃つ)・壊れた座標の候補除外が**まとめて止まり**、推測を持たなかった頃の挙動へ戻る。容器は「pre-order で直前の depth の小さい要素 + 同 depth の兄弟が2つ以上中に居る」という推測なので、**想定外のツリーでは外れ得る**(外れると別の場所を叩く・明後日へ送る・正当な要素が消える)。E2E は 4 SUT しか見ていないので利用者の逃げ道として置く。**run 全体を殺す最上位のスイッチ**で、より細かい単位は実行プロファイルの `containerInference` と DSL の `tap(containerInference:)` / `withoutContainerInference { }`(docs/commands.md) |
 
 window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
 `Sources/FTAndroid/AndroidBridge.swift` の `startBridge()` 内(ブリッジのコールド起動時)で
@@ -1722,7 +1722,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   fallback に完全一致(exact)があれば fallback を優先**する(`StepExecutor` の resolveDetailed/
   matchDetailed。primary が exact のときは fallback を照会せずコスト増なし)。
   **素の文字列は完全一致だけ**なので、この経路に入るのは `*語*` 等の部分一致を
-  明示したときに限られる(判定は記法ではなく掴んだ要素。`StepExecutor.quality`)。ただし `exist()` 等の
+  明示したときに限られる(判定は記法ではなく掴んだ要素。`LocatorResolver.quality`)。ただし `exist()` 等の
   アサーション経路は従来どおり(部分一致の存在確認は許容)なので、確証が要るときは
   **同一シナリオを engine=inapp(フォールバック無)でも走らせ当該 tap が失敗することを確認**
   (negative control)。

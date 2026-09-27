@@ -1,4 +1,4 @@
-// 容器推定(StepExecutor.clippingContainer)が **scrollable を申告する祖先を優先する**ことの固定。
+// 容器推定(ContainerGeometry.clippingContainer)が **scrollable を申告する祖先を優先する**ことの固定。
 //
 // 受け手の最小再現(2026-08-23・iOS in-app、画面幅 402):
 //   other d12 (0,432 402x199) scroll      ← 横カルーセル
@@ -46,11 +46,11 @@ final class ClippingContainerScrollableTests: XCTestCase {
     func testPrefersTheNearestScrollableAncestorOverTheCard() {
         let tree = carouselTree(declaresScroll: true)
         let target = tree[9]   // スタンプラリー
-        XCTAssertEqual(StepExecutor.clippingContainer(of: target, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true),
                        FTRect(x: 0, y: 432, width: 402, height: 199))
         // その容器で見れば右縁の見切れとして判定される(= 回復ドラッグの分岐に入れる)
         let viewport = ScrollGeometry.intersection(
-            StepExecutor.clippingContainer(of: target, in: tree, inferring: true)!, screen)!
+            ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true)!, screen)!
         XCTAssertTrue(StepExecutor.isClippedByViewport(target, screen: viewport))
     }
 
@@ -66,7 +66,7 @@ final class ClippingContainerScrollableTests: XCTestCase {
             el(20, "button", 3, 16, 443, 370, 56, label: "行 30"),
             el(22, "button", 3, 16, 499, 370, 56, label: "行 31"),
         ]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[2], in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: tree[2], in: tree, inferring: true),
                        FTRect(x: 16, y: 230, width: 370, height: 462),
                        "行を収められる #list_rows を容器にする(画面全体へ広げない)")
     }
@@ -83,7 +83,7 @@ final class ClippingContainerScrollableTests: XCTestCase {
             el(22, "button", 3, 16, 275, 370, 56, label: "行 27"),   // 中
             el(23, "button", 3, 16, 443, 370, 56, label: "行 30"),   // 中(これが対象)
         ]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[5], in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: tree[5], in: tree, inferring: true),
                        FTRect(x: 16, y: 230, width: 370, height: 462),
                        "容器の外に報告されていても #list_rows のまま(画面全体へ広げない)")
     }
@@ -97,7 +97,7 @@ final class ClippingContainerScrollableTests: XCTestCase {
             el(3, "staticText", 3, 360, 563, 98, 20, label: "スタンプラリー"),
             el(4, "staticText", 3, 360, 614, 30, 17, label: "未読"),
         ]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[2], in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: tree[2], in: tree, inferring: true),
                        FTRect(x: 0, y: 432, width: 402, height: 199),
                        "カードは容器で切ると幅 42 で要素(98)を収められないので申告容器を採る")
     }
@@ -106,7 +106,7 @@ final class ClippingContainerScrollableTests: XCTestCase {
     func testFallsBackToTheSiblingRuleWhenNothingDeclaresScroll() {
         let tree = carouselTree(declaresScroll: false)
         let target = tree[9]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: target, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true),
                        FTRect(x: 360, y: 432, width: 164, height: 199))
     }
 
@@ -115,14 +115,14 @@ final class ClippingContainerScrollableTests: XCTestCase {
         var tree = carouselTree(declaresScroll: false)
         // 最上位(d11)に申告を付ける。d12 は無申告のまま
         tree[0] = el(19, "clickable", 11, 0, 432, 402, 199, scrollable: true)
-        XCTAssertEqual(StepExecutor.clippingContainer(of: tree[9], in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: tree[9], in: tree, inferring: true),
                        FTRect(x: 0, y: 432, width: 402, height: 199))
     }
 
     /// containerInference を切ると申告があっても推定しない(利用者の殺しスイッチは最優先)
     func testInferenceSwitchStillWins() {
         let tree = carouselTree(declaresScroll: true)
-        XCTAssertNil(StepExecutor.clippingContainer(of: tree[9], in: tree, inferring: false))
+        XCTAssertNil(ContainerGeometry.clippingContainer(of: tree[9], in: tree, inferring: false))
     }
 
     /// 祖先でない scrollable は採らない: **手前にある別の部分木の中の scrollable**(前のカードの内側、
@@ -135,7 +135,7 @@ final class ClippingContainerScrollableTests: XCTestCase {
         tree.insert(el(40, "other", 14, 16, 600, 164, 30, scrollable: true), at: 3)
         tree.append(el(30, "other", 12, 0, 700, 402, 223, scrollable: true))   // 次の区画
         let target = tree.first { $0.ref == 28 }!
-        XCTAssertEqual(StepExecutor.clippingContainer(of: target, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true),
                        FTRect(x: 360, y: 432, width: 164, height: 199),
                        "手前の部分木や後ろの区画の scrollable を祖先と取り違えている")
     }
@@ -155,7 +155,7 @@ final class ClippingContainerScrollableTests: XCTestCase {
             el(7, "button", 4, 0, 778, 134, 62, label: "ホーム"),
         ]
         let target = tree[5]
-        let container = StepExecutor.clippingContainer(of: target, in: tree, inferring: true)
+        let container = ContainerGeometry.clippingContainer(of: target, in: tree, inferring: true)
         XCTAssertEqual(container, FTRect(x: 0, y: 156, width: 402, height: 622))
         // その容器で見れば下端の見切れ = 探索は寄せの分岐に入る(画面基準では見えている扱いだった)
         XCTAssertTrue(StepExecutor.isClippedByViewport(target, screen: container!))
@@ -163,6 +163,6 @@ final class ClippingContainerScrollableTests: XCTestCase {
         // 申告が無ければ従来どおり nil
         var undeclared = tree
         undeclared[2] = el(3, "other", 4, 0, 156, 402, 622)
-        XCTAssertNil(StepExecutor.clippingContainer(of: undeclared[5], in: undeclared, inferring: true))
+        XCTAssertNil(ContainerGeometry.clippingContainer(of: undeclared[5], in: undeclared, inferring: true))
     }
 }

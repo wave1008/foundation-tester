@@ -1152,7 +1152,7 @@ extension MCPServer {
             return found.frame.height
         }
         guard let locator = step.scrollFrame else { return nil }
-        return StepExecutor.resolvedCandidates(locator, elements: snapshot.elements)?
+        return LocatorResolver.resolvedCandidates(locator, elements: snapshot.elements)?
             .first?.frame.height
     }
 
@@ -1191,13 +1191,13 @@ extension MCPServer {
     }
 
     /// **セレクタ解決の唯一の実装**(FTSelector.parse → [primary]+fallbacks →
-    /// StepExecutor.resolvedCandidates)。`matches`(MCPServer+Driver.swift)はこの結果が
+    /// LocatorResolver.resolvedCandidates)。`matches`(MCPServer+Driver.swift)はこの結果が
     /// 空かどうかを見るだけの薄いラッパー — 2つ目の照合ロジックを作らない。ここは当たった
     /// 要素そのものが要る呼び手(scrollTo の画面外再確認)用
     static func matchedElements(_ selectorText: String, in snapshot: SnapshotResponse) -> [ElementInfo] {
         let parsed = FTSelector.parse(selectorText)
         return ([parsed.primary] + parsed.fallbacks).flatMap {
-            StepExecutor.resolvedCandidates($0, elements: snapshot.elements) ?? []
+            LocatorResolver.resolvedCandidates($0, elements: snapshot.elements) ?? []
         }
     }
 

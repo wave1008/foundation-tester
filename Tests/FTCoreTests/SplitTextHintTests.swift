@@ -17,7 +17,7 @@ final class SplitTextHintTests: XCTestCase {
     func testTellsWhenTheTextIsSplitAcrossSiblings() throws {
         let elements = [element(1, "15. 利用規約の改定"), element(2, "2026年"),
                         element(3, "2月18日"), element(4, "改訂")]
-        let hint = try XCTUnwrap(StepExecutor.splitTextHint(
+        let hint = try XCTUnwrap(LocatorResolver.splitTextHint(
             for: FlowLocator(label: "2026年2月18日"), in: elements),
             "隣り合う2件を繋ぐと一致するのに黙っている")
         XCTAssertTrue(hint.contains("split across 2 elements"), hint)
@@ -35,12 +35,12 @@ final class SplitTextHintTests: XCTestCase {
     func testSaysTheyAreOnOneLineWhenTheFramesShareTheirTop() throws {
         let row = [element(1, "2026年", y: 2286), element(2, "2月18日", y: 2286),
                    element(3, "改訂", y: 2286)]
-        let hint = try XCTUnwrap(StepExecutor.splitTextHint(
+        let hint = try XCTUnwrap(LocatorResolver.splitTextHint(
             for: FlowLocator(label: "2026年2月18日"), in: row))
         XCTAssertTrue(hint.contains("one line"), hint)
 
         let stacked = [element(1, "2026年", y: 100), element(2, "2月18日", y: 400)]
-        let other = try XCTUnwrap(StepExecutor.splitTextHint(
+        let other = try XCTUnwrap(LocatorResolver.splitTextHint(
             for: FlowLocator(label: "2026年2月18日"), in: stacked))
         XCTAssertFalse(other.contains("one line"), "離れているのに同じ行だと言っている: \(other)")
     }
@@ -48,7 +48,7 @@ final class SplitTextHintTests: XCTestCase {
     /// 空白を挟んで分かれている形(`<b>改訂</b> <span>2026年</span>` 等)も拾う
     func testJoinsWithASpaceToo() throws {
         let elements = [element(1, "2026年2月18日"), element(2, "改訂")]
-        let hint = try XCTUnwrap(StepExecutor.splitTextHint(
+        let hint = try XCTUnwrap(LocatorResolver.splitTextHint(
             for: FlowLocator(label: "2026年2月18日 改訂"), in: elements))
         XCTAssertTrue(hint.contains("split across 2 elements"), hint)
     }
@@ -57,21 +57,21 @@ final class SplitTextHintTests: XCTestCase {
     /// ここが喋ると失敗メッセージが二重に long くなる
     func testStaysSilentWhenAPlainMatchExists() {
         let elements = [element(1, "2026年2月18日 改訂"), element(2, "2026年"), element(3, "2月18日")]
-        XCTAssertNil(StepExecutor.splitTextHint(for: FlowLocator(label: "2026年2月18日"),
+        XCTAssertNil(LocatorResolver.splitTextHint(for: FlowLocator(label: "2026年2月18日"),
                                                 in: elements))
     }
 
     /// **偶然の連結で当たらないこと**: 繋ぐ件数に上限があり、離れた要素は繋がない
     func testDoesNotStitchArbitrarilyManyElements() {
         let elements = (1...8).map { element($0, "部分\($0)") }
-        XCTAssertNil(StepExecutor.splitTextHint(
+        XCTAssertNil(LocatorResolver.splitTextHint(
             for: FlowLocator(label: "部分1部分2部分3部分4部分5"), in: elements),
             "5件を繋いで当てている(上限が効いていない)")
     }
 
     /// ラベル指定でないとき(id 指定など)は黙る
     func testStaysSilentWithoutALabelTarget() {
-        XCTAssertNil(StepExecutor.splitTextHint(for: FlowLocator(id: "terms_date"),
+        XCTAssertNil(LocatorResolver.splitTextHint(for: FlowLocator(id: "terms_date"),
                                                 in: [element(1, "2026年"), element(2, "2月18日")]))
     }
 }

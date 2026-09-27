@@ -76,7 +76,7 @@ public extension WebViewDOM {
     /// どちらも「本文がまだ来ていない」形で、`missingPageContentNote` が言うのと同じ状態
     static func browserA11yLooksSufficient(elements: [ElementInfo]) -> Bool {
         guard let webView = webViewElement(in: elements) else { return false }
-        return StepExecutor.descendants(of: webView, in: elements)
+        return LocatorResolver.descendants(of: webView, in: elements)
             .contains { !($0.label ?? "").isEmpty }
     }
 
@@ -115,11 +115,11 @@ public extension WebViewDOM {
     /// **ブラウザでは DOM が web コンテンツ領域の唯一の正**。WebView ノードの内側にある a11y 要素を
     /// 落としてから DOM のノードを足す(素朴に append すると同じ本文が二重に並ぶ)。
     /// ノード自身とブラウザ chrome(URL バー等 = WebView の外)は残す。
-    /// 子孫の判定は `StepExecutor.descendants` と同じ pre-order + depth 規約をそのまま使う
+    /// 子孫の判定は `LocatorResolver.descendants` と同じ pre-order + depth 規約をそのまま使う
     /// (ここに2つ目の子孫判定を書かない = 3ブリッジの組み立て規約から外れさせない)
     static func droppingWebViewSubtree(_ elements: [ElementInfo],
                                               webView: ElementInfo) -> [ElementInfo] {
-        let inner = Set(StepExecutor.descendants(of: webView, in: elements).map(\.ref))
+        let inner = Set(LocatorResolver.descendants(of: webView, in: elements).map(\.ref))
         guard !inner.isEmpty else { return elements }
         return elements.filter { !inner.contains($0.ref) }
     }

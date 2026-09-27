@@ -247,7 +247,7 @@ extension StepExecutor {
     /// runScrollSearch(scrollTo/exist/notExist 系)と scroll/scrollToEdge/flick の両方から呼ぶ
     static func scrollFrameUnresolved(_ step: FlowStep, in snapshot: SnapshotResponse) -> Bool {
         guard Self.coordinateScrollEnabled, let locator = step.scrollFrame else { return false }
-        return Self.match(locator, in: snapshot) == nil
+        return LocatorResolver.match(locator, in: snapshot) == nil
     }
 
     /// 明示 scrollFrame が解決できないときの fail-fast 文言。呼び手ごとに動詞(action)を渡す
@@ -284,7 +284,7 @@ extension StepExecutor {
               let hints = snapshot.offscreen, !hints.isEmpty else { return nil }
         let pseudo = SnapshotResponse(sessionBundleID: nil, screen: snapshot.screen,
                                       elements: hints, truncatedCount: 0)
-        guard let (hint, _) = Self.resolve(step: step, in: pseudo, strictForAssert: true) else {
+        guard let (hint, _) = LocatorResolver.resolve(step: step, in: pseudo, strictForAssert: true) else {
             return nil
         }
         let screen = snapshot.screen
@@ -537,7 +537,7 @@ extension StepExecutor {
                 }
             }
             // スクロール探索でも type+index フォールバックは誤検知のもとなので使わない
-            if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+            if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true) {
                 // **見つけただけでは足りない**: 画面の縁で見切れている要素は、フレームワークに
                 // よっては frame がクランプされて**タップが外れる**(Compose iOS の既知の上流制約)。
                 // まだ送れるなら、完全に見えるまでもう1回スワイプする。
@@ -551,7 +551,7 @@ extension StepExecutor {
                 // label=nil・y=783 = 容器 230..692 の外で見つかり、タップが飲まれた)
                 let viewport = (scrollContainer(step: step, in: snapshot,
                                                 vertical: direction == .up || direction == .down)
-                                ?? Self.clippingContainer(of: element, in: snapshot.elements,
+                                ?? ContainerGeometry.clippingContainer(of: element, in: snapshot.elements,
                                                           inferring: step.containerInference ?? true))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,

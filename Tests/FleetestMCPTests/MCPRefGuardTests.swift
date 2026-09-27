@@ -396,7 +396,7 @@ final class MCPRefGuardTests: XCTestCase {
 
     /// **chrome-pinned な下部タブは ⚠️scroll-leftover を出さない**(and-sutec_home の witness。
     /// Android ブリッジが無ラベルの NavigationBar を間引き、タブが `#screen_home` の子に
-    /// 再配線される形。StepExecutor.isChromePinnedOutside の doc を参照)
+    /// 再配線される形。ContainerGeometry.isChromePinnedOutside の doc を参照)
     func testChromePinnedBottomTabsAreNotFlaggedAsScrollLeftovers() {
         let testScreen = FTRect(x: 0, y: 0, width: 1080, height: 2340)
         let scroller = ElementInfo(ref: 1, type: "scrollView", identifier: "screen_home",

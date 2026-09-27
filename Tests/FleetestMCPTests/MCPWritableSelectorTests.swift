@@ -33,7 +33,7 @@ final class MCPWritableSelectorTests: XCTestCase {
     /// 正しいスコープ記法を「曖昧」と誤判定する(2026-08-09 に実際に踏んだ)
     private func resolvedRef(_ selector: String, in snapshot: SnapshotResponse) -> Int? {
         let locator = FTSelector.parse(selector).primary
-        return StepExecutor.matchDetailed(locator, elements: snapshot.elements)?.0.ref
+        return LocatorResolver.matchDetailed(locator, elements: snapshot.elements)?.0.ref
     }
 
     // MARK: - 実アプリのコーパス全数(想定した形しか試さない自前の例では足りない)

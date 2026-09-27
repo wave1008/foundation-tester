@@ -131,7 +131,7 @@
 
 | ファイル | アーキタイプ | 由来 | 何を代表するか |
 |---|---|---|---|
-| `and-sutec_home` | ec | sut-ec-mobile(Android 実機・Jetpack Compose) | **Compose Scaffold の bottomBar が無ラベルで間引かれ、preorder+depth の復元が下部タブをスクロール容器の子に再配線する**形。Android ブリッジは identifier も label も無い `NavigationBar` コンテナを `SnapshotBuilder.shouldInclude` で落とすが、depth の振り直しはしない。結果、木は「タブ5本が `#screen_home`(scrollView)の子として、容器の下端(y=2054)にちょうど接する非交差の行」に見える —— `StepExecutor.isOutsideContainer` と `TapTargetGeometry.outsideDeclaredScroller` の両方がこれを ghost/scrolledOut と誤判定し、DSL の `tap` が無意味な再解決スワイプを繰り返し、`ft_snapshot` が5本とも ⚠️scroll-leftover を出していた(結果 DB で 715 件中 45 件が this)。`StepExecutor.isChromePinnedOutside` の witness で、既存の `sutec-*`(iOS in-app)には無い形 —— あちらは容器の外に単独で浮く行はあっても、**画面の縁に固定された複数要素のバー**という形を持たない |
+| `and-sutec_home` | ec | sut-ec-mobile(Android 実機・Jetpack Compose) | **Compose Scaffold の bottomBar が無ラベルで間引かれ、preorder+depth の復元が下部タブをスクロール容器の子に再配線する**形。Android ブリッジは identifier も label も無い `NavigationBar` コンテナを `SnapshotBuilder.shouldInclude` で落とすが、depth の振り直しはしない。結果、木は「タブ5本が `#screen_home`(scrollView)の子として、容器の下端(y=2054)にちょうど接する非交差の行」に見える —— `ContainerGeometry.isOutsideContainer` と `TapTargetGeometry.outsideDeclaredScroller` の両方がこれを ghost/scrolledOut と誤判定し、DSL の `tap` が無意味な再解決スワイプを繰り返し、`ft_snapshot` が5本とも ⚠️scroll-leftover を出していた(結果 DB で 715 件中 45 件が this)。`ContainerGeometry.isChromePinnedOutside` の witness で、既存の `sutec-*`(iOS in-app)には無い形 —— あちらは容器の外に単独で浮く行はあっても、**画面の縁に固定された複数要素のバー**という形を持たない |
 
 **2026-09-05 の実機監査(Android のキーボードで窓が縮む形)で足した1枚**:
 

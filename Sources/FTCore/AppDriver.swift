@@ -204,7 +204,7 @@ public protocol AppDriver {
     /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
     var supportsCacheBypass: Bool { get }
     /// **木の座標1単位あたり何 px か**(iOS = 1: 木は pt / Android = 表示密度: 木は px)。
-    /// 幾何の床(`StepExecutor.minimumVisibleTapExtent`)を木の単位へ換算するために使う。
+    /// 幾何の床(`TapTargetGeometry.minimumVisibleTapExtent`)を木の単位へ換算するために使う。
     ///
     /// iOS の pt(1/163 inch)と Android の dp(1/160 inch)は**物理的にほぼ同じ**なので、
     /// pt で測った床は dp としてそのまま通用する —— 足りないのは px への換算だけ。

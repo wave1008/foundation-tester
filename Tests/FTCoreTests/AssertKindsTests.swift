@@ -716,11 +716,11 @@ final class AssertKindsTests: XCTestCase {
         let shared = ElementInfo(ref: 1, type: "button", identifier: "save", label: "保存",
                                  value: nil, placeholder: nil, enabled: true,
                                  frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
-        let byClause = StepExecutor.unionByClause(
+        let byClause = LocatorResolver.unionByClause(
             [FlowLocator(id: "save"), FlowLocator(label: "保存")], elements: [shared])
         XCTAssertEqual(byClause.map(\.elements.count), [1, 0])
         XCTAssertEqual(byClause.reduce(0) { $0 + $1.elements.count },
-                       StepExecutor.unionCandidates(
+                       LocatorResolver.unionCandidates(
                         [FlowLocator(id: "save"), FlowLocator(label: "保存")], elements: [shared]).count)
     }
 

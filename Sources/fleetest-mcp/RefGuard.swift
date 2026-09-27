@@ -11,7 +11,7 @@
 //
 // 対策は「ref を信用しない」こと。**ref はスナップショットごとに振り直される**ので、
 // 覚えた要素の同一性(identifier → label+型 → 型+frame)で撮り直した木から引き直し、
-// 引けなければ撃たずに理由を返す。ghost 判定は StepExecutor.isOutsideContainer と共有する
+// 引けなければ撃たずに理由を返す。ghost 判定は ContainerGeometry.isOutsideContainer と共有する
 // (MCP 側に別の閾値を置くと DSL と定義が割れる)。
 
 import FTCore
@@ -265,7 +265,7 @@ enum RefGuard {
 
     /// **申告されたスクロール容器の外へ送り出された要素を撃とうとしている**ときの警告
     /// (判定は TapTargetGeometry.outsideDeclaredScroller)。`ghostWarning` と同じ事象だが、
-    /// あちらの入口は容器の**推測**(`StepExecutor.isOutsideContainer`)なので、申告のある
+    /// あちらの入口は容器の**推測**(`ContainerGeometry.isOutsideContainer`)なので、申告のある
     /// UIKit/SwiftUI の木では nil に落ちて1件も捕まえていなかった。
     ///
     /// 実測(Apple マップ): カードを送って `#MUScrollableStackView` (0,72 402x802) の

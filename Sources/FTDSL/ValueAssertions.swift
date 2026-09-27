@@ -53,7 +53,7 @@ public extension Optional where Wrapped == Any {
             || FlowMatchMode.exact.matches(actual, expectedText,
                                            normalization: strict ? .strict : .text)
         record("thisIs", "\"\(actual ?? "nil")\" == \"\(expectedText)\""
-               + (matched ? "" : StepExecutor.normalizationVerdict(
+               + (matched ? "" : LocatorResolver.normalizationVerdict(
                    actual: actual, expected: expectedText, assert: "textEquals")),
                matched, file: file, line: line)
     }

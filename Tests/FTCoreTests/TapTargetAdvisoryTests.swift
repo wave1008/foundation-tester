@@ -546,7 +546,7 @@ final class TapTargetAdvisoryTests: XCTestCase {
     }
 
     /// **chrome-pinned な下部タブは scrolledOut を出さない**(and-sutec_home の witness。
-    /// StepExecutor.isChromePinnedOutside の doc)。容器の下端にちょうど接する帯で、
+    /// ContainerGeometry.isChromePinnedOutside の doc)。容器の下端にちょうど接する帯で、
     /// 画面下端までの隙間(74)が自分の高さ(100)以下 = 固定された chrome
     func testBottomBarOutsideADeclaredScrollerIsSilent() {
         let screen = FTRect(x: 0, y: 0, width: 402, height: 874)

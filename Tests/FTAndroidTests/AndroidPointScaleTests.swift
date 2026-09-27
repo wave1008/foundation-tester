@@ -1,4 +1,4 @@
-// Android の木は **px** なので、pt/dp で決めた幾何の床(StepExecutor.minimumVisibleTapExtent)は
+// Android の木は **px** なので、pt/dp で決めた幾何の床(TapTargetGeometry.minimumVisibleTapExtent)は
 // 密度で換算してからでないと使えない。換算しないと3倍密度で床が約3倍緩み、
 // **わずかな重なりを「見えている部分」と信じて叩く**(誤タップは 200 を返すので沈黙する)。
 //

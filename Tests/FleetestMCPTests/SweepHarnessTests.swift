@@ -459,10 +459,10 @@ final class SweepHarnessTests: XCTestCase {
         // 復元が下部タブ5本を `#screen_home`(scrollView)の子として再配線する形 ——
         // 修正前は5本とも `outsideDeclaredScroller` が容器の外と誤判定し scrolledOut=5(
         // かつ warnedTappable も clickable な4タブぶん押し上げていた)。
-        // `StepExecutor.isChromePinnedOutside` の導入で scrolledOut は 0 に戻る
+        // `ContainerGeometry.isChromePinnedOutside` の導入で scrolledOut は 0 に戻る
         // (ghost は元々0のまま不変 —— `RefGuard.isUntappableGhost` はタブの中心を覆う要素が
         // 無いため、容器外判定だけでは発火しない。DSL の再解決ループが空振りする実害は
-        // `StepExecutor.isOutsideContainer` の生値を直接見ており、この Counts には出ない)。
+        // `ContainerGeometry.isOutsideContainer` の生値を直接見ており、この Counts には出ない)。
         // misses=1 は無関係な既存の形(`#tab_home` が type=Other・唯一 label を持たず、
         // 子の "ホーム" ラベルが中心より下に来るため missesItsOwnContent が発火。他の4タブは
         // type=Clickable なので対象外)。sliver=3 は価格ラベル("¥18,000" 等)が高さ5pxで

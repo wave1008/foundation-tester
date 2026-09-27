@@ -38,15 +38,15 @@ final class ClampedCoordinateTests: XCTestCase {
 
     func testStackedSiblingsAreDetected() {
         let tree = realWorldTree()
-        XCTAssertTrue(StepExecutor.hasClampedCoordinates(tree[3], in: tree), "積み上がった行 12")
-        XCTAssertTrue(StepExecutor.hasClampedCoordinates(tree[5], in: tree), "積み上がった行 14")
+        XCTAssertTrue(ContainerGeometry.hasClampedCoordinates(tree[3], in: tree), "積み上がった行 12")
+        XCTAssertTrue(ContainerGeometry.hasClampedCoordinates(tree[5], in: tree), "積み上がった行 14")
     }
 
     /// **本物の先頭行ラベルは巻き込まない**(x が 20pt ずれる = 別の frame)
     func testTheRealRowIsNotDetected() {
         let tree = realWorldTree()
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(tree[2], in: tree), "本物の 行 01 ラベル")
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(tree[1], in: tree), "行 01 のセル")
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(tree[2], in: tree), "本物の 行 01 ラベル")
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(tree[1], in: tree), "行 01 のセル")
     }
 
     /// **入れ子の連鎖は巻き込まない**。親子が同じ矩形を持つのは普通で、過去レポート 466 件へ
@@ -63,7 +63,7 @@ final class ClampedCoordinateTests: XCTestCase {
             element(4, "other", id: "homepage_app_bar_view", x: 0, y: 0, w: 402, h: 120, depth: 6),
         ]
         for node in chain {
-            XCTAssertFalse(StepExecutor.hasClampedCoordinates(node, in: chain),
+            XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(node, in: chain),
                            "入れ子の連鎖を壊れた座標と誤判定した: \(node.identifier ?? "?")")
         }
     }
@@ -72,15 +72,15 @@ final class ClampedCoordinateTests: XCTestCase {
     func testParentAndChildSharingAFrameSurvive() {
         let pair = [element(1, "clickable", id: "cell", x: 0, y: 0, w: 100, h: 40, depth: 2),
                     element(2, "staticText", label: "行", x: 0, y: 0, w: 100, h: 40, depth: 3)]
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(pair[0], in: pair))
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(pair[1], in: pair))
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(pair[0], in: pair))
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(pair[1], in: pair))
     }
 
     /// 同 depth でも2つまでは残す(重なった装飾・オーバーレイを消さない)
     func testTwoSiblingsAtTheSameSpotSurvive() {
         let two = [element(1, "image", id: "bg", x: 0, y: 0, w: 100, h: 40, depth: 3),
                    element(2, "staticText", label: "文字", x: 0, y: 0, w: 100, h: 40, depth: 3)]
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(two[0], in: two))
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(two[0], in: two))
     }
 
     /// **全面に重ねたオーバーレイは3つ以上あっても残す**。これが「同じ場所に3つ」だけで
@@ -95,7 +95,7 @@ final class ClampedCoordinateTests: XCTestCase {
             element(4, "other", id: "content", x: 0, y: 0, w: 402, h: 874, depth: 3),
         ]
         for node in stack.dropFirst() {
-            XCTAssertFalse(StepExecutor.hasClampedCoordinates(node, in: stack),
+            XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(node, in: stack),
                            "容器と同じ大きさの重なりを壊れた座標と誤判定した: \(node.identifier ?? "?")")
         }
     }
@@ -103,12 +103,12 @@ final class ClampedCoordinateTests: XCTestCase {
     /// 逆に、**容器より小さいまま原点に積み上がっていれば**クランプとみなす(実採取の形)
     func testSmallerThanTheContainerAndPinnedToItsOriginIsDetected() {
         let tree = realWorldTree()
-        XCTAssertTrue(StepExecutor.hasClampedCoordinates(tree[4], in: tree))
+        XCTAssertTrue(ContainerGeometry.hasClampedCoordinates(tree[4], in: tree))
         // **原点を貸している上位要素が1つも無ければ断定しない**(誤検知を出さない側へ倒す)。
         // 実採取の木では容器 `#list_rows` だけでなく `#row_01` のセルも原点を共有していて
         // (16,270.33 370x56 = 群より広い)、どちらでもクランプ先として成立する
         let orphan = tree.filter { $0.depth == 8 }
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(orphan[1], in: orphan),
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(orphan[1], in: orphan),
                        "クランプ先が居ないなら「ただの重なり」と読む")
     }
 
@@ -120,10 +120,10 @@ final class ClampedCoordinateTests: XCTestCase {
         let snapshot = SnapshotResponse(sessionBundleID: nil,
                                         screen: FTRect(x: 0, y: 0, width: 402, height: 874),
                                         elements: tree, truncatedCount: 0)
-        XCTAssertNil(StepExecutor.match(FlowLocator(label: "行 12"), in: snapshot),
+        XCTAssertNil(LocatorResolver.match(FlowLocator(label: "行 12"), in: snapshot),
                      "座標が壊れた要素を掴むと、タップが先頭行へ落ちる")
         // 可視の行はこれまでどおり掴める(セルが優先される = pre-order で親が先)
-        XCTAssertEqual(StepExecutor.match(FlowLocator(label: "行 01"), in: snapshot)?.identifier,
+        XCTAssertEqual(LocatorResolver.match(FlowLocator(label: "行 01"), in: snapshot)?.identifier,
                        "row_01")
     }
 
@@ -135,11 +135,11 @@ final class ClampedCoordinateTests: XCTestCase {
     func testContainerInferenceCanBeTurnedOff() {
         let tree = realWorldTree()
         // 入口(容器の推測)が止まる = 見切れ判定・掴み直し・座標補正が全部無効化される
-        XCTAssertNotNil(StepExecutor.clippingContainer(of: tree[5], in: tree, inferring: true))
-        XCTAssertNil(StepExecutor.clippingContainer(of: tree[5], in: tree, inferring: false))
+        XCTAssertNotNil(ContainerGeometry.clippingContainer(of: tree[5], in: tree, inferring: true))
+        XCTAssertNil(ContainerGeometry.clippingContainer(of: tree[5], in: tree, inferring: false))
         // 候補の除外も止まる
-        XCTAssertTrue(StepExecutor.hasClampedCoordinates(tree[3], in: tree, inferring: true))
-        XCTAssertFalse(StepExecutor.hasClampedCoordinates(tree[3], in: tree, inferring: false))
+        XCTAssertTrue(ContainerGeometry.hasClampedCoordinates(tree[3], in: tree, inferring: true))
+        XCTAssertFalse(ContainerGeometry.hasClampedCoordinates(tree[3], in: tree, inferring: false))
     }
 
     /// **細すぎる帯は撃たない**。容器の推測が外れていた場合、わずかな重なりを
@@ -201,11 +201,11 @@ final class ClampedCoordinateTests: XCTestCase {
     /// 「ツリーには在るのに見つからない」が読み解けない)
     func testFailureExplainsWhyItVanished() {
         let tree = realWorldTree()
-        let hint = StepExecutor.clampedStackHint(for: FlowLocator(label: "行 12"), in: tree)
+        let hint = LocatorResolver.clampedStackHint(for: FlowLocator(label: "行 12"), in: tree)
         XCTAssertNotNil(hint, "消した理由を書かないと調査できない")
         XCTAssertTrue(hint?.contains("stacked at the same spot") ?? false, "\(hint ?? "nil")")
         XCTAssertTrue(hint?.contains("scroll it into view") ?? false, "回避策を書くこと: \(hint ?? "nil")")
         // 正常な要素では出さない
-        XCTAssertNil(StepExecutor.clampedStackHint(for: FlowLocator(label: "行 01"), in: tree))
+        XCTAssertNil(LocatorResolver.clampedStackHint(for: FlowLocator(label: "行 01"), in: tree))
     }
 }

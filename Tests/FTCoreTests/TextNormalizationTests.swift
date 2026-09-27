@@ -17,10 +17,10 @@ final class TextNormalizationTests: XCTestCase {
         FlowMatchMode.exact.matches(a, b, normalization: .selector)
     }
     private func text(_ a: String, _ b: String) -> Bool {
-        StepExecutor.matchedText(a, expected: b, assert: "textEquals", normalization: .text) != nil
+        LocatorResolver.matchedText(a, expected: b, assert: "textEquals", normalization: .text) != nil
     }
     private func strict(_ a: String, _ b: String) -> Bool {
-        StepExecutor.matchedText(a, expected: b, assert: "textEquals", normalization: .strict) != nil
+        LocatorResolver.matchedText(a, expected: b, assert: "textEquals", normalization: .strict) != nil
     }
 
     // MARK: - 不可視文字は両モードで無視する(見た目が変わらないから)
@@ -123,7 +123,7 @@ final class TextNormalizationTests: XCTestCase {
 
     /// **normal ○ / strict × のときは打ち手まで言う**(strict を外すか期待値を直すか)
     func testVerdictNamesTheModeThatWouldMatch() {
-        let verdict = StepExecutor.normalizationVerdict(
+        let verdict = LocatorResolver.normalizationVerdict(
             actual: "A\u{200B}B", expected: "AB", assert: "textEquals")
         XCTAssertTrue(verdict.contains("normalized comparison: matches"), verdict)
         XCTAssertTrue(verdict.contains("strict comparison: does not match"), verdict)
@@ -132,7 +132,7 @@ final class TextNormalizationTests: XCTestCase {
 
     /// 本当に違う文字列なら**両方 ×** と言う(「正規化のせいかも」と読ませない)
     func testVerdictSaysWhenNeitherModeMatches() {
-        let verdict = StepExecutor.normalizationVerdict(
+        let verdict = LocatorResolver.normalizationVerdict(
             actual: "中央線", expected: "中央本線", assert: "textEquals")
         XCTAssertTrue(verdict.contains("normalized comparison: does not match"), verdict)
         XCTAssertTrue(verdict.contains("strict comparison: does not match"), verdict)
@@ -228,13 +228,13 @@ final class NormalizationCoversEveryComparisonTests: XCTestCase {
 
     private func negative(_ assert: String, _ actual: String, _ expected: String?,
                           _ mode: TextNormalization = .text) -> Bool {
-        StepExecutor.negativeAssertSatisfied(assert, actual: actual, expected: expected,
+        LocatorResolver.negativeAssertSatisfied(assert, actual: actual, expected: expected,
                                              normalization: mode)
     }
 
     /// 肯定と否定が**同じ答え**を出す(片方だけ正規化されていない状態を止める)
     func testPositiveAndNegativeAgree() {
-        let positive = StepExecutor.matchedText(zw, expected: "715円", assert: "textEquals",
+        let positive = LocatorResolver.matchedText(zw, expected: "715円", assert: "textEquals",
                                                 normalization: .text) != nil
         let negativeSatisfied = negative("textNotEquals", zw, "715円")
         XCTAssertTrue(positive, "肯定側が正規化を通っていない")
@@ -265,12 +265,12 @@ final class NormalizationCoversEveryComparisonTests: XCTestCase {
 
     /// id も同じ正規化を通る(ユーザー決定: 日本語 id が実在するため正規化する)
     func testIdIsNormalisedToo() {
-        XCTAssertNotNil(StepExecutor.matchedText("btn\u{200B}_ok", expected: "btn_ok",
+        XCTAssertNotNil(LocatorResolver.matchedText("btn\u{200B}_ok", expected: "btn_ok",
                                                  assert: "idEquals", normalization: .text))
-        XCTAssertNil(StepExecutor.matchedText("btn\u{200B}_ok", expected: "btn_ok",
+        XCTAssertNil(LocatorResolver.matchedText("btn\u{200B}_ok", expected: "btn_ok",
                                               assert: "idEquals", normalization: .strict))
         // 全角と半角は別物(見た目が違う)
-        XCTAssertNil(StepExecutor.matchedText("ＩＤ", expected: "ID",
+        XCTAssertNil(LocatorResolver.matchedText("ＩＤ", expected: "ID",
                                               assert: "idEquals", normalization: .text))
     }
 }

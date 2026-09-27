@@ -229,7 +229,7 @@ final class MCPMapAuditFixesTests: XCTestCase {
         for target in snap.elements where target.type == "clickable" {
             guard let text = MCPServer.scopedSelector(for: target, in: snap) else { continue }
             let locator = FTSelector.parse(text).primary
-            let resolved = try XCTUnwrap(StepExecutor.match(locator, in: snap),
+            let resolved = try XCTUnwrap(LocatorResolver.match(locator, in: snap),
                                          "勧めたセレクタが1件も当たらない: \(text)")
             XCTAssertEqual(resolved.ref, target.ref,
                            "\(text) が別の要素を指している(期待 [\(target.ref)])")

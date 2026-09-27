@@ -83,10 +83,10 @@ final class StickyHeaderOcclusionTests: XCTestCase {
     func testTheStickyInputFieldIsNotTakenForAClippingContainer() {
         let elements = tree()
         let heart = find("btn_wishlist_electronics_5")
-        let container = StepExecutor.clippingContainer(of: heart, in: elements, inferring: true)
+        let container = ContainerGeometry.clippingContainer(of: heart, in: elements, inferring: true)
         XCTAssertNotEqual(container, FTRect(x: 56, y: 55, width: 326, height: 57),
                           "検索欄がカードのハートの容器に選ばれた")
-        XCTAssertFalse(StepExecutor.isOutsideContainer(heart, in: elements, screen: screen),
+        XCTAssertFalse(ContainerGeometry.isOutsideContainer(heart, in: elements, screen: screen),
                        "画面に見えているハートが「容器の外」と判定された")
         XCTAssertFalse(OcclusionGeometry.isUntappableGhost(heart, in: elements, screen: screen),
                        "正しく描かれているハートに ⚠️scroll-leftover が付いた")
@@ -99,7 +99,7 @@ final class StickyHeaderOcclusionTests: XCTestCase {
     /// 子孫の範囲がそこで閉じ、同 depth の行を1件も持たない候補として飛ばされる
     func testTheRealContentContainerIsStillFound() {
         let elements = tree()
-        XCTAssertEqual(StepExecutor.clippingContainer(of: find("btn_wishlist_electronics_5"),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: find("btn_wishlist_electronics_5"),
                                                       in: elements, inferring: true),
                        FTRect(x: 0, y: 0, width: 390, height: 844),
                        "スクロール容器そのものが掴めていること")

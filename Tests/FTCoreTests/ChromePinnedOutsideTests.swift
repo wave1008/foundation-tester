@@ -1,4 +1,4 @@
-// StepExecutor.isChromePinnedOutside の固定(2026-08-31・and-sutec_home)。
+// ContainerGeometry.isChromePinnedOutside の固定(2026-08-31・and-sutec_home)。
 //
 // Android Compose Scaffold の NavigationBar は無ラベルで間引かれ(SnapshotBuilder.shouldInclude)、
 // preorder+depth の復元がタブを scroll 容器の子として再配線する。タブは容器と交差しないので
@@ -38,9 +38,9 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let elements = [container, headingA, headingB, tabHome, tabSearch, tabCart,
                          tabWishlist, tabAccount]
 
-        XCTAssertEqual(StepExecutor.clippingContainer(of: tabHome, in: elements), container.frame,
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: tabHome, in: elements), container.frame,
                        "容器は screen_home のはず(タブは間引きで子に再配線される)")
-        XCTAssertFalse(StepExecutor.isOutsideContainer(tabHome, in: elements, screen: screen),
+        XCTAssertFalse(ContainerGeometry.isOutsideContainer(tabHome, in: elements, screen: screen),
                        "下端に固定された chrome は ghost 扱いしないこと")
         let kind = TapTargetGeometry.advisoryKind(for: tabHome, in: elements, screen: screen)
         if case .scrolledOut = kind {
@@ -60,8 +60,8 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let btnTitle = el(5, "other", 5, 150, 0, 780, 150, id: "btn_title")
         let elements = [scroller, row1, row2, btnBack, btnTitle]
 
-        XCTAssertEqual(StepExecutor.clippingContainer(of: btnBack, in: elements), scroller.frame)
-        XCTAssertFalse(StepExecutor.isOutsideContainer(btnBack, in: elements, screen: screen),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: btnBack, in: elements), scroller.frame)
+        XCTAssertFalse(ContainerGeometry.isOutsideContainer(btnBack, in: elements, screen: screen),
                        "容器の上端に固定された app bar は ghost 扱いしないこと")
     }
 
@@ -79,8 +79,8 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let ghost = el(3, "cell", 2, 0, 752, 370, 56, id: "row_30")
         let elements = [container, row1, row2, ghost]
 
-        XCTAssertEqual(StepExecutor.clippingContainer(of: ghost, in: elements), container.frame)
-        XCTAssertTrue(StepExecutor.isOutsideContainer(ghost, in: elements, screen: screen),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: ghost, in: elements), container.frame)
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(ghost, in: elements, screen: screen),
                       "隙間(400)が高さ(56)を大きく超えるので、chrome ではなく ghost のまま")
     }
 
@@ -101,9 +101,9 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let sibling = el(5, "staticText", 4, 650, 320, 383, 43, label: "他の帯")
         let elements = [container, child1, child2, target, sibling]
 
-        XCTAssertEqual(StepExecutor.clippingContainer(of: target, in: elements), container.frame,
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: target, in: elements), container.frame,
                        "容器は小さな link(517x97)に取り違えられるはず(実測と同じ形)")
-        XCTAssertTrue(StepExecutor.isOutsideContainer(target, in: elements, screen: screen),
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(target, in: elements, screen: screen),
                       "容器が viewport でない(scrollable でも画面の50%以上でもない)ので ghost のまま")
     }
 
@@ -119,7 +119,7 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let loneTab = el(46, "other", 10, 0, 2054, 199, 220, id: "tab_home")
         let elements = [container, headingA, headingB, loneTab]
 
-        XCTAssertTrue(StepExecutor.isOutsideContainer(loneTab, in: elements, screen: screen),
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(loneTab, in: elements, screen: screen),
                       "同じ帯に他のタブが1本も無いので、バーの形と確認できず ghost のまま")
     }
 
@@ -136,11 +136,11 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let ghostA = el(4, "cell", 5, 0, 1950, 540, 300, id: "cell_c")
         let ghostB = el(5, "cell", 5, 540, 1950, 540, 300, id: "cell_d")
         let tree = [grid, cellA, cellB, ghostA, ghostB]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: ghostA, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: ghostA, in: tree, inferring: true),
                        FTRect(x: 0, y: 100, width: 1080, height: 1800))
-        XCTAssertTrue(StepExecutor.isOutsideContainer(ghostA, in: tree, screen: screen),
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(ghostA, in: tree, screen: screen),
                       "内側に同じ高さ(300)のセルがあるので chrome ではなく ghost のまま")
-        XCTAssertTrue(StepExecutor.isOutsideContainer(ghostB, in: tree, screen: screen))
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(ghostB, in: tree, screen: screen))
     }
 
     // MARK: - (g) status bar のぶん下がって始まる上部バー(条件4の上帯倍率)
@@ -155,7 +155,7 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let btnBack = el(4, "button", 5, 0, 59, 48, 44, id: "btn_back")
         let btnAction = el(5, "button", 5, 342, 59, 48, 44, id: "btn_action")
         let tree = [scroller, row1, row2, btnBack, btnAction]
-        XCTAssertFalse(StepExecutor.isOutsideContainer(btnBack, in: tree, screen: screen),
+        XCTAssertFalse(ContainerGeometry.isOutsideContainer(btnBack, in: tree, screen: screen),
                        "隙間 59 は高さ 44 の 2 倍(88)以内 = 上端に固定された chrome")
         // 倍率を超えて下がっていれば chrome ではない(隙間 100 > 88)
         let lowBack = el(4, "button", 5, 0, 100, 48, 44, id: "btn_back")
@@ -163,7 +163,7 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let scroller2 = el(1, "scrollView", 4, 0, 150, 390, 694, id: "screen_x", scrollable: true)
         let row1b = el(2, "cell", 5, 0, 160, 390, 56, id: "row_1")
         let row2b = el(3, "cell", 5, 0, 216, 390, 56, id: "row_2")
-        XCTAssertTrue(StepExecutor.isOutsideContainer(lowBack, in: [scroller2, row1b, row2b, lowBack, lowAction],
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(lowBack, in: [scroller2, row1b, row2b, lowBack, lowAction],
                                                       screen: screen))
     }
 
@@ -184,9 +184,9 @@ final class ChromePinnedOutsideTests: XCTestCase {
         let panelA = el(5, "other", 10, 0, 2054, 540, 220, id: "panel_a")
         let panelB = el(6, "other", 10, 540, 2054, 540, 220, id: "panel_b")
         let tree = [container, headingA, headingB, insideA, insideB, stray, panelA, panelB]
-        XCTAssertEqual(StepExecutor.clippingContainer(of: stray, in: tree, inferring: true),
+        XCTAssertEqual(ContainerGeometry.clippingContainer(of: stray, in: tree, inferring: true),
                        FTRect(x: 0, y: 136, width: 1080, height: 1918))
-        XCTAssertTrue(StepExecutor.isOutsideContainer(stray, in: tree, screen: screen),
+        XCTAssertTrue(ContainerGeometry.isOutsideContainer(stray, in: tree, screen: screen),
                       "含んでいる panel_a は祖先ではないので host にならず、迷子は ghost のまま")
     }
 }

@@ -274,7 +274,7 @@ extension MCPServer {
                                       in container: ElementInfo,
                                       of snapshot: SnapshotResponse) -> Double {
         let topRowRefs = Set(topRow.map(\.ref))
-        let edges = StepExecutor.descendants(of: container, in: snapshot.elements)
+        let edges = LocatorResolver.descendants(of: container, in: snapshot.elements)
             .filter { element in
                 !topRowRefs.contains(element.ref) && element.scrollable != true
                     && element.frame.height < container.frame.height
@@ -305,7 +305,7 @@ extension MCPServer {
     /// (別途しきい値を持たない)
     private static func gridHeaderGap(in container: ElementInfo, of snapshot: SnapshotResponse)
         -> (columns: Int, rows: Int, band: FTRect)? {
-        let leaves = StepExecutor.descendants(of: container, in: snapshot.elements).filter { element in
+        let leaves = LocatorResolver.descendants(of: container, in: snapshot.elements).filter { element in
             guard element.scrollable != true,
                   TapTargetGeometry.isLeaf(element, in: snapshot.elements) else { return false }
             let label = (element.label ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -477,7 +477,7 @@ extension MCPServer {
     static func webViewDescendantRefs(in snapshot: SnapshotResponse) -> Set<Int> {
         var refs = Set<Int>()
         for container in snapshot.elements where container.type == "webView" {
-            for element in StepExecutor.descendants(of: container, in: snapshot.elements) {
+            for element in LocatorResolver.descendants(of: container, in: snapshot.elements) {
                 refs.insert(element.ref)
             }
         }

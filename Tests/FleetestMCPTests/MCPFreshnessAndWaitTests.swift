@@ -242,7 +242,7 @@ final class MCPPartialMatchFormHintTests: XCTestCase {
             FTSelector.parse("*武蔵野線").primary, in: snapshot.elements))
     }
 
-    /// 素の完全一致指定(記法無し)には無関係(既存の StepExecutor.partialMatchHint の担当)
+    /// 素の完全一致指定(記法無し)には無関係(既存の LocatorResolver.partialMatchHint の担当)
     func testExactModeLocatorGetsNoFormHint() {
         let snapshot = testSnapshot([testElement(identifier: nil, label: "武蔵野線 直通")])
         XCTAssertNil(MCPServer.partialMatchFormHint(

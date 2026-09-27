@@ -33,7 +33,7 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         XCTAssertFalse(text.contains("guard let delegate else { return nil }"),
                        "delegate が無いだけで guard を止めると OCR だけの検証が効かない")
         XCTAssertTrue(text.contains(
-            "let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive()"))
+            "let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive(environment: ProcessInfo.processInfo.environment)"))
         XCTAssertTrue(text.contains("if fmAvailable { delegate?.prewarmVisibilityCheck() }"),
                       "暖機も fmAvailable でだけ撃つはず")
     }

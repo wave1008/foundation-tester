@@ -235,7 +235,7 @@ public struct FlowStep: Codable, Sendable {
 /// 文字列属性(label / value / placeholder)の一致方法。**既定は exact**(素のラベルは完全一致)で、
 /// 部分一致は記法で明示したときだけ(`*x*` / `x*` / `*x` / `textMatches=`)。
 /// matches は**部分一致の正規表現**(全体一致は `^...$`)で、
-/// textMatches アサーション(StepExecutor.matchedText)と同じ規約。
+/// textMatches アサーション(LocatorResolver.matchedText)と同じ規約。
 public enum FlowMatchMode: String, Codable, Equatable, Sendable {
     case exact, startsWith, contains, endsWith, matches
 
@@ -434,7 +434,7 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     }
 
     /// 「id も label も無い」= 単独では別画面の要素に誤マッチしやすいロケータか。
-    /// アサーションのフォールバック連鎖から除外する判定に使う(StepExecutor.resolveDetailed)。
+    /// アサーションのフォールバック連鎖から除外する判定に使う(LocatorResolver.resolveDetailed)。
     /// scope / 相対セレクタ付きは錨を打っているので type+index でも除外しない。
     public var isWeakForAssert: Bool {
         id == nil && label == nil && value == nil && placeholder == nil
@@ -443,7 +443,7 @@ public struct FlowLocator: Codable, Equatable, Sendable {
 }
 
 /// 相対セレクタの向き(`通知:rightSwitch`)。**基準要素から見た**対象の位置を限定する。
-/// 判定規則は StepExecutor.directionalCandidates に1箇所だけ置く(記法↔意味の対応表は docs/design.md §10)
+/// 判定規則は LocatorResolver.directionalCandidates に1箇所だけ置く(記法↔意味の対応表は docs/design.md §10)
 public enum FlowDirection: String, Codable, Equatable, Sendable {
     case right, left, above, below
 }

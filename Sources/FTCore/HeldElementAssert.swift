@@ -26,13 +26,13 @@ public enum HeldElementAssert {
              "valueContains", "valueMatches", "valueStartsWith", "valueEndsWith",
              "valueMatchesDateFormat":
             guard let expected else { return nil }
-            return StepExecutor.matchedText(actualText(assert, element),
+            return LocatorResolver.matchedText(actualText(assert, element),
                                             expected: expected, assert: assert) != nil
         case "textNotEquals", "textIsEmpty", "textIsNotEmpty",
              "textStartsWithNot", "textContainsNot", "textEndsWithNot", "textMatchesNot",
              "valueNotEquals", "valueIsEmpty", "valueIsNotEmpty",
              "valueStartsWithNot", "valueContainsNot", "valueEndsWithNot", "valueMatchesNot":
-            return StepExecutor.negativeAssertSatisfied(assert, actual: actualText(assert, element),
+            return LocatorResolver.negativeAssertSatisfied(assert, actual: actualText(assert, element),
                                                         expected: expected)
         case "enabled":
             return element.enabled

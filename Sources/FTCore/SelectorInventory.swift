@@ -80,7 +80,7 @@ public struct SelectorInventory: Codable, Sendable {
 
     /// スナップショットから記録対象の id を取り出す。
     /// **placeholder も入れる**: `#x` は identifier で引けなければ placeholder を
-    /// 引く(`StepExecutor.candidates`)ので、入れないと dry-run が**実在する入力欄を
+    /// 引く(`LocatorResolver.candidates`)ので、入れないと dry-run が**実在する入力欄を
     /// 「撮った画面に無い id」と誤警告する** —— 台帳は「`#` で指せる名前の集合」であって
     /// identifier の集合ではない
     public static func ids(in snapshot: SnapshotResponse) -> [String] {

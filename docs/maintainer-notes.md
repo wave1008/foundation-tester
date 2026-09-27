@@ -454,7 +454,7 @@ A/B で `fleetest` を差し替えても base と fix が同一コードを走�
 | 事実 | 中核(FTCore) | 呼び手 | 起きていたこと |
 |---|---|---|---|
 | タップ前警告の連鎖 | `TapTargetGeometry.advisoryKind` | `occlusionAdvisory`(DSL)/ `RefGuard.overlapWarning`(MCP) | 同じ優先順を2箇所に手で書いており、**2形(ゼロ幅高さ frame・縁の細切れ)が DSL にだけあって MCP のタップ時に出ていなかった**。「同じ優先順」はテストのコメントに書いてあっただけで、照合するテストは1本も無かった |
-| 近い候補の選定 | `FTCore.SimilarLabels` | MCP / `StepExecutor.candidateHint` | DSL 側が MCP の捨てた旧版(部分文字列一致・文書順の先着3件)のままで、装飾要素が枠を埋めて実在する操作可能要素を出せない画面があった |
+| 近い候補の選定 | `FTCore.SimilarLabels` | MCP / `LocatorResolver.candidateHint` | DSL 側が MCP の捨てた旧版(部分文字列一致・文書順の先着3件)のままで、装飾要素が枠を埋めて実在する操作可能要素を出せない画面があった |
 | back の空振り | `FTCore.BackEffect` | 中核文 + 呼び手ごとの advice(MCP は `ft_screenshot` / `ft_scroll_to`、DSL は `back()` を呼び直す) | ― |
 | 打ち切りの逃げ道 | `FTCore.SnapshotTruncation.remedy` | MCP / DSL | **DSL だけが「対象に近づくようスクロールする」と勧めていた**。同じ事実に MCP は「スクロールしても戻ってこない」と書いており、同じ画面で逆のことを言っていた |
 | 画面外の一致 | `TapTargetGeometry.offscreenScrollGateCentre` | 探索のゲート / 逆走査 `reverseSweep` / `ft_scroll_to` の再照合 / `requireVisible` の幾何 Tier-0(`StepExecutor.occlusionFlip`) | 逆走査と `requireVisible` に述語が無く、iOS の木に残る通り過ぎた要素への `exist(scroll:)` が成功していた(受け手報告) |
