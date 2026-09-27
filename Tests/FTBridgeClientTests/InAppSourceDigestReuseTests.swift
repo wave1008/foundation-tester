@@ -29,7 +29,9 @@ final class InAppSourceDigestReuseTests: XCTestCase {
 
     private func planInApp(running: [UInt16: BridgeProvisioner.RunningBridge],
                            digest: String?) throws -> BridgeProvisioner.EnginePlan {
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
+                                            // この Mac で生きているブリッジ(lsof)に結果を左右させない
+                                            portHeldByAnotherDevice: { _, _ in false })
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)

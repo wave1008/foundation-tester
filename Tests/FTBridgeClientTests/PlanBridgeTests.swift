@@ -22,7 +22,9 @@ final class PlanBridgeTests: XCTestCase {
     private func plan(running: [UInt16: BridgeProvisioner.RunningBridge],
                       sim: SimDeviceInfo,
                       starting: [String: [UInt16]] = [:]) throws -> BridgeProvisioner.EnginePlan {
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
+                                            // この Mac で生きているブリッジ(lsof)に結果を左右させない
+                                            portHeldByAnotherDevice: { _, _ in false })
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         return try provisioner.planBridge(
@@ -144,7 +146,9 @@ final class PlanBridgeTests: XCTestCase {
     private func planInApp(bundleID: String,
                            running: [UInt16: BridgeProvisioner.RunningBridge],
                            sim: SimDeviceInfo) throws -> BridgeProvisioner.EnginePlan {
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130,
+                                            // この Mac で生きているブリッジ(lsof)に結果を左右させない
+                                            portHeldByAnotherDevice: { _, _ in false })
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         return try provisioner.planBridge(
