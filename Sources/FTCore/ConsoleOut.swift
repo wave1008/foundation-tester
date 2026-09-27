@@ -131,6 +131,23 @@ public enum ConsoleOut {
         if waitedNs < floorNs { usleep(useconds_t((floorNs - waitedNs) / 1000)) }
     }
 
+    /// `giveUp` の報告の間引き。**emit のロックの下でだけ触る**(giveUp はロックを握ったまま呼ばれる)
+    private static var giveUpReporter = GiveUpReporter()
+
+    /// 読み手が閉じた(EPIPE)失敗は**プロセスで1回だけ**報告する —— `fleetest results log | head` のように
+    /// 読み手が先に閉じると以後の書き込みが全部 EPIPE になり、残りの行数ぶん同じ警告が並ぶ。
+    /// 最初の EPIPE で終了はしない(`fleetest run | head` で run そのものが中断される)。
+    /// EPIPE 以外は毎回報告する(一過性の失敗で、1回目だけでは何行失ったか分からない)
+    struct GiveUpReporter {
+        private var brokenPipeReported = false
+
+        mutating func shouldReport(errno code: Int32) -> Bool {
+            guard code == EPIPE else { return true }
+            defer { brokenPipeReported = true }
+            return !brokenPipeReported
+        }
+    }
+
     /// 書き切れなかった。**書きかけの行は改行で閉じる**(次の行が前の行に繋がって2行とも
     /// 壊れるのを1行で止める)。理由は stderr へ生の write(2) で1行 —— emit はロックを握って
     /// いるので再入できない(NSLock は再帰しない)。stderr 自身の失敗なら何も言えない
@@ -139,7 +156,8 @@ public enum ConsoleOut {
             var newline: UInt8 = 0x0A
             _ = Foundation.write(fd, &newline, 1)
         }
-        guard fd != FileHandle.standardError.fileDescriptor else { return }
+        guard fd != FileHandle.standardError.fileDescriptor,
+              giveUpReporter.shouldReport(errno: code) else { return }
         let reason = code == 0 ? "write returned 0" : String(cString: strerror(code))
         let message = "[fleetest] output write gave up after \(written)/\(total) bytes"
             + " (fd \(fd), errno \(code): \(reason))\n"

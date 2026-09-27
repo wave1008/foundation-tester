@@ -134,6 +134,17 @@ final class ConsoleOutTests: XCTestCase {
         XCTAssertTrue(lines.first == first, "1行目が欠けた: \(lines.first?.count ?? 0)/\(first.count) 文字")
         XCTAssertEqual(lines.last, second)
     }
+
+    /// 読み手が閉じた(EPIPE)失敗の報告はプロセスで1回だけ・それ以外の失敗は毎回
+    func testBrokenPipeIsReportedOnlyOnce() {
+        var reporter = ConsoleOut.GiveUpReporter()
+        XCTAssertTrue(reporter.shouldReport(errno: EPIPE))
+        XCTAssertFalse(reporter.shouldReport(errno: EPIPE))
+        XCTAssertFalse(reporter.shouldReport(errno: EPIPE))
+        XCTAssertTrue(reporter.shouldReport(errno: EIO))
+        XCTAssertTrue(reporter.shouldReport(errno: EIO))
+        XCTAssertTrue(reporter.shouldReport(errno: 0))
+    }
 }
 
 private final class LockedData: @unchecked Sendable {
