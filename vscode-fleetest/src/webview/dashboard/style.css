@@ -376,6 +376,7 @@ select.dash-project, select.dash-since {
 .dh-state-booted { color: var(--vscode-editorWarning-foreground, #cca700); }
 .dh-state-offline,
 .dh-state-unknown { color: var(--vscode-descriptionForeground); }
+.dh-storage-carried-over { color: var(--vscode-descriptionForeground); }
 .dh-chip-running {
   background-color: var(--vscode-charts-blue, #0078d4);
   color: #ffffff;

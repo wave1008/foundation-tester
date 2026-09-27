@@ -259,7 +259,9 @@ test("isMonitorEvent: monitorDevices の bridgeRunning は true/false を区別�
 });
 
 test("isMonitorEvent: monitorDevices の storage は欠落・null・型不正を undefined に正規化する(0 に丸めない)", () => {
-  for (const raw of [undefined, null, "not-an-object", { usedBytes: 1 }, { usedBytes: 1, freeScope: "unknown", measuredAt: "t" }]) {
+  for (const raw of [undefined, null, "not-an-object", { usedBytes: 1 }, { usedBytes: 1, freeScope: "unknown", measuredAt: "t", carriedOver: false },
+    // carriedOver は必須(欠落を「測り直した値」に倒さない)
+    { usedBytes: 1, freeScope: "device", measuredAt: "t" }]) {
     const device = { id: "d1", name: "d1", platform: "android", state: "connected", detail: "" };
     if (raw !== undefined) {
       device.storage = raw;
@@ -276,13 +278,13 @@ test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま�
     devices: [
       {
         id: "d1", name: "d1", platform: "android", state: "connected", detail: "",
-        storage: { usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z" },
+        storage: { usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
       },
     ],
   };
   assert.equal(isMonitorEvent(withFree), true);
   assert.deepEqual(withFree.devices[0].storage, {
-    usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z",
+    usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false,
   });
 
   const noFree = {
@@ -290,7 +292,7 @@ test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま�
     devices: [
       {
         id: "d2", name: "d2", platform: "ios", state: "connected", detail: "",
-        storage: { usedBytes: 500, freeBytes: null, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z" },
+        storage: { usedBytes: 500, freeBytes: null, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
       },
     ],
   };

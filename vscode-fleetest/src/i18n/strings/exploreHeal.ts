@@ -132,7 +132,7 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.headingDevices": { ja: "デバイスの健全性", en: "Device Health" },
   "exploreHeal.dashboard.colDevice": { ja: "デバイス", en: "Device" },
   "exploreHeal.dashboard.colDeviceState": { ja: "今の状態", en: "State" },
-  "exploreHeal.dashboard.colStorage": { ja: "ストレージ", en: "Storage" },
+  "exploreHeal.dashboard.colStorage": { ja: "ストレージ使用", en: "Storage used" },
   "exploreHeal.dashboard.colRemoved": { ja: "run から除外", en: "Excluded from Run" },
   "exploreHeal.dashboard.colRequeued": { ja: "振り直し", en: "Requeued" },
   "exploreHeal.dashboard.colPreRun": { ja: "run 前の除外・修復", en: "Pre-run Exclude/Repair" },

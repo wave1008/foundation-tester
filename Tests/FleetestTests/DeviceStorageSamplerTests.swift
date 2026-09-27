@@ -141,8 +141,11 @@ final class DeviceStorageSamplerTests: XCTestCase {
         let restarted = DeviceStorageSampler(
             probeIOS: { _ in iosCalls.increment(); return nil },
             probeAndroid: { _ in nil }, isRunActive: { true }, storeURL: store)
+        XCTAssertEqual(first.snapshot()["sim"]?.carriedOver, false, "測った値は前回値ではない")
         XCTAssertEqual(restarted.snapshot()["sim"],
-                       DeviceStorageInfo(usedBytes: 7, freeBytes: 8, freeScope: .hostVolume, measuredAt: "t1"))
+                       DeviceStorageInfo(usedBytes: 7, freeBytes: 8, freeScope: .hostVolume, measuredAt: "t1",
+                                         carriedOver: true),
+                       "起動時に読んだ値は測り直すまで前回値(拡張が灰色で出す)")
         restarted.schedule(candidates: [("sim", "ios")], now: Date())
         Thread.sleep(forTimeInterval: 0.1)
         XCTAssertEqual(iosCalls.value, 0, "run 中は測らない方針は保存があっても同じ")
@@ -172,6 +175,25 @@ final class DeviceStorageSamplerTests: XCTestCase {
         let reloaded = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil },
                                             isRunActive: { false }, storeURL: store)
         XCTAssertEqual(reloaded.snapshot()["emu"]?.usedBytes, 3)
+    }
+
+    /// 前回値の台を測り直したら印が外れる
+    func testRemeasuredValueIsNoLongerCarriedOver() throws {
+        let store = try temporaryStoreURL()
+        let first = DeviceStorageSampler(
+            probeIOS: { _ in nil },
+            probeAndroid: { _ in DeviceStorageInfo(usedBytes: 3, freeBytes: 4, freeScope: .device, measuredAt: "t") },
+            isRunActive: { false }, storeURL: store)
+        first.schedule(candidates: [("emu", "android")], now: Date())
+        waitUntil { FileManager.default.fileExists(atPath: store.path) }
+        let restarted = DeviceStorageSampler(
+            probeIOS: { _ in nil },
+            probeAndroid: { _ in DeviceStorageInfo(usedBytes: 5, freeBytes: 4, freeScope: .device, measuredAt: "t2") },
+            isRunActive: { false }, storeURL: store)
+        XCTAssertEqual(restarted.snapshot()["emu"]?.carriedOver, true)
+        restarted.schedule(candidates: [("emu", "android")], now: Date())
+        waitUntil { restarted.snapshot()["emu"]?.usedBytes == 5 }
+        XCTAssertEqual(restarted.snapshot()["emu"]?.carriedOver, false)
     }
 }
 

@@ -4556,6 +4556,8 @@ monitor が `monitorDevices[].storage`(`usedBytes` / `freeBytes` / `freeScope` /
 - **測れた値は `~/.fleetest/device-storage.json` に残し、monitor の起動時に読む**。メモリだけだと
   monitor が起動し直すたびに全台が空に戻り、run 中は iOS を測らないので run が終わるまで空のままになる。
   読んだ値は表示に使うだけで、最初の周期で全台を測り直す(起動し直した台と同じ扱い)。
+  **読んだ値は測り直すまで `carriedOver: true`** で配り、拡張の「デバイスの健全性」は灰色で出す
+  (title に「前回値」。run 中の iOS は測らないので run が終わるまで灰色のまま)。
 
 ### 12.4.2 iOS Simulator の PosterBoard スナップショットキャッシュの掃除(起動前・2026-09-27)
 

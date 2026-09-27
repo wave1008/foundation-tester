@@ -58,6 +58,8 @@ export interface MonitorDeviceStorage {
   readonly freeBytes?: number;
   readonly freeScope: MonitorDeviceStorageScope;
   readonly measuredAt: string;
+  /** true = 前の monitor が残した値で、この monitor はまだ測り直していない(健全性の表で灰色にする)。 */
+  readonly carriedOver: boolean;
 }
 
 export interface MonitorDevice {
@@ -230,7 +232,8 @@ function isMonitorDeviceStorage(value: unknown): value is MonitorDeviceStorage {
     typeof value.usedBytes === "number" &&
     (value.freeBytes === undefined || typeof value.freeBytes === "number") &&
     (value.freeScope === "device" || value.freeScope === "hostVolume") &&
-    typeof value.measuredAt === "string"
+    typeof value.measuredAt === "string" &&
+    typeof value.carriedOver === "boolean"
   );
 }
 

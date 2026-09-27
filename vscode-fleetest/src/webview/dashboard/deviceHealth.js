@@ -235,16 +235,27 @@ function storageCellText(monitor) {
   if (!monitor || !monitor.storage) {
     return '–';
   }
-  // 使用量だけを出す(ユーザー決定)。空きは母数が OS で違う —— Android は /data 領域の空き、
-  // iOS Simulator はホストのボリューム全体の空き —— ので、並べると同じ尺度に見えてしまう
-  return t('wvDashboard.deviceHealth.storageUsedOnly', { used: formatBytesAuto(monitor.storage.usedBytes) });
+  // 使用量だけを出す(ユーザー決定。「使用」は列見出しが持つ)。空きは母数が OS で違う —— Android は
+  // /data 領域の空き、iOS Simulator はホストのボリューム全体の空き —— ので、並べると同じ尺度に見えてしまう
+  return formatBytesAuto(monitor.storage.usedBytes);
 }
 
 function storageCellTitle(monitor) {
   if (!monitor || !monitor.storage) {
     return '';
   }
-  return t('wvDashboard.deviceHealth.measuredAtTitle', { time: formatLocalDateTime(monitor.storage.measuredAt) });
+  const measured = t('wvDashboard.deviceHealth.measuredAtTitle', { time: formatLocalDateTime(monitor.storage.measuredAt) });
+  return monitor.storage.carriedOver
+    ? measured + '\n' + t('wvDashboard.deviceHealth.storageCarriedOverTitle')
+    : measured;
+}
+
+function storageCell(monitor) {
+  const cell = withTitle(td(storageCellText(monitor)), storageCellTitle(monitor));
+  if (monitor && monitor.storage && monitor.storage.carriedOver) {
+    cell.classList.add('dh-storage-carried-over');
+  }
+  return cell;
 }
 
 function countText(health, field) {
@@ -296,7 +307,7 @@ function rowElement(row) {
     machineCell(row.machine),
     deviceCell(row),
     stateCell(row.monitor),
-    withTitle(td(storageCellText(row.monitor)), storageCellTitle(row.monitor)),
+    storageCell(row.monitor),
     withTitle(
       tdNum(countText(row.health, 'removed')),
       breakdownTitle(row.health && row.health.removedByCause, 'cause'),
@@ -373,7 +384,7 @@ function monitorSignature(rows) {
   return JSON.stringify(rows.map((row) => {
     const m = row.monitor;
     return [row.machine, row.worker, m ? [m.state, !!m.inRun, !!m.frozen, m.health || [],
-      m.storage ? m.storage.usedBytes : null] : null];
+      m.storage ? [m.storage.usedBytes, m.storage.carriedOver] : null] : null];
   }));
 }
 

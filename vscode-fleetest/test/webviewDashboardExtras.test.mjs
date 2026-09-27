@@ -364,11 +364,11 @@ test("デバイスの健全性: ストレージは使用量だけを出し、空
     devices: [
       monitorDevice({
         id: "android:device-scope", name: "device-scope",
-        storage: { usedBytes: 1500000000, freeBytes: 3000000000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z" },
+        storage: { usedBytes: 1500000000, freeBytes: 3000000000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
       }),
       monitorDevice({
         id: "android:host-volume", name: "host-volume",
-        storage: { usedBytes: 1500000000, freeBytes: 3000000000, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z" },
+        storage: { usedBytes: 1500000000, freeBytes: 3000000000, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
       }),
       monitorDevice({ id: "android:no-storage", name: "no-storage" }),
     ],
@@ -381,9 +381,37 @@ test("デバイスの健全性: ストレージは使用量だけを出し、空
   const hostVolume = byWorker("android:host-volume").children[3].textContent;
   const noStorage = byWorker("android:no-storage").children[3].textContent;
 
-  assert.equal(deviceScope, "1.4 GB 使用");
-  assert.equal(hostVolume, "1.4 GB 使用", "iOS のホストの空きも出さない");
+  assert.equal(deviceScope, "1.4 GB");
+  assert.equal(hostVolume, "1.4 GB", "iOS のホストの空きも出さない");
   assert.equal(noStorage, "–", "測れていない台は「–」(0 で埋めない)");
+});
+
+test("デバイスの健全性: 前回値(carriedOver)のストレージだけ灰色にし、title で前回値と言う", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload() } });
+  const devices = (carriedOver) => [
+    monitorDevice({
+      id: "android:carried", name: "carried",
+      storage: { usedBytes: 1500000000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z", carriedOver },
+    }),
+    monitorDevice({
+      id: "android:fresh", name: "fresh",
+      storage: { usedBytes: 1500000000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
+    }),
+  ];
+  const cellOf = (worker) => [...window.document.querySelectorAll("#table-device-health-body tr")]
+    .find((tr) => tr.dataset.worker === worker).children[3];
+
+  sendToWebview({ type: "devices", filter: "all", devices: devices(true) });
+  assert.ok(cellOf("android:carried").classList.contains("dh-storage-carried-over"));
+  assert.match(cellOf("android:carried").title, /前回値/);
+  assert.ok(!cellOf("android:fresh").classList.contains("dh-storage-carried-over"));
+  assert.doesNotMatch(cellOf("android:fresh").title, /前回値/);
+
+  // 測り直して使用量が同じでも灰色が外れる(描き直しの判定に carriedOver を含める)
+  sendToWebview({ type: "devices", filter: "all", devices: devices(false) });
+  assert.ok(!cellOf("android:carried").classList.contains("dh-storage-carried-over"));
 });
 
 // ---- デバイスの健全性: モニターの台名を deviceCatalog で実行プロファイルの name へ揃える ------

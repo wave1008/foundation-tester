@@ -80,8 +80,11 @@ export const webviewDashboardStrings = {
   "wvDashboard.deviceHealth.healthWifiDisabled": { ja: "Wi-Fi 無効", en: "Wi-Fi off" },
   "wvDashboard.deviceHealth.healthClockSkew": { ja: "時計のずれ", en: "Clock skew" },
   "wvDashboard.deviceHealth.healthBlankScreen": { ja: "黒画面", en: "Blank screen" },
-  "wvDashboard.deviceHealth.storageUsedOnly": { ja: "{used} 使用", en: "{used} used" },
   "wvDashboard.deviceHealth.measuredAtTitle": { ja: "計測: {time}", en: "Measured: {time}" },
+  "wvDashboard.deviceHealth.storageCarriedOverTitle": {
+    ja: "前回値(モニターの起動前に測った値。測り直すまで灰色で表示)",
+    en: "Previous value (measured before the monitor started; shown in gray until remeasured)",
+  },
   "wvDashboard.deviceHealth.preRunTitle": { ja: "除外 / 修復", en: "Excluded / Repaired" },
   "wvDashboard.deviceHealth.cause.frozen": { ja: "画面の凍結", en: "Screen frozen" },
   "wvDashboard.deviceHealth.cause.deviceGone": { ja: "デバイスが消えた", en: "Device gone" },

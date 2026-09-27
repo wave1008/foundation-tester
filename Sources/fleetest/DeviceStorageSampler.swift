@@ -45,7 +45,11 @@ final class DeviceStorageSampler: @unchecked Sendable {
         // 全台を「起動し直した」とみなして測り直すので、どのみち上書きされる
         if let storeURL, let data = try? Data(contentsOf: storeURL),
            let stored = try? JSONDecoder().decode([String: DeviceStorageInfo].self, from: data) {
-            cache = stored
+            cache = stored.mapValues { info in
+                var carried = info
+                carried.carriedOver = true
+                return carried
+            }
         }
     }
 

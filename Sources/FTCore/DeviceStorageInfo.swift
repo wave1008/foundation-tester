@@ -24,12 +24,17 @@ public struct DeviceStorageInfo: Codable, Sendable, Equatable {
     public var freeScope: DeviceStorageFreeScope
     /// ISO8601
     public var measuredAt: String
+    /// true = 前の monitor が測って ~/.fleetest/device-storage.json に残した値で、この monitor はまだ
+    /// 測り直していない(拡張は灰色で出す)。計測関数が作る値は常に false。
+    /// 契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDeviceStorage.carriedOver
+    public var carriedOver: Bool
 
     public init(usedBytes: Int, freeBytes: Int? = nil, freeScope: DeviceStorageFreeScope,
-                measuredAt: String) {
+                measuredAt: String, carriedOver: Bool = false) {
         self.usedBytes = usedBytes
         self.freeBytes = freeBytes
         self.freeScope = freeScope
         self.measuredAt = measuredAt
+        self.carriedOver = carriedOver
     }
 }
