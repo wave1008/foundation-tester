@@ -17,6 +17,7 @@ import { childEnv } from "./childEnv";
 import { type CliInvocationHandle, type FleetestCli } from "./cli";
 import { type FleetestConfig, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { LiveRunTarget } from "./liveRunTarget";
@@ -487,6 +488,7 @@ function runRemoteAlign(
     };
     proc.stdout?.on("data", emit);
     proc.stderr?.on("data", emit);
+    proc.stderr?.on("data", (chunk: Buffer) => checkForDyldLaunchFailure(chunk.toString("utf8"), workspaceRoot));
     proc.on("error", (error) => {
       outputChannel.appendLine(`[${hostName}] ${t("run.cli.executionError", { message: error.message })}`);
       resolve(-1);

@@ -181,6 +181,23 @@ soft_fail() {
 
 abspath() { (cd "$1" 2>/dev/null && pwd); }
 
+# macOS のベータ更新に Xcode の SDK が追随していないと FoundationModels の ABI が合わず、
+# fleetest の全バイナリが起動直後にこれで落ちる(事前の版比較では判定できない —— 同じズレでも
+# 正常に動く組み合わせがあるため、実行結果から捕まえる)。$1 = 生の出力(stdout+stderr)。
+# 一致した最初の行を返し、無ければ非ゼロで返る(grep の終了コードをそのまま使う)。
+# 対の実装: Scripts/update.sh(共有する仕組みが無いので同一関数を複製。片方だけ変えない)
+dyld_failure_line() {
+  local line
+  # 終了コードは「当たった行があるか」で自分で決める(パイプの最後の awk は常に 0 = pipefail の有無に依存させない)
+  line="$(printf '%s' "$1" | grep -E 'dyld(\[[0-9]+\])?: (Symbol not found|Library not loaded)' | awk 'NR==1' || true)"
+  [ -n "$line" ] && printf '%s' "$line"
+}
+
+dyld_failure_message() {
+  printf 'fleetest could not start (dyld failed to load it: %s). macOS and Xcode are most likely out of step (for example, macOS was updated to a newer beta but Xcode was not). Update Xcode to the same generation as macOS, then delete .build in the fleetest clone (%s) and in your work folder, and run: bash %s/Scripts/update.sh --force' \
+    "$1" "$TOOL_ROOT" "$TOOL_ROOT"
+}
+
 # package-lock.json は package.json の version を内包する。版上げのときに lock を更新し忘れると、
 # 受け手の `npm install` が **version 行だけ**を書き換え、クローンが dirty になって
 # **次の更新が pull ガードで必ず止まる**(実害。2026-07-29)。version 行だけの差分は生成物と
@@ -500,8 +517,14 @@ record "build" ok "$FT ($(elapsed_since $step_started))"
 # **毎回呼ぶ**。許可リストは従来 `fleetest init` でしか書かれず、更新は --skip-project で init を
 # 回さないため、エントリを増やしても**既存の受け手には一生届かなかった**(実害: 更新のたびに
 # update.sh の承認が出る)。冪等・追加のみ・fleetest 由来のコマンドだけ(ProjectScaffold が保証)
+#
+# **ここが `$FT` を初めて実行する箇所**(build 検証ゲートは存在チェックだけで実行しない)。
+# dyld の起動失敗はここで一度捕まえれば以降の全呼び出しにも共通して効くので、他の呼び出しでは
+# 見ない
 if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" 2>&1 )"; then
   record "permissions" ok "$perms_out"
+elif dyld_line="$(dyld_failure_line "$perms_out")"; then
+  die "permissions" "$(dyld_failure_message "$dyld_line")" 2
 else
   record "permissions" warn "could not top up (only means more approval prompts; behaviour is unaffected)"
 fi

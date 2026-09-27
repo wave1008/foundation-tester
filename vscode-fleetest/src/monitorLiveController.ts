@@ -31,6 +31,7 @@ import {
   resolveSimStream,
 } from "./config";
 import { StreamPipeline, type LiveStreamPipeline } from "./deviceStream";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import { LiveAppActions } from "./liveAppActions";
 import {
@@ -949,7 +950,10 @@ export class MonitorLiveController implements vscode.Disposable {
       (line) => this.deps.outputChannel.appendLine(`[live serve stderr] ${line}`),
     );
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(t("live.serveProcessError", { error: error.message }));

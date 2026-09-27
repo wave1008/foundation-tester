@@ -22,6 +22,7 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import type * as vscode from "vscode";
 import { childEnv } from "./childEnv";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import { NdjsonParser } from "./ndjson";
 
@@ -290,6 +291,7 @@ export class FleetestCli {
         }
       });
       proc.stderr.on("data", (chunk: Buffer) => {
+        checkForDyldLaunchFailure(chunk.toString("utf8"), cwd);
         stderrParser.push(chunk);
       });
 

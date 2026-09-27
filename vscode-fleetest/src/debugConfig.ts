@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { type FleetestConfig, resolveProjectName } from "./config";
 import { FleetestDebugSession } from "./debugAdapter";
+import { notifyDyldLaunchFailureLine } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 
 export function registerDebugAdapter(
@@ -72,6 +73,7 @@ class FleetestDebugAdapterDescriptorFactory implements vscode.DebugAdapterDescri
       binaryPath: config.binaryPath,
       cwd: this.workspaceRoot,
       log: (line, stream) => this.outputChannel.appendLine(`[${stream}] ${line}`),
+      onDyldLaunchFailure: (line) => notifyDyldLaunchFailureLine(line, this.workspaceRoot),
     });
     return new vscode.DebugAdapterInlineImplementation(debugSession as unknown as vscode.DebugAdapter);
   }

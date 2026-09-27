@@ -41,6 +41,7 @@ import { repairDisplay, repairWifi } from "./adbWifiRepair";
 import { childEnv } from "./childEnv";
 import type { FleetestCli } from "./cli";
 import { type FleetestConfig, resolveAdb, resolveProjectName } from "./config";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { currentLocale, t } from "./i18n";
 import {
   isMonitorFromWebviewMessage,
@@ -1601,7 +1602,11 @@ export class MonitorPanelController implements vscode.Disposable {
         return;
       }
       const onLine = (stream: string, chunk: Buffer): void => {
-        for (const raw of chunk.toString("utf8").split("\n")) {
+        const text = chunk.toString("utf8");
+        if (stream === "stderr") {
+          checkForDyldLaunchFailure(text, this.workspaceRoot);
+        }
+        for (const raw of text.split("\n")) {
           const line = raw.trim();
           if (line) {
             this.outputChannel.appendLine(`[${tag} ${stream}] ${line}`);

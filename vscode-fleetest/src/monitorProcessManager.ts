@@ -7,6 +7,7 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { deviceCommandArgs } from "./remoteRunArgs";
 import { missingProjectMessage } from "./projectResolutionMessages";
 import { t } from "./i18n";
@@ -456,7 +457,10 @@ export class MonitorProcessManager {
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(t("deviceOps.log.monitorRuntimeError", { error: error.message }));
@@ -931,7 +935,10 @@ export class MonitorProcessManager {
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       this.hostMetricsLog(machine, t("deviceOps.log.hostMetricsRuntimeError", { error: error.message }));

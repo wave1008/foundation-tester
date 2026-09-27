@@ -31,6 +31,7 @@ import {
 } from "@vscode/debugadapter";
 import type { DebugProtocol } from "@vscode/debugprotocol";
 import { childEnv } from "./childEnv";
+import { detectDyldLaunchFailure } from "./dyldLaunchFailure";
 import { t } from "./i18n";
 import { isRunEvent, type RunStepSection } from "./model";
 import { NdjsonParser } from "./ndjson";
@@ -55,6 +56,10 @@ export interface FleetestDebugSessionOptions {
   cwd: string;
   /** 診断ログの出力先(省略時は何もしない)。 */
   log?: (line: string, stream: "stdout" | "stderr") => void;
+  /** stderr に dyld の読み込み失敗行(detectDyldLaunchFailure)を見つけたときに呼ぶ。vscode の通知は
+   *  ここでは出さない(このファイルは vscode 非依存の契約を持つ) —— debugConfig.ts が
+   *  notifyDyldLaunchFailureLine を渡して初めて通知になる。省略時は何もしない。 */
+  onDyldLaunchFailure?: (line: string) => void;
 }
 
 /** launch.json / startDebugging に渡される launch 引数。 */
@@ -112,6 +117,7 @@ export class FleetestDebugSession extends DebugSession {
   private readonly binaryPath: string;
   private readonly cwd: string;
   private readonly log: (line: string, stream: "stdout" | "stderr") => void;
+  private readonly onDyldLaunchFailure: (line: string) => void;
 
   private launchArgs: FleetestLaunchRequestArguments | undefined;
   private child: FleetestProcess | undefined;
@@ -130,6 +136,7 @@ export class FleetestDebugSession extends DebugSession {
     this.binaryPath = options.binaryPath;
     this.cwd = options.cwd;
     this.log = options.log ?? (() => undefined);
+    this.onDyldLaunchFailure = options.onDyldLaunchFailure ?? (() => undefined);
     this.setDebuggerLinesStartAt1(true);
     this.setDebuggerColumnsStartAt1(true);
   }
@@ -350,6 +357,10 @@ export class FleetestDebugSession extends DebugSession {
   private forwardStderrLine(line: string): void {
     this.log(line, "stderr");
     this.sendEvent(new OutputEvent(`${line}\n`, "stderr"));
+    const dyldLine = detectDyldLaunchFailure(line);
+    if (dyldLine !== null) {
+      this.onDyldLaunchFailure(dyldLine);
+    }
   }
 
   private writeCommand(obj: Record<string, unknown>): void {

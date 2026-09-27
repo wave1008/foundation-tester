@@ -87,6 +87,19 @@ if [ -z "$TOOL_ROOT" ]; then
   exit 1
 fi
 
+# 対の実装: Scripts/install.sh(共有する仕組みが無いので同一関数を複製。片方だけ変えない)
+dyld_failure_line() {
+  local line
+  # 終了コードは「当たった行があるか」で自分で決める(パイプの最後の awk は常に 0 = pipefail の有無に依存させない)
+  line="$(printf '%s' "$1" | grep -E 'dyld(\[[0-9]+\])?: (Symbol not found|Library not loaded)' | awk 'NR==1' || true)"
+  [ -n "$line" ] && printf '%s' "$line"
+}
+
+dyld_failure_message() {
+  printf 'fleetest could not start (dyld failed to load it: %s). macOS and Xcode are most likely out of step (for example, macOS was updated to a newer beta but Xcode was not). Update Xcode to the same generation as macOS, then delete .build in the fleetest clone (%s) and in your work folder, and run: bash %s/Scripts/update.sh --force' \
+    "$1" "$TOOL_ROOT" "$TOOL_ROOT"
+}
+
 # ---- 0.5 更新が無いなら何もしない ---------------------------------------------
 # 以降の工程は「更新が無くても」約30秒かかる(swift build の no-op 18s + doctor 8s + 拡張の
 # 再パッケージ 4s。M2 Ultra 実測)。1秒で済む判定を先に置く。
@@ -174,7 +187,18 @@ FT="$TOOL_ROOT/.build/debug/fleetest"
 if [ -x "$FT" ]; then
   echo ""
   echo "==> fleetest project sync (resyncing TestProjects/ ↔ Package.swift)"
-  ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync failed (check it by hand)"
+  # install.sh の ensure-settings 呼び出しが既に通っている以上ここで dyld が新たに失敗することは
+  # 無いはずだが、直接実行している箇所なので同じ判定(dyld_failure_line。上で複製)を掛けておく
+  if sync_out="$( cd "$WORK_DIR" && "$FT" project sync 2>&1 )"; then
+    printf '%s\n' "$sync_out"
+  elif dyld_line="$(dyld_failure_line "$sync_out")"; then
+    printf '%s\n' "$sync_out"
+    echo "❌ $(dyld_failure_message "$dyld_line")" >&2
+    exit 1
+  else
+    printf '%s\n' "$sync_out"
+    echo "⚠️ project sync failed (check it by hand)"
+  fi
 fi
 
 # ---- 5.7. Claude Code プラグイン(スキル)の更新 ---------------------------------

@@ -11,6 +11,7 @@ import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import {
   bulkLifecycleOp,
@@ -562,7 +563,11 @@ export class MonitorDeviceOps {
     }
 
     const appendLines = (stream: "stdout" | "stderr", chunk: Buffer): void => {
-      for (const rawLine of chunk.toString("utf8").split("\n")) {
+      const text = chunk.toString("utf8");
+      if (stream === "stderr") {
+        checkForDyldLaunchFailure(text, this.deps.workspaceRoot);
+      }
+      for (const rawLine of text.split("\n")) {
         const line = rawLine.trim();
         if (line.length > 0) {
           this.deps.outputChannel.appendLine(`[devices ${kind} ${stream}] ${line}`);
@@ -798,7 +803,9 @@ export class MonitorDeviceOps {
     );
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => {
-      for (const rawLine of chunk.toString("utf8").split("\n")) {
+      const text = chunk.toString("utf8");
+      checkForDyldLaunchFailure(text, this.deps.workspaceRoot);
+      for (const rawLine of text.split("\n")) {
         const line = rawLine.trim();
         if (line.length > 0) {
           this.deps.outputChannel.appendLine(`[restart-devices stderr] ${line}`);
@@ -1070,7 +1077,10 @@ export class MonitorDeviceOps {
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       logFailure(error.message);
@@ -1149,7 +1159,9 @@ export class MonitorDeviceOps {
       stdout += chunk.toString("utf8");
     });
     proc.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      checkForDyldLaunchFailure(text, this.deps.workspaceRoot);
+      stderr += text;
     });
 
     // spawn 失敗時の 'error'+'close' 二重発火対策(executeBulkJob 参照)。二重 post を防ぐ。
@@ -1244,6 +1256,7 @@ export class MonitorDeviceOps {
     });
     // 行が途中で切れて届くので、改行までバッファしてから1行ずつ出す
     proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
       stderrTail += chunk.toString("utf8");
       const lines = stderrTail.split("\n");
       stderrTail = lines.pop() ?? "";
@@ -1326,7 +1339,9 @@ export class MonitorDeviceOps {
       stdout += chunk.toString("utf8");
     });
     proc.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      checkForDyldLaunchFailure(text, this.deps.workspaceRoot);
+      stderr += text;
     });
 
     let responded = false;

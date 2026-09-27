@@ -15,6 +15,7 @@ import { test } from "node:test";
 import ts from "typescript";
 
 import { compatStrings } from "../src/i18n/strings/compat";
+import { dyldStrings } from "../src/i18n/strings/dyld";
 import { profilesStrings } from "../src/i18n/strings/profiles";
 import { panelsStrings } from "../src/i18n/strings/panels";
 import { monitorStrings } from "../src/i18n/strings/monitor";
@@ -49,6 +50,7 @@ const DICTS = [
   { name: "hookScaffold", prefix: "hookScaffold.", dict: hookScaffoldStrings, side: "ext" },
   { name: "update", prefix: "update.", dict: updateStrings, side: "ext" },
   { name: "resultsExport", prefix: "resultsExport.", dict: resultsExportStrings, side: "ext" },
+  { name: "dyld", prefix: "dyld.", dict: dyldStrings, side: "ext" },
   { name: "webviewMonitorA", prefix: "wvMonitor.", dict: webviewMonitorAStrings, side: "webview" },
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },
   { name: "webviewDashboard", prefix: "wvDashboard.", dict: webviewDashboardStrings, side: "webview" },

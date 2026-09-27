@@ -8,6 +8,7 @@ import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import {
   deleteDeviceApiArgs,
@@ -477,7 +478,10 @@ export class MonitorDeviceCreateOps {
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(
@@ -577,7 +581,10 @@ export class MonitorDeviceCreateOps {
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(
@@ -752,7 +759,10 @@ export class MonitorDeviceCreateOps {
     );
 
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      checkForDyldLaunchFailure(chunk.toString("utf8"), this.deps.workspaceRoot);
+      stderrParser.push(chunk);
+    });
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(

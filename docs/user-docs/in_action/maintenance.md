@@ -33,7 +33,9 @@ while the versions differ. See "After you update fleetest" in
 ### When you update macOS or Xcode
 
 - **If you use a macOS beta, move Xcode to the same beta whenever you update macOS.** Otherwise the
-  fleetest programs crash with a dyld error right after they start.
+  fleetest programs crash with a dyld error right after they start. When that error
+  (`dyld[…]: Symbol not found` / `Library not loaded`) appears, the VSCode extension and the install and
+  update scripts spot it and show the fix below.
 - After Xcode matches, rebuild everything. `<TOOL_ROOT>` is the fleetest clone (by default
   `foundation-tester` next to your work folder).
 

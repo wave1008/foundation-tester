@@ -6,6 +6,7 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type * as vscode from "vscode";
 import { childEnv } from "./childEnv";
+import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts/monitorPanel.ts と同じ形。
@@ -47,7 +48,9 @@ export function runOneShot(
     const stderrLines: string[] = [];
     proc.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => {
-      for (const rawLine of chunk.toString("utf8").split("\n")) {
+      const text = chunk.toString("utf8");
+      checkForDyldLaunchFailure(text, cwd);
+      for (const rawLine of text.split("\n")) {
         const line = rawLine.trim();
         if (line.length > 0) {
           stderrLines.push(line);

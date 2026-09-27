@@ -135,6 +135,21 @@ struct Doctor: AsyncParsableCommand {
         ConsoleOut.out(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
         if xcode.status != 0 { problems += 1 }
 
+        // macOS/Xcode の版とビルド。**情報だけ・赤にも警告にもしない** —— ずれていても正常に
+        // 動く組み合わせが実測である(macOS 27.2 ベータ + SDK 27.0)。実際の起動失敗(dyld の
+        // シンボル不一致)は Scripts/install.sh・update.sh と VSCode 拡張(dyldLaunchFailure.ts)が
+        // 実行結果から捕まえる(事前判定はしない)
+        let macOSVersion = (try? Shell.run(["sw_vers", "-productVersion"]))?.outputIfSucceeded?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let macOSBuild = (try? Shell.run(["sw_vers", "-buildVersion"]))?.outputIfSucceeded?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let sdkVersion = (try? Shell.run(["xcrun", "--sdk", "macosx", "--show-sdk-version"]))?.outputIfSucceeded?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let sdkBuild = (try? Shell.run(["xcrun", "--sdk", "macosx", "--show-sdk-build-version"]))?.outputIfSucceeded?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        ConsoleOut.out("ℹ️ " + Self.osToolchainLine(
+            macOSVersion: macOSVersion, macOSBuild: macOSBuild, sdkVersion: sdkVersion, sdkBuild: sdkBuild))
+
         await reportUnmanagedBridges()
 
         // ランナーをビルドした Xcode/SDK と現在のものの一致確認。Xcode(beta)更新後に
@@ -265,6 +280,26 @@ struct Doctor: AsyncParsableCommand {
             return "   - port \(port) — only a USB tunnel (iproxy) is holding this port, and the bridge"
                 + " behind it did not answer in time (it may just be busy). Check again before stopping it"
         }
+    }
+
+    /// ビルド番号の末尾が英小文字ならベータ(Apple の慣例。`26B5091g` → ベータ / `26A425` → 正式)
+    static func isBetaBuild(_ build: String) -> Bool {
+        guard let last = build.last else { return false }
+        return last.isLetter && last.isLowercase
+    }
+
+    /// macOS / Xcode SDK の版とビルドの表示行。**判定はしない**(ずれていても正常に動く組み合わせが
+    /// ある)。読めなかった項目は "unknown" にする(それぞれ独立。片方が読めた側までは出す)
+    static func osToolchainLine(macOSVersion: String?, macOSBuild: String?,
+                                sdkVersion: String?, sdkBuild: String?) -> String {
+        func withBuild(_ version: String?, _ build: String?, annotateBeta: Bool) -> String {
+            let versionText = (version?.isEmpty == false) ? version! : "unknown"
+            guard let build, !build.isEmpty else { return "\(versionText) (unknown)" }
+            let beta = (annotateBeta && Doctor.isBetaBuild(build)) ? ", beta" : ""
+            return "\(versionText) (\(build)\(beta))"
+        }
+        return "macOS \(withBuild(macOSVersion, macOSBuild, annotateBeta: true))"
+            + " / Xcode macOS SDK \(withBuild(sdkVersion, sdkBuild, annotateBeta: false))"
     }
 
     private func reportUnmanagedBridges() async {
