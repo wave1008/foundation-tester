@@ -20,7 +20,7 @@ import {
 } from '../dashboard/render.js';
 import { renderSummaryTable } from '../dashboard/summaryTable.js';
 import { renderInsights } from '../dashboard/insights.js';
-import { applyDeviceCatalog, renderDeviceHealth } from '../dashboard/deviceHealth.js';
+import { applyDeviceCatalog, renderDeviceHealth, resetStorageProgress } from '../dashboard/deviceHealth.js';
 import { renderPerformance } from '../dashboard/performance.js';
 import { setMachineAliases } from '../dashboard/machineNames.js';
 import { showRunDetailData, showRunDetailError } from '../dashboard/runDetail.js';
@@ -208,6 +208,9 @@ export function handleDashboardMessage(message) {
       break;
     case 'deviceCatalog':
       applyDeviceCatalog(message.devices);
+      break;
+    case 'storageProgressReset':
+      resetStorageProgress();
       break;
     default:
       break;

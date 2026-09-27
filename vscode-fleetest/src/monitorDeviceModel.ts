@@ -190,6 +190,15 @@ export interface MonitorRunEntry {
 /** `fleetest api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
 export type MonitorEvent =
   | { readonly kind: "monitorDevices"; readonly devices: readonly MonitorDevice[] }
+  // 1台のストレージ計測が終わった瞬間(契約は Sources/fleetest/ApiMonitorEvents.swift の ApiMonitorStorageEvent)。
+  // MonitorProcessManager がその台の storage / storageMeasuring / storageRefreshId だけを差し替えて配る
+  | {
+      readonly kind: "monitorStorage";
+      readonly device: string;
+      readonly storage?: MonitorDeviceStorage;
+      readonly storageMeasuring: boolean;
+      readonly storageRefreshId?: number;
+    }
   | {
       readonly kind: "monitorFrame";
       readonly device: string;
@@ -405,6 +414,14 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
   switch (value.kind) {
     case "monitorDevices":
       return Array.isArray(value.devices) && value.devices.every(isMonitorDevice);
+    case "monitorStorage":
+      if (value.storage === null || !isMonitorDeviceStorage(value.storage)) {
+        value.storage = undefined;
+      }
+      if (!Number.isSafeInteger(value.storageRefreshId)) {
+        value.storageRefreshId = undefined;
+      }
+      return typeof value.device === "string" && typeof value.storageMeasuring === "boolean";
     case "monitorFrame":
       return (
         typeof value.device === "string" &&
@@ -459,6 +476,26 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
   return [...devices].sort(compareMonitorDeviceOrder);
+}
+
+/** 周期の monitorDevices が、先に届いた monitorStorage(1台の計測の終わり)を巻き戻さないようにする。
+ * 周期はストレージの状態を読んでから書き出すまでに数秒かかる(実測約 2 秒)ので、その間に終わった台を
+ * 「測定中」のまま出してくる(リモートの子の中継でも同じ)。**同じ要求 id で一度「測り終えた」台は、
+ * 同じ id のまま「測定中」と言う一覧が来ても前の3欄を残す** —— 同じ id で測定中へ戻ることは無い
+ * (測り直しは必ず新しい id = 押した時刻)。id が変わったら新しい一覧をそのまま採る */
+export function keepFinishedStorage(
+  previous: readonly MonitorDevice[] | undefined,
+  next: readonly MonitorDevice[],
+): MonitorDevice[] {
+  const before = new Map((previous ?? []).map((device) => [device.id, device]));
+  return next.map((device) => {
+    const prior = before.get(device.id);
+    if (prior && prior.storageRefreshId !== undefined && prior.storageRefreshId === device.storageRefreshId
+        && !prior.storageMeasuring && device.storageMeasuring) {
+      return { ...device, storage: prior.storage, storageMeasuring: false };
+    }
+    return device;
+  });
 }
 
 /** 台の表示順(機械 → プラットフォーム → 仮想デバイスが先・実機が後 → 名前)の唯一の定義元。

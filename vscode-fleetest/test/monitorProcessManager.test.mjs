@@ -558,6 +558,80 @@ const lockHeld = {
   kind: "monitorLock", machine: "mac2", observed: true, held: true, issuer: "wave1008", mine: false,
 };
 
+test("モニターを起動するたびに「ストレージ使用を更新」の進捗のリセットを webview へ知らせる", () => {
+  const posted = [];
+  const manager = new MonitorProcessManager(makeDeps({ post: (message) => posted.push(message) }), () => makeFakeProc());
+  manager.startMonitorProcess();
+  const resets = posted.filter((m) => m.type === "dashboard" && m.message.type === "storageProgressReset");
+  assert.equal(resets.length, 1);
+});
+
+test("monitorStorage はその台の3欄だけ差し替えて、周期を待たずに webview と購読者へ配る", () => {
+  const posted = [];
+  const notified = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps({
+    post: (message) => posted.push(message),
+    notifyMonitorDevices: (devices) => notified.push(devices),
+  }), spawnFn);
+  manager.startMonitorProcess();
+  const device = (id) => ({ id, name: id, platform: "ios", state: "connected", detail: "", kind: "virtual",
+    storageMeasuring: true, storageRefreshId: 7 });
+  feedLine(procs[0], { kind: "monitorDevices", devices: [device("ios:A"), device("ios:B")] });
+  posted.length = 0;
+  notified.length = 0;
+
+  feedLine(procs[0], {
+    kind: "monitorStorage", device: "ios:B", storageMeasuring: false, storageRefreshId: 7,
+    storage: { usedBytes: 5, freeScope: "hostVolume", measuredAt: "t", carriedOver: false },
+  });
+  const devicesMessages = posted.filter((m) => m.type === "devices");
+  assert.equal(devicesMessages.length, 1);
+  const byId = Object.fromEntries(devicesMessages[0].devices.map((d) => [d.id, d]));
+  assert.equal(byId["ios:A"].storageMeasuring, true, "ほかの台は触らない");
+  assert.equal(byId["ios:B"].storageMeasuring, false);
+  assert.equal(byId["ios:B"].storage.usedBytes, 5);
+  assert.equal(notified.length, 1);
+
+  // 一覧に居ない台は捨てる(配らない)
+  posted.length = 0;
+  feedLine(procs[0], { kind: "monitorStorage", device: "ios:gone", storageMeasuring: false });
+  assert.equal(posted.length, 0);
+});
+
+test("周期の一覧が古い「測定中」を持ってきても、同じ要求 id で測り終えた台は巻き戻さない", () => {
+  const posted = [];
+  const procs = [];
+  const spawnFn = () => {
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps({ post: (message) => posted.push(message) }), spawnFn);
+  manager.startMonitorProcess();
+  const device = (id, extra) => ({ id, name: id, platform: "ios", state: "connected", detail: "", kind: "virtual",
+    storageMeasuring: true, storageRefreshId: 7, ...extra });
+  feedLine(procs[0], { kind: "monitorDevices", devices: [device("ios:A")] });
+  feedLine(procs[0], { kind: "monitorStorage", device: "ios:A", storageMeasuring: false, storageRefreshId: 7,
+    storage: { usedBytes: 5, freeScope: "hostVolume", measuredAt: "t2", carriedOver: false } });
+  // 終わる前に読んだ状態で組んだ周期の一覧(測定中・古い値)
+  posted.length = 0;
+  feedLine(procs[0], { kind: "monitorDevices", devices: [device("ios:A", {
+    storage: { usedBytes: 1, freeScope: "hostVolume", measuredAt: "t1", carriedOver: true } })] });
+  const latest = posted.filter((m) => m.type === "devices").at(-1).devices[0];
+  assert.equal(latest.storageMeasuring, false);
+  assert.equal(latest.storage.usedBytes, 5);
+
+  // 新しい要求(id が変わる)なら測定中をそのまま採る
+  feedLine(procs[0], { kind: "monitorDevices", devices: [device("ios:A", { storageRefreshId: 8 })] });
+  assert.equal(posted.filter((m) => m.type === "devices").at(-1).devices[0].storageMeasuring, true);
+});
+
 test("占有の行は既定では「タイルはポーリングで更新」と言う", () => {
   const lines = [];
   const procs = [];

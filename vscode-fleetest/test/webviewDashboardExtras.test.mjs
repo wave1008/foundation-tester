@@ -404,6 +404,19 @@ test("デバイスの健全性: 同じ OS の中は Simulator / Emulator が先�
   assert.deepEqual(workers, ["ios:Z-sim", "ios:A-iPhone", "android:Z-emu", "android:A-phone"]);
 });
 
+test("デバイスの健全性: モニターの台の一覧が届くまでは「確認中」、届いても0台なら「記録がありません」", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const empty = () => window.document.getElementById("devices-empty");
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload() } });
+  assert.equal(empty().style.display, "block");
+  assert.equal(empty().textContent, "デバイスを確認しています…", "モニターの一覧がまだ無いうちは断定しない");
+
+  sendToWebview({ type: "devices", filter: "all", devices: [] });
+  assert.equal(empty().style.display, "block");
+  assert.equal(empty().textContent, "デバイスの記録がありません。");
+});
+
 test("デバイスの健全性: ストレージは使用量だけを出し、空き(母数が OS で違う)は出さない", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
@@ -461,7 +474,7 @@ test("デバイスの健全性: 更新の進捗は「自分の id 以上を受�
   ];
   sendToWebview({ type: "devices", filter: "all", devices: devices({}, {}) });
   const progress = () => window.document.getElementById("dh-storage-progress").textContent;
-  assert.equal(progress(), "", "押す前は何も出さない");
+  assert.equal(progress(), "", "押す前で値が1つも無いときは何も出さない");
 
   posts.length = 0;
   window.document.getElementById("btn-device-health-refresh-storage").click();
@@ -476,7 +489,8 @@ test("デバイスの健全性: 更新の進捗は「自分の id 以上を受�
   ) });
   assert.equal(progress(), "ストレージを測定中… 1 / 2 台");
   assert.doesNotMatch(cellOf("android:a").textContent, /測定中/);
-  assert.match(cellOf("android:b").textContent, /測定中/);
+  assert.equal(cellOf("android:b").textContent, "測定中", "測定中は値を出さない");
+  assert.equal(cellOf("android:a").textContent, "1.4 GB");
 
   // 前の要求の id しか受け取っていない台は、測定中でなくても未完了
   sendToWebview({ type: "devices", filter: "all", devices: devices(
@@ -487,6 +501,53 @@ test("デバイスの健全性: 更新の進捗は「自分の id 以上を受�
   sendToWebview({ type: "devices", filter: "all", devices: devices({ storageRefreshId: id }, { storageRefreshId: id }) });
   assert.match(progress(), /^最終更新: .+$/);
   assert.doesNotMatch(cellOf("android:b").textContent, /測定中/);
+});
+
+test("デバイスの健全性: 画面を開いたとき(押す前)は、各台の計測時刻のうち最も新しいものを最終更新として出す", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload() } });
+  const storage = (measuredAt, carriedOver) => ({ usedBytes: 1, freeScope: "device", measuredAt, carriedOver });
+  // 時刻はローカル時刻で書く(書式はローカル時刻で出すので、Z 付きだと TZ で日付がずれる)
+  sendToWebview({ type: "devices", filter: "all", devices: [
+    monitorDevice({ id: "android:a", name: "a", storageMeasuring: false, storage: storage("2026-09-01T10:00:00", true) }),
+    monitorDevice({ id: "android:b", name: "b", storageMeasuring: false, storage: storage("2026-09-20T08:30:15", true) }),
+    monitorDevice({ id: "android:c", name: "c", storageMeasuring: false }),
+  ] });
+  assert.equal(window.document.getElementById("dh-storage-progress").textContent, "最終更新: 2026-09-20 08:30:15");
+});
+
+test("デバイスの健全性: 測定中は「ストレージ使用を更新」を押せない(受け取られるまで・測定中の台がある間)", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload() } });
+  const devices = (a, b) => [
+    monitorDevice({ id: "android:a", name: "a", kind: "virtual", storageMeasuring: false, ...a }),
+    monitorDevice({ id: "android:b", name: "b", kind: "virtual", storageMeasuring: false, ...b }),
+  ];
+  sendToWebview({ type: "devices", filter: "all", devices: devices({}, {}) });
+  const btn = window.document.getElementById("btn-device-health-refresh-storage");
+  assert.equal(btn.disabled, false);
+
+  posts.length = 0;
+  btn.click();
+  const id = posts.find((m) => m?.type === "dashboard").message.id;
+  assert.equal(btn.disabled, true, "押した直後(モニターが受け取る前)も押せない");
+  btn.click();
+  assert.equal(posts.filter((m) => m?.type === "dashboard").length, 1, "押せない間は送らない");
+
+  sendToWebview({ type: "devices", filter: "all", devices: devices(
+    { storageRefreshId: id }, { storageRefreshId: id, storageMeasuring: true }) });
+  assert.equal(btn.disabled, true, "測定中の台がある間は押せない");
+
+  sendToWebview({ type: "devices", filter: "all", devices: devices({ storageRefreshId: id }, { storageRefreshId: id }) });
+  assert.equal(btn.disabled, false, "全台終わったら押せる");
+
+  // 押した後にモニターが起動し直したら(要求は届かない)解く
+  btn.click();
+  assert.equal(btn.disabled, true);
+  sendToWebview({ type: "dashboard", message: { type: "storageProgressReset" } });
+  assert.equal(btn.disabled, false, "失われた要求を待ち続けない");
 });
 
 test("デバイスの健全性: 測れる台が無いときは押した直後にそう言う", (t) => {

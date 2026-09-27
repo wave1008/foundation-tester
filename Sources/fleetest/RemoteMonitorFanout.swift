@@ -312,6 +312,24 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             relayLine(text)
             return
         }
+        if kind == "monitorStorage" {
+            // 1台の計測の終わり(ApiMonitorStorageEvent の doc)。id をマシン付きに直して中継し、
+            // **保持している子の monitorDevices も同じ値へ書き換える** —— 書き換えないと、親の次の周期が
+            // 子の古い一覧(測定中)を出して、画面が「測定中」へ戻る
+            let scopedLine = Self.machineScoped(line: line, machine: machine)
+            if let event = try? JSONDecoder().decode(ApiMonitorStorageEvent.self, from: Data(scopedLine.utf8)) {
+                lock.lock()
+                if var device = devicesByMachine[machine]?[event.device] {
+                    device.storage = event.storage
+                    device.storageMeasuring = event.storageMeasuring
+                    device.storageRefreshId = event.storageRefreshId
+                    devicesByMachine[machine]?[event.device] = device
+                }
+                lock.unlock()
+            }
+            relayLine(scopedLine)
+            return
+        }
         guard kind == "monitorDevices" else {
             // monitorFrame / monitorError。**"device" だけマシン付きに直して**中継する
             // (base64 は触らない = 1往復ぶんの無駄を避ける。理由はファイル冒頭)

@@ -396,7 +396,10 @@ export type DashboardToWebviewMessage =
   /** 前回比。latest/previous は groupRuns() の構成 run ごとの results-run 応答。 */
   | { readonly type: "headlineDiff"; readonly latest: readonly ApiResultsRunPayload[]; readonly previous: readonly ApiResultsRunPayload[] }
   /** 前回比の取得失敗(webview は前回比を畳むだけで文言は出さない)。 */
-  | { readonly type: "headlineDiffError" };
+  | { readonly type: "headlineDiffError" }
+  /** モニターを起動し直した(MonitorProcessManager.startMonitorProcess)。押した「ストレージ使用を更新」の要求は
+   * 新しいモニターに届いていないので、進捗と「押せない」を解く(解かないと受け取られない要求を待ち続ける) */
+  | { readonly type: "storageProgressReset" };
 
 // ---- 型ガード ---------------------------------------------------------------------
 

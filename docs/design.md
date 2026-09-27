@@ -4544,6 +4544,12 @@ monitor が `monitorDevices[].storage`(`usedBytes` / `freeBytes` / `freeScope` /
   **run の有無でも止めない**(run で使っている台・run が動いている Mac の iOS も測る)。実機は測らない(欄を省く)。
   **計測中の台は積まない**(同じ台を二重に歩かない)。リモートの子へは fan-out が素通しする
   (1回きりの指示なので、張り直した子へは送り直さない)。測れなかった回は前回値を配り続ける(0 で埋めない)。
+- **進捗**: 指示の id は拡張が押した時刻で振る。モニターは台ごとに `storageMeasuring` / `storageRefreshId`
+  (最後に受け取った id)を返し、**1台終わるたびに `monitorStorage` を1行**出す(周期の一覧は 1 周 10 秒前後
+  かかるので、待つと終わった台がまとめて変わる)。fan-out は子の `monitorStorage` の id をマシン付きに直し、
+  保持している子の一覧も同じ値へ書き換える。拡張は「自分の id 以上を受け取った かつ 測定中でない」台を
+  測り終えたと数え、**同じ id で一度測り終えた台を、後から来た周期の一覧の「測定中」で巻き戻さない**
+  (`keepFinishedStorage`。周期は状態を読んでから書き出すまでに約 2 秒かかり、その間に終わった台を古いまま出す)。
 - **Android**: `adb shell df /data`(`AndroidStorageProbe`)。`freeScope: "device"`。
 - **iOS Simulator**: データディレクトリをプロセス内で**並列に歩いた割り当て済みの大きさ**(du -sk と同じ量。
   隠しファイル込み・リンクは辿らない)+ ホストのボリュームの空き(`SimulatorStorageProbe`。締切 300 秒)。

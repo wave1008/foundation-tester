@@ -81,7 +81,8 @@ export const webviewDashboardStrings = {
   "wvDashboard.deviceHealth.healthClockSkew": { ja: "時計のずれ", en: "Clock skew" },
   "wvDashboard.deviceHealth.healthBlankScreen": { ja: "黒画面", en: "Blank screen" },
   "wvDashboard.deviceHealth.measuredAtTitle": { ja: "計測: {time}", en: "Measured: {time}" },
-  "wvDashboard.deviceHealth.storageMeasuringCell": { ja: "測定中…", en: "Measuring…" },
+  "wvDashboard.deviceHealth.storageMeasuringCell": { ja: "測定中", en: "Measuring" },
+  "wvDashboard.deviceHealth.checking": { ja: "デバイスを確認しています…", en: "Checking devices…" },
   "wvDashboard.deviceHealth.storageProgress": {
     ja: "ストレージを測定中… {done} / {total} 台",
     en: "Measuring storage… {done} / {total} devices",

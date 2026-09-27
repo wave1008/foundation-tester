@@ -31,11 +31,16 @@ final class DeviceStorageSampler: @unchecked Sendable {
     private let storeURL: URL?
     /// 書き込みの順序を保つ(iOS と Android のキューが同時に終えると、古い控えを後から書きうる)
     private let storeWriteLock = NSLock()
+    /// 1台の計測が終わるたび(測れなかった回も)、測定中から外して値を入れた**後**に計測キューのスレッドで呼ぶ。
+    /// モニターはここで monitorStorage を出す(周期を待たずに終わった台から画面を変える)
+    private let onMeasured: @Sendable (String) -> Void
 
-    init(probeIOS: @escaping Probe, probeAndroid: @escaping Probe, storeURL: URL?) {
+    init(probeIOS: @escaping Probe, probeAndroid: @escaping Probe, storeURL: URL?,
+         onMeasured: @escaping @Sendable (String) -> Void) {
         self.probeIOS = probeIOS
         self.probeAndroid = probeAndroid
         self.storeURL = storeURL
+        self.onMeasured = onMeasured
         if let storeURL, let data = try? Data(contentsOf: storeURL),
            let stored = try? JSONDecoder().decode([String: DeviceStorageInfo].self, from: data) {
             cache = stored.mapValues { info in
@@ -52,8 +57,10 @@ final class DeviceStorageSampler: @unchecked Sendable {
     }
 
     /// candidates = 動いている仮想デバイス(key = udid / serial)。更新の要求が無ければ何もしない。
-    /// **計測中の台は積まない**(同じ台を二重に歩かない。その台は進行中の計測の値になる)
-    func schedule(candidates: [(key: String, platform: String)]) {
+    /// **計測中の台は積まない**(同じ台を二重に歩かない。その台は進行中の計測の値になる)。
+    /// 戻り値 = 今回積んだ台(モニターはすぐ「測定中」を知らせる)
+    @discardableResult
+    func schedule(candidates: [(key: String, platform: String)]) -> [String] {
         var jobs: [(key: String, isIOS: Bool)] = []
         lock.lock()
         if refreshRequested {
@@ -69,6 +76,7 @@ final class DeviceStorageSampler: @unchecked Sendable {
                 finish(key: job.key, info: job.isIOS ? probeIOS(job.key) : probeAndroid(job.key))
             }
         }
+        return jobs.map(\.key)
     }
 
     /// 測れなかった回は前回値を残す(0 で埋めない)
@@ -78,6 +86,7 @@ final class DeviceStorageSampler: @unchecked Sendable {
         if let info { cache[key] = info }
         lock.unlock()
         if info != nil { persist() }
+        onMeasured(key)
     }
 
     /// 書き込み失敗は握りつぶす(控えのために計測も配信も止めない)。控えは書く直前に取る(順序は storeWriteLock)

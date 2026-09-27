@@ -26,6 +26,19 @@ struct ApiMonitorDevicesEvent: Codable {
     let devices: [ApiMonitorDeviceInfo]
 }
 
+/// 1台のストレージ計測が終わった瞬間に出す(周期の monitorDevices を待たない = 終わった台から画面が変わる)。
+/// 欄は ApiMonitorDeviceInfo の storage / storageMeasuring / storageRefreshId と同じ意味。`device` はタイルの id
+/// (**var** —— 子は "platform:name" で出し、中継する RemoteMonitorFanout がマシン付きに直して、保持している
+/// 子の monitorDevices も同じ値へ書き換える。書き換えないと親の次の周期で古い「測定中」に戻る)。
+/// 同期相手: vscode-fleetest/src/monitorDeviceModel.ts(isMonitorEvent の monitorStorage)
+struct ApiMonitorStorageEvent: Codable {
+    private(set) var kind = "monitorStorage"
+    var device: String
+    let storage: DeviceStorageInfo?
+    let storageMeasuring: Bool
+    let storageRefreshId: Int?
+}
+
 /// 機械の dispatch.lock の状態変化(docs/remote-runner.md §18.7 M2)。**手元でも出す** ——
 /// ロックは機械に1本で、リモートへのディスパッチもローカル run も同じ1本を取る。
 /// `machine` は **var** —— 子は自分の機械名を知らない(畳んだプロファイルでは "local")ので、
@@ -220,13 +233,13 @@ struct ApiMonitorDeviceInfo: Codable {
     /// 計測は Android = `AndroidStorageProbe`(df /data)・iOS Simulator = `SimulatorStorageProbe`
     /// (データディレクトリの並列走査 + ホストボリュームの空き)。docs/results-json.md 対象外
     /// (results/ ではなく api monitor だけの欄)
-    let storage: DeviceStorageInfo?
+    var storage: DeviceStorageInfo?
     /// この台のストレージを今測っている(更新ボタンで積まれ、まだ終わっていない)。拡張の進捗表示が読む
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.storageMeasuring)
-    let storageMeasuring: Bool
+    var storageMeasuring: Bool
     /// この台を観測しているモニターが最後に受け取った storageRefresh の id(受け取っていなければ nil)。
     /// 拡張は「自分の要求 id 以上 かつ storageMeasuring == false」を測り終えたと数える
-    let storageRefreshId: Int?
+    var storageRefreshId: Int?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

@@ -16,7 +16,8 @@
 //
 // storageRefresh プロトコル: stdin に {"cmd":"storageRefresh","id":<正の整数>}(1回きりの指示。ダッシュボードの
 // 「ストレージ使用を更新」。id は拡張が押した時刻で振る)。ストレージを測るのはこの指示を受けたときだけ
-// (DeviceStorageSampler)。進捗は devices[].storageMeasuring / storageRefreshId で返す(id の無い行は無視)。
+// (DeviceStorageSampler)。進捗は devices[].storageMeasuring / storageRefreshId で返し、**1台終わるたびに
+// monitorStorage を1行**出す(StorageProgressBoard。周期を待たない)。id の無い行は無視。
 // 同期相手: vscode-fleetest/src/monitorDeviceLifecycle.ts (monitorControlLine)
 //
 // health プローブ: state=connected の Android エミュレータ(実機除く)へ低頻度でヘルス
@@ -166,13 +167,14 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var renderModeCache: [String: String] = [:]
         // ストレージ(monitorDevices[].storage)。key = udid(iOS)/serial(Android)。計測は裏で回し、
         // 周期は控えを読むだけ(DeviceStorageSampler の doc)
-        // 最後に受け取った更新要求の番号(devices[].storageRefreshId)。拡張は「自分の要求以上の番号 かつ
-        // 測定中でない」台を測り終えたと数える(待ち時間の定数を置かずに終わりを判定するため)
-        var handledStorageRefreshId: Int?
+        // 1台終わるたびに monitorStorage を出す(StorageProgressBoard の doc)
+        let storageBoard = StorageProgressBoard()
         let storageSampler = DeviceStorageSampler(
             probeIOS: { SimulatorStorageProbe.probe(udid: $0) },
             probeAndroid: { AndroidStorageProbe.probe(serial: $0) },
-            storeURL: MachineStateDirectory.url().appendingPathComponent("device-storage.json"))
+            storeURL: MachineStateDirectory.url().appendingPathComponent("device-storage.json"),
+            onMeasured: { key in storageBoard.publish(key: key) })
+        storageBoard.attach(storageSampler)
 
         // run/recording lease の読み取り用(.fleetest/{run,recording}-<key>.lease で inRun/recording を
         // 判定)。best-effort: リポジトリ外実行等で root が取れない場合は両者 false に倒す
@@ -363,13 +365,20 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let storageUpStates: Set<String> = ["connected", "booted"]
             if let refreshId = control.takeStorageRefreshRequest() {
                 storageSampler.requestRefresh()
-                handledStorageRefreshId = refreshId
+                storageBoard.setHandledRefreshId(refreshId)
             }
-            storageSampler.schedule(candidates: states.compactMap { state in
+            storageBoard.setDeviceIDs(Dictionary(states.compactMap { state in
+                (state.iosUdid ?? state.androidSerial).map { ($0, state.target.id) }
+            }, uniquingKeysWith: { first, _ in first }))
+            let handledStorageRefreshId = storageBoard.handledRefreshId
+            let scheduledStorageKeys = storageSampler.schedule(candidates: states.compactMap { state in
                 guard storageUpStates.contains(state.state), !state.target.spec.isPhysical,
                       let key = state.iosUdid ?? state.androidSerial else { return nil }
                 return (key, state.target.platform)
             })
+            // 積んだ台の「測定中」をすぐ知らせる —— 周期の一覧は書き出しまで数秒遅れ、その間に速い台
+            // (Android)の「測り終えた」だけが先に届くと、拡張には測定中の台が1台も無く見える(ボタンが一瞬押せた)
+            storageBoard.publish(keys: scheduledStorageKeys)
             storageSampler.forget(keysNotIn: Set(states.compactMap { $0.iosUdid ?? $0.androidSerial }))
             let (storageCache, storageMeasuring) = storageSampler.progressSnapshot()
 
@@ -964,6 +973,67 @@ final class MonitorOutput: @unchecked Sendable {
     }
 }
 
+
+/// ストレージの進捗を**計測が終わった瞬間に**1台ぶん出す(monitorStorage)。周期の monitorDevices は画面の
+/// スクショ等も含めて 1 周 10 秒前後かかる(実測)ので、それを待つと終わった台がまとめて変わる。
+/// 計測キューのスレッドから呼ばれるので、周期が持つ「鍵 → タイル id」と「受け取った要求の番号」をここに写す
+final class StorageProgressBoard: @unchecked Sendable {
+    private let lock = NSLock()
+    /// 状態を読んでから書き出すまでを1本ずつにする。**外すと同じ台の「測定中」(周期のスレッド)と
+    /// 「測り終えた」(計測キューのスレッド)が、読んだ順と逆に書かれて「測定中」で終わりうる**
+    private let publishLock = NSLock()
+    private var idByKey: [String: String] = [:]
+    private var handled: Int?
+    private weak var sampler: DeviceStorageSampler?
+    private let write: @Sendable (String) -> Void
+
+    /// write はテストの差し替え口(本番は stdout の1本の口)
+    init(write: @escaping @Sendable (String) -> Void = { MonitorOutput.shared.writeLine($0) }) {
+        self.write = write
+    }
+
+    func attach(_ sampler: DeviceStorageSampler) {
+        lock.lock(); self.sampler = sampler; lock.unlock()
+    }
+
+    /// key = udid / serial → monitorDevices の id(周期ごとに全置換)
+    func setDeviceIDs(_ ids: [String: String]) {
+        lock.lock(); idByKey = ids; lock.unlock()
+    }
+
+    func setHandledRefreshId(_ id: Int) {
+        lock.lock(); handled = id; lock.unlock()
+    }
+
+    var handledRefreshId: Int? {
+        lock.lock(); defer { lock.unlock() }
+        return handled
+    }
+
+    func publish(keys: [String]) {
+        for key in keys { publish(key: key) }
+    }
+
+    /// 周期の一覧に居ない台(居なくなった直後)は出さない —— id が引けない
+    func publish(key: String) {
+        lock.lock()
+        let id = idByKey[key]
+        let refreshId = handled
+        let sampler = self.sampler
+        lock.unlock()
+        guard let id, let sampler else { return }
+        publishLock.lock()
+        defer { publishLock.unlock() }
+        let progress = sampler.progressSnapshot()
+        let event = ApiMonitorStorageEvent(device: id, storage: progress.values[key],
+                                           storageMeasuring: progress.measuring.contains(key),
+                                           storageRefreshId: refreshId)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(event), let line = String(data: data, encoding: .utf8) else { return }
+        write(line)
+    }
+}
 
 /// pause/resume コマンド(stdin 経由)の状態。stdin 読み取りスレッドとメインループの間で共有する
 /// (StopFlag と同様 NSLock で保護する)

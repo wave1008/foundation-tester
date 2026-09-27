@@ -17,6 +17,7 @@ import {
   isMonitorEvent,
   monitorControlLine,
   sortMonitorDevices,
+  keepFinishedStorage,
   toWebviewMessage,
 } from "./monitorModel";
 import {
@@ -360,6 +361,8 @@ export class MonitorProcessManager {
     // run ボード(docs/design.md §18)の控えも同じ寿命 —— webview 側は runBoardModel.ts の状態を
     // 持つ独立モジュールなので、ホスト側に控えは無く明示的なリセット合図で畳む。
     this.deps.post({ type: "runBoardReset" });
+    // 「ストレージ使用を更新」の要求も前のモニターと寿命を共にする(DashboardToWebviewMessage の doc)
+    this.deps.post({ type: "dashboard", message: { type: "storageProgressReset" } });
     this.monitorStartedAt = Date.now();
     // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
     // デバイスがあれば suppressFrames を再送する(MonitorDeviceStreamController.streamingIds 参照)。
@@ -390,20 +393,24 @@ export class MonitorProcessManager {
           this.applyMachineLock(value);
           return;
         }
+        if (value.kind === "monitorStorage") {
+          // 1台の計測の終わり: その台の3欄だけ差し替えて、monitorDevices と同じ経路で配る
+          // (周期の monitorDevices を待つと、終わった台がまとめて変わる)。一覧に居ない台は捨てる
+          if (!this.latestDevices?.some((device) => device.id === value.device)) {
+            return;
+          }
+          this.publishDevices(this.latestDevices.map((device) => device.id !== value.device ? device : {
+            ...device,
+            storage: value.storage,
+            storageMeasuring: value.storageMeasuring,
+            storageRefreshId: value.storageRefreshId,
+          }));
+          return;
+        }
         if (value.kind === "monitorDevices") {
           // プロファイルタブの表示順に整列してから全消費側へ配る(sortMonitorDevices 参照)。
-          this.latestDevices = sortMonitorDevices(value.devices);
-          // MonitorDeviceStreamController のパイプライン張り替え判定に使う(monitorPanel.ts で配線)。
-          // 表示フィルタ前を渡す: ウォッチドッグは offline の観測で連続回数をリセットするため、
-          // 絞り込んだ一覧を渡すと古い booted 連続回数が次の起動へ持ち越されて誤検知に寄る。
-          this.deps.notifyMonitorDevices(this.latestDevices);
-          // リモート機の host-metrics(行が増える)。表示フィルタ前の一覧で判定する
-          this.syncHostMetricsMachines(this.latestDevices);
-          // **表示フィルタは畳まずに送る** —— run ボードのツリーはこのフィルタを通さない
-          // (ビルド中・停止中の台も出す。docs/design.md §18.5)。落とすのは webview の入口。
-          this.deps.post(
-            devicesToWebviewMessage(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
-          );
+          // 先に届いた1台ぶんの「測り終えた」を巻き戻さない(keepFinishedStorage の doc)
+          this.publishDevices(keepFinishedStorage(this.latestDevices, sortMonitorDevices(value.devices)));
           return;
         }
         // monitorFrame は state==connected のデバイスにしか来ない(ApiMonitorCommand.swift)ため、
@@ -1023,6 +1030,22 @@ export class MonitorProcessManager {
         () => this.startHostMetricsProcess(machine),
       );
     }
+  }
+
+  /** monitorDevices(整列済み)と monitorStorage(1台差し替え)の共通の配り口 */
+  private publishDevices(devices: readonly MonitorDevice[]): void {
+    this.latestDevices = devices;
+    // MonitorDeviceStreamController のパイプライン張り替え判定に使う(monitorPanel.ts で配線)。
+    // 表示フィルタ前を渡す: ウォッチドッグは offline の観測で連続回数をリセットするため、
+    // 絞り込んだ一覧を渡すと古い booted 連続回数が次の起動へ持ち越されて誤検知に寄る。
+    this.deps.notifyMonitorDevices(this.latestDevices);
+    // リモート機の host-metrics(行が増える)。表示フィルタ前の一覧で判定する
+    this.syncHostMetricsMachines(this.latestDevices);
+    // **表示フィルタは畳まずに送る** —— run ボードのツリーはこのフィルタを通さない
+    // (ビルド中・停止中の台も出す。docs/design.md §18.5)。落とすのは webview の入口。
+    this.deps.post(
+      devicesToWebviewMessage(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
+    );
   }
 
   /**

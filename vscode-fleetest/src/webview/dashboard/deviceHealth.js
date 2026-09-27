@@ -33,6 +33,11 @@ const section = document.getElementById('section-devices');
 const body = document.getElementById('table-device-health-body');
 const toggleBtn = document.getElementById('devices-toggle-all');
 const emptyEl = document.getElementById('devices-empty');
+// 空のときの文言。**モニターの台の一覧と結果の履歴の両方が1回ずつ届くまでは「確認中」** —— 開いた直後は
+// どちらもまだ無く(モニターは数秒〜10 秒・履歴は 15〜20 秒)、「記録がありません」と断定してしまう
+const noRecordsText = emptyEl ? emptyEl.textContent : '';
+let monitorDevicesSeen = false;
+let healthRowsSeen = false;
 const activeOnlyToggle = document.getElementById('chk-device-health-active-only');
 
 let expanded = false;
@@ -266,10 +271,11 @@ function storageCell(monitor) {
     cell.classList.add('dh-storage-carried-over');
   }
   if (monitor && isStorageTarget(monitor) && isStoragePending(monitor)) {
+    // 測定中は値を出さず「測定中」だけ(ユーザー決定)。前回の値と計測時刻は title に残る
     const mark = document.createElement('span');
     mark.className = 'dh-storage-measuring';
     mark.textContent = t('wvDashboard.deviceHealth.storageMeasuringCell');
-    cell.append(' ', mark);
+    cell.replaceChildren(mark);
   }
   return cell;
 }
@@ -281,6 +287,21 @@ function storageCell(monitor) {
 // 受け取れなかったとき = 0 台のまま進まないときの逃げ道)。
 let storageRequestId = null;
 let storageFinishedAt = null;
+// 押してから、モニターが要求を受け取った(いずれかの台が id 以上を返した)と分かるまで true。
+// **測定中は押せない**(ユーザー決定)= この間 と いずれかの台が storageMeasuring の間はボタンを止める。
+// 要求が失われた(モニターの起動し直し)ときは storageProgressReset で解く
+let awaitingStorageAck = false;
+
+/** モニターを起動し直した(dashboardTab.js の storageProgressReset)。前のモニターへの要求は届かない */
+export function resetStorageProgress() {
+  storageRequestId = null;
+  storageFinishedAt = null;
+  awaitingStorageAck = false;
+  renderStorageProgress();
+  lastMonitorSignature = null;
+  currentRows = combineRows(lastHealthRows);
+  renderRows();
+}
 
 /** モニターが測る台と同じ(DeviceStorageSampler の候補: 動いている仮想デバイス) */
 function isStorageTarget(device) {
@@ -292,13 +313,39 @@ function isStoragePending(device) {
     && ((device.storageRefreshId ?? 0) < storageRequestId || device.storageMeasuring === true);
 }
 
+function latestMeasuredAt(devices) {
+  let latest = null;
+  for (const device of devices) {
+    const iso = device.storage && device.storage.measuredAt;
+    const time = iso ? Date.parse(iso) : NaN;
+    if (!Number.isNaN(time) && (latest === null || time > Date.parse(latest))) {
+      latest = iso;
+    }
+  }
+  return latest;
+}
+
+function updateRefreshStorageButton(targets) {
+  if (storageRequestId !== null && (targets.length === 0
+      || targets.some((device) => (device.storageRefreshId ?? 0) >= storageRequestId))) {
+    awaitingStorageAck = false;
+  }
+  const btn = document.getElementById('btn-device-health-refresh-storage');
+  if (btn) {
+    btn.disabled = awaitingStorageAck || targets.some((device) => device.storageMeasuring === true);
+  }
+}
+
 function renderStorageProgress() {
+  updateRefreshStorageButton(monitorDevices().filter(isStorageTarget));
   const el = document.getElementById('dh-storage-progress');
   if (!el) {
     return;
   }
   if (storageRequestId === null) {
-    el.textContent = '';
+    // 押す前(画面を開いたとき): 各台の値の計測時刻のうち最も新しいもの(前回値 = 前のモニターが測った値も含む)
+    const latest = latestMeasuredAt(monitorDevices());
+    el.textContent = latest ? t('wvDashboard.deviceHealth.storageDone', { time: formatLocalDateTime(latest) }) : '';
     return;
   }
   const targets = monitorDevices().filter(isStorageTarget);
@@ -415,6 +462,7 @@ function renderRows() {
   } else {
     toggleBtn.style.display = 'none';
   }
+  emptyEl.textContent = monitorDevicesSeen && healthRowsSeen ? noRecordsText : t('wvDashboard.deviceHealth.checking');
   emptyEl.style.display = shown.length === 0 ? 'block' : 'none';
 }
 
@@ -423,8 +471,12 @@ function renderRows() {
 const refreshStorageBtn = document.getElementById('btn-device-health-refresh-storage');
 if (refreshStorageBtn) {
   refreshStorageBtn.addEventListener('click', () => {
+    if (refreshStorageBtn.disabled) {
+      return;
+    }
     storageRequestId = Date.now();
     storageFinishedAt = null;
+    awaitingStorageAck = true;
     vscode.postMessage({ type: 'refreshStorage', id: storageRequestId });
     renderStorageProgress();
     // 各セルの「測定中」を次のモニター周期を待たずに出す
@@ -444,6 +496,7 @@ toggleBtn.addEventListener('click', () => {
 });
 
 export function renderDeviceHealth(deviceHealthRows) {
+  healthRowsSeen = true;
   expanded = false;
   lastHealthRows = deviceHealthRows || [];
   currentRows = combineRows(lastHealthRows);
@@ -465,6 +518,11 @@ function monitorSignature(rows) {
 }
 
 onMonitorDevicesChanged(() => {
+  if (!monitorDevicesSeen) {
+    // 最初の1回は表の中身が変わらなくても(0 台のまま)空の文言を「記録がありません」へ変えるため描き直す
+    monitorDevicesSeen = true;
+    lastMonitorSignature = null;
+  }
   renderStorageProgress();
   const rows = combineRows(lastHealthRows);
   const signature = monitorSignature(rows);

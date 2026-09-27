@@ -27,6 +27,27 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
                        "マシンのバッジは親が入れる(子は自分を local と見なす)")
     }
 
+    /// 子の monitorStorage は id をマシン付きに直して中継し、保持している子の一覧も同じ値へ書き換える
+    /// (書き換えないと親の次の周期で古い「測定中」に戻る)
+    func testStorageLineIsScopedAndPatchesTheHeldDevice() throws {
+        let devicesLine = #"""
+        {"kind":"monitorDevices","devices":[{"id":"ios:iPhone 17","name":"iPhone 17","platform":"ios","state":"connected","detail":"","udid":"U","serial":null,"health":null,"renderMode":null,"inRun":false,"kind":"virtual","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machine":null,"storageMeasuring":true,"storageRefreshId":7}]}
+        """#
+        let storageLine = #"{"device":"ios:iPhone 17","kind":"monitorStorage","storage":{"carriedOver":false,"freeScope":"hostVolume","measuredAt":"t","usedBytes":123},"storageMeasuring":false,"storageRefreshId":7}"#
+        let relayed = LockedLines()
+        let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
+                                         interval: 2, maxWidth: 960,
+                                         log: { _ in }, relayLine: { relayed.append($0) })
+        fanout.ingest(line: devicesLine, machine: "M1Ultra")
+        fanout.ingest(line: storageLine, machine: "M1Ultra")
+        XCTAssertEqual(relayed.values.count, 1)
+        XCTAssertTrue(relayed.values[0].contains(#""device":"ios:M1Ultra/iPhone 17""#), relayed.values[0])
+        let held = try XCTUnwrap(fanout.snapshot()["ios:M1Ultra/iPhone 17"])
+        XCTAssertEqual(held.storageMeasuring, false)
+        XCTAssertEqual(held.storage?.usedBytes, 123)
+        XCTAssertEqual(held.storageRefreshId, 7)
+    }
+
     func testFrameLineGetsTheMachineScopedDeviceID() {
         let line = #"{"kind":"monitorFrame","device":"android:Pixel 3a","jpegBase64":"AAAA","width":1}"#
         let scoped = RemoteMonitorFanout.machineScoped(line: line, machine: "M1Ultra")
@@ -156,4 +177,11 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
             XCTAssertEqual(RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"), line, line)
         }
     }
+}
+
+private final class LockedLines: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func append(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+    var values: [String] { lock.lock(); defer { lock.unlock() }; return items }
 }

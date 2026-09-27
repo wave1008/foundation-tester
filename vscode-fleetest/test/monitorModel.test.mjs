@@ -316,6 +316,19 @@ test("isMonitorEvent: storageMeasuring は true だけを true に・storageRefr
     [[true, 1790000000000], [false, undefined], [false, undefined]]);
 });
 
+test("isMonitorEvent: monitorStorage は device と storageMeasuring が要る・storage/storageRefreshId は不正なら落とす", () => {
+  const ok = { kind: "monitorStorage", device: "ios:A", storageMeasuring: false, storageRefreshId: 7,
+    storage: { usedBytes: 1, freeScope: "device", measuredAt: "t", carriedOver: false } };
+  assert.equal(isMonitorEvent(ok), true);
+  const bad = { kind: "monitorStorage", device: "ios:A", storageMeasuring: false, storageRefreshId: "7",
+    storage: { usedBytes: 1 } };
+  assert.equal(isMonitorEvent(bad), true);
+  assert.equal(bad.storage, undefined);
+  assert.equal(bad.storageRefreshId, undefined);
+  assert.equal(isMonitorEvent({ kind: "monitorStorage", storageMeasuring: false }), false);
+  assert.equal(isMonitorEvent({ kind: "monitorStorage", device: "ios:A" }), false);
+});
+
 test("isMonitorEvent: monitorFrame は width/height が欠落/非数値なら false", () => {
   assert.equal(
     isMonitorEvent({ kind: "monitorFrame", device: "d", jpegBase64: "A", height: 100 }),

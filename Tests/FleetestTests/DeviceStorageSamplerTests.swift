@@ -20,7 +20,7 @@ final class DeviceStorageSamplerTests: XCTestCase {
             calls.increment()
             return storageInfo(calls.value)
         }
-        return DeviceStorageSampler(probeIOS: probe, probeAndroid: probe, storeURL: storeURL)
+        return DeviceStorageSampler(probeIOS: probe, probeAndroid: probe, storeURL: storeURL, onMeasured: { _ in })
     }
 
     func testScheduleDoesNotWaitForTheProbe() {
@@ -88,12 +88,33 @@ final class DeviceStorageSamplerTests: XCTestCase {
         XCTAssertEqual(progress.values["emu"]?.usedBytes, 1, "測定中が外れた時点で値は入っている")
     }
 
+    /// 1台終わるたびに onMeasured を呼ぶ(測れなかった回も)。呼ぶ時点で測定中から外れ、値は入っている
+    /// = モニターはこの瞬間の progressSnapshot でその台の monitorStorage を出せる
+    func testOnMeasuredFiresPerDeviceAfterItLeavesMeasuring() {
+        let seen = LockedStrings()
+        let box = SamplerBox()
+        let sampler = DeviceStorageSampler(
+            probeIOS: { key in key == "slow" ? { Thread.sleep(forTimeInterval: 0.4); return storageInfo(2) }() : nil },
+            probeAndroid: { _ in storageInfo(1) },
+            storeURL: nil,
+            onMeasured: { key in
+                guard let progress = box.sampler?.progressSnapshot() else { return }
+                seen.append("\(key):\(progress.measuring.contains(key)):\(progress.values[key]?.usedBytes ?? -1)")
+            })
+        box.sampler = sampler
+        sampler.requestRefresh()
+        sampler.schedule(candidates: [("emu", "android"), ("slow", "ios"), ("failing", "ios")])
+        waitUntil { seen.values.count == 3 }
+        XCTAssertEqual(Set(seen.values), ["emu:false:1", "slow:false:2", "failing:false:-1"])
+        XCTAssertEqual(seen.values.first, "emu:false:1", "速く終わった台は遅い台を待たずに知らせる")
+    }
+
     func testFailedProbeKeepsThePreviousValue() {
         let calls = LockedCounter()
         let sampler = DeviceStorageSampler(
             probeIOS: { _ in nil },
             probeAndroid: { _ in calls.increment(); return calls.value == 1 ? storageInfo(5) : nil },
-            storeURL: nil)
+            storeURL: nil, onMeasured: { _ in })
         sampler.requestRefresh()
         sampler.schedule(candidates: [("emu", "android")])
         waitUntil { sampler.snapshot()["emu"] != nil }
@@ -128,7 +149,7 @@ final class DeviceStorageSamplerTests: XCTestCase {
     func testMeasuredValuesSurviveARestartOfTheMonitorAsCarriedOver() throws {
         let store = try temporaryStoreURL()
         let first = DeviceStorageSampler(probeIOS: { _ in storageInfo(7, .hostVolume, at: "t1") },
-                                         probeAndroid: { _ in nil }, storeURL: store)
+                                         probeAndroid: { _ in nil }, storeURL: store, onMeasured: { _ in })
         first.requestRefresh()
         first.schedule(candidates: [("sim", "ios")])
         waitUntil { FileManager.default.fileExists(atPath: store.path) }
@@ -154,27 +175,38 @@ final class DeviceStorageSamplerTests: XCTestCase {
         let store = try temporaryStoreURL()
         try FileManager.default.createDirectory(at: store.deletingLastPathComponent(), withIntermediateDirectories: true)
         try Data("not json".utf8).write(to: store)
-        let sampler = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil }, storeURL: store)
+        let sampler = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil }, storeURL: store, onMeasured: { _ in })
         XCTAssertTrue(sampler.snapshot().isEmpty)
     }
 
     func testFailedProbeDoesNotOverwriteTheStore() throws {
         let store = try temporaryStoreURL()
-        let first = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in storageInfo(3) }, storeURL: store)
+        let first = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in storageInfo(3) }, storeURL: store, onMeasured: { _ in })
         first.requestRefresh()
         first.schedule(candidates: [("emu", "android")])
         waitUntil { FileManager.default.fileExists(atPath: store.path) }
-        let failing = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil }, storeURL: store)
+        let failing = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil }, storeURL: store, onMeasured: { _ in })
         failing.requestRefresh()
         failing.schedule(candidates: [("emu", "android")])
         Thread.sleep(forTimeInterval: 0.1)
-        let reloaded = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil }, storeURL: store)
+        let reloaded = DeviceStorageSampler(probeIOS: { _ in nil }, probeAndroid: { _ in nil }, storeURL: store, onMeasured: { _ in })
         XCTAssertEqual(reloaded.snapshot()["emu"]?.usedBytes, 3)
     }
 }
 
 private func storageInfo(_ used: Int, _ scope: DeviceStorageFreeScope = .device, at: String = "t") -> DeviceStorageInfo {
     DeviceStorageInfo(usedBytes: used, freeBytes: 1, freeScope: scope, measuredAt: at)
+}
+
+private final class SamplerBox: @unchecked Sendable {
+    var sampler: DeviceStorageSampler?
+}
+
+private final class LockedStrings: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [String] = []
+    func append(_ item: String) { lock.lock(); items.append(item); lock.unlock() }
+    var values: [String] { lock.lock(); defer { lock.unlock() }; return items }
 }
 
 private final class LockedCounter: @unchecked Sendable {
