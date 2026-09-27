@@ -26,9 +26,4 @@ final class AndroidStorageProbeTests: XCTestCase {
         XCTAssertNil(AndroidStorageProbe.parse(dfOutput: ""))
         XCTAssertNil(AndroidStorageProbe.parse(dfOutput: "adb: device offline"))
     }
-
-    /// 間隔の既定値をリテラルで固定する(docs/results-json.md「間隔: Android 5 分」)
-    func testDefaultProbeIntervalIsFiveMinutes() {
-        XCTAssertEqual(AndroidStorageProbe.probeIntervalSeconds, 300)
-    }
 }

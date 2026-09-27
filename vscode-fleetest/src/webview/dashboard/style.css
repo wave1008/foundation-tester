@@ -377,6 +377,8 @@ select.dash-project, select.dash-since {
 .dh-state-offline,
 .dh-state-unknown { color: var(--vscode-descriptionForeground); }
 .dh-storage-carried-over { color: var(--vscode-descriptionForeground); }
+.dh-storage-measuring,
+.dh-storage-progress { color: var(--vscode-descriptionForeground); }
 .dh-chip-running {
   background-color: var(--vscode-charts-blue, #0078d4);
   color: #ffffff;
@@ -399,5 +401,7 @@ select.dash-project, select.dash-since {
 }
 .dh-toolbar {
   display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 6px;
 }

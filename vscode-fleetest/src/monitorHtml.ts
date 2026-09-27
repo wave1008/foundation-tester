@@ -166,6 +166,8 @@ function renderDashboardPanel(): string {
       <!-- 見た目はデバイスモニターの「ライブ更新」と同じ(.header-toggle + .toggle-switch)。絞り込みは deviceHealth.js -->
       <div class="dh-toolbar">
         <label class="profile-label header-toggle" title="${t("exploreHeal.dashboard.deviceHealthActiveOnlyTitle")}"><input type="checkbox" class="toggle-switch" role="switch" id="chk-device-health-active-only" checked>${t("exploreHeal.dashboard.deviceHealthActiveOnly")}</label>
+        <button id="btn-device-health-refresh-storage" type="button" title="${t("exploreHeal.dashboard.refreshStorageTitle")}">${t("exploreHeal.dashboard.refreshStorage")}</button>
+        <span id="dh-storage-progress" class="dh-storage-progress" aria-live="polite"></span>
       </div>
       <table id="table-device-health" class="dash-table">
         <thead>

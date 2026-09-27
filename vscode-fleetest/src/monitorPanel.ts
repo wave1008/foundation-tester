@@ -431,6 +431,7 @@ export class MonitorPanelController implements vscode.Disposable {
       outputChannel: this.outputChannel,
       post: (message) => this.post({ type: "dashboard", message }),
       isPanelActive: () => this.panel !== undefined,
+      refreshStorage: (id) => this.processManager.writeMonitorControl({ cmd: "storageRefresh", id }),
     });
     this.live = new LiveTabHost(
       {

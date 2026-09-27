@@ -477,11 +477,14 @@ export function deviceLifecycleStatusFor(
 // - pause/resume:「全て終了」「停止」実行中に使う。down 系ジョブの実行直前に pause・完了時に resume を
 //   送り、片付け中のデバイスへスクショ取得に行くのを防ぐ(up 系は起動進行を見せるため pause しない)。
 // - suppressFrames: フレーム抑制対象デバイス id 集合の全置換(差分ではない)。空配列 = 全デバイス再開。
+// - storageRefresh: 1回きりの指示。全台のストレージを測り直させる(ダッシュボードの「ストレージ使用を更新」)。
+//   モニターがストレージを測るのはこの指示を受けたときだけ。
 
 export type MonitorControlCommand =
   | { readonly cmd: "pause" }
   | { readonly cmd: "resume" }
-  | { readonly cmd: "suppressFrames"; readonly devices: readonly string[] };
+  | { readonly cmd: "suppressFrames"; readonly devices: readonly string[] }
+  | { readonly cmd: "storageRefresh"; readonly id: number };
 
 /** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。restartBatch は
  * up 系と同様 pause せずタイル上に進行を出す(GPU 再起動はタイル単位で見せたいため)。

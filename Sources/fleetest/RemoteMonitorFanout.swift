@@ -9,8 +9,10 @@
 //   - `monitorFrame` / `monitorError` は **"device" だけマシン付きに直して**中継する
 //     (子は畳んだプロファイルを見るので自分の台を "local" と名乗り、id にマシンが入らない。
 //     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.machineScoped)
-//   - stdin の制御行(pause/resume/suppressFrames)は**全子へ素通しする**(id の集合で判定する
-//     だけなので、自分の持たない id が混ざっていても害はない)
+//   - stdin の制御行(pause/resume/suppressFrames/storageRefresh)は**全子へ素通しする**(id の集合で
+//     判定するだけなので、自分の持たない id が混ざっていても害はない)。**種類ごとの最新の行を覚え、
+//     張り直した子へ起動直後に送り直す** —— どれも「全体の状態」なので最新 1 行で再現でき、送り直さないと
+//     再接続した子は既定(pause なし・抑制なし)のまま動く。1回きりの指示(storageRefresh)は送り直さない
 //
 // **子は必ず `remote exec` 経由**(ssh の張り方・PATH 補正・マシン解決を委ねる。専用の ssh 経路を
 // 新設しない = docs/remote-runner.md §14)。**先にプロジェクトを rsync する**(RemoteProjectSync)。
@@ -83,6 +85,8 @@ final class RemoteMonitorFanout: @unchecked Sendable {
     /// マシンごとの最新の devices(id → 1台分)。子が落ちたら**そのマシンのぶんを捨てる**
     private var devicesByMachine: [String: [String: ApiMonitorDeviceInfo]] = [:]
     private var children: [String: Process] = [:]
+    /// 種類(controlStateKey)ごとの最新の制御行。子を張るたびに送り直す
+    private var latestControlLines: [String: String] = [:]
     private var stopping = false
 
     init(machines: [String], project: String, profile: String?, interval: Double, maxWidth: Int,
@@ -123,16 +127,33 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         return merged
     }
 
-    /// stdin の制御行を全子へ素通しする(親が解釈した後に呼ぶ)
+    /// stdin の制御行を全子へ素通しする(親が解釈した後に呼ぶ)。**書き込みはロックの内側** ——
+    /// 子を張った直後の送り直し(register)と順序が入れ替わると、古い行が新しい行を上書きする
     func forwardControl(line: String) {
         lock.lock()
-        let targets = Array(children.values)
-        lock.unlock()
-        for process in targets {
-            guard let pipe = process.standardInput as? Pipe else { continue }
-            // 相手が先に死んでいると EPIPE で例外が飛ぶ。1台の死で親を落とさない
-            try? pipe.fileHandleForWriting.write(contentsOf: Data((line + "\n").utf8))
+        defer { lock.unlock() }
+        if let key = Self.controlStateKey(line: line) { latestControlLines[key] = line }
+        for process in children.values { Self.write(line: line, to: process) }
+    }
+
+    /// 同じ状態を上書きし合う制御行を同じ鍵に畳む(pause と resume は1つの状態)。**状態の行だけ**を覚え、
+    /// 1回きりの指示(storageRefresh)・未知の行・解釈できない行は nil(覚えない = 送り直さない。素通しはする)
+    /// —— 1回きりの指示を送り直すと、張り直すたびに同じ指示が撃ち直される
+    static func controlStateKey(line: String) -> String? {
+        guard let data = line.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let cmd = object["cmd"] as? String else { return nil }
+        switch cmd {
+        case "pause", "resume": return "pause"
+        case "suppressFrames": return cmd
+        default: return nil
         }
+    }
+
+    private static func write(line: String, to process: Process) {
+        guard let pipe = process.standardInput as? Pipe else { return }
+        // 相手が先に死んでいると EPIPE で例外が飛ぶ。1台の死で親を落とさない
+        try? pipe.fileHandleForWriting.write(contentsOf: Data((line + "\n").utf8))
     }
 
     func stop() {
@@ -240,6 +261,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         log("[monitor] Monitoring \(machine) via \(target)")
         lock.lock()
         children[machine] = process
+        for line in latestControlLines.values { Self.write(line: line, to: process) }
         lock.unlock()
 
         let stderrThread = Thread { [weak self] in

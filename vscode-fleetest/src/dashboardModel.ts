@@ -356,7 +356,10 @@ export type DashboardFromWebviewMessage =
   /** 前回比。latestRunIDs/previousRunIDs は groupRuns() の1グループの構成 run 全部。 */
   | { readonly type: "headlineDiff"; readonly latestRunIDs: readonly string[]; readonly previousRunIDs: readonly string[] }
   /** 集計期間の切り替え。 */
-  | { readonly type: "setSince"; readonly since: SinceOption };
+  | { readonly type: "setSince"; readonly since: SinceOption }
+  /** デバイスの健全性の「ストレージ使用を更新」。モニターへ storageRefresh を送る(api results は叩かない)。
+   * id = 押した時刻(Date.now())。モニターが台ごとに storageRefreshId として返し、進捗の終わりを判定する */
+  | { readonly type: "refreshStorage"; readonly id: number };
 
 /** デバイスの健全性(deviceHealth.js)がモニターの台を api results の worker(実行プロファイルの
  * 台の name)へ揃えるための和集合(config.ts `listProjectDeviceCatalog`/`MachineDeviceEntry` の
@@ -732,6 +735,7 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
 export function isDashboardFromWebviewMessage(value: unknown): value is DashboardFromWebviewMessage {
   if (!isRecord(value)) return false;
   if (value.type === "ready" || value.type === "refresh") return true;
+  if (value.type === "refreshStorage") return Number.isSafeInteger(value.id) && (value.id as number) > 0;
   if (value.type === "runDetail") {
     return (
       typeof value.runID === "string" &&

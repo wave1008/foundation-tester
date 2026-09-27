@@ -6,11 +6,6 @@ import XCTest
 
 final class SimulatorStorageProbeTests: XCTestCase {
 
-    /// 間隔の既定値をリテラルで固定する
-    func testDefaultProbeIntervalIsThirtyMinutes() {
-        XCTAssertEqual(SimulatorStorageProbe.probeIntervalSeconds, 1800)
-    }
-
     /// 並列度はコア数の半分(ユーザー決定)。1 コアでも 1 本は動かす
     func testWalkerThreadsAreHalfTheCores() {
         XCTAssertEqual(SimulatorStorageProbe.walkerThreads(cores: 8), 4)

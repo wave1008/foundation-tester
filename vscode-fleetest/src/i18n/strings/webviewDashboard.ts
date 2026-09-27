@@ -81,9 +81,19 @@ export const webviewDashboardStrings = {
   "wvDashboard.deviceHealth.healthClockSkew": { ja: "時計のずれ", en: "Clock skew" },
   "wvDashboard.deviceHealth.healthBlankScreen": { ja: "黒画面", en: "Blank screen" },
   "wvDashboard.deviceHealth.measuredAtTitle": { ja: "計測: {time}", en: "Measured: {time}" },
+  "wvDashboard.deviceHealth.storageMeasuringCell": { ja: "測定中…", en: "Measuring…" },
+  "wvDashboard.deviceHealth.storageProgress": {
+    ja: "ストレージを測定中… {done} / {total} 台",
+    en: "Measuring storage… {done} / {total} devices",
+  },
+  "wvDashboard.deviceHealth.storageDone": { ja: "最終更新: {time}", en: "Last updated: {time}" },
+  "wvDashboard.deviceHealth.storageNoTargets": {
+    ja: "測れる台がありません(動いている仮想デバイスだけを測る)",
+    en: "Nothing to measure (only running virtual devices are measured)",
+  },
   "wvDashboard.deviceHealth.storageCarriedOverTitle": {
-    ja: "前回値(モニターの起動前に測った値。測り直すまで灰色で表示)",
-    en: "Previous value (measured before the monitor started; shown in gray until remeasured)",
+    ja: "前回値(モニターの起動前に測った値。「ストレージ使用を更新」で測り直すまで灰色で表示)",
+    en: "Previous value (measured before the monitor started; shown in gray until you click Refresh storage)",
   },
   "wvDashboard.deviceHealth.preRunTitle": { ja: "除外 / 修復", en: "Excluded / Repaired" },
   "wvDashboard.deviceHealth.cause.frozen": { ja: "画面の凍結", en: "Screen frozen" },

@@ -53,6 +53,8 @@ export interface MonitorDashboardControllerDeps {
   post(message: DashboardToWebviewMessage): void;
   /** モニターパネルが開いているか。閉じている間は CLI を叩かない。 */
   isPanelActive(): boolean;
+  /** モニターに全台のストレージを測り直させる(stdin の storageRefresh。id は進捗の突き合わせ用) */
+  refreshStorage(id: number): void;
 }
 
 function errorMessage(error: unknown): string {
@@ -151,6 +153,9 @@ export class MonitorDashboardController {
       case "setSince":
         this.since = message.since;
         void this.refresh();
+        break;
+      case "refreshStorage":
+        this.deps.refreshStorage(message.id);
         break;
     }
   }

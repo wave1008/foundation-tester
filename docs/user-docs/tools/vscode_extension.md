@@ -134,7 +134,10 @@ Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **
 - **Device health**: one row per device, grouped by a Machine column. Shows the Device Monitor's current
   state (color-coded) and storage usage alongside counts from run history (excluded from run, requeued,
   pre-run exclude/repair, recovery operations, app crashes). Missing values show as "–". While
-  "Show active devices" is on (the default), devices that are not started or not seen by the monitor are hidden
+  "Show active devices" is on (the default), devices that are not started or not seen by the monitor are hidden.
+  Storage usage is never measured automatically —
+  all running virtual devices are measured only when you click **Refresh storage** (physical devices are not
+  measured). Values measured before the monitor started are shown in gray until remeasured
 - **Slow scenarios** and performance measurements
 - **Scenario summary**: filterable by scenario ID, a "failures only" checkbox, sortable by clicking column headers
 

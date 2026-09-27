@@ -13,7 +13,11 @@
 // 止めるため): stdin に {"cmd":"suppressFrames","devices":["<id>",...]}。devices は抑制対象の
 // 全置換(差分ではない)。省略/null は空集合(全デバイス再開)。抑制中デバイスはスクショ取得〜
 // monitorFrame emit をスキップするが monitorDevices は全デバイス分 emit する。
-// 同期相手: vscode-fleetest/src/monitorModel.ts (monitorControlLine)
+//
+// storageRefresh プロトコル: stdin に {"cmd":"storageRefresh","id":<正の整数>}(1回きりの指示。ダッシュボードの
+// 「ストレージ使用を更新」。id は拡張が押した時刻で振る)。ストレージを測るのはこの指示を受けたときだけ
+// (DeviceStorageSampler)。進捗は devices[].storageMeasuring / storageRefreshId で返す(id の無い行は無視)。
+// 同期相手: vscode-fleetest/src/monitorDeviceLifecycle.ts (monitorControlLine)
 //
 // health プローブ: state=connected の Android エミュレータ(実機除く)へ低頻度でヘルス
 // チェック(adb/gRPC プローブ+emulator ログの Metal エラー計数)を行い、確定済み異常を devices[].health(異常なし/非対象は省略)に載せる
@@ -161,12 +165,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
         // ストレージ(monitorDevices[].storage)。key = udid(iOS)/serial(Android)。計測は裏で回し、
-        // 周期は控えを読むだけ(DeviceStorageSampler の doc)。run 中かは機械グローバルの台帳で見る
-        let storageRunProgressDir = RunProgressLedger.directory()
+        // 周期は控えを読むだけ(DeviceStorageSampler の doc)
+        // 最後に受け取った更新要求の番号(devices[].storageRefreshId)。拡張は「自分の要求以上の番号 かつ
+        // 測定中でない」台を測り終えたと数える(待ち時間の定数を置かずに終わりを判定するため)
+        var handledStorageRefreshId: Int?
         let storageSampler = DeviceStorageSampler(
             probeIOS: { SimulatorStorageProbe.probe(udid: $0) },
             probeAndroid: { AndroidStorageProbe.probe(serial: $0) },
-            isRunActive: { !RunProgressLedger.readAll(directory: storageRunProgressDir).isEmpty },
             storeURL: MachineStateDirectory.url().appendingPathComponent("device-storage.json"))
 
         // run/recording lease の読み取り用(.fleetest/{run,recording}-<key>.lease で inRun/recording を
@@ -353,20 +358,20 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 return result
             }
 
-            // ストレージ: 仮想デバイスの connected で run 中でない台だけ(実機はここで測れない)
-            // 「動いている」= connected か booted(ブリッジ未起動でも中身は測れる)
+            // ストレージ: 動いている(connected / booted。ブリッジ未起動でも中身は測れる)仮想デバイス
+            // (実機はここで測れない)。測るのは更新ボタンの要求があった周期だけ(DeviceStorageSampler の doc)
             let storageUpStates: Set<String> = ["connected", "booted"]
-            storageSampler.noteConnected(keys: Set(states.compactMap { state in
-                storageUpStates.contains(state.state) ? (state.iosUdid ?? state.androidSerial) : nil
-            }))
+            if let refreshId = control.takeStorageRefreshRequest() {
+                storageSampler.requestRefresh()
+                handledStorageRefreshId = refreshId
+            }
             storageSampler.schedule(candidates: states.compactMap { state in
                 guard storageUpStates.contains(state.state), !state.target.spec.isPhysical,
                       let key = state.iosUdid ?? state.androidSerial else { return nil }
-                let inRun = leaseStateDir.map { RunLease.isFresh(stateDir: $0, key: key) } ?? false
-                return inRun ? nil : (key, state.target.platform)
-            }, now: Date())
+                return (key, state.target.platform)
+            })
             storageSampler.forget(keysNotIn: Set(states.compactMap { $0.iosUdid ?? $0.androidSerial }))
-            let storageCache = storageSampler.snapshot()
+            let (storageCache, storageMeasuring) = storageSampler.progressSnapshot()
 
             // 手元の二重配信の判定に使う 1 周期ぶんのプロセス一覧(FTCore.LocalStreamHolder)。
             // 台ごとに ps を撃たない
@@ -410,7 +415,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                    inRun: inRun, recording: recording, host: bridgeHost,
                                    frozen: frozenVerdict.isFrozen, streamedByOther: streamedByOther,
                                    bridgeRunning: bridgeRunning,
-                                   storage: leaseKey.flatMap { storageCache[$0] })
+                                   storage: leaseKey.flatMap { storageCache[$0] },
+                                   storageMeasuring: leaseKey.map { storageMeasuring.contains($0) } ?? false,
+                                   storageRefreshId: handledStorageRefreshId)
             }
             emitLine(ApiMonitorDevicesEvent(devices: Self.mergedDevices(
                 listedTargets: listedTargets, observed: observedInfos,
@@ -668,7 +675,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             inRun: false, kind: target.spec.isPhysical ? "physical" : "virtual",
             host: nil, port: nil, recording: false, registered: target.registered,
             machine: MachineDispatch.normalize(target.spec.machine), frozen: false, wired: nil,
-            streamedByOther: nil, bridgeRunning: nil, storage: nil)
+            streamedByOther: nil, bridgeRunning: nil, storage: nil,
+            storageMeasuring: false, storageRefreshId: nil)
     }
 
     /// `MachineInventory.merge` へ渡す「その台の実体がこの機械にあるか」の述語。
@@ -723,6 +731,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     if deviceMachine == nil {
                         self.logStderr(Self.suppressionDeltaLine(ids: ids, previous: previous))
                     }
+                case "storageRefresh":
+                    if let id = command.id { control.requestStorageRefresh(id: id) }
                 default:
                     break
                 }
@@ -824,7 +834,9 @@ struct DeviceRuntimeState {
                           recording: Bool, host: String? = nil,
                           frozen: Bool = false, streamedByOther: Bool? = nil,
                           bridgeRunning: Bool? = nil,
-                          storage: DeviceStorageInfo? = nil) -> ApiMonitorDeviceInfo {
+                          storage: DeviceStorageInfo? = nil,
+                          storageMeasuring: Bool = false,
+                          storageRefreshId: Int? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
@@ -834,7 +846,8 @@ struct DeviceRuntimeState {
                              recording: recording, registered: target.registered,
                              machine: MachineDispatch.normalize(target.spec.machine),
                              frozen: frozen, wired: wired, streamedByOther: streamedByOther,
-                             bridgeRunning: bridgeRunning, storage: storage)
+                             bridgeRunning: bridgeRunning, storage: storage,
+                             storageMeasuring: storageMeasuring, storageRefreshId: storageRefreshId)
     }
 }
 
@@ -929,6 +942,8 @@ private struct MonitorControlCommand: Decodable {
     let cmd: String
     /// cmd == "suppressFrames" のときのみ使用
     let devices: [String]?
+    /// cmd == "storageRefresh" のときのみ使用(拡張が振る要求の番号)
+    let id: Int?
 }
 /// **stdout に書く口を1つにする**。子(RemoteMonitorFanout)の中継行は別スレッドから来るので、
 /// 親の emitLine と混ざると1行の途中で割り込まれて NDJSON が壊れる。stdio のバッファを
@@ -961,6 +976,7 @@ private final class MonitorControl: @unchecked Sendable {
     private var resetRequested = false
     /// フレーム抑制対象デバイス id の集合(全置換。suppressFrames コマンドで更新)
     private var suppressedFrames: Set<String> = []
+    private var pendingStorageRefreshId: Int?
 
     var isPaused: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -999,6 +1015,18 @@ private final class MonitorControl: @unchecked Sendable {
         defer { lock.unlock() }
         let value = resetRequested
         resetRequested = false
+        return value
+    }
+
+    func requestStorageRefresh(id: Int) {
+        lock.lock(); pendingStorageRefreshId = id; lock.unlock()
+    }
+
+    /// 保留中の更新要求を取り出す(取り出すと同時にクリアする)
+    func takeStorageRefreshRequest() -> Int? {
+        lock.lock(); defer { lock.unlock() }
+        let value = pendingStorageRefreshId
+        pendingStorageRefreshId = nil
         return value
     }
 

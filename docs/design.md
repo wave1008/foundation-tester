@@ -4538,26 +4538,26 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 monitor が `monitorDevices[].storage`(`usedBytes` / `freeBytes` / `freeScope` / `measuredAt`)を配る。
 契約は `Sources/fleetest/ApiMonitorEvents.swift` の `ApiMonitorDeviceInfo.storage`。
 
-- **対象**: 動いている(connected / booted。ブリッジ未起動でも測れる)仮想デバイスで、run 中(run lease)で
-  ない台だけ。実機は測らない(欄を省く)。**起動し直した台(動いていない → 動いている)は間隔を待たず次の周期で
-  測り直す**(起動前の掃除で減った量をすぐ見せる。計測中に起動し直した台は、その計測の後にもう一度)。
-  測れなかった・撃たなかった回は前回値を配り続ける(0 で埋めない)。
-- **Android**: `adb shell df /data`(`AndroidStorageProbe`。5 分おき)。`freeScope: "device"`。
+- **測る契機は利用者の「ストレージ使用を更新」ボタンだけ**(ユーザー決定): 拡張がモニターの stdin へ
+  `{"cmd":"storageRefresh"}`(1回きりの指示)を送り、モニターはその周期に**動いている(connected / booted。
+  ブリッジ未起動でも測れる)仮想デバイスを全台**積む。間隔・台の起動し直し・モニターの起動では測らず、
+  **run の有無でも止めない**(run で使っている台・run が動いている Mac の iOS も測る)。実機は測らない(欄を省く)。
+  **計測中の台は積まない**(同じ台を二重に歩かない)。リモートの子へは fan-out が素通しする
+  (1回きりの指示なので、張り直した子へは送り直さない)。測れなかった回は前回値を配り続ける(0 で埋めない)。
+- **Android**: `adb shell df /data`(`AndroidStorageProbe`)。`freeScope: "device"`。
 - **iOS Simulator**: データディレクトリをプロセス内で**並列に歩いた割り当て済みの大きさ**(du -sk と同じ量。
-  隠しファイル込み・リンクは辿らない)+ ホストのボリュームの空き(`SimulatorStorageProbe`。30 分おき・締切 300 秒)。
+  隠しファイル込み・リンクは辿らない)+ ホストのボリュームの空き(`SimulatorStorageProbe`。締切 300 秒)。
   `freeScope: "hostVolume"`(Simulator はホストのディスクを間借りしているので、空きはホスト側の値)。
   **並列度は CPU コア数の半分**(ユーザー決定)。律速はカーネルのメタデータ処理で、単一スレッドは API を変えても
   du と同じ(実測 12〜14 秒・`taskpolicy -b du` は 22〜28 秒)。4 スレッドで約 4 秒(データ 7.9GB / 16 万ファイル・
   load avg 11〜19)。各スレッドは I/O を throttle にし、background QoS にはしない(CPU も後回しになり所要が倍になる)。
-- **配信の周期で計測を待たない**(`DeviceStorageSampler`): 周期は期限の来た台を裏のキューへ積んで
-  控えを読むだけ。計測は同期呼び出しなので Swift の協調スレッドにも載せない。iOS は 1 台ずつ、
-  **この Mac で run が動いている間は撃たない**(積んだ後に run が始まった場合も実行直前に確かめる)。
-  別の台の run にも I/O で響くため。
+- **配信の周期で計測を待たない**(`DeviceStorageSampler`): 周期は更新の要求があれば台を裏のキューへ積んで
+  控えを読むだけ。計測は同期呼び出しなので Swift の協調スレッドにも載せない。iOS は 1 台ずつ
+  (1 台の走査が既にコア数の半分のスレッドを使う)。
 - **測れた値は `~/.fleetest/device-storage.json` に残し、monitor の起動時に読む**。メモリだけだと
-  monitor が起動し直すたびに全台が空に戻り、run 中は iOS を測らないので run が終わるまで空のままになる。
-  読んだ値は表示に使うだけで、最初の周期で全台を測り直す(起動し直した台と同じ扱い)。
-  **読んだ値は測り直すまで `carriedOver: true`** で配り、拡張の「デバイスの健全性」は灰色で出す
-  (title に「前回値」。run 中の iOS は測らないので run が終わるまで灰色のまま)。
+  monitor が起動し直すたびに全台が空に戻り、更新ボタンを押すまで空のままになる。
+  **読んだ値は更新ボタンで測り直すまで `carriedOver: true`** で配り、拡張の「デバイスの健全性」は灰色で出す
+  (title に「前回値」)。
 
 ### 12.4.2 iOS Simulator の PosterBoard スナップショットキャッシュの掃除(起動前・2026-09-27)
 

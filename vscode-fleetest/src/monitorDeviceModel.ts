@@ -129,6 +129,12 @@ export interface MonitorDevice {
    * 送信側=Swift の話でここでは関与しない)。測れなかった台は欠落(undefined)のまま —— 0 に
    * 正規化しない(ダッシュボードの「デバイスの健全性」表が「–」と 0 を区別するため)。 */
   readonly storage?: MonitorDeviceStorage;
+  /** この台のストレージを今測っている(契約は Sources/fleetest/ApiMonitorEvents.swift の
+   * ApiMonitorDeviceInfo.storageMeasuring)。欠落・型不正は false */
+  readonly storageMeasuring: boolean;
+  /** この台のモニターが最後に受け取った storageRefresh の id。受け取っていなければ undefined。
+   * 「自分の要求 id 以上 かつ storageMeasuring が false」= 測り終えた(deviceHealth.js の進捗) */
+  readonly storageRefreshId?: number;
 }
 
 /** run ボードの1レーン(台1枚)。docs/design.md §18.1/§18.2。key は udid(iOS)/serial(Android)で、
@@ -295,6 +301,12 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // (「不明」)のまま保つ。false に丸めると bridgeNotRunning() が「未起動」と誤認し、
     // 生きているブリッジのフレームまで消してしまう。
     value.bridgeRunning = undefined;
+  }
+  if (value.storageMeasuring !== true) {
+    value.storageMeasuring = false;
+  }
+  if (!Number.isSafeInteger(value.storageRefreshId)) {
+    value.storageRefreshId = undefined;
   }
   if (value.storage === null || !isMonitorDeviceStorage(value.storage)) {
     // 欠落・null・型不正はすべて「測れなかった」と同じ undefined に寄せる(0 には丸めない)。

@@ -8,10 +8,7 @@ import FTCore
 import Foundation
 
 public enum SimulatorStorageProbe {
-    /// 計測間隔(秒)。**根拠**: 並列走査で 1 台約 4 秒(4 スレッド・データ 7.9GB / 16 万ファイル・
-    /// load avg 11〜19 の実測)。ストレージの逼迫は分単位でしか動かないので即応性は要らない。
-    /// 起動し直した台は間隔を待たない(DeviceStorageSampler.noteConnected)
-    public static let probeIntervalSeconds: TimeInterval = 1800
+    // 測る契機は DeviceStorageSampler が持つ(間隔での自動の測り直しは無い)
 
     /// 走査の締切(秒)。**根拠**: 単一スレッドの du の最悪実測 28 秒の約 10 倍。超えたら今回は諦めて
     /// 前回値を配り続ける。**判定はディレクトリ 1 つ読むごと** —— 固まったボリュームの syscall の中からは

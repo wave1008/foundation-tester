@@ -271,6 +271,11 @@ test("isApiResultsPayload: 空配列群(0件実行相当)は true", () => {
 test("isDashboardFromWebviewMessage: ready/refresh を true と判定する", () => {
   assert.equal(isDashboardFromWebviewMessage({ type: "ready" }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "refresh" }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "refreshStorage", id: 1790000000000 }), true);
+  // id は進捗の突き合わせに要る(欠落・非整数・0 以下は弾く)
+  assert.equal(isDashboardFromWebviewMessage({ type: "refreshStorage" }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "refreshStorage", id: 1.5 }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "refreshStorage", id: 0 }), false);
 });
 
 test("isDashboardFromWebviewMessage: 未知の type/非object は false", () => {

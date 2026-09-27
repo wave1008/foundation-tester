@@ -36,6 +36,21 @@ final class RemoteMonitorFanoutRetryTests: XCTestCase {
         XCTAssertEqual(RemoteMonitorFanout.retryPlan(quickFailures: 0, elapsed: 14.9).quickFailures, 1)
     }
 
+    // MARK: - 張り直した子へ送り直す制御行の鍵
+
+    /// pause と resume は同じ状態(後から来た方が勝つ)・状態の行は cmd ごと・1回きりの指示と解釈できない行は覚えない
+    func testControlStateKeyFoldsPauseAndResume() {
+        XCTAssertEqual(RemoteMonitorFanout.controlStateKey(line: #"{"cmd":"pause"}"#), "pause")
+        XCTAssertEqual(RemoteMonitorFanout.controlStateKey(line: #"{"cmd":"resume"}"#), "pause")
+        XCTAssertEqual(RemoteMonitorFanout.controlStateKey(line: #"{"cmd":"suppressFrames","devices":["a"]}"#),
+                       "suppressFrames")
+        XCTAssertNil(RemoteMonitorFanout.controlStateKey(line: #"{"cmd":"storageRefresh"}"#),
+                     "1回きりの指示は覚えない(張り直すたびに撃ち直さない)")
+        XCTAssertNil(RemoteMonitorFanout.controlStateKey(line: #"{"cmd":"somethingNew"}"#))
+        XCTAssertNil(RemoteMonitorFanout.controlStateKey(line: "not json"))
+        XCTAssertNil(RemoteMonitorFanout.controlStateKey(line: #"{"devices":[]}"#))
+    }
+
     // MARK: - 監督ループ(ssh を張らずに差し替え口で回す)
 
     /// rsync 失敗 → 60 秒待って rsync からやり直す / 子が 3 回すぐ死ぬ → 60 秒待って

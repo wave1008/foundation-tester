@@ -17,6 +17,7 @@
 // 揃えてから結合する。
 
 import { t } from '../i18n.js';
+import { vscode } from './vscodeApi.js';
 import { clearChildren, td, tdNum } from './domUtil.js';
 import { revealSection } from './domUtil.js';
 import { formatLocalDateTime } from './format.js';
@@ -255,7 +256,57 @@ function storageCell(monitor) {
   if (monitor && monitor.storage && monitor.storage.carriedOver) {
     cell.classList.add('dh-storage-carried-over');
   }
+  if (monitor && isStorageTarget(monitor) && isStoragePending(monitor)) {
+    const mark = document.createElement('span');
+    mark.className = 'dh-storage-measuring';
+    mark.textContent = t('wvDashboard.deviceHealth.storageMeasuringCell');
+    cell.append(' ', mark);
+  }
   return cell;
+}
+
+// ---- 「ストレージ使用を更新」の進捗 --------------------------------------------------------------
+// 押した時刻を要求 id にしてモニターへ送り、台ごとの storageRefreshId / storageMeasuring で数える
+// (契約は Sources/fleetest/ApiMonitorEvents.swift)。**待ち時間の定数を置かない** —— 「自分の id 以上を
+// 受け取った かつ 測定中でない」だけで終わりを決める。押し直すと新しい id で数え直す(モニターが要求を
+// 受け取れなかったとき = 0 台のまま進まないときの逃げ道)。
+let storageRequestId = null;
+let storageFinishedAt = null;
+
+/** モニターが測る台と同じ(DeviceStorageSampler の候補: 動いている仮想デバイス) */
+function isStorageTarget(device) {
+  return (device.state === 'connected' || device.state === 'booted') && device.kind !== 'physical';
+}
+
+function isStoragePending(device) {
+  return storageRequestId !== null
+    && ((device.storageRefreshId ?? 0) < storageRequestId || device.storageMeasuring === true);
+}
+
+function renderStorageProgress() {
+  const el = document.getElementById('dh-storage-progress');
+  if (!el) {
+    return;
+  }
+  if (storageRequestId === null) {
+    el.textContent = '';
+    return;
+  }
+  const targets = monitorDevices().filter(isStorageTarget);
+  if (targets.length === 0) {
+    el.textContent = t('wvDashboard.deviceHealth.storageNoTargets');
+    return;
+  }
+  const pending = targets.filter(isStoragePending).length;
+  if (pending > 0) {
+    storageFinishedAt = null;
+    el.textContent = t('wvDashboard.deviceHealth.storageProgress', { done: targets.length - pending, total: targets.length });
+    return;
+  }
+  if (storageFinishedAt === null) {
+    storageFinishedAt = new Date().toISOString();
+  }
+  el.textContent = t('wvDashboard.deviceHealth.storageDone', { time: formatLocalDateTime(storageFinishedAt) });
 }
 
 function countText(health, field) {
@@ -358,6 +409,22 @@ function renderRows() {
   emptyEl.style.display = shown.length === 0 ? 'block' : 'none';
 }
 
+// ストレージは自動では測り直さない(ユーザー決定)。押したらモニターへ全台の測り直しを頼む
+// (対向: src/monitorDashboardController.ts の refreshStorage → モニターの storageRefresh)
+const refreshStorageBtn = document.getElementById('btn-device-health-refresh-storage');
+if (refreshStorageBtn) {
+  refreshStorageBtn.addEventListener('click', () => {
+    storageRequestId = Date.now();
+    storageFinishedAt = null;
+    vscode.postMessage({ type: 'refreshStorage', id: storageRequestId });
+    renderStorageProgress();
+    // 各セルの「測定中」を次のモニター周期を待たずに出す
+    lastMonitorSignature = null;
+    currentRows = combineRows(lastHealthRows);
+    renderRows();
+  });
+}
+
 if (activeOnlyToggle) {
   activeOnlyToggle.addEventListener('change', () => renderRows());
 }
@@ -384,11 +451,12 @@ function monitorSignature(rows) {
   return JSON.stringify(rows.map((row) => {
     const m = row.monitor;
     return [row.machine, row.worker, m ? [m.state, !!m.inRun, !!m.frozen, m.health || [],
-      m.storage ? [m.storage.usedBytes, m.storage.carriedOver] : null] : null];
+      m.storage ? [m.storage.usedBytes, m.storage.carriedOver] : null, isStoragePending(m)] : null];
   }));
 }
 
 onMonitorDevicesChanged(() => {
+  renderStorageProgress();
   const rows = combineRows(lastHealthRows);
   const signature = monitorSignature(rows);
   if (signature === lastMonitorSignature) {

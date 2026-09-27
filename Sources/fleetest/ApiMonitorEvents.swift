@@ -215,12 +215,18 @@ struct ApiMonitorDeviceInfo: Codable {
     /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.bridgeRunning)
     let bridgeRunning: Bool?
-    /// **仮想デバイスだけ**(実機は測れないので省く)。測れなかった台・run 中の台(前回値を
-    /// そのまま配る)は最後に測れた値が入る。一度も測れていなければ nil。
+    /// **仮想デバイスだけ**(実機は測れないので省く)。測るのは更新ボタン(stdin の storageRefresh)のときだけで、
+    /// それ以外・測れなかった回は最後に測れた値が入る。一度も測れていなければ nil。
     /// 計測は Android = `AndroidStorageProbe`(df /data)・iOS Simulator = `SimulatorStorageProbe`
     /// (データディレクトリの並列走査 + ホストボリュームの空き)。docs/results-json.md 対象外
     /// (results/ ではなく api monitor だけの欄)
     let storage: DeviceStorageInfo?
+    /// この台のストレージを今測っている(更新ボタンで積まれ、まだ終わっていない)。拡張の進捗表示が読む
+    /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.storageMeasuring)
+    let storageMeasuring: Bool
+    /// この台を観測しているモニターが最後に受け取った storageRefresh の id(受け取っていなければ nil)。
+    /// 拡張は「自分の要求 id 以上 かつ storageMeasuring == false」を測り終えたと数える
+    let storageRefreshId: Int?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

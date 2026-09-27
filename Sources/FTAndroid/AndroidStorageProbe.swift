@@ -1,17 +1,10 @@
-// connected な Android デバイスの `/data` の使用量・空きを低頻度で確認する(ApiMonitorCommand.swift
-// から呼ばれる)。df は軽い呼び出しだが、観測(計測)と配信を同じループに書かない規律
-// (CLAUDE.md)に合わせて他のプローブ(AndroidHealthProbe)と同じ TTL キャッシュで間引く。
+// connected な Android デバイスの `/data` の使用量・空きを確認する(ApiMonitorCommand.swift から
+// DeviceStorageSampler 経由で呼ばれる。測る契機はあちらが持つ)。
 
 import FTCore
 import Foundation
 
 public enum AndroidStorageProbe {
-    /// 計測間隔(秒)。**根拠**: ストレージの逼迫は分単位でしか動かない事象で、`df` 自体は
-    /// 軽くても monitor の既定サイクル(2秒)ごとに撃つ理由が無い(観測の cadence を
-    /// 配信の cadence に合わせない規律)。5分は AndroidHealthProbe の health プローブ間隔
-    /// (30秒)より意図的に長い —— こちらは即応性が要らない指標のため
-    public static let probeIntervalSeconds: TimeInterval = 300
-
     /// `adb shell df /data` の締切(秒)。AndroidHealthProbe.adbTimeoutSeconds と同じ値
     /// (wedge した adbd に無期限に握らせないための既存の基準を共有する)
     static let adbTimeoutSeconds: Double = AndroidHealthProbe.adbTimeoutSeconds

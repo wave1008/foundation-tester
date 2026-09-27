@@ -15,7 +15,7 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
     /// 自分の台は "local")。親が両方を埋める —— 埋め忘れるとタイルが特定できない/バッジが消える
     func testRemoteDevicesGetBothTheScopedIDAndTheMachineBadge() throws {
         let line = #"""
-        {"kind":"monitorDevices","devices":[{"id":"android:Pixel 3a","name":"Pixel 3a","platform":"android","state":"connected","detail":"S","udid":null,"serial":"S","health":null,"renderMode":null,"inRun":false,"kind":"physical","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machine":null}]}
+        {"kind":"monitorDevices","devices":[{"id":"android:Pixel 3a","name":"Pixel 3a","platform":"android","state":"connected","detail":"S","udid":null,"serial":"S","health":null,"renderMode":null,"inRun":false,"kind":"physical","host":null,"port":null,"recording":false,"registered":true,"frozen":false,"machine":null,"storageMeasuring":false}]}
         """#
         let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,
                                          interval: 2, maxWidth: 960,

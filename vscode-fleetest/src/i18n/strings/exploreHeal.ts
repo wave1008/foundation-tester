@@ -133,6 +133,11 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.colDevice": { ja: "デバイス", en: "Device" },
   "exploreHeal.dashboard.colDeviceState": { ja: "今の状態", en: "State" },
   "exploreHeal.dashboard.colStorage": { ja: "ストレージ使用", en: "Storage used" },
+  "exploreHeal.dashboard.refreshStorage": { ja: "ストレージ使用を更新", en: "Refresh storage" },
+  "exploreHeal.dashboard.refreshStorageTitle": {
+    ja: "動いている仮想デバイスのストレージ使用量を測り直す(自動では測り直さない)",
+    en: "Remeasure storage usage of running virtual devices (never remeasured automatically)",
+  },
   "exploreHeal.dashboard.colRemoved": { ja: "run から除外", en: "Excluded from Run" },
   "exploreHeal.dashboard.colRequeued": { ja: "振り直し", en: "Requeued" },
   "exploreHeal.dashboard.colPreRun": { ja: "run 前の除外・修復", en: "Pre-run Exclude/Repair" },

@@ -301,6 +301,21 @@ test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま�
   assert.equal(noFree.devices[0].storage.freeScope, "hostVolume");
 });
 
+test("isMonitorEvent: storageMeasuring は true だけを true に・storageRefreshId は安全な整数だけ残す", () => {
+  const device = (extra) => ({ id: "d", name: "d", platform: "ios", state: "connected", detail: "", ...extra });
+  const value = {
+    kind: "monitorDevices",
+    devices: [
+      device({ storageMeasuring: true, storageRefreshId: 1790000000000 }),
+      device({ storageMeasuring: "true", storageRefreshId: null }),
+      device({ storageRefreshId: 1.5 }),
+    ],
+  };
+  assert.equal(isMonitorEvent(value), true);
+  assert.deepEqual(value.devices.map((d) => [d.storageMeasuring, d.storageRefreshId]),
+    [[true, 1790000000000], [false, undefined], [false, undefined]]);
+});
+
 test("isMonitorEvent: monitorFrame は width/height が欠落/非数値なら false", () => {
   assert.equal(
     isMonitorEvent({ kind: "monitorFrame", device: "d", jpegBase64: "A", height: 100 }),
@@ -910,6 +925,8 @@ test("monitorControlLine: pause/resume/suppressFrames を末尾改行付きの N
     monitorControlLine({ cmd: "suppressFrames", devices: [] }),
     '{"cmd":"suppressFrames","devices":[]}\n',
   );
+  // 鍵名 id は Sources/fleetest/ApiMonitorCommand.swift の MonitorControlCommand.id と同期
+  assert.equal(monitorControlLine({ cmd: "storageRefresh", id: 42 }), '{"cmd":"storageRefresh","id":42}\n');
 });
 
 // ---- filterMonitorDevices(「起動中のデバイス」表示フィルタ) ----

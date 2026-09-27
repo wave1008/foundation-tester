@@ -66,7 +66,8 @@ final class MonitorMachineScopeTests: XCTestCase {
             id: id, name: id, platform: "ios", state: state, detail: "", udid: udid, serial: nil,
             health: nil, renderMode: nil, inRun: false, kind: kind, host: nil, port: nil,
             recording: false, registered: true, machine: nil, frozen: false, wired: wired,
-            streamedByOther: nil, bridgeRunning: nil, storage: nil)
+            streamedByOther: nil, bridgeRunning: nil, storage: nil,
+            storageMeasuring: false, storageRefreshId: nil)
     }
 
     func testRemoteEntriesFillInForTheDevicesThisMachineCannotSee() {
@@ -161,7 +162,8 @@ extension MonitorMachineScopeTests {
             id: id, name: name, platform: "ios", state: "connected", detail: "",
             udid: nil, serial: nil, health: nil, renderMode: nil, inRun: false, kind: "virtual",
             host: nil, port: nil, recording: false, registered: true, machine: nil, frozen: false,
-            wired: nil, streamedByOther: nil, bridgeRunning: nil, storage: nil)
+            wired: nil, streamedByOther: nil, bridgeRunning: nil, storage: nil,
+            storageMeasuring: false, storageRefreshId: nil)
         info.machine = machine
         return info
     }
