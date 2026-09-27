@@ -10,12 +10,13 @@ public enum ContainerGeometry {
     /// 座標補正無し・候補の除外無し)へ戻す。
     ///
     /// **なぜ要るか**: 容器は「pre-order で直前にある depth の小さい要素」+「同 depth の兄弟が
-    /// 2つ以上その中に居る」という**推測**で決めている(`clippingContainer`)。E2E は 4 SUT しか
+    /// 2つ以上その中に居る」という**推測**で決めている(`clippingContainer`)。E2E は自前の SUT しか
     /// 見ていないので、想定外のツリーでは推測が外れ得る。外れたときに起きるのは
     /// **より悪い事態**(別の場所を叩く・明後日の方向へ送る・正当な要素が候補から消える)なので、
     /// 利用者が1つの環境変数で全部止められるようにしておく。
-    /// 影響範囲を1箇所に閉じるため、**推測の入口(`clippingContainer`)と
-    /// `hasClampedCoordinates` の2箇所だけ**でこのフラグを見る
+    /// 実効値は `StepExecutor.execute` の入口で `step.containerInference` へ1回だけ畳み
+    /// (このスイッチ > ステップ指定 > 実行プロファイル)、DSL の下流はそれだけを見る。
+    /// ここを `inferring:` の既定値として直に読むのは、ステップを持たない呼び手(MCP・テスト)のため
     public static let containerInferenceEnabled =
         ProcessInfo.processInfo.environment["FT_CONTAINER_INFERENCE"] != "off"
 

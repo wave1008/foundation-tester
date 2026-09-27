@@ -2823,3 +2823,24 @@ E2E-Flutter の iOS in-app で 3 台が同時に `observed=""` の notRendered�
 - 観察: `clean --dry-run --simulator-poster-cache` が負荷下で 149 → 388 秒(全 Simulator の容量を数える仕様)/
   FM だけの構成(OCR off)で M1Ultra の FM 1 回が中央値 45 秒・門の待ち 38 秒 / 実機 SE3 の `ft_launch`(再開)が
   90 回中1回 45 秒(内訳は未計測)/ iOS の `devices down` が1回だけ 299 秒(他は 34〜60 秒。内訳は未計測)
+
+## 57. 判定の関数を `StepExecutor` の static に置くと、判定の型が実行機に依存する(2026-09-28)
+
+`TapTargetGeometry`・`OcclusionGeometry`・`SelectorNaming`・`HeldElementAssert`・`WebViewDOMTree` は、I/O を持たない
+判定の型なのに、`StepExecutor.descendants` / `isOutsideContainer` / `matchDetailed` のような**実行機にぶら下がった
+static の補助関数**を呼ぶためだけに `StepExecutor` を参照していた。関数そのものは純粋でも、置き場所のせいで依存の
+向きが「判定 → 実行機」に逆転する。`4b956e53` で置き場所だけを直した(本体は行単位で同一・挙動不変):
+`StepExecutor+Resolve.swift` → `LocatorResolver`、Settle の容器の幾何 → `ContainerGeometry`、
+`minimumVisibleTapExtent` → `TapTargetGeometry`、OCR の読みの正規化 → `TranscriptMatch`、
+`FrozenInjection` / `FMNoVerdictInjection` の `environment:` から `ProcessInfo` の既定値を削除。
+
+- **測り方**: FTCore の各ファイルについて I/O(`Shell`・`FileManager`・`ProcessInfo`・Vision 等の import)の有無と、
+  **最上位の型だけ**の参照を拾い、「I/O が無く、参照先もすべて同じ条件を満たす」集合を不動点で取る。
+  ネストした型名(`Verdict`・`Plan`・`Path`)を拾うと偽の依存が大量に出る。`名前(` の呼び出しだけ辿ると
+  静的プロパティの参照(`containerInferenceEnabled`)を見落とす(実際に1度見落とした)
+- **結果**: 閉じた集合は 80 本 → 83 本。容器推定の殺しスイッチ `ContainerGeometry.containerInferenceEnabled`
+  (`FT_CONTAINER_INFERENCE`)が環境変数を読むので、これを例外にしたときだけ 96 本(約 14,200 行)になる。
+  このスイッチは実行機の側から判定の側へ移った = 「判定の層に I/O を置かない」の物差しでは1点後退している
+- **守る仕組みは無い**(同じモジュールの中なのでコンパイラは止めない)。純粋層を別ターゲットにする案
+  (FTJudgment)は、防げたはずの実害が記録に無く、移す関数の `public` 化で利用者に見える API が広がるので見送った。
+  再検討するのは、判定の型が実行機や I/O に依存したことによる不具合が実際に出たとき

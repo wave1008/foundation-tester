@@ -328,6 +328,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   `RefGuard`/MCP は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**
   (実例は maintainer-notes §5)。移設したときは**掃討ゲート(`SweepHarnessTests`)が
   実アプリのコーパスで等価性を検証する**
+- **判定の関数を `StepExecutor` の static に置かない**。置くと判定の型が実行機に依存する(依存は実行機 → 判定の
+  一方向。ロケータ解決は `LocatorResolver`・容器推定は `ContainerGeometry`)。コンパイラは止めない → maintainer-notes §57
 - **前面にあると観測しただけの相手へ、画面を動かす操作を撃たない**。セッションの向け直しは
   `AppDriver.attach`(前面確認だけ・非破壊)で、**activate は使わない** —— Spotlight のような
   SpringBoard の拡張を activate すると**ホーム画面が描画を失って真っ黒になり**、自アプリなら

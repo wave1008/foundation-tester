@@ -188,7 +188,7 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 │  │   ├─ ReplayAssist      (画面検証。ロケータ修復は撤去済み §10) │
 │  │   └─ OcclusionVerifier / FMDoctor / ScenarioNamer / TestbaseDrafter │
 │  ├─ FTDSL          : Swift DSL(§10)/ セレクタ式 / ロケータの指紋 │
-│  ├─ FTCore          : AppDriver プロトコル / StepExecutor(実行機) │
+│  ├─ FTCore          : AppDriver プロトコル / StepExecutor(実行機) / 判定の型 │
 │  ├─ FTBridgeClient  : iOS ブリッジへの HTTP クライアント・起動管理  │
 │  └─ FTAndroid        : AndroidDriver + Android ブリッジ管理        │
 └──────────────┬─────────────────────────────┬───────────────────────┘
@@ -213,6 +213,11 @@ Android は locale/settle を追加した15、InApp は hidekeyboard/appstate/ro
 という差分がある(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
 `FTFoundationModels` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
+
+FTCore の中では、**実行機の状態を使わない判定は `StepExecutor` の static に置かず、中身を表す名前の型に置く**
+(ロケータ解決 = `LocatorResolver`・容器推定 = `ContainerGeometry`・タップ先の幾何 = `TapTargetGeometry`・
+遮蔽 = `OcclusionGeometry`・読みの照合 = `TranscriptMatch` 等)。**依存は実行機 → 判定の一方向**で、
+判定の型から `StepExecutor` を参照しない(理由と測り方は maintainer-notes §57)。
 
 ```swift
 // 抜粋(全定義は Sources/FTCore/AppDriver.swift)
@@ -250,7 +255,9 @@ foundation-tester/
 │   ├── FTCore/                    # AppDriver, StepExecutor, ScenarioHost, RunOrchestrator,
 │   │                              # TestProject / RunProfile / LocalConfig(§11)。
 │   │                              # セレクタ文法(FTSelector)・コマンド索引(CommandIndex)・
-│   │                              # コード生成(ScenarioCodeGen)もここ = DSL ランタイム非依存
+│   │                              # コード生成(ScenarioCodeGen)もここ = DSL ランタイム非依存。
+│   │                              # 判定の型(LocatorResolver・ContainerGeometry・TapTargetGeometry 等)は
+│   │                              # StepExecutor を参照しない(§2)
 │   ├── FTRemote/                  # SSH ディスパッチ・ランナー登録簿・dispatch.lock・占有(docs/remote-runner.md)。
 │   │                              # 利用側は fleetest CLI だけ = 受け手のシナリオ実行バイナリにはリンクしない
 │   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§10)。
