@@ -41,6 +41,13 @@ final class AndroidScreenVideoRecorderTests: XCTestCase {
                       "空や相対の接頭辞は cmdline のどこにでも一致してしまう")
     }
 
+    /// 置き去りのセグメントの掃除は、録画の置き場の直下・自分の命名・**古いものだけ**を消す
+    /// (撮影中の別の録画のファイルや、置き場の他のファイルに触らない)
+    func testStaleSegmentCleanupDeletesOnlyOldOwnSegments() {
+        XCTAssertEqual(AndroidScreenVideoRecorder.staleSegmentCleanupCommand,
+                       "find /sdcard/ -maxdepth 1 -name 'ftrec-*.mp4' -mmin +10 -delete")
+    }
+
     /// 無差別形をソースから締め出す(コメントは除く)
     func testNoBlanketPidofKillRemainsInRecorderSource() throws {
         let file = URL(fileURLWithPath: #filePath)

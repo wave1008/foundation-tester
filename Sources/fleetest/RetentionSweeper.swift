@@ -104,23 +104,35 @@ enum RetentionSweeper {
     /// 日は**ファイル名のローカル時刻**から取る(runID の UTC とは別系統。混ぜない)。
     /// `.md` と `.png` と失敗の証跡 `.failure.json`(`FTCore.FailureEvidence`)はどれも
     /// `scenario-<yyyyMMdd>-<HHmmss>-<SSS>-` で始まる(`ScenarioReportWriter` の命名)ので、同じ規則で1つの日へ入る。
+    ///
+    /// 見る置き場は既定の `reports/` と、**実行プロファイルの `reportDir` が指す先**
+    /// (`ProfileResolver.configuredReportDirectories`)。既定だけを見ると、置き場を変えた利用者の
+    /// レポートを1度も消さなかった。1回きりの `--report-dir` は記録が無いので見ない。
+    /// 直下の命名に合うファイルしか触らないので、置き場が利用者の共有フォルダでも他のファイルは残る
     static func reportSessions(packageRoot: URL, activeRunID: String?) -> [RetentionSweep.Session] {
         // 今日のぶんは触らない(たった今終わった run のレポートを守る唯一の砦。
         // activeRunID は UTC の runID なので日の判定には使えない)
         let today = localDayStamp(Date())
         var sessions: [RetentionSweep.Session] = []
+        // 複数のプロファイル・プロジェクトが同じ置き場を指しても1回だけ数える(二重に数えると上限を誤る)
+        var seenDirs: Set<String> = []
         for project in ProjectStore.all(repoRoot: packageRoot) {
-            var byDay: [String: [URL]] = [:]
-            for url in regularFiles(in: project.reportsDir) {
-                guard let day = reportDay(of: url.lastPathComponent) else { continue }
-                byDay[day, default: []].append(url)
-            }
-            for (day, files) in byDay {
-                guard let measured = measure(files: files) else { continue }
-                sessions.append(RetentionSweep.Session(
-                    id: "\(project.name) \(day)", bytes: measured.bytes,
-                    newestModified: measured.newest, paths: files,
-                    guarded: day >= today))
+            let dirs = [project.reportsDir] + ProfileResolver.configuredReportDirectories(project: project)
+            for dir in dirs where seenDirs.insert(dir.standardizedFileURL.path).inserted {
+                let label = dir.standardizedFileURL == project.reportsDir.standardizedFileURL
+                    ? project.name : "\(project.name) \(dir.path)"
+                var byDay: [String: [URL]] = [:]
+                for url in regularFiles(in: dir) {
+                    guard let day = reportDay(of: url.lastPathComponent) else { continue }
+                    byDay[day, default: []].append(url)
+                }
+                for (day, files) in byDay {
+                    guard let measured = measure(files: files) else { continue }
+                    sessions.append(RetentionSweep.Session(
+                        id: "\(label) \(day)", bytes: measured.bytes,
+                        newestModified: measured.newest, paths: files,
+                        guarded: day >= today))
+                }
             }
         }
         return sessions

@@ -3,7 +3,7 @@
 // (表示も実行も成功するので気付けない)。
 //
 // 同期相手:
-//   reportDir      … Sources/FTCore/RunProfile.swift の `runDoc.reportDir ?? "reports"`
+//   reportDir      … Sources/FTCore/RunProfile.swift の `ProfileResolver.reportDirectory` の `reportDir ?? "reports"`
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート。
 
@@ -24,7 +24,7 @@ function placeholderOf(id) {
 
 test("reportDir の透かしは未指定時の出力先と一致する", () => {
   const swift = readFileSync(path.join(REPO, "Sources/FTCore/RunProfile.swift"), "utf8");
-  const match = swift.match(/runDoc\.reportDir \?\? "([^"]+)"/);
+  const match = swift.match(/resolvePath\(reportDir \?\? "([^"]+)"/);
   assert.ok(match, "RunProfile.swift から reportDir の既定を抽出できません");
   assert.equal(placeholderOf("run-profile-report-dir"), match[1]);
 });

@@ -160,10 +160,23 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         return true
     }
 
-    /// 起動前に stale な screenrecord(前の run が残した ftrec-* のもの)を best-effort で止める
+    /// 起動前に stale な screenrecord(前の run が残した ftrec-* のもの)を best-effort で止め、
+    /// 置き去りのセグメントを消す。端末のファイルを消すのは正常終了のセグメントごとの `rm` だけなので、
+    /// ホストが途中で死んだ run(SIGKILL・クラッシュ・adb 切断)のセグメント(最大約 34MB)が溜まり続けた
     private func killStaleScreenrecord() {
         _ = try? Shell.run([adbPath, "-s", serial, "shell",
                             Self.killOwnScreenrecordCommand(outputPathPrefix: Self.remoteOutputPrefix)])
+        _ = try? Shell.run([adbPath, "-s", serial, "shell", Self.staleSegmentCleanupCommand])
+    }
+
+    /// 置き去りのセグメントを消すデバイス側シェル。**更新が止まって `staleSegmentMinutes` 分より古いものだけ** ——
+    /// 撮影中のセグメントは書き続けられ、1本は `segmentTimeLimitSeconds`(3分)で終わってすぐ pull されるので、
+    /// 同じ端末の別の録画が使っているものには触らない。find の -mmin / -delete は toybox(API 26+)に居る
+    static let staleSegmentMinutes = 10
+    static var staleSegmentCleanupCommand: String {
+        let dir = (remoteOutputPrefix as NSString).deletingLastPathComponent
+        let namePrefix = (remoteOutputPrefix as NSString).lastPathComponent
+        return "find \(dir)/ -maxdepth 1 -name '\(namePrefix)*.mp4' -mmin +\(staleSegmentMinutes) -delete"
     }
 
     /// この録画セッションのセグメントだけに共通する接頭辞(stop はこれで自分のぶんだけ止める)

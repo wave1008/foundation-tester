@@ -99,6 +99,10 @@ const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
  * の余裕。超えたらそのまま断る(本当に立ち上がらない場合の固まりを作らない)。 */
 const SERVE_REBIND_WAIT_MS = 6000;
 
+/** 再バインドで旧 serve の close を待つ上限(ms)。killServeProcess は SIGTERM の 2 秒後に SIGKILL
+ * するので close は通常 2〜3 秒で来る。8 秒は monitorProcessManager の RESTART_CLOSE_TIMEOUT_MS と同じ余裕 */
+const SERVE_REBIND_CLOSE_TIMEOUT_MS = 8000;
+
 /** 「全て終了」の前に serve を畳むときの close 待ちの上限(ms)。killServeProcess は stdin EOF +
  * SIGTERM を送り 2 秒後に SIGKILL へ上げるので、その 2 秒 + 余裕。上限に当たっても掃討へ進む
  * (印が残っていても持ち主の pid は死んでいる = CLI は生きた印としては数えない)。 */
@@ -229,6 +233,10 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 再バインドの完了(新しい serveProcess が立つ/起動しないと確定する)を待っている呼び出し手。
    * rebindServeProcess の startLatest が全件起こす(awaitServeRebind の doc 参照)。 */
   private serveReadyWaiters: Array<() => void> = [];
+  /** stopServeProcess のたびに進む番号。close 待ちの再バインドは、待つ間にパネルが閉じた
+   * (stopProcesses)なら起動しない —— 起動すると閉じたパネルの裏で serve がデバイスの lease を
+   * 掴んだまま居続ける(monitorProcessManager.ts の monitorStopEpoch と同じ)。 */
+  private serveStopEpoch = 0;
   /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/停止時に必ずクリアする。 */
   private serveRestartTimer: ReturnType<typeof setTimeout> | undefined;
   /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
@@ -833,10 +841,17 @@ export class MonitorLiveController implements vscode.Disposable {
     // (旧デバイス宛)に届くことは無い。
     this.serveProcess = undefined;
     this.killServeProcess(proc);
+    const epoch = this.serveStopEpoch;
+    let proceeded = false;
     const startLatest = (): void => {
+      if (proceeded) {
+        return;
+      }
+      proceeded = true;
+      clearTimeout(timer);
       this.serveRestartPending = false;
       const target = this.serveDevice;
-      if (target) {
+      if (target && epoch === this.serveStopEpoch) {
         this.startServeProcess(target);
       }
       // 起動できた場合もできなかった場合も待ち手を解放する(起動しなかった回を待たせ続けない)。
@@ -846,6 +861,9 @@ export class MonitorLiveController implements vscode.Disposable {
       startLatest();
       return;
     }
+    // close が来ない(defunct 等)と serveRestartPending が永久 true になり、以後の再バインドと
+    // ライブ操作が全て止まる。monitorProcessManager の RESTART_CLOSE_TIMEOUT_MS と同じ安全弁
+    const timer = setTimeout(startLatest, SERVE_REBIND_CLOSE_TIMEOUT_MS);
     proc.once("close", startLatest);
   }
 
@@ -1035,6 +1053,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * 手放す(dispose/panel破棄から呼ぶ。デバイス切り替え中の再バインドは rebindServeProcess が
    * 個別に this.serveProcess を扱うため、こちらは呼ばない)。 */
   private stopServeProcess(): void {
+    this.serveStopEpoch += 1;
     // 表示ごと解く(予約だけ消すと「表示中」の記録が残り、次の serve も起動中だったとき
     // 値が変わらず予約が掛からない = 同じデバイスの切り替えで「接続中」が残り続ける)
     this.applyBridgeStarting(false);

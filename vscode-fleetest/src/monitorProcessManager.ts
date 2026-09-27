@@ -71,6 +71,8 @@ interface HostMetricsChild {
   startedAt: number | undefined;
   failureStreak: number;
   gaveUp: boolean;
+  /** stop のたびに進む番号(monitorStopEpoch と同じ役割)。 */
+  stopEpoch: number;
 }
 
 /**
@@ -203,6 +205,12 @@ export class MonitorProcessManager {
   private static readonly RESTART_CLOSE_TIMEOUT_MS = 8000;
 
   private restartPending = false;
+  /**
+   * stopMonitorProcess のたびに進む番号。close 待ちの再起動は、待っている間に**別の stop**
+   * (パネルを閉じる)が入ったら起動しない —— 起動すると閉じたパネルの裏で monitor が立ち、
+   * 開き直した startAll がもう1本立てて参照を上書きし、前の1本が誰にも止められず残った。
+   */
+  private monitorStopEpoch = 0;
   /** monitor の予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
   private monitorRestartTimer: ReturnType<typeof setTimeout> | undefined;
   /** monitor の直近の起動時刻(ms)。「起動後10秒未満での異常終了」判定用(host-metrics と同型)。 */
@@ -526,6 +534,7 @@ export class MonitorProcessManager {
 
   /** 実行中の monitor プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める。無ければ何もしない。 */
   stopMonitorProcess(): void {
+    this.monitorStopEpoch += 1;
     if (this.monitorRestartTimer) {
       clearTimeout(this.monitorRestartTimer);
       this.monitorRestartTimer = undefined;
@@ -573,10 +582,15 @@ export class MonitorProcessManager {
     this.restartPending = true;
     const proc = this.monitorProcess;
     this.stopMonitorProcess();
+    const epoch = this.monitorStopEpoch;
     this.scheduleRestartAfterClose(
       proc,
       () => { this.restartPending = false; },
-      () => this.startMonitorProcess(),
+      () => {
+        if (epoch === this.monitorStopEpoch) {
+          this.startMonitorProcess();
+        }
+      },
     );
   }
 
@@ -621,6 +635,7 @@ export class MonitorProcessManager {
       startedAt: undefined,
       failureStreak: 0,
       gaveUp: false,
+      stopEpoch: 0,
     };
     this.hostMetricsChildren.set(machine, child);
     return child;
@@ -992,6 +1007,7 @@ export class MonitorProcessManager {
     if (!child) {
       return;
     }
+    child.stopEpoch += 1;
     if (child.restartTimer) {
       clearTimeout(child.restartTimer);
       child.restartTimer = undefined;
@@ -1024,10 +1040,16 @@ export class MonitorProcessManager {
       child.restartPending = true;
       const proc = child.proc;
       this.stopHostMetricsProcess(machine);
+      const epoch = child.stopEpoch;
       this.scheduleRestartAfterClose(
         proc,
         () => { child.restartPending = false; },
-        () => this.startHostMetricsProcess(machine),
+        () => {
+          // 待つ間の stop(パネルを閉じる)で番号が進む。リモートの子は全停止で記録ごと捨てられる
+          if (this.hostMetricsChildren.get(machine) === child && epoch === child.stopEpoch) {
+            this.startHostMetricsProcess(machine);
+          }
+        },
       );
     }
   }

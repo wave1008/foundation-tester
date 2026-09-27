@@ -310,6 +310,9 @@ public struct BridgeLauncher {
 
         FileManager.default.createFile(atPath: logPath.path, contents: nil)
         let logHandle = try FileHandle(forWritingTo: logPath)
+        // 子は run() で fd を複製して持つので、親の分は閉じる(閉じないと起動・建て直しのたびに
+        // 長く生きる MCP / ライブ操作のプロセスへ fd が1本ずつ残る)
+        defer { try? logHandle.close() }
         // xcodebuild は既存の束があると起動を拒むので、今回は別名を使い(resultBundlePath)、前回までの
         // 同じポートの束を掃く。**消せなくても起動は止めない**(別名なので衝突しない)が、理由は残す
         let resultBundle = resultBundlePath(stamp: Self.launchStamp())

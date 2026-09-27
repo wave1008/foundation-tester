@@ -45,6 +45,8 @@ public final class HostMetricsLog {
         self.bytesWritten = fstat(opened, &st) == 0 ? Int64(st.st_size) : 0
     }
 
+    deinit { close(fd) }
+
     public func append(_ line: String) {
         let data = Array((line + "\n").utf8)
         let written = data.withUnsafeBufferPointer { write(fd, $0.baseAddress, $0.count) }
@@ -59,16 +61,23 @@ public final class HostMetricsLog {
     }
 
     /// 上限到達時のみ呼ばれる。複数プロセスの同時ローテ競合を flock で防ぐ。
-    /// ロック区間は必ず LOCK_UN で抜ける(失敗しても継続できるよう既存 fd は極力温存する)。
+    /// **旧 fd は新しい fd を開けてから閉じる** —— 先に閉じると、rename か再 open の失敗で
+    /// `fd` が閉じた番号のまま残り、以後の毎秒の write がその番号を再利用した無関係なファイル・
+    /// パイプへ書き込む。失敗したら旧 fd(開いたまま・中身は正しい)へ書き続ける。
+    /// 閉じる前に rename するのでロックもローテの間ずっと保たれる
     private func rotate() {
-        guard flock(fd, LOCK_EX) == 0 else {
+        let old = fd
+        guard flock(old, LOCK_EX) == 0 else {
             logIfNeeded("failed to lock for log rotation: \(path) (errno \(errno))")
             return
         }
-        defer { flock(fd, LOCK_UN) }
+        defer {
+            flock(old, LOCK_UN)
+            if fd != old { close(old) }
+        }
 
         var st = stat()
-        guard fstat(fd, &st) == 0 else {
+        guard fstat(old, &st) == 0 else {
             logIfNeeded("fstat before log rotation failed: \(path) (errno \(errno))")
             return
         }
@@ -78,11 +87,8 @@ public final class HostMetricsLog {
             return
         }
 
-        close(fd)
         guard rename(path, path + ".1") == 0 else {
             logIfNeeded("rename during log rotation failed: \(path) (errno \(errno))")
-            let reopened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
-            if reopened >= 0 { fd = reopened }
             return
         }
         let reopened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)

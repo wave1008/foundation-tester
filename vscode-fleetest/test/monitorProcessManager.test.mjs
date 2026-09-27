@@ -943,3 +943,56 @@ test("合図で畳むのはその機械のぶんだけ(他の機械の諦めに�
   assert.equal(remoteFor("mac2"), 4, "戻った機械だけ張り直す");
   assert.equal(remoteFor("mac3"), 3, "落ちたままの機械には触らない");
 });
+
+// 再起動の close 待ちの間にパネルを閉じる(stopMonitorProcess / stopHostMetricsProcess)と、
+// 届いた close で閉じたパネルの裏に monitor と host-metrics が立ち、開き直した startAll が
+// もう1本立てて参照を上書きし、前の1本が誰にも止められず残った
+test("再起動の close 待ちの間にパネルを閉じたら、届いた close で起動しない", () => {
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  const started = [...procs];
+  calls.length = 0;
+
+  manager.restartAll();
+  // パネルを閉じる(monitorPanel.ts の onDidDispose と同じ2本)
+  manager.stopMonitorProcess();
+  manager.stopHostMetricsProcess();
+  for (const proc of started) {
+    proc.exitCode = 0;
+    proc.emit("close", 0, null);
+  }
+
+  assert.equal(calls.length, 0, "閉じたパネルの裏で monitor / host-metrics を起動した");
+});
+
+test("再起動の close 待ちの間に何も起きなければ、close で起動し直す", () => {
+  const calls = [];
+  const procs = [];
+  const spawnFn = (command, args) => {
+    calls.push(args);
+    const proc = makeFakeProc();
+    procs.push(proc);
+    return proc;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startAll();
+  const started = [...procs];
+  calls.length = 0;
+
+  manager.restartAll();
+  for (const proc of started) {
+    proc.exitCode = 0;
+    proc.emit("close", 0, null);
+  }
+
+  assert.equal(calls.filter((args) => args[1] === "monitor").length, 1);
+  assert.equal(calls.filter((args) => args[1] === "host-metrics").length, 1);
+});

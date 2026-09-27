@@ -1186,6 +1186,24 @@ public enum ProfileResolver {
         jsonNames(in: project.runsDir)
     }
 
+    /// 実行プロファイルの `reportDir` の解決(相対はプロジェクトルート基準・未指定は `reports`)。
+    /// **resolve と保持容量の掃除の唯一の定義元** —— 別々に解くと掃除が実際の置き場を見落とす
+    public static func reportDirectory(_ reportDir: String?, project: TestProject) -> URL {
+        URL(fileURLWithPath: resolvePath(reportDir ?? "reports", base: project.rootURL))
+    }
+
+    /// 実行プロファイルが `reportDir` で指す置き場(解決済み・読めないプロファイルは飛ばす)。
+    /// 既定の `reports/` 以外に書かれたレポートを保持容量の掃除が拾うため(`RetentionSweeper.reportSessions`)
+    public static func configuredReportDirectories(project: TestProject) -> [URL] {
+        runProfileNames(project: project).compactMap { name in
+            let url = project.runsDir.appendingPathComponent("\(name).json")
+            guard let data = try? Data(contentsOf: url),
+                  let doc = try? JSONDecoder().decode(RunProfileDocument.self, from: data),
+                  let dir = doc.reportDir else { return nil }
+            return reportDirectory(dir, project: project)
+        }
+    }
+
     /// profiles/apps/ のアプリケーションプロファイル名一覧
     public static func appProfileNames(project: TestProject) -> [String] {
         jsonNames(in: project.appsDir)
@@ -1478,8 +1496,7 @@ public enum ProfileResolver {
             }
         }
 
-        let reportDir = URL(fileURLWithPath:
-            resolvePath(runDoc.reportDir ?? "reports", base: project.rootURL))
+        let reportDir = reportDirectory(runDoc.reportDir, project: project)
 
         let wipeDataThresholdGB = runDoc.wipeDataThresholdGB ?? 8
         guard wipeDataThresholdGB > 0 else {

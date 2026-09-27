@@ -99,4 +99,21 @@ final class HostMetricsRecorderTests: XCTestCase {
                        "capture 無効なのにセッションファイルが作られた")
         recorder.finish(total: 0, passed: 0, failed: 0, performanceMode: false, fmSettings: testFMSettings, setOverrides: nil)
     }
+
+    /// 上限(16MB)を超えたら `.1` へ回して新しいファイルへ書き続ける。旧 fd は新しい fd を開けてから
+    /// 閉じる順(閉じた番号へ書き続けない)に変えても、回したあとの行が新しいファイルに入ること
+    func testLogRotatesToDotOneAndKeepsWritingToTheNewFile() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("hostmetrics-rotate-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let path = dir.appendingPathComponent("host-metrics.ndjson").path
+        let log = try XCTUnwrap(HostMetricsLog(path: path, logFailure: { XCTFail($0) }))
+        log.append(String(repeating: "x", count: 16 * 1024 * 1024))
+        log.append("after")
+
+        let rotated = try XCTUnwrap(FileManager.default.attributesOfItem(atPath: path + ".1")[.size] as? Int)
+        XCTAssertGreaterThanOrEqual(rotated, 16 * 1024 * 1024, "上限を超えた分が .1 へ回っていない")
+        XCTAssertEqual(try String(contentsOfFile: path, encoding: .utf8), "after\n",
+                       "回したあとの行が新しいファイルに入っていない")
+    }
 }

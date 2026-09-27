@@ -26,8 +26,16 @@ enum InAppSettle {
         func finish(_ converged: Bool) {
             if finished { return }
             finished = true
-            if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
+            // **Remove だけでは解放されない**: observer のハンドラがこの関数経由で `observer` の箱を
+            // 掴む循環がある。Invalidate でハンドラを手放させ、箱も空にして切る(切らないと待ち1回ごとに
+            // observer・Timer・done(= 掴んだ AX ノードや UIWindow)が対象アプリに残る)
+            if let observer {
+                CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+                CFRunLoopObserverInvalidate(observer)
+            }
+            observer = nil
             heartbeat?.invalidate()
+            heartbeat = nil
             done(converged)
         }
 

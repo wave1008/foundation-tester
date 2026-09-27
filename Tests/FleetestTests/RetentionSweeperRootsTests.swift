@@ -41,6 +41,33 @@ final class RetentionSweeperRootsTests: XCTestCase {
         XCTAssertTrue(found.hasPrefix(package.resolvingSymlinksInPath().path), found)
     }
 
+    /// 実行プロファイルの `reportDir` が指す置き場(相対・プロジェクトの外の絶対)も拾う。
+    /// 2つのプロファイルが同じ置き場を指しても1回だけ数え、命名に合わないファイルには触らない
+    func testReportsAlsoComeFromRunProfileReportDirs() throws {
+        let fm = FileManager.default
+        let projectRoot = package.appendingPathComponent("TestProjects/app")
+        let runs = projectRoot.appendingPathComponent("profiles/runs")
+        try fm.createDirectory(at: runs, withIntermediateDirectories: true)
+        let outside = package.deletingLastPathComponent().appendingPathComponent("shared-reports")
+        try Data(#"{"reportDir":"custom"}"#.utf8).write(to: runs.appendingPathComponent("a.json"))
+        try Data(#"{"reportDir":"custom"}"#.utf8).write(to: runs.appendingPathComponent("b.json"))
+        try Data(#"{"reportDir":"\#(outside.path)"}"#.utf8).write(to: runs.appendingPathComponent("c.json"))
+        for dir in [projectRoot.appendingPathComponent("custom"), outside] {
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data("r".utf8).write(to: dir.appendingPathComponent("scenario-20260102-120000-000-x.md"))
+            try Data("keep".utf8).write(to: dir.appendingPathComponent("notes.txt"))
+        }
+        let roots = RetentionSweeper.Roots(package: package, tool: tool)
+        let paths = RetentionSweeper.sessions(for: .reports, roots: roots, activeRunID: nil)
+            .flatMap(\.paths).map { $0.resolvingSymlinksInPath().path }.sorted()
+        let expected = [
+            projectRoot.appendingPathComponent("custom/scenario-20260102-120000-000-x.md"),
+            outside.appendingPathComponent("scenario-20260102-120000-000-x.md"),
+            projectRoot.appendingPathComponent("reports/scenario-20260101-120000-000-x.md"),
+        ].map { $0.resolvingSymlinksInPath().path }.sorted()
+        XCTAssertEqual(paths, expected, "プロファイルの reportDir のレポートを拾っていない/二重に数えた")
+    }
+
     /// ログは**両方**から拾う(ブリッジのログはツール側・install.sh のログはパッケージ側)
     func testLogsComeFromBothStateDirectories() {
         let roots = RetentionSweeper.Roots(package: package, tool: tool)
