@@ -2796,6 +2796,20 @@ E2E-Flutter の iOS in-app で 3 台が同時に `observed=""` の notRendered�
   アプリを `kill -SEGV` で落とした実物で、本体の `coalitionName`(`com.apple.CoreSimulator.SimDevice.<UDID>`)と
   `procPath`(`…/Devices/<UDID>/…`)に UDID が載ると確かめ、`udid:` で絞るようにした(既定値なし・
   読めないレポートは帰属させない)。MCP の `ft_logs` は宛先の UDID を持たないので絞らない(出すパスに UDID が載る)
+
+### 56.10 終了コードを見ずに外部コマンドの出力を解析していた(§56.1・§56.7 の型の掃討)
+9/23 の「不明を畳まない」走査(`UnknownNotFoldedScanTests`)は3値以上の判定の switch を縛るが、§56.1・§56.7 は
+その手前 = **外部コマンドの生の出力から値を作る所**で起きていた。`Shell.run` は非ゼロで投げないので、
+`output` を素で解析すると失敗の出力から確定値ができる。全 `Shell.run` を関数単位で走査して見つかった実害:
+`adb devices` の失敗が空の一覧 =「接続中は無い」になり、**呼び手の `try?`(失敗なら安全側)を素通りしていた** ——
+データ削除の停止確認が「消えた」と読んで動いているエミュレータの削除へ進みうる / `devices down` が「✅ stopped」と
+言う / MCP が「no longer connected」と言い切って宛先を捨てる / run の到達確認が振り直しへ倒れる。
+ほかに `git rev-parse` の「fatal: …」をリビジョンとして扱う・ps の失敗を「qemu は居ない」・getprop の失敗文言を
+機種名として出す・doctor が失敗を「no devices connected」「No booted simulators」と出す、保持容量の掃除が
+起動途中のシミュレータを停止済みとして添付を消す側に倒す。直し: `Shell.Result.outputIfSucceeded` へ揃え、
+`AndroidDeviceCatalog.connectedSerials` / `allEmulatorSerials` は非ゼロで `adbFailed` を投げる。
+`ToolOutputStatusScanTests` が素の読みの再混入を落とす(免除3件は理由つき・免除が当たらなくなっても落ちる)。
+陽性対照: 失敗する偽の adb(`ANDROID_HOME`)で doctor が ❌ と理由を出し exit 1
 - 観察: `clean --dry-run --simulator-poster-cache` が負荷下で 149 → 388 秒(全 Simulator の容量を数える仕様)/
   FM だけの構成(OCR off)で M1Ultra の FM 1 回が中央値 45 秒・門の待ち 38 秒 / 実機 SE3 の `ft_launch`(再開)が
   90 回中1回 45 秒(内訳は未計測)/ iOS の `devices down` が1回だけ 299 秒(他は 34〜60 秒。内訳は未計測)

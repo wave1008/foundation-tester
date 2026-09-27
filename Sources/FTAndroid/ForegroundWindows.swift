@@ -102,7 +102,7 @@ public enum AndroidForegroundWindows {
     public static func query(package: String, serial: String) -> [String] {
         guard let adb = try? AndroidDriver.findADB(),
               let output = try? Shell.run([adb, "-s", serial, "shell", "dumpsys", "window", "windows"],
-                                          timeout: 10).output else { return [] }
+                                          timeout: 10).outputIfSucceeded else { return [] }
         return overlaying(package: package, dumpsys: output)
     }
 }

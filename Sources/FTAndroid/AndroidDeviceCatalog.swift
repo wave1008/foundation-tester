@@ -13,6 +13,9 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
     case noIdentifier(name: String)
     /// kind=physical の serial が adb に見えない
     case deviceNotConnected(name: String, serial: String, connected: [String])
+    /// `adb devices` が非ゼロで終わった。**空の一覧(=接続中は無い)に畳まない** ——
+    /// 呼び手は失敗を「まだ居る」「到達できる」の安全側へ倒す前提で `try?` している
+    case adbFailed(command: String, status: Int32, detail: String)
 
     public var errorDescription: String? {
         switch self {
@@ -35,6 +38,9 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
             let list = connected.isEmpty ? "none" : connected.joined(separator: ", ")
             return "physical device \"\(name)\" (serial: \(serial)) is not visible to adb (connected: \(list)). "
                 + "Check the USB connection, the USB-debugging approval on the device, and state=device in `adb devices`"
+        case .adbFailed(let command, let status, let detail):
+            let tail = detail.trimmingCharacters(in: .whitespacesAndNewlines)
+            return "`\(command)` failed (exit \(status))" + (tail.isEmpty ? "" : ": \(tail)")
         }
     }
 }
@@ -73,9 +79,7 @@ public enum AndroidDeviceCatalog {
 
     /// 接続中のデバイスシリアル一覧(state = device のみ)
     public static func connectedSerials() throws -> [String] {
-        let adbPath = try AndroidDriver.findADB()
-        let devices = try Shell.run([adbPath, "devices"], timeout: adbTimeoutSeconds)
-        return devices.output.split(separator: "\n").dropFirst()
+        try adbDevicesOutput().split(separator: "\n").dropFirst()
             .filter { $0.contains("\tdevice") }
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
     }
@@ -83,11 +87,21 @@ public enum AndroidDeviceCatalog {
     /// adb が把握している全エミュレータの serial(offline/unauthorized 含む)。
     /// シャットダウン時は offline のエミュレータにも kill を送る必要がある
     public static func allEmulatorSerials() throws -> [String] {
-        let adbPath = try AndroidDriver.findADB()
-        let devices = try Shell.run([adbPath, "devices"], timeout: adbTimeoutSeconds)
-        return devices.output.split(separator: "\n").dropFirst()
+        try adbDevicesOutput().split(separator: "\n").dropFirst()
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
             .filter { $0.hasPrefix("emulator-") }
+    }
+
+    /// `adb devices` の出力。**非ゼロは投げる**(`adbFailed`)—— 失敗の出力を解析すると空の一覧になり、
+    /// 「接続中は無い」「消えた」と確定してしまう(停止確認・データ削除・到達確認が誤る)
+    static func adbDevicesOutput() throws -> String {
+        let adbPath = try AndroidDriver.findADB()
+        let devices = try Shell.run([adbPath, "devices"], timeout: adbTimeoutSeconds)
+        guard let output = devices.outputIfSucceeded else {
+            throw AndroidDeviceCatalogError.adbFailed(command: "adb devices", status: devices.status,
+                                                      detail: devices.tail)
+        }
+        return output
     }
 
     /// 起動中エミュレータの serial → AVD ID
@@ -210,7 +224,8 @@ public enum AndroidDeviceCatalog {
     public static func resolveSerial(spec: DeviceSpec) throws -> String {
         if spec.isPhysical {
             let serial = spec.serial ?? ""
-            let connected = (try? connectedSerials()) ?? []
+            // adb の失敗は「つながっていない」ではない = 失敗の理由のまま投げる
+            let connected = try connectedSerials()
             guard connected.contains(serial) else {
                 throw AndroidDeviceCatalogError.deviceNotConnected(
                     name: spec.name, serial: serial, connected: connected)
@@ -247,12 +262,12 @@ public enum AndroidDeviceCatalog {
     public static func bootCompleted(serial: String) async -> Bool {
         if await EmulatorControl.statusBooted(serial: serial) == true { return true }
         guard let adbPath = try? AndroidDriver.findADB() else { return false }
-        guard let result = try? Shell.run(
+        guard let output = try? Shell.run(
             [adbPath, "-s", serial, "shell", "getprop", "sys.boot_completed"],
-            timeout: adbTimeoutSeconds) else {
+            timeout: adbTimeoutSeconds).outputIfSucceeded else {
             return false
         }
-        return result.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+        return output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
     }
 
     /// serial → AVD 名。まずディスカバリファイル(adb 不要・EmulatorControl.avdName)、
@@ -262,14 +277,14 @@ public enum AndroidDeviceCatalog {
         if let name = EmulatorControl.avdName(serial: serial) {
             return name
         }
-        if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"], timeout: adbTimeoutSeconds).output,
+        if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"], timeout: adbTimeoutSeconds).outputIfSucceeded,
            let first = output.split(separator: "\n").first
                .map({ $0.trimmingCharacters(in: .whitespaces) }),
            !first.isEmpty, first != "OK" {
             return first
         }
         for prop in ["ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name"] {
-            if let output = try? Shell.run([adbPath, "-s", serial, "shell", "getprop", prop], timeout: adbTimeoutSeconds).output {
+            if let output = try? Shell.run([adbPath, "-s", serial, "shell", "getprop", prop], timeout: adbTimeoutSeconds).outputIfSucceeded {
                 let name = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !name.isEmpty { return name }
             }

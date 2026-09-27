@@ -97,6 +97,10 @@ public enum Shell {
             let lines = output.split(separator: "\n")
             return lines.suffix(30).joined(separator: "\n")
         }
+        /// 終了コード 0 のときだけ出力。**`run` は非ゼロで投げない**ので、`output` を素で解析すると
+        /// 失敗の出力(空・エラー文)から確定値を作る(adb devices の失敗 →「接続中は無い」)。
+        /// 外部コマンドの出力から値を作るときはこれか `status` を見る(`ToolOutputStatusScanTests`)
+        public var outputIfSucceeded: String? { status == 0 ? output : nil }
     }
 
     /// timeout(秒)を渡すと、期限超過時に子を SIGTERM→(2s猶予後)SIGKILL して

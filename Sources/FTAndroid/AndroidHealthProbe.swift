@@ -54,11 +54,11 @@ public enum AndroidHealthProbe {
     /// 接続毎にキャッシュし、再検出しない)
     public static func detectRenderMode(serial: String) -> String? {
         guard let adbPath = try? AndroidDriver.findADB() else { return nil }
-        guard let result = try? Shell.run([adbPath, "-s", serial, "shell", "dumpsys", "SurfaceFlinger"],
-                                     timeout: adbTimeoutSeconds) else {
+        guard let output = try? Shell.run([adbPath, "-s", serial, "shell", "dumpsys", "SurfaceFlinger"],
+                                     timeout: adbTimeoutSeconds).outputIfSucceeded else {
             return nil
         }
-        return renderMode(fromSurfaceFlinger: result.output)
+        return renderMode(fromSurfaceFlinger: output)
     }
 
     /// serial のエミュレータにプローブを実行する。wifi/clock は adb shell(gRPC 代替なし)、
@@ -68,13 +68,13 @@ public enum AndroidHealthProbe {
         guard let adbPath = try? AndroidDriver.findADB() else { return [] }
         var issues: Set<String> = []
         if let wifi = try? Shell.run([adbPath, "-s", serial, "shell", "cmd", "wifi", "status"],
-                                 timeout: adbTimeoutSeconds),
-           wifiDisabled(statusOutput: wifi.output) {
+                                 timeout: adbTimeoutSeconds).outputIfSucceeded,
+           wifiDisabled(statusOutput: wifi) {
             issues.insert(issueWifiDisabled)
         }
         if let date = try? Shell.run([adbPath, "-s", serial, "shell", "date", "+%s"],
-                                 timeout: adbTimeoutSeconds),
-           clockSkewed(dateOutput: date.output, hostNow: hostNow.timeIntervalSince1970,
+                                 timeout: adbTimeoutSeconds).outputIfSucceeded,
+           clockSkewed(dateOutput: date, hostNow: hostNow.timeIntervalSince1970,
                        thresholdSeconds: clockSkewThresholdSeconds) == true {
             issues.insert(issueClockSkew)
         }

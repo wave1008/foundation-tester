@@ -281,7 +281,11 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     static func pickAVD() throws -> String {
         let binary = try DeviceBooter.findEmulatorBinary()
         let result = try Shell.run([binary, "-list-avds"])
-        let avds = result.output.split(separator: "\n").map(String.init)
+        // 失敗を「AVD が無い」と言わない
+        guard let listed = result.outputIfSucceeded else {
+            throw ValidationError("emulator -list-avds failed (exit \(result.status)): \(result.tail)")
+        }
+        let avds = listed.split(separator: "\n").map(String.init)
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         let home = FileManager.default.homeDirectoryForCurrentUser
         let candidates = avds.map { avd -> (name: String, apiLevel: Int) in

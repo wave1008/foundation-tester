@@ -78,7 +78,7 @@ public enum AndroidPhysicalDevice {
                 [adb, "-s", serial, "shell",
                  "dumpsys power | grep -m1 mWakefulness=; "
                     + "dumpsys activity activities | grep -m1 topResumedActivity="],
-                timeout: 15).output else { return nil }
+                timeout: 15).outputIfSucceeded else { return nil }
         return awakeAndUnlocked(checkOutput: output)
     }
 
@@ -95,7 +95,7 @@ public enum AndroidPhysicalDevice {
         guard let adb = try? AndroidDriver.findADB(),
               let output = try? Shell.run(
                 [adb, "-s", serial, "shell", "dumpsys", "deviceidle", "get", "deep"],
-                timeout: 15).output else { return nil }
+                timeout: 15).outputIfSucceeded else { return nil }
         return deepIdleState(checkOutput: output)
     }
 
@@ -129,7 +129,7 @@ public enum AndroidPhysicalDevice {
     public static func reportedAwake(serial: String) -> Bool? {
         guard let adb = try? AndroidDriver.findADB(),
               let output = try? Shell.run(
-                [adb, "-s", serial, "shell", "dumpsys", "power"], timeout: 15).output,
+                [adb, "-s", serial, "shell", "dumpsys", "power"], timeout: 15).outputIfSucceeded,
               output.contains("mWakefulness=") else { return nil }
         return output.contains("mWakefulness=Awake")
     }
@@ -151,7 +151,7 @@ public enum AndroidPhysicalDevice {
 
     private static func isAwake(adb: String, serial: String) -> Bool {
         guard let output = try? Shell.run(
-            [adb, "-s", serial, "shell", "dumpsys", "power"], timeout: 15).output else { return true }
+            [adb, "-s", serial, "shell", "dumpsys", "power"], timeout: 15).outputIfSucceeded else { return true }
         return output.contains("mWakefulness=Awake")
     }
 
@@ -160,7 +160,7 @@ public enum AndroidPhysicalDevice {
     private static func hasResumedActivity(adb: String, serial: String) -> Bool {
         guard let output = try? Shell.run(
             [adb, "-s", serial, "shell", "dumpsys", "activity", "activities"],
-            timeout: 15).output else { return false }
+            timeout: 15).outputIfSucceeded else { return false }
         return output.contains("topResumedActivity=")
     }
 }

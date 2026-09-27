@@ -150,13 +150,19 @@ struct Doctor: AsyncParsableCommand {
         }
 
         let sims = try Shell.run(["xcrun", "simctl", "list", "devices", "booted"])
-        let booted = sims.output.split(separator: "\n")
-            .filter { $0.contains("(Booted)") }
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-        if booted.isEmpty {
-            ConsoleOut.out("⚠️  No booted simulators (bridge up will boot one automatically)")
+        // simctl の失敗を「起動中の Simulator は無い」と言わない
+        if let listed = sims.outputIfSucceeded {
+            let booted = listed.split(separator: "\n")
+                .filter { $0.contains("(Booted)") }
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+            if booted.isEmpty {
+                ConsoleOut.out("⚠️  No booted simulators (bridge up will boot one automatically)")
+            } else {
+                ConsoleOut.out("✅ Booted simulators: \(booted.joined(separator: ", "))")
+            }
         } else {
-            ConsoleOut.out("✅ Booted simulators: \(booted.joined(separator: ", "))")
+            ConsoleOut.out("❌ simctl list failed (exit \(sims.status)): \(sims.tail)")
+            problems += 1
         }
 
         if let bootedDevices = try? SimulatorCatalog.devices().filter(\.booted) {
@@ -182,11 +188,17 @@ struct Doctor: AsyncParsableCommand {
         if xcodegen.status != 0 { problems += 1 }
 
         if let android = try? AndroidDriver() {
-            let devices = try Shell.run([android.adbPath, "devices"])
-            let connected = devices.output.split(separator: "\n").dropFirst()
-                .filter { $0.contains("\tdevice") }
-            ConsoleOut.out("✅ adb: \(android.adbPath)"
-                  + (connected.isEmpty ? " (no devices connected)" : " (\(connected.count) connected)"))
+            // adb devices の失敗を「no devices connected」と言わない
+            let connected: [String]
+            do {
+                connected = try AndroidDeviceCatalog.connectedSerials()
+                ConsoleOut.out("✅ adb: \(android.adbPath)"
+                      + (connected.isEmpty ? " (no devices connected)" : " (\(connected.count) connected)"))
+            } catch {
+                connected = []
+                ConsoleOut.out("❌ adb: \(android.adbPath) — \(error.localizedDescription)")
+                problems += 1
+            }
             if let apk = try? AndroidDriver.locateBridgeAPK() {
                 ConsoleOut.out("   ✅ Bridge APK: \(apk.path)")
             } else {
@@ -202,8 +214,7 @@ struct Doctor: AsyncParsableCommand {
                       + "New AVDs cannot be created (running on existing AVDs is unaffected). "
                       + AndroidSDKLocator.avdManagerInstallHint)
             }
-            for line in connected {
-                guard let serial = line.split(separator: "\t").first.map(String.init) else { continue }
+            for serial in connected {
                 // 高速スナップショット用ブリッジ(未導入でも初回操作時に自動導入・起動される)
                 if let driver = try? AndroidDriver(serial: serial) {
                     ConsoleOut.out("   ・ \(serial): \(driver.bridgeDoctorSummary())")

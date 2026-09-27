@@ -97,8 +97,9 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
             .filter { !$0.hasPrefix("emulator-") }
         guard !serials.isEmpty, let adb = try? AndroidDriver.findADB() else { return [] }
         func getprop(_ serial: String, _ key: String) -> String {
-            (try? Shell.run([adb, "-s", serial, "shell", "getprop", key], timeout: 10))?
-                .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            // 失敗の出力(「error: device offline」等)を機種名として出さない
+            (try? Shell.run([adb, "-s", serial, "shell", "getprop", key], timeout: 10).outputIfSucceeded)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         }
         return serials.map { serial in
             let model = getprop(serial, "ro.product.model")

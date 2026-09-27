@@ -637,7 +637,12 @@ struct RemoteCommand: AsyncParsableCommand {
                 ConsoleOut.out("warning: failed to run `hooks reap` (could not run ssh)")
                 return
             }
-            let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 非ゼロの出力(ssh の失敗文言)を後始末の結果として出さない
+            guard let output = result.outputIfSucceeded else {
+                ConsoleOut.out("warning: `hooks reap` failed on \(target) (exit \(result.status)): \(result.tail)")
+                return
+            }
+            let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { ConsoleOut.out(trimmed) }
         }
     }

@@ -110,6 +110,9 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   `ParentBoundCommand` で包む(process-lifecycle.md / remote.md)
 - 子プロセスのパイプを読む → `readDataToEndOfFile` を使わない・`availableData` のループは
   `autoreleasepool` で区切る・生死判定は `ProcessLiveness.isAlive`(process-lifecycle.md)
+- 外部コマンドの出力から値を作る → **終了コードを見る**(`Shell.run` は非ゼロで投げない。
+  `Shell.Result.outputIfSucceeded`。失敗の出力から「無い」「止まった」が確定する。`ToolOutputStatusScanTests`)
+  → maintainer-notes §56.10
 - FM を呼ぶ → `FMGate` を通す・オンデバイスだけ(fm-occlusion.md)
 - MCP のツール・引数を足す → `ArgumentBounds` に載せる・ツールの集合を固定するテスト
   (`MCPToolCallTests` の driverBackedTools 等)を更新する・DSL と同じ判定は共有する(mcp.md)

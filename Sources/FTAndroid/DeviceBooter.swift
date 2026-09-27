@@ -751,7 +751,8 @@ public enum DeviceBooter {
             // 「起動中」と誤報する(AndroidDataWiper.stopIfRunning と同じ死活確認・上限15s)。
             let deadline = Date().addingTimeInterval(15)
             while Date() < deadline {
-                let connected = (try? AndroidDeviceCatalog.connectedSerials()) ?? []
+                // adb が読めない回は「消えた」と言わない(まだ居るに倒して待ち続ける)
+                let connected = (try? AndroidDeviceCatalog.connectedSerials()) ?? [serial]
                 if !connected.contains(serial) {
                     log("✅ \(spec.name): emulator stopped (\(serial))")
                     return
@@ -868,8 +869,9 @@ public enum DeviceBooter {
     /// AndroidDataWiper.avdProcessPresent と共有=同じ実体判定を二重に持たない)。
     /// `ps` が読めないときは「居るかもしれない」に倒す(誤ってロックを消さない側)
     private static func emulatorProcessRunning(avdID: String) -> Bool {
-        guard let result = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10) else { return true }
-        return AndroidDataWiper.avdProcessPresent(psOutput: result.output, avdID: avdID)
+        guard let output = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10).outputIfSucceeded
+        else { return true }
+        return AndroidDataWiper.avdProcessPresent(psOutput: output, avdID: avdID)
     }
 
     /// エミュレータをヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す(検出待ち上限60秒)。
@@ -987,7 +989,7 @@ public enum DeviceBooter {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let output = try? Shell.run(
-                [adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], timeout: 10).output,
+                [adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], timeout: 10).outputIfSucceeded,
                output.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
                 return
             }

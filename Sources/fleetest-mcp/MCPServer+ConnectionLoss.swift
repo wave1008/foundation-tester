@@ -123,7 +123,10 @@ extension MCPServer {
         }
         // 端末がまだ adb につながっているなら、今回の失敗は別の理由(アプリ側のエラー等)。
         // probe だけで判定するので、広めに構えても実害は「adb devices を1回余計に撃つ」だけ
-        guard Self.androidSerialVanished(serial, connected: AndroidSerialResolver.connectedSerials())
+        // **adb devices が読めない回は「消えた」と言わない**(空の一覧に畳むと、つながっている端末を
+        // 「no longer connected」と言い切り、覚えている宛先まで捨てる)
+        guard let connected = try? AndroidDeviceCatalog.connectedSerials(),
+              Self.androidSerialVanished(serial, connected: connected)
         else { return "" }
         forgetConnection(key)
         return "\nThe Android device behind \(connection) is no longer connected (adb devices"

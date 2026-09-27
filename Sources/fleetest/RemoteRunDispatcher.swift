@@ -730,8 +730,9 @@ struct RemoteRunDispatcher {
     /// 失敗も出力も run の成否には効かせない —— 片付けの失敗でディスパッチを止めない
     private func reapOrphanedHooksAcrossIssuers(layout: RemoteLayout) {
         let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: true)
-        guard let result = try? Shell.run(sshBase + [host.sshTarget, command]) else { return }
-        let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 非ゼロ(ssh 断など)の出力を「代行した」と言わない。掃除は次のディスパッチでも走るので黙って抜ける
+        guard let output = try? Shell.run(sshBase + [host.sshTarget, command]).outputIfSucceeded else { return }
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             log("==> reaped teardown scripts left behind on \(host.sshTarget)\n\(trimmed)")
         }

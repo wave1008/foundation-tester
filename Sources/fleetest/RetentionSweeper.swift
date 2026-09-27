@@ -218,7 +218,8 @@ enum RetentionSweeper {
         // simctl は**1回だけ**(デバイスごとに呼ぶと台数ぶんの秒を払う)。読めなければ
         // 起動状態は不明 = 全台 guarded へ倒す
         let booted: Set<String>? = (try? SimulatorCatalog.devices())
-            .map { Set($0.filter(\.booted).map(\.udid)) }
+            // 起動・停止の途中(transitioning)も Booted と同じく守る(停止済みと言い切れない)
+            .map { Set($0.filter { $0.booted || $0.transitioning }.map(\.udid)) }
 
         var sessions: [RetentionSweep.Session] = []
         for deviceDir in subdirectories(of: devicesDir) {
@@ -311,9 +312,9 @@ enum RetentionSweeper {
             pids.append(pid)
         }
         guard !pids.isEmpty,
-              let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]) else { return [:] }
+              let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]).outputIfSucceeded else { return [:] }
         var udidByPID: [pid_t: String] = [:]
-        for line in ps.output.split(whereSeparator: \.isNewline) {
+        for line in ps.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let space = trimmed.firstIndex(of: " "), let pid = pid_t(trimmed[..<space]),
                   pids.contains(pid), let udid = destinationUDID(inCommand: trimmed) else { continue }

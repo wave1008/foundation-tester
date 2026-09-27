@@ -291,8 +291,9 @@ extension RemoteCommand {
             // MARK: align
 
             say("==> align: fetching and building the remote clone...")
-            guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]))
-                .map({ $0.output.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
+            // 非ゼロの出力(「fatal: …」)をリビジョンとして扱わない
+            guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]).outputIfSucceeded)
+                .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
                 emit("align", .fail, "could not determine the local git revision")
                 try summarizeAndExit()
             }
@@ -302,8 +303,8 @@ extension RemoteCommand {
                 emit("align", .fail, error.localizedDescription)
                 try summarizeAndExit()
             }
-            if let statusResult = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
-               RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: statusResult.output) {
+            if let porcelain = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]).outputIfSucceeded,
+               RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: porcelain) {
                 say("⚠️ uncommitted changes to the tool itself (outside TestProjects/) will NOT reach"
                     + " the remote (aligning to the last commit, \(localRevision.prefix(7)))")
             }
@@ -455,13 +456,14 @@ extension RemoteCommand {
                 throw RemoteDispatchError.remoteSetupFailed(
                     "cannot resolve the local tool root (run this inside the foundation-tester repo)")
             }
-            guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]))
-                .map({ $0.output.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
+            // 非ゼロの出力(「fatal: …」)をリビジョンとして扱わない
+            guard let localRevision = (try? Shell.run(["git", "-C", repoRoot.path, "rev-parse", "HEAD"]).outputIfSucceeded)
+                .map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }), !localRevision.isEmpty else {
                 throw RemoteDispatchError.remoteSetupFailed("could not determine the local git revision")
             }
             try RemoteSetupPlan.validateRevision(localRevision)
-            if let statusResult = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]),
-               RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: statusResult.output) {
+            if let porcelain = try? Shell.run(["git", "-C", repoRoot.path, "status", "--porcelain"]).outputIfSucceeded,
+               RemoteRunDispatcher.hasUncommittedToolChanges(porcelain: porcelain) {
                 say("⚠️ uncommitted changes to the tool itself (outside TestProjects/) will NOT reach"
                     + " the remote (aligning to the last commit, \(localRevision.prefix(7)))")
             }

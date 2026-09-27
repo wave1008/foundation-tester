@@ -144,4 +144,17 @@ final class ShellTimeoutTests: XCTestCase {
         XCTAssertEqual(result.status, 0)
         XCTAssertEqual(result.output.trimmingCharacters(in: .whitespacesAndNewlines), "no-timeout")
     }
+
+    /// **`run` は非ゼロで投げない**ので、失敗の出力は `outputIfSucceeded` で落とす(ToolOutputStatusScanTests の土台)。
+    /// 失敗でも出力は出ている(= `output` を素で読むと失敗の文言から値ができる)ことまで見る
+    func testOutputIfSucceededDropsTheOutputOfAFailedCommand() throws {
+        let failed = try Shell.run(["/bin/sh", "-c", "echo error: device offline; exit 1"], timeout: 10)
+        XCTAssertEqual(failed.status, 1)
+        XCTAssertFalse(failed.output.isEmpty, "失敗でも出力は返る")
+        XCTAssertNil(failed.outputIfSucceeded)
+
+        let succeeded = try Shell.run(["/bin/sh", "-c", "echo emulator-5554"], timeout: 10)
+        XCTAssertEqual(succeeded.outputIfSucceeded?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       "emulator-5554")
+    }
 }

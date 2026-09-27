@@ -763,9 +763,9 @@ public struct BridgeLauncher {
         // **`ps -p <pid列>` を使ってはいけない**: 範囲外の pid が 1 つ混じるとエラーになり
         // **生きている分も含めて出力が空になる**(pid ファイルは壊れた値を持ち得る)。
         // 全プロセス列挙して pid で引く方がゴミ値に強い
-        guard let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]) else { return [] }
+        guard let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]).outputIfSucceeded else { return [] }
         var ports: [UInt16] = []
-        for line in ps.output.split(whereSeparator: \.isNewline) {
+        for line in ps.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let space = trimmed.firstIndex(of: " "), trimmed.contains(udid),
                   let pid = Int32(trimmed[..<space]), let port = portByPID[pid] else { continue }
@@ -795,9 +795,9 @@ public struct BridgeLauncher {
         }
         guard !portByPID.isEmpty else { return [:] }
         // portsMatching と同じ理由で `ps` は全列挙 1 回(`ps -p <pid列>` はゴミ pid 1 つで全滅する)
-        guard let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]) else { return [:] }
+        guard let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]).outputIfSucceeded else { return [:] }
         var result: [String: [UInt16]] = [:]
-        for line in ps.output.split(whereSeparator: \.isNewline) {
+        for line in ps.split(whereSeparator: \.isNewline) {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard let space = trimmed.firstIndex(of: " "),
                   let pid = Int32(trimmed[..<space]), let port = portByPID[pid] else { continue }

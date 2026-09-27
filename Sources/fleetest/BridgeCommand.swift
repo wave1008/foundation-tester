@@ -380,11 +380,8 @@ enum BridgeStatusReport {
 enum AndroidBridgeCLI {
     static func serials(only serial: String?) throws -> [String] {
         if let serial { return [serial] }
-        let adbPath = try AndroidDriver.findADB()
-        let devices = try Shell.run([adbPath, "devices"])
-        let serials = devices.output.split(separator: "\n").dropFirst()
-            .filter { $0.contains("\tdevice") }
-            .compactMap { $0.split(separator: "\t").first.map(String.init) }
+        // adb の失敗は「つながっていない」ではない(connectedSerials が失敗の理由のまま投げる)
+        let serials = try AndroidDeviceCatalog.connectedSerials()
         guard !serials.isEmpty else {
             throw ValidationError("no Android device is connected (check adb devices)")
         }

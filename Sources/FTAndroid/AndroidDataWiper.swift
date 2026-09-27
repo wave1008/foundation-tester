@@ -192,7 +192,7 @@ public enum AndroidDataWiper {
         let all = (try? AndroidDeviceCatalog.allEmulatorSerials()) ?? []
         var discovered: [String: String] = [:]
         for endpoint in EmulatorEndpoints.all() { discovered[endpoint.serial] = endpoint.avdID }
-        let ps = (try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10))?.output
+        let ps = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10).outputIfSucceeded
         let serial: String
         switch runningVerdict(avdID: avdID, runningAVDs: running, allEmulatorSerials: all,
                               discoveredAVDs: discovered, psOutput: ps) {
@@ -268,10 +268,10 @@ public enum AndroidDataWiper {
 
     /// その AVD の qemu プロセスが生きているか(`ps` の1回分を走査)。読み取りだけ
     private static func emulatorProcessRunning(avdID: String) -> Bool {
-        guard let result = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10) else {
-            return true  // 見られないなら「居るかもしれない」に倒す(消す側へ倒さない)
+        guard let output = try? Shell.run(["/bin/ps", "-eo", "command"], timeout: 10).outputIfSucceeded else {
+            return true  // 見られないなら「居るかもしれない」に倒す(消す側へ倒さない)。非ゼロも同じ
         }
-        return avdProcessPresent(psOutput: result.output, avdID: avdID)
+        return avdProcessPresent(psOutput: output, avdID: avdID)
     }
 
     /// `ps` の出力に `-avd <id>` または `@<id>`(emulator の短縮形)が**そのままの語**で現れるか。

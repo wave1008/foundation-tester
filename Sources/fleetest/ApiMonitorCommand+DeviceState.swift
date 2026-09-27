@@ -272,8 +272,8 @@ extension ApiMonitorCommand {
         var result: [String: String] = [:]
         for serial in serials {
             let model = (try? Shell.run([adb, "-s", serial, "shell", "getprop", "ro.product.model"],
-                                        timeout: 10))?
-                .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                                        timeout: 10).outputIfSucceeded)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             result[serial] = model
         }
         return result
