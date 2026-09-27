@@ -450,7 +450,7 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
 }
 
 /**
- * デバイス一覧を整列する: **手元が先 → 機械名順 → ios→android → name 順**
+ * デバイス一覧を整列する: **手元が先 → 機械名順 → ios→android → 仮想デバイス→実機 → name 順**
  * (ユーザー決定)。
  * **機械が外側**なのは、台は機械ごとに起動・停止し、run も機械ごとに配られるため ——
  * タイルは1列なので、外側 = 左右のかたまりになる。
@@ -458,16 +458,29 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
  * (タイル・拡大表示・実行ログ・run ボードのツリー)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
-  return [...devices].sort((a, b) => {
-    const [ha, hb] = [a.machine ?? "", b.machine ?? ""];
-    if (ha !== hb) {
-      return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
-    }
-    if (a.platform !== b.platform) {
-      return a.platform === "ios" ? -1 : 1;
-    }
-    return a.name.localeCompare(b.name);
-  });
+  return [...devices].sort(compareMonitorDeviceOrder);
+}
+
+/** 台の表示順(機械 → プラットフォーム → 仮想デバイスが先・実機が後 → 名前)の唯一の定義元。
+ * デバイスモニターのタイルとダッシュボード「デバイスの健全性」(webview/dashboard/deviceHealth.js の
+ * sortRows)が共有する —— 別々に持つと2つの一覧の並びが食い違う。machine は手元なら undefined/空文字。
+ * kind は "physical" だけを実機と読む(欠落は仮想デバイス = isMonitorDevice の正規化と同じ) */
+export function compareMonitorDeviceOrder(
+  a: { readonly machine?: string; readonly platform: string; readonly kind?: string; readonly name: string },
+  b: { readonly machine?: string; readonly platform: string; readonly kind?: string; readonly name: string },
+): number {
+  const [ha, hb] = [a.machine ?? "", b.machine ?? ""];
+  if (ha !== hb) {
+    return ha === "" ? -1 : hb === "" ? 1 : ha.localeCompare(hb);  // 手元が先
+  }
+  if (a.platform !== b.platform) {
+    return a.platform === "ios" ? -1 : 1;
+  }
+  const [pa, pb] = [a.kind === "physical", b.kind === "physical"];
+  if (pa !== pb) {
+    return pa ? 1 : -1;  // Simulator / Emulator が先、実機が後(ユーザー決定)
+  }
+  return a.name.localeCompare(b.name);
 }
 
 // ---- 「起動中のデバイス」(動的プロファイル)------------------------------------------------

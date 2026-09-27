@@ -354,6 +354,56 @@ test("デバイスの健全性: モニターだけ・履歴だけ・両方の台
   assert.equal(both.children[4].textContent, "1");
 });
 
+test("デバイスの健全性: 並びはデバイスモニターと同じ(手元が先 → 機械名 → iOS が先 → 名前)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  const payload = basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    // 履歴にしか居ない台も同じ規則で混ざる
+    deviceHealth: [healthRow({ worker: "android:Pixel-00" })],
+  });
+  sendToWebview({ type: "dashboard", message: { type: "data", payload } });
+  sendToWebview({
+    type: "devices",
+    filter: "all",
+    devices: [
+      monitorDevice({ id: "M1Max:android:Pixel-09", name: "Pixel-09", platform: "android", machine: "M1Max" }),
+      monitorDevice({ id: "M1Max:ios:iPhone-09", name: "iPhone-09", platform: "ios", machine: "M1Max" }),
+      monitorDevice({ id: "android:Pixel-01", name: "Pixel-01", platform: "android" }),
+      monitorDevice({ id: "ios:iPhone-02", name: "iPhone-02", platform: "ios" }),
+      monitorDevice({ id: "ios:iPhone-01", name: "iPhone-01", platform: "ios" }),
+    ],
+  });
+  const workers = [...window.document.querySelectorAll("#table-device-health-body tr[data-worker]")]
+    .map((tr) => tr.dataset.worker);
+  assert.deepEqual(workers, [
+    "ios:iPhone-01", "ios:iPhone-02", "android:Pixel-00", "android:Pixel-01",
+    "ios:iPhone-09", "android:Pixel-09",
+  ], "iOS が Android より先(以前は worker の文字列比較で android が先だった)");
+});
+
+test("デバイスの健全性: 同じ OS の中は Simulator / Emulator が先、実機が後(履歴だけの台はプロファイルの kind)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  showAllDevices(window);
+  sendDeviceCatalog(sendToWebview, [
+    { platform: "android", machine: "local", name: "A-phone", kind: "physical" },
+  ]);
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    machines: [{ host: "H", machine: "local" }],
+    deviceHealth: [healthRow({ worker: "android:A-phone" })],
+  }) } });
+  sendToWebview({ type: "devices", filter: "all", devices: [
+    monitorDevice({ id: "android:Z-emu", name: "Z-emu", platform: "android", kind: "virtual" }),
+    monitorDevice({ id: "ios:A-iPhone", name: "A-iPhone", platform: "ios", kind: "physical" }),
+    monitorDevice({ id: "ios:Z-sim", name: "Z-sim", platform: "ios", kind: "virtual" }),
+  ] });
+  const workers = [...window.document.querySelectorAll("#table-device-health-body tr[data-worker]")]
+    .map((tr) => tr.dataset.worker);
+  assert.deepEqual(workers, ["ios:Z-sim", "ios:A-iPhone", "android:Z-emu", "android:A-phone"]);
+});
+
 test("デバイスの健全性: ストレージは使用量だけを出し、空き(母数が OS で違う)は出さない", (t) => {
   const { window, sendToWebview } = createWebview();
   t.after(() => window.close());
@@ -649,15 +699,16 @@ test("デバイスの健全性: マシンは独立した列で、機械が変わ
   }) } });
   const rows = [...window.document.querySelectorAll("#table-device-health-body tr")];
   assert.deepEqual(rows.map((tr) => tr.children[0].textContent), ["local", "local", "M1Max"]);
-  assert.deepEqual(rows.map((tr) => tr.children[1].textContent), ["AndroidPixel 9", "iOSiPhone 17", "iOSiPhone 17"]);
+  // 並びはデバイスモニターと同じ(同じ機械の中は iOS が先)
+  assert.deepEqual(rows.map((tr) => tr.children[1].textContent), ["iOSiPhone 17", "AndroidPixel 9", "iOSiPhone 17"]);
   assert.deepEqual(rows.map((tr) => tr.classList.contains("dh-machine-start")), [false, false, true]);
   // デバイスモニターと同じバッジ: マシンは .badge-remote(手元は data-machine を持たない = 既定色)、
   // OS はタイルの名前ピルと同じ色のクラス
   assert.ok(rows[0].children[0].querySelector(".badge.badge-remote"));
   assert.equal(rows[0].children[0].querySelector(".badge-remote").dataset.machine, undefined);
   assert.equal(rows[2].children[0].querySelector(".badge-remote").dataset.machine, "M1Max");
-  assert.ok(rows[0].children[1].querySelector(".tile-name-android"));
-  assert.ok(rows[1].children[1].querySelector(".tile-name-ios"));
+  assert.ok(rows[0].children[1].querySelector(".tile-name-ios"));
+  assert.ok(rows[1].children[1].querySelector(".tile-name-android"));
 });
 
 test("デバイスの健全性: 「アクティブなデバイスを表示」は既定 ON で未起動とモニターに居ない台を隠し、OFF で全部出す", (t) => {
@@ -745,4 +796,11 @@ test("デバイスの健全性: 実機にはデバイスモニターと同じ「
   assert.ok(badgeOf("android:Pixel 4a"), "モニターに居なくてもプロファイルが実機と言う台");
   assert.equal(badgeOf("android:Pixel 9"), null);
   assert.equal(badgeOf("android:emu"), null);
+  // バッジの順は OS 種別 → 実機
+  const badges = [...window.document
+    .querySelector('#table-device-health-body tr[data-worker="ios:iPhone SE3"]').children[1].querySelectorAll(".badge")]
+    .map((el) => el.textContent);
+  assert.equal(badges.length, 2);
+  assert.equal(badges[0], "iOS");
+  assert.match(badges[1], /実機/);
 });

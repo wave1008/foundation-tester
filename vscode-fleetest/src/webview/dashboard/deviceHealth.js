@@ -25,6 +25,7 @@ import { machineLabel } from './machineNames.js';
 import { monitorDevices, onMonitorDevicesChanged } from '../monitor/deviceTiles.js';
 import { LOCAL_MACHINE_LABEL, paintMachineBadge } from '../monitor/machineColors.js';
 import { formatBytesAuto } from '../../retentionModel';
+import { compareMonitorDeviceOrder } from '../../monitorDeviceModel';
 
 const COLLAPSE_LIMIT = 15;
 
@@ -94,15 +95,22 @@ function machineOfDevice(device) {
   return device.machine || LOCAL_MACHINE_LABEL;
 }
 
+// デバイスモニター(タイル)と同じ並び(compareMonitorDeviceOrder を共有)。モニターに居る台はモニターの
+// name で比べる(resolveDeviceName で揃えた worker ではなく)—— タイルと同じ名前で比べないと、未登録の台で
+// 順が割れる。履歴にしか居ない台は worker("<platform>:<name>")から取り出して比べる
+function orderKey(row) {
+  const machine = row.machine === LOCAL_MACHINE_LABEL ? undefined : row.machine;
+  // 実機かはバッジと同じ判定(モニターの kind、居なければプロファイルの kind)
+  const kind = isPhysical(row) ? 'physical' : 'virtual';
+  if (row.monitor) {
+    return { machine, platform: row.monitor.platform, kind, name: row.monitor.name };
+  }
+  const colon = row.worker.indexOf(':');
+  return { machine, platform: row.worker.slice(0, colon), kind, name: row.worker.slice(colon + 1) };
+}
+
 function sortRows(rows) {
-  return [...rows].sort((a, b) => {
-    if (a.machine !== b.machine) {
-      if (a.machine === LOCAL_MACHINE_LABEL) return -1;
-      if (b.machine === LOCAL_MACHINE_LABEL) return 1;
-      return a.machine < b.machine ? -1 : 1;
-    }
-    return a.worker < b.worker ? -1 : a.worker > b.worker ? 1 : 0;
-  });
+  return [...rows].sort((a, b) => compareMonitorDeviceOrder(orderKey(a), orderKey(b)));
 }
 
 /** deviceHealth(履歴)と monitorDevices()(今の状態)を machine+worker で結合する。 */
@@ -166,6 +174,14 @@ function deviceCell(row) {
   const sep = row.worker.indexOf(':');
   const platform = sep < 0 ? '' : row.worker.slice(0, sep);
   const name = sep < 0 ? row.worker : row.worker.slice(sep + 1);
+  // バッジの順は OS 種別 → 実機(ユーザー決定)
+  if (platform) {
+    const label = document.createElement('span');
+    // 色はデバイスモニターのタイルの名前ピルと同じクラス(.tile-name-ios / -android)
+    label.className = 'badge dh-platform' + (platform === 'ios' || platform === 'android' ? ' tile-name-' + platform : '');
+    label.textContent = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : platform;
+    cell.appendChild(label);
+  }
   if (isPhysical(row)) {
     // デバイスモニターのタイルと同じバッジ(クラス・文言とも)
     const physical = document.createElement('span');
@@ -173,13 +189,6 @@ function deviceCell(row) {
     physical.textContent = t('wvMonitor.tile.physicalBadge');
     physical.title = t('wvMonitor.tile.physicalBadgeTitle');
     cell.appendChild(physical);
-  }
-  if (platform) {
-    const label = document.createElement('span');
-    // 色はデバイスモニターのタイルの名前ピルと同じクラス(.tile-name-ios / -android)
-    label.className = 'badge dh-platform' + (platform === 'ios' || platform === 'android' ? ' tile-name-' + platform : '');
-    label.textContent = platform === 'ios' ? 'iOS' : platform === 'android' ? 'Android' : platform;
-    cell.appendChild(label);
   }
   cell.appendChild(document.createTextNode(name));
   return cell;

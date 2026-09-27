@@ -698,6 +698,21 @@ test("removeQueuedDeviceUpJob: (machine, name) が一致する待機中の up �
 // デバイスの並び順は **手元が先 → 機械名順 → ios→android → name 順**
 // (ユーザー決定 2026-09-22。それまではプラットフォームが外側だった)。ここを変えると
 // タイル・拡大表示・実行ログ・run ボードのツリーの並びが**全部**変わる(整列はここ1箇所)。
+test("同じ機械・同じ OS の中は Simulator / Emulator が先、実機が後(名前より優先)", async () => {
+  const { sortMonitorDevices } = await import("../src/monitorDeviceModel");
+  const device = (platform, kind, name) => ({
+    id: name, name, platform, state: "connected", detail: "", ...(kind ? { kind } : {}),
+  });
+  const sorted = sortMonitorDevices([
+    device("android", "physical", "A-phone"),
+    device("ios", "physical", "A-iPhone"),
+    device("android", "virtual", "Z-emu"),
+    device("ios", undefined, "Z-sim"),  // kind 欠落は仮想デバイス
+    device("ios", "virtual", "Y-sim"),
+  ]);
+  assert.deepEqual(sorted.map((d) => d.id), ["Y-sim", "Z-sim", "A-iPhone", "Z-emu", "A-phone"]);
+});
+
 test("デバイスの並びは機械が外側・OS が内側", async () => {
   const { sortMonitorDevices } = await import("../src/monitorDeviceModel");
   const device = (machine, platform, name) => ({
