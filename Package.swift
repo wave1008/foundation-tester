@@ -185,6 +185,13 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .executableTarget(
+            name: "fleetest-scenarios-E2EX-CMP",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EX-CMP/scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
             name: "fleetest-scenarios-SampleApp",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/SampleApp/scenarios",

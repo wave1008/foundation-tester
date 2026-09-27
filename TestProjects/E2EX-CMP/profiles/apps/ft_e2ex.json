@@ -1,0 +1,15 @@
+{
+  "common": {
+    "autoInstall": true
+  },
+  "ios": {
+    "appName": "FT E2EX",
+    "app": "com.ftester.e2ex",
+    "appPath": "E2EXAppCMP/dist/ios-simulator/FTE2EX.app"
+  },
+  "android": {
+    "appName": "FT E2EX",
+    "app": "com.ftester.e2ex",
+    "appPath": "E2EXAppCMP/dist/android/ft-e2ex-debug.apk"
+  }
+}

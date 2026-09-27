@@ -90,6 +90,15 @@ class SignInExample {
 | the app process was not running | The app crashed. Check `ft_logs` before touching the scenario |
 | an assertion failed with the actual value | Compare with the element list; fix the expected value only if the app is right |
 
+## Writing for specific UI components
+
+If the screen has stock Material3 components (pager, bottom sheet, dropdown menu, date picker,
+drawer, pull-to-refresh, snackbar, search bar, …), read the matching section of
+[UI component patterns and quirks](../in_action/ui_component_patterns.md) before writing. It covers
+component-specific patterns — the screen behind a modal drops out of the tree, a field's content is
+in `.value`, horizontal containers need `scrollFrame:` — and workarounds for the tool's current
+limitations.
+
 ## Links
 
 - [MCP server](mcp_server.md)
