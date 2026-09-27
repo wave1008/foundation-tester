@@ -2784,14 +2784,18 @@ E2E-Flutter の iOS in-app で 3 台が同時に `observed=""` の notRendered�
 小さな文字がセル平均に薄まって黒に紛れる。既存のレポートのスクショ 4,896 枚に当てて 138 枚が該当し、全部が
 下端以外の明るい画素 0.17% 以下の中身の無い絵だった(誤検知 0)
 
-### 56.9 直していないもの
+### 56.9 後から直したもの(2026-09-27)
 - **表示が凍結した Android エミュレータを `uniformBlank` が見逃す**: アプリの層は真っ黒でも SystemUI の
   ナビゲーションハンドルが残り、16×16 中 4 セル(明るさ 12〜14)が割れて 0.984 < 0.995。モニターは
   `frozen:false`、run の復活でも素通りし、症状は「OCR だけで notRendered」の赤として出た(帰属が遮蔽になる)。
   `uniformBlank` は回復操作を撃つ確定的な根拠なので、閾値や下端の除外は誤検知で再起動を撃ちうる ——
-  新しい根拠(警告)として入れ、既存資産で誤検知 0 を確かめてから上げるのが筋
-- **`SimulatorCrashReport.findRecent` は bundleID と時刻窓だけで絞る**: 同じアプリを並行で回す run で、別のデバイスの
-  `.ips` を失敗したデバイスへ帰属しうる(appCrash・健全性のクラッシュ件数)。再現用の `.ips` が得られず未確認
+  **新しい根拠 `.blackApartFromBottomStrip`(警告だけ)として run 前トリアージに入れた**(iOS・Android とも。
+  docs/design.md の凍結の節)。確定へ上げるのは実運用で真陽性を数えてから。モニターには出ない
+- **`SimulatorCrashReport.findRecent` は bundleID と時刻窓だけで絞っていた**: 同じアプリを並行で回す run で、
+  別のデバイスの `.ips` を失敗したデバイスへ帰属しえた(appCrash・健全性のクラッシュ件数)。シミュレータの
+  アプリを `kill -SEGV` で落とした実物で、本体の `coalitionName`(`com.apple.CoreSimulator.SimDevice.<UDID>`)と
+  `procPath`(`…/Devices/<UDID>/…`)に UDID が載ると確かめ、`udid:` で絞るようにした(既定値なし・
+  読めないレポートは帰属させない)。MCP の `ft_logs` は宛先の UDID を持たないので絞らない(出すパスに UDID が載る)
 - 観察: `clean --dry-run --simulator-poster-cache` が負荷下で 149 → 388 秒(全 Simulator の容量を数える仕様)/
   FM だけの構成(OCR off)で M1Ultra の FM 1 回が中央値 45 秒・門の待ち 38 秒 / 実機 SE3 の `ft_launch`(再開)が
   90 回中1回 45 秒(内訳は未計測)/ iOS の `devices down` が1回だけ 299 秒(他は 34〜60 秒。内訳は未計測)

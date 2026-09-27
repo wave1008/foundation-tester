@@ -2623,6 +2623,14 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   (修復側の戻り値を信じない = あちらの再判定はエミュレータ較正の閾値)。戻らなくても
   **レーンからは外さない**。材料と修復は `PhysicalScreenProbes` に括って run / api run の
   両経路へ同じものを渡す(`PhysicalDarkScreenWiringTests` が固定)
+  **仮想デバイスの「下端の帯を除いて黒いまま」も警告だけの根拠**(`.blackApartFromBottomStrip`・2026-09-27)。
+  表示が凍結した Android Emulator はナビゲーションハンドルが残って一様判定(iOS の `isUniformBlank` も
+  Android の全画素の幅も)を割り、run 前トリアージもモニターも素通りしていた。同じスクショから一様と
+  下端を除く黒の両方を取り(`FrameBlankness`)、窓の判定は `PersistentBlank.fold` の1箇所(iOS の
+  `BlankWorkerTriage.persistentBlank` と Android の `AndroidHealthProbe.persistentBlank` が共有)。
+  **nudge も修復も撃たず、レーンにも残す**(描画要求が無いだけの黒画面と分けていない)。
+  **モニターには出ない**(`frozen` は確定だけ。警告の根拠を配る欄は無い)。実行中の失敗後の判定
+  (`isBlankObserved`)は確定の経路なので変えていない
 - **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
   実行プロファイルの `containerInference` / DSL の `tap(containerInference:)`・`withoutContainerInference { }`。
   実装は `StepExecutor.execute` 冒頭の `Self.containerInferenceEnabled && (step.containerInference ?? 既定)` 1式)。

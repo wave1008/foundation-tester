@@ -290,7 +290,7 @@ public final class InAppDriver: AppDriver {
             // within を既定(120s)のままにすると、**前の実行が残した .ips** が先に窓へ入って
             // 古いパスと終了理由を報告してしまう(実測: 94 秒前のレポートを拾った)。
             // 今しがた切断したのだから、対象は数秒以内のものだけでよい。
-            if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, within: 10) {
+            if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, udid: simulatorUDID, within: 10) {
                 let suffix = hit.reason.map { " (\($0))" } ?? ""
                 LastAppCrash.shared.record(AppCrashRecord(evidence: .crashReport, path: hit.path, summary: hit.reason))
                 return detail + " / the app crashed: \(hit.path)\(suffix)"

@@ -261,6 +261,82 @@ final class BlankWorkerTriageTests: XCTestCase {
         XCTAssertEqual(result.excluded.sorted(), ["a", "b"])
     }
 
+    // MARK: - 下端の帯を除いて黒いまま(警告だけの根拠)
+
+    /// 負荷テスト 2026-09-27 で実際に出た、表示が凍結した Android Emulator の絵(ナビゲーションハンドルだけ残る)
+    static let blackWithNavHandlePNG: Data = {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/Fixtures/BlackFrames/android-emulator-black-with-nav-handle.png")
+        guard let data = try? Data(contentsOf: url) else { fatalError("fixture missing: \(url.path)") }
+        return data
+    }()
+
+    func testBlackWithNavHandleAcrossTheWindowIsBlackApartFromBottomStrip() async {
+        var frames = Array(repeating: Self.blackWithNavHandlePNG, count: BlankWorkerTriage.samples)
+        let persistent = await BlankWorkerTriage.persistentBlank(
+            screenshot: { frames.isEmpty ? nil : frames.removeFirst() }, sleep: { _ in })
+        XCTAssertEqual(persistent, .blackApartFromBottomStrip)
+        XCTAssertTrue(frames.isEmpty, "窓の全サンプルを撮ってから言う")
+    }
+
+    /// 一様な黒とハンドル付きの黒が混ざっても「下端を除いて黒いまま」(一様な黒は下端を除いても黒い)
+    func testMixedUniformAndNavHandleBlackIsBlackApartFromBottomStrip() async {
+        var frames = [Self.blankPNG, Self.blackWithNavHandlePNG, Self.blankPNG,
+                      Self.blackWithNavHandlePNG, Self.blankPNG]
+        let persistent = await BlankWorkerTriage.persistentBlank(
+            screenshot: { frames.isEmpty ? nil : frames.removeFirst() }, sleep: { _ in })
+        XCTAssertEqual(persistent, .blackApartFromBottomStrip)
+    }
+
+    /// 全部が一様なら一様(確定の根拠)が勝つ = 既存の凍結判定は変わらない
+    func testAllUniformStaysUniform() async {
+        var frames = Array(repeating: Self.blankPNG, count: BlankWorkerTriage.samples)
+        let persistent = await BlankWorkerTriage.persistentBlank(
+            screenshot: { frames.isEmpty ? nil : frames.removeFirst() }, sleep: { _ in })
+        XCTAssertEqual(persistent, .uniform)
+    }
+
+    /// 途中で中身のある絵が1枚でも来たら何も言わない(そこで撮るのをやめる)
+    func testContentFrameInTheMiddleClearsTheSignal() async {
+        var taken = 0
+        var frames = [Self.blackWithNavHandlePNG, Self.contentPNG, Self.blackWithNavHandlePNG]
+        let persistent = await BlankWorkerTriage.persistentBlank(
+            screenshot: { taken += 1; return frames.isEmpty ? nil : frames.removeFirst() }, sleep: { _ in })
+        XCTAssertEqual(persistent, PersistentBlank.none)
+        XCTAssertEqual(taken, 2)
+    }
+
+    /// 仮想デバイスでは警告だけの根拠になり、**nudge は撃たない**(確定させない根拠に能動プローブは要らない)
+    func testBlackApartVerdictIsSuspectedOnlyAndDoesNotNudge() async {
+        var nudged = false
+        let verdict = await BlankWorkerTriage.observedVerdict(
+            key: "SIM-UDID", screenshot: { Self.blackWithNavHandlePNG },
+            nudge: { nudged = true; return Self.contentPNG }, environment: [:])
+        XCTAssertEqual(verdict.evidence, [.blackApartFromBottomStrip])
+        XCTAssertFalse(verdict.isFrozen, "回復・除外は撃たない")
+        XCTAssertTrue(verdict.isSuspected)
+        XCTAssertFalse(nudged)
+    }
+
+    /// トリアージの本体を通したとき: **レーンに残し、警告を1行出す**(除外・回復は撃たない)
+    func testBlackApartDeviceIsWarnedButKept() async {
+        let log = Collector()
+        let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
+            [worker("sim-7", shot: Self.blackWithNavHandlePNG)], environment: [:], log: { log.add($0) })
+        XCTAssertEqual(result.excluded, [])
+        XCTAssertEqual(result.workers.map(\.label), ["sim-7"])
+        XCTAssertEqual(log.lines, [BlankWorkerTriage.blackApartFromBottomStripWarning(label: "sim-7")])
+    }
+
+    /// 警告の文は iOS と Android で同じ1か所から出す
+    func testBlackApartWarningNamesTheLaneAndSaysItIsKept() {
+        let text = BlankWorkerTriage.blackApartFromBottomStripWarning(label: "sim-7")
+        XCTAssertTrue(text.contains("sim-7"))
+        XCTAssertTrue(text.contains("black apart from the bottom strip"))
+        XCTAssertTrue(text.contains("keeps this lane"))
+    }
+
     // MARK: - フィクスチャ(PNG)
 
     /// 一様な黒 = 凍結時に実際に返ってくるフレーム(2026-08-05 実採取。**サイズは 42KB あった**ので

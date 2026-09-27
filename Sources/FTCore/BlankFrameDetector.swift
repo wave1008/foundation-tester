@@ -101,6 +101,39 @@ public enum BlankFrameDetector {
     static let blackFrameMaxChannel: UInt8 = 12
 }
 
+/// 凍結の根拠に使う1枚ぶんの観測。**同じスクショから2つとも取る**(撮り直すと健全機の固定費が倍になる)。
+/// `uniform` の判定は経路ごと(iOS = `isUniformBlank` / Android = 全画素の幅か PNG サイズ)なので呼び手が埋める
+public struct FrameBlankness: Equatable, Sendable {
+    public let uniform: Bool
+    public let blackApartFromBottomStrip: Bool
+
+    public init(uniform: Bool, blackApartFromBottomStrip: Bool) {
+        self.uniform = uniform
+        self.blackApartFromBottomStrip = blackApartFromBottomStrip
+    }
+
+    public static func observe(pngData: Data) -> FrameBlankness {
+        FrameBlankness(uniform: BlankFrameDetector.isUniformBlank(pngData: pngData),
+                       blackApartFromBottomStrip: BlankFrameDetector.isBlackApartFromBottomStrip(pngData: pngData))
+    }
+}
+
+/// 連続したサンプルが「ずっと」何だったか。iOS(`BlankWorkerTriage`)と Android(`AndroidHealthProbe`)の
+/// 窓の判定はここだけ。**全サンプルが同じ性質を持つときだけ**言い、`uniform` を優先する(確定の根拠)。
+/// 一様な黒は下端を除いても黒いので、一様な黒とハンドル付きの黒が混ざった窓は `blackApartFromBottomStrip`
+public enum PersistentBlank: Equatable, Sendable {
+    case none, uniform, blackApartFromBottomStrip
+
+    /// 空(1枚も撮れていない)は none。呼び手は none になった時点でサンプリングをやめてよい
+    /// (以後のサンプルで none から戻ることはない = 健全機は1枚で抜ける)
+    public static func fold(_ samples: [FrameBlankness]) -> PersistentBlank {
+        guard !samples.isEmpty else { return .none }
+        if samples.allSatisfy(\.uniform) { return .uniform }
+        if samples.allSatisfy(\.blackApartFromBottomStrip) { return .blackApartFromBottomStrip }
+        return .none
+    }
+}
+
 /// **白フレームを凍結の根拠にしてよいか**。前面にシステムアラートがある
 /// (`StepNote.systemAlertPresent`)と分かっている間は、in-app スクショが一様な白になるのは
 /// アプリの非アクティブ化のせいであって画面凍結ではない。ここを見ずに「白 = 凍結」と決めると、

@@ -105,6 +105,41 @@ final class FrozenVerdictTests: XCTestCase {
     func testNonUniformIsNotFrozen() {
         XCTAssertFalse(FrozenVerdict.observe(uniformBlank: false).isFrozen)
     }
+
+    // MARK: - 下端の帯を除いて黒い(警告だけの根拠)
+
+    func testBlackApartFromBottomStripIsNotConclusive() {
+        let verdict = FrozenVerdict([.blackApartFromBottomStrip])
+        XCTAssertFalse(verdict.isFrozen)
+        XCTAssertTrue(verdict.isSuspected)
+        XCTAssertEqual(verdict.summary, "black-apart-from-bottom-strip")
+    }
+
+    func testObserveMapsBlackApartOnlyOnVirtualDevices() {
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, blackApartFromBottomStrip: true).evidence,
+                       [.blackApartFromBottomStrip])
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: false, blackApartFromBottomStrip: true,
+                                             physical: true), .healthy,
+                       "実機の黒は消灯と分けられない(darkScreenPhysical の側)")
+    }
+
+    func testUniformWinsOverBlackApart() {
+        XCTAssertEqual(FrozenVerdict.observe(uniformBlank: true, blackApartFromBottomStrip: true).evidence,
+                       [.uniformBlank])
+    }
+
+    func testPersistentBlankFold() {
+        let uniformBlack = FrameBlankness(uniform: true, blackApartFromBottomStrip: true)
+        let uniformWhite = FrameBlankness(uniform: true, blackApartFromBottomStrip: false)
+        let handle = FrameBlankness(uniform: false, blackApartFromBottomStrip: true)
+        let content = FrameBlankness(uniform: false, blackApartFromBottomStrip: false)
+        XCTAssertEqual(PersistentBlank.fold([]), PersistentBlank.none)
+        XCTAssertEqual(PersistentBlank.fold([uniformWhite, uniformBlack]), .uniform)
+        XCTAssertEqual(PersistentBlank.fold([uniformBlack, handle]), .blackApartFromBottomStrip)
+        XCTAssertEqual(PersistentBlank.fold([uniformWhite, handle]), PersistentBlank.none,
+                       "白の一様とハンドル付きの黒は同じ性質を持たない")
+        XCTAssertEqual(PersistentBlank.fold([handle, content]), PersistentBlank.none)
+    }
 }
 
 /// 共有ストアの消し込み。**回復したら公表を消す**が守られているかを固定する。

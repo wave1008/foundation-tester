@@ -64,7 +64,7 @@ enum CrashLogs {
         }
         var waited = 0.0
         for _ in 0..<reportPollAttempts {
-            if SimulatorCrashReport.findRecent(bundleID: bundleID,
+            if SimulatorCrashReport.findRecent(bundleID: bundleID, udid: nil,
                                                within: TimeInterval(withinSeconds)) != nil { break }
             try? await Task.sleep(nanoseconds: reportPollIntervalNanos)
             waited += Double(reportPollIntervalNanos) / 1_000_000_000
@@ -93,7 +93,9 @@ enum CrashLogs {
         guard let bundleID, !bundleID.isEmpty else {
             return "iOS crash lookup requires bundleID."
         }
-        guard let found = SimulatorCrashReport.findRecent(bundleID: bundleID,
+        // udid: nil = デバイスで絞らない(ブリッジが落ちた後にも使う道具で宛先の UDID を持たない。
+        // 出すパスに `Devices/<UDID>/` が入るので、どのデバイスのものかは読み手が見分けられる)
+        guard let found = SimulatorCrashReport.findRecent(bundleID: bundleID, udid: nil,
                                                            within: TimeInterval(withinSeconds),
                                                            dir: dir, now: now) else {
             // **実機のレポートはここには来ない**(端末に残り、Xcode で同期するまで Mac 側の

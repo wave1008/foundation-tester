@@ -315,6 +315,9 @@ public enum ProfileWorkerFactory {
                 }
             }
         }
+        // 下端を除いて黒いまま(警告だけ・修復も公表もしない)だった候補の index。log はタスクの中で呼べないので
+        // 集めてから出す
+        let blackApartIndices = IndexCollector()
         let outcomes = await withTaskGroup(of: (index: Int, repaired: Bool)?.self,
                                            returning: [(index: Int, repaired: Bool)].self) { group in
             for (index, worker) in candidates {
@@ -329,9 +332,15 @@ public enum ProfileWorkerFactory {
                         }
                         return nil
                     }
-                    guard await AndroidHealthProbe.isPersistentlyBlank(
-                        serial: serial, samples: flapCheckSamples, intervalMs: flapCheckIntervalMs) else {
+                    let persistent = await AndroidHealthProbe.persistentBlank(
+                        serial: serial, samples: flapCheckSamples, intervalMs: flapCheckIntervalMs)
+                    guard persistent == .uniform else {
                         if let stateDir { DeviceFrozenStore.clear(stateDir: stateDir, key: serial) }
+                        if FrozenVerdict.observe(uniformBlank: false,
+                                                 blackApartFromBottomStrip: persistent == .blackApartFromBottomStrip)
+                            .isSuspected {
+                            await blackApartIndices.append(index)
+                        }
                         return nil
                     }
                     // **修復の前に公表する**(sleep/wake → guest reboot は分単位になりうる。
@@ -349,6 +358,9 @@ public enum ProfileWorkerFactory {
                 if let outcome { result.append(outcome) }
             }
             return result
+        }
+        for index in await blackApartIndices.sorted() {
+            log(BlankWorkerTriage.blackApartFromBottomStripWarning(label: workers[index].label))
         }
         repairedDevices = outcomes.sorted(by: { $0.index < $1.index }).filter(\.repaired)
             .compactMap { outcome in
@@ -967,4 +979,11 @@ public enum ProfileWorkerFactory {
         original.filter { $0.platform != "ios" } + rebuiltIOS
     }
 
+}
+
+/// タスクグループの子から index を集める(`excludeOrRepairBlankScreenWorkers` の警告用)
+private actor IndexCollector {
+    private var indices: [Int] = []
+    func append(_ index: Int) { indices.append(index) }
+    func sorted() -> [Int] { indices.sorted() }
 }

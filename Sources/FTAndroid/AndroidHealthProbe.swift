@@ -202,17 +202,41 @@ public enum AndroidHealthProbe {
     ///   証跡 PNG の画素解析で確認)
     /// - adb フォールバック: PNG サイズ閾値(blankScreen)を使う
     private static func probeBlank(serial: String) async -> Bool {
+        await probeFrame(serial: serial)?.uniform ?? false
+    }
+
+    /// 1回のスクショで一様(上の経路別の判定)と下端を除く黒(`BlankFrameDetector`・経路に依らず画素)の両方を取る。
+    /// nil = 撮れなかった(呼び手は健全に倒す)
+    private static func probeFrame(serial: String) async -> FrameBlankness? {
         if let png = await EmulatorControl.screenshotPNG(serial: serial),
            let rgba = decodeRGBA(png: png) {
-            return uniformFrame(rgba: rgba)
+            return FrameBlankness(uniform: uniformFrame(rgba: rgba),
+                                  blackApartFromBottomStrip: BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
         }
         guard let adbPath = try? AndroidDriver.findADB(),
               let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"],
                                        timeout: adbTimeoutSeconds),
               cap.status == 0 else {
-            return false
+            return nil
         }
-        return blankScreen(pngByteCount: cap.data.count)
+        return FrameBlankness(uniform: blankScreen(pngByteCount: cap.data.count),
+                              blackApartFromBottomStrip: BlankFrameDetector.isBlackApartFromBottomStrip(pngData: cap.data))
+    }
+
+    /// `isPersistentlyBlank` の、一様に加えて下端を除く黒も見る版(窓の判定は `PersistentBlank.fold`)。
+    /// 一様の答えは `isPersistentlyBlank` と同じ(全サンプル一様のときだけ uniform)。どちらも成り立たなく
+    /// なった時点で抜ける = 健全機は1サンプル
+    public static func persistentBlank(serial: String, samples: Int, intervalMs: UInt64) async -> PersistentBlank {
+        var observed: [FrameBlankness] = []
+        for i in 0..<max(samples, 1) {
+            guard let frame = await probeFrame(serial: serial) else { return .none }
+            observed.append(frame)
+            if PersistentBlank.fold(observed) == .none { return .none }
+            if i < samples - 1 {
+                try? await Task.sleep(nanoseconds: intervalMs * 1_000_000)
+            }
+        }
+        return PersistentBlank.fold(observed)
     }
 
     /// PNG → RGBA8888 生画素(ImageIO/CoreGraphics。フル解像度・補間なしで uniformFrame 用)

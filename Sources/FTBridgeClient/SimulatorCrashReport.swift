@@ -85,9 +85,27 @@ public enum SimulatorCrashReport {
         return v.isEmpty ? nil : v
     }
 
+    /// レポートを書いたシミュレータの UDID。本体の `coalitionName`(`com.apple.CoreSimulator.SimDevice.<UDID>`)を
+    /// 先に、無ければ `procPath`(`…/CoreSimulator/Devices/<UDID>/…`)から取る。JSON は `/` を `\/` と書くので
+    /// 素のテキストへ当てる(旧テキスト形式の Coalition:/Path: 行にも同じ形で当たる)。読めなければ nil
+    public static func deviceUDID(inReport content: String) -> String? {
+        let patterns = [#"SimDevice\.([0-9A-Fa-f-]{36})"#, #"CoreSimulator\\?/Devices\\?/([0-9A-Fa-f-]{36})"#]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: content, range: NSRange(content.startIndex..., in: content)),
+                  let range = Range(match.range(at: 1), in: content) else { continue }
+            return String(content[range]).uppercased()
+        }
+        return nil
+    }
+
     /// dir 内の直近クラッシュを新しい順に探し、bundleID が一致する最初の1件を返す。
+    /// `udid`: 非 nil なら**そのシミュレータのレポートだけ**(同じアプリを並行で回すと別デバイスの .ips が
+    /// 同じ窓に入る)。デバイスを読めないレポートは帰属させない。nil はデバイスで絞らない。
+    /// **既定値は付けない**(run の経路の渡し忘れをコンパイルで止める)
     public static func findRecent(
         bundleID: String,
+        udid: String?,
         within seconds: TimeInterval = 120,
         dir: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Logs/DiagnosticReports"),
@@ -117,6 +135,7 @@ public enum SimulatorCrashReport {
                 .flatMap { summarize(headerLine: $0.header, payload: $0.payload) }
                 ?? summarizeTextFormat(content)
             guard let summary, summary.bundleID == bundleID else { continue }
+            if let udid, deviceUDID(inReport: content) != udid.uppercased() { continue }
             return (url.path, summary.reason)
         }
         return nil

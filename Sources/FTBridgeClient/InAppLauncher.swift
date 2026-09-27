@@ -141,7 +141,9 @@ public struct InAppLauncher {
     /// waitUntilReady のタイムアウト後 = クラッシュから数十秒経っているので1回だけ引く。
     /// 窓は待った時間ぶん広くとる — 即死は待ちの先頭で起きている)
     private func crashAnnotated(_ detail: String, bundleID: String) -> String {
-        guard let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, within: 60) else {
+        guard let hit = SimulatorCrashReport.findRecent(bundleID: bundleID,
+                                                        udid: udid == "booted" ? nil : udid,
+                                                        within: 60) else {
             return detail + " (no recent crash report for \(bundleID) —"
                 + " the app process may have been killed without one, or never launched)"
         }

@@ -123,9 +123,19 @@ final class SimulatorCrashReportTests: XCTestCase {
         path.map { URL(fileURLWithPath: $0).resolvingSymlinksInPath().path }
     }
 
-    private func writeIPS(name: String, bundleID: String, mtime: Date) throws -> URL {
+    /// `device`: 実物の .ips(macOS 27・シミュレータのアプリを SIGSEGV で落として採取)と同じ形で
+    /// coalitionName / procPath を書く。`procPathOnly` は coalitionName を欠いた形
+    private func writeIPS(name: String, bundleID: String, mtime: Date,
+                          device: String? = nil, procPathOnly: Bool = false) throws -> URL {
         let header = #"{"bundleID":"\#(bundleID)","app_name":"SampleApp"}"#
-        let payload = #"{"exception":{"type":"EXC_CRASH","signal":"SIGABRT"}}"#
+        var fields = [#""exception" : {"type":"EXC_CRASH","signal":"SIGABRT"}"#]
+        if let device {
+            fields.append(#""procPath" : "\/Users\/USER\/Library\/Developer\/CoreSimulator\/Devices\/\#(device)\/data\/Containers\/Bundle\/Application\/89E82350-5D56-4D3F-B9B3-2D33677A45F0\/SampleApp.app\/SampleApp""#)
+            if !procPathOnly {
+                fields.append(#""coalitionName" : "com.apple.CoreSimulator.SimDevice.\#(device)""#)
+            }
+        }
+        let payload = "{\n  " + fields.joined(separator: ",\n  ") + "\n}"
         let url = dir.appendingPathComponent(name)
         try "\(header)\n\(payload)".write(to: url, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.modificationDate: mtime], ofItemAtPath: url.path)
@@ -137,7 +147,7 @@ final class SimulatorCrashReportTests: XCTestCase {
         let target = try writeIPS(name: "a.ips", bundleID: "com.sutec.mobile", mtime: now)
         _ = try writeIPS(name: "b.ips", bundleID: "com.other.app", mtime: now)
 
-        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", dir: dir, now: now)
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: nil, dir: dir, now: now)
 
         XCTAssertEqual(resolved(hit?.path), resolved(target.path))
         XCTAssertEqual(hit?.reason, "EXC_CRASH SIGABRT")
@@ -147,7 +157,7 @@ final class SimulatorCrashReportTests: XCTestCase {
         let now = Date()
         _ = try writeIPS(name: "old.ips", bundleID: "com.sutec.mobile", mtime: now.addingTimeInterval(-300))
 
-        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", within: 120, dir: dir, now: now)
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: nil, within: 120, dir: dir, now: now)
 
         XCTAssertNil(hit)
     }
@@ -157,7 +167,7 @@ final class SimulatorCrashReportTests: XCTestCase {
         _ = try writeIPS(name: "older.ips", bundleID: "com.sutec.mobile", mtime: now.addingTimeInterval(-60))
         let newest = try writeIPS(name: "newer.ips", bundleID: "com.sutec.mobile", mtime: now.addingTimeInterval(-1))
 
-        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", dir: dir, now: now)
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: nil, dir: dir, now: now)
 
         XCTAssertEqual(resolved(hit?.path), resolved(newest.path))
     }
@@ -166,8 +176,78 @@ final class SimulatorCrashReportTests: XCTestCase {
         let now = Date()
         _ = try writeIPS(name: "a.ips", bundleID: "com.other.app", mtime: now)
 
-        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", dir: dir, now: now)
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: nil, dir: dir, now: now)
 
         XCTAssertNil(hit)
+    }
+
+    // MARK: - デバイスで絞る(同じアプリを並行で回すと別デバイスの .ips が同じ窓に入る)
+
+    private let deviceA = "0B7E3ADA-B0E7-4A5B-99A7-B29091AE547A"
+    private let deviceB = "257324AF-D10D-42DE-AD7D-ADB682E8365F"
+
+    func testFindRecentWithUDIDSkipsNewerReportFromAnotherDevice() throws {
+        let now = Date()
+        let own = try writeIPS(name: "own.ips", bundleID: "com.sutec.mobile",
+                               mtime: now.addingTimeInterval(-5), device: deviceA)
+        _ = try writeIPS(name: "other.ips", bundleID: "com.sutec.mobile",
+                         mtime: now.addingTimeInterval(-1), device: deviceB)
+
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: deviceA,
+                                                  dir: dir, now: now)
+
+        XCTAssertEqual(resolved(hit?.path), resolved(own.path))
+    }
+
+    func testFindRecentWithUDIDReturnsNilWhenOnlyAnotherDeviceCrashed() throws {
+        let now = Date()
+        _ = try writeIPS(name: "other.ips", bundleID: "com.sutec.mobile", mtime: now, device: deviceB)
+
+        XCTAssertNil(SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: deviceA,
+                                                     dir: dir, now: now))
+    }
+
+    func testFindRecentWithUDIDDoesNotAttributeReportWithoutDevice() throws {
+        let now = Date()
+        _ = try writeIPS(name: "unknown.ips", bundleID: "com.sutec.mobile", mtime: now)
+
+        XCTAssertNil(SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: deviceA,
+                                                     dir: dir, now: now))
+    }
+
+    func testFindRecentWithoutUDIDAcceptsAnyDevice() throws {
+        let now = Date()
+        let other = try writeIPS(name: "other.ips", bundleID: "com.sutec.mobile", mtime: now, device: deviceB)
+
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: nil, dir: dir, now: now)
+
+        XCTAssertEqual(resolved(hit?.path), resolved(other.path))
+    }
+
+    func testFindRecentWithUDIDMatchesCaseInsensitively() throws {
+        let now = Date()
+        let own = try writeIPS(name: "own.ips", bundleID: "com.sutec.mobile", mtime: now, device: deviceA)
+
+        let hit = SimulatorCrashReport.findRecent(bundleID: "com.sutec.mobile", udid: deviceA.lowercased(),
+                                                  dir: dir, now: now)
+
+        XCTAssertEqual(resolved(hit?.path), resolved(own.path))
+    }
+
+    func testDeviceUDIDReadsEscapedProcPathWhenCoalitionIsMissing() throws {
+        let url = try writeIPS(name: "p.ips", bundleID: "com.sutec.mobile", mtime: Date(),
+                               device: deviceB, procPathOnly: true)
+        let content = try String(contentsOf: url, encoding: .utf8)
+
+        XCTAssertEqual(SimulatorCrashReport.deviceUDID(inReport: content), deviceB)
+    }
+
+    func testDeviceUDIDReadsTextFormatCoalitionLine() {
+        let text = """
+        Identifier:            com.sutec.mobile
+        Coalition:             com.apple.CoreSimulator.SimDevice.\(deviceA) [1234]
+        """
+
+        XCTAssertEqual(SimulatorCrashReport.deviceUDID(inReport: text), deviceA)
     }
 }

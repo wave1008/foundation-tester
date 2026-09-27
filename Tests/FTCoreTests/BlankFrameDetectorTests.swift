@@ -114,6 +114,8 @@ final class BlankFrameDetectorTests: XCTestCase {
         let android = try Data(contentsOf: Self.blackFrames
             .appendingPathComponent("android-emulator-black-with-nav-handle.png"))
         XCTAssertFalse(BlankFrameDetector.isUniformBlank(pngData: android))
+        XCTAssertEqual(FrameBlankness.observe(pngData: android),
+                       FrameBlankness(uniform: false, blackApartFromBottomStrip: true))
     }
 
     /// 一部だけ黒い実画面(WebView の下に黒い帯)は黒い絵ではない

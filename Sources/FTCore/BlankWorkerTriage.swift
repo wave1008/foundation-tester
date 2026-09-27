@@ -76,12 +76,32 @@ public enum BlankWorkerTriage {
         samples: Int = samples,
         sleep: (Int) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0) * 1_000_000) }
     ) async -> Bool {
+        await persistentBlank(screenshot: screenshot, samples: samples, sleep: sleep) == .uniform
+    }
+
+    /// 窓の間ずっと何だったか(判定は `PersistentBlank.fold`)。1枚から一様と下端を除く黒の両方を取るので、
+    /// 健全機は従来どおり1枚で抜ける。撮れなかった時点で none(健全に倒す)
+    public static func persistentBlank(
+        screenshot: () async -> Data?,
+        samples: Int = samples,
+        sleep: (Int) async -> Void = { try? await Task.sleep(nanoseconds: UInt64($0) * 1_000_000) }
+    ) async -> PersistentBlank {
+        var observed: [FrameBlankness] = []
         for index in 0..<max(1, samples) {
             if index > 0 { await sleep(intervalMs) }
-            guard let shot = await screenshot(),
-                  BlankFrameDetector.isUniformBlank(pngData: shot) else { return false }
+            guard let shot = await screenshot() else { return .none }
+            observed.append(FrameBlankness.observe(pngData: shot))
+            if PersistentBlank.fold(observed) == .none { return .none }
         }
-        return true
+        return PersistentBlank.fold(observed)
+    }
+
+    /// 下端を除いて黒いまま(`FrozenEvidence.blackApartFromBottomStrip`)の警告。iOS のトリアージと
+    /// Android のトリアージ(`ProfileWorkerFactory`)が同じ文を出す
+    public static func blackApartFromBottomStripWarning(label: String) -> String {
+        "⚠️ \(label): the screen stayed black apart from the bottom strip (home indicator / navigation"
+            + " handle) in every capture — the display may be frozen. The run keeps this lane (this signal"
+            + " is not confirmed yet); if scenarios on it fail with black screenshots, check the device by hand"
     }
 
     /// 共有ストア・注入と揃えるためのデバイスキー(iOS=UDID / Android=serial)。
@@ -117,8 +137,12 @@ public enum BlankWorkerTriage {
         if FrozenInjection.isInjected(key: key, environment: environment) {
             return FrozenVerdict([.injected])
         }
-        guard await isPersistentlyBlank(screenshot: screenshot) else {
-            return FrozenVerdict.observe(uniformBlank: false, physical: physical)
+        let persistent = await persistentBlank(screenshot: screenshot)
+        guard persistent == .uniform else {
+            // 下端を除く黒は警告だけ = nudge も awake も撃たない(確定させない根拠に能動プローブは要らない)
+            return FrozenVerdict.observe(
+                uniformBlank: false,
+                blackApartFromBottomStrip: persistent == .blackApartFromBottomStrip, physical: physical)
         }
         if !physical, let nudge, let after = await nudge(),
            !BlankFrameDetector.isUniformBlank(pngData: after) {
@@ -187,6 +211,8 @@ public enum BlankWorkerTriage {
                 log("⚠️ \(label): the device still renders nothing although it reports being awake"
                     + " — the run keeps this lane, but scenarios on it are likely to fail."
                     + " Check the device by hand (the tool does not reboot a physical device)")
+            } else if verdict.evidence.contains(.blackApartFromBottomStrip) {
+                log(blackApartFromBottomStripWarning(label: label))
             } else if verdict.evidence.contains(.darkScreenPhysical) {
                 log("⚠️ \(label): the physical device's screen is dark"
                     + " — it may simply be asleep, so the run does not treat it as frozen."
