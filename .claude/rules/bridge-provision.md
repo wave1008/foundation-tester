@@ -86,19 +86,19 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   409 を一時的競合へ広く使ってよい(あちらは包まれない)
 - **同じ Mac で実機とシミュレータの run が同居する前提でポートを扱う**(2026-09-15 の負荷テスト。
   経緯は maintainer-notes §20): ①採番は `.pid` に加えて**生きた `iproxy-<port>.pid`** を除外する
-  ②`PortHolder.stopIfOwnedBridge` が iproxy を止めるのは台帳 `.device` の UDID が供給中の台と
+  ②`PortHolder.stopIfOwnedBridge` が iproxy を止めるのは台帳 `.device` の UDID が供給中のデバイスと
   一致するときだけ(`ownerUDID:` を必ず渡す。渡さなければ `.foreign`)③**接続先の同一性は
   `FTCore.BridgeIdentityCheck` で確かめる**(シナリオ実行プロセスの事前確認と、ホストの
   `bridgeUnreachable` 再プローブ = `BridgeProbeOutcome.hijacked`、**ライブ操作(`api live serve`)の
-  宛先決定と `LiveBridgeAutoStarter.checkAndRestartIfStale`**。bundle ID が同じ別の台は
+  宛先決定と `LiveBridgeAutoStarter.checkAndRestartIfStale`**。bundle ID が同じ別のデバイスは
   /status の udid / engine でしか見分けられない)。**ライブ操作は `--udid` の明示/既定で扱いを分ける** ——
   `--port` を明示されたら不一致は断る / **既定ポートへのフォールバックなら断らずにその udid の
   ポートを探し、無ければ空きポートへ向けて自動起動に委ねる**(拡張は port が分かるときだけ
-  `--port` を渡すので、**ブリッジのまだ無い台を開く場面**で既定 8123 に居る別の台を掴んでいた。
+  `--port` を渡すので、**ブリッジのまだ無いデバイスを開く場面**で既定 8123 に居る別のデバイスを掴んでいた。
   ここで断ると、自動起動が想定しているその場面でライブ操作が開けなくなる → maintainer-notes §42.6)④ワークスペースのステージ先は
   `WorkspaceAppStaging.installPath(declared:)` = 宣言文字列の名前空間(絶対パスから導かない)
 - **録画ありの run は供給段階で「端末側に残った録画セッション」を解く**(`HostRecordingProbe` →
-  `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・台は外さない・不明は撃たない)。
+  `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・デバイスは外さない・不明は撃たない)。
   **iOS の供給口3つ全部で凍結トリアージの直後に通す**(`HostRecordingProbeTests` が固定)。
   **検査も録画も recordVideo は SIGINT でしか止めない**(SIGKILL/SIGTERM がこの状態を作る)。
   切り出しのエンコーダはソフトウェア固定(実測は docs/verification.md §録画)
@@ -111,7 +111,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `circuitHeld` を記録する。condition 除外案・閾値ノブだけの案は却下)→ maintainer-notes §6
 - **ブリッジを起動する前に「そのポートを今 LISTEN している実体」を確かめる**。`/status` 応答だけで
   数えると、背面に回った in-app ブリッジ(TCP 受付・HTTP 無応答)が掴んだポートを「空き」と
-  採番して新しい注入が衝突する(全シミュレータは loopback を共有 = ポートは台を跨いで一意)。
+  採番して新しい注入が衝突する(全シミュレータは loopback を共有 = ポートはデバイスを跨いで一意)。
   `PortHolder.stopIfOwnedBridge` / `describe` と `StaleBridgeStop.decide` が定義元。
   **失敗は占有者を名指しして落とす**。
   **ポートだけで「自分の残骸」と決めない** —— `FleetestRunner-<port>.xctestrun` も `.inapp` も

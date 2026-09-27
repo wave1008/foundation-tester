@@ -139,11 +139,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (`<DerivedData>/.toolchain`)と比べない** —— 成果物は `runnerRebuildReason` が後から独立に
   建て直すので「ディスクは新しいがプロセスは古い」を検出できない / **③`.reuse` と `.adopt` の
   両方で見る**(建て直しの判定が走るのは**建てるとき**だけなので、生きたブリッジはここでしか
-  捕まらない)/ **④リースのある台は止めない代わりに1行言う**(`hasForeignLease` は run と MCP の
+  捕まらない)/ **④リースのあるデバイスは止めない代わりに1行言う**(`hasForeignLease` は run と MCP の
   印を両方数える。止めると他プロセスの run を壊すが、版の違うブリッジを駆動している事実は
   黙らない)。仕分けは `BridgeToolchainLedger.decide` の1箇所 → maintainer-notes §3.8。
   採番は `ProvisionLock` の内側でだけ行う
-  (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` / **`ApiLiveCommand`**(要求された台の
+  (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` / **`ApiLiveCommand`**(要求されたデバイスの
   ブリッジがどこにも無いとき空きポートを充てる)の4経路。`ProvisionLockStartupPathsSyncTests` が
   集合を固定する。**ライブ操作の1件は「選ぶだけで起動しない」= 予約ではない**ので、
   起動までに埋まったら `LiveBridgeAutoStarter` が占有者を名指しして諦める)。拡張の孤児掃除(`orphanSweep.ts`)は配信

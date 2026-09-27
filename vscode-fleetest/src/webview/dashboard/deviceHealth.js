@@ -375,7 +375,7 @@ function countText(health, field) {
 
 // cause/recovery の内訳を title へ(未知のコードは翻訳せず生の文字列のまま出す ——
 // t() は未知キーをキー文字列のまま返すので、それを検出して生コードへ倒す)。
-// total = その欄の件数。内訳を持たない分(2026-09-27 より前の記録・写像できない理由)は
+// total = その欄の件数。内訳を持たない分(内訳を記録する前の古い記録・写像できない理由)は
 // 「原因の記録なし: n」として足す —— 足さないと、件数はあるのにマウスを載せても何も出なかった
 function breakdownTitle(breakdown, namespace, total) {
   const entries = Object.entries(breakdown || {}).filter(([, count]) => count > 0);

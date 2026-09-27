@@ -135,7 +135,7 @@ fleetest profile list --project <プロジェクト>
 - 別プラットフォームや別アプリを足すときは、この `/fleetest-profiles` をもう一度実行する
   (実行プロファイルの `devices` には追記、アプリプロファイルは新しい `appRef` で追加)。
 - **別の機械(リモートランナー)のデバイスを足すときは `fleetest profile setup`/`api create-device`
-  を使わない**(どちらも `"machine": "local"` の台しか作らない)。`fleetest remote machines add` で
+  を使わない**(どちらも `"machine": "local"` のデバイスしか作らない)。`fleetest remote machines add` で
   そのマシンを登録したうえで、`profiles/runs/<name>.json` の `devices` に
   `{ "platform": "...", "machine": "<登録名>", "name": "...", ... }` を直接追記するか、
   拡張のプロファイルタブの「デバイスを追加」で機械を選んで足す(→ `/fleetest-remote-setup`)。

@@ -195,7 +195,7 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 | `--version` | `<git の短い revision> (protocol <版>)` を表示(`api version` はプロトコル版だけを JSON で返す別口) |
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
-| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果は台ごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、`--set iosFastInput=true` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
+| `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--set heal=...` 自己修復、`--report-dir`、`--port` 並列(繰り返し指定)、`--skip-build`、`--no-lpt` 投入順を ID 順に固定、`--lpt-history-runs` 実績を読む run 数、`--broadcast` 選んだシナリオを実行プロファイルの**全デバイスで1回ずつ**回す(ブロードキャスト。warmup 向け。供給・フック・復帰・レポートは通常 run と同じで、結果はデバイスごとに `worker` で区別)、`--quiet`/`--junit` CI 向け出力、`--set enableAnimations=true` アプリのアニメーションを残す、`--set iosFastInput=true` iOS xcuitest の quiescence 待ちを飛ばす)。**`--dry-run` はデバイスに触れずステップを列挙・検証する**(下記「dry-run」) |
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--set heal=...`、`--port`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
@@ -259,7 +259,7 @@ swift run fleetest run --project SampleApp --profile all   # 解決 → ブリ�
   (導入は [docs/remote-runner-setup.md](docs/remote-runner-setup.md)。旧キー `"host"` も読める)
 - **一意なのは (machine, name)** なので別の機械に同名のデバイスが居てよく、**手元10台 + リモート10台を
   1回の run で**回せる(機械ごとに分かれて走り、シナリオは台数で重み付けて配られる)
-- `enabled: false` の台は一覧に残るが走らない(拡張のチェックボックスに対応)
+- `enabled: false` のデバイスは一覧に残るが走らない(拡張のチェックボックスに対応)
 - **並列数 = 解決後のデバイス数**。iOS は稼働中ブリッジを再利用し、不足分だけ自動起動する
 - アプリプロファイルに `appPath`(.app/.apk)があれば実行前に自動インストール(`autoInstall: false` で無効)
 - `--profile` 省略時は従来どおり(手動 `--port`/`--serial`、稼働中デバイスへの分配)

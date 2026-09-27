@@ -154,7 +154,7 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
 | 3+3 | 58s(有効1回) | 0% | 利得ゼロ+3本目ブリッジの供給が不安定(§7) |
 
 - 1+1→2+2 は -42% と素直にスケール。2+2 で 10 コアが飽和するため、3+3 はキュー分割の
-  理論利得(iOS 3→2 本/台)が per-scenario の遅延増で相殺され改善しない
+  理論利得(iOS 3→2 本/デバイス)が per-scenario の遅延増で相殺され改善しない
 - デバイス追加が効くのは「CPU idle が残っている」ときだけ。増やす前に実行中 idle を見る
 
 ### 3.2 実行前固定コストの削減(2026-07-15 実装)
@@ -361,7 +361,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
   **節約は decode 側の固定費(約 0.5 秒)**なので、競合の無い1レーンでは素直に出るが、
   2レーンでは FM の取り合いで分散(run 間 ±20%)に埋もれる。**「実 run で差が出ない」と
   読む前にレーン数を疑うこと** —— 固定費の節約は、待ち行列の分散より小さくなると見えなくなる。
-  再測の手順: 対象機の台だけを並べた実行プロファイル(`devices[].machine` をその機械にする)を
+  再測の手順: 対象機のデバイスだけを並べた実行プロファイル(`devices[].machine` をその機械にする)を
   置き、ランナーで `FT_FM_OCCLUSION_TWO_STAGE=0` の有無を交互に回して
   結果 JSON の `fm.byKind.occlusion` を集計する
 - **④が効く条件は「重ねられる作業があること」**。vision はリード 0ms では効かないので、
@@ -1635,7 +1635,7 @@ fleetest results insights --project <name>     # 🟡 unsettledSteps の行を�
 | ワーカー参加の間隔(`FT_WORKER_STAGGER_SEC`) | Sources/FTCore/RunOrchestrator.swift(`WorkerStagger.seconds`) | 1.5s(`0` で無効) | run 開始時にワーカーを1本ずつ参加させる間隔。**先頭2本は待たない**(`simultaneousHead`=2。BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値)。各シナリオは `condition { launchApp() }` から始まるので、N 本同時に積むと**最初の launch が N 本同時**に走る。**定常のレーン数は変えない**ので伸びるのは立ち上がりだけ(10 台で約 12 秒)。1.5 の根拠は「シミュレータの launch がおおむね1〜3秒」という観測だけで、凍結率で較正した値ではない |
 | ワーカー参加の CPU 上限(`FT_WORKER_START_CPU_MAX`) | Sources/FTCore/WorkerStartGate.swift(`WorkerStagger.cpuCeiling`) | 1.0 = 100%(`1` 以下は割合・超えたらパーセント) | **これ未満になるまで次のワーカーを起こさない**。間隔は時間の当て推量で、ホストが実際に空いたことを見ていない —— 供給が長引いた run では飽和したまま次を起こす。**先頭2本もこの門は通る**(間隔だけが先頭免除)。**30 秒(`cpuWaitCap`)空かなければ諦めて素通しし、以降その run では CPU を見ない**(飽和の理由がテストと無関係なとき立ち上がりが際限なく延びるため。諦めは1回だけ警告)。`CPUSampler` は連続呼び出しだと差分が取れず nil を返すので、**1窓(0.5s)以内の測定値は使い回す**(これが無いと先頭2本が測定窓のぶん離れ「間隔0」が崩れる)。コストは通常設定で最初の1窓=約 0.5 秒 |
 | `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
-| GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiStartDeviceCommand `--gpu` / ApiStartAllDevicesCommand `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/台)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/台。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk `start-all-devices` も `--cpu-render <論理名>` で維持される。host への意図的復帰は `restart-devices`) |
+| GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiStartDeviceCommand `--gpu` / ApiStartAllDevicesCommand `--cpu-render` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/デバイス)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/デバイス。全機 swiftshader ではなく、凍結が displayRepair/streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk `start-all-devices` も `--cpu-render <論理名>` で維持される。host への意図的復帰は `restart-devices`) |
 | 探索の打ち切り(`unmovedRoundsToStopSearch`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 2 周連続で木が不変なら打ち切り | 端に着いた後も上限まで振り続けるのをやめる。**見つからない探索が 7.40s → 2.05s**(実測 2026-08-06)。1 にすると遅れて描画される行を取りこぼす |
 | 逆走査(`reverseSweepSpanRatio` / `MaxSwipes` / `DragSpeed`) | Sources/FTCore/StepExecutor+ScrollFrame.swift | 容器の 0.5 ぶん / 8 本 / 120px/s | 端に着いても見つからないときだけ、逆向きに細刻みで戻って拾い直す。**失敗が確定してからしか撃たない**ので通常経路のコストは 0。速度を上げるとフリングになって反対の端まで走る(実測: 189px 指定が約 700px 走った)。**MCP の ft_scroll_to の1回目だけは半開きシートの停滞で逆走査を撃たない**(`defersPartialSheetRecovery`。シートを展開して再試行する側の逆走査が救済を引き継ぐ。実測: 畳まれた経路カードで 7.8s の丸損 → 同一シナリオ 21s → 10.7s。2026-08-10) |
 | `FT_CONTAINER_INFERENCE` | 環境変数(`StepExecutor.containerInferenceEnabled`) | 既定 on / `off` で無効 | **容器をツリーから推測して行う補正の殺しスイッチ**。見切れ判定・ghost の掴み直し・救済ドラッグ・座標補正(見えている部分を撃つ)・壊れた座標の候補除外が**まとめて止まり**、推測を持たなかった頃の挙動へ戻る。容器は「pre-order で直前の depth の小さい要素 + 同 depth の兄弟が2つ以上中に居る」という推測なので、**想定外のツリーでは外れ得る**(外れると別の場所を叩く・明後日へ送る・正当な要素が消える)。E2E は 4 SUT しか見ていないので利用者の逃げ道として置く。**run 全体を殺す最上位のスイッチ**で、より細かい単位は実行プロファイルの `containerInference` と DSL の `tap(containerInference:)` / `withoutContainerInference { }`(docs/commands.md) |
@@ -1781,7 +1781,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     `GLDRendererMetal command buffer completion error` / `IOGPUCommandQueueErrorDomain 518` は
     ここにしか出ない(統合ログ・crash レポートは無音のまま)。**Metal エラー行数は劣化の定量指標**:
     健全ブートは 0〜2 件、劣化個体は数百件まで単調増加し高カウント個体が凍結する
-    (スケール実測 2026-07-25: N=8 で 0〜30 → N=16 で最大 513/台)。
+    (スケール実測 2026-07-25: N=8 で 0〜30 → N=16 で最大 513/デバイス)。
     ただし**個体の異常判定には使えない**(2026-07-26 フリート全数検証): 実際に凍結した個体は累積
     カウントでも増加速度でもフリート最上位ではなく(凍結機 2486 件/128 件毎分に対し健全機は最大
     2560 件/288 件毎分)、ログのタイムスタンプ集計でもエラーは全機の同一時間帯(run 実行中)に
@@ -1811,7 +1811,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   - **スケール上限(2026-07-25、N=8→16 段階実測)**: シナリオ成功率は表示層の崩壊と独立
     (N=16・凍結9/14台でも全段 18/18=**成功率は劣化の指標にならない**)。run 後の凍結台数は
     N=8 で 2 → N=14 で 9。**実用上限は 8 台+定期再起動**。10 台超で劣化加速、12 台超は新規ブート
-    自体が信頼できない(⑥)。**劣化個体はアイドルでも CPU を空転消費**(実測 ~73%/台)し、
+    自体が信頼できない(⑥)。**劣化個体はアイドルでも CPU を空転消費**(実測 ~73%/デバイス)し、
     ホスト全体を遅くする(iOS の6ワーカー同時コールド launch が一律 +3.3s 遅れた実害。
     run が遅いときは top の qemu と run 同梱 host-metrics.ndjson を先に見る)
 - **シミュレータのコールドブート直後は Spotlight インデックスが計測を汚す**: 設定トップに
@@ -1855,7 +1855,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - **`simctl list` は ~0.5s の固定費(件数非依存)**: 279件でも booted 6件でも 0.57 vs 0.45s=
   CoreSimulator 呼び出し自体のコストで、クエリを狭めても縮まない(booted 限定は未ブート対象の
   resolve を壊すので不可)。provision は catalog を1回取得して scan/resolve で使い回す=per-run は
-  1回で最小(これ以上削れない)。start-all-devices だけは 2回/台(DeviceBooter の boot 確認+provision)だが、
+  1回で最小(これ以上削れない)。start-all-devices だけは 2回/デバイス(DeviceBooter の boot 確認+provision)だが、
   boot 中はデバイス状態が変わり catalog キャッシュは誤認を招くうえ効果も ~1% なので見送り
 
 ## 8. 今後の改善候補(価値が出たら)

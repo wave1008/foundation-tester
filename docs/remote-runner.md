@@ -21,23 +21,23 @@
 守る規律は4つ:
 
 1. **エイリアスをリモートへ出さない**。転送するプロファイルは `FTCore.RunnerProfileView` が
-   「そのランナーから見た姿」へ畳む(そのランナーの台は `machine: "local"`・他機の台は削除)。
+   「そのランナーから見た姿」へ畳む(そのランナーのデバイスは `machine: "local"`・他機のデバイスは削除)。
    子へ渡すのも `--device-machine local` 固定で、`M1Ultra` 等はランナーのディスクにも引数にも出ない
 2. **記録の鍵は host**。`run.json` / `scenarios/*.json` は `host`(ホスト名)を書き、LPT の
    「同じ機械の実績を優先」もこれで照合する。`.fleetest/remote-hosts/<ホスト>.json` も同じ
 3. **プロファイルに ssh 実体を書かない**(従来どおり)。プロファイルはプロジェクト資産なので、
    書けるのは `machine`(エイリアス)だけ。`host` はローカル設定(`LocalConfig.remoteHosts`)にだけ置く
 4. **手元の台帳(実行プロファイルの `devices`)を「ランナーの視点」で書かない** —— **発行側から
-   見た姿**で書き、他機の台には必ず `machine: "<マシン名>"` を書く。ランナーへ渡す姿(`"local"`)は
+   見た姿**で書き、他機のデバイスには必ず `machine: "<マシン名>"` を書く。ランナーへ渡す姿(`"local"`)は
    転送時に `RunnerProfileView` が畳むので、手で `"local"` と書いてはいけない。
    書くと2つ壊れる: **①ディスパッチが手元へ落ちる**(`fleetest run` は「デバイスが居る機械」で
-   宛先を決めるので、向こうの台を手元で探して `no simulator with that UDID`)/
-   **②実行プロファイル未選択の監視で、実在する手元の台が消える** —— 台帳を畳む
+   宛先を決めるので、向こうのデバイスを手元で探して `no simulator with that UDID`)/
+   **②実行プロファイル未選択の監視で、実在する手元のデバイスが消える** —— 台帳を畳む
    `MachineInventory` は (platform, machine, name) の重複を1件にするので、手元に**実在しない**
    udid のほうが (ios, local, 同名) を先に埋めると、本物の起動中シミュレータが「未登録の
    起動中デバイス」として合成され **id 衝突で毎周期落ちる**(実害 2026-09-03。症状は
    `[monitor] Skipped an unregistered simulator due to an id collision: …` が鳴り続け、
-   その台のタイルが offline のまま)。実体(udid/avd/serial)の食い違いは
+   そのデバイスのタイルが offline のまま)。実体(udid/avd/serial)の食い違いは
    `MachineInventory.merge` が警告し、`MachineInventoryTests` がこのリポジトリの台帳全数に当てる
 
 **JSON キーの改名(2026-08-26)**: プロファイルの `devices[].host` → `machine`、マシンプロファイル
@@ -122,7 +122,7 @@
 **ホスト混在プロファイル(devices に `host: "local"` と `host: "M1Max"` 等が並ぶ形)を
 `--runner <名前>` で単一ホストへ送るときは、そのホスト担当のデバイスだけが
 `--device`/`--device-machine` として自動で付く**(丸ごと送ると受け側の「local」枠が発行元の
-Mac のデバイスに解決され、存在しない台の起動を試みるため)。担当が1台も無いプロファイルは
+Mac のデバイスに解決され、存在しないデバイスの起動を試みるため)。担当が1台も無いプロファイルは
 ディスパッチ前にエラーで止まる。
 
 ## 4. 全体アーキテクチャ
@@ -673,26 +673,26 @@ watchdog の分界まで実装済みで、残るのは健全性 watchdog の分�
 
 - 各デバイスの `machine` が**そのデバイスの居場所を直接言う**(正規化は
   `FTCore.DeviceMachineGrouping` / `MachineDispatch.normalize` —— 省略・空文字・`"local"` は
-  どれも「手元」に畳む)。1台ごとに書くので、他の台の値を引き継ぐような既定は無い
+  どれも「手元」に畳む)。1台ごとに書くので、他のデバイスの値を引き継ぐような既定は無い
 - **実行はホストごとのサブ実行へ分かれる**(`Sources/fleetest/DeviceMachineRunner.swift`)。
   子プロセスの起動・行の前置・JUnit 結合・集計は FleetRunner のヘルパを共有し、
   シナリオの割り当ては `FleetSplit.partition` に**台数の重み**(`entryCapacities`)を渡して行う ——
   総量で均すと台数の少ないホストだけが最後まで残り、壁時計が縮まない。
   子には `--device <名前…>` と `--runner <ホスト|local>` を渡す
 - **`--runner` 明示は分散より強い**(「今回はこの機械で」の意味。MachineDispatch と同じ規律)
-- **`--runner H` に明示の `--device <名前>` を付けたら、名前は H の台に限定する**(2026-08-24。
-  `RemoteDispatchExplicitDeviceScope`)。混在プロファイルでは同名の台が複数の機械にあるので、
+- **`--runner H` に明示の `--device <名前>` を付けたら、名前は H のデバイスに限定する**(2026-08-24。
+  `RemoteDispatchExplicitDeviceScope`)。混在プロファイルでは同名のデバイスが複数の機械にあるので、
   名前だけを子へ渡すと**全機械ぶんの同名を拾い**、手元の UDID をランナー機で探して
   `no simulator with that UDID` で落ちた(受け手報告 2026-08-23: local/M1Max/M1Ultra の同名
   iPhone で `--device` 1台 → Devices に3台)。子には `--device-machine M` を付けて渡し、
-  名前が H に無ければ**H の台を列挙して手元で止める**(遠い失敗にしない)。別の機械の同名を
+  名前が H に無ければ**H のデバイスを列挙して手元で止める**(遠い失敗にしない)。別の機械の同名を
   指したいときは `--device-machine` を明示する。machine 未指定のプロファイルは従来どおり名前を素通し。
   **`--runner local` も同じ判定を通す**(2026-08-24。`run` / `api run` の2経路。手元実行だからと
   素通しにすると、名前が別ホストのエントリに解決して手元でそのホストの UDID を探し
   `no simulator with that UDID` で止まる — 受け手報告)
 - **`api run`(拡張の実行経路)は混在プロファイルを扱えない**ので、明示的にエラーで止めて CLI を
   案内する。NDJSON 中継が1本しか無く、レーンの識別子がホストを跨いで一意にならないため。
-  一部の台だけ走らせるほうが「全部走った」と誤読されるので危険
+  一部のデバイスだけ走らせるほうが「全部走った」と誤読されるので危険
 
 **この作業でリモート実行の欠陥が1つ出た(修正済み)**: `RemoteRunArgs.build`/`buildApi` が
 リモートへ `--runner local` を渡していなかったため、実行プロファイルのデバイスに `machine` が
@@ -732,7 +732,7 @@ apps/runs はプロジェクト資産で、ディスパッチのたびに rsync 
 実行プロファイルに host(ssh 実体)は埋めない(転送資産に実体を混ぜない。
 「名前(machine)はプロジェクト資産・実体(host)はローカル設定」という分離を保つ)。
 **さらに転送時には machine(エイリアス)も
-落とす** —— ランナーが受け取るのは「そのランナーから見た姿」で、自分の台は `machine: "local"`
+落とす** —— ランナーが受け取るのは「そのランナーから見た姿」で、自分のデバイスは `machine: "local"`
 になっている(§0 の規律1。`FTCore.RunnerProfileView`)。
 
 ### フリート定義
@@ -817,8 +817,8 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
 - **ランナー機で自壊させない** —— ディスパッチ先の `fleetest run --runner local` は**向こうから見れば
   手元の run** なので、発行側が握っているロックを自分で取りに行って詰む。`remoteRunCommand` が
   `FT_DISPATCH_LOCK_HELD='local'` を export して止める(**`remoteExecCommand` には置かない**)
-- **dispatch.lock(マシン全体)と run-lease(台ごと)の上下**: 「マシンの門 → 台の門」。
-  **MCP の印と `start-device` 等は dispatch.lock を取らない**ので台ごとの調停は run-lease に残る。
+- **dispatch.lock(マシン全体)と run-lease(デバイスごと)の上下**: 「マシンの門 → デバイスの門」。
+  **MCP の印と `start-device` 等は dispatch.lock を取らない**のでデバイスごとの調停は run-lease に残る。
   **例外は `rejectIfLocalDevicesLeasedBeforeDispatch`** —— 読み取りの先読みで、**どのロックも取る前に
   断る**ために手前にある(取ってから降りると他人を待たせた挙句に何も走らない)
 - **fan-out は手元の枠も全順序に入れる**(手元だけ外すと循環が復活する。§18.10)
@@ -832,7 +832,7 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
 ④待っている間は run ボードに載らない(記帳より前に取るため。待機は端末 / OUTPUT のログと、
 `api run` なら `dispatchWaiting` = 実行ログビューの全体レーンに出る)。
 **MCP(`ft_*`)は dispatch.lock を取らない** —— プロセス内で `ScenarioHost.run` を直接呼ぶ別経路で、
-台ごとの MCP の印 + run-lease が唯一の調停。「1 run/マシン」を MCP まで広げるかは未決
+デバイスごとの MCP の印 + run-lease が唯一の調停。「1 run/マシン」を MCP まで広げるかは未決
 
 **受け入れている限界(2026-09-21 のレビューで洗い出した4つ。4 は同日に塞いだ)**:
 
@@ -844,7 +844,7 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
    外せる**(2026-09-21。新しいコマンドも新しい判定も足していない。詳細は下の unlock の項)
 3. **MCP(`ft_*`)は dispatch.lock を取らない**(**広げない。再提案しない**)—— 守っているのは
    「高負荷による不安定化」で、MCP は run ではなく**対話的な操作**(1手ずつ)なので負荷の性質が違う。
-   広げると**エージェントが台を1つ触るだけで run が一切走らなくなる**。台の取り合いは
+   広げると**エージェントがデバイスを1つ触るだけで run が一切走らなくなる**。デバイスの取り合いは
    `ProfileRunner.limitingDevicesAvoidingMCP` で足りている。**再検討条件**: `ft_run_scenario` が
    run と同じ重さの負荷で実際に不安定化させたとき
 4. ~~**手元の待機は NDJSON に出ない**~~ **塞いだ(2026-09-21)** —— 手元のロックを待っている間も
@@ -891,7 +891,7 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
   その pid が死んでいる**ときだけ自動で外す(`RemoteDispatchUnlock.decideAutomaticSweep`)。
   **外す前に、ランナー上でそのディスパッチの run がまだ生きていないかを見る**
   (`RemoteDispatchUnlock.guardingLiveRemoteRun`。unlock も同じ): 手元の pid が死んでもリモートの run は
-  生きていることがあり、そこで外すと同じ台へ2本目が乗る。判定材料はディスパッチの run が必ず持つ
+  生きていることがあり、そこで外すと同じデバイスへ2本目が乗る。判定材料はディスパッチの run が必ず持つ
   引数 `--report-dir <base>/users/<issuer>/work/.fleetest/dispatch/…`(`liveDispatchedRunsCommand`
   = pgrep)。**確かめられない(ssh の失敗)ときも外さない**
 - **`--force-lock` は `--runner` / `--fleet` に限らない**(2026-08-18 に緩めた。判定は
@@ -992,9 +992,9 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 ### リモートのデバイスの状態と画面(2026-08-17 実装)
 
 **手元の `api monitor` は simctl/adb を叩くので、この機械のデバイスしか観測できない**。
-放っておくとリモートの台は永久に `offline` で、**向こうで起動しても画面が1ミリも変わらない**
+放っておくとリモートのデバイスは永久に `offline` で、**向こうで起動しても画面が1ミリも変わらない**
 (利用者の報告「表示が未起動のままです。起動しようとしたのかどうかわかりません」)。
-しかも**同名の手元の台に解決して別の機械の状態と画面を出す**という、もっと悪い形もあった
+しかも**同名の手元のデバイスに解決して別の機械の状態と画面を出す**という、もっと悪い形もあった
 ((machine, name) が一意なら同名は正常な構成なので普通に起きる)。
 
 決めた形は**「手元とリモートで構造を変えない」**:
@@ -1003,7 +1003,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 |---|---|---|
 | 状態 | `api monitor` が simctl/adb で観測 | その機械で `api monitor --device-machine <machine>` を1本(`RemoteMonitorFanout`) |
 
-**「起動中のデバイス」で出る台**: booted なシミュレータ・起動中の AVD に加え、**接続中の実機**も
+**「起動中のデバイス」で出るデバイス**: booted なシミュレータ・起動中の AVD に加え、**接続中の実機**も
 合成する(`unregisteredStates`。iOS=`IOSPhysicalDeviceCatalog` / Android=adb の非 emulator serial)。
 実機の列挙は **30 秒 TTL でキャッシュ**する —— devicectl と `adb getprop` で 0.5〜1 秒かかり、
 既定 2 秒周期の監視には重い(繋ぎ替えは分単位の出来事。**新しい serial を見つけたら TTL を待たずに
@@ -1013,9 +1013,9 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
 **fan-out 先の決め方**(`ApiMonitorCommand.fanoutMachines`): 実行プロファイルを選んでいるときは
 **そのプロファイルに居る他機だけ**。選んでいないとき(拡張の「(起動中のデバイス)」= `--profile` 無し)は
 **登録簿の全マシン**へ張る —— このモードは実行プロファイルを引かないので、張らないと
-**向こうで起動中の台が一覧に出ない**(2026-08-26 の報告。手元の台しか出ずマシンのタグも消える)。
+**向こうで起動中のデバイスが一覧に出ない**(2026-08-26 の報告。手元のデバイスしか出ずマシンのタグも消える)。
 子(`--device-machine` 付き)は常に空 = 入れ子のディスパッチを作らない。
-**実行プロファイルに無いリモートの台も devices に足す**(`mergedDevices`)—— listedTargets は
+**実行プロファイルに無いリモートのデバイスも devices に足す**(`mergedDevices`)—— listedTargets は
 手元のぶんしか無いので、そこで落とすと fan-out の結果が捨てられる。並びは id 順に固定
 (辞書の順序に任せるとタイルが毎サイクル並べ替わる)。
 | 映像 | 拡張が配信ヘルパーを直接 spawn | 拡張が `remote exec <runner> -- api device-stream …` を spawn |
@@ -1026,11 +1026,11 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   仕分けの規則は `ApiMonitorCommand.scope`(pure。`MonitorHostScopeTests`)—— 走査するのは
   自分のぶんだけ / 並べるのは親は全部・子は自分のぶんだけ(両方が出すと拡張の Map で潰し合う)/
   **子は fan-out しない**(入れ子のディスパッチを作らない)
-- **観測していない台は `state: "unknown"`**。offline(= 止まっている)と**別の値にする** ——
+- **観測していないデバイスは `state: "unknown"`**。offline(= 止まっている)と**別の値にする** ——
   同じにすると、向こうで動いていても止まって見える。拡張はこの値のときだけ
   「<host> に届いていません」を出す(契約は `vscode-fleetest/src/monitorDeviceModel.ts` の
   `MonitorDeviceState`)。**リモートだからという理由で表示を変えない** —— 状態が届いていれば
-  手元の台と1文字も変わらない表示にする
+  手元のデバイスと1文字も変わらない表示にする
 - **WiFi 越しの分身は隠す(wired 優先)**。実機は WiFi ペアリング済みの Mac 全部から
   `state=connected` に見える(devicectl は localNetwork でも connected)ので、同じ udid が
   「USB で繋がった機械」と「WiFi で見えるだけの機械」の両方から報告される。合流点
@@ -1052,18 +1052,18 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   **iOS でこれが成立していなかった**(2026-08-28 に判明): 実行プロファイル未選択のときの
   iOS は「未登録」= ブリッジを持たないので、ブリッジ `/screenshot` を前提とした撮影の対象から
   外れ、**monitorFrame が1枚も出ない**。手元は simstream(udid だけで映る)が覆っていたので
-  見えなかったが、配信の張れない台では画面の出所がゼロになる。現在はブリッジを持たない
+  見えなかったが、配信の張れないデバイスでは画面の出所がゼロになる。現在はブリッジを持たない
   シミュレータを `xcrun simctl io … screenshot` で撮る —— **1サイクル1台の順繰り**
   (`ApiMonitorCommand.simctlCapturePick`)。**間隔の定数は置かない**: simctl は実測 1.7 秒で
   interval(2秒)より長いため、1サイクル1台に固定して追加コストを撮影1回で頭打ちにし、
-  更新間隔は対象の台数から決まるようにしてある。配信中(`suppressFrames`)の台は撮らない
+  更新間隔は対象の台数から決まるようにしてある。配信中(`suppressFrames`)のデバイスは撮らない
 - **操作もその機械へ回す**(2026-08-17 のレビューで実バグ)。一括の起動・停止は
   `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api start-device --name`
-  を撃っていた** —— `findDevice` は名前だけで引くので、同名の台が別の機械にも居ると
+  を撃っていた** —— `findDevice` は名前だけで引くので、同名のデバイスが別の機械にも居ると
   **別の機械の設定でこの Mac にシミュレータが1台できる**(simctl は無ければ作る)。
   現在は拡張が `remote exec <machine> -- api start-device … --device-machine local` を通し、
   `findDevice` も (machine, name) で引く。**向こうへ渡す値は常に `local`** —— 宛先はもう
-  `remote exec` で選んでおり、送ったプロファイルは自分の台を `machine:"local"` に畳んである
+  `remote exec` で選んでおり、送ったプロファイルは自分のデバイスを `machine:"local"` に畳んである
   (§0 の規律「引数にエイリアスを出さない」)。**エイリアスを渡すと向こうで一致するエントリが
   無く `device not found: <名前> on <machine>` になる**(2026-08-29 に実機で確認。この文書自身が
   `--device-machine <machine>` と書いていたのを直した)。**`--device-machine` を渡さない呼び出しは、候補が
@@ -1072,30 +1072,30 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   **「M1Max を止めたつもりで手元が止まり、しかも ok:true で成功に見える」**になる
   (2026-08-17 に実際に起きた)。実行プロファイルの参照解決と同じ規律。
   **手元で `--device-machine <他の機械>` を撃つと断る**(start-device / stop-device --name /
-  restart-devices)—— 解決した台が他の機械のものなら、本体を手元で走らせずに
+  restart-devices)—— 解決したデバイスが他の機械のものなら、本体を手元で走らせずに
   `fleetest remote exec <machine> -- api … --device-machine local` を案内する。この Mac で意味を持つ値は
   `local` だけ(Android は AVD 名が機械をまたいで同じなので、通すと手元の同名 AVD に当たる。
   maintainer-notes §51.9)
   **同じ規律で回すのは起動・停止だけではない** —— プロファイルタブの右クリック「Wipe Data」も
-  `remote exec <machine> -- api wipe-device …` を通す(手元で撃つと、同名の台が別の機械にも
-  居るとき**手元の台が初期化される**)
+  `remote exec <machine> -- api wipe-device …` を通す(手元で撃つと、同名のデバイスが別の機械にも
+  居るとき**手元のデバイスが初期化される**)
 - **「全て終了」(実行プロファイル未選択)も分散する**(2026-08-30 の実害)。拡張はこのとき
   `api stop-all-devices` ではなく従来の `fleetest devices down`(全ブリッジ停止 + `simctl shutdown all`
-  + 残った qemu の kill = 実行プロファイルに無い台も止める掃討)を呼ぶ。この掃討が手元しか
+  + 残った qemu の kill = 実行プロファイルに無いデバイスも止める掃討)を呼ぶ。この掃討が手元しか
   見ていなかったので、**監視は登録簿の全マシンへ張るのに停止は手元だけ**という食い違いになり、
   リモートのタイルが1枚も消えなかった。現在は `RemoteDeviceFanout.dispatchSweep` が
   `remote exec <machine> -- devices down --device-machine local` を機械ごとに立てる ——
   **投げる先は `ApiMonitorCommand.fanoutMachines` と同じ**(集合を別に持つと「出ているのに
-  止まらない台」が生まれる)。子は `--device-machine local` で走るので入れ子にはならない。
+  止まらないデバイス」が生まれる)。子は `--device-machine local` で走るので入れ子にはならない。
   出力は NDJSON でなくプレーンテキストなので、行頭に `[<machine>]` を付けて中継する。
   **リモートで `devices down` を撃つ側は `--device-machine local` を必ず付ける**
   (`remote clean` がそう)—— 付けないとランナー自身の登録簿を辿って連鎖する。
-  **この掃討は run-lease と MCP の印を読んで丸ごと断る**(台を選べないため。`DeviceBooter.sweepRefusal`)——
+  **この掃討は run-lease と MCP の印を読んで丸ごと断る**(デバイスを選べないため。`DeviceBooter.sweepRefusal`)——
   判定は分散より前で、手元の `--force` は子へ運ぶ(§18.7「破壊的操作」)
-- **名前で引けるのはモニターが知っている台だけ**(2026-08-29)。ランナー側のプロファイル複製が
-  更新されるのは**モニターの fan-out 開始時だけ**なので、それ以降に足した台・改名した台を
+- **名前で引けるのはモニターが知っているデバイスだけ**(2026-08-29)。ランナー側のプロファイル複製が
+  更新されるのは**モニターの fan-out 開始時だけ**なので、それ以降に足したデバイス・改名したデバイスを
   名前で撃つと `device not found: <名前>` で必ず失敗する。**タイルの起動・停止はこの穴を踏まない**
-  —— タイルはモニターが起動時に読んだ台にしか出ないので、押せる名前は必ず同期済み。
+  —— タイルはモニターが起動時に読んだデバイスにしか出ないので、押せる名前は必ず同期済み。
   踏むのは**ライブのプロファイルを見ているプロファイルタブ**だけで、そこから撃つ Wipe Data は
   **識別子で撃つ**(`api wipe-device --platform ios --udid <UDID>` /
   `--platform android --avd <ID>`)ことで解決した —— `api delete-device` と同じ契約で、
@@ -1104,7 +1104,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   200 バイトの情報のために毎回 rsync(初回はアプリのパッケージ込みで 170MB)を払い、
   しかも `--delete` でランナー側の複製を毎回揃え直すことになる。**消す対象を名前で指す必要が
   そもそも無い**(消えるのはその AVD ディレクトリ / シミュレータ UDID そのもの)
-- **ブリッジ watchdog はリモートの台も見る(2026-09-25 に分界を実装)**。旧: 見ない縮退。
+- **ブリッジ watchdog はリモートのデバイスも見る(2026-09-25 に分界を実装)**。旧: 見ない縮退。
   除外の理由は2つあり、両方とも消えた ——
   ①**修復手段**: lifecycle ジョブは machine を運べる(`{kind:"device", name, op, machine}`)ので、
   リモートは `remote exec <machine> -- api start-device … --device-machine local` で回る。
@@ -1112,7 +1112,7 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   拡張が ssh 越しに撃てば済む(常駐プロセスを1つ増やさずに分界できる)
   ②**同名衝突**: 記録の鍵を `device.id`(= `DeviceMachineGrouping.workerID` で machine 込み)に
   した。name 単位だった頃は**向こうの connected が手元のハングを隠し、向こうの booted が
-  手元の健全な台を再起動する**。webview へ出す `bridgeWatch` にも machine を載せる
+  手元の健全なデバイスを再起動する**。webview へ出す `bridgeWatch` にも machine を載せる
   (省略 = 手元。落とすと `findTileByName` が同名の手元タイルに当たる)
 - **健全性 watchdog(`monitorHealthWatchdog`)はまだ手元だけ**。Wi-Fi 再有効化が拡張からの
   adb 直叩きで、`api` の口が無いため機械へ回せない(`repair-display` は口があるので回せる)。
@@ -1497,7 +1497,7 @@ ssh を `-tt`(擬似 TTY 強制割り当て)で起動し、切断時に SIGHUP �
   包みの見張りが 2 秒ごとに「自分の親が起動時の pid のままか」を見て、変わっていたら ssh へ SIGTERM を送る
   (親が死ぬと包みは launchd へ付け替わる)。**孤児の ssh は害が大きい**: 出力の渡し先を失って channel を
   読まなくなるので、リモートの run は出力の write で止まったまま終わらない(実測: 11 分止まり、ssh を止めた
-  瞬間に完走した)—— dispatch.lock も台も握り続け、上の自動回収も「run が生きている」ので効かない。
+  瞬間に完走した)—— dispatch.lock もデバイスも握り続け、上の自動回収も「run が生きている」ので効かない。
   包みの後はリモートの run が SIGHUP で中断の経路を通って終わり(`interrupted: true`)、次のディスパッチが
   ロックを自動回収する(2026-09-11 に M1Max で確認)
 
@@ -1775,7 +1775,7 @@ appPath に書く)、並走する2つの run が同じ `apps/X.app` を交互に
   実装が割れない)。ワークスペースごと運ばれるので、スクリプトと資材は勝手に届く
 - **順序**: デバイスに触る前に撃つ(依存サービスが無いままシミュレータを起こしても、
   全シナリオが「アプリの不具合」の顔で落ちるだけ)。渡すデバイス一覧は**絞り込み後**の
-  ものを使う(`--device` / `--device-machine` で減った台を渡すと `adb reverse` の宛先がずれる)
+  ものを使う(`--device` / `--device-machine` で減ったデバイスを渡すと `adb reverse` の宛先がずれる)
 - **失敗の扱い**: setup が非0 → **run を止める**(インフラ起因。§16.7 の「シナリオの失敗と
   区別する」に乗せる。シナリオは1本も走らない)/ teardown が非0 → **警告のみ**
   (片付けの失敗で結果を赤にすると、通ったのか落ちたのかが読めなくなる)。
@@ -1853,7 +1853,7 @@ Aqua セッション(コンソールログイン)は1つしか立たず、シミ
 | 4 | `<base>/tool` の版(align が発行側 HEAD に合わせる) | 版の違う2人が交互に使うと align + 再ビルド(数分)を毎回往復する(綱引き)。拡張の「更新して実行」が他人の作業中の版を勝手に動かす |
 | 5 | ~~machineName(発行側の登録簿から一方向に設定。§14 決定4)~~ | **解消済み** — 2026-08-17 のマシン登録名の廃止(RemoteHostEntry から machine キャッシュを撤去・適合チェックは rev と toolchain のみ)で問題ごと消滅した。M1 で予定していた「正をランナー側へ移す」は対象自体が無い |
 | 6 | `remote clean` / `devices down` | 他人の実行中 run を殺す(modal 確認はあるが「使用中か」が見えない)。**M2 で解消**: `remote clean` はロックを読んで中止(`--ignore-lock` で押し切る)・拡張の一括停止とデバイス削除/作成の modal が保持者を出す |
-| 7 | モニター/配信 | 他人がタイルを眺めているだけで Android E2E が赤くなる(配信とテストの干渉は実測済み。docs/verification.md)。本人には run が見えていない。**M2 で解消**: 占有中の機械のライブ配信を自動で畳む(§18.7)。**同じ台の二重配信も止める** |
+| 7 | モニター/配信 | 他人がタイルを眺めているだけで Android E2E が赤くなる(配信とテストの干渉は実測済み。docs/verification.md)。本人には run が見えていない。**M2 で解消**: 占有中の機械のライブ配信を自動で畳む(§18.7)。**同じデバイスの二重配信も止める** |
 | 8 | モード A の再起動復帰 | 「誰が解錠しに行くか」が決まっていないと全員が止まる |
 | 9 | SSH 鍵(authorized_keys に1本) | 失効(退職・端末紛失)の単位が無い(§15.3 で既知)。**運用で対処**(1人1鍵。remote-runner-setup.md)—— 鍵に帰属を束ねる案は §18.8 |
 | 10 | 孤児 hooks(終了スクリプトの控え) | **ポートはホスト全体の資源**なので、他人の死んだ run の残骸で自分の run が詰まる。ネームスペースは work を分けるがポートは分けられない。**M2 で解消**: ディスパッチ開始時に全発行者ぶんを代行実行する(`RemoteHooksReap`) |
@@ -1905,7 +1905,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 **2026-08-18 に却下**(ユーザー決定)。理由:
 
 - **デバイス側の版状態は分離できない**(これが主因)。ブリッジはデバイスに載るので、
-  版の違う2人が同じ台を交互に使うと: **Android は versionCode の引き下げインストールを
+  版の違う2人が同じデバイスを交互に使うと: **Android は versionCode の引き下げインストールを
   拒否**するため、2026-08-14 の「revert で8台全滅・`adb uninstall` まで復旧不能」が
   **稀な事故から日常の交互利用で踏む形に変わる**。iOS もブリッジ版を跨ぐたびに再構築が走り、
   **warm ディスパッチ 12.6 秒の前提(ブリッジ再利用)が消える**
@@ -1925,7 +1925,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 |---|---|---|
 | 0 | この §18 の設計記録 | 済 |
 | 1 | `remote align` を dispatch.lock 配下に(18.3 規則2。既存の潜在バグ) | 済(2026-08-18。`remote setup` は install〜align 区間で保持し、verify の dispatcher が同じロックを取るので verify 前に解放する) |
-| 2 | Android ブリッジ版のデバイス側ガード(台の versionCode が期待より新しければ fail fast。大小比較 = 契約チェックなので「警告から」規律の対象外) | 済(2026-08-18。`AndroidDriver.downgradeRefusal`。install 前 + INSTALL_FAILED_VERSION_DOWNGRADE のレース + doctor サマリの3箇所) |
+| 2 | Android ブリッジ版のデバイス側ガード(デバイスの versionCode が期待より新しければ fail fast。大小比較 = 契約チェックなので「警告から」規律の対象外) | 済(2026-08-18。`AndroidDriver.downgradeRefusal`。install 前 + INSTALL_FAILED_VERSION_DOWNGRADE のレース + doctor サマリの3箇所) |
 | 3 | issuerId + ロック info / run 実績への帰属 | 済(2026-08-18。`LocalConfig.issuerId` / 解決は `resolveIssuerId` の1箇所: **FT_ISSUER > 設定 > USER@hostname**。dispatch.lock の info.json と run.json の `issuer` に記録。**リモートの子へは `RemoteShell.remoteRunCommand` が `export FT_ISSUER` で運ぶ** —— ランナー機側で解決させると全員が共有アカウントの同じ値になり帰属が消える) |
 | 4 | `--wait-lock [秒]` | 済(2026-08-18。奪わない・`--force-lock` と排他・ssh 到達不能は待たない。ポーリング10秒/経過ログ約60秒 = `WaitLockPolling` に根拠コメント付きで1箇所) |
 | 5 | 祖先関係判定 + 案内の向き + 拡張ダイアログの選択肢制御 | 済(2026-08-18。判定は `RemoteCompat.classifyRelation`(pure)+ `revisionRelation`(RemoteCommands.swift の I/O。**fetch しない** — ランナーの rev がこの clone に無ければ unknown)。checkCompatibility は **published のときだけ**向き付き advice を append(未 push は unpublishedRevisionMessage のみ — align 案内が誤誘導になる)。`api remote-compat` に `revisionRelation` フィールド(追加 = 後方互換・ProtocolVersion 不変)。拡張は localBehind/diverged/unknown が1機でも居たら「更新して実行」を出さず理由の行を足す(remoteCompatGate.ts。拡張 0.0.538)) |
@@ -2015,7 +2015,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
 - **配信の退避は保持者を問わない**。自分の run でも配信との干渉は同じ(docs/verification.md の
   実測: 8台に配信を張ったフル E2E で Android が実際に赤になった)。**ただし自分の run のぶんは
   利用者が選ぶ**(ユーザー決定 2026-09-17): 「デバイスモニター」タブの「ライブ更新」(既定 ON)が
-  ON の間は、手元の台の `inRun` と自分が保持する機械では配信を続ける。**他人の run と、観測できない
+  ON の間は、手元のデバイスの `inRun` と自分が保持する機械では配信を続ける。**他人の run と、観測できない
   機械は ON でも畳む**(`machineLockModel.streamFoldMachines`)。**手元も同じ規則を通る**
   (2026-09-21): 自分の run は `mine:true` なので ON では畳まず、**他人がこの Mac へディスパッチして
   保持している間だけ畳む**。3ケースは `machineLockModel.test.mjs` が等号で固定する。**OFF は run の有無を問わず全台の配信と
@@ -2024,30 +2024,30 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   バッジの明度を下げる(`streamToggle.js`。「未起動」「ブリッジ未起動」等の状態の表示と、実行ログのレーン見出しのバッジは暗くしない)。**畳むのは配信だけで観測は
   続ける** —— タイルはポーリングのフレームで更新され続ける(CLAUDE.md「観測と配信を同じ
   ループに書かない」)
-- **同じ台の二重配信も止める**(`FTCore.StreamLease`)。共有ランナーでは同じ台を2人が眺めうるが、
+- **同じデバイスの二重配信も止める**(`FTCore.StreamLease`)。共有ランナーでは同じデバイスを2人が眺めうるが、
   配信は端末側の実コストなので人数ぶん重なる。**拒否しない**のが要点 —— 起こしてから断る形に
   すると、断られるたびに ssh を張り直す再試行ループになる。配信を張る側が控えを1つ置き、
-  監視の子がそれを読んで `streamedByOther` として配り、拡張はその台を起こさないだけにする
+  監視の子がそれを読んで `streamedByOther` として配り、拡張はそのデバイスを起こさないだけにする
   (相手がやめれば次のサイクルで自然に張られる)。生存判定は **pid だけ**(RunHookLease と同じ)。
   控えは execv した先では消せないので溜まる —— **`remote clean` の保持ポリシーが
   `<base>/.fleetest/streams` を掃く**(pid が一巡して他人の配信に見え続ける穴の上限)。
   **同じ Mac の別ウィンドウ(拡張ホストが2つ)は台帳でなくプロセスの実体で判定する**
   (`FTCore.LocalStreamHolder`): 拡張はヘルパーを直接起こすので控えを書く口が無く、代わりに
-  ヘルパーの環境に所有の印 `FT_PARENT_PID` がある。監視が `ps -E` で同じ台のヘルパーを探し、
+  ヘルパーの環境に所有の印 `FT_PARENT_PID` がある。監視が `ps -E` で同じデバイスのヘルパーを探し、
   **最も早く起動した1本**(同点は pid の小さいほう = 両ウィンドウが同じ答えを出す)の所有者が
   自分と違えば `streamedByOther`。後から開いたウィンドウのタイルはポーリング表示になり、
   先のウィンドウを閉じれば次のサイクルで張られる。**ランナー機の上でも同じ判定が走る**:
   印は `FT_PARENT_PID` ではなく `FT_STREAM_OWNER`(`FTCore.StreamOwner`。拡張ホストが
   `<hostname>:<pid>` を1回立て、環境の継承で子孫へ届き、`RemoteShell` の run / exec が ssh 越しに
-  export する)。同じ利用者が2つのウィンドウから同じランナーの台を眺める形(控えの発行者が同じで
+  export する)。同じ利用者が2つのウィンドウから同じランナーのデバイスを眺める形(控えの発行者が同じで
   `StreamLease` では区別できない)もこれで止まる。**`FT_PARENT_PID` は ssh 越しに運ばない**
   (向こうで実在しない pid の死を検知して子が終わる)
 - **破壊的操作**: `remote clean` は `RemoteDestructiveGuard` でロックを読んで中止する
   (`--ignore-lock` で押し切れる。**読めないときは通す** —— 掃除が永久にできなくなるほうが
   害が大きい)。拡張は一括停止・デバイス削除/作成の modal に保持者を添える
-  (**占有が不明なら何も足さない** = 沈黙)。**ロックはディスパッチしか写さないので、台を止める
-  CLI 自身も run-lease と MCP の印(`mcp-<鍵>.lease`)を読む**(台ごとの停止は
-  `DeviceBooter.deviceInUseRefusal` でその台だけ止めない / プロファイル無しの掃討 `devices down` は
+  (**占有が不明なら何も足さない** = 沈黙)。**ロックはディスパッチしか写さないので、デバイスを止める
+  CLI 自身も run-lease と MCP の印(`mcp-<鍵>.lease`)を読む**(デバイスごとの停止は
+  `DeviceBooter.deviceInUseRefusal` でそのデバイスだけ止めない / プロファイル無しの掃討 `devices down` は
   `sweepRefusal` で丸ごと断る。MCP のセッションは別の文言で名指しする)。lease はツールのルートに
   あるので、**ランナー機で直接打った run も写る**。`remote clean` の掃討は `--ignore-lock` を
   `--force` として運ぶ
@@ -2079,10 +2079,10 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   (M2 の時点では既定 0 = 待たない。**§18.9 で既定 3600 秒へ変えた** = FIFO の待機列が入り、
   待つことが順番の保証になったため)。**奪う口(`--force-lock`)は GUI に出さない** —— 走っているかもしれない
   他人の run を殺せる導線を作らない(§5 の決定を維持)
-- **台の lease(run-lease)の先読み拒否も `--wait-lock` を尊重する**(2026-09-22。
+- **デバイスの lease(run-lease)の先読み拒否も `--wait-lock` を尊重する**(2026-09-22。
   `ProfileRunner.rejectIfLocalDevicesLeasedBeforeDispatch`。§13 の「dispatch.lock と run-lease の
   上下」で述べた先読みそのもの)。**この機械は1マシン1 run を保証している**ので、走っている run が
-  終われば台の lease は必ず空く(dispatch.lock と違って「待てば必ず解消する」)。以前は
+  終わればデバイスの lease は必ず空く(dispatch.lock と違って「待てば必ず解消する」)。以前は
   `--wait-lock 300` を渡しても1秒も待たずに `refusing to start: already in use by another
   fleetest run …` で落ち、連続実行の後発が dispatch.lock の FIFO の待機列にも並べなかった
   (実測 2026-09-22)。今は `LocalDeviceLeaseWaitPolicy.decide`(`WaitLockPolling` と同じ刻み)で
@@ -2286,13 +2286,13 @@ Mac Studio M1 Ultra(Mac13,2 / macOS 26A5425a)で、occlusion guard を有効に�
   全台が1機械の自動ディスパッチ・`api remote-compat` の対象集合)と **`--fleet`**
   (`FleetRunner.excludingDisabledMachines`)。外した機械は stderr に1行出す
 - **1台でも外したら、残りが1機械でも分割計画を返す** —— nil を返すと単一経路がプロファイルを
-  丸ごと見て、外した機械へ自動ディスパッチする/手元でリモートの台を探す。全部外れたら断る
+  丸ごと見て、外した機械へ自動ディスパッチする/手元でリモートのデバイスを探す。全部外れたら断る
 - **明示の `--runner` には効かない**: 機械分担・フリートの子は `--runner <machine|local>` 付きで起こされ、
   ランナー機の上でも `--runner local` で走る。ここで断ると配った先で自分の run を止める
 - 監視(`api monitor` の fan-out)・デバイス操作は止めない(配らないだけ)。dry-run は常に手元
-- **無効にした機械の台を自動で終了しない**(2026-09-20 に入れて同日撤去。ユーザー決定)——
-  「マシン有効」は**発行者ごと**の設定なので、共有ランナーでは他人が温めてある台・供給の途中の台・
-  他人が眺めている台を落とす(守れるのは run-lease と MCP の印だけ)。止めるのはタイルの停止・
+- **無効にした機械のデバイスを自動で終了しない**(2026-09-20 に入れて同日撤去。ユーザー決定)——
+  「マシン有効」は**発行者ごと**の設定なので、共有ランナーでは他人が温めてあるデバイス・供給の途中のデバイス・
+  他人が眺めているデバイスを落とす(守れるのは run-lease と MCP の印だけ)。止めるのはタイルの停止・
   一括停止(保持者を添えた確認 + lease)だけ。**再提案するなら所有者台帳(誰が起こしたか)を
   先に置く** → maintainer-notes §39
 

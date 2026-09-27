@@ -177,7 +177,7 @@ jq -r 'select(.workerAnomalies == null) | .runID' results/runs/2026-08/*/run.jso
 | **run の本数** | デバッグ用の小さな run は**コードが半分直った状態**で回すので失敗率が桁違い(実測: 1〜2本の run は 18〜27%、30本+ の run は 0.5〜1.1%)。期間ごとに小さな run の比率が変わると、それだけで推移が動く | 30本+ の run だけを見る(下のレシピ) |
 | **シナリオの集合** | 追加・削除が多い(2026-07〜08 の E2E は `(project, platform, scenarioID)` 601 通りのうち、3期間すべてに登場するのは 80)。**新しい witness は開発中なので落ちて当たり前** | 比べる全期間に登場するものだけに絞る(名前で外す判断は docs/verification.md §フレークの集計は「調査由来の失敗」を除いてから読む) |
 | **標本数** | 1% のフレークは 40 回の実行では半分の確率で1度も現れない。**「フレークを示したシナリオ数」は実行回数が減るだけで下がる** | 期間ごとの最小回数へ間引いて再標本化する |
-| **デバイス構成** | `worker` の顔ぶれは黙って変わる。**小画面・旧 API の台が1台入っただけで「Android が悪化した」に見える**(実例: `tap` が画面外の台でだけ落ちた) | `worker` 別に割り、片方の期間にしか居ない台は落とす |
+| **デバイス構成** | `worker` の顔ぶれは黙って変わる。**小画面・旧 API のデバイスが1台入っただけで「Android が悪化した」に見える**(実例: `tap` が画面外のデバイスでだけ落ちた) | `worker` 別に割り、片方の期間にしか居ないデバイスは落とす |
 
 **`results slow` / `results insights`(と `api results` の `slow`/`insights` キー)は「シナリオの集合」の
 単位を自分で守る**: 集計は scenarioID だけでなく **(scenarioID, platform)** で束ねる。
@@ -196,7 +196,7 @@ find results/runs/2026-0[78] -mindepth 1 -maxdepth 1 -type d \
 tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
   jq -r '"\(.platform)\t\(.scenarioID)\t\(.passed)"' | sort | uniq -c
 
-# 失敗をデバイス別に割る(台に固有か、シナリオに固有かの判別)
+# 失敗をデバイス別に割る(デバイスに固有か、シナリオに固有かの判別)
 tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
   jq -r 'select(.passed==false) | "\(.worker // "-")\t\(.scenarioID)"' | sort | uniq -c | sort -rn
 ```
@@ -240,7 +240,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM/SIGHUP(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>`・ssh の切断等)を受けたか**。**供給段(デバイス・ブリッジの用意)の最中の中断も含む**(受け付けは記録の開始直後から)。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
-| slowWorkers | [String]? | **台そのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×台)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での建て直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行)。**2つ目の形(間欠的に詰まる台)も同じ欄に載る**(2026-09-16): 中央値は正常でも `worker: <N> of <M> snapshots took 2000ms+ (p90 <P>ms, other lanes <K> of <L>)` の1行。標本8件以上・2秒超が5本以上かつ20%以上・他レーン全体の2秒超の割合がこのレーンの1/10以下、の全部を満たすときだけ(実測: 劣化台は26〜43%・健全なレーンは最大9%(22標本中2本))。中央値判定が立った台には出さない(1台1件) |
+| slowWorkers | [String]? | **デバイスそのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×デバイス)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での建て直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行)。**2つ目の形(間欠的に詰まるデバイス)も同じ欄に載る**(2026-09-16): 中央値は正常でも `worker: <N> of <M> snapshots took 2000ms+ (p90 <P>ms, other lanes <K> of <L>)` の1行。標本8件以上・2秒超が5本以上かつ20%以上・他レーン全体の2秒超の割合がこのレーンの1/10以下、の全部を満たすときだけ(実測: 劣化デバイスは26〜43%・健全なレーンは最大9%(22標本中2本))。中央値判定が立ったデバイスには出さない(1台1件) |
 
 ### fmSettings(`FMSettingsRecord`)
 
@@ -287,7 +287,7 @@ FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で�
 **`degradedWorkers` と `workerAnomalies` は同じ事象**(前者が人向けの1行、後者が機械可読)。
 片方だけ増えることはない。
 
-**`preRunExcluded` / `preRunRepaired` は既存の `blankExclusions` / `blankRepairs`(label だけの表示用の2欄)と同じ事実の worker 鍵つき版**(既存の2欄は消さない)。**生成は triage 直後・triage 前のワーカー一覧(label→論理名が引ける)がまだ手元にある場所でだけ行う**(`WorkerAnomalyRecord.preRunTriage`)。**既知の非対称が1つある**: `fleetest run --profile`(非 `api run`)の iOS 経路(`ProfileRunner.buildIOSLane`)は、除外された台の label を**表示用の `blankExclusions` へは元から集めていない**(既存のコード。この版で直すものではない)。`workerAnomalies` の `preRunExcluded` は生成箇所が別なのでこの欠落を持たず、iOS の pre-run 除外もこちらには載る —— つまり `fleetest run --profile` では `blankExclusions`(prose)より `workerAnomalies` の `preRunExcluded`(構造化)のほうが**多く**なることがある。
+**`preRunExcluded` / `preRunRepaired` は既存の `blankExclusions` / `blankRepairs`(label だけの表示用の2欄)と同じ事実の worker 鍵つき版**(既存の2欄は消さない)。**生成は triage 直後・triage 前のワーカー一覧(label→論理名が引ける)がまだ手元にある場所でだけ行う**(`WorkerAnomalyRecord.preRunTriage`)。**既知の非対称が1つある**: `fleetest run --profile`(非 `api run`)の iOS 経路(`ProfileRunner.buildIOSLane`)は、除外されたデバイスの label を**表示用の `blankExclusions` へは元から集めていない**(既存のコード。この版で直すものではない)。`workerAnomalies` の `preRunExcluded` は生成箇所が別なのでこの欠落を持たず、iOS の pre-run 除外もこちらには載る —— つまり `fleetest run --profile` では `blankExclusions`(prose)より `workerAnomalies` の `preRunExcluded`(構造化)のほうが**多く**なることがある。
 
 **`recovered`/`recovery` が捉えるのは実装にある回復経路のうち2つだけ**(`runnerRestart` / `workerRevive`)。
 Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試みる sleep/wake 修復は、
@@ -321,7 +321,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 | schemaVersion / runID / scenarioID | | シナリオ ID = クラス名.メソッド名 |
 | title | String? | `@Test` のタイトル |
 | platform | String | `ios` / `android` |
-| worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`fleetest run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、台ごとの合否はこの欄で引く |
+| worker | String? | `"<platform>:<デバイス論理名>"`(並列実行時)。**`fleetest run --broadcast`(ブロードキャスト)では同じ `scenarioID` が台数ぶん並ぶ**(ファイルは `~N` 連番)ので、デバイスごとの合否はこの欄で引く |
 | host / profile | String / String? | host = 実行マシンのホスト名(run.json と同じ) |
 | passed | Bool | シナリオ全体の成否 |
 | timedOut | Bool? | タイムアウトで強制終了したか |
@@ -474,7 +474,7 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
 | worker | String | `"<platform>:<デバイス論理名>"` |
 | removed | Int | run から外された回数。**`workerAnomalies` の `kind == "degraded"` の件数**(cause の無い古い記録も数える) |
 | removedByCause | [String: Int] | `removed` のうち `cause` を持つものだけの内訳(キーは `cause` の値。上表参照) |
-| requeued | Int | この台から振り直しに回したシナリオ数(`kind == "requeued"`) |
+| requeued | Int | このデバイスから振り直しに回したシナリオ数(`kind == "requeued"`) |
 | preRunExcluded | Int | run 前の blank 判定で除外した回数(`kind == "preRunExcluded"`) |
 | preRunRepaired | Int | run 前の blank 判定で修復して復帰させた回数(`kind == "preRunRepaired"`) |
 | recovered | Int | run 中の回復操作を実行した回数(`kind == "recovered"`) |
@@ -488,10 +488,10 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
 `workerAnomalies` には残るが、このスキーマには対応する欄が無いため集計に出てこない
 (事実は消えていない。読みたいときは run.json を直接見る)。
 
-**行は「どれか1つでも 0 でない」台だけ**(全部 0 の台は出さない。今の状態はダッシュボードが
+**行は「どれか1つでも 0 でない」デバイスだけ**(全部 0 のデバイスは出さない。今の状態はダッシュボードが
 モニターの `monitorDevices` から出す)。**`--since` の窓は `fleetest api results` の他の集計と同じ**
 (呼び手が既に絞った `runs`/`records` を渡す。`deviceHealth` 自身は日付を見ない)。
-**worker 欄の無い記録・host が空の記録は数えない**(古い記録・`--port` 等の非プロファイル経路。どの台か言えない)。
+**worker 欄の無い記録・host が空の記録は数えない**(古い記録・`--port` 等の非プロファイル経路。どのデバイスか言えない)。
 
 ## `fleetest api results` の出力キャッシュ
 
@@ -592,7 +592,7 @@ scanRecords(キャップ無し)を1回の走査に畳む。`fleetest api results
 
 - **上書きされるのは `run.json` の1回だけ**(実行完了時に `finishedAt` と集計を追記)。
   `scenarios/*.json` は追加専用 —— 同一 run 内の再実行は `~2` 連番で足す(振り直しで消した
-  番号は**欠番のまま**。`--broadcast` では別の台が同じ ID を同時に書くので、詰めると次の
+  番号は**欠番のまま**。`--broadcast` では別のデバイスが同じ ID を同時に書くので、詰めると次の
   書き込みが残っている番号を上書きする)
 - **コミット単位**はコード変更と混ぜず `results/` だけの独立コミットにする(レビュー不要・revert しやすい)
 - **間引き**は月ディレクトリごと(`git rm -r '<project>/results/runs/2026-07'`)。月単位以外の部分削除はしない

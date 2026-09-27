@@ -63,12 +63,12 @@ paths:
 
 CLAUDE.md から移した規則(本文は移設前と同一)。この領域のファイルを Read したときに自動で読み込まれる。
 
-- **ライブ操作は他の機械の台も開ける**(ユーザー決定 2026-09-24「その機械で動かす」): serve を
+- **ライブ操作は他の機械のデバイスも開ける**(ユーザー決定 2026-09-24「その機械で動かす」): serve を
   `fleetest remote exec <machine> -- api live serve` で**向こうに**起こす(同じ実機が Wi-Fi 越しにこの Mac から
   見えても、USB で握っている機械のランナーと2本にしない)。右クリックの `openLiveForDevice` が machine・udid を
   運び、一覧は取り直しても足し戻す(`remoteOptions`)。配信は張らず serve の frame で取る。
   **stdin で命令を受ける子を `remote exec` で起こすとき、到達確認の ssh は `-n`**(読むと最初の命令を捨てる)。
-  **ブリッジ未起動(booted)の台へ切り替えたら観測を1回撃つ**(`requestOpenObservation`。自動のフレーム取得は
+  **ブリッジ未起動(booted)のデバイスへ切り替えたら観測を1回撃つ**(`requestOpenObservation`。自動のフレーム取得は
   自動起動を撃たない)。**前面追従の候補はシミュレータ = `launchctl list` / 実機 = devicectl の
   processes × apps(`IOSPhysicalRunningApps`)** —— 片方だけ変えない。**本人確認へ渡す `/status` は
   `BridgeDiscovery.statusForIdentityCheck` で udid を補う**(実機のランナーは名乗らない = 補わないと
@@ -80,7 +80,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   でその分を watchdog に足す**(拡張側は `serveCommandAllowanceMs` が同じ値を ms で持つ。片方だけ
   変えない)—— 猶予が無いと、正当な失敗の後始末(観測の撮り直し)中に watchdog が serve ごと殺す。
   **実機に2本目のランナーを立てない**(ライブ操作の自動起動 `LiveBridgeAutoStarter.launchBridge` が、同じ実機を
-  宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中の台を
+  宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中のデバイスを
   待って引き取るので門は置かない)→ maintainer-notes §49.4。
   **`--udid` がこの Mac のシミュレータ一覧にも実機一覧にも無いなら、自動起動を一度も撃たずに起動時点で
   即エラー終了する**(`ApiLiveServe.udidStartupOutcome`。判定は MCP と同じ `SimulatorCatalog.lookupUDID`

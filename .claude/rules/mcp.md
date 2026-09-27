@@ -89,9 +89,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
   `notes` 欄と ProtocolVersion、拡張の表示まで通す
 - **hybrid の予備(XCUITest)ポートも使うたびに本人確認する**(`FTBridgeClient.HybridFallbackIdentity` を
-  MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、建て直しで予備ポートが別の台・
+  MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、建て直しで予備ポートが別のデバイス・
   in-app に化けても home/drag を撃ち続ける。**`BridgeIdentityCheck.verdict` は udid が両側にあるとエンジンを
-  見ない**ので、エンジンの決まった片側は `hybridFallbackDrift` で先に見る)。**ずれは3値で扱う** (`BridgeIdentityCheck.HybridFallbackDrift`: none / sameDeviceEngineChanged / differentDevice)—— **別の台(differentDevice)は ref の有無を問わず断り、記憶を捨てない**(捨てると次の同じ呼び出しが `keyChangedDevice` の previous=nil を通って黙って別の台に固定される。抜けるのは呼び手が `udid` を明示したとき)。ライブ操作も別の台なら同じポートで作り直さず、そのコマンドを撃たずに失敗を返す。**udid の診断が予算切れなら
+  見ない**ので、エンジンの決まった片側は `hybridFallbackDrift` で先に見る)。**ずれは3値で扱う** (`BridgeIdentityCheck.HybridFallbackDrift`: none / sameDeviceEngineChanged / differentDevice)—— **別のデバイス(differentDevice)は ref の有無を問わず断り、記憶を捨てない**(捨てると次の同じ呼び出しが `keyChangedDevice` の previous=nil を通って黙って別のデバイスに固定される。抜けるのは呼び手が `udid` を明示したとき)。ライブ操作も別のデバイスなら同じポートで作り直さず、そのコマンドを撃たずに失敗を返す。**udid の診断が予算切れなら
   「確認できなかった」と言い、不在も `bridge up` も言わない**(`diagnosisTimedOut`)→ maintainer-notes §51
 - **座標を整数へ畳む所は trap しない側に倒す**(座標は `.unbounded`。入口の画面内判定
   `TapTargetGeometry.isPointOnScreen` は MCP とライブ操作が共有するが、DSL も届くので最後の砦

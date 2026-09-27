@@ -108,27 +108,27 @@ Mac の再起動直後(シミュレータ 0 台)に `--ios-xcuitest` を回す�
 
 再起動の直後の `e2e.sh --ios-inapp` で、ローカル機の `keyboardIsShown` だけが決定的に赤(E2E-CMP / Flutter の 03。
 リモートの3機は緑)。欄に焦点は立つがソフトキーボードが出ない = iOS がハードウェアキーボードがあると見なして
-縮めている。台ごとに見ると `com.apple.keyboard.preferences` の `AutomaticMinimizationEnabled` が true の台だけ出ず、
-false の台(-02)は出た。**Simulator.app 側の `ConnectHardwareKeyboard` は無関係**(シミュレータは Simulator.app
+縮めている。デバイスごとに見ると `com.apple.keyboard.preferences` の `AutomaticMinimizationEnabled` が true のデバイスだけ出ず、
+false のデバイス(-02)は出た。**Simulator.app 側の `ConnectHardwareKeyboard` は無関係**(シミュレータは Simulator.app
 無しの画面なしで動いていた・書いても効かない)。**`com.apple.Preferences` に書いても効かない**(書く先は
 `com.apple.keyboard.preferences`)。false にすると Simulator の起動し直し無しで次の焦点から出る。
 
 **ツールが供給時に書く**(`IOSSoftwareKeyboard`。run の iOS 供給 = `ProfileWorkerFactory.buildIOSWorkers` と、ブリッジの
 コールド起動 = `BridgeLauncher` の2か所・シミュレータだけ・失敗は警告して続行 = `IOSReduceMotion` と同じ形)。
-陽性対照: 8台中7台が true の状態から CMP / Flutter の 03 が緑、使った台はすべて false に直った。
+陽性対照: 8台中7台が true の状態から CMP / Flutter の 03 が緑、使ったデバイスはすべて false に直った。
 **実機はホストから変えられない**(実機でソフトキーボードが出ないときは端末側でハードウェアキーボードを外す)。
 
 ## 長く生きた XCUITest ランナーは AX 照会のたびに数秒待つ状態に落ちることがある(2026-09-14)
 
-同じ 1 シナリオが台によって 6 秒と 22 秒に割れたら(tap 0.5 秒 → 4 秒)、その台のランナーのログに
+同じ 1 シナリオがデバイスによって 6 秒と 22 秒に割れたら(tap 0.5 秒 → 4 秒)、そのデバイスのランナーのログに
 `Ignoring failure to get hierarchy for remote element in process <pid>` が**約 3.7 秒おき**に並んでいないかを見る。
 SpringBoard の remote element(DragUI の `druid`)を引けなくなった後も参照し続け、存在確認 1 回ごとに XCTest が
-remote element を諦める時間だけ待つ。隣の台では同じ行が 0.03 秒で出る = 台の差ではなくランナーの状態。
+remote element を諦める時間だけ待つ。隣のデバイスでは同じ行が 0.03 秒で出る = デバイスの差ではなくランナーの状態。
 **`bridge down --port <N>` でランナーを建て直せば直る**(シミュレータの再起動は要らない。druid を意図的に
 再起動しても再現しないので発生条件は未特定)。ツールは再利用の入口で `GET /systemalert` を 1 問測り、
 `RunnerAccessibilityHealth.slowProbeSeconds`(2 秒)以上なら建て直す。配線の陽性対照は
 `FT_FAKE_SLOW_RUNNER_PORTS=<port>`。**1 シナリオだけの実行が遅い、と見えたら先にこれを疑う** ——
-2026-09-14 は単発実行が常に同じ台(-01)を選ぶせいで「単発実行の経路が遅い」に見えた(台帳 §19.27)。
+2026-09-14 は単発実行が常に同じデバイス(-01)を選ぶせいで「単発実行の経路が遅い」に見えた(台帳 §19.27)。
 
 **2026-09-16 の追記(2 つ)**:
 - **run の途中でも再発する**。素の xcuitest レーン(シミュレータ)では、緑のシナリオの直後に**ステップの
@@ -136,12 +136,12 @@ remote element を諦める時間だけ待つ。隣の台では同じ行が 0.03
   (`RunnerMidRunRecheck`。hybrid / in-app / 実機は対象外 = 理由は同ファイル)。健全な run は 1 問も払わない
 - **ランナーを建て直しても直らない形がある**。建て直した直後にもう 1 問測り、新しいランナーでも遅ければ
   「the slowness is not in the runner process」と 1 行出して、そのプロセスではもう建て直さない
-  (`RunnerRestartFutility`)。実測: -01 は建て直すたびに 2.7〜3.0 秒のまま(同時刻の他の台は 0.03 秒)で、
+  (`RunnerRestartFutility`)。実測: -01 は建て直すたびに 2.7〜3.0 秒のまま(同時刻の他のデバイスは 0.03 秒)で、
   **シミュレータの再起動で 0.03 秒に戻った**(同じ 3 シナリオの合計 42.3s → 22.1s)。この形では上の
   「シミュレータの再起動は要らない」は成り立たない。確かめ方は `curl -w '%{time_total}' 127.0.0.1:<port>/systemalert`
-  を台ごとに数回(アイドルでも 3 秒なら台の側)
-- 陽性対照(3 通り。どれも `--device <1 台> --scenario` ×3 の素の xcuitest 実行): 劣化した台・注入なし →
-  建て直し 1 回 + 上の 1 行 + 以降は無言 / 健全な台・注入なし → 測り直しの行 0 件 / 健全な台・注入あり →
+  をデバイスごとに数回(アイドルでも 3 秒ならデバイスの側)
+- 陽性対照(3 通り。どれも `--device <1 台> --scenario` ×3 の素の xcuitest 実行): 劣化したデバイス・注入なし →
+  建て直し 1 回 + 上の 1 行 + 以降は無言 / 健全なデバイス・注入なし → 測り直しの行 0 件 / 健全なデバイス・注入あり →
   緑のたびに「restarted …; a one-element query now takes 0.0Xs — the lane continues」
 
 ## 入力・キー系は Compose だけで検証しない(フレームワークで経路が割れる)
@@ -222,7 +222,7 @@ step 4 の `type "abc"` が IME に飲まれて届かず、欄が**空のまま*
 | 周回 5〜7 | **なし** | 32 分 | 1 | **0.03/分** |
 | 周回 8〜10 | あり | 34 分 | 6 | 0.18/分 |
 
-離脱した台は Android エミュレータ 13・iOS シミュレータ 5 で、**すべて手元の Mac**
+離脱したデバイスは Android エミュレータ 13・iOS シミュレータ 5 で、**すべて手元の Mac**
 (同じ run のリモート 2 機は 0・**実機 4 台も 0** = 仮想デバイス固有)。凍結の実体は
 **アプリの窓が真っ白のまま固着**で、`screencap` の md5 が 3 秒あけて同一・端末は Awake・
 focus はアプリのまま。検知は真陽性で、requeue と guest restart の回復も働く(回復は離脱の約 4 割)。
@@ -251,7 +251,7 @@ fleetest monitor resume
 
 **中途半端に止めた対照からは誤った結論が出る。** 観測ループだけ止めた回で接続断が 11→2 に減り、
 残り2件が1台(emulator-5558)に集中していたので「その個体の問題」と報告した ——
-**実際はその台の配信が残っていただけ**で、配信を止めたら同じ台を含む全台が緑になった。
+**実際はそのデバイスの配信が残っていただけ**で、配信を止めたら同じデバイスを含む全台が緑になった。
 **対照は「全部止めた」まで作ってから読む**(§「切り分けは『実験系が効いているか』を先に確かめる」
 と同じ型を、止め方の側で踏んだ形)。
 
@@ -424,7 +424,7 @@ postMessage 越しで型が消える**ため、送る側と読む側がズレて
 - メッセージが最終ゲート(`isMonitorFromWebviewMessage`)で丸ごと捨てられ、
   **画面上は成功したように見えて登録簿に届かない**
 - 参照のマシンが読めず、確定すると `machine: "local"` として保存 ——
-  **利用者の実行プロファイルからリモートの台が消えた**
+  **利用者の実行プロファイルからリモートのデバイスが消えた**
 
 **テストは旧キーを固定していたので3件とも緑のまま通った**。フィクスチャは production と
 同じキーで書かれている限り、片側だけの改名を検出できない。要るのは
@@ -2802,8 +2802,8 @@ Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロ�
 
 指紋照合は**失敗経路でしか動かない**ので、緑の run では1度も実行されない = フル E2E を何度回しても
 守られない。そこで witness(`TestProjects/E2E-CMP/scenarios/_disabled/94_指紋照合.swift`)と
-前提を切り替える補助(`95_指紋照合の前提切替.swift`)を一時的に有効化し、**同じ台**で順に回して判定する
-(1コマンド。既定は `ios-heal` プロファイルの先頭の台):
+前提を切り替える補助(`95_指紋照合の前提切替.swift`)を一時的に有効化し、**同じデバイス**で順に回して判定する
+(1コマンド。既定は `ios-heal` プロファイルの先頭のデバイス):
 
 ```
 Scripts/heal-verify.sh                  # 既定 TestProjects/E2E-CMP・プロファイル ios-heal
@@ -2819,7 +2819,7 @@ Scripts/heal-verify.sh --profile android-heal
 
 - **2周目が要る**: 1周だけだと「指紋で直った行の鍵が、その run の終わりに刈られて3周目に赤へ戻る」
   不具合(2026-09-15 に直した。`LocatorFingerprintCache` の失効)を踏まない
-- **全段を `--device` で1台に固定**する(schema は台ごとのアプリデータ・指紋はホスト側のファイル)
+- **全段を `--device` で1台に固定**する(schema はデバイスごとのアプリデータ・指紋はホスト側のファイル)
 - 指紋の控え(`<project>/.fleetest/locator-fingerprints.json`)は退避して空から回し、最後に戻す
 - run の特定は実行前後の `results/runs/` の差で行う。`fm-verify.sh` と**同時に回さない**
   (どちらも `_disabled/` のシナリオを出し入れする)
@@ -2925,7 +2925,7 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
   2. run は**供給フェーズ(install・凍結triage)の間も run-lease を保つ**(`SupplyLeaseHolder`)。
      `RunOrchestrator` の lease はシナリオ実行中しか書かれないため、その手前に watchdog の
      `api start-device` が割り込む穴が空いていた。**orchestrator が書き始めたキーは手放す**
-     (`handOff`。手放さないと担当を終えた台の lease を run の最後まで書き戻す)
+     (`handOff`。手放さないと担当を終えたデバイスの lease を run の最後まで書き戻す)
 - それでも手で確実に避けたいときは `fleetest.autoRepairBridge` を false にするか、
   E2E 前にモニターパネルを閉じる
 - **`.adopt` は健全な環境では通らない**(announce 前のランナーが残っていないと発火しない)ので、
@@ -2937,11 +2937,11 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
 ## iOS が `never joined the run` / 「the in-app bridge did not respond in time」で供給に失敗したら
 
 **まず残骸の in-app ブリッジを疑う**(受け手報告 2026-08-22・こちらでも 2026-08-23 に再現)。
-全シミュレータはホストの loopback を共有するのでブリッジのポートは**台を跨いで一意**だが、
-in-app ブリッジは注入先アプリが**前面のときしか /status に答えない**。別の台・別のクローン・
+全シミュレータはホストの loopback を共有するのでブリッジのポートは**デバイスを跨いで一意**だが、
+in-app ブリッジは注入先アプリが**前面のときしか /status に答えない**。別のデバイス・別のクローン・
 中断された前の run のアプリが背面でポートを掴んだままだと、`scanRunningBridges` に映らず
 採番では空きに見え、新しい注入が bind できずに「did not respond in time: The network
-connection was lost」で落ちる(その台は never joined = 準備できていない台を緑にしない正しい挙動)。
+connection was lost」で落ちる(そのデバイスは never joined = 準備できていないデバイスを緑にしない正しい挙動)。
 
 2026-08-23 からツールが自分で扱う(`BridgeProvisioner.executeBridge`):
 - **これから使うポートを LISTEN している実体を記録の有無に関わらず `PortHolder` で確かめ**、
@@ -3043,7 +3043,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   アプリ起動と未インストール検査も**(2026-08-02 拡張)なので、
   「launch がおかしい」ときもこれ1つで simctl 経路と比較できる
 - **run が遅くなったら負荷トリアージを先に**: ① `top` で qemu の空転(劣化個体はアイドルでも
-  ~73%/台消費しホスト全体を遅くする)② run 同梱の `host-metrics.ndjson`(遅い run だけ CPU 飽和
+  ~73%/デバイス消費しホスト全体を遅くする)② run 同梱の `host-metrics.ndjson`(遅い run だけ CPU 飽和
   していれば環境要因)。Spotlight/mediaanalysisd のインデックスストームは CPU 数百%でも run を
   ほぼ遅くしない(M2 Ultra 実測)ので容疑から外してよい
 - **guest reboot の完了判定は「1 でなくなる」→「1 になる」の2段で見る**: `adb reboot` 直後は
@@ -3091,7 +3091,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   `adb reboot` を撃つ経路は上の3つのままで、そこに実機は入らない(docs/design.md の該当節)。
   **2026-09-25 に修復も入った(Android 実機だけ)**: `mWakefulness=Awake` なのに一様なら
   画面の sleep/wake を1回撃つ(`AndroidPhysicalDevice.cycleScreen`)。**再起動は撃たない**・
-  **戻らなくてもレーンからは外さない**・**消灯かもしれない台には撃たない**。
+  **戻らなくてもレーンからは外さない**・**消灯かもしれないデバイスには撃たない**。
   iOS 実機は点灯状態を取る材料が無いので観測だけのまま
 - ブリッジ起動時のアニメーション無効化と `hidden_api_policy=1` は **実機では設定が永続する**
   (使い捨てのエミュレータと違う)。戻すときは端末の開発者オプションから
@@ -3354,9 +3354,9 @@ devicepoll の要点:
   (健全機の検査は 1 台約 0.4s・全台並列)。**陽性対照**: 起動中のシミュレータで
   `xcrun simctl io <udid> recordVideo --codec=h264 --force /tmp/x.mov &` を 3 秒走らせて `kill -9` する
   (SIGKILL で殺した recordVideo はセッションを残す = この状態を作れる)→ もう一度 recordVideo を撃って
-  EBUSY になることを確かめる → その台を含む record:true の run を回し、
+  EBUSY になることを確かめる → そのデバイスを含む record:true の run を回し、
   `hold a stale host recording session … rebooting` と `the stale recording session(s) are gone` の2行が出て、
-  その台のクリップが index.json に載り `sourcesFailed` が無いことを見る
+  そのデバイスのクリップが index.json に載り `sourcesFailed` が無いことを見る
 
 ### WebView を触ったときの検証
 
