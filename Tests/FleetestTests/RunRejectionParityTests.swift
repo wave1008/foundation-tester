@@ -41,6 +41,17 @@ final class RunRejectionParityTests: XCTestCase {
         .init(label: "runner local without profile", arguments: ["--runner", "local"], rejected: false),
         .init(label: "runner with profile", arguments: ["--profile", "p", "--runner", "m1"], rejected: false),
 
+        // --all-machines(RunDeviceMachineAmbiguity.allMachinesConflictMessage)。--profile を
+        // 添えて「--runner requires --profile」に先取りされないようにする(この表で見たいのは
+        // その規則ではなく --all-machines との併用不可)
+        .init(label: "all-machines with runner",
+              arguments: ["--profile", "p", "--all-machines", "--runner", "m1"], rejected: true),
+        .init(label: "all-machines with device-machine",
+              arguments: ["--all-machines", "--device-machine", "m1"], rejected: true),
+        .init(label: "all-machines alone", arguments: ["--all-machines"], rejected: false),
+        .init(label: "all-machines with profile",
+              arguments: ["--profile", "p", "--all-machines"], rejected: false),
+
         // --set(実行プロファイルの上書き)
         .init(label: "set profile-only key without profile",
               arguments: ["--set", "iosInappEngine=false"], rejected: true),

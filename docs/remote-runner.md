@@ -687,6 +687,11 @@ watchdog の分界まで実装済みで、残るのは健全性 watchdog の分�
   iPhone で `--device` 1台 → Devices に3台)。子には `--device-machine M` を付けて渡し、
   名前が H に無ければ**H のデバイスを列挙して手元で止める**(遠い失敗にしない)。別の機械の同名を
   指したいときは `--device-machine` を明示する。machine 未指定のプロファイルは従来どおり名前を素通し。
+  **`--runner` も `--device-machine` も無い `--device` は、名前が2つ以上の機械に当たれば実行前に断る**
+  (`run` / `api run` の2経路。全部の機械で回すのは `--all-machines` で明示。`--runner`・`--device-machine` とは
+  併用不可)。以前は名前が当たる全機械で黙って回り、「手元の1台で試す」つもりがリモート機まで動いた ——
+  デバイス操作の `findDevice` が `.ambiguous` で断るのと同じ慣習に揃えた。**子のサブ run は必ず `--runner` と
+  `--device-machine` を付けて起こすので、この判定に掛からない**
   **`--runner local` も同じ判定を通す**(2026-08-24。`run` / `api run` の2経路。手元実行だからと
   素通しにすると、名前が別ホストのエントリに解決して手元でそのホストの UDID を探し
   `no simulator with that UDID` で止まる — 受け手報告)

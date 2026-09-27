@@ -46,7 +46,9 @@ own subprocess, so platforms stay isolated).
 
 `--broadcast` is the one case that does **not** share scenarios out: it runs the selected set
 once on **every** device of the run profile (e.g. a warm-up pass), rather than dividing them. It
-still needs `--profile`; `--device` narrows which devices are included. Results are told apart
+still needs `--profile`; `--device` narrows which devices are included (when devices with the same
+name exist on more than one machine, say which machine with `--runner` or `--all-machines`; see
+[Remote runners](../in_action/remote_runners.md)). Results are told apart
 by their `worker` field, since the same `scenarioID` appears once per device (see
 [results_analysis.md](./results_analysis.md)).
 

@@ -170,6 +170,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                 visibility: .hidden))
     var deviceMachine: String?
 
+    /// `run` と同じ口(RunDeviceMachineAmbiguity)。--device の名前が実行プロファイルの2つ以上の
+    /// 機械に当たるとき、黙って全機械で回ってしまう既定を明示させる
+    @Flag(name: .customLong("all-machines"),
+          help: ArgumentHelp("Run on every machine a --device name matches, instead of refusing "
+            + "when it matches devices on more than one machine (the previous default behavior). "
+            + "Cannot be combined with --runner/--device-machine (those already restrict the run "
+            + "to one machine)"))
+    var allMachines = false
+
     /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
     /// ファンアウトの親だけ**で、子は受け取った値をそのまま run.json に書く(自分で作らない)。
     /// 手で打つものではない
@@ -238,6 +247,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         // = ファイル I/O なしで引数だけから決まる
         if profile == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
             throw ValidationError("--runner requires --profile")
+        }
+        // **`run` と同じ規則・同じ文言**(RunRejectionParityTests が両者の一致を固定する)
+        if let message = RunDeviceMachineAmbiguity.allMachinesConflictMessage(
+            allMachines: allMachines, runner: runner, deviceMachine: deviceMachine) {
+            throw ValidationError(message)
         }
         // `--set` は `fleetest run` と共有する口(FTCore.RunProfileSetOverride)。デバイス依存の
         // キーは devices を持つ実行プロファイルが無いと適用先が無いので、`--profile` の無い
@@ -343,6 +357,17 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 必ずそれより前に分岐する。--runner 明示 + --dry-run は dispatchToRemoteHost が明示的に
         // 拒否する(既存どおり)ため常に解決へ進める一方、自動側(--runner 未指定)は dry-run のとき
         // デバイスの machine を見ない(requireProfileMachine: !dryRun)= ローカルで dry-run が走る
+        // **--device の名前が2つ以上の機械に当たるのに、どの機械かを指定していなければ断る**
+        // (RunDeviceMachineAmbiguity。`run` と共有する同じ判定 —— 両方に置く規律)。
+        // マシン別サブ実行の子は常に --runner/--device-machine を伴うのでここでは断られない
+        if !dryRun, let profile,
+           let message = RunDeviceMachineAmbiguity.rejectionMessage(
+               deviceNames: devices, runner: runner, deviceMachine: deviceMachine,
+               allMachines: allMachines,
+               devices: ProfileResolver.runDeviceMachines(
+                   project: testProject, runProfileName: profile)) {
+            throw ValidationError(message)
+        }
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
         // run --runner <label>`)へ分け、NDJSON を ApiRunMachineFanout が1本へ多重化する
         // (docs/remote-runner.md §13)。--runner 明示や全台が同じ機械なら nil が返り通常経路のまま。

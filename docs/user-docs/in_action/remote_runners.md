@@ -93,6 +93,11 @@ run splits per machine and each portion runs against its own devices there.
 - `--runner <name>` on the command line takes priority over the profile (pass `--runner local` to
   force a run to stay on your Mac). Besides a machine name, `--runner` also accepts a host name
   or IP address directly.
+- When you narrow a run with `--device <name>` and devices with that name exist on **more than one
+  machine** (you use the same names on your Mac and on a runner), fleetest cannot tell which machine
+  you mean, so the run is refused. Add `--runner local` for your Mac only, `--runner <machine>` for one
+  machine, or `--all-machines` to run on every machine that has a device with that name. If the name
+  is on only one machine, the run goes ahead as before.
 - Devices written with the old key `"host"` are still read (renamed to `machine` on 2026-08-26).
 
 ## `run --runner` and `--fleet`

@@ -53,7 +53,7 @@ SWITCH="指紋照合の前提を切り替える"
 SCHEMA_TOUCHED=0
 
 run_step() {  # デバイスを固定して1回回す(合否は問わない。結果は results/ から読む)
-  "$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" --device "$DEVICE" "$@"
+  "$FLEETEST" run --project "$PROJECT" --profile "$PROFILE" --device "$DEVICE" --runner local "$@"
 }
 
 restore() {  # 途中で落ちても必ず戻す(schema → シナリオの配置 → 指紋の控え の順)

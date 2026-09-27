@@ -374,6 +374,16 @@ struct RunScenarios: AsyncParsableCommand {
                 visibility: .hidden))
     var deviceMachine: String?
 
+    /// `--device <name>` の名前が実行プロファイルの2つ以上の機械に当たるとき、黙って全機械で
+    /// 回ってしまう既定を明示させる口(RunDeviceMachineAmbiguity)。無指定・--runner/--device-machine
+    /// 無指定でその状況になったら実行前に断る(ValidationError 相当。run()参照)
+    @Flag(name: .customLong("all-machines"),
+          help: ArgumentHelp("Run on every machine a --device name matches, instead of refusing "
+            + "when it matches devices on more than one machine (the previous default behavior). "
+            + "Cannot be combined with --runner/--device-machine (those already restrict the run "
+            + "to one machine)"))
+    var allMachines = false
+
     /// 同じ実行から分かれた run を束ねる鍵(FTCore.RunMetaRecord.runGroup)。**発行は
     /// マシン別サブ実行の親だけ**で、子は受け取った値をそのまま run.json に書く。手で打つものではない
     @Option(name: .customLong("run-group"),
@@ -482,6 +492,11 @@ struct RunScenarios: AsyncParsableCommand {
         if profile == nil, fleet == nil, let target = runner, !MachineDispatch.isExplicitLocal(target) {
             throw ValidationError("--runner requires --profile")
         }
+        // **api run と同じ規則・同じ文言**(RunRejectionParityTests が両者の一致を固定する)
+        if let message = RunDeviceMachineAmbiguity.allMachinesConflictMessage(
+            allMachines: allMachines, runner: runner, deviceMachine: deviceMachine) {
+            throw ValidationError(message)
+        }
         if fleet != nil {
             if runner != nil { throw ValidationError("--fleet cannot be combined with --runner") }
             if profile != nil {
@@ -562,6 +577,19 @@ struct RunScenarios: AsyncParsableCommand {
         // リモートへ中継されるので、向こう側の fleetest が同じ env を自分で立てる)。
         // dry-run だけは送らない(--runner 明示・全台がリモートのプロファイルの自動のどちらも。
         // 理由と罠は RemoteDispatchGate の宣言。判定は resolveEffectiveDispatchTarget)
+        // **--device の名前が2つ以上の機械に当たるのに、どの機械かを指定していなければ断る**
+        // (RunDeviceMachineAmbiguity。api run と共有する同じ判定 —— 両方に置く規律)。
+        // マシン別サブ実行の子は常に --runner/--device-machine を伴うのでここでは断られない
+        if !dryRun, fleet == nil, let profile {
+            let ambiguityProject = try ScenarioHost.project(named: project)
+            if let message = RunDeviceMachineAmbiguity.rejectionMessage(
+                deviceNames: devices, runner: runner, deviceMachine: deviceMachine,
+                allMachines: allMachines,
+                devices: ProfileResolver.runDeviceMachines(
+                    project: ambiguityProject, runProfileName: profile)) {
+                throw ValidationError(message)
+            }
+        }
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとのサブ実行へ分ける
         // (単一ディスパッチでは「そのホストに無いデバイス」が解決できない)。--runner 明示や
         // 全台が同じ機械なら nil が返り、通常の経路をそのまま通る

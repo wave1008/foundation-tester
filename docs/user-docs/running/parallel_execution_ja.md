@@ -45,7 +45,8 @@ fleetest bridge down --all              # 全ブリッジ停止
 
 `--broadcast` はシナリオを分配**しない**唯一の例外です。選んだシナリオを、分配ではなく実行
 プロファイルの**全デバイス**で1回ずつ実行します(warmup 等の用途)。`--profile` は必須で、
-`--device` で対象デバイスを絞れます。同じ `scenarioID` が台数ぶん並ぶため、結果は `worker` 欄で
+`--device` で対象デバイスを絞れます(同じ名前のデバイスが複数のマシンにあるときは、`--runner` か
+`--all-machines` でどのマシンかを明示します。[リモートランナー](../in_action/remote_runners_ja.md)参照)。同じ `scenarioID` が台数ぶん並ぶため、結果は `worker` 欄で
 区別します([results_analysis_ja.md](./results_analysis_ja.md)参照)。
 
 ## 1台のマシンで同時に走る実行は1本
