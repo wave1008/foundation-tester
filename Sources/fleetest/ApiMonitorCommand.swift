@@ -166,7 +166,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let storageSampler = DeviceStorageSampler(
             probeIOS: { SimulatorStorageProbe.probe(udid: $0) },
             probeAndroid: { AndroidStorageProbe.probe(serial: $0) },
-            isRunActive: { !RunProgressLedger.readAll(directory: storageRunProgressDir).isEmpty })
+            isRunActive: { !RunProgressLedger.readAll(directory: storageRunProgressDir).isEmpty },
+            storeURL: MachineStateDirectory.url().appendingPathComponent("device-storage.json"))
 
         // run/recording lease の読み取り用(.fleetest/{run,recording}-<key>.lease で inRun/recording を
         // 判定)。best-effort: リポジトリ外実行等で root が取れない場合は両者 false に倒す

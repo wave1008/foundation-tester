@@ -4543,13 +4543,19 @@ monitor が `monitorDevices[].storage`(`usedBytes` / `freeBytes` / `freeScope` /
   測り直す**(起動前の掃除で減った量をすぐ見せる。計測中に起動し直した台は、その計測の後にもう一度)。
   測れなかった・撃たなかった回は前回値を配り続ける(0 で埋めない)。
 - **Android**: `adb shell df /data`(`AndroidStorageProbe`。5 分おき)。`freeScope: "device"`。
-- **iOS Simulator**: `taskpolicy -b du -sk <データディレクトリ>` + ホストのボリュームの空き
-  (`SimulatorStorageProbe`。30 分おき・締切 300 秒)。`freeScope: "hostVolume"`(Simulator は
-  ホストのディスクを間借りしているので、空きはホスト側の値)。du は 1 台 27〜35 秒(データ 30〜37GB の実測)。
+- **iOS Simulator**: データディレクトリをプロセス内で**並列に歩いた割り当て済みの大きさ**(du -sk と同じ量。
+  隠しファイル込み・リンクは辿らない)+ ホストのボリュームの空き(`SimulatorStorageProbe`。30 分おき・締切 300 秒)。
+  `freeScope: "hostVolume"`(Simulator はホストのディスクを間借りしているので、空きはホスト側の値)。
+  **並列度は CPU コア数の半分**(ユーザー決定)。律速はカーネルのメタデータ処理で、単一スレッドは API を変えても
+  du と同じ(実測 12〜14 秒・`taskpolicy -b du` は 22〜28 秒)。4 スレッドで約 4 秒(データ 7.9GB / 16 万ファイル・
+  load avg 11〜19)。各スレッドは I/O を throttle にし、background QoS にはしない(CPU も後回しになり所要が倍になる)。
 - **配信の周期で計測を待たない**(`DeviceStorageSampler`): 周期は期限の来た台を裏のキューへ積んで
-  控えを読むだけ。計測は同期の子プロセスなので Swift の協調スレッドにも載せない。du は 1 台ずつ、
+  控えを読むだけ。計測は同期呼び出しなので Swift の協調スレッドにも載せない。iOS は 1 台ずつ、
   **この Mac で run が動いている間は撃たない**(積んだ後に run が始まった場合も実行直前に確かめる)。
   別の台の run にも I/O で響くため。
+- **測れた値は `~/.fleetest/device-storage.json` に残し、monitor の起動時に読む**。メモリだけだと
+  monitor が起動し直すたびに全台が空に戻り、run 中は iOS を測らないので run が終わるまで空のままになる。
+  読んだ値は表示に使うだけで、最初の周期で全台を測り直す(起動し直した台と同じ扱い)。
 
 ### 12.4.2 iOS Simulator の PosterBoard スナップショットキャッシュの掃除(起動前・2026-09-27)
 

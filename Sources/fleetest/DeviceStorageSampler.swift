@@ -1,8 +1,10 @@
 // api monitor のストレージ計測(monitorDevices[].storage)を配信周期から切り離す。
 // 周期は schedule()(期限の来た台を裏のキューへ積むだけ・待たない)と snapshot()(控えを読む)しか呼ばない。
-// **周期の中で計測を await しない**: iOS Simulator の du は 1 台 27〜35 秒(実測・データ
-// 30〜37GB・ホスト負荷 load avg 14)かかり、周期内で待つとタイル・凍結判定が止まる。計測は Shell.run の
-// 同期呼び出しなので Swift の協調スレッドにも載せない(専用の DispatchQueue)。
+// **周期の中で計測を await しない**: iOS Simulator の走査は並列でも 1 台数秒(単一スレッドの du は
+// 27〜35 秒)かかり、周期内で待つとタイル・凍結判定が止まる。計測は同期呼び出し(Android は Shell.run・
+// iOS はスレッドを待つ)なので Swift の協調スレッドにも載せない(専用の DispatchQueue)。
+// **測れた値は storeURL(~/.fleetest/device-storage.json)へ残し、起動時に読む** —— メモリだけだと
+// モニターが起動し直すたびに全台が空に戻り、run 中は iOS を測らないので run が終わるまで空のままになる。
 
 import Foundation
 import FTAndroid
@@ -20,18 +22,31 @@ final class DeviceStorageSampler: @unchecked Sendable {
     private var lastConnected: Set<String> = []
     /// 計測中に起動し直した台。その計測(起動前の中身かもしれない)が終わっても期限を進めない
     private var remeasureAfterFlight: Set<String> = []
-    /// du は 1 台ずつ(並列に歩くと I/O が重なり、同じ Mac の run に響く)
+    /// iOS は 1 台ずつ(1 台の走査が既にコア数の半分のスレッドを使う。台も並列にすると I/O が重なり、同じ Mac の run に響く)
     private let iosQueue = DispatchQueue(label: "fleetest.monitor.storage.ios", qos: .utility)
     private let androidQueue = DispatchQueue(label: "fleetest.monitor.storage.android", qos: .utility)
     private let probeIOS: Probe
     private let probeAndroid: Probe
-    /// この Mac で run が動いているか。iOS の du は**実行の直前にも**確かめる(積んだ後に run が始まりうる)
+    /// この Mac で run が動いているか。iOS の計測は**実行の直前にも**確かめる(積んだ後に run が始まりうる)
     private let isRunActive: @Sendable () -> Bool
+    /// 前回値の置き場。nil = 読まない・書かない(テスト)。**既定値を置かない**(production の渡し忘れを
+    /// コンパイルで止める)
+    private let storeURL: URL?
+    /// 書き込みの順序を保つ(iOS と Android のキューが同時に終えると、古い控えを後から書きうる)
+    private let storeWriteLock = NSLock()
 
-    init(probeIOS: @escaping Probe, probeAndroid: @escaping Probe, isRunActive: @escaping @Sendable () -> Bool) {
+    init(probeIOS: @escaping Probe, probeAndroid: @escaping Probe, isRunActive: @escaping @Sendable () -> Bool,
+         storeURL: URL?) {
         self.probeIOS = probeIOS
         self.probeAndroid = probeAndroid
         self.isRunActive = isRunActive
+        self.storeURL = storeURL
+        // 読んだ値は表示に使うだけで期限(lastAttempt)には入れない —— 最初の周期の noteConnected が
+        // 全台を「起動し直した」とみなして測り直すので、どのみち上書きされる
+        if let storeURL, let data = try? Data(contentsOf: storeURL),
+           let stored = try? JSONDecoder().decode([String: DeviceStorageInfo].self, from: data) {
+            cache = stored
+        }
     }
 
     /// candidates = connected な仮想デバイスのうち inRun でない台(key = udid / serial)。
@@ -86,6 +101,19 @@ final class DeviceStorageSampler: @unchecked Sendable {
         }
         if let info { cache[key] = info }
         lock.unlock()
+        if info != nil { persist() }
+    }
+
+    /// 書き込み失敗は握りつぶす(控えのために計測も配信も止めない)。控えは書く直前に取る(順序は storeWriteLock)
+    private func persist() {
+        guard let storeURL else { return }
+        storeWriteLock.lock()
+        defer { storeWriteLock.unlock() }
+        let current = snapshot()
+        guard let data = try? JSONEncoder().encode(current) else { return }
+        try? FileManager.default.createDirectory(at: storeURL.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? data.write(to: storeURL, options: .atomic)
     }
 
     func snapshot() -> [String: DeviceStorageInfo] {
