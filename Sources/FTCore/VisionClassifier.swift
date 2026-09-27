@@ -373,8 +373,12 @@ public enum VisionClassifier {
         var picked: [Model.Control] = []
         for (label, images) in set.labels.sorted(by: { $0.key < $1.key }) where picked.count < 2 {
             for url in images where !wrong.contains(samplePath(url, in: set)) {
+                // **いま展開して持つ**(既定は画素の展開を使う時まで遅らせる)。モデルはプロセス内で
+                // 見本の digest ごとに共有されるので、読み込んだ時の見本ファイルが後で消える・差し替わると、
+                // 遅延した展開は壊れた画像を読み、健全な分類器を「対照を外した」と誤って捨てる
                 guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-                      let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { continue }
+                      let image = CGImageSourceCreateImageAtIndex(
+                          source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary) else { continue }
                 picked.append(Model.Control(label: label, image: image))
                 break
             }
