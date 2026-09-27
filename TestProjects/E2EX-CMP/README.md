@@ -8,11 +8,9 @@ Compose Multiplatform の**固有部品**(共通契約の SUT に載らない Ma
 - `90_不具合の回帰.swift`: ここで見つけて直したツールの不具合の回帰テスト(S0020 の iOS XCUITest だけ未修正で赤)
 
 ```sh
-E2EXAppCMP/scripts/build-ios.sh       # → dist/ios-simulator/FTE2EX.app
-E2EXAppCMP/scripts/build-android.sh   # → dist/android/ft-e2ex-debug.apk
-fleetest run --project E2EX-CMP --profile ios-inapp --runner local      # iOS 既定エンジン(hybrid)
-fleetest run --project E2EX-CMP --profile ios-xcuitest --runner local   # iOS XCUITest
-fleetest run --project E2EX-CMP --profile android --runner local
+Scripts/e2ex.sh                 # iOS(in-app = 既定エンジン)と Android。SUT はソースが新しければ再ビルド
+Scripts/e2ex.sh --ios-xcuitest  # iOS だけを XCUITest エンジンで
+Scripts/e2ex.sh --rebuild       # SUT を必ず再ビルド
 ```
 
-プロファイルは手元の3台だけ(`Scripts/e2e.sh` の対象外)。
+プロファイルは手元の3台だけ(スクリプトは常に `--runner local`。`Scripts/e2e.sh` の対象外)。
