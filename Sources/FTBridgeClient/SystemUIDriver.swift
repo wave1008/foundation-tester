@@ -165,6 +165,9 @@ public final class SystemUIDriver: AppDriver {
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await client.press(x: x, y: y, duration: duration)
     }
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await client.hold(x: x, y: y, duration: duration)
+    }
     public func doubleTap(x: Double, y: Double) async throws { try await client.doubleTap(x: x, y: y) }
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         try await client.rotate(to: orientation)

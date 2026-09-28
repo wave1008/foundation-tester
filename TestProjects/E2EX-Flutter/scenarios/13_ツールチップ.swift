@@ -7,7 +7,7 @@ import FTDSL
 class ツールチップを出せること {
 
     // Flutter の Tooltip は指を離した後も showDuration(この SUT は 2 秒)だけ出ている = 両 OS で確かめられる
-    @Test("アイコンを長押しするとツールチップが出る")
+    @Test("アイコンを押している間にツールチップを確かめる")
     func S0010() {
         scenario {
             scene(1, "開く") {
@@ -18,13 +18,12 @@ class ツールチップを出せること {
                     select("#txt_tooltip_state").textIs("tooltip=hidden")
                 }
             }
-            scene(2, "#id で長押し") {
+            scene(2, "押している間は出ている") {
                 action {
-                    tap("#btn_tooltip_anchor", holdSeconds: 1.0)
-                }.expectation {
-                    // Tooltip の本文には #id を付けられない(ラベルで指す)
-                    exist("これはツールチップです")
-                    select("#txt_tooltip_state").textIs("tooltip=shown")
+                    hold("#btn_tooltip_anchor", holdSeconds: 3) {
+                        exist("これはツールチップです")
+                        select("#txt_tooltip_state").textIs("tooltip=shown")
+                    }
                 }
             }
         }

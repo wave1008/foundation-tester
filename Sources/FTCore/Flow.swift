@@ -80,6 +80,9 @@ public struct FlowStep: Codable, Sendable {
     /// `exist` 系がずっと使ってきた既定をここに集約しただけ(散らばった `?? 5` の唯一の定義元)
     public static let defaultWaitSeconds: Double = 5
     public static let defaultTapHoldSeconds: Double = 0
+    /// `hold(holdSeconds:)` の既定(秒)。**`hold` は常に長押し**なので tap と違い 0 ではない。
+    /// DSL の既定引数はこの1つに揃える
+    public static let defaultHoldSeconds: Double = 3
 
     /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。
     /// DSL の既定引数はこの1つに揃える
@@ -226,9 +229,12 @@ public struct FlowStep: Codable, Sendable {
         }
         guard let duration else { return nil }
         let cap = maxGestureSeconds ?? BridgeAPI.defaultMaxGestureSeconds
-        // 主語は DSL で書いた引数名(tap の長押しは holdSeconds・他は durationSeconds)+ コマンド名
-        let argument = action == "tap" || action == "press" ? "holdSeconds" : "durationSeconds"
-        return BridgeAPI.gestureSecondsViolation(subject: "\(argument) of \(action)", seconds: duration, cap: cap)
+        // 主語は DSL で書いた引数名(tap の長押し・hold は holdSeconds・他は durationSeconds)+ コマンド名。
+        // holdStart は内部の action 名(利用者は `hold` と書く)なので、文言はそちらへ言い換える
+        let argument = action == "tap" || action == "press" || action == "holdStart"
+            ? "holdSeconds" : "durationSeconds"
+        let displayAction = action == "holdStart" ? "hold" : action
+        return BridgeAPI.gestureSecondsViolation(subject: "\(argument) of \(displayAction)", seconds: duration, cap: cap)
     }
 }
 
@@ -478,6 +484,8 @@ public extension FlowStep {
             case "swipe": return "swipe \(direction ?? "up")"
             case "rotateTo": return "rotateTo \(direction ?? "landscape")"
             case "scrollTo": return "scrollTo \(locatorSummary)"
+            case "holdStart": return "hold \(locatorSummary)"
+            case "holdEnd": return "release the hold"
             // 対象なし(画面全体)を取り得るアクションは locatorSummary の "(no locator)" を出さない
             case "pinchOut", "pinchIn", "doubleTap", "swipeBy", "gesture":
                 return locator == nil ? action : "\(action) \(locatorSummary)"

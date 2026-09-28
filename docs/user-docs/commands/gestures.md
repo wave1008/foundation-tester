@@ -1,4 +1,4 @@
-# gestures (doubleTap, pinchOut, pinchIn, gesture)
+# gestures (doubleTap, pinchOut, pinchIn, gesture, hold)
 
 Multi-touch gestures: double tap, pinch to zoom out, pinch to zoom in, and a raw multi-finger
 gesture builder for anything those three cannot express.
@@ -52,6 +52,27 @@ a non-positive duration, too long a gesture) fails the step without touching the
 the in-app engine has no route for it (it uses the same private pointer-event API as the
 coordinate pinch). Use cases: pattern lock, long-press-then-drag without lifting (e.g. reordering
 a list), a custom two-finger rotate, gestures needing 3+ fingers, drawing or signing.
+
+## `hold`: verifying something that only shows while pressed
+
+`tap(sel, holdSeconds:)` presses and releases within one step, so a component that only appears
+while a finger is down (a tooltip, for example) is already gone by the time anything runs after
+it. `hold` keeps the finger down for the whole block instead:
+
+```swift
+hold("#btn_tooltip_anchor", holdSeconds: 3) {
+    select("#txt_tooltip").textIs("This is a tooltip")
+}
+```
+
+The bridge lifts the finger by itself `holdSeconds` after it went down (the request that puts the
+finger down does not wait for that); the block runs while it is still down. If the block finishes
+before `holdSeconds` is up, `hold` waits for the bridge's release before returning. If the block
+takes longer than `holdSeconds`, the finger is already up for the rest of it — this is noted but
+not treated as a failure. Holds cannot be nested (start a second one only after the first one's
+block has finished), and if the target cannot be resolved the block does not run at all. **On iOS
+with the default hybrid engine, the press always runs through the XCUITest engine** — same as
+`tap`'s long press — because the in-app engine has no route for holding a coordinate down.
 
 ## Maps, image viewers, drawing canvases
 

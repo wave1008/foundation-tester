@@ -1,14 +1,13 @@
 // 13_ツールチップ.swift
 // 確かめる癖: TooltipBox(長押しで Popup = 別ウィンドウに出る・アンカーはアイコンだけ)。
+// 押している間だけ出る部品なので、押している間に検証する(hold)。
 
 import FTDSL
 
-@TestClass(platform: "ios")
+@TestClass
 class ツールチップを出せること {
 
-    // Android の M3 ツールチップは押している間だけ出て、指を離すと消える(DSL は離してから検証する)。
-    // 表示中も文字は別ウィンドウで木に載らない。なので iOS だけ
-    @Test("アイコンを長押しするとツールチップが出る")
+    @Test("アイコンを押している間にツールチップを確かめる")
     func S0010() {
         scenario {
             scene(1, "開く") {
@@ -19,19 +18,26 @@ class ツールチップを出せること {
                     select("#txt_tooltip_state").textIs("tooltip=hidden")
                 }
             }
-            scene(2, "#id で長押し") {
+            scene(2, "押している間は出ている") {
                 action {
-                    tap("#btn_tooltip_anchor", holdSeconds: 1.0)
+                    hold("#btn_tooltip_anchor", holdSeconds: 3) {
+                        select("#txt_tooltip").textIs("これはツールチップです")
+                        select("#txt_tooltip_state").textIs("tooltip=shown")
+                    }
                 }.expectation {
-                    select("#txt_tooltip").textIs("これはツールチップです")
-                    select("#txt_tooltip_state").textIs("tooltip=shown")
+                    select("#txt_tooltip_state").textIs("tooltip=hidden")
                 }
             }
         }
     }
+}
 
+@TestClass(platform: "ios")
+class ツールチップをラベルの長押しで出せること {
+
+    // 離した後もしばらく出ているので、離してからの検証で足りる(iOS)
     @Test("アンカーをラベル(contentDescription)で長押し")
-    func S0020() {
+    func S0010() {
         scenario {
             scene(1, "ラベルで長押し") {
                 condition {

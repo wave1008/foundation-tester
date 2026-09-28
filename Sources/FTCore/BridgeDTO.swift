@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 135
+    public static let bridgeProtocolVersion = 136
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1320,6 +1320,22 @@ public struct PressRequest: Codable {
         self.y = y
         self.duration = duration
         self.fast = fast
+    }
+}
+
+/// POST /hold(XCUITest ランナーと Android ブリッジ。in-app には無い = 404 でホストが XCUITest へ回す)。
+/// **指を置いたら応答を返し、`duration` 秒後にブリッジが自分で離す**(応答は離すのを待たない)。
+/// `/press` は離すまで応答せず、その間ブリッジは木もスクショも返せない(要求を1本ずつ処理する)ので、
+/// 押している間だけ出る部品(ツールチップ)を検証できなかった。DSL の `hold { }` が使う。
+/// 同期相手: Runner/.../BridgeRouter.swift handleHold・AndroidRunner/.../BridgeRouter.java handleHold
+public struct HoldRequest: Codable {
+    public var x: Double
+    public var y: Double
+    public var duration: Double
+    public init(x: Double, y: Double, duration: Double) {
+        self.x = x
+        self.y = y
+        self.duration = duration
     }
 }
 

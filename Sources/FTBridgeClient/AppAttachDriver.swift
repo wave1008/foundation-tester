@@ -211,6 +211,20 @@ public final class AppAttachDriver: AppDriver {
         }
     }
 
+    /// hold も ref を使わない(座標)ので press と同じ 409 回復を入れる。
+    /// **既定実装(501)に落としてはいけない**: in-app に /hold は無いので hybrid のフォールバックは
+    /// 必ずここを経由する
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.hold(x: x, y: y, duration: duration)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.hold(x: x, y: y, duration: duration)
+        }
+    }
+
     /// doubleTap / pinch も ref を使わない(座標・identifier)ので drag と同じ 409 回復を入れる。
     /// in-app が 501 を返す組み合わせ(UIKit/SwiftUI)の hybrid ピンチはここへ回ってくる
     public func doubleTap(x: Double, y: Double) async throws {

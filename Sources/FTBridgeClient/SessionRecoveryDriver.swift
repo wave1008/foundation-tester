@@ -200,6 +200,10 @@ public final class SessionRecoveryDriver: AppDriver {
         try await withRecovery { try await base.press(x: x, y: y, duration: duration) }
     }
 
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await withRecovery { try await base.hold(x: x, y: y, duration: duration) }
+    }
+
     public func doubleTap(x: Double, y: Double) async throws {
         try await withRecovery { try await base.doubleTap(x: x, y: y) }
     }

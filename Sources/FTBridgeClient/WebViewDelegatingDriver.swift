@@ -303,6 +303,9 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await screenDriver.press(x: x, y: y, duration: duration)
     }
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await screenDriver.hold(x: x, y: y, duration: duration)
+    }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
         try await screenDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,

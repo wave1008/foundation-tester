@@ -956,6 +956,13 @@ public final class BridgeClient: AppDriver {
                                            timeout: timeout(forDuration: duration))
     }
 
+    /// `/hold` は `/press` と違い**指を離すのを待たずに応答する**(BridgeDTO.HoldRequest 参照)。
+    /// そのため `timeout(forDuration:)` は要らない —— 応答は即返るので既定の interactionTimeout で足りる
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        let _: OKResponse = try await post("/hold", body: HoldRequest(x: x, y: y, duration: duration),
+                                           timeout: interactionTimeout)
+    }
+
     public func screenshot() async throws -> Data {
         let (data, response) = try await request(path: "/screenshot", method: "GET", body: nil,
                                                  timeout: sessionTimeout)

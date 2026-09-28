@@ -172,6 +172,10 @@ public final class LaunchPreflightDriver: AppDriver {
         try await base.press(x: x, y: y, duration: duration)
     }
 
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await base.hold(x: x, y: y, duration: duration)
+    }
+
     public func screenshot() async throws -> Data { try await base.screenshot() }
     public func terminate() async throws { try await base.terminate() }
 }

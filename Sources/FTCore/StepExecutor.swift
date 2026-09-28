@@ -368,6 +368,11 @@ public final class StepExecutor {
     /// contentOffset 経路で決定的に効く。共有すると drag の 501 だけで全 swipe が XCUITest 実
     /// スワイプ化し、バウンス由来の flake を持ち込む(typeDriverGestures の注意書きと同じ理由)
     var dragFallbackLatched = false
+    /// `hold { }` が指を下ろした結果、ブリッジが自分の時計で指を離す時刻(nil = hold していない/
+    /// 既に離れたことを確認した)。`holdStart` が送信の直前の時刻から立て、`holdEnd`(または
+    /// 中断中に直接呼ぶ `waitOutHold()`)がこの時刻(+ `holdReleaseMargin`)まで待って nil に戻す。
+    /// **StepExecutor+Hold.swift の1箇所だけが読み書きする**
+    var holdLiftsAt: ContinuousClock.Instant?
     public var delegate: ReplayDelegate?
     /// 自己修復(指紋照合)を許す(`execute` の入口で畳む)。FM は使わない
     public var healingEnabled: Bool
@@ -1090,7 +1095,8 @@ public final class StepExecutor {
     /// **指で触る操作か**(縁にまたがった要素を寄せてから撃つ対象)。`select` は掴むだけ、
     /// `type` は入力欄が動くと厄介なので含めない
     static func interactsByTouch(_ action: String) -> Bool {
-        action == "tap" || action == "press" || action == "doubleTap"
+        // holdStart は指を下ろす操作(press と同じ)。holdEnd は何も送らないので含めない
+        action == "tap" || action == "press" || action == "doubleTap" || action == "holdStart"
     }
 
     /// 飲まれたタップの証跡を採る(LastInteraction 参照)。**追加のスナップショットは撮らない** ——

@@ -98,6 +98,8 @@ final class BridgeRouter {
             case ("POST", "/gesture"): response = try handleGesture(request.body)
             case ("POST", "/rotate"): response = try handleRotate(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
+            // **mutatingPaths に入れない**: 直後の snapshot が整定を待つと、置いている間の木を読めない
+            case ("POST", "/hold"): response = try handleHold(request.body)
             case ("GET", "/screenshot"): response = handleScreenshot()
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
@@ -1025,6 +1027,26 @@ final class BridgeRouter {
         try FastInput.with(req.fast) {
             coordinate(app, point).press(forDuration: req.duration)
         }
+        return .json(OKResponse())
+    }
+
+    /// 指を置いたら応答を返し、duration 秒後に離れる(契約は BridgeDTO.HoldRequest)。/press は離すまで
+    /// 応答せず、その間このランナーは木もスクショも返せない(ハンドラは main で1本ずつ走る)。
+    /// 公開 API に「置いたまま戻る」口は無いので座標ジェスチャの非公開 API で送る。無い Xcode では 422
+    /// (501 にしない理由は .claude/rules/gesture.md)
+    private func handleHold(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(HoldRequest.self, body)
+        if let violation = BridgeAPI.gestureDurationViolation("hold", seconds: req.duration,
+                                                               cap: BridgeAPI.gestureSecondsCeiling) {
+            throw BridgeError(400, violation)
+        }
+        _ = try requireForegroundAppForGesture()
+        guard CoordinatePinch.isAvailable else {
+            throw BridgeError(422, "this Xcode has no coordinate gesture support (XCPointerEventPath /"
+                + " XCSynthesizedEventRecord are gone), so a finger cannot be left down")
+        }
+        try CoordinatePinch.holdWithoutWaiting(at: CGPoint(x: req.x, y: req.y), seconds: req.duration,
+                                               orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
         return .json(OKResponse())
     }
 

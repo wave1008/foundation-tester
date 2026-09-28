@@ -987,6 +987,15 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    /// 座標指定の hold。**必ずブリッジの /hold を使う** —— 上の `press(x:y:duration:)` の
+    /// gRPC/adb 経路は指を離すのがこのメソッドの呼び出し元(ホスト)なので、押している間だけ出る
+    /// 部品を検証する余地が無い。ブリッジが `duration` 秒後に自分で離す(AndroidRunner の
+    /// BridgeRouter.handleHold)。座標は JSON で Double のまま渡す(Int32 への畳み込みは
+    /// この経路には無い ——判定はブリッジ側)
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await withBridge { try await $0.hold(x: x, y: y, duration: duration) }
+    }
+
     public func screenshot() async throws -> Data {
         let device = try await withBridge { try await $0.screenshot() }
         return await webViewComposited(device) ?? device

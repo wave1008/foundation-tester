@@ -159,6 +159,10 @@ public final class HybridFallbackDriver: AppDriver {
         try await withFallback { try await $0.press(x: x, y: y, duration: duration) }
     }
 
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await withFallback { try await $0.hold(x: x, y: y, duration: duration) }
+    }
+
     public func swipe(_ direction: FTSwipeDirection) async throws {
         lastSwipeDriver = try await withFallbackTracking { try await $0.swipe(direction) }.performer
     }

@@ -70,7 +70,7 @@ needs no changes ([details](overview/about.md)).
     - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](commands/swipe.md)
     - [scroll (scrollTo, scrollDown, withScrollDown, scrollFrame, ...)](commands/scroll.md)
     - [flick](commands/flick.md)
-    - [Gestures for maps and canvases (doubleTap, pinchIn, pinchOut, gesture)](commands/gestures.md)
+    - [Gestures for maps and canvases (doubleTap, pinchIn, pinchOut, gesture, hold)](commands/gestures.md)
 - Editing and keyboard operations
     - [type](commands/type.md)
     - [clearInput](commands/clear_input.md)

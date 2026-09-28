@@ -264,6 +264,72 @@ func tapImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Dou
     return FTElement(selector: selector, matched: result.element)
 }
 
+/// **押している間だけ**出る部品(ツールチップ等)を確認するための長押し。`tap(sel, holdSeconds:)`
+/// は1ステップの中で押して離すので、離した後にしか検証が走らずこの種の部品を確認できない。
+/// `hold` はブリッジが自分の時計で `holdSeconds` 秒後に指を離す(応答はそれを待たない)ので、
+/// **ブロックの中身は指が下がっている間に走る**。
+///
+///     hold("#btn_tooltip_anchor", holdSeconds: 3) {
+///         select("#txt_tooltip").textIs("これはツールチップです")
+///     }
+///
+/// ブロックが `holdSeconds` より長く掛かったら、その後は指が上がった状態でブロックの残りが進む
+/// (注記 `hold-ended-before-block`。失敗にはしない)。**hold は入れ子にできない**
+/// (前の hold が離れる前に次の hold を送ると失敗する)。対象が解決できなければブロックは走らない
+/// (`select` と同じ書き方で ifCanSelect のような分岐は作れない —— hold は「押せる前提」のコマンド)。
+/// iOS の in-app エンジンは座標での押下を持たないため、hybrid ではこの押下だけ XCUITest 側で行う
+/// (tap の長押しと同じフォールバック)
+@discardableResult
+public func hold(_ selector: String, holdSeconds: Double = FlowStep.defaultHoldSeconds,
+                 maxGestureSeconds: Double? = nil,
+                 waitSeconds: Double? = nil,
+                 scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                 file: StaticString = #filePath, line: UInt = #line,
+                 _ body: () -> Void) -> FTElement {
+    holdImpl(FTSelector.parse(selector), holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
+            waitSeconds: waitSeconds, scroll: scroll, maxSwipes: maxSwipes,
+            file: file, line: line, body)
+}
+
+@discardableResult
+public func hold(_ selector: Sel, holdSeconds: Double = FlowStep.defaultHoldSeconds,
+                 maxGestureSeconds: Double? = nil,
+                 waitSeconds: Double? = nil,
+                 scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                 file: StaticString = #filePath, line: UInt = #line,
+                 _ body: () -> Void) -> FTElement {
+    holdImpl(selector.ftSelector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
+            waitSeconds: waitSeconds, scroll: scroll, maxSwipes: maxSwipes,
+            file: file, line: line, body)
+}
+
+/// **常にホストの `finishHold` まで進む**: ブロックが正常終了しても、その中の失敗でシナリオが
+/// 中断していても、`FTDriveCore.finishHold` がブリッジの離し時刻まで待つ(中断中は `holdEnd` という
+/// ステップ自体は実行されず記録だけ残るので、待ちは `finishHold` の内側で別途行う)
+func holdImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Double?,
+             waitSeconds: Double?, scroll: FTScrollOption?, maxSwipes: Int,
+             file: StaticString, line: UInt, _ body: () -> Void) -> FTElement {
+    let core = FTRuntime.requireCore(command: "hold")
+    let scroll = core.effectiveScroll(scroll)
+    let step = FlowStep(action: "holdStart", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        direction: scroll?.swipe.rawValue,
+                        timeout: waitSeconds, maxSwipes: scroll == nil ? nil : maxSwipes,
+                        duration: holdSeconds,
+                        maxGestureSeconds: maxGestureSeconds,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
+    let description = "hold \"\(selector.text)\" (\(FTSeconds.format(holdSeconds))s)"
+    let result = perform("hold", selector, step: step, description: description, file: file, line: line)
+    switch result.status {
+    case .passed, .passedViaFallback, .healed:
+        body()
+    case .failed, .skipped, .inconclusive:
+        core.noteUnexecutedBlock()
+    }
+    core.finishHold(description: "release \"\(selector.text)\"", file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
+}
+
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
 /// ref なし = ブリッジがフォーカス中要素へ入力する(StepExecutor がロケータ解決を挟まず driver.type(ref: nil) を呼ぶ)。
 /// **セレクタを渡す引数落としは実行前に落とす**(FTSelector.selectorLikeInputError)

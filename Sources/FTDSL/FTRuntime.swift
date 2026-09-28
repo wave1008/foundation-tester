@@ -891,6 +891,24 @@ public final class FTDriveCore {
                              imageMatches: outcome?.imageMatches)
     }
 
+    /// `hold { }` の後始末(FTDSL.holdImpl から**常に**呼ばれる)。**中断されていても待つ** ——
+    /// ブリッジは自分の時計で指を離すので、待たずに次のステップへ進むと指が下がったまま残り、
+    /// 割り込んだ次の操作にその指が乗る。
+    ///
+    /// 通常時(中断されていない)は `holdEnd` を普通のステップとして実行するだけで、
+    /// `StepExecutor.executeHoldEnd` が離し時刻まで待つ。**中断中は `perform()` がデバイスに
+    /// 触らずスキップを記録するだけ**(通常のステップと同じ規律)なので、待ちはここで別途
+    /// `StepExecutor.waitOutHold()` を直接呼んで行う。dry-run はどちらの経路も何もしない
+    /// (`perform()` の dry-run 分岐がデバイスに触れない・下の追加待ちも dryRun で閉じる)
+    func finishHold(description: String, file: StaticString, line: UInt) {
+        let wasAborted = scenarioAborted
+        perform(step: FlowStep(action: "holdEnd"), description: description, command: "hold",
+               file: file, line: line)
+        guard wasAborted, !dryRun else { return }
+        let executor = self.executor
+        _ = FTSync.run { await executor.waitOutHold() }
+    }
+
     /// dry-run 中、**台帳に無い `#id`** を覚える(綴り誤り・でっち上げの検出。SelectorInventory)。
     /// 台帳が無い/そのプラットフォームの記録が無いなら何もしない = 「知らない」を「間違い」と言わない
     private func trackUnknownIDs(step: FlowStep, description: String) {

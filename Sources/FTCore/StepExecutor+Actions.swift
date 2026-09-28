@@ -103,6 +103,10 @@ extension StepExecutor {
         if action == "clearInput", step.locator == nil, step.fallbacks?.isEmpty ?? true {
             return try await executeDirectUnfocusedClearInput(phase: &phase)
         }
+        // holdEnd はロケータを取らない(何も送らない・ブリッジが離す時刻まで待つだけ)
+        if action == "holdEnd" {
+            return try await executeHoldEnd(phase: &phase)
+        }
 
         // `tap(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
         // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
@@ -666,6 +670,20 @@ extension StepExecutor {
             // 消える —— しかも消えるのは activate 不発のような**まさに飲まれた場面**で、
             // 両方が要るときに片方を失っていた(レビューで発覚)
             driverFallback = Self.joinNotes(driverFallback, actingDriver.lastActionNote)
+        case "holdStart":
+            // 二重 hold は禁止: ブリッジは指を1本下ろすだけで、前の hold がまだ下がっている間は
+            // 離し時刻を上書きすると先に下ろした指がいつ離れるか分からなくなる
+            if let liftsAt = holdLiftsAt, liftsAt > clock.now {
+                return StepOutcome(status: .failed(
+                    "hold cannot be nested — a previous hold has not been released yet"
+                        + " (let its block finish before starting another hold)"))
+            }
+            let held = try await executeHoldStart(element: element, snapshot: snapshot,
+                                                  step: step, phase: &phase)
+            element = held.element
+            snapshot = held.snapshot
+            resolvedElementThisStep = element
+            driverFallback = Self.joinNotes(driverFallback, held.driverFallback)
         case "type":
             // "\n" を含む入力だけ typeDriver(XCUITest)を優先する: typeText は改行を Return
             // キー押下として発火し iOS 既定の挙動と揃うが、in-app の insertText は改行の解釈が
@@ -1495,9 +1513,10 @@ extension StepExecutor {
     /// (実測: 191pt 要求して実際の移動は 144pt で、中心がまだ覆いの内側だった)。
     /// 動かなくなったら諦める = 端まで来ている画面で無限に粘らない。
     /// verb は注記の文言(touching / typing)。判定は共通で、言い回しだけ呼び手が持つ
-    private func liftCoveredTarget(_ element: ElementInfo, in snapshot: SnapshotResponse,
-                                   step: FlowStep, verb: String, maxLifts: Int = 3,
-                                   phase: inout PhaseAccumulator) async throws
+    /// **private ではない**: StepExecutor+Hold.swift の executeHoldStart からも呼ぶ
+    func liftCoveredTarget(_ element: ElementInfo, in snapshot: SnapshotResponse,
+                           step: FlowStep, verb: String, maxLifts: Int = 3,
+                           phase: inout PhaseAccumulator) async throws
         -> (element: ElementInfo, snapshot: SnapshotResponse, note: String)? {
         var current = element
         var currentSnapshot = snapshot
@@ -1593,9 +1612,10 @@ extension StepExecutor {
     /// 座標だけで完結するジェスチャの共通フォールバック。in-app が「このエンジンでは不可」と
     /// 返したとき(501 / ルート不明 404)だけ XCUITest へ回す —— in-app は自前描画の
     /// フレームワークなら多点も撃てるが、UIKit/SwiftUI では合成タッチが受理されず 501 を返す。
-    /// **409 は含めない**(理由は DriverError.isEngineIncapable)
-    private func gestureWithFallback(phase: inout PhaseAccumulator,
-                                     _ body: (AppDriver) async throws -> Void) async throws -> Bool {
+    /// **409 は含めない**(理由は DriverError.isEngineIncapable)。
+    /// **private ではない**: StepExecutor+Hold.swift の executeHoldStart からも呼ぶ
+    func gestureWithFallback(phase: inout PhaseAccumulator,
+                             _ body: (AppDriver) async throws -> Void) async throws -> Bool {
         let clock = ContinuousClock()
         let start = clock.now
         do {

@@ -173,6 +173,11 @@ public protocol AppDriver {
     func press(ref: Int, duration: Double) async throws
     /// 座標指定のロングプレス(座標は snapshot の screen と同じ座標系)。
     func press(x: Double, y: Double, duration: Double) async throws
+    /// 座標指定の hold(座標は snapshot の screen と同じ座標系。DSL の `hold { }` が使う)。
+    /// **`press` と違い、応答は指を離すのを待たない** —— ブリッジが `duration` 秒後に自分の時計で
+    /// 指を離すので、押している間だけ出る部品(ツールチップ等)をブロックの中で検証できる
+    /// (BridgeDTO.HoldRequest 参照)。**プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func hold(x: Double, y: Double, duration: Double) async throws
     func screenshot() async throws -> Data
     func terminate() async throws
     /// フォアグラウンドのアプリが bundleID(iOS)/ package(Android)と一致しているか(DSL の appIs)。
@@ -508,6 +513,10 @@ public extension AppDriver {
 
     func press(x: Double, y: Double, duration: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support long-press by coordinates")
+    }
+
+    func hold(x: Double, y: Double, duration: Double) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support hold")
     }
 
     /// 実装を持たないドライバの既定。501 = ホストが typeDriver(XCUITest)へ回す合図

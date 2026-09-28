@@ -344,19 +344,19 @@ verify a fade-based visibility toggle in Flutter, judge it by the state echo the
 ## Tooltip
 
 - Long-press the anchor: `tap("#btn_info", holdSeconds: 1.0)`
+- A tooltip that is shown **only while the finger is down** is verified while it is down:
+  `hold("#btn_info", holdSeconds: 3) { select("#txt_tooltip").textIs("…") }`
 
 | Framework | Component / difference |
 |---|---|
-| CMP | `TooltipBox` + `PlainTooltip`. Verifiable on iOS with a long press. **Not verifiable on Android** (below) |
+| CMP | `TooltipBox` + `PlainTooltip`. On iOS it stays for a while after the release. **On Android it is shown only while the finger is down**, so verify it inside `hold { }` (its text is in the tree too) |
 | Flutter | `Tooltip(triggerMode: longPress)`. Its bubble text cannot carry an id, so target it by label. **Its "shown" state is an approximation** (the app waits a fixed display duration from the show event and then treats it as hidden — not a direct observation of the hide animation finishing) |
-| RN | `react-native-paper`'s `Tooltip`. **An `accessible` ancestor collapses the anchor (`IconButton`) into one element, so an identifier set on the anchor itself drops out of the tree on iOS** (Android is not affected). The app works around this by putting the anchor's identifier on an outer `View` instead |
-| Android View | `TooltipCompat`'s standard popup is drawn in a separate process, so its content cannot be read. If the app also provides its own `PopupWindow`, that one can be verified |
+| RN | `react-native-paper`'s `Tooltip`. **An `accessible` ancestor collapses the anchor (`IconButton`) into one element, so an identifier set on the anchor itself drops out of the tree on iOS** (Android is not affected). The app works around this by putting the anchor's identifier on an outer `View` instead. **The tooltip is shown only while the finger is down and disappears when it is lifted**, so verify it inside the block of `hold("#anchor", holdSeconds: 3) { … }` (`tap(holdSeconds:)` verifies after the release and cannot confirm it) |
+| Android View | `TooltipCompat`'s standard popup is drawn in a separate process, so its content cannot be read. The text of an app's own `PopupWindow` (a separate window that does not take focus) is **not in the tree either**. Confirm that it is shown from the state the app displays, inside `hold { }` |
 | SwiftUI (iOS) | **Not present** (iOS's long press convention leads to a context menu instead, so this SUT does not have this screen) |
 
-**Current limitation**: Material3's tooltip (CMP) is shown **only while the finger is held down** on
-Android, and disappears on release (`tap(holdSeconds:)` releases before the next line runs, so it is
-already gone by then). Even while shown, its text lives in a separate window and is not in the tree.
-Wrap tooltip checks in `ios { }` and verify them on iOS only.
+`tap(holdSeconds:)` lifts the finger before the next line runs, so a component that is shown only
+while the finger is down is already gone by then. `hold { }` runs its block while the finger is down.
 
 ## Chips and segmented buttons
 

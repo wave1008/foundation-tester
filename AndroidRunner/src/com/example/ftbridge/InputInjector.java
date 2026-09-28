@@ -35,6 +35,44 @@ final class InputInjector {
         inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y));
     }
 
+    /** /hold の指が置かれている間 true(離すスレッドが戻す) */
+    private static final java.util.concurrent.atomic.AtomicBoolean HOLDING =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * DOWN を注入して戻り、UP は別スレッドが durationSeconds 後に注入する。前の指がまだ下りていれば
+     * 何もせず false。秒数の丸めは press と同じ(0〜60s。方針の判定はホスト側)。
+     * **UP の注入が失敗しても HOLDING は必ず戻す**(戻さないと以後の /hold が全部 409 になる)
+     */
+    static boolean holdWithoutWaiting(final UiAutomation ua, final double x, final double y,
+                                      double durationSeconds) {
+        if (!HOLDING.compareAndSet(false, true)) return false;
+        final double clamped = Double.isFinite(durationSeconds)
+                ? Math.min(Math.max(durationSeconds, 0), 60) : 0;
+        final long downTime = SystemClock.uptimeMillis();
+        try {
+            inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, x, y));
+        } catch (RuntimeException e) {
+            HOLDING.set(false);
+            throw e;
+        }
+        Thread lifter = new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    SystemClock.sleep((long) (clamped * 1000));
+                    inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y));
+                } catch (RuntimeException e) {
+                    android.util.Log.w(BridgeInstrumentation.TAG, "hold: lifting the finger failed: " + e);
+                } finally {
+                    HOLDING.set(false);
+                }
+            }
+        }, "ft-hold-lifter");
+        lifter.setDaemon(true);
+        lifter.start();
+        return true;
+    }
+
     /**
      * syntheticUpTime=true のとき ACTION_UP の eventTime を MOVE と同じ合成時刻
      * (downTime + durationMs)にする。**false(実時計)だと sleep(16) とイベント注入の
@@ -876,10 +914,22 @@ final class InputInjector {
                 0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
     }
 
+    /**
+     * 1本指のイベント。**道具の種類は指(TOOL_TYPE_FINGER)と明示する**: 座標だけの obtain は種類が不明に
+     * なり、Compose は不明の道具を指と数えない部品がある(実測 CMP の TooltipBox: 不明だと長押しで出ず、
+     * 指を名乗る adb の input では出る)
+     */
     private static MotionEvent event(long downTime, long eventTime, int action, double x, double y) {
-        MotionEvent e = MotionEvent.obtain(downTime, eventTime, action, (float) x, (float) y, 0);
-        e.setSource(InputDevice.SOURCE_TOUCHSCREEN);
-        return e;
+        MotionEvent.PointerProperties[] properties = { new MotionEvent.PointerProperties() };
+        properties[0].id = 0;
+        properties[0].toolType = MotionEvent.TOOL_TYPE_FINGER;
+        MotionEvent.PointerCoords[] coords = { new MotionEvent.PointerCoords() };
+        coords[0].x = (float) x;
+        coords[0].y = (float) y;
+        coords[0].pressure = 1f;
+        coords[0].size = 1f;
+        return MotionEvent.obtain(downTime, eventTime, action, 1, properties, coords, 0, 0, 1f, 1f, 0, 0,
+                InputDevice.SOURCE_TOUCHSCREEN, 0);
     }
 
     private static void inject(UiAutomation ua, MotionEvent e) {

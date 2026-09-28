@@ -277,6 +277,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// S0020 は約 130 回中 2 回で、それまでは失敗文言にしか残らず数えられなかった)
     case unchangedTapBeforeFailure = "unchanged-tap-before-failure"
 
+    /// `hold { }` のブロックが `holdSeconds` より長く掛かり、ブリッジが**ブロックの終わりより前に**
+    /// 自分の時計で指を離していた(離し時刻+`StepExecutor.holdReleaseMargin` を過ぎてから
+    /// `holdEnd` が呼ばれた)。判定は変えない —— ブロックの中身(押している間しか出ない部品の確認)は
+    /// 既に終わっているので失敗にはしないが、**ブロックの後半は指が上がった状態で走っていた**ことを残す。
+    /// **率が上がったら `holdSeconds` がブロックの所要に対して短い**
+    case holdEndedBeforeBlock = "hold-ended-before-block"
+
     /// xcuitest の高速起動で、起動させた後に**ランナーがアプリを前面と見ないまま** activate を頼んだ
     /// (`FastLaunchDriver`。ランナーが 5 秒待っても前面にならなかった)。activate はアプリを
     /// 「動いていない」と見ると起動し直し、その起動が時間切れになるとランナーごと落ちる
@@ -293,6 +300,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .ocrWarmupWaited: return "the OCR shortcut waited for the recognizer to finish loading before using it"
         case .ocrWarmupCapped: return "the wait for the OCR recognizer to finish loading ran out (asked FM instead)"
         case .checkStateClassified: return "the check state was judged by CheckStateClassifier from the element's image"
+        case .holdEndedBeforeBlock:
+            return "the hold's block ran longer than holdSeconds, so the finger was already up for"
+                + " the rest of it"
         case .checkStateClassifierFailed:
             return "CheckStateClassifier could not be trained or loaded, or its answer could not be trusted,"
                 + " so the check state came from accessibility only"

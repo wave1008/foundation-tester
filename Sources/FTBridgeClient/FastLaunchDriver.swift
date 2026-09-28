@@ -162,6 +162,9 @@ public final class FastLaunchDriver: AppDriver {
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await base.press(x: x, y: y, duration: duration)
     }
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        try await base.hold(x: x, y: y, duration: duration)
+    }
     public func screenshot() async throws -> Data { try await base.screenshot() }
     public func terminate() async throws { try await base.terminate() }
     public var lastActionNote: String? { base.lastActionNote }

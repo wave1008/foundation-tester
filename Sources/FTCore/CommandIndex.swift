@@ -105,6 +105,16 @@ public enum DSLCommandIndex {
                 + " The selector form returns the element it grabbed (like exist / select), so"
                 + " assertions chain directly: tap(\"#ok\").textIs(\"OK\").",
               chainable: true),
+        .init("hold", "operation",
+              "hold(selector, holdSeconds:, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:) { }",
+              "Puts a finger down on an element and runs the block while it stays down — for parts "
+                + "that show only while touched (a tooltip); tap(holdSeconds:) cannot see these "
+                + "because it releases before the block runs. The bridge lifts the finger by itself "
+                + "holdSeconds after it went down (the response does not wait for that); if the block "
+                + "runs longer than holdSeconds, the finger is already up for the rest of it (noted: "
+                + "hold-ended-before-block). Holds cannot be nested. If the target cannot be resolved "
+                + "the block does not run. On iOS with the in-app engine the press runs on the "
+                + "XCUITest engine instead (same fallback as tap's long press)."),
         .init("select", "operation", "select(selector, requireVisible:, waitSeconds:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
         .init("findImage", "operation",

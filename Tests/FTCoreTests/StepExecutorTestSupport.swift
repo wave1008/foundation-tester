@@ -180,6 +180,22 @@ final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).press(ref:\(ref))")
     }
 
+    /// 非 nil なら hold(x:y:duration:) がこのエラーを throw する(501 切替・既定未対応の検証用)
+    var holdError: Error?
+    /// 直近の hold 呼び出しに渡った座標・秒数(holdStart の配線確認用)
+    private(set) var lastHold: (x: Double, y: Double, duration: Double)?
+    private(set) var holdCallCount = 0
+
+    func hold(x: Double, y: Double, duration: Double) async throws {
+        holdCallCount += 1
+        lastHold = (x, y, duration)
+        if let holdError {
+            log.entries.append("\(name).hold(throws)")
+            throw holdError
+        }
+        log.entries.append("\(name).hold")
+    }
+
     /// 非 nil なら drag がこのエラーを throw する(空打ちドラッグの XCUITest 切替の検証用)。
     /// **実装しないと AppDriver 既定の 501 になる**ので、フォールバック先の検証には実装が要る
     var dragError: Error?

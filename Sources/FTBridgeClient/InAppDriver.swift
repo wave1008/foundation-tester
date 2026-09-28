@@ -239,6 +239,9 @@ public final class InAppDriver: AppDriver {
     public func press(x: Double, y: Double, duration: Double) async throws {
         throw Self.inappOnly("press by coordinates")
     }
+    public func hold(x: Double, y: Double, duration: Double) async throws {
+        throw Self.inappOnly("hold")
+    }
 
     private static func inappOnly(_ action: String) -> DriverError {
         .badResponse(status: 501,

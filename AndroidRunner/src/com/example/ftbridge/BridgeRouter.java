@@ -139,6 +139,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /gesture": return handleGesture(body(request));
                 case "POST /press": return handlePress(body(request));
                 case "POST /pressEnter": return handlePressEnter();
+                case "POST /hold": return handleHold(body(request));
                 case "GET /screenshot": return handleScreenshot();
                 case "POST /session": return handleLaunch(body(request));
                 case "POST /terminate": return handleTerminate();
@@ -741,6 +742,23 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
         InputInjector.pressImeEnter(ua());
         settle();
+        return ok();
+    }
+
+    /**
+     * 指を置いたら応答を返し、duration 秒後に別スレッドが離す(契約は FTCore/BridgeDTO.HoldRequest)。
+     * このブリッジは要求を1本ずつ処理するので、/press のように離すまで待つと、押している間は木も
+     * スクショも返せない(押している間だけ出る部品を検証できない)。
+     * **同時に置ける指は1本**: 前の指が離れる前の /hold は 409(2本目の DOWN は別のジェスチャに化ける)
+     */
+    private BridgeHttpServer.Response handleHold(JSONObject body) {
+        if (!body.has("x") || !body.has("y") || !body.has("duration")) {
+            throw new BridgeException(400, "x, y and duration are required");
+        }
+        if (!InputInjector.holdWithoutWaiting(ua(), body.optDouble("x"), body.optDouble("y"),
+                body.optDouble("duration"))) {
+            throw new BridgeException(409, "a finger placed by an earlier hold is still down");
+        }
         return ok();
     }
 

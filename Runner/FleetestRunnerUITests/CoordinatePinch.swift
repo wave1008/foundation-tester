@@ -143,7 +143,22 @@ enum CoordinatePinch {
         return out
     }
 
-    /// **SPI に触れる唯一の場所**(pinch / gesture / doubletap が共有する)。フルに展開済みのキーフレームから
+    /// 1本の指を置き、`seconds` 後に離す。**完了を待たずに戻る**(/hold。置いている間に木を読ませるため)。
+    /// 失敗は呼び手に戻らない(完了ブロックは結果を読まない)= 押せていないことは、検証の失敗として現れる
+    static func holdWithoutWaiting(at point: CGPoint, seconds: TimeInterval,
+                                   orientation: UIInterfaceOrientation) throws {
+        guard let classes, let synthesizer else {
+            throw BridgeError(501, "this Xcode has no coordinate gesture support"
+                + " (XCPointerEventPath / XCSynthesizedEventRecord are gone)")
+        }
+        let record = classes.record.init(name: "hold", interfaceOrientation: orientation.rawValue)
+        let path = classes.path.init(touchAt: point, offset: 0)
+        path.liftUp(atOffset: seconds)
+        record.add(path)
+        synthesizer.synthesize(record) { }
+    }
+
+    /// **待つ送り方の唯一の場所**(pinch / gesture / doubletap が共有する。待たない送り方は holdWithoutWaiting)。フルに展開済みのキーフレームから
     /// 指1本につきパスを1本組み、全部を1つの record にまとめて送り、完了を待つ
     private static func send(fingers: [[(point: CGPoint, offset: TimeInterval)]], name: String,
                              orientation: UIInterfaceOrientation) throws {

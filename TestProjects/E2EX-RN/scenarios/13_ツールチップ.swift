@@ -3,13 +3,11 @@
 
 import FTDSL
 
-@TestClass(platform: "ios")
+@TestClass
 class ツールチップを出せること {
 
-    // Android の M3 ツールチップは押している間だけ出て、指を離すと消える(DSL は離してから検証する)。
-    // 表示中も文字は別ウィンドウで木に載らない。なので iOS だけ
-    @Draft("調査中: RN の iOS で paper Tooltip のアンカーを 1 秒長押しして離した後、#txt_tooltip が木に無い(in-app・XCUITest とも。押している間に出ているかは未確認)")
-    @Test("アイコンを長押しするとツールチップが出る")
+    // paper の Tooltip は押している間だけ出て、指を離すと消える。押している間に検証する(hold)
+    @Test("アイコンを押している間だけツールチップが出る")
     func S0010() {
         scenario {
             scene(1, "開く") {
@@ -20,12 +18,14 @@ class ツールチップを出せること {
                     select("#txt_tooltip_state").textIs("tooltip=hidden")
                 }
             }
-            scene(2, "#id で長押し") {
+            scene(2, "押している間は出て、離すと消える") {
                 action {
-                    tap("#btn_tooltip_anchor", holdSeconds: 1.0)
+                    hold("#btn_tooltip_anchor", holdSeconds: 3) {
+                        select("#txt_tooltip").textIs("これはツールチップです")
+                        select("#txt_tooltip_state").textIs("tooltip=shown")
+                    }
                 }.expectation {
-                    select("#txt_tooltip").textIs("これはツールチップです")
-                    select("#txt_tooltip_state").textIs("tooltip=shown")
+                    select("#txt_tooltip_state").textIs("tooltip=hidden")
                 }
             }
         }

@@ -333,19 +333,19 @@ ios { tap("<削除ボタンのラベル。スナップショットから採る>"
 ## ツールチップ
 
 - アンカーを長押しする: `tap("#btn_info", holdSeconds: 1.0)`
+- **押している間だけ出る**ツールチップは、押している間に検証する:
+  `hold("#btn_info", holdSeconds: 3) { select("#txt_tooltip").textIs("…") }`
 
 | フレームワーク | 部品・差分 |
 |---|---|
-| CMP | `TooltipBox` + `PlainTooltip`。iOS では長押しで検証できる。**Android では検証できない**(下記) |
+| CMP | `TooltipBox` + `PlainTooltip`。iOS は離した後もしばらく出ている。**Android は押している間だけ出る**ので `hold { }` の中で検証する(文字も木で読める) |
 | Flutter | `Tooltip(triggerMode: longPress)`。吹き出し本文に id を付けられないためラベルで指す。**表示中かどうかの状態は近似値**(表示イベントから固定の表示秒数だけ待って hidden とみなす実装で、非表示アニメーション完了の直接観測ではない) |
-| RN | `react-native-paper` の `Tooltip`。**`accessible` な祖先がアンカー(`IconButton`)を1要素へ畳むため、アンカー自身に付けた識別子は iOS で木から消える**(Android は畳まない)。アプリ側はより外側の `View` にアンカーの識別子を持たせて回避している |
-| Android View | `TooltipCompat` 標準ポップアップは別プロセス描画で内容を読めない。アプリが自前の `PopupWindow` を用意している場合はそちらで検証できる |
+| RN | `react-native-paper` の `Tooltip`。**`accessible` な祖先がアンカー(`IconButton`)を1要素へ畳むため、アンカー自身に付けた識別子は iOS で木から消える**(Android は畳まない)。アプリ側はより外側の `View` にアンカーの識別子を持たせて回避している。**吹き出しは押している間だけ表示され、指を離すと消える**ので、`hold("#anchor", holdSeconds: 3) { … }` のブロックの中で検証する(`tap(holdSeconds:)` は離してから検証するので確認できない) |
+| Android View | `TooltipCompat` 標準ポップアップは別プロセス描画で内容を読めない。自前の `PopupWindow`(フォーカスを取らない別ウィンドウ)も**文字は木に載らない**。出ていることは、`hold { }` の中でアプリが出す状態の表示で確かめる |
 | SwiftUI(iOS) | **無い**(iOS の長押しはコンテキストメニューに倒れる慣用のため、この SUT はこの画面自体を持たない) |
 
-**現時点の制約**: Material3 のツールチップ(CMP)は Android では**押している間だけ**表示され、
-指を離すと消えます(`tap(holdSeconds:)` は離してから次へ進むので、次の行では既に消えている)。
-表示中もツールチップの文字は別ウィンドウなので木に載りません。ツールチップの確認は `ios { }` で
-囲んで iOS 側だけで行ってください。
+`tap(holdSeconds:)` は指を離してから次の行へ進むので、押している間だけ出る部品は次の行では
+既に消えています。`hold { }` はブロックの中身を指が下がっている間に実行します。
 
 ## チップと分割ボタン
 
