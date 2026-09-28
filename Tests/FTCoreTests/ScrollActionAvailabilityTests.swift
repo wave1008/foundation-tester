@@ -71,4 +71,34 @@ final class ScrollActionAvailabilityTests: XCTestCase {
                          "\(finger) で空配列を「動ける」と誤認した")
         }
     }
+
+    // MARK: - 包む容器(伸縮するヘッダ。実測 Android: 一覧 ["forward"]・外側 ["backward", "forward"])
+
+    private func scrollable(ref: Int, y: Double, height: Double, actions: [String]?) -> ElementInfo {
+        ElementInfo(ref: ref, type: "scrollView", identifier: nil, label: nil, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: y, width: 1080, height: height), depth: ref,
+                    scrollable: true, scrollActions: actions)
+    }
+
+    func testInnerAtEdgeButEnclosingCanStillMoveIsNotAtEdge() {
+        let list = scrollable(ref: 2, y: 340, height: 2084, actions: ["forward"])
+        let outer = scrollable(ref: 1, y: 168, height: 2256, actions: ["backward", "forward"])
+        XCTAssertFalse(ScrollActionAvailability.atEdge(container: list, enclosing: [outer], forSwipe: .down))
+        XCTAssertTrue(ScrollActionAvailability.atEdge(container: list, enclosing: [], forSwipe: .down))
+    }
+
+    func testEnclosingAlsoAtEdgeOrUndeclaredMeansAtEdge() {
+        let list = scrollable(ref: 2, y: 746, height: 1678, actions: ["forward"])
+        let expanded = scrollable(ref: 1, y: 168, height: 2256, actions: ["forward"])
+        let undeclared = scrollable(ref: 3, y: 168, height: 2256, actions: nil)
+        XCTAssertTrue(ScrollActionAvailability.atEdge(container: list, enclosing: [expanded, undeclared],
+                                                      forSwipe: .down))
+    }
+
+    func testInnerThatCanMoveIsNotAtEdgeWhateverTheEnclosingSays() {
+        let list = scrollable(ref: 2, y: 340, height: 2084, actions: ["backward", "forward"])
+        let outer = scrollable(ref: 1, y: 168, height: 2256, actions: ["forward"])
+        XCTAssertFalse(ScrollActionAvailability.atEdge(container: list, enclosing: [outer], forSwipe: .down))
+    }
 }

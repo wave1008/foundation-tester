@@ -275,6 +275,20 @@ public final class StepExecutor {
         firstFrameGatePending = true
     }
 
+    /// [occlusion-guard] launch 系の**直前**の絵と木を、凍結フレーム検知の基準として控える(Android だけ)。
+    /// Android のスクショは、アプリが切り替わった直後に**前のアプリの最後の絵**を返し続けることがある
+    /// (実測: 配信中の 8 レーンで、切り替え後の最初のシナリオだけ 2 分前の別アプリの画面が写った)。
+    /// シナリオの最初の照合には比べる相手が無く、古い絵を「描かれていない」と読んで赤になっていた。
+    /// 木も控えるのは、起動の前後で同じ画面(同じアプリの同じ初期画面)なら絵が同じで正しいから。
+    /// 失敗は握る(基準が無いだけで、照合そのものは今までどおり走る)
+    public func recordPreLaunchFrame() async {
+        guard isAndroid, occlusionGuardEnabled else { return }
+        guard let shot = try? await driver.screenshot(),
+              let tree = try? await driver.snapshot() else { return }
+        lastGuardFrameRecord = StaleFrameDetector.judge(png: shot, elements: tree.elements,
+                                                        previous: nil).record
+    }
+
     /// **登録が無いときだけ**1回 SpringBoard に聞き、前面に出ていれば申告(probe)を返す。
     /// **返すのは生の probe**(呼び手が `SystemUIGate.describeUnregistered`/`mayBeLeftover` へ
     /// 渡す。題名を素通りさせないと 「前の run の残りかも」判断ができない)。

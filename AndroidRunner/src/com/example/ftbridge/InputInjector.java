@@ -283,6 +283,24 @@ final class InputInjector {
                 + (imeWindowVisible(ua) ? ", the IME window is in front" : "");
     }
 
+    /** id で引いた欄が今フォーカスを持っているか(読めない・取り直せないときは false = 今までどおり撃つ) */
+    static boolean isFocusedEditable(UiAutomation ua, double x, double y, String shortId) {
+        try {
+            AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+            if (root == null) return false;
+            Rect tmp = new Rect();
+            java.util.List<AccessibilityNodeInfo> matches = new java.util.ArrayList<>();
+            AccessibilityNodeInfo target = collectEditableById(root, shortId, (int) x, (int) y, tmp, matches);
+            if (target == null && matches.size() == 1) target = matches.get(0);
+            if (target == null && matches.isEmpty()) {
+                target = editableInsideTagged(root, shortId, (int) x, (int) y, tmp);
+            }
+            return target != null && target.refresh() && target.isFocused();
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     /**
      * resource-id(短縮形)優先でノードを探す。**id は画面内で一意とは限らない**
      * (Google マップの時刻ピッカーで時/分の EditText が同じ id を持つ)ので、一致が

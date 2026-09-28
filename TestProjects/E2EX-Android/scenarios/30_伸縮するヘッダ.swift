@@ -6,7 +6,6 @@ import FTDSL
 
 @TestClass
 class 伸縮するヘッダの下の行を扱えること {
-    @Draft("調査中: scrollToTop でリストは上端へ戻るが、縮んだヘッダが開かないことがある(3 周に 1 周)")
     @Test("縮むヘッダの下の行へスクロール探索で届き、上端へ戻すとヘッダが戻る")
     func S0010() {
         scenario {

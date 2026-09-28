@@ -177,8 +177,10 @@ extension StepExecutor {
             // 容器を一意に決められない・申告が無い(iOS・旧ブリッジ)ときは nil のままなので
             // 今までどおり撃って確かめる
             if let scrollingElement = Self.scrollContainerElement(step: step, in: settled.snapshot),
-               ScrollActionAvailability.atEdge(scrollActions: scrollingElement.scrollActions,
-                                               forSwipe: direction) {
+               ScrollActionAvailability.atEdge(
+                   container: scrollingElement,
+                   enclosing: Self.enclosingScrollables(of: scrollingElement, step: step, in: settled.snapshot),
+                   forSwipe: direction) {
                 reachedEdge = true
                 break
             }

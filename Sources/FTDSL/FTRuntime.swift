@@ -1113,9 +1113,15 @@ public final class FTDriveCore {
         if let command, ["launchApp", "restartApp", "clearAppData", "installApp"].contains(command) {
             executor.noteAppLaunched()
         }
+        // 上の一覧のうち、アプリを前面へ出すものだけ(起動の前の絵を控える対象)
+        let launches = command == "launchApp" || command == "restartApp"
         let clock = ContinuousClock()
         let start = clock.now
-        let result = FTSync.runThrowing { try await body() }
+        let result = FTSync.runThrowing { [executor, launches] in
+            // 起動の前の絵を控える(StepExecutor.recordPreLaunchFrame)。**body より前**でなければ意味が無い
+            if launches { await executor.recordPreLaunchFrame() }
+            try await body()
+        }
         let elapsedMs = continuousClockMilliseconds(clock.now - start)
         let status: StepResult.Status
         // 素性は**エラーの型**から採る(文言一致で仕分けない。StepExecutor.failureKind(thrown:))

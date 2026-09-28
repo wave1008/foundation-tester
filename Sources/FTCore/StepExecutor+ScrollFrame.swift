@@ -307,6 +307,20 @@ extension StepExecutor {
             .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
     }
 
+    /// `container` を包む scrollable(端の判定で「外側がまだ送れるか」を見る相手)。
+    /// **scrollFrame を明示した送りは外へ出ない**(指定した容器の中だけを動かす契約)ので空を返す
+    static func enclosingScrollables(of container: ElementInfo, step: FlowStep,
+                                     in snapshot: SnapshotResponse) -> [ElementInfo] {
+        guard step.scrollFrameRect == nil, step.scrollFrame == nil else { return [] }
+        return snapshot.elements.filter {
+            $0.scrollable == true && $0.ref != container.ref
+                && !ContainerGeometry.sameFrame($0.frame, container.frame)
+                && $0.frame.x <= container.frame.x && $0.frame.y <= container.frame.y
+                && $0.frame.x + $0.frame.width >= container.frame.x + container.frame.width
+                && $0.frame.y + $0.frame.height >= container.frame.y + container.frame.height
+        }
+    }
+
     /// 自己補正の倍率をマージンへ写す。span = 1 - start - end を scale 倍し、両端へ等分に戻す
     static func scaledMargins(start: Double, end: Double, scale: Double)
         -> (start: Double, end: Double) {

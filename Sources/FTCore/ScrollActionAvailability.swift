@@ -16,6 +16,18 @@ public enum ScrollActionAvailability {
         return !needed.contains { scrollActions.contains($0) }
     }
 
+    /// 容器が端でも、**それを包む容器がまだ送れる**なら端ではない(伸縮するヘッダ: 一覧が先頭に着いた後も
+    /// ヘッダは縮んだままで、開く操作は外側の容器が申告する)。`enclosing` は容器を包む scrollable。
+    /// 申告が無い(nil)祖先は数えない(分からないものを「送れる」の根拠にしない)。
+    /// 同期相手: AndroidRunner の BridgeRouter.enclosingScrollableWithAction(あちらは軸も見る)
+    public static func atEdge(container: ElementInfo, enclosing: [ElementInfo],
+                              forSwipe finger: FTSwipeDirection) -> Bool {
+        guard atEdge(scrollActions: container.scrollActions, forSwipe: finger) else { return false }
+        return enclosing.allSatisfy {
+            $0.scrollActions == nil || atEdge(scrollActions: $0.scrollActions, forSwipe: finger)
+        }
+    }
+
     /// finger 方向へ中身を動かすために容器が持っていてほしいアクション名。
     /// **finger は指の動きで、中身はその逆へ動く**(`FTScrollDirection.swipe` の逆写像を
     /// ここへ書き足さない —— 指を下へ払う(finger=.down)と中身は先頭側(backward/up)へ寄る)

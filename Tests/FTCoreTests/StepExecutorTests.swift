@@ -261,6 +261,60 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "stale-screenshot 注記が付くはず: \(outcome.notes)")
     }
 
+    /// 起動の直前の絵を控えておくと、シナリオの**最初の**照合でも「木は変わったのに絵は起動前のまま」を拾える
+    /// (Android。アプリが切り替わった直後に前のアプリの絵が返り続けた実例)
+    func testFirstGuardAfterLaunchDetectsFrameLeftFromBeforeLaunch() async throws {
+        let log = CallLog()
+        let stuckPNG = Data([0x01])
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "old", label: "前のアプリ")],
+                                                       [textElement(id: "msg", label: "B")]],
+                                    screenshots: [stuckPNG])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true)
+
+        await executor.recordPreLaunchFrame()
+        let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                      timeout: 1, occlusionGuard: true))
+
+        guard case .passed = outcome.status else {
+            XCTFail("古い絵を根拠に赤にしないはず: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0, "古い絵は FM に渡さないはず")
+        XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "\(outcome.notes)")
+    }
+
+    /// 起動の前後で同じ画面(木が同じ)なら、絵が同じでも古いとは言わない(照合は今までどおり走る)
+    func testSameScreenBeforeAndAfterLaunchIsNotStale() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "A")]],
+                                    screenshots: [Data([0x01])])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true)
+
+        await executor.recordPreLaunchFrame()
+        let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                      timeout: 1, occlusionGuard: true))
+
+        guard case .passed = outcome.status else { XCTFail("\(outcome.status)"); return }
+        XCTAssertFalse(outcome.notes.contains(.staleScreenshot), "\(outcome.notes)")
+        XCTAssertEqual(delegate.visibleCalls, 1, "照合は走るはず")
+    }
+
+    /// iOS では控えない(観測したのは Android だけ。撮る往復を全シナリオに払わない)
+    func testPreLaunchFrameIsNotRecordedOnIOS() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "A")]],
+                                    screenshots: [Data([0x01])])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false)
+
+        await executor.recordPreLaunchFrame()
+
+        XCTAssertEqual(primary.screenshotCallCount, 0)
+    }
+
     /// 黒い絵(撮れていない・表示の凍結)は判定の根拠にしない: FM にも訊かず、赤にせず、注記を残す
     /// (負荷テスト 2026-09-27: 黒い絵で OCR だけの判定が notRendered の赤を 3 台同時に出した)
     func testBlackScreenshotSkipsTheGuardWithANote() async throws {

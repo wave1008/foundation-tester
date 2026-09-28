@@ -332,7 +332,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (body.has("ref")) {
             int ref = body.optInt("ref");
             double[] center = centerOf(ref);
-            InputInjector.tap(ua(), center[0], center[1]);
+            tapUnlessAlreadyFocused(center, refIds.get(ref));
             // 確認と注入を統合した経路(InputInjector.setTextAppendingAt のコメント参照)。
             // resource-id を渡す: キーボードの開閉で座標がズレても同じ要素を追跡し直すため
             InputInjector.setTextAppendingAt(ua(), center[0], center[1], refIds.get(ref), text, 4000);
@@ -343,13 +343,24 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return ok();
     }
 
+    /**
+     * 入力の前のタップ。**対象の欄が既にフォーカスを持っていれば撃たない**: 自動でフォーカスを取る欄
+     * (ダイアログの autofocus)はキーボードが上がる間に動くので、snapshot の座標を撃つと欄の外
+     * (ダイアログの枠の外 = 閉じる)に当たる(実測 Flutter: prompt=cancel で閉じていた)。
+     * 判定は id で引けた欄だけ(点で引いた欄は、座標が古いと別の欄でありうる)
+     */
+    private void tapUnlessAlreadyFocused(double[] center, String shortId) {
+        if (shortId != null && InputInjector.isFocusedEditable(ua(), center[0], center[1], shortId)) return;
+        InputInjector.tap(ua(), center[0], center[1]);
+    }
+
     /** ref あり = その要素を空文字へ全置換(BridgeDTO.ClearRequest 参照)。ref なしはフォーカス欄。
      *  対象なし/SET_TEXT 拒否は 409(ホストの typeDriver フォールバックの合図。500 にしない) */
     private BridgeHttpServer.Response handleClear(JSONObject body) {
         if (body.has("ref")) {
             int ref = body.optInt("ref");
             double[] center = centerOf(ref);
-            InputInjector.tap(ua(), center[0], center[1]);
+            tapUnlessAlreadyFocused(center, refIds.get(ref));
             InputInjector.clearTextAt(ua(), center[0], center[1], refIds.get(ref), 4000);
         } else {
             InputInjector.clearFocused(ua(), 4000);
@@ -427,6 +438,16 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             return BridgeHttpServer.Response.json(200, o.toString());
         }
         AccessibilityNodeInfo.AccessibilityAction action = scrollActionFor(target, finger, vertical);
+        if (action == null) {
+            // **最小の容器が端でも、それを包む容器がまだ送れることがある**: 伸縮するヘッダ(AppBarLayout)は
+            // 一覧が先頭に着いた後も縮んだままで、開く操作は外側(CoordinatorLayout)が申告する。
+            // 引っ張って更新の親は送る操作を申告しないので、ここで拾っても更新は引かない
+            AccessibilityNodeInfo outer = enclosingScrollableWithAction(target, finger, vertical);
+            if (outer != null) {
+                target = outer;
+                action = scrollActionFor(outer, finger, vertical);
+            }
+        }
         if (action == null) {
             o.put("performed", false);
             o.put("atEdge", true);
@@ -511,6 +532,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             }
         }
         return best;
+    }
+
+    /** node を包む祖先のうち、軸が一致して送る向きの操作を申告している最も近いもの。無ければ null */
+    private static AccessibilityNodeInfo enclosingScrollableWithAction(AccessibilityNodeInfo node, String finger,
+                                                                       boolean vertical) {
+        AccessibilityNodeInfo parent = node.getParent();
+        for (int depth = 0; parent != null && depth < SCROLL_ACTION_MAX_DEPTH; depth++) {
+            if (parent.isScrollable() && parent.refresh()
+                    && scrollAxis(parent) == (vertical ? 1 : 2)
+                    && scrollActionFor(parent, finger, vertical) != null) {
+                return parent;
+            }
+            parent = parent.getParent();
+        }
+        return null;
     }
 
     /**
