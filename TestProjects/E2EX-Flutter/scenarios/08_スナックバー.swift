@@ -5,8 +5,7 @@ import FTDSL
 
 @TestClass
 class スナックバーを操作できること {
-
-    @Draft("調査中: Flutter の iOS でスナックバーが木に見つからない(FM が止まった Mac で観測)")
+    @Draft("調査中: Flutter の iOS でスナックバーが木に出ない(視覚検証を外しても見つからない。Android は 5 周とも緑)")
     @Test("アクションをラベルで押す")
     func S0010() {
         scenario {
@@ -31,8 +30,7 @@ class スナックバーを操作できること {
             }
         }
     }
-
-    @Draft("調査中: Flutter の iOS でスナックバーが木に見つからない(FM が止まった Mac で観測)")
+    @Draft("調査中: Flutter の iOS でスナックバーが木に出ない(視覚検証を外しても見つからない。Android は 5 周とも緑)")
     @Test("短いスナックバーが自然に消えるのを待つ")
     func S0020() {
         scenario {
