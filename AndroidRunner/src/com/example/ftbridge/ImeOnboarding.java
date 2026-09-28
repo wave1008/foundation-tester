@@ -45,7 +45,7 @@ final class ImeOnboarding {
     /** 走査の深さの上限(ループする木への備え) */
     private static final int MAX_DEPTH = 40;
 
-    /** 失敗しても呼び手(アプリの起動)を止めない。戻り値はログ用("skipped" / "no-keyboard" / "no-sheet" / "dismissed") */
+    /** 失敗しても呼び手(アプリの起動)を止めない。戻り値はログ用("skipped" / "no-keyboard" / "no-sheet" / "dismissed by …" = 押したボタンの文言) */
     static String primeOnce(Instrumentation instrumentation, UiAutomation ua) {
         try {
             String locale = BridgeRouter.rawShell(ua, "settings get system system_locales").trim();
@@ -61,9 +61,10 @@ final class ImeOnboarding {
                 outcome = "no-keyboard";
             } else {
                 AccessibilityNodeInfo skip = skipButton(root);
+                CharSequence pressed = skip == null ? null : skip.getText();
                 if (skip != null && skip.performAction(AccessibilityNodeInfo.ACTION_CLICK)) {
                     awaitSheetClosed(ua);
-                    outcome = "dismissed";
+                    outcome = "dismissed by \"" + pressed + "\"";
                 } else {
                     outcome = "no-sheet";
                 }

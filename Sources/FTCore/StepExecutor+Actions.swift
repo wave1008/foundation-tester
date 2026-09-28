@@ -1552,8 +1552,11 @@ extension StepExecutor {
                         "scrolled the container to bring the target out from under"
                         + " \(coverName ?? "the cover") before \(verb) it")
             }
-            // 動かなくなったら諦める(端まで来ている・容器がスクロールしない画面)
-            guard moved.frame.y != current.frame.y else { return nil }
+            // 動かなくなったら諦める(端まで来ている・容器がスクロールしない画面)。
+            // **y だけで比べない**: 容器の縁で切られた対象は、動いても y が縁のまま高さだけ変わる
+            // (実測 RN Android: 行の上端が容器の上端 403 に張り付いたまま 109 へ伸びた)
+            guard moved.frame.y != current.frame.y
+                || moved.frame.height != current.frame.height else { return nil }
             current = moved
             currentSnapshot = after
         }

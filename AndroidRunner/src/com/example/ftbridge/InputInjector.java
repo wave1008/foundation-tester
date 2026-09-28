@@ -110,6 +110,8 @@ final class InputInjector {
                 if (target != null) {
                     lastRefreshOK = fresh;
                     if (!fresh) lastState = STALE_READ;
+                } else if (accepted > 0) {
+                    lastState = "the field could not be found again after ACTION_SET_TEXT was accepted";
                 }
                 if (fresh) {
                     CharSequence existing = target.isShowingHintText() ? "" : target.getText();
@@ -298,6 +300,8 @@ final class InputInjector {
             if (containing != null) return containing;
             if (matches.size() == 1) return matches.get(0);
             if (matches.size() > 1) return nearest(matches, x, y, tmp);
+            AccessibilityNodeInfo inside = editableInsideTagged(root, shortId, x, y, tmp);
+            if (inside != null) return inside;
         }
         return editableAt(root, x, y, tmp);
     }
@@ -350,6 +354,45 @@ final class InputInjector {
             if (found != null) return found;
         }
         return null;
+    }
+
+    /**
+     * id が**入力欄そのものでなく外側の入れ物**に付く形(Flutter の Semantics(identifier:)。入れ物は
+     * editable でなく、欄は id を持たない)。入れ物の**今の枠**に収まる editable を返す。
+     * これが無いと点(x,y)だけで追うことになり、キーボードが出て欄が動いた後は見失うか別の欄を掴む
+     * (実測: 値は入っているのに読み返せず期限切れ)。同じ id の入れ物が複数あれば点に近いものを採る
+     */
+    private static AccessibilityNodeInfo editableInsideTagged(AccessibilityNodeInfo root, String shortId,
+                                                              int x, int y, Rect tmp) {
+        java.util.List<AccessibilityNodeInfo> tagged = new java.util.ArrayList<>();
+        java.util.List<AccessibilityNodeInfo> editables = new java.util.ArrayList<>();
+        java.util.ArrayDeque<AccessibilityNodeInfo> queue = new java.util.ArrayDeque<>();
+        queue.add(root);
+        while (!queue.isEmpty()) {
+            AccessibilityNodeInfo node = queue.poll();
+            if (node == null) continue;
+            if (node.isEditable()) {
+                editables.add(node);
+            } else {
+                String id = node.getViewIdResourceName();
+                if (id != null) {
+                    int idx = id.indexOf("id/");
+                    if (shortId.equals(idx >= 0 ? id.substring(idx + 3) : id)) tagged.add(node);
+                }
+            }
+            for (int i = 0; i < node.getChildCount(); i++) queue.add(node.getChild(i));
+        }
+        if (tagged.isEmpty()) return null;
+        AccessibilityNodeInfo holder = tagged.size() == 1 ? tagged.get(0) : nearest(tagged, x, y, tmp);
+        Rect frame = new Rect();
+        holder.getBoundsInScreen(frame);
+        java.util.List<AccessibilityNodeInfo> inside = new java.util.ArrayList<>();
+        for (AccessibilityNodeInfo node : editables) {
+            node.getBoundsInScreen(tmp);
+            if (!tmp.isEmpty() && frame.contains(tmp)) inside.add(node);
+        }
+        if (inside.isEmpty()) return null;
+        return inside.size() == 1 ? inside.get(0) : nearest(inside, frame.centerX(), frame.centerY(), tmp);
     }
 
     /**
