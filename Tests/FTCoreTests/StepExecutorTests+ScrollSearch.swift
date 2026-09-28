@@ -754,6 +754,20 @@ extension StepExecutorTests {
         XCTAssertFalse(outcome.notes.contains(.settleCapped), "這う尾を打ち切りと言ってはいけない: \(outcome.notes)")
     }
 
+    /// Android は這っている間もフリング中(その間のタッチはフリングの停止に消費される)なので、
+    /// 閾値以内の動きでも止まったとみなさない = 従来どおり完全に止まるまで待って打ち切る
+    func testCreepingIsNotTreatedAsSettledOnAndroid() async throws {
+        let log = CallLog()
+        let script: [[ElementInfo]] = [[], [], []] + (0..<60).map { movingRow(y: 300 + Double($0)) }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: script)
+        let executor = StepExecutor(driver: primary, isAndroid: true)
+
+        let outcome = await executor.execute(
+            FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_01"), direction: "up", maxSwipes: 5))
+
+        XCTAssertTrue(outcome.notes.contains(.settleCapped), "Android では這う動きを止まったと言わない: \(outcome.notes)")
+    }
+
     /// 対: 閾値より大きく動き続ける画面は従来どおり打ち切る(「常に止まった」と言う変異を落とす)
     func testStillMovingBeyondTheThresholdIsCapped() async throws {
         let log = CallLog()

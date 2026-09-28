@@ -41,7 +41,7 @@ extension StepExecutor {
                                                   strictForAssert: true) else { return false }
             if element.frame == previous { return true }
             let moved = max(abs(element.frame.x - previous.x), abs(element.frame.y - previous.y))
-            if moved <= SettleMotion.restThresholdPt { return true }
+            if restsWithinThreshold(moved) { return true }
             motion.append(moved)
             previous = element.frame
             if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
@@ -149,6 +149,14 @@ extension StepExecutor {
             previous = signature
         }
         return nil
+    }
+
+    /// 1 周の変位が `SettleMotion.restThresholdPt` 以内なら止まったとみなすか。**iOS だけ**。
+    /// Android の一覧(RecyclerView 等)は這っている間もフリング中で、その間のタッチは「フリングを止める」に
+    /// 消費されてタップにならない(M1Ultra で実測: 探索直後の tap が緑のまま行を選ばず、次の検証で赤)。
+    /// Android は従来どおり枠・署名が完全に一致するまで待つ
+    func restsWithinThreshold(_ moved: Double) -> Bool {
+        !isAndroid && moved <= SettleMotion.restThresholdPt
     }
 
     /// 探索が要素を見つけた直後の後始末。**スワイプを撃った周回だけ**呼ぶ。戻り値は
@@ -408,7 +416,7 @@ extension StepExecutor {
             let displacement = SettleMotion.displacement(from: previousElements, to: last.elements)
             // 名前のある要素が全部 restThresholdPt 以内しか動かず、要素の出入りも無ければ止まったとみなす
             // (フリングの尾は署名が一致しないまま這い続ける。settleAfterScroll と同じ規律)
-            if let displacement, displacement <= SettleMotion.restThresholdPt,
+            if let displacement, restsWithinThreshold(displacement),
                last.elements.count == previousElements.count {
                 return (current, last, true, true)
             }
