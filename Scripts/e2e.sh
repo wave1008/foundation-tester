@@ -298,6 +298,23 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   fi
 }
 
+# in-app エンジンだけの証人(@Draft = 通常の実行には入らない)を名指しで回す。
+# XCUITest では既知の制約で赤になるので、in-app のときだけ
+# (同期相手: TestProjects/E2E-CMP/scenarios/23_絵の追いつき_inapp.swift)
+run_inapp_witness() {  # $1 = プロジェクト名, $2 = シナリオ ID
+  [ "$IOS_PROFILE" = "ios-inapp" ] || return 0
+  echo ""
+  echo "═══ $1 / ios-inapp(in-app の証人: $2)═══"
+  local runner_flag=""
+  [ "$LOCAL_ONLY" = 1 ] && runner_flag="--runner local"
+  if "$FLEETEST" run --project "$1" --profile ios-inapp --scenario "$2" $runner_flag; then
+    echo "✅ $1 / ios-inapp(証人)"
+  else
+    echo "❌ $1 / ios-inapp(証人)"
+    FAILED=1
+  fi
+}
+
 for sut in $SUTS; do
   case "$sut" in
     cmp)
@@ -317,6 +334,7 @@ for sut in $SUTS; do
         echo "→ SUT cmp(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
       fi
       [ "$RUN_IOS" = 1 ] && run_profile E2E-CMP "$IOS_PROFILE"
+      [ "$RUN_IOS" = 1 ] && run_inapp_witness E2E-CMP '絵の追いつきを待ってから撮る.S0010'
       [ "$RUN_ANDROID" = 1 ] && run_profile E2E-CMP android
       ;;
     ios-native)

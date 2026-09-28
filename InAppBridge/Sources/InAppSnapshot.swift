@@ -412,6 +412,10 @@ enum InAppSnapshot {
         if t.contains(.staticText) || t.contains(.header) { return .staticText }
         if node is UINavigationBar { return .navigationBar }
         if node is UITabBar { return .tabBar }
+        if node.isAccessibilityElement,
+           LiveRegionText.isLabelOnlyLiveRegion(traits: t.rawValue, label: node.accessibilityLabel) {
+            return .staticText
+        }
         return .other
     }
 

@@ -42,14 +42,13 @@ class 画像で要素を探す {
         scenario {
             scene(1, "起動直後の初回訪問でチェックボックスを findImage で掴んで叩く") {
                 condition {
-                    // **launchApp の直後にタブを切り替えてすぐ撮る**のが要点(v117 の witness): CMP iOS の
-                    // in-app は初回訪問でタップが返ってから 0.3〜0.45 秒のあいだ切り替え前の絵を返した。
-                    // **XCUITest エンジン(--ios-xcuitest)では赤になる既知の制約**: 同じ遅れがあり直していない
-                    // (docs/framework-differences.md §3)。待つ existImage(S0040)は通る
+                    // 切り替えた直後は絵が木より遅れる(XCUITest エンジンは直していない既知の制約。
+                    // docs/framework-differences.md §3)ので、**待つ**書き方にする。
+                    // 待たずに撮る版(in-app の v117 の証人)は 23_絵の追いつき_inapp.swift
                     launchApp()
                     tap("#tab_controls")
                 }.action {
-                    findImage("[Checkbox]").tap()
+                    findImage("[Checkbox]", waitSeconds: 5).tap()
                 }.expectation {
                     select("#txt_cb_agree").textIs("agree=true")
                     findImage("[Switch]").idIs("sw_notify")

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 133
+    public static let bridgeProtocolVersion = 134
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1381,4 +1381,18 @@ public struct AppStateResponse: Codable {
 public struct ErrorResponse: Codable {
     public var error: String
     public init(error: String) { self.error = error }
+}
+
+/// **ラベルだけを持つライブリージョン**を文字として扱うかの判定(in-app と XCUITest ランナーが共有)。
+/// Flutter の iOS は SnackBar の文言を「頻繁に更新される」特性(1<<9)だけのノードで申告する
+/// (実測: FlutterSemanticsObject・traits=0x200・isAccessibilityElement=true)。staticText の特性が無いので
+/// 型は Other になり、id も無いので木から落ちていた(中のボタンだけが出る)。
+/// **他の特性を1つでも持つノードには使わない**(型はその特性が決める。呼び手は型が Other に決まった後で呼ぶ)
+public enum LiveRegionText {
+    /// UIAccessibilityTraitUpdatesFrequently
+    public static let updatesFrequently: UInt64 = 1 << 9
+
+    public static func isLabelOnlyLiveRegion(traits: UInt64, label: String?) -> Bool {
+        traits & updatesFrequently != 0 && !(label ?? "").isEmpty
+    }
 }

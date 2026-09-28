@@ -165,10 +165,22 @@ extension BridgeRouter {
         // 出ないまま木から消える(自前描画の容器は Other 型で id を持たないのが普通)
         case .scrollView, .table, .collectionView:
             return true
-        // その他(Other/Group 等)は identifier 付きのみ
+        // その他(Other/Group 等)は identifier 付きのみ。ラベルだけのライブリージョンは文字として出す
         default:
-            return !node.identifier.isEmpty
+            return !node.identifier.isEmpty || Self.isLiveRegionText(node)
         }
+    }
+
+    /// `LiveRegionText`(BridgeDTO)の判定を XCUITest の snapshot に当てる。特性は **XCTest の非公開属性**
+    /// (`traits`)なので、取れなければ false = 今までどおり落とす
+    private static func isLiveRegionText(_ node: XCUIElementSnapshot) -> Bool {
+        guard node.elementType == .other, !node.label.isEmpty else { return false }
+        var traits: UInt64?
+        _ = FTCatchObjCException({
+            traits = ((node as AnyObject).value(forKey: "traits") as? NSNumber)?.uint64Value
+        })
+        guard let traits else { return false }
+        return LiveRegionText.isLabelOnlyLiveRegion(traits: traits, label: node.label)
     }
 
     /// スクロールできる容器とみなす型(`ElementInfo.scrollable`)
@@ -180,7 +192,7 @@ extension BridgeRouter {
         let frame = node.frame
         return ElementInfo(
             ref: ref,
-            type: Self.typeName(node.elementType),
+            type: Self.isLiveRegionText(node) ? Self.typeName(.staticText) : Self.typeName(node.elementType),
             identifier: node.identifier.isEmpty ? nil : node.identifier,
             label: node.label.isEmpty ? nil : node.label,
             value: valueString(node),
