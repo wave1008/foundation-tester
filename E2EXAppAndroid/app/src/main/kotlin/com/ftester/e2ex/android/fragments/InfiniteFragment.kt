@@ -57,9 +57,13 @@ class InfiniteFragment : Fragment(R.layout.fragment_infinite) {
         isLoading = true
         adapter.notifyItemInserted(loaded)
         handler.postDelayed({
-            loaded = minOf(loaded + PAGE_SIZE, MAX_COUNT)
+            // 末尾の「読み込み中」を外して、増えた行だけを足す。notifyDataSetChanged は見えている行を全部
+            // 付け替えるので、その瞬間に押している行のクリックが取り消される(読み込みと重なった tap が消える)
+            val start = loaded
             isLoading = false
-            adapter.notifyDataSetChanged()
+            adapter.notifyItemRemoved(start)
+            loaded = minOf(loaded + PAGE_SIZE, MAX_COUNT)
+            adapter.notifyItemRangeInserted(start, loaded - start)
             renderCount()
         }, LOAD_DELAY_MS)
     }

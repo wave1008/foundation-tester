@@ -624,6 +624,18 @@ RN `onEndReached` / Android View `OnScrollListener` / SwiftUI 末尾行の `.onA
 まとめて読み込まれることがあります)。シナリオ側での回避策は無く、初期読み込み件数を厳密に
 assert する場合はアプリの対処に依存することを踏まえてください。
 
+**アプリの作りによる癖(Android View)**: 読み込みが終わったときに一覧を**丸ごと更新**する作り
+(`RecyclerView` の `notifyDataSetChanged()`)のアプリでは、その瞬間に押していた行のタップが取り消されます。
+`tap` は成功と出るのに行が選ばれず、次の検証で失敗します(遅い機械でだけ、たまに起きる形になります)。
+増えた行だけを足す作り(`notifyItemRangeInserted`)のアプリでは起きません。回避策: 読み込み中の表示が
+消えるのを待ってから押す。
+
+```swift
+scrollTo("#row_i_57", direction: .down, maxSwipes: 30)
+waitForClose("#txt_loading", waitSeconds: 5)
+tap("#row_i_57")
+```
+
 ## ピンチで拡大
 
 - `pinchOut(sel, scale: 2.0)` / `pinchIn(sel, scale: 0.5)` で拡大・縮小

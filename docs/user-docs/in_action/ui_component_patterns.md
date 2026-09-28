@@ -639,6 +639,19 @@ Same across every framework (CMP's `snapshotFlow`-based end detection, Flutter's
 listener, RN's `onEndReached`, Android View's `OnScrollListener`, SwiftUI's `.onAppear` on the last
 row).
 
+**A quirk that depends on how the app is built (Android View)**: in an app that refreshes **the whole
+list** when loading finishes (`RecyclerView`'s `notifyDataSetChanged()`), a tap on a row that is being
+pressed at that moment is cancelled. `tap` reports success, the row is not selected, and the next check
+fails (it shows up only now and then, and only on slower machines). An app that adds just the new rows
+(`notifyItemRangeInserted`) does not have this. Workaround: wait for the loading indicator to go away
+before tapping.
+
+```swift
+scrollTo("#row_i_57", direction: .down, maxSwipes: 30)
+waitForClose("#txt_loading", waitSeconds: 5)
+tap("#row_i_57")
+```
+
 **Current limitation**: RN's `FlatList`'s `onEndReached` can fire just because the initial data fits
 on one screen, even without ever scrolling (this app avoids it by loading only after real scrolling
 has started; an app without that guard can load several pages at once right after opening). There is
