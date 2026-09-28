@@ -834,6 +834,12 @@ public final class BridgeClient: AppDriver {
         atEdgeOnLastSwipe = response.atEdge
     }
 
+    /// 端送りの1本を a11y のスクロール操作で送る(**Android ブリッジだけ**が持つ口。契約は BridgeDTO.ScrollActionRequest)
+    public func scrollAction(finger: FTSwipeDirection, x: Double, y: Double) async throws -> ScrollActionResponse {
+        try await post("/scrollAction", body: ScrollActionRequest(finger: finger, x: x, y: y),
+                       timeout: interactionTimeout)
+    }
+
     /// scrollToEdge のジェスチャ(Android)。**行き過ぎても無害な用途にだけ使う**(探索に使うと
     /// 1回の移動量がビューポート高を超えて要素を飛び越す)。iOS 側は未使用フィールドとして無視する。
     ///

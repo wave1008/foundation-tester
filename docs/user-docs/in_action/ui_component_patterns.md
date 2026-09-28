@@ -50,10 +50,13 @@ iOS, not on Android, so components whose library sets `accessible` by default â€
 "Tooltip" and "Bottom sheet" below). The workaround is for the app to pass `accessible={false}`, so a
 scenario cannot fix this on its own (it depends on the target app's implementation).
 
-**Current limitation**: **On Flutter's iOS**, while a Material overlay (`DropdownMenu`, `Tooltip`,
-etc.) is shown, its a11y rects are reported **at one third of their real scale** (a Flutter-side quirk
-that happens on both the in-app and the XCUITest engine). A tap during that time lands in the wrong
-spot. Workaround: avoid tapping while an overlay is open â€” **close it first**, then continue.
+**Current limitation**: **On Flutter's iOS**, once an overlay (a `Tooltip`, a dialog, etc.) has been
+shown on a screen, **that screen's a11y rects are reported at 1/screen-scale (1/3 on an iPhone) until
+the next screen transition** (Flutter's own report). **The default iOS engine (in-app) corrects this
+automatically**, so nothing changes in how you write scenarios. Only **the XCUITest engine**
+(`iosInappEngine: false`) cannot correct it, and taps land in the wrong spot. Workaround (XCUITest
+engine only): after showing an overlay on a screen, move to another screen and come back before the
+next action.
 
 ### An icon-only button is labelled by its accessibility label
 
@@ -248,11 +251,11 @@ tap("OK")
 - With **the iOS XCUITest engine** (`iosInappEngine: false`), `scrollToTop()` at the top of the list
   **runs one extra refresh** (the swipe that confirms the edge becomes a pull, because XCUITest does
   not tell whether a container can still scroll). It does not happen with the default iOS engine
-- **On Android View and RN (Android), the final real swipe that scrolls from the bottom back to the
-  top can accidentally trigger `SwipeRefreshLayout` / `RefreshControl`'s pull-to-refresh** (a property
-  of finger-swipe-based scrolling; it does not happen on CMP/Flutter's Android)
+- **On Flutter's iOS, `scrollToTop()` back to the top can also trigger a refresh** (under investigation)
 - Same workaround for both: in scenarios that verify the refresh count, do not read the count
-  **after** `scrollToTop()` / a scroll from the bottom (verify the count before it)
+  **after** `scrollToTop()` (verify the count before it)
+- It does not happen on Android with any framework (`scrollToTop()` / `scrollToBottom()` move the list
+  with accessibility scroll actions, so they never overscroll into a pull)
 
 ## Snackbar / toast
 

@@ -426,9 +426,11 @@ public final class AndroidDriver: AppDriver {
         // 再接続で黙って消える
         let limit = pendingElementLimit
         pendingElementLimit = nil
+        let bypass = bypassingCache || nextSnapshotBypassesCache
+        nextSnapshotBypassesCache = false
         var snapshot = try await withBridge {
             $0.raiseElementLimitOnNextSnapshot(limit)
-            return try await $0.snapshot(bypassingCache: bypassingCache)
+            return try await $0.snapshot(bypassingCache: bypass)
         }
         // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
         // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
@@ -705,6 +707,24 @@ public final class AndroidDriver: AppDriver {
                       path: FTSwipePath?) async throws {
         atEdgeOnLastSwipe = nil
         if intent == .edge, await webViewJumpToEdge(direction) { return }
+        // **ドラッグより先に a11y のスクロール操作で送る**: ドラッグは端を越えた余りが入れ子の親
+        // (SwipeRefreshLayout 等)へ渡り、上端へ戻す最後の1本が引っ張って更新になる。
+        // 「もう端」は atEdge で受ける(撃つとその1本が更新を引く)。**動かしたことは申告しない**
+        // (AX の受理は端でも起きる = reachedEdgeOnLastSwipe は nil のまま。ホストの署名で判定する)
+        if intent == .edge, let stroke = edgeStroke(direction, path: path) {
+            let answer = try await withBridge {
+                // 始点 = 指を置く容器の内側(path なしは画面中央 = ホストの scrollContainerElement と同じ点)
+                try await $0.scrollAction(finger: direction, x: stroke.fromX, y: stroke.fromY)
+            }
+            // a11y の操作の直後はキャッシュのノードが送れる向きを古いまま持つことがある。次の端の判定
+            // (ScrollActionAvailability)が古い申告で「もう端」と誤らないよう、次の1枚だけ迂回する
+            if answer.atEdge == true || answer.performed { nextSnapshotBypassesCache = true }
+            if answer.atEdge == true {
+                atEdgeOnLastSwipe = true
+                return
+            }
+            if answer.performed { return }
+        }
         if intent == .edge, let stroke = edgeStroke(direction, path: path) {
             try await drag(fromX: stroke.fromX, fromY: stroke.fromY,
                            toX: stroke.toX, toY: stroke.toY,
@@ -771,6 +791,8 @@ public final class AndroidDriver: AppDriver {
 
     /// 直前の端送りで「もう端」と分かったか(`AppDriver.reachedEdgeOnLastSwipe`)
     public private(set) var atEdgeOnLastSwipe: Bool?
+    /// 次の snapshot を1回だけキャッシュ迂回にする(a11y のスクロール操作の直後。swipe の端送り参照)
+    private var nextSnapshotBypassesCache = false
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
 
     /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。

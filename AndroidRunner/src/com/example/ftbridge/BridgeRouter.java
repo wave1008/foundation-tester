@@ -133,6 +133,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /type": return handleType(body(request));
                 case "POST /clear": return handleClear(body(request));
                 case "POST /swipe": return handleSwipe(body(request));
+                case "POST /scrollAction": return handleScrollAction(body(request));
                 case "POST /doubletap": return handleDoubleTap(body(request));
                 case "POST /pinch": return handlePinch(body(request));
                 case "POST /gesture": return handleGesture(body(request));
@@ -395,6 +396,174 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
         settle();
         return ok();
+    }
+
+    /**
+     * 端送りの1本を a11y のスクロール操作で送る(契約は BridgeDTO.ScrollActionRequest / ScrollActionResponse)。
+     * 指のドラッグは端を越えた余りが入れ子の親(SwipeRefreshLayout・PullToRefresh)へ渡り、上端へ戻す最後の1本が
+     * 引っ張って更新に化ける。a11y の操作は容器の中だけを動かすので親へ渡らない。
+     * 宛先は (x, y) を含み**軸が指の向きと一致する**最小の scrollable(ホストの scrollContainerElement と同じ
+     * 「最小」の規則。軸を見るのは、中央に横のカルーセルがある縦の一覧で横へ送らないため)。
+     * - 軸が分からない容器は候補にしない(汎用の backward/forward は軸を言わない)
+     * - 候補はあるが送る向きの操作を申告していない = もう端 → atEdge:true(ドラッグを撃たせない)
+     * - 候補が無い・performAction が false → performed:false(ホストは従来のドラッグへ落ちる)
+     */
+    private BridgeHttpServer.Response handleScrollAction(JSONObject body) throws JSONException {
+        String finger = body.optString("finger");
+        boolean vertical;
+        switch (finger) {
+            case "up": case "down": vertical = true; break;
+            case "left": case "right": vertical = false; break;
+            default: throw new BridgeException(400, "finger must be one of up/down/left/right");
+        }
+        if (!body.has("x") || !body.has("y")) throw new BridgeException(400, "x/y is required");
+        int x = (int) Math.round(body.optDouble("x"));
+        int y = (int) Math.round(body.optDouble("y"));
+        AccessibilityNodeInfo root = ua().getRootInActiveWindow();
+        JSONObject o = new JSONObject();
+        AccessibilityNodeInfo target = root == null ? null : smallestScrollableOnAxis(root, x, y, vertical, 0);
+        if (target == null) {
+            o.put("performed", false);
+            return BridgeHttpServer.Response.json(200, o.toString());
+        }
+        AccessibilityNodeInfo.AccessibilityAction action = scrollActionFor(target, finger, vertical);
+        if (action == null) {
+            o.put("performed", false);
+            o.put("atEdge", true);
+            return BridgeHttpServer.Response.json(200, o.toString());
+        }
+        boolean performed = target.performAction(action.getId());
+        if (performed) {
+            awaitScrollSettled(target);
+            settle();
+        }
+        o.put("performed", performed);
+        return BridgeHttpServer.Response.json(200, o.toString());
+    }
+
+    /** 読み直しの間隔(ms)。Compose の a11y スクロールはアニメーション(実測 数百 ms)なので、1 フレームより長く・
+     *  アニメーションより十分短く */
+    private static final long SCROLL_SETTLE_POLL_MS = 60;
+    /** 待ちの上限(ms)。尽きたら動いている途中のまま返す(ホストの整定待ちと署名の比較が後を受ける) */
+    private static final long SCROLL_SETTLE_CAP_MS = 1500;
+
+    /**
+     * a11y のスクロールが**止まるまで**待つ。Compose は performAction の後にアニメーションで動かし、settle()
+     * (a11y イベントの静穏)はその途中で返る。途中の木を読むとスクロール操作の申告が欠け、ホストが「もう端」と
+     * 誤って打ち切った(実測: E2EX-CMP の scrollToTop が 0.29 秒で止まり先頭行に届かなかった)。
+     * 子の矩形が2回続けて同じになったら止まったとみなす
+     */
+    private static void awaitScrollSettled(AccessibilityNodeInfo node) {
+        long deadline = SystemClock.uptimeMillis() + SCROLL_SETTLE_CAP_MS;
+        String previous = null;
+        while (SystemClock.uptimeMillis() < deadline) {
+            SystemClock.sleep(SCROLL_SETTLE_POLL_MS);
+            if (!node.refresh()) return;
+            String current = childBoundsSignature(node);
+            if (current.equals(previous)) return;
+            previous = current;
+        }
+    }
+
+    private static String childBoundsSignature(AccessibilityNodeInfo node) {
+        StringBuilder sb = new StringBuilder();
+        Rect bounds = new Rect();
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            if (child == null) continue;
+            child.refresh();
+            child.getBoundsInScreen(bounds);
+            sb.append(bounds.toShortString());
+        }
+        return sb.toString();
+    }
+
+    /** 深さの上限。木の実測は深くても 40 段台(ループする木への備えで、届く画面は無い) */
+    private static final int SCROLL_ACTION_MAX_DEPTH = 96;
+
+    private static AccessibilityNodeInfo smallestScrollableOnAxis(AccessibilityNodeInfo node, int x, int y,
+                                                                  boolean vertical, int depth) {
+        if (node == null || depth > SCROLL_ACTION_MAX_DEPTH) return null;
+        AccessibilityNodeInfo best = null;
+        long bestArea = Long.MAX_VALUE;
+        Rect bounds = new Rect();
+        node.getBoundsInScreen(bounds);
+        if (node.isScrollable() && bounds.contains(x, y)) {
+            // **操作の申告はキャッシュから読まない**: 直前のスクロールの後、キャッシュのノードは送れる向きが
+            // 古いままのことがあり、動かせる一覧を「もう端」と答える(Compose の a11y キャッシュ遅れと同じ型)
+            node.refresh();
+            node.getBoundsInScreen(bounds);
+            int axis = scrollAxis(node);
+            if (axis == (vertical ? 1 : 2)) {
+                best = node;
+                bestArea = (long) bounds.width() * bounds.height();
+            }
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = smallestScrollableOnAxis(node.getChild(i), x, y, vertical, depth + 1);
+            if (found == null) continue;
+            Rect b = new Rect();
+            found.getBoundsInScreen(b);
+            long area = (long) b.width() * b.height();
+            if (area <= bestArea) {
+                best = found;
+                bestArea = area;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * 容器の軸: 1 = 縦 / 2 = 横 / 0 = 分からない。方向つきの操作(API 23)を申告していればそれで決まる。
+     * RecyclerView は汎用の backward/forward しか申告しないので CollectionInfo(縦の一覧は列 1・横は行 1)、
+     * ScrollView 系はクラス名で決める。グリッド(行も列も 2 以上)は分からない側
+     */
+    private static int scrollAxis(AccessibilityNodeInfo node) {
+        List<AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
+        boolean v = actions.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP)
+                || actions.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN);
+        boolean h = actions.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT)
+                || actions.contains(AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT);
+        if (v != h) return v ? 1 : 2;
+        AccessibilityNodeInfo.CollectionInfo info = node.getCollectionInfo();
+        if (info != null) {
+            if (info.getColumnCount() <= 1 && info.getRowCount() > 1) return 1;
+            if (info.getRowCount() <= 1 && info.getColumnCount() > 1) return 2;
+        }
+        CharSequence cls = node.getClassName();
+        String name = cls == null ? "" : cls.toString();
+        if (name.endsWith("HorizontalScrollView")) return 2;
+        if (name.endsWith("ScrollView")) return 1;
+        return 0;
+    }
+
+    /**
+     * 指の向きに中身を動かす操作。**指と中身は逆向き**(指を下へ = 先頭側 = UP / BACKWARD。
+     * FTCore.ScrollActionAvailability と同じ対応。片方だけ変えない)。方向つきを先に採り、
+     * 汎用は軸が一致している容器(呼び手が保証)でだけ使う。RTL の横送りは考えない
+     */
+    private static AccessibilityNodeInfo.AccessibilityAction scrollActionFor(AccessibilityNodeInfo node,
+                                                                             String finger, boolean vertical) {
+        List<AccessibilityNodeInfo.AccessibilityAction> actions = node.getActionList();
+        AccessibilityNodeInfo.AccessibilityAction directional;
+        AccessibilityNodeInfo.AccessibilityAction generic;
+        switch (finger) {
+            case "down":
+                directional = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP;
+                generic = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD; break;
+            case "up":
+                directional = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN;
+                generic = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD; break;
+            case "right":
+                directional = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT;
+                generic = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD; break;
+            default:
+                directional = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT;
+                generic = AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD; break;
+        }
+        if (actions.contains(directional)) return directional;
+        if (actions.contains(generic)) return generic;
+        return null;
     }
 
     /** ダブルタップ(ref または x/y。iOS ブリッジと同じ受理形) */

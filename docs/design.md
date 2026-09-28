@@ -415,7 +415,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
 | XCUITest(Runner/) | `POST /drag`・`POST /gesture`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate`・`POST /rotate`・`GET /hittable`・`GET /systemalert`・`GET /systemui/covering`・`GET /systemui/snapshot`・`POST /systemui/tap`・`POST /systemui/drag`・`POST /systemui/swipe` | 27 |
-| Android(AndroidRunner/) | `POST /gesture`・`POST /locale`・`POST /settle`(§4.5) | 16 |
+| Android(AndroidRunner/) | `POST /gesture`・`POST /locale`・`POST /settle`・`POST /scrollAction`(§4.5) | 17 |
 | InApp | `POST /hidekeyboard`・`POST /appstate`・`POST /rotate` | 16 |
 
 **ジェスチャの秒数(`/press` の duration・`/drag` の press+移動・速度つき `/swipe`・`/pinch`・`/gesture` の全体)の上限は2層**:
@@ -980,9 +980,12 @@ iOS ブリッジと区別なく扱える。
 - **常駐 instrumentation**: `am instrument -w` でデバイス内にバックグラウンド常駐させ、
   HTTP サーバ(BridgeInstrumentation)を内蔵する。`AndroidBridge.swift` が初回操作時に
   自動インストール・自動起動するためセットアップ手順は不要
-- **共通コア13 + locale/settle の15エンドポイント**: §4.3 の共通コア(status/session/snapshot/
+- **共通コア13 + locale/settle/gesture/scrollAction**: §4.3 の共通コア(status/session/snapshot/
   tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/terminate)に `POST /locale`・
-  `POST /settle` を加えた15エンドポイントを話す(iOS 固有の drag/appswitcher/home/hidekeyboard/
+  `POST /settle`・`POST /gesture`・`POST /scrollAction` を加えて話す(**`/scrollAction` は Android だけ**:
+  端送りの1本を a11y のスクロール操作で送る。指のドラッグは端を越えた余りが SwipeRefreshLayout 等の親へ渡り
+  引っ張って更新になるため。宛先は指を置く点を含み軸が合う最小の scrollable、軸が分からなければ送らず
+  ホストが従来のドラッグへ落ちる。契約は BridgeDTO.ScrollActionRequest。iOS 固有の drag/appswitcher/home/hidekeyboard/
   appstate/rotate は**ブリッジのエンドポイントとしては持たない**。**機能が無いという意味ではない**
   —— drag / home / hideKeyboard / rotate は `AndroidDriver` がホスト側で adb・注入器を使って
   実装している)

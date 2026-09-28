@@ -53,7 +53,7 @@ class 入力の種類ごとに入力できること {
         }
     }
 
-    @Draft("既知の制約: Flutter の Autocomplete(iOS は候補のオーバーレイが echo を覆い座標も縮む・Android は入力が拒まれる)")
+    @Draft("既知の制約: Flutter の Autocomplete(iOS は候補のオーバーレイが echo を覆う・Android は入力が拒まれる)")
     @Test("オートコンプリートの候補を選ぶ")
     func S0030() {
         scenario {

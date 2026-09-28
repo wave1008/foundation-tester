@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 131
+    public static let bridgeProtocolVersion = 132
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1158,6 +1158,7 @@ public enum ScrollRegionMatch {
             .map(\.ref).reversed()
     }
 
+
     /// 重なり(交差の面積 ÷ 和集合の面積)。どちらかの面積が 0 なら 0
     public static func overlap(_ a: FTRect, _ b: FTRect) -> Double {
         let w = min(a.x + a.width, b.x + b.width) - max(a.x, b.x)
@@ -1319,6 +1320,31 @@ public struct PressRequest: Codable {
         self.y = y
         self.duration = duration
         self.fast = fast
+    }
+}
+
+/// POST /scrollAction(**Android ブリッジだけ**。同期相手: AndroidRunner/.../BridgeRouter.java handleScrollAction)。
+/// 端送りの1本を a11y のスクロール操作で送る。(x, y) は指を置く容器の内側の点(ホストの容器推定と同じ「最小」の規則で
+/// ブリッジが容器を引き直す)。`finger` は指の動き(中身は逆へ動く)
+public struct ScrollActionRequest: Codable {
+    public var finger: FTSwipeDirection
+    public var x: Double
+    public var y: Double
+    public init(finger: FTSwipeDirection, x: Double, y: Double) {
+        self.finger = finger
+        self.x = x
+        self.y = y
+    }
+}
+
+/// `performed` = 操作を撃って容器が受理した / `atEdge` = 軸の合う容器はあるが送る向きの操作を申告していない
+/// (もう端。呼び手はドラッグを撃たない)。どちらも false/nil = 宛先が決まらない → 呼び手は従来のドラッグへ落ちる
+public struct ScrollActionResponse: Codable {
+    public var performed: Bool
+    public var atEdge: Bool?
+    public init(performed: Bool, atEdge: Bool? = nil) {
+        self.performed = performed
+        self.atEdge = atEdge
     }
 }
 

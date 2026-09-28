@@ -35,7 +35,6 @@ class 修正した不具合が再発しないこと {
         }
     }
 
-    @Draft("既知の制約: 上端へ戻す払いが引っ張って更新になる(Android の指の払い・Flutter iOS の XCUITest 経路)")
     @Test("引っ張って更新の一覧で scrollToTop が更新を走らせない(Android は修正済み・iOS XCUITest は未修正)")
     func S0020() {
         scenario {

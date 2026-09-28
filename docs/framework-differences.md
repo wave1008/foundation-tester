@@ -291,7 +291,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | タブのラベル | Flutter `Tab`・RN material-top-tabs はラベルに「Tab 3 of 3」「tab, 2 of 3」が付く | B |
 | ドロワーを払って開く | Flutter `Drawer`・Android `DrawerLayout`・react-navigation drawer は端からの払いだけ。端は Android の戻るの帯 | B |
 | Flutter の戻る(iOS) | go_router + MaterialPage で、合成したエッジスワイプでは戻らない(始点 x=1〜19・0.25〜0.8 秒)。原因未特定 | B |
-| Flutter の iOS のオーバーレイ | DropdownMenu・Tooltip の表示中、a11y の矩形が 1/scale に縮む。**in-app も XCUITest も同じ = Flutter 側の報告**。タップが全部ずれる | B(補正は未着手) |
+| Flutter の iOS のオーバーレイ | オーバーレイ(Tooltip・Dialog)を一度出すと、次の画面遷移までその画面の a11y の矩形が 1/画面倍率に縮む(ルートのノードが「FlutterView ÷ 倍率」を申告し、その下が同じ比で縮む)。**in-app も XCUITest も同じ = Flutter 側の申告**。in-app ブリッジは補正する(`AXFrameRescale`・v132)。XCUITest エンジンは未補正 |
 | Flutter `SearchAnchor` | バーを押すと別の入力欄(`#id` 無し)が開く。ツールは焦点の移った欄への type を断る(重複入力の安全策) | B |
 | CMP の iOS | 既定の `OnFocusBehavior.FocusableAboveKeyboard` がキーボードの高さぶん画面全体を押し上げる | B |
 | RN の iOS | `accessible` な祖先が子を1要素へ畳む(paper Tooltip・gorhom BottomSheetModal の既定)/ 1画面に Navigator を2つ置くと落ちる / paper Menu は Android の戻るを消費しない | B |
@@ -311,9 +311,10 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | `scrollToTop` の確認の払いが更新を撃つ → Android ブリッジ(v74)の `scrollActions` で送らずに端を確定。**容器は画面中央を含む最小のもの**(入れ子の SwipeRefreshLayout で効かなかった) | Android |
 | スクロール探索が、末尾で続きを読み込む一覧を途中で打ち切る → 探索の打ち切りにも `edgeClaimGraceAfterMove` | 全エンジン |
 | フォーカスを取らない別ウィンドウ(ExposedDropdown・Spinner の候補)の中身が木に無い → Android ブリッジ(v75)が同じアプリの手前の窓の中身を足す(`inOverlayWindow`。覆いの判定から除外) | Android |
+| Flutter の iOS でオーバーレイを出した画面の a11y の矩形が 1/画面倍率に縮み、タップが全部ずれる → in-app ブリッジが「FlutterView ÷ 倍率」を申告するセマンティクスの容器を見つけ、その下を実の枠へ写す(`FTCore.AXFrameRescale`・v132。PlatformView の中身は実の枠なので掛けない) | iOS in-app |
+| 上端へ戻す最後の1本のドラッグが、端を越えた余りで入れ子の親(SwipeRefreshLayout・RefreshControl)を引っ張り更新を走らせる → 端送りは a11y のスクロール操作で送る(ブリッジ v76 `POST /scrollAction`。軸の合う最小の容器・軸が分からなければ従来のドラッグ・送れない向きなら「もう端」) | Android |
 
-**残っている制約(`@Draft` の理由と対応)**: Android の指の払いで上端へ戻す最後の1本が引っ張って更新になる(案: a11y の
-スクロール操作で送る)/ Flutter iOS のオーバーレイ中の座標(案: a11y の根と FlutterView の枠の比から補正)/ iOS in-app で
+**残っている制約(`@Draft` の理由と対応)**: Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ iOS in-app で
 PageView・PagerView の中を探索できない / 貼り付く見出しの下の行を押すと見出しに当たる / Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。

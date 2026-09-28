@@ -23,6 +23,7 @@ final class InAppLauncherBuildTests: XCTestCase {
         try write("Sources/FTCore/WebViewDOMSnapshot.swift")
         try write("Sources/FTCore/TypeReadback.swift")
         try write("Sources/FTCore/UIFrameworkMarkers.swift")
+        try write("Sources/FTCore/AXFrameRescale.swift")
     }
 
     override func tearDownWithError() throws {

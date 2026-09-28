@@ -34,6 +34,8 @@ final class FTInAppBridge {
     private var treePrint = 0
     /// 直近 snapshot の ref → 見えている範囲(InAppSnapshot.Result.clips)。frames と同じ時点で差し替える
     private var clips: [Int: CGRect] = [:]
+    /// 直近 snapshot のノード → 枠の補正(InAppSnapshot.Result.rescales)。frames と同じ時点で差し替える
+    private var rescales: [ObjectIdentifier: AXFrameRescale] = [:]
     /// 直近 snapshot で入力欄だった ref(`TypeReadback.isTextInput`)。frames と同じ時点で差し替える
     private var textInputRefs: Set<Int> = []
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
@@ -239,6 +241,7 @@ final class FTInAppBridge {
             self.treePrint = treePrint
             self.frames = merged.frames
             self.clips = merged.clips
+            self.rescales = base.rescales
             self.textInputRefs = Set(merged.elements.filter(TypeReadback.isTextInput).map(\.ref))
             self.nodes.removeAllObjects()
             for (ref, node) in merged.nodes { self.nodes.setObject(node, forKey: NSNumber(value: ref)) }
@@ -800,7 +803,11 @@ final class FTInAppBridge {
         while true {
             // 診断(全窓の view 走査)は断ると決まった1回だけ作る
             let poll: Poll = mainSync {
-                let axFrame = (self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject)?.accessibilityFrame
+                // snapshot と同じ補正を掛ける(Flutter の縮んだ AX 矩形。InAppSnapshot.rescaleBelow)
+                let axFrame = (self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject).map { node in
+                    self.rescales[ObjectIdentifier(node)].map { InAppSnapshot.frame(node, rescale: $0) }
+                        ?? node.accessibilityFrame
+                }
                 let live = axFrame.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil }
                 let target = live ?? self.frames[ref]
                 let centre = live.map { CGPoint(x: $0.midX, y: $0.midY) } ?? point
@@ -1139,7 +1146,8 @@ final class FTInAppBridge {
         var visited = 0
         // 指を置く点 = 画面中央(scrollFrame 無しは XCUITest / Android も画面中央を払う)
         let centre = (root as? UIView).map { CGPoint(x: $0.bounds.midX, y: $0.bounds.midY) }
-        return scrollWalk(root, accessibilityDirection(finger: finger), reaching: centre, visited: &visited)
+        return scrollWalk(root, accessibilityDirection(finger: finger), reaching: centre, flutter: nil,
+                          visited: &visited)
     }
 
     /// UIAccessibilityScrollDirection の向きは**縦と横で基準が違う**: 縦はスクロールバーの動く向き
@@ -1173,7 +1181,7 @@ final class FTInAppBridge {
         for ref in refs {
             guard let node = snapshot.nodes[ref] else { continue }
             var visited = 0
-            if scrollWalk(node, direction, reaching: nil, visited: &visited) { return .scrolled }
+            if scrollWalk(node, direction, reaching: nil, flutter: nil, visited: &visited) { return .scrolled }
         }
         return .refused
     }
@@ -1183,19 +1191,22 @@ final class FTInAppBridge {
 
     /// point: 指を置く点(window 座標)。nil = 刈らない(領域指定は一致した容器を根にするので要らない)。
     /// 点があれば、枠がその点を含まない要素は**部分木ごと**飛ばす(`ScrollPointReach`)
+    /// `flutter`: Flutter の縮んだ AX 矩形の補正の状態(InAppSnapshot.rescaleBelow)。刈り込みの枠を snapshot と揃える
     private static func scrollWalk(_ node: NSObject, _ direction: UIAccessibilityScrollDirection,
-                                   reaching point: CGPoint?, visited: inout Int) -> Bool {
+                                   reaching point: CGPoint?, flutter inherited: InAppSnapshot.FlutterFrames?,
+                                   visited: inout Int) -> Bool {
         if visited >= axScrollMaxVisits { return false }
         visited += 1
+        let flutter = InAppSnapshot.rescaleBelow(node, inherited: inherited)
         if let point {
-            let f = InAppSnapshot.axFrame(node)
+            let f = InAppSnapshot.frame(node, rescale: flutter?.rescale)
             let frame = FTRect(x: Double(f.origin.x), y: Double(f.origin.y),
                                width: Double(f.width), height: Double(f.height))
             if !ScrollPointReach.mayReach(frame: frame, x: Double(point.x), y: Double(point.y)) { return false }
         }
         if node.accessibilityScroll(direction) { return true }
         if let elements = node.accessibilityElements as? [NSObject] {
-            for element in elements where scrollWalk(element, direction, reaching: point, visited: &visited) {
+            for element in elements where scrollWalk(element, direction, reaching: point, flutter: flutter, visited: &visited) {
                 return true
             }
         }
@@ -1205,11 +1216,11 @@ final class FTInAppBridge {
         if count != NSNotFound && count > 0 {
             for i in 0..<count {
                 guard let element = node.accessibilityElement(at: i) as? NSObject else { continue }
-                if scrollWalk(element, direction, reaching: point, visited: &visited) { return true }
+                if scrollWalk(element, direction, reaching: point, flutter: flutter, visited: &visited) { return true }
             }
         }
         if let view = node as? UIView {
-            for sub in view.subviews where scrollWalk(sub, direction, reaching: point, visited: &visited) {
+            for sub in view.subviews where scrollWalk(sub, direction, reaching: point, flutter: flutter, visited: &visited) {
                 return true
             }
         }

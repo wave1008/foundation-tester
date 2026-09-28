@@ -7,7 +7,6 @@ import FTDSL
 class ツールチップを出せること {
 
     // Flutter の Tooltip は指を離した後も showDuration(この SUT は 2 秒)だけ出ている = 両 OS で確かめられる
-    @Draft("既知の制約: Flutter の iOS はオーバーレイ表示中に a11y の矩形が 1/3 に縮む(Flutter 側の報告)")
     @Test("アイコンを長押しするとツールチップが出る")
     func S0010() {
         scenario {
@@ -31,7 +30,6 @@ class ツールチップを出せること {
         }
     }
 
-    @Draft("既知の制約: Flutter の iOS はオーバーレイ表示中に a11y の矩形が 1/3 に縮む(Flutter 側の報告)")
     @Test("アンカーをラベル(contentDescription)で長押し")
     func S0020() {
         scenario {

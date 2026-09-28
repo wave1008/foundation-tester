@@ -23,6 +23,10 @@ enum InAppSnapshot {
         var truncatedTiers: [String: Int] = [:]
         /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
         var bulkExempt: Int = 0
+        /// ノード → 枠に掛けた補正(`rescaleBelow`。掛けたものだけ)。ref ではなくノードで引く =
+        /// WebView の DOM マージで ref が振り直されても辿れる。後から AX ノードの「今の」枠を読む所
+        /// (InAppBridge.requireFocusMoved)が同じ補正を掛けるために使う
+        var rescales: [ObjectIdentifier: AXFrameRescale] = [:]
     }
 
     /// 1パス目(collect)で拾った要素。ref はまだ未採番(0)
@@ -31,6 +35,7 @@ enum InAppSnapshot {
         var frame: CGRect
         var node: NSObject
         var clip: CGRect?
+        var rescale: AXFrameRescale?
     }
 
     /// **2パス**: 集めるときは上限で打ち切らず、超過したときだけ優先度順に間引いて ref を振る
@@ -66,7 +71,7 @@ enum InAppSnapshot {
         let ordered = FTInAppBridge.backToFront(windows)   // 奥 → 手前
         for (index, window) in ordered.enumerated() {
             collect(window, depth: 0, screen: screen, front: Array(ordered[(index + 1)...]),
-                    clip: nil, visited: &visited, gathered: &gathered)
+                    clip: nil, flutter: nil, visited: &visited, gathered: &gathered)
         }
 
         let keptIndices: [Int]
@@ -87,7 +92,11 @@ enum InAppSnapshot {
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
         var clips: [Int: CGRect] = [:]
+        var rescales: [ObjectIdentifier: AXFrameRescale] = [:]
         for index in keptIndices {
+            if let rescale = gathered[index].rescale {
+                rescales[ObjectIdentifier(gathered[index].node)] = rescale
+            }
             let ref = elements.count + 1
             var info = gathered[index].info
             info.ref = ref
@@ -101,7 +110,7 @@ enum InAppSnapshot {
                            width: screen.width, height: screen.height),
             elements: elements, frames: frames, nodes: nodes, clips: clips,
             truncated: gathered.count - keptIndices.count,
-            truncatedTiers: truncatedTiers, bulkExempt: bulkExempt)
+            truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, rescales: rescales)
     }
 
     /// 手前の窓に覆われているか。**手前の窓が無ければ即 false**(通常画面のコストはゼロ)
@@ -119,13 +128,16 @@ enum InAppSnapshot {
     /// `clip` = 祖先のスクロール容器の枠の積(容器が無ければ nil)。容器の外に出た行は frame 上は
     /// 画面内でも実際には描かれていない(SwiftUI は行の AX ノードがホスティング view にしか辿れず、
     /// hitTest では見分けられない)ので、見えている範囲を別に運ぶ
+    /// `flutter` = Flutter の縮んだ AX 矩形の補正の状態(`rescaleBelow` 参照)。nil = 申告どおり
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect, front: [UIWindow],
-                                clip: CGRect?,
+                                clip: CGRect?, flutter inherited: FlutterFrames?,
                                 visited: inout Set<ObjectIdentifier>, gathered: inout [Gathered]) {
         guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
         if let view = node as? UIView, view.isHidden || view.alpha < 0.01
             || view.accessibilityElementsHidden { return }
+        let flutter = rescaleBelow(node, inherited: inherited)
+        let rescale = flutter?.rescale
 
         let type = elementType(node)
         // キーボードのキーは大量に写り込むため除外(入力は /type が担うので情報として不要)。
@@ -133,11 +145,12 @@ enum InAppSnapshot {
         // 判定は InAppBridge.keyboardIsVisible)
         if type == .keyboardKey { return }
 
-        if let info = shouldInclude(node, type: type, screen: screen),
+        let nodeFrame = frame(node, rescale: rescale)
+        if let info = shouldInclude(node, type: type, frame: nodeFrame, screen: screen),
            !isCovered(info.frame, by: front) {
             gathered.append(Gathered(
                 info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
-                frame: info.frame, node: node, clip: clip))
+                frame: info.frame, node: node, clip: clip, rescale: rescale))
         }
 
         // WKWebView の内部(WKScrollView/WKContentView)は AX を別プロセスが持つため走査しても
@@ -149,10 +162,10 @@ enum InAppSnapshot {
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
         let childClip = isScrollableContainer(node) == true
-            ? (clip ?? .infinite).intersection(axFrame(node)) : clip
+            ? (clip ?? .infinite).intersection(nodeFrame) : clip
         for child in children {
             collect(child, depth: depth + 1, screen: screen, front: front, clip: childClip,
-                    visited: &visited, gathered: &gathered)
+                    flutter: flutter, visited: &visited, gathered: &gathered)
         }
     }
 
@@ -179,8 +192,8 @@ enum InAppSnapshot {
 
     private struct Included { let frame: CGRect }
 
-    private static func shouldInclude(_ node: NSObject, type: UIKitType, screen: CGRect) -> Included? {
-        let frame = axFrame(node)
+    private static func shouldInclude(_ node: NSObject, type: UIKitType, frame: CGRect,
+                                      screen: CGRect) -> Included? {
         guard frame.width >= 2, frame.height >= 2 else { return nil }
         guard screen.isEmpty || frame.intersects(screen) else { return nil }
 
@@ -278,6 +291,53 @@ enum InAppSnapshot {
         if let tf = node as? UITextField, (tf.text ?? "").isEmpty { return nil }
         let value = node.accessibilityValue
         return (value?.isEmpty ?? true) ? nil : value
+    }
+
+    /// Flutter の画面で枠の補正に使う状態(`rescaleBelow` が木を降りながら作る)
+    struct FlutterFrames {
+        /// FlutterView の実の枠(window 座標)と画面倍率
+        let view: FTRect
+        let screenScale: Double
+        /// この下で掛ける補正。nil = 申告どおり
+        var rescale: AXFrameRescale?
+    }
+
+    /// この要素とその下で使う状態。**FlutterView で始め**、**セマンティクスの容器の自分自身のノードが
+    /// 「FlutterView ÷ 画面倍率」を申告していたらその下へ補正を掛ける**(`AXFrameRescale.shrunkSubtree`)。
+    /// **セマンティクスでない UIView(PlatformView を包む FlutterTouchInterceptingView とその中身等)で外す**
+    /// (実の view ジオメトリを持つので縮まない)。セマンティクスの UIView(FlutterSemanticsScrollView 等)は
+    /// 申告と同じく縮むので掛けたまま
+    static func rescaleBelow(_ node: NSObject, inherited: FlutterFrames?) -> FlutterFrames? {
+        if let view = node as? UIView {
+            let className = NSStringFromClass(type(of: view))
+            if className == "FlutterView" {
+                return FlutterFrames(view: ftRect(view.convert(view.bounds, to: nil)),
+                                     screenScale: Double(view.traitCollection.displayScale), rescale: nil)
+            }
+            return className.hasPrefix("FlutterSemantics") ? inherited : nil
+        }
+        // セマンティクスの容器は子の先頭に自分自身のノードを持つ(SemanticsObjectContainer。実測)
+        guard var state = inherited, state.rescale == nil,
+              NSStringFromClass(type(of: node)) == "SemanticsObjectContainer",
+              let own = axChildren(node).first,
+              let rescale = AXFrameRescale.shrunkSubtree(reported: ftRect(own.accessibilityFrame),
+                                                         view: state.view,
+                                                         screenScale: state.screenScale) else { return inherited }
+        state.rescale = rescale
+        return state
+    }
+
+    /// 補正を掛けた画面座標の枠
+    static func frame(_ node: NSObject, rescale: AXFrameRescale?) -> CGRect {
+        let raw = axFrame(node)
+        guard let rescale else { return raw }
+        let fixed = rescale.apply(ftRect(raw))
+        return CGRect(x: fixed.x, y: fixed.y, width: fixed.width, height: fixed.height)
+    }
+
+    private static func ftRect(_ rect: CGRect) -> FTRect {
+        FTRect(x: Double(rect.origin.x), y: Double(rect.origin.y),
+               width: Double(rect.width), height: Double(rect.height))
     }
 
     static func axFrame(_ node: NSObject) -> CGRect {
