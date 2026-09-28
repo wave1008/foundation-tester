@@ -63,8 +63,9 @@
 | `E2EAppFlutter/` | Flutter | TestProjects/E2E-Flutter | ios + android |
 | `E2EAppRN/` | React Native | TestProjects/E2E-RN | ios + android |
 
-**共通契約に載らない CMP 固有部品の SUT は `E2EXAppCMP/`**(TestProjects/E2EX-CMP。回すのは `Scripts/e2ex.sh`・`e2e.sh` の対象外)。
-部品ごとの癖と書き方は docs/user-docs/in_action/ui_component_patterns_ja.md、差の索引は docs/framework-differences.md §5.1
+**共通契約に載らない定番部品の SUT が別に5つ**(`E2EXAppCMP/`・`E2EXAppFlutter/`・`E2EXAppRN/`・`E2EXAppAndroid/`・
+`E2EXAppIOS/` → TestProjects/E2EX-*。回すのは `Scripts/e2ex.sh`・`e2e.sh` の対象外)。契約は `E2EXAppCMP/docs/ui-contract.md` と
+`ui-contract-wave2.md`、書き方と癖は docs/user-docs/in_action/ui_component_patterns_ja.md、差の索引は docs/framework-differences.md §5.1
 
 
 ## 領域ごとの規律(`.claude/rules/`)

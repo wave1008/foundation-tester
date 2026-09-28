@@ -273,40 +273,53 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 
 ---
 
-## 5.1 Compose Multiplatform の固有部品(E2EXAppCMP で実測・2026-09-28)
+## 5.1 各フレームワークの固有部品(E2EX で実測・2026-09-28)
 
-共通契約の SUT には載らない Material3 の定番部品は、別の SUT `E2EXAppCMP/`(契約は同ディレクトリの
-`docs/ui-contract.md`)とシナリオ `TestProjects/E2EX-CMP/` で確かめる。**利用者向けの書き方は
-`docs/user-docs/in_action/ui_component_patterns_ja.md` が正典**(ここは結論だけ)。
+共通契約の SUT に載らない**定番部品**は、別の5 SUT(`E2EXAppCMP/`・`E2EXAppFlutter/`・`E2EXAppRN/`・`E2EXAppAndroid/`・
+`E2EXAppIOS/`。画面・`#id`・echo の契約は `E2EXAppCMP/docs/ui-contract.md` と `ui-contract-wave2.md`、SUT ごとの差分は
+各 `docs/ui-contract.md`)と `TestProjects/E2EX-*` で確かめる。回すのは `Scripts/e2ex.sh`。
+**利用者向けの書き方は `docs/user-docs/in_action/ui_component_patterns_ja.md` が正典**(ここは結論だけ)。
+既知の制約に当たるシナリオは `@Draft("既知の制約: …" / "調査中: …")` で既定の実行から外してある(名指しで回すと再現する)。
 
 | 部品 | 違い | 区分 |
 |---|---|---|
-| ドロワー・DropdownMenu(両 OS)・ModalBottomSheet(iOS) | 開いている間、背後の画面が木から丸ごと消える(スクリムの「閉じる」ボタンだけ残る)。背後の echo は閉じてから読み、外側タップは座標でしか書けない | B |
-| ExposedDropdownMenuBox の読み取り専用 TextField | 中身は `value`。`.text` は iOS = ラベル・Android = nil | B |
-| アイコンの代わりに `Text` を置いた IconButton | iOS のラベルが contentDescription と文字の連結(`戻る, ←`)になる。`Icon(contentDescription=)` なら連結しない | B |
-| HorizontalPager・ScrollableTabRow | 横の探索は `scrollFrame:` 必須(既定は画面中央を払う)。「scrollFrame を渡せ」の示唆は Android の失敗文言にだけ出る | B |
-| Android(ジェスチャーナビゲーション) | 画面端から始めた横の払いは OS の戻る。ドロワーを `startMarginRatio: 0.05` で払うと前の画面へ戻る | B |
-| TooltipBox(Android) | 押している間だけ出て指を離すと消える(adb の実タッチで確認: 押下中 `tooltip=shown`・離すと `hidden`)。表示中も文字は別ウィンドウで木に無い → DSL(離してから検証)では確かめられない。ツールの不具合ではない | B |
-| DatePicker の日付セル・Snackbar の中身 | testTag を付けられない → ラベルで指す(両 OS で緑) | — |
+| モーダル(ドロワー・メニュー・シート) | 開いている間、背後の画面が木から消える(CMP 両 OS・SwiftUI) | B |
+| 選択式の欄 | 値の置き場が違う: CMP = `value`(iOS の .text はラベル・Android は nil)/ SwiftUI `Picker(.menu)` = **ラベル**(`果物, バナナ`)/ Flutter `DropdownMenu` = 内側の要素の value(iOS)・Android は木に無い / Android `MaterialAutoCompleteTextView` = 木に無い | B |
+| SwiftUI `Stepper` | 増減ボタンが `#<id>-Increment` / `#<id>-Decrement` | B |
+| iOS のシステムの戻る | UIKit・SwiftUI・RN native-stack は `#BackButton`(ラベルは前の画面のタイトル) | A |
+| 引っ張って更新(iOS) | SwiftUI `.refreshable`・RN の `RefreshControl` は長く引かないと始まらない(約 260pt では走らず約 470pt で走る) | B |
+| タブのラベル | Flutter `Tab`・RN material-top-tabs はラベルに「Tab 3 of 3」「tab, 2 of 3」が付く | B |
+| ドロワーを払って開く | Flutter `Drawer`・Android `DrawerLayout`・react-navigation drawer は端からの払いだけ。端は Android の戻るの帯 | B |
+| Flutter の戻る(iOS) | go_router + MaterialPage で、合成したエッジスワイプでは戻らない(始点 x=1〜19・0.25〜0.8 秒)。原因未特定 | B |
+| Flutter の iOS のオーバーレイ | DropdownMenu・Tooltip の表示中、a11y の矩形が 1/scale に縮む。**in-app も XCUITest も同じ = Flutter 側の報告**。タップが全部ずれる | B(補正は未着手) |
+| Flutter `SearchAnchor` | バーを押すと別の入力欄(`#id` 無し)が開く。ツールは焦点の移った欄への type を断る(重複入力の安全策) | B |
+| CMP の iOS | 既定の `OnFocusBehavior.FocusableAboveKeyboard` がキーボードの高さぶん画面全体を押し上げる | B |
+| RN の iOS | `accessible` な祖先が子を1要素へ畳む(paper Tooltip・gorhom BottomSheetModal の既定)/ 1画面に Navigator を2つ置くと落ちる / paper Menu は Android の戻るを消費しない | B |
+| Android BottomAppBar | FAB の切り欠きで幅が足りないと項目が「その他のオプション」へ畳まれる | B |
+| 並べ替え・ピンチ | 同じドラッグ量でも着地が ±1 行ずれる / 指示した倍率に届かない(Android `ScaleGestureDetector` で 2.0 → 1.2) | B |
+| TooltipBox(Compose・Android) | 押している間だけ出て指を離すと消える。表示中も文字は別ウィンドウ | B |
 
-**ツール側で見つけて直した不具合(どれも黙って誤る型。回帰テストは `TestProjects/E2EX-CMP/scenarios/90_不具合の回帰.swift` と `15_検索バー.swift`)**:
+**ツール側で見つけて直した不具合(回帰テストは各 `90_不具合の回帰.swift` と `15_検索バー.swift`)**:
 
-| 回帰テスト | 症状 → 直し方 | 起きた構成 |
-|---|---|---|
-| 15 S0010/S0020 | M3 SearchBar は入力欄の value に説明文を出す → `type` の読み返しが追送を繰り返して入力が重複(`apapapapap`)→ **値が1文字も動かなければ先に画面を OCR で見る**(描かれていれば受理・注記 `type-readback-unchanged`)。**追送は1回まで**、追送しても動かなければ失敗。OCR は暖機を待ち(締め切りから除外)、英語モデルのキリル同形異字(`ap`→`аpар`)を `OCRHomoglyphs` で畳む | iOS hybrid |
-| 90 S0010 | HorizontalPager の `scrollToLeftEdge` が page=4→2 で端と判定して緑 → 端の署名(`edgeSignature`)に id とラベルを入れた(型と座標だけだと同じレイアウトの面を区別できない) | 全エンジン |
-| 90 S0020 | PullToRefresh の一覧で `scrollToTop` が端の確認の送りで更新を 1 回余分に走らせる → Android ブリッジ(v74)が容器の `scrollActions` を申告し、その向きに送れない容器なら送らずに端と確定(`ScrollActionAvailability`)。**iOS XCUITest は未修正**(容器の申告が無い) | Android(修正)・iOS XCUITest(残る) |
-| 90 S0040 | in-app の `tap(x:y:)` が Compose の Popup の外側タップ閉じに届かないのに緑 → 自前描画(か判定不明)で木のどの要素も含まない点は最初から XCUITest で撃つ | iOS hybrid |
-| 90 S0050 | `swipeBy` の経路は中心対称なので、幅いっぱいの要素に 0.9 を渡すと始点が OS の戻るの帯(78px)に入り戻るが走って緑 → 帯の幅を端末の SystemUI の dump から読み(`AndroidBackGestureEdges`)、経路を帯の外へ寄せる | Android |
-| — | `swipeBy` の比率が上限(片側 0.9)を超えても黙って丸めていた(小さい見出しで「14 倍」が数 pt)→ 注記 `swipe-by-ratio-capped`(警告から) | 全エンジン |
+| 症状 → 直し方 | 起きた構成 |
+|---|---|
+| M3 SearchBar(iOS)で `type` が入力を重複(`apapapapap`)→ 値が1文字も動かなければ OCR で画面を見る(暖機を待つ・キリル同形異字を `OCRHomoglyphs` で畳む)・追送は1回まで | iOS hybrid |
+| HorizontalPager の `scrollToLeftEdge` が端の手前で止まる → 端の署名に id とラベル(**送っている容器の中だけ**。容器の外の表示は送りの副作用で変わる = `edgeContentRegion`) | 全エンジン |
+| 上端で状態が行き来する一覧(RefreshIndicator)で上限まで送る → **一度見た署名へ戻ったら進んでいない**(ドライバが動いたと申告した直後は数えない) | Flutter iOS |
+| in-app の `tap(x:y:)` が Popup の外側に届かないのに緑 → 自前描画(か不明)で要素の無い点は XCUITest | iOS hybrid |
+| `swipeBy` の始点が Android の戻るの帯 → 帯の幅を SystemUI の dump から読んで経路を寄せる / 比率 >0.9 は注記 | Android |
+| `scrollToTop` の確認の払いが更新を撃つ → Android ブリッジ(v74)の `scrollActions` で送らずに端を確定。**容器は画面中央を含む最小のもの**(入れ子の SwipeRefreshLayout で効かなかった) | Android |
+| スクロール探索が、末尾で続きを読み込む一覧を途中で打ち切る → 探索の打ち切りにも `edgeClaimGraceAfterMove` | 全エンジン |
+| フォーカスを取らない別ウィンドウ(ExposedDropdown・Spinner の候補)の中身が木に無い → Android ブリッジ(v75)が同じアプリの手前の窓の中身を足す(`inOverlayWindow`。覆いの判定から除外) | Android |
 
-**不具合ではなかったもの**: iOS でボトムシートを払って閉じられなかったのは `swipeBy` の比率の意味(対象の大きさに
-対する割合)を取り違えたシナリオの誤り(`swipeElementToElement` なら閉じる)。Android のツールチップは上の B の行。
+**残っている制約(`@Draft` の理由と対応)**: Android の指の払いで上端へ戻す最後の1本が引っ張って更新になる(案: a11y の
+スクロール操作で送る)/ Flutter iOS のオーバーレイ中の座標(案: a11y の根と FlutterView の枠の比から補正)/ iOS in-app で
+PageView・PagerView の中を探索できない / 貼り付く見出しの下の行を押すと見出しに当たる / Android の一部の欄で
+ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
+スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
 
-**同じ型の残り(未対処・再現していない)**: テキストの視覚検証の OCR 段(`RegionText` → `TranscriptMatch`)も英語モデルの
-キリル同形異字で「丸ごと読めない」になりうる(近道を逃して FM へ回るだけなら無害だが、FM の段が無い構成の
-`OCROnlyVisibility` では誤った赤になりうる)。固定コーパス `Tests/Fixtures/OcclusionCrops/` が読みを等号で固定しているので、
-畳むならコーパスの読みの変化を1件ずつ見てから
+**同じ型の残り(未対処・再現していない)**: テキストの視覚検証の OCR 段も英語モデルのキリル同形異字で読み違えうる
+(固定コーパス `Tests/Fixtures/OcclusionCrops/` の読みを1件ずつ見てから畳む)。
 
 ---
 

@@ -127,7 +127,7 @@ needs no changes ([details](overview/about.md)).
 ## Tutorial (In action)
 
 - [Writing robust scenarios](in_action/writing_robust_scenarios.md)
-- [UI component patterns and quirks (Compose Multiplatform)](in_action/ui_component_patterns.md)
+- [UI component patterns and quirks](in_action/ui_component_patterns.md)
 - [Running on CI](in_action/ci.md)
 - [Remote runners](in_action/remote_runners.md)
 - [Setting up a remote runner](in_action/remote_runner_setup.md)

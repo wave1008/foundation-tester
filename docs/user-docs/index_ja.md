@@ -126,7 +126,7 @@ FM を使いません。テストはエージェント(MCP)に
 ## チュートリアル(In action)
 
 - [壊れにくいシナリオの書き方](in_action/writing_robust_scenarios_ja.md)
-- [UI 部品ごとの書き方と癖(Compose Multiplatform)](in_action/ui_component_patterns_ja.md)
+- [UI 部品ごとの書き方と癖](in_action/ui_component_patterns_ja.md)
 - [CI で回す](in_action/ci_ja.md)
 - [リモートランナー](in_action/remote_runners_ja.md)
 - [リモートランナーのセットアップ](in_action/remote_runner_setup_ja.md)
