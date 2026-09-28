@@ -227,13 +227,6 @@ public protocol AppDriver {
     /// (既定 nil に落とすと、gesture navigation の端末で swipeBy がこの帯の中に始点/終点を
     /// 置き back に化ける。`ScrollGeometry.panPath` の `backGestureEdgeWidths` 参照)
     func backGestureEdgeWidths() async -> (left: Double, right: Double)?
-    /// 画面下端の、OS がタッチを消費する帯(Android のジェスチャナビゲーションバー)。
-    /// nil = 無し/不明(iOS・Android の未対応経路)。**プロトコル要件として宣言すること**
-    /// (install(packagePath:) と同じ理由。存在型越しの呼び出しは要件でなければ静的ディスパッチで
-    /// 既定実装に落ち、実装したドライバが無視される)。**ラッパードライバは base の値を透過すること**
-    /// (既定 nil に落とすと、この帯へ潜ったタップが `StepExecutor.liftCoveredTarget` に見えなくなる)。
-    /// screen は実装がキャッシュの鍵に使うため渡す(回転で帯の矩形が変わるので取り直しが要る)
-    func bottomSystemBar(screen: FTRect) async -> FTRect?
 }
 
 extension DriverError: StepFailureKindProviding {
@@ -458,9 +451,6 @@ public extension AppDriver {
 
     /// 既定は nil(除外なし)。答えられるのは Android(AndroidDriver)だけ
     func backGestureEdgeWidths() async -> (left: Double, right: Double)? { nil }
-
-    /// 既定は nil(帯なし/不明)。答えられるのは Android(AndroidDriver)だけ
-    func bottomSystemBar(screen: FTRect) async -> FTRect? { nil }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)

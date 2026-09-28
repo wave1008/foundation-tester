@@ -1530,17 +1530,6 @@ extension StepExecutor {
                 coverName = coverName ?? TapTargetGeometry.describe(over)
                 coverRect = over.frame
             }
-            // Android のジェスチャナビゲーションバー(木に載らない OS の帯。keyboard/overlay と違い
-            // 木からは判定できないので、両方が黙っているときだけドライバへ聞く =
-            // 共通経路の adb 呼び出しは増えない(AndroidDriver 側でキャッシュ済み)
-            if jump == nil,
-               let band = await driver.bottomSystemBar(screen: currentSnapshot.screen),
-               TapTargetGeometry.tapPointIsInside(current, band: band) {
-                jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: band,
-                                                           container: container)
-                coverName = coverName ?? "the system navigation bar"
-                coverRect = band
-            }
             // **指を当てるのは覆いを避けた領域**(理由は uncoverDragArea)
             guard let jump, let coverRect,
                   let dragArea = TapTargetGeometry.uncoverDragArea(container: container,
@@ -1553,15 +1542,11 @@ extension StepExecutor {
             let afterBand = KeyboardOcclusion.resolve(reported: after.keyboardFrame,
                                                       in: after.elements).frame
                 ?? TapTargetGeometry.keyboardBandFromChrome(in: after.elements, screen: after.screen)
-            var stillCovered = (afterBand.flatMap {
+            let stillCovered = (afterBand.flatMap {
                     TapTargetGeometry.keyboardCoveredAdvisory(moved, keyboardFrame: $0)
                 } != nil)
                 || TapTargetGeometry.overlayCoveringForUncover(
                        moved, in: after.elements, screen: after.screen) != nil
-            // **ナビゲーションバーの帯も再確認する** —— 送った先がまだ帯の内側なら成功と言わない
-            if !stillCovered, let band = await driver.bottomSystemBar(screen: after.screen) {
-                stillCovered = TapTargetGeometry.tapPointIsInside(moved, band: band)
-            }
             if !stillCovered {
                 return (moved, after,
                         "scrolled the container to bring the target out from under"

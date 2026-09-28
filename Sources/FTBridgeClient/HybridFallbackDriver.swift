@@ -287,9 +287,6 @@ public final class HybridFallbackDriver: AppDriver {
     public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
         await active.backGestureEdgeWidths()
     }
-    public func bottomSystemBar(screen: FTRect) async -> FTRect? {
-        await active.bottomSystemBar(screen: screen)
-    }
     public func status() async throws -> StatusResponse { try await active.status() }
     public func screenshot() async throws -> Data { try await active.screenshot() }
     /// 起動系は**必ず primary**(in-app は dylib 注入を伴う再起動で、XCUITest の launch では

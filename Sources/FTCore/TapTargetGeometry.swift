@@ -662,15 +662,6 @@ public enum TapTargetGeometry {
     /// 帯とみなす幅(容器の幅に対する比)。見出しは容器いっぱい(実測 996/996)。縁に置いた小さなラベルを外す
     static let pinnedBandMinimumWidthRatio = 0.8
 
-    /// 要素の中心が帯の内側にあるか(Android のジェスチャナビゲーションバーのような、木に載らない
-    /// OS の帯専用。木の遮蔽判定と違い、この帯は常にタッチを消費するので操作可能かは問わない)
-    public static func tapPointIsInside(_ element: ElementInfo, band: FTRect) -> Bool {
-        let cx = element.frame.centerX
-        let cy = element.frame.centerY
-        return cx >= band.x && cx <= band.x + band.width
-            && cy >= band.y && cy <= band.y + band.height
-    }
-
     public static func uncoverScrollJump(target: ElementInfo, coveredBy over: FTRect,
                                          container: FTRect,
                                          minimumJump: Double = 60, margin: Double = 8) -> Double? {
