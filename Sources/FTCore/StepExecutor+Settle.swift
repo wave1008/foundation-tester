@@ -40,7 +40,9 @@ extension StepExecutor {
             guard let (element, _) = LocatorResolver.resolve(step: step, in: snapshot,
                                                   strictForAssert: true) else { return false }
             if element.frame == previous { return true }
-            motion.append(max(abs(element.frame.x - previous.x), abs(element.frame.y - previous.y)))
+            let moved = max(abs(element.frame.x - previous.x), abs(element.frame.y - previous.y))
+            if moved <= SettleMotion.restThresholdPt { return true }
+            motion.append(moved)
             previous = element.frame
             if poll + 1 >= Self.scrollSettleMaxPolls, !SettleMotion.isDecelerating(motion) { break }
         }
@@ -403,7 +405,14 @@ extension StepExecutor {
             lastSnapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += lastSnapshotMs
             if current == previous { return (current, last, true, !motion.isEmpty) }
-            motion.append(SettleMotion.displacement(from: previousElements, to: last.elements))
+            let displacement = SettleMotion.displacement(from: previousElements, to: last.elements)
+            // 名前のある要素が全部 restThresholdPt 以内しか動かず、要素の出入りも無ければ止まったとみなす
+            // (フリングの尾は署名が一致しないまま這い続ける。settleAfterScroll と同じ規律)
+            if let displacement, displacement <= SettleMotion.restThresholdPt,
+               last.elements.count == previousElements.count {
+                return (current, last, true, true)
+            }
+            motion.append(displacement)
             previous = current
             previousElements = last.elements
             // 基本予算(6周)を超えて回すのは**まだ減速しているとき**だけ。
@@ -425,14 +434,11 @@ extension StepExecutor {
     /// **縦に抜いてはいけない**: 容器がスクロールとして消費して内容が動き、直後に
     /// 「今ここにある」を確かめる assertion が壊れる(実測: E2E-CMP/ios-inapp の S0020 が 0/3)。
     /// **止めるという選択肢も無い**: 完全に外すと肩代わりが効かず S0080 が CMP/ios で落ちる。
-    /// **抜けられないときだけ nil**(= その回は撃たない)。矩形が画面幅いっぱいだと左右どちらへも
-    /// 出られない —— そこで**開始点をそのまま返すと**、始点と終点が同じ 0.30 秒のプレスは
+    /// **横に抜けられないときは nil**(呼び手 `emptyDragEnd` が縦の抜きへ落とす)。矩形が画面幅いっぱいだと
+    /// 左右どちらへも出られない —— そこで**開始点をそのまま返すと**、始点と終点が同じ 0.30 秒のプレスは
     /// タップそのもので、この doc が禁じている「矩形の中で離す」をそのまま実装してしまう。
-    /// 実機(iPhone 実機・SmartNews)の全幅セルで `ft_scroll_to` が**記事を開く**形で 2/2 再現
-    ///。自前 SUT の行はすべてインセット(例 16,270 330x56)なので E2E には出ない
-    /// —— 全幅の行は実アプリに固有。撃つのは Compose / Flutter と判定できたときだけ
-    /// (`shouldEmptyDrag`。不明なら撃たない)。
-    /// 撃たない代償は「容器が次の1タッチを消費したまま」= 呼び手のやり直しで回復するが、
+    /// 実機(iPhone 実機・SmartNews)の全幅セルで `ft_scroll_to` が**記事を開く**形で 2/2 再現。
+    /// 撃つのは Compose / Flutter と判定できたときだけ(`shouldEmptyDrag`。不明なら撃たない)。
     /// 撃った場合の代償は**アプリの状態が変わって戻せない**(読み取り専用のはずの scrollTo が書き込む)
     /// 空打ちの抜き先。**探索の軸と直交する向きへ抜く** —— 横の探索(ページャ・カルーセル)で横へ抜くと、
     /// 横の容器にとってはページ送りのジェスチャそのもので、送り終わる前のページを掴んで前のページへ戻す
@@ -443,16 +449,25 @@ extension StepExecutor {
         if direction == FTSwipeDirection.left.rawValue || direction == FTSwipeDirection.right.rawValue {
             return emptyDragEndY(of: element, screen: screen).map { (x, $0) }
         }
-        return emptyDragEndX(of: element, from: x, screen: screen).map { ($0, y) }
+        if let toX = emptyDragEndX(of: element, from: x, screen: screen) { return (toX, y) }
+        // **横に抜けられない全幅の行は縦に抜く**(画面の中心へ寄る向き)。撃たないと容器が次の1タッチを吸ったまま
+        // で、直後のタップが黙って空振りする(E2EX-CMP のホーム = 全幅の ListItem: tap が緑のまま遷移せず次で赤)。
+        // 縦の抜きは容器がスクロールとして消費して中身が半行ぶん動くが、呼び手は撃った後に整定を待って解決し直す
+        // ので座標は追いつき、中心へ寄る向きなら対象は画面から出ない
+        return emptyDragEndY(of: element, screen: screen).map { (x, $0) }
     }
 
     /// 横の探索で使う縦の抜き先(`emptyDragEndX` の縦版。矩形のすぐ外で離す = クリックとして成立させない)。
     /// 下端の a11y 空白帯には降ろさない
     static func emptyDragEndY(of element: ElementInfo, screen: FTRect) -> Double? {
         let below = element.frame.y + element.frame.height + 4
-        if below <= screen.y + screen.height - Self.bottomUncoveredBand - 1 { return below }
         let above = element.frame.y - 4
-        return above >= screen.y + 1 ? above : nil
+        let belowOK = below <= screen.y + screen.height - Self.bottomUncoveredBand - 1
+        let aboveOK = above >= screen.y + 1
+        // 画面の中心へ寄る向きを先に採る(中身が動くなら対象が画面から出ない側へ)
+        let lowerHalf = element.frame.centerY > screen.y + screen.height / 2
+        if lowerHalf { return aboveOK ? above : (belowOK ? below : nil) }
+        return belowOK ? below : (aboveOK ? above : nil)
     }
 
     static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double? {

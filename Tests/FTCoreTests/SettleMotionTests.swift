@@ -66,6 +66,24 @@ final class SettleMotionTests: XCTestCase {
     }
 
     /// 横ばい = 等速のアニメーション。待っても止まらないので抜ける
+    /// 撮る間隔のぶれで 1 点比較が「増加」に見える減速(Compose iOS の XCUITest フリングの実測値)は待ち続ける
+    func testNoisyDecelerationKeepsWaiting() {
+        XCTAssertTrue(SettleMotion.isDecelerating([74, 98, 38, 50]))
+        XCTAssertTrue(SettleMotion.isDecelerating([74, 98, 38, 50, 19]))
+        XCTAssertTrue(SettleMotion.isDecelerating([74, 98, 38, 50, 19, 15, 20]))
+    }
+
+    /// ぶれのある等速(横ばい)は和で比べても等しいので待たない
+    func testNoisySteadyMovementStopsWaiting() {
+        XCTAssertFalse(SettleMotion.isDecelerating([20, 22, 20, 22]))
+        XCTAssertFalse(SettleMotion.isDecelerating([22, 20, 22, 20, 22, 20]))
+    }
+
+    /// 既定をリテラルで固定する(他のテストが差し替えると production の既定を1度も通らない)
+    func testRestThresholdIsPinned() {
+        XCTAssertEqual(SettleMotion.restThresholdPt, 2)
+    }
+
     func testSteadyMovementStopsWaiting() {
         XCTAssertFalse(SettleMotion.isDecelerating([20, 20, 20]))
     }

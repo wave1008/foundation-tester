@@ -313,6 +313,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | フォーカスを取らない別ウィンドウ(ExposedDropdown・Spinner の候補)の中身が木に無い → Android ブリッジ(v75)が同じアプリの手前の窓の中身を足す(`inOverlayWindow`。覆いの判定から除外) | Android |
 | 横の探索(ページャ)で見つけた直後にページが前へ戻り、対象が消える → 探索後の空打ち(自前描画の容器が吸う1タッチの肩代わり)を**探索の軸と直交する向き**へ抜く(`StepExecutor.emptyDragEnd`。横へ抜くとページャがページ送りとして受けていた) | iOS(Compose・Flutter) |
 | RN の PagerView(`UIPageViewController`)を in-app で送れず探索が「何も動かない」で打ち切る → 指の下が `UIPageViewController` のスクロールビューなら 501 で XCUITest へ回す(v133) | iOS in-app |
+| XCUITest の探索が見つけた直後の tap が Compose の全幅の行(ListItem)で吸われて遷移せず、緑のまま次で赤 → ①フリングの尾(1pt/周で 1 秒以上這う)を止まったとみなす(`SettleMotion.restThresholdPt` = 2pt。1 点比較の減速判定は撮る間隔のぶれで「増加」に見えて打ち切っていたので 2 点ずつの和で比べる)②横に抜けられない全幅の行の空打ちは画面の中心へ寄る向きに縦へ抜く(`StepExecutor.emptyDragEnd`。インセットの行は従来どおり横) | iOS(Compose・Flutter) |
 | 貼り付く見出し(操作不能のテキストの帯)に潜った行を押すと見出しに当たる → 撃つ前に送って外す対象を「容器の縁に揃った名前つきの帯」へ広げる(`TapTargetGeometry.isPinnedTextBand`。名前の無い暗幕・縁から浮いたラベルは従来どおり外さない) | 全エンジン |
 | Flutter の iOS でオーバーレイを出した画面の a11y の矩形が 1/画面倍率に縮み、タップが全部ずれる → in-app ブリッジが「FlutterView ÷ 倍率」を申告するセマンティクスの容器を見つけ、その下を実の枠へ写す(`FTCore.AXFrameRescale`・v132。PlatformView の中身は実の枠なので掛けない) | iOS in-app |
 | 上端へ戻す最後の1本のドラッグが、端を越えた余りで入れ子の親(SwipeRefreshLayout・RefreshControl)を引っ張り更新を走らせる → 端送りは a11y のスクロール操作で送る(ブリッジ v78 `POST /scrollAction`。軸の合う最小の容器・軸が分からなければ従来のドラッグ・送れない向きなら「もう端」) | Android |
@@ -320,6 +321,10 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 **残っている制約(`@Draft` の理由と対応)**: Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
+**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest` で 13 本)**: CMP の refresh S0020(上) /
+Flutter の tooltip・menu(オーバーレイ後の 1/3 座標は XCUITest では未補正)/ RN の sticky・date(XCUITest の木は全画面の
+`#Toolbar` を手前に置くので、覆いの判定が見出しでなく Toolbar を採り lift が効かない)/ SwiftUI の pinch reset・sheet の
+探索・inputs S0020/30/40 / CMP の inputs S0030/40(打鍵が欄に入らない)。
 
 **同じ型の残り(未対処・再現していない)**: テキストの視覚検証の OCR 段も英語モデルのキリル同形異字で読み違えうる
 (固定コーパス `Tests/Fixtures/OcclusionCrops/` の読みを1件ずつ見てから畳む)。

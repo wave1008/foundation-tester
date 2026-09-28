@@ -14,6 +14,12 @@ import Foundation
 
 public enum SettleMotion {
 
+    /// これ以下の 1 周の変位(pt / px)は「止まった」とみなす。iOS の XCUITest で Compose のフリングは
+    /// 尾を引き、1 秒以上 1pt/周で這う(実測: 74, 98, …, 3, 1, 3, 1)。撃つ座標は要素の中心なので、
+    /// 1 周にこの程度のずれは触れる要素の最小の大きさ(44pt)の中に収まり、待つ意味が無い。
+    /// **署名の完全一致は別に残す**(こちらは「要素が出入りしていない」まで言う)
+    public static let restThresholdPt: Double = 2
+
     /// 連続する2枚の木の「動いた量」(pt)。**共通する要素だけ**で測る ——
     /// スクロールでは行が出入りするので、集合が変わること自体を動きと混同しない。
     ///
@@ -75,6 +81,14 @@ public enum SettleMotion {
         if latest == 0 { return false }
         guard history.count >= 2 else { return true }
         guard let previous = history[history.count - 2] else { return true }
+        // **4 点以上あれば 2 点ずつの和で比べる**: 1 周ごとの変位は撮る間隔のぶれで前後する
+        // (実測 Compose iOS の XCUITest フリング: 74, 98, 38, 50, 19, 15, 20 = 減速しているのに
+        // 1 点比較では 3 回「増加」に見えて、動いている最中に打ち切った)。等速(横ばい)は和でも等しいので
+        // 従来どおり待たない
+        if history.count >= 4,
+           let p1 = history[history.count - 3], let p2 = history[history.count - 4] {
+            return latest + previous < p1 + p2
+        }
         return latest < previous
     }
 }

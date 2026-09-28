@@ -120,6 +120,24 @@ extension StepExecutorTests {
         XCTAssertEqual(up.y, 786)
     }
 
+    /// **横に抜けられない全幅の行は縦に抜く**(画面の中心へ寄る向き)。E2EX-CMP のホームの ListItem
+    /// (0,782 402x56)で、撃たないと容器が次のタップを吸って遷移しなかった
+    func testFullWidthRowLeavesVerticallyTowardTheCentre() throws {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let low = framed(ref: 1, id: "nav_time", x: 0, y: 782, width: 402, height: 56)
+        let up = try XCTUnwrap(StepExecutor.emptyDragEnd(of: low, x: 201, y: 810, searching: "up", screen: screen))
+        XCTAssertEqual(up.x, 201)
+        XCTAssertEqual(up.y, 778, "下半分の行は上へ抜く(中身が上へ動いて対象は中心へ寄る)")
+        let high = framed(ref: 2, id: "nav_pager", x: 0, y: 118, width: 402, height: 56)
+        let down = try XCTUnwrap(StepExecutor.emptyDragEnd(of: high, x: 201, y: 146, searching: nil, screen: screen))
+        XCTAssertEqual(down.y, 178, "上半分の行は下へ抜く")
+        // インセットの行は従来どおり横へ抜く(縦へは落ちない)
+        let inset = framed(ref: 3, id: "row", x: 16, y: 782, width: 330, height: 56)
+        let side = try XCTUnwrap(StepExecutor.emptyDragEnd(of: inset, x: 181, y: 810, searching: "up", screen: screen))
+        XCTAssertEqual(side.y, 810)
+        XCTAssertEqual(side.x, 350)
+    }
+
     /// **全幅の行では空打ちの終点が作れない**ので撃たない。左右どちらへも 4pt 出られないとき、
     /// 以前は開始点をそのまま返しており、始点=終点の 0.30 秒プレスは**タップとして成立する**
     /// —— emptyDragEndX の doc が禁じている「矩形の中で離す」を実装自身が踏んでいた。
@@ -718,6 +736,35 @@ extension StepExecutorTests {
         XCTAssertTrue(outcome.driverFallback?.contains(StepNote.settleCapped.text) == true,
                       "表示: \(outcome.driverFallback ?? "-")")
         XCTAssertEqual(outcome.notes, [.settleCapped])
+    }
+
+    /// フリングの尾(1 周に `SettleMotion.restThresholdPt` 以内しか動かない)は止まったとみなし、
+    /// 打ち切りにしない(Compose iOS の XCUITest で実測: 1 秒以上 1pt/周で這い、掴んだ座標は行の中に収まる)
+    func testCreepingFlingTailCountsAsSettled() async throws {
+        let log = CallLog()
+        // 最初の数枚には無く(探索前の読みも消費する)、送った後に 1pt ずつ這う行が出る(尽きたら最後を繰り返す)
+        let script: [[ElementInfo]] = [[], [], []] + (0..<40).map { movingRow(y: 300 + Double($0)) }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: script)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
+
+        let outcome = await executor.execute(
+            FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_01"), direction: "up", maxSwipes: 5))
+
+        guard case .passed = outcome.status else { return XCTFail("見つかっているはず: \(outcome.status)") }
+        XCTAssertFalse(outcome.notes.contains(.settleCapped), "這う尾を打ち切りと言ってはいけない: \(outcome.notes)")
+    }
+
+    /// 対: 閾値より大きく動き続ける画面は従来どおり打ち切る(「常に止まった」と言う変異を落とす)
+    func testStillMovingBeyondTheThresholdIsCapped() async throws {
+        let log = CallLog()
+        let script: [[ElementInfo]] = [[], [], []] + (0..<60).map { movingRow(y: 300 + Double($0) * 10) }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: script)
+        let executor = StepExecutor(driver: primary, isAndroid: false)
+
+        let outcome = await executor.execute(
+            FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_01"), direction: "up", maxSwipes: 5))
+
+        XCTAssertTrue(outcome.notes.contains(.settleCapped), "10pt/周で動き続ける画面は打ち切り: \(outcome.notes)")
     }
 
     /// 注記は**ステップごとに捨てる**こと(前ステップの打ち切りを次ステップへ持ち越さない)
