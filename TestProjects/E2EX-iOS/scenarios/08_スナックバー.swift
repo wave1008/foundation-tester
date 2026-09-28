@@ -16,7 +16,8 @@ class スナックバーを操作できること {
                 }.action {
                     tap("#btn_show_snackbar")
                 }.expectation {
-                    exist("削除しました")
+                    // すぐ消える部品は視覚検証を外す(検証が終わる前に消えると「見つからない」になる)
+                    exist("削除しました", requireVisible: false)
                 }
             }
             scene(2, "元に戻す") {
@@ -39,7 +40,7 @@ class スナックバーを操作できること {
                     tap("#nav_snackbar", scroll: .down)
                 }.action {
                     tap("#btn_show_snackbar_short")
-                    exist("保存しました")
+                    exist("保存しました", requireVisible: false)
                     waitForClose("保存しました", waitSeconds: 10)
                 }.expectation {
                     select("#txt_snackbar_result").textIs("snackbar=short-dismissed")

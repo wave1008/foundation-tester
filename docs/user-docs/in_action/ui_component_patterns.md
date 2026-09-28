@@ -270,9 +270,11 @@ tap("OK")
 | Android View | Material `Snackbar` (`setDuration` set explicitly to 10000ms / 4000ms; the default LENGTH_LONG/SHORT is not used) |
 | SwiftUI (iOS) | **No stock snackbar component**, so it is a custom overlay. Behaviour is the same |
 
-**Current limitation**: On a project's very first run, short-lived elements such as a snackbar or a
-toast can disappear while the tool warms up OCR (only on the first run of an execution profile with
-visual verification enabled). There is no workaround; it does not happen on subsequent runs.
+**Turn visual verification off when checking short-lived components**: `exist("Deleted", requireVisible: false)`.
+Text visual verification captures the screen and reads it, which takes time (more so with many parallel
+lanes, on a busy machine, or on a project's first run while OCR warms up). If the component disappears
+before the verification finishes, the step fails with "not found" even though it was shown. With it
+turned off, the check only confirms that the element is in the tree.
 
 ## Grid
 
