@@ -27,6 +27,17 @@ final class ScrollActionsSkipsEdgeSwipeTests: XCTestCase {
         XCTAssertGreaterThan(driver.swipes, 0, "端ではない容器なのに1本も送らずに終わった")
     }
 
+    /// **witness**: 入れ子の容器(SwipeRefreshLayout の中の RecyclerView)。「スクロール可能がちょうど1つ」の
+    /// 規則だと外側と内側の2つで nil になり、確認の swipe が引っ張って更新を撃っていた(E2EX-Android の 90 S0020)。
+    /// 画面中央を含む最小の容器(内側)の申告で端と分かる
+    func testNestedContainersUseTheInnermostOneAtTheScreenCentre() async throws {
+        let driver = ScrollActionsDriver(scrollActions: ["forward", "down"], nestedInRefreshLayout: true)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true)
+            .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.swipes, 0, "入れ子で内側の申告を見ずに確認の swipe を送った")
+    }
+
     /// iOS 相当(scrollActions を申告しない)は今までどおり: 署名の不変化だけで確定するので撃つ
     func testScrollToTopStillSwipesWhenScrollActionsUnknown() async throws {
         let driver = ScrollActionsDriver(scrollActions: nil)
@@ -41,10 +52,12 @@ final class ScrollActionsSkipsEdgeSwipeTests: XCTestCase {
 /// 端判定の分岐を切り替える。中身が本当に動くかは関知しない(署名は最初から不変 = 送る前から端の形)
 private final class ScrollActionsDriver: AppDriver {
     private let scrollActions: [String]?
+    private let nestedInRefreshLayout: Bool
     private(set) var swipes = 0
 
-    init(scrollActions: [String]?) {
+    init(scrollActions: [String]?, nestedInRefreshLayout: Bool = false) {
         self.scrollActions = scrollActions
+        self.nestedInRefreshLayout = nestedInRefreshLayout
     }
 
     func status() async throws -> StatusResponse {
@@ -66,14 +79,21 @@ private final class ScrollActionsDriver: AppDriver {
         swipes += 1
     }
     func snapshot() async throws -> SnapshotResponse {
-        SnapshotResponse(
-            sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
-            elements: [
-                ElementInfo(ref: 1, type: "other", identifier: "list", label: nil, value: nil,
-                            placeholder: nil, enabled: true,
-                            frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 1,
-                            scrollable: true, scrollActions: scrollActions),
-            ],
-            truncatedCount: 0)
+        var elements: [ElementInfo] = []
+        if nestedInRefreshLayout {
+            // 外側の SwipeRefreshLayout(スクロール可能と申告するが向きは持たない)
+            elements.append(ElementInfo(ref: 9, type: "other", identifier: "refresh_layout", label: nil,
+                                        value: nil, placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 0,
+                                        scrollable: true, scrollActions: []))
+        }
+        elements.append(ElementInfo(ref: 1, type: "other", identifier: "list", label: nil, value: nil,
+                                    placeholder: nil, enabled: true,
+                                    frame: nestedInRefreshLayout
+                                        ? FTRect(x: 0, y: 100, width: 400, height: 700)
+                                        : FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    depth: 1, scrollable: true, scrollActions: scrollActions))
+        return SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                elements: elements, truncatedCount: 0)
     }
 }

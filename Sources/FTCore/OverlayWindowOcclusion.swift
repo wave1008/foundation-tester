@@ -34,8 +34,11 @@ public struct OverlayWindowOcclusion: Sendable {
     }
 
     /// 要素の**中心**を含む矩形(無ければ nil)。判定を中心点だけにするのは
-    /// `keyboardCoveredAdvisory` と揃えるため —— 撃つ点がそこだから
+    /// `keyboardCoveredAdvisory` と揃えるため —— 撃つ点がそこだから。
+    /// **`inOverlayWindow == true` の要素は対象にしない** —— 覆っているのではなく、
+    /// その要素自身がオーバーレイの中身(ElementInfo.inOverlayWindow の doc 参照)
     public func covering(_ element: ElementInfo) -> FTRect? {
+        if element.inOverlayWindow == true { return nil }
         let cx = element.frame.centerX
         let cy = element.frame.centerY
         return frames.first {

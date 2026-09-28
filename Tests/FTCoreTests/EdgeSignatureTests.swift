@@ -23,18 +23,19 @@ final class EdgeSignatureTests: XCTestCase {
     func testTwoTreesAtTheTopMatchOnceLeftoversAreDropped() throws {
         let a = try fixture("top-1"), b = try fixture("top-2")
         XCTAssertNotEqual(rawSignature(a), rawSignature(b), "固定データが witness になっていない")
-        XCTAssertEqual(StepExecutor.edgeSignature(a), StepExecutor.edgeSignature(b))
+        XCTAssertEqual(StepExecutor.edgeSignature(a, contentRegion: nil), StepExecutor.edgeSignature(b, contentRegion: nil))
     }
 
     /// **陰性対照**: 本当に送った後の木は端の署名でも別物(残骸を除きすぎて「動いていない」と言わない)
     func testATreeThatReallyMovedStillDiffers() throws {
-        XCTAssertNotEqual(StepExecutor.edgeSignature(try fixture("top-1")),
-                          StepExecutor.edgeSignature(try fixture("moved")))
+        XCTAssertNotEqual(StepExecutor.edgeSignature(try fixture("top-1"), contentRegion: nil),
+                          StepExecutor.edgeSignature(try fixture("moved"), contentRegion: nil))
     }
 
     /// **witness**: 同じレイアウトの面が同じ位置へスナップする容器(E2EX-CMP の HorizontalPager)。
     /// 型と座標は同じでも id とラベルが違えば「動いた」(型と座標だけだと page=4 → 2 で端と誤認した)
     func testPagesWithTheSameLayoutButDifferentContentDiffer() {
+        let pager = FTRect(x: 0, y: 150, width: 400, height: 300)
         func page(_ n: Int) -> SnapshotResponse {
             SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                              elements: [
@@ -48,8 +49,34 @@ final class EdgeSignatureTests: XCTestCase {
                              ],
                              truncatedCount: 0)
         }
-        XCTAssertNotEqual(StepExecutor.edgeSignature(page(4)), StepExecutor.edgeSignature(page(3)))
-        XCTAssertEqual(StepExecutor.edgeSignature(page(3)), StepExecutor.edgeSignature(page(3)))
+        XCTAssertNotEqual(StepExecutor.edgeSignature(page(4), contentRegion: pager),
+                          StepExecutor.edgeSignature(page(3), contentRegion: pager))
+        XCTAssertEqual(StepExecutor.edgeSignature(page(3), contentRegion: pager),
+                       StepExecutor.edgeSignature(page(3), contentRegion: pager))
+    }
+
+    /// **witness**: 容器の外の表示(引っ張って更新の回数)は送りの副作用で変わる。これで「動いた」と
+    /// 数えると端に着いても止まらない(Flutter の RefreshIndicator で scrollToTop が refresh=25)
+    func testTextOutsideTheScrolledContainerIsIgnored() {
+        func screen(count: Int) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                             elements: [
+                                ElementInfo(ref: 1, type: "staticText", identifier: "txt_refresh_count",
+                                            label: "refresh=\(count)", value: nil, placeholder: nil,
+                                            enabled: true, frame: FTRect(x: 16, y: 100, width: 100, height: 24),
+                                            depth: 1),
+                                ElementInfo(ref: 2, type: "staticText", identifier: "row_00", label: "行 00",
+                                            value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 16, y: 200, width: 300, height: 50), depth: 2),
+                             ],
+                             truncatedCount: 0)
+        }
+        let list = FTRect(x: 0, y: 150, width: 400, height: 650)
+        XCTAssertEqual(StepExecutor.edgeSignature(screen(count: 1), contentRegion: list),
+                       StepExecutor.edgeSignature(screen(count: 2), contentRegion: list))
+        XCTAssertNotEqual(StepExecutor.edgeSignature(screen(count: 1), contentRegion: nil),
+                          StepExecutor.edgeSignature(screen(count: 2), contentRegion: nil),
+                          "前提: 領域を絞らないと回数の表示で署名が変わる")
     }
 
     /// **配線**: 先頭で木が揺れ続けても scrollToTop が上限まで払い切らない
@@ -96,5 +123,62 @@ private final class FlickeringTopDriver: AppDriver {
     }
     func snapshot() async throws -> SnapshotResponse {
         swipes == 0 ? moved : tops[(swipes - 1) % 2]
+    }
+}
+
+/// 上端で送るたびに「上端」と「上端 + 更新中の表示」を行き来する一覧(Flutter の RefreshIndicator の形)。
+/// 前の状態に戻ったのは進んでいないので、上限まで送り続けない
+final class EdgeOscillationTests: XCTestCase {
+    func testScrollToTopStopsWhenTheTreeOscillatesAtTheTop() async throws {
+        let driver = OscillatingTopDriver()
+        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+            .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertFalse((outcome.driverFallback ?? "").contains("stopped at the limit"),
+                       outcome.driverFallback ?? "")
+        XCTAssertLessThanOrEqual(driver.swipes, 6, "上端で送り続けた(\(driver.swipes) 回)")
+    }
+}
+
+private final class OscillatingTopDriver: AppDriver {
+    private(set) var swipes = 0
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func launch(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { true }
+    func foregroundAppID() async throws -> String? { nil }
+    func terminate() async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func type(ref: Int?, text: String) async throws {}
+    func tap(ref: Int) async throws {}
+    func tap(x: Double, y: Double) async throws {}
+    func press(ref: Int, duration: Double) async throws {}
+    func swipe(_ direction: FTSwipeDirection) async throws { swipes += 1 }
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
+        swipes += 1
+    }
+    /// 1回目の送りで上端に着き、以後は送るたびに更新中の表示が出入りする
+    func snapshot() async throws -> SnapshotResponse {
+        var elements = [ElementInfo(ref: 1, type: "scrollView", identifier: "list", label: nil, value: nil,
+                                    placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 100, width: 400, height: 700), depth: 0,
+                                    scrollable: true)]
+        let topRow = swipes == 0 ? 5 : 0
+        for i in 0..<5 {
+            elements.append(ElementInfo(ref: 2 + i, type: "button", identifier: "row_\(topRow + i)", label: nil,
+                                        value: nil, placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 16, y: 150 + Double(i) * 100, width: 368, height: 90),
+                                        depth: 1))
+        }
+        if swipes > 0, swipes % 2 == 1 {
+            elements.append(ElementInfo(ref: 20, type: "other", identifier: nil, label: "Refresh", value: nil,
+                                        placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 180, y: 120, width: 40, height: 40), depth: 1))
+        }
+        return SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                elements: elements, truncatedCount: 0)
     }
 }

@@ -117,6 +117,14 @@ final class SnapshotBuilder {
         int unclippedBottom = Integer.MIN_VALUE;
         /** 子を持つか(テキスト昇格・Flutter のテキスト判定で「葉かどうか」を見るため) */
         boolean hasChildren;
+        /** アクティブウィンドウより手前の別ウィンドウ(ポップアップ)から集めたノードか
+         *  (BridgeDTO.ElementInfo.inOverlayWindow 参照)。false は「アクティブウィンドウの要素」の意味で、
+         *  JSON へは true のときだけ送る(scrollable と同じ省略規約) */
+        boolean inOverlayWindow;
+        /** 自分が属するウィンドウの root の bounds。shouldInclude の「画面の大半を覆う容器」判定を
+         *  ウィンドウごとに行うための基準(コンテナ推定は容器の`window`ではなく画面全体の`screen`を使うと、
+         *  小さいポップアップウィンドウの中身が常に対象外になる) */
+        Rect ownerWindowBounds = new Rect();
     }
 
     private SnapshotBuilder() {}
@@ -180,8 +188,40 @@ final class SnapshotBuilder {
         }
 
         List<UINode> nodes = new ArrayList<>();
-        // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当
-        collect(root, 2, nodes, false, forceRefresh);
+        // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当。
+        // zPath の先頭にウィンドウランクを積む(0=アクティブウィンドウ)。
+        // **depth はどの窓も root=2 から始まる**ので、下のテキスト昇格・markChildren・
+        // adoptRoleFromMarkerChildren(いずれも「次のノードの depth > 自分の depth」で
+        // 子孫を判定する preorder 走査)は、ある窓の末尾ノードから次の窓の root(depth=2)を
+        // 子と誤認しない(root 自身以外は depth>2 なので、自分の depth が2以下でない限り
+        // 次の窓の root へ継続しない。1窓あたり root は1つだけなので安全)
+        collect(root, 2, nodes, false, forceRefresh, new int[]{0});
+        Rect activeWindowBounds = nodes.isEmpty() ? new Rect() : nodes.get(0).bounds;
+        for (UINode node : nodes) node.ownerWindowBounds = activeWindowBounds;
+
+        // アクティブウィンドウより手前の別ウィンドウ(ドロップダウン・ツールチップ等)の要素も集める。
+        // 木の根が getRootInActiveWindow() の1枚だけなので、フォーカスを取らないポップアップの
+        // 中身は従来ここで丸ごと消えていた(overlayWindowFrames の遮蔽申告と同じ実害。
+        // hiddenWindowRects の doc 参照)。要素として出すのは**アプリ本体と同じ package**の
+        // ウィンドウだけ(他アプリ/システムの木を要素として出さない)。手前判定(layer)は
+        // hiddenWindowRects の overlayWindowFrames と同じ基準(片方だけ変えない)
+        String activePackage = root.getPackageName() == null ? null : root.getPackageName().toString();
+        int windowRank = 1;
+        for (AccessibilityWindowInfo overlayWindow : overlayWindowsForElements(ua, activePackage)) {
+            AccessibilityNodeInfo overlayRoot = overlayWindow.getRoot();
+            if (overlayRoot == null) continue;
+            int before = nodes.size();
+            collect(overlayRoot, 2, nodes, false, forceRefresh, new int[]{windowRank});
+            if (nodes.size() > before) {
+                Rect overlayBounds = nodes.get(before).bounds;
+                for (int i = before; i < nodes.size(); i++) {
+                    nodes.get(i).inOverlayWindow = true;
+                    nodes.get(i).ownerWindowBounds = overlayBounds;
+                }
+            }
+            windowRank++;
+        }
+
         assignPaintOrder(nodes);
         markChildren(nodes);
         adoptRoleFromMarkerChildren(nodes);
@@ -199,9 +239,10 @@ final class SnapshotBuilder {
             }
         }
 
-        // **フィルタの基準はアクティブウィンドウの根**(従来どおり)。ここを display に替えると
-        // 「画面の大半を覆う容器を落とす」0.85 の意味が変わり、ダイアログの中身の出方が動く
-        Rect window = nodes.isEmpty() ? new Rect() : nodes.get(0).bounds;
+        // **フィルタの基準はアクティブウィンドウの根**(従来どおり。screen 計算のフォールバックに使う)。
+        // ここを display に替えると「画面の大半を覆う容器を落とす」0.85 の意味が変わり、
+        // ダイアログの中身の出方が動く
+        Rect window = activeWindowBounds;
         // **報告する screen は display**(2026-08-06 の探索で外した)。ウィンドウの根をそのまま
         // 返していたため、ダイアログが出ている間 `screen` が 1080x2424 ではなく
         // ダイアログの DecorView(実測 1024x427 / 735x386)になり、**同じ応答に入っている
@@ -211,9 +252,12 @@ final class SnapshotBuilder {
         // swipe が画面上部の狭い帯を払うことになる
         Rect screen = displayBounds(context, window);
 
+        // **0.85 の「画面の大半を覆う」判定はウィンドウごと**(node.ownerWindowBounds)に掛ける ——
+        // アクティブウィンドウの基準のままだと、ポップアップの中身(そのポップアップ内では
+        // ほぼ全面を占めるのが普通)を常に除外してしまう
         List<UINode> included = new ArrayList<>();
         for (UINode node : nodes) {
-            if (shouldInclude(node, window)) included.add(node);
+            if (shouldInclude(node, node.ownerWindowBounds)) included.add(node);
         }
         List<UINode> kept = included.size() <= maxElements
                 ? included : selectByPriority(included, maxElements);
@@ -332,12 +376,54 @@ final class SnapshotBuilder {
         return out;
     }
 
-    /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */
-    private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
-                                boolean insideWebView, boolean forceRefresh) {
-        collect(node, depth, out, insideWebView, forceRefresh, new int[0]);
+    /**
+     * `#inOverlayWindow` で要素を出す対象ウィンドウ。**手前判定(layer)は hiddenWindowRects の
+     * overlayWindowFrames と同じ基準**(TYPE_APPLICATION・アクティブより奥ではない。片方だけ変えない)。
+     * こちらは要素の木を実際に読むので、**さらにアプリ本体と同じ package のウィンドウだけ**に絞る
+     * (他アプリ・システムの木を要素として出さない)。layer 昇順(手前になるほど後ろ)で返す ——
+     * build はこの並び順をそのままウィンドウランクにする = 手前のウィンドウほど z が大きくなる。
+     * activePackage が null、または getWindows が使えない環境では空
+     */
+    private static List<AccessibilityWindowInfo> overlayWindowsForElements(UiAutomation ua,
+                                                                            String activePackage) {
+        List<AccessibilityWindowInfo> result = new ArrayList<>();
+        if (activePackage == null) return result;
+        try {
+            List<AccessibilityWindowInfo> windows = ua.getWindows();
+            if (windows == null) return result;
+            boolean haveActive = false;
+            int activeLayer = Integer.MIN_VALUE;
+            for (AccessibilityWindowInfo window : windows) {
+                if (window == null || !window.isActive()) continue;
+                haveActive = true;
+                activeLayer = Math.max(activeLayer, window.getLayer());
+            }
+            if (!haveActive) return result;
+            for (AccessibilityWindowInfo window : windows) {
+                if (window == null) continue;
+                if (window.getType() != AccessibilityWindowInfo.TYPE_APPLICATION) continue;
+                if (window.isActive() || window.getLayer() <= activeLayer) continue;
+                AccessibilityNodeInfo overlayRoot = window.getRoot();
+                if (overlayRoot == null) continue;
+                CharSequence overlayPkg = overlayRoot.getPackageName();
+                if (overlayPkg == null || !activePackage.contentEquals(overlayPkg)) continue;
+                if (result.size() >= MAX_OVERLAY_WINDOWS) continue;
+                result.add(window);
+            }
+        } catch (RuntimeException ignored) {
+            // a11y サービス切断中などで getWindows が使えない環境では省略(hiddenWindowRects と同じ)
+        }
+        java.util.Collections.sort(result, new java.util.Comparator<AccessibilityWindowInfo>() {
+            @Override public int compare(AccessibilityWindowInfo a, AccessibilityWindowInfo b) {
+                return Integer.compare(a.getLayer(), b.getLayer());
+            }
+        });
+        return result;
     }
 
+    /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ)。
+     *  parentZPath の先頭はウィンドウランク(0=アクティブウィンドウ・1以降=手前のポップアップ。
+     *  build 参照)で、再帰全体を通して不変 */
     private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
                                 boolean insideWebView, boolean forceRefresh, int[] parentZPath) {
         if (node == null) return;
@@ -684,6 +770,10 @@ final class SnapshotBuilder {
         if (node.focused) info.put("focused", true);
         // scrollable も同じ省略規約(scrollFrame の空振り検出用)
         if (node.scrollable) info.put("scrollable", true);
+        // inOverlayWindow も同じ省略規約。true = アクティブウィンドウより手前の別ウィンドウ
+        // (ドロップダウン等)の中身で、OverlayWindowOcclusion はこの要素自身を「覆われている」とは
+        // 判定しない(BridgeDTO.ElementInfo.inOverlayWindow 参照)
+        if (node.inOverlayWindow) info.put("inOverlayWindow", true);
         // scrollActions は scrollable な容器だけ(端で撃つ空振りの回避に使う。BridgeDTO.ElementInfo 参照)
         if (node.scrollActions != null) {
             JSONArray actions = new JSONArray();

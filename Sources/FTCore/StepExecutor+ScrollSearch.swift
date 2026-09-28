@@ -472,6 +472,8 @@ extension StepExecutor {
         // (1周で切らないのは、遅れて描画される行を「動かなかった」と誤断しないため)
         var swipes = 0
         var unmovedRounds = 0
+        // 最後に中身が動いた時刻。打ち切りの猶予(edgeClaimGraceAfterMove)の起点
+        var lastMoveAt: ContinuousClock.Instant?
         // 打ち切りの理由文を分けるためだけの記録(ScrollSearchResult.contentEverMoved 参照)
         var contentEverMoved = false
         var truncatedDuringSearch = 0
@@ -652,6 +654,17 @@ extension StepExecutor {
                    Self.contentSignature(earlier.elements)
                        == Self.contentSignature(snapshot.elements) {
                     unmovedRounds += 1
+                    // **最後に動いてから `edgeClaimGraceAfterMove` 経つまでは打ち切らず、残りを待って
+                    // もう1本送る**(scrollToEdge と同じ猶予)。末尾に着いてから続きを読み込む一覧は、
+                    // 読み込むまで「動かない」に見える(実測: SwiftUI の無限スクロールが loaded=40 で
+                    // 打ち切られた。読み込みは末尾到達の 0.8 秒後)。待った後の周回がまた動かなければ打ち切る
+                    if unmovedRounds >= Self.unmovedRoundsToStopSearch, let lastMoveAt,
+                       clock.now - lastMoveAt < Self.edgeClaimGraceAfterMove {
+                        let waitStart = clock.now
+                        try await Task.sleep(for: Self.edgeClaimGraceAfterMove - (clock.now - lastMoveAt))
+                        phase.waitMs += Self.ms(clock.now - waitStart)
+                        unmovedRounds = Self.unmovedRoundsToStopSearch - 1
+                    }
                     if unmovedRounds >= Self.unmovedRoundsToStopSearch {
                         // **打ち切る前に整定まで待って確かめる**(Flutter/Android で
                         // 誤発火): a11y ツリーは遅れて公開されるので、**動いている最中でも
@@ -737,7 +750,10 @@ extension StepExecutor {
                 } else {
                     // **比較が成立した回だけ**「動いた」と数える(1周目は previousSnapshot が
                     // 無いので、ここへ来ても何とも比べていない)
-                    if previousSnapshot != nil { contentEverMoved = true }
+                    if previousSnapshot != nil {
+                        contentEverMoved = true
+                        lastMoveAt = clock.now
+                    }
                     unmovedRounds = 0
                 }
                 // ヒント跳躍: 距離が分かるときは固定幅スワイプでなく長距離ドラッグで寄せる。

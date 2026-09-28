@@ -58,7 +58,7 @@ extension StepExecutor {
                 if !scan.found.isEmpty || attempt == maxSwipes { break }
                 // 2周続けて木が変わらなければ端(runScrollSearch と同じ打ち切り。1周で切らないのは
                 // 遅れて描画される行を「動かなかった」と誤断しないため)
-                let signature = Self.edgeSignature(snapshot)
+                let signature = Self.edgeSignature(snapshot, contentRegion: edgeContentRegion(step: step, in: snapshot))
                 unchanged = signature == previous ? unchanged + 1 : 0
                 previous = signature
                 if unchanged >= 2 { break }

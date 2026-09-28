@@ -297,8 +297,14 @@ extension StepExecutor {
         if let locator = step.scrollFrame {
             return LocatorResolver.match(locator, in: snapshot)
         }
-        let scrollable = snapshot.elements.filter { $0.scrollable == true }
-        return scrollable.count == 1 ? scrollable.first : nil
+        // 未指定はエンジンが払う画面中央の下の容器。**入れ子(SwipeRefreshLayout の中の RecyclerView 等)は
+        // 最小のもの**を採る(「ちょうど1つのときだけ」だと入れ子で常に nil になり、引っ張って更新の一覧で
+        // 端の確認の送りが更新を撃っていた)。`edgeContentRegion` と同じ規則
+        let screen = snapshot.screen
+        return snapshot.elements
+            .filter { $0.scrollable == true
+                && StepExecutor.frame($0.frame, containsX: screen.centerX, y: screen.centerY) }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
     }
 
     /// 自己補正の倍率をマージンへ写す。span = 1 - start - end を scale 倍し、両端へ等分に戻す

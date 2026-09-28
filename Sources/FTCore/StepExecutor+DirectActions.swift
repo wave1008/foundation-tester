@@ -104,6 +104,10 @@ extension StepExecutor {
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         var viaXCUITest = false
         var previous: String?
+        // この送りの中で一度見た署名。**前の状態に戻ったのは進んでいない**(本当に送れていれば同じ状態には
+        // 戻らない)。上端で送るたびに引っ張って更新が走る一覧は「上端」と「上端 + 更新中の表示」を行き来し、
+        // 2回続けて同じにならないまま上限まで送り続けた(実測: Flutter の RefreshIndicator で 50 回・更新 25 回)
+        var seenSignatures = Set<String>()
         var unchanged = 0
         var reachedEdge = false
         var sawUnsettled = false
@@ -138,9 +142,15 @@ extension StepExecutor {
             }
             carried = nil
             if !settled.settled { sawUnsettled = true }
-            let contentSignature = Self.edgeSignature(settled.snapshot)
-            unchanged = contentSignature == previous ? unchanged + 1 : 0
-            if let previous, contentSignature != previous { lastChangeAt = clock.now }
+            let contentSignature = Self.edgeSignature(settled.snapshot,
+                                                        contentRegion: edgeContentRegion(step: step, in: settled.snapshot))
+            // **ドライバが「確かに動かした」と申告した直後(previous == nil)は戻りを数えない**: 飛ぶたびに同じ並びになる
+            // 一覧(RN の FlatList)では、動いても前に見た署名と同じになる。申告は推測より強い
+            let revisited = previous != nil && contentSignature != previous
+                && seenSignatures.contains(contentSignature)
+            unchanged = (contentSignature == previous || revisited) ? unchanged + 1 : 0
+            if let previous, contentSignature != previous, !revisited { lastChangeAt = clock.now }
+            seenSignatures.insert(contentSignature)
             // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる
             let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction)
             // **変わってから `edgeClaimGraceAfterMove` 経つまでは端と確定しない**: 端へ飛ぶと続きを
@@ -199,7 +209,8 @@ extension StepExecutor {
             if driver.reachedEdgeOnLastSwipe == true {
                 let confirm = try await settledSignature(phase: &phase)
                 if !confirm.settled { sawUnsettled = true }
-                let confirmed = Self.edgeSignature(confirm.snapshot)
+                let confirmed = Self.edgeSignature(confirm.snapshot,
+                                                   contentRegion: edgeContentRegion(step: step, in: confirm.snapshot))
                 if confirmed == previous {
                     guard try await waitedForGrace() else { reachedEdge = true; break }
                     retryAfterGrace = true

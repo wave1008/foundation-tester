@@ -774,15 +774,30 @@ public struct ElementInfo: Codable, Sendable {
     /// 据え置き(axClass と同じ方針。Android は AndroidBridge.expectedBridgeVersionCode を上げる)
     public var scrollActions: [String]?
 
+    /// **アクティブウィンドウより手前の別ウィンドウ(ポップアップ)から集めた要素か**
+    /// (true のときだけ送る = scrollable と同じ省略規約)。**Android だけが埋める**
+    /// (`AccessibilityNodeInfo` の木の根は `getRootInActiveWindow()` = アクティブウィンドウ1枚だけなので、
+    /// フォーカスを取らないポップアップ〈`MaterialAutoCompleteTextView`/ExposedDropdownMenu の
+    /// 選択肢・カスタム `PopupWindow` のツールチップ等〉は本来 elements に1要素も載らない。
+    /// SnapshotBuilder はそれらの木も `overlayWindowFrames` と同じ手前判定〈layer〉+ 同じ package の
+    /// 条件で集め、要素の末尾に追加する)。**この要素自身は `OverlayWindowOcclusion` の遮蔽対象にしない**
+    /// —— 覆っているのではなくオーバーレイの中身そのものだから(判定は OverlayWindowOcclusion.covering)。
+    /// iOS の2ブリッジは送らない(in-app/xcuitest とも可視な窓を全部歩くので原理的に必要ない)。
+    /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(scrollActions と同じ方針。
+    /// Android は AndroidBridge.expectedBridgeVersionCode を上げる)
+    public var inOverlayWindow: Bool?
+
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
                 checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil,
                 scrollable: Bool? = nil, z: Int? = nil, range: String? = nil,
-                axClass: String? = nil, scrollActions: [String]? = nil) {
+                axClass: String? = nil, scrollActions: [String]? = nil,
+                inOverlayWindow: Bool? = nil) {
         self.range = range
         self.axClass = axClass
         self.scrollable = scrollable
         self.scrollActions = scrollActions
+        self.inOverlayWindow = inOverlayWindow
         self.z = z
         self.ref = ref
         self.type = Self.normalizedType(type)
@@ -817,6 +832,7 @@ public struct ElementInfo: Codable, Sendable {
         range = try container.decodeIfPresent(String.self, forKey: .range)
         axClass = try container.decodeIfPresent(String.self, forKey: .axClass)
         scrollActions = try container.decodeIfPresent([String].self, forKey: .scrollActions)
+        inOverlayWindow = try container.decodeIfPresent(Bool.self, forKey: .inOverlayWindow)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全

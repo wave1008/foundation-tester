@@ -102,6 +102,32 @@ final class OverlayWindowOcclusionTests: XCTestCase {
                                               from: Data(bare.utf8)).overlayWindowFrames)
     }
 
+    /// **オーバーレイの中身自身は「覆われている」と言わない** —— `inOverlayWindow: true` の要素は
+    /// 中心がその矩形の中にあっても covering が nil を返す(それはオーバーレイの中身そのものだから)
+    func testElementInsideTheOverlayItselfIsNotFlaggedAsCovered() {
+        let optionInsideOverlay = ElementInfo(
+            ref: 9, type: "staticText", identifier: "opt_banana", label: "バナナ", value: nil,
+            placeholder: nil, enabled: true,
+            frame: FTRect(x: 100, y: 260, width: 200, height: 40), depth: 3,
+            inOverlayWindow: true)
+        let occlusion = OverlayWindowOcclusion.resolve(reported: [toolbar])
+        XCTAssertNil(occlusion.covering(optionInsideOverlay))
+        XCTAssertNil(occlusion.advisory(for: optionInsideOverlay))
+    }
+
+    /// **アクティブウィンドウ側の要素は従来どおり覆われていると言う** —— inOverlayWindow を
+    /// 明示的に false にしても(申告が無いのと同じ意味であるべき)結果は変わらない
+    func testElementInTheActiveWindowUnderTheOverlayIsStillFlagged() {
+        let paraNotInOverlay = ElementInfo(
+            ref: 1, type: "staticText", identifier: "content", label: "para", value: nil,
+            placeholder: nil, enabled: true,
+            frame: FTRect(x: 22, y: 136, width: 1036, height: 266), depth: 2,
+            inOverlayWindow: false)
+        let occlusion = OverlayWindowOcclusion.resolve(reported: [toolbar])
+        XCTAssertEqual(occlusion.covering(paraNotInOverlay), toolbar)
+        XCTAssertNotNil(occlusion.advisory(for: paraNotInOverlay))
+    }
+
     /// キーボードが先(より具体的な逃げ道を書ける)。申告は互いに素
     /// (ブリッジは TYPE_INPUT_METHOD を overlayWindowFrames に入れない)だが、
     /// 万一重なっても順序が揺れないことを固定する

@@ -305,8 +305,11 @@ extension StepExecutor {
     ///
     /// **id とラベルも入れる**: 型と座標だけだと、同じレイアウトの面が同じ位置へスナップする容器
     /// (HorizontalPager・カルーセル)では送っても署名が変わらず、途中で端と誤認して緑のまま止まる
-    /// (実測: E2EX-CMP のページャで page=4 → 2)。value は入れない(スライダー等が送りと無関係に動く)
-    static func edgeSignature(_ snapshot: SnapshotResponse) -> String {
+    /// (実測: E2EX-CMP のページャで page=4 → 2)。value は入れない(スライダー等が送りと無関係に動く)。
+    /// **id とラベルを比べるのは `contentRegion`(送っている容器)の中の要素だけ**: 容器の外の表示
+    /// (引っ張って更新の回数など)は送りの副作用で変わるので、入れると端でも「動いた」に見えて上限まで
+    /// 送り続ける(実測: Flutter の RefreshIndicator で scrollToTop が refresh=25)。nil = 全要素
+    static func edgeSignature(_ snapshot: SnapshotResponse, contentRegion: FTRect?) -> String {
         let stacked = OcclusionGeometry.stackedRefs(snapshot.elements)
         return snapshot.elements
             .filter { element in
@@ -314,8 +317,31 @@ extension StepExecutor {
                     && TapTargetGeometry.outsideDeclaredScroller(
                         element, in: snapshot.elements, screen: snapshot.screen) == nil
             }
-            .map { "\($0.type)|\($0.frame.x),\($0.frame.y)|\($0.identifier ?? "")|\($0.label ?? "")" }
+            .map { element -> String in
+                let base = "\(element.type)|\(element.frame.x),\(element.frame.y)"
+                if let region = contentRegion,
+                   !StepExecutor.frame(region, containsX: element.frame.centerX, y: element.frame.centerY) {
+                    return base
+                }
+                return base + "|\(element.identifier ?? "")|\(element.label ?? "")"
+            }
             .joined(separator: ",")
+    }
+
+    /// 端の署名で id とラベルを比べる領域(`edgeSignature` の doc)。`scrollFrame` があればそれ、
+    /// 無ければエンジンが払う画面中央を含む最小のスクロール可能な要素。どちらも無ければ nil
+    func edgeContentRegion(step: FlowStep, in snapshot: SnapshotResponse) -> FTRect? {
+        let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+        if let container = scrollContainer(step: step, in: snapshot,
+                                           vertical: finger == .up || finger == .down) {
+            return container
+        }
+        let screen = snapshot.screen
+        return snapshot.elements
+            .filter { $0.scrollable == true
+                && StepExecutor.frame($0.frame, containsX: screen.centerX, y: screen.centerY) }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }?
+            .frame
     }
 
     /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の整定待ち。到達判定は `edgeSignature`)。
