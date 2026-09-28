@@ -2574,7 +2574,14 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   `--ios-xcuitest`(iOS を XCUITest エンジンで回す。既定は in-app。上記「1回の実行が見るのは…」節) /
   `--ios-inapp`(既定と同じエンジンで iOS のみ) /
   `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節) /
+  `--local`(各 run に `--runner local` = この Mac のデバイスだけ。E2EX を M1Ultra で同時に回すときの形) /
   `--align`(下記)
+- **回帰の分担(ユーザー指示 2026-09-28)**: E2E はこの Mac(M2Ultra)で `Scripts/e2e.sh --local`、
+  E2EX は `Scripts/e2ex.sh --on M1Ultra`(ssh でランナーのクローン `~/fleetest-runner/foundation-tester` に入り、
+  **そこで SUT を建てて**そこのデバイスで回す。残りの引数はそのまま渡す)を**同時に**起こす。向こうで動くのは
+  align 済みのコミットなので commit → `Scripts/align.sh` → 実行の順。M1Ultra の道具(xcodegen・Flutter は
+  ~/.local と ~/flutter、Homebrew の CocoaPods)は `~/.zprofile` の fleetest-tools ブロックの PATH にある
+  (`zsh -lc` は `.zshrc` を読まない)
 - **`--align`: リモートランナーの版ズレは「部分実行」ではなく「1本も走らない」**(2026-08-28)。
   複数機に跨るプロファイル(E2E-Android/android)は**開始前**の適合チェックで弾かれるので、
   手元を更新した直後のフルスイートはそのプロファイルのリモート担当ぶんが丸ごと欠ける

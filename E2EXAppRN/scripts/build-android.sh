@@ -6,6 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+[ -d node_modules ] || npm ci
 test -x android/gradlew || { echo "android/gradlew が無い(pod install/npm install 未実行?)" >&2; exit 1; }
 
 (cd android && ./gradlew assembleRelease)

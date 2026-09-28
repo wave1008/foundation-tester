@@ -163,6 +163,10 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   **弾かれたポートだけ**建て直す)/ **④建て直しの要らない段から検証する**(単体テスト →
   dry-run → 生きているブリッジ1台での MCP 確認 → 最後にデバイス実行)。
   **ワイヤ形式(DTO の enum・フィールド)を変えたら必ず版を上げる**
+- **回帰は E2E をこの Mac(M2Ultra)で・E2EX を M1Ultra で同時に回す**(ユーザー指示 2026-09-28):
+  `Scripts/e2e.sh --local`(手元のデバイスだけ)と `Scripts/e2ex.sh --on M1Ultra`(ssh でランナーの
+  クローンに入り、そこで SUT を建てて回す)を同時に起こす。先に commit → `Scripts/align.sh`
+  (向こうで動くのは align 済みのコミット)。E2EX の SUT は M1Ultra で建てる(競合しない・負荷分散)
 - **1シナリオの確認にフリート全台を用意しない**。`ProfileRunner` は回す本数から台数を絞る
   (`ResolvedProfile.deviceKeepCount` = 本数 + 予備1台)。実測で iOS の1本実行が 21.8s → 9.3s。
   **予備1台は必須**(用意したデバイスが blank/frozen で弾かれると run ごと落ちる)。

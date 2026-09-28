@@ -5,4 +5,4 @@
 利用者向けの書き方の正典は `docs/user-docs/in_action/ui_component_patterns_ja.md`。
 
 - `@Draft("既知の制約: …" / "調査中: …")` のシナリオはツールの制約に当たるもの(既定の実行から外れる。名指しで回すと再現する)
-- 回すのは `Scripts/e2ex.sh`(プロファイルは手元の3台だけ・常に `--runner local`)
+- 回すのは `Scripts/e2ex.sh`(プロファイルは -01〜-08 の8台。同名のデバイスが各機にあるので `--on M1Ultra` でも同じプロファイルで回る)

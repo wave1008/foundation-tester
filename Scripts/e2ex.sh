@@ -16,11 +16,20 @@
 #   Scripts/e2ex.sh --ios-xcuitest  # **iOS だけ**を XCUITest エンジンで(--ios-inapp も同様)
 #   Scripts/e2ex.sh --ios           # OS を絞る(--android も同様)
 #   Scripts/e2ex.sh --rebuild       # SUT を必ず再ビルドしてから実行
+#   Scripts/e2ex.sh --on M1Ultra    # **丸ごとその機械で回す**(ssh でランナーのクローンに入り、そこで SUT を建てて
+#                                   # そこのデバイスで実行する。残りの引数はそのまま向こうへ渡す)。向こうで動くのは
+#                                   # align 済みのコミット + そこの clone の中身なので、ツールを直したら
+#                                   # commit → Scripts/align.sh → これ、の順。E2E をこの Mac(`e2e.sh --local`)で
+#                                   # 回しながら E2EX を M1Ultra で回すのが既定の分担(ユーザー指示 2026-09-28)。
+#                                   # 向こうに要る道具(xcodegen / Flutter / CocoaPods / node)は ~/.zshrc の
+#                                   # fleetest-tools ブロックの PATH にある
 #
-# **プロファイルは手元の3台だけ**なので常に `--runner local` で回す(同名のデバイスがリモートにもあり、
-# --runner を付けないとリモートへ飛ぶ)。--align は持たない(リモートを使わない)。
-# **iOS XCUITest の 90_不具合の回帰.swift S0020 は未修正で赤**(XCUITest は容器が「まだ送れるか」を
-# 申告しないので、scrollToTop の端の確認が上端で「引っ張る」になる)。
+# **プロファイルは -01〜-08 の8台を名前で指す(udid を持たない)**ので、同名のデバイスを持つどの機でも同じ
+# プロファイルで回る。常に `--runner local`(同名のデバイスがリモートにもあり、--runner を付けないと
+# リモートへ飛ぶ)。--align は持たない(Scripts/align.sh を先に)。
+# **`--ios-xcuitest` は既定エンジン(in-app)で緑のシナリオが 13 本赤のまま**(XCUITest エンジンだけの制約。
+# 一覧は docs/framework-differences.md §5.1 末尾の「残っている制約」)。代表は 90_不具合の回帰.swift S0020
+# (XCUITest は容器が「まだ送れるか」を申告しないので、scrollToTop の端の確認が上端で「引っ張る」になる)。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -33,6 +42,26 @@ RUN_ANDROID=1
 IOS_ENGINE_ONLY=0
 IOS_PROFILE="ios-inapp"
 SUTS=""
+
+[ -x "$FLEETEST" ] || { echo "❌ $FLEETEST がありません(swift build --product fleetest)" >&2; exit 1; }
+
+# --on <機械名>: 残りの引数ごと向こうの e2ex.sh へ渡して、その出力をそのまま流す
+if [ "${1:-}" = "--on" ]; then
+  MACHINE="${2:-}"
+  [ -n "$MACHINE" ] || { echo "❌ --on には機械名が要ります(fleetest remote machines)" >&2; exit 2; }
+  shift 2
+  HOST=$("$FLEETEST" api remote-machines | python3 -c '
+import json,sys
+m=sys.argv[1]
+for h in json.load(sys.stdin).get("hosts", []):
+    if h.get("machine") == m: print(h["host"]); break' "$MACHINE")
+  [ -n "$HOST" ] || { echo "❌ 登録簿に $MACHINE が無い(fleetest remote machines)" >&2; exit 2; }
+  # ランナーのクローン(fleetest remote align が揃える場所)。dist/ は gitignore なので align で消えない
+  REMOTE_CLONE="~/fleetest-runner/foundation-tester"
+  echo "==> $MACHINE($HOST)で回す: Scripts/e2ex.sh $*"
+  # ログイン shell(zsh -lc)で起こす = ~/.zshrc の PATH(fleetest-tools)と非対話 ssh の PATH 補正を兼ねる
+  exec ssh -tt -o BatchMode=yes "$HOST" "zsh -lc 'cd $REMOTE_CLONE && Scripts/e2ex.sh $*'"
+fi
 
 for arg in "$@"; do
   case "$arg" in
@@ -56,7 +85,6 @@ if [ "$IOS_ENGINE_ONLY" = 1 ]; then
   RUN_ANDROID=0
 fi
 
-[ -x "$FLEETEST" ] || { echo "❌ $FLEETEST がありません(swift build --product fleetest)" >&2; exit 1; }
 
 # ソースが成果物より新しいか(成果物が無い場合も真)。Scripts/e2e.sh の needs_rebuild と同じ
 needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソース

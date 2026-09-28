@@ -32,6 +32,10 @@
 #                                   # 仮想デバイスは常に復活を試みるが、このモードでは**復活できない
 #                                   # レーンが1つでも残ると run を開始せず失敗する**(レーン数が変わると
 #                                   # 計測にならないため。既定は切り離して完走)。時間を比較する回に付ける
+#   Scripts/e2e.sh --local         # **この Mac のデバイスだけ**で回す(各 run に --runner local)。
+#                                   # E2EX を M1Ultra で同時に回すときの形(プロファイルの M1Ultra の
+#                                   # レーンを使わないので dispatch.lock がぶつからない)。
+#                                   # E2E = この Mac(M2Ultra)/ E2EX = M1Ultra が既定の分担(2026-09-28)
 #   Scripts/e2e.sh --align         # **実行前に**リモートランナーの版を揃える(opt-in)。
 #                                   # 適合チェックは開始前に落ちるので、ズレたままだとその
 #                                   # プロファイルは1本も走らない(部分実行にすらならない)。
@@ -59,6 +63,7 @@ RUN_ANDROID=1
 RECORD=0
 # リモートランナーの版合わせ(既定は触らない。理由は align_runners)
 ALIGN=0
+LOCAL_ONLY=0
 # 性能計測モード(各 run へ --performance を渡す。fleetest 側が run 開始前にレーンを揃える)
 PERFORMANCE=0
 # エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
@@ -77,6 +82,7 @@ for arg in "$@"; do
     --ios-xcuitest) IOS_PROFILE="ios-xcuitest"; IOS_ENGINE_ONLY=1 ;;
     --record) RECORD=1 ;;
     --align) ALIGN=1 ;;
+    --local) LOCAL_ONLY=1 ;;
     --performance) PERFORMANCE=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
@@ -273,7 +279,9 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   # 値は空白を含まない固定の1語なので、未クォートの変数展開で「空なら消える」を使う
   local perf_flag=""
   [ "$PERFORMANCE" = 1 ] && perf_flag="--performance"
-  if "$FLEETEST" run --project "$1" --profile "$profile" $perf_flag; then
+  local runner_flag=""
+  [ "$LOCAL_ONLY" = 1 ] && runner_flag="--runner local"
+  if "$FLEETEST" run --project "$1" --profile "$profile" $perf_flag $runner_flag; then
     echo "✅ $1 / $profile"
   else
     echo "❌ $1 / $profile"

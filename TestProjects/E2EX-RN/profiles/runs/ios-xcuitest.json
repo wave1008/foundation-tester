@@ -10,7 +10,6 @@
       "name": "iPhone 17 Pro(iOS 27.0)-01",
       "model": "iPhone 17 Pro",
       "osVersion": "iOS 27.0",
-      "udid": "E38DCA93-95F2-4DDF-B1FE-29527205D3EE",
       "enabled": true
     },
     {
@@ -19,7 +18,6 @@
       "name": "iPhone 17 Pro(iOS 27.0)-02",
       "model": "iPhone 17 Pro",
       "osVersion": "iOS 27.0",
-      "udid": "C96A69C4-FE49-42EE-8C7F-ED5F603C346B",
       "enabled": true
     },
     {
@@ -28,7 +26,46 @@
       "name": "iPhone 17 Pro(iOS 27.0)-03",
       "model": "iPhone 17 Pro",
       "osVersion": "iOS 27.0",
-      "udid": "B422AB58-6C79-45BC-92F0-BEF88061C8E1",
+      "enabled": true
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-04",
+      "model": "iPhone 17 Pro",
+      "osVersion": "iOS 27.0",
+      "enabled": true
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-05",
+      "model": "iPhone 17 Pro",
+      "osVersion": "iOS 27.0",
+      "enabled": true
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-06",
+      "model": "iPhone 17 Pro",
+      "osVersion": "iOS 27.0",
+      "enabled": true
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-07",
+      "model": "iPhone 17 Pro",
+      "osVersion": "iOS 27.0",
+      "enabled": true
+    },
+    {
+      "platform": "ios",
+      "machine": "local",
+      "name": "iPhone 17 Pro(iOS 27.0)-08",
+      "model": "iPhone 17 Pro",
+      "osVersion": "iOS 27.0",
       "enabled": true
     }
   ]

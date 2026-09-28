@@ -8,6 +8,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 command -v xcodebuild >/dev/null 2>&1 || { echo "xcodebuild 未インストール" >&2; exit 1; }
+# 依存が無い機械(ランナー)でも建つように、無ければここで入れる(npm ci は lock どおり・pod は Podfile.lock どおり)
+[ -d node_modules ] || npm ci
+[ -d ios/Pods ] || (cd ios && pod install)
 
 xcodebuild -workspace ios/FTE2EXRN.xcworkspace -scheme FTE2EXRN -configuration Release \
   -sdk iphonesimulator -derivedDataPath build/ios-derived \

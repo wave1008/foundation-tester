@@ -24,6 +24,41 @@
       "name": "Pixel 9(Android 15)-03",
       "enabled": true,
       "avd": "Pixel_9_Android_15_-03"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-04",
+      "enabled": true,
+      "avd": "Pixel_9_Android_15_-04"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-05",
+      "enabled": true,
+      "avd": "Pixel_9_Android_15_-05"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-06",
+      "enabled": true,
+      "avd": "Pixel_9_Android_15_-06"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-07",
+      "enabled": true,
+      "avd": "Pixel_9_Android_15_-07"
+    },
+    {
+      "platform": "android",
+      "machine": "local",
+      "name": "Pixel 9(Android 15)-08",
+      "enabled": true,
+      "avd": "Pixel_9_Android_15_-08"
     }
   ]
 }

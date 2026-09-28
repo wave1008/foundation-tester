@@ -13,4 +13,4 @@ Scripts/e2ex.sh --ios-xcuitest  # iOS だけを XCUITest エンジンで
 Scripts/e2ex.sh --rebuild       # SUT を必ず再ビルド
 ```
 
-プロファイルは手元の3台だけ(スクリプトは常に `--runner local`。`Scripts/e2e.sh` の対象外)。
+プロファイルは -01〜-08 の8台(同名のデバイスが各機にあるので `--on M1Ultra` でも同じプロファイルで回る。`Scripts/e2e.sh` の対象外)。
