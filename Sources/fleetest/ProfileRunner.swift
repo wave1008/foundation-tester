@@ -482,7 +482,7 @@ enum ProfileRunner {
         }
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
-            forceAndroidInstall: !wipedAndroid.isEmpty) { ConsoleOut.out($0) }
+            forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { ConsoleOut.out($0) }
         // 一斉 launch 直後の黒画面を作らないための予防(ProfileWorkerFactory.pressHomeOnStart)
         await ProfileWorkerFactory.prepareDevicesOnStart(
             workers, homeOnStart: resolved.homeOnStart) { ConsoleOut.out($0) }
@@ -772,7 +772,8 @@ enum ProfileRunner {
             // のまま)の ws へ静かに戻ってしまう。ここで投げれば下の catch が「レーンを空にする」
             // 既定の扱いに落とす
             ws = try await ProfileWorkerFactory.installIfNeeded(
-                apps: resolved.apps, workers: ws, forceAndroidInstall: false) { ConsoleOut.out($0) }
+                apps: resolved.apps, workers: ws, forceAndroidInstall: false,
+                wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { ConsoleOut.out($0) }
             PhaseLog.mark("ios-workers-installed")
             // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
             // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。

@@ -987,6 +987,26 @@ public enum DeviceBooter {
     }
 
     /// sys.boot_completed=1 までポーリング(既定 180 秒)
+    /// パッケージマネージャが応答するまで待つ(戻り値 = 待った秒数)。`sys.boot_completed` の直後は
+    /// package サービスがまだ立っておらず、`adb install` が `Failure calling service package: Broken pipe` で落ちる
+    /// (Wipe Data 直後の初回起動で実測)。**観測で待つ**: `pm path android`(フレームワーク自身 = 必ず在る)が
+    /// `package:` を返すまで。上限は起動待ち(`waitForAndroidBoot` の 180 秒)と同じ —— どちらも初回起動の
+    /// 再構築を待つ時間で、尽きたら投げる(呼び手はその台を諦める)
+    static func waitForPackageManager(serial: String, timeout: TimeInterval = 180) async throws -> TimeInterval {
+        let adb = try AndroidDriver.findADB()
+        let start = Date()
+        let deadline = start.addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let output = try? Shell.run(
+                [adb, "-s", serial, "shell", "pm", "path", "android"], timeout: 10).outputIfSucceeded,
+               output.contains("package:") {
+                return Date().timeIntervalSince(start)
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+        throw DeviceBooterError.bootTimedOut(serial: serial)
+    }
+
     static func waitForAndroidBoot(serial: String, timeout: TimeInterval = 180) async throws {
         let adb = try AndroidDriver.findADB()
         let deadline = Date().addingTimeInterval(timeout)

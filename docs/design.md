@@ -3918,6 +3918,14 @@ run では該当ステップは skip(素通り)になり、FM 利用不可時と
 同じセクションに並ぶが他のトグルから独立している(自己修復は FM 機能ではない。
 ユーザー決定 → maintainer-notes §22)。
 
+**guest の /data だけが満杯**(ホスト側の合計は閾値未満)の形は上の肥大化チェックでは拾えず、
+`adb install` が `INSTALL_FAILED_INSUFFICIENT_STORAGE` で落ちる(実測 2026-09-28 M1Ultra Pixel-07: 5.8GB 中
+587MB 空き。さらに詰まると状態コードの代わりに `Requested internal only, but not enough space` で落ちる)。
+**`wipeDataOnBloat` が ON のときだけ**、その失敗を見た `ProfileWorkerFactory.installIfNeeded` がその AVD を
+Wipe Data し、パッケージマネージャの応答を待ってから1回だけ入れ直す(`AndroidInstallFailure` /
+`AndroidStorageRecovery`。同じ serial で戻ってきたときだけ)。**OFF のときは Wipe せず従来どおり離脱**し、
+理由と手動の Wipe(`fleetest api wipe-device`)をログに言う(Wipe は破壊的 = 利用者が自動 Wipe を許した
+ときだけ撃つ。ユーザー決定 2026-09-28)。判定は Android 側が出す2つの形で、自前の文言の一致ではない。
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
 (userdata/cache/snapshots)合計が `wipeDataThresholdGB`(既定 8。**Play イメージは wipe 直後の
 再構築だけで 2〜4GB になるため 4GB 以下はスラッシング**、実測 2026-07-17)超過なら Wipe Data してから

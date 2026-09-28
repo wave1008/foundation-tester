@@ -741,9 +741,16 @@ public enum ProfileWorkerFactory {
     /// 戻り値は workers 順を維持する。
     /// forceAndroidInstall: true のとき android は autoInstall=false でも appPath があれば
     /// インストール候補に含める(AndroidDataWiper の Wipe Data でアプリが消えているため)
+    /// `wipeOnInsufficientStorage` = 実行プロファイルの `wipeDataOnBloat`。**Wipe は破壊的なので、利用者が
+    /// 自動 Wipe を許しているときだけ**容量不足の失敗を Wipe で救う(OFF なら従来どおり離脱)。
+    /// `locale` は Wipe した AVD を起こし直すときに要る(AndroidDataWiper.wipeOne)。
+    /// `storageRecovery` は production 以外をテストだけが渡す(AndroidStorageRecovery の doc)
     public static func installIfNeeded(apps: [String: ResolvedAppTarget],
                                        workers: [RunWorker],
                                        forceAndroidInstall: Bool = false,
+                                       wipeOnInsufficientStorage: Bool,
+                                       locale: String,
+                                       storageRecovery: AndroidStorageRecovery = .production,
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         // 呼び出し元の log はスレッド安全という契約が無い(CLI 側 print 等)ため、並列区間からは
         // このロック越しラッパーのみを使う。
@@ -802,6 +809,15 @@ public enum ProfileWorkerFactory {
                         safeLog("✅ \(worker.label): install complete")
                         return (index, worker)
                     } catch {
+                        // **guest の /data が満杯なら Wipe Data して1回だけ入れ直す**(離脱させない)。
+                        // wipeDataOnBloat はホスト側のファイルの合計を見るので、この形は拾えない
+                        // (AndroidInstallFailure の doc)。Wipe は起こし直しまで含む(数分)
+                        if let recovered = await recoverStorageAndReinstall(
+                            worker: worker, bundleID: app.bundleID, appPath: appPath, failure: error,
+                            wipeAllowed: wipeOnInsufficientStorage,
+                            locale: locale, recovery: storageRecovery, log: safeLog) {
+                            return (index, recovered)
+                        }
                         safeLog("❌ \(worker.label): dropped out after an install failure — "
                             + error.localizedDescription)
                         return (index, nil)
@@ -822,6 +838,43 @@ public enum ProfileWorkerFactory {
             throw InstallError(message: "every worker failed to install the app")
         }
         return result
+    }
+
+    /// 容量不足のインストール失敗を Wipe Data で救う。救えたら(同じ serial で戻ってきて入れ直せたら)
+    /// ワーカーを返し、対象外・救えなければ nil(呼び手が従来の離脱を出す)。
+    /// **serial が変わって戻ってきたら救わない** —— ワーカーの接続情報が古くなり、レーンが後で黙って死ぬ
+    static func recoverStorageAndReinstall(
+        worker: RunWorker, bundleID: String, appPath: String, failure: Error, wipeAllowed: Bool,
+        locale: String, recovery: AndroidStorageRecovery, log: @escaping @Sendable (String) -> Void
+    ) async -> RunWorker? {
+        guard worker.platform == "android", !worker.connection.physical,
+              AndroidInstallFailure.isInsufficientStorage(failure.localizedDescription) else { return nil }
+        guard wipeAllowed else {
+            log("⚠️ \(worker.label): the install failed because the device is out of storage, and"
+                + " wipeDataOnBloat is off in the run profile, so the device was not wiped"
+                + " (wipe it yourself: fleetest api wipe-device)")
+            return nil
+        }
+        guard let serial = worker.connection.serial,
+              let avd = recovery.avdBySerial()[serial] else { return nil }
+        log("⚠️ \(worker.label): the install failed because the device is out of storage"
+            + " — wiping \(avd) and installing once more")
+        do {
+            try await recovery.wipe(worker.label, avd, locale, log)
+            guard recovery.avdBySerial()[serial] == avd else {
+                log("❌ \(worker.label): \(avd) came back on a different serial after Wipe Data,"
+                    + " so this worker cannot be reused")
+                return nil
+            }
+            let waited = try await recovery.awaitPackageManager(serial)
+            log("→ \(worker.label): the package manager answered \(String(format: "%.0f", waited))s after the reboot")
+            try await installOne(worker: worker, bundleID: bundleID, appPath: appPath)
+            log("✅ \(worker.label): install complete (after Wipe Data)")
+            return worker
+        } catch {
+            log("❌ \(worker.label): Wipe Data / reinstall failed — \(error.localizedDescription)")
+            return nil
+        }
     }
 
     /// 1 ワーカーへの実インストール。installIfNeeded の TaskGroup 本体と installApp() の RPC ハンドラ
@@ -884,7 +937,9 @@ public enum ProfileWorkerFactory {
                                                        log: log) else { return nil }
         do {
             rebuilt = try await installIfNeeded(apps: apps, workers: rebuilt,
-                                                forceAndroidInstall: false, log: log)
+                                                forceAndroidInstall: false,
+                                                wipeOnInsufficientStorage: resolved.wipeDataOnBloat,
+                                                locale: resolved.locale, log: log)
         } catch {
             // install 全滅なら回復そのものを不成立にする(F5)。ここで古いアプリのまま
             // rebuilt を使い続けると、シミュレータは戻ったのに中身は古いままレーンへ復帰する。

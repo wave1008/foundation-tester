@@ -616,7 +616,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 workers = triage.workers
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
-                    forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
+                    forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { logSupply($0) }
                 // "🚀 Starting with…" は iOS の合流有無が分かってから1回だけ出す(下の
                 // RunStartLine.text 呼び出し。ここで固定文言を出すと iOS 0 台のプロファイルでも
                 // 「iOS joins…」と言ってしまう。RunStartLine の宣言参照)
@@ -642,7 +642,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         // 「このレーンは空」の既定の扱いに落とす
                         workers = try await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
-                            forceAndroidInstall: false) { logSupply($0) }
+                            forceAndroidInstall: false, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { logSupply($0) }
                         // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
                         // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
                         let repoRoot = try RepoRoot.find()
@@ -1178,7 +1178,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             blankTriage = (triage.repaired + iosTriage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
-                forceAndroidInstall: !wipedAndroid.isEmpty) { logSupply($0) }
+                forceAndroidInstall: !wipedAndroid.isEmpty, wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { logSupply($0) }
         }
 
         // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。

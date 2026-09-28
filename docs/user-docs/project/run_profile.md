@@ -30,7 +30,7 @@ for how `--profile` selects one.
 | `defaultTimeout` | number (seconds) | DSL's own default | Default timeout for DSL commands that take `waitSeconds:` |
 | `scenarioTimeout` | int (seconds) | `90` | Host-side wall-clock timeout per scenario (watchdog). Distinct from `defaultTimeout`, which only bounds individual command waits |
 | `iosInappEngine` | bool | `true` | `true` → iOS devices run the hybrid engine (in-app primary, XCUITest fallback); `false` → XCUITest only. A device's own `engine` in its `devices[]` entry takes precedence if set. No effect on Android |
-| `wipeDataOnBloat` | bool | `true` | At run start, wipe an Android AVD's data if the wipe-affected files (userdata/cache/snapshots) exceed `wipeDataThresholdGB` |
+| `wipeDataOnBloat` | bool | `true` | At run start, wipe an Android AVD's data if the wipe-affected files (userdata/cache/snapshots) exceed `wipeDataThresholdGB`. When installing the app fails because the device is out of storage, that device also gets a Wipe Data and the install is tried once more (with `false` the device is not wiped and drops out of the run) |
 | `wipeDataThresholdGB` | number (GB) | `8` | Threshold for `wipeDataOnBloat` |
 | `updateWebView` | bool | `true` | Reconcile the on-device WebView version at the start of a run, so the same scenario does not behave differently across devices with different WebView builds |
 | `recoverCpuFallbackToGpu` | bool | `false` | At run start, restart any Android emulator that has fallen back to CPU rendering (swiftshader) in GPU mode instead |

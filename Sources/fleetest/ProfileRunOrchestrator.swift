@@ -164,7 +164,8 @@ enum ProfileRunOrchestrator {
                                                                        repoRoot: repoRoot, log: { log($0) }) {
                         do {
                             let installed = try await ProfileWorkerFactory.installIfNeeded(
-                                apps: resolved.apps, workers: [w], forceAndroidInstall: false) { log($0) }
+                                apps: resolved.apps, workers: [w], forceAndroidInstall: false,
+                                wipeOnInsufficientStorage: resolved.wipeDataOnBloat, locale: resolved.locale) { log($0) }
                             guard let revived = installed.first else { return nil }
                             onRevived(revived)
                             return revived

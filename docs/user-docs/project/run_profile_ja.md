@@ -30,7 +30,7 @@
 | `defaultTimeout` | number(秒) | DSL 側の既定値 | `waitSeconds:` を取る DSL コマンドの既定タイムアウト |
 | `scenarioTimeout` | int(秒) | `90` | シナリオ単位のホスト側 watchdog(壁時計タイムアウト)。個々のコマンド待ちを縛る `defaultTimeout` とは別物 |
 | `iosInappEngine` | bool | `true` | `true` → iOS デバイスは hybrid エンジン(in-app 主 + XCUITest フォールバック)で動く。`false` → XCUITest のみ。`devices[]` のその要素自身に `engine` を明示していればそちらが優先。Android には影響しない |
-| `wipeDataOnBloat` | bool | `true` | 実行開始時、Android AVD の wipe 対象ファイル(userdata/cache/snapshots)が `wipeDataThresholdGB` を超えていたら Wipe Data する |
+| `wipeDataOnBloat` | bool | `true` | 実行開始時、Android AVD の wipe 対象ファイル(userdata/cache/snapshots)が `wipeDataThresholdGB` を超えていたら Wipe Data する。アプリのインストールが容量不足で失敗したときも、そのデバイスを Wipe Data して 1 回だけ入れ直す(`false` のときは Wipe せず、そのデバイスを実行から外す) |
 | `wipeDataThresholdGB` | number(GB) | `8` | `wipeDataOnBloat` のしきい値 |
 | `updateWebView` | bool | `true` | 実行開始時に端末上の WebView 版を揃える(同じシナリオが端末の WebView 版によって挙動が変わるのを防ぐ) |
 | `recoverCpuFallbackToGpu` | bool | `false` | 実行開始時、CPU 描画(swiftshader)へフォールバック済みの Android エミュレータを GPU モードで起動し直す |
