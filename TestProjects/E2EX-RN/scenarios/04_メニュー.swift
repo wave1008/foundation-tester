@@ -50,7 +50,6 @@ class メニューを操作できること {
         }
     }
 
-    @Draft("調査中: RN の iOS で #field_fruit(pointerEvents=none の入れ物)が木に出ない")
     @Test("ExposedDropdownMenuBox で選び、欄の値を読む")
     func S0020() {
         scenario {

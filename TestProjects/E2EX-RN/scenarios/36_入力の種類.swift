@@ -53,7 +53,7 @@ class 入力の種類ごとに入力できること {
         }
     }
 
-    @Draft("調査中: iOS in-app で pressEnter の後もキーボードが残り、その下の候補を押せない(Android は緑)")
+    @Draft("既知の制約: iOS の in-app エンジンはキーボードの下の要素を押せない(候補がキーボードに隠れる。XCUITest と Android は緑)")
     @Test("オートコンプリートの候補を選ぶ")
     func S0030() {
         scenario {

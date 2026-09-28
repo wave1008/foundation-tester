@@ -146,8 +146,10 @@ enum InAppSnapshot {
         if type == .keyboardKey { return }
 
         let nodeFrame = frame(node, rescale: rescale)
+        var included = false
         if let info = shouldInclude(node, type: type, frame: nodeFrame, screen: screen),
            !isCovered(info.frame, by: front) {
+            included = true
             gathered.append(Gathered(
                 info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
                 frame: info.frame, node: node, clip: clip, rescale: rescale))
@@ -159,7 +161,10 @@ enum InAppSnapshot {
 
         // AX 子の探索: isAccessibilityElement な要素は葉として扱いサブツリーに降りない。
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
-        if let view = node as? UIView, view.isAccessibilityElement { return }
+        // **木に出さなかった要素(名前も id も無い入れ物)は葉にしない**: RN の Pressable は既定で
+        // isAccessibilityElement で、その中の id つきの View(pointerEvents="none" の欄)が丸ごと消えていた
+        // (XCUITest の木には出る = 型セレクタも id もエンジンで食い違う)
+        if let view = node as? UIView, view.isAccessibilityElement, included { return }
         let children = axChildren(node)
         let childClip = isScrollableContainer(node) == true
             ? (clip ?? .infinite).intersection(nodeFrame) : clip

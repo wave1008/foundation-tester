@@ -31,7 +31,7 @@ class ボトムシートを操作できること {
         }
     }
 
-    @Draft("調査中: RN の iOS で BottomSheetFlatList の testID が木に出ず、scrollFrame で指せない")
+    @Draft("既知の制約: RN の iOS は BottomSheetFlatList の testID をスクロール容器に付けない(in-app・XCUITest とも容器は id 無しで出る。Android は緑)")
     @Test("シートの中のリストをスクロール探索して押す")
     func S0020() {
         scenario {

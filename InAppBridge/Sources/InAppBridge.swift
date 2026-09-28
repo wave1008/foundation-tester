@@ -874,7 +874,7 @@ final class FTInAppBridge {
             var point = CGPoint.zero
             var before: ReceiverMark?
             try performWithSettle(operation: "the tap before typing") { window in
-                point = try self.resolvePoint(ref: ref, x: nil, y: nil)
+                point = try self.pointFollowingMove(ref: ref)
                 before = Self.receiverMark()
                 FTSynthTap(window, point)
             }
@@ -930,7 +930,7 @@ final class FTInAppBridge {
             var point = CGPoint.zero
             var before: ReceiverMark?
             try performWithSettle { window in
-                point = try self.resolvePoint(ref: ref, x: nil, y: nil)
+                point = try self.pointFollowingMove(ref: ref)
                 before = Self.receiverMark()
                 FTSynthTap(window, point)
             }
@@ -1644,6 +1644,22 @@ final class FTInAppBridge {
                 + " once the main thread frees up, so retry only after checking the screen")
         }
         if let thrown { throw thrown }
+    }
+
+    /// 入力の前のタップを撃つ点。snapshot の後に**欄が形を変えずに動いていたら、動いたぶんだけ追う**
+    /// (main で呼ぶ)。自動でフォーカスを取る欄(ダイアログの autofocus)はキーボードが上がる間に動き、
+    /// snapshot の座標を撃つとダイアログの枠の外に当たって閉じる(実測 Flutter: prompt=cancel)。
+    /// **大きさが変わっているときは追わない**: snapshot の枠は見えている範囲へ切ってあることがあり
+    /// (容器の縁・Compose の枠の補正)、生の枠の中心は覆いの下や画面の外でありうる
+    private func pointFollowingMove(ref: Int) throws -> CGPoint {
+        let point = try resolvePoint(ref: ref, x: nil, y: nil)
+        guard let snapshot = frames[ref],
+              let node = nodes.object(forKey: NSNumber(value: ref)) as? NSObject else { return point }
+        let live = rescales[ObjectIdentifier(node)].map { InAppSnapshot.frame(node, rescale: $0) }
+            ?? node.accessibilityFrame
+        guard abs(live.width - snapshot.width) <= 1, abs(live.height - snapshot.height) <= 1,
+              live.width > 0, live.height > 0 else { return point }
+        return CGPoint(x: point.x + (live.minX - snapshot.minX), y: point.y + (live.minY - snapshot.minY))
     }
 
     private func resolvePoint(ref: Int?, x: Double?, y: Double?) throws -> CGPoint {

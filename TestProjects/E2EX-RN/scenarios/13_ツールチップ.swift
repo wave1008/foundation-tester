@@ -8,7 +8,7 @@ class ツールチップを出せること {
 
     // Android の M3 ツールチップは押している間だけ出て、指を離すと消える(DSL は離してから検証する)。
     // 表示中も文字は別ウィンドウで木に載らない。なので iOS だけ
-    @Draft("調査中: RN の iOS で paper Tooltip のアンカーを長押ししても表示が変わらない")
+    @Draft("調査中: RN の iOS で paper Tooltip のアンカーを 1 秒長押しして離した後、#txt_tooltip が木に無い(in-app・XCUITest とも。押している間に出ているかは未確認)")
     @Test("アイコンを長押しするとツールチップが出る")
     func S0010() {
         scenario {

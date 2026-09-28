@@ -8,7 +8,6 @@ import FTDSL
 @TestClass
 class ナビゲーションが正しく働くこと {
 
-    @Draft("調査中: 詳細を積み重ねた画面でツールバーの戻るを押しても1つ戻らない")
     @Test("引数付きルートの積み重ねとアイコンだけの戻る")
     func S0010() {
         scenario {

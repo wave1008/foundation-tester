@@ -71,6 +71,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | Flutter(Android) | テキストが `android.view.View` のまま(contentDesc だけ) | 子を持たない葉 + contentDesc を `staticText` にする | `SnapshotBuilder.mappedType` |
 | Flutter(Android) | `#id` が入力欄でなく外側の入れ物に付く(入れ物は editable でなく、欄は id を持たない) | 入れ物の今の枠に収まる editable を引き直す(座標で追うと、キーボードで欄が動いた後に見失う) | `InputInjector.editableInsideTagged` |
 | Android(全般) | 自動でフォーカスを取る欄(ダイアログの autofocus)は、キーボードが上がる間に動く | 対象の欄が既にフォーカスを持っていれば、入力の前のタップを撃たない(id で引けた欄だけ) | `BridgeRouter.tapUnlessAlreadyFocused` |
+| iOS(in-app) | 同上(Flutter の iOS でも同じ形で閉じた) | 入力の前のタップは、欄が形を変えずに動いていたら動いたぶんだけ追う(大きさが変わっていたら snapshot の座標のまま) | `InAppBridge.pointFollowingMove` |
 | Android(全般) | アプリが切り替わった直後、スクショが前のアプリの最後の絵を返し続けることがある(配信中・負荷時) | 起動の直前の絵と木を控え、最初の視覚検証でも「木は変わったのに絵は同じ」を拾う(注記 `stale-screenshot`・赤にしない) | `StepExecutor.recordPreLaunchFrame` |
 | SwiftUI | Toggle が同じ枠の `switch` を2つ出す。UIAlertController のボタンが同じ id で2つ | 何も足さない方を畳む | `SnapshotDedupe` |
 | React Native(iOS) | `FlatList` の testID が非スクロールのラッパーに付き、実際にスクロールするノードが別に出る | 同じ枠の「id 付きラッパー + 匿名 scroll ノード」を1つに統合 | `SnapshotDedupe` |
@@ -78,6 +79,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | React Native(Android) | Pressable の内側の Text が、ボタンと同じラベルの別ノードで残る | ボタンに内包される同ラベル・無 id の staticText を畳む | `SnapshotDedupe.dropLabelTwinsInsideButtons` |
 | Compose / Flutter(iOS in-app) | 入力欄が UITextField ではない合成 AX 要素で、in-app だけ `other` になっていた | テキスト入力の trait と `UITextInput` 準拠で型を付け、XCUITest と揃える | `InAppSnapshot.elementType` |
 | Flutter(iOS) | SnackBar の文言が「頻繁に更新される」特性だけのノードで、型が Other・id 無しのため木から落ちていた(中のボタンだけ出る) | ラベルを持つライブリージョンを `staticText` として出す(in-app・XCUITest とも) | `LiveRegionText.isLabelOnlyLiveRegion` |
+| RN(iOS・in-app) | `Pressable` は既定でアクセシビリティ要素になり、名前も id も無いと木に出ない。その中の id つきの View(`pointerEvents="none"` の欄)まで消えていた(XCUITest の木には出る) | 木に出さなかったアクセシビリティ要素は葉にせず、中を辿る | `InAppSnapshot.collect` |
 | Compose(iOS) | 容器の外の行(ghost)を、ラベル無しで木に残す | 見切れの判定を容器基準にし、画面端に積もった行の山は遮蔽物扱いしない | `clippingContainer` / `OcclusionSuspicion` |
 
 ### 1.4 揃っていない木の違い(B)
