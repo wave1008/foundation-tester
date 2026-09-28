@@ -5,7 +5,11 @@
   <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34"/>
   <!-- ServerSocket の listen に必須 -->
   <uses-permission android:name="android.permission.INTERNET"/>
-  <application android:label="fleetest bridge"/>
+  <application android:label="fleetest bridge">
+    <!-- キーボードを1度だけ出すための空の画面(ImeOnboarding.primeOnce)。shell の am start で起こすので exported -->
+    <activity android:name=".KeyboardPrimerActivity" android:exported="true"
+        android:theme="@android:style/Theme.DeviceDefault.Light.NoActionBar"/>
+  </application>
   <!-- targetPackage は自身。任意アプリを操作できるのは UiAutomation の権能による -->
   <instrumentation
       android:name="com.example.ftbridge.BridgeInstrumentation"

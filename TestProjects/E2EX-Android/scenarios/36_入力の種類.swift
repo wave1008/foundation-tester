@@ -63,7 +63,8 @@ class 入力の種類ごとに入力できること {
                 }.action {
                     type("#field_auto", "Ja")
                     // 候補の行は ListPopupWindow の無名の行(ラベルで指す)
-                    tap("Japan")
+                    // 候補は打った後に遅れて出る(非同期)。出るまで待ってから押す
+                    tap("Japan", waitSeconds: 5)
                 }.expectation {
                     select("#txt_auto_echo").textIs("auto=Japan")
                 }

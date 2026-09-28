@@ -296,7 +296,7 @@ Same across every framework (CMP `LazyVerticalGrid`, Flutter `GridView.builder`,
 | Flutter | `Dismissible(direction: .endToStart)`. The swipe removes the row directly |
 | RN | `react-native-gesture-handler`'s `Swipeable`. The swipe removes the row directly |
 | Android View | `ItemTouchHelper` (LEFT only). The swipe removes the row directly; the tool keeps the swipe path inside the OS "back" edge zones (the left and right edges of the screen) |
-| SwiftUI (iOS) | `.swipeActions(edge: .trailing, allowsFullSwipe: true)`. **The swipe alone does not remove the row — a "Delete" button appears at the right edge and must be pressed** (the standard iOS presentation) |
+| SwiftUI (iOS) | `.swipeActions(edge: .trailing, allowsFullSwipe: true)`. **The swipe alone does not remove the row — a "Delete" button appears at the right edge and must be pressed** (the standard iOS presentation). **On iOS 26 and later, swiping right on a row with nothing registered on the leading side can navigate back** (a rightward swipe over the content is also the OS "back" gesture; measured at 1 in 12). To verify "the disabled direction does nothing", the app has to turn that gesture off on the screen |
 
 ```swift
 // SwiftUI (iOS) only: press the button that appears after the swipe
@@ -539,6 +539,14 @@ select("#txt_focus_echo").textIs("focus=second")
 | RN | `react-native-paper`'s `TextInput` + a custom prefix-match suggestion list. Because a Japanese-locale device's default keyboard converts romaji into kana, an ASCII-only field needs `autoCorrect={false}` + `keyboardType="ascii-capable"` etc. (a workaround the app applies itself) |
 | Android View | `TextInputLayout` + `TextInputEditText` + `MaterialAutoCompleteTextView` (editable). **The autocomplete suggestion rows carry no id** (unnamed `ListPopupWindow` rows; target by label) |
 | SwiftUI (iOS) | `TextField` (`.numberPad` / `.vertical` axis) / `SecureField` + `@FocusState`. **The autocomplete suggestions are only verifiable on iOS** (on Android the suggestion popup does not appear in the a11y tree; see below) |
+
+- **Autocomplete suggestions show up a moment after you type** (they are asynchronous). Wait for the
+  suggestion before tapping it; without the wait, the step fails with "not found" only on slower machines.
+
+  ```swift
+  type("#field_auto", "Ja")
+  tap("#auto_opt_japan", waitSeconds: 5)
+  ```
 
 **Current limitation**:
 

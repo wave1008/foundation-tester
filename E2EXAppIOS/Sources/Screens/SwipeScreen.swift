@@ -22,10 +22,38 @@ struct SwipeScreen: View {
             }
         }
         .screenTitleTag("スワイプで削除")
+        .background(ContentPopGestureDisabler())
     }
 
     private func remove(_ n: Int) {
         rows.removeAll { $0 == n }
         lastRemoved = "removed=\(n)"
+    }
+}
+
+/// iOS 26 以降の「コンテンツの上の右払いで戻る」をこの画面でだけ切る。
+/// leading 側に何も登録していない行の右払いは、行ではなくこのジェスチャに渡って画面が戻ることがある
+/// (M1Ultra で 12 回に 1 回)。契約は「左から右は無効」なので、戻る経路は画面の左端と戻るボタンだけにする。
+private struct ContentPopGestureDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {}
+
+    final class Controller: UIViewController {
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            setContentPop(enabled: false)
+        }
+
+        // ナビゲーションコントローラは画面を跨いで共有なので、離れるときに戻す
+        override func viewWillDisappear(_ animated: Bool) {
+            super.viewWillDisappear(animated)
+            setContentPop(enabled: true)
+        }
+
+        private func setContentPop(enabled: Bool) {
+            if #available(iOS 26.0, *) {
+                navigationController?.interactiveContentPopGestureRecognizer?.isEnabled = enabled
+            }
+        }
     }
 }

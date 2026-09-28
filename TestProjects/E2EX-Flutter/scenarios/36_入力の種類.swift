@@ -63,7 +63,8 @@ class 入力の種類ごとに入力できること {
                     tap("#nav_inputs", scroll: .down)
                 }.action {
                     type("#field_auto", "Ja")
-                    tap("#auto_opt_japan")
+                    // 候補は打った後に遅れて出る(非同期)。出るまで待ってから押す
+                    tap("#auto_opt_japan", waitSeconds: 5)
                 }.expectation {
                     select("#txt_auto_echo").textIs("auto=Japan")
                 }

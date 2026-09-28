@@ -774,6 +774,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (bundleID.isEmpty()) {
             throw new BridgeException(400, "bundleID is required");
         }
+        // キーボードの初回シートを、アプリを出す前に済ませる(言語ごとに1回。ImeOnboarding の冒頭コメント)
+        ImeOnboarding.primeOnce(instrumentation, ua());
         if (attemptLaunch(bundleID)) return ok();
         // 前面判定が別パッケージの居座りで詰んだ。前面を掃除して1回だけ再試行する。
         // force-stop が bundleID しか殺さないと以後の launchApp が全滅する既知の罠(design.md §8.7)。

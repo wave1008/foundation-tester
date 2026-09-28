@@ -287,7 +287,7 @@ tap("OK")
 | Flutter | `Dismissible(direction: .endToStart)`。払うと直接消える |
 | RN | `react-native-gesture-handler` の `Swipeable`。払うと直接消える |
 | Android View | `ItemTouchHelper`(LEFT のみ)。払うと直接消える。ツールが払う経路を OS の「戻る」の帯(画面の左右の端)に入らないよう内側へ寄せる |
-| SwiftUI(iOS) | `.swipeActions(edge: .trailing, allowsFullSwipe: true)`。**払っただけでは消えず、右端に現れる「削除」ボタンを押す必要がある**(iOS の定番の見せ方) |
+| SwiftUI(iOS) | `.swipeActions(edge: .trailing, allowsFullSwipe: true)`。**払っただけでは消えず、右端に現れる「削除」ボタンを押す必要がある**(iOS の定番の見せ方)。**iOS 26 以降は、leading 側に何も登録していない行を右へ払うと画面が戻ることがある**(コンテンツの上の右払いも OS の「戻る」になる。実測で 12 回に 1 回)。「無効な向きは何も起きない」を確かめるなら、アプリ側がその画面でこのジェスチャを切っている必要がある |
 
 ```swift
 // SwiftUI(iOS)だけ、払った後にボタンを押す
@@ -523,6 +523,14 @@ select("#txt_focus_echo").textIs("focus=second")
 | RN | `react-native-paper` の `TextInput` + 自前の前方一致候補リスト。日本語ロケール端末の既定キーボードがローマ字→仮名変換を行うため、英字専用欄は `autoCorrect={false}` + `keyboardType="ascii-capable"` 等で素の英字キーボードにする(アプリ側の対処) |
 | Android View | `TextInputLayout` + `TextInputEditText` + `MaterialAutoCompleteTextView`(編集可)。**オートコンプリートの候補行に id が無い**(`ListPopupWindow` の無名行。ラベルで指す) |
 | SwiftUI(iOS) | `TextField`(`.numberPad` / `.vertical` axis)/ `SecureField` + `@FocusState`。**オートコンプリートの候補は iOS だけで検証**(Android は候補ウィンドウが a11y の木に出ないため。下記) |
+
+- **オートコンプリートの候補は、打った後に遅れて出ます**(非同期)。候補を押すときは出るまで待ちます。
+  待たないと、遅い機械でだけ「候補が見つからない」で落ちます。
+
+  ```swift
+  type("#field_auto", "Ja")
+  tap("#auto_opt_japan", waitSeconds: 5)
+  ```
 
 **現時点の制約**:
 
