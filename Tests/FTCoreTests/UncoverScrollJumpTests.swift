@@ -163,3 +163,31 @@ final class KeyboardBandFromChromeTests: XCTestCase {
         XCTAssertNil(TapTargetGeometry.keyboardBandFromChrome(in: elements, screen: screen))
     }
 }
+
+/// 「要素の中心が帯の内側にあるか」の固定(Android のナビゲーションバー専用の当たり判定)。
+final class TapPointIsInsideTests: XCTestCase {
+
+    private func element(_ rect: FTRect) -> ElementInfo {
+        ElementInfo(ref: 1, type: "staticText", identifier: "row_i_57", label: nil, value: nil,
+                    placeholder: nil, enabled: true, frame: rect, depth: 2)
+    }
+
+    func testCentreInsideTheBandIsCovered() {
+        let band = FTRect(x: 0, y: 2361, width: 1080, height: 63)
+        let row = element(FTRect(x: 0, y: 2323, width: 1080, height: 101))
+        XCTAssertTrue(TapTargetGeometry.tapPointIsInside(row, band: band),
+                      "中心 (540, 2373.5) は帯 2361..2424 の内側")
+    }
+
+    func testCentreAboveTheBandIsNotCovered() {
+        let band = FTRect(x: 0, y: 2361, width: 1080, height: 63)
+        let row = element(FTRect(x: 0, y: 396, width: 1080, height: 101))
+        XCTAssertFalse(TapTargetGeometry.tapPointIsInside(row, band: band))
+    }
+
+    func testCentreOutsideHorizontallyIsNotCovered() {
+        let band = FTRect(x: 0, y: 2361, width: 500, height: 63)
+        let row = element(FTRect(x: 600, y: 2361, width: 400, height: 63))
+        XCTAssertFalse(TapTargetGeometry.tapPointIsInside(row, band: band))
+    }
+}

@@ -306,4 +306,7 @@ public final class AppAttachDriver: AppDriver {
     public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
         await client.backGestureEdgeWidths()
     }
+    public func bottomSystemBar(screen: FTRect) async -> FTRect? {
+        await client.bottomSystemBar(screen: screen)
+    }
 }

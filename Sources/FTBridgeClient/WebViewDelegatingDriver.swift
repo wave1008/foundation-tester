@@ -83,6 +83,10 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
         await primary.backGestureEdgeWidths()
     }
+    /// pointScale と同じ理由(端末の性質。mode を見ない)
+    public func bottomSystemBar(screen: FTRect) async -> FTRect? {
+        await primary.bottomSystemBar(screen: screen)
+    }
 
     /// **両方へ立てる**(supportsCacheBypass と違い、こちらは撮る前に決める必要がある):
     /// mode は「直前の snapshot」が決めた値で、次の1回がどちらから読まれるかは

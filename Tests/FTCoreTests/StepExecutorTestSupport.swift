@@ -196,6 +196,14 @@ final class FakeAppDriver: AppDriver {
         backGestureEdgeWidthsValue
     }
 
+    /// `bottomSystemBar(screen:)` の擬似(Android のジェスチャナビゲーションバーを模す)。
+    /// 既定 nil = 帯なし(AppDriver の既定と同じ)
+    var bottomSystemBarValue: FTRect?
+
+    func bottomSystemBar(screen: FTRect) async -> FTRect? {
+        bottomSystemBarValue
+    }
+
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {
         lastDragArgs = (fromX, fromY, toX, toY, pressSeconds, durationSeconds)

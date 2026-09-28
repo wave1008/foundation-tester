@@ -43,6 +43,10 @@ public final class AndroidDriver: AppDriver {
     /// `backGestureEdgeWidths()` の読めた値(端末ごとに固定)。読めなかった回は控えない
     private var cachedBackGestureEdgeWidths: (left: Double, right: Double)?
 
+    /// `bottomSystemBar(screen:)` の読めた値。**画面サイズを鍵にする** —— 回転で帯の矩形が
+    /// 変わるため、鍵違いなら取り直す(adb が失敗した回は控えない。「帯が無い」と読めた回は控える)
+    private var cachedBottomSystemBar: (screen: FTRect, bar: FTRect?)?
+
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
@@ -410,6 +414,19 @@ public final class AndroidDriver: AppDriver {
                                "com.android.systemui/.SystemUIService"])
         let value = result?.outputIfSucceeded.flatMap(AndroidBackGestureEdges.parse)
         if let value { cachedBackGestureEdgeWidths = value }
+        return value
+    }
+
+    /// 読めた結果は画面サイズごとに1度だけ控える(回転で帯の矩形が変わるので、鍵違いなら取り直す)。
+    /// **「帯が無い」と読めた回も控える**(控えないと、帯の無い端末では tap のたびに dumpsys を撃つ。
+    /// 1回 約 70ms・68KB)。**adb が失敗した回は控えない** —— 一時的な失敗を控えると、以後ずっと帯を避けなくなる
+    public func bottomSystemBar(screen: FTRect) async -> FTRect? {
+        if let cachedBottomSystemBar, cachedBottomSystemBar.screen == screen {
+            return cachedBottomSystemBar.bar
+        }
+        guard let output = (try? adb(["shell", "dumpsys", "window"]))?.outputIfSucceeded else { return nil }
+        let value = AndroidSystemBars.bottomNavigationBar(output)
+        cachedBottomSystemBar = (screen, value)
         return value
     }
 
