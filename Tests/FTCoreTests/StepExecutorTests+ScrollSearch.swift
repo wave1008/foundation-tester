@@ -96,6 +96,30 @@ extension StepExecutorTests {
             x: 201, y: 728, of: mid, in: [mid, tabBar], screen: screen))
     }
 
+    /// **横の探索では空打ちを縦に抜く**(横へ抜くとページャがページ送りとして受け、送り終わる前の
+    /// ページを掴んで前のページへ戻す。E2EX-Flutter のページャで実測)。縦の探索は従来どおり横へ抜く
+    func testEmptyDragLeavesAcrossTheSearchAxis() throws {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let button = framed(ref: 1, id: "btn_page_4", x: 119, y: 228, width: 163, height: 48)
+        for finger in ["left", "right"] {
+            let end = try XCTUnwrap(StepExecutor.emptyDragEnd(of: button, x: 200, y: 252,
+                                                              searching: finger, screen: screen))
+            XCTAssertEqual(end.x, 200, "横の探索で横へ動かしてはいけない(\(finger))")
+            XCTAssertEqual(end.y, 280, "矩形のすぐ下で離す")
+        }
+        for finger in ["up", "down", nil] as [String?] {
+            let end = try XCTUnwrap(StepExecutor.emptyDragEnd(of: button, x: 200, y: 252,
+                                                              searching: finger, screen: screen))
+            XCTAssertEqual(end.y, 252, "縦の探索は従来どおり横へ抜く")
+            XCTAssertEqual(end.x, 286)
+        }
+        // 下に余地が無い要素は上へ抜く(下端の a11y 空白帯には降ろさない)
+        let low = framed(ref: 2, id: "low", x: 119, y: 790, width: 163, height: 40)
+        let up = try XCTUnwrap(StepExecutor.emptyDragEnd(of: low, x: 200, y: 810,
+                                                         searching: "left", screen: screen))
+        XCTAssertEqual(up.y, 786)
+    }
+
     /// **全幅の行では空打ちの終点が作れない**ので撃たない。左右どちらへも 4pt 出られないとき、
     /// 以前は開始点をそのまま返しており、始点=終点の 0.30 秒プレスは**タップとして成立する**
     /// —— emptyDragEndX の doc が禁じている「矩形の中で離す」を実装自身が踏んでいた。

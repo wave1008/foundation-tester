@@ -181,8 +181,9 @@ extension StepExecutor {
         if shouldEmptyDrag(for: element),
            Self.emptyDragIsSafe(x: x, y: y, of: element,
                                 in: snapshot.elements, screen: snapshot.screen),
-           let toX = Self.emptyDragEndX(of: element, from: x, screen: snapshot.screen) {
-            await emptyDrag(x: x, y: y, toX: toX)
+           let end = Self.emptyDragEnd(of: element, x: x, y: y, searching: step.direction,
+                                       screen: snapshot.screen) {
+            await emptyDrag(x: x, y: y, toX: end.x, toY: end.y)
         }
         return try await !settleAfterScroll(step: step, found: element, phase: &phase)
     }
@@ -433,6 +434,27 @@ extension StepExecutor {
     /// (`shouldEmptyDrag`。不明なら撃たない)。
     /// 撃たない代償は「容器が次の1タッチを消費したまま」= 呼び手のやり直しで回復するが、
     /// 撃った場合の代償は**アプリの状態が変わって戻せない**(読み取り専用のはずの scrollTo が書き込む)
+    /// 空打ちの抜き先。**探索の軸と直交する向きへ抜く** —— 横の探索(ページャ・カルーセル)で横へ抜くと、
+    /// 横の容器にとってはページ送りのジェスチャそのもので、送り終わる前のページを掴んで前のページへ戻す
+    /// (E2EX-Flutter のページャ: 探索が見つけた直後に前のページへ戻り、次の解決で消えた。
+    /// FT_EMPTY_DRAG=off で 2/2 緑)。縦の探索(と向きの無い呼び手)は従来どおり横へ抜く
+    static func emptyDragEnd(of element: ElementInfo, x: Double, y: Double, searching direction: String?,
+                             screen: FTRect) -> (x: Double, y: Double)? {
+        if direction == FTSwipeDirection.left.rawValue || direction == FTSwipeDirection.right.rawValue {
+            return emptyDragEndY(of: element, screen: screen).map { (x, $0) }
+        }
+        return emptyDragEndX(of: element, from: x, screen: screen).map { ($0, y) }
+    }
+
+    /// 横の探索で使う縦の抜き先(`emptyDragEndX` の縦版。矩形のすぐ外で離す = クリックとして成立させない)。
+    /// 下端の a11y 空白帯には降ろさない
+    static func emptyDragEndY(of element: ElementInfo, screen: FTRect) -> Double? {
+        let below = element.frame.y + element.frame.height + 4
+        if below <= screen.y + screen.height - Self.bottomUncoveredBand - 1 { return below }
+        let above = element.frame.y - 4
+        return above >= screen.y + 1 ? above : nil
+    }
+
     static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double? {
         let right = element.frame.x + element.frame.width + 4
         if right <= screen.x + screen.width - 1 { return right }
@@ -445,8 +467,8 @@ extension StepExecutor {
     /// 回さないとこの対策が丸ごと不発になる(= Compose の容器がタッチを1回吸ったままになり、
     /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
     /// (両経路とも失敗したら黙って進む = `try?` と同じ扱い)
-    func emptyDrag(x: Double, y: Double, toX: Double) async {
-        try? await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: y,
+    func emptyDrag(x: Double, y: Double, toX: Double, toY: Double) async {
+        try? await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY,
                                     pressSeconds: 0.05, durationSeconds: Self.emptyDragSeconds)
     }
 

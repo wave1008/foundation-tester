@@ -343,8 +343,9 @@ extension StepExecutor {
                         snapshot.screen.y + snapshot.screen.height - Self.bottomUncoveredBand - 1)
             if Self.emptyDragIsSafe(x: x, y: y, of: target, in: snapshot.elements,
                                     screen: snapshot.screen),
-               let toX = Self.emptyDragEndX(of: target, from: x, screen: snapshot.screen) {
-                await emptyDrag(x: x, y: y, toX: toX)
+               let end = Self.emptyDragEnd(of: target, x: x, y: y, searching: step.direction,
+                                           screen: snapshot.screen) {
+                await emptyDrag(x: x, y: y, toX: end.x, toY: end.y)
                 let settled = try await settledSignature(phase: &phase)
                 snapshot = settled.snapshot
                 // 空打ちで木が入れ替わるので ref を取り直す(古い ref は別要素を指す)。

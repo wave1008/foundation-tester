@@ -75,11 +75,9 @@ withScrollRight(scrollFrame: "#pager_main") {
 }
 ```
 
-**現時点の制約**: **iOS の in-app エンジンでは**、Flutter の `PageView` / RN の
-`react-native-pager-view` の中を `withScrollRight(scrollFrame:)` で探索できません(CMP の
-`HorizontalPager` は同じ経路で通ります。原因は未特定)。回避策: iOS でこの2フレームワークの
-ページャを操作するときは、アプリ側の「次のページへ」ボタンかフリック(`flickRightToLeft`)を使う
-(`withScrollRight` に依存しない)。
+iOS の in-app エンジンは、RN の `react-native-pager-view`(中身は `UIPageViewController`)を
+自分では送れないので、その領域の送りだけ XCUITest の実スワイプに切り替えます(注記 `fell back to XCUITest`)。
+書き方は変わりません。
 
 ### Android の画面端は OS の「戻る」
 

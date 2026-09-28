@@ -1105,6 +1105,19 @@ final class FTInAppBridge {
                     + " (synthetic drags are not accepted by gesture recognizers)."
                     + " hybrid falls back to XCUITest")
             }
+            // **指の下が UIPageViewController のスクロールビューなら動かさず XCUITest へ回す**(余地の判定より先):
+            // 中の _UIQueuingScrollView は contentOffset を直に書いてもページが切り替わらず、余地の計算も
+            // インセットのせいで「端」に見えて 200 の no-op になる(E2EX-RN の PagerView: 探索が「何も動かない」で
+            // 打ち切った)。ページ送りを API で撃っても delegate は呼ばれず、アプリの onPageSelected も動かない
+            let fingerPoint = req.path.map { CGPoint(x: $0.fromX, y: $0.fromY) }
+                ?? CGPoint(x: window.bounds.midX, y: window.bounds.midY)
+            if scrollViews.contains(where: { sv in
+                sv.convert(sv.bounds, to: window).contains(fingerPoint) && Self.isOwnedByPageViewController(sv)
+            }) {
+                throw InAppError(501, "the scroll view under the finger belongs to a UIPageViewController, which"
+                    + " the in-app engine cannot page (setting contentOffset does not change the page)."
+                    + " hybrid falls back to XCUITest")
+            }
             // 余地なし = 端。no-op で 200 を返し、**動かしていないので整定も待たない**。
             // **端送りならその事実を返す**(ホストが署名の2回不変を待たずに切り上げられる)
             guard let scrollView = Self.target(scrollViews, direction: req.direction, path: req.path,
@@ -1124,6 +1137,17 @@ final class FTInAppBridge {
             return req.edge != true
         }
         return ok(atEdge: atEdge)
+    }
+
+    /// スクロールビューが UIPageViewController の持ち物か(レスポンダの鎖を view controller まで辿る)
+    private static func isOwnedByPageViewController(_ view: UIView) -> Bool {
+        var responder: UIResponder? = view
+        while let current = responder {
+            if current is UIPageViewController { return true }
+            if current is UIViewController { return false }
+            responder = current.next
+        }
+        return false
     }
 
     /// UIAccessibility の scroll アクションでスクロールする(Compose / Flutter 専用)。

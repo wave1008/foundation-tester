@@ -7,7 +7,6 @@ import FTDSL
 @TestClass
 class ページャを操作できること {
 
-    @Draft("既知の制約: iOS の in-app でページャ(PageView / PagerView)の中を探索できない")
     @Test("フリック・プログラム送り・横のスクロール探索")
     func S0010() {
         scenario {

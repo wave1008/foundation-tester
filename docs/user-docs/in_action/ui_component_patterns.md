@@ -80,11 +80,9 @@ withScrollRight(scrollFrame: "#pager_main") {
 }
 ```
 
-**Current limitation**: **On the iOS in-app engine**, you cannot search inside a Flutter `PageView` or
-an RN `react-native-pager-view` with `withScrollRight(scrollFrame:)` (CMP's `HorizontalPager` goes
-through the same path fine; the cause is not identified). Workaround: on iOS, drive these two
-frameworks' pagers with the app's own "next page" button or a flick (`flickRightToLeft`) instead of
-relying on `withScrollRight`.
+The iOS in-app engine cannot page RN's `react-native-pager-view` (a `UIPageViewController` inside) by
+itself, so it switches to a real XCUITest swipe for that area only (note `fell back to XCUITest`).
+Nothing changes in how you write it.
 
 ### On Android the screen edges are the OS "back"
 
