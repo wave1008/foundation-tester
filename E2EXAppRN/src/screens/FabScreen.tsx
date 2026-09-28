@@ -18,7 +18,7 @@ export function FabScreen() {
   return (
     <ScreenContainer style={styles.screen}>
       <EchoText testID={Tags.txtFabResult}>{result}</EchoText>
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.list}>
         {ROWS.map(n => (
           <EchoText key={n} testID={Tags.rowF(n)} style={styles.row}>
             {`行 F${String(n).padStart(2, '0')}`}
@@ -66,6 +66,11 @@ const styles = StyleSheet.create({
   screen: {
     padding: 0,
   },
+  // 下のバーは流れの中に置く(一覧はバーの上で終わる = 末尾の行がバーに潜らない。RN の定番)。
+  // FAB だけが一覧の上に浮かぶので、末尾の行が FAB の上まで送れる余白を残す
+  scroll: {
+    flex: 1,
+  },
   list: {
     padding: 16,
     paddingBottom: 96,
@@ -85,10 +90,5 @@ const styles = StyleSheet.create({
     left: 16,
     bottom: 80,
   },
-  bottomBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
+  bottomBar: {},
 });

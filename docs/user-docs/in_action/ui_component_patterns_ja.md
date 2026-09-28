@@ -415,7 +415,7 @@ type("...")   // または type(".textField", "...") で入力欄を型で指す
 |---|---|
 | CMP | `LazyColumn` の `stickyHeader`。共通 |
 | Flutter | `SliverPersistentHeader(pinned)` をセクションごとに `SliverMainAxisGroup` でまとめる(単純に並べるだけだと複数の見出しが同時に貼り付くため) |
-| RN | `SectionList`(`stickySectionHeadersEnabled`)。**次のセクションの見出しが上端に来るタイミングで、そのセクションの先頭行に見出しの高さぶん重なる**(貼り付く見出しを持つリスト実装に共通の挙動で RN 固有ではない)。直後の行を押すシナリオは、見出しに隠れない位置まで送ってから押す |
+| RN | `SectionList`(`stickySectionHeadersEnabled`)。**次のセクションの見出しが上端に来るタイミングで、そのセクションの先頭行に見出しの高さぶん重なる**(貼り付く見出しを持つリスト実装に共通の挙動で RN 固有ではない)。**見出しに潜った行を `tap` するときは、fleetest が見出しの外まで送ってから押す**(注記 `scrolled the container to bring the target out from under #hdr_… before touching it`)ので書き方は変わらない |
 | Android View | `RecyclerView` + 貼り付く見出しの `ItemDecoration`。**貼り付いている間の見出しは canvas への直接描画で a11y ツリーに出ない**。実物の見出し行は通常のリストアイテムとして別に存在し、スクロールで通過する間だけ木に載る |
 | SwiftUI(iOS) | `List(.plain)` + `Section(header:)`。plain スタイルの Section 見出しは標準で上端に貼り付く |
 
@@ -544,6 +544,7 @@ select("#txt_focus_echo").textIs("focus=second")
 ## FAB(フローティングアクションボタン)
 
 - FAB はリストの上に浮かぶ(リストの行を覆う位置)。下端の行へは通常のスクロール探索で届く
+- **下のバーを一覧に重ねるレイアウトでは、一覧の下に余白が無いと末尾の行がバーの下から出てこず、`exist` が「見えない」で落ちます**(アプリ側の作り。Android View は `RecyclerView` に `clipToPadding="false"` + `paddingBottom`、RN はバーを `position: absolute` にせず一覧の下に並べる)
 
 ```swift
 tap("#fab_add")

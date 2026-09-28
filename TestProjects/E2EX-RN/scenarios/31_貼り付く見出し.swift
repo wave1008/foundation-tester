@@ -6,7 +6,6 @@ import FTDSL
 @TestClass
 class 貼り付く見出しのリストを扱えること {
 
-    @Draft("既知の制約: 貼り付く見出しの下に潜った行を押すと見出しに当たる")
     @Test("下のセクションの行へ届き、見出しが上端に貼り付いている")
     func S0010() {
         scenario {

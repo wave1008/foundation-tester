@@ -624,7 +624,8 @@ public enum TapTargetGeometry {
     ///
     /// 次の3つは**送っても外せない**ので nil を返す(呼び手は警告付きで撃つ):
     /// - 覆いが**操作可能でない**(暗幕・装飾)—— 送っても同じ物が付いてくることが多く、
-    ///   「別の物に当たる」実害も薄い
+    ///   「別の物に当たる」実害も薄い。**ただし容器の縁に揃った名前つきの帯(貼り付く見出し)は外す**
+    ///   (`isPinnedTextBand`。見出しはタッチを吸うので対象に届かず、送れば行のほうが離れる)
     /// - 覆いが**容器の半分以上**を占める(全画面のモーダル。送っても外に出ない)
     /// - 覆いが対象の**上下どちらとも言えない**(横方向の重なり・中心を跨ぐ)
     ///
@@ -634,7 +635,8 @@ public enum TapTargetGeometry {
                                          container: FTRect,
                                          minimumJump: Double = 60, margin: Double = 8) -> Double? {
         // 操作可能でない覆い(暗幕・装飾)は送っても実害が薄く、送っても同じ物が付いてくる
-        guard BridgeSnapshotThinning.operableTypes.contains(over.type) else { return nil }
+        guard BridgeSnapshotThinning.operableTypes.contains(over.type)
+            || isPinnedTextBand(over, in: container) else { return nil }
         return uncoverScrollJump(target: target, coveredBy: over.frame, container: container,
                                  minimumJump: minimumJump, margin: margin)
     }
@@ -642,6 +644,24 @@ public enum TapTargetGeometry {
     /// 覆いを**矩形**で渡す版。ソフトキーボードのように木の要素として渡せない覆い用
     /// (`KeyboardOcclusion.frame`)。操作可能かの判定は呼び手の責務 —— キーボードは
     /// 常にタッチを飲むので、呼び手はその判定を持たない
+    /// 容器の上端か下端に**揃って**(差 `pinnedBandEdgeTolerance` 以内)、容器の幅の大半(`pinnedBandMinimumWidthRatio`)を
+    /// 占める、**名前(ラベルか id)を持つ**帯か = 貼り付く見出し・固定の小見出し。名前の無い暗幕・縁から浮いたラベルは違う
+    static func isPinnedTextBand(_ over: ElementInfo, in container: FTRect) -> Bool {
+        let named = !(over.label ?? "").isEmpty || !(over.identifier ?? "").isEmpty
+        guard named, container.width > 0,
+              over.frame.width >= container.width * pinnedBandMinimumWidthRatio else { return false }
+        let atTop = abs(over.frame.y - container.y) <= pinnedBandEdgeTolerance
+        let atBottom = abs((over.frame.y + over.frame.height) - (container.y + container.height))
+            <= pinnedBandEdgeTolerance
+        return atTop || atBottom
+    }
+
+    /// 縁に「揃っている」とみなす差(座標の単位 = pt / Android は px)。貼り付く見出しは容器の縁に
+    /// 正確に載る(実測 RN: 見出し y=403・容器 y=403)ので、丸めのぶんだけ許す
+    static let pinnedBandEdgeTolerance = 2.0
+    /// 帯とみなす幅(容器の幅に対する比)。見出しは容器いっぱい(実測 996/996)。縁に置いた小さなラベルを外す
+    static let pinnedBandMinimumWidthRatio = 0.8
+
     public static func uncoverScrollJump(target: ElementInfo, coveredBy over: FTRect,
                                          container: FTRect,
                                          minimumJump: Double = 60, margin: Double = 8) -> Double? {

@@ -427,7 +427,7 @@ A list whose section headers stick to the top while scrolling.
 |---|---|
 | CMP | `LazyColumn`'s `stickyHeader`. Same as above |
 | Flutter | A `SliverPersistentHeader(pinned)` per section, grouped with `SliverMainAxisGroup` (simply lining up the headers would make several of them stick at once) |
-| RN | `SectionList` (`stickySectionHeadersEnabled`). **As the next section's header reaches the top, it overlaps that section's first row by the header's height** (a property common to any sticky-header list implementation, not RN-specific). A scenario that presses that row right after should scroll far enough that the header no longer covers it |
+| RN | `SectionList` (`stickySectionHeadersEnabled`). **As the next section's header reaches the top, it overlaps that section's first row by the header's height** (a property common to any sticky-header list implementation, not RN-specific). **When you `tap` a row hidden under the header, fleetest scrolls it out from under the header first** (note `scrolled the container to bring the target out from under #hdr_… before touching it`), so nothing changes in how you write it |
 | Android View | `RecyclerView` + a sticky-header `ItemDecoration`. **The header while it is stuck is drawn directly to canvas and does not appear in the a11y tree**. The actual header row exists separately as an ordinary list item and is only in the tree while it scrolls past |
 | SwiftUI (iOS) | `List(.plain)` + `Section(header:)`. A plain-style Section header sticks to the top by default |
 
@@ -562,6 +562,7 @@ select("#txt_focus_echo").textIs("focus=second")
 
 - The FAB floats above the list (it can cover a row). A row below it is still reached by ordinary
   scroll search
+- **In a layout that lays the bottom bar over the list, the last rows never come out from under the bar unless the list has bottom padding, and `exist` fails as "not visible"** (this is how the app is built: on Android View give the `RecyclerView` `clipToPadding="false"` + `paddingBottom`; on RN do not make the bar `position: absolute`, put it below the list)
 
 ```swift
 tap("#fab_add")

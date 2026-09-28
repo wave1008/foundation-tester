@@ -15,11 +15,15 @@
             android:layout_height="wrap_content"
             android:padding="16dp" />
 
+        <!-- BottomAppBar は一覧に重ねて置かれるので、末尾の行がバーの上まで送れるよう下に余白を取る
+             (clipToPadding=false で余白の上にも行が描かれる = Material の定番)。余白はバーの高さ(80dp)+ 少し -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recycler_fab"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingBottom="88dp" />
     </LinearLayout>
 
     <!-- 拡張 FAB(新規作成)。BottomAppBar のカドル内には1つしか収まらないため、

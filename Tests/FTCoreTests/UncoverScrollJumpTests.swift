@@ -63,6 +63,31 @@ final class UncoverScrollJumpTests: XCTestCase {
             target: target, coveredBy: scrim, container: container))
     }
 
+    /// 貼り付く見出し(操作不能だが名前つき・容器の上端に揃う)に潜った行は送って外す。
+    /// 実測の形(RN・Android px): 容器 (42,403 996x1979)・見出し (42,403 996x96)・行 (84,403 912x67)
+    func testPinnedSectionHeaderIsLifted() {
+        let container = FTRect(x: 42, y: 403, width: 996, height: 1979)
+        let row = element("button", FTRect(x: 84, y: 403, width: 912, height: 67))
+        var header = element("staticText", FTRect(x: 42, y: 403, width: 996, height: 96), ref: 2)
+        header.label = "セクション B"
+        let jump = TapTargetGeometry.uncoverScrollJump(target: row, coveredBy: header, container: container)
+        XCTAssertNotNil(jump, "貼り付く見出しに潜った行は送れば外れる")
+        XCTAssertLessThan(jump ?? 0, 0, "上の帯なので対象を下へ逃がす向き")
+    }
+
+    /// 名前つきでも**縁から浮いた**ラベル・幅の狭いラベルは帯ではない
+    func testNamedLabelAwayFromTheEdgeIsNotABand() {
+        let target = element("button", FTRect(x: 16, y: 130, width: 340, height: 48))
+        var floating = element("staticText", FTRect(x: 0, y: 120, width: 375, height: 40), ref: 2)
+        floating.label = "お知らせ"
+        XCTAssertNil(TapTargetGeometry.uncoverScrollJump(
+            target: target, coveredBy: floating, container: container))
+        var narrow = element("staticText", FTRect(x: 0, y: 100, width: 120, height: 40), ref: 3)
+        narrow.label = "新着"
+        XCTAssertNil(TapTargetGeometry.uncoverScrollJump(
+            target: target, coveredBy: narrow, container: container))
+    }
+
     /// 全画面のモーダルは送っても外に出ない
     func testFullScreenOverlayIsNotWorthScrolling() {
         let target = element("button", FTRect(x: 16, y: 300, width: 340, height: 48))
