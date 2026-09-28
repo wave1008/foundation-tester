@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# E2EXAppIOS(iOS ネイティブ SUT。Compose Multiplatform 固有部品の対照)を
+# iOS シミュレータ向け Debug ビルドし dist/ios-simulator/ へ配置する。
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if ! command -v xcodegen >/dev/null 2>&1; then
+  echo "xcodegen 未インストール。'brew install xcodegen' を実行してください。" >&2
+  exit 1
+fi
+
+xcodegen generate
+
+xcodebuild -project FTE2EXIOS.xcodeproj -scheme FTE2EXIOS -configuration Debug \
+  -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath build \
+  CODE_SIGNING_ALLOWED=NO ARCHS=arm64 EXCLUDED_ARCHS=x86_64 build
+
+OUT_DIR="dist/ios-simulator"
+mkdir -p "$OUT_DIR"
+APP_SRC="build/Build/Products/Debug-iphonesimulator/FTE2EXIOS.app"
+APP_DST="$OUT_DIR/FTE2EXIOS.app"
+# .app 名は cosmetic。fleetest/simctl の install 判定は中身の Info.plist の bundle id で行う。
+rsync -a --delete "$APP_SRC/" "$APP_DST/"
+# rsync -a は mtime を保存するので成果物の時刻が進まず、Scripts/e2e.sh の needs_rebuild が
+# 毎回真になる(ソースが常に新しく見える)。touch を消すと実行のたびに再ビルドが走る。
+touch "$APP_DST"
+
+echo "built: $APP_DST"

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/navbar_home"
+        android:icon="@drawable/ic_nav_home"
+        android:title="ホーム" />
+    <item
+        android:id="@+id/navbar_search"
+        android:icon="@drawable/ic_nav_search"
+        android:title="探す" />
+    <item
+        android:id="@+id/navbar_settings"
+        android:icon="@drawable/ic_nav_settings"
+        android:title="設定" />
+</menu>

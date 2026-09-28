@@ -1,0 +1,10 @@
+{
+  "common": {
+    "autoInstall": true
+  },
+  "ios": {
+    "appName": "FT E2EX iOS",
+    "app": "com.ftester.e2ex.ios",
+    "appPath": "E2EXAppIOS/dist/ios-simulator/FTE2EXIOS.app"
+  }
+}

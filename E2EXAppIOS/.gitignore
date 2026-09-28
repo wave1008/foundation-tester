@@ -1,0 +1,9 @@
+# xcodegen が project.yml から生成する(コミットしない)
+FTE2EXIOS.xcodeproj/
+# 同じく project.yml の info.properties から毎ビルド上書きされる生成物(直接編集しない)。
+Sources/Info.plist
+# xcodebuild の derivedDataPath。build=scripts/build-ios.sh(シミュレータ)
+build/
+build-device/
+dist/
+.DS_Store

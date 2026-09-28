@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ルートの唯一の正。titleForRoute 相当は android:label(MainActivity の
+     OnDestinationChangedListener がそのまま txt_screen_title へ写す)。 -->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.ftester.e2ex.android.fragments.HomeFragment"
+        android:label="E2EX ホーム"
+        tools:layout="@layout/fragment_home" />
+
+    <fragment
+        android:id="@+id/pagerFragment"
+        android:name="com.ftester.e2ex.android.fragments.PagerFragment"
+        android:label="ページャ"
+        tools:layout="@layout/fragment_pager" />
+
+    <fragment
+        android:id="@+id/sheetFragment"
+        android:name="com.ftester.e2ex.android.fragments.SheetFragment"
+        android:label="ボトムシート"
+        tools:layout="@layout/fragment_sheet" />
+
+    <fragment
+        android:id="@+id/menuFragment"
+        android:name="com.ftester.e2ex.android.fragments.MenuFragment"
+        android:label="メニュー"
+        tools:layout="@layout/fragment_menu" />
+
+    <fragment
+        android:id="@+id/dateFragment"
+        android:name="com.ftester.e2ex.android.fragments.DateFragment"
+        android:label="日付ピッカー"
+        tools:layout="@layout/fragment_date" />
+
+    <fragment
+        android:id="@+id/drawerFragment"
+        android:name="com.ftester.e2ex.android.fragments.DrawerFragment"
+        android:label="ドロワー"
+        tools:layout="@layout/fragment_drawer" />
+
+    <fragment
+        android:id="@+id/refreshFragment"
+        android:name="com.ftester.e2ex.android.fragments.RefreshFragment"
+        android:label="引っ張って更新"
+        tools:layout="@layout/fragment_refresh" />
+
+    <fragment
+        android:id="@+id/snackbarFragment"
+        android:name="com.ftester.e2ex.android.fragments.SnackbarFragment"
+        android:label="スナックバー"
+        tools:layout="@layout/fragment_snackbar" />
+
+    <fragment
+        android:id="@+id/gridFragment"
+        android:name="com.ftester.e2ex.android.fragments.GridFragment"
+        android:label="グリッド"
+        tools:layout="@layout/fragment_grid" />
+
+    <fragment
+        android:id="@+id/swipeFragment"
+        android:name="com.ftester.e2ex.android.fragments.SwipeFragment"
+        android:label="スワイプで削除"
+        tools:layout="@layout/fragment_swipe" />
+
+    <fragment
+        android:id="@+id/tabsFragment"
+        android:name="com.ftester.e2ex.android.fragments.TabsFragment"
+        android:label="タブ"
+        tools:layout="@layout/fragment_tabs" />
+
+    <fragment
+        android:id="@+id/animFragment"
+        android:name="com.ftester.e2ex.android.fragments.AnimFragment"
+        android:label="アニメーション"
+        tools:layout="@layout/fragment_anim" />
+
+    <fragment
+        android:id="@+id/tooltipFragment"
+        android:name="com.ftester.e2ex.android.fragments.TooltipFragment"
+        android:label="ツールチップ"
+        tools:layout="@layout/fragment_tooltip" />
+
+    <fragment
+        android:id="@+id/chipsFragment"
+        android:name="com.ftester.e2ex.android.fragments.ChipsFragment"
+        android:label="チップと分割ボタン"
+        tools:layout="@layout/fragment_chips" />
+
+    <fragment
+        android:id="@+id/searchFragment"
+        android:name="com.ftester.e2ex.android.fragments.SearchFragment"
+        android:label="検索バー"
+        tools:layout="@layout/fragment_search" />
+
+    <fragment
+        android:id="@+id/argNavFragment"
+        android:name="com.ftester.e2ex.android.fragments.ArgNavFragment"
+        android:label="引数付き遷移"
+        tools:layout="@layout/fragment_argnav" />
+
+    <fragment
+        android:id="@+id/detailFragment"
+        android:name="com.ftester.e2ex.android.fragments.DetailFragment"
+        android:label="詳細"
+        tools:layout="@layout/fragment_detail">
+        <argument
+            android:name="id"
+            app:argType="integer"
+            android:defaultValue="1" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/collapseFragment"
+        android:name="com.ftester.e2ex.android.fragments.CollapseFragment"
+        android:label="伸縮するヘッダ"
+        tools:layout="@layout/fragment_collapse" />
+
+    <fragment
+        android:id="@+id/stickyFragment"
+        android:name="com.ftester.e2ex.android.fragments.StickyFragment"
+        android:label="貼り付く見出し"
+        tools:layout="@layout/fragment_sticky" />
+
+    <fragment
+        android:id="@+id/timeFragment"
+        android:name="com.ftester.e2ex.android.fragments.TimeFragment"
+        android:label="時刻ピッカー"
+        tools:layout="@layout/fragment_time" />
+
+    <fragment
+        android:id="@+id/dialogsFragment"
+        android:name="com.ftester.e2ex.android.fragments.DialogsFragment"
+        android:label="ダイアログ"
+        tools:layout="@layout/fragment_dialogs" />
+
+    <fragment
+        android:id="@+id/contextFragment"
+        android:name="com.ftester.e2ex.android.fragments.ContextFragment"
+        android:label="長押しメニュー"
+        tools:layout="@layout/fragment_context" />
+
+    <fragment
+        android:id="@+id/reorderFragment"
+        android:name="com.ftester.e2ex.android.fragments.ReorderFragment"
+        android:label="並べ替え"
+        tools:layout="@layout/fragment_reorder" />
+
+    <fragment
+        android:id="@+id/inputsFragment"
+        android:name="com.ftester.e2ex.android.fragments.InputsFragment"
+        android:label="入力の種類"
+        tools:layout="@layout/fragment_inputs" />
+
+    <fragment
+        android:id="@+id/fabFragment"
+        android:name="com.ftester.e2ex.android.fragments.FabFragment"
+        android:label="FAB"
+        tools:layout="@layout/fragment_fab" />
+
+    <fragment
+        android:id="@+id/expandFragment"
+        android:name="com.ftester.e2ex.android.fragments.ExpandFragment"
+        android:label="展開するリスト"
+        tools:layout="@layout/fragment_expand" />
+
+    <fragment
+        android:id="@+id/stepperFragment"
+        android:name="com.ftester.e2ex.android.fragments.StepperFragment"
+        android:label="ステッパーと進捗"
+        tools:layout="@layout/fragment_stepper" />
+
+    <fragment
+        android:id="@+id/infiniteFragment"
+        android:name="com.ftester.e2ex.android.fragments.InfiniteFragment"
+        android:label="無限スクロール"
+        tools:layout="@layout/fragment_infinite" />
+
+    <fragment
+        android:id="@+id/zoomFragment"
+        android:name="com.ftester.e2ex.android.fragments.ZoomFragment"
+        android:label="ピンチで拡大"
+        tools:layout="@layout/fragment_zoom" />
+
+    <fragment
+        android:id="@+id/nativeFragment"
+        android:name="com.ftester.e2ex.android.fragments.NativeFragment"
+        android:label="固有部品"
+        tools:layout="@layout/fragment_native" />
+
+</navigation>

@@ -31,6 +31,20 @@ private val HOME_ROWS = listOf(
     HomeRow(Tags.NAV_CHIPS, "チップと分割ボタン", Routes.CHIPS),
     HomeRow(Tags.NAV_SEARCH, "検索バー", Routes.SEARCH),
     HomeRow(Tags.NAV_DETAIL, "引数付き遷移", Routes.ARG_NAV),
+    // 第2弾(docs/ui-contract-wave2.md)
+    HomeRow(Tags.NAV_COLLAPSE, "伸縮するヘッダ", Routes.COLLAPSE),
+    HomeRow(Tags.NAV_STICKY, "貼り付く見出し", Routes.STICKY),
+    HomeRow(Tags.NAV_TIME, "時刻ピッカー", Routes.TIME),
+    HomeRow(Tags.NAV_DIALOGS, "ダイアログ", Routes.DIALOGS),
+    HomeRow(Tags.NAV_CONTEXT, "長押しメニュー", Routes.CONTEXT),
+    HomeRow(Tags.NAV_REORDER, "並べ替え", Routes.REORDER),
+    HomeRow(Tags.NAV_INPUTS, "入力の種類", Routes.INPUTS),
+    HomeRow(Tags.NAV_FAB, "FAB", Routes.FAB),
+    HomeRow(Tags.NAV_EXPAND, "展開するリスト", Routes.EXPAND),
+    HomeRow(Tags.NAV_STEPPER, "ステッパーと進捗", Routes.STEPPER),
+    HomeRow(Tags.NAV_INFINITE, "無限スクロール", Routes.INFINITE),
+    HomeRow(Tags.NAV_ZOOM, "ピンチで拡大", Routes.ZOOM),
+    HomeRow(Tags.NAV_NATIVE, "固有部品", Routes.NATIVE),
 )
 
 @Composable

@@ -24,6 +24,21 @@ object Tags {
     const val NAV_SEARCH = "nav_search"
     const val NAV_DETAIL = "nav_detail"
 
+    // 第2弾ホーム(docs/ui-contract-wave2.md)
+    const val NAV_COLLAPSE = "nav_collapse"
+    const val NAV_STICKY = "nav_sticky"
+    const val NAV_TIME = "nav_time"
+    const val NAV_DIALOGS = "nav_dialogs"
+    const val NAV_CONTEXT = "nav_context"
+    const val NAV_REORDER = "nav_reorder"
+    const val NAV_INPUTS = "nav_inputs"
+    const val NAV_FAB = "nav_fab"
+    const val NAV_EXPAND = "nav_expand"
+    const val NAV_STEPPER = "nav_stepper"
+    const val NAV_INFINITE = "nav_infinite"
+    const val NAV_ZOOM = "nav_zoom"
+    const val NAV_NATIVE = "nav_native"
+
     // ページャ
     const val PAGER_MAIN = "pager_main"
     fun page(n: Int) = "txt_page_$n"
@@ -150,6 +165,153 @@ object Tags {
     const val DETAIL_LINK_COUNT = 3
     const val DETAIL_ID = "txt_detail_id"
     const val BTN_DETAIL_NEXT = "btn_detail_next"
+
+    // 伸縮するヘッダ
+    const val COLLAPSE_HEADER = "txt_collapse_header"
+    fun collapseRow(n: Int) = "row_c_" + n.toString().padStart(2, '0')
+    fun collapseRowLabel(n: Int) = "行 C" + n.toString().padStart(2, '0')
+    const val COLLAPSE_ROW_COUNT = 50
+    const val COLLAPSE_RESULT = "txt_collapse_result"
+
+    // 貼り付く見出し
+    val STICKY_SECTIONS = ('A'..'H').toList()
+    const val STICKY_ROWS_PER_SECTION = 10
+    fun stickyHeader(section: Char) = "hdr_$section"
+    fun stickyHeaderLabel(section: Char) = "セクション $section"
+    fun stickyRow(section: Char, n: Int) = "row_s_$section$n"
+    fun stickyRowLabel(section: Char, n: Int) = "行 $section$n"
+    const val STICKY_RESULT = "txt_sticky_result"
+
+    // 時刻ピッカー
+    const val BTN_OPEN_TIME = "btn_open_time"
+    const val BTN_TIME_MODE_TOGGLE = "btn_time_mode_toggle"
+    const val BTN_TIME_OK = "btn_time_ok"
+    const val BTN_TIME_CANCEL = "btn_time_cancel"
+    const val TIME_RESULT = "txt_time_result"
+    const val TIME_INITIAL_HOUR = 9
+    const val TIME_INITIAL_MINUTE = 30
+
+    // ダイアログ
+    const val BTN_ALERT = "btn_alert"
+    const val BTN_ALERT_OK = "btn_alert_ok"
+    const val BTN_ALERT_CANCEL = "btn_alert_cancel"
+    const val BTN_PROMPT = "btn_prompt"
+    const val FIELD_PROMPT = "field_prompt"
+    const val BTN_PROMPT_SAVE = "btn_prompt_save"
+    const val BTN_PROMPT_CANCEL = "btn_prompt_cancel"
+    const val BTN_ACTION_SHEET = "btn_action_sheet"
+    const val BTN_SHEET_CAMERA = "btn_sheet_camera"
+    const val BTN_SHEET_LIBRARY = "btn_sheet_library"
+    const val BTN_SHEET_CANCEL = "btn_sheet_cancel"
+    const val BTN_FULLSCREEN = "btn_fullscreen"
+    const val FULLSCREEN_TITLE = "txt_fullscreen_title"
+    const val BTN_FULLSCREEN_SAVE = "btn_fullscreen_save"
+    const val BTN_FULLSCREEN_CLOSE = "btn_fullscreen_close"
+    const val DIALOGS_RESULT = "txt_dialogs_result"
+
+    // 長押しメニュー
+    fun ctxRow(n: Int) = "ctx_row_$n"
+    fun ctxRowLabel(n: Int) = "長押し行 $n"
+    const val CTX_ROW_COUNT = 3
+    const val CTX_ITEM_EDIT = "ctx_item_edit"
+    const val CTX_ITEM_COPY = "ctx_item_copy"
+    const val CTX_ITEM_DELETE = "ctx_item_delete"
+    const val CONTEXT_RESULT = "txt_context_result"
+
+    // 並べ替え
+    fun reorderRow(n: Int) = "reorder_row_$n"
+    fun reorderRowLabel(n: Int) = "並べ替え $n"
+    const val REORDER_ROW_COUNT = 5
+    const val REORDER_RESULT = "txt_reorder_result"
+
+    // 入力の種類
+    const val FIELD_NUMBER = "field_number"
+    const val NUMBER_ECHO = "txt_number_echo"
+    const val FIELD_PASSWORD = "field_password"
+    const val PASSWORD_ECHO = "txt_password_echo"
+    const val FIELD_MULTILINE = "field_multiline"
+    const val MULTILINE_ECHO = "txt_multiline_echo"
+    const val FIELD_FIRST = "field_first"
+    const val FIELD_SECOND = "field_second"
+    const val FOCUS_ECHO = "txt_focus_echo"
+    const val FIELD_AUTO = "field_auto"
+    const val AUTO_OPT_JAPAN = "auto_opt_japan"
+    const val AUTO_OPT_JAMAICA = "auto_opt_jamaica"
+    const val AUTO_OPT_JORDAN = "auto_opt_jordan"
+    const val AUTO_ECHO = "txt_auto_echo"
+    const val FIELD_BOTTOM = "field_bottom"
+    const val BOTTOM_ECHO = "txt_bottom_echo"
+
+    // FAB
+    const val FAB_ADD = "fab_add"
+    const val FAB_EXTENDED = "fab_extended"
+    const val BAR_ACTION_SEARCH = "bar_action_search"
+    const val BAR_ACTION_SHARE = "bar_action_share"
+    const val FAB_RESULT = "txt_fab_result"
+    fun fabRow(n: Int) = "row_f_" + n.toString().padStart(2, '0')
+    fun fabRowLabel(n: Int) = "行 F" + n.toString().padStart(2, '0')
+    const val FAB_ROW_COUNT = 30
+
+    // 展開するリスト
+    const val GROUP_FRUIT = "group_fruit"
+    const val GROUP_VEG = "group_veg"
+    const val GROUP_DRINK = "group_drink"
+    val FRUIT_ITEMS = listOf("りんご", "みかん", "ぶどう")
+    val VEG_ITEMS = listOf("にんじん", "たまねぎ", "キャベツ")
+    val DRINK_ITEMS = listOf("水", "お茶", "コーヒー")
+    fun expandItem(group: String, n: Int) = "item_${group}_$n"
+    const val EXPAND_RESULT = "txt_expand_result"
+
+    // ステッパーと進捗
+    const val STEPPER_QTY = "stepper_qty"
+    const val BTN_QTY_PLUS = "btn_qty_plus"
+    const val BTN_QTY_MINUS = "btn_qty_minus"
+    const val QTY_RESULT = "txt_qty"
+    const val QTY_MIN = 0
+    const val QTY_MAX = 10
+    const val QTY_INITIAL = 1
+    const val BTN_START_PROGRESS = "btn_start_progress"
+    const val PROGRESS_MAIN = "progress_main"
+    const val PROGRESS_RESULT = "txt_progress"
+    const val SPINNER_BUSY = "spinner_busy"
+    const val PROGRESS_DURATION_MS = 2000
+
+    // 無限スクロール
+    const val LIST_INFINITE = "list_infinite"
+    fun infiniteRow(n: Int) = "row_i_" + n.toString().padStart(2, '0')
+    fun infiniteRowLabel(n: Int) = "項目 " + n.toString().padStart(2, '0')
+    const val TXT_LOADING = "txt_loading"
+    const val INFINITE_COUNT = "txt_infinite_count"
+    const val INFINITE_RESULT = "txt_infinite_result"
+    const val INFINITE_INITIAL_COUNT = 20
+    const val INFINITE_PAGE_SIZE = 20
+    const val INFINITE_MAX_COUNT = 100
+    const val INFINITE_LOAD_DELAY_MS = 800L
+    const val INFINITE_PREFETCH_THRESHOLD = 3
+
+    // ピンチで拡大
+    const val ZOOM_TARGET = "zoom_target"
+    const val ZOOM_SCALE = "txt_zoom_scale"
+    const val BTN_ZOOM_RESET = "btn_zoom_reset"
+    const val ZOOM_MIN = 1.0f
+    const val ZOOM_MAX = 4.0f
+
+    // 固有部品
+    fun carouselItem(n: Int) = "carousel_item_$n"
+    const val CAROUSEL_ITEM_COUNT = 5
+    const val RAIL_ITEM_HOME = "rail_item_home"
+    const val RAIL_ITEM_SEARCH = "rail_item_search"
+    const val RAIL_ITEM_SETTINGS = "rail_item_settings"
+    const val BSS_PEEK_BUTTON = "bss_peek_button"
+    const val NATIVE_RESULT = "txt_native_result"
+}
+
+// ピンチで拡大の scale echo(小数1桁固定)。commonMain に String.format が無いため自前で丸める。
+fun formatScale(value: Float): String {
+    val tenths = kotlin.math.round(value * 10).toInt()
+    val whole = tenths / 10
+    val frac = tenths % 10
+    return "$whole.$frac"
 }
 
 object AppInfo {

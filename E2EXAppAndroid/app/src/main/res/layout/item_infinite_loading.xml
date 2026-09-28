@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 常に末尾に高々1つしか存在しない行なので静的 id のままでよい(row_i_* のような
+     複数同時存在の動的割り当ては不要)。 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/txt_loading"
+    android:layout_width="match_parent"
+    android:layout_height="48dp"
+    android:gravity="center"
+    android:text="読み込み中"
+    android:textAppearance="?attr/textAppearanceBodyMedium" />

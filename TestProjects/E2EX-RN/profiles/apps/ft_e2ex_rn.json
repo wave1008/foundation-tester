@@ -1,0 +1,15 @@
+{
+  "common": {
+    "autoInstall": true
+  },
+  "ios": {
+    "appName": "FT E2EX RN",
+    "app": "com.ftester.e2ex.rn",
+    "appPath": "E2EXAppRN/dist/ios-simulator/FTE2EXRN.app"
+  },
+  "android": {
+    "appName": "FT E2EX RN",
+    "app": "com.ftester.e2ex.rn",
+    "appPath": "E2EXAppRN/dist/android/ft-e2ex-rn-release.apk"
+  }
+}

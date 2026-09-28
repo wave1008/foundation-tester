@@ -1,0 +1,10 @@
+{
+  "common": {
+    "autoInstall": true
+  },
+  "android": {
+    "appName": "FT E2EX Android",
+    "app": "com.ftester.e2ex.android",
+    "appPath": "E2EXAppAndroid/dist/android/ft-e2ex-android-debug.apk"
+  }
+}

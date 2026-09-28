@@ -185,9 +185,37 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .executableTarget(
+            name: "fleetest-scenarios-E2EX-Android",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EX-Android/scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
             name: "fleetest-scenarios-E2EX-CMP",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2EX-CMP/scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EX-Flutter",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EX-Flutter/scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EX-RN",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EX-RN/scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EX-iOS",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EX-iOS/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),

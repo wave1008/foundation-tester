@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 貼り付く見出しの描画専用コピー。ItemDecoration が canvas に直接 draw するだけで
+     RecyclerView へは addView しないため、a11y ツリーには出ない(木由来の実物は item_sticky_header.xml)。
+     addView しない = id を割り当てても無意味なので付けない。 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="48dp"
+    android:background="?attr/colorSurfaceVariant"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="16dp"
+    android:textAppearance="?attr/textAppearanceTitleSmall"
+    android:textStyle="bold" />

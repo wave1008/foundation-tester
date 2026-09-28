@@ -19,19 +19,32 @@ import com.ftester.e2ex.screens.AnimScreen
 import com.ftester.e2ex.screens.ArgNavScreen
 import com.ftester.e2ex.screens.BottomSheetScreen
 import com.ftester.e2ex.screens.ChipsScreen
+import com.ftester.e2ex.screens.CollapseScreen
+import com.ftester.e2ex.screens.ContextScreen
 import com.ftester.e2ex.screens.DatePickerScreen
 import com.ftester.e2ex.screens.DetailScreen
+import com.ftester.e2ex.screens.DialogsScreen
 import com.ftester.e2ex.screens.DrawerScreen
+import com.ftester.e2ex.screens.ExpandScreen
+import com.ftester.e2ex.screens.FabScreen
 import com.ftester.e2ex.screens.GridScreen
 import com.ftester.e2ex.screens.HomeScreen
+import com.ftester.e2ex.screens.InfiniteScreen
+import com.ftester.e2ex.screens.InputsScreen
 import com.ftester.e2ex.screens.MenuScreen
+import com.ftester.e2ex.screens.NativeScreen
 import com.ftester.e2ex.screens.PagerScreen
 import com.ftester.e2ex.screens.RefreshScreen
+import com.ftester.e2ex.screens.ReorderScreen
 import com.ftester.e2ex.screens.SearchScreen
 import com.ftester.e2ex.screens.SnackbarScreen
+import com.ftester.e2ex.screens.StepperScreen
+import com.ftester.e2ex.screens.StickyScreen
 import com.ftester.e2ex.screens.SwipeScreen
 import com.ftester.e2ex.screens.TabsScreen
+import com.ftester.e2ex.screens.TimeScreen
 import com.ftester.e2ex.screens.TooltipScreen
+import com.ftester.e2ex.screens.ZoomScreen
 import com.ftester.e2ex.ui.TaggedIconButton
 import com.ftester.e2ex.ui.TaggedText
 import com.ftester.e2ex.util.exposeTestTagsAsResourceId
@@ -87,6 +100,19 @@ fun App() {
                     val id = entry.arguments?.read { getStringOrNull("id") }?.toIntOrNull() ?: 1
                     DetailScreen(id = id, navController = navController)
                 }
+                composable(Routes.COLLAPSE) { CollapseScreen() }
+                composable(Routes.STICKY) { StickyScreen() }
+                composable(Routes.TIME) { TimeScreen() }
+                composable(Routes.DIALOGS) { DialogsScreen() }
+                composable(Routes.CONTEXT) { ContextScreen() }
+                composable(Routes.REORDER) { ReorderScreen() }
+                composable(Routes.INPUTS) { InputsScreen() }
+                composable(Routes.FAB) { FabScreen() }
+                composable(Routes.EXPAND) { ExpandScreen() }
+                composable(Routes.STEPPER) { StepperScreen() }
+                composable(Routes.INFINITE) { InfiniteScreen() }
+                composable(Routes.ZOOM) { ZoomScreen() }
+                composable(Routes.NATIVE) { NativeScreen() }
             }
         }
     }

@@ -21,6 +21,21 @@ object Routes {
     const val ARG_NAV = "argnav"
     const val DETAIL = "detail/{id}"
 
+    // 第2弾(docs/ui-contract-wave2.md)
+    const val COLLAPSE = "collapse"
+    const val STICKY = "sticky"
+    const val TIME = "time"
+    const val DIALOGS = "dialogs"
+    const val CONTEXT = "context"
+    const val REORDER = "reorder"
+    const val INPUTS = "inputs"
+    const val FAB = "fab"
+    const val EXPAND = "expand"
+    const val STEPPER = "stepper"
+    const val INFINITE = "infinite"
+    const val ZOOM = "zoom"
+    const val NATIVE = "native"
+
     fun detail(id: Int) = "detail/$id"
 }
 
@@ -42,5 +57,18 @@ fun titleForRoute(route: String?): String = when (route) {
     Routes.SEARCH -> "検索バー"
     Routes.ARG_NAV -> "引数付き遷移"
     Routes.DETAIL -> "詳細"
+    Routes.COLLAPSE -> "伸縮するヘッダ"
+    Routes.STICKY -> "貼り付く見出し"
+    Routes.TIME -> "時刻ピッカー"
+    Routes.DIALOGS -> "ダイアログ"
+    Routes.CONTEXT -> "長押しメニュー"
+    Routes.REORDER -> "並べ替え"
+    Routes.INPUTS -> "入力の種類"
+    Routes.FAB -> "FAB"
+    Routes.EXPAND -> "展開するリスト"
+    Routes.STEPPER -> "ステッパーと進捗"
+    Routes.INFINITE -> "無限スクロール"
+    Routes.ZOOM -> "ピンチで拡大"
+    Routes.NATIVE -> "固有部品"
     else -> "E2EX ホーム"
 }

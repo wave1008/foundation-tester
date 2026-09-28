@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 並び順が fruit=apple|banana|cherry の正引きに使う値順と一致する契約 -->
+    <string-array name="fruit_labels">
+        <item>りんご</item>
+        <item>バナナ</item>
+        <item>さくらんぼ</item>
+    </string-array>
+
+    <!-- RangeSlider app:values の初期値(契約 §チップと分割ボタン: 初期 20..80) -->
+    <array name="range_slider_initial">
+        <item>20</item>
+        <item>80</item>
+    </array>
+</resources>

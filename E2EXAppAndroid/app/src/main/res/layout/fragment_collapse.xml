@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <!-- 画面ローカルの伸縮ヘッダ。ルートの MaterialToolbar(#txt_screen_title)と二重表示になるが
+             CMP 契約が明示的に許容している逸脱と同じ形(docs/ui-contract.md 参照)。 -->
+        <!-- minHeight を明示しないと "exitUntilCollapsed" のスクロール範囲が 220dp 全体になり、
+             pin した子(txt_collapse_result)ごと AppBarLayout が高さ0まで畳まれて木から消える
+             (実機で観測)。pin は子の位置を固定するだけで、床の高さは別に要る。 -->
+        <com.google.android.material.appbar.CollapsingToolbarLayout
+            android:layout_width="match_parent"
+            android:layout_height="220dp"
+            android:minHeight="?attr/actionBarSize"
+            app:contentScrim="?attr/colorSurface"
+            app:layout_scrollFlags="scroll|exitUntilCollapsed">
+
+            <TextView
+                android:id="@+id/txt_collapse_header"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="bottom"
+                android:gravity="center"
+                android:paddingBottom="56dp"
+                android:text="大きな見出し"
+                android:textAppearance="?attr/textAppearanceHeadlineMedium"
+                app:layout_collapseMode="parallax" />
+
+            <!-- 縮んでも木に残す位置(pin)。契約 §伸縮するヘッダ。 -->
+            <TextView
+                android:id="@+id/txt_collapse_result"
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
+                android:gravity="center_vertical"
+                android:paddingHorizontal="16dp"
+                app:layout_collapseMode="pin" />
+        </com.google.android.material.appbar.CollapsingToolbarLayout>
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_collapse"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

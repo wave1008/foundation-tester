@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_horizontal"
+    android:padding="16dp">
+
+    <!-- clipChildren 既定 true。#zoom_target を拡大しても FrameLayout の枠からはみ出さない
+        (コーディネータ指摘: 拡大した中身が echo/ボタンを覆わないようにする)。 -->
+    <FrameLayout
+        android:layout_width="280dp"
+        android:layout_height="280dp"
+        android:background="?attr/colorSurfaceVariant">
+
+        <com.ftester.e2ex.android.fragments.PinchZoomImageView
+            android:id="@+id/zoom_target"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_photo_placeholder" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/txt_zoom_scale"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btn_zoom_reset"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="元に戻す" />
+</LinearLayout>

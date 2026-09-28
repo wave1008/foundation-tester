@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 実物の見出し行(木に残る。id は hdr_A 等を実行時に割り当てる)。 -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="48dp"
+    android:background="?attr/colorSurfaceVariant"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="16dp"
+    android:textAppearance="?attr/textAppearanceTitleSmall"
+    android:textStyle="bold" />

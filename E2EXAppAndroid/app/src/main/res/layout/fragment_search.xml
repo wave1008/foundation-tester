@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appbar_search"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:elevation="0dp">
+
+        <!-- #field_search はタップ対象(SearchBar)。展開後の実入力欄(SearchView の editText)は
+             別 id #field_search_input(SearchFragment.kt が割り当てる。SearchBar は展開中も
+             GONE にならないため同じ id を共有すると衝突する。docs/ui-contract.md 参照)。
+             #txt_search_result は畳まれた帯の下にすぐ置く(画面上部の慣習に合わせる)。 -->
+        <com.google.android.material.search.SearchBar
+            android:id="@+id/field_search"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="検索" />
+
+        <TextView
+            android:id="@+id/txt_search_result"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="16dp" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <com.google.android.material.search.SearchView
+        android:id="@+id/search_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:hint="検索"
+        app:layout_anchor="@id/field_search">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_suggestions"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+    </com.google.android.material.search.SearchView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>
