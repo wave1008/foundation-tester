@@ -27,7 +27,7 @@ struct InitCommand: AsyncParsableCommand {
     var fleetestPath: String?
 
     @Option(name: .customLong("fleetest-url"),
-            help: "git URL of foundation-tester (depends via .package(url:from:); mutually exclusive with --fleetest-path)")
+            help: "git URL of foundation-tester (depends via .package(url:branch:); mutually exclusive with --fleetest-path)")
     var fleetestURL: String?
 
     // 配布口は main の1本(docs/releasing.md)。タグを指す `from:` 依存は案内しない導線だったので

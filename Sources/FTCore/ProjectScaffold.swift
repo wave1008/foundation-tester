@@ -282,9 +282,8 @@ public enum ProjectScaffold {
           なお **macOS 26 では FM の視覚検証(occlusion-guard / screenLooksLike)だけが使えない**
           (画像入力は macOS 27+)。他の機能は制限なく動く
 
-        セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):
-        - 使うシミュレータ名
-          → **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**(バージョン・パスの推測は事故のもと)。
+        **デバイスは聞かない**(ステップ2の `--auto-device` が選ぶ。使うデバイスを人間が自発的に指定したときだけ
+        その名前を使う)。bundle ID が分からなければ 🧑 に冒頭の1回だけ聞く(他リポジトリを勝手に探索して埋めない)。
 
         **対象アプリ(.app / .apk)のパスは聞かない**(→ステップ3。後から設定できる)。
 
@@ -292,7 +291,8 @@ public enum ProjectScaffold {
         `fleetest doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
 
         ### 2. 実行プロファイルのデバイス
-        - `fleetest profile setup --auto-device` で使えるデバイスを選んで書く(手で書くときは下の形)
+        - `fleetest profile setup --project \(name) --platform ios --app-id <bundle id> --auto-device` で
+          使えるデバイスを選んで書く(Android は `--platform android`、両方は `both`。手で書くときは下の形)
         - 🧑 `TestProjects/\(name)/profiles/runs/<名前>.json` の `devices` に列挙(書式は同ディレクトリの README.md):
 
         ```json
@@ -345,21 +345,21 @@ public enum ProjectScaffold {
           "mcpServers": {
             "fleetest": {
               "command": "bash",
-              "args": ["-c", "export PATH=/opt/homebrew/bin:/usr/local/bin:$PATH; WD=\\"$PWD\\"; cd \\"<CLONE_ABS>\\" && swift build --product fleetest-mcp >/dev/null 2>&1 && cd \\"$WD\\" && exec \\"<CLONE_ABS>/.build/debug/fleetest-mcp\\""]
+              "args": ["-c", "exec \\"<CLONE_ABS>/Scripts/mcp-server.sh\\""],
+              "env": { "FT_TOOL_ROOT": "<CLONE_ABS>" }
             }
           }
         }
         ```
 
-        rebuild-on-start なので clone を `git pull` しても版ズレしない。build 出力は `/dev/null`
-        (JSON-RPC は stdout 専用)。Claude Code はプロジェクトスコープの MCP を初回に承認確認する
-        → 許可すると `ft_*` ツールが使え、`/fleetest-scenario` が MCP 経由で動く。
-        **ビルドのため clone へ `cd` した後、`exec` 前に元のパッケージルートへ戻す**(cwd は
-        `fleetest-mcp` がパッケージルートを特定する入力。cd したままだと `TestProjects/` が見えなくなる)。
+        ビルド・PATH の補正・ログの向き先は clone の `Scripts/mcp-server.sh` が持つ(ソースが実行ファイルより
+        新しいときだけ建て直す・stdout は JSON-RPC 専用・cwd は変えない)。**シェル式を直書きしない**・
+        **`-l` を付けない**(ログインシェルの出力が JSON-RPC に混ざる)。Claude Code はプロジェクトスコープの
+        MCP を初回に承認確認する → 許可すると `ft_*` ツールが使え、`/fleetest-scenario` が MCP 経由で動く。
 
         ## 更新(新しい版が出たとき)
-        clone した foundation-tester で `git pull`(または `git checkout <新version>`)して `swift build`
-        し直し、Package.swift の依存(`.package(... from:)` の版)も同じ版へ上げる。CLI と依存の版は揃える。
+        clone した foundation-tester で `git pull` して `swift build` し直す(配布口は main の1本。
+        Package.swift の依存は clone のパスか main 追従なので、版を書き換える作業は無い)。
         """
     }
 
@@ -446,7 +446,7 @@ public enum ProjectScaffold {
 
                     // 以降は書き方の例。セレクタ("#id" や "テキスト")を自分のアプリのものに
                     // 差し替えて有効化する。**セレクタは推測で書かない** —— `ft_snapshot`(MCP)か
-                    // `fleetest api snapshot` で実際の画面から採る。
+                    // `fleetest snapshot` で実際の画面から採る。
                     //
                     // scene(2, "ログインする") {
                     //     action {
@@ -509,13 +509,13 @@ public enum ProjectScaffold {
     - `name`(必須): デバイスの名前。**一意なのは (machine, name)** なので、別の機械に同名の
       デバイスが居てよく、1つの実行プロファイルで手元とリモートを同時に回せる
     - `enabled`: `false` なら一覧に残すが走らせない(拡張のチェックボックス)。省略 = 走らせる
-    - 実体: iOS シミュレータは `name` をシミュレータ自身の名前(Xcode の Name)にし、`os`(OS Version)・
+    - 実体: iOS シミュレータは `name` をシミュレータ自身の名前(Xcode の Name)にし、`osVersion`(OS Version)・
       `udid`・`model`(Model。表示専用)を書く。Android は `avd` / 実機なら `kind: "physical"` と `serial`
 
     **同じデバイスは複数の実行プロファイルに載る**。拡張で名前などを直すと、同じ
     (platform, machine, name) を持つ全ての実行プロファイルへ反映される。手で直すときは全部を揃える。
     Android の `avd` は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)")の
-    どちらでも書ける。iOS の `os`(例 `"26.0"`)は任意で、**書かなければ名前一致の最新ランタイム**に
+    どちらでも書ける。iOS の `osVersion`(例 `"iOS 27.0"`)は任意で、**書かなければ名前一致の最新ランタイム**に
     解決される(このマシンに無い版を書くと解決不能になる)。
 
     ```json

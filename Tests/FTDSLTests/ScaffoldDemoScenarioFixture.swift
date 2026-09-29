@@ -30,7 +30,7 @@ class デモ {
 
             // 以降は書き方の例。セレクタ("#id" や "テキスト")を自分のアプリのものに
             // 差し替えて有効化する。**セレクタは推測で書かない** —— `ft_snapshot`(MCP)か
-            // `fleetest api snapshot` で実際の画面から採る。
+            // `fleetest snapshot` で実際の画面から採る。
             //
             // scene(2, "ログインする") {
             //     action {
