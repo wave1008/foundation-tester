@@ -79,9 +79,11 @@ let logPaneHeight = desiredLogPaneHeight ?? 0;
 // 分け合う高さなので、**その外に居るもの全部**(ツールバー・バナー・ラインビューの見出し・
 // セパレーター3本)を引く。畳んで消えているもの(スプリッター)は offsetHeight が 0 なので
 // 自動で勘定から外れる。
+// **run ボードの margin-top も引く** —— offsetHeight に入らないので、引かないとその分だけ下端がはみ出す。
 function runBoardAvailableHeight() {
   const bannerHeight = banner.classList.contains('visible') ? banner.offsetHeight : 0;
-  return devicesPanel.clientHeight
+  const runBoardMargin = parseFloat(getComputedStyle(runBoard).marginTop) || 0;
+  return devicesPanel.clientHeight - runBoardMargin
     - toolbar.offsetHeight - bannerHeight - lineViewHeader.offsetHeight
     - devicesSeparator.offsetHeight - splitter.offsetHeight - splitterLog.offsetHeight;
 }
