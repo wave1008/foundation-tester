@@ -135,10 +135,12 @@ enum CrashLogs {
     /// 先頭行の言い回し(純関数・adb 不要でテストできる)。**ft_logs の実引数は `all`
     /// (既定 false)であって `crashOnly` ではない**(MCPServer+ToolDefs.swift のスキーマ参照)ので、
     /// 内部変数名をそのまま出さず、渡せる引数名で言い換える
+    /// `allCount` が取得上限(`androidFetchUpperBound`)に届いたら総数は分からない(上限で切れている)ので「以上」と言う
     static func androidLogHeader(shownCount: Int, allCount: Int, crashOnly: Bool) -> String {
         let scopeDesc = crashOnly ? "crash buffer only" : "main+crash buffers (all: true)"
+        let total = allCount >= androidFetchUpperBound ? "at least \(allCount)" : "\(allCount)"
         return shownCount < allCount
-            ? "Showing the last \(shownCount) of \(allCount) line(s) (\(scopeDesc))"
+            ? "Showing the last \(shownCount) of \(total) line(s) (\(scopeDesc))"
             : "\(shownCount) line(s) (\(scopeDesc))"
     }
 

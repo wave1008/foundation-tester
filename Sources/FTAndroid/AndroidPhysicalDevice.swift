@@ -27,6 +27,12 @@ public enum AndroidPhysicalDevice {
         func shell(_ args: [String], _ timeout: Double = 10) {
             _ = try? Shell.run([adb, "-s", serial] + args, timeout: timeout)
         }
+        // **adb が届かない端末を「ロック中」と読まない**(実測: 居ない serial で解除の待ちを 20 秒回し、
+        // 「PIN/パターンのロックは解除できない」と誤った理由を出した)。届かないなら待たずに事実だけ言う
+        if let state = try? Shell.run([adb, "-s", serial, "get-state"], timeout: 10), state.status != 0 {
+            log(unreachableMessage(serial: serial, adbTail: state.tail))
+            return
+        }
 
         // **消灯抑止はツールの仕事にしない**(ユーザー決定)。端末の画面設定は
         // 端末側で決めるもので、`stayon` は true も false も撃たない —— 持ち主が開発者オプションで立てた
@@ -41,16 +47,33 @@ public enum AndroidPhysicalDevice {
         shell(["shell", "wm", "dismiss-keyguard"])
 
         let deadline = Date().addingTimeInterval(unlockTimeoutSeconds)
+        var lastCheckReadable = false
         while Date() < deadline {
-            if hasResumedActivity(adb: adb, serial: serial) {
+            let resumed = hasResumedActivity(adb: adb, serial: serial)
+            if resumed == true {
                 log("✔ \(serial): screen woken and unlocked"
                     + " (the device keeps its own screen-timeout setting)")
                 return
             }
+            lastCheckReadable = resumed != nil
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        log("⚠️ \(serial): could not unlock the lock screen"
-            + " (a PIN/pattern lock cannot be cleared over adb — set the device to no lock)")
+        log(unlockFailureMessage(serial: serial, lastCheckReadable: lastCheckReadable))
+    }
+
+    /// adb が端末へ届かないときの文言(get-state が非ゼロ)
+    static func unreachableMessage(serial: String, adbTail: String) -> String {
+        "⚠️ \(serial): adb cannot reach this device (\(adbTail.trimmingCharacters(in: .whitespacesAndNewlines)))"
+            + " — it was not woken or unlocked"
+    }
+
+    /// 解除を待ち切ったときの文言。**最後の確認が読めなかった回はロックと言わない**(読めない = 不明)
+    static func unlockFailureMessage(serial: String, lastCheckReadable: Bool) -> String {
+        lastCheckReadable
+            ? "⚠️ \(serial): could not unlock the lock screen"
+                + " (a PIN/pattern lock cannot be cleared over adb — set the device to no lock)"
+            : "⚠️ \(serial): could not confirm the screen is unlocked"
+                + " (adb shell dumpsys activity failed until the wait ran out)"
     }
 
     /// **消灯・ロック中のときだけ** `prepareForRun` を撃つ(点いていて解除済みなら何もしない)。起こしたら true。
@@ -157,10 +180,11 @@ public enum AndroidPhysicalDevice {
 
     /// 前面に resume 済みアクティビティがあるか。ロック中はどのアクティビティも resume されないため
     /// この行自体が消える = 唯一信用できるロック判定(ファイル冒頭の注意参照)
-    private static func hasResumedActivity(adb: String, serial: String) -> Bool {
+    /// 読めなければ nil(ロック中 = false と区別する)
+    private static func hasResumedActivity(adb: String, serial: String) -> Bool? {
         guard let output = try? Shell.run(
             [adb, "-s", serial, "shell", "dumpsys", "activity", "activities"],
-            timeout: 15).outputIfSucceeded else { return false }
+            timeout: 15).outputIfSucceeded else { return nil }
         return output.contains("topResumedActivity=")
     }
 }

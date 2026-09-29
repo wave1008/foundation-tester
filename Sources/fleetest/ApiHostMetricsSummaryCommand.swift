@@ -92,9 +92,9 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
 
     /// --log 直指定ならそのまま使う(runID は解決しない)。それ以外は --project/--run から
     /// results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson を解決する。プロジェクト自体が
-    /// 見つからない(タイポ等)場合は他コマンドと同様に throw で伝播させるが、run が
-    /// 見つからない(results が空 / 指定 runID 不在)場合は既存の「ログファイルが見つかりません」
-    /// グレースフルデグレード経路(samples:0 を返し exit 0)に合流させる
+    /// 見つからない(タイポ等)場合は他コマンドと同様に throw で伝播させる。**明示した runID が無いのも
+    /// 打ち間違い**(明示した --log と同じ)なので断る。`latest` で results が空のときだけ
+    /// 「ログファイルが見つかりません」の経路(samples:0 を返し exit 0)に合流させる
     private func resolveLogPath() throws -> (path: String, runID: String?) {
         if let logPath { return (logPath, nil) }
 
@@ -104,12 +104,21 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
 
         let meta = (runArg == "latest") ? allRuns.last : allRuns.first { $0.runID == runArg }
         guard let meta else {
+            if let rejection = Self.missingRunRejection(runArg: runArg, project: testProject.name) {
+                throw ValidationError(rejection)
+            }
             logStderr("run not found (project=\(testProject.name) run=\(runArg))")
             return ("(no run found for project=\(testProject.name) run=\(runArg))", nil)
         }
 
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: meta.runID)
         return (runDir.appendingPathComponent("host-metrics.ndjson").path, meta.runID)
+    }
+
+    /// 明示した runID が無いときの断り文句。`latest` は nil(run が 0 件 = 標本 0 の事実)
+    static func missingRunRejection(runArg: String, project: String) -> String? {
+        runArg == "latest" ? nil
+            : "run not found: \(runArg) (project \(project); list runs with `fleetest results list --project \(project)`)"
     }
 
     private func logStderr(_ message: String) {

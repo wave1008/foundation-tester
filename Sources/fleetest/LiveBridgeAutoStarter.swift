@@ -209,6 +209,27 @@ actor LiveBridgeAutoStarter {
                 return .failure(LauncherError.deviceRunnerElsewhere(
                     device: udid, port: other.port, pid: other.pid))
             }
+            // **シミュレータでは、同じ台の別ポートに残ったランナーの残骸を先に止める**(実測: serve が watchdog で
+            // 落ちて起き直すたびに別の空きポートへ建て、2本目が1本目のランナーアプリを殺すので、待受の無い
+            // xcodebuild が台ごとに溜まった = sim-09/-10 で各3本・待受は1本)。止めるのは**そのポートを
+            // 誰も待ち受けていない(拒否が確定した)ものだけ** —— 生きて待ち受けている相手には触らない
+            if !physical, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 {
+                for other in BridgeLauncher.runnersOnDevice(psOutput: ps.output, device: udid, excludingPort: port)
+                where BridgeDiscovery.connectProbe(port: other.port, repoRoot: repoRoot) == .refused {
+                    if BridgeLauncher.reapRunnerProcess(pid: other.pid) {
+                        // 残すとそのポートが使用中に見え続ける(`.pid` はその xcodebuild を指すときだけ消す)
+                        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+                        let pidPath = stateDir.appendingPathComponent("bridge-\(other.port).pid")
+                        if let text = try? String(contentsOf: pidPath, encoding: .utf8),
+                           Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)) == other.pid {
+                            try? FileManager.default.removeItem(at: pidPath)
+                            BridgeReadyLedger.remove(stateDir: stateDir, port: other.port)
+                        }
+                        ConsoleOut.err("[live serve] stopped a leftover runner for this device on port \(other.port)"
+                            + " (pid \(other.pid)) — nothing was listening there")
+                    }
+                }
+            }
             // このポートは実行プロファイルが固定するため freePort のような採番替えは無い。
             // それでも「今 LISTEN している実体」は確かめる —— 背面へ回った in-app ブリッジは
             // .pid を持たず /status にも答えないため、確認しないまま startDetached すると

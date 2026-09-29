@@ -137,10 +137,18 @@ enum ResultsLogEntries {
             if let scenarioFilter, record.scenarioID != scenarioFilter { continue }
             let eventsURL = eventsDir.appendingPathComponent("\(fileBase).ndjson")
             guard FileManager.default.fileExists(atPath: eventsURL.path) else { continue }
-            let worker = record.worker.map { " (worker: \($0))" } ?? ""
-            result.append(Entry(heading: "\(record.scenarioID)\(worker)", fileURL: eventsURL))
+            result.append(Entry(heading: completedHeading(record), fileURL: eventsURL))
         }
         return result
+    }
+
+    /// 完走側の見出し。**途中で中断されたシナリオはそう言う**(記録の `interrupted`)—— 言わないと、
+    /// 全ステップ ✅ のまま途切れたログが何で終わったのか読めない(実測: 負荷テストの INT)
+    static func completedHeading(_ record: ScenarioRunRecord) -> String {
+        let worker = record.worker.map { " (worker: \($0))" } ?? ""
+        let interrupted = record.interrupted == true
+            ? " — the run was interrupted (SIGINT/SIGTERM) during this scenario; its log ends there" : ""
+        return "\(record.scenarioID)\(worker)\(interrupted)"
     }
 
     // MARK: - 振り直しで退避された記録

@@ -57,7 +57,11 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         guard let range = code.range(of: "func attemptXCUITestBridgeRecovery(") else {
             return XCTFail("attemptXCUITestBridgeRecovery が見当たらない")
         }
-        let body = String(code[range.lowerBound...].prefix(1600))
+        // 窓は次の関数宣言まで(固定字数だと本体に行を足しただけで分岐が窓の外へ出て落ちる)
+        let rest = code[range.upperBound...]
+        let end = [rest.range(of: "\n    func ")?.lowerBound, rest.range(of: "\n    static func ")?.lowerBound]
+            .compactMap { $0 }.min() ?? code.endIndex
+        let body = String(code[range.lowerBound..<end])
         guard let successRange = body.range(of: "return true"),
               let failureRange = body.range(of: "bridgeRecoveryFailed.insert(key)") else {
             return XCTFail("成功/失敗の分岐が見当たらない — テストを見直すこと")
@@ -84,5 +88,16 @@ final class BridgeRecoveryWiringTests: XCTestCase {
                       "建て直したあとの結果に注記を前置していない(呼び手には stderr が届かない)")
         XCTAssertTrue(code.contains("take a fresh one"),
                       "ref が無効になったことを言っていない(建て直し = アプリの再起動)")
+    }
+
+    /// 拒否でも listener の実体が居れば建て直さない(忙しいランナーの backlog 溢れ。provision が生きたランナーを殺す)。
+    /// 確認は provision より前に置くこと
+    func testRecoveryChecksForALiveListenerBeforeProvisioning() throws {
+        let code = try source()
+        guard let check = code.range(of: "BridgeDiscovery.refusedButListenerAlive("),
+              let provision = code.range(of: ".provision(devices:") else {
+            return XCTFail("listener の確認か provision が見当たらない")
+        }
+        XCTAssertLessThan(check.lowerBound, provision.lowerBound)
     }
 }

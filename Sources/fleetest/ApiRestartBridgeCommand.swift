@@ -66,7 +66,7 @@ struct ApiRestartBridgeCommand: AsyncParsableCommand {
             }
         }
         if let refusal = DeviceBooter.deviceInUseRefusal(
-            deviceName: spec.name, keys: leaseKeys, force: false,
+            deviceName: spec.name, keys: leaseKeys, force: false, offersForce: false,
             leaseStateDir: repoRoot.appendingPathComponent(".fleetest")) {
             throw RestartBridgeError.inUse(refusal)
         }

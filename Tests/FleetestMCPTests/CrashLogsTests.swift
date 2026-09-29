@@ -242,4 +242,12 @@ final class CrashLogsTests: XCTestCase {
         let full = CrashLogs.androidLogHeader(shownCount: 5, allCount: 5, crashOnly: true)
         XCTAssertTrue(full.hasPrefix("5 line(s)"), full)
     }
+
+    /// 取得上限に届いた数は総数ではない(実測: 5000 行で切れた回に「of 5000」と言っていた)
+    func testAndroidLogHeaderSaysAtLeastWhenTheFetchCapWasHit() {
+        let capped = CrashLogs.androidLogHeader(shownCount: 3, allCount: 5000, crashOnly: false)
+        XCTAssertTrue(capped.hasPrefix("Showing the last 3 of at least 5000 line(s)"), capped)
+        let below = CrashLogs.androidLogHeader(shownCount: 3, allCount: 4999, crashOnly: false)
+        XCTAssertTrue(below.hasPrefix("Showing the last 3 of 4999 line(s)"), below)
+    }
 }

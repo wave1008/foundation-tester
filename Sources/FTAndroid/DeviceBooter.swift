@@ -151,7 +151,7 @@ public enum DeviceBooter {
             }
             var failure: String?
             if let refusal = deviceInUseRefusal(
-                deviceName: spec.name, keys: leaseKeys, force: force, leaseStateDir: leaseStateDir) {
+                deviceName: spec.name, keys: leaseKeys, force: force, offersForce: true, leaseStateDir: leaseStateDir) {
                 log("❌ \(spec.name): \(refusal)")
                 failure = refusal
             } else {
@@ -189,8 +189,12 @@ public enum DeviceBooter {
     ) -> String? {
         guard !force, let key, let pid = holderPID(key), pid != selfPID else { return nil }
         return "refusing to stop: \(deviceName) is in use by a running fleetest run"
-            + " (held by pid \(pid)). Wait for that run to finish, or pass --force to stop it anyway."
+            + " (held by pid \(pid)). Wait for that run to finish" + forceClause
     }
+
+    /// 停止系の断り文句の末尾の一節。`--force` を持たない呼び手(`api restart-bridge`)では
+    /// `deviceInUseRefusal(offersForce: false)` が "." に置き換える(存在しないフラグを案内しない)
+    static let forceClause = ", or pass --force to stop it anyway."
 
     /// 複数候補の鍵(例: 実機 iOS の「宣言値」と「解決後 UDID」)のうち**どれか1つでも**
     /// 生きた lease を握っていれば拒否する。1台に2種類の lease 鍵がありうるのは、run 側が
@@ -216,19 +220,23 @@ public enum DeviceBooter {
     ) -> String? {
         guard !force, let pid = keys.lazy.compactMap(mcpHolderPID).first else { return nil }
         return "refusing to stop: \(deviceName) is being driven by an MCP session (pid \(pid))."
-            + " Finish that session or point it at another device, or pass --force to stop it anyway."
+            + " Finish that session or point it at another device" + forceClause
     }
 
     /// デバイスを止める操作の門(run-lease → MCP の印の順)。止める4経路(停止・一括停止・再起動・Wipe)に加え、
     /// `fleetest bridge down --port`(別モジュール。CLI の口だけに置く門)もここを通す
+    /// `offersForce`: 呼び手のコマンドが `--force` を持つか(**既定値を置かない** —— 持たない呼び手が
+    /// 存在しないフラグを案内した実害: `api restart-bridge`)
     public static func deviceInUseRefusal(
-        deviceName: String, keys: [String], force: Bool, leaseStateDir: URL?
+        deviceName: String, keys: [String], force: Bool, offersForce: Bool, leaseStateDir: URL?
     ) -> String? {
-        stopRefusal(deviceName: deviceName, keys: keys,
+        let refusal = stopRefusal(deviceName: deviceName, keys: keys,
                     selfPID: ProcessInfo.processInfo.processIdentifier, force: force,
                     holderPID: { leaseHolderPID(leaseStateDir: leaseStateDir, key: $0) })
             ?? mcpStopRefusal(deviceName: deviceName, keys: keys, force: force,
                               mcpHolderPID: { mcpLeaseHolderPID(leaseStateDir: leaseStateDir, key: $0) })
+        guard let refusal, !offersForce, refusal.hasSuffix(forceClause) else { return refusal }
+        return String(refusal.dropLast(forceClause.count)) + "."
     }
 
     /// 自分と親の印は数えない(MCP が起こしたコマンドが自分のデバイスを「MCP が操作中」と断らない)
@@ -670,7 +678,7 @@ public enum DeviceBooter {
             }
         }
         if let refusal = deviceInUseRefusal(
-            deviceName: spec.name, keys: leaseKeys, force: force, leaseStateDir: leaseStateDir) {
+            deviceName: spec.name, keys: leaseKeys, force: force, offersForce: true, leaseStateDir: leaseStateDir) {
             throw DeviceBooterError.commandFailed(refusal)
         }
         // 実機は停止しない(ユーザーの端末を勝手に落とさない)。ブリッジだけ止める。

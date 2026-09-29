@@ -621,13 +621,13 @@ final class MCPVersionGateTests: XCTestCase {
 
     /// どちらも無ければ nil(従来どおり既定ポート → 探索の順で決まる)
     func testNeitherUDIDNorPortLeavesTheChoiceToTheResolver() async throws {
-        let resolved = try await MCPServer.portForIOS([:])
+        let resolved = try await MCPServer.portForIOS([:], rememberedPort: nil)
         XCTAssertNil(resolved)
     }
 
     /// port だけなら従来どおりそのまま使う
     func testPortAloneIsUsedAsIs() async throws {
-        let resolved = try await MCPServer.portForIOS(["port": 8199])
+        let resolved = try await MCPServer.portForIOS(["port": 8199], rememberedPort: nil)
         XCTAssertEqual(resolved, 8199)
     }
 

@@ -251,7 +251,7 @@ final class DeviceBooterSweepRefusalTests: XCTestCase {
         MCPDeviceLease.write(stateDir: dir, key: "UDID-OWN", pid: getpid())
         MCPDeviceLease.write(stateDir: dir, key: "UDID-PARENT", pid: getppid())
         XCTAssertNil(DeviceBooter.deviceInUseRefusal(
-            deviceName: "d", keys: ["UDID-OWN", "UDID-PARENT"], force: false, leaseStateDir: dir))
+            deviceName: "d", keys: ["UDID-OWN", "UDID-PARENT"], force: false, offersForce: true, leaseStateDir: dir))
         XCTAssertNil(DeviceBooter.sweepRefusal(force: false, leaseStateDir: dir, simulatorNames: { [:] }, physicalIOSDeviceNames: { [:] }, androidDeviceModels: { [:] }))
     }
 }
@@ -452,5 +452,20 @@ final class DeviceBooterShutdownAllLeaseRefusalTests: XCTestCase {
         XCTAssertEqual(outcomes.first?.succeeded, false)
         XCTAssertTrue(outcomes.first?.failure?.contains("iPhone-Declared") ?? false)
         XCTAssertTrue(outcomes.first?.failure?.contains("\(holder)") ?? false)
+    }
+
+    /// `--force` を持たない呼び手(api restart-bridge)には存在しないフラグを案内しない
+    func testDeviceInUseRefusalOmitsTheForceHintWhenTheCallerHasNoForceFlag() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("refusal-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        RunLease.write(stateDir: dir, key: "UDID-X", pid: getppid())
+        let with = try XCTUnwrap(DeviceBooter.deviceInUseRefusal(
+            deviceName: "d", keys: ["UDID-X"], force: false, offersForce: true, leaseStateDir: dir))
+        XCTAssertTrue(with.hasSuffix("or pass --force to stop it anyway."), with)
+        let without = try XCTUnwrap(DeviceBooter.deviceInUseRefusal(
+            deviceName: "d", keys: ["UDID-X"], force: false, offersForce: false, leaseStateDir: dir))
+        XCTAssertFalse(without.contains("--force"), without)
+        XCTAssertTrue(without.hasSuffix("Wait for that run to finish."), without)
     }
 }

@@ -234,7 +234,7 @@ struct Bridge: AsyncParsableCommand {
                 let androidLeaseDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest")
                 if let refusal = serials.compactMap({ serial in
                     DeviceBooter.deviceInUseRefusal(
-                        deviceName: serial, keys: [serial], force: force,
+                        deviceName: serial, keys: [serial], force: force, offersForce: true,
                         leaseStateDir: androidLeaseDir)
                 }).first {
                     ConsoleOut.out("❌ \(refusal)")
@@ -294,7 +294,7 @@ struct Bridge: AsyncParsableCommand {
                 if let target = found.first(where: { $0.port == resolvedPort }) {
                     if let refusal = DeviceBooter.deviceInUseRefusal(
                         deviceName: target.device, keys: target.udid.map { [$0] } ?? [],
-                        force: force, leaseStateDir: leaseStateDir) {
+                        force: force, offersForce: true, leaseStateDir: leaseStateDir) {
                         ConsoleOut.out("❌ \(refusal)")
                         throw ExitCode(1)
                     }
@@ -317,7 +317,7 @@ struct Bridge: AsyncParsableCommand {
                     if let udid = PortHolder.deviceUDID(fromListenerOn: resolvedPort),
                        let refusal = DeviceBooter.deviceInUseRefusal(
                             deviceName: "the device on port \(resolvedPort) (udid \(udid))",
-                            keys: [udid], force: force, leaseStateDir: leaseStateDir) {
+                            keys: [udid], force: force, offersForce: true, leaseStateDir: leaseStateDir) {
                         ConsoleOut.out("❌ \(refusal)")
                         throw ExitCode(1)
                     }

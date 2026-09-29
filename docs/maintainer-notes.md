@@ -2945,3 +2945,83 @@ run の側は、届いた先が別のデバイスだと気付かずに 409 を�
 - `api run --dry-run` はプロファイルを解決して「Using N of M device(s)」と言い、`run --dry-run` は
   「--profile is not used」と言う(意図した差かは未確認)
 - 常駐プロセス(`api live serve`・`fleetest-mcp`・`api monitor`・`devicepoll`)の RSS は 30 分の間に伸びなかった
+
+## 59. 3時間負荷テストで出た穴(2026-09-30)
+
+構成: §58 と同じ(フリート run の周回 + MCP ファズ〔実機 iPhone SE3・Pixel 4a・Pixel 3a、取り合い用 sim -08 /
+emulator-5562〕+ ライブ操作ファズ〔sim -09 / -10・emulator-5570〕+ CLI ファズ + 10〜20 分おきの INT・ブリッジ強制停止)。
+規模: run 77 周・MCP 41,809 回・ライブ操作 14,746 命令・CLI 10,068 回。
+
+**新規の型は 1 つ**(59.6 = 忙しいだけの生きたランナーを「接続拒否 = 死」と読んで建て直す)。残りは既知の型の再発
+(外部コマンドが戻らない・不明を確定値に畳む 59.1/59.3、事実と違う文言 59.2/59.7/59.8/59.9、明示した指定の打ち間違いを
+黙って受理 59.4、共有資源の持ち主 59.10〜59.12、走査の繰り返し 59.5)。
+
+### 59.1 `adb logcat` は宛先が居ないと戻らない(`-d` でも)
+居ない serial の `ft_logs` が 10 秒の打ち切りまで固まり「Could not read Android logs: timed out」とだけ言った。
+`AndroidLogcat.recent` の前に `adb devices` を見る(`notConnectedReason`。一覧が引けないときは不明 = 従来どおり進む)
+
+### 59.2 `ft_logs all:true` の「of 5000 line(s)」は総数ではなかった
+取得上限(`androidFetchUpperBound`)で切れた数を総数として言っていた。上限に届いたら「at least」
+
+### 59.3 届かない Android serial を「PIN ロック」と誤帰属
+MCP は全ツールの前に実機の起こし・解除を撃つ(`prepareForRun`)。居ない serial も `emulator-` で始まらないので実機扱いになり、
+解除の確認(`dumpsys activity`)の失敗を「ロック中」と畳んで 20 秒回し、「PIN/パターンのロックは解除できない」と言った
+(全ツールが 21 秒)。`adb get-state` で先に断る・確認が読めなかった回はロックと言わない。run の `prepareForRun` も同じ関数
+
+### 59.4 `api host-metrics-summary --run <無い runID>` が exit 0・標本 0
+同じコマンドの `--log` は「明示した指定が無いのは打ち間違い」として断っていたのに、明示した runID は標本 0 の集計に
+合流させていた(`logPath` に説明文まで入れて)。明示 runID だけ断る(`latest` で 0 件は従来どおり)
+
+### 59.5 udid を添えた MCP 呼び出しが毎回 3.5〜6 秒
+入口の畳み込み(`foldingUDIDIntoPort`)と `driver()` がそれぞれ `portForIOS` → `BridgeDiscovery.scan`(全ポートへ 2 秒窓)を
+撃っていた。フリート稼働中は応答しないブリッジが窓を使い切る。**省略・port だけは 0.6 秒**なので、複数台を扱うために
+udid を毎回添える利用者ほど遅い。走査の前に候補 1 本(明示 port / このセッションがその udid で繋いだ 1 本)を
+狙い撃ちで本人確認し、一致のときだけ走査を省く(不一致・不明は従来の走査と文言。同じ probe を二度撃たない)。
+陽性対照: 範囲内に「受け付けるが答えない」待受を置くと旧 4.2 秒/回 → 新 0.2 秒/回
+
+### 59.6 忙しいだけの XCUITest ランナーを「接続拒否」で死と読み、建て直して殺す(新規の型)
+ライブ操作のセッションが a11y の読めないアプリ(`kAXErrorAPIDisabled`)に向くと、ランナーは XCTest の
+「Find the Application」の再試行で数十秒塞がる。その間に doctor・走査・他クライアントの接続が listen backlog(16)を
+溢れさせ、生きたまま connect が拒否される。`annotated()` は拒否を確認なしに自動起動の合図にし、起動の前処理
+(leftover の片付け)が**生きたランナーを SIGTERM** した(ランナーのログは異常終了なしの `BUILD INTERRUPTED` だけ。
+sim-09/-10 で 30 分に 8 回)。`probeStatus` の側は既に「loopback の listener の実体を確かめて busy に戻す」を持っていたのに、
+拒否の経路だけが持っていなかった。拒否でも listener の実体が居れば busy と言い撃たない
+(`BridgeDiscovery.refusedButListenerAlive`)。**同型**: MCP の `attemptXCUITestBridgeRecovery`(拒否 → provision)にも
+同じ確認を入れた。run の `BridgeLiveness.decide` もループバックの拒否を即確定にするが、今回の実害は無く触っていない
+
+### 59.7 `results log` が中断したシナリオを理由なしに途切れさせる(§58.7 の残り)
+記録は `interrupted: true` を持つのに、ログは全ステップ ✅ のまま終わっていた。見出しに中断を載せる
+
+### 59.8 型違いの対処文が来た値の種類と合っていない
+数値の 1.5・範囲外の整数・true にも「引用符を外して JSON の数値を」と言っていた(MCP・ライブ操作の2実装)。
+`ArgumentBounds.typeMismatchRemedy` に寄せて値の種類で言い分ける
+
+### 59.9 `api restart-bridge` が存在しない `--force` を案内
+使用中の台を断る文言が門(`deviceInUseRefusal`)に埋め込まれており、`--force` を持たない呼び手にも出た
+(CLAUDE.md「判定に文言を埋め込むと他人の対処文が出る」の型)。`offersForce:`(既定値なし)を呼び手が渡す
+
+### 59.10 ライブ操作(シミュレータ)の再起動のたびにランナーの残骸が溜まる
+serve が watchdog(1 命令 30 秒)で落ちて起き直すたびに**別の空きポート**へ建て、2 本目が 1 本目のランナーアプリを
+殺すので、待受の無い xcodebuild が台ごとに残った(sim-09/-10 で各 3 本・待受は各 1 本)。§49.4 の門は実機だけだった。
+起動前に同じ台の別ポートで接続が拒否される xcodebuild を止め、`.pid`/`.ready` を消す
+
+### 59.11 空きポート採番の2段目が run のレーンで生きている in-app ポートを採る
+`freePort` は1段目(pid も in-app 台帳も無い)が尽きると in-app 台帳の残るポートへ落ちる。59.10 の残骸で1段目が尽きた回に、
+ライブ操作が run のレーン(-07)の in-app ポート 8147 へランナーを建てた。2段目は接続拒否が確定したポートだけにする
+(判定は既定値なしの引数 `refusesConnection` —— テストがホストの実ポートを引かないように)
+
+### 59.12 起動待ちが別の台のランナーの応答で「起動成功」
+`waitUntilReady` は `/status` の ready を相手の udid を見ずに受けていた。同じポートに別のシミュレータのランナーが居て、
+自分の xcodebuild は bind できないまま「Bridge auto-start succeeded」と言った(直後の本人確認で止まった)。
+シミュレータは udid の食い違いを `portInUse` で断る(実機は udid を名乗らないことがあるので対象外)
+
+### 直していないもの・環境の観察
+- **iOS の WebView 領域が一色に写った絵で OCR だけの視覚検証が WebView 内の文字を反転**(E2E-iOS は黒・E2E-RN は白。
+  約 15 回に 1 回)。Android は `WebViewShotComposite` で補うが iOS に同等が無い。直すには設計判断が要る
+- Android の `hold` 中に状態表示が `tooltip=hidden` のまま(E2EX 4 SUT で間欠)。赤の回はエミュレータの表示自体が
+  古い白い絵を返していた(ステータスバーの時刻が 2 分前)= 表示の凍結。同時間帯に「画面凍結」で離脱したレーンもある
+- この Mac の Vision 縮退・FM 死(画像で要素を探すの赤は Vision の縮退を事実どおりに言っていた)
+- E2EX-Android / E2EX-Flutter の APK がソースより古い(S0050 の赤。手元で回すなら先に `e2ex.sh --rebuild`)
+- `waitSeconds` に上限が無く、現れない要素に 1e12 秒を渡すと MCP のセッションが戻らない(指定どおりの挙動。
+  上限を置くには根拠のある定数が要る)
+- ライブ操作の NDJSON の未知の欄は引き続き無視(§58.3 のとおり)

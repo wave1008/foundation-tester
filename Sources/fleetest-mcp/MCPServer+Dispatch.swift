@@ -427,7 +427,8 @@ extension MCPServer {
                 // **udid を宣言していないツールでは走査しない**(ft_logs = ブリッジが死んだ後に読むツール。
                 // 畳むと「no running bridge」で落ち、読みたいクラッシュログに届かない)
                 folded = Self.strippingSelectorQuotes(Self.toolFoldsUDID(tool)
-                    ? try await Self.foldingUDIDIntoPort(args) : args)
+                    ? try await Self.foldingUDIDIntoPort(
+                        args, rememberedPort: rememberedPort(forUDID: args["udid"] as? String)) : args)
             } catch {
                 let hint = await connectionLostHint(error, args: args)
                 throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
@@ -628,9 +629,20 @@ extension MCPServer {
     /// `udid` を解決して `port` として畳んだ引数。**udid が無いときは触らない**
     /// (Android や profile 指定はブリッジ走査を1回も払わない)。
     /// 解決と食い違い検査は `portForIOS` に委ねる = 宛先の決め方は1箇所のまま
-    static func foldingUDIDIntoPort(_ args: [String: Any]) async throws -> [String: Any] {
+    static func foldingUDIDIntoPort(_ args: [String: Any], rememberedPort: UInt16?) async throws -> [String: Any] {
         guard (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) != nil else { return args }
-        return injectingPort(args, port: try await portForIOS(args))
+        return injectingPort(args, port: try await portForIOS(args, rememberedPort: rememberedPort))
+    }
+
+    /// このセッションがその udid で繋いだポート。**1本に決まるときだけ**返す(同じ機に xcuitest と
+    /// in-app の2本を覚えていれば nil = 従来の走査に任せる)。候補にすぎず、使う前に本人確認する(portForIOS)
+    func rememberedPort(forUDID udid: String?) -> UInt16? {
+        guard let udid, !udid.isEmpty else { return nil }
+        let ports = Set(sessions.values.compactMap { session -> UInt16? in
+            guard session.udid == .some(.some(udid)) else { return nil }
+            return session.connectedPort
+        })
+        return ports.count == 1 ? ports.first : nil
     }
 
     /// 解決したポートを引数へ載せる。**純粋関数**(走査を伴う解決と切り離してあるので、

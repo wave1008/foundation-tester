@@ -31,6 +31,12 @@ public enum AndroidLogcat {
     public static func recent(serial: String?, packageName: String?, crashOnly: Bool,
                               sinceSeconds: Int, maxLines: Int) throws -> Output {
         let adbPath = try AndroidDriver.findADB()
+        // **logcat は宛先が居ないと「waiting for device」で戻らない**(-d でも。実測: 居ない serial で
+        // 10s の打ち切りまで固まり、打ち切りの文言は「居ない」と言わない)。一覧が引けないときは不明 = 従来どおり進む
+        if let reason = notConnectedReason(serial: serial,
+                                           connected: try? AndroidDeviceCatalog.connectedSerials()) {
+            throw NotConnected(reason: reason)
+        }
 
         let pid = packageName.flatMap { resolvePID(adbPath: adbPath, serial: serial, packageName: $0) }
 
@@ -69,6 +75,21 @@ public enum AndroidLogcat {
             lines: filter(rawOutput: result.output, packageName: textFilterPackage, maxLines: maxLines),
             scopedToPackage: packageName == nil || pid != nil || textFilterPackage != nil,
             cutoffNote: cutoffNote)
+    }
+
+    public struct NotConnected: LocalizedError, Equatable {
+        public let reason: String
+        public var errorDescription: String? { reason }
+    }
+
+    /// 宛先が `adb devices` に居ないときの文言。`connected` が nil(一覧が引けない)は不明なので nil を返す
+    static func notConnectedReason(serial: String?, connected: [String]?) -> String? {
+        guard let connected else { return nil }
+        if let serial {
+            return connected.contains(serial) ? nil
+                : "serial \(serial) is not connected (adb devices does not list it)"
+        }
+        return connected.isEmpty ? "no Android device is connected (adb devices lists none)" : nil
     }
 
     /// 端末の UTC オフセット(秒)を `adb shell date +%z` で1回だけ引く。失敗/読めない書式は nil

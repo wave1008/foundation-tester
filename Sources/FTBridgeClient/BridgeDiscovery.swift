@@ -210,6 +210,18 @@ public enum BridgeDiscovery {
         return .timedOut
     }
 
+    /// 接続拒否を受けたポートに**それでもブリッジの listener の実体が居るか**(loopback だけ・トンネルは除く)。
+    /// 忙しい XCUITest ランナーは backlog(16)が溢れると生きたまま connect を断る(実測: ライブ操作の自動起動が
+    /// これを「死んだ」と読み、a11y の再試行で塞がっていただけのランナーを片付けて建て直した)。
+    /// loopback でない・lsof で確かめられないは false(従来どおり拒否 = 居ない)
+    public static func refusedButListenerAlive(port: UInt16, repoRoot: URL?) async -> Bool {
+        let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+            ?? BridgeEndpoint(port: port)
+        guard endpoint.isLoopback else { return false }
+        let facts = await loopbackListenerFacts(port: port)
+        return facts.exists && !facts.isTunnelOnly
+    }
+
     /// `PortHolder.listenerFacts` は lsof/ps を撃つので、協調スレッドプールで直接 await せず
     /// GCD へ逃がす(`ProvisionLock.acquire` と同じ形)。`.transportFailed` の再分類専用の経路なので、
     /// 速い経路(answered/timedOut/notBound)には触れない

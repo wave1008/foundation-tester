@@ -133,7 +133,7 @@ public enum DeviceWiper {
         case .android(let avd):
             let key = androidLeaseKey?() ?? DeviceBooter.leaseKey(spec: spec, platform: platform)
             if let refusal = DeviceBooter.deviceInUseRefusal(
-                deviceName: spec.name, keys: [key].compactMap { $0 }, force: force,
+                deviceName: spec.name, keys: [key].compactMap { $0 }, force: force, offersForce: true,
                 leaseStateDir: leaseStateDir) {
                 throw DeviceBooterError.commandFailed(refusal)
             }

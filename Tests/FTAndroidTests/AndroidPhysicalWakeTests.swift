@@ -118,4 +118,18 @@ final class AndroidPhysicalWakeTests: XCTestCase {
         let code = try source("Sources/FTAndroid/AndroidPhysicalDevice.swift")
         XCTAssertFalse(code.contains("\"stayon\""), "svc power stayon を撃っている")
     }
+
+    /// 読めなかった確認を「ロック中」と言わない(居ない serial で PIN の文言が出ていた)
+    func testUnlockFailureMessageDoesNotBlameALockWhenTheCheckWasUnreadable() {
+        let unreadable = AndroidPhysicalDevice.unlockFailureMessage(serial: "S1", lastCheckReadable: false)
+        XCTAssertFalse(unreadable.contains("PIN"), unreadable)
+        XCTAssertTrue(unreadable.contains("could not confirm"), unreadable)
+        let locked = AndroidPhysicalDevice.unlockFailureMessage(serial: "S1", lastCheckReadable: true)
+        XCTAssertTrue(locked.contains("PIN/pattern lock"), locked)
+    }
+
+    func testUnreachableMessageCarriesTheAdbReason() {
+        let text = AndroidPhysicalDevice.unreachableMessage(serial: "ZZZ", adbTail: "error: device 'ZZZ' not found\n")
+        XCTAssertEqual(text, "⚠️ ZZZ: adb cannot reach this device (error: device 'ZZZ' not found) — it was not woken or unlocked")
+    }
 }

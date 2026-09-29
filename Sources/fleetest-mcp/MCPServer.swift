@@ -406,7 +406,7 @@ extension MCPServer {
     /// **`private` ではない** —— `checkDeclaredArgumentTypes`(MCPServer+Dispatch.swift)が
     /// スキーマ駆動の型検査で同じ文言を使う(2つの文言を作らない)
     static func stringArgumentTypeError(key: String, raw: Any) -> String {
-        "\(key) must be a string (got \(describeArgumentValue(raw))) — pass a JSON string, not a number"
+        "\(key) must be a string (got \(describeArgumentValue(raw))) — \(ArgumentBounds.typeMismatchRemedy(value: raw, expectsNumber: false))"
     }
 
     /// boolean 版(numericArgumentTypeError/stringArgumentTypeError と同じ書式)
@@ -430,7 +430,7 @@ extension MCPServer {
 
     /// **`private` ではない**(同上)
     static func numericArgumentTypeError(key: String, raw: Any, expected: String) -> String {
-        "\(key) must be \(expected) (got \(describeArgumentValue(raw))) — pass a JSON number, not a quoted string"
+        "\(key) must be \(expected) (got \(describeArgumentValue(raw))) — \(ArgumentBounds.typeMismatchRemedy(value: raw, expectsNumber: true))"
     }
 
     /// エラー文に渡された値の**型が分かる形**で埋め込む。素の `\(raw)` は文字列 "8130" を

@@ -424,6 +424,14 @@ public struct BridgeLauncher {
 
     /// `ps -axo pid=,command=` の出力から、**この実機を宛先に持ち・別ポートの**ランナー(xcodebuild)を拾う
     /// (純粋関数)。ポートは `FleetestRunner-<port>.xctestrun` から読む(読めない行は数えない)
+    /// ready を名乗ったランナーが別の台のものなら、その udid(純粋関数)。`expected` が udid の形でない
+    /// (名前で建てる経路)・相手が udid を名乗らないときは判定しない(nil)
+    static func readyStatusOfAnotherDevice(reported: String?, expected: String) -> String? {
+        guard let reported, !reported.isEmpty, RunnerDestination.isUDIDShaped(expected),
+              reported.caseInsensitiveCompare(expected) != .orderedSame else { return nil }
+        return reported
+    }
+
     public static func runnersOnDevice(psOutput: String, device: String,
                                 excludingPort: UInt16) -> [(pid: Int32, port: UInt16)] {
         psOutput.split(separator: "\n").compactMap { line in
@@ -1027,6 +1035,12 @@ public struct BridgeLauncher {
             try Task.checkCancellation()
             do {
                 let status = try await client.status()
+                // **答えたのが別の台のランナーなら成功にしない**(実測: 同じポートに別のシミュレータのランナーが
+                // 居て、自分の xcodebuild は bind できないまま、その応答で「起動成功」と報告した)。実機は udid を
+                // 名乗らない/別の識別子のことがあるので対象外(BridgeDiscovery.statusForIdentityCheck が補う側)
+                if status.ready, !physical, let other = Self.readyStatusOfAnotherDevice(reported: status.udid, expected: device) {
+                    throw LauncherError.portInUse(port: port, holder: "the xcuitest runner of another device (udid \(other))")
+                }
                 if status.ready {
                     // **実機は ready の後に1回だけ UI 操作を撃って認可を確かめる**(理由は
                     // IOSDeviceTransport.notAuthorizedMarker)。/status は XCTest の認可と無関係に答える

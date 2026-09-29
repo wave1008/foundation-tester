@@ -40,6 +40,21 @@ final class ResultsLogEntriesTests: XCTestCase {
 
     // MARK: - 完走したシナリオ
 
+    /// 途中で中断されたシナリオは見出しがそう言う(負荷テストの INT で、全ステップ ✅ のまま途切れたログが理由なしに終わっていた)
+    func testInterruptedScenarioHeadingSaysSo() {
+        var record = ScenarioRunRecord(
+            scenarioID: "List.届く", platform: "android", worker: "android:P1", passed: false,
+            startedAt: "2026-09-28T00:00:00.000Z", durationMs: 100,
+            steps: StepCountsRecord(total: 1, passed: 1))
+        record.interrupted = true
+        RunResultsStore.writeScenario(record, runDir: runDir, fileName: "List.届く")
+        writeEventsFile("List.届く.ndjson")
+
+        let entries = ResultsLogEntries.collect(runDir: runDir, eventsDir: eventsDir, scenarioFilter: nil)
+        XCTAssertEqual(entries.map(\.heading), ["List.届く (worker: android:P1) — the run was interrupted"
+            + " (SIGINT/SIGTERM) during this scenario; its log ends there"])
+    }
+
     func testCompletedScenarioIsMatchedByFileBase() {
         writeScenario(fileName: "Login.成功する", scenarioID: "Login.成功する", worker: "ios:iPhone")
         writeEventsFile("Login.成功する.ndjson")

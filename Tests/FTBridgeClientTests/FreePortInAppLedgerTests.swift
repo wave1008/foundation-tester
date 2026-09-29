@@ -28,24 +28,24 @@ final class FreePortInAppLedgerTests: XCTestCase {
 
     func testPortWithAnInAppLedgerIsSkipped() {
         writeInApp(port: 8123)
-        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: []), 8124)
+        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [], refusesConnection: { _ in true }), 8124)
     }
 
     func testSeveralLedgersAndOccupiedPortsAreAllSkipped() {
         writeInApp(port: 8123)
         writeInApp(port: 8125)
-        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [8124]), 8126)
+        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [8124], refusesConnection: { _ in true }), 8126)
     }
 
     /// 逆向き: 台帳が無ければ今までどおり先頭を採る
     func testFirstPortIsPickedWhenNothingIsRecorded() {
-        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: []), 8123)
+        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [], refusesConnection: { _ in true }), 8123)
     }
 
     /// 台帳は予約ではない: 範囲の全部に残っていたら、残っているポートから採る(枯渇させない)
     func testLedgerIsNotAReservationWhenEveryPortHasOne() {
         for port in UInt16(8123)...UInt16(8154) { writeInApp(port: port) }
-        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [8123]), 8124)
+        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [8123], refusesConnection: { _ in true }), 8124)
     }
 
     // MARK: - 台帳から「別のデバイスのポート」と言えるか
@@ -63,5 +63,15 @@ final class FreePortInAppLedgerTests: XCTestCase {
             stateDir: stateDir, port: 8123, udid: "udid-of-a-run-lane"))
         XCTAssertFalse(InAppBridgeState.isRecordedForAnotherDevice(
             stateDir: stateDir, port: 8124, udid: "SOME-OTHER-DEVICE"))
+    }
+
+    /// 2段目(台帳の残るポート)は今だれも待ち受けていないものだけ —— run のレーンで生きている in-app ポートを採らない
+    /// (負荷テスト: 1段目が残骸で尽きた回に、ライブ操作が run のレーンの 8147 へランナーを建てた)
+    func testFallbackSkipsLedgerPortsThatAreStillListening() {
+        for port in UInt16(8123)...UInt16(8154) { writeInApp(port: port) }
+        XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [],
+                                                   refusesConnection: { $0 >= 8130 }), 8130)
+        XCTAssertNil(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [],
+                                                 refusesConnection: { _ in false }))
     }
 }

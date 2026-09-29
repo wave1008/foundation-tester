@@ -154,7 +154,9 @@ public enum XCUIBridgeResolver {
         var foreignHolders: [String] = []
         var port: UInt16?
         while port == nil {
-            guard let candidate = freePort(repoRoot: repoRoot, occupied: occupied) else {
+            guard let candidate = freePort(
+                repoRoot: repoRoot, occupied: occupied,
+                refusesConnection: { BridgeDiscovery.connectProbe(port: $0, repoRoot: repoRoot) == .refused }) else {
                 let detail = foreignHolders.isEmpty ? "" : " (held by \(foreignHolders.joined(separator: ", ")))"
                 return giveUp("cannot start the XCUITest bridge (no free port\(detail))")
             }
@@ -238,7 +240,10 @@ public enum XCUIBridgeResolver {
     /// in-app ブリッジはアプリの中に居るので、シナリオの合間のアプリの起こし直しの間は待受が消え、
     /// 稼働中の走査(`occupied`)にも乗らない —— その瞬間に採ると、run のレーンのポートへ別のデバイスの
     /// ランナーを建て、レーンの操作が別のデバイスへ届く。予約にはしない(残骸が範囲を埋めると枯渇する)
-    public static func freePort(repoRoot: URL, occupied: Set<UInt16>) -> UInt16? {
+    /// `refusesConnection`: そのポートへの接続が拒否されるか(= 誰も待ち受けていない)。**既定値を置かない** ——
+    /// テストがホストの実ポートを引くと、この Mac で動いているブリッジ次第で結果が変わる
+    public static func freePort(repoRoot: URL, occupied: Set<UInt16>,
+                                refusesConnection: (UInt16) -> Bool) -> UInt16? {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         func isFree(_ port: UInt16) -> Bool {
             !occupied.contains(port)
@@ -249,6 +254,9 @@ public enum XCUIBridgeResolver {
         func hasInApp(_ port: UInt16) -> Bool {
             FileManager.default.fileExists(atPath: InAppBridgeState.url(stateDir: stateDir, port: port).path)
         }
-        return portRange.first { isFree($0) && !hasInApp($0) } ?? portRange.first(where: isFree)
+        // 2段目(in-app の台帳が残るポート)は**今だれも待ち受けていない(拒否が確定した)ものだけ**。
+        // 1段目が残骸で尽きた回に、run のレーンで生きている in-app ポートを採った(負荷テストで実測: 8147)
+        return portRange.first { isFree($0) && !hasInApp($0) }
+            ?? portRange.first { isFree($0) && refusesConnection($0) }
     }
 }

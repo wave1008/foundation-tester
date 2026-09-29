@@ -161,4 +161,20 @@ public enum ArgumentBounds {
         }
         return String(Int(value))
     }
+
+    /// 型違いの断り文句の「何を渡せばよいか」。**来た値の種類で言い分ける** —— 数値の 1.5 や範囲外の整数に
+    /// 「引用符を外して JSON の数値を」と言うと、既に数値を渡している読み手を誤らせる(負荷テストで実測)。
+    /// MCP(MCPServer.numericArgumentTypeError 等)とライブ操作(ApiLiveServeCommand.typeError)が共有する
+    public static func typeMismatchRemedy(value: Any, expectsNumber: Bool) -> String {
+        let isBoolean = (value as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() } ?? false
+        if expectsNumber {
+            if value is String { return "pass a JSON number, not a quoted string" }
+            if isBoolean { return "pass a JSON number, not true/false" }
+            if value is NSNumber { return "pass a whole number within range" }
+            return "pass a JSON number"
+        }
+        if isBoolean { return "pass a JSON string, not true/false" }
+        if value is NSNumber { return "pass a JSON string, not a number" }
+        return "pass a JSON string"
+    }
 }

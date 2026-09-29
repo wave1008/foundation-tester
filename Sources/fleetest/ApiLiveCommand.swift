@@ -425,7 +425,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
         await provisionLock?.acquire()
         let picked = XCUIBridgeResolver.freePort(
-            repoRoot: repoRoot, occupied: Set(found.map(\.port)).union([driverOptions.resolvedPort]))
+            repoRoot: repoRoot, occupied: Set(found.map(\.port)).union([driverOptions.resolvedPort]),
+            refusesConnection: { BridgeDiscovery.connectProbe(port: $0, repoRoot: repoRoot) == .refused })
         provisionLock?.release()
         guard let freePort = picked else {
             throw DriverError.bridgeIdentityMismatch(mismatch)
@@ -679,7 +680,19 @@ struct ApiLiveServe: AsyncParsableCommand {
     ) async -> String {
         var message = error.localizedDescription
         if let starter, case DriverError.bridgeConnectionRefused = error {
-            message += triggering ? await starter.noteConnectionRefused() : await starter.statusSuffix()
+            // 確かめるのは起動を撃つ前(idle)だけ。起動中・失敗中は starter の状態を言うだけで lsof を払わない
+            var listenerAlive = false
+            if triggering, await starter.isIdle {
+                listenerAlive = await BridgeDiscovery.refusedButListenerAlive(port: port, repoRoot: try? RepoRoot.find())
+            }
+            switch Self.refusedGuidance(triggering: triggering, listenerAlive: listenerAlive) {
+            case .triggerStarter:
+                message += await starter.noteConnectionRefused()
+            case .starterSuffix:
+                message += await starter.statusSuffix()
+            case .busy:
+                message += Self.bridgeUnreachableHint(probe: .timedOut)
+            }
             return message
         }
         if DriverError.isNoReadableWindow(error) {
@@ -703,6 +716,19 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
         }
         return message
+    }
+
+    /// 接続拒否に何を足すか(純粋関数)。**listener の実体が居るなら自動起動を撃たない** —— 拒否は
+    /// 忙しいランナーの backlog 溢れでも起き、撃つと起動の前処理が生きたランナーを片付けて殺す
+    enum RefusedGuidance: Equatable {
+        case triggerStarter
+        case starterSuffix
+        case busy
+    }
+
+    static func refusedGuidance(triggering: Bool, listenerAlive: Bool) -> RefusedGuidance {
+        guard triggering else { return .starterSuffix }
+        return listenerAlive ? .busy : .triggerStarter
     }
 
     /// starter の有無・状態と probe の結果から、bridgeUnreachable の失敗にどの文言を足すか決める
@@ -1383,8 +1409,7 @@ struct ApiLiveServeCommand {
     }
 
     private static func typeError(key: String, value: Any, expected: String, numeric: Bool) -> String {
-        let hint = numeric ? "a JSON number, not a quoted string" : "a JSON string, not a number"
-        return "\(key) must be \(expected) (got \(describeValue(value))) — pass \(hint)"
+        "\(key) must be \(expected) (got \(describeValue(value))) — \(ArgumentBounds.typeMismatchRemedy(value: value, expectsNumber: numeric))"
     }
 
     /// MCPServer.describeArgumentValue と同じ書式(型が分かる形。文字列 "8" と数値 8 を見分ける)

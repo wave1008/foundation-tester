@@ -66,7 +66,7 @@ final class MCPEngineKeyTests: XCTestCase {
     /// (変異テストで確認)。速さの主張はテストでなくコードの読みに委ねる
     func testArgumentsWithoutAUDIDPassThroughUntouched() async throws {
         let args: [String: Any] = ["platform": "android", "serial": "emulator-5554"]
-        let folded = try await MCPServer.foldingUDIDIntoPort(args)
+        let folded = try await MCPServer.foldingUDIDIntoPort(args, rememberedPort: nil)
         XCTAssertEqual(folded["serial"] as? String, "emulator-5554")
         XCTAssertNil(folded["port"])
     }

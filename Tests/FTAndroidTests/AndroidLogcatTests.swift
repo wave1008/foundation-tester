@@ -176,4 +176,19 @@ final class AndroidLogcatTests: XCTestCase {
     func testOutputCutoffNoteDefaultsToNil() {
         XCTAssertNil(AndroidLogcat.Output(lines: [], scopedToPackage: true).cutoffNote)
     }
+
+    /// 居ない serial は logcat を撃つ前に断る(logcat はデバイス待ちで戻らない)
+    func testNotConnectedReasonForUnlistedSerial() {
+        XCTAssertEqual(AndroidLogcat.notConnectedReason(serial: "NaN", connected: ["emulator-5554"]),
+                       "serial NaN is not connected (adb devices does not list it)")
+        XCTAssertNil(AndroidLogcat.notConnectedReason(serial: "emulator-5554", connected: ["emulator-5554"]))
+    }
+
+    /// serial 省略で1台も居なければ断る。一覧が引けない(nil)は不明なので断らない
+    func testNotConnectedReasonWithoutSerialAndUnknownList() {
+        XCTAssertEqual(AndroidLogcat.notConnectedReason(serial: nil, connected: []),
+                       "no Android device is connected (adb devices lists none)")
+        XCTAssertNil(AndroidLogcat.notConnectedReason(serial: nil, connected: ["a", "b"]))
+        XCTAssertNil(AndroidLogcat.notConnectedReason(serial: "NaN", connected: nil))
+    }
 }

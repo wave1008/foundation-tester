@@ -221,7 +221,7 @@ extension MCPServer {
         // 呼び出しは、記憶側が Android と読むのにドライバは iOS を作っていた
         let platform = Self.platformName(args)
         // **udid → port の解決はここ1箇所**(H-2)。port は残す(既存の呼び出しを壊さない)
-        let explicitPort = try await Self.portForIOS(args)
+        let explicitPort = try await Self.portForIOS(args, rememberedPort: nil)
         let key = Self.driverCacheKey(platform: platform, port: explicitPort.map(Int.init),
                                       serial: args["serial"] as? String)
         if let cached = drivers[key] {
@@ -392,10 +392,24 @@ extension MCPServer {
     /// デバイスと別の機を操作したことに最後まで気付けない。
     /// どちらも無ければ nil(resolveIOSPort が既定ポート → 探索の順で決める)。
     /// **udidPorts が空のときだけ追加調査(IO)を払う** —— 応答が1本でもあればそのまま素通り
-    static func portForIOS(_ args: [String: Any]) async throws -> UInt16? {
+    static func portForIOS(_ args: [String: Any], rememberedPort: UInt16?) async throws -> UInt16? {
         let port = try Self.portArgument(args)
         guard let udid = (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) else {
             return port
+        }
+        // **走査の前に候補1本だけを狙い撃つ**(実測: 20 本近いブリッジが動くフリートで、udid を添えた
+        // 呼び出しは入口と driver() で走査を2回払い 1 回ごとに 3.5〜6 秒かかった。省略・port だけは 0.6 秒)。
+        // 一致と確かめられたときだけ走査を省く。不一致・不明は従来の走査と文言へ(同じ probe を二度撃たない)
+        var knownExplicitIdentity: ExplicitPortIdentity?
+        if let candidate = port ?? rememberedPort {
+            let identity = await Self.explicitPortIdentityProbe(port: candidate, udid: udid,
+                                                                repoRoot: try? RepoRoot.find())
+            switch Self.afterCandidateProbe(candidate: candidate, explicit: port, identity: identity) {
+            case .use(let confirmed):
+                return confirmed
+            case .scan(let known):
+                knownExplicitIdentity = known
+            }
         }
         let udidPorts = await bridgePorts(forUDID: udid)
         guard udidPorts.isEmpty else {
@@ -409,7 +423,13 @@ extension MCPServer {
         // 下の一般診断へフォールバックする(timedOut を「居ない」に畳まないのは
         // `noResponsiveBridgeMessage` 側の規律と同じ)
         if let port {
-            switch await Self.explicitPortIdentityProbe(port: port, udid: udid, repoRoot: try? RepoRoot.find()) {
+            let identity: ExplicitPortIdentity
+            if let knownExplicitIdentity {
+                identity = knownExplicitIdentity
+            } else {
+                identity = await Self.explicitPortIdentityProbe(port: port, udid: udid, repoRoot: try? RepoRoot.find())
+            }
+            switch identity {
             case .confirmedMatch:
                 return port
             case .confirmedMismatch(let actualUDID):
@@ -455,6 +475,19 @@ extension MCPServer {
         let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: false, engine: nil)
         return BridgeIdentityCheck.matches(expected: expected, status: status)
             ? .confirmedMatch : .confirmedMismatch(actualUDID: statusUDID)
+    }
+
+    /// 走査前の狙い撃ちの結果から次を決める(純粋関数)。一致なら採用。それ以外は走査へ進み、
+    /// 候補が明示 port だったときだけ結果を持ち越す(記憶の候補の不明を明示 port のものと混ぜない)
+    enum CandidateProbeOutcome: Equatable {
+        case use(UInt16)
+        case scan(knownExplicit: ExplicitPortIdentity?)
+    }
+
+    static func afterCandidateProbe(candidate: UInt16, explicit: UInt16?,
+                                    identity: ExplicitPortIdentity) -> CandidateProbeOutcome {
+        if identity == .confirmedMatch { return .use(candidate) }
+        return .scan(knownExplicit: candidate == explicit ? identity : nil)
     }
 
     /// 明示 port の直接確認で「別の udid」と確定したときの文面(maintainer-notes §51.6)。scan 経由の同種の食い違い

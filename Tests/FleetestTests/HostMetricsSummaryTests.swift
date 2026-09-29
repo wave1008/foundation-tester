@@ -117,4 +117,11 @@ final class HostMetricsSummaryTests: XCTestCase {
         XCTAssertNil(report.firstTs)
         XCTAssertNil(report.cpu.avg)
     }
+
+    /// 明示した runID が無いのは打ち間違い(明示した --log と同じ)。latest で 0 件は標本 0 の事実なので断らない
+    func testMissingRunRejectionOnlyForAnExplicitRunID() {
+        XCTAssertNil(ApiHostMetricsSummaryCommand.missingRunRejection(runArg: "latest", project: "P"))
+        let text = ApiHostMetricsSummaryCommand.missingRunRejection(runArg: "nosuchrun", project: "P")
+        XCTAssertEqual(text, "run not found: nosuchrun (project P; list runs with `fleetest results list --project P`)")
+    }
 }
