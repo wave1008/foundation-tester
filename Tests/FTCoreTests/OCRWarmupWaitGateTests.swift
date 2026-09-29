@@ -42,4 +42,24 @@ final class OCRWarmupWaitGateTests: XCTestCase {
         XCTAssertTrue(block.contains("if case .capped = waitOutcome"), "上限に達した場合の分岐が無い")
         XCTAssertTrue(block.contains(".ocrWarmupCapped"), "上限に達したことの注記が無い")
     }
+
+    /// hold は**指を置く前**に暖機を済ませる(ブロックの最初の視覚検証が暖機を待つと、その間に指が離れて
+    /// 押している間だけ出る部品が消える。実測 M1Ultra: 12 秒待って離れていた)。
+    /// 見るのは親スイッチ(occlusionGuardEnabled)—— ステップの既定ガードは off なので
+    /// visibilityGuardActive(perStepGuard: nil) では一度も待たない
+    func testHoldWaitsForTheWarmUpBeforePlacingTheFinger() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTCore/StepExecutor+Hold.swift")
+        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        XCTAssertFalse(text.isEmpty, "走査対象が読めていない")
+        guard let gate = text.range(of: "if occlusionGuardEnabled, occlusionOCRMode != .off,"),
+              let wait = text.range(of: "await RegionText.awaitPrewarm(mode: occlusionOCRMode)"),
+              let send = text.range(of: "$0.hold(x:")
+        else { return XCTFail("hold の暖機待ちか送信が見つからない(書式が変わった)") }
+        XCTAssertLessThan(gate.lowerBound, wait.lowerBound)
+        XCTAssertLessThan(wait.lowerBound, send.lowerBound, "暖機は指を置く前に待つ")
+        let block = String(text[wait.lowerBound..<send.lowerBound])
+        XCTAssertTrue(block.contains(".ocrWarmupWaited"), "待ったことの注記が無い")
+    }
 }
