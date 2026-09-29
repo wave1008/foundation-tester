@@ -58,4 +58,13 @@ public enum StaleFrameDetector {
         } ?? false
         return (record, isStale)
     }
+
+    /// 一度古いと判定した絵(`knownStaleImageHash`)と**バイト同一の絵はまだ古い**。`judge` は記録を新しい木へ
+    /// 更新するので、同じ凍結の絵が次のステップでは古いと言えず、その絵で判定していた(実測 E2E-RN の WebView:
+    /// タップ後の select で古いと見送った `wv_result=-` の絵を、次の textIs が 7 秒撮り続けて OCR だけで赤にした)。
+    /// 覚えるのは古いと判定した絵の1枚だけ・絵が変わったら忘れる(呼び手の責務)
+    public static func isKnownStale(png: Data, knownStaleImageHash: Int?) -> Bool {
+        guard let knownStaleImageHash else { return false }
+        return hashBytes(png) == knownStaleImageHash
+    }
 }

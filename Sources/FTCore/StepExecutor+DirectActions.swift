@@ -250,7 +250,12 @@ extension StepExecutor {
 
         var path: FTSwipePath?
         if Self.coordinateScrollEnabled {
-            let snapshot = try await snapshotForScrollFrame(phase: &phase)
+            // **枠は静止した木から取る**(キャッシュを迂回して2枚一致まで。settledSignature が phase へ計上する)。
+            // 画面遷移の直後に撃つと、動いている最中か古い木の枠へ指を置いてリストが1pt も動かない
+            // (Android の CMP / Flutter / RN で間欠。遷移のタップから約 0.5 秒後に撃って `top=row_01` のまま)
+            let settled = try await settledSignature(phase: &phase)
+            if settled.changed { noteCodesThisStep.insert(.settledBeforeFlick) }
+            let snapshot = settled.snapshot
             let container: FTRect?
             if let rect = step.scrollFrameRect {
                 container = rect

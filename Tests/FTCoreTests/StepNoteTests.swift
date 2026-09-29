@@ -36,6 +36,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.visionAnomalyRetried.rawValue, "vision-anomaly-retried")
         XCTAssertEqual(StepNote.settledAfterLaunch.rawValue, "settled-after-launch")
         XCTAssertEqual(StepNote.blankScreenshotRetaken.rawValue, "blank-screenshot-retaken")
+        XCTAssertEqual(StepNote.settledBeforeFlick.rawValue, "settled-before-flick")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

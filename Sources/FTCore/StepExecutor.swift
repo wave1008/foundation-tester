@@ -414,6 +414,13 @@ public final class StepExecutor {
     /// 同じくエンジン1本につき1系列(StepExecutor はエンジンごとに1インスタンス)。
     /// **cache 供給(同一 Data 使い回し)のときは更新しない** —— guardScreenshot 参照
     var lastGuardFrameRecord: StaleFrameDetector.Record?
+    /// occlusion-guard が古いと判定した絵のハッシュ(同じ絵のままなら次のステップでも判定しない。
+    /// StaleFrameDetector.isKnownStale)。新しい絵で判定したら消す
+    var knownStaleGuardImageHash: Int?
+    /// 直近の occlusionFlip が「絵が古い」で降りた(nil を返した)か。待ちのループを持つ呼び手(exists・テキスト比較)は
+    /// これを「まだ整定していない」と読み、締め切りまで待って撮り直す(素通りは締め切りを過ぎても古いときだけ)。
+    /// ループの無い select は素通りのまま(掴むだけ)
+    var guardFrameStaleThisEval = false
     /// [occlusion-guard] FM 判定の控え(鍵は FM への入力そのもの。宣言は VisibilityVerdictMemo)。
     /// select→textIs のように同じ要素を続けて確かめる書き方で FM を2度呼ばないため
     var visibilityVerdictMemo = VisibilityVerdictMemo()

@@ -261,6 +261,95 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "stale-screenshot 注記が付くはず: \(outcome.notes)")
     }
 
+    /// 古いと判定した絵とバイト同一の絵は、**次のステップでも**判定しない(木はもう新しいので judge は古いと言えない)。
+    /// 実測 E2E-RN の WebView: 見送った次の textIs が同じ古い絵を撮り続け、OCR だけで赤にした
+    func testTheSameStaleFrameIsNotJudgedOnTheNextStepEither() async throws {
+        let log = CallLog()
+        let stuckPNG = Data([0x01])
+        let freshPNG = Data([0x02])
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "A")],
+                                                       [textElement(id: "msg", label: "B")]],
+                                    screenshots: [stuckPNG])
+        let delegate = FakeVisibilityDelegate(visible: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        _ = await executor.execute(step)
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+        _ = await executor.execute(step)   // 古いと判定して見送る
+        let callsBeforeStep3 = delegate.visibleCalls
+        let third = await executor.execute(step)   // 木は B のまま・絵も古いまま
+
+        XCTAssertEqual(delegate.visibleCalls, callsBeforeStep3, "同じ古い絵では FM を呼ばない")
+        XCTAssertTrue(third.notes.contains(.staleScreenshot), "\(third.notes)")
+
+        // 絵が新しくなれば判定に戻る
+        primary.screenshots = [freshPNG]
+        let fourth = await executor.execute(step)
+        XCTAssertGreaterThan(delegate.visibleCalls, callsBeforeStep3, "新しい絵では判定する")
+        XCTAssertFalse(fourth.notes.contains(.staleScreenshot))
+
+        // 新しい絵で判定した後は忘れる: 同じ画面へ正当に戻って絵がバイト同一になっても判定する(見送り続けない)
+        primary.screenshots = [stuckPNG]
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+        let callsBeforeStep5 = delegate.visibleCalls
+        let fifth = await executor.execute(step)
+        XCTAssertGreaterThan(delegate.visibleCalls, callsBeforeStep5, "古いと判定した絵でも、判定し直した後は判定する")
+        XCTAssertFalse(fifth.notes.contains(.staleScreenshot))
+    }
+
+    /// 絵が古い間は判定を見送らずに待ち、**追いついた絵で判定する**(整定してから判定)。
+    /// 追いついた絵で見えなければ赤 = 古い絵のまま素通りしていたら見逃した本物の遮蔽を拾う
+    func testStaleFrameIsWaitedOutAndTheCaughtUpFrameIsJudged() async throws {
+        // exists とテキスト比較の2つの待ちのループが同じ契約
+        for assertKind in ["exists", "textEquals"] {
+        for visibleAfter in [false, true] {
+            let log = CallLog()
+            let stuckPNG = Data([0x01])
+            let freshPNG = Data([0x02])
+            let primary = FakeAppDriver(name: "primary", log: log,
+                                        snapshotElements: [[textElement(id: "msg", label: "A")],
+                                                           [textElement(id: "msg", label: "B")]],
+                                        screenshots: [stuckPNG])
+            let delegate = FakeVisibilityDelegate(visible: true)
+            let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+            var step = FlowStep(assert: assertKind, locator: FlowLocator(id: "msg"),
+                                timeout: 2, occlusionGuard: true)
+            if assertKind == "textEquals" { step.expected = "B" }
+            _ = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                timeout: 2, occlusionGuard: true))
+            _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+            // 次の2枚(最初の撮影と撮り直し)は古いまま、その後に追いつく
+            let base = primary.screenshotCallCount
+            primary.screenshots = Array(repeating: stuckPNG, count: base + 2) + [freshPNG]
+            delegate.visible = visibleAfter
+            let callsBefore = delegate.visibleCalls
+
+            let outcome = await executor.execute(step)
+
+            XCTAssertGreaterThan(delegate.visibleCalls, callsBefore, "追いついた絵で判定する(visible=\(visibleAfter))")
+            XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "\(outcome.notes)")
+            if visibleAfter {
+                guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+            } else {
+                guard case .failed(let reason) = outcome.status else {
+                    return XCTFail("古い絵で素通りせず、追いついた絵の遮蔽で赤にする: \(outcome.status)")
+                }
+                XCTAssertTrue(reason.contains("false positive"), "\(assertKind): \(reason)")
+            }
+        }
+        }
+    }
+
+    func testKnownStaleIsByteIdentityOnly() {
+        let hash = StaleFrameDetector.hashBytes(Data([0x01]))
+        XCTAssertTrue(StaleFrameDetector.isKnownStale(png: Data([0x01]), knownStaleImageHash: hash))
+        XCTAssertFalse(StaleFrameDetector.isKnownStale(png: Data([0x02]), knownStaleImageHash: hash))
+        XCTAssertFalse(StaleFrameDetector.isKnownStale(png: Data([0x01]), knownStaleImageHash: nil))
+    }
+
     /// 起動の直前の絵を控えておくと、シナリオの**最初の**照合でも「木は変わったのに絵は起動前のまま」を拾える
     /// (Android。アプリが切り替わった直後に前のアプリの絵が返り続けた実例)
     func testFirstGuardAfterLaunchDetectsFrameLeftFromBeforeLaunch() async throws {

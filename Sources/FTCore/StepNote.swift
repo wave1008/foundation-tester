@@ -40,7 +40,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
 
     /// occlusion-guard のスクショが凍結フレーム疑い(StaleFrameDetector.judge)で、撮り直しても
     /// なお木指紋と食い違わなかった。古い絵を根拠に FM の誤った緑反転を宣言しないための素通り
-    /// (StepExecutor+Assert.swift の occlusionFlip)
+    /// (StepExecutor+Assert.swift の occlusionFlip)。**古いと判定した絵とバイト同一の絵のままなら、次のステップでも立つ**
+    /// (StaleFrameDetector.isKnownStale)。待ちのループを持つ検証(exists・テキスト比較)は、古い間は判定を見送らずに
+    /// 待って撮り直し、**締め切りまで古いままだった回だけ**素通りする(追いついた絵で判定した回にも立つ)
     case staleScreenshot = "stale-screenshot"
 
     /// テキストの視覚検証(occlusion-guard)か screenLooksLike のスクショがステータスバー以外真っ黒
@@ -255,6 +257,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 起動直後の最初のロケータ操作の前に配置の静止を待ち、**待っている間に実際に木が動いた**
     /// (= 待たなければずれる前の座標を撃っていた)。立たない = 既に静止していた(`pendingLaunchSettle`)
     case settledAfterLaunch = "settled-after-launch"
+    /// flick の前に木の静止を待ち、**待っている間に実際に木が動いた**(= 待たなければ動いている最中か古い枠へ
+    /// 指を置いていた)。立たない = 既に静止していた
+    case settledBeforeFlick = "settled-before-flick"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
@@ -318,6 +323,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .checkStateClassifierFailed:
             return "CheckStateClassifier could not be trained or loaded, or its answer could not be trusted,"
                 + " so the check state came from accessibility only"
+        case .settledBeforeFlick:
+            return "the screen was still moving before the flick, so the flick waited for it to settle"
         case .settledAfterLaunch:
             return "the screen was still laying out after the launch, so the target was resolved again once it settled"
         case .visionAnomalyRetried:

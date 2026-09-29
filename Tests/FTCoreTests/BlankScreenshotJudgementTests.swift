@@ -77,6 +77,107 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         XCTAssertTrue(BlankFrameDetector.isUnjudgeable(pngData: try Self.blackPNG()))
     }
 
+    // MARK: - findImage
+
+    /// FindImageTests の ScreenDriver と同じ画面(300x100)で、スクリーンショットだけを順に返す
+    private final class SequenceDriver: AppDriver {
+        let elements: [ElementInfo]
+        var shots: [Data]
+        private(set) var shotCount = 0
+        init(elements: [ElementInfo], shots: [Data]) { self.elements = elements; self.shots = shots }
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func uninstall(bundleID: String) async throws {}
+        func isAppForeground(bundleID: String) async throws -> Bool { false }
+        func foregroundAppID() async throws -> String? { nil }
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 300, height: 100),
+                             elements: elements, truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data {
+            defer { shotCount += 1 }
+            return shots[min(shotCount, shots.count - 1)]
+        }
+        func terminate() async throws {}
+    }
+
+    private func findCircle(_ executor: StepExecutor) async -> StepOutcome {
+        await executor.execute(FlowStep(action: "findImage", expected: "[Circle Icon]", timeout: 0,
+                                        imageThreshold: FindImage.defaultThreshold))
+    }
+
+    func testFindImageRetakesABlackScreenshotInsteadOfReportingNothingFound() async throws {
+        let fixture = FindImageTests()
+        let root = try fixture.makeProjectForExtension()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let driver = SequenceDriver(elements: fixture.screenElements,
+                                    shots: [try Self.blackPNG(), FindImageTests.screenPNG()])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        executor.visionClassifierProjectRoot = root
+
+        let outcome = await findCircle(executor)
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(outcome.imageMatches?.map(\.element.identifier), ["circle"], "撮り直した絵で見つける")
+        XCTAssertEqual(driver.shotCount, 2, "一色の1枚目は照合せずに撮り直す")
+        XCTAssertTrue(outcome.notes.contains(.blankScreenshotRetaken))
+        XCTAssertFalse(outcome.notes.contains(.visionAnomalyRetried), "Vision の異常とは言い分ける")
+    }
+
+    /// 前の検証が控えた絵のまま(木は遷移後)なら照合せずに待って撮り直す。遷移前の絵で照合すると
+    /// 全候補が似ていない = 0 件(実測 Flutter: 遷移直後の findImages "[Switch]" が 0 件で何もタップされなかった)
+    func testFindImageWaitsWhileThePictureIsStillTheOneBeforeTheTransition() async throws {
+        let fixture = FindImageTests()
+        let root = try fixture.makeProjectForExtension()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let before = CheckStateClassifierTests.checkboxPNG(on: true, shift: 0, canvas: 120)
+        let driver = SequenceDriver(elements: fixture.screenElements, shots: [before, FindImageTests.screenPNG()])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        executor.visionClassifierProjectRoot = root
+        // 遷移前の画面で視覚検証が控えた絵と木(木は今と違う)
+        let previousTree = [ElementInfo(ref: 9, type: "button", identifier: "nav_noid", label: nil, value: nil,
+                                        placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: 0, width: 300, height: 50), depth: 1)]
+        executor.lastGuardFrameRecord = StaleFrameDetector.judge(png: before, elements: previousTree, previous: nil).record
+
+        let outcome = await findCircle(executor)
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(outcome.imageMatches?.map(\.element.identifier), ["circle"], "追いついた絵で見つける")
+        XCTAssertEqual(driver.shotCount, 2, "遷移前の絵では照合しない")
+        XCTAssertTrue(outcome.notes.contains(.staleScreenshot))
+    }
+
+    /// 控えが無い(前に検証が1度も走っていない)ときは判定しない = 今までどおり照合する
+    func testFindImageWithoutAnEarlierPictureJudgesAsBefore() async throws {
+        let fixture = FindImageTests()
+        let root = try fixture.makeProjectForExtension()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let driver = SequenceDriver(elements: fixture.screenElements, shots: [FindImageTests.screenPNG()])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        executor.visionClassifierProjectRoot = root
+
+        let outcome = await findCircle(executor)
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.shotCount, 1)
+        XCTAssertFalse(outcome.notes.contains(.staleScreenshot))
+    }
+
+    func testUnjudgeableAndStalePicturesAreWaitedOutLikeAVisionAnomaly() {
+        XCTAssertTrue(FindImage.MatchError.blankScreenshot.isTransient)
+        XCTAssertTrue(FindImage.MatchError.staleScreenshot.isTransient)
+        XCTAssertFalse(FindImage.MatchError.noTemplate(label: "x", directory: "d").isTransient)
+    }
+
     // MARK: - screenLooksLike
 
     private final class ScreenVerdictDelegate: ReplayDelegate {

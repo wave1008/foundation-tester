@@ -102,6 +102,7 @@ extension StepExecutor {
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
+        guardFrameStaleThisEval = false
         guard visibilityGuardActive(perStepGuard: perStepGuard) else { return nil }
         let clock = ContinuousClock()
         // **ここより後ろに置かない** —— 足切り(型・ラベル・インク)で FM を呼ばずに
@@ -160,12 +161,29 @@ extension StepExecutor {
                     png: retaken.data, elements: elements, previous: baseline)
                 lastGuardFrameRecord = record2
                 if stillStale {
+                    knownStaleGuardImageHash = record2.imageHash
                     noteCodesThisStep.insert(.staleScreenshot)
+                    guardFrameStaleThisEval = true
                     return nil
                 }
                 screenshot = retaken.data
             }
         }
+        // 前に古いと判定した絵のままなら、撮り直してもなお同じときは見送る(StaleFrameDetector.isKnownStale)。
+        // **使い回しの絵にも掛ける** —— 操作を挟まない連続した検証はスクショを使い回すので、新規撮影のときだけ
+        // 見ると select → textIs の形で古い絵を判定してしまう
+        if StaleFrameDetector.isKnownStale(png: screenshot, knownStaleImageHash: knownStaleGuardImageHash) {
+            invalidateScreenshotCache()
+            let retaken = try await guardScreenshot(phase: &phase)
+            if StaleFrameDetector.isKnownStale(png: retaken.data, knownStaleImageHash: knownStaleGuardImageHash) {
+                noteCodesThisStep.insert(.staleScreenshot)
+                guardFrameStaleThisEval = true
+                return nil
+            }
+            screenshot = retaken.data
+            lastGuardFrameRecord = StaleFrameDetector.judge(png: screenshot, elements: elements, previous: nil).record
+        }
+        knownStaleGuardImageHash = nil
         // Tier-0 幾何(ツリーのみ)で疑わしければインク量に関わらず FM へ(部分覆いの取りこぼし対策)。
         let geo = OcclusionSuspicion.geometric(element: element, in: elements, screen: screen,
                                                looseMatch: looseMatch)
@@ -696,6 +714,8 @@ extension StepExecutor {
         // スナックバー等)が消えるのを timeout まで待ってから失敗にする(即失敗の脆さを回避)。
         // 最後に観測した occlusion 失敗を保持し、可視化されなければこれを返す。
         var lastOcclusion: StepResult.Status?
+        /// 絵が古いまま待っている要素(締め切りまで古ければ素通りする。guardFrameStaleThisEval)
+        var staleUntilDeadline: (element: ElementInfo, fallback: FlowLocator?)?
         var lastSnapshot: SnapshotResponse?
         // 一度でも上限に当たったら以後は最初から天井で撮る(notExists と同じ latch)
         var needsCeiling = false
@@ -749,6 +769,12 @@ extension StepExecutor {
                     // exist("Hello, World") でガードがスキップされる欠陥を防ぐ(textEquals と同契約)。
                     expectedIsUserText: step.locator?.label != nil, phase: &phase) {
                     lastOcclusion = flip   // 覆われている: 可視化を待つ(下の sleep へ)
+                    staleUntilDeadline = nil
+                } else if guardFrameStaleThisEval, Date() < deadline {
+                    // 絵が木に追いついていない = まだ整定していない。判定を見送らずに待って撮り直す
+                    // (締め切りまで古いままなら、ループの後で素通りする)
+                    lastOcclusion = nil
+                    staleUntilDeadline = (d.element, d.usedFallback)
                 } else {
                     resolvedElementThisStep = d.element
                     if guardCostExtended { noteCodesThisStep.insert(.guardRetaken) }
@@ -827,6 +853,12 @@ extension StepExecutor {
             if firstFrameExtended, firstFrameBlankObserved { noteCodesThisStep.insert(.firstFrameTimeout) }
             return lastOcclusion
         }
+        // 締め切りまで絵が古いままだった: 古い絵では判定できないので素通り(注記 stale-screenshot は立っている)
+        if let stale = staleUntilDeadline {
+            resolvedElementThisStep = stale.element
+            if let fallback = stale.fallback { return .passedViaFallback(fallback) }
+            return .passed
+        }
         return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
                        + Self.truncationHint(lastSnapshot)
                        + Self.keyboardResizedHint(lastSnapshot)
@@ -850,6 +882,8 @@ extension StepExecutor {
         var backoff = PollBackoff()
         var primaryMisses = 0
         var lastOcclusion: StepResult.Status?   // occlusion-guard: 可視化待ち(exists と同契約)
+        /// 絵が古いまま待っている要素(締め切りまで古ければ素通りする。guardFrameStaleThisEval)
+        var staleUntilDeadline: (element: ElementInfo, fallback: FlowLocator?)?
         // 失敗メッセージに「覆っている要素」を添えるための直近の観測(coveringHint 参照)
         var lastElement: ElementInfo?
         var lastElements: [ElementInfo] = []
@@ -933,6 +967,11 @@ extension StepExecutor {
                         looseMatch: loose, perStepGuard: step.occlusionGuard,
                         expectedIsUserText: true, phase: &phase) {
                         lastOcclusion = flip   // 覆われている: 可視化を待つ
+                        staleUntilDeadline = nil
+                    } else if guardFrameStaleThisEval, Date() < deadline {
+                        // 絵が木に追いついていない = まだ整定していない(exists と同契約)
+                        lastOcclusion = nil
+                        staleUntilDeadline = (element, fallback)
                     } else {
                         resolvedElementThisStep = element
                         if guardCostExtended { noteCodesThisStep.insert(.guardRetaken) }
@@ -988,6 +1027,12 @@ extension StepExecutor {
         if let lastOcclusion {   // 覆われ続けた
             if firstFrameExtended, firstFrameBlankObserved { noteCodesThisStep.insert(.firstFrameTimeout) }
             return lastOcclusion
+        }
+        // 締め切りまで絵が古いままだった: 素通り(exists と同契約)
+        if let stale = staleUntilDeadline {
+            resolvedElementThisStep = stale.element
+            if let fallback = stale.fallback { return .passedViaFallback(fallback) }
+            return .passed
         }
         let subject = assert == "idEquals" ? "id"
             : (assert.hasPrefix("value") ? "value" : "text")

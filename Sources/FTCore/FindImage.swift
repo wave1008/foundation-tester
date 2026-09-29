@@ -56,6 +56,10 @@ public enum FindImage {
         /// アプリの領域が一色(`BlankFrameDetector.isUnjudgeable`)。比べると全候補が「似ていない」になり、
         /// 見つからない(`isEmpty` での否定なら誤った緑)と読んでしまうので照合しない
         case blankScreenshot
+        /// 絵が木に追いついていない(前に検証が控えた絵と木に対して「木は変わったのに絵が同じ」か、前に古いと
+        /// 判定した絵と同じ。`StaleFrameDetector`)。遷移前の絵で照合すると全候補が似ていない = 見つからない
+        /// (`isEmpty` の否定なら誤った緑)ので照合しない
+        case staleScreenshot
 
         public var description: String {
             switch self {
@@ -79,6 +83,9 @@ public enum FindImage {
             case .blankScreenshot:
                 return "the app area of the screenshot is a single colour (nothing is drawn there, or the capture"
                     + " failed), so no image could be compared"
+            case .staleScreenshot:
+                return "the screenshot has not caught up with the screen (the tree changed but the picture did"
+                    + " not), so no image could be compared"
             }
         }
         public var errorDescription: String? { description }
@@ -86,7 +93,7 @@ public enum FindImage {
         /// 待てば戻る状態(Vision の異常・一色の絵。`retryingTransientAnomalies` が待って走査をやり直す対象)
         var isTransient: Bool {
             switch self {
-            case .degeneratePrints, .inconsistentPrints, .blankScreenshot: return true
+            case .degeneratePrints, .inconsistentPrints, .blankScreenshot, .staleScreenshot: return true
             case .invalidTolerance, .noTemplate, .unreadableTemplate: return false
             }
         }
