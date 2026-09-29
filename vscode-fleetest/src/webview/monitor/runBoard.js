@@ -41,7 +41,7 @@ let collapsed = false;
 // run も展開された状態で出る(ユーザー決定)。host が workspaceState に持つ。
 let expandAll = false;
 // 機械の行の開閉を利用者が変えたもの(行の鍵 → 開いているか)。**既定は run のある行が開き・
-// 空きの行が閉じ**(ユーザー決定 2026-09-30 の図)なので、既定と違うものだけでなく押した結果を
+// 空きの行が閉じ**(ユーザー決定の図)なので、既定と違うものだけでなく押した結果を
 // そのまま覚える。行の鍵は run が終われば二度と現れないので host 側には永続化しない
 // (webview の getState だけ = 同一パネルの再読込(言語切替)を跨ぐだけで十分)。
 const rowExpansion = new Map(
@@ -50,7 +50,7 @@ const rowExpansion = new Map(
     : [],
 );
 
-// 行の鍵。**1行 = 1機械**(ユーザー決定 2026-09-30)—— run のある機械は run ごとに1行
+// 行の鍵。**1行 = 1機械**(ユーザー決定)—— run のある機械は run ごとに1行
 // (機械分担の run は機械の数だけ行になる)、run の無い機械は1行。
 // **run の行は機械 + pid で引く(groupKey を使わない)** —— 準備中・ビルド中の控えは runID/runGroup が
 // nil で、走り出すと同じ pid の控えが runID 入りに上書きされる。groupKey で引くと走り出した瞬間に
@@ -167,7 +167,7 @@ function naturalLeftWidth() {
   runBoardRows.classList.remove('run-board-measuring');
   return Math.ceil(width);
 }
-// 既定の幅(ドラッグ前)に足す余白(px。ユーザー決定 2026-09-30)。ラベルがちょうど収まる幅では
+// 既定の幅(ドラッグ前)に足す余白(px。ユーザー決定)。ラベルがちょうど収まる幅では
 // 左カラムが詰まって見えるため。右カラムの 80px は clampSplit が別に守る
 const DEFAULT_SPLIT_EXTRA = 100;
 // 行の左右の padding(style.css の .run-board-row-summary / .run-board-lane と同じ値)。
@@ -333,7 +333,7 @@ function applyRowExpansion(row, expandable, defaultExpanded) {
   row.chevronEl.classList.toggle('run-board-chevron-empty', !expandable);
   row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
   row.chevronEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  // **ツールチップは出さない**(ユーザー決定 2026-09-30)—— 名前は読み上げ用の aria-label だけが持つ
+  // **ツールチップは出さない**(ユーザー決定)—— 名前は読み上げ用の aria-label だけが持つ
   row.chevronEl.setAttribute('aria-label', t(expanded ? 'runBoard.collapseLanes' : 'runBoard.expandLanes'));
 }
 
@@ -591,7 +591,7 @@ function appendDeviceLane(row, machine, name, lane, receivedAtMs, platform) {
 }
 
 // run のある機械の行。**1行に「(マシン名) プロジェクト / 実行プロファイル  進捗  経過 / 残り」**
-// (ユーザー決定 2026-09-30)。値はこの機械の run のもの —— 機械分担の run は機械ごとに行が分かれ、
+// (ユーザー決定)。値はこの機械の run のもの —— 機械分担の run は機械ごとに行が分かれ、
 // それぞれが自分の進捗を出す(束ねた合計は「実行中 N」の件数だけが使う)。
 function updateRow(row, run) {
   row.run = run;
@@ -640,7 +640,7 @@ function updateRow(row, run) {
 
   renderRowTime(row);
   const hasDevices = renderDevices(row, run.machine, run);
-  // **run のある行の既定は開いた状態**(ユーザー決定 2026-09-30 の図)
+  // **run のある行の既定は開いた状態**(ユーザー決定の図)
   applyRowExpansion(row, hasDevices || showIssuer, true);
 }
 

@@ -425,7 +425,7 @@ button.bulk-cancel:hover:not(:disabled) {
   overflow: hidden;
   background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   font-size: 12px;
-  /* ツールバーとの間を空ける(ユーザー決定 2026-09-30)。**offsetHeight に入らないので
+  /* ツールバーとの間を空ける(ユーザー決定)。**offsetHeight に入らないので
      splitter.js の runBoardAvailableHeight が別に引く**(片方だけ消さない) */
   margin-top: 8px;
 }
