@@ -587,18 +587,12 @@ html[lang="en"] .header-count {
   background-color: #ffffff;
   color: #1e1e1e;
 }
-/* 走っていない機械をまとめる根も run 行と同じ作り(.run-board-row)。**見出しの1行だけ控えめに**
-   —— run の行が主役だが、下に並ぶ機械とデバイスのツリーまで薄くすると読みにくい */
-.run-board-row-scope > .run-board-row-summary {
-  opacity: 0.75;
-}
 .run-board-idle-machine-status {
   flex: 1 1 auto;
 }
 
-/* 走っていない機械は2値(空き / 不明)。**どちらもグレー**(ユーザー決定)——
-   観測できていないのは異常ではないので警告色を使わない。区別は語と「—」で付ける。
-   実行中の機械は run の行として出るのでここには現れない。 */
+/* run の無い機械は2値(空き / 不明)。**どちらもグレー**(ユーザー決定)——
+   観測できていないのは異常ではないので警告色を使わない。区別は語と「—」で付ける。 */
 .run-board-machine-state-idle,
 .run-board-machine-state-unknown { color: var(--vscode-descriptionForeground, #9d9d9d); }
 .run-board-rows {
@@ -612,7 +606,6 @@ html[lang="en"] .header-count {
 }
 /* **行は縮ませない** —— ここは縦の flex コンテナなので、既定(flex-shrink: 1)のままだと
    セパレーターを上げたときに行そのものが潰れ(文字と余白が詰まる)、スクロールに回らない。
-   run 行(.run-board-row)と走っていない機械の行(.run-board-idle-machine)の両方が対象なので
    子全部に掛ける */
 .run-board-rows > * {
   flex: 0 0 auto;
@@ -629,7 +622,7 @@ html[lang="en"] .header-count {
   /* 2カラムなので行そのものの gap は持たない(列の中の gap が間隔を持つ) */
   gap: 0;
   /* **左右の padding は全行で同じ 8px** —— 階層のインデントは左カラムの padding が表す
-     (ヘッダ 8px → run 行 24px → レーン 64px)。箱の幅を行ごとに変えると、2カラムの境目が
+     (ヘッダ 8px → 機械の行 24px → デバイス 48px)。箱の幅を行ごとに変えると、2カラムの境目が
      行ごとにずれる */
   padding: 3px 8px;
   /* run 行も高さを固定(進捗バー・注記の有無で変わらない) */
@@ -677,11 +670,11 @@ html[lang="en"] .header-count {
   min-width: 0;
 }
 
-/* 2カラム(ユーザー決定): 左 = ツリー(機械・デバイスの名前)、右 = ステータス。
+/* 2カラム(ユーザー決定): 左 = ツリー(機械の名前・run の範囲・デバイスの名前)、右 = ステータス。
    **境目を全行で1本に見せる**ための約束が3つ: ①行の左右 padding は 8px で揃える
    ②階層のインデントは左カラムの padding で表す ③レーンのガイド線は背景で引く
    (border/margin は箱の幅を変えるので境目が行ごとにずれる)。
-   幅は --rb-left(px。runBoard.js がドラッグで書く。既定はいちばん長いラベルが収まる幅) */
+   幅は --rb-left(px。runBoard.js がドラッグで書く。既定はいちばん長いラベルが収まる幅 + 100px) */
 .run-board-col-left {
   flex: 0 0 var(--rb-left, 25%);
   display: flex;
@@ -713,7 +706,7 @@ html[lang="en"] .header-count {
   overflow: visible;
 }
 .run-board-lane > .run-board-col-left {
-  padding-left: 72px;   /* 行の 8px と合わせて 80px(機械の名前 64px のさらに内側) */
+  padding-left: 40px;   /* 行の 8px と合わせて 48px = 機械の行のバッジと同じ位置(三角 24px + 16px + gap 8px) */
   gap: 6px;             /* アイコンと名前の間だけは詰める(既定の 8px は離れすぎる) */
 }
 /* デバイスのアイコン。**色はプラットフォームのバッジと同じ値**(.platform-badge-ios / -android。
@@ -796,15 +789,15 @@ html[lang="en"] .header-count {
   color: var(--vscode-descriptionForeground);
 }
 .run-board-issuer {
-  padding: 0 8px 3px 64px;
+  padding: 0 8px 3px 48px;
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
-/* レーンは run の子。**縦のガイド線**で親子を示す(インデントだけだと、下に続く
-   「走っていない機械」の行と見分けが付かない) */
+/* デバイスは機械の行の子。**縦のガイド線**で親子を示す(インデントだけだと、下に続く
+   次の機械の行と見分けが付かない) */
 .run-board-lanes {
   /* **ガイド線は背景で引く**(border/margin だと箱の幅が変わり、2カラムの境目が行ごとにずれる)。
-     32px = この中身(機械の枝)は根の子。根の三角(24px)と機械の三角(40px)の間に引く */
+     32px = 機械の行の三角(24px〜40px)の中心 */
   background-image: linear-gradient(
     var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35)),
     var(--vscode-tree-indentGuidesStroke, rgba(127, 127, 127, 0.35))
@@ -819,30 +812,6 @@ html[lang="en"] .header-count {
 .run-board-row:not(.run-board-row-expanded) .run-board-lanes,
 .run-board-row:not(.run-board-row-expanded) .run-board-issuer {
   display: none;
-}
-/* 機械の枝の見出し。**構成も2カラムも他の行と同じ**(「(マシン名)プロジェクト / 実行プロファイル」
-   を左カラムへ)。行の左右 padding は 8px で揃え、階層のインデントは左カラムの padding で表す
-   (docs/design.md §18.5 の規律②)。**run の行の中でも空きの根の中でも同じ作り** */
-.run-board-lane-machine-header {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 2px 8px;
-  line-height: 18px;
-  min-height: 18px;
-  cursor: pointer;
-}
-.run-board-lane-machine-header:hover {
-  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
-}
-.run-board-lane-machine-header:hover .run-board-chevron {
-  background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
-  color: var(--vscode-foreground);
-}
-.run-board-lane-machine-header > .run-board-col-left {
-  /* 行の 8px と合わせて三角が 40px、バッジが 64px。**3段が 16px 刻みで並ぶ**:
-     根(三角 24px・名前 48px)→ 機械(三角 40px・名前 64px)→ デバイス(名前 80px) */
-  padding-left: 32px;
 }
 .run-board-lane {
   display: flex;
@@ -880,10 +849,6 @@ html[lang="en"] .header-count {
   text-align: right;
   font-variant-numeric: tabular-nums;
   color: var(--vscode-descriptionForeground);
-}
-/* 畳んだ枝はデバイスだけを隠す(見出しは残る = その機械が居ることは消さない) */
-.run-board-lane-group-collapsed > .run-board-lane {
-  display: none;
 }
 .toolbar-icon-group {
   align-self: flex-end;

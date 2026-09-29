@@ -47,10 +47,10 @@ is unavailable.
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
-- The **run board** under the toolbar lists the runs going on right now, on this Mac and on every
-  registered runner machine, with "N of M done" and an estimated time left — not just runs you
-  started, but CLI runs and other people's runs too. Clicking a row selects that run's devices in
-  the Line View.
+- The **run board** under the toolbar shows one row per machine — this Mac and every registered
+  runner machine. A run going on right now appears on its machine's row with "N of M done" and an
+  estimated time left — not just runs you started, but CLI runs and other people's runs too.
+  Expanding a row lists that machine's devices; clicking a row selects them in the Line View.
 - The Device Monitor tab is split into three views, top to bottom: the **Line View** (the row of
   device tiles), the **Grid View** (enlarged screens of the selected devices), and the **Run Log View**
   (the run log of the selected devices). Drag a divider to resize, click a view's header to collapse or

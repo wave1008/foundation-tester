@@ -93,27 +93,21 @@ function monitorRunsMessage(overrides) {
   };
 }
 
-// run のある機械は run の行として出るので、ここには現れない(二重に出さない)。
+// **1行 = 1機械**(ユーザー決定 2026-09-30)。行の鍵は run の行が "run\0…"・run の無い機械が "idle\0…"。
+const boardRows = (document) => [...document.querySelectorAll("#run-board-rows > .run-board-row")];
+const idleRows = (document) => boardRows(document).filter((el) => el.dataset.rowKey.startsWith("idle\u0000"));
+const runRows = (document) => boardRows(document).filter((el) => el.dataset.rowKey.startsWith("run\u0000"));
+const badgeOf = (el) => el.querySelector(".run-board-row-summary .run-board-machine-badge").textContent;
+
 // 「不明」と「空き」は混ぜない —— 記号だけだと ○ と ? の区別が形頼みなので語でも言い切る。
-/** 走っていない機械の枝を「機械名 + 状態」で読む(根の1行の下に機械が並ぶ)。 */
-const machineRows = (document) => [...document.querySelectorAll(
-  ".run-board-row-scope .run-board-lane-machine-header")].map((el) =>
-  el.querySelector(".run-board-machine-badge").textContent
-    + el.querySelector(".run-board-idle-machine-status").textContent);
+/** run の無い機械の行を「機械名 + 状態」で読む。 */
+const machineRows = (document) => idleRows(document).map((el) =>
+  badgeOf(el) + el.querySelector(".run-board-idle-machine-status").textContent);
 
 /** その行のツリーに並ぶデバイスの名前。 */
 const laneNames = (el) => [...el.querySelectorAll(".run-board-lane-name")].map((n) => n.textContent);
 
-/** 機械の枝(run の行の中 / 空きの根の中とも同じ作り)。 */
-const branches = (el) => [...el.querySelectorAll(".run-board-lane-group")];
-
-/** 枝の見出しの文字(マシン名のバッジだけ。プロジェクト / 実行プロファイルは根が出す)。 */
-const branchLabel = (groupEl) => {
-  const header = groupEl.querySelector(".run-board-lane-machine-header");
-  return header.querySelector(".run-board-machine-badge").textContent;
-};
-
-test("走っていない機械は根の1行にまとめ、その下に機械が並ぶ(実行中の機械は出ない)", (t) => {
+test("1行 = 1機械。run のある機械は同じ行に範囲と進捗、無い機械はバッジと状態だけ", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "hostMetricsMachines", machines: ["M1Max", "M1Ultra"] });
@@ -122,21 +116,32 @@ test("走っていない機械は根の1行にまとめ、その下に機械が�
   post(window, { type: "monitorRuns", observed: true, runs: [] });   // 手元 = 観測できて 0 本
   post(window, monitorRunsMessage({ machine: "M1Max" }));            // 実行中 → run の行になる
   // M1Ultra へは1行も送らない = 一度も聞いていない
-  const scopeRow = document.querySelector(".run-board-row-scope");
-  assert.equal(scopeRow.querySelector(".run-board-scope").textContent, "sut-ec-mobile / local+remote",
-    "根はモニターが台を並べる範囲を出す");
-  assert.equal(scopeRow.querySelector(".run-board-machine-badge").style.display, "none",
-    "根は機械をまとめる行なのでバッジを持たない(名乗るのは下の枝)");
+  assert.deepEqual(boardRows(document).map(badgeOf), ["local", "M1Max", "M1Ultra"], "機械の順に1行ずつ");
   assert.deepEqual(machineRows(document), ["local空き", "M1Ultra—"], "空きは語・不明は「—」");
-  assert.deepEqual(branches(scopeRow).map(branchLabel), ["local", "M1Ultra"],
-    "枝はマシン名だけ(プロジェクト / 実行プロファイルは根が1回だけ出す)");
-  assert.equal(scopeRow.querySelector(".run-board-lane-machine-header .run-board-scope"), null,
-    "枝に同じ文字を繰り返さない");
+  const [runRow] = runRows(document);
+  assert.equal(runRow.querySelector(".run-board-scope").textContent, "ec-mobile / ios-smoke",
+    "run の範囲はマシン名の横に出す");
+  assert.match(runRow.querySelector(".run-board-counts").textContent, /7\/12/, "進捗も同じ行");
+  assert.equal(idleRows(document)[0].querySelector(".run-board-scope").textContent, "",
+    "run の無い機械はバッジだけ(範囲は出さない)");
   const unknown = [...document.querySelectorAll(".run-board-machine-state-unknown")][0];
   assert.equal(unknown.title, "実行状況を観測できていません", "ダッシュの意味は title で言う");
-  assert.equal(document.querySelectorAll(".run-board-row:not(.run-board-row-scope)").length, 1,
-    "M1Max は run の行として出る");
   assert.equal(document.getElementById("run-board-machines"), null, "ヘッダの要約は置かない");
+});
+
+// 機械分担の run は機械ごとに行が分かれ、それぞれが自分の進捗を出す。件数は run の数のまま
+test("機械分担の run は機械ごとの行になり、件数は1本と数える", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "hostMetricsMachines", machines: ["M1Max"] });
+  const base = monitorRunsMessage().runs[0];
+  post(window, { type: "monitorRuns", observed: true,
+                 runs: [{ ...base, runGroup: "g-1", total: 10, done: 3, failed: 0 }] });
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true,
+                 runs: [{ ...base, pid: 99, runID: "run-2", runGroup: "g-1", total: 8, done: 5, failed: 0 }] });
+  assert.equal(document.getElementById("run-board-title").textContent, "実行中 1");
+  assert.deepEqual(runRows(document).map((el) =>
+    `${badgeOf(el)}:${el.querySelector(".run-board-counts").textContent}`), ["local:3/10", "M1Max:5/8"]);
 });
 
 // 供給(デバイスの用意)の間も run は走っているので、ボードに行を出す —— 出さないと
@@ -149,9 +154,9 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
     project: "E2E-iOS", profile: "ios-inapp",
     elapsedSeconds: 12, total: 0, done: 0, failed: 0, lanes: [],
   }] });
-  // **run の行に限って見る** —— 空きの根も同じ作り(.run-board-row)なので、素の
-  // querySelector では local を抱えた根の行を掴む
-  const runRow = document.querySelector(".run-board-row:not(.run-board-row-scope)");
+  // **run の行に限って見る** —— run の無い機械の行も同じ作り(.run-board-row)なので、素の
+  // querySelector では local の行を掴む
+  const [runRow] = runRows(document);
   assert.equal(runRow.querySelector(".run-board-counts").textContent, "準備中(デバイスを用意しています)");
   assert.equal(runRow.querySelector(".run-board-progress").style.display, "none");
   assert.equal(document.getElementById("run-board-title").textContent, "実行中 1",
@@ -195,21 +200,18 @@ test("レーン行は高さを固定し、経過は折り返さない", () => {
   assert.doesNotMatch(decl, /\n\s*width:/, "固定幅だと中央値つきの表示が入らない");
 });
 
-// 走っていない機械の行は run 行と**同じ作り**(.run-board-row)を使うので、行の高さも
-// インデントも共有の宣言が効く。見出しの1行だけ控えめにし、**下のデバイスのツリーは薄くしない**。
-test("空きの根は run 行と同じ作りで、見出しだけ控えめにする", () => {
+// run の無い機械の行も run の行と**同じ作り**(.run-board-row)を使うので、行の高さも
+// インデントも共有の宣言が効く。
+test("run の無い機械の行も run の行と同じ作りで、デバイスは機械の1段下に並ぶ", () => {
   const css = readFileSync(new URL("../src/webview/monitor/style.css", import.meta.url), "utf8");
   const summary = css.slice(css.indexOf("\n.run-board-row-summary {"));   // 行頭で探す(子孫セレクタに当てない)
   assert.match(summary.slice(0, summary.indexOf("}")), /line-height:\s*20px/,
-    "語と — で行の高さが変わらないよう固定する(run 行と共有)");
-  const dim = css.slice(css.indexOf(".run-board-row-scope > .run-board-row-summary {"));
-  assert.match(dim.slice(0, dim.indexOf("}")), /opacity:/, "見出しの1行だけ控えめにする");
+    "語と — で行の高さが変わらないよう固定する(run の行と共有)");
   assert.equal(css.includes(".run-board-idle-machine {"), false, "専用の行の作りは残さない");
-  // 3段(根 → 機械 → デバイス)は 16px 刻みのインデントだけで読めること
-  const branch = css.slice(css.indexOf(".run-board-lane-machine-header > .run-board-col-left {"));
-  assert.match(branch.slice(0, branch.indexOf("}")), /padding-left:\s*32px/);
+  assert.equal(css.includes(".run-board-row-scope"), false, "根の行は置かない");
+  // 2段(機械 → デバイス)。デバイスの名前は機械の行のバッジと同じ位置から始まる
   const lane = css.slice(css.indexOf(".run-board-lane > .run-board-col-left {"));
-  assert.match(lane.slice(0, lane.indexOf("}")), /padding-left:\s*72px/);
+  assert.match(lane.slice(0, lane.indexOf("}")), /padding-left:\s*40px/);
 });
 
 // 機械の並びは常に同じ(local → 登録簿の順)。run が始まると行の種類は変わるが**位置は動かない**
@@ -220,17 +222,13 @@ test("並びは常に機械の順で、run が始まっても位置が動かな�
   post(window, { type: "hostMetricsMachines", machines: ["M1Max", "M1Ultra"] });
   post(window, { type: "monitorRuns", observed: true, runs: [] });                 // local = 空き
   post(window, { type: "monitorRuns", machine: "M1Ultra", observed: true, runs: [] });
-  // 行の並び = [空きの根(その下に機械の枝が機械の順で並ぶ) / run の行]
-  const label = () => [...document.getElementById("run-board-rows").children].map((el) =>
-    el.classList.contains("run-board-row-scope")
-      ? `空き:${branches(el).map((g) => g.querySelector(".run-board-machine-badge").textContent).join("+")}`
-      : `run:${branches(el).map((g) => g.querySelector(".run-board-machine-badge").textContent).join("+")}`);
-  assert.deepEqual(label(), ["空き:local+M1Max+M1Ultra"], "M1Max は一度も聞いていない = 不明");
+  const label = () => boardRows(document).map((el) =>
+    `${badgeOf(el)}:${el.dataset.rowKey.startsWith("run") ? "run" : "空き"}`);
+  assert.deepEqual(label(), ["local:空き", "M1Max:空き", "M1Ultra:空き"]);
 
   post(window, monitorRunsMessage({ machine: "M1Max" }));   // 真ん中の機械で run が始まる
-  // **根は最初の空き機械(local)の位置**に置くので、run が始まっても根の位置は動かない
-  assert.deepEqual(label(), ["空き:local+M1Ultra", "run:M1Max"],
-    "run の始まった機械は根から抜けて run の行になる(根の位置は動かない)");
+  assert.deepEqual(label(), ["local:空き", "M1Max:run", "M1Ultra:空き"],
+    "run の始まった機械は同じ位置のまま run の行になる");
 });
 
 test("ヘッダ行はどこを押しても開閉する(三角だけが当たり判定ではない)", (t) => {
@@ -276,13 +274,17 @@ test("展開トグルは状態を属性で持ち、文字は回るだけ(開け�
   post(window, monitorRunsMessage());
   const chevron = document.querySelector(".run-board-chevron");
   assert.equal(chevron.textContent, "▶", "文字は展開しても差し替えない");
-  assert.equal(chevron.getAttribute("aria-expanded"), "false");
-  assert.match(chevron.title, /開く/);
+  assert.equal(chevron.getAttribute("aria-expanded"), "true", "run のある行の既定は開いた状態");
+  assert.equal(chevron.dataset.expanded, "true", "向きは CSS の回転で表すので data 属性が要る");
+  assert.match(chevron.getAttribute("aria-label"), /閉じる/);
+  assert.equal(chevron.title, "", "ツールチップは出さない(名前は aria-label だけ)");
+  assert.equal(chevron.dataset.hoverTip, undefined);
   click(window, chevron);
   assert.equal(chevron.textContent, "▶");
-  assert.equal(chevron.getAttribute("aria-expanded"), "true");
-  assert.equal(chevron.dataset.expanded, "true", "向きは CSS の回転で表すので data 属性が要る");
-  assert.match(chevron.title, /閉じる/);
+  assert.equal(chevron.getAttribute("aria-expanded"), "false");
+  assert.equal(chevron.dataset.expanded, "false");
+  assert.match(chevron.getAttribute("aria-label"), /開く/);
+  assert.equal(chevron.title, "");
 });
 
 test("ヘッダの開閉も文字は回るだけ(行の chevron と同じ規律)", (t) => {
@@ -348,10 +350,7 @@ test("台の行を押してもラインビューの選択は動かない", (t) =
         kind: "virtual", udid: "UDID-2", recording: false },
     ],
   });
-  post(window, monitorRunsMessage());
-  // 展開しないとレーン行は DOM から見えない(表示は run-board-row-expanded クラスで切り替え)ので、
-  // まず展開する(三角のクリック)。
-  click(window, document.querySelector(".run-board-chevron"));
+  post(window, monitorRunsMessage());   // run のある行は既定で開いている
   const laneEl = document.querySelector(".run-board-lane");
   assert.ok(laneEl, "展開するとレーン行が見える");
   const selected = () => [...document.querySelectorAll("#grid .tile.selected")]
@@ -383,7 +382,7 @@ test("runBoardReset は控えを丸ごと畳む(モニター再起動と同じ�
   assert.equal(document.getElementById("run-board-title").textContent, "実行中 1");
   post(window, { type: "runBoardReset" });
   assert.equal(document.getElementById("run-board-title").textContent, "実行中 0");
-  assert.equal(document.querySelectorAll(".run-board-row:not(.run-board-row-scope)").length, 0);
+  assert.equal(runRows(document).length, 0);
 });
 
 test("runBoardCollapsed は開閉トグルの状態を復元し、再送はしない", (t) => {
@@ -414,7 +413,6 @@ test("待機中のレーン(scenario 省略)は「⏹ 待機」と経過「—�
       lanes: [{ key: "UDID-1", name: "iPhone 17-03", platform: "ios" }],
     }],
   }));
-  click(window, document.querySelector(".run-board-chevron"));
   const laneEl = document.querySelector(".run-board-lane");
   assert.match(laneEl.querySelector(".run-board-lane-scenario").textContent, /待機/);
   assert.equal(laneEl.querySelector(".run-board-lane-elapsed").textContent, "—");
@@ -426,7 +424,6 @@ test("他人の run(mine:false)は issuer を出す。自分の run では出さ
   post(window, monitorRunsMessage({
     runs: [{ ...monitorRunsMessage().runs[0], mine: false, issuer: "alice@air" }],
   }));
-  click(window, document.querySelector(".run-board-chevron"));
   const issuerEl = document.querySelector(".run-board-issuer");
   assert.notEqual(issuerEl.style.display, "none");
   assert.match(issuerEl.textContent, /alice@air/);
@@ -463,18 +460,10 @@ test("run が無い機械の行にも台がツリーで並ぶ", (t) => {
     { name: "iPhone 17 Pro-02", udid: "U-L2" },
     { name: "iPhone 17 Pro-01", id: "ios:M1Max-01", udid: "U-M1", machine: "M1Max" },
   ]);
-  const machines = branches(document.querySelector(".run-board-row-scope"));
-  assert.deepEqual(machines.map((el) => el.querySelector(".run-board-machine-badge").textContent),
-    ["local", "M1Max"]);
+  const machines = idleRows(document);
+  assert.deepEqual(machines.map(badgeOf), ["local", "M1Max"]);
   assert.deepEqual(laneNames(machines[0]), ["iPhone 17 Pro-01", "iPhone 17 Pro-02"], "手元の台");
   assert.deepEqual(laneNames(machines[1]), ["iPhone 17 Pro-01"], "その機械の台だけ");
-  // 何を見ているデバイスなのか = モニターの範囲(ツールバーの選択)。根も枝も同じ範囲を名乗る
-  post(window, { type: "profileInfo", project: "sui-ec-mobile", projects: ["sui-ec-mobile"],
-                 profiles: ["local+remote"], current: "local+remote" });
-  assert.equal(document.querySelector(".run-board-row-scope .run-board-scope").textContent,
-    "sui-ec-mobile / local+remote");
-  assert.deepEqual(branches(document.querySelector(".run-board-row-scope")).map(branchLabel),
-    ["local", "M1Max"]);
 });
 
 // run 中でも「その機械のデバイス」を全部出す(ユーザー決定)。run が使っていないデバイスも見える。
@@ -486,7 +475,7 @@ test("run の行にも機械の全台が並び、run が使う台にだけシナ
     { name: "iPhone 17-02", udid: "UDID-2" },   // run に出ていないデバイス
   ]);
   post(window, monitorRunsMessage());
-  const row = document.querySelector(".run-board-row:not(.run-board-row-machine)");
+  const row = runRows(document)[0];
   assert.deepEqual(laneNames(row), ["iPhone 17-01", "iPhone 17-02"], "run に出ていない台も並ぶ");
   const scenarios = [...row.querySelectorAll(".run-board-lane-scenario")].map((el) => el.textContent);
   assert.deepEqual(scenarios, ["▶ 05_検索", ""], "run が使っている台にだけシナリオを添える");
@@ -499,7 +488,7 @@ test("レーンにしか無い台も run の行に残る", (t) => {
   t.after(() => window.close());
   sendDevices(window, [{ name: "iPhone 17-02", udid: "UDID-2" }]);   // レーンのデバイスは居ない
   post(window, monitorRunsMessage());
-  const row = document.querySelector(".run-board-row:not(.run-board-row-machine)");
+  const row = runRows(document)[0];
   assert.deepEqual(laneNames(row), ["iPhone 17-02", "iPhone 17-01"], "台の一覧のあとにレーンだけの台");
 });
 
@@ -525,7 +514,7 @@ test("「起動中のデバイス」で絞っていてもツリーの台は消�
     project: "E2E-CMP", profile: "ios-inapp",
     elapsedSeconds: 8, total: 0, done: 0, failed: 0, lanes: [],
   }] });
-  const row = document.querySelector(".run-board-row:not(.run-board-row-machine)");
+  const row = runRows(document)[0];
   assert.equal(row.querySelector(".run-board-counts").textContent, "ビルド中");
   assert.deepEqual(laneNames(row), ["iPhone 17-01", "iPhone 17-02"],
     "停止中の台もツリーには出す(run の下から台を消さない)");
@@ -545,32 +534,30 @@ test("run が無い機械の枝でも、停止中の台がツリーに並ぶ", (
     devices: [{ id: "ios:iPhone 17-01", name: "iPhone 17-01", platform: "ios", state: "offline",
                 kind: "virtual", udid: "UDID-1", recording: false }],
   });
-  assert.deepEqual(laneNames(document.querySelector(".run-board-row-scope")), ["iPhone 17-01"]);
+  assert.deepEqual(laneNames(idleRows(document)[0]), ["iPhone 17-01"]);
 });
 
+// 既定は **run のある行が開き・run の無い行が閉じ**(ユーザー決定 2026-09-30 の図)。
 // 三角を押した「その場で」開閉する —— 次の監視サイクル(約2秒)を待つ作りにすると、
 // 押してから開くまでの遅れが目に見える(ユーザー指摘 2026-09-22)。
-// 機械の枝は**既定が開いた状態**(ユーザー決定 2026-09-22 の図)で、機械ごとに畳める。
-// 押した「その場で」描き直す —— 次の監視サイクル(約2秒)まで待つと目に見える遅れになる
-test("機械の枝は既定で開いていて、三角で機械ごとに畳める(その場で)", (t) => {
+test("run の無い機械の行は既定で閉じ、三角でその場で開閉できる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", observed: true, runs: [] });
   sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-L1" }]);
-  const row = document.querySelector(".run-board-row-scope");
-  assert.equal(row.classList.contains("run-board-row-expanded"), true, "根の既定は開いた状態");
-  const branch = () => branches(row)[0];
-  assert.equal(branch().classList.contains("run-board-lane-group-collapsed"), false, "枝の既定も開いた状態");
-  assert.deepEqual(laneNames(branch()), ["iPhone 17 Pro-01"]);
+  const row = () => idleRows(document)[0];
+  assert.equal(row().classList.contains("run-board-row-expanded"), false, "run の無い行の既定は閉じた状態");
+  assert.deepEqual(laneNames(row()), ["iPhone 17 Pro-01"], "閉じていても子は持つ(CSS で隠す)");
 
-  click(window, branch().querySelector(".run-board-chevron"));
-  assert.equal(branch().classList.contains("run-board-lane-group-collapsed"), true, "押した直後に畳む");
-  assert.equal(branch().querySelector(".run-board-chevron").dataset.expanded, "false");
-  assert.equal(branch().querySelector(".run-board-lane-machine-header") !== null, true,
-    "畳んでも見出しは残す(その機械が居ることは消さない)");
+  click(window, row().querySelector(".run-board-chevron"));
+  assert.equal(row().classList.contains("run-board-row-expanded"), true, "押した直後に開く");
+  assert.equal(row().querySelector(".run-board-chevron").dataset.expanded, "true");
+  // 次の監視サイクルが来ても利用者の開閉を保つ
+  post(window, { type: "monitorRuns", observed: true, runs: [] });
+  assert.equal(row().classList.contains("run-board-row-expanded"), true, "描き直しでも開いたまま");
 
-  click(window, branch().querySelector(".run-board-chevron"));
-  assert.equal(branch().classList.contains("run-board-lane-group-collapsed"), false, "押した直後に開く");
+  click(window, row().querySelector(".run-board-chevron"));
+  assert.equal(row().classList.contains("run-board-row-expanded"), false, "押した直後に閉じる");
 });
 
 // 「マシン有効」を off にした機械はディスパッチの対象外なので、ボードからも外す
@@ -607,8 +594,8 @@ test("ステータスは右カラム・名前は左カラムに入る", (t) => {
   t.after(() => window.close());
   sendLocalDevice(window);
   post(window, monitorRunsMessage());
-  const summary = document.querySelector(".run-board-row:not(.run-board-row-machine) .run-board-row-summary");
-  assert.match(colText(summary, "left"), /ec-mobile \/ ios-smoke/, "左 = 機械とスコープ");
+  const summary = runRows(document)[0].querySelector(".run-board-row-summary");
+  assert.match(colText(summary, "left"), /^▶local ?ec-mobile \/ ios-smoke$/, "左 = 機械と run の範囲");
   assert.match(colText(summary, "right"), /7\/12/, "右 = 進捗");
   assert.match(colText(summary, "right"), /4:21/, "右 = 経過");
   const lane = document.querySelector(".run-board-lane");
@@ -616,11 +603,11 @@ test("ステータスは右カラム・名前は左カラムに入る", (t) => {
   assert.match(colText(lane, "right"), /05_検索/, "右 = 実行中のシナリオ");
 });
 
-test("機械の枝も同じ2カラム(名前は左・状態は右)", (t) => {
+test("run の無い機械の行も同じ2カラム(名前は左・状態は右)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   post(window, { type: "monitorRuns", observed: true, runs: [] });
-  const header = document.querySelector(".run-board-row-scope .run-board-lane-machine-header");
+  const header = idleRows(document)[0].querySelector(".run-board-row-summary");
   assert.equal(colText(header, "left").includes("local"), true);
   const status = header.querySelector(".run-board-idle-machine-status");
   assert.equal(status.textContent, "空き");
@@ -643,18 +630,18 @@ function giveLabelWidth(window, perChar) {
 
 // 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定)。比率ではないので、
 // デバイスが増えて名前が伸びたら追従する(ドラッグするまでの間)。
-test("境目の既定はいちばん長いラベルに合わせ、ドラッグで幅が変わる", (t) => {
+test("境目の既定はいちばん長いラベル + 100px で、ドラッグで幅が変わる", (t) => {
   const { window, document, sent, getState } = createWebview();
   t.after(() => window.close());
   giveWidth(document);
   giveLabelWidth(window, 10);
   post(window, { type: "monitorRuns", observed: true, runs: [] });
   // 機械の行の左カラムは "▶local"(6字)。**いちばん長い行に合わせる**ので、デバイスが出ると
-  // そちら("iPhone 17 Pro-01" = 16字)に広がる
-  assert.equal(leftWidth(document), "80px", "6字 × 10 = 60 は下限 80 まで");
+  // そちら("iPhone 17 Pro-01" = 16字)に広がる。既定は**それに 100px 足した幅**(ユーザー決定 2026-09-30)
+  assert.equal(leftWidth(document), "161px", "6字 × 10 + 端数 0.4 を切り上げて 61 + 100");
   sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-1" }]);
-  // 16字 × 10 + 端数 0.4 → **切り上げる**(切り捨てるとその行だけ "…" になる)
-  assert.equal(leftWidth(document), "161px", "短い行ではなく長い行に合わせ、端数は切り上げる");
+  // 16字 × 10 + 端数 0.4 → **切り上げる**(切り捨てるとその行だけ "…" になる)+ 100
+  assert.equal(leftWidth(document), "261px", "短い行ではなく長い行に合わせ、端数は切り上げる");
 
   const split = document.getElementById("run-board-split");
   assert.equal(split.getAttribute("role"), "separator");

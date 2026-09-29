@@ -16,7 +16,7 @@ import {
 } from './machineColors.js';
 import { setHoverTip } from './hoverTip.js';
 import {
-  deviceIdForLane, selectOnlyDevices, devicesOnMachine, currentMonitorScope,
+  deviceIdForLane, selectOnlyDevices, devicesOnMachine,
   isPlatformVisible, onPlatformFilterChanged,
 } from './deviceTiles.js';
 import { reapplyPaneHeights } from './splitter.js';
@@ -40,62 +40,38 @@ let collapsed = false;
 // 「全て展開」トグル。**モードであって一度きりの操作ではない** —— ON の間は、あとから現れた
 // run も展開された状態で出る(ユーザー決定)。host が workspaceState に持つ。
 let expandAll = false;
-// 個々の run 行の展開。groupKey は run が終われば二度と現れないので、host 側には
-// 永続化しない(webview の getState だけ = 同一パネルの再読込(言語切替)を跨ぐだけで十分)。
-const expandedGroups = new Set(
-  Array.isArray(persistedState.runBoardExpandedGroups) ? persistedState.runBoardExpandedGroups : [],
+// 機械の行の開閉を利用者が変えたもの(行の鍵 → 開いているか)。**既定は run のある行が開き・
+// 空きの行が閉じ**(ユーザー決定 2026-09-30 の図)なので、既定と違うものだけでなく押した結果を
+// そのまま覚える。行の鍵は run が終われば二度と現れないので host 側には永続化しない
+// (webview の getState だけ = 同一パネルの再読込(言語切替)を跨ぐだけで十分)。
+const rowExpansion = new Map(
+  persistedState.runBoardRowExpansion && typeof persistedState.runBoardRowExpansion === 'object'
+    ? Object.entries(persistedState.runBoardRowExpansion).filter(([, v]) => typeof v === 'boolean')
+    : [],
 );
-// 機械の枝(「(マシン名) プロジェクト / 実行プロファイル」+ その機械のデバイス)の開閉。
-// **既定は開いた状態**(ユーザー決定)なので、run 行(既定は閉じ = expandedGroups に
-// 入っているものだけ開く)とは逆に**畳んだものを覚える**。寿命も同じ(webview の getState だけ)
-const collapsedBranches = new Set(
-  Array.isArray(persistedState.runBoardCollapsedBranches) ? persistedState.runBoardCollapsedBranches : [],
-);
-// 走っていない機械をまとめる根(モニターがデバイスを並べる範囲)。run の groupKey と同じ Map に入れる
-const SCOPE_ROW_KEY = '\u0000scope\u0000';
 
-// groupKey -> 行の DOM とブックキーピング。render() が groups の集合に合わせて足し引きする。
+// 行の鍵。**1行 = 1機械**(ユーザー決定 2026-09-30)—— run のある機械は run ごとに1行
+// (機械分担の run は機械の数だけ行になる)、run の無い機械は1行。
+function runRowKey(groupKey, machine) {
+  return 'run\u0000' + groupKey + '\u0000' + (machine ?? '');
+}
+function idleRowKey(machine) {
+  return 'idle\u0000' + machine;
+}
+
+// 行の DOM とブックキーピング。render() が行の集合に合わせて足し引きする。
 const rows = new Map();
 
-/** その run の行を開くか。**expandAll が ON なら個別の記録によらず開く**(新しい行も含む)。 */
-function isGroupExpanded(groupKey) {
-  return expandAll || expandedGroups.has(groupKey);
-}
-
-/** 枝(機械)を開くか。**expandAll が ON なら個別の記録によらず開く**(run 行と同じ規律)。 */
-function isBranchExpanded(key) {
-  return expandAll || !collapsedBranches.has(key);
-}
-
-function persistCollapsedBranches() {
-  vscode.setState(Object.assign({}, vscode.getState(), { runBoardCollapsedBranches: [...collapsedBranches] }));
-}
-
-/** 枝(機械)の開閉。run 行の groupKey と混ぜない鍵を作る(根の中の機械と run の中の機械は別物) */
-function branchKey(ownerKey, machine) {
-  return ownerKey + '\u0000' + (machine ?? '');
-}
-
-function toggleBranchExpanded(key) {
+/** その行を開くか。**expandAll が ON なら個別の記録によらず開く**(新しい行も含む)。 */
+function isRowExpanded(key, defaultExpanded) {
   if (expandAll) {
-    // run 行の三角と同じ規律 —— いま開いて見えている姿を個別の記録へ写してから自動展開を抜ける
-    for (const rowKey of rows.keys()) {
-      expandedGroups.add(rowKey);
-    }
-    persistExpandedGroups();
-    setExpandAll(false);
+    return true;
   }
-  if (collapsedBranches.has(key)) {
-    collapsedBranches.delete(key);
-  } else {
-    collapsedBranches.add(key);
-  }
-  persistCollapsedBranches();
-  render();
+  return rowExpansion.has(key) ? rowExpansion.get(key) : defaultExpanded;
 }
 
-function persistExpandedGroups() {
-  vscode.setState(Object.assign({}, vscode.getState(), { runBoardExpandedGroups: [...expandedGroups] }));
+function persistRowExpansion() {
+  vscode.setState(Object.assign({}, vscode.getState(), { runBoardRowExpansion: Object.fromEntries(rowExpansion) }));
 }
 
 function formatMinSec(seconds) {
@@ -172,7 +148,7 @@ let desiredSplit = null;
 
 // 左右それぞれに最低これだけは残す(境目を端まで引き切って片方を潰さない)。
 const MIN_COLUMN_WIDTH = 80;
-// 既定は**いちばん長いラベルがちょうど収まる幅**(ユーザー決定)。
+// 既定は**いちばん長いラベルがちょうど収まる幅 + DEFAULT_SPLIT_EXTRA**(ユーザー決定)。
 // 比率ではないので、機械名・デバイス名の長さで決まる。ドラッグするまでは毎回引き直す
 // (デバイスが増えて名前が伸びたら追従する)。
 function naturalLeftWidth() {
@@ -188,6 +164,9 @@ function naturalLeftWidth() {
   runBoardRows.classList.remove('run-board-measuring');
   return Math.ceil(width);
 }
+// 既定の幅(ドラッグ前)に足す余白(px。ユーザー決定 2026-09-30)。ラベルがちょうど収まる幅では
+// 左カラムが詰まって見えるため。右カラムの 80px は clampSplit が別に守る
+const DEFAULT_SPLIT_EXTRA = 100;
 // 行の左右の padding(style.css の .run-board-row-summary / .run-board-lane と同じ値)。
 // **片方だけ変えない** —— 境目の x は 8px + --rb-left で描くので、ここがずれると線と列が割れる。
 const ROW_PADDING_X = 8;
@@ -205,7 +184,7 @@ function renderSplit() {
   if (content <= 0) {
     return;   // 「デバイスモニター」タブが非表示の間は測れない(splitter.js の panelHidden と同じ規律)
   }
-  const left = clampSplit(desiredSplit ?? naturalLeftWidth(), content);
+  const left = clampSplit(desiredSplit ?? naturalLeftWidth() + DEFAULT_SPLIT_EXTRA, content);
   runBoard.style.setProperty('--rb-left', left + 'px');
   // 境目は見出し行には掛けない(掴む相手ではないうえ、チェックボックスに重なる)
   runBoard.style.setProperty('--rb-head', runBoardHeader.offsetHeight + 'px');
@@ -292,9 +271,9 @@ function setExpandAll(value) {
 runBoardExpandAll.addEventListener('click', (event) => {
   event.stopPropagation();
   if (expandAll) {
-    // OFF にしたら個別の記録も畳む(残すと OFF にしたのに全部開いたままになる)
-    expandedGroups.clear();
-    persistExpandedGroups();
+    // OFF にしたら個別の記録も捨てて既定へ戻す(残すと OFF にしたのに全部開いたままになる)
+    rowExpansion.clear();
+    persistRowExpansion();
   }
   setExpandAll(!expandAll);
   render();
@@ -309,195 +288,127 @@ export function setRunBoardExpandAll(value) {
   render();
 }
 
-// 走っていない機械をまとめる**根の行**(行の DOM は run 行と共有する = ensureRow)。
-// **構成は run の行と同じ**(ユーザー決定): 根 =「プロジェクト / 実行プロファイル」・
-// その下に機械の枝「(マシン名) プロジェクト / 実行プロファイル」・さらに下にその機械のデバイス。
-// **run のある機械はここに出さない** —— その機械は run の行として出ているので二重になる。
-// **デバイスのツリーはデバイスの状態に関わらず出す**(停止中でも消さない)。
-function updateScopeRow(row, entries) {
-  row.group = null;
-  row.machine = null;
-  row.entries = entries;
+// run の無い機械の行(行の DOM は run 行と共有する = ensureRow)。バッジと状態(空き / —)だけを
+// 出し、開くとその機械のデバイスが並ぶ。**デバイスはその状態に関わらず出す**(停止中でも消さない)。
+function updateIdleRow(row, entry) {
+  row.run = null;
+  row.idle = entry;
   row.rowEl.classList.remove('run-board-row-hasFailed');
-  row.rowEl.classList.add('run-board-row-scope');
-  const expandable = entries.length > 0;
-  const expanded = expandable && isBranchExpanded(SCOPE_ROW_KEY);
-  row.rowEl.classList.toggle('run-board-row-expanded', expanded);
-  row.chevronEl.classList.toggle('run-board-chevron-empty', !expandable);
-  row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
-  row.chevronEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-
-  // 根は機械をまとめる行なのでバッジは持たない(機械の名前は下の枝が名乗る)
-  row.machineBadgeEl.style.display = 'none';
-  paintMachineBadge(row.machineBadgeEl, undefined);
-
-  // 何を見ているデバイスなのか = モニターがデバイスを並べる範囲(ツールバーの選択)。run 行の scope と
-  // 同じ形で出す(あちらはその run の project/profile)
-  const scope = currentMonitorScope();
-  row.scopeEl.textContent = scope.profile ? `${scope.project} / ${scope.profile}` : scope.project;
-
+  showMachineBadge(row, machineKey(entry.machine));
+  row.scopeEl.textContent = '';
   row.progressEl.style.display = 'none';
   row.countsEl.textContent = '';
   row.notesEl.style.display = 'none';
   row.issuerEl.style.display = 'none';
   row.timeEl.style.display = 'none';
-  row.statusEl.style.display = 'none';
-
-  row.lanesEl.textContent = '';
-  row.laneRows = new Map();
-  for (const entry of entries) {
-    appendMachineBranch(row, {
-      machine: machineKey(entry.machine), status: entry.status,
-      expandKey: branchKey(SCOPE_ROW_KEY, entry.machine),
-    });
+  // 空きは語、**不明は「—」**(ユーザー決定)。どちらもグレーで警告色は使わない ——
+  // 観測できていないのは異常ではない。**何のダッシュかは title で言う**
+  row.statusEl.style.display = '';
+  row.statusEl.className = 'run-board-idle-machine-status run-board-machine-state-' + entry.status;
+  if (entry.status === 'unknown') {
+    row.statusEl.textContent = t('runBoard.remainingUnknown');
+    row.statusEl.title = t('runBoard.machineUnknown');
+  } else {
+    row.statusEl.textContent = t('runBoard.machineIdle');
+    row.statusEl.title = '';
   }
+  const expandable = renderDevices(row, machineKey(entry.machine), undefined);
+  applyRowExpansion(row, expandable, false);
 }
 
-// 機械1つぶんの枝 = 見出し(マシン名のバッジ)+ その機械のデバイス。
-// **run の行の中でも、空きの根の中でも同じ形**(ユーザー決定)—— 行の種類ごとに
-// 作りを変えるとインデントと2カラムの境目が割れ、ツリーに見えなくなる。
-// **プロジェクト / 実行プロファイルはここに出さない**(同日ユーザー決定)—— すぐ上の根が
-// 出しているので、枝にも置くと同じ文字が機械の数だけ並ぶ。
-// `status` は空きの根だけが渡す(空き / 不明)。`run` は run の行だけが渡す。
-function appendMachineBranch(row, { machine, status, run, expandKey }) {
-  const groupEl = document.createElement('div');
-  groupEl.className = 'run-board-lane-group';
+/** 行の先頭のマシン名バッジ(**run の行も空きの行も同じ見た目**。機械の色も同じ)。 */
+function showMachineBadge(row, machine) {
+  row.machineBadgeEl.style.display = '';
+  row.machineBadgeEl.textContent = machineLabel(machine);
+  paintMachineBadge(row.machineBadgeEl, machine);
+}
 
+/** 三角と行の開閉。子(デバイス・issuer)が無い行の三角は列を揃えるためだけに出す。 */
+function applyRowExpansion(row, expandable, defaultExpanded) {
+  const expanded = expandable && isRowExpanded(row.key, defaultExpanded);
+  row.rowEl.classList.toggle('run-board-row-expanded', expanded);
+  row.chevronEl.classList.toggle('run-board-chevron-empty', !expandable);
+  row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
+  row.chevronEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+  // **ツールチップは出さない**(ユーザー決定 2026-09-30)—— 名前は読み上げ用の aria-label だけが持つ
+  row.chevronEl.setAttribute('aria-label', t(expanded ? 'runBoard.collapseLanes' : 'runBoard.expandLanes'));
+}
+
+// 機械のデバイスを行の子に並べる。**その機械のデバイスを全部並べ、run が使っているデバイスにだけ
+// シナリオを添える**(ユーザー決定)—— run に出ていないデバイスも見えるようにする。
+// デバイスの一覧と並びはラインビュー(monitorDevices)から採る。戻り値 = 1台でも並んだか。
+function renderDevices(row, machine, run) {
+  row.lanesEl.textContent = '';
+  row.laneRows = new Map();
   const devices = devicesOnMachine(machine);
   const laneByKey = new Map((run?.lanes ?? []).map((lane) => [lane.key, lane]));
-  const used = new Set();
   // デバイスの一覧に無いレーン(消えたタイル・観測窓の外)も落とさない —— 走っている事実は隠さない
   const extraLanes = (run?.lanes ?? []).filter((lane) => {
     const hit = devices.some((device) => device.laneKey !== undefined && device.laneKey === lane.key);
     return !hit && !(lane.platform !== undefined && !isPlatformVisible(lane.platform));
   });
-  const expandable = devices.length > 0 || extraLanes.length > 0;
-  const expanded = expandable && isBranchExpanded(expandKey);
-  groupEl.classList.toggle('run-board-lane-group-collapsed', !expanded);
-
-  const header = document.createElement('div');
-  header.className = 'run-board-lane-machine-header';
-
-  // **三角は run 行と同じ作り**(文字は常に ▶・向きは CSS の回転)。機械ごとに畳める
-  const chevron = document.createElement('span');
-  chevron.className = 'run-board-chevron';
-  chevron.textContent = '▶';
-  chevron.setAttribute('role', 'button');
-  chevron.classList.toggle('run-board-chevron-empty', !expandable);
-  chevron.dataset.expanded = expanded ? 'true' : 'false';
-  chevron.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  const chevronLabel = t(expanded ? 'runBoard.collapseLanes' : 'runBoard.expandLanes');
-  chevron.title = chevronLabel;
-  chevron.setAttribute('aria-label', chevronLabel);
-  chevron.addEventListener('click', (event) => {
-    event.stopPropagation();
-    toggleBranchExpanded(expandKey);
-  });
-
-  // **run 行のバッジと同じ見た目**(機械の色も同じ)
-  const badge = document.createElement('span');
-  badge.className = 'badge badge-remote run-board-machine-badge';
-  badge.textContent = machineLabel(machine);
-  paintMachineBadge(badge, machine);
-
-  const leftEl = document.createElement('span');
-  leftEl.className = 'run-board-col-left';
-  leftEl.append(chevron, badge);
-  const rightEl = document.createElement('span');
-  rightEl.className = 'run-board-col-right';
-  if (status !== undefined) {
-    // 空きは語、**不明は「—」**(ユーザー決定)。どちらもグレーで警告色は使わない ——
-    // 観測できていないのは異常ではない。**何のダッシュかは title で言う**
-    const statusEl = document.createElement('span');
-    statusEl.className = 'run-board-idle-machine-status run-board-machine-state-' + status;
-    if (status === 'unknown') {
-      statusEl.textContent = t('runBoard.remainingUnknown');
-      statusEl.title = t('runBoard.machineUnknown');
-    } else {
-      statusEl.textContent = t('runBoard.machineIdle');
-    }
-    rightEl.appendChild(statusEl);
-  }
-  header.append(leftEl, rightEl);
-  // 見出しを押したらその機械のデバイスだけを選ぶ(run 行が run のデバイスを選ぶのと同じ扱い)
-  header.addEventListener('click', (event) => {
-    event.stopPropagation();
-    selectOnlyDevices(devices.map((device) => device.id));
-  });
-  groupEl.appendChild(header);
-
-  // **その機械のデバイスを全部並べ、run が使っているデバイスにだけシナリオを添える**(ユーザー決定)
-  // —— run に出ていないデバイスも見えるようにする。デバイスの一覧と並びはラインビュー(monitorDevices)から採る
   for (const device of devices) {
     const lane = device.laneKey === undefined ? undefined : laneByKey.get(device.laneKey);
-    if (lane) {
-      used.add(lane.key);
-    }
-    appendDeviceLane(row, groupEl, machine, device.name, lane, run?.receivedAtMs ?? 0, device.platform);
+    appendDeviceLane(row, machine, device.name, lane, run?.receivedAtMs ?? 0, device.platform);
   }
   for (const lane of extraLanes) {
-    appendDeviceLane(row, groupEl, machine, lane.name, lane, run.receivedAtMs, lane.platform);
+    appendDeviceLane(row, machine, lane.name, lane, run.receivedAtMs, lane.platform);
   }
-  row.lanesEl.appendChild(groupEl);
+  renderLaneTimes(row);
+  return devices.length > 0 || extraLanes.length > 0;
 }
 
-function selectRunDevices(group) {
+/** その run がこの機械で使っているデバイスをラインビューで選ぶ。 */
+function selectRunDevices(run) {
   const ids = [];
-  for (const run of group.runs) {
-    for (const lane of run.lanes) {
-      const id = deviceIdForLane(run.machine, lane.key);
-      if (id !== undefined) {
-        ids.push(id);
-      }
+  for (const lane of run.lanes) {
+    const id = deviceIdForLane(run.machine, lane.key);
+    if (id !== undefined) {
+      ids.push(id);
     }
   }
   selectOnlyDevices(ids);
 }
 
-function toggleGroupExpanded(groupKey) {
+function toggleRowExpanded(key) {
+  const row = rows.get(key);
+  if (!row) {
+    return;
+  }
+  const wasExpanded = row.chevronEl.dataset.expanded === 'true';
   const leavingExpandAll = expandAll;
   if (expandAll) {
     // **自動展開を抜ける**: いま全行が開いて見えているので、その姿を個別の記録へ写してから
-    // 抜ける(写さないと、1行閉じただけで他の行まで畳まれて見える)
-    // **いま出ている行の全部**(run の行と機械の行)を写す —— 機械の行を落とすと、
-    // 1行畳んだだけで他の機械のツリーまで閉じて見える
-    for (const key of rows.keys()) {
-      expandedGroups.add(key);
+    // 抜ける(写さないと、1行閉じただけで他の行まで既定の姿に戻って見える)
+    for (const rowKey of rows.keys()) {
+      rowExpansion.set(rowKey, true);
     }
     setExpandAll(false);
   }
-  if (expandedGroups.has(groupKey)) {
-    expandedGroups.delete(groupKey);
-  } else {
-    expandedGroups.add(groupKey);
-  }
-  persistExpandedGroups();
+  rowExpansion.set(key, !wasExpanded);
+  persistRowExpansion();
   if (leavingExpandAll) {
     // ヘッダのトグルの見た目(ON/OFF)も変わるので、行だけでなく全体を描き直す
     render();
     return;
   }
-  const row = rows.get(groupKey);
-  if (!row) {
-    return;
-  }
   // **押したその場で描き直す** —— 次の監視サイクル(約2秒)まで待つと、押してから開くまで
-  // 目に見える遅れになる。機械の行は group を持たないので、こちらも忘れず描き直す
-  if (row.group) {
-    updateRow(row, row.group);
-  } else if (row.entries) {
-    updateScopeRow(row, row.entries);
+  // 目に見える遅れになる
+  if (row.run) {
+    updateRow(row, row.run);
+  } else if (row.idle) {
+    updateIdleRow(row, row.idle);
   }
 }
 
-function ensureRow(groupKey) {
-  const existing = rows.get(groupKey);
+function ensureRow(key) {
+  const existing = rows.get(key);
   if (existing) {
     return existing;
   }
   const rowEl = document.createElement('div');
   rowEl.className = 'run-board-row';
-  rowEl.dataset.groupKey = groupKey;
+  rowEl.dataset.rowKey = key;
 
   const summaryEl = document.createElement('div');
   summaryEl.className = 'run-board-row-summary';
@@ -527,7 +438,7 @@ function ensureRow(groupKey) {
   const notesEl = document.createElement('span');
   notesEl.className = 'run-board-notes';
 
-  // run の無い機械の行だけが使う(空き / 不明)。run 行では display:none
+  // run の無い機械の行だけが使う(空き / 不明)。run の行では display:none
   const statusEl = document.createElement('span');
   statusEl.className = 'run-board-idle-machine-status';
   statusEl.style.display = 'none';
@@ -560,43 +471,38 @@ function ensureRow(groupKey) {
 
   chevronEl.addEventListener('click', (event) => {
     event.stopPropagation();
-    toggleGroupExpanded(groupKey);
+    toggleRowExpanded(key);
   });
+  // 行を押したらその機械のデバイスを選ぶ(run の行は run がこの機械で使っているデバイスだけ)
   summaryEl.addEventListener('click', () => {
-    const current = rows.get(groupKey);
+    const current = rows.get(key);
     if (!current) {
       return;
     }
-    if (current.group) {
-      selectRunDevices(current.group);
-    } else if (current.entries) {
-      // 空きの根を押したら、その下に並んでいる機械のデバイスをまとめて選ぶ
-      // (run 行が run のデバイスを選ぶのと同じ扱い。枝の見出しはその機械だけ)
-      const ids = [];
-      for (const entry of current.entries) {
-        ids.push(...devicesOnMachine(machineKey(entry.machine)).map((d) => d.id));
-      }
-      selectOnlyDevices(ids);
+    if (current.run) {
+      selectRunDevices(current.run);
+    } else if (current.idle) {
+      selectOnlyDevices(devicesOnMachine(machineKey(current.idle.machine)).map((d) => d.id));
     }
   });
 
   const row = {
     rowEl, chevronEl, machineBadgeEl, scopeEl, progressEl, progressBarEl, countsEl, statusEl, notesEl,
     timeEl, elapsedEl, remainingEl, issuerEl, lanesEl,
-    group: null, machine: null, machineStatus: null, entries: null, laneRows: new Map(),
+    key, run: null, idle: null, laneRows: new Map(),
   };
-  rows.set(groupKey, row);
+  rows.set(key, row);
   return row;
 }
 
 function renderRowTime(row) {
-  const group = row.group;
-  if (!group) {
+  const run = row.run;
+  if (!run) {
     return;
   }
   const now = Date.now();
-  row.elapsedEl.textContent = formatMinSec(liveElapsedSeconds(group.elapsedSeconds, group.receivedAtMs, now));
-  const remaining = liveRemaining(group.etaSeconds, group.receivedAtMs, now);
+  row.elapsedEl.textContent = formatMinSec(liveElapsedSeconds(run.elapsedSeconds, run.receivedAtMs, now));
+  const remaining = liveRemaining(run.etaSeconds, run.receivedAtMs, now);
   if (!remaining) {
     row.remainingEl.textContent = t('runBoard.remainingUnknown');
   } else if (remaining.overageSeconds !== undefined) {
@@ -613,26 +519,9 @@ function renderLaneTimes(row) {
   }
 }
 
-// レーンの一覧は run が続く間ほぼ動かない(監視サイクルごとに毎回作り直しても軽い)ので
-// diff はしない。作り直すのは展開したときと監視サイクルごとの update だけ(1秒ごとの秒読みは
-// renderLaneTimes が数字だけ書き換える)。
-// **機械が1つの run でも枝を作る**(ユーザー決定)—— 行の種類で作りを変えないので、
-// 「根 → (マシン名) プロジェクト / 実行プロファイル → デバイス」の形がどの run でも同じに見える
-function renderLanes(row, group) {
-  row.lanesEl.textContent = '';
-  row.laneRows = new Map();
-  for (const run of group.runs) {
-    appendMachineBranch(row, {
-      machine: run.machine, run,
-      expandKey: branchKey(group.groupKey, run.machine),
-    });
-  }
-  renderLaneTimes(row);
-}
-
 // ツリーの1行(= 1台)。`lane` 省略 = そのデバイスは今の run に出ていない(名前だけ出す)。
 // machine は machineList() の鍵でも monitorRuns の規約でも受ける(呼び手が揃える)。
-function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, platform) {
+function appendDeviceLane(row, machine, name, lane, receivedAtMs, platform) {
   const laneEl = document.createElement('div');
   laneEl.className = 'run-board-lane';
 
@@ -688,8 +577,8 @@ function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, pla
   rightEl.append(scenarioEl, elapsedEl);
   laneEl.append(leftEl, rightEl);
   // **デバイスの行は押しても何も起きない**(ユーザー決定)—— ここは実行状況を読む場所で、
-  // ラインビューの選択を動かす口ではない(選択は run の行と機械の枝の見出しが持つ)
-  container.appendChild(laneEl);
+  // ラインビューの選択を動かす口ではない(選択は機械の行が持つ)
+  row.lanesEl.appendChild(laneEl);
 
   if (lane !== undefined && !idle && lane.scenarioElapsedSeconds !== undefined) {
     row.laneRows.set((machine ?? '') + '\u0000' + lane.key, {
@@ -698,119 +587,111 @@ function appendDeviceLane(row, container, machine, name, lane, receivedAtMs, pla
   }
 }
 
-function updateRow(row, group) {
-  row.group = group;
-  row.machine = null;
-  row.entries = null;
-  // 行の DOM は空きの根と共有しているので、あちらの痕跡を必ず消す(使い回しで残る)
-  row.rowEl.classList.remove('run-board-row-scope');
-  row.chevronEl.classList.remove('run-board-chevron-empty');
+// run のある機械の行。**1行に「(マシン名) プロジェクト / 実行プロファイル  進捗  経過 / 残り」**
+// (ユーザー決定 2026-09-30)。値はこの機械の run のもの —— 機械分担の run は機械ごとに行が分かれ、
+// それぞれが自分の進捗を出す(束ねた合計は「実行中 N」の件数だけが使う)。
+function updateRow(row, run) {
+  row.run = run;
+  row.idle = null;
   row.statusEl.style.display = 'none';
   row.timeEl.style.display = '';
-  row.rowEl.classList.toggle('run-board-row-hasFailed', group.failed > 0);
-  const expanded = isGroupExpanded(group.groupKey);
-  row.rowEl.classList.toggle('run-board-row-expanded', expanded);
-  row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
-  row.chevronEl.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-  const chevronLabel = t(expanded ? 'runBoard.collapseLanes' : 'runBoard.expandLanes');
-  row.chevronEl.title = chevronLabel;
-  row.chevronEl.setAttribute('aria-label', chevronLabel);
-
-  // **run 行にバッジは出さない**(ユーザー決定)—— 機械の名前はすぐ下の枝
-  // 「(マシン名) プロジェクト / 実行プロファイル」が名乗るので、出すと同じ名前が2行に並ぶ
-  row.machineBadgeEl.style.display = 'none';
-  paintMachineBadge(row.machineBadgeEl, undefined);
+  row.rowEl.classList.toggle('run-board-row-hasFailed', run.failed > 0);
+  showMachineBadge(row, run.machine);
 
   // profile はプロファイル無し実行(--dry-run 等)では省略されうる(FTCore.RunProgressRecord.profile)。
-  row.scopeEl.textContent = group.profile ? `${group.project} / ${group.profile}` : group.project;
+  row.scopeEl.textContent = run.profile ? `${run.project} / ${run.profile}` : run.project;
 
   // **走り出す前(ビルド中・供給中)は進捗を出さない** —— 本数も割合もまだ意味を持たない
   // (docs/design.md §18.5)。経過だけは出す(どれくらい待っているかが分かる)
-  const beforeRunning = group.phase !== 'running';
+  const beforeRunning = run.phase !== 'running';
   row.progressEl.style.display = beforeRunning ? 'none' : '';
   if (beforeRunning) {
-    row.countsEl.textContent = t(group.phase === 'building' ? 'runBoard.building' : 'runBoard.preparing');
+    row.countsEl.textContent = t(run.phase === 'building' ? 'runBoard.building' : 'runBoard.preparing');
   } else {
-    const pct = group.total > 0 ? Math.max(0, Math.min(1, group.done / group.total)) * 100 : 0;
+    const pct = run.total > 0 ? Math.max(0, Math.min(1, run.done / run.total)) * 100 : 0;
     row.progressBarEl.style.width = pct + '%';
-    row.countsEl.textContent = group.failed > 0
-      ? `${group.done}/${group.total} ✕${group.failed}`
-      : `${group.done}/${group.total}`;
+    row.countsEl.textContent = run.failed > 0
+      ? `${run.done}/${run.total} ✕${run.failed}`
+      : `${run.done}/${run.total}`;
   }
 
   // **詰まりは事実だけ**(0 のときは出さない)。「遅い」「異常」とは書かない ——
   // アプリが重いのか機械が混んでいるのかツールには分けられない(docs/design.md §18.5)
   const notes = [];
-  if (group.requeued > 0) {
-    notes.push(t('runBoard.requeued', { count: String(group.requeued) }));
+  if (run.requeued > 0) {
+    notes.push(t('runBoard.requeued', { count: String(run.requeued) }));
   }
-  if (group.laneDropouts > 0) {
-    notes.push(t('runBoard.laneDropouts', { count: String(group.laneDropouts) }));
+  if (run.laneDropouts > 0) {
+    notes.push(t('runBoard.laneDropouts', { count: String(run.laneDropouts) }));
   }
   row.notesEl.textContent = notes.join('  ');
   row.notesEl.style.display = notes.length > 0 ? '' : 'none';
 
-  if (!group.mine && group.issuer) {
-    row.issuerEl.textContent = t('runBoard.issuerRun', { issuer: group.issuer });
+  const showIssuer = !run.mine && Boolean(run.issuer);
+  if (showIssuer) {
+    row.issuerEl.textContent = t('runBoard.issuerRun', { issuer: run.issuer });
     row.issuerEl.style.display = '';
   } else {
     row.issuerEl.style.display = 'none';
   }
 
   renderRowTime(row);
-  renderLanes(row, group);
+  const hasDevices = renderDevices(row, run.machine, run);
+  // **run のある行の既定は開いた状態**(ユーザー決定 2026-09-30 の図)
+  applyRowExpansion(row, hasDevices || showIssuer, true);
 }
 
 function render() {
   const groups = buildRunGroups(runsByMachine);
   renderHeader(groups);
-  const idleEntries = machinesWithoutRuns(runsByMachine, machineList(), groups);
-  const idleStatus = new Map(idleEntries.map((e) => [e.machine, e.status]));
-  let scopePlaced = false;
+  const idleByMachine = new Map(
+    machinesWithoutRuns(runsByMachine, machineList(), groups).map((e) => [e.machine, e]),
+  );
 
   // **並びは常に機械の順**(machineList = local → 登録簿の順)。run が始まっても機械の位置は
   // 動かさない(ユーザー決定)—— 動くと目が追えない
   const seen = new Set();
-  const placed = new Set();
-  const place = (group) => {
-    placed.add(group.groupKey);
-    seen.add(group.groupKey);
-    const row = ensureRow(group.groupKey);
-    updateRow(row, group);
+  const placeRun = (group, run) => {
+    const key = runRowKey(group.groupKey, run.machine);
+    seen.add(key);
+    const row = ensureRow(key);
+    updateRow(row, run);
     // 既存ノードへの appendChild は移動として働く(重複しない)
     runBoardRows.appendChild(row.rowEl);
   };
+  const placedMachines = new Set();
   for (const machine of machineList()) {
+    placedMachines.add(machine);
+    // 同じ機械で run が複数走っていれば、その機械の行が run の数だけ続く
     for (const group of groups) {
-      if (placed.has(group.groupKey)) {
-        continue;
-      }
-      // 機械分担の run は**最初に現れた機械の位置**に1行だけ置く
-      if (group.runs.some((run) => (run.machine ?? LOCAL_MACHINE_KEY) === machine)) {
-        place(group);
+      for (const run of group.runs) {
+        if ((run.machine ?? LOCAL_MACHINE_KEY) === machine) {
+          placeRun(group, run);
+        }
       }
     }
-    // **走っていない機械は根の1行にまとめる**(ユーザー決定)。根は**最初の空き機械の
-    // 位置**に置く —— こうすると機械の並び(local → 登録簿の順)が run 行と混ざっても崩れない
-    if (!scopePlaced && idleStatus.has(machine)) {
-      scopePlaced = true;
-      seen.add(SCOPE_ROW_KEY);
-      const row = ensureRow(SCOPE_ROW_KEY);
-      updateScopeRow(row, idleEntries);
+    const idle = idleByMachine.get(machine);
+    if (idle) {
+      const key = idleRowKey(machine);
+      seen.add(key);
+      const row = ensureRow(key);
+      updateIdleRow(row, idle);
       runBoardRows.appendChild(row.rowEl);
     }
   }
-  // 登録簿に無い機械の run も落とさない(machineList に出てこないぶん)
+  // 登録簿に無い機械(無効にした機械を含む)の run も落とさない —— 走っている事実は隠さない
   for (const group of groups) {
-    if (!placed.has(group.groupKey)) {
-      place(group);
+    for (const run of group.runs) {
+      if (!placedMachines.has(run.machine ?? LOCAL_MACHINE_KEY)) {
+        placeRun(group, run);
+      }
     }
   }
 
-  for (const [groupKey, row] of rows) {
-    if (!seen.has(groupKey)) {
+  for (const [key, row] of rows) {
+    if (!seen.has(key)) {
       row.rowEl.remove();
-      rows.delete(groupKey);
+      rows.delete(key);
     }
   }
 
@@ -841,7 +722,7 @@ render();
 // 経過・残りの秒読み(webview の時計)。**DOM は作り直さず数字だけ**書き換える(CLAUDE.md の規律)。
 setInterval(() => {
   for (const row of rows.values()) {
-    if (row.group) {
+    if (row.run) {
       renderRowTime(row);
       renderLaneTimes(row);
     }
