@@ -905,6 +905,15 @@ function renderSettingsPanel(): string {
       </div>
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.deviceScreenSectionTitle")}</div>
+        <!-- 配信の最大フレームレート(fleetest.liveFps・3〜30)。空欄 = 既定へ戻す。変更は monitorPanel.ts が
+             設定の変更を受けて配信を張り直す(走っている配信は起動時の fps のままなので)。
+             対向: settingsTab.js の applySettings / setLiveFps, monitorPanel.ts。 -->
+        <label class="settings-item settings-item-inline" for="settings-live-fps">
+          ${t("panels.settings.liveFpsLabel")}
+          <input type="number" id="settings-live-fps" class="settings-number" min="3" max="30" step="1">
+          <span class="settings-unit">${t("panels.settings.liveFpsUnit")}</span>
+        </label>
+        <div class="settings-hint">${t("panels.settings.liveFpsHint")}</div>
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>

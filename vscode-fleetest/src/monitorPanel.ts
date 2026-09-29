@@ -508,6 +508,13 @@ export class MonitorPanelController implements vscode.Disposable {
         this.profiles.postProfileInfo();
         this.processManager.repostDevicesWithCurrentFilter();
       }
+      // 配信の fps は配信を起こすときにだけ読まれ、走っている配信は起動時の fps のまま(張り直しの判定は
+      // コーデックしか見ない)。変わったら張り直す = 設定タブからでも settings.json の直接編集でも効く
+      if (event.affectsConfiguration("fleetest.liveFps") && this.panel) {
+        this.deviceStream.restartAllStreams();
+        this.live.restartStream();
+        this.postLiveFps();
+      }
       // Select Project(fleetest.project の設定更新)にダッシュボードタブも追従する。テストビューは
       // 設定変更で refresh するのにこのタブだけ据え置きだと、切り替えたのにヘッダが旧プロジェクトの
       // まま、に見える(実害)。
@@ -629,6 +636,18 @@ export class MonitorPanelController implements vscode.Disposable {
     this.processManager.startAll();
     // 初期状態はここで送らない: html設定直後のpostMessageはwebview側のmessageリスナー登録前に
     // 届き握りつぶされる(VS Code既知のレース)。webviewからの"ready"を受けてsendInitialState()で送る。
+  }
+
+  /** 設定タブの配信の最大フレームレート。value は明示設定だけ(未設定は null = 空欄 + 既定のプレースホルダ)。
+   * default は package.json の fleetest.liveFps.default・config.ts の readConfig と一致させる
+   * (liveFpsDefaultSync.test.mjs が検証) */
+  private postLiveFps(): void {
+    const liveFps = vscode.workspace.getConfiguration("fleetest").inspect<number>("liveFps");
+    this.post({
+      type: "liveFps",
+      value: liveFps?.workspaceFolderValue ?? liveFps?.workspaceValue ?? liveFps?.globalValue ?? null,
+      default: 12,
+    });
   }
 
   /** fleetest.language 変更で extension.ts から呼ぶ。webview.html の再代入は webview を再読込するため
@@ -1160,6 +1179,13 @@ export class MonitorPanelController implements vscode.Disposable {
           .getConfiguration("fleetest")
           .update("lptHistoryRuns", message.value ?? undefined, vscode.ConfigurationTarget.Global);
         return;
+      case "setLiveFps":
+        // null = 入力欄が空・不正値 → 設定を消して既定へ戻す。配信の張り直しは設定の変更の監視
+        // (constructor の fleetest.liveFps)が行う = settings.json の直接編集でも同じ経路で効く
+        void vscode.workspace
+          .getConfiguration("fleetest")
+          .update("liveFps", message.value ?? undefined, vscode.ConfigurationTarget.Global);
+        return;
       case "setRemoteWaitLock":
         // null = 入力欄が空・不正値 → 設定を消して既定へ戻す(0 は「待たない」の正当な値なので
         // undefined へ倒さない)。次の run から効く(走っている run の待ちは変わらない)。
@@ -1364,6 +1390,7 @@ export class MonitorPanelController implements vscode.Disposable {
     // default は設定タブのプレースホルダ(package.json の fleetest.remoteWaitLock.default・
     // config.ts の readConfig と一致させること。remoteWaitLockDefaultSync.test.mjs が検証)。
     // value は lptHistoryRuns と同じく明示設定だけ(0 = 待たない は明示値なので ?? で null へ倒さない)
+    this.postLiveFps();
     const waitLock = vscode.workspace.getConfiguration("fleetest").inspect<number>("remoteWaitLock");
     this.post({
       type: "remoteWaitLock",

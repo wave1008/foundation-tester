@@ -247,6 +247,12 @@ export const panelsStrings = {
     ja: "使用する履歴数",
     en: "History runs to use",
   },
+  "panels.settings.liveFpsLabel": { ja: "配信の最大フレームレート", en: "Max streaming frame rate" },
+  "panels.settings.liveFpsUnit": { ja: "fps", en: "fps" },
+  "panels.settings.liveFpsHint": {
+    ja: "デバイスモニターとライブ操作の画面を更新する上限です(3〜30)。変えるとその場で配信を張り直します。高くすると滑らかになりますが、ホストの GPU の負荷が増え、テストの画像の判定が不安定になることがあります。",
+    en: "The upper limit for refreshing the Device Monitor and Live Control screens (3-30). Changing it restarts the streams right away. Higher is smoother but adds GPU load on the host and can make image checks in tests unstable.",
+  },
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
     ja: "デバイス画面のストリーミングが不安定なときの回避用です。",

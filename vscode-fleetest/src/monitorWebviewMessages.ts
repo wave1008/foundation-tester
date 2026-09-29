@@ -339,6 +339,9 @@ export type MonitorToWebviewMessage =
   | { readonly type: "lptScheduling"; readonly value: boolean }
   // LPT の実績走査 run 数。value は**明示設定だけ**(null = 未設定 → 空欄 + default のプレースホルダ)
   | { readonly type: "lptHistoryRuns"; readonly value: number | null; readonly default: number }
+  // 設定タブ「デバイス画面」の配信の最大フレームレート(fleetest.liveFps)。value は明示設定だけ
+  // (null = 未設定 → 空欄 + default のプレースホルダ)
+  | { readonly type: "liveFps"; readonly value: number | null; readonly default: number }
   // 設定タブ「マシン」section の順番待ち上限(秒)。value は明示設定だけ(null = 未設定 → 空欄 +
   // default のプレースホルダ)。**0 も正当な明示値**(待たない)なので null と混ぜない
   | { readonly type: "remoteWaitLock"; readonly value: number | null; readonly default: number }
@@ -860,6 +863,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "setLptScheduling"; readonly value: boolean }
   // null = 既定へ戻す(入力欄を空にした場合)
   | { readonly type: "setLptHistoryRuns"; readonly value: number | null }
+  // 配信の最大フレームレート(fleetest.liveFps)。ホストは設定を更新し、設定の変更を受けて配信を張り直す
+  // (monitorPanel.ts)。null = 既定へ戻す(入力欄が空・不正値)
+  | { readonly type: "setLiveFps"; readonly value: number | null }
   // リモート実行の順番待ち上限(秒)。ホストは fleetest.remoteWaitLock 設定を更新し、
   // run 時に 0 より大きければ fleetest api run へ --wait-lock を渡す(src/runHandler.ts)。
   // null = 既定へ戻す(入力欄が空・不正値)。**0 は「待たない」という正当な値**で null とは別
@@ -1261,6 +1267,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         value.value === null ||
         (typeof value.value === "number" && Number.isInteger(value.value) && value.value >= 1)
+      );
+    case "setLiveFps":
+      // package.json の minimum / maximum(3〜30)の外・小数は弾く(config.ts も丸めるが、ここで止める)
+      return (
+        value.value === null ||
+        (typeof value.value === "number" && Number.isInteger(value.value) && value.value >= 3 && value.value <= 30)
       );
     case "setRemoteWaitLock":
       // **0 は「待たない」の有効な指定**(lptHistoryRuns と違って下限は 0)。負値・小数は

@@ -263,6 +263,7 @@ window.addEventListener('message', (event) => {
       activateTab(message.tab);
       break;
     case 'pollingMode':
+    case 'liveFps':
     case 'lptScheduling':
     case 'lptHistoryRuns':
     case 'remoteWaitLock':

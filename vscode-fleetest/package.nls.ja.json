@@ -14,7 +14,7 @@
   "fleetest.config.monitorInterval.description": "デバイスモニター(fleetest: デバイスモニターを表示)の更新間隔(秒)。0.5 未満は 0.5 として扱われます。",
   "fleetest.config.monitorMaxWidth.description": "デバイスモニターのフレーム画像の長辺ピクセル数。大きいほど鮮明になりますが転送量が増えます(240〜1600)。",
   "fleetest.config.monitorDeviceFilter.description": "デバイスモニターがタイル表示するデバイスの範囲。\"all\": 監視スコープの全デバイス。\"running\": そのうち起動中のみ。通常はモニターのプロファイル選択(「(起動中のデバイス)」)から設定します。",
-  "fleetest.config.liveFps.description": "ライブ操作タブの自動フレーム更新レート上限(fps)。大きいほど滑らかですがホスト負荷が増えます(3〜30)。",
+  "fleetest.config.liveFps.description": "デバイスモニターとライブ操作タブの画面を更新する上限(fps)。大きいほど滑らかですが、ホストの負荷(GPU)が増えます(3〜30)。変えると配信をその場で張り直します。",
   "fleetest.config.iosStreamEnabled.description": "iOS シミュレータのライブ操作で画面を映像ストリーミング(fleetest-simstream)で更新します。無効の場合やヘルパー未ビルドの場合はポーリングにフォールバックします。",
   "fleetest.config.androidStreamEnabled.description": "Android 実機/エミュレータのライブ操作で画面を映像ストリーミング(fleetest-androidstream)で更新します。無効の場合やヘルパー未ビルド・adb 未検出の場合はポーリングにフォールバックします。",
   "fleetest.config.streamCodec.description": "デバイス画面ストリーミングのコーデック。h264(既定)は WebCodecs によるハードウェアデコードを使います。問題が出る環境では mjpeg(従来方式)へ切り替えてください。",

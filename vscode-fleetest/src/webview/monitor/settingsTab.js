@@ -24,6 +24,7 @@ import { activateTab, switchTab } from './tabs.js';
 import { stepFromPlaceholder } from './placeholderStep.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
+const liveFpsInput = document.getElementById('settings-live-fps');
 const lptCheckbox = document.getElementById('settings-lpt');
 const lptHistoryInput = document.getElementById('settings-lpt-history');
 const remoteWaitLockInput = document.getElementById('settings-remote-wait-lock');
@@ -43,6 +44,19 @@ document.getElementById('settings-tool-processes').addEventListener('click', () 
 
 pollingModeCheckbox.addEventListener('change', () => {
   vscode.postMessage({ type: 'setPollingMode', value: pollingModeCheckbox.checked });
+});
+
+// 配信の最大フレームレート(fleetest.liveFps)。範囲外・空欄・小数は null を送って設定を消し(既定へ戻す)、
+// 欄は空欄にする(既定値はプレースホルダに見えている)。範囲は package.json の minimum / maximum と同じ
+stepFromPlaceholder(liveFpsInput);
+liveFpsInput.addEventListener('change', () => {
+  const raw = liveFpsInput.value.trim();
+  const parsed = Number(raw);
+  const valid = raw !== '' && Number.isInteger(parsed) && parsed >= 3 && parsed <= 30;
+  if (!valid) {
+    liveFpsInput.value = '';
+  }
+  vscode.postMessage({ type: 'setLiveFps', value: valid ? parsed : null });
 });
 
 // LPT 投入順。拡張側が fleetest.lptScheduling 設定を更新し、次の run から効く
@@ -872,6 +886,10 @@ function applyRetention(message) {
 export function applySettings(message) {
   if (message.type === 'pollingMode') {
     pollingModeCheckbox.checked = !!message.value;
+  } else if (message.type === 'liveFps') {
+    // 値は明示設定だけ。未設定(null)は空欄にして既定値をプレースホルダで見せる
+    liveFpsInput.placeholder = String(message.default);
+    liveFpsInput.value = message.value === null ? '' : String(message.value);
   } else if (message.type === 'lptScheduling') {
     lptCheckbox.checked = !!message.value;
   } else if (message.type === 'lptHistoryRuns') {
