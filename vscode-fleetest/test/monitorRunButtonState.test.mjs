@@ -16,7 +16,7 @@ function makePanel(runAllTests) {
   const panel = Object.create(MonitorPanelController.prototype);
   Object.assign(panel, {
     laneState: createRunLaneState(),
-    wipeInProgress: new Set(),
+    wipeInProgress: new Map(),
     laneSectionVisible: false,
     testRunActive: false,
     busRunActive: false,

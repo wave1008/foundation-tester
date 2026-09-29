@@ -1804,7 +1804,7 @@ export class MonitorLiveController implements vscode.Disposable {
         const typeStep: RecordedStep = { action: "type", text: message.text };
         const typedLabel = t("live.opLabel.type", { text: truncateOperationLabelText(message.text) });
         void this.runAction(
-          { cmd: "type", text: message.text, ref: null },
+          { cmd: "type", text: message.text },
           typeStep,
           { logLabel: typedLabel },
         );

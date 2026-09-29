@@ -143,9 +143,22 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
         XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line], "手元は書き換えず元の行をそのまま通す")
     }
 
-    /// worker を持たない行(wipeStatus 等)はそのまま素通しする
-    func testLinesWithoutAWorkerFieldPassThroughUnchanged() {
+    /// **リモートの子の wipeStatus は machine を名乗らせる** —— 無印のまま流すと拡張が同名の手元の
+    /// タイルに Wipe の進行を出す(拡張は machine 省略を手元と読む)
+    func testRemoteWipeStatusIsStampedWithTheMachine() {
         var mux = MachineFanoutMultiplexer(groupMachines: ["M1Max"])
+        let out = mux.ingest(childIndex: 0, line: #"{"kind":"wipeStatus","device":"Pixel 10","phase":"rebooting"}"#)
+        XCTAssertEqual(out.count, 1)
+        let obj = jsonObject(out[0])
+        XCTAssertEqual(obj["machine"] as? String, "M1Max")
+        XCTAssertEqual(obj["device"] as? String, "Pixel 10")
+        XCTAssertEqual(obj["phase"] as? String, "rebooting")
+        XCTAssertNil(obj["worker"])
+    }
+
+    /// 手元の子の wipeStatus は1バイトも変えない(「省略 = 手元」の綴りのまま)
+    func testLocalWipeStatusPassesThroughUnchanged() {
+        var mux = MachineFanoutMultiplexer(groupMachines: [nil])
         let line = #"{"kind":"wipeStatus","device":"Pixel 10","phase":"rebooting"}"#
         XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line])
     }
@@ -181,10 +194,10 @@ final class ApiRunMachineFanoutMultiplexerTests: XCTestCase {
         XCTAssertEqual(jsonObject(out[0])["machine"] as? String, "M1Max")
     }
 
-    /// **log 以外の worker 無しの行は触らない**(wipeStatus 等。message 欄の意味が違う)
+    /// **log・wipeStatus 以外の worker 無しの行は触らない**(message 欄の意味が違う・machine を運ぶ契約が無い)
     func testWorkerlessNonLogLinesAreStillUntouched() {
         var mux = MachineFanoutMultiplexer(groupMachines: ["M1Max"])
-        let line = #"{"device":"Pixel 10","kind":"wipeStatus","phase":"rebooting"}"#
+        let line = #"{"device":"Pixel 10","kind":"futureDeviceEvent","message":"x"}"#
         XCTAssertEqual(mux.ingest(childIndex: 0, line: line), [line])
     }
 

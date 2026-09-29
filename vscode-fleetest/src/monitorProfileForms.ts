@@ -530,7 +530,7 @@ export interface AppProfileFormFields {
 }
 
 const EMPTY_APP_PROFILE_COMMON_FIELDS: AppProfileCommonFields = {
-  autoInstall: "false",
+  autoInstall: "true",
 };
 
 const EMPTY_APP_PROFILE_PLATFORM_FIELDS: AppProfilePlatformFields = {
@@ -551,7 +551,9 @@ function parseAppProfileCommonSection(value: unknown): AppProfileCommonFields {
   if (!isRecord(value)) {
     return EMPTY_APP_PROFILE_COMMON_FIELDS;
   }
-  const autoInstall = value.autoInstall === true ? "true" : "false";
+  // **未指定 = 有効**(Swift の resolve が `autoInstall ?? (appPath があるか)` = パスがあれば入れる。
+  // RunProfile.swift と同期)。明示の false だけが OFF
+  const autoInstall = value.autoInstall === false ? "false" : "true";
   return { autoInstall };
 }
 
@@ -595,10 +597,11 @@ export type AppProfileUpdateResult =
 
 /**
  * common セクションを fields で更新した新オブジェクトを組み立てる(未知キー保持)。
- * autoInstall は "false" ならキー削除(既定と同値のため書かない)。app/appPath/appName は
+ * autoInstall は "false" なら false を明示し、"true" なら既存の明示 true だけ残してキーを消す(未指定が
+ * 既定の有効と同値。Swift は `autoInstall ?? appPath の有無`)。app/appPath/appName は
  * 廃止済みのため値に関わらず常に削除する(appName の残存は Swift 側で未知キー警告になる。
  * 表示名は ios/android のそれぞれに書き、common からは継承しない)。
- * existing が undefined かつ autoInstall=false(値が何も無い)なら undefined を返しセクション
+ * existing が undefined かつ autoInstall=true(値が何も無い)なら undefined を返しセクション
  * 自体を作らない。existing が定義済み(空オブジェクト含む)ならセクションは保持する
  * (healthCheckURL 等の他キーはここで触れず existing のスプレッドで保たれる)。
  */
@@ -606,14 +609,14 @@ function updateAppProfileCommonSection(
   existing: Record<string, unknown> | undefined,
   fields: AppProfileCommonFields,
 ): Record<string, unknown> | undefined {
-  const hasAnyValue = fields.autoInstall === "true";
+  const hasAnyValue = fields.autoInstall === "false";
   if (existing === undefined && !hasAnyValue) {
     return undefined;
   }
   const result: Record<string, unknown> = { ...(existing ?? {}) };
-  if (fields.autoInstall === "true") {
-    result.autoInstall = true;
-  } else {
+  if (fields.autoInstall === "false") {
+    result.autoInstall = false;
+  } else if (result.autoInstall !== true) {
     delete result.autoInstall;
   }
   delete result.appName;

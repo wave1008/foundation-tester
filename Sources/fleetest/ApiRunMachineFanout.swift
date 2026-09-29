@@ -562,7 +562,8 @@ struct MachineFanoutMultiplexer {
                 // RemoteMonitorFanout.ingest / RemoteDeviceFanout.machineStamped と同じ)——
                 // 供給フェーズの進行(ApiRunCommand.logSupply)はレーンに属さないので、
                 // 3機ぶんの「Reviving 8 dead lane(s)」がどの機械のものか分からなくなる
-                return .other(machineStampedLog(obj, host: host) ?? line, finishedScenario: finishedScenario)
+                let stamped = machineStampedLog(obj, host: host) ?? machineStampedWipeStatus(obj, host: host)
+                return .other(stamped ?? line, finishedScenario: finishedScenario)
             }
             let platform = String(worker[..<colon])
             let name = String(worker[worker.index(after: colon)...])
@@ -588,6 +589,20 @@ struct MachineFanoutMultiplexer {
               let message = obj["message"] as? String else { return nil }
         var mutated = obj
         mutated["message"] = "[\(MachineDispatch.normalize(host) ?? "local")] \(message)"
+        guard let data = try? JSONSerialization.data(withJSONObject: mutated, options: [.sortedKeys]),
+              let text = String(data: data, encoding: .utf8) else { return nil }
+        return text
+    }
+
+    /// wipeStatus(worker を持たないデバイス単位の行)に `machine` を足す —— 子は `--device-machine local`
+    /// 相当で自分のデバイスを無印で名乗るので、そのまま流すと拡張が**同名の手元のタイル**に Wipe の
+    /// 進行を出す(拡張は machine 省略を手元と読む。vscode-fleetest/src/model.ts の WipeStatusEvent)。
+    /// **手元の子は省いたまま**(「省略 = 手元」の綴り)。対象外・組み立て失敗は nil = 素通し
+    private static func machineStampedWipeStatus(_ obj: [String: Any], host: String?) -> String? {
+        guard obj["kind"] as? String == "wipeStatus", obj["machine"] == nil,
+              let machine = MachineDispatch.normalize(host) else { return nil }
+        var mutated = obj
+        mutated["machine"] = machine
         guard let data = try? JSONSerialization.data(withJSONObject: mutated, options: [.sortedKeys]),
               let text = String(data: data, encoding: .utf8) else { return nil }
         return text

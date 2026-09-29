@@ -266,7 +266,9 @@ export interface LiveGestureFinger {
 export type LiveServeCommand =
   | { readonly cmd: "tap"; readonly ref: number }
   | { readonly cmd: "tap"; readonly x: number; readonly y: number }
-  | { readonly cmd: "type"; readonly text: string; readonly ref: number | null }
+  // ref は省くか整数。**null を送らない** —— serve(ApiLiveServeCommand.intField)はキーがあれば整数を要求し、
+  // null は型違いとして操作せずに断る(省略とは読まない)
+  | { readonly cmd: "type"; readonly text: string; readonly ref?: number }
   | {
       readonly cmd: "drag";
       readonly fromX: number;

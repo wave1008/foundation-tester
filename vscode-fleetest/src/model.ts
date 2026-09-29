@@ -256,6 +256,9 @@ export interface RunFinishedEvent {
 export interface WipeStatusEvent {
   kind: "wipeStatus";
   device: string;
+  /** デバイスが居る機械。**省略 = 手元**(Swift の ApiWipeStatusEvent は持たず、機械分担の中継
+   * `ApiRunMachineFanout.machineStampedWipeStatus` がリモートの子の行にだけ足す) */
+  machine?: string;
   phase: "stopping" | "rebooting" | "done" | "failed";
 }
 

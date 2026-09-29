@@ -1816,7 +1816,8 @@ export function applyHealthWatch(message) {
 
 // 契約: { type: 'wipeStatus', name, machine?, phase }(name は deviceOpBusy と同じ device.name
 // 名前空間。契約元は model.ts の WipeStatusEvent / monitorPanel.ts の handleWipeStatusEvent と、
-// 手動 Wipe の monitorDeviceOps.ts)。**machine 省略は「手元」**(run 由来は載せてこない)。
+// 手動 Wipe の monitorDeviceOps.ts)。**machine 省略は「手元」**(run 由来は機械分担の中継が
+// リモートの子の分にだけ足す = ApiRunMachineFanout.machineStampedWipeStatus)。
 // 契約: { type: 'deviceOpFailed', name, message }(monitorDeviceOps.ts)。操作が失敗した通知。
 // **観測を待たずに先読みの状態を捨てる** —— 失敗したのだから「起動中/停止中」を出し続ける根拠は
 // もう無い。捨てないと、次の devices 観測が来るまで(モニターが止まっていれば永久に)

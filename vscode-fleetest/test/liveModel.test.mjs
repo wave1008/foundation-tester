@@ -263,8 +263,8 @@ test("serializeLiveServeCommand: JSON化して末尾に改行を付ける", () =
     '{"cmd":"tap","x":1.5,"y":2.5}\n',
   );
   assert.equal(
-    serializeLiveServeCommand({ cmd: "type", text: "hello", ref: null }),
-    '{"cmd":"type","text":"hello","ref":null}\n',
+    serializeLiveServeCommand({ cmd: "type", text: "hello" }),
+    '{"cmd":"type","text":"hello"}\n',
   );
   assert.equal(serializeLiveServeCommand({ cmd: "home" }), '{"cmd":"home"}\n');
   assert.equal(serializeLiveServeCommand({ cmd: "terminate" }), '{"cmd":"terminate"}\n');
@@ -1158,7 +1158,7 @@ const ELEMENTS = [
 test("mcpCommandForServeCommand: 操作ごとに ft_* とその引数へ写す", () => {
   const f = (command) => mcpCommandForServeCommand(command, ELEMENTS);
   assert.equal(f({ cmd: "tap", x: 12.34, y: 56.78 }), 'ft_tap {"x":12.3,"y":56.8}');
-  assert.equal(f({ cmd: "type", text: "hello", ref: null }), 'ft_type {"text":"hello"}');
+  assert.equal(f({ cmd: "type", text: "hello" }), 'ft_type {"text":"hello"}');
   assert.equal(f({ cmd: "drag", fromX: 10, fromY: 400, toX: 10, toY: 100, press: 0, duration: 0.55 }),
     'ft_drag {"fromX":10,"fromY":400,"toX":10,"toY":100,"durationSeconds":0.6}');
   assert.equal(f({ cmd: "press", x: 1, y: 2, duration: 1.5 }), 'ft_long_press {"x":1,"y":2,"holdSeconds":1.5}');

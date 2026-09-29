@@ -45,7 +45,7 @@ const APP_PROFILE_PLATFORM_FIELD_KEYS = {
 const APP_PROFILE_PLATFORM_GROUP_NAMES = ['ios', 'android'];
 
 // チェックボックス⇄"true"/"false"文字列(monitorProfileForms.ts AppProfileCommonFields.autoInstallと同じ)。
-// 保存意味論: true→autoInstall:trueをセット、false→キー削除。
+// 保存意味論: false→autoInstall:falseを明示、true→キーを書かない(未指定=有効。既存の明示 true は残す)。
 function getAppProfileAutoInstall(dom) {
   return dom.autoInstall.checked ? 'true' : 'false';
 }

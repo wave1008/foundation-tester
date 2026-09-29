@@ -304,9 +304,9 @@ export class MonitorPanelController implements vscode.Disposable {
   private showStreamDuringRun: boolean;
   /** 直近の占有の控え。チェックボックスの切替で配信を畳む機械を引き直すのに使う。 */
   private lastMachineLocks: ReadonlyMap<string, MachineLock> = new Map();
-  /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
-   * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
-  private readonly wipeInProgress = new Set<string>();
+  /** stopping/rebooting を post 済みで done/failed が未着のデバイス(鍵は machine 込み)。runEnded 時、
+   * キャンセル等で done/failed が来ないまま残った分にバッジ固着を防ぐため phase:"done" を post する。 */
+  private readonly wipeInProgress = new Map<string, { readonly name: string; readonly machine?: string }>();
   /** ツールバーの「実行中」表示(= 「テストを中断」)。runStarted〜runEnded に加え、「テストを実行」を
    * 押してから run が始まるまで(startTestRunAfterDevicesUp)も true。 */
   private testRunActive = false;
@@ -876,7 +876,7 @@ export class MonitorPanelController implements vscode.Disposable {
         break;
       case "event":
         if (message.event.kind === "wipeStatus") {
-          this.handleWipeStatusEvent(message.event.device, message.event.phase);
+          this.handleWipeStatusEvent(message.event.device, message.event.machine, message.event.phase);
         }
         if (message.event.kind === "recordingFinalizing") {
           this.setRecordingsFinalizing(true);
@@ -891,8 +891,8 @@ export class MonitorPanelController implements vscode.Disposable {
         for (const action of forceEndRunLaneState(this.laneState)) {
           this.post({ type: "runEvent", action });
         }
-        for (const name of this.wipeInProgress) {
-          this.post({ type: "wipeStatus", name, phase: "done" });
+        for (const { name, machine } of this.wipeInProgress.values()) {
+          this.post({ type: "wipeStatus", name, ...(machine !== undefined ? { machine } : {}), phase: "done" });
         }
         this.wipeInProgress.clear();
         // 録画タブを開いたまま実行すると、一覧の更新契機(タブ活性化・更新ボタン・再生からの戻る)
@@ -968,13 +968,15 @@ export class MonitorPanelController implements vscode.Disposable {
     this.post({ type: "recordingsFinalizing", active });
   }
 
-  private handleWipeStatusEvent(name: string, phase: WipeStatusMessage["phase"]): void {
+  /** **machine を webview まで運ぶ**(落とすと webview が同名の手元のタイルに進行を出す。省略 = 手元) */
+  private handleWipeStatusEvent(name: string, machine: string | undefined, phase: WipeStatusMessage["phase"]): void {
+    const key = `${machine ?? ""}\u0000${name}`;
     if (phase === "stopping" || phase === "rebooting") {
-      this.wipeInProgress.add(name);
+      this.wipeInProgress.set(key, { name, machine });
     } else {
-      this.wipeInProgress.delete(name);
+      this.wipeInProgress.delete(key);
     }
-    this.post({ type: "wipeStatus", name, phase });
+    this.post({ type: "wipeStatus", name, ...(machine !== undefined ? { machine } : {}), phase });
   }
 
   private handleWebviewMessage(message: unknown): void {
