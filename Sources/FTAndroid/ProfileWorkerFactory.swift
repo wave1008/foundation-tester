@@ -115,6 +115,39 @@ public enum ProfileWorkerFactory {
                                              log: @escaping @Sendable (String) -> Void) async {
         await pressHomeOnStart(workers, enabled: homeOnStart, log: log)
         await warnOnResidualSystemAlerts(workers, log: log)
+        await warnOnNonPortraitIOS(workers, log: log)
+    }
+
+    /// run 開始時点で**縦向きでない iOS のデバイスを警告する**(回さない)。シナリオの `rotateTo` は
+    /// 「最初に回したときの向き」へ戻すので、開始時に横向きだった台は横向きのまま残り、縦向き前提の
+    /// シナリオが下のほうの要素を見つけられずに赤になる(実測: 同じ Simulator で2回、18 本と 2 本)。
+    /// 誰が横にしたかはツールには分からない(MCP・ライブ操作・中断された run)ので、戻さずに言うだけ
+    /// (新しい検知は警告から)。読めない台は黙って飛ばす
+    public static func warnOnNonPortraitIOS(
+        _ workers: [RunWorker], log: @escaping @Sendable (String) -> Void
+    ) async {
+        let targets: [(String, AppDriver)] = workers.compactMap { worker in
+            guard worker.platform == "ios" else { return nil }
+            return (worker.label, systemUIClient(for: worker) ?? worker.driver)
+        }
+        guard !targets.isEmpty else { return }
+        await withTaskGroup(of: String?.self) { group in
+            for (label, driver) in targets {
+                group.addTask {
+                    nonPortraitWarning(label: label, orientation: try? await driver.status().orientation)
+                }
+            }
+            for await line in group { if let line { log(line) } }
+        }
+    }
+
+    /// `warnOnNonPortraitIOS` の文言(純粋関数)。縦向き・不明は nil
+    static func nonPortraitWarning(label: String, orientation: FTOrientation?) -> String? {
+        guard let orientation, orientation != .portrait else { return nil }
+        return "⚠️ \(label): the device is in \(orientation.rawValue) orientation before the run starts."
+            + " rotateTo restores the orientation a scenario started in, so it stays \(orientation.rawValue);"
+            + " scenarios written for portrait may not find elements near the bottom."
+            + " Rotate it back to portrait (e.g. rotateTo(.portrait) or the live view)"
     }
 
     /// run 開始時点で画面に残っているアラートを**警告する**(閉じない。理由と背景は
