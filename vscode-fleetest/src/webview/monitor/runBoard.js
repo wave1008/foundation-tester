@@ -52,8 +52,11 @@ const rowExpansion = new Map(
 
 // 行の鍵。**1行 = 1機械**(ユーザー決定 2026-09-30)—— run のある機械は run ごとに1行
 // (機械分担の run は機械の数だけ行になる)、run の無い機械は1行。
-function runRowKey(groupKey, machine) {
-  return 'run\u0000' + groupKey + '\u0000' + (machine ?? '');
+// **run の行は機械 + pid で引く(groupKey を使わない)** —— 準備中・ビルド中の控えは runID/runGroup が
+// nil で、走り出すと同じ pid の控えが runID 入りに上書きされる。groupKey で引くと走り出した瞬間に
+// 鍵が変わり、利用者が閉じた記録を失って既定(開く)へ戻る
+function runRowKey(run) {
+  return 'run\u0000' + (run.machine ?? '') + '\u0000' + run.pid;
 }
 function idleRowKey(machine) {
   return 'idle\u0000' + machine;
@@ -651,8 +654,8 @@ function render() {
   // **並びは常に機械の順**(machineList = local → 登録簿の順)。run が始まっても機械の位置は
   // 動かさない(ユーザー決定)—— 動くと目が追えない
   const seen = new Set();
-  const placeRun = (group, run) => {
-    const key = runRowKey(group.groupKey, run.machine);
+  const placeRun = (run) => {
+    const key = runRowKey(run);
     seen.add(key);
     const row = ensureRow(key);
     updateRow(row, run);
@@ -666,7 +669,7 @@ function render() {
     for (const group of groups) {
       for (const run of group.runs) {
         if ((run.machine ?? LOCAL_MACHINE_KEY) === machine) {
-          placeRun(group, run);
+          placeRun(run);
         }
       }
     }
@@ -683,7 +686,7 @@ function render() {
   for (const group of groups) {
     for (const run of group.runs) {
       if (!placedMachines.has(run.machine ?? LOCAL_MACHINE_KEY)) {
-        placeRun(group, run);
+        placeRun(run);
       }
     }
   }

@@ -560,6 +560,27 @@ test("run の無い機械の行は既定で閉じ、三角でその場で開閉�
   assert.equal(row().classList.contains("run-board-row-expanded"), false, "押した直後に閉じる");
 });
 
+// 準備中の控えは runID を持たず、走り出すと同じ pid の控えが runID 入りに上書きされる。
+// 行を runID で引くと走り出した瞬間に別の行になり、閉じた行が勝手に開く(ユーザー指摘 2026-09-30)
+test("準備中に閉じた run の行は、走り出して runID が付いても閉じたまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-L1" }]);
+  const run = (fields) => ({ type: "monitorRuns", observed: true, runs: [Object.assign({
+    pid: 41233, mine: true, requeued: 0, laneDropouts: 0, project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 3, total: 0, done: 0, failed: 0, lanes: [],
+  }, fields)] });
+  post(window, run({ phase: "preparing" }));
+  const row = () => runRows(document)[0];
+  assert.equal(row().classList.contains("run-board-row-expanded"), true, "run の行の既定は開いた状態");
+  click(window, row().querySelector(".run-board-chevron"));
+  assert.equal(row().classList.contains("run-board-row-expanded"), false);
+
+  post(window, run({ phase: "running", runID: "run-1", runGroup: "group-1", total: 4, done: 1 }));
+  assert.equal(runRows(document).length, 1);
+  assert.equal(row().classList.contains("run-board-row-expanded"), false, "走り出しても閉じたまま");
+});
+
 // 「マシン有効」を off にした機械はディスパッチの対象外なので、ボードからも外す
 // (ユーザー決定 2026-09-22)—— 「空き」と並べると使える機械に見える。
 test("無効にした機械は行を出さない(有効に戻すとその場で戻る)", (t) => {
