@@ -156,6 +156,35 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         XCTAssertTrue(outcome.notes.contains(.staleScreenshot))
     }
 
+    /// 待っても絵が追いつかなければ、失敗にせず最新の絵で照合する(古い絵の検知は照合を赤にしない)。
+    /// 実測: CMP の iOS in-app で 20 秒以上同じ絵が返り続け、失敗にした版は緑だったシナリオを毎周赤にした
+    func testFindImageFallsBackToTheLatestPictureWhenItNeverCatchesUp() async throws {
+        let fixture = FindImageTests()
+        let root = try fixture.makeProjectForExtension()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let before = CheckStateClassifierTests.checkboxPNG(on: true, shift: 0, canvas: 120)
+        let driver = SequenceDriver(elements: fixture.screenElements, shots: [before])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        executor.visionClassifierProjectRoot = root
+        let previousTree = [ElementInfo(ref: 9, type: "button", identifier: "nav_noid", label: nil, value: nil,
+                                        placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: 0, width: 300, height: 50), depth: 1)]
+        executor.lastGuardFrameRecord = StaleFrameDetector.judge(png: before, elements: previousTree, previous: nil).record
+
+        let outcome = await findCircle(executor)
+
+        guard case .passed = outcome.status else {
+            return XCTFail("古い絵のまま待ちが尽きても失敗にしない: \(outcome.status)")
+        }
+        XCTAssertTrue(outcome.notes.contains(.staleScreenshot), "待ったことは注記に残す")
+        XCTAssertEqual(driver.shotCount, 6, "最初の1回 + 待った4回 + 古い絵の確認を外した最後の1回")
+    }
+
+    func testStaleRetryDelaysArePinned() {
+        // 実測の最長 5.0 秒(追いついた回)を覆う長さ。値を変えるなら同じ測り方で測り直す
+        XCTAssertEqual(FindImage.staleRetryDelays, [0.5, 1, 2, 4])
+    }
+
     /// 控えが無い(前に検証が1度も走っていない)ときは判定しない = 今までどおり照合する
     func testFindImageWithoutAnEarlierPictureJudgesAsBefore() async throws {
         let fixture = FindImageTests()

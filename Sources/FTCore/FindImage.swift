@@ -90,6 +90,8 @@ public enum FindImage {
         }
         public var errorDescription: String? { description }
 
+        var isStaleScreenshot: Bool { if case .staleScreenshot = self { return true } else { return false } }
+
         /// 待てば戻る状態(Vision の異常・一色の絵。`retryingTransientAnomalies` が待って走査をやり直す対象)
         var isTransient: Bool {
             switch self {
@@ -122,10 +124,16 @@ public enum FindImage {
     /// **CPU で計算させる案は不採用**(同じ実測で異常 63% = 悪化・所要 2.5〜3 倍。壊れるのはモデルの手前の画像の変換)
     public static let anomalyRetryDelays: [Double] = [0.5, 1, 2, 4, 8]
 
+    /// 絵が木に追いついていない(`MatchError.staleScreenshot`)ときに待つ秒数の列(計 7.5 秒)。**根拠**(実測・Android E2E
+    /// 8 並列 + 配信 24fps): 追いついた回は中央値 1.5 秒・90% で 2.8 秒・最長 5.0 秒。その最長を覆う長さで打ち切る。
+    /// **尽きたら失敗にせず、最新の絵で照合する**(古い絵の検知は照合を赤にしない = 新しい検知は警告から。CMP の iOS in-app で
+    /// 20 秒以上同じ絵が返り続け、失敗にした版は緑だったシナリオを毎周赤にした)
+    public static let staleRetryDelays: [Double] = [0.5, 1, 2, 4]
+
     /// `body`(1回の走査)を、待てば戻る Vision の異常のあいだ `delays` の順に待ってやり直す。
     /// 異常以外のエラーはそのまま投げる。`onRetry` は待つ直前に呼ぶ(何回目か・検知した異常)。純粋な制御だけ
     /// (待ち方は `sleep` で差し替える = テストは実時間を待たない)
-    static func retryingTransientAnomalies<T>(delays: [Double],
+    static func retryingTransientAnomalies<T>(delays: (MatchError) -> [Double],
                                               sleep: (Double) async throws -> Void,
                                               onRetry: (Int, MatchError) -> Void,
                                               _ body: () async throws -> T) async throws -> T {
@@ -135,13 +143,14 @@ public enum FindImage {
             do {
                 return try await body()
             } catch let error as MatchError where error.isTransient {
-                guard attempt < delays.count else {
+                let schedule = delays(error)
+                guard attempt < schedule.count else {
                     if attempt == 0 { throw error }
                     throw PersistentAnomaly(last: error, retries: attempt, waitedSeconds: waited)
                 }
                 onRetry(attempt + 1, error)
-                try await sleep(delays[attempt])
-                waited += delays[attempt]
+                try await sleep(schedule[attempt])
+                waited += schedule[attempt]
                 attempt += 1
             }
         }

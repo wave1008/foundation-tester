@@ -127,9 +127,13 @@ extension StepExecutor {
     private func scanImage(templates: [URL], label: String, single: Bool, threshold: Double?,
                            tolerance: Double, snapshot: SnapshotResponse, carried: FindImage.Match?,
                            phase: inout PhaseAccumulator) async throws -> ImageScan {
-        // Vision の一時的な異常は待って走査ごとやり直す(撮り直しも含む = デバイスへの操作は撃たない)
-        try await FindImage.retryingTransientAnomalies(
-            delays: FindImage.anomalyRetryDelays,
+        // Vision の一時的な異常は待って走査ごとやり直す(撮り直しも含む = デバイスへの操作は撃たない)。
+        // 絵が追いつかないまま待ちが尽きたら、古い絵の確認を外して最新の絵で照合する(FindImage.staleRetryDelays)
+        var judgeStale = true
+        while true {
+        do {
+        return try await FindImage.retryingTransientAnomalies(
+            delays: { $0.isStaleScreenshot ? FindImage.staleRetryDelays : FindImage.anomalyRetryDelays },
             sleep: { seconds in
                 let token = DeadlineExclusion.begin(cap: .seconds(seconds))
                 defer { DeadlineExclusion.end(token) }
@@ -146,13 +150,19 @@ extension StepExecutor {
             }) {
             try await VisionUsageLedger.batched {
                 try await scanImageOnce(templates: templates, label: label, single: single, threshold: threshold,
-                                        tolerance: tolerance, snapshot: snapshot, carried: carried, phase: &phase)
+                                        tolerance: tolerance, snapshot: snapshot, carried: carried,
+                                        judgeStale: judgeStale, phase: &phase)
             }
+        }
+        } catch let error as FindImage.PersistentAnomaly where error.last.isStaleScreenshot && judgeStale {
+            judgeStale = false
+        }
         }
     }
 
     private func scanImageOnce(templates: [URL], label: String, single: Bool, threshold: Double?,
                                tolerance: Double, snapshot: SnapshotResponse, carried: FindImage.Match?,
+                               judgeStale: Bool,
                                phase: inout PhaseAccumulator) async throws -> ImageScan {
         let clock = ContinuousClock()
         let shotStart = clock.now
@@ -171,7 +181,7 @@ extension StepExecutor {
         // 絵が木に追いついていなければ照合しない(視覚検証と同じ判定・同じ控えを共有する)。控えが無ければ判定しない
         // = 前に検証が1度も走っていない場面(起動 → 遷移 → すぐ照合)は拾えない
         let frame = StaleFrameDetector.judge(png: png, elements: snapshot.elements, previous: lastGuardFrameRecord)
-        if frame.isStale || StaleFrameDetector.isKnownStale(png: png, knownStaleImageHash: knownStaleGuardImageHash) {
+        if judgeStale, frame.isStale || StaleFrameDetector.isKnownStale(png: png, knownStaleImageHash: knownStaleGuardImageHash) {
             knownStaleGuardImageHash = frame.record.imageHash
             throw FindImage.MatchError.staleScreenshot
         }

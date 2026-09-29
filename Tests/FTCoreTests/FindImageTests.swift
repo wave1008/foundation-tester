@@ -504,7 +504,7 @@ extension FindImageTests {
 
     private func retrying(_ recorder: Recorder, failures: Int, error: FindImage.MatchError) async throws -> String {
         try await FindImage.retryingTransientAnomalies(
-            delays: [0.5, 1, 2, 4, 8],
+            delays: { _ in [0.5, 1, 2, 4, 8] },
             sleep: { recorder.sleeps.append($0) },
             onRetry: { attempt, _ in recorder.retries.append(attempt) }) {
             recorder.calls += 1
@@ -613,7 +613,7 @@ extension FindImageTests {
         let start = try XCTUnwrap(source.range(of: "private func scanImage(templates:"))
         let end = try XCTUnwrap(source.range(of: "private func scanImageOnce(templates:"))
         let body = source[start.upperBound..<end.lowerBound]
-        for needle in ["FindImage.retryingTransientAnomalies(", "delays: FindImage.anomalyRetryDelays",
+        for needle in ["FindImage.retryingTransientAnomalies(", "FindImage.anomalyRetryDelays",
                        "DeadlineExclusion.begin(", "DeadlineExclusion.end(", ".visionAnomalyRetried"] {
             XCTAssertTrue(body.contains(needle), "scanImage に \(needle) が無い")
         }
