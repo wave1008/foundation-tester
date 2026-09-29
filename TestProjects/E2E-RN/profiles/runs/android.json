@@ -248,12 +248,14 @@
       "platform": "android",
       "machine": "local",
       "name": "Pixel 9(Android 15)-07",
+      "enabled": false,
       "avd": "Pixel_9_Android_15_-07"
     },
     {
       "platform": "android",
       "machine": "local",
       "name": "Pixel 9(Android 15)-08",
+      "enabled": false,
       "avd": "Pixel_9_Android_15_-08"
     },
     {
