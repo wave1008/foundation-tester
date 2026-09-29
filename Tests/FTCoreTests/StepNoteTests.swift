@@ -33,6 +33,9 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.launchActivatedBeforeForeground.rawValue, "launch-activated-before-foreground")
         XCTAssertEqual(StepNote.ocrReadWhatFMMissed.rawValue, "ocr-read-what-fm-missed")
         XCTAssertEqual(StepNote.fmReadWhatOCRMissed.rawValue, "fm-read-what-ocr-missed")
+        XCTAssertEqual(StepNote.visionAnomalyRetried.rawValue, "vision-anomaly-retried")
+        XCTAssertEqual(StepNote.settledAfterLaunch.rawValue, "settled-after-launch")
+        XCTAssertEqual(StepNote.blankScreenshotRetaken.rawValue, "blank-screenshot-retaken")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)

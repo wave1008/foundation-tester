@@ -43,10 +43,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// (StepExecutor+Assert.swift の occlusionFlip)
     case staleScreenshot = "stale-screenshot"
 
-    /// occlusion-guard のスクショが下端の帯を除いて真っ黒(`BlankFrameDetector.isBlackApartFromBottomStrip`)。
-    /// 絵が撮れていない・表示が凍結した回で、FM も OCR も「何も描かれていない」と読むので、判定不能として
-    /// 素通りする(赤にしない)
+    /// テキストの視覚検証(occlusion-guard)か screenLooksLike のスクショがステータスバー以外真っ黒
+    /// (`BlankFrameDetector.isBlackApartFromSystemBars`)。絵が撮れていない・表示が凍結した回で、FM も OCR も
+    /// 「何も描かれていない」「一致しない」と読むので、判定不能として素通りする(赤にしない)
     case blankScreenshot = "blank-screenshot"
+    /// findImage / findImages / existImage のスクショのアプリの領域が一色(`BlankFrameDetector.isUnjudgeable`)だったので、照合せずに待って撮り直した
+    /// (`FindImage.MatchError.blankScreenshot`・待ちの列は `FindImage.anomalyRetryDelays`)。戻らなければ失敗
+    case blankScreenshotRetaken = "blank-screenshot-retaken"
 
     /// 探索のどこか1周で木が**要素上限で打ち切られていた**。実在する行が候補から
     /// 落ちていた可能性があるので、「見つからない」を不在の証拠にしてはいけない。
@@ -245,6 +248,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// CheckStateClassifier の見本画像はあるのに、学習か読み込みに失敗した、または推論の対照が外れて
     /// 答えを使わなかった(`VisionClassifier.ClassifyError`)。どちらも a11y だけで判定した
     case checkStateClassifierFailed = "check-state-classifier-failed"
+    /// findImage / findImages / existImage で Vision の異常(縮退・測り直しの不一致)を検知し、
+    /// 待って走査をやり直した(`FindImage.anomalyRetryDelays`)。**判定は変えない** —— 戻れば通常どおり照合し、
+    /// 戻らなければ失敗。**率が上がったら機械の GPU が混んでいる**(実測: 配信 24fps + 8 並列で最初の照合の約半数)
+    case visionAnomalyRetried = "vision-anomaly-retried"
+    /// 起動直後の最初のロケータ操作の前に配置の静止を待ち、**待っている間に実際に木が動いた**
+    /// (= 待たなければずれる前の座標を撃っていた)。立たない = 既に静止していた(`pendingLaunchSettle`)
+    case settledAfterLaunch = "settled-after-launch"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
@@ -308,13 +318,19 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .checkStateClassifierFailed:
             return "CheckStateClassifier could not be trained or loaded, or its answer could not be trusted,"
                 + " so the check state came from accessibility only"
+        case .settledAfterLaunch:
+            return "the screen was still laying out after the launch, so the target was resolved again once it settled"
+        case .visionAnomalyRetried:
+            return "Vision returned untrustworthy image feature prints, so the image search waited and ran again"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"
         case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
         case .blankScreenshot:
-            return "the occlusion-guard screenshot was black apart from the bottom system bar, so the check was skipped"
+            return "the screenshot was black apart from the system bars, so the visual check was skipped"
+        case .blankScreenshotRetaken:
+            return "the app area of the screenshot for the image search was a single colour, so it waited and took it again"
         case .truncatedDuringSearch:
             return "the tree hit the element limit during the search, so the target may have been dropped from it"
         case .webViewNotRendered:

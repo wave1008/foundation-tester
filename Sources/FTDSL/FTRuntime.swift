@@ -481,6 +481,10 @@ public final class FTDriveCore {
         if fmTextOcclusionCheckEnabled || occlusionOCREnabled {
             RegionText.prewarmIfNeeded(mode: occlusionOCRResolvedMode)
         }
+        // 画像照合の特徴量も同じくシナリオ開始時に(見本を持つプロジェクトだけ。FindImage+Prewarm.swift)
+        if !dryRun {
+            FindImage.prewarmIfNeeded(projectRoot: visionClassifierProjectRoot, isAndroid: platform == "android")
+        }
         // 暖機待ち(RegionText.awaitPrewarm)が締め切りから差し引かれるよう、子→親へ知らせる。
         // **1 プロセス 1 シナリオ**なので observer は process 全体で1個のままでよい。
         // ScenarioHost はこの kind を emit へ渡さず横取りする(ScenarioEvent.swift のコメント参照)

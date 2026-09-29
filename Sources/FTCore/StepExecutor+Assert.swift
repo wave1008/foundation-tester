@@ -1603,6 +1603,14 @@ extension StepExecutor {
         guard let png = try? await driver.screenshot(),
               let image = VisionClassifier.crop(png: png, frame: element.frame, screen: screen) else { return nil }
         classifierScreenshotThisStep = png
+        // アプリの領域が一色の絵(撮れていない・何も描かれていない)は分類しない。一色の切り出しは [OFF] に似ていて、ON の要素を
+        // 確信度 1.00 で [OFF] と答えた実測がある(Android Emulator・配信 24fps + 8 並列)。checkIsON/OFF は
+        // a11y の読みで判定し、待ちの次の周回が撮り直す
+        if BlankFrameDetector.isUnjudgeable(pngData: png) {
+            classifierFailureThisStep = "the app area of the screenshot is a single colour (nothing is drawn there,"
+                + " or the capture failed), so the element image was not classified"
+            return nil
+        }
         do {
             return try classifier.classify(image)
         } catch {
@@ -1754,6 +1762,13 @@ extension StepExecutor {
             onDeviceFrozen?()
             return frozen
         }
+        // ステータスバーだけが残った黒(撮れていない・表示の凍結)を FM に渡すと必ず「一致しない」になる。
+        // 視覚検証と同じく判定の根拠にしない(凍結の根拠にもしない = 回復は撃たない)
+        if BlankFrameDetector.isBlackApartFromSystemBars(pngData: screenshot) {
+            noteCodesThisStep.insert(.blankScreenshot)
+            return .skipped("the screenshot is black apart from the system bars (the capture failed or the"
+                + " display is frozen), so the screen was not verified")
+        }
         guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {
             return .skipped("could not run screen verification")
         }
@@ -1770,6 +1785,10 @@ extension StepExecutor {
         guard let retryShot = try await unfrozenScreenshot(phase: &phase) else {
             onDeviceFrozen?()
             return frozen
+        }
+        // 撮り直しだけが黒なら、1 枚目の不一致をそのまま返す(見送ると本物の不一致を黒い絵で消す)
+        if BlankFrameDetector.isBlackApartFromSystemBars(pngData: retryShot) {
+            return .failed("the screen does not match the expectation: \(verdict.reason)")
         }
         guard let retryVerdict = await delegate.verifyScreen(expected: expected,
                                                              screenshotPNG: retryShot) else {

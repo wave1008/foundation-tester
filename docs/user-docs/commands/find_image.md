@@ -87,6 +87,15 @@ existImage("[Share Icon]", scroll: .down).tap()
 - In the same way, a less extreme state where Vision returns a different feature print for the same image is detected by
   re-measuring the sample on each search (the message says `Vision returned a different image feature print for the same image`).
   Distances in that state cannot be trusted, so the step fails. Retry the run; if it keeps happening, restart the Mac.
+- Both states are usually brief (they are seen on a busy Mac, for example with many devices streaming to the monitor at a
+  high frame rate). When either is detected, the tool waits and searches again, up to 5 times (0.5, 1, 2, 4 and 8 seconds;
+  15.5 seconds in all). This wait is not counted against the step's or the scenario's time limit, and no device operation
+  is repeated. The step records the note `vision-anomaly-retried`. The step fails only when the state lasts through every
+  wait; the message then ends with `it was still so after re-measuring 5 times over 15.5 seconds of waiting`.
+- When the app area of the screenshot (apart from the status bar and the bottom strip) is a single colour (all black
+  or all white: nothing was captured, or nothing is drawn), nothing is compared: comparing would report "not found", and a check written as `isEmpty` would pass by mistake. The tool waits
+  and takes the screenshot again in the same way (note `blank-screenshot-retaken`), and the step fails only when it
+  stays black through every wait.
 - When the found element has a writable selector (an id or a unique label), you can chain assertions such as `textIs`.
 - Moving the screen after finding makes `tap()` hit the old coordinates. Tap right after finding.
 - Unlike Shirates, which cuts parts out by segmenting the image, the candidates are the frames of accessibility

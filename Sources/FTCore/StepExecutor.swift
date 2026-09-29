@@ -273,6 +273,7 @@ public final class StepExecutor {
     public func noteAppLaunched() {
         armUnregisteredSystemAlertProbe()
         firstFrameGatePending = true
+        pendingLaunchSettle = true
     }
 
     /// [occlusion-guard] launch 系の**直前**の絵と木を、凍結フレーム検知の基準として控える(Android だけ)。
@@ -989,6 +990,14 @@ public final class StepExecutor {
     /// WebView の `type` → 116〜134pt の押し上げの最中に次の `tap` が解決し、
     /// 押し上げ前の座標を撃って別要素に当たった(E2E-iOS S0010・11 本中 5 本)
     var pendingTypeKeyboardCheck = false
+    /// launch 系の直後に立ち、**次のロケータ操作の解決の前に1回だけ** `settledSignature` で木の静止を待つ
+    /// (StepExecutor+Actions.swift の消費側)。起動直後の画面は最初の1枚の後で配置が動くことがある
+    /// (実測 E2E-RN の Android・データ消去後の起動: 最初の1枚は上端の余白が無く、約 0.2 秒後に全体が
+    /// ステータスバーの高さ 142px ぶん下がる = ずれる前の木で解決した `#nav_scroll` の中心が、すぐ上の
+    /// `#nav_gesture` に当たった)。Android の tap(ref:) はブリッジが**直前の木の中心**を撃つので、ずれの後の
+    /// 木で解決し直す以外に防げない。費用は静止した画面で約 130ms(起動1回につき1度だけ)。
+    /// **確実ではない** —— ずれる前の配置が静止判定の窓(2 枚)より長く続けば、静止と見て通る
+    var pendingLaunchSettle = false
 
     /// **Android の `hideKeyboard` の後、次のロケータ操作の解決で木のキーボードが消えるまで待つ上限(秒)**。
     /// 立てるのは hideKeyboard の成功時だけ・消費は次のロケータ操作の最初の解決で1回(pendingTypeKeyboardCheck と

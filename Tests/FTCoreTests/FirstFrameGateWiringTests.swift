@@ -28,7 +28,7 @@ final class FirstFrameGateWiringTests: XCTestCase {
     func testNoteAppLaunchedArmsTheGate() throws {
         let text = compact(try source("FTCore/StepExecutor.swift"))
         XCTAssertTrue(text.contains(compact("""
-            funcnoteAppLaunched(){armUnregisteredSystemAlertProbe()firstFrameGatePending=true}
+            funcnoteAppLaunched(){armUnregisteredSystemAlertProbe()firstFrameGatePending=truependingLaunchSettle=true}
             """)),
             "noteAppLaunched() が firstFrameGatePending を arm していない")
         XCTAssertFalse(text.contains(compact("""

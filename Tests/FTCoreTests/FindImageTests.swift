@@ -492,3 +492,130 @@ extension FindImageTests {
                       "ずれた控えを次の照合に使わない(プロセス内の控えも永続控えも)")
     }
 }
+
+// MARK: - Vision の異常は待って走査をやり直す
+
+extension FindImageTests {
+    private final class Recorder: @unchecked Sendable {
+        var sleeps: [Double] = []
+        var retries: [Int] = []
+        var calls = 0
+    }
+
+    private func retrying(_ recorder: Recorder, failures: Int, error: FindImage.MatchError) async throws -> String {
+        try await FindImage.retryingTransientAnomalies(
+            delays: [0.5, 1, 2, 4, 8],
+            sleep: { recorder.sleeps.append($0) },
+            onRetry: { attempt, _ in recorder.retries.append(attempt) }) {
+            recorder.calls += 1
+            if recorder.calls <= failures { throw error }
+            return "scanned"
+        }
+    }
+
+    /// 実測で 30 件中 28 件が 9.2 秒以内に戻った列。値を変えるなら同じ測り方で測り直す
+    func testAnomalyRetryDelaysArePinned() {
+        XCTAssertEqual(FindImage.anomalyRetryDelays, [0.5, 1, 2, 4, 8])
+    }
+
+    func testTransientAnomalyIsWaitedOutAndTheScanRedone() async throws {
+        let recorder = Recorder()
+        let result = try await retrying(recorder, failures: 2, error: .degeneratePrints(template: "off.png"))
+        XCTAssertEqual(result, "scanned")
+        XCTAssertEqual(recorder.calls, 3, "異常の2回 + 戻った1回")
+        XCTAssertEqual(recorder.sleeps, [0.5, 1], "列の順に待つ")
+        XCTAssertEqual(recorder.retries, [1, 2])
+    }
+
+    func testAnomalyThatOutlastsEveryDelayFailsAndSaysHowLongItWaited() async throws {
+        let recorder = Recorder()
+        do {
+            _ = try await retrying(recorder, failures: .max, error: .inconsistentPrints(template: "off.png", distance: 0.9))
+            XCTFail("戻らない異常を通してはいけない")
+        } catch let error as FindImage.PersistentAnomaly {
+            XCTAssertEqual(recorder.calls, 6, "最初の1回 + 待った5回")
+            XCTAssertEqual(recorder.sleeps, [0.5, 1, 2, 4, 8])
+            XCTAssertEqual(error.retries, 5)
+            XCTAssertTrue(error.description.hasPrefix("Vision returned a different image feature print"), error.description)
+            XCTAssertTrue(error.description.hasSuffix("re-measuring 5 times over 15.5 seconds of waiting"), error.description)
+        }
+    }
+
+    func testOnlyVisionAnomaliesAreRetried() async throws {
+        let recorder = Recorder()
+        do {
+            _ = try await retrying(recorder, failures: 1, error: .unreadableTemplate("/t/x.png"))
+            XCTFail("設定の誤りは待っても直らない")
+        } catch let error as FindImage.MatchError {
+            guard case .unreadableTemplate = error else { return XCTFail("\(error)") }
+            XCTAssertEqual(recorder.calls, 1)
+            XCTAssertEqual(recorder.sleeps, [])
+        }
+    }
+
+    func testPrewarmConstantsArePinned() {
+        XCTAssertEqual(FindImage.prewarmBudget, .seconds(60))
+        XCTAssertEqual(FindImage.prewarmInterval, .milliseconds(500))
+    }
+
+    func testPrewarmKeepsCheckingUntilHealthy() async {
+        let recorder = Recorder()
+        let result = await FindImage.warmUntilHealthy(
+            budget: .seconds(30), interval: .milliseconds(500),
+            check: { recorder.calls += 1; return recorder.calls > 3 },
+            sleep: { recorder.sleeps.append(Double($0.components.attoseconds) / 1e18 + Double($0.components.seconds)) })
+        XCTAssertTrue(result.healthy)
+        XCTAssertEqual(result.attempts, 4)
+        XCTAssertEqual(recorder.sleeps, [0.5, 0.5, 0.5])
+    }
+
+    func testPrewarmGivesUpAtTheBudgetAndChecksAtLeastOnce() async {
+        let recorder = Recorder()
+        let exhausted = await FindImage.warmUntilHealthy(
+            budget: .seconds(2), interval: .milliseconds(500),
+            check: { recorder.calls += 1; return false }, sleep: { _ in })
+        XCTAssertFalse(exhausted.healthy)
+        XCTAssertEqual(exhausted.attempts, 5, "最初の1回 + 0.5 秒おきに 2 秒ぶん")
+        let once = await FindImage.warmUntilHealthy(budget: .zero, interval: .milliseconds(500),
+                                                    check: { false }, sleep: { _ in })
+        XCTAssertEqual(once.attempts, 1)
+    }
+
+    /// 見本を持たないプロジェクトでは暖機を頼まない(画像照合を使わないプロセスに ANE の負荷を足さない)
+    func testPrewarmIsRequestedOnlyWhenTheProjectHasTemplates() throws {
+        let empty = FileManager.default.temporaryDirectory.appendingPathComponent("fi-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: empty) }
+        let before = FindImage.prewarmRequestCount
+        FindImage.prewarmIfNeeded(projectRoot: empty, isAndroid: false)
+        FindImage.prewarmIfNeeded(projectRoot: nil, isAndroid: false)
+        XCTAssertEqual(FindImage.prewarmRequestCount, before)
+        let root = try makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        FindImage.prewarmIfNeeded(projectRoot: root, isAndroid: false)
+        XCTAssertEqual(FindImage.prewarmRequestCount, before + 1)
+    }
+
+    /// シナリオ開始時(FTRuntime の init)に、見本の置き場のプロジェクトで暖機を頼む(dry-run では頼まない)
+    func testScenarioStartRequestsThePrewarm() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTDSL/FTRuntime.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let call = try XCTUnwrap(source.range(of: "FindImage.prewarmIfNeeded(projectRoot: visionClassifierProjectRoot,"))
+        let guardRange = try XCTUnwrap(source.range(of: "if !dryRun {", options: .backwards, range: source.startIndex..<call.lowerBound))
+        XCTAssertLessThan(source.distance(from: guardRange.upperBound, to: call.lowerBound), 40, "dry-run の門の直下で頼む")
+    }
+
+    /// 走査は異常のやり直しで包み、待ちは締め切りから差し引き、待ったことを注記に残す
+    func testScanIsWrappedInTheAnomalyRetryWithTheDeadlineExcluded() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/StepExecutor+FindImage.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "private func scanImage(templates:"))
+        let end = try XCTUnwrap(source.range(of: "private func scanImageOnce(templates:"))
+        let body = source[start.upperBound..<end.lowerBound]
+        for needle in ["FindImage.retryingTransientAnomalies(", "delays: FindImage.anomalyRetryDelays",
+                       "DeadlineExclusion.begin(", "DeadlineExclusion.end(", ".visionAnomalyRetried"] {
+            XCTAssertTrue(body.contains(needle), "scanImage に \(needle) が無い")
+        }
+    }
+}

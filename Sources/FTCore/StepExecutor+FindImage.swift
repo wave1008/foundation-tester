@@ -127,9 +127,25 @@ extension StepExecutor {
     private func scanImage(templates: [URL], label: String, single: Bool, threshold: Double?,
                            tolerance: Double, snapshot: SnapshotResponse, carried: FindImage.Match?,
                            phase: inout PhaseAccumulator) async throws -> ImageScan {
-        try await VisionUsageLedger.batched {
-            try await scanImageOnce(templates: templates, label: label, single: single, threshold: threshold,
-                                    tolerance: tolerance, snapshot: snapshot, carried: carried, phase: &phase)
+        // Vision の一時的な異常は待って走査ごとやり直す(撮り直しも含む = デバイスへの操作は撃たない)
+        try await FindImage.retryingTransientAnomalies(
+            delays: FindImage.anomalyRetryDelays,
+            sleep: { seconds in
+                let token = DeadlineExclusion.begin(cap: .seconds(seconds))
+                defer { DeadlineExclusion.end(token) }
+                try await Task.sleep(for: .seconds(seconds))
+            },
+            onRetry: { _, error in
+                if case .blankScreenshot = error {
+                    noteCodesThisStep.insert(.blankScreenshotRetaken)
+                } else {
+                    noteCodesThisStep.insert(.visionAnomalyRetried)
+                }
+            }) {
+            try await VisionUsageLedger.batched {
+                try await scanImageOnce(templates: templates, label: label, single: single, threshold: threshold,
+                                        tolerance: tolerance, snapshot: snapshot, carried: carried, phase: &phase)
+            }
         }
     }
 
@@ -146,6 +162,10 @@ extension StepExecutor {
         }
         // existImage が落ちたときの証跡(StepOutcome.evidenceImage。通ったステップは持ち帰らない)
         classifierScreenshotThisStep = png
+        // アプリの領域が一色の絵(撮れていない・何も描かれていない)では照合しない = 待って撮り直す(FindImage.MatchError.blankScreenshot)
+        if BlankFrameDetector.isUnjudgeable(pngData: png) {
+            throw FindImage.MatchError.blankScreenshot
+        }
         let matchStart = clock.now
         defer { phase.actionMs += Self.ms(clock.now - matchStart) }
         var nearest = carried

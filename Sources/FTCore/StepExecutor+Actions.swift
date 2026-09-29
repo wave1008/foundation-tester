@@ -143,6 +143,14 @@ extension StepExecutor {
         nextResolveBypassesCache = false
         var snapshot = try await freshSnapshot(freshness)
         phase.snapshotMs += Self.ms(clock.now - start)
+        // 起動直後の最初のロケータ操作だけ、配置の静止を待ってから解決する(pendingLaunchSettle の doc)。
+        // **settledSignature が自分で phase へ計上する**(ここでは足さない)
+        if pendingLaunchSettle {
+            pendingLaunchSettle = false
+            let settled = try await settledSignature(phase: &phase)
+            snapshot = settled.snapshot
+            if settled.changed { noteCodesThisStep.insert(.settledAfterLaunch) }
+        }
         // **直前の type が「打つ前後」でキーボードを動かしたか、ここで初めて確かめる**
         // (pendingTypeKeyboardCheck の doc)。上の freshSnapshot は元々撮る1枚なので、
         // 動いていなければ比較だけで追加コストはゼロ。動いていたときだけ収束を待って撮り直す。
@@ -1027,6 +1035,10 @@ extension StepExecutor {
         guard let snapshot = try? await driver.snapshot(),
               let png = try? await driver.screenshot() else {
             return (false, 0, "the screen could not be captured")
+        }
+        // 黒い絵は読めなかったのと同じ扱い(追送する側)。事実だけ言い分ける
+        if BlankFrameDetector.isBlackApartFromSystemBars(pngData: png) {
+            return (false, 0, "the screenshot was black apart from the system bars")
         }
         let waited: TimeInterval
         switch await RegionText.awaitPrewarm(mode: .on) {

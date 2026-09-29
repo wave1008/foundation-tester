@@ -82,6 +82,38 @@ public enum BlankFrameDetector {
         isBlack(pngData: pngData, ignoringTopRows: blackFrameIgnoredTopRows)
     }
 
+    /// 画像で判定する経路(分類器・findImage)が**判定の根拠にしない絵**: 上端のステータスバーと下端の帯を除いた
+    /// アプリの領域が**一色**(黒でも白でも)。要素の部分に何も描かれていないので、分類も照合も成立しない
+    /// (実測: 真っ黒・真っ白の絵を ON のスイッチでも [OFF]・確信度 1.00 と答え、findImage は「見つからない」=
+    /// `isEmpty` の誤った緑)。ステータスバーの有無で分けない —— アイコンの数でセルの平均が割れたり割れなかったりする。
+    /// **凍結の確定には使わない**・**テキストの視覚検証には使わない**(あちらは白を「描かれていない」の事実として扱う)
+    public static func isUnjudgeable(pngData: Data) -> Bool {
+        let grid = blackFrameGrid
+        guard let source = CGImageSourceCreateWithData(pngData as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let context = CGContext(data: nil, width: grid, height: grid, bitsPerComponent: 8,
+                                      bytesPerRow: grid * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return false }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: grid, height: grid))
+        guard let data = context.data else { return false }
+        let pixels = data.bindMemory(to: UInt8.self, capacity: grid * grid * 4)
+        let base = blackFrameIgnoredTopRows * grid * 4
+        for row in blackFrameIgnoredTopRows..<(grid - blackFrameIgnoredBottomRows) {
+            for column in 0..<grid {
+                let offset = (row * grid + column) * 4
+                for channel in 0..<3
+                where abs(Int(pixels[offset + channel]) - Int(pixels[base + channel])) > Int(flatCellTolerance) {
+                    return false
+                }
+            }
+        }
+        return true
+    }
+
+    /// 一色とみなすセル平均の差の上限(各チャンネル)。黒の上限 `blackFrameMaxChannel` と同じ幅
+    static let flatCellTolerance: UInt8 = blackFrameMaxChannel
+
     private static func isBlack(pngData: Data, ignoringTopRows topRows: Int) -> Bool {
         let grid = blackFrameGrid
         guard let source = CGImageSourceCreateWithData(pngData as CFData, nil),

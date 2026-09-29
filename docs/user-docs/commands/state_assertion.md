@@ -69,6 +69,9 @@ sample images (same location and labels as Shirates' Vision edition).
   its answer is not used and the checked state comes from accessibility only (note `check-state-classifier-failed`).
   This happens when Vision / Core ML on the Mac is temporarily broken: it keeps answering the same label with full
   confidence instead of reporting an error. If it persists, reboot the Mac.
+- When the app area of the screenshot (apart from the status bar and the bottom strip) is a single colour (all black or
+  all white: nothing was captured, or nothing is drawn), the image is not judged either, and the checked state comes from accessibility only (note `check-state-classifier-failed`).
+  While the step waits, it takes the screenshot again.
 - When a check judged from the image fails, the screenshot the classifier judged is attached to the report
   right under the failed step, so you can see what it looked at.
 - `options=` / `imageFilter=binary` in Shirates' `MLImageClassifier.swift` are read with the same meaning.

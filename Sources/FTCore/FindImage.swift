@@ -53,6 +53,9 @@ public enum FindImage {
         case degeneratePrints(template: String)
         /// Vision が同じ画像に違う特徴量を返した(縮退ほど極端でない一時的な異常。距離が信用できない)
         case inconsistentPrints(template: String, distance: Double)
+        /// アプリの領域が一色(`BlankFrameDetector.isUnjudgeable`)。比べると全候補が「似ていない」になり、
+        /// 見つからない(`isEmpty` での否定なら誤った緑)と読んでしまうので照合しない
+        case blankScreenshot
 
         public var description: String {
             switch self {
@@ -73,9 +76,68 @@ public enum FindImage {
                     + " re-measured at distance \(String(format: "%.4f", distance)) from its earlier print; a healthy"
                     + " machine returns exactly the same print), so image distances cannot be trusted right now;"
                     + " this is a transient state of the machine (retry the run; if it persists, reboot)"
+            case .blankScreenshot:
+                return "the app area of the screenshot is a single colour (nothing is drawn there, or the capture"
+                    + " failed), so no image could be compared"
             }
         }
         public var errorDescription: String? { description }
+
+        /// 待てば戻る状態(Vision の異常・一色の絵。`retryingTransientAnomalies` が待って走査をやり直す対象)
+        var isTransient: Bool {
+            switch self {
+            case .degeneratePrints, .inconsistentPrints, .blankScreenshot: return true
+            case .invalidTolerance, .noTemplate, .unreadableTemplate: return false
+            }
+        }
+    }
+
+    /// 待ってもなお異常だった(文言に待った回数と秒を足す。元の文言はそのまま前に置く)
+    public struct PersistentAnomaly: LocalizedError, CustomStringConvertible {
+        public let last: MatchError
+        public let retries: Int
+        public let waitedSeconds: Double
+        public var description: String {
+            last.description + "; it was still so after re-measuring \(retries) times over"
+                + " \(String(format: "%.1f", waitedSeconds)) seconds of waiting"
+        }
+        public var errorDescription: String? { description }
+    }
+
+    /// Vision の異常(縮退・測り直しの不一致)を検知したとき、走査をやり直す前に待つ秒数の列(合計 15.5 秒)。
+    /// 実測(M2 Ultra・Android E2E 8 並列 + 配信 24fps): 異常は**そのプロセスで最初の照合でだけ**起き
+    /// (2 回目以降の照合は 0/30)、すぐには戻らず数秒で戻る。0.2/0.5/1/2/4 秒の列で待つと、30 件のうち
+    /// 1 回で 4・3 回で 16・5 回(計 7.7 秒)で 28 件が戻り、残り 2 件は約 9〜10 秒たっても異常のままだった
+    /// (戻るまでの時間は 0.6〜9.2 秒・中央値 約 2.8 秒)。最後を 8 秒にして 10 秒超えの戻りまで拾う。
+    /// **ふだんはシナリオ開始時の暖機(FindImage+Prewarm.swift)がこの時間を先に使い切る**ので、ここは暖機より先に
+    /// 照合した回と暖機の後に崩れた回の砦。**待つのは異常を検知した走査だけ**(健全な走査の所要は変わらない)。待った時間は締め切りから差し引く
+    /// (`DeadlineExclusion`。アプリの応答ではない)。尽きたら `PersistentAnomaly` で失敗(従来どおり赤)。
+    /// **CPU で計算させる案は不採用**(同じ実測で異常 63% = 悪化・所要 2.5〜3 倍。壊れるのはモデルの手前の画像の変換)
+    public static let anomalyRetryDelays: [Double] = [0.5, 1, 2, 4, 8]
+
+    /// `body`(1回の走査)を、待てば戻る Vision の異常のあいだ `delays` の順に待ってやり直す。
+    /// 異常以外のエラーはそのまま投げる。`onRetry` は待つ直前に呼ぶ(何回目か・検知した異常)。純粋な制御だけ
+    /// (待ち方は `sleep` で差し替える = テストは実時間を待たない)
+    static func retryingTransientAnomalies<T>(delays: [Double],
+                                              sleep: (Double) async throws -> Void,
+                                              onRetry: (Int, MatchError) -> Void,
+                                              _ body: () async throws -> T) async throws -> T {
+        var attempt = 0
+        var waited = 0.0
+        while true {
+            do {
+                return try await body()
+            } catch let error as MatchError where error.isTransient {
+                guard attempt < delays.count else {
+                    if attempt == 0 { throw error }
+                    throw PersistentAnomaly(last: error, retries: attempt, waitedSeconds: waited)
+                }
+                onRetry(attempt + 1, error)
+                try await sleep(delays[attempt])
+                waited += delays[attempt]
+                attempt += 1
+            }
+        }
     }
 
     /// 引数の検査(DSL がデバイスに触る前に落とすため public)。nil = 問題なし
