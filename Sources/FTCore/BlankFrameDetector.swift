@@ -71,6 +71,18 @@ public enum BlankFrameDetector {
     /// **凍結の確定(回復を撃つ根拠)には使わない**。32 x 32 で見るのは、16 x 16 だと暗い画面の小さな文字が
     /// セルの平均に薄まって黒に紛れるため
     public static func isBlackApartFromBottomStrip(pngData: Data) -> Bool {
+        isBlack(pngData: pngData, ignoringTopRows: 0)
+    }
+
+    /// 上端のステータスバーの帯**も**除いて黒いか。**occlusion-guard の素通りだけが使う**(凍結の警告には使わない
+    /// = 上端に中身がある暗い画面を凍結と呼ばない)。撮れていない絵に時計と電池の帯だけが残る形は、
+    /// 下端だけ除く判定では黒と言えず、黒い絵を根拠に「描かれていない」の赤を出していた
+    /// (実測 Android Emulator: 5 周で 3 本。3 台の Mac の OCR が同じ 2 行だけを読んだ = 絵そのものが黒い)
+    public static func isBlackApartFromSystemBars(pngData: Data) -> Bool {
+        isBlack(pngData: pngData, ignoringTopRows: blackFrameIgnoredTopRows)
+    }
+
+    private static func isBlack(pngData: Data, ignoringTopRows topRows: Int) -> Bool {
         let grid = blackFrameGrid
         guard let source = CGImageSourceCreateWithData(pngData as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
@@ -82,7 +94,7 @@ public enum BlankFrameDetector {
         guard let data = context.data else { return false }
         let pixels = data.bindMemory(to: UInt8.self, capacity: grid * grid * 4)
         // メモリの行 0 が画像の上端。下端 blackFrameIgnoredBottomRows 行(帯)は見ない
-        for row in 0..<(grid - blackFrameIgnoredBottomRows) {
+        for row in topRows..<(grid - blackFrameIgnoredBottomRows) {
             for column in 0..<grid {
                 let offset = (row * grid + column) * 4
                 if max(pixels[offset], pixels[offset + 1], pixels[offset + 2]) > blackFrameMaxChannel {
@@ -97,6 +109,8 @@ public enum BlankFrameDetector {
     /// 収まる高さ(実測の黒い絵では割れたセルは最下行だけ)
     static let blackFrameGrid = 32
     static let blackFrameIgnoredBottomRows = 2
+    /// 32 x 32 の上端 2 行 = 画面の約 6%。ステータスバー(Android 1080x2424 で 142px = 5.9%・iPhone 約 6%)が収まる高さ
+    static let blackFrameIgnoredTopRows = 2
     /// セル平均の各チャンネルの上限。実測の黒い絵は 0。暗いテーマの文字入りのセルは 32 x 32 でもこれを超える
     static let blackFrameMaxChannel: UInt8 = 12
 }

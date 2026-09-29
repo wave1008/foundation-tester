@@ -336,6 +336,28 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(outcome.notes.contains(.blankScreenshot), "\(outcome.notes)")
     }
 
+    /// ステータスバーだけが残った黒い絵(Android Emulator の実物)も判定の根拠にしない。
+    /// 視覚検証は上端の帯も除く判定(isBlackApartFromSystemBars)を使う —— 下端だけ除く判定だと黒と言えず赤にしていた
+    func testBlackScreenshotWithAStatusBarSkipsTheGuardWithANote() async throws {
+        let png = try Data(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Tests/Fixtures/BlackFrames/android-emulator-black-with-status-bar.png"))
+        let element = ElementInfo(ref: 1, type: "staticText", identifier: "msg", label: "result=-", value: nil,
+                                  placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 16, y: 200, width: 160, height: 24), depth: 0)
+        let primary = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[element]],
+                                    screenshots: [png])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true)
+        let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                                      timeout: 1, occlusionGuard: true))
+        guard case .passed = outcome.status else {
+            XCTFail("ステータスバーだけの黒い絵を根拠に赤にした: \(outcome.status)"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0)
+        XCTAssertTrue(outcome.notes.contains(.blankScreenshot), "\(outcome.notes)")
+    }
+
     /// #2 修正: textEquals の期待値(ユーザーリテラル)は結合 `, ` 規則を外す(句読点入りテキストを守る)
     func testEligibilityAllowsCommaInUserText() {
         // 実 label(exist)では `, ` を結合セマンティクスとして除外

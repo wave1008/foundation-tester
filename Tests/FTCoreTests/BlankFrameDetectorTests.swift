@@ -147,6 +147,38 @@ final class BlankFrameDetectorTests: XCTestCase {
         XCTAssertFalse(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
     }
 
+    /// 撮れていない絵に**ステータスバーだけ**残った実物(Android Emulator。3 台の Mac の OCR が同じ 2 行だけを読んだ)。
+    /// 視覚検証の素通りの判定は黒と言い、凍結の警告の判定は言わない(上端に中身のある暗い画面を凍結と呼ばない)
+    func testRealBlackFrameWithAStatusBarIsBlackOnlyForTheVisualCheck() throws {
+        let png = try Data(contentsOf: Self.blackFrames
+            .appendingPathComponent("android-emulator-black-with-status-bar.png"))
+        XCTAssertTrue(BlankFrameDetector.isBlackApartFromSystemBars(pngData: png))
+        XCTAssertFalse(BlankFrameDetector.isBlackApartFromBottomStrip(pngData: png))
+    }
+
+    /// 視覚検証の判定が見ないのは上端の帯(約 6%)だけ。その下に中身があれば黒い絵ではない
+    func testSystemBarsCheckStillSeesContentBelowTheStatusBar() {
+        let png = Self.makePNG(width: 400, height: 800) { context in
+            context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 400, height: 800))
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            // CG の原点は左下 = y 700〜730 は上から 9〜12%(帯の下)
+            context.fill(CGRect(x: 150, y: 700, width: 100, height: 30))
+        }
+        XCTAssertFalse(BlankFrameDetector.isBlackApartFromSystemBars(pngData: png))
+    }
+
+    /// 上端の帯(ステータスバー)の中身は視覚検証の判定では見ない
+    func testSystemBarsCheckIgnoresTheStatusBar() {
+        let png = Self.makePNG(width: 400, height: 800) { context in
+            context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: 400, height: 800))
+            context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            context.fill(CGRect(x: 150, y: 780, width: 100, height: 20))
+        }
+        XCTAssertTrue(BlankFrameDetector.isBlackApartFromSystemBars(pngData: png))
+    }
+
     private static func makePNG(width: Int, height: Int, draw: (CGContext) -> Void) -> Data {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let context = CGContext(data: nil, width: width, height: height,

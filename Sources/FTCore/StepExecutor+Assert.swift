@@ -181,7 +181,7 @@ extension StepExecutor {
         }
         // 黒い絵(撮れていない・表示の凍結)は FM も OCR も「描かれていない」と読むので判定の根拠にしない。
         // Tier-1 の後ろに置く = 素通りの回(大半)は PNG をもう一度復号しない
-        if BlankFrameDetector.isBlackApartFromBottomStrip(pngData: screenshot) {
+        if BlankFrameDetector.isBlackApartFromSystemBars(pngData: screenshot) {
             noteCodesThisStep.insert(.blankScreenshot)
             return nil
         }
