@@ -162,6 +162,38 @@ final class FMLivenessTests: XCTestCase {
         }
     }
 
+    /// **連続失敗は機械全体で数える**: シナリオは1本ごとに別プロセスで走るので、プロセス内で数えると
+    /// 閾値に届かず死を記録しない。別プロセスを、プロセス内の記憶を捨てることで模す
+    func testFailureStreakSurvivesAcrossProcesses() throws {
+        try SharedResource.hostCaches.locked {
+            FMHealth.reset()
+            defer { FMHealth.reset() }
+            for _ in 0..<3 {
+                FMLiveness.resetWriteMemo()
+                FMHealth.record(kind: "occlusion", path: .vision, ms: 16000, ok: false, error: "boom")
+            }
+            XCTAssertEqual(FMLiveness.read()?.vision?.state, .dead,
+                           "プロセスを跨いだ3回の連続失敗で死と記録されるはず")
+        }
+    }
+
+    /// 門が読む判定: 新しい死だけが「呼ばない」。古い死・生・不明は呼んで確かめる
+    func testIsKnownDeadOnlyForAFreshDeath() throws {
+        try SharedResource.hostCaches.locked {
+            let now = Date()
+            XCTAssertFalse(FMLiveness.isKnownDead(.vision, now: now), "記録が無い = 不明 = 呼ぶ")
+            FMLiveness.record(path: .vision, state: .dead, source: .probe, error: "boom", now: now)
+            XCTAssertTrue(FMLiveness.isKnownDead(.vision, now: now))
+            XCTAssertFalse(FMLiveness.isKnownDead(.text, now: now), "経路は独立")
+            XCTAssertFalse(FMLiveness.isKnownDead(.vision, now: now.addingTimeInterval(121)),
+                           "120 秒より古い死は不明 = 呼んで確かめる")
+            FMLiveness.resetWriteMemo()
+            FMLiveness.record(path: .vision, state: .alive, source: .probe,
+                              now: now.addingTimeInterval(1))
+            XCTAssertFalse(FMLiveness.isKnownDead(.vision, now: now.addingTimeInterval(1)))
+        }
+    }
+
     /// 着地しなかった書き込みが、その直後の正当な書き込みを畳んで消さない。
     /// 控えを「書こうとした回」で進めると、ディスクに1度も着地しない状態が続く
     func testARejectedWriteDoesNotSwallowTheNextOne() throws {

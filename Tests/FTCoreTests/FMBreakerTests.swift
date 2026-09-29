@@ -84,14 +84,14 @@ final class FMBreakerTests: XCTestCase {
     /// ゲートはブレーカが落ちていれば FM を呼ばせない
     func testGateRefusesWhileOpen() async {
         for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
-        let entered = await FMGate.enter()
+        let entered = await FMGate.enter(path: .vision)
         XCTAssertFalse(entered, "落ちている間は入場させない")
         if entered { FMGate.leave() }
     }
 
     /// 落ちていなければゲートは通る(ロックも取れる)
     func testGateAllowsWhileClosed() async {
-        let entered = await FMGate.enter()
+        let entered = await FMGate.enter(path: .vision)
         XCTAssertTrue(entered)
         FMGate.leave()
     }

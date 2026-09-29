@@ -284,10 +284,68 @@ public enum FMLiveness {
         return Reading(text: fresh(record?.text), vision: fresh(record?.vision))
     }
 
+    /// **FM を呼ぶ前の門が読む判定**(`FMGate.enter(path:)`)。その経路が**新しい死**と記録されていれば
+    /// true = 呼ばない。古い・不明・生は false(呼んで確かめる)。**書き込み先を開けない(テスト・
+    /// opt-in していない)プロセスは本番の台帳を読まない** —— 読むと、機械の FM が死んでいる間だけ
+    /// 無関係なテストの門が閉じる
+    public static func isKnownDead(_ path: Path, now: Date = Date()) -> Bool {
+        guard let url = writeURL else { return false }
+        guard let verdict = read(at: url)?[path], verdict.isFresh(now: now) else { return false }
+        return verdict.state == .dead
+    }
+
+    // MARK: - 連続失敗(機械全体)
+
+    /// 経路ごとの連続失敗数の置き場。**機械全体で数える**: シナリオは1本ごとに別プロセスで走り、
+    /// 1本が FM を撃つのは数回なので、プロセス内で数えると閾値(FMBreaker.threshold)に届かず、
+    /// 死を1度も記録しないまま全シナリオが失敗の所要(実測 16 秒)を払っていた
+    static let streakFileName = "fm-failure-streak.json"
+
+    /// 経路の連続失敗を 1 増やして新しい値を返す。書けない(テスト)ときはプロセス内で数える
+    public static func bumpFailureStreak(_ path: Path) -> Int {
+        updateStreak(path) { $0 + 1 }
+    }
+
+    /// 経路の連続失敗を 0 に戻す(成功した)
+    public static func resetFailureStreak(_ path: Path) {
+        _ = updateStreak(path) { _ in 0 }
+    }
+
+    private static var localStreak: [Path: Int] = [:]
+
+    private static func updateStreak(_ path: Path, _ change: (Int) -> Int) -> Int {
+        guard let url = writeURL?.deletingLastPathComponent().appendingPathComponent(streakFileName) else {
+            lock.lock()
+            defer { lock.unlock() }
+            let next = change(localStreak[path] ?? 0)
+            localStreak[path] = next
+            return next
+        }
+        let dir = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // 台帳と同じ flock の内側で 読む→変える→書く(書き手は複数プロセス)。取れなければ数えない側
+        guard let lockFD = openLocked(dir.appendingPathComponent(lockFileName)) else { return 0 }
+        defer { close(lockFD) }
+        var counts = (try? Data(contentsOf: url))
+            .flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) } ?? [:]
+        let next = change(counts[path.rawValue] ?? 0)
+        guard counts[path.rawValue] != next else { return next }
+        counts[path.rawValue] = next
+        if let data = try? JSONEncoder().encode(counts) {
+            let tmp = dir.appendingPathComponent(
+                ".fm-failure-streak.\(ProcessInfo.processInfo.processIdentifier).\(UUID().uuidString).tmp")
+            if (try? data.write(to: tmp)) != nil, rename(tmp.path, url.path) != 0 {
+                try? FileManager.default.removeItem(at: tmp)
+            }
+        }
+        return next
+    }
+
     /// テスト用。プロセス内の coalesce の記憶を捨てる(ディスクは触らない)
     public static func resetWriteMemo() {
         lock.lock()
         lastWritten.removeAll()
+        localStreak.removeAll()
         lock.unlock()
     }
 }

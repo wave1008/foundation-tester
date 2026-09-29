@@ -90,7 +90,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   vision 経路(occlusion-guard・screenLooksLike)だけ**なので、言うのは vision の死を、その機能が有効な
   run でだけ。**text 経路はシナリオの下書き・命名だけが使う** = text の死で run が失う機能は無い)/
   run.json の `fmDead`・`fmDeadReason` / `ft_status`・`ft_doctor`・`fleetest doctor --fm-only`
-  (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)
+  (**doctor は text と vision を両方 実呼び出しで確かめ、どちらが死んでも exit 1**)。
+  **5 つ目の読み手は FM を呼ぶ前の門**(`FMGate.enter(path:)` → `FMLiveness.isKnownDead`): その経路が
+  **新しい死**なら呼ばずにスキップ(枠を取る前と取った後の2回見る)。古い・不明・生は呼んで確かめる =
+  回復は次の実呼び出しかプローブで拾う。**連続失敗は機械全体で数える**(`FMLiveness.bumpFailureStreak`。
+  シナリオは1本ごとに別プロセスで、プロセス内で数えると閾値に届かず死を1度も記録しなかった)
 - **occlusion-guard の FM 段には期待文字列を渡さない**(2026-09-15)。FM に訊くのは「何が描かれているか」
   (転写 1 欄・prompt は定数)だけで、可否は `FTCore.TranscriptMatch` が期待文字列と突き合わせて決める。
   期待文字列を prompt に入れて「見えるか」を訊くと、空白・別の文字の crop でも期待文字列を写して

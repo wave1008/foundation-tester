@@ -56,7 +56,10 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
 
 - **Once FM stops, it does not come back until you restart the Mac.** Restart the Mac while no test is running.
 - Tests still run in the meantime, but `screenLooksLike` is skipped, and the text visual verification is
-  judged by OCR alone.
+  judged by OCR alone. **Text that OCR cannot judge passes without being checked** (such steps carry the
+  note `visibility-guard-skipped`).
+- While FM is known to have stopped, fleetest does not call it (calling a stopped FM takes more than ten
+  seconds each time). It checks again once every two minutes, so it is used again as soon as it comes back.
 
 ### Keeping disk space free
 

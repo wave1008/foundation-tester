@@ -149,24 +149,17 @@ public enum FMHealth {
         }
     }
 
-    /// 経路ごとの連続失敗数。**FMBreaker のカウンタは経路を区別しない**ので流用できない ——
-    /// vision だけが死んで text が通り続ける状態(実測。[[fm-flap-ane-load-failure]])では
-    /// text の成功がブレーカを毎回戻すため、ブレーカは永久に落ちず vision の死を記録できない。
+    /// 経路ごとの連続失敗数(**機械全体**。数え方と置き場は `FMLiveness.bumpFailureStreak`)。
+    /// **FMBreaker のカウンタは経路を区別しない**ので流用できない —— vision だけが死んで text が通り
+    /// 続ける状態(実測。[[fm-flap-ane-load-failure]])では text の成功がブレーカを毎回戻すため、
+    /// ブレーカは永久に落ちず vision の死を記録できない。
     /// **閾値は増やさず FMBreaker.threshold を共有する**(「連続何回で死とみなすか」を2つ持たない)
-    private static var consecutiveFailures: [FMLiveness.Path: Int] = [:]
-
     private static func resetConsecutiveFailures(_ path: FMLiveness.Path) {
-        lock.lock()
-        defer { lock.unlock() }
-        consecutiveFailures[path] = 0
+        FMLiveness.resetFailureStreak(path)
     }
 
     private static func bumpConsecutiveFailures(_ path: FMLiveness.Path) -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        let next = (consecutiveFailures[path] ?? 0) + 1
-        consecutiveFailures[path] = next
-        return next
+        FMLiveness.bumpFailureStreak(path)
     }
 
     /// NSError の入れ子(NSUnderlyingError / NSMultipleUnderlyingErrors)を辿って
@@ -241,12 +234,14 @@ public enum FMHealth {
 
     public static func reset() {
         lock.lock()
-        defer { lock.unlock() }
         samples.removeAll()
         firstError = nil
         skipped = 0
         gateWaitMs.removeAll()
-        consecutiveFailures.removeAll()
+        lock.unlock()
+        // 連続失敗は機械全体の置き場にある(FMLiveness)。ロックの外で戻す(ファイル I/O)
+        FMLiveness.resetFailureStreak(.text)
+        FMLiveness.resetFailureStreak(.vision)
     }
 
     /// 実行後に出す失敗警告(1行目=要約、2行目=最初のエラー)。失敗が無ければ nil
@@ -256,7 +251,7 @@ public enum FMHealth {
         var text: String
         if s.failures == 0 {
             return "⚠️ Skipped \(s.skipped) FM call(s)"
-                + " (circuit breaker open, or the serialisation wait ran out. "
+                + " (FM is known to be dead, the circuit breaker is open, or the serialisation wait ran out. "
                 + "On those steps screenLooksLike passed unchecked and the occlusion-guard judged from OCR alone"
                 + OCROnlyVisibility.fmFallbackCaveat + ")"
         }
@@ -271,7 +266,7 @@ public enum FMHealth {
         }
         if s.skipped > 0 {
             text += ". A further \(s.skipped) were skipped"
-                + " (circuit breaker open, or the serialisation wait ran out)"
+                + " (FM is known to be dead, the circuit breaker is open, or the serialisation wait ran out)"
         }
         if let e = s.firstError { text += "\n   First error: \(e)" }
         return text

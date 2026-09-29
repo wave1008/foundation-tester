@@ -27,8 +27,10 @@ public enum FMGate {
     /// 巻き戻り得る**。素の `leave()` を末尾に置くと巻き戻りで飛ばされ、**ホスト全体で直列化される
     /// FM ロックを掴んだまま**になる = 他ワーカーの FM が acquire 上限まで待たされる。
     /// false のときは呼び出し側が nil を返してガードを素通りさせる(失敗時と同じ振る舞い)
-    public static func enter() async -> Bool {
-        if FMBreaker.isOpen {
+    /// `path` に**既定値は置かない**(経路を言い忘れた新しい呼び出し元をコンパイルで止める。
+    /// 経路は独立に死ぬ = FMLiveness.swift 冒頭 ②)
+    public static func enter(path: FMLiveness.Path) async -> Bool {
+        if FMBreaker.isOpen || FMLiveness.isKnownDead(path) {
             FMHealth.recordSkip()
             return false
         }
@@ -40,6 +42,13 @@ public enum FMGate {
             return false
         }
         FMHealth.recordGateWait(ms: Date().timeIntervalSince(waitStartedAt) * 1000)
+        // **待っている間に死と記録されたら撃たない**: 枠は1つなので、死んだ FM の前に並んだ全員が
+        // 順に失敗の所要(実測 16 秒)を払っていた
+        if FMLiveness.isKnownDead(path) {
+            FMLock.release()
+            FMHealth.recordSkip()
+            return false
+        }
         return true
     }
 

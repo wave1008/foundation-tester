@@ -43,7 +43,7 @@ public enum ScenarioNamer {
     public static func suggest(summary: String, appName: String) async -> ScenarioNaming? {
         guard FMDoctor.check().available else { return nil }
         // FM はホスト全体で直列化される資源(FMLock 参照)。取れなければ既定名にフォールバック
-        guard await FMGate.enter() else { return nil }
+        guard await FMGate.enter(path: .text) else { return nil }
         defer { FMGate.leave() }
         do {
             let session = LanguageModelSession(instructions: instructions)

@@ -68,10 +68,10 @@ final class FMGateWaitWiringTests: XCTestCase {
             FMBreaker.reset()   // 開いていると enter が短絡して門に触れない
             FMHealth.reset()
 
-            let first = await FMGate.enter()
+            let first = await FMGate.enter(path: .vision)
             XCTAssertTrue(first, "1本目は取れるはず")
 
-            async let second = FMGate.enter()
+            async let second = FMGate.enter(path: .vision)
             try await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
             FMGate.leave()
             let secondAcquired = await second
@@ -93,7 +93,7 @@ final class FMGateWaitWiringTests: XCTestCase {
             FMBreaker.reset()
             FMHealth.reset()
 
-            let acquired = await FMGate.enter()
+            let acquired = await FMGate.enter(path: .vision)
             XCTAssertTrue(acquired)
             FMGate.leave()
 
@@ -101,5 +101,18 @@ final class FMGateWaitWiringTests: XCTestCase {
             let usage = try XCTUnwrap(FMHealth.usage())
             XCTAssertLessThan(usage.gateWaitMaxMs, 100, "競合が無ければ待たない")
         }
+    }
+
+    /// **死が新しいうちは門が閉じる**(枠を取らず・待たず・スキップに数える)。死んだ FM に全シナリオが
+    /// 失敗の所要を払っていた対策の配線
+    func testTheGateStaysClosedWhileThePathIsKnownDead() async throws {
+        FMLiveness.record(path: .vision, state: .dead, source: .probe, error: "boom")
+        FMHealth.reset()
+        let entered = await FMGate.enter(path: .vision)
+        XCTAssertFalse(entered, "新しい死の経路は呼ばない")
+        XCTAssertEqual(FMHealth.snapshot().skipped, 1, "スキップとして数える")
+        let textEntered = await FMGate.enter(path: .text)
+        XCTAssertTrue(textEntered, "別の経路は閉じない")
+        FMGate.leave()
     }
 }

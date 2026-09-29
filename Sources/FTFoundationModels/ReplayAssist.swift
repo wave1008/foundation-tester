@@ -33,7 +33,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         guard #available(macOS 27, *) else { return nil }
         guard let cgImage = Self.cgImage(fromPNG: screenshotPNG) else { return nil }
         // FM はホスト全体で直列化される資源(FMLock 参照)
-        guard await FMGate.enter() else { return nil }
+        guard await FMGate.enter(path: .vision) else { return nil }
         defer { FMGate.leave() }
         let session = LanguageModelSession(instructions: """
         You verify screens for UI tests. Look at the screenshot and judge strictly

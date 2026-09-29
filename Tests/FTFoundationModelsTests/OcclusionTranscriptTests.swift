@@ -48,7 +48,7 @@ final class OcclusionTranscriptTests: XCTestCase {
         XCTAssertEqual(body.components(separatedBy: "TranscriptMatch.judge(").count - 1, 2,
                        "判定が TranscriptMatch を等倍と拡大の 2 回通っていない")
         // 門は 1 回だけ取る(2 回で 2 回取ると、間に他ワーカーが割り込んで crop と判定がずれる)
-        XCTAssertEqual(body.components(separatedBy: "FMGate.enter()").count - 1, 1)
+        XCTAssertEqual(body.components(separatedBy: "FMGate.enter(path: .vision)").count - 1, 1)
     }
 
     /// 惜しい転写(字体の取り違え)は OCR に確かめさせるが、**OCR は素通りの根拠にしかしない**:

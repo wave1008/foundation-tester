@@ -95,7 +95,7 @@ public struct OcclusionVerifier {
         // FM はホスト全体で直列化される資源。並列に投げても速くならず modelmanagerd の
         // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMLock 参照)。
         // 等倍と拡大の 2 回は**同じ FMGate の取得の中**で回す(間に他ワーカーを割り込ませない)
-        guard await FMGate.enter() else { return nil }
+        guard await FMGate.enter(path: .vision) else { return nil }
         defer { FMGate.leave() }
 
         guard let first = await Self.transcribe(crop, instructions: Self.instructions, prewarmed: true)
