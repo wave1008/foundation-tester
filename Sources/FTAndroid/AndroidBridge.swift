@@ -443,13 +443,26 @@ extension AndroidDriver {
         return try? Shell.run(args, timeout: timeout)
     }
 
+    /// `pidof` の出力から**信頼できる pid 文字列**だけを取り出す(純関数)。**status では
+    /// adb 自体の失敗と区別できない** —— pidof は「見つからない」でも非ゼロで終わるため、
+    /// 非ゼロは「動いていない」と「adb がデバイスに届かない」の両方で起きる。空白区切りの
+    /// 数字だけなら pid 列(空 = 動いていない)、それ以外(adb のエラー文言等)は不明で nil
+    static func pidofDigitsOnly(_ output: String) -> String? {
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty || trimmed.split(separator: " ").allSatisfy({ Int($0) != nil }) else {
+            return nil
+        }
+        return trimmed
+    }
+
     /// `pidofResult` の出力から生死を判定する純関数(テスト用に分離)。
-    /// **取得できない(nil)ときは nil を返し、false(未起動)に丸めない** —— 丸めると
-    /// 「観測できない」と「ブリッジが無い」を混同し、pidof がたまたま失敗しただけの回に
-    /// 絵が消える(false と誤認する)ことになる
+    /// **取得できない(nil)・pid 列として読めない(adb 失敗のエラー文言等)ときは nil を返し、
+    /// true/false に丸めない** —— 丸めると「観測できない」と「ブリッジが有る/無い」を混同し、
+    /// pidof がたまたま失敗しただけの回に絵が消える、または adb のエラー文言を pid と誤認して
+    /// 「動いている」と誤って断定する
     static func bridgeRunningVerdict(_ result: Shell.Result?) -> Bool? {
-        guard let result else { return nil }
-        return !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard let result, let digits = pidofDigitsOnly(result.output) else { return nil }
+        return !digits.isEmpty
     }
 
     /// ブリッジを**建てずに**生死だけを見る(`ensureBridge()` を通さない)。
@@ -473,13 +486,16 @@ extension AndroidDriver {
         } else if version != Self.expectedBridgeVersionCode {
             summary += " (update required → v\(Self.expectedBridgeVersionCode); updated automatically on next use)"
         }
-        let pid = Self.pidofResult(serial: serial, adbPath: adbPath)?
-            .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if pid.isEmpty {
-            summary += " stopped (started automatically on first use)"
-        } else {
+        // pidofDigitsOnly を通す(adb 自体の失敗の出力を pid と誤認して「動いている」と
+        // 言わない・逆に「停止」とも言い切らない。bridgeRunningVerdict と同じ判定)
+        switch Self.pidofResult(serial: serial, adbPath: adbPath).map(\.output).flatMap(Self.pidofDigitsOnly) {
+        case .some(let pid) where !pid.isEmpty:
             summary += " running (pid \(pid)"
                 + (findExistingForward().map { ", forward tcp:\($0)" } ?? "") + ")"
+        case .some:
+            summary += " stopped (started automatically on first use)"
+        case .none:
+            summary += " status unknown (adb did not answer pidof as expected)"
         }
         return summary
     }

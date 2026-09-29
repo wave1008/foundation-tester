@@ -281,7 +281,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 自分の時計で指を離していた(離し時刻+`StepExecutor.holdReleaseMargin` を過ぎてから
     /// `holdEnd` が呼ばれた)。判定は変えない —— ブロックの中身(押している間しか出ない部品の確認)は
     /// 既に終わっているので失敗にはしないが、**ブロックの後半は指が上がった状態で走っていた**ことを残す。
-    /// **率が上がったら `holdSeconds` がブロックの所要に対して短い**
+    /// **率が上がったら `holdSeconds` がブロックの所要に対して短い**。
+    /// ブロックの中で**失敗したステップ**にも、その時点で指が上がっていれば立てる(中断で `holdEnd` が
+    /// 実行されないため。`StepExecutor.noteHoldAlreadyReleased`)
     case holdEndedBeforeBlock = "hold-ended-before-block"
 
     /// xcuitest の高速起動で、起動させた後に**ランナーがアプリを前面と見ないまま** activate を頼んだ

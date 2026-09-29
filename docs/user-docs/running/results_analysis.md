@@ -47,7 +47,8 @@ instead.
 
 Runs recorded before this feature existed, or whose `events/` was already cleared by retention
 cleanup (see [../../results-json.md](../../results-json.md), Japanese), have no execution log —
-the command reports that on stderr and exits non-zero.
+the command reports that on stderr and exits non-zero. A run that was interrupted (or aborted while
+preparing devices) before any scenario started has no execution log either, and the message says so.
 A scenario that was superseded by a re-run (frozen device, environment error) still shows under an
 extra "(superseded)" heading, and a log that was still being written when the run was killed shows
 under "(incomplete)".

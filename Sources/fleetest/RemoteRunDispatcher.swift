@@ -672,7 +672,8 @@ struct RemoteRunDispatcher {
         let existing = try? sshCapture(RemoteDispatchLock.readCommand(home: layout.home))
         let sweep = Self.staleLockAutoRelease(
             lockRead: existing, myIssuer: LocalConfig.resolveIssuerId(),
-            myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+            myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
+            startTime: ProcessLiveness.startTime)
         guard case .release = sweep else { return .notOurs }
         switch RemoteDispatchUnlock.guardingLiveRemoteRun(
             sweep, livePIDs: liveDispatchedRunPIDs(layout: layout)) {
@@ -703,7 +704,7 @@ struct RemoteRunDispatcher {
     /// 対象が無い/判定できないので、通常のエラー文言(dispatchLockFailureMessage)に任せる
     static func staleLockAutoRelease(
         lockRead: String?, myIssuer: String, myHost: String, pidAlive: (Int32) -> Bool,
-        startTime: (Int32) -> Date? = ProcessLiveness.startTime
+        startTime: (Int32) -> Date?
     ) -> RemoteDispatchUnlock.Decision {
         guard let lockRead, !lockRead.isEmpty else { return .nothingToDo }
         let probe = RemoteDispatchLock.Probe.held(RemoteDispatchLock.decode(lockRead))
@@ -1013,7 +1014,8 @@ struct RemoteRunDispatcher {
         try? FileManager.default.createDirectory(at: localReports, withIntermediateDirectories: true)
         let remoteReports = "\(host.sshTarget):\(remoteReportDir)/"
         // --safe-links の理由は RemoteArtifactCollection.rsyncArgs のコメント(回収は共有ディレクトリからの入力)
-        collectRsync(["rsync", "-az", "--safe-links", remoteReports, localReports.path + "/"],
+        collectRsync(["rsync", "-az", "--safe-links"] + SSHOptions.rsyncRemoteShellArgs
+                        + [remoteReports, localReports.path + "/"],
                      what: "reports", missingNote: Self.reportsMissingNote(interrupted: interrupted))
     }
 

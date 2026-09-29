@@ -88,6 +88,16 @@ extension StepExecutor {
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }
 
+    /// `hold { }` のブロックの中で失敗したステップに、**その時点で指が既に上がっていた**事実を残す。
+    /// 失敗でシナリオが中断されると `holdEnd` は実行されず、あちらの注記では残せない(押している間だけ出る
+    /// 部品を待っているうちに `holdSeconds` が尽きた失敗が、ただの「見つからない」に見える)。
+    /// 判定は変えない。holdStart / holdEnd 自身には立てない
+    func noteHoldAlreadyReleased(onFailureOf step: FlowStep, status: StepResult.Status) {
+        guard case .failed = status, step.action != "holdStart", step.action != "holdEnd",
+              let liftsAt = holdLiftsAt, ContinuousClock().now > liftsAt else { return }
+        noteCodesThisStep.insert(.holdEndedBeforeBlock)
+    }
+
     /// **中断されたシナリオでも**、ブリッジが指を離す時刻までは待つ(`FTDriveCore.finishHold` からだけ
     /// 呼ぶ)。中断中は `holdEnd` という「ステップ」自体が実行されない(perform() が触らずに
     /// skip を記録して返る)ので、待ちだけをここで直接行う。何も送らない・失敗しない・記録も残さない

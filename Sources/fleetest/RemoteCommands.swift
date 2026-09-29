@@ -318,7 +318,7 @@ struct RemoteCommand: AsyncParsableCommand {
             let decision = RemoteDispatchUnlock.decideThisMachine(
                 probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
                 myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
-                livePIDs: { liveDispatchedRunPIDsOnThisMachine() })
+                livePIDs: { liveDispatchedRunPIDsOnThisMachine() }, startTime: ProcessLiveness.startTime)
             switch decision {
             case .nothingToDo:
                 ConsoleOut.out("→ no dispatch lock on this Mac; nothing to do")
@@ -362,7 +362,8 @@ struct RemoteCommand: AsyncParsableCommand {
             }
             var decision = RemoteDispatchUnlock.decide(
                 probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
-                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
+                startTime: ProcessLiveness.startTime)
             if case .release = decision {
                 decision = RemoteDispatchUnlock.guardingLiveRemoteRun(
                     decision, livePIDs: liveDispatchedRunPIDs(target: target, base: layout.base))
@@ -418,7 +419,8 @@ struct RemoteCommand: AsyncParsableCommand {
                           let probe = RemoteDispatchLock.parseProbe(probeResult.output) else { continue }
                     let decision = RemoteDispatchUnlock.decideAutomaticSweep(
                         probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
-                        myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive)
+                        myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
+                        startTime: ProcessLiveness.startTime)
                     guard case .release = decision else { continue }
                     let guarded = RemoteDispatchUnlock.guardingLiveRemoteRun(
                         decision, livePIDs: liveDispatchedRunPIDs(target: target, base: layout.base))

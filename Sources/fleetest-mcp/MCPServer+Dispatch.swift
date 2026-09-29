@@ -219,7 +219,7 @@ extension MCPServer {
 
     /// ツール引数の数値を丸ごと `ArgumentBounds` に掛ける(`call` の入口の1箇所)。
     /// 表に無い鍵・`.unbounded` の鍵は素通し。**型違いはここでは断らない** ——
-    /// 型の文言は `intArgument`/`doubleArgument` が値を読むときに出す(2つの文言を作らない)
+    /// 型は隣の `checkDeclaredArgumentTypes` が(`call` の入口で先に)断る
     static func checkArgumentBounds(_ args: [String: Any]) throws {
         for (key, value) in args {
             let numeric: Double?
@@ -231,6 +231,112 @@ extension MCPServer {
             guard let numeric, let violation = ArgumentBounds.violation(key, numeric) else { continue }
             throw MCPError(violation)
         }
+    }
+
+    /// スキーマの `type`(integer/number/string/boolean)と値の型の食い違いを入口で全数断る
+    /// (`checkArgumentBounds` の隣)。`intArgument` 等の型検査は**読まれた回にしか効かない** ——
+    /// 条件付きでしか読まれない引数(`waitSeconds` 等)は、読まれない回に型違いが黙って通る。
+    /// 文言は `numericArgumentTypeError` 等と同じ関数を呼ぶ(2つの文言を作らない)。array/object 型
+    /// (fingers/drop/scenes)は対象外 = 各ツールが `intArrayArgument` 等で検査する
+    static func checkDeclaredArgumentTypes(tool: String, args: [String: Any]) throws {
+        let ownMessage = argumentsWithTheirOwnTypeMessage[tool] ?? []
+        guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let properties = schema["properties"] as? [String: Any] else { return }
+        for (key, value) in args {
+            guard !ownMessage.contains(key), let prop = properties[key] as? [String: Any] else { continue }
+            let declaredTypes: [String]
+            if let single = prop["type"] as? String { declaredTypes = [single] }
+            else if let multiple = prop["type"] as? [String] { declaredTypes = multiple }
+            else { continue }
+            guard !declaredTypes.contains("array"), !declaredTypes.contains("object") else { continue }
+            guard !declaredTypes.contains(where: { matchesDeclaredType($0, value: value) }) else { continue }
+            throw MCPError(declaredTypeMismatchMessage(key: key, raw: value, declaredTypes: declaredTypes))
+        }
+    }
+
+    /// 型違いに**専用の文言**(直し方つき)を持つ引数。入口の汎用の文で先に断ると、その案内が消える
+    static let argumentsWithTheirOwnTypeMessage: [String: Set<String>] = [
+        "ft_batch": ["steps"],  // 配列形は「; で繋いだ1本の文字列へ」と書き換え方を返す
+    ]
+
+    /// スキーマの `type` 1個ぶんの判定。**JSON の boolean は NSNumber(内部は CFBoolean)で来る**
+    /// ので `as? Int`/`as? Bool` はどちらの向きにも取り違える(true が 1 として通る・逆に 1 が
+    /// true と読める) —— `isJSONBoolean`(CFGetTypeID。`FTCore.EventLogFormat.describe` と同じ手)で
+    /// 先に弾いてから数値/文字列判定に掛ける
+    private static func matchesDeclaredType(_ type: String, value: Any) -> Bool {
+        switch type {
+        case "boolean": return isJSONBoolean(value)
+        case "integer": return !isJSONBoolean(value) && value is Int
+        case "number": return !isJSONBoolean(value) && (value is Int || value is Double)
+        case "string": return value is String
+        default: return true // 未知の宣言(将来の type)は素通し —— ここはスキーマ検査であって型の発明ではない
+        }
+    }
+
+    /// **`private` ではない**: `describeArgumentValue` も同じ判別を使う
+    static func isJSONBoolean(_ value: Any) -> Bool {
+        guard let number = value as? NSNumber else { return false }
+        return CFGetTypeID(number) == CFBooleanGetTypeID()
+    }
+
+    /// 単独型は `numericArgumentTypeError`/`stringArgumentTypeError`/`booleanArgumentTypeError`
+    /// をそのまま呼ぶ(2つの文言を作らない)。複数型宣言(`scrollFrame` の `["string","integer"]` 等)
+    /// だけ、候補を "or" で繋いだ文を組む
+    private static func declaredTypeMismatchMessage(key: String, raw: Any, declaredTypes: [String]) -> String {
+        if declaredTypes.count == 1 {
+            switch declaredTypes[0] {
+            case "integer": return numericArgumentTypeError(key: key, raw: raw, expected: "an integer")
+            case "number": return numericArgumentTypeError(key: key, raw: raw, expected: "a number")
+            case "string": return stringArgumentTypeError(key: key, raw: raw)
+            case "boolean": return booleanArgumentTypeError(key: key, raw: raw)
+            default: break
+            }
+        }
+        let phrase = declaredTypes.map(declaredTypePhrase).joined(separator: " or ")
+        return "\(key) must be \(phrase) (got \(describeArgumentValue(raw)))"
+    }
+
+    private static func declaredTypePhrase(_ type: String) -> String {
+        switch type {
+        case "integer": return "an integer"
+        case "number": return "a number"
+        case "string": return "a string"
+        case "boolean": return "a boolean"
+        default: return type
+        }
+    }
+
+    /// スキーマに無い引数名を、成功・失敗どちらの応答にも1行で警告する(**断らない** = 警告から)。
+    /// 黙って無視すると、打ち間違い(holdSecond / scrollframe)が既定値のまま実行される。
+    /// `_` 始まりの鍵は対象外。宛先の引数を宣言していないツールへ渡した宛先も同じ扱い
+    static func unknownArgumentNote(tool: String, args: [String: Any]) -> String {
+        guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
+              let schema = definition["inputSchema"] as? [String: Any],
+              let properties = schema["properties"] as? [String: Any] else { return "" }
+        let declared = Set(properties.keys)
+        let unknown = args.keys.filter { !$0.hasPrefix("_") && !declared.contains($0) }.sorted()
+        guard !unknown.isEmpty else { return "" }
+        let described = unknown.map { key -> String in
+            closestDeclaredArgumentName(key, candidates: declared)
+                .map { "\(key) (did you mean \"\($0)\"?)" } ?? key
+        }
+        let takes = declared.isEmpty ? "no arguments" : declared.sorted().joined(separator: ", ")
+        return "⚠️ ignored unknown argument(s): " + described.joined(separator: ", ")
+            + " — \(tool) takes: " + takes
+    }
+
+    /// 引数名の言い間違い候補(大文字小文字だけ違う、または編集距離2以下)。距離計算は
+    /// `FTCore.SimilarLabels.editDistance`(唯一の定義元)を流用するだけの薄い判定 ——
+    /// ラベルの近さ判定(`SimilarLabels.isSimilarText`)は UI ラベル向けの部分文字列規則
+    /// (6文字以下限定)を持つので、引数名にはそのまま使わない
+    private static func closestDeclaredArgumentName(_ key: String, candidates: Set<String>) -> String? {
+        if let caseInsensitive = candidates.first(where: { $0.caseInsensitiveCompare(key) == .orderedSame }) {
+            return caseInsensitive
+        }
+        return candidates.map { ($0, SimilarLabels.editDistance(key.lowercased(), $0.lowercased())) }
+            .filter { $0.1 <= 2 }
+            .min { $0.1 < $1.1 }?.0
     }
 
     /// 「対象の指し方」が複数ある引数は、各 case が `if let ref = … else if let x,y = …` の順で
@@ -275,6 +381,9 @@ extension MCPServer {
         }
         // JSON null の欄は「省略」に畳む(droppingNullArguments 参照)。foldingUDIDIntoPort より前
         let args = Self.droppingNullArguments(args)
+        // 投げるより前に確定させ、成功(decorated)・失敗(下の catch)の両方へ同じ注記を乗せる
+        let unknownArgumentNote = Self.unknownArgumentNote(tool: tool, args: args)
+        try Self.checkDeclaredArgumentTypes(tool: tool, args: args)
         // **値域は入口で1回だけ全数見る**(`intArgument`/`doubleArgument` の門だけでは足りない)
         // —— 条件付きでしか読まれない欄(`waitSeconds` は snapshotAfter のときだけ等)は、
         // 読まれない回に 0/負がそのまま通り、呼び手は「効いた」と誤解する
@@ -346,6 +455,9 @@ extension MCPServer {
         // 成功と「中身を持った失敗」(MCPToolFailure)の両方に同じ前後の注記を付ける
         func decorated(_ body: [[String: Any]]) async -> [[String: Any]] {
             var content = body
+            if !unknownArgumentNote.isEmpty {
+                content = [["type": "text", "text": unknownArgumentNote]] + content
+            }
             if !rememberedNote.isEmpty {
                 content = [["type": "text", "text": rememberedNote]] + content
             }
@@ -378,6 +490,7 @@ extension MCPServer {
                 + Self.noReadableWindowHint(error)
                 + Self.accessibilityOutageHint(error)
                 + (runNote.map { " " + $0 } ?? "")
+                + (unknownArgumentNote.isEmpty ? "" : " " + unknownArgumentNote)
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }

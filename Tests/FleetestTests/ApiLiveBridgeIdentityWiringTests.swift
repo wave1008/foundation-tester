@@ -120,7 +120,7 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         guard let silentRange = code.range(of: "case .silent:") else {
             return XCTFail("無応答の分岐が無い")
         }
-        let branch = String(code[silentRange.upperBound...].prefix(900))
+        let branch = String(code[silentRange.upperBound...].prefix(1800))
         XCTAssertTrue(branch.contains("driverOptions.port == nil"),
                       "--port 明示時は従来どおり進むこと(駆動中の busy は正常)")
         XCTAssertTrue(branch.contains("PortHolder.isHeldByAnotherDevice("),
@@ -131,6 +131,10 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         XCTAssertTrue(branch.contains("resolution.endpoint.isLoopback"),
                       "LAN 宛先(実機の FT_BIND_ALL)にローカルの lsof の答えを当てないこと"
                       + " —— 読めない相手を根拠に宛先を変えてはいけない")
+        // 待受が無い瞬間(in-app のアプリの起こし直し)は lsof に映らない。持ち主を言えるのは台帳だけ
+        XCTAssertTrue(branch.contains("InAppBridgeState.isRecordedForAnotherDevice("),
+                      "in-app の台帳が別のデバイスのものなら掴むのをやめること"
+                      + " —— 見ないと run のレーンのポートへ自動起動がランナーを建てる")
         guard let loopbackIndex = branch.range(of: "resolution.endpoint.isLoopback"),
               let holderIndex = branch.range(of: "PortHolder.isHeldByAnotherDevice(") else {
             return XCTFail("無応答分岐の形が変わった — テストを見直すこと")

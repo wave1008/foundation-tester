@@ -2844,3 +2844,104 @@ static の補助関数**を呼ぶためだけに `StepExecutor` を参照して�
 - **守る仕組みは無い**(同じモジュールの中なのでコンパイラは止めない)。純粋層を別ターゲットにする案
   (FTJudgment)は、防げたはずの実害が記録に無く、移す関数の `public` 化で利用者に見える API が広がるので見送った。
   再検討するのは、判定の型が実行機や I/O に依存したことによる不具合が実際に出たとき
+
+## 58. 3時間負荷テストで出た穴(2026-09-29)
+
+構成: フリート run の周回(手元 + M1Max / M1Ultra / M1mini の E2E と、手元だけの E2EX を交互に。`--set` で
+`fmTextOcclusionCheck` / `ocrTextOcclusionCheck` の組を周回ごとに切り替え・途中で INT・使用中のブリッジを
+`--force` で停止・プロファイルのデバイスを `devices down`)+ MCP ファズ(実機 iPhone SE3・Pixel 4a・Pixel 3a、
+フリートと取り合う sim -08 / emulator-5562)+ ライブ操作ファズ(予備の sim -09 / -10・emulator-5570)+ CLI ファズ
+(`results log`・`doctor --bundle`・`run --device` の機械またぎ・`--set` の不正値・`--help` 総当たり)。
+直近の変更(`hold { }`・Android のタッチの種類・in-app の入力欄の追従・実行ログ・容量不足の Wipe)を重点にした。
+規模: run 64 周(記録 160 本・シナリオ 2,712 本)・MCP 30,009 回・ライブ操作 9,465 命令・CLI 18,053 回。
+`hold` を使うシナリオ(ツールチップ・並べ替え・引っ張って更新・連続ジェスチャ)は取り合いのデバイスを除いて 93 回中 91 回緑。
+実行ログ(eventLogs)の使用量は 148 MB(上限 2 GiB)。
+
+**新規の型は 1 つ**(58.5 = テストが production の既定引数を通じてホストの実体を引く)。残りは既知の型の再発
+(終了コードを見ない読み 58.1・黙って受理する 58.2/58.3・共通オプションの渡し忘れ 58.4・事実の欠けた文言 58.6〜58.8・
+共有資源の持ち主 58.9)。
+
+### 58.1 `Shell.Result` を返す包み越しの読みが §56.10 の走査から漏れていた
+`ft_list_apps` に居ない serial を渡すと約 20 秒後に `0 app(s) installed.`(成功)。`AndroidDriver.packageIDs` が
+`adb(_:)` の `output` を終了コードを見ずに解析していた。§56.10 の走査は `Shell.run(` の直呼びだけを見るので、
+包み(`adb(` / `rawAdb(`)越しの読みは対象外だった。走査を包みへ広げ、同じ型を直した:
+向きの設定の読み(失敗の出力を既定の 0/1 に畳み、`restoreOrientationIfNeeded` がその値をデバイスへ書き戻しうる)・
+`wm density`。**走査で拾えない形が残る**: 結果を別の関数(`pidofResult`)で受けてから読む形。`pidof` は
+「居ない」でも非ゼロなので終了コードでは分けられず、出力が空でなければ「動いている」と読んでいた = adb の
+エラー文を pid と誤認する。出力が数字の列のときだけ pid と読み、それ以外は不明(nil)にした(`pidofDigitsOnly`)
+
+### 58.2 MCP: 条件付きでしか読まれない引数の型違いが素通りしていた(§44.2 の値域と同じ穴の型の側)
+`ft_launch {"waitSeconds": "five"}` が `Launched`。型の検査は `intArgument` 等が**読んだ回にだけ**効き、入口の
+`checkArgumentBounds` は型違いを意図的に見送っていた。スキーマの `type` と照合する `checkDeclaredArgumentTypes` を
+入口に足した(文言は既存の関数を共有)。JSON の真偽値は `NSNumber` なので `as? Int` が true を 1 として通す ——
+`CFBooleanGetTypeID` で分ける。`ft_batch` の `steps` は配列に専用の案内を返すので入口では断らない
+(`argumentsWithTheirOwnTypeMessage`。足したときに既存のテストが落ちて気付いた)
+
+### 58.3 MCP: スキーマに無い引数名を黙って無視していた(黙って受理する型)
+`holdSecond: 1` のような綴り誤りが既定値のまま実行されていた。断らずに注記する(警告から):
+`⚠️ ignored unknown argument(s): holdSecond (did you mean "holdSeconds"?) — ft_long_press takes: …`。
+ライブ操作の NDJSON も未知の欄を無視する(呼び手は同時配布の拡張なので直していない)。`ft_batch` は元から断る
+
+### 58.4 rsync の 2 箇所がキープアライブを通していなかった
+`RunnerProfileTransfer`(畳んだプロファイルの送り)と `collectReports`。既存のテストは「ssh の組み立て」を
+ファイル名指しで見ていたので、rsync の引数を自前で組む箇所が増えても落ちなかった。`"-az"` のリテラルを
+Sources 全体から拾って `SSHOptions.rsyncRemoteShellArgs` の有無を見る走査を足した
+
+### 58.5 判定のテストが、既定引数を通じてこの Mac のプロセス表を引いていた(新規の型)
+`DispatchUnlockThisMachineTests.testMyLiveRunsLockIsKept` が負荷テスト中だけ落ちた。テストは `pidAlive` を
+差し替えていたが、`startTime: (Int32) -> Date? = ProcessLiveness.startTime` は既定のままで、フィクスチャの
+pid 4242 が**実在した**(05:21 に起動した Simulator のプロセス)ため「記録より後に起動した = pid の再利用」と
+判定された。`RemoteDispatchUnlock` の 4 関数・`RunProgressLedger` の 2 関数・`staleLockAutoRelease` から既定値を外し、
+production の呼び手が明示する(渡し忘れはコンパイルで止まる)。`RemoteDispatchUnlockNoHostDefaultTests` が再混入を落とす。
+`LocalDispatchLock.init` の `pidStartTime` は残した(テストは全部が自前の補助経由で差し替えている)
+
+### 58.6 入力の失敗の文言が、画面を見た結果を言っていなかった
+in-app の type は、値が 1 文字も動かないとき OCR で欄を見てから追送する(M3 SearchBar)。OCR が読めなかった回は
+「届かなかった」側へ倒して追送し、動かなければ `the value did not change after re-sending` で落ちるが、
+**描かれていなかったのか・読みが成立しなかったのか**が文言に無かった(この Mac は Vision が縮退していて、
+E2EX-CMP の検索バーがこの形で赤になった)。`typedTextIsOnScreen` が内訳を返し、失敗の文言に添える。
+**追送するかどうかの挙動は変えていない**(読みが成立しなかった回に追送をやめると、値を映す普通の欄で
+打鍵が落ちた回の回復まで失う。どちらに倒すかは未決)
+
+### 58.7 `results log` が、1 本も始まらずに中断された run を「機能より前か、掃除で消えた」と言っていた
+events/ は最初のシナリオが始まるまで作られない。run.json の `interrupted` / `abortReason` と「始まった記録が
+1 本も無い」ことから言える理由を言う。始まったシナリオがあるのに無いときは今までの文言のまま
+
+### 58.8 `hold { }` のブロックの中の失敗に、指が既に上がっていた事実が残らなかった
+E2EX-CMP(Android)のツールチップが 1 回赤: `hold(holdSeconds: 3)` の中の `select` が既定の 5 秒を待ち切って
+「見つからない」。失敗が確定した時点で指は 2 秒前に上がっていたが、注記 `hold-ended-before-block` は `holdEnd` が
+立てるもので、**失敗でシナリオが中断されると `holdEnd` は実行されない**。失敗したステップ自身に同じ注記を立てる
+(`noteHoldAlreadyReleased`。判定は変えない・両方向の変異で確認)。ツールチップが 3 秒の間に木へ出なかった
+理由は未特定(同じシナリオは他の周回で緑)
+
+### 58.9 ライブ操作の自動起動が、run のレーンの in-app ブリッジのポートへ別のデバイスのランナーを建てた(持ち主の型)
+E2E-RN の 1 本が `tap` で `409: the XCUITest runner has no session`。レーン(sim -01)の in-app ブリッジは
+ポート 8123。同じ時刻に、ブリッジの無い sim -09 へ開いたライブ操作が既定ポート 8123 を見て「誰も答えない・
+誰も待受していない」→ 自分の XCUITest ランナーを 8123 に自動起動した。**in-app ブリッジはアプリの中に居るので、
+シナリオの合間のアプリの起こし直しの間だけ待受が消える** = `/status` にも `lsof` にも映らない瞬間がある。以後、
+レーンの操作は sim -09 のランナーへ届いた。穴は 2 つ:
+- 宛先決定の無応答の分岐(`.silent`)が、持ち主をプロセスの実体(`PortHolder.isHeldByAnotherDevice`)でしか
+  見ていなかった。in-app の台帳(`.inapp` の udid)が別のデバイスなら、既定ポートを掴まず空きポートへ回す
+  (`InAppBridgeState.isRecordedForAnotherDevice`)
+- 空きポートの採番が 2 つあり、「使用中」の定義が違った。供給の `assignPort` は `.inapp` の残るポートを
+  後回しにするが、ライブ操作と `XCUIBridgeResolver` が使う `freePort` は `.pid` と稼働中の走査だけを見ていた。
+  `freePort` も同じ 2 パスにした(予約にはしない = 残骸が範囲を埋めても枯渇しない)
+run の側は、届いた先が別のデバイスだと気付かずに 409 をそのまま失敗文言に出した(緑にはならない)
+
+### 58.10 直していない観察
+- **畳んだプロファイルの rsync が `Connection closed by … port 22` で落ち、その機械の担当ぶん(7 本)が
+  結果なしで終わった**(フリートの周回 32 回中 1 回・M1Max)。向こうの sshd のログは読めず原因は未特定。
+  転送は冪等なので 1 回だけの撃ち直しは安全に入れられるが、効いたかを測れていないので入れていない
+- 実機 SE3 のランナーが 05:53 に応答しなくなった(xcodebuild は生存・iproxy の待受が消えた)。MCP は
+  「no running bridge」と `bridge up` の案内を返した。`bridge down --port` → `bridge up` で復帰
+- この Mac と M1Ultra で Vision が縮退(特徴量・分類器・OCR)。findImage / checkIsON の門は理由つきで赤にした
+- 手元の E2EX-Android の APK が SUT の修正(`c608c445`)より古く、ナビゲーション S0010 が 5/5 赤
+  (E2EX は M1Ultra で建てて回す運用なので、手元の `dist/` は建て直されない)
+- **負荷下の Simulator で、自前描画のアプリが文字を 1 つも描かない画面を出した**(E2EX-CMP の 1 周で 7 台・12 本が
+  同時に `[notRendered] observed=""`。失敗時のスクショはボタンの地だけで文字が無い。E2EX-Flutter でも 1 本)。
+  木には文字が居るので、視覚検証が無ければ緑になる画面。数分後に同じアプリを起動すると文字は描かれた。
+  原因(描画側)は未特定。**視覚検証の赤を「誤った赤」と読む前に、失敗時のスクショを見る**
+- 取り合い用のデバイス(sim -08・emulator-5562)の赤とレーンの離脱・復活は想定どおり
+- `api run --dry-run` はプロファイルを解決して「Using N of M device(s)」と言い、`run --dry-run` は
+  「--profile is not used」と言う(意図した差かは未確認)
+- 常駐プロセス(`api live serve`・`fleetest-mcp`・`api monitor`・`devicepoll`)の RSS は 30 分の間に伸びなかった

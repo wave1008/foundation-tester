@@ -683,7 +683,7 @@ struct RunScenarios: AsyncParsableCommand {
                 directory: RunProgressLedger.directory())
         }
         if recordsProgress {
-            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+            RunProgressLedger.sweep(directory: RunProgressLedger.directory(), startTime: ProcessLiveness.startTime)
             writeProgress(phase: "preparing")
         }
         defer {

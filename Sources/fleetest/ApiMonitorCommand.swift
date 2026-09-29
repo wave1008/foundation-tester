@@ -224,7 +224,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                       + " (\(occupancy.issuer ?? "holder unknown")) — the extension stops live streams here"
                     : "[monitor] This machine's dispatch lock is free")
             }
-            let currentRunRecords = RunProgressLedger.readAll(directory: runProgressDir)
+            let currentRunRecords = RunProgressLedger.readAll(directory: runProgressDir,
+                                                              startTime: ProcessLiveness.startTime)
                 .sorted { $0.pid < $1.pid }
             if Self.shouldEmitRuns(current: currentRunRecords, last: lastRunRecords) {
                 lastRunRecords = currentRunRecords

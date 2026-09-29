@@ -670,6 +670,7 @@ public final class StepExecutor {
                                                       fingerprint: fingerprint, phase: &phase)
                 // 失敗したなら、登録の無いシステムアラートが前面に無いかを1回だけ聞いて文言に添える
                 let status = await annotatedWithSystemAlert(outcome.status, phase: &phase)
+                noteHoldAlreadyReleased(onFailureOf: step, status: status)
                 return StepOutcome(status: status, healedStep: outcome.healedStep,
                                    healedByFingerprint: outcome.healedByFingerprint,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
@@ -696,6 +697,7 @@ public final class StepExecutor {
                 if case .failed = status { markFailure(.assertion) }
                 // 時間切れの原因が前面のシステムアラートなら題名を添える(登録が無いときだけ・1往復)
                 status = await annotatedWithSystemAlert(status, phase: &phase)
+                noteHoldAlreadyReleased(onFailureOf: step, status: status)
                 return StepOutcome(status: status,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
@@ -713,6 +715,7 @@ public final class StepExecutor {
             }
             return StepOutcome(status: .skipped("step has neither an action nor an assertion"))
         } catch {
+            noteHoldAlreadyReleased(onFailureOf: step, status: .failed(""))
             return StepOutcome(status: .failed("execution error: \(error.localizedDescription)"),
                                timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                   snapshotMs: phase.snapshotMs,

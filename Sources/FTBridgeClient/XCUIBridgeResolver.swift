@@ -234,12 +234,21 @@ public enum XCUIBridgeResolver {
     /// **public**: api live serve が「既定ポートが別デバイスに奪われており、そのデバイスの
     /// ブリッジがまだ無い」ときに、奪われたデバイスへ触れず別の空きポートへ自動起動を回す
     /// (ApiLiveCommand.makeLiveDriver)
+    /// **in-app の台帳(`.inapp`)が残るポートは後回し**(`BridgeProvisioner.assignPort` と同じ2パス)。
+    /// in-app ブリッジはアプリの中に居るので、シナリオの合間のアプリの起こし直しの間は待受が消え、
+    /// 稼働中の走査(`occupied`)にも乗らない —— その瞬間に採ると、run のレーンのポートへ別のデバイスの
+    /// ランナーを建て、レーンの操作が別のデバイスへ届く。予約にはしない(残骸が範囲を埋めると枯渇する)
     public static func freePort(repoRoot: URL, occupied: Set<UInt16>) -> UInt16? {
-        portRange.first { port in
+        let stateDir = repoRoot.appendingPathComponent(".fleetest")
+        func isFree(_ port: UInt16) -> Bool {
             !occupied.contains(port)
                 && !FileManager.default.fileExists(
                     atPath: repoRoot.appendingPathComponent(".fleetest/bridge-\(port).pid").path)
                 && !IOSDeviceTransport.isPortHeldByIproxy(hostPort: port, repoRoot: repoRoot)
         }
+        func hasInApp(_ port: UInt16) -> Bool {
+            FileManager.default.fileExists(atPath: InAppBridgeState.url(stateDir: stateDir, port: port).path)
+        }
+        return portRange.first { isFree($0) && !hasInApp($0) } ?? portRange.first(where: isFree)
     }
 }

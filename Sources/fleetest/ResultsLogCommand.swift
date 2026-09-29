@@ -41,7 +41,7 @@ struct ResultsLogCommand: AsyncParsableCommand {
         }
 
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: resolvedRunID)
-        guard RunResultsStore.meta(runDir: runDir) != nil else {
+        guard let meta = RunResultsStore.meta(runDir: runDir) else {
             ConsoleOut.err("run not found: \(resolvedRunID)")
             throw ExitCode(1)
         }
@@ -50,11 +50,11 @@ struct ResultsLogCommand: AsyncParsableCommand {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: eventsDir.path, isDirectory: &isDirectory),
               isDirectory.boolValue else {
-            // 無い理由は2つ考えられ、どちらも同じ「もう読めない」という事実は変わらない ——
-            // ①この機能より前に走った run ②retention sweep が上限超過で events/ ごと削除した
-            // (RetentionSweeper.eventLogSessions)。区別できないので理由は決め打たない
-            ConsoleOut.err("this run has no execution log (events/ is missing — either the run predates"
-                + " this feature, or it was cleaned up by retention): \(resolvedRunID)")
+            // skipKind の無い記録 = 始まったシナリオ(実行ログを書いたはず)
+            let anyStarted = RunResultsStore.records(runDir: runDir).contains { $0.skipKind == nil }
+            ConsoleOut.err(ResultsLogEntries.missingEventsMessage(
+                runID: resolvedRunID, interrupted: meta.interrupted == true,
+                abortReason: meta.abortReason, anyScenarioStarted: anyStarted))
             throw ExitCode(1)
         }
 
@@ -95,6 +95,22 @@ enum ResultsLogEntries {
     struct Entry {
         let heading: String
         let fileURL: URL
+    }
+
+    /// events/ が無い run の文言。**記録から言える理由だけを言う**: 1本も始まらずに終わった run
+    /// (中断・供給段の中止)は events/ を作らない。それ以外(この機能より前の run / 保持容量の掃除で
+    /// 消えた)は記録から区別できないので両方を挙げる
+    static func missingEventsMessage(runID: String, interrupted: Bool, abortReason: String?,
+                                     anyScenarioStarted: Bool) -> String {
+        if anyScenarioStarted {
+            // 始まったシナリオがあるのに無い = 中断・中止では説明が付かない
+        } else if let abortReason {
+            return "this run has no execution log (it ended before any scenario started: \(abortReason)): \(runID)"
+        } else if interrupted {
+            return "this run has no execution log (it was interrupted before any scenario started): \(runID)"
+        }
+        return "this run has no execution log (events/ is missing — either the run predates"
+            + " this feature, or it was cleaned up by retention): \(runID)"
     }
 
     static func collect(runDir: URL, eventsDir: URL, scenarioFilter: String?) -> [Entry] {

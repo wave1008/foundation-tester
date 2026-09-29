@@ -44,6 +44,30 @@ final class AndroidDriverAdbFailureTests: XCTestCase {
         try await driver.hideKeyboard()
     }
 
+    /// `ft_list_apps` に存在しない serial を渡すと、`pm list packages` の失敗出力(空・エラー文)が
+    /// 「0 app(s) installed」という成功扱いに畳まれていた(負荷テスト実測。§56.10 と同じ型)
+    func testListInstalledPackagesThrowsWhenAdbFails() throws {
+        let driver = AndroidDriver(serial: serial, adbPath: try fakeADB(
+            "echo \"adb: device '$2' not found\" >&2; exit 1"))
+        do {
+            _ = try driver.listInstalledPackages()
+            XCTFail("adb の失敗を「インストール済みアプリ 0 個」に畳んで成功を返した")
+        } catch {
+            XCTAssertTrue("\(error)".contains("not found"), "\(error)")
+        }
+    }
+
+    func testListPackagesThrowsWhenAdbFails() throws {
+        let driver = AndroidDriver(serial: serial, adbPath: try fakeADB(
+            "echo \"adb: device '$2' not found\" >&2; exit 1"))
+        do {
+            _ = try driver.listPackages(includeSystem: true)
+            XCTFail("adb の失敗を「インストール済みアプリ 0 個」に畳んで成功を返した")
+        } catch {
+            XCTAssertTrue("\(error)".contains("not found"), "\(error)")
+        }
+    }
+
     func testTerminateThrowsWhenForceStopFails() async throws {
         let state = #"{"centers":{},"screen":{"x":0,"y":0,"width":0,"height":0},"package":"com.example.app"}"#
         try state.write(to: FileManager.default.temporaryDirectory

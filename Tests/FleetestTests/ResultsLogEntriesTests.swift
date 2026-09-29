@@ -164,4 +164,36 @@ final class ResultsLogEntriesTests: XCTestCase {
         let entries = ResultsLogEntries.collect(runDir: runDir, eventsDir: eventsDir, scenarioFilter: nil)
         XCTAssertEqual(entries.map(\.heading), ["A", "A.1 (superseded)", ".inflight-X.ndjson (incomplete)"])
     }
+
+    // MARK: - events/ が無い run の文言(記録から言える理由だけを言う)
+
+    func testMissingEventsOfAnInterruptedRunSaysItWasInterrupted() {
+        XCTAssertEqual(
+            ResultsLogEntries.missingEventsMessage(runID: "r1", interrupted: true, abortReason: nil,
+                                                   anyScenarioStarted: false),
+            "this run has no execution log (it was interrupted before any scenario started): r1")
+    }
+
+    func testMissingEventsOfAnAbortedRunCarriesTheReason() {
+        XCTAssertEqual(
+            ResultsLogEntries.missingEventsMessage(runID: "r1", interrupted: false, abortReason: "no device",
+                                                   anyScenarioStarted: false),
+            "this run has no execution log (it ended before any scenario started: no device): r1")
+    }
+
+    /// 逆向き: 中断も中止もしていない run には、その理由を言わない
+    func testMissingEventsOfAFinishedRunNamesBothUnprovableCauses() {
+        let message = ResultsLogEntries.missingEventsMessage(runID: "r1", interrupted: false, abortReason: nil,
+                                                            anyScenarioStarted: false)
+        XCTAssertTrue(message.contains("predates this feature"), message)
+        XCTAssertFalse(message.contains("interrupted"), message)
+    }
+
+    /// 始まったシナリオがある run は、中断していても「始まる前に中断」とは言わない(ログは別の理由で無い)
+    func testMissingEventsOfAnInterruptedRunThatStartedScenariosDoesNotBlameTheInterrupt() {
+        let message = ResultsLogEntries.missingEventsMessage(runID: "r1", interrupted: true, abortReason: nil,
+                                                            anyScenarioStarted: true)
+        XCTAssertTrue(message.contains("predates this feature"), message)
+        XCTAssertFalse(message.contains("before any scenario started"), message)
+    }
 }

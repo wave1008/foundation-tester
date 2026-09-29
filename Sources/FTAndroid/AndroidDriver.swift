@@ -109,7 +109,7 @@ public final class AndroidDriver: AppDriver {
 
     /// 論理 px → 物理 px の倍率(DOM の CSS px を画面座標へ写すのに要る)
     func displayDensity() -> Double {
-        guard let out = try? adb(["shell", "wm", "density"]).output,
+        guard let out = try? adb(["shell", "wm", "density"]).outputIfSucceeded,
               let density = Self.parseDisplayDensity(out) else { return 1 }
         return density
     }
@@ -120,7 +120,7 @@ public final class AndroidDriver: AppDriver {
     /// ズームにならない(実測: 既定半径 238 px = 最大間隔 428 px で `zoom=-`、450 px で `zoom=in`)。
     /// 読めなければ nil(呼び手は既定のまま)
     public func minimumScalingSpanPx() -> Double? {
-        guard let out = try? adb(["shell", "wm", "density"]).output,
+        guard let out = try? adb(["shell", "wm", "density"]).outputIfSucceeded,
               let density = Self.parseDisplayDensity(out) else { return nil }
         return Self.minimumScalingSpanPx(densityPxPerDp: density)
     }
@@ -844,11 +844,21 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    /// **終了コードを見る**(失敗の出力を既定の 0/1 へ畳むと、`restoreOrientationIfNeeded` が
+    /// その偽の値をデバイスへ書き戻す)。"null"(未設定)は成功の出力なので既定へ倒してよい
     private func currentRotationSettings() throws -> (userRotation: Int, accelerometerRotation: Int) {
-        let userRotation = Int((try adb(["shell", "settings", "get", "system", "user_rotation"])
-            .output).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-        let accel = Int((try adb(["shell", "settings", "get", "system", "accelerometer_rotation"])
-            .output).trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
+        let userResult = try adb(["shell", "settings", "get", "system", "user_rotation"])
+        guard userResult.status == 0 else {
+            throw DriverError.badResponse(status: Int(userResult.status),
+                body: "failed to read user_rotation: \(userResult.tail)")
+        }
+        let accelResult = try adb(["shell", "settings", "get", "system", "accelerometer_rotation"])
+        guard accelResult.status == 0 else {
+            throw DriverError.badResponse(status: Int(accelResult.status),
+                body: "failed to read accelerometer_rotation: \(accelResult.tail)")
+        }
+        let userRotation = Int(userResult.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+        let accel = Int(accelResult.output.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 1
         return (userRotation, accel)
     }
 
@@ -1175,8 +1185,13 @@ public final class AndroidDriver: AppDriver {
         return (user + system).sorted { $0.id < $1.id }
     }
 
+    /// **終了コードを見る**(失敗の出力から「入っているアプリは 0 個」を作らない)
     private func packageIDs(scope: String) throws -> [String] {
         let result = try adb(["shell", "pm", "list", "packages", scope])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to list installed packages: \(result.tail)")
+        }
         return result.output.split(separator: "\n")
             .compactMap { line in
                 let trimmed = line.trimmingCharacters(in: .whitespaces)

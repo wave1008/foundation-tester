@@ -47,7 +47,8 @@ enum RunnerProfileTransfer {
         }
 
         for upload in uploads {
-            let args = ["-az", "\(upload.local.path)/", "\(sshTarget):\(upload.remote)"]
+            let args = ["-az"] + SSHOptions.rsyncRemoteShellArgs
+                + ["\(upload.local.path)/", "\(sshTarget):\(upload.remote)"]
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/usr/bin/rsync")
             process.arguments = args

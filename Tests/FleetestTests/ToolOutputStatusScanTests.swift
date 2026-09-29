@@ -6,6 +6,14 @@
 // **集合は Sources/ 全体から機械的に導出する**(SharedResourceOwnershipParityTests と同じ流儀)。
 // 関数単位なので、同じ関数に status を見る呼び出しが1つでもあれば他の素の読みは見逃す(粒度の限界)。
 // 免除は理由つきの Set で等号固定する。
+//
+// **`Shell.run` を直接呼ばない関数も対象**: `AndroidDriver.adb(_:)` / `rawAdb(_:)` は
+// `Shell.Result` を返す包みで、これ越しに素の `.output` を読む関数は元の走査(`Shell.run(` だけを
+// 引き金にしていた)に映らなかった(`packageIDs(scope:)` の掃討漏れ)。**この粒度の限界は
+// さらに1段ある** —— 包みが返した `Shell.Result` を一度変数/別関数へ渡してから読む形
+// (`AndroidBridge.bridgeRunningVerdict` / `bridgeDoctorSummary` のように `pidofResult(...)` の
+// 戻り値を経由する)は、その関数自身が `adb`/`rawAdb`/`Shell.run` を呼ばないため今回も拾えない。
+// この型は見つけ次第ここへ引き金を足すか手で直す
 
 import Foundation
 import XCTest
@@ -75,7 +83,9 @@ final class ToolOutputStatusScanTests: XCTestCase {
         return results
     }
 
-    private static let shellCall = #"Shell\.run(Data)?\s*\("#
+    // `adb(`/`rawAdb(` は `AndroidDriver` が Shell.Result を返す包み(§56.10 の掃討漏れ:
+    // `Shell.run` を直接呼ばない関数はこの包み越しに素の `.output` を読んでいても元の走査に映らなかった)
+    private static let shellCall = #"Shell\.run(Data)?\s*\(|\b(?:adb|rawAdb)\("#
     /// 素の出力の読み(`outputIfSucceeded` は語が続くので当たらない・`.data(` はメソッド呼び出しなので外す)
     private static let rawOutputRead = #"\.(output|data)\b(?!\s*\()"#
     private static let statusCheck = #"\.status\b|\bstatus\s*[!=]=|\(status,|\bstatus:"#
@@ -91,6 +101,26 @@ final class ToolOutputStatusScanTests: XCTestCase {
         // (exit 1・"Failure [...]")がそのまま利用者への理由になるので出力を捨てられない。
         // pull の失敗は次の install の失敗として表に出る(黙った成功にはならない)
         "ProfileRunner.run",
+        // `adb shell "<cmd1>; echo <marker>; <cmd2> | grep …"` の終了コードは最後の grep に従うため、
+        // 正当な「一致なし」でも非ゼロで返る —— status では adb 自体の失敗と区別できない。
+        // マーカー文字列の有無・正規表現一致だけで値を作り、無ければ unavailable/nil(不明)に倒す
+        // (AndroidWebViewDOM.appSocketResolution / WebViewDOMFallback.parseProbe が判定側)
+        "AndroidDriver.webViewJumpToEdge",
+        "AndroidDriver.webViewComposited",
+        "AndroidDriver.warnBlankCaptureOnce",
+        "AndroidDriver.warnWebViewDOMFallbackOnce",
+        "AndroidBridge.startBridge",
+        // `dumpsys package` の失敗出力は `versionCode=(\d+)` に一致しないため、素通りせず nil(不明)に倒す
+        "AndroidBridge.installedBridgeVersionCode",
+        // `adb forward` 系: 失敗の出力は UInt16 変換に失敗して throw する / 期待する
+        // 「<serial> tcp:<port> tcp:<port>」の3トークン行形式に一致せず「対象なし」に倒す。
+        // どちらも失敗の出力から確定値を作っていない
+        "AndroidBridge.ensureForward",
+        "AndroidBridge.findExistingForward",
+        "AndroidBridge.stopBridge",
+        // AndroidAnimationSettings.matches の契約(値が読めなければ「違う」と見て警告する。
+        // ユーザー方針: 黙って諦めない)をそのまま使う doctor 診断
+        "AndroidBridge.animationScaleWarning",
     ]
 
     /// **戻すと落ちる根拠**: `Shell.run(...).output` を status を見ずに解析する関数を足すと、

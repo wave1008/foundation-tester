@@ -709,7 +709,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 directory: RunProgressLedger.directory())
         }
         if resolvedProfile != nil, !dryRun, debugOptions == nil {
-            RunProgressLedger.sweep(directory: RunProgressLedger.directory())
+            RunProgressLedger.sweep(directory: RunProgressLedger.directory(), startTime: ProcessLiveness.startTime)
             writeProgress(phase: "preparing")
         }
         defer {

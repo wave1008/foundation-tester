@@ -403,8 +403,15 @@ extension MCPServer {
         return value
     }
 
-    private static func stringArgumentTypeError(key: String, raw: Any) -> String {
+    /// **`private` ではない** —— `checkDeclaredArgumentTypes`(MCPServer+Dispatch.swift)が
+    /// スキーマ駆動の型検査で同じ文言を使う(2つの文言を作らない)
+    static func stringArgumentTypeError(key: String, raw: Any) -> String {
         "\(key) must be a string (got \(describeArgumentValue(raw))) — pass a JSON string, not a number"
+    }
+
+    /// boolean 版(numericArgumentTypeError/stringArgumentTypeError と同じ書式)
+    static func booleanArgumentTypeError(key: String, raw: Any) -> String {
+        "\(key) must be a boolean (got \(describeArgumentValue(raw))) — pass true or false, not a quoted string or number"
     }
 
     /// **セレクタ構文検査の唯一の入口**。呼び手が渡すセレクタ文字列(selector/scrollFrame/waitFor/to)は
@@ -421,7 +428,8 @@ extension MCPServer {
     /// アプリを使う」引数が空文字を断るときの補足文言(1箇所に集約 — 3箇所で複製しない)
     static let attachedAppEmptyHint = "omit it to use the app this session is attached to"
 
-    private static func numericArgumentTypeError(key: String, raw: Any, expected: String) -> String {
+    /// **`private` ではない**(同上)
+    static func numericArgumentTypeError(key: String, raw: Any, expected: String) -> String {
         "\(key) must be \(expected) (got \(describeArgumentValue(raw))) — pass a JSON number, not a quoted string"
     }
 
@@ -451,7 +459,8 @@ extension MCPServer {
     static func describeArgumentValue(_ raw: Any) -> String {
         switch raw {
         case let value as String: return "the string \"\(value)\""
-        case let value as Bool: return "the boolean \(value)"
+        // `as Bool` は NSNumber の 0/1 にも当たる(JSON の数値を boolean と言ってしまう)
+        case let value as Bool where isJSONBoolean(raw): return "the boolean \(value)"
         case is [Any]: return "an array"
         case is [String: Any]: return "an object"
         case is NSNull: return "null"

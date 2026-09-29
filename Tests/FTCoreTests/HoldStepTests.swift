@@ -79,6 +79,38 @@ final class HoldStepTests: XCTestCase {
                          "既に離れているので duration ぶん撮り直し待ちしてはいけない(実測 \(elapsed))")
     }
 
+    /// (c2) ブロックの中の失敗が、指が上がった後に確定したなら、その失敗に注記が立つ
+    /// (中断で holdEnd は実行されないので、失敗したステップ自身が持つ)
+    func testAFailureAfterTheFingerLiftedCarriesTheNote() async throws {
+        let log = CallLog()
+        let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let start = await executor.execute(FlowStep(
+            action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 0.2))
+        guard case .passed = start.status else { return XCTFail("\(start.status)") }
+
+        // 居ない要素を 0.5 秒待つ = 失敗が確定するのは指が上がった(0.2 秒)後
+        let failed = await executor.execute(FlowStep(
+            assert: "exists", locator: FlowLocator(id: "txt_never_shown"), timeout: 0.5))
+        guard case .failed = failed.status else { return XCTFail("\(failed.status)") }
+        XCTAssertTrue(failed.notes.contains(.holdEndedBeforeBlock), "\(failed.notes)")
+    }
+
+    /// (c3) 逆向き: 指が下がっている間に確定した失敗には立てない
+    func testAFailureWhileTheFingerIsDownCarriesNoNote() async throws {
+        let log = CallLog()
+        let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
+        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let start = await executor.execute(FlowStep(
+            action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 8))
+        guard case .passed = start.status else { return XCTFail("\(start.status)") }
+
+        let failed = await executor.execute(FlowStep(
+            assert: "exists", locator: FlowLocator(id: "txt_never_shown"), timeout: 0.2))
+        guard case .failed = failed.status else { return XCTFail("\(failed.status)") }
+        XCTAssertFalse(failed.notes.contains(.holdEndedBeforeBlock), "\(failed.notes)")
+    }
+
     /// (d) 前の hold が離れる前に次の holdStart を送ると失敗する(入れ子禁止)
     func testASecondHoldWhileOneIsInFlightFails() async throws {
         let log = CallLog()

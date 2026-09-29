@@ -381,13 +381,24 @@ struct ApiLiveServe: AsyncParsableCommand {
             // **占有者を読めるのはループバックの宛先だけ** —— 実機の LAN bind は向こうの機械の
             // ポートなので、こちらの lsof が同じ番号で見つけるのは無関係なプロセス。
             // 読めない相手を根拠に宛先を変えない(§18.7「不明と空きを混ぜない」の同型)
-            guard driverOptions.port == nil, resolution.endpoint.isLoopback,
-                  PortHolder.isHeldByAnotherDevice(port: resolution.endpoint.port, udid: udid) else {
+            // **待受が無い瞬間もある**(run のレーンの in-app ブリッジは、シナリオの合間のアプリの
+            // 起こし直しの間だけ消える)。そのときポートの持ち主を言えるのは in-app の台帳だけ ——
+            // 見ずに進むと自動起動がレーンのポートへランナーを建て、レーンの操作がこのデバイスへ届く
+            let port = resolution.endpoint.port
+            let heldByProcess = driverOptions.port == nil && resolution.endpoint.isLoopback
+                && PortHolder.isHeldByAnotherDevice(port: port, udid: udid)
+            let recordedForAnother = driverOptions.port == nil && resolution.endpoint.isLoopback
+                && repoRoot.map { InAppBridgeState.isRecordedForAnotherDevice(
+                    stateDir: $0.appendingPathComponent(".fleetest"), port: port, udid: udid) } == true
+            guard heldByProcess || recordedForAnother else {
                 return try await composeDriver(resolution: resolution, physical: physical,
                                                repoRoot: repoRoot)
             }
-            mismatch = "port \(resolution.endpoint.port) did not answer /status and is held by"
-                + " another device's process, so it is not the bridge of \(udid)"
+            mismatch = heldByProcess
+                ? "port \(port) did not answer /status and is held by"
+                    + " another device's process, so it is not the bridge of \(udid)"
+                : "port \(port) did not answer /status and is recorded as the in-app bridge port of"
+                    + " another device, so it is not the bridge of \(udid)"
         }
         guard driverOptions.port == nil else {
             // 利用者が --port で決めた宛先。勝手に変えず断る

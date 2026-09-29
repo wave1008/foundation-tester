@@ -27,6 +27,14 @@ public enum InAppBridgeState {
         try? line.write(to: url(stateDir: stateDir, port: port), atomically: true, encoding: .utf8)
     }
 
+    /// このポートの台帳が**別のデバイス**のものか(台帳が無い・読めないは false = 言えない)。
+    /// in-app ブリッジはアプリの起こし直しの間だけ待受が消えるので、`/status` にも `lsof` にも
+    /// 映らない瞬間がある —— そのポートが誰のものかを言えるのは台帳だけ
+    public static func isRecordedForAnotherDevice(stateDir: URL, port: UInt16, udid: String) -> Bool {
+        guard let recorded = read(at: url(stateDir: stateDir, port: port)) else { return false }
+        return recorded.udid.caseInsensitiveCompare(udid) != .orderedSame
+    }
+
     /// 3 語目(sourceDigest)は**旧版が書いた 2 語の記録**では nil になる。
     /// 読み手は nil を「出所不明」として扱うこと(= 再利用しない側に倒す)
     static func read(at path: URL) -> (udid: String, bundleID: String, sourceDigest: String?)? {

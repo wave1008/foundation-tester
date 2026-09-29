@@ -295,7 +295,7 @@ public enum RemoteDispatchUnlock {
 
     public static func decide(probe: RemoteDispatchLock.Probe, myIssuer: String, myHost: String,
                               pidAlive: (Int32) -> Bool,
-                              startTime: (Int32) -> Date? = ProcessLiveness.startTime) -> Decision {
+                              startTime: (Int32) -> Date?) -> Decision {
         switch probe {
         case .absent:
             return .nothingToDo
@@ -389,7 +389,7 @@ public enum RemoteDispatchUnlock {
     /// 相手の issuerHost を名乗るので、同じ規則(発行者違い / 別の機械から発行)で refuse に落ちる
     public static func decideLocalSweep(probe: RemoteDispatchLock.Probe, myIssuer: String,
                                         myHost: String, pidAlive: (Int32) -> Bool,
-                                        startTime: (Int32) -> Date? = ProcessLiveness.startTime
+                                        startTime: (Int32) -> Date?
     ) -> Decision {
         decideAutomaticSweep(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive,
                              startTime: startTime)
@@ -415,7 +415,7 @@ public enum RemoteDispatchUnlock {
     public static func decideThisMachine(probe: RemoteDispatchLock.Probe, myIssuer: String,
                                          myHost: String, pidAlive: (Int32) -> Bool,
                                          livePIDs: () -> [Int32]?,
-                                         startTime: (Int32) -> Date? = ProcessLiveness.startTime
+                                         startTime: (Int32) -> Date?
     ) -> Decision {
         switch probe {
         case .absent:
@@ -449,7 +449,7 @@ public enum RemoteDispatchUnlock {
     /// よいのは「この機械の自分の pid が死んでいる」と確定できたときだけ)
     public static func decideAutomaticSweep(probe: RemoteDispatchLock.Probe, myIssuer: String,
                                             myHost: String, pidAlive: (Int32) -> Bool,
-                                            startTime: (Int32) -> Date? = ProcessLiveness.startTime
+                                            startTime: (Int32) -> Date?
     ) -> Decision {
         let decision = decide(probe: probe, myIssuer: myIssuer, myHost: myHost, pidAlive: pidAlive,
                               startTime: startTime)

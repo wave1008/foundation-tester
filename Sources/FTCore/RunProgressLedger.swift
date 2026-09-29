@@ -141,7 +141,7 @@ public enum RunProgressLedger {
     /// **中身が読めない(壊れた JSON)ときは pid の生死だけで判定する**
     /// (startedAt が要る比較ができないので、それより弱い判定へ落ちるのは安全側)
     public static func sweep(directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive,
-                             startTime: (Int32) -> Date? = ProcessLiveness.startTime) {
+                             startTime: (Int32) -> Date?) {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return
         }
@@ -161,7 +161,7 @@ public enum RunProgressLedger {
     /// `isAlive` / `startTime` はテスト用の差し替え口
     public static func readAll(
         directory: URL, isAlive: (Int32) -> Bool = ProcessLiveness.isAlive,
-        startTime: (Int32) -> Date? = ProcessLiveness.startTime
+        startTime: (Int32) -> Date?
     ) -> [RunProgressRecord] {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: directory.path) else {
             return []

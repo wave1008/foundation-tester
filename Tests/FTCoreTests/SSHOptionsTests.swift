@@ -77,4 +77,29 @@ final class SSHOptionsTests: XCTestCase {
         XCTAssertTrue(line.contains("SSHOptions.keepAliveArgs"),
                       "remoteSSHBase must fold in SSHOptions.keepAliveArgs: \(line)")
     }
+
+    /// rsync の引数を自前で組む箇所は Sources 全体から機械的に拾う(手書きの一覧だと、足された
+    /// 呼び出しが黙って通る)。目印は rsync の `-az` の文字列リテラル
+    func testEveryRsyncArgumentListFoldsInTheRemoteShellOptions() throws {
+        let sources = repoRoot().appendingPathComponent("Sources")
+        guard let enumerator = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil) else {
+            return XCTFail("Sources/ is not readable")
+        }
+        var found = 0
+        for case let url as URL in enumerator where url.pathExtension == "swift" {
+            let lines = try String(contentsOf: url, encoding: .utf8)
+                .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+            for (index, line) in lines.enumerated() where line.contains("\"-az\"") {
+                let trimmed = line.drop(while: { $0 == " " })
+                if trimmed.hasPrefix("//") { continue }
+                found += 1
+                // 1つの式が次の行へ折り返すことがある
+                let statement = line + (index + 1 < lines.count ? lines[index + 1] : "")
+                XCTAssertTrue(statement.contains("SSHOptions.rsyncRemoteShellArgs"),
+                              "\(url.lastPathComponent):\(index + 1) builds rsync arguments without"
+                              + " SSHOptions.rsyncRemoteShellArgs: \(trimmed)")
+            }
+        }
+        XCTAssertEqual(found, 6, "the number of rsync argument lists changed — check the new one")
+    }
 }

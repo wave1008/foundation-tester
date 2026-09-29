@@ -95,7 +95,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `--port` を明示されたら不一致は断る / **既定ポートへのフォールバックなら断らずにその udid の
   ポートを探し、無ければ空きポートへ向けて自動起動に委ねる**(拡張は port が分かるときだけ
   `--port` を渡すので、**ブリッジのまだ無いデバイスを開く場面**で既定 8123 に居る別のデバイスを掴んでいた。
-  ここで断ると、自動起動が想定しているその場面でライブ操作が開けなくなる → maintainer-notes §42.6)④ワークスペースのステージ先は
+  ここで断ると、自動起動が想定しているその場面でライブ操作が開けなくなる → maintainer-notes §42.6)。
+  **待受の無い瞬間の持ち主は in-app の台帳で見る**(in-app ブリッジはアプリの起こし直しの間だけ待受が消える。
+  `InAppBridgeState.isRecordedForAnotherDevice`)。**空きポートの採番は `assignPort` と `freePort` の2つで、
+  どちらも `.inapp` の残るポートを後回しにする**(片方だけ変えない)→ maintainer-notes §58.9④ワークスペースのステージ先は
   `WorkspaceAppStaging.installPath(declared:)` = 宣言文字列の名前空間(絶対パスから導かない)
 - **録画ありの run は供給段階で「端末側に残った録画セッション」を解く**(`HostRecordingProbe` →
   `ProfileWorkerFactory.recoverStaleRecordingIOSWorkers`。凍結の回復と同じ再起動・デバイスは外さない・不明は撃たない)。

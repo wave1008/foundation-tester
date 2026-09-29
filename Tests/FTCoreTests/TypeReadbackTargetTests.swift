@@ -95,9 +95,9 @@ final class TypeReadbackTargetTests: XCTestCase {
 
     // ---- 値が入力を映さない欄と、届かなかった入力の判別(E2EX-CMP の 15_検索バー。2026-09-28) ----
 
-    private func typeStep(values: [String], text: String,
-                          onScreen: Bool?) async -> (StepOutcome, ReadbackSequenceDriver) {
-        StepExecutor.typedTextOnScreenOverrideForTesting = onScreen.map { visible in { _ in visible } }
+    private func typeStep(values: [String], text: String, onScreen: Bool?,
+                          fact: String? = nil) async -> (StepOutcome, ReadbackSequenceDriver) {
+        StepExecutor.typedTextOnScreenOverrideForTesting = onScreen.map { visible in { _ in (visible, fact) } }
         defer { StepExecutor.typedTextOnScreenOverrideForTesting = nil }
         let driver = ReadbackSequenceDriver(values: values)
         let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
@@ -121,6 +121,22 @@ final class TypeReadbackTargetTests: XCTestCase {
         guard case .failed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.typedTexts, ["hello", "hello"])
         XCTAssertFalse(outcome.notes.contains(.typeReadbackUnchanged), "\(outcome.notes)")
+    }
+
+    /// 画面を見て読めなかった内訳は失敗の文言に出る(描かれていないのか、読みが成立しなかったのか)
+    func testFailureCarriesWhatTheScreenCheckObserved() async {
+        let (outcome, _) = await typeStep(values: ["", "", "", ""], text: "hello", onScreen: false,
+                                          fact: "reading the field's area ran out of time")
+        guard case .failed(let message) = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertTrue(message.contains("the screen was checked for the typed text:"
+            + " reading the field's area ran out of time"), message)
+    }
+
+    /// 逆向き: 画面を見ていない失敗(一部が届いた形)には画面の話を足さない
+    func testFailureWithoutAScreenCheckSaysNothingAboutTheScreen() async {
+        let (outcome, _) = await typeStep(values: ["", "he", "he", "he", "he"], text: "hello", onScreen: true)
+        guard case .failed(let message) = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertFalse(message.contains("the screen was checked"), message)
     }
 
     /// 一部が届いて止まった欄: 追送は1回だけ、動かなければ失敗(値は入力を映している = 赤が正しい)

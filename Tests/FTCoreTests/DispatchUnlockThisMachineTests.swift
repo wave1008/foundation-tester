@@ -17,10 +17,13 @@ final class DispatchUnlockThisMachineTests: XCTestCase {
     private let dispatchedHere = RemoteDispatchLockInfo(issuerHost: "alice-mbp", pid: 77,
                                                         acquiredAt: "2026-09-21T09:30:00Z", issuer: "alice")
 
+    /// `startTime` は必ず固定値を渡す(production の `ProcessLiveness.startTime` はこの Mac の
+    /// プロセス表を引くので、pid 4242 が実在すると合否が変わる)。既定は acquiredAt より前 = 同じプロセス
     private func decide(_ probe: RemoteDispatchLock.Probe, alive: @escaping (Int32) -> Bool = { _ in false },
+                        startTime: @escaping (Int32) -> Date? = { _ in Date(timeIntervalSince1970: 1_577_836_800) },
                         livePIDs: @escaping () -> [Int32]?) -> RemoteDispatchUnlock.Decision {
         RemoteDispatchUnlock.decideThisMachine(probe: probe, myIssuer: "wave1008", myHost: "my-mac",
-                                               pidAlive: alive, livePIDs: livePIDs)
+                                               pidAlive: alive, livePIDs: livePIDs, startTime: startTime)
     }
 
     // MARK: - この機械から取ったロック(pid だけで決まる)
