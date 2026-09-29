@@ -295,7 +295,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   式を1つ通す**(数字が2箇所で食い違わない)
 - **複数機械 run のロックは親が1台ずつ取る**(資源順序付け。docs/remote-runner.md §18.10。
   `FTRemote.DispatchOrder` / `Sources/fleetest/DispatchPrelock.swift`): **全員が同じ順序でしか
-  取らない**ので循環待ちを作れない(検出も自己解消も要らない)。守る規律5つ:
+  取らない**ので循環待ちを作れない(検出も自己解消も要らない)。守る規律6つ:
   **①順序の鍵はランナーのハードウェア UUID**(`IOPlatformUUID`。**IP は1台に複数付き・
   ホスト名は重複と mDNS で変わる・`<base>` 配下の ID は同じ Mac に base を2つ作ると割れる**。
   採取は接続の1往復に相乗り = ssh を足さない)/ **②並べ替えは `DispatchOrder.sorted` の1箇所**
@@ -317,7 +317,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (名前も置き場所も固定。拡張のフォームにも入力欄を置かない = ユーザー決定)。
   **呼ぶのは `ProfileRunner.run` と `ApiRunCommand` の2箇所** —— リモートの子は
   `fleetest run --runner local` として向こうで同じコードを通るので `RemoteRunDispatcher` には
-  足さない。守る規律3つ: **①setup の失敗は run を止める**(teardown の失敗は結果を変えない)/
+  足さない。守る規律4つ: **①setup の失敗は run を止める**(teardown の失敗は結果を変えない)/
   **②デバイスに触る前に撃つ** / **③片付けは defer だけに頼らない** —— setup の前に
   `.fleetest/hooks/<pid>.json` を置き、次の run 開始時と `fleetest hooks reap`(`remote clean` が撃つ)が死んだ pid の
   ぶんを代わりに実行する(**生存判定は pid だけ。mtime を見ない**)。**④刺さっても打ち切らない**

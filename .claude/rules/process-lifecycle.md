@@ -113,7 +113,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `kill(x, 0)` を落とす。例外は自分の子を SIGKILL する直前の確認だけ。**時刻付きの記録と突き合わせるときは
   `isAliveAndNotStartedAfter`** = 記録より後に起動した pid(再利用)を死とみなす・開始時刻が読めなければ生きている側)②**子は親の死で自ら終わる**
   (`FTCore.ParentDeathWatch`。spawn 側が `FT_PARENT_PID` を渡した子だけが kqueue で親の EXIT を待ち、
-  SIGTERM → 2 秒で `_exit`。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
+  自分に SIGTERM を送るだけ(時限の `_exit` はしない = 後始末を打ち切らない)。**opt-in** = 端末のシェルから `fleetest run &` した親が閉じても run を
   巻き込まない。`Process()` で `fleetest` / `fleetest-scenarios` を起こす経路を足したら
   `ParentDeathWatch.childEnvironment()` を渡す —— `ParentDeathWatchWiringTests` が集合を等号で固定。
   **例外は `warm-ocr` と背景の掃除(`RunCompletionSweep`)の2つ**: どちらも親の死を生き延びないと目的を果たせない(コンパイルのコミット / 親の run は掃除より先に必ず終わる)。有限で自分で終わる。

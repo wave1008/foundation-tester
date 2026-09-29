@@ -35,7 +35,7 @@
   修正提案が出続けます。例:
 
   > `TestProjects/SampleApp/scenarios/LoginTest.swift:17` — ロケータの指紋照合で通過。
-  > セレクタ "#email_input" を "#email||.textField[0]" に変更してください
+  > セレクタ "#email_input" を "#email||.textField[1]" に変更してください
 
 - 一致した要素に一意に書けるセレクタが無いときは、操作自体は続行しますが修正提案は出しません。
 - **ソースの `.swift` を自動で書き換えることはありません。** 修正提案の適用は別途、明示的な

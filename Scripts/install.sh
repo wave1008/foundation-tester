@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fleetest インストーラ。/fleetest-setup スキルの「機械作業」だけを1コマンドに固めたもの。
 #
-#   bash Scripts/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app <bundleID>]
+#   bash Scripts/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app-id <bundleID>]
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
 #     | bash -s -- --name <ProjectName>          # clone から丸ごと(TOOL_ROOT は隣に作られる)
 #

@@ -81,7 +81,7 @@ claude plugin install fleetest@foundation-tester --scope user
    ```json
    "fleetest": {
      "command": "bash",
-     "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
+     "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
      "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
    }
    ```
@@ -105,7 +105,7 @@ claude plugin install fleetest@foundation-tester --scope user
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-  | bash -s -- --name MyApp --app com.example.myapp
+  | bash -s -- --name MyApp --app-id com.example.myapp
 ```
 
 - プラグインが提供するスキル: `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
@@ -199,7 +199,7 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 | `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--set heal=...`、`--port`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
-| `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
+| `results list / summary / flaky / trend / devices / slow / insights / log` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
 | `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
 | `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`(iOS はシミュレータ自身の名前)/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
@@ -256,7 +256,7 @@ swift run fleetest run --project SampleApp --profile all   # 解決 → ブリ�
 - `machine` は**デバイス1台ずつに書く**(手元は `"local"`。ツールは常に明示して書く)。
   `fleetest remote machines add` で登録した名前を書くと、そのデバイスは**別の Mac 上にある**ものとして
   扱われ、実行プロファイルを選ぶだけでそのマシンへ SSH でディスパッチされる
-  (導入は [docs/remote-runner-setup.md](docs/remote-runner-setup.md)。旧キー `"host"` も読める)
+  (導入は [docs/remote-runner-setup.md](docs/remote-runner-setup.md)。旧キー `"host"` は読まない)
 - **一意なのは (machine, name)** なので別の機械に同名のデバイスが居てよく、**手元10台 + リモート10台を
   1回の run で**回せる(機械ごとに分かれて走り、シナリオは台数で重み付けて配られる)
 - `enabled: false` のデバイスは一覧に残るが走らない(拡張のチェックボックスに対応)
@@ -405,7 +405,7 @@ android.webkit.WebView)の中身も同じセレクタ・同じコマンドで操
   「セレクタが見つからない」になる)
 
 コンテナは `.webView` 型で出る(`.webView >> …` のスコープ起点にできる)。中身が
-a11y/DOM に現れるまで初回は数秒かかることがあるため、**画面遷移直後の検証は `timeout:` を
+a11y/DOM に現れるまで初回は数秒かかることがあるため、**画面遷移直後の検証は `waitSeconds:` を
 長めに**取る。iOS の既定エンジン(hybrid)では中身の読み取り・委譲を自動で行うので
 利用者側の書き分けは不要。
 
@@ -432,8 +432,8 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 (`waitForDisplay`/`waitForClose` 含む)・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
 特に効く規約だけ抜粋:
 
-- **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `timeout:` を上げる。
-  秒は**小数可** — `timeout: 1.2` / `waitSeconds: 0.5`)
+- **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `waitSeconds:` を上げる。
+  秒は**小数可** — `waitSeconds: 1.2`)
 - **属性の検証は「掴んでから」書く**(`select("#msg").textIs("完了")`。`select("#msg")` の次の行に
   `textIs("完了")` と書いても同義 = 対象は直前に掴んだ要素。`textIs("#msg", "完了")` は書けない)
 - **画面の値は `exist` / `select` の戻り値から読める**(`exist("#txt_total").text` / `.value` / `.id`)。
@@ -479,7 +479,7 @@ condition {
   **ちょうど1件だけ**一致すれば FM なしで決定的に解決して続行する(指紋は
   `TestProjects/<name>/.fleetest/locator-fingerprints.json` に保存)。
   レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — ロケータの指紋照合で通過。
-  セレクタ "#email_input" を "#email||.textField[0]" に変更してください」のようなソース位置付き
+  セレクタ "#email_input" を "#email||.textField[1]" に変更してください」のようなソース位置付き
   修正提案を出し続ける(ソースの自動書換はしない)
 - **dry-run**: `fleetest run --dry-run`(Shirates の No-Load-Run 相当)。**デバイスにも FM にも
   触れず**、セレクタの構文誤り・到達しない scene・アサーション0の `expectation`・

@@ -121,7 +121,7 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// このデバイスが居る機械。省略時は手元(ツールは常に明示して書く)。
     /// 書けるのは**登録名**だけ(ssh の実体は書けない = プロファイルはプロジェクト資産)。
     /// 解決規則は DeviceMachineGrouping、正規化は MachineDispatch.normalize。
-    /// **JSON キーは "machine"**。旧キー "host" も読む(既存プロファイルは無改修)
+    /// **JSON キーは "machine"**。旧キー "host" は読まない(knownKeys に無い = 未知キーの警告)
     public var machine: String?
     /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
     public var kind: DeviceKind?

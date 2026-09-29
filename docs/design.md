@@ -208,9 +208,7 @@ FoundationModels はモデル型を2つ持ち、**`PrivateCloudComputeLanguageMo
 **`AppDriver` プロトコル**が唯一のプラットフォーム境界。iOS ブリッジ(Runner/)・Android
 ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 13 エンドポイント(status/session/
 snapshot/tap/type/clear/pressEnter/swipe/press/doubletap/pinch/screenshot/terminate)を
-共有しつつ、XCUITest は drag/appswitcher/home/hidekeyboard/appstate/rotate を追加した19、
-Android は locale/settle を追加した15、InApp は hidekeyboard/appstate/rotate を追加した16
-という差分がある(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
+共有しつつ、XCUITest は 27、Android は 17、InApp は 16 という差分がある(追加分の内訳は §4.3 の表)(唯一の正は §4.3 の表 = `Tests/FTCoreTests/BridgeContractTests.swift`)。
 `FTFoundationModels` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
 
@@ -304,7 +302,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
 ### 4.1 常駐のしくみ
 
-- `FleetestRunnerUITests` に終わらないテスト `testRunServer()` を 1 本だけ置く。
+- `FleetestRunnerUITests` に終わらないテスト `testRunBridgeServer()` を 1 本だけ置く。
   テスト内で HTTP サーバを起動し、`RunLoop.current.run()` で常駐。
 - 起動手順(CLI が内部で実行):
   1. `xcodebuild build-for-testing -project Runner/FleetestRunner.xcodeproj
@@ -1100,7 +1098,7 @@ fleetest snapshot [--json] | tap | type | swipe | press | screenshot
 ```
 
 実行結果はシナリオ実行毎に `TestProjects/<name>/reports/scenario-*.md`(§10)へ自動出力される。
-集約・分析は別レイヤの `fleetest results list/summary/flaky/trend/devices/slow/insights`(§14)で行う。
+集約・分析は別レイヤの `fleetest results list/summary/flaky/trend/devices/slow/insights/log`(§14)で行う。
 
 - **`bridge up` が起動するのは xcuitest ブリッジ(iOS)/デバイス内サーバ(Android)のみ**(in-app ブリッジを
   起動する経路は無い)。プロセスは常駐し、停止は `bridge down` か `devices down` を要する
@@ -2731,7 +2729,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - 失敗セマンティクス: コマンド NG → **シナリオ全体を中断**(以降のステップは scene を跨いで
   すべて skipped。throw を使わない Shirates 的中断)。tearDown だけは失敗後でも実行される。
   2026-07-27 変更(ユーザー決定): 以前は scene 単位のスキップで次の scene へ進んでいたが、
-  失敗後の画面状態は不定で、続けても壊れた前提の擬陽性/擬陰性を生むだけのため廃止
+  失敗後の画面状態は不定で、続けても壊れた前提の誤った緑・誤った赤を生むだけのため廃止
   (`abortScenarioOnFailure()` も既定化に伴い撤去)
 - **登録不要の単発実行**: `fleetest run-file <path.swift>`(Sources/fleetest/RunFileCommand.swift)。
   `fleetest project create/sync` で Package.swift へ登録していない .swift をそのまま実行する。
@@ -2971,7 +2969,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
   422 は XCUITest ランナーが同じ事情に使う status —— あちらは 409 を使えない(§4.3))。
   **DSL(`StepExecutor`)と `HybridFallbackDriver`(MCP・ライブ操作)が同じ判定を通る** ——
   2026-09-23 まで DSL 側だけがインラインで持っていたため、**同じ hybrid 構成の同じ操作が
-  シナリオでは通るのに `ft_type` / `ft_press_enter` / `ft_clear_input` では 409 で落ちた**
+  シナリオでは通るのに `ft_type`(`pressEnter`)/ `ft_clear_input` では 409 で落ちた**
   (maintainer-notes §45.1)。**`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を
   含む 14 操作と共有で、409 を既定に入れると全部を巻き込む(hideKeyboard は「409 では回さない」と
   決めている)。**`ref` ありは回さない** —— ref はブリッジごとに別名前空間で、この層には
@@ -4952,7 +4950,7 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 ### 14.3 分析
 
 - 集計は `Sources/FTCore/RunResultsQuery.swift` の純関数に集約(閾値定数も同ファイル冒頭)。
-  CLI(`fleetest results list/summary/flaky/trend/devices/slow/insights`)と
+  CLI(`fleetest results list/summary/flaky/trend/devices/slow/insights/log`)と
   拡張向け `fleetest api results`(1 行 JSON)の両方がこれを使う
 - ダッシュボード: デバイスモニターの「ダッシュボード」タブ
   (`vscode-fleetest/src/monitorDashboardController.ts` + `src/webview/dashboard/`。

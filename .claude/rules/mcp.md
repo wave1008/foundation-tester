@@ -144,8 +144,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **フィクスチャの分類の正は `NoteCoverageTests.archetypes`**(接頭辞は OS を表すだけ)。
   **「地図でしか出ない」と見えた注記も、アーキタイプを足すと他でも出る**
   (`unlabeledClickablesNote` は settings、`keyboardCoverageNote` / `scrollFrameCandidates` は
-  chat で発火した)。残る `truncationNote` / `ghostNote` は各1画面のみ、
-  `bulkExemptNote` / `sliverNote` は0枚 —— 死に注記は理由を確かめて `knownSilent` に
+  chat で発火した)。画面数の正は `NoteCoverageTests` の coverage 表
+  (`sliverNote` はブラウザの表で1画面・`bulkExemptNote` は0枚) —— 死に注記は理由を確かめて `knownSilent` に
   登録する(等号照合なので新しい死に注記は落ちる)。
   **1つのアーキタイプがコーパスの 60% を超えないこと**(`testNoArchetypeDominatesTheCorpus`)——
   深く掘るほど1アプリが増え、**掘るほど汎用性の判定が悪くなる**逆向きの力が働くので機械で止める

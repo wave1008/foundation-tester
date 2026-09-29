@@ -42,7 +42,8 @@
 
 **JSON キーの改名(2026-08-26)**: プロファイルの `devices[].host` → `machine`、マシンプロファイル
 直下の `host` → `machine`、ホスト登録簿の `name` → `machine`、記録の `machine` → `host`。
-**旧キーはすべて読める**(書き出しは新キーのみ)。
+**旧キーはプロファイルの `devices[].host` を除いて読める**(`devices[].host` は読まない = 書くと
+手元のデバイスとして扱われる。書き出しは新キーのみ)。
 
 **拡張 ⇄ webview のメッセージも同じ日に揃えた**(こちらは同時に配布されるので旧キーは読まない):
 `remoteConfig.hosts[].machine`・`DeviceCommandSource.machine`・`machineProfileInfo` の
@@ -865,7 +866,7 @@ loopback のポート)で、`<base>` 配下だと**同じ Mac に base が2つ�
 - 取れなければ**待たずに fail fast**(exit 1)。誰がいつから掴んでいるかを出す
   (issuerId 付き。§18.2)。**`--wait-lock <秒>` で解放待ちのポーリングに切り替えられる**
   (`run` / `api run` の両方。拡張は設定 `fleetest.remoteWaitLock` から渡す。§18.7)
-  (2026-08-18。奪わない。`--force-lock` と併用不可。純ローカル実行では拒否 —
+  (2026-08-18。奪わない。`--force-lock` と併用不可。前提条件は無い(手元の run も dispatch.lock を取る)—
   判定は `RemoteDispatchFlagPolicy` / ポーリング判断は `WaitLockPolling`)
 - **時刻で自動的に奪わない**(長い run を殺す)。奪うのは `--force-lock` を明示したときだけで、
   そのとき警告を1行出す。**pid は別マシンのものなので生死判定に使えない = 表示専用**

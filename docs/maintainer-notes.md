@@ -2018,7 +2018,7 @@ notBound` の4値を返し、`MCPServer.bridgeWedgedOnUDIDMessage` と `bridgeWe
 
 - **HYB-1(呼び手で成否が変わる)**: テキスト入力系の 409 を、DSL は XCUITest へ回すのに
   `HybridFallbackDriver` は回さなかった —— 同じ hybrid 構成の同じ操作が、シナリオなら通り
-  `ft_type` / `ft_press_enter` / `ft_clear_input` では落ちる。判定を
+  `ft_type`(`pressEnter`)/ `ft_clear_input` では落ちる。判定を
   `DriverError.isTextInputFallback` / `isClearInputFallback` として FTCore へ出し、両方が呼ぶ。
   **`withFallback` の既定は変えない** —— あれは tap/swipe/hideKeyboard を含む 14 操作と共有で、
   409 を既定に入れると全部を巻き込む(とくに hideKeyboard は DSL が明示的に「409 では回さない」と

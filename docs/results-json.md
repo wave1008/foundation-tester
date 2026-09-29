@@ -374,7 +374,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 `workerAnomalies`。
 
 **`fm` の `gateWaitTotalMs` / `gateWaitP50Ms` / `gateWaitMaxMs`** は FM 呼び出しコスト
-(`totalMs` 等)とは別軸で、`FMGate.enter()` が `FMLock`(ホスト単位の許可枠。既定5)で実際に
+(`totalMs` 等)とは別軸で、`FMGate.enter()` が `FMLock`(ホスト単位の許可枠。既定1)で実際に
 待たされた時間。枠を絞る/広げる判断材料 —— 待ちがほぼ0なら広げても解放されるものが無い。
 
 **`fm` の `skipped`** は `FMGate` で止められ FM を呼ばずに諦めた回数(ブレーカ作動中 or 枠の

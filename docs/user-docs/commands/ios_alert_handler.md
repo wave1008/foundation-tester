@@ -62,7 +62,7 @@ confirmation.
 - **Labels match exactly, and the tool never guesses a default button.** Which button is the
   "yes" answer is context-dependent (permission prompts have variants like "Allow Once" /
   "Allow While Using App" / "Don't Allow") and both wording and order vary by locale and OS
-  version. Only the labels you write are pressed — no partial matching either, so
+  version. Only the labels you write are pressed — no partial matching unless you add `*`, so
   `button: "Allow"` never presses "Don't Allow" by accident. Register the reject-side label the
   same way to auto-decline instead.
 - **Pressing an alert is recorded in the run log**, including which button was pressed —

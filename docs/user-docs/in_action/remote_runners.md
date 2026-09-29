@@ -98,7 +98,7 @@ run splits per machine and each portion runs against its own devices there.
   you mean, so the run is refused. Add `--runner local` for your Mac only, `--runner <machine>` for one
   machine, or `--all-machines` to run on every machine that has a device with that name. If the name
   is on only one machine, the run goes ahead as before.
-- Devices written with the old key `"host"` are still read (renamed to `machine` on 2026-08-26).
+- The old key `"host"` is no longer read (renamed to `machine` on 2026-08-26). A device written with `"host"` is treated as a local device.
 
 ## `run --runner` and `--fleet`
 

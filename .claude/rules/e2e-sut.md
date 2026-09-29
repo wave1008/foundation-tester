@@ -19,7 +19,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   = **OS(SpringBoard)の権限アラートがアプリを覆う形**(別プロセスなので in-app の木に載らない。
   緑の回帰は `scenarios/16_システムアラート.swift`・**陽性対照は `_disabled/94_システムアラート.swift`**)。
   覆い・別ウィンドウに関わる変更は `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift`
-  の4本で対照を取る(docs/verification.md)。**4本目は条件判定**(`ifCanSelect`)——
+  の5本で対照を取る(docs/verification.md)。**条件判定の1本**(`ifCanSelect`)は ——
   **perform を通らないので操作・検証を直しても守られない**
 - **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオが
   これを参照。片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を

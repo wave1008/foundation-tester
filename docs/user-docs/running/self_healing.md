@@ -36,7 +36,7 @@ Self-healing is fingerprint matching only — it does not call FM (Foundation Mo
   location for as long as the source has not been updated, e.g.:
 
   > `TestProjects/SampleApp/scenarios/LoginTest.swift:17` — passed via locator fingerprint
-  > matching; change the selector "#email_input" to "#email||.textField[0]"
+  > matching; change the selector "#email_input" to "#email||.textField[1]"
 
 - If the matched element has no selector that can be written uniquely, the step still acts on it,
   but no fix suggestion is made for it.
