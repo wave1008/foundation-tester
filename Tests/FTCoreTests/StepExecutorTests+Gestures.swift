@@ -6,12 +6,11 @@ import UniformTypeIdentifiers
 
 // StepExecutorTests のジェスチャ系(swipe/pinch/doubleTap/scroll探索・scrollFrame)
 
-/// 素の `swipe` アクションは 2026-08-31 からキーボード検知のため振る前に必ず1回
-/// snapshot を撮る(キーボードが無ければ path は nil のまま = 挙動は変わらない)。
-/// 以下のドライバ選択順序の検証はその先頭の読みを剥がしてから見る
+/// 素の `swipe` アクションは振る前に静止した木を撮る(キーボード検知と枠の静止 = settledSignature。
+/// 静止した画面で2枚以上)。以下のドライバ選択順序の検証はその先頭の読みを剥がしてから見る
 private extension Array where Element == String {
     var droppingLeadingSwipeSnapshot: [String] {
-        first == "primary.snapshot" ? Array(dropFirst()) : self
+        Array(drop { $0 == "primary.snapshot" })
     }
 }
 

@@ -33,7 +33,7 @@ final class FlickSettleTests: XCTestCase {
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         let drag = try XCTUnwrap(driver.dragCalls.first)
         XCTAssertLessThan(drag.0, 300, "止まった枠(x 0〜300)の中に指を置く: \(drag)")
-        XCTAssertTrue(outcome.notes.contains(.settledBeforeFlick))
+        XCTAssertTrue(outcome.notes.contains(.settledBeforeGesture))
     }
 
     func testFlickOnAStillScreenDoesNotNote() async throws {
@@ -45,6 +45,6 @@ final class FlickSettleTests: XCTestCase {
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.dragCalls.count, 1)
-        XCTAssertFalse(outcome.notes.contains(.settledBeforeFlick))
+        XCTAssertFalse(outcome.notes.contains(.settledBeforeGesture))
     }
 }

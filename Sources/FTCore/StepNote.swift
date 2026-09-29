@@ -257,9 +257,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 起動直後の最初のロケータ操作の前に配置の静止を待ち、**待っている間に実際に木が動いた**
     /// (= 待たなければずれる前の座標を撃っていた)。立たない = 既に静止していた(`pendingLaunchSettle`)
     case settledAfterLaunch = "settled-after-launch"
-    /// flick の前に木の静止を待ち、**待っている間に実際に木が動いた**(= 待たなければ動いている最中か古い枠へ
-    /// 指を置いていた)。立たない = 既に静止していた
-    case settledBeforeFlick = "settled-before-flick"
+    /// flick・swipe・scroll の前に木の静止を待ち、**待っている間に実際に木が動いた**(= 待たなければ動いている
+    /// 最中か古い枠へ指を置いていた)。立たない = 既に静止していた
+    case settledBeforeGesture = "settled-before-gesture"
 
     /// 1番目の occlusion-guard 評価だけで、ガード自身の所要(FM の直列化待ち+推論)が
     /// このステップの待ち予算を食い潰し、1回もポーリングできないまま反転が確定しかけたので、
@@ -323,8 +323,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .checkStateClassifierFailed:
             return "CheckStateClassifier could not be trained or loaded, or its answer could not be trusted,"
                 + " so the check state came from accessibility only"
-        case .settledBeforeFlick:
-            return "the screen was still moving before the flick, so the flick waited for it to settle"
+        case .settledBeforeGesture:
+            return "the screen was still moving before the gesture, so the gesture waited for it to settle"
         case .settledAfterLaunch:
             return "the screen was still laying out after the launch, so the target was resolved again once it settled"
         case .visionAnomalyRetried:

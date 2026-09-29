@@ -16,7 +16,10 @@ extension StepExecutor {
         // contentOffset 経路はキーボードに塞がれないが、座標つきは Compose/Flutter で
         // 501 を返すため、swipeWithFallback が XCUITest の実ジェスチャへ回す
         // (キーボード上はそちらでないと動かないので、これが望ましい)
-        let snapshot = try await snapshotForScrollFrame(phase: &phase)
+        // 枠は静止した木から取る(flick と同じ理由。executeDirectFlick の doc)
+        let settledBefore = try await settledSignature(phase: &phase)
+        if settledBefore.changed { noteCodesThisStep.insert(.settledBeforeGesture) }
+        let snapshot = settledBefore.snapshot
         let hasKeyboard = snapshot.keyboardFrame != nil || snapshot.keyboardShown == true
         let path = hasKeyboard ? scrollPath(step: step, intent: .gesture, in: snapshot) : nil
         let viaXCUITest = try await swipeWithFallback(direction, path: path, phase: &phase)
@@ -62,8 +65,11 @@ extension StepExecutor {
         // (scrollToEdge/flick は rect を見ている)。
         // **キーボード表示中はこれが唯一の検知手段でもある** —— ソフトキーボードの上で
         // スワイプすると始点がキーボード面に乗って何も動かない(scrollContainer 参照)。
-        // 木を1枚読む固定費は scrollDown/scrollUp のたび毎回払う
-        var latest: SnapshotResponse? = try await snapshotForScrollFrame(phase: &phase)
+        // 最初の1本の枠は静止した木から取る(flick と同じ理由)。2本目以降は直前の送りの整定で撮った木を使う。
+        // 静止の確認(静止した画面で2枚・約 130ms)は scrollDown/scrollUp のたび毎回払う
+        let settledBefore = try await settledSignature(phase: &phase)
+        if settledBefore.changed { noteCodesThisStep.insert(.settledBeforeGesture) }
+        var latest: SnapshotResponse? = settledBefore.snapshot
         for _ in 0..<times {
             // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
             // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由)
@@ -254,7 +260,7 @@ extension StepExecutor {
             // 画面遷移の直後に撃つと、動いている最中か古い木の枠へ指を置いてリストが1pt も動かない
             // (Android の CMP / Flutter / RN で間欠。遷移のタップから約 0.5 秒後に撃って `top=row_01` のまま)
             let settled = try await settledSignature(phase: &phase)
-            if settled.changed { noteCodesThisStep.insert(.settledBeforeFlick) }
+            if settled.changed { noteCodesThisStep.insert(.settledBeforeGesture) }
             let snapshot = settled.snapshot
             let container: FTRect?
             if let rect = step.scrollFrameRect {
