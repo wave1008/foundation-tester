@@ -64,7 +64,7 @@ final class HostMetricsRecorderTests: XCTestCase {
         }
     }
 
-    /// cpuCores は必須欄(拡張の isHostMetricsEvent が欠けた行を捨てる)。値は論理コア数
+    /// cpuCores / gpuCores は必須欄(拡張の isHostMetricsEvent が欠けた行を捨てる)。値は論理コア数
     func testCPUCoresIsAlwaysEncoded() throws {
         let sample = HostMetricsSample(
             ts: 0, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
@@ -74,6 +74,11 @@ final class HostMetricsRecorderTests: XCTestCase {
         let obj = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
         XCTAssertEqual(obj["cpuCores"] as? Int, ProcessInfo.processInfo.processorCount, line)
+        // gpuCores は読めない機械でもキーごと省略しない(null)。Apple Silicon なら値を持つ
+        XCTAssertTrue(obj.keys.contains("gpuCores"), line)
+        #if arch(arm64)
+        XCTAssertGreaterThan(obj["gpuCores"] as? Int ?? 0, 0, line)
+        #endif
     }
 
     /// stop() は冪等(2 回目以降はセマフォを二重待ちせず即返る)

@@ -227,6 +227,28 @@ public final class GPUSampler {
         loggedFailure = true
         logFailure(message)
     }
+
+    /// GPU コア数(IOAccelerator の "gpu-core-count"。Apple Silicon の AGXAccelerator が持つ)。
+    /// 機械の固定値なのでプロセスで1回だけ読む。キーが無い機械は nil(= 表示は GPU(-))
+    public static let coreCount: Int? = {
+        var iterator: io_iterator_t = 0
+        guard let matching = IOServiceMatching("IOAccelerator"),
+              IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator) == KERN_SUCCESS
+        else { return nil }
+        defer { IOObjectRelease(iterator) }
+        var cores: Int?
+        var service = IOIteratorNext(iterator)
+        while service != 0 {
+            if let count = IORegistryEntryCreateCFProperty(
+                service, "gpu-core-count" as CFString, kCFAllocatorDefault, 0
+            )?.takeRetainedValue() as? Int {
+                cores = max(cores ?? 0, count)
+            }
+            IOObjectRelease(service)
+            service = IOIteratorNext(iterator)
+        }
+        return cores
+    }()
 }
 
 // MARK: - メモリサンプラー
@@ -300,6 +322,8 @@ public struct HostMetricsSample: Encodable {
     /// 論理コア数(モニターの CPU ラベル `CPU(n)`)。**機械ごとに違う**のでリモートの行は向こうの値を
     /// 出す必要があり、拡張側の os.cpus() では代われない
     public let cpuCores: Int
+    /// GPU コア数(モニターの GPU ラベル `GPU(n)`)。null = 読めない機械(GPUSampler.coreCount)
+    public let gpuCores: Int?
     /// このサンプリング間隔中に完了した FM 呼び出し数(この機械の全プロセス合計)。
     /// 供給元は FMUsageLedger(呼ぶプロセスと host-metrics は別プロセス)。3欄とも
     /// null = 控えを読めなかった(不明)、0 = 呼び出しが無かった。混ぜない(FMUsageLedger 参照)
@@ -343,6 +367,7 @@ public struct HostMetricsSample: Encodable {
         self.memUsedBytes = memUsedBytes
         self.memTotalBytes = memTotalBytes
         self.cpuCores = ProcessInfo.processInfo.processorCount
+        self.gpuCores = GPUSampler.coreCount
         self.fmCalls = fmCalls
         self.fmFailures = fmFailures
         self.fmTotalMs = fmTotalMs
@@ -357,7 +382,7 @@ public struct HostMetricsSample: Encodable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, ts, cpu, cpuCores, gpu, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
+        case kind, ts, cpu, cpuCores, gpu, gpuCores, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
         case visionCalls, visionFailures, visionTotalMs
         case fmTextState, fmVisionState, fmDeadReason, fmCheckedAt
     }
@@ -369,6 +394,7 @@ public struct HostMetricsSample: Encodable {
         try container.encode(cpu, forKey: .cpu)
         try container.encode(cpuCores, forKey: .cpuCores)
         try container.encode(gpu, forKey: .gpu)
+        try container.encode(gpuCores, forKey: .gpuCores)
         try container.encode(memUsedBytes, forKey: .memUsedBytes)
         try container.encode(memTotalBytes, forKey: .memTotalBytes)
         try container.encode(fmCalls, forKey: .fmCalls)

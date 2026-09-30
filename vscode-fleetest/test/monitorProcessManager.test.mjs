@@ -305,7 +305,7 @@ test("リモート機のサンプルには machine が付く(手元のサンプ�
   feedMonitorDevices(procs[0], [{ id: "ios:mac2/A", name: "A", machine: "mac2" }]);
 
   const sample = (cpu) => Buffer.from(JSON.stringify({
-    kind: "hostMetrics", ts: 1, cpu, cpuCores: 8, gpu: 0.1, memUsedBytes: 2, memTotalBytes: 4,
+    kind: "hostMetrics", ts: 1, cpu, cpuCores: 8, gpu: 0.1, gpuCores: 10, memUsedBytes: 2, memTotalBytes: 4,
     fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null,
   }) + "\n");
   procs[1].stdout.emit("data", sample(0.5)); // 手元の host-metrics
@@ -330,10 +330,10 @@ test("hostMetrics は全欄を要求し(欠けた行は捨てる)、値と null(
   manager.startAll();
 
   const missingFields = Buffer.from(JSON.stringify({
-    kind: "hostMetrics", ts: 1, cpu: 0.5, cpuCores: 8, gpu: 0.1, memUsedBytes: 2, memTotalBytes: 4,
+    kind: "hostMetrics", ts: 1, cpu: 0.5, cpuCores: 8, gpu: 0.1, gpuCores: 10, memUsedBytes: 2, memTotalBytes: 4,
   }) + "\n");
   const full = Buffer.from(JSON.stringify({
-    kind: "hostMetrics", ts: 2, cpu: 0.6, cpuCores: 8, gpu: 0.2, memUsedBytes: 3, memTotalBytes: 4,
+    kind: "hostMetrics", ts: 2, cpu: 0.6, cpuCores: 8, gpu: 0.2, gpuCores: 10, memUsedBytes: 3, memTotalBytes: 4,
     fmCalls: 2, fmFailures: 1, fmTotalMs: 500, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null,
   }) + "\n");
   procs[1].stdout.emit("data", missingFields);
@@ -344,6 +344,7 @@ test("hostMetrics は全欄を要求し(欠けた行は捨てる)、値と null(
   assert.deepEqual([samples[0].fmCalls, samples[0].fmFailures, samples[0].fmTotalMs], [2, 1, 500]);
   assert.equal(samples[0].visionCalls, null);
   assert.equal(samples[0].cpuCores, 8, "コア数を webview へ素通しする");
+  assert.equal(samples[0].gpuCores, 10);
 });
 
 test("リモート機のデバイスが消えたらその機械の子を止め、行の集合からも外す", () => {

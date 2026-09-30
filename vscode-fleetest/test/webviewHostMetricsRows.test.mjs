@@ -128,7 +128,7 @@ function hostMetricsSample(machine, cpu, fm = {}, vision = {}, cpuCores = 8) {
   const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0 } = vision;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
-    cpu, cpuCores, gpu: 0.25, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
+    cpu, cpuCores, gpu: 0.25, gpuCores: 38, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
     fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
     visionCalls, visionFailures, visionTotalMs,
   };
@@ -293,18 +293,53 @@ test("CPU のラベルは機械ごとのコア数を CPU(n) で出し、欠測 t
   const { window, document } = createWebview();
   t.after(() => window.close());
 
+  const cpuLabelOf = (machine) =>
+    rowFor(document, machine).querySelector('.host-metric[data-metric="cpu"] .hm-label').textContent;
+  assert.equal(cpuLabelOf(""), "CPU(-)", "届くまではコア数を名乗らない");
+  send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  assert.equal(cpuLabelOf("mac2"), "CPU(-)", "手元の CPU(24) を複製した行が引き継がない");
   send(window, hostMetricsSample("mac2", 0.9, {}, {}, 20));
   send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
 
-  const cpuLabelOf = (machine) =>
-    rowFor(document, machine).querySelector('.host-metric[data-metric="cpu"] .hm-label').textContent;
   assert.equal(cpuLabelOf(""), "CPU(24)");
   assert.equal(cpuLabelOf("mac2"), "CPU(20)", "リモート行は向こうのコア数");
   for (let i = 0; i < 4; i += 1) {
     send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
   }
   assert.equal(cpuLabelOf("mac2"), "CPU(20)", "コア数は固定値なので欠測になっても消さない");
+});
+
+test("GPU のラベルは GPU(n)。読めない機械(null)は GPU(-) のまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  const gpuLabelOf = (machine) =>
+    rowFor(document, machine).querySelector('.host-metric[data-metric="gpu"] .hm-label').textContent;
+  assert.equal(gpuLabelOf(""), "GPU(-)");
+  send(window, hostMetricsSample(undefined, 0.1));
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  assert.equal(gpuLabelOf("mac2"), "GPU(-)", "手元の GPU(38) を複製した行が引き継がない");
+  send(window, { ...hostMetricsSample("mac2", 0.9), gpuCores: null });
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(gpuLabelOf(""), "GPU(38)");
+  assert.equal(gpuLabelOf("mac2"), "GPU(-)");
+});
+
+test("MEM のラベルは機械ごとの搭載量を MEM(GB) で出し、届くまでは MEM(-)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  const memLabelOf = (machine) =>
+    rowFor(document, machine).querySelector('.host-metric[data-metric="mem"] .hm-label').textContent;
+  assert.equal(memLabelOf(""), "MEM(-)");
+  send(window, hostMetricsSample(undefined, 0.1)); // 手元は 32GB
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  assert.equal(memLabelOf("mac2"), "MEM(-)", "手元の MEM(32) を複製した行が引き継がない");
+  send(window, { ...hostMetricsSample("mac2", 0.9), memTotalBytes: 64 * 1024 ** 3 });
+  send(window, hostMetricsSample(undefined, 0.1));
+  assert.equal(memLabelOf(""), "MEM(32)");
+  assert.equal(memLabelOf("mac2"), "MEM(64)");
 });
 
 test("サンプルの無い tick は直近の値を使い回し、途絶えたら欠測にする", (t) => {

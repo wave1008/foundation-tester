@@ -87,6 +87,8 @@ type HostMetricsRawEvent = {
   /** その機械の論理コア数(CPU ラベルの `CPU(n)`。リモート行は向こうの値)。 */
   readonly cpuCores: number;
   readonly gpu: number | null;
+  /** GPU コア数(`GPU(n)`)。null = その機械では読めない。 */
+  readonly gpuCores: number | null;
   readonly memUsedBytes: number | null;
   readonly memTotalBytes: number | null;
   /** FM(Foundation Models)呼び出しの実測。null = 不明。 */
@@ -122,6 +124,7 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     numberOrNull(record.cpu) &&
     typeof record.cpuCores === "number" &&
     numberOrNull(record.gpu) &&
+    numberOrNull(record.gpuCores) &&
     numberOrNull(record.memUsedBytes) &&
     numberOrNull(record.memTotalBytes) &&
     numberOrNull(record.fmCalls) &&
@@ -148,6 +151,7 @@ export type HostMetricsToWebviewMessage =
       readonly cpu: number | null;
       readonly cpuCores: number;
       readonly gpu: number | null;
+      readonly gpuCores: number | null;
       readonly memUsedBytes: number | null;
       readonly memTotalBytes: number | null;
       /** そのサンプリング間隔で完了した FM 呼び出し(その機械の全プロセス合計)。
@@ -913,6 +917,7 @@ export class MonitorProcessManager {
           cpu: value.cpu,
           cpuCores: value.cpuCores,
           gpu: value.gpu,
+          gpuCores: value.gpuCores,
           memUsedBytes: value.memUsedBytes,
           memTotalBytes: value.memTotalBytes,
           fmCalls: value.fmCalls,
