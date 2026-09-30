@@ -354,6 +354,46 @@ select.dash-project, select.dash-since {
   word-break: break-word;
 }
 
+/* 直近の実行の「すべて / パフォーマンス計測のみ」。押されている側だけ主ボタン色(aria-pressed は performance.js が書く) */
+.runs-filter {
+  display: inline-flex;
+  margin-bottom: 8px;
+}
+#panel-dashboard .runs-filter button {
+  background-color: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  border-radius: 0;
+}
+#panel-dashboard .runs-filter button:first-child { border-radius: 2px 0 0 2px; }
+#panel-dashboard .runs-filter button:last-child { border-radius: 0 2px 2px 0; }
+#panel-dashboard .runs-filter button:hover:not(:disabled) {
+  background-color: var(--vscode-button-secondaryHoverBackground);
+}
+#panel-dashboard .runs-filter button[aria-pressed="true"] {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.runs-compare-hint {
+  margin-left: 12px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.88em;
+}
+/* 選択セルは行クリック(run 詳細)の対象外(runsCompare.js が伝播を止める) */
+#panel-dashboard th.select-col, #panel-dashboard td.select-col {
+  width: 1%;
+  padding-right: 4px;
+  cursor: default;
+}
+.runs-compare {
+  margin-top: 16px;
+}
+.runs-compare-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .perf-summary-note {
   color: var(--vscode-descriptionForeground);
   font-size: 0.88em;

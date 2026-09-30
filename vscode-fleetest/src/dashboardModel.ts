@@ -355,6 +355,9 @@ export type DashboardFromWebviewMessage =
   | { readonly type: "selectProject"; readonly project: string }
   /** 前回比。latestRunIDs/previousRunIDs は groupRuns() の1グループの構成 run 全部。 */
   | { readonly type: "headlineDiff"; readonly latestRunIDs: readonly string[]; readonly previousRunIDs: readonly string[] }
+  /** 直近の実行で利用者が選んだ2件の計測の比較。各側は1実行(runGroup)の構成 run 全部。
+   * previous = 開始の古い側(webview が決める)。 */
+  | { readonly type: "compareRuns"; readonly previousRunIDs: readonly string[]; readonly latestRunIDs: readonly string[] }
   /** 集計期間の切り替え。 */
   | { readonly type: "setSince"; readonly since: SinceOption }
   /** デバイスの健全性の「ストレージ使用を更新」。モニターへ storageRefresh を送る(api results は叩かない)。
@@ -397,6 +400,9 @@ export type DashboardToWebviewMessage =
   | { readonly type: "headlineDiff"; readonly latest: readonly ApiResultsRunPayload[]; readonly previous: readonly ApiResultsRunPayload[] }
   /** 前回比の取得失敗(webview は前回比を畳むだけで文言は出さない)。 */
   | { readonly type: "headlineDiffError" }
+  /** compareRuns の応答。IDs は依頼をそのまま返す(webview が古い応答を捨てる鍵)。 */
+  | { readonly type: "compareRuns"; readonly previousRunIDs: readonly string[]; readonly latestRunIDs: readonly string[]; readonly comparison: readonly PerfScenarioDelta[] }
+  | { readonly type: "compareRunsError"; readonly previousRunIDs: readonly string[]; readonly latestRunIDs: readonly string[]; readonly message: string }
   /** モニターを起動し直した(MonitorProcessManager.startMonitorProcess)。押した「ストレージ使用を更新」の要求は
    * 新しいモニターに届いていないので、進捗と「押せない」を解く(解かないと受け取られない要求を待ち続ける) */
   | { readonly type: "storageProgressReset" };
@@ -681,6 +687,27 @@ export function isApiResultsRunPayload(value: unknown): value is ApiResultsRunPa
   return true;
 }
 
+/** `fleetest api results-compare`(ApiResultsCompareCommand)の stdout。 */
+export interface ApiResultsComparePayload {
+  readonly schemaVersion: number;
+  readonly project: string;
+  readonly previousRunIDs: readonly string[];
+  readonly latestRunIDs: readonly string[];
+  readonly comparison: readonly PerfScenarioDelta[];
+}
+
+export function isApiResultsComparePayload(value: unknown): value is ApiResultsComparePayload {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.schemaVersion === "number" &&
+    typeof value.project === "string" &&
+    isStringArray(value.previousRunIDs) &&
+    isStringArray(value.latestRunIDs) &&
+    Array.isArray(value.comparison) &&
+    value.comparison.every(isPerfScenarioDelta)
+  );
+}
+
 /** ApiResultsCommand の stdout(JSON.parse 済みの unknown)を検証する。 */
 export function isApiResultsPayload(value: unknown): value is ApiResultsPayload {
   if (!isRecord(value)) return false;
@@ -758,6 +785,14 @@ export function isDashboardFromWebviewMessage(value: unknown): value is Dashboar
       value.latestRunIDs.every((id) => typeof id === "string") &&
       Array.isArray(value.previousRunIDs) &&
       value.previousRunIDs.every((id) => typeof id === "string")
+    );
+  }
+  if (value.type === "compareRuns") {
+    return (
+      isStringArray(value.previousRunIDs) &&
+      value.previousRunIDs.length > 0 &&
+      isStringArray(value.latestRunIDs) &&
+      value.latestRunIDs.length > 0
     );
   }
   if (value.type === "setSince") return isSinceOption(value.since);

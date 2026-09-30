@@ -15,13 +15,13 @@ import {
   renderFlakyTable,
   groupRuns,
   renderHeadline,
-  renderRunsTable,
   renderSlowTable,
 } from '../dashboard/render.js';
 import { renderSummaryTable } from '../dashboard/summaryTable.js';
 import { renderInsights } from '../dashboard/insights.js';
 import { applyDeviceCatalog, renderDeviceHealth, resetStorageProgress } from '../dashboard/deviceHealth.js';
-import { renderPerformance } from '../dashboard/performance.js';
+import { renderRecentRuns } from '../dashboard/performance.js';
+import { showRunsCompare, showRunsCompareError, syncRunsSelectionProject } from '../dashboard/runsCompare.js';
 import { setMachineAliases } from '../dashboard/machineNames.js';
 import { showRunDetailData, showRunDetailError } from '../dashboard/runDetail.js';
 import { showTrendData, showTrendError } from '../dashboard/trend.js';
@@ -130,8 +130,8 @@ function applyData(payload) {
   // デバイスの健全性は insights より先に描く: deviceBias リンクの可否(hasWorkerRow)が
   // deviceHealth.js の currentRows を参照するため
   renderDeviceHealth(payload.deviceHealth);
-  renderRunsTable(runGroups, statsByRunID);
-  renderPerformance(payload.performance);
+  syncRunsSelectionProject(payload.project);
+  renderRecentRuns(runGroups, statsByRunID, payload.performance);
   renderSlowTable(payload.slow);
   renderInsights(payload.insights);
   renderFlakyTable(payload.flaky);
@@ -197,6 +197,12 @@ export function handleDashboardMessage(message) {
         break; // 別のデータに対する古い応答
       }
       renderHeadlineDiff(computeHeadlineDiff(message.latest, message.previous));
+      break;
+    case 'compareRuns':
+      showRunsCompare(message.previousRunIDs, message.latestRunIDs, message.comparison);
+      break;
+    case 'compareRunsError':
+      showRunsCompareError(message.previousRunIDs, message.latestRunIDs, message.message);
       break;
     case 'headlineDiffError':
       clearHeadlineDiff();

@@ -20,6 +20,20 @@ export const webviewDashboardStrings = {
     ja: "前回計測との比較: {latest} vs {target}",
     en: "Comparison with the previous measurement: {latest} vs {target}",
   },
+  "wvDashboard.perf.selectedHeading": {
+    ja: "選択した2件の比較: {previous} → {latest}",
+    en: "Comparison of the 2 selected runs: {previous} → {latest}",
+  },
+  "wvDashboard.perf.selectedLoading": { ja: "比較を取得中…", en: "Fetching the comparison…" },
+  "wvDashboard.perf.selectedEmpty": {
+    ja: "両方で passed のシナリオがありません(比べられるのは両方に居て成功した組だけです)。",
+    en: "No scenario passed in both runs (only scenarios that passed on both sides are compared).",
+  },
+  "wvDashboard.perf.selectedConfigDiffers": {
+    ja: "profile または machine が違う2件です(デバイス構成・機械の性能の差が所要に混ざります)。",
+    en: "The 2 runs differ in profile or machine (differences in devices and machine performance mix into the durations).",
+  },
+  "wvDashboard.perf.selectTitle": { ja: "計測の比較に使う(2件まで)", en: "Use for comparing measurements (up to 2)" },
   "wvDashboard.perf.invalidCountNote": { ja: "計測無効で除外 {count} 件", en: "{count} excluded as invalid measurements" },
   "wvDashboard.perf.comparisonHeadingWith": {
     ja: "前回計測との比較({target})",

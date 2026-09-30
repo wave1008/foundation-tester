@@ -912,3 +912,144 @@ test("デバイスの健全性: 実機にはデバイスモニターと同じ「
   assert.equal(badges[0], "iOS");
   assert.match(badges[1], /実機/);
 });
+
+// ---- 直近の実行の「すべて / パフォーマンス計測のみ」 -----------------------------------------
+
+const PERF_ROW = {
+  runID: "20260801-000000Z-perf0001", runIDs: ["20260801-000000Z-perf0001", "20260801-000001Z-perf0002"],
+  startedAt: "2026-08-01T00:00:00Z", profile: "android", host: "H", hosts: ["H"],
+  wallClockMs: 60000, testTimeMs: 50000, scenarioTotalMs: 40000, scenarioCount: 4,
+  passed: 4, failed: 0, maxScenarioMs: 20000, maxScenarioID: "Foo.S0010", laneCount: 2, avgLaneUtilisationPct: 40,
+};
+
+test("直近の実行: パフォーマンス計測のみは performance.runs を描き、比較と無効件数も出す。すべてへ戻すと消える", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const performance = {
+    runs: [PERF_ROW], invalidCount: 2,
+    comparison: [{ scenarioID: "Foo.S0010", platform: "android", latestMs: 20000, previousMs: 10000, deltaPct: 100 }],
+    comparedRunID: null, comparisonRunID: null,
+  };
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ performance }) } });
+  const doc = window.document;
+  const rows = () => [...doc.querySelectorAll("#table-runs-body tr")];
+  const [allBtn, perfBtn] = doc.querySelectorAll("#runs-filter button");
+
+  assert.equal(allBtn.getAttribute("aria-pressed"), "true");
+  assert.equal(rows()[0].children[3].textContent, "ios-inapp", "既定は payload.runs");
+  assert.equal(doc.getElementById("table-perf-comparison").style.display, "none");
+
+  perfBtn.click();
+  assert.equal(perfBtn.getAttribute("aria-pressed"), "true");
+  assert.equal(allBtn.getAttribute("aria-pressed"), "false");
+  assert.equal(rows().length, 1);
+  assert.equal(rows()[0].children[3].textContent, "android");
+  assert.equal(rows()[0].children[4].textContent, "4 / 0", "pass/fail は profile の右");
+  assert.equal(doc.getElementById("table-perf-comparison").style.display, "table");
+  assert.equal(doc.querySelectorAll("#table-perf-comparison-body tr").length, 1);
+  assert.equal(doc.querySelectorAll("#perf-summary .perf-summary-note").length, 1);
+
+  rows()[0].click();
+  const detailReq = posts.find((p) => p.type === "dashboard" && p.message?.type === "runDetail");
+  assert.deepEqual([...detailReq.message.runIDs], ["20260801-000001Z-perf0002", "20260801-000000Z-perf0001"],
+    "詳細は新しい順(すべての行と同じ並び)");
+
+  allBtn.click();
+  assert.equal(rows()[0].children[3].textContent, "ios-inapp");
+  assert.equal(doc.getElementById("table-perf-comparison").style.display, "none");
+  assert.equal(doc.querySelectorAll("#perf-summary .perf-summary-note").length, 0);
+});
+
+test("直近の実行: パフォーマンス計測のみで計測が0件なら表を隠して空の案内を出し、再描画しても選択は保つ", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload() } });
+  const doc = window.document;
+  doc.querySelectorAll("#runs-filter button")[1].click();
+  assert.equal(doc.getElementById("table-runs").style.display, "none");
+  assert.equal(doc.getElementById("perf-empty").style.display, "block");
+
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ performance: { runs: [PERF_ROW], invalidCount: 0, comparison: [] } }) } });
+  assert.equal(doc.querySelectorAll("#runs-filter button")[1].getAttribute("aria-pressed"), "true");
+  assert.equal(doc.getElementById("table-runs").style.display, "table");
+  assert.equal(doc.getElementById("perf-empty").style.display, "none");
+  assert.equal(doc.querySelector("#table-runs-body tr").children[3].textContent, "android");
+});
+
+// ---- 直近の実行: 2件を選んで計測を比較 --------------------------------------------------------
+
+const RUN_OLD = { ...RUN, runID: "20260831-000000Z-old00001", startedAt: "2026-08-31T00:00:00Z", profile: "android" };
+
+test("直近の実行: 2件を選ぶと古い側を previous にして compareRuns を送り、応答を描く。3件目は最初の選択を外す", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const RUN_OLDER = { ...RUN, runID: "20260830-000000Z-older001", startedAt: "2026-08-30T00:00:00Z" };
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ runs: [RUN, RUN_OLD, RUN_OLDER] }) } });
+  const doc = window.document;
+  const boxes = () => [...doc.querySelectorAll("#table-runs-body input.run-select")];
+  const compares = () => posts.filter((p) => p.type === "dashboard" && p.message?.type === "compareRuns").map((p) => p.message);
+  const check = (box) => { box.checked = true; box.dispatchEvent(new window.Event("change")); };
+
+  check(boxes()[0]);
+  assert.equal(compares().length, 0, "1件では送らない");
+  assert.equal(doc.getElementById("runs-compare").style.display, "none");
+
+  check(boxes()[1]);
+  assert.deepEqual(JSON.parse(JSON.stringify(compares()[0])), {
+    type: "compareRuns", previousRunIDs: [RUN_OLD.runID], latestRunIDs: [RUN.runID],
+  }, "選んだ順ではなく開始の古い側が previous");
+  assert.equal(doc.getElementById("runs-compare").style.display, "block");
+  assert.equal(doc.getElementById("runs-compare-note").style.display, "block", "profile が違うので注記");
+  assert.ok(!posts.some((p) => p.message?.type === "runDetail"), "チェックは行クリック(詳細)にならない");
+
+  sendToWebview({ type: "dashboard", message: {
+    type: "compareRuns", previousRunIDs: [RUN_OLD.runID], latestRunIDs: [RUN.runID],
+    comparison: [{ scenarioID: "Foo.S0010", platform: "ios", latestMs: 3000, previousMs: 2000, deltaPct: 50 }],
+  } });
+  assert.equal(doc.getElementById("table-runs-compare").style.display, "table");
+  assert.equal(doc.querySelector("#table-runs-compare-body tr").children[0].textContent, "Foo.S0010");
+
+  check(boxes()[2]);
+  assert.deepEqual(boxes().map((b) => b.checked), [false, true, true], "最初に選んだものを外す");
+  assert.deepEqual(JSON.parse(JSON.stringify(compares()[1])), {
+    type: "compareRuns", previousRunIDs: [RUN_OLDER.runID], latestRunIDs: [RUN_OLD.runID],
+  });
+  // 前の依頼への遅れた応答は捨てる
+  sendToWebview({ type: "dashboard", message: {
+    type: "compareRuns", previousRunIDs: [RUN_OLD.runID], latestRunIDs: [RUN.runID],
+    comparison: [{ scenarioID: "Stale", platform: "ios", latestMs: 1, previousMs: 1, deltaPct: 0 }],
+  } });
+  assert.equal(doc.getElementById("table-runs-compare").style.display, "none");
+
+  doc.getElementById("runs-compare-clear").click();
+  assert.deepEqual(boxes().map((b) => b.checked), [false, false, false]);
+  assert.equal(doc.getElementById("runs-compare").style.display, "none");
+});
+
+test("直近の実行: 選択はフィルター切り替えで保たれ、パフォーマンス計測の行でも選べる", (t) => {
+  const { window, posts, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  const perfRun = { ...RUN, runID: PERF_ROW.runIDs[1], runGroup: PERF_ROW.runID, startedAt: PERF_ROW.startedAt };
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
+    runs: [RUN, perfRun], performance: { runs: [PERF_ROW], invalidCount: 0, comparison: [] },
+  }) } });
+  const doc = window.document;
+  const boxes = () => [...doc.querySelectorAll("#table-runs-body input.run-select")];
+  const check = (box) => { box.checked = true; box.dispatchEvent(new window.Event("change")); };
+
+  check(boxes()[1]);
+  doc.querySelectorAll("#runs-filter button")[1].click();
+  assert.deepEqual(boxes().map((b) => b.checked), [true], "同じ実行は同じ鍵で選択済みに見える");
+  doc.querySelectorAll("#runs-filter button")[0].click();
+  check(boxes()[0]);
+  const req = posts.filter((p) => p.type === "dashboard" && p.message?.type === "compareRuns").at(-1).message;
+  assert.deepEqual([...req.previousRunIDs], ["20260801-000001Z-perf0002"]);
+  assert.deepEqual([...req.latestRunIDs], [RUN.runID]);
+
+  sendToWebview({ type: "dashboard", message: {
+    type: "compareRunsError", previousRunIDs: [...req.previousRunIDs], latestRunIDs: [...req.latestRunIDs], message: "boom",
+  } });
+  const status = doc.getElementById("runs-compare-status");
+  assert.equal(status.textContent, "boom");
+  assert.ok(status.classList.contains("status-error"));
+});

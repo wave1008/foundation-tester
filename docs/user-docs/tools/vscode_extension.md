@@ -132,7 +132,11 @@ Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **
 `fleetest api results` for the project. Sections, top to bottom:
 
 - **Latest run**: scenarios newly failing and scenarios recovered since the previous run of the same profile
-- **Recent runs**: click a row to open run detail; a failed step's file:line opens that line in the editor
+- **Recent runs**: click a row to open run detail; a failed step's file:line opens that line in the editor.
+  The "All / Performance runs only" toggle lists only runs made with `--performance` and shows the comparison
+  with the previous measurement below the table. Check 2 rows at the left edge to compare their per-scenario durations
+  (the earlier run is the baseline; only scenarios that passed in both are listed, largest slowdown first; a note appears
+  when the 2 runs differ in profile or machine)
 - **Notable issues** (insights): grouped by severity, collapsed when 4 or more of the same kind appear
 - **Flaky scenarios** and scenario history
 - **Device health**: one row per device, grouped by a Machine column. Shows the Device Monitor's current
@@ -142,7 +146,7 @@ Command **"fleetest: Open Results Dashboard"** shows, in the device monitor's **
   Storage usage is never measured automatically —
   all running virtual devices are measured only when you click **Refresh storage** (physical devices are not
   measured). Values measured before the monitor started are shown in gray until remeasured
-- **Slow scenarios** and performance measurements
+- **Slow scenarios**
 - **Scenario summary**: filterable by scenario ID, a "failures only" checkbox, sortable by clicking column headers
 
 A toolbar control switches the aggregation period (last 7/30/90 days). Refreshing keeps the current view

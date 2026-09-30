@@ -180,9 +180,13 @@ export const exploreHealStrings = {
     ja: "直近の実行",
     en: "Recent Runs",
   },
-  "exploreHeal.dashboard.headingPerformance": {
-    ja: "パフォーマンス測定(--performance run)",
-    en: "Performance Measurements (--performance runs)",
+  "exploreHeal.dashboard.runsFilterAll": {
+    ja: "すべて",
+    en: "All",
+  },
+  "exploreHeal.dashboard.runsFilterPerformance": {
+    ja: "パフォーマンス計測のみ",
+    en: "Performance runs only",
   },
   "exploreHeal.dashboard.headingPerfComparison": {
     ja: "前回計測との比較",
@@ -327,6 +331,18 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.projectSelectTitle": {
     ja: "プロジェクトを切り替える(fleetest.project を変更します)",
     en: "Switch project (changes the fleetest.project setting)",
+  },
+  "exploreHeal.dashboard.compareFetchFailed": {
+    ja: "計測の比較の取得に失敗しました。出力パネル「fleetest」を確認してください({detail})",
+    en: "Failed to fetch the measurement comparison. Check the “fleetest” output panel ({detail})",
+  },
+  "exploreHeal.dashboard.runsCompareHint": {
+    ja: "左端のチェックで2件を選ぶと計測を比較します",
+    en: "Check 2 rows at the left edge to compare their measurements",
+  },
+  "exploreHeal.dashboard.runsCompareClear": {
+    ja: "選択を解除",
+    en: "Clear selection",
   },
   "exploreHeal.dashboard.runDetailFetchFailed": {
     ja: "実行詳細の取得に失敗しました。出力パネル「fleetest」を確認してください({detail})",

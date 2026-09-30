@@ -182,8 +182,9 @@ function groupResultCell(members) {
 }
 
 /** groups = groupRuns(runs) の結果(1要素 = 1実行の構成 run 配列)。statsByRunID は
- * payload.runStats の Map(統計が無い run は時間統計の列が「–」)。 */
-export function renderRunsTable(groups, statsByRunID) {
+ * payload.runStats の Map(統計が無い run は時間統計の列が「–」)。selectCell は runsCompare.js の
+ * 同名関数(先頭の選択セル。ここから import しない = 循環を作らない)。 */
+export function renderRunsTable(groups, statsByRunID, selectCell) {
   const body = document.getElementById('table-runs-body');
   clearChildren(body);
   // 最大10行(呼び出し側で既に新しい順)。
@@ -198,9 +199,18 @@ export function renderRunsTable(groups, statsByRunID) {
     row.title = members.map((r) => r.runID).join('\n');
     // 列構成はパフォーマンス表と同じ(ユーザー指示)
     row.append(
+      selectCell({
+        key: members[0].runGroup || members[0].runID,
+        runIDs: members.map((r) => r.runID),
+        startedAt: groupStartedAt(members),
+        profile: members[0].profile,
+        // 比較の「構成が違う」判定用。performance.js と同じく host の昇順で並べる
+        machines: machineLabels([...new Set(members.map((r) => r.host))].sort()).join(' + '),
+      }),
       groupDateCell(members),
       td(groupMachinesText(members)),
       td(members[0].profile || '–'),
+      groupResultCell(members),
       tdNum(formatDurationHuman(stats.wallClockMs)),
       tdNum(formatDurationHuman(stats.testTimeMs)),
       tdNum(formatDurationHuman(stats.scenarioTotalMs)),
@@ -208,7 +218,6 @@ export function renderRunsTable(groups, statsByRunID) {
       tdNum(formatPercent(stats.utilPct === null ? undefined : stats.utilPct)),
       maxCell,
       tdNum(stats.scenarioCount === null ? '–' : String(stats.scenarioCount)),
-      groupResultCell(members),
     );
     row.addEventListener('click', () => requestRunDetail(members[0].runID, members.map((r) => r.runID)));
     body.appendChild(row);

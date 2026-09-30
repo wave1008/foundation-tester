@@ -1098,6 +1098,31 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(delta.deltaPct, 50, accuracy: 0.001)
     }
 
+    /// 利用者が選んだ2件の比較(api results-compare)。performanceMode を問わず、渡した構成 run の集合
+    /// だけを見る(フリートの複数 run を1側に束ねる・それ以外の run の記録は混ぜない)
+    func testScenarioDurationDeltasComparesOnlyTheGivenRunSets() {
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
+                       durationMs: 100, runID: "P1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-01T00:00:20Z",
+                       durationMs: 200, runID: "P2"),
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
+                       durationMs: 120, runID: "L1"),
+            makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-02T00:00:20Z",
+                       durationMs: 400, runID: "L2"),
+            // どちらの集合にも居ない run → 混ぜない
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
+                       durationMs: 9_999, runID: "X"),
+        ]
+        let deltas = RunResultsQuery.scenarioDurationDeltas(
+            records: records, latestRunIDs: ["L1", "L2"], previousRunIDs: ["P1", "P2"])
+        XCTAssertEqual(deltas.map(\.scenarioID), ["Foo.b", "Foo.a"], "悪化の大きい順")
+        XCTAssertEqual(deltas.map(\.latestMs), [400, 120])
+        XCTAssertEqual(deltas.map(\.previousMs), [200, 100])
+        XCTAssertEqual(deltas[0].deltaPct, 100, accuracy: 0.001)
+        XCTAssertEqual(deltas[1].deltaPct, 20, accuracy: 0.001)
+    }
+
     /// 失敗レコードの durationMs はタイムアウト等「失敗経路の長さ」であって性能ではない。
     /// どちらか片側でも失敗していた組は比較に混ぜない(巨大な偽の悪化が先頭に並ぶ)
     func testPerformanceComparisonExcludesFailedRecords() {

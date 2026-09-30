@@ -856,9 +856,23 @@ public enum RunResultsQuery {
             }
         }
         guard let (latest, previous) = pair else { return ([], nil, nil) }
+        let deltas = scenarioDurationDeltas(
+            records: records,
+            latestRunIDs: Set(latest.members.map(\.runID)),
+            previousRunIDs: Set(previous.members.map(\.runID)))
+        return (deltas, previous.key, latest.key)
+    }
 
-        let latestDurations = perfLatestDurations(records: records, runIDs: Set(latest.members.map(\.runID)))
-        let previousDurations = perfLatestDurations(records: records, runIDs: Set(previous.members.map(\.runID)))
+    /// 2つの実行(それぞれ構成 run の集合)のシナリオ所要の突き合わせ。前回計測との比較と、
+    /// ダッシュボードで利用者が選んだ2件の比較(`fleetest api results-compare`)が共有する唯一の判定。
+    /// **両方に存在する (scenarioID, platform) だけ**・passed だけ(perfLatestDurations の doc)・
+    /// previous==0 は除外(発散)。deltaPct 降順(悪化が上)、同値は scenarioID → platform 昇順。
+    /// (profile, 機械集合)が揃っているかは見ない —— 揃える規律は呼び手が持つ
+    public static func scenarioDurationDeltas(
+        records: [ScenarioRunRecord], latestRunIDs: Set<String>, previousRunIDs: Set<String>
+    ) -> [PerfScenarioDelta] {
+        let latestDurations = perfLatestDurations(records: records, runIDs: latestRunIDs)
+        let previousDurations = perfLatestDurations(records: records, runIDs: previousRunIDs)
 
         var deltas: [PerfScenarioDelta] = []
         for (key, latestValue) in latestDurations {
@@ -869,12 +883,11 @@ public enum RunResultsQuery {
                 scenarioID: key.scenarioID, platform: key.platform,
                 latestMs: latestValue.durationMs, previousMs: previousValue.durationMs, deltaPct: deltaPct))
         }
-        let sorted = deltas.sorted { lhs, rhs in
+        return deltas.sorted { lhs, rhs in
             if lhs.deltaPct != rhs.deltaPct { return lhs.deltaPct > rhs.deltaPct }
             if lhs.scenarioID != rhs.scenarioID { return lhs.scenarioID < rhs.scenarioID }
             return lhs.platform < rhs.platform
         }
-        return (sorted, previous.key, latest.key)
     }
 
     /// (scenarioID, platform) ごとの最新レコードの所要(同一 run 内に複数あるときは startedAt 最新。

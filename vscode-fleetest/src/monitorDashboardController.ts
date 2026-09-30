@@ -24,6 +24,7 @@ import {
   type DashboardToWebviewMessage,
   type SinceOption,
   isApiResultsPayload,
+  isApiResultsComparePayload,
   isApiResultsRunPayload,
 } from "./dashboardModel";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
@@ -79,6 +80,9 @@ export class MonitorDashboardController {
   private trendFetching = false;
   private headlineDiffFetching = false;
   private headlineDiffQueued: { latestRunIDs: readonly string[]; previousRunIDs: readonly string[] } | null = null;
+  /** compareRuns 版(選び直しが続いたら最新の1件だけ持ち越す。webview は古い応答を IDs で捨てる)。 */
+  private compareFetching = false;
+  private compareQueued: { previousRunIDs: readonly string[]; latestRunIDs: readonly string[] } | null = null;
   /** (project, since) ごとの直近ペイロード(メモリのみ)。パネルを閉じて開き直すと
    * webview の DOM は失われるが、この Map は MonitorDashboardController の生存中は残るので、
    * refresh() の冒頭で即座に再送できる(再取得の 15〜20 秒を待たせない)。 */
@@ -149,6 +153,9 @@ export class MonitorDashboardController {
         break;
       case "headlineDiff":
         void this.handleHeadlineDiff(message.latestRunIDs, message.previousRunIDs);
+        break;
+      case "compareRuns":
+        void this.handleCompareRuns(message.previousRunIDs, message.latestRunIDs);
         break;
       case "setSince":
         this.since = message.since;
@@ -435,6 +442,43 @@ export class MonitorDashboardController {
       this.headlineDiffQueued = null;
       if (queued) {
         void this.handleHeadlineDiff(queued.latestRunIDs, queued.previousRunIDs);
+      }
+    }
+  }
+  private async handleCompareRuns(previousRunIDs: readonly string[], latestRunIDs: readonly string[]): Promise<void> {
+    if (this.compareFetching) {
+      this.compareQueued = { previousRunIDs, latestRunIDs };
+      return;
+    }
+    this.compareFetching = true;
+    const postError = (message: string): void => {
+      this.deps.post({ type: "compareRunsError", previousRunIDs, latestRunIDs, message });
+    };
+    try {
+      const config = this.deps.getConfig();
+      const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+      if (resolution.kind !== "resolved") {
+        postError(t("exploreHeal.common.projectUnresolved"));
+        return;
+      }
+      const args = ["api", "results-compare", "--project", resolution.project];
+      for (const id of previousRunIDs) args.push("--previous-run-id", id);
+      for (const id of latestRunIDs) args.push("--latest-run-id", id);
+      const result = await this.runOneShotTracked(args);
+      if (!isApiResultsComparePayload(result.json)) {
+        const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
+        postError(t("exploreHeal.dashboard.compareFetchFailed", { detail }));
+        return;
+      }
+      this.deps.post({ type: "compareRuns", previousRunIDs, latestRunIDs, comparison: result.json.comparison });
+    } catch (error) {
+      postError(t("exploreHeal.dashboard.fetchFailedError", { error: errorMessage(error) }));
+    } finally {
+      this.compareFetching = false;
+      const queued = this.compareQueued;
+      this.compareQueued = null;
+      if (queued) {
+        void this.handleCompareRuns(queued.previousRunIDs, queued.latestRunIDs);
       }
     }
   }

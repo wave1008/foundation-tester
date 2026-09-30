@@ -5,7 +5,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { isApiResultsPayload, isApiResultsRunPayload, isDashboardFromWebviewMessage, isSinceOption } from "../src/dashboardModel";
+import { isApiResultsComparePayload, isApiResultsPayload, isApiResultsRunPayload, isDashboardFromWebviewMessage, isSinceOption } from "../src/dashboardModel";
 
 function validPayload(overrides = {}) {
   return {
@@ -632,4 +632,26 @@ test("isApiResultsRunPayload: schemaVersion/project 欠落は false", () => {
 test("isApiResultsRunPayload: 値が object でなければ false", () => {
   assert.equal(isApiResultsRunPayload(null), false);
   assert.equal(isApiResultsRunPayload("not json"), false);
+});
+
+// ---- compareRuns(直近の実行で選んだ2件の比較) ------------------------------------------
+
+test("isDashboardFromWebviewMessage: compareRuns は両側とも1件以上の文字列配列", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "compareRuns", previousRunIDs: ["a"], latestRunIDs: ["b", "c"] }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "compareRuns", previousRunIDs: [], latestRunIDs: ["b"] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "compareRuns", previousRunIDs: ["a"], latestRunIDs: [] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "compareRuns", previousRunIDs: ["a"], latestRunIDs: [1] }), false);
+  assert.equal(isDashboardFromWebviewMessage({ type: "compareRuns", previousRunIDs: ["a"] }), false);
+});
+
+test("isApiResultsComparePayload: results-compare の出力を受理し、欄の欠落・型違いを弾く", () => {
+  const valid = {
+    schemaVersion: 1, project: "P", previousRunIDs: ["a"], latestRunIDs: ["b"],
+    comparison: [{ scenarioID: "Foo.S0010", platform: "ios", latestMs: 2, previousMs: 1, deltaPct: 100 }],
+  };
+  assert.equal(isApiResultsComparePayload(valid), true);
+  assert.equal(isApiResultsComparePayload({ ...valid, comparison: [] }), true);
+  assert.equal(isApiResultsComparePayload({ ...valid, comparison: undefined }), false);
+  assert.equal(isApiResultsComparePayload({ ...valid, latestRunIDs: undefined }), false);
+  assert.equal(isApiResultsComparePayload({ ...valid, comparison: [{ ...valid.comparison[0], deltaPct: "100" }] }), false);
 });
