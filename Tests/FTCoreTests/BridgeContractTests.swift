@@ -123,7 +123,7 @@ final class BridgeContractTests: XCTestCase {
     private static let expectedFingerprints: [BridgeSourceSet: [String: String]] = [
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
-            "InAppBridge/Sources/DisplayHeartbeat.swift": "d3c4064aba162654bb568ff1823a4b4977b5e0421b48c9724a5cda69e8bd87f4",
+            "InAppBridge/Sources/DisplayHeartbeat.swift": "7d907d41d42721c6e7a769aaa610fa74ee0103f95111281cb2231206c748bbc5",
             "InAppBridge/Sources/InAppBridge.swift": "a64e36d2a7ace0aee70cbd4b6059f92726ad0ffe33bdcf3e1c9a53ece9e2627f",
             "InAppBridge/Sources/InAppHTTPServer.swift": "0c5402ec749354725ef5a9b13d2e7b42cef11488a56f969d7dbe6667f79a5aea",
             "InAppBridge/Sources/InAppInput.h": "9e66d11cb07262dccf1fdaeee85c4aaab3f2c5b84d555e56b0eccb4b9e0f1136",
@@ -143,7 +143,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FleetestRunnerUITests/BridgeHTTPServer.swift": "28025e9581fef3f627b79506e6835bb88203b9f38a6f26f2cf28bc5f7dcd8592",
             "Runner/FleetestRunnerUITests/BridgeRouter+Snapshot.swift": "3a76d6f1c0036cf95cabd4c8b5fa32aa91f70dbcebe0bd7ccd555235c51fa373",
             "Runner/FleetestRunnerUITests/BridgeRouter+TextInput.swift": "13c311527e9f8708faf3e238f961c51e802d190262e6818287fe94bf2c2bc141",
-            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "2b9125c07b4a8518612ea79e3b00ffc4180a40f8693ec2fbf45d6922c45d7e4c",
+            "Runner/FleetestRunnerUITests/BridgeRouter.swift": "367d0ee65d31413a71eb654a3b74b17f6a8bba5ca28ffcd114f8c040d575107c",
             "Runner/FleetestRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FleetestRunnerUITests/CoordinatePinch.swift": "277a1e258906cf56f643893a15c02b56ff9276edfc50a50859e097017fdcac32",
             "Runner/FleetestRunnerUITests/DisplayHeartbeat.swift": "c62c30a45e842d5ec7aff60210284d679b76f6e44358a3f4c97429fe918e5ffa",
@@ -161,7 +161,7 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "b609667ed2731774020ec9ba5dc3c3da99cb48eab8b5fd1b2f708ff202dc4f00",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "78fe5cc272782a091bbbc512d1693bed0a192cf363548699a586cb0f3d614824",
             "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "33f5eef459550b2f9495e4223e229d61c283c9d5f94f2f419c1866c806ad4dfa",
-            "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "34c91b37e01829307897825e7104d250c8662f00ce9734512f3c41da8bccd956",
+            "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "b00ff62b9a909e7e46df1a7a1aa1f39ba0a5711834092148adfee9f6bd6c7d9a",
             "AndroidRunner/src/com/example/ftbridge/ImeOnboarding.java": "fe2d90d892046f64e4893c008148d47886e36bceb244dd9e68e560b368f0193b",
             "AndroidRunner/src/com/example/ftbridge/KeyboardPrimerActivity.java": "f5a4751486cd8349a8f10b65332d6a3e1d77c3d82e0528e8518ec646aad152d9",
             "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "6aa8584c1b23394f622a4626c4afee7cc99d129c54cd5fecc3fcc1e61d30106e",
