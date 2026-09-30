@@ -52,7 +52,7 @@ claude plugin install fleetest@foundation-tester --scope user
 3. **テスト専用の新規フォルダ**を VSCode で開きます
 
 4. エージェントのパネルで `/fleetest:fleetest-setup` を実行します。clone・ビルド・プロジェクト
-   作成・プロファイル設定が進みます
+   作成が進みます(プロファイルは[クイックスタート](quick-start_ja.md)で作ります)
 
 5. VSCode で `Developer: Reload Window` を実行します
 

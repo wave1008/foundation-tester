@@ -1,6 +1,6 @@
 ---
 name: fleetest-setup
-description: fleetest を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・自分のプロジェクト作成・アプリ/実行のプロファイル設定・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
+description: fleetest を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・自分のプロジェクト作成・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
 ---
 
 # fleetest 初期セットアップ runbook
@@ -109,13 +109,12 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 **セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）。
 **必ず選択ダイアログ（Claude Code なら AskUserQuestion）で聞く。チャットに箇条書きで質問文を書いて答えを待ってはいけない**
 （実際にテキストで聞いてしまい、ユーザーがダイアログを受け取れなかった事故がある）。
-**1回のダイアログに次の4問をまとめる**（各問に選択肢を用意する。自由入力は「その他」で受ける）:
+**1回のダイアログに次の3問をまとめる**（各問に選択肢を用意する。自由入力は「その他」で受ける）:
 
 | 質問 | header | 選択肢（先頭を推奨にする） |
 |---|---|---|
 | プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`。SPM ターゲット名になる） | Project | カレントフォルダ名から作った候補（推奨）/ `MyAppTests` / Other=自由入力 |
 | テスト対象アプリの bundle ID | Bundle ID | 「まだ分からない（後で設定）」/ Other=自由入力 |
-| テスト対象アプリの表示名（プロファイルの `appName`） | App | フォルダ名から作った候補 / Other=自由入力 |
 | テスト対象のプラットフォーム | Platform | iOS / Android / 両方 |
 
 **clone 先は聞かない**（`tool_root=` を完了報告で伝えれば足りる)。
@@ -133,7 +132,7 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 
 → **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**（バージョン・パスの推測は事故のもと。
 探索で見つけた候補を既定値として提示するのも避ける）。
-（シミュレータは step 5 で自動採取・自動選択するのでここでは聞かない。）
+（アプリの表示名・デバイスもここでは聞かない。プロファイルの作成はセットアップの後、クイックスタートで行う。）
 
 ### 0.5 入り方の判定と TOOL_ROOT の取得
 
@@ -162,7 +161,7 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 
 ### 0.7 インストーラで機械作業を一括実行（**まずこれを試す**）
 
-ステップ **0.5・1・2・2.5・3・4・5・7・7.5・7.6・7.7** はインストーラが一括で行う（冪等。済んだ手順は skip される。
+ステップ **0.5・1・2・2.5・3・4・7・7.5・7.6・7.7** はインストーラが一括で行う（冪等。済んだ手順は skip される。
 **既存クローンは `git pull --ff-only` で更新してから使う** — ローカル変更があれば
 **端末で破棄の可否を尋ね、破棄しないなら中止する**（古いクローンのまま build させないため。
 端末が無い＝エージェント実行では尋ねられないので必ず中止 `[fail]` になる。その場合は 🧑 に
@@ -172,11 +171,11 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 
 ```
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- \
-  --name <ProjectName> --platform <ios|android|both> --app-name "<表示名>" [--app-id <bundleID>]
+  --name <ProjectName> --platform <ios|android|both> [--app-id <bundleID>]
 ```
 
-**`--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
-(ステップ5・8 が不要になる。デバイスは自動選定・常にこの Mac)。値はすべてステップ0の回答と preflight の出力から作る。
+値はすべてステップ0の回答と preflight の出力から作る。**プロファイル(アプリ/実行)はインストーラでは
+作らない** —— セットアップの後、クイックスタート(docs/user-docs/quick-start_ja.md)で作る。
 
 - **インストーラが規約位置(`.claude/`・`.mcp.json`)を用意するのは Claude Code だけ**。入口の
   `AGENTS.md` は他のエージェントも読む。他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの
@@ -201,14 +200,14 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 出力全体から拾う（同じ書式）。`swift build` などの生ログは画面に出ず
 `<WORK_DIR>/.fleetest/install-<日時>.log` にある。**ログを grep で漁らない**（必要なら `--verbose`）。
 
-- **exit 0** → 機械作業は完了（プロファイルまで済んでいれば `[ok] プロファイル` が出る）。**ステップ6へ**。
+- **exit 0** → 機械作業は完了。**ステップ6へ**。
 - **exit 2** → 必須は通ったが任意ステップが未完（`[warn]` 行）。CLI と MCP は使える。
   warn 行が指す**下のステップ番号の手順だけ**を手で通し、原因を直してから同じ引数で再実行する。
 - **exit 1** → 必須ステップで停止（`[fail]` 行に「→ SKILL.md step N」が出る）。
   **N の手順を読んで原因を解決し、同じ引数で再実行する**（済んだ手順は skip されるので巻き戻らない）。
   解決に人間の操作が要るもの（Xcode の license 同意・`-runFirstLaunch`・Homebrew 導入）は 🧑 に依頼する。
 
-**以降のステップ1〜5・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
+**以降のステップ1〜4・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
 必ず実施するのは **6（appPath/bundle ID の案内）・9（反映操作の案内）** だけ。
 
 **インストーラの出力に載っている情報を、別コマンドで取り直さない**（承認が増えるだけ）:
@@ -218,7 +217,6 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
 | TOOL_ROOT の絶対パス（`cd … && pwd`） | preflight の `tool_root=` / インストーラの `[ok] 構成` |
 | `.mcp.json` の内容（`cat`） | インストーラの `[ok] MCP` |
 | `fleetest doctor --roots-only` | インストーラが検証ゲートとして実行済み（`[ok] ルート解決`) |
-| `fleetest profile list` | `profile setup` が解決結果を表示済み（`[ok] プロファイル`） |
 
 ### 1. xcodegen
 
@@ -287,21 +285,6 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
 何をコミットすべきかを受け手に案内する: `Package.swift`・`Package.resolved`・`TestProjects/`・`.gitignore` は
 コミット、`.build/` と `TestProjects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
 絶対パスを含むためマシン固有。
-
-### 5. プロファイル（アプリ/実行）
-
-**JSON を手で書かない・デバイス調査のコマンドを個別に叩かない**。作成は `/fleetest-profiles`
-（ステップ8で呼ぶ)に任せる。自分で通すなら1コマンドで済む:
-
-```
-fleetest profile setup --project <ProjectName> --platform <ios|android|both> --auto-device \
-  --app-id <bundleID> --app-name "<表示名>"
-```
-
-`--auto-device` が既存デバイスを選び（iOS=最新 OS の中で "Pro" 優先・**iPad は除外** / Android=API 最大の AVD）、
-この Mac(`"machine": "local"`)のデバイスとして apps/runs を同じ論理名で書いて解決まで検証する。
-機種を指定したいときだけ `--device-name "<シミュレータ名>" --os <version>` / `--avd <avdID>` を明示する。
-利用可能なデバイスが **0 台のときだけ** 🧑 停止し、Xcode / Android Studio での導入を依頼する。
 
 ### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する
 
@@ -452,16 +435,6 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 **検証ゲート**: `ft_list_devices` が候補を返すこと（返らないなら MCP 登録のほう。
 サンドボックスは `ft_*` に影響しない）。
 
-### 8. プロファイル（済んでいなければ /fleetest-profiles）
-
-インストーラの結果に **`[ok] プロファイル`** が出ていれば作成済み。**ここは飛ばす**。
-`[skip]`（`--app-name` を渡さなかった）や `[warn]`（デバイスが無い等で失敗）のときだけ、
-**続けて `/fleetest-profiles` を呼ぶ**。その際、**ステップ0で聞いた値（プロジェクト名・アプリ表示名・
-アプリID・プラットフォーム）をそのまま渡し、聞き直させない**。
-
-**この時点で VSCode の反映操作（Reload Window 等）をユーザーに求めたり、完了したか質問したりしない** —
-ここまでユーザーが操作するタイミングは一度も無いので、完了しているはずがない。反映はステップ9で最後にまとめて案内する。
-
 ### 9. 🧑 最後に: 反映操作の案内（ここで終了）
 
 すべての機械作業の完了を要約して報告し、**これからユーザーが行う操作**として次を案内して終了する
@@ -471,6 +444,11 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
   `foundation-tester` フォルダ）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - 左下のステータスバーの **fleetest mobile** からデバイスモニターを開く
+- プロファイルの作成と最初のシナリオ作成は、クイックスタート(`<TOOL_ROOT>/docs/user-docs/quick-start_ja.md`。
+  英語は `quick-start.md`)の手順で進める
+
+**この案内より前に VSCode の反映操作（Reload Window 等）を求めたり、完了したか質問したりしない** ——
+ここまでユーザーが操作するタイミングは一度も無い。
 
 拡張の設定操作は原則不要（外部パッケージ構成では `fleetest init` が `.vscode/settings.json` に
 `fleetest.binaryPath`・`fleetest.project` を生成済み。init が「マージできず未更新」警告を出していた場合のみ

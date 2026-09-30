@@ -11,8 +11,7 @@
 #           **冪等**(済んだ手順は skip)。
 #           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
 #           SKILL.md 直読みで使う。docs/user-docs/tools/other_agents.md)。
-#           --app-name があればプロファイル作成(profile setup --auto-device)も。
-# やらないこと: appPath や bundle ID の探索
+# やらないこと: プロファイル(apps/ + runs/)の作成(クイックスタートの仕事)・appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
 # 契約: 各手順は .claude/skills/fleetest-setup/SKILL.md のステップ番号と 1:1。失敗時は
@@ -41,7 +40,6 @@ WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
 APP_ID=""
-APP_NAME=""
 PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
@@ -62,7 +60,6 @@ Usage: install.sh [options]
   --name <name>      Project name to create (letters, digits, _ and -; derived from the directory name when omitted)
   --app-id <id>      Bundle ID / package name of the app under test (optional, can be changed later)
   --platform <p>     Which run profiles to scaffold: ios / android / both (default both)
-  --app-name <name>  Display name of the app. When given, profiles (apps/ + runs/) are created too
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-clone         Do not clone when missing (an existing clone is required)
   --no-pull          Do not update an existing clone (to pin a version, or while developing the tool)
@@ -78,7 +75,7 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
-         the AGENTS.md / CLAUDE.md entry point / verification gates. **With --app-name it also creates profiles (--auto-device)**
+         the AGENTS.md / CLAUDE.md entry point / verification gates
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -94,7 +91,6 @@ while [ $# -gt 0 ]; do
     --name) PROJECT_NAME="${2:?--name requires a value}"; shift 2 ;;
     --app-id) APP_ID="${2:?--app-id requires a value}"; shift 2 ;;
     --platform) PLATFORM="${2:?--platform requires a value}"; shift 2 ;;
-    --app-name) APP_NAME="${2:?--app-name requires a value}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root requires a value}"; shift 2 ;;
     --no-clone) ALLOW_CLONE=0; shift ;;
     --no-pull) ALLOW_PULL=0; shift ;;
@@ -800,24 +796,6 @@ else
   fi
 fi
 
-# ---- 5. プロファイル(SKILL ステップ5。--app-name があるときだけ) ----------
-# デバイス選定は profile setup --auto-device に任せる(エージェントが simctl / emulator を
-# 個別に叩くと承認回数が増える)。失敗しても導入自体は完了しているので warn 止まり
-if [ "$DO_PROJECT" = "0" ]; then
-  record "profiles" skip "--skip-project"
-elif [ -z "$APP_NAME" ]; then
-  record "profiles" skip "not created without --app-name (use /fleetest-profiles)"
-else
-  echo "==> fleetest profile setup (--auto-device)"
-  if ( cd "$WORK_DIR" && "$FT" profile setup --platform "$PLATFORM" --auto-device \
-        --app-name "$APP_NAME" \
-        ${PROJECT_NAME:+--project "$PROJECT_NAME"} --app-id "${APP_ID:-com.example.myapp}" ); then
-    record "profiles" ok "apps + runs ($PLATFORM)"
-  else
-    soft_fail "profiles" "profile setup failed (no devices etc.; /fleetest-profiles can redo it)" 5
-  fi
-fi
-
 # ---- 検証ゲート: ルート解決(SKILL ステップ7.5 の検証ゲート) -------------------
 # ツール本体(ブリッジ資産)と受け手パッケージ(TestProjects/)の取り違えは ft_* を全滅させる。
 # 表示された解決結果が、このインストールで意図した2ディレクトリと一致するかまで見る
@@ -877,19 +855,13 @@ if [ -d "$WORK_DIR/.fleetest" ]; then
 EOF
 fi
 
-NEXT_PROFILES=""
-case " ${STEPS[*]} " in
-  *"profiles|ok"*) : ;;
-  *) NEXT_PROFILES="・Create the profiles (machine/app/run) → /fleetest-profiles in Claude Code
-" ;;
-esac
-
 print_summary
 
 [ "$DO_NEXT_STEPS" = "1" ] && cat <<EOF
 
 ──────── Next steps ────────
-${NEXT_PROFILES}・Open $WORK_DIR in VSCode and run Developer: Reload Window (required for the extension)
+・Open $WORK_DIR in VSCode and run Developer: Reload Window (required for the extension)
+・Create the profiles and your first scenarios → $TOOL_ROOT/docs/user-docs/quick-start.md
 
 Updates: the VSCode extension checks automatically on start-up (disable via the fleetest.updateCheck setting).
       Check manually → bash $TOOL_ROOT/Scripts/update-check.sh / apply → /fleetest-update

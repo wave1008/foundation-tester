@@ -51,8 +51,8 @@ claude plugin install fleetest@foundation-tester --scope user
 
 3. Open a **new, test-only folder** in VSCode
 
-4. Run `/fleetest:fleetest-setup` in your agent's panel. It clones, builds, creates the project,
-   and sets up the profiles
+4. Run `/fleetest:fleetest-setup` in your agent's panel. It clones, builds, and creates the
+   project (you create the profiles in the [Quick Start](quick-start.md))
 
 5. Run `Developer: Reload Window` in VSCode
 
