@@ -335,12 +335,12 @@ struct RunScenarios: AsyncParsableCommand {
     var split = false
 
     @Flag(name: .customLong("force-lock"),
-          help: ArgumentHelp("Steal a remote host's dispatch.lock instead of failing fast when another dispatch "
+          help: ArgumentHelp("Steal the dispatch.lock (this Mac's or a remote host's) instead of failing fast when another dispatch "
             + "already holds it (docs/remote-runner.md §5). Needs a run profile, --runner or --fleet"))
     var forceLock = false
 
     @Option(name: .customLong("wait-lock"),
-            help: ArgumentHelp("Instead of failing fast, poll until a remote host's dispatch.lock is released, "
+            help: ArgumentHelp("Instead of failing fast, poll until the dispatch.lock (this Mac's or a remote host's) is released, "
               + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile, --runner or --fleet. "
               + "Cannot be combined with --force-lock"))
     var waitLock: Int?

@@ -1463,7 +1463,7 @@ extension MCPServer {
             // 「見つからない」だけを読んだ結果、同じ探索をもう一度撃って 45 秒を捨てた
             let truncatedDuringSearch = outcome.notes.contains(.truncatedDuringSearch)
                 && after.truncatedCount == 0
-                ? " note: the tree hit the element limit at some point during this search, so the"
+                ? "note: the tree hit the element limit at some point during this search, so the"
                     + " target may have been dropped from the candidates rather than absent —"
                     + " read the screen it should be on with ft_snapshot maxElements:"
                     + " \(BridgeAPI.maxSnapshotElementsCeiling) before concluding it is not there.\n"

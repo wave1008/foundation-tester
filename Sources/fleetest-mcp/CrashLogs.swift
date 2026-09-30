@@ -20,14 +20,16 @@ enum CrashLogs {
     /// 例外で終わらせると、まさに診断したい落ちた直後の状況で使い物にならない)。
     /// `physicalUDID`: 宛先が実機だと分かっているときだけ非 nil(**既定値は付けない** —
     /// 呼び出し忘れをコンパイルで止める)。**記録が無い(nil)ことは実機でない証拠にはならない**
-    /// (best-effort。手掛かりが取れなければシミュレータの待ちへ落ちる)
+    /// (best-effort。手掛かりが取れなければシミュレータの待ちへ落ちる)。
+    /// `simulatorUDID`: 呼び手が udid を名指しした回だけ非 nil = そのシミュレータのレポートに絞る
     static func text(platform: String, bundleID: String?, serial: String?,
                      withinSeconds: Int, maxLines: Int, crashOnly: Bool,
-                     physicalUDID: String?) async -> String {
+                     physicalUDID: String?, simulatorUDID: String?) async -> String {
         switch platform {
         case "ios":
             return await iosTextWaitingForReport(bundleID: bundleID, withinSeconds: withinSeconds,
-                                                 physicalUDID: physicalUDID)
+                                                 physicalUDID: physicalUDID,
+                                                 simulatorUDID: simulatorUDID)
         case "android":
             return androidText(serial: serial, bundleID: bundleID, withinSeconds: withinSeconds,
                                maxLines: maxLines, crashOnly: crashOnly)
@@ -52,7 +54,7 @@ enum CrashLogs {
         + " to show."
 
     static func iosTextWaitingForReport(bundleID: String?, withinSeconds: Int,
-                                        physicalUDID: String?) async -> String {
+                                        physicalUDID: String?, simulatorUDID: String?) async -> String {
         // **実機は待つだけ無駄**(件3): DiagnosticReports には端末のクラッシュが絶対に来ないので、
         // reportPollAttempts × reportPollIntervalNanos ≒ 4.2 秒はシミュレータのときにしか
         // 意味を持たない
@@ -60,16 +62,17 @@ enum CrashLogs {
             return physicalDeviceText(bundleID: bundleID, udid: physicalUDID)
         }
         guard let bundleID, !bundleID.isEmpty else {
-            return iosText(bundleID: bundleID, withinSeconds: withinSeconds)
+            return iosText(bundleID: bundleID, withinSeconds: withinSeconds, udid: simulatorUDID)
         }
         var waited = 0.0
         for _ in 0..<reportPollAttempts {
-            if SimulatorCrashReport.findRecent(bundleID: bundleID, udid: nil,
+            if SimulatorCrashReport.findRecent(bundleID: bundleID, udid: simulatorUDID,
                                                within: TimeInterval(withinSeconds)) != nil { break }
             try? await Task.sleep(nanoseconds: reportPollIntervalNanos)
             waited += Double(reportPollIntervalNanos) / 1_000_000_000
         }
-        return iosText(bundleID: bundleID, withinSeconds: withinSeconds, waitedSeconds: waited)
+        return iosText(bundleID: bundleID, withinSeconds: withinSeconds, udid: simulatorUDID,
+                       waitedSeconds: waited)
     }
 
     /// 宛先が実機だと分かっているときの本文。取り出し方まで言う(黙ると「ではどうやって
@@ -84,8 +87,9 @@ enum CrashLogs {
     }
 
     /// dir/now を差し替え可能にした internal 版(テストは実ホームディレクトリを汚さず
-    /// 一時ディレクトリで検証する)
-    static func iosText(bundleID: String?, withinSeconds: Int,
+    /// 一時ディレクトリで検証する)。`udid`: nil = デバイスで絞らない(宛先の UDID を知らない回。
+    /// 出すパスに `Devices/<UDID>/` が入るので、どのデバイスのものかは読み手が見分けられる)
+    static func iosText(bundleID: String?, withinSeconds: Int, udid: String?,
                         dir: URL = FileManager.default.homeDirectoryForCurrentUser
                             .appendingPathComponent("Library/Logs/DiagnosticReports"),
                         now: Date = Date(),
@@ -93,9 +97,7 @@ enum CrashLogs {
         guard let bundleID, !bundleID.isEmpty else {
             return "iOS crash lookup requires bundleID."
         }
-        // udid: nil = デバイスで絞らない(ブリッジが落ちた後にも使う道具で宛先の UDID を持たない。
-        // 出すパスに `Devices/<UDID>/` が入るので、どのデバイスのものかは読み手が見分けられる)
-        guard let found = SimulatorCrashReport.findRecent(bundleID: bundleID, udid: nil,
+        guard let found = SimulatorCrashReport.findRecent(bundleID: bundleID, udid: udid,
                                                            within: TimeInterval(withinSeconds),
                                                            dir: dir, now: now) else {
             // **実機のレポートはここには来ない**(端末に残り、Xcode で同期するまで Mac 側の
@@ -103,7 +105,8 @@ enum CrashLogs {
             let waited = waitedSeconds > 0
                 ? " Waited \(String(format: "%.1f", waitedSeconds))s in case one was still being written."
                 : ""
-            return "No crash report for \(bundleID) in the last \(withinSeconds)s.\(waited)"
+            let scope = udid.map { " on \($0)" } ?? ""
+            return "No crash report for \(bundleID)\(scope) in the last \(withinSeconds)s.\(waited)"
                 + " This reads the Mac's DiagnosticReports, which only receives simulator crashes —"
                 + " a physical device keeps its reports on the device. \(asymmetryNote)"
         }

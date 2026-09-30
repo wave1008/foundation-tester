@@ -47,7 +47,7 @@ final class CrashLogsTests: XCTestCase {
         let now = Date()
         try writeJSONFormatIPS(name: "recent.ips", bundleID: "com.example.app",
                                mtime: now.addingTimeInterval(-20))
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 300,
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 300, udid: nil,
                                      dir: dir, now: now)
         XCTAssertTrue(text.contains("20s ago"), text)
     }
@@ -57,7 +57,7 @@ final class CrashLogsTests: XCTestCase {
         let now = Date()
         try writeJSONFormatIPS(name: "old.ips", bundleID: "com.example.app",
                                mtime: now.addingTimeInterval(-185))
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 300,
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 300, udid: nil,
                                      dir: dir, now: now)
         XCTAssertTrue(text.contains("3m 5s ago"), text)
         XCTAssertTrue(text.contains("earlier run"), text)
@@ -66,7 +66,7 @@ final class CrashLogsTests: XCTestCase {
     /// 見つからなかったときは、待ったこと自体を本文に出す(待たずに諦めたのか、
     /// 待っても無かったのかが読み手に分かる)
     func testAbsenceMentionsTheWaitWhenOneHappened() {
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120,
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil,
                                      dir: dir, now: Date(), waitedSeconds: 4.2)
         XCTAssertTrue(text.contains("4.2s"), text)
     }
@@ -74,12 +74,12 @@ final class CrashLogsTests: XCTestCase {
     // MARK: - bundleID 必須
 
     func testMissingBundleIDReturnsGuidance() {
-        let text = CrashLogs.iosText(bundleID: nil, withinSeconds: 120, dir: dir, now: Date())
+        let text = CrashLogs.iosText(bundleID: nil, withinSeconds: 120, udid: nil, dir: dir, now: Date())
         XCTAssertTrue(text.contains("bundleID"), text)
     }
 
     func testEmptyBundleIDReturnsGuidance() {
-        let text = CrashLogs.iosText(bundleID: "", withinSeconds: 120, dir: dir, now: Date())
+        let text = CrashLogs.iosText(bundleID: "", withinSeconds: 120, udid: nil, dir: dir, now: Date())
         XCTAssertTrue(text.contains("bundleID"), text)
     }
 
@@ -89,7 +89,7 @@ final class CrashLogsTests: XCTestCase {
         let now = Date()
         try writeJSONFormatIPS(name: "a.ips", bundleID: "com.example.app", mtime: now)
 
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: now)
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: now)
 
         XCTAssertTrue(text.contains("EXC_CRASH"), text)
         XCTAssertTrue(text.contains("SIGABRT"), text)
@@ -103,7 +103,7 @@ final class CrashLogsTests: XCTestCase {
         let now = Date()
         try writeTextFormatIPS(name: "b.ips", bundleID: "com.example.app", mtime: now)
 
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: now)
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: now)
 
         XCTAssertTrue(text.contains("EXC_BAD_ACCESS"), text)
         XCTAssertTrue(text.contains("b.ips"), text)
@@ -114,7 +114,7 @@ final class CrashLogsTests: XCTestCase {
     /// 「見つけたのに見つからなかったと言う」変異を検出する陽性側
     func testNoCrashPresentReturnsExplicitAbsence() {
         let now = Date()
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: now)
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: now)
 
         XCTAssertFalse(text.isEmpty)
         XCTAssertTrue(text.localizedCaseInsensitiveContains("no crash"), text)
@@ -127,7 +127,7 @@ final class CrashLogsTests: XCTestCase {
         let now = Date()
         try writeJSONFormatIPS(name: "other.ips", bundleID: "com.other.app", mtime: now)
 
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: now)
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: now)
 
         XCTAssertTrue(text.localizedCaseInsensitiveContains("no crash"), text)
         XCTAssertFalse(text.contains("other.ips"), text)
@@ -139,7 +139,7 @@ final class CrashLogsTests: XCTestCase {
         try writeJSONFormatIPS(name: "old.ips", bundleID: "com.example.app",
                                mtime: now.addingTimeInterval(-600))
 
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: now)
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: now)
 
         XCTAssertTrue(text.localizedCaseInsensitiveContains("no crash"), text)
     }
@@ -149,7 +149,7 @@ final class CrashLogsTests: XCTestCase {
     /// 決定済み仕様: iOS は os_log の tail を出さない。見つかっても見つからなくても、
     /// その非対称がエージェントに伝わる一文が本文に必ず含まれること
     func testAsymmetryNoteIsAlwaysPresentWhenNoCrash() {
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: Date())
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: Date())
         XCTAssertTrue(text.contains("Android"), text)
     }
 
@@ -157,9 +157,36 @@ final class CrashLogsTests: XCTestCase {
         let now = Date()
         try writeJSONFormatIPS(name: "a.ips", bundleID: "com.example.app", mtime: now)
 
-        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, dir: dir, now: now)
+        let text = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil, dir: dir, now: now)
 
         XCTAssertTrue(text.contains("Android"), text)
+    }
+
+    // MARK: - udid を名指しした回はそのシミュレータのレポートだけ
+
+    /// 同じアプリを複数台で動かすと別の台の .ips が同じ窓に入る。udid を渡した呼び手に
+    /// 別の台のクラッシュを返さない(名指しが無ければ従来どおり絞らない)
+    func testNamedUDIDOnlyReadsThatSimulatorsReport() throws {
+        let now = Date()
+        let crashed = "AAAAAAAA-1111-2222-3333-444444444444"
+        let other = "BBBBBBBB-1111-2222-3333-444444444444"
+        let header = #"{"bundleID":"com.example.app","app_name":"SampleApp"}"#
+        let payload = #"{"exception":{"type":"EXC_CRASH","signal":"SIGABRT"},"#
+            + #""coalitionName":"com.apple.CoreSimulator.SimDevice.\#(crashed)"}"#
+        let url = dir.appendingPathComponent("named.ips")
+        try "\(header)\n\(payload)".write(to: url, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.modificationDate: now.addingTimeInterval(-5)],
+                                              ofItemAtPath: url.path)
+
+        let onOther = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: other,
+                                        dir: dir, now: now)
+        XCTAssertTrue(onOther.contains("No crash report for com.example.app on \(other)"), onOther)
+        let onCrashed = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120,
+                                          udid: crashed.lowercased(), dir: dir, now: now)
+        XCTAssertTrue(onCrashed.contains("Crash found"), onCrashed)
+        let unscoped = CrashLogs.iosText(bundleID: "com.example.app", withinSeconds: 120, udid: nil,
+                                         dir: dir, now: now)
+        XCTAssertTrue(unscoped.contains("Crash found"), unscoped)
     }
 
     // MARK: - platform 分岐(text() の非 iOS/Android 経路)
@@ -167,7 +194,7 @@ final class CrashLogsTests: XCTestCase {
     func testUnknownPlatformIsRejectedWithoutThrowing() async {
         let text = await CrashLogs.text(platform: "windows", bundleID: nil, serial: nil,
                                         withinSeconds: 60, maxLines: 100, crashOnly: true,
-                                        physicalUDID: nil)
+                                        physicalUDID: nil, simulatorUDID: nil)
         XCTAssertTrue(text.localizedCaseInsensitiveContains("unknown"), text)
     }
 
@@ -176,7 +203,7 @@ final class CrashLogsTests: XCTestCase {
     func testTextDelegatesToIOSPathForIOSPlatform() async {
         let text = await CrashLogs.text(platform: "ios", bundleID: nil, serial: nil,
                                         withinSeconds: 60, maxLines: 100, crashOnly: true,
-                                        physicalUDID: nil)
+                                        physicalUDID: nil, simulatorUDID: nil)
         XCTAssertTrue(text.contains("bundleID"), text)
     }
 
@@ -188,7 +215,7 @@ final class CrashLogsTests: XCTestCase {
     func testPhysicalDeviceSkipsTheSimulatorPollingWait() async {
         let text = await CrashLogs.text(platform: "ios", bundleID: "com.example.app", serial: nil,
                                         withinSeconds: 60, maxLines: 100, crashOnly: true,
-                                        physicalUDID: "00008130-001819863E60001C")
+                                        physicalUDID: "00008130-001819863E60001C", simulatorUDID: nil)
         XCTAssertFalse(text.contains("Waited"), text)
     }
 
@@ -216,7 +243,7 @@ final class CrashLogsTests: XCTestCase {
     func testNilPhysicalUDIDStaysOnTheSimulatorPath() async {
         let text = await CrashLogs.text(platform: "ios", bundleID: nil, serial: nil,
                                         withinSeconds: 60, maxLines: 100, crashOnly: true,
-                                        physicalUDID: nil)
+                                        physicalUDID: nil, simulatorUDID: nil)
         XCTAssertFalse(text.contains("Devices and Simulators"), text)
         XCTAssertTrue(text.contains("bundleID"), text)
     }

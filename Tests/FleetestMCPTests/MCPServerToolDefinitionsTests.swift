@@ -15,8 +15,8 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
     /// ft_list_devices はプロファイルを読むだけなので profile 以外の宛先は要らない。
     /// ft_logs は adb とホストのファイルだけを見るが、**実機の判別に port が要る**
     /// (`.fleetest/bridge-<port>.device` の記録を引く。無いと実機を「クラッシュ無し」と誤答する)。
-    /// **udid は置かない** —— 入口の foldingUDIDIntoPort が稼働中ブリッジへ畳むので、ブリッジが
-    /// 死んだ後(このツールの出番)は「ブリッジが無い」で落ちる。記録は port でしか引けない
+    /// **udid は入口で畳まない**(toolsResolvingUDIDWithoutBridge)—— foldingUDIDIntoPort は稼働中
+    /// ブリッジを走査するので、死んだ後(このツールの出番)は「ブリッジが無い」で落ちる
     private static let deviceFreeTools: [String: Set<String>] = [
         "ft_list_scenarios": [],
         // ft_dry_run はデバイスに触らないが "platform" だけは持つ —— 宣言の無いシナリオの
@@ -28,7 +28,7 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         // 記録済みの操作列から下書きを組むだけ = デバイスに触らない
         "ft_draft_scenario": [],
         "ft_list_devices": ["platform", "profile"],
-        "ft_logs": ["platform", "serial", "port"],
+        "ft_logs": ["platform", "serial", "port", "udid"],
     ]
 
     func testDeviceToolsDeclareDeviceSelectionProperties() {

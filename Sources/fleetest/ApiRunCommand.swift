@@ -145,7 +145,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// **奪う口(--force-lock)は足さない** —— 走っているかもしれない他人の run を GUI から
     /// 殺せる導線を作らない(§5 の決定を維持)
     @Option(name: .customLong("wait-lock"),
-            help: ArgumentHelp("Instead of failing fast, poll until a remote host's dispatch.lock is released, "
+            help: ArgumentHelp("Instead of failing fast, poll until the dispatch.lock (this Mac's or a remote host's) is released, "
               + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile or --runner"))
     var waitLock: Int?
 

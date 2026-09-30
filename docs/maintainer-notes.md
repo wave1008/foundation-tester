@@ -3040,3 +3040,55 @@ sim-09 のランナーアプリを SIGSTOP で固めて serve を殺し・起こ
 - `waitSeconds` に上限が無く、現れない要素に 1e12 秒を渡すと MCP のセッションが戻らない(指定どおりの挙動。
   上限を置くには根拠のある定数が要る)
 - ライブ操作の NDJSON の未知の欄は引き続き無視(§58.3 のとおり)
+
+## 60. 実機4台の1時間テストで出た穴(2026-09-30 夜)
+
+構成: 実機だけ(iPhone SE3・Pixel 4a・Pixel 3a = この Mac / iPhone 13 = M1Ultra)。MCP ファズ(台ごとに常駐の
+fleetest-mcp 1 本・udid / serial を毎回添える)+ 取り合いの run(ファズ中の Pixel 4a へ実機プロファイルの run)+
+素の run(Pixel 4a で E2E-Android 全 37 本)+ MCP の `ft_run_scenario`(SE3 で 12 本)+ ランナーの強制終了。
+規模: MCP 6,408 回(ハング 0・MCP プロセスの落ち 0)。Pixel 4a の素の run は 37/37 緑、SE3 は 11/12 緑
+(残り 1 本はプロファイルなし実行の制約 = 実機の clearAppData は再インストール元が要る)。
+
+**新規の型は 0**。入力検査・宛先の食い違い・run との取り合いの警告からは何も出なかった。
+
+### 60.1 `ft_logs` が `udid` を捨て、駆動中の実機を実機と分からない
+複数台を駆動する呼び手は全ツールに `udid` を添える。`ft_logs` だけは udid を宣言していなかったので(入口の畳み込みが
+ブリッジを走査し、死んだ後に落ちるため)、「未知の引数」として捨てていた。その結果 engineKey が `direct:ios:0:` になり、
+駆動中のセッション(鍵はポート入り)の `connectedPorts` を引けず、実機でもシミュレータの待ち(4.2 秒)を払って
+「クラッシュ無し」と答えた。**ランナーを殺した直後(このツールの出番)にそのまま再現した**。アプリの記憶
+(`launchedBundleIDs`)も同じ鍵なので、2 台で別のアプリを起動していれば「このセッションでは何も起動していない」と断る。
+直し方: udid を宣言するが入口では畳まない(`toolsResolvingUDIDWithoutBridge`)。`ftLogs` が記憶のポート
+(`rememberedPort(forUDID:)`)を載せて鍵を揃え、実機かどうかは `BridgeDeviceRecord`(ポートの記録が一致、または
+どこかのポートにその udid の記録がある)だけで決める。シミュレータの udid はそのデバイスのレポートに絞る。
+実地: 死んだブリッジの SE3 で 4.4 秒 → 14 ms・駆動中のセッションで 4.4 秒 → 即答・記録の無い実機 udid は実機と
+断定しない(従来の文言のまま)。
+**型**: 入口の共通処理から外したツールは、共通処理が揃えていた鍵を自分で揃えないと記憶を引けない。
+
+### 60.2 MCP の一覧だけ未登録の Android 実機を serial で名乗る
+`ft_list_devices` の未登録行は `avd ?? serial` で、実機は serial がそのまま名前になっていた(`api list-devices` は
+`ro.product.model`)。`AndroidSerialResolver.modelNames` を足して機種名で出す(取れなければ serial)。
+
+### 60.3 `--wait-lock` / `--force-lock` のヘルプが「リモートの」ロックだけを言う
+手元の dispatch.lock にも効き、手元のロックで断る文言は `--wait-lock` を勧めているのに、ヘルプは
+「a remote host's dispatch.lock」だった(`run` と `api run` の両方)。
+
+### 60.4 `ft_scroll_to` の失敗文の注記が空白で始まる
+探索中に上限へ当たった注記だけ先頭に空白があり `Error:  note:` になっていた。
+
+### 直していないもの・観察
+- **座標の操作には「前面が自分のアプリか」の門が無い**(ref の操作は「前面が別アプリ」と断る)。ファズの `back` が
+  アプリの最初の画面で押されてアプリを抜け、座標タップ・スワイプがランチャー・クイック設定・Chrome に届いた
+  (機内モードと通知ミュートは端末側のログでファズ前からの状態と確認。ほかの設定は確かめていない)。
+  実機へのファズは**操作のたびに `ft_status` で前面を確かめる**
+- `ft_batch` の `type` / `clearInput` は DSL の意味論(警告して撃つ)なので、`ft_type` なら「テキスト欄ではない」と
+  断るボタンを実際に押してから失敗する(沈黙はしない)
+- 実機 iPhone は `bridge status` / `ft_status` で一律「iPhone」(`/status` の申告どおり。一覧は devicectl の名前)。
+  直すには `.device` の記録に名前を持たせる必要があり、読み手が 12 箇所ある
+- USB 接続の iPhone でも devicectl が `available (paired)` と申告する間は一覧(MCP・CLI とも)に出ない。
+  名指しの `bridge up --physical` は通る。一覧で全台へ問い合わせると、居ない台の待ちを毎回払う
+- プロファイルなしの run(`--serial` だけ)で `removeApp` → `installApp()` を含むシナリオを回すと、パッケージの場所を
+  解決できず SUT が消えたまま後続が全滅する(文言は原因を言う)。実機の素の run はプロファイルを付ける
+- `ft_scroll_to` の失敗文は注記が先頭に来る(`Error: note: search took …`。本題は次の行)
+- ファズの親を SIGTERM で止めた後、子の MCP の `mcp-<鍵>@<pid>.lease` が残っていた(原因は未確認。
+  生死で読むので無害・次の供給が掃除する)
+- リモート経由の実機 run(`--profile ios-iphone13`)は回していない(手元が未コミットで align できないため)

@@ -104,8 +104,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `MCPServer` の `drivers` / `lastSnapshots` 等は `sessions` を見る窓(`SessionMap` / `SessionFlags`)で、
   `forgetDeviceState` はセッションを丸ごと捨てる。**並列の `[String: …]` / `Set<String>` を戻さない**
   (束ねる前は集合型の2つが後始末から漏れていた。`DeviceStateInvalidationTests` が落とす)。
-  **udid → port の畳み込みはスキーマに `udid` を宣言したツールでだけ撃つ**(`toolFoldsUDID`。
-  `ft_logs` はブリッジが死んだ後に読むツールなので走査で落とさない)
+  **udid → port の畳み込みはスキーマに `udid` を宣言したツールでだけ撃つ**(`toolFoldsUDID`)。
+  **`ft_logs` は udid を宣言するが畳まない**(`toolsResolvingUDIDWithoutBridge`。ブリッジが死んだ後に読むツールなので
+  走査で落とさない)—— udid は `ftLogs` がセッションの記憶(`rememberedPort(forUDID:)`)と `BridgeDeviceRecord` だけで
+  解決する。**入口で畳まないツールは engineKey がポート無しになる**ので、ポート入りの鍵で持つ記憶
+  (`connectedPorts` / `launchedBundleIDs`)を引く前に自分でポートを載せる → maintainer-notes §60.1
 - **platform と宛先(udid/port は iOS・serial は Android)の食い違いは畳む前に断る**(判定は
   `FTCore.DeviceTargetConsistency` の1箇所。CLI の `DriverOptions.rejectDeviceTargetMismatch` と共有 ——
   片方だけ持つと同じ食い違いが片方でだけ弾かれる)。呼ぶのは `call()` の入口・

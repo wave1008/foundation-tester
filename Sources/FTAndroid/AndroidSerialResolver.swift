@@ -57,6 +57,21 @@ public enum AndroidSerialResolver {
         return serials.map { Device(serial: $0, avd: avds[$0]) }
     }
 
+    /// 実機の表示名(`ro.product.model`)。取れなかった serial は載せない(呼び手が serial を使う)。
+    /// 失敗の出力(「error: device offline」等)を機種名にしない。上限 10 秒は `api installed-devices` /
+    /// `api monitor` の同じ問い合わせと同じ値(接続中と分かっている serial にしか撃たない)
+    public static func modelNames(serials: [String]) -> [String: String] {
+        guard !serials.isEmpty, let adb = try? AndroidDriver.findADB() else { return [:] }
+        var names: [String: String] = [:]
+        for serial in serials {
+            let model = (try? Shell.run([adb, "-s", serial, "shell", "getprop", "ro.product.model"],
+                                        timeout: 10).outputIfSucceeded)?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !model.isEmpty { names[serial] = model }
+        }
+        return names
+    }
+
     // MARK: - 文言(1箇所に置く)
 
     public static func adoptedNote(_ device: Device) -> String {

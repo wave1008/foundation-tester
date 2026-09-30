@@ -121,6 +121,18 @@ public enum BridgeDeviceRecord {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// その udid を実機として記録しているポートがあるか(ポートを知らない呼び手用。ブリッジには触らない)
+    public static func isRecorded(udid: String, repoRoot: URL) -> Bool {
+        let dir = repoRoot.appendingPathComponent(".fleetest")
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.contains { name in
+            guard name.hasPrefix("bridge-"), name.hasSuffix(".device"),
+                  let port = UInt16(name.dropFirst("bridge-".count).dropLast(".device".count))
+            else { return false }
+            return load(port: port, repoRoot: repoRoot) == udid
+        }
+    }
+
     public static func forget(port: UInt16, repoRoot: URL) {
         try? FileManager.default.removeItem(at: fileURL(port: port, repoRoot: repoRoot))
     }

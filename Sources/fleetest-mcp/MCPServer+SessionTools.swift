@@ -110,7 +110,22 @@ extension MCPServer {
                                              includeSystem: includeSystem, filter: appsFilter))
     }
 
+    /// ft_logs の実機判定(純粋関数)。`udid` を渡された回は**その udid の記録だけ**を実機の証拠にする ——
+    /// 解決したポートの記録が別の実機のものなら採らない(ポートは別のデバイスへ使い回される)
+    static func logsPhysicalUDID(udid: String?, recordAtPort: String?,
+                                 isRecordedAnywhere: (String) -> Bool) -> String? {
+        guard let udid else { return recordAtPort }
+        return recordAtPort == udid || isRecordedAnywhere(udid) ? udid : nil
+    }
+
     func ftLogs(_ args: [String: Any]) async throws -> [[String: Any]] {
+        let isIOS = Self.platformName(args) == "ios"
+        // **udid はここで解決する**(入口の畳み込みはブリッジを走査するので撃たない =
+        // toolsResolvingUDIDWithoutBridge)。udid を毎回添える呼び手の鍵は `direct:ios:0:` になり、
+        // 駆動中のセッション(鍵はポート入り)の記憶をどれも引けない —— 覚えているポートを載せて揃える
+        let logsUDID = isIOS ? try Self.stringArgument(args, "udid") : nil
+        let args = Self.injectingPort(
+            args, port: try Self.portArgument(args) == nil ? rememberedPort(forUDID: logsUDID) : nil)
         let logBundleID = try Self.stringArgument(args, "bundleId", emptyHint: Self.attachedAppEmptyHint)
             ?? lastLaunchedBundleID(args)
         // iOS のクラッシュレポートはアプリ単位でしか引けない。本文で返すと isError=false になり、
@@ -126,10 +141,16 @@ extension MCPServer {
         // 呼び出しで埋まる)から取る。**どちらも取れなければ nil = 実機でない証拠にはならない
         // ので待つ**(best-effort)
         let logsPort = try Self.portArgument(args) ?? connectedPorts[Self.engineKey(args)]
+        let repoRoot = try? RepoRoot.find()
         let logsPhysicalUDID = Self.platformName(args) == "ios"
-            ? logsPort.flatMap { port in
-                (try? RepoRoot.find()).flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
-            }
+            ? Self.logsPhysicalUDID(
+                udid: logsUDID,
+                recordAtPort: logsPort.flatMap { port in
+                    repoRoot.flatMap { BridgeDeviceRecord.load(port: port, repoRoot: $0) }
+                },
+                isRecordedAnywhere: { udid in
+                    repoRoot.map { BridgeDeviceRecord.isRecorded(udid: udid, repoRoot: $0) } ?? false
+                })
             : nil
         return text(await CrashLogs.text(
             platform: Self.platformName(args),
@@ -138,7 +159,8 @@ extension MCPServer {
             withinSeconds: try Self.intArgument(args, "sinceSeconds") ?? 300,
             maxLines: try Self.intArgument(args, "lines") ?? 100,
             crashOnly: (args["all"] as? Bool) != true,
-            physicalUDID: logsPhysicalUDID))
+            physicalUDID: logsPhysicalUDID,
+            simulatorUDID: logsPhysicalUDID == nil ? logsUDID : nil))
     }
 
     func ftInstall(_ args: [String: Any]) async throws -> [[String: Any]] {

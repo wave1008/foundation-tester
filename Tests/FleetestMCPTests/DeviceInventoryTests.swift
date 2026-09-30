@@ -481,4 +481,19 @@ final class DeviceInventoryTests: XCTestCase {
         let merged = DeviceInventory.merging(registered: registered, unregistered: unregistered)
         XCTAssertEqual(merged.count, 2, "識別子 nil の登録行が合成をブロックしている")
     }
+
+    /// 未登録の Android 実機は機種名で出す(`fleetest api list-devices` と同じ名前。serial だけでは
+    /// どの端末か読み手が見分けられない)。取れなければ serial・エミュレータは AVD 名のまま
+    func testUnregisteredAndroidPhysicalRowIsNamedByModel() {
+        let physical = AndroidSerialResolver.Device(serial: "14141JEC204922", avd: nil)
+        let named = DeviceInventory.androidFallbackRow(device: physical, model: "Pixel 4a")
+        XCTAssertEqual(named.name, "Pixel 4a")
+        XCTAssertEqual(named.identifier, "14141JEC204922")
+        XCTAssertTrue(named.physical)
+        XCTAssertEqual(DeviceInventory.androidFallbackRow(device: physical, model: nil).name, "14141JEC204922")
+        let emulator = AndroidSerialResolver.Device(serial: "emulator-5554", avd: "Pixel_9")
+        let row = DeviceInventory.androidFallbackRow(device: emulator, model: "sdk_gphone64_arm64")
+        XCTAssertEqual(row.name, "Pixel_9")
+        XCTAssertFalse(row.physical)
+    }
 }

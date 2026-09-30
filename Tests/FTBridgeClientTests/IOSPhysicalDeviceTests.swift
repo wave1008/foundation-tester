@@ -421,6 +421,26 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertNil(BridgeDeviceRecord.load(port: 8123, repoRoot: root))
     }
 
+    /// ポートを知らない呼び手(ft_logs の udid 指定)は udid から記録の有無を引く。
+    /// 同じ `.fleetest/` に並ぶ他の台帳(`.pid` 等)や別の udid の記録には当たらない
+    func testBridgeDeviceRecordIsFoundByUDIDAcrossPorts() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-device-record-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let se3 = "00008110-000260242EEB801E"
+
+        XCTAssertFalse(BridgeDeviceRecord.isRecorded(udid: se3, repoRoot: root))
+        BridgeDeviceRecord.persist(udid: "00008130-001819863E60001C", port: 8123, repoRoot: root)
+        BridgeDeviceRecord.persist(udid: se3, port: 8150, repoRoot: root)
+        try se3.write(to: root.appendingPathComponent(".fleetest/bridge-8151.pid"),
+                      atomically: true, encoding: .utf8)
+        XCTAssertTrue(BridgeDeviceRecord.isRecorded(udid: se3, repoRoot: root))
+        XCTAssertFalse(BridgeDeviceRecord.isRecorded(udid: "00008110-001460910E0A201E", repoRoot: root))
+
+        BridgeDeviceRecord.forget(port: 8150, repoRoot: root)
+        XCTAssertFalse(BridgeDeviceRecord.isRecorded(udid: se3, repoRoot: root))
+    }
+
     // MARK: - destination(実機 UDID の形状推測をしないこと)
 
     func testDestinationUsesPhysicalPlatformForDevice() {

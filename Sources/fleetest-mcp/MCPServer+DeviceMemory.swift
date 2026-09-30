@@ -22,10 +22,14 @@ extension MCPServer {
         return props["port"] != nil || props["serial"] != nil
     }
 
-    /// udid → port の畳み込み(ブリッジ走査)を撃つツールか。**スキーマに `udid` を宣言したツールだけ** ——
-    /// `ft_logs` は port / serial を取るが udid を取らない(ブリッジを通らずに読むのが目的なので、
-    /// 走査で落ちると死んだブリッジの後に何も読めない)
+    /// udid を取るが、ブリッジを通らずに読むツール。畳み込みの走査で落ちると、死んだブリッジの後に
+    /// 何も読めない。udid は自前で解決する(ftLogs = セッションの記憶と BridgeDeviceRecord)
+    static let toolsResolvingUDIDWithoutBridge: Set<String> = ["ft_logs"]
+
+    /// udid → port の畳み込み(ブリッジ走査)を撃つツールか。**スキーマに `udid` を宣言したツールだけ**
+    /// (`toolsResolvingUDIDWithoutBridge` を除く)
     static func toolFoldsUDID(_ tool: String) -> Bool {
+        guard !toolsResolvingUDIDWithoutBridge.contains(tool) else { return false }
         guard let definition = toolDefinitions.first(where: { $0["name"] as? String == tool }),
               let schema = definition["inputSchema"] as? [String: Any],
               let props = schema["properties"] as? [String: Any] else { return false }

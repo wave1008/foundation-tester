@@ -200,13 +200,17 @@ extension MCPServer {
             + "path for a simulator — there is no runtime log on iOS, so a running app yields "
             + "nothing here; Android returns recent logcat lines. It never goes through the bridge, "
             + "so it still answers after a crash took the bridge with it. A physical iPhone keeps "
-            + "its crash reports on the device — pass port (the bridge port it had, even if that "
-            + "bridge is gone now) or have driven it earlier in this session, so the tool can say "
-            + "so instead of reporting no crash", [
+            + "its crash reports on the device — pass udid or port (the bridge port it had, even if "
+            + "that bridge is gone now) or have driven it earlier in this session, so the tool can "
+            + "say so instead of reporting no crash", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "
                 + "Defaults to the bundle ID of the last ft_launch"],
             "platform": platformProperty,
             "serial": serialProperty,
+            "udid": ["type": "string", "description": "iOS device UDID — matched against this "
+                + "session's memory and the bridge's device record without contacting the bridge, "
+                + "so it works after the bridge died. A simulator's crash reports are narrowed to "
+                + "that device"],
             "port": ["type": "integer", "description": "iOS bridge port the device had — read "
                 + "without contacting it, so it works after the bridge died"],
             "lines": ["type": "integer", "description": "Android: how many recent lines to return (default 100)"],

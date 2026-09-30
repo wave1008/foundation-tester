@@ -467,10 +467,15 @@ enum DeviceInventory {
     private static func androidFallbackRows() -> [Row] {
         let serials = AndroidSerialResolver.connectedSerials()
         guard !serials.isEmpty else { return [] }
-        return AndroidSerialResolver.describe(serials: serials).map { device in
-            Row(name: device.avd ?? device.serial, platform: "android", identifier: device.serial,
-               running: true, physical: device.avd == nil, registered: false, bridges: [])
-        }
+        let devices = AndroidSerialResolver.describe(serials: serials)
+        let models = AndroidSerialResolver.modelNames(serials: devices.filter { $0.avd == nil }.map(\.serial))
+        return devices.map { androidFallbackRow(device: $0, model: models[$0.serial]) }
+    }
+
+    /// 純粋関数(テスト用)。実機の名前は機種名(`fleetest api list-devices` と同じ)。取れなければ serial
+    static func androidFallbackRow(device: AndroidSerialResolver.Device, model: String?) -> Row {
+        Row(name: device.avd ?? model ?? device.serial, platform: "android", identifier: device.serial,
+            running: true, physical: device.avd == nil, registered: false, bridges: [])
     }
 
     // MARK: - ft_list_apps

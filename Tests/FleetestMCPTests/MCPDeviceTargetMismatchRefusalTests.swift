@@ -52,7 +52,7 @@ final class MCPDeviceTargetMismatchRefusalTests: XCTestCase {
                                          contains: "no platform to say which one to use")
     }
 
-    /// ft_logs は udid を持たず port/serial だけを持つ——同じ規則が port/serial の組でも効くこと
+    /// 同じ規則が port/serial の組でも効くこと(ft_logs は入口で udid を畳まない)
     func testPortAndSerialWithNoPlatformIsRefusedEvenWithoutUDID() async {
         do {
             _ = try await server.call(tool: "ft_logs", args: ["port": 8130, "serial": "emulator-5554"])
