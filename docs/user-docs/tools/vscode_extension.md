@@ -47,6 +47,10 @@ is unavailable.
   Device operations run one at a time through a shared queue, so queued tiles show a
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
+- The toolbar charts (MEM / CPU / GPU / VN / FM) show the Mac's load and the call counts of image analysis (VN)
+  and Foundation Models (FM). When FM becomes unusable, the FM chart turns gray and **⚠︎unavailable** appears
+  to its right (hover it for the stopped path, the reason and when it was observed). While it is shown, checks
+  that use FM (`screenLooksLike` and the FM stage of text visual verification) may not run.
 - The **run board** under the toolbar shows one row per machine — this Mac and every registered
   runner machine. A run going on right now appears on its machine's row with "N of M done" and an
   estimated time left — not just runs you started, but CLI runs and other people's runs too.

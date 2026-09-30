@@ -96,7 +96,7 @@ function hmMakeRow(rowEl, machine) {
   return {
     machine,
     el: rowEl,
-    // 死んだ経路を語で出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない。
+    // FM が死んでいるときの語を出す枠(行の最後尾。監視の対象は FM だけなので entries には入れない。
     // VN は死活を持たないのでバッジも無い)
     deadBadge: rowEl.querySelector('.hm-fm-dead-badge'),
     entries,
@@ -238,7 +238,7 @@ function hmEnsureRow(machine) {
     metric.classList.remove('hm-fm-dead', 'hm-fm-warn');
   }
   // 複製元(手元の行)が死んでいると、その語まで一緒に複製される —— 新しい機械の行が
-  // 1度も観測していないうちから死んだ経路を名乗ることになるので、必ず空から始める
+  // 1度も観測していないうちから死を名乗ることになるので、必ず空から始める
   const clonedBadge = rowEl.querySelector('.hm-fm-dead-badge');
   clonedBadge.textContent = '';
   clonedBadge.classList.remove('hm-visible');
@@ -341,10 +341,10 @@ function hmRenderFmLabel(row) {
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
   const deadPaths = fmDeadPaths(row);
-  // **台帳由来の死はここでは語らない**(ユーザー決定)。どの経路が死んだかは右の
-  // バッジが語で出しており、理由と観測時刻はそのバッジのツールチップが持つ。ここで同じことを
+  // **台帳由来の死はここでは語らない**(ユーザー決定)。死は右のバッジが語で出しており、
+  // 理由(どの経路か)と観測時刻はそのバッジのツールチップが持つ。ここで同じことを
   // 繰り返すと、レート統計を見に来た人が毎回 3 行の説明を読まされる。
-  // 窓内の全滅だけはバッジが経路を名指しできない(台帳が無い)ので、ここに残す
+  // 窓内の全滅だけは台帳の理由が無いので、ここに残す
   if (deadPaths.length === 0 && dead) {
     title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', {
       seconds: String(HM_COUNT_RATE_WINDOW_TICKS), failures: String(stats.failures) });
@@ -359,10 +359,10 @@ function hmRenderFmLabel(row) {
   hmRenderDeadBadge(row, { dead, deadPaths, stats });
 }
 
-/** 死んだ経路を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定)
+/** FM の死を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定)
  *  —— 不明で出すと、プローブの谷間で点滅し続ける。
- *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら経路を名指しでき、
- *  窓内の全滅は**どの経路かを言えない**ので事実だけ述べる。 */
+ *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら `⚠︎unavailable`(理由は
+ *  ツールチップ)、窓内の全滅は台帳の理由が無いので「全呼び出し失敗」という事実だけ述べる。 */
 function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
   const badge = row.deadBadge;
   if (!dead) {
@@ -371,11 +371,10 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
     badge.removeAttribute('title');
     return;
   }
-  // **経路ごとに ⚠︎ を1つ**(印と経路名の間に空白は置かない)(ユーザー決定)。語は付けない —— 経路名は
-  // text / vision という識別子そのもので訳す対象が無いため、ここは辞書を通さない。
-  // 区切りの空白2つは CSS の `white-space: pre` が保つ(既定では連続空白が1つに畳まれる)
+  // 台帳由来の死は経路を問わず `⚠︎unavailable` の1語(ユーザー決定。日英とも同じ語なので辞書を通さない)。
+  // どの経路が死んだかはツールチップの理由(row.liveness.reason)が持つ
   badge.textContent = deadPaths.length > 0
-    ? deadPaths.map((path) => `${HM_DEAD_MARK}${path}`).join('  ')
+    ? `${HM_DEAD_MARK}unavailable`
     : t('wvMonitor2.hostCharts.fmDeadBadgeAllFailed');
   badge.classList.add('hm-visible');
   // 語だけでは「なぜ・いつから」が分からない。理由はここにも付ける(FM セルのツールチップと

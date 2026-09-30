@@ -898,9 +898,7 @@ html[lang="en"] .header-count {
   display: none;
   font-size: 11px;
   font-weight: 600;
-  /* nowrap ではなく pre —— 経路の区切りの空白2つを畳ませない(既定では1つになる)。
-     折り返さない性質は pre にも含まれる。 */
-  white-space: pre;
+  white-space: nowrap;
   /* グレー(ユーザー決定)。**行の中に色を持ち込まない** —— 赤にすると隣の
      CPU/GPU/MEM と同じ「高い値が出ている」の合図に見えるが、死は値の異常ではなく機能の無効。
      スパークラインを彩度の無い色にしたのと同じ判断で、行全体の色調を揃える。

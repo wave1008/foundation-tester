@@ -555,10 +555,8 @@ function fmDeadBadge(document, machine) {
   return badge.classList.contains("hm-visible") ? badge.textContent : null;
 }
 
-// **語まで出す**のがこのバッジの役目(ユーザー決定 2026-09-03)。グレーの線と '–' だけでは
-// 「FM が何か変」までしか分からず、text と vision のどちらが死んだかで次の一手が変わる
-// (vision だけなら occlusion-guard と screenLooksLike、text だけなら自己修復とトリアージ)。
-test("死んだ経路を FM チャートの右に語で出す", (t) => {
+// バッジは経路を問わず `⚠︎unavailable`(ユーザー決定)。どの経路かはツールチップの理由が持つ
+test("台帳由来の死を FM チャートの右に語で出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
@@ -568,7 +566,7 @@ test("死んだ経路を FM チャートの右に語で出す", (t) => {
   }));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎vision");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎unavailable");
   assert.match(
     rowFor(document, "mac2").querySelector(".hm-fm-dead-badge").title,
     /ModelManagerError\(1001\)/,
@@ -576,7 +574,7 @@ test("死んだ経路を FM チャートの右に語で出す", (t) => {
   );
 });
 
-test("両方死んだら両方名指しする", (t) => {
+test("両方死んでも1語で出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
@@ -584,9 +582,7 @@ test("両方死んだら両方名指しする", (t) => {
     fmCalls: 0, fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: a / vision: b",
   }));
   send(window, hostMetricsSample(undefined, 0.1));
-  // 経路ごとに ⚠︎ を1つ。**区切りの空白2つまで固定する** —— CSS の white-space が
-  // 既定(nowrap)へ戻ると1つに畳まれ、2つの経路が1語に見える
-  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎text  ⚠︎vision");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎unavailable");
 });
 
 // **生きている行と不明の行には何も出さない**。不明で出すと、プローブの谷間や旧版 CLI の
@@ -622,7 +618,7 @@ test("新しい機械の行は、手元が死んでいても語を持たずに�
   send(window, hostMetricsSample(undefined, 0.1, {
     fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y",
   }));
-  assert.equal(fmDeadBadge(document, ""), "⚠︎text  ⚠︎vision");
+  assert.equal(fmDeadBadge(document, ""), "⚠︎unavailable");
 
   // ここで初めてリモートの行ができる(手元の行の複製)
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
