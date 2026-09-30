@@ -9,7 +9,7 @@ import Foundation
 public struct RemoteHostEntry: Codable, Equatable, Sendable {
     /// マシン名(利用者が設定タブで付ける名前)。登録簿内で一意(upsert が同名を置き換える)。
     /// プロファイルの `machine` 欄・`--host` に書くのはこの名前。
-    /// **JSON キーは "machine"**(改名済み)。旧キー "name" も読む
+    /// **JSON キーは "machine"**
     public let machine: String
     /// ssh 宛先("user@host" または "host")
     public let host: String
@@ -51,17 +51,12 @@ public struct RemoteHostEntry: Codable, Equatable, Sendable {
     public var isEnabled: Bool { enabled != false }
 
     private enum CodingKeys: String, CodingKey {
-        case machine, name, host, dir, fmConcurrency, color, enabled, developerDir
+        case machine, host, dir, fmConcurrency, color, enabled, developerDir
     }
 
-    /// 読みは machine > 旧 name、書きは machine だけ(改名の互換はこの1箇所)
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        if let machine = try container.decodeIfPresent(String.self, forKey: .machine) {
-            self.machine = machine
-        } else {
-            self.machine = try container.decode(String.self, forKey: .name)
-        }
+        machine = try container.decode(String.self, forKey: .machine)
         host = try container.decode(String.self, forKey: .host)
         dir = try container.decodeIfPresent(String.self, forKey: .dir)
         // 不正値(0 以下)は nil へ倒す。**壊れた設定で run を止めるより既定で動かす**

@@ -45,12 +45,11 @@ final class RunEventNDJSONTests: XCTestCase {
     // MARK: - 出力しないイベント
 
     func testEventsHandledElsewhereEmitNothing() {
-        // runStarted/runFinished は呼び出し側が emit 済み。flowHealed は旧互換、flowPaused は
+        // runStarted/runFinished は呼び出し側が emit 済み。flowPaused は
         // デバッグ専用でこの経路に来ない。ここで行を出すと二重計上になる
         XCTAssertEqual(lines(.runStarted(total: 3, workerLabels: [workerLabel])), [])
         XCTAssertEqual(lines(.runFinished(passed: 3, failed: 0)), [])
         XCTAssertEqual(lines(.workerReady(worker: workerLabel)), [])
-        XCTAssertEqual(lines(.flowHealed(worker: workerLabel, flowURL: flowURL)), [])
         XCTAssertEqual(lines(.flowPaused(worker: workerLabel, flowURL: flowURL, index: 1,
                                          description: "tap", file: nil, line: nil)), [])
     }

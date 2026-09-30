@@ -129,7 +129,7 @@ final class RemoteDispatchQueueTests: XCTestCase {
     /// **置き場はホームの `.fleetest/`**(`<base>` ではない。RemoteDispatchLock と同じ理由)
     private let home = "/Users/tester"
     private let ticket = DispatchTicket(requestedAtMillis: 1_755_000_000_000, issuer: "ci", group: "7")
-    private let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
+    private let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
 
     // MARK: - 置き場
 
@@ -175,7 +175,7 @@ final class RemoteDispatchQueueTests: XCTestCase {
             + "if [ \"$(printf '%s\\n' \"$q\" | head -n 1)\" = '1755000000000~ci~7' ]; then"
             + " if mkdir -p '/Users/tester/.fleetest'"
             + " && mkdir '/Users/tester/.fleetest/dispatch.lock' 2>/dev/null"
-            + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
+            + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"ci\",\"issuerHost\":\"h\",\"pid\":1}'"
             + " > '/Users/tester/.fleetest/dispatch.lock/info.json'; then"
             + " rm -f \(ticketPath); printf '%s\\n' 'ACQUIRED';"
             + " else printf '%s\\n' 'HELD'; fi;"
@@ -235,7 +235,7 @@ final class RemoteDispatchQueueTests: XCTestCase {
 
     // MARK: - 出力の解析
 
-    private let holderJSON = "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}"
+    private let holderJSON = "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"ci\",\"issuerHost\":\"h\",\"pid\":1}"
 
     private func output(queue: [String], verdict: String, info: String) -> String {
         (["QUEUE"] + queue + ["---", verdict, "---", info]).joined(separator: "\n") + "\n"

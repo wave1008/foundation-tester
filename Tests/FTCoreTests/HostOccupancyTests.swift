@@ -8,7 +8,7 @@ import FTRemote
 
 final class HostOccupancyTests: XCTestCase {
 
-    private func info(issuer: String?, host: String = "dev-mbp", pid: Int32 = 42) -> String {
+    private func info(issuer: String, host: String = "dev-mbp", pid: Int32 = 42) -> String {
         RemoteDispatchLock.encode(RemoteDispatchLockInfo(
             issuerHost: host, pid: pid, acquiredAt: "2026-08-31T01:02:03Z", issuer: issuer)) ?? "{}"
     }
@@ -46,16 +46,6 @@ final class HostOccupancyTests: XCTestCase {
             lockDirExists: true, infoJSON: info(issuer: "alice"), myIssuer: "alice")
         XCTAssertTrue(state.held)
         XCTAssertTrue(state.mine)
-    }
-
-    /// 旧 info.json(issuer キーが無い)。**mine=false に倒す** —— 自分のものと決めつけると、
-    /// 破壊的操作の確認が「他人の run が走っている」と言わなくなる
-    func testLegacyInfoWithoutIssuerIsNotMine() {
-        let state = HostOccupancy.interpret(
-            lockDirExists: true, infoJSON: info(issuer: nil), myIssuer: "alice")
-        XCTAssertTrue(state.held)
-        XCTAssertNil(state.issuer)
-        XCTAssertFalse(state.mine)
     }
 
     /// **手元でも読む**(2026-09-21)—— dispatch.lock は機械に1本で、リモートへのディスパッチも

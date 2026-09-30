@@ -35,7 +35,7 @@ public enum InAppBridgeState {
         return recorded.udid.caseInsensitiveCompare(udid) != .orderedSame
     }
 
-    /// 3 語目(sourceDigest)は**旧版が書いた 2 語の記録**では nil になる。
+    /// 3 語目(sourceDigest)は digest を計算できない構成では書かれず(2 語)nil になる。
     /// 読み手は nil を「出所不明」として扱うこと(= 再利用しない側に倒す)
     static func read(at path: URL) -> (udid: String, bundleID: String, sourceDigest: String?)? {
         guard let content = try? String(contentsOf: path, encoding: .utf8) else { return nil }

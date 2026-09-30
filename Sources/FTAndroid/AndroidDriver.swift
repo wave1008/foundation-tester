@@ -47,8 +47,7 @@ public final class AndroidDriver: AppDriver {
         var centers: [Int: [Double]]
         var screen: FTRect
         var package: String?
-        /// 省略可(古い状態ファイルとの互換。domBridgeRefs 参照)
-        var domBridgeRefs: [Int: Int]?
+        var domBridgeRefs: [Int: Int]
     }
 
     private var stateFileURL: URL {
@@ -73,7 +72,7 @@ public final class AndroidDriver: AppDriver {
               let data = try? Data(contentsOf: stateFileURL),
               let state = try? JSONDecoder().decode(PersistedState.self, from: data) else { return }
         refCenters = state.centers.compactMapValues { $0.count == 2 ? (x: $0[0], y: $0[1]) : nil }
-        domBridgeRefs = state.domBridgeRefs ?? [:]
+        domBridgeRefs = state.domBridgeRefs
         screen = state.screen
         if currentPackage == nil { currentPackage = state.package }
     }

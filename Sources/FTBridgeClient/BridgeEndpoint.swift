@@ -28,8 +28,8 @@ public struct BridgeEndpoint: Sendable, Hashable, Codable {
 
     // MARK: - 永続化(.fleetest/bridge-<port>.endpoint)
     //
-    // ファイル形式: 1行目=host / 2行目=token(あれば)。2行目が無い旧形式は token=nil として
-    // 読む(更新前から動いているブリッジと共存するため)。
+    // ファイル形式: 1行目=host / 2行目=token(あれば)。token 無しのエンドポイント
+    // (LAN 直結の実機など)は host の1行だけで書かれ、token=nil として読む。
 
     static func fileURL(port: UInt16, repoRoot: URL) -> URL {
         repoRoot.appendingPathComponent(".fleetest/bridge-\(port).endpoint")

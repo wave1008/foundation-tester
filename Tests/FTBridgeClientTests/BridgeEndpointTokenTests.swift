@@ -1,6 +1,5 @@
 // BridgeEndpoint の永続化フォーマット(1行目=host / 2行目=token)の往復。
-// 2行目が無い旧形式(host のみ)は token=nil として読めること(更新前から動いているブリッジとの
-// 後方互換)。同型: AdoptEndpointHostTests(host だけの往復)。
+// token 無し(host の1行だけ)は token=nil として読めること。同型: AdoptEndpointHostTests(host だけの往復)。
 
 import XCTest
 @testable import FTBridgeClient
@@ -28,17 +27,6 @@ final class BridgeEndpointTokenTests: XCTestCase {
     func testPersistWithoutTokenLoadsNilToken() {
         BridgeEndpoint(host: "192.168.1.23", port: 8901).persist(repoRoot: root)
         XCTAssertNil(BridgeEndpoint.load(port: 8901, repoRoot: root).token)
-    }
-
-    /// 更新前に書かれた host 1行だけのファイル(このリポジトリの旧版が実際に書いていた形)
-    func testLegacyOneLineFileLoadsWithNilToken() throws {
-        let url = root.appendingPathComponent(".fleetest/bridge-8901.endpoint")
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
-                                                withIntermediateDirectories: true)
-        try "192.168.1.23".write(to: url, atomically: true, encoding: .utf8)
-        let loaded = BridgeEndpoint.load(port: 8901, repoRoot: root)
-        XCTAssertEqual(loaded.host, "192.168.1.23")
-        XCTAssertNil(loaded.token)
     }
 
     /// ループバック **かつ token 無し**のときだけ persist しても書かない(既存挙動の維持)

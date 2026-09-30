@@ -45,7 +45,7 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 - `Sources/FTScenarioRunner/` がカレントにある → **clone 構成**。TOOL_ROOT = WORK_DIR = カレント。
 - `state.json` があり `toolRoot` が実在 → **外部構成**。WORK_DIR = カレント、TOOL_ROOT = その値。
-- **どちらでもない**(state.json が無い = 旧版で導入した、または未導入)→ このときだけ preflight を打つ:
+- **どちらでもない**(state.json が無い = 未導入)→ このときだけ preflight を打つ:
 
   ```
   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
@@ -162,49 +162,6 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
 
 （clone 構成なら `cd vscode-fleetest && ...`。）`install-local` はパッケージ→インストール→到達確認まで一括。
 **exit code で成否判定**。
-
-### 5.5 MCP 登録テンプレートの更新（起動のたびのビルドと、旧 cwd 罠を解消）
-
-旧版のセットアップ手順で書かれた `.mcp.json` の `fleetest` エントリは、`args` にシェル式を
-直書きしている（`cd "<ABS_TOOL_ROOT>" && swift build … && exec …`）。この形には実害が3つある:
-
-- **起動のたびに `swift build` が走る**。無変更でも約8秒(実測)かかり、その回に `ft_*` を
-  1度も使わなくても必ず払う
-- **ビルド出力が `/dev/null`** なので、失敗すると `&&` が切れて**サーバが黙って起動しない**
-- さらに古い形（`cd "$WD"` を含まないもの）は **TOOL_ROOT へ cd したまま `exec`** するため、
-  `packageRoot()` がクローン側の `Package.swift` を拾い、外部パッケージ構成で受け手の
-  `TestProjects/` が見えなくなる
-
-新版はランチャを `Scripts/mcp-server.sh` に切り出してあり、鮮度判定（ソースが実行ファイルより
-新しいときだけ建てる）・ログ・失敗時の stderr 出力・cwd の保持をあちらが担う。
-
-- **WORK_DIR の `.mcp.json`**（構成を問わない。clone 構成では WORK_DIR = クローンで、
-  このファイルは追跡外）を確認する。`mcpServers.fleetest.args` が `swift build` を含むなら
-  旧テンプレート。次の形へ書き換える（`<ABS_TOOL_ROOT>` は既存値をそのまま使う。他のキーは変更しない）:
-
-```json
-{
-  "mcpServers": {
-    "fleetest": {
-      "command": "bash",
-      "args": ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
-      "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
-    }
-  }
-}
-```
-
-  `env.FT_TOOL_ROOT`（ブリッジ資産 `Runner/`・`InAppBridge/` のルート＝TOOL_ROOT の明示指定）が
-  無い旧エントリは、追加しておく（`<ABS_TOOL_ROOT>` は既存 `args` の値と同じ）。無くても自動解決するが、
-  明示しておくと起動経路に依存しない。
-
-- **user スコープ登録**（`claude mcp add fleetest --scope user ...` で入れた場合）: `claude mcp list` /
-  `claude mcp get fleetest` で同じ旧パターン（cd 後 exec 前に戻っていない）が無いか確認する。あれば
-  一度 `claude mcp remove fleetest --scope user` してから、新テンプレート（上と同じ `WD="$PWD"; cd ... ;
-  cd "$WD" && exec ...`）で `claude mcp add fleetest --scope user -- bash -c '...'` を再登録する(`-lc` は使わない。`~/.bash_profile` の出力が JSON-RPC を壊す)。
-  CLI が PATH に無ければこのステップはスキップし、WORK_DIR `.mcp.json` 方式への案内に留める。
-- 書き換え後は 🧑 チェックポイント（次のステップ）で Reload Window すれば反映される
-  （登録がそもそも無い場合はこのステップは何もしない ―― MCP 未使用の受け手には無関係）。
 
 ### 5.7 Claude Code プラグイン（スキル）の更新
 

@@ -213,19 +213,6 @@ final class FMHealthTests: XCTestCase {
         XCTAssertEqual(usage.gateWaitMaxMs, 30)
     }
 
-    /// 古い結果 JSON(gateWait* 欄が無い)をデコードしても失敗せず 0 で埋まる
-    func testDecodingWithoutGateWaitFieldsDefaultsToZero() throws {
-        let legacyJSON = """
-        {"calls":2,"failures":0,"totalMs":1500,"p50Ms":700,"maxMs":800,"byKind":{}}
-        """
-        let decoded = try JSONDecoder().decode(FMUsageRecord.self, from: Data(legacyJSON.utf8))
-        XCTAssertEqual(decoded.calls, 2)
-        XCTAssertEqual(decoded.totalMs, 1500)
-        XCTAssertEqual(decoded.gateWaitTotalMs, 0)
-        XCTAssertEqual(decoded.gateWaitP50Ms, 0)
-        XCTAssertEqual(decoded.gateWaitMaxMs, 0)
-    }
-
     /// 新しい結果 JSON は gateWait* を含めて往復する
     func testGateWaitRoundTripsThroughJSON() throws {
         FMHealth.record(kind: "occlusion", path: .vision, ms: 100, ok: true)
@@ -246,17 +233,5 @@ final class FMHealthTests: XCTestCase {
         let usage = try XCTUnwrap(FMHealth.usage())
         XCTAssertEqual(usage.skipped, 2)
         XCTAssertEqual(usage.skipped, FMHealth.snapshot().skipped)
-    }
-
-    /// 古い結果 JSON(skipped 欄が無い)をデコードしても失敗せず 0 で埋まる
-    /// (gateWait* と同じ流儀。CLAUDE.md: 「読めない」と「呼び出し 0 件」を混ぜない ——
-    /// ここは skipped という欄自体が無い版の話なので 0 で埋めてよい)
-    func testDecodingWithoutSkippedFieldDefaultsToZero() throws {
-        let legacyJSON = """
-        {"calls":2,"failures":0,"totalMs":1500,"p50Ms":700,"maxMs":800,"byKind":{}}
-        """
-        let decoded = try JSONDecoder().decode(FMUsageRecord.self, from: Data(legacyJSON.utf8))
-        XCTAssertEqual(decoded.calls, 2)
-        XCTAssertEqual(decoded.skipped, 0)
     }
 }

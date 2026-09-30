@@ -12,8 +12,8 @@ export interface RunMetaRecord {
   readonly runID: string;
   readonly project: string;
   readonly profile?: string | null;
-  /** その run を走らせた**機械のホスト名**(旧キー "machine" も読む。改名済み。
-   * 用語: host = ホスト名/IP、machine = そのローカルエイリアス)。 */
+  /** その run を走らせた**機械のホスト名**
+   * (用語: host = ホスト名/IP、machine = そのローカルエイリアス)。 */
   readonly host: string;
   /** "api" | "cli" */
   readonly trigger: string;
@@ -49,7 +49,7 @@ export interface RunMetaRecord {
   readonly measurementInvalid?: boolean | null;
   /** measurementInvalid=true のときの理由(英語)。 */
   readonly measurementInvalidReasons?: readonly string[] | null;
-  /** 同じ実行(ファンアウト)から分かれた run を束ねる鍵。単機の run と旧い記録では欠落。 */
+  /** 同じ実行(ファンアウト)から分かれた run を束ねる鍵。単機の run では欠落。 */
   readonly runGroup?: string | null;
   /** `--performance` 付きで走った run か(Swift 側 RunMetaRecord.performanceMode と対)。
    * 本フィールド追加前の CLI ではキー欠落。 */
@@ -115,7 +115,7 @@ export interface StepCountsRecord {
   readonly skipped: number;
   readonly healed: number;
   readonly passedViaFallback: number;
-  /** 後発フィールド。旧レコードには無いので optional。 */
+  /** 任意欄(欠落は 0 件扱い)。 */
   readonly inconclusive?: number;
 }
 
@@ -156,7 +156,7 @@ export interface ScenarioRunRecord {
   readonly title?: string | null;
   readonly platform: string;
   readonly worker?: string | null;
-  /** 機械のホスト名(RunMetaRecord.host と同じ。旧キー "machine" も読む)。 */
+  /** 機械のホスト名(RunMetaRecord.host と同じ)。 */
   readonly host: string;
   readonly profile?: string | null;
   readonly passed: boolean;

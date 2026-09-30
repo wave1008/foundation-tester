@@ -1,9 +1,6 @@
 .DS_Store
 .build/
 .fleetest/
-# 改名前(fleetest 以前)の状態ディレクトリ。既存の導入環境には残るので、
-# 取り違えてコミットしないよう ignore し続ける(読み書きはしない)
-.ftester/
 .swiftpm/
 xcuserdata/
 DerivedData/

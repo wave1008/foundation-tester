@@ -33,18 +33,18 @@ public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {
     /// 取得時刻(UTC, ISO8601)。表示専用 ―― stale 判定に時刻を機械的には使わない
     /// (docs/remote-runner.md §5「既定では奪わない」。長時間 run を誤って殺さないため)
     public let acquiredAt: String
-    /// 自己申告の帰属(LocalConfig.resolveIssuerId)。表示専用。旧 info.json にはキーが無いので
-    /// Optional のまま(decodeIfPresent で自動的に nil になる ―― Codable を手書きしない)
-    public let issuer: String?
+    /// 自己申告の帰属(LocalConfig.resolveIssuerId)。unlock の可否(`RemoteDispatchUnlock`)の照合に使う。
+    /// 既定値を置かない = 書き手の渡し忘れをコンパイルで止める
+    public let issuer: String
 
-    public init(issuerHost: String, pid: Int32, acquiredAt: String, issuer: String? = nil) {
+    public init(issuerHost: String, pid: Int32, acquiredAt: String, issuer: String) {
         self.issuerHost = issuerHost
         self.pid = pid
         self.acquiredAt = acquiredAt
         self.issuer = issuer
     }
 
-    public static func now(issuerHost: String, pid: Int32, issuer: String? = nil,
+    public static func now(issuerHost: String, pid: Int32, issuer: String,
                            date: Date = Date()) -> RemoteDispatchLockInfo {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(identifier: "UTC")
@@ -52,7 +52,7 @@ public struct RemoteDispatchLockInfo: Codable, Equatable, Sendable {
                                       acquiredAt: formatter.string(from: date), issuer: issuer)
     }
 
-    /// `acquiredAt` を Date へ(壊れた/旧形式で読めなければ nil)。`now()` と同じ ISO8601 表現
+    /// `acquiredAt` を Date へ(壊れていて読めなければ nil)。`now()` と同じ ISO8601 表現
     public var acquiredDate: Date? {
         let formatter = ISO8601DateFormatter()
         formatter.timeZone = TimeZone(identifier: "UTC")
@@ -127,10 +127,7 @@ public enum RemoteDispatchLock {
 
     private static func holderDescription(_ info: RemoteDispatchLockInfo?) -> String {
         guard let info else { return "holder unknown (its lock info could not be read)" }
-        if let issuer = info.issuer {
-            return "started by \(issuer) (from \(info.issuerHost), pid \(info.pid)) at \(info.acquiredAt)"
-        }
-        return "started by \(info.issuerHost) (pid \(info.pid)) at \(info.acquiredAt)"
+        return "started by \(info.issuer) (from \(info.issuerHost), pid \(info.pid)) at \(info.acquiredAt)"
     }
 
     /// wait-lock の初回・進捗ログ用(heldMessage/alignHeldMessage と同じ holder 表現を再利用する)
@@ -281,7 +278,7 @@ public enum RemoteDispatchLock {
 /// 規則(上から順に最初に当たったもの):
 /// - ロック無し → 何もしない
 /// - info が読めない → 外さない(「情報が読めなくてもロック自体は尊重する」の既存規則)
-/// - 発行者が違う(issuer 不一致、または旧 info で issuer 無し) → 外さない
+/// - 発行者が違う(issuer 不一致) → 外さない
 /// - 同じ発行者で、発行元がこの機械(issuerHost 一致)かつその pid がまだ生きている → 外さない
 ///   (動いている自分の run のロック。止めれば自分で解放する)
 /// - それ以外(同じ発行者で、pid が死んでいる / 別の機械から発行した) → 外す
@@ -303,7 +300,7 @@ public enum RemoteDispatchUnlock {
             return .refuse(reason: "the lock's info.json could not be read, so its owner is unknown"
                 + " — if you are sure no dispatch is running there, pass --force-lock on your next dispatch")
         case .held(let info?):
-            guard let issuer = info.issuer, issuer == myIssuer else {
+            guard info.issuer == myIssuer else {
                 let holder = holderPhrase(info)
                 return .refuse(reason: "the lock is held by \(holder), not by you (\(myIssuer))"
                     + " — only the owner can unlock it; --force-lock steals it and may kill their run")
@@ -323,7 +320,7 @@ public enum RemoteDispatchUnlock {
     }
 
     /// **pid の再利用**で死んだ保持者を「生きている」と読まない —— `info.acquiredAt` より後に
-    /// 始まったプロセスは記録した pid とは別物。`acquiredAt` が読めない(壊れた/旧形式の info.json)
+    /// 始まったプロセスは記録した pid とは別物。`acquiredAt` が読めない(壊れた info.json)
     /// ときは pid の生死だけで判定する(時刻を必須にすると読めない info.json を理由に
     /// 死んだロックが永久に回収不能になる)
     private static func holderIsStillTheSameProcess(_ info: RemoteDispatchLockInfo,
@@ -439,8 +436,7 @@ public enum RemoteDispatchUnlock {
 
     /// 「誰が掴んでいるか」の1句(refuse と release の両方が同じ綴りで名乗る)
     private static func holderPhrase(_ info: RemoteDispatchLockInfo) -> String {
-        info.issuer.map { "\($0) (from \(info.issuerHost), pid \(info.pid))" }
-            ?? "\(info.issuerHost) (pid \(info.pid), no issuer recorded)"
+        "\(info.issuer) (from \(info.issuerHost), pid \(info.pid))"
     }
 
     /// モニター起動時の**自動掃除**用の判定。手動の unlock より保守側 —— 自分のロックでも

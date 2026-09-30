@@ -1,15 +1,13 @@
 // update.sh 5.8(コピー配置のスキルの写し直し)の契約。
 //
 // `fleetest init` は全受け手に `.claude/skills/fleetest-setup` を作るので、`.claude/skills/` の
-// 存在では「コピー配置の受け手」を判定できない。存在で判定していた頃は、プラグイン経由の
-// 受け手の初回 /fleetest-update で正典5本が隣に写され(`fleetest-update` と
-// `fleetest:fleetest-update` の二重掲載)、以後スキルが変わるたび「エージェントを再起動」を
-// 迫っていた。判定は install-skill.sh が置く印 `.claude/skills/.fleetest-copied`。
+// 存在では「コピー配置の受け手」を判定できない(プラグイン経由の受け手に正典が二重掲載される)。
+// 判定は install-skill.sh が置く印 `.claude/skills/.fleetest-copied`。
 //
 // 検証する契約:
 //   1. 印が無い置き場(プラグイン経由・fleetest-setup だけ)には何も足さない
 //   2. 印がある置き場には増えたスキルを置き、変わった写しを写し直し、印にも名前を足す
-//   3. 印が無くても既にある写し(シンボリックリンクでない)は写し直す。ただし足さない
+//   3. 印が無ければ、既にある写しがあっても何もしない
 //   4. fleetest-setup は印があっても写さない / シンボリックリンクは触らない
 //   5. install-skill.sh は印を書く(curl を差し替えて実行)・印の名前は両スクリプトで一致
 //
@@ -144,7 +142,7 @@ test("印がある置き場には増えたスキルを置き、変わった写�
   });
 });
 
-test("印が無くても既にある写しは写し直す。ただし足さない", () => {
+test("印が無ければ、既にある写しがあっても何もしない", () => {
   withTemp((base) => {
     const toolRoot = makeToolRoot(base);
     const { skillsDir } = makeWorkDir(base, {
@@ -155,8 +153,8 @@ test("印が無くても既にある写しは写し直す。ただし足さな�
       },
     });
     const r = runRefresh(toolRoot, skillsDir);
-    assert.equal(r.refreshed, 1);
-    assert.match(r.skill("fleetest-update") ?? "", /canonical fleetest-update/);
+    assert.equal(r.refreshed, 0);
+    assert.match(r.skill("fleetest-update") ?? "", /old copy/, "印の無い置き場の写しが写し直された");
     assert.equal(r.skill("fleetest-scenario"), null, "印の無い置き場に新しいスキルが足された");
     assert.equal(r.marker, null);
   });

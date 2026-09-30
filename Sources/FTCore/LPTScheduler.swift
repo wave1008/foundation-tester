@@ -146,14 +146,12 @@ public enum LPTScheduler {
     }
 
     /// (scenarioID, platform, machine) ごとの中央値。durations(from:) と同じフィルタ
-    /// (skipped 合成・durationMs<=0・platform 空を除外)に加え、host 空の記録も除く
-    /// (どの機械の実績か決められない)。FleetSplit.speedFactors / MachineContext が使う。
+    /// (skipped 合成・durationMs<=0・platform 空を除外)。FleetSplit.speedFactors / MachineContext が使う。
     /// **照合の鍵は記録の host(ホスト名)** —— ローカルエイリアスは頻繁に変わりうるので鍵にしない
     /// (ユーザー決定)
     public static func machineDurations(from records: [ScenarioRunRecord]) -> [MachineDuration] {
         let usable = records.filter {
             !RunResultsQuery.isSkippedSynthetic($0) && $0.durationMs > 0 && !$0.platform.isEmpty
-                && !$0.host.isEmpty
         }
         let grouped = Dictionary(grouping: usable) {
             MachineKey(scenarioID: $0.scenarioID, platform: $0.platform, machine: $0.host)

@@ -846,14 +846,13 @@ final class RemoteDispatchTests: XCTestCase {
 
     /// 孤児 hooks が掴んでいるのは**ポート = ホスト全体の資源**なので、片付けは発行者を跨ぐ。
     /// **1 ssh に収める**(発行者の数だけ往復を増やさない)
-    func testHooksReapSweepsEveryIssuerAndTheLegacyWorkDirInOneCommand() {
+    func testHooksReapSweepsEveryIssuerInOneCommand() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let command = RemoteHooksReap.commandAcrossIssuers(layout: layout, quiet: true)
         XCTAssertTrue(command.contains("find '/Users/ci/fleetest-runner/users'"), command)
-        XCTAssertTrue(command.contains("'/Users/ci/fleetest-runner/work'"), command)
+        XCTAssertFalse(command.contains("'/Users/ci/fleetest-runner/work'"), command)
         // **グロブを使わない** —— ssh の相手は zsh で、`for w in <マッチしないグロブ>` は
-        // シェルごと落ちる(まだ誰も setup していないランナーで旧 work の掃除まで消える。
-        // 2026-08-31 に実機で確認)。find なら1件も無いときは空の出力になるだけ
+        // シェルごと落ちる(2026-08-31 に実機で確認)。find なら1件も無いときは空の出力になるだけ
         XCTAssertFalse(command.contains("*"), command)
         XCTAssertTrue(command.contains("'hooks' 'reap' '--quiet'"), command)
         // 終了スクリプトは adb 等を呼ぶ(非対話 ssh の PATH には Homebrew が入らない)
@@ -864,18 +863,29 @@ final class RemoteDispatchTests: XCTestCase {
             .contains("'--quiet'"))
     }
 
+    /// du は find の -exec で受ける。`du $(find …)` だと発行者が1人も居ないランナーで
+    /// du が引数無し = カレント(ssh のログイン先 = ホーム)の全走査になる
+    func testDiskUsageCommandPassesWorkDirsViaFindExec() {
+        let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
+        let command = RemoteDiskUsage.command(layout: layout)
+        XCTAssertTrue(command.hasPrefix("find '/Users/ci/fleetest-runner/users'"), command)
+        XCTAssertTrue(command.contains("-name work -exec du -sk {} +"), command)
+        XCTAssertFalse(command.contains("$("), command)
+        XCTAssertFalse(command.contains("*"), command)
+    }
+
     func testDiskUsageParsesDuOutputPerIssuer() {
         let output = "1024\t/b/users/alice/work\n4096\t/b/users/bob/work\n8\t/b/work\n"
-        let rows = RemoteDiskUsage.parse(output, usersDir: "/b/users", base: "/b")
+        let rows = RemoteDiskUsage.parse(output, usersDir: "/b/users")
         // 大きい順(消す判断に使う欄)
-        XCTAssertEqual(rows.map(\.issuer), ["bob", "alice", RemoteDiskUsage.legacyLabel])
-        XCTAssertEqual(rows.map(\.kb), [4096, 1024, 8])
+        XCTAssertEqual(rows.map(\.issuer), ["bob", "alice"])
+        XCTAssertEqual(rows.map(\.kb), [4096, 1024])
     }
 
     /// 壊れた1行で全体を失わない・想定外のパスは拾わない
     func testDiskUsageIgnoresUnparsableAndForeignLines() {
         let output = "not a row\n1024\t/other/place\nxx\t/b/users/alice/work\n7\t/b/users/carol/work\n"
-        let rows = RemoteDiskUsage.parse(output, usersDir: "/b/users", base: "/b")
+        let rows = RemoteDiskUsage.parse(output, usersDir: "/b/users")
         XCTAssertEqual(rows.map(\.issuer), ["carol"])
     }
 
@@ -1228,10 +1238,10 @@ final class RemoteDispatchTests: XCTestCase {
         }
     }
 
-    /// 全発行者(`users/<issuer>/work`)+ 旧レイアウト(`work`)を横断する(§18.2)。ディスクはホスト共有
+    /// 全発行者(`users/<issuer>/work`)を横断する(§18.2)。ディスクはホスト共有
     /// 資源なので保持ポリシーは全員分に掛ける。**一覧はグロブでなく find で作る**(相手は zsh。
-    /// マッチしないグロブはそのコマンドごと落ち、旧 work の無い普通のランナーで毎回警告が出ていた)
-    func testCleanPlanCoversAllIssuersAndTheLegacyLayoutWithoutGlobs() {
+    /// マッチしないグロブはそのコマンドごと落ちる)
+    func testCleanPlanCoversAllIssuersWithoutGlobs() {
         let layout = RemoteLayout(base: "/Users/ci/fleetest-runner", issuer: "alice", home: "/Users/ci")
         let commands = RemoteCleanPlan.commands(layout: layout, keepDays: 7, dryRun: true)
         // 配信の控えは**機械に1箇所**(`~/.fleetest/streams` = `<base>` 配下ではない)。
@@ -1243,7 +1253,7 @@ final class RemoteDispatchTests: XCTestCase {
         let perWork = commands[1]
         XCTAssertTrue(perWork.contains("find '/Users/ci/fleetest-runner/users' -mindepth 2 -maxdepth 2 -type d -name work"),
                       perWork)
-        XCTAssertTrue(perWork.contains("'/Users/ci/fleetest-runner/work'"), perWork)
+        XCTAssertFalse(perWork.contains("'/Users/ci/fleetest-runner/work'"), perWork)
         XCTAssertTrue(perWork.contains("\"$w/.fleetest/dispatch\" -mindepth 1 -maxdepth 1"), perWork)
         XCTAssertTrue(perWork.contains("find \"$w/TestProjects\" -mindepth 1 -maxdepth 1 -type d"), perWork)
         XCTAssertTrue(perWork.contains("\"$p/reports\" -mindepth 1 -maxdepth 1"), perWork)
@@ -1282,7 +1292,7 @@ final class RemoteDispatchTests: XCTestCase {
             return XCTFail("expected a per-issuer target: \(commands)")
         }
         XCTAssertTrue(usersCommand.contains("find '/Users/ci/fleetest runner/users' -mindepth 2"), usersCommand)
-        XCTAssertTrue(usersCommand.contains("'/Users/ci/fleetest runner/work'"), usersCommand)
+        XCTAssertFalse(usersCommand.contains("'/Users/ci/fleetest runner/work'"), usersCommand)
     }
 
     // MARK: - RemoteLayout.validateBase(コマンド置換の入口ガード)

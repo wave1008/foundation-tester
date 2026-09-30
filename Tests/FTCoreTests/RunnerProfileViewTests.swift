@@ -94,12 +94,12 @@ final class RunnerProfileViewTests: XCTestCase {
 
     // MARK: - プロジェクト単位の注記判定
 
-    /// 注記無しと、全台が明示 "local"(旧キー含む)のプロファイルだけ = 注記なし
+    /// 注記無しと、全台が明示 "local"のプロファイルだけ = 注記なし
     func testProjectWithOnlyLocalDevicesIsNotAnnotated() {
         let unannotated = json(#"{"devices": [{"platform": "ios", "name": "A"}]}"#)
         let allLocal = json("""
         {"devices": [{"platform": "ios", "machine": "local", "name": "C"},
-                     {"platform": "android", "host": "local", "name": "D"},
+                     {"platform": "android", "machine": "local", "name": "D"},
                      {"platform": "android", "machine": "", "name": "E"}]}
         """)
         XCTAssertFalse(RunnerProfileView.isMachineAnnotated(runProfiles: []))

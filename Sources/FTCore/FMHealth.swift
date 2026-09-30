@@ -72,23 +72,6 @@ public struct FMUsageRecord: Codable, Sendable {
         self.skipped = skipped
         self.firstError = firstError
     }
-
-    // 手書き: 古い結果 JSON(gateWait*/skipped 欄が無い)を読めなくしないため、欠落を 0 で埋める。
-    // encode(to:) は synthesized のまま(全欄を書く)
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        calls = try container.decode(Int.self, forKey: .calls)
-        failures = try container.decode(Int.self, forKey: .failures)
-        totalMs = try container.decode(Int.self, forKey: .totalMs)
-        p50Ms = try container.decode(Int.self, forKey: .p50Ms)
-        maxMs = try container.decode(Int.self, forKey: .maxMs)
-        byKind = try container.decode([String: FMKindUsage].self, forKey: .byKind)
-        gateWaitTotalMs = try container.decodeIfPresent(Int.self, forKey: .gateWaitTotalMs) ?? 0
-        gateWaitP50Ms = try container.decodeIfPresent(Int.self, forKey: .gateWaitP50Ms) ?? 0
-        gateWaitMaxMs = try container.decodeIfPresent(Int.self, forKey: .gateWaitMaxMs) ?? 0
-        skipped = try container.decodeIfPresent(Int.self, forKey: .skipped) ?? 0
-        firstError = try container.decodeIfPresent(String.self, forKey: .firstError)
-    }
 }
 
 public enum FMHealth {

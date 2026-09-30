@@ -331,16 +331,6 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(rows[1].lastEventAt, "2026-01-02T00:00:00Z")
     }
 
-    func testDeviceHealthSkipsRecordsWithoutAHost() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", host: "", workerAnomalies: [
-                WorkerAnomalyRecord(kind: "degraded", worker: "ios:iPhone 17", label: "iPhone 17",
-                                    reason: "dropped out", cause: .frozen),
-            ]),
-        ]
-        XCTAssertTrue(RunResultsQuery.deviceHealth(runs: runs, records: []).isEmpty)
-    }
-
     func testDeviceHealthCountsAppCrashesByWorker() {
         let records = [
             makeRecord(scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,

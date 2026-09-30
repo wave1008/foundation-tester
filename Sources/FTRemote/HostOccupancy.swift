@@ -24,7 +24,7 @@ import FTCore
 /// 機械の占有状態(その機械の dispatch.lock 1本の要約)。NDJSON へそのまま載せるので Codable。
 public struct HostOccupancy: Equatable, Sendable, Codable {
     public let held: Bool
-    /// 保持者の自己申告 issuerId。旧 info.json(issuer キーが無い)や読めなかったときは nil
+    /// 保持者の自己申告 issuerId。info.json が読めなかったときは nil
     public let issuer: String?
     /// 発行元マシンのホスト名(表示専用)
     public let issuerHost: String?
@@ -55,7 +55,7 @@ public struct HostOccupancy: Equatable, Sendable, Codable {
         }
         return HostOccupancy(held: true, issuer: info.issuer, issuerHost: info.issuerHost,
                              acquiredAt: info.acquiredAt,
-                             mine: info.issuer.map { $0 == myIssuer } ?? false)
+                             mine: info.issuer == myIssuer)
     }
 
     /// この機械のディスクから読む(I/O はここだけ。判定は interpret)。**読むのは自分の `$HOME`**

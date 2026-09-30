@@ -11,7 +11,7 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     /// クラス名.メソッド名
     public let id: String
     public let title: String
-    /// `@TestClass(app:)` の明示値。nil = 未指定 = 実行プロファイルから解決する
+    /// `@TestClass(app:)` の明示値。nil(null / キー欠落)= 未指定 = 実行プロファイルから解決する
     /// (FTCore.ScenarioAppResolution)
     public let app: String?
     /// "ios" / "android" / nil(両OS対応)
@@ -30,20 +30,6 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
         self.platform = platform
         self.deleted = deleted
         self.draft = draft
-    }
-
-    // deleted/draft キーを出さない旧ランナーの JSON も読めるようにしておく。
-    // app は null / キー欠落のどちらも「未指定」として読む
-    private enum CodingKeys: String, CodingKey { case id, title, app, platform, deleted, draft }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        title = try container.decode(String.self, forKey: .title)
-        app = try container.decodeIfPresent(String.self, forKey: .app)
-        platform = try container.decodeIfPresent(String.self, forKey: .platform)
-        deleted = try container.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
-        draft = try container.decodeIfPresent(Bool.self, forKey: .draft) ?? false
     }
 }
 

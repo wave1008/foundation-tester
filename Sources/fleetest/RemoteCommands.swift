@@ -204,7 +204,7 @@ struct RemoteCommand: AsyncParsableCommand {
             switch probe {
             case .none: return "-"
             case .absent: return "free"
-            case .held(let info?): return "held by \(info.issuer ?? info.issuerHost)"
+            case .held(let info?): return "held by \(info.issuer)"
             case .held(nil): return "held (holder unknown)"
             }
         }
@@ -597,18 +597,13 @@ struct RemoteCommand: AsyncParsableCommand {
             return RemoteDispatchLock.parseProbe(result.output)
         }
 
-        /// 発行者ごとのディスク使用量(`users/*/work` と旧 `work`)。**ディスクはホスト共有資源**
+        /// 発行者ごとのディスク使用量(`users/*/work`)。**ディスクはホスト共有資源**
         /// なので「誰のぶんが食っているか」が見えないと消す判断ができない(§18.1)。
         /// du はツリーを歩くので遅い —— 掃除という重い操作の中でだけ撃つ(remote status には置かない)
         private func printDiskByIssuer(target: String, layout: RemoteLayout) {
-            // **グロブを書かない** —— ssh の相手は zsh で、マッチしないグロブは du ごと落とす
-            // (旧レイアウトの行まで消える。maintainer-notes §3.5)。一覧は find で作る
-            let list = "$(find \(RemoteShell.quote(layout.usersDir)) -mindepth 2 -maxdepth 2"
-                + " -type d -name work 2>/dev/null)"
-            let command = "du -sk \(list) \(RemoteShell.quote(layout.base + "/work"))"
-                + " 2>/dev/null || true"
-            guard let result = try? Shell.run(remoteSSHBase + [target, command]) else { return }
-            let rows = RemoteDiskUsage.parse(result.output, usersDir: layout.usersDir, base: layout.base)
+            guard let result = try? Shell.run(remoteSSHBase + [target, RemoteDiskUsage.command(layout: layout)])
+            else { return }
+            let rows = RemoteDiskUsage.parse(result.output, usersDir: layout.usersDir)
             guard !rows.isEmpty else { return }
             ConsoleOut.out("→ disk by issuer: " + rows.map { "\($0.issuer) \(formatFreeSpace($0.kb))" }
                 .joined(separator: ", "))

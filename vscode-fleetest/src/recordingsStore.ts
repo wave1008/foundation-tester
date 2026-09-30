@@ -27,7 +27,7 @@ export interface RecordingSessionSummary {
   readonly clipsFailed: number | null;
   /** 録画ソースが1本も使えなかったワーカー数(RecordingIndex.sourcesFailed)。 */
   readonly sourcesFailed: number | null;
-  /** 束ね鍵(run.json の runGroup)。単機の run と旧記録では null = 束ねない。 */
+  /** 束ね鍵(run.json の runGroup)。単機の run では null = 束ねない。 */
   readonly runGroup: string | null;
 }
 
@@ -89,11 +89,9 @@ async function readMachineAliases(workspaceRoot: string): Promise<Map<string, st
   for (const file of files) {
     const raw = await readJson(path.join(dir, file));
     const record = isRecord(raw) ? raw : null;
-    // 旧レイアウト(ファイル名がエイリアス・欄が machine)も読む —— 更新前の受け手の
-    // キャッシュが残っていても表示が空にならないように
-    const host = stringField(record, "host") ?? stringField(record, "machine");
-    const alias = stringField(record, "machineAlias") ?? file.slice(0, -".json".length);
-    if (host === undefined || host === "" || alias === "") {
+    const host = stringField(record, "host");
+    const alias = stringField(record, "machineAlias");
+    if (host === undefined || host === "" || alias === undefined || alias === "") {
       continue;
     }
     // 同じ機械に複数のエイリアスが向いていたら **手元("local")を優先**し、他は先勝ち
@@ -105,12 +103,12 @@ async function readMachineAliases(workspaceRoot: string): Promise<Map<string, st
   return aliases;
 }
 
-/** セッションのマシン表示名。run.json の `host`(ホスト名。旧記録は `machine`)を
+/** セッションのマシン表示名。run.json の `host`(ホスト名)を
  *  マシン名(エイリアス)へ読み替える。表に無ければホスト名のまま出す。 */
 function sessionMachineLabel(
   meta: Record<string, unknown> | null, aliases: ReadonlyMap<string, string>,
 ): string | null {
-  const host = stringField(meta, "host") ?? stringField(meta, "machine");
+  const host = stringField(meta, "host");
   if (host === undefined || host === "") {
     return null;
   }

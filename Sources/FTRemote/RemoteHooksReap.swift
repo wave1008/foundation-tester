@@ -15,7 +15,7 @@ import FTCore
 
 public enum RemoteHooksReap {
 
-    /// `<base>/users/*/work` と旧レイアウト `<base>/work` を順に回り、それぞれで
+    /// `<base>/users/*/work` を順に回り、それぞれで
     /// `fleetest hooks reap` を撃つ1本の sh コマンド。
     /// - Package.swift が無いディレクトリは飛ばす(まだ setup していない発行者)
     /// - バイナリが無ければ何もしない(ランナー未整備。ここで落とさない)
@@ -26,13 +26,11 @@ public enum RemoteHooksReap {
         let args = quiet ? "'hooks' 'reap' '--quiet'" : "'hooks' 'reap'"
         // **グロブを使わない**。ssh の相手はログインシェル(macOS 既定は zsh)で、
         // **`for w in <マッチしないグロブ>` はシェルごと落とす**(`no matches found` で exit 1。
-        // 後続の文も実行されない = まだ誰も setup していないランナーで旧 work の掃除まで消える。
-        // 実機で確認)。find なら「1件も無い」が空の出力になるだけ。
+        // 後続の文も実行されない。実機で確認)。find なら「1件も無い」が空の出力になるだけ。
         // **パスに空白は入らない**(RemoteLayout.validateBase / validateIssuerKey が入口で弾く)ので
         // コマンド置換の語分割で壊れない
         let users = RemoteShell.quote(layout.usersDir)
-        let legacy = RemoteShell.quote(layout.base + "/work")
-        let list = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null) \(legacy)"
+        let list = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null)"
         return "for w in \(list); do [ -f \"$w/Package.swift\" ] || continue;"
             + " ( cd \"$w\" && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
             + " && test -x \(binary) && \(binary) \(args) ) || true; done"

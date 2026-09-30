@@ -69,7 +69,7 @@ final class AndroidDriverAdbFailureTests: XCTestCase {
     }
 
     func testTerminateThrowsWhenForceStopFails() async throws {
-        let state = #"{"centers":{},"screen":{"x":0,"y":0,"width":0,"height":0},"package":"com.example.app"}"#
+        let state = #"{"centers":{},"screen":{"x":0,"y":0,"width":0,"height":0},"domBridgeRefs":{},"package":"com.example.app"}"#
         try state.write(to: FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-android-\(serial!).json"), atomically: true, encoding: .utf8)
         let driver = AndroidDriver(serial: serial, adbPath: try fakeADB(

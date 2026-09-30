@@ -65,7 +65,7 @@ export function deviceCommandArgs(source: DeviceCommandSource, apiArgs: readonly
  * (識別もホストも持たない無意味な登録)。machine が空なら host のホスト部を流用する
  * (一意キーとして機能させるため)。host が空の要素も捨てない(壊れた登録として設定タブに
  * そのまま出す—黙って消すと利用者が編集で直す機会を失う)。dir は欠落・型不正なら
- * 空文字(CLI 契約: 未設定でもキーは必ずあり空文字)。**旧キー "name" も読む**(改名の互換)。
+ * 空文字(CLI 契約: 未設定でもキーは必ずあり空文字)。
  */
 /**
  * machine を省略したときの既定名: ssh 宛先からホスト部を採る(`user@` を落とす)。
@@ -90,8 +90,7 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
     }
     const record = item as Record<string, unknown>;
     const host = typeof record.host === "string" ? record.host.trim() : "";
-    const rawMachine = record.machine ?? record.name;  // 旧キー "name" も読む
-    const trimmed = typeof rawMachine === "string" ? rawMachine.trim() : "";
+    const trimmed = typeof record.machine === "string" ? record.machine.trim() : "";
     const machine = trimmed.length > 0 ? trimmed : defaultMachineForHost(host);
     if (machine.length === 0 && host.length === 0) {
       continue;

@@ -385,8 +385,7 @@ public final class RunRecorder: @unchecked Sendable {
     /// **マシン名は埋めない**(ユーザー指示。埋めたホスト名が表示へ漏れ続けるため。
     /// どの機械の run かは記録の `host` 欄が持ち、画面は machine へ読み替える)。
     /// 複数マシンが同じ results/ へ書いても衝突しない一意性は、マシン名の代わりに
-    /// 乱数を 4hex→8hex(2^32)へ広げて担保する。旧形式
-    /// (<ts>Z-<マシン名>-<4hex>)の記録もそのまま読める —— 構造に依存する読み手は
+    /// 乱数を 8hex(2^32)にして担保する。構造に依存する読み手は
     /// 先頭の日時 prefix だけ(RunResultsStore.runDir / recordingsStore.ts)
     private static func makeRunID() -> String {
         let formatter = DateFormatter()

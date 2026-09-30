@@ -269,7 +269,7 @@ public struct RemoteLayout: Equatable, Sendable {
     /// ホスト共有のまま**(発行者ごとに分けない。§18.2/§18.4)
     public var toolRoot: String { base + "/foundation-tester" }
     /// 発行者ごとの WORK_DIR(§18.2)。rsync --delete・results・録画の混線を
-    /// ネームスペースで構造的に消す(旧 `<base>/work` は移行期の掃除対象としてのみ RemoteCleanPlan が触る)
+    /// ネームスペースで構造的に消す
     public var workDir: String { base + "/users/" + issuer + "/work" }
     public var binary: String { toolRoot + "/.build/debug/fleetest" }
     /// clean の横断走査(全発行者の work を列挙する)専用
@@ -1098,8 +1098,8 @@ public enum RemoteCleanPlan {
     public static func stopsDevices(dryRun: Bool) -> Bool { !dryRun }
 
     /// keepDays より古いエントリを消す(dryRun なら列挙するだけの)コマンド一覧。
-    /// **全発行者(`users/*/work`)+ 旧レイアウト(`work`)を横断する**(§18.2) —— ディスクは
-    /// ホスト共有資源なので保持ポリシーは全員分に掛ける。旧レイアウトの掃除は移行期のためだけ。
+    /// **全発行者(`users/*/work`)を横断する**(§18.2) —— ディスクは
+    /// ホスト共有資源なので保持ポリシーは全員分に掛ける。
     ///
     /// **グロブを書かない**(RemoteHooksReap と同じ理由: 相手は zsh で、マッチしないグロブは
     /// そのコマンドごと落ちる)。work の一覧は find、プロジェクトの一覧も find で作る。
@@ -1110,7 +1110,6 @@ public enum RemoteCleanPlan {
     public static func commands(layout: RemoteLayout, keepDays: Int, dryRun: Bool) -> [String] {
         let action = dryRun ? "-print" : "-exec rm -rf {} +"
         let users = RemoteShell.quote(layout.usersDir)
-        let legacy = RemoteShell.quote(layout.base + "/work")
         let projects = RemoteLayout.projectsDirName
         func aged(_ dir: String, depth: Int) -> String {
             "if [ -d \(dir) ]; then find \(dir) -mindepth \(depth) -maxdepth \(depth)"
@@ -1122,7 +1121,7 @@ public enum RemoteCleanPlan {
         // 当たると、そのデバイスの配信が誰にも張れなくなる**)。ここで保持ポリシーに掛けて上限を作る
         // (数日前の配信は必ず終わっている)
         let streams = aged(RemoteShell.quote(StreamLease.directory(home: layout.home)), depth: 1)
-        let works = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null) \(legacy)"
+        let works = "$(find \(users) -mindepth 2 -maxdepth 2 -type d -name work 2>/dev/null)"
         let perWork = "for w in \(works); do "
             + aged("\"$w/.fleetest/dispatch\"", depth: 1) + "; "
             + "for p in $(find \"$w/\(projects)\" -mindepth 1 -maxdepth 1 -type d 2>/dev/null); do "
@@ -1133,7 +1132,7 @@ public enum RemoteCleanPlan {
     }
 }
 
-/// `du -sk <base>/users/*/work <base>/work` の出力 → 発行者ごとの使用量(純粋)。
+/// `du -sk <base>/users/*/work` の出力 → 発行者ごとの使用量(純粋)。
 /// **ディスクはホスト共有資源**なので「誰のぶんか」が見えないと消す判断ができない(§18.1)。
 /// 行の形は `<KB>\t<path>`(BSD du)。想定外の行は捨てる = 壊れた1行で全体を失わない
 public enum RemoteDiskUsage {
@@ -1146,21 +1145,23 @@ public enum RemoteDiskUsage {
         }
     }
 
-    /// 旧レイアウト(`<base>/work`)の表示名。発行者ネームスペース化前の残骸で、
-    /// 誰のものとも言えないので発行者名の代わりにこの語を出す
-    public static let legacyLabel = "(legacy work)"
+    /// ssh で撃つ1本の sh コマンド(出力は `parse` へ)。**グロブを書かない**(相手は zsh で、
+    /// マッチしないグロブは du ごと落ちる。maintainer-notes §3.5)。一覧は find で作り
+    /// **`-exec du {} +` で渡す** —— `du $(find …)` にすると、1件も無いとき du が引数無し =
+    /// カレントの全走査になる
+    public static func command(layout: RemoteLayout) -> String {
+        "find \(RemoteShell.quote(layout.usersDir)) -mindepth 2 -maxdepth 2"
+            + " -type d -name work -exec du -sk {} + 2>/dev/null || true"
+    }
 
-    public static func parse(_ output: String, usersDir: String, base: String) -> [Row] {
-        let legacyPath = stripTrailingSlashes(base) + "/work"
+    public static func parse(_ output: String, usersDir: String) -> [Row] {
         let prefix = stripTrailingSlashes(usersDir) + "/"
         var rows: [Row] = []
         for line in output.split(separator: "\n") {
             let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard parts.count == 2, let kb = Int(parts[0].trimmingCharacters(in: .whitespaces)) else { continue }
             let path = parts[1].trimmingCharacters(in: .whitespaces)
-            if path == legacyPath {
-                rows.append(Row(issuer: legacyLabel, kb: kb))
-            } else if path.hasPrefix(prefix), path.hasSuffix("/work") {
+            if path.hasPrefix(prefix), path.hasSuffix("/work") {
                 let issuer = String(path.dropFirst(prefix.count).dropLast("/work".count))
                 guard !issuer.isEmpty, !issuer.contains("/") else { continue }
                 rows.append(Row(issuer: issuer, kb: kb))

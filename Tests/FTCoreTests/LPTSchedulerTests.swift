@@ -158,14 +158,6 @@ final class LPTSchedulerTests: XCTestCase {
         ])
     }
 
-    func testMachineDurationsDropsRecordsWithEmptyMachine() {
-        let records = [record("S", 1_000, machine: "A"), record("S", 5_000, machine: "")]
-        let result = LPTScheduler.machineDurations(from: records)
-        XCTAssertEqual(result, [
-            LPTScheduler.MachineDuration(scenarioID: "S", platform: "android", machine: "A", medianMs: 1_000),
-        ], "machine 空の記録は落ちる(A の中央値だけが残る)")
-    }
-
     func testMachineDurationsAppliesSameFiltersAsDurations() {
         let records = [record("S", 0, machine: "A"), record("S", -1, machine: "A")]
         XCTAssertTrue(LPTScheduler.machineDurations(from: records).isEmpty,

@@ -77,7 +77,7 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
 
     // MARK: - staleLockAutoRelease (自分のこの機械の死んだディスパッチだけ自動で回収する)
 
-    private func encodedLock(issuerHost: String, pid: Int32, issuer: String?) -> String {
+    private func encodedLock(issuerHost: String, pid: Int32, issuer: String) -> String {
         RemoteDispatchLock.encode(RemoteDispatchLockInfo(
             issuerHost: issuerHost, pid: pid, acquiredAt: "2026-09-11T00:00:00Z", issuer: issuer))!
     }

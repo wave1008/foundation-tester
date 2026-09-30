@@ -1614,7 +1614,7 @@ public struct BridgeProvisioner {
         /// 再利用は「同じアプリに注入済み」のときだけ許す(inapp の再利用判定に使う)。
         let sessionBundleID: String?
         /// **注入済み dylib の出所**(`.inapp` 状態ファイルに残した BridgeSourceSet.inApp の digest)。
-        /// nil = 旧版が書いた記録 or 記録なし = 出所不明。inapp の再利用判定に使う
+        /// nil = digest を計算できない構成で書いた 2 語の記録 or 記録なし = 出所不明。inapp の再利用判定に使う
         let sourceDigest: String?
 
         init(udid: String?, name: String?, engine: String, protocolVersion: Int?,

@@ -1159,9 +1159,7 @@ struct RemoteRunDispatcher {
 
     private func recordedMachine(texts: [(url: URL, text: String)]) -> String? {
         for (_, text) in texts {
-            // 記録側のキーは "host"(改名済み)。旧記録の "machine" も読む
             if let host = Self.recordedField(in: text, key: "host") { return host }
-            if let machine = Self.recordedField(in: text, key: "machine") { return machine }
         }
         return nil
     }

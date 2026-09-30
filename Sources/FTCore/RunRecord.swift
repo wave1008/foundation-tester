@@ -136,8 +136,7 @@ public struct RunMetaRecord: Codable, Sendable {
         runID = try c.decode(String.self, forKey: .runID)
         project = try c.decode(String.self, forKey: .project)
         profile = try c.decodeIfPresent(String.self, forKey: .profile)
-        host = try c.decodeIfPresent(String.self, forKey: .host) ?? ""
-        // 旧レコードにキーが無いので Optional のまま decode する(schemaVersion は上げない。issuer と同じ形)
+        host = try c.decode(String.self, forKey: .host)
         toolchain = try c.decodeIfPresent(String.self, forKey: .toolchain)
         trigger = try c.decode(String.self, forKey: .trigger)
         startedAt = try c.decode(String.self, forKey: .startedAt)
@@ -553,7 +552,7 @@ public struct FixSuggestionRecord: Codable, Sendable {
 /// results/runs/<YYYY-MM>/<runID>/scenarios/<シナリオID>.json
 /// `RunRecorder.recordSkipped` が書いた合成レコードの理由。**混ぜてはいけない2種**:
 /// 意図された対象外と、実行できなかった事故。同じ顔にすると「緑だが1本も走っていない」run を
-/// 見分けられなくなる。nil = 通常実行のレコード(または旧形式)
+/// 見分けられなくなる。nil = 通常実行のレコード
 public enum ScenarioSkipKind: String, Codable, Sendable {
     /// 実行プロファイルの platform に対して対象外(`@TestClass(platform:)` / `@Test(platform:)`)。
     /// **意図された未実行**なので run の失敗数には数えない
@@ -581,7 +580,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         title = try c.decodeIfPresent(String.self, forKey: .title)
         platform = try c.decode(String.self, forKey: .platform)
         worker = try c.decodeIfPresent(String.self, forKey: .worker)
-        host = try c.decodeIfPresent(String.self, forKey: .host) ?? ""
+        host = try c.decode(String.self, forKey: .host)
         profile = try c.decodeIfPresent(String.self, forKey: .profile)
         passed = try c.decode(Bool.self, forKey: .passed)
         timedOut = try c.decodeIfPresent(Bool.self, forKey: .timedOut)

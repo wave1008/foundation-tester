@@ -161,8 +161,6 @@ public enum RunEvent: Sendable {
     /// デバッグ実行で一時停止した(index = 次に実行するステップ番号、file/line = その位置)
     case flowPaused(worker: String, flowURL: URL, index: Int, description: String,
                     file: String?, line: Int?)
-    /// 自己修復でフロー上書き保存(**現行シナリオでは未発行**)
-    case flowHealed(worker: String, flowURL: URL)
     /// 自己修復の構造化提案(修復候補の確認 UI 向け)。ログ表示は既存の .step 側で行う。
     /// command = 対象コマンドの description(例: tap "旧セレクタ"。説明提案の生成に使う)
     case fixSuggestion(worker: String, flowURL: URL, scenarioID: String,
@@ -1868,8 +1866,6 @@ public enum RunLogFormatter {
             return lines(for: result)
         case .flowPaused(_, _, let index, let description, _, _):
             return ["  ⏸ Paused before \(index). \(description)"]
-        case .flowHealed:
-            return ["  🔧 Updated the flow with healed locators (dirty: true — needs review)"]
         case .fixSuggestion:
             return []
         case .flowFinished(_, _, let passed, let reportURL, _):

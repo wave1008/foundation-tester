@@ -123,9 +123,8 @@ Xcode を同ベータへ揃えてフルリビルド。FoundationModels の ABI �
   最小の PATH でサーバを起こすクライアントでも swift/Xcode を引ける。**`-l`(ログインシェル)にしない**:
   `~/.bash_profile` の `echo` が stdout に混ざり JSON-RPC のハンドシェイクを壊す。
 - rebuild-on-start なので `/fleetest-update` 後も版ズレしない(無変更なら増分ビルドは即座)。
-- **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**(`WD="$PWD"; cd ... ;
-  cd "$WD"`)。cwd は `fleetest-mcp` がパッケージルートを特定する入力(`packageRoot()` の探索基準)。
-  cd したまま exec すると外部パッケージ構成で受け手の `TestProjects/` が見えなくなる。
+- **`mcp-server.sh` は cwd を変えない**(ビルドはサブシェルで行う)。cwd は `fleetest-mcp` がパッケージ
+  ルートを特定する入力(`packageRoot()` の探索基準)で、外部パッケージ構成では受け手の `TestProjects/` 側を指す。
 - cwd = パッケージルートが前提。cd 制御ができない起動経路では代わりに環境変数 `FT_PACKAGE_ROOT`
   でパッケージルートを明示指定できる(未設定なら cwd 探索、無効なパスなら診断のため探索フォールバックせず失敗する)。
 

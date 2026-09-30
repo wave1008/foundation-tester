@@ -599,7 +599,7 @@ enum ProfileRunner {
             case .flowStarted(_, let url, let flowName, _):
                 names[url] = flowName
                 buffers[url, default: []].append(contentsOf: lines)
-            case .step(_, let url, _), .flowHealed(_, let url), .flowRequeued(_, let url, _, _, _):
+            case .step(_, let url, _), .flowRequeued(_, let url, _, _, _):
                 buffers[url, default: []].append(contentsOf: lines)
             case .flowFinished(_, let url, let passed, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines

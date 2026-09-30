@@ -124,18 +124,6 @@ test("deviceCommandArgs: remote は apiArgs を変更しない(呼び出し側�
   assert.deepEqual(result, ["remote", "exec", "studio", "--", "api", "create-device", "--name", "foo"]);
 });
 
-// **旧キー "name" も読む**(改名の互換。既に登録簿を持っている受け手は無改修で動く)
-test("normalizeRemoteHosts: 旧キー name も読む(machine が優先)", () => {
-  assert.deepEqual(
-    normalizeRemoteHosts([{ name: "M1Ultra", host: "user@mac-01", dir: "" }]),
-    [{ machine: "M1Ultra", host: "user@mac-01", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
-  );
-  assert.deepEqual(
-    normalizeRemoteHosts([{ machine: "new", name: "old", host: "h", dir: "" }]),
-    [{ machine: "new", host: "h", dir: "", fmConcurrency: 0, color: "", enabled: true, developerDir: "" }],
-  );
-});
-
 // FM 並列枠だけを変えた編集が「変更なし」と判定されると、CLI へ届かないまま直後の
 // remoteConfig が入力を古い値へ戻す = **打った値が消える**(2026-09-02 の実害)
 test("diffRemoteHostsForSync: FM 並列枠だけの変更も upsert 対象", () => {

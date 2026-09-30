@@ -11,7 +11,7 @@ import FTCore
 /// リモートホスト1台ぶんの観測キャッシュ。
 public struct RemoteHostFacts: Codable, Equatable, Sendable {
     /// その機械の**ホスト名**(回収した実績レコードの host と同じ語彙。観測値で、プローブでの
-    /// 推測はしない)。**JSON キーは "host"**(旧キー "machine" も読む)
+    /// 推測はしない)。**JSON キーは "host"**
     public var host: String?
     /// **表示用のマシン名(ローカルエイリアス)**。このファイルは「その machine 自身に関する構成」
     /// なので、エイリアスを**欄として**持ってよい(鍵にはしない —— 鍵はホスト。ユーザー決定)。
@@ -34,37 +34,6 @@ public struct RemoteHostFacts: Codable, Equatable, Sendable {
     /// 直近の run で同時に使ったデバイス数の観測値
     public var concurrentDevices: Int?
     public var updatedAt: String
-
-    private enum CodingKeys: String, CodingKey {
-        case host, machine, machineAlias, hardwareUUID
-        case dispatchOverheadSeconds, processorModel, coreCount, concurrentDevices, updatedAt
-    }
-
-    /// 旧キー "machine"(改名前のキャッシュ)も読む。書きは "host" だけ
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        host = try c.decodeIfPresent(String.self, forKey: .host)
-            ?? c.decodeIfPresent(String.self, forKey: .machine)
-        machineAlias = try c.decodeIfPresent(String.self, forKey: .machineAlias)
-        hardwareUUID = try c.decodeIfPresent(String.self, forKey: .hardwareUUID)
-        dispatchOverheadSeconds = try c.decodeIfPresent(Double.self, forKey: .dispatchOverheadSeconds)
-        processorModel = try c.decodeIfPresent(String.self, forKey: .processorModel)
-        coreCount = try c.decodeIfPresent(Int.self, forKey: .coreCount)
-        concurrentDevices = try c.decodeIfPresent(Int.self, forKey: .concurrentDevices)
-        updatedAt = try c.decode(String.self, forKey: .updatedAt)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encodeIfPresent(host, forKey: .host)
-        try c.encodeIfPresent(machineAlias, forKey: .machineAlias)
-        try c.encodeIfPresent(hardwareUUID, forKey: .hardwareUUID)
-        try c.encodeIfPresent(dispatchOverheadSeconds, forKey: .dispatchOverheadSeconds)
-        try c.encodeIfPresent(processorModel, forKey: .processorModel)
-        try c.encodeIfPresent(coreCount, forKey: .coreCount)
-        try c.encodeIfPresent(concurrentDevices, forKey: .concurrentDevices)
-        try c.encode(updatedAt, forKey: .updatedAt)
-    }
 
     public init(host: String? = nil, machineAlias: String? = nil, hardwareUUID: String? = nil,
                dispatchOverheadSeconds: Double? = nil,

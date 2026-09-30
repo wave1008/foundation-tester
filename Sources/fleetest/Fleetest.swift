@@ -1373,7 +1373,7 @@ struct RunScenarios: AsyncParsableCommand {
             case .flowStarted(_, let url, let flowName, _):
                 names[url] = flowName
                 buffers[url, default: []].append(contentsOf: lines)
-            case .step(_, let url, _), .flowHealed(_, let url):
+            case .step(_, let url, _):
                 buffers[url, default: []].append(contentsOf: lines)
             case .flowFinished(_, let url, let passed, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines

@@ -276,7 +276,7 @@ public enum RunResultsQuery {
     }
 
     /// `runs`/`records` は呼び手が既に `--since` の窓で絞ったもの(deviceSummary と同じ前提)。
-    /// **worker 欄の無い記録・host が空の記録は数えない**(どのデバイスか言えないので古い記録は省く)。
+    /// **worker 欄の無い記録は数えない**(どのデバイスか言えない)。
     /// **全部 0 のデバイスは出さない**(今の状態は拡張がモニターから出す)
     public static func deviceHealth(runs: [RunMetaRecord], records: [ScenarioRunRecord]) -> [DeviceHealthRow] {
         // 鍵は (host, worker)。フリートでは同じ論理名のデバイスが機械ごとに居るので worker だけで束ねない
@@ -285,8 +285,6 @@ public enum RunResultsQuery {
 
         /// 数えた事象だけが lastEventAt を進める(どの欄にも当たらない事象で時刻だけ動かさない)
         func count(_ worker: String, host: String, at: String, mutate: (inout DeviceHealthAccumulator) -> Void) {
-            // host が空の古い記録はどの機械のデバイスか言えないので数えない(worker 欄の無い記録と同じ扱い)
-            guard !host.isEmpty else { return }
             let key = Key(host: host, worker: worker)
             var acc = byDevice[key] ?? DeviceHealthAccumulator()
             mutate(&acc)

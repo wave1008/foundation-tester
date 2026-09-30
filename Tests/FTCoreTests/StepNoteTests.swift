@@ -59,7 +59,7 @@ final class StepNoteTests: XCTestCase {
     /// notes を持たない過去の results/ が読めること(Optional の後発追加である契約)
     func testLegacyRecordWithoutNotesStillDecodes() throws {
         let json = """
-        {"schemaVersion":1,"runID":"r","scenarioID":"Foo.a","platform":"ios","machine":"m",
+        {"schemaVersion":1,"runID":"r","scenarioID":"Foo.a","platform":"ios","host":"m",
          "passed":true,"startedAt":"2026-01-01T00:00:00Z","durationMs":1,"scenes":[],
          "steps":{"total":1,"passed":1,"failed":0,"skipped":0,"healed":0,"passedViaFallback":0},
          "timeline":[{"index":1,"description":"tap","status":"passed"}]}

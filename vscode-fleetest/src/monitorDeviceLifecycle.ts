@@ -42,7 +42,7 @@ export interface DeviceOpFinishedEvent {
    * の raw 値)。**error は英語の案内**(CLI 利用者向け)で、こちらから拡張が自分の言語で
    * 組み立て直す(CLAUDE.md「共有するのは判定であって文言ではない」)。
    * 同期相手: Sources/fleetest/ApiDeviceCommands.swift の ApiDeviceFinishedEvent。
-   * **旧い CLI は送ってこない** —— そのときは error をそのまま出す(壊れない) */
+   * 署名以外の失敗では送らない —— そのときは error をそのまま出す */
   readonly signingProblems?: readonly string[];
   /** そのときの xcodebuild の全出力の在り処 */
   readonly signingLogPath?: string;

@@ -513,8 +513,8 @@ export type MonitorToWebviewMessage =
       readonly machines: readonly string[] | null;
       readonly devices: readonly RecordingScenarioDevice[] | null;
       // recordings/index.json の同名フィールド(RecordingSessionSummary と同じ意味・寛容さ)。videos が
-      // 空/一部欠落のとき、webview の再生ビューが理由を出すのに使う。省略時は webview 側が「無い」
-      // として扱う(旧ホスト実装との互換)。
+      // 空/一部欠落のとき、webview の再生ビューが理由を出すのに使う。ok:false の応答では載せない
+      // (省略 = webview 側が「無い」として扱う)。
       readonly clipsAttempted?: number | null;
       readonly clipsFailed?: number | null;
       /** 録画ソースが1本も使えなかったワーカー数(録画が全滅した run を「録画していない run」と
@@ -529,10 +529,10 @@ export type MonitorToWebviewMessage =
   // 対向: src/webview/monitor/main.js の recordingsFinalizing
   | { readonly type: "recordingsFinalizing"; readonly active: boolean }
   // ---- ダッシュボードタブ -------------------------------------------------------------------
-  // 「結果ダッシュボード」タブ(旧 dashboardPanel.ts)向けの封筒。dashboardModel.ts の
-  // DashboardToWebviewMessage/DashboardFromWebviewMessage 自体はモニターへの統合前と不変
-  // (webview→host の ready/refresh 等がモニター既存の同名メッセージと衝突するため、
-  // "dashboard" 型の封筒に包んで送る。monitorPanel.ts → monitorDashboardController.ts、
+  // 「結果ダッシュボード」タブ向けの封筒。dashboardModel.ts の
+  // DashboardToWebviewMessage/DashboardFromWebviewMessage を "dashboard" 型の封筒に包んで送る
+  // (webview→host の ready/refresh 等がモニター既存の同名メッセージと衝突するため。
+  // monitorPanel.ts → monitorDashboardController.ts、
   // webview 側は src/webview/monitor/dashboardTab.js の handleDashboardMessage)。
   | { readonly type: "dashboard"; readonly message: DashboardToWebviewMessage }
   // ---- ライブ操作タブ -----------------------------------------------------------------------

@@ -71,17 +71,16 @@ final class RemoteHostFactsTests: XCTestCase {
         XCTAssertEqual(loaded?.concurrentDevices, 3)
     }
 
-    /// 新フィールドを持たない旧形式の JSON(採取側の更新前に書かれたキャッシュ)も decode できる
-    /// ―― 欠けているキーは Optional として nil に落ちる(Codable の既定挙動)
-    func testDecodesLegacyJSONWithoutNewFields() throws {
+    /// 欠けているキーは Optional として nil に落ちる(Codable の既定挙動)
+    func testDecodesJSONWithMissingOptionalFields() throws {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let legacyJSON = """
-            {"machine":"M1Max","dispatchOverheadSeconds":4.2,"updatedAt":"2026-08-18T00:00:00Z"}
+        let partialJSON = """
+            {"host":"M1Max","dispatchOverheadSeconds":4.2,"updatedAt":"2026-08-18T00:00:00Z"}
             """
-        try legacyJSON.write(
-            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(host: "legacy") + ".json"),
+        try partialJSON.write(
+            to: dir.appendingPathComponent(RemoteHostFactsStore.fileKey(host: "partial") + ".json"),
             atomically: true, encoding: .utf8)
-        let loaded = RemoteHostFactsStore.load(dir: dir, host: "legacy")
+        let loaded = RemoteHostFactsStore.load(dir: dir, host: "partial")
         XCTAssertEqual(loaded?.host, "M1Max")
         XCTAssertEqual(loaded?.dispatchOverheadSeconds, 4.2)
         XCTAssertNil(loaded?.processorModel)

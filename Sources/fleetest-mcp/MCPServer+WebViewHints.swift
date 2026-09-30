@@ -83,19 +83,6 @@ extension MCPServer {
             + " nothing.\(why) Verify with ft_screenshot.\n"
     }
 
-    /// 旧実装(既定が DOM だった頃)。**復活させるなら根拠を台帳へ**
-    static func browserA11yFallbackNoteLegacy(_ snapshot: SnapshotResponse) -> String {
-        guard let id = snapshot.sessionBundleID, WebViewDOM.knownBrowserIDs.contains(id) else { return "" }
-        guard !snapshot.elements.contains(where: { $0.web == true }) else { return "" }
-        // ブラウザ chrome しか無い画面は別の注記の担当(こちらまで出すと二重に言う)
-        guard snapshot.elements.contains(where: { ($0.identifier ?? "").isEmpty }) else { return "" }
-        // **`note: ` は各注記が自分で付ける規約**(目録側は付けない。付け忘れて
-        // この注記だけ書式が揃っていなかった)。末尾の改行も同様
-        return "note: the page content below came from the accessibility tree, not the DOM"
-            + " — the browser publishes only part of a page there, so text that IS on screen can be missing."
-            + " Re-read with ft_snapshot, or check with ft_screenshot before concluding it is absent.\n"
-    }
-
     /// **アドレス欄はあるのに webView 要素そのものが1つも無い**形の注記
     /// (jma.go.jp を Android Chrome で実測)。
     ///

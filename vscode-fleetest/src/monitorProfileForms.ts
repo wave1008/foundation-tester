@@ -496,17 +496,15 @@ export function orderedDeviceEntry(entry: {
 // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム -------------------------------
 // handleAppProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム common/ios/android 3グループ
 // 変換の純粋関数(parseRunProfileForForm/updateRunProfileInObject と同じ方針)。
-// autoInstall は common に一本化済み(ios/android に残存していると Swift 側 validate が警告する)。
+// autoInstall は common だけが持つ(ios/android のセクションでは読まず・書かず・触らない)。
 
-/** アプリプロファイル common セクション。app/appPath/appName は廃止済み(ランタイムは common の
- * これらを無視する。表示名は ios/android のそれぞれに書き、common からは継承しない)ため
- * ios/android(AppProfilePlatformFields)と型を分離。 */
+/** アプリプロファイル common セクション。autoInstall だけを持つ(表示名・アプリID・パスは
+ * ios/android のそれぞれに書き、common からは継承しない)ため ios/android と型を分離。 */
 export interface AppProfileCommonFields {
   readonly autoInstall: "true" | "false";
 }
 
-/** アプリプロファイル ios/android セクションの3フィールド。autoInstall は common に一本化済みの
- * ためここには持たない。 */
+/** アプリプロファイル ios/android セクションの3フィールド(autoInstall は common だけが持つ)。 */
 export interface AppProfilePlatformFields {
   readonly appName: string;
   readonly app: string;
@@ -545,8 +543,7 @@ const EMPTY_APP_PROFILE_IOS_FIELDS: AppProfileIOSFields = {
 };
 
 /** apps/<name>.json の common セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
- * app/appPath/appName は common では廃止のため読み取らない(残っていても無視。表示名は
- * ios/android のそれぞれで読む)。 */
+ * common が持つのは autoInstall だけ(表示名・アプリID・パスは ios/android のそれぞれで読む)。 */
 function parseAppProfileCommonSection(value: unknown): AppProfileCommonFields {
   if (!isRecord(value)) {
     return EMPTY_APP_PROFILE_COMMON_FIELDS;
@@ -598,9 +595,7 @@ export type AppProfileUpdateResult =
 /**
  * common セクションを fields で更新した新オブジェクトを組み立てる(未知キー保持)。
  * autoInstall は "false" なら false を明示し、"true" なら既存の明示 true だけ残してキーを消す(未指定が
- * 既定の有効と同値。Swift は `autoInstall ?? appPath の有無`)。app/appPath/appName は
- * 廃止済みのため値に関わらず常に削除する(appName の残存は Swift 側で未知キー警告になる。
- * 表示名は ios/android のそれぞれに書き、common からは継承しない)。
+ * 既定の有効と同値。Swift は `autoInstall ?? appPath の有無`)。
  * existing が undefined かつ autoInstall=true(値が何も無い)なら undefined を返しセクション
  * 自体を作らない。existing が定義済み(空オブジェクト含む)ならセクションは保持する
  * (healthCheckURL 等の他キーはここで触れず existing のスプレッドで保たれる)。
@@ -619,15 +614,12 @@ function updateAppProfileCommonSection(
   } else if (result.autoInstall !== true) {
     delete result.autoInstall;
   }
-  delete result.appName;
-  delete result.app;
-  delete result.appPath;
   return result;
 }
 
 /**
  * ios/android セクションを fields で更新した新オブジェクトを組み立てる(updateAppProfileCommonSection
- * と同じ方針)。autoInstall は common に一本化済みのため値に関わらず常に削除する(廃止分の掃除)。
+ * と同じ方針)。autoInstall は common だけが持つ(ここでは触らない)。
  * **触るのは欄のあるキーだけ** —— appPathPhysical の欄は iOS にしか無いので、android の fields
  * には持たせず、ここでも消しに行かない(消しに行くと手書きの android.appPathPhysical が保存の
  * たびに落ちる)。新規セクション作成の要否(hasAnyValue)も欄のあるキーだけで判定する。
@@ -655,7 +647,6 @@ function updateAppProfilePlatformSection(
       result[key] = value;
     }
   }
-  delete result.autoInstall;
   return result;
 }
 

@@ -13,14 +13,14 @@ final class RemoteDispatchLockTests: XCTestCase {
     // MARK: - RemoteDispatchLockInfo.now
 
     func testNowFormatsAcquiredAtAsUTCISO8601() {
-        let info = RemoteDispatchLockInfo.now(issuerHost: "wave1008-mbp", pid: 4242, date: fixedDate)
+        let info = RemoteDispatchLockInfo.now(issuerHost: "wave1008-mbp", pid: 4242, issuer: "ci", date: fixedDate)
         XCTAssertEqual(info.acquiredAt, "2025-08-12T12:00:00Z")
         XCTAssertEqual(info.issuerHost, "wave1008-mbp")
         XCTAssertEqual(info.pid, 4242)
-        XCTAssertNil(info.issuer)
+        XCTAssertEqual(info.issuer, "ci")
     }
 
-    func testNowSetsIssuerWhenGiven() {
+    func testNowSetsIssuer() {
         let info = RemoteDispatchLockInfo.now(issuerHost: "wave1008-mbp", pid: 4242,
                                               issuer: "wave8san@wave1008-mbp", date: fixedDate)
         XCTAssertEqual(info.issuer, "wave8san@wave1008-mbp")
@@ -29,7 +29,7 @@ final class RemoteDispatchLockTests: XCTestCase {
     // MARK: - encode/decode round trip
 
     func testEncodeDecodeRoundTrips() {
-        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         let encoded = try? XCTUnwrap(RemoteDispatchLock.encode(info))
         XCTAssertEqual(RemoteDispatchLock.decode(encoded!), info)
     }
@@ -37,10 +37,10 @@ final class RemoteDispatchLockTests: XCTestCase {
     /// sortedKeys でエンコードするので JSON のキー順が固定される(ssh コマンド文字列の
     /// 完全一致テストのため。値が変わればテキストも決定的に変わる)
     func testEncodeProducesSortedKeys() throws {
-        let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
+        let info = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         let encoded = try XCTUnwrap(RemoteDispatchLock.encode(info))
         XCTAssertEqual(encoded,
-            "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}")
+            "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"ci\",\"issuerHost\":\"h\",\"pid\":1}")
     }
 
     func testDecodeReturnsNilForGarbage() {
@@ -59,15 +59,6 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertEqual(encoded,
             "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"alice@h\","
             + "\"issuerHost\":\"h\",\"pid\":1}")
-    }
-
-    /// 旧 info.json(issuer キーが無い)を素朴な Optional Codable がそのまま decode できること
-    func testDecodeOldInfoJsonWithoutIssuerKey() throws {
-        let raw = "{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}"
-        let decoded = try XCTUnwrap(RemoteDispatchLock.decode(raw))
-        XCTAssertNil(decoded.issuer)
-        XCTAssertEqual(decoded.issuerHost, "h")
-        XCTAssertEqual(decoded.pid, 1)
     }
 
     // MARK: - paths
@@ -106,7 +97,7 @@ final class RemoteDispatchLockTests: XCTestCase {
     // MARK: - heldMessage
 
     func testHeldMessageIncludesIssuerPidAndTimestamp() {
-        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         let message = RemoteDispatchLock.heldMessage(info)
         XCTAssertTrue(message.contains("wave1008-mbp"), message)
         XCTAssertTrue(message.contains("4242"), message)
@@ -130,13 +121,13 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertTrue(message.contains("2025-08-12T13:20:00Z"), message)
     }
 
-    /// issuer nil の既存挙動は1バイトも変わらない(旧 info.json の表示互換)
-    func testHeldMessageWithoutIssuerIsByteIdenticalToPriorText() {
-        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+    /// 文言は1バイトも変えない
+    func testHeldMessageIsByteIdenticalToPriorText() {
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         let message = RemoteDispatchLock.heldMessage(info)
         XCTAssertEqual(message,
             "another dispatch is already running on this remote host"
-            + " (started by wave1008-mbp (pid 4242) at 2025-08-12T13:20:00Z)"
+            + " (started by ci (from wave1008-mbp, pid 4242) at 2025-08-12T13:20:00Z)"
             + " — wait for it to finish, run `fleetest remote unlock --runner <machine>` if it is your own"
             + " dispatch that died, or pass --force-lock if it is stuck"
             + " (docs/remote-runner.md §5)")
@@ -158,7 +149,7 @@ final class RemoteDispatchLockTests: XCTestCase {
     // MARK: - alignHeldMessage
 
     func testAlignHeldMessageIncludesIssuerPidAndTimestamp() {
-        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         let message = RemoteDispatchLock.alignHeldMessage(info)
         XCTAssertTrue(message.contains("wave1008-mbp"), message)
         XCTAssertTrue(message.contains("4242"), message)
@@ -179,21 +170,21 @@ final class RemoteDispatchLockTests: XCTestCase {
     }
 
     func testAlignHeldMessageDoesNotMentionForceLock() {
-        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z")
+        let info = RemoteDispatchLockInfo(issuerHost: "wave1008-mbp", pid: 4242, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         XCTAssertFalse(RemoteDispatchLock.alignHeldMessage(info).contains("--force-lock"))
         XCTAssertFalse(RemoteDispatchLock.alignHeldMessage(nil).contains("--force-lock"))
     }
 
     // MARK: - ssh コマンド文字列(完全一致で固定)
 
-    private let sampleInfo = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
+    private let sampleInfo = RemoteDispatchLockInfo(issuerHost: "h", pid: 1, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
 
     func testAcquireCommandExactText() {
         let command = RemoteDispatchLock.acquireCommand(home: "/Users/tester", info: sampleInfo)
         XCTAssertEqual(command,
             "mkdir -p '/Users/tester/.fleetest'"
             + " && mkdir '/Users/tester/.fleetest/dispatch.lock' 2>/dev/null"
-            + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
+            + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"ci\",\"issuerHost\":\"h\",\"pid\":1}'"
             + " > '/Users/tester/.fleetest/dispatch.lock/info.json'")
     }
 
@@ -223,13 +214,13 @@ final class RemoteDispatchLockTests: XCTestCase {
         XCTAssertEqual(command,
             "mkdir -p '/tmp/$(whoami)/`id`/.fleetest'"
             + " && mkdir '/tmp/$(whoami)/`id`/.fleetest/dispatch.lock' 2>/dev/null"
-            + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuerHost\":\"h\",\"pid\":1}'"
+            + " && printf '%s' '{\"acquiredAt\":\"2025-08-12T13:20:00Z\",\"issuer\":\"ci\",\"issuerHost\":\"h\",\"pid\":1}'"
             + " > '/tmp/$(whoami)/`id`/.fleetest/dispatch.lock/info.json'")
     }
 
     /// issuerHost にシングルクォートが混じっても壊れない(RemoteShell.quote が '\'' で無害化)
     func testAcquireCommandEscapesSingleQuoteInIssuerHost() throws {
-        let info = RemoteDispatchLockInfo(issuerHost: "o'brien-mbp", pid: 1, acquiredAt: "2025-08-12T13:20:00Z")
+        let info = RemoteDispatchLockInfo(issuerHost: "o'brien-mbp", pid: 1, acquiredAt: "2025-08-12T13:20:00Z", issuer: "ci")
         let payload = try XCTUnwrap(RemoteDispatchLock.encode(info))
         let command = RemoteDispatchLock.acquireCommand(home: "/Users/tester", info: info)
         XCTAssertTrue(command.contains(RemoteShell.quote(payload)), command)
@@ -258,13 +249,6 @@ final class RemoteDispatchUnlockTests: XCTestCase {
             probe: .held(theirs), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
         else { return XCTFail("another issuer's lock must not be released") }
         XCTAssertTrue(reason.contains("alice"), reason)
-    }
-
-    func testLegacyInfoWithoutIssuerIsRefused() {
-        let legacy = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 1, acquiredAt: "x")
-        guard case .refuse = RemoteDispatchUnlock.decide(
-            probe: .held(legacy), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false }, startTime: { _ in nil })
-        else { return XCTFail("a lock with no issuer cannot be proven to be mine") }
     }
 
     func testMyLiveDispatchOnThisMachineIsRefused() {
@@ -306,13 +290,13 @@ final class RemoteDispatchUnlockTests: XCTestCase {
         else { return XCTFail("本当に生きているディスパッチのロックを外している") }
     }
 
-    /// acquiredAt が読めない(壊れた/旧形式)ときは pid の生死だけで判定する(従来どおり) ——
+    /// acquiredAt が読めない(壊れた)ときは pid の生死だけで判定する(従来どおり) ——
     /// 時刻を必須にすると読めない info.json を理由に死んだロックが永久に回収不能になる
     func testUnparsableAcquiredAtFallsBackToPidAliveOnly() {
-        let legacy = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 4242, acquiredAt: "not-a-date",
+        let broken = RemoteDispatchLockInfo(issuerHost: "my-mac", pid: 4242, acquiredAt: "not-a-date",
                                             issuer: "wave1008")
         guard case .release = RemoteDispatchUnlock.decide(
-            probe: .held(legacy), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false },
+            probe: .held(broken), myIssuer: "wave1008", myHost: "my-mac", pidAlive: { _ in false },
             startTime: { _ in XCTFail("acquiredAt が読めないなら開始時刻は見ない"); return nil })
         else { return XCTFail("acquiredAt が読めないときに pid の生死へ後退していない") }
     }

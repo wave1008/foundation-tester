@@ -25,7 +25,7 @@ public enum ProjectMutation {
     /// コピー元から除外する相対パス(プロジェクトルート基準、先頭一致)。実行の産物とキャッシュを
     /// 複製すると、複製先の初回実行の判定(履歴・ヒール等)がコピー元のものと混ざる
     private static let excludedDirectoryPrefixes = [
-        "reports/", "results/", ".fleetest/", ".ftester/",
+        "reports/", "results/", ".fleetest/",
         "scenarios/_runfile/", "workspace/apps/",
     ]
     private static let excludedNames: Set<String> = [".DS_Store"]

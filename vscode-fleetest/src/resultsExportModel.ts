@@ -27,7 +27,7 @@ function pushDistinct(list: string[], seen: Set<string>, value: string | null): 
 export interface ResultsExportTimelineStep {
   readonly scene: number | null;
   readonly sceneTitle: string | null;
-  /** condition/action/expectation/setUp/tearDown。CAE ブロック外・旧レコードは null。 */
+  /** condition/action/expectation/setUp/tearDown。CAE ブロック外は null。 */
   readonly section: string | null;
   readonly index: number;
   readonly description: string;
@@ -115,7 +115,7 @@ function readHealedCount(raw: Record<string, unknown>): number {
 /**
  * scenarios/<name>.json の生 JSON(unknown)から ResultsExportScenarioSource を抽出する。
  * scenarioID が読めない形は null(呼び出し側で除外)。profile はレコード自身の値を優先し、
- * 欠落時だけ引数の run 側フォールバック(run.json 由来)を使う(旧レコードは自身の値を持たない)。
+ * 欠落時だけ引数の run 側フォールバック(run.json 由来)を使う。
  * クラス名/メソッド名は scenarioID の最後のドットで分割(ドット無しは全体をクラス名兼メソッド名にする。
  * recordingsModel.ts の groupTreeByClass と同じ規則)。
  */

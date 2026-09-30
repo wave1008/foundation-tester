@@ -17,7 +17,8 @@ public class BridgeInstrumentation extends Instrumentation {
     // BridgeAPI.bridgeTTLSecondsDefault(AndroidBridgeVersionSyncTests が不一致を検出)
     static final int TTL_DEFAULT_SECONDS = 7200;
     /** 起動元リポジトリ(-e owner)。/status の ownerRepo として申告する(doctor の診断用)。
-     *  未指定 = 申告しない(旧ホスト起動) */
+     *  未指定 = 申告しない(ホストは repoRoot が無いとき -e owner を付けない。
+     *  同期相手: Sources/FTAndroid/AndroidBridge.swift の owner) */
     static String ownerRepo;
     /** 所要内訳ログ(tapTiming/settleTiming/reqTiming)を出すか。既定 false = 1行も出さない */
     static boolean timingEnabled;

@@ -17,7 +17,7 @@ import FTRemote
 final class RemoteCleanDryRunPreviewTests: XCTestCase {
 
     private func heldInfo(pid: Int32 = 4242) -> RemoteDispatchLockInfo {
-        RemoteDispatchLockInfo(issuerHost: "runner-mbp", pid: pid, acquiredAt: "2026-09-16T05:50:00Z")
+        RemoteDispatchLockInfo(issuerHost: "runner-mbp", pid: pid, acquiredAt: "2026-09-16T05:50:00Z", issuer: "ci")
     }
 
     /// ロック無し(absent) → 従来どおりの予告

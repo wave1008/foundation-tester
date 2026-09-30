@@ -145,7 +145,7 @@ if [ "$ALLOW_PULL" = "1" ] && [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL"
   fi
 fi
 
-# ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
+# ---- 1〜2・5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
 # --skip-project: 既存の TestProjects/ を触らない(更新でプロジェクトを作り直さない)
 echo "==> Re-running install.sh (pull → build → extension → .mcp.json → verification)"
 # --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
@@ -176,12 +176,9 @@ if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] && [ -f "$0" ] \
 fi
 
 # ---- 3. 受け手側の反映(project sync) ------------------------------------------
-# **構成で分けない**(2026-08-06 に修正)。かつては「外部パッケージ構成はローカルパス依存なので
-# pull だけで反映される」として clone 構成だけで走らせていたが、それが正しいのは**依存の解決**
-# だけで、**受け手の Package.swift に書かれたシナリオのパス**には効かない。
-# 実害: 2026-08-05 の `Projects/`→`TestProjects/` / `Scenarios/`→`scenarios/` 改名のあと、
-# 外部構成の受け手だけ Package.swift が旧名のまま取り残され、
-# `invalid custom path 'Projects/<name>/Scenarios'` でビルドが落ちた(外部フィードバック)。
+# **構成で分けない** —— 外部パッケージ構成でローカルパス依存が pull だけで反映されるのは
+# **依存の解決**だけで、**受け手の Package.swift に書かれたシナリオのパス**には効かない
+# (置き場の構成を変えると外部構成の受け手だけビルドが落ちる)。
 # syncManifest は external を明示的に扱う実装なので、両構成でそのまま安全に走る。
 FT="$TOOL_ROOT/.build/debug/fleetest"
 if [ -x "$FT" ]; then
@@ -259,12 +256,8 @@ fi
 #
 # **「コピー配置の受け手か」は `.claude/skills/` の存在では決められない** —— `fleetest init` が
 # 全受け手に `.claude/skills/fleetest-setup` を作るので、プラグイン経由の受け手でも必ず存在する。
-# 存在で判定していた頃は、プラグインの受け手の初回 update で正典5本が隣に写され
-# (`fleetest-update` と `fleetest:fleetest-update` の二重掲載)、以後スキルが変わるたび
-# 「エージェントを再起動」を迫っていた。判定は **install-skill.sh が置く印**
-# `<skills_dir>/.fleetest-copied`(写したスキル名を1行1つ。契約は install-skill.sh と 1:1)で行う:
-#   ・既にある写し(シンボリックリンクでない SKILL.md)は印の有無を問わず写し直す
-#   ・**増えたスキルを新しく置くのは印があるときだけ**(置いたら印にも名前を足す)
+# 判定は **install-skill.sh が置く印** `<skills_dir>/.fleetest-copied`(写したスキル名を1行1つ。
+# 契約は install-skill.sh と 1:1)で行う。**印があるときだけ** 写し直し・足す(足したら印にも名前を足す)。
 COPIED_SKILLS_MARKER=".fleetest-copied"
 COPIED_SKILLS="$(ls "$TOOL_ROOT/.claude/skills" 2>/dev/null | grep -v '^fleetest-setup$' | tr '\n' ' ')"
 SKILLS_REFRESHED=0
@@ -272,6 +265,7 @@ refresh_copied_skills() {
   skills_dir="$1"
   [ -d "$skills_dir" ] || return 0
   marker="$skills_dir/$COPIED_SKILLS_MARKER"
+  [ -f "$marker" ] || return 0
   for name in $COPIED_SKILLS; do
     dest="$skills_dir/$name/SKILL.md"
     src="$TOOL_ROOT/.claude/skills/$name/SKILL.md"
@@ -280,7 +274,6 @@ refresh_copied_skills() {
     # set -e の呼び出し元で更新全体が止まる。if で書く
     if [ -L "$skills_dir/$name" ] || [ -L "$dest" ]; then continue; fi
     if [ ! -f "$dest" ]; then
-      [ -f "$marker" ] || continue
       mkdir -p "$skills_dir/$name"
       cp "$src" "$dest"
       grep -qx "$name" "$marker" 2>/dev/null || printf '%s\n' "$name" >> "$marker"

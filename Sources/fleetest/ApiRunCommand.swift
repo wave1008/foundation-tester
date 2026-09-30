@@ -1413,9 +1413,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: WorkerIDMap
     ) -> [String] {
         switch event {
-        case .runStarted, .workerReady, .runFinished, .flowHealed, .flowPaused:
-            // runStarted/runFinished は呼び出し側で emit 済み。flowHealed は現行シナリオでは
-            // 発生しない旧互換。flowPaused はデバッグ専用でこの並列経路には来ない
+        case .runStarted, .workerReady, .runFinished, .flowPaused:
+            // runStarted/runFinished は呼び出し側で emit 済み。flowPaused はデバッグ専用でこの並列経路には来ない
             return []
 
         case .sceneStarted(let worker, let flowURL, let scene, let sceneTitle):

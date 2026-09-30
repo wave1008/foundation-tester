@@ -4,8 +4,7 @@
 //
 // **拡張側と1:1の契約**: dir/machine は未設定でも常にキー自体は出し、値は空文字にする
 // (拡張側で undefined 判定を書かせない。ApiScenarioInfo 等の「省略可能フィールドは null を
-// 明示する」規律の空文字版 — この API は VSCode 設定 `fleetest.remote.hosts` からの移行元にもなるため、
-// 移行スクリプトが持つ JSON 形とキー集合を合わせておく)。
+// 明示する」規律の空文字版)。
 
 import ArgumentParser
 import Foundation
@@ -21,7 +20,7 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
     @Option(name: .customLong("import"),
             // ArgumentHelp は文字列リテラルからしか作れない(連結した String は渡せない)
             help: ArgumentHelp("Upsert these entries (JSON array: [{\"machine\":…,\"host\":…,\"dir\":…}]), "
-                + "then print the resulting registry. For migrating from the VSCode setting fleetest.remote.hosts"))
+                + "then print the resulting registry"))
     var importJSON: String?
 
     @Option(help: "Remove this entry by machine name, then print the resulting registry")
@@ -68,8 +67,8 @@ struct ApiRemoteHostsCommand: AsyncParsableCommand {
     }
 
     /// **空文字は未設定として扱う**: この API の出力自体が dir/machine を "" で埋める契約
-    /// (キー省略を書かせない)なので、`--import` にその出力をそのまま渡す移行元(拡張)を
-    /// 想定すると "" が「未設定」として往復する必要がある。`RemoteHostEntry` の `dir`/`machine`
+    /// (キー省略を書かせない)なので、`--import` にその出力をそのまま渡すクライアント(拡張)で
+    /// "" が「未設定」として往復する必要がある。`RemoteHostEntry` の `dir`/`machine`
     /// を素の Optional のまま "" で埋めると、読み手が空文字を「その名前が指定されている」と読む
     /// FM 枠の合流。**キーを送ってきたクライアントの指定が勝ち、送ってこなければ既存値を保つ**。
     /// 設定タブは常に送る(空欄 = 0 = 解除)ので指定が効き、キーを持たない古い/別のクライアントが

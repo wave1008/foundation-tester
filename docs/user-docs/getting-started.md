@@ -49,14 +49,6 @@ claude plugin install fleetest@foundation-tester --scope user
 > marketplace added. With a stale cache the install fails with
 > `Plugin "fleetest" not found in marketplace`. On a fresh machine it does nothing.
 
-> **If the pre-rename `ftester@foundation-tester` is installed, remove it first.** The old
-> `/ftester:*` skills would stay behind, pointing at a command that no longer exists. The
-> marketplace name did not change, so there is nothing to re-add.
->
-> ```bash
-> claude plugin uninstall ftester@foundation-tester
-> ```
-
 3. Open a **new, test-only folder** in VSCode
 
 4. Run `/fleetest:fleetest-setup` in your agent's panel. It clones, builds, creates the project,
@@ -115,8 +107,6 @@ to redo everything.
 claude plugin marketplace remove foundation-tester
 claude plugin uninstall fleetest@foundation-tester
 ```
-
-If the pre-rename `ftester@foundation-tester` is still there, uninstall it the same way.
 
 ### VSCode extension
 

@@ -49,14 +49,6 @@ claude plugin install fleetest@foundation-tester --scope user
 > ためのものです。古いままだと `Plugin "fleetest" not found in marketplace` で失敗します。
 > 新規導入なら何も起きません。
 
-> **改名前の `ftester@foundation-tester` が入っている場合は、先に消してください。** 古い
-> `/ftester:*` スキルが、もう存在しないコマンドを指したまま残ります。マーケットプレイス名は
-> 変わっていないので、追加し直す必要はありません。
->
-> ```bash
-> claude plugin uninstall ftester@foundation-tester
-> ```
-
 3. **テスト専用の新規フォルダ**を VSCode で開きます
 
 4. エージェントのパネルで `/fleetest:fleetest-setup` を実行します。clone・ビルド・プロジェクト
@@ -112,8 +104,6 @@ claude plugin update fleetest@foundation-tester
 claude plugin marketplace remove foundation-tester
 claude plugin uninstall fleetest@foundation-tester
 ```
-
-改名前の `ftester@foundation-tester` が残っていれば、同じように uninstall します。
 
 ### VSCode 拡張
 

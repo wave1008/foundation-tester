@@ -30,7 +30,7 @@ public enum RunProfileDeviceEditor {
 
     /// 1要素の実効マシン(nil = 手元)。規則は MachineDispatch.normalize と同じ
     static func effectiveMachine(of device: [String: Any]) -> String? {
-        MachineDispatch.normalize((device["machine"] ?? device["host"]) as? String)
+        MachineDispatch.normalize(device["machine"] as? String)
     }
 
     /// devices[] に device(platform・machine・name を含む1要素)を末尾へ追加した新しい辞書を返す。
