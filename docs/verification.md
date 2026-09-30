@@ -2581,6 +2581,8 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   `--ios-inapp`(既定と同じエンジンで iOS のみ) /
   `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節) /
   `--local`(各 run に `--runner local` = この Mac のデバイスだけ。E2EX を M1Ultra で同時に回すときの形) /
+  `--sandbox`(各 run に `--set sandbox=true` = シナリオ実行バイナリを Seatbelt で包む。`ScenarioSandbox` の
+  書ける場所・通信の規則を変えたときに回す。既定の run は包む経路を1度も通らない) /
   `--align`(下記)
 - **回帰の分担(ユーザー指示 2026-09-28)**: E2E はこの Mac(M2Ultra)で `Scripts/e2e.sh --local`、
   E2EX は `Scripts/e2ex.sh --on M1Ultra`(ssh でランナーのクローン `~/fleetest-runner/foundation-tester` に入り、

@@ -443,6 +443,11 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 推測を持たなかった頃の挙動へ戻る。**FM とは無関係**(幾何ヒューリスティック)。
     /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
     public var containerInference: Bool?
+    /// シナリオ実行バイナリを Seatbelt(`sandbox-exec`)で包むか(**既定 false**。`ScenarioSandbox`)
+    public var sandbox: Bool?
+    /// サンドボックスの構成ファイル(`denyRead`・`allowedDomains`)の場所。テストプロジェクトのルートからの
+    /// 相対パス。省略時は `sandbox.json` があれば読む
+    public var sandboxConfig: String?
     /// テスト対象アプリのアニメーションを残すか(既定 false = 実行開始時に無効化する)。
     /// true で FT_ANIMATIONS=1 を実行環境に注入する(判定元は AnimationPolicy)。ON にすると
     /// 整定待ちが伸び、Android では静穏判定後もスクリーンショットが遷移途中の絵を掴みうる。
@@ -489,7 +494,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosFastInput: Bool? = nil, iosPreActionWarmup: Bool? = nil,
-                containerInference: Bool? = nil,
+                containerInference: Bool? = nil, sandbox: Bool? = nil,
+                sandboxConfig: String? = nil,
                 enableAnimations: Bool? = nil, homeOnStart: Bool? = nil,
                 playProtectBypass: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
@@ -513,6 +519,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.iosFastInput = iosFastInput
         self.iosPreActionWarmup = iosPreActionWarmup
         self.containerInference = containerInference
+        self.sandbox = sandbox
+        self.sandboxConfig = sandboxConfig
         self.enableAnimations = enableAnimations
         self.homeOnStart = homeOnStart
         self.playProtectBypass = playProtectBypass
@@ -532,7 +540,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "recoverCpuFallbackToGpu", "locale",
         "iosFastInput", "iosPreActionWarmup", "enableAnimations", "homeOnStart",
         "playProtectBypass",
-        "containerInference",
+        "containerInference", "sandbox", "sandboxConfig",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
     ]
 
@@ -559,12 +567,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "heal": .bool, "fmTextOcclusionCheck": .bool,
         "screenLooksLike": .bool, "ocrTextOcclusionCheck": .bool, "preferCheckStateClassifier": .bool,
         "iosInappEngine": .bool, "iosFastInput": .bool, "iosPreActionWarmup": .bool,
-        "containerInference": .bool, "enableAnimations": .bool, "homeOnStart": .bool,
+        "containerInference": .bool, "sandbox": .bool,
+        "enableAnimations": .bool, "homeOnStart": .bool,
         "playProtectBypass": .bool, "updateWebView": .bool, "wipeDataOnBloat": .bool,
         "recoverCpuFallbackToGpu": .bool, "record": .bool, "recordFailuresOnly": .bool,
         "recordFullResolution": .bool,
         "reportDir": .string, "defaultTimeout": .double, "scenarioTimeout": .int,
-        "recordBitrateKbps": .int, "app": .string, "locale": .string,
+        "recordBitrateKbps": .int, "app": .string, "locale": .string, "sandboxConfig": .string,
         "wipeDataThresholdGB": .double,
     ]
 
@@ -572,7 +581,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let arrayOrObjectKeys: Set<String> = ["devices", "remoteControl"]
 
     /// `fleetest run --set <key>=<value>` / `fleetest api run --set` が受け付けるキー全部
-    /// (Bool 17 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
+    /// (キー名はプロファイル JSON のキーそのもの ——
     /// kebab 変換をしない)。**`RunProfileDocument` の Bool/String/Int/Double 欄の全部から
     /// `devices`・`remoteControl`(配列・オブジェクトで `key=value` を持たない)を除いたもの**。
     /// この等号は `RunProfileSetOverrideKeysTests` が Mirror で固定する
@@ -597,6 +606,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("iosFastInput", .bool(let v)): copy.iosFastInput = v
             case ("iosPreActionWarmup", .bool(let v)): copy.iosPreActionWarmup = v
             case ("containerInference", .bool(let v)): copy.containerInference = v
+            case ("sandbox", .bool(let v)): copy.sandbox = v
+            case ("sandboxConfig", .string(let v)): copy.sandboxConfig = v
             case ("enableAnimations", .bool(let v)): copy.enableAnimations = v
             case ("homeOnStart", .bool(let v)): copy.homeOnStart = v
             case ("playProtectBypass", .bool(let v)): copy.playProtectBypass = v
@@ -794,6 +805,9 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let iosFastInput: Bool
     public let iosPreActionWarmup: Bool
     public let containerInference: Bool
+    /// RunProfileDocument.sandbox(**既定 false**)
+    public let sandbox: Bool
+    public let sandboxConfig: String?
     public let enableAnimations: Bool
     public let playProtectBypass: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
@@ -845,6 +859,8 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
             iosFastInput: doc.iosFastInput ?? false,
             iosPreActionWarmup: doc.iosPreActionWarmup ?? true,
             containerInference: doc.containerInference ?? true,
+            sandbox: doc.sandbox ?? false,
+            sandboxConfig: doc.sandboxConfig,
             enableAnimations: doc.enableAnimations ?? false,
             playProtectBypass: doc.playProtectBypass ?? true,
             homeOnStart: doc.homeOnStart ?? true,
@@ -991,6 +1007,10 @@ public struct ResolvedProfile: Sendable {
     public let iosPreActionWarmup: Bool
     /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
     public let containerInference: Bool
+    /// シナリオ実行バイナリを Seatbelt で包むか(RunProfileDocument.sandbox。**既定 false**)
+    public let sandbox: Bool
+    /// RunProfileDocument.sandboxConfig(未解決のまま運ぶ。解決は `ScenarioSandbox.plan`)
+    public let sandboxConfig: String?
     /// OCR を使ったテキストの視覚検証の実効値(RunProfileDocument.ocrTextOcclusionCheck。既定 true)
     public let ocrTextOcclusionCheck: Bool
     /// RunProfileDocument.preferCheckStateClassifier の実効値(既定 true)
@@ -1198,6 +1218,28 @@ public enum ProfileResolver {
     /// **resolve と保持容量の掃除の唯一の定義元** —— 別々に解くと掃除が実際の置き場を見落とす
     public static func reportDirectory(_ reportDir: String?, project: TestProject) -> URL {
         URL(fileURLWithPath: resolvePath(reportDir ?? "reports", base: project.rootURL))
+    }
+
+    /// 実行プロファイルの `sandbox` / `sandboxConfig` だけを読む(デバイスもアプリも解決しない)。
+    /// プロファイルを丸ごと解決する前・解決しない経路(一覧取得・dry-run・ステップ一覧)が、
+    /// シナリオ実行バイナリを起こす前に包むかどうかを知るための口。`runName` が nil なら上書きだけを見る。
+    /// **プロファイルが読めないときは投げる**(包むつもりの実行を、読めなかったからと枠なしで起こさない)
+    public static func sandboxRequest(project: TestProject, runName: String?,
+                                      overrides: [String: RunProfileSetValue] = [:]) throws -> ScenarioSandbox.Request {
+        var doc = RunProfileDocument()
+        if let runName {
+            let url = project.runsDir.appendingPathComponent("\(runName).json")
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw ProfileError.runProfileNotFound(name: runName, available: runProfileNames(project: project))
+            }
+            do {
+                doc = try JSONDecoder().decode(RunProfileDocument.self, from: Data(contentsOf: url))
+            } catch {
+                throw ProfileError.decodeFailed(url, detail: "\(error)")
+            }
+        }
+        doc = doc.applyingOverrides(overrides)
+        return ScenarioSandbox.Request(enabled: doc.sandbox ?? false, configPath: doc.sandboxConfig)
     }
 
     /// 実行プロファイルが `reportDir` で指す置き場(解決済み・読めないプロファイルは飛ばす)。
@@ -1542,6 +1584,8 @@ public enum ProfileResolver {
             iosFastInput: settings.iosFastInput,
             iosPreActionWarmup: settings.iosPreActionWarmup,
             containerInference: settings.containerInference,
+            sandbox: settings.sandbox,
+            sandboxConfig: settings.sandboxConfig,
             ocrTextOcclusionCheck: settings.ocrTextOcclusionCheck,
             preferCheckStateClassifier: settings.preferCheckStateClassifier,
             enableAnimations: settings.enableAnimations,

@@ -134,6 +134,10 @@ public enum Shell {
     static func runRaw(_ args: [String], cwd: URL? = nil,
                        mergeStderr: Bool = true, timeout: Double? = nil,
                        stdin: Data? = nil) throws -> (Int32, Data) {
+        // サンドボックスの中では simctl を親へ頼む(`SandboxGateway`。枠の外では素通し)
+        if let forwarded = SandboxGateway.intercept(args, timeout: timeout, stdin: stdin) {
+            return forwarded
+        }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = args

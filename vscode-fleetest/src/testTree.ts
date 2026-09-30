@@ -11,6 +11,7 @@ import { type FleetestConfig, resolveProjectName } from "./config";
 import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ListScenariosResult, ScenarioInfo } from "./model";
+import { profileArgs } from "./profileArgs";
 import { missingProjectMessage } from "./projectResolutionMessages";
 
 /** @Deleted シナリオに付与する TestTag の id(runHandler.ts の対象解決でも参照する)。 */
@@ -175,7 +176,7 @@ export class FleetestTestTree implements vscode.Disposable {
 
     const project = resolution.project;
     const generation = ++this.generation;
-    const args = ["api", "list-scenarios", "--project", project];
+    const args = ["api", "list-scenarios", "--project", project, ...profileArgs(config.profile)];
     if (!config.buildBeforeRun) {
       args.push("--skip-build");
     }

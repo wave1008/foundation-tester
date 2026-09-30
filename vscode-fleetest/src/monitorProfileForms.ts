@@ -161,6 +161,10 @@ export interface RunProfileFormFields {
    * a11y より優先するか(**既定 true**。false なら a11y が状態を報告しない要素にだけ使う)。
    * Swift 側は RunProfileDocument.preferCheckStateClassifier */
   readonly preferCheckStateClassifier: boolean;
+  /** シナリオ実行バイナリを Seatbelt で包む(**既定 false**)。Swift 側は RunProfileDocument.sandbox */
+  readonly sandbox: boolean;
+  /** サンドボックス構成ファイルの場所(テストプロジェクトのルート相対。空 = キーを書かない)。Swift 側は RunProfileDocument.sandboxConfig */
+  readonly sandboxConfig: string;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
@@ -194,7 +198,7 @@ export interface RunProfileFormFields {
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。defaultTimeout は GUI のフォーム欄では
  * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
  * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。record/recordFailuresOnly/
- * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
+ * recordFullResolution/iosFastInput/enableAnimations/sandbox は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  * heal/screenLooksLike/fmTextOcclusionCheck/ocrTextOcclusionCheck/preferCheckStateClassifier/containerInference/
  * homeOnStart/playProtectBypass はスキーマ既定と合わせ既定 true。
  */
@@ -213,6 +217,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     typeof source.ocrTextOcclusionCheck === "boolean" ? source.ocrTextOcclusionCheck : true;
   const preferCheckStateClassifier =
     typeof source.preferCheckStateClassifier === "boolean" ? source.preferCheckStateClassifier : true;
+  const sandbox = typeof source.sandbox === "boolean" ? source.sandbox : false;
+  const sandboxConfig = typeof source.sandboxConfig === "string" ? source.sandboxConfig : "";
   const screenLooksLike = typeof source.screenLooksLike === "boolean" ? source.screenLooksLike : true;
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
@@ -278,6 +284,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     containerInference,
     ocrTextOcclusionCheck,
     preferCheckStateClassifier,
+    sandbox,
+    sandboxConfig,
     iosInappEngine,
     iosFastInput,
     iosPreActionWarmup,
@@ -307,11 +315,12 @@ export type RunProfileUpdateResult =
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout はフォーム欄を持たない。result は `{ ...source }` から始まるため、
  * 既存 JSON の defaultTimeout はそのまま(未検証で)保たれる。
+ * app/reportDir/sandboxConfig は trim して空ならキー削除。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は false のとき
+ * record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/sandbox は false のとき
  * キー自体を書かない
  * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
  * round-trip が安定する)。
@@ -326,7 +335,7 @@ export function updateRunProfileInObject(
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
 
-  for (const key of ["app", "reportDir"] as const) {
+  for (const key of ["app", "reportDir", "sandboxConfig"] as const) {
     const value = fields[key].trim();
     if (value.length === 0) {
       delete result[key];
@@ -350,7 +359,7 @@ export function updateRunProfileInObject(
   result.playProtectBypass = fields.playProtectBypass;  // 同上(既定 true 側)
   for (const key of [
     "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
-    "enableAnimations",
+    "enableAnimations", "sandbox",
   ] as const) {
     if (fields[key]) {
       result[key] = true;

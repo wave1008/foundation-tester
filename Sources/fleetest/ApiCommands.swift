@@ -43,6 +43,9 @@ struct ApiListScenarios: AsyncParsableCommand {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
+    @Option(help: "Run profile whose sandbox settings apply to this call (profiles/runs/<name>.json)")
+    var profile: String?
+
     @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
     var skipBuild = false
 
@@ -55,7 +58,9 @@ struct ApiListScenarios: AsyncParsableCommand {
             try ScenarioHost.build(project: testProject)
         }
 
-        let infos = try ScenarioHost.list(project: testProject)
+        let infos = try ScenarioHost.list(
+            project: testProject,
+            sandbox: try ProfileResolver.sandboxRequest(project: testProject, runName: profile))
         let scenariosDir = testProject.scenariosDir
         let folders = ScenarioFolders.list(scenariosDir: scenariosDir)
         let classFileMap = ScenarioFolders.classFileMap(scenariosDir: scenariosDir)
@@ -241,6 +246,9 @@ struct ApiSteps: AsyncParsableCommand {
     @Option(help: "Scenario ID (Class.method)")
     var scenario: String
 
+    @Option(help: "Run profile whose sandbox settings apply to this call (profiles/runs/<name>.json)")
+    var profile: String?
+
     @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
     var skipBuild = false
 
@@ -253,7 +261,8 @@ struct ApiSteps: AsyncParsableCommand {
         }
 
         let events = try await ScenarioHost.dryRunSteps(
-            project: testProject, scenarioID: scenario)
+            project: testProject, scenarioID: scenario,
+            sandbox: try ProfileResolver.sandboxRequest(project: testProject, runName: profile))
         let rows = Self.stepRows(from: events, packageRoot: ScenarioHost.packageRoot())
         let warnings = Self.warnings(from: events)
 

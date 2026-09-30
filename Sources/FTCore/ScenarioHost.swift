@@ -224,7 +224,7 @@ public enum ScenarioHost {
     /// OCR の殺しスイッチが効いている run では起こさない(使わない Vision を読ませない)。
     /// 失敗は握りつぶす(暖機であって合否に関わらない)。**起こすのは `listForRun` だけ**
     /// (dry-run / MCP / codegen の一覧取得(`list`)では起こさない。`OCRWarmupWiringTests`)
-    static func warmOCRCache(project: TestProject) {
+    static func warmOCRCache(project: TestProject, sandbox: ScenarioSandbox.Request) {
         guard RegionText.mode(environment: ProcessInfo.processInfo.environment) != .off else { return }
         // **1 プロセスにつき 1 回**。複数の機械に跨る profile は同じ親の中で run 経路を 3 回通る
         // (実測: warm-ocr が 3 本同時に走った)。同じキャッシュを 3 本が競ってコンパイルするだけ
@@ -234,9 +234,18 @@ public enum ScenarioHost {
         warmupLock.unlock()
         guard !already else { return }
         guard let runner = try? runnerURL(project: project) else { return }
+        // 枠を組めないなら暖機しない(暖機は合否に関わらない。枠なしでは起こさない)
+        let launch: SandboxedLaunch?
+        do {
+            launch = try sandboxedLaunch(
+                project: project, runner: runner, arguments: ["warm-ocr"], request: sandbox,
+                reportDir: nil, connection: nil, drivesDevice: false)
+        } catch {
+            return
+        }
         let process = Process()
-        process.executableURL = runner
-        process.arguments = ["warm-ocr"]
+        process.executableURL = launch?.executable ?? runner
+        process.arguments = launch?.arguments ?? ["warm-ocr"]
         // **親の死で巻き込まない**(`FT_PARENT_PID` を渡さない = ParentDeathWatch を武装しない)。
         // 1 シナリオだけの短い run(約 30 秒)では親が先に終わるが、暖機はコールドで 20〜45 秒 × 2 で、
         // 親と一緒に死ぬとコンパイルがコミットされず、次の run もまたゼロから払う(この暖機が
@@ -244,6 +253,7 @@ public enum ScenarioHost {
         // 拡張の孤児掃除も `FT_PARENT_PID` の印を持つものだけを殺すので巻き込まれない
         var env = ProcessInfo.processInfo.environment
         if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir { env["DEVELOPER_DIR"] = dir }
+        if let launch { env.merge(launch.environment) { $1 } }
         process.environment = env
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -257,18 +267,33 @@ public enum ScenarioHost {
     /// `dryRun` の run では起こさない —— ステップを実行しないので OCR も走らず、しかも暖機は親の死を
     /// 生き延びる子(下の doc)なので、dry-run を使う終了テスト(`CrossLayerTerminationTests`)が
     /// 「子孫が残った」と正しく落とす
-    public static func listForRun(project: TestProject, dryRun: Bool) throws -> [ScenarioInfo] {
-        let all = try list(project: project)
-        if !dryRun { warmOCRCache(project: project) }
+    public static func listForRun(project: TestProject, dryRun: Bool,
+                                  sandbox: ScenarioSandbox.Request) throws -> [ScenarioInfo] {
+        let all = try list(project: project, sandbox: sandbox)
+        if !dryRun { warmOCRCache(project: project, sandbox: sandbox) }
         return all
     }
 
     private static let warmupLock = NSLock()
     private static var warmupStarted = false
 
-    public static func list(project: TestProject) throws -> [ScenarioInfo] {
+    /// `sandbox` に既定値を置かない(新しい呼び手が包み忘れるのをコンパイルで止める)。
+    /// 実行プロファイルを持たない呼び手は `.unrequested`(マシン側の `sandboxRequired` だけが効く)
+    public static func list(project: TestProject, sandbox: ScenarioSandbox.Request) throws -> [ScenarioInfo] {
         let runner = try runnerURL(project: project)
-        let result = try Shell.run([runner.path, "list", "--json"])
+        var command = [runner.path, "list", "--json"]
+        do {
+            if let launch = try sandboxedLaunch(
+                project: project, runner: runner, arguments: ["list", "--json"], request: sandbox,
+                reportDir: nil, connection: nil, drivesDevice: false) {
+                // Shell.run は /usr/bin/env 経由なので、先頭の NAME=VALUE が子の環境になる
+                command = launch.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+                    + [launch.executable.path] + launch.arguments
+            }
+        } catch {
+            throw ScenarioHostError.listFailed(error.localizedDescription)
+        }
+        let result = try Shell.run(command)
         guard result.status == 0 else {
             throw ScenarioHostError.listFailed(result.tail)
         }
@@ -433,6 +458,26 @@ public enum ScenarioHost {
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
         process.arguments = args
+        // 包むと決まったのに枠を組めないときは起こさない(枠なしで黙って走らせない)。dry-run も包む ——
+        // シナリオの本体(利用者の Swift)は dry-run でも実行される
+        var sandboxBroker: SandboxBroker?
+        defer { sandboxBroker?.stop() }
+        do {
+            if let launch = try sandboxedLaunch(
+                project: project, runner: runner, arguments: args, request: settings.sandbox,
+                reportDir: reportDir, connection: connection, drivesDevice: !dryRun) {
+                sandboxBroker = launch.broker
+                process.executableURL = launch.executable
+                process.arguments = launch.arguments
+                process.environment = (process.environment ?? [:]).merging(launch.environment) { $1 }
+                // シナリオごとに出す: 枠に断られた失敗(EPERM)は、この行が無いと原因に辿り着けない
+                let notice = ScenarioEvent.log(ScenarioSandbox.notice)
+                eventLog?.appendHost(notice)
+                emit(notice)
+            }
+        } catch {
+            return abortBeforeLaunch(error.localizedDescription)
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -637,8 +682,8 @@ public enum ScenarioHost {
     /// シナリオを dry-run(No-Load-Run)してイベント列を収集する。デバイス不要・FM 不使用で
     /// 全コマンドが step イベントとして列挙される(ステップ一覧表示用)。
     /// dry-run でもランナーはレポートを書くため、一時ディレクトリに書かせて後始末する
-    public static func dryRunSteps(project: TestProject,
-                                   scenarioID: String) async throws -> [ScenarioEvent] {
+    public static func dryRunSteps(project: TestProject, scenarioID: String,
+                                   sandbox: ScenarioSandbox.Request) async throws -> [ScenarioEvent] {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-dryrun-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -649,7 +694,7 @@ public enum ScenarioHost {
                                connection: DriverConnection(platform: "ios"),
                                // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
                                // 個別に切ると残った経路が FM の直列化待ちを払う)
-                               settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+                               settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false), sandbox: sandbox),
                                reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {

@@ -35,6 +35,8 @@
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
   OS で挙動が割れるもの・足す価値がある残り): docs/shirates-parity.md。
   **コマンドを足す/名前を変えるときは必ずここも更新する**
+- シナリオのサンドボックス(Seatbelt)の知見(実測した性質・要った許可・調べ方・壁の外に残るもの):
+  docs/sandbox-seatbelt.md
 - 保守者向けの事故台帳(規則の由来): docs/maintainer-notes.md
 
 ### 失敗の記録と操作の規律
@@ -112,6 +114,9 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
 - 子プロセスを起こす経路を足す → 中断のリレー(`InterruptRelay`)・fleetest を起こすなら
   `ParentDeathWatch.childEnvironment()`・ssh 越しなら非対話 PATH の補正・`-tt` の ssh は
   `ParentBoundCommand` で包む(process-lifecycle.md / remote.md)
+- シナリオ実行バイナリを起こす経路・`simctl` の呼び出し・シナリオ実行時の書き込み先を足す → サンドボックスの
+  入口(`ScenarioHost.sandboxedLaunch`)・`SimctlPolicy`・`ScenarioSandbox.writablePaths` にも足す。
+  既定の run では赤にならないので `Scripts/e2e.sh --sandbox`(executor.md)
 - 子プロセスのパイプを読む → `readDataToEndOfFile` を使わない・`availableData` のループは
   `autoreleasepool` で区切る・生死判定は `ProcessLiveness.isAlive`(process-lifecycle.md)
 - 外部コマンドの出力から値を作る → **終了コードを見る**(`Shell.run` は非ゼロで投げない。

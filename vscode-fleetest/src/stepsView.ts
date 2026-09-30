@@ -13,6 +13,7 @@ import * as vscode from "vscode";
 import { CliSupersededError, type FleetestCli } from "./cli";
 import { type FleetestConfig, resolveProjectName } from "./config";
 import { t } from "./i18n";
+import { profileArgs } from "./profileArgs";
 import type { ScenarioInfo, StepRow, StepsResult } from "./model";
 import {
   buildStepTree,
@@ -291,7 +292,7 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
 
   private async fetchSteps(current: CurrentScenario): Promise<StepsFetchResult> {
     const config = this.getConfig();
-    const args = ["api", "steps", "--project", current.project, "--scenario", current.id];
+    const args = ["api", "steps", "--project", current.project, "--scenario", current.id, ...profileArgs(config.profile)];
     if (!config.buildBeforeRun) {
       args.push("--skip-build");
     }

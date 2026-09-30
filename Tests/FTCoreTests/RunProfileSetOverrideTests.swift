@@ -276,6 +276,8 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "iosFastInput": return doc.iosFastInput.map(RunProfileSetValue.bool)
         case "iosPreActionWarmup": return doc.iosPreActionWarmup.map(RunProfileSetValue.bool)
         case "containerInference": return doc.containerInference.map(RunProfileSetValue.bool)
+        case "sandbox": return doc.sandbox.map(RunProfileSetValue.bool)
+        case "sandboxConfig": return doc.sandboxConfig.map(RunProfileSetValue.string)
         case "enableAnimations": return doc.enableAnimations.map(RunProfileSetValue.bool)
         case "homeOnStart": return doc.homeOnStart.map(RunProfileSetValue.bool)
         case "playProtectBypass": return doc.playProtectBypass.map(RunProfileSetValue.bool)
@@ -304,7 +306,8 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         "heal": "false", "fmTextOcclusionCheck": "false",
         "screenLooksLike": "false", "ocrTextOcclusionCheck": "false", "preferCheckStateClassifier": "false",
         "iosInappEngine": "false", "iosFastInput": "true", "iosPreActionWarmup": "false",
-        "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
+        "containerInference": "false", "sandbox": "true", "sandboxConfig": "conf/sandbox.json",
+        "enableAnimations": "true", "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
         "recordFullResolution": "true",
@@ -477,6 +480,17 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         let explicitFalse = DeviceIndependentRunSettings.resolve(
             RunProfileDocument().applyingOverrides(["preferCheckStateClassifier": false]))
         XCTAssertFalse(explicitFalse.preferCheckStateClassifier)
+    }
+
+    /// `sandbox` の既定は false。リテラルで固定する(包む経路は緑の run で通らないので、
+    /// 既定を true にする変更が他のテストを素通りする)
+    func testScenarioSandboxDefaultsToFalse() {
+        XCTAssertFalse(DeviceIndependentRunSettings.resolve(RunProfileDocument()).sandbox)
+        XCTAssertFalse(ScenarioExecutionSettings().sandbox.enabled)
+        let explicitTrue = DeviceIndependentRunSettings.resolve(
+            RunProfileDocument().applyingOverrides(["sandbox": true]))
+        XCTAssertTrue(explicitTrue.sandbox)
+        XCTAssertTrue(ScenarioExecutionSettings(explicitTrue).sandbox.enabled)
     }
 
     /// `fm`/`ocr` は実行プロファイルのキーではない(`--set` は汎用の未知キーエラーで断る)

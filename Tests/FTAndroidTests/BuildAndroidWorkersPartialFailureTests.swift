@@ -69,6 +69,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             iosFastInput: false,
             iosPreActionWarmup: true,
             containerInference: true,
+            sandbox: false, sandboxConfig: nil,
             ocrTextOcclusionCheck: true,
             preferCheckStateClassifier: true,
             enableAnimations: false,

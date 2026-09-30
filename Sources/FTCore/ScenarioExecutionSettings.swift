@@ -12,6 +12,9 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// checkIsON / checkIsOFF で CheckStateClassifier を優先するか(プロファイルの `preferCheckStateClassifier`)
     public var preferCheckStateClassifier: Bool
     public var containerInference: Bool
+    /// シナリオ実行バイナリを Seatbelt で包む要求(プロファイルの `sandbox` と `sandboxConfig`)。
+    /// 包むかどうかの最終判断は `ScenarioSandbox.plan`(マシン側の `sandboxRequired` を足す)
+    public var sandbox: ScenarioSandbox.Request
     public var defaultTimeout: Double?
     public var scenarioTimeout: Int?
     /// 実行プロファイル名(`LastResultsStore` が `(project, profile)` 単位で `--failed` の記録を
@@ -25,13 +28,16 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
     public init(fm: FMConfig = FMConfig(), heal: Bool = false, occlusionOCR: Bool = true,
                 preferCheckStateClassifier: Bool = true,
-                containerInference: Bool = true, defaultTimeout: Double? = nil,
+                containerInference: Bool = true,
+                sandbox: ScenarioSandbox.Request = .unrequested,
+                defaultTimeout: Double? = nil,
                 scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
         self.heal = heal
         self.occlusionOCR = occlusionOCR
         self.preferCheckStateClassifier = preferCheckStateClassifier
         self.containerInference = containerInference
+        self.sandbox = sandbox
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
         self.profileName = profileName
@@ -41,6 +47,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
         self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextOcclusionCheck,
                   preferCheckStateClassifier: settings.preferCheckStateClassifier,
                   containerInference: settings.containerInference,
+                  sandbox: ScenarioSandbox.Request(enabled: settings.sandbox, configPath: settings.sandboxConfig),
                   defaultTimeout: settings.defaultTimeout, scenarioTimeout: settings.scenarioTimeout)
     }
 
@@ -48,6 +55,7 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
         self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextOcclusionCheck,
                   preferCheckStateClassifier: resolved.preferCheckStateClassifier,
                   containerInference: resolved.containerInference,
+                  sandbox: ScenarioSandbox.Request(enabled: resolved.sandbox, configPath: resolved.sandboxConfig),
                   defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,
                   profileName: resolved.runName)
     }

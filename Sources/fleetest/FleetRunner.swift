@@ -152,7 +152,12 @@ enum FleetRunner {
         log("==> fleet \"\(fleetName)\" --split: building \(project.name) locally to resolve"
             + " the scenario list (plain --fleet skips this build)")
         try ScenarioHost.build(project: project, log: { log($0) })
-        let all = try ScenarioHost.list(project: project)
+        // 一覧はこの Mac で取る。エントリごとにプロファイルが違うので、上書き(`--set`)だけを見る
+        // (プロファイルの `sandbox` は各エントリの実行で効く。ここはマシン側の `sandboxRequired` が床)
+        let all = try ScenarioHost.list(
+            project: project,
+            sandbox: try ProfileResolver.sandboxRequest(
+                project: project, runName: nil, overrides: setOverrides))
         guard !all.isEmpty else {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(project.name)/scenarios/)")

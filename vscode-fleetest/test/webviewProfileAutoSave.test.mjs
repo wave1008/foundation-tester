@@ -89,6 +89,8 @@ const RUN_FIELDS = {
   containerInference: true,
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
+  sandbox: false,
+  sandboxConfig: "",
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,
@@ -135,7 +137,7 @@ test("確定・キャンセルのボタンは3セクションとも無い", (t) 
   }
 });
 
-test("Advanced Features セクションは heal を先頭に5トグルがフラットに並び、旧親チェックボックス(#run-profile-fm/#run-profile-ocr)は無い", (t) => {
+test("Advanced Features セクションは heal を先頭に6トグルがフラットに並び、旧親チェックボックス(#run-profile-fm/#run-profile-ocr)は無い", (t) => {
   const { document } = loadedRunProfile(t);
   assert.equal(document.getElementById("run-profile-fm"), null);
   assert.equal(document.getElementById("run-profile-fm-options"), null);
@@ -148,6 +150,7 @@ test("Advanced Features セクションは heal を先頭に5トグルがフラ�
     "run-profile-prefer-check-state-classifier",
     "run-profile-fm-text-occlusion-check",
     "run-profile-screen-looks-like",
+    "run-profile-sandbox",
   ];
   const section = document.getElementById(ids[0]).closest(".run-profile-section-group");
   // 5行とも字下げラッパーの中ではなく、セクション直下の modal-row として並ぶ(フラット)。

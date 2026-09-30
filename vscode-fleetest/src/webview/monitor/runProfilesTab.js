@@ -36,6 +36,9 @@ const runProfileFmTextOcclusionCheck = document.getElementById('run-profile-fm-t
 const runProfileScreenLooksLike = document.getElementById('run-profile-screen-looks-like');
 const runProfileOcrTextOcclusionCheck = document.getElementById('run-profile-ocr-text-occlusion-check');
 const runProfilePreferCheckStateClassifier = document.getElementById('run-profile-prefer-check-state-classifier');
+const runProfileSandbox = document.getElementById('run-profile-sandbox');
+const runProfileSandboxConfig = document.getElementById('run-profile-sandbox-config');
+const runProfileSandboxConfigRow = document.getElementById('run-profile-sandbox-config-row');
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
@@ -247,6 +250,9 @@ function renderRunProfileEditor(fields) {
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
   runProfileOcrTextOcclusionCheck.checked = fields.ocrTextOcclusionCheck;
   runProfilePreferCheckStateClassifier.checked = fields.preferCheckStateClassifier;
+  runProfileSandbox.checked = fields.sandbox;
+  runProfileSandboxConfig.value = fields.sandboxConfig;
+  updateSandboxConfigVisibility();
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
@@ -311,6 +317,11 @@ runProfileIosInappEngine.addEventListener('change', () => {
 });
 // record ON のときだけ配下のサブオプション(recordFailuresOnly/recordBitrateKbps/
 // recordFullResolution)を表示する(値そのものは record の状態に関わらず保持・保存する)。
+function updateSandboxConfigVisibility() {
+  runProfileSandboxConfigRow.style.display = runProfileSandbox.checked ? '' : 'none';
+}
+runProfileSandbox.addEventListener('change', updateSandboxConfigVisibility);
+
 function updateRecordOptionsVisibility() {
   runProfileRecordOptions.style.display = runProfileRecord.checked ? '' : 'none';
 }
@@ -352,6 +363,8 @@ function runProfileValuesEqual(fields) {
     runProfileScreenLooksLike.checked === fields.screenLooksLike &&
     runProfileOcrTextOcclusionCheck.checked === fields.ocrTextOcclusionCheck &&
     runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
+    runProfileSandbox.checked === fields.sandbox &&
+    runProfileSandboxConfig.value === fields.sandboxConfig &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
@@ -445,6 +458,8 @@ function collectRunProfileFields() {
     screenLooksLike: runProfileScreenLooksLike.checked,
     ocrTextOcclusionCheck: runProfileOcrTextOcclusionCheck.checked,
     preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
+    sandbox: runProfileSandbox.checked,
+    sandboxConfig: runProfileSandboxConfig.value.trim(),
     iosInappEngine: runProfileIosInappEngine.checked,
     iosFastInput: runProfileIosFastInput.checked,
     iosPreActionWarmup: runProfileIosPreActionWarmup.checked,

@@ -152,6 +152,16 @@
       "pattern": "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$",
       "default": "ja_JP"
     },
+    "sandbox": {
+      "type": "boolean",
+      "description": "シナリオを実行するプロセスを macOS の Seatbelt で包み、書き込み・読み取り・通信を絞る(既定 false)。シミュレータの操作は fleetest 本体が代行する。localhost のサービスと、デバイスを介した持ち出しは防げない。",
+      "default": false
+    },
+    "sandboxConfig": {
+      "type": "string",
+      "description": "サンドボックスの構成ファイル(読み取りを拒否する場所 denyRead と、通信を許可するドメイン allowedDomains)の場所。テストプロジェクトのルートからの相対パス。省略時は sandbox.json があれば読む。",
+      "examples": ["sandbox.json"]
+    },
     "iosFastInput": {
       "type": "boolean",
       "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"

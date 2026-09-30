@@ -12,6 +12,10 @@ paths:
   - "Sources/FTCore/ScenarioExecutionSettings*.swift"
   - "Sources/FTCore/ScenarioExecutionSettings.swift"
   - "Sources/FTCore/ScenarioHost.swift"
+  - "Sources/FTCore/ScenarioSandbox.swift"
+  - "Sources/FTCore/ScenarioHost+Sandbox.swift"
+  - "Sources/FTCore/SandboxBroker.swift"
+  - "Sources/FTCore/SandboxProxy.swift"
   - "Sources/FTCore/StepExecutor*.swift"
   - "Sources/FTCore/SystemUIGate*.swift"
   - "Sources/FTCore/SystemUIGate.swift"
@@ -37,6 +41,8 @@ paths:
   - "Tests/FTCoreTests/ScenarioHostSkipBuildStaleTests.swift"
   - "Tests/FTCoreTests/ScenarioHostWatchdogDurationTests.swift"
   - "Tests/FTCoreTests/ScenarioHostWatchdogExitedChildTests.swift"
+  - "Tests/FTCoreTests/ScenarioSandboxTests.swift"
+  - "Tests/FTCoreTests/ScenarioSandboxWiringTests.swift"
   - "Tests/FTCoreTests/SystemUIGateAssertOnAlertTests.swift"
   - "Tests/FTCoreTests/SystemUIGateTests.swift"
   - "Tests/FTDSLTests/FTRuntimeFailureKindTests.swift"
@@ -75,3 +81,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **失敗時の証跡の絵は hybrid なら XCUITest(`XCUIScreen`)で撮る**(`FTRuntime.handleFailure`。in-app の絵は
   アプリの window しか描かず OS のアラートが写らない)。**iOS の「飲まれたタップ」注記はアラートの可能性を
   併記する**(iOS の木はアプリのプロセスだけ = アラートを出したタップも無変化に見える)
+- **シナリオのサンドボックス(`sandbox` / マシン側の `sandboxRequired`)**: 全拒否が土台の Seatbelt で
+  シナリオ実行バイナリを包む(`FTCore.ScenarioSandbox`。入口は `ScenarioHost.sandboxedLaunch` の1箇所 =
+  run・dry-run・`list`・`warm-ocr` の全部。`ScenarioSandboxWiringTests`)。守る規律4つ:
+  **①シナリオ実行バイナリを起こす経路を足したら入口を通す**(`list` の `sandbox:` に既定値は無い。
+  起こし方に関わらず利用者のコードが動きうる)/ **②子が書く場所を足したら `writablePaths` にも足す**・
+  **`simctl` の呼び出しを足したら `SimctlPolicy` にも足す**(子は CoreSimulator に繋げず、親の
+  `SandboxBroker` が代行する)—— 既定(false)の run は包む経路を通らないので、漏れは
+  `Scripts/e2e.sh --sandbox` でしか赤にならない / **③開けるものは名指しで足す**(全許可へ戻さない。
+  全許可の枠からは `simctl spawn` と `open -a` で外へ出られた)/ **④拒否は先に起こした `log stream` で拾う**。
+  規則の形・書式の罠・壁の外に残るものは docs/design.md §11.7

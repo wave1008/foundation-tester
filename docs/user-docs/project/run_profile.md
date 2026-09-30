@@ -38,6 +38,8 @@ for how `--profile` selects one.
 | `iosFastInput` | bool | `false` | Skip the quiescence wait on the iOS XCUITest bridge's text input (faster, but riskier on fast-moving screens). Only affects the XCUITest bridge |
 | `iosPreActionWarmup` | bool | `true` | On interop WebView screens (WebViews embedded by Compose/Flutter etc.), query the runner once right before each tap/type. An attached XCUITest session that has sat idle can report success while failing to deliver the coordinate event (measured ~13% → 0/50 with the warm-up). Costs ~0.4s per event on those screens only (reads and other screens are unaffected). Only takes effect with the hybrid engine |
 | `containerInference` | bool | `true` | Enable geometry-based corrections that infer scroll containers (edge clamping, off-screen tap correction, etc.). Unrelated to FM |
+| `sandbox` | bool | `false` | Run the process that executes your scenarios inside macOS Seatbelt (experimental). See "Scenario sandbox" below |
+| `sandboxConfig` | string | — | Location of the sandbox configuration file, relative to the test project root. When omitted, `sandbox.json` is read if it exists |
 | `enableAnimations` | bool | `false` | Keep the app's animations instead of disabling them for the run |
 | `homeOnStart` | bool | `true` for `--profile` runs, `false` for a plain `fleetest run` | Press Home once on every device at run start (works around devices staying black after a mass launch) |
 | `playProtectBypass` | bool | `true` | Skips the Play Protect prompt ("Send app for a security check?") on Android `adb install` by turning "Verify apps over USB" off for the install and restoring it afterwards (the app is never sent to Google). `false` is the kill switch: the tool leaves the device setting alone, and a release-signed APK stays blocked on the device's own dialog (the tool never answers it) |
@@ -66,6 +68,86 @@ profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wi
 `--profile`. `devices` and `remoteControl` are a list and an object and cannot be expressed as
 `<key>=<value>`; edit the profile JSON for those. An unknown key passed to `--set` is an error
 (an unknown key inside the profile JSON only prints a warning and is ignored).
+
+## Scenario sandbox
+
+With `sandbox: true`, the process that executes your scenarios (the Swift code you wrote) runs
+inside macOS Seatbelt (`sandbox-exec`). fleetest itself — device provisioning, builds, the
+monitor — is not sandboxed. The feature is experimental and defaults to `false`.
+
+The sandbox starts from "deny everything" and opens only the following.
+
+| Area | Allowed |
+|---|---|
+| Writes | Only the report directory (`reportDir`), the `.fleetest/` directories of the project and the repository root, `~/.fleetest/`, temporary directories, fleetest's own caches and logs, and the data containers of apps on simulators (used by `clearAppData`) |
+| Reads | The locations listed in `denyRead` of the configuration file are unreadable. Everything else is readable |
+| Network | Only this Mac (bridges, adb, emulators). External hosts are reachable only when listed in `allowedDomains` of the configuration file, through a proxy that fleetest runs |
+| Simulator operations | A scenario cannot operate the simulator directly. fleetest performs the operations on its behalf and accepts only a fixed set (launch, terminate, install, open URL, clear data and so on) |
+| Everything else | Launching applications (`open`), instructing other processes and connecting to system services are not possible |
+
+### Configuration file
+
+Unreadable locations and allowed destinations are written in JSON. The run profile's
+`sandboxConfig` gives its location, relative to the test project root. When it is omitted,
+`sandbox.json` in the project root is read if it exists.
+
+```json
+{
+  "denyRead": ["~/.ssh", "~/.aws", "~/Documents", "secrets"],
+  "allowedDomains": ["api.example.com", "*.example.net"]
+}
+```
+
+- `denyRead`: Locations the scenario cannot read. `~` and paths relative to the project are accepted. **Writing it replaces the default list** (the default is `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.netrc`, `~/.kube`, `~/.docker`, `~/.config/gh` and `~/Library/Keychains`)
+- `allowedDomains`: Destinations allowed for external traffic. `api.example.com` matches exactly; `*.example.net` matches subdomains (not `example.net` itself). When omitted or empty, nothing external is reachable. A bare `*` is not accepted
+
+An unknown key or a malformed domain stops the run with an error before anything starts (it is
+not silently ignored).
+
+Traffic to `allowedDomains` goes through a proxy that fleetest starts. Its location is passed in
+environment variables (`HTTPS_PROXY` and friends), so only clients that honour those variables
+(such as `curl`) get through. `URLSession` does not read proxy environment variables; to use it
+from a scenario, pass the value of `HTTPS_PROXY` to `connectionProxyDictionary`.
+
+### What is covered
+
+| Operation | The sandbox applies when |
+|---|---|
+| `fleetest run --profile <name>` | The profile has `sandbox: true`, or `--set sandbox=true` is given |
+| `fleetest run --dry-run` | Same as above (`--dry-run` uses only `sandbox` and `sandboxConfig` from the profile) |
+| The step list and the scenario list in the extension | The run profile selected in the extension has `sandbox: true` |
+| Any of the above, regardless of the profile | The machine-level setting `~/.config/fleetest/config.json` has `"sandboxRequired": true` |
+
+The Swift code of a scenario can execute during a dry run and while listing scenarios, so those
+are wrapped in the same sandbox.
+
+### What it prevents and what it does not
+
+**Prevented**: scenario code modifying files outside the project, reading the locations you
+listed, connecting directly to external hosts, or launching another application or command
+outside the sandbox.
+
+**Not prevented**:
+
+- **Connections to services on this Mac.** A scenario connects to the bridges and adb to drive
+  devices, so other services listening on localhost are reachable too.
+- **Data leaving through the device.** A scenario can send the contents of any file it can read
+  as input to an app or a browser. List the locations you do not want read in `denyRead`.
+- **What the app under test does.** The app runs inside the simulator, as a process outside the
+  sandbox.
+- **Changes to the settings.** The run profile and the configuration file live inside the
+  project, so anyone who can modify the project can change `sandbox` and the lists. To keep the
+  sandbox from being turned off, use `sandboxRequired`, which lives outside the project, and keep
+  the configuration file somewhere that cannot be modified.
+
+### Notes
+
+- In a run with the sandbox on, each scenario's log starts with a `🔒 sandbox: …` line.
+- An operation the sandbox refuses fails with `Operation not permitted`; a simulator operation
+  that fleetest refuses fails with `sandbox: refused`.
+- On a physical iOS device, the operations used to reinstall and launch apps (`devicectl`) are
+  not available from inside the sandbox.
+- `sandbox-exec` is a command Apple has deprecated. Its behaviour may change with macOS updates.
 
 ## iOS engine
 

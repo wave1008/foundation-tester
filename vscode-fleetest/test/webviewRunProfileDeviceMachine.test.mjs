@@ -97,6 +97,8 @@ const RUN_PROFILE_DATA = {
     screenLooksLike: true,
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,

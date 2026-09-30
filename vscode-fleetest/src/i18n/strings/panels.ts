@@ -132,6 +132,22 @@ export const panelsStrings = {
     ja: "チェック状態の判定はCheckStateClassifierによる視覚検証を優先する",
     en: "Prefer visual verification by CheckStateClassifier when judging check states",
   },
+  "panels.runProfile.sandboxLabel": {
+    ja: "Sandbox(Seatbelt)を有効にする",
+    en: "Enable sandbox (Seatbelt)",
+  },
+  "panels.runProfile.sandboxTitle": {
+    ja: "シナリオを実行するプロセスを macOS の Seatbelt で包み、書き込み・読み取り・通信を絞ります。シミュレータの操作は fleetest 本体が代行します。localhost のサービスと、デバイスを介した持ち出しは防げません。",
+    en: "Runs the process that executes your scenarios inside macOS Seatbelt and restricts what it can write, read and connect to. fleetest itself performs the simulator operations on its behalf. It does not protect localhost services, nor data leaving through the device.",
+  },
+  "panels.runProfile.sandboxConfigLabel": {
+    ja: "サンドボックスの構成ファイル",
+    en: "Sandbox configuration file",
+  },
+  "panels.runProfile.sandboxConfigTitle": {
+    ja: "読み取りを拒否する場所(denyRead)と、通信を許可するドメイン(allowedDomains)を書いた JSON の場所。テストプロジェクトのルートからの相対パスです。空のときは sandbox.json があれば読みます。",
+    en: "Location of the JSON that lists unreadable paths (denyRead) and allowed domains (allowedDomains), relative to the test project root. When empty, sandbox.json is read if it exists.",
+  },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
     ja: "高速なinappエンジンを使用する",

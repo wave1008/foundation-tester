@@ -4165,6 +4165,90 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
   ヒールキャッシュ機構ごと撤去 → maintainer-notes §22)は放置で無害 —— 現行コードはもう読み書き
   しないので、残っていれば消してよい
 
+### 11.7 シナリオのサンドボックス(`sandbox`・experimental)
+
+実行プロファイルの `sandbox`(既定 false)が true、またはマシン側の `sandboxRequired`
+(`~/.config/fleetest/config.json`)が true のとき、シナリオ実行バイナリを
+`/usr/bin/sandbox-exec -p <プロファイル>` 経由で起こす。**縛るのは子とその子孫だけ**で、fleetest 本体
+(供給・ビルド・モニター)・MCP サーバ・拡張は包まない。利用者向けの説明は
+docs/user-docs/project/run_profile_ja.md §シナリオのサンドボックス。実測した性質・要った許可の一覧・
+調べ方・踏んだ失敗は [sandbox-seatbelt.md](sandbox-seatbelt.md)。
+
+**型の分担**(どれも `Sources/FTCore`):
+
+| 型 | 役割 |
+|---|---|
+| `ScenarioSandbox` | 要求(`Request`)→ 構成ファイル(`Config`)→ 計画(`Plan`)→ プロファイル本文。包むかどうかを決めるのは `plan` の1箇所 |
+| `ScenarioHost.sandboxedLaunch` | 包む入口。run・dry-run・一覧取得(`list`)・OCR の暖機(`warm-ocr`)の全部がここを通る |
+| `SandboxBroker` / `SimctlPolicy` / `SandboxGateway` | Simulator の操作の代行(親 / 方針 / 子) |
+| `SandboxProxy` / `SandboxDomainPolicy` | 許可ドメインへのプロキシ |
+
+**全拒否が土台**(`(deny default)`)。全許可を土台にして書き込みと通信だけ絞る形は壁にならない ——
+実測(2026-09-30)で、その枠の中から `simctl spawn <udid> defaults write <枠の外>` が成功し、
+`open -a` でアプリが枠の外に起動した(LaunchServices)。`launchctl submit` は断られた。
+開けるものは `ScenarioSandbox.baseRules` / `machServices` / `writablePaths` に名指しで並べる。
+
+- **Simulator の操作は親が代行する**。子はドライバそのものなので CoreSimulator が要るが、繋がせると
+  `simctl spawn` で枠の外にプロセスを起こせる。子の `Shell.runRaw` が `xcrun simctl …` を unix ソケット越しに
+  親へ送り(`FT_SANDBOX_BROKER`)、親は `SimctlPolicy.check` が認めた形だけを実行する。
+  CoreSimulator の直叩き(`FTCoreSimShim`)は `FT_SIMULATOR_CONTROL=simctl` で止める。
+  方針が断るもの: 列挙に無い動詞・レーン以外のデバイス・`spawn` の固定2形以外・子が書ける場所からの
+  `install`・`launch` の環境変数のうち決まった4つ以外と、ツール本体の `InAppBridge/build/` 以外の
+  `DYLD_INSERT_LIBRARIES`。**`simctl` の呼び出しを足したら `SimctlPolicy` にも足す**
+- **シナリオ実行バイナリは、起こし方に関わらず利用者のコードを実行しうる**(`_Main.swift` もシナリオの
+  置き場にある)。だから一覧取得と暖機も包む。`list` / `dryRunSteps` の `sandbox:` に既定値は無い
+  (包み忘れをコンパイルで止める)。実行プロファイルを丸ごと解決する前に要るので、呼び手は
+  `ProfileResolver.sandboxRequest` で `sandbox` / `sandboxConfig` だけを先に読む。
+  プロファイルを持たない呼び手(`.unrequested`)は `sandboxRequired` だけが効く
+- **書ける場所は `writablePaths` の1箇所**。足すときは「そこに置いた物が枠の外で実行・解釈されないか」を
+  先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否)。子が書く場所を
+  増やしたら、ここに無ければ**サンドボックス有効時だけ**落ちる。**書けないと黙って効かなくなる型がある**
+  (`FMLock` は取れたことになる)。既定の run は包む経路を1度も通らないので、確かめるのは
+  `Scripts/e2e.sh --sandbox`(実例: `clearAppData` が Simulator のデータコンテナを直接消していて 14 本落ちた)
+- **Vision / Core ML に要る許可を閉じると、落ちるより先に遅くなる**。IOSurface・GPU・ANE の
+  user client と `MTLCompilerService` を閉じた状態では、1 プロファイルが 120 秒 → 1,478 秒になり、
+  画像照合は `Failed to create CVPixelBufferPool` / `espresso error: -1` で落ちた
+- **通信**: 外向きは localhost と親の broker のソケットだけ。Seatbelt のアドレス条件はホストに `*` か
+  `localhost` しか書けない(IP もドメイン名も `host must be * or localhost` で断られる)ので、
+  ドメイン単位の許可は親のプロキシで行う(`allowedDomains`)。プロキシの場所は `HTTP(S)_PROXY` で渡す =
+  通るのは環境変数のプロキシを読むクライアントだけ。`URLSession` は読まないので
+  `connectionProxyDictionary` に渡す(このとき証明書の検証に `com.apple.trustd.agent` が要る。
+  閉じたままだと -1202)
+- **書式の罠(実測)**: ①パスは symlink 解決後で照合される(`/var` → `/private/var`)。
+  `URL.resolvingSymlinksInPath` は `/private` を剥がすので `realpath` を使う ②`network*` に
+  `(local ip "localhost:*")` を書くと外向きの接続が全部通る(向きごとに分けて宛先で絞る)
+  ③`localhost` は自機の全アドレスを含む ④unix ソケットへ繋ぐには、名指しの許可に加えて
+  そのパスへの書き込みも要る ⑤出力先そのものは作れるが、途中の親ディレクトリは作れない
+  (だから親が先に作る)
+- **拒否の調べ方**: `log show` では拾えない。**先に** `/usr/bin/log stream --style compact
+  --predicate 'sender == "Sandbox"'` を起こしてから実行する(zsh の `log` は組み込みなのでフルパス)。
+  残してある拒否(害が無く、開けると面が広がるもの): `coreservicesd`(LaunchServices)・
+  `windowserver.active`・`tccd.system`・`AppSSO`・`analyticsd`・`usymptomsd`・
+  `DiskArbitration`・`distributed_notifications`・`system-info vfs.disk-space`
+- **pid は変わらない**(`sandbox-exec` は枠を掛けて exec する)ので、SIGTERM・`ParentDeathWatch`・
+  stdin の制御チャネル・拡張のプロセス分類は包まないときと同じ。broker の待受には `SO_NOSIGPIPE` を
+  掛ける(子が先に接続を切ると、応答の write が SIGPIPE で親ごと落とす)
+- **所要**: フル E2E(この Mac・8 プロファイル 344 本)は枠の有無でほぼ同じ(iOS 1 プロファイル
+  110〜120 秒)。起動1回あたりの `sandbox-exec` の増分は約 12ms
+
+**壁の外に残るもの**(利用者向けページにも同じ内容を書いてある):
+
+- **localhost のサービス**。子はブリッジと adb へ繋ぐので `localhost:*` を開けている。Android は
+  `adb forward` がポートを動的に取るので、ポート単位には絞れていない。adb サーバ経由で Emulator の
+  shell と、そこからの外部通信・ホストのループバック(`10.0.2.2`)に届く。閉じるにはドライバごと親へ移す
+  (子は DSL の評価だけ・`AppDriver` の全呼び出しを親へ頼む)必要がある
+- **デバイスを介した持ち出し**。読めたファイルの中身を、アプリやブラウザへの入力として外へ送れる。
+  読み取りは「全部読める − `denyRead`」の形(利用者が一覧を指定する。ユーザー決定)
+- **テスト対象のアプリ**。Simulator の中のプロセスは枠の外のホストプロセス。親が入れるアプリ
+  (プロファイルの `appPath`)は信頼の前提
+- **設定の書き換え**。プロファイルと構成ファイルはプロジェクトの中(構成ファイルの置き場はユーザー決定)。
+  プロジェクトの外にあるのは `sandboxRequired` だけ
+- **未確認**: iOS の実機(`devicectl` は枠の中から使えないことだけ確認。実機用の代行は無い)・
+  LAN 越しのブリッジ・リモートのランナー・受け手の外部パッケージ構成・FoundationModels
+  (2026-09-30 はこの Mac の FM が死んでいた。`com.apple.modelmanager` を開けてあるが通ることは未確認)
+- ブリッジの HTTP 口(XCUITest ランナー・in-app・Android)に、Mac 上のファイルの読み書きやコマンド実行を
+  させる口は無い(2026-09-30 の棚卸し。UI 操作のハンドラ本体の一部は語句検索だけ)
+
 ---
 
 ## 12. デバイスモニターの画面配信と自己修復(2026-07-14)

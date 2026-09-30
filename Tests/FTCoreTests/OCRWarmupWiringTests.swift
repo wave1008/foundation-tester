@@ -39,8 +39,8 @@ final class OCRWarmupWiringTests: XCTestCase {
         XCTAssertEqual(direct, [], "暖機は listForRun 経由でだけ起こす(直接呼ぶと一覧だけの経路にも漏れる)")
         // listForRun 自身が暖機を起こしていること(呼び出し元の走査だけだと、本体から消しても緑)
         let host = try String(contentsOf: sources.appendingPathComponent("FTCore/ScenarioHost.swift"), encoding: .utf8)
-        let body = host.components(separatedBy: "static func listForRun(").dropFirst().first.map { String($0.prefix(300)) } ?? ""
-        XCTAssertTrue(body.contains("warmOCRCache(project: project)"), "listForRun が暖機を起こしていない: \(body)")
+        let body = host.components(separatedBy: "static func listForRun(").dropFirst().first.map { String($0.prefix(400)) } ?? ""
+        XCTAssertTrue(body.contains("warmOCRCache(project: project, sandbox: sandbox)"), "listForRun が暖機を起こしていない: \(body)")
     }
 }
 

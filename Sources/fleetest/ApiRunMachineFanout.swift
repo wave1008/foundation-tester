@@ -75,7 +75,10 @@ enum ApiRunMachineFanout {
         // 割り当てを決めるにはシナリオ一覧が要る(DeviceMachineRunner.run と同じ理由。ここで1回だけ
         // ローカルビルドする。ローカルの子には --skip-build を渡す = 下の buildChildArgs 参照)
         try ScenarioHost.build(project: project) { logStderr($0) }
-        let all = try ScenarioHost.list(project: project)
+        let all = try ScenarioHost.list(
+            project: project,
+            sandbox: try ProfileResolver.sandboxRequest(
+                project: project, runName: profileName, overrides: options.setOverrides))
         guard !all.isEmpty else {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(project.name)/scenarios/)")

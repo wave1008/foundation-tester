@@ -744,7 +744,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw RunInterruptedBeforeStartError(phase: "after the scenario build")
         }
 
-        let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
+        let all = try ScenarioHost.listForRun(
+            project: testProject, dryRun: dryRun,
+            sandbox: try ProfileResolver.sandboxRequest(
+                project: testProject, runName: profile, overrides: profileOverrides))
         guard !all.isEmpty else {
             throw ValidationError(
                 "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")

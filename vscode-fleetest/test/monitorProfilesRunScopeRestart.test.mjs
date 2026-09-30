@@ -31,6 +31,8 @@ const FORM_FIELDS = {
   ocr: true,
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
+  sandbox: false,
+  sandboxConfig: "",
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,

@@ -11,6 +11,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
         let settings = ScenarioExecutionSettings()
         XCTAssertEqual(settings.occlusionOCR, true)
         XCTAssertEqual(settings.containerInference, true)
+        XCTAssertEqual(settings.sandbox, ScenarioSandbox.Request(enabled: false, configPath: nil))
         XCTAssertNil(settings.defaultTimeout)
         XCTAssertNil(settings.scenarioTimeout)
         XCTAssertNil(settings.profileName)
@@ -47,6 +48,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             iosFastInput: true,
             iosPreActionWarmup: false,
             containerInference: false,
+            sandbox: true, sandboxConfig: "conf/sandbox.json",
             enableAnimations: true,
             playProtectBypass: false,
             homeOnStart: false,
@@ -58,6 +60,9 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             scenarioTimeout: 42,
             recordBitrateKbps: 2500)
         assertNoFieldStaysDefault(ScenarioExecutionSettings(nonDefault), excluding: ["profileName"])
+        // `sandbox` は2欄を1つに束ねるので、Mirror の「既定と違う」だけでは片方の写し忘れを見逃す
+        XCTAssertEqual(ScenarioExecutionSettings(nonDefault).sandbox,
+                       ScenarioSandbox.Request(enabled: true, configPath: "conf/sandbox.json"))
     }
 
     /// profile-less の変換は `profileName` を nil のまま運ぶ(LastResultsStore.noProfileKey の区分へ)
@@ -65,7 +70,8 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
             iosFastInput: false,
-            iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
+            iosPreActionWarmup: true, containerInference: true, sandbox: false, sandboxConfig: nil,
+            enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
             recordBitrateKbps: nil))
@@ -86,11 +92,14 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             defaultTimeout: 12.5, scenarioTimeout: 42, wipeDataOnBloat: true, updateWebView: false,
             wipeDataThresholdGB: 8, recoverCpuFallbackToGpu: false, locale: "ja_JP",
             iosFastInput: false, iosPreActionWarmup: true, containerInference: false,
+            sandbox: true, sandboxConfig: "conf/sandbox.json",
             ocrTextOcclusionCheck: false,
             preferCheckStateClassifier: false,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
             recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
         assertNoFieldStaysDefault(ScenarioExecutionSettings(profile))
+        XCTAssertEqual(ScenarioExecutionSettings(profile).sandbox,
+                       ScenarioSandbox.Request(enabled: true, configPath: "conf/sandbox.json"))
     }
 }

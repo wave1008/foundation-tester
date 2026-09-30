@@ -10,12 +10,21 @@ import FTCore
 extension MCPServer {
 
     /// シナリオ一覧(自動ビルド込み。コンパイルエラーはそのまま返す=エージェントが直せる)
+    /// `profile` 引数があればそのプロファイルの `sandbox` を使う。無ければマシン側の `sandboxRequired` だけが効く
+    static func sandboxRequest(_ args: [String: Any], project: TestProject) throws -> ScenarioSandbox.Request {
+        do {
+            return try ProfileResolver.sandboxRequest(project: project, runName: args["profile"] as? String)
+        } catch {
+            throw MCPError(error.localizedDescription)
+        }
+    }
+
     func listScenarios(_ args: [String: Any]) throws -> [[String: Any]] {
         let project = try ScenarioHost.project(named: args["project"] as? String)
         if !(args["skipBuild"] as? Bool ?? false) {
             try ScenarioHost.build(project: project)
         }
-        let scenarios = try ScenarioHost.list(project: project)
+        let scenarios = try ScenarioHost.list(project: project, sandbox: try Self.sandboxRequest(args, project: project))
         let lines = scenarios.map { info in
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
@@ -67,7 +76,8 @@ extension MCPServer {
         if !(args["skipBuild"] as? Bool ?? false) {
             try ScenarioHost.build(project: project)
         }
-        let all = try ScenarioHost.list(project: project)
+        let sandbox = try Self.sandboxRequest(args, project: project)
+        let all = try ScenarioHost.list(project: project, sandbox: sandbox)
         let infos: [ScenarioInfo]
         do {
             infos = try ScenarioSelection.resolve([id], from: all, scenariosDir: project.scenariosDir)
@@ -93,7 +103,7 @@ extension MCPServer {
                 connection: DriverConnection(platform: info.platform ?? fallbackPlatform),
                 // **`enabled: false`(= 子へ --no-fm)**。dry-run にはデバイスも画面も無いので、
                 // FM を引く経路をまとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
-                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false), sandbox: sandbox),
                 reportDir: tempDir.path,
                 dryRun: true) { event in
                     lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
@@ -146,7 +156,8 @@ extension MCPServer {
         if !(args["skipBuild"] as? Bool ?? false) {
             try ScenarioHost.build(project: project)
         }
-        let all = try ScenarioHost.list(project: project)
+        let sandbox = try Self.sandboxRequest(args, project: project)
+        let all = try ScenarioHost.list(project: project, sandbox: sandbox)
         let infos: [ScenarioInfo]
         do {
             infos = try ScenarioSelection.resolve([id], from: all, scenariosDir: project.scenariosDir)

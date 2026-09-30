@@ -713,7 +713,12 @@ struct RunScenarios: AsyncParsableCommand {
             throw RunInterruptedBeforeStartError(phase: "after the scenario build")
         }
         PhaseLog.mark("build")
-        let all = try ScenarioHost.listForRun(project: testProject, dryRun: dryRun)
+        // 一覧取得と dry-run もシナリオ実行バイナリを起こす(= 利用者のコードが動く)ので、
+        // プロファイルを丸ごと解決する前に `sandbox` だけ先に読む
+        let sandboxRequest = try ProfileResolver.sandboxRequest(
+            project: testProject, runName: profile, overrides: profileOverrides)
+        let all = try ScenarioHost.listForRun(
+            project: testProject, dryRun: dryRun, sandbox: sandboxRequest)
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(
@@ -770,8 +775,8 @@ struct RunScenarios: AsyncParsableCommand {
                 guard names.contains(profile) else {
                     throw ProfileError.runProfileNotFound(name: profile, available: names)
                 }
-                ConsoleOut.out("ℹ️ --dry-run touches no device, so --profile is not used"
-                      + " (--platform decides which ios { } / android { } blocks run)")
+                ConsoleOut.out("ℹ️ --dry-run touches no device, so --profile is not used, except for"
+                      + " its sandbox settings (--platform decides which ios { } / android { } blocks run)")
             }
             if runner != nil {
                 ConsoleOut.out("ℹ️ --dry-run touches no device, so --runner is not used"
@@ -784,10 +789,10 @@ struct RunScenarios: AsyncParsableCommand {
                       + " (the scenarios are validated locally, from the same source every fleet entry would run)")
             }
             if !profileOverrides.isEmpty {
-                ConsoleOut.out("ℹ️ --dry-run touches no device, so --set is not used"
-                      + " (dry-run always runs with FM disabled)")
+                ConsoleOut.out("ℹ️ --dry-run touches no device, so --set is not used, except for"
+                      + " sandbox and sandboxConfig (dry-run always runs with FM disabled)")
             }
-            let failedCount = await runDryRun(items, project: testProject)
+            let failedCount = await runDryRun(items, project: testProject, sandbox: sandboxRequest)
             ConsoleOut.out(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed the dry-run"
                   : "❌ \(failedCount) of \(items.count) scenario(s) failed the dry-run")
@@ -1187,7 +1192,8 @@ struct RunScenarios: AsyncParsableCommand {
         return ["ios": app, "android": app]
     }
 
-    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject) async -> Int {
+    private func runDryRun(_ items: [ScenarioRunItem], project: TestProject,
+                           sandbox: ScenarioSandbox.Request) async -> Int {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-dryrun-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: tempDir) }
@@ -1202,7 +1208,7 @@ struct RunScenarios: AsyncParsableCommand {
                 connection: DriverConnection(platform: platform),
                 // **`enabled: false`(= 子へ --no-fm)**。デバイスも画面も無いので FM を引く経路を
                 // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
-                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false), sandbox: sandbox),
                 reportDir: tempDir.path,
                 dryRun: true, appBundleID: appID) { event in
                 let lines = ScenarioLogFormatter.lines(for: event)

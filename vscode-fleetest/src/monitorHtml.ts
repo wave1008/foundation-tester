@@ -682,6 +682,14 @@ function renderRunProfileSection(): string {
               <input type="checkbox" id="run-profile-screen-looks-like">
               <label for="run-profile-screen-looks-like">${t("panels.runProfile.screenLooksLikeLabel")}</label>
             </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-sandbox">
+              <label for="run-profile-sandbox" title="${t("panels.runProfile.sandboxTitle")}">${t("panels.runProfile.sandboxLabel")}</label>
+            </div>
+            <div class="modal-row" id="run-profile-sandbox-config-row" style="display: none;">
+              <label for="run-profile-sandbox-config" title="${t("panels.runProfile.sandboxConfigTitle")}">${t("panels.runProfile.sandboxConfigLabel")}</label>
+              <input type="text" id="run-profile-sandbox-config" placeholder="sandbox.json">
+            </div>
           </div>
         </div>
       </div>

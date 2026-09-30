@@ -38,13 +38,17 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// **既定値はここに持たない** —— 唯一の定義元は `RetentionPolicy` の static。
     /// nil(欄ごと無い)は「全部既定」であって「掃除しない」ではない
     public var retention: RetentionPolicy?
+    /// true なら、この機械で起こすシナリオ実行バイナリを**必ず**サンドボックスで包む
+    /// (実行プロファイルの `sandbox: false`・`--set sandbox=false`・プロファイルを持たない一覧取得や
+    /// dry-run を含む)。プロジェクトの外にあるので、プロジェクトを書き換えられる相手には外せない
+    public var sandboxRequired: Bool?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
                 developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
                 remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
                 fmConcurrency: Int? = nil, localMachineEnabled: Bool? = nil,
-                retention: RetentionPolicy? = nil) {
+                retention: RetentionPolicy? = nil, sandboxRequired: Bool? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -54,6 +58,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.fmConcurrency = fmConcurrency
         self.localMachineEnabled = localMachineEnabled
         self.retention = retention
+        self.sandboxRequired = sandboxRequired
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

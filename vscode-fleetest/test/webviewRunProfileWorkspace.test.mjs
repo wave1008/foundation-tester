@@ -107,6 +107,8 @@ const RUN_PROFILE_FIELDS = {
   containerInference: true,
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
+  sandbox: false,
+  sandboxConfig: "",
   iosInappEngine: true,
   iosFastInput: false,
   homeOnStart: true,

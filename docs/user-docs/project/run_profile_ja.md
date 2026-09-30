@@ -38,6 +38,8 @@
 | `iosFastInput` | bool | `false` | iOS XCUITest ブリッジのテキスト入力で quiescence 待ちを飛ばす(速いが、動きの激しい画面ではフレークのリスクを伴う)。効くのは XCUITest ブリッジだけ |
 | `iosPreActionWarmup` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある(実測 約13% → 暖機で 0/50)。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。hybrid エンジンのときだけ効く |
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |
+| `sandbox` | bool | `false` | シナリオを実行するプロセスを macOS の Seatbelt の中で動かす(experimental)。下の「シナリオのサンドボックス」を参照 |
+| `sandboxConfig` | string | — | サンドボックスの構成ファイルの場所(テストプロジェクトのルートからの相対パス)。省略時は `sandbox.json` があれば読む |
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |
 | `homeOnStart` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | 実行開始時に各デバイスへ Home を1回撃つ(一斉起動直後に画面が黒いまま止まるのを防ぐ) |
 | `playProtectBypass` | bool | `true` | Android の `adb install` で Play Protect の照会(「アプリをセキュリティ確認のために送信しますか?」)を通さない。インストールの間だけ「USB 経由でアプリを確認」を切って元に戻す(アプリを Google へ送らない)。`false` はキルスイッチ: ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで止まったままになる(ツールはそのダイアログに答えない) |
@@ -67,6 +69,80 @@ ON**、プロファイルを使わない素の `fleetest run` は既定 OFF で�
 配列・オブジェクトなので `<キー>=<値>` の形では指定できません(この2つはプロファイル JSON を
 直接編集してください)。`--set` に未知のキーを渡すとエラーになります(プロファイル JSON の中の
 未知のキーは警告を出して無視されます)。
+
+## シナリオのサンドボックス
+
+`sandbox: true` にすると、シナリオ(あなたが書いた Swift のコード)を実行するプロセスを macOS の
+Seatbelt(`sandbox-exec`)の中で動かします。デバイスの準備・ビルド・モニターを行う fleetest 本体は
+対象外です。experimental な機能で、既定は `false` です。
+
+枠は「全部禁止」から始まり、次のものだけを開けます。
+
+| 対象 | できること |
+|---|---|
+| 書き込み | レポート出力先(`reportDir`)、プロジェクトとリポジトリ直下の `.fleetest/`、`~/.fleetest/`、一時ディレクトリ、fleetest 自身のキャッシュとログ、Simulator 上のアプリのデータ領域(`clearAppData` が使う)だけ |
+| 読み取り | 構成ファイルの `denyRead` に書いた場所は読めない。それ以外は読める |
+| 通信 | この Mac の中(ブリッジ・adb・エミュレータ)だけ。外部へは、構成ファイルの `allowedDomains` に書いた宛先だけ、fleetest のプロキシ経由で出られる |
+| Simulator の操作 | シナリオは Simulator を直接操作できない。fleetest 本体が代わりに実行し、決まった操作(起動・終了・インストール・URL を開く・データ消去など)だけを受け付ける |
+| その他 | アプリの起動(`open`)・他のプロセスへの指示・システムのサービスへの接続はできない |
+
+### 構成ファイル
+
+読ませない場所と、通信を許可する宛先は JSON で書きます。置き場は実行プロファイルの
+`sandboxConfig`(テストプロジェクトのルートからの相対パス)で指定します。省略したときは、
+プロジェクトのルートに `sandbox.json` があればそれを読みます。
+
+```json
+{
+  "denyRead": ["~/.ssh", "~/.aws", "~/Documents", "secrets"],
+  "allowedDomains": ["api.example.com", "*.example.net"]
+}
+```
+
+- `denyRead`: 読ませない場所。`~` とプロジェクトからの相対パスが使える。**書くと既定の一覧を置き換える**(既定は `~/.ssh`・`~/.aws`・`~/.gnupg`・`~/.netrc`・`~/.kube`・`~/.docker`・`~/.config/gh`・`~/Library/Keychains`)
+- `allowedDomains`: 外部通信を許可する宛先。`api.example.com` は完全一致、`*.example.net` はサブドメイン(`example.net` 自身は含まない)。省略・空なら外部へは一切出られない。`*` だけの指定はできない
+
+知らないキーや、形の正しくないドメインを書くと、実行前にエラーで止まります(黙って無視しません)。
+
+`allowedDomains` の宛先へは、fleetest が起動するプロキシを経由して出ます。プロキシの場所は環境変数
+(`HTTPS_PROXY` など)で渡すので、通るのは環境変数のプロキシ設定を使うクライアント(`curl` など)だけです。
+`URLSession` は環境変数のプロキシを読まないため、シナリオから使うときは `HTTPS_PROXY` の値を
+`connectionProxyDictionary` に渡してください。
+
+### 対象になる操作
+
+| 操作 | サンドボックスが効く条件 |
+|---|---|
+| `fleetest run --profile <name>` | プロファイルの `sandbox` が `true`、または `--set sandbox=true` |
+| `fleetest run --dry-run` | 同上(`--dry-run` はプロファイルのうち `sandbox` と `sandboxConfig` だけを使う) |
+| 拡張のステップ一覧・シナリオ一覧 | 拡張で選択中の実行プロファイルの `sandbox` が `true` |
+| 上のどれでも、プロファイルに関わらず常に | マシン側の設定 `~/.config/fleetest/config.json` に `"sandboxRequired": true` |
+
+シナリオの Swift のコードは、dry-run でも一覧の取得でも実行されうるので、これらも同じ枠で包みます。
+
+### 防げること・防げないこと
+
+**防げること**: シナリオのコードが、プロジェクトの外のファイルを書き換える・指定した場所を読む・
+外部へ直接通信する・別のアプリやコマンドを枠の外で起動する、といった操作。
+
+**防げないこと**:
+
+- **この Mac の中のサービスへの接続**。シナリオはデバイスを駆動するためにブリッジと adb へ繋ぐので、
+  localhost で待ち受けている他のサービスにも届きます。
+- **デバイスを介した持ち出し**。シナリオは読めたファイルの中身を、アプリやブラウザへの入力として
+  外へ送れます。読ませたくない場所は `denyRead` に書いてください。
+- **テスト対象のアプリ自身の動作**。アプリは Simulator の中で、枠の外のプロセスとして動きます。
+- **設定の書き換え**。実行プロファイルと構成ファイルはプロジェクトの中にあるので、プロジェクトを
+  書き換えられる相手は `sandbox` も一覧も書き換えられます。外されたくないときは、プロジェクトの外にある
+  `sandboxRequired` を使い、構成ファイルを書き換えられない場所に置いてください。
+
+### その他
+
+- 有効な run では、各シナリオのログの先頭に `🔒 sandbox: …` の行が出ます。
+- 枠に断られた操作は `Operation not permitted`、fleetest 本体に断られた Simulator の操作は
+  `sandbox: refused` で失敗します。
+- iOS の実機は、アプリの入れ直しや起動に使う操作(`devicectl`)が枠の中から使えません。
+- `sandbox-exec` は Apple が非推奨としているコマンドです。macOS の更新で挙動が変わることがあります。
 
 ## iOS エンジン
 

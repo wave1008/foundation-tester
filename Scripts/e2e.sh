@@ -36,6 +36,9 @@
 #                                   # E2EX を M1Ultra で同時に回すときの形(プロファイルの M1Ultra の
 #                                   # レーンを使わないので dispatch.lock がぶつからない)。
 #                                   # E2E = この Mac(M2Ultra)/ E2EX = M1Ultra が既定の分担(2026-09-28)
+#   Scripts/e2e.sh --sandbox       # 各 run へ `--set sandbox=true` を渡す(シナリオ実行バイナリを
+#                                   # Seatbelt で包む)。**`ScenarioSandbox` の書ける場所・通信の規則を
+#                                   # 変えたときに回す** —— 既定(false)の run は包む経路を1度も通らない
 #   Scripts/e2e.sh --align         # **実行前に**リモートランナーの版を揃える(opt-in)。
 #                                   # 適合チェックは開始前に落ちるので、ズレたままだとその
 #                                   # プロファイルは1本も走らない(部分実行にすらならない)。
@@ -66,6 +69,7 @@ ALIGN=0
 LOCAL_ONLY=0
 # 性能計測モード(各 run へ --performance を渡す。fleetest 側が run 開始前にレーンを揃える)
 PERFORMANCE=0
+SANDBOX=0
 # エンジンを明示した(--ios-inapp / --ios-xcuitest)= iOS のエンジン検証が目的。Android は回さない
 IOS_ENGINE_ONLY=0
 SUTS=""
@@ -84,6 +88,7 @@ for arg in "$@"; do
     --align) ALIGN=1 ;;
     --local) LOCAL_ONLY=1 ;;
     --performance) PERFORMANCE=1 ;;
+    --sandbox) SANDBOX=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
@@ -281,7 +286,9 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   [ "$PERFORMANCE" = 1 ] && perf_flag="--performance"
   local runner_flag=""
   [ "$LOCAL_ONLY" = 1 ] && runner_flag="--runner local"
-  if "$FLEETEST" run --project "$1" --profile "$profile" $perf_flag $runner_flag; then
+  local sandbox_flag=""
+  [ "$SANDBOX" = 1 ] && sandbox_flag="--set sandbox=true"
+  if "$FLEETEST" run --project "$1" --profile "$profile" $perf_flag $runner_flag $sandbox_flag; then
     echo "✅ $1 / $profile"
   else
     echo "❌ $1 / $profile"
@@ -307,7 +314,9 @@ run_inapp_witness() {  # $1 = プロジェクト名, $2 = シナリオ ID
   echo "═══ $1 / ios-inapp(in-app の証人: $2)═══"
   local runner_flag=""
   [ "$LOCAL_ONLY" = 1 ] && runner_flag="--runner local"
-  if "$FLEETEST" run --project "$1" --profile ios-inapp --scenario "$2" $runner_flag; then
+  local sandbox_flag=""
+  [ "$SANDBOX" = 1 ] && sandbox_flag="--set sandbox=true"
+  if "$FLEETEST" run --project "$1" --profile ios-inapp --scenario "$2" $runner_flag $sandbox_flag; then
     echo "✅ $1 / ios-inapp(証人)"
   else
     echo "❌ $1 / ios-inapp(証人)"

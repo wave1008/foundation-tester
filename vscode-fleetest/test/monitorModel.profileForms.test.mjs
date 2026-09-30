@@ -40,6 +40,8 @@ const VALID_RUN_PROFILE_SAVE = {
     containerInference: true,
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -88,6 +90,8 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         containerInference: false,
         ocrTextOcclusionCheck: false,
         preferCheckStateClassifier: false,
+        sandbox: false,
+        sandboxConfig: "",
         iosInappEngine: false,
         iosFastInput: true,
         iosPreActionWarmup: false,
@@ -595,6 +599,8 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     containerInference: false,
     ocrTextOcclusionCheck: false,
     preferCheckStateClassifier: false,
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: false,
     iosFastInput: true,
     iosPreActionWarmup: false,
@@ -625,6 +631,8 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     containerInference: false,
     ocrTextOcclusionCheck: false,
     preferCheckStateClassifier: false,
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: false,
     iosFastInput: true,
     iosPreActionWarmup: false,
@@ -656,6 +664,8 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     containerInference: true,
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -686,6 +696,8 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     containerInference: "false",
     ocrTextOcclusionCheck: "true",
     preferCheckStateClassifier: "true",
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: "false",
     iosFastInput: "true",
     reportDir: false,
@@ -708,6 +720,8 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     containerInference: true,
     ocrTextOcclusionCheck: true,
     preferCheckStateClassifier: true,
+    sandbox: false,
+    sandboxConfig: "",
     iosInappEngine: true,
     iosFastInput: false,
     iosPreActionWarmup: true,
@@ -779,11 +793,23 @@ test("parseRunProfileForForm: homeOnStart は boolean ならそのまま返し�
   assert.equal(parseRunProfileForForm({ homeOnStart: "yes" }).homeOnStart, true);
 });
 
+test("parseRunProfileForForm: sandboxConfig は文字列ならそのまま返し、欠落/非文字列は空文字", () => {
+  assert.equal(parseRunProfileForForm({ sandboxConfig: "cfg/sandbox.json" }).sandboxConfig, "cfg/sandbox.json");
+  assert.equal(parseRunProfileForForm({}).sandboxConfig, "");
+  assert.equal(parseRunProfileForForm({ sandboxConfig: 1 }).sandboxConfig, "");
+});
+
 test("parseRunProfileForForm: enableAnimations は boolean ならそのまま返し、欠落/非 boolean は既定値 false(= アニメーション無効化)", () => {
   assert.equal(parseRunProfileForForm({ enableAnimations: true }).enableAnimations, true);
   assert.equal(parseRunProfileForForm({ enableAnimations: false }).enableAnimations, false);
   assert.equal(parseRunProfileForForm({}).enableAnimations, false);
   assert.equal(parseRunProfileForForm({ enableAnimations: "true" }).enableAnimations, false);
+});
+
+test("parseRunProfileForForm: sandbox は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+  assert.equal(parseRunProfileForForm({ sandbox: true }).sandbox, true);
+  assert.equal(parseRunProfileForForm({}).sandbox, false);
+  assert.equal(parseRunProfileForForm({ sandbox: "true" }).sandbox, false);
 });
 
 test("parseRunProfileForForm: iosFastInput は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
@@ -981,6 +1007,8 @@ const BASE_RUN_PROFILE_FIELDS = {
   containerInference: true,
   ocrTextOcclusionCheck: true,
   preferCheckStateClassifier: true,
+  sandbox: false,
+  sandboxConfig: "",
   iosInappEngine: true,
   iosFastInput: false,
   iosPreActionWarmup: true,
@@ -1067,6 +1095,26 @@ test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/i
     assert.equal(disabledFromExisting.ok, true);
     assert.equal(key in disabledFromExisting.object, false, `${key}: 既存 true → false で削除されるべき`);
   }
+});
+
+test("updateRunProfileInObject: sandboxConfig は trim して書き、空(空白のみ含む)なら既存キーごと削除する", () => {
+  const set = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, sandboxConfig: "  cfg/sandbox.json " });
+  assert.equal(set.ok, true);
+  assert.equal(set.object.sandboxConfig, "cfg/sandbox.json");
+  for (const empty of ["", "   "]) {
+    const cleared = updateRunProfileInObject({ sandboxConfig: "x.json" }, { ...BASE_RUN_PROFILE_FIELDS, sandboxConfig: empty });
+    assert.equal(cleared.ok, true);
+    assert.equal("sandboxConfig" in cleared.object, false);
+  }
+});
+
+test("updateRunProfileInObject: sandbox は true のときのみ書き込み、false なら既存キーごと削除する", () => {
+  const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, sandbox: true });
+  assert.equal(enabled.ok, true);
+  assert.equal(enabled.object.sandbox, true);
+  const disabled = updateRunProfileInObject({ sandbox: true }, { ...BASE_RUN_PROFILE_FIELDS, sandbox: false });
+  assert.equal(disabled.ok, true);
+  assert.equal("sandbox" in disabled.object, false);
 });
 
 test("updateRunProfileInObject: heal/fmTextOcclusionCheck/screenLooksLike/containerInference は true/false どちらも常時書き込む(キー削除しない)", () => {

@@ -1,0 +1,414 @@
+# シナリオのサンドボックス(Seatbelt)で得た知見
+
+2026-09-30 に、シナリオ実行バイナリを macOS の Seatbelt(`sandbox-exec`)で包む機能を入れた。
+この文書は、その過程で**実際に測って分かったこと**と、**調べ方**と、**踏んだ失敗**の記録。
+
+- 設計(型の分担・規則の形・壁の外に残るもの)は [design.md §11.7](design.md)。
+- 守る規律は `.claude/rules/executor.md` のサンドボックスの項。
+- 利用者向けの説明は [user-docs/project/run_profile_ja.md](user-docs/project/run_profile_ja.md) §シナリオのサンドボックス。
+
+数字と挙動は、断りが無い限り M2 Ultra / macOS 27.2 / Xcode 27.0 での実測。
+
+---
+
+## 1. 要点
+
+| 分かったこと | 意味 |
+|---|---|
+| 全許可を土台にした枠は壁にならない | 書き込みと通信を絞っても、`simctl spawn` と `open -a` で枠の外にプロセスを起こせた |
+| 全拒否を土台にしても、シナリオは普通に走る | 必要な許可を足した状態で、フル E2E 344 本が緑・所要は枠なしと同程度 |
+| 拒否は `log stream` で拾える | 必要な許可を、推測でなく実行しながら洗い出せる |
+| Simulator の操作は親へ移せる | `Shell.run` の1箇所で `xcrun simctl` を横取りすれば、呼び出し元は変えずに済む |
+| Seatbelt はドメイン名でも IP でも絞れない | ドメイン単位の許可にはプロキシが要る |
+| localhost とデバイス経由の持ち出しは残る | 子がドライバである限り閉じられない。閉じるにはドライバごと親へ移す |
+
+---
+
+## 2. Seatbelt そのものの性質
+
+### 2.1 基本
+
+- **枠は子孫へ引き継がれ、外せない**。包んだプロセスが起こす `simctl`・`adb`・`curl` も同じ枠の中で動く。
+- **`sandbox-exec` は枠を掛けてから対象を exec する**。pid は変わらない。SIGTERM、親の死の検知
+  (`ParentDeathWatch`)、stdin の制御チャネル、拡張のプロセス分類は、包まないときと同じに動いた。
+- **起動1回あたりの増分は約 12ms**(`list` の中央値 61ms → 74ms・10 回ずつ)。
+  シナリオ1本 = 1プロセスなので毎回払うが、E2E の所要には現れなかった。
+- **プロファイルは `-p` で文字列のまま渡せる**。ファイルに置く必要は無い。
+- **`sandbox-exec` は Apple が非推奨と明記している**。書式(SBPL)も公式には文書化されていない。
+  macOS の更新で挙動が変わりうる。
+
+### 2.2 後に書いた規則が勝つ
+
+`(deny file-write*)` の後に `(allow file-write* (subpath …))`、その後に
+`(deny file-write* (subpath …/hooks))` と書けば、許可した場所の中の一部だけを閉じられる。
+
+### 2.3 パスは symlink を解決した後の形で照合される
+
+`/var` は `/private/var`、`/tmp` は `/private/tmp` への symlink。規則に `/var/folders/…` と書いても
+当たらない。
+
+- `URL.resolvingSymlinksInPath()` は `/private` を**剥がす**ので使えない。`realpath(3)` を使う。
+- まだ存在しないパス(これから作るレポート出力先)は `realpath` が失敗する。
+  存在する最も深い祖先を解決して、残りを足す(`ScenarioSandbox.canonicalPath`)。
+
+### 2.4 作れるのは許可した場所そのものから下だけ
+
+`(subpath "/a/b/c")` を許可しても、`/a/b` が無ければ `mkdir -p /a/b/c` は失敗する(途中の親を作れない)。
+レポート出力先は、親が先に作ってから子を起こす。
+
+### 2.5 通信の条件で書けるホストは `*` と `localhost` だけ
+
+```
+(deny network-outbound (remote ip "1.1.1.1:*"))
+→ sandbox-exec: host must be * or localhost in network address
+```
+
+IP アドレスもドメイン名も書けない。書けるのは `"localhost:8080"`・`"*:443"`・`"localhost:*"` の形だけ。
+
+- **`localhost` は自機の全アドレスを含む**。この Mac の LAN 側のアドレス(`10.0.0.104`)への接続も
+  `(remote ip "localhost:*")` で通った。
+- LAN 越しのブリッジ(実機)を開けるには、ポートで絞るしかない(`"*:<port>"`)。
+
+### 2.6 `network*` に `(local ip "localhost:*")` を書くと全部通る
+
+```
+(deny network*)
+(allow network* (local ip "localhost:*") (remote ip "localhost:*"))
+```
+
+これで外部(`1.1.1.1:443`・`https://example.com`)へ普通に繋がった。外向きの接続にも
+`local ip` の条件が当たるため。向きごとに分け、外向きは宛先だけで絞る。
+
+```
+(deny network*)
+(allow network-outbound (remote ip "localhost:*"))
+(allow network-bind (local ip "localhost:*"))
+(allow network-inbound (local ip "localhost:*"))
+```
+
+この誤りは、最初に書いた単体テストが落ちて見つかった。文字列の形だけを見るテストでは見つからない。
+
+### 2.7 unix ソケットは、名指しの許可に加えて書き込みも要る
+
+`(allow network-outbound (remote unix-socket (path-literal "…")))` だけでは繋がらず、
+そのパスへの `file-write*` も要った。親の broker のソケットは一時領域(書ける場所)に置く。
+
+`(remote unix-socket)` をパス無しで書くと全部の unix ソケットが開く。Docker のソケットのような
+強い口に届くので書かない。
+
+### 2.8 SwiftPM は枠の中では動かない
+
+SwiftPM は Package.swift の評価に自前の `sandbox-exec` を使う。外側に枠があると
+
+```
+sandbox-exec: sandbox_apply: Operation not permitted
+```
+
+で落ちる。外側のプロファイルをどう緩めても変わらない。`--disable-sandbox` を付ければ通るが、
+SwiftPM 自身の保護を外すことになる。
+
+fleetest は**ビルドを親で済ませてから子を包む**ので、この制約には当たらない。
+fleetest 自体を枠の中で起こすと(エージェントのサンドボックスなど)、ビルドの段でこのエラーになる。
+
+---
+
+## 3. 全許可の枠がなぜ壁にならないか
+
+最初の実装は「全許可 → 書き込みと通信だけ絞る」だった。次の2つで枠の外へ出られた。
+
+| 経路 | 実測 |
+|---|---|
+| CoreSimulator | 書き込みを絞った枠の中から `xcrun simctl spawn <udid> defaults write <枠の外のパス> k v` が成功し、枠の外にファイルができた。Simulator の中のプロセスは Mac 上の普通のプロセスで、枠を継がない |
+| LaunchServices | 枠の中から `open -g -a "Script Editor"` を打つと、アプリが枠の外で起動した |
+
+`launchctl submit` は枠の中から断られた(exit 1・ジョブは実行されない)。
+
+`simctl` だけを塞いでも足りない。`open` のほかに AppleEvents や各種の XPC サービスが同じ形の口になる。
+**口を1つずつ塞ぐのではなく、全拒否から必要なものだけ開ける**。
+
+---
+
+## 4. 全拒否の枠で要った許可
+
+`(deny default)` に次を足した状態で、フル E2E(この Mac・iOS in-app 4 SUT + Android 4 SUT・344 本)が緑。
+
+### 4.1 無いと動かないもの
+
+| 許可 | 無いときの症状 |
+|---|---|
+| `process-exec*`・`process-fork`・`file-read*`・`sysctl-read` | 起動しない |
+| `signal (target same-sandbox)`・`process-info*` | 子プロセスの管理ができない |
+| mach: `opendirectoryd.libinfo`・`notification_center`・`logd`・`diagnosticd` | 起動時の基本サービス |
+| mach: `bsd.dirhelper`・`opendirectoryd.membership` | 一時ディレクトリとグループの解決。1 シナリオで数十回引かれる |
+| iokit: `IOSurfaceRootUserClient`・`AGXDeviceUserClient`・`IOSurfaceAcceleratorClient` | 画像照合が `Failed to create CVPixelBufferPool` で落ちる |
+| iokit: `H1xANELoadBalancerDirectPathClient`、mach: `com.apple.appleneuralengine` | Core ML が `espresso error: -1` で落ちる |
+| xpc: `com.apple.MTLCompilerService` | Metal のシェーダをコンパイルできない |
+| `file-issue-extension`(`~/Library/Caches/<実行バイナリ名>/`) | Core ML がコンパイルキャッシュを ANE のデーモンへ見せられない |
+| `network-outbound` の `/private/var/run/syslog` | ログの送り先 |
+
+**Vision / Core ML の許可は、閉じると落ちるより先に遅くなる**。IOSurface と GPU を閉じた状態では、
+E2E-CMP の iOS 1 プロファイルが 120 秒 → 1,478 秒になった。OCR が遅い経路へ落ち、
+待ちの予算(120 秒)に当たる操作が出た。**「通ったが異常に遅い」は許可の不足を疑う。**
+
+### 4.2 機能を使うときだけ要るもの
+
+| 許可 | 条件 |
+|---|---|
+| mach: `com.apple.trustd.agent` | 許可ドメインへ `URLSession` で HTTPS を撃つとき。無いと証明書を検証できず -1202 で落ちる。curl は自前で検証するので要らない |
+| mach: `com.apple.modelmanager` | FoundationModels の推論。**開けてあるが、通ることは未確認**(この日は FM が死んでいた) |
+
+### 4.3 拒否のまま残したもの
+
+拒否されても動作に影響が無く、開けると面が広がるもの。
+
+| 拒否 | 残す理由 |
+|---|---|
+| mach: `com.apple.CoreServices.coreservicesd` | LaunchServices。`open` の経路 |
+| mach: `com.apple.windowserver.active`・`com.apple.tccd.system` | 画面と権限。シナリオの駆動に要らない |
+| mach: `com.apple.AppSSO.service-xpc`・`com.apple.usymptomsd`・`com.apple.analyticsd` | 認証・通信の診断・利用統計 |
+| mach: `com.apple.DiskArbitration.diskarbitrationd`・`distributed_notifications` | ディスクの通知・全体通知 |
+| `system-info vfs.disk-space` | 空き容量の問い合わせ。フル E2E で 8,000 回以上拒否されるが影響は無い |
+
+---
+
+## 5. 子が書く場所
+
+「書けない」は静かに効く。3通りの方法で洗い出した。
+
+### 5.1 E2E で赤になったもの
+
+`clearAppData` が 14 本落ちた。Simulator のアプリのデータコンテナ
+(`~/Library/Developer/CoreSimulator/Devices/<udid>/data/Containers/Data/Application/…`)の中身を、
+`FileManager` で直接消していたため。正規表現で、データコンテナだけを開けた
+(アプリ本体の `Bundle/` と、コンテナの外は開けない)。
+
+### 5.2 コードの棚卸しで見つかったもの
+
+E2E では赤にならないが、書けないと**黙って効かなくなる**もの。
+
+| 場所 | 書けないとき |
+|---|---|
+| `~/Library/Caches/fleetest/`(`FMLock`・`FMBreaker`) | ロックは「取れた」ことになり、機械全体の FM の並列枠が無言で効かなくなる。ブレーカは落ちた事実を残せない |
+| ツール本体側の `.fleetest/`(受け手の外部パッケージ構成) | in-app ブリッジの記録が更新されず、次の供給が残骸を見誤る |
+| `~/Library/HTTPStorages/<実行バイナリ名>/` | `URLSession.shared` の既定の保存先 |
+| `FT_*_DIR` で差し替えた置き場 | 保守者用のダンプ・台帳が書けない |
+
+**赤にならない不足は、デバイス実行を何周しても見つからない。** 書き込みの呼び出し形
+(`write(to:`・`createDirectory`・`removeItem`・`open(O_CREAT)` など)を grep で列挙し、
+子の実行時に通るかを呼び出し元まで辿って仕分けた。
+
+### 5.3 書ける場所に入れてはいけないもの
+
+**そこに置いた物が、枠の外で実行・解釈されないか**を先に見る。
+
+- `<root>/.fleetest/hooks/<pid>.json` は、次の run が読んで `teardown.sh` を枠の外で実行する。
+  `.fleetest/` は書けるようにしたが、`hooks/` だけ拒否に戻した。
+- `/private/tmp` は入れない(共有の置き場)。ユーザーごとの一時領域(`/var/folders/xx/yy/`)だけを開ける。
+
+---
+
+## 6. Simulator の操作を親へ移す
+
+### 6.1 横取りの場所
+
+シナリオ実行バイナリに入るコードには、`xcrun simctl` の呼び出しが 40 箇所以上ある
+(`BridgeClient`・`InAppDriver`・`FastLaunchDriver`・`InAppLauncher` など)。1つずつ書き換えず、
+**`Shell.runRaw` の入口で横取りした**。`FT_SANDBOX_BROKER` が立っているときだけ、
+`xcrun simctl …` を unix ソケットで親へ送る。呼び出し元は1行も変えていない。
+
+- 環境変数は `Shell.run` の流儀(先頭の `NAME=VALUE`)のまま運ぶ。
+  `InAppLauncher` の `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=…` がそのまま親へ届く。
+- CoreSimulator の直叩き(`FTCoreSimShim`)は `FT_SIMULATOR_CONTROL=simctl` で止める。
+  既存の殺しスイッチがそのまま使えた。
+- stdout の NDJSON に相乗りせず、専用のソケットにした。同期の呼び出し元から
+  「送って、返事を待つ」を素直に書ける。
+
+### 6.2 親が断るもの
+
+| 断るもの | 理由 |
+|---|---|
+| 列挙に無い動詞(`erase`・`delete`・`io`・`push` など) | 使っていない操作を開けない |
+| レーン以外のデバイス | 他のレーンのデバイスを壊せる |
+| `spawn` の固定2形以外 | Simulator の中 = 枠の外で任意のコマンドを起こす口 |
+| 子が書ける場所からの `install` | 枠の中で作った実行物を Simulator で動かせる |
+| `launch` の環境変数のうち、決まった4つ以外 | 起動するアプリ(枠の外のプロセス)へ任意の環境を渡せる |
+| ツール本体の `InAppBridge/build/` 以外の `DYLD_INSERT_LIBRARIES` | 任意のライブラリを注入できる |
+
+`spawn` で残した2形は、`launchctl list` と、`clearAppData` 後の
+`launchctl kickstart -k system/com.apple.cfprefsd.xpc.daemon`。
+
+### 6.3 親を落とされない
+
+子が接続を先に閉じると、親の応答の `write` が SIGPIPE になり、**親(run 全体)が落ちた**。
+`SO_NOSIGPIPE` を accept 後に掛けても、相手が既に閉じていると `setsockopt` が失敗して効かない。
+**待受のソケットに掛ける**(accept したソケットが引き継ぐ)。
+
+枠の外で動く受け口は、相手が悪意を持つ前提で書く。
+
+---
+
+## 7. ドメイン単位の通信
+
+Seatbelt では名前で絞れないので(§2.5)、親がプロキシを起動し、子には `HTTP(S)_PROXY` で場所を渡す。
+子から見えるのは localhost のポートだけなので、枠の規則は変えなくてよい。
+
+| クライアント | 結果 |
+|---|---|
+| `curl`(環境変数のプロキシを読む) | 許可した宛先は 200、それ以外は届かない |
+| `URLSession`(既定の設定) | 環境変数を読まないので、直接繋ごうとして拒否される |
+| `URLSession` + `connectionProxyDictionary` | 許可した宛先は 200(`trustd.agent` を開けてから。閉じたままだと -1202) |
+
+- 名前の照合は接続の前に行い、解決は親が行う。
+- `*` 単独や途中のワイルドカードは受けない(「全部通す」を書けなくする)。
+- `*.example.com` は `example.com` 自身を含まない。接尾辞の一致は区切りを跨がせない
+  (`evilcdn.example.net` を `*.cdn.example.net` に当てない)。
+
+---
+
+## 8. 壁の外に残るもの
+
+### 8.1 シナリオ実行バイナリは、起こし方に関わらず利用者のコードを実行しうる
+
+`_Main.swift` もシナリオの置き場にある。だから、シナリオの本体を実行しない起動
+(一覧取得 `list`・OCR の暖機 `warm-ocr`)も同じ枠で包む。
+
+最初の実装では `fleetest run --dry-run` が包まれていなかった(証人シナリオで発覚)。
+`--dry-run` はプロファイルも `--set` も使わない作りで、シナリオの本体は dry-run でも実行される。
+いまは `sandbox` / `sandboxConfig` だけを先に読む口(`ProfileResolver.sandboxRequest`)を通す。
+
+### 8.2 localhost
+
+子はドライバそのもので、ブリッジと adb へ繋ぐ。`localhost:*` を開けている。
+
+- Android は `adb forward` がホスト側のポートを動的に取るので、ポート単位には絞れていない。
+- adb サーバ経由で Emulator の shell に届く。Emulator からは外部へ通信でき、
+  `10.0.2.2` でホストのループバックにも届く。
+- 閉じるには、ドライバごと親へ移す(子は DSL の評価だけを行い、`AppDriver` の呼び出しを
+  全部親へ頼む)。今回はやっていない。
+
+### 8.3 デバイスを介した持ち出し
+
+シナリオはアプリやブラウザに文字を入力できる。読めたファイルの中身は、UI 操作で外へ送れる。
+ドライバを親へ移しても閉じない。効くのは**読ませないこと**だけ。
+
+読み取りは「全部読める − `denyRead`」の形(一覧を利用者が指定する。ユーザー決定)。
+一覧に無い場所は読める。
+
+### 8.4 テスト対象のアプリ
+
+Simulator の中のアプリは、Mac 上では枠の外のプロセスで、ユーザーのホームを読み書きできる。
+親がインストールするアプリ(プロファイルの `appPath`)は信頼の前提。
+
+### 8.5 設定の置き場
+
+実行プロファイルと構成ファイルはプロジェクトの中にある。プロジェクトを書き換えられる相手は、
+`sandbox` も `denyRead` も `allowedDomains` も書き換えられる。プロジェクトの外にあるのは、
+マシン側の `sandboxRequired`(`~/.config/fleetest/config.json`)だけ。
+
+### 8.6 ブリッジの HTTP 口
+
+XCUITest ランナー・in-app・Android の3つの全エンドポイントを棚卸しした。Mac 上のファイルの読み書きや
+コマンド実行をさせる口は見つからなかった(パスを受ける口は 0 件・スクリーンショットは HTTP 応答で返す)。
+UI 操作のハンドラ本体の一部は語句検索だけで、本文は読んでいない。
+
+- Simulator のブリッジに認証は無い(トークンは実機を LAN に出すときだけ)。
+- Android の `/session` は `bundleID` を検証せずに端末内の shell コマンドへ連結している。
+  端末の中の話で、Mac 上の実行ではない。
+
+---
+
+## 9. 調べ方
+
+### 9.1 拒否をログから拾う
+
+`log show`(過去のログの検索)では1件も出なかった。**先に `log stream` を起こしてから**実行すると出る。
+
+```sh
+/usr/bin/log stream --style compact --predicate 'sender == "Sandbox"' > deny.raw 2>&1 &
+LP=$!; sleep 1.5
+sandbox-exec -f profile.sb <コマンド>
+sleep 1.5; kill $LP
+grep -E 'Sandbox: (fleetest-scenari|xcrun|simctl|adb)' deny.raw
+```
+
+```
+kernel (Sandbox) Sandbox: fleetest-scenarios-E2E-iOS(2397) deny(1) mach-lookup com.apple.appleneuralengine
+kernel (Sandbox) Sandbox: touch(92237) deny(1) file-write-create /private/tmp/…/outside/x
+```
+
+- **zsh の `log` は組み込み関数**。`/usr/bin/log` とフルパスで書く
+  (組み込みに当たると `too many arguments` で、何も検索されない)。
+- システムの他のプロセスの拒否も混ざる(`sharingd`・`rapportd` など)。プロセス名で絞る。
+- パスの中の UUID と一時領域の部分を置き換えてから集計すると、種類ごとに数えられる。
+- `(deny … (with report))` は書式エラーになる(拒否は既定で報告される)。
+  `(allow … (with report))` を書いてもログには出なかった。
+
+### 9.2 証人シナリオ
+
+「包まれているか」「何が断られるか」を、一時的なシナリオで直接確かめる。シナリオの本体の先頭
+(`scenario { }` の前)で試し、結果を `print` する。無効で全部通り、有効で全部断られることを両方見る。
+
+```swift
+func write(_ path: String) -> String {
+    do { try Data("x".utf8).write(to: URL(fileURLWithPath: path)); return "WROTE" } catch { return "DENIED" }
+}
+print("WITNESS home=\(write(NSHomeDirectory() + "/ft-sandbox-witness.txt"))")
+print("WITNESS ssh=\((try? FileManager.default.contentsOfDirectory(atPath: NSHomeDirectory() + "/.ssh")) == nil ? "DENIED" : "READ")")
+print("WITNESS net=\((try? String(contentsOf: URL(string: "https://example.com")!, encoding: .utf8)) == nil ? "DENIED" : "REACHED")")
+// ほかに: `open -g -a <アプリ>` の終了コード・`xcrun simctl list` の終了コード・
+// `curl` とプロキシ経由の URLSession(許可した宛先 / していない宛先)
+```
+
+- `print` が出力に載らない経路(`api steps`)は、書き込み先のファイルの有無と、
+  `open` で起動したアプリの有無で判定する。
+- 証人が書いたファイルと、起動したアプリは毎回片付ける。無効の側では実際に書かれ、起動する。
+- 証人シナリオは `TestProjects/` に一時的に置き、コミットしない。
+
+### 9.3 E2E
+
+`Scripts/e2e.sh --sandbox` が各 run へ `--set sandbox=true` を渡す。既定(false)の run は
+包む経路を1度も通らないので、規則の過不足はここでしか赤にならない。
+
+`log stream` を並べて起こしておくと、緑の run で「拒否されたが影響が無かったもの」も分かる。
+
+---
+
+## 10. 踏んだ失敗
+
+| 失敗 | 起きたこと | 学んだこと |
+|---|---|---|
+| 「拒否はログに出ない」と結論した | `log show` と zsh の組み込み `log` で探して 0 件だった。`log stream` では出ていた | 「無い」の観測は、出る手段が生きているかを先に確かめる。この誤りのせいで、最初は全拒否を「必要な許可が分からないので無理」と退けていた |
+| SwiftPM が枠の中で通ったように見えた | Package.swift のコンパイル結果がキャッシュされていて、2回目は内側のサンドボックスを使わなかった | 陽性対照は、キャッシュを外した状態で通す |
+| 通信の規則が何も絞っていなかった | `(local ip "localhost:*")` のせいで外部へ繋がった(§2.6)。単体テストで発覚 | 規則は文字列でなく、実際に掛けた結果で確かめる |
+| 「自機の LAN アドレスは外部」と想定したテスト | `localhost` は自機の全アドレスを含むので、拒否されなかった | 外部の宛先には、どこにも届かない文書用アドレス(`192.0.2.1`)を使い、**拒否(即 EPERM)と到達不能(時間切れ)を文言で分ける**。ネットワークに出られない環境でも結果が変わらない |
+| `nc -U -z` で unix ソケットの到達を確かめた | 枠の外でも exit 1 だった(`nc` 側の制約) | 確認の道具が枠の外で通ることを先に見る。`curl --unix-socket` の終了コード 7(繋げない)で判定した |
+| dry-run が包まれていなかった | 単体テストは緑。証人シナリオで発覚 | 配線は実データで1回動かすまで信用しない |
+| 必要な許可が足りないまま E2E を回した | 赤が出る前に所要が 12 倍になり、25 分で 1 プロファイルしか終わらなかった | 全数を回す前に、機能ごとの代表(画像照合・OCR・チェック状態・入力)を数本で通す |
+
+---
+
+## 11. エージェントのサンドボックスとの関係
+
+この機能の出発点は「DevContainer の中で fleetest をセットアップしたら preflight で落ちた」だった。
+
+- **コンテナ(Linux)の中では動かせない**。Simulator・Xcode・オンデバイスの FM が無い。
+  `install.sh` も Darwin 以外では止まる。
+- **エージェントのサンドボックス(Claude Code・Codex)は、エージェントが打つシェルコマンドだけを縛る**。
+  MCP サーバと、そこから起動される fleetest は枠の外で動く。`ft_*` は設定なしで全部使える
+  (Codex での実測。[user-docs/tools/other_agents_ja.md](user-docs/tools/other_agents_ja.md))。
+- **シェル経由の導入・更新は、エージェントの枠の中では通らない**。SwiftPM の入れ子(§2.8)と、
+  CoreSimulator への接続が塞がれるため。
+- **エージェントを縛っても、エージェントが書いたシナリオは枠の外で動く**。fleetest が実行する
+  シナリオのコードを縛るのが、この機能の役割。
+
+---
+
+## 12. 確認していないこと
+
+- **iOS の実機**。アプリの入れ直しと起動に使う `devicectl` は、枠の中から使えないことだけ確認した。
+  実機用の代行は無い。LAN 越しのブリッジのポートを開ける規則は単体テストだけ。
+- **FoundationModels**。2026-09-30 はこの Mac の FM が死んでいた。
+- **リモートのランナー**。コミットと align の前なので回していない。
+- **受け手の外部パッケージ構成**。ツール本体側の `.fleetest/` を開ける処理は単体テストだけ。
+- **XCUITest エンジン**。全許可の枠では E2E-iOS 48 本が緑。全拒否の枠に替えてからは回していない。
+- **拡張の表示**。チェックボックスと構成ファイルの入力欄は、テストは通っているが画面では見ていない。

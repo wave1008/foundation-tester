@@ -43,7 +43,7 @@ function loadedFile(provider) {
 test("同じ id でもプロジェクトが違えば取り直す(別プロジェクトのキャッシュを返さない)", async () => {
   const cli = fakeCli();
   const provider = new StepsTreeDataProvider(
-    cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+    cli, "/repo", () => ({ binaryPath: "fleetest", profile: "", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
   );
   provider.setScenario("Login.S0010", "E2E-CMP");
   await flush();
@@ -61,7 +61,7 @@ test("同じ id でもプロジェクトが違えば取り直す(別プロジェ
 test("同じ project + id へ戻るとキャッシュから出す(取り直さない)", async () => {
   const cli = fakeCli();
   const provider = new StepsTreeDataProvider(
-    cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+    cli, "/repo", () => ({ binaryPath: "fleetest", profile: "", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
   );
   provider.setScenario("Login.S0010", "E2E-CMP");
   await flush();
@@ -82,7 +82,7 @@ test("warnings は scene より先の子ノードとして出る", async () => {
     },
   };
   const provider = new StepsTreeDataProvider(
-    cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+    cli, "/repo", () => ({ binaryPath: "fleetest", profile: "", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
   );
   provider.setScenario("Login.S0010", "E2E-CMP");
   await flush();
@@ -96,11 +96,25 @@ test("warnings は scene より先の子ノードとして出る", async () => {
 test("warnings が空なら先頭は scene のまま", async () => {
   const cli = fakeCli();
   const provider = new StepsTreeDataProvider(
-    cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+    cli, "/repo", () => ({ binaryPath: "fleetest", profile: "", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
   );
   provider.setScenario("Login.S0010", "E2E-CMP");
   await flush();
 
   const children = provider.getChildren();
   assert.equal(children[0].type, "scene");
+});
+
+test("api steps は選択中のプロファイルがあるときだけ --profile を付ける", async () => {
+  const argsSeen = [];
+  const cli = { async invoke(_b, _c, invocation) { argsSeen.push(invocation.args); return { exitCode: 0, cancelled: false, json: { steps: [], warnings: [] } }; } };
+  for (const [profile, scenario] of [["local", "A.S1"], ["", "A.S2"]]) {
+    const provider = new StepsTreeDataProvider(
+      cli, "/repo", () => ({ binaryPath: "fleetest", profile, buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
+    );
+    provider.setScenario(scenario, "P");
+    await flush();
+  }
+  assert.equal(argsSeen[0].join(" ").includes("--profile local"), true);
+  assert.equal(argsSeen[1].includes("--profile"), false);
 });
