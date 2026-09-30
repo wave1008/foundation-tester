@@ -164,7 +164,9 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
 1. **変更なし時の swift build スキップ**(`ScenarioHost.build` + `Sources/FTCore/BuildFingerprint.swift`):
    no-op の `swift build --product` でも SPM の依存グラフ再検証で **~2.6s** かかるため、
    入力(Package.swift/.resolved・Sources/・scenarios/ の mtime+size+ツールチェーン識別)の
-   フィンガープリント一致でスキップする。実測: `api run --dry-run` の連続実行 3.96s → **0.08s**。
+   フィンガープリント一致でスキップする。**パス依存(`.package(path:)`)の先の同じ3点も入力に含む**
+   —— 外部パッケージ構成(受け手・ランナー機)は直下に Sources/ が無く、ツール本体は依存の先に居る
+   (含めないと判定不能で毎回ビルドするか、ツール更新後に古いバイナリを使うかのどちらかになる)。実測: `api run --dry-run` の連続実行 3.96s → **0.08s**。
    ツールチェーン識別(xcode_select_link の先+version.plist の mtime)を含むのは、Xcode 更新後に
    古いバイナリを温存して FoundationModels ABI 不整合で dyld クラッシュする罠(§CLAUDE.md)を
    スキップが助長しないため。**強制的に再ビルドさせたいときは `.fleetest/build-fingerprint-*.txt`

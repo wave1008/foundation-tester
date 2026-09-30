@@ -49,7 +49,7 @@ final class LocalDispatchLockWiringTests: XCTestCase {
     /// この関数の中にある(`swift build` 自体が重い負荷 = 直列化したいものの一部)、
     /// `api run` は run フック・ワークスペースのステージング・供給がこの後に来る
     func testTheLockIsTakenBeforeAnythingHeavy() throws {
-        for (path, later) in [("Sources/fleetest/Fleetest.swift", "try ScenarioHost.build(project: testProject)"),
+        for (path, later) in [("Sources/fleetest/Fleetest.swift", "try ScenarioHost.build(project: testProject,"),
                               ("Sources/fleetest/ApiRunCommand.swift", "RunHookRunner.begin(")] {
             let text = try source(path)
             let acquire = try XCTUnwrap(text.range(of: "LocalDispatchLock("), path)

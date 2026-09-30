@@ -144,8 +144,11 @@ public enum ScenarioHost {
     /// プロジェクトのシナリオをビルドする。ホスト側で 1 回だけ呼び、サブプロセスは自らビルドしない
     /// (並列ワーカーが同時に swift build して SPM ロック競合するのを防ぐ)。
     /// no-op の swift build でも ~2.6s かかるため、BuildFingerprint が前回ビルド時と一致し
-    /// (mtime+size 比較。コンテンツ hash ではない)、かつバイナリが実在すればビルドをスキップする
-    public static func build(project: TestProject, log: ((String) -> Void)? = nil) throws {
+    /// (mtime+size 比較。コンテンツ hash ではない)、かつバイナリが実在すればビルドをスキップする。
+    /// `willBuild` は**実際に swift build を呼ぶ直前にだけ**呼ぶ(省くときは呼ばない。
+    /// run ボードの段階 "building" の書き手がここに載る)
+    public static func build(project: TestProject, log: ((String) -> Void)? = nil,
+                             willBuild: (() -> Void)? = nil) throws {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed("Package.swift not found (run this inside the repository)")
         }
@@ -158,6 +161,7 @@ public enum ScenarioHost {
             return
         }
 
+        willBuild?()
         let result = try Shell.run(["swift", "build", "--product", project.productName], cwd: root)
         guard result.status == 0 else {
             throw ScenarioHostError.buildFailed(result.tail)

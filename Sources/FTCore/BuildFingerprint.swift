@@ -8,9 +8,13 @@ import Foundation
 
 public enum BuildFingerprint {
 
-    /// repoRoot/Package.swift・Package.resolved(あれば)・Sources/ 以下・scenariosDir 以下を
-    /// 相対パスでソートした決定的順序で連結し SHA256 の hex 文字列を返す。
-    /// Sources/ か scenariosDir が存在しない/列挙に失敗した場合は nil(常にビルドする安全側)。
+    /// repoRoot/Package.swift・Package.resolved(あれば)・Sources/ 以下(あれば)・scenariosDir 以下・
+    /// **パス依存(`.package(path:)`)の先の同じ3点**を、パスでソートした決定的順序で連結し
+    /// SHA256 の hex 文字列を返す。
+    /// **Sources/ が無いだけでは nil にしない** —— 外部パッケージ構成(受け手・ランナー機の WORK_DIR)は
+    /// Sources/ を持たず、ツール本体はパス依存の先に居る。nil にすると毎回 swift build を払う。
+    /// 列挙に失敗した・scenariosDir が無い・パス依存の先に Sources/ が無い場合は nil(常にビルドする安全側)。
+    /// url 依存の先は見ない(リビジョンは Package.resolved が固定する)。
     /// Package.swift/Package.resolved が無い場合は単にエントリをスキップするだけで nil にはしない。
     public static func compute(
         repoRoot: URL, scenariosDir: URL, toolchainIdentity: String? = nil
@@ -25,15 +29,31 @@ public enum BuildFingerprint {
             entries.append(entry)
         }
 
-        guard let sourcesEntries = enumerateEntries(
-            repoRoot.appendingPathComponent("Sources"), repoRoot: repoRoot) else {
-            return nil
+        let sourcesDir = repoRoot.appendingPathComponent("Sources")
+        if FileManager.default.fileExists(atPath: sourcesDir.path) {
+            guard let sourcesEntries = enumerateEntries(sourcesDir, repoRoot: repoRoot) else {
+                return nil
+            }
+            entries += sourcesEntries
         }
         guard let scenarioEntries = enumerateEntries(scenariosDir, repoRoot: repoRoot) else {
             return nil
         }
-        entries += sourcesEntries
         entries += scenarioEntries
+
+        for dependencyRoot in pathDependencyRoots(repoRoot: repoRoot) {
+            for name in ["Package.swift", "Package.resolved"] {
+                if let entry = fileEntry(
+                    dependencyRoot.appendingPathComponent(name), repoRoot: repoRoot) {
+                    entries.append(entry)
+                }
+            }
+            guard let dependencyEntries = enumerateEntries(
+                dependencyRoot.appendingPathComponent("Sources"), repoRoot: repoRoot) else {
+                return nil
+            }
+            entries += dependencyEntries
+        }
         entries.sort { $0.path < $1.path }
 
         var combined = ""
@@ -44,6 +64,30 @@ public enum BuildFingerprint {
 
         let digest = SHA256.hash(data: Data(combined.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// repoRoot/Package.swift が宣言するパス依存の先(相対パスは repoRoot 基準)。
+    /// 抽出の規則は Scripts/install.sh の TOOL_ROOT 解決(sed)と同じ形。行コメントの中は読まない
+    static func pathDependencyRoots(repoRoot: URL) -> [URL] {
+        guard let manifest = try? String(
+            contentsOf: repoRoot.appendingPathComponent("Package.swift"), encoding: .utf8),
+              let pattern = try? NSRegularExpression(
+                pattern: #"\.package\(\s*(?:name:\s*"[^"]*"\s*,\s*)?path:\s*"([^"]+)""#) else {
+            return []
+        }
+        var roots: [URL] = []
+        for line in manifest.split(separator: "\n") {
+            let code = String(line.components(separatedBy: "//").first ?? "")
+            let range = NSRange(code.startIndex..., in: code)
+            for match in pattern.matches(in: code, range: range) {
+                guard let pathRange = Range(match.range(at: 1), in: code) else { continue }
+                let path = String(code[pathRange])
+                roots.append(path.hasPrefix("/")
+                    ? URL(fileURLWithPath: path)
+                    : repoRoot.appendingPathComponent(path).standardizedFileURL)
+            }
+        }
+        return roots
     }
 
     /// Xcode 切替・更新でフィンガープリントが変わるようにする: macOS ベータ更新後に Xcode を

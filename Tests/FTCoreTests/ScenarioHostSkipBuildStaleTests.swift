@@ -80,4 +80,28 @@ final class ScenarioHostSkipBuildStaleTests: XCTestCase {
             XCTAssertEqual(messages.count, 1)
         }
     }
+
+    /// 変更が無くて省くときは willBuild を呼ばない(run ボードに「ビルド中」を出さない)。
+    /// 指紋が食い違う側は swift build を実際に呼ぶので、ここでは確かめない
+    func testBuildSkipsWithoutCallingWillBuildWhenFingerprintMatches() throws {
+        let (repoRoot, project, cleanup) = try makeRepo()
+        defer { cleanup() }
+        try withEnv("FT_PACKAGE_ROOT", repoRoot.path) {
+            let binDir = repoRoot.appendingPathComponent(".build/debug")
+            try FileManager.default.createDirectory(at: binDir, withIntermediateDirectories: true)
+            let binary = binDir.appendingPathComponent(project.productName)
+            try "#!/bin/sh\n".write(to: binary, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: binary.path)
+            let fingerprint = try XCTUnwrap(BuildFingerprint.compute(
+                repoRoot: repoRoot, scenariosDir: project.scenariosDir))
+            BuildFingerprint.store(fingerprint, productName: project.productName, repoRoot: repoRoot)
+
+            var messages: [String] = []
+            var willBuildCalls = 0
+            try ScenarioHost.build(project: project, log: { messages.append($0) },
+                                   willBuild: { willBuildCalls += 1 })
+            XCTAssertEqual(willBuildCalls, 0)
+            XCTAssertEqual(messages, ["→ No changes — skipping the scenario build"])
+        }
+    }
 }

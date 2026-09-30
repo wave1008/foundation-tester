@@ -96,7 +96,7 @@ final class InterruptRelayEarlyRegistrationWiringTests: XCTestCase {
         let lock = try XCTUnwrap(text.range(of: "LocalDispatchLock("))
         let setup = try XCTUnwrap(text.range(of: "RunHookRunner.begin("))
         let supply = try XCTUnwrap(text.range(of: "androidWorkersTask = Task"))
-        let build = try XCTUnwrap(text.range(of: "try ScenarioHost.build(project: testProject)"))
+        let build = try XCTUnwrap(text.range(of: "try ScenarioHost.build(project: testProject,"))
         XCTAssertLessThan(registration.lowerBound, lock.lowerBound,
                           "登録が dispatch.lock の取得より後(acquire の待機中の中断を拾えない)")
         XCTAssertLessThan(lock.lowerBound, setup.lowerBound,
@@ -113,7 +113,7 @@ final class InterruptRelayEarlyRegistrationWiringTests: XCTestCase {
         let text = try source("Sources/fleetest/Fleetest.swift")
         let registration = try XCTUnwrap(text.range(of: "RunInterruptState(recorder:"))
         let lock = try XCTUnwrap(text.range(of: "LocalDispatchLock("))
-        let build = try XCTUnwrap(text.range(of: "try ScenarioHost.build(project: testProject)"))
+        let build = try XCTUnwrap(text.range(of: "try ScenarioHost.build(project: testProject,"))
         XCTAssertLessThan(registration.lowerBound, lock.lowerBound,
                           "登録が dispatch.lock の取得より後(acquire の待機中の中断を拾えない)")
         XCTAssertLessThan(lock.lowerBound, build.lowerBound,

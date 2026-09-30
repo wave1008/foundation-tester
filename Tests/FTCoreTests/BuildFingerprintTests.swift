@@ -66,9 +66,65 @@ final class BuildFingerprintTests: XCTestCase {
         XCTAssertEqual(stored, "abc123")
     }
 
-    func testMissingSourcesDirReturnsNil() throws {
+    // ---- 外部パッケージ構成(受け手・ランナー機の WORK_DIR: Sources/ 無し・ツールはパス依存) ----
+
+    /// WORK_DIR の隣にツールのクローン(Sources/ 付き)を作り、Package.swift にパス依存を書く
+    private func makeExternalLayout(dependencyLine: (URL) -> String) throws -> URL {
         try FileManager.default.removeItem(at: repoRoot.appendingPathComponent("Sources"))
-        let fingerprint = BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir)
-        XCTAssertNil(fingerprint)
+        let toolRoot = repoRoot.appendingPathComponent("tool-clone")
+        try FileManager.default.createDirectory(
+            at: toolRoot.appendingPathComponent("Sources"), withIntermediateDirectories: true)
+        try "// core".write(
+            to: toolRoot.appendingPathComponent("Sources/Core.swift"), atomically: true, encoding: .utf8)
+        try "dependencies: [\n    \(dependencyLine(toolRoot))\n]".write(
+            to: repoRoot.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+        return toolRoot
+    }
+
+    func testMissingSourcesDirStillProducesFingerprint() throws {
+        try FileManager.default.removeItem(at: repoRoot.appendingPathComponent("Sources"))
+        let a = BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir)
+        XCTAssertNotNil(a, "Sources/ が無いだけで nil にすると、外部パッケージ構成は毎回ビルドする")
+        XCTAssertEqual(a, BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir))
+    }
+
+    func testMissingScenariosDirReturnsNil() throws {
+        try FileManager.default.removeItem(at: scenariosDir)
+        XCTAssertNil(BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir))
+    }
+
+    func testPathDependencySourceChangeChangesFingerprint() throws {
+        let toolRoot = try makeExternalLayout { #".package(path: "\#($0.path)"),"# }
+        let before = BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir)
+        XCTAssertNotNil(before)
+        XCTAssertEqual(before, BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir))
+        try "// core changed".write(
+            to: toolRoot.appendingPathComponent("Sources/Core.swift"), atomically: true, encoding: .utf8)
+        let after = BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir)
+        XCTAssertNotNil(after)
+        XCTAssertNotEqual(before, after, "ツール本体を更新したのに古いシナリオ実行バイナリを使い続ける")
+    }
+
+    func testRelativePathDependencyIsResolvedAgainstRepoRoot() throws {
+        let toolRoot = try makeExternalLayout { _ in #".package(name: "tool", path: "tool-clone"),"# }
+        XCTAssertEqual(BuildFingerprint.pathDependencyRoots(repoRoot: repoRoot).map(\.path),
+                       [toolRoot.standardizedFileURL.path])
+        let before = BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir)
+        try "// added".write(
+            to: toolRoot.appendingPathComponent("Sources/Added.swift"), atomically: true, encoding: .utf8)
+        XCTAssertNotEqual(before, BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir))
+    }
+
+    func testPathDependencyWithoutSourcesReturnsNil() throws {
+        let toolRoot = try makeExternalLayout { #".package(path: "\#($0.path)"),"# }
+        try FileManager.default.removeItem(at: toolRoot.appendingPathComponent("Sources"))
+        XCTAssertNil(BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir),
+                     "依存の先が読めないなら判定材料が無い(常にビルドする側へ)")
+    }
+
+    func testCommentedOutPathDependencyIsIgnored() throws {
+        _ = try makeExternalLayout { _ in #"// .package(path: "/nonexistent/clone"),"# }
+        XCTAssertEqual(BuildFingerprint.pathDependencyRoots(repoRoot: repoRoot), [])
+        XCTAssertNotNil(BuildFingerprint.compute(repoRoot: repoRoot, scenariosDir: scenariosDir))
     }
 }

@@ -672,7 +672,8 @@ struct RunScenarios: AsyncParsableCommand {
         let progressStartedAt = ISO8601DateFormatter().string(from: Date())
         /// **段階は実際にやっていることだけを言う**(ユーザー決定)—— 入口ではまだ
         /// ビルドしていない(`--skip-build` = 機械分担のローカル子なら最後までしない)ので
-        /// "preparing" で始め、"building" は `ScenarioHost.build` を挟む間だけ立てて直後に戻す。
+        /// "preparing" で始め、"building" は swift build を実際に呼ぶ間だけ立てて直後に戻す
+        /// (変更が無くて省くときは立てない = `ScenarioHost.build` の willBuild)。
         func writeProgress(phase: String) {
             guard recordsProgress else { return }
             RunProgressLedger.write(RunProgressRecord(
@@ -698,9 +699,10 @@ struct RunScenarios: AsyncParsableCommand {
         }
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            writeProgress(phase: "building")
-            ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
-            try ScenarioHost.build(project: testProject)
+            try ScenarioHost.build(project: testProject, log: { ConsoleOut.out($0) }, willBuild: {
+                writeProgress(phase: "building")
+                ConsoleOut.out("→ Building scenarios (\(testProject.name))...")
+            })
             writeProgress(phase: "preparing")
         } else {
             // 食い違っていても止めない(警告のみ。)

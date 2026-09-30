@@ -273,17 +273,17 @@ test("展開トグルは状態を属性で持ち、文字は回るだけ(開け�
   t.after(() => window.close());
   post(window, monitorRunsMessage());
   const chevron = document.querySelector(".run-board-chevron");
-  assert.equal(chevron.textContent, "▶", "文字は展開しても差し替えない");
-  assert.equal(chevron.getAttribute("aria-expanded"), "true", "run のある行の既定は開いた状態");
-  assert.equal(chevron.dataset.expanded, "true", "向きは CSS の回転で表すので data 属性が要る");
-  assert.match(chevron.getAttribute("aria-label"), /閉じる/);
+  assert.equal(chevron.textContent, "▶");
+  assert.equal(chevron.getAttribute("aria-expanded"), "false", "run のある行も既定は閉じた状態");
+  assert.equal(chevron.dataset.expanded, "false");
+  assert.match(chevron.getAttribute("aria-label"), /開く/);
   assert.equal(chevron.title, "", "ツールチップは出さない(名前は aria-label だけ)");
   assert.equal(chevron.dataset.hoverTip, undefined);
   click(window, chevron);
-  assert.equal(chevron.textContent, "▶");
-  assert.equal(chevron.getAttribute("aria-expanded"), "false");
-  assert.equal(chevron.dataset.expanded, "false");
-  assert.match(chevron.getAttribute("aria-label"), /開く/);
+  assert.equal(chevron.textContent, "▶", "文字は展開しても差し替えない");
+  assert.equal(chevron.getAttribute("aria-expanded"), "true");
+  assert.equal(chevron.dataset.expanded, "true", "向きは CSS の回転で表すので data 属性が要る");
+  assert.match(chevron.getAttribute("aria-label"), /閉じる/);
   assert.equal(chevron.title, "");
 });
 
@@ -350,7 +350,7 @@ test("台の行を押してもラインビューの選択は動かない", (t) =
         kind: "virtual", udid: "UDID-2", recording: false },
     ],
   });
-  post(window, monitorRunsMessage());   // run のある行は既定で開いている
+  post(window, monitorRunsMessage());
   const laneEl = document.querySelector(".run-board-lane");
   assert.ok(laneEl, "展開するとレーン行が見える");
   const selected = () => [...document.querySelectorAll("#grid .tile.selected")]
@@ -560,9 +560,86 @@ test("run の無い機械の行は既定で閉じ、三角でその場で開閉�
   assert.equal(row().classList.contains("run-board-row-expanded"), false, "押した直後に閉じる");
 });
 
+// 「全て展開を維持」が OFF の間は、利用者が開かない限りどの行も開かない(ユーザー決定 2026-10-01)。
+// 開閉の記録は機械ごと —— 行の鍵(pid・run の有無)で引くと、次の run や 空き⇔実行中 の
+// 切り替わりで記録を失い、行が勝手に開閉する。
+const expandedMachines = (document) => boardRows(document)
+  .filter((el) => el.classList.contains("run-board-row-expanded")).map(badgeOf);
+
+function runOn(machine, pid) {
+  return { type: "monitorRuns", machine, observed: true,
+           runs: [{ ...monitorRunsMessage().runs[0], machine, pid, runID: `run-${pid}` }] };
+}
+
+function twoMachines(window) {
+  post(window, { type: "hostMetricsMachines", machines: ["M1Max"] });
+  post(window, { type: "monitorRuns", observed: true, runs: [] });
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [] });
+  sendDevices(window, [
+    { name: "iPhone 17-01", udid: "UDID-1" },
+    { name: "iPhone 17 Pro-01", id: "ios:M1Max-01", udid: "U-M1", machine: "M1Max" },
+  ]);
+}
+
+test("展開維持 OFF では run が始まっても行は開かない(空き → 実行中 → 次の run)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  twoMachines(window);
+  assert.deepEqual(expandedMachines(document), []);
+  post(window, runOn(undefined, 100));
+  post(window, runOn("M1Max", 200));
+  assert.equal(runRows(document).length, 2);
+  assert.deepEqual(expandedMachines(document), [], "run が始まっても開かない");
+  post(window, runOn("M1Max", 201));
+  assert.deepEqual(expandedMachines(document), [], "次の run(別の pid)でも開かない");
+});
+
+test("開いた機械は次の run・空きに戻っても開いたまま、他の機械は閉じたまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  twoMachines(window);
+  click(window, idleRows(document)[1].querySelector(".run-board-chevron"));
+  assert.deepEqual(expandedMachines(document), ["M1Max"]);
+  post(window, runOn("M1Max", 200));
+  assert.deepEqual(expandedMachines(document), ["M1Max"], "空き → 実行中");
+  post(window, runOn("M1Max", 201));
+  assert.deepEqual(expandedMachines(document), ["M1Max"], "次の run");
+  click(window, runRows(document)[0].querySelector(".run-board-chevron"));
+  assert.deepEqual(expandedMachines(document), [], "run の行で閉じる");
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [] });
+  assert.deepEqual(expandedMachines(document), [], "実行中 → 空き でも閉じたまま");
+});
+
+test("展開維持 ON は全行を開き、あとから始まった run も開く。OFF に戻すと全部閉じる", (t) => {
+  const { window, document, sent } = createWebview();
+  t.after(() => window.close());
+  twoMachines(window);
+  const button = document.getElementById("run-board-expand-all");
+  click(window, button);
+  assert.deepEqual(sent.filter((m) => m.type === "setRunBoardExpandAll").map((m) => m.value), [true]);
+  assert.deepEqual(expandedMachines(document), ["local", "M1Max"]);
+  post(window, runOn("M1Max", 200));
+  assert.deepEqual(expandedMachines(document), ["local", "M1Max"], "あとから始まった run も開く");
+  click(window, button);
+  assert.deepEqual(expandedMachines(document), [], "OFF で全部閉じる");
+  post(window, runOn("M1Max", 201));
+  assert.deepEqual(expandedMachines(document), [], "OFF のあとの run も開かない");
+});
+
+test("展開維持 ON のまま1行を閉じるとモードを抜け、他の行は開いたまま", (t) => {
+  const { window, document, sent } = createWebview();
+  t.after(() => window.close());
+  twoMachines(window);
+  post(window, { type: "runBoardExpandAll", value: true });
+  assert.deepEqual(expandedMachines(document), ["local", "M1Max"]);
+  click(window, idleRows(document)[0].querySelector(".run-board-chevron"));
+  assert.deepEqual(sent.filter((m) => m.type === "setRunBoardExpandAll").map((m) => m.value), [false]);
+  assert.deepEqual(expandedMachines(document), ["M1Max"]);
+  assert.equal(document.getElementById("run-board-expand-all").getAttribute("aria-pressed"), "false");
+});
+
 // 準備中の控えは runID を持たず、走り出すと同じ pid の控えが runID 入りに上書きされる。
-// 行を runID で引くと走り出した瞬間に別の行になり、閉じた行が勝手に開く(ユーザー指摘 2026-09-30)
-test("準備中に閉じた run の行は、走り出して runID が付いても閉じたまま", (t) => {
+test("準備中に開いた run の行は、走り出して runID が付いても開いたまま", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   sendDevices(window, [{ name: "iPhone 17 Pro-01", udid: "U-L1" }]);
@@ -572,13 +649,13 @@ test("準備中に閉じた run の行は、走り出して runID が付いて�
   }, fields)] });
   post(window, run({ phase: "preparing" }));
   const row = () => runRows(document)[0];
-  assert.equal(row().classList.contains("run-board-row-expanded"), true, "run の行の既定は開いた状態");
-  click(window, row().querySelector(".run-board-chevron"));
   assert.equal(row().classList.contains("run-board-row-expanded"), false);
+  click(window, row().querySelector(".run-board-chevron"));
+  assert.equal(row().classList.contains("run-board-row-expanded"), true);
 
   post(window, run({ phase: "running", runID: "run-1", runGroup: "group-1", total: 4, done: 1 }));
   assert.equal(runRows(document).length, 1);
-  assert.equal(row().classList.contains("run-board-row-expanded"), false, "走り出しても閉じたまま");
+  assert.equal(row().classList.contains("run-board-row-expanded"), true, "走り出しても開いたまま");
 });
 
 // 「マシン有効」を off にした機械はディスパッチの対象外なので、ボードからも外す

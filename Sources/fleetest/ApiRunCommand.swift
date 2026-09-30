@@ -727,9 +727,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            writeProgress(phase: "building")
-            logStderr("→ Building scenarios (\(testProject.name))...")
-            try ScenarioHost.build(project: testProject) { logStderr($0) }
+            try ScenarioHost.build(project: testProject, log: { logStderr($0) }, willBuild: {
+                writeProgress(phase: "building")
+                logStderr("→ Building scenarios (\(testProject.name))...")
+            })
             writeProgress(phase: "preparing")
         } else {
             // 食い違っていても止めない(警告のみ。)

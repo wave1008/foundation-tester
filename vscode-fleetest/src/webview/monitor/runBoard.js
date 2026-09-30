@@ -40,13 +40,14 @@ let collapsed = false;
 // 「全て展開」トグル。**モードであって一度きりの操作ではない** —— ON の間は、あとから現れた
 // run も展開された状態で出る(ユーザー決定)。host が workspaceState に持つ。
 let expandAll = false;
-// 機械の行の開閉を利用者が変えたもの(行の鍵 → 開いているか)。**既定は run のある行が開き・
-// 空きの行が閉じ**(ユーザー決定の図)なので、既定と違うものだけでなく押した結果を
-// そのまま覚える。行の鍵は run が終われば二度と現れないので host 側には永続化しない
-// (webview の getState だけ = 同一パネルの再読込(言語切替)を跨ぐだけで十分)。
-const rowExpansion = new Map(
-  persistedState.runBoardRowExpansion && typeof persistedState.runBoardRowExpansion === 'object'
-    ? Object.entries(persistedState.runBoardRowExpansion).filter(([, v]) => typeof v === 'boolean')
+// 機械の行の開閉を利用者が変えたもの(**機械の鍵** → 開いているか)。**既定はどの行も閉じ**
+// (ユーザー決定)—— expandAll が OFF の間、行は利用者が開かない限り開かない。
+// **行の鍵(rowKey)で引かない** —— 行の鍵は run の pid と「run の有無」を含むので、次の run・
+// 空き⇔実行中 の切り替わりで変わり、記録を失った行が勝手に開閉する。
+// host 側には永続化しない(webview の getState だけ = パネルの寿命)。
+const machineExpansion = new Map(
+  persistedState.runBoardMachineExpansion && typeof persistedState.runBoardMachineExpansion === 'object'
+    ? Object.entries(persistedState.runBoardMachineExpansion).filter(([, v]) => typeof v === 'boolean')
     : [],
 );
 
@@ -54,7 +55,7 @@ const rowExpansion = new Map(
 // (機械分担の run は機械の数だけ行になる)、run の無い機械は1行。
 // **run の行は機械 + pid で引く(groupKey を使わない)** —— 準備中・ビルド中の控えは runID/runGroup が
 // nil で、走り出すと同じ pid の控えが runID 入りに上書きされる。groupKey で引くと走り出した瞬間に
-// 鍵が変わり、利用者が閉じた記録を失って既定(開く)へ戻る
+// 行の DOM が作り直される。**開閉の記録はこの鍵では引かない**(machineExpansion)
 function runRowKey(run) {
   return 'run\u0000' + (run.machine ?? '') + '\u0000' + run.pid;
 }
@@ -65,16 +66,20 @@ function idleRowKey(machine) {
 // 行の DOM とブックキーピング。render() が行の集合に合わせて足し引きする。
 const rows = new Map();
 
-/** その行を開くか。**expandAll が ON なら個別の記録によらず開く**(新しい行も含む)。 */
-function isRowExpanded(key, defaultExpanded) {
-  if (expandAll) {
-    return true;
-  }
-  return rowExpansion.has(key) ? rowExpansion.get(key) : defaultExpanded;
+/** 開閉の記録の鍵(machineList() の綴り = '' が手元)。同じ機械の run の行と空きの行が共有する。 */
+function expansionKey(row) {
+  return row.run ? (row.run.machine ?? LOCAL_MACHINE_KEY) : row.idle.machine;
 }
 
-function persistRowExpansion() {
-  vscode.setState(Object.assign({}, vscode.getState(), { runBoardRowExpansion: Object.fromEntries(rowExpansion) }));
+/** その行を開くか。**expandAll が ON なら個別の記録によらず開く**(新しい行も含む)。 */
+function isRowExpanded(row) {
+  return expandAll || machineExpansion.get(expansionKey(row)) === true;
+}
+
+function persistMachineExpansion() {
+  vscode.setState(Object.assign({}, vscode.getState(), {
+    runBoardMachineExpansion: Object.fromEntries(machineExpansion),
+  }));
 }
 
 function formatMinSec(seconds) {
@@ -275,8 +280,8 @@ runBoardExpandAll.addEventListener('click', (event) => {
   event.stopPropagation();
   if (expandAll) {
     // OFF にしたら個別の記録も捨てて既定へ戻す(残すと OFF にしたのに全部開いたままになる)
-    rowExpansion.clear();
-    persistRowExpansion();
+    machineExpansion.clear();
+    persistMachineExpansion();
   }
   setExpandAll(!expandAll);
   render();
@@ -316,7 +321,7 @@ function updateIdleRow(row, entry) {
     row.statusEl.title = '';
   }
   const expandable = renderDevices(row, machineKey(entry.machine), undefined);
-  applyRowExpansion(row, expandable, false);
+  applyRowExpansion(row, expandable);
 }
 
 /** 行の先頭のマシン名バッジ(**run の行も空きの行も同じ見た目**。機械の色も同じ)。 */
@@ -327,8 +332,8 @@ function showMachineBadge(row, machine) {
 }
 
 /** 三角と行の開閉。子(デバイス・issuer)が無い行の三角は列を揃えるためだけに出す。 */
-function applyRowExpansion(row, expandable, defaultExpanded) {
-  const expanded = expandable && isRowExpanded(row.key, defaultExpanded);
+function applyRowExpansion(row, expandable) {
+  const expanded = expandable && isRowExpanded(row);
   row.rowEl.classList.toggle('run-board-row-expanded', expanded);
   row.chevronEl.classList.toggle('run-board-chevron-empty', !expandable);
   row.chevronEl.dataset.expanded = expanded ? 'true' : 'false';
@@ -383,13 +388,13 @@ function toggleRowExpanded(key) {
   if (expandAll) {
     // **自動展開を抜ける**: いま全行が開いて見えているので、その姿を個別の記録へ写してから
     // 抜ける(写さないと、1行閉じただけで他の行まで既定の姿に戻って見える)
-    for (const rowKey of rows.keys()) {
-      rowExpansion.set(rowKey, true);
+    for (const other of rows.values()) {
+      machineExpansion.set(expansionKey(other), true);
     }
     setExpandAll(false);
   }
-  rowExpansion.set(key, !wasExpanded);
-  persistRowExpansion();
+  machineExpansion.set(expansionKey(row), !wasExpanded);
+  persistMachineExpansion();
   if (leavingExpandAll) {
     // ヘッダのトグルの見た目(ON/OFF)も変わるので、行だけでなく全体を描き直す
     render();
@@ -640,8 +645,7 @@ function updateRow(row, run) {
 
   renderRowTime(row);
   const hasDevices = renderDevices(row, run.machine, run);
-  // **run のある行の既定は開いた状態**(ユーザー決定の図)
-  applyRowExpansion(row, hasDevices || showIssuer, true);
+  applyRowExpansion(row, hasDevices || showIssuer);
 }
 
 function render() {
