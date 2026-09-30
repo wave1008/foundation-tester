@@ -42,12 +42,13 @@ final class DispatchWaitingEventTests: XCTestCase {
 
     // MARK: - 配線(型では守れない: 出す刻みと出す経路)
 
+    private static let repoRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()  // FleetestTests
+        .deletingLastPathComponent()  // Tests
+        .deletingLastPathComponent()  // リポジトリルート
+
     private static func source(_ relative: String) throws -> String {
-        let root = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()  // FleetestTests
-            .deletingLastPathComponent()  // Tests
-            .deletingLastPathComponent()  // リポジトリルート
-        return try String(contentsOf: root.appendingPathComponent(relative), encoding: .utf8)
+        try String(contentsOf: repoRoot.appendingPathComponent(relative), encoding: .utf8)
     }
 
     private static func dispatcherSource() throws -> String {
@@ -110,6 +111,34 @@ final class DispatchWaitingEventTests: XCTestCase {
         let cli = try Self.source("Sources/fleetest/Fleetest.swift")
         XCTAssertFalse(cli.contains("emitWaiting:"),
                        "fleetest run の人間向け stdout に NDJSON を混ぜている")
+    }
+
+    /// **手元のロックを取る経路を全数で仕分ける**(入口だけ見ると fan-out の経路が漏れる —— 実際に
+    /// 複数機械の api run だけが無言で待っていた。maintainer-notes §62.4)。`LocalDispatchLock(` を作る
+    /// ファイルの集合を等号で固定し、api run 側は出し口を渡す・run 側は渡さない・両方から呼ばれる
+    /// `DispatchPrelock` は mode で出し分ける
+    func testEveryLocalLockConstructionIsClassified() throws {
+        let dir = Self.repoRoot.appendingPathComponent("Sources/fleetest")
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".swift") }
+        var constructing: Set<String> = []
+        for file in files where file != "LocalDispatchLock.swift" {
+            let text = try Self.source("Sources/fleetest/\(file)")
+            if text.contains("LocalDispatchLock(") { constructing.insert(file) }
+        }
+        let apiRun: Set<String> = ["ApiRunCommand.swift", "ApiRunMachineFanout.swift"]
+        let cliRun: Set<String> = ["Fleetest.swift", "DeviceMachineRunner.swift"]
+        XCTAssertEqual(constructing, apiRun.union(cliRun).union(["DispatchPrelock.swift"]),
+                       "手元のロックを取る経路が増えた/減った —— NDJSON の出し口を渡すかを決めて表へ載せる")
+        for file in apiRun {
+            XCTAssertTrue(try Self.source("Sources/fleetest/\(file)")
+                .contains("emitWaiting: LocalDispatchLock.apiRunWaitingEmitter()"), "\(file) が出し口を渡していない")
+        }
+        for file in cliRun {
+            XCTAssertFalse(try Self.source("Sources/fleetest/\(file)").contains("emitWaiting:"),
+                           "\(file) が人間向けの stdout に NDJSON を混ぜている")
+        }
+        XCTAssertTrue(try Self.source("Sources/fleetest/DispatchPrelock.swift")
+            .contains("emitWaiting: mode == .apiRun"), "DispatchPrelock が mode で出し分けていない")
     }
 
     /// 組み立ては**1箇所だけ** —— リモートと手元で別々にエンコードすると、欄を足したときに

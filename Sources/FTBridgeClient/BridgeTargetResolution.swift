@@ -24,7 +24,7 @@ public enum BridgeTargetResolution {
         let repoRoot = try? RepoRoot.find()
         if await BridgeDiscovery.isAlive(port: preferred, repoRoot: repoRoot) { return preferred }
         // **応答なしを死と読まない**: 待受が続いているなら乗り換え先は別デバイスになる
-        let bound = BridgeDiscovery.isBound(port: preferred, repoRoot: repoRoot)
+        let bound = BridgeDiscovery.mayBeListening(port: preferred, repoRoot: repoRoot)
         let found = bound ? [] : await BridgeDiscovery.scan(excluding: preferred, repoRoot: repoRoot)
         switch BridgeDiscovery.decide(preferredAlive: false, preferredBound: bound, found: found) {
         case .usePreferred:

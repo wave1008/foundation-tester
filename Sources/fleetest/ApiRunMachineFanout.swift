@@ -67,9 +67,11 @@ enum ApiRunMachineFanout {
         // **build を直列化するための一時的な先取り** —— 配分が確定したら local に配られるかどうかに
         // 関わらず必ず手放す(下)。全順序どおりの本取得は `DispatchPrelock` が local を含めて
         // 改めて行う(§18.10「循環待ちを構造的に作れない」= local だけ順序の外に出さない)。
-        // api run に --force-lock は無い
+        // api run に --force-lock は無い。**待っていることは NDJSON にも出す**(単機の api run と同じ出し口。
+        // 渡し忘れると、複数機械のプロファイルだけ実行ログビューが無言のまま止まって見える → maintainer-notes §62.4)
         var localLock = try LocalDispatchLock(
-            runGroup: runGroup, waitLock: options.waitLock, log: { logStderr($0) }).acquire()
+            runGroup: runGroup, waitLock: options.waitLock, log: { logStderr($0) },
+            emitWaiting: LocalDispatchLock.apiRunWaitingEmitter()).acquire()
         defer { localLock?.release() }
 
         // 割り当てを決めるにはシナリオ一覧が要る(DeviceMachineRunner.run と同じ理由。ここで1回だけ

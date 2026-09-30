@@ -47,11 +47,13 @@ actor LiveBridgeAutoStarter {
     }
 
     /// 接続拒否を観測したとき呼ぶ。idle なら起動タスクを開始する(starting/failed 中は何もしない
-    /// = xcodebuild の二重起動を防ぐ)。戻り値は更新後の状態サフィックス
-    func noteConnectionRefused() -> String {
+    /// = xcodebuild の二重起動を防ぐ)。戻り値は更新後の状態サフィックス。
+    /// `trigger` は**何を見て起動したか**(ログの事実)。応答なしから probe の判定で起動した回を
+    /// 「Connection refused」と書くと、生きたランナーを片付けた回の切り分けができない → maintainer-notes §62.1
+    func noteConnectionRefused(trigger: String = "Connection refused") -> String {
         if case .idle = state {
             state = .starting
-            logStderr("Connection refused — auto-starting the bridge (udid: \(udid), port: \(port))")
+            logStderr("\(trigger) — auto-starting the bridge (udid: \(udid), port: \(port))")
             let repoRoot = self.repoRoot
             let udid = self.udid
             let port = self.port

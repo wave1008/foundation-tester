@@ -1359,11 +1359,11 @@ public struct BridgeProvisioner {
                         derivedDataPath: stateDir.appendingPathComponent("DerivedData"),
                         ownerUDID: sim.udid) {
                     case .stopped(let holder):
-                        log("🔧 \(name): stopped an untracked bridge from an older build on port \(stopStalePort) (\(holder))")
+                        log("🔧 \(name): stopped an untracked bridge left on port \(stopStalePort) (\(holder))")
                     case .notFound:
-                        log("→ \(name): the older bridge on port \(stopStalePort) is no longer listening")
+                        log("→ \(name): the untracked bridge on port \(stopStalePort) is no longer listening")
                     case .foreign(let holder):
-                        log("⚠️ \(name): could not stop the older bridge on port \(stopStalePort) — it is held by \(holder)")
+                        log("⚠️ \(name): could not stop the untracked bridge on port \(stopStalePort) — it is held by \(holder)")
                     }
                 }
             }

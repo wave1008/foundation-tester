@@ -61,7 +61,7 @@ extension MCPServer {
             // 残る。pid ファイルの所有プロセス生死(bridgeOwnerAlive)で補強し、「bound を信じてよいか」
             // (trustBound)を verdict と scan 要否の両方で共有する(手書きの条件式を2箇所に置かない)。
             // 信じてよいときだけ走査を省ける(busy なブリッジは scan に載らず判定に使われない)
-            let bound = BridgeDiscovery.isBound(port: port, repoRoot: repoRoot)
+            let bound = BridgeDiscovery.mayBeListening(port: port, repoRoot: repoRoot)
             let ownerAlive = Self.bridgeOwnerAlive(port: port, repoRoot: repoRoot)
             let running = Self.trustBound(bound: bound, ownerAlive: ownerAlive)
                 ? [] : await BridgeDiscovery.scan(excluding: 0, repoRoot: repoRoot)

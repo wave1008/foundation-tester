@@ -4,10 +4,17 @@
 // 全候補が似ていない = 見つからない(`isEmpty` での否定なら誤った緑)になる。
 
 import CoreGraphics
+import FTTestSupport
 import XCTest
 @testable import FTCore
 
 final class BlankScreenshotJudgementTests: XCTestCase {
+
+    /// Vision / Core ML は複数プロセスが同時に撃つと答えを誤る(SharedResource.visionML の doc)。
+    /// 並列の全体実行では「Vision の異常」の撮り直しが余分に走り、撮影回数の表明が落ちる
+    override func invokeTest() {
+        do { try SharedResource.visionML.locked { super.invokeTest() } } catch { XCTFail("\(error)") }
+    }
 
     private static func blackPNG() throws -> Data {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()

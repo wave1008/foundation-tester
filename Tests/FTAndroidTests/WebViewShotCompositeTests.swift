@@ -107,6 +107,11 @@ final class WebViewShotCompositeTests: XCTestCase {
         let failed = WebViewShotComposite.blankCaptureWarning(
             serial: "x", hasWebViewNode: false, reason: .captureFailed)
         XCTAssertTrue(failed.contains("captureScreenshot"), failed)
+        // 木に WebView が無い画面では WebView と断定しない(ソケットは過去の WebView でも残る)
+        XCTAssertTrue(failed.contains("may not be a WebView at all"), failed)
+        let failedWithNode = WebViewShotComposite.blankCaptureWarning(
+            serial: "x", hasWebViewNode: true, reason: .captureFailed)
+        XCTAssertFalse(failedWithNode.contains("may not be a WebView at all"), failedWithNode)
         let undetermined = WebViewShotComposite.blankCaptureWarning(
             serial: "x", hasWebViewNode: false, reason: .undetermined("why"))
         XCTAssertTrue(undetermined.contains("(why)"), undetermined)
@@ -163,7 +168,7 @@ final class WebViewShotCompositeTests: XCTestCase {
             "証拠が無いのに案内した(WebView の無い画面への誤案内)")
         XCTAssertTrue(WebViewShotComposite.warrantsBlankCaptureWarning(
             hasWebViewNode: false, reason: .captureFailed),
-            "ソケットはあった(=WebView は居た)のに黙った")
+            "ソケットはあった(=WebView が作られたことはある)のに黙った")
         XCTAssertTrue(WebViewShotComposite.warrantsBlankCaptureWarning(
             hasWebViewNode: true, reason: .noDevtoolsSocket),
             "木にノードがある(=WebView は居ると分かっている)のに黙った")

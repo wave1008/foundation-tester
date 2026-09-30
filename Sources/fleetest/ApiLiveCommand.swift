@@ -698,7 +698,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             case .useStarterSuffix:
                 message += await starter?.statusSuffix() ?? Self.bridgeUnreachableHint(probe: probe)
             case .triggerStarter:
-                message += await starter?.noteConnectionRefused() ?? Self.bridgeUnreachableHint(probe: probe)
+                message += await starter?.noteConnectionRefused(
+                    trigger: "No answer and the bridge probe read \(probe)") ?? Self.bridgeUnreachableHint(probe: probe)
             case .probeHint:
                 message += Self.bridgeUnreachableHint(probe: probe)
             }

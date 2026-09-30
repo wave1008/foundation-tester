@@ -147,7 +147,7 @@ final class ApiLiveConnectionHintWiringTests: XCTestCase {
                       "useStarterSuffix は starter.statusSuffix() を使うこと(probe のヒントより優先)")
         XCTAssertFalse(useStarterBody.contains("noteConnectionRefused"),
                        "useStarterSuffix で起動をトリガーしない(starter は既に starting/failed)")
-        XCTAssertTrue(triggerBody.contains("starter?.noteConnectionRefused()"),
+        XCTAssertTrue(triggerBody.contains("starter?.noteConnectionRefused("),
                       "triggerStarter は noteConnectionRefused() で起動をトリガーすること"
                       + "(bridgeConnectionRefused と同じ経路)")
     }

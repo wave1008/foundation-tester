@@ -243,8 +243,11 @@ final class DispatchPrelock {
             },
             acquire: { machine in
                 guard !MachineDispatch.isExplicitLocal(machine.machine) else {
+                    // 待機の NDJSON はリモート(`RemoteRunDispatcher.emitDispatchWaiting`)と同じく apiRun のときだけ
                     let local = LocalDispatchLock(runGroup: runGroup, waitLock: waitLock,
-                                                  forceLock: forceLock, log: log)
+                                                  forceLock: forceLock, log: log,
+                                                  emitWaiting: mode == .apiRun
+                                                      ? LocalDispatchLock.apiRunWaitingEmitter() : nil)
                     // **nil = この fan-out 自身が誰かの子で、手元のロックは既に上が握っている**
                     // (入れ子の run)。そのときも印は配る —— 配らないと孫が自分で取りに行き、
                     // 祖先の握っているロックを待って詰む。解放は握った1箇所(= 上)だけが行う。

@@ -2989,6 +2989,8 @@ udid を毎回添える利用者ほど遅い。走査の前に候補 1 本(明�
 消えた後 = 実地の事象は**ランナーアプリが先に落ち、残った xcodebuild を自動起動が片付けた(正しい動作)**と読むのが自然。
 **アプリが落ちた原因は未解明**(ランナーのログに異常終了の行は無い)。次に同じ事象を見たら、落ちた瞬間のシミュレータの
 クラッシュログとランナーのログを採って切り分ける。**推測で拒否の経路に確認を足し直さない**
+→ **2026-10-01 の続き**: ランナーアプリは落ちていなかった(クラッシュログ無し・ログは再試行の途中で `BUILD INTERRUPTED` = 外からの停止)。
+起動の引き金は接続拒否ではなく probe の判定(§62.1)
 
 ### 59.7 `results log` が中断したシナリオを理由なしに途切れさせる(§58.7 の残り)
 記録は `interrupted: true` を持つのに、ログは全ステップ ✅ のまま終わっていた。見出しに中断を載せる
@@ -3123,3 +3125,68 @@ fleetest-mcp 1 本・udid / serial を毎回添える)+ 取り合いの run(フ�
 
 **テストの教訓**: 足したテストが同じファイルの 2 つ目のクラスに入っていて、`--filter` で 1 本も走らないまま変異が 3 つとも
 生き残って見えた(「実行 3 件」で気付いた)。§4.12 のとおり、生き残ったらまず実行件数を見る。
+
+## 62. 3時間負荷テストで出た穴(2026-10-01)
+
+構成: §59 と同じ(フリート run の周回〔手元 + M1Max / M1Ultra / M1mini〕+ MCP ファズ〔実機 iPhone SE3・Pixel 4a・Pixel 3a、
+取り合い用 sim -08 / emulator-5562〕+ ライブ操作ファズ〔sim -09 / -10・emulator-5566〕+ CLI ファズ + INT・ブリッジ強制停止)に、
+**SIGKILL 系の割り込み**(MCP プロセス・run の親)と **`api run` の並行周回**(待機列の取り合い)を足した。
+この Mac の FM は開始時から死んでいた(`ModelManagerError 1001`・doctor も同じ)ので、視覚検証は OCR だけで判定されていた。
+
+### 62.1 塞がって生きているランナーを、ライブ操作の自動起動が片付けていた(§59.6 の続き)
+**事実**: ライブ操作で a11y の読めないアプリ(RN・カレンダー・ニュース・マップ等。`kAXErrorAPIDisabled` / `kAXErrorServerNotFound`)へ
+向くと、XCTest の再試行でランナーの main が数十秒塞がる。3 時間で sim-09 / -10 の自動起動は **103 回**、うち **90 回が生きた
+xcodebuild の片付け**。控えたランナーのログは**全部** XCTest の処理の途中(`Checking existence … (retry 1)` 等)で
+`** BUILD INTERRUPTED **` = 外からの SIGTERM で終わり、自死(504 / exit 70)もクラッシュレポートも無い。自動起動の直前は毎回
+「network connection was lost」で、**接続拒否は1度も無い**(拒否は片付けた後にだけ出る)。つまり起動は
+`BridgeUnreachableGuidance` の `.triggerStarter` = probe が `.notBound` か `.transportFailed` を返した回。
+
+**直したこと(入口の畳み込み)**: `probeStatus` の入口が `isBound`(= `connectProbe == .connected`)で、300ms で返事が無い・
+reset などの `.unknown` を `.notBound`(誰も居ない)に畳んでいた(`ConnectProbe` の契約「`.refused` だけが不在の確定証拠」に反する)。
+「居ない」と答えてよいのは `.refused` だけ(`BridgeDiscovery.mayBeListening`)。呼び手 3 つを移した —— `probeStatus` の入口 /
+`BridgeTargetResolution.iosPort`(不明を死と読むと別のデバイスのブリッジへ乗り換える)/ MCP の接続断の判定(`vanished` で記憶を捨てる)。
+**`isBound` に残したのは「不明なら触らない」前段フィルタだけ**(`sweepTunnelOnlyPorts`・doctor)で、`SaturatedListenerProbeTests` が
+呼び手の集合を等号で固定する。
+
+**確かめられていないこと**: 実地で probe が返した値。普通の待受に接続を溢れさせると、以後の connect には ECONNRESET(= `.unknown`)が混ざる(毎回ではない = 実ソケットでは
+決定的な試験にならないので、入口は純粋関数 `entryVerdict` で3値とも固定した)が、**実ランナーを SIGSTOP して 120 本溜めても connect は `connected` のまま**で、backlog 溢れは再現しなかった。
+負荷なしで純正アプリへ 255 操作を撃っても詰まらない。残る候補は ①負荷下での connect の時間切れ(`.unknown` → 今回の修正で塞がる)/
+②`transportFailed` の再分類で lsof が待受を見つけられない(`resolveTransportFailure` は「確かめられない」を元の分類のまま残す)。
+**次回のために自動起動のログを事実にした**(`noteConnectionRefused(trigger:)`)—— 旧「Connection refused — auto-starting」は
+probe 経由の回にも出ていた(事実と違う)。今後は「No answer and the bridge probe read <値>」と出る。
+**型**: 不明を確定値に畳む(§44.1・§59.3 と同族)/ 事実と違うログ。
+
+### 62.2 WebView の無い画面の真っ白なキャプチャを「WebView の層を取り逃した」と案内していた
+E2E-RN(Android)の ID なし画面で、アプリの領域が全面白(木にはネイティブの要素が並ぶ)。警告は「devtools socket is reachable,
+but Page.captureScreenshot returned no image …」= WebView の話をしていた。**devtools ソケットは画面上の WebView の証拠ではない**
+—— アプリが一度でも WebView を作れば、プロセスが続く限り残る(E2E-RN は WebView 画面を持つ)。木に WebView ノードが無いときは
+「WebView とは限らない(アプリが描いていない可能性)」を添える。`warrantsBlankCaptureWarning` のテストが前提にしていた
+「ソケットがあった = WebView が居た」はこの実地で否定された。
+
+### 62.3 記録の無い in-app ブリッジを止めたとき「from an older build」と言っていた
+M1mini で run のたびに「stopped an untracked bridge from an older build」= 前の run の別アプリに注入された in-app ブリッジ。
+この経路(`StaleBridgeStop.stopPortHolder`)は台帳が無いことしか知らず、古いビルドかは確かめていない → 「untracked」だけを言う。
+
+### 62.4 複数機械の `api run` だけ、この Mac のロック待ちが NDJSON に出ていなかった
+拡張の「テストを実行」は `api run`。単機の経路(`ApiRunCommand`)は `dispatchWaiting` を出すが、**プロファイルが複数の機械に
+またがると通る fan-out の経路**(`ApiRunMachineFanout` のビルド前の先取りと、`DispatchPrelock.live` の local の取得)は
+`LocalDispatchLock` に出し口を渡しておらず、待機の案内は stderr だけ = 実行ログビューが無言で止まって見えた
+(実地: `run` の周回と `api run` の周回を同時に回し、E2E-iOS の 4 機プロファイルが 70 秒待つ間 NDJSON 0 行)。
+リモートのロック待ちは `mode == .apiRun` で出していたので、**手元だけが抜けていた**。
+配線の走査テストは入口の2ファイルしか見ていなかった → `LocalDispatchLock(` を作るファイルの集合を等号で固定し、
+api run 側(出し口あり)/ `fleetest run` 側(なし)/ `DispatchPrelock`(mode で出し分け)に仕分ける。
+**型**: 片側だけの配線(§45 と同族)—— **入口で固定しても、入口から分岐した先の経路は固定されない**。
+
+### 62.5 Vision を撃つ試験の直列化の取りこぼし(テスト側)
+`BlankScreenshotJudgementTests` は findImage を実際に Vision へ掛けるのに `SharedResource.visionML` で包んでいなかった。
+修正後の全体実行で「Vision の異常」の撮り直しが余分に走って撮影回数の表明が落ち、単独では 3/3 緑。他の Vision 試験と同じく
+`invokeTest` を包んだ(`VisionUsageLedgerTests` は内側で hostCaches を取り、判定が Vision の正誤に依らないので包まない)。
+
+### 62.6 ツールの不具合ではなかったもの(記録のみ)
+- **アプリの領域が全面白に写る**(iOS の CMP・Android の RN/Flutter。木は満載)が同時刻に複数台で出た。FM と Vision も同じ時期に
+  異常(特徴量の距離 0)だった。テキストの視覚検証は白を「描かれていない」事実として扱う設計(`BlankFrameDetector.isUnjudgeable`
+  の注記)なので赤は設計どおり。起動直後の猶予(`firstFrameBlankObserved`)も超えて白いままだった
+- `waitSeconds` の上限なし(§59 と同じ。`1e308` で ft_snapshot が 150 秒超)
+- `run --fleet <無い名前> --dry-run` が「no scenarios」で落ちる = 既定プロジェクトにシナリオが無いだけ(実在の検査は後段にある)
+- SIGKILL: MCP の印は残るが読み手は pid と開始時刻で照合する / run 親を殺すと手元の子は道連れで終わり、次の run が
+  4 機すべてのロックを「死んだ自分の run」と判定して回収した

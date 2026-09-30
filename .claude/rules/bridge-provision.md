@@ -78,7 +78,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **`.pid` の生死では捕まらない** —— xcodebuild は生きたまま待ち続ける → maintainer-notes §44.1。
   **所要時間だけで「消えた」と言わない** —— 塞がったシミュレータのランナーも backlog が溢れて即切れる
   (シミュレータに転送役は居ない)。ループバックで待受の実体が iproxy でなければ busy(`resolveTransportFailure`)
-  → maintainer-notes §49.2
+  → maintainer-notes §49.2。
+  **「居ない」の根拠は connect の `.refused` だけ**(`BridgeDiscovery.mayBeListening`)—— 溢れた backlog は reset =
+  `.unknown` で、`isBound`(connected だけ true)で門を掛けると生きて塞がったランナーを「居ない」と読み、自動起動が片付けうる → maintainer-notes §62.1
 - **エラーの status はホストの分岐契約**(表は docs/design.md §4.3)。とくに
   **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** —— ホストはこの経路の 409 を無条件に
   「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422** を使う

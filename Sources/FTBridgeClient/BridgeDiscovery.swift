@@ -77,10 +77,18 @@ public enum BridgeDiscovery {
     /// 「応答なし=死」と読まないための材料になる。
     /// IPv4 のみ(実機ブリッジの宛先も provision が IP で残す)。名前解決が要る宛先は false =
     /// 判定材料にしない側へ倒す。**"refused" と "300ms では分からない" のどちらも false**
-    /// (この関数の既存契約)—— 破壊的な判定(掃除・kill)で「居ない」の根拠にする呼び手は
-    /// `connectProbe` を直接見て2つを区別すること
+    /// (この関数の既存契約)—— 「居ない」の根拠にする呼び手(掃除・kill・別ポートへの乗り換え)は
+    /// `mayBeListening` か `connectProbe` を使うこと
     public static func isBound(port: UInt16, repoRoot: URL?) -> Bool {
         connectProbe(port: port, repoRoot: repoRoot) == .connected
+    }
+
+    /// 「誰も居ない」と確定できない(= `.refused` 以外)。**生死・持ち主を決める判定の入口はこちら** ——
+    /// 溢れた待受への connect(ECONNRESET)や 300ms の時間切れは `.unknown` = 居るかもしれない。
+    /// `isBound` で門を掛けると生きて塞がったランナー(XCTest の再試行で main が数十秒止まる)を
+    /// 「居ない」と読み、ライブ操作の自動起動がそれを片付けうる → maintainer-notes §62.1
+    public static func mayBeListening(port: UInt16, repoRoot: URL?) -> Bool {
+        connectProbe(port: port, repoRoot: repoRoot) != .refused
     }
 
     /// `isBound` の生の接続試行結果(3値)。負荷が高いと accept backlog が溢れて 300ms の poll が
@@ -159,7 +167,7 @@ public enum BridgeDiscovery {
     public static func probeStatus(
         port: UInt16, repoRoot: URL?, timeoutSeconds: Double = 2
     ) async -> StatusProbe {
-        guard isBound(port: port, repoRoot: repoRoot) else { return .notBound }
+        if let verdict = entryVerdict(connectProbe(port: port, repoRoot: repoRoot)) { return verdict }
         let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
             ?? BridgeEndpoint(port: port)
         let clock = ContinuousClock()
@@ -188,6 +196,12 @@ public enum BridgeDiscovery {
                 return .answered
             }
         }
+    }
+
+    /// `probeStatus` の入口(純粋関数)。**`.notBound` を返してよいのは `.refused` だけ** —— `.unknown`
+    /// (時間切れ・reset)は居るかもしれないので HTTP の応答で決める(`mayBeListening` と同じ規則)
+    static func entryVerdict(_ connect: ConnectProbe) -> StatusProbe? {
+        connect == .refused ? .notBound : nil
     }
 
     /// 所要時間から busy / 消失を分ける(純粋関数・テスト用)。実ソケットを使わずに境界の
