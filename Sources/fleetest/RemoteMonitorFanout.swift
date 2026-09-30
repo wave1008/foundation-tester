@@ -6,7 +6,7 @@
 // NDJSON を親が取り込む。親がやることは3つだけ:
 //   - `monitorDevices` は**保持する**(親が毎サイクル出す devices 配列へ、実行プロファイルの
 //     並び順のまま差し込む。子と親でサイクルが揃っていないので、そのまま素通しはできない)
-//   - `monitorFrame` / `monitorError` は **"device" だけマシン付きに直して**中継する
+//   - `monitorFrame` は **"device" だけマシン付きに直して**中継する
 //     (子は畳んだプロファイルを見るので自分のデバイスを "local" と名乗り、id にマシンが入らない。
 //     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.machineScoped)
 //   - stdin の制御行(pause/resume/suppressFrames/storageRefresh)は**全子へ素通しする**(id の集合で
@@ -337,7 +337,7 @@ final class RemoteMonitorFanout: @unchecked Sendable {
             return
         }
         guard kind == "monitorDevices" else {
-            // monitorFrame / monitorError。**"device" だけマシン付きに直して**中継する
+            // monitorFrame。**"device" だけマシン付きに直して**中継する
             // (base64 は触らない = 1往復ぶんの無駄を避ける。理由はファイル冒頭)
             relayLine(Self.machineScoped(line: line, machine: machine))
             return

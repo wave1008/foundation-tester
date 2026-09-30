@@ -131,11 +131,9 @@ function applyData(payload) {
   // deviceHealth.js の currentRows を参照するため
   renderDeviceHealth(payload.deviceHealth);
   renderRunsTable(runGroups, statsByRunID);
-  // キー欠落(旧 CLI)を許容する契約(dashboardModel.ts)のため performance は undefined のことがある。
   renderPerformance(payload.performance);
-  // slow/insights はキー欠落(古い CLI)を許容する契約(dashboardModel.ts)のためデフォルト空配列。
-  renderSlowTable(payload.slow || []);
-  renderInsights(payload.insights || []);
+  renderSlowTable(payload.slow);
+  renderInsights(payload.insights);
   renderFlakyTable(payload.flaky);
   renderSummaryTable(payload.summary);
 }

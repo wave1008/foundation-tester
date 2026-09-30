@@ -157,7 +157,6 @@ public final class UsageLedger {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else {
             // ディレクトリが**無い**のは「この機械でまだ一度もこの種の呼び出しをしていない」= 0件。
             // 不明(nil)にすると、使っていない機械の行が永久に「–」になり壊れて見える。
-            // 旧 CLI(控えを書かない版)は欄ごと出さないので、ここを0にしても偽の断定にはならない
             if !FileManager.default.fileExists(atPath: dir.path) {
                 previous = [:]
                 return Delta(calls: 0, failures: 0, totalMs: 0)

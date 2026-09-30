@@ -40,9 +40,8 @@ export interface ScenarioInfo {
 export interface StepsResult {
   scenario: string;
   steps: StepRow[];
-  /** dry-run が出した警告(空の expectation ブロック・台帳に無い #id 等)。旧 CLI との
-   * 互換のため optional(欠けていれば警告なしとして扱う)。 */
-  warnings?: string[];
+  /** dry-run が出した警告(空の expectation ブロック・台帳に無い #id 等)。 */
+  warnings: string[];
 }
 
 export type StepSection = "condition" | "action" | "expectation";
@@ -243,7 +242,7 @@ export interface RunFinishedEvent {
   failed: number;
   testSeconds?: number;
   scenarioTotalSeconds?: number;
-  /** 結果を書いた run の runID(記録しない dry-run / debug と旧 CLI では欠落)。run 完了時に録画タブで
+  /** 結果を書いた run の runID(記録しない dry-run / debug では欠落)。run 完了時に録画タブで
    *  開く run の特定に使う(runEventBus.ts の runEnded.resultRun)。 */
   runID?: string;
 }

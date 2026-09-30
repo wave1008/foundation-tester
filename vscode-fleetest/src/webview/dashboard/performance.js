@@ -2,8 +2,6 @@
 // ダッシュボード最上部のパフォーマンスセクション(#section-performance、monitorHtml.ts の
 // renderDashboardPanel() が静的スケルトンを持つ)。`--performance` run の集計
 // (ApiResultsPayload.performance)を描画する。
-// キー欠落(旧 CLI)は main.js 側で undefined のまま渡ってくるので、performance が undefined なら
-// セクションごと非表示にする(dashboardModel.ts の isApiResultsPayload と同じ契約)。
 
 import { t } from '../i18n.js';
 import { clearChildren, td, tdNum } from './domUtil.js';
@@ -126,10 +124,6 @@ function renderComparisonTable(comparison) {
 }
 
 export function renderPerformance(performance) {
-  if (!performance) {
-    section.style.display = 'none';
-    return;
-  }
   section.style.display = 'block';
 
   const runs = performance.runs;

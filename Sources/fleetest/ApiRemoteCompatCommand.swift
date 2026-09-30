@@ -152,8 +152,7 @@ private struct RemoteCompatMachineJSON: Encodable {
     let revision: String?
     let revisionCompatible: Bool?
     /// `RevisionRelation.rawValue`。revisionCompatible == false かつ published(未 push でない)かつ
-    /// local/remote 両 rev が取れているときだけ non-nil(§18.3 規則1)。後方互換フィールドなので
-    /// ProtocolVersion は上げない
+    /// local/remote 両 rev が取れているときだけ non-nil(§18.3 規則1)
     let revisionRelation: String?
     let toolchain: String?
     /// blocking で止まるか(advisory = ベータ seed だけの差は true のまま)

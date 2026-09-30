@@ -166,8 +166,8 @@ const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
 
 /**
  * `fleetest api remote-machines` の `machineColors`(パレットの定義そのもの。**拡張は定数を
- * 持たない** —— FM 枠の既定値と同じ規律)。配列でなければ undefined(**古い CLI では欠落しうる**。
- * 呼び出し側は色機能を黙って無効にする=ボタンを disabled にし、バッジは既定色のままにする)。
+ * 持たない** —— FM 枠の既定値と同じ規律)。配列でなければ undefined(呼び出し側は出力の形が
+ * 想定外として失敗に倒す)。
  * key/color が非空文字列でない要素・color が `#rrggbb` 形式でない要素は捨てる
  * (webview の `style.backgroundColor` へそのまま入れるためここで検証する)。
  */
@@ -245,7 +245,7 @@ export function diffRemoteHostsForSync(
 export interface RemoteHostsSideFields {
   readonly defaultFMConcurrency?: number;
   readonly local?: LocalMachineEntry;
-  /** バッジ色パレット(表示順 = 配列順)。古い CLI からの応答では undefined。 */
+  /** バッジ色パレット(表示順 = 配列順)。CLI の呼び出しが失敗した回は undefined(前の値を保つ)。 */
   readonly machineColors?: readonly MachineColor[];
 }
 

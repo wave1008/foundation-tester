@@ -41,7 +41,7 @@ test(
       { cwd: REPO_ROOT, stdio: ["pipe", "pipe", "pipe"] },
     );
 
-    // NDJSON としてパース不能な行、および monitorDevices/monitorFrame/monitorError 以外の
+    // NDJSON としてパース不能な行、および isMonitorEvent が受理しない
     // 行種(kind)が混ざっていないかを、テスト終了まで継続して記録する。
     const nonJsonLines = [];
     const nonConformingValues = [];
@@ -129,7 +129,7 @@ test(
       assert.deepEqual(
         nonConformingValues,
         [],
-        "monitorDevices/monitorFrame/monitorError 以外の行種が混ざっていないこと",
+        "isMonitorEvent が受理しない行種が混ざっていないこと",
       );
     } finally {
       if (proc.exitCode === null && proc.signalCode === null) {

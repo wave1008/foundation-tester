@@ -152,7 +152,7 @@ struct Bridge: AsyncParsableCommand {
             // 稼働中ブリッジのスキャン→版一致なら再利用/旧版なら停止して起動し直すをまとめて行う
             // (モニター保持中でも拒否せず再利用・起動する=テスト/操作優先)。
             // xcodegen/build-for-testing も provision()(prepareSharedBuilds)に委ねる ——
-            // 稼働中ブリッジの再利用ではどちらも撃たない(重複ビルドの排除。旧 CLI は無条件で撃っていた)。
+            // 稼働中ブリッジの再利用ではどちらも撃たない(重複ビルドの排除)。
             let spec = DeviceSpec(
                 name: device,
                 kind: physical ? .physical : nil,

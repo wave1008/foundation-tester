@@ -327,7 +327,7 @@ export class MonitorPanelController implements vscode.Disposable {
   private lastKnownDefaultFMConcurrency: number | undefined;
   private lastKnownLocalMachine: LocalMachineEntry | undefined;
   /** バッジ色パレット(CLI 側の唯一の定義元)。**拡張は色の一覧を持たず、読めたものをそのまま配る**。
-   *  古い CLI では undefined のまま(webview 側が色機能を黙って無効にする)。 */
+   *  まだ読めていなければ undefined(webview 側が色機能を無効にする)。 */
   private lastKnownMachineColors: readonly MachineColor[] | undefined;
 
   constructor(
@@ -793,7 +793,7 @@ export class MonitorPanelController implements vscode.Disposable {
       return;
     }
     // 書き込みに失敗した回は**現在値を読み直して理由と一緒に返す** —— 応答が理由だけだと
-    // webview は「ポリシーを読めない古い CLI」と区別できず、欄ごと無効になって次に開き直すまで
+    // webview は「ポリシーを読めない」と区別できず、欄ごと無効になって次に開き直すまで
     // 直せなくなる。読み直しも失敗したなら本当に使えないので理由だけを返す。
     const refreshed = await fetchRetention(deps);
     this.post(
@@ -1412,7 +1412,7 @@ export class MonitorPanelController implements vscode.Disposable {
     }
     // 設定タブ「ログ・録画」のクリーンアップ欄。**保持ポリシーの正は CLI 側のマシン設定**で、拡張は既定値を
     // 持たない。読めなければ error だけを配って webview がセクションを無効表示にする
-    // (コマンドを持たない古い CLI でも他の初期化を止めない)。
+    // (読めなくても他の初期化を止めない)。
     // **2段で読む**: 上限だけなら即座に返る(実測 0.9 秒)が、使用量の集計は全ファイルを
     // stat して回るので実測 21 秒かかる。1回で済ませると、その間ずっと入力欄が空欄になる
     void fetchRetention(this.retentionDeps()).then((result) => {

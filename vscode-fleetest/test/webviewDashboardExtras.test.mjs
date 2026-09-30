@@ -63,6 +63,7 @@ function basePayload(overrides = {}) {
     flaky: [],
     deviceHealth: [],
     slow: [], insights: [],
+    performance: { runs: [], invalidCount: 0, comparison: [] },
     machines: [], runStats: [],
     ...overrides,
   };

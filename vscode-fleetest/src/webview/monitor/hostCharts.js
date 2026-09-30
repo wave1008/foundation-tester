@@ -529,7 +529,7 @@ function hmFormatGb(bytes) {
 
 /**
  * host-metrics の1サンプルを受け取る。**ここでは保持するだけ**で、描画は刻み(hmClock)を持つ
- * 機械のサンプルが来た tick に全行まとめて行う。machine 欄が無い行 = 手元(旧 CLI・手元の子)。
+ * 機械のサンプルが来た tick に全行まとめて行う。machine 欄が無い行 = 手元。
  */
 export function applyHostMetrics(message) {
   const machine = typeof message.machine === 'string' ? message.machine : '';

@@ -25,7 +25,7 @@ function fakeCli() {
       const args = invocation.args;
       const project = args[args.indexOf("--project") + 1];
       calls.push({ project, scenario: args[args.indexOf("--scenario") + 1] });
-      return { exitCode: 0, cancelled: false, json: { steps: [stepRow(project)] } };
+      return { exitCode: 0, cancelled: false, json: { steps: [stepRow(project)], warnings: [] } };
     },
   };
 }
@@ -93,8 +93,8 @@ test("warnings は scene より先の子ノードとして出る", async () => {
   assert.equal(children[1].type, "scene");
 });
 
-test("warnings が無ければ(未指定の旧 CLI 応答含め)先頭は scene のまま", async () => {
-  const cli = fakeCli(); // json に warnings キーが無い旧 CLI 応答を模す
+test("warnings が空なら先頭は scene のまま", async () => {
+  const cli = fakeCli();
   const provider = new StepsTreeDataProvider(
     cli, "/repo", () => ({ binaryPath: "fleetest", buildBeforeRun: false }), { appendLine: () => {} }, fakeEmitter(),
   );

@@ -16,14 +16,11 @@
 //     ブート時固定のため接続中は変化しない値)
 //     ("inRun":bool は ApiMonitorCommand.swift の RunLease.isFresh 判定。供給元は RunLease で、
 //     `fleetest api run` と CLI の `fleetest run` の両方が書く(ProfileRunner.writeRunLease)ため
-//     どちらか使用中なら true。null 化されないが読み手は欠落/非bool を false とみなす)
+//     どちらか使用中なら true)
 //     ("registered":bool は ApiMonitorCommand.determineStates(includeUnregistered:) が合成した
-//     どの実行プロファイルにも記載が無い起動中デバイスなら false。欠落/非boolは true とみなす)
+//     どの実行プロファイルにも記載が無い起動中デバイスなら false)
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
-//   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
-//     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定)が、
-//     読み手としては旧バイナリ互換のため受理し続ける
 //
 // webview 向けメッセージ契約は monitorWebviewMessages.ts、デバイスライフサイクルのキューは
 // monitorDeviceLifecycle.ts、プロファイルのフォーム解析/デバイスカタログは monitorProfileForms.ts。
@@ -42,7 +39,7 @@ export type MonitorPlatform = "ios" | "android";
  * 届いていない)。offline(= 止まっている)と区別する —— 向こうで動いていても手元の simctl/adb
  * には映らないので、offline と言うと「起動したのに未起動のまま」に見える(実害)。 */
 export type MonitorDeviceState = "connected" | "booted" | "offline" | "unknown";
-/** デバイスの実体種別(ApiMonitorCommand の kind。旧 CLI 互換のため欠落時は virtual 扱い)。 */
+/** デバイスの実体種別(ApiMonitorCommand の kind)。 */
 export type MonitorDeviceKind = "virtual" | "physical";
 
 /** freeBytes の意味。"device" = デバイス自身の空き(Android df /data)、
@@ -81,7 +78,7 @@ export interface MonitorDevice {
    * connected な Android のみ・判定不能や iOS は undefined(Swift は null を送るので正規化する)。 */
   readonly renderMode?: "gpu" | "cpu";
   /** デバイスの実体種別。"physical"=実機(iOS 実機は fleetest-simstream が CoreSimulator 私有 API の
-   * ため画面配信不可)。欠落("kind" を返さない旧 CLI)は "virtual" に正規化する。 */
+   * ため画面配信不可)。 */
   readonly kind: MonitorDeviceKind;
   /** iOS 実機のブリッジ宛先ホスト(USB トンネルは "127.0.0.1"、LAN 経由はその LAN IP)。
    * monitorDeviceStreamController.ts が fleetest-devicepoll の --host に渡す。
@@ -92,20 +89,17 @@ export interface MonitorDevice {
   readonly port?: number;
   /** `fleetest api run` と CLI の `fleetest run` のどちらかがこのデバイスを使用中か
    * (ApiMonitorCommand.swift の RunLease.isFresh。供給元は RunLease で両経路が書く=
-   * ProfileRunner.writeRunLease)。Swift は常に true/false を送るが、欠落・非 bool は
-   * false として扱う(isMonitorDevice が正規化)。 */
-  readonly inRun?: boolean;
-  /** このデバイスが画面録画中か。inRun と同じ契約(Swift は常に true/false を送るが、
-   * 欠落・非 bool は false として扱う=isMonitorDevice が正規化。旧バイナリとの互換のため)。 */
-  readonly recording?: boolean;
+   * ProfileRunner.writeRunLease)。 */
+  readonly inRun: boolean;
+  /** このデバイスが画面録画中か。 */
+  readonly recording: boolean;
   /** どれかの実行プロファイルの devices に実在するか。false は ApiMonitorCommand.determineStates(includeUnregistered:)
-   * が合成した起動中デバイス(未登録)。欠落・非 bool は true に正規化する(旧 CLI 互換。
-   * kind と同じ「欠落は通常の表示に寄せる」方針)。 */
-  readonly registered?: boolean;
+   * が合成した起動中デバイス(未登録)。 */
+  readonly registered: boolean;
   /** 画面が凍結しているか(一様フレームが2サイクル連続。ApiMonitorCommand の MonitorFrozenDebounce)。
-   * **1サイクル遅れる**(devices イベントはフレーム取得より前に出る)。欠落・非 bool は false
-   * に正規化する(旧 CLI 互換)。ヘッダの Frozen カウンタとタイルのバッジが消費する。 */
-  readonly frozen?: boolean;
+   * **1サイクル遅れる**(devices イベントはフレーム取得より前に出る)。ヘッダの Frozen カウンタと
+   * タイルのバッジが消費する。 */
+  readonly frozen: boolean;
   /** このデバイスが居る機械(登録名。手元は undefined)。**`host` はブリッジ宛先の IP で別物**。
    * モニターは手元のデバイスしか触れないので、リモートのタイルは状態を観測できない ——
    * タイルにホスト名を出して「どの機械のデバイスか」を分かるようにする
@@ -114,7 +108,7 @@ export interface MonitorDevice {
   /** **他の発行者(共有ランナーの別の利用者)がこのデバイスの画面配信を張っている**
    * (Sources/FTCore/StreamLease.swift)。true の間は配信を起こさずポーリングのままにする ——
    * 同じデバイスを人数ぶん捕捉するとランナーが痛む(docs/remote-runner.md §18.2)。
-   * 手元のデバイス・単独利用・旧 CLI は欠落 = undefined(false と同義)。 */
+   * 手元のデバイス・単独利用は欠落 = undefined(false と同義)。 */
   readonly streamedByOther?: boolean;
   /** Android 実機のブリッジ(常駐 APK)が生きているか。**設定されるのは Android 実機の
    * connected のみ**(ApiMonitorCommand.shouldProbeBridge)。iOS 実機は state==="booted" で
@@ -130,7 +124,7 @@ export interface MonitorDevice {
    * 正規化しない(ダッシュボードの「デバイスの健全性」表が「–」と 0 を区別するため)。 */
   readonly storage?: MonitorDeviceStorage;
   /** このデバイスのストレージを今測っている(契約は Sources/fleetest/ApiMonitorEvents.swift の
-   * ApiMonitorDeviceInfo.storageMeasuring)。欠落・型不正は false */
+   * ApiMonitorDeviceInfo.storageMeasuring) */
   readonly storageMeasuring: boolean;
   /** このデバイスのモニターが最後に受け取った storageRefresh の id。受け取っていなければ undefined。
    * 「自分の要求 id 以上 かつ storageMeasuring が false」= 測り終えた(deviceHealth.js の進捗) */
@@ -206,7 +200,6 @@ export type MonitorEvent =
       readonly width: number;
       readonly height: number;
     }
-  | { readonly kind: "monitorError"; readonly device?: string; readonly message: string }
   // `fleetest monitor pause` の保持状態の変化(ApiMonitorHoldEvent)。webview へは送らず
   // OUTPUT ログだけ(配信の停止自体は、hold 中の全タイル state:"unknown" 化で
   // monitorDeviceStreamController の既存の qualifying 判定が畳む)
@@ -291,35 +284,14 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (value.renderMode !== undefined && value.renderMode !== "gpu" && value.renderMode !== "cpu") {
     value.renderMode = undefined;
   }
-  if (value.inRun !== true && value.inRun !== false) {
-    // 欠落/null/型不正を「未使用中」に寄せる(イベント全体は捨てない)。
-    value.inRun = false;
-  }
-  // kind は後から追加したフィールド。欠落・未知値は virtual に寄せる
-  if (value.kind !== "physical" && value.kind !== "virtual") {
-    value.kind = "virtual";
-  }
   if (value.host === null || typeof value.host !== "string") {
     value.host = undefined;
   }
   if (value.port === null || typeof value.port !== "number") {
     value.port = undefined;
   }
-  if (value.recording !== true && value.recording !== false) {
-    // 欠落/null/型不正を「録画していない」に寄せる(inRun と同じ方針)。
-    value.recording = false;
-  }
-  if (value.registered !== true && value.registered !== false) {
-    // 欠落/null/型不正を「登録済み」に寄せる(旧 CLI は registered を送らない=全デバイスが
-    // 実行プロファイル記載のみだった挙動を保つ)。
-    value.registered = true;
-  }
-  if (value.frozen !== true && value.frozen !== false) {
-    // 欠落/null/型不正を「凍結していない」に寄せる(旧 CLI は frozen を送らない)。
-    value.frozen = false;
-  }
   if (value.streamedByOther !== true) {
-    // 欠落/null/型不正を「他人は配信していない」に寄せる。**true のときだけ配信を止める**
+    // 欠落/null/型不正を「他人は配信していない」に寄せる(Swift は合成デバイスの行でだけ nil = 観測していない)。**true のときだけ配信を止める**
     // 側に倒す(誤って止めると映像が出ない = 気付きにくい退行になる)。
     value.streamedByOther = undefined;
   }
@@ -328,9 +300,6 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // (「不明」)のまま保つ。false に丸めると bridgeNotRunning() が「未起動」と誤認し、
     // 生きているブリッジのフレームまで消してしまう。
     value.bridgeRunning = undefined;
-  }
-  if (value.storageMeasuring !== true) {
-    value.storageMeasuring = false;
   }
   if (!Number.isSafeInteger(value.storageRefreshId)) {
     value.storageRefreshId = undefined;
@@ -353,10 +322,12 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
       (Array.isArray(value.health) && value.health.every((item) => typeof item === "string"))) &&
     (value.renderMode === undefined || value.renderMode === "gpu" || value.renderMode === "cpu") &&
     typeof value.inRun === "boolean" &&
+    (value.kind === "virtual" || value.kind === "physical") &&
     typeof value.recording === "boolean" &&
     typeof value.registered === "boolean" &&
     typeof value.frozen === "boolean" &&
     (value.bridgeRunning === undefined || typeof value.bridgeRunning === "boolean") &&
+    typeof value.storageMeasuring === "boolean" &&
     (value.storage === undefined || isMonitorDeviceStorage(value.storage))
   );
 }
@@ -459,11 +430,6 @@ export function isMonitorEvent(value: unknown): value is MonitorEvent {
         typeof value.jpegBase64 === "string" &&
         typeof value.width === "number" &&
         typeof value.height === "number"
-      );
-    case "monitorError":
-      return (
-        typeof value.message === "string" &&
-        (value.device === undefined || typeof value.device === "string")
       );
     case "monitorHold":
       return typeof value.active === "boolean";
@@ -602,7 +568,7 @@ export function filterMonitorDevices(
  *  (CLI の FTCore.MachineEnablement と同じ集合。webview 側の複製は machineColors.js の disabledMachines)。
  *  読み手は monitorPanel のデバイス起動を断る門(deviceOp の up)と webview の「⊘無効」の印。
  *  **表示は隠さない**(操作メニューを無効化するだけで、タイル自体は見せる)。
- *  欠落は有効(古い CLI では何も落とさない) */
+ *  欠落は有効(RemoteHostEntry は設定タブの編集とも型を共有し、そちらは enabled を持たないことがある) */
 export function disabledMachineSet(
   hosts: readonly { readonly machine: string; readonly enabled?: boolean }[],
   local: { readonly enabled?: boolean } | undefined,

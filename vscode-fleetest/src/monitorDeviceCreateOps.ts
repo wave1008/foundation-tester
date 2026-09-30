@@ -748,7 +748,7 @@ export class MonitorDeviceCreateOps {
         if (value.kind === "log") {
           this.deps.outputChannel.appendLine(`[delete-device ${msg.name}] ${value.message}`);
         } else {
-          respond(value.ok, value.error, value.referencedBy ?? []);
+          respond(value.ok, value.error, value.referencedBy);
         }
       },
       (line) => this.deps.outputChannel.appendLine(`[delete-device ${msg.name} stdout] ${line}`),

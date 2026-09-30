@@ -254,7 +254,7 @@ function feedMonitorDevices(proc, devices) {
     kind: "monitorDevices",
     devices: devices.map((device) => ({
       id: device.id, name: device.name, platform: "ios", state: device.state ?? "connected", detail: "",
-      inRun: false, recording: false, registered: true, frozen: false, kind: "virtual",
+      inRun: false, recording: false, registered: true, frozen: false, kind: "virtual", storageMeasuring: false,
       ...(device.machine ? { machine: device.machine } : {}),
     })),
   });
@@ -306,6 +306,7 @@ test("リモート機のサンプルには machine が付く(手元のサンプ�
 
   const sample = (cpu) => Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 1, cpu, gpu: 0.1, memUsedBytes: 2, memTotalBytes: 4,
+    fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null,
   }) + "\n");
   procs[1].stdout.emit("data", sample(0.5)); // 手元の host-metrics
   procs[2].stdout.emit("data", sample(0.9)); // mac2 の host-metrics
@@ -317,7 +318,7 @@ test("リモート機のサンプルには machine が付く(手元のサンプ�
   assert.equal(samples[1].cpu, 0.9);
 });
 
-test("fmCalls/fmFailures/fmTotalMs は欄の無い行(旧CLI)を null(不明)として送り、値があれば素通しする", () => {
+test("hostMetrics は全欄を要求し(欠けた行は捨てる)、値と null(不明)を素通しする", () => {
   const procs = [];
   const spawnFn = () => {
     const proc = makeFakeProc();
@@ -328,22 +329,20 @@ test("fmCalls/fmFailures/fmTotalMs は欄の無い行(旧CLI)を null(不明)と
   const manager = new MonitorProcessManager(makeDeps({ post: (m) => posts.push(m) }), spawnFn);
   manager.startAll();
 
-  const oldFormat = Buffer.from(JSON.stringify({
+  const missingFields = Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 1, cpu: 0.5, gpu: 0.1, memUsedBytes: 2, memTotalBytes: 4,
   }) + "\n");
-  const newFormat = Buffer.from(JSON.stringify({
+  const full = Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 2, cpu: 0.6, gpu: 0.2, memUsedBytes: 3, memTotalBytes: 4,
-    fmCalls: 2, fmFailures: 1, fmTotalMs: 500,
+    fmCalls: 2, fmFailures: 1, fmTotalMs: 500, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null,
   }) + "\n");
-  procs[1].stdout.emit("data", oldFormat);
-  procs[1].stdout.emit("data", newFormat);
+  procs[1].stdout.emit("data", missingFields);
+  procs[1].stdout.emit("data", full);
 
   const samples = posts.filter((m) => m.type === "hostMetrics");
-  assert.deepEqual(
-    [samples[0].fmCalls, samples[0].fmFailures, samples[0].fmTotalMs], [null, null, null],
-    "欄が無い行(旧CLI)を落とさず不明として送る",
-  );
-  assert.deepEqual([samples[1].fmCalls, samples[1].fmFailures, samples[1].fmTotalMs], [2, 1, 500]);
+  assert.equal(samples.length, 1, "欄の欠けた行は送らない");
+  assert.deepEqual([samples[0].fmCalls, samples[0].fmFailures, samples[0].fmTotalMs], [2, 1, 500]);
+  assert.equal(samples[0].visionCalls, null);
 });
 
 test("リモート機のデバイスが消えたらその機械の子を止め、行の集合からも外す", () => {
@@ -581,7 +580,7 @@ test("monitorStorage はその台の3欄だけ差し替えて、周期を待た�
   }), spawnFn);
   manager.startMonitorProcess();
   const device = (id) => ({ id, name: id, platform: "ios", state: "connected", detail: "", kind: "virtual",
-    storageMeasuring: true, storageRefreshId: 7 });
+    inRun: false, recording: false, registered: true, frozen: false, storageMeasuring: true, storageRefreshId: 7 });
   feedLine(procs[0], { kind: "monitorDevices", devices: [device("ios:A"), device("ios:B")] });
   posted.length = 0;
   notified.length = 0;
@@ -615,7 +614,7 @@ test("周期の一覧が古い「測定中」を持ってきても、同じ要�
   const manager = new MonitorProcessManager(makeDeps({ post: (message) => posted.push(message) }), spawnFn);
   manager.startMonitorProcess();
   const device = (id, extra) => ({ id, name: id, platform: "ios", state: "connected", detail: "", kind: "virtual",
-    storageMeasuring: true, storageRefreshId: 7, ...extra });
+    inRun: false, recording: false, registered: true, frozen: false, storageMeasuring: true, storageRefreshId: 7, ...extra });
   feedLine(procs[0], { kind: "monitorDevices", devices: [device("ios:A")] });
   feedLine(procs[0], { kind: "monitorStorage", device: "ios:A", storageMeasuring: false, storageRefreshId: 7,
     storage: { usedBytes: 5, freeScope: "hostVolume", measuredAt: "t2", carriedOver: false } });

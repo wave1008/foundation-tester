@@ -362,11 +362,11 @@ function createTile(device) {
   footer.className = 'tile-footer';
   const stateBadge = document.createElement('span');
   stateBadge.className = 'tile-state';
-  const error = document.createElement('span');
-  error.className = 'tile-error';
-  // renderBadge はフッター末尾に置く。tile-error が flex:1 で伸びるため自動的に右端(=タイル右下)に寄る。
+  const spacer = document.createElement('span');
+  spacer.className = 'tile-footer-spacer';
+  // renderBadge はフッター末尾に置く。spacer が flex:1 で伸びるため自動的に右端(=タイル右下)に寄る。
   // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
-  footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, error, renderBadge);
+  footer.append(runningBadge, recordingBadge, frozenBadge, queuedBadge, stateBadge, spacer, renderBadge);
 
   tile.append(machineRow, header, frameWrap, footer);
   grid.appendChild(tile);
@@ -400,7 +400,6 @@ function createTile(device) {
     frameWrapEl: frameWrap,
     imgEl: img,
     placeholderEl: placeholder,
-    errorEl: error,
     frameSrc: null,
     // 直近 setTileAspect した値(文字列)。同値の再書き込みを避けるためだけに持つ。
     tileAspect: undefined,
@@ -1349,17 +1348,6 @@ function findTileByName(name, machine) {
   return undefined;
 }
 
-// 次の frame/devices 受信で自動的にクリアされる(表示し続けない設計)。
-function setTileError(entry, message) {
-  entry.errorEl.textContent = '⚠ ' + message;
-  entry.errorEl.title = message;
-}
-
-function clearTileError(entry) {
-  entry.errorEl.textContent = '';
-  entry.errorEl.removeAttribute('title');
-}
-
 // モニター再起動でタイルを作り直す前の掃除(呼び手は main.js の再起動ボタン)。
 // **selectAllOn は畳まない** —— 0枚の間だけ据え置き、戻ってきたデバイスを applyDevices が選び直す
 // (再起動のたびに全選択が外れると、8台構成では毎回押し直しになる)。
@@ -1540,7 +1528,6 @@ function applyVisibleDevices(devices) {
     }
     renderMeta(entry);
     renderFrame(entry);
-    clearTileError(entry);
   }
   for (const [id, entry] of tiles) {
     if (!seen.has(id)) {
@@ -1604,7 +1591,6 @@ export function applyFrame(message) {
   // message.width/height はここでは使わない(アスペクト比は img の load で実寸から決める)。
   renderMeta(entry);
   renderFrame(entry);
-  clearTileError(entry);
   // stream: true = ストリーミングヘルパー(mjpeg)由来。描画できたのでポーリング抑止を ack する
   if (message.stream) {
     ackStreamRendered(entry);
@@ -1862,11 +1848,6 @@ export function applyWipeStatus(message) {
 }
 
 export function applyDeviceError(message) {
-  const entry = message.device ? tiles.get(message.device) : undefined;
-  if (entry) {
-    setTileError(entry, message.message);
-    return;
-  }
   showBanner(message.message);
 }
 

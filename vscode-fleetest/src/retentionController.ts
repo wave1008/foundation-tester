@@ -8,7 +8,7 @@
 //   fleetest api clean [--dry-run]            → 1行 JSON(合計バイト数とエラー文字列だけ読む)
 // 出力は1行 JSON、失敗は非ゼロ終了(oneShotCli.ts の runOneShot が spawn+JSON.parse を担う)。
 //
-// **コマンドを持たない古い CLI でも壊れない**: 非ゼロ終了・解釈できない出力はどちらも error に
+// **読めなくても壊れない**: 非ゼロ終了・解釈できない出力はどちらも error に
 // 畳んで返し、呼び出し側(monitorPanel.ts)がセクションを無効表示にする。
 
 import type * as vscode from "vscode";

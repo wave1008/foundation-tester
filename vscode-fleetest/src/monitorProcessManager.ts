@@ -87,37 +87,33 @@ type HostMetricsRawEvent = {
   readonly gpu: number | null;
   readonly memUsedBytes: number | null;
   readonly memTotalBytes: number | null;
-  /** FM(Foundation Models)呼び出しの実測。プロトコル版10で追加 —— 欄が無い行(旧 CLI)も
-   *  受理し undefined を null(不明)と同じに扱う(isHostMetricsEvent 参照)。 */
-  readonly fmCalls?: number | null;
-  readonly fmFailures?: number | null;
-  readonly fmTotalMs?: number | null;
+  /** FM(Foundation Models)呼び出しの実測。null = 不明。 */
+  readonly fmCalls: number | null;
+  readonly fmFailures: number | null;
+  readonly fmTotalMs: number | null;
   /** FM の**死活**(プロトコル版11で追加)。回数とは別の軸 —— 回数は「使われたか」しか言えず、
    *  誰も呼んでいない間は死んでいても 0 件と同じ絵になる。"alive" / "dead" / null=不明の3値で、
    *  text と vision は独立に死ぬ(Sources/FTCore/FMLiveness.swift)。混ぜないこと。 */
-  readonly fmTextState?: string | null;
-  readonly fmVisionState?: string | null;
-  readonly fmDeadReason?: string | null;
-  readonly fmCheckedAt?: number | null;
+  readonly fmTextState: string | null;
+  readonly fmVisionState: string | null;
+  readonly fmDeadReason: string | null;
+  readonly fmCheckedAt: number | null;
   /** Vision / Core ML(OCR と画像分類器。FM 以外)呼び出しの実測。供給元は機械グローバルな控えで、このプロセスの
-   *  実測ではない(fmCalls と同じ形。Sources 側は FTCore.VisionUsageLedger 相当)。欄が無い行
-   *  (旧 CLI)も受理し undefined を null(不明)と同じに扱う(isHostMetricsEvent 参照)。 */
-  readonly visionCalls?: number | null;
-  readonly visionFailures?: number | null;
-  readonly visionTotalMs?: number | null;
+   *  実測ではない(fmCalls と同じ形。Sources 側は FTCore.VisionUsageLedger 相当)。null = 不明。 */
+  readonly visionCalls: number | null;
+  readonly visionFailures: number | null;
+  readonly visionTotalMs: number | null;
 };
 
-/** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。
- *  fmCalls/fmFailures/fmTotalMs は欄が無い行(旧 CLI)も受理する —— 厳しくすると行ごと落ちる。 */
+/** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針。
+ *  全欄を CLI が常に送る = Sources/FTCore/HostMetricsSampler.swift の encode)。 */
 function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
   const numberOrNull = (field: unknown): boolean => field === null || typeof field === "number";
-  const numberOrNullOrAbsent = (field: unknown): boolean => field === undefined || numberOrNull(field);
-  const stringOrNullOrAbsent = (field: unknown): boolean =>
-    field === undefined || field === null || typeof field === "string";
+  const stringOrNull = (field: unknown): boolean => field === null || typeof field === "string";
   return (
     record.kind === "hostMetrics" &&
     typeof record.ts === "number" &&
@@ -125,16 +121,16 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     numberOrNull(record.gpu) &&
     numberOrNull(record.memUsedBytes) &&
     numberOrNull(record.memTotalBytes) &&
-    numberOrNullOrAbsent(record.fmCalls) &&
-    numberOrNullOrAbsent(record.fmFailures) &&
-    numberOrNullOrAbsent(record.fmTotalMs) &&
-    stringOrNullOrAbsent(record.fmTextState) &&
-    stringOrNullOrAbsent(record.fmVisionState) &&
-    stringOrNullOrAbsent(record.fmDeadReason) &&
-    numberOrNullOrAbsent(record.fmCheckedAt) &&
-    numberOrNullOrAbsent(record.visionCalls) &&
-    numberOrNullOrAbsent(record.visionFailures) &&
-    numberOrNullOrAbsent(record.visionTotalMs)
+    numberOrNull(record.fmCalls) &&
+    numberOrNull(record.fmFailures) &&
+    numberOrNull(record.fmTotalMs) &&
+    stringOrNull(record.fmTextState) &&
+    stringOrNull(record.fmVisionState) &&
+    stringOrNull(record.fmDeadReason) &&
+    numberOrNull(record.fmCheckedAt) &&
+    numberOrNull(record.visionCalls) &&
+    numberOrNull(record.visionFailures) &&
+    numberOrNull(record.visionTotalMs)
   );
 }
 
@@ -914,17 +910,16 @@ export class MonitorProcessManager {
           gpu: value.gpu,
           memUsedBytes: value.memUsedBytes,
           memTotalBytes: value.memTotalBytes,
-          // undefined(旧 CLI の欠落欄)と null(明示的な不明)を webview 側で同じ扱いにする
-          fmCalls: value.fmCalls ?? null,
-          fmFailures: value.fmFailures ?? null,
-          fmTotalMs: value.fmTotalMs ?? null,
-          fmTextState: value.fmTextState ?? null,
-          fmVisionState: value.fmVisionState ?? null,
-          fmDeadReason: value.fmDeadReason ?? null,
-          fmCheckedAt: value.fmCheckedAt ?? null,
-          visionCalls: value.visionCalls ?? null,
-          visionFailures: value.visionFailures ?? null,
-          visionTotalMs: value.visionTotalMs ?? null,
+          fmCalls: value.fmCalls,
+          fmFailures: value.fmFailures,
+          fmTotalMs: value.fmTotalMs,
+          fmTextState: value.fmTextState,
+          fmVisionState: value.fmVisionState,
+          fmDeadReason: value.fmDeadReason,
+          fmCheckedAt: value.fmCheckedAt,
+          visionCalls: value.visionCalls,
+          visionFailures: value.visionFailures,
+          visionTotalMs: value.visionTotalMs,
         });
       },
       (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),

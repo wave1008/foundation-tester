@@ -51,16 +51,20 @@ test("isListDevicesResult: 正常な値(iOS/Android混在)を true と判定す�
   const value = {
     project: "SampleApp",
     devices: [
-      { name: "シミュ1", platform: "ios", state: "connected", detail: "port 8127", port: 8127, serial: null, udid: "11111111-2222-3333-4444-555555555555" },
-      { name: "エミュ1", platform: "android", state: "offline", detail: "", port: null, serial: null, udid: null },
+      { name: "シミュ1", platform: "ios", state: "connected", detail: "port 8127", port: 8127, serial: null, udid: "11111111-2222-3333-4444-555555555555", kind: "virtual" },
+      { name: "エミュ1", platform: "android", state: "offline", detail: "", port: null, serial: null, udid: null, kind: "virtual" },
     ],
   };
   assert.equal(isListDevicesResult(value), true);
-  // kind を返さない旧 CLI の応答は virtual として補完される(消費側が分岐しなくて済むように)
-  assert.deepEqual(parseListDevicesResult(value), {
-    ...value,
-    devices: value.devices.map((d) => ({ ...d, kind: "virtual" })),
-  });
+  assert.deepEqual(parseListDevicesResult(value), value);
+});
+
+test("isListDevicesResult: kind の欠落は false(CLI は常に送る)", () => {
+  const value = {
+    project: "SampleApp",
+    devices: [{ name: "シミュ1", platform: "ios", state: "connected", detail: "", port: 8127, serial: null, udid: null }],
+  };
+  assert.equal(isListDevicesResult(value), false);
 });
 
 test("isListDevicesResult: kind=physical(実機)を保持する", () => {
@@ -89,7 +93,7 @@ test("isListDevicesResult: 接続済みAndroid(serial あり)も true", () => {
   const value = {
     project: "SampleApp",
     devices: [
-      { name: "エミュ1", platform: "android", state: "connected", detail: "接続済み", port: null, serial: "emulator-5554", udid: null },
+      { name: "エミュ1", platform: "android", state: "connected", detail: "接続済み", port: null, serial: "emulator-5554", udid: null, kind: "virtual" },
     ],
   };
   assert.equal(isListDevicesResult(value), true);

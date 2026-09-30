@@ -9,7 +9,7 @@
 // paintMachineBadge を呼ぶだけで、パレットの中身を知らない。設定タブのスウォッチ選択は
 // machineColorPalette()/hexForColorKey() で読み取り専用に参照する。
 
-let palette = [];            // [{key, color}, ...] 表示順 = 配列順。古い CLI からは空のまま
+let palette = [];            // [{key, color}, ...] 表示順 = 配列順。未受信の間は空
 let paletteByKey = new Map(); // key -> color(hex)
 let hexByMachine = new Map(); // machine -> color(hex)。鍵が不明(パレット未受信・未知の鍵)なら持たない
 // 設定タブのマシン一覧の並び(手元 "local" → hosts[] の順。settingsTab.js の applyRemoteConfig と同じ)。
@@ -17,7 +17,7 @@ let hexByMachine = new Map(); // machine -> color(hex)。鍵が不明(パレッ�
 let machineRank = new Map([['local', 0]]); // machine -> 並び順
 const machineOrderListeners = [];
 // 「マシン有効」が off の機械(手元は "local")。remoteConfig の hosts[].enabled / local.enabled が正
-// (CLI の FTCore.MachineEnablement と同じ集合)。欠落は有効 = 古い CLI では何も出さない
+// (CLI の FTCore.MachineEnablement と同じ集合)。欠落は有効(設定タブの未保存の行は enabled を持たない)
 let disabledMachines = new Set();
 const machineEnablementListeners = [];
 

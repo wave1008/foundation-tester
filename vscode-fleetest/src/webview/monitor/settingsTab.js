@@ -426,7 +426,7 @@ function selectColor(row, key) {
   }
 }
 
-/** row のスウォッチボタンの直下にパレットのグリッドを開く。パレットが空(古い CLI)なら
+/** row のスウォッチボタンの直下にパレットのグリッドを開く。パレットが空(未受信)なら
  *  ボタン自体が disabled なのでここは呼ばれない。 */
 function openColorPicker(row) {
   const palette = machineColorPalette();
@@ -526,7 +526,7 @@ function addHostRow(host, confirmed) {
   swatchButton.className = 'badge badge-remote settings-remote-hosts-color-swatch';
   swatchButton.title = t('wvMonitor2.remote.colorTitle');
   swatchButton.setAttribute('aria-label', t('wvMonitor2.remote.colorTitle'));
-  // パレット未受信(古い CLI)の間は色機能を黙って無効にする
+  // パレット未受信の間は色機能を無効にする
   swatchButton.disabled = machineColorPalette().length === 0;
   swatchButton.addEventListener('click', () => openColorPicker(row));
   row.colorSwatch = swatchButton;
@@ -782,7 +782,7 @@ cleanupNowButton.addEventListener('click', () => {
 });
 
 function applyCleanupOutcome(cleanup) {
-  // 掃除が終わってもセクションごと使えない状態(古い CLI・読みの失敗)なら押せないまま残す
+  // 掃除が終わってもセクションごと使えない状態(読みの失敗)なら押せないまま残す
   cleanupNowButton.disabled = cleanup.state === 'running' || !cleanupAvailable;
   if (cleanup.state === 'running') {
     cleanupResult.textContent = t('wvMonitor2.cleanup.running');
@@ -868,7 +868,7 @@ function applyRetention(message) {
   if (available && typeof policy[RETENTION_SWEEP_KEY] === 'boolean') {
     cleanupEnabledCheckbox.checked = policy[RETENTION_SWEEP_KEY];
   }
-  // 読めなかった理由(コマンドを持たない古い CLI 等)と、保存に失敗した理由を出し分ける
+  // 読めなかった理由と、保存に失敗した理由を出し分ける
   // —— 前者は欄そのものが使えず、後者は打った値が届いていない。
   if (!hasReason) {
     cleanupError.hidden = true;

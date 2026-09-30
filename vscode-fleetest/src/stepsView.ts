@@ -161,7 +161,7 @@ type ViewNode =
   | { readonly type: "scene"; readonly scene: StepTreeSceneNode }
   | { readonly type: "step"; readonly step: StepTreeStepNode };
 
-/** 1回の取得結果。warnings は StepsResult.warnings(旧 CLI との互換で optional)。 */
+/** 1回の取得結果。 */
 interface StepsFetchResult {
   readonly steps: readonly StepRow[];
   readonly warnings: readonly string[];
@@ -323,10 +323,10 @@ export class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>,
       );
     }
     const parsed = result.json as StepsResult | undefined;
-    if (!parsed || !Array.isArray(parsed.steps)) {
+    if (!parsed || !Array.isArray(parsed.steps) || !Array.isArray(parsed.warnings)) {
       throw new Error(t("workbench.stepsView.parseFailed"));
     }
-    return { steps: parsed.steps, warnings: parsed.warnings ?? [] };
+    return { steps: parsed.steps, warnings: parsed.warnings };
   }
 
   private render(): void {

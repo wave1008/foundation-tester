@@ -1,6 +1,6 @@
 // VSCode拡張向け常駐 CLI(fleetest api monitor)。実行プロファイルのデバイスを一定間隔で
 // ポーリングし、状態+スクリーンショット(JPEG)を NDJSON で stdout に流す(monitorDevices/
-// monitorFrame/monitorError の3種のみ。診断は stderr)。デバイス起動・終了はこのコマンドの
+// monitorFrame ほか ApiMonitorEvents.swift の行種。診断は stderr)。デバイス起動・終了はこのコマンドの
 // 責務外。終了条件: stdin EOF または SIGTERM/SIGINT。
 //
 // pause/resume プロトコル(拡張のパネル操作中に使用): stdin に NDJSON 1行で
@@ -26,8 +26,7 @@
 //
 // 過渡的エラーの抑制: iOS ブリッジ/adb はテスト実行中 /status・/screenshot がタイムアウト
 // しやすい(想定内の一時的競合)。1) connected からの降格は連続3回の失敗まで保留(昇格は即時)。
-// 2) connected 中のスクショ取得失敗は monitorError にせず stderr ログ+フレーム skip のみ
-// (monitorError は JPEG変換失敗など状態で説明できない異常に限定)。
+// 2) connected 中のスクショ取得失敗・JPEG 変換失敗は stderr ログ+フレーム skip のみ(タイルへは出さない)。
 // → テスト実行中のフレーム更新間欠化は仕様(異常ではない)。
 
 import ArgumentParser
@@ -45,7 +44,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         commandName: "monitor",
         abstract: "Poll every device in the run profiles (or, with --profile, only that profile's"
             + " enabled devices) at a fixed interval and stream their state and screenshots as"
-            + " NDJSON (monitorDevices/monitorFrame/monitorError) on stdout"
+            + " NDJSON (monitorDevices/monitorFrame and the other events in ApiMonitorEvents.swift) on stdout"
             + " (diagnostics on stderr only; exits on stdin EOF or SIGTERM/SIGINT)")
 
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
@@ -144,8 +143,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let signalSources = installSignalHandlers(stop: stop)
         defer { for source in signalSources { source.cancel() } }
 
-        // 直近の monitorError メッセージ(デバイス毎、同一メッセージの連続 emit 抑制用。
-        // JPEG変換失敗など状態で説明できない異常のみ対象。スクショ取得失敗は loggedFetchFailure 側)
+        // 直近の JPEG 変換失敗の文言(デバイス毎、同一文言の stderr 再ログ抑制用。
+        // スクショ取得失敗は loggedFetchFailure 側)
         var lastErrorMessage: [String: String] = [:]
         // ネットワーク起因のスクショ取得失敗を stderr ログ済みか(デバイス毎。状態が変わるまで再ログしない)
         var loggedFetchFailure: Set<String> = []
@@ -513,7 +512,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 do {
                     png = try await Self.fetchScreenshot(state: state, repoRoot: monitorRepoRoot)
                 } catch {
-                    // 過渡的競合として扱う: monitorError は出さず stderr ログのみ(同一デバイスで
+                    // 過渡的競合として扱う: タイルへは出さず stderr ログのみ(同一デバイスで
                     // 連続する間は再ログしない)、フレームは skip(前回フレームが Webview に残る)
                     if !loggedFetchFailure.contains(state.target.id) {
                         logStderr(

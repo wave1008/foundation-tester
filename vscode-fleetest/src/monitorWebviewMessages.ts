@@ -111,7 +111,7 @@ export type MonitorToWebviewMessage =
       readonly height: number;
       readonly data: Uint8Array;
     }
-  | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
+  | { readonly type: "deviceError"; readonly message: string }
   | { readonly type: "bootBusy"; readonly busy: boolean; readonly bulkOp: "up" | "down" | null }
   // GUI 実行(Test Explorer / 「デバイスモニター」タブの「テストを実行」)の進行。true の間だけツールバーの
   // 対象選択と一括操作を畳み、「テストを実行」を中断ボタンに変える(対向: deviceTiles.js の
@@ -150,8 +150,7 @@ export type MonitorToWebviewMessage =
       /** 現在の fleetest.monitorDeviceFilter 設定値。"running" のときドロップダウンの選択は
        * current("")ではなく RUNNING_DEVICES_PROFILE_VALUE を選ぶ。 */
       readonly filter: MonitorDeviceFilter;
-      /** 対象プロジェクトのアプリプロファイル名一覧(profiles/apps/ 直下)。既存の applyProfileInfo は
-       * このフィールドを無視するだけなので後方互換。 */
+      /** 対象プロジェクトのアプリプロファイル名一覧(profiles/apps/ 直下)。 */
       readonly apps: readonly string[];
       /** 対象プロジェクト名(解決できなければ "")。ワークスペース欄の既定値
        * "TestProjects/<project>/workspace" を透かしで出すのに使う(相対パスはリポジトリルート
@@ -360,7 +359,7 @@ export type MonitorToWebviewMessage =
       readonly local?: { readonly machine: "local"; readonly host: string; readonly fmConcurrency: number;
                          readonly enabled: boolean };
       /** バッジ色パレット(表示順 = 配列順)。**拡張は色の一覧を持たない** —— CLI からそのまま配る。
-       *  古い CLI(欠落)では undefined = settingsTab.js/machineColors.js が色機能を黙って無効にする。 */
+       *  まだ一度も読めていなければ undefined = settingsTab.js/machineColors.js が色機能を無効にする。 */
       readonly machineColors?: readonly MachineColor[];
       /** 直前の setRemoteConfig(追加・削除)が CLI 側で失敗したときの理由。settingsTab.js が
        * 画面に出す。成功時・ready 直後の初回配信では undefined。 */
@@ -378,7 +377,7 @@ export type MonitorToWebviewMessage =
   // (`fleetest api retention`)で、**拡張は既定値を持たない** —— policy(実効値)・defaults・
   // usage はすべて CLI が返したものをそのまま配る(FM 枠と同じ規律)。ready 直後と
   // setRetention/runCleanup の応答で送る。対向: settingsTab.js の applyRetention。
-  // policy が無い(= コマンドを持たない古い CLI・読みの失敗)ときは error だけを載せる ——
+  // policy が無い(= 読みの失敗)ときは error だけを載せる ——
   // webview はセクションを無効表示にして理由を出す。
   | {
       readonly type: "retention";
@@ -591,8 +590,6 @@ export function toWebviewMessage(
         width: event.width,
         height: event.height,
       };
-    case "monitorError":
-      return { type: "deviceError", device: event.device, message: event.message };
     case "monitorRuns":
       return { type: "monitorRuns", machine: event.machine, observed: event.observed, runs: event.runs };
   }

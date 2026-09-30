@@ -54,6 +54,7 @@ const VALID_DEVICE_CATALOG = {
   android: {
     available: true,
     error: null,
+    errorCode: null,
     models: [{ id: "pixel_9_pro", name: "Pixel 9 Pro" }],
     systemImages: [
       {
@@ -64,6 +65,8 @@ const VALID_DEVICE_CATALOG = {
         versionName: "Android 17",
       },
     ],
+    downloadableSystemImages: [],
+    downloadableError: null,
   },
   ios: {
     available: true,
@@ -81,7 +84,10 @@ test("isDeviceCatalogJson: 正常な値を true と判定する", () => {
 
 test("isDeviceCatalogJson: available:false 側は models/deviceTypes 等が空配列でも true(error に理由がある想定)", () => {
   const value = {
-    android: { available: false, error: "adb が見つかりません", models: [], systemImages: [] },
+    android: {
+      available: false, error: "adb が見つかりません", errorCode: "sdk-missing", models: [], systemImages: [],
+      downloadableSystemImages: [], downloadableError: null,
+    },
     ios: VALID_DEVICE_CATALOG.ios,
   };
   assert.equal(isDeviceCatalogJson(value), true);
@@ -121,9 +127,15 @@ test("isDeviceCatalogJson: available が boolean でない、error が string/nu
   assert.equal(isDeviceCatalogJson(badError), false);
 });
 
-test("isDeviceCatalogJson: downloadableSystemImages/downloadableError は旧 CLI 互換で省略可", () => {
-  // 欠落(旧 CLI)は従来どおり true
-  assert.equal(isDeviceCatalogJson(VALID_DEVICE_CATALOG), true);
+test("isDeviceCatalogJson: errorCode/downloadableSystemImages/downloadableError の欠落は false(CLI は常に送る)", () => {
+  for (const key of ["errorCode", "downloadableSystemImages", "downloadableError"]) {
+    const missing = structuredClone(VALID_DEVICE_CATALOG);
+    delete missing.android[key];
+    assert.equal(isDeviceCatalogJson(missing), false, key);
+  }
+});
+
+test("isDeviceCatalogJson: downloadableSystemImages の中身と downloadableError の値", () => {
 
   const withDownloadable = structuredClone(VALID_DEVICE_CATALOG);
   withDownloadable.android.downloadableSystemImages = [
@@ -176,14 +188,17 @@ const VALID_INSTALLED_DEVICES = {
   android: {
     available: true,
     avds: [
-      { displayName: "Pixel 9(Android 16)", id: "Pixel_9" },
-      { displayName: "Pixel_7a", id: "Pixel_7a" }, // displayName===id もありうる(自動生成名のまま)
+      { displayName: "Pixel 9(Android 16)", id: "Pixel_9", model: "pixel_9", os: "Android 16" },
+      // displayName===id もありうる(自動生成名のまま)。読めない model/os は null
+      { displayName: "Pixel_7a", id: "Pixel_7a", model: null, os: null },
     ],
+    physicalDevices: [],
     error: null,
   },
   ios: {
     available: true,
-    devices: [{ name: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000" }],
+    devices: [{ name: "iPhone 17 Pro", os: "27.0", udid: "1C86FAKE-0000-0000-0000-000000000000", model: "iPhone 17 Pro" }],
+    physicalDevices: [],
     error: null,
   },
 };
@@ -194,7 +209,7 @@ test("isInstalledDevicesJson: 正常な値を true と判定する", () => {
 
 test("isInstalledDevicesJson: available:false 側は avds/devices が空配列でも true(error に理由がある想定)", () => {
   const value = {
-    android: { available: false, error: "Android SDK が見つかりません", avds: [] },
+    android: { available: false, error: "Android SDK が見つかりません", avds: [], physicalDevices: [] },
     ios: VALID_INSTALLED_DEVICES.ios,
   };
   assert.equal(isInstalledDevicesJson(value), true);
@@ -321,15 +336,15 @@ test("deleteDeviceApiArgs: プロジェクトを渡したら --project を付け
 
 // ---- isDeleteDeviceEvent ----
 
-test("isDeleteDeviceEvent: log/finished(ok:true/false、referencedBy あり/なし)の正常な値を true と判定する", () => {
+test("isDeleteDeviceEvent: log/finished(ok:true/false、referencedBy 空/あり)の正常な値を true と判定する", () => {
   assert.equal(isDeleteDeviceEvent({ kind: "log", message: "削除しています..." }), true);
-  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: true, error: null }), true);
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: true, error: null }), false, "referencedBy は必須");
   assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: true, error: null, referencedBy: [] }), true);
   assert.equal(
     isDeleteDeviceEvent({ kind: "finished", ok: true, error: null, referencedBy: ["M1", "M2"] }),
     true,
   );
-  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: false, error: "起動中のため削除できません" }), true);
+  assert.equal(isDeleteDeviceEvent({ kind: "finished", ok: false, error: "起動中のため削除できません", referencedBy: [] }), true);
 });
 
 test("isDeleteDeviceEvent: 未知のkind・フィールド欠落/型不一致は false", () => {
@@ -413,13 +428,13 @@ function runMockDeviceOp(mockArgs) {
 
 // ---- 統合: mock-monitor.mjs → NdjsonParser → monitorModel ----
 
-test("統合: mock-monitor.mjs(success パターン)の出力を NdjsonParser → monitorModel に通すと devices→frame×3→deviceError の順のメッセージ列になる", async () => {
-  const messages = await runMockMonitorThroughPipeline(["--pattern", "success"], 5);
+test("統合: mock-monitor.mjs(success パターン)の出力を NdjsonParser → monitorModel に通すと devices→frame×3 の順のメッセージ列になる", async () => {
+  const messages = await runMockMonitorThroughPipeline(["--pattern", "success"], 4);
 
-  assert.equal(messages.length, 5);
+  assert.equal(messages.length, 4);
   assert.deepEqual(
     messages.map((m) => m.type),
-    ["devices", "frame", "frame", "frame", "deviceError"],
+    ["devices", "frame", "frame", "frame"],
   );
 
   assert.equal(messages[0].devices.length, 2);
@@ -433,9 +448,6 @@ test("統合: mock-monitor.mjs(success パターン)の出力を NdjsonParser �
     assert.equal(messages[1 + i].width, 480);
     assert.equal(messages[1 + i].height, 1040);
   }
-
-  assert.equal(messages[4].device, "ios:シミュ2");
-  assert.equal(messages[4].message, "ブリッジに接続できません");
 });
 
 /**

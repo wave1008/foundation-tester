@@ -227,13 +227,13 @@ export interface InsightRecord {
 export interface PerfRunRow {
   /** グループ鍵(フリート計測は runGroup で1行に畳まれる。単機 run はその runID)。 */
   readonly runID: string;
-  /** 畳んだ run の全 runID。本フィールド追加前の CLI ではキー省略あり。 */
-  readonly runIDs?: readonly string[] | null;
+  /** 畳んだ run の全 runID。 */
+  readonly runIDs: readonly string[];
   readonly startedAt: string;
   readonly profile?: string | null;
   readonly host: string;
-  /** グループ内の全機械のホスト名(昇順)。表示は machine へ読み替える。キー省略あり(旧 CLI)。 */
-  readonly hosts?: readonly string[] | null;
+  /** グループ内の全機械のホスト名(昇順)。表示は machine へ読み替える。 */
+  readonly hosts: readonly string[];
   /** run の壁時計(グループ最初の開始〜最後の完了)。未完了等でキー省略あり。 */
   readonly wallClockMs?: number | null;
   /** テスト時間(最初のシナリオ開始〜最後の完了)。稼働率の分母。キー省略あり。 */
@@ -298,17 +298,17 @@ export interface ApiResultsPayload {
   /** デバイスの健全性(§4)。期間内に事象が1つも無いデバイスは含まれない(0件は空配列)。 */
   readonly deviceHealth: readonly DeviceHealthRow[];
   readonly trend?: readonly ScenarioRunRecord[];
-  /** avgDurationMs 降順、最大10件。本フィールド追加前の CLI ではキー欠落(古い CLI との互換で必須にしない)。 */
-  readonly slow?: readonly SlowScenarioRow[];
-  /** severity 順(critical→warn→info)。本フィールド追加前の CLI ではキー欠落。 */
-  readonly insights?: readonly InsightRecord[];
-  /** `--performance` run の集計。本フィールド追加前の CLI ではキー欠落。 */
-  readonly performance?: PerformanceReport;
+  /** avgDurationMs 降順、最大10件。 */
+  readonly slow: readonly SlowScenarioRow[];
+  /** severity 順(critical→warn→info)。 */
+  readonly insights: readonly InsightRecord[];
+  /** `--performance` run の集計。 */
+  readonly performance: PerformanceReport;
   /** 記録の host(ホスト名)→ この Mac の登録名(machine)の読み替え表(facts キャッシュ由来。
-   * 表示時にだけ引く —— 記録・runID は host のまま)。本フィールド追加前の CLI ではキー欠落。 */
-  readonly machines?: readonly MachineAliasRow[];
-  /** runs と同じ集合の per-run 時間統計。本フィールド追加前の CLI ではキー欠落。 */
-  readonly runStats?: readonly RunStatsRow[];
+   * 表示時にだけ引く —— 記録・runID は host のまま)。 */
+  readonly machines: readonly MachineAliasRow[];
+  /** runs と同じ集合の per-run 時間統計。 */
+  readonly runStats: readonly RunStatsRow[];
 }
 
 /** host(記録の鍵)→ machine(表示名)の1組。Swift 側 ApiResultsCommand.MachineAliasEntry と対。 */
@@ -346,8 +346,8 @@ export function isSinceOption(value: unknown): value is SinceOption {
 export type DashboardFromWebviewMessage =
   | { readonly type: "ready" }
   | { readonly type: "refresh" }
-  /** runIDs = 同じ実行(runGroup)の構成 run 全部(先頭 = runID)。旧 webview は省略。 */
-  | { readonly type: "runDetail"; readonly runID: string; readonly runIDs?: readonly string[] }
+  /** runIDs = 同じ実行(runGroup)の構成 run 全部(先頭 = runID)。 */
+  | { readonly type: "runDetail"; readonly runID: string; readonly runIDs: readonly string[] }
   | { readonly type: "trend"; readonly scenarioID: string }
   | { readonly type: "openReport"; readonly path: string }
   /** 失敗ステップの file:line クリック。line は 1 始まり。 */
@@ -532,6 +532,10 @@ function isInsightRecord(value: unknown): value is InsightRecord {
   );
 }
 
+function isStringArray(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === "string");
+}
+
 function isOptStringArray(value: unknown): value is readonly string[] | undefined | null {
   return value === undefined || value === null || (Array.isArray(value) && value.every((v) => typeof v === "string"));
 }
@@ -626,11 +630,11 @@ function isPerfRunRow(value: unknown): value is PerfRunRow {
   if (!isRecord(value)) return false;
   return (
     typeof value.runID === "string" &&
-    isOptStringArray(value.runIDs) &&
+    isStringArray(value.runIDs) &&
     typeof value.startedAt === "string" &&
     isOptString(value.profile) &&
     typeof value.host === "string" &&
-    isOptStringArray(value.hosts) &&
+    isStringArray(value.hosts) &&
     isOptNumber(value.wallClockMs) &&
     isOptNumber(value.testTimeMs) &&
     typeof value.scenarioTotalMs === "number" &&
@@ -692,15 +696,9 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   if (!Array.isArray(value.summary) || !value.summary.every(isScenarioSummaryRow)) return false;
   if (!Array.isArray(value.flaky) || !value.flaky.every(isFlakyRow)) return false;
   if (!Array.isArray(value.deviceHealth) || !value.deviceHealth.every(isDeviceHealthRow)) return false;
-  // slow/insights はキー欠落(古い CLI)を許容するため undefined のみ特別扱いする。
-  if (value.slow !== undefined && (!Array.isArray(value.slow) || !value.slow.every(isSlowScenarioRow))) {
-    return false;
-  }
-  if (value.insights !== undefined && (!Array.isArray(value.insights) || !value.insights.every(isInsightRecord))) {
-    return false;
-  }
+  if (!Array.isArray(value.slow) || !value.slow.every(isSlowScenarioRow)) return false;
+  if (!Array.isArray(value.insights) || !value.insights.every(isInsightRecord)) return false;
   if (
-    value.machines !== undefined &&
     (!Array.isArray(value.machines) ||
       !value.machines.every(
         (m) => isRecord(m) && typeof m.host === "string" && typeof m.machine === "string",
@@ -709,7 +707,6 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
     return false;
   }
   if (
-    value.runStats !== undefined &&
     (!Array.isArray(value.runStats) ||
       !value.runStats.every(
         (s) =>
@@ -728,8 +725,7 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
   ) {
     return false;
   }
-  // performance はキー欠落(旧 CLI)を許容するため undefined のみ特別扱いする。
-  if (value.performance !== undefined && !isPerformanceReport(value.performance)) {
+  if (!isPerformanceReport(value.performance)) {
     return false;
   }
   return true;
@@ -742,8 +738,7 @@ export function isDashboardFromWebviewMessage(value: unknown): value is Dashboar
   if (value.type === "runDetail") {
     return (
       typeof value.runID === "string" &&
-      (value.runIDs === undefined ||
-        (Array.isArray(value.runIDs) && value.runIDs.every((id) => typeof id === "string")))
+      isStringArray(value.runIDs)
     );
   }
   if (value.type === "trend") return typeof value.scenarioID === "string";

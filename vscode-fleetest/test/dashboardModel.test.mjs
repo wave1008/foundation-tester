@@ -49,6 +49,12 @@ function validPayload(overrides = {}) {
         lastEventAt: "2026-07-16T00:00:00Z",
       },
     ],
+    // CLI(ApiResultsBody)が必ず送る欄
+    slow: [],
+    insights: [],
+    performance: { runs: [], invalidCount: 0, comparison: [] },
+    machines: [],
+    runStats: [],
     ...overrides,
   };
 }
@@ -157,11 +163,12 @@ test("isApiResultsPayload: slow/insights の platform が文字列以外なら f
   assert.equal(isApiResultsPayload(badInsight), false);
 });
 
-test("isApiResultsPayload: slow/insights が欠落(旧 CLI 相当)でも true と判定する", () => {
-  const payload = validPayload();
-  delete payload.slow;
-  delete payload.insights;
-  assert.equal(isApiResultsPayload(payload), true);
+test("isApiResultsPayload: CLI が必ず送る欄(slow/insights/performance/machines/runStats)の欠落は false", () => {
+  for (const key of ["slow", "insights", "performance", "machines", "runStats"]) {
+    const payload = validPayload();
+    delete payload[key];
+    assert.equal(isApiResultsPayload(payload), false, key);
+  }
 });
 
 test("isApiResultsPayload: slow の必須フィールド欠落は false", () => {
@@ -286,7 +293,7 @@ test("isDashboardFromWebviewMessage: 未知の type/非object は false", () => 
 });
 
 test("isDashboardFromWebviewMessage: runDetail/trend/openReport を runID/scenarioID/path が string のときのみ true と判定する", () => {
-  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "20260716-000000" }), true);
+  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "20260716-000000", runIDs: ["20260716-000000"] }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "trend", scenarioID: "Login" }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "openReport", path: "SampleApp/results/reports/x.md" }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: 42 }), false);
@@ -295,7 +302,8 @@ test("isDashboardFromWebviewMessage: runDetail/trend/openReport を runID/scenar
   assert.equal(isDashboardFromWebviewMessage({ type: "openReport", path: undefined }), false);
 });
 
-test("isDashboardFromWebviewMessage: runDetail の runIDs(構成 run 全部)は省略可・string 配列のみ許容する", () => {
+test("isDashboardFromWebviewMessage: runDetail の runIDs(構成 run 全部)は必須・string 配列のみ許容する", () => {
+  assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1" }), false);
   assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: ["R1", "R2"] }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: [] }), true);
   assert.equal(isDashboardFromWebviewMessage({ type: "runDetail", runID: "R1", runIDs: [42] }), false);
@@ -362,7 +370,7 @@ test("isDashboardFromWebviewMessage: setSince は since が 7d/30d/90d のとき
   assert.equal(isDashboardFromWebviewMessage({ type: "setSince" }), false);
 });
 
-test("isApiResultsPayload: machines(host→machine 読み替え表)を含む値・欠落(旧 CLI)の両方を true と判定する", () => {
+test("isApiResultsPayload: machines(host→machine 読み替え表)を含む値・空配列を true と判定する", () => {
   const withMachines = validPayload({
     machines: [
       { host: "LDIPC96", machine: "local" },
@@ -383,6 +391,8 @@ test("isApiResultsPayload: machines の要素に host/machine が欠けていれ
 function validPerfRunRow(overrides = {}) {
   return {
     runID: "20260901-000000",
+    runIDs: ["20260901-000000"],
+    hosts: ["M2Ultra"],
     startedAt: "2026-09-01T00:00:00Z",
     profile: "default",
     host: "M2Ultra",
@@ -413,12 +423,6 @@ test("isApiResultsPayload: performance を含む完全な値も true と判定�
   assert.equal(isApiResultsPayload(payload), true);
 });
 
-test("isApiResultsPayload: performance が欠落(旧 CLI 相当)でも true と判定する", () => {
-  const payload = validPayload();
-  assert.equal(isApiResultsPayload(payload), true);
-  assert.equal("performance" in payload, false);
-});
-
 test("isApiResultsPayload: performance.runs が空配列・comparison が空配列でも true と判定する", () => {
   const payload = validPayload({
     performance: { runs: [], invalidCount: 0, comparison: [] },
@@ -432,8 +436,10 @@ test("isApiResultsPayload: performance.runs[] の optional 欄(profile/wallClock
       runs: [
         {
           runID: "20260901-000000",
+          runIDs: ["20260901-000000"],
           startedAt: "2026-09-01T00:00:00Z",
           host: "M2Ultra",
+          hosts: ["M2Ultra"],
           scenarioTotalMs: 480000,
           scenarioCount: 12,
           laneCount: 8,

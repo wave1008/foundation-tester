@@ -58,8 +58,8 @@ if (command === "list-devices") {
   emitStdout({
     project,
     devices: [
-      { name: "シミュ1", platform: "ios", state: "connected", detail: "port 8127", port: 8127, serial: null, udid: "11111111-2222-3333-4444-555555555555" },
-      { name: "エミュ1", platform: "android", state: "offline", detail: "", port: null, serial: null, udid: null },
+      { name: "シミュ1", platform: "ios", state: "connected", detail: "port 8127", port: 8127, serial: null, udid: "11111111-2222-3333-4444-555555555555", kind: "virtual" },
+      { name: "エミュ1", platform: "android", state: "offline", detail: "", port: null, serial: null, udid: null, kind: "virtual" },
     ],
   });
   process.exit(0);

@@ -180,7 +180,7 @@ export const webviewMonitorBStrings = {
     ja: "マシン登録簿への反映に失敗しました: {reason}",
     en: "Failed to save the machine registry: {reason}",
   },
-  // バッジ色スウォッチ(パレットの定義は CLI 側 machineColors[]。古い CLI では未受信のため disabled)
+  // バッジ色スウォッチ(パレットの定義は CLI 側 machineColors[]。未受信の間は disabled)
   "wvMonitor2.remote.colorTitle": { ja: "バッジの色を選ぶ", en: "Choose badge color" },
   "wvMonitor2.remote.enabledTitle": {
     ja: "オフにすると、このマシンへはテストを振り分けない(--runner で明示した実行は除く)",

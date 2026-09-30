@@ -3250,11 +3250,11 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
     列挙して pid で引く。また monitor は 2 秒間隔でこれを呼ぶので、pid ごとに `ps` を spawn すると
     常駐ブリッジ本数 × 0.5 回/秒のプロセス生成になる(1 回にまとめる)
 - `api installed-devices` は `ios.physicalDevices` / `android.physicalDevices` に接続中の実機を返す
-  (既存の `devices` / `avds` はシミュレータ・AVD のまま。追加フィールド=後方互換)。
+  (既存の `devices` / `avds` はシミュレータ・AVD のまま)。
   AVD には `model`(config.ini の `hw.device.name`)と `os`(`image.sysdir.1` の `android-<API>`
   から導出)も付く — エミュレータはプロファイルに機種/OS を持たないため、表示はここが唯一の出所
 - `kind`("virtual"/"physical")を `list-devices` と `monitor` の各デバイスに追加した。
-  拡張側は欠落を "virtual" に正規化する(旧 CLI 互換)
+  拡張側は必須の欄として読む(欠けた行は不正。2026-09-20 の方針で後方互換の読み替えは置かない)
 
 ### 実機と VSCode 拡張
 

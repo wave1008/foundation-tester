@@ -38,14 +38,17 @@ import {
   validateNewRunProfileName,
 } from "../src/monitorModel";
 
+// CLI(ApiMonitorDeviceInfo)が必ず送る欄。欠けた行は不正として弾く(下の「欠落は false」のテスト)
+const REQ = { kind: "virtual", inRun: false, recording: false, registered: true, frozen: false, storageMeasuring: false };
+
 // ---- isMonitorEvent: 正常3種 ----
 
 test("isMonitorEvent: monitorDevices の正常な値を true と判定する", () => {
   const value = {
     kind: "monitorDevices",
     devices: [
-      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み" },
-      { id: "android:エミュ1", name: "エミュ1", platform: "android", state: "offline", detail: "" },
+      { ...REQ, id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み" },
+      { ...REQ, id: "android:エミュ1", name: "エミュ1", platform: "android", state: "offline", detail: "" },
     ],
   };
   assert.equal(isMonitorEvent(value), true);
@@ -62,14 +65,8 @@ test("isMonitorEvent: monitorFrame の正常な値を true と判定する", () 
   assert.equal(isMonitorEvent(value), true);
 });
 
-test("isMonitorEvent: monitorError の正常な値(device あり)を true と判定する", () => {
-  const value = { kind: "monitorError", device: "ios:シミュ1", message: "接続できません" };
-  assert.equal(isMonitorEvent(value), true);
-});
-
-test("isMonitorEvent: monitorError は device 省略でも true(契約上 device は省略されうる)", () => {
-  const value = { kind: "monitorError", message: "実行プロファイルが未設定です" };
-  assert.equal(isMonitorEvent(value), true);
+test("isMonitorEvent: monitorError は CLI が出さない行種なので受理しない", () => {
+  assert.equal(isMonitorEvent({ kind: "monitorError", device: "ios:シミュ1", message: "接続できません" }), false);
 });
 
 test("isMonitorEvent: monitorBridgeLogRotation は candidate:null / 正常な候補を true と判定する", () => {
@@ -128,14 +125,14 @@ test("isMonitorEvent: monitorDevices は devices 配列が無ければ false", (
 test("isMonitorEvent: monitorDevices は要素の state が欠落/不正なら false", () => {
   const missingState = {
     kind: "monitorDevices",
-    devices: [{ id: "ios:シミュ1", name: "シミュ1", platform: "ios", detail: "" }],
+    devices: [{ ...REQ, id: "ios:シミュ1", name: "シミュ1", platform: "ios", detail: "" }],
   };
   assert.equal(isMonitorEvent(missingState), false);
 
   const invalidState = {
     kind: "monitorDevices",
     devices: [
-      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "booting", detail: "" },
+      { ...REQ, id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "booting", detail: "" },
     ],
   };
   assert.equal(isMonitorEvent(invalidState), false);
@@ -146,6 +143,7 @@ test("isMonitorEvent: monitorDevices は要素の state が欠落/不正なら f
     kind: "monitorDevices",
     devices: [
       {
+        ...REQ,
         id: "ios:M1Max/シミュ1", name: "シミュ1", platform: "ios", state: "unknown", detail: "",
         machine: "M1Max",
       },
@@ -158,44 +156,23 @@ test("isMonitorEvent: monitorDevices は要素の platform が ios/android 以�
   const value = {
     kind: "monitorDevices",
     devices: [
-      { id: "x", name: "x", platform: "windows", state: "connected", detail: "" },
+      { ...REQ, id: "x", name: "x", platform: "windows", state: "connected", detail: "" },
     ],
   };
   assert.equal(isMonitorEvent(value), false);
 });
 
-test("isMonitorEvent: monitorDevices の recording は欠落・非boolean値を false に正規化する(inRun と同じ方針)", () => {
-  const missing = {
-    kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "" }],
-  };
-  assert.equal(isMonitorEvent(missing), true);
-  assert.equal(missing.devices[0].recording, false);
-
-  const nullValue = {
-    kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", recording: null }],
-  };
-  assert.equal(isMonitorEvent(nullValue), true);
-  assert.equal(nullValue.devices[0].recording, false);
-
-  const invalidType = {
-    kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", recording: "true" }],
-  };
-  assert.equal(isMonitorEvent(invalidType), true);
-  assert.equal(invalidType.devices[0].recording, false);
-});
-
-test("isMonitorEvent: monitorDevices の frozen は欠落・非boolean値を false に正規化する(旧 CLI 互換)", () => {
-  for (const raw of [undefined, null, "true", 1]) {
-    const device = { id: "d1", name: "d1", platform: "ios", state: "connected", detail: "" };
-    if (raw !== undefined) {
-      device.frozen = raw;
+test("isMonitorEvent: monitorDevices の必須欄(kind/inRun/recording/registered/frozen/storageMeasuring)の欠落・型不正は false", () => {
+  for (const key of Object.keys(REQ)) {
+    for (const raw of [undefined, null, "true", 1]) {
+      const device = { ...REQ, id: "d1", name: "d1", platform: "ios", state: "connected", detail: "" };
+      if (raw === undefined) {
+        delete device[key];
+      } else {
+        device[key] = raw;
+      }
+      assert.equal(isMonitorEvent({ kind: "monitorDevices", devices: [device] }), false, `${key}=${JSON.stringify(raw)}`);
     }
-    const value = { kind: "monitorDevices", devices: [device] };
-    assert.equal(isMonitorEvent(value), true);
-    assert.equal(value.devices[0].frozen, false, `frozen=${JSON.stringify(raw)}`);
   }
 });
 
@@ -203,8 +180,8 @@ test("isMonitorEvent: monitorDevices の recording は true/false をそのま�
   const value = {
     kind: "monitorDevices",
     devices: [
-      { id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", recording: true },
-      { id: "d2", name: "d2", platform: "android", state: "connected", detail: "", recording: false },
+      { ...REQ, id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", recording: true },
+      { ...REQ, id: "d2", name: "d2", platform: "android", state: "connected", detail: "", recording: false },
     ],
   };
   assert.equal(isMonitorEvent(value), true);
@@ -212,35 +189,12 @@ test("isMonitorEvent: monitorDevices の recording は true/false をそのま�
   assert.equal(value.devices[1].recording, false);
 });
 
-test("isMonitorEvent: monitorDevices の registered は欠落・非boolean値を true に正規化する(旧CLI互換)", () => {
-  const missing = {
-    kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "" }],
-  };
-  assert.equal(isMonitorEvent(missing), true);
-  assert.equal(missing.devices[0].registered, true);
-
-  const nullValue = {
-    kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: null }],
-  };
-  assert.equal(isMonitorEvent(nullValue), true);
-  assert.equal(nullValue.devices[0].registered, true);
-
-  const invalidType = {
-    kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: "false" }],
-  };
-  assert.equal(isMonitorEvent(invalidType), true);
-  assert.equal(invalidType.devices[0].registered, true);
-});
-
 test("isMonitorEvent: monitorDevices の registered は true/false をそのまま保持する", () => {
   const value = {
     kind: "monitorDevices",
     devices: [
-      { id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: true },
-      { id: "d2", name: "d2", platform: "android", state: "connected", detail: "", registered: false },
+      { ...REQ, id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: true },
+      { ...REQ, id: "d2", name: "d2", platform: "android", state: "connected", detail: "", registered: false },
     ],
   };
   assert.equal(isMonitorEvent(value), true);
@@ -254,7 +208,7 @@ test("isMonitorEvent: monitorDevices の registered は true/false をそのま�
 test("isMonitorEvent: monitorDevices の bridgeRunning は欠落・null・非boolean値を undefined に正規化する(false に倒さない)", () => {
   const missing = {
     kind: "monitorDevices",
-    devices: [{ id: "d1", name: "d1", platform: "android", state: "connected", detail: "" }],
+    devices: [{ ...REQ, id: "d1", name: "d1", platform: "android", state: "connected", detail: "" }],
   };
   assert.equal(isMonitorEvent(missing), true);
   assert.equal(missing.devices[0].bridgeRunning, undefined);
@@ -262,7 +216,7 @@ test("isMonitorEvent: monitorDevices の bridgeRunning は欠落・null・非boo
   const nullValue = {
     kind: "monitorDevices",
     devices: [
-      { id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: null },
+      { ...REQ, id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: null },
     ],
   };
   assert.equal(isMonitorEvent(nullValue), true);
@@ -271,7 +225,7 @@ test("isMonitorEvent: monitorDevices の bridgeRunning は欠落・null・非boo
   const invalidType = {
     kind: "monitorDevices",
     devices: [
-      { id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: "false" },
+      { ...REQ, id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: "false" },
     ],
   };
   assert.equal(isMonitorEvent(invalidType), true);
@@ -282,9 +236,9 @@ test("isMonitorEvent: monitorDevices の bridgeRunning は true/false を区別�
   const value = {
     kind: "monitorDevices",
     devices: [
-      { id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: true },
-      { id: "d2", name: "d2", platform: "android", state: "connected", detail: "", bridgeRunning: false },
-      { id: "d3", name: "d3", platform: "ios", state: "connected", detail: "" },
+      { ...REQ, id: "d1", name: "d1", platform: "android", state: "connected", detail: "", bridgeRunning: true },
+      { ...REQ, id: "d2", name: "d2", platform: "android", state: "connected", detail: "", bridgeRunning: false },
+      { ...REQ, id: "d3", name: "d3", platform: "ios", state: "connected", detail: "" },
     ],
   };
   assert.equal(isMonitorEvent(value), true);
@@ -297,7 +251,7 @@ test("isMonitorEvent: monitorDevices の storage は欠落・null・型不正を
   for (const raw of [undefined, null, "not-an-object", { usedBytes: 1 }, { usedBytes: 1, freeScope: "unknown", measuredAt: "t", carriedOver: false },
     // carriedOver は必須(欠落を「測り直した値」に倒さない)
     { usedBytes: 1, freeScope: "device", measuredAt: "t" }]) {
-    const device = { id: "d1", name: "d1", platform: "android", state: "connected", detail: "" };
+    const device = { ...REQ, id: "d1", name: "d1", platform: "android", state: "connected", detail: "" };
     if (raw !== undefined) {
       device.storage = raw;
     }
@@ -312,6 +266,7 @@ test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま�
     kind: "monitorDevices",
     devices: [
       {
+        ...REQ,
         id: "d1", name: "d1", platform: "android", state: "connected", detail: "",
         storage: { usedBytes: 1000, freeBytes: 2000, freeScope: "device", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
       },
@@ -326,6 +281,7 @@ test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま�
     kind: "monitorDevices",
     devices: [
       {
+        ...REQ,
         id: "d2", name: "d2", platform: "ios", state: "connected", detail: "",
         storage: { usedBytes: 500, freeBytes: null, freeScope: "hostVolume", measuredAt: "2026-09-27T00:00:00Z", carriedOver: false },
       },
@@ -336,13 +292,13 @@ test("isMonitorEvent: monitorDevices の storage は正しい形をそのまま�
   assert.equal(noFree.devices[0].storage.freeScope, "hostVolume");
 });
 
-test("isMonitorEvent: storageMeasuring は true だけを true に・storageRefreshId は安全な整数だけ残す", () => {
-  const device = (extra) => ({ id: "d", name: "d", platform: "ios", state: "connected", detail: "", ...extra });
+test("isMonitorEvent: storageMeasuring は保持し、storageRefreshId は安全な整数だけ残す", () => {
+  const device = (extra) => ({ ...REQ, id: "d", name: "d", platform: "ios", state: "connected", detail: "", ...extra });
   const value = {
     kind: "monitorDevices",
     devices: [
       device({ storageMeasuring: true, storageRefreshId: 1790000000000 }),
-      device({ storageMeasuring: "true", storageRefreshId: null }),
+      device({ storageRefreshId: null }),
       device({ storageRefreshId: 1.5 }),
     ],
   };
@@ -381,11 +337,6 @@ test("isMonitorEvent: monitorFrame は width/height が欠落/非数値なら fa
   );
 });
 
-test("isMonitorEvent: monitorError は message が欠落/非文字列なら false", () => {
-  assert.equal(isMonitorEvent({ kind: "monitorError", device: "d" }), false);
-  assert.equal(isMonitorEvent({ kind: "monitorError", message: 123 }), false);
-});
-
 // ---- toWebviewMessage: 変換 ----
 
 // デバイスの一覧だけは toWebviewMessage を通さない —— 表示フィルタ(「起動中のデバイス」)を
@@ -393,7 +344,7 @@ test("isMonitorEvent: monitorError は message が欠落/非文字列なら fals
 // docs/design.md §18.5)。toWebviewMessage 側は Exclude してあるので通し忘れはコンパイルで止まる。
 test("devicesToWebviewMessage: 一覧は絞らず filter を添える", () => {
   const devices = [
-    { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "offline", detail: "未起動" },
+    { ...REQ, id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "offline", detail: "未起動" },
   ];
   assert.deepEqual(devicesToWebviewMessage(devices, "running"), {
     type: "devices",
@@ -416,15 +367,6 @@ test("toWebviewMessage: monitorFrame → { type: 'frame', ... }", () => {
     jpegBase64: "AAAA",
     width: 480,
     height: 1040,
-  });
-});
-
-test("toWebviewMessage: monitorError → { type: 'deviceError', device, message }", () => {
-  const event = { kind: "monitorError", device: "ios:シミュ2", message: "接続できません" };
-  assert.deepEqual(toWebviewMessage(event), {
-    type: "deviceError",
-    device: "ios:シミュ2",
-    message: "接続できません",
   });
 });
 
@@ -999,18 +941,19 @@ test("disabledMachineSet: enabled:false の機械と local.enabled:false の手�
   assert.equal(disabledMachineSet([{ machine: "A" }], undefined).size, 0);
 });
 
-const SIM1 = { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "" };
-const SIM2 = { id: "ios:シミュ2", name: "シミュ2", platform: "ios", state: "booted", detail: "" };
-const SIM3_OFFLINE = { id: "ios:シミュ3", name: "シミュ3", platform: "ios", state: "offline", detail: "" };
-const EMU1 = { id: "android:エミュ1", name: "エミュ1", platform: "android", state: "connected", detail: "" };
+const SIM1 = { ...REQ, id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "" };
+const SIM2 = { ...REQ, id: "ios:シミュ2", name: "シミュ2", platform: "ios", state: "booted", detail: "" };
+const SIM3_OFFLINE = { ...REQ, id: "ios:シミュ3", name: "シミュ3", platform: "ios", state: "offline", detail: "" };
+const EMU1 = { ...REQ, id: "android:エミュ1", name: "エミュ1", platform: "android", state: "connected", detail: "" };
 const IPHONE_PHYSICAL_NO_BRIDGE = {
+  ...REQ,
   id: "ios:実機1", name: "実機1", platform: "ios", state: "booted", detail: "", kind: "physical",
 };
 
 test("filterMonitorDevices: 'running' は unknown(誰も観測していない)を含めない", () => {
   const devices = [
-    { id: "ios:A", name: "A", platform: "ios", state: "connected", detail: "", kind: "virtual" },
-    { id: "ios:M1Max/A", name: "A", platform: "ios", state: "unknown", detail: "", kind: "virtual",
+    { ...REQ, id: "ios:A", name: "A", platform: "ios", state: "connected", detail: "", kind: "virtual" },
+    { ...REQ, id: "ios:M1Max/A", name: "A", platform: "ios", state: "unknown", detail: "", kind: "virtual",
       machine: "M1Max" },
   ];
   assert.deepEqual(filterMonitorDevices(devices, "running").map((d) => d.id), ["ios:A"]);
@@ -1049,6 +992,7 @@ test("filterMonitorDevices: booted の iOS 実機(ブリッジ不在)も起動�
 test("filterMonitorDevices: connected の iOS 実機・booted の Android 実機は残す", () => {
   const iosConnected = { ...IPHONE_PHYSICAL_NO_BRIDGE, state: "connected" };
   const androidBooting = {
+    ...REQ,
     id: "android:実機A", name: "実機A", platform: "android", state: "booted", detail: "", kind: "physical",
   };
   assert.deepEqual(filterMonitorDevices([iosConnected, androidBooting], "running"), [iosConnected, androidBooting]);

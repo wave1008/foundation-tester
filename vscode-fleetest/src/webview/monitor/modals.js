@@ -98,8 +98,8 @@ function fillSelect(select, options) {
   }
 }
 
-/** fillSelect のグループ付き版。downloadable が空なら**従来どおりフラット**に描く(optgroup を
- * 出さない = ダウンロード候補を返さない旧 CLI・iOS では見た目が1バイトも変わらない)。
+/** fillSelect のグループ付き版。downloadable が空なら**フラット**に描く(optgroup を
+ * 出さない = ダウンロード候補が無いとき・iOS では見出しを出さない)。
  * downloadable が非空のときだけ「インストール済み」/「ダウンロードが必要」の2 optgroup に分ける
  * (installed が空でも見出しごと出さない = 空グループを見せない)。 */
 function fillSelectGrouped(select, installed, downloadable) {

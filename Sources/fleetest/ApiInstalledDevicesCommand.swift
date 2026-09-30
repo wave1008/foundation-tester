@@ -125,7 +125,7 @@ private struct ApiInstalledIOSCatalog: Encodable {
     let available: Bool
     let error: String?
     let devices: [ApiInstalledIOSDevice]
-    /// 接続中の実機(kind=physical で登録する候補)。追加フィールド=後方互換
+    /// 接続中の実機(kind=physical で登録する候補)
     let physicalDevices: [ApiPhysicalIOSDevice]
 
     private enum CodingKeys: String, CodingKey {
@@ -177,7 +177,7 @@ private struct ApiInstalledAndroidCatalog: Encodable {
     let available: Bool
     let error: String?
     let avds: [ApiInstalledAVD]
-    /// 接続中の実機(kind=physical で登録する候補)。追加フィールド=後方互換
+    /// 接続中の実機(kind=physical で登録する候補)
     let physicalDevices: [ApiPhysicalAndroidDevice]
 
     private enum CodingKeys: String, CodingKey {

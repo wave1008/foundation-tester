@@ -182,7 +182,7 @@ function groupResultCell(members) {
 }
 
 /** groups = groupRuns(runs) の結果(1要素 = 1実行の構成 run 配列)。statsByRunID は
- * payload.runStats の Map(旧 CLI では空 = 時間統計の列は「–」)。 */
+ * payload.runStats の Map(統計が無い run は時間統計の列が「–」)。 */
 export function renderRunsTable(groups, statsByRunID) {
   const body = document.getElementById('table-runs-body');
   clearChildren(body);

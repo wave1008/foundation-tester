@@ -6,8 +6,7 @@
 // 使い方: node mock-monitor.mjs [--project <P>] [--interval <秒>] [--max-width <px>] [--pattern <name>]
 //   pattern:
 //     success (既定): monitorDevices(2台: connected 1 / booted 1) →
-//                      connected デバイスの monitorFrame を3枚 →
-//                      booted デバイスの monitorError の順に1回だけ出力する。
+//                      connected デバイスの monitorFrame を3枚の順に1回だけ出力する。
 //
 //   --project/--interval/--max-width は実際の CLI 同様に受け付けるが無視する。
 //
@@ -39,13 +38,19 @@ function runSuccess() {
   emit({
     kind: "monitorDevices",
     devices: [
-      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み" },
+      { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "接続済み", kind: "virtual", inRun: false, recording: false, registered: true, frozen: false, storageMeasuring: false },
       {
         id: "ios:シミュ2",
         name: "シミュ2",
         platform: "ios",
         state: "booted",
         detail: "ブリッジ未接続",
+        kind: "virtual",
+        inRun: false,
+        recording: false,
+        registered: true,
+        frozen: false,
+        storageMeasuring: false,
       },
     ],
   });
@@ -58,7 +63,6 @@ function runSuccess() {
       height: 1040,
     });
   }
-  emit({ kind: "monitorError", device: "ios:シミュ2", message: "ブリッジに接続できません" });
 }
 
 switch (pattern) {

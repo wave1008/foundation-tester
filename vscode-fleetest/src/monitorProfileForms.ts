@@ -790,15 +790,14 @@ export type AndroidCatalogErrorCode = "sdk-missing" | "avdmanager-missing" | "av
 export interface AndroidCatalog {
   readonly available: boolean;
   readonly error: string | null;
-  /** 旧 CLI は送ってこないため省略可(その場合ボタンは出さず理由文だけ出す)。 */
-  readonly errorCode?: AndroidCatalogErrorCode | null;
+  /** 使えない理由の種別(使えるときは null)。 */
+  readonly errorCode: AndroidCatalogErrorCode | null;
   readonly models: readonly AndroidCatalogModel[];
   readonly systemImages: readonly AndroidCatalogSystemImage[];
-  /** ダウンロードして導入できるシステムイメージ(既にインストール済みのものは含まない)。
-   * 旧 CLI は送ってこないため省略可(その場合「デバイスを追加」は systemImages だけを見せる)。 */
-  readonly downloadableSystemImages?: readonly AndroidCatalogDownloadableSystemImage[];
-  /** ダウンロード候補の取得自体が失敗した理由(英語。枠だけ i18n)。旧 CLI は送ってこないため省略可。 */
-  readonly downloadableError?: string | null;
+  /** ダウンロードして導入できるシステムイメージ(既にインストール済みのものは含まない)。 */
+  readonly downloadableSystemImages: readonly AndroidCatalogDownloadableSystemImage[];
+  /** ダウンロード候補の取得自体が失敗した理由(英語。枠だけ i18n)。失敗していなければ null。 */
+  readonly downloadableError: string | null;
 }
 
 export interface IosCatalogDeviceType {
@@ -878,17 +877,14 @@ function isAndroidCatalog(value: unknown): value is AndroidCatalog {
     typeof value.available === "boolean" &&
     (value.error === null || typeof value.error === "string") &&
     // 未知のコードは「知らない理由」として扱えるよう string を通す(分岐側が既知値だけ見る)
-    (value.errorCode === undefined || value.errorCode === null || typeof value.errorCode === "string") &&
+    (value.errorCode === null || typeof value.errorCode === "string") &&
     Array.isArray(value.models) &&
     value.models.every(isAndroidCatalogModel) &&
     Array.isArray(value.systemImages) &&
     value.systemImages.every(isAndroidCatalogSystemImage) &&
-    // 旧 CLI は送ってこないため欠落を許容する(欠落時も webview は動く)
-    (value.downloadableSystemImages === undefined ||
-      (Array.isArray(value.downloadableSystemImages) &&
-        value.downloadableSystemImages.every(isAndroidCatalogDownloadableSystemImage))) &&
-    (value.downloadableError === undefined || value.downloadableError === null ||
-      typeof value.downloadableError === "string")
+    Array.isArray(value.downloadableSystemImages) &&
+    value.downloadableSystemImages.every(isAndroidCatalogDownloadableSystemImage) &&
+    (value.downloadableError === null || typeof value.downloadableError === "string")
   );
 }
 
@@ -917,18 +913,18 @@ export function isDeviceCatalogJson(value: unknown): value is DeviceCatalog {
 export interface InstalledAndroidAvd {
   readonly displayName: string;
   readonly id: string;
-  /** config.ini の hw.device.name(例 "pixel_9")。旧 CLI は返さないため省略可。 */
-  readonly model?: string | null;
-  /** image.sysdir.1 から導出した OS 表記(例 "Android 15")。旧 CLI は返さないため省略可。 */
-  readonly os?: string | null;
+  /** config.ini の hw.device.name(例 "pixel_9")。読めなければ null。 */
+  readonly model: string | null;
+  /** image.sysdir.1 から導出した OS 表記(例 "Android 15")。読めなければ null。 */
+  readonly os: string | null;
 }
 
 /** 接続中の Android 実機(installed-devices の android.physicalDevices)。 */
 export interface InstalledAndroidPhysicalDevice {
   /** ro.product.model(取れなければ serial)。 */
   readonly model: string;
-  /** ro.build.version.release(例 "13")。旧 CLI は返さないため省略可。 */
-  readonly os?: string;
+  /** ro.build.version.release(例 "13")。 */
+  readonly os: string;
   /** プロジェクトのデバイスカタログの serial にそのまま書ける値。 */
   readonly serial: string;
 }
@@ -936,8 +932,7 @@ export interface InstalledAndroidPhysicalDevice {
 export interface InstalledAndroidDevices {
   readonly available: boolean;
   readonly avds: readonly InstalledAndroidAvd[];
-  /** 旧 CLI は返さないため省略可(欠落=実機なし扱い)。 */
-  readonly physicalDevices?: readonly InstalledAndroidPhysicalDevice[];
+  readonly physicalDevices: readonly InstalledAndroidPhysicalDevice[];
   readonly error: string | null;
 }
 
@@ -945,9 +940,8 @@ export interface InstalledIosDevice {
   readonly name: string;
   readonly os: string;
   readonly udid: string;
-  /** Xcode の Model(デバイスタイプ名。例 "iPhone 17 Pro")。旧 CLI は返さないため省略可、
-   * 取得できなければ null。 */
-  readonly model?: string | null;
+  /** Xcode の Model(デバイスタイプ名。例 "iPhone 17 Pro")。取得できなければ null。 */
+  readonly model: string | null;
 }
 
 /** 接続中の iOS 実機(installed-devices の ios.physicalDevices)。 */
@@ -959,15 +953,14 @@ export interface InstalledIosPhysicalDevice {
   readonly udid: string;
   /** "wired" / "localNetwork" 等。 */
   readonly transport: string;
-  /** 機種名(marketingName。例 "iPhone 15 Pro")。旧 CLI は返さないため省略可。 */
-  readonly model?: string;
+  /** 機種名(marketingName。例 "iPhone 15 Pro")。 */
+  readonly model: string;
 }
 
 export interface InstalledIosDevices {
   readonly available: boolean;
   readonly devices: readonly InstalledIosDevice[];
-  /** 旧 CLI は返さないため省略可(欠落=実機なし扱い)。 */
-  readonly physicalDevices?: readonly InstalledIosPhysicalDevice[];
+  readonly physicalDevices: readonly InstalledIosPhysicalDevice[];
   readonly error: string | null;
 }
 
@@ -982,9 +975,8 @@ function isInstalledAndroidAvd(value: unknown): value is InstalledAndroidAvd {
     isRecord(value) &&
     typeof value.displayName === "string" &&
     typeof value.id === "string" &&
-    // model/os は後から追加。null(取得できず)も許容する
-    (value.model === undefined || value.model === null || typeof value.model === "string") &&
-    (value.os === undefined || value.os === null || typeof value.os === "string")
+    (value.model === null || typeof value.model === "string") &&
+    (value.os === null || typeof value.os === "string")
   );
 }
 
@@ -994,13 +986,18 @@ function isInstalledIosDevice(value: unknown): value is InstalledIosDevice {
     typeof value.name === "string" &&
     typeof value.os === "string" &&
     typeof value.udid === "string" &&
-    // 旧 CLI は返さないため省略可。取得できなければ null(取得できずと空文字を混同しない)
-    (value.model === undefined || value.model === null || typeof value.model === "string")
+    // 取得できなければ null(取得できずと空文字を混同しない)
+    (value.model === null || typeof value.model === "string")
   );
 }
 
 function isInstalledAndroidPhysical(value: unknown): value is InstalledAndroidPhysicalDevice {
-  return isRecord(value) && typeof value.model === "string" && typeof value.serial === "string";
+  return (
+    isRecord(value) &&
+    typeof value.model === "string" &&
+    typeof value.os === "string" &&
+    typeof value.serial === "string"
+  );
 }
 
 function isInstalledAndroidDevices(value: unknown): value is InstalledAndroidDevices {
@@ -1010,9 +1007,8 @@ function isInstalledAndroidDevices(value: unknown): value is InstalledAndroidDev
     (value.error === null || typeof value.error === "string") &&
     Array.isArray(value.avds) &&
     value.avds.every(isInstalledAndroidAvd) &&
-    // physicalDevices は後から追加。欠落は許容し、あれば形を検証する
-    (value.physicalDevices === undefined ||
-      (Array.isArray(value.physicalDevices) && value.physicalDevices.every(isInstalledAndroidPhysical)))
+    Array.isArray(value.physicalDevices) &&
+    value.physicalDevices.every(isInstalledAndroidPhysical)
   );
 }
 
@@ -1022,7 +1018,8 @@ function isInstalledIosPhysical(value: unknown): value is InstalledIosPhysicalDe
     typeof value.name === "string" &&
     typeof value.os === "string" &&
     typeof value.udid === "string" &&
-    typeof value.transport === "string"
+    typeof value.transport === "string" &&
+    typeof value.model === "string"
   );
 }
 
@@ -1033,8 +1030,8 @@ function isInstalledIosDevices(value: unknown): value is InstalledIosDevices {
     (value.error === null || typeof value.error === "string") &&
     Array.isArray(value.devices) &&
     value.devices.every(isInstalledIosDevice) &&
-    (value.physicalDevices === undefined ||
-      (Array.isArray(value.physicalDevices) && value.physicalDevices.every(isInstalledIosPhysical)))
+    Array.isArray(value.physicalDevices) &&
+    value.physicalDevices.every(isInstalledIosPhysical)
   );
 }
 
@@ -1165,8 +1162,8 @@ export interface DeleteDeviceFinishedEvent {
   readonly kind: "finished";
   readonly ok: boolean;
   readonly error: string | null;
-  /** 削除した識別子を参照している実行プロファイル名。省略時は空扱い(古い CLI 互換)。 */
-  readonly referencedBy?: readonly string[];
+  /** 削除した識別子を参照している実行プロファイル名(無ければ空配列)。 */
+  readonly referencedBy: readonly string[];
 }
 
 /** `fleetest api delete-device` の NDJSON 1行分のイベント(isCreateDeviceEvent と対になる形)。 */
@@ -1176,7 +1173,7 @@ function isReferencedByLike(value: unknown): value is readonly string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
 
-/** DeleteDeviceEvent の判定(isCreateDeviceEvent と同じ方針)。referencedBy は省略可・あれば string[] のみ許容。 */
+/** DeleteDeviceEvent の判定(isCreateDeviceEvent と同じ方針)。 */
 export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent {
   if (!isRecord(value) || typeof value.kind !== "string") {
     return false;
@@ -1188,7 +1185,7 @@ export function isDeleteDeviceEvent(value: unknown): value is DeleteDeviceEvent 
       return (
         typeof value.ok === "boolean" &&
         (value.error === null || typeof value.error === "string") &&
-        (value.referencedBy === undefined || isReferencedByLike(value.referencedBy))
+        isReferencedByLike(value.referencedBy)
       );
     default:
       return false;

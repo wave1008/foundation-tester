@@ -34,7 +34,7 @@ export interface RemoteHostsCliOutcome {
   readonly defaultFMConcurrency?: number;
   /** この機械の固定行(設定タブが消せない行として出す) */
   readonly local?: LocalMachineEntry;
-  /** バッジ色パレット(古い CLI では undefined。GUI は色機能を黙って無効にする) */
+  /** バッジ色パレット(失敗時は undefined。GUI は色機能を無効にする) */
   readonly machineColors?: MachineColor[];
 }
 
@@ -59,7 +59,7 @@ async function runRemoteHostsCli(deps: RemoteHostsCliDeps, args: readonly string
   const defaultFMConcurrency = parseDefaultFMConcurrency(result.json);
   const local = parseLocalMachine(result.json);
   const machineColors = parseMachineColors(result.json);
-  if (hosts === undefined) {
+  if (hosts === undefined || defaultFMConcurrency === undefined || local === undefined || machineColors === undefined) {
     deps.outputChannel.appendLine(`[remote-machines] ${args.join(" ")}: unexpected output shape`);
     return { error: "unexpected output shape" };
   }

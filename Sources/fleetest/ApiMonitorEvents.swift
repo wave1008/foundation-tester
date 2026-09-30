@@ -188,14 +188,13 @@ struct ApiMonitorDeviceInfo: Codable {
     /// このデバイスの動画録画(VideoRecordingCoordinator)が進行中の意味。leaseStateDir 未解決時は常に false
     let recording: Bool
     /// 実行プロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
-    /// 起動中デバイス(未登録)。追加フィールドのみで後方互換のため ProtocolVersion は不変
+    /// 起動中デバイス(未登録)。
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.registered)
     let registered: Bool
     /// **このデバイスが居る機械**(登録名。手元は nil)。`host` はブリッジ宛先の IP で別物 ——
     /// 名前が近いので取り違えない。モニターは手元のデバイスしか触れないため、リモートのタイルは
     /// 状態を観測できない。拡張はこの値でタイルにホスト名を出す
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.machine)。
-    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// **var なのは id と同じ理由**(RemoteMonitorFanout が書き戻す)。子は畳んだプロファイルを
     /// 見るので自分のデバイスを "local" と見なし、machine が nil になる —— 親が自分の知っている
     /// ホストラベルを入れないと、リモートのタイルからマシンのバッジが消える
@@ -208,7 +207,6 @@ struct ApiMonitorDeviceInfo: Codable {
     let frozen: Bool
     /// iOS 実機の USB 接続か(devicectl の transportType == "wired")。仮想・Android・不明は nil。
     /// mergedDevices が WiFi 越しの分身の抑制に使う(拡張は読まない)。
-    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     let wired: Bool?
     /// **他の発行者・他のウィンドウがこのデバイスの画面配信を張っている**(共有ランナーは
     /// FTCore.StreamLease、同じ Mac の別ウィンドウは FTCore.LocalStreamHolder)。
@@ -216,7 +214,6 @@ struct ApiMonitorDeviceInfo: Codable {
     /// ランナーが痛む(docs/remote-runner.md §18.2)。誰も張っていなければ false
     /// (どちらの判定もこの機械の中で完結するので「不明」は無い。nil は観測そのものを
     /// していない経路 = 合成デバイスの行だけ)。
-    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.streamedByOther)
     let streamedByOther: Bool?
     /// Android 実機のブリッジ(常駐 APK)が生きているか。**設定するのは
@@ -225,7 +222,6 @@ struct ApiMonitorDeviceInfo: Codable {
     /// 「adb に見えるか」と「ブート完了か」しか表さず、ブリッジの有無とは無関係なので専用の欄にした。
     /// **観測できない(adb 失敗/timeout)ときは nil**(「不明」)—— false に丸めると、
     /// pidof がたまたま失敗しただけの回に絵が消える(誤って「ブリッジが無い」と断定する)。
-    /// 追加フィールドのみで後方互換のため ProtocolVersion は不変
     /// (契約は vscode-fleetest/src/monitorDeviceModel.ts の MonitorDevice.bridgeRunning)
     let bridgeRunning: Bool?
     /// **仮想デバイスだけ**(実機は測れないので省く)。測るのは更新ボタン(stdin の storageRefresh)のときだけで、
