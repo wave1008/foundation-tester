@@ -24,6 +24,7 @@ import { activateTab, switchTab } from './tabs.js';
 import { stepFromPlaceholder } from './placeholderStep.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
+const showMachineCapacityCheckbox = document.getElementById('settings-show-machine-capacity');
 const liveFpsInput = document.getElementById('settings-live-fps');
 const lptCheckbox = document.getElementById('settings-lpt');
 const lptHistoryInput = document.getElementById('settings-lpt-history');
@@ -40,6 +41,10 @@ const updateRunButton = document.getElementById('tabbar-update');
 
 document.getElementById('settings-tool-processes').addEventListener('click', () => {
   activateTab('processes');
+});
+
+showMachineCapacityCheckbox.addEventListener('change', () => {
+  vscode.postMessage({ type: 'setShowMachineCapacity', value: showMachineCapacityCheckbox.checked });
 });
 
 pollingModeCheckbox.addEventListener('change', () => {
@@ -886,6 +891,8 @@ function applyRetention(message) {
 export function applySettings(message) {
   if (message.type === 'pollingMode') {
     pollingModeCheckbox.checked = !!message.value;
+  } else if (message.type === 'showMachineCapacity') {
+    showMachineCapacityCheckbox.checked = !!message.value;
   } else if (message.type === 'liveFps') {
     // 値は明示設定だけ。未設定(null)は空欄にして既定値をプレースホルダで見せる
     liveFpsInput.placeholder = String(message.default);

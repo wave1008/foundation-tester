@@ -273,9 +273,9 @@ function renderDevicesPanel(): string {
           <!-- 「マシン有効」off の印。錠前と同じく**全行に必ず置き**可視性だけ切り替える(hmApplyDisabled) -->
           <span class="hm-off">${t("panels.hostMetrics.machineDisabled")}</span>
           <span class="hm-lock">🔒</span>
-          <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM(-)</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-          <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU(-)</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-          <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU(-)</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+          <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-vision" data-metric="vision" title="${t("panels.hostMetrics.visionTitle")}"><span class="hm-label">VN</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-fm" data-metric="fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <!-- FM が死んでいるときだけ語を出す(⚠︎unavailable 等。hostCharts.js の
@@ -1006,6 +1006,9 @@ function renderSettingsPanel(): string {
           <input type="number" id="settings-remote-wait-lock" class="settings-number settings-seconds-number" min="0" step="1">
           <span class="settings-unit">${t("panels.settings.remoteWaitLockUnit")}</span>
         </label>
+        <!-- ツールバーのホストグラフの名札を CPU n / GPU n / MEM GB にする(既定 OFF)。
+             対向: settingsTab.js / hostCharts.js の setShowMachineCapacity, monitorPanel.ts。 -->
+        <label class="settings-item"><input type="checkbox" id="settings-show-machine-capacity"> ${t("panels.settings.showMachineCapacityLabel")}</label>
       </div>
     </div>
   </div>`;

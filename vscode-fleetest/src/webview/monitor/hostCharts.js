@@ -101,6 +101,7 @@ function hmMakeRow(rowEl, machine) {
     // VN は死活を持たないのでバッジも無い)
     deadBadge: rowEl.querySelector('.hm-fm-dead-badge'),
     entries,
+    capacity: {}, // metric → 容量(CPU/GPU はコア数・MEM は GB)。未着はキー無し
     all: [entries.cpu, entries.gpu, entries.vision, entries.fm, entries.mem],
     // FM/VN のレート表示に使う直近 HM_COUNT_RATE_WINDOW_TICKS tick ぶんの生値
     // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
@@ -235,11 +236,6 @@ function hmEnsureRow(machine) {
   for (const value of rowEl.querySelectorAll('.hm-value')) {
     value.textContent = '–';
   }
-  // 容量は機械ごと。複製元(手元)の `CPU(n)` / `GPU(n)` / `MEM(n)` を引き継ぐと、届くまで手元の値を名乗る
-  // (初期値の `CPU(-)` / `GPU(-)` / `MEM(-)` は src/monitorHtml.ts と同じ文字列)
-  rowEl.querySelector('.host-metric[data-metric="cpu"] .hm-label').textContent = 'CPU(-)';
-  rowEl.querySelector('.host-metric[data-metric="gpu"] .hm-label').textContent = 'GPU(-)';
-  rowEl.querySelector('.host-metric[data-metric="mem"] .hm-label').textContent = 'MEM(-)';
   for (const metric of rowEl.querySelectorAll('.host-metric')) {
     metric.classList.remove('hm-fm-dead', 'hm-fm-warn');
   }
@@ -251,6 +247,10 @@ function hmEnsureRow(machine) {
   hmContainer.appendChild(rowEl);
   const row = hmMakeRow(rowEl, machine);
   hmRows.set(machine, row);
+  // 容量は機械ごと。複製元(手元)の `CPU n` 等の文字を引き継ぐと、届くまで手元の値を名乗る
+  for (const metric of HM_CAPACITY_LABEL_METRICS) {
+    hmRenderCapacityLabel(row, metric);
+  }
   hmApplyLock(row, machine);   // 行より先に届いていた占有をここで貼る
   hmApplyDisabled(row, machine);   // 複製元(手元の行)の印を引き継がない
   hmSortRows(); // サンプル先着で作られた行も並びは機械名順に保つ
@@ -565,30 +565,56 @@ function hmCommitTick() {
   hmDrawAllRows();
 }
 
-/** 容量付きの名札(CPU(n) / GPU(n) / MEM(n))の系列。行ごとに桁が変わるので幅を揃える対象 */
+/** 容量付きの名札(CPU n / GPU n / MEM n)の系列と素の名前。行ごとに桁が変わるので幅を揃える対象 */
 const HM_CAPACITY_LABEL_METRICS = ['cpu', 'gpu', 'mem'];
+const HM_CAPACITY_LABEL_NAMES = { cpu: 'CPU', gpu: 'GPU', mem: 'MEM' };
+/** 設定タブ「メモリ容量、CPUコア数、GPUコア数を表示する」(既定 OFF = 素の CPU / GPU / MEM)。
+ *  値は monitorPanel.ts の showMachineCapacity メッセージで届く */
+let hmShowCapacity = false;
 
-/** その系列の名札を最も広い行の幅へ揃える(グラフの左端を行間で揃える)。書き換えたときだけ呼ぶ
- *  —— 毎 tick 測るとレイアウトを強制するため。 */
-function hmAlignLabels(metric) {
-  const labels = [...hmRows.values()].map((row) => row.entries[metric].label);
-  for (const label of labels) {
-    label.style.minWidth = '';
+export function setShowMachineCapacity(show) {
+  hmShowCapacity = show;
+  for (const row of hmRows.values()) {
+    for (const metric of HM_CAPACITY_LABEL_METRICS) {
+      hmRenderCapacityLabel(row, metric);
+    }
   }
-  const widest = Math.max(0, ...labels.map((label) => label.getBoundingClientRect().width));
-  if (widest === 0) {
-    return; // 非表示で測れない(幅0を付けると次に書き換わるまで揃わない)
-  }
-  for (const label of labels) {
-    label.style.minWidth = `${Math.ceil(widest)}px`;
+  for (const metric of HM_CAPACITY_LABEL_METRICS) {
+    hmAlignLabels(metric);
   }
 }
 
-/** 容量は機械の固定値なので、欠測 tick(text が null)では書き換えず直前の名札を残す */
-function hmSetCapacityLabel(row, metric, text) {
+/** 名札を描く。容量(row.capacity[metric]。未着は undefined)は ON のときだけ `NAME n`、未着は `NAME -` */
+function hmRenderCapacityLabel(row, metric) {
+  const name = HM_CAPACITY_LABEL_NAMES[metric];
+  const value = row.capacity[metric];
   const label = row.entries[metric].label;
-  if (text !== null && label.textContent !== text) {
-    label.textContent = text;
+  label.textContent = name;
+  if (hmShowCapacity) {
+    // ` n` だけ色を変える(style.css の .hm-capacity)。hmAlignLabels は textContent の長さで揃えるので影響しない
+    const capacity = document.createElement('span');
+    capacity.className = 'hm-capacity';
+    capacity.textContent = ` ${value ?? '-'}`;
+    label.appendChild(capacity);
+  }
+}
+
+/** その系列の名札を最も長い行に揃える(グラフの左端を行間で揃える)。**レイアウトを測らない** ——
+ *  設定タブで切り替える間などモニターが非表示だと幅が 0 で測れず、揃えが外れたまま戻らなかった。
+ *  名札は同じ名前 + 数字(CSS の tabular-nums で等幅)なので、差は数字の桁だけ = 1ch 単位で詰め物をする */
+function hmAlignLabels(metric) {
+  const labels = [...hmRows.values()].map((row) => row.entries[metric].label);
+  const longest = Math.max(0, ...labels.map((label) => label.textContent.length));
+  for (const label of labels) {
+    label.style.paddingRight = `${longest - label.textContent.length}ch`;
+  }
+}
+
+/** 容量は機械の固定値なので、欠測 tick(value が null)では書き換えず直前の値を残す */
+function hmSetCapacity(row, metric, value) {
+  if (value !== null && row.capacity[metric] !== value) {
+    row.capacity[metric] = value;
+    hmRenderCapacityLabel(row, metric);
     hmAlignLabels(metric);
   }
 }
@@ -662,13 +688,10 @@ function hmRenderRow(row, sample) {
   hmPushSample(row.entries.vision, visionCalls);
   hmPushSample(row.entries.mem, memRatio);
 
-  hmSetCapacityLabel(row, 'cpu',
-    sample && typeof sample.cpuCores === 'number' ? `CPU(${sample.cpuCores})` : null);
-  hmSetCapacityLabel(row, 'gpu',
-    sample && typeof sample.gpuCores === 'number' ? `GPU(${sample.gpuCores})` : null);
+  hmSetCapacity(row, 'cpu', sample && typeof sample.cpuCores === 'number' ? sample.cpuCores : null);
+  hmSetCapacity(row, 'gpu', sample && typeof sample.gpuCores === 'number' ? sample.gpuCores : null);
   // GB は 2^30 バイト(hmFormatGb と同じ単位。64GB 機は 68719476736)
-  hmSetCapacityLabel(row, 'mem',
-    memTotalBytes !== null ? `MEM(${Math.round(memTotalBytes / 1024 ** 3)})` : null);
+  hmSetCapacity(row, 'mem', memTotalBytes !== null ? Math.round(memTotalBytes / 1024 ** 3) : null);
   row.entries.cpu.value.textContent = hmFormatPercent(cpu);
   row.entries.gpu.value.textContent = hmFormatPercent(gpu);
   row.entries.mem.value.textContent = hmFormatPercent(memRatio);

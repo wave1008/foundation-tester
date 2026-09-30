@@ -275,6 +275,7 @@ export class MonitorPanelController implements vscode.Disposable {
   }
   /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
   private pollingMode: boolean;
+  private showMachineCapacity: boolean;
   /** 「デバイスモニター」タブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
@@ -341,6 +342,7 @@ export class MonitorPanelController implements vscode.Disposable {
     private readonly workspaceState: vscode.Memento,
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
+    this.showMachineCapacity = workspaceState.get<boolean>("monitor.showMachineCapacity", false);
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
     // 既定 ON(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
     // 既定 true(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
@@ -1161,6 +1163,11 @@ export class MonitorPanelController implements vscode.Disposable {
       case "runUpdate":
         void this.update.runUpdate();
         break;
+      case "setShowMachineCapacity":
+        this.showMachineCapacity = message.value;
+        void this.workspaceState.update("monitor.showMachineCapacity", message.value);
+        this.post({ type: "showMachineCapacity", value: this.showMachineCapacity });
+        break;
       case "setPollingMode":
         this.pollingMode = message.value;
         void this.workspaceState.update("monitor.pollingMode", message.value);
@@ -1369,6 +1376,7 @@ export class MonitorPanelController implements vscode.Disposable {
     this.post({ type: "testRunActive", active: this.testRunActive });
     this.post({ type: "recordingsFinalizing", active: this.recordingsFinalizing });
     this.post({ type: "pollingMode", value: this.pollingMode });
+    this.post({ type: "showMachineCapacity", value: this.showMachineCapacity });
     this.post({
       type: "lptScheduling",
       value: vscode.workspace.getConfiguration("fleetest").get<boolean>("lptScheduling", true),

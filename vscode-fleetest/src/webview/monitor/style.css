@@ -871,8 +871,15 @@ html[lang="en"] .header-count {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
-/* CPU(n) / GPU(n) / MEM(n) は容量の桁で幅が変わる。行を縦に積んでもグラフの左端が揃うよう、min-width は
-   hostCharts.js の hmAlignLabels が最も広い名札に合わせて付ける */
+/* CPU n / GPU n / MEM n は容量の桁で幅が変わる。行を縦に積んでもグラフの左端が揃うよう、右の詰め物は
+   hostCharts.js の hmAlignLabels が桁の差(ch)で付ける。tabular-nums が無いと 1桁 = 1ch が崩れる */
+.hm-capacity {
+  color: #415469;
+}
+body.vscode-light .hm-capacity,
+body.vscode-high-contrast-light .hm-capacity {
+  color: #9fb3c8;
+}
 .host-metric[data-metric="cpu"] .hm-label,
 .host-metric[data-metric="gpu"] .hm-label,
 .host-metric[data-metric="mem"] .hm-label {

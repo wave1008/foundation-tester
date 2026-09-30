@@ -36,7 +36,7 @@ import {
 import { applyShowStreamDuringRun } from './streamToggle.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility } from './laneLog.js';
 import { applyProjectInfo } from './projectsTab.js';
-import { applyHostMetrics, setHostMetricMachines, setMachineLock } from './hostCharts.js';
+import { applyHostMetrics, setHostMetricMachines, setMachineLock, setShowMachineCapacity } from './hostCharts.js';
 import {
   applyMonitorRuns, resetRunBoard, setRunBoardCollapsed, setRunBoardExpandAll, setRunBoardMachines,
   refreshRunBoardDevices,
@@ -258,6 +258,10 @@ window.addEventListener('message', (event) => {
       break;
     case 'switchTab':
       activateTab(message.tab);
+      break;
+    case 'showMachineCapacity':
+      setShowMachineCapacity(!!message.value);
+      applySettings(message);
       break;
     case 'pollingMode':
     case 'liveFps':

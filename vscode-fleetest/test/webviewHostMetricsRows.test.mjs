@@ -289,57 +289,86 @@ test("同じ tick までに複数届いたら最後の1つだけを使う", (t) 
   assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0", "0"]);
 });
 
-test("CPU のラベルは機械ごとのコア数を CPU(n) で出し、欠測 tick でも残す", (t) => {
+test("容量の表示は既定 OFF(素の CPU/GPU/MEM)で、設定の切替でその場で書き換わる", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
+
+  const labelsOf = (machine) => ["cpu", "gpu", "mem"].map((metric) =>
+    rowFor(document, machine).querySelector(`.host-metric[data-metric="${metric}"] .hm-label`).textContent);
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, { ...hostMetricsSample("mac2", 0.9, {}, {}, 20), gpuCores: 64, memTotalBytes: 128 * 1024 ** 3 });
+  send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
+  assert.deepEqual(labelsOf(""), ["CPU", "GPU", "MEM"], "既定は容量を出さない");
+  assert.deepEqual(labelsOf("mac2"), ["CPU", "GPU", "MEM"]);
+  send(window, { type: "showMachineCapacity", value: true });
+  assert.deepEqual(labelsOf(""), ["CPU 24", "GPU 38", "MEM 32"], "ON にした時点で届いている値を出す");
+  assert.deepEqual(labelsOf("mac2"), ["CPU 20", "GPU 64", "MEM 128"]);
+  assert.equal(document.getElementById("settings-show-machine-capacity").checked, true, "チェックボックスも追従する");
+  const padOf = (machine, metric) =>
+    rowFor(document, machine).querySelector(`.host-metric[data-metric="${metric}"] .hm-label`).style.paddingRight;
+  assert.equal(padOf("", "mem"), "1ch", "MEM 32 は MEM 128 より1桁短いぶん詰める(非表示でも揃う)");
+  assert.equal(padOf("mac2", "mem"), "0ch");
+  assert.equal(rowFor(document, "mac2").querySelector('[data-metric="mem"] .hm-label .hm-capacity').textContent,
+    " 128", "容量の部分だけ別の要素(色を変える)");
+  send(window, { type: "showMachineCapacity", value: false });
+  assert.deepEqual(labelsOf("mac2"), ["CPU", "GPU", "MEM"]);
+  assert.equal(padOf("", "mem"), "0ch");
+});
+
+test("CPU のラベルは機械ごとのコア数を CPU n で出し、欠測 tick でも残す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  send(window, { type: "showMachineCapacity", value: true });
 
   const cpuLabelOf = (machine) =>
     rowFor(document, machine).querySelector('.host-metric[data-metric="cpu"] .hm-label').textContent;
-  assert.equal(cpuLabelOf(""), "CPU(-)", "届くまではコア数を名乗らない");
+  assert.equal(cpuLabelOf(""), "CPU -", "届くまではコア数を名乗らない");
   send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
-  assert.equal(cpuLabelOf("mac2"), "CPU(-)", "手元の CPU(24) を複製した行が引き継がない");
+  assert.equal(cpuLabelOf("mac2"), "CPU -", "手元の CPU 24 を複製した行が引き継がない");
   send(window, hostMetricsSample("mac2", 0.9, {}, {}, 20));
   send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
 
-  assert.equal(cpuLabelOf(""), "CPU(24)");
-  assert.equal(cpuLabelOf("mac2"), "CPU(20)", "リモート行は向こうのコア数");
+  assert.equal(cpuLabelOf(""), "CPU 24");
+  assert.equal(cpuLabelOf("mac2"), "CPU 20", "リモート行は向こうのコア数");
   for (let i = 0; i < 4; i += 1) {
     send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
   }
-  assert.equal(cpuLabelOf("mac2"), "CPU(20)", "コア数は固定値なので欠測になっても消さない");
+  assert.equal(cpuLabelOf("mac2"), "CPU 20", "コア数は固定値なので欠測になっても消さない");
 });
 
-test("GPU のラベルは GPU(n)。読めない機械(null)は GPU(-) のまま", (t) => {
+test("GPU のラベルは GPU n。読めない機械(null)は GPU - のまま", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
+  send(window, { type: "showMachineCapacity", value: true });
 
   const gpuLabelOf = (machine) =>
     rowFor(document, machine).querySelector('.host-metric[data-metric="gpu"] .hm-label').textContent;
-  assert.equal(gpuLabelOf(""), "GPU(-)");
+  assert.equal(gpuLabelOf(""), "GPU -");
   send(window, hostMetricsSample(undefined, 0.1));
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
-  assert.equal(gpuLabelOf("mac2"), "GPU(-)", "手元の GPU(38) を複製した行が引き継がない");
+  assert.equal(gpuLabelOf("mac2"), "GPU -", "手元の GPU 38 を複製した行が引き継がない");
   send(window, { ...hostMetricsSample("mac2", 0.9), gpuCores: null });
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(gpuLabelOf(""), "GPU(38)");
-  assert.equal(gpuLabelOf("mac2"), "GPU(-)");
+  assert.equal(gpuLabelOf(""), "GPU 38");
+  assert.equal(gpuLabelOf("mac2"), "GPU -");
 });
 
-test("MEM のラベルは機械ごとの搭載量を MEM(GB) で出し、届くまでは MEM(-)", (t) => {
+test("MEM のラベルは機械ごとの搭載量を MEM GB で出し、届くまでは MEM -", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
+  send(window, { type: "showMachineCapacity", value: true });
 
   const memLabelOf = (machine) =>
     rowFor(document, machine).querySelector('.host-metric[data-metric="mem"] .hm-label').textContent;
-  assert.equal(memLabelOf(""), "MEM(-)");
+  assert.equal(memLabelOf(""), "MEM -");
   send(window, hostMetricsSample(undefined, 0.1)); // 手元は 32GB
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
-  assert.equal(memLabelOf("mac2"), "MEM(-)", "手元の MEM(32) を複製した行が引き継がない");
+  assert.equal(memLabelOf("mac2"), "MEM -", "手元の MEM 32 を複製した行が引き継がない");
   send(window, { ...hostMetricsSample("mac2", 0.9), memTotalBytes: 64 * 1024 ** 3 });
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(memLabelOf(""), "MEM(32)");
-  assert.equal(memLabelOf("mac2"), "MEM(64)");
+  assert.equal(memLabelOf(""), "MEM 32");
+  assert.equal(memLabelOf("mac2"), "MEM 64");
 });
 
 test("サンプルの無い tick は直近の値を使い回し、途絶えたら欠測にする", (t) => {

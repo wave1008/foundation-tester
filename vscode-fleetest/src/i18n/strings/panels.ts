@@ -296,6 +296,10 @@ export const panelsStrings = {
     en: "Max wait on runner contention",
   },
   "panels.settings.remoteWaitLockUnit": { ja: "秒", en: "sec" },
+  "panels.settings.showMachineCapacityLabel": {
+    ja: "メモリ容量、CPUコア数、GPUコア数を表示する",
+    en: "Show memory size, CPU cores, and GPU cores",
+  },
 
   // 設定タブ「ログ・録画」のクリーンアップ欄(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく
   // CLI 側のマシン設定**(`fleetest api retention`)。動的表示(使用量・掃除の結果)は
