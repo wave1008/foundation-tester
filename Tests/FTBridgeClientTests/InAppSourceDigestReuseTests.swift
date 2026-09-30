@@ -48,7 +48,7 @@ final class InAppSourceDigestReuseTests: XCTestCase {
                      sessionBundleID: "com.example.app", sourceDigest: digest)]
     }
 
-    /// 出所が同じなら従来どおり再利用する(建て直しのコストを毎回払わない)
+    /// 出所が同じなら従来どおり再利用する(起動し直しのコストを毎回払わない)
     func testReusesWhenTheInjectedDylibCameFromTheSameSources() throws {
         guard case .reuse(let port) = try planInApp(running: runningInApp(digest: "abc123"),
                                                     digest: "abc123") else {
@@ -67,8 +67,8 @@ final class InAppSourceDigestReuseTests: XCTestCase {
         }
     }
 
-    /// 旧版が書いた記録(出所なし)も**出所不明として建て直す** —— 更新直後の1回だけ余分に
-    /// 建て直すが、「古い dylib のまま緑」を残すよりよい
+    /// 旧版が書いた記録(出所なし)も**出所不明として起動し直す** —— 更新直後の1回だけ余分に
+    /// 起動し直すが、「古い dylib のまま緑」を残すよりよい
     func testRelaunchesWhenTheRunningBridgeHasNoRecordedOrigin() throws {
         guard case .launch = try planInApp(running: runningInApp(digest: nil),
                                            digest: "new-digest") else {
@@ -77,16 +77,16 @@ final class InAppSourceDigestReuseTests: XCTestCase {
     }
 
     /// **陰性対照**: こちらが digest を計算できない構成(受け手パッケージ等)では判定材料が
-    /// 無いので、判定材料が無いことを理由に毎回建て直さない(従来どおり版と注入先で判定)
+    /// 無いので、判定材料が無いことを理由に毎回起動し直さない(従来どおり版と注入先で判定)
     func testKeepsReusingWhenTheCurrentDigestCannotBeComputed() throws {
         guard case .reuse = try planInApp(running: runningInApp(digest: "whatever"),
                                           digest: nil) else {
-            return XCTFail("digest が計算できないだけで建て直している")
+            return XCTFail("digest が計算できないだけで起動し直している")
         }
     }
 
     /// 状態ファイルの往復と**旧形式(2語)の後方互換**。読めなくなると全ブリッジが毎回
-    /// 建て直しになる(遅くなるだけだが、原因が読めない)
+    /// 起動し直しになる(遅くなるだけだが、原因が読めない)
     func testStateFileRoundTripAndLegacyTwoFieldRecord() throws {
         let dir = repoRoot.appendingPathComponent(".fleetest")
         InAppBridgeState.write(stateDir: dir, port: 8123, udid: "UDID-A",

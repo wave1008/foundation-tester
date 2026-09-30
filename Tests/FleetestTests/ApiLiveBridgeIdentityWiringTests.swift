@@ -1,7 +1,7 @@
 import XCTest
 
 /// api live serve が接続先を `--udid` 抜きで信用していた実地(L1): 既定ポートに居た
-/// 別デバイスの生きたブリッジを掴んで操作を撃ち、版差を理由に止めて建て直した
+/// 別デバイスの生きたブリッジを掴んで操作を撃ち、版差を理由に止めて起動し直した
 /// (checkAndRestartIfStale)。判定(FTCore.BridgeIdentityCheck)自体は
 /// Tests/FTCoreTests/BridgeIdentityCheckTests.swift が固定するので、ここは配線
 /// (呼んでいるか・使う前に確かめているか)をソース走査で縛る。
@@ -134,7 +134,7 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         // 待受が無い瞬間(in-app のアプリの起こし直し)は lsof に映らない。持ち主を言えるのは台帳だけ
         XCTAssertTrue(branch.contains("InAppBridgeState.isRecordedForAnotherDevice("),
                       "in-app の台帳が別のデバイスのものなら掴むのをやめること"
-                      + " —— 見ないと run のレーンのポートへ自動起動がランナーを建てる")
+                      + " —— 見ないと run のレーンのポートへ自動起動がランナーを起動する")
         guard let loopbackIndex = branch.range(of: "resolution.endpoint.isLoopback"),
               let holderIndex = branch.range(of: "PortHolder.isHeldByAnotherDevice(") else {
             return XCTFail("無応答分岐の形が変わった — テストを見直すこと")
@@ -178,7 +178,7 @@ final class ApiLiveBridgeIdentityWiringTests: XCTestCase {
         guard let identityRange = code.range(
             of: "BridgeIdentityCheck.matches(expected: expected, status: status)") else {
             return XCTFail("checkAndRestartIfStale が BridgeIdentityCheck で本人確認していない"
-                + " — 別デバイスの生きたブリッジを版差を理由に止めて建て直す(実地 L1)")
+                + " — 別デバイスの生きたブリッジを版差を理由に止めて起動し直す(実地 L1)")
         }
         guard let restartLogRange = code.range(of: "Detected a bridge from an older build") else {
             return XCTFail("再起動のログ文言が変わった — テストを見直すこと")

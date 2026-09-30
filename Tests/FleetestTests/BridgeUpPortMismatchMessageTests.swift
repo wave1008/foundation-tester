@@ -22,8 +22,8 @@ final class BridgeUpPortMismatchMessageTests: XCTestCase {
             .startedOnAnotherPort)
     }
 
-    /// 呼び出し前から在ったポートでも、旧版だったなら provision は止めて建て直している = 「再利用」ではない
-    /// (2026-09-19: 旧版を止めて同じポートで建て直したのに「Reused the running bridge」と出た)
+    /// 呼び出し前から在ったポートでも、旧版だったなら provision は止めて起動し直している = 「再利用」ではない
+    /// (2026-09-19: 旧版を止めて同じポートで起動し直したのに「Reused the running bridge」と出た)
     func testAPreexistingPortThatWasAnOlderBuildIsReportedAsRestarted() {
         XCTAssertEqual(
             Bridge.Up.portMismatchReason(actualPort: 8124, preexistingPorts: [8124], stalePorts: [8124]),

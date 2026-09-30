@@ -226,7 +226,7 @@ public enum RegionText {
     }
 
     /// `awaitPrewarm` の待ちの上限。**根拠**: 暖機が正当にかかった実測の最大 108 秒
-    /// (建て直し直後の Espresso コンパイル)に余裕 1 割。これを超えて戻らないのは
+    /// (ビルドし直した直後の Espresso コンパイル)に余裕 1 割。これを超えて戻らないのは
     /// ANE のコンパイルがハングした形(過去に 352〜1080 秒の実測 = fm-flap-ane-load-failure)。
     /// **尽きたら待つのをやめて FM に回す**(occlusionFlip の既存の見送り経路。止めない)
     public static let prewarmWaitCap: Duration = .seconds(120)

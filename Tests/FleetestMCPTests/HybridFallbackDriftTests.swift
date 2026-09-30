@@ -1,12 +1,12 @@
 // maintainer-notes §51.2(2026-09-25): hybrid(in-app + XCUITest)キャッシュ命中は主(in-app)の udid だけを確かめており、
 // `HybridFallbackDriver` の fallback(AppAttachDriver)が握る XCUITest ポートは無検査のまま
-// キャッシュから返っていた。ブリッジは run のたびに建て直されるので、そのポートは別デバイスへ
+// キャッシュから返っていた。ブリッジは run のたびに起動し直されるので、そのポートは別デバイスへ
 // (あるいは同じデバイスの in-app ブリッジへ)移り得る —— home/drag/座標 press/gesture/pinch は
 // すべて fallback 経由なので、黙って別の機へ操作が届く。
 //
 // maintainer-notes §51.10(2026-09-25): 同じ穴が主(primary)ポートにもある。`deviceIdentityChanged` は udid しか見ず、
 // ref を使う呼び出し(`usesRememberedDeviceState`)にしか効かないので、ref を使わない
-// `ft_terminate` のような呼び出しでは効かせようがない。同じ udid のまま run のたびの建て直しで
+// `ft_terminate` のような呼び出しでは効かせようがない。同じ udid のまま run のたびの起動し直しで
 // エンジン(xcuitest ⇄ inapp/hybrid)だけが入れ替わった形を見逃し、その engine には無い操作
 // (in-app には /terminate が無い)を撃って 501、逆向きなら別の ref 体系へ黙って撃つ。
 //

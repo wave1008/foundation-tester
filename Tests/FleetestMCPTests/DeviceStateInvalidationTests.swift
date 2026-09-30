@@ -1,7 +1,7 @@
 // engineKey に紐づく状態の後始末。
 //
 // engineKey は `direct:ios:<port>:<serial>` で、iOS のポートは同じセッション中に動く
-// (監視が別ポートで建て直す)。つまり死んだポートが後で別のシミュレータに再利用され得る。
+// (監視が別ポートで起動し直す)。つまり死んだポートが後で別のシミュレータに再利用され得る。
 // forgetConnection が drivers/connections/connectedPorts しか消していなかったので、
 // lastSnapshots・refGenerations・launchedBundleIDs は**前の機のもの**が生き残り、
 // 古い ref が別の機の木を起点に解決され、ft_open_url が前の機のアプリへ配送していた。
@@ -189,7 +189,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
         XCTAssertNotNil(server.drivers[other])
     }
 
-    // MARK: - キャッシュ命中のドライバの同一性(2026-08-13・軸②「ブリッジ建て直し」の監査で実機再現)
+    // MARK: - キャッシュ命中のドライバの同一性(2026-08-13・軸②「ブリッジの起動し直し」の監査で実機再現)
 
     /// **確認を払う呼び出しの見分け**。記憶に依存する形だけが「機が変わると黙って別物へ届く」
     func testOnlyCallsThatLeanOnRememberedStatePayForTheIdentityCheck() {
@@ -296,7 +296,7 @@ final class DeviceStateInvalidationTests: XCTestCase {
 
     /// **profile の生成経路にも機の入れ替わり判定があること**(2026-08-13 のレビュー指摘)。
     /// キャッシュ命中側だけに置くと、版ズレ拒否(`drivers[key]` だけを nil にする)のあと
-    /// ブリッジが別のフリート機へ建て直された回に、前の機の記憶が生き残る
+    /// ブリッジが別のフリート機へ起動し直された回に、前の機の記憶が生き残る
     func testProfileCreationPathAlsoPurgesOnADeviceChange() throws {
         let source = try String(contentsOf: Self.driverSourceURL(), encoding: .utf8)
         guard let branch = source.range(of: "if let profileName = args[\"profile\"] as? String {"),

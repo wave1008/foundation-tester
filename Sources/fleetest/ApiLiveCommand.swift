@@ -99,7 +99,7 @@
 // protocolVersion を確認し、旧ビルドのブリッジは自動で再起動する。
 // **resolve が返した宛先は udid で本人確認する**
 // (FTCore.BridgeIdentityCheck。実地: 別デバイスの生きたブリッジを掴んで操作を撃ち、版差を
-// 理由に止めて建て直した実害がある)。**`--port` を明示していれば**不一致は
+// 理由に止めて起動し直した実害がある)。**`--port` を明示していれば**不一致は
 // bridgeIdentityMismatch で断つ(利用者が決めた宛先を勝手に変えない)。**既定ポートへの
 // フォールバックなら**断らない —— `BridgeDiscovery.scan` でその udid のポートへ乗り換えるか、
 // 見つからなければ別のデバイスのブリッジには触れず空きポートを充てて自動起動へ回す(でないと、
@@ -239,14 +239,14 @@ struct ApiLiveServe: AsyncParsableCommand {
             if let starter, await starter.takeStarted(), let repoRoot = try? RepoRoot.find() {
                 let endpoint = BridgeEndpoint.load(port: port, repoRoot: repoRoot)
                 driver = BridgeClient(endpoint: endpoint)
-                // **LiveBridgeAutoStarter は XCUITest しか建てない**(旧ビルド再起動・接続拒否からの
-                // 起動、どちらも launchBridge が xcodebuild で建てる)ので、以後の期待エンジンも固定
+                // **LiveBridgeAutoStarter は XCUITest しか起動しない**(旧ビルド再起動・接続拒否からの
+                // 起動、どちらも launchBridge が xcodebuild で起動する)ので、以後の期待エンジンも固定
                 primaryEngine = "xcuitest"
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
             // **port の本人確認(udid + エンジン)を毎コマンド撃つ**(maintainer-notes §51.2・§51.10 と同型の穴):
             // makeLiveDriver は起動時に1回組むきりで、フリートが run のたびにブリッジを
-            // 建て直すと port が別デバイス、あるいは**同じデバイスの別エンジン**へ移り得る ——
+            // 起動し直すと port が別デバイス、あるいは**同じデバイスの別エンジン**へ移り得る ——
             // hybrid なら home/appSwitcher/drag/座標 press/gesture/pinch(fallback 経由)が、
             // 非 hybrid ならすべての呼び出しが黙って別物(別デバイス、または in-app ⇄ xcuitest で
             // ref 体系・サポート操作が別)へ届く。primaryEngine(composeDriver が決める。
@@ -268,7 +268,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 case .unchanged:
                     break
                 case .rebuild:
-                    // **建て直しは「switched the driver」と同じ形**(再解決してから組み直す)。
+                    // **起動し直しは「switched the driver」と同じ形**(再解決してから組み直す)。
                     // composeDriver は in-app 側の本人確認もその内側でやり直す。**ポートが動いていたら
                     // 追従しない** —— starter/deviceLease は元の port を見続けるので、ここで
                     // 乗り換えると自動起動・デバイスの印との整合が崩れる(乗り換えは makeLiveDriver の
@@ -288,7 +288,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                                   + " previous driver")
                     }
                 case .refuse(let message):
-                    // **同じポートで作り直さない**: 別の実体が答えている形なので、建て直すと乗り換えた
+                    // **同じポートで作り直さない**: 別の実体が答えている形なので、起動し直すと乗り換えた
                     // まま気付かず操作を撃ち続ける。このコマンドは撃たず、driver/port/primaryEngine を
                     // 変えないので次のコマンドでも同じ判定・同じ拒否を繰り返す(黙って固定されない)
                     logStderr(message)
@@ -326,7 +326,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     ///
     /// **resolve が返した宛先は udid で本人確認する**(FTCore.BridgeIdentityCheck。実地 L1:
     /// 既定ポートに別デバイスの生きたブリッジが居るのを見逃し、操作を撃ち・版差を理由に止めて
-    /// 建て直した)。**`--port` を明示したか既定へのフォールバックかで扱いを分ける**
+    /// 起動し直した)。**`--port` を明示したか既定へのフォールバックかで扱いを分ける**
     /// (`BridgeDiscovery` の既存の切り分け「port: を明示した呼び出しでは探索しない」の裏返し。
     /// `driverOptions.port == nil` = 利用者は宛先を決めていない):
     /// ①明示 かつ 不一致 → 断る(利用者が決めた宛先を勝手に変えない)/
@@ -383,7 +383,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             // 読めない相手を根拠に宛先を変えない(§18.7「不明と空きを混ぜない」の同型)
             // **待受が無い瞬間もある**(run のレーンの in-app ブリッジは、シナリオの合間のアプリの
             // 起こし直しの間だけ消える)。そのときポートの持ち主を言えるのは in-app の台帳だけ ——
-            // 見ずに進むと自動起動がレーンのポートへランナーを建て、レーンの操作がこのデバイスへ届く
+            // 見ずに進むと自動起動がレーンのポートでランナーを起動し、レーンの操作がこのデバイスへ届く
             let port = resolution.endpoint.port
             let heldByProcess = driverOptions.port == nil && resolution.endpoint.isLoopback
                 && PortHolder.isHeldByAnotherDevice(port: port, udid: udid)
@@ -475,7 +475,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // **合成は HybridDriverComposition の1箇所**(MCP の ft_* と同じ形。二つ目の実装を書かない)
         let driver = HybridDriverComposition.inAppFirst(
             inApp: inAppDriver, attach: attach, foreignApp: xcui, bundleID: inApp.bundleID)
-        // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で建て直せない)。
+        // 以後の自動起動・再起動が見るのは **XCUITest 側**(in-app は dylib 注入で起動し直せない)。
         // fallback(xcuitest)側の期待エンジンは常に "xcuitest"(MCP の hybridFallbackPorts と同じ)
         return (driver, resolution.endpoint.port, inApp.bundleID, "xcuitest")
     }
@@ -533,7 +533,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         let expected = BridgeIdentityCheck.Expected(
             port: endpoint.port, udid: requestedUDID, physical: physical,
             engine: isInApp ? "inapp" : "xcuitest")
-        // **対処は run のレーンと違う** —— ここで直すのは宛先の指定で、レーンの建て直しではない
+        // **対処は run のレーンと違う** —— ここで直すのは宛先の指定で、レーンの起動し直しではない
         if case .mismatch(let detail) = BridgeIdentityCheck.verdict(
             expected: expected, status: status,
             remedy: "Point --port at this device's bridge, or omit --port and let the tools find it"
@@ -749,7 +749,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         + " Wait a moment and try again; if it keeps happening, restart the simulator/device."
 
     /// `BridgeDiscovery.probeStatus` の結果ごとの文言(純粋関数)。**固まり(transportFailed)と
-    /// busy(timedOut)で対処が逆になる**のが要点 —— 固まりは建て直しが要り、busy は待てば直る。
+    /// busy(timedOut)で対処が逆になる**のが要点 —— 固まりは起動し直しが要り、busy は待てば直る。
     /// この2つを混ぜて「待て」と言い続けたのが過去のバグ(docs/maintainer-notes.md §44.1)
     static func bridgeUnreachableHint(probe: BridgeDiscovery.StatusProbe) -> String {
         switch probe {

@@ -2,7 +2,7 @@ import XCTest
 
 @testable import fleetest
 
-/// `api live serve` のブリッジ自動復帰が**実機を実機として建て直す**ことを固定する。
+/// `api live serve` のブリッジ自動復帰が**実機を実機として起動し直す**ことを固定する。
 ///
 /// 実害 2026-08-30: `LiveBridgeAutoStarter` が `BridgeLauncher` を `physical:` 無しで作っており、
 /// 既定の `false` = シミュレータ扱いで起動していた。DerivedData も `-destination` も

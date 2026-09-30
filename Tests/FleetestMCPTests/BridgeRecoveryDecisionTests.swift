@@ -13,13 +13,13 @@ final class BridgeRecoveryDecisionTests: XCTestCase {
             isConnectionRefused: true, engine: "xcuitest", alreadyFailedThisSession: false, isPhysical: false))
     }
 
-    /// bridgeUnreachable(タイムアウト)等では建て直さない——死んでいるとまだ確定していない
+    /// bridgeUnreachable(タイムアウト)等では起動し直さない——死んでいるとまだ確定していない
     func testDoesNotRecoverWhenTheErrorIsNotConnectionRefused() {
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestBridgeRecovery(
             isConnectionRefused: false, engine: "xcuitest", alreadyFailedThisSession: false, isPhysical: false))
     }
 
-    /// hybrid/in-app は建て直しの単位が違う(対象アプリごと落ちる)ので対象外
+    /// hybrid/in-app は起動し直しの単位が違う(対象アプリごと落ちる)ので対象外
     func testDoesNotRecoverHybridOrInAppEngines() {
         XCTAssertFalse(MCPServer.shouldAttemptXCUITestBridgeRecovery(
             isConnectionRefused: true, engine: "hybrid", alreadyFailedThisSession: false, isPhysical: false))

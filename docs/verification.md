@@ -45,7 +45,7 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
   `allowVersionSkew: true` で押し通せるが、**その間は毎回の応答に警告が付く**
 - **ブリッジを直したときの検証手順**: 版を上げる → `fleetest bridge down && fleetest bridge up`
   → デバイスで確かめる。**down/up を省くと必ず旧版を測る**。iOS のシミュレータはブリッジを
-  建て直すと**アプリが消えていることがある**ので、`ft_install` からやり直す
+  起動し直すと**アプリが消えていることがある**ので、`ft_install` からやり直す
 
 ## 1回の実行が見るのは iOS の2エンジンのうち片方だけ
 
@@ -124,24 +124,24 @@ false のデバイス(-02)は出た。**Simulator.app 側の `ConnectHardwareKey
 `Ignoring failure to get hierarchy for remote element in process <pid>` が**約 3.7 秒おき**に並んでいないかを見る。
 SpringBoard の remote element(DragUI の `druid`)を引けなくなった後も参照し続け、存在確認 1 回ごとに XCTest が
 remote element を諦める時間だけ待つ。隣のデバイスでは同じ行が 0.03 秒で出る = デバイスの差ではなくランナーの状態。
-**`bridge down --port <N>` でランナーを建て直せば直る**(シミュレータの再起動は要らない。druid を意図的に
+**`bridge down --port <N>` でランナーを起動し直せば直る**(シミュレータの再起動は要らない。druid を意図的に
 再起動しても再現しないので発生条件は未特定)。ツールは再利用の入口で `GET /systemalert` を 1 問測り、
-`RunnerAccessibilityHealth.slowProbeSeconds`(2 秒)以上なら建て直す。配線の陽性対照は
+`RunnerAccessibilityHealth.slowProbeSeconds`(2 秒)以上なら起動し直す。配線の陽性対照は
 `FT_FAKE_SLOW_RUNNER_PORTS=<port>`。**1 シナリオだけの実行が遅い、と見えたら先にこれを疑う** ——
 2026-09-14 は単発実行が常に同じデバイス(-01)を選ぶせいで「単発実行の経路が遅い」に見えた(台帳 §19.27)。
 
 **2026-09-16 の追記(2 つ)**:
 - **run の途中でも再発する**。素の xcuitest レーン(シミュレータ)では、緑のシナリオの直後に**ステップの
-  snapshot 所要が 2 秒以上だったときだけ**同じ 1 問で測り直し、劣化していれば同じポートで建て直す
+  snapshot 所要が 2 秒以上だったときだけ**同じ 1 問で測り直し、劣化していれば同じポートで起動し直す
   (`RunnerMidRunRecheck`。hybrid / in-app / 実機は対象外 = 理由は同ファイル)。健全な run は 1 問も払わない
-- **ランナーを建て直しても直らない形がある**。建て直した直後にもう 1 問測り、新しいランナーでも遅ければ
-  「the slowness is not in the runner process」と 1 行出して、そのプロセスではもう建て直さない
-  (`RunnerRestartFutility`)。実測: -01 は建て直すたびに 2.7〜3.0 秒のまま(同時刻の他のデバイスは 0.03 秒)で、
+- **ランナーを起動し直しても直らない形がある**。起動し直した直後にもう 1 問測り、新しいランナーでも遅ければ
+  「the slowness is not in the runner process」と 1 行出して、そのプロセスではもう起動し直さない
+  (`RunnerRestartFutility`)。実測: -01 は起動し直すたびに 2.7〜3.0 秒のまま(同時刻の他のデバイスは 0.03 秒)で、
   **シミュレータの再起動で 0.03 秒に戻った**(同じ 3 シナリオの合計 42.3s → 22.1s)。この形では上の
   「シミュレータの再起動は要らない」は成り立たない。確かめ方は `curl -w '%{time_total}' 127.0.0.1:<port>/systemalert`
   をデバイスごとに数回(アイドルでも 3 秒ならデバイスの側)
 - 陽性対照(3 通り。どれも `--device <1 台> --scenario` ×3 の素の xcuitest 実行): 劣化したデバイス・注入なし →
-  建て直し 1 回 + 上の 1 行 + 以降は無言 / 健全なデバイス・注入なし → 測り直しの行 0 件 / 健全なデバイス・注入あり →
+  起動し直し 1 回 + 上の 1 行 + 以降は無言 / 健全なデバイス・注入なし → 測り直しの行 0 件 / 健全なデバイス・注入あり →
   緑のたびに「restarted …; a one-element query now takes 0.0Xs — the lane continues」
 
 ## 入力・キー系は Compose だけで検証しない(フレームワークで経路が割れる)
@@ -531,10 +531,10 @@ production とテストの両方が新しいキーになっているか**を見�
   テストする(応答しないポート + マーカー入りログで実測)
 - **マーカーが出ない孤児もある**(2026-09-04: シミュレータ停止後に xcodebuild が固まって残り、
   6〜16 分生きたまま announce しない。ログにはマーカーが無いので上の短絡は効かず、引き取りの
-  たびに 180 秒待って建て直していた。同日3回)。2つ目の材料は**プロセスの経過時間**
+  たびに 180 秒待って起動し直していた。同日3回)。2つ目の材料は**プロセスの経過時間**
   (`ps -o etime=`。`BridgeLauncher.runnerElapsed`)—— **startupTimeoutSeconds 以上生きて
   announce していないランナーは、起動した側が既に待ち切って諦めたもの**なので待たずに止めて
-  建て直す(`StartingRunnerVerdict.decide`。経過が測れないときは従来どおり待つ)
+  起動し直す(`StartingRunnerVerdict.decide`。経過が測れないときは従来どおり待つ)
 
 ### macOS のファイル名は NFD —— 文字列一致が黙って外れる(2026-08-05)
 
@@ -572,7 +572,7 @@ XCUITest の snapshot は**セッションのアプリの木**なので、別の
 
 ### ブリッジの版を上げた直後のフル E2E は「第1フェーズだけ」条件が違う(2026-08-07)
 
-`bridgeProtocolVersion` を上げると**全ブリッジが建て直される**ので、`Scripts/e2e.sh` の
+`bridgeProtocolVersion` を上げると**全ブリッジが起動し直される**ので、`Scripts/e2e.sh` の
 **最初に回るプロジェクトだけがコールドなシミュレータ**に当たる。実測ではその回の
 `launch` が **24.5 秒**(通常は数秒)かかっていた。
 
@@ -1034,7 +1034,7 @@ requireVisible)は OCR だけで判定する**(`OCROnlyVisibility`。OCR が判�
 **稼働中の in-app ブリッジは再利用される**ので、ソースを差し替えても**同じ dylib のまま**
 両腕を走らせてしまうことがある(2026-08-20 に実際に無効な A/B を2回取った。base 側の値が
 fix 側と一致するのが症状)。2026-08-20 の出所ガード(performance-tuning §3.25)で
-**ソースが変われば必ず建て直す**ようになったが、A/B のときは自分でも確認すること:
+**ソースが変われば必ずビルドし直す**ようになったが、A/B のときは自分でも確認すること:
 
 - `stat -f "%Sm" InAppBridge/build/libFTInAppBridge.dylib` を**各 run の前後で**記録する。
   腕を切り替えた run で mtime が動いていなければ、その測定は無効
@@ -1042,7 +1042,7 @@ fix 側と一致するのが症状)。2026-08-20 の出所ガード(performance-
 - **版だけで判断しない**: 版を上げ忘れた変更は版一致のまま素通りする
 
 **「常時アニメーションして整定しない画面」は注入で作れる**(自前 SUT は素直に整定するので
-witness にならない): `InAppSettle.waitOnMain` の静穏判定を成立しないようにして dylib を建て直す。
+witness にならない): `InAppSettle.waitOnMain` の静穏判定を成立しないようにして dylib をビルドし直す。
 2026-08-20 はこれで受け手の報告(端送りが 8.0s 固定)を 8,013ms まで再現し、
 修正の効果(−63%)を測った。**実験パッチは必ず戻す**(戻し忘れは指紋ゲートが検出する)。
 
@@ -1544,7 +1544,7 @@ iOS 実機の監査で踏んだ型。判定(`bridgeUnreachableVerdict`/`trustBou
 単体テストも変異テストも通っていたが、**実機の陽性対照だけが「1バイトも改善していない」
 ことを示した**。
 
-実例(実機ブリッジが建て直されると `profile:` セッションが永久に詰む欠陥): 最初の修正は
+実例(実機ブリッジが起動し直されると `profile:` セッションが永久に詰む欠陥): 最初の修正は
 `isBound`(実機は listen を iproxy が引き継ぐのでランナー死後も true のまま残る)を pid の
 生死で補強した。純粋関数は正しく、テストも緑。**しかし実機で撃つと直前と同じ
 "Cannot reach the driver" のまま**だった。真因はもっと手前で、`connectionLostHint` が
@@ -1570,7 +1570,7 @@ iOS 実機の監査で踏んだ型。判定(`bridgeUnreachableVerdict`/`trustBou
 - **修正前**は復帰の呼び出しが直前と**同一のエラー文**を返すことを確認してから直す
   (ここを飛ばすと「直した」の基準が無い)
 - **修正後**は「The XCUITest runner behind iPhone wave port 8144 exited」と名指しした
-  うえで、次の呼び出しが別ポートへ建て直して `ready: true` を返すことを確認する
+  うえで、次の呼び出しが別ポートで起動し直して `ready: true` を返すことを確認する
 
 **このハーネスを先に書いていなければ、緑のテストと正しい純粋関数だけを見て
 「直った」と報告していた。**
@@ -2267,7 +2267,7 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
   `bootstatus -b`**。**2台ずつ**戻す(一斉 boot は凍結の相関要因そのもので、start-device の
   「同時2台」と同じ理屈)
 - **シミュレータを落とすとブリッジも死ぬ**ので、回復と `buildIOSWorkers` での張り直しは1セット。
-  生きているブリッジは再利用されるため、実際に建て直るのは落とした機だけ
+  生きているブリッジは再利用されるため、実際に起動し直されるのは落とした機だけ
 - **落とす前にその機のブリッジを止める**(2026-08-11。`BridgeLauncher.stopMatching(udid:)`)。
   掴んだまま `simctl shutdown` すると XCUITest ランナーの teardown を待って **約50秒**かかり
   (止めてからなら約5秒)、生き残ったランナーが再ブート後に再接続してくるので張り直しも遅い。
@@ -2578,7 +2578,7 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   `--align`(下記)
 - **回帰の分担(ユーザー指示 2026-09-28)**: E2E はこの Mac(M2Ultra)で `Scripts/e2e.sh --local`、
   E2EX は `Scripts/e2ex.sh --on M1Ultra`(ssh でランナーのクローン `~/fleetest-runner/foundation-tester` に入り、
-  **そこで SUT を建てて**そこのデバイスで回す。残りの引数はそのまま渡す)を**同時に**起こす。向こうで動くのは
+  **そこで SUT をビルドして**そこのデバイスで回す。残りの引数はそのまま渡す)を**同時に**起こす。向こうで動くのは
   align 済みのコミットなので commit → `Scripts/align.sh` → 実行の順。M1Ultra の道具(xcodegen・Flutter は
   ~/.local と ~/flutter、Homebrew の CocoaPods)は `~/.zprofile` の fleetest-tools ブロックの PATH にある
   (`zsh -lc` は `.zshrc` を読まない)
@@ -2928,7 +2928,7 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
      に落とす(検出は `BridgeLauncher.portsByUDID` = プロセス引数の `-destination id=<UDID>` 照合。
      `scanRunningBridges` は /status 応答済みしか映らないのでこれだけでは足りない)。
      引き取ったランナーが応答しなければ止めて同じポートで立て直す(親を失ったゾンビ対策。
-     **起動予算を超えて生きているランナーは待たずに建て直す** —— 上の §「起動中のブリッジを待つ」)
+     **起動予算を超えて生きているランナーは待たずに起動し直す** —— 上の §「起動中のブリッジを待つ」)
   2. run は**供給フェーズ(install・凍結triage)の間も run-lease を保つ**(`SupplyLeaseHolder`)。
      `RunOrchestrator` の lease はシナリオ実行中しか書かれないため、その手前に watchdog の
      `api start-device` が割り込む穴が空いていた。**orchestrator が書き始めたキーは手放す**
@@ -2976,7 +2976,7 @@ connection was lost」で落ちる(そのデバイスは never joined = 準備�
   (`fleetest doctor` がツールチェーン指紋の不一致を警告。2026-07-21 実害)。**判定に成果物の
   `Info.plist` を使わない** —— `XCTRunner.app` は SDK のテンプレートのコピーで、`DTXcodeBuild` は
   テンプレート自身の値のまま残る(Xcode 27 beta 6 は `27A252` で、`xcodebuild -version` の
-  `27A5252f` と体系が違う = 建て直しても永久に警告し続ける。2026-08-25 に踏んだ)。
+  `27A5252f` と体系が違う = ビルドし直しても永久に警告し続ける。2026-08-25 に踏んだ)。
   正は `BridgeLauncher.staleRunnerToolchain` = 再ビルドの砦と同じ指紋
 
 ## テストが接続拒否(「ドライバへの接続が拒否されました」)で全滅したら

@@ -91,7 +91,7 @@ final class HybridFallbackIdentityTests: XCTestCase {
         XCTAssertEqual(drifted, .differentDevice, "fallback ポートが別デバイスの udid を名乗っているのに見逃した")
     }
 
-    /// **maintainer-notes §51.2 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた。
+    /// **maintainer-notes §51.2 の実測**: 起動し直しで fallback ポートが in-app ブリッジに化けた。
     /// udid を申告しないのは実機の xcuitest だけなので、これは差し替わり(differentDevice)
     func testInAppEngineOnTheExpectedXCUITestPortIsDrifted() async throws {
         let stub = try StatusStubServer(status: StatusResponse(

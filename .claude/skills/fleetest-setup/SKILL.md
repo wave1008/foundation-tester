@@ -360,7 +360,7 @@ products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product 
 ```
 
   起動のたびのビルド・PATH 補正・ログの向き先は `Scripts/mcp-server.sh`（ソースが実行ファイルより
-  新しいときだけ建て直す・build 出力はログファイルへ・stdout は JSON-RPC 専用）に閉じているので、
+  新しいときだけビルドし直す・build 出力はログファイルへ・stdout は JSON-RPC 専用）に閉じているので、
   ここでは呼び出すだけでよい。**cwd は変えない**（cwd は `fleetest-mcp` がパッケージルートを特定する入力。
   mcp-server.sh はビルドをサブシェルで行い、元の cwd のまま exec する。cwd が変わると外部パッケージ構成で
   受け手の `TestProjects/` が見えなくなる）。

@@ -1,4 +1,4 @@
-// 実機のブリッジが署名で建たないときの案内(XcodeSigningDiagnosis)。
+// 実機のブリッジが署名でビルドできないときの案内(XcodeSigningDiagnosis)。
 //
 // witness は **実際に踏んだビルドログ**(Tests/Fixtures/BuildLogs/xcodebuild-signing-failure.txt。
 // 2026-08-29 に M1Ultra の iPhone 13 で採取。メールアドレスだけ伏せてある)。作り物のログで

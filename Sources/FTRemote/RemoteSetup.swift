@@ -149,7 +149,7 @@ public enum RemoteSetupPlan {
     /// 先に通すこと(ここでは検証しない — 検証は1箇所、埋め込みは複数箇所から呼ばれ得るため
     /// 分離してある)。
     ///
-    /// **ヘルパーを省かない** —— `fleetest` だけを建てると、そのランナーのタイルは状態は届くのに
+    /// **ヘルパーを省かない** —— `fleetest` だけをビルドすると、そのランナーのタイルは状態は届くのに
     /// 映像が1枚も来ない(`api device-stream` が exec 対象を見つけられず即死し、拡張は
     /// 「映像なし」で諦める)。名前の定義元は `StreamHelpers`
     public static func alignRevisionCommand(layout: RemoteLayout, revision: String) -> String {

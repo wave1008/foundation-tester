@@ -820,7 +820,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                         debugOptions: debugOptions, recorder: recorder, interruptState: interruptState)
                 } else {
                     let androidWorkers = try await androidWorkersTask!.value
-                    // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の
+                    // performanceMode では iOS の late join をやめて開始前に起動する。**理由は計測の
                     // 歪みではなくゲートの可視性**(ProfileRunner の同じ箇所のコメント参照)。
                     // iosWorkersTask は既に走っているので新しい実装は要らず、待つタイミングを
                     // 早めるだけ(2つ目の実装を書かない)

@@ -125,7 +125,7 @@ final class BridgeIdentityCheckTests: XCTestCase {
             .differentDevice, "fallback ポートが別デバイスの udid を名乗っているのに一致と判定した")
     }
 
-    /// **maintainer-notes §51.2 の実測**: 建て直しで fallback ポートが in-app ブリッジに化けた(XCUITest ではない)。
+    /// **maintainer-notes §51.2 の実測**: 起動し直しで fallback ポートが in-app ブリッジに化けた(XCUITest ではない)。
     /// in-app には `/gesture` が無いので 404 になるが、相手が同じデバイスの別ポートとは限らない。
     /// udid が申告されない(実機の xcuitest しか取り得ない形)ので、エンジンの食い違いは
     /// differentDevice に分類する(実機 ⇄ シミュレータの入れ替わりでしか起こらない)

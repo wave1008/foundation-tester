@@ -151,7 +151,7 @@ export const deviceOpsStrings = {
     en: "[fleetest] Retrying start-device({name}) ({nextAttempt}/{max}, after {delayMs}ms)",
   },
   "deviceOps.deviceOpFailedGeneric": { ja: "{command} に失敗しました。", en: "{command} failed." },
-  // 実機のブリッジが署名で建たないときの案内。**判定は CLI**(FTBridgeClient の
+  // 実機のブリッジが署名でビルドできないときの案内。**判定は CLI**(FTBridgeClient の
   // XcodeSigningDiagnosis)で、文言はここが持つ(CLAUDE.md「共有するのは判定であって文言ではない」)。
   // **事実(どれが欠けているか)は言い、手順は書かない**(Xcode の画面の道順は版ごとに
   // 変わり必ず古くなる)

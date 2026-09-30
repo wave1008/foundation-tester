@@ -34,7 +34,7 @@ final class BridgeToolchainLedgerWiringTests: XCTestCase {
         // **引数まで固定しない**(改行が入っただけで落ちる)。見るのは呼び出しの本数だけ
         let occurrences = code.components(separatedBy: "BridgeToolchainLedger.matchesCurrent(").count - 1
         XCTAssertEqual(occurrences, 2, ".reuse と .adopt の両方が matchesCurrent を通ること(片方だけだと"
-            + " 同じ機械の別発行者が建てたブリッジを他方の経路で取りこぼす)")
+            + " 同じ機械の別発行者が起動したブリッジを他方の経路で取りこぼす)")
     }
 
     /// `.reuse` の仕分けは純粋関数を通すこと。**ソースの順序で縛らない** —— 順序は
@@ -47,7 +47,7 @@ final class BridgeToolchainLedgerWiringTests: XCTestCase {
                       "リースの有無を decide へ渡していない(リースのある台を殺しうる)")
     }
 
-    /// **`.restart` が実際に止めて建て直すこと**。`decide` を呼ぶだけでは、その枝が空でも
+    /// **`.restart` が実際に止めて起動し直すこと**。`decide` を呼ぶだけでは、その枝が空でも
     /// 緑のまま通る(実際に変異で素通りした)。止める指定(`stopStalePort`)まで見る
     func testRestartBranchActuallyStopsAndRelaunchesTheBridge() throws {
         let code = try Self.source
@@ -59,9 +59,9 @@ final class BridgeToolchainLedgerWiringTests: XCTestCase {
         let branch = rest.range(of: "\n            case ").map { String(rest[..<$0.lowerBound]) }
             ?? String(rest.prefix(1200))
         XCTAssertTrue(branch.contains("stopStalePort: port"),
-                      ".restart が古いブリッジを止めていない(止めずに建て直すとポートが衝突する)")
+                      ".restart が古いブリッジを止めていない(止めずに起動し直すとポートが衝突する)")
         XCTAssertTrue(branch.contains("executeBridge("),
-                      ".restart が建て直していない(版の違うブリッジをそのまま使い続ける)")
+                      ".restart が起動し直していない(版の違うブリッジをそのまま使い続ける)")
     }
 
     /// **`record` は起動(waitUntilReady)より前**。ready の後に書くと、別プロセスが `.adopt` で

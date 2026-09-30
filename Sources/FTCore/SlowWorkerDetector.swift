@@ -2,7 +2,7 @@
 // 「デバイスそのものが遅い」ことの**観測だけ**を行う純粋関数(自動修復・除外はしない)。
 // 根拠(3時間負荷テスト): シミュレータ1台だけが3 run連続で in-app snapshot
 // 4.3〜4.4秒に張り付いた(通常は数十ms。他7台は15ラウンドで2秒超が3回以下)。ホストCPUでは
-// 説明が付かず(中央値56%・前後のラウンドと同等)、XCUITestランナーを建て直しても直らなかった。
+// 説明が付かず(中央値56%・前後のラウンドと同等)、XCUITestランナーを起動し直しても直らなかった。
 // **これはその1件の帰属であって、この検知が導けることではない**(consoleWarning の宣言参照)。
 // 4.4秒はステップtimeout(`FTCore.DefaultWait.seconds`=5秒)未満
 // なので既存の `slow-snapshot` 注記(timeout超過)は立たず、所要以外に痕跡が残らない。
@@ -60,7 +60,7 @@ public struct SlowWorkerFinding: Sendable, Equatable {
     /// **遅さの帰属(デバイスかランナーか)は書かない** —— 入力はワーカーごとの snapshotMs だけで
     /// 区別が付かない。実際に逆を書いていたことがある: 同じデバイスが in-app のフル E2E では
     /// 1 度も鳴らず xcuitest でだけ鳴り、**同じ run の供給時プローブは「ランナーの stale remote
-    /// element」と名指しして建て直していた**(`RunnerAccessibilityHealth`)ので、
+    /// element」と名指しして起動し直していた**(`RunnerAccessibilityHealth`)ので、
     /// 2 つの検知が同じデバイスについて正反対の帰属を出した
     public var consoleWarning: String {
         switch kind {

@@ -227,7 +227,7 @@ export type MonitorEvent =
       readonly observed: boolean;
       readonly runs: readonly MonitorRunEntry[];
     }
-  // ブリッジ診断ログの合計が上限を超え、建て直しの候補になったデバイス(§背景・
+  // ブリッジ診断ログの合計が上限を超え、起動し直しの候補になったデバイス(§背景・
   // monitorBridgeLogRotation.ts が消費)。候補が変わったとき/最初の1回だけ届く(周期毎ではない)。
   // 契約: Sources/fleetest/ApiMonitorCommand.swift の計測器と対。**このマシンのデバイスだけ**
   // (リモートの中継には乗らない)

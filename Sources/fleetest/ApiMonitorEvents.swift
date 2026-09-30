@@ -248,9 +248,9 @@ struct ApiMonitorFrameEvent: Encodable {
 }
 
 /// xcresult(XCUITest ランナーの結果の束)の保持容量が guarded(生きているブリッジ)だけで
-/// 超過したとき、建て直す価値がある1台を知らせる(`fleetest api restart-bridge` の入力)。
+/// 超過したとき、起動し直す価値がある1台を知らせる(`fleetest api restart-bridge` の入力)。
 /// 判定は `FTCore.BridgeLogRotation.candidate`(RetentionSweeper.clean の notice と同じ条件)。
-/// **手元でも出す**(この機械のブリッジしか建て直せないので、リモートの子が出しても
+/// **手元でも出す**(この機械のブリッジしか起動し直せないので、リモートの子が出しても
 /// `RemoteMonitorFanout` は中継しない——`machine` 欄は持たない)。
 /// 変わったとき(と最初の1回)だけ出す。同期相手: vscode-fleetest/src/monitorBridgeLogRotation.ts
 struct ApiMonitorBridgeLogRotationEvent: Codable, Equatable {
@@ -272,7 +272,7 @@ struct ApiMonitorBridgeLogRotationEvent: Codable, Equatable {
         let deviceId: String
         let name: String
         let port: UInt16
-        /// 建て直せば孤児になり消える束そのもののバイト数
+        /// 起動し直せば孤児になり消える束そのもののバイト数
         let bundleBytes: Int64
         /// xcresult 系統の使用量合計(guarded 込み。`api retention` の usageBytes と同じ意味)
         let usageBytes: Int64

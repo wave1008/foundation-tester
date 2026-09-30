@@ -92,7 +92,7 @@ enum ProfileRunner {
         try rejectIfDeviceLeased(workers: workers, leaseStateDir: leaseStateDir)
         let builtKeys = workers.compactMap { $0.connection.serial ?? $0.connection.udid }
         supplyLease?.hold(keys: builtKeys)
-        // 予定したが実際には建たなかったデバイス(供給失敗でレーンから外れた)の lease は取り消す
+        // 予定したが実際には用意できなかったデバイス(供給失敗でレーンから外れた)の lease は取り消す
         let builtKeySet = Set(builtKeys)
         supplyLease?.releaseKeys(plannedKeys.map(\.key).filter { !builtKeySet.contains($0) })
         return workers
@@ -491,8 +491,8 @@ enum ProfileRunner {
         // ここへ運ぶ(F10)。android 分の `triage.repaired` とはここで合流させる
         let iosBlankRepairBox = IOSBlankRepairBox()
 
-        // performanceMode では iOS の late join をやめて開始前に建てる。**理由は計測の歪みではなく
-        // ゲートの可視性** —— late join だと iOS ワーカーは run 開始後に建つので、「iOS のレーンが
+        // performanceMode では iOS の late join をやめて開始前に起動する。**理由は計測の歪みではなく
+        // ゲートの可視性** —— late join だと iOS ワーカーは run 開始後に起動するので、「iOS のレーンが
         // 足りない」を開始前に検出できず、モードの約束(足りなければ開始しない)が iOS だけ守れない。
         // 計測そのものは late join でも歪まない(provider は全機をまとめて返すのでレーンは 0→N と
         // 一段で増え、シナリオはそれまで走らない)。Android が先行する混在プロファイルだけは
@@ -778,7 +778,7 @@ enum ProfileRunner {
             // 画面だけ死んだシミュレータを**投入前に回復させる**(BlankWorkerTriage 参照)。
             // 回復は simctl shutdown→boot で、**ブリッジごと死ぬ**ので張り直しまでが1セット。
             // 張り直しは buildIOSWorkers を呼び直すだけでよい(生きているブリッジは
-            // 再利用されるので、実際に建て直るのは落とした機だけ)。
+            // 再利用されるので、実際に起動し直されるのは落とした機だけ)。
             // レーンに凍結機を残さないための処理で、戻らなかった個体だけが除外される
             let recovered = await BlankWorkerTriage.excludeBlankScreenWorkers(
                 ws,

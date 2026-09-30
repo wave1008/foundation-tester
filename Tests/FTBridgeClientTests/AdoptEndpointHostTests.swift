@@ -2,7 +2,7 @@
 // **記録ファイル(.fleetest/bridge-<port>.endpoint)から丸ごと読む**ことのソース走査。
 //
 // `BridgeEndpoint(port:)` は常にループバック・token 無し。LAN 経由の実機は起動した側が LAN IP を
-// 記録しており、それを読まずに待つと「起動しているのに応答が無い」と誤って止めて建て直す。
+// 記録しており、それを読まずに待つと「起動しているのに応答が無い」と誤って止めて起動し直す。
 // usb トンネルは host こそループバックのままだが token を記録している(establish の usb 分岐)ので、
 // host だけでなく endpoint ごと渡す必要がある。仮想デバイスは記録が無く load がループバック・
 // token 無しを返すので挙動は変わらない。同型: BridgeHostPlumbingTests(BridgeClient の生成側)。

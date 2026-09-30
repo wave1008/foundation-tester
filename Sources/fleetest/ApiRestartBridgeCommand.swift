@@ -1,8 +1,8 @@
-// VSCode拡張向け: 使われていない XCUITest/in-app ブリッジを建て直し、xcresult の結果の束を孤児にする
+// VSCode拡張向け: 使われていない XCUITest/in-app ブリッジを起動し直し、xcresult の結果の束を孤児にする
 // (`fleetest api restart-bridge`)。孤児になった束は `BridgeLauncher.sweepOrphanResultBundles` が
 // 次の供給の入口で無条件に消すので、ここでは止めて供給し直すだけでよい。
 // **デバイス本体は起動も停止もしない**(ブリッジだけ)。iOS だけ(Android のブリッジは常駐 APK で、
-// 起動ごとの結果の束を持たない = 建て直す対象が無い)。
+// 起動ごとの結果の束を持たない = 起動し直す対象が無い)。
 // NDJSON は start-device と同じ log*/finished。判定・撃つ側の候補選定(VSCode 拡張)は
 // 同期相手 vscode-fleetest/src/monitorBridgeLogRotation.ts。
 
@@ -53,7 +53,7 @@ struct ApiRestartBridgeCommand: AsyncParsableCommand {
     /// 他のポートは巻き込まない = 注入したアプリを起こし直さない)
     /// ③供給し直す**。①②の鍵・UDID 解決は `DeviceBooter.shutdownOne` と同じ引き方
     /// (`leaseKey` / `resolvedPhysicalIOSUDID`)——生きた lease を見落とすと使用中の run の
-    /// ブリッジを黙って建て直してしまう
+    /// ブリッジを黙って起動し直してしまう
     static func restart(spec: DeviceSpec, repoRoot: URL,
                         log: @escaping @Sendable (String) -> Void) async throws {
         var leaseKeys = [DeviceBooter.leaseKey(spec: spec, platform: "ios")].compactMap { $0 }

@@ -35,7 +35,7 @@ public final class FastLaunchDriver: AppDriver {
         // `wait(for: .runningForeground, timeout: 5)`。待ち切れなくても XCTest の失敗を記録しない)。
         // activate はランナーがアプリを「動いていない」と見ると起動し直し、その起動が時間切れになると
         // main が戻らず**ランナーごと落ちる**(起動直後・高負荷のシミュレータで、1 本の起動
-        // 失敗がレーンの喪失(建て直し約 60 秒 + 再キュー)になった。ランナーの見張りを 180 秒に延ばしても
+        // 失敗がレーンの喪失(起動し直し約 60 秒 + 再キュー)になった。ランナーの見張りを 180 秒に延ばしても
         // main は戻らなかった = 撃った時点で手遅れ)。**待ち切れなくても activate は撃つ**が、
         // その事実を注記に残す —— 次にランナーが落ちたとき、この形だったかが記録から分かる
         let activatedBeforeForeground = try await attachMissedForeground(bundleID: bundleID)

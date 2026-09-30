@@ -1,6 +1,6 @@
-// 引き取った起動中ランナーが announce するまで待つか、諦めて建て直すかの決定。
+// 引き取った起動中ランナーが announce するまで待つか、諦めて起動し直すかの決定。
 // 純粋関数にしてあるのは単体テストで固定するため —— 誤って「待つ」に倒すと孤児ランナーへ
-// 毎回 startupTimeoutSeconds 分待たされ、誤って「建て直す」に倒すと正常に起動中のランナーを
+// 毎回 startupTimeoutSeconds 分待たされ、誤って「起動し直す」に倒すと正常に起動中のランナーを
 // 撃ち殺して起動をやり直させてしまう。
 
 import Foundation
@@ -32,7 +32,7 @@ public enum PSElapsedTime {
 public enum StartingRunnerVerdict: Equatable {
     /// 起動予算内 → announce を待つ
     case wait
-    /// 起動予算を超えて生きている → 起動した側は既に諦めている。待たずに止めて建て直す
+    /// 起動予算を超えて生きている → 起動した側は既に諦めている。待たずに止めて起動し直す
     case restart
 
     /// - elapsed: ランナーの生存時間(ps etime)。測れなければ待つ側に倒す(不明を restart の根拠にしない)
@@ -40,8 +40,8 @@ public enum StartingRunnerVerdict: Equatable {
     ///   (BridgeStartupWait)ので、ログが伸びている間は起動側もまだ諦めていない = 引き取る側も待つ。
     ///   測れなければ elapsed だけで決める
     /// - simulatorBooted: 対象がシミュレータで Shutdown なら、ランナーが起動中であるはずがない(xcodebuild は
-    ///   ブートを待つ側で、落とされたデバイスに張り付いたランナーは二度と announce しない)。**待たずに建て直す**
-    ///   (実測: 落としたデバイスの引き取りが 180 秒待ってから建て直していた。台帳 §19.25)
+    ///   ブートを待つ側で、落とされたデバイスに張り付いたランナーは二度と announce しない)。**待たずに起動し直す**
+    ///   (実測: 落としたデバイスの引き取りが 180 秒待ってから起動し直していた。台帳 §19.25)
     public static func decide(elapsed: TimeInterval?, quietFor: TimeInterval? = nil,
                               simulatorBooted: Bool = true,
                               budget: TimeInterval) -> StartingRunnerVerdict {
@@ -58,7 +58,7 @@ public enum StartingRunnerVerdict: Equatable {
 /// run のたびにログへ出力するため、無応答になった直後でも「最近書かれた」と読めてしまい、
 /// decide が .wait を返して waitUntilReady が満額 startupTimeoutSeconds を無駄に待つ
 /// (実測 M1Ultra: 直前2 run で健全だった長寿ブリッジが無応答化 →
-/// 「起動中」に分類され 180 秒待ってから建て直した)。
+/// 「起動中」に分類され 180 秒待ってから起動し直した)。
 /// pid ファイルは起動時に一度だけ書かれる(BridgeLauncher.startDetached)ので寿命の起点として
 /// ぶれない。起動が正当にかかる時間は startupTimeoutSeconds を超えないので、それより古い pid は
 /// 「起動中」であるはずがない —— 別の定数を作らず BridgeLauncher.startupTimeoutSeconds を共有する

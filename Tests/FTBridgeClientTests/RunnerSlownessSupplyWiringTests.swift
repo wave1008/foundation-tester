@@ -1,8 +1,8 @@
-// 建て直しても直らなかった XCUITest ランナーが run をまたいで放置される問題への対処(2026-09-20)。
+// 起動し直しても直らなかった XCUITest ランナーが run をまたいで放置される問題への対処(2026-09-20)。
 //
 // リース判定(hasForeignLease の I/O 版)は実ファイルで固める(デバイス不要)。
 // 実際に供給の入口(BridgeProvisioner.executeBridge の .reuse 分岐)がこの判定を通ることと、
-// 建て直しの結果を RunnerSlownessStore へ持ち越すことは、供給そのものが実デバイスを要求するため
+// 起動し直しの結果を RunnerSlownessStore へ持ち越すことは、供給そのものが実デバイスを要求するため
 // テストから通せない —— ソース走査で固定する(BridgeProvisionerFailureLogTests と同じ規律)。
 
 import XCTest
@@ -75,7 +75,7 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
     }
 
     /// **供給の入口(.reuse の xcuitest 分岐)が、通常のプローブより先に run をまたいだ印を読むこと**。
-    /// 印が消えると、毎 run 同じ建て直しの空振りを繰り返す旧挙動に戻る
+    /// 印が消えると、毎 run 同じ起動し直しの空振りを繰り返す旧挙動に戻る
     func testReuseBranchReadsThePersistedMarkBeforeProbing() throws {
         let text = compact(try source())
         let markReadIndex = try XCTUnwrap(text.range(of: compact(
@@ -109,7 +109,7 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
         XCTAssertTrue(text.contains(compact("case .reuseWithoutRestarting:")))
     }
 
-    /// **変異①「印が永続しない」の陽性対照(配線側)**: 建て直しても直らなかったという事実は
+    /// **変異①「印が永続しない」の陽性対照(配線側)**: 起動し直しても直らなかったという事実は
     /// プロセス内の RunnerRestartFutility だけでなく RunnerSlownessStore へも書かれる
     /// (restartRunner の劣化ブランチに両方の呼び出しが並ぶ)
     func testRestartRunnerPersistsTheFutilityMarkAlongsideTheInProcessOne() throws {

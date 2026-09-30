@@ -675,7 +675,7 @@ extension ApiMonitorCommand {
     static let androidScreencapTimeoutSeconds: TimeInterval = 15
 
     /// **`AndroidDriver.screenshot()`(ブリッジ経由)へ戻さない** —— あちらは `ensureBridge()` を
-    /// 通るので、ブリッジを終了させた実機でも観測のたびに建ててしまう(利用者が「全て終了」を
+    /// 通るので、ブリッジを終了させた実機でも観測のたびに起動してしまう(利用者が「全て終了」を
     /// 押した実機のブリッジが監視のポーリングだけで復活する副作用があった)。
     /// `AndroidScreencap`(adb 直叩き)は WebView の CDP 合成を持たないが、配信/ポーリングヘルパー
     /// (fleetest-devicepoll)も同じ adb 直叩きで合成していないので、タイルの見え方としては後退しない

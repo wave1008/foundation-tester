@@ -2,8 +2,8 @@
 // 純粋関数。F24 実測(2026-09-15 M1Ultra): 直前2 run で健全だった長寿の xcuitest ブリッジが
 // 無応答になったとき、StartingRunnerVerdict.decide の quietFor(起動ログの mtime)は
 // 「最近書かれた」と誤読して .wait を返し、waitUntilReady が満額 180 秒を無駄に待ってから
-// 建て直した。pid ファイルは起動時に一度だけ書かれるので、その年齢は「起動中の最大寿命」を
-// 超え得ない —— 超えていれば待たずに建て直しへ回してよい。
+// 起動し直した。pid ファイルは起動時に一度だけ書かれるので、その年齢は「起動中の最大寿命」を
+// 超え得ない —— 超えていれば待たずに起動し直しへ回してよい。
 
 import XCTest
 @testable import FTBridgeClient

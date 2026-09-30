@@ -394,7 +394,7 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertTrue(text.contains("OLDER than this build"), text)
     }
 
-    /// ブリッジのほうが新しいときは**ホストを建て直せ**と言う(逆を勧めると直らない)。
+    /// ブリッジのほうが新しいときは**ホストをビルドし直せ**と言う(逆を勧めると直らない)。
     /// 実際に起きた形: 版を上げた作業中にビルドされたランナーが生き残り、
     /// 撤回後のホストより新しい版を名乗っていた
     func testANewerBridgeTellsYouToRebuildTheHost() async throws {

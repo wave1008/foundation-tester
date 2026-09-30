@@ -170,7 +170,7 @@ extension MCPServer {
     }
 
     /// `lostTargetFold` が断るときの文。**探索へ落ちない理由を言う** —— 「見つからない」とだけ
-    /// 返すと、読み手は宛先を渡すのではなくブリッジを建て直しにいく
+    /// 返すと、読み手は宛先を渡すのではなくブリッジを起動し直しにいく
     static func lostTargetRefusal(survivors: [String], deviceNoun: String, unitNoun: String,
                                   otherPlatform: String?) -> String {
         let sorted = survivors.sorted()

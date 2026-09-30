@@ -112,7 +112,7 @@ export const webviewDashboardStrings = {
   "wvDashboard.deviceHealth.cause.consecutiveFailures": { ja: "連続失敗", en: "Consecutive failures" },
   "wvDashboard.deviceHealth.cause.accessibilityFault": { ja: "アクセシビリティ異常", en: "Accessibility fault" },
   "wvDashboard.deviceHealth.cause.noResponse": { ja: "応答なし", en: "No response" },
-  "wvDashboard.deviceHealth.recovery.runnerRestart": { ja: "ランナーの建て直し", en: "Runner restart" },
+  "wvDashboard.deviceHealth.recovery.runnerRestart": { ja: "ランナーの起動し直し", en: "Runner restart" },
   "wvDashboard.deviceHealth.recovery.workerRevive": { ja: "ワーカーの復帰", en: "Worker revive" },
 
   // insights.js

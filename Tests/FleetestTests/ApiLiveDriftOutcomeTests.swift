@@ -23,7 +23,7 @@ final class ApiLiveDriftOutcomeTests: XCTestCase {
     }
 
     /// **本題**: ポートの中身が別のデバイスに替わったら、同じポートで作り直さず断る
-    /// (黙って建て直すと別のデバイスを触り続ける実害があった)
+    /// (黙って起動し直すと別のデバイスを触り続ける実害があった)
     func testRefusesWhenADifferentDeviceNowAnswers() {
         let outcome = ApiLiveServe.liveDriftOutcome(
             drift: .differentDevice, port: 8123, expectedUDID: "SIM-1")

@@ -77,7 +77,7 @@ final class StuckStartingRunnerOwnershipTests: XCTestCase {
     }
 
     /// **ready 印は今のランナーの pid と照合して読む**(`exists` で在否だけ見ると、同じポート番号で
-    /// 建て直した後も前世代の印が「起動しきれない新しいランナー」を守り続ける)。撃つ判定まで
+    /// 起動し直した後も前世代の印が「起動しきれない新しいランナー」を守り続ける)。撃つ判定まで
     /// 到達できない(上の注記)ので、読み方はソース走査で固定する
     func testSweepReadsTheReadyMarkBoundToTheCurrentRunnerPid() throws {
         let url = URL(fileURLWithPath: #filePath)

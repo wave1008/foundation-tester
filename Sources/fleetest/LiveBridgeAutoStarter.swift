@@ -96,7 +96,7 @@ actor LiveBridgeAutoStarter {
         guard let reported = try? await client.status() else { return }
         let status = BridgeDiscovery.statusForIdentityCheck(reported, port: port, repoRoot: repoRoot)
         // **自分のデバイスにだけ効かせる**(F8b 型・実地 L1: このポートが版差のせいで古く見えても、
-        // 疎通した相手が別デバイスなら止めない——他人のブリッジを版で止めて建て直していた実害。
+        // 疎通した相手が別デバイスなら止めない——他人のブリッジを版で止めて起動し直していた実害。
         // 判定は run 側4経路と同じ FTCore.BridgeIdentityCheck の1箇所)
         let expected = BridgeIdentityCheck.Expected(port: port, udid: udid, physical: physical, engine: nil)
         if !BridgeIdentityCheck.matches(expected: expected, status: status) {
@@ -210,7 +210,7 @@ actor LiveBridgeAutoStarter {
                     device: udid, port: other.port, pid: other.pid))
             }
             // **シミュレータでは、同じ台の別ポートに残ったランナーの残骸を先に止める**(実測: serve が watchdog で
-            // 落ちて起き直すたびに別の空きポートへ建て、2本目が1本目のランナーアプリを殺すので、待受の無い
+            // 落ちて起き直すたびに別の空きポートで起動し、2本目が1本目のランナーアプリを殺すので、待受の無い
             // xcodebuild が台ごとに溜まった = sim-09/-10 で各3本・待受は1本)。止めるのは**そのポートを
             // 誰も待ち受けていない(拒否が確定した)ものだけ** —— 生きて待ち受けている相手には触らない
             if !physical, let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 {

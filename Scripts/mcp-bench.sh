@@ -113,9 +113,9 @@ LOG="$OUT/bench.log"
 
 say() { echo "$*" | tee -a "$LOG"; }
 
-# **測る対象は「今のソースで建てた」サーバ**(古いバイナリを測ると、直したはずの注記が
+# **測る対象は「今のソースでビルドした」サーバ**(古いバイナリを測ると、直したはずの注記が
 # 反映されないまま結論が出る)
-say "==> fleetest-mcp を建てる($TOOL_ROOT)"
+say "==> fleetest-mcp をビルドする($TOOL_ROOT)"
 if [ "$DRY_RUN" = 0 ]; then
   (cd "$TOOL_ROOT" && swift build --product fleetest-mcp) >>"$LOG" 2>&1 \
     || die "ビルドに失敗($LOG)"
@@ -249,7 +249,7 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
       [ -d "$FIXTURE_DIR/$fixture" ] || die "フィクスチャが無い: $FIXTURE_DIR/$fixture"
       run_cwd="$PKG"
       allowed="mcp__fleetest,Read,Edit,Write,Glob,Grep"
-      # **最初の run だけがビルドを払わないよう、先に1回建てておく**(2 分級。手数ではなく
+      # **最初の run だけがビルドを払わないよう、先に1回ビルドしておく**(2 分級。手数ではなく
       # wall が歪む)。フィクスチャは実行時にだけ落ちる形なのでコンパイルは通る
       if [ "$DRY_RUN" = 0 ]; then
         reset_authoring "$fixture"

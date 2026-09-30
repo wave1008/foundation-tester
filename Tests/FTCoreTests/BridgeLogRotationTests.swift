@@ -19,7 +19,7 @@ final class BridgeLogRotationTests: XCTestCase {
         XCTAssertNil(BridgeLogRotation.candidate(sessions: sessions, maxBytes: 100))
     }
 
-    /// 上限超過だが guarded は無い(掃除すれば済む)→ 建て直す必要が無い
+    /// 上限超過だが guarded は無い(掃除すれば済む)→ 起動し直す必要が無い
     func testOverCapWithNoGuardedSessionsReturnsNil() {
         let sessions = [session("bridge-8123-1", bytes: 150, minutesAgo: 1, guarded: false)]
         XCTAssertNil(BridgeLogRotation.candidate(sessions: sessions, maxBytes: 100))

@@ -787,7 +787,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   (`lastExplicitPlatform`。platform 省略の既定は ios なので、これが無いと直前まで Android を
   driving していても省略呼び出しが iOS へ行く)/ **④ 注入は応答へも注記する**(ターゲットごとに
   初回だけ。stderr は MCP クライアントに見えない)。
-  `forgetConnection` は一致する記憶も消す —— 消さないと、死んで別ポートに建ち直った
+  `forgetConnection` は一致する記憶も消す —— 消さないと、死んで別ポートで起動し直された
   ブリッジへ省略呼び出しが永久に再ダイヤルする。Android の死亡判定は
   `AndroidSerialResolver.connectedSerials()` の再照会(`androidSerialVanished` = 純粋関数)。
   **曖昧なら適用せず拒否する**(2026-08-13。`isAmbiguousMemory` / `rememberedDeviceRefusal`)——
@@ -799,7 +799,7 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
   拒否は候補を名指しする —— 断るだけだと読み手は総当たりで udid を試し、結局どれかの機を操作する
 - **キーが指す機が変わったら、そのキーの状態は全部捨てる**(`MCPServer.forgetDeviceState`。2026-08-13)。
   `engineKey` は `direct:ios:<port>:<serial>` で、**iOS のポートはセッション中に動く**
-  (監視が別ポートで建て直す。実測: -03 が 8128→8126)ので、死んだポートは後で別のシミュレータに
+  (監視が別ポートで起動し直す。実測: -03 が 8128→8126)ので、死んだポートは後で別のシミュレータに
   再利用され得る。`forgetConnection` が `drivers`/`connections`/`connectedPorts` しか消して
   いなかったため、`lastSnapshots` と `refGenerations` は**前の機の木**、`launchedBundleIDs` は
   **前の機で起動したアプリ**のまま生き残っていた(古い ref が別の機の木を起点に解決され、
@@ -3016,7 +3016,7 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     掴んでいるポートは `connectedPorts` に持つ —— **表示用の `connections` の文字列から読み解かない**
     (表記を整えるたびに判定が壊れる)
   - **宛先は port だけでなく udid まで書く**(`MCPServer.connectionLabel`。2026-08-12)。
-    ブリッジは落ちても monitor が別ポートで建て直すので**同じセッション中にポートが動く**
+    ブリッジは落ちても monitor が別ポートで起動し直すので**同じセッション中にポートが動く**
     (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手には、
     その port が今どの機かを確かめる手段が無かった。udid を申告しない旧ブリッジでは port だけ
     (「不明」と書くより短く、嘘も混ざらない)。**先頭は必ず `port `**(表示の整形規則。
@@ -4219,9 +4219,9 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
   `remote exec <machine> -- api start-device … --device-machine local` で向こうへ回す。記録の鍵は
   `device.id`(machine 込みで一意。name で持つと、向こうの connected が手元のハングを隠し、向こうの
   booted が手元の健全なデバイスを再起動する)。webview へ出す `bridgeWatch` にも machine を載せる(省略 = 手元)。
-- **ブリッジ診断ログ(xcresult)の建て直し**(`vscode-fleetest/src/monitorBridgeLogRotation.ts`・
+- **ブリッジ診断ログ(xcresult)の起動し直し**(`vscode-fleetest/src/monitorBridgeLogRotation.ts`・
   `Sources/fleetest/BridgeLogRotationSampler.swift`・判定は `FTCore.BridgeLogRotation`): 生きたランナーの束は
-  guarded で消せない(docs/results-json.md §保持容量)ので、**束が大きいブリッジを建て直して孤児にし、
+  guarded で消せない(docs/results-json.md §保持容量)ので、**束が大きいブリッジを起動し直して孤児にし、
   既存の掃除に消させる**。原因は XCTest がランナー経由のスクショ1回ごとに約 5KB の内部ログを書くこと
   (`getting screen bounds` ×6 ほか。xctestrun の `OS_ACTIVITY_DT_MODE` を外しても `-XCTEmitOSLogs NO` でも
   減らないと実測で確認)で、実機の画面を配信し続けると 1 台 1 日約 2.6GB。
@@ -4230,7 +4230,7 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
     guarded で最大の束のデバイスを `monitorBridgeLogRotation` 行で出す(変わったときだけ・候補無しは
     `"candidate":null`)。**この機械のデバイスだけ**(`RemoteMonitorFanout` は中継しない)。
     **`sweepAfterRun` が false なら候補を出さない**(利用者の止めるスイッチを共有する)。
-    控えを返すたびに束の実在を確かめる(建て直し後に古いポートを別のデバイスが使っても、そのデバイスを指さない)
+    控えを返すたびに束の実在を確かめる(起動し直し後に古いポートを別のデバイスが使っても、そのデバイスを指さない)
   - 撃つ: 拡張が lifecycle ジョブ `restartBridge` → `api restart-bridge --name` を積む。run 実行中・
     待ち行列 busy・同じデバイスに 20 分以内に撃った(計測 2 周期ぶん)ときは撃たない。`machine` 付きは無視
   - `api restart-bridge`: run・MCP・ライブ操作の印があれば断る(`DeviceBooter.deviceInUseRefusal`)→
@@ -4238,7 +4238,7 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
     アプリは起こし直さない)→ 供給し直す。デバイス本体は触らない。古い束は同じポートなら起動時の掃除、
     別ポートなら `sweepOrphanResultBundles` が消す
   - 陽性対照(2026-09-27): 上限を最小(1GB)にし、生きた束へ 1.1GB の実データを足す → モニターが候補を出す →
-    `api restart-bridge` が 16.6 秒で建て直し、1.1GB の束が消え、in-app ブリッジは起動し直されなかった
+    `api restart-bridge` が 16.6 秒で起動し直し、1.1GB の束が消え、in-app ブリッジは起動し直されなかった
   **実機は見ない**(供給に数分かかり枠を専有する)。健全性の watchdog(`monitorHealthWatchdog`)は
   まだ手元だけ(Wi-Fi 修復に相当する `api` の口が無く、手元の adb を直接叩くため)
 - **残骸掃除**: `BridgeLauncher.startDetached` は起動前に同一ポートの xctestrun
@@ -4830,7 +4830,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 --udid <デバイスA>` を `--port` なしで起こすと既定 8123 に居た**別のデバイスのブリッジ**を掴み、
 `actionResult.app` が別のデバイスで動いていたアプリを返した(操作もそちらへ飛んだ)。さらに
 `LiveBridgeAutoStarter.checkAndRestartIfStale` がその**別のデバイスのブリッジを「旧版」として止め、
-デバイスA の udid で同じポートに建て直そうとした** —— 健全なブリッジが2本消えた。
+デバイスA の udid で同じポートに起動し直そうとした** —— 健全なブリッジが2本消えた。
 
 不一致の扱いは**`--port` の明示/既定で分ける**(`DriverOptions.port` は `UInt16?` なので区別できる。
 `BridgeDiscovery` の「`port:` を明示した呼び出しでは探索しない —— 宛先を利用者が決めているため」と
@@ -4840,7 +4840,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 - **既定 8123 へのフォールバック** → 断らない。`BridgeDiscovery.scan` の `Found.udid` からその udid の
   ポートを探して乗り換え、見つからなければ**占有中の既定ポートには触れず**
   `XCUIBridgeResolver.freePort`(F8 と同じ台帳を見る採番。ライブ操作向けに public 化)で
-  空きポートへ向け、最初の操作で自然に接続拒否 → `LiveBridgeAutoStarter` が新しいブリッジを建てる。
+  空きポートへ向け、最初の操作で自然に接続拒否 → `LiveBridgeAutoStarter` が新しいブリッジを起動する。
   **なぜ断ってはいけないか**: 拡張は port が分かるときだけ `--port` を渡す
   (`vscode-fleetest/src/liveModel.ts` の `buildDeviceArgs`)ので、**ブリッジのまだ無いデバイスをライブ操作で
   開く**場面では必ず既定にフォールバックする。そこで断ると、自動起動が想定しているまさにその場面で
@@ -4870,7 +4870,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 組むだけにした。以前ライブ操作には門が無く、`{"cmd":"activate","bundle":""}` や
 `{"cmd":"launch","bundle":"no.such.app.live"}` で**そのコマンドが30秒刺さり、
 "A single command stalled for over 30s — force-quitting (command watchdog)" で serve が落ち、
-再起動時に健全なランナーまで掃除して建て直しになった**(実地 2026-09-22。`XCUIApplication` は
+再起動時に健全なランナーまで掃除して起動し直しになった**(実地 2026-09-22。`XCUIApplication` は
 実在しない bundleID で返ってこない)。素通ししてよいのは Android と in-app エンジン(ランナーが
 死なない経路)だけで、`com.apple.springboard` は門の外 —— §13.2/MCP と同じ切り分け
 (`InstalledAppCheck.launchGuard`)。own app(hybrid で in-app が既に繋がっているアプリ)への
@@ -4888,7 +4888,7 @@ launch/activate はライブ操作側で門より前に素通しする(in-app �
 `handle` が `actionResult(ok:false)` で答える形にした。**答えは正常時と同じ終端イベントまで出す**
 (frame は `frame(ok:false)` の1行だけ、他は `actionResult(ok:false)` → 観測 = snapshot。操作は撃たない)。
 拡張は actionResult を保持して次の snapshot/frame で要求を解決するので、actionResult だけで終えると
-結局 20 秒待って serve を建て直す(実地 2026-09-24。maintainer-notes §49.6)。
+結局 20 秒待って serve を起動し直す(実地 2026-09-24。maintainer-notes §49.6)。
 
 ## 14. 実行結果のファイルベース DB(2026-07-17)
 

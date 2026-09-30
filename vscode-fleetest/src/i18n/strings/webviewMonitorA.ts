@@ -23,7 +23,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceOpMenu.startingUp": { ja: "起動中...", en: "Starting..." },
   "wvMonitor.deviceOpMenu.stoppingDown": { ja: "停止中...", en: "Stopping..." },
   "wvMonitor.deviceOpMenu.wiping": { ja: "Wipe Data 実行中...", en: "Wiping data..." },
-  "wvMonitor.deviceOpMenu.restartingBridge": { ja: "ブリッジ建て直し中...", en: "Restarting bridge..." },
+  "wvMonitor.deviceOpMenu.restartingBridge": { ja: "ブリッジを起動し直し中...", en: "Restarting bridge..." },
   "wvMonitor.deviceOpMenu.start": { ja: "起動", en: "Start" },
   "wvMonitor.deviceOpMenu.cancelStart": { ja: "起動をキャンセル", en: "Cancel Start" },
   // 「起動をキャンセル」を押してから取り消しが終わるまでのタイルの表示(deviceTiles.js の cancellingUp)
@@ -140,7 +140,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.queuedBridgeStart": { ja: "ブリッジ起動待機", en: "Bridge start pending" },
   "wvMonitor.tile.queuedBridgeStop": { ja: "ブリッジ停止待機", en: "Bridge stop pending" },
   // 自動修復専用(monitorBridgeLogRotation.ts)。手動の起動/停止待機と区別する
-  "wvMonitor.tile.queuedBridgeRestart": { ja: "ブリッジ建て直し待機", en: "Bridge restart pending" },
+  "wvMonitor.tile.queuedBridgeRestart": { ja: "ブリッジの起動し直し待機", en: "Bridge restart pending" },
 
   "wvMonitor.deviceState.booting": { ja: "起動中", en: "Starting" },
   "wvMonitor.deviceState.offline": { ja: "未起動", en: "Not started" },

@@ -237,11 +237,11 @@ extension BridgeLauncherRebuildTests {
     func testMissingSigningFingerprintRebuildsForPhysical() throws {
         let xctestrun = try makeXCTestRun(modified: Date())
         XCTAssertTrue(needsRebuild(xctestrun, signing: "DEVELOPMENT_TEAM=AAA"),
-                      "この仕組み以前の成果物は一度だけ建て直す(古いまま走らせない)")
+                      "この仕組み以前の成果物は一度だけビルドし直す(古いまま走らせない)")
     }
 
     func testEmptySigningNeverRebuilds() throws {
-        // シミュレータ(署名なし)は指紋の有無に関わらず建て直さない
+        // シミュレータ(署名なし)は指紋の有無に関わらずビルドし直さない
         let xctestrun = try makeXCTestRun(modified: Date())
         XCTAssertFalse(needsRebuild(xctestrun, signing: ""))
         try storeSigning("DEVELOPMENT_TEAM=AAA")

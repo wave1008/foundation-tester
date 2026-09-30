@@ -1248,13 +1248,13 @@ upstream の既定ブランチなので、検証中のブランチでは必ず�
 `git fetch → checkout → swift build` で合わせる(revision は 16進 7〜40 文字を
 検証してから埋める = コマンド注入の入口を塞ぐ)。
 
-**建てるのは `fleetest` だけではない** —— **配信ヘルパー3本(`fleetest-simstream` /
-`fleetest-androidstream` / `fleetest-devicepoll`)も建てる**。名前の定義元は
+**ビルドするのは `fleetest` だけではない** —— **配信ヘルパー3本(`fleetest-simstream` /
+`fleetest-androidstream` / `fleetest-devicepoll`)もビルドする**。名前の定義元は
 `FTCore.StreamHelpers` で、`api device-stream` はこれへ `execv` で化ける。
 `--product fleetest` だけにしていた頃は、**そのランナーのタイルは状態は届くのに映像が1枚も
 来なかった**(`api device-stream` が exec 対象を見つけられず即死 → 拡張は「映像なし」で諦める)。
 2026-08-28 に実際に起きて、**ランナー導入以来ずっと**そうだった(手元は素の `swift build` で
-全部建つので誰も気づかない)。等号は `RemoteSetupTests.testAlignRevisionCommand` が固定する。
+全部ビルドされるので誰も気づかない)。等号は `RemoteSetupTests.testAlignRevisionCommand` が固定する。
 
 **踏んだ罠**: リモートで一時スクリプトを実行して後始末する1行で、終了コードの退避先を
 `status` にしていた。**ssh が起こすのは受け手のログインシェル(macOS 既定 zsh)で、zsh の
@@ -2064,7 +2064,7 @@ upstream main を clone して update.sh で追従するので、2人の rev は
   実地 2026-09-22 の対照: 走査に載ったポートへの `bridge down --port` は
   `refusing to stop: … is being driven by an MCP session (fleetest-mcp pid …)` で正しく拒否した一方、
   **同時刻に走査へ載らなかったポート(MCP が操作中)は一言も言わずに停止**し、そのセッションは
-  以後 "no running bridge" しか返さなくなった(ブリッジを建て直すまで回復しない)。
+  以後 "no running bridge" しか返さなくなった(ブリッジを起動し直すまで回復しない)。
   今の形: 走査に載らないポートは `BridgeDiscovery.probeStatus` の**4値**で見て、断るのは
   **本当に busy(`.timedOut` = 上限まで応答を保持)のときだけ**(`--port`/`--all` の両経路。
   押し切るのは `--force` だけ。複数ポートは `probeStatuses` で並列に撃つ)。

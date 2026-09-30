@@ -71,7 +71,7 @@ extension MCPServer {
             let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
                                           platform: args["platform"] as? String)
             // **直接ポート経路と同じ確認を通す**(掃討で揃えた)。profile 経由でもブリッジは
-            // 建て直され、そのとき同じ profile キーが別の機を指し得る —— 片方だけ守ると
+            // 起動し直され、そのとき同じ profile キーが別の機を指し得る —— 片方だけ守ると
             // 「profile を使う利用者にだけ穴が残る」形になる
             if let cached = drivers[key] {
                 if let moved = await deviceIdentityChanged(key, args: args) { throw MCPError(moved) }
@@ -87,7 +87,7 @@ extension MCPServer {
                 case .unchanged:
                     // **hybrid の fallback(XCUITest)ポートも本人確認する**(maintainer-notes §51.2): 主(in-app)の udid が
                     // 変わっていなくても、`HybridFallbackDriver` の fallback は別ポートを握ったままで
-                    // 建て直しにより別の機へ移り得る。fallback には ref が乗らないので(primary と違い)
+                    // 起動し直しにより別の機へ移り得る。fallback には ref が乗らないので(primary と違い)
                     // 捨てるべきセッション記憶が無い —— キャッシュだけ落として下の生成へ通す
                     // (`.inappOnly` へ静かに縮退することもある)
                     if await hybridFallbackDrifted(key) {
@@ -152,7 +152,7 @@ extension MCPServer {
             if case .ios(let provisioned, _) = target {
                 // **生成経路でも機の入れ替わりを見る**(レビュー指摘)。
                 // キャッシュ命中側だけに置くと、`enforceVersion` の拒否(`drivers[key]` だけを
-                // nil にする)のあとブリッジが別のフリート機へ建て直された回に、
+                // nil にする)のあとブリッジが別のフリート機へ起動し直された回に、
                 // 前の機の ref 世代と起動アプリが生き残る(直接ポート経路と同じ手当て)
                 if let previousUDID = Self.keyChangedDevice(previous: udids[key] ?? nil,
                                                             now: provisioned.udid) {
@@ -227,7 +227,7 @@ extension MCPServer {
         if let cached = drivers[key] {
             // **キャッシュ命中のドライバが、まだ同じ機を指しているかを確かめる**。
             // engineKey は `direct:ios:<port>:` で、**port は機の同一性ではない** ——
-            // ブリッジを建て直すと同じ port が別のシミュレータのものになる。実機で再現:
+            // ブリッジを起動し直すと同じ port が別のシミュレータのものになる。実機で再現:
             // 8123 で機A の木を採った後、`bridge down --port 8123` → `bridge up --device 機B
             // --port 8123` としてから**同じセッション**で古い ref を撃つと、
             // `tap [4] done`(成功)で**機B の同名要素を叩いた**。
@@ -296,7 +296,7 @@ extension MCPServer {
             // **hybrid のときだけ fallback ポートを覚える**(profile 経路と同じ理由・同じ枠)
             hybridFallbackPorts[key] = resolved.engine == "hybrid" ? resolved.xcuiPort : nil
             // **宛先は port だけでなく udid まで書く**(実アプリ監査): ブリッジは
-            // 落ちても monitor が別ポートで建て直すので、**同じセッション中にポートが動く**
+            // 落ちても monitor が別ポートで起動し直すので、**同じセッション中にポートが動く**
             // (実測: -03 が 8128→8126、-07 が 8136→8147)。port だけを覚えて使い回す読み手は、
             // その port が今どの機かを確かめる手段が無かった
             connections[key] = Self.connectionLabel(port: port, udid: resolved.udid)
@@ -329,7 +329,7 @@ extension MCPServer {
 
     /// 版ズレを既定で拒否する(G)。押し通しは `allowVersionSkew: true` で、その場合は
     /// **毎回の応答に警告が付き続ける**(1度言って黙らない)。
-    /// 拒否したときは覚えたドライバを捨てる —— 建て直した後に古い判定が残らないように
+    /// 拒否したときは覚えたドライバを捨てる —— 起動し直した後に古い判定が残らないように
     func enforceVersion(driver: AppDriver, key: String, args: [String: Any]) async throws {
         guard let skew = await Self.bridgeVersionSkew(driver: driver) else {
             versionSkew[key] = nil
@@ -351,7 +351,7 @@ extension MCPServer {
     /// アドホック探索なら警告で足りるが、生成が目的だとそうではない。
     ///
     /// **どちらが新しいかを明示する**(G-4): 対処が変わる ——
-    /// ブリッジが古い = 建て直す / ホストが古い = こちらを建て直す(or pull)。
+    /// ブリッジが古い = 起動し直す / ホストが古い = こちらをビルドし直す(or pull)。
     /// **判定できないときは黙る**(旧ブリッジは版を返さない = nil。それを「古い」と断じると常時警告)。
     ///
     /// **判定(running/expected の比較)は `BridgeTargetResolution.versionSkew` を通す**
@@ -992,7 +992,7 @@ extension MCPServer {
     /// 読むと毎回記憶が飛ぶ(`keyChangedDevice` と同じ規律)。
     /// Android は engineKey に serial(= 機そのもの)が入っているので、この穴が構造的に無い
     /// **問い合わせは掴んでいるドライバ越しにやらない**(実装2回目で踏んだ):
-    /// 実運用のドライバは `SessionRecoveryDriver` に包まれており、**建て直した直後のブリッジは
+    /// 実運用のドライバは `SessionRecoveryDriver` に包まれており、**起動し直した直後のブリッジは
     /// まだセッションを持たない**ので `status()` が 409 で落ちる。`try?` で握ると
     /// **機が変わったときにちょうどガードが黙る** —— 陰性が「常に false を返す検出器」と
     /// 区別できない形そのものだった(実機の陽性対照で発覚)。ポートへ直に `/status` を撃つ
@@ -1025,7 +1025,7 @@ extension MCPServer {
 
     /// **主ポートのエンジンが変わっていないか(maintainer-notes §51.10)**: `deviceIdentityChanged` は
     /// udid しか見ず、しかも `usesRememberedDeviceState` で ref を使う呼び出しにしか効かない —— 同じ
-    /// udid のまま run のたびのブリッジ建て直しでエンジンが xcuitest ⇄ inapp/hybrid に入れ替わった形を
+    /// udid のまま run のたびのブリッジの起動し直しでエンジンが xcuitest ⇄ inapp/hybrid に入れ替わった形を
     /// 見逃す。**実測**: xcuitest でキャッシュ済みのドライバの port が in-app ブリッジへ化け、ref を
     /// 使わない `ft_terminate`(`usesRememberedDeviceState` のゲートを通らない)が
     /// 「in-app では未サポート」の 501 を返した(in-app には /terminate が無い)。逆向き
@@ -1098,7 +1098,7 @@ extension MCPServer {
 
     /// 同じ機のまま(udid は同じ)ブリッジのエンジンだけが変わっていたときに呼び出しを断る文。
     /// **`movedDeviceRefusal` と文面を分ける** —— 「別の機だ」と早合点させない(繋ぎ直す先の
-    /// 機は無い。同じ機のブリッジが建て直しでエンジンを変えただけ)
+    /// 機は無い。同じ機のブリッジが起動し直しでエンジンを変えただけ)
     static func engineChangedRefusal(port: UInt16?, expectedEngine: String?) -> String {
         let where_ = port.map { "port \($0)" } ?? "this bridge"
         let engineLabel = expectedEngine.map { "the \($0) engine" } ?? "its previous engine"
@@ -1126,7 +1126,7 @@ extension MCPServer {
     /// **hybrid キャッシュ命中の fallback(XCUITest)ポートが別の機/別エンジンへ移っていないか**
     /// (maintainer-notes §51.2): `deviceIdentityChanged` は主(in-app・`connectedPorts`/`udids`)しか
     /// 見ないので、`HybridFallbackDriver` の fallback が握る `hybridFallbackPorts[key]` は
-    /// ノーチェックのまま残っていた。ブリッジは run のたびに建て直され**同じポート番号が
+    /// ノーチェックのまま残っていた。ブリッジは run のたびに起動し直され**同じポート番号が
     /// 別デバイス(あるいは同じデバイスの in-app ブリッジ)に化ける**ため、home/appSwitcher/drag/
     /// 座標 press/gesture/pinch(すべて fallback 経由。primary の in-app は 501 で必ず回る)が
     /// 黙って別の機を操作しうる。

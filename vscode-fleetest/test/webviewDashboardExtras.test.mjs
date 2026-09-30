@@ -441,7 +441,7 @@ test("デバイスの健全性: 回数の内訳は記録の無い分も「記録
   assert.equal(tip(cells("android:old")[4]), "原因の記録なし: 3");
   assert.equal(tip(cells("android:old")[7]), "種類の記録なし: 1");
   assert.equal(tip(cells("android:mixed")[4]), "画面の凍結: 1\n原因の記録なし: 2");
-  assert.equal(tip(cells("android:mixed")[7]), "ランナーの建て直し: 2", "全部記録があれば「記録なし」は足さない");
+  assert.equal(tip(cells("android:mixed")[7]), "ランナーの起動し直し: 2", "全部記録があれば「記録なし」は足さない");
 
   const headers = [...window.document.querySelectorAll("#table-device-health thead th")];
   for (const index of [4, 5, 6, 7, 8, 9]) {

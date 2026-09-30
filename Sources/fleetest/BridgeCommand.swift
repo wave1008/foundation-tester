@@ -75,12 +75,12 @@ struct Bridge: AsyncParsableCommand {
             case reusedExistingBridge
             /// このデバイスには呼び出し前は無く、要求ポートが別ブリッジに塞がれていたので別ポートで新規起動した
             case startedOnAnotherPort
-            /// このデバイスの旧ビルドのブリッジが居たポートで、それを止めて建て直した(再利用ではない)
+            /// このデバイスの旧ビルドのブリッジが居たポートで、それを止めて起動し直した(再利用ではない)
             case restartedOlderBuild
         }
 
         /// stalePorts: 呼び出し前に**旧版**を名乗っていた preexistingPorts(provision は旧版を再利用せず、
-        /// 止めて同じポートで建て直す。ポートが呼び出し前から在っただけで「再利用」と言うと事実と違う)
+        /// 止めて同じポートで起動し直す。ポートが呼び出し前から在っただけで「再利用」と言うと事実と違う)
         static func portMismatchReason(actualPort: UInt16, preexistingPorts: Set<UInt16>,
                                        stalePorts: Set<UInt16>) -> PortMismatchReason {
             guard preexistingPorts.contains(actualPort) else { return .startedOnAnotherPort }
@@ -139,9 +139,9 @@ struct Bridge: AsyncParsableCommand {
                 try launcher.installSampleApp()
             }
             // M11 の判定材料: provision() を呼ぶ前に、このデバイスが既に使っているポートを控えておく
-            // (呼んだ後では「元から有ったのか、今建てたのか」が区別できない)
+            // (呼んだ後では「元から有ったのか、今起動したのか」が区別できない)
             let preexistingPorts = Set(BridgeLauncher.portsMatching(udid: resolvedUDID, repoRoot: root))
-            // 旧版を名乗るもの(provision が止めて建て直す)。応答しないものは判定材料が無いので含めない
+            // 旧版を名乗るもの(provision が止めて起動し直す)。応答しないものは判定材料が無いので含めない
             let stalePorts = Set(preexistingPorts.filter { port in
                 BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
                     .map { $0.protocolVersion != BridgeAPI.bridgeProtocolVersion } ?? false

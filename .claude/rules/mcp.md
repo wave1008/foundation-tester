@@ -93,7 +93,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   文言をそのまま写さない。**CLI 側だけ直しても受け手には届かない** —— 観測に注記を足したら
   `notes` 欄と ProtocolVersion、拡張の表示まで通す
 - **hybrid の予備(XCUITest)ポートも使うたびに本人確認する**(`FTBridgeClient.HybridFallbackIdentity` を
-  MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、建て直しで予備ポートが別のデバイス・
+  MCP のキャッシュ命中とライブ操作の命令ごとが共有。主の udid だけ見ると、起動し直しで予備ポートが別のデバイス・
   in-app に化けても home/drag を撃ち続ける。**`BridgeIdentityCheck.verdict` は udid が両側にあるとエンジンを
   見ない**ので、エンジンの決まった片側は `hybridFallbackDrift` で先に見る)。**ずれは3値で扱う** (`BridgeIdentityCheck.HybridFallbackDrift`: none / sameDeviceEngineChanged / differentDevice)—— **別のデバイス(differentDevice)は ref の有無を問わず断り、記憶を捨てない**(捨てると次の同じ呼び出しが `keyChangedDevice` の previous=nil を通って黙って別のデバイスに固定される。抜けるのは呼び手が `udid` を明示したとき)。ライブ操作も別のデバイスなら同じポートで作り直さず、そのコマンドを撃たずに失敗を返す。**udid の診断が予算切れなら
   「確認できなかった」と言い、不在も `bridge up` も言わない**(`diagnosisTimedOut`)→ maintainer-notes §51
@@ -130,7 +130,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **判定は `InstalledAppCheck.launchGuard` の1箇所で、MCP の `ft_launch` と
   ライブ操作(`api live serve` の `launch` / `activate`)が共有する** —— ライブ操作に門が無かったため、
   空文字列や端末に無い bundleID を渡すと**そのコマンドが 30 秒刺さって watchdog が serve を
-  force-quit し、健全なブリッジまで建て直しになった**(T1 と同じ型の掃討漏れ → maintainer-notes §42.7)。
+  force-quit し、健全なブリッジまで起動し直しになった**(T1 と同じ型の掃討漏れ → maintainer-notes §42.7)。
   **ライブ操作の NDJSON は型違いを黙殺しない** —— `cmd` が読めた行は
   `{"kind":"actionResult","ok":false,"error":"<欄> must be …"}` を返す(文言は MCP の
   `intArgument`/`doubleArgument` と同じ)。黙殺すると拡張は応答を待って固まり、serve の再起動に至る。

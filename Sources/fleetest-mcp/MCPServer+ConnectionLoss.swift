@@ -77,7 +77,7 @@ extension MCPServer {
                 let engine = Self.resolvedEngine(known: engines[key], port: port, repoRoot: repoRoot)
                 let probe = await BridgeDiscovery.probeStatus(port: port, repoRoot: repoRoot)
                 // **in-app/hybrid には wedged の文言を出さない** —— あちらは `bridge up` で
-                // 建て直す物ではなく(注入は launch で起きる)、前面から外れただけのことが多い。
+                // 起動し直す物ではなく(注入は launch で起きる)、前面から外れただけのことが多い。
                 // その分岐は `bridgeBusyHint` が engine で持っている
                 if probe == .transportFailed, engine != "inapp", engine != "hybrid" {
                     return Self.bridgeWedgedHint(connection: connection)
@@ -256,7 +256,7 @@ extension MCPServer {
     /// engineKey に紐づく状態を**全部**捨てる。
     ///
     /// **なぜ「ドライバだけ」では足りないか**: engineKey は `direct:ios:<port>:<serial>` で、
-    /// iOS のポートは**同じセッション中に動く**(監視が別ポートで建て直す。実測: -03 が
+    /// iOS のポートは**同じセッション中に動く**(監視が別ポートで起動し直す。実測: -03 が
     /// 8128→8126、-07 が 8136→8147)。つまり**一度死んだポートが後で別のシミュレータに
     /// 再利用され得る**。`forgetConnection` が drivers/connections/connectedPorts しか
     /// 消していなかったので、そのとき `lastSnapshots` と `refGenerations` は**前の機の木**、

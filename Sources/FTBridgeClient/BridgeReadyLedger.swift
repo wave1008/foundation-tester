@@ -22,7 +22,7 @@ public enum BridgeReadyLedger {
 
     /// ベストエフォート(書けなくても sweepStuckStartingRunners が connectProbe/lease の
     /// 判定へ倒れるだけで、誤って何かを壊すことはない)。**ready になったランナーの pid を書く** ——
-    /// 同じポートで建て直された次のランナーは `.pid` だけ書き換えるので、印がポートにしか紐付かないと
+    /// 同じポートで起動し直された次のランナーは `.pid` だけ書き換えるので、印がポートにしか紐付かないと
     /// 固まった新ランナーまで「前に ready だった」と読めて掃除から永久に外れる
     public static func mark(stateDir: URL, port: UInt16, pid: Int32) {
         try? FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)

@@ -95,8 +95,8 @@ guarded だけで線を超えていても**消せるものは全部消す**(線�
 guarded だけで上限を超えたときは他のカテゴリと同じく**事実を言う**(何が容量を占めているか・
 立てっぱなしのブリッジを落とせば消せること)。実機ブリッジや MCP セッションのように立てっぱなしに
 する使い方では 1 台あたり約 6 GB/日で伸び続ける。**VSCode 拡張が開いていれば、同じ条件で使われていない
-ブリッジを建て直して束を孤児にし、この掃除に消させる**(docs/design.md §12.2「ブリッジ診断ログ(xcresult)の
-建て直し」)。拡張を開いていない(CLI・MCP だけ)ときは今までどおり事実を言うだけ。
+ブリッジを起動し直して束を孤児にし、この掃除に消させる**(docs/design.md §12.2「ブリッジ診断ログ(xcresult)の
+起動し直し」)。拡張を開いていない(CLI・MCP だけ)ときは今までどおり事実を言うだけ。
 
 **掃除が見る場所は2つ**(`RetentionSweeper.Roots`)。録画・レポート・`install.sh` のログは
 **シナリオのパッケージ**(受け手の WORK_DIR)、ブリッジのログと台帳は**ツールのクローン**にある。
@@ -272,7 +272,7 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 | setOverrides | [String: String]? | **この run に効いた `--set <key>=<value>` の上書き**(キーは実行プロファイル JSON のキーそのもの、値は型を問わず文字列化したもの。例 `{"scenarioTimeout": "3", "iosInappEngine": "false"}`)。上書きが無い run では省略(空辞書ではなく無し)。**打ち切り run(`--set scenarioTimeout=…` で短くした run 等)を insights/flaky の集計から機械的に外すための欄** —— この欄が無い記録では、`--set` で打ち切った run と通常の失敗が見分けられない(この版より前の記録は全て欄が無い) |
 | interrupted | Bool? | **この run が SIGINT/SIGTERM/SIGHUP(拡張の「テストを中断」・端末の Ctrl-C・`kill <pid>`・ssh の切断等)を受けたか**。**供給段(デバイス・ブリッジの用意)の最中の中断も含む**(受け付けは記録の開始直後から)。true の run は途中で打ち切られており、残っていたシナリオは `"the run was interrupted (SIGINT/SIGTERM) before this scenario started"` という理由で failed に数えられる。false は書かない(既存レコードと同じ形)。**始まらなかったシナリオは `skipKind: "interrupted"` で記録され、`results insights` と flaky の判定からは外れる**(中断のたびに回帰の疑いを並べない)。2026-09-11 より前の記録には無い(それより前は中断で finishedAt 自体が欠落していた) |
 | abortReason | String? | **供給段(ワーカー構築・レーン検査等)の例外で run 全体が始まる前に終わったときの理由**(英語、人間可読)。この欄がある run は `total` 分すべて未実行(`passed:0`)。正常終了・`interrupted` の run では省略。**この欄が無いと理由はログにしか残らず、`results insights` の「クラッシュか強制終了」に紛れる**。2026-09-11 より前の記録には無い |
-| slowWorkers | [String]? | **デバイスそのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×デバイス)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での建て直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行)。**2つ目の形(間欠的に詰まるデバイス)も同じ欄に載る**(2026-09-16): 中央値は正常でも `worker: <N> of <M> snapshots took 2000ms+ (p90 <P>ms, other lanes <K> of <L>)` の1行。標本8件以上・2秒超が5本以上かつ20%以上・他レーン全体の2秒超の割合がこのレーンの1/10以下、の全部を満たすときだけ(実測: 劣化デバイスは26〜43%・健全なレーンは最大9%(22標本中2本))。中央値判定が立ったデバイスには出さない(1台1件) |
+| slowWorkers | [String]? | **デバイスそのものが遅いことの観測**(`FTCore.SlowWorkerDetector`。`worker: median snapshot <N>ms over <M> samples (other lanes <K>ms)` の1行×デバイス)。ワーカーごとの in-app snapshot 所要(`scenarios/*.json` の `timeline[].snapshotMs`)の中央値が、標本8件以上かつ**同じ run の他ワーカー全体の中央値の10倍以上・かつ絶対値1,000ms以上**のときだけ載る(相対だけだとホスト負荷で全台が遅い run を1台のせいにし、絶対だけだと元から遅い環境で毎回鳴るため、両方を要求する)。**警告のみで除外・自動修復はしない** —— 既存の劣化検知(XCUITestランナーの遅いa11y照会での起動し直し・凍結トリアージ)は原理的にこの帯(ステップtimeout未満の遅さ)を見ないので、これが唯一の痕跡になる。**他ワーカーが1台も無い(単機の)runでは常に省略**(相対比較ができない)。CLI/`api run` はこの配列が1件でもあれば末尾に `⚠️ slow lane: …` を追加で出す(既存の劣化警告とは別行)。**2つ目の形(間欠的に詰まるデバイス)も同じ欄に載る**(2026-09-16): 中央値は正常でも `worker: <N> of <M> snapshots took 2000ms+ (p90 <P>ms, other lanes <K> of <L>)` の1行。標本8件以上・2秒超が5本以上かつ20%以上・他レーン全体の2秒超の割合がこのレーンの1/10以下、の全部を満たすときだけ(実測: 劣化デバイスは26〜43%・健全なレーンは最大9%(22標本中2本))。中央値判定が立ったデバイスには出さない(1台1件) |
 
 ### fmSettings(`FMSettingsRecord`)
 
@@ -314,7 +314,7 @@ FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で�
 | scenarioID | String? | `requeued` / `retryLimit` / `circuitHeld` の対象 |
 | reason | String | 英語・人間可読 |
 | cause | String? | **`degraded`/`requeued`/`retryLimit`/`circuitHeld` だけ持つ**理由の分類(生成箇所が型から決める。`reason` の文字列を後から解析しない)。値は `frozen`(画面の凍結)/ `deviceGone`(デバイスが消えた。offline/not found)/ `bridgeUnreachable`(ブリッジに届かない)/ `bridgeTakenOver`(ブリッジが別のデバイスのものになった)/ `consecutiveFailures`(連続失敗)/ `accessibilityFault`(一時的なアクセシビリティ異常)/ `noResponse`(接続できない・status に応答しない)。**写像できない reason は省略**(2026-09-27 より前の記録には無い) |
-| recovery | String? | **`recovered` だけ持つ**回復の種類。値は `runnerRestart`(XCUITest ランナーを同じポートで建て直した)/ `workerRevive`(離脱したワーカーの論理デバイスを復帰させた)。**実装にある回復経路のうち、この2つだけを構造化している**(下記の注記参照。2026-09-27 より) |
+| recovery | String? | **`recovered` だけ持つ**回復の種類。値は `runnerRestart`(XCUITest ランナーを同じポートで起動し直した)/ `workerRevive`(離脱したワーカーの論理デバイスを復帰させた)。**実装にある回復経路のうち、この2つだけを構造化している**(下記の注記参照。2026-09-27 より) |
 
 **`degradedWorkers` と `workerAnomalies` は同じ事象**(前者が人向けの1行、後者が機械可読)。
 片方だけ増えることはない。
@@ -463,7 +463,7 @@ Vision が空を返す状態、または上限に達した)/ `ocr-shortcut-busy`
 まだ走っている。こちらは待たない)。どちらも「FM に訊いた」事実であって失敗ではない。
 **OCR が効くはずの薄いテキストで反転したら、まずこの 4 つの有無を見る**(近道が走っていれば `ocrMs > 0`。
 OCR を実行プロファイルで切った run にはどれも付かない)。
-**建て直した直後の初回 run は `ocr-warmup-waited` が多く、所要が延びる**(認識器のコンパイルは実行ファイル
+**ビルドし直した直後の初回 run は `ocr-warmup-waited` が多く、所要が延びる**(認識器のコンパイルは実行ファイル
 ごと。warm-ocr のコミットを最初のガードが待つ)。2 回目以降は各シナリオの暖機(0.2〜0.3 秒)が最初の
 ガードまでに終わるので、ほぼ付かない。
 
@@ -536,7 +536,7 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
 - **鍵**: 引数(project / `--since` の文字列 / limit / min-runs)+
   **シナリオソースの指紋**(`ScenarioFolders.directorySignature(scenariosDir:)`。TestProjects の
   `scenarios/` 配下の .swift のパス・mtime・size)+ 実行ファイルの
-  mtime・size(建て直せば必ず外れる = 集計や契約を変えたときにキャッシュの版を手で上げる規律に
+  mtime・size(ビルドし直せば必ず外れる = 集計や契約を変えたときにキャッシュの版を手で上げる規律に
   頼らない)+ 入力の指紋(**`results/` 側**。走査する run ごとに `run.json` と `scenarios/` ディレクトリの
   stat 2回。記録の追加・削除・finish の上書き・rsync 回収はどれもエントリの作成/rename/削除なので
   必ず動く)。**捕まえないのは rename 無しの in-place 書き換えだけ**(記録の規律の外)。

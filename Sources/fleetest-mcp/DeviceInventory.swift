@@ -484,7 +484,7 @@ enum DeviceInventory {
     }
 
     /// **宛先の解決はしない** —— どのデバイスを見るかは MCPServer の driver(_:) が一手に決める
-    /// (ここで BridgeClient を建て直すと profile 指定が既定ポートへ逸れる)
+    /// (ここで BridgeClient を作り直すと profile 指定が既定ポートへ逸れる)
     /// simctl は system も込みで返すので、除外した件数を数えられる
     static func appsText(apps: [SimulatorAppCatalog.App], includeSystem: Bool,
                          filter: String?) -> String {

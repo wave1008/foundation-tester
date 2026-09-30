@@ -227,7 +227,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   `wipe-device` / `devices down --profile` / **`bridge down`(`--port` / `--all` / `--platform android` の3経路とも)**
   の全部がここを通る。押し切るのは CLI の `--force` だけ)。**門は CLI の口にだけ置く** ——
   `BridgeLauncher.stop()` / `stopAll()` は供給と古いブリッジの掃除からも呼ばれるので、
-  あちらに足すと run が建てられなくなる。**宛先が引けないときは通す**(無応答のブリッジを
+  あちらに足すと run が起動できなくなる。**宛先が引けないときは通す**(無応答のブリッジを
   止められないと回復手段が無くなる)**が、「応答しない」を「死んでいる」と読まない** ——
   駆動中の XCUITest は操作の間 /status を返さない(quiescence 待ちで数十秒ブロックする実測がある)ので、
   **走査に載らないポートは `BridgeDiscovery.probeStatus` の4値で見て、断るのは本当に busy

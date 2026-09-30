@@ -358,7 +358,7 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
 
     /// **profile-less の基底はリテラルで固定する**。heal をプロファイルの既定(true)のまま使うと、
     /// 素の `fleetest run` で壊れたセレクタを黙って別要素へ解決しうる。homeOnStart も同じで、
-    /// 既に建っているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
+    /// 既に起動しているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
     /// テキストの視覚検証はプロファイルと同じ ON(ユーザー決定 2026-09-15)。
     /// **`RunProfileDocument` の既定を参照して書かない** —— production の定数で期待値を書くと
     /// 両方が同時に動いたときに素通りする

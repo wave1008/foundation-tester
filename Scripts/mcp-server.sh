@@ -5,7 +5,7 @@
 # 埋め込み式には2つの実害があった:
 #
 #   1. **起動のたびに `swift build` が走る**。無変更でも約8秒(実測。初回は14秒)かかり、
-#      その回に ft_* を1度も使わなくても必ず払う。→ **ソースが実行ファイルより新しいときだけ**建てる
+#      その回に ft_* を1度も使わなくても必ず払う。→ **ソースが実行ファイルより新しいときだけ**ビルドする
 #   2. **ビルド出力を /dev/null に捨てていた**ため、失敗すると `&&` が切れて
 #      **サーバが黙って起動しない**。理由を見る手段が無かった。→ ログへ落とし、失敗は stderr へ出す
 #
@@ -39,8 +39,8 @@ if [ "$needs_build" = "1" ]; then
   mkdir -p "$(dirname "$LOG")"
   echo "[fleetest-mcp] sources are newer than the binary — building (first build takes minutes)…" >&2
   if ( cd "$TOOL_ROOT" && swift build --product fleetest-mcp ) >"$LOG" 2>&1; then
-    # **建てた直後に実行ファイルを触る**。無変更のソースを touch しただけだと swift build は
-    # 再リンクしないので、実行ファイルがソースより古いままになり毎回建て直すことになる
+    # **ビルドした直後に実行ファイルを触る**。無変更のソースを touch しただけだと swift build は
+    # 再リンクしないので、実行ファイルがソースより古いままになり毎回ビルドし直すことになる
     touch "$BIN" 2>/dev/null || true
   else
     echo "[fleetest-mcp] build failed — not starting the server. Full log: $LOG" >&2

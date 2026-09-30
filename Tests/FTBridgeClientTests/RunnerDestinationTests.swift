@@ -49,7 +49,7 @@ final class RunnerDestinationTests: XCTestCase {
     }
 
     /// 起動待ちが ready を受けても、答えたのが別の台のランナーなら成功にしない(同じポートの別シミュレータの応答で
-    /// 「起動成功」と報告した実測)。名前で建てる経路・udid を名乗らない相手は判定しない
+    /// 「起動成功」と報告した実測)。名前で起動する経路・udid を名乗らない相手は判定しない
     func testReadyStatusOfAnotherDevice() {
         let mine = "AF99951F-FB48-4D6A-9BB2-BBCE8CFEEC8B"
         let other = "2A7FBD43-4A72-44DA-AB95-EED23B1B3B6D"

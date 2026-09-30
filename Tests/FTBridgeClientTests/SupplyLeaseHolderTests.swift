@@ -83,7 +83,7 @@ final class SupplyLeaseHolderTests: XCTestCase {
     }
 
     /// releaseKeys は名指ししたキーだけ消す(残りは hold されたまま = 供給に失敗してレーンから
-    /// 外れたデバイスだけ手放し、実際に建ったデバイスの lease はそのまま)
+    /// 外れたデバイスだけ手放し、実際に用意できたデバイスの lease はそのまま)
     func testReleaseKeysRemovesOnlyNamedKeysAndLeavesOthersHeld() async throws {
         let holder = SupplyLeaseHolder(stateDir: stateDir, heartbeatSeconds: 0.05)
         holder.hold(keys: ["UDID-A", "UDID-B"])

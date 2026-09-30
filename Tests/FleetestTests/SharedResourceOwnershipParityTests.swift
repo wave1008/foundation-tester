@@ -121,11 +121,11 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
 
     /// 免除(理由つき)。**足すときは、なぜここが持ち主判定を持たなくてよいかを書くこと**
     private static let deviceGateExemptions: Set<String> = [
-        // ③ライブ操作の自動起動・建て直し。対象は呼び出し元(ライブ操作のセッション)が指した
+        // ③ライブ操作の自動起動・起動し直し。対象は呼び出し元(ライブ操作のセッション)が指した
         // その1台だけで、他プロセスの持ち物を横取りしない
         "LiveBridgeAutoStarter.launchBridge",
         // ③供給(provision)経路の内部処理。今まさに供給しようとしているその1台のブリッジを
-        // 建て直すだけ。ここに lease 判定を足すと run 自体が建てられなくなる
+        // 起動し直すだけ。ここに lease 判定を足すと run 自体が起動できなくなる
         // (docs/remote-runner.md §18.7「門は CLI の口にだけ置く」)
         "XCUIBridgeResolver.start",
         "BridgeProvisioner.restartRunner",
@@ -217,8 +217,8 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
 
     // MARK: - 資源② ブリッジのツールチェーン(BridgeToolchainLedger)
 
-    /// **戻すと落ちる根拠**: 建て直しの判定(BridgeToolchainLedger.decide)が走るのは
-    /// 「建てるとき」だけなので、生きたブリッジを**引き取る**(.adopt)側で別途確認しないと、
+    /// **戻すと落ちる根拠**: 起動し直しの判定(BridgeToolchainLedger.decide)が走るのは
+    /// 「起動するとき」だけなので、生きたブリッジを**引き取る**(.adopt)側で別途確認しないと、
     /// 版の違うブリッジを黙って引き取り続ける(bridge-provision.md「.reuse と .adopt の両方で見る」)。
     ///
     /// **`decide(` と `matchesCurrent(` の同居では固定できない** —— `.reuse` 側は
@@ -248,8 +248,8 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
         let standalone = total - asDecideArgument
         XCTAssertGreaterThan(standalone, 0, """
             \(owner.name): 引き取り(.adopt)側の BridgeToolchainLedger.matchesCurrent 呼び出しが無い \
-            (見つかった \(total) 件はすべて decide の toolchainMatches: 引数)。建て直しの判定は \
-            「建てるとき」しか走らないので、生きたブリッジを引き取る経路で確認しないと版の \
+            (見つかった \(total) 件はすべて decide の toolchainMatches: 引数)。起動し直しの判定は \
+            「起動するとき」しか走らないので、生きたブリッジを引き取る経路で確認しないと版の \
             違うブリッジを黙って駆動し続ける。
             """)
     }

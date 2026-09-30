@@ -14,7 +14,7 @@ final class LiveControlExitParityTests: XCTestCase {
     /// 両方の経路が呼ぶ判定。**足すときは両方へ配線してから載せる** ——
     /// ライブ操作に要らないと判断したものはここへ載せない(載せないこと自体が判断の記録)
     private static let sharedJudgements = [
-        // ブリッジが「固まった」のか「busy」なのか(対処が逆: 建て直し vs 待つ)
+        // ブリッジが「固まった」のか「busy」なのか(対処が逆: 起動し直し vs 待つ)
         "probeStatus",
         // Android のアクティブウィンドウの a11y 根が一時的に読めない(自然回復する)
         "isNoReadableWindow",
@@ -25,7 +25,7 @@ final class LiveControlExitParityTests: XCTestCase {
         // 座標が今の画面の外か(maintainer-notes §51.1: ライブ操作の drag が桁外れの座標でドライバごと落ちた)
         "isPointOnScreen",
         // ポートの中身が別のデバイスに替わった(hybridFallbackDrift の3値のうち differentDevice)。
-        // 黙って建て直すと片方だけ別のデバイスへ操作を撃ち続ける
+        // 黙って起動し直すと片方だけ別のデバイスへ操作を撃ち続ける
         "differentDevice",
     ]
 

@@ -8,7 +8,7 @@
 // 置き場所: <project>/.fleetest/results-cache/record-packs/<YYYY-MM>/<runID>.json
 // 有効条件(全部一致しないと直接読みへ倒す。どれも既定値を置かない):
 //   - formatVersion(このファイルの容器の形)
-//   - executableKey(ResultsOutputCache.executableFingerprint と同じ形式。建て直せば必ず外れる。
+//   - executableKey(ResultsOutputCache.executableFingerprint と同じ形式。ビルドし直せば必ず外れる。
 //     **型が変わったビルドの書いたパックを新しいビルドが読むと元ファイルにある欄を黙って落とす**
 //     ため必須)
 //   - runRecordSchemaVersion == RunRecordSchema.current(書いた側と読む側で最大対応版が違えば無効)

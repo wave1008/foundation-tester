@@ -4,18 +4,18 @@
 // 引けなくなった後も参照し続け、**存在確認 1 回ごとに約 3.7 秒**(XCTest が remote element を諦める時間)
 // 待つようになった。同じ木の照会が隣のデバイスでは 0.03〜0.27 秒。run のすべての XCUITest 照会に乗るので、
 // 1 シナリオ 6 秒が 22 秒になり、in-app の tap も(前面確認で fallback を引くため)0.5 秒が 4 秒になる。
-// ランナーを建て直すと直る(シミュレータの再起動は要らない)。druid を意図的に再起動しても再現しないため
-// 発生条件は未特定 —— だから**再利用の入口で 1 問だけ測って、遅ければ建て直す**。
-// **run の最中にも再発する**(xcuitest の 4 プロファイルで毎回 供給時に検出 → 建て直し →
+// ランナーを起動し直すと直る(シミュレータの再起動は要らない)。druid を意図的に再起動しても再現しないため
+// 発生条件は未特定 —— だから**再利用の入口で 1 問だけ測って、遅ければ起動し直す**。
+// **run の最中にも再発する**(xcuitest の 4 プロファイルで毎回 供給時に検出 → 起動し直し →
 // run 中にまた 2 秒超のステップが 7/22・22/91 本)ので、緑のシナリオの直後にも同じ 1 問で測り直す
 // (`BridgeProvisioner.recheckRunner` / fleetest の `RunnerMidRunRecheck`)。
 
 import FTCore
 import Foundation
 
-/// 建て直しても直らなかったデバイス(udid)。**このプロセスの間だけ**覚える(run ごとに作り直される)。
-/// 実測: -01 は建て直すたびに新しいランナーでも 1 問 2.9〜3.0 秒のまま(同時刻の他のデバイスは
-/// 0.03 秒)で、緑のシナリオのたびに約 10 秒の建て直しを空振りしていた。測って健全なら消す
+/// 起動し直しても直らなかったデバイス(udid)。**このプロセスの間だけ**覚える(run ごとに作り直される)。
+/// 実測: -01 は起動し直すたびに新しいランナーでも 1 問 2.9〜3.0 秒のまま(同時刻の他のデバイスは
+/// 0.03 秒)で、緑のシナリオのたびに約 10 秒の起動し直しを空振りしていた。測って健全なら消す
 /// (長く生きるプロセス = MCP で、シミュレータを再起動して直ったデバイスを覚え続けないため)
 public final class RunnerRestartFutility: @unchecked Sendable {
     public static let shared = RunnerRestartFutility()
@@ -49,7 +49,7 @@ public enum RunnerAccessibilityHealth {
     /// 2 秒はその間で、機械が遅いだけの正常値(0.3 秒の数倍)には当たらない
     public static let slowProbeSeconds: TimeInterval = 2
 
-    /// 劣化 = 所要が閾値以上。測れなかった(nil)は劣化と言わない(不明を建て直しの根拠にしない)
+    /// 劣化 = 所要が閾値以上。測れなかった(nil)は劣化と言わない(不明を起動し直しの根拠にしない)
     public static func isDegraded(probeSeconds: TimeInterval?) -> Bool {
         guard let probeSeconds else { return false }
         return probeSeconds >= slowProbeSeconds
@@ -76,9 +76,9 @@ public enum RunnerAccessibilityHealth {
         return Double(maxStepSnapshotMs) >= slowProbeSeconds * 1000
     }
 
-    /// 建て直した直後の新しいランナーでもまだ遅かったときの 1 行。**新しいプロセスでも遅い = 遅さは
-    /// ランナーのプロセスには無い**(測った事実から言えるのはここまで)。以降このプロセスでは建て直さない。
-    /// 次の手としてシミュレータの再起動を挙げる根拠: -01 は建て直しでは 2.7〜3.0 秒のまま、
+    /// 起動し直した直後の新しいランナーでもまだ遅かったときの 1 行。**新しいプロセスでも遅い = 遅さは
+    /// ランナーのプロセスには無い**(測った事実から言えるのはここまで)。以降このプロセスでは起動し直さない。
+    /// 次の手としてシミュレータの再起動を挙げる根拠: -01 は起動し直しでは 2.7〜3.0 秒のまま、
     /// 再起動で 0.03 秒に戻った(同じ 3 シナリオの合計 42.3s → 22.1s)
     public static func restartDidNotHelpMessage(name: String, port: UInt16, afterSeconds: TimeInterval) -> String {
         "⚠️ \(name): the restarted xcuitest bridge on port \(port) still took"
@@ -87,13 +87,13 @@ public enum RunnerAccessibilityHealth {
             + " — it is not restarted again in this run; rebooting the simulator is the next thing to try"
     }
 
-    /// 以前に建て直しても直らなかったデバイスを、測り直さずにそのまま使うときの 1 行
+    /// 以前に起動し直しても直らなかったデバイスを、測り直さずにそのまま使うときの 1 行
     public static func keptSlowRunnerMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (restarting it did not help earlier in this process)"
     }
 
-    /// run 中に測り直して建て直さなかったときの 1 行。**ステップが遅かった事実と測った結果だけを並べる**
+    /// run 中に測り直して起動し直さなかったときの 1 行。**ステップが遅かった事実と測った結果だけを並べる**
     /// (遅さがどこから来たかはこれ以上言わない。SlowWorkerFinding.consoleWarning と同じ規律)
     public static func leftRunningMessage(name: String, port: UInt16, maxStepSnapshotMs: Int?,
                                           probeSeconds: TimeInterval?) -> String {
@@ -112,7 +112,7 @@ public enum RunnerAccessibilityHealth {
         return Set(raw.split(separator: ",").compactMap { UInt16($0.trimmingCharacters(in: .whitespaces)) })
     }
 
-    /// 建て直すときの 1 行(呼び手はそのまま log へ)
+    /// 起動し直すときの 1 行(呼び手はそのまま log へ)
     public static func restartMessage(name: String, port: UInt16, probeSeconds: TimeInterval?, injected: Bool) -> String {
         let measured = injected ? "injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)"
             : "answered a one-element accessibility query in \(String(format: "%.1f", probeSeconds ?? 0))s"
@@ -125,11 +125,11 @@ public enum RunnerAccessibilityHealth {
 
     /// 供給の入口で、run をまたいだ印(`RunnerSlownessStore`)から次に何を試すかを決める(純粋関数)。
     /// **リースのあるデバイスには絶対に触らない**(ユーザー決定)—— 印があっても再起動を試みず、
-    /// 「建て直さずそのまま使う」に落とす
+    /// 「起動し直さずそのまま使う」に落とす
     public enum SupplySlownessAction: Equatable, Sendable {
-        /// 印なし。1 問プローブしてから必要なら建て直す
+        /// 印なし。1 問プローブしてから必要なら起動し直す
         case proceedNormally
-        /// 印 = runnerRestartDidNotHelp かつリース無し。ブリッジを建てる前にシミュレータごと再起動する
+        /// 印 = runnerRestartDidNotHelp かつリース無し。ブリッジを起動する前にシミュレータごと再起動する
         case restartSimulator
         /// 印 = simulatorRestartDidNotHelp、またはリースがあるデバイス。何も撃たずそのまま使う
         case reuseWithoutRestarting

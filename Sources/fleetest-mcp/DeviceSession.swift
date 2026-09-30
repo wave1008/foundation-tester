@@ -129,7 +129,7 @@ struct DeviceSession {
     var connectedPort: UInt16?
     /// hybrid(in-app + XCUITest)キャッシュ命中の XCUITest フォールバックポート。
     /// **`connectedPort` とは別枠**(あちらは主(in-app)のポート): `HybridFallbackDriver` の
-    /// fallback は home/drag/座標 press/gesture 等をこちらへ回すので、建て直しで別デバイスへ
+    /// fallback は home/drag/座標 press/gesture 等をこちらへ回すので、起動し直しで別デバイスへ
     /// 移っていないかは主の udid だけでは検知できない(maintainer-notes §51.2。hybridFallbackDrifted 参照)
     var hybridFallbackPort: UInt16?
     /// 掴んでいる Android ブリッジの serial。iOS の `connectedPort` と同じ理由で
@@ -142,8 +142,8 @@ struct DeviceSession {
     /// 開始前に1回だけ呼ぶので、MCP もそれと同じ粒度(このセッションでその機へ初めて触れたとき
     /// 1回)にする —— 毎ツール呼び出しに払うと adb 往復が積み上がる。`driver(_:)` が管理する
     var preparedPhysicalAndroid = false
-    /// **このセッションで xcuitest ブリッジの自動建て直し(bridgeConnectionRefused からの復帰)を
-    /// 一度試して失敗した**か。建て直しの成否に関わらず次にまた死んだら再挑戦してよいので、
+    /// **このセッションで xcuitest ブリッジの自動での起動し直し(bridgeConnectionRefused からの復帰)を
+    /// 一度試して失敗した**か。起動し直しの成否に関わらず次にまた死んだら再挑戦してよいので、
     /// 成功時は立てない(失敗のときだけ = 環境そのものが壊れているデバイスへ分単位のビルドを
     /// 撃ち続けない。MCPServer+BridgeRecovery.swift 参照)
     var bridgeRecoveryFailed = false

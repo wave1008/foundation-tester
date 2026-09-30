@@ -55,7 +55,7 @@ final class LocalDispatchLockTests: XCTestCase {
 
     // MARK: - 取れる・外れる
 
-    /// 取ると `~/.fleetest/dispatch.lock/info.json` が**この機械の pid** で建ち、
+    /// 取ると `~/.fleetest/dispatch.lock/info.json` が**この機械の pid** で作られ、
     /// 解放すると消える。**チケットは向こうで消えている**(待機列に自分が残らない)
     func testItTakesAndReleasesTheMachineGlobalLock() throws {
         let holder = try XCTUnwrap(try lock(pid: 4242).acquire())
@@ -295,7 +295,7 @@ final class LocalDispatchLockTests: XCTestCase {
         XCTAssertTrue(LocalDispatchLock.parentHoldsTheLock(environment: childEnv))
 
         XCTAssertNil(try lock(pid: 7777, environment: childEnv).acquire())
-        XCTAssertFalse(lockDirExists, "親が握っているロックを子が建て直している")
+        XCTAssertFalse(lockDirExists, "親が握っているロックを子が作り直している")
     }
 
     /// **陰性対照**: 別の宛先(リモート)の印では飛ばさない —— 印は子孫へそのまま継がれるので、

@@ -127,7 +127,7 @@ final class LocalStreamHolderTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent(".build/debug/fleetest-devicepoll")
         guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-            XCTFail("fleetest-devicepoll が .build/debug に無い(swift test が建てる product)")
+            XCTFail("fleetest-devicepoll が .build/debug に無い(swift test がビルドする product)")
             throw XCTSkip("binary missing")
         }
         let process = Process()

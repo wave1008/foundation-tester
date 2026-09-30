@@ -22,7 +22,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
         XCTAssertTrue(RunnerAccessibilityHealth.isDegraded(probeSeconds: 4.1))
     }
 
-    /// 測れなかった回は劣化と言わない(不明を建て直しの根拠にしない)
+    /// 測れなかった回は劣化と言わない(不明を起動し直しの根拠にしない)
     func testUnknownProbeIsNotDegraded() {
         XCTAssertFalse(RunnerAccessibilityHealth.isDegraded(probeSeconds: nil))
     }
@@ -67,7 +67,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
         XCTAssertTrue(RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: 5, injected: true))
     }
 
-    /// 建て直さなかった 1 行は、ステップの遅さと測った所要を並べるだけで帰属を言わない
+    /// 起動し直さなかった 1 行は、ステップの遅さと測った所要を並べるだけで帰属を言わない
     func testLeftRunningMessageStatesMeasurementsOnly() {
         let measured = RunnerAccessibilityHealth.leftRunningMessage(
             name: "iPhone 17 Pro-01", port: 8124, maxStepSnapshotMs: 2835, probeSeconds: 0.12)
@@ -79,7 +79,7 @@ final class RunnerAccessibilityHealthTests: XCTestCase {
             + " bridge on port 8124 did not answer a one-element accessibility query (not measured) — left running")
     }
 
-    // MARK: - 建て直しても直らなかったデバイス(RunnerRestartFutility)
+    // MARK: - 起動し直しても直らなかったデバイス(RunnerRestartFutility)
 
     func testFutilityIsRememberedPerUDIDUntilCleared() {
         let futility = RunnerRestartFutility()

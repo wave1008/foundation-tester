@@ -200,13 +200,13 @@ public struct BridgeLauncher {
 
     /// current が空(シミュレータ = 署名なし)は常に一致扱い —— 空同士を不一致にすると
     /// 署名の無いビルドを毎回捨てることになる。指紋ファイル不在(この仕組み以前の成果物)は
-    /// 不一致 = 一度だけ建て直す(古いまま走らせるより安全。ToolchainFingerprint と同じ向き)
+    /// 不一致 = 一度だけビルドし直す(古いまま走らせるより安全。ToolchainFingerprint と同じ向き)
     static func signingMismatch(stored: String?, current: String) -> Bool {
         guard !current.isEmpty else { return false }
         return stored?.trimmingCharacters(in: .whitespacesAndNewlines) != current
     }
 
-    /// 既存の xctestrun があってもソース/ツールチェーン/署名設定が変わっていれば建て直す。
+    /// 既存の xctestrun があってもソース/ツールチェーン/署名設定が変わっていればビルドし直す。
     /// 「xctestrunNotFound のときだけ build」の起動ヘルパー(XCUIBridgeResolver /
     /// LiveBridgeAutoStarter)が旧成果物を起動し続けないための前段
     /// (BridgeProvisioner.prepareSharedBuilds と同じ判定)。xctestrun 不在は何もしない
@@ -238,7 +238,7 @@ public struct BridgeLauncher {
     /// **成果物の Info.plist を見てはいけない**(誤検知した): `XCTRunner.app` は
     /// ビルドの生成物ではなく **プラットフォーム SDK のテンプレートのコピー**で、その
     /// `DTXcodeBuild` はテンプレート自身の値(Xcode 27 beta 6 では `27A252`)のまま残る。
-    /// `xcodebuild -version` の `27A5252f` とは体系が違うので、建て直しても永久に警告し続ける。
+    /// `xcodebuild -version` の `27A5252f` とは体系が違うので、ビルドし直しても永久に警告し続ける。
     /// 判定は再ビルドの砦(`runnerNeedsRebuild`)と同じ指紋に一本化する。
     public static func staleRunnerToolchain(
         repoRoot: URL, physical: Bool = false,
@@ -312,12 +312,12 @@ public struct BridgeLauncher {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         let xctestrun = try injectPort(into: original)
 
-        // 直前の失敗ログを1世代だけ残す(自動の建て直しで毎回消えていた)。移動に失敗しても起動は止めない
+        // 直前の失敗ログを1世代だけ残す(自動の起動し直しで毎回消えていた)。移動に失敗しても起動は止めない
         try? FileManager.default.removeItem(at: prevLogPath)
         try? FileManager.default.moveItem(at: logPath, to: prevLogPath)
         FileManager.default.createFile(atPath: logPath.path, contents: nil)
         let logHandle = try FileHandle(forWritingTo: logPath)
-        // 子は run() で fd を複製して持つので、親の分は閉じる(閉じないと起動・建て直しのたびに
+        // 子は run() で fd を複製して持つので、親の分は閉じる(閉じないと起動・起動し直しのたびに
         // 長く生きる MCP / ライブ操作のプロセスへ fd が1本ずつ残る)
         defer { try? logHandle.close() }
         // xcodebuild は既存の束があると起動を拒むので、今回は別名を使い(resultBundlePath)、前回までの
@@ -425,7 +425,7 @@ public struct BridgeLauncher {
     /// `ps -axo pid=,command=` の出力から、**この実機を宛先に持ち・別ポートの**ランナー(xcodebuild)を拾う
     /// (純粋関数)。ポートは `FleetestRunner-<port>.xctestrun` から読む(読めない行は数えない)
     /// ready を名乗ったランナーが別の台のものなら、その udid(純粋関数)。`expected` が udid の形でない
-    /// (名前で建てる経路)・相手が udid を名乗らないときは判定しない(nil)
+    /// (名前で起動する経路)・相手が udid を名乗らないときは判定しない(nil)
     static func readyStatusOfAnotherDevice(reported: String?, expected: String) -> String? {
         guard let reported, !reported.isEmpty, RunnerDestination.isUDIDShaped(expected),
               reported.caseInsensitiveCompare(expected) != .orderedSame else { return nil }
@@ -848,7 +848,7 @@ public struct BridgeLauncher {
 
     /// `stopMatching` のうち **XCUITest ランナーだけ**(in-app ブリッジには触らない = 注入した
     /// アプリを起こし直さない)。結果の束(xcresult)を書くのはランナーだけなので、束を孤児にする
-    /// 建て直し(`api restart-bridge`)はこちらを使う。戻り値=停止ポート一覧
+    /// 起動し直し(`api restart-bridge`)はこちらを使う。戻り値=停止ポート一覧
     public static func stopRunnersMatching(udid: String, repoRoot: URL) -> [String] {
         let stateDir = repoRoot.appendingPathComponent(".fleetest")
         guard let entries = try? FileManager.default.contentsOfDirectory(
@@ -1288,7 +1288,7 @@ public enum LauncherError: Error, LocalizedError {
     case portInUse(port: UInt16, holder: String?)
     /// 実機ビルドに必要な Team ID が未設定(署名エラーになる前に止める)
     case developmentTeamMissing
-    /// 署名設定が足りずランナーを実機向けに建てられない。**文字列ではなく「何が欠けているか」を
+    /// 署名設定が足りずランナーを実機向けにビルドできない。**文字列ではなく「何が欠けているか」を
     /// 運ぶ** —— CLI は英語で案内を出し、拡張は同じ判定から**自分の言語で**案内を組み立てる
     /// (CLAUDE.md「共有するのは判定であって文言ではない」)。生のビルドログはファイルへ
     case codeSigningIncomplete(problems: [XcodeSigningProblem], logPath: String?)

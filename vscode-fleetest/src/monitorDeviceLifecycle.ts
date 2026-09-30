@@ -16,7 +16,7 @@ import { isRecord, type MonitorDeviceState } from "./monitorDeviceModel";
 // wipe = 仮想デバイス1台の初期化(`fleetest api wipe-device`)。up/down と同じ device ジョブとして
 // 直列キューに載せる —— 中で停止と再起動をするので、一括起動や個別の起動/停止と重なると
 // simctl/adb・ブリッジ供給が競合する。
-// restartBridge = ブリッジ診断ログの合計超過による自動建て直し(`fleetest api restart-bridge`。
+// restartBridge = ブリッジ診断ログの合計超過による自動での起動し直し(`fleetest api restart-bridge`。
 // monitorBridgeLogRotation.ts)。デバイス本体は触らずブリッジだけ止めて供給し直す —— up/down/wipe
 // と同じ直列キューに載せるのは simctl/adb・ブリッジ供給の競合を避けるため(理由は同じ)。
 export type DeviceOpKind = "up" | "down" | "wipe" | "restartBridge";

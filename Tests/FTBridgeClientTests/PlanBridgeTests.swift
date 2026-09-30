@@ -64,7 +64,7 @@ final class PlanBridgeTests: XCTestCase {
                         protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
         ]
         guard case .reuse(let port) = try plan(running: running, sim: phone) else {
-            return XCTFail("生きている実機ブリッジを再利用せず2本目を建てようとしている")
+            return XCTFail("生きている実機ブリッジを再利用せず2本目を起動しようとしている")
         }
         XCTAssertEqual(port, 8143)
     }

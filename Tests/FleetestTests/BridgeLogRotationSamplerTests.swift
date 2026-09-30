@@ -71,7 +71,7 @@ final class BridgeLogRotationSamplerTests: XCTestCase {
         XCTAssertEqual(sampler.snapshot(), rawCandidate())
     }
 
-    /// 建て直しで束が消えたら、次に測り直す前でも控えを捨てる(古いポートを別のデバイスの
+    /// 起動し直しで束が消えたら、次に測り直す前でも控えを捨てる(古いポートを別のデバイスの
     /// ブリッジが使い始めても、そのデバイスを指さない)
     func testSnapshotDropsTheCandidateOnceItsBundleIsGone() {
         let exists = LockedFlag(true)

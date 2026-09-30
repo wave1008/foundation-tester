@@ -11,7 +11,7 @@ import android.view.Choreographer;
  * <p><b>ホストは凍結判定に使わない。採り直さないこと</b> —— 「静止画面(tick あり)と wedge
  * (tick なし)を画像なしで分離できる」という前提は iOS 側で反証されている(wedge 中でも
  * vsync コールバックは来る。実測は docs/verification.md)。計器を残してあるのは、撤去が
- * ブリッジ版上げ = 全台の建て直しを伴うため(次の版上げに便乗する)。
+ * ブリッジ版上げ = 全台の起動し直しを伴うため(次の版上げに便乗する)。
  *
  * <p>iOS 側の対(InAppBridge/Sources/DisplayHeartbeat.swift と Runner/.../DisplayHeartbeat.swift)。
  * **片方だけ変えない**。

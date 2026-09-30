@@ -10,7 +10,7 @@ export const monitorStrings = {
   "monitor.deviceOp.labelStarting": { ja: "起動中...", en: "Starting..." },
   "monitor.deviceOp.labelStopping": { ja: "停止中...", en: "Stopping..." },
   "monitor.deviceOp.labelWiping": { ja: "Wipe Data 実行中...", en: "Wiping data..." },
-  "monitor.deviceOp.labelRestartingBridge": { ja: "ブリッジ建て直し中...", en: "Restarting bridge..." },
+  "monitor.deviceOp.labelRestartingBridge": { ja: "ブリッジを起動し直し中...", en: "Restarting bridge..." },
   "monitor.deviceOp.labelStart": { ja: "起動", en: "Start" },
   "monitor.deviceOp.labelStop": { ja: "停止", en: "Stop" },
 
@@ -231,7 +231,7 @@ export const monitorStrings = {
 
   // ---- monitorBridgeLogRotation.ts ----
   "monitor.bridgeLogRotation.restarting": {
-    ja: "ブリッジ診断ログが上限({limit})を超えたため、{name} のブリッジを建て直します(束 {bundle})。",
+    ja: "ブリッジ診断ログが上限({limit})を超えたため、{name} のブリッジを起動し直します(束 {bundle})。",
     en: "Bridge diagnostic logs exceeded the limit ({limit}); restarting the bridge for {name} (bundle {bundle}).",
   },
 

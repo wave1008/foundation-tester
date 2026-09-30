@@ -220,7 +220,7 @@ final class MCPAnnotationCacheTests: XCTestCase {
         XCTAssertEqual(cache.foldedGroupsComputeCount, 2, "true/false の2キーぶんだけ計算するはず")
     }
 
-    // MARK: - snapshotBody(本物の呼び出し口)がすべての建て手へ cache を通していること
+    // MARK: - snapshotBody(本物の呼び出し口)がすべての組み立て口へ cache を通していること
 
     /// 上のテストは静的関数を手で組み合わせた `buildCachedAnnotations` を通すが、それだけでは
     /// **production の組み立て口である `snapshotBody` 自身が cache を配線しているか**は見ない。

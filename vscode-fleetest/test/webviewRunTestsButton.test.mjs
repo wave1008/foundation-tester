@@ -218,7 +218,7 @@ test("一括停止(「全て終了」)の最中も操作させない(モニタ�
   // 停止中に profileInfo が届いても select を解放しない(起動中と同じ理由)
   sendProfileInfo(window);
   assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [true, true, true, true, true]);
-  assert.equal(document.getElementById("btn-restart").disabled, false, "監視の建て直しは止めない");
+  assert.equal(document.getElementById("btn-restart").disabled, false, "監視の起動し直しは止めない");
 
   sendBootBusy(window, false, undefined);
   assert.deepEqual(locked.map((id) => document.getElementById(id).disabled), [false, false, false, false, false]);

@@ -34,7 +34,7 @@ public final class BridgeClient: AppDriver {
     /// 経由なら露出面が増えない
     private(set) var token: String?
     /// **401 を受けたときに台帳の token を読み直す口**(既定 = `.fleetest/bridge-<port>.endpoint`)。
-    /// ブリッジを建て直すと token が変わり、init で固定した値のままでは以後すべて 401 で
+    /// ブリッジを起動し直すと token が変わり、init で固定した値のままでは以後すべて 401 で
     /// 「接続断」とも扱われず戻れなかった(実機 iPhone 13・§19.3)。読み直して**1 回だけ**撃ち直す。
     /// テストは差し替えて注入する
     var tokenReloader: () -> String? = { nil }
@@ -1067,7 +1067,7 @@ public final class BridgeClient: AppDriver {
         }
         let (data, response) = try await send(req)
         guard (response as? HTTPURLResponse)?.statusCode == 401 else { return (data, response) }
-        // **401 = token が合わない**(ブリッジの建て直しで変わった形が典型)。台帳を読み直して
+        // **401 = token が合わない**(ブリッジの起動し直しで変わった形が典型)。台帳を読み直して
         // 値が変わっていれば 1 回だけ撃ち直す。**同じ値・読めない**ならそのまま断る ——
         // 繰り返すと台帳が別のブリッジのものだったときに永久に回る
         if let fresh = tokenReloader(), fresh != token {

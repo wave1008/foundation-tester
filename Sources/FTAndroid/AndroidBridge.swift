@@ -435,7 +435,7 @@ extension AndroidDriver {
 
     /// 生死判定の唯一の信号(`adb shell pidof <bridgePackage>`)。`bridgeDoctorSummary` と
     /// `isBridgeRunning` の両方がこれを通す(判定を2箇所に持たない)。**`ensureBridge()` は
-    /// 呼ばない** —— 観測のためだけにブリッジを建てる副作用は入れない
+    /// 呼ばない** —— 観測のためだけにブリッジを起動する副作用は入れない
     private static func pidofResult(serial: String?, adbPath: String, timeout: Double? = nil) -> Shell.Result? {
         var args = [adbPath]
         if let serial { args += ["-s", serial] }
@@ -465,7 +465,7 @@ extension AndroidDriver {
         return !digits.isEmpty
     }
 
-    /// ブリッジを**建てずに**生死だけを見る(`ensureBridge()` を通さない)。
+    /// ブリッジを**起動せずに**生死だけを見る(`ensureBridge()` を通さない)。
     /// `api monitor` の毎サイクルから叩かれる想定なので timeout を必ず指定し、adb が刺さっても
     /// サイクルを握らせない
     public static func isBridgeRunning(serial: String?, timeout: Double = 5) -> Bool? {

@@ -180,7 +180,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let monitorRepoRoot = try? RepoRoot.find()
         let leaseStateDir = monitorRepoRoot?.appendingPathComponent(".fleetest")
 
-        // xcresult 保持容量の建て直し候補(BridgeLogRotationSampler の doc)。**手元でも子でも作る**——
+        // xcresult 保持容量の起動し直し候補(BridgeLogRotationSampler の doc)。**手元でも子でも作る**——
         // 中継の可否(RemoteMonitorFanout が子のぶんを飲み込む)は出す側でなく親側の役割
         let bridgeLogRotationSampler = BridgeLogRotationSampler(toolRoot: monitorRepoRoot)
         var lastBridgeLogRotationCandidate: ApiMonitorBridgeLogRotationEvent.Candidate?
@@ -298,7 +298,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 self.logStderr(message)
             }
 
-            // xcresult 保持容量の建て直し候補。ポート→デバイスの対応はこの周期の states(iosPort)
+            // xcresult 保持容量の起動し直し候補。ポート→デバイスの対応はこの周期の states(iosPort)
             // からだけ引く(このマシンのデバイスに絞るため)。変わったとき(と最初の1回)だけ出す
             let bridgeLogRotationCandidate = BridgeLogRotationCandidateMapping.candidate(
                 raw: bridgeLogRotationSampler.snapshot(), states: states)
@@ -360,7 +360,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
 
             // Android 実機のブリッジ生死(state=connected の実機だけ。shouldProbeBridge)。
-            // `ensureBridge()` は通さない(観測のためだけにブリッジを建てない)。対象は少数
+            // `ensureBridge()` は通さない(観測のためだけにブリッジを起動しない)。対象は少数
             // (通常1〜3台)・`pidof` 1往復が数十ミリ秒なので、health probe と違い**毎サイクル**叩く
             // —— healthProbeIntervalSeconds(30秒)級に低頻度化すると、タイルメニューで
             // ブリッジを止めた直後にタイル表示が変わらず「効いていない」と読まれる。

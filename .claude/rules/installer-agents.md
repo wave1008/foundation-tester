@@ -114,9 +114,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     よいか」を必ず問う** → maintainer-notes §2.3
   - **シェル式を `.mcp.json` へ直書きしない**(起動のたび約8秒の `swift build` を払い、失敗すると
     `>/dev/null` で理由が分からないまま起動しない)
-  - ランチャが守るのは3つ: **鮮度でだけ建てる**(`find Sources Package.swift -newer <bin>`。
-    存在チェックに戻さない = InAppLauncher と同じ規律。建てた直後に `touch` するのは、
-    無変更のソースを触っただけだと再リンクされず毎回建て直しになるため)/
+  - ランチャが守るのは3つ: **鮮度でだけビルドする**(`find Sources Package.swift -newer <bin>`。
+    存在チェックに戻さない = InAppLauncher と同じ規律。ビルドした直後に `touch` するのは、
+    無変更のソースを触っただけだと再リンクされず毎回ビルドし直しになるため)/
     **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
     **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
 - **スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` を足す**(clone より前に走るので

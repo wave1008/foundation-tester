@@ -821,7 +821,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     ///   `heal` … profile-less は**修復しない**(`ScenarioExecutionSettings.init` の既定と同じ。
     ///     素の run で壊れたセレクタを黙って別要素へ解決させない)
     ///   `homeOnStart` … profile-less は**デバイスに触らない**。この設定は一斉起動直後の
-    ///     黒画面を防ぐためのもので、既に建っているブリッジへ繋ぐだけの経路では、手で用意した
+    ///     黒画面を防ぐためのもので、既に起動しているブリッジへ繋ぐだけの経路では、手で用意した
     ///     画面を Home で流してしまう
     /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` はそのまま効く。
     /// 既定はリテラルで固定するテストを置くこと(`DeviceIndependentRunSettingsTests`)

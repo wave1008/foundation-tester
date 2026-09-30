@@ -475,15 +475,15 @@ extension MCPServer {
             return Self.withElapsed(content, since: start, clock: clock)
         }
         do {
-            // **失敗したら1回だけブリッジを建て直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
-            // 建て直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
+            // **失敗したら1回だけブリッジを起動し直して撃ち直す**(MCPServer+BridgeRecovery.swift)。
+            // 起動し直せなければ元のエラーがそのまま catch へ落ち、connectionLostHint 等はそのまま効く
             // (MCPToolFailure は接続拒否ではないので撃ち直しの対象にならない = シナリオを二重に走らせない)
             return await decorated(try await dispatchRetryingAfterBridgeRecovery(tool: tool, args: resolved))
         } catch let failure as MCPToolFailure {
             // 中身は呼び手が組み上げた報告そのもの。接続断の診断(デバイス走査)は足さない
             throw MCPToolFailure(content: await decorated(failure.content))
         } catch {
-            // run がデバイスを使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの建て直し)ので、失敗にも言う
+            // run がデバイスを使っている最中は失敗しやすい(アプリの起こし直し・ブリッジの起動し直し)ので、失敗にも言う
             let runNote = Self.toolAcceptsDeviceTarget(tool) ? markDeviceInUse(args: resolved) : nil
             let hint = await connectionLostHint(error, args: resolved)
                 + Self.setTextRefusedHint(tool: tool, args: resolved,

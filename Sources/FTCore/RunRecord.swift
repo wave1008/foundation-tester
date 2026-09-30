@@ -36,7 +36,7 @@ public enum WorkerAnomalyCause: String, Codable, Sendable {
 /// **実行した事実だけ**(効いたかは判定しない)。値は実装にある回復経路に合わせて確定
 /// (docs/results-json.md 参照)
 public enum WorkerRecoveryKind: String, Codable, Sendable {
-    /// XCUITest ランナーを同じポートで建て直した(RunnerMidRunRecheck.recheck の `.restarted`)
+    /// XCUITest ランナーを同じポートで起動し直した(RunnerMidRunRecheck.recheck の `.restarted`)
     case runnerRestart
     /// 離脱したワーカーの論理デバイスを復帰させた(superviseWorker の revive 成功)
     case workerRevive
@@ -301,7 +301,7 @@ public struct RunMetaRecord: Codable, Sendable {
     public var abortReason: String?
     /// **デバイスそのものが遅い**ことの観測(`FTCore.SlowWorkerDetector`。`SlowWorkerFinding.summary`
     /// の配列)。**除外も自動修復もしない・警告のみ** —— 既存の劣化検知(XCUITestランナーの
-    /// 建て直し・凍結トリアージ)はこの帯(ステップtimeout未満の遅さ)を原理的に見ないため、
+    /// 起動し直し・凍結トリアージ)はこの帯(ステップtimeout未満の遅さ)を原理的に見ないため、
     /// この欄だけが痕跡になる。空/未観測は nil(degradedWorkers と同じ規律)。
     /// **他ワーカーが居ない(1台の)runでは常に nil**(相対比較ができない)
     public var slowWorkers: [String]?

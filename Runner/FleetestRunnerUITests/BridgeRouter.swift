@@ -1223,7 +1223,7 @@ final class BridgeRouter {
     /// セッションのアプリが**前面から外れている**間に木を撮ると、XCUI が対象を引けず
     /// `Find the Application '<bundle>'` を約45秒リトライした末に**ランナーごと落ちる**
     /// (2026-08-15 実測 6/6。ログの最終行は必ずこのリトライで、続いて "Restarting after
-    /// unexpected exit, crash, or test timeout" → 建て直されたランナーは 0 tests で
+    /// unexpected exit, crash, or test timeout" → 起動し直されたランナーは 0 tests で
     /// スイート終了 = **ブリッジが永久に消える**)。`requireLiveApp` は `.notRunning`/`.unknown`
     /// しか弾かないので、**背面(`.runningBackground`)は掛けても素通りする**。
     ///

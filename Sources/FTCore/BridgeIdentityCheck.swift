@@ -52,7 +52,7 @@ public enum BridgeIdentityCheck {
     /// ② status.udid が無いとき: 期待が実機なのに status.engine=="inapp"(実機に in-app は無い=
     ///    相手はシミュレータ) → mismatch。期待エンジンと status.engine の inapp/非inapp が
     ///    食い違う(どちらの向きも) → mismatch
-    /// `remedy` は**呼び手ごとの対処文**(run は「レーンを建て直す」・ライブ操作は「宛先を直す」で
+    /// `remedy` は**呼び手ごとの対処文**(run は「レーンを起動し直す」・ライブ操作は「宛先を直す」で
     /// 対処が違う)。**既定値を置かない** —— 新しい呼び手が渡し忘れたらコンパイルで止める
     /// (CLAUDE.md「共有するのは判定であって文言ではない」)
     public static func verdict(expected: Expected, status: StatusResponse,
@@ -98,7 +98,7 @@ public enum BridgeIdentityCheck {
     public enum HybridFallbackDrift: Equatable, Sendable {
         /// 期待通り、または判断材料が無い(不明を「変わった」にしない)
         case none
-        /// 同じ udid のまま、ブリッジのエンジンだけが入れ替わった(建て直しで engine が変わった)
+        /// 同じ udid のまま、ブリッジのエンジンだけが入れ替わった(起動し直しで engine が変わった)
         case sameDeviceEngineChanged
         /// 別の udid(別の実体)が答えている
         case differentDevice

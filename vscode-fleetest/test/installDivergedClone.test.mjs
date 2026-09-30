@@ -2,7 +2,7 @@
 //
 // 事故の形(2026-09-07 に受け手の外部構成で実測): `origin/main` が force-push で作り直された
 // 後のクローンは非 fast-forward になり、pull 失敗が warn 止まりで続行していた。旧コードを
-// 建て直し、旧拡張を入れ直し、`✅ 8 件 / exit 2` で「The CLI and MCP still work」と締める ——
+// ビルドし直し、旧拡張を入れ直し、`✅ 8 件 / exit 2` で「The CLI and MCP still work」と締める ——
 // **受け手には更新できていないことが伝わらない**。405 遅れ / 109 進みのクローンが
 // ブリッジ版 79 のまま「更新成功」に見えた。
 //
@@ -32,7 +32,7 @@ test("分岐したクローンは warn で素通ししない(die か reset で�
   const block = pullBlock();
   assert.ok(
     !/diverged[^\n]*soft_fail|soft_fail[^\n]*diverged/.test(block),
-    "分岐を soft_fail で流している(旧コードを建て直して『更新成功』に見える)",
+    "分岐を soft_fail で流している(旧コードをビルドし直して『更新成功』に見える)",
   );
   assert.match(block, /reset --hard "origin\/\$branch"/, "外部構成での復旧が無い");
   assert.match(block, /die "clone"/, "復旧できない構成での中止が無い");

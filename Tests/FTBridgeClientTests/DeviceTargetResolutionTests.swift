@@ -130,7 +130,7 @@ final class DeviceTargetResolutionTests: XCTestCase {
         StatusResponse(ready: true, device: name, osVersion: "18.5", sessionBundleID: nil, udid: udid)
     }
 
-    /// **シミュレータの自己申告が最優先**: 実機だった port を建て直してシミュレータへ繋ぎ替えた後、
+    /// **シミュレータの自己申告が最優先**: 実機だった port を起動し直してシミュレータへ繋ぎ替えた後、
     /// 古い `.device` 記録が残っていても申告が勝つ(先に見れば記録を読みにも行かない)
     func testStatusUDIDWinsOverAStaleRecordedPhysicalUDID() {
         XCTAssertEqual(

@@ -426,7 +426,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     else
       # fetch は通ったのに ff できない。**先行しているだけ**(保守者が手元にコミットを持つ)と
       # **分岐**(上流が force-push された・クローンの中でコミットした)を分ける ——
-      # 前者で落とすと保守者の運用を壊し、後者を通すと旧コードを建て直して
+      # 前者で落とすと保守者の運用を壊し、後者を通すと旧コードをビルドし直して
       # 「更新成功」に見える(2026-09-07 に受け手の外部構成で実測。405 遅れ/109 進みで
       # ブリッジ版が古いまま ✅ 8 件・exit 2 になった)
       behind="$(git -C "$TOOL_ROOT" rev-list --count "HEAD..origin/$branch" 2>/dev/null || echo 0)"
@@ -443,7 +443,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
         fi
       else
         # clone 構成・--keep-local では勝手に捨てない。**続行もしない** ——
-        # 黙って旧コードを建て直すのがこの穴の実害だった
+        # 黙って旧コードをビルドし直すのがこの穴の実害だった
         die "clone" "the clone has diverged from origin/$branch ($behind behind / $ahead ahead) and nothing was updated. Recover with: git -C $TOOL_ROOT fetch origin $branch && git -C $TOOL_ROOT reset --hard origin/$branch" 0.5
       fi
     fi

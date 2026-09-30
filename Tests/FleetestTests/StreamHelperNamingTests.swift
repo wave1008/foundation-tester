@@ -6,7 +6,7 @@ import XCTest
 /// 配信ヘルパーの名前を `api device-stream` が**リテラルで持たない**ことを固定する。
 ///
 /// 持たせると、新しいヘルパーを足したときに `RemoteSetupPlan.alignRevisionCommand`(= リモート機で
-/// 建てるもの)へ追随しなくても全部緑のまま通り、**そのランナーのタイルだけが黙って「映像なし」**
+/// ビルドするもの)へ追随しなくても全部緑のまま通り、**そのランナーのタイルだけが黙って「映像なし」**
 /// になる(2026-08-28 の実害。既存3本が丸ごとこれだった)。`StreamHelpers` を通していれば
 /// 追加はそこに現れ、align のリテラル等号テストが落ちる。
 final class StreamHelperNamingTests: XCTestCase {
@@ -22,7 +22,7 @@ final class StreamHelperNamingTests: XCTestCase {
             .joined(separator: "\n")
         XCTAssertFalse(code.contains("\"fleetest-"),
                        "配信ヘルパーは StreamHelpers 経由で名指しする"
-                       + "(リテラルで書くと alignRevisionCommand が建て忘れても誰も落ちない)")
+                       + "(リテラルで書くと alignRevisionCommand がビルドし忘れても誰も落ちない)")
     }
 
     /// 名前が実際の実行ファイル名と食い違えば、リモートでは exec が失敗し手元では

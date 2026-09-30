@@ -1,6 +1,6 @@
 // 契約: `XCUIBridgeResolver.freePort` は in-app の台帳(`.inapp`)が残るポートを後回しにする。
 // in-app ブリッジはアプリの起こし直しの間だけ待受が消えるので、稼働中の走査と `.pid` だけを見ると
-// run のレーンのポートを空きと読む(ライブ操作の自動起動がそこへ別のデバイスのランナーを建てた)。
+// run のレーンのポートを空きと読む(ライブ操作の自動起動がそこへ別のデバイスのランナーを起動した)。
 
 import Foundation
 import XCTest
@@ -66,7 +66,7 @@ final class FreePortInAppLedgerTests: XCTestCase {
     }
 
     /// 2段目(台帳の残るポート)は今だれも待ち受けていないものだけ —— run のレーンで生きている in-app ポートを採らない
-    /// (負荷テスト: 1段目が残骸で尽きた回に、ライブ操作が run のレーンの 8147 へランナーを建てた)
+    /// (負荷テスト: 1段目が残骸で尽きた回に、ライブ操作が run のレーンの 8147 でランナーを起動した)
     func testFallbackSkipsLedgerPortsThatAreStillListening() {
         for port in UInt16(8123)...UInt16(8154) { writeInApp(port: port) }
         XCTAssertEqual(XCUIBridgeResolver.freePort(repoRoot: repoRoot, occupied: [],

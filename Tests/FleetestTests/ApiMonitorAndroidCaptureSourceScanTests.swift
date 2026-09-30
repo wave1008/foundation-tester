@@ -3,7 +3,7 @@ import XCTest
 
 /// `fleetest api monitor` の Android 撮影は `FTCore.AndroidScreencap`(adb 直叩き)だけを通すこと。
 /// ブリッジ経由の `AndroidDriver(serial:).screenshot()` へ戻すと、ブリッジの無い実機でも観測
-/// (ポーリング)のたびにブリッジを建ててしまう(利用者が「全て終了」した実機のブリッジが
+/// (ポーリング)のたびにブリッジを起動してしまう(利用者が「全て終了」した実機のブリッジが
 /// 監視だけで復活する副作用があった)。
 final class ApiMonitorAndroidCaptureSourceScanTests: XCTestCase {
 

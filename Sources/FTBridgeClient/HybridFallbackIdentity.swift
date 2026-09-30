@@ -2,7 +2,7 @@
 //
 // キャッシュ/使い回すドライバが1本の port だけを確かめて安全だと思っていても、hybrid の合成
 // (HybridFallbackDriver / HybridDriverComposition)は home/appSwitcher/drag/座標 press/gesture/
-// pinch を fallback(XCUITest)側の別ポートへ回す。ブリッジは run のたびに建て直され、
+// pinch を fallback(XCUITest)側の別ポートへ回す。ブリッジは run のたびに起動し直され、
 // 同じポート番号が別デバイス(あるいは同じデバイスの別エンジン)に化り得るので、
 // 主のポートしか確かめないと黙って別の機へ操作が届く。
 //

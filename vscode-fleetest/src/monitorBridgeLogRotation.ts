@@ -1,7 +1,7 @@
 // monitorBridgeLogRotation.ts
 // XCUITest ランナー(iOS のブリッジ)は起動中ずっと結果の束へセッションログを書き、実機の画面配信を
 // 続けると1台1日約2.6GB 増える。生きているブリッジの分は既存の掃除では消せないため、ブリッジ診断
-// ログの合計が上限を超えた候補を `fleetest api restart-bridge` で建て直し、古い束を孤児化させて
+// ログの合計が上限を超えた候補を `fleetest api restart-bridge` で起動し直し、古い束を孤児化させて
 // 既存の掃除に任せる(束自体は消さない)。
 // vscode を import しない(test/monitorBridgeLogRotation.test.mjs から node:test で検証するため。
 // monitorBridgeWatchdog.ts と同じ方針)。
@@ -27,9 +27,9 @@ export interface MonitorBridgeLogRotationDeps {
   now?: () => number;
 }
 
-/** 建て直し後、同じデバイスへ再投入しないクールダウン(ミリ秒)。Swift 側の計測間隔が10分なので、
- * 建て直し後に古い束が掃除されたことが次の計測に映るまで最大2周期(20分)ぶん同じ候補が届きうる。
- * 建て直しが断られた(使用中)場合も、このクールダウン後に再挑戦する。 */
+/** 起動し直し後、同じデバイスへ再投入しないクールダウン(ミリ秒)。Swift 側の計測間隔が10分なので、
+ * 起動し直し後に古い束が掃除されたことが次の計測に映るまで最大2周期(20分)ぶん同じ候補が届きうる。
+ * 起動し直しが断られた(使用中)場合も、このクールダウン後に再挑戦する。 */
 const COOLDOWN_MS = 20 * 60 * 1000;
 
 /**

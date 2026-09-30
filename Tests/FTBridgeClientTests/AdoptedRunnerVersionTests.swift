@@ -19,7 +19,7 @@ final class AdoptedRunnerVersionTests: XCTestCase {
         XCTAssertTrue(BridgeProvisioner.adoptedRunnerIsStale(status(version: nil)), "版を名乗らない旧ランナーも旧ビルド")
     }
 
-    /// 引き取りの経路は、応答(waitUntilReady の戻り値)を判定に掛けて、旧ビルドなら建て直す
+    /// 引き取りの経路は、応答(waitUntilReady の戻り値)を判定に掛けて、旧ビルドなら起動し直す
     func testTheAdoptPathChecksTheVersionAfterTheRunnerAnswers() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().appendingPathComponent("Sources/FTBridgeClient/BridgeProvisioner.swift")
@@ -36,6 +36,6 @@ final class AdoptedRunnerVersionTests: XCTestCase {
         let afterCheck = adopt[check.upperBound...]
         let restart = try XCTUnwrap(afterCheck.range(of: "return try await stopAndRelaunch()"))
         let takenOver = try XCTUnwrap(afterCheck.range(of: "took over the"))
-        XCTAssertLessThan(restart.lowerBound, takenOver.lowerBound, "旧ビルドなら引き取りを報告する前に建て直す")
+        XCTAssertLessThan(restart.lowerBound, takenOver.lowerBound, "旧ビルドなら引き取りを報告する前に起動し直す")
     }
 }

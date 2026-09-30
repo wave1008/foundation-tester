@@ -11,7 +11,7 @@ final class ApiLiveConnectionHintTextTests: XCTestCase {
 
     // MARK: - bridgeUnreachableHint(固まり vs busy)
 
-    /// 固まり(transportFailed): 建て直しが要る。「busy」「待て」だけで済ませない
+    /// 固まり(transportFailed): 起動し直しが要る。「busy」「待て」だけで済ませない
     func testTransportFailedPointsAtRebuildingNotWaiting() {
         let hint = ApiLiveServe.bridgeUnreachableHint(probe: .transportFailed)
         XCTAssertTrue(hint.contains("gone"), hint)
@@ -20,21 +20,21 @@ final class ApiLiveConnectionHintTextTests: XCTestCase {
                        "固まりを busy と呼ぶと『待てば直る』に読める — 過去の取り違え(§44.1)と同じ形")
     }
 
-    /// busy(timedOut): 待てば直る。建て直しを勧めない
+    /// busy(timedOut): 待てば直る。起動し直しを勧めない
     func testTimedOutPointsAtWaitingNotRebuilding() {
         let hint = ApiLiveServe.bridgeUnreachableHint(probe: .timedOut)
         XCTAssertTrue(hint.lowercased().contains("busy"), hint)
         XCTAssertFalse(hint.contains("fleetest bridge up"),
-                       "busy なだけの接続を固まりと同じ『建て直せ』にしない")
+                       "busy なだけの接続を固まりと同じ『起動し直せ』にしない")
     }
 
-    /// 誰も listen していない(probe 時点で消えていた): 固まりと同じく建て直しを勧める
+    /// 誰も listen していない(probe 時点で消えていた): 固まりと同じく起動し直しを勧める
     func testNotBoundAlsoPointsAtRebuilding() {
         let hint = ApiLiveServe.bridgeUnreachableHint(probe: .notBound)
         XCTAssertTrue(hint.contains("fleetest bridge up"), hint)
     }
 
-    /// 追跡した瞬間には応答した(元の失敗は一過性だった可能性): 建て直しも待機も強要しない
+    /// 追跡した瞬間には応答した(元の失敗は一過性だった可能性): 起動し直しも待機も強要しない
     func testAnsweredMarksTheOriginalFailureAsTransient() {
         let hint = ApiLiveServe.bridgeUnreachableHint(probe: .answered)
         XCTAssertTrue(hint.lowercased().contains("transient"), hint)

@@ -7,7 +7,7 @@
 //       → `fleetest-scenarios-E2E-CMP`(最初のステップの手前で停止し続ける = 長生きする孫)
 //
 // デバイスにも swift build にも触れない(`--skip-build`。swift test の最中に入れ子で swift build を
-// 撃つと SPM のビルドロックで詰まる)。両バイナリは同じパッケージの product なので swift test が建てる。
+// 撃つと SPM のビルドロックで詰まる)。両バイナリは同じパッケージの product なので swift test がビルドする。
 //
 // 終わり方は2つ(CLAUDE.md「終了猶予の方針は1つ」の両側):
 //   ① 親の異常終了 —— 起こした側を SIGKILL。子は ParentDeathWatch(kqueue)で自らに SIGTERM、
@@ -109,8 +109,8 @@ final class CrossLayerTerminationTests: XCTestCase {
         for binary in [fleetest, runner] {
             guard FileManager.default.isExecutableFile(atPath: binary.path) else {
                 // 黙って skip にしない(素通りで緑になると、この砦が無いのと同じになる)
-                XCTFail("\(binary.lastPathComponent) が .build/debug に無い(swift test が建てる product。"
-                        + "別の build path で回しているなら .build/debug に建ててから)")
+                XCTFail("\(binary.lastPathComponent) が .build/debug に無い(swift test がビルドする product。"
+                        + "別の build path で回しているなら .build/debug にビルドしてから)")
                 throw XCTSkip("binary missing")
             }
         }

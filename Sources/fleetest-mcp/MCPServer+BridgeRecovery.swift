@@ -5,11 +5,11 @@
 // 実地(B1): 3時間生きたランナーが a11y 照会の劣化の末に自壊し(ポートに何も応答しなくなり
 // 台帳も消える)、以後そのセッションは connectionLostHint の案内(`fleetest bridge up` を打て)を
 // 返すだけで、誰も打たないので二度と戻らなかった。ライブ操作(LiveBridgeAutoStarter)は同じ事象を
-// 自動起動で凌ぐので、MCP にも同じ復帰を持たせる。**建て直しは BridgeProvisioner.provision の1箇所**
+// 自動起動で凌ぐので、MCP にも同じ復帰を持たせる。**起動し直しは BridgeProvisioner.provision の1箇所**
 // (`fleetest bridge up` / run の供給と同じ経路。二つ目の実装を書かない)。
 //
 // **対象はシミュレータの xcuitest エンジンだけ**(RunnerMidRunRecheck.target と同じ絞り込み):
-// hybrid/in-app は建て直しの単位が違う(対象アプリごと落ちる)・実機は provision() の対象外。
+// hybrid/in-app は起動し直しの単位が違う(対象アプリごと落ちる)・実機は provision() の対象外。
 // それ以外の接続は connectionLostHint の案内だけに落ちる(退化ではなく対象外なだけ)。
 
 import Foundation
@@ -18,11 +18,11 @@ import FTCore
 
 extension MCPServer {
 
-    /// dispatch の薄いラッパー。`DriverError.bridgeConnectionRefused` を受け、建て直せる条件が
-    /// 揃っていれば1回だけブリッジを建て直して撃ち直す。建て直せなければ元のエラーをそのまま
+    /// dispatch の薄いラッパー。`DriverError.bridgeConnectionRefused` を受け、起動し直せる条件が
+    /// 揃っていれば1回だけブリッジを起動し直して撃ち直す。起動し直せなければ元のエラーをそのまま
     /// 投げ、呼び出し元(call の catch)の connectionLostHint 等へ委ねる——文言・記憶の後始末を
     /// ここで重複して持たない
-    /// 建て直したことを**結果本文の先頭に載せる**(既存の注記と同じ前置の形)。
+    /// 起動し直したことを**結果本文の先頭に載せる**(既存の注記と同じ前置の形)。
     /// stderr だけに出すと **JSON-RPC しか読まない呼び手には届かない** ——
     /// T1 の「唯一の警告が stderr」と同じ型。この呼び出しが数分かかった理由も、
     /// 「同じポートで別のランナーに変わった」ことも、ここにしか現れない
@@ -41,7 +41,7 @@ extension MCPServer {
         }
     }
 
-    /// **純粋関数**: xcuitest ブリッジの自動建て直しを試すかの判定材料を1箇所にまとめる
+    /// **純粋関数**: xcuitest ブリッジの自動での起動し直しを試すかの判定材料を1箇所にまとめる
     /// (I/O 抜きでテストできる。attemptXCUITestBridgeRecovery が I/O 込みで呼ぶ)。
     /// このセッションで一度失敗した engineKey は再挑戦しない(`bridgeRecoveryFailed`。1回のビルド
     /// 失敗に分単位を払う経路なので、環境そのものが壊れているデバイスへ毎呼び出し撃ち続けない ——
@@ -54,7 +54,7 @@ extension MCPServer {
         return isPhysical == false
     }
 
-    /// 建て直しの実行。判定は `shouldAttemptXCUITestBridgeRecovery` の1箇所(重複条件を書かない)。
+    /// 起動し直しの実行。判定は `shouldAttemptXCUITestBridgeRecovery` の1箇所(重複条件を書かない)。
     /// 成功時は `bridgeRecoveryFailed` へ insert しない——同じデバイスが後で再び死んだら、そのときはまた試してよい
     func attemptXCUITestBridgeRecovery(args: [String: Any], error: Error) async -> Bool {
         guard makeDriver == nil else { return false }
@@ -96,8 +96,8 @@ extension MCPServer {
     }
 
     /// 呼び出し1回の所要が劣化の閾値を跨いだときだけ、そのデバイスのランナーを1問測り直して劣化していれば
-    /// 建て直す(`RunnerAccessibilityHealth.probe`/`BridgeProvisioner.recheckRunner`。run 側の
-    /// `RunnerMidRunRecheck` と同じ材料・同じ閾値を共有する)。建て直しても直らなかったデバイスを覚えて
+    /// 起動し直す(`RunnerAccessibilityHealth.probe`/`BridgeProvisioner.recheckRunner`。run 側の
+    /// `RunnerMidRunRecheck` と同じ材料・同じ閾値を共有する)。起動し直しても直らなかったデバイスを覚えて
     /// 空振りを繰り返さないのは `RunnerRestartFutility`(プロセス共有の帳簿。recheckRunner の内側で
     /// 参照する——ここでは何も持たない)
     func recheckXCUITestRunnerIfSlow(args: [String: Any], elapsedMs: Int) async {

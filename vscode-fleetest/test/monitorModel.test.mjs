@@ -729,14 +729,14 @@ test("deviceOpMenuItem: busy.op='wipe' は「Wipe Data 実行中...」(タイル
   });
 });
 
-test("deviceOpMenuItem: busy.op='restartBridge' は「ブリッジ建て直し中...」(タイルからの起動/停止を塞ぐ)", () => {
+test("deviceOpMenuItem: busy.op='restartBridge' は「ブリッジを起動し直し中...」(タイルからの起動/停止を塞ぐ)", () => {
   assert.deepEqual(deviceOpMenuItem("connected", { op: "restartBridge", status: "running" }), {
-    label: "ブリッジ建て直し中...",
+    label: "ブリッジを起動し直し中...",
     op: "restartBridge",
     disabled: true,
   });
   assert.deepEqual(deviceOpMenuItem("booted", { op: "restartBridge", status: "running" }), {
-    label: "ブリッジ建て直し中...",
+    label: "ブリッジを起動し直し中...",
     op: "restartBridge",
     disabled: true,
   });

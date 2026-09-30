@@ -205,7 +205,7 @@ struct DriverOptions: ParsableArguments {
     /// 版ズレの CLI 向け文言(純粋関数・テスト用)。**判定(running/expected の比較)は
     /// `BridgeVersionSkew`(FTBridgeClient・MCP と共有)** —— ここは対処の言い回しだけ持つ
     /// (MCP は `fleetest-mcp`/`bridge down --all` を名指しする。こちらは `fleetest` の
-    /// 再ビルドと、この宛先だけを建て直す `bridge down --port` を名指しする。文言は呼び手ごと)
+    /// 再ビルドと、この宛先だけを起動し直す `bridge down --port` を名指しする。文言は呼び手ごと)
     static func skewMessage(_ skew: BridgeVersionSkew, port: UInt16) -> String {
         let side = skew.bridgeIsNewer
             ? "the bridge on port \(port) is NEWER than this build (v\(skew.running) > v\(skew.expected)) —"

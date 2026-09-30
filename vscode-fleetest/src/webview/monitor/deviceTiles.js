@@ -1934,7 +1934,7 @@ function refreshBulkButtons() {
     ? t('wvMonitor.bulk.cancellingTitle')
     : blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '';
   // 起動キューが動いている間は畳む操作を出さない(「全て終了」は down の最中も同じ)。
-  // 「モニター再起動」は monitor プロセスごと建て直すので、起動の進行(bootBusy)を
+  // 「モニター再起動」は monitor プロセスごと起動し直すので、起動の進行(bootBusy)を
   // 取りこぼして中断の導線が消える。
   btnDown.disabled = bulkBusy || testRunActive;
   btnRestart.disabled = upCancelMode || recordingsFinalizing;

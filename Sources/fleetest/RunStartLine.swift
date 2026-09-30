@@ -7,7 +7,7 @@
 enum RunStartLine {
     /// - Parameters:
     ///   - androidWorkers: 実際に用意できた Android ワーカー数。0 なら Android の話をしない
-    ///   - eagerIOSWorkers: 開始前に建てた(late join ではない)iOS ワーカー数
+    ///   - eagerIOSWorkers: 開始前に起動した(late join ではない)iOS ワーカー数
     ///   - hasLateIOS: iOS がこの run の後半で合流する(late join)かどうか。呼び出し側は
     ///     `hasLateIOS` と `eagerIOSWorkers > 0` を排他的に埋める(late join なら eager は常に 0)
     static func text(androidWorkers: Int, eagerIOSWorkers: Int, hasLateIOS: Bool) -> String {

@@ -14,7 +14,7 @@ final class LanTransportAdviceTests: XCTestCase {
         let text = advice("http://192.168.20.5:8127")
         XCTAssertTrue(text.contains("192.168.20.5"), text)
         XCTAssertTrue(text.contains("libimobiledevice"), text)
-        // 既に建っているブリッジは LAN のまま再利用されるので、建て直しまで言わないと直せない
+        // 既に起動しているブリッジは LAN のまま再利用されるので、起動し直しまで言わないと直せない
         XCTAssertTrue(text.contains("bridge down"), text)
     }
 

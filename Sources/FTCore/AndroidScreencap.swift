@@ -1,8 +1,8 @@
 import Foundation
 
 /// Android 静止画取得の唯一の実装。**ブリッジを経由しない**(`adb exec-out screencap -p` の直叩き)。
-/// 観測(モニターのポーリング等)がここを通しても副作用でブリッジを建てることが無いのが目的
-/// —— `AndroidDriver.screenshot()` は `ensureBridge()` を通るため、無ければ建ててしまう。
+/// 観測(モニターのポーリング等)がここを通しても副作用でブリッジを起動することが無いのが目的
+/// —— `AndroidDriver.screenshot()` は `ensureBridge()` を通るため、無ければ起動してしまう。
 /// WebView 合成(CDP)が要る撮影は引き続き `AndroidDriver.screenshot()` を使うこと。
 public enum AndroidScreencap {
     /// `adb exec-out screencap -p` の PNG。失敗・空データなら nil。

@@ -360,7 +360,7 @@ export class MonitorProcessManager {
     // 子は変化したときだけ出すので、一度捨てると run が終わるまで二度と届かない
     this.machineLocks = new Map();
     // 保持の控えも同じ寿命(新しいプロセスが最初のサイクルで出し直す。lastHoldActive は
-    // false 始まりなので、保持中に建て直せば active=true が改めて届く)
+    // false 始まりなので、保持中に起動し直せば active=true が改めて届く)
     this.monitorHoldActive = false;
     this.deps.notifyMachineLocks(this.machineLocks);
     // run ボード(docs/design.md §18)の控えも同じ寿命 —— webview 側は runBoardModel.ts の状態を

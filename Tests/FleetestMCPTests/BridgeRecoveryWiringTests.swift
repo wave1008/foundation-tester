@@ -10,7 +10,7 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         try MCPServerSourceText.combined()
     }
 
-    /// call() は生の dispatch(tool:args:) ではなく、建て直し込みのラッパーを撃つこと
+    /// call() は生の dispatch(tool:args:) ではなく、起動し直し込みのラッパーを撃つこと
     /// (直に dispatch を呼ぶと bridgeConnectionRefused から一度も復帰しない)
     func testCallGoesThroughTheRecoveringDispatchWrapper() throws {
         let code = try source()
@@ -26,7 +26,7 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         }
         let body = String(code[range.lowerBound...].prefix(600))
         XCTAssertEqual(body.components(separatedBy: "try await dispatch(tool: tool, args: args)").count - 1, 2,
-                       "dispatch を撃つのは最初の1回と、建て直せたときの1回だけであること")
+                       "dispatch を撃つのは最初の1回と、起動し直せたときの1回だけであること")
         XCTAssertTrue(body.contains("attemptXCUITestBridgeRecovery("),
                       "リトライの可否は attemptXCUITestBridgeRecovery に判定させること")
     }
@@ -40,12 +40,12 @@ final class BridgeRecoveryWiringTests: XCTestCase {
                       "recheckXCUITestRunnerIfSlow は shouldAttemptXCUITestRunnerRecheck を通すこと")
     }
 
-    /// 建て直しは BridgeProvisioner.provision の1箇所(bridge up / run の供給と同じ経路)。
+    /// 起動し直しは BridgeProvisioner.provision の1箇所(bridge up / run の供給と同じ経路)。
     /// 測り直しは BridgeProvisioner.recheckRunner(run の RunnerMidRunRecheck と同じ経路)
     func testRebuildAndRecheckDelegateToBridgeProvisioner() throws {
         let code = try source()
         XCTAssertTrue(code.contains(".provision(devices: [(udid, spec)], log: Self.logStderr)"),
-                      "建て直しは BridgeProvisioner.provision を呼ぶこと(二つ目の実装を書かない)")
+                      "起動し直しは BridgeProvisioner.provision を呼ぶこと(二つ目の実装を書かない)")
         XCTAssertTrue(code.contains("BridgeProvisioner(repoRoot: repoRoot).recheckRunner("),
                       "測り直しは BridgeProvisioner.recheckRunner を呼ぶこと(run 側と同じ経路)")
     }
@@ -78,15 +78,15 @@ final class BridgeRecoveryWiringTests: XCTestCase {
     func testRefusesToRebuildPhysicalDevices() throws {
         let code = try source()
         XCTAssertTrue(code.contains("isPhysical: SimulatorCatalog.isPhysical(udid: udid)"),
-                      "実機かどうかを確かめてから建て直し/測り直しの可否を判定すること")
+                      "実機かどうかを確かめてから起動し直し/測り直しの可否を判定すること")
     }
-    /// **建て直しは結果本文で言う** —— stderr だけだと JSON-RPC しか読まない呼び手に届かない
+    /// **起動し直しは結果本文で言う** —— stderr だけだと JSON-RPC しか読まない呼び手に届かない
     /// (2026-09-21 T1 の「唯一の警告が stderr」と同じ型)。ref が消えたことも本文でしか伝わらない
     func testTheRebuildIsAnnouncedInTheResultBody() throws {
         let code = try source()
         XCTAssertTrue(code.contains("[[\"type\": \"text\", \"text\": Self.bridgeRebuiltNote]] + content"),
-                      "建て直したあとの結果に注記を前置していない(呼び手には stderr が届かない)")
+                      "起動し直したあとの結果に注記を前置していない(呼び手には stderr が届かない)")
         XCTAssertTrue(code.contains("take a fresh one"),
-                      "ref が無効になったことを言っていない(建て直し = アプリの再起動)")
+                      "ref が無効になったことを言っていない(起動し直し = アプリの再起動)")
     }
 }

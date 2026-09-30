@@ -1,5 +1,5 @@
 // BridgeLogRotationSampler.swift
-// api monitor の周期から、xcresult 保持容量が guarded だけで超過したときの「建て直す価値のある」
+// api monitor の周期から、xcresult 保持容量が guarded だけで超過したときの「起動し直す価値のある」
 // ブリッジの候補を切り離す(モニターの周期に計測を足すときの規律: 周期の中で待たない・裏で回して
 // 控えを読むだけ。前例: DeviceStorageSampler)。
 //
@@ -23,14 +23,14 @@ final class BridgeLogRotationSampler: @unchecked Sendable {
 
     struct RawCandidate: Equatable {
         let port: UInt16
-        /// 建て直せば孤児になり消える束そのもののバイト数
+        /// 起動し直せば孤児になり消える束そのもののバイト数
         let bundleBytes: Int64
         /// xcresult 系統の使用量合計(guarded 込み)
         let usageBytes: Int64
         let limitBytes: Int64
         /// 候補の束。**控えを返すたびに実在を確かめる**(`snapshot`)—— 計測は間隔を空けるので、
-        /// 建て直し後に古いポートを別のデバイスのブリッジが使い始めると、古い控えがそのデバイスを
-        /// 指してしまう。建て直せば古い束は消える(同じポートなら起動時の掃除・別ポートなら孤児の掃除)
+        /// 起動し直し後に古いポートを別のデバイスのブリッジが使い始めると、古い控えがそのデバイスを
+        /// 指してしまう。起動し直せば古い束は消える(同じポートなら起動時の掃除・別ポートなら孤児の掃除)
         let bundlePath: URL
     }
 
@@ -97,7 +97,7 @@ final class BridgeLogRotationSampler: @unchecked Sendable {
 }
 
 /// ポート → デバイスの対応(I/O を持たない純粋関数)。対応が引けない候補(このプロセスが
-/// 観測していないポート)は nil 扱い——束はあってもタイルを特定できず、拡張は何を建て直すか言えない
+/// 観測していないポート)は nil 扱い——束はあってもタイルを特定できず、拡張は何を起動し直すか言えない
 enum BridgeLogRotationCandidateMapping {
     static func candidate(
         raw: BridgeLogRotationSampler.RawCandidate?, states: [DeviceRuntimeState]

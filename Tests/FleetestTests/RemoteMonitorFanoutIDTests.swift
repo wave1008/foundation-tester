@@ -172,8 +172,8 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
         XCTAssertTrue(line.contains(#""runs":[]"#), line)
     }
 
-    /// **この拡張はランナー機のブリッジを建て直せない**ので、子(--device-machine 付き)の
-    /// xcresult 建て直し候補は手元へ中継しない(手元の拡張が向こうのデバイス名で手元へ撃つのを防ぐ)
+    /// **この拡張はランナー機のブリッジを起動し直せない**ので、子(--device-machine 付き)の
+    /// xcresult 保持容量による起動し直しの候補は手元へ中継しない(手元の拡張が向こうのデバイス名で手元へ撃つのを防ぐ)
     func testBridgeLogRotationLineFromAChildIsNotRelayed() {
         let relayed = LockedBox<[String]>([])
         let fanout = RemoteMonitorFanout(machines: ["M1Ultra"], project: "P", profile: nil,

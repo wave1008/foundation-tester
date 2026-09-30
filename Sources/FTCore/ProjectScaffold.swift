@@ -353,7 +353,7 @@ public enum ProjectScaffold {
         ```
 
         ビルド・PATH の補正・ログの向き先は clone の `Scripts/mcp-server.sh` が持つ(ソースが実行ファイルより
-        新しいときだけ建て直す・stdout は JSON-RPC 専用・cwd は変えない)。**シェル式を直書きしない**・
+        新しいときだけビルドし直す・stdout は JSON-RPC 専用・cwd は変えない)。**シェル式を直書きしない**・
         **`-l` を付けない**(ログインシェルの出力が JSON-RPC に混ざる)。Claude Code はプロジェクトスコープの
         MCP を初回に承認確認する → 許可すると `ft_*` ツールが使え、`/fleetest-scenario` が MCP 経由で動く。
 

@@ -479,7 +479,7 @@ public enum BridgeLiveness {
     ///
     /// **プロセスが生きている間はログ静止の近道を使わない** —— XCUITest の 1 照会は、対象アプリが
     /// 外部要因で背面に回ると実測 31 秒ブロックし(実機で外から設定アプリを前面にした)、
-    /// その間ログも /status も止まる。近道(15 秒)で確定すると、**生きているランナーを止めて建て直す**。
+    /// その間ログも /status も止まる。近道(15 秒)で確定すると、**生きているランナーを止めて起動し直す**。
     /// 逆にプロセスが消えていれば、それが最も確かな死の証拠なので窓の残りを待たない。
     public static func decide(probe: BridgeProbeOutcome, host: String?, runnerProcessAlive: Bool?,
                              logSilentSeconds: TimeInterval?, logSilenceThreshold: TimeInterval,
@@ -715,7 +715,7 @@ public enum ScenarioOutcome: Sendable, Equatable {
     /// 失敗ステップの `failureKind` が `driverUnreachable`(ブリッジ不達)だった。
     /// **OS で扱いが割れる** —— Android は environmentFault と同じ振り直し対象(runWorker 側の
     /// `requeuesWithoutRetiring`)。iOS は先に `.failed` と同じ事後プローブ(bridgeUnreachable)を
-    /// 通し(ここで早期に振り直すと建て直しが起きなくなる)、ブリッジが生きていたときだけ振り直す
+    /// 通し(ここで早期に振り直すと起動し直しが起きなくなる)、ブリッジが生きていたときだけ振り直す
     case driverUnreachable
 }
 
@@ -863,11 +863,11 @@ public enum ScenarioRunner {
     /// 落ちたシナリオが赤のまま残っていた(実測: adb kill-server 等で5本・force-stop で1本・
     /// device offline で1本・実機再起動で1本)。**iOS はここで拾わない** —— 下流の
     /// bridgeUnreachable プローブ→ワーカー離脱→復帰→再キューの経路(既存)をそのまま通す必要があり、
-    /// ここで早期に振り直すとブリッジの建て直しが起きなくなる
+    /// ここで早期に振り直すとブリッジの起動し直しが起きなくなる
     /// **iOS でこれが呼ばれるのは事後プローブ(bridgeUnreachable)がブリッジの生存を確かめた後だけ**
     /// (呼び出し側の順序。Android にはその工程が無い)。生きているデバイスで一過性に切れた 1 本を
     /// 赤のまま残さず、デバイスは残して振り直す —— ここを通さないと iOS は
-    /// Wi-Fi の瞬断・アプリが背面に回った回が赤になるか、生きたランナーの建て直しになる
+    /// Wi-Fi の瞬断・アプリが背面に回った回が赤になるか、生きたランナーの起動し直しになる
     static func requeuesWithoutRetiring(outcome: ScenarioOutcome) -> Bool {
         switch outcome {
         case .environmentFault:
@@ -1009,13 +1009,13 @@ public final class RunOrchestrator {
     /// (呼び出し側がプロファイル経由の場合のみ注入。--port 等の非プロファイル経路では nil)
     private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
     /// 緑で終わったシナリオの直後に、そのレーンの XCUITest ランナーを測り直す(劣化していれば同じポートで
-    /// 建て直す)。引数 = worker・そのシナリオのステップ snapshot 所要の最大(ms。無ければ nil)・
-    /// そのレーンへ 1 行出す口。測るか・どう建て直すかは FTBridgeClient 側の知識なので
+    /// 起動し直す)。引数 = worker・そのシナリオのステップ snapshot 所要の最大(ms。無ければ nil)・
+    /// そのレーンへ 1 行出す口。測るか・どう起動し直すかは FTBridgeClient 側の知識なので
     /// isDeviceFrozen と同じ理由で注入。**未注入は合法なので配線漏れはコンパイルで止まらない**
     /// (`RunnerMidRunRecheckTests` が 2 経路を固定)。
     /// 供給時の再利用でしか測っていなかった頃は、run の途中で劣化したレーンが最後まで 1 問 3.7 秒を払った。
-    /// **戻り値 true = 実際に建て直した**(WorkerAnomalyRecord kind:"recovered" recovery:.runnerRestart の
-    /// 生成に使う。健全・未測定・建て直し失敗はいずれも false)
+    /// **戻り値 true = 実際に起動し直した**(WorkerAnomalyRecord kind:"recovered" recovery:.runnerRestart の
+    /// 生成に使う。健全・未測定・起動し直し失敗はいずれも false)
     private let recheckRunner: RunnerRecheck?
     public typealias RunnerRecheck =
         @Sendable (RunWorker, Int?, @escaping @Sendable (String) -> Void) async -> Bool
@@ -1659,7 +1659,7 @@ public final class RunOrchestrator {
                 await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: true)
                 // **レーンが空いている今だけ測り直す**(次の 1 件をまだ取っていない)。
                 // 失敗の経路は除く —— 離脱すれば revive が供給を通り、そこで同じ 1 問が測る。
-                // 中断中・残りが無いときは撃たない(建て直しは数十秒かかり、次の run の再利用が測る)
+                // 中断中・残りが無いときは撃たない(起動し直しは数十秒かかり、次の run の再利用が測る)
                 if let recheckRunner, await !interruptRequested.isRequested(), await queue.hasItems() {
                     let restarted = await recheckRunner(worker, slowestStep.value) { [continuation] message in
                         continuation.yield(.workerLog(worker: worker.label, message: message))
@@ -1723,7 +1723,7 @@ public final class RunOrchestrator {
             // **iOS はドライバ不達(driverUnreachable)も .failed と同じ経路を通す**
             // (下の requeuesWithoutRetiring は iOS をプローブの後でしか通さない。ここを .failed
             // だけに限ると、driverUnreachable を名乗った失敗だけブリッジ生存プローブを飛ばして
-            // しまい、iOS の既存挙動 —— 建て直し→復活→再キュー —— が起きなくなる)
+            // しまい、iOS の既存挙動 —— 起動し直し→復活→再キュー —— が起きなくなる)
             if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
                worker.platform == "ios",
                await bridgeUnreachable(worker) {
@@ -1742,7 +1742,7 @@ public final class RunOrchestrator {
             // 健全に見え、落ちたシナリオが赤のまま残っていた。**ここまで来た = デバイスは生きている**ので、
             // 結果を捨てて振り直し、ワーカーは残す。**iOS もここへ入る** —— 上の
             // bridgeUnreachable がブリッジの生存を確かめた後なので「デバイスは生きている」が成り立つ
-            // (死んでいれば unusableReason が入り、離脱→建て直し→再キューの既存経路へ行く)
+            // (死んでいれば unusableReason が入り、離脱→起動し直し→再キューの既存経路へ行く)
             // **ただし連続失敗はブレーカに数える** —— 数えないと、ブリッジを二度と張り直せないデバイス
             // (adb には見えていて凍結もしていない形)が離脱もせずに残り、後続のシナリオの
             // 再キュー枠(1本につき1回)を1つずつ焼き潰す。ここで `.trip` したら振り直さずに

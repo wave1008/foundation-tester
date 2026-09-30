@@ -41,7 +41,7 @@ final class BridgeReadyLedgerTests: XCTestCase {
         XCTAssertFalse(BridgeReadyLedger.exists(stateDir: stateDir, port: 8123))
     }
 
-    /// 同じポートで建て直された次のランナー(別 pid)は「ready だった」と読まない
+    /// 同じポートで起動し直された次のランナー(別 pid)は「ready だった」と読まない
     func testMarkBelongsToTheRunnerThatBecameReady() {
         BridgeReadyLedger.mark(stateDir: stateDir, port: 8123, pid: 4242)
         XCTAssertTrue(BridgeReadyLedger.isMarked(stateDir: stateDir, port: 8123, pid: 4242))

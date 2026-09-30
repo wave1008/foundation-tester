@@ -189,7 +189,7 @@ public enum ScenarioHost {
     /// swift build --show-bin-path。前2つは swift を呼ばないファイル確認のみ。
     /// packageRoot を最優先にするのは、外部パッケージ構成で fleetest バイナリ(TOOL_ROOT/.build/debug)の
     /// 隣にクローンの同名 product が居ると誤ってそれを実行するため(受け手の product は
-    /// WORK_DIR/.build/debug に建つ。所有 repo = packageRoot が正)。
+    /// WORK_DIR/.build/debug にビルドされる。所有 repo = packageRoot が正)。
     /// --show-bin-path(swift 起動)は最後: swift test 実行中(SPM ビルドロック保持中)に呼ぶと
     /// デッドロックするため、先の2つのファイル確認で解決させる(XCTest からも ScenarioHost.run を使えるように)。
     public static func runnerURL(project: TestProject) throws -> URL {

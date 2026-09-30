@@ -1,4 +1,4 @@
-// ブリッジを建て直すと token が変わり、init で固定した値のままの BridgeClient は以後すべて 401 で
+// ブリッジを起動し直すと token が変わり、init で固定した値のままの BridgeClient は以後すべて 401 で
 // 「接続断」とも扱われず戻れなかった(実機 iPhone 13・§19.3)。401 を受けたら台帳を読み直して
 // 1 回だけ撃ち直す(`BridgeClient.tokenReloader`)。読み直しても同じ値なら名指しで断る(永久に回らない)。
 
@@ -81,7 +81,7 @@ private final class TokenCheckingBridge {
 
 final class BridgeClientTokenReloadTests: XCTestCase {
 
-    /// 建て直し後の新しい token を台帳から読み直し、1 回だけ撃ち直して通す
+    /// 起動し直し後の新しい token を台帳から読み直し、1 回だけ撃ち直して通す
     func testA401ReloadsTheTokenAndRetriesOnce() async throws {
         let bridge = try TokenCheckingBridge(accepted: "new-token")
         defer { bridge.stop() }

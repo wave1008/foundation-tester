@@ -3,7 +3,7 @@
 //
 // **成果物側の指紋(<DerivedData>/.toolchain・InAppBridge/build/.toolchain)と比べてはいけない** ——
 // 成果物は BridgeLauncher.runnerRebuildReason が後から独立に作り直しうるので、「ディスクは新しい
-// Xcode で建て直し済みだが、動いているプロセスは旧 Xcode のまま」という食い違いを検出できない。
+// Xcode でビルドし直し済みだが、動いているプロセスは旧 Xcode のまま」という食い違いを検出できない。
 // ここは起動した**時点**の値を控え、BridgeProvisioner の .reuse/.adopt 経路がそれと比べる。
 
 import Foundation

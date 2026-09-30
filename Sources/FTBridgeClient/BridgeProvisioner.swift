@@ -810,7 +810,7 @@ public struct BridgeProvisioner {
         // 「版を上げ忘れた変更」も「決定するプロセスが1ビルド古い場合」も素通りし、**変更が
         // 1度も実行されないまま緑になる**(実測は InAppBridgeState 冒頭)。digest はその場の
         // ソースから計算するのでどちらにも掛かる。**計算できないとき(nil)は一致扱い**
-        // = 判定材料が無いことを理由に毎回建て直さない
+        // = 判定材料が無いことを理由に毎回起動し直さない
         func inappSourcesMatch(_ rb: RunningBridge) -> Bool {
             guard engine == "inapp", let current = inappSourceDigest else { return true }
             return rb.sourceDigest == current
@@ -938,11 +938,11 @@ public struct BridgeProvisioner {
                                claimBarrier: PortClaimBarrier,
                                log: @escaping (String) -> Void) async throws -> ProvisionedIOSDevice {
         var portsByEngine: [String: UInt16] = [:]
-        // **XCUITest ランナーを先に、in-app を後に**(Self.executionOrder): ランナーの建て直し
+        // **XCUITest ランナーを先に、in-app を後に**(Self.executionOrder): ランナーの起動し直し
         // (劣化・旧版)は XCTest の teardown が対象アプリを終了させ、そのプロセスに住む in-app
         // ブリッジを道連れにする。in-app を先に「再利用」と決めてしまうと、ワーカーが合流した直後に
         // 落ちて revive(数十秒)へ回る。後に回せば in-app 側の再利用判定が死んだブリッジに気付いて
-        // 数秒で建て直せる
+        // 数秒で起動し直せる
         for index in Self.executionOrder(of: plan.bridges.map(\.engine)) {
             let bridge = plan.bridges[index]
             // **成否を問わず必ず 1 回通す**(撃ち漏らすと ProvisionLock が解放されない)。
@@ -991,8 +991,8 @@ public struct BridgeProvisioner {
     /// 劣化した XCUITest ランナーを止めて**同じポートで**起動し直す。供給時の再利用と run 中の
     /// 測り直し(`recheckRunner`)の共通手順 —— 片方だけ直すと同じ劣化に 2 通りの直し方ができる。
     /// xcuitest の起動枝は bundleID / preinstallAppPath を使わない(in-app の枝だけが使う)。
-    /// **建て直した直後にもう 1 問測る** —— 新しいランナーでも遅ければ遅さはランナーのプロセスに無く、
-    /// 建て直しは空振り(1 回約 10 秒)なので、そのデバイスはこのプロセスでもう建て直さない(RunnerRestartFutility)。
+    /// **起動し直した直後にもう 1 問測る** —— 新しいランナーでも遅ければ遅さはランナーのプロセスに無く、
+    /// 起動し直しは空振り(1 回約 10 秒)なので、そのデバイスはこのプロセスでもう起動し直さない(RunnerRestartFutility)。
     /// **この事実は RunnerSlownessStore へも持ち越す**(run をまたいで残る印。次の run の供給は
     /// これを見てシミュレータごとの再起動を試す)
     private func restartRunner(name: String, sim: SimDeviceInfo, port: UInt16,
@@ -1016,7 +1016,7 @@ public struct BridgeProvisioner {
         return (restarted, false, after)
     }
 
-    /// 印(RunnerSlowness.runnerRestartDidNotHelp)があるデバイスの次の一手: ランナーの建て直しだけでは
+    /// 印(RunnerSlowness.runnerRestartDidNotHelp)があるデバイスの次の一手: ランナーの起動し直しだけでは
     /// 直らなかったと分かっているデバイスを、**シミュレータごと**再起動してから同じ手順(launch→probe)で
     /// 測り直す。`DeviceBooter.shutdownOne`/`bootOne`(BlankWorkerTriage が文書化する回復手順と同じ
     /// shutdown→boot)は FTAndroid に居り、FTAndroid → FTBridgeClient の依存方向のためここから
@@ -1067,21 +1067,21 @@ public struct BridgeProvisioner {
     public enum RunnerRecheckOutcome: Sendable, Equatable {
         /// 1 問に閾値未満で答えた
         case healthy
-        /// 1 問に答えなかった(不明 = 建て直しの根拠にしない)
+        /// 1 問に答えなかった(不明 = 起動し直しの根拠にしない)
         case unmeasured
-        /// 建て直し、直後の 1 問が閾値未満(または測れなかった)
+        /// 起動し直し、直後の 1 問が閾値未満(または測れなかった)
         case restarted(afterSeconds: TimeInterval?)
-        /// 建て直したが新しいランナーでも遅い(1 行は restartRunner が出し済み)
+        /// 起動し直したが新しいランナーでも遅い(1 行は restartRunner が出し済み)
         case restartDidNotHelp
-        /// 以前に建て直しても直らなかったデバイスなので測らなかった
+        /// 以前に起動し直しても直らなかったデバイスなので測らなかった
         case skipped
         case restartFailed(String)
     }
 
     /// run の最中に、**空いているレーン**の XCUITest ランナー(シミュレータ)を 1 問だけ測り、劣化していれば
-    /// 同じポートで建て直す。判定・手順は供給時の再利用と同じ(`RunnerAccessibilityHealth.probe` /
+    /// 同じポートで起動し直す。判定・手順は供給時の再利用と同じ(`RunnerAccessibilityHealth.probe` /
     /// `restartRunner`)。ポートが変わらないので呼び手は RunWorker を作り直さなくてよい。
-    /// **建て直すときだけ ProvisionLock を取る** —— 止めてから pid ファイルを書き直すまでの隙に、
+    /// **起動し直すときだけ ProvisionLock を取る** —— 止めてから pid ファイルを書き直すまでの隙に、
     /// 同じ Mac の別の run の採番がこのポートを空きと読まないため。ready 待ちは供給と同じく
     /// ロックの外(ポート確保 = `claimed` の時点で解く)。健全なら 1 問だけでロックに触れない
     public func recheckRunner(name: String, udid: String, port: UInt16, injected: Bool,
@@ -1124,7 +1124,7 @@ public struct BridgeProvisioner {
                     probeSeconds)
         } catch {
             await claim.fire()
-            // 建て直しに失敗したデバイスを緑のたびに撃ち直さない(レーンは既存の事後プローブが見る)
+            // 起動し直しに失敗したデバイスを緑のたびに撃ち直さない(レーンは既存の事後プローブが見る)
             RunnerRestartFutility.shared.mark(udid: udid)
             return (.restartFailed(error.localizedDescription), probeSeconds)
         }
@@ -1138,10 +1138,10 @@ public struct BridgeProvisioner {
         case .reuse(let port):
             // **再利用する XCUITest ランナーは 1 問だけ測ってから使う**(RunnerAccessibilityHealth):
             // 長く生きたランナーが SpringBoard の remote element を引けなくなった後も参照し続け、
-            // 照会のたびに約 3.7 秒待つ状態に落ちる。run のすべての照会に乗るので建て直したほうが安い
+            // 照会のたびに約 3.7 秒待つ状態に落ちる。run のすべての照会に乗るので起動し直したほうが安い
             if engine == "xcuitest" {
-                // **run をまたいだ印(RunnerSlownessStore)を先に見る** —— 建て直しても直らなかったデバイスは
-                // 毎 run 同じ空振り(検知→建て直し→また検知)を繰り返す。印があれば通常のプローブより
+                // **run をまたいだ印(RunnerSlownessStore)を先に見る** —— 起動し直しても直らなかったデバイスは
+                // 毎 run 同じ空振り(検知→起動し直し→また検知)を繰り返す。印があれば通常のプローブより
                 // 先に、印の段階に応じた一手(シミュレータごと再起動 / 触らずそのまま使う)へ回す。
                 // リースのあるデバイスは絶対に触らない(supplySlownessAction が見る)
                 let persisted = RunnerSlownessStore.current(stateDir: fleetestStateDir, key: sim.udid)
@@ -1194,7 +1194,7 @@ public struct BridgeProvisioner {
                     }
                 }
             }
-            // **in-app の再利用は /status を 1 回引いてから**: 直前に同じデバイスの XCUITest ランナーを建て直した
+            // **in-app の再利用は /status を 1 回引いてから**: 直前に同じデバイスの XCUITest ランナーを起動し直した
             // 回は、対象アプリごと落ちてブリッジが居ない(接続拒否)。**無応答は死と読まない**
             // (背面に回ったアプリは TCP を受けて答えない = InAppDriver.openURL と同じ規律)
             if engine == "inapp", bundleID != nil {
@@ -1243,7 +1243,7 @@ public struct BridgeProvisioner {
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                           physical: sim.physical)
             // budget 以上生きているのに announce していないランナーは、これ以上待っても
-            // announce しない(可能性が高い)ので待たずに止めて建て直す。**elapsed はプロセスの
+            // announce しない(可能性が高い)ので待たずに止めて起動し直す。**elapsed はプロセスの
             // 総生存時間**(`ps -o etime=`)であって「無応答になってからの時間」ではない ——
             // 一度も応答しないまま budget を超えた孤児と、長く正常に応答していたが最近固まった
             // ランナー(09-06 台帳 §3.1「XCUITest の座標ジェスチャが背面でランナーを殺す」)を
@@ -1269,7 +1269,7 @@ public struct BridgeProvisioner {
             // (StartingBridgeAge)。すぐ下の decide の quietFor(起動ログの mtime)は、複数 run に
             // またがって生き続けた長寿ランナーが直前の run でもログへ出力するため「最近書かれた」と
             // 誤読し .wait を返す —— pid ファイルの年齢はログの書き込み頻度に引きずられないので
-            // ここで見分ける。ただし**即座には建て直さない**: 古い pid でも起動ログが伸び続けている間は
+            // ここで見分ける。ただし**即座には起動し直さない**: 古い pid でも起動ログが伸び続けている間は
             // 進行中とみなす(waitUntilReady は無音に対する締切)。予算を起動用の 180 秒から
             // ウェッジ確定の刻み(BridgeLivenessBudget.logSilenceSeconds)へ縮めるだけ
             var readyBudget = BridgeLauncher.startupTimeoutSeconds
@@ -1633,7 +1633,7 @@ public struct BridgeProvisioner {
     /// 再利用不可と判定させる)。
     /// 注意: /status 無応答のゾンビは映らない。停止用途には BridgeLauncher.stopMatching を使う
     /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。**ゾンビ側は provision() の
-    /// startingByUDID(同じくプロセス引数照合)が拾って .adopt → 同ポートで建て直すので、
+    /// startingByUDID(同じくプロセス引数照合)が拾って .adopt → 同ポートで起動し直すので、
     /// ここに映らないこと自体は穴ではない** —— 穴だったのは「映っているのに端末を特定できない」
     /// ほう(下の resolveUDID)。
     func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: RunningBridge] {

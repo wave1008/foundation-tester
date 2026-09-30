@@ -1,5 +1,5 @@
 // Android 実機のタイル(vscode-fleetest)が「ブリッジ未起動」を出せるようにするための、
-// ブリッジを**建てずに**生死だけを見る信号(`AndroidDriver.isBridgeRunning`)の固定。
+// ブリッジを**起動せずに**生死だけを見る信号(`AndroidDriver.isBridgeRunning`)の固定。
 //
 // `bridgeRunningVerdict` は `pidof` の Shell.Result から Bool? を作る純関数(実 adb は叩かない)。
 // 取得できない(nil)ときに false へ丸めないことを守る —— 丸めると `api monitor` 側が
@@ -42,7 +42,7 @@ final class AndroidBridgeRunningProbeTests: XCTestCase {
 }
 
 /// `isBridgeRunning` / `pidofResult` が `ensureBridge()` / `startBridge()` を呼んでいないことの
-/// ソース走査(観測がブリッジを建てる副作用を復活させないための固定)。方針は
+/// ソース走査(観測がブリッジを起動する副作用を復活させないための固定)。方針は
 /// `ApiMonitorAndroidCaptureSourceScanTests` と同じ(コメント除去 → 関数本体を切り出し→正規表現)。
 final class AndroidBridgeRunningProbeSourceScanTests: XCTestCase {
 
@@ -80,9 +80,9 @@ final class AndroidBridgeRunningProbeSourceScanTests: XCTestCase {
             return
         }
         XCTAssertFalse(body.contains("ensureBridge"),
-                       "isBridgeRunning が ensureBridge() を通している。観測はブリッジを建ててはいけない")
+                       "isBridgeRunning が ensureBridge() を通している。観測はブリッジを起動してはいけない")
         XCTAssertFalse(body.contains("startBridge"),
-                       "isBridgeRunning が startBridge() を通している。観測はブリッジを建ててはいけない")
+                       "isBridgeRunning が startBridge() を通している。観測はブリッジを起動してはいけない")
     }
 
     func testPidofResultDoesNotCallEnsureBridge() throws {

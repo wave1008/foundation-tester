@@ -131,7 +131,7 @@ test("クールダウンは deviceId 単位(別デバイスは独立して即時
   ], "別デバイスのクールダウンは互いに影響しない");
 });
 
-test("建て直しが断られた(busy)場合も、クールダウン後に再挑戦する", () => {
+test("起動し直しが断られた(busy)場合も、クールダウン後に再挑戦する", () => {
   const h = createHarness();
   h.rotation.observe(candidate());
   assert.equal(h.jobs.length, 1);
