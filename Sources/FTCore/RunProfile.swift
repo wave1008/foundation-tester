@@ -96,7 +96,8 @@ public struct AppProfile: Codable, Sendable, Equatable {
         }
     }
 
-    /// 表示名(ios/android セクションのみ採用。common には appName を置けない — merging 参照)
+    /// ログの見出し用の表示名(ios/android セクションのみ採用。common には appName を置けない — merging 参照)。
+    /// **OS を畳んだ値なので tapAppIcon の既定に使わない**(OS ごとの名前は `section(for:).appName`)
     public var resolvedAppName: String? {
         ios?.appName ?? android?.appName
     }
@@ -918,6 +919,10 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     public let autoInstall: Bool
     /// バックエンド死活確認 URL(AppProfileSection.healthCheckURL)
     public let healthCheckURL: String?
+    /// その OS のアイコン名(`<platform>.appName`)。tapAppIcon() の引数省略時の既定として子へ渡す。
+    /// **OS ごとに持つ** —— 同じアプリでもランチャの表示名は OS で違う(E2E-Flutter は iOS
+    /// `Ft E2e Flutter` / Android `ft_e2e_flutter`)。run で1つに畳むと片方の OS で別名を探して落ちる
+    public let appName: String?
 
     /// **配るパッケージは端末の種別で決まる**(この規則の唯一の定義元)。実機に
     /// `appPathPhysical` が無ければ appPath に落ちる —— iOS ではまず入らない(シミュレータ用
@@ -933,10 +938,12 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     }
 
     /// sourcePath 省略時は appPath と同値にする(ワークスペース非経由の既存呼び出しとの互換)
-    public init(bundleID: String, sourcePath: String? = nil, appPath: String? = nil,
+    /// `appName` に既定値を置かない(新しい生成元の渡し忘れをコンパイルで止める)
+    public init(bundleID: String, appName: String?, sourcePath: String? = nil, appPath: String? = nil,
                 sourcePathPhysical: String? = nil, appPathPhysical: String? = nil,
                 autoInstall: Bool = false, healthCheckURL: String? = nil) {
         self.bundleID = bundleID
+        self.appName = appName
         self.sourcePath = sourcePath ?? appPath
         self.appPath = appPath
         self.sourcePathPhysical = sourcePathPhysical ?? appPathPhysical
@@ -950,7 +957,8 @@ public struct ResolvedAppTarget: Sendable, Hashable {
 public struct ResolvedProfile: Sendable {
     public let project: TestProject
     public let runName: String
-    /// アプリの表示名(apps/<name>.json の appName。無ければファイル名)
+    /// ログの見出しに出すアプリ名(apps/<name>.json の appName。無ければファイル名)。**OS を問わず1つ**なので
+    /// tapAppIcon の既定には使わない(そちらは `apps[platform].appName`)
     public let appName: String
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
     public let apps: [String: ResolvedAppTarget]
@@ -1451,6 +1459,7 @@ public enum ProfileResolver {
             }
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,
+                appName: section.appName,
                 sourcePath: sourcePath,
                 appPath: installPath,
                 sourcePathPhysical: physicalSource,

@@ -104,7 +104,7 @@ final class InstallStorageRecoveryTests: XCTestCase {
     }
 
     private func apps() -> [String: ResolvedAppTarget] {
-        ["android": ResolvedAppTarget(bundleID: "com.example.app", appPath: apkPath, autoInstall: true)]
+        ["android": ResolvedAppTarget(bundleID: "com.example.app", appName: nil, appPath: apkPath, autoInstall: true)]
     }
 
     // MARK: - 判定(純粋関数)

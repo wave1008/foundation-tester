@@ -187,7 +187,6 @@ enum ProfileRunOrchestrator {
             },
             lateWorkers: lateWorkers,
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
-            appName: resolved.appName,
             appBundleIDs: resolved.apps.mapValues(\.bundleID),
             appTargets: resolved.apps,
             registerChildProcess: { interruptState.registerChildProcess($0) })

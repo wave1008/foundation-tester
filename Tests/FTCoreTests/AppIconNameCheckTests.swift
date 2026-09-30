@@ -124,6 +124,41 @@ final class AppIconNameCheckTests: XCTestCase {
         return app
     }
 
+    // MARK: - OS ごとのアイコン名
+
+    /// tapAppIcon() の既定名は**その OS の** appName。以前は run で1つに畳まれ(`ios ?? android`)、
+    /// iOS の名前で Android のランチャを探して「App icon not found.」になっていた(E2E-Flutter / E2E-RN)
+    func testAppNameIsResolvedPerPlatform() throws {
+        try """
+        { "ios": { "appName": "Ft E2e Flutter", "app": "com.example.app" },
+          "android": { "appName": "ft_e2e_flutter", "app": "com.example.app" } }
+        """.data(using: .utf8)!.write(to: project.appsDir.appendingPathComponent("app.json"))
+        try """
+        { "app": "app", "devices": [
+            { "platform": "ios", "machine": "local", "name": "機1", "osVersion": "iOS 27.0", "udid": "AAAA-1111" },
+            { "platform": "android", "machine": "local", "name": "機2", "avd": "Pixel_9" } ] }
+        """.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("r.json"))
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+        XCTAssertEqual(resolved.apps["ios"]?.appName, "Ft E2e Flutter")
+        XCTAssertEqual(resolved.apps["android"]?.appName, "ft_e2e_flutter")
+    }
+
+    /// 片方の OS にしか appName が無ければ、もう片方は nil(別の OS の名前を借りない)
+    func testMissingAppNameIsNotBorrowedFromTheOtherPlatform() throws {
+        try """
+        { "ios": { "appName": "FT E2E", "app": "com.example.app" },
+          "android": { "app": "com.example.app" } }
+        """.data(using: .utf8)!.write(to: project.appsDir.appendingPathComponent("app.json"))
+        try """
+        { "app": "app", "devices": [
+            { "platform": "ios", "machine": "local", "name": "機1", "osVersion": "iOS 27.0", "udid": "AAAA-1111" },
+            { "platform": "android", "machine": "local", "name": "機2", "avd": "Pixel_9" } ] }
+        """.data(using: .utf8)!.write(to: project.runsDir.appendingPathComponent("r.json"))
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+        XCTAssertEqual(resolved.apps["ios"]?.appName, "FT E2E")
+        XCTAssertNil(resolved.apps["android"]?.appName)
+    }
+
     private func resolve(appName: String, appPath: String) throws -> ResolvedProfile {
         try """
         { "ios": { "appName": "\(appName)", "app": "com.example.app", "appPath": "\(appPath)",

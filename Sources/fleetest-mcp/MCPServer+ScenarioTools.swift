@@ -187,7 +187,7 @@ extension MCPServer {
                 connection = DriverConnection(platform: "android", serial: serial, deviceName: deviceName)
             }
             appBundleID = resolved.apps[platform]?.bundleID
-            appName = resolved.appName
+            appName = resolved.apps[platform]?.appName
             appPath = resolved.apps[platform]?.packagePath(physical: connection.physical)
         } else {
             // CLI の profile 無し経路(`RunScenarios`/`ApiRunCommand`)と同じ基底

@@ -6,7 +6,7 @@ final class InstallPathResolverTests: XCTestCase {
 
     private func apps(appPath: String? = "/Apps/App.app", bundleID: String = "com.example.app")
         -> [String: ResolvedAppTarget] {
-        ["ios": ResolvedAppTarget(bundleID: bundleID, appPath: appPath)]
+        ["ios": ResolvedAppTarget(bundleID: bundleID, appName: nil, appPath: appPath)]
     }
 
     func testExplicitPathWinsOverProfileAppPath() {

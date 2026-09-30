@@ -1242,7 +1242,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?
                     .packagePath(physical: connection.physical),
-                appName: resolved.appName,
+                appName: resolved.apps[scenarioPlatform]?.appName,
                 appBundleID: resolved.apps[scenarioPlatform]?.bundleID,
                 registerChildProcess: { interruptState.registerChildProcess($0) }) { event in
                 var event = event

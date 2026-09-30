@@ -1029,9 +1029,7 @@ public final class RunOrchestrator {
     /// フォールバック(--app-path・明示引数・明示エラー)に委ねる(ScenarioHost.run 参照)。
     /// 呼び出し側(fleetest ターゲット)が InstallHandlerFactory 経由で注入する
     private let installHandler: (@Sendable (RunWorker, String?) async -> (ok: Bool, message: String))?
-    /// アプリの表示名(プロファイルの appName)。tapAppIcon() の引数省略時の既定として子へ渡す
-    private let appName: String?
-    /// 実行プロファイルが解決した bundle ID。**platform 別**(appName と違い ios/android で
+    /// 実行プロファイルが解決した bundle ID。**platform 別**(ios/android で
     /// 別の ID になりうるので単一値にできない)。`@TestClass(app:)` 未指定シナリオの既定アプリ
     private let appBundleIDs: [String: String]
     /// 実行プロファイルが解決したアプリ。**platform 別**(appBundleIDs と同じ理由)。
@@ -1103,7 +1101,6 @@ public final class RunOrchestrator {
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil,
                 installHandler: (@Sendable (RunWorker, String?) async
                                   -> (ok: Bool, message: String))? = nil,
-                appName: String? = nil,
                 appBundleIDs: [String: String] = [:],
                 appTargets: [String: ResolvedAppTarget] = [:],
                 registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil) {
@@ -1132,7 +1129,6 @@ public final class RunOrchestrator {
         self.recheckRunner = recheckRunner
         self.lateWorkers = lateWorkers
         self.installHandler = installHandler
-        self.appName = appName
         self.appBundleIDs = appBundleIDs
         self.appTargets = appTargets
         self.registerChildProcess = registerChildProcess
@@ -1633,7 +1629,8 @@ public final class RunOrchestrator {
                 project: project, item: item, worker: worker,
                 settings: settings, reportDir: reportDir,
                 debug: debug,
-                recorder: recorder, installHandler: installHandler, appName: appName,
+                recorder: recorder, installHandler: installHandler,
+                appName: appTargets[worker.platform]?.appName,
                 appBundleID: appBundleIDs[worker.platform],
                 appPath: appTargets[worker.platform]?
                     .packagePath(physical: worker.connection.physical),

@@ -7,7 +7,7 @@ import XCTest
 final class PhysicalAppPathTests: XCTestCase {
 
     private func target(appPath: String?, physicalPath: String?) -> ResolvedAppTarget {
-        ResolvedAppTarget(bundleID: "com.example.app", appPath: appPath,
+        ResolvedAppTarget(bundleID: "com.example.app", appName: nil, appPath: appPath,
                           appPathPhysical: physicalPath)
     }
 
