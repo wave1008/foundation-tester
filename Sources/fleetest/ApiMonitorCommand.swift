@@ -739,8 +739,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 guard let data = line.data(using: .utf8),
                       let command = try? JSONDecoder().decode(MonitorControlCommand.self, from: data)
                 else { continue }
-                // **子にもそのまま渡す** —— pause/resume/suppressFrames はどれも id の集合か
-                // 全体の状態で、自分の持たない id が混ざっていても害が無い
+                // 子にも渡す(suppressFrames の id だけは fan-out が機械ごとに組み直す。
+                // RemoteMonitorFanout.childControlLine)
                 fanout?.forwardControl(line: line)
                 switch command.cmd {
                 case "pause":
@@ -754,7 +754,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     let previous = control.setSuppressedFrames(ids)
                     // 拡張は配信が1本張られるたびに全リストを送る(30 台なら 30 回)ので、
                     // 全リストを毎回出すと1秒で数千文字になる。出すのは差分だけ
-                    // fan-out の子(--device-machine 付き)は親から同じ行を無加工で中継されるので、
+                    // fan-out の子(--device-machine 付き)は親の行から自分のぶんを受け取るだけなので、
                     // 親が1行出せば足りる(子も出すと機械の数だけ同じ差分が並ぶ)
                     if deviceMachine == nil {
                         self.logStderr(Self.suppressionDeltaLine(ids: ids, previous: previous))

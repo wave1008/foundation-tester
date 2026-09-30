@@ -1062,6 +1062,10 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   (`ApiMonitorCommand.simctlCapturePick`)。**間隔の定数は置かない**: simctl は実測 1.7 秒で
   interval(2秒)より長いため、1サイクル1台に固定して追加コストを撮影1回で頭打ちにし、
   更新間隔は対象の台数から決まるようにしてある。配信中(`suppressFrames`)のデバイスは撮らない
+  —— **その一覧は機械ごとに組み直して子へ渡す**(`RemoteMonitorFanout.childControlLine`: その機械のぶんだけを
+  機械名を外した id で)。素通しだった頃は、手元で配信中のデバイスの id(機械名なし)が**向こうの同名デバイス**に
+  当たって simctl の撮影が止まり、リモートの iOS のタイルが「接続中」のまま埋まらなかった(2026-09-30。
+  手元とリモートに同名の `iPhone 17 Pro(iOS 27.0)-01` 等が居る構成で顕在化)
 - **操作もその機械へ回す**(2026-08-17 のレビューで実バグ)。一括の起動・停止は
   `RemoteDeviceFanout` で分散していたが、**タイル1枚の起動・停止は手元で `api start-device --name`
   を撃っていた** —— `findDevice` は名前だけで引くので、同名のデバイスが別の機械にも居ると

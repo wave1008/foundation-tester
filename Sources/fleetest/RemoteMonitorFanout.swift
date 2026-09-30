@@ -9,8 +9,11 @@
 //   - `monitorFrame` は **"device" だけマシン付きに直して**中継する
 //     (子は畳んだプロファイルを見るので自分のデバイスを "local" と名乗り、id にマシンが入らない。
 //     JSON は組み直さない = base64 を1往復ぶん無駄に触らない。RemoteMonitorFanout.machineScoped)
-//   - stdin の制御行(pause/resume/suppressFrames/storageRefresh)は**全子へ素通しする**(id の集合で
-//     判定するだけなので、自分の持たない id が混ざっていても害はない)。**種類ごとの最新の行を覚え、
+//   - stdin の制御行(pause/resume/storageRefresh)は**全子へ素通しする**。**suppressFrames だけは子ごとに
+//     組み直す**(childControlLine): その機械のぶんだけを、機械名を外した id で渡す。素通しすると、
+//     手元のデバイスの id(機械名なし)が**向こうの同名デバイス**に当たって撮影が止まり、配信を張っていない
+//     タイルが「接続中」のまま埋まらない。逆に向こうのぶん(機械名つき)は向こうの id に当たらず効かない。
+//     **種類ごとの最新の行を覚え、
 //     張り直した子へ起動直後に送り直す** —— どれも「全体の状態」なので最新 1 行で再現でき、送り直さないと
 //     再接続した子は既定(pause なし・抑制なし)のまま動く。1回きりの指示(storageRefresh)は送り直さない
 //
@@ -127,13 +130,42 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         return merged
     }
 
-    /// stdin の制御行を全子へ素通しする(親が解釈した後に呼ぶ)。**書き込みはロックの内側** ——
-    /// 子を張った直後の送り直し(register)と順序が入れ替わると、古い行が新しい行を上書きする
+    /// stdin の制御行を全子へ渡す(親が解釈した後に呼ぶ)。**書き込みはロックの内側** ——
+    /// 子を張った直後の送り直し(register)と順序が入れ替わると、古い行が新しい行を上書きする。
+    /// 覚えるのは**親が受けた行のまま**(子ごとの組み直しは渡す直前 = 張り直した子にも同じ規則が掛かる)
     func forwardControl(line: String) {
         lock.lock()
         defer { lock.unlock() }
         if let key = Self.controlStateKey(line: line) { latestControlLines[key] = line }
-        for process in children.values { Self.write(line: line, to: process) }
+        for (machine, process) in children {
+            Self.write(line: Self.childControlLine(line, machine: machine), to: process)
+        }
+    }
+
+    /// 親が受けた制御行を、`machine` の子へ渡す形にする。**suppressFrames の id だけを組み直す** ——
+    /// 子は `--device-machine local` で走るので自分のデバイスを機械名なしの id で持つ。親の id のうち
+    /// **この機械のぶん(`<platform>:<machine>/<name>`)だけ**を機械名を外して渡し、手元・他の機械のぶんは落とす。
+    /// 他の行・解釈できない行はそのまま(全体の状態か、id を持たない指示)
+    static func childControlLine(_ line: String, machine: String) -> String {
+        guard let data = line.data(using: .utf8),
+              var object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["cmd"] as? String == "suppressFrames",
+              let ids = object["devices"] as? [String] else { return line }
+        object["devices"] = ids.compactMap { childLocalID($0, machine: machine) }
+        guard let encoded = try? JSONSerialization.data(
+            withJSONObject: object, options: [.sortedKeys, .withoutEscapingSlashes]),
+              let text = String(data: encoded, encoding: .utf8) else { return line }
+        return text
+    }
+
+    /// 親の id(DeviceMachineGrouping.workerID の形)がこの機械のものなら、子から見た id(機械名なし)を返す。
+    /// 判定は machineScoped と同じ「名前がこの機械名 + "/" で始まるか」("/" はデバイス名にも普通に入る)
+    static func childLocalID(_ id: String, machine: String) -> String? {
+        guard let colon = id.firstIndex(of: ":") else { return nil }
+        let name = id[id.index(after: colon)...]
+        let prefix = machine + "/"
+        guard name.hasPrefix(prefix) else { return nil }
+        return "\(id[id.startIndex..<colon]):\(name.dropFirst(prefix.count))"
     }
 
     /// 同じ状態を上書きし合う制御行を同じ鍵に畳む(pause と resume は1つの状態)。**状態の行だけ**を覚え、
@@ -261,7 +293,9 @@ final class RemoteMonitorFanout: @unchecked Sendable {
         log("[monitor] Monitoring \(machine) via \(target)")
         lock.lock()
         children[machine] = process
-        for line in latestControlLines.values { Self.write(line: line, to: process) }
+        for line in latestControlLines.values {
+            Self.write(line: Self.childControlLine(line, machine: machine), to: process)
+        }
         lock.unlock()
 
         let stderrThread = Thread { [weak self] in

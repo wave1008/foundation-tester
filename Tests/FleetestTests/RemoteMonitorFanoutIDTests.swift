@@ -190,6 +190,43 @@ final class RemoteMonitorFanoutIDTests: XCTestCase {
             XCTAssertEqual(RemoteMonitorFanout.machineScoped(line: line, machine: "M1Max"), line, line)
         }
     }
+
+    // MARK: - 子へ渡す suppressFrames(機械ごとに組み直す)
+
+    private func devices(in line: String) throws -> [String] {
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        XCTAssertEqual(object["cmd"] as? String, "suppressFrames")
+        return try XCTUnwrap(object["devices"] as? [String])
+    }
+
+    /// 手元のデバイスの id(機械名なし)を子へ渡さない。素通しすると**向こうの同名デバイス**の撮影が止まり、
+    /// 配信を張っていないタイル(リモートの iOS)が「接続中」のまま埋まらなかった
+    func testLocalIDsAreNotForwardedToAChild() throws {
+        let line = #"{"cmd":"suppressFrames","devices":["ios:iPhone 17 Pro(iOS 27.0)-01","android:Pixel 9(Android 15)-03"]}"#
+        XCTAssertEqual(try devices(in: RemoteMonitorFanout.childControlLine(line, machine: "M1Ultra")), [])
+    }
+
+    /// その機械のぶんだけを、子が自分のデバイスを呼ぶ id(機械名なし)に直して渡す。他の機械のぶんは落とす
+    func testOnlyThatMachinesIDsAreForwardedWithoutTheMachineName() throws {
+        let line = #"{"cmd":"suppressFrames","devices":["android:M1Ultra/Pixel 9(Android 15)-02","android:M1Max/Pixel 9(Android 15)-01","ios:iPhone 17 Pro(iOS 27.0)-01","android:M1Ultra/Pixel 10(Android 14(API 34) / arm64-v8a)-01"]}"#
+        XCTAssertEqual(try devices(in: RemoteMonitorFanout.childControlLine(line, machine: "M1Ultra")),
+                       ["android:Pixel 9(Android 15)-02", "android:Pixel 10(Android 14(API 34) / arm64-v8a)-01"])
+        XCTAssertEqual(try devices(in: RemoteMonitorFanout.childControlLine(line, machine: "M1Max")),
+                       ["android:Pixel 9(Android 15)-01"])
+    }
+
+    /// 機械名が別の機械名の前方一致でも取り違えない(区切りの "/" まで見る)
+    func testMachineNamePrefixIsNotMistaken() {
+        XCTAssertNil(RemoteMonitorFanout.childLocalID("ios:M1UltraB/iPhone-01", machine: "M1Ultra"))
+        XCTAssertEqual(RemoteMonitorFanout.childLocalID("ios:M1Ultra/iPhone-01", machine: "M1Ultra"), "ios:iPhone-01")
+    }
+
+    /// id を持たない制御行と解釈できない行はそのまま渡す
+    func testOtherControlLinesPassThroughUnchanged() {
+        for line in [#"{"cmd":"pause"}"#, #"{"cmd":"resume"}"#, #"{"cmd":"storageRefresh","id":42}"#, "not json"] {
+            XCTAssertEqual(RemoteMonitorFanout.childControlLine(line, machine: "M1Ultra"), line)
+        }
+    }
 }
 
 private final class LockedLines: @unchecked Sendable {
