@@ -297,6 +297,9 @@ public struct HostMetricsSample: Encodable {
     public let gpu: Double?
     public let memUsedBytes: Int?
     public let memTotalBytes: Int?
+    /// 論理コア数(モニターの CPU ラベル `CPU(n)`)。**機械ごとに違う**のでリモートの行は向こうの値を
+    /// 出す必要があり、拡張側の os.cpus() では代われない
+    public let cpuCores: Int
     /// このサンプリング間隔中に完了した FM 呼び出し数(この機械の全プロセス合計)。
     /// 供給元は FMUsageLedger(呼ぶプロセスと host-metrics は別プロセス)。3欄とも
     /// null = 控えを読めなかった(不明)、0 = 呼び出しが無かった。混ぜない(FMUsageLedger 参照)
@@ -339,6 +342,7 @@ public struct HostMetricsSample: Encodable {
         self.gpu = gpu
         self.memUsedBytes = memUsedBytes
         self.memTotalBytes = memTotalBytes
+        self.cpuCores = ProcessInfo.processInfo.processorCount
         self.fmCalls = fmCalls
         self.fmFailures = fmFailures
         self.fmTotalMs = fmTotalMs
@@ -353,7 +357,7 @@ public struct HostMetricsSample: Encodable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, ts, cpu, gpu, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
+        case kind, ts, cpu, cpuCores, gpu, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
         case visionCalls, visionFailures, visionTotalMs
         case fmTextState, fmVisionState, fmDeadReason, fmCheckedAt
     }
@@ -363,6 +367,7 @@ public struct HostMetricsSample: Encodable {
         try container.encode(kind, forKey: .kind)
         try container.encode(ts, forKey: .ts)
         try container.encode(cpu, forKey: .cpu)
+        try container.encode(cpuCores, forKey: .cpuCores)
         try container.encode(gpu, forKey: .gpu)
         try container.encode(memUsedBytes, forKey: .memUsedBytes)
         try container.encode(memTotalBytes, forKey: .memTotalBytes)

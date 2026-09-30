@@ -119,7 +119,7 @@ function visionTitle(document, machine) {
  *  渡す(旧来どおり fmCalls/visionCalls のフルキー名で上書きする)。
  *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**で VN には無い
  *  ので、省略時は不明(null)= 旧 CLI の行と同じ形。 */
-function hostMetricsSample(machine, cpu, fm = {}, vision = {}) {
+function hostMetricsSample(machine, cpu, fm = {}, vision = {}, cpuCores = 8) {
   const {
     fmCalls = 0, fmFailures = 0, fmTotalMs = 0,
     fmTextState = null, fmVisionState = null, fmDeadReason = null,
@@ -128,7 +128,7 @@ function hostMetricsSample(machine, cpu, fm = {}, vision = {}) {
   const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0 } = vision;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
-    cpu, gpu: 0.25, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
+    cpu, cpuCores, gpu: 0.25, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
     fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
     visionCalls, visionFailures, visionTotalMs,
   };
@@ -287,6 +287,24 @@ test("同じ tick までに複数届いたら最後の1つだけを使う", (t) 
   send(window, hostMetricsSample(undefined, 0.1));
 
   assert.deepEqual(values(rowFor(document, "mac2")), ["25%", "40%", "25%", "0", "0"]);
+});
+
+test("CPU のラベルは機械ごとのコア数を CPU(n) で出し、欠測 tick でも残す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
+  send(window, hostMetricsSample("mac2", 0.9, {}, {}, 20));
+  send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
+
+  const cpuLabelOf = (machine) =>
+    rowFor(document, machine).querySelector('.host-metric[data-metric="cpu"] .hm-label').textContent;
+  assert.equal(cpuLabelOf(""), "CPU(24)");
+  assert.equal(cpuLabelOf("mac2"), "CPU(20)", "リモート行は向こうのコア数");
+  for (let i = 0; i < 4; i += 1) {
+    send(window, hostMetricsSample(undefined, 0.1, {}, {}, 24));
+  }
+  assert.equal(cpuLabelOf("mac2"), "CPU(20)", "コア数は固定値なので欠測になっても消さない");
 });
 
 test("サンプルの無い tick は直近の値を使い回し、途絶えたら欠測にする", (t) => {

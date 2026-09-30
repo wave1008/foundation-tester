@@ -64,6 +64,18 @@ final class HostMetricsRecorderTests: XCTestCase {
         }
     }
 
+    /// cpuCores は必須欄(拡張の isHostMetricsEvent が欠けた行を捨てる)。値は論理コア数
+    func testCPUCoresIsAlwaysEncoded() throws {
+        let sample = HostMetricsSample(
+            ts: 0, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
+            fmCalls: nil, fmFailures: nil, fmTotalMs: nil,
+            visionCalls: nil, visionFailures: nil, visionTotalMs: nil)
+        let line = try XCTUnwrap(sample.encodedLine())
+        let obj = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+        XCTAssertEqual(obj["cpuCores"] as? Int, ProcessInfo.processInfo.processorCount, line)
+    }
+
     /// stop() は冪等(2 回目以降はセマフォを二重待ちせず即返る)
     func testStopIsIdempotent() {
         let out = tmpRoot.appendingPathComponent("idem.ndjson")

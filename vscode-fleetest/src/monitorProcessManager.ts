@@ -84,6 +84,8 @@ type HostMetricsRawEvent = {
   readonly kind: "hostMetrics";
   readonly ts: number;
   readonly cpu: number | null;
+  /** その機械の論理コア数(CPU ラベルの `CPU(n)`。リモート行は向こうの値)。 */
+  readonly cpuCores: number;
   readonly gpu: number | null;
   readonly memUsedBytes: number | null;
   readonly memTotalBytes: number | null;
@@ -118,6 +120,7 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     record.kind === "hostMetrics" &&
     typeof record.ts === "number" &&
     numberOrNull(record.cpu) &&
+    typeof record.cpuCores === "number" &&
     numberOrNull(record.gpu) &&
     numberOrNull(record.memUsedBytes) &&
     numberOrNull(record.memTotalBytes) &&
@@ -143,6 +146,7 @@ export type HostMetricsToWebviewMessage =
        *  リモートの子は向こうで自分の値を出すだけなので、spawn した側でここに入れる。 */
       readonly machine?: string;
       readonly cpu: number | null;
+      readonly cpuCores: number;
       readonly gpu: number | null;
       readonly memUsedBytes: number | null;
       readonly memTotalBytes: number | null;
@@ -907,6 +911,7 @@ export class MonitorProcessManager {
           // どの行へ積むかはここでしか分からないので、spawn した側で付ける
           ...(machine ? { machine } : {}),
           cpu: value.cpu,
+          cpuCores: value.cpuCores,
           gpu: value.gpu,
           memUsedBytes: value.memUsedBytes,
           memTotalBytes: value.memTotalBytes,

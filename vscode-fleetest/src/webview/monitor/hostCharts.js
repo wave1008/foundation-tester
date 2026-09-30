@@ -72,6 +72,7 @@ function hmMakeEntry(rowEl, metric, colorKey, countScale = false) {
   const el = rowEl.querySelector(`.host-metric[data-metric="${metric}"]`);
   return {
     el,
+    label: el.querySelector('.hm-label'),
     canvas: el.querySelector('.hm-canvas'),
     value: el.querySelector('.hm-value'),
     colorKey,
@@ -624,6 +625,10 @@ function hmRenderRow(row, sample) {
   hmPushSample(row.entries.vision, visionCalls);
   hmPushSample(row.entries.mem, memRatio);
 
+  // コア数は機械の固定値なので欠測 tick では書き換えず直前の `CPU(n)` を残す
+  if (sample && typeof sample.cpuCores === 'number') {
+    row.entries.cpu.label.textContent = `CPU(${sample.cpuCores})`;
+  }
   row.entries.cpu.value.textContent = hmFormatPercent(cpu);
   row.entries.gpu.value.textContent = hmFormatPercent(gpu);
   row.entries.mem.value.textContent = hmFormatPercent(memRatio);
