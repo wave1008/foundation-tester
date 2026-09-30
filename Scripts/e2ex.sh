@@ -85,6 +85,25 @@ if [ "$IOS_ENGINE_ONLY" = 1 ]; then
   RUN_ANDROID=0
 fi
 
+# 全部成功した回だけ、そのエンジンのブリッジ入力の digest を記録する(Scripts/e2e.sh と同じ仕組み。印は
+# `.fleetest/<engine>-e2ex-verified` で E2E の印とは別。--on で回した回は向こうのクローンに残る)。
+# **警告は in-app の印にだけ出す**: XCUITest は既定エンジンで緑のシナリオが 13 本赤のまま(上の注記)で、
+# 全部成功が条件の印は更新されない = 警告にすると鳴りっぱなしになる(E2E で 2026-08-30〜09-14 に実際に起きた形)。
+# XCUITest のブリッジの検証は E2E の `--ios-xcuitest` の印が担う
+engine_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
+engine_marker() { echo "$ROOT/.fleetest/$1-e2ex-verified"; }
+RUN_ENGINE=inapp
+if [ "$IOS_PROFILE" = "ios-xcuitest" ]; then RUN_ENGINE=xcuitest; fi
+ENGINE_STALE=""
+if [ "$RUN_IOS" = 1 ] && [ "$RUN_ENGINE" = xcuitest ]; then
+  CURRENT_DIGEST="$(engine_digest inapp)"
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$(engine_marker inapp)" 2>/dev/null)" ]; then
+    ENGINE_STALE=1
+    echo "⚠️ inapp ブリッジの入力が、最後に E2EX を全部通した状態から変わっています(この実行は XCUITest だけ)。"
+    echo "   → Scripts/e2ex.sh を回してください"
+  fi
+fi
+
 
 # ソースが成果物より新しいか(成果物が無い場合も真)。Scripts/e2e.sh の needs_rebuild と同じ
 needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソース
@@ -159,5 +178,16 @@ if [ "$FAILED" = 0 ]; then
   echo "✅ E2EX 全て成功"
 else
   echo "❌ E2EX に失敗があります(レポート: TestProjects/E2EX-*/reports/)"
+fi
+# **印を更新するのは全部成功したときだけ**(失敗したまま更新すると「検証済み」と言い張る装置になる)。
+# `[ … ] && { … }` の形にしない(偽のとき終了ステータス 1 を残す。Scripts/e2e.sh の末尾と同じ理由)
+if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ]; then
+  MARKER="$(engine_marker "$RUN_ENGINE")"
+  mkdir -p "$(dirname "$MARKER")"
+  engine_digest "$RUN_ENGINE" > "$MARKER"
+  echo "→ E2EX の $RUN_ENGINE 経路を検証済みとして記録しました($MARKER)"
+fi
+if [ -n "$ENGINE_STALE" ]; then
+  echo "⚠️ E2EX の inapp 経路は未検証のままです(Scripts/e2ex.sh)"
 fi
 exit "$FAILED"

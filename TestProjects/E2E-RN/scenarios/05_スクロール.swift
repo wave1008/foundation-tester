@@ -553,4 +553,42 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    // ブロック形の2つ(`withoutScroll { }` / `withoutContainerInference { }`)。単発の `scroll: .noScroll` /
+    // `containerInference: false` とは別の経路(FTRuntime の文脈スタック)を通る。
+    // scene 1 は打ち消しの有無を分ける: 打ち消せていなければ notExist が探索で #row_40 まで送って見つけて落ち、
+    // 先頭行も流れる。scene 2 は補正を切ったまま領域指定の探索とタップが通ることの確認
+    // (補正の有無を分ける観測はここには無い。切った側の対照は E2E-CMP の S0110 が担う)
+    @Test("withoutScroll は外側の withScroll* を打ち消し、withoutContainerInference の中でも操作できる")
+    func S0130() {
+        scenario {
+            scene(1, "withScrollDown の中でも withoutScroll のブロックは現在画面だけで解決する") {
+                condition {
+                    launchApp()
+                    exist("#txt_home_marker", requireVisible: false)
+                    tap("#nav_scroll")
+                }.action {
+                    withScrollDown {
+                        withoutScroll {
+                            notExist("#row_40")
+                            tap("#row_02")
+                        }
+                    }
+                }.expectation {
+                    select("#txt_row_selected").textIs("selected=row_02")
+                    select("#txt_scroll_top").textIs("top=row_01")
+                }
+            }
+            scene(2, "withoutContainerInference の中でも領域指定の探索とタップが通る") {
+                action {
+                    withoutContainerInference {
+                        scrollTo("#row_20", scrollFrame: "#list_rows", maxSwipes: 15)
+                        tap("#row_20")
+                    }
+                }.expectation {
+                    select("#txt_row_selected").textIs("selected=row_20")
+                }
+            }
+        }
+    }
 }
