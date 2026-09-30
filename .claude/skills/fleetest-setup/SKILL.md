@@ -470,10 +470,7 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 - VSCode で **WORK_DIR** を開く（外部構成: あなたのテストパッケージのフォルダ。clone 構成:
   `foundation-tester` フォルダ）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
-- fleetest パネル（Test Explorer / デバイスモニター等）を開く（デバイスモニターは左下のステータスバーの
-  **fleetest mobile** から開ける）
-- （7.5 で `.mcp.json` を書いた場合）Claude Code が **fleetest MCP サーバの承認**を求めたら許可する
-  → `ft_*` ツールが使え、`/fleetest-scenario` が MCP 経由で動く
+- 左下のステータスバーの **fleetest mobile** からデバイスモニターを開く
 
 拡張の設定操作は原則不要（外部パッケージ構成では `fleetest init` が `.vscode/settings.json` に
 `fleetest.binaryPath`・`fleetest.project` を生成済み。init が「マージできず未更新」警告を出していた場合のみ

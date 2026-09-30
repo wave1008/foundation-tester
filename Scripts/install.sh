@@ -890,7 +890,6 @@ print_summary
 
 ──────── Next steps ────────
 ${NEXT_PROFILES}・Open $WORK_DIR in VSCode and run Developer: Reload Window (required for the extension)
-・When Claude Code asks to approve the fleetest MCP server, allow it (enables the ft_* tools)
 
 Updates: the VSCode extension checks automatically on start-up (disable via the fleetest.updateCheck setting).
       Check manually → bash $TOOL_ROOT/Scripts/update-check.sh / apply → /fleetest-update
