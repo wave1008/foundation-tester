@@ -69,13 +69,6 @@ extension MCPServer {
             isPhysical: SimulatorCatalog.isPhysical(udid: udid))
         else { return false }
         guard let repoRoot = try? RepoRoot.find() else { return false }
-        // **拒否でも listener の実体が居れば忙しいだけ**(backlog 溢れ)。建て直しの provision は生きたランナーを
-        // 片付けて殺す(ライブ操作の自動起動で実測した同じ型。BridgeDiscovery.refusedButListenerAlive)
-        if await BridgeDiscovery.refusedButListenerAlive(port: port, repoRoot: repoRoot) {
-            Self.logStderr("bridge recovery: port \(port) refused the connection, but its runner is still"
-                + " listening (busy) — not rebuilding it")
-            return false
-        }
         Self.logStderr("bridge recovery: port \(port) refused the connection — rebuilding the"
             + " xcuitest bridge for \(udid) and retrying the call once")
         let spec = DeviceSpec(name: udid, udid: udid, port: port, engine: "xcuitest")

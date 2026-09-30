@@ -89,15 +89,4 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         XCTAssertTrue(code.contains("take a fresh one"),
                       "ref が無効になったことを言っていない(建て直し = アプリの再起動)")
     }
-
-    /// 拒否でも listener の実体が居れば建て直さない(忙しいランナーの backlog 溢れ。provision が生きたランナーを殺す)。
-    /// 確認は provision より前に置くこと
-    func testRecoveryChecksForALiveListenerBeforeProvisioning() throws {
-        let code = try source()
-        guard let check = code.range(of: "BridgeDiscovery.refusedButListenerAlive("),
-              let provision = code.range(of: ".provision(devices:") else {
-            return XCTFail("listener の確認か provision が見当たらない")
-        }
-        XCTAssertLessThan(check.lowerBound, provision.lowerBound)
-    }
 }

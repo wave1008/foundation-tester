@@ -680,19 +680,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     ) async -> String {
         var message = error.localizedDescription
         if let starter, case DriverError.bridgeConnectionRefused = error {
-            // 確かめるのは起動を撃つ前(idle)だけ。起動中・失敗中は starter の状態を言うだけで lsof を払わない
-            var listenerAlive = false
-            if triggering, await starter.isIdle {
-                listenerAlive = await BridgeDiscovery.refusedButListenerAlive(port: port, repoRoot: try? RepoRoot.find())
-            }
-            switch Self.refusedGuidance(triggering: triggering, listenerAlive: listenerAlive) {
-            case .triggerStarter:
-                message += await starter.noteConnectionRefused()
-            case .starterSuffix:
-                message += await starter.statusSuffix()
-            case .busy:
-                message += Self.bridgeUnreachableHint(probe: .timedOut)
-            }
+            message += triggering ? await starter.noteConnectionRefused() : await starter.statusSuffix()
             return message
         }
         if DriverError.isNoReadableWindow(error) {
@@ -716,19 +704,6 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
         }
         return message
-    }
-
-    /// 接続拒否に何を足すか(純粋関数)。**listener の実体が居るなら自動起動を撃たない** —— 拒否は
-    /// 忙しいランナーの backlog 溢れでも起き、撃つと起動の前処理が生きたランナーを片付けて殺す
-    enum RefusedGuidance: Equatable {
-        case triggerStarter
-        case starterSuffix
-        case busy
-    }
-
-    static func refusedGuidance(triggering: Bool, listenerAlive: Bool) -> RefusedGuidance {
-        guard triggering else { return .starterSuffix }
-        return listenerAlive ? .busy : .triggerStarter
     }
 
     /// starter の有無・状態と probe の結果から、bridgeUnreachable の失敗にどの文言を足すか決める
