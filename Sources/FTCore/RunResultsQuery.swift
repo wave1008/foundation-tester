@@ -714,18 +714,6 @@ public enum RunResultsQuery {
         public let runs: [PerfRunRow]
         /// 除外したグループに属していた perf run の総数(事実として出す)
         public let invalidCount: Int
-        /// **同じ (profile, 機械集合) に前回計測がある最新の実行**と、その直前の実行の突き合わせ。
-        /// 「全体の最新」に固定しない —— 初計測の構成が最新に来ると、意味ある比較が眠ったまま
-        /// 空になる(実データ)。機械集合も揃える(デバイス構成を揃える規律:
-        /// docs/results-json.md。ローカルのみ計測とフリート計測の突き合わせは機械性能差が混ざる)。
-        /// **両方に存在する (scenarioID, platform) だけ**を比べる(集合を揃える規律。
-        /// 同一実行内に同じ組が複数あるときは startedAt 最新を採る = matrix と同じ規律)。
-        /// deltaPct 降順(悪化が上)、同値は scenarioID 昇順。相手が無ければ空
-        public let comparison: [PerfScenarioDelta]
-        /// comparison の比較相手(前回側)のグループ鍵(無ければ nil)
-        public let comparedRunID: String?
-        /// comparison の最新側のグループ鍵(runs の先頭と一致するとは限らない。無ければ nil)
-        public let comparisonRunID: String?
     }
 
     private struct PerfScenarioKey: Hashable {
@@ -733,8 +721,7 @@ public enum RunResultsQuery {
         let platform: String
     }
 
-    /// performanceMode==true の run を実行(runGroup)単位に畳み、有効な計測グループの一覧と
-    /// 直近の突き合わせを返す
+    /// performanceMode==true の run を実行(runGroup)単位に畳み、有効な計測グループの一覧を返す
     public static func performanceReport(records: [ScenarioRunRecord], runs: [RunMetaRecord]) -> PerformanceReport {
         let perfRuns = runs.filter { $0.performanceMode == true }
         let grouped = Dictionary(grouping: perfRuns) { $0.runGroup ?? $0.runID }
@@ -751,11 +738,7 @@ public enum RunResultsQuery {
         validGroups.sort { $0.key > $1.key }
 
         let runRows = validGroups.map { perfGroupRow(key: $0.key, members: $0.members, records: records) }
-        let (comparison, comparedRunID, comparisonRunID) = perfComparison(groups: validGroups, records: records)
-
-        return PerformanceReport(
-            runs: runRows, invalidCount: invalidCount,
-            comparison: comparison, comparedRunID: comparedRunID, comparisonRunID: comparisonRunID)
+        return PerformanceReport(runs: runRows, invalidCount: invalidCount)
     }
 
     private static func perfGroupRow(key: String, members: [RunMetaRecord],
@@ -834,40 +817,11 @@ public enum RunResultsQuery {
         return best
     }
 
-    /// グループの比較同一性: (profile, 機械集合)。member は runID 昇順で来るので first の profile で代表する
-    private static func perfGroupIdentity(_ members: [RunMetaRecord]) -> String {
-        let profile = members.first?.profile ?? ""
-        let hosts = Set(members.map(\.host)).sorted().joined(separator: "\u{1}")
-        return "\(profile)\u{2}\(hosts)"
-    }
-
-    private static func perfComparison(
-        groups: [(key: String, members: [RunMetaRecord])], records: [ScenarioRunRecord]
-    ) -> ([PerfScenarioDelta], String?, String?) {
-        // 新しい順に「同じ (profile, 機械集合) の前回計測がある実行」を探す(PerformanceReport の doc 参照)
-        var pair: (latest: (key: String, members: [RunMetaRecord]),
-                   previous: (key: String, members: [RunMetaRecord]))?
-        for (index, candidate) in groups.enumerated() {
-            if let previous = groups.dropFirst(index + 1).first(where: {
-                perfGroupIdentity($0.members) == perfGroupIdentity(candidate.members)
-            }) {
-                pair = (candidate, previous)
-                break
-            }
-        }
-        guard let (latest, previous) = pair else { return ([], nil, nil) }
-        let deltas = scenarioDurationDeltas(
-            records: records,
-            latestRunIDs: Set(latest.members.map(\.runID)),
-            previousRunIDs: Set(previous.members.map(\.runID)))
-        return (deltas, previous.key, latest.key)
-    }
-
-    /// 2つの実行(それぞれ構成 run の集合)のシナリオ所要の突き合わせ。前回計測との比較と、
-    /// ダッシュボードで利用者が選んだ2件の比較(`fleetest api results-compare`)が共有する唯一の判定。
+    /// 2つの実行(それぞれ構成 run の集合)のシナリオ所要の突き合わせ。ダッシュボードで利用者が
+    /// 選んだ2件の比較(`fleetest api results-compare`)の判定。
     /// **両方に存在する (scenarioID, platform) だけ**・passed だけ(perfLatestDurations の doc)・
     /// previous==0 は除外(発散)。deltaPct 降順(悪化が上)、同値は scenarioID → platform 昇順。
-    /// (profile, 機械集合)が揃っているかは見ない —— 揃える規律は呼び手が持つ
+    /// (profile, 機械集合)が揃っているかは見ない(違う2件には画面が注記を出す)
     public static func scenarioDurationDeltas(
         records: [ScenarioRunRecord], latestRunIDs: Set<String>, previousRunIDs: Set<String>
     ) -> [PerfScenarioDelta] {

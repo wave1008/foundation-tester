@@ -52,7 +52,7 @@ function validPayload(overrides = {}) {
     // CLI(ApiResultsBody)が必ず送る欄
     slow: [],
     insights: [],
-    performance: { runs: [], invalidCount: 0, comparison: [] },
+    performance: { runs: [], invalidCount: 0 },
     machines: [],
     runStats: [],
     ...overrides,
@@ -414,18 +414,14 @@ test("isApiResultsPayload: performance を含む完全な値も true と判定�
     performance: {
       runs: [validPerfRunRow()],
       invalidCount: 1,
-      comparison: [
-        { scenarioID: "Checkout", platform: "ios", latestMs: 9800, previousMs: 9200, deltaPct: 6.5 },
-      ],
-      comparedRunID: "20260831-000000",
     },
   });
   assert.equal(isApiResultsPayload(payload), true);
 });
 
-test("isApiResultsPayload: performance.runs が空配列・comparison が空配列でも true と判定する", () => {
+test("isApiResultsPayload: performance.runs が空配列でも true と判定する", () => {
   const payload = validPayload({
-    performance: { runs: [], invalidCount: 0, comparison: [] },
+    performance: { runs: [], invalidCount: 0 },
   });
   assert.equal(isApiResultsPayload(payload), true);
 });
@@ -447,8 +443,6 @@ test("isApiResultsPayload: performance.runs[] の optional 欄(profile/wallClock
         },
       ],
       invalidCount: 0,
-      comparison: [],
-      // comparedRunID も省略
     },
   });
   assert.equal(isApiResultsPayload(payload), true);
@@ -469,44 +463,31 @@ test("isApiResultsPayload: performance.runs[] の optional 欄が null 明示で
         }),
       ],
       invalidCount: 0,
-      comparison: [],
-      comparedRunID: null,
     },
   });
   assert.equal(isApiResultsPayload(payload), true);
 });
 
 test("isApiResultsPayload: performance.runs が配列でなければ false", () => {
-  const payload = validPayload({ performance: { runs: "not-an-array", invalidCount: 0, comparison: [] } });
+  const payload = validPayload({ performance: { runs: "not-an-array", invalidCount: 0 } });
   assert.equal(isApiResultsPayload(payload), false);
 });
 
 test("isApiResultsPayload: performance.runs[].laneCount(必須)が欠落していれば false", () => {
   const row = validPerfRunRow();
   delete row.laneCount;
-  const payload = validPayload({ performance: { runs: [row], invalidCount: 0, comparison: [] } });
+  const payload = validPayload({ performance: { runs: [row], invalidCount: 0 } });
   assert.equal(isApiResultsPayload(payload), false);
 });
 
 test("isApiResultsPayload: performance.runs[].scenarioTotalMs(必須)が数値でなければ false", () => {
   const row = validPerfRunRow({ scenarioTotalMs: "480000" });
-  const payload = validPayload({ performance: { runs: [row], invalidCount: 0, comparison: [] } });
-  assert.equal(isApiResultsPayload(payload), false);
-});
-
-test("isApiResultsPayload: performance.comparison[].deltaPct が数値でなければ false", () => {
-  const payload = validPayload({
-    performance: {
-      runs: [],
-      invalidCount: 0,
-      comparison: [{ scenarioID: "Checkout", platform: "ios", latestMs: 9800, previousMs: 9200, deltaPct: "6.5" }],
-    },
-  });
+  const payload = validPayload({ performance: { runs: [row], invalidCount: 0 } });
   assert.equal(isApiResultsPayload(payload), false);
 });
 
 test("isApiResultsPayload: performance.invalidCount が数値でなければ false", () => {
-  const payload = validPayload({ performance: { runs: [], invalidCount: "1", comparison: [] } });
+  const payload = validPayload({ performance: { runs: [], invalidCount: "1" } });
   assert.equal(isApiResultsPayload(payload), false);
 });
 

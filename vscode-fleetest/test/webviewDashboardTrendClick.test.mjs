@@ -63,7 +63,7 @@ const PAYLOAD = {
   flaky: [{ scenarioID: "Foo.S0010", runs: 4, failureRate: 50, flakinessScore: 0.5, recentResults: [true, false, true, false] }],
   deviceHealth: [],
   slow: [], insights: [],
-  performance: { runs: [], comparisons: [] }, machines: [], runStats: [],
+  performance: { runs: [], invalidCount: 0 }, machines: [], runStats: [],
 };
 
 test("flaky scenarioID cell click requests the trend and opens the section", (t) => {

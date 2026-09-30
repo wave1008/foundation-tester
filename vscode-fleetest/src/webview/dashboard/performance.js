@@ -9,7 +9,7 @@
 import { t } from '../i18n.js';
 import { clearChildren, td, tdNum } from './domUtil.js';
 import { machineLabels } from './machineNames.js';
-import { deltaBadgeCell, renderRunsTable } from './render.js';
+import { renderRunsTable } from './render.js';
 import { requestRunDetail } from './runDetail.js';
 import { selectCell } from './runsCompare.js';
 import {
@@ -22,13 +22,7 @@ const filterButtons = [...document.querySelectorAll('#runs-filter button[data-fi
 const summaryEl = document.getElementById('perf-summary');
 const runsTable = document.getElementById('table-runs');
 const runsBody = document.getElementById('table-runs-body');
-const comparisonHeadingEl = document.getElementById('perf-comparison-heading');
-const comparisonTable = document.getElementById('table-perf-comparison');
-const comparisonBody = document.getElementById('table-perf-comparison-body');
 const emptyEl = document.getElementById('perf-empty');
-
-// 比較相手が無いときに戻す既定の見出し(host 側 i18n で描画済みの文言をそのまま流用する)。
-const defaultComparisonHeadingText = comparisonHeadingEl.textContent;
 
 /** 'all' | 'performance' */
 let filter = 'all';
@@ -115,48 +109,9 @@ function renderSummary(invalidCount) {
   }
 }
 
-function runLabel(runID, runs) {
-  const target = runs.find((r) => r.runID === runID);
-  return target ? formatLocalDateTime(target.startedAt) + '(' + rowMachinesText(target) + ')' : runID;
-}
-
-function renderComparisonHeading(comparisonRunID, comparedRunID, runs) {
-  if (!comparedRunID) {
-    comparisonHeadingEl.textContent = defaultComparisonHeadingText;
-    return;
-  }
-  // 比較の最新側は runs の先頭とは限らない(フリート計測では初計測の機械が最新に来る)ので、
-  // どの run とどの run の比較かを両方明示する
-  if (comparisonRunID) {
-    comparisonHeadingEl.textContent = t('wvDashboard.perf.comparisonHeadingPair', {
-      latest: runLabel(comparisonRunID, runs),
-      target: runLabel(comparedRunID, runs),
-    });
-    return;
-  }
-  comparisonHeadingEl.textContent = t('wvDashboard.perf.comparisonHeadingWith', { target: runLabel(comparedRunID, runs) });
-}
-
-function renderComparisonTable(comparison) {
-  clearChildren(comparisonBody);
-  for (const row of comparison) {
-    const tr = document.createElement('tr');
-    tr.append(
-      td(row.scenarioID),
-      td(row.platform),
-      tdNum(formatDurationHuman(row.previousMs)),
-      tdNum(formatDurationHuman(row.latestMs)),
-      deltaBadgeCell(row.deltaPct),
-    );
-    comparisonBody.appendChild(tr);
-  }
-}
-
 function hidePerfExtras() {
   clearChildren(summaryEl);
   emptyEl.style.display = 'none';
-  comparisonHeadingEl.style.display = 'none';
-  comparisonTable.style.display = 'none';
 }
 
 function renderPerformanceOnly(performance) {
@@ -164,24 +119,12 @@ function renderPerformanceOnly(performance) {
   const runs = performance.runs;
   if (runs.length === 0) {
     runsTable.style.display = 'none';
-    comparisonTable.style.display = 'none';
-    comparisonHeadingEl.style.display = 'none';
     emptyEl.style.display = 'block';
     return;
   }
   emptyEl.style.display = 'none';
   runsTable.style.display = 'table';
   renderPerfRunsTable(runs);
-
-  if (performance.comparison.length === 0) {
-    comparisonTable.style.display = 'none';
-    comparisonHeadingEl.style.display = 'none';
-    return;
-  }
-  comparisonHeadingEl.style.display = 'block';
-  comparisonTable.style.display = 'table';
-  renderComparisonHeading(performance.comparisonRunID, performance.comparedRunID, runs);
-  renderComparisonTable(performance.comparison);
 }
 
 function render() {

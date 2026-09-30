@@ -388,11 +388,6 @@ select.dash-project, select.dash-since {
 .runs-compare {
   margin-top: 16px;
 }
-.runs-compare-head {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
 
 .perf-summary-note {
   color: var(--vscode-descriptionForeground);

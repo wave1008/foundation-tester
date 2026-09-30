@@ -63,7 +63,7 @@ function basePayload(overrides = {}) {
     flaky: [],
     deviceHealth: [],
     slow: [], insights: [],
-    performance: { runs: [], invalidCount: 0, comparison: [] },
+    performance: { runs: [], invalidCount: 0 },
     machines: [], runStats: [],
     ...overrides,
   };
@@ -922,13 +922,11 @@ const PERF_ROW = {
   passed: 4, failed: 0, maxScenarioMs: 20000, maxScenarioID: "Foo.S0010", laneCount: 2, avgLaneUtilisationPct: 40,
 };
 
-test("直近の実行: パフォーマンス計測のみは performance.runs を描き、比較と無効件数も出す。すべてへ戻すと消える", (t) => {
+test("直近の実行: パフォーマンス計測のみは performance.runs を描き、無効件数も出す。すべてへ戻すと消える", (t) => {
   const { window, posts, sendToWebview } = createWebview();
   t.after(() => window.close());
   const performance = {
     runs: [PERF_ROW], invalidCount: 2,
-    comparison: [{ scenarioID: "Foo.S0010", platform: "android", latestMs: 20000, previousMs: 10000, deltaPct: 100 }],
-    comparedRunID: null, comparisonRunID: null,
   };
   sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ performance }) } });
   const doc = window.document;
@@ -937,7 +935,6 @@ test("直近の実行: パフォーマンス計測のみは performance.runs を
 
   assert.equal(allBtn.getAttribute("aria-pressed"), "true");
   assert.equal(rows()[0].children[3].textContent, "ios-inapp", "既定は payload.runs");
-  assert.equal(doc.getElementById("table-perf-comparison").style.display, "none");
 
   perfBtn.click();
   assert.equal(perfBtn.getAttribute("aria-pressed"), "true");
@@ -945,8 +942,6 @@ test("直近の実行: パフォーマンス計測のみは performance.runs を
   assert.equal(rows().length, 1);
   assert.equal(rows()[0].children[3].textContent, "android");
   assert.equal(rows()[0].children[4].textContent, "4 / 0", "pass/fail は profile の右");
-  assert.equal(doc.getElementById("table-perf-comparison").style.display, "table");
-  assert.equal(doc.querySelectorAll("#table-perf-comparison-body tr").length, 1);
   assert.equal(doc.querySelectorAll("#perf-summary .perf-summary-note").length, 1);
 
   rows()[0].click();
@@ -956,7 +951,6 @@ test("直近の実行: パフォーマンス計測のみは performance.runs を
 
   allBtn.click();
   assert.equal(rows()[0].children[3].textContent, "ios-inapp");
-  assert.equal(doc.getElementById("table-perf-comparison").style.display, "none");
   assert.equal(doc.querySelectorAll("#perf-summary .perf-summary-note").length, 0);
 });
 
@@ -969,7 +963,7 @@ test("直近の実行: パフォーマンス計測のみで計測が0件なら�
   assert.equal(doc.getElementById("table-runs").style.display, "none");
   assert.equal(doc.getElementById("perf-empty").style.display, "block");
 
-  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ performance: { runs: [PERF_ROW], invalidCount: 0, comparison: [] } }) } });
+  sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({ performance: { runs: [PERF_ROW], invalidCount: 0 } }) } });
   assert.equal(doc.querySelectorAll("#runs-filter button")[1].getAttribute("aria-pressed"), "true");
   assert.equal(doc.getElementById("table-runs").style.display, "table");
   assert.equal(doc.getElementById("perf-empty").style.display, "none");
@@ -1021,8 +1015,10 @@ test("直近の実行: 2件を選ぶと古い側を previous にして compareRu
   } });
   assert.equal(doc.getElementById("table-runs-compare").style.display, "none");
 
-  doc.getElementById("runs-compare-clear").click();
-  assert.deepEqual(boxes().map((b) => b.checked), [false, false, false]);
+  // チェックを外して1件になれば比較を畳む
+  const uncheck = (box) => { box.checked = false; box.dispatchEvent(new window.Event("change")); };
+  uncheck(boxes()[1]);
+  assert.deepEqual(boxes().map((b) => b.checked), [false, false, true]);
   assert.equal(doc.getElementById("runs-compare").style.display, "none");
 });
 
@@ -1031,7 +1027,7 @@ test("直近の実行: 選択はフィルター切り替えで保たれ、パフ
   t.after(() => window.close());
   const perfRun = { ...RUN, runID: PERF_ROW.runIDs[1], runGroup: PERF_ROW.runID, startedAt: PERF_ROW.startedAt };
   sendToWebview({ type: "dashboard", message: { type: "data", payload: basePayload({
-    runs: [RUN, perfRun], performance: { runs: [PERF_ROW], invalidCount: 0, comparison: [] },
+    runs: [RUN, perfRun], performance: { runs: [PERF_ROW], invalidCount: 0 },
   }) } });
   const doc = window.document;
   const boxes = () => [...doc.querySelectorAll("#table-runs-body input.run-select")];

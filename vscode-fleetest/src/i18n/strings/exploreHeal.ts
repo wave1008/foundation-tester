@@ -188,10 +188,6 @@ export const exploreHealStrings = {
     ja: "パフォーマンス計測のみ",
     en: "Performance runs only",
   },
-  "exploreHeal.dashboard.headingPerfComparison": {
-    ja: "前回計測との比較",
-    en: "Comparison with Previous Measurement",
-  },
   "exploreHeal.dashboard.colWallClock": {
     ja: "経過時間",
     en: "Elapsed Time",
@@ -339,10 +335,6 @@ export const exploreHealStrings = {
   "exploreHeal.dashboard.runsCompareHint": {
     ja: "左端のチェックで2件を選ぶと計測を比較します",
     en: "Check 2 rows at the left edge to compare their measurements",
-  },
-  "exploreHeal.dashboard.runsCompareClear": {
-    ja: "選択を解除",
-    en: "Clear selection",
   },
   "exploreHeal.dashboard.runDetailFetchFailed": {
     ja: "実行詳細の取得に失敗しました。出力パネル「fleetest」を確認してください({detail})",

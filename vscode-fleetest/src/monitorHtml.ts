@@ -138,10 +138,7 @@ function renderDashboardPanel(): string {
       </table>
       <div id="perf-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.perfEmpty")}</div>
       <div id="runs-compare" class="runs-compare" style="display: none;">
-        <div class="runs-compare-head">
-          <h3 id="runs-compare-heading"></h3>
-          <button id="runs-compare-clear" type="button">${t("exploreHeal.dashboard.runsCompareClear")}</button>
-        </div>
+        <h3 id="runs-compare-heading"></h3>
         <div id="runs-compare-note" class="perf-summary-note" style="display: none;"></div>
         <div id="runs-compare-status" class="section-empty" style="display: none;"></div>
         <table id="table-runs-compare" class="dash-table" style="display: none;">
@@ -151,13 +148,6 @@ function renderDashboardPanel(): string {
           <tbody id="table-runs-compare-body"></tbody>
         </table>
       </div>
-      <h3 id="perf-comparison-heading" style="display: none;">${t("exploreHeal.dashboard.headingPerfComparison")}</h3>
-      <table id="table-perf-comparison" class="dash-table" style="display: none;">
-        <thead>
-          <tr><th>${t("exploreHeal.dashboard.colScenario")}</th><th>${t("exploreHeal.dashboard.colPlatform")}</th><th class="num">${t("exploreHeal.dashboard.colPrevious")}</th><th class="num">${t("exploreHeal.dashboard.colLatest")}</th><th class="num">Δ%</th></tr>
-        </thead>
-        <tbody id="table-perf-comparison-body"></tbody>
-      </table>
     </section>
 
     <section id="section-run-detail" class="dash-section" style="display: none;">

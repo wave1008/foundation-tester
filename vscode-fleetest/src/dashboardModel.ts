@@ -252,8 +252,7 @@ export interface PerfRunRow {
   readonly avgLaneUtilisationPct?: number | null;
 }
 
-/** 最新 run vs 同じ (profile, host) の直前 run のシナリオ単位の所要突き合わせ
- * (`fleetest api results` の performance.comparison[])。悪化が正、降順。 */
+/** 選んだ2件のシナリオ単位の所要突き合わせ(`fleetest api results-compare` の comparison[])。悪化が正、降順。 */
 export interface PerfScenarioDelta {
   readonly scenarioID: string;
   readonly platform: string;
@@ -268,12 +267,6 @@ export interface PerformanceReport {
   readonly runs: readonly PerfRunRow[];
   /** measurementInvalid で除外した performance run 数。 */
   readonly invalidCount: number;
-  /** 空配列あり。 */
-  readonly comparison: readonly PerfScenarioDelta[];
-  /** 比較相手の runID。無ければキー省略。 */
-  readonly comparedRunID?: string | null;
-  /** comparison の最新側の runID(runs の先頭と一致するとは限らない)。キー省略あり。 */
-  readonly comparisonRunID?: string | null;
 }
 
 /** `fleetest api results-run --project <名> --run-id <runID>` の stdout。 */
@@ -670,11 +663,7 @@ function isPerformanceReport(value: unknown): value is PerformanceReport {
   return (
     Array.isArray(value.runs) &&
     value.runs.every(isPerfRunRow) &&
-    typeof value.invalidCount === "number" &&
-    Array.isArray(value.comparison) &&
-    value.comparison.every(isPerfScenarioDelta) &&
-    isOptString(value.comparedRunID) &&
-    isOptString(value.comparisonRunID)
+    typeof value.invalidCount === "number"
   );
 }
 

@@ -2,8 +2,8 @@
 // 「直近の実行」で利用者が選んだ2件の計測の比較(#runs-compare、monitorHtml.ts の静的スケルトン)。
 // 選択の状態はこのモジュールだけが書く。行の先頭セルは selectCell() が作り、render.js /
 // performance.js はそれを呼ぶだけ(render.js からここを import しない = 循環を作らない)。
-// 突き合わせの判定は Swift 側 RunResultsQuery.scenarioDurationDeltas(`fleetest api results-compare`)
-// だけが持つ。ここでは並べ替え・絞り込みをしない(前回計測との比較と判断が食い違う)。
+// 突き合わせの判定(対象の組・並び順)は Swift 側 RunResultsQuery.scenarioDurationDeltas
+// (`fleetest api results-compare`)だけが持つ。ここで並べ替え・絞り込みをしない。
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
@@ -27,12 +27,6 @@ let selected = [];
 let selectedProject = null;
 /** 表示中の依頼の鍵(古い応答を捨てる)。 */
 let pendingKey = null;
-
-document.getElementById('runs-compare-clear').addEventListener('click', () => {
-  selected = [];
-  syncCheckboxes();
-  update();
-});
 
 function requestKey(previousRunIDs, latestRunIDs) {
   return previousRunIDs.join(',') + '|' + latestRunIDs.join(',');

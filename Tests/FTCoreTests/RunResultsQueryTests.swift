@@ -1070,13 +1070,7 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(row?.scenarioCount, 1)
     }
 
-    func testPerformanceComparisonOnlyIncludesScenariosPresentInBoth() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 2, performanceMode: true),
-            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
-                     finishedAt: "2026-01-02T00:01:00Z", total: 2, performanceMode: true),
-        ]
+    func testScenarioDurationDeltasOnlyIncludesScenariosPresentInBoth() {
         let records = [
             makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
                        durationMs: 100, runID: "R1"),
@@ -1089,10 +1083,10 @@ final class RunResultsQueryTests: XCTestCase {
             makeRecord(scenarioID: "Foo.c", passed: true, startedAt: "2026-01-02T00:00:20Z",
                        durationMs: 100, runID: "R2"),
         ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertEqual(report.comparedRunID, "R1")
-        XCTAssertEqual(report.comparison.map(\.scenarioID), ["Foo.a"], "両方に居る組だけ比較する")
-        let delta = report.comparison[0]
+        let comparison = RunResultsQuery.scenarioDurationDeltas(
+            records: records, latestRunIDs: ["R2"], previousRunIDs: ["R1"])
+        XCTAssertEqual(comparison.map(\.scenarioID), ["Foo.a"], "両方に居る組だけ比較する")
+        let delta = comparison[0]
         XCTAssertEqual(delta.latestMs, 150)
         XCTAssertEqual(delta.previousMs, 100)
         XCTAssertEqual(delta.deltaPct, 50, accuracy: 0.001)
@@ -1125,13 +1119,7 @@ final class RunResultsQueryTests: XCTestCase {
 
     /// 失敗レコードの durationMs はタイムアウト等「失敗経路の長さ」であって性能ではない。
     /// どちらか片側でも失敗していた組は比較に混ぜない(巨大な偽の悪化が先頭に並ぶ)
-    func testPerformanceComparisonExcludesFailedRecords() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 2, performanceMode: true),
-            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
-                     finishedAt: "2026-01-02T00:01:00Z", total: 2, performanceMode: true),
-        ]
+    func testScenarioDurationDeltasExcludesFailedRecords() {
         let records = [
             makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
                        durationMs: 100, runID: "R1"),
@@ -1143,35 +1131,10 @@ final class RunResultsQueryTests: XCTestCase {
             makeRecord(scenarioID: "Foo.b", passed: true, startedAt: "2026-01-02T00:00:20Z",
                        durationMs: 120, runID: "R2"),
         ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertEqual(report.comparison.map(\.scenarioID), ["Foo.b"],
+        let comparison = RunResultsQuery.scenarioDurationDeltas(
+            records: records, latestRunIDs: ["R2"], previousRunIDs: ["R1"])
+        XCTAssertEqual(comparison.map(\.scenarioID), ["Foo.b"],
                        "失敗した Foo.a の組は比較から外れる")
-    }
-
-    /// 全体の最新 run(初計測の機械)に相手が無くても、相手の居る run の比較を出す ——
-    /// フリート計測は機械ごとに別 run になり、最新固定だと意味ある比較が眠る(2026-09-01 実データ)
-    func testPerformanceComparisonFallsBackToTheNewestRunThatHasAPartner() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostA", performanceMode: true),
-            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
-                     finishedAt: "2026-01-02T00:01:00Z", total: 1, host: "hostA", performanceMode: true),
-            // 最新だが hostB は初計測(相手なし)
-            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z",
-                     finishedAt: "2026-01-03T00:01:00Z", total: 1, host: "hostB", performanceMode: true),
-        ]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
-                       durationMs: 100, runID: "R1"),
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
-                       durationMs: 130, runID: "R2"),
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
-                       durationMs: 999, runID: "R3"),
-        ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertEqual(report.comparisonRunID, "R2")
-        XCTAssertEqual(report.comparedRunID, "R1")
-        XCTAssertEqual(report.comparison.map(\.latestMs), [130], "hostB の R3 は比較に混ざらない")
     }
 
     /// フリート計測(runGroup で束なる複数 run)は1行に畳む(2026-09-01 ユーザー指示)
@@ -1232,99 +1195,16 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(report.invalidCount, 2, "除外したグループの run 総数")
     }
 
-    /// 比較は同じ (profile, 機械集合) の実行同士に限る —— ローカルのみ計測と
-    /// フリート計測の突き合わせは機械性能差が混ざる(デバイス構成を揃える規律)
-    func testPerformanceComparisonRequiresSameMachineSet() {
-        let runs = [
-            // 旧フリート(hostA+hostB)
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostA",
-                     performanceMode: true, runGroup: "G1"),
-            makeMeta(runID: "R2", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 1, host: "hostB",
-                     performanceMode: true, runGroup: "G1"),
-            // 間に挟まるローカルのみ計測(機械集合が違うので相手にならない)
-            makeMeta(runID: "R3", startedAt: "2026-01-02T00:00:00Z",
-                     finishedAt: "2026-01-02T00:01:00Z", total: 1, host: "hostA",
-                     performanceMode: true),
-            // 最新フリート(hostA+hostB)
-            makeMeta(runID: "R4", startedAt: "2026-01-03T00:00:00Z",
-                     finishedAt: "2026-01-03T00:01:00Z", total: 1, host: "hostA",
-                     performanceMode: true, runGroup: "G2"),
-            makeMeta(runID: "R5", startedAt: "2026-01-03T00:00:00Z",
-                     finishedAt: "2026-01-03T00:01:00Z", total: 1, host: "hostB",
-                     performanceMode: true, runGroup: "G2"),
-        ]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
-                       durationMs: 100, runID: "R1"),
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
-                       durationMs: 999, runID: "R3"),
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
-                       durationMs: 120, runID: "R4"),
-        ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertEqual(report.comparisonRunID, "G2")
-        XCTAssertEqual(report.comparedRunID, "G1", "機械集合の違う R3(単機)を飛び越す")
-        XCTAssertEqual(report.comparison.map(\.latestMs), [120])
-        XCTAssertEqual(report.comparison.map(\.previousMs), [100])
-    }
-
-    /// 相手の選定は同じ (profile, host) の run だけを対象にする。別 profile の run を挟んでも
-    /// 飛び越して正しい相手を選ぶこと
-    func testPerformanceComparisonSkipsPastADifferentProfileRunToFindTheSamePair() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", finishedAt: "2026-01-01T00:01:00Z",
-                     total: 1, profile: "p1", host: "m1", performanceMode: true),
-            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", finishedAt: "2026-01-02T00:01:00Z",
-                     total: 1, profile: "p2", host: "m1", performanceMode: true),
-            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", finishedAt: "2026-01-03T00:01:00Z",
-                     total: 1, profile: "p1", host: "m1", performanceMode: true),
-        ]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
-                       durationMs: 100, runID: "R1"),
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
-                       durationMs: 999, runID: "R2"),
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-03T00:00:10Z",
-                       durationMs: 200, runID: "R3"),
-        ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertEqual(report.comparedRunID, "R1", "別 profile の R2 を飛び越えて同じ (profile,host) の R1 を選ぶ")
-        XCTAssertEqual(report.comparison.first?.previousMs, 100)
-        XCTAssertEqual(report.comparison.first?.latestMs, 200)
-    }
-
-    func testPerformanceComparisonEmptyWhenNoPartnerRun() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 1, performanceMode: true),
-        ]
-        let records = [
-            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
-                       durationMs: 100, runID: "R1"),
-        ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertTrue(report.comparison.isEmpty)
-        XCTAssertNil(report.comparedRunID)
-    }
-
-    func testPerformanceComparisonExcludesZeroPreviousDuration() {
-        let runs = [
-            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z",
-                     finishedAt: "2026-01-01T00:01:00Z", total: 1, performanceMode: true),
-            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z",
-                     finishedAt: "2026-01-02T00:01:00Z", total: 1, performanceMode: true),
-        ]
+    func testScenarioDurationDeltasExcludesZeroPreviousDuration() {
         let records = [
             makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:10Z",
                        durationMs: 0, runID: "R1"),
             makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:10Z",
                        durationMs: 100, runID: "R2"),
         ]
-        let report = RunResultsQuery.performanceReport(records: records, runs: runs)
-        XCTAssertTrue(report.comparison.isEmpty, "previous==0 は比率が発散するため除外")
-        XCTAssertEqual(report.comparedRunID, "R1", "比較相手自体は選ばれる(除外されるのは組だけ)")
+        let comparison = RunResultsQuery.scenarioDurationDeltas(
+            records: records, latestRunIDs: ["R2"], previousRunIDs: ["R1"])
+        XCTAssertTrue(comparison.isEmpty, "previous==0 は比率が発散するため除外")
     }
 
     func testPerformanceReportMaxScenarioTiesBreakByScenarioIDAscending() {

@@ -16,10 +16,6 @@ export const webviewDashboardStrings = {
   "wvDashboard.render.anomalyHint": { ja: "配信/劣化を疑う: {breakdown}", en: "Suspect streaming/degradation first: {breakdown}" },
 
   // performance.js
-  "wvDashboard.perf.comparisonHeadingPair": {
-    ja: "前回計測との比較: {latest} vs {target}",
-    en: "Comparison with the previous measurement: {latest} vs {target}",
-  },
   "wvDashboard.perf.selectedHeading": {
     ja: "選択した2件の比較: {previous} → {latest}",
     en: "Comparison of the 2 selected runs: {previous} → {latest}",
@@ -35,10 +31,6 @@ export const webviewDashboardStrings = {
   },
   "wvDashboard.perf.selectTitle": { ja: "計測の比較に使う(2件まで)", en: "Use for comparing measurements (up to 2)" },
   "wvDashboard.perf.invalidCountNote": { ja: "計測無効で除外 {count} 件", en: "{count} excluded as invalid measurements" },
-  "wvDashboard.perf.comparisonHeadingWith": {
-    ja: "前回計測との比較({target})",
-    en: "Comparison with Previous Measurement ({target})",
-  },
 
   // runDetail.js
   "wvDashboard.runDetail.title": { ja: "run 詳細: {runID}", en: "Run Detail: {runID}" },
