@@ -5,8 +5,8 @@
 //
 // **台帳のあるポートには触らない**(起動中のブリッジは `.pid` をトンネルより先に書く)ので、
 // 進行中の起動を巻き込まない。ここではその「触らない」側だけを実プロセス抜きで固定する
-// (実際に止める枝は PortHolder.stopTunnelHolder = lsof/ps を伴うので、
-//  PortHolderClassifyTests の commandIsIproxyForPort が純粋な判定を担う)。
+// (実際に止める枝は PortHolder.stopOrphanedTunnelHolder = lsof/ps を伴うので、純粋な判定は
+//  PortHolderClassifyTests の commandIsIproxyForPort と、ここの tunnelHasLiveRunner が担う)。
 
 import XCTest
 @testable import FTBridgeClient
@@ -56,6 +56,59 @@ final class TunnelOnlyPortSweepTests: XCTestCase {
         StaleLedgerSweep.sweepTunnelOnlyPorts(portRange: 59999...59999, stateDir: stateDir,
                                               log: { logs.append($0) })
         XCTAssertTrue(logs.isEmpty)
+    }
+
+    // MARK: - 宛先のランナーが生きているトンネルは止めない
+
+    private let tunnel = "/opt/homebrew/bin/iproxy 8150 8150 -u 00008110-000260242EEB801E"
+    private func runner(udid: String, clone: String, port: UInt16 = 8150) -> String {
+        "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test-without-building"
+            + " -xctestrun \(clone)/.fleetest/DerivedData-device/Build/Products/FleetestRunner-\(port).xctestrun"
+            + " -destination platform=iOS,id=\(udid) -resultBundlePath \(clone)/.fleetest/xcresult/x.xcresult"
+    }
+
+    /// **別のクローンが起動した生きたブリッジ**のトンネルを止めない。台帳(`.fleetest/`)はクローンごとなので、
+    /// 台帳が無いことは残骸の証拠にならない(`swift test` の一時ディレクトリからも同じに見え、
+    /// 駆動中の実機のトンネルを毎回止めていた)
+    func testTunnelWithALiveRunnerForItsDeviceIsNotAnOrphan() {
+        XCTAssertTrue(PortHolder.tunnelHasLiveRunner(
+            tunnelCommand: tunnel, port: 8150,
+            processCommands: ["/sbin/launchd", runner(udid: "00008110-000260242EEB801E",
+                                                      clone: "/Users/u/fleetest-runner/foundation-tester")]))
+        // 大文字小文字の違いは同じデバイス
+        XCTAssertTrue(PortHolder.tunnelHasLiveRunner(
+            tunnelCommand: tunnel, port: 8150,
+            processCommands: [runner(udid: "00008110-000260242eeb801e", clone: "/Users/u/repo")]))
+    }
+
+    /// ランナーが居ない・別のデバイスのランナーしか居ないなら残骸(止めてよい)
+    func testTunnelWithoutARunnerForItsDeviceIsAnOrphan() {
+        XCTAssertFalse(PortHolder.tunnelHasLiveRunner(tunnelCommand: tunnel, port: 8150, processCommands: []))
+        XCTAssertFalse(PortHolder.tunnelHasLiveRunner(
+            tunnelCommand: tunnel, port: 8150,
+            processCommands: [runner(udid: "00008110-001460910E0A201E", clone: "/Users/u/repo"),
+                              runner(udid: "E38DCA93-95F2-4DDF-B1FE-29527205D3EE", clone: "/Users/u/repo")]))
+        // 同じデバイスのランナーが別のポートに居るだけ = このポートのトンネルは残骸
+        XCTAssertFalse(PortHolder.tunnelHasLiveRunner(
+            tunnelCommand: tunnel, port: 8150,
+            processCommands: [runner(udid: "00008110-000260242EEB801E", clone: "/Users/u/repo", port: 8151)]))
+        // udid を引数に持つだけの別のプロセス(devicectl 等)はランナーではない
+        XCTAssertFalse(PortHolder.tunnelHasLiveRunner(
+            tunnelCommand: tunnel, port: 8150,
+            processCommands: ["xcrun devicectl device info details --device 00008110-000260242EEB801E"]))
+    }
+
+    /// 供給の入口の掃除は、持ち主を確かめる口を通す(名指しの停止用の口を使わない)
+    func testSweepUsesTheOwnershipCheckedStop() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTBridgeClient/BridgeProvisioner.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(source.range(of: "static func sweepTunnelOnlyPorts("))
+        let end = try XCTUnwrap(source.range(of: "static func sweepIproxyPidFiles(",
+                                             range: start.upperBound..<source.endIndex))
+        let body = String(source[start.upperBound..<end.lowerBound])
+        XCTAssertTrue(body.contains("PortHolder.stopOrphanedTunnelHolder(port: port)"))
+        XCTAssertFalse(body.contains("PortHolder.stopTunnelHolder("))
     }
 }
 

@@ -96,10 +96,12 @@ extension MCPServer {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(d, args: args),
                 engine: engines[Self.engineKey(args)]) { throw offscreen }
+            let frontWarning = await coordinateFrontAppWarning(d, args: args)
             try await d.tap(x: x, y: y)
             recordInteraction(action: "tap", resolvedRef: nil, args: args, coordinate: (x, y))
             lastTapTargets[Self.engineKey(args)] = nil
             return text("tap (\(x), \(y)) done" + keyboardCoordinateWarning(x: x, y: y, args: args)
+                + frontWarning
                 + once("coordinateReproductionNote",
                 full: Self.coordinateReproductionNote,
                 short: Self.coordinateReproductionNoteShort)

@@ -1091,6 +1091,27 @@ extension MCPServer {
             + " keyboard first (pressEnter, or ft_navigate back on Android) unless a key was meant)"
     }
 
+    /// **座標で撃つ操作の前に、このセッションが起動したアプリが前面かを確かめる**警告。ref の操作は
+    /// 撮り直した木で「前面が別アプリ」と断る(verifiedRef)が、座標の操作は木を読まないので、`back` で
+    /// アプリを抜けた後のタップ・スワイプがランチャーや他のアプリへ黙って届いた(実機 Pixel で実測 →
+    /// maintainer-notes §60)。**断らない**(ホーム画面を座標で触る意図があり得る)。
+    /// 撃つ**前**に読む(その操作自身がアプリを離れた回に警告しない)。
+    /// **判定材料が無いときは黙る**: ft_launch していない・ドライバが前面のアプリ名を答えない。
+    /// **iOS には問い合わせない**(`foregroundAppID` は通信せず nil)—— XCUITest のランナーは前面に無い
+    /// アプリへのジェスチャを自分で断り、in-app は前面から外れると撃てないので、届くのは Android だけ。
+    /// 権限ダイアログ(`systemDialogPackages`)は座標で押すのが正規の操作なので黙る
+    static func frontAppWarning(launched: String, front: String?) -> String {
+        guard let front, front != launched, !systemDialogPackages.contains(front) else { return "" }
+        return " (warning: \(front) was in front, not \(launched) (the app this session launched)"
+            + " — this acted on \(front). ft_launch \(launched) to come back, or ft_snapshot to see"
+            + " what is on screen)"
+    }
+
+    func coordinateFrontAppWarning(_ driver: AppDriver, args: [String: Any]) async -> String {
+        guard let launched = launchedBundleIDs[Self.engineKey(args)] else { return "" }
+        return Self.frontAppWarning(launched: launched, front: (try? await driver.foregroundAppID()) ?? nil)
+    }
+
     /// 座標の操作が画面の範囲を知るための screen。直近の木があればそれ(追加の読みは払わない)、
     /// 無ければ控え(`knownScreens`)、それも無ければ**1枚生読みして控える**(セッション最初の
     /// 座標操作だけ。読めなければ nil = 撃つ側)。**生読み = 世代を作らない**(knownScreens の doc)。

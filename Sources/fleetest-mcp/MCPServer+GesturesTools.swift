@@ -26,12 +26,13 @@ extension MCPServer {
             let cached = lastSnapshots[Self.engineKey(args)]
             let keyboardUp = cached?.keyboardFrame != nil || cached?.keyboardShown == true
             guard keyboardUp else {
+                let frontWarning = await coordinateFrontAppWarning(swipeDriver, args: args)
                 try await swipeDriver.swipe(direction)
                 recordInteraction(action: "swipe", resolvedRef: nil, args: args,
                                   direction: direction.rawValue)
                 // **「動いた」と断言しない**(back と同じ理由)。スワイプは端に着いて
                 // いれば1px も動かないし、スクロールできない画面では何も起きない
-                return text("swipe \(direction.rawValue) sent."
+                return text("swipe \(direction.rawValue) sent." + frontWarning
                     + Self.changedHint(args, otherwise: " If anything moved, the old refs are stale"
                         + " — take a fresh ft_snapshot before using any ref")
                     + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
@@ -364,6 +365,7 @@ extension MCPServer {
             doubleTapPoint = (x, y)
             doubleTapWhat = "(\(x), \(y))"
             doubleTapNote = keyboardCoordinateWarning(x: x, y: y, args: args)
+                + (await coordinateFrontAppWarning(doubleTapDriver, args: args))
             doubleTapSelector = once("doubleTapCoordinateNote",
                                      full: Self.doubleTapCoordinateNote,
                                      short: Self.doubleTapCoordinateNoteShort)
@@ -404,9 +406,10 @@ extension MCPServer {
                 x: x, y: y, screen: await coordinateScreen(dragDriver, args: args),
                 engine: engines[Self.engineKey(args)]) { throw offscreen }
             fromPoint = (x, y)
-            dragSelector = once("dragCoordinateNote",
-                                full: Self.dragCoordinateNote,
-                                short: Self.dragCoordinateNoteShort)
+            dragSelector = (await coordinateFrontAppWarning(dragDriver, args: args))
+                + once("dragCoordinateNote",
+                       full: Self.dragCoordinateNote,
+                       short: Self.dragCoordinateNoteShort)
         }
         guard let from = fromPoint else {
             throw MCPError("fromRef or fromX/fromY is required")
@@ -481,6 +484,7 @@ extension MCPServer {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: pinchScreen, engine: engines[Self.engineKey(args)]) { throw offscreen }
             pinchCoordinate = (x, y)
+            pinchSelector += await coordinateFrontAppWarning(pinchDriver, args: args)
             var pinchRadius = try Self.doubleArgument(args, "radius")
             // Android は最小スケール距離(27 mm)に届く半径まで既定を広げる(pinchRadiusHonouringMinimumSpan の doc)
             if pinchRadius == nil, let android = pinchDriver as? AndroidDriver,
@@ -573,6 +577,7 @@ extension MCPServer {
         case .failure(let rejection): throw MCPError(rejection.message)
         case .success(let ok): validatedGesture = ok
         }
+        let gestureFrontWarning = await coordinateFrontAppWarning(gestureDriver, args: args)
         try await gestureDriver.gesture(validatedGesture)
         // **座標(絶対)→ 比率へ割り戻して記録する**(DSL の gesture は FTFinger の比率で書く。
         // FlowStep.gesture がその置き場)。対象は常に画面全体(ft_gesture にセレクタは無い)ので
@@ -587,7 +592,7 @@ extension MCPServer {
         return text("gesture sent (\(validatedGesture.fingers.count) \(fingerWord),"
             + " \(FTSeconds.format((validatedGesture.totalSeconds * 100).rounded() / 100))s)."
             + " Nothing about the result is checked — if it should have moved something,"
-            + " confirm with ft_snapshot/ft_screenshot."
+            + " confirm with ft_snapshot/ft_screenshot." + gestureFrontWarning
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
     }
 
@@ -622,11 +627,13 @@ extension MCPServer {
             if let offscreen = Self.offscreenCoordinateError(
                 x: x, y: y, screen: await coordinateScreen(pressDriver, args: args),
                 engine: engines[Self.engineKey(args)]) { throw offscreen }
+            let frontWarning = await coordinateFrontAppWarning(pressDriver, args: args)
             try await pressDriver.press(x: x, y: y, duration: pressDuration)
             recordInteraction(action: "press", resolvedRef: nil, args: args, coordinate: (x, y),
                               duration: pressDuration,
                               maxGestureSeconds: pressCap)
             return text("press (\(x), \(y)) done." + keyboardCoordinateWarning(x: x, y: y, args: args)
+                + frontWarning
                 + once("coordinateHoldReproductionNote",
                 full: Self.coordinateHoldReproductionNote(
                     holdSeconds: pressDuration, maxGestureSeconds: pressCap),

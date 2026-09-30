@@ -48,6 +48,36 @@ public enum PortHolder {
         return true
     }
 
+    /// トンネルの宛先デバイスへ向いたランナー(xcodebuild)がこの機械で生きているか(純粋関数)。
+    /// **台帳の有無では持ち主を決められない** —— `.fleetest/` はクローンごとなので、別のクローン
+    /// (ランナー用クローン・受け手の構成・テストの一時ディレクトリ)から見ると、生きた実機ブリッジの
+    /// トンネルも「台帳の無いポート」に見える(実測: `swift test` のたびに駆動中の実機のトンネルが止まった
+    /// → maintainer-notes §61)。ランナーは `FleetestRunner-<port>.xctestrun` と `-destination …,id=<UDID>`・
+    /// トンネルは `-u <UDID>` を持つ。**ポートも合わせる** —— 同じデバイスの生きたランナーが別のポートに
+    /// 居るだけなら、このポートのトンネルは残骸(1台に同居できるトンネルは1本)。
+    /// トンネルの宛先を読めなければ false(= 持ち主を言えない残骸として止める側)
+    static func tunnelHasLiveRunner(tunnelCommand: String, port: UInt16, processCommands: [String]) -> Bool {
+        guard let udid = RunnerDestination.udidTokens(inCommand: tunnelCommand).first else { return false }
+        return processCommands.contains { command in
+            command.contains("xcodebuild") && command.contains("FleetestRunner-\(port).xctestrun")
+                && RunnerDestination.udid(inCommand: command)?.caseInsensitiveCompare(udid) == .orderedSame
+        }
+    }
+
+    /// ポートを握っているのがトンネルだけで、**その宛先のランナーがこの機械に居ない**ときだけ止める
+    /// (供給の入口の掃除用。名指しの `bridge down --port N` は `stopTunnelHolder`)。
+    /// プロセス表を読めなければ止めない(生きたブリッジのトンネルかもしれない。次の掃除が見直す)
+    static func stopOrphanedTunnelHolder(port: UInt16) -> Bool {
+        guard let (pid, command) = lookup(port: port),
+              commandIsIproxyForPort(command, port: port),
+              let processes = try? Shell.run(["ps", "-axo", "command="]).outputIfSucceeded,
+              !tunnelHasLiveRunner(tunnelCommand: command, port: port,
+                                   processCommands: processes.components(separatedBy: "\n"))
+        else { return false }
+        terminateThenKill(pid: pid)
+        return true
+    }
+
     /// 応答しないポートの listener 記述からデバイスの udid を読む純粋関数。シミュレータの
     /// XCUITest ランナーは `-destination …,id=<UDID>` を、iproxy トンネルは `-u <UDID>` を持つ ——
     /// **2つ目のパーサは書かず** `RunnerDestination.udidTokens` を再利用する。複数の識別子が

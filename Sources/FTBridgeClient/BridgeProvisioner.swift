@@ -279,8 +279,9 @@ enum StaleLedgerSweep {
     /// そうなると誰も片付けられないまま採番の窓(32 ポート)を1つずつ食い潰す ——
     /// 実地の負荷テストで窓が埋まり `--broadcast` が `no free port` で全滅した。
     ///
-    /// 対象は**ブリッジの台帳が1つも無いポートで、占有者がトンネルだけ**のとき
-    /// (`PortHolder.isHeldByTunnelOnly`)。起動中のブリッジは `.pid` を**トンネルより先に**
+    /// 対象は**ブリッジの台帳が1つも無いポートで、占有者がトンネルだけ、かつその宛先のランナーが
+    /// この機械に居ない**とき(`PortHolder.stopOrphanedTunnelHolder`)。台帳はクローンごとなので、
+    /// 台帳が無いだけでは別のクローンが起動した生きたブリッジと区別できない。起動中のブリッジは `.pid` を**トンネルより先に**
     /// 書く(`executeBridge` / `LiveBridgeAutoStarter.launchBridge` とも startDetached → establish の順)
     /// ので、進行中の起動を巻き込まない
     static func sweepTunnelOnlyPorts(portRange: ClosedRange<UInt16>, stateDir: URL,
@@ -295,7 +296,7 @@ enum StaleLedgerSweep {
             guard !FileManager.default.fileExists(atPath: pidPath.path),
                   !FileManager.default.fileExists(atPath: inappPath.path),
                   BridgeDiscovery.isBound(port: port, repoRoot: nil),
-                  PortHolder.stopTunnelHolder(port: port) else { continue }
+                  PortHolder.stopOrphanedTunnelHolder(port: port) else { continue }
             log("🔧 stopped a leftover USB tunnel on port \(port) (its bridge is gone)")
         }
     }

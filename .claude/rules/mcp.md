@@ -100,6 +100,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **座標を整数へ畳む所は trap しない側に倒す**(座標は `.unbounded`。入口の画面内判定
   `TapTargetGeometry.isPointOnScreen` は MCP とライブ操作が共有するが、DSL も届くので最後の砦
   `AndroidDriver.checkedInt32` は別に要る)
+- **座標で撃つ操作は、撃つ前に前面のアプリを確かめて警告する**(`coordinateFrontAppWarning`。ref の門
+  `verifiedRef` を通らないので、アプリを抜けた後の操作が他のアプリへ黙って届く)。断らない・Android だけ
+  (iOS はランナーが断る)。座標の経路を足したら `CoordinateFrontAppWarningTests` の本数も増やす → maintainer-notes §60.5
 - **MCP の engineKey ごとの記憶は `DeviceSession`(`Sources/fleetest-mcp/DeviceSession.swift`)の欄だけ**。
   `MCPServer` の `drivers` / `lastSnapshots` 等は `sessions` を見る窓(`SessionMap` / `SessionFlags`)で、
   `forgetDeviceState` はセッションを丸ごと捨てる。**並列の `[String: …]` / `Set<String>` を戻さない**

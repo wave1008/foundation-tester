@@ -124,7 +124,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   手を引く**(`RunnerDestination` / `PortHolder.listenerIsAnotherSimulator` /
   `PortHolder.isHeldByAnotherDevice`)—— 「分からないから残す」に倒すと本物の残骸が永久に
   ポートを塞ぐ。**busy は正常**(駆動中の XCUITest は /status に答えない)なので、
-  単に「待受している」を根拠に他人扱いしない → maintainer-notes §46
+  単に「待受している」を根拠に他人扱いしない → maintainer-notes §46。
+  **「台帳に無い」も残骸の根拠にしない** —— `.fleetest/` はクローンごとなので、別のクローン(テストの一時ディレクトリ・
+  ランナー用クローン)からは生きた実機ブリッジのトンネルも台帳の無いポートに見える。ポート範囲を総なめする掃除
+  (`sweepTunnelOnlyPorts`)は、同じポート・同じ宛先のランナーが居ないことをプロセス表で確かめてから止める
+  (`PortHolder.stopOrphanedTunnelHolder`)→ maintainer-notes §61
 - **回復のたびに label(ポート)は変わる**。回復を注入するときは**その時点のワーカー一覧を渡す**
   (`BlankWorkerTriage` の `recover` は第2引数)。最初の一覧を捕まえたままだと2回目の試行で
   新しい label を引けず、`frozen devices have no iOS simulator udid` で必ず失敗する
