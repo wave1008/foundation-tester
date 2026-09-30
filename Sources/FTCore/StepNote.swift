@@ -49,6 +49,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// (`BlankFrameDetector.isBlackApartFromSystemBars`)。絵が撮れていない・表示が凍結した回で、FM も OCR も
     /// 「何も描かれていない」「一致しない」と読むので、判定不能として素通りする(赤にしない)
     case blankScreenshot = "blank-screenshot"
+    /// テキストの視覚検証の対象が WebView の内側にあり、木の上では覆われていないのに、その文字の領域が絵では一色だった
+    /// (`BlankFrameDetector.webViewCaptureMissed`)。WebView の層を取り逃した絵なので判定せずに素通りした(赤にしない)。
+    /// 木に載らない覆い(ページ内の描画だけで隠す等)は見逃す —— 率を見る注記
+    case webViewCaptureBlank = "webview-capture-blank"
     /// findImage / findImages / existImage のスクショのアプリの領域が一色(`BlankFrameDetector.isUnjudgeable`)だったので、照合せずに待って撮り直した
     /// (`FindImage.MatchError.blankScreenshot`・待ちの列は `FindImage.anomalyRetryDelays`)。戻らなければ失敗
     case blankScreenshotRetaken = "blank-screenshot-retaken"
@@ -336,6 +340,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
         case .blankScreenshot:
             return "the screenshot was black apart from the system bars, so the visual check was skipped"
+        case .webViewCaptureBlank:
+            return "the text sits in a WebView and nothing covers it in the tree, but its area of the screenshot was a single colour (the capture missed the WebView layer), so the visual check was skipped"
         case .blankScreenshotRetaken:
             return "the app area of the screenshot for the image search was a single colour, so it waited and took it again"
         case .truncatedDuringSearch:

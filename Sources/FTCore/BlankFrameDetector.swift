@@ -145,6 +145,30 @@ public enum BlankFrameDetector {
     static let blackFrameIgnoredTopRows = 2
     /// セル平均の各チャンネルの上限。実測の黒い絵は 0。暗いテーマの文字入りのセルは 32 x 32 でもこれを超える
     static let blackFrameMaxChannel: UInt8 = 12
+
+    /// テキストの視覚検証の対象が **WebView の内側**にあるなら、その WebView の frame(純粋関数)。
+    /// 対象が WebView そのもの・中心が WebView の外なら nil
+    public static func enclosingWebViewFrame(of element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
+        guard element.type.lowercased() != "webview" else { return nil }
+        let cx = element.frame.x + element.frame.width / 2
+        let cy = element.frame.y + element.frame.height / 2
+        return elements
+            .filter { $0.type.lowercased() == "webview" }
+            .map(\.frame)
+            .filter { cx >= $0.x && cx <= $0.x + $0.width && cy >= $0.y && cy <= $0.y + $0.height }
+            .min { $0.width * $0.height < $1.width * $1.height }
+    }
+
+    /// **WebView の層を取り逃した絵か**(純粋関数)。iOS のスクショは WKWebView の描画を部分的に取り逃すことがあり
+    /// (負荷テストで実測: WebView の一部が黒一色・白一色で、そこにある文字の領域は輝度の標準偏差 0.0。E2E-iOS / E2E-RN で
+    /// 約15回に1回)、木には文字があるのに絵には何も無い = 絵が根拠にならない。条件は3つ全部:
+    /// WebView の内側 / 木の上で他の要素に覆われていない(`geometricSuspicion` が偽 —— ネイティブの覆いは木に載るので、
+    /// 本物の覆いはここで判定に残る)/ 対象の領域に構造が無い(`targetStdDev` が `ceiling` 未満。読めなければ偽 = 判定を続ける)
+    public static func webViewCaptureMissed(insideWebView: Bool, geometricSuspicion: Bool,
+                                            targetStdDev: Double?, ceiling: Double) -> Bool {
+        guard insideWebView, !geometricSuspicion, let targetStdDev else { return false }
+        return targetStdDev < ceiling
+    }
 }
 
 /// 凍結の根拠に使う1枚ぶんの観測。**同じスクショから2つとも取る**(撮り直すと健全機の固定費が倍になる)。

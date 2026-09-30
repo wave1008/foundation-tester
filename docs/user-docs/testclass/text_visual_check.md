@@ -109,6 +109,10 @@ left. FM judges those. Where FM is unavailable, they pass unverified.
 - When the screenshot is black everywhere except the bottom edge (the home indicator or navigation bar),
   the picture was not captured or the display is frozen, so the check is skipped (the result JSON note
   `blank-screenshot`).
+- When the text sits inside a WebView, nothing covers it in the element tree, and its area of the
+  screenshot is a single colour, the screenshot missed the WebView layer (seen on iOS), so the check is
+  skipped (the result JSON note `webview-capture-blank`). Text that the page hides by drawing over it
+  without any element in the tree is not caught in this case.
 - Where FM is unavailable, shapes OCR cannot judge (the "FM decides" shape above) are not verified.
   `fleetest doctor --fm-only` tells you whether FM is available.
 

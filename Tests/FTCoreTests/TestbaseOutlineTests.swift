@@ -105,4 +105,16 @@ final class TestbaseOutlineTests: XCTestCase {
                                           fallbackTitle: "t")
         XCTAssertEqual(draft.scenes[0].action, ["#btn を押す"])
     }
+
+    /// README は置き場の説明(雛形が全プロジェクトに書く)なので候補に数えない。
+    /// 数えると、テストベースが無いのに README から下書きを作り、1本置くと「複数ある」で断る
+    func testReadmeIsNotACandidate() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("testbases-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try "# docs/testbases".write(to: dir.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(TestbaseOutline.candidates(in: dir), [])
+        try "# login".write(to: dir.appendingPathComponent("login.md"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(TestbaseOutline.candidates(in: dir).map(\.lastPathComponent), ["login.md"])
+    }
 }

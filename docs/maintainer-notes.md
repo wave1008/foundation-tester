@@ -3015,9 +3015,23 @@ serve が watchdog(1 命令 30 秒)で落ちて起き直すたびに**別の空�
 自分の xcodebuild は bind できないまま「Bridge auto-start succeeded」と言った(直後の本人確認で止まった)。
 シミュレータは udid の食い違いを `portInUse` で断る(実機は udid を名乗らないことがあるので対象外)
 
+### 59.13 iOS の WebView の層を取り逃した絵で視覚検証が反転(後日直した)
+iOS のスクショが WebView の一部を黒一色・白一色で取り逃し(E2E-iOS・E2E-RN で約 15 回に 1 回)、そこにある文字を OCR だけの
+判定が notRendered と読んで誤った赤にした。**WebView の枠全体は一色ではない**(下部は写っていた)ので、枠で見ると発火しない
+(実画像で標準偏差 16〜95)。条件は「WebView の内側・木の上で覆われていない(`geo` が偽)・対象の文字の領域に構造が無い
+(実画像2枚とも 0.0)」の3つ(`BlankFrameDetector.webViewCaptureMissed`)で、判定を見送り注記 `webview-capture-blank`。
+木に載らない覆い(ページ内の描画だけで隠す)は見逃す。陽性対照 `96_遮蔽の反転` はネイティブの覆いで WebView の外なので対象外
+
+### 59.14 `draft-scenario` が `docs/testbases/README.md` をテストベースに数える
+雛形(`ProjectScaffold`)が全プロジェクトに置く置き場の説明を候補に数え、テストベースが無いのに README から下書きを作り
+(負荷テストの CLI ファズが 10 本作った)、1 本置くと「複数ある」で断っていた。候補から README を外す
+
+### 59.10 の陽性対照(後日)
+sim-09 のランナーアプリを SIGSTOP で固めて serve を殺し・起こし直す操作を3周: 毎周「待受の無い残骸」を1本止め、
+同じ台の xcodebuild は 2 本で頭打ち(修正前は周ごとに1本ずつ増える)。59.12 は `e2e.sh --local --ios-native --ios-xcuitest`
+(8台のランナーを建て直してから)で 42/42 緑
+
 ### 直していないもの・環境の観察
-- **iOS の WebView 領域が一色に写った絵で OCR だけの視覚検証が WebView 内の文字を反転**(E2E-iOS は黒・E2E-RN は白。
-  約 15 回に 1 回)。Android は `WebViewShotComposite` で補うが iOS に同等が無い。直すには設計判断が要る
 - Android の `hold` 中に状態表示が `tooltip=hidden` のまま(E2EX 4 SUT で間欠)。赤の回はエミュレータの表示自体が
   古い白い絵を返していた(ステータスバーの時刻が 2 分前)= 表示の凍結。同時間帯に「画面凍結」で離脱したレーンもある
 - この Mac の Vision 縮退・FM 死(画像で要素を探すの赤は Vision の縮退を事実どおりに言っていた)

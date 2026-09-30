@@ -202,4 +202,51 @@ final class BlankFrameDetectorTests: XCTestCase {
         }
         return output as Data
     }
+
+    // MARK: - WebView の層を取り逃した絵(テキストの視覚検証が判定を見送る)
+
+    private func el(_ type: String, _ x: Double, _ y: Double, _ w: Double, _ h: Double) -> ElementInfo {
+        ElementInfo(ref: 1, type: type, identifier: nil, label: nil, value: nil, placeholder: nil,
+                    enabled: true, frame: FTRect(x: x, y: y, width: w, height: h), depth: 1)
+    }
+
+    /// 対象の中心が WebView の内側なら、その(最も小さい)WebView の枠。外・WebView そのものは nil
+    func testEnclosingWebViewFrame() {
+        let web = el("webView", 0, 100, 400, 500)
+        let inner = el("staticText", 20, 200, 200, 30)
+        let outside = el("staticText", 20, 700, 200, 30)
+        XCTAssertEqual(BlankFrameDetector.enclosingWebViewFrame(of: inner, in: [web, inner, outside]), web.frame)
+        XCTAssertNil(BlankFrameDetector.enclosingWebViewFrame(of: outside, in: [web, inner, outside]))
+        XCTAssertNil(BlankFrameDetector.enclosingWebViewFrame(of: web, in: [web, inner]))
+        XCTAssertNil(BlankFrameDetector.enclosingWebViewFrame(of: inner, in: [inner]))
+    }
+
+    /// 3条件がそろったときだけ取り逃しと読む(木に覆いがあれば判定に残す・読めなければ判定を続ける)。
+    /// 値 0.0 は負荷テストの実画像2枚の対象領域の実測
+    func testWebViewCaptureMissed() {
+        XCTAssertTrue(BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: false,
+                                                              targetStdDev: 0.0, ceiling: 1.0))
+        XCTAssertFalse(BlankFrameDetector.webViewCaptureMissed(insideWebView: false, geometricSuspicion: false,
+                                                               targetStdDev: 0.0, ceiling: 1.0))
+        XCTAssertFalse(BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: true,
+                                                               targetStdDev: 0.0, ceiling: 1.0))
+        XCTAssertFalse(BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: false,
+                                                               targetStdDev: 1.0, ceiling: 1.0))
+        XCTAssertFalse(BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: false,
+                                                               targetStdDev: nil, ceiling: 1.0))
+    }
+
+    /// テキストの視覚検証は OCR/FM の読みより前に WebView 領域の一色を見て、見送りに注記を残す
+    func testVisualCheckSkipsBeforeReadingWhenTheWebViewAreaIsBlank() throws {
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/FTCore/StepExecutor+Assert.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        guard let check = code.range(of: "BlankFrameDetector.enclosingWebViewFrame(of: element, in: elements)"),
+              let read = code.range(of: "RegionText.resolveWithinBudget(") else {
+            return XCTFail("WebView 領域の見送りか OCR の読みが見当たらない")
+        }
+        XCTAssertLessThan(check.lowerBound, read.lowerBound)
+        XCTAssertTrue(code[check.lowerBound...].prefix(900).contains("noteCodesThisStep.insert(.webViewCaptureBlank)"))
+    }
 }

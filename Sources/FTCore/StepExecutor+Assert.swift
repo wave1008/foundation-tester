@@ -203,6 +203,17 @@ extension StepExecutor {
             noteCodesThisStep.insert(.blankScreenshot)
             return nil
         }
+        // WebView の内側の文字の領域が一色で、木の上では覆われていない = WebView の層を取り逃した絵(同じ理由で根拠にしない)。
+        // 閾値は「画素に構造が無い」の定義(firstFrameBlankStdDevCeiling)を共有する。sd は Tier-1 で測っていれば使い回す
+        if !geo, BlankFrameDetector.enclosingWebViewFrame(of: element, in: elements) != nil {
+            let targetStdDev = sd ?? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen)
+            if BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: geo,
+                                                       targetStdDev: targetStdDev,
+                                                       ceiling: Self.firstFrameBlankStdDevCeiling) {
+                noteCodesThisStep.insert(.webViewCaptureBlank)
+                return nil
+            }
+        }
         // Tier-2(FM の手前): 期待テキストが Vision OCR で丸ごと読めれば見えている(FM を呼ばず素通り)。
         // 実 run で FM の段に届いた crop の 97% がここで片付く(p50 92ms。FM は 1.3〜2.8s)。
         // 丸ごと読めなかったこと自体は反転の根拠にしない(反転は下の FM との突き合わせか、FM の段が無いときの OCROnlyVisibility)。

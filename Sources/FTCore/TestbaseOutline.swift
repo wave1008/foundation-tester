@@ -168,6 +168,9 @@ public enum TestbaseOutline {
             at: dir, includingPropertiesForKeys: nil)) ?? []
         return entries
             .filter { ["md", "markdown", "txt"].contains($0.pathExtension.lowercased()) }
+            // **README は置き場の説明**(ProjectScaffold が全プロジェクトに書く)で、テストベースではない。
+            // 数えると、テストベースが無い回に README から黙って下書きを作り、1本置くと「複数ある」で断る
+            .filter { $0.deletingPathExtension().lastPathComponent.lowercased() != "readme" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 }
