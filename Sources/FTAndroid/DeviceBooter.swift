@@ -884,16 +884,15 @@ public enum DeviceBooter {
 
     /// エミュレータをヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す(検出待ち上限60秒)。
     /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する。
-    /// locale の -change-locale は **Play イメージ(フリート全機)では無効**(実測。
-    /// AOSP イメージ向けの保険として残置)。実効的なロケール適用はブート完了後の applyLocale
-    /// (ブリッジ /locale)が担う。
+    /// ロケールはここでは渡さない(`-change-locale` は Play イメージでは効かない = 実測)。呼び手がブート完了後に
+    /// `applyLocale`(ブリッジ /locale)で適用する
     /// **stale ロックは1回だけ自己修復する** —— 早期終了のログが多重起動を示し、かつ実際には
     /// その AVD を握るプロセスが1つも無いときだけ hardware-qemu.ini.lock を消して撃ち直す
     /// (multiinstance.lock は消さない=全 AVD 常時存在するファイル)
-    static func startEmulator(avd: String, gpuMode: String = "host", locale: String? = "ja_JP",
+    static func startEmulator(avd: String, gpuMode: String = "host",
                               log: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
         do {
-            return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode, locale: locale)
+            return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode)
         } catch let failure as EarlyExitFailure {
             guard StaleAVDLock.shouldRetry(
                 logTail: failure.logTail, avdProcessRunning: emulatorProcessRunning(avdID: avd)
@@ -906,14 +905,14 @@ public enum DeviceBooter {
             log("→ \(avd): found a stale hardware-qemu.ini.lock with no emulator process holding it"
                 + " — removed it and retrying the boot once")
             do {
-                return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode, locale: locale)
+                return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode)
             } catch let retryFailure as EarlyExitFailure {
                 throw DeviceBooterError.commandFailed(retryFailure.detail)
             }
         }
     }
 
-    private static func attemptStartEmulator(avd: String, gpuMode: String, locale: String?) async throws -> String {
+    private static func attemptStartEmulator(avd: String, gpuMode: String) async throws -> String {
         let binary = try findEmulatorBinary()
         let adbPath = try AndroidDriver.findADB()
         let before = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
@@ -927,12 +926,9 @@ public enum DeviceBooter {
         // -no-snapshot 必須: ロード+セーブ両方の無効化=コールドブート保証。Quickboot スナップショットの
         // ロードはブート時黒画面の代表原因(-no-snapshot-save だけではセーブのみ無効で、Android Studio 等が
         // 残したスナップショットがあるとロードしてしまう。docs/performance-tuning.md §6 の Wipe Data 行参照)
-        var arguments = ["-avd", avd,
+        let arguments = ["-avd", avd,
                          "-no-snapshot", "-no-window", "-no-boot-anim", "-no-audio",
                          "-gpu", gpuMode]
-        if let locale {
-            arguments += ["-change-locale", locale.replacingOccurrences(of: "_", with: "-")]
-        }
         process.arguments = arguments
         // 凍結の根因証跡(GLDRendererMetal command buffer completion error 等)は emulator の
         // stdout/stderr にしか出ない(実測)ため捨てずに AVD 毎ログへ残す。

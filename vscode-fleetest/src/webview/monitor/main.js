@@ -182,9 +182,6 @@ window.addEventListener('message', (event) => {
       applyDeviceOpFailed(message);
       showBanner(message.name + ': ' + message.message);
       break;
-    case 'laneSectionVisible':
-      // レーンは常時表示のため何もしない(TS側からのメッセージ自体は互換のため残る)
-      break;
     case 'runEvent':
       applyLaneAction(message.action);
       break;

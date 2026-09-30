@@ -975,7 +975,7 @@ public struct ResolvedProfile: Sendable {
     /// 実行開始時に CPU 描画フォールバック機を GPU で起動し直すか
     /// (RunProfileDocument.recoverCpuFallbackToGpu。既定 false)
     public let recoverCpuFallbackToGpu: Bool
-    /// Android エミュレータのブート時に -change-locale で適用するロケール(既定 "ja_JP")
+    /// Android エミュレータのブート後にブリッジ /locale で適用するロケール(既定 "ja_JP")
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool

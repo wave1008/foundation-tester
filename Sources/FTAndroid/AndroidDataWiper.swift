@@ -159,9 +159,8 @@ public enum AndroidDataWiper {
             log("🧹 \(name): data wiped (freed \(sizeGB)GB). "
                 + "Rebooting (the first boot rebuilds and takes minutes)...")
             status?("rebooting")
-            let serial = try await DeviceBooter.startEmulator(avd: avdID, locale: locale)
+            let serial = try await DeviceBooter.startEmulator(avd: avdID)
             try await DeviceBooter.waitForAndroidBoot(serial: serial)
-            // Play イメージでは -change-locale が無効のため、ブリッジ /locale で適用する
             await DeviceBooter.applyLocale(serial: serial, locale: locale,
                                            deviceName: name, log: log)
             log("✅ \(name): Wipe Data finished (\(progress))")

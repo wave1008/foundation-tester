@@ -253,7 +253,6 @@ export class MonitorPanelController implements vscode.Disposable {
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
-  private laneSectionVisible = false;
   private readonly unsubscribeBus: () => void;
   private readonly configChangeSubscription: vscode.Disposable;
   /** show(tab) が新規作成時に指定したタブ。sendInitialState() で switchTab を post した後クリアする
@@ -855,9 +854,6 @@ export class MonitorPanelController implements vscode.Disposable {
   }
 
   private hydrateLaneUi(): void {
-    if (this.laneSectionVisible) {
-      this.post({ type: "laneSectionVisible", visible: true });
-    }
     const snapshot = snapshotRunLaneState(this.laneState);
     if (snapshot.lanes.length > 0 || Object.keys(snapshot.linesByLane).length > 0) {
       this.post({ type: "laneHydrate", snapshot });
@@ -868,8 +864,6 @@ export class MonitorPanelController implements vscode.Disposable {
     switch (message.type) {
       case "runStarted":
         this.busRunActive = true;
-        this.laneSectionVisible = true;
-        this.post({ type: "laneSectionVisible", visible: true });
         this.setTestRunActive(true);
         this.setRecordingsFinalizing(false);
         this.dashboard.noteRunStarted(message.isDryRun);

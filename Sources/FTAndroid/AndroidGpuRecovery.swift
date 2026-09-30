@@ -49,8 +49,7 @@ public enum AndroidGpuRecovery {
                 try await DeviceBooter.shutdownOne(spec: target.device.spec, platform: "android",
                                                   log: log)
                 log("🖥 \(name): rebooting on the GPU (-gpu host)...")
-                let serial = try await DeviceBooter.startEmulator(avd: target.avdID,
-                                                                  gpuMode: "host", locale: locale)
+                let serial = try await DeviceBooter.startEmulator(avd: target.avdID, gpuMode: "host")
                 try await DeviceBooter.waitForAndroidBoot(serial: serial)
                 await DeviceBooter.applyLocale(serial: serial, locale: locale,
                                                deviceName: name, log: log)

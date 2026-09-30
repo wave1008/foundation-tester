@@ -59,7 +59,7 @@ public enum AndroidLaneRecovery {
     ///
     /// `boot` は1台分の実起動の差し込み口(既定 nil = 本番経路。テストは失敗するスタブを渡して
     /// 直列性・再試行回数・部分失敗の非致命性だけを検証する)。本番経路は
-    /// `DeviceBooter.startEmulator(avd:locale:)` → `waitForAndroidBoot(serial:)` →
+    /// `DeviceBooter.startEmulator(avd:)` → `waitForAndroidBoot(serial:)` →
     /// `applyLocale(serial:locale:deviceName:log:)` の順(`AndroidGpuRecovery.recoverCpuFallbackDevices`
     /// と同じ並び)。**プロファイルの locale を使う**(`DeviceBooter.bootOne` は `defaultLocale` 固定
     /// なのでここでは使わない)。
@@ -70,7 +70,7 @@ public enum AndroidLaneRecovery {
     ) async -> (booted: [String], failed: [(name: String, error: Error)]) {
         guard !devices.isEmpty else { return ([], []) }
         let effectiveBoot: (String, String) async throws -> Void = boot ?? { avdID, deviceName in
-            let serial = try await DeviceBooter.startEmulator(avd: avdID, locale: locale)
+            let serial = try await DeviceBooter.startEmulator(avd: avdID)
             try await DeviceBooter.waitForAndroidBoot(serial: serial)
             await DeviceBooter.applyLocale(serial: serial, locale: locale,
                                            deviceName: deviceName, log: log)

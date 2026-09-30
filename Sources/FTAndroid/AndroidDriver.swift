@@ -445,7 +445,8 @@ public final class AndroidDriver: AppDriver {
         // 先に見る**。`currentPackage` は launch/openURL/activate が更新するホスト側の帳簿でしかなく、
         // **MCP のようにアプリを起こさず既にブラウザが前面の端末へ繋ぐ経路では nil のまま**になる
         // (実測: 新しいプロセスから Chrome を撮ったら帳簿が nil で経路が丸ごと不発だった)。
-        // 帳簿は `sessionBundleID` を返さない古いブリッジのための保険として残す
+        // ブリッジは前面のパッケージを取れない回に `sessionBundleID` を返さない(SnapshotBuilder.java の
+        // `if (pkg != null)`)ので、そのときは帳簿へ落ちる
         if let package = snapshot.sessionBundleID ?? currentPackage {
             // **`webView` ノードが無くても差し込む(ブラウザだけ)**(監査で直した)。
             // Chrome は本文を1要素も公開しない画面でノードごと出さないことがあり、

@@ -17,7 +17,6 @@ function makePanel(runAllTests) {
   Object.assign(panel, {
     laneState: createRunLaneState(),
     wipeInProgress: new Map(),
-    laneSectionVisible: false,
     testRunActive: false,
     busRunActive: false,
     pendingRunStart: false,

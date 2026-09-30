@@ -96,12 +96,6 @@ export function snapshotRunLaneState(state: RunLaneState): LaneHydrateSnapshot {
 
 // ---- extension → webview メッセージ(monitorPanel.ts が postMessage する形)---------------
 
-/** レーンセクション自体の表示/非表示(実行が始まったら表示する)。 */
-export interface LaneSectionVisibleMessage {
-  readonly type: "laneSectionVisible";
-  readonly visible: boolean;
-}
-
 /** 1件の LaneAction をそのまま webview へ転送する。 */
 export interface RunEventToWebviewMessage {
   readonly type: "runEvent";
@@ -115,7 +109,6 @@ export interface LaneHydrateMessage {
 }
 
 export type RunLaneToWebviewMessage =
-  | LaneSectionVisibleMessage
   | RunEventToWebviewMessage
   | LaneHydrateMessage;
 

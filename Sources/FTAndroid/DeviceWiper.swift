@@ -31,7 +31,7 @@ public enum DeviceWiperError: Error, LocalizedError, Equatable {
 
 /// iOS の Wipe Data(`simctl erase`)は `AppleLanguages`/`AppleLocale` も
 /// 巻き添えにして消し、ホスト Mac の既定へ戻してしまう(実測: ja-JP → erase → ("en-US","ja-JP"))。
-/// Android は `AndroidDataWiper` が `-change-locale` で戻しているのに、iOS だけ書き戻す経路が
+/// Android は `AndroidDataWiper` がブート後にブリッジ /locale で戻しているのに、iOS だけ書き戻す経路が
 /// 無かった。**読み書きとも `simctl spawn`(公式インタフェース)を使う** —— これは稼働中のデバイスにしか
 /// 効かないので、**稼働中だったデバイスだけ元へ戻す**(`AndroidDataWiper` と同じ「稼働中だったデバイスだけ
 /// 起こし直す」規律。停止中だったデバイスはこの後も再起動しないので、書き戻す機会自体が無い)。
