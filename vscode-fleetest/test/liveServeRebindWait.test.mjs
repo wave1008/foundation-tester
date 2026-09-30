@@ -73,3 +73,16 @@ test("再バインドは起動の成否に関わらず待ち手を解放する",
     "startLatest の終端で待ち手を起こすこと(起動しなかった回を待たせ続けない)",
   );
 });
+
+// 旧 serve が無いとき startLatest は同期で走る。timer をその後ろで const 宣言すると
+// 「Cannot access 'timer' before initialization」で投げ、serveRestartPending が true のまま残る
+// (tsc は関数越しの TDZ を検出しない)。
+test("再バインドの timer は同期で走る startLatest より前に宣言する", () => {
+  const source = controllerSource();
+  const fn = body(source, "private rebindServeProcess(");
+  const declared = fn.search(/\b(let|const|var) timer\b/);
+  const firstUse = fn.indexOf("clearTimeout(timer)");
+  assert.notEqual(declared, -1, "timer の宣言が見つからない");
+  assert.notEqual(firstUse, -1, "clearTimeout(timer) が見つからない");
+  assert.ok(declared < firstUse, "timer は startLatest の定義より前に宣言すること");
+});

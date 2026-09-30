@@ -844,6 +844,8 @@ export class MonitorLiveController implements vscode.Disposable {
     this.killServeProcess(proc);
     const epoch = this.serveStopEpoch;
     let proceeded = false;
+    // startLatest は proc が無いとき setTimeout より前に同期で走る。const で後ろに宣言すると TDZ で投げる
+    let timer: NodeJS.Timeout | undefined;
     const startLatest = (): void => {
       if (proceeded) {
         return;
@@ -864,7 +866,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     // close が来ない(defunct 等)と serveRestartPending が永久 true になり、以後の再バインドと
     // ライブ操作が全て止まる。monitorProcessManager の RESTART_CLOSE_TIMEOUT_MS と同じ安全弁
-    const timer = setTimeout(startLatest, SERVE_REBIND_CLOSE_TIMEOUT_MS);
+    timer = setTimeout(startLatest, SERVE_REBIND_CLOSE_TIMEOUT_MS);
     proc.once("close", startLatest);
   }
 
