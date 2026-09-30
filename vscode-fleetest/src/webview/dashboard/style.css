@@ -56,7 +56,6 @@ select.dash-project, select.dash-since {
   text-align: left;
 }
 .dash-generated-at {
-  margin-left: auto;
   color: var(--vscode-descriptionForeground);
   font-size: 0.9em;
 }

@@ -6,7 +6,7 @@ import type { MessageDict } from "../core";
 
 export const webviewDashboardStrings = {
   // main.js
-  "wvDashboard.main.generatedAt": { ja: "更新: {time}", en: "Updated: {time}" },
+  "wvDashboard.main.generatedAt": { ja: "最終更新: {time}", en: "Last updated: {time}" },
   "wvDashboard.main.projectPlaceholder": { ja: "(プロジェクトを選択)", en: "(Select a project)" },
 
   // render.js
