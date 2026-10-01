@@ -49,6 +49,9 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case deviceLocked(name: String, waited: TimeInterval)
     /// 印(RunnerSlowness.runnerRestartDidNotHelp)があるデバイスのシミュレータ再起動(shutdown/boot)が失敗した
     case simulatorRebootFailed(name: String, detail: String)
+    /// 別の実在するワークスペースの、再利用できないブリッジがこのデバイスに居る(EnginePlan.blockedByForeign)。
+    /// 止めると相手の run を壊すので止めない
+    case foreignBridgeInTheWay(name: String, port: UInt16, owner: String, reason: String)
 
     public var errorDescription: String? {
         switch self {
@@ -84,6 +87,10 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "\(device): automatic app install failed:\n\(detail)"
         case .simulatorRebootFailed(let name, let detail):
             return "\(name): rebooting the simulator failed: \(detail)"
+        case .foreignBridgeInTheWay(let name, let port, let owner, let reason):
+            return "\(name): the \(reason) on port \(port) belongs to another workspace (\(owner))"
+                + " — not stopping it, because that would break the other workspace's runs."
+                + " Stop it from there (`fleetest bridge down --port \(port)` in that workspace) and run again"
         }
     }
 }
@@ -397,6 +404,13 @@ public struct BridgeProvisioner {
     /// 実処理(停止・起動)は並列実行フェーズが担う。ポート採番はプランニングで確定済み。
     enum EnginePlan {
         case reuse(port: UInt16)
+        /// 別の実在するワークスペースのブリッジ(BridgeOwnership.foreign)をそのまま使う。
+        /// **起動し直さない・測り直しで止めない** —— こちらにはツールチェーンの記録も劣化の印も
+        /// 無いので、.reuse の判定に通すと「記録が無い」で起動し直し、相手のランナーを止める
+        case reuseForeign(port: UInt16, owner: String)
+        /// 別の実在するワークスペースの、再利用できない(版違い・別アプリ)ブリッジが居る。
+        /// 止めずに、このデバイスだけ供給失敗にする(executeBridge が throw する)
+        case blockedByForeign(port: UInt16, owner: String, reason: String)
         /// **別プロセスが起動した直後で /status 未応答**の xcuitest ランナーを引き取る
         /// (起動はせず announce を待つだけ)。同一デバイスに 2 本目を立てないための経路で、
         /// 待っても応答しなければ executeBridge がそのランナーを止めて同じポートで起動し直す
@@ -410,6 +424,8 @@ public struct BridgeProvisioner {
         var port: UInt16 {
             switch self {
             case .reuse(let port): return port
+            case .reuseForeign(let port, _): return port
+            case .blockedByForeign(let port, _, _): return port
             case .adopt(let port): return port
             case .launch(let port, _, _, _): return port
             }
@@ -814,6 +830,8 @@ public struct BridgeProvisioner {
         // = 判定材料が無いことを理由に毎回起動し直さない
         func inappSourcesMatch(_ rb: RunningBridge) -> Bool {
             guard engine == "inapp", let current = inappSourceDigest else { return true }
+            // 別のワークスペースの dylib の出所はこちらの台帳に無い(台帳はクローンごと)ので問わない
+            if case .foreign = rb.ownership { return true }
             return rb.sourceDigest == current
         }
         if !(engine == "inapp" && inappNeedsInstall),
@@ -826,6 +844,9 @@ public struct BridgeProvisioner {
                 && inappSourcesMatch($0.value)
            })?.key {
             claimed.insert(port)
+            if case .foreign(let owner) = running[port]?.ownership {
+                return .reuseForeign(port: port, owner: owner)
+            }
             return .reuse(port: port)
         }
         // 起動中(announce 前)の xcuitest ランナーがこのデバイスに居るなら引き取る。
@@ -846,6 +867,12 @@ public struct BridgeProvisioner {
             sameDevice($0.value) && $0.value.engine == "xcuitest" && !claimed.contains($0.key)
                 && $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion
         }) {
+            // 別のワークスペースのものは止めない(1デバイス1ランナーなので、隣に起動しても相手を殺す)
+            if case .foreign(let owner) = stale.value.ownership {
+                claimed.insert(stale.key)
+                return .blockedByForeign(port: stale.key, owner: owner,
+                                         reason: "xcuitest bridge of a different protocol version")
+            }
             claimed.insert(stale.key)
             usedPorts.remove(stale.key)
             stopStalePort = stale.key
@@ -858,6 +885,11 @@ public struct BridgeProvisioner {
                     || $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion
                     || !inappSourcesMatch($0.value))
         }) {
+            if case .foreign(let owner) = stale.value.ownership {
+                claimed.insert(stale.key)
+                return .blockedByForeign(port: stale.key, owner: owner,
+                                         reason: "inapp bridge injected into another app or of another version")
+            }
             claimed.insert(stale.key)
             stopStalePort = stale.key
         }
@@ -1253,6 +1285,14 @@ public struct BridgeProvisioner {
             await claimed()
             log("✅ \(name): reusing the running \(engine) bridge (port \(port), \(sim.name))")
             return port
+        case .reuseForeign(let port, let owner):
+            await claimed()
+            log("⚠️ \(name): the running \(engine) bridge (port \(port)) belongs to another workspace"
+                + " (\(owner)) — using it as is (restarting it would break that workspace's runs)")
+            return port
+        case .blockedByForeign(let port, let owner, let reason):
+            throw BridgeProvisionerError.foreignBridgeInTheWay(name: name, port: port, owner: owner,
+                                                               reason: reason)
         case .adopt(let port):
             await claimed()
             // 別プロセスが起動した直後のランナー。起動はせず announce だけ待つ
@@ -1635,15 +1675,19 @@ public struct BridgeProvisioner {
         /// **注入済み dylib の出所**(`.inapp` 状態ファイルに残した BridgeSourceSet.inApp の digest)。
         /// nil = digest を計算できない構成で書いた 2 語の記録 or 記録なし = 出所不明。inapp の再利用判定に使う
         let sourceDigest: String?
+        /// 持ち主(/status の ownerRepo と自分の台帳から。仕分けは BridgeOwnership.classify)
+        let ownership: BridgeOwnership
 
         init(udid: String?, name: String?, engine: String, protocolVersion: Int?,
-             sessionBundleID: String?, sourceDigest: String? = nil) {
+             sessionBundleID: String?, sourceDigest: String? = nil,
+             ownership: BridgeOwnership = .unknown) {
             self.udid = udid
             self.name = name
             self.engine = engine
             self.protocolVersion = protocolVersion
             self.sessionBundleID = sessionBundleID
             self.sourceDigest = sourceDigest
+            self.ownership = ownership
         }
     }
 
@@ -1683,14 +1727,24 @@ public struct BridgeProvisioner {
                         reported: status.udid,
                         recorded: BridgeDeviceRecord.load(port: port, repoRoot: self.repoRoot),
                         matchedByName: booted.count == 1 ? booted[0].udid : nil)
+                    let stateDir = self.repoRoot.appendingPathComponent(".fleetest")
+                    let ownership = BridgeOwnership.classify(
+                        ownerRepo: status.ownerRepo,
+                        isOwnRepo: status.ownerRepo.map {
+                            BridgeOwnership.isSameRepo($0, self.repoRoot) } ?? false,
+                        ownerExists: status.ownerRepo.map {
+                            FileManager.default.fileExists(atPath: $0) } ?? false,
+                        hasStateFile: FileManager.default.fileExists(
+                            atPath: stateDir.appendingPathComponent("bridge-\(port).pid").path)
+                            || FileManager.default.fileExists(
+                                atPath: InAppBridgeState.url(stateDir: stateDir, port: port).path))
                     return (port, RunningBridge(udid: udid, name: status.device,
                                                 engine: status.engine ?? "xcuitest",
                                                 protocolVersion: status.protocolVersion,
                                                 sessionBundleID: status.sessionBundleID,
                                                 sourceDigest: InAppBridgeState.sourceDigest(
-                                                    stateDir: self.repoRoot
-                                                        .appendingPathComponent(".fleetest"),
-                                                    port: port)))
+                                                    stateDir: stateDir, port: port),
+                                                ownership: ownership))
                 }
             }
             var result: [UInt16: RunningBridge] = [:]

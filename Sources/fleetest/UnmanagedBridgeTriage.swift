@@ -2,6 +2,7 @@
 // 原則: 自動停止は「証拠が決定的」な2行だけ。別の実在ワークスペースの資産は殺さない。
 
 import Foundation
+import FTCore
 
 enum UnmanagedBridgeAction: Equatable {
     /// 自リポジトリ所有だが版が現行 = provision が再利用できる健全なブリッジ。報告しない
@@ -25,10 +26,13 @@ enum UnmanagedBridgeTriage {
     ///   別ワークスペースは古い版のクローンを正当に使い得るため、処遇には影響させない)
     static func decide(ownerRepo: String?, ownerExists: Bool, isOwnRepo: Bool,
                        hasStateFile: Bool, stale: Bool) -> UnmanagedBridgeAction {
-        if isOwnRepo || hasStateFile {
-            return stale ? .reapOwnStale : .skipHealthy
+        // 仕分けは FTCore.BridgeOwnership の1箇所(供給の計画段と共有)
+        switch BridgeOwnership.classify(ownerRepo: ownerRepo, isOwnRepo: isOwnRepo,
+                                        ownerExists: ownerExists, hasStateFile: hasStateFile) {
+        case .own: return stale ? .reapOwnStale : .skipHealthy
+        case .foreign(let owner): return .reportForeign(owner: owner)
+        case .orphan(let owner): return .reapOrphan(owner: owner)
+        case .unknown: return .reportUnknown
         }
-        guard let ownerRepo else { return .reportUnknown }
-        return ownerExists ? .reportForeign(owner: ownerRepo) : .reapOrphan(owner: ownerRepo)
     }
 }

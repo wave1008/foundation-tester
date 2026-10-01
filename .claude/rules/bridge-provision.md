@@ -131,6 +131,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   ランナー用クローン)からは生きた実機ブリッジのトンネルも台帳の無いポートに見える。ポート範囲を総なめする掃除
   (`sweepTunnelOnlyPorts`)は、同じポート・同じ宛先のランナーが居ないことをプロセス表で確かめてから止める
   (`PortHolder.stopOrphanedTunnelHolder`)→ maintainer-notes §61
+- **別の実在するワークスペースのブリッジは、供給が止めない・起動し直さない**(`FTCore.BridgeOwnership`。
+  `/status` の `ownerRepo` を台帳より先に見る。doctor の処遇 `UnmanagedBridgeTriage` と共有)。版が同じなら
+  `.reuseForeign` でそのまま使い、再利用できないなら `.blockedByForeign` でそのデバイスだけ断る。
+  **`.reuse` に通さない** —— こちらにはツールチェーンの記録も劣化の印も無いので「記録が無い」で起動し直し、
+  相手のランナーを止める(2026-10-01 に実際に本線のランナーを止めた)
 - **回復のたびに label(ポート)は変わる**。回復を注入するときは**その時点のワーカー一覧を渡す**
   (`BlankWorkerTriage` の `recover` は第2引数)。最初の一覧を捕まえたままだと2回目の試行で
   新しい label を引けず、`frozen devices have no iOS simulator udid` で必ず失敗する
