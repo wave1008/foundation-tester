@@ -226,11 +226,14 @@ final class SnapshotBuilder {
         markChildren(nodes);
         adoptRoleFromMarkerChildren(nodes);
 
-        // リスト行のテキスト昇格: クリック可能な無名コンテナに最初の子孫テキストを写す
-        // (AndroidDriver.snapshot() と同一ループ)
+        // リスト行のテキスト昇格: クリック可能な無名コンテナに最初の子孫テキストを写す。
+        // **入力欄は対象外** —— 入力欄の text は値(makeInfo)なので、空の欄に子孫のラベルを写すと
+        // 「ラベルを値に持つ欄」になる(Compose の label 付き TextField は EditText の子にラベルの
+        // TextView を持つ。空の欄への type(replace) が「消えなかった」の誤った赤になっていた)
         for (int i = 0; i < nodes.size(); i++) {
             UINode node = nodes.get(i);
             if (!node.clickable || !node.text.isEmpty() || !node.contentDesc.isEmpty()) continue;
+            if (isInputType(mappedType(node))) continue;
             for (int j = i + 1; j < nodes.size() && nodes.get(j).depth > node.depth; j++) {
                 if (!nodes.get(j).text.isEmpty()) {
                     node.text = nodes.get(j).text;
@@ -602,6 +605,10 @@ final class SnapshotBuilder {
                 break;
             }
         }
+    }
+
+    private static boolean isInputType(String type) {
+        return type.equals("TextField") || type.equals("SecureTextField");
     }
 
     /** 役割マーカーの矩形条件: 4辺のうち2辺以上が一致し、面積が3倍以内(独立クリップの許容) */

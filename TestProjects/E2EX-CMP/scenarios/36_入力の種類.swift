@@ -77,6 +77,25 @@ class 入力の種類ごとに入力できること {
         }
     }
 
+    @Test("ラベル付きの空の欄へ置き換えで入力できる")
+    func S0050() {
+        scenario {
+            scene(1, "空の数量欄へ replace") {
+                condition {
+                    launchApp()
+                    tap("#nav_inputs", scroll: .down)
+                }.action {
+                    // ラベル付きの欄は、Android で空の欄にラベルの文字を値として写していた(ブリッジの
+                    // テキスト昇格。v85 で入力欄を除外)。写ると replace の事後検証が値の不変を
+                    // 「消えなかった」と読んで誤った赤になる
+                    type("#field_number", "456", replace: true)
+                }.expectation {
+                    select("#txt_number_echo").textIs("number=456")
+                }
+            }
+        }
+    }
+
     @Test("キーボードに隠れる位置の欄へ入力")
     func S0040() {
         scenario {
