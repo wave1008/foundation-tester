@@ -58,6 +58,10 @@ args = ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
 FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 ```
 
+Codex は MCP のツールを呼ぶたびに承認を求めます(画面の探索では数十回になり、非対話の
+`codex exec` では全部拒否されます)。承認なしで通すなら `[mcp_servers.fleetest]` に
+`default_tools_approval_mode = "approve"` を足します(codex-cli 0.150 で確認)。
+
 > **そのまま追記しないでください。** TOML は同じテーブルの重複を許さないので、
 > `[mcp_servers.fleetest]` が2つになると**設定ファイル全体が無効**になります。既にある場合は
 > 追記ではなく既存テーブルの値を書き換えてください。

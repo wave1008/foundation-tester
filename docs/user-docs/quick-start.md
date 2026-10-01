@@ -4,6 +4,11 @@ The shortest path from a completed setup to creating test scenarios for a sample
 them. You do not write scenarios by hand. If you don't have a work folder with `TestProjects/`
 yet, run `/fleetest:fleetest-setup` from [Getting Started](getting-started.md) first.
 
+> **With Codex**: do steps 1 and 2 in a session started with `codex --sandbox danger-full-access`.
+> The default sandbox blocks cloning into the neighbouring folder and driving the simulators. From
+> step 3 on the default sandbox works (`ft_*` runs inside the MCP server). See
+> [Other agents](tools/other_agents.md) for registering the MCP server and setting its approvals.
+
 ## 1. Prepare the sample app
 
 The app under test is [sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile), a sample
@@ -15,7 +20,7 @@ server as well.
 
 ```text
 Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then:
-1. Start the server (check until /health returns ok). Start it so that it keeps running after this session is closed
+1. Start the server (check until /health returns ok). Start it so that it keeps running after this session is closed (with nohup or similar)
 2. Build the Android debug APK
 3. Build for the iOS simulator (arm64 only, unsigned)
 Prerequisites: JDK 17 and Apple Container are required. If they are missing, you may install them with Homebrew.

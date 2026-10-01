@@ -5,6 +5,11 @@
 `TestProjects/` を含む作業フォルダがまだ無ければ、先に[はじめに](getting-started_ja.md)の
 `/fleetest:fleetest-setup` を済ませてください。
 
+> **Codex を使う場合**: ステップ1・2は `codex --sandbox danger-full-access` で起動したセッションで
+> 行ってください。既定のサンドボックスでは、隣のフォルダへの clone とシミュレータの操作が塞がれます。
+> ステップ3以降は既定のままで動きます(`ft_*` は MCP サーバの中で動くため)。MCP の登録と承認の
+> 設定は[その他のエージェント](tools/other_agents_ja.md)を参照してください。
+
 ## 1. サンプルアプリを用意する
 
 テスト対象には、EC 買い物アプリのサンプル
@@ -16,7 +21,7 @@
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、
-1. サーバを起動(/health が ok を返すまで確認)。このセッションを閉じても動き続けるように起動する
+1. サーバを起動(/health が ok を返すまで確認)。このセッションを閉じても動き続けるように起動する(nohup などで)
 2. Android の debug APK をビルド
 3. iOS シミュレータ向け(arm64 のみ、署名なし)をビルド
 前提: JDK 17 と Apple Container が必要。無ければ Homebrew で入れてよい。

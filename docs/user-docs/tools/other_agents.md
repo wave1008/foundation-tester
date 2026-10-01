@@ -60,6 +60,10 @@ args = ["-c", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""]
 FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 ```
 
+Codex asks for approval every time it calls an MCP tool (dozens of times while exploring screens,
+and non-interactive `codex exec` rejects them all). To let the calls through without approval, add
+`default_tools_approval_mode = "approve"` to `[mcp_servers.fleetest]` (confirmed with codex-cli 0.150).
+
 > **Do not blindly append it.** TOML does not allow a table to be defined twice, so a second
 > `[mcp_servers.fleetest]` invalidates the **whole file**. If an entry already exists, edit the
 > values in place instead of appending.
