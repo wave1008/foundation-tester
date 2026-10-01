@@ -336,8 +336,9 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 - **貼る位置は木の `webView` ノード**(あれば)。無いときだけ画像から拾った帯を使い、
   **縦横比がほぼ一致するときに限って**貼る —— アプリの chrome ごと写らず画面全体が1色になる
   端末では、帯だけで決めるとナビゲーションバーの上にページを重ねてしまう
-- **アプリ側で WebView のデバッグが有効でないと補えない**
-  (`WebView.setWebContentsDebuggingEnabled(true)`。通常は debug ビルドのみ)。
+- **WebView の devtools ソケットが開いていないと補えない**。開くのは、システムが debuggable
+  (Google APIs のエミュレータ・userdebug イメージ)・アプリが debuggable(debug ビルド)・アプリ自身が
+  `WebView.setWebContentsDebuggingEnabled(true)` を呼んでいる、のどれかのとき(DOM の読み取りと同じソケット)。
   補えなかったときは**黙らず**、確かめ方(`adb shell cat /proc/net/unix | grep devtools_remote`)
   ごと警告を出す
 - 殺しスイッチは `FT_WEBVIEW_DOM=off`(DOM 読みと同じ口)

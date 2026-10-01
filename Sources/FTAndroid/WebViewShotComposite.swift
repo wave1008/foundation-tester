@@ -118,8 +118,9 @@ enum WebViewShotComposite {
         switch reason {
         case .noDevtoolsSocket:
             return head + "The app process has no WebView devtools socket — either no WebView is"
-                + " on screen, or WebView debugging is off in the app under test"
-                + " (WebView.setWebContentsDebuggingEnabled(true), usually debug builds only)."
+                + " on screen, or WebView debugging is off: it opens when the system image is debuggable"
+                + " (Google APIs emulators, userdebug), the app is a debug build, or the app calls"
+                + " WebView.setWebContentsDebuggingEnabled(true)."
                 + " Check with: adb -s \(serial) shell cat /proc/net/unix | grep devtools_remote"
         case .appNotRunning:
             return head + "The app under test is not running on this device, so there is no page"

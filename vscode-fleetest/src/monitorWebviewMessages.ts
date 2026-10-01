@@ -18,7 +18,9 @@ import type {
 } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
 import type { DeviceCommandSource, MachineColor, RemoteHostEntry } from "./remoteRunArgs";
-import { isRetentionPatch, type RetentionPatch, type RetentionUsage, type RetentionValues } from "./retentionModel";
+import {
+  isRetentionPatch, type RetentionConfigured, type RetentionPatch, type RetentionUsage, type RetentionValues,
+} from "./retentionModel";
 import type { ResidentProcess } from "./residentProcesses";
 import {
   isRecord,
@@ -386,7 +388,11 @@ export type MonitorToWebviewMessage =
   | {
       readonly type: "retention";
       readonly policy?: RetentionValues;
+      /** 明示した値だけ(未指定は null)。webview の入力欄の値になる(settingsTab.js) */
+      readonly configured?: RetentionConfigured;
       readonly defaults?: RetentionValues;
+      /** 各上限の最小値。webview が入力の下限に使う */
+      readonly minimums?: RetentionValues;
       readonly usage?: RetentionUsage;
       readonly error?: string;
       /** 「今すぐクリーンアップ」の進行と結果。掃除を伴わない配信では undefined。
@@ -709,7 +715,7 @@ export type MonitorFromWebviewMessage =
       // 正はローカル)。
       readonly register: boolean;
       /** 同名の実体が既にあるとき、消してから作り直す(`api create-device --overwrite`)。
-       * 破壊的なので webview では決めず、ホスト側のモーダル確認を通ってから true になる。 */
+       * webview が同名の衝突を見て true を送り、破壊的なのでホストがモーダルで確認してから実行する。 */
       readonly overwrite?: boolean;
       /** 選んだ OS バージョンがダウンロードが要る(インストール済みでない)Android システムイメージの
        * ときだけ載る。ホストは1枚の確認モーダル(ライセンス同意)を挟んでから
@@ -989,7 +995,10 @@ function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
     typeof value.dir === "string" &&
     (value.color === undefined || typeof value.color === "string") &&
     (value.enabled === undefined || typeof value.enabled === "boolean") &&
-    (value.developerDir === undefined || typeof value.developerDir === "string")
+    (value.developerDir === undefined || typeof value.developerDir === "string") &&
+    // 0 = 未設定(settingsTab.js の fmConcurrencyValue が空欄・0 以下を 0 で送る)。0 を断ると保存ごと落ちる
+    (value.fmConcurrency === undefined
+      || (typeof value.fmConcurrency === "number" && Number.isInteger(value.fmConcurrency) && value.fmConcurrency >= 0))
   );
 }
 
@@ -1113,6 +1122,9 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.os === "string" &&
         value.os !== "" &&
         typeof value.register === "boolean" &&
+        // 破壊的(--overwrite)。ホストは確認の文言を `=== true` で、CLI への付与を値の有無で選ぶので、
+        // 真偽値以外を通すと確認は「作成」の文言なのに上書きが走る
+        (value.overwrite === undefined || typeof value.overwrite === "boolean") &&
         (value.installSystemImage === undefined || isInstallSystemImageRequestLike(value.installSystemImage)) &&
         isDeviceCommandSourceLike(value.source)
       );
@@ -1221,7 +1233,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.record === "boolean" &&
         typeof value.fields.recordFailuresOnly === "boolean" &&
         typeof value.fields.recordBitrateKbps === "string" &&
-        typeof value.fields.recordFullResolution === "boolean"
+        typeof value.fields.recordFullResolution === "boolean" &&
+        // 型で必須の3欄(monitorProfileForms.ts)。欠けると updateRunProfileInObject が undefined を代入して
+        // ON/OFF が黙って既定へ戻る・workspace.trim() が投げる
+        typeof value.fields.playProtectBypass === "boolean" &&
+        typeof value.fields.updateWebView === "boolean" &&
+        typeof value.fields.workspace === "string"
       );
     case "appProfileAdd":
       return true;

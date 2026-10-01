@@ -23,7 +23,13 @@ public enum CheckStateReading {
     static let textEntryTypes: Set<String> = ["textField", "secureTextField", "textView", "searchField", "staticText"]
 
     public static func state(of element: ElementInfo, isAndroid: Bool) -> CheckState {
-        state(checked: element.checked, type: element.type, value: element.value, isAndroid: isAndroid)
+        // **DOM 経路の要素は OS に依らず "2" = indeterminate**(WebViewDOMSnapshot が mixed を checked:false +
+        // value "2" で出す)。Android の数値読みは "2" を読まないので、ここで先に拾わないと checked:false が勝って
+        // 一部だけ選択されたチェックボックスがオフに化ける(checkIsOFF の誤った緑)
+        if element.web == true, element.value == "2", numericStateTypes.contains(element.type) {
+            return .indeterminate
+        }
+        return state(checked: element.checked, type: element.type, value: element.value, isAndroid: isAndroid)
     }
 
     /// セレクタの `checked=` 用(プラットフォームを知らない経路)。オンの判定は OS に依らない ——

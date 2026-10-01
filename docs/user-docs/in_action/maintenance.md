@@ -87,7 +87,7 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
 ### Remote runner machines
 
 Nobody looks at a runner machine's results, reports, and recordings the way you look at your own, so
-they pile up unnoticed. Run `fleetest remote clean <machine>` from time to time. You can check the free
+they pile up unnoticed. Run `fleetest remote clean --runner <machine>` from time to time. You can check the free
 space with `fleetest remote status`. `remote clean` stops if a test is running.
 
 ### Image samples

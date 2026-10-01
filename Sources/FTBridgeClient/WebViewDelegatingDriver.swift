@@ -114,7 +114,7 @@ public final class WebViewDelegatingDriver: AppDriver {
             // WebView 画面を離れた / in-app で読めている。webViewPath がブリッジの自己申告
             // (ホストはフレームワーク固有の知識を持たない) — "dom-interop" なら操作だけ座標で
             // XCUITest へ回すモードに入る。それ以外(nil/"dom")は通常どおり primary 一本
-            if inapp.webViewPath == "dom-interop" {
+            if inapp.webViewPath == WebViewPath.domInterop {
                 // **この区間で初めて委譲側を使う前に1回だけ暖める**。旧経路は必ず
                 // delegated.snapshot() を通っており、それが attach と WebView の AX 活性化を
                 // 兼ねていた。省くと最初の座標タップが 200 を返しても実際には効かないことがある

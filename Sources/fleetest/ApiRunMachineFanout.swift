@@ -34,9 +34,9 @@ enum ApiRunMachineFanout {
         var performanceMode: Bool
         var remoteDir: String?
         var remoteTimeout: Int?
-        /// `--wait-lock <秒>`。**リモートの子にだけ渡す**(手元の子にディスパッチのロックは無い)。
-        /// ここに無いと、拡張の設定 `fleetest.remoteWaitLock` が**複数機械にまたがるプロファイルで
-        /// だけ黙って落ちる** —— 共有フリートで一番待ちたい形がまさにそれ
+        /// `--wait-lock <秒>`。**親の待ち(先読み・DispatchPrelock)にだけ使い、子へは渡さない**
+        /// (下の args 組み立てと §18.10)。ここに無いと、拡張の設定 `fleetest.remoteWaitLock` が
+        /// **複数機械にまたがるプロファイルでだけ黙って落ちる** —— 共有フリートで一番待ちたい形がまさにそれ
         var waitLock: Int?
     }
 

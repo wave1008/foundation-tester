@@ -47,6 +47,8 @@ const VALID_RUN_PROFILE_SAVE = {
     enableAnimations: false,
     reportDir: "reports",
     updateWebView: true,
+    playProtectBypass: true,
+    workspace: "",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "1",
     recoverCpuFallbackToGpu: false,
@@ -57,6 +59,15 @@ const VALID_RUN_PROFILE_SAVE = {
     recordFullResolution: false,
   },
 };
+
+test("isMonitorFromWebviewMessage: runProfileSave は型で必須の playProtectBypass / updateWebView / workspace を欠くと false", () => {
+  // 欠けると updateRunProfileInObject が undefined を代入して ON/OFF が黙って既定へ戻る・workspace.trim() が投げる
+  for (const key of ["playProtectBypass", "updateWebView", "workspace"]) {
+    const fields = { ...VALID_RUN_PROFILE_SAVE.fields };
+    delete fields[key];
+    assert.equal(isMonitorFromWebviewMessage({ ...VALID_RUN_PROFILE_SAVE, fields }), false, key);
+  }
+});
 
 test("isMonitorFromWebviewMessage: runProfileLoad は profile が非空文字列なら true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "runProfileLoad", profile: "run1" }), true);
@@ -95,6 +106,8 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         enableAnimations: true,
         reportDir: "",
         updateWebView: true,
+        playProtectBypass: false,
+        workspace: "",
         wipeDataOnBloat: false,
         wipeDataThresholdGB: "",
         recoverCpuFallbackToGpu: true,

@@ -893,9 +893,11 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 - **クロスオリジン iframe は読めない**(main frame の JS からは触れない)。数を数えて
   `SnapshotResponse.note` で申告する(黙って要素ゼロにしない)。
 - 殺しスイッチ `FT_WEBVIEW_DOM=off`(ホストの環境変数。`SIMCTL_CHILD_` で注入先へ引き渡す)。
-- **DOM 経路の可否は WKWebView 単位で決める**(`WebViewDOM.isInteropHosted`)。祖先に
-  `FlutterView` / `FlutterTouchInterceptingView` / `androidx.compose.ui.*` が居れば interop 配下 =
-  読めても操作が届かないので使わない。**アプリ単位で判定してはいけない**: UIKit アプリの
+- **interop 配下かは WKWebView 単位で決める**(`WebViewDOM.isInteropHosted`)。祖先に
+  `FlutterView` / `FlutterTouchInterceptingView` / `androidx.compose.ui.*` / `RNCWebView` が居れば interop 配下 =
+  読めても操作が届かないので、**DOM は読んだうえで `webViewPath: "dom-interop"` を名乗り、操作だけホスト側
+  (`WebViewDelegatingDriver`)が XCUITest へ回す**(上の表・下の「`dom-interop` では ref を XCUITest へ渡さない」)。
+  **アプリ単位で判定してはいけない**: UIKit アプリの
   Flutter add-to-app や CMP 画面混在では、アプリは uikit なのに中の WebView だけ interop 配下になる
   (逆に1画面のためにアプリ全体で DOM 経路を捨てることにもなる)。目印は実測の祖先チェーンから採った
   (SwiftUI の `UIKitPlatformViewHost` は "PlatformView" を含むので雑な部分一致は禁物)。
@@ -3046,9 +3048,10 @@ v1 で採取 → v2 で2周 → `heal=false` で赤、を1台に固定して判�
     engine を hybrid に固定しても直らない問題なので、**エンジンの選択では解けない**
   - **ホーム画面・システム UI は `ft_launch com.apple.springboard` で読む**(XCUITest 経路のみ)。
     セッションはアプリに閉じているので、未起動での `ft_snapshot` は 409、`ft_navigate home` 後は
-    背面アプリ照会の 500(kAXErrorServerNotFound)になる。`BridgeRouter.handleLaunch` は
+    木の読みの前面確認(`requireForegroundApp`)の 422 になる。`BridgeRouter.handleLaunch` は
     springboard を**起動せず参照だけ張る**特別扱いを持つので、これで木が読める
-    (`MCPServer.springboardHint` / `backgroundingNavigationNote` が両方の行き止まりで案内する)
+    (409 には `MCPServer.springboardHint`、home の後は `backgroundingNavigationNote` が案内し、
+    422 はランナーの本文自身が springboard の読み方を言う)
   - **MCP の snapshot は必ずキャッシュを捨てて撮る**(`MCPServer.freshSnapshot`。2026-08-06)。
     Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる** ——
     実測(E2E-CMP / Pixel 9・Android 15)では `ft_swipe` 後の画面が行08〜16 なのに木は行01〜10 のままで、

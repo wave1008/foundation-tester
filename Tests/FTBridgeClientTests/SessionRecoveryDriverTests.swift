@@ -83,6 +83,26 @@ final class SessionRecoveryDriverTests: XCTestCase {
         XCTAssertEqual(fake.snapshotCallCount, 2)
     }
 
+    /// **包む相手が in-app 自身のときは 409 を回復しない**(in-app の 409 は一時的な競合 = キーウィンドウ無し・
+    /// フォーカス無し)。読み違えると activate を撃ち、本文を「ランナーのセッションが失われた」に差し替える
+    func testConflictIsPassedThroughWhenTheBaseIsAnInAppBridge() async throws {
+        let fake = FakeAppDriver()
+        fake.snapshotShouldFail = [true, false]
+        let driver = SessionRecoveryDriver(base: fake, readsConflictAsSessionLoss: false)
+        try await driver.launch(bundleID: "com.example.app")
+        do {
+            _ = try await driver.snapshot()
+            XCTFail("in-app の 409 は回復せずそのまま返るべき")
+        } catch {
+            guard case DriverError.badResponse(let status, let body) = error, status == 409 else {
+                return XCTFail("409 の素通しを期待したが \(error) だった")
+            }
+            XCTAssertFalse(body.contains("runner session was lost"), body)
+        }
+        XCTAssertEqual(fake.activateCalls, [], "in-app へ activate を撃たない")
+        XCTAssertEqual(fake.snapshotCallCount, 1)
+    }
+
     /// terminateApp 後は回復対象にしない。残すと次の snapshot が activate でアプリを起動し直し、
     /// 明示的な terminate を黙って打ち消してしまう(セッション消失=障害 と 意図的な終了 は別物)。
     func testTerminateStopsRecoveryAndDoesNotRelaunch() async throws {

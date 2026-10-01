@@ -20,12 +20,19 @@ import FTCore
 public final class SessionRecoveryDriver: AppDriver {
     private let base: AppDriver
     private var lastBundleID: String?
+    /// false = 409 をセッション消失と読まない(回復も文言の差し替えもしない)。**包む相手が in-app ブリッジ
+    /// 自身のとき**に使う(探索用の組み立ての縮退 = XCUITest ブリッジを用意できず in-app のポートが残った)——
+    /// in-app の 409 は「キーウィンドウ無し・フォーカス無し」の一時的な競合で、読み違えると正当な失敗が
+    /// 「ランナーのセッションが失われた」になり無用な activate を撃つ。スナップショットの正規化は残す
+    private let readsConflictAsSessionLoss: Bool
 
-    public init(base: AppDriver) {
+    public init(base: AppDriver, readsConflictAsSessionLoss: Bool = true) {
         self.base = base
+        self.readsConflictAsSessionLoss = readsConflictAsSessionLoss
     }
 
     private func isSessionLost(_ error: Error) -> Bool {
+        guard readsConflictAsSessionLoss else { return false }
         if case DriverError.badResponse(let status, _) = error, status == 409 { return true }
         return false
     }

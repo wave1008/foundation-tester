@@ -517,6 +517,25 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は受理しない(自動フ�
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: true }), false);
 });
 
+test("isMonitorFromWebviewMessage: setRemoteConfig の fmConcurrency は 0(= 未設定)以上の整数だけ", () => {
+  const host = (fm) => ({ type: "setRemoteConfig", hosts: [{ machine: "m", host: "u@m", dir: "", fmConcurrency: fm }] });
+  // webview(settingsTab.js の fmConcurrencyValue)は空欄・0 以下を 0 で送る。0 を断ると保存ごと落ちる
+  assert.equal(isMonitorFromWebviewMessage(host(0)), true);
+  assert.equal(isMonitorFromWebviewMessage(host(2)), true);
+  assert.equal(isMonitorFromWebviewMessage(host("2")), false);
+  assert.equal(isMonitorFromWebviewMessage(host(1.5)), false);
+});
+
+test("isMonitorFromWebviewMessage: createDevice の overwrite は省略か真偽値だけ", () => {
+  const base = {
+    type: "createDevice", machine: "M1", platform: "android", name: "dev00", model: "pixel_9",
+    os: "system-images;android-36;google_apis;arm64-v8a", register: false, source: { kind: "local" },
+  };
+  assert.equal(isMonitorFromWebviewMessage({ ...base, overwrite: true }), true);
+  // 確認の文言は `=== true`、CLI への --overwrite は値の有無で選ぶので、真偽値以外は通さない
+  assert.equal(isMonitorFromWebviewMessage({ ...base, overwrite: "no" }), false);
+});
+
 test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](machine/host/dir)なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({

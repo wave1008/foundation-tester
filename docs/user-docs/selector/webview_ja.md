@@ -55,8 +55,9 @@ Android では、端末のスクリーンショットが WebView の層をまる
 これは間欠的で、アプリを起動し直すと直ることがあります。そのため**到達確認は
 スクリーンショットではなく木のアサーション(`exist` / `notExist`)で書いてください** ——
 スクリーンショットに基づく確認は、シナリオ自体とは無関係な理由で失敗することがあります。
-スクリーンショットに WebView の中身を写すには、アプリ側で WebView のデバッグが有効である
-必要もあります(通常は debug ビルドのみ)。詳細は
+スクリーンショットに WebView の中身を写すには、WebView のデバッグ用の接続が開いている必要も
+あります(端末が debuggable なエミュレータ・アプリが debug ビルド・アプリが
+`WebView.setWebContentsDebuggingEnabled(true)` を呼んでいる、のどれか。下の DOM の読み取りと同じ条件です)。詳細は
 [docs/commands.md](../../commands.md)を参照してください。
 
 ## Android: `user` システムイメージ(Play Store イメージ)では DOM 経路が閉じる

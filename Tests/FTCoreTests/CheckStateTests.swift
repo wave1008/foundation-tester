@@ -18,6 +18,17 @@ final class CheckStateTests: XCTestCase {
 
     // MARK: - 実測の表
 
+    /// DOM 経路(WebView)の mixed は checked:false + value "2"。Android でもオフにせず indeterminate と読む
+    func testWebViewDOMIndeterminateIsNotReadAsOffOnAndroid() {
+        let mixed = ElementInfo(ref: 1, type: "checkBox", identifier: "cb", label: nil, value: "2", placeholder: nil,
+                                enabled: true, frame: FTRect(x: 0, y: 0, width: 44, height: 44), depth: 1,
+                                checked: false, web: true)
+        XCTAssertEqual(android(mixed), .indeterminate)
+        XCTAssertEqual(ios(mixed), .indeterminate)
+        // ネイティブの Android(web ではない)の読み方は変えない
+        XCTAssertEqual(android(el("checkBox", value: "2", checked: false)), .off)
+    }
+
     func testFlutterAndSwiftUIToggleReportTheStateAsSwitchValue() {
         XCTAssertEqual(ios(el("switch", value: "1")), .on)
         XCTAssertEqual(ios(el("switch", value: "0")), .off)

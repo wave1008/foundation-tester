@@ -104,14 +104,18 @@ public enum ExploreDriverResolver {
         case .direct(let port), .rerouteToXCUI(let port):
             // ここへ来るのは in-app に注入し直せないとき(実機・同名デバイス複数・アプリ不明)。
             // **理由まで出す**: 「hybrid になるはず」で読む側が、なぜならなかったかを追えるように
+            // **XCUITest ブリッジを用意できなかったとき port は in-app 自身(direct = preferred)**。
+            // そのときは XCUITest を名乗らず、409 をセッション消失と読まない(in-app の 409 は一時的な競合)
+            let reachedXCUI = port != preferred
             logger("port \(preferred) is an in-app bridge, but this device cannot be driven through it"
                 + " (\(udid == nil ? "the simulator could not be identified" : "the bridge did not report its app"))"
-                + " — using the XCUITest bridge (port \(port))")
+                + (reachedXCUI ? " — using the XCUITest bridge (port \(port))"
+                    : " — no XCUITest bridge could be prepared, so the in-app bridge (port \(port)) is used as is"))
             // port は plan() 経由で常に resolution.endpoint.port と同じ値(direct=preferred,
             // rerouteToXCUI=xcuiPort。どちらも resolution.endpoint から採った値)なので
             // endpoint をそのまま渡してよい(host だけ渡すと usb トンネルの token を落とす)
             return Resolved(driver: SessionRecoveryDriver(
-                base: BridgeClient(endpoint: resolution.endpoint)),
+                base: BridgeClient(endpoint: resolution.endpoint), readsConflictAsSessionLoss: reachedXCUI),
                             engine: "xcuitest", udid: udid)
         case .inappOnly(let port):
             guard let repoRoot, let udid else {
@@ -120,9 +124,10 @@ public enum ExploreDriverResolver {
                 logger(Self.unidentifiedSimulatorNote(port: port, repoRoot: repoRoot))
                 // 縮退でも SessionRecoveryDriver で包む(通常経路と同じ。素の BridgeClient だと
                 // スナップショット正規化=ラッパー統合が掛からず、同じ画面で挙動が割れる)。
-                // port は .inappOnly(port: preferred) なので endpoint(preferred の宛先)と同一
+                // port は .inappOnly(port: preferred) なので endpoint(preferred の宛先)と同一 =
+                // **包む相手は in-app 自身**なので 409 をセッション消失と読まない
                 return Resolved(driver: SessionRecoveryDriver(
-                                    base: BridgeClient(endpoint: endpoint)),
+                                    base: BridgeClient(endpoint: endpoint), readsConflictAsSessionLoss: false),
                                 engine: "xcuitest", udid: udid)
             }
             logger("port \(port) is an in-app bridge — using it (no XCUITest bridge for fallback:"

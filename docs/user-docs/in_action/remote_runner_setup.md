@@ -33,7 +33,10 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 | Remote Login on | checked in Step 1 |
 | The firewall is off; if it is on, its "Block all incoming connections" is off | see item 2 of Step 0 |
 | Homebrew is installed, in a version that supports that macOS | `brew --version` runs |
-| Android SDK and AVDs (only when running Android) | `fleetest doctor` |
+| Xcode's license is accepted and its first-launch setup is done | `sudo xcodebuild -license accept`, then `sudo xcodebuild -runFirstLaunch` (`fleetest remote setup` stops if either is missing) |
+| Screen Sharing on (recommended: lets you log back in from your Mac after the runner restarts; `fleetest remote setup` does not require it) | System Settings → General → Sharing → Screen Sharing |
+| The iOS simulator runtime you test with is downloaded (only when running iOS; runs are not stopped without it, but Step 5 warns) | `xcodebuild -downloadPlatform iOS` |
+| Android SDK and AVDs (only when running Android). Keep the SDK in its default location (`~/Library/Android/sdk`) | `fleetest doctor` |
 
 If the runner has several Xcode versions installed side by side under `/Applications`, fleetest
 automatically picks the one that matches your Mac's Xcode product version — you don't need to
@@ -77,8 +80,9 @@ do them for you.
    <https://developer.android.com/studio>. Install the Android SDK in the setup wizard that runs
    the first time you start it.
    - Keep the SDK in its default location (`~/Library/Android/sdk`). fleetest runs over SSH, so an
-     `ANDROID_HOME` set in `~/.zshrc` or similar is not read. In the default location, nothing
-     needs to be configured.
+     `ANDROID_HOME` set in `~/.zshrc` or similar is not read (fleetest looks at `ANDROID_HOME`, then
+     `ANDROID_SDK_ROOT`, then the default location). In the default location, nothing needs to be
+     configured.
    - You can create emulators (AVDs) in Android Studio's Device Manager. You can also create them
      from fleetest in Step 4.
 7. **Install Homebrew**. In Step 3, fleetest uses Homebrew to install a tool it needs
@@ -194,13 +198,16 @@ The command goes through these stages:
    stops.
 3. Prepares fleetest and your test project under `~/fleetest-runner/` on the runner.
 4. Brings the runner's fleetest to the same version as your Mac.
+5. Only when you add `--profile <run profile>` (and optionally `--scenario <scenario id>`), sends one
+   real dispatch to the runner as a final check. Without it, this stage is reported as "not yet
+   verified" (a warning). `--skip-verify` also skips it.
 
 The exit code tells you how it ended:
 
 | Exit code | Meaning | What to do next |
 |---|---|---|
-| `0` | Done | Go on to Step 4 |
-| `2` | The required checks passed, but some items still need a person | Fix the listed items and run the same command again |
+| `0` | Done (the final dispatch check passed too) | Go on to Step 4 |
+| `2` | The required checks passed, but some items are not finished: a person still has to do something, or the final dispatch check was skipped (no `--profile`, or `--skip-verify`) | Fix the listed items and run the same command again. If only the check was skipped, running a real test in Steps 4–6 is enough |
 | `1` | Failed | Read the message and fix it (see "Troubleshooting" below) |
 
 ## Step 4: Add the runner's devices to your run profile (on your Mac)

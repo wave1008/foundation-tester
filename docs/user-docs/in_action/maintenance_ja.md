@@ -83,7 +83,7 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 ### リモートのランナー機
 
 ランナー機の結果・レポート・録画は、手元と違って誰も見ていないので、気付かないうちに溜まります。
-ときどき `fleetest remote clean <マシン名>` を実行してください。空き容量は `fleetest remote status` で
+ときどき `fleetest remote clean --runner <マシン名>` を実行してください。空き容量は `fleetest remote status` で
 確かめられます。テストが走っているときは、`remote clean` は止まります。
 
 ### 画像の見本

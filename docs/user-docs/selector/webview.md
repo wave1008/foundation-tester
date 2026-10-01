@@ -58,8 +58,9 @@ accessibility tree still has every element at its real coordinates — only the 
 image is blank in that area). This is intermittent and self-corrects on relaunch, so
 **write reachability checks as tree assertions (`exist` / `notExist`), not as a screenshot
 check** — a screenshot-based check can fail for reasons that have nothing to
-do with your scenario. Seeing the WebView content in a screenshot also requires WebView
-debugging to be enabled in the app (typically only in debug builds); see
+do with your scenario. Seeing the WebView content in a screenshot also requires the WebView
+debugging connection to be open (a debuggable emulator image, a debug build of the app, or the app
+calling `WebView.setWebContentsDebuggingEnabled(true)` — the same condition as reading the DOM below); see
 [docs/commands.md](../../commands.md) for detail.
 
 ## Android: `user` system images (Play Store images) close the DOM path
