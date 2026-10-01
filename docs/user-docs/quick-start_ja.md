@@ -16,7 +16,7 @@
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、
-1. サーバを起動(/health が ok を返すまで確認)
+1. サーバを起動(/health が ok を返すまで確認)。このセッションを閉じても動き続けるように起動する
 2. Android の debug APK をビルド
 3. iOS シミュレータ向け(arm64 のみ、署名なし)をビルド
 前提: JDK 17 と Apple Container が必要。無ければ Homebrew で入れてよい。

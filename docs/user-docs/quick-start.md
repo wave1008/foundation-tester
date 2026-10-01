@@ -15,7 +15,7 @@ server as well.
 
 ```text
 Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then:
-1. Start the server (check until /health returns ok)
+1. Start the server (check until /health returns ok). Start it so that it keeps running after this session is closed
 2. Build the Android debug APK
 3. Build for the iOS simulator (arm64 only, unsigned)
 Prerequisites: JDK 17 and Apple Container are required. If they are missing, you may install them with Homebrew.
