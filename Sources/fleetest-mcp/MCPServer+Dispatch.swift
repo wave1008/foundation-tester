@@ -210,9 +210,34 @@ extension MCPServer {
             prologue.append(contentsOf: provisionLog)
             return (platform, resolved, .ios(provisioned[0], iosApp: iosApp))
         } else {
+            // **起動していない AVD は run と同じ手順で起こしてから解決する**(iOS は provision が
+            // シミュレータを起こすのに、Android の MCP だけ起こさず avdNotRunning で止まっていた ——
+            // `profile setup --auto-device` が選んだ未起動の AVD で ft_* が最初から使えなかった)。
+            // 手順は ProfileRunner/ApiRunCommand と同じ AndroidLaneRecovery(再試行・locale 適用込み)
+            if let running = try? AndroidDeviceCatalog.runningAVDs() {
+                let laneTargets = AndroidLaneRecovery.plan(devices: [device],
+                                                           runningAVDIDs: Set(running.values))
+                if !laneTargets.isEmpty {
+                    let bootLog = LockedLines()
+                    let outcome = await AndroidLaneRecovery.bootMissingDevices(
+                        devices: laneTargets.map(\.device), locale: resolved.locale) { bootLog.append($0) }
+                    await ProfileWorkerFactory.awaitDurableAndroidBridges(
+                        devices: laneTargets.map(\.device)
+                            .filter { outcome.booted.contains($0.name) }) { bootLog.append($0) }
+                    prologue.append(contentsOf: bootLog.lines)
+                }
+            }
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
             return (platform, resolved, .android(serial: serial, deviceName: device.name))
         }
+    }
+
+    /// `@Sendable` の進捗クロージャから prologue へ行を集める入れ物(復活の処理のログ用)
+    final class LockedLines: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storage: [String] = []
+        func append(_ line: String) { lock.lock(); storage.append(line); lock.unlock() }
+        var lines: [String] { lock.lock(); defer { lock.unlock() }; return storage }
     }
 
     // MARK: - ツール実装
