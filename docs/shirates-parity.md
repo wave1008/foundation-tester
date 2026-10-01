@@ -175,7 +175,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `ifTrue` / `ifFalse`(Boolean) | 素の Swift `if` | ➖ 分岐の語彙を増やすと生成側の誤選択が増える |
 | `ifScreenIs(Not)` / `ifStringIs` / `ifContains` 等 | — | ➖ 分岐の語彙を増やすと生成側の誤選択が増える(`ifTrue` と同じ理由)。条件は素の Swift `if` と `ifCanSelect` の2つに絞る |
 | `ifCheckON/OFF` | — | ➖ 同上(分岐の語彙を増やさない)。チェック状態で分ける必要があるなら `ifCanSelect(":checked" 相当のセレクタ)` か Swift 側で書く |
-| `ifImageExist(Not)` / `ifImageIs(Not)` | — | ➖ **画像マッチングを持たない**(テンプレート画像の管理と閾値調整が要り、端末差で腐る)。見た目の検証は `screenLooksLike`(FM)と要素の検証で書く |
+| `ifImageExist(Not)` / `ifImageIs(Not)` | — | ➖ **分岐専用のコマンドは置かない**。画像の有無は `findImage`(見つからなくても失敗せず空要素を返す)の戻り値を Swift の `if !findImage("label").isEmpty { … }` で見る。見た目の検証は `existImage` / `imageIs` / `screenLooksLike` で書く |
 | `emulator` / `simulator` / `virtualDevice` / `realDevice` | — | ➖ 実機/仮想の差はツール側で吸収する方針 |
 | `platformName` / `isAndroid` / `isiOS` ほかプロパティ | — | ➖ **`ios { }` / `android { }` で足りる**(2026-08-21 判定)。値が要る場面は Swift 側で書ける。真偽値を配ると「片方だけ通る」書き方が増え、どの OS で何を検証したかが読めなくなる |
 | `osaifuKeitai(Not)` / `specialTag` / `stub(Not)` / `arm64` / `intel` | — | ➖ **Shirates 固有の運用タグ**(特定端末機能・スタブ構成・CPU 種別で実行を分ける)。fleetest の実行の絞り込みは実行プロファイルと `@Test(platform:)` が担う |
@@ -221,7 +221,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `must` / `should` / `want`、`SKIP` / `MANUAL` / `NOTIMPL` | — | ➖ 運用の話でコード生成の能力と無関係(**`@TestClass(platform:)` / `@Test(platform:)` はこれとは別物** —— 赤を黙らせる逃げ道ではなく、既にある platform 軸の粒度を細かくしたもの) |
 | `irregularHandler`(lambda 登録) | `irregularHandler(検出sel, dismiss:, maxDismissals: 10)` | 🟡 宣言形が違う |
 | — | `iosAlertHandler(alert:, button:)` | 🟢 OS のシステムアラート(権限・ATT = SpringBoard の別プロセス)を1枚ずつ予告して押す。in-app の木に載らないので `irregularHandler` では扱えない形。押せたら登録が外れ、全部外れたら監視も止まる |
-| `onScreen` ハンドラ / `onError` ハンドラ | — | ➖ **失敗時の収集はツールが持つ**(2026-08-21 判定)。`onError` 相当(スクショ・木・ログ末尾・FM トリアージ)は失敗経路が自動で残すので、利用者が書く余地は無い。`onScreen`(画面ごとの前処理)はニックネーム/画面定義の機構込みで、fleetest は画面を宣言しない |
+| `onScreen` ハンドラ / `onError` ハンドラ | — | ➖ **失敗時の収集はツールが持つ**(2026-08-21 判定)。`onError` 相当(スクショ・木・ログ末尾)は失敗経路が自動で残すので、利用者が書く余地は無い。`onScreen`(画面ごとの前処理)はニックネーム/画面定義の機構込みで、fleetest は画面を宣言しない |
 | — | `group("名前") { }` / `setUp()` / `tearDown()` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
 | — | `@Draft`(実装中マーク。一括実行から除外・ID 明示で実行可) | 🟢 |
 

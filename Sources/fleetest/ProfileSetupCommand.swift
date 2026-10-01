@@ -162,7 +162,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             guard let known else {
                 throw ValidationError(
                     "device \(deviceName) (\(platform)) is not in any run profile. "
-                    + "Point at a concrete device (iOS: --simulator/--udid, Android: --avd/--serial), "
+                    + "Point at a concrete device (iOS: --device-name/--os or --udid, Android: --avd/--serial), "
                     + "or create one first with fleetest api create-device")
             }
             device = Self.entryObject(platform: platform, spec: known.spec)
@@ -268,7 +268,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             if simulators.contains(where: { DevicePicker.isIPad(name: $0.name) }) {
                 throw ValidationError("no simulator is eligible for auto-selection"
                     + " (iPads are excluded). Install an iPhone simulator, "
-                    + "or specify one explicitly with --simulator/--udid")
+                    + "or specify one explicitly with --device-name/--os or --udid")
             }
             throw ValidationError("no simulators available"
                 + " (install a runtime/device via Xcode, or create one with fleetest api create-device)")

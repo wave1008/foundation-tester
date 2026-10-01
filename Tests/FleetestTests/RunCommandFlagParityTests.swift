@@ -1,7 +1,7 @@
 // `fleetest run`(RunScenarios)と `fleetest api run`(ApiRunCommand)は**同じ run を2つの入口で
 // 提供する手写しの2実装**で、オプションも配線も別々に持っている。片方だけに足した変更は
 // **どちらの経路も緑のまま**通るので(実行されるのは足したほうだけ)、run.json にも E2E にも出ない。
-// 実際にこの分岐から出た欠陥: `--machine local` の絞り込みが api run 側だけ通っていなかった /
+// 実際にこの分岐から出た欠陥: `--runner local` の絞り込みが api run 側だけ通っていなかった /
 // run フックの呼び出しが2箇所にあり片方が漏れた / `exactScenarioCount` の台数削減が api run にだけ無かった。
 //
 // ここで**意図した差分だけ**を等号で固定する。片側にフラグを足すと落ちるので、
@@ -26,7 +26,7 @@ final class RunCommandFlagParityTests: XCTestCase {
         "--failed": "前回失敗ぶんの再実行。拡張は Test Explorer 側が対象を持っているので、解決済みの --scenario を渡す",
         "--fleet": "profiles/fleets/<name>.json による多ホスト並列。拡張は api run --runner を機械ごとに立てる別の経路(RemoteMonitorFanout)を持つ",
         "--folder": "scenarios/ 直下のフォルダ実行。拡張は folder の TestItem を配下 leaf へ展開してから渡す(runHandler.ts)ので、フォルダ名のまま送る口が要らない",
-        "--force-lock": "リモートの dispatch.lock の扱い。--fleet / --runner 前提の運用オプションで、拡張は単発ディスパッチしか出さない",
+        "--force-lock": "他人の dispatch.lock を奪う運用オプション(実行プロファイル / --runner / --fleet のどれかが前提)。GUI から他人の run を殺す導線を作らない",
         "--junit": "CI 向けの JUnit XML 出力。拡張は NDJSON をそのまま読む",
         "--quiet": "ステップ行を止めてサマリだけ出す。api run は常に NDJSON なので概念が無い",
         "--split": "--fleet の分配方式。--fleet が CLI 専用なので従属",
@@ -37,7 +37,7 @@ final class RunCommandFlagParityTests: XCTestCase {
         "--breakpoint": "DAP(拡張のデバッガ)専用。CLI にステップ実行の受け皿が無い",
         "--debug": "同上(debugAdapter.ts が付ける)",
         "--pause-on-start": "同上",
-        "--default-timeout": "**CLI から既定タイムアウトを上書きできない**(意図した差ではなく既知の非対称。埋めるなら run へ足す)",
+        "--default-timeout": "run には専用フラグが無く `--set defaultTimeout=` が口(既知の非対称。埋めるなら run へ足す)",
         "--scenario-timeout": "同上",
     ]
 

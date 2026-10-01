@@ -146,7 +146,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// 殺せる導線を作らない(§5 の決定を維持)
     @Option(name: .customLong("wait-lock"),
             help: ArgumentHelp("Instead of failing fast, poll until the dispatch.lock (this Mac's or a remote host's) is released, "
-              + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile or --runner"))
+              + "up to this many seconds (docs/remote-runner.md §5)"))
     var waitLock: Int?
 
     @Flag(name: .customLong("performance"),

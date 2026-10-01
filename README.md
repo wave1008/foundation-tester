@@ -40,7 +40,7 @@
 > **iOS / Android は両方揃える必要はない**。テストする側だけ用意すればよく、少なくとも片方があればよい。
 
 > macOS 26 では FM(Foundation Model) の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
-> occlusion-guard(テキストの視覚検証)と `screenLooksLike` は自動で無効になり、他は制限なく動く。
+> `screenLooksLike` は自動で無効になり、テキストの視覚検証は FM の段を除いて(OCR の読みで)動く。他は制限なく動く。
 >
 > **FM の機能は experimental**。モデルは日本語にも対応し、システム言語は日本語のままでよい
 > (macOS 27.0 で確認)。日本語 UI に対する判定精度は未計測。`availability` は available を
@@ -527,7 +527,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_status` | 接続確認。**宛先**(どのシミュレータ/エミュレータか。Android は serial と AVD 名)と、**session のアプリが今も前面か**まで返す(session はブリッジが掴んでいるアプリで、ホームへ戻っても変わらない)。Android で `serial` を省略して複数台つながっているときは、失敗せず**全台を一覧**で返す(読み取り専用なので。操作系は従来どおり曖昧なら断る) |
 | `ft_doctor` | FM 可用性。使えないときは**止まる機能(screenLooksLike / occlusion-guard)と代わりの書き方**まで返す(自己修復は FM を使わないため対象外) |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
-| `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`) |
+| `ft_install` | アプリをパッケージファイルからインストールする(iOS: `.app` バンドル / Android: `.apk`、分割バンドルの `.apks` は bundletool で) |
 | `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)は先頭と各行で名指しする**(`⚠️scroll-leftover`) —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれていることがある。**スクロール容器の行には `scroll` を付ける**(`scrollFrame:` に指定できる領域。**2つ以上あるときだけ**先頭でも名指しする)—— ただし**印が無い = スクロールしない、ではない**(Compose / Flutter の in-app は自前描画で申告できない)。撮った `#id` は `<プロジェクト>/.fleetest/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる。**同じ id の大群(地図の POI など。非操作の葉が20件以上)は1行に畳む** —— 見出しに続けて「ラベル[ref]」の索引が出るので ref では撃てる。frame まで要るときは `expandBulk: true`。**上限で要素が落ちたときは先頭で言う**(何件・何が落ちたか。内訳は iOS のブリッジが申告する) —— 落ちた要素は木から消えているので `waitFor` も `ft_scroll_to` も一生見つけられない。**ラベルも id も無い clickable には `#容器 >> .clickable[n]` を添える**(id を持つ祖先があるときだけ。無ければ従来どおり「ref か座標しかない」)。**同じラベルが複数に当たるときは「代わりに書けるセレクタ」を一致ごとに出す**(`#id` > 一意ラベル > `#容器 >> .型[n]`。書けないものは「—」で明示する = 無言のケースを作らない。**勧める前にサーバ自身が引いて当人が返ることを確かめている**)。**打ち切ったときは枠を食っている id 群まで名指しする**(`#VKPointFeature が 119 件中 87 件` のように)—— 読み手にできる手は「それを描いている物を畳む」なので、原因を当てさせない。**`interactiveOnly: true` でレイアウト専用の行を隠す**(ラベルも値も持たず、操作もスクロールもしない要素。密な画面では半分以上が消える)—— ref も frame も変わらず、隠れた行も ref では撃てる |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_long_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えていれば撃たずに理由を返す。スクロール残像は撃つが、**何に当たったかもしれないかを警告に添える**(黙って別の要素を叩かない)。**ref を撃つ操作系は「その操作を再現するセレクタ」を必ず返す**(`tap [40] done (selector: #btn_add)`)—— ref はセッション限りの番号でシナリオには書けないため。安定セレクタが無ければ「無い」と明示し、座標には出さない(再現できる根拠が無い)。**操作系のツール(`ft_tap` / `ft_type` / `ft_swipe` / `ft_drag` / `ft_double_tap` / `ft_long_press` / `ft_pinch` / `ft_gesture` ほか)は `snapshotAfter: true` で結果の一覧まで一緒に返す** —— 操作のたびに `ft_snapshot` を撃つ往復が消える(`waitFor` を併せて渡せば、結果の画面に目的のセレクタが出るまで待ってから返す)。長押しの秒数は DSL と同語彙の `holdSeconds`(`ft_long_press`) |
 | `ft_scroll_to` | セレクタが出るまでスクロールして、**撮り直した一覧を返す**。`ft_swipe` + `ft_snapshot` の繰り返しより確実で、探索そのものは DSL の `scrollTo` と同じ実装(整定・容器基準の刻み・飛び越しの拾い直し)。`scrollFrame` でスクロールする容器を指定できる(候補は `ft_snapshot` の `scroll` 印)。**半開きのシートの中でリストが動かなくなったら、グラバーを引き上げて1度だけやり直す**(判定は DSL と共有の `StepNote.sheetCollapsed`。やり直したことは note で言う)—— グラバーを名前で特定できないときは何もしない(当てずっぽうのドラッグで地図やリストを動かさない) |
@@ -535,8 +535,9 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_rotate` | デバイスを回転し、**新しい向きの画面一覧を返す**(回転の整定を待つので frame は新座標系。回転前の ref は解決しなくなる)。シナリオの `rotateTo()` と違い**終了時に向きを戻さない**ので、次の作業へ渡す前に自分で戻す。Android は自動回転を off にして off のままにする(戻さないと角度が定着しないため) |
 | `ft_navigate` | 戻る / ホーム / タスク切替(3操作を1ツールに束ねている) |
 | `ft_open_url` | ディープリンクの URL を配送する(**アプリを再起動せず**、今の画面の上に遷移が積まれる。`ft_launch` は逆に必ず再起動する)。画面遷移を飛ばして目的の画面から探索を始めるときに使う。配送は非同期なので、素の `ft_snapshot` を直後に撃つと遷移前の画面を掴むことがある。**`snapshotAfter: true` は着地(木が変わること)を待ってから読む**(2026-08-16。目的地固有の物を待ちたいなら `waitFor`、待たずに読むなら `waitForChange: false`) |
+| `ft_hide_keyboard` | ソフトキーボードを閉じる(Android のみ。iOS は `ft_type` の `pressEnter`) |
 | `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す)。**パスワード欄は追記できない**(読みが伏せ字なので追記すると伏せ字が本文に入る)ため、Android は 422 で断る = 先にここを通す |
-| `ft_clear_app_data` | アプリのデータと権限を消す(iOS はシミュレータのみ)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
+| `ft_clear_app_data` | アプリのデータと権限を消す(iOS 実機は uninstall + install に振り替える。入れ直すパッケージは直前の `ft_install` のパスか `packagePath:`)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
 | `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**`ft_drag` は `fromRef`(要素の中心から)と `dx`/`dy`(移動量)でも書ける** —— 半開きのボトムシートを広げるのに、グラバーの frame を読んで座標を組む必要がない。**`ft_pinch` は `ref` でも `x`/`y` でも対象を指せる** —— 地図は要素として木に無いので、シートが半分出ている画面で対象を省くと指が画面全体に開いて**シートのほうが掴まれる**(実測)。座標は**全エンジンが honour する**(XCUITest は非公開 API で座標ピンチを再生する。この API を
 持たない Xcode でだけ要素の枠のピンチへ**退化したことを戻り値で言う**)。iOS は Compose の
@@ -554,7 +555,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 `ft_long_press` / `ft_double_tap` / `ft_pinch` / `ft_gesture` / `ft_drag` / `ft_navigate` / `ft_snapshot` / `ft_screenshot`)は
 そのまま使える。**シミュレータ/エミュレータ専用の操作は自動で振り分ける**:
 `ft_install` は iOS 実機なら `devicectl`(シミュレータは `simctl`)、`ft_clear_app_data` は
-iOS 実機では 501 で断る(devicectl に同等手段が無い。Android は実機でも `pm clear` が効く)。
+iOS 実機では uninstall + install に振り替える(devicectl にデータだけ消す手段が無い。Android は実機でも `pm clear` が効く)。
 in-app エンジンは注入できないので実機では選ばれない。Android のエミュレータ gRPC 制御も
 実機では自動的に adb 経路へ落ちる。**`profile` を渡すと端末の UDID まで分かる**ので、
 渡しておくのが確実(渡さないときはブリッジが名乗るデバイス名から引き当てる)。
@@ -577,7 +578,7 @@ XCUITest ブリッジ側へ寄る**(読みが少し遅くなるだけで止ま�
 ```
 fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<project>(プロジェクトのシナリオを発見・実行)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test マクロ・コマンド・レポート)
-      │                                        │  FTFoundationModels (FoundationModels: 視覚検証 / 修復)
+      │                                        │  FTFoundationModels (FoundationModels: 視覚検証 / 下書き・命名)
       │                                        │  FTCore  (ステップモデル / AppDriver 抽象 / StepExecutor)
       │                                        ▼
       ├─ HTTP (localhost:8123) ──▶ iOS シミュレータ内の常駐 XCUITest
@@ -598,7 +599,7 @@ fleetest CLI / MCP ──(サブプロセス)──▶ fleetest-scenarios-<proje
 ```
 TestProjects/          テストプロジェクト(コミットして資産化する)
   SampleApp/
-    profiles/        実行プロファイル(apps / machines / runs。JSON)
+    profiles/        アプリプロファイル・実行プロファイル(apps / runs。JSON)
     scenarios/       テストシナリオ(Swift DSL)
       _Main.swift      ランナーへの委譲(編集不要)
       Generated/       ライブ操作の録画(gen-scenario)が生成したシナリオ
@@ -606,7 +607,7 @@ TestProjects/          テストプロジェクト(コミットして資産化�
     reports/         実行レポート(プロジェクト別)
     .fleetest/        ロケータの指紋等(プロジェクト別)
 Sources/
-  fleetest/         CLI(swift-argument-parser。project/machine/profile コマンド含む)
+  fleetest/         CLI(swift-argument-parser。project/profile/remote コマンド含む)
   fleetest-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
   fleetest-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
   fleetest-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
@@ -616,7 +617,7 @@ Sources/
   FTScenarioRunner/ fleetest-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
   FTCore/          ステップモデル / AppDriver / StepExecutor / プロジェクト・プロファイルモデル(FM 非依存・外部依存ゼロ)
   FTCoreSimShim/   CoreSimulator 直叩きシム(Objective-C。dlopen+objc_msgSend で私有 API を叩き、利用不能なら simctl へフォールバックさせる)
-  FTFoundationModels/ FM 呼び出し(失敗時の Healer / Verifier・occlusion-guard・下書き生成・命名)
+  FTFoundationModels/ FM 呼び出し(テキストの視覚検証・screenLooksLike・下書き生成・命名・FM の死活と診断)
   FTBridgeClient/  iOS ブリッジの HTTP クライアントと起動管理・SimulatorCatalog・BridgeProvisioner
   FTAndroid/       Android ドライバ(常駐ブリッジ)・AndroidDeviceCatalog・ProfileWorkerFactory
   FTEmulatorGrpc/  Android エミュレータの gRPC(EmulatorController)直叩き。スクリーンショット等を adb より高速に取得し、失敗時は FTAndroid が adb へフォールバックする
@@ -653,7 +654,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 - `swift run fleetest ...` は毎回 SwiftPM のチェックで **約1.6秒** 上乗せされる。
   連続実行するときは `.build/debug/fleetest ...` を直接叩くと速い(MCP は常駐なので無関係)
-- FM の応答時間: screenMatches(視覚検証)数秒、修復数秒(すべてオンデバイス・無料)
+- FM の応答時間: 視覚検証(テキストの視覚検証・screenLooksLike)数秒(すべてオンデバイス・無料)
 - 計測手順・調整ノブ・設計原則(不採用の施策含む)は
   [パフォーマンスチューニングガイド](docs/performance-tuning.md)を参照
 

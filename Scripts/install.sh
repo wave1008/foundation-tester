@@ -839,7 +839,7 @@ fi
 if "$FT" doctor --fm-only >/dev/null 2>&1; then
   record "Apple Intelligence" ok "available"
 else
-  record "Apple Intelligence" warn "off/not downloaded (only affects heal, visual verification and scenario generation; can be enabled later)"
+  record "Apple Intelligence" warn "off/not downloaded (only affects visual verification and scenario drafting; can be enabled later)"
 fi
 
 # ---- 3. 環境レポート(SKILL ステップ3。ゲートではない) ------------------------

@@ -341,8 +341,7 @@ struct RunScenarios: AsyncParsableCommand {
 
     @Option(name: .customLong("wait-lock"),
             help: ArgumentHelp("Instead of failing fast, poll until the dispatch.lock (this Mac's or a remote host's) is released, "
-              + "up to this many seconds (docs/remote-runner.md §5). Needs a run profile, --runner or --fleet. "
-              + "Cannot be combined with --force-lock"))
+              + "up to this many seconds (docs/remote-runner.md §5). Cannot be combined with --force-lock"))
     var waitLock: Int?
 
     /// ブロードキャスト実行。warmup のように「全デバイスがそれぞれ準備される」

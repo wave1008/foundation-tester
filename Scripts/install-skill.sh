@@ -94,7 +94,7 @@ cat <<'EOF'
        curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
          | bash -s -- --name <ProjectName>
      以後、修正版の取り込みは /fleetest-update
-     マシン/アプリ/実行プロファイルの一括作成は /fleetest-profiles
+     アプリ/実行プロファイルの一括作成は /fleetest-profiles
      テストシナリオ(.swift)の作成は /fleetest-scenario
      MCP サーバ(ft_* ツール)だけの登録は /fleetest-mcp
      別の Mac をランナーにしてリモート実行するなら /fleetest-remote-setup

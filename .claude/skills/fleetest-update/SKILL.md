@@ -83,7 +83,7 @@ bash <TOOL_ROOT>/Scripts/update.sh
 
 中で `install.sh` を再実行するので、**git pull・swift build・VSCode 拡張・`.mcp.json` の追従・
 検証ゲート・ログ**はそちらの規律がそのまま効く。更新固有の作業として
-**`fleetest project sync`(clone 構成)** と **Claude Code プラグインの更新+HEAD との版照合**を行う。
+**`fleetest project sync`(構成を問わず)** と **Claude Code プラグインの更新+HEAD との版照合**を行う。
 
 **外部構成ではクローンのローカル変更を自動で破棄する**(クローンに受け手の資産は無い。
 捨てた内容は出力に出る)。**これを人に確認しない** — 残したい場合だけ `--keep-local`。
@@ -91,12 +91,12 @@ clone 構成では従来どおり確認が出る。
 
 進行は**各ステップ1行ずつ**出る(数分かかる工程には経過時間が付く)。生ログ(swift build・npm・
 vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、**場所は開始時と最後の
-「次にやること」に出る**。**画面に出た行がすべてなので、ログを grep で漁らない**
+「Next steps」に出る**。**画面に出た行がすべてなので、ログを grep で漁らない**
 (人が全文を見たいと言った場合だけ `--verbose` で再実行するか、そのパスを案内する)。
 
 - **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md step N`)の原因を解決して再実行する。
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
-- プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
+- プラグインが `⚠️ Plugin: … (does not match HEAD …)` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
 - **コピー配置(`install-skill.sh` で入れた `.claude/skills/`)は
   update.sh が正典から写し直す**(`✅ Skills: refreshed N ...`)。**増えたスキルを新しく置くのは
@@ -139,12 +139,13 @@ TOOL_ROOT で `swift build`。CLI 本体・拡張ランタイム・FTScenarioRun
 
 ### 3. 受け手側の反映
 
-- **clone 構成**: `fleetest project sync`（TestProjects/ ↔ Package.swift マーカー再整合）。
-- **外部パッケージ構成**:
+- **構成を問わず** `fleetest project sync`（TestProjects/ ↔ Package.swift マーカー再整合）を update.sh が行う
+  (外部パッケージ構成でも、受け手の Package.swift に書かれたシナリオのパスは pull だけでは直らない)。
+- **外部パッケージ構成**の依存の解決:
   - `.package(path:)`（既定）: pull 済みソースを SPM が直接見るため反映済み。シナリオは実行時に
     自動ビルドされる（明示するなら WORK_DIR で `swift build --product fleetest-scenarios-<名>`）。
-  - `.package(url: from:)`（git 依存）: WORK_DIR/Package.swift の `from:` を新 version へ上げ、
-    WORK_DIR で `swift package update`。CLI・拡張も同じ版へ揃える。
+  - `.package(url: branch: "main")`（git 依存）: WORK_DIR で `swift package update`(main を追従するので
+    Package.swift の版を書き換える作業は無い)。
 
 **版の一致が要る**: CLI と拡張と（git 依存なら）FTScenarioRunner の版を揃える。protocol 契約を跨ぐ
 更新では拡張が起動時に `fleetest api version` で照合し不一致を警告する（`compatCheck.ts`）。

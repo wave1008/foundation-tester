@@ -117,7 +117,7 @@ Uninstall it from VSCode's Extensions view.
 Quit VSCode, then delete it via Finder or `rm`.
 
 If you want to keep the work folder, remove the range between `<!-- fleetest:begin -->` and
-`<!-- fleetest:end -->` in `CLAUDE.md`. That is the agent guidance the installer placed there;
+`<!-- fleetest:end -->` in both `AGENTS.md` and `CLAUDE.md` (the body is in `AGENTS.md`; `CLAUDE.md` only imports it). That is the agent guidance the installer placed there;
 nothing outside the range was touched. If you registered the MCP server with another agent
 yourself, remove that configuration too.
 

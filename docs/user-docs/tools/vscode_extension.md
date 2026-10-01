@@ -209,6 +209,7 @@ settings, so they also apply to tests you run directly from a terminal.
   | Recordings | 50 GB | 2 GB |
   | Reports | 2000 MB | 100 MB |
   | Logs | 100 MB | 10 MB |
+  | Run logs (`*.ndjson`) | 2 GB | 100 MB |
   | Bridge diagnostics | 5 GB | 1 GB |
 
 - Each row shows the **current usage** on its right. Measuring takes about 20 seconds; until then

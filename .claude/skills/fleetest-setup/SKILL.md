@@ -224,9 +224,9 @@ bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--
 
 | 取り直しがちなもの | 既にどこに出ているか |
 |---|---|
-| TOOL_ROOT の絶対パス（`cd … && pwd`） | preflight の `tool_root=` / インストーラの `[ok] 構成` |
+| TOOL_ROOT の絶対パス（`cd … && pwd`） | preflight の `tool_root=` / インストーラの `[ok] layout` |
 | `.mcp.json` の内容（`cat`） | インストーラの `[ok] MCP` |
-| `fleetest doctor --roots-only` | インストーラが検証ゲートとして実行済み（`[ok] ルート解決`) |
+| `fleetest doctor --roots-only` | インストーラが検証ゲートとして実行済み（`[ok] root-resolution`) |
 
 ### 1. xcodegen
 
@@ -248,7 +248,7 @@ bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--
 だけで、決定的なシナリオ実行・自己修復（ロケータの指紋照合。FM を使わない）・VSCode 拡張・
 MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run は FM 無しで動く。**人間に「有効か」を聞かない**：
 
-- **exit 0**（`✅ 利用可能`）→ 次へ。
+- **exit 0**（`✅ On-device model: available`）→ 次へ。
 - **exit 1**（無効／ダウンロード中／対象外）→ **セットアップは中断せず続行する**。有効化のための
   停止・待機・質問はしない。理由を控えておき、ステップ9の完了報告に
   「Apple Intelligence 要有効化（FM 機能を使う場合）」として残す：後から System 設定 →
