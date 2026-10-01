@@ -906,30 +906,46 @@ public struct BridgeProvisioner {
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: xcui.sim.udid,
                                               port: xcui.port, physical: xcui.sim.physical)
                 try launcher.generateProjectIfNeeded()
-                let existing = try launcher.findXCTestRun()
-                let rebuildReason = existing.flatMap {
-                    BridgeLauncher.runnerRebuildReason(
-                        repoRoot: repoRoot, xctestrun: $0,
-                        signing: launcher.currentSigningFingerprint()) }
-                let rebuild = rebuildReason != nil
-                // **ビルドを始める前に**ロックを知らせる(ビルド自体に解除は要らないので待たない
-                // = 数分の間に解除してもらえれば、起動時に待たずに済む)
-                if xcui.sim.physical, existing == nil || rebuild,
-                   IOSPhysicalDeviceLock.query(udid: xcui.sim.udid) == .locked {
-                    log("⏳ \(xcui.sim.name) is locked — unlock it while this builds "
-                        + "(the runner cannot be launched on a locked device).")
-                }
-                if existing == nil {
-                    log("→ build-for-testing (for \(xcui.sim.physical ? "a physical device" : "the simulator")"
-                        + "; the first run takes several minutes)...")
-                    try launcher.buildForTesting()
-                } else if let rebuildReason {
-                    // 古い xctestrun を起動し続けない(BridgeLauncher.runnerRebuildReason 参照)
-                    log("→ \(rebuildReason.summary) — re-running build-for-testing...")
-                    try launcher.buildForTesting()
-                }
+                try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: xcui.sim, log: log)
             }
         }.value
+    }
+
+    /// 並列の起動から ensureRunnerBuilt が同時に呼ばれても build-for-testing を二重に撃たない
+    /// (出力先の DerivedData を共有する)。プロセス内だけの直列化
+    private static let runnerBuildLock = NSLock()
+
+    /// xctestrun が無ければビルドし、古ければビルドし直す。**準備段(prepareSharedBuilds)と
+    /// XCUITest の起動の段の両方から通す** —— 計画の後で .reuse(ツールチェーン不一致・劣化)や
+    /// .adopt から .launch へ切り替わる経路は準備段を通らず、xctestrun が無いと起動の段で
+    /// xctestrunNotFound になる(実害: 別クローンのランナーが居るデバイスで、新しいクローンの
+    /// 最初の ft_* が失敗した)。ロックの中で有無を見直すので、準備段の後の呼び出しはビルドしない
+    static func ensureRunnerBuilt(launcher: BridgeLauncher, repoRoot: URL, sim: SimDeviceInfo,
+                                  log: (String) -> Void) throws {
+        runnerBuildLock.lock()
+        defer { runnerBuildLock.unlock() }
+        let existing = try launcher.findXCTestRun()
+        let rebuildReason = existing.flatMap {
+            BridgeLauncher.runnerRebuildReason(
+                repoRoot: repoRoot, xctestrun: $0,
+                signing: launcher.currentSigningFingerprint()) }
+        let rebuild = rebuildReason != nil
+        // **ビルドを始める前に**ロックを知らせる(ビルド自体に解除は要らないので待たない
+        // = 数分の間に解除してもらえれば、起動時に待たずに済む)
+        if sim.physical, existing == nil || rebuild,
+           IOSPhysicalDeviceLock.query(udid: sim.udid) == .locked {
+            log("⏳ \(sim.name) is locked — unlock it while this builds "
+                + "(the runner cannot be launched on a locked device).")
+        }
+        if existing == nil {
+            log("→ build-for-testing (for \(sim.physical ? "a physical device" : "the simulator")"
+                + "; the first run takes several minutes)...")
+            try launcher.buildForTesting()
+        } else if let rebuildReason {
+            // 古い xctestrun を起動し続けない(BridgeLauncher.runnerRebuildReason 参照)
+            log("→ \(rebuildReason.summary) — re-running build-for-testing...")
+            try launcher.buildForTesting()
+        }
     }
 
     /// 1 デバイス分のプラン実行。デバイス間は並列だが、同一デバイス内のブリッジ
@@ -1472,10 +1488,12 @@ public struct BridgeProvisioner {
                         try SimulatorBoot.ensureBooted(udid: sim.udid)
                     }.value
                 }
-                // xctestrun の存在は prepareSharedBuilds が保証済み(不在なら xctestrunNotFound が
-                // そのまま届く。ここで buildForTesting はしない=並列で二重ビルドさせない)
+                // **xctestrun を準備段の保証に頼らない**(ensureRunnerBuilt の doc)。計画どおりの
+                // .launch では準備段が済ませているので、ここは有無を見るだけでビルドしない
+                let repoRoot = repoRoot
                 try await Task.detached(priority: .userInitiated) {
                     try launcher.generateProjectIfNeeded()
+                    try Self.ensureRunnerBuilt(launcher: launcher, repoRoot: repoRoot, sim: sim, log: log)
                     try launcher.startDetached()
                 }.value
                 // **ここでポートは確保済み**(startDetached が pid ファイルを書く)。以降の
