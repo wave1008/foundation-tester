@@ -611,6 +611,9 @@ export interface RecordedStep {
   readonly gesture?: readonly RecordedGestureFinger[];
   /** 長押し・ジェスチャの秒数上限をこの1回だけ上げる(FlowStep.maxGestureSeconds と同名) */
   readonly maxGestureSeconds?: number;
+  /** action: "press" の押した秒数(FlowStep.duration と同名)。**入れないと生成コードは常に
+   * `holdSeconds: 1`**(ScenarioCodeGen が欠落を 1.0 で埋める) */
+  readonly duration?: number;
 }
 
 /** RecordedStep.gesture の1本の指。FTFinger(Codable)と同じキー名・型で組む(recordedGestureFingers

@@ -1754,7 +1754,7 @@ export class MonitorLiveController implements vscode.Disposable {
         const duration = Math.min(Math.max(message.holdMs / 1000, 0.5), 5);
         const pressHit = hitTestElement(point, this.lastElements);
         const pressStep: RecordedStep | undefined = pressHit
-          ? { action: "press", ...locatorChainForElement(pressHit, this.lastElements) }
+          ? { action: "press", ...locatorChainForElement(pressHit, this.lastElements), duration }
           : undefined;
         const pressLabel = pressHit
           ? t("live.opLabel.press", { target: describeElementShort(pressHit) })

@@ -802,20 +802,25 @@ function applyCleanupOutcome(cleanup) {
     cleanupResult.textContent = t('wvMonitor2.cleanup.failed', { reason: cleanup.error || '' });
     return;
   }
+  // **消せなかった分を黙らない**(一部失敗でも CLI は成功で終わる。件数は categories[].failures)
+  const failed = typeof cleanup.failures === 'number' && cleanup.failures > 0
+    ? t('wvMonitor2.cleanup.partialFailure', { count: String(cleanup.failures) })
+    : '';
   if (typeof cleanup.freedBytes !== 'number') {
-    cleanupResult.textContent = '';
+    cleanupResult.textContent = failed;
     return;
   }
   if (cleanup.freedBytes === 0) {
-    cleanupResult.textContent = t('wvMonitor2.cleanup.nothing');
+    cleanupResult.textContent = failed || t('wvMonitor2.cleanup.nothing');
     return;
   }
   // 合計は大きさで単位が変わる(1GB 未満は MB)。**判定は retentionModel の1箇所**
   // —— ホスト側の確認ダイアログも同じ関数を通す。
   const size = formatBytesAuto(cleanup.freedBytes);
-  cleanupResult.textContent = cleanup.dryRun
+  const done = cleanup.dryRun
     ? t('wvMonitor2.cleanup.dryRunDone', { size })
     : t('wvMonitor2.cleanup.done', { size });
+  cleanupResult.textContent = failed ? `${done} ${failed}` : done;
 }
 
 /**

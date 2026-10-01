@@ -23,6 +23,7 @@ import {
   RETENTION_FIELDS,
   bytesToUnitValue,
   formatBytes,
+  parseCleanResult,
   parseRetentionInput,
   parseRetentionResponse,
   unitValueToBytes,
@@ -338,6 +339,25 @@ test("クリーンアップ: 掃除の進行と結果が行に出る(実行中�
   post(window, { type: "retention", cleanup: { state: "cancelled" } });
   assert.equal(document.getElementById("settings-cleanup-result").textContent, "", "取り消しは何も出さない");
   assert.equal(document.getElementById("settings-cleanup-now").disabled, false);
+});
+
+test("掃除の結果: categories[].failures を合計する(0 件は省く)", () => {
+  // CLI は一部の削除に失敗しても成功で終わる。読まないと「削除しました」とだけ出る
+  assert.deepEqual(parseCleanResult({ freedBytes: 10, categories: [{ failures: 2 }, { failures: 1 }] }),
+    { freedBytes: 10, error: undefined, failures: 3 });
+  assert.equal(parseCleanResult({ freedBytes: 10, categories: [{ failures: 0 }] }).failures, undefined);
+});
+
+test("クリーンアップ: 削除に失敗した分があれば結果に添える(消せた分が 0 でも「削除するものはありません」と言わない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, RESPONSE);
+  post(window, { ...RESPONSE, cleanup: { state: "done", dryRun: false, freedBytes: 3 * BYTES_PER_GB, failures: 2 } });
+  const withFreed = document.getElementById("settings-cleanup-result").textContent;
+  assert.ok(withFreed.includes("3 GB") && withFreed.includes("2"), withFreed);
+  post(window, { ...RESPONSE, cleanup: { state: "done", dryRun: false, freedBytes: 0, failures: 1 } });
+  const nothingFreed = document.getElementById("settings-cleanup-result").textContent;
+  assert.ok(nothingFreed.includes("1") && !nothingFreed.includes("削除するものはありません"), nothingFreed);
 });
 
 test("クリーンアップ: policy が読めなければ欄を無効にして理由を出す(古い CLI)", (t) => {

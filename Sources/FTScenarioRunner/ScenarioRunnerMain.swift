@@ -324,7 +324,11 @@ struct RunScenario: AsyncParsableCommand {
                         let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost,
                                                   physicalUDID: physical ? udid : nil,
                                                   simulatorUDID: physical ? nil : udid)
-                        driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
+                        // **この分岐は XCUITest ランナーだけを駆る**(in-app は入らない)ので、xcuitest エンジンの
+                        // 主ドライバと同じく SessionRecoveryDriver で包む(ランナーの起動し直しの 409 から戻る・
+                        // a11y の一時停止の読み直し)。MCP の同じ経路(foreignApp)も包んでいる
+                        driver = SessionRecoveryDriver(
+                            base: udid.map { LaunchPreflightDriver(base: client, udid: $0) as AppDriver } ?? client)
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()

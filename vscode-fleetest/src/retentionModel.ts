@@ -178,6 +178,9 @@ export function parseRetentionResponse(json: unknown): RetentionResponse | undef
 export interface CleanResult {
   readonly freedBytes?: number;
   readonly error?: string;
+  /** 削除に失敗した件数の合計(categories[].failures。Sources/fleetest/RetentionSweeper.swift の
+   * CategoryReport)。**読まないと一部が消えなくても「削除しました」と出る**。0 件は省く */
+  readonly failures?: number;
 }
 
 export function parseCleanResult(json: unknown): CleanResult {
@@ -185,9 +188,14 @@ export function parseCleanResult(json: unknown): CleanResult {
     return {};
   }
   const freed = json.freedBytes;
+  const failures = Array.isArray(json.categories)
+    ? json.categories.reduce((sum: number, c: unknown) =>
+      sum + (isRecord(c) && typeof c.failures === "number" && Number.isFinite(c.failures) ? c.failures : 0), 0)
+    : 0;
   return {
     freedBytes: typeof freed === "number" && Number.isFinite(freed) ? freed : undefined,
     error: typeof json.error === "string" && json.error !== "" ? json.error : undefined,
+    ...(failures > 0 ? { failures } : {}),
   };
 }
 

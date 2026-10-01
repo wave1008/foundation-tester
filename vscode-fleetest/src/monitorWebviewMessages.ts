@@ -402,6 +402,8 @@ export type MonitorToWebviewMessage =
         readonly dryRun?: boolean;
         readonly freedBytes?: number;
         readonly error?: string;
+        /** 削除に失敗した件数(1件以上のときだけ)。webview は結果に添える */
+        readonly failures?: number;
       };
     }
   // プロセスタブ「常駐プロセス」一覧。refreshResidentProcesses 受信時に送る。

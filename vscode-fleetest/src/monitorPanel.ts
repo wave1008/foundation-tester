@@ -874,7 +874,10 @@ export class MonitorPanelController implements vscode.Disposable {
     this.post({
       type: "retention",
       ...refreshed,
-      cleanup: { state: "done", dryRun: false, freedBytes: result.freedBytes },
+      cleanup: {
+        state: "done", dryRun: false, freedBytes: result.freedBytes,
+        ...(result.failures !== undefined ? { failures: result.failures } : {}),
+      },
     });
     if (refreshed.error !== undefined) {
       return;

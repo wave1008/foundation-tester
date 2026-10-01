@@ -207,4 +207,8 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.cleanup.dryRunDone": { ja: "{size} が削除対象です", en: "{size} would be deleted" },
   "wvMonitor2.cleanup.nothing": { ja: "削除するものはありません", en: "Nothing to delete" },
   "wvMonitor2.cleanup.failed": { ja: "掃除に失敗しました: {reason}", en: "Cleanup failed: {reason}" },
+  "wvMonitor2.cleanup.partialFailure": {
+    ja: "({count} 件は削除できませんでした。理由は OUTPUT の fleetest に出ています)",
+    en: "({count} item(s) could not be deleted; the reasons are in the fleetest OUTPUT)",
+  },
 } satisfies MessageDict;

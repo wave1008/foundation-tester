@@ -89,6 +89,15 @@ final class ScenarioCodeGenTests: XCTestCase {
     /// `maxGestureSeconds` を落とすと、既定10秒を超える長押し/ジェスチャが再生成後に
     /// 検査で断られる(実際に撃った値を残すのと同じ理由。tap/press/swipeBy/pinchOut/pinchIn/
     /// swipeElementToElement の全部を1本ずつ固定する)
+    /// ライブ操作のレコーディングが送る長押しの手(vscode-fleetest の RecordedStep。キーは FlowStep と同名)を
+    /// **その JSON の形のまま**読んで、押した秒数が生成コードに出ること。欄名が食い違うと黙って読み飛ばされ、
+    /// 生成コードは常に `holdSeconds: 1` になる(拡張が秒数を入れていなかった間はそうなっていた)
+    func testRecordedPressCarriesItsHoldSecondsIntoTheGeneratedCode() throws {
+        let json = #"{"action":"press","locator":{"id":"btn"},"duration":2.5}"#
+        let step = try JSONDecoder().decode(FlowStep.self, from: Data(json.utf8))
+        XCTAssertTrue(render([step]).contains("holdSeconds: 2.5"), render([step]))
+    }
+
     func testMaxGestureSecondsIsEmittedAlongsideDuration() {
         var tap = FlowStep(action: "tap", locator: FlowLocator(id: "btn"), duration: 30)
         tap.maxGestureSeconds = 30
