@@ -1523,6 +1523,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.guardMs = result.timing?.guardMs
             step.ocrMs = result.timing?.ocrMs
             step.at = result.at
+            step.command = result.command
+            step.failureKind = result.failureKind
+            step.notes = result.notes
+            step.guarded = result.guarded
             return [step.encodedLine()]
 
         case .fixSuggestion(let worker, _, let scenarioID, let command, let file, let line,
@@ -1538,7 +1542,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             suggestion.detail = message
             return [suggestion.encodedLine()]
 
-        case .flowFinished(let worker, let flowURL, let passed, let reportURL, let fm):
+        case .flowFinished(let worker, let flowURL, let passed, let reportURL, let fm, let appCrash):
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
@@ -1546,6 +1550,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             finished.reportPath = reportURL?.path
             // 再構築なので明示的に写す(落とすとモニターの FM グラフが 0 のままになる。実害あり)
             finished.fm = fm
+            finished.appCrash = appCrash
             return [finished.encodedLine()]
 
         case .flowSkipped(let flowURL, let reason):
@@ -1901,7 +1906,7 @@ struct ScenarioTimingTracker {
             firstStart = min(firstStart ?? now, now)
             startedAt[flowURL] = (now, worker)
             hasScenario = true
-        case .flowFinished(let worker, let flowURL, _, _, _):
+        case .flowFinished(let worker, let flowURL, _, _, _, _):
             lastFinish = max(lastFinish ?? now, now)
             let platform = Self.platform(ofWorker: worker)
             lastFinishByPlatform[platform] = max(lastFinishByPlatform[platform] ?? now, now)

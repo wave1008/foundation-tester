@@ -82,10 +82,18 @@ public struct StepResult: Sendable {
     /// 結果確定時刻(ISO8601+ミリ秒。ScenarioEvent.at 由来)。--profile 並列実行の NDJSON
     /// 再構築(ApiRunCommand.ndjsonLines)で失わないよう運ぶ。逐次実行等の合成行は nil
     public let at: String?
+    /// ScenarioEvent の同名欄(command / failureKind / notes / guarded)。並列経路の NDJSON 再構築で
+    /// 落とさないために運ぶ(逐次経路はイベントをそのまま流すので落ちない)。nil = 言えない
+    public let command: String?
+    public let failureKind: String?
+    public let notes: [String]?
+    public let guarded: Bool?
 
     public init(index: Int, description: String, status: Status,
                 scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
-                synthetic: Bool = false, timing: StepTiming? = nil, at: String? = nil) {
+                synthetic: Bool = false, timing: StepTiming? = nil, at: String? = nil,
+                command: String? = nil, failureKind: String? = nil,
+                notes: [String]? = nil, guarded: Bool? = nil) {
         self.index = index
         self.description = description
         self.status = status
@@ -95,6 +103,10 @@ public struct StepResult: Sendable {
         self.synthetic = synthetic
         self.timing = timing
         self.at = at
+        self.command = command
+        self.failureKind = failureKind
+        self.notes = notes
+        self.guarded = guarded
     }
 }
 

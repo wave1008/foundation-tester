@@ -100,7 +100,6 @@ enum ApiRunMachineFanout {
             logStderr("    \(group.machineLabel): \(ids.count) scenario(s)"
                 + " on \(group.deviceNames.count) device(s) [\(basis[index].summary)]")
         }
-        let dispatchStart = Date()
         // 全部が宣言 platform の対象外なら単機の run と同じく 0/0 で終える(正しく緑)。
         // それ以外で全滅(= 対象外でもないのに割り当て 0)は FleetSplit.partition が設定ミスとして
         // throw 済みなので、ここへは来ない
@@ -108,7 +107,7 @@ enum ApiRunMachineFanout {
             writeLine(encode(ApiRunStartedEvent(total: 0)))
             writeLine(encode(ApiRunFinishedEvent(
                 passed: 0, failed: 0,
-                testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil,
+                testSeconds: nil, scenarioTotalSeconds: nil,
                 runID: nil)))
             return 0
         }
@@ -206,10 +205,10 @@ enum ApiRunMachineFanout {
         // 各子タスクの return を待つので、この時点で runChild は必ず .exited を yield 済み)
         continuation.finish()
 
-        let (totalPassed, totalFailed, runID) = await multiplexed
+        let (totalPassed, totalFailed, runID, testSeconds) = await multiplexed
         writeLine(encode(ApiRunFinishedEvent(
             passed: totalPassed, failed: totalFailed,
-            testSeconds: Date().timeIntervalSince(dispatchStart), scenarioTotalSeconds: nil,
+            testSeconds: testSeconds, scenarioTotalSeconds: nil,
             runID: runID)))
 
         logStderr("")
@@ -375,7 +374,7 @@ enum ApiRunMachineFanout {
     private static func consume(
         stream: AsyncStream<ChildEvent>, groupMachines: [String?], assignedScenarioIDs: [[String]],
         isCancelled: @escaping @Sendable () -> Bool
-    ) async -> (passed: Int, failed: Int, runID: String?) {
+    ) async -> (passed: Int, failed: Int, runID: String?, testSeconds: Double?) {
         var multiplexer = MachineFanoutMultiplexer(groupMachines: groupMachines, assignedScenarioIDs: assignedScenarioIDs)
         for await event in stream {
             switch event {
@@ -387,7 +386,7 @@ enum ApiRunMachineFanout {
                 for line in multiplexer.childExited(index, exitCode: status) { writeLine(line) }
             }
         }
-        return (multiplexer.totalPassed, multiplexer.totalFailed, multiplexer.runID)
+        return (multiplexer.totalPassed, multiplexer.totalFailed, multiplexer.runID, multiplexer.testSeconds)
     }
 
     // MARK: - 出力(FleetRunner.log/logLine と同じ規律。stdout は NDJSON 専用・行単位で lock)
@@ -437,6 +436,18 @@ struct MachineFanoutMultiplexer {
     /// 子の runFinished が運んだ runID のうち最初の1つ。子は同じ runGroup を共有するので
     /// どれでも束ねたセッション全体に届く(ApiRunFinishedEvent.runID の宣言参照)
     private(set) var runID: String?
+    /// 子から中継した最初の scenarioStarted / 最後の scenarioFinished の時刻(親の時計)。
+    /// 単機の `runFinished.testSeconds`(ScenarioTimingTracker = 最初のシナリオ開始〜最後の完了。
+    /// ビルド・ロック待ち・供給・転送は含まない)と同じ意味の値を `testSeconds` で出すための材料。
+    /// 子の testSeconds の最大値にしない: 子の起動時刻は機械ごとにずれる(ロック・ssh・ビルド)ので
+    /// 区間が重ならず、最大値は全体の区間より短くなる
+    private(set) var firstScenarioStart: Date?
+    private(set) var lastScenarioFinish: Date?
+    /// 単機の testSeconds と同じ定義。シナリオが1本も走っていなければ nil(単機も nil)
+    var testSeconds: Double? {
+        guard let first = firstScenarioStart, let last = lastScenarioFinish else { return nil }
+        return last.timeIntervalSince(first)
+    }
     /// recordingFinalizing は子ごとに来るので**全部の子がテストを終えた時点で1回だけ**出す
     /// (1台目の子の分をそのまま流すと、他の機械がまだテスト中なのに「録画を編集中」になる)。
     /// 終えた = 自分の recordingFinalizing を出したか、プロセスが終わったか(録画しない子は後者だけ)
@@ -454,7 +465,8 @@ struct MachineFanoutMultiplexer {
     }
 
     /// 子(childIndex)からの1行。バッファせず、relay してよい行をそのまま返す
-    mutating func ingest(childIndex: Int, line: String) -> [String] {
+    /// now は時刻の注入点(テスト用。既定は実時刻)
+    mutating func ingest(childIndex: Int, line: String, now: Date = Date()) -> [String] {
         switch Self.classify(line, host: groupMachines[childIndex]) {
         case .runStarted:
             return []
@@ -470,7 +482,13 @@ struct MachineFanoutMultiplexer {
         case .recordingFinalizing(let line):
             finalizingIndices.insert(childIndex)
             return relayFinalizingIfAllDone(line)
-        case .other(let rewritten, let finishedScenario):
+        case .other(let rewritten, let finishedScenario, let kind):
+            // 合成の failed(childExited)は走った時間ではないので数えない
+            if kind == "scenarioStarted" {
+                firstScenarioStart = min(firstScenarioStart ?? now, now)
+            } else if kind == "scenarioFinished" {
+                lastScenarioFinish = max(lastScenarioFinish ?? now, now)
+            }
             if let scenario = finishedScenario { finishedByIndex[childIndex].insert(scenario) }
             return [rewritten]
         }
@@ -522,7 +540,8 @@ struct MachineFanoutMultiplexer {
         case workersReady([ApiWorkerInfo])
         /// finishedScenario: kind == scenarioFinished のときだけシナリオ ID(childExited の
         /// 未完了判定に使う)
-        case other(String, finishedScenario: String?)
+        /// kind: 時刻の採取(scenarioStarted / scenarioFinished)に使う。読めない行は nil
+        case other(String, finishedScenario: String?, kind: String?)
     }
 
     /// **worker フィールドの書き換えは JSON を構造として読み書きする**(文字列置換にすると、
@@ -534,7 +553,7 @@ struct MachineFanoutMultiplexer {
         guard let data = line.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let kind = obj["kind"] as? String else {
-            return .other(line, finishedScenario: nil)
+            return .other(line, finishedScenario: nil, kind: nil)
         }
         switch kind {
         case "runStarted":
@@ -565,20 +584,20 @@ struct MachineFanoutMultiplexer {
                 // 供給フェーズの進行(ApiRunCommand.logSupply)はレーンに属さないので、
                 // 3機ぶんの「Reviving 8 dead lane(s)」がどの機械のものか分からなくなる
                 let stamped = machineStampedLog(obj, host: host) ?? machineStampedWipeStatus(obj, host: host)
-                return .other(stamped ?? line, finishedScenario: finishedScenario)
+                return .other(stamped ?? line, finishedScenario: finishedScenario, kind: kind)
             }
             let platform = String(worker[..<colon])
             let name = String(worker[worker.index(after: colon)...])
             let rehosted = DeviceMachineGrouping.workerID(platform: platform, machine: host, name: name)
             // 手元(host == nil)は常に無変化 —— 既存の id を1バイトも変えない契約をここで満たす
-            guard rehosted != worker else { return .other(line, finishedScenario: finishedScenario) }
+            guard rehosted != worker else { return .other(line, finishedScenario: finishedScenario, kind: kind) }
             var mutated = obj
             mutated["worker"] = rehosted
             guard let out = try? JSONSerialization.data(withJSONObject: mutated, options: [.sortedKeys]),
                   let text = String(data: out, encoding: .utf8) else {
-                return .other(line, finishedScenario: finishedScenario)
+                return .other(line, finishedScenario: finishedScenario, kind: kind)
             }
-            return .other(text, finishedScenario: finishedScenario)
+            return .other(text, finishedScenario: finishedScenario, kind: kind)
         }
     }
 

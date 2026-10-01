@@ -3,7 +3,7 @@
     "autoInstall": true
   },
   "ios": {
-    "appName": "サンプルアプリ",
+    "appName": "SampleApp",
     "app": "com.example.sampleapp",
     "appPath": ".fleetest/DerivedData/Build/Products/Debug-iphonesimulator/SampleApp.app"
   },

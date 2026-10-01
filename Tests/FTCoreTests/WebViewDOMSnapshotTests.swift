@@ -389,4 +389,68 @@ final class WebViewDOMSnapshotTests: XCTestCase {
                    node(2, "button", label: "ツールバー", depth: 1)]
         XCTAssertFalse(WebViewDOM.browserA11yLooksSufficient(elements: els))
     }
+
+    // MARK: - ホスト側の差し込みの不変条件(Android / Safari 共通)
+
+    private func payload(_ json: String) -> WebViewDOM.Payload { try! WebViewDOM.decode(json) }
+
+    private let oneNode = """
+    "viewport":{"offsetLeft":0,"offsetTop":0,"scale":1,"width":360,"height":640},
+    "nodes":[{"role":"staticText","label":"a","x":0,"y":0,"width":10,"height":10,"enabled":true}]
+    """
+
+    /// 読み込み中(nodes 空・readyState が complete でない)の payload で a11y を置き換えない
+    func testIsUsableRejectsLoadingAndEmptyPayloads() {
+        XCTAssertTrue(WebViewDOM.isUsable(payload("{\"readyState\":\"complete\",\(oneNode)}")))
+        XCTAssertFalse(WebViewDOM.isUsable(payload("{\"readyState\":\"loading\",\(oneNode)}")),
+                       "読み込み中の payload で a11y の部分木を落とす")
+        XCTAssertFalse(WebViewDOM.isUsable(payload("{\"readyState\":null,\(oneNode)}")))
+        XCTAssertFalse(WebViewDOM.isUsable(payload(
+            "{\"readyState\":\"complete\",\"viewport\":{\"offsetLeft\":0,\"offsetTop\":0,\"scale\":1,\"width\":1,\"height\":1},\"nodes\":[]}")),
+                       "空の nodes で a11y の部分木を落とす")
+        XCTAssertFalse(WebViewDOM.isUsable(payload("{\"error\":\"boom\"}")))
+    }
+
+    func testHasMultipleWebViewsNeedsTwoOrMore() {
+        func web(_ ref: Int) -> ElementInfo {
+            ElementInfo(ref: ref, type: "webView", identifier: nil, label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+        }
+        XCTAssertFalse(WebViewDOM.hasMultipleWebViews(in: []))
+        XCTAssertFalse(WebViewDOM.hasMultipleWebViews(in: [web(1)]))
+        XCTAssertTrue(WebViewDOM.hasMultipleWebViews(in: [web(1), web(2)]))
+    }
+
+    /// 申告: 既存 note とは `; ` でつなぎ、打ち切りは truncatedCount を 1 増やす
+    func testDisclosingMergesNoteAndCountsTruncation() {
+        let plain = payload("{\"readyState\":\"complete\",\(oneNode)}")
+        var out = WebViewDOM.disclosing(plain, note: "prior", truncatedCount: 3)
+        XCTAssertEqual(out.note, "prior")
+        XCTAssertEqual(out.truncatedCount, 3, "打ち切っていないのに数を増やしている")
+        out = WebViewDOM.disclosing(plain, note: nil, truncatedCount: 0)
+        XCTAssertNil(out.note)
+
+        let cut = payload("{\"readyState\":\"complete\",\"crossOriginFrames\":2,\"truncated\":true,\(oneNode)}")
+        out = WebViewDOM.disclosing(cut, note: "prior", truncatedCount: 0)
+        XCTAssertEqual(out.truncatedCount, 1, "打ち切りが SnapshotTruncation に届かない")
+        XCTAssertTrue(out.note?.hasPrefix("prior; ") == true)
+        XCTAssertTrue(out.note?.contains("2 cross-origin iframe") == true)
+        XCTAssertEqual(WebViewDOM.disclosing(cut, note: nil, truncatedCount: 0).note,
+                       WebViewDOM.payloadNote(cut))
+    }
+
+    /// 空文字は nil に畳む(in-app と同じ。入力欄の label は "" で来る)
+    func testElementsFoldsEmptyStringsToNil() {
+        let p = payload("""
+        {"readyState":"complete",\(oneNode.replacingOccurrences(of: "\"label\":\"a\"", with: "\"label\":\"\",\"identifier\":\"\",\"value\":\"\",\"placeholder\":\"\""))}
+        """)
+        let els = WebViewDOM.elements(payload: p, webViewFrame: FTRect(x: 0, y: 0, width: 100, height: 100),
+                                      density: 1, startingRef: 1)
+        XCTAssertEqual(els.count, 1)
+        XCTAssertNil(els[0].label)
+        XCTAssertNil(els[0].identifier)
+        XCTAssertNil(els[0].value)
+        XCTAssertNil(els[0].placeholder)
+    }
 }

@@ -678,7 +678,9 @@ public final class BridgeClient: AppDriver {
         guard let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: response.elements,
                                                                           screen: response.screen),
               let target = await browserDOMTarget(),
-              let payload = await readBrowserDOM(target)
+              let payload = await readBrowserDOM(target),
+              // 読み込み中の空の payload で a11y の WebView 部分木を落とさない(a11y のまま)
+              WebViewDOM.isUsable(payload)
         else { return }
         // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
         let nextRef = (response.elements.map(\.ref).max() ?? 0) + 1
@@ -688,6 +690,8 @@ public final class BridgeClient: AppDriver {
         let kept = webView.map { WebViewDOM.droppingWebViewSubtree(response.elements, webView: $0) }
             ?? response.elements
         response.elements = WebViewDOM.insertingDOM(added, after: webView, into: kept)
+        (response.note, response.truncatedCount) = WebViewDOM.disclosing(
+            payload, note: response.note, truncatedCount: response.truncatedCount)
         browserDOMCenters = Dictionary(uniqueKeysWithValues: added.map {
             ($0.ref, (x: $0.frame.x + $0.frame.width / 2, y: $0.frame.y + $0.frame.height / 2))
         })

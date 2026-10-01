@@ -14,7 +14,12 @@ import Foundation
 public enum WebViewDOM {
 
     /// 1往復で DOM を走査して JSON 文字列を返す JS。
-    /// **ページ側と衝突させないため隔離ワールドで評価する**(呼び出し側の contentWorld 指定)。
+    /// **隔離ワールドで評価するのは in-app だけ**(WKContentWorld.defaultClient)。**Android(CDP)と Safari
+    /// (WebKit の inspector)はページの main world** —— Safari のプロトコルには隔離ワールドを作る命令が無く、
+    /// Android の `Page.createIsolatedWorld` は呼ぶたびに新しい世界を作る(snapshot ごとに撃つとページに積み上がる)
+    /// うえ、CDP は1往復ごとに接続を開き直すので文脈 ID を跨いで使えるか確かでない。`JSON.stringify` を書き換える
+    /// ページでは decode に失敗して a11y のまま(黙って誤った木にはならない)。DOM のプロトタイプを書き換える
+    /// ページでは座標が狂いうる(既知の制約)。
     ///
     /// 可視性の判定はここが本体。a11y ツリーは display:none / visibility:hidden / aria-hidden /
     /// 画面外 / 0px を勝手に落としてくれるが、DOM 走査は全部自分で判定する必要がある
@@ -232,8 +237,9 @@ public enum WebViewDOM {
           el = walker.nextNode();
         }
 
+        // 上限で打ち切った = まだ歩いていない要素が残っている(黙ると切り詰めた木を「これが全部」と読まれる)
         return emit({ readyState: state, viewport: viewport,
-                      crossOriginFrames: crossOriginFrames, nodes: nodes });
+                      crossOriginFrames: crossOriginFrames, truncated: el !== null, nodes: nodes });
       } catch (e) {
         return emit({ error: String(e) });
       }
@@ -241,10 +247,26 @@ public enum WebViewDOM {
     """
 
     /// JS の戻り値(JSON 文字列)をそのまま写した形。
+    /// 読めた payload の取りこぼしの申告(クロスオリジン iframe・上限での打ち切り)。無ければ nil。
+    /// **3経路(in-app の InAppWebViewDOM・Android の AndroidDriver・Safari の BridgeClient)が同じ文を出す** ——
+    /// 経路ごとに書くと、同じページで iOS だけ申告し Android は黙る(実際にそうなっていた)
+    public static func payloadNote(_ payload: Payload) -> String? {
+        var parts: [String] = []
+        if let count = payload.crossOriginFrames, count > 0 {
+            parts.append("the contents of \(count) cross-origin iframe(s) are not readable (main frame only)")
+        }
+        if payload.truncated == true {
+            parts.append("the page has more elements than the DOM read collects, so the rest are not listed")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: "; ")
+    }
+
     public struct Payload: Decodable, Sendable {
         public var readyState: String?
         public var viewport: Viewport?
         public var crossOriginFrames: Int?
+        /// JS が `MAX_NODES` で走査を打ち切ったとき true(読み手は木を切り詰めたと名乗る = truncatedCount を立てる)
+        public var truncated: Bool?
         public var nodes: [Node]?
         /// JS 側で例外になったときだけ入る(この場合は XCUITest 経路へ落とす)
         public var error: String?

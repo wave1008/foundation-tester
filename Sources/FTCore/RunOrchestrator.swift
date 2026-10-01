@@ -169,8 +169,9 @@ public enum RunEvent: Sendable {
     /// fm: シナリオの FM 呼び出し実測。並列実行では親が scenarioFinished を**再構築**して
     /// stdout へ出すため、ここで運ばないと拡張(モニターの FM グラフ)まで届かない
     /// (結果 JSON は ScenarioHost 内の builder が別経路で受けるので落ちない)
+    /// appCrash: scenarioFinished の同名欄(同じ理由で運ぶ)。
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
-                      reportURL: URL?, fm: FMUsageRecord?)
+                      reportURL: URL?, fm: FMUsageRecord?, appCrash: AppCrashRecord? = nil)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
     case flowSkipped(flowURL: URL, reason: String)
     /// もうどのワーカーもシナリオを実行しておらず、残りは録画のクリップ切り出しと後始末だけになった
@@ -760,6 +761,7 @@ public enum ScenarioRunner {
         }
         var reportURL: URL?
         var fmUsage: FMUsageRecord?
+        var appCrash: AppCrashRecord?
         var frozen = false
         var environmentFault = false
         var driverUnreachableFailure = false
@@ -817,6 +819,7 @@ public enum ScenarioRunner {
             case "scenarioFinished":
                 reportURL = event.reportPath.map { URL(fileURLWithPath: $0) }
                 fmUsage = event.fm
+                appCrash = event.appCrash
             case "deviceFrozen":
                 frozen = true
             case "log":
@@ -834,7 +837,7 @@ public enum ScenarioRunner {
                                    environmentFault: environmentFault,
                                    driverUnreachable: driverUnreachableFailure)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
-                              reportURL: reportURL, fm: fmUsage))
+                              reportURL: reportURL, fm: fmUsage, appCrash: appCrash))
         return outcome
     }
 
@@ -927,7 +930,9 @@ public enum ScenarioRunner {
         }
         return StepResult(index: event.index ?? 0, description: event.description ?? "",
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,
-                          section: event.section, timing: timing, at: event.at)
+                          section: event.section, timing: timing, at: event.at,
+                          command: event.command, failureKind: event.failureKind,
+                          notes: event.notes, guarded: event.guarded)
     }
 }
 
@@ -1668,7 +1673,7 @@ public final class RunOrchestrator {
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が
                     // 現れないため —— 失敗は各呼び出し箇所が握って素通りさせる契約)
-                    if case .flowFinished(_, _, _, _, let fm) = event,
+                    if case .flowFinished(_, _, _, _, let fm, _) = event,
                        RunSummary.fmUnavailable(fm) {
                         Task { await fmCounter.increment() }
                     }
@@ -1901,7 +1906,7 @@ public enum RunLogFormatter {
             return ["  ⏸ Paused before \(index). \(description)"]
         case .fixSuggestion:
             return []
-        case .flowFinished(_, _, let passed, let reportURL, _):
+        case .flowFinished(_, _, let passed, let reportURL, _, _):
             var lines: [String] = []
             if passed {
                 lines.append("  → ✅ passed")

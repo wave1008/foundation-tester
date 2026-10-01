@@ -503,7 +503,10 @@ Android の整定判定は**スナップショットの画面サイズ**で行�
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
 | `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・**入力欄でない ref を叩いても焦点が前の欄に残った**(XCUITest の type / clear)・クリアしきれない・type の読み返しが期待値に届かない・**中身のあるマスク欄への追記**・in-app の**座標タップの点が画面外かソフトキーボードの上**・**セッションのアプリが背面のままの type / clear / pressEnter**(焦点のライブクエリがランナーを落とすので撃つ前に断る)・**同じく背面のままの tap / swipe / drag / doubleTap / pinch / press**(座標は Find the Application、ref は要素のライブクエリが刺さる。v101)・**home を 3 回送っても前面が外れない**) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `422`(Android。本文 `no-active-window-root:`) | `/snapshot` の再試行(WAKEUP 注入込み)後もアクティブウィンドウの a11y 根が読めない一時ストール(実測 Pixel 3a/Android 12: 13〜37 秒。app switcher・画面消灯・ウィンドウ遷移の最中に起きる) | 失敗(自然回復を待つ)。`DriverError.isNoReadableWindow` が判定・MCP は撃ち直しても同じ答えになることと前面復帰の手を案内する |
-| `503` | セッションはあるが**対象アプリが起動していない** | `AppAttachDriver` が activate して1回再試行 |
+| `503` | iOS: セッションはあるが**対象アプリが起動していない**(XCUITest の `requireLiveApp`)。**Android: UiAutomation の接続が死んだ = ブリッジが自分で exit する** | iOS は `AppAttachDriver` が activate して1回再試行(包まれていない xcuitest 経路では素の失敗)。Android は status で分岐しない(ブリッジの起動し直しは供給と監視が拾う) |
+| `504` | in-app: **main で実行されないまま締切を過ぎた**。XCUITest: **ハンドラが固まった = ランナーが自分で終わる** | status で分岐しない(失敗として返す。XCUITest は以後の接続断を供給・監視が拾う) |
+| `500`(XCUITest の attach。本文 `the app to attach to is not in the foreground:`) | 起動済みのアプリへの接続で前面に届かなかった | `FastLaunchDriver` が注記 `activatedBeforeForeground` を立てて activate へ進む。**他の 500(XCUITest の例外)はこの目印を持たないので注記を立てない** |
+| Android の `409` / `500` | 409 = 消せなかった・前の hold の指が下りたまま。500 = type が断られた(同じ事情を in-app は 409、XCUITest は 422 で返す) | status で分岐しない(失敗として返す)。**iOS の 409 と同じ意味ではない** —— `SessionRecoveryDriver` は iOS の XCUITest にしか掛からない |
 
 **XCUITest ランナーは 409 を `requireApp()` の1箇所からしか投げてはいけない**(`SessionRecoveryDriver`
 がこの経路の 409 を無条件に「セッション消失」と読み、activate を撃つため)。同じ「今は無理」を

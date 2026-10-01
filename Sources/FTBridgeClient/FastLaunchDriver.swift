@@ -49,7 +49,13 @@ public final class FastLaunchDriver: AppDriver {
             activatedBeforeForeground: activatedBeforeForeground)
     }
 
-    /// 前面と見なかったら true。**ランナーが「前面ではない」と答えた(HTTP 500)ときだけ**立てる ——
+    /// ランナーの attach が前面に届かなかったときの 500 の本文の目印(Runner の BridgeRouter.handleLaunch の
+    /// attachOnly 分岐と同期。`FastLaunchAttachMarkerSyncTests` が両側を照合する)
+    static let notInForegroundMarker = "the app to attach to is not in the foreground"
+
+    /// 前面と見なかったら true。**ランナーが「前面ではない」と答えた(HTTP 500 + 目印)ときだけ**立てる ——
+    /// ランナーは XCUITest の例外などでも 500 を返すので、status だけで読むと別の失敗を「前面ではない」と
+    /// 記録してしまう(戻り値は注記にしか使わない = どちらでもこの後 activate する)。
     /// 接続できない等の失敗はそのまま投げる(activate も同じ理由で失敗するので撃たない)。
     /// 注入口 `FT_FAKE_LAUNCH_NOT_FOREGROUND=1`: 答えを「前面ではない」に差し替える(実際には意図して
     /// 起こせないので、注記の配線と「それでも activate して続く」ことの陽性対照に使う)
@@ -58,8 +64,8 @@ public final class FastLaunchDriver: AppDriver {
         do {
             try await base.attach(bundleID: bundleID)
             return false
-        } catch DriverError.badResponse(let status, _) where status == 500 {
-            return true
+        } catch DriverError.badResponse(let status, let body) where status == 500 {
+            return body.contains(Self.notInForegroundMarker)
         }
     }
 

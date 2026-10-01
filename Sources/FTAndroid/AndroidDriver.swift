@@ -33,6 +33,12 @@ public final class AndroidDriver: AppDriver {
     private var captureKeyboardOnNextSnapshot = false
     /// CDP の端送りが使えなかったアプリ(ネイティブ画面で毎回ソケットを探さないための記憶)
     private var webViewEdgeJumpUnavailableFor: String?
+    /// 直近の木に `webView` ノードがあったか(端送りの CDP の門。木を見ずに撃つと、WebView を保持したまま
+    /// 別の画面に居るとき裏のページを動かしてネイティブのリストが送られない)。snapshot 前は false
+    private var lastTreeHasWebView = false
+    /// 直近の木の前面パッケージ(`sessionBundleID ?? currentPackage`。帳簿が nil の MCP でも撃てるように)
+    private var lastTreeForegroundPackage: String?
+    private var warnedMultipleWebViews = false
 
     /// raiseElementLimitOnNextSnapshot() が立てる1回限りの要素上限(nil = 既定)
     private var pendingElementLimit: Int?
@@ -455,16 +461,23 @@ public final class AndroidDriver: AppDriver {
             let webView = WebViewDOM.webViewElement(in: snapshot.elements)
             let frame = webView?.frame ?? WebViewDOM.browserContentFrame(in: snapshot.elements,
                                                                         screen: snapshot.screen)
-            let route = AndroidWebViewDOM.route(
+            var route = AndroidWebViewDOM.route(
                 packageID: package, hasWebViewNode: webView != nil,
                 a11yLooksSufficient: WebViewDOM.browserA11yLooksSufficient(elements: snapshot.elements),
                 browserDOMEnabled: AndroidWebViewDOM.isBrowserDOMEnabled,
                 appWebViewDOMEnabled: AndroidWebViewDOM.isAppWebViewDOMEnabled)
+            // **WebView が複数ある画面は自作アプリ経路で置き換えない**(最初に応答したページを最大面積の
+            // ノードへ写すので、別の WebView の矩形へ写りうる)。a11y のまま進む
+            if route == .appWebView, WebViewDOM.hasMultipleWebViews(in: snapshot.elements) {
+                warnMultipleWebViewsOnce(package: package)
+                route = .a11y
+            }
             if route != .a11y, let frame {
                 if let payload = await AndroidWebViewDOM.read(
                     serial: serial ?? "", packageID: package, route: route, webViewLabel: webView?.label,
                     urlBarValue: AndroidWebViewDOM.urlBarValue(in: snapshot.elements),
-                    adb: { try self.adb($0).output }) {
+                    adb: { try self.adb($0).output }),
+                   WebViewDOM.isUsable(payload) {
                     // nextRef は差し込み前の全要素から採る(落とす内側の要素も含めて衝突を避ける)
                     let nextRef = (snapshot.elements.map(\.ref).max() ?? 0) + 1
                     let added = WebViewDOM.elements(payload: payload, webViewFrame: frame,
@@ -482,6 +495,8 @@ public final class AndroidDriver: AppDriver {
                         kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
                     }
                     snapshot.elements = WebViewDOM.insertingDOM(added, after: webView, into: kept)
+                    (snapshot.note, snapshot.truncatedCount) = WebViewDOM.disclosing(
+                        payload, note: snapshot.note, truncatedCount: snapshot.truncatedCount)
                 } else if route == .appWebView {
                     // DOM が読めず a11y のまま進む(挙動は変えない)。**黙らせない** ——
                     // 理由の名指しは warnWebViewDOMFallbackOnce。ブラウザ経路は対象外
@@ -498,6 +513,8 @@ public final class AndroidDriver: AppDriver {
                 }
             }
         }
+        lastTreeForegroundPackage = snapshot.sessionBundleID ?? currentPackage
+        lastTreeHasWebView = WebViewDOM.webViewElement(in: snapshot.elements) != nil
         syncLocalState(from: snapshot)
         // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは
         // 判定できずホスト側で dumpsys を引いて補う(AndroidForegroundWindows.keyboardVisible)。
@@ -778,15 +795,31 @@ public final class AndroidDriver: AppDriver {
     /// (ネイティブ画面で毎回 adb のソケット探索を払わないため。アプリが変わればやり直す)
     private func webViewJumpToEdge(_ direction: FTSwipeDirection) async -> Bool {
         guard AndroidWebViewDOM.isAppWebViewDOMEnabled,
-              let package = currentPackage,
-              webViewEdgeJumpUnavailableFor != package else { return false }
+              let package = lastTreeForegroundPackage ?? currentPackage,
+              AndroidWebViewDOM.shouldJumpToEdge(treeHasWebView: lastTreeHasWebView,
+                                                 unavailableFor: webViewEdgeJumpUnavailableFor,
+                                                 package: package) else { return false }
         let outcome = await AndroidWebViewDOM.scrollToEdge(
             serial: serial ?? "", packageID: package, route: .appWebView,
             finger: direction, adb: { try self.adb($0).output })
-        guard let outcome else { webViewEdgeJumpUnavailableFor = package; return false }
-        // **動かなかった = もう端**。ホストはこれを受けて署名の2回不変を待たずに切り上げる
-        atEdgeOnLastSwipe = !outcome.moved
-        return true
+        switch outcome {
+        case .unavailable:
+            webViewEdgeJumpUnavailableFor = package
+            return false
+        case .noRoom:
+            // スクロール余地が無いページ。使えないわけではないので無効化せず、この回だけ通常のスワイプへ
+            return false
+        case .jumped(let moved):
+            // **動かなかった = もう端**。ホストはこれを受けて署名の2回不変を待たずに切り上げる
+            atEdgeOnLastSwipe = !moved
+            return true
+        }
+    }
+
+    private func warnMultipleWebViewsOnce(package: String) {
+        guard !warnedMultipleWebViews else { return }
+        warnedMultipleWebViews = true
+        ConsoleOut.err("\(package) shows more than one WebView; the DOM read cannot tell which page belongs to which, so the accessibility tree is used as is")
     }
 
     /// 直前の端送りで「もう端」と分かったか(`AppDriver.reachedEdgeOnLastSwipe`)

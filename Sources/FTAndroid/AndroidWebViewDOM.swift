@@ -405,8 +405,10 @@ public extension AndroidWebViewDOM {
         }
     }
 
-    /// **端まで一発で飛ばす**(CDP)。戻り値 = ページを動かす手段が使えたか
-    /// (既に端に居て動かなかった場合も true = 「ジェスチャは要らなかった」)。
+    /// **端まで一発で飛ばす**(CDP)。`.jumped` = 代入を撃てた(既に端に居て動かなかった場合も
+    /// `.jumped(moved: false)` = 「ジェスチャは要らなかった」)。`.noRoom` = ページに応答はあるが
+    /// その向きのスクロール余地が無い(その回だけ通常のスワイプへ。手段の無効化はしない)。
+    /// `.unavailable` = ソケット・タブが無い等で使えない。
     ///
     /// **これが効く画面ではスワイプを1本も撃たない**。Android の端送りは 1 本 ≒ 6 行しか進まず、
     /// 長文では往復回数がそのまま所要になる(受け手の実文書で 19.2s)。ページの中身は
@@ -418,7 +420,7 @@ public extension AndroidWebViewDOM {
     /// どちらも見つからなければ false を返して**呼び手はジェスチャへ落ちる**
     static func scrollToEdge(serial: String, packageID: String, route: Route,
                              finger: FTSwipeDirection,
-                             adb: (_ args: [String]) throws -> String) async -> ScrollJump? {
+                             adb: (_ args: [String]) throws -> String) async -> ScrollJump {
         let axis = (finger == .up || finger == .down) ? "v" : "h"
         // 指の向きとコンテンツの向きは逆(指を上へ = 末尾へ送る)
         let toEnd = (finger == .up || finger == .left)
@@ -450,21 +452,31 @@ public extension AndroidWebViewDOM {
         """
         let reply = await withRankedTabs(serial: serial, packageID: packageID, route: route,
                                          webViewLabel: nil, urlBarValue: nil, adb: adb) { tabs in
+            var sawNone = false
             for webSocket in tabs {
-                if let value = await evaluate(webSocket: webSocket, javaScript: javaScript),
-                   value != "none" {
-                    return value
-                }
+                guard let value = await evaluate(webSocket: webSocket, javaScript: javaScript) else { continue }
+                if value == "none" { sawNone = true; continue }
+                return value
             }
-            return nil
+            return sawNone ? "none" : nil
         }
-        guard let reply else { return nil }
-        return ScrollJump(moved: scrollMoved(reply))
+        guard let reply else { return .unavailable }
+        return reply == "none" ? .noRoom : .jumped(moved: scrollMoved(reply))
     }
 
-    /// CDP で飛ばした結果。`moved == false` = **もう端に着いていた**
-    struct ScrollJump {
-        let moved: Bool
+    /// CDP で端へ飛ばした結果。`.jumped(moved: false)` = **もう端に着いていた**
+    enum ScrollJump: Equatable {
+        case jumped(moved: Bool)
+        case noRoom
+        case unavailable
+    }
+
+    /// 端送りを CDP で撃ってよいか(純粋)。**木に `webView` ノードが無ければ撃たない**
+    /// (devtools ソケットは WebView を一度でも作ればプロセスが続く限り残るので、WebView を保持したまま
+    /// 別の画面に居ると裏のページを動かして true を返し、ネイティブのリストが送られない)。
+    /// `unavailableFor` は使えないと分かったパッケージ
+    static func shouldJumpToEdge(treeHasWebView: Bool, unavailableFor: String?, package: String) -> Bool {
+        treeHasWebView && unavailableFor != package
     }
 
     /// `"<before>|<after>"` を読んで動いたかを返す(純粋)。**読めない形は「動いた」に倒す** ——

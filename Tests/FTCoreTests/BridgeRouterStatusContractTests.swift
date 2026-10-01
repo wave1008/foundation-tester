@@ -170,6 +170,17 @@ final class BridgeRouterStatusContractTests: XCTestCase {
     /// `func <名>` から次の `private func` の手前まで。**`private ` は付けずに探す** ——
     /// ファイル分割で handleType/handleClear は internal(ルート表から別ファイルの
     /// BridgeRouter.swift へ呼ばれるため)になったので、`private func` 固定では見つからない
+    /// Runner/FleetestRunnerUITests の全 .swift(ルータ以外も 501 を投げうる)
+    private func allRunnerSources() throws -> String {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Runner/FleetestRunnerUITests")
+        let names = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".swift") }
+        XCTAssertTrue(names.contains("CoordinatePinch.swift"), "走査がランナーの全ファイルに届いていない")
+        return try names.map { try String(contentsOf: dir.appendingPathComponent($0), encoding: .utf8) }
+            .joined(separator: "\n")
+    }
+
     private func handlerBody(_ name: String, in source: String) -> String? {
         guard let start = source.range(of: "func \(name)") else { return nil }
         let rest = source[start.upperBound...]
@@ -199,6 +210,10 @@ final class BridgeRouterStatusContractTests: XCTestCase {
 
     func testRunnerNeverClaimsEngineIncapable() throws {
         let source = try routerSource
+        // **ランナーの全ファイルで数える**(BridgeRouter* だけを読むと、CoordinatePinch.swift の 501 を見逃していた)
+        let everyRunnerFile = try allRunnerSources()
+        XCTAssertEqual(try throwSites(status: 501, in: everyRunnerFile), 1,
+                       "XCUITest ランナー全体の 501 は hideKeyboard の1箇所だけ(BridgeRouter 以外のファイルも含む)")
         XCTAssertEqual(try throwSites(status: 501, in: source), 1,
                        "XCUITest ランナーの 501 は hideKeyboard の1箇所だけ。"
                        + "増やすとフォールバック先が自分自身になる")

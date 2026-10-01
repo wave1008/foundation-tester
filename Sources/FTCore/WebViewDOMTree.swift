@@ -36,9 +36,10 @@ public extension WebViewDOM {
             guard frame.width >= 1, frame.height >= 1 else { continue }
             // **web: true を立てる**。読み手が「#id が効かない画面」だと判断する材料で、
             // ここを落とすと OS で扱いが割れる
-            out.append(ElementInfo(ref: ref, type: type, identifier: node.identifier,
-                                   label: node.label, value: node.value,
-                                   placeholder: node.placeholder,
+            // 空文字は nil に畳む(in-app の InAppWebViewDOM.build と同じ。入力欄の label はほぼ常に "")
+            out.append(ElementInfo(ref: ref, type: type, identifier: nilIfEmpty(node.identifier),
+                                   label: nilIfEmpty(node.label), value: nilIfEmpty(node.value),
+                                   placeholder: nilIfEmpty(node.placeholder),
                                    enabled: node.enabled ?? true, frame: frame, depth: 1,
                                    checked: node.checked, web: true))
             ref += 1
@@ -46,6 +47,36 @@ public extension WebViewDOM {
         return out
     }
     
+    private static func nilIfEmpty(_ text: String?) -> String? {
+        guard let text, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// **差し込みに使える payload か**(純粋)。読み込み中は JS が `nodes: []` を返す
+    /// (`about:blank` でも readyState は complete)ので、使えない payload で a11y の WebView 部分木を
+    /// 落とすと木から本文が消える。in-app(InAppWebViewDOM)の `readyState == "complete"` の門と揃える。
+    /// 偽のときは**置き換えず a11y のまま**にする(Android / Safari の呼び手がこの1箇所を通る)
+    static func isUsable(_ payload: Payload) -> Bool {
+        payload.error == nil && payload.readyState == "complete" && !(payload.nodes ?? []).isEmpty
+    }
+
+    /// 木に `webView` 型の要素が2つ以上あるか(純粋)。Android の自作アプリ経路は最初に応答した
+    /// ページを最大面積の WebView ノードへ写すので、複数あると別の WebView の矩形へ写りうる
+    static func hasMultipleWebViews(in elements: [ElementInfo]) -> Bool {
+        elements.filter { $0.type.lowercased() == "webview" }.count >= 2
+    }
+
+    /// 差し込んだ回の取りこぼしの申告を木へ載せる(純粋)。note は既存があれば `; ` でつなぐ。
+    /// 打ち切りは取りこぼした数が分からないので `truncatedCount` を 1 増やす
+    /// (0 のままだと「切り詰めた木では不在を結論しない」`SnapshotTruncation` が働かない)
+    static func disclosing(_ payload: Payload, note: String?,
+                           truncatedCount: Int) -> (note: String?, truncatedCount: Int) {
+        let added = payloadNote(payload)
+        let merged = [note, added].compactMap { $0 }.joined(separator: "; ")
+        return (merged.isEmpty ? nil : merged,
+                payload.truncated == true ? truncatedCount + 1 : truncatedCount)
+    }
+
     /// 木の中の WebView ノード本体(DOM を差し込む先・スコープ算出の起点)。**最大のものを選ぶ**
     /// —— 入れ子の WebView はブリッジ側で既に落としているが、複数並ぶ画面では
     /// 面積の大きいほうが本体である公算が高い

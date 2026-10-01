@@ -469,8 +469,11 @@ final class FTInAppBridge {
             if let node { nodes[copy.ref] = node }
             if let clip { clips[copy.ref] = clip }
         }
+        // JS が上限で打ち切った WebView は1件と数える(取りこぼした数は分からないが、0 のままだと
+        // 「切り詰めた木では不在を結論しない」砦が働かない)
+        let domTruncated = domByRef.values.filter(\.truncated).count
         return MergedSnapshot(elements: elements, frames: frames, nodes: nodes, clips: clips,
-                              truncated: base.truncated + dropped, note: note,
+                              truncated: base.truncated + dropped + domTruncated, note: note,
                               webViewPath: anyInterop ? "dom-interop" : "dom",
                               truncatedTiers: truncatedTiers, bulkExempt: base.bulkExempt)
     }

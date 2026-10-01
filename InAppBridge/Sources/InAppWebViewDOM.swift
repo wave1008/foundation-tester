@@ -23,8 +23,10 @@ enum InAppWebViewDOM {
         var elements: [ElementInfo]
         /// elements と同じ並びの画面座標フレーム(tap の座標解決用)
         var frames: [CGRect]
-        /// 取りこぼしの申告(クロスオリジン iframe)。無ければ nil
+        /// 取りこぼしの申告(クロスオリジン iframe・上限での打ち切り)。無ければ nil
         var note: String?
+        /// JS が上限で走査を打ち切った(mergeWebViewDOM が truncated を立てる)
+        var truncated: Bool
     }
 
     /// 読めなかった理由。**nil を返して黙らないため**にある ——
@@ -147,12 +149,8 @@ enum InAppWebViewDOM {
             frames.append(frame)
         }
 
-        var note: String?
-        if let count = payload.crossOriginFrames, count > 0 {
-            // 黙って要素ゼロにしない(読めない領域があることを記録へ残す)
-            note = "the contents of \(count) cross-origin iframe(s) are not readable"
-                + " (main frame only)"
-        }
-        return Captured(elements: elements, frames: frames, note: note)
+        // 黙って要素ゼロにしない(読めない領域があることを記録へ残す)。文は3経路で共有
+        return Captured(elements: elements, frames: frames, note: WebViewDOM.payloadNote(payload),
+                        truncated: payload.truncated == true)
     }
 }
