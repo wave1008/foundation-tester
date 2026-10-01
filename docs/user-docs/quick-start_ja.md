@@ -87,13 +87,18 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 作業フォルダに戻って実行します。
 
 ```bash
+# iOS
 fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
+
+# Android
+fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
+  --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
 `--app-path` にビルドしたアプリを渡すと、実行時にデバイスへ自動でインストールされます。
-`--auto-device` は、このマシンで利用可能なシミュレータ/エミュレータを自動で選びます。
-このコマンドでは実行プロファイルの名前はプラットフォーム名(ここでは `ios`)になります。
+`--auto-device` は、このマシンで利用可能なシミュレータ/エミュレータを自動で選びます(起動していない
+ものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
 
 </details>
 
@@ -113,6 +118,8 @@ sut-ec-mobile(SUT Store)のログイン画面だけを対象に、探索的テ�
 
 AI アシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
 見つけた挙動をテストシナリオに落とします。別の画面を対象にするときは、画面名を替えてください。
+iOS と Android のどちらで探索するかは、指示に添えると確実です(例:「…ログイン画面だけを対象に、
+Android で探索的テストを作成して。」)。
 
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
@@ -150,6 +157,8 @@ fleetest run --dry-run
 作成したシナリオを ios プロファイルで実行して
 ```
 
+Android で作ったシナリオなら `android` プロファイルを指定します。
+
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
@@ -161,7 +170,7 @@ swift run fleetest run --profile ios
 ../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
-`--profile` には、ステップ2で用意した実行プロファイルの名前を渡します(上のコマンドなら `ios`。
+`--profile` には、ステップ2で用意した実行プロファイルの名前を渡します(上のコマンドなら `ios`、Android なら `android`。
 `--run <名前>` を指定した場合はその名前)。アプリ・デバイス・実行時設定はそこから解決されます。
 
 VSCode からは **Test Explorer** でシナリオを選び、**実行**をクリックします。

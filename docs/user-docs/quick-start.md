@@ -86,13 +86,19 @@ The run profiles are named after the platforms (`ios` and `android`).
 Go back to your work folder and run:
 
 ```bash
+# iOS
 fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
+
+# Android
+fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
+  --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
 Passing the built app to `--app-path` makes the run install it on the device automatically.
-`--auto-device` picks an available simulator/emulator on this machine. With this command the
-run profile is named after the platform (`ios` here).
+`--auto-device` picks an available simulator/emulator on this machine (one that is not running
+is started automatically at run time). The run profiles are named after the platforms (`ios` and
+`android`).
 
 </details>
 
@@ -112,7 +118,8 @@ Create exploratory tests for the login screen of sut-ec-mobile (SUT Store) only.
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
 operating it, and turns the behavior it finds into test scenarios. To target a different screen,
-replace the screen name.
+replace the screen name. Saying which of iOS or Android to explore on makes it certain (for example
+"... for the login screen of sut-ec-mobile (SUT Store) only, on Android.").
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
@@ -150,6 +157,8 @@ fleetest run --dry-run
 Run the scenarios you created with the ios profile
 ```
 
+For scenarios created on Android, name the `android` profile instead.
+
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
 
@@ -162,7 +171,7 @@ swift run fleetest run --profile ios
 ```
 
 `--profile` takes the name of the run profile from step 2 (`ios`, as created by the command
-above; if you passed `--run <name>`, use that name). The app, the devices, and the run-time
+above, or `android` for Android; if you passed `--run <name>`, use that name). The app, the devices, and the run-time
 settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
