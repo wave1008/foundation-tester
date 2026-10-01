@@ -6,6 +6,7 @@
 
 import XCTest
 @testable import FTAndroid
+import FTCore
 
 final class AndroidPhysicalWakeTests: XCTestCase {
 
@@ -26,6 +27,17 @@ final class AndroidPhysicalWakeTests: XCTestCase {
     /// 点いていてもロック画面ならどのアクティビティも resume されない = 起こす(解除する)側
     func testAwakeOnTheLockScreenStillNeedsUnlocking() {
         XCTAssertEqual(AndroidPhysicalDevice.awakeAndUnlocked(checkOutput: "  mWakefulness=Awake\n"), false)
+    }
+
+    /// ロック中(topResumedActivity の行が無い)でも確認コマンドが 0 で終わること。非ゼロだと
+    /// `outputIfSucceeded` が捨て、ロック中ほど「不明 = 起こさない」に倒れる。端末の sh の代わりに
+    /// ホストの sh で dumpsys を差し替えて、production の文字列そのものを走らせる
+    func testCheckCommandSucceedsOnTheLockScreen() throws {
+        let stub = "dumpsys() { if [ \"$1\" = power ]; then echo '  mWakefulness=Awake'; "
+            + "else echo '  mFocusedApp=null'; fi; }; "
+        let result = try Shell.run(["/bin/sh", "-c", stub + AndroidPhysicalDevice.screenCheckCommand], timeout: 10)
+        let output = try XCTUnwrap(result.outputIfSucceeded)
+        XCTAssertEqual(AndroidPhysicalDevice.awakeAndUnlocked(checkOutput: output), false)
     }
 
     /// 取れなかったときは起こさない(確かめられないのに撃たない)
@@ -76,8 +88,8 @@ final class AndroidPhysicalWakeTests: XCTestCase {
             return XCTFail("Android の分岐が見つからない = 走査を見直す")
         }
         let between = String(code[branch.upperBound..<driver.lowerBound])
-        XCTAssertTrue(between.contains("DevicePicker.isPhysicalAndroidSerial(serial)"),
-                      "実機に絞っていない(エミュレータにも adb を払わせる)")
+        XCTAssertFalse(between.contains("isPhysicalAndroidSerial"),
+                       "実機に絞っている(エミュレータのロック画面を起こさない。2026-10-01 実測)")
         XCTAssertTrue(between.contains("AndroidPhysicalDevice.wakeIfAsleep(serial: serial"),
                       "シナリオごとに画面を確かめていない")
     }
@@ -86,13 +98,12 @@ final class AndroidPhysicalWakeTests: XCTestCase {
     /// (緑では撃たない = 失敗経路だけの費用)
     func testAFailedScenarioNamesAScreenThatWentOff() throws {
         let code = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
-        guard let gate = code.range(of: "if !passed, runPlatform == \"android\", let serial,"
-                                         + " DevicePicker.isPhysicalAndroidSerial(serial),") else {
-            return XCTFail("失敗時の確認が無い(実行中に消えた1本の失敗文が消灯に触れない)")
+        guard let gate = code.range(of: "if !passed, runPlatform == \"android\", let serial,\n"
+                                         + "           AndroidPhysicalDevice.screenAwakeAndUnlocked") else {
+            return XCTFail("失敗時の確認が無い(実機に絞らないこと)(実行中に消えた1本の失敗文が消灯に触れない)")
         }
         let tail = code[gate.upperBound...].prefix(400)
-        XCTAssertTrue(tail.contains("AndroidPhysicalDevice.screenAwakeAndUnlocked(serial: serial) == false"),
-                      String(tail))
+        XCTAssertTrue(tail.contains("(serial: serial) == false"), String(tail))
     }
 
     /// deep idle の判定も「落ちたときだけ」の同じ形で名指しする(緑では撃たない)

@@ -315,7 +315,7 @@ FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で�
 | label | String | 表示用の識別子(`degradedWorkers` の1行と同一) |
 | scenarioID | String? | `requeued` / `retryLimit` / `circuitHeld` の対象 |
 | reason | String | 英語・人間可読 |
-| cause | String? | **`degraded`/`requeued`/`retryLimit`/`circuitHeld` だけ持つ**理由の分類(生成箇所が型から決める。`reason` の文字列を後から解析しない)。値は `frozen`(画面の凍結)/ `deviceGone`(デバイスが消えた。offline/not found)/ `bridgeUnreachable`(ブリッジに届かない)/ `bridgeTakenOver`(ブリッジが別のデバイスのものになった)/ `consecutiveFailures`(連続失敗)/ `accessibilityFault`(一時的なアクセシビリティ異常)/ `noResponse`(接続できない・status に応答しない)。**写像できない reason は省略**(2026-09-27 より前の記録には無い) |
+| cause | String? | **`degraded`/`requeued`/`retryLimit`/`circuitHeld` だけ持つ**理由の分類(生成箇所が型から決める。`reason` の文字列を後から解析しない)。値は `frozen`(画面の凍結)/ `deviceGone`(デバイスが消えた。offline/not found)/ `bridgeUnreachable`(ブリッジに届かない)/ `bridgeTakenOver`(ブリッジが別のデバイスのものになった)/ `consecutiveFailures`(連続失敗)(**前の run から引き継いだ連続失敗を含むことがある**。`reason` に「including N carried over from earlier runs」と出る。台帳は `<repo>/.fleetest/lane-streak-<platform:デバイス論理名>.json`。通ると消え(離脱では消さない)、中断で終わった失敗は持ち越さない)/ `accessibilityFault`(一時的なアクセシビリティ異常)/ `noResponse`(接続できない・status に応答しない)。**写像できない reason は省略**(2026-09-27 より前の記録には無い) |
 | recovery | String? | **`recovered` だけ持つ**回復の種類。値は `runnerRestart`(XCUITest ランナーを同じポートで起動し直した)/ `workerRevive`(離脱したワーカーの論理デバイスを復帰させた)。**実装にある回復経路のうち、この2つだけを構造化している**(下記の注記参照。2026-09-27 より) |
 
 **`degradedWorkers` と `workerAnomalies` は同じ事象**(前者が人向けの1行、後者が機械可読)。

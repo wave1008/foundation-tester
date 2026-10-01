@@ -35,8 +35,13 @@ extension MCPServer {
     func prepareAndroidDeviceIfNeeded(_ resolved: AppDriver, args: [String: Any]) async {
         guard resolved is AndroidDriver, makeDriver == nil else { return }
         let key = Self.engineKey(args)
-        guard let serial = connectedAndroidSerials[key],
-              DevicePicker.isPhysicalAndroidSerial(serial) else { return }
+        guard let serial = connectedAndroidSerials[key] else { return }
+        // エミュレータも起こし直し後にロック画面のまま残るので、毎回の確認だけは撃つ。
+        // 初回の prepareForRun(点灯・解除を最後まで待つ)は実機だけ
+        guard DevicePicker.isPhysicalAndroidSerial(serial) else {
+            await AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: Self.logStderr)
+            return
+        }
         guard !preparedPhysicalAndroid.contains(key) else {
             await AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: Self.logStderr)
             return

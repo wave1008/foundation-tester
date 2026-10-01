@@ -1,4 +1,6 @@
-// Android 実機だけに必要な run 前準備。エミュレータには無い前提を埋める:
+// Android の run 前準備(`prepareForRun` は実機だけ)。画面ロックの確認と解除(`wakeIfAsleep`)は
+// エミュレータにも効かせる(起こし直した AVD がロック画面のまま残ることがある。実測:
+// mWakefulness=Awake・topResumedActivity なし・launch が 500)。実機に固有の前提:
 //   - 実機は放置すると画面が消灯しロック画面に入る。ロック中は
 //     UiAutomation.getRootInActiveWindow() が対象アプリにならず launch が 500
 //     (「アプリの画面が表示されませんでした」)、スクショも真っ黒になる(実害)
@@ -77,6 +79,7 @@ public enum AndroidPhysicalDevice {
     }
 
     /// **消灯・ロック中のときだけ** `prepareForRun` を撃つ(点いていて解除済みなら何もしない)。起こしたら true。
+    /// 実機・エミュレータ共通(ScenarioRunnerMain / MCP が serial の種別を問わず呼ぶ)。
     /// 起こすのが run 開始時の1回だけだと、途中で1回消えた後の全シナリオが「アプリが前面に来ない」
     /// (launch の 500)で落ち、消灯に一言も触れなかった(Pixel 4a 実測: 1回の消灯で 22/24 赤)。
     /// 確認は1往復(端末側で grep。Pixel 4a / 3a で 0.07〜0.15 秒)なので、シナリオごと・MCP の呼び出しごとに払う
@@ -98,12 +101,17 @@ public enum AndroidPhysicalDevice {
     public static func screenAwakeAndUnlocked(serial: String) -> Bool? {
         guard let adb = try? AndroidDriver.findADB(),
               let output = try? Shell.run(
-                [adb, "-s", serial, "shell",
-                 "dumpsys power | grep -m1 mWakefulness=; "
-                    + "dumpsys activity activities | grep -m1 topResumedActivity="],
+                [adb, "-s", serial, "shell", screenCheckCommand],
                 timeout: 15).outputIfSucceeded else { return nil }
         return awakeAndUnlocked(checkOutput: output)
     }
+
+    /// **末尾の `; true` を外さない** —— ロック中は topResumedActivity の行が無く、最後の grep が 1 で
+    /// 終わる。`outputIfSucceeded` はそれを「読めない」と捨てるので、ロック中ほど nil = 起こさない、に
+    /// 倒れていた(エミュレータで 3 run・数十件の launch 500 を出すまで気付かなかった)。adb 自体の失敗は
+    /// adb の終了コードで残り、読めない出力は `awakeAndUnlocked` が mWakefulness= の有無で nil にする
+    static let screenCheckCommand = "dumpsys power | grep -m1 mWakefulness=; "
+        + "dumpsys activity activities | grep -m1 topResumedActivity=; true"
 
     /// `wakeIfAsleep` の確認の出力を読む純粋関数。**取れなかった(空)は nil** = 起こさない
     /// (確かめられないのに撃たない)。ロックの判定は topResumedActivity の有無だけ(ファイル冒頭)

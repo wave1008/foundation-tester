@@ -33,15 +33,22 @@ public struct WorkerCircuitBreaker: Equatable, Sendable {
 
     public let threshold: Int
     public private(set) var consecutiveFailures = 0
+    /// 前の run から引き継いだ連続失敗数(`LaneFailureStreakStore`)。通過で 0 に戻る。
+    /// 引き継いだ streak の「開始時点の通過数」はこの run の開始(0)とみなす = `runPassesAtStreakStart`
+    /// の初期値 0。他レーンがこの run で1本でも通った後の最初の失敗で離脱する
+    public private(set) var carriedFailures = 0
     private var runPassesAtStreakStart = 0
     private var heldAnnounced = false
 
-    public init(threshold: Int) {
+    public init(threshold: Int, carriedFailures: Int = 0) {
         self.threshold = threshold
+        self.carriedFailures = max(0, carriedFailures)
+        self.consecutiveFailures = self.carriedFailures
     }
 
     public mutating func recordPass() {
         consecutiveFailures = 0
+        carriedFailures = 0
         heldAnnounced = false
     }
 

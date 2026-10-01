@@ -400,11 +400,12 @@ struct RunScenario: AsyncParsableCommand {
                     uiFrameworkHint = AppUIFrameworkQuery.staticAnswer(for: uiFrameworkSubject).framework
                 }
             case "android":
-                // **実機はシナリオごとに画面の状態を見て、消灯・ロック中なら起こす**(子プロセス = シナリオ
+                // **Android は実機・エミュレータを問わずシナリオごとに画面の状態を見て、消灯・ロック中なら起こす**
+                // (エミュレータも起こし直し後にロック画面のまま残る)(子プロセス = シナリオ
                 // 1本なので、run・api run・run-file・MCP の ft_run_scenario がすべてここを通る)。
                 // run 開始時の1回だけだと、途中で1回消えた後の全シナリオが launch 500 で落ちる
                 // (AndroidPhysicalDevice.wakeIfAsleep の doc)
-                if let serial, DevicePicker.isPhysicalAndroidSerial(serial) {
+                if let serial {
                     await AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: { ConsoleOut.err($0) })
                 }
                 driver = try AndroidDriver(serial: serial)
@@ -596,13 +597,13 @@ struct RunScenario: AsyncParsableCommand {
         let record = core.finalRecord
         // デバッグの stop で中断した場合は成功扱いにしない(確認まで到達していない)
         let passed = record.passed && !core.stoppedByUser
-        // **落ちたときだけ**、Android 実機の画面が途中で消えていなかったかを1往復で見て名指しする。
+        // **落ちたときだけ**、Android の画面が途中で消えて(ロックされて)いなかったかを1往復で見て名指しする(実機・エミュレータ共通)。
         // シナリオの前の確認(wakeIfAsleep)は実行中に消えた1本を救えず、その失敗文は
         // 「セレクタが解決できない」としか言わない(実機 Pixel 4a で実測)。緑の run では撃たない。
         // **レポート書き出しより前に判定する** —— stderr(→ errorLogs)には出るが、書き出しが
         // 先だとレポート(.md)には載らない
         var reportNotices: [String] = []
-        if !passed, runPlatform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial),
+        if !passed, runPlatform == "android", let serial,
            AndroidPhysicalDevice.screenAwakeAndUnlocked(serial: serial) == false {
             let notice = "\(serial): the screen was off or locked when this scenario failed — steps after"
                 + " it went off could not reach the app (the next scenario wakes it; the tool does not keep"

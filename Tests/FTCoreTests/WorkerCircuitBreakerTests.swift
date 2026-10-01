@@ -61,4 +61,26 @@ final class WorkerCircuitBreakerTests: XCTestCase {
         _ = c.recordFailure(runPasses: 0)
         XCTAssertEqual(c.recordFailure(runPasses: 1), .trip(consecutive: 2))
     }
+
+    /// 前の run から 2 回落ちていた台は、この run で他レーンが通った後の最初の失敗で離脱する
+    func testCarriedFailuresTripOnFirstFailureAfterAnotherLanePassed() {
+        var b = WorkerCircuitBreaker(threshold: 3, carriedFailures: 2)
+        XCTAssertEqual(b.consecutiveFailures, 2)
+        XCTAssertEqual(b.carriedFailures, 2)
+        XCTAssertEqual(b.recordFailure(runPasses: 1), .trip(consecutive: 3))
+    }
+
+    /// 引き継いでいても、この run で誰も通っていなければ離脱しない(全レーン同時障害の保護は変えない)
+    func testCarriedFailuresStillHeldWhenNobodyPassed() {
+        var b = WorkerCircuitBreaker(threshold: 3, carriedFailures: 2)
+        XCTAssertEqual(b.recordFailure(runPasses: 0), .held(consecutive: 3, announce: true))
+        XCTAssertEqual(b.recordFailure(runPasses: 1), .trip(consecutive: 4))
+    }
+
+    func testPassClearsCarriedFailures() {
+        var b = WorkerCircuitBreaker(threshold: 3, carriedFailures: 2)
+        b.recordPass()
+        XCTAssertEqual(b.carriedFailures, 0)
+        XCTAssertEqual(b.recordFailure(runPasses: 1), .keep)
+    }
 }

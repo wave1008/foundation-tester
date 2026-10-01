@@ -1060,6 +1060,8 @@ public final class RunOrchestrator {
     /// ScenarioHost.run(registerChildProcess:) への素通し(呼び出し側が実行中の子を SIGTERM
     /// できるようにする登録口。FTCore は fleetest ターゲットの型を知らないので closure で受ける)
     private let registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)?
+    /// 連続失敗の台帳(LaneFailureStreakStore)の置き場 = リポジトリの `.fleetest/`。nil = 引き継がない
+    private let laneStreakStateDir: URL?
 
     /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
     /// **cause は呼び出し側が型から決めて渡す**(message の文字列を後から解析しない。既定値を置かない =
@@ -1071,6 +1073,26 @@ public final class RunOrchestrator {
         await anomalies.add(WorkerAnomalyRecord(
             kind: "degraded", worker: Self.workerID(worker), label: worker.label, reason: message,
             cause: cause))
+    }
+
+    /// 連続失敗の台帳の置き場。注入が無い・鍵が無い(論理名なし)ときは nil = 引き継がない
+    private func laneStreakKey(_ key: String?) -> (dir: URL, key: String)? {
+        guard let dir = laneStreakStateDir, let key else { return nil }
+        return (dir, key)
+    }
+
+    /// ブレーカに数えた失敗の直後に台帳へ写す。**中断で終わったシナリオの失敗は持ち越さない**
+    /// (デバイスの性質ではない)。**trip でも消さない**(消すのは通過だけ)—— 消すと 1 run に 2 件しか
+    /// 受け取らない不調機(ロック画面のままだったエミュレータ)は次の run で 0 から数え直し、2 run に 1 回しか外れない。
+    /// 復活したレーンは最初の失敗で再び離脱し、直っていれば最初の通過で台帳が消える
+    private func persistStreak(_ breaker: WorkerCircuitBreaker, key: String?) async {
+        guard let s = laneStreakKey(key), await !interruptRequested.isRequested() else { return }
+        LaneFailureStreakStore.save(stateDir: s.dir, key: s.key,
+                                    consecutiveFailures: breaker.consecutiveFailures)
+    }
+
+    static func carriedNote(_ carried: Int) -> String {
+        carried > 0 ? " (including \(carried) carried over from earlier runs)" : ""
     }
 
     /// シナリオ記録(ScenarioRunRecord.worker)と join できる形。論理名が無い経路では nil
@@ -1103,7 +1125,9 @@ public final class RunOrchestrator {
                                   -> (ok: Bool, message: String))? = nil,
                 appBundleIDs: [String: String] = [:],
                 appTargets: [String: ResolvedAppTarget] = [:],
-                registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil) {
+                registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
+                laneStreakStateDir: URL? = nil) {
+        self.laneStreakStateDir = laneStreakStateDir
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.settings = settings
@@ -1609,7 +1633,12 @@ public final class RunOrchestrator {
         }
 
         var failed = 0
-        var breaker = WorkerCircuitBreaker(threshold: WORKER_FAILURE_CIRCUIT_THRESHOLD)
+        // 連続失敗は前の run から引き継ぐ(LaneFailureStreakStore)。鍵が無い(論理名なし)・注入が無いときは 0 から
+        let streakKey = Self.workerID(worker)
+        var breaker = WorkerCircuitBreaker(
+            threshold: WORKER_FAILURE_CIRCUIT_THRESHOLD,
+            carriedFailures: laneStreakKey(streakKey).map {
+                LaneFailureStreakStore.load(stateDir: $0.dir, key: $0.key) } ?? 0)
         // 実行前のブリッジ疎通確認(プレフライト)は不採用(ユーザー決定)。
         // 「取ってから判定」版は一過性の AX スパイクで9台一斉離脱、「取る前に2sで即断」版も
         // 負荷時の誤判定で品質が安定しなかった。ウェッジは失敗後の事後チェック
@@ -1652,6 +1681,7 @@ public final class RunOrchestrator {
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)
             if outcome == .passed {
                 breaker.recordPass()
+                if let s = laneStreakKey(streakKey) { LaneFailureStreakStore.clear(stateDir: s.dir, key: s.key) }
                 await runPasses.increment()
                 await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: true)
                 // **レーンが空いている今だけ測り直す**(次の 1 件をまだ取っていない)。
@@ -1748,6 +1778,7 @@ public final class RunOrchestrator {
             if unusableReason == nil, outcome == .driverUnreachable,
                ScenarioRunner.requeuesWithoutRetiring(outcome: outcome) {
                 let verdict = breaker.recordFailure(runPasses: await runPasses.snapshot())
+                await persistStreak(breaker, key: streakKey)
                 switch ScenarioRunner.unreachableLaneAction(verdict: verdict) {
                 case .retire(let reason):
                     unusableReason = reason
@@ -1769,15 +1800,20 @@ public final class RunOrchestrator {
             // レーンが通っていれば不調ワーカーとして離脱。誰も通っていなければ残す(全レーンが同時に
             // 落ちている = デバイスではなく run の問題。離脱させると revive を使い切って残りが未実行で赤になる)
             if unusableReason == nil {
-                switch breaker.recordFailure(runPasses: await runPasses.snapshot()) {
+                let verdict = breaker.recordFailure(runPasses: await runPasses.snapshot())
+                await persistStreak(breaker, key: streakKey)
+                switch verdict {
                 case .keep:
                     break
                 case .trip(let consecutive):
                     unusableReason = "\(consecutive) consecutive worker failures"
+                        + Self.carriedNote(breaker.carriedFailures)
                     unusableCause = .consecutiveFailures
                 case .held(let consecutive, let announce):
                     if announce {
-                        let message = "\(consecutive) consecutive failures on this lane while no other lane"
+                        let message = "\(consecutive) consecutive failures on this lane"
+                            + Self.carriedNote(breaker.carriedFailures)
+                            + " while no other lane"
                             + " has passed since the streak began — keeping the lane (a lane is retired"
                             + " for consecutive failures only when another lane passed meanwhile)"
                         continuation.yield(.workerLog(worker: worker.label, message: "⚠️ \(message)"))

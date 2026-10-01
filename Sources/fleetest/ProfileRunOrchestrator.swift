@@ -189,6 +189,7 @@ enum ProfileRunOrchestrator {
             installHandler: InstallHandlerFactory.make(apps: resolved.apps),
             appBundleIDs: resolved.apps.mapValues(\.bundleID),
             appTargets: resolved.apps,
-            registerChildProcess: { interruptState.registerChildProcess($0) })
+            registerChildProcess: { interruptState.registerChildProcess($0) },
+            laneStreakStateDir: repoRoot.appendingPathComponent(".fleetest"))
     }
 }

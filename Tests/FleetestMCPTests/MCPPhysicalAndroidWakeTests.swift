@@ -64,8 +64,8 @@ final class MCPPhysicalAndroidWakeTests: XCTestCase {
         XCTAssertTrue(code.contains("DevicePicker.isPhysicalAndroidSerial(serial)"),
                       "物理端末だけに絞る判定")
         XCTAssertTrue(code.contains("preparedPhysicalAndroid.insert(key)"), "初回の記録")
-        XCTAssertTrue(code.contains("AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: Self.logStderr)"),
-                      "2回目以降に消灯を確かめていない(セッションの途中で消えた画面を起こさない)")
+        XCTAssertGreaterThanOrEqual(code.components(separatedBy: "AndroidPhysicalDevice.wakeIfAsleep(serial: serial, log: Self.logStderr)").count - 1, 2,
+                      "エミュレータ(毎回)と実機の2回目以降の両方で確かめていない。2回目以降に消灯を確かめていない(セッションの途中で消えた画面を起こさない)")
         XCTAssertTrue(code.contains("AndroidPhysicalDevice.prepareForRun(serial: serial, log: Self.logStderr)"),
                       "run 経路と同じ関数を呼んでいること")
     }
