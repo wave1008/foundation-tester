@@ -568,7 +568,7 @@ function hmCommitTick() {
 /** 容量付きの名札(CPU n / GPU n / MEM n)の系列と素の名前。行ごとに桁が変わるので幅を揃える対象 */
 const HM_CAPACITY_LABEL_METRICS = ['cpu', 'gpu', 'mem'];
 const HM_CAPACITY_LABEL_NAMES = { cpu: 'CPU', gpu: 'GPU', mem: 'MEM' };
-/** 設定タブ「メモリ容量、CPUコア数、GPUコア数を表示する」(既定 OFF = 素の CPU / GPU / MEM)。
+/** 設定タブ「デバイスモニターにメモリ容量、CPUコア数、GPUコア数を表示する」(既定 OFF = 素の CPU / GPU / MEM)。
  *  値は monitorPanel.ts の showMachineCapacity メッセージで届く */
 let hmShowCapacity = false;
 
@@ -591,22 +591,24 @@ function hmRenderCapacityLabel(row, metric) {
   const label = row.entries[metric].label;
   label.textContent = name;
   if (hmShowCapacity) {
-    // ` n` だけ色を変える(style.css の .hm-capacity)。hmAlignLabels は textContent の長さで揃えるので影響しない
+    // 数字だけ別の要素にして色を変え、右寄せする(style.css の .hm-capacity・幅は hmAlignLabels)
     const capacity = document.createElement('span');
     capacity.className = 'hm-capacity';
-    capacity.textContent = ` ${value ?? '-'}`;
-    label.appendChild(capacity);
+    capacity.textContent = String(value ?? '-');
+    label.append(' ', capacity);
   }
 }
 
-/** その系列の名札を最も長い行に揃える(グラフの左端を行間で揃える)。**レイアウトを測らない** ——
+/** その系列の数字の枠を最も桁の多い行に揃える(数字は右寄せ・グラフの左端も揃う)。**レイアウトを測らない** ——
  *  設定タブで切り替える間などモニターが非表示だと幅が 0 で測れず、揃えが外れたまま戻らなかった。
- *  名札は同じ名前 + 数字(CSS の tabular-nums で等幅)なので、差は数字の桁だけ = 1ch 単位で詰め物をする */
+ *  数字は CSS の tabular-nums で等幅なので、枠は桁数 × 1ch で足りる */
 function hmAlignLabels(metric) {
-  const labels = [...hmRows.values()].map((row) => row.entries[metric].label);
-  const longest = Math.max(0, ...labels.map((label) => label.textContent.length));
-  for (const label of labels) {
-    label.style.paddingRight = `${longest - label.textContent.length}ch`;
+  const spans = [...hmRows.values()]
+    .map((row) => row.entries[metric].label.querySelector('.hm-capacity'))
+    .filter((span) => span !== null);
+  const longest = Math.max(0, ...spans.map((span) => span.textContent.length));
+  for (const span of spans) {
+    span.style.minWidth = `${longest}ch`;
   }
 }
 

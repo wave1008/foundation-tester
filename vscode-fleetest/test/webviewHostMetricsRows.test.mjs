@@ -304,15 +304,14 @@ test("容量の表示は既定 OFF(素の CPU/GPU/MEM)で、設定の切替で�
   assert.deepEqual(labelsOf(""), ["CPU 24", "GPU 38", "MEM 32"], "ON にした時点で届いている値を出す");
   assert.deepEqual(labelsOf("mac2"), ["CPU 20", "GPU 64", "MEM 128"]);
   assert.equal(document.getElementById("settings-show-machine-capacity").checked, true, "チェックボックスも追従する");
-  const padOf = (machine, metric) =>
-    rowFor(document, machine).querySelector(`.host-metric[data-metric="${metric}"] .hm-label`).style.paddingRight;
-  assert.equal(padOf("", "mem"), "1ch", "MEM 32 は MEM 128 より1桁短いぶん詰める(非表示でも揃う)");
-  assert.equal(padOf("mac2", "mem"), "0ch");
-  assert.equal(rowFor(document, "mac2").querySelector('[data-metric="mem"] .hm-label .hm-capacity').textContent,
-    " 128", "容量の部分だけ別の要素(色を変える)");
+  const capacityOf = (machine, metric) =>
+    rowFor(document, machine).querySelector(`.host-metric[data-metric="${metric}"] .hm-label .hm-capacity`);
+  assert.equal(capacityOf("", "mem").textContent, "32", "数字だけ別の要素(色を変えて右寄せ)");
+  assert.equal(capacityOf("", "mem").style.minWidth, "3ch", "枠は最大桁(128)に揃える(非表示でも揃う)");
+  assert.equal(capacityOf("mac2", "mem").style.minWidth, "3ch");
   send(window, { type: "showMachineCapacity", value: false });
   assert.deepEqual(labelsOf("mac2"), ["CPU", "GPU", "MEM"]);
-  assert.equal(padOf("", "mem"), "0ch");
+  assert.equal(capacityOf("", "mem"), null, "OFF は数字の要素ごと無い");
 });
 
 test("CPU のラベルは機械ごとのコア数を CPU n で出し、欠測 tick でも残す", (t) => {

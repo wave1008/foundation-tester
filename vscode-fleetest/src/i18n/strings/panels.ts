@@ -250,8 +250,8 @@ export const panelsStrings = {
   "panels.settings.liveFpsLabel": { ja: "配信の最大フレームレート", en: "Max streaming frame rate" },
   "panels.settings.liveFpsUnit": { ja: "fps", en: "fps" },
   "panels.settings.liveFpsHint": {
-    ja: "デバイスモニターとライブ操作の画面を更新する上限です(3〜30)。変えるとその場で配信を張り直します。高くすると滑らかになりますが、ホストの GPU の負荷が増え、テストの画像の判定が不安定になることがあります。",
-    en: "The upper limit for refreshing the Device Monitor and Live Control screens (3-30). Changing it restarts the streams right away. Higher is smoother but adds GPU load on the host and can make image checks in tests unstable.",
+    ja: "レートを高くすると滑らかになりますが、テスト結果が不安定になる場合があります",
+    en: "A higher rate is smoother, but test results may become unstable",
   },
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
@@ -297,8 +297,8 @@ export const panelsStrings = {
   },
   "panels.settings.remoteWaitLockUnit": { ja: "秒", en: "sec" },
   "panels.settings.showMachineCapacityLabel": {
-    ja: "メモリ容量、CPUコア数、GPUコア数を表示する",
-    en: "Show memory size, CPU cores, and GPU cores",
+    ja: "デバイスモニターにメモリ容量、CPUコア数、GPUコア数を表示する",
+    en: "Show memory size, CPU cores, and GPU cores in the device monitor",
   },
 
   // 設定タブ「ログ・録画」のクリーンアップ欄(静的ラベル)。保持ポリシーの実体は **VSCode 設定ではなく

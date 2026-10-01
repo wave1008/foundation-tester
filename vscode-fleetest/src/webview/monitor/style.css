@@ -869,22 +869,20 @@ html[lang="en"] .header-count {
 }
 .hm-label {
   font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+  /* 控えめな文字色から少しだけ本文色へ寄せる(テーマ追従のまま明るさだけ上げる) */
+  color: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, var(--vscode-foreground));
 }
-/* CPU n / GPU n / MEM n は容量の桁で幅が変わる。行を縦に積んでもグラフの左端が揃うよう、右の詰め物は
-   hostCharts.js の hmAlignLabels が桁の差(ch)で付ける。tabular-nums が無いと 1桁 = 1ch が崩れる */
+/* CPU n / GPU n / MEM n の数字は桁で幅が変わる。行を縦に積んでも右端(= グラフの左端)が揃うよう、
+   枠の幅は hostCharts.js の hmAlignLabels が最大桁数(ch)で付けて右寄せする。tabular-nums が無いと 1桁 = 1ch が崩れる */
 .hm-capacity {
+  display: inline-block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
   color: #415469;
 }
 body.vscode-light .hm-capacity,
 body.vscode-high-contrast-light .hm-capacity {
   color: #9fb3c8;
-}
-.host-metric[data-metric="cpu"] .hm-label,
-.host-metric[data-metric="gpu"] .hm-label,
-.host-metric[data-metric="mem"] .hm-label {
-  display: inline-block;
-  font-variant-numeric: tabular-nums;
 }
 .hm-canvas {
   /* 実ピクセル数は devicePixelRatio に応じて JS(hmSetupCanvas)が上書きするが、
@@ -3234,6 +3232,9 @@ button.settings-remote-hosts-color-swatch:focus-visible {
 }
 .settings-remote-hosts-actions {
   display: flex;
+}
+.settings-remote-wait-lock-row {
+  margin-top: 12px;
 }
 /* 「追加」で足した未確定行(確定ボタンを押すまで CLI へ送らない)。settingsTab.js の
    confirmHostRow がクラスを外す。 */

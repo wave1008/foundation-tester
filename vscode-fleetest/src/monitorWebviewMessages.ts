@@ -334,7 +334,7 @@ export type MonitorToWebviewMessage =
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
   | { readonly type: "pollingMode"; readonly value: boolean }
-  // 設定タブ「メモリ容量、CPUコア数、GPUコア数を表示する」の現在値。ready 直後と
+  // 設定タブ「デバイスモニターにメモリ容量、CPUコア数、GPUコア数を表示する」の現在値。ready 直後と
   // setShowMachineCapacity 受信直後に送る(対: setShowMachineCapacity)。webview は settingsTab.js と
   // hostCharts.js の両方へ渡す
   | { readonly type: "showMachineCapacity"; readonly value: boolean }
