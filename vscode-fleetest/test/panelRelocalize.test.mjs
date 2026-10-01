@@ -46,6 +46,7 @@ function newLiveTabHost() {
     showTab: () => {},
     isPollingMode: () => false,
     openGeneratedDocument: () => {},
+    onLiveStreamKeyChanged: () => {},
   };
   return new LiveTabHost(deps, getConfig, cli, testTree, new RunEventBus(), "/tmp/proj", outputChannel);
 }

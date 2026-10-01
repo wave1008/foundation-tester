@@ -617,17 +617,6 @@ test("removeQueuedBulkUpJob: キュー待ちの bulk up を除去し、実行中
   assert.equal(noop.state.running.length, 1);
 });
 
-test("devicesTabVisible: boolean の visible だけ受け付ける", () => {
-  // モニター内タブの切替通知(対向: src/webview/monitor/tabs.js)。
-  // ホストはこれとパネル自体の表示可否の AND を deviceStream.setVisible へ渡す。
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible", visible: true }), true);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible", visible: false }), true);
-  // visible 欠落・型違いを通すと undefined が false 扱いになり、常に配信が止まりうる
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible", visible: "true" }), false);
-  assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible", visible: 1 }), false);
-});
-
 test("setLptScheduling: boolean の value だけ受け付ける", () => {
   // 設定タブ「スケジューリング」の切替(対向: src/webview/monitor/settingsTab.js)。
   // ホストは fleetest.lptScheduling を更新し、false のとき api run へ --no-lpt を渡す。

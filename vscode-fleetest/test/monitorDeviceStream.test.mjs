@@ -69,6 +69,7 @@ function makeDeps(binaryPath) {
     }),
     isPollingMode: () => false,
     isShowStreamDuringRun: () => false,
+    liveStreamKey: () => undefined,
     post: (message) => posts.push(message),
     writeMonitorControl: (cmd) => controls.push(cmd),
     isDeviceStreaming: () => false,
@@ -340,6 +341,40 @@ test("同じ Mac の別ウィンドウが配信中の手元の台は起こさな
     assert.equal(await waitForArgv(dir, "fleetest-simstream", 300), undefined, "二重に張らない");
     controller.applyDevices([{ ...iosDevice, streamedByOther: false }]);
     assert.ok(await waitForArgv(dir, "fleetest-simstream"), "相手のウィンドウが畳んだら張る");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// モニター内のタブを切り替えてもタイルの配信は続ける(張り直しの間タイルが映らないため)ので、
+// ライブ操作が同じデバイスへ配信を張ったら、タイル側はその1台だけ畳む(2本重ねない)
+test("ライブ操作が配信中の手元の台は起こさず、ライブ操作が止めたら張る", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream"]);
+  const { deps } = makeDeps(binaryPath);
+  let liveKey = iosDevice.udid;
+  deps.liveStreamKey = () => liveKey;
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([iosDevice]);
+    assert.equal(await waitForArgv(dir, "fleetest-simstream", 300), undefined, "ライブ操作と重ねない");
+    liveKey = undefined;
+    controller.reapply();
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "ライブ操作が止めたら張る");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("ライブ操作の鍵と同じ udid でもリモートのデバイスは畳まない", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["fleetest-simstream"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.liveStreamKey = () => "OTHER-UDID";
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([iosDevice]);
+    assert.ok(await waitForArgv(dir, "fleetest-simstream"), "鍵の違う台は張る(陰性対照)");
   } finally {
     controller.setVisible(false);
     fs.rmSync(dir, { recursive: true, force: true });

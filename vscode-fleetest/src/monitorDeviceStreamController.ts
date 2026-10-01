@@ -183,6 +183,14 @@ export class MonitorDeviceStreamController {
       if (device.streamedByOther === true) {
         continue;
       }
+      // **ライブ操作が配信中の手元の1台は張らない**(タブを切り替えてもタイルの配信は続けるので、
+      // そのままだと同じデバイスに配信が2本重なる。Android は重なりで run が赤くなった実測がある)。
+      // 鍵はデバイスの udid / serial で照らす(タイルの iOS 実機はポートを鍵にするため target.key では外れる)
+      const liveKey = this.deps.liveStreamKey();
+      if (liveKey !== undefined && device.machine === undefined
+          && (device.udid === liveKey || device.serial === liveKey)) {
+        continue;
+      }
       if (device.machine) {
         // **別の機械のデバイス**。udid も adb serial も向こうのものなので、手元でヘルパーを
         // 起こしても当たらない(同名の手元のデバイスに当たると**別の機械の画面が映る**)。代わりに

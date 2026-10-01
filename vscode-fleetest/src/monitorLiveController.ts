@@ -1429,6 +1429,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     this.stopStreamPipeline();
     this.streamKey = key;
+    this.deps.onStreamKeyChanged(key);
     const pipeline = new StreamPipeline({
       command: spec.command,
       args: spec.args,
@@ -1463,7 +1464,10 @@ export class MonitorLiveController implements vscode.Disposable {
       this.streamPipeline.dispose();
       this.streamPipeline = undefined;
     }
-    this.streamKey = undefined;
+    if (this.streamKey !== undefined) {
+      this.streamKey = undefined;
+      this.deps.onStreamKeyChanged(undefined);
+    }
   }
 
   /** ストリーミングが継続不能になったときのフォールバック。helper を止め、接続断は出さずに

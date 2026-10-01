@@ -36,6 +36,8 @@ export interface LiveTabHostDeps {
   isPollingMode(): boolean;
   /** 生成したソース(絶対パス)をモニター表示を覆わない列に開く(レコーディング→gen-scenario 完了時)。 */
   openGeneratedDocument(filePath: string): void;
+  /** ライブ操作の配信先が変わった(LiveDeps.onStreamKeyChanged の素通し) */
+  onLiveStreamKeyChanged(key: string | undefined): void;
 }
 
 /** export はテスト(panelRelocalize.test.mjs)が restartStream 差し替えで relocalize 契約を検証するため。
@@ -69,6 +71,7 @@ export class LiveTabHost implements vscode.Disposable {
       isPanelActive: () => this.deps.isPanelOpen(),
       isPollingMode: () => this.deps.isPollingMode(),
       openGeneratedDocument: (filePath) => this.deps.openGeneratedDocument(filePath),
+      onStreamKeyChanged: (key) => this.deps.onLiveStreamKeyChanged(key),
     };
     this.live = new MonitorLiveController(this.innerDeps, cli, () => void testTree.refresh());
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));

@@ -43,6 +43,7 @@ import type { FleetestCli } from "./cli";
 import { type FleetestConfig, resolveAdb, resolveProjectName } from "./config";
 import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { currentLocale, t } from "./i18n";
+import { type StreamFoldReason, streamVisibilityChange, streamVisible } from "./streamVisibilityLog";
 import {
   isMonitorFromWebviewMessage,
   type MonitorBridgeLogRotationCandidate,
@@ -147,6 +148,9 @@ export interface MonitorPanelDeps {
   /** 「デバイスモニター」タブの「ライブ更新」チェックボックス(workspaceState の
    * "monitor.showStreamDuringRun"。既定 ON)。false の間だけ run 中のデバイスの配信を畳む。 */
   isShowStreamDuringRun(): boolean;
+  /** ライブ操作が配信中の手元のデバイス(iOS udid / Android serial)。無ければ undefined。
+   * タイルはこの1台の配信を張らない(同じデバイスに配信を2本重ねない) */
+  liveStreamKey(): string | undefined;
   /** MonitorProfilesController.postProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyProjectDeviceCatalogChanged(): void;
   /** MonitorProcessManager.restartMonitorProcessへの委譲(パネル未生成時は no-op)。
@@ -260,19 +264,39 @@ export class MonitorPanelController implements vscode.Disposable {
   private pendingInitialTab: string | undefined;
   /** WebviewPanel.visible(他エディタタブの裏に隠れていないか)。 */
   private panelVisible = true;
-  /** モニター内タブが「デバイスモニター」か(デバイスタイルが display:none でないか)。
-   * webview から devicesTabVisible で届く。初期値 true は起動直後の一瞬だけで、
-   * webview の初期 switchTab が必ず正しい値を送ってくる。 */
-  private devicesTabVisible = true;
   /** 登録簿を1度でも CLI から読めたか。読む前の空の控えを「無効な機械は無い」と読まない */
   private remoteHostsLoaded = false;
 
-  /** 配信helperを動かすのはパネルが見えていて かつ 「デバイスモニター」タブが開いていて かつ
-   * 「ライブ更新」が ON のときだけ。どれか1つでも欠けると画面の配信・取り込み(suppressFrames)を全台止める
-   * (見えない絵のエンコード/デコードは丸ごと無駄。OFF は利用者がマシンの負荷を下げる口。観測は monitor が続ける) */
+  /** 配信helperを動かすのはパネルが見えていて かつ 「ライブ更新」が ON のときだけ。どちらかが欠けると
+   * 画面の配信・取り込み(suppressFrames)を全台止める(OFF は利用者がマシンの負荷を下げる口。観測は monitor が続ける)。
+   * **モニター内のタブ切替では止めない**(ユーザー決定: 張り直しの間タイルが映らないため)。重なりを避けるのは
+   * ライブ操作が配信中の1台だけ(`liveStreamKey` → MonitorDeviceStreamController が畳む) */
   private applyDeviceStreamVisibility(): void {
-    this.deviceStream.setVisible(this.panelVisible && this.devicesTabVisible && this.showStreamDuringRun);
+    const inputs = {
+      panelVisible: this.panelVisible,
+      showStreamDuringRun: this.showStreamDuringRun,
+    };
+    const visible = streamVisible(inputs);
+    // 切り替わりを1行残す(判定と理由は streamVisibilityLog.ts)
+    const change = streamVisibilityChange(this.lastStreamVisible, inputs);
+    if (change?.kind === "resumed") {
+      this.outputChannel.appendLine(t("monitor.deviceStream.resumedVisible"));
+    } else if (change?.kind === "folded") {
+      const reasonText: Record<StreamFoldReason, string> = {
+        panelHidden: t("monitor.deviceStream.reasonPanelHidden"),
+        liveUpdateOff: t("monitor.deviceStream.reasonLiveUpdateOff"),
+      };
+      this.outputChannel.appendLine(t("monitor.deviceStream.foldedHidden", {
+        reasons: change.reasons.map((reason) => reasonText[reason]).join(t("monitor.deviceStream.reasonSeparator")),
+      }));
+    }
+    this.lastStreamVisible = visible;
+    this.deviceStream.setVisible(visible);
   }
+  /** 直近に setVisible へ渡した値(切り替わりのログ用)。未適用は undefined */
+  private lastStreamVisible: boolean | undefined;
+  /** ライブ操作が配信中の手元のデバイス(MonitorPanelDeps.liveStreamKey) */
+  private liveStreamKey: string | undefined;
   /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
   private pollingMode: boolean;
   private showMachineCapacity: boolean;
@@ -399,6 +423,7 @@ export class MonitorPanelController implements vscode.Disposable {
       },
       isPollingMode: () => this.pollingMode,
       isShowStreamDuringRun: () => this.showStreamDuringRun,
+      liveStreamKey: () => this.liveStreamKey,
       machineLock: (machine) => this.processManager.machineLock(machine),
       stopDeviceStreams: (name, machine) => this.deviceStream.disposeForDeviceName(name, machine),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
@@ -454,6 +479,11 @@ export class MonitorPanelController implements vscode.Disposable {
         showTab: (tab) => this.showTabQuietly(tab),
         openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
         isPollingMode: () => this.pollingMode,
+        onLiveStreamKeyChanged: (key) => {
+          this.liveStreamKey = key;
+          // 次の monitorDevices を待たずに当て直す(ライブ操作の開始直後に2本重なる時間を作らない)
+          this.deviceStream.reapply();
+        },
       },
       this.getConfig,
       this.cli,
@@ -1023,10 +1053,6 @@ export class MonitorPanelController implements vscode.Disposable {
           vscode.window.setStatusBarMessage(t("panels.banner.copied"), 3000);
         });
         break;
-      case "devicesTabVisible":
-        this.devicesTabVisible = message.visible;
-        this.applyDeviceStreamVisibility();
-        return;
       case "setRetention":
         void this.applyRetentionPatch(message.patch);
         break;

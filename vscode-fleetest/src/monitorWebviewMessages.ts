@@ -553,8 +553,8 @@ export type MonitorToWebviewMessage =
   // 既存パネルへの再バインド要求(選択中デバイスの一覧を取り直す)。対向: liveTab.js の refreshLiveDevices。
   | { readonly type: "liveRefreshDevicesFromHost" }
   // webview パネル自体の可視性(他エディタタブの裏に隠れているか)。monitorPanel.ts の
-  // onDidChangeViewState から送る。「ライブ操作」タブが表示中かは別軸(devicesTabVisible と同型の
-  // 判定を webview 側 main.js が両方の AND で行う。対向: src/webview/monitor/liveTab.js の setLiveVisible)。
+  // onDidChangeViewState から送る。「ライブ操作」タブが表示中かは別軸で、
+  // webview 側 main.js が両方の AND で判定する(対向: src/webview/monitor/liveTab.js の setLiveVisible)。
   | { readonly type: "panelVisible"; readonly visible: boolean };
 
 /** デバイスの一覧は表示フィルタを**畳まずに**送る(`filter` を添えて webview に判断させる) ——
@@ -875,10 +875,6 @@ export type MonitorFromWebviewMessage =
   // null = 既定へ戻す(入力欄が空・不正値)。**0 は「待たない」という正当な値**で null とは別
   | { readonly type: "setRemoteWaitLock"; readonly value: number | null }
   | { readonly type: "refreshResidentProcesses" }
-  // タブ切替でデバイスタイルが display:none になったことの通知。ホストは配信helperを止める
-  // (対向: src/webview/monitor/tabs.js の switchTab)。パネル自体の表示可否とは別軸で、
-  // ホスト側は両方と「ライブ更新」(setShowStreamDuringRun)の AND を deviceStream.setVisible へ渡す
-  | { readonly type: "devicesTabVisible"; readonly visible: boolean }
   // 常駐プロセス(モニター/host-metrics/配信・ブリッジ・workspace 由来の残余)を掃討したあと、
   // 再起動せずにモニターパネル(タブ)を閉じる。**確認はホスト側の showWarningMessage({modal:true})**
   // (webview では window.confirm が効かない)。キャンセルは residentKillCancelled で応答、
@@ -1258,8 +1254,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return Array.isArray(value.hosts) && value.hosts.every(isRemoteHostEntryLike);
     case "requestRemoveRemoteHost":
       return typeof value.rowId === "number" && typeof value.machine === "string";
-    case "devicesTabVisible":
-      return typeof value.visible === "boolean";
     case "setRetention":
       // 未知の鍵・負値・非整数を通すと CLI へそのまま渡り、綴り違いが黙って無視される
       return isRetentionPatch(value.patch);

@@ -22,7 +22,9 @@ function body(startPattern, endPattern) {
 
 test("配信を動かす条件にチェックボックスの値が入っている", () => {
   const fn = body(/private applyDeviceStreamVisibility\(\): void \{/, /\n  \}\n/);
-  assert.match(fn, /this\.deviceStream\.setVisible\([^)]*this\.showStreamDuringRun[^)]*\)/);
+  assert.match(fn, /showStreamDuringRun: this\.showStreamDuringRun/);
+  assert.match(fn, /const visible = streamVisible\(inputs\)/);
+  assert.match(fn, /this\.deviceStream\.setVisible\(visible\)/);
 });
 
 test("切り替えの受け口で条件を当て直してから張り直す", () => {

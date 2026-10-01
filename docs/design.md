@@ -4714,7 +4714,8 @@ backboardd のこのエラーは、モニターが画面を配信しているデ
   `deviceTiles.js` の `relayoutTiles`)→ タイル幅(`--tile-image-h × --tile-aspect`)。
   padding/border/gap の定数は持たず全て実測する(style.css を変えたとき片方だけ古くなるのを防ぐ)
 - **罠(実害 2026-07-31。auto-fit があった頃に踏んだが、規律は今も効く)**: `devices` のポーリングは「デバイスモニター」タブが**非表示の間も届き続ける**
-  (タブ非表示で止まるのはフレーム配信だけ。`devicesTabVisible`)。`applyDevices` は毎回
+  (タブ非表示の間もフレーム配信は続く = 他タブから戻ったとき張り直しで映らない時間を作らない。ユーザー決定。
+  タイルが畳むのはライブ操作が配信中の1台だけ = `MonitorPanelDeps.liveStreamKey`)。`applyDevices` は毎回
   `relayoutTiles` を呼ぶため、`display:none` 中は `clientHeight=0` → `--tile-image-h` が下限 60px に
   潰れて書き込まれ、ペイン高さと `--tile-image-h` の対応が壊れていた。**タブへ戻ると実際の画像高さぶん過大**になりタイルが
   はみ出す(初回表示だけ正しく、他タブを経由すると必ず崩れる)。対策は

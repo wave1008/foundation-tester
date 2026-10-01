@@ -20,4 +20,7 @@ export interface LiveDeps {
   isPollingMode(): boolean;
   /** 生成したソース(絶対パス)をパネルの隣の列に開く(レコーディング→gen-scenario 完了時に使う)。 */
   openGeneratedDocument(filePath: string): void;
+  /** ライブ操作の配信先(手元の iOS udid / Android serial。止めたら undefined)が変わった。
+   * タイル側がその1台の配信を畳むために使う(同じデバイスに配信を2本重ねない) */
+  onStreamKeyChanged(key: string | undefined): void;
 }

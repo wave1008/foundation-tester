@@ -240,6 +240,27 @@ export const monitorStrings = {
     ja: "ポーリングへ戻します。",
     en: "Falling back to polling.",
   },
+  // monitorPanel.ts の applyDeviceStreamVisibility(配信の2条件の切り替わり)
+  "monitor.deviceStream.foldedHidden": {
+    ja: "[monitor] ライブ配信を止めました({reasons})— タイルの更新も止まります。見える状態に戻すと再開します",
+    en: "[monitor] Live streams stopped ({reasons}) — tiles stop updating too. They resume when the monitor is visible again",
+  },
+  "monitor.deviceStream.resumedVisible": {
+    ja: "[monitor] モニターが見える状態に戻りました — ライブ配信を再開します",
+    en: "[monitor] The monitor is visible again — resuming live streams",
+  },
+  "monitor.deviceStream.reasonPanelHidden": {
+    ja: "モニターのパネルが隠れています",
+    en: "the monitor panel is hidden",
+  },
+  "monitor.deviceStream.reasonLiveUpdateOff": {
+    ja: "「ライブ更新」がオフです",
+    en: "Live Updates is off",
+  },
+  "monitor.deviceStream.reasonSeparator": {
+    ja: "・",
+    en: "; ",
+  },
   // 設定タブのマシン削除の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
   "monitor.remoteHosts.removeConfirm": {
     ja: "マシン「{machine}」の登録を削除しますか?",
