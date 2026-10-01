@@ -287,12 +287,14 @@ tr '\n' '\0' < /tmp/suite.txt | xargs -0 \
 
 FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で判定する(両方 false の run では FM を一切呼ばない)。
 
-### host-metrics.ndjson の FM/Vision 欄
+### host-metrics.ndjson の容量・FM/Vision 欄
 
 1行 = 1サンプル(既定 1Hz)。**回数と死活は別の軸**で、混ぜて読まないこと。
 
 | フィールド | 型 | 意味 |
 |---|---|---|
+| cpuCores | Int | その機械の論理コア数(`ProcessInfo.processorCount`)。**必須欄**(拡張は欠けた行を捨てる)。モニターの `CPU n` |
+| gpuCores | Int? | その機械の GPU コア数(IOAccelerator の `gpu-core-count`。プロセスで1回だけ読む)。**null = 読めない機械**(キーは省略しない)。モニターの `GPU n` |
 | fmCalls / fmFailures / fmTotalMs | Int? | そのサンプリング間隔で完了した FM 呼び出し(この機械の全プロセス合計。供給元は `FMUsageLedger`)。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
 | visionCalls / visionFailures / visionTotalMs | Int? | そのサンプリング間隔で完了した Vision / Core ML(FM 以外)の呼び出し(この機械の全プロセス合計。供給元は `VisionUsageLedger`。モニターの VN)。数えるのは4種: **OCR の `recognize` 1回**(occlusion-guard Tier-2 の `RegionText`。拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)/ **画像分類器の推論1回**(`VisionClassifier`。checkIsON/OFF・imageIs と、学習直後の見本の点検で見本1枚につき1回)/ **学習1回** / **画像特徴量の生成1回**(`FindImage`。findImage / findImages が候補1件ごとに1回・テンプレートはプロセス内で初回だけ)。OCR の暖機は数えない。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
 | fmTextState / fmVisionState | String? | `"alive"` / `"dead"` / **null = 不明**(観測が無い・`FMLiveness.freshSeconds` より古い)。**呼び出しが0件でも埋まる**のが回数欄との決定的な違い —— 誰も FM を使っていない間、回数だけでは「使われていない」と「死んでいる」が同じ絵になる |

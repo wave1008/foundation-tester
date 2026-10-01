@@ -636,7 +636,7 @@ function fmDeadBadge(document, machine) {
   return badge.classList.contains("hm-visible") ? badge.textContent : null;
 }
 
-// バッジは経路を問わず `⚠︎unavailable`(ユーザー決定)。どの経路かはツールチップの理由が持つ
+// バッジは経路を問わず `⚠︎N/A`(ユーザー決定)。どの経路かはツールチップの理由が持つ
 test("台帳由来の死を FM チャートの右に語で出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -647,7 +647,7 @@ test("台帳由来の死を FM チャートの右に語で出す", (t) => {
   }));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎unavailable");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎N/A");
   assert.match(
     rowFor(document, "mac2").querySelector(".hm-fm-dead-badge").title,
     /ModelManagerError\(1001\)/,
@@ -663,7 +663,7 @@ test("両方死んでも1語で出す", (t) => {
     fmCalls: 0, fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: a / vision: b",
   }));
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎unavailable");
+  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎N/A");
 });
 
 // **生きている行と不明の行には何も出さない**。不明で出すと、プローブの谷間や旧版 CLI の
@@ -699,7 +699,7 @@ test("新しい機械の行は、手元が死んでいても語を持たずに�
   send(window, hostMetricsSample(undefined, 0.1, {
     fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y",
   }));
-  assert.equal(fmDeadBadge(document, ""), "⚠︎unavailable");
+  assert.equal(fmDeadBadge(document, ""), "⚠︎N/A");
 
   // ここで初めてリモートの行ができる(手元の行の複製)
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });

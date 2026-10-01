@@ -278,7 +278,7 @@ function renderDevicesPanel(): string {
           <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-vision" data-metric="vision" title="${t("panels.hostMetrics.visionTitle")}"><span class="hm-label">VN</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-fm" data-metric="fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-          <!-- FM が死んでいるときだけ語を出す(⚠︎unavailable 等。hostCharts.js の
+          <!-- FM が死んでいるときだけ語を出す(⚠︎N/A 等。hostCharts.js の
                hmRenderFmLabel が入れる)。**行の最後尾に置く** —— ここより左に足すと
                MEM/CPU/… の列が行ごとにずれる(実害。錠前と同じ理由)。
                最後尾なので出し入れは display で切ってよい(右端が伸び縮みするだけ)。 -->

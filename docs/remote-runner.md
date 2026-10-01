@@ -1161,6 +1161,11 @@ witness は `RemoteDispatchTests.testRelayRewriteMapsTheRunnerWorkDirOntoTheLoca
   (performance-tuning.md §3.5)なので、機械ごとに分けて初めて意味を持つ。
   子の死の扱いは監視の子と同じ
   (起動直後の死が3回続いたら諦める = 版の古い機械で無限に ssh を張らない)
+  **容量(`MEM 192` / `CPU 24` / `GPU 76`。設定タブで表示を切り替え・既定 OFF)も同じ行で来る** ——
+  `cpuCores` / `gpuCores` / `memTotalBytes` は向こうの機械が自分の値を出す(拡張の `os.cpus()` 等では
+  リモート行を代われない)。届くまでは `MEM -` で、手元の行を複製した値を引き継がない。
+  **align 後も向こうの host-metrics は起動時の古いバイナリのまま**なので、欄を足したら
+  向こうの `api host-metrics` を止めて拡張に起こし直させる(止めないと版の食い違いで行が捨てられ続ける)
 
 **版が揃っていないと配信も状態も来ない**(`--device-machine` / `api device-stream` は新しい)。
 古い機械は「Unknown option」で即死 → 3回で諦め → タイルは「届いていません」のまま。

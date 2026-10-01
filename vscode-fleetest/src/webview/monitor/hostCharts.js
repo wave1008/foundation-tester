@@ -371,7 +371,7 @@ function hmRenderFmLabel(row) {
 
 /** FM の死を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定)
  *  —— 不明で出すと、プローブの谷間で点滅し続ける。
- *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら `⚠︎unavailable`(理由は
+ *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら `⚠︎N/A`(理由は
  *  ツールチップ)、窓内の全滅は台帳の理由が無いので「全呼び出し失敗」という事実だけ述べる。 */
 function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
   const badge = row.deadBadge;
@@ -381,10 +381,10 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
     badge.removeAttribute('title');
     return;
   }
-  // 台帳由来の死は経路を問わず `⚠︎unavailable` の1語(ユーザー決定。日英とも同じ語なので辞書を通さない)。
+  // 台帳由来の死は経路を問わず `⚠︎N/A` の1語(ユーザー決定。日英とも同じ語なので辞書を通さない)。
   // どの経路が死んだかはツールチップの理由(row.liveness.reason)が持つ
   badge.textContent = deadPaths.length > 0
-    ? `${HM_DEAD_MARK}unavailable`
+    ? `${HM_DEAD_MARK}N/A`
     : t('wvMonitor2.hostCharts.fmDeadBadgeAllFailed');
   badge.classList.add('hm-visible');
   // 語だけでは「なぜ・いつから」が分からない。理由はここにも付ける(FM セルのツールチップと

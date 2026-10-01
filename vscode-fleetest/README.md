@@ -205,13 +205,14 @@ code --install-extension vscode-fleetest-<version>.vsix
 
 ### 設定タブにあって VSCode 設定ではない項目
 
-「設定」タブにはあるが `.vscode/settings.json`(`fleetest.*`)には**入らない**設定です。保存先は
-CLI 側で、拡張は値を持ちません(表示している既定値も CLI が返したものです)。
+「設定」タブにはあるが `.vscode/settings.json`(`fleetest.*`)には**入らない**設定です。保存先が
+CLI 側のものは、拡張は値を持ちません(表示している既定値も CLI が返したものです)。
 
 | 項目 | 保存先 | 説明 |
 |---|---|---|
 | クリーンアップ(「ログ・録画」セクション) | CLI のマシン設定(`fleetest api retention` で読み書き) | テスト完了後にバックグラウンドで掃除するか(`sweepAfterRun`。上限の 90% を超えたカテゴリだけ 90% まで削除。テストの実行時間には含まれず、同時に2つは走らない)と、デバイスの録画・スクショ / 録画 / レポート / ログの上限(`deviceCapturesMaxBytes`・`recordingsMaxBytes`・`reportsMaxBytes`・`logsMaxBytes`。契約はバイト、画面は GB / MB)。上限は**マシン単位**で、プロジェクトや実行プロファイルには紐づきません。空欄・負の値を入れるとその項目だけ既定へ戻ります(`0` は「保持しない」という有効な指定)。各行の右に現在の使用量(`api retention --usage`)を出します。集計に約 21 秒かかるので上限を先に出し、測り終えるまでは「現在 - GB」と表示します。設定を変えても直前の実測値は残ります。「今すぐクリーンアップ」は `fleetest api clean` を実行します(同じ 90% の規則。背景の掃除が走っている間は「別の掃除が実行中」で断る。先に `--dry-run` で消える合計を見積もり、確認ダイアログを出してから実行し、終わったら使用量を測り直す) |
 | マシン(リモートホスト) | CLI のホスト登録簿(`fleetest api remote-machines`) | 下記「デバイスモニター」および `docs/remote-runner.md` §12 |
+| デバイスモニターにメモリ容量、CPUコア数、GPUコア数を表示する(「マシン」セクション) | `workspaceState` の `monitor.showMachineCapacity`(既定 OFF) | ツールバーのグラフの名札を `MEM 192`(GB = 2^30 バイト)/ `CPU 24` / `GPU 76` にする。値は各機械の host-metrics の `memTotalBytes` / `cpuCores` / `gpuCores`(リモート行は向こうの値)。届くまでは `MEM -`。数字は最大桁の枠で右寄せ |
 
 ## 更新チェックと更新(設定タブ)
 
