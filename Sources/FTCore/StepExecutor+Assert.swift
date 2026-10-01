@@ -161,6 +161,10 @@ extension StepExecutor {
                     png: retaken.data, elements: elements, previous: baseline)
                 lastGuardFrameRecord = record2
                 if stillStale {
+                    if await staleFrameShowsExpectedText(retaken.data, expectedText: expectedText,
+                                                         element: element, screen: screen, phase: &phase) {
+                        return nil
+                    }
                     knownStaleGuardImageHash = record2.imageHash
                     noteCodesThisStep.insert(.staleScreenshot)
                     guardFrameStaleThisEval = true
@@ -176,6 +180,11 @@ extension StepExecutor {
             invalidateScreenshotCache()
             let retaken = try await guardScreenshot(phase: &phase)
             if StaleFrameDetector.isKnownStale(png: retaken.data, knownStaleImageHash: knownStaleGuardImageHash) {
+                if await staleFrameShowsExpectedText(retaken.data, expectedText: expectedText,
+                                                     element: element, screen: screen, phase: &phase) {
+                    knownStaleGuardImageHash = nil
+                    return nil
+                }
                 noteCodesThisStep.insert(.staleScreenshot)
                 guardFrameStaleThisEval = true
                 return nil
@@ -352,6 +361,28 @@ extension StepExecutor {
 
     /// launch 直後の一度きりの門(上の occlusionFlip のコメント)。FM の判定と OCR だけの判定の両方が
     /// 判定を出した回に消費する —— 片方だけにすると、FM が答えない run で launch storyboard を覆いと読む
+    /// 「絵が古い」(StaleFrameDetector: 絵はバイト同一なのに木が変わった)と判定した絵に、**期待する文字が
+    /// 丸ごと描かれていれば古くない**とみなす(true = 見送らず合格にしてよい)。木が絵より遅れる画面では、
+    /// 絵は既に新しい状態なのに木が後から追いつき、同じ条件を満たす(実測: Compose の iOS で
+    /// スイッチを叩いた直後、絵は `location=on` なのに木は `location=off`。静止した画面の絵が変わるのを
+    /// 撮り直しの予算いっぱい待っていた)。本当に古い絵(E2E-RN の WebView で `wv_result=-` のまま)には
+    /// 期待する文字が無いので従来どおり待つ。OCR の近道が撃てない(off・未 warm・詰まり)ときは確かめない
+    private func staleFrameShowsExpectedText(_ png: Data, expectedText: String, element: ElementInfo,
+                                             screen: FTRect, phase: inout PhaseAccumulator) async -> Bool {
+        guard RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm,
+                                            abandonedInFlight: RegionText.abandonedInFlight) else { return false }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let outcome = await RegionText.resolveWithinBudget(expected: expectedText, pngData: png,
+                                                           frame: element.frame, screen: screen)
+        let elapsed = Self.ms(clock.now - start)
+        phase.guardMs += elapsed
+        phase.ocrMs += elapsed
+        guard case .read(let readable, _) = outcome, readable else { return false }
+        noteCodesThisStep.insert(.staleFrameTextVisible)
+        return true
+    }
+
     private func consumeFirstFrameGate(visible: Bool, sd: Double?, screenshot: Data,
                                        element: ElementInfo, screen: FTRect) {
         guard firstFrameGatePending else { return }

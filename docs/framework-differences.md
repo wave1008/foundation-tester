@@ -72,6 +72,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | Flutter(Android) | `#id` が入力欄でなく外側の入れ物に付く(入れ物は editable でなく、欄は id を持たない) | 入れ物の今の枠に収まる editable を引き直す(座標で追うと、キーボードで欄が動いた後に見失う) | `InputInjector.editableInsideTagged` |
 | Android(Emulator) | 撮れていないスクショに**ステータスバーだけ**が残る(本体は真っ黒)。下端だけ除く黒い絵の判定では黒と言えず、視覚検証が OCR だけで「描かれていない」の赤を出した | 視覚検証の素通りは上端の帯も除いて判定する(凍結の警告の判定は変えない) | `BlankFrameDetector.isBlackApartFromSystemBars` |
 | Compose(Android) | ブリッジが送るタッチの「道具の種類」が不明だと、指と数えない部品がある(M3 の `TooltipBox` は長押ししても出なかった) | 送るタッチは指(`TOOL_TYPE_FINGER`)と明示する | `InputInjector.event` |
+| Compose(iOS / Android) | 操作の直後、絵は既に新しい状態なのに、木(アクセシビリティ情報)のラベルが遅れて追いつくことがある。「絵が古い」の判定(絵は同じなのに木が変わった)と同じ形になり、最新の絵を古いと読み違えて撮り直しの予算いっぱい待っていた | 古いと判定した絵でも、期待する文字が丸ごと読めれば古くないとみなす(注記 `stale-frame-text-visible`)。本当に古い絵(期待する文字が無い)は従来どおり待つ | `StepExecutor.staleFrameShowsExpectedText` |
 | Android(全般) | 自動でフォーカスを取る欄(ダイアログの autofocus)は、キーボードが上がる間に動く | 対象の欄が既にフォーカスを持っていれば、入力の前のタップを撃たない(id で引けた欄だけ) | `BridgeRouter.tapUnlessAlreadyFocused` |
 | iOS(in-app) | 同上(Flutter の iOS でも同じ形で閉じた) | 入力の前のタップは、欄が形を変えずに動いていたら動いたぶんだけ追う(大きさが変わっていたら snapshot の座標のまま) | `InAppBridge.pointFollowingMove` |
 | Android(全般) | アプリが切り替わった直後、スクショが前のアプリの最後の絵を返し続けることがある(配信中・負荷時) | 起動の直前の絵と木を控え、最初の視覚検証でも「木は変わったのに絵は同じ」を拾う(注記 `stale-screenshot`・赤にしない) | `StepExecutor.recordPreLaunchFrame` |

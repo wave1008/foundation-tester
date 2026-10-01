@@ -45,6 +45,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 待って撮り直し、**締め切りまで古いままだった回だけ**素通りする(追いついた絵で判定した回にも立つ)
     case staleScreenshot = "stale-screenshot"
 
+    /// 「絵が古い」と判定した絵に、期待する文字が丸ごと描かれていたので古くないとみなして合格にした
+    /// (木が絵より遅れて追いついた形。StepExecutor+Assert.swift の staleFrameShowsExpectedText)。
+    /// 率を見るための注記で、立った回は stale-screenshot の待ちを払っていない
+    case staleFrameTextVisible = "stale-frame-text-visible"
+
     /// テキストの視覚検証(occlusion-guard)か screenLooksLike のスクショがステータスバー以外真っ黒
     /// (`BlankFrameDetector.isBlackApartFromSystemBars`)。絵が撮れていない・表示が凍結した回で、FM も OCR も
     /// 「何も描かれていない」「一致しない」と読むので、判定不能として素通りする(赤にしない)
@@ -338,6 +343,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"
         case .staleScreenshot: return "the occlusion-guard screenshot looked stale, so the check was skipped"
+        case .staleFrameTextVisible:
+            return "the screenshot looked stale (the tree changed but the image did not), but the expected text was already drawn in it, so it was treated as current"
         case .blankScreenshot:
             return "the screenshot was black apart from the system bars, so the visual check was skipped"
         case .webViewCaptureBlank:
