@@ -205,9 +205,15 @@ extension StepExecutor {
         }
         // WebView の内側の文字の領域が一色で、木の上では覆われていない = WebView の層を取り逃した絵(同じ理由で根拠にしない)。
         // 閾値は「画素に構造が無い」の定義(firstFrameBlankStdDevCeiling)を共有する。sd は Tier-1 で測っていれば使い回す
-        if !geo, BlankFrameDetector.enclosingWebViewFrame(of: element, in: elements) != nil {
+        // **覆いの疑いは幾何だけで見る** —— looseMatch(ロケータのラベルの部分一致)は領域が覆われているかと
+        // 無関係なのに geo へ混ざる(OcclusionSuspicion.geometric が部分一致で無条件に true)。混ぜると
+        // `"wv_result=*"` のようなロケータで撮り逃した WebView を「描かれていない」の誤った赤にしていた
+        let coveredInTree = looseMatch
+            ? OcclusionSuspicion.geometric(element: element, in: elements, screen: screen, looseMatch: false)
+            : geo
+        if !coveredInTree, BlankFrameDetector.enclosingWebViewFrame(of: element, in: elements) != nil {
             let targetStdDev = sd ?? RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen)
-            if BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: geo,
+            if BlankFrameDetector.webViewCaptureMissed(insideWebView: true, geometricSuspicion: coveredInTree,
                                                        targetStdDev: targetStdDev,
                                                        ceiling: Self.firstFrameBlankStdDevCeiling) {
                 noteCodesThisStep.insert(.webViewCaptureBlank)
