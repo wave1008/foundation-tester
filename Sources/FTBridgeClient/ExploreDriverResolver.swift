@@ -3,8 +3,8 @@
 // **稼働中の in-app ブリッジを見つけたら、それを主にした hybrid を組む**。
 // in-app が実装できない操作(home/appSwitcher/drag/座標 press)は HybridFallbackDriver が
 // 埋めるので、XCUITest へ振り替える必要は無い。**利用者の実行既定は hybrid** なので、揃えないと
-// 探索と実行で snapshot の中身もジェスチャの成否も変わる(Compose のダブルタップ・
-// Flutter のピンチは XCUITest では届かない)。
+// 探索と実行で snapshot の中身もジェスチャの成否も変わる(Compose のダブルタップは
+// XCUITest では届かない)。
 //
 // 合成できないとき(実機・同名デバイスが複数・XCUITest ブリッジを用意できない)は
 // **振り替え/素通しへ落とす** —— 機能が減る方向には倒さない。

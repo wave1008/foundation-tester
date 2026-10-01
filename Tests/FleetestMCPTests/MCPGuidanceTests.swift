@@ -469,7 +469,24 @@ final class MCPGuidanceTests: XCTestCase {
                                recordSnapshot: { _, _, _ in })
         let key = MCPServer.engineKey([:])
         server.engines[key] = "xcuitest"
-        let hint = server.iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: [:])
-        XCTAssertTrue(hint.contains("this is a Flutter app"), hint)
+        let hint = server.iosEngineHint("Compose Multiplatform", frameworkKey: .compose,
+                                        "double tap", args: [:])
+        XCTAssertTrue(hint.contains("this is a Compose Multiplatform app"), hint)
+    }
+
+    /// **エンジンの助言を出すのは XCUITest で実際に届かないジェスチャだけ**(docs/commands.md の表 =
+    /// 今は Compose のダブルタップ1つ)。届くジェスチャに出すと、効いた操作のたびに「アプリを
+    /// 起動し直して試せ」と誤誘導する(Flutter のピンチにこの形で出ていた)
+    func testEngineHintIsOnlyGivenForGesturesThatXCUITestCannotDeliver() throws {
+        let dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../Sources/fleetest-mcp").standardizedFileURL
+        var calls: [String] = []
+        for name in try FileManager.default.contentsOfDirectory(atPath: dir.path) where name.hasSuffix(".swift") {
+            let text = try String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
+            for line in text.split(separator: "\n") where line.contains("iosEngineHint(\"") {
+                calls.append(line.trimmingCharacters(in: .whitespaces))
+            }
+        }
+        XCTAssertEqual(calls, [#"+ iosEngineHint("Compose Multiplatform", frameworkKey: .compose, "double tap", args: args)"#])
     }
 }

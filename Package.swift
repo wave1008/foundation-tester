@@ -67,7 +67,7 @@ let package = Package(
             dependencies: ["FTCore", "FTCoreSimShim"],
             swiftSettings: swift5Mode
         ),
-        // FoundationModels 補助層(自己修復・失敗トリアージ・シナリオ命名)
+        // FoundationModels 補助層(テキストの視覚検証・シナリオの下書きと命名・FM の死活と診断)
         .target(
             name: "FTFoundationModels",
             dependencies: ["FTCore"],
@@ -298,7 +298,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FTAndroidTests",
-            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient", "FTTestSupport"],
+            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient", "FTEmulatorGrpc", "FTTestSupport"],
             swiftSettings: swift5Mode
         ),
         .testTarget(

@@ -548,10 +548,8 @@ extension MCPServer {
             + (whole ? " The fingers spanned the whole screen, so anything on top of the area"
                 + " you meant (a bottom sheet, a card) may have taken the gesture instead —"
                 + " pass x/y to pinch a specific spot." : "")
-            // **同じ逃げ道を2度書かない**(長文の苦情があった箇所)。
-            // 領域が無視されたときの文は engine も remedy も言い切っているので、
-            // 汎用の Flutter 助言はそこでは畳む
-            + iosEngineHint("Flutter", frameworkKey: .flutter, "pinch", args: args)
+            // エンジンの助言(iosEngineHint)は付けない —— ピンチは全フレームワークとも両エンジンで
+            // 届く(docs/commands.md の表。Flutter も ios-xcuitest で実測済み)
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(args)))
     }
 

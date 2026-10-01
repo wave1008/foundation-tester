@@ -89,9 +89,9 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["snapshot", "drag(100.0,200.0->40.0,150.0,duration:0.8)"])
     }
 
-    /// **無反応だったときの切り分けを応答に載せる**(XCUITest では Compose のダブルタップと
-    /// Flutter のピンチが届かない)。Android と分かっているときは付けない —— 無関係な助言は
-    /// 誤誘導になる
+    /// **無反応だったときの切り分けを応答に載せる**(XCUITest では Compose のダブルタップが届かない)。
+    /// Android と分かっているときは付けない —— 無関係な助言は誤誘導になる。**ピンチには付けない**
+    /// (全フレームワークとも両エンジンで届く。docs/commands.md の表)
     func testGestureResultsCarryTheEngineHintOnIOSOnly() async throws {
         let iosDouble = try await server.call(tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0])
         let iosText = try XCTUnwrap(iosDouble.first?["text"] as? String)
@@ -105,7 +105,7 @@ final class MCPToolCallTests: XCTestCase {
 
         let pinch = try await server.call(tool: "ft_pinch", args: [:])
         let pinchText = try XCTUnwrap(pinch.first?["text"] as? String)
-        XCTAssertTrue(pinchText.contains("Flutter"), pinchText)
+        XCTAssertFalse(pinchText.contains("XCUITest engine"), pinchText)
     }
 
     /// **助言は「実際に使ったエンジン」で出し分ける**。in-app/hybrid ではジェスチャが成立するので
