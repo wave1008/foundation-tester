@@ -608,6 +608,9 @@ public final class BridgeClient: AppDriver {
     /// 版 67 より古いブリッジは 404 を返すので、その場合も nil(呼び手は黙る)。
     /// 費用は対象1件で 72〜146ms(実測)なので、**呼び手が疑ったときだけ**呼ぶこと
     public func hitTest(ref: Int) async throws -> HitTestAnswer {
+        // DOM の要素はランナーが引けない = 聞くと「引き当て不能」が返り、木が画面を代表していない
+        // という別の検知の根拠に化ける。答えられない、と返す
+        if browserDOMCenters[ref] != nil { return .unavailable }
         struct Answer: Decodable { let hittable: Bool? }
         do {
             let answer: Answer = try await get("/hittable", query: "ref=\(ref)",
@@ -664,6 +667,7 @@ public final class BridgeClient: AppDriver {
     /// 既に前面にあるブラウザへ繋ぐと nil のまま」という実害が出ている(AndroidDriver 宣言コメント参照)。
     /// **取れなければ黙って a11y のまま**(例外にしない。Safari 未起動・タブ無し・ペアリング未了はどれも普通にある)。
     private func injectSafariDOMIfApplicable(_ response: inout SnapshotResponse) async {
+        browserDOMCenters = [:]
         guard SafariWebInspector.isEnabled,
               response.sessionBundleID == SafariWebInspector.safariBundleID else { return }
         // **`webView` ノードが無くても差し込む**(監査で直した。Android 側と同じ規律。
@@ -683,7 +687,10 @@ public final class BridgeClient: AppDriver {
                                         density: 1, startingRef: nextRef)
         let kept = webView.map { WebViewDOM.droppingWebViewSubtree(response.elements, webView: $0) }
             ?? response.elements
-        response.elements = kept + added
+        response.elements = WebViewDOM.insertingDOM(added, after: webView, into: kept)
+        browserDOMCenters = Dictionary(uniqueKeysWithValues: added.map {
+            ($0.ref, (x: $0.frame.x + $0.frame.width / 2, y: $0.frame.y + $0.frame.height / 2))
+        })
     }
 
     private func readBrowserDOM(_ target: BrowserDOMTarget) async -> WebViewDOM.Payload? {
@@ -706,6 +713,10 @@ public final class BridgeClient: AppDriver {
     /// snapshot のたびに引くと重い(相手は接続の生存中に変わらない前提)。
     /// 外側 Optional = 未解決、内側 Optional = 解決済みで対象外(解決不能)
     private var resolvedBrowserDOMTarget: BrowserDOMTarget??
+    /// Safari に差し込んだ DOM の要素の中心(ref → 画面座標・pt)。**ランナーはこの ref を知らない**
+    /// (ホストが最大 ref + 1 から振る = ランナーの refFrames の範囲外 → 404 unknown reference number)ので、
+    /// ref を受ける操作はこの表で座標へ解く(Android の refCenters と同じ考え)。スナップショットのたびに作り直す
+    private var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
 
     private func browserDOMTarget() async -> BrowserDOMTarget? {
         if let resolvedBrowserDOMTarget { return resolvedBrowserDOMTarget }
@@ -743,6 +754,10 @@ public final class BridgeClient: AppDriver {
 
     public func tap(ref: Int) async throws {
         lastActionNote = nil
+        if let center = browserDOMCenters[ref] {
+            try await tap(x: center.x, y: center.y)
+            return
+        }
         let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, fast: fastFlag),
                                              timeout: interactionTimeout)
         lastActionNote = res.note
@@ -755,6 +770,12 @@ public final class BridgeClient: AppDriver {
 
     public func type(ref: Int?, text: String) async throws {
         lastActionNote = nil
+        var ref = ref
+        // DOM の入力欄は座標で焦点を立ててから、焦点中の欄へ打つ(ref 無し = ランナーの requireKeyboardFocus が確かめる)
+        if let domRef = ref, let center = browserDOMCenters[domRef] {
+            try await tap(x: center.x, y: center.y)
+            ref = nil
+        }
         let res: OKResponse = try await post("/type", body: TypeRequest(ref: ref, text: text),
                                              timeout: interactionTimeout)
         // ランナーの打ち直し(TypeReadback.Plan.retype)の申告。tap と同じく driverFallback へ運ぶ
@@ -766,6 +787,11 @@ public final class BridgeClient: AppDriver {
     }
 
     public func clearInput(ref: Int?) async throws {
+        var ref = ref
+        if let domRef = ref, let center = browserDOMCenters[domRef] {
+            try await tap(x: center.x, y: center.y)
+            ref = nil
+        }
         let _: OKResponse = try await post("/clear", body: ClearRequest(ref: ref),
                                            timeout: interactionTimeout)
     }
@@ -945,6 +971,10 @@ public final class BridgeClient: AppDriver {
     }
 
     public func press(ref: Int, duration: Double) async throws {
+        if let center = browserDOMCenters[ref] {
+            try await press(x: center.x, y: center.y, duration: duration)
+            return
+        }
         let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration,
                                                                         fast: fastFlag),
                                            timeout: timeout(forDuration: duration))

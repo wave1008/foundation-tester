@@ -481,7 +481,7 @@ public final class AndroidDriver: AppDriver {
                         }
                         kept = WebViewDOM.droppingWebViewSubtree(snapshot.elements, webView: webView)
                     }
-                    snapshot.elements = kept + added
+                    snapshot.elements = WebViewDOM.insertingDOM(added, after: webView, into: kept)
                 } else if route == .appWebView {
                     // DOM が読めず a11y のまま進む(挙動は変えない)。**黙らせない** ——
                     // 理由の名指しは warnWebViewDOMFallbackOnce。ブラウザ経路は対象外

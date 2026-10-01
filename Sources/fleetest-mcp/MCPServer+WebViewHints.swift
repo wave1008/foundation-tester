@@ -444,8 +444,10 @@ extension MCPServer {
     /// **こちらは要素ごとに名指しする**ので容器の中に居ることまで要る
     static func urlishLabelsNote(_ snapshot: SnapshotResponse, abbreviated: Bool = false) -> String {
         let insideWebView = webViewDescendantRefs(in: snapshot)
+        // **DOM 経路の要素(web: true)は数えない** —— あちらのラベルは JS がページから読んだ文字で、
+        // この注記が言う「ブラウザの a11y が名前の無いリンクに URL を入れた」機構を通っていない
         let urlish = snapshot.elements.filter {
-            insideWebView.contains($0.ref) && looksLikeURLFragment($0.label)
+            insideWebView.contains($0.ref) && $0.web != true && looksLikeURLFragment($0.label)
         }
         guard !urlish.isEmpty else { return "" }
         guard !abbreviated else {

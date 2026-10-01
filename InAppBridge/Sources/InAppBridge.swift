@@ -442,6 +442,7 @@ final class FTInAppBridge {
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
         var clips: [Int: CGRect] = [:]
+        let containerDepths = Dictionary(containers.map { ($0.ref, $0.depth) }, uniquingKeysWith: { first, _ in first })
         for slot in kept {
             var copy: ElementInfo
             var frame: CGRect?
@@ -457,6 +458,10 @@ final class FTInAppBridge {
             case .dom(let container, let index):
                 copy = domByRef[container]!.elements[index]
                 frame = domByRef[container]!.frames[index]
+                // **WebView の子として並べる**(直後に depth + 1。ホストの WebViewDOM.insertingDOM と同じ形)。
+                // depth 0 のままだと window と同じ最上位に並び、`.webView >> …` に中身が入らないうえ、
+                // 後ろのネイティブ要素の祖先の辿りもこの要素で切れる
+                copy.depth = (containerDepths[container] ?? 0) + 1
             }
             copy.ref = elements.count + 1
             elements.append(copy)

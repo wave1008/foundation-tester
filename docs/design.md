@@ -864,6 +864,14 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 - **`dom-interop` では ref を XCUITest へ渡さない**。委譲先は自分が最後に撮った別 snapshot の
   ref 名前空間を持つため、混ぜると別要素を指す(「返す snapshot と ref の名前空間を一致させる」
   不変条件)。ホストが ref → 矩形中心 → 座標に解決してから渡す。
+- **DOM の要素は WebView ノードの直後に、その depth + 1 で差し込む**(in-app の `mergeWebViewDOM`・
+  ホストの `WebViewDOM.insertingDOM` = Android / Safari。**片方だけ変えない**)。子孫は pre-order + depth で
+  決まるので、末尾へ足したり depth 0 で並べたりすると `.webView >> …` のスコープに中身が1件も入らず、
+  WebView より後ろのネイティブ要素(タブバー等)の祖先の辿りもそこで切れる。
+- **Safari に差し込んだ DOM の要素の ref はホストが振る**(応答の最大 ref + 1 から)= ランナーは知らない。
+  `BridgeClient` が要素の中心を控え、`tap` / `press` は座標で撃ち、`type` / `clearInput` は座標で焦点を
+  立ててから ref 無しで撃つ。`hitTest` はランナーへ聞かず「答えられない」を返す(聞くと「引き当て不能」が
+  返り、木が画面を代表していないという別の検知の根拠に化ける)
 - **画面に入るとき1回だけ委譲側を暖める**(`delegated.snapshot()`)。これが XCUITest の attach を
   兼ねており、省くと**最初の座標タップが 200 を返しても効かない**。1画面1回に留めること
   (毎 snapshot 撃つと委譲と同じコストに戻る)。

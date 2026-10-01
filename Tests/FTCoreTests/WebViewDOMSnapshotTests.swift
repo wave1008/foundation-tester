@@ -280,6 +280,28 @@ final class WebViewDOMSnapshotTests: XCTestCase {
                        [1, 2])
     }
 
+    /// DOM の要素は **WebView の直後に depth + 1 で**入り、`.webView >> …` の子孫になる。
+    /// 末尾へ足すと子孫に1件も入らず、WebView より後ろのネイティブ要素(タブバー)の手前にも並んでしまう
+    func testInsertingDOMMakesTheNodesDescendantsOfTheWebView() {
+        func el(_ ref: Int, _ type: String, depth: Int, web: Bool? = nil) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: "e\(ref)", value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 0, y: Double(ref) * 10, width: 100, height: 10),
+                        depth: depth, web: web)
+        }
+        let urlBar = el(1, "textField", depth: 2)
+        let webView = el(2, "webView", depth: 2)
+        let tabButton = el(3, "button", depth: 2)
+        let dom = [el(10, "staticText", depth: 1, web: true), el(11, "button", depth: 1, web: true)]
+
+        let result = WebViewDOM.insertingDOM(dom, after: webView, into: [urlBar, webView, tabButton])
+
+        XCTAssertEqual(result.map(\.ref), [1, 2, 10, 11, 3], "WebView の直後に入り、後ろのネイティブ要素はその後")
+        XCTAssertEqual(LocatorResolver.descendants(of: webView, in: result).map(\.ref), [10, 11])
+        XCTAssertEqual(result.filter { $0.web == true }.map(\.depth), [3, 3])
+        // WebView ノードが無い(内容領域だけ推定した)ときは末尾へ足すだけ
+        XCTAssertEqual(WebViewDOM.insertingDOM(dom, after: nil, into: [urlBar, tabButton]).map(\.ref), [1, 3, 10, 11])
+    }
+
     // MARK: - webView ノードが無いブラウザ画面の内容領域(2026-08-14 の監査で必要になった)
 
     private func chrome(_ id: String, _ y: Double, _ h: Double) -> ElementInfo {

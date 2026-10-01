@@ -123,4 +123,24 @@ public extension WebViewDOM {
         guard !inner.isEmpty else { return elements }
         return elements.filter { !inner.contains($0.ref) }
     }
+
+    /// DOM の要素を **WebView ノードの直後に、その depth + 1 で**差し込む(純粋)。
+    /// 子孫は pre-order + depth で決まる(`LocatorResolver.descendants`)ので、末尾へ足すと
+    /// `.webView >> …` のスコープに DOM の中身が1件も入らない。in-app(InAppBridge.mergeWebViewDOM)も
+    /// 同じ形で差し込む = **片方だけ変えない**。WebView ノードが無い(ブラウザの内容領域だけ推定した)
+    /// ときは末尾へ depth 1 のまま足す(子孫にする親が居ない)
+    static func insertingDOM(_ added: [ElementInfo], after webView: ElementInfo?,
+                             into elements: [ElementInfo]) -> [ElementInfo] {
+        guard let webView, let at = elements.firstIndex(where: { $0.ref == webView.ref }) else {
+            return elements + added
+        }
+        let nested = added.map { element -> ElementInfo in
+            var copy = element
+            copy.depth = webView.depth + 1
+            return copy
+        }
+        var out = elements
+        out.insert(contentsOf: nested, at: out.index(after: at))
+        return out
+    }
 }
