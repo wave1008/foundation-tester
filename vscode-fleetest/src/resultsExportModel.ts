@@ -246,6 +246,8 @@ export interface ResultsExportOverview {
   readonly stepPassedViaFallback: number;
   readonly stepFailed: number;
   readonly stepSkipped: number;
+  /** verify にアサーションが無かった等(失敗には数えない)。数えないと合計と内訳の和が合わない */
+  readonly stepInconclusive: number;
 }
 
 export interface ResultsExportModel {
@@ -366,6 +368,7 @@ function buildOverview(
 
   let scenarioTotal = 0, scenarioPassed = 0, scenarioFailed = 0, scenarioTimedOut = 0, scenarioInterrupted = 0, scenarioSkipped = 0;
   let stepTotal = 0, stepPassed = 0, stepHealed = 0, stepPassedViaFallback = 0, stepFailed = 0, stepSkipped = 0;
+  let stepInconclusive = 0;
   for (const row of scenarios) {
     scenarioTotal++;
     switch (row.result) {
@@ -383,6 +386,7 @@ function buildOverview(
         case "healed": stepHealed++; break;
         case "failed": stepFailed++; break;
         case "skipped": stepSkipped++; break;
+        case "inconclusive": stepInconclusive++; break;
       }
     }
   }
@@ -399,7 +403,7 @@ function buildOverview(
     issuers,
     fmSettings,
     scenarioTotal, scenarioPassed, scenarioFailed, scenarioTimedOut, scenarioInterrupted, scenarioSkipped,
-    stepTotal, stepPassed, stepHealed, stepPassedViaFallback, stepFailed, stepSkipped,
+    stepTotal, stepPassed, stepHealed, stepPassedViaFallback, stepFailed, stepSkipped, stepInconclusive,
   };
 }
 

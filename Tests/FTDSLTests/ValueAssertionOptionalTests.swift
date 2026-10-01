@@ -46,6 +46,18 @@ final class ValueAssertionOptionalTests: XCTestCase {
         return false
     }
 
+    /// 素の値(FTValue)でも `strict:` が書けて効く(索引・docs が案内する形)。既定は正規化して比べ、
+    /// strict: true はゼロ幅の文字も違いとして見る
+    func testPlainStringThisIsHonoursStrict() {
+        let value = "ab\u{200B}c"
+        let normalized = run { value.thisIs("abc") }
+        XCTAssertFalse(isFailed(normalized[0]), "既定は正規化して一致: \(normalized[0].status)")
+        let strict = run { value.thisIs("abc", strict: true) }
+        XCTAssertTrue(isFailed(strict[0]), "strict は正規化しない: \(strict[0].status)")
+        let strictNot = run { value.thisIsNot("abc", strict: true) }
+        XCTAssertFalse(isFailed(strictNot[0]), "strict の否定形も同じ規則: \(strictNot[0].status)")
+    }
+
     func testNilOptionalStringIsNotANonEmptyString() {
         let none: String? = nil
         let steps = run { none.thisIsNotEmpty() }

@@ -475,7 +475,7 @@ public struct TimelineStepRecord: Codable, Sendable {
     public var section: String?
     public var index: Int
     public var description: String
-    /// ScenarioEvent.status をそのまま(passed/passedViaFallback/healed/failed/skipped)
+    /// ScenarioEvent.status をそのまま(passed/passedViaFallback/healed/failed/skipped/inconclusive)
     public var status: String
     /// ISO8601+ミリ秒(ScenarioEvent.at 由来)。取得できないステップでは nil
     public var at: String?

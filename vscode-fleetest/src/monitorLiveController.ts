@@ -636,7 +636,7 @@ export class MonitorLiveController implements vscode.Disposable {
     // 未接続(offline/booted/unknown)なら start-device で起動して待つ(冷起動は数十秒かかり得る)。
     // 起動後に一覧を取り直し、同じ platform の先頭を選び直してから接続状態を再確認する。
     if (option.state !== "connected") {
-      const booted = await this.bootDevice(option.name);
+      const booted = await this.bootDevice(option.name, option.machine);
       if (!booted) {
         return undefined;
       }
@@ -669,15 +669,21 @@ export class MonitorLiveController implements vscode.Disposable {
 
   /** 選択デバイスを `api start-device --name` で起動し完了(exit 0)まで待つ。冷起動で長時間ブロックし得る
    * (start-device 自身がタイムアウト/リトライを持つ)。進捗は live バナーへ出す。list-devices と同じ
-   * 専用 spawn(runCli=runOneShot)で FleetestCli の直列キューには乗せない。 */
-  private async bootDevice(name: string): Promise<boolean> {
+   * 専用 spawn(runCli=runOneShot)で FleetestCli の直列キューには乗せない。
+   * **手元のデバイスだけ起こす**(`--device-machine local` で絞る。付けないと同名のデバイスが別の機械にも居るとき
+   * start-device が ambiguous で断る)。リモートのデバイス(machine あり)は false = 呼び手がプロファイル実行へ戻す
+   * (この経路の単機実行は手元の serial/port しか組めない)。 */
+  private async bootDevice(name: string, machine: string | undefined): Promise<boolean> {
+    if (machine !== undefined) {
+      return false;
+    }
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
       return false;
     }
     this.post({ type: "banner", message: t("live.deviceBooting", { name }) });
-    const args = ["api", "start-device", "--name", name, "--project", resolution.project];
+    const args = ["api", "start-device", "--name", name, "--project", resolution.project, "--device-machine", "local"];
     if (config.profile) {
       args.push("--profile", config.profile);
     }

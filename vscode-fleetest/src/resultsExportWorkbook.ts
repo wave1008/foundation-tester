@@ -63,6 +63,7 @@ const STEP_STATUS_FILL: { readonly [status: string]: string } = {
   healed: HEAL_FILL,
   failed: FAILURE_FILL,
   skipped: SKIP_FILL,
+  inconclusive: SKIP_FILL,
 };
 const STEP_STATUS_LABEL_KEY: { readonly [status: string]: MessageKey } = {
   passed: "resultsExport.stepStatus.passed",
@@ -70,6 +71,7 @@ const STEP_STATUS_LABEL_KEY: { readonly [status: string]: MessageKey } = {
   healed: "resultsExport.stepStatus.healed",
   failed: "resultsExport.stepStatus.failed",
   skipped: "resultsExport.stepStatus.skipped",
+  inconclusive: "resultsExport.stepStatus.inconclusive",
 };
 
 const SECTION_LABEL_KEY: { readonly [section: string]: MessageKey } = {
@@ -210,6 +212,7 @@ function renderOverviewSheet(workbook: XlsxWorkbook, sheet: XlsxSheet, model: Re
     { label: t("resultsExport.stepStatus.passedViaFallback"), value: overview.stepPassedViaFallback, fill: HEAL_FILL },
     { label: t("resultsExport.stepStatus.failed"), value: overview.stepFailed, fill: FAILURE_FILL },
     { label: t("resultsExport.stepStatus.skipped"), value: overview.stepSkipped, fill: SKIP_FILL },
+    { label: t("resultsExport.stepStatus.inconclusive"), value: overview.stepInconclusive, fill: SKIP_FILL },
   ]);
 
   const classesTitleStyle = workbook.registerStyle({ font: baseFont({ bold: true, size: 12 }) });

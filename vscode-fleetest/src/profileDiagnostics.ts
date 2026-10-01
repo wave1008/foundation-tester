@@ -42,9 +42,7 @@ export function registerProfileDiagnostics(
     if (name !== undefined) {
       args.push("--name", name);
     }
-    if (!config.buildBeforeRun) {
-      args.push("--skip-build");
-    }
+    // --skip-build は渡さない(validate-profile はビルドしないのでフラグを持たず、渡すと未知の引数で落ちる)
     const invocation: CliInvocation = {
       args,
       onLog: (line, stream) => outputChannel.appendLine(`[validate-profile ${stream}] ${line}`),

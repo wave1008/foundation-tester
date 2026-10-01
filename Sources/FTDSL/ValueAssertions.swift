@@ -222,12 +222,13 @@ extension Optional: FTValue where Wrapped: FTValue {
 public extension FTValue {
     private var anyValue: Any? { ftAnyValue }
 
-    func thisIs(_ expected: Any?, file: StaticString = #filePath, line: UInt = #line) {
-        anyValue.thisIs(expected, file: file, line: line)
+    // **strict: も転送する**(索引・docs は `value.thisIs(expected, strict:)` を案内する。落とすと素の値でだけ書けない)
+    func thisIs(_ expected: Any?, strict: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
+        anyValue.thisIs(expected, strict: strict, file: file, line: line)
     }
 
-    func thisIsNot(_ expected: Any?, file: StaticString = #filePath, line: UInt = #line) {
-        anyValue.thisIsNot(expected, file: file, line: line)
+    func thisIsNot(_ expected: Any?, strict: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
+        anyValue.thisIsNot(expected, strict: strict, file: file, line: line)
     }
 
     func thisIsTrue(file: StaticString = #filePath, line: UInt = #line) {

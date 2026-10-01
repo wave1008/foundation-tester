@@ -281,13 +281,19 @@ test("概要: ステップ件数は steps.* ではなく timeline の実数を�
       timelineStep({ index: 2, status: "healed" }),
       timelineStep({ index: 3, status: "failed" }),
       timelineStep({ index: 4, status: "skipped" }),
+      timelineStep({ index: 5, status: "inconclusive" }),
     ],
   });
   const overview = modelFrom([source]).overview;
-  assert.equal(overview.stepTotal, 5);
+  assert.equal(overview.stepTotal, 6);
   assert.equal(overview.stepPassed, 1);
   assert.equal(overview.stepPassedViaFallback, 1);
   assert.equal(overview.stepHealed, 1);
   assert.equal(overview.stepFailed, 1);
   assert.equal(overview.stepSkipped, 1);
+  assert.equal(overview.stepInconclusive, 1);
+  // 内訳の和は合計と一致する(状態を1つでも数え漏らすと概要の数字が合わなくなる)
+  const parts = overview.stepPassed + overview.stepPassedViaFallback + overview.stepHealed
+    + overview.stepFailed + overview.stepSkipped + overview.stepInconclusive;
+  assert.equal(parts, overview.stepTotal);
 });

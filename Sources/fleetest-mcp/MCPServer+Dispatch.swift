@@ -376,6 +376,8 @@ extension MCPServer {
         "ft_double_tap": [[["ref"], ["x", "y"]]],
         "ft_long_press": [[["ref"], ["x", "y"]]],
         "ft_pinch": [[["ref"], ["x", "y"]]],
+        // ref が勝ち selector は構文検査だけされて捨てられていた(ftCaptureElement の if let ref … else if selector)
+        "ft_capture_element": [[["ref"], ["selector"]]],
         "ft_drag": [
             [["fromRef"], ["fromX", "fromY"]],
             [["toX"], ["dx"]],

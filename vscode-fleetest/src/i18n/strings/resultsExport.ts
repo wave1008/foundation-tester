@@ -45,6 +45,7 @@ export const resultsExportStrings = {
   "resultsExport.stepStatus.healed": { ja: "自己修復", en: "Healed" },
   "resultsExport.stepStatus.failed": { ja: "失敗", en: "Failed" },
   "resultsExport.stepStatus.skipped": { ja: "未実行", en: "Not run" },
+  "resultsExport.stepStatus.inconclusive": { ja: "結論なし", en: "Inconclusive" },
 
   "resultsExport.class.header.class": { ja: "クラス", en: "Class" },
   "resultsExport.class.header.scenarioCount": { ja: "シナリオ数", en: "Scenarios" },

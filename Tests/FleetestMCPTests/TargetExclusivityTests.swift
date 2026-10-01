@@ -59,6 +59,19 @@ final class TargetExclusivityTests: XCTestCase {
         XCTAssertNil(refusal("ft_pinch", ["x": 1.0, "y": 2.0]))
     }
 
+    func testCaptureElementRefAndSelectorTogetherIsRefused() {
+        XCTAssertEqual(refusal("ft_capture_element", ["ref": 1, "selector": "#logo", "label": "logo"]),
+                       "ft_capture_element takes either ref or selector, not both")
+    }
+
+    func testCaptureElementRefOnlyIsAllowed() {
+        XCTAssertNil(refusal("ft_capture_element", ["ref": 1, "label": "logo"]))
+    }
+
+    func testCaptureElementSelectorOnlyIsAllowed() {
+        XCTAssertNil(refusal("ft_capture_element", ["selector": "#logo", "label": "logo"]))
+    }
+
     func testDragFromRefAndFromCoordinatesTogetherIsRefused() {
         XCTAssertNotNil(refusal("ft_drag", ["fromRef": 1, "fromX": 1.0, "fromY": 2.0, "dx": 10.0]))
     }
