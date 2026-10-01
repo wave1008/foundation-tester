@@ -6,7 +6,7 @@ do the same work once you provide these three things yourself:
 
 | What you need | How to get it | Agent-specific? |
 |---|---|---|
-| The mechanical work (clone, build, project scaffolding, VS Code extension) | the one-line installer below | no |
+| The mechanical work (clone, build, project scaffolding, VS Code extension) | the clone and installer below | no |
 | `ft_*` (exploring screens, driving devices, running scenarios) | register `fleetest-mcp` as an MCP server | only the config file format |
 | The runbooks | point the agent at the `SKILL.md` files in the clone | only where they live |
 
@@ -18,12 +18,12 @@ of a session.
 
 ## 1. Install
 
-Run the same mechanical work in one command, without an agent (idempotent):
+Clone the tool, then run the same mechanical work with the installer, without an agent (idempotent):
 
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-  | bash -s -- --name MyApp --app-id com.example.myapp
+git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
+bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
 ```
 
 The installer also writes the Claude Code artefacts. `.mcp.json` can be suppressed with

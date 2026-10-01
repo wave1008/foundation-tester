@@ -2,7 +2,8 @@
 # 状態判定(読み取りのみ・何も変更しない)。既定モードはインストール前の判定(カレント = WORK_DIR
 # 候補)。`--runner` はランナー機(`fleetest run --runner` / docs/remote-runner.md §5・§14)としての判定。
 #
-#   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
+#   bash <SCRIPTS>/preflight.sh(<SCRIPTS> はスキルと一緒に届いた Scripts/ かクローンの Scripts/。
+#   スキルからは curl | bash で呼ばない = エージェントの安全確認に止められる)
 #   bash Scripts/preflight.sh [--work-dir <dir>]           # --work-dir 既定はカレント
 #   bash Scripts/preflight.sh --runner [--base <dir>]   # --base 既定は ~/fleetest-runner
 #
@@ -22,6 +23,11 @@
 #
 # 契約: 既定モードの判定分岐は .claude/skills/fleetest-setup/SKILL.md のステップ0(再実行ガード・
 #       環境判定)と 0.5(構成判定)と 1:1。片方だけ変えない。**既定モードの出力は1バイトも変えない**。
+# 本体全体を { } で括る(末尾の } と対)。curl | bash では残りのスクリプトが stdin にあり、子プロセス
+# (doctor の中の adb 等)が stdin を読むと残りが吸われ、exit 0 のまま黙って途中で終わる
+# (実際に集計と Next steps が出なかった)。括ると bash が最後まで読んでから実行する
+# (pipedScriptsBraceWrapped.test.mjs)
+{
 set -uo pipefail
 
 say() { printf '%s\n' "$1"; }
@@ -410,3 +416,4 @@ case "$verdict" in
     for reason in "${blocked_reasons[@]}"; do say "   ・$reason"; done
     exit 1 ;;
 esac
+}

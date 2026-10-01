@@ -93,12 +93,12 @@ claude plugin install fleetest@foundation-tester --scope user
 手順の詳細は [docs/user-docs/tools/other_agents_ja.md](docs/user-docs/tools/other_agents_ja.md)
 (Codex のサンドボックス設定も同ページ)。
 
-**エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
+**エージェント無しで入れる**: ツールを clone してから、同じ機械作業をインストーラで行う(冪等):
 
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-  | bash -s -- --name MyApp --app-id com.example.myapp
+git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
+bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
 ```
 
 - プラグインが提供するスキル: `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`

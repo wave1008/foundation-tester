@@ -134,13 +134,10 @@ const MUST_CARRY_SLUG = [
   "README.md",
   "Scripts/install.sh",
   "Scripts/install-skill.sh",
-  "Scripts/preflight.sh",
-  "Scripts/update.sh",
   "Sources/FTCore/ProjectScaffold.swift",
   "vscode-fleetest/package.json",
   ".claude/skills/fleetest-setup/SKILL.md",
   ".claude/skills/fleetest-mcp/SKILL.md",
-  ".claude/skills/fleetest-update/SKILL.md",
   "docs/user-docs/getting-started.md",
   "docs/user-docs/getting-started_ja.md",
 ];

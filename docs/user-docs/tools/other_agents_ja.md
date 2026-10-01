@@ -6,7 +6,7 @@ Cursor・Copilot など)でも、次の3つを自分で用意すれば同じこ�
 
 | 要るもの | 用意の仕方 | エージェント依存 |
 |---|---|---|
-| 機械作業(clone・ビルド・プロジェクト作成・VSCode 拡張) | 下のインストーラ1コマンド | 無し |
+| 機械作業(clone・ビルド・プロジェクト作成・VSCode 拡張) | 下の clone とインストーラ | 無し |
 | `ft_*`(画面の探索・操作・シナリオ実行) | `fleetest-mcp` を MCP サーバとして登録 | 設定ファイルの書式だけ |
 | 手順書(runbook) | クローンの `SKILL.md`(ツール中立の markdown)を読ませる | 置き場所だけ |
 
@@ -17,12 +17,12 @@ Cursor・Copilot など)でも、次の3つを自分で用意すれば同じこ�
 
 ## 1. インストール
 
-エージェントを介さず、同じ機械作業を1コマンドで実行します(冪等):
+エージェントを介さず、ツールを clone してから同じ機械作業をインストーラで実行します(冪等):
 
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-  | bash -s -- --name MyApp --app-id com.example.myapp
+git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
+bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
 ```
 
 インストーラは Claude Code 向けの生成物も置きます。`.mcp.json` は `--skip-mcp` で、入口

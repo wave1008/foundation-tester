@@ -45,7 +45,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   - **各手順は `.claude/skills/fleetest-setup/SKILL.md` のステップ番号と 1:1**(失敗時に
     「→ SKILL.md ステップ N」を出す)。**片方だけ変えない**
     (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)
-  - **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古い)。
+  - **スキルからは「スキルと一緒に届いた Scripts/」のローカルファイルを `bash` で呼ぶ**
+    (`<SKILL.md の3つ上>/Scripts/`。プラグインのキャッシュはリポジトリ全体を持つ)。手順書と
+    スクリプトが同じ版になるので新しい引数が必ず通じる(クローン側の Scripts/ は pull されるまで古い)。
+    **`curl … | bash` に戻さない** —— エージェントの安全確認に止められ、導入の最初で詰まる。
+    コピー配置(Scripts/ が無い)だけは先に `git clone` してクローンの Scripts/ を使う。
+    **install.sh の自己判定(SELF_ROOT)は `.git` を条件に持つ**(キャッシュは git ではない。
+    外すとキャッシュの中でビルドし `.mcp.json` がそこを指す)。
     全出力は `<WORK_DIR>/.fleetest/install-<日時>.log` へ
   - **pull 後は自分自身を再 exec する**(条件は「実行中のファイル = pull したクローンの
     `Scripts/install.sh` 自身」かつ HEAD が動いたときだけ)。**`update.sh` にも同じ再 exec がある**

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fleetest の更新。/fleetest-update スキルの「機械作業」を1コマンドに固めたもの。
 #
-#   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/update.sh | bash
+#   bash <TOOL_ROOT>/Scripts/update.sh(pull 後に自分自身を再 exec するので、古いクローンの版から始めてよい)
 #   bash <TOOL_ROOT>/Scripts/update.sh [--work-dir <dir>] [--tool-root <dir>] [--skip-extension] [--skip-plugin]
 #
 # やること: install.sh(pull → swift build → 拡張 → .mcp.json → 検証ゲート)を再実行し、
@@ -13,6 +13,11 @@
 # 契約: 手順は .claude/skills/fleetest-update/SKILL.md と 1:1。片方だけ変えない。
 #       重複を避けるため、共通部分は install.sh を呼ぶ(pull の確認・ログ・検証ゲートも同じものが効く)。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗
+# 本体全体を { } で括る(末尾の } と対)。curl | bash では残りのスクリプトが stdin にあり、子プロセス
+# (doctor の中の adb 等)が stdin を読むと残りが吸われ、exit 0 のまま黙って途中で終わる
+# (実際に集計と Next steps が出なかった)。括ると bash が最後まで読んでから実行する
+# (pipedScriptsBraceWrapped.test.mjs)
+{
 set -uo pipefail
 
 WORK_DIR="$PWD"
@@ -308,3 +313,4 @@ echo "・In VSCode, run Developer: Reload Window (required for the extension; re
 [ "$SKILLS_REFRESHED" -gt 0 ] && echo "・Restart the agent so the refreshed skills are re-read"
 [ "$PLUGIN_RESULT" = "stale" ] && echo "・The plugin does not match HEAD. Run claude plugin marketplace update → plugin update by hand"
 exit "$INSTALL_STATUS"
+}

@@ -174,10 +174,21 @@ test("FLEETEST_REF がスクリプトの取得元とクローンの ref を揃�
     "新規 clone が REF を指定していません");
   assert.match(INSTALL_SH, /fetch --tags origin "\$REF"/,
     "既存クローンを REF へ揃えていません");
-  // スキル側の取得元も同じ口を使う(片方だけだと同じズレが残る)
+  // スキル側はスキルと一緒に届いた Scripts/(手順書と同じ版)をローカルで実行する =
+  // 手順書とスクリプトの版は構造的に揃う
   const setup = readFileSync(path.join(ROOT, ".claude/skills/fleetest-setup/SKILL.md"), "utf8");
-  assert.match(setup, /\$\{FLEETEST_REF:-main\}\/Scripts\/install\.sh/,
-    "setup スキルの install.sh 取得元が ref を通していません");
+  assert.match(setup, /bash <SCRIPTS>\/install\.sh/,
+    "setup スキルがスキルと同じ版の install.sh(<SCRIPTS>)を実行していません");
+});
+
+test("スキルは curl | bash でスクリプトを実行しない", () => {
+  // ネットワークから取ったスクリプトのパイプ実行はエージェントの安全確認に止められ、
+  // 導入・更新の最初の一歩で進めなくなる。ローカルの Scripts/ を bash で実行する
+  for (const name of ["fleetest-setup", "fleetest-update", "fleetest-mcp"]) {
+    const skill = readFileSync(path.join(ROOT, ".claude/skills", name, "SKILL.md"), "utf8");
+    const piped = skill.split("\n").filter((l) => /curl\s+(-\S+\s+)*https?:\/\/\S+[^\n]*\|\s*(ba)?sh\b/.test(l));
+    assert.deepEqual(piped, [], `${name} が curl | bash を書いています`);
+  }
 });
 
 test("FLEETEST_REF は「版固定(detached)」ガードより先に効く", () => {

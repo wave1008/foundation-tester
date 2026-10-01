@@ -27,7 +27,7 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 
 **入り方は2通り。ステップ 0.5 で判定する:**
 
-- **外部パッケージ構成(既定・curl でスキルだけ入れた受け手ディレクトリ)**: いま開いているこの
+- **外部パッケージ構成(既定・スキルだけを入れた受け手ディレクトリ)**: いま開いているこの
   ディレクトリを fleetest テストパッケージにする。**あなたのプロジェクト(`TestProjects/<name>/`)は
   この受け手ディレクトリに作られる**。foundation-tester は「ツール(CLI・拡張)」として横に clone+build
   するだけで、Projects はここに住む。作成は `fleetest init`。
@@ -60,10 +60,22 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 **まず状態判定スクリプトを実行する**(構成・既存クローン・環境を1回で判定する。読み取りのみ):
 
 ```
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
+bash <SCRIPTS>/preflight.sh
 ```
 
-(クローンがあるなら `bash <TOOL_ROOT>/Scripts/preflight.sh`。**カレント = WORK_DIR 候補**を判定する。)
+**カレント = WORK_DIR 候補**を判定する。**スクリプトは必ずローカルのファイルを実行する** ——
+`curl … | bash` のようにネットワークから取ったスクリプトをパイプで実行しない(エージェントの
+安全確認に止められ、導入の最初の一歩で進めなくなる)。
+
+**`<SCRIPTS>` = この SKILL.md があるディレクトリの3つ上の `Scripts/`**(`.claude/skills/fleetest-setup/`
+→ リポジトリの根。プラグイン導入ならプラグインのキャッシュ、クローンの SKILL.md を読んでいるなら
+そのクローン)。**この手順書と同じ版**なので、以降のステップで渡す引数が必ず通じる。
+そこに `preflight.sh` が無い(`install-skill.sh` でスキルだけを写したコピー配置)ときだけ、先に
+ツールを clone して(既定は隣。clone 済みならそれを使う)その `Scripts/` を使う:
+
+```
+git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
+```
 出力は `key=value` 行 + 判定。**終了コードで分岐する**:
 
 - **0 = ready** → 未導入。ステップ0の質問へ進む。`tool_root_exists=` / `cli_built=` で既存クローンの有無も分かる。
@@ -170,8 +182,7 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
 
 ```
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- \
-  --name <ProjectName> --platform <ios|android|both> [--app-id <bundleID>]
+bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--app-id <bundleID>]
 ```
 
 値はすべてステップ0の回答と preflight の出力から作る。**プロファイル(アプリ/実行)はインストーラでは
@@ -181,14 +192,13 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETE
   `AGENTS.md` は他のエージェントも読む。他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの
   登録と手順書の渡し方を docs/user-docs/tools/other_agents_ja.md で案内する（生成物が不要なら
   `--skip-mcp` / `--skip-entry-point`）。
-- **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
-  「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
-  `${FLEETEST_REF:-main}` は**保守者が未マージのブランチを検証するため**の口で、受け手は何も指定しなくてよい
-  （受け手の配布口は main の1本で、版を固定する導線は無い）。
-  **逆に、ブランチ検証では必ず `FLEETEST_REF` を渡す** —— 渡さないと
-  「新しいスキル + main の古いインストーラ」を走らせて、直したはずの挙動を確認できない。
-  clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ
-  `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> …` を使う。
+- **`<SCRIPTS>` の install.sh を使う**(ステップ0と同じ置き場。この手順書と同じ版なので引数が必ず
+  通じる。クローンの clone・pull はインストーラが行う)。**`curl … | bash` で実行しない**(ステップ0)。
+  `FLEETEST_REF` は**保守者が未マージのブランチを検証するため**の口(clone する ref)で、受け手は何も
+  指定しなくてよい(受け手の配布口は main の1本で、版を固定する導線は無い)。
+  **ブランチ検証では、そのブランチの手順書とスクリプトを使う**(`claude --plugin-dir <ブランチのクローン>`
+  で起動する)—— main の手順書とスクリプトでは、直したはずの挙動を確認できない。
+  clone 先を変えるなら `--tool-root <dir>`。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
   `fleetest init` ではなく `project create` 経路になる。`.mcp.json` はクローンの中に書かれる
   ―― 追跡していないのでクローンは dirty にならない）。

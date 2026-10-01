@@ -56,8 +56,10 @@ function resolveCurlForm({ workDir, toolRootArg = "" }) {
 /** on-disk 形(実ファイルを bash <file> で実行。BASH_SOURCE[0] はそのファイル)で実行する。
  * selfCloneDir/Scripts/install.sh へブロックを書き出して実行する(SELF_ROOT の判定が
  * `dirname/..` を見るため、実際に Scripts/ の下に置く必要がある)。 */
-function resolveOnDiskForm({ selfCloneDir, workDir, toolRootArg = "" }) {
+function resolveOnDiskForm({ selfCloneDir, workDir, toolRootArg = "", isGitClone = true }) {
   makeCloneMarker(selfCloneDir);
+  // 本物のクローンは .git を持つ。プラグインのキャッシュ(リポジトリ全体の写し)は持たない
+  if (isGitClone) mkdirSync(path.join(selfCloneDir, ".git"), { recursive: true });
   const scriptsDir = path.join(selfCloneDir, "Scripts");
   mkdirSync(scriptsDir, { recursive: true });
   const scriptPath = path.join(scriptsDir, "install.sh");
@@ -131,4 +133,31 @@ test("on-disk 形: 自分自身(SELF_ROOT)が Package.swift の宣言より優�
 
   const resolved = resolveOnDiskForm({ selfCloneDir, workDir });
   assert.equal(resolved, selfCloneDir);
+});
+
+// スキルはプラグインのキャッシュにある Scripts/install.sh を実行する。キャッシュはリポジトリ全体を
+// 持つが git ではなく、更新で捨てられる場所 —— そこを TOOL_ROOT にするとキャッシュの中でビルドし、
+// .mcp.json がそこを指す。.git の無い置き場からの実行は SELF_ROOT にしない。
+test("on-disk 形: .git の無い置き場(プラグインのキャッシュ)からの実行は SELF_ROOT にせず宣言へ倒す", (t) => {
+  const dir = freshBase();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const workDir = path.join(dir, "receiver");
+  const pluginCacheDir = path.join(dir, "plugin-cache");
+  const declaredToolRoot = path.join(dir, "declared-tool-root");
+  mkdirSync(workDir, { recursive: true });
+  makeCloneMarker(declaredToolRoot);
+  writeFileSync(path.join(workDir, "Package.swift"), '.package(path: "../declared-tool-root")\n');
+
+  const resolved = resolveOnDiskForm({ selfCloneDir: pluginCacheDir, workDir, isGitClone: false });
+  assert.equal(resolved, `${workDir}/../declared-tool-root`);
+});
+
+test("on-disk 形: .git の無い置き場から未導入の WORK_DIR へは既定の隣へ倒す", (t) => {
+  const dir = freshBase();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const workDir = path.join(dir, "receiver");
+  mkdirSync(workDir, { recursive: true });
+
+  const resolved = resolveOnDiskForm({ selfCloneDir: path.join(dir, "plugin-cache"), workDir, isGitClone: false });
+  assert.equal(resolved, `${workDir}/../foundation-tester`);
 });

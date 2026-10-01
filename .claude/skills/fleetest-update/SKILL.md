@@ -48,8 +48,11 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 - **どちらでもない**(state.json が無い = 未導入)→ このときだけ preflight を打つ:
 
   ```
-  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
+  bash <SCRIPTS>/preflight.sh
   ```
+
+  `<SCRIPTS>` は `/fleetest-setup` のステップ0と同じ規則(この SKILL.md があるディレクトリの3つ上の
+  `Scripts/`)。**`curl … | bash` で実行しない**(エージェントの安全確認に止められる)。
 
   `layout=external-installed` なら `tool_root=` を採る。`layout=external-new` は**未導入**なので
   停止して `/fleetest-setup` を案内する。**`ls` や `find` で周辺を探し回らない**

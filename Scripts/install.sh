@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # fleetest インストーラ。/fleetest-setup スキルの「機械作業」だけを1コマンドに固めたもの。
 #
-#   bash Scripts/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app-id <bundleID>]
-#   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-#     | bash -s -- --name <ProjectName>          # clone から丸ごと(TOOL_ROOT は隣に作られる)
+#   bash <SCRIPTS>/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app-id <bundleID>]
+#   <SCRIPTS> = スキルと一緒に届いた Scripts/(プラグインのキャッシュ)かクローンの Scripts/。
+#   TOOL_ROOT が無ければ clone から丸ごと(既定は隣)。**スキルからは curl | bash で呼ばない**
+#   (エージェントの安全確認に止められる。fleetest-setup SKILL.md ステップ0)
 #
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
 #           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 /
@@ -24,6 +25,11 @@
 #       **無音の時間を作らない**のが逐次表示の目的(クローン〜ビルドは数分。人が「止まった」と
 #       誤解して中断するのを防ぐ)。数分かかる工程には経過時間を付ける。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗(CLI は使える)
+# 本体全体を { } で括る(末尾の } と対)。curl | bash では残りのスクリプトが stdin にあり、子プロセス
+# (doctor の中の adb 等)が stdin を読むと残りが吸われ、exit 0 のまま黙って途中で終わる
+# (実際に集計と Next steps が出なかった)。括ると bash が最後まで読んでから実行する
+# (pipedScriptsBraceWrapped.test.mjs)
+{
 set -euo pipefail
 
 # FLEETEST_REPO_URL はフォーク・ローカル検証用の差し替え口(既定は本家)
@@ -280,11 +286,13 @@ xcode_version="$(xcodebuild -version 2>/dev/null)"
 record "prerequisites" ok "macOS $(sw_vers -productVersion) / ${xcode_version%%$'\n'*}"
 
 # ---- 0.5 TOOL_ROOT(SKILL ステップ0.5) ----------------------------------------
-# クローン内から実行されたならそれが TOOL_ROOT(curl | bash では $0 が読めないので clone へ倒す)
+# クローン内から実行されたならそれが TOOL_ROOT(curl | bash では $0 が読めないので clone へ倒す)。
+# **.git を条件に含める** —— プラグインのキャッシュもリポジトリ全体を持つが git ではなく、
+# 更新で捨てられる場所。そこを TOOL_ROOT にするとキャッシュの中でビルドし .mcp.json がそこを指す
 SELF_ROOT=""
 if [ -f "${BASH_SOURCE[0]:-}" ]; then
   candidate="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || true)"
-  if [ -n "$candidate" ] && [ -f "$candidate/Package.swift" ] && [ -d "$candidate/Sources/FTScenarioRunner" ]; then
+  if [ -n "$candidate" ] && [ -e "$candidate/.git" ] && [ -f "$candidate/Package.swift" ] && [ -d "$candidate/Sources/FTScenarioRunner" ]; then
     SELF_ROOT="$candidate"
   fi
 fi
@@ -875,3 +883,4 @@ if [ "$SOFT_FAILED" = "1" ]; then
 fi
 echo ""
 echo "✅ Install complete"
+}

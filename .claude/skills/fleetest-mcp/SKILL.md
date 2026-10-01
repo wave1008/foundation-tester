@@ -70,9 +70,6 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --skip-project --skip-extension
 ```
 
-クローンがまだ無ければ clone から:
-`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/${FLEETEST_REF:-main}/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
-
 出力は行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` で読む。**exit 0 ならステップ3(承認)へ**。
 **exit 1 は `[fail]` 行の「→ SKILL.md step N」の手順を手で通して原因を解決し、同じ引数で再実行**
 (N は `/fleetest-setup` スキルのステップ番号。このスキルのステップ1・2にも同じ内容がある)。
