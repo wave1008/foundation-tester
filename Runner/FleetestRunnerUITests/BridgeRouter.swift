@@ -621,17 +621,20 @@ final class BridgeRouter {
     ///
     /// hybrid(ios-inapp)では in-app 側が合成タッチでタップ・入力してフォーカスを立てているため、
     /// app 全体への typeText("\n") はフォーカス中の入力欄に届かないことがある。キーボード
-    /// フォーカスを持つ要素を探し、見つかればそこへ typeText する。見つからない場合(engine=xcuitest
-    /// 単独等、in-app がフォーカスを立てていないケース)は従来どおり app 全体へ送る。
+    /// フォーカスを持つ要素を探し、そこへ typeText する。
+    /// **見つからなければ 422 で断る**(/type・/clear の `requireKeyboardFocus` と同じ)—— 焦点が無いまま
+    /// `app.typeText` を撃つと XCTest が "Neither element nor any descendant has keyboard focus" で失敗し、
+    /// ランナーごと落ちるか(Tear Down)、continueAfterFailure で 200 = 何も起きていないのに成功を返す。
+    /// in-app は 409・Android は no-input-focus で同じ状況を断る(409 は requireApp() 専用なので 422)
     private func handlePressEnter() throws -> BridgeHTTPServer.Response {
         let app = try requireForegroundAppForInput()
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        if focused.exists {
-            focused.typeText("\n")
-        } else {
-            app.typeText("\n")
+        guard focused.exists else {
+            throw BridgeError(422, "nothing has keyboard focus, so Enter has nowhere to go."
+                + " Tap the input field first (or type into it), then press Enter")
         }
+        focused.typeText("\n")
         return .json(OKResponse())
     }
 
@@ -1212,8 +1215,8 @@ final class BridgeRouter {
         let app = try requireApp()
         guard app.state != .notRunning, app.state != .unknown else {
             throw BridgeError(503, "the target app (\(sessionBundleID ?? "?")) is not running, so"
-                + " it cannot be driven (it may have exited or crashed in an earlier step; the host"
-                + " relaunches it with /session)")
+                + " it cannot be driven (it may have exited or crashed in an earlier step)."
+                + " Launch it again (DSL: launchApp / MCP: ft_launch)")
         }
         return app
     }

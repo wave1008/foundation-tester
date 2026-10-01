@@ -143,6 +143,16 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                       "在るかは exists(失敗を記録しない)で見て、無ければ 422")
     }
 
+    /// **/pressEnter も焦点が無ければ 422 で断る**(/type・/clear と同じ)。ランナーは XCUI の失敗を記録しない
+    /// (下のテスト)ので、焦点の無い `app.typeText("\n")` は何も起きていないのに 200 を返していた
+    /// = hybrid の in-app 409 から回ってきた Enter が iOS でだけ黙って成功扱いになる
+    func testPressEnterRefusesWithoutKeyboardFocus() throws {
+        let body = try XCTUnwrap(handlerBody("handlePressEnter", in: try routerSource))
+        XCTAssertTrue(body.contains("guard focused.exists else {") && body.contains("BridgeError(422,"),
+                      "焦点が無いときは 422 で断ること: \(body)")
+        XCTAssertFalse(body.contains("app.typeText("), "焦点の無いまま app 全体へ撃たないこと")
+    }
+
     /// **ランナーのテストは XCUI の失敗を記録しない**(`FleetestBridgeTests.record(_:)` がログにだけ残す)。
     /// 記録すると1件でも Tear Down してランナーごとブリッジが消える(2026-09-19: 消えた欄への typeText の失敗
     /// 1件で Tear Down・毎回再現 → 上書き後は同じ手順5回で失敗12件をログに残して生存)。`super` を呼ぶと元に戻る

@@ -45,6 +45,24 @@ final class WebViewDOMVisibilityTests: XCTestCase {
         payload.nodes?.first { $0.identifier == id }
     }
 
+    // MARK: - テキスト塊の id
+
+    /// インラインの子を持つ段落は1件の staticText に畳むが、**塊自身の id は残す**。落とすと
+    /// `<p id="msg">Hello <b>world</b></p>` だけ `#msg` で指せず、子を持たない `<p id="msg">` と書き方が割れる
+    /// (a11y 経路の WebView は同じ id を viewIdResourceName に出す)
+    func testCollapsedTextBlockKeepsItsID() throws {
+        let payload = try scan(body: """
+        { tag: "body", rect: { left: 0, top: 0, width: 402, height: 650 }, children: [
+          { tag: "p", id: "msg", text: "Hello ", rect: { left: 16, top: 40, width: 200, height: 20 },
+            children: [ { tag: "b", text: "world", display: "inline",
+                          rect: { left: 60, top: 40, width: 40, height: 20 } } ] }
+        ] }
+        """)
+        let block = try XCTUnwrap(node(payload, id: "msg"), "畳んだ塊に #msg が無い: \(payload.nodes ?? [])")
+        XCTAssertEqual(block.role, "staticText")
+        XCTAssertEqual(block.label, "Hello world")
+    }
+
     // MARK: - 上端・下端で切れた要素
 
     /// 見えている部分の中心で当てる —— **これが素の中心に戻ると木から落ちる**(実害の型)。

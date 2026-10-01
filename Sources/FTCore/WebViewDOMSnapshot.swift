@@ -162,10 +162,14 @@ public enum WebViewDOM {
             var br = el.getBoundingClientRect();
             if (br.width >= 2 && br.height >= 2 && br.bottom > 0 && br.right > 0
                 && br.top < viewport.height && br.left < viewport.width && hittable(el, br)) {
-              nodes.push({ role: "staticText",
-                           label: (el.textContent || "").replace(/\\s+/g, " ").trim(),
-                           x: br.left, y: br.top, width: br.width, height: br.height,
-                           enabled: true });
+              var block = { role: "staticText",
+                            label: (el.textContent || "").replace(/\\s+/g, " ").trim(),
+                            x: br.left, y: br.top, width: br.width, height: br.height,
+                            enabled: true };
+              // 畳んでも塊自身の id は残す(下の通常経路と同じ。`<p id="msg">Hello <b>world</b></p>` を
+              // `#msg` で指せるように = 子を持たない `<p id="msg">` と書き方を揃える)
+              if (el.id) block.identifier = el.id;
+              nodes.push(block);
               var after = null;
               var up = el;
               while (up && up !== document.body && !after) {
