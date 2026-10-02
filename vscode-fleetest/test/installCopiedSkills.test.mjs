@@ -175,19 +175,21 @@ test("印にある写しは写し直し、印に無い既存は受け手のも�
 test("シンボリックリンクは触らない(印にあっても)", () => {
   withTemp((base) => {
     const toolRoot = makeToolRoot(base);
+    // リンク先は正典と**中身の違う**別の置き場(受け手が自分で張ったリンク)。正典を指すと
+    // 写す差分が無いので、リンクの判定を外しても何も起きずに通ってしまう
+    const pinnedDir = path.join(base, "pinned/fleetest-update");
+    mkdirSync(pinnedDir, { recursive: true });
+    const pinned = "---\nname: fleetest-update\n---\npinned by the receiver\n";
+    writeFileSync(path.join(pinnedDir, "SKILL.md"), pinned);
     const { workDir, skillsDir } = makeWorkDir(base, {
       skills: { "fleetest-setup": RECEIVER_SETUP },
-      symlinks: [["fleetest-update", path.join(toolRoot, ".claude/skills/fleetest-update")]],
+      symlinks: [["fleetest-update", pinnedDir]],
       marker: "fleetest-update\n",
     });
     const r = runPlace(toolRoot, workDir);
     assert.match(r.detail, /2 placed, 0 refreshed, 0 removed/);
     assert.ok(lstatSync(path.join(skillsDir, "fleetest-update")).isSymbolicLink(), "リンクが実体に置き換わった");
-    assert.equal(
-      readFileSync(path.join(toolRoot, ".claude/skills/fleetest-update/SKILL.md"), "utf8"),
-      canonicalBody(toolRoot, "fleetest-update"),
-      "リンク先の正典が書き換えられた",
-    );
+    assert.equal(readFileSync(path.join(pinnedDir, "SKILL.md"), "utf8"), pinned, "リンク越しに書き換えた");
   });
 });
 
@@ -209,6 +211,24 @@ test("正典から消えた名前は、印にあるものだけ片付けて印�
     assert.equal(r.skill("fleetest-gone"), null, "正典から消えた写しが残っている");
     assert.equal(r.skill("my-own-skill"), mine, "印に無いスキルが消された");
     assert.deepEqual(r.marker.split("\n").filter(Boolean), ["fleetest-update"]);
+  });
+});
+
+test("正典から消えた名前でも、リンクなら消さない(リンク越しに受け手のファイルを消さない)", () => {
+  withTemp((base) => {
+    const toolRoot = makeToolRoot(base, ["fleetest-setup", "fleetest-update"]);
+    const pinnedDir = path.join(base, "pinned/fleetest-gone");
+    mkdirSync(pinnedDir, { recursive: true });
+    const pinned = "---\nname: fleetest-gone\n---\nthe receiver's file behind a link\n";
+    writeFileSync(path.join(pinnedDir, "SKILL.md"), pinned);
+    const { workDir, skillsDir } = makeWorkDir(base, {
+      skills: { "fleetest-setup": RECEIVER_SETUP },
+      symlinks: [["fleetest-gone", pinnedDir]],
+      marker: "fleetest-gone\n",
+    });
+    runPlace(toolRoot, workDir);
+    assert.ok(lstatSync(path.join(skillsDir, "fleetest-gone")).isSymbolicLink(), "リンクが消された");
+    assert.equal(readFileSync(path.join(pinnedDir, "SKILL.md"), "utf8"), pinned, "リンク越しに受け手のファイルを消した");
   });
 });
 
