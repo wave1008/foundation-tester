@@ -112,11 +112,19 @@ public enum ProjectScaffold {
         return ["\(relative)/SKILL.md"]
     }
 
+    /// MCP サーバの登録名は install.sh が `.mcp.json` に書く `fleetest`(Claude Code のツール名の接頭辞)
+    static let mcpToolsPermission = "mcp__fleetest"
+    static let mcpStartRunPermission = "mcp__fleetest__ft_start_run"
+
     /// 受け手のパッケージに `.claude/settings.json` を書く(fleetest init から呼ぶ)。
     /// **fleetest の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
     /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望)。
     /// 既存の設定は温存し、重複しないエントリだけ足す(他ツールの許可を消さない)。
     /// 追加するのはこのツール由来のコマンドに限る — 汎用の `Bash(*)` は絶対に書かない。
+    /// **MCP は fleetest のツールを丸ごと許可し、本番の実行 `ft_start_run` だけ ask に置く**(ask が allow に
+    /// 勝つ = Claude Code で実測)。setup/teardown スクリプトと別の機械への送り出しはこのツールに
+    /// しか無いので、人の確認を残す(Codex の推奨設定と同じ線引き。docs の MCP サーバ §サンドボックスと承認)。
+    /// **ask は allow を初めて足すときだけ書く** —— 毎回補修すると、利用者が外した確認を更新のたびに戻す
     @discardableResult
     public static func writeClaudeSettings(packageRoot: URL, toolRoot: String?) throws -> [String] {
         let fleetest = (toolRoot.map { "\($0)/.build/debug/fleetest" }) ?? "fleetest"
@@ -146,9 +154,18 @@ public enum ProjectScaffold {
         }
         var permissions = (settings["permissions"] as? [String: Any]) ?? [:]
         var allow = (permissions["allow"] as? [String]) ?? []
-        let added = entries.filter { !allow.contains($0) }
+        let firstMCPGrant = !allow.contains(mcpToolsPermission)
+        var added = (entries + [mcpToolsPermission]).filter { !allow.contains($0) }
+        if firstMCPGrant {
+            var ask = (permissions["ask"] as? [String]) ?? []
+            if !ask.contains(mcpStartRunPermission) {
+                ask.append(mcpStartRunPermission)
+                added.append(mcpStartRunPermission)
+            }
+            permissions["ask"] = ask
+        }
         guard !added.isEmpty else { return [] }
-        allow.append(contentsOf: added)
+        allow.append(contentsOf: added.filter { $0 != mcpStartRunPermission })
         permissions["allow"] = allow
         settings["permissions"] = permissions
 

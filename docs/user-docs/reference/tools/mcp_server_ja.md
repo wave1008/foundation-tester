@@ -117,6 +117,9 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   | `ft_start_run`(おすすめ) | テストの実行を頼んだときに1回 | setup / teardown スクリプト・別の機械への送り出し |
   | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run` | シナリオ作成中もコンパイル・確認のたびに聞かれる | 外でのコードの実行すべて |
 
+  Claude Code では、インストーラが作業フォルダの `.claude/settings.json` に「fleetest のツールは許可
+  (`mcp__fleetest`)・`ft_start_run` だけ確認(`ask`)」を書きます(おすすめの形。確認を外したければ `ask` から
+  消せば、以後の更新でも戻しません)。Auto モードでは、確認の要否を AI が自動で判断します。
   Codex での書き方は[その他のエージェント](other_agents_ja.md)にあります(サーバ全体は `default_tools_approval_mode`、
   ツールごとは `[mcp_servers.fleetest.tools.<ツール名>]` の `approval_mode`)。読むだけのツールに承認を省く
   `writes` は、画面の操作(タップ・入力)も書き込みとして聞かれるので、探索のたびに数十回の承認になります。

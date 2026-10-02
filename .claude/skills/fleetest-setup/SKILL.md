@@ -400,6 +400,7 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 
 - シナリオ作成・対象アプリ/デバイスの追加・更新は手順書に従う: `<TOOL_ROOT>/.claude/skills/fleetest-scenario/SKILL.md`・`fleetest-profiles/SKILL.md`・`fleetest-update/SKILL.md`(Claude Code ではスキル `/fleetest-scenario` 等として呼べる)
 - シナリオを書いて通すまでの短い手引き(英語): `<TOOL_ROOT>/docs/user-docs/reference/tools/agent_guide.md`
+- 報告では Simulator・Emulator を「実機」と呼ばない(「実機」は USB でつないだ本物の端末だけ。分からなければ「デバイス」)
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
 - シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`

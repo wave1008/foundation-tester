@@ -123,6 +123,9 @@ scripts.
   | `ft_start_run` (recommended) | once, when you ask for a test run | setup / teardown scripts, sending a run to another machine |
   | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` | asked at every compile and check while writing scenarios | every execution of code outside the sandbox |
 
+  For Claude Code, the installer writes "allow the fleetest tools (`mcp__fleetest`), ask only before `ft_start_run`
+  (`ask`)" into the work folder's `.claude/settings.json` (the recommended shape; remove it from `ask` if you do not
+  want the prompt, and later updates will not put it back). In Auto mode, the AI decides on its own whether to ask.
   For Codex, see [Other agents](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
   under `[mcp_servers.fleetest.tools.<tool name>]` per tool). `writes`, which skips approval only for read-only tools,
   also counts screen operations (taps, typing) as writes, so exploring a screen means dozens of approvals.
