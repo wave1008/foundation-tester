@@ -3,7 +3,7 @@
 セットアップ完了後、サンプルアプリを相手にテストシナリオを作り、実行するまでの最短手順です。
 シナリオを手で書く必要はありません。
 `TestProjects/` を含む作業フォルダがまだ無ければ、先に[はじめに](getting-started_ja.md)の
-`/fleetest:fleetest-setup` を済ませてください。
+手順で Fleetest をインストールしてください。
 
 > **Codex を使う場合**: ステップ1・2は `codex --sandbox danger-full-access` で起動したセッションで
 > 行ってください。既定のサンドボックスでは、隣のフォルダへの clone と Simulator の操作が塞がれます。

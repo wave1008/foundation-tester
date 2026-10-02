@@ -2,7 +2,7 @@
 
 The shortest path from a completed setup to creating test scenarios for a sample app and running
 them. You do not write scenarios by hand. If you don't have a work folder with `TestProjects/`
-yet, run `/fleetest:fleetest-setup` from [Getting Started](getting-started.md) first.
+yet, install Fleetest by following [Getting Started](getting-started.md) first.
 
 > **With Codex**: do steps 1 and 2 in a session started with `codex --sandbox danger-full-access`.
 > The default sandbox blocks cloning into the neighbouring folder and driving the Simulators. From

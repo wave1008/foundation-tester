@@ -6,11 +6,11 @@
 
 ## セットアップ
 
-`fleetest` サーバは導入時(`install.sh` / `/fleetest:fleetest-setup`)に登録されます。Claude Code は
+`fleetest` サーバは導入時(`install.sh` / `/fleetest-setup`)に登録されます。Claude Code は
 作業フォルダの `.mcp.json` に**クローンの絶対パス**で書かれるので、どこでエージェントを開いても
 同じサーバが起動します(初回呼び出し時にビルドが走ります)。VSCode 拡張やプロジェクト作成を
 伴わず、別のプロジェクトに MCP サーバだけを追加したい場合は
-[Claude Code スキル](./claude_code_skills_ja.md)(`/fleetest:fleetest-mcp`)を参照してください。
+[Claude Code スキル](./claude_code_skills_ja.md)(`/fleetest-mcp`)を参照してください。
 
 **それ以外のエージェント(Codex・Cline など)でも使えます。** `fleetest-mcp` は標準の stdio
 MCP サーバなので、MCP に対応したクライアントならどれでも登録できます。設定の書き方は各

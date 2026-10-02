@@ -10,15 +10,6 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
-> **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
-> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
-> `<TOOL_ROOT>/.claude/skills/fleetest-setup/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
-> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
-> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
-
 > **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
 > 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
@@ -27,7 +18,7 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 
 **入り方は2通り。ステップ 0.5 で判定する:**
 
-- **外部パッケージ構成(既定・スキルだけを入れた受け手ディレクトリ)**: いま開いているこの
+- **外部パッケージ構成(既定・テスト専用の受け手ディレクトリ)**: いま開いているこの
   ディレクトリを fleetest テストパッケージにする。**あなたのプロジェクト(`TestProjects/<name>/`)は
   この受け手ディレクトリに作られる**。foundation-tester は「ツール(CLI・拡張)」として横に clone+build
   するだけで、Projects はここに住む。作成は `fleetest init`。
@@ -67,15 +58,11 @@ bash <SCRIPTS>/preflight.sh
 `curl … | bash` のようにネットワークから取ったスクリプトをパイプで実行しない(エージェントの
 安全確認に止められ、導入の最初の一歩で進めなくなる)。
 
-**`<SCRIPTS>` = この SKILL.md があるディレクトリの3つ上の `Scripts/`**(`.claude/skills/fleetest-setup/`
-→ リポジトリの根。プラグイン導入ならプラグインのキャッシュ、クローンの SKILL.md を読んでいるなら
-そのクローン)。**この手順書と同じ版**なので、以降のステップで渡す引数が必ず通じる。
-そこに `preflight.sh` が無い(`install-skill.sh` でスキルだけを写したコピー配置)ときだけ、先に
-ツールを clone して(既定は隣。clone 済みならそれを使う)その `Scripts/` を使う:
+**`<SCRIPTS>` = この SKILL.md があるディレクトリの3つ上の `Scripts/`**(`<クローン>/.claude/skills/fleetest-setup/`
+→ クローンの根)。この SKILL.md は常にクローンから読むので、**この手順書と同じ版**であり、以降の
+ステップで渡す引数が必ず通じる。クローンがまだ無いなら、先に利用者へ clone 先(既定は作業フォルダの隣)を
+確認して clone してから、その中の SKILL.md を読み直す。
 
-```
-git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
-```
 出力は `key=value` 行 + 判定。**終了コードで分岐する**:
 
 - **0 = ready** → 未導入。ステップ0の質問へ進む。`tool_root_exists=` / `cli_built=` で既存クローンの有無も分かる。
@@ -196,8 +183,9 @@ bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--
   通じる。クローンの clone・pull はインストーラが行う)。**`curl … | bash` で実行しない**(ステップ0)。
   `FLEETEST_REF` は**保守者が未マージのブランチを検証するため**の口(clone する ref)で、受け手は何も
   指定しなくてよい(受け手の配布口は main の1本で、版を固定する導線は無い)。
-  **ブランチ検証では、そのブランチの手順書とスクリプトを使う**(`claude --plugin-dir <ブランチのクローン>`
-  で起動する)—— main の手順書とスクリプトでは、直したはずの挙動を確認できない。
+  **ブランチ検証では、そのブランチをチェックアウトしたクローンの SKILL.md を読み、そのクローンの
+  `Scripts/` を使う**(未クローンなら `FLEETEST_REF=<ブランチ>` を付けて clone する)—— main の手順書と
+  スクリプトでは、直したはずの挙動を確認できない。
   clone 先を変えるなら `--tool-root <dir>`。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
   `fleetest init` ではなく `project create` 経路になる。`.mcp.json` はクローンの中に書かれる
@@ -328,8 +316,7 @@ VSIX とは別の消費面。エージェントがアプリを直接操作して
 products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product として通る）。
 
 - **構成を問わず** WORK_DIR に `.mcp.json` を書く（clone 構成では WORK_DIR = クローン。
-  **同梱ファイルに頼らない** ―― プラグイン root = repo ルートなので、リポジトリに `.mcp.json` を
-  置くとプラグインに載って配られ、クローンの外で起動した受け手の MCP が必ず落ちる）。
+  **リポジトリに `.mcp.json` を同梱しない** ―― 中身が絶対パスで、クローンの外では起動しない）。
   以下は書く内容（**claude CLI 不要**・ただの JSON ファイル）。
   TOOL_ROOT を**絶対パス**で埋める（受け手がどの cwd で開いても解決できる）:
 
@@ -446,6 +433,22 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 
 **検証ゲート**: `ft_list_devices` が候補を返すこと（返らないなら MCP 登録のほう。
 サンドボックスは `ft_*` に影響しない）。
+
+### 7.8 スキルを作業フォルダへ置く（Claude Code の `/fleetest-scenario` 等）
+
+インストーラが `<TOOL_ROOT>/.claude/skills/` の正典のうち **`fleetest-setup` 以外**を
+`<WORK_DIR>/.claude/skills/` へ**コピー**する（リンクにしない —— 作業フォルダは git にコミットされうる）。
+`fleetest-setup` は `fleetest init` が置く受け手専用の別内容なので**絶対に上書きしない**。
+置いたスキル名は `<WORK_DIR>/.claude/skills/.fleetest-copied` に1行1つ記録し、**印にある名前だけ**を
+以後の実行で更新する（印に無い同名のスキルは受け手のものとして触らない・正典から消えた名前は
+写しを消す）。シンボリックリンクは触らない。
+
+次の場合は skip する: `--skip-skills` / WORK_DIR = TOOL_ROOT（クローン構成。正典がそこにある）/
+置き先がクローンの git 作業ツリーの内側。**スキルが置かれた・更新された・消えたときは、
+エージェントを再起動するまで古い手順書が読まれる**ので、利用者へ再起動を案内する。
+Claude Code 以外のエージェントは、このコピーを使わずクローンの SKILL.md を直接読む（ステップ7.7）。
+
+**検証ゲート**: `<WORK_DIR>/.claude/skills/` に `fleetest-scenario` 等が居て、2回流しても結果が変わらないこと。
 
 ### 9. 🧑 最後に: 反映操作の案内（ここで終了）
 

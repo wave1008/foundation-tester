@@ -5007,61 +5007,46 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 
 **現状(正典)**: onboarding の既定は**外部パッケージ構成**(受け手ディレクトリを `fleetest init` で
 テストパッケージ化し、Projects は受け手側に住む。foundation-tester は横に clone した「ツール」=
-TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は保守者/PoC 向け。入口は **Claude Code
-プラグイン**(ターミナルで `claude plugin marketplace add wave1008/foundation-tester` →
-`claude plugin install fleetest@foundation-tester --scope user`。受け手は VSCode の Claude Code 拡張前提で、
-拡張パネルでは /plugin スラッシュコマンドが使えないため CLI 形式が正。
-スキルはマーケットプレイス経由で自動更新)。フォールバックは curl ワンライナー
-(`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし。
-`--dir` で他のエージェントのスキル置き場へも入る)→ いずれも
-`/fleetest-setup`(プラグインでは `/fleetest:fleetest-setup`)が構成を自動判定し、受け手ディレクトリは
+TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は保守者/PoC 向け。入口は**全エージェント共通の
+プロンプト導入**(「<リポジトリ> を隣に clone して ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md に
+従ってセットアップして」)。エージェントはクローンの SKILL.md を読み、クローンの `Scripts/install.sh` を実行する。
+Claude Code のスキル(`/fleetest-scenario` 等。名前空間なし)は install.sh のステップ7.8 が作業フォルダの
+`.claude/skills/` へ**コピー**する(リンクにしない)。プラグイン配布と curl 取得の導入器は廃止した
+(docs/maintainer-notes.md §2.3)。`/fleetest-setup` が構成を自動判定し、受け手ディレクトリは
 外部構成へ分岐、クローン内は clone 構成。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
 `npm run install-local` でビルドする(バイナリ配布はしない)。mint は廃止(VSIX はバイナリ配布しないため
 clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。
 
-**配布アダプタの方針(2026-08-27。インストーラが面倒を見るのは Claude Code だけ)**: 導入
+**配布の方針(2026-08-27。インストーラが面倒を見るのは Claude Code だけ)**: 導入
 runbook の正典は `.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント
-専用機能に依存させない)。Claude Code へは**規約位置から正典を参照するだけの薄いアダプタ**を置き、
-**runbook 本体は複製しない**:
+専用機能に依存させない)。**runbook 本体は複製しない** —— 正典はクローンの1箇所で、Claude Code 用の
+コピーだけを install.sh が作業フォルダへ置く:
 
 | | Claude Code |
 |---|---|
-| プラグイン manifest | `.claude-plugin/plugin.json` |
-| マーケットプレイス manifest | `.claude-plugin/marketplace.json` |
-| リポジトリ内のスキル発見 | `.claude/skills/`(正典の実体) |
+| 正典スキル | `<TOOL_ROOT>/.claude/skills/`(実体) |
+| 作業フォルダのスキル | `<WORK_DIR>/.claude/skills/`(install.sh ステップ7.8 のコピー。`fleetest-setup` は除く) |
 | スキルの呼び出し | `/fleetest-setup` |
-| 入口ファイル | `CLAUDE.md` |
+| 入口ファイル | `CLAUDE.md`(`@AGENTS.md` を読み込むだけ) |
 | MCP 登録 | `.mcp.json`(プロジェクト) |
-| プラグイン導入 | `claude plugin marketplace add` → `plugin install --scope user` |
-| プラグイン更新 | `marketplace update` → `plugin update` |
-| プラグインの版照合 | `claude plugin list` の `Version:`(= git sha) |
 | コマンド単位の承認 allowlist | `.claude/settings.json` |
 
 **他のエージェント(Codex・Cline・Cursor 等)には配布アダプタを置かない**(2026-08-27 に Codex の
 アダプタ一式を撤去)。中核はどれもエージェント固有ではない —— 機械作業はインストーラ、`ft_*` は
 標準の stdio MCP サーバ、runbook はツール中立の markdown。**エージェントごとに面倒を見ると、
-規約位置・プラグインのサブコマンド名・版照合の方法・設定ファイルの書式が全部そのエージェント
-固有の分岐になり、増やすたびに4箇所(Swift・install.sh・install-skill.sh・update.sh)へ手で
+規約位置・サブコマンド名・版照合の方法・設定ファイルの書式が全部そのエージェント
+固有の分岐になり、増やすたびに複数箇所(Swift・install.sh・update.sh)へ手で
 写す**ことになる。案内は docs/user-docs/reference/tools/other_agents.md に集約し、コードは
 Claude Code の1系統だけを持つ。**受け手のグローバル設定(`~/.codex/config.toml` 等)には
 1バイトも書かない** —— セキュリティ境界であり、TOML は同じテーブルの重複でファイル全体が
 無効になるので、素朴な追記は受け手の設定を壊す。
 
-**repo ルートに `skills` を置いてはいけない**(2026-08-27 実測で撤去)。プラグイン root =
-repo ルートのとき、**Claude Code は `.claude-plugin/plugin.json` の明示パスと既定の `skills/` の
-両方を読む**(置換ではなく加算。以前は「source が `./` なら明示パスが既定を置換する」という
-前提で書いていたが誤り)。`skills → .claude/skills` を置いていた間、
-**6本のスキルが12本として登録され常時コストが倍**になっていた(~1,270 → ~2,537 tok)。
-数え方は `claude plugin details fleetest@foundation-tester` の Component inventory。
-`agentAdapters.test.mjs` がルートの `skills` の不在を固定する。
-
-規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**シェル(install.sh /
-install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
+規約位置の唯一の定義元は `Sources/FTCore/AgentIntegration.swift`。**install.sh は clone 前・
+ビルド前に走るので Swift を呼べず、同じ規則を手で持つ** ——
 `vscode-fleetest/test/agentIntegration.test.mjs` が両者のドリフトを落とし、
 「インストーラが他エージェントの規約位置・設定へ書かない」ことも同じテストが固定する。
-`agentAdapters.test.mjs` は「アダプタが正典に届くこと」を落とす。
-**正典を移してシンボリックリンクにしない** —— raw.githubusercontent はリンクを**本文でなく
-リンク先の文字列**として返すので、`install-skill.sh` の curl が SKILL.md ではなく1行のパスを掴む。
+`agentAdapters.test.mjs` は廃止した配布口(プラグイン・curl 取得)の復活と、リポジトリ直下の
+`.mcp.json` を落とす。**正典をシンボリックリンクにしない**(§2.4 の理由は docs/maintainer-notes.md)。
 
 **Codex を使う受け手への案内(コードは持たない)**: サンドボックスに**縛られるのはシェル
 コマンドだけで、MCP サーバはその外で動く**(2026-08-27 実測: `--sandbox read-only` でも MCP
@@ -5073,13 +5058,9 @@ mach 接続を塞がれる**(`adb` は TCP 5037 なので network_access で通�
 **`network_access` / `writable_roots` を積んでも直らない**ので、それらを根拠に「OK」と言うと
 false green になる(以前 install.sh のステップ7.7 が実際に出していた)。
 
-**ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
-`claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
-(gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は
-`claude plugin uninstall fleetest@foundation-tester` + `claude plugin marketplace remove foundation-tester`
-で登録を外し、**キャッシュ実体は remove 後も残る**(実測)ので
-`~/.claude/plugins/cache/foundation-tester` を手動削除する。GitHub 経由の本番導入は git clone なので
-生成物は含まれない。
+**ブランチの手順書を受け手経路で検証する**: そのブランチをチェックアウトしたクローンの SKILL.md を
+エージェントに読ませ、そのクローンの `Scripts/` を使う(`FLEETEST_REF=<ブランチ>` は未クローンの clone 先を
+そのブランチに揃える保守者の口。受け手には案内しない)。
 以下は外部パッケージ構成(`fleetest init`)の実装詳細。
 
 受け手が foundation-tester を clone せず、**自分の Swift パッケージが fleetest を SPM 依存として引いて**
@@ -5112,8 +5093,8 @@ false green になる(以前 install.sh のステップ7.7 が実際に出して
   CLI(自前ビルドの PATH 登録先)を発見する。
 - **版**: git タグ(履歴の目印)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
   `Scripts/release.sh`(docs/releasing.md)。**受け手の配布口は `main` の1本**で、版を固定する導線は
-  案内しない —— `#<tag>` でプラグインを固定してもスキルが引く install.sh と初回 clone は `main` のままで、
-  ピンとして機能していなかった。`FLEETEST_REF` は保守者のブランチ検証口として残す(位置づけの
+  案内しない —— プラグイン配布を `#<tag>` で固定してもスキルが引く install.sh と初回 clone は `main` のままで、
+  ピンとして機能していなかった(プラグインは廃止済み)。`FLEETEST_REF` は保守者のブランチ検証口として残す(位置づけの
   書き換えだけで、install.sh の detached ガードと `update-check.sh` の `pinned` verdict は残してある ——
   受け手が自分で `git checkout <tag>` した clone を勝手に動かさないため)。
 

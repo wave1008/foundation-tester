@@ -50,7 +50,7 @@ fleetest run --runner mac2 …             ~/fleetest-runner/               ← 
 5. ランナー機のデバイスをプロファイルに入れる
 6. つながるか確認し、最初のテストを実行する
 
-Claude Code では、`/fleetest:fleetest-remote-setup` スキルでもセットアップできます。
+Claude Code では、`/fleetest-remote-setup` スキルでもセットアップできます。
 スキルは必要なことを質問し、機械的な作業は `fleetest remote setup` に任せ、人の手が要る作業は
 あなたに渡して、最後に結果を報告します。ランナー機の準備のように sudo や画面操作が要る作業は、
 スキルは代わりに行いません。

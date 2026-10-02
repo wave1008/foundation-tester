@@ -13,11 +13,6 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 セットアップ済みの環境に upstream の修正版を取り込む。初回導入は `/fleetest-setup`。
 背景・手動手順は docs/user-docs/getting-started_ja.md の「更新」。
 
-> **この手順書自体が古い可能性がある。** プラグイン経由で導入している場合、この文書は
-> `~/.claude/plugins/cache/` の**スナップショット**から読まれており、`git pull` では更新されない。
-> **ステップ0 で TOOL_ROOT が確定したら、`<TOOL_ROOT>/.claude/skills/fleetest-update/SKILL.md`
-> を読み、内容が違えばそちらを正として以降を進める**(clone 側が唯一の正)。
-
 **構成は setup と同じ2通り。まず判定する(ステップ0):**
 
 - **clone 構成**: foundation-tester クローンの中で直接使う。ツールも TestProjects も同じ場所。
@@ -45,18 +40,10 @@ description: 既に fleetest をセットアップ済みの受け手が、新し
 
 - `Sources/FTScenarioRunner/` がカレントにある → **clone 構成**。TOOL_ROOT = WORK_DIR = カレント。
 - `state.json` があり `toolRoot` が実在 → **外部構成**。WORK_DIR = カレント、TOOL_ROOT = その値。
-- **どちらでもない**(state.json が無い = 未導入)→ このときだけ preflight を打つ:
-
-  ```
-  bash <SCRIPTS>/preflight.sh
-  ```
-
-  `<SCRIPTS>` は `/fleetest-setup` のステップ0と同じ規則(この SKILL.md があるディレクトリの3つ上の
-  `Scripts/`)。**`curl … | bash` で実行しない**(エージェントの安全確認に止められる)。
-
-  `layout=external-installed` なら `tool_root=` を採る。`layout=external-new` は**未導入**なので
-  停止して `/fleetest-setup` を案内する。**`ls` や `find` で周辺を探し回らない**
-  (受け手の個人ディレクトリを覗くことになるうえ、答えは preflight に出ている)。
+- **どちらでもない**(state.json が無い = 未導入)→ 停止して `/fleetest-setup` を案内する。
+  クローンの場所を利用者が知っているなら、その `Scripts/preflight.sh` を `bash` で実行して
+  `layout=external-installed` の `tool_root=` を採ってもよい(**`curl … | bash` で実行しない**。
+  **`ls` や `find` で周辺を探し回らない** —— 受け手の個人ディレクトリを覗くことになる)。
 
 ### 0.5 更新の有無だけ聞かれた場合(「更新ある?」)
 
@@ -76,14 +63,14 @@ bash <TOOL_ROOT>/Scripts/update.sh
 ```
 
 (カレントが WORK_DIR でなければ `--work-dir <WORK_DIR>`。クローンの場所が既定と違うなら `--tool-root <dir>`。
-オプション: `--skip-extension` / `--skip-plugin` / `--no-pull` / `--force`。)
+オプション: `--skip-extension` / `--skip-skills` / `--no-pull` / `--force`。)
 
 **更新が無ければ「✅ Up to date」だけ出して即終了する**(全工程は更新が無くても約30秒かかるため。
 判定は update-check.sh)。**前回が途中で失敗した・入れ直したいときだけ `--force`** を付ける。
 
 中で `install.sh` を再実行するので、**git pull・swift build・VSCode 拡張・`.mcp.json` の追従・
 検証ゲート・ログ**はそちらの規律がそのまま効く。更新固有の作業として
-**`fleetest project sync`(構成を問わず)** と **Claude Code プラグインの更新+HEAD との版照合**を行う。
+**`fleetest project sync`(構成を問わず)** を行う（スキルのコピーの更新は install.sh のステップ7.8）。
 
 **外部構成ではクローンのローカル変更を自動で破棄する**(クローンに受け手の資産は無い。
 捨てた内容は出力に出る)。**これを人に確認しない** — 残したい場合だけ `--keep-local`。
@@ -96,18 +83,12 @@ vsce)は画面に出ず `<WORK_DIR>/.fleetest/install-*.log` にだけ入り、*
 
 - **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md step N`)の原因を解決して再実行する。
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
-- プラグインが `⚠️ Plugin: … (does not match HEAD …)` のときは `claude plugin marketplace update` →
-  `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
-- **コピー配置(`install-skill.sh` で入れた `.claude/skills/`)は
-  update.sh が正典から写し直す**(`✅ Skills: refreshed N ...`)。**増えたスキルを新しく置くのは
-  `install-skill.sh` が残す印 `.claude/skills/.fleetest-copied` があるときだけ**(プラグイン経由の
-  受け手にも `fleetest init` が `.claude/skills/fleetest-setup` を作るので、ディレクトリの存在では
-  コピー配置と区別できない。印の無い置き場は既存の写しを写し直すだけ)。写した後は**エージェントを
-  再起動する**まで古い手順書が読まれ続ける。**`fleetest-setup` だけは写さない** ——
-  受け手のパッケージのそれは `fleetest init` が生成した受け手専用の別内容なので、
-  正典で上書きすると受け手のセットアップ手順が消える。
+- **作業フォルダの `.claude/skills/` へコピーしたスキルは install.sh（ステップ7.8）が正典から
+  更新する**（印 `.claude/skills/.fleetest-copied` にある名前だけ。`fleetest-setup` は受け手専用なので
+  触らない）。更新・追加・削除があった回は出力にエージェントの再起動案内が出る —— **再起動する
+  まで古い手順書が読まれ続ける**。
 
-**以降のステップ1〜5.7 は「スクリプトが失敗したときの手作業手順」**(成功したなら読み飛ばし、
+**以降のステップ1〜5 は「スクリプトが失敗したときの手作業手順」**(成功したなら読み飛ばし、
 ステップ6の人間チェックポイントへ)。**スクリプトの出力にある情報を別コマンドで取り直さない**
 (構成・TOOL_ROOT は preflight、pull/build/拡張/検証の結果は install.sh の `[ok]` 行にある)。
 
@@ -167,49 +148,6 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
 （clone 構成なら `cd vscode-fleetest && ...`。）`install-local` はパッケージ→インストール→到達確認まで一括。
 **exit code で成否判定**。
 
-### 5.7 Claude Code プラグイン（スキル）の更新
-
-**`git pull` ではスキルは更新されない。** プラグイン経由で導入している場合、スキルは
-`~/.claude/plugins/cache/foundation-tester/fleetest/<版>/.claude/skills/` のスナップショットから
-読まれており、**自動更新もされない**。ツール本体だけ新しくなり手順書が取り残される
-（「更新したのに直らない」の正体）。
-
-**`claude` CLI で代行する**（`/plugin` スラッシュコマンドは **VSCode 拡張・Agent SDK 環境では
-提供されず** `/plugin isn't available in this environment.` になる。CLI 形ならどの環境でも動き、
-かつエージェントが実行できるので人間チェックポイントにしない）。
-
-まず導入の有無と現在の版を見る（未導入なら以降スキップ。clone 内で直接スキルを使う構成も不要 ――
-`git pull` で `.claude/skills/` ごと更新されるため）:
-
-```bash
-claude plugin list
-```
-
-`fleetest@foundation-tester` が出れば導入済み。**`Version:` は git commit SHA（先頭12桁）**なので、
-TOOL_ROOT の HEAD と突き合わせればキャッシュの鮮度を機械判定できる:
-
-```bash
-PV=$(claude plugin list | awk '/fleetest@foundation-tester/{f=1} f&&/Version:/{print $2; exit}')
-HEAD=$(git -C "<TOOL_ROOT>" rev-parse HEAD)
-case "$HEAD" in "$PV"*) echo "最新";; *) echo "古い（要更新）: plugin=$PV head=$HEAD";; esac
-```
-
-古ければ**この2つを順に実行する**（マーケットプレイスの再取得とプラグイン本体の更新で、**2つとも要る**）:
-
-```bash
-claude plugin marketplace update foundation-tester
-claude plugin update fleetest@foundation-tester
-```
-
-- **順序が重要**: marketplace を先に更新しないと、`plugin update` が古い定義を見る。
-- 成功すると `Plugin "fleetest" updated from <旧SHA> to <新SHA>` と出る。
-  **実行後にもう一度上の突き合わせを行い、HEAD と一致することを検証ゲートにする**
-  （「実行した」ではなく「一致した」で判定する）。
-- **反映には Claude Code の再起動が要る**（ステップ6の人間チェックポイントに含める）。
-  再起動するまで、このセッションで読まれるスキルは古いままである点に注意。
-- 版は `plugin.json` に `version` を持たせず **git commit SHA** を使っているので、
-  push 済みの変更は上記2コマンドで必ず取り込まれる。
-
 ### 6. 🧑 人間チェックポイント（反映）
 
 ユーザーに依頼する（代行不可）:
@@ -218,8 +156,8 @@ claude plugin update fleetest@foundation-tester
   開いている窓**で行う。`fleetest.binaryPath` が TOOL_ROOT の CLI
   （`../foundation-tester/.build/debug/fleetest` 等）を指しているか併せて確認。
 - デバイスモニター等のパネルは**開き直す**（retainContextWhenHidden で古い HTML が残るため）。
-- プラグインを更新した場合（5.7）は **Claude Code の再起動**。更新コマンド自体は 5.7 で代行済みなので、
-  ここで依頼するのは再起動だけ（再起動するまでスキルは旧版のまま読まれる）。
+- スキルのコピーが更新された場合（0.7 の出力に再起動案内が出る）は **エージェントの再起動**
+  （再起動するまでスキルは旧版のまま読まれる）。
 - **MCP（`ft_*` ツール）を使っている場合も Claude Code の再起動**。`.mcp.json` の
   `swift build --product fleetest-mcp` は**サーバ起動時にしか走らない**ので、既に動いている
   `fleetest-mcp` プロセスは更新前のバイナリのまま応答し続ける。再起動せずに動作確認すると、

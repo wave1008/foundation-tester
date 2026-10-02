@@ -15,8 +15,7 @@
 import Foundation
 
 public enum AgentIntegration {
-    /// リポジトリ内の runbook 正典。プラグイン配布も curl 取得(Scripts/install-skill.sh)も
-    /// この実体パスを引く
+    /// リポジトリ内の runbook 正典。install.sh(ステップ7.8)がここから作業フォルダへコピーする
     public static let canonicalSkillsDirectory = ".claude/skills"
 
     public static let displayName = "Claude Code"

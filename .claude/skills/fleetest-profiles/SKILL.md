@@ -10,15 +10,6 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 > (英語話者にはダイアログ・報告文をすべて英語で出す)。
 
 
-> **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
-> エージェント側のキャッシュ(Claude Code は `~/.claude/plugins/cache/`)から読まれており
-> `git pull` では更新されない。**clone(TOOL_ROOT)が既にあるなら
-> `<TOOL_ROOT>/.claude/skills/fleetest-profiles/SKILL.md`(正典)を読み、内容が違えばそちらを正とする**。
-> 更新は Claude Code なら `claude plugin marketplace update foundation-tester` →
-> `claude plugin update fleetest@foundation-tester`(2つとも要る・再起動で反映。
-> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形)、
-> コピー配置(`install-skill.sh`)なら `fleetest-update` が正典から写し直す。
-
 > **スキルの呼び出し記法はエージェントごとに違う**(Claude Code は `/fleetest-setup`)。
 > 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 

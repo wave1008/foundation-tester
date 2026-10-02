@@ -7,11 +7,11 @@ human.
 
 ## Setup
 
-The `fleetest` server is registered during installation (`install.sh` / `/fleetest:fleetest-setup`).
+The `fleetest` server is registered during installation (`install.sh` / `/fleetest-setup`).
 For Claude Code it is written into your work folder's `.mcp.json` with the clone's **absolute path**,
 so it starts the same way wherever you open the agent (the first call triggers a build). To add
 just the MCP server to a different project — without the VS Code extension or project scaffolding —
-see [Claude Code Skills](./claude_code_skills.md) (`/fleetest:fleetest-mcp`).
+see [Claude Code Skills](./claude_code_skills.md) (`/fleetest-mcp`).
 
 **Any other agent works too** (Codex, Cline, …). `fleetest-mcp` is a plain stdio MCP server, so
 any MCP-capable client can register it. Follow that client's own configuration format and give it

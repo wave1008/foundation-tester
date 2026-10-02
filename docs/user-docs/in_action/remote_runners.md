@@ -51,7 +51,7 @@ The setup steps, for both the CLI and the VS Code extension, are in
 5. Add the runner's devices to your profiles
 6. Check the connection and run your first test
 
-In Claude Code, you can also set up with the `/fleetest:fleetest-remote-setup` skill. The skill
+In Claude Code, you can also set up with the `/fleetest-remote-setup` skill. The skill
 asks what it needs to know, leaves the mechanical work to `fleetest remote setup`, hands you the
 parts that need a person, and reports the result at the end. It does not do the tasks that need
 sudo or the GUI, such as preparing the runner, for you.

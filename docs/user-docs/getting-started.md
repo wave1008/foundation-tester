@@ -2,68 +2,48 @@
 
 How to install, update, and uninstall Fleetest.
 
-There is no binary distribution at this time. Fleetest targets beta releases of macOS / Xcode,
-so it is installed through the Claude Code plugin, which clones the repository and builds it.
-The agent drives the clone and the build, so there is little to do by hand.
+## 1. Environment
 
-## 1. Requirements
-
-| Target | Requirement |
-|---|---|
-| Common | macOS 26+ |
-| If you test iOS | Xcode 26+, iOS Simulator, xcodegen |
-| If you test Android | Android SDK (adb), Emulator or physical device |
-| Extension build | Node.js v24 or newer, npm v11 or newer |
-
-The Foundation Models features (visual verification, screen-description checks) are experimental
-and require macOS 27+. Self-healing (locator fingerprint matching) does not use FM and works on
-any supported macOS. Details in [Environment](overview/environments.md).
+For the supported macOS, Xcode, Android SDK and other requirements, see [Environment](overview/environments.md).
 
 ## 2. Before you start
 
-To keep the installation smooth, have the devices you will test on ready beforehand.
-
-- **If you test iOS**: install Xcode, then create and boot the Simulator you want to use
-- **If you test Android**: install Android Studio, then create and boot the AVD you want to use.
-  Prefer a **Google APIs** system image over a Play Store one — Play Store images are `user`
-  builds, and a release build of your app cannot expose its WebView content on them (see
-  [selector/webview.md](reference/selector/webview.md))
-
-## 3. Installing Fleetest
-
-1. Install the `claude` CLI if you don't have it
+- **If you test iOS**
+  - Install Xcode and the iOS Simulator runtime
+- **If you test Android**
+  - Install Android Studio (Android SDK)
+- **AI assistant**
+  - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
+    With any of them, you have the assistant carry out the installation. For Claude Code:
 
 ```bash
 brew install claude-code
 ```
 
-2. Add the fleetest plugin
+## 3. Installing Fleetest
 
-```bash
-claude plugin marketplace add wave1008/foundation-tester
-claude plugin marketplace update foundation-tester
-claude plugin install fleetest@foundation-tester --scope user
+1. Open a **new, test-only folder** in VSCode, start your AI assistant, and ask it:
+
+```text
+Clone https://github.com/wave1008/foundation-tester next to this folder, then set it up by
+following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-> The second line, `marketplace update`, refreshes the cache on a machine that already has the
-> marketplace added. With a stale cache the install fails with
-> `Plugin "fleetest" not found in marketplace`. On a fresh machine it does nothing.
+   It clones, builds, and creates the project (you create the profiles in the [Quick Start](quick-start.md))
 
-3. Open a **new, test-only folder** in VSCode
+2. Run `Developer: Reload Window` in VSCode
 
-4. Run `/fleetest:fleetest-setup` in your agent's panel. It clones, builds, and creates the
-   project (you create the profiles in the [Quick Start](quick-start.md))
+3. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode (it opens the device monitor)
 
-5. Run `Developer: Reload Window` in VSCode
-
-6. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode (it opens the device monitor)
-
-If you want to go through the steps manually one at a time, see
-`.claude/skills/fleetest-setup/SKILL.md`.
-
-Using another agent (Codex, Cline, …)? See [Other agents](reference/tools/other_agents.md). The runbooks
-are tool-neutral and apply unchanged, but you run the installer and register the MCP server
-yourself.
+> **Other than Claude Code**: with Claude Code, the setup also writes the MCP registration
+> (`.mcp.json`). With any other AI assistant, you register the MCP server in the assistant's own
+> settings (fleetest never writes to your assistant's global settings). See
+> [Other agents](reference/tools/other_agents.md#2-register-the-mcp-server) for how.
+>
+> **Using Codex**: do step 1 in a session started with `codex --sandbox danger-full-access`. The
+> default sandbox blocks `swift build` and driving the Simulator. After setup, the `ft_*` work runs
+> with the default settings (details in
+> [Other agents](reference/tools/other_agents.md#using-codex-the-sandbox)).
 
 ## 4. Updating Fleetest
 
@@ -80,16 +60,10 @@ in [VSCode extension](reference/tools/vscode_extension.md).
 
 ### From a terminal
 
-```bash
-claude plugin marketplace update foundation-tester
-claude plugin update fleetest@foundation-tester
-```
-
-Then start a new agent session and run `/fleetest:fleetest-update`.
-
-A single command, `bash <TOOL_ROOT>/Scripts/update.sh`, does the same thing: pull, build, the
-extension, and the plugin update. If there is nothing to update it does nothing. Pass `--force`
-to redo everything.
+Ask your AI assistant to update fleetest (in Claude Code, `/fleetest-update`), or run the single
+command `bash <TOOL_ROOT>/Scripts/update.sh`: pull, build, the extension, and the skills. If there
+is nothing to update it does nothing. Pass `--force` to redo everything. If the skills were
+refreshed, restart your AI assistant.
 
 > **If you have modified the clone (`foundation-tester`) yourself**: during an update, local
 > changes in the clone are discarded without confirmation. Test assets live in the work folder,
@@ -100,13 +74,6 @@ to redo everything.
 > take a few minutes, but a line is printed as each step finishes, so it's fine to keep waiting.
 
 ## 5. Uninstalling Fleetest
-
-### Plugin
-
-```bash
-claude plugin marketplace remove foundation-tester
-claude plugin uninstall fleetest@foundation-tester
-```
 
 ### VSCode extension
 
@@ -119,7 +86,8 @@ Quit VSCode, then delete it via Finder or `rm`.
 If you want to keep the work folder, remove the range between `<!-- fleetest:begin -->` and
 `<!-- fleetest:end -->` in both `AGENTS.md` and `CLAUDE.md` (the body is in `AGENTS.md`; `CLAUDE.md` only imports it). That is the agent guidance the installer placed there;
 nothing outside the range was touched. If you registered the MCP server with another agent
-yourself, remove that configuration too.
+yourself, remove that configuration too. Also delete the skills the installer copied
+(`.claude/skills/fleetest-*` and `.claude/skills/.fleetest-copied`).
 
 ### Leftover files and processes
 
@@ -140,7 +108,7 @@ pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|a
 
 ## 6. Troubleshooting
 
-If you run into a problem, ask Claude Code. Common symptoms and how to narrow them down are
+If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are
 collected in [Troubleshooting](in_action/troubleshooting.md).
 
 ### Link

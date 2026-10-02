@@ -28,7 +28,7 @@
   iOS Simulator には `.app`、Android には `.apk` を渡します。
 - iOS だけ・Android だけのアプリなら、片方だけ書けば足ります。
 
-Claude Code では `/fleetest:fleetest-profiles` でも同じことができます(アプリ名などを順に質問されます)。
+Claude Code では `/fleetest-profiles` でも同じことができます(アプリ名などを順に質問されます)。
 
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>

@@ -28,7 +28,7 @@ normally does not need editing.
 
 There are two ways this project's Package.swift can reference foundation-tester:
 
-- **External package configuration** (the default for `/fleetest:fleetest-setup`): your work
+- **External package configuration** (the default for `/fleetest-setup`): your work
   folder has its own `Package.swift` that depends on the foundation-tester clone via SPM
   (`fleetest init`). Your `TestProjects/` assets live in your work folder, separate from the
   tool's clone, so tool updates never touch your scenarios or profiles.

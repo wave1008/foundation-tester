@@ -2,13 +2,14 @@
 # fleetest インストーラ。/fleetest-setup スキルの「機械作業」だけを1コマンドに固めたもの。
 #
 #   bash <SCRIPTS>/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app-id <bundleID>]
-#   <SCRIPTS> = スキルと一緒に届いた Scripts/(プラグインのキャッシュ)かクローンの Scripts/。
+#   <SCRIPTS> = クローンの Scripts/(SKILL.md の3つ上。SKILL.md は常にクローンから読む)。
 #   TOOL_ROOT が無ければ clone から丸ごと(既定は隣)。**スキルからは curl | bash で呼ばない**
 #   (エージェントの安全確認に止められる。fleetest-setup SKILL.md ステップ0)
 #
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
 #           fleetest init(または project create)/ .gitignore 整備 / VSCode 拡張 /
-#           MCP 登録(.mcp.json)/ エージェントの入口(AGENTS.md + CLAUDE.md)/ 検証ゲート。
+#           MCP 登録(.mcp.json)/ エージェントの入口(AGENTS.md + CLAUDE.md)/
+#           スキルのコピー(.claude/skills/)/ 検証ゲート。
 #           **冪等**(済んだ手順は skip)。
 #           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
 #           SKILL.md 直読みで使う。docs/user-docs/reference/tools/other_agents.md)。
@@ -51,6 +52,7 @@ DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
 DO_ENTRY_POINT=1
+DO_SKILLS=1
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -73,6 +75,7 @@ Usage: install.sh [options]
   --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
   --skip-entry-point Do not write the fleetest block into <work-dir>/AGENTS.md and CLAUDE.md
+  --skip-skills      Do not copy the skills (/fleetest-scenario etc.) into <work-dir>/.claude/skills
   --no-doctor        Skip the final environment report (fleetest doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -81,7 +84,7 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / MCP registration /
-         the AGENTS.md / CLAUDE.md entry point / verification gates
+         the AGENTS.md / CLAUDE.md entry point / skill copies / verification gates
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -104,6 +107,7 @@ while [ $# -gt 0 ]; do
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
     --skip-entry-point) DO_ENTRY_POINT=0; shift ;;
+    --skip-skills) DO_SKILLS=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -287,8 +291,8 @@ record "prerequisites" ok "macOS $(sw_vers -productVersion) / ${xcode_version%%$
 
 # ---- 0.5 TOOL_ROOT(SKILL ステップ0.5) ----------------------------------------
 # クローン内から実行されたならそれが TOOL_ROOT(curl | bash では $0 が読めないので clone へ倒す)。
-# **.git を条件に含める** —— プラグインのキャッシュもリポジトリ全体を持つが git ではなく、
-# 更新で捨てられる場所。そこを TOOL_ROOT にするとキャッシュの中でビルドし .mcp.json がそこを指す
+# **.git を条件に含める** —— git でない複製(アーカイブ展開・コピー)を TOOL_ROOT にすると、
+# pull できないまま古いソースをビルドし .mcp.json がそこを指す
 SELF_ROOT=""
 if [ -f "${BASH_SOURCE[0]:-}" ]; then
   candidate="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || true)"
@@ -625,11 +629,8 @@ if [ "$DO_MCP" = "0" ]; then
   record "MCP" skip "--skip-mcp"
 else
 
-# **clone 構成でもここで書く**(2026-08-27)。以前は repo ルートの `.mcp.json` を同梱して
-# 済ませていたが、**プラグイン root = repo ルートなのでそれがプラグインに載って配られ**、
-# 中身の `$PWD/Scripts/mcp-server.sh` はクローンの外では存在しないため、受け手が別の場所で
-# エージェントを起動するたびに MCP が落ちていた(`plugin details` に MCP servers (1))。
-# 同梱をやめ、どちらの構成でも**絶対パス**で登録する。
+# **clone 構成でもここで書く**。repo ルートに `.mcp.json` を同梱しない
+# (中身が `$PWD` 依存だとクローンの外で起動できない)。どちらの構成でも**絶対パス**で登録する。
 # 書き先はクローン自身になるので `.gitignore` 済み(追跡すると次の更新が pull ガードで止まる)。
 if ! command -v python3 >/dev/null 2>&1; then
   soft_fail "MCP" "python3 is missing, so .mcp.json cannot be merged (write the SKILL template by hand)" 7.5
@@ -804,6 +805,108 @@ else
     write_entry_point "$WORK_DIR/AGENTS.md" body
     write_entry_point "$WORK_DIR/CLAUDE.md" import
   fi
+fi
+
+# ---- 7.8 スキルを作業フォルダへ置く(SKILL ステップ7.8) ------------------------
+# 正典 <TOOL_ROOT>/.claude/skills/ のうち **fleetest-setup 以外**を <WORK_DIR>/.claude/skills/ へ
+# **コピー**する(Claude Code の `/fleetest-scenario` 等。ここが写しを置く・更新する唯一の場所)。
+# 規約位置 `.claude/skills` は AgentIntegration.skillsDirectory と一致必須
+# (agentIntegration.test.mjs)。
+# - **リンクにしない**: 作業フォルダは git にコミットされうるのでリンクは壊れる(ProjectScaffold と同じ)。
+# - **fleetest-setup は写さない・印にも入れない**: 作業フォルダのそれは `fleetest init` が書く
+#   受け手専用の別内容。正典で上書きすると受け手のセットアップ手順が消える。
+# - **一覧は正典から導出する**(手書きの一覧を持たない)。
+# - **印 `.fleetest-copied`(写した名前を1行1つ)にある名前だけ**を更新・削除する。印に無い同名は
+#   受け手のものとして触らない。無ければ足して印に入れる。シンボリックリンクは触らない。
+# - **クローンの作業ツリーの内側には書かない**(7.6 と同じ理由・同じ判定)。
+# - `A && continue` を素の文で書かない(A が偽だと set -e で止まる)。if で書く。
+SKILLS_MARKER_NAME=".fleetest-copied"
+place_skills() {
+  sk_src="$TOOL_ROOT/.claude/skills"
+  sk_dest="$WORK_DIR/.claude/skills"
+  sk_marker="$sk_dest/$SKILLS_MARKER_NAME"
+  if [ "$DO_SKILLS" = "0" ]; then
+    record "skills" skip "--skip-skills"; return 0
+  fi
+  if [ "$WORK_DIR" = "$TOOL_ROOT" ]; then
+    record "skills" skip "clone layout (the skills already live in the repository)"; return 0
+  fi
+  if [ ! -d "$sk_src" ]; then
+    record "skills" warn "no canonical skills at $sk_src"; return 0
+  fi
+  if [ "$(python3 -c 'import os,sys
+target, clone = os.path.realpath(sys.argv[1]), os.path.realpath(sys.argv[2])
+print("inside" if os.path.commonpath([target, clone]) == clone else "outside")' \
+       "$sk_dest" "$TOOL_ROOT" 2>/dev/null || echo inside)" = "inside" ]; then
+    record "skills" skip "$sk_dest lives inside the clone — writing there would make the next update abort at the pull guard"
+    return 0
+  fi
+  sk_owned=""
+  if [ -f "$sk_marker" ]; then
+    # fleetest-setup は所有しない(旧い印に載っていても外す)
+    sk_owned="$(grep -v -x -e 'fleetest-setup' -e '' "$sk_marker" 2>/dev/null || true)"
+  fi
+  sk_owned_before="$sk_owned"
+  sk_placed=0; sk_refreshed=0; sk_removed=0; sk_failed=0
+  sk_names=""
+  for sk_path in "$sk_src"/*/; do
+    sk_name="$(basename "$sk_path")"
+    if [ "$sk_name" = "fleetest-setup" ] || [ ! -f "$sk_src/$sk_name/SKILL.md" ]; then continue; fi
+    sk_names="$sk_names$sk_name"$'\n'
+    sk_to="$sk_dest/$sk_name"
+    if [ -L "$sk_to" ] || [ -L "$sk_to/SKILL.md" ]; then continue; fi
+    if [ ! -e "$sk_to" ]; then
+      if mkdir -p "$sk_to" && cp "$sk_src/$sk_name/SKILL.md" "$sk_to/SKILL.md"; then
+        sk_owned="$sk_owned${sk_owned:+$'\n'}$sk_name"
+        sk_placed=$((sk_placed + 1))
+      else
+        sk_failed=1
+      fi
+    elif printf '%s\n' "$sk_owned" | grep -qxF -- "$sk_name"; then
+      if ! cmp -s "$sk_src/$sk_name/SKILL.md" "$sk_to/SKILL.md" 2>/dev/null; then
+        if cp "$sk_src/$sk_name/SKILL.md" "$sk_to/SKILL.md"; then
+          sk_refreshed=$((sk_refreshed + 1))
+        else
+          sk_failed=1
+        fi
+      fi
+    fi
+  done
+  # 正典から消えた名前の写しを片付ける(印にある名前だけ。リンクは触らない)
+  sk_kept=""
+  while IFS= read -r sk_name; do
+    if [ -z "$sk_name" ]; then continue; fi
+    if printf '%s' "$sk_names" | grep -qxF -- "$sk_name"; then
+      sk_kept="$sk_kept${sk_kept:+$'\n'}$sk_name"
+    elif [ -L "$sk_dest/$sk_name" ]; then
+      :
+    else
+      rm -f "$sk_dest/$sk_name/SKILL.md"
+      rmdir "$sk_dest/$sk_name" 2>/dev/null || true
+      sk_removed=$((sk_removed + 1))
+    fi
+  done <<<"$sk_owned"
+  sk_owned="$sk_kept"
+  if [ "$sk_owned" != "$sk_owned_before" ] || { [ -n "$sk_owned" ] && [ ! -f "$sk_marker" ]; }; then
+    mkdir -p "$sk_dest" && printf '%s\n' "$sk_owned" > "$sk_marker" || sk_failed=1
+  fi
+  if [ "$sk_failed" = "1" ]; then
+    soft_fail "skills" "could not copy some skills into $sk_dest (agents can still read the SKILL.md files in the clone)" 7.8
+  elif [ $((sk_placed + sk_refreshed + sk_removed)) -gt 0 ]; then
+    record "skills" ok "$sk_placed placed, $sk_refreshed refreshed, $sk_removed removed (in $sk_dest)"
+    echo "   → Restart your AI assistant so the changed skills are re-read (it keeps the old ones until then)."
+  else
+    record "skills" skip "already up to date"
+  fi
+  return 0
+}
+
+if [ "$DO_SKILLS" = "0" ]; then
+  record "skills" skip "--skip-skills"
+elif ! command -v python3 >/dev/null 2>&1; then
+  record "skills" warn "python3 is missing, so the skills were not copied (agents can still read the SKILL.md files in the clone)"
+else
+  place_skills
 fi
 
 # ---- 検証ゲート: ルート解決(SKILL ステップ7.5 の検証ゲート) -------------------

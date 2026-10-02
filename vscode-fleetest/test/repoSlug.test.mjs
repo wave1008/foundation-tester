@@ -1,9 +1,9 @@
 // リポジトリ座標(owner/repo)のドリフト検出。
 // 契約: 配布経路の座標は**すべて同じ slug を指す**。唯一の可変点は
-// `Scripts/install-skill.sh` の `REPO=` で、リポジトリを引っ越すときはそこを書き換えてから
+// `Scripts/install.sh` の `REPO_URL` 既定値で、リポジトリを引っ越すときはそこを書き換えてから
 // 全域を置換し、このテストで取り残しを落とす(手順は docs/releasing.md「リポジトリの引っ越し」)。
 //
-// 座標は clone より前・ビルドより前に走るシェルと、受け手が読む docs と、プラグイン manifest に
+// 座標は clone より前・ビルドより前に走るシェルと、受け手が読む docs に
 // 散っており、**唯一の定義元を持てない**(シェルは Swift を呼べず、docs の URL は読者が読むので
 // リテラルである必要がある)。だから「1箇所に集める」のではなく「全部書いてあるが一致を機械で
 // 強制する」形にしてある。agentIntegration.test.mjs(規約位置の手写しのドリフト検出)と同じ型。
@@ -20,9 +20,9 @@ const ROOT = path.join(process.cwd(), "..");
 
 /** 正典の slug(唯一の可変点)。ここを読めているかがこのテストの前提。 */
 function canonicalSlug() {
-  const sh = readFileSync(path.join(ROOT, "Scripts/install-skill.sh"), "utf8");
-  const m = sh.match(/^REPO="([^"]+)"$/m);
-  assert.ok(m, "Scripts/install-skill.sh の REPO=\"<owner>/<repo>\" 行が見つかりません(唯一の可変点)");
+  const sh = readFileSync(path.join(ROOT, "Scripts/install.sh"), "utf8");
+  const m = sh.match(/^REPO_URL="\$\{FLEETEST_REPO_URL:-https:\/\/github\.com\/([^/"]+\/[^/"]+?)\.git\}"$/m);
+  assert.ok(m, "Scripts/install.sh の REPO_URL=\"${FLEETEST_REPO_URL:-https://github.com/<owner>/<repo>.git}\" 行が見つかりません(唯一の可変点)");
   return m[1];
 }
 
@@ -61,12 +61,12 @@ const TEXT_EXT = new Set([
 
 const SLUG_RE = /(?:github\.com|raw\.githubusercontent\.com)\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/g;
 
-// 引っ越しで**取り残された古い座標**。移転したら旧 slug をここへ足す —— URL 形も裸の形
-// (`claude plugin marketplace add <owner>/<repo>`)も、どこに残っていても落ちる。
+// 引っ越しで**取り残された古い座標**。移転したら旧 slug をここへ足す —— URL 形も裸の形も、
+// どこに残っていても落ちる。
 // 空でよいのは一度も移転していない間だけ。
 const LEGACY_SLUGS = [];
 
-/** 裸の `<owner>/<repo>` 形(プラグイン導入コマンドがこの形)。URL 形と別に見る必要がある。 */
+/** 裸の `<owner>/<repo>` 形。URL 形と別に見る必要がある。 */
 function bareSlugRegex(repoName) {
   const escaped = repoName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   // owner の直前がパス区切り・英数字なら**ファイルシステムのパス**(`~/github/foundation-tester`・
@@ -110,7 +110,7 @@ test("座標を持つ全ファイルが正典の slug を指している", () =>
         if (slug === canon || UPSTREAM_SLUGS.has(slug)) continue;
         offenders.add(`${at}  ${slug}`);
       }
-      // URL 形でない裸の slug(`claude plugin marketplace add <owner>/<repo>`)
+      // URL 形でない裸の slug(`<owner>/<repo>`)
       for (const m of line.matchAll(bareRe)) {
         if (m[1] === canonOwner) continue;
         offenders.add(`${at}  ${m[1]}/${canonRepo}`);
@@ -133,7 +133,6 @@ test("座標を持つ全ファイルが正典の slug を指している", () =>
 const MUST_CARRY_SLUG = [
   "README.md",
   "Scripts/install.sh",
-  "Scripts/install-skill.sh",
   "Sources/FTCore/ProjectScaffold.swift",
   "vscode-fleetest/package.json",
   ".claude/skills/fleetest-setup/SKILL.md",
@@ -148,13 +147,4 @@ test("配布経路の各ファイルが正典の slug を実際に持ってい�
     const src = readFileSync(path.join(ROOT, rel), "utf8");
     assert.ok(src.includes(canon), `${rel} に座標 ${canon} がありません(引っ越しの置換漏れ?)`);
   }
-});
-
-test("marketplace の owner が正典の owner と一致する", () => {
-  const canon = canonicalSlug();
-  const owner = canon.split("/")[0];
-  const marketplace = JSON.parse(
-    readFileSync(path.join(ROOT, ".claude-plugin", "marketplace.json"), "utf8"),
-  );
-  assert.equal(marketplace.owner?.name, owner, "marketplace.json の owner.name が正典の owner と不一致");
 });

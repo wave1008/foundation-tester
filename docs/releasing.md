@@ -1,10 +1,12 @@
 # リリース手順(git タグ発行)
 
-**受け手の配布口は `main` の1本だけ**(2026-08-27 決定)。プラグインも `install-skill.sh` も
-スキル本文の curl も既定ブランチを引き、**版を固定する導線は受け手に案内しない**。
-理由は「案内していたピンが実効していなかった」こと —— プラグインを `#<tag>` で固定しても
-スキル本文が引く install.sh と初回 clone は `main` のままで、*タグのスキル + main のツール* に
-なっていた。既定フローは `fleetest init --fleetest-path`(隣の clone)なので、SPM の
+**受け手の配布口は `main` の1本だけ**(2026-08-27 決定)。導入はプロンプト(「隣に clone して
+`../foundation-tester/.claude/skills/fleetest-setup/SKILL.md` に従ってセットアップして」)で、
+手順書もスクリプトもクローンから読むので、**版を固定する導線は受け手に案内しない**。
+(プラグインと `install-skill.sh` は廃止した。理由は docs/maintainer-notes.md §2.3。以前は
+案内していたピンが実効していなかった —— プラグインを `#<tag>` で固定してもスキル本文が引く
+install.sh と初回 clone は `main` のままで、*タグのスキル + main のツール* になっていた。)
+既定フローは `fleetest init --fleetest-path`(隣の clone)なので、SPM の
 `from:` を使う版指定もそもそも通らない。
 
 git タグ(semver)は**履歴の目印**として発行する —— 事故のときに「あの時点」へ戻る手掛かりで、
@@ -56,35 +58,33 @@ cd /tmp/fleetest-check && git checkout 0.1.0 && swift build && .build/debug/flee
 ## 保守者だけが使う口(`FLEETEST_REF`)
 
 `FLEETEST_REF=<tag/branch/sha>` は**未マージのブランチを受け手経路で検証するための口**で、
-受け手向けの版固定手段ではない(README・user-docs には出さない)。渡さないと
-**スキルはブランチ・install.sh と clone は `main`** になり、「直したはずの挙動を確認できない」。
-取得の鎖(スキル取得 → install.sh 取得 → clone)はこの1つの ref で揃う。
+受け手向けの版固定手段ではない(README・user-docs には出さない)。ブランチの手順書を検証するには、
+**そのブランチを clone してその SKILL.md を読ませ**、install.sh にも同じ ref を渡す。
+揃えないと **手順書はブランチ・clone は `main`** になり、「直したはずの挙動を確認できない」。
 
 ```bash
-FLEETEST_REF=feat/my-branch \
-  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/feat/my-branch/Scripts/install-skill.sh | sh
+git clone --branch feat/my-branch https://github.com/wave1008/foundation-tester.git ../foundation-tester
+FLEETEST_REF=feat/my-branch bash ../foundation-tester/Scripts/install.sh --work-dir <作業フォルダ> --name <名前>
 ```
 
 壊れた `main` を引いた受け手を個別に逃がすときも同じ口を使う(`FLEETEST_REF=<1つ前の sha>`)。
 
 ## リポジトリの引っ越し(owner / repo 名を変える)
 
-座標(`<owner>/<repo>`)は **clone 前・ビルド前に走るシェル**と、**受け手が読む docs** と、
-**プラグイン manifest** に散っていて、唯一の定義元を持てない(シェルは Swift を呼べず、
-docs の URL は読者が読むのでリテラルである必要がある)。そこで「1箇所に集める」のではなく
+座標(`<owner>/<repo>`)は **clone 前・ビルド前に走るシェル**と、**受け手が読む docs** に
+散っていて、唯一の定義元を持てない(シェルは Swift を呼べず、docs の URL は読者が読むので
+リテラルである必要がある)。そこで「1箇所に集める」のではなく
 **唯一の可変点 + 機械での一致強制**にしてある。
 
-1. `Scripts/install-skill.sh` の `REPO="<owner>/<repo>"` を新しい座標へ書き換える(可変点はここ)
+1. `Scripts/install.sh` の `REPO_URL` 既定値(`https://github.com/<owner>/<repo>.git`)を新しい座標へ
+   書き換える(可変点はここ)
 2. 全域を置換する(`git grep -l '<旧座標>' | xargs sed -i '' 's|<旧座標>|<新座標>|g'`)。
-   **URL 形と裸の形の両方**がある —— `claude plugin marketplace add <owner>/<repo>` は裸
+   **URL 形と裸の形の両方**がある
 3. `vscode-fleetest/test/repoSlug.test.mjs` の `LEGACY_SLUGS` へ**旧座標を足す**
 4. `cd vscode-fleetest && npm test` —— 取り残しがあれば `file:line` で全部出る
-   (旧座標・URL 形・裸の形・`marketplace.json` の owner を見る)
-5. **既存の受け手には周知が要る**。プラグインは登録時の URL を fetch するので、リダイレクトが
-   切れた時点で黙って更新されなくなる(marketplace 名は `marketplace.json` の `name` なので
-   repo 名を変えても変わらない = 名前が変わって外れる形にはならない)。
-   引っ越し直後に**この2経路を実測する**: `install-skill.sh` の raw curl と
-   `claude plugin marketplace update foundation-tester`
+   (旧座標・URL 形・裸の形を見る)
+5. **既存の受け手には周知が要る**。クローンの `origin` は旧 URL のままなので、リダイレクトが
+   切れた時点で黙って更新されなくなる。引っ越し直後に旧 URL からの `git pull` を実測する。
 
 ## まだ手動なもの(未整備)
 

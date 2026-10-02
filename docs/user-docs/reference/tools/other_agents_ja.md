@@ -1,8 +1,8 @@
 # その他のエージェント
 
-fleetest の中核は**エージェント固有ではありません**。インストーラが規約位置まで面倒を見るのは
-[Claude Code](./claude_code_skills_ja.md) だけですが、それ以外のエージェント(Codex・Cline・
-Cursor・Copilot など)でも、次の3つを自分で用意すれば同じことができます。
+fleetest の中核は**エージェント固有ではありません**。Claude Code では
+[スキル](./claude_code_skills_ja.md)が `/fleetest-setup` などの名前で呼べますが、それ以外のエージェント
+(Codex・Cline・Cursor・Copilot など)でも、次の3つを用意すれば同じことができます。
 
 | 要るもの | 用意の仕方 | エージェント依存 |
 |---|---|---|
@@ -17,7 +17,14 @@ Cursor・Copilot など)でも、次の3つを自分で用意すれば同じこ�
 
 ## 1. インストール
 
-エージェントを介さず、ツールを clone してから同じ機械作業をインストーラで実行します(冪等):
+テスト専用の新規フォルダを VSCode で開き、エージェントを起動して次のように頼みます:
+
+```text
+https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して、
+../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
+```
+
+エージェントを介さず手で進めたいときは、ツールを clone してから同じ機械作業をインストーラで実行します(冪等):
 
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
@@ -25,10 +32,12 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
 ```
 
-インストーラは Claude Code 向けの生成物も置きます。`.mcp.json` は `--skip-mcp` で、入口
-(`AGENTS.md` と、それを読み込むだけの `CLAUDE.md`)は `--skip-entry-point` で抑止できますが、
-`.claude/settings.json`(Bash 承認の許可リスト)は現状抑止できません(他のエージェントからは
-無視されるだけで無害です)。
+インストーラは Claude Code 向けの生成物(`.mcp.json`・`.claude/settings.json`・スキルの写し)も
+置きます。`.mcp.json` は `--skip-mcp` で、入口(`AGENTS.md` と、それを読み込むだけの
+`CLAUDE.md`)は `--skip-entry-point` で抑止できますが、`.claude/settings.json`(Bash 承認の
+許可リスト)は現状抑止できません(他のエージェントからは無視されるだけで無害です)。
+他のエージェントの MCP 登録は、次の「2. MCP サーバを登録する」で自分で行います
+(fleetest はエージェントのグローバル設定には書き込みません)。
 
 手順の全体像・前提・アンインストールは
 [はじめに(導入・更新・アンインストール)](../../getting-started_ja.md)を参照してください。
@@ -96,19 +105,13 @@ approval_mode = "prompt"
 | `fleetest-mcp` | MCP サーバだけの登録 |
 | `fleetest-remote-setup` | 別の Mac をランナー機にする |
 
-スキル機構を持つエージェントなら、その置き場所へコピーできます:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh \
-  | sh -s -- --dir <そのエージェントのスキルディレクトリ>
-```
-
-`--dir` を省くと Claude Code の規約位置 `.claude/skills/` に入ります。コピーしたスキルは
-`git pull` では更新されないので、更新は `Scripts/update.sh` に任せます(正典から写し直し、
-`✅ Skills: refreshed N copied SKILL.md` と報告します)。写した後は**エージェントを再起動**
-してください。
-`install-skill.sh` は置き場に印 `.fleetest-copied` を残し、`update.sh` は**この印があるときだけ**
-新しく増えたスキルも置きます(印が無い = プラグイン経由の受け手には写しを増やしません)。
+インストーラは手順書を作業フォルダの `.claude/skills/` へ写します(Claude Code では
+`/fleetest-scenario` のように名前で呼べます)。他のエージェントは、作業フォルダの `AGENTS.md` の入口
+からたどって同じ `SKILL.md` を読ませてください。写しは `git pull` では更新されないので、更新は
+`Scripts/update.sh` に任せます(正典から写し直し、`✅ Skills: refreshed N copied SKILL.md` と
+報告します)。写した後は**エージェントを再起動**してください。
+インストーラは `.claude/skills/` に印 `.fleetest-copied` を残し、`update.sh` は**この印があるときだけ**
+新しく増えたスキルも置きます。
 
 ## Codex を使う場合(サンドボックス)
 

@@ -50,21 +50,19 @@
 
 ## インストール(使う: 自分のアプリのテストを書く)
 
-**Claude Code に任せる(推奨)**: ターミナルでプラグインを入れ、テスト用の新規フォルダを VSCode で開いて
-`/fleetest:fleetest-setup` を呼ぶ(`claude` CLI が無ければ `brew install claude-code`):
+**AIアシスタントに任せる(推奨。どの AIアシスタントも同じ手順)**: テスト用の新規フォルダを VSCode で開き、
+AIアシスタントを起動して次のように頼む(Claude Code の `claude` CLI が無ければ `brew install claude-code`):
 
-```bash
-claude plugin marketplace add wave1008/foundation-tester
-claude plugin marketplace update foundation-tester
-claude plugin install fleetest@foundation-tester --scope user
+```text
+https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して、
+../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-> `marketplace update` は、既にマーケットプレイスを追加済みの機械のために要る ——
-> `add` は「already on disk」で**何も取得しない**ので、古いキャッシュのままだと
-> `Plugin "fleetest" not found` で落ちる。新規導入なら no-op。
+セットアップは Claude Code 向けの MCP 登録(`.mcp.json`)とスキルの写し(`.claude/skills/`)も作業フォルダへ置く。
+その後 VSCode で `Developer: Reload Window` を実行し、ステータスバーの **fleetest mobile** をクリックする。
 
-**その他のエージェント(Codex・Cline・Cursor・Copilot 等)**: 専用の導線は持っていないが、
-**中核はそのまま使える**。必要なのは次の3つで、いずれもエージェント固有ではない:
+**Claude Code 以外のエージェント(Codex・Cline・Cursor・Copilot 等)**: **中核はそのまま使える**。
+必要なのは次の3つで、いずれもエージェント固有ではない:
 
 1. **機械作業** —— 下の「エージェント無しで入れる」インストーラで済む
 2. **`ft_*`(MCP)** —— `fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応した
@@ -81,8 +79,7 @@ claude plugin install fleetest@foundation-tester --scope user
 
 3. **手順書(runbook)** —— `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md` は
    **ツール中立の markdown** で、特定エージェント専用機能に依存しないように書いてある。
-   スキル機構が無いエージェントには、必要なときにこのファイルを読ませればよい
-   (スキル機構があるなら `install-skill.sh | sh -s -- --dir <その置き場>` でコピーできる)
+   作業フォルダの `AGENTS.md` の入口からたどってこのファイルを読ませればよい
 
 得られないのは**スキルの自動発見**(`/fleetest-setup` のように呼べる仕組み)だけ。入口は
 テスト用フォルダの `AGENTS.md` に書くので、AGENTS.md を読むエージェントにはそのまま届く。
@@ -101,13 +98,11 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
 ```
 
-- プラグインが提供するスキル: `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
+- インストーラが作業フォルダの `.claude/skills/` へ写すスキル(Claude Code では `/fleetest-setup` のように呼ぶ):
+  `fleetest-setup`(初回導入)・`fleetest-update`(更新)・`fleetest-profiles`
   (マシン/アプリ/実行プロファイル)・`fleetest-scenario`(シナリオ作成)・`fleetest-mcp`(MCP のみ)・
   `fleetest-remote-setup`(別の Mac をランナー機にする)。
   配布口は `main` の1本(版を固定する導線は無い)。
-  プラグイン機構が無い環境向けの代替は
-  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`
-  (置き先は `.claude/skills/`。他のエージェントは `| sh -s -- --dir <その置き場>`)。
 - 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/user-docs/getting-started_ja.md](docs/user-docs/getting-started_ja.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は**利用者向けドキュメント [docs/user-docs/index_ja.md](docs/user-docs/index_ja.md)**([English](docs/user-docs/index.md))と [docs/commands.md](docs/commands.md)。
@@ -517,7 +512,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 開いても解決できる。初回呼び出しでビルドが走る):
 
 - **Claude Code** → ワークスペースの `.mcp.json`。**リポジトリには同梱していない** ——
-  プラグイン root = repo ルートなので、同梱すると相対パス依存の設定がプラグインに載って配られ、
+  同梱すると相対パス依存の設定がクローンごと配られ、
   クローンの外でエージェントを起動した受け手の MCP が必ず落ちていた
 - **その他のエージェント** → インストーラは触らない(設定の場所も書式も受け手のグローバル資産)。
   手順は [docs/user-docs/reference/tools/other_agents_ja.md](docs/user-docs/reference/tools/other_agents_ja.md)

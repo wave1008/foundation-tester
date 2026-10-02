@@ -76,8 +76,8 @@ clone 構成では受け手の CLAUDE.md は**クローン自身の追跡ファ�
 
 ### 2.1 Codex 対応をインストーラから撤去した理由(2026-08-27)
 
-面倒を見ようとすると、規約位置・プラグインのサブコマンド名・版照合・設定書式が全部その
-エージェント固有の分岐になり、**Swift・install.sh・install-skill.sh・update.sh の4箇所へ
+面倒を見ようとすると、規約位置・サブコマンド名・版照合・設定書式が全部その
+エージェント固有の分岐になり、**Swift・install.sh・update.sh の複数箇所へ
 手で写す**ことになる。中核はどれもエージェント固有ではない(機械作業 = インストーラ /
 `ft_*` = 標準の stdio MCP サーバ / runbook = ツール中立の markdown)ので、案内を
 docs/user-docs/reference/tools/other_agents に集約する形に寄せた。経緯と表は docs/design.md §15。
@@ -94,24 +94,32 @@ docs/user-docs/reference/tools/other_agents に集約する形に寄せた。経
 `network_access` / `writable_roots` では直らない。以前 install.sh のステップ7.7 が
 これらを根拠に false green を出していた。
 
-### 2.3 リポジトリのルートに置いたものはプラグインに載って配られる
+### 2.3 プラグイン配布と install-skill.sh を廃止した(2026-10-03)
 
-プラグイン root = repo ルートなので、ルートの規約ファイルは**そのままプラグインで配布される**。
+導入は全エージェント共通の1本にした: 「クローンを隣に置き、その `SKILL.md` を読ませる」→
+クローンの `Scripts/install.sh`。Claude Code のスキル(`/fleetest-scenario` 等。名前空間なし)は
+install.sh のステップ7.8 が作業フォルダの `.claude/skills/` へ**コピー**する。
 
-- 同梱していた `.mcp.json` は `$PWD/Scripts/mcp-server.sh` 依存で、クローンの外でエージェントを
-  起動した受け手の MCP が**必ず落ちていた**(`claude plugin details` に `MCP servers (1)`)。
-- 同型: ルートの `skills → .claude/skills` リンク。Claude Code は `plugin.json` の明示パスと
-  **既定の `skills/` の両方を読む(置換ではなく加算)**ため、**6本が12本として登録**され、
-  常時コストが倍(~1,270 → ~2,537 tok)になっていた。
+廃止した配布口と、そこから生えていた規則の扱い:
 
-**一般化**: ルートに何か置くときは「プラグインに載ってよいか」を必ず問う。
+- **`.claude-plugin/`(プラグイン)・`Scripts/install-skill.sh`(curl でスキルだけ取る導入器)**:
+  削除。戻さない(配布口が増えると「どの版の手順書が読まれているか」が受け手ごとに割れ、
+  `git pull` で更新されないキャッシュやコピーが取り残される)。
+- **「ルートに置いたものはプラグインに載って配られる」の規則**: 原因(プラグイン root = repo ルート)が
+  消えたので一般則は捨てた。ただし**リポジトリ直下に `.mcp.json` を置かない**は残す —— 中身が
+  `$PWD/Scripts/mcp-server.sh` 依存で、クローンの外でエージェントを起動すると必ず落ちる
+  (`agentAdapters.test.mjs`)。ルートの `skills → .claude/skills` リンクの二重登録は、プラグインが無いので
+  起きない。
+- **コピーはリンクにしない**: 作業フォルダは git にコミットされうる(`ProjectScaffold` と同じ)。
+  `fleetest-setup` は `fleetest init` が書く受け手専用の別内容なので、コピーでも印でも扱わない。
 
-→ 規則: CLAUDE.md「MCP サーバの起動口」
+→ 規則: `.claude/rules/installer-agents.md`
 
 ### 2.4 正典をシンボリックリンクの側へ移さない
 
-raw.githubusercontent はリンクを**本文でなくリンク先の文字列**として返すので、
-`install-skill.sh` の curl が SKILL.md ではなく1行のパスを掴む。
+正典を `.claude/skills/` の実体に置く規則は残す(クローンの SKILL.md をそのまま読ませる・
+コピー元にもなる)。リンクにすると、コミットされる作業フォルダのコピーや、リンクを辿れない
+取得経路(raw.githubusercontent はリンクを本文でなくリンク先の文字列として返した)で壊れる。
 
 ---
 

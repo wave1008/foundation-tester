@@ -27,7 +27,7 @@ TestProjects/SampleApp/
 
 このプロジェクトの `Package.swift` が foundation-tester を参照する形には2種類あります。
 
-- **外部パッケージ構成**(`/fleetest:fleetest-setup` の既定): 作業フォルダ自身が
+- **外部パッケージ構成**(`/fleetest-setup` の既定): 作業フォルダ自身が
   foundation-tester のクローンに SPM 経由で依存する `Package.swift` を持ちます(`fleetest init`)。
   `TestProjects/` の資産は作業フォルダ側にあり、ツールのクローンとは分かれているため、
   ツールの更新がシナリオやプロファイルに触れることはありません。

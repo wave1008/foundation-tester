@@ -1,6 +1,5 @@
 ---
 paths:
-  - ".claude-plugin/**"
   - ".claude/skills/**"
   - ".claude/skills/fleetest-scenario/SKILL.md"
   - ".claude/skills/fleetest-setup/SKILL.md"
@@ -8,7 +7,6 @@ paths:
   - ".gitignore"
   - "CLAUDE.md"
   - "Scripts/*.sh"
-  - "Scripts/install-skill.sh"
   - "Scripts/install.sh"
   - "Scripts/mcp-server.sh"
   - "Scripts/preflight.sh"
@@ -45,13 +43,13 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   - **各手順は `.claude/skills/fleetest-setup/SKILL.md` のステップ番号と 1:1**(失敗時に
     「→ SKILL.md ステップ N」を出す)。**片方だけ変えない**
     (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)
-  - **スキルからは「スキルと一緒に届いた Scripts/」のローカルファイルを `bash` で呼ぶ**
-    (`<SKILL.md の3つ上>/Scripts/`。プラグインのキャッシュはリポジトリ全体を持つ)。手順書と
-    スクリプトが同じ版になるので新しい引数が必ず通じる(クローン側の Scripts/ は pull されるまで古い)。
-    **`curl … | bash` に戻さない** —— エージェントの安全確認に止められ、導入の最初で詰まる。
-    コピー配置(Scripts/ が無い)だけは先に `git clone` してクローンの Scripts/ を使う。
-    **install.sh の自己判定(SELF_ROOT)は `.git` を条件に持つ**(キャッシュは git ではない。
-    外すとキャッシュの中でビルドし `.mcp.json` がそこを指す)。
+  - **導入は「クローンを隣に置き、その SKILL.md を読ませる」1本**(どのエージェントも同じ。依頼文は
+    「<リポジトリ> を隣に clone して ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md に
+    従ってセットアップして」)。スキルは**クローンのローカルの `Scripts/`(SKILL.md の3つ上)を `bash` で呼ぶ**
+    —— 手順書とスクリプトが同じ版になるので新しい引数が必ず通じる。**`curl … | bash` に戻さない**
+    (エージェントの安全確認に止められ、導入の最初で詰まる)。
+    **install.sh の自己判定(SELF_ROOT)は `.git` を条件に持つ**(git でない複製を TOOL_ROOT にすると
+    pull できないまま古いソースをビルドし `.mcp.json` がそこを指す)。
     全出力は `<WORK_DIR>/.fleetest/install-<日時>.log` へ
   - **pull 後は自分自身を再 exec する**(条件は「実行中のファイル = pull したクローンの
     `Scripts/install.sh` 自身」かつ HEAD が動いたときだけ)。**`update.sh` にも同じ再 exec がある**
@@ -74,10 +72,17 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     **入口ファイルがクローンの作業ツリーの内側にあるか**(`os.path.commonpath` による包含判定)。
     **受け手のフローに「クローンの中を書く」工程を足すときは必ずこの判定を見る**
     → maintainer-notes §1.3
+  - **スキルのコピーはステップ7.8 が置く・更新する唯一の場所**(正典 `.claude/skills/` から
+    `fleetest-setup` 以外を `<WORK_DIR>/.claude/skills/` へ**コピー**。リンクにしない = 作業フォルダは
+    git にコミットされうる)。**一覧は正典から導出**(手書きの一覧を持たない)。**印
+    `.fleetest-copied` にある名前だけ**を更新・削除し、印に無い同名は受け手のものとして触らない・
+    リンクも触らない。**`fleetest-setup` は絶対に写さない**(作業フォルダのそれは `fleetest init` が
+    書く受け手専用の別内容)。`--skip-skills` / クローン構成 / 置き先がクローンの内側は skip。
+    変わった回は再起動を案内する(`installCopiedSkills.test.mjs`)→ maintainer-notes §2.3
   - **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
     `--skip-project` の更新で既存の受け手に永久に届かない)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **Claude Code の
-  プラグイン更新と版照合**(`marketplace update`→`plugin update`・版は `plugin list` の sha)。
+  スキルのコピーの更新(install.sh のステップ7.8 が行う)。
   `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
   「次にやること」にも出す**(install.sh には `--no-next-steps` を渡すため)。doctor は既定で
@@ -100,15 +105,15 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   Package.swift の宣言)の欠落を検出)
 - **インストーラが面倒を見るエージェントは Claude Code だけ**(規約位置の唯一の定義元は
   `Sources/FTCore/AgentIntegration.swift`。経緯と表は docs/design.md §15)。
-  - **runbook 本体(`.claude/skills/<name>/SKILL.md`)は複製しない** —— Claude Code へは
-    規約位置から正典を参照する薄いアダプタ(`.claude-plugin/`)だけを置く
+  - **runbook 本体(`.claude/skills/<name>/SKILL.md`)の正典はクローンの1箇所**。作業フォルダへの
+    コピーはステップ7.8 だけが作る(上記)。プラグイン配布と、スキルだけを curl で取る導入器は**廃止済み** —— 戻さない → maintainer-notes §2.3
   - **他のエージェント(Codex・Cline 等)向けの分岐をコードに戻さない**。案内は
     **docs/user-docs/reference/tools/other_agents(.md/_ja.md) の1箇所**に集約する → maintainer-notes §2.1
   - **受け手のグローバル設定(`~/.codex/config.toml` 等)には1バイトも書かない**
     (`agentIntegration.test.mjs` / `agentAdapters.test.mjs` が落とす)
   - **正典をシンボリックリンクの側へ移さない** → maintainer-notes §2.4。
-    **シェル(install.sh / install-skill.sh)は clone 前・ビルド前に走るので Swift を呼べず、
-    規約位置を手で持つ** —— 片方だけ変えない
+    **install.sh は clone 前・ビルド前に走るので Swift を呼べず、規約位置を手で持つ** ——
+    片方だけ変えない(`agentIntegration.test.mjs`)
   - **SKILL.md に特定エージェント専用機能を前提として書かない**(`AskUserQuestion` は
     「選択ダイアログ(Claude Code なら AskUserQuestion)」の形で、実装ではなく意図を書く)
   - **Codex のサンドボックスはシェルだけを縛る**(`ft_*` は既定設定で全部動く。通らないのは
@@ -116,8 +121,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     → maintainer-notes §2.2
 - MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
   - **`.mcp.json` をリポジトリに置かない**(追跡外・`.gitignore` 済み)。登録は構成を問わず
-    install.sh が**絶対パス**で WORK_DIR へ書く。**ルートに何か置くときは「プラグインに載って
-    よいか」を必ず問う** → maintainer-notes §2.3
+    install.sh が**絶対パス**で WORK_DIR へ書く。**リポジトリ直下の `.mcp.json`
+    は `$PWD` 依存でクローンの外では起動しない** → maintainer-notes §2.3
   - **シェル式を `.mcp.json` へ直書きしない**(起動のたび約8秒の `swift build` を払い、失敗すると
     `>/dev/null` で理由が分からないまま起動しない)
   - ランチャが守るのは3つ: **鮮度でだけビルドする**(`find Sources Package.swift -newer <bin>`。
@@ -125,8 +130,8 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     無変更のソースを触っただけだと再リンクされず毎回ビルドし直しになるため)/
     **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
     **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
-- **スキルを増やしたら `Scripts/install-skill.sh` の `SKILLS` を足す**(clone より前に走るので
-  導出できず、**手書きの一覧はここだけ**。`update.sh` は TOOL_ROOT の正典から導出する)
+- **スキルを増やしても一覧は直さない**(install.sh のステップ7.8 が正典 `.claude/skills/` から導出する。
+  手書きの一覧を新しく持たない)
 - **機械作業はスクリプト/CLI に寄せ、スキルには判断だけ残す**。エージェントに JSON を書かせる・
   値を集めさせると、実行のたびに結果が揺れる。決まった手順は `Scripts/*.sh` か `fleetest` の
   サブコマンドにする

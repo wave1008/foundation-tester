@@ -2,68 +2,48 @@
 
 Fleetest のインストール・更新・アンインストールの手順です。
 
-現時点ではバイナリ配布はしていません。ベータ版の macOS / Xcode を前提としているためで、
-Claude Code のプラグインからリポジトリを clone してビルドする形でインストールします。
-clone からビルドまではエージェントが進めるので、手で行う作業はわずかです。
+## 1. 環境
 
-## 1. 必要環境
-
-| 対象 | 要件 |
-|---|---|
-| 共通 | macOS 26+ |
-| iOS をテストするなら | Xcode 26+、iOS Simulator、xcodegen |
-| Android をテストするなら | Android SDK(adb)、Emulator または実機 |
-| 拡張ビルド | Node.js v24 以降、npm v11 以降 |
-
-視覚検証・画面描写チェックといった Foundation Models の機能は experimental で、macOS 27+ が
-必要です。自己修復(ロケータの指紋照合)は FM を使わないため、対応する macOS であればどれでも
-動きます。詳細は [環境](overview/environments_ja.md)。
+対応する macOS・Xcode・Android SDK などの要件は [環境](overview/environments_ja.md) を参照してください。
 
 ## 2. 事前準備
 
-インストールをスムーズに進めるため、テストに使うデバイスを先に用意しておいてください。
-
-- **iOS をテストするなら**: Xcode をインストールし、使いたい Simulator を作成して起動しておく
-- **Android をテストするなら**: Android Studio をインストールし、使いたい AVD を作成して起動しておく。
-  システムイメージは Play Store ではなく **Google APIs** を選ぶ —— Play Store イメージは `user`
-  ビルドで、アプリの release ビルドはその上で WebView の中身を出せない(詳細は
-  [selector/webview_ja.md](reference/selector/webview_ja.md))
-
-## 3. Fleetest のインストール
-
-1. `claude` CLI が無ければインストールします
+- **iOS をテストする場合**
+  - Xcode と iOS Simulator のランタイムをインストールしておく
+- **Android をテストする場合**
+  - Android Studio(Android SDK)をインストールしておく
+- **AIアシスタント**
+  - MCP に対応した AIアシスタント(Claude Code・Codex・Cline・Cursor・Copilot など)を
+    インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントに頼んで進めます。
+    Claude Code の場合:
 
 ```bash
 brew install claude-code
 ```
 
-2. fleetest のプラグインを入れます
+## 3. Fleetest のインストール
 
-```bash
-claude plugin marketplace add wave1008/foundation-tester
-claude plugin marketplace update foundation-tester
-claude plugin install fleetest@foundation-tester --scope user
+1. **テスト専用の新規フォルダ**を VSCode で開き、AIアシスタントを起動して次のように頼みます
+
+```text
+https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して、
+../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-> 2行目の `marketplace update` は、マーケットプレイスを追加済みのマシンでキャッシュを更新する
-> ためのものです。古いままだと `Plugin "fleetest" not found in marketplace` で失敗します。
-> 新規導入なら何も起きません。
+   clone・ビルド・プロジェクト作成が進みます(プロファイルは[クイックスタート](quick-start_ja.md)で作ります)
 
-3. **テスト専用の新規フォルダ**を VSCode で開きます
+2. VSCode で `Developer: Reload Window` を実行します
 
-4. エージェントのパネルで `/fleetest:fleetest-setup` を実行します。clone・ビルド・プロジェクト
-   作成が進みます(プロファイルは[クイックスタート](quick-start_ja.md)で作ります)
+3. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします(デバイスモニターが開きます)
 
-5. VSCode で `Developer: Reload Window` を実行します
-
-6. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします(デバイスモニターが開きます)
-
-手動で1つずつ確認しながら進めたい場合は `.claude/skills/fleetest-setup/SKILL.md` を参照して
-ください。
-
-Claude Code 以外のエージェント(Codex・Cline など)を使う場合は
-[その他のエージェント](reference/tools/other_agents_ja.md)を参照してください。手順書はツール中立なので
-そのまま使えますが、インストーラの実行と MCP サーバの登録は自分で行います。
+> **Claude Code 以外の場合**: Claude Code では MCP サーバの登録(`.mcp.json`)もセットアップが書きます。
+> それ以外の AIアシスタントでは、MCP サーバを AIアシスタントの設定に自分で登録します(fleetest は
+> AIアシスタントのグローバル設定には書き込みません)。書き方は
+> [その他のエージェント](reference/tools/other_agents_ja.md#2-mcp-サーバを登録する)を参照してください。
+>
+> **Codex を使う場合**: 手順1は `codex --sandbox danger-full-access` で起動したセッションで行ってください。
+> 既定のサンドボックスでは `swift build` と Simulator の操作が塞がれます。セットアップ後の `ft_*` の作業は
+> 既定のままで動きます(詳細は[その他のエージェント](reference/tools/other_agents_ja.md#codex-を使う場合サンドボックス))。
 
 ## 4. Fleetest の更新
 
@@ -78,16 +58,10 @@ Claude Code 以外のエージェント(Codex・Cline など)を使う場合は
 
 ### ターミナルから更新する
 
-```bash
-claude plugin marketplace update foundation-tester
-claude plugin update fleetest@foundation-tester
-```
-
-その後、エージェントの新しいセッションで `/fleetest:fleetest-update` を実行します。
-
-`bash <TOOL_ROOT>/Scripts/update.sh` の1コマンドでも同じことができます。pull・ビルド・拡張・
-プラグイン更新まで行い、更新が無ければ何もしません。全部やり直したいときは `--force` を
-付けます。
+AIアシスタントに「fleetest を更新して」と頼む(Claude Code では `/fleetest-update`)か、
+`bash <TOOL_ROOT>/Scripts/update.sh` の1コマンドで更新できます。pull・ビルド・拡張・
+スキルの更新まで行い、更新が無ければ何もしません。全部やり直したいときは `--force` を
+付けます。スキルが更新されたときは、AIアシスタントを起動し直してください。
 
 > **クローン(`foundation-tester`)を自分で書き換えている場合**: 更新時、クローン側のローカル
 > 変更は確認なしで破棄されます。テスト資産は作業フォルダ側にあり、クローンは配布物として扱う
@@ -97,13 +71,6 @@ claude plugin update fleetest@foundation-tester
 > 数分かかりますが、各ステップの完了ごとに1行ずつ表示されるので、そのまま待って構いません。
 
 ## 5. Fleetest のアンインストール
-
-### プラグイン
-
-```bash
-claude plugin marketplace remove foundation-tester
-claude plugin uninstall fleetest@foundation-tester
-```
 
 ### VSCode 拡張
 
@@ -116,6 +83,7 @@ VSCode を終了してから Finder や `rm` で削除します。
 作業フォルダを残す場合は、`AGENTS.md` と `CLAUDE.md` の `<!-- fleetest:begin -->` 〜
 `<!-- fleetest:end -->` の範囲を削除してください(`AGENTS.md` に本文、`CLAUDE.md` にはその読み込みだけがあります)。インストーラが置いたエージェント向けの案内で、範囲外には触れて
 いません。他のエージェントに MCP サーバを自分で登録していた場合は、その設定も削除します。
+あわせて、インストーラがコピーしたスキル(`.claude/skills/fleetest-*` と `.claude/skills/.fleetest-copied`)も削除してください。
 
 ### 残るファイルとプロセス
 
@@ -136,7 +104,7 @@ pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|a
 
 ## 6. トラブルシュート
 
-問題が起きたら Claude Code に相談してください。よくある症状と切り分けは
+問題が起きたら AIアシスタントに相談してください。よくある症状と切り分けは
 [トラブルシューティング](in_action/troubleshooting_ja.md)にまとめてあります。
 
 ### Link

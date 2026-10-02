@@ -28,7 +28,7 @@ Done when: you report the names of the run profiles you created. Running tests i
   Pass a `.app` for the iOS Simulator and an `.apk` for Android.
 - For an app that exists only on iOS or only on Android, writing just one side is enough.
 
-In Claude Code, `/fleetest:fleetest-profiles` does the same thing (it asks you for the app name and so on, one by one).
+In Claude Code, `/fleetest-profiles` does the same thing (it asks you for the app name and so on, one by one).
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>

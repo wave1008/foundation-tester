@@ -1,8 +1,8 @@
 # Other Agents
 
-Nothing at the core of fleetest is agent-specific. The installer only sets up the conventions of
-[Claude Code](./claude_code_skills.md), but any other agent (Codex, Cline, Cursor, Copilot, …) can
-do the same work once you provide these three things yourself:
+Nothing at the core of fleetest is agent-specific. In Claude Code the
+[skills](./claude_code_skills.md) can be called by name such as `/fleetest-setup`, but any other agent
+(Codex, Cline, Cursor, Copilot, …) can do the same work once you provide these three things:
 
 | What you need | How to get it | Agent-specific? |
 |---|---|---|
@@ -18,7 +18,14 @@ of a session.
 
 ## 1. Install
 
-Clone the tool, then run the same mechanical work with the installer, without an agent (idempotent):
+Open a new, test-only folder in VSCode, start your agent there, and ask it:
+
+```text
+Clone https://github.com/wave1008/foundation-tester next to this folder, then set it up by
+following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
+```
+
+To go through it by hand without an agent, clone the tool and run the same mechanical work with the installer (idempotent):
 
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
@@ -26,10 +33,12 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
 ```
 
-The installer also writes the Claude Code artefacts. `.mcp.json` can be suppressed with
-`--skip-mcp`, and the entry point (`AGENTS.md`, plus a `CLAUDE.md` that only imports it) with
-`--skip-entry-point`; `.claude/settings.json` (the Bash permission allowlist) currently cannot —
-other agents simply ignore it.
+The installer also writes the Claude Code artefacts (`.mcp.json`, `.claude/settings.json`, and
+copies of the skills). `.mcp.json` can be suppressed with `--skip-mcp`, and the entry point
+(`AGENTS.md`, plus a `CLAUDE.md` that only imports it) with `--skip-entry-point`;
+`.claude/settings.json` (the Bash permission allowlist) currently cannot — other agents simply
+ignore it. For any other agent you register the MCP server yourself in step 2 below (fleetest
+never writes to an agent's global settings).
 
 Prerequisites, updates and uninstall are covered in
 [Getting started](../../getting-started.md).
@@ -98,19 +107,14 @@ written not to depend on any one agent's features, so an agent can simply read o
 | `fleetest-mcp` | register only the MCP server |
 | `fleetest-remote-setup` | turn another Mac into a runner |
 
-If your agent has a skills mechanism, copy them into its directory:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh \
-  | sh -s -- --dir <your agent's skills directory>
-```
-
-Without `--dir` they go to the Claude Code location, `.claude/skills/`. Copied skills are not
+The installer copies the runbooks into the work folder's `.claude/skills/` (in Claude Code you call
+them by name, such as `/fleetest-scenario`). Other agents should be pointed at the same `SKILL.md`
+files through the entry point in the work folder's `AGENTS.md`. Copied skills are not
 updated by `git pull`, so leave updates to `Scripts/update.sh` — it re-copies them from the clone
 and reports `✅ Skills: refreshed N copied SKILL.md`. **Restart the agent** afterwards, or it keeps
 reading the old runbooks.
-`install-skill.sh` leaves a marker `.fleetest-copied` in that directory; `update.sh` adds newly
-introduced skills **only when the marker exists** (no marker = a plugin-based receiver, which gets no copies).
+The installer leaves a marker `.fleetest-copied` in `.claude/skills/`; `update.sh` adds newly
+introduced skills **only when the marker exists**.
 
 ## Using Codex (the sandbox)
 
