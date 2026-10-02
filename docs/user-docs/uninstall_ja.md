@@ -17,6 +17,9 @@ VSCode の拡張ビューからアンインストールし、`Developer: Reload 
 
 ## 2. fleetest のプロセスを止める
 
+この Mac で動いている fleetest のプロセスを、作業フォルダに関係なくすべて止めます(他の作業フォルダで
+使っている fleetest も止まります)。
+
 ```bash
 pgrep -fl 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
 pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'

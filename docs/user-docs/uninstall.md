@@ -17,6 +17,9 @@ extension (while the extension is running, it restarts the fleetest processes yo
 
 ## 2. Stop the fleetest processes
 
+This stops every fleetest process on this Mac, whichever work folder it belongs to (fleetest in your
+other work folders stops too).
+
 ```bash
 pgrep -fl 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
 pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
