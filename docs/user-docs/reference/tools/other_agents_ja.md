@@ -6,7 +6,7 @@ fleetest の中核は**エージェント固有ではありません**。Claude 
 
 | 要るもの | 用意の仕方 | エージェント依存 |
 |---|---|---|
-| 機械作業(clone・ビルド・プロジェクト作成・VSCode 拡張) | 下の clone とインストーラ | 無し |
+| 機械作業(clone・ビルド・テストパッケージの用意・VSCode 拡張) | 下の clone とインストーラ | 無し |
 | `ft_*`(画面の探索・操作・シナリオ実行) | `fleetest-mcp` を MCP サーバとして登録 | 設定ファイルの書式だけ |
 | 手順書(runbook) | クローンの `SKILL.md`(ツール中立の markdown)を読ませる | 置き場所だけ |
 
@@ -29,7 +29,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
 git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
-bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
+bash ../foundation-tester/Scripts/install.sh
 ```
 
 インストーラは Claude Code 向けの生成物(`.mcp.json`・`.claude/settings.json`・スキルの写し)も
@@ -98,7 +98,7 @@ approval_mode = "prompt"
 
 | 手順書 | 内容 |
 |---|---|
-| `fleetest-setup` | 初回導入(clone → build → プロジェクト作成 → 検証) |
+| `fleetest-setup` | 初回導入(clone → build → テストパッケージの用意 → 検証。プロジェクトは作らない) |
 | `fleetest-update` | 修正版の取り込み |
 | `fleetest-profiles` | アプリ/実行プロファイルの一括作成 |
 | `fleetest-scenario` | テストシナリオ(.swift)の作成 |

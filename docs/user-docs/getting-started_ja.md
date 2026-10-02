@@ -30,7 +30,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-   clone・ビルド・プロジェクト作成が進みます(プロファイルは[クイックスタート](quick-start_ja.md)で作ります)
+   clone・ビルド・テストパッケージの用意が進みます(プロジェクトとプロファイルは[クイックスタート](quick-start_ja.md)で作ります)
 
 2. VSCode で `Developer: Reload Window` を実行します
 

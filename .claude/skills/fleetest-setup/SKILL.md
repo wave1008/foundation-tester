@@ -1,6 +1,6 @@
 ---
 name: fleetest-setup
-description: fleetest を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・自分のプロジェクト作成・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
+description: fleetest を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・テストパッケージの作成・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
 ---
 
 # fleetest 初期セットアップ runbook
@@ -19,9 +19,10 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 **入り方は2通り。ステップ 0.5 で判定する:**
 
 - **外部パッケージ構成(既定・テスト専用の受け手ディレクトリ)**: いま開いているこの
-  ディレクトリを fleetest テストパッケージにする。**あなたのプロジェクト(`TestProjects/<name>/`)は
-  この受け手ディレクトリに作られる**。foundation-tester は「ツール(CLI・拡張)」として横に clone+build
-  するだけで、Projects はここに住む。作成は `fleetest init`。
+  ディレクトリを fleetest テストパッケージにする。**テストプロジェクト(`TestProjects/<name>/`)は
+  この受け手ディレクトリに作られる**(セットアップでは作らず、空の `TestProjects/` だけ置く。プロジェクトと
+  プロファイルは後から `/fleetest-profiles` が作る)。foundation-tester は「ツール(CLI・拡張)」として横に
+  clone+build するだけで、Projects はここに住む。作成は `fleetest init --no-project`。
 - **clone 構成(foundation-tester クローンの中で直接作業する保守者/PoC)**: Projects はクローンの
   `TestProjects/` に作る。作成は `fleetest project create`。
 
@@ -34,19 +35,17 @@ description: fleetest を使いたい受け手を、自分の iOS/Android アプ
 
 - **各ステップの後に検証ゲートを通す**（exit code / doctor / 到達確認）。緑になるまで次へ進まない。
 - **人間チェックポイント（🧑）では必ず停止して依頼・確認する**。エージェントでは代行できない。
-- **人に何かを聞くときは必ず選択ダイアログ（Claude Code なら AskUserQuestion）を使う**。チャットに質問文を書いて
+- **セットアップは何も質問しない**(人にしか解決できない阻害を除く)。**人に何かを聞くときは必ず選択ダイアログ（Claude Code なら AskUserQuestion）を使う**。チャットに質問文を書いて
   答えを待たない（テキストで聞くと見落とされ、フローが止まる）。自由入力は Other で受ける。
-- **セットアップ値は探索せず人間に聞く**：Bundle ID・App ID・ビルド済み `.app`/`.apk` のパス・
+- **セットアップ値は探索しない**：Bundle ID・App ID・ビルド済み `.app`/`.apk` のパス・
   テスト対象アプリの所在などを、兄弟ディレクトリや別リポジトリを勝手に `find`/`grep` で探索して
-  確定してはならない。値は人間から得る（`appPath` のように**聞かない**値は、人間が自発的に示すまで
-  未設定のままにする。探索で見つけた候補を既定値として提示するのも避ける）。
-  「質問を減らすため」の事前調査も禁止。
+  確定してはならない。セットアップはこれらを扱わない（後の `/fleetest-profiles` が人間から得る）。
 - **冪等に**：既に済んでいる状態を検出したらスキップする（再実行に強く）。
 - 失敗したら握りつぶさず、doctor 出力や stderr をそのままユーザーに見せて相談する。
 
 ## 手順
 
-### 0. 前提の機械判定と一括質問
+### 0. 前提の機械判定
 
 **まず状態判定スクリプトを実行する**(構成・既存クローン・環境を1回で判定する。読み取りのみ):
 
@@ -65,7 +64,7 @@ bash <SCRIPTS>/preflight.sh
 
 出力は `key=value` 行 + 判定。**終了コードで分岐する**:
 
-- **0 = ready** → 未導入。ステップ0の質問へ進む。`tool_root_exists=` / `cli_built=` で既存クローンの有無も分かる。
+- **0 = ready** → 未導入。導入へ進む(この導入は何も質問しない)。`tool_root_exists=` / `cli_built=` で既存クローンの有無も分かる。
 - **2 = installed** → 導入済み。**セットアップを続けない**(下の再実行ガードと同じ扱い)。用途別に案内する。
 - **1 = blocked** → 導入不可。**出力の理由行をそのまま 🧑 に見せて対処を依頼する**(理由ごとに対処が違い、
   `xcode_error=` と `xcode_select_path=` から切り分け済みの具体的なコマンドが出る。
@@ -76,7 +75,7 @@ bash <SCRIPTS>/preflight.sh
 以下は同じ判定を手で行う場合の内訳(スクリプトが使えないとき)。
 
 **導入済み判定(再実行ガード)**: カレントに `Package.swift` があり `Sources/FTScenarioRunner/` が
-**無い**場合、質問をする前に `Package.swift` の**中身**で二分する(ファイルの有無だけで判定しない —
+**無い**場合、導入の前に `Package.swift` の**中身**で二分する(ファイルの有無だけで判定しない —
 受け手が自分のアプリの既存リポジトリで実行したケースと区別がつかない):
 
 - **fleetest マーカー(`// === fleetest projects begin`)か foundation-tester への `.package` 依存が無い** =
@@ -105,33 +104,14 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
   `sudo xcodebuild -license accept` を依頼。sudo は代行不可）
 - 初回セットアップ: `xcodebuild -checkFirstLaunchStatus`（exit 0 以外なら 🧑 に `xcodebuild -runFirstLaunch` を依頼）
 
-**セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）。
-**必ず選択ダイアログ（Claude Code なら AskUserQuestion）で聞く。チャットに箇条書きで質問文を書いて答えを待ってはいけない**
-（実際にテキストで聞いてしまい、ユーザーがダイアログを受け取れなかった事故がある）。
-**1回のダイアログに次の3問をまとめる**（各問に選択肢を用意する。自由入力は「その他」で受ける）:
+**このセットアップは何も質問しない**(人にしか解決できない阻害 = license 同意・sudo・Xcode 導入などを除く)。
+プロジェクト名・bundle ID・プラットフォームは聞かない —— テストプロジェクトとプロファイルは、セットアップの後に
+`/fleetest-profiles`(クイックスタート)が作る(プロジェクト名は常に `default`。iOS/Android・アプリID はそこで聞く)。
+**clone 先も聞かない**（`tool_root=` を完了報告で伝えれば足りる)。
+受け手が別の clone 先を明示した場合だけ、そのパスを TOOL_ROOT にする。
 
-| 質問 | header | 選択肢（先頭を推奨にする） |
-|---|---|---|
-| プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`。SPM ターゲット名になる） | Project | カレントフォルダ名から作った候補（推奨）/ `MyAppTests` / Other=自由入力 |
-| テスト対象アプリの bundle ID | Bundle ID | 「まだ分からない（後で設定）」/ Other=自由入力 |
-| テスト対象のプラットフォーム | Platform | iOS / Android / 両方 |
-
-**clone 先は聞かない**（`tool_root=` を完了報告で伝えれば足りる)。
-受け手が別の clone 先を明示した場合だけ追加で 1 問聞く。
-
-- bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
-  まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
-  差し替えれば済む →ステップ6）。
-- **選択肢の候補は preflight の出力をそのまま使う**(`folder_name=` → プロジェクト名)。
-  `scutil` や `basename` を別途実行しない(承認回数が増えるだけ)。**他リポジトリを探索して埋めない**。
-- clone 先は外部パッケージ構成のみ関係（→ステップ0.5）。指定があればそのパスが TOOL_ROOT。
-
-**ビルド済み `.app`/`.apk` のパス（`appPath`）はセットアップでは聞かない**（→ステップ6。
-後から `profiles/apps/` を編集して設定できる）。
-
-→ **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**（バージョン・パスの推測は事故のもと。
-探索で見つけた候補を既定値として提示するのも避ける）。
-（アプリの表示名・デバイスもここでは聞かない。プロファイルの作成はセットアップの後、クイックスタートで行う。）
+**他リポジトリを勝手に探索して値を埋めない**（バージョン・パスの推測は事故のもと）。
+ビルド済み `.app`/`.apk` のパス（`appPath`）も、アプリの表示名・デバイスも、ここでは扱わない。
 
 ### 0.5 入り方の判定と TOOL_ROOT の取得
 
@@ -166,14 +146,14 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 端末が無い＝エージェント実行では尋ねられないので必ず中止 `[fail]` になる。その場合は 🧑 に
 `git -C <TOOL_ROOT> stash`（残したい）か `reset --hard`（捨ててよい）を依頼してから再実行する）。
 版固定（detached）は触らない）。
-ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
+**引数は渡さない**（プロジェクト名・bundle ID・プラットフォームはここでは扱わない。**探索もしない**）。
 
 ```
-bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--app-id <bundleID>]
+bash <SCRIPTS>/install.sh
 ```
 
-値はすべてステップ0の回答と preflight の出力から作る。**プロファイル(アプリ/実行)はインストーラでは
-作らない** —— セットアップの後、クイックスタート(docs/user-docs/quick-start_ja.md)で作る。
+**プロジェクトもプロファイル(アプリ/実行)もインストーラでは作らない**（空の `TestProjects/` だけ置く）——
+セットアップの後、クイックスタート(docs/user-docs/quick-start_ja.md。`/fleetest-profiles`)で作る。
 
 - **インストーラが規約位置(`.claude/`・`.mcp.json`)を用意するのは Claude Code だけ**。入口の
   `AGENTS.md` は他のエージェントも読む。他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの
@@ -188,7 +168,7 @@ bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--
   スクリプトでは、直したはずの挙動を確認できない。
   clone 先を変えるなら `--tool-root <dir>`。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
-  `fleetest init` ではなく `project create` 経路になる。`.mcp.json` はクローンの中に書かれる
+  `fleetest init` は走らない。`.mcp.json` はクローンの中に書かれる
   ―― 追跡していないのでクローンは dirty にならない）。
 
 **出力の読み方**（行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` が機械可読部）:
@@ -206,7 +186,7 @@ bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--
   解決に人間の操作が要るもの（Xcode の license 同意・`-runFirstLaunch`・Homebrew 導入）は 🧑 に依頼する。
 
 **以降のステップ1〜4・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
-必ず実施するのは **6（appPath/bundle ID の案内）・9（反映操作の案内）** だけ。
+必ず実施するのは **9（反映操作の案内）** だけ。
 
 **インストーラの出力に載っている情報を、別コマンドで取り直さない**（承認が増えるだけ）:
 
@@ -249,24 +229,24 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
 **FM の赤はここでも続行してよい** — 2.5 の方針どおり完了報告に残すだけ）。
 それ以外の赤（未導入・無効）が残る項目は、ステップ0に戻って人間に対処を依頼してから再実行。次へ。
 
-### 4. 自分のプロジェクトを作る(構成で分岐)
+### 4. テストパッケージを作る(構成で分岐。プロジェクトは作らない)
 
-ステップ0で確認したプロジェクト名と bundle ID を使い、**WORK_DIR(カレント)で**作る:
+**WORK_DIR(カレント)で**作る:
 
-- **外部パッケージ構成(既定)**: `fleetest init` で WORK_DIR を fleetest テストパッケージにする。
-  TOOL_ROOT を SPM のローカルパス依存として引き、最初のプロジェクトを登録する:
+- **外部パッケージ構成(既定)**: `fleetest init --no-project` で WORK_DIR を fleetest テストパッケージにする。
+  TOOL_ROOT を SPM のローカルパス依存として引く:
 
 ```
-../foundation-tester/.build/debug/fleetest init \
-  --fleetest-path ../foundation-tester --name <ProjectName> --app-id <bundleID>
+../foundation-tester/.build/debug/fleetest init --no-project --fleetest-path ../foundation-tester
 ```
 
-  bundle ID が未確定なら `--app-id` を**省略**する(既定のプレースホルダ `com.example.myapp` で作成される)。
-
-  → WORK_DIR に `Package.swift`(空マーカー区間 + fleetest 依存)と `TestProjects/<ProjectName>/`、
-  `.vscode/settings.json`(`fleetest.binaryPath`・`fleetest.project`。拡張の手動設定を不要にする)が生成され、
-  受け手専用の `/fleetest-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
-  この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
+  → WORK_DIR に `Package.swift`(空マーカー区間 + fleetest 依存)と**空の** `TestProjects/`、
+  `.vscode/settings.json`(`fleetest.binaryPath`。`fleetest.project` は書かない = 拡張が単一/既定プロジェクトを
+  自分で解決する)が生成され、受け手専用の `/fleetest-setup` スキルが `.claude/skills/` に上書きされる
+  (次回以降の実行はそちらを使う。この実行はロード済み手順のまま継続してよい)。
+  **プロジェクトは作られない** —— セットアップの後、`/fleetest-profiles` が `TestProjects/default/` を作る
+  (VSCode 拡張も、`TestProjects/` があって `default` が無ければ起動時に自動で作る)。
+  ローカルパス依存なので `swift build` はネットワーク不要・
   TOOL_ROOT を `git pull` すれば fleetest 側も更新される。git 依存にしたい場合のみ `--fleetest-url
   https://github.com/wave1008/foundation-tester.git` を使う(`--fleetest-path` と排他。追従先は `main`。
   **git 依存では `.vscode/settings.json` の `fleetest.binaryPath` が自動設定されない** — CLI・拡張は
@@ -274,8 +254,8 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
   binaryPath の手動設定を 🧑 に案内する)。
   以降このスキル内で `fleetest ...` と書いたら `../foundation-tester/.build/debug/fleetest ...` を実行する。
 
-- **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run fleetest project create <ProjectName> --app-id <bundleID>`。
-  `TestProjects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
+- **clone 構成**: プロジェクトは作らない(クローンの `TestProjects/` に既にあるものを使う。要るときは
+  `/fleetest-profiles` が `swift run fleetest project create default` で作る)。
 
 **検証ゲート(init 後の .gitignore)**: WORK_DIR が git リポジトリ(既存 repo 直下を含む)なら、
 `.gitignore` に `.build/` と `TestProjects/*/reports/` があることを確認する(`fleetest init` が自動整備する。
@@ -284,18 +264,14 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
 コミット、`.build/` と `TestProjects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
 絶対パスを含むためマシン固有。
 
-### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する
+### 6. プロジェクトとプロファイルは後から作る(質問も設定もしない)
 
-bundle ID をプレースホルダで続行した場合は、`TestProjects/<ProjectName>/profiles/apps/<projectname>.json` の
-`app`(ios/android セクション)を実IDへ差し替えるまでアプリの起動(launch)が失敗することを 🧑 に伝える
-(セットアップ・dry-run はプレースホルダのままで完走できる)。ステップ9の完了報告にも「bundle ID 要設定」を
-残す。
-
-`appPath` はセットアップでは**聞かない・書かない**（未設定なら `autoInstall` は無効のまま =
-インストール済みのアプリをそのまま使う）。自動インストールが必要になったら、後から
-`TestProjects/<ProjectName>/profiles/apps/<projectname>.json` の `appPath` をビルド済みアプリ
-（ios は `.app`、android は `.apk`）へ向ける。相対パスは **WORK_DIR(そのプロジェクトの
-Package.swift があるディレクトリ)基準**・`~` 展開可・絶対パス可。
+テストプロジェクト(`TestProjects/default/`)・アプリプロファイル(bundle ID・`appPath`)・実行プロファイルは
+セットアップでは作らない・聞かない・書かない。ステップ9の案内どおり、`/fleetest-profiles`
+(クイックスタート)で iOS/Android とアプリIDを聞いて作る。`appPath` はそこでも**聞かない**
+（未設定なら `autoInstall` は無効 = インストール済みのアプリをそのまま使う。後から
+`TestProjects/default/profiles/apps/<appRef>.json` の `appPath` をビルド済みアプリ
+（ios は `.app`、android は `.apk`。相対パスは WORK_DIR 基準・`~`・絶対可）へ向けられる）。
 **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない。**
 
 ### 7. VSCode 拡張のインストール
@@ -459,24 +435,26 @@ Claude Code 以外のエージェントは、このコピーを使わずクロ�
   `foundation-tester` フォルダ）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - 左下のステータスバーの **fleetest mobile** からデバイスモニターを開く
-- プロファイルの作成と最初のシナリオ作成は、クイックスタート(`<TOOL_ROOT>/docs/user-docs/quick-start_ja.md`。
-  英語は `quick-start.md`)の手順で進める
+- **テストプロジェクトとプロファイルの作成はまだ**。続けて `/fleetest-profiles` を実行する
+  （iOS/Android とアプリIDを聞いて `TestProjects/default/` とプロファイルを作る）。最初のシナリオ作成は
+  `/fleetest-scenario`。流れはクイックスタート(`<TOOL_ROOT>/docs/user-docs/quick-start_ja.md`。
+  英語は `quick-start.md`)
 
 **この案内より前に VSCode の反映操作（Reload Window 等）を求めたり、完了したか質問したりしない** ——
 ここまでユーザーが操作するタイミングは一度も無い。
 
 拡張の設定操作は原則不要（外部パッケージ構成では `fleetest init` が `.vscode/settings.json` に
-`fleetest.binaryPath`・`fleetest.project` を生成済み。init が「マージできず未更新」警告を出していた場合のみ
+`fleetest.binaryPath` を生成済み（`fleetest.project` は書かない。プロジェクトは後から作る）。init が「マージできず未更新」警告を出していた場合のみ
 手動設定を案内: `fleetest.binaryPath` = `../foundation-tester/.build/debug/fleetest` または絶対パス。
 clone 構成では既定 `.build/debug/fleetest` のままでよい）。プロジェクトが複数あるなら設定
-`fleetest.project` を `<ProjectName>` にするか、拡張の選択で選ぶことも添える。
+設定 `fleetest.project` で指定するか、拡張の選択で選ぶことも添える。
 
 案内したら**そこで処理を終了する**。指示にない追加作業を自分の判断で始めない（コミット・push・
 別プロファイルやシナリオの追加作成・最適化提案などをこちらから勝手に行わない）。
 
 ## 完了後
 
-外部パッケージ構成では、以後の `/fleetest-setup`(デバイス定義・アプリパス・動作確認)は `fleetest init` が
+外部パッケージ構成では、以後の `/fleetest-setup`(環境検証・プロジェクトとプロファイルの作成案内・動作確認)は `fleetest init` が
 WORK_DIR に置いた**受け手専用スキル**が担う。更新（新しい修正版が出たとき）は `/fleetest-update` を使う
 （TOOL_ROOT で git pull → swift build 再ビルド → 依存版を揃える → 拡張再インストール → Reload Window）。
 手動手順は docs/user-docs/getting-started_ja.md「更新」。

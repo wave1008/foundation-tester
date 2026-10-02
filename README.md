@@ -95,7 +95,7 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
 git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
-bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
+bash ../foundation-tester/Scripts/install.sh
 ```
 
 - インストーラが作業フォルダの `.claude/skills/` へ写すスキル(Claude Code では `/fleetest-setup` のように呼ぶ):

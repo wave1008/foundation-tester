@@ -5069,7 +5069,10 @@ false green になる(以前 install.sh のステップ7.7 が実際に出して
 - **公開 products**: `Package.swift` の `products:` に `.library`(FTScenarioRunner / FTDSL / FTCore)と
   `.executable`(fleetest)。受け手のシナリオターゲットはこれを `.product(package: "foundation-tester")` で引く。
 - **`fleetest init`**: 受け手の Package.swift(空マーカー区間 + swift5Mode + fleetest 依存)を書き、
-  `ProjectScaffold.createAndRegister` が最初のプロジェクトを登録。内外は `isExternalPackage`
+  `ProjectScaffold.createAndRegister` が最初のプロジェクトを登録。**`--no-project` ではプロジェクトを作らず空の
+  `TestProjects/` だけ置く**(`fleetest.project` も `.vscode/settings.json` に書かない・受け手スキルも名前を焼かない。
+  install.sh は `--name` 無しの新規導入でこちらを使い、プロジェクト `default` は `/fleetest-profiles` か VSCode 拡張が後から作る。
+  `--name` ありの導入 = リモートランナーは従来どおり)。内外は `isExternalPackage`
   (`Sources/FTScenarioRunner` の有無)で自動判定し、`PackageManifestEditor` が内部=target 参照 /
   外部=`.product` 参照のスタンザを生成する(`project sync` も同じ判定)。
 - **repoRoot の二役分離**: シナリオビルドは `ScenarioHost.packageRoot()`(= 受け手パッケージ。Package.swift

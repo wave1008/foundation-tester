@@ -100,6 +100,10 @@ fleetest profile setup --platform android --app-id com.sutec.mobile --auto-devic
 `--auto-device` は、このマシンで利用可能な Simulator/Emulator を自動で選びます(起動していない
 ものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
 
+セットアップはテストプロジェクトを作りません。AI アシスタントは `TestProjects/default/` が無ければ先に作ります。
+手で進めるときは、上のコマンドの前に `fleetest project create default --platform <ios|android|both>` を実行します
+(VSCode 拡張も Reload Window 後の起動時に作ります)。
+
 </details>
 
 プロファイルの詳細は[プロファイル](./reference/project/profiles_ja.md)。

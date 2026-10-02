@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fleetest インストーラ。/fleetest-setup スキルの「機械作業」だけを1コマンドに固めたもの。
 #
-#   bash <SCRIPTS>/install.sh --work-dir <受け手ディレクトリ> --name <ProjectName> [--app-id <bundleID>]
+#   bash <SCRIPTS>/install.sh --work-dir <受け手ディレクトリ> [--name <ProjectName> [--app-id <bundleID>]]
 #   <SCRIPTS> = クローンの Scripts/(SKILL.md の3つ上。SKILL.md は常にクローンから読む)。
 #   TOOL_ROOT が無ければ clone から丸ごと(既定は隣)。**スキルからは curl | bash で呼ばない**
 #   (エージェントの安全確認に止められる。fleetest-setup SKILL.md ステップ0)
@@ -13,6 +13,9 @@
 #           **冪等**(済んだ手順は skip)。
 #           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
 #           SKILL.md 直読みで使う。docs/user-docs/reference/tools/other_agents.md)。
+#           **プロジェクトは --name を渡されたときだけ作る**(リモートランナーの導入が渡す)。--name 無しの
+#           新規導入は `fleetest init --no-project` で空の TestProjects/ だけ置き、プロジェクトは後から
+#           /fleetest-profiles(名前は常に default)か VSCode 拡張が作る。
 # やらないこと: プロファイル(apps/ + runs/)の作成(クイックスタートの仕事)・appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
@@ -65,9 +68,10 @@ usage() {
 Usage: install.sh [options]
 
   --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
-  --name <name>      Project name to create (letters, digits, _ and -; derived from the directory name when omitted)
-  --app-id <id>      Bundle ID / package name of the app under test (optional, can be changed later)
-  --platform <p>     Which run profiles to scaffold: ios / android / both (default both)
+  --name <name>      Create a project with this name (letters, digits, _ and -). Optional: without it no project is
+                     created (only an empty TestProjects/); /fleetest-profiles creates TestProjects/default later
+  --app-id <id>      Bundle ID / package name of the app under test (only with --name; optional)
+  --platform <p>     Which run profiles to scaffold with --name: ios / android / both (default both)
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-clone         Do not clone when missing (an existing clone is required)
   --no-pull          Do not update an existing clone (to pin a version, or while developing the tool)
@@ -554,8 +558,11 @@ if [ "$DO_PROJECT" = "0" ]; then
   record "project" skip "--skip-project"
 elif project_exists; then
   record "project" skip "TestProjects/$PROJECT_NAME already exists"
+elif [ -z "$PROJECT_NAME" ] && { [ "$LAYOUT" = "clone" ] || [ -f "$WORK_DIR/Package.swift" ]; }; then
+  # 既存パッケージ・クローン構成でプロジェクトの指定が無い = 作らない(後から /fleetest-profiles)。
+  # 無関係な Package.swift への導入拒否は、プロジェクトを作る分岐(下)だけが持つ
+  record "project" skip "no project requested (/fleetest-profiles creates TestProjects/default)"
 elif [ "$LAYOUT" = "clone" ]; then
-  [ -n "$PROJECT_NAME" ] || die "project" "--name is required in the clone layout" 4
   echo "==> fleetest project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
@@ -565,7 +572,6 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
   grep -q "fleetest projects begin\|foundation-tester" "$WORK_DIR/Package.swift" \
     || die "project" "$WORK_DIR/Package.swift is not an fleetest package (run this in an empty, test-only directory)" 0
   # 受け手パッケージは確立済み。プロジェクトだけ追加する
-  [ -n "$PROJECT_NAME" ] || die "project" "--name is required to add to an existing package" 4
   echo "==> fleetest project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
@@ -573,10 +579,16 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> fleetest init($WORK_DIR)"
-  ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
-      "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
-    || die "project" "fleetest init failed" 4
-  record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"
+  if [ -z "$PROJECT_NAME" ]; then
+    ( cd "$WORK_DIR" && "$FT" init --no-project --fleetest-path "$TOOL_ROOT" ) \
+      || die "project" "fleetest init failed" 4
+    record "project" ok "created the consumer package (no project yet — /fleetest-profiles creates TestProjects/default)"
+  else
+    ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
+        "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
+      || die "project" "fleetest init failed" 4
+    record "project" ok "created the consumer package (TestProjects/$PROJECT_NAME)"
+  fi
 fi
 
 # ---- 4 の検証ゲート: .gitignore(SKILL ステップ4) -----------------------------

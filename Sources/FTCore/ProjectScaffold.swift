@@ -90,6 +90,13 @@ public enum ProjectScaffold {
         """
     }
 
+    /// `fleetest init --no-project` が置く空の `TestProjects/`。VSCode 拡張はこのディレクトリが
+    /// 無いと何も登録しない(あれば `default` プロジェクトを自動作成する)ので、器だけは必ず作る。
+    public static func ensureEmptyProjectsDirectory(repoRoot: URL) throws {
+        try FileManager.default.createDirectory(
+            at: ProjectStore.projectsDir(repoRoot: repoRoot), withIntermediateDirectories: true)
+    }
+
     /// 受け手のパッケージにセットアップスキル `.claude/skills/fleetest-setup/SKILL.md` を書く
     /// (fleetest init から呼ぶ)。受け手が自分のプロジェクトをエージェントで開いて
     /// `/fleetest-setup` で残りのセットアップ(デバイス定義・アプリパス・実行)を駆動できる
@@ -101,9 +108,10 @@ public enum ProjectScaffold {
     /// 戻り値は書いた相対パス。
     @discardableResult
     public static func writeRecipientSkill(
-        packageRoot: URL, projectName: String
+        packageRoot: URL, projectName: String?
     ) throws -> [String] {
-        let body = recipientSetupSkill(projectName: projectName)
+        let body = projectName.map { recipientSetupSkill(projectName: $0) }
+            ?? recipientSetupSkillWithoutProject()
         let relative = "\(AgentIntegration.skillsDirectory)/fleetest-setup"
         let dir = packageRoot.appendingPathComponent(relative)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -178,10 +186,12 @@ public enum ProjectScaffold {
 
     /// 受け手のパッケージに `.vscode/settings.json` を書く(fleetest init から呼ぶ)。
     /// `fleetest.project`/`fleetest.binaryPath` を自動設定し、受け手の手動設定を不要にする。
+    /// projectName が nil なら `fleetest.project` は書かない(拡張が単一/既定プロジェクトを自分で解決する。
+    /// 既存の値も消さない)。
     /// 既存ファイルが JSON としてパースできない(VSCode の settings.json は JSONC のことがある)場合は
     /// 触らず警告のみ出して false を返す(init 全体を失敗させない)
     public static func writeVSCodeSettings(
-        packageRoot: URL, fleetestPath: String?, projectName: String
+        packageRoot: URL, fleetestPath: String?, projectName: String?
     ) throws -> Bool {
         let dir = packageRoot.appendingPathComponent(".vscode")
         let url = dir.appendingPathComponent("settings.json")
@@ -198,7 +208,9 @@ public enum ProjectScaffold {
             settings = parsed
         }
 
-        settings["fleetest.project"] = projectName
+        if let projectName {
+            settings["fleetest.project"] = projectName
+        }
         if let fleetestPath {
             settings["fleetest.binaryPath"] = "\(fleetestPath)/.build/debug/fleetest"
         }
@@ -377,6 +389,64 @@ public enum ProjectScaffold {
         ## 更新(新しい版が出たとき)
         clone した foundation-tester で `git pull` して `swift build` し直す(配布口は main の1本。
         Package.swift の依存は clone のパスか main 追従なので、版を書き換える作業は無い)。
+        """
+    }
+
+    /// `init --no-project` 用。プロジェクト名・アプリ参照を焼き込まない(プロジェクトは
+    /// `/fleetest-profiles` が `default` で作る)。
+    static func recipientSetupSkillWithoutProject() -> String {
+        return """
+        ---
+        name: fleetest-setup
+        description: この fleetest テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・テストプロジェクトと実行プロファイルの作成(/fleetest-profiles)・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
+        ---
+
+        # fleetest セットアップ(このパッケージ)
+
+        このパッケージは `fleetest init --no-project` で作られた fleetest テストパッケージ。**テストプロジェクトはまだ無い**
+        (`TestProjects/` は空)。fleetest CLI は foundation-tester を clone して `swift build` 済みであることが前提
+        (未ビルドなら `git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester` して
+        `swift build`。clone 先は任意 — 既定はこのパッケージの**隣**で、パッケージの下にネストさせない)。
+        TOOL_ROOT = Package.swift の `.package(path:)` が指す clone。以降 `fleetest ...` は
+        `<TOOL_ROOT>/.build/debug/fleetest ...`(既定 `../foundation-tester/.build/debug/fleetest ...`)を
+        指す(PATH 登録は不要)。
+
+        ## 原則
+        - 各ステップの後に検証ゲート(exit code / doctor)を通す。緑になるまで次へ進まない。
+        - 人間チェックポイント(🧑)では**停止して依頼・確認する**(エージェントでは代行不可)。
+        - **Bundle ID・アプリの `.app`/`.apk` パス等のセットアップ値は、兄弟ディレクトリや別リポジトリを
+          勝手に `find`/`grep` で探索して確定してはならない。値は人間から得る**(`appPath` は聞かない)。
+        - 失敗は握りつぶさず、doctor 出力や stderr をそのままユーザーに見せて相談する。
+
+        ## 手順
+
+        ### 0. 前提の機械判定
+        環境は機械判定する(人間に「入っているか」を聞かない)。失敗した項目だけ 🧑 停止して対処を依頼(代行不可):
+        - macOS 26+: `sw_vers -productVersion` / Xcode 26+: `xcodebuild -version`(license 未同意エラーで
+          落ちたら 🧑 に `sudo xcodebuild -license accept` を依頼)
+        - Apple Intelligence: `fleetest doctor --fm-only`(exit 0 で可。**exit 1 でも中断せず続行** —
+          FM は視覚検証・シナリオ生成にだけ必要な任意機能。完了報告に要有効化の旨を残す)
+
+        ### 1. 環境検証
+        `fleetest doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
+
+        ### 2. テストプロジェクトと実行プロファイルを作る
+        `/fleetest-profiles` を実行する。`TestProjects/` にプロジェクトが無ければ、名前 `default` で作ったうえで
+        アプリプロファイルと実行プロファイル(デバイス)まで作る(名前は聞かない)。
+
+        ### 3. シナリオを1本用意
+        - `TestProjects/default/docs/testbases/` にテストの元資料(仕様・観点)を置き、それを根拠にシナリオを書く(任意だが推奨)。
+        - `/fleetest-scenario` で書く、または `TestProjects/default/scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)。
+
+        ### 4. デバイス不要の動作確認
+        ```bash
+        swift build --product fleetest-scenarios-default
+        fleetest api list-scenarios --project default
+        fleetest api run --project default --scenario <クラス名> --dry-run --skip-build
+        ```
+
+        ## 更新(新しい版が出たとき)
+        clone した foundation-tester で `git pull` して `swift build` し直す(配布口は main の1本)。
         """
     }
 

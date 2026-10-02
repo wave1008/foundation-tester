@@ -14,13 +14,18 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 > 以下は `/` 形で書くので、別の記法のエージェントではそちらへ読み替える。
 
 1つのアプリ×1プラットフォーム分の **アプリ/実行プロファイルの二点セット** を作る。
-既存プロジェクト(`fleetest project create` / `fleetest init` 済み)に対して実行する。未セットアップなら
-`/fleetest-setup` を案内する。
+プロジェクトが無ければこのフローが作る(下の「プロジェクトと WORK_DIR」)。fleetest のパッケージ自体が
+無い(Package.swift が無い)ときだけ `/fleetest-setup` を案内する。
 
 ## 前提の確定(最初に1回)
 
 - **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/TestProjects/<プロジェクト>/profiles/` に住む。
   TestProjects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
+  **プロジェクトが1つも無ければ作る(名前は常に `default`。VSCode 拡張の自動作成と同じ名前で、名前は聞かない)**:
+  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create default --platform <ios|android|both>
+  [--app-id <アプリID>]` を実行してからステップ3以降へ進む(プロジェクト名は以降 `default`)。
+  WORK_DIR に fleetest のパッケージ(`Package.swift` に fleetest の依存か `foundation-tester` の記述)が無ければ
+  作らず `/fleetest-setup` を案内する。
 - **fleetest CLI の在り処**: clone 構成は `swift run fleetest ...`、外部パッケージ構成は
   `<TOOL_ROOT>/.build/debug/fleetest ...`(TOOL_ROOT は WORK_DIR/Package.swift の `.package(path:)` から
   解決。無ければ既定の `../foundation-tester`。判定は `Sources/FTScenarioRunner/` の有無)。

@@ -30,7 +30,7 @@ To go through it by hand without an agent, clone the tool and run the same mecha
 ```bash
 mkdir -p ~/my-app-tests && cd ~/my-app-tests
 git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
-bash ../foundation-tester/Scripts/install.sh --name MyApp --app-id com.example.myapp
+bash ../foundation-tester/Scripts/install.sh
 ```
 
 The installer also writes the Claude Code artefacts (`.mcp.json`, `.claude/settings.json`, and

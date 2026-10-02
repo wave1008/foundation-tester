@@ -1,6 +1,8 @@
 // fleetest init: 受け手のパッケージを scaffold する(外部パッケージ構成)。
 // カレントディレクトリに、fleetest を SPM 依存として引く Package.swift(空マーカー区間つき)を書き、
 // 直後に最初のテストプロジェクトを createAndRegister(external 自動判定で .product 参照スタンザ)する。
+// --no-project ではプロジェクトを作らず空の TestProjects/ だけ置く(プロジェクトは /fleetest-profiles か
+// VSCode 拡張が `default` で後から作る)。
 // 対向: Sources/FTCore/ProjectScaffold.externalManifest / PackageManifestEditor(external モード)。
 
 import ArgumentParser
@@ -13,14 +15,18 @@ struct InitCommand: AsyncParsableCommand {
         abstract: "Create the consumer package"
             + " (a Package.swift that depends on fleetest via SPM, plus a first test project)")
 
+    @Flag(name: .customLong("no-project"),
+          help: "Do not create a test project (only the package and an empty TestProjects/; the project is created later, e.g. by /fleetest-profiles)")
+    var noProject = false
+
     @Option(help: "Project name (becomes an SPM target name; defaults to one derived from the current directory)")
     var name: String?
 
     @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
-    var appID: String = ProjectScaffold.placeholderAppID
+    var appID: String?
 
     @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
-    var platform: String = "both"
+    var platform: String?
 
     @Option(name: .customLong("fleetest-path"),
             help: "Path to a local foundation-tester (depends via .package(path:); for PoCs)")
@@ -44,14 +50,25 @@ struct InitCommand: AsyncParsableCommand {
                 + " (run this in an empty directory)")
         }
 
+        if noProject {
+            let conflicting = [name != nil ? "--name" : nil,
+                               appID != nil ? "--app-id" : nil,
+                               platform != nil ? "--platform" : nil].compactMap { $0 }
+            guard conflicting.isEmpty else {
+                throw ValidationError("--no-project cannot be combined with "
+                    + conflicting.joined(separator: " / "))
+            }
+        }
+
         let packageName = cwd.lastPathComponent
         let projectName = name ?? Self.sanitizedName(packageName)
-        guard ProjectStore.isValidName(projectName) else {
+        guard noProject || ProjectStore.isValidName(projectName) else {
             throw ValidationError("invalid project name: \(projectName)"
                 + " (letters, digits, _ and - only; specify one with --name)")
         }
-        guard Self.isValidAppID(appID) else {
-            throw ValidationError("invalid --app-id: \(appID)"
+        let resolvedAppID = appID ?? ProjectScaffold.placeholderAppID
+        guard Self.isValidAppID(resolvedAppID) else {
+            throw ValidationError("invalid --app-id: \(resolvedAppID)"
                 + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
         }
 
@@ -69,15 +86,21 @@ struct InitCommand: AsyncParsableCommand {
             .write(to: manifest, atomically: true, encoding: .utf8)
 
         do {
-            let project = try ProjectScaffold.createAndRegister(
-                name: projectName, app: appID, repoRoot: cwd,
-                platforms: try Self.platforms(from: platform))
+            var project: TestProject?
+            if noProject {
+                try ProjectScaffold.ensureEmptyProjectsDirectory(repoRoot: cwd)
+            } else {
+                project = try ProjectScaffold.createAndRegister(
+                    name: projectName, app: resolvedAppID, repoRoot: cwd,
+                    platforms: try Self.platforms(from: platform ?? "both"))
+            }
+            let scaffoldedProjectName: String? = noProject ? nil : projectName
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
             try ProjectScaffold.writeRecipientSkill(
-                packageRoot: cwd, projectName: projectName)
+                packageRoot: cwd, projectName: scaffoldedProjectName)
             // VSCode 拡張が fleetest.project/fleetest.binaryPath を手動設定なしで解決できるように
             let wroteVSCodeSettings = try ProjectScaffold.writeVSCodeSettings(
-                packageRoot: cwd, fleetestPath: fleetestPath, projectName: projectName)
+                packageRoot: cwd, fleetestPath: fleetestPath, projectName: scaffoldedProjectName)
             // fleetest のコマンドを毎回 Bash 承認させないための許可リスト(fleetest 由来のみ)。
             // 失敗しても init は続行する
             var addedClaudeAllows: [String] = []
@@ -101,12 +124,19 @@ struct InitCommand: AsyncParsableCommand {
             }
             ConsoleOut.out("✅ Created the consumer package: \(packageName)")
             ConsoleOut.out("   Dependency: \(dependencyLine)")
-            ConsoleOut.out("   Project:    TestProjects/\(projectName)/ (add .swift files with @TestClass under scenarios/)")
-            ConsoleOut.out("   App config: point appPath in TestProjects/\(projectName)/profiles/apps/ at your own build")
-            ConsoleOut.out("   Build:      swift build --product \(project.productName)")
-            ConsoleOut.out("   Run:        fleetest run --project \(projectName) --profile ios")
+            if let project {
+                ConsoleOut.out("   Project:    TestProjects/\(projectName)/ (add .swift files with @TestClass under scenarios/)")
+                ConsoleOut.out("   App config: point appPath in TestProjects/\(projectName)/profiles/apps/ at your own build")
+                ConsoleOut.out("   Build:      swift build --product \(project.productName)")
+                ConsoleOut.out("   Run:        fleetest run --project \(projectName) --profile ios")
+            } else {
+                ConsoleOut.out("   Project:    none yet (empty TestProjects/); create one later with /fleetest-profiles"
+                    + " or `fleetest project create default --platform <ios|android>`")
+            }
             if wroteVSCodeSettings {
-                ConsoleOut.out("   VSCode ext: set fleetest.project/fleetest.binaryPath in .vscode/settings.json automatically")
+                ConsoleOut.out(project == nil
+                    ? "   VSCode ext: set fleetest.binaryPath in .vscode/settings.json automatically"
+                    : "   VSCode ext: set fleetest.project/fleetest.binaryPath in .vscode/settings.json automatically")
             }
             if !addedClaudeAllows.isEmpty {
                 ConsoleOut.out("   Claude Code: added fleetest command permissions to .claude/settings.json"

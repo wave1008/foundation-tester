@@ -29,7 +29,7 @@ Clone https://github.com/wave1008/foundation-tester next to this folder, then se
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-   It clones, builds, and creates the project (you create the profiles in the [Quick Start](quick-start.md))
+   It clones and builds, and sets up the test package (you create the project and the profiles in the [Quick Start](quick-start.md))
 
 2. Run `Developer: Reload Window` in VSCode
 

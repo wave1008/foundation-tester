@@ -290,6 +290,48 @@ final class ProjectScaffoldTests: XCTestCase {
                       "frontmatter が SKILL.md の形になっていない")
     }
 
+    // MARK: - init --no-project(プロジェクトを作らない導入)
+
+    func testNoProjectLayoutHasEmptyProjectsDirectoryAndNoProject() throws {
+        try ProjectScaffold.ensureEmptyProjectsDirectory(repoRoot: packageRoot)
+        var isDirectory: ObjCBool = false
+        let path = packageRoot.appendingPathComponent("TestProjects").path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: path), [],
+                       "TestProjects/ の下にプロジェクトを作らない")
+    }
+
+    func testExternalManifestHasEmptyMarkerRegionBetweenTargetsBrackets() {
+        let manifest = ProjectScaffold.externalManifest(
+            packageName: "Pkg", dependencyLine: ".package(path: \"/x\"),")
+        XCTAssertTrue(manifest.contains("targets: [\n"
+            + "        // === fleetest projects begin(fleetest project create/sync が自動生成。手編集禁止)===\n"
+            + "        // === fleetest projects end ===\n"
+            + "    ]"), "マーカー区間が空のまま targets の中に入っている")
+    }
+
+    func testVSCodeSettingsWithoutProjectOmitsProjectKeyButKeepsBinaryPath() throws {
+        XCTAssertTrue(try ProjectScaffold.writeVSCodeSettings(
+            packageRoot: packageRoot, fleetestPath: "../foundation-tester", projectName: nil))
+        let settings = try readSettings()
+        XCTAssertNil(settings["fleetest.project"])
+        XCTAssertEqual(settings["fleetest.binaryPath"] as? String,
+                       "../foundation-tester/.build/debug/fleetest")
+    }
+
+    func testRecipientSkillWithoutProjectPointsToProfilesAndBakesNoName() throws {
+        let written = try ProjectScaffold.writeRecipientSkill(
+            packageRoot: packageRoot, projectName: nil)
+        let body = try String(contentsOf: packageRoot.appendingPathComponent(written[0]),
+                              encoding: .utf8)
+        XCTAssertTrue(body.hasPrefix("---\nname: fleetest-setup\n"))
+        XCTAssertTrue(body.contains("/fleetest-profiles"))
+        XCTAssertTrue(body.contains("TestProjects/default/"))
+        XCTAssertFalse(body.contains("--project Demo"))
+        XCTAssertFalse(body.contains("--app-id"), "アプリ ID はスキルが聞く。焼き込まない")
+    }
+
     // MARK: - .claude/settings.json(Bash 承認を減らす許可リスト)
 
     private var claudeSettingsURL: URL {

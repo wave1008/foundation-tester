@@ -100,6 +100,10 @@ Passing the built app to `--app-path` makes the run install it on the device aut
 is started automatically at run time). The run profiles are named after the platforms (`ios` and
 `android`).
 
+The setup creates no test project. The AI assistant creates `TestProjects/default/` first when it is missing;
+by hand, run `fleetest project create default --platform <ios|android|both>` before the commands above
+(the VSCode extension also creates it on startup after Reload Window).
+
 </details>
 
 See [Profiles](./reference/project/profiles.md) for the details.

@@ -64,7 +64,7 @@ cd /tmp/fleetest-check && git checkout 0.1.0 && swift build && .build/debug/flee
 
 ```bash
 git clone --branch feat/my-branch https://github.com/wave1008/foundation-tester.git ../foundation-tester
-FLEETEST_REF=feat/my-branch bash ../foundation-tester/Scripts/install.sh --work-dir <作業フォルダ> --name <名前>
+FLEETEST_REF=feat/my-branch bash ../foundation-tester/Scripts/install.sh --work-dir <作業フォルダ>
 ```
 
 壊れた `main` を引いた受け手を個別に逃がすときも同じ口を使う(`FLEETEST_REF=<1つ前の sha>`)。
