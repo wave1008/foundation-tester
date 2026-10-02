@@ -93,4 +93,43 @@ final class ValueAssertionOptionalTests: XCTestCase {
         }
         XCTAssertFalse(steps.contains(where: isFailed), "\(steps.map(\.status))")
     }
+
+    /// 数値比較は境界で向きが割れる(> と >= / < と <=)。数値に読めない値は失敗(緑に倒さない)。
+    /// **1件ずつ別の run で見る** —— 失敗はシナリオを打ち切るので、同じ run に並べると2件目以降が飛ばされて「通った」に見える
+    func testNumericComparisonsAtTheBoundary() {
+        let five: Int = 5
+        let checks: [(String, () -> Void, Bool)] = [
+            ("5 > 4", { five.thisIsGreaterThan(4) }, false),
+            ("5 > 5", { five.thisIsGreaterThan(5) }, true),
+            ("5 >= 5", { five.thisIsGreaterThanOrEqual(5) }, false),
+            ("5 < 6", { five.thisIsLessThan(6) }, false),
+            ("5 < 5", { five.thisIsLessThan(5) }, true),
+            ("5 <= 5", { five.thisIsLessThanOrEqual(5) }, false),
+            ("\"abc\" > 1", { "abc".thisIsGreaterThan(1) }, true),
+        ]
+        for (name, body, shouldFail) in checks {
+            let steps = run(body)
+            XCTAssertEqual(steps.count, 1, name)
+            XCTAssertEqual(isFailed(steps[0]), shouldFail, "\(name): \(steps[0].status)")
+        }
+    }
+
+    /// blank は空白・改行だけでも空とみなす(empty とは違う)。nil も blank
+    func testBlankTreatsWhitespaceAsEmpty() {
+        let spaces = " \n\t"
+        let none: String? = nil
+        let checks: [(String, () -> Void, Bool)] = [
+            ("spaces blank", { spaces.thisIsBlank() }, false),
+            ("spaces empty", { spaces.thisIsEmpty() }, true),
+            ("nil blank", { none.thisIsBlank() }, false),
+            ("a blank", { "a".thisIsBlank() }, true),
+            ("a not blank", { "a".thisIsNotBlank() }, false),
+            ("spaces not blank", { spaces.thisIsNotBlank() }, true),
+        ]
+        for (name, body, shouldFail) in checks {
+            let steps = run(body)
+            XCTAssertEqual(steps.count, 1, name)
+            XCTAssertEqual(isFailed(steps[0]), shouldFail, "\(name): \(steps[0].status)")
+        }
+    }
 }

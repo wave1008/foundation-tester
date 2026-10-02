@@ -29,14 +29,12 @@ class テキスト入力が正しくechoされること {
                     select("#txt_echo_single").textIs("single=hello123")
                     select("#txt_echo_length").textIs("len=8")
                     // value* は入力欄自体の値を見る(text* は echo Text)。非空欄なら OS 間で割れない
-                    // (空欄の valueIsEmpty は書かない: iOS は空欄の value に placeholder が返るため)
                     select("#field_single").valueIs("hello123")
                     select("#field_single").valueContains("hello1")
                     select("#field_single").valueIsNotEmpty()
                     // **対称形も同じ値で1回ずつ通す**。判定そのものは AssertKindsTests が固定済みで、
                     // ここで見るのは**ブリッジから来た value** に対して同じ結果が出ることだけ。
-                    // valueIsEmpty は書かない(空欄の value にプレースホルダが返る)。
-                    // valueMatchesDateFormat は日付を持つ入力欄が SUT に無いので置かない
+                    // 空欄の valueIsEmpty と valueMatchesDateFormat は 24_空欄と否定形の検証 が見る
                     select("#field_single").valueStartsWith("hello")
                     select("#field_single").valueEndsWith("123")
                     select("#field_single").valueMatches("^hello[0-9]+$")

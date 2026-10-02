@@ -97,6 +97,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | SwiftUI(UITableView) | 画面外の行ラベルが、id 無しで全行分木に残る | ラベルの部分一致で不在検証しない |
 | React Native(iOS in-app) | Modal の中身と背景の木が同居して見える(XCUITest は Modal だけ) | ダイアログ内は背景と衝突しない `#id` で指す |
 | Flutter | ダイアログは Navigator のオーバーレイ = 普通の木なので、見出しにも `#id` が付く(SwiftUI は付かない) | 見出しは SUT ごとに id / ラベルを選ぶ |
+| CMP(iOS)・Flutter(iOS)・RN(iOS / Android) | 入力欄の `text` が値ではなく**プレースホルダ**を返す(空欄で `"単一行"`。RN は入力後も)。他は空欄で空・入力後は nil。**`value` は全 SUT で値を返し、空欄は空**(2026-10-02 実測・5 SUT × 両 OS × 両エンジン) | 入力欄の値は `value*` で見る(空欄は `valueIsEmpty`)。入力欄に `text*` を当てない。witness は全 SUT の `24_空欄と否定形の検証.swift` |
 
 ---
 
