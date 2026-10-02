@@ -76,6 +76,14 @@ for arg in "$@"; do
 done
 [ -n "$SUTS" ] || SUTS="cmp flutter rn android-native ios-native"
 
+# 抑制は実際にデバイスを回すこの機械で(--on は上で向こうの e2ex.sh へ丸ごと渡しているので、ここは向こうで動く)。
+# HUP = 手元の ssh -tt が切れたとき
+# shellcheck source=crash-dialog.sh
+. "$ROOT/Scripts/crash-dialog.sh"
+trap 'crash_dialog_restore' EXIT
+trap 'crash_dialog_restore; exit 130' INT TERM HUP
+crash_dialog_suppress
+
 # エンジンの指定は iOS だけを回す(Android にエンジンの選択肢は無い。理由は Scripts/e2e.sh の同じ箇所)
 if [ "$IOS_ENGINE_ONLY" = 1 ] && [ "$RUN_IOS" = 0 ]; then
   echo "❌ --ios-inapp / --ios-xcuitest と --android は併記できません(前者は iOS だけを回します)" >&2

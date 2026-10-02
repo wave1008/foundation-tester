@@ -48,6 +48,8 @@
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
 #                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
 #
+# 実行中は macOS のクラッシュダイアログを止め、終了時に元へ戻す(Scripts/crash-dialog.sh。e2ex.sh も同じ)。
+#
 # **両OSを1つの実行プロファイルにまとめない**: platform 未指定シナリオは既定 platform の
 # キューにしか入らず、もう一方のワーカーは1本も受け取らない(docs/design.md §11.4)。
 # だから ios と android を別々に回す。ここが「all プロファイルを置かない」理由でもある。
@@ -130,8 +132,11 @@ resume_monitor() {
   "$FLEETEST" monitor resume >/dev/null 2>&1 || true
   echo "→ モニターを再開しました(--performance の自動 pause/resume)"
 }
-trap 'resume_monitor' EXIT
-trap 'resume_monitor; exit 130' INT TERM
+# shellcheck source=crash-dialog.sh
+. "$ROOT/Scripts/crash-dialog.sh"
+trap 'resume_monitor; crash_dialog_restore' EXIT
+trap 'resume_monitor; crash_dialog_restore; exit 130' INT TERM HUP
+crash_dialog_suppress
 if [ "$PERFORMANCE" = 1 ]; then
   "$FLEETEST" monitor pause --for 60
   MONITOR_PAUSED=1
