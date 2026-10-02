@@ -524,13 +524,22 @@ struct RunScenario: AsyncParsableCommand {
             // 失敗時に「アプリの process がまだ在るか」も添える(pidof が空 = クラッシュの疑い。
             // 実機 Pixel 4a で実測: #btn_crash_confirm を落としても通常文言は
             // 「別 window が手前」としか言わなかった)
+            // crash バッファは時間で絞らないと前の run・前のシナリオの同じアプリのクラッシュまで拾うので、
+            // このシナリオの開始以降に絞る(1 プロセス = 1 シナリオなので、ここがシナリオの開始)
+            let scenarioStartedAt = Date()
             core.appProcessEvidence = {
-                guard let evidence = AndroidAppProcessEvidenceQuery.query(package: package, serial: serial),
-                      !evidence.running else { return [] }
-                // crash バッファに FATAL EXCEPTION が見つかった = 構造化した事実として記録
+                guard let raw = AndroidAppProcessEvidenceQuery.query(package: package, serial: serial),
+                      !raw.running else { return [] }
+                let evidence = AndroidAppProcessEvidenceQuery.scoped(
+                    raw, package: package, serial: serial, since: scenarioStartedAt)
+                // crash バッファにこのシナリオ中のクラッシュが見つかった = 構造化した事実として記録
                 // (ScenarioRunRecord.appCrash。先頭行だけを summary に持つ)
-                if let firstLine = evidence.crashSummary.first {
-                    LastAppCrash.shared.record(AppCrashRecord(evidence: .fatalException, summary: firstLine))
+                if let firstLine = evidence.crashSummary.first, let kind = evidence.crashKind {
+                    let crashEvidence: AppCrashEvidence = switch kind {
+                    case .javaException: .fatalException
+                    case .nativeSignal: .nativeSignal
+                    }
+                    LastAppCrash.shared.record(AppCrashRecord(evidence: crashEvidence, summary: firstLine))
                 }
                 return ["process not running"] + evidence.crashSummary
             }

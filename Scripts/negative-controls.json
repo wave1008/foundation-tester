@@ -122,10 +122,9 @@
     {
       "project": "E2E-Flutter", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
       "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
-      "guards": "アプリのクラッシュの記録(ネイティブの SIGSEGV)",
+      "guards": "ネイティブのクラッシュ(dart:ffi の SIGSEGV)を crash バッファの Fatal signal から記録する",
       "scenarios": {
-        "S0010": { "expect": "red", "appCrash": "any",
-                   "knownGap": "Android のネイティブのクラッシュ(libc の Fatal signal)は appCrash に載らない。AndroidAppProcessEvidence は crash バッファの FATAL EXCEPTION だけを見る" }
+        "S0010": { "expect": "red", "appCrash": "nativeSignal" }
       }
     }
   ],

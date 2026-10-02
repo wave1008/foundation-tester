@@ -1537,9 +1537,15 @@ E2E も、その経路が要る失敗(古い a11y を読む誤った赤)が出�
   台の既定をプロファイルの先頭から無条件に取っていたため、先頭の台を無効にした `ios-heal.json` では7段とも
   「matched no device」で1本も走らなかった(有効・この Mac・実機でない最初の台へ直した)
 
-**初回の実測で見つけた見逃し**: Android のネイティブのクラッシュ(Flutter の SIGSEGV)は `appCrash` に
-載らない —— crash バッファには `Fatal signal 11` と `>>> <package> <<<` の DEBUG ブロックが残るが、
-`AndroidAppProcessEvidence` は `FATAL EXCEPTION` しか見ない。表では `knownGap` として ⚠️ で出す。
+**初回の実測で見つけた見逃し(直した)**: Android のネイティブのクラッシュ(Flutter の SIGSEGV)が `appCrash` に
+載らず、失敗は「element not found」だけだった —— crash バッファには `Fatal signal 11` と `>>> <package> <<<` の
+DEBUG ブロックが残るが、`AndroidAppProcessEvidence` は `FATAL EXCEPTION` しか見ていなかった。`nativeSignal` として
+記録する。併せて DSL 側は crash バッファを時刻で絞らずに読んでいた(MCP は直近の launch 以降に絞っていた)ので、
+シナリオの開始以降へ絞る(`AndroidAppProcessEvidenceQuery.scoped` を両方が通る)。**実害を対照で確かめた**:
+「起動 → terminateApp → 要素を探して落ちる」だけの証人(このシナリオではクラッシュしない)を、crash バッファに
+前の run の同じアプリの FATAL EXCEPTION が残る端末で回すと、HEAD は `appCrash: fatalException`(前の run の
+PID を今の失敗に帰属)・直した版は空(`process not running` だけ)。表に `knownGap` を置くのは、記録されない事実を
+⚠️ で出し続けるため —— 直ったら ❌ が表の更新を促す(今回それで外した)。
 
 ## 同じ機構を通る2経路で片方だけ失敗したら、機構でなく前提条件を疑う(2026-08-02)
 

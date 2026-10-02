@@ -113,6 +113,91 @@ final class AndroidAppProcessEvidenceTests: XCTestCase {
             evidenceStrings(AndroidAppProcessEvidence(running: false, crashSummary: ["reason"])),
             ["process not running", "reason"])
     }
+
+    // MARK: - ネイティブのクラッシュ(Fatal signal)。入力は Pixel 9 のエミュレータ(Android 15)で
+    // E2E-Flutter の #btn_crash_confirm(dart:ffi の NULL 参照)から 2026-10-02 に採った crash バッファ
+
+    private let flutterPackage = "com.ftester.e2e.flutter"
+
+    private let nativeSample = """
+        10-02 22:30:59.438  3937  3937 F libc    : Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 3937 (ter.e2e.flutter), pid 3937 (ter.e2e.flutter)
+        10-02 22:30:59.552  3998  3998 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+        10-02 22:30:59.552  3998  3998 F DEBUG   : Build fingerprint: 'google/sdk_gphone64_arm64/emu64a:15/AE3A.240806.043/12960925:userdebug/dev-keys'
+        10-02 22:30:59.552  3998  3998 F DEBUG   : Cmdline: com.ftester.e2e.flutter
+        10-02 22:30:59.552  3998  3998 F DEBUG   : pid: 3937, tid: 3937, name: ter.e2e.flutter  >>> com.ftester.e2e.flutter <<<
+        10-02 22:30:59.552  3998  3998 F DEBUG   : uid: 10231
+        10-02 22:30:59.552  3998  3998 F DEBUG   : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000000
+        10-02 22:30:59.552  3998  3998 F DEBUG   : Cause: null pointer dereference
+        10-02 22:30:59.552  3998  3998 F DEBUG   : backtrace:
+        10-02 22:30:59.552  3998  3998 F DEBUG   :       #00 pc 0000000000074e30  [anon:dart-code]
+        """
+
+    /// RN の Java の例外(同じ日に同じエミュレータで採った形)。ネイティブの前後に置いて順序を見る
+    private func javaBlock(package: String, time: String) -> String {
+        """
+        10-02 \(time)  3706  3769 E AndroidRuntime: FATAL EXCEPTION: mqt_v_native
+        10-02 \(time)  3706  3769 E AndroidRuntime: Process: \(package), PID: 3706
+        10-02 \(time)  3706  3769 E AndroidRuntime: com.facebook.react.common.JavascriptException: FT_E2E intentional crash
+        """
+    }
+
+    func testNativeCrashIsAttributedByTheDebuggerdPackageMarker() {
+        let block = AndroidAppProcessEvidenceQuery.crashBlock(fromCrashLog: nativeSample, package: flutterPackage)
+        XCTAssertEqual(block?.kind, .nativeSignal)
+        XCTAssertEqual(block?.lines, [
+            "Fatal signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0 in tid 3937 (ter.e2e.flutter), pid 3937 (ter.e2e.flutter)",
+            "Cause: null pointer dereference",
+            "pid: 3937, tid: 3937, name: ter.e2e.flutter  >>> com.ftester.e2e.flutter <<<",
+        ])
+    }
+
+    /// libc の行のプロセス名(15 文字で切れる)は照合に使わない —— 末尾が同じ別 package に帰属させない
+    func testNativeCrashOfAnotherPackageIsIgnored() {
+        XCTAssertNil(AndroidAppProcessEvidenceQuery.crashBlock(
+            fromCrashLog: nativeSample, package: "com.other.e2e.flutter"))
+        XCTAssertNil(AndroidAppProcessEvidenceQuery.crashBlock(
+            fromCrashLog: nativeSample, package: "ter.e2e.flutter"))
+    }
+
+    /// Java とネイティブが両方あれば後に起きたほう(どちらの向きでも)
+    func testTheLaterOfJavaAndNativeCrashesWins() {
+        let javaThenNative = javaBlock(package: flutterPackage, time: "22:30:40.505") + "\n" + nativeSample
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.crashBlock(
+            fromCrashLog: javaThenNative, package: flutterPackage)?.kind, .nativeSignal)
+        let nativeThenJava = nativeSample + "\n" + javaBlock(package: flutterPackage, time: "22:31:10.000")
+        let block = AndroidAppProcessEvidenceQuery.crashBlock(fromCrashLog: nativeThenJava, package: flutterPackage)
+        XCTAssertEqual(block?.kind, .javaException)
+        XCTAssertEqual(block?.lines.first, "FATAL EXCEPTION: mqt_v_native")
+    }
+
+    /// Fatal signal の行が crash バッファから押し出されていても、debuggerd の signal 行で要約する
+    func testNativeCrashFallsBackToTheDebuggerdSignalLine() {
+        let withoutLibc = nativeSample.split(separator: "\n").dropFirst().joined(separator: "\n")
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.crashBlock(fromCrashLog: withoutLibc, package: flutterPackage)?
+            .lines.first, "signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000000")
+    }
+
+    func testEvidenceCarriesTheKindOnlyWhenThereIsASummary() {
+        XCTAssertEqual(AndroidAppProcessEvidence(running: false, crashSummary: ["x"], crashKind: .nativeSignal)
+            .crashKind, .nativeSignal)
+        XCTAssertNil(AndroidAppProcessEvidence(running: false, crashSummary: [], crashKind: .nativeSignal).crashKind)
+    }
+
+    func testLogMessageStripsTheThreadtimePrefix() {
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.logMessage(
+            "10-02 22:30:59.552  3998  3998 F DEBUG   : pid: 3937, tid: 3937"), "pid: 3937, tid: 3937")
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.logMessage("not a logcat line"), "not a logcat line")
+    }
+
+    // MARK: - 帰属の窓(MCP と DSL が共有する)
+
+    func testAttributionWindowAddsFiveSecondsAndFallsBackToFiveMinutes() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.attributionWindowSeconds(
+            since: start, now: start.addingTimeInterval(41.2)), 47)
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.attributionWindowSeconds(since: nil, now: start), 300)
+        XCTAssertEqual(AndroidAppProcessEvidenceQuery.defaultAttributionWindowSeconds, 300)
+    }
 }
 
 /// **文言の一覧に無い adb の失敗**も「判定できない」に倒す(2026-09-16 のレビュー指摘)。
@@ -133,4 +218,5 @@ final class AndroidAppProcessEvidenceUnknownFailureTests: XCTestCase {
     func testZeroStatusWithPidMeansRunning() {
         XCTAssertEqual(AndroidAppProcessEvidenceQuery.processAbsence(status: 0, output: "22725"), false)
     }
+
 }

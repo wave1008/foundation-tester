@@ -11,17 +11,35 @@
 import FTCore
 import Foundation
 
+/// crash バッファに残るクラッシュの種類(AppCrashEvidence へ写す。文字列の後解析はしない)
+public enum AndroidCrashKind: Equatable, Sendable {
+    /// Java/Kotlin の未捕捉例外(`E AndroidRuntime: FATAL EXCEPTION`)
+    case javaException
+    /// ネイティブのシグナル(`F libc: Fatal signal` + `F DEBUG: pid: … >>> <pkg> <<<`)。
+    /// Flutter(dart:ffi)・NDK・ゲームエンジンのクラッシュはこちらにしか残らない
+    case nativeSignal
+}
+
+/// この package の最後のクラッシュ1件(crash バッファの中の位置 = 後に起きたほうを選ぶための順序)
+public struct AndroidCrashBlock: Equatable, Sendable {
+    public let kind: AndroidCrashKind
+    public let lines: [String]
+    let position: Int
+}
+
 public struct AndroidAppProcessEvidence: Equatable, Sendable {
     /// pidof が1件以上返した
     public let running: Bool
-    /// crash バッファの最後の FATAL EXCEPTION ブロックのうち、この package の分だけ
-    /// (先頭3行: "FATAL EXCEPTION: <thread>" / "Process: <pkg>, PID: n" / 例外の1行目)。
+    /// crash バッファの最後のクラッシュのうち、この package の分だけ(`crashBlock` の lines)。
     /// 無ければ空(この package のクラッシュだと確認できなかった)
     public let crashSummary: [String]
+    /// crashSummary の種類。crashSummary が空なら nil
+    public let crashKind: AndroidCrashKind?
 
-    public init(running: Bool, crashSummary: [String]) {
+    public init(running: Bool, crashSummary: [String], crashKind: AndroidCrashKind? = nil) {
         self.running = running
         self.crashSummary = crashSummary
+        self.crashKind = crashSummary.isEmpty ? nil : crashKind
     }
 }
 
@@ -48,9 +66,35 @@ public enum AndroidAppProcessEvidenceQuery {
         guard let logcatResult = try? Shell.run(logcatArgs, timeout: 10), logcatResult.status == 0
         else { return AndroidAppProcessEvidence(running: running, crashSummary: []) }
 
-        return AndroidAppProcessEvidence(
-            running: running,
-            crashSummary: crashSummary(fromCrashLog: logcatResult.output, package: package))
+        let block = crashBlock(fromCrashLog: logcatResult.output, package: package)
+        return AndroidAppProcessEvidence(running: running, crashSummary: block?.lines ?? [],
+                                         crashKind: block?.kind)
+    }
+
+    /// 起点が分からないときの窓(秒)。ft_logs の既定と同じ5分(無制限には戻さない)
+    public static let defaultAttributionWindowSeconds = 300
+
+    /// クラッシュを帰属させる窓(秒)。**5秒の余裕を足す** —— 起点からクラッシュまでの実時間+adb 往復の
+    /// ぶんを切り捨てて肝心のクラッシュ行を落とさないため。起点が分からなければ既定の5分
+    public static func attributionWindowSeconds(since start: Date?, now: Date) -> Int {
+        guard let start else { return defaultAttributionWindowSeconds }
+        return max(5, Int(now.timeIntervalSince(start).rounded(.up)) + 5)
+    }
+
+    /// `query` の crashSummary を**起点以降**に絞り直す(MCP = 直近の launch / DSL = シナリオの開始)。
+    /// `query` は crash バッファを時間で絞らず丸ごと読むので、素のままだと数分〜数時間前の**別プロセス**の
+    /// クラッシュ(前の run・前のシナリオ)まで今の失敗に帰属させる。読み直せなければ空
+    /// (言えないことは言わない)。プロセスが居る・クラッシュが無いときは adb を払わずそのまま返す
+    public static func scoped(_ evidence: AndroidAppProcessEvidence, package: String, serial: String?,
+                              since start: Date?, now: Date = Date()) -> AndroidAppProcessEvidence {
+        guard !evidence.running, !evidence.crashSummary.isEmpty else { return evidence }
+        let sinceSeconds = attributionWindowSeconds(since: start, now: now)
+        guard let recent = try? AndroidLogcat.recent(serial: serial, packageName: nil, crashOnly: true,
+                                                     sinceSeconds: sinceSeconds, maxLines: 5000)
+        else { return AndroidAppProcessEvidence(running: evidence.running, crashSummary: []) }
+        let block = crashBlock(fromCrashLog: recent.lines.joined(separator: "\n"), package: package)
+        return AndroidAppProcessEvidence(running: evidence.running, crashSummary: block?.lines ?? [],
+                                         crashKind: block?.kind)
     }
 
     /// `adb shell pidof <pkg>` の生出力から「アプリのプロセスが居ないか」を判定する純粋関数。
@@ -91,11 +135,24 @@ public enum AndroidAppProcessEvidenceQuery {
         return markers.contains { lower.contains($0.lowercased()) }
     }
 
-    /// `adb logcat -b crash` の生テキストから、**この package の最後の** `FATAL EXCEPTION`
-    /// ブロックの先頭3行(タイムスタンプ・pid・タグ `E AndroidRuntime: ` の接頭辞を落とす)。
-    /// 他の package のブロック(例: instrumentation ランナー自身のクラッシュ)は無視する
+    /// `crashBlock` の lines(種類が要らない呼び手向け)
     public static func crashSummary(fromCrashLog log: String, package: String) -> [String] {
+        crashBlock(fromCrashLog: log, package: package)?.lines ?? []
+    }
+
+    /// `adb logcat -b crash` の生テキストから、**この package の最後の**クラッシュ。
+    /// Java の `FATAL EXCEPTION` ブロックとネイティブの `Fatal signal` ブロックのうち**後に起きたほう**。
+    /// 他の package のブロック(例: instrumentation ランナー自身のクラッシュ)は無視する
+    public static func crashBlock(fromCrashLog log: String, package: String) -> AndroidCrashBlock? {
         let lines = log.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+        let candidates = [javaBlock(lines: lines, package: package),
+                          nativeBlock(lines: lines, package: package)].compactMap { $0 }
+        return candidates.max { $0.position < $1.position }
+    }
+
+    /// **この package の最後の** `FATAL EXCEPTION` ブロックの先頭3行
+    /// (タイムスタンプ・pid・タグ `E AndroidRuntime: ` の接頭辞を落とす)
+    private static func javaBlock(lines: [String], package: String) -> AndroidCrashBlock? {
         var blockStarts: [Int] = []
         for (index, line) in lines.enumerated() where strippedTag(line) == "FATAL EXCEPTION"
             || strippedTag(line).hasPrefix("FATAL EXCEPTION: ") {
@@ -107,9 +164,48 @@ public enum AndroidAppProcessEvidenceQuery {
             let processLine = start + 1 < lines.count ? strippedTag(lines[start + 1]) : ""
             guard processLine.hasPrefix("Process: \(package),") else { continue }
             let reasonLine = start + 2 < lines.count ? strippedTag(lines[start + 2]) : nil
-            return [strippedTag(lines[start]), processLine, reasonLine].compactMap { $0 }
+            return AndroidCrashBlock(kind: .javaException,
+                                     lines: [strippedTag(lines[start]), processLine, reasonLine].compactMap { $0 },
+                                     position: start)
         }
-        return []
+        return nil
+    }
+
+    /// **この package の最後の**ネイティブのクラッシュ。帰属は debuggerd の
+    /// `pid: <n>, tid: …, name: …  >>> <package> <<<` の行で決める —— libc の `Fatal signal` 行の
+    /// プロセス名は 15 文字で切れる(`ter.e2e.flutter`)ので package と照合できない。
+    /// 要約 = [同じ pid の `Fatal signal …`(無ければ debuggerd の `signal …`), `Cause: …`(あれば), `pid: … >>> pkg <<<`]
+    private static func nativeBlock(lines: [String], package: String) -> AndroidCrashBlock? {
+        let messages = lines.map(logMessage)
+        let marker = ">>> \(package) <<<"
+        guard let pidIndex = messages.lastIndex(where: { $0.hasPrefix("pid: ") && $0.contains(marker) })
+        else { return nil }
+        let pidLine = messages[pidIndex]
+        let pid = pidLine.dropFirst("pid: ".count).prefix { $0.isNumber }
+        // 同じクラッシュの debuggerd の出力が終わる所(次の `*** ***` 区切りか、次の Fatal signal)まで
+        let blockEnd = messages[(pidIndex + 1)...].firstIndex {
+            $0.hasPrefix("*** *** ***") || $0.hasPrefix("Fatal signal ")
+        } ?? messages.count
+        let signalLine = messages[..<pidIndex].lastIndex {
+            $0.hasPrefix("Fatal signal ") && $0.contains("pid \(pid) (")
+        }.map { messages[$0] }
+            ?? messages[(pidIndex + 1)..<blockEnd].first { $0.hasPrefix("signal ") }
+        let causeLine = messages[(pidIndex + 1)..<blockEnd].first { $0.hasPrefix("Cause: ") }
+        return AndroidCrashBlock(kind: .nativeSignal,
+                                 lines: [signalLine, causeLine, pidLine].compactMap { $0 },
+                                 position: pidIndex)
+    }
+
+    /// `10-02 22:30:59.552  3998  3998 F DEBUG   : pid: 3937, …` → `pid: 3937, …`
+    /// (threadtime 書式の接頭辞 = 日付・時刻・pid・tid・レベル・タグを落とす。書式が違えば行をそのまま返す)
+    static func logMessage(_ line: String) -> String {
+        // 日付・時刻・pid・tid・レベル・「タグ : 本文」の6つ。タグと本文の区切りは6つ目の最初の ": "
+        // (本文が ": " を含んでもタグは含まない)
+        let parts = line.split(separator: " ", maxSplits: 5, omittingEmptySubsequences: true)
+        guard parts.count == 6, parts[4].count == 1, "VDIWEF".contains(parts[4]),
+              let separator = parts[5].range(of: ": ")
+        else { return line.trimmingCharacters(in: .whitespaces) }
+        return String(parts[5][separator.upperBound...])
     }
 
     /// `08-09 10:00:00.300  5678  5679 E AndroidRuntime: FATAL EXCEPTION: main` →

@@ -1783,16 +1783,11 @@ extension MCPServer {
             + " ft_launch \(launched) before trusting these refs\n"
     }
 
-    /// `launched` の launch timestamp が分からないときの既定の遡り窓(秒)。ft_logs の既定
-    /// (`sinceSeconds` 省略時 300)と揃える —— このツールが「直近」とみなす幅の唯一の他の定義元
-    static let defaultCrashAttributionWindowSeconds = 300
+    /// 窓の定義は DSL と共有する(AndroidAppProcessEvidenceQuery。ft_logs の既定 300 秒と揃える)
+    static let defaultCrashAttributionWindowSeconds = AndroidAppProcessEvidenceQuery.defaultAttributionWindowSeconds
 
-    /// crash 引用に使う `sinceSeconds` の純関数。**5秒の余裕を足す** —— launch から
-    /// クラッシュまでの実時間+adb 往復のぶんを切り捨てて肝心のクラッシュ行を落とさないため。
-    /// 分からなければ ft_logs と同じ既定(5分)に倒す(無制限には戻さない)
     static func crashAttributionWindowSeconds(launchedAt: Date?, now: Date) -> Int {
-        guard let launchedAt else { return defaultCrashAttributionWindowSeconds }
-        return max(5, Int(now.timeIntervalSince(launchedAt).rounded(.up)) + 5)
+        AndroidAppProcessEvidenceQuery.attributionWindowSeconds(since: launchedAt, now: now)
     }
 
     /// `switchedAppNote` の `processEvidence` 引数を埋める(Android のみ・adb 2〜3往復)。
@@ -1801,11 +1796,8 @@ extension MCPServer {
     /// resolveAndroidSerial と違い**曖昧でも例外にしない** —— これは付加情報で、
     /// 取れなければ nil のまま adb の既定(単一接続時のみ解決)に委ねる。
     ///
-    /// **crashSummary は直近の launch 以降に絞り直す**: `AndroidAppProcessEvidenceQuery
-    /// .query` は `adb logcat -d -b crash` を時間で絞らず丸ごと読むので、素の crashSummary は
-    /// 数分〜数時間前の**別プロセス**のクラッシュも拾う(crash バッファは端末側で自然に消えるまで
-    /// 残り続ける)。`launchTimestamps` を起点に `AndroidLogcat.recent(sinceSeconds:)`
-    /// (ft_logs と同じ時間フィルタ)で撮り直し、その範囲内のブロックだけを名指しする。
+    /// **crashSummary は直近の launch 以降に絞り直す**(`AndroidAppProcessEvidenceQuery.scoped`。
+    /// DSL はシナリオの開始を起点に同じ関数を通る)。
     /// launch を覚えていない(このセッションが ft_launch していない・profile 経由で既存の
     /// セッションに繋いだ)ときは `defaultCrashAttributionWindowSeconds` へ落ちる
     /// (無制限に戻すと元の欠陥に戻るので、「分からない」を「無限に遡ってよい」とは読まない)
@@ -1817,14 +1809,7 @@ extension MCPServer {
         let serial = (args["serial"] as? String) ?? connectedAndroidSerials[Self.engineKey(args)]
         guard let evidence = AndroidAppProcessEvidenceQuery.query(package: launched, serial: serial)
         else { return nil }
-        guard !evidence.running, !evidence.crashSummary.isEmpty else { return evidence }
-        let sinceSeconds = Self.crashAttributionWindowSeconds(
-            launchedAt: launchTimestamps[Self.engineKey(args)], now: Date())
-        guard let scoped = try? AndroidLogcat.recent(serial: serial, packageName: nil, crashOnly: true,
-                                                     sinceSeconds: sinceSeconds, maxLines: 5000)
-        else { return AndroidAppProcessEvidence(running: evidence.running, crashSummary: []) }
-        let scopedSummary = AndroidAppProcessEvidenceQuery.crashSummary(
-            fromCrashLog: scoped.lines.joined(separator: "\n"), package: launched)
-        return AndroidAppProcessEvidence(running: evidence.running, crashSummary: scopedSummary)
+        return AndroidAppProcessEvidenceQuery.scoped(evidence, package: launched, serial: serial,
+                                                     since: launchTimestamps[Self.engineKey(args)])
     }
 }

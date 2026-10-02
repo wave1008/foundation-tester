@@ -5,7 +5,7 @@
 //   iOS(in-app エンジン)= InAppDriver.crashAnnotated / InAppLauncher.crashAnnotated が
 //     SimulatorCrashReport.findRecent で見つけた直近の .ips
 //   Android = ScenarioRunnerMain の appProcessEvidence 経由で AndroidAppProcessEvidenceQuery が
-//     crash バッファの FATAL EXCEPTION を見つけた
+//     crash バッファの FATAL EXCEPTION か Fatal signal(ネイティブ)を、シナリオの開始以降に見つけた
 // **1 プロセス = 1 シナリオ**(fleetest-scenarios)なので、検出箇所が LastAppCrash.shared へ書き、
 // ScenarioRunnerMain が scenarioFinished を送る直前に1回だけ読む(プロセス内シングルトンで足りる。
 // 次のシナリオは別プロセスなので値が漏れない)。
@@ -18,13 +18,15 @@ public enum AppCrashEvidence: String, Codable, Sendable {
     case crashReport
     /// Android: crash バッファの FATAL EXCEPTION を見つけた
     case fatalException
+    /// Android: crash バッファのネイティブのクラッシュ(`Fatal signal` + debuggerd の `>>> <pkg> <<<`)を見つけた
+    case nativeSignal
 }
 
 public struct AppCrashRecord: Codable, Sendable, Equatable {
     public var evidence: String
     /// iOS: 見つかった .ips のパス
     public var path: String?
-    /// iOS: クラッシュ理由の1行 / Android: FATAL EXCEPTION ブロックの先頭行
+    /// iOS: クラッシュ理由の1行 / Android: FATAL EXCEPTION ブロックの先頭行か `Fatal signal …` の行
     public var summary: String?
 
     public init(evidence: AppCrashEvidence, path: String? = nil, summary: String? = nil) {

@@ -339,9 +339,9 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 
 | フィールド | 型 | 意味 |
 |---|---|---|
-| evidence | String | `crashReport`(iOS in-app エンジン。`SimulatorCrashReport` が直近の `.ips` を見つけた)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた) |
+| evidence | String | `crashReport`(iOS in-app エンジン。`SimulatorCrashReport` が直近の `.ips` を見つけた)/ `fatalException`(Android。crash バッファの FATAL EXCEPTION を見つけた)/ `nativeSignal`(Android。crash バッファのネイティブのクラッシュ = `Fatal signal` と debuggerd の `>>> <package> <<<` を見つけた。Flutter・NDK)。Android は**シナリオの開始以降**のクラッシュだけを載せる(前の run・前のシナリオの同じアプリのクラッシュを帰属させない) |
 | path | String? | iOS のみ。見つかった `.ips` のパス |
-| summary | String? | iOS = クラッシュ理由の1行 / Android = FATAL EXCEPTION ブロックの先頭行 |
+| summary | String? | iOS = クラッシュ理由の1行 / Android = FATAL EXCEPTION ブロックの先頭行か `Fatal signal …` の行 |
 
 **XCUITest エンジン(hybrid/xcuitest)の iOS クラッシュはこの版では検出しない**(検出箇所が
 `InAppDriver`/`InAppLauncher` の in-app 経路だけのため)。2026-09-27 より前の記録には無い。
