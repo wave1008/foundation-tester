@@ -6,7 +6,7 @@ such as Claude Code.
 ## Three things packed into the name
 
 - **fleet**
-  - Tests run in parallel on a **fleet** — a set of devices such as simulators, emulators and physical devices.
+  - Tests run in parallel on a **fleet** — a set of devices such as Simulators, Emulators and physical devices.
 - **fleetest**
   - **fleetest** is the superlative of the English word **fleet** (fast). Fleetest is tuned to run fast both on a single device and in parallel.
 - **free**
@@ -29,16 +29,16 @@ Results are stable, runs are fast, and there are no charges.
 
 Fleetest implements its own custom drivers for both iOS and Android and optimizes them. It does not depend on existing general-purpose drivers such as Appium, which leaves it free to make its own improvements.
 
-## Hybrid driver for the iOS Simulator
+## Hybrid engine for the iOS Simulator
 
-The hybrid driver, designed for the iOS Simulator, is one of Fleetest's distinctive mechanisms. It automatically switches between a fast in-app driver and a general-purpose XCUITest driver.
+The hybrid engine, designed for the iOS Simulator, is one of Fleetest's distinctive mechanisms. It automatically switches between a fast in-app engine and a general-purpose XCUITest engine.
 
-- **In-app driver**
+- **In-app engine**
   - Injected into the process of the app under test when the app launches. With no cross-process round trip, it runs fast.
-- **XCUITest driver**
-  - Handles operations outside the app under test. Operations the in-app driver cannot perform are routed here.
+- **XCUITest engine**
+  - Handles operations outside the app under test. Operations the in-app engine cannot perform are routed here.
 
-| Example operation | Driver used |
+| Example operation | Engine used |
 |---|---|
 | Reading the screen, text entry, taps | in-app |
 | Reading and tapping OS system alerts | XCUITest |

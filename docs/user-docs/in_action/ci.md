@@ -6,11 +6,11 @@ CI; see [docs/ci.md](../../ci.md) for the full write-up.
 
 ## Prerequisites
 
-- **Self-hosted Mac only** (a Jenkins agent, an AWS EC2 Mac instance, etc.). iOS simulators and
-  Android emulators require macOS, so GitHub-hosted runners (`macos-*`) are not supported — those
+- **Self-hosted Mac only** (a Jenkins agent, an AWS EC2 Mac instance, etc.). iOS Simulators and
+  Android Emulators require macOS, so GitHub-hosted runners (`macos-*`) are not supported — those
   run inside a macOS VM, which cannot use Apple Intelligence, and this path is not verified there.
-- **Run as a logged-in GUI session user** — the general rule for driving simulators. A headless
-  `LaunchDaemon` or a bare `ssh` session makes simulators unstable.
+- **Run as a logged-in GUI session user** — the general rule for driving Simulators. A headless
+  `LaunchDaemon` or a bare `ssh` session makes Simulators unstable.
 - **Apple Intelligence is not required.** Without it, `screenLooksLike` / text visual verification
   are automatically skipped (a `⚠️` line is printed at startup) while deterministic execution —
   tapping, asserting, and self-healing (locator fingerprint matching, which does not use FM) —
@@ -62,7 +62,7 @@ pipeline {
 }
 ```
 
-- Device provisioning (simulator boot, bridge) is handled automatically by a `--profile` run.
+- Device provisioning (Simulator boot, bridge) is handled automatically by a `--profile` run.
   Consecutive jobs reuse an already-running bridge; only the first run pays the cold-start cost.
 - A run does not stop the bridge. A bridge exits on its own after a period without requests
   (`FT_BRIDGE_TTL`, 2 hours by default), and the working files of an exited bridge are deleted when
@@ -71,7 +71,7 @@ pipeline {
   (overnight, for example), no cleanup is needed. **If jobs run around the clock without such a gap**,
   run `fleetest devices down` periodically.
 - To clean up between jobs, add `fleetest devices down` (stops every bridge and shuts down every
-  simulator/emulator) at the end of the job. While another test run on the same Mac is using a
+  Simulator/Emulator) at the end of the job. While another test run on the same Mac is using a
   device, it stops nothing and exits with code 1 so that it does not kill that run. If jobs can
   overlap on the same Mac, schedule the cleanup for a time when no other job is running.
 - **One run at a time per Mac.** A second `fleetest run` on the same agent does not start — it

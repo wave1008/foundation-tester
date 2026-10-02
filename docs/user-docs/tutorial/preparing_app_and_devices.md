@@ -17,15 +17,15 @@ You can create both by asking an AI assistant. You do not need to write JSON by 
 ```text
 Create the fleetest profiles for my app.
 The app's display name is "My Shop", the app ID is com.example.myshop on iOS and com.example.myshop.android on Android.
-The built apps are ~/builds/MyShop.app (for the iOS simulator) and ~/builds/myshop-debug.apk.
-For devices, pick simulators / emulators with the newest OS available on this Mac.
+The built apps are ~/builds/MyShop.app (for the iOS Simulator) and ~/builds/myshop-debug.apk.
+For devices, pick Simulators / Emulators with the newest OS available on this Mac.
 Done when: you report the names of the run profiles you created. Running tests is not needed.
 ```
 
 - Use the **display name** exactly as it appears under the icon on the home screen (do not add notes such as "(for testing)").
   fleetest looks for the home-screen icon by this name, and uses it to tell which app a system dialog belongs to.
 - If you give the **path to the built app**, it is installed on the device automatically when tests run.
-  Pass a `.app` for the iOS simulator and an `.apk` for Android.
+  Pass a `.app` for the iOS Simulator and an `.apk` for Android.
 - For an app that exists only on iOS or only on Android, writing just one side is enough.
 
 In Claude Code, `/fleetest:fleetest-profiles` does the same thing (it asks you for the app name and so on, one by one).
@@ -53,7 +53,7 @@ With more devices, tests are distributed to them automatically and the overall t
 ### Do it with the AI assistant
 
 ```text
-Add two more iPhone simulators to the fleetest run profile ios.
+Add two more iPhone Simulators to the fleetest run profile ios.
 If there are none, you may create them with the same model and the same OS.
 Done when: you report the device list of the run profile after the addition.
 ```

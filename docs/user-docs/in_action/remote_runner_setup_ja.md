@@ -35,7 +35,7 @@
 | ファイアウォールが OFF であること。ON のときは「外部からの接続をすべてブロック」が OFF であること | ステップ0の2を見てください |
 | Homebrew がインストールされていて、その macOS に対応する版であること | `brew --version` が動く |
 | 画面共有が ON であること(推奨。ランナー機の再起動後に手元からログインし直せます。`fleetest remote setup` の判定には使いません) | システム設定 → 一般 → 共有 → 画面共有 |
-| テストで使う iOS シミュレータのランタイムをダウンロードしていること(iOS を回すときだけ。無くても実行は止まらず、ステップ5で警告が出ます) | `xcodebuild -downloadPlatform iOS` |
+| テストで使う iOS Simulator のランタイムをダウンロードしていること(iOS を回すときだけ。無くても実行は止まらず、ステップ5で警告が出ます) | `xcodebuild -downloadPlatform iOS` |
 | Android SDK と AVD があること(Android を回すときだけ)。SDK は既定の場所(`~/Library/Android/sdk`)に置く | `fleetest doctor` |
 
 ランナー機の `/Applications` に複数の Xcode を並べて入れておけば、手元の Mac の Xcode の製品版に
@@ -82,7 +82,7 @@ fleetest は代わりに行いません。
    ウィザードで Android SDK を入れてください。
    - SDK は既定の場所(`~/Library/Android/sdk`)のままにします。fleetest は SSH 越しに動くので、
      `~/.zshrc` などで設定した `ANDROID_HOME` は読まれません(fleetest は `ANDROID_HOME` → `ANDROID_SDK_ROOT` → 既定の場所の順に探します)。既定の場所なら何も設定しなくてよい。
-   - エミュレータ(AVD)は Android Studio の Device Manager で作れます。ステップ4で fleetest から
+   - Emulator(AVD)は Android Studio の Device Manager で作れます。ステップ4で fleetest から
      作ることもできます。
 7. **Homebrew をインストールする**。ステップ3で fleetest が必要なツール(xcodegen)を Homebrew で
    自動で入れるので、Homebrew が要ります。
@@ -273,8 +273,8 @@ user@mac2     yes        yes    ✅ 9655a21…  ✅ Xcode26…   ✅ iOS 27.0: 2
 | `REV` に ⚠️ | 手元とツール本体の版がずれている(実行は止まります) | `fleetest remote setup M1Max` をもう一度実行します |
 | `TOOLCHAIN` に ❌ | 手元の Mac の製品版に一致する Xcode がランナー機に無い、または複数が同じくらい一致する(実行は止まります) | 一致する製品版の Xcode をランナー機へ追加で入れます(他の版を消す必要はありません)。複数あって絞れないときは `--developer-dir` で固定します |
 | `TOOLCHAIN` に ⚠️ | Xcode は同じ製品版だがベータのビルド番号が違う(実行は止まりません) | 揃えなくても実行できます。揃えたい場合は両方の Mac を同じビルドにします |
-| `RUNTIME` に ⚠️ | ランナー機の iOS シミュレータのランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
-| `RUNTIME` に ⚠️ `iOS <版>: none` | そのランナー機に、使われている Xcode に対応するシミュレータのランタイムが無い(ランタイムは Xcode に付いてきません)。その iOS のデバイスを作れません | そのランナー機で `xcodebuild -downloadPlatform iOS` を実行します |
+| `RUNTIME` に ⚠️ | ランナー機の iOS Simulator のランタイムが手元と違う | ランナー機で `xcodebuild -downloadPlatform iOS` を実行します(警告だけで、実行は止まりません) |
+| `RUNTIME` に ⚠️ `iOS <版>: none` | そのランナー機に、使われている Xcode に対応する Simulator のランタイムが無い(ランタイムは Xcode に付いてきません)。その iOS のデバイスを作れません | そのランナー機で `xcodebuild -downloadPlatform iOS` を実行します |
 | `BINARY` が `no` | ランナー機に fleetest がビルドされていない | ステップ3をもう一度実行します |
 
 ### VSCode 拡張で確認する
@@ -301,7 +301,7 @@ fleetest run --profile <実行プロファイル> --scenario <シナリオID>
 実行プロファイルのデバイスに `"machine": "M1Max"` が書いてあれば、`--runner` を付けなくても
 ランナー機で実行されます。この1回だけ別のマシンへ送りたいときは `--runner M1Max` を付けます。
 
-**Android では、先にエミュレータを起動しておきます**(iOS のシミュレータと違い、自動では起動しません):
+**Android では、先に Emulator を起動しておきます**(iOS の Simulator と違い、自動では起動しません):
 
 ```bash
 fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
@@ -352,7 +352,7 @@ fleetest remote exec M1Max -- devices up --profile <実行プロファイル>
 | `could not tell which installed Xcode to dispatch with: … match this Mac's product version` | ランナー機に、手元の Mac の製品版に一致する Xcode が複数ある | 使わせたい方を固定します: `fleetest remote machines add <マシン名> --host <宛先> --developer-dir <.app へのパス>` |
 | `could not tell which installed Xcode to dispatch with: none of the …` | ランナー機に手元と一致する Xcode が1つも無い(メッセージが見つかった Xcode を全部並べます) | その製品版の Xcode をランナー機へ追加で入れます(他の版は消さなくて構いません)。固定しても直りません |
 | `no runner workspace at …` | ランナー機にあなたの作業場所がまだ無い | `fleetest remote setup M1Max` を1回実行します |
-| `no running emulator for AVD …` | Android のエミュレータが起動していない | ステップ6の `devices up` を実行します |
+| `no running emulator for AVD …` | Android の Emulator が起動していない | ステップ6の `devices up` を実行します |
 | `app package not found at …` | 手元の `appPath` にアプリが無い | 手元でアプリをビルドするか、`appPath` を直します |
 | タイルが「状態不明」のまま | ランナー機の fleetest の版が古い、または SSH で接続できない | ステップ3をもう一度実行し、ツールバーの「モニター再起動」を押します |
 

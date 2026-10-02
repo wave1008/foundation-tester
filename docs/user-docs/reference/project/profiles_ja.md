@@ -32,7 +32,7 @@
   `api validate-profile`)に警告が出ます。
 - `appPath` の相対パスは既定でリポジトリルート基準です(`~` 展開・絶対パスも可)。Android は
   `.apk` のほか `.apks`(App Bundle 由来のスプリット束)も書けます(インストールには
-  `bundletool` が要ります)。iOS の `appPath` は `.app`(シミュレータはそれしか入りません)、
+  `bundletool` が要ります)。iOS の `appPath` は `.app`(Simulator はそれしか入りません)、
   `appPathPhysical` は `.app` でも `.ipa` でも書けます。
 - ツールはそのパッケージからアプリの UI フレームワーク(Compose Multiplatform / Flutter / それ以外)も
   読み、スクロールの直後のタップの前に肩代わりのジェスチャが要るかを決めます。答えは bundle ID ごとに
@@ -61,11 +61,11 @@
 
 - `machine` は、手元の Mac なら `"local"`、`fleetest remote machines add` で登録したマシン名なら
   そのデバイスの実行を SSH 経由でそのマシンへディスパッチします([remote_runners_ja.md](../../in_action/remote_runners_ja.md)参照)。
-- iOS シミュレータは `name` をシミュレータ自身の名前(Xcode の **Name** = simctl の名前)にし、
+- iOS Simulator は `name` を Simulator 自身の名前(Xcode の **Name** = simctl の名前)にし、
   `osVersion` を Xcode の **OS Version**(例 `"iOS 27.0"`)にします —— `udid` が無いときはこの2つで
-  シミュレータを探します。`model`(Xcode の **Model**)は表示専用です。全キーの一覧は
+  Simulator を探します。`model`(Xcode の **Model**)は表示専用です。全キーの一覧は
   [run_profile_ja.md](./run_profile_ja.md) を参照してください。
-- 実機は `"kind": "physical"` と、シミュレータ/AVD 参照の代わりに識別子を書きます。
+- 実機は `"kind": "physical"` と、Simulator/AVD 参照の代わりに識別子を書きます。
   iOS は `udid`(`xcrun devicectl list devices` の `hardwareProperties.udid` の形式)、
   Android は `serial`(`adb devices` の左列)です:
 
@@ -81,7 +81,7 @@
   止めます(自動での解除は原理的にできません。端末へ入力する手段がその端末上のランナー自身で、
   ランナーが動いていない状態では何も送れないためです)。
 
-`fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存シミュレータ
+`fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存 Simulator
 (iPad を除く)、Android は既存 AVD のうち API レベルが最大のものを選びます。
 
 ## コマンド

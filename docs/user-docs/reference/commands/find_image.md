@@ -71,7 +71,7 @@ existImage("[Share Icon]", scroll: .down).tap()
   sample in the label folder, so adding the new sample to the same folder finds the element on both devices (you can
   keep `threshold` tight). The same goes for `findImages`: for parts whose look changes with their state (on / off),
   put a sample for each state and both are returned.
-- One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a simulator).
+- One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a Simulator).
 - `waitSeconds` defaults to 0: it looks at the current screen once (it does not follow the run profile's default wait). To wait for the
   image to appear, for example right after a screen transition, pass seconds such as `waitSeconds: 3`. While scrolling, it looks once per position.
 - When `existImage` fails, the failure message says the nearest distance and the `threshold`, and the screenshot it judged is

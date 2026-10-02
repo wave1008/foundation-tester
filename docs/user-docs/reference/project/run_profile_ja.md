@@ -20,7 +20,7 @@
 | キー | 型 | 既定値 | 意味 |
 |---|---|---|---|
 | `app` | string | — | 使用する `apps/<name>.json` プロファイル名 |
-| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS シミュレータではシミュレータ自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
+| `devices` | array | — | 実行するデバイスの実体(同じ配列に iOS/Android を混在可)。各要素: `platform`(`"ios"`/`"android"`、必須)、`machine`(そのデバイスが居るマシン。手元は `"local"`、`fleetest remote machines add` で登録した名前も書ける)、`name`(必須。`machine` と組み合わせて一意。iOS Simulator では Simulator 自身の名前)、`enabled`(`false` なら一覧に残すが走らせない。省略 = 走らせる)、そのデバイス自身の実体キー(`osVersion`/`udid`/`avd`/`serial`/`kind`/`port`/`engine`/`model`。詳細は [profiles_ja.md](./profiles_ja.md)) |
 | `heal` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | セレクタの自己修復(指紋照合方式)を許可する([self_healing_ja.md](../running/self_healing_ja.md)参照)。下記の FM・OCR 系のトグルとは独立(自己修復は FM を使わない) |
 | `fmTextOcclusionCheck` | bool | `true` | `exist`/`textIs` 等のテキストの視覚検証(occlusion guard)で FM(Foundation Models。experimental — [environments_ja.md](../../overview/environments_ja.md))を使う。視覚検証は、木では一致したが実際には見えていない「誤った緑」を検出する。`ocrTextOcclusionCheck` と独立で、どちらかが `true` なら視覚検証は走る。両方 `true` のときは OCR が丸ごと読めた要素だけ FM を省き、それ以外は OCR と FM の両方で判定して、どちらかが期待のテキストを読めれば緑にする。これが `false` なら OCR の読みだけで判定する。FM が呼ばれるのは、これか `screenLooksLike` が `true` のときだけ |
 | `screenLooksLike` | bool | `true` | `screenLooksLike`(FM 視覚検証)を有効にする。`false` のときは該当ステップが失敗ではなく skip になる |
@@ -33,8 +33,8 @@
 | `wipeDataOnBloat` | bool | `true` | 実行開始時、Android AVD の wipe 対象ファイル(userdata/cache/snapshots)が `wipeDataThresholdGB` を超えていたら Wipe Data する。アプリのインストールが容量不足で失敗したときも、そのデバイスを Wipe Data して 1 回だけ入れ直す(`false` のときは Wipe せず、そのデバイスを実行から外す) |
 | `wipeDataThresholdGB` | number(GB) | `8` | `wipeDataOnBloat` のしきい値 |
 | `updateWebView` | bool | `true` | 実行開始時に端末上の WebView 版を揃える(同じシナリオが端末の WebView 版によって挙動が変わるのを防ぐ) |
-| `recoverCpuFallbackToGpu` | bool | `false` | 実行開始時、CPU 描画(swiftshader)へフォールバック済みの Android エミュレータを GPU モードで起動し直す |
-| `locale` | string | `"ja_JP"` | Android エミュレータのブート時に適用するロケール。iOS には影響しない |
+| `recoverCpuFallbackToGpu` | bool | `false` | 実行開始時、CPU 描画(swiftshader)へフォールバック済みの Android Emulator を GPU モードで起動し直す |
+| `locale` | string | `"ja_JP"` | Android Emulator のブート時に適用するロケール。iOS には影響しない |
 | `iosFastInput` | bool | `false` | iOS XCUITest ブリッジのテキスト入力で quiescence 待ちを飛ばす(速いが、動きの激しい画面ではフレークのリスクを伴う)。効くのは XCUITest ブリッジだけ |
 | `iosPreActionWarmup` | bool | `true` | interop WebView 画面(Compose/Flutter 等の埋め込み WebView)でタップ・入力の直前にランナーへ1回問い合わせてから撃つ。attach したままの XCUITest セッションは放置後の座標イベントを成功応答のまま届け損なうことがある(実測 約13% → 暖機で 0/50)。コストは該当画面のイベント1回につき約 +0.4 秒(読み取りと他の画面には掛からない)。hybrid エンジンのときだけ効く |
 | `containerInference` | bool | `true` | スクロール容器を幾何から推測する補正(端の見切れ・座標補正等)を有効にする。FM とは無関係 |

@@ -5,7 +5,7 @@ them. You do not write scenarios by hand. If you don't have a work folder with `
 yet, run `/fleetest:fleetest-setup` from [Getting Started](getting-started.md) first.
 
 > **With Codex**: do steps 1 and 2 in a session started with `codex --sandbox danger-full-access`.
-> The default sandbox blocks cloning into the neighbouring folder and driving the simulators. From
+> The default sandbox blocks cloning into the neighbouring folder and driving the Simulators. From
 > step 3 on the default sandbox works (`ft_*` runs inside the MCP server). See
 > [Other agents](reference/tools/other_agents.md) for registering the MCP server and setting its approvals.
 
@@ -22,7 +22,7 @@ server as well.
 Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then:
 1. Start the server (check until /health returns ok). Start it so that it keeps running after this session is closed (with nohup or similar)
 2. Build the Android debug APK
-3. Build for the iOS simulator (arm64 only, unsigned)
+3. Build for the iOS Simulator (arm64 only, unsigned)
 Prerequisites: JDK 17 and Apple Container are required. If they are missing, you may install them with Homebrew.
 Do not modify shell configuration files.
 Done when: you report the paths of the build outputs. Installing and launching the app is not needed.
@@ -47,7 +47,7 @@ Leave the server running in another terminal:
 Then build the app:
 
 ```bash
-# iOS simulator (set the name in -destination to a simulator you have)
+# iOS Simulator (set the name in -destination to a Simulator you have)
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
   -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -derivedDataPath build/ios-sim CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
@@ -73,8 +73,8 @@ devices to use. The app ID is `com.sutec.mobile` on both iOS and Android.
 Create the fleetest profiles for the sut-ec-mobile app (already built) that sits next to this folder.
 1. Create the app profile and the run profile for each of iOS and Android with fleetest profile setup (do not write the JSON by hand)
 2. Check with fleetest profile list that the app and the devices resolve
-Values: the app's display name is SUT Store, the app ID is com.sutec.mobile on both iOS and Android, the app paths are the already-built .app (for the iOS simulator) and .apk in sut-ec-mobile, and the device is picked automatically (--auto-device).
-If no simulator / emulator is available, report it without creating one.
+Values: the app's display name is SUT Store, the app ID is com.sutec.mobile on both iOS and Android, the app paths are the already-built .app (for the iOS Simulator) and .apk in sut-ec-mobile, and the device is picked automatically (--auto-device).
+If no Simulator / Emulator is available, report it without creating one.
 Done when: you report the names of the run profiles you created. Running tests is not needed.
 ```
 
@@ -96,7 +96,7 @@ fleetest profile setup --platform android --app-id com.sutec.mobile --auto-devic
 ```
 
 Passing the built app to `--app-path` makes the run install it on the device automatically.
-`--auto-device` picks an available simulator/emulator on this machine (one that is not running
+`--auto-device` picks an available Simulator/Emulator on this machine (one that is not running
 is started automatically at run time). The run profiles are named after the platforms (`ios` and
 `android`).
 

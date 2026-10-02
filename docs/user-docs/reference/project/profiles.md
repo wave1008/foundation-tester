@@ -33,7 +33,7 @@ section wins on conflicts):
   (`CFBundleDisplayName`, falling back to `CFBundleName`; localized names also count).
 - `appPath` is relative to the repository root by default (`~` and absolute paths also work).
   Android accepts `.apk` or `.apks` (an App Bundle split set; installing `.apks` requires
-  `bundletool`). iOS `appPath` is a `.app` (simulators install nothing else); `appPathPhysical`
+  `bundletool`). iOS `appPath` is a `.app` (Simulators install nothing else); `appPathPhysical`
   may be a `.app` or an `.ipa`.
 - The tool also reads the app's UI framework from that package (Compose Multiplatform / Flutter /
   everything else) to decide whether a scroll needs a relief gesture before the next tap, and
@@ -66,11 +66,11 @@ list and every run-time setting.
 - `machine` is `"local"` for a device on this Mac, or the name of a machine registered with
   `fleetest remote machines add`, which dispatches that device's run over SSH instead of running
   it locally (see [remote_runners.md](../../in_action/remote_runners.md)).
-- For an iOS simulator, `name` is the simulator's own name (Xcode's **Name**, i.e. the simctl
+- For an iOS Simulator, `name` is the Simulator's own name (Xcode's **Name**, i.e. the simctl
   name) and `osVersion` is Xcode's **OS Version** (e.g. `"iOS 27.0"`) — together they are how fleetest finds
-  the simulator when `udid` is absent. `model` (Xcode's **Model**) is display-only. See
+  the Simulator when `udid` is absent. `model` (Xcode's **Model**) is display-only. See
   [run_profile.md](./run_profile.md) for the full key list.
-- A physical device sets `"kind": "physical"` and an identifier instead of a simulator/AVD
+- A physical device sets `"kind": "physical"` and an identifier instead of a Simulator/AVD
   reference — iOS uses `udid` (from `xcrun devicectl list devices`, the `hardwareProperties.udid`
   form), Android uses `serial` (the left column of `adb devices`):
 
@@ -87,7 +87,7 @@ list and every run-time setting.
   to the device is the runner on that device, and it is not running yet).
 
 `fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest-OS
-existing simulator (excluding iPads); for Android, the existing AVD with the highest API level.
+existing Simulator (excluding iPads); for Android, the existing AVD with the highest API level.
 
 ## Commands
 

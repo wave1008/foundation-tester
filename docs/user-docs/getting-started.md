@@ -11,8 +11,8 @@ The agent drives the clone and the build, so there is little to do by hand.
 | Target | Requirement |
 |---|---|
 | Common | macOS 26+ |
-| If you test iOS | Xcode 26+, iOS simulator, xcodegen |
-| If you test Android | Android SDK (adb), emulator or physical device |
+| If you test iOS | Xcode 26+, iOS Simulator, xcodegen |
+| If you test Android | Android SDK (adb), Emulator or physical device |
 | Extension build | Node.js v24 or newer, npm v11 or newer |
 
 The Foundation Models features (visual verification, screen-description checks) are experimental
@@ -23,7 +23,7 @@ any supported macOS. Details in [Requirements](overview/environments.md).
 
 To keep the installation smooth, have the devices you will test on ready beforehand.
 
-- **If you test iOS**: install Xcode, then create and boot the simulator you want to use
+- **If you test iOS**: install Xcode, then create and boot the Simulator you want to use
 - **If you test Android**: install Android Studio, then create and boot the AVD you want to use.
   Prefer a **Google APIs** system image over a Play Store one — Play Store images are `user`
   builds, and a release build of your app cannot expose its WebView content on them (see

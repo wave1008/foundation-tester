@@ -118,7 +118,7 @@ Codex runs shell commands inside a sandbox, and **the MCP server runs outside it
 splits cleanly in two (measured 2026-08-27).
 
 **Unaffected, no configuration needed** — everything through the `ft_*` tools: exploring screens,
-authoring and running scenarios, driving simulators and physical devices. The real run that keeps result
+authoring and running scenarios, driving Simulators and physical devices. The real run that keeps result
 history and recordings also works through `ft_start_run` (the shell's `fleetest run` does not, for the reasons
 below, so have the agent use this). The caveat that the project's code then runs outside the sandbox is in
 [MCP server](mcp_server.md#sandbox-and-approval). Even with `--sandbox read-only` the server reaches the file system and loopback.

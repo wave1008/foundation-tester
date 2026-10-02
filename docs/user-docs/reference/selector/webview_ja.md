@@ -56,7 +56,7 @@ Android では、端末のスクリーンショットが WebView の層をまる
 スクリーンショットではなく木のアサーション(`exist` / `notExist`)で書いてください** ——
 スクリーンショットに基づく確認は、シナリオ自体とは無関係な理由で失敗することがあります。
 スクリーンショットに WebView の中身を写すには、WebView のデバッグ用の接続が開いている必要も
-あります(端末が debuggable なエミュレータ・アプリが debug ビルド・アプリが
+あります(端末が debuggable な Emulator・アプリが debug ビルド・アプリが
 `WebView.setWebContentsDebuggingEnabled(true)` を呼んでいる、のどれか。下の DOM の読み取りと同じ条件です)。詳細は
 [docs/commands.md](../../../commands.md)を参照してください。
 

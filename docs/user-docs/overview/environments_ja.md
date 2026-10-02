@@ -5,14 +5,14 @@
 | 対象 | 要件 |
 |---|---|
 | 共通 | macOS 26+ |
-| iOS をテストするなら | Xcode 26+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
-| Android をテストするなら | Android SDK(adb)、エミュレータまたは実機 |
+| iOS をテストするなら | Xcode 26+、iOS Simulator、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
+| Android をテストするなら | Android SDK(adb)、Emulator または実機 |
 | 拡張ビルド | Node.js v24 以降、npm v11 以降 |
 
 iOS と Android を両方揃える必要はありません。テストする側だけ用意すれば動きます。
 
 このマシンで何が使えるかは `fleetest doctor` がまとめて確認します —— Foundation Models・
-Xcode・xcodegen・シミュレータ・adb。
+Xcode・xcodegen・Simulator・adb。
 
 ## Apple Intelligence(任意)
 

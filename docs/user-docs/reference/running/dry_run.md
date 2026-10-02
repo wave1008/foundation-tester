@@ -33,7 +33,7 @@ execute for the platform being checked (to cover both OSes, dry-run once per pla
 
 ## What it does not do
 
-- It never contacts a device or an emulator/simulator, and never calls FM.
+- It never contacts a device or an Emulator/Simulator, and never calls FM.
 - `--profile` is not used, since no device is involved — only `--platform` decides which of
   `ios { }` / `android { }` to check.
 - It does not write a report, and its result is not recorded for `--failed` to pick up later.

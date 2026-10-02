@@ -21,7 +21,7 @@ item offers three run profiles:
 
 Setting `fleetest.profile` routes Run/Run (dry-run)/Debug through `fleetest api run --profile
 <name>` instead of the raw `fleetest.platform`/`fleetest.port`/`fleetest.serial` settings — devices
-are provisioned and the app is auto-installed by the run profile. A physical device or simulator
+are provisioned and the app is auto-installed by the run profile. A physical device or Simulator
 must already be booted for a real run; Run (dry-run) needs no device at all.
 
 ## Steps View

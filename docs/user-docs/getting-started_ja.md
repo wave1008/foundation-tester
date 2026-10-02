@@ -11,8 +11,8 @@ clone からビルドまではエージェントが進めるので、手で行�
 | 対象 | 要件 |
 |---|---|
 | 共通 | macOS 26+ |
-| iOS をテストするなら | Xcode 26+、iOS シミュレータ、xcodegen |
-| Android をテストするなら | Android SDK(adb)、エミュレータまたは実機 |
+| iOS をテストするなら | Xcode 26+、iOS Simulator、xcodegen |
+| Android をテストするなら | Android SDK(adb)、Emulator または実機 |
 | 拡張ビルド | Node.js v24 以降、npm v11 以降 |
 
 視覚検証・画面描写チェックといった Foundation Models の機能は experimental で、macOS 27+ が
@@ -23,7 +23,7 @@ clone からビルドまではエージェントが進めるので、手で行�
 
 インストールをスムーズに進めるため、テストに使うデバイスを先に用意しておいてください。
 
-- **iOS をテストするなら**: Xcode をインストールし、使いたいシミュレータを作成して起動しておく
+- **iOS をテストするなら**: Xcode をインストールし、使いたい Simulator を作成して起動しておく
 - **Android をテストするなら**: Android Studio をインストールし、使いたい AVD を作成して起動しておく。
   システムイメージは Play Store ではなく **Google APIs** を選ぶ —— Play Store イメージは `user`
   ビルドで、アプリの release ビルドはその上で WebView の中身を出せない(詳細は

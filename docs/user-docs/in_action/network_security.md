@@ -9,8 +9,8 @@ corporate LAN that does not reach the internet. It is not a setup guide.
 |---|---|---|
 | Your Mac (CLI, MCP server, monitor, live control) | **Opens no port at all.** Everything is NDJSON over standard input/output between parent and child processes only | — |
 | iOS Simulator bridge (XCUITest / in-app) | `127.0.0.1` inside the device only. The Simulator shares its host's network stack, so your machine can reach it | Not needed (loopback) |
-| Android bridge (physical device and emulator alike) | **Loopback inside the device only.** Reached from your machine through a dynamic local port that `adb forward` opens | Not needed (loopback) |
-| Android emulator gRPC | `127.0.0.1` | A Bearer token the emulator itself issues once per boot |
+| Android bridge (physical device and Emulator alike) | **Loopback inside the device only.** Reached from your machine through a dynamic local port that `adb forward` opens | Not needed (loopback) |
+| Android Emulator gRPC | `127.0.0.1` | A Bearer token the Emulator itself issues once per boot |
 | **Physical iPhone, USB path (default, recommended)** | An iproxy (libimobiledevice) USB tunnel. **Stays entirely on loopback** | Not needed (loopback) |
 | **Physical iPhone, LAN path** | **All of the device's network interfaces.** Reachable from the same LAN | **Token required** (see below) |
 

@@ -58,8 +58,8 @@ swift run fleetest run --profile ios
 
 ## Android
 
-同じコマンドに `--platform android` を付けるか、実行プロファイルにエミュレータの `name` を
-含めるだけでエミュレータ/実機を対象にできます。個別のセットアップは不要です
+同じコマンドに `--platform android` を付けるか、実行プロファイルに Emulator の `name` を
+含めるだけで Emulator/実機を対象にできます。個別のセットアップは不要です
 (端末常駐ブリッジ `AndroidRunner` が初回操作時に自動でインストール・起動します)。
 
 ```bash

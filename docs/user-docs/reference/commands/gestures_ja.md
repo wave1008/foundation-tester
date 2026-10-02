@@ -91,7 +91,7 @@ hold("#btn_tooltip_anchor", holdSeconds: 3) {
   そこで**両方の指が同じものに載る位置**を選んで撃ちます。置けなければ半径を狭め、
   それでも駄目なときだけ従来どおり画面全体でピンチします。
 - **iOS では、ダブルタップだけがフレームワークとエンジンによって効かないことがあります。**
-  既定の hybrid エンジン(シミュレータ)なら全フレームワーク・全ジェスチャが動きます。
+  既定の hybrid エンジン(Simulator)なら全フレームワーク・全ジェスチャが動きます。
   Android にはこの区別が無く、全ジェスチャがどこでも動きます:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
@@ -101,7 +101,7 @@ hold("#btn_tooltip_anchor", holdSeconds: 3) {
   | `pinchOut` / `pinchIn` | ✅ | ✅ | ✅ | ✅ |
   | `gesture` | ✅ | ✅ | ✅ | ✅ |
 
-  - **「hybrid のみ」**: 既定の hybrid エンジン(シミュレータ)でだけ動きます。**`xcuitest` だけの
+  - **「hybrid のみ」**: 既定の hybrid エンジン(Simulator)でだけ動きます。**`xcuitest` だけの
     プロファイルと実機では、Compose のアプリはダブルタップを認識しません**(実機はアプリへの
     注入ができないため、ほかに撃つ手段がありません)。
   - **「△」**: 届きますが、アプリがタップを JavaScript(PanResponder と時計など)で判定している
@@ -119,7 +119,7 @@ hold("#btn_tooltip_anchor", holdSeconds: 3) {
   ```
 
   ダブルタップが拡大以外の操作(「いいね」など)に割り当てられている画面では代わりになりません。
-  その確認はシミュレータ(hybrid)か Android で行ってください。
+  その確認は Simulator(hybrid)か Android で行ってください。
 - **指定した倍率どおりに出るとは限りません。** 2本指はピンチしている領域の外へは置けないため、
   極端な `scale` を指定してもその領域で出せる最大値で頭打ちになります。**倍率そのものより
   「拡大/縮小が起きたこと」を検証する**方が、アプリを跨いで安定します。

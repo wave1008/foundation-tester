@@ -19,7 +19,7 @@ platform-agnostic scenario on both OSes, run `--profile ios` and `--profile andr
 
 ## Without a run profile (manual `--port`)
 
-Start one bridge per simulator, on separate ports, then hand `run` the port list:
+Start one bridge per Simulator, on separate ports, then hand `run` the port list:
 
 ```bash
 fleetest bridge up --device "iPhone 17 Pro"                          # port 8123
@@ -37,14 +37,14 @@ own subprocess, so platforms stay isolated).
 
 - **More devices is not always faster.** Past the point where the Mac is saturated, each scenario
   just gets slower, the total time stays flat, and image-based steps (`findImage` / `existImage`) and
-  text visual verification start to fail more often. Measured on an M2 Ultra with Android emulators:
+  text visual verification start to fail more often. Measured on an M2 Ultra with Android Emulators:
   6 devices → 10 devices doubled the median scenario time (7.8s → 14.1s), did not shorten the run,
   and raised image-matching errors from 2 to 28 in about 500 runs each.
 - So find the knee on your own Mac: add devices a few at a time and stop when the wall time of the
   run stops dropping. If a run turns red only at the higher count, go back to the lower one.
 - Older measurement (M1 Max): 3 scenarios sequentially = 55.2s → 2+1 in parallel = 31.2s; there,
   iOS 2 + Android 2 was the knee and 3+3 gained nothing.
-- A freshly cold-booted simulator can time out on its accessibility IPC. Workers warm up with a
+- A freshly cold-booted Simulator can time out on its accessibility IPC. Workers warm up with a
   snapshot automatically at start, but if it still fails, run `bridge up` then one manual
   `launch` + `snapshot` before the real run.
 
@@ -61,7 +61,7 @@ by their `worker` field, since the same `scenarioID` appears once per device (se
 ## One run at a time per machine
 
 **A Mac runs one fleetest run at a time.** Two runs on the same machine fight over the same
-simulators and the same loopback ports, and the load makes tests unstable — so the second one is
+Simulators and the same loopback ports, and the load makes tests unstable — so the second one is
 not started. This is deliberate, not a limit to work around.
 
 You rarely need a second run anyway: parallelism lives *inside* one run. Put more devices in the

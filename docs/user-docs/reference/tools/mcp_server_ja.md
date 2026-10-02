@@ -39,7 +39,7 @@ cwd(受け手パッケージ)とは別物です。
 | `platform` | `ios`(既定)または `android` |
 | `project` | テストプロジェクト名 |
 | `profile` | 実行プロファイル名(`profiles/runs/<name>`)。`ft_run_scenario` と同じデバイス・エンジンで動く |
-| `udid` | iOS デバイスの UDID(シミュレータ・実機とも。`ft_list_devices` で取得) |
+| `udid` | iOS デバイスの UDID(Simulator・実機とも。`ft_list_devices` で取得) |
 | `serial` | Android デバイスのシリアル番号 |
 | `port` | iOS ブリッジのポート(既定: 起動中のブリッジ) |
 | `allowVersionSkew` | ブリッジのプロトコル版がツールと合わなくても操作する(既定 off = 拒否。押し通した応答には毎回警告が付く) |
@@ -80,7 +80,7 @@ cwd(受け手パッケージ)とは別物です。
 
 ## 実機
 
-画面操作系のツールは iPhone / Android の実機でも同じように使えます。シミュレータ/エミュレータ
+画面操作系のツールは iPhone / Android の実機でも同じように使えます。Simulator/Emulator
 専用の操作は自動で振り分けられます —— `ft_install` は iOS 実機では `simctl` の代わりに
 `devicectl` を使い、`ft_clear_app_data` は iOS 実機では uninstall + install(直前の `ft_install` の
 パス、または `packagePath:`)でデータを消します(Android は実機でも `pm clear` が効きます)。

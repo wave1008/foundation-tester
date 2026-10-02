@@ -5,14 +5,14 @@
 | Target | Requirement |
 |---|---|
 | Common | macOS 26+ |
-| If you test iOS | Xcode 26+, iOS simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) |
-| If you test Android | Android SDK (adb), emulator or physical device |
+| If you test iOS | Xcode 26+, iOS Simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`) |
+| If you test Android | Android SDK (adb), Emulator or physical device |
 | Extension build | Node.js v24 or newer, npm v11 or newer |
 
 You do not need both iOS and Android. Set up only the platform you actually test.
 
 `fleetest doctor` checks what is available on this machine in one go — Foundation Models,
-Xcode, xcodegen, simulators, and adb.
+Xcode, xcodegen, Simulators, and adb.
 
 ## Apple Intelligence (optional)
 

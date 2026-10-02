@@ -123,7 +123,7 @@ Both can be put on a class or on an individual `@Test`.
 
 ## Naming devices in reports
 
-In reports to the user, do not call a simulator or emulator a "physical device". That word means
+In reports to the user, do not call a Simulator or Emulator a "physical device". That word means
 only a real iPhone / Android connected over USB (`kind: "physical"` in the run profile). When unsure, say "device".
 
 ## Writing for specific UI components

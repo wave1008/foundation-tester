@@ -58,8 +58,8 @@ full failure model.
 
 ## Android
 
-Point the same command at an emulator/physical device with `--platform android`, or list an
-emulator device `name` in the run profile. No separate setup step is required — the on-device
+Point the same command at an Emulator/physical device with `--platform android`, or list an
+Emulator device `name` in the run profile. No separate setup step is required — the on-device
 bridge (`AndroidRunner`) installs and starts itself on first use.
 
 ```bash

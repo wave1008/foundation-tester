@@ -6,7 +6,7 @@
 `/fleetest:fleetest-setup` を済ませてください。
 
 > **Codex を使う場合**: ステップ1・2は `codex --sandbox danger-full-access` で起動したセッションで
-> 行ってください。既定のサンドボックスでは、隣のフォルダへの clone とシミュレータの操作が塞がれます。
+> 行ってください。既定のサンドボックスでは、隣のフォルダへの clone と Simulator の操作が塞がれます。
 > ステップ3以降は既定のままで動きます(`ft_*` は MCP サーバの中で動くため)。MCP の登録と承認の
 > 設定は[その他のエージェント](reference/tools/other_agents_ja.md)を参照してください。
 
@@ -17,13 +17,13 @@
 を使います。作業フォルダの隣にダウンロードしてビルドします。このアプリは商品と画像をサーバから
 取得するので、サーバも起動しておきます。
 
-### AI アシスタントで実行
+### AIアシスタントで実行
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、
 1. サーバを起動(/health が ok を返すまで確認)。このセッションを閉じても動き続けるように起動する(nohup などで)
 2. Android の debug APK をビルド
-3. iOS シミュレータ向け(arm64 のみ、署名なし)をビルド
+3. iOS Simulator 向け(arm64 のみ、署名なし)をビルド
 前提: JDK 17 と Apple Container が必要。無ければ Homebrew で入れてよい。
 シェルの設定ファイルは変更しない。
 完了条件: 成果物のパスを報告。インストールと起動確認は不要。
@@ -48,7 +48,7 @@ cd sut-ec-mobile
 続けてアプリをビルドします。
 
 ```bash
-# iOS シミュレータ(-destination の name は手元にあるシミュレータの名前にする)
+# iOS Simulator(-destination の name は手元にある Simulator の名前にする)
 xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
   -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
   -derivedDataPath build/ios-sim CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES build
@@ -68,14 +68,14 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 実行には2つのプロファイルが必要です —— 対象アプリを定めるアプリプロファイル、使うデバイスを
 列挙する実行プロファイル。アプリ ID は iOS / Android とも `com.sutec.mobile` です。
 
-### AI アシスタントで実行
+### AIアシスタントで実行
 
 ```text
 このフォルダの隣にある sut-ec-mobile のアプリ(ビルド済み)向けに、fleetest のプロファイルを作成して。
 1. iOS と Android それぞれのアプリプロファイルと実行プロファイルを fleetest profile setup で作成(JSON は手で書かない)
 2. fleetest profile list で、アプリとデバイスまで解決されることを確認
-設定値: アプリの表示名は SUT Store、アプリ ID は iOS / Android とも com.sutec.mobile、アプリのパスは sut-ec-mobile のビルド済みの .app(iOS シミュレータ向け)と .apk、デバイスは自動選択(--auto-device)。
-利用できるシミュレータ / エミュレータが無ければ、作成せずに報告する。
+設定値: アプリの表示名は SUT Store、アプリ ID は iOS / Android とも com.sutec.mobile、アプリのパスは sut-ec-mobile のビルド済みの .app(iOS Simulator 向け)と .apk、デバイスは自動選択(--auto-device)。
+利用できる Simulator / Emulator が無ければ、作成せずに報告する。
 完了条件: 作成した実行プロファイルの名前を報告。テストの実行は不要。
 ```
 
@@ -97,7 +97,7 @@ fleetest profile setup --platform android --app-id com.sutec.mobile --auto-devic
 ```
 
 `--app-path` にビルドしたアプリを渡すと、実行時にデバイスへ自動でインストールされます。
-`--auto-device` は、このマシンで利用可能なシミュレータ/エミュレータを自動で選びます(起動していない
+`--auto-device` は、このマシンで利用可能な Simulator/Emulator を自動で選びます(起動していない
 ものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
 
 </details>
@@ -110,13 +110,13 @@ fleetest profile setup --platform android --app-id com.sutec.mobile --auto-devic
 セレクタは実画面から採られます。書かれる内容を読みたいときは
 [セレクタ式](./reference/selector/selector_expression_ja.md)を参照してください。
 
-### AI アシスタントで実行
+### AIアシスタントで実行
 
 ```text
 sut-ec-mobile(SUT Store)のログイン画面だけを対象に、探索的テストを作成して。
 ```
 
-AI アシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
+AIアシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
 見つけた挙動をテストシナリオに落とします。別の画面を対象にするときは、画面名を替えてください。
 iOS と Android のどちらで探索するかは、指示に添えると確実です(例:「…ログイン画面だけを対象に、
 Android で探索的テストを作成して。」)。
@@ -134,7 +134,7 @@ VSCode 拡張のデバイスモニターを開き、「ライブ操作」タブ�
 デバイスに触れる前に dry-run を実行します。セレクタの構文誤り・到達しない scene・検証の無い
 `expectation` を数秒で検知します。
 
-### AI アシスタントで実行
+### AIアシスタントで実行
 
 ```text
 作成したシナリオを dry-run で検証して
@@ -151,7 +151,7 @@ fleetest run --dry-run
 
 ## 5. デバイスで実行する
 
-### AI アシスタントで実行
+### AIアシスタントで実行
 
 ```text
 作成したシナリオを ios プロファイルで実行して
@@ -183,7 +183,7 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 レポートが出ます。ステップごとの結果とスクリーンショット、失敗時は失敗メッセージと失敗時点の
 要素一覧、自己修復の提案が載ります。
 
-### AI アシスタントで実行
+### AIアシスタントで実行
 
 ```text
 今の実行結果を要約して。失敗があればレポートから原因を調べて
