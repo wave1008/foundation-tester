@@ -203,8 +203,11 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("drag(\(fromX),\(fromY)->\(toX),\(toY),duration:\(durationSeconds))", "drag")
     }
 
+    private(set) var lastPinchDurationSeconds: Double?
+
     func pinch(frame: FTRect?, identifier: String?, scale: Double,
                durationSeconds: Double) async throws {
+        lastPinchDurationSeconds = durationSeconds
         let target = frame.map { "\($0.x),\($0.y),\($0.width)x\($0.height)" } ?? "screen"
         try record("pinch(\(target),id:\(identifier ?? "nil"),scale:\(scale))", "pinch")
     }

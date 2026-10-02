@@ -74,6 +74,18 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["pinch(screen,id:nil,scale:2.0)"])
     }
 
+    /// **既定値はリテラルで固定する**(MCP は FlowStep の定数を引く。定数を変えた日に DSL と一緒に
+    /// 動くのは意図どおりだが、黙って動かないようここで止める)
+    func testPinchDefaultDurationIsPinned() async throws {
+        _ = try await server.call(tool: "ft_pinch", args: [:])
+        XCTAssertEqual(driver.lastPinchDurationSeconds, 0.5)
+    }
+
+    func testLogsDefaultsArePinned() {
+        XCTAssertEqual(MCPServer.logsDefaultSinceSeconds, 300)
+        XCTAssertEqual(MCPServer.logsDefaultLines, 100)
+    }
+
     /// 向きの無い scale(1 以下 0 以下)は撃たずに弾く
     func testPinchRejectsMeaninglessScale() async {
         await assertThrows("ft_pinch", ["scale": 1.0])

@@ -275,4 +275,27 @@ final class MCPServerIntegerArgumentPartitionTests: XCTestCase {
         XCTAssertFalse(MCPServer.usesRememberedDeviceState(["steps": "tap '#btn'; type '#f' 'x'"]))
         XCTAssertFalse(MCPServer.usesRememberedDeviceState(["steps": "tap '#refresh'"]))
     }
+    /// **説明文の既定値は定数から作る**ので、表記(%g)の崩れ("2.0" や "0.500000")と、
+    /// 定数と説明の食い違いをここで見る。期待値はリテラル(production の定数を使わない)
+    func testDescriptionDefaultsRenderTheActualValues() {
+        // JSON 化して探さない(JSONSerialization は "/" を "\\/" に逃がす)。説明文を再帰で集める
+        func descriptions(_ value: Any) -> [String] {
+            if let dict = value as? [String: Any] {
+                return ((dict["description"] as? String).map { [$0] } ?? [])
+                    + dict.values.flatMap(descriptions)
+            }
+            if let array = value as? [Any] { return array.flatMap(descriptions) }
+            return []
+        }
+        let all = descriptions(MCPServer.toolDefinitions).joined(separator: "\n")
+        for expected in ["Zoom factor (default 2)", "Duration (default 0.5)", "Travel time (default 1.5)",
+                         "Max wait for waitFor/waitForChange (default 5)", "Swipe limit (default 8)",
+                         "Hold time (default 1, as", "(default 22% ", "Width limit in px (default 600)",
+                         "JPEG quality 0-1 (default 0.6)", "lines to return (default 100)",
+                         "How far back to look (default 300)", "default 90d;",
+                         "Rows for list (default 20) / slow (default 10)", "minimum runs to count (default 5)"] {
+            XCTAssertTrue(all.contains(expected), "説明文に \(expected) が無い")
+        }
+        XCTAssertTrue(MCPServer.serverInstructions.contains("waitSeconds (default 5s;"))
+    }
 }

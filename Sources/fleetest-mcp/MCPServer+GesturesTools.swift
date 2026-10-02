@@ -455,7 +455,7 @@ extension MCPServer {
     }
 
     func ftPinch(_ args: [String: Any]) async throws -> [[String: Any]] {
-        let scale = try Self.doubleArgument(args, "scale") ?? 2.0
+        let scale = try Self.doubleArgument(args, "scale") ?? FlowStep.defaultPinchOutScale
         guard scale > 0, scale != 1, scale.isFinite else {
             throw MCPError("scale must be positive and not 1 (>1 zooms in, <1 zooms out)")
         }
@@ -531,14 +531,15 @@ extension MCPServer {
         } else {
             whole = true
         }
-        let pinchDuration = try Self.doubleArgument(args, "durationSeconds") ?? 0.5
+        let pinchDuration = try Self.doubleArgument(args, "durationSeconds")
+            ?? FlowStep.defaultPinchDurationSeconds
         try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
                                     durationSeconds: pinchDuration)
-        // 記録は DSL の語彙(pinchOut/pinchIn)で。既定の 0.5s は落とす(codegen が省くため)
+        // 記録は DSL の語彙(pinchOut/pinchIn)で。既定の所要時間は落とす(DSL の pinchStep と同じ判定)
         recordInteraction(action: scale > 1 ? "pinchOut" : "pinchIn",
                           resolvedRef: pinchResolvedRef, args: args,
                           coordinate: pinchCoordinate,
-                          duration: pinchDuration == 0.5 ? nil : pinchDuration,
+                          duration: pinchDuration == FlowStep.defaultPinchDurationSeconds ? nil : pinchDuration,
                           maxGestureSeconds: try Self.doubleArgument(args, "maxGestureSeconds"), scale: scale)
         return text("pinch x\(scale) done.\(pinchSelector)"
             // **「小さくなる」とだけ言わない**(実測): 指が対象の内側に収まる分だけ
@@ -603,7 +604,7 @@ extension MCPServer {
                 + " DSL's tap(holdSeconds:)) — pass holdSeconds instead")
         }
         let pressDriver = try await driver(args)
-        let pressDuration = try Self.doubleArgument(args, "holdSeconds") ?? 1.0
+        let pressDuration = try Self.doubleArgument(args, "holdSeconds") ?? Self.defaultLongPressHoldSeconds
         let pressCap = try Self.doubleArgument(args, "maxGestureSeconds")
         if let ref = try Self.intArgument(args, "ref") {
             let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)

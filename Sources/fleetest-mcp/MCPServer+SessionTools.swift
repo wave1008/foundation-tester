@@ -156,8 +156,8 @@ extension MCPServer {
             platform: Self.platformName(args),
             bundleID: logBundleID,
             serial: args["serial"] as? String,
-            withinSeconds: try Self.intArgument(args, "sinceSeconds") ?? 300,
-            maxLines: try Self.intArgument(args, "lines") ?? 100,
+            withinSeconds: try Self.intArgument(args, "sinceSeconds") ?? Self.logsDefaultSinceSeconds,
+            maxLines: try Self.intArgument(args, "lines") ?? Self.logsDefaultLines,
             crashOnly: (args["all"] as? Bool) != true,
             physicalUDID: logsPhysicalUDID,
             simulatorUDID: logsPhysicalUDID == nil ? logsUDID : nil))

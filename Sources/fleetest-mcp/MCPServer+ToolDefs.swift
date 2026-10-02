@@ -47,7 +47,7 @@ extension MCPServer {
         "description": "Needs snapshotAfter. Selector to wait for on the result (#id, label, .type, a||b)",
     ]
     static let snapshotAfterWaitSecondsProperty: [String: Any] = [
-        "type": "number", "description": "Max wait for waitFor/waitForChange (default 5)",
+        "type": "number", "description": "Max wait for waitFor/waitForChange (default \(number(defaultWaitSeconds)))",
     ]
     /// **「何かが変わる」を待つ**: 再検索のように**同じセレクタのまま中身だけ入れ替わる**画面では
     /// waitFor が古い結果に即マッチして待ちにならない(実測: Google マップの経路再検索で
@@ -160,7 +160,7 @@ extension MCPServer {
         changed", not "the final content arrived": a screen that first shows a loading or empty \
         intermediate (a search still fetching) satisfies it early — the response notes when the \
         difference was already on the first read, and only checking for the expected content \
-        guarantees it is there. Both waits run to waitSeconds (default 5s; the same name as the DSL's \
+        guarantees it is there. Both waits run to waitSeconds (default \(number(defaultWaitSeconds))s; the same name as the DSL's \
         waitSeconds:) when they miss — pass a smaller waitSeconds on a wait you expect to miss, a larger \
         one for a slow load. \
         snapshotAfter and ft_scroll_to inherit interactiveOnly/expandBulk from your last \
@@ -200,6 +200,19 @@ extension MCPServer {
     static let screenshotMaxWidth = 600
     static let screenshotQuality = 0.6
 
+    /// ft_long_press の既定の押下秒数。**DSL に対応する既定は無い**(`tap(holdSeconds:)` の既定は 0、
+    /// `hold()` は 3)。OS の長押し判定(iOS・Android とも約 0.5 秒)を確実に越える値。
+    /// 下書きには毎回明示で残るので、この値を変えても既存の下書きの意味は変わらない
+    static let defaultLongPressHoldSeconds: Double = 1.0
+    /// ft_logs の既定の遡り秒数と行数(Android の logcat)。5分 = いま見た落ち方を含む幅・
+    /// 100 行 = 応答に載せて読める量。足りなければ呼び手が sinceSeconds / lines で広げる
+    static let logsDefaultSinceSeconds = 300
+    static let logsDefaultLines = 100
+
+    /// 説明文へ既定値を埋めるときの表記(2.0 → "2"・0.5 → "0.5")。**説明の既定値は定数から作る**
+    /// (リテラルで書くと定数を変えた日に説明だけが古い値を言い続ける)
+    static func number(_ value: Double) -> String { String(format: "%g", value) }
+
     static let toolDefinitions: [[String: Any]] = [
         tool("ft_status", "Check the device/bridge connection state", [:]),
         tool("ft_list_devices", "List the devices this Mac can drive (simulators, emulators, physical) "
@@ -229,8 +242,8 @@ extension MCPServer {
                 + "(works after it died); narrows a simulator's reports to it"],
             "port": ["type": "integer", "description": "iOS bridge port the device had — read "
                 + "without contacting it"],
-            "lines": ["type": "integer", "description": "Android: recent lines to return (default 100)"],
-            "sinceSeconds": ["type": "integer", "description": "How far back to look (default 300)"],
+            "lines": ["type": "integer", "description": "Android: recent lines to return (default \(logsDefaultLines))"],
+            "sinceSeconds": ["type": "integer", "description": "How far back to look (default \(logsDefaultSinceSeconds))"],
             "all": ["type": "boolean", "description": "Android: read the main buffer too, not just crashes"],
         ], scope: .none),
         tool("ft_install", "Install a package (iOS: .app / Android: .apk, or .apks via bundletool)", [
@@ -257,7 +270,7 @@ extension MCPServer {
             + "lines marked scroll are containers usable as scrollFrame. Use refs for tap/type. "
             + "waitFor polls for you", [
             "waitFor": ["type": "string", "description": "Wait until this selector is on screen (#id, label, .type, a||b)"],
-            "waitSeconds": ["type": "number", "description": "Max wait for waitFor (default 5)"],
+            "waitSeconds": ["type": "number", "description": "Max wait for waitFor (default \(number(defaultWaitSeconds)))"],
             "maxElements": maxElementsProperty,
         ], extra: foldingProperties),
         tool("ft_tap", "Tap an element (ref) or a point (x,y). A ref is re-checked against a fresh tree: "
@@ -304,7 +317,7 @@ extension MCPServer {
                                 + "scroll areas: a selector (#id, label, .type, a||b) of a line marked "
                                 + "scroll, or any ft_snapshot ref with a non-zero frame (use a ref when "
                                 + "the id is missing or duplicated, or for a row interactiveOnly hides)"],
-            "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8)"],
+            "maxSwipes": ["type": "integer", "description": "Swipe limit (default \(FlowStep.defaultMaxSwipes))"],
         ], extra: foldingProperties, required: ["selector"]),
         tool("ft_batch", "Run several operation/scroll DSL steps in one approval, stopping at the first "
             + "failure; replies with the screen after the last step. Arguments are quoted and "
@@ -382,7 +395,7 @@ extension MCPServer {
             "toY": ["type": "number"],
             "dx": ["type": "number", "description": "Horizontal travel (instead of toX)"],
             "dy": ["type": "number", "description": "Vertical travel, negative = up (instead of toY)"],
-            "durationSeconds": ["type": "number", "description": "Travel time (default 1.5)"],
+            "durationSeconds": ["type": "number", "description": "Travel time (default \(number(FlowStep.defaultSwipeDurationSeconds)))"],
             "maxGestureSeconds": maxGestureSecondsProperty,
         ], extra: afterActionProperties()),
         tool("ft_pinch", "Pinch to zoom: scale > 1 zooms in, < 1 out. Target a ref, or x/y on a map or "
@@ -392,10 +405,10 @@ extension MCPServer {
             "ref": refProperty,
             "x": ["type": "number", "description": "Pinch centre (ft_snapshot coordinates)"],
             "y": ["type": "number", "description": "Pinch centre (ft_snapshot coordinates)"],
-            "radius": ["type": "number", "description": "Half-width of the pinched area (default 22% "
+            "radius": ["type": "number", "description": "Half-width of the pinched area (default \(Int(pinchRadiusScreenRatio * 100))% "
                 + "of the screen's short side)"],
-            "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
-            "durationSeconds": ["type": "number", "description": "Duration (default 0.5)"],
+            "scale": ["type": "number", "description": "Zoom factor (default \(number(FlowStep.defaultPinchOutScale)))"],
+            "durationSeconds": ["type": "number", "description": "Duration (default \(number(FlowStep.defaultPinchDurationSeconds)))"],
             "maxGestureSeconds": maxGestureSecondsProperty,
         ], extra: afterActionProperties()),
         tool("ft_gesture", "Replay several fingers' timed paths as ONE continuous touch — no lifting "
@@ -438,15 +451,15 @@ extension MCPServer {
         tool("ft_long_press", "Long-press (press and hold — NOT a hardware key) an element (ref) or a "
             + "point (x,y — e.g. on a map, where the point has no element). " + coordinateCaveat, [
             "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
-            "holdSeconds": ["type": "number", "description": "Hold time (default 1.0, as the DSL's "
+            "holdSeconds": ["type": "number", "description": "Hold time (default \(number(defaultLongPressHoldSeconds)), as the DSL's "
                 + "tap(holdSeconds:))"],
             "maxGestureSeconds": maxGestureSecondsProperty,
         ], extra: afterActionProperties()),
         tool("ft_screenshot", "Take a screenshot for visual checks. It is downscaled — never read x/y "
             + "off it; use ft_snapshot coordinates", [
-            "maxWidth": ["type": "integer", "description": "Width limit in px (default 600); raise it "
+            "maxWidth": ["type": "integer", "description": "Width limit in px (default \(screenshotMaxWidth)); raise it "
                 + "for dense screens"],
-            "quality": ["type": "number", "description": "JPEG quality 0-1 (default 0.6)"],
+            "quality": ["type": "number", "description": "JPEG quality 0-1 (default \(number(screenshotQuality)))"],
             "fullSize": ["type": "boolean", "description": "Return the full-resolution PNG"],
         ]),
         tool("ft_capture_element", "Save an element's crop as an image-classifier sample under "
@@ -522,11 +535,11 @@ extension MCPServer {
             + "(regressions, repeated failures, stale selectors), log (a run's execution log)", [
             "query": ["type": "string", "enum": MCPResultsRequest.queries],
             "since": ["type": "string", "description": "Period start: 90s/30m/2h/30d, YYYY-MM-DD or "
-                + "@epoch (default 90d; not for log)"],
+                + "@epoch (default \(ResultsRendering.defaultSince); not for log)"],
             "scenario": ["type": "string", "description": "Class.method: filters summary/log; required for trend"],
             "runId": ["type": "string", "description": "log: run ID or latest (default)"],
-            "limit": ["type": "integer", "description": "Rows for list (default 20) / slow (default 10)"],
-            "minRuns": ["type": "integer", "description": "flaky: minimum runs to count (default 5)"],
+            "limit": ["type": "integer", "description": "Rows for list (default \(ResultsRendering.defaultListLimit)) / slow (default \(ResultsRendering.defaultSlowLimit))"],
+            "minRuns": ["type": "integer", "description": "flaky: minimum runs to count (default \(ResultsRendering.defaultMinRuns))"],
         ], required: ["query"], scope: .project),
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
