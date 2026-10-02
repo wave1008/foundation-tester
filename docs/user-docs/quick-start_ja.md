@@ -5,10 +5,10 @@
 `TestProjects/` を含む作業フォルダがまだ無ければ、先に[はじめに](getting-started_ja.md)の
 手順で Fleetest をインストールしてください。
 
-> **Codex を使う場合**: ステップ1・2は `codex --sandbox danger-full-access` で起動したセッションで
-> 行ってください。既定のサンドボックスでは、隣のフォルダへの clone と Simulator の操作が塞がれます。
-> ステップ3以降は既定のままで動きます(`ft_*` は MCP サーバの中で動くため)。MCP の登録と承認の
-> 設定は[その他のエージェント](reference/tools/other_agents_ja.md)を参照してください。
+> **Codex を使う場合**: ステップ1・2の途中で、Codex が「サンドボックスの外で実行してよいか」を確認することが
+> あります(隣のフォルダへの clone や Simulator の操作)。許可してください。ステップ3以降の `ft_*` は
+> MCP サーバの中で動くので確認は出ません。MCP の登録と承認の設定は
+> [その他のエージェント](reference/tools/other_agents_ja.md)を参照してください。
 
 ## 1. サンプルアプリを用意する
 

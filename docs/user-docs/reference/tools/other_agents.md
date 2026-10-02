@@ -138,7 +138,7 @@ history and recordings also works through `ft_start_run` (the shell's `fleetest 
 below, so have the agent use this). The caveat that the project's code then runs outside the sandbox is in
 [MCP server](mcp_server.md#sandbox-and-approval). Even with `--sandbox read-only` the server reaches the file system and loopback.
 
-**Blocked unless `danger-full-access`** — the install and update runbooks, because they run through
+**Blocked inside the sandbox** — the install and update runbooks, because they run through
 the shell:
 
 | Command | What happens | Why |
@@ -148,10 +148,9 @@ the shell:
 | `adb` | works | it uses TCP 5037, so `network_access = true` is enough |
 
 **Neither of the first two is fixed by `network_access` or `writable_roots`** — they are not
-permission problems (one is a nested sandbox, the other a mach service). The narrowest workaround
-is to start `codex --sandbox danger-full-access` for the install/update session only. Relaxing it
-permanently means setting `sandbox_mode`, which has the same duplicate-key hazard: a second
-`sandbox_mode` invalidates the whole `config.toml`.
+permission problems (one is a nested sandbox, the other a mach service). When they fail, Codex
+asks whether it can run the command outside the sandbox; allow it and the install or update
+carries on (confirmed with Codex in VSCode — no special launch option is needed).
 
 ### Link
 - [index](../../index.md)

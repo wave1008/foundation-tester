@@ -165,8 +165,8 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 - `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
 - **`network_access` や `writable_roots` では直らない**(権限の問題ではない)
 
-導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動するのが最も狭い回避
-(恒久設定にするなら `sandbox_mode`。こちらも**キーの重複で config.toml 全体が無効になる**)。
+これらが失敗したら、**同じコマンドをサンドボックスの外での実行として求める**(承認方式 `on-request` なら
+🧑 の許可で通る。VSCode の Codex の既定で確認)。起動のしかたを変えるよう 🧑 に頼まない。
 **エージェントが `~/.codex/config.toml` を手で書き換えてはいけない**(受け手のセキュリティ境界。
 MCP の登録は 🧑 に頼まれたときだけ `codex mcp add` で行う。サンドボックスの設定は 🧑 に任せる)。
 

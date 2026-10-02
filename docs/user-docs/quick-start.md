@@ -4,9 +4,9 @@ The shortest path from a completed setup to creating test scenarios for a sample
 them. You do not write scenarios by hand. If you don't have a work folder with `TestProjects/`
 yet, install Fleetest by following [Getting Started](getting-started.md) first.
 
-> **With Codex**: do steps 1 and 2 in a session started with `codex --sandbox danger-full-access`.
-> The default sandbox blocks cloning into the neighbouring folder and driving the Simulators. From
-> step 3 on the default sandbox works (`ft_*` runs inside the MCP server). See
+> **With Codex**: during steps 1 and 2, Codex may ask whether it can run a command outside its
+> sandbox (cloning into the neighbouring folder, driving the Simulators). Allow it. From step 3 on,
+> `ft_*` runs inside the MCP server, so no such prompt appears. See
 > [Other agents](reference/tools/other_agents.md) for registering the MCP server and setting its approvals.
 
 ## 1. Prepare the sample app

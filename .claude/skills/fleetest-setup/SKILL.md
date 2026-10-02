@@ -417,7 +417,9 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 - `xcrun simctl` —— CoreSimulatorService への mach 接続が塞がれる
 - **`network_access` や `writable_roots` では直らない**
 
-導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動するのが最も狭い回避。
+これらが `Operation not permitted`(`sandbox_apply`)や `CoreSimulatorService connection became invalid` で
+失敗したら、**同じコマンドをサンドボックスの外での実行として求める**(承認方式 `on-request` なら 🧑 の許可で通る。
+VSCode の Codex の既定で確認)。起動のしかたを変えるよう 🧑 に頼まない。
 
 **検証ゲート**: `ft_list_devices` が候補を返すこと（返らないなら MCP 登録のほう。
 サンドボックスは `ft_*` に影響しない）。

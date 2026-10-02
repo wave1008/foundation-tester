@@ -25,8 +25,6 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-   Codex を使う場合は、`codex --sandbox danger-full-access` で起動したセッションで頼んでください(既定のサンドボックスではビルドが通りません)。
-
 2. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します
 
 3. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします(デバイスモニターが開きます)

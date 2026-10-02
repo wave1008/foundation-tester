@@ -25,8 +25,6 @@ Clone https://github.com/wave1008/foundation-tester next to this folder, then se
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-   If you use Codex, ask in a session started with `codex --sandbox danger-full-access` (the build does not pass in the default sandbox).
-
 2. When the installation finishes, run `Developer: Reload Window` in VSCode
 
 3. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode (it opens the device monitor)

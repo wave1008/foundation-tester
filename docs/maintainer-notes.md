@@ -96,6 +96,11 @@ docs/user-docs/reference/tools/other_agents に集約する形に寄せた。経
 `network_access` / `writable_roots` では直らない。以前 install.sh のステップ7.7 が
 これらを根拠に false green を出していた。
 
+回避は起動の指定(`danger-full-access`)ではなく**承認による実行**で足りる: VSCode の Codex の既定
+(`workspace-write` + `on-request`)では、失敗したコマンドを Codex が `require_escalated` で求め直し、
+許可すれば導入が最後まで通った(2026-10-03・セッション記録で `sandbox_apply` 21 回 → 許可3回を確認)。
+docs と手順書は「許可してください」と案内し、起動のしかたを変えさせない。
+
 ### 2.3 プラグイン配布と install-skill.sh を廃止した(2026-10-03)
 
 導入は全エージェント共通の1本にした: 「クローンを隣に置き、その `SKILL.md` を読ませる」→
