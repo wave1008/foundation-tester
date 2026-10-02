@@ -736,6 +736,11 @@ import os, re, sys
 path = sys.argv[1]
 kind = sys.argv[2] if len(sys.argv) > 2 else "body"
 tool_root = sys.argv[3] if len(sys.argv) > 3 else "<TOOL_ROOT>"
+# 入口ファイルの置き場所からの**相対パス**で書く(作業フォルダは git に入って別の機械で clone されうる。
+# 絶対パスはその機械のホームを名指しして通じない)。読み手のエージェントは入口ファイルのある
+# フォルダ(= 作業フォルダ)をカレントにして読む
+if tool_root != "<TOOL_ROOT>":
+    tool_root = os.path.relpath(tool_root, os.path.dirname(os.path.abspath(path)))
 # **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
 # 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
 BEGIN = "<!-- fleetest:begin -->"

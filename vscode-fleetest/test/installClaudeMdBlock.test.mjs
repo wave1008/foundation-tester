@@ -12,7 +12,7 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -31,18 +31,21 @@ function guideScript() {
   return body.slice(0, end);
 }
 
-const TOOL_ROOT = "/Users/someone/fleetest/foundation-tester";
 
 /** 与えた入口ファイルの内容(null = ファイル無し)に対してステップ7.6 を1回流す。
  *  kind = "body"(AGENTS.md の本文)/ "import"(CLAUDE.md の `@AGENTS.md`) */
 function run(initial, { fileName = "AGENTS.md", kind = "body" } = {}) {
+  // 作業フォルダ <dir>/work とクローン <dir>/foundation-tester を隣に置く(既定の外部構成と同じ並び)
   const dir = mkdtempSync(path.join(tmpdir(), "ft-entry-md-"));
   try {
     const script = path.join(dir, "guide.py");
     writeFileSync(script, guideScript());
-    const target = path.join(dir, fileName);
+    const work = path.join(dir, "work");
+    mkdirSync(work);
+    const target = path.join(work, fileName);
     if (initial !== null) writeFileSync(target, initial);
-    const verb = execFileSync("python3", [script, target, kind, TOOL_ROOT], { encoding: "utf8" });
+    const toolRoot = path.join(dir, "foundation-tester");
+    const verb = execFileSync("python3", [script, target, kind, toolRoot], { encoding: "utf8" });
     return { verb, text: existsSync(target) ? readFileSync(target, "utf8") : null };
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -64,10 +67,12 @@ test("ファイルが無ければ作り、2回目は変えない(冪等)", () =>
   assert.equal(first.text, second.text);
   assert.match(first.text, /fleetest:begin/);
   // 入口の本文はここでしか検証されない。Claude Code のスキル記法と、スキル機構の無いエージェント
-  // 向けの手順書・手引きの**絶対パス**(受け手の作業場所からクローンを指す)の両方が要る
+  // 向けの手順書・手引きの**入口ファイルからの相対パス**(作業フォルダは git に入って別の機械で
+  // clone されうるので、絶対パスはそこで通じない)の両方が要る
   assert.ok(first.text.includes("`/fleetest-scenario`"), "スキルの呼び出し記法が / でない");
-  assert.ok(first.text.includes(`${TOOL_ROOT}/.claude/skills/fleetest-scenario/SKILL.md`), first.text);
-  assert.ok(first.text.includes(`${TOOL_ROOT}/docs/user-docs/reference/tools/agent_guide.md`), first.text);
+  assert.ok(first.text.includes("`../foundation-tester/.claude/skills/fleetest-scenario/SKILL.md`"), first.text);
+  assert.ok(first.text.includes("`../foundation-tester/docs/user-docs/reference/tools/agent_guide.md`"), first.text);
+  assert.ok(!first.text.includes(tmpdir()), "入口に絶対パスが残っている");
 });
 
 test("CLAUDE.md には @AGENTS.md の読み込みだけを置く(本文を二重に持たない)", () => {
