@@ -197,3 +197,36 @@ test("typed_selector.md が Sel の語彙を全部載せている", () => {
       `${page} に載っていない Sel のメソッド: ${missing.join(", ")}`);
   }
 });
+
+test("リンクの直後に挙げた節の名前が、リンク先の見出しに実在する", () => {
+  // ページを分けたとき、`[はじめに](getting-started_ja.md)の「Fleetest の更新」` のように
+  // 節の名前で指す参照は、リンク先のファイルが残っているので②の検査を素通りし、
+  // 節だけが消えたまま残った(2026-10-03 に6か所)。引用はリンク先の見出しの**先頭**と一致すればよい
+  // (「…を CI で使う」が見出し「…を CI で使う(任意)」を指す形を許す)。番号「4. 」は見出しから外して比べる。
+  const norm = (s) => s.replace(/\s+/g, " ").trim();
+  const patterns = [
+    { re: /\]\(([^)\s#]+\.md)(?:#[^)]*)?\)の「([^」]+)」/g, target: 1, name: 2 },
+    { re: /"([^"]+)" in \[[^\]]*\]\(([^)\s#]+\.md)(?:#[^)]*)?\)/g, target: 2, name: 1 },
+  ];
+  const problems = [];
+  let checked = 0;
+  for (const page of pages) {
+    const body = readPage(page).replace(/```[\s\S]*?```/g, "");
+    for (const { re, target, name } of patterns) {
+      for (const m of body.matchAll(re)) {
+        const file = path.normalize(path.join(DOCS, path.dirname(page), m[target]));
+        if (!existsSync(file)) continue; // 切れたリンクは別の検査が落とす
+        const headings = [...readFileSync(file, "utf8").replace(/```[\s\S]*?```/g, "")
+          .matchAll(/^#{1,6}\s+(.+?)\s*$/gm)]
+          .map((h) => norm(h[1].replace(/^\d+(?:\.\d+)*\.?\s+/, "")));
+        const quoted = norm(m[name]);
+        checked += 1;
+        if (!headings.some((h) => h.startsWith(quoted))) {
+          problems.push(`${page}: 「${quoted}」が ${m[target]} の見出しに無い`);
+        }
+      }
+    }
+  }
+  assert.ok(checked > 0, "節の名前で指す参照が1件も見つからない(走査の形が変わった)");
+  assert.deepEqual(problems, []);
+});

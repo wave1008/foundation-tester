@@ -2,22 +2,11 @@
 
 [in English](index.md)
 
-**fleetest** は `fleet` + `test` であり、*fleet*(すばやい)の最上級でもあります。シナリオを
-デバイスの**フリート**へ分配して実行時間を短縮し、通常の再生では LLM の推論待ちが発生しないので
-**すばやく**、クラウドのデバイスファームや実行ごとの API 利用料を**必要としません**。詳細は
-[Fleetest とは](overview/about_ja.md)。
+fleetest は、Claude Code などの AIアシスタントに自然言語で頼んで使う、iOS / Android アプリの
+E2E テストツールです。名前の由来と特徴は [Fleetest とは](overview/about_ja.md) を参照してください。
 
-fleetest は macOS 上で動く iOS / Android アプリの E2E テストツールです。**ふだんは Claude Code などの
-AIアシスタントに自然言語で頼んで使います** —— テストの作成・実行・失敗の調査・アプリの変更への追従まで
-任せられ、テストのコードや MCP のツールを直接扱う必要はありません。はじめての方は
-[クイックスタート](quick-start_ja.md)、続けて[チュートリアル](#チュートリアル)へ進んでください。
-
-AIアシスタントが作るテストは Shirates 風の Swift DSL のシナリオで、決定的に再生されます —— 通常の操作再生には
-LLM を使いません。Foundation Models(オンデバイス)を使うのは、`screenLooksLike` による視覚検証と
-テキストの視覚検証といった限定された機能だけです。壊れたセレクタの自己修復は決定的(ロケータの指紋照合)で
-FM を使いません。iOS は**ハイブリッドエンジン**で動きます —— アプリに注入したブリッジで速く操作し、
-アプリの外からしか届かない操作だけを XCUITest へ自動で回すので、シナリオに経路を書く必要も、
-アプリを改変する必要もありません([詳細](overview/about_ja.md))。
+はじめての方は、[はじめに](getting-started_ja.md)でインストールし、[クイックスタート](quick-start_ja.md)、
+[チュートリアル](#チュートリアル)の順に進んでください。
 
 ## リポジトリ
 
@@ -145,7 +134,7 @@ FM を使いません。iOS は**ハイブリッドエンジン**で動きます
 - [VSCode 拡張](reference/tools/vscode_extension_ja.md)
 - [MCP サーバ](reference/tools/mcp_server_ja.md)
 - [Claude Code のスキル](reference/tools/claude_code_skills_ja.md)
-- [その他のエージェント](reference/tools/other_agents_ja.md)
+- [Claude Code 以外の AIアシスタント](reference/tools/other_agents_ja.md)
 - [エージェント向けの手引き](reference/tools/agent_guide_ja.md)
 
 ### シナリオの書き方

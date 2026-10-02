@@ -15,7 +15,7 @@ fleetest を長く使っていると、ディスクに溜まるものや、macOS
 | Android Emulator のデータ | テストの開始時に、データがしきい値(既定 8GB)を超えていれば Wipe Data します。アプリのインストールが容量不足で失敗したときも Wipe Data して入れ直します | [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)の `wipeDataOnBloat` |
 | デバイス側のブリッジ | fleetest の版が変わると、次に使うときに入れ直し・作り直しをします | — |
 | 応答しなくなったブリッジ | 拡張が検出すると、テストが走っていない間に自動で修復を試みます(設定 `fleetest.autoRepairBridge`、既定 ON) | — |
-| 更新の確認 | 拡張が1日1回確認して通知します(取り込みはしません) | [はじめに](../getting-started_ja.md)の「Fleetest の更新」 |
+| 更新の確認 | 拡張が1日1回確認して通知します(取り込みはしません) | [更新](../update_ja.md) |
 
 Simulator の掃除は、fleetest を通して起動したときだけ走ります(Xcode や Simulator.app から起動したときは
 走りません)。起動したまま使い続けているデバイスは、次に fleetest が起動し直したときに掃除されます。
@@ -24,7 +24,7 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 
 ### fleetest を更新したとき
 
-更新の通知が来たら、[はじめに](../getting-started_ja.md)の「Fleetest の更新」の手順で取り込みます。
+更新の通知が来たら、[更新](../update_ja.md)の手順で取り込みます。
 
 リモートのランナー機を使っている場合は、ランナー機も手元と同じ版に揃えます。揃っていないと、テストは
 始まりません。手順は[リモートランナーのセットアップ](remote_runner_setup_ja.md)の「fleetest を更新したとき」を

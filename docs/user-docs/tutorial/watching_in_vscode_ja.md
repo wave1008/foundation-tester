@@ -47,7 +47,7 @@ VSCode の Testing ビューに、プロジェクトのシナリオがファイ�
 結果を Excel ファイルに書き出すこともできます。
 
 ```text
-fleetest の ios プロファイルで録画を有効にして。
+fleetest の iOS の実行で録画を有効にして。
 ```
 
 <img src="../images/tutorial/ja/vscode_test_sessions.png" width="720" alt="テストセッション">

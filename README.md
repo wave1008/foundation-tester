@@ -514,7 +514,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
 - **Claude Code** → ワークスペースの `.mcp.json`。**リポジトリには同梱していない** ——
   同梱すると相対パス依存の設定がクローンごと配られ、
   クローンの外でエージェントを起動した受け手の MCP が必ず落ちていた
-- **その他のエージェント** → インストーラは触らない(設定の場所も書式も受け手のグローバル資産)。
+- **Claude Code 以外の AIアシスタント** → インストーラは触らない(設定の場所も書式も受け手のグローバル資産)。
   手順は [docs/user-docs/reference/tools/other_agents_ja.md](docs/user-docs/reference/tools/other_agents_ja.md)
 
 | ツール | 内容 |

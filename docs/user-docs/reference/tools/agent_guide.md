@@ -138,7 +138,7 @@ limitations.
 ## Links
 
 - [MCP server](mcp_server.md)
-- [Other agents](other_agents.md)
+- [AI assistants other than Claude Code](other_agents.md)
 - [Command reference](../../../commands.md)
 
 ### Link

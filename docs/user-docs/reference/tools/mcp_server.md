@@ -16,7 +16,7 @@ see [Claude Code Skills](./claude_code_skills.md) (`/fleetest-mcp`).
 **Any other agent works too** (Codex, Cline, …). `fleetest-mcp` is a plain stdio MCP server, so
 any MCP-capable client can register it. Follow that client's own configuration format and give it
 this launch command (`<ABS_TOOL_ROOT>` is the absolute path of the clone; the TOML form and how to
-hand over the runbooks are in [Other agents](./other_agents.md)):
+hand over the runbooks are in [AI assistants other than Claude Code](./other_agents.md)):
 
 ```json
 "fleetest": {
@@ -126,7 +126,7 @@ scripts.
   For Claude Code, the installer writes "allow the fleetest tools (`mcp__fleetest`), ask only before `ft_start_run`
   (`ask`)" into the work folder's `.claude/settings.json` (the recommended shape; remove it from `ask` if you do not
   want the prompt, and later updates will not put it back). In Auto mode, the AI decides on its own whether to ask.
-  For Codex, see [Other agents](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
+  For Codex, see [AI assistants other than Claude Code](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
   under `[mcp_servers.fleetest.tools.<tool name>]` per tool). `writes`, which skips approval only for read-only tools,
   also counts screen operations (taps, typing) as writes, so exploring a screen means dozens of approvals.
 - **`ft_start_run`'s `runner` accepts only registered machine names and `local`.** Raw destinations such as

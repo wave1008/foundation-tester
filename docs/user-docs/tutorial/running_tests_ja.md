@@ -18,7 +18,7 @@ fleetest のシナリオを全部 dry-run で検証して。警告があれば�
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-fleetest run --dry-run
+../foundation-tester/.build/debug/fleetest run --dry-run
 ```
 
 VSCode では Test Explorer でシナリオを選び、「実行 (dry-run)」を使います。
@@ -30,13 +30,13 @@ VSCode では Test Explorer でシナリオを選び、「実行 (dry-run)」を
 ### AIアシスタントで実行
 
 ```text
-fleetest のシナリオを全部、ios プロファイルで実行して。終わったら成否を報告。
+fleetest のシナリオを全部、iOS で実行して。終わったら成否を報告。
 ```
 
 1本だけ・一部だけを動かすときは、テストの名前や画面で指定します。
 
 ```text
-fleetest のログインのテストだけを android プロファイルで実行して。
+fleetest のログインのテストだけを Android で実行して。
 ```
 
 <details>
@@ -44,18 +44,18 @@ fleetest のログインのテストだけを android プロファイルで実�
 
 ```bash
 # 全部
-fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios
 
 # クラス(ファイル)単位・1本単位
-fleetest run --profile ios --scenario LoginTest
-fleetest run --profile ios --scenario LoginTest.S0010
+../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest
+../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest.S0010
 ```
 
 VSCode では Test Explorer でシナリオを選び、「実行」をクリックします。
 
 </details>
 
-`fleetest` コマンドの呼び方は作業フォルダの構成で変わります(`swift run fleetest …` など)。
+上のコマンドは、作業フォルダの隣に foundation-tester のクローンがある既定の構成での呼び方です。
 詳しくは[シナリオの実行](../reference/running/running_scenarios_ja.md)。
 
 ## 複数のデバイスで速く回す
@@ -68,7 +68,7 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 全部のデバイスで同じシナリオを1回ずつ動かしたいとき(機種ごとの見え方を比べたいときなど)は、そう頼みます。
 
 ```text
-fleetest のログインのテストを、ios プロファイルの全デバイスで1回ずつ実行して。
+fleetest のログインのテストを、iOS の全デバイスで1回ずつ実行して。
 ```
 
 ## 落ちたテストだけ実行し直す
@@ -76,14 +76,14 @@ fleetest のログインのテストを、ios プロファイルの全デバイ�
 アプリを直したあと、前回落ちたテストだけを動かして確かめられます。
 
 ```text
-fleetest で前回 ios プロファイルで落ちたシナリオだけを実行し直して。
+fleetest で前回 iOS で落ちたシナリオだけを実行し直して。
 ```
 
 <details>
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-fleetest run --profile ios --failed
+../foundation-tester/.build/debug/fleetest run --profile ios --failed
 ```
 
 </details>

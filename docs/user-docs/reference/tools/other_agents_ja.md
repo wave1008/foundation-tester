@@ -1,4 +1,4 @@
-# その他のエージェント
+# Claude Code 以外の AIアシスタント
 
 fleetest の中核は**エージェント固有ではありません**。Claude Code では
 [スキル](./claude_code_skills_ja.md)が `/fleetest-setup` などの名前で呼べますが、それ以外のエージェント

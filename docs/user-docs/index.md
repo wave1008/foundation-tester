@@ -2,24 +2,12 @@
 
 [in Japanese(日本語)](index_ja.md)
 
-**fleetest** is `fleet` + `test`, and also the superlative of *fleet* (swift): scenarios are
-distributed across a **fleet** of devices to shorten the wall-clock time, replay is **fleet**
-because ordinary playback never waits on LLM inference, and it is **free** of cloud device farms
-and per-run API billing. See [What is fleetest?](overview/about.md).
+fleetest is an E2E test tool for iOS / Android apps that you use by asking an AI assistant such as
+Claude Code in natural language. For the origin of the name and its features, see
+[What is fleetest?](overview/about.md).
 
-fleetest is an E2E test tool for iOS / Android apps on macOS. **You normally use it by asking an AI
-assistant such as Claude Code in natural language** — creating tests, running them, investigating failures
-and keeping tests up with app changes can all be left to it, and you never need to handle the test code or
-the MCP tools directly. If you are new, start with the [Quick start](quick-start.md), then go on to the
-[Tutorial](#tutorial).
-
-The tests the AI assistant creates are scenarios in a Shirates-style Swift DSL, replayed
-deterministically — ordinary playback uses no LLM. Foundation Models (on-device) are used only for a few
-specific features: visual verification with `screenLooksLike` and text visual verification.
-Self-healing of broken selectors is deterministic (locator fingerprint matching) and does not use FM.
-On iOS it runs on a **hybrid engine**: a bridge injected into the app drives it fast, and only operations
-that can be reached solely from outside the app are routed to XCUITest automatically — so your scenarios
-never name a path and your app needs no changes ([details](overview/about.md)).
+If you are new, install it with [Getting Started](getting-started.md), then go through the
+[Quick start](quick-start.md) and the [Tutorial](#tutorial).
 
 ## Repository
 
@@ -147,7 +135,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - [VSCode extension](reference/tools/vscode_extension.md)
 - [MCP server](reference/tools/mcp_server.md)
 - [Claude Code skills](reference/tools/claude_code_skills.md)
-- [Other agents](reference/tools/other_agents.md)
+- [AI assistants other than Claude Code](reference/tools/other_agents.md)
 - [Agent guide](reference/tools/agent_guide.md)
 
 ### Writing scenarios

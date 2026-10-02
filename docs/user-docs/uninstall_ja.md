@@ -10,29 +10,38 @@ AIアシスタントに次のように頼むと、下の手順をまとめて行
 ../foundation-tester/docs/user-docs/uninstall_ja.md の手順で fleetest をアンインストールして。
 ```
 
-## VSCode 拡張
+## 1. VSCode 拡張
 
-VSCode の拡張ビューからアンインストールします。
+VSCode の拡張ビューからアンインストールし、`Developer: Reload Window` を実行して拡張を止めます
+(拡張が動いている間は、止めた fleetest のプロセスを拡張が起動し直します)。
 
-## 作業フォルダ
+## 2. fleetest のプロセスを止める
 
-VSCode を終了してから Finder や `rm` で削除します。
+```bash
+pgrep -fl 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
+pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
+```
 
-## 残るファイルとプロセス
+## 3. 作業フォルダとクローン
 
-fleetest のプロセスを止めてから(下のコマンド)、次のものも削除します。
+VSCode を終了してから、作業フォルダと fleetest のクローン(既定では作業フォルダの隣の `foundation-tester`。
+ビルドフォルダを含めて数 GB あります)を Finder や `rm` で削除します。
+削除しても `.build` が復活する場合は、fleetest のプロセスが残っています(手順2)。
 
-- fleetest のクローン(既定では作業フォルダの隣の `foundation-tester`。ビルドフォルダを含めて数 GB あります)
+## 4. 残るファイル
+
 - `~/.fleetest`(この Mac での実行の記録など)と `~/Library/Logs/fleetest`(ログ)
 - 必要なら `~/.config/fleetest/config.json`
 - fleetest のために作った仮想デバイスが不要なら、Xcode の「Devices and Simulators」や Android Studio の
   Device Manager から削除します
 
-作業フォルダを削除しても `.build` が復活する場合は、fleetest のプロセスが残っています。
+## 5. AIアシスタントの MCP 登録
+
+Claude Code の登録(`.mcp.json`)は作業フォルダと一緒に消えます。Codex など、AIアシスタント自身の設定に
+登録した場合は、その登録も削除します。Codex なら次のコマンドです。
 
 ```bash
-pgrep -fl 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
-pkill  -f 'fleetest-mcp|/fleetest (api|run|bridge|devices)|fleetest-(simstream|androidstream|devicepoll)|xcodebuild.*FleetestRunner'
+codex mcp remove fleetest
 ```
 
 ### Link

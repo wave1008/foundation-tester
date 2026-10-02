@@ -15,7 +15,7 @@ You don't need to do anything for these.
 | Android Emulator data | At the start of a test run, the Emulator gets a Wipe Data if its data is over the threshold (8 GB by default). It also gets a Wipe Data, followed by one more install attempt, when installing the app fails because the device is out of storage | `wipeDataOnBloat` in [Run profile settings](../reference/project/run_profile.md) |
 | Bridges on the devices | When the fleetest version changes, they are reinstalled or rebuilt the next time they are used | — |
 | Bridges that stop responding | When the extension detects one, it tries to repair it while no test is running (setting `fleetest.autoRepairBridge`, on by default) | — |
-| Update checks | The extension checks once a day and notifies you (it never pulls anything by itself) | "Updating Fleetest" in [Getting started](../getting-started.md) |
+| Update checks | The extension checks once a day and notifies you (it never pulls anything by itself) | [Update](../update.md) |
 
 The Simulator cleanup only runs when fleetest boots the Simulator (not when you boot it from Xcode or
 Simulator.app). A Simulator that stays booted is cleaned the next time fleetest boots it again.
@@ -24,7 +24,7 @@ Simulator.app). A Simulator that stays booted is cleaned the next time fleetest 
 
 ### When you update fleetest
 
-When you get an update notice, follow "Updating Fleetest" in [Getting started](../getting-started.md).
+When you get an update notice, follow [Update](../update.md).
 
 If you use remote runner machines, bring them to the same version as this Mac. Test runs don't start
 while the versions differ. See "After you update fleetest" in

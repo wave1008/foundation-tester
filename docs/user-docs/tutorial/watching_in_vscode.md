@@ -47,7 +47,7 @@ If the Device Monitor is showing when a run finishes, it switches to this tab au
 You can also export the results to an Excel file.
 
 ```text
-Enable recording in the fleetest ios profile.
+Enable recording for the fleetest iOS runs.
 ```
 
 <img src="../images/tutorial/en/vscode_test_sessions.png" width="720" alt="Test Sessions">

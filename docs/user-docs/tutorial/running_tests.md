@@ -18,7 +18,7 @@ Verify all the fleetest scenarios with a dry-run. If there are warnings, list th
 <summary><b>Do it manually (click to show details)</b></summary>
 
 ```bash
-fleetest run --dry-run
+../foundation-tester/.build/debug/fleetest run --dry-run
 ```
 
 In VSCode, select a scenario in the Test Explorer and use "Run (dry-run)".
@@ -30,13 +30,13 @@ In VSCode, select a scenario in the Test Explorer and use "Run (dry-run)".
 ### Do it with the AI assistant
 
 ```text
-Run all the fleetest scenarios with the ios profile. When it finishes, report pass or fail.
+Run all the fleetest scenarios on iOS. When it finishes, report pass or fail.
 ```
 
 To run only one test or a subset, specify them by test name or screen.
 
 ```text
-Run only the fleetest login test with the android profile.
+Run only the fleetest login test on Android.
 ```
 
 <details>
@@ -44,18 +44,18 @@ Run only the fleetest login test with the android profile.
 
 ```bash
 # Everything
-fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios
 
 # Per class (file) or per single test
-fleetest run --profile ios --scenario LoginTest
-fleetest run --profile ios --scenario LoginTest.S0010
+../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest
+../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest.S0010
 ```
 
 In VSCode, select a scenario in the Test Explorer and click "Run".
 
 </details>
 
-How you call the `fleetest` command depends on the layout of your working folder (for example `swift run fleetest ...`).
+The commands above assume the default layout, with the foundation-tester clone next to your work folder.
 For details, see [Running scenarios](../reference/running/running_scenarios.md).
 
 ## Run faster on multiple devices
@@ -68,7 +68,7 @@ No change to the scenarios is needed. For how to add devices, see [Prepare the a
 When you want to run the same scenario once on every device (for example, to compare how it looks on each model), ask for that.
 
 ```text
-Run the fleetest login test once on every device of the ios profile.
+Run the fleetest login test once on every iOS device.
 ```
 
 ## Re-run only the tests that failed
@@ -76,14 +76,14 @@ Run the fleetest login test once on every device of the ios profile.
 After fixing the app, you can run only the tests that failed last time to confirm.
 
 ```text
-Re-run only the scenarios that failed last time with the ios profile in fleetest.
+Re-run only the scenarios that failed last time on iOS in fleetest.
 ```
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
 
 ```bash
-fleetest run --profile ios --failed
+../foundation-tester/.build/debug/fleetest run --profile ios --failed
 ```
 
 </details>

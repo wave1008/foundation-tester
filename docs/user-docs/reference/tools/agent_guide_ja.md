@@ -133,7 +133,7 @@ class SignInExample {
 ## 関連
 
 - [MCP サーバ](mcp_server_ja.md)
-- [その他のエージェント](other_agents_ja.md)
+- [Claude Code 以外の AIアシスタント](other_agents_ja.md)
 - [コマンドリファレンス](../../../commands.md)
 
 ### Link

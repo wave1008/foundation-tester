@@ -34,11 +34,11 @@ Claude Code では `/fleetest-profiles` でも同じことができます(アプ
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-fleetest profile setup --platform ios --app-id com.example.myshop --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.example.myshop --auto-device \
   --app-path ~/builds/MyShop.app
-fleetest profile setup --platform android --app-id com.example.myshop.android --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.example.myshop.android --auto-device \
   --app-path ~/builds/myshop-debug.apk
-fleetest profile list
+../foundation-tester/.build/debug/fleetest profile list
 ```
 
 VSCode 拡張のデバイスモニターの「プロファイル」タブからも作成・編集できます。

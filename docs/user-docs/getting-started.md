@@ -29,6 +29,8 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
 3. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode (it opens the device monitor)
 
+Once it is installed, create and run a test in the [Quick start](quick-start.md).
+
 ## 4. Troubleshooting
 
 If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are

@@ -79,7 +79,7 @@ fleetest results slow       # In descending order of average duration
 ## Look back at how a run went
 
 - If you enable recording in the run profile, a video is kept for each scenario. Asking
-  "enable recording in the ios profile" sets it up. You can watch recordings in the "Test Sessions" tab of the VSCode extension ([Watching in VSCode](watching_in_vscode.md)).
+  "enable recording for the iOS runs" sets it up. You can watch recordings in the "Test Sessions" tab of the VSCode extension ([Watching in VSCode](watching_in_vscode.md)).
 - Per-scenario execution logs (the pass/fail of each step and the output produced during the run) are also kept.
   Ask "show me the execution log of the login test in the most recent run" to read it.
 

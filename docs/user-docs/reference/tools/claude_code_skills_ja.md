@@ -5,7 +5,7 @@ fleetest は、導入・プロファイル設定・シナリオ作成を自動�
 検証ゲートと、判断や承認が本当に人手を要する箇所だけの人間チェックポイントを備えています。
 
 他のエージェント(Codex・Cline など)でも同じ runbook が動きます — MCP サーバの登録と
-手順書の渡し方は[その他のエージェント](./other_agents_ja.md)を参照してください。
+手順書の渡し方は[Claude Code 以外の AIアシスタント](./other_agents_ja.md)を参照してください。
 
 ## スキルの導入
 
@@ -15,7 +15,7 @@ fleetest は、導入・プロファイル設定・シナリオ作成を自動�
 呼び出しは `/fleetest-scenario` のように名前だけで行います。
 
 配布口は `main` の1本です(版を固定する導線はありません)。更新の取り込みは
-[更新](../../getting-started_ja.md)の手順か `/fleetest-update` で行います。
+[更新](../../update_ja.md)の手順か `/fleetest-update` で行います。
 
 ## スキル一覧
 
@@ -47,7 +47,7 @@ fleetest は、導入・プロファイル設定・シナリオ作成を自動�
 
 ## 更新
 
-[はじめに](../../getting-started_ja.md)の「Fleetest の更新」(モニターの「更新する」ボタン・
+[更新](../../update_ja.md)の手順(モニターの「更新する」ボタン・
 `/fleetest-update`・`bash <TOOL_ROOT>/Scripts/update.sh`)で、スキルのコピーも更新されます。
 反映には Claude Code の再起動が必要です。
 

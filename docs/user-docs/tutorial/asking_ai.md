@@ -13,12 +13,13 @@ go through the [Quick Start](../quick-start.md) first.
 |---|---|
 | "Create fleetest profiles for this app" | [Prepare the app and devices](preparing_app_and_devices.md) |
 | "Create an exploratory test that covers only the login screen" | [Create tests](creating_tests.md) |
-| "Run the scenarios you created with the ios profile" | [Run tests](running_tests.md) |
+| "Run the scenarios you created on iOS" | [Run tests](running_tests.md) |
 | "Summarize the current run results. If there are failures, investigate the cause" | [Read results and investigate failures](investigating_failures.md) |
 | "I changed the design of the login screen, so fix the related tests" | [Keep tests up to date with app changes](keeping_up_with_app_changes.md) |
-| (Watch it in the VSCode extension's device monitor) | [Watch in VSCode](watching_in_vscode.md) |
 | "Set up another Mac so it can be used as a runner machine" | [Remote runners](../in_action/remote_runners.md) |
 | "Create a setup that runs this project's tests on Jenkins" | [Run in CI](../in_action/ci.md) |
+
+You can watch runs in the VSCode extension's device monitor ([Watch in VSCode](watching_in_vscode.md)).
 
 ## A pattern for asking
 
@@ -82,7 +83,7 @@ To learn what happens inside, see the reference pages
 ## AI assistants other than Claude Code
 
 You can also use MCP-capable AI assistants such as Codex and Cline. For how to register them and the caveats (such as the Codex sandbox), see
-[Other agents](../reference/tools/other_agents.md).
+[AI assistants other than Claude Code](../reference/tools/other_agents.md).
 
 ### Link
 - [index](../index.md)

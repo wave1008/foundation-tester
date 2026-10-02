@@ -15,7 +15,7 @@
 **それ以外のエージェント(Codex・Cline など)でも使えます。** `fleetest-mcp` は標準の stdio
 MCP サーバなので、MCP に対応したクライアントならどれでも登録できます。設定の書き方は各
 クライアントに従い、起動コマンドとして次を渡してください(`<ABS_TOOL_ROOT>` は clone の
-絶対パス。TOML での書き方と手順書の渡し方は[その他のエージェント](./other_agents_ja.md)):
+絶対パス。TOML での書き方と手順書の渡し方は[Claude Code 以外の AIアシスタント](./other_agents_ja.md)):
 
 ```json
 "fleetest": {
@@ -120,7 +120,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   Claude Code では、インストーラが作業フォルダの `.claude/settings.json` に「fleetest のツールは許可
   (`mcp__fleetest`)・`ft_start_run` だけ確認(`ask`)」を書きます(おすすめの形。確認を外したければ `ask` から
   消せば、以後の更新でも戻しません)。Auto モードでは、確認の要否を AI が自動で判断します。
-  Codex での書き方は[その他のエージェント](other_agents_ja.md)にあります(サーバ全体は `default_tools_approval_mode`、
+  Codex での書き方は[Claude Code 以外の AIアシスタント](other_agents_ja.md)にあります(サーバ全体は `default_tools_approval_mode`、
   ツールごとは `[mcp_servers.fleetest.tools.<ツール名>]` の `approval_mode`)。読むだけのツールに承認を省く
   `writes` は、画面の操作(タップ・入力)も書き込みとして聞かれるので、探索のたびに数十回の承認になります。
 - **`ft_start_run` の `runner` は、登録済みの機械名と `local` だけを受け付けます。** `user@host` のような

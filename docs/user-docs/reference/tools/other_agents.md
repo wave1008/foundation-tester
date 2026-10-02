@@ -1,4 +1,4 @@
-# Other Agents
+# AI Assistants Other Than Claude Code
 
 Nothing at the core of fleetest is agent-specific. In Claude Code the
 [skills](./claude_code_skills.md) can be called by name such as `/fleetest-setup`, but any other agent

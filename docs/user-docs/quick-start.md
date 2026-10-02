@@ -65,7 +65,7 @@ Create the fleetest profiles for the sut-ec-mobile app (already built) that sits
 1. Create the app profile and the run profile for each of iOS and Android with fleetest profile setup (do not write the JSON by hand)
 2. Check with fleetest profile list that the app and the devices resolve
 Values: the app's display name is SUT Store, the app ID is com.sutec.mobile on both iOS and Android, the app paths are the already-built .app (for the iOS Simulator) and .apk in sut-ec-mobile, and the device is picked automatically (--auto-device).
-If no Simulator / Emulator is available, report it without creating one.
+If no Simulator / Emulator is available, you may create one.
 Done when: you report the names of the run profiles you created. Running tests is not needed.
 ```
 
@@ -78,11 +78,11 @@ Go back to your work folder and run:
 
 ```bash
 # iOS
-fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
   --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
@@ -130,16 +130,11 @@ For scenarios created on Android, ask "Run them on Android" instead.
 <summary><b>Do it manually (click to show details)</b></summary>
 
 ```bash
-# Clone layout (working inside the foundation-tester clone)
-swift run fleetest run --profile ios
-
-# External package layout (a separate work folder with TestProjects/)
 ../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
-`--profile` takes the name of the run profile from step 2 (`ios`, as created by the command
-above, or `android` for Android; if you passed `--run <name>`, use that name). The app, the devices, and the run-time
-settings are all resolved from it.
+`--profile` takes the name of the run profile from step 2 (`ios`, or `android` for Android).
+The app, the devices, and the run-time settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
 

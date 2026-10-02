@@ -66,7 +66,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 1. iOS と Android それぞれのアプリプロファイルと実行プロファイルを fleetest profile setup で作成(JSON は手で書かない)
 2. fleetest profile list で、アプリとデバイスまで解決されることを確認
 設定値: アプリの表示名は SUT Store、アプリ ID は iOS / Android とも com.sutec.mobile、アプリのパスは sut-ec-mobile のビルド済みの .app(iOS Simulator 向け)と .apk、デバイスは自動選択(--auto-device)。
-利用できる Simulator / Emulator が無ければ、作成せずに報告する。
+利用できる Simulator / Emulator が無ければ作成してよい。
 完了条件: 作成した実行プロファイルの名前を報告。テストの実行は不要。
 ```
 
@@ -79,11 +79,11 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 
 ```bash
 # iOS
-fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
   --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
@@ -91,7 +91,7 @@ fleetest profile setup --platform android --app-id com.sutec.mobile --auto-devic
 `--auto-device` は、このマシンで利用可能な Simulator/Emulator を自動で選びます(起動していない
 ものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
 
-セットアップはテストプロジェクトを作りません。AI アシスタントは `TestProjects/default/` が無ければ先に作ります。
+セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/default/` が無ければ先に作ります。
 手で進めるときは、上のコマンドの前に `fleetest project create default --platform <ios|android|both>` を実行します
 (VSCode 拡張も Reload Window 後の起動時に作ります)。
 
@@ -130,15 +130,11 @@ Android で探索的テストを作成して。」)。
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-# クローン構成(foundation-tester のクローン内で作業している場合)
-swift run fleetest run --profile ios
-
-# 外部パッケージ構成(TestProjects/ を持つ別の作業フォルダ)
 ../foundation-tester/.build/debug/fleetest run --profile ios
 ```
 
-`--profile` には、ステップ2で用意した実行プロファイルの名前を渡します(上のコマンドなら `ios`、Android なら `android`。
-`--run <名前>` を指定した場合はその名前)。アプリ・デバイス・実行時設定はそこから解決されます。
+`--profile` には、ステップ2で用意した実行プロファイルの名前(`ios`。Android なら `android`)を渡します。
+アプリ・デバイス・実行時設定はそこから解決されます。
 
 VSCode からは **Test Explorer** でシナリオを選び、**実行**をクリックします。
 

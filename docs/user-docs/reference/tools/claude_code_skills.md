@@ -6,7 +6,7 @@ commands a human would run by hand, with verification gates and human checkpoint
 decision or an approval genuinely needs a person.
 
 Using a different agent (Codex, Cline, …)? The same runbooks apply — see
-[Other agents](./other_agents.md) for how to register the MCP server and hand them over.
+[AI assistants other than Claude Code](./other_agents.md) for how to register the MCP server and hand them over.
 
 ## Installing the skills
 
@@ -16,7 +16,7 @@ every update refreshes the copies (restart Claude Code after the copies are refr
 them by name alone, such as `/fleetest-scenario`.
 
 `main` is the only distribution channel — there is no version-pinning route. Pick up fixes
-through [Updating](../../getting-started.md) or `/fleetest-update`.
+through [Update](../../update.md) or `/fleetest-update`.
 
 ## Skills
 
@@ -48,7 +48,7 @@ worth of waiting; the compile and dry-run gates catch most mistakes in seconds i
 
 ## Updating
 
-Use "Updating Fleetest" in [Getting Started](../../getting-started.md) (the monitor's "Update now"
+Use the steps in [Update](../../update.md) (the monitor's "Update now"
 button, `/fleetest-update`, or `bash <TOOL_ROOT>/Scripts/update.sh`); it refreshes the skill copies
 too. Restart Claude Code afterward for the change to take effect.
 
