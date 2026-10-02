@@ -84,7 +84,12 @@ restore() {
   STAGED=()
   return 0
 }
-trap restore EXIT
+# クラッシュの対照が SUT を落とすたびに問題レポーターが出るので止める(e2e.sh から呼ばれても保持者の数で入れ子になる)
+# shellcheck source=crash-dialog.sh
+. "$ROOT/Scripts/crash-dialog.sh"
+trap 'restore; crash_dialog_restore' EXIT
+trap 'restore; crash_dialog_restore; exit 130' INT TERM HUP
+crash_dialog_suppress
 
 # アラートを閉じる補助シナリオ(表の photosAlertCleanup)。resetPhotos を持つ対照があるときだけ出す
 CLEANUP="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["photosAlertCleanup"]; print("\t".join([c["project"], c["file"], c["profile"], c["class"]]))' "$TABLE")"
