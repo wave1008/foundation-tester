@@ -1,14 +1,13 @@
 // 91_クラッシュ検知.swift
 // 破壊的(アプリを実際にクラッシュさせる)なので通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
-// 人がクラッシュ検知を目視確認するための手動シナリオ。
+// 回すのは Scripts/e2e-negative.sh(期待値 = Scripts/negative-controls.json の appCrash。iOS は in-app で回す)。
 //
 // fleetest 機能: 操作でアプリが落ちたときの検知とレポート添付。#btn_crash_confirm で
-// プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録されることを人が確認する。
-// **Flutter は in-app エンジンでは要素が1つも見えない**(a11y ツリーが取れず、どのセレクタも
-// 解決できない。2026-07-23 実測。原因未特定)。よって iOS は `ios-xcuitest` で回す。
-// その場合ブリッジは別プロセスなので .ips 添付ではなく
-// 「Application ... is not running」(XCUITest 500)としてクラッシュが現れる。
-// Android もブリッジが別プロセスなので同様に「要素が見つかりません」で現れる。
+// プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録される。
+// iOS は in-app で回す(.ips が appCrash に載る)。XCUITest エンジンは appCrash を記録しない
+// (docs/results-json.md)ので「session's app is not in the foreground」(422)としか現れない。
+// **Android は appCrash に載らない(既知の見逃し)**: SIGSEGV は crash バッファに `Fatal signal 11` として残るが、
+// 検出(AndroidAppProcessEvidence)は FATAL EXCEPTION しか見ない。失敗は「element not found」だけになる。
 // SUT のクラッシュ手段: dart:ffi の NULL 参照(SIGSEGV)。Dart の throw はフレームワークに捕捉されて
 // プロセスが落ちないため、意図的に不正メモリアクセスで落としている
 

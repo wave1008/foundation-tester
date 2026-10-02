@@ -39,7 +39,8 @@ done
 
 PROFILE_JSON="$ROOT/TestProjects/$PROJECT/profiles/runs/$PROFILE.json"
 if [ -z "$DEVICE" ]; then
-  DEVICE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["devices"][0]["name"])' \
+  # 有効な・この Mac の・実機でない最初の台(先頭を無条件に取ると、無効にした台を指して1段も走らない)
+  DEVICE=$(python3 -c 'import json,sys; print(next(d["name"] for d in json.load(open(sys.argv[1]))["devices"] if d.get("enabled", True) and d.get("machine", "local") == "local" and d.get("kind") != "physical"))' \
     "$PROFILE_JSON" 2>/dev/null) || { echo "❌ $PROFILE_JSON から台を決められない(--device で指定)" >&2; exit 1; }
 fi
 

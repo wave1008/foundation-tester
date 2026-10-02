@@ -1,9 +1,9 @@
 // 91_クラッシュ検知.swift
 // 破壊的(アプリを実際にクラッシュさせる)なので通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
-// 人がクラッシュ検知を目視確認するための手動シナリオ。
+// 回すのは Scripts/e2e-negative.sh(期待値 = Scripts/negative-controls.json の appCrash。iOS は in-app で回す)。
 //
 // fleetest 機能: 操作でアプリが落ちたときの検知とレポート添付。#btn_crash_confirm で
-// プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録されることを人が確認する。
+// プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録される。
 // **Android のブリッジは別プロセス(instrumentation)なので切断しない**。iOS inapp のような
 // .ips 添付は無く、「アプリが落ちた後の操作が解決不能で失敗する」形で現れる。
 // SUT のクラッシュ手段: メインスレッドでの未捕捉 RuntimeException

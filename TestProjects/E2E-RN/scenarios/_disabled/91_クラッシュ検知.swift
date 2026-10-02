@@ -1,14 +1,12 @@
 // 91_クラッシュ検知.swift
 // 破壊的(アプリを実際にクラッシュさせる)なので通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
-// 人がクラッシュ検知を目視確認するための手動シナリオ。
+// 回すのは Scripts/e2e-negative.sh(期待値 = Scripts/negative-controls.json の appCrash。iOS は in-app で回す)。
 //
 // fleetest 機能: 操作でアプリが落ちたときの検知とレポート添付。#btn_crash_confirm で
-// プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録されることを人が確認する。
-// **予測・未検証**: Flutter は in-app エンジンでは要素が1つも見えなくなる不具合が実測されている
-// (a11y ツリーが取れず原因未特定)。RN の in-app ブリッジで同じ不具合が起きるかは未検証だが、
-// 安全側として同じ運用(iOS は `ios-xcuitest` で回す)を踏襲する。その場合ブリッジは別プロセスなので
-// .ips 添付ではなく「Application ... is not running」(XCUITest 500)としてクラッシュが現れるはず。
-// Android もブリッジが別プロセスなので同様に「要素が見つかりません」で現れるはず。
+// プロセスを即異常終了させ、以降のコマンドが失敗としてレポートに記録される。
+// iOS は in-app で回す(.ips が appCrash に載る)。XCUITest エンジンは appCrash を記録しない
+// (docs/results-json.md)ので「session's app is not in the foreground」(422)としか現れない。
+// Android は crash バッファの FATAL EXCEPTION(スレッド mqt_v_native)が appCrash に載る。
 // SUT のクラッシュ手段: `setTimeout` でイベントループの外に出してから投げる未捕捉例外
 // (E2EAppRN/src/screens/DiagnosticsScreen.tsx crash())。release ビルドは try/catch に
 // 握りつぶされない未捕捉例外でプロセスが終了する。

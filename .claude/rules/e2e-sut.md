@@ -6,6 +6,9 @@ paths:
   - "E2EAppIOS/Sources/UI/OverlayWindow.swift"
   - "E2EAppIOS/scripts/build-ios-device.sh"
   - "Scripts/e2e.sh"
+  - "Scripts/e2e-negative.sh"
+  - "Scripts/negative-controls.json"
+  - "Scripts/negative_controls_judge.py"
   - "TestProjects/E2E-*/**"
   - "Tests/FleetestTests/DeepLinkSchemeSyncTests.swift"
 ---
@@ -54,3 +57,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   iOS は同一スキームを複数アプリが登録していても解決先を1つしか選ばず、E2E のシミュレータには
   iOS の SUT が4つ同居するため共有スキームでは配送先が端末ごとに揺れる。
   `Tests/FleetestTests/DeepLinkSchemeSyncTests.swift` が契約表との一致と SUT 間の重複を検出する
+- **陽性対照(落ちるのが正常なシナリオ)は `_disabled/` に置き、`Scripts/negative-controls.json` に載せる**
+  (`Scripts/e2e-negative.sh` が回し、`e2e.sh` が既定で最後に呼ぶ)。期待値は**実測から**書き、
+  落ちた `command`・`failureKind`・文言の断片・注記・`appCrash` まで固定する(赤なら何でも ✅ にしない)。
+  iOS の権限アラートはボタンで答えるまで消えない(アプリを止めても権限をリセットしても残る)ので、アラートを出す対照には
+  `resetPhotos` を付ける(前後で補助シナリオ `98_写真の権限アラートを閉じる` が閉じる)。表の順序も崩さない。
+  載せ忘れは `vscode-fleetest/test/negativeControls.test.mjs` が落とす。経緯は docs/verification.md §陽性対照スイート

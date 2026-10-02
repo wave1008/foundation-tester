@@ -1,11 +1,10 @@
 // 91_クラッシュ検知.swift
 // 破壊的(アプリを実際にクラッシュさせる)なので通常実行(scenarios/ 直下)には載せず _disabled/ に置く。
-// 人がブリッジ切断検知とクラッシュレポート添付(SimulatorCrashReport。docs/design.md §10「実装で得た知見」)
-// を目視確認するための手動シナリオ。
+// 回すのは Scripts/e2e-negative.sh(期待値 = Scripts/negative-controls.json の appCrash。iOS は in-app で回す)。
 //
 // fleetest 機能: inapp ブリッジ切断時のクラッシュレポート添付。#btn_crash_confirm でプロセスを
 // 即異常終了させ、以降のコマンドが bridgeConnectionRefused としてレポートに .ips 情報付きで
-// 記録されることを人が確認する。
+// 記録される。
 
 import FTDSL
 

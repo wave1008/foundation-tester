@@ -1,0 +1,142 @@
+{
+  "_comment": [
+    "陽性対照(_disabled/ にあり、緑の run では1度も通らない経路を強制的に通すシナリオ)の期待値。Scripts/e2e-negative.sh が回し、Scripts/negative_controls_judge.py が判定する。",
+    "期待値は 2026-10-02 の実測から書いた(シナリオ先頭のコメントの写しではない)。文言は版で変わるので、壊れにくい断片だけを detailContains に置く。",
+    "**写真の権限アラートは OS が持ち、ボタンで答えるまで消えない**(2026-10-02 実測: simctl terminate・privacy reset・privacy revoke・clearAppData・launchApp のどれでも残り、次の対照の最初のタップに持ち越された = 96未登録 が狙いの形で落ちない)。resetPhotos を持つ対照の前後で e2e-negative.sh が photosAlertCleanup の補助シナリオで「許可しない」を押して閉じ、simctl privacy reset で権限を未決定へ戻す。順序も アラート無しの前提 → アラートを出す → アプリを落とす に保つ。",
+    "_disabled/*.swift は全部ここに載せる(controls か delegated)。漏れは vscode-fleetest/test/negativeControls.test.mjs が落とす。"
+  ],
+  "controls": [
+    {
+      "project": "E2E-iOS", "file": "95_可視性の幾何.swift", "profile": "ios-fpc", "os": "ios",
+      "class": "可視性の幾何",
+      "guards": "requireVisible の幾何の段(木に居るが中心が画面外なら不可視)。FM は使わない",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
+                   "detailContains": ["false positive (offscreen)"] },
+        "S0020": { "expect": "green" },
+        "S0030": { "expect": "green" }
+      }
+    },
+    {
+      "project": "E2E-iOS", "file": "97_入力欄でないrefへのtype.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "入力欄でないrefへのtype",
+      "guards": "欄に焦点を残したまま入力欄でない要素へ type しても、前の欄へ打たずに断る(hybrid の撃ち直し込み)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "type", "detailContains": ["not a text field"] }
+      }
+    },
+    {
+      "project": "E2E-iOS", "file": "96_遮蔽の反転.swift", "profile": "ios-fpc", "os": "ios",
+      "class": "遮蔽の反転",
+      "guards": "テキストの視覚検証が FM に訊いて反転する経路(2段目)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "exist", "failureKind": "assertion",
+                   "detailContains": ["false positive (occlusion"],
+                   "detailNotContains": ["judged by OCR alone"],
+                   "fmCallsAtLeast": { "occlusion": 2 },
+                   "requiresFM": true },
+        "S0020": { "expect": "green" }
+      }
+    },
+    {
+      "project": "E2E-iOS", "file": "94_システムアラート.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "システムアラートの陽性対照",
+      "resetPhotos": "com.ftester.e2e.ios",
+      "guards": "OS の権限アラートが覆っている間は背面のアプリへの操作を撃たない(登録はあるがボタンが一致しない形)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "tap", "failureKind": "system-ui-covered",
+                   "detailContains": ["system UI is covering the app", "Buttons on this alert:"] }
+      }
+    },
+    {
+      "project": "E2E-iOS", "file": "96_未登録のシステムアラート.swift", "profile": "ios-fpc", "os": "ios",
+      "class": "未登録のシステムアラート",
+      "resetPhotos": "com.ftester.e2e.ios",
+      "guards": "iosAlertHandler の登録が無いままアラートが前面にあるとき、注記を残し失敗文言に題名を添える",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "exist", "failureKind": "not-found",
+                   "notesContains": ["system-alert-present"],
+                   "detailContains": ["no iosAlertHandler is registered"] }
+      }
+    },
+    {
+      "project": "E2E-iOS", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
+                   "appCrash": "crashReport" }
+      }
+    },
+    {
+      "project": "E2E-CMP", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
+                   "appCrash": "crashReport" }
+      }
+    },
+    {
+      "project": "E2E-Flutter", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン・SIGSEGV)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
+                   "appCrash": "crashReport" }
+      }
+    },
+    {
+      "project": "E2E-RN", "file": "91_クラッシュ検知.swift", "profile": "ios-inapp", "os": "ios",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを .ips 付きで記録する(in-app エンジン)",
+      "scenarios": {
+        "S0010": { "expect": "red", "command": "tap", "failureKind": "driver-unreachable",
+                   "appCrash": "crashReport" }
+      }
+    },
+    {
+      "project": "E2E-CMP", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを crash バッファの FATAL EXCEPTION から記録する",
+      "scenarios": {
+        "S0010": { "expect": "red", "appCrash": "fatalException" }
+      }
+    },
+    {
+      "project": "E2E-Android", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを crash バッファの FATAL EXCEPTION から記録する",
+      "scenarios": {
+        "S0010": { "expect": "red", "appCrash": "fatalException" }
+      }
+    },
+    {
+      "project": "E2E-RN", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュを crash バッファの FATAL EXCEPTION から記録する",
+      "scenarios": {
+        "S0010": { "expect": "red", "appCrash": "fatalException" }
+      }
+    },
+    {
+      "project": "E2E-Flutter", "file": "91_クラッシュ検知.swift", "profile": "android", "os": "android",
+      "class": "クラッシュ検知でブリッジ切断とレポートが記録されること",
+      "guards": "アプリのクラッシュの記録(ネイティブの SIGSEGV)",
+      "scenarios": {
+        "S0010": { "expect": "red", "appCrash": "any",
+                   "knownGap": "Android のネイティブのクラッシュ(libc の Fatal signal)は appCrash に載らない。AndroidAppProcessEvidence は crash バッファの FATAL EXCEPTION だけを見る" }
+      }
+    }
+  ],
+  "photosAlertCleanup": {
+    "project": "E2E-iOS", "file": "98_写真の権限アラートを閉じる.swift", "profile": "ios-inapp",
+    "class": "写真の権限アラートを閉じる"
+  },
+  "delegated": [
+    { "project": "E2E-iOS", "file": "98_写真の権限アラートを閉じる.swift", "by": "Scripts/e2e-negative.sh" },
+    { "project": "E2E-CMP", "file": "94_指紋照合.swift", "by": "Scripts/heal-verify.sh" },
+    { "project": "E2E-CMP", "file": "95_指紋照合の前提切替.swift", "by": "Scripts/heal-verify.sh" },
+    { "project": "E2E-CMP", "file": "92_screenLooksLike.swift", "by": "Scripts/fm-verify.sh" }
+  ]
+}

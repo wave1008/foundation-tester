@@ -41,6 +41,9 @@
 #                                   # プロファイルは1本も走らない(部分実行にすらならない)。
 #                                   # 揃えるのは**ランナーがこの clone の祖先のときだけ**
 #                                   # (自分が古い/分岐しているときは触らない。理由は下の align_runners)
+#   Scripts/e2e.sh --no-negative   # 最後の陽性対照スイート(Scripts/e2e-negative.sh)を回さない。
+#                                   # **既定では回す**(--ios-xcuitest / --performance のときは回さない =
+#                                   # 対照はエンジンを表で決めている・時間の比較を乱す)。数分かかる
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
 #                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
@@ -72,6 +75,8 @@ SUTS=""
 # iOS の実行プロファイル。**既定は in-app**(利用者の既定エンジン hybrid = in-app 優先に合わせる)。
 # --ios-xcuitest で XCUITest 側へ切り替える(E2E-Android には iOS プロファイルが無い)
 IOS_PROFILE="ios-inapp"
+# 陽性対照(期待赤)スイート。緑の run では通らない検知・門・クラッシュの記録を最後に確かめる
+NEGATIVE=1
 
 for arg in "$@"; do
   case "$arg" in
@@ -84,6 +89,7 @@ for arg in "$@"; do
     --align) ALIGN=1 ;;
     --local) LOCAL_ONLY=1 ;;
     --performance) PERFORMANCE=1 ;;
+    --no-negative) NEGATIVE=0 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
@@ -400,11 +406,35 @@ if [ "$PLANNED_SORTED" != "$RAN_SORTED" ]; then
   echo "   ran:     $(printf '%s' "$RAN_SORTED" | tr '\n' '/')"
 fi
 
+# 陽性対照は本体と別に数える: 印(engine_marker)は「ブリッジの入力が緑の E2E を通った」記録なので
+# 本体の FAILED だけで決める。exit には両方を載せる
+NEG_FAILED=0
+if [ "$NEGATIVE" = 1 ] && [ "$PERFORMANCE" = 0 ] && [ "$IOS_PROFILE" != "ios-xcuitest" ]; then
+  NEG_ARGS=()
+  [ "$RUN_IOS" = 0 ] && NEG_ARGS+=(--android)
+  [ "$RUN_ANDROID" = 0 ] && NEG_ARGS+=(--ios)
+  for sut in $SUTS; do
+    case "$sut" in
+      cmp) NEG_ARGS+=(--project E2E-CMP) ;;
+      ios-native) NEG_ARGS+=(--project E2E-iOS) ;;
+      android-native) NEG_ARGS+=(--project E2E-Android) ;;
+      flutter) NEG_ARGS+=(--project E2E-Flutter) ;;
+      rn) NEG_ARGS+=(--project E2E-RN) ;;
+    esac
+  done
+  echo ""
+  echo "═══ 陽性対照(Scripts/e2e-negative.sh)═══"
+  "$ROOT/Scripts/e2e-negative.sh" "${NEG_ARGS[@]}" || NEG_FAILED=1
+fi
+
 echo ""
 if [ "$FAILED" = 0 ]; then
   echo "✅ E2E 全て成功"
 else
   echo "❌ E2E に失敗があります(レポート: TestProjects/*/reports/)"
+fi
+if [ "$NEG_FAILED" = 1 ]; then
+  echo "❌ 陽性対照に期待と違うものがあります(上の「陽性対照の判定」)"
 fi
 
 # **通した状態を覚えるのは全部成功したときだけ** —— 失敗したまま印を更新すると、
@@ -422,4 +452,8 @@ if [ -n "$ENGINE_STALE" ]; then
   echo "⚠️ $SKIP_ENGINE 経路は未検証のままです(Scripts/e2e.sh --ios-$SKIP_ENGINE)"
 fi
 
+# :-0 = この塊は vscode-fleetest/test/inappE2EGate.test.mjs が set -u で切り出して実行する
+if [ "${NEG_FAILED:-0}" = 1 ]; then
+  exit 1
+fi
 exit "$FAILED"

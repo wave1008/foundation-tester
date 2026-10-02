@@ -1512,6 +1512,35 @@ E2E も、その経路が要る失敗(古い a11y を読む誤った赤)が出�
 - フェイクを使う単体テストは**配線(URL・ヘッダ・シリアライズ)を通らない**ことを意識する。
   そこが契約なら、契約の部分だけを純粋関数にして固める
 
+### 陽性対照スイート(`Scripts/e2e-negative.sh`。2026-10-02)
+
+`_disabled/` の陽性対照(検知・門・クラッシュの記録を強制的に通すシナリオ)は、手で回す運用のあいだ
+**1度も回らずに腐っていた**(97 の期待文言は実装と食い違い、Flutter/RN のクラッシュは「in-app では
+要素が見えない」という7月の記録のまま XCUITest で回す指示になっていた)。いまは `Scripts/e2e.sh` が
+**既定で最後に回す**(`--no-negative` で外す。`--ios-xcuitest` / `--performance` では回さない)。
+
+- 期待値は `Scripts/negative-controls.json`。**落ちた場所(`command`)・経路(`failureKind`)・文言の断片・
+  注記・`appCrash.evidence` まで**見る(赤なら何でも ✅ にしない)。期待値は**実測から書く** ——
+  シナリオ先頭のコメントの写しで書くと、腐ったコメントを正典に昇格させる
+- 判定は3値。**⚠️ 未検証を ✅ に畳まない**(FM が判定を返さなかった回の遮蔽の反転・表の `knownGap`)。
+  `knownGap` が記録されるようになったら ❌ で表の更新を促す
+- **iOS の権限アラートは OS が持ち、ボタンで答えるまで消えない**(2026-10-02 実測: `simctl terminate`・
+  `simctl privacy reset`・`privacy revoke`・`clearAppData`・`launchApp` のどれでも残り、次の対照の最初のタップに
+  持ち越された。持ち越すと 96_未登録 は「自分で出したアラートを名指しする」形で落ちず、結果が前の対照しだいで揺れた)。
+  表の `resetPhotos` を持つ対照の前後で、補助シナリオ `98_写真の権限アラートを閉じる`(`iosAlertHandler` で
+  「許可しない」を押す)→ `simctl privacy reset` で権限を未決定へ戻す。**一度「リセットで消えた」と誤認した** ——
+  消えたのは別の要因で、止めた後・動いている間のどちらのリセットでも消えないことを撮って確かめた
+- 表と `_disabled/` の同期・判定の各分岐は `vscode-fleetest/test/negativeControls.test.mjs` が固定する。
+  `_disabled/` に陽性対照を足したら表に載せる(載らなければこのテストが落ちる)
+- 指紋照合は `heal-verify.sh`、FM の画像判定は `fm-verify.sh` へ委ねる。後者は**遮蔽の反転で FM が
+  判定を返した回だけ**回す(返さない機械では ⚠️ 未検証として出す)。**`heal-verify.sh` も腐っていた**:
+  台の既定をプロファイルの先頭から無条件に取っていたため、先頭の台を無効にした `ios-heal.json` では7段とも
+  「matched no device」で1本も走らなかった(有効・この Mac・実機でない最初の台へ直した)
+
+**初回の実測で見つけた見逃し**: Android のネイティブのクラッシュ(Flutter の SIGSEGV)は `appCrash` に
+載らない —— crash バッファには `Fatal signal 11` と `>>> <package> <<<` の DEBUG ブロックが残るが、
+`AndroidAppProcessEvidence` は `FATAL EXCEPTION` しか見ない。表では `knownGap` として ⚠️ で出す。
+
 ## 同じ機構を通る2経路で片方だけ失敗したら、機構でなく前提条件を疑う(2026-08-02)
 
 interop WebView で「ref タップは効くのに座標タップが効かない」を座標のずれと誤診した。
