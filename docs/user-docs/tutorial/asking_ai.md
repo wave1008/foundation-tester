@@ -9,16 +9,16 @@ go through the [Quick Start](../quick-start.md) first.
 
 ## What you can ask for
 
-| What you want to do | Example request | Details |
-|---|---|---|
-| Register the target app and devices | "Create fleetest profiles for this app" | [Prepare the app and devices](preparing_app_and_devices.md) |
-| Create tests | "Create an exploratory test that covers only the login screen" | [Create tests](creating_tests.md) |
-| Run tests | "Run the scenarios you created with the ios profile" | [Run tests](running_tests.md) |
-| Read results and investigate failures | "Summarize the current run results. If there are failures, investigate the cause" | [Read results and investigate failures](investigating_failures.md) |
-| Keep tests up to date with app changes | "I changed the design of the login screen, so fix the related tests" | [Keep tests up to date with app changes](keeping_up_with_app_changes.md) |
-| Watch a run | (Watch it in the VSCode extension's device monitor) | [Watch in VSCode](watching_in_vscode.md) |
-| Run tests on another Mac | "Set up another Mac so it can be used as a runner machine" | [Remote runners](../in_action/remote_runners.md) |
-| Run in CI | "Create a setup that runs this project's tests on Jenkins" | [Run in CI](../in_action/ci.md) |
+| Example request | Details |
+|---|---|
+| "Create fleetest profiles for this app" | [Prepare the app and devices](preparing_app_and_devices.md) |
+| "Create an exploratory test that covers only the login screen" | [Create tests](creating_tests.md) |
+| "Run the scenarios you created with the ios profile" | [Run tests](running_tests.md) |
+| "Summarize the current run results. If there are failures, investigate the cause" | [Read results and investigate failures](investigating_failures.md) |
+| "I changed the design of the login screen, so fix the related tests" | [Keep tests up to date with app changes](keeping_up_with_app_changes.md) |
+| (Watch it in the VSCode extension's device monitor) | [Watch in VSCode](watching_in_vscode.md) |
+| "Set up another Mac so it can be used as a runner machine" | [Remote runners](../in_action/remote_runners.md) |
+| "Create a setup that runs this project's tests on Jenkins" | [Run in CI](../in_action/ci.md) |
 
 ## A pattern for asking
 

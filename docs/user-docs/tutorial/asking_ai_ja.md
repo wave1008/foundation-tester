@@ -9,16 +9,16 @@ AIアシスタントがデバイス上のアプリを実際に操作して画面
 
 ## 頼めること
 
-| やりたいこと | 頼み方の例 | 詳しく |
-|---|---|---|
-| テスト対象のアプリとデバイスを登録する | 「このアプリ向けに fleetest のプロファイルを作って」 | [アプリとデバイスを用意する](preparing_app_and_devices_ja.md) |
-| テストを作る | 「ログイン画面だけを対象に、探索的テストを作成して」 | [テストを作る](creating_tests_ja.md) |
-| テストを実行する | 「作成したシナリオを ios プロファイルで実行して」 | [テストを実行する](running_tests_ja.md) |
-| 結果を読み、失敗を調べる | 「今の実行結果を要約して。失敗があれば原因を調べて」 | [結果を読み、失敗を調べる](investigating_failures_ja.md) |
-| アプリの変更にテストを追従させる | 「ログイン画面のデザインを変えたので、関係するテストを直して」 | [アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md) |
-| 実行の様子を見る | (VSCode 拡張のデバイスモニターで見る) | [VSCode で見る](watching_in_vscode_ja.md) |
-| 別の Mac でテストを走らせる | 「別の Mac をランナー機として使えるようにして」 | [リモートランナー](../in_action/remote_runners_ja.md) |
-| CI で回す | 「このプロジェクトのテストを Jenkins で回す設定を作って」 | [CI で回す](../in_action/ci_ja.md) |
+| 頼み方の例 | 詳しく |
+|---|---|
+| 「このアプリ向けに fleetest のプロファイルを作って」 | [アプリとデバイスを用意する](preparing_app_and_devices_ja.md) |
+| 「ログイン画面だけを対象に、探索的テストを作成して」 | [テストを作る](creating_tests_ja.md) |
+| 「作成したシナリオを ios プロファイルで実行して」 | [テストを実行する](running_tests_ja.md) |
+| 「今の実行結果を要約して。失敗があれば原因を調べて」 | [結果を読み、失敗を調べる](investigating_failures_ja.md) |
+| 「ログイン画面のデザインを変えたので、関係するテストを直して」 | [アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md) |
+| (VSCode 拡張のデバイスモニターで見る) | [VSCode で見る](watching_in_vscode_ja.md) |
+| 「別の Mac をランナー機として使えるようにして」 | [リモートランナー](../in_action/remote_runners_ja.md) |
+| 「このプロジェクトのテストを Jenkins で回す設定を作って」 | [CI で回す](../in_action/ci_ja.md) |
 
 ## 頼み方の型
 
