@@ -142,7 +142,9 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 - 起動の中身・`FT_TOOL_ROOT` の意味・`bash -c`(`-l` にしない)の理由はステップ2と同じ(ランチャは共通)。
 - **`cwd` は書かない**。cwd は `fleetest-mcp` が受け手パッケージを特定する入力なので、
   エージェントが開いたディレクトリのままにする。
-- **エージェントが受け手の設定ファイルを書き換えない**。値を出して 🧑 に貼ってもらう。
+- **設定ファイルを手で編集しない**。🧑 に頼まれたときだけ、そのクライアントの CLI で登録する。Codex なら
+  `codex mcp add fleetest --env FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -c 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'`
+  (同名は上書き・他のサーバは残る。確認は `codex mcp get fleetest`)。CLI の無いクライアントは値を出して 🧑 に貼ってもらう。
   とくに **TOML は同じテーブルの重複を許さない** ので、素朴な追記は設定ファイル全体を無効にする
   —— 既に `[mcp_servers.fleetest]` があるなら追記ではなく既存の値を書き換えてもらう
   (別の clone を指しているだけのことが多いので、どちらを使うかを先に確認する)。
@@ -165,7 +167,8 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 
 導入・更新のセッションだけ `codex --sandbox danger-full-access` で起動するのが最も狭い回避
 (恒久設定にするなら `sandbox_mode`。こちらも**キーの重複で config.toml 全体が無効になる**)。
-**エージェントが `~/.codex/config.toml` を書き換えてはいけない**(受け手のセキュリティ境界)。
+**エージェントが `~/.codex/config.toml` を手で書き換えてはいけない**(受け手のセキュリティ境界。
+MCP の登録は 🧑 に頼まれたときだけ `codex mcp add` で行う。サンドボックスの設定は 🧑 に任せる)。
 
 **検証ゲート**: **WORK_DIR で**(承認前でもここは確認できる)
 

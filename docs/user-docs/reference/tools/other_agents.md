@@ -37,13 +37,24 @@ The installer also writes the Claude Code artefacts (`.mcp.json`, `.claude/setti
 copies of the skills). `.mcp.json` can be suppressed with `--skip-mcp`, and the entry point
 (`AGENTS.md`, plus a `CLAUDE.md` that only imports it) with `--skip-entry-point`;
 `.claude/settings.json` (the Bash permission allowlist) currently cannot — other agents simply
-ignore it. For any other agent you register the MCP server yourself in step 2 below (fleetest
-never writes to an agent's global settings).
+ignore it. For any other agent you register the MCP server in step 2 below (the installer never
+writes to an agent's global settings).
 
 Prerequisites, updates and uninstall are covered in
 [Getting started](../../getting-started.md).
 
 ## 2. Register the MCP server
+
+The easiest way is to ask your AI assistant to "**register the MCP server**". The assistant
+registers it with its own CLI (for Codex, the command below; registering the same name again
+overwrites it and keeps your other servers). Afterwards, restart the assistant and open a new
+session in your test folder.
+
+```bash
+codex mcp add fleetest --env FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -c 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
+```
+
+To write the configuration yourself, use the following form.
 
 `fleetest-mcp` is a plain stdio MCP server, so **any MCP-capable client can use it**. Follow that
 client's own configuration format and give it this launch command (`<ABS_TOOL_ROOT>` is the

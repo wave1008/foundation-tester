@@ -15,11 +15,6 @@ Fleetest のインストール・更新・アンインストールの手順で�
 - **AIアシスタント**
   - MCP に対応した AIアシスタント(Claude Code・Codex・Cline・Cursor・Copilot など)を
     インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントに頼んで進めます。
-    Claude Code の場合:
-
-```bash
-brew install claude-code
-```
 
 ## 3. Fleetest のインストール
 
@@ -30,20 +25,11 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-   clone・ビルド・テストパッケージの用意が進みます(プロジェクトとプロファイルは[クイックスタート](quick-start_ja.md)で作ります)
+   Codex を使う場合は、`codex --sandbox danger-full-access` で起動したセッションで頼んでください(既定のサンドボックスではビルドが通りません)。
 
-2. VSCode で `Developer: Reload Window` を実行します
+2. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します
 
 3. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします(デバイスモニターが開きます)
-
-> **Claude Code 以外の場合**: Claude Code では MCP サーバの登録(`.mcp.json`)もセットアップが書きます。
-> それ以外の AIアシスタントでは、MCP サーバを AIアシスタントの設定に自分で登録します(fleetest は
-> AIアシスタントのグローバル設定には書き込みません)。書き方は
-> [その他のエージェント](reference/tools/other_agents_ja.md#2-mcp-サーバを登録する)を参照してください。
->
-> **Codex を使う場合**: 手順1は `codex --sandbox danger-full-access` で起動したセッションで行ってください。
-> 既定のサンドボックスでは `swift build` と Simulator の操作が塞がれます。セットアップ後の `ft_*` の作業は
-> 既定のままで動きます(詳細は[その他のエージェント](reference/tools/other_agents_ja.md#codex-を使う場合サンドボックス))。
 
 ## 4. Fleetest の更新
 

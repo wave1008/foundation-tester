@@ -36,13 +36,23 @@ bash ../foundation-tester/Scripts/install.sh
 置きます。`.mcp.json` は `--skip-mcp` で、入口(`AGENTS.md` と、それを読み込むだけの
 `CLAUDE.md`)は `--skip-entry-point` で抑止できますが、`.claude/settings.json`(Bash 承認の
 許可リスト)は現状抑止できません(他のエージェントからは無視されるだけで無害です)。
-他のエージェントの MCP 登録は、次の「2. MCP サーバを登録する」で自分で行います
-(fleetest はエージェントのグローバル設定には書き込みません)。
+他のエージェントの MCP 登録は、次の「2. MCP サーバを登録する」で行います
+(インストーラはエージェントのグローバル設定には書き込みません)。
 
 手順の全体像・前提・アンインストールは
 [はじめに(導入・更新・アンインストール)](../../getting-started_ja.md)を参照してください。
 
 ## 2. MCP サーバを登録する
+
+いちばん簡単なのは、AIアシスタントに「**MCP を登録して**」と頼むことです。AIアシスタントが自分の CLI で
+登録します(Codex なら次のコマンド。同じ名前で登録し直すと上書きされ、他のサーバの設定は残ります)。
+登録したら AIアシスタントを再起動し、テスト用フォルダで新しいセッションを開いてください。
+
+```bash
+codex mcp add fleetest --env FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -c 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
+```
+
+自分で設定ファイルに書く場合は、以下の形です。
 
 `fleetest-mcp` は標準の stdio MCP サーバなので、**MCP に対応したクライアントならどれでも**
 使えます。設定の書き方は各クライアントに従い、起動コマンドとして次を渡します

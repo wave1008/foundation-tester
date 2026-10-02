@@ -14,11 +14,7 @@ For the supported macOS, Xcode, Android SDK and other requirements, see [Environ
   - Install Android Studio (Android SDK)
 - **AI assistant**
   - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
-    With any of them, you have the assistant carry out the installation. For Claude Code:
-
-```bash
-brew install claude-code
-```
+    With any of them, you have the assistant carry out the installation.
 
 ## 3. Installing Fleetest
 
@@ -29,21 +25,11 @@ Clone https://github.com/wave1008/foundation-tester next to this folder, then se
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-   It clones and builds, and sets up the test package (you create the project and the profiles in the [Quick Start](quick-start.md))
+   If you use Codex, ask in a session started with `codex --sandbox danger-full-access` (the build does not pass in the default sandbox).
 
-2. Run `Developer: Reload Window` in VSCode
+2. When the installation finishes, run `Developer: Reload Window` in VSCode
 
 3. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode (it opens the device monitor)
-
-> **Other than Claude Code**: with Claude Code, the setup also writes the MCP registration
-> (`.mcp.json`). With any other AI assistant, you register the MCP server in the assistant's own
-> settings (fleetest never writes to your assistant's global settings). See
-> [Other agents](reference/tools/other_agents.md#2-register-the-mcp-server) for how.
->
-> **Using Codex**: do step 1 in a session started with `codex --sandbox danger-full-access`. The
-> default sandbox blocks `swift build` and driving the Simulator. After setup, the `ft_*` work runs
-> with the default settings (details in
-> [Other agents](reference/tools/other_agents.md#using-codex-the-sandbox)).
 
 ## 4. Updating Fleetest
 

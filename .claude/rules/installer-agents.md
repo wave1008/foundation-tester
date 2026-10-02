@@ -109,8 +109,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     コピーはステップ7.8 だけが作る(上記)。プラグイン配布と、スキルだけを curl で取る導入器は**廃止済み** —— 戻さない → maintainer-notes §2.3
   - **他のエージェント(Codex・Cline 等)向けの分岐をコードに戻さない**。案内は
     **docs/user-docs/reference/tools/other_agents(.md/_ja.md) の1箇所**に集約する → maintainer-notes §2.1
-  - **受け手のグローバル設定(`~/.codex/config.toml` 等)には1バイトも書かない**
-    (`agentIntegration.test.mjs` / `agentAdapters.test.mjs` が落とす)
+  - **インストーラ(スクリプト)は受け手のグローバル設定(`~/.codex/config.toml` 等)に1バイトも書かない**
+    (`agentIntegration.test.mjs` / `agentAdapters.test.mjs` が落とす)。**エージェントは 🧑 に頼まれたときだけ、
+    そのクライアントの CLI で MCP を登録してよい**(Codex は `codex mcp add`。同名は上書き・他は残る)。
+    **設定ファイルを手で編集させない**(TOML は同じテーブルの重複でファイル全体が無効になる)。
+    セットアップの完了報告は「『MCP を登録して』と頼めば登録する」と案内する(SKILL.md ステップ7.7・9)
   - **正典をシンボリックリンクの側へ移さない** → maintainer-notes §2.4。
     **install.sh は clone 前・ビルド前に走るので Swift を呼べず、規約位置を手で持つ** ——
     片方だけ変えない(`agentIntegration.test.mjs`)

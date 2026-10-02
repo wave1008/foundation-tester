@@ -392,10 +392,22 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 ### 7.7 Claude Code 以外のエージェントで使う場合（該当するときだけ）
 
 インストーラが用意するのは Claude Code の規約位置だけ。受け手が Codex・Cline などを使うなら、
-**MCP サーバの登録**（そのクライアントの設定書式へ `Scripts/mcp-server.sh` を起動する
-エントリを足す）と**手順書の渡し方**を docs/user-docs/reference/tools/other_agents_ja.md で案内する。
-**エージェントが受け手のグローバル設定（`~/.codex/config.toml` など）を書き換えてはいけない** ——
-セキュリティ境界であり、TOML は同じテーブルの重複でファイル全体が無効になる。
+`ft_*` を使うには **MCP サーバの登録**が別に要る（登録先はそのクライアントの設定 = 受け手のグローバル設定）。
+
+- **自分の判断で登録しない**。ステップ9の完了報告で「**『MCP を登録して』と頼めば登録する**」と案内し、
+  🧑 に頼まれたときだけ登録する（受け手の設定ファイルはセキュリティ境界なので、本人の依頼が条件）。
+- 登録は**そのクライアントの CLI で行う**。Codex なら(`<ABS_TOOL_ROOT>` = クローンの絶対パス。2箇所とも同じ値):
+
+  ```
+  codex mcp add fleetest --env FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -c 'exec "<ABS_TOOL_ROOT>/Scripts/mcp-server.sh"'
+  ```
+
+  同名は上書きされ他のサーバは残る(2回流しても壊れない)。確認は `codex mcp get fleetest`。
+  **設定ファイル(`~/.codex/config.toml` 等)を手で編集しない** —— TOML は同じテーブルの重複で
+  ファイル全体が無効になる。CLI を持たないクライアントは、書式
+  (docs/user-docs/reference/tools/other_agents_ja.md「2. MCP サーバを登録する」)を示して 🧑 に貼ってもらう。
+- 登録したら「**AIアシスタントを再起動し、このフォルダで新しいセッションを開く**(再起動後に `ft_*` が使える)」と案内する。
+- 手順書の渡し方も同じ docs で案内する。
 
 **Codex を使う受け手への注意**: サンドボックスは**シェルコマンドだけ**を縛る。**MCP サーバは
 その外**で動くので、**`ft_*` は既定設定のまま全部動く**（画面探索・シナリオ実行・デバイス駆動）。
@@ -435,6 +447,9 @@ Claude Code 以外のエージェントは、このコピーを使わずクロ�
   `foundation-tester` フォルダ）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - 左下のステータスバーの **fleetest mobile** からデバイスモニターを開く
+- **Claude Code 以外の AIアシスタント**のときだけ: `ft_*` を使うには MCP サーバの登録が要る。
+  「**『MCP を登録して』と頼めば登録します**。登録後は AIアシスタントを再起動して、このフォルダで
+  新しいセッションを開いてください」と案内する（ステップ7.7。手で設定する手順を先に並べない）
 - **テストプロジェクトとプロファイルの作成はまだ**。続けて `/fleetest-profiles` を実行する
   （iOS/Android とアプリIDを聞いて `TestProjects/default/` とプロファイルを作る）。最初のシナリオ作成は
   `/fleetest-scenario`。流れはクイックスタート(`<TOOL_ROOT>/docs/user-docs/quick-start_ja.md`。
