@@ -4171,7 +4171,28 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
   は CLI と共通(詳細は [vscode-fleetest/README.md](../vscode-fleetest/README.md))
 - MCP: `ft_list_scenarios` / `ft_run_scenario` に `project` / `profile` 引数、`ft_list_projects` 追加。
   ft_run_scenario は 1 シナリオ実行なので profile からはシナリオの platform に合う先頭デバイス・
-  heal・reportDir のみ利用
+  heal・reportDir のみ利用(シナリオを書いている途中の確認用。results/・録画・setup/teardown は持たない)
+- MCP の本番の実行: `ft_start_run` / `ft_run_status` / `ft_stop_run`(MCPServer+RunJobs.swift)。
+  **エージェントに頼まれた実行の正規の経路**(受け手の AGENTS.md・手引き・スキルが案内する)。理由は
+  Codex 等のシェルのサンドボックスで `fleetest run` が通らない(SwiftPM の入れ子の sandbox-exec・
+  CoreSimulatorService)のに対し、MCP サーバはその外で動くため(実測: Codex の既定で全部実行 4/4・
+  broadcast 9/9 が実行前に失敗 → MCP では通る)
+  - **start は即返し、status を引かせる**: MCPServer は1リクエストずつ処理する(長い待ちは他の ft_* を
+    止める)+ Codex は MCP の呼び出しを約 60 秒で切る
+  - 起こすのは作業フォルダでの `swift run fleetest run …`(`fleetest api run` は --failed / --broadcast /
+    --folder を持たない。ランチャーが作るのは fleetest-mcp だけで隣の fleetest は古いことがある)。
+    **`swift run` は製品を同じ pid で exec する**(実測)ので、SIGTERM・進捗の台帳(pid 一致)・
+    MCP の端末リースの親判定(getppid = MCP サーバ)がそのまま効く
+  - 子の出力はパイプで読まずログファイル(`.fleetest/mcp-runs/`)へ。止めるのは SIGTERM だけ・
+    このサーバが起こした run だけ・同時に1本
+  - `runner` は登録簿の機械名と `local` だけ(生の user@host は断る。承認なしで呼ばれうる MCP から
+    未登録の機械へシナリオ・プロファイルを送らない)。`--fleet` は CLI だけ(実行プロファイルと
+    併用せず機械ごとに別の run になり、1本を追う start/status の形に載らない)
+  - 承認: Codex では `ft_start_run` だけ `approval_mode = "prompt"` を推奨(setup/teardown と別の機械への
+    送り出しはこのツールにしか無い)。断られたらシェルで回り道をしない(手引きに明記・Codex と
+    Claude Code で実測)
+- MCP の集計: `ft_results`(`fleetest results <query>` と同じ文面。表の組み立てと実行ログの収集は
+  FTCore の ResultsRendering / ResultsLogReport の1箇所で CLI と共有)
 
 ### 11.6 移行と後方互換
 

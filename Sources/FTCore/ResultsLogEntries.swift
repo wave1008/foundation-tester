@@ -1,0 +1,218 @@
+// ResultsLogEntries.swift
+// 1 run のシナリオごとの実行ログ(RunRecorder が書く results/runs/<YYYY-MM>/<runID>/events/<fileBase>.ndjson。
+// fileBase は同じ run の scenarios/<fileBase>.json と対応)の収集と整形。
+// **CLI(`fleetest results log`)と MCP(ft_results query: log)が共有する唯一の実装**。
+// 整形は FTCore.EventLogFormat の1箇所(呼び手ごとに整形し直さない)。
+
+import Foundation
+
+/// `ResultsLogReport.build` が断る理由。message は CLI では stderr、MCP では MCPError にそのまま載る
+public struct ResultsLogError: Error, LocalizedError, Equatable {
+    public let message: String
+    public var errorDescription: String? { message }
+}
+
+public enum ResultsLogReport {
+    public struct Section {
+        public let heading: String
+        /// raw なら NDJSON の行そのまま・そうでなければ EventLogFormat で整形した行
+        public let lines: [String]
+        /// 読めなかったファイル(あれば lines は空)。CLI は stderr へ・MCP は本文へ出す
+        public let unreadablePath: String?
+    }
+
+    /// `requestedRunID` は runID か "latest"。**見つからない・events/ が無い・該当が空は ResultsLogError**
+    public static func build(resultsDir: URL, projectName: String, requestedRunID: String,
+                             scenario: String?, raw: Bool) throws -> [Section] {
+        let resolvedRunID: String
+        if requestedRunID == "latest" {
+            guard let latest = RunResultsStore.scanRuns(resultsDir: resultsDir).last else {
+                throw ResultsLogError(message: "no runs found for project: \(projectName)")
+            }
+            resolvedRunID = latest.runID
+        } else {
+            resolvedRunID = requestedRunID
+        }
+
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: resolvedRunID)
+        guard let meta = RunResultsStore.meta(runDir: runDir) else {
+            throw ResultsLogError(message: "run not found: \(resolvedRunID)")
+        }
+
+        let eventsDir = runDir.appendingPathComponent("events")
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: eventsDir.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            // skipKind の無い記録 = 始まったシナリオ(実行ログを書いたはず)
+            let anyStarted = RunResultsStore.records(runDir: runDir).contains { $0.skipKind == nil }
+            throw ResultsLogError(message: ResultsLogEntries.missingEventsMessage(
+                runID: resolvedRunID, interrupted: meta.interrupted == true,
+                abortReason: meta.abortReason, anyScenarioStarted: anyStarted))
+        }
+
+        let entries = ResultsLogEntries.collect(runDir: runDir, eventsDir: eventsDir, scenarioFilter: scenario)
+        guard !entries.isEmpty else {
+            throw ResultsLogError(message: scenario.map { "No log entries for scenario: \($0)" } ?? "No log entries")
+        }
+
+        return entries.map { entry in
+            guard let text = try? String(contentsOf: entry.fileURL, encoding: .utf8) else {
+                return Section(heading: entry.heading, lines: [], unreadablePath: entry.fileURL.path)
+            }
+            var lines: [String] = []
+            for rawLine in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                if raw {
+                    lines.append(String(rawLine))
+                } else {
+                    lines += EventLogFormat.format(String(rawLine))
+                }
+            }
+            return Section(heading: entry.heading, lines: lines, unreadablePath: nil)
+        }
+    }
+
+    /// 整形済みの本文(CLI の非 raw 出力と同じ並び: 見出し行 `=== … ===`・本文・セクション間に空行)
+    public static func text(_ sections: [Section]) -> String {
+        var out: [String] = []
+        for (offset, section) in sections.enumerated() {
+            if offset > 0 { out.append("") }
+            out.append("=== \(section.heading) ===")
+            if let path = section.unreadablePath { out.append("failed to read: \(path)") }
+            out += section.lines
+        }
+        return out.joined(separator: "\n")
+    }
+}
+
+/// events/ 配下のファイルを表示順(scenarios/ の順 → superseded → incomplete)に並べる。
+/// デバイス非依存の純粋なファイル走査なので `ResultsLogEntriesTests` から直接検証できる
+public enum ResultsLogEntries {
+    public struct Entry {
+        public let heading: String
+        public let fileURL: URL
+    }
+
+    /// events/ が無い run の文言。**記録から言える理由だけを言う**: 1本も始まらずに終わった run
+    /// (中断・供給段の中止)は events/ を作らない。それ以外(この機能より前の run / 保持容量の掃除で
+    /// 消えた)は記録から区別できないので両方を挙げる
+    public static func missingEventsMessage(runID: String, interrupted: Bool, abortReason: String?,
+                                     anyScenarioStarted: Bool) -> String {
+        if anyScenarioStarted {
+            // 始まったシナリオがあるのに無い = 中断・中止では説明が付かない
+        } else if let abortReason {
+            return "this run has no execution log (it ended before any scenario started: \(abortReason)): \(runID)"
+        } else if interrupted {
+            return "this run has no execution log (it was interrupted before any scenario started): \(runID)"
+        }
+        return "this run has no execution log (events/ is missing — either the run predates"
+            + " this feature, or it was cleaned up by retention): \(runID)"
+    }
+
+    public static func collect(runDir: URL, eventsDir: URL, scenarioFilter: String?) -> [Entry] {
+        var entries: [Entry] = []
+        entries += completedEntries(runDir: runDir, eventsDir: eventsDir, scenarioFilter: scenarioFilter)
+        entries += supersededEntries(eventsDir: eventsDir, scenarioFilter: scenarioFilter)
+        entries += inflightEntries(eventsDir: eventsDir, scenarioFilter: scenarioFilter)
+        return entries
+    }
+
+    // MARK: - 完走したシナリオ(scenarios/*.json と対応する events/<fileBase>.ndjson)
+
+    private static func completedEntries(runDir: URL, eventsDir: URL, scenarioFilter: String?) -> [Entry] {
+        let scenariosDir = runDir.appendingPathComponent("scenarios")
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: scenariosDir.path) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        var result: [Entry] = []
+        for name in names.filter({ $0.hasSuffix(".json") }).sorted() {
+            let fileBase = String(name.dropLast(".json".count))
+            guard let data = try? Data(contentsOf: scenariosDir.appendingPathComponent(name)),
+                  let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else { continue }
+            if let scenarioFilter, record.scenarioID != scenarioFilter { continue }
+            let eventsURL = eventsDir.appendingPathComponent("\(fileBase).ndjson")
+            guard FileManager.default.fileExists(atPath: eventsURL.path) else { continue }
+            result.append(Entry(heading: completedHeading(record), fileURL: eventsURL))
+        }
+        return result
+    }
+
+    /// 完走側の見出し。**途中で中断されたシナリオはそう言う**(記録の `interrupted`)—— 言わないと、
+    /// 全ステップ ✅ のまま途切れたログが何で終わったのか読めない(実測: 負荷テストの INT)
+    public static func completedHeading(_ record: ScenarioRunRecord) -> String {
+        let worker = record.worker.map { " (worker: \($0))" } ?? ""
+        let interrupted = record.interrupted == true
+            ? " — the run was interrupted (SIGINT/SIGTERM) during this scenario; its log ends there" : ""
+        return "\(record.scenarioID)\(worker)\(interrupted)"
+    }
+
+    // MARK: - 振り直しで退避された記録
+
+    private static func supersededEntries(eventsDir: URL, scenarioFilter: String?) -> [Entry] {
+        let dir = eventsDir.appendingPathComponent("superseded")
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return [] }
+        let sanitizedFilter = scenarioFilter.map(sanitizeFileName)
+        var result: [Entry] = []
+        for name in names.filter({ $0.hasSuffix(".ndjson") }).sorted() {
+            let withoutExt = String(name.dropLast(".ndjson".count))
+            if let sanitizedFilter, sanitizedScenarioID(fromSupersededBase: withoutExt) != sanitizedFilter {
+                continue
+            }
+            result.append(Entry(heading: "\(withoutExt) (superseded)", fileURL: dir.appendingPathComponent(name)))
+        }
+        return result
+    }
+
+    /// `<fileBase>.<k>.ndjson` の `<fileBase>` を取り出す(拡張子を落とした文字列から)。
+    /// `<fileBase>` 自体は `sanitizeFileName(scenarioID)` に "~N" の連番サフィックスが付きうる
+    /// (RunRecorder.fileName)ので、末尾の ".<k>" と "~N" の両方を剥がして比べる。
+    /// k が数字でない(想定外の名前)ときは nil を返し、--scenario には当たらない側へ倒す
+    private static func sanitizedScenarioID(fromSupersededBase withoutExt: String) -> String? {
+        guard let lastDot = withoutExt.lastIndex(of: "."),
+              !withoutExt[withoutExt.index(after: lastDot)...].isEmpty,
+              withoutExt[withoutExt.index(after: lastDot)...].allSatisfy(\.isNumber) else { return nil }
+        var fileBase = String(withoutExt[..<lastDot])
+        if let tilde = fileBase.lastIndex(of: "~"),
+           fileBase[fileBase.index(after: tilde)...].allSatisfy(\.isNumber) {
+            fileBase = String(fileBase[..<tilde])
+        }
+        return fileBase
+    }
+
+    // MARK: - 書き込み中/kill されて残ったもの
+
+    private static func inflightEntries(eventsDir: URL, scenarioFilter: String?) -> [Entry] {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: eventsDir.path) else { return [] }
+        var result: [Entry] = []
+        for name in names.filter({ $0.hasPrefix(".inflight-") && $0.hasSuffix(".ndjson") }).sorted() {
+            let fileURL = eventsDir.appendingPathComponent(name)
+            let discoveredScenario = firstScenarioID(in: fileURL)
+            if let scenarioFilter {
+                guard discoveredScenario == scenarioFilter else { continue }
+            }
+            let label = discoveredScenario ?? name
+            result.append(Entry(heading: "\(label) (incomplete)", fileURL: fileURL))
+        }
+        return result
+    }
+
+    /// .inflight ファイルはどのシナリオか名前からは分からない —— 中の最初の event 行の
+    /// `scenario` 欄から分かる場合がある。見つからなければ nil(推測しない)
+    private static func firstScenarioID(in fileURL: URL) -> String? {
+        guard let text = try? String(contentsOf: fileURL, encoding: .utf8) else { return nil }
+        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+            guard let data = String(line).data(using: .utf8),
+                  let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let event = envelope["event"] as? [String: Any],
+                  let scenario = event["scenario"] as? String else { continue }
+            return scenario
+        }
+        return nil
+    }
+
+    /// **契約は `RunRecorder.sanitizeFileName` と同一** —— 片方だけ変えると superseded の
+    /// --scenario 絞り込みが静かに外れる
+    private static func sanitizeFileName(_ scenarioID: String) -> String {
+        String(scenarioID.map { $0 == "/" || $0 == ":" ? "_" : $0 })
+    }
+}

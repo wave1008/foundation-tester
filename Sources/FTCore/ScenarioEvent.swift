@@ -43,6 +43,9 @@ public struct ScenarioEvent: Codable, Sendable {
     public var newSelector: String?
     /// scenarioFinished / sceneFinished 用
     public var passed: Bool?
+    /// sceneFinished 用: 手順が全部 skipped で実行されなかった scene(`passed` は true のまま)。
+    /// 対の定義は FTDSL の `SceneRecordData.isSkipped`。ホスト → 拡張の api NDJSON では常に書く
+    public var skipped: Bool?
     public var reportPath: String?
     /// kind == log(ユーザー print の混入行など)
     public var message: String?

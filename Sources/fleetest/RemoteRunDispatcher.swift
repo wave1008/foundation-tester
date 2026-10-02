@@ -1190,6 +1190,10 @@ struct RemoteRunDispatcher {
         for (_, text) in texts {
             guard let scenarioID = Self.recordedField(in: text, key: "scenarioID"),
                   let passed = Self.recordedBoolField(in: text, key: "passed") else { continue }
+            // 意図された対象外(notApplicable)は合成の passed:false を持つが「失敗」ではない
+            // (ローカルの RunRecorder.recordSkipped と同じ判定 = ScenarioSkipKind.countsAsFailedLastTime)
+            if let raw = Self.recordedField(in: text, key: "skipKind"),
+               let kind = ScenarioSkipKind(rawValue: raw), !kind.countsAsFailedLastTime { continue }
             LastResultsStore.record(project: project, scenarioID: scenarioID, passed: passed,
                                     profile: Self.recordedField(in: text, key: "profile"))
         }

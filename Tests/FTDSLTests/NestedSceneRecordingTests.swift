@@ -91,6 +91,43 @@ final class NestedSceneRecordingTests: XCTestCase {
         XCTAssertFalse(scenes[0].passed, "失敗ステップが外側に載っていない")
     }
 
+    /// 打ち切りで本体を飛ばした scene は passed のまま skipped を立てる(拡張・結果 JSON が成功と区別する)。
+    /// 本体が空の scene も打ち切り後は「飛ばした」手順が1つ載るので skipped(手順を持たない scene の扱いは
+    /// 下の isSkipped の境界テスト)
+    func testScenarioAbortedで飛ばしたsceneはskippedが立つ() {
+        var finished: [(scene: Int?, passed: Bool?, skipped: Bool?)] = []
+        let core = makeCore { event in
+            if event.kind == "sceneFinished" { finished.append((event.scene, event.passed, event.skipped)) }
+        }
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "fails") { tap(".Button:near(合計)") }   // 構文誤り = 失敗してシナリオが中断する
+            scene(2, "aborted") { tap("#b") }
+            scene(3, "empty") { }
+        }
+
+        XCTAssertEqual(finished.map(\.scene), [1, 2, 3])
+        XCTAssertEqual(finished.map(\.passed), [false, true, true], "\(finished)")
+        XCTAssertEqual(finished.map(\.skipped), [false, true, true], "\(finished)")
+    }
+
+    func testSceneRecordDataのisSkippedは手順が全部skippedのときだけ() {
+        func step(_ status: StepResult.Status) -> DSLStepRecord {
+            DSLStepRecord(index: 1, section: nil, description: "d", status: status, file: "", line: 0)
+        }
+        var scene = SceneRecordData(number: 1, title: "t")
+        XCTAssertFalse(scene.isSkipped, "手順が無い scene は skipped ではない")
+        scene.steps = [step(.skipped("x")), step(.skipped("y"))]
+        XCTAssertTrue(scene.isSkipped)
+        scene.steps = [step(.skipped("x")), step(.passed)]
+        XCTAssertFalse(scene.isSkipped, "1つでも実行していれば skipped ではない")
+        scene.steps = [step(.skipped("x")), step(.failed("boom"))]
+        XCTAssertFalse(scene.isSkipped)
+        XCTAssertEqual(ScenarioReportWriter.sceneMark(SceneRecordData(number: 2, title: "t")), "✅")
+    }
+
     /// 従来の挙動を保つ: scene の外(scene が1つも無い)のステップは暗黙 scene 0 に載る
     func testSceneの外のステップは暗黙scene0に載る() {
         let core = makeCore()

@@ -296,6 +296,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertEqual(record.scenes[0].title, "Scene A")
         XCTAssertFalse(record.scenes[0].passed)
         XCTAssertEqual(record.scenes[0].durationMs, 250, "sceneFinished の durationMs を優先")
+        XCTAssertNil(record.scenes[0].skipped, "skipped でない scene は欄ごと省略")
 
         XCTAssertEqual(record.steps.total, 2)
         XCTAssertEqual(record.steps.passed, 1)
@@ -856,5 +857,31 @@ final class RunRecordTests: XCTestCase {
             durationMs: 0, packageRoot: nil)
 
         XCTAssertNil(record.scenes[0].durationMs)
+    }
+}
+
+extension RunRecordTests {
+    /// sceneFinished の skipped が結果 JSON の scene 記録へ載る。false/欠落はキーごと省略(古い記録と同形)
+    func testSceneFinishedのskippedは結果JSONへ載りfalseは省略される() throws {
+        var builder = ScenarioRecordBuilder(scenarioID: "Foo.bar", platform: "ios", title: nil, worker: nil)
+        var skipped = ScenarioEvent(kind: "sceneFinished")
+        skipped.scene = 1
+        skipped.passed = true
+        skipped.skipped = true
+        builder.consume(skipped)
+        var ran = ScenarioEvent(kind: "sceneFinished")
+        ran.scene = 2
+        ran.passed = true
+        ran.skipped = false
+        builder.consume(ran)
+        let record = builder.build(passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+                                   durationMs: 1, packageRoot: nil)
+        XCTAssertEqual(record.scenes.map(\.skipped), [true, nil])
+        let json = String(decoding: try JSONEncoder().encode(record.scenes), as: UTF8.self)
+        XCTAssertEqual(json.components(separatedBy: "\"skipped\"").count - 1, 1, json)
+        // 古い記録(skipped 欄なし)は読める
+        let old = #"{"scene":1,"title":"t","passed":true}"#
+        let decoded = try JSONDecoder().decode(SceneResultRecord.self, from: Data(old.utf8))
+        XCTAssertNil(decoded.skipped)
     }
 }

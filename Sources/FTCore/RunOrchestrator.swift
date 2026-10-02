@@ -157,7 +157,7 @@ public enum RunEvent: Sendable {
     case sceneStarted(worker: String, flowURL: URL, scene: Int, sceneTitle: String)
     case step(worker: String, flowURL: URL, result: StepResult)
     /// scene 終了(ScenarioEvent kind "sceneFinished" 相当)。passed = その scene の合否
-    case sceneFinished(worker: String, flowURL: URL, scene: Int, sceneTitle: String, passed: Bool)
+    case sceneFinished(worker: String, flowURL: URL, scene: Int, sceneTitle: String, passed: Bool, skipped: Bool)
     /// デバッグ実行で一時停止した(index = 次に実行するステップ番号、file/line = その位置)
     case flowPaused(worker: String, flowURL: URL, index: Int, description: String,
                     file: String?, line: Int?)
@@ -796,7 +796,8 @@ public enum ScenarioRunner {
                 onEvent(.sceneFinished(worker: worker.label, flowURL: item.url,
                                        scene: event.scene ?? 0,
                                        sceneTitle: event.sceneTitle ?? "",
-                                       passed: event.passed ?? false))
+                                       passed: event.passed ?? false,
+                                       skipped: event.skipped ?? false))
             case "paused":
                 onEvent(.flowPaused(worker: worker.label, flowURL: item.url,
                                     index: event.index ?? 0,

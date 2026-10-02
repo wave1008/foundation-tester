@@ -5,7 +5,7 @@
 // vscode/webview に依存しない(monitorPanel.ts と test/runLaneModel.test.mjs の両方から使うため)。
 // runReducer.ts とは別の状態を持つ独立モジュールだが、アイコンは STATUS_MARK を再利用して揃える。
 
-import { STATUS_MARK } from "./runReducer";
+import { sceneFinishedMarkLabel, STATUS_MARK } from "./runReducer";
 import { dispatchWaitingLine, overallLaneName, tLane } from "./i18n/strings/lane";
 import type { RunEvent, WorkerInfo } from "./model";
 
@@ -241,8 +241,7 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
 
     case "sceneFinished": {
       const scene = event.scene ?? 0;
-      const mark = event.passed ? "✅" : "❌";
-      const label = event.passed ? tLane("lane.pass") : tLane("lane.fail");
+      const { mark, label } = sceneFinishedMarkLabel(event);
       return pushLine(state, laneIdOf(event), tLane("lane.sceneFinished", { mark, scene, label }));
     }
 

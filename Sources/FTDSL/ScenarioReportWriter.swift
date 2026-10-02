@@ -141,11 +141,7 @@ public enum ScenarioReportWriter {
     /// 手順が全部 skipped なら ✅ を付けない(実行していない scene が成功に見える)
     static func sceneMark(_ scene: SceneRecordData) -> String {
         if !scene.passed { return "❌" }
-        let allSkipped = !scene.steps.isEmpty && scene.steps.allSatisfy {
-            if case .skipped = $0.status { return true }
-            return false
-        }
-        return allSkipped ? "⚠️ skipped" : "✅"
+        return scene.isSkipped ? "⚠️ skipped" : "✅"
     }
 
     static func line(for step: DSLStepRecord) -> String {

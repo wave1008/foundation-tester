@@ -769,7 +769,7 @@ final class MCPToolCallTests: XCTestCase {
     ]
     private static let projectBackedTools: Set<String> = [
         "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",
-        "ft_draft_scenario", "ft_dsl_commands",
+        "ft_draft_scenario", "ft_dsl_commands", "ft_start_run", "ft_run_status", "ft_stop_run", "ft_results",
     ]
     /// ドライバを掴まないがホストの外部コマンド(simctl / adb)やファイル走査を伴うので
     /// ここでは呼ばない。名前の集合だけで宣言と dispatch の対応を担保する

@@ -131,7 +131,8 @@ fleetest profile list --project <プロジェクト>
 
 ## 完了後
 
-- 実行: `fleetest run --project <プロジェクト> --profile <plat>`(実機シミュレータ/エミュレータが要る)。
+- 実行: エージェントは `ft_start_run`(profile=`<plat>`。進み具合と結果は `ft_run_status`)。人が端末から打つなら
+  `fleetest run --project <プロジェクト> --profile <plat>`。どちらも仮想デバイスか実機が要る。
 - 別プラットフォームや別アプリを足すときは、この `/fleetest-profiles` をもう一度実行する
   (実行プロファイルの `devices` には追記、アプリプロファイルは新しい `appRef` で追加)。
 - **別の機械(リモートランナー)のデバイスを足すときは `fleetest profile setup`/`api create-device`

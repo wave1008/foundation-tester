@@ -121,7 +121,7 @@ function runScenario(id, { fail = false, skip = false, withLog = false } = {}) {
     file,
     line: 14,
   });
-  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: !fail });
+  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: !fail, skipped: false });
   emit({
     kind: "scenarioFinished",
     scenario: id,
@@ -162,7 +162,7 @@ function buildScenarioEvents(id, workerId, { fail = false } = {}) {
       line: 14,
       worker: workerId,
     },
-    { kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: !fail, worker: workerId },
+    { kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: !fail, skipped: false, worker: workerId },
     {
       kind: "scenarioFinished",
       scenario: id,
@@ -264,7 +264,7 @@ function runHeal() {
     file,
     line: 14,
   });
-  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: true });
+  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: true, skipped: false });
   emit({
     kind: "scenarioFinished",
     scenario: id,
@@ -427,7 +427,7 @@ async function runDebugScenario() {
   }
 
   const passed = !stopRequested;
-  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed });
+  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed, skipped: false });
   emit({
     kind: "scenarioFinished",
     scenario: id,

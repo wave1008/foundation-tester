@@ -3,8 +3,7 @@
 // 直接ディレクトリを組み立てて検証する。
 
 import XCTest
-import FTCore
-@testable import fleetest
+@testable import FTCore
 
 final class ResultsLogEntriesTests: XCTestCase {
 
@@ -210,5 +209,77 @@ final class ResultsLogEntriesTests: XCTestCase {
                                                             anyScenarioStarted: true)
         XCTAssertTrue(message.contains("predates this feature"), message)
         XCTAssertFalse(message.contains("before any scenario started"), message)
+    }
+}
+
+// MARK: - ResultsLogReport(CLI の `results log` と MCP の ft_results が共有する組み立て)
+
+final class ResultsLogReportTests: XCTestCase {
+
+    private var resultsDir: URL!
+
+    override func setUpWithError() throws {
+        resultsDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("results-log-report-\(UUID().uuidString)", isDirectory: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: resultsDir)
+    }
+
+    private func writeRun(_ runID: String, events: [String: [String]]? = nil, interrupted: Bool = false) throws {
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+        RunResultsStore.writeMeta(
+            RunMetaRecord(runID: runID, project: "Shop", profile: "smoke", host: "h", trigger: "cli",
+                          startedAt: "2026-09-28T00:00:00Z", interrupted: interrupted ? true : nil),
+            runDir: runDir)
+        for (scenario, lines) in events ?? [:] {
+            RunResultsStore.writeScenario(
+                ScenarioRunRecord(runID: runID, scenarioID: scenario, platform: "ios", host: "h", passed: true,
+                                  startedAt: "2026-09-28T00:00:00Z", durationMs: 1,
+                                  steps: StepCountsRecord(total: 1, passed: 1)),
+                runDir: runDir, fileName: scenario)
+            let eventsDir = runDir.appendingPathComponent("events")
+            try FileManager.default.createDirectory(at: eventsDir, withIntermediateDirectories: true)
+            try lines.joined(separator: "\n").write(
+                to: eventsDir.appendingPathComponent("\(scenario).ndjson"), atomically: true, encoding: .utf8)
+        }
+    }
+
+    private func build(_ runID: String = "latest", scenario: String? = nil, raw: Bool = false) throws
+        -> [ResultsLogReport.Section] {
+        try ResultsLogReport.build(resultsDir: resultsDir, projectName: "Shop", requestedRunID: runID,
+                                   scenario: scenario, raw: raw)
+    }
+
+    func testRawKeepsLinesAndTextJoinsSectionsWithABlankLine() throws {
+        try writeRun("20260928-000000Z-aaaaaaaa", events: ["A.one": ["l1", "l2"], "B.two": ["l3"]])
+        XCTAssertEqual(try build(raw: true).map(\.lines), [["l1", "l2"], ["l3"]])
+        XCTAssertEqual(ResultsLogReport.text(try build(raw: false)),
+                       "=== A.one ===\n?? l1\n?? l2\n\n=== B.two ===\n?? l3")
+    }
+
+    func testScenarioFilterNarrowsAndAnEmptyResultIsAnError() throws {
+        try writeRun("20260928-000000Z-aaaaaaaa", events: ["A.one": ["l1"], "B.two": ["l3"]])
+        XCTAssertEqual(try build(scenario: "B.two").map(\.heading), ["B.two"])
+        XCTAssertThrowsError(try build(scenario: "Nope.x")) {
+            XCTAssertEqual($0 as? ResultsLogError, ResultsLogError(message: "No log entries for scenario: Nope.x"))
+        }
+    }
+
+    func testLatestAndUnknownAndMissingEventsMessages() throws {
+        XCTAssertThrowsError(try build()) {
+            XCTAssertEqual(($0 as? ResultsLogError)?.message, "no runs found for project: Shop")
+        }
+        try writeRun("20260928-000000Z-aaaaaaaa", events: ["Old.s": ["old"]])
+        try writeRun("20260928-010000Z-bbbbbbbb", events: nil, interrupted: true)
+        XCTAssertThrowsError(try build()) {
+            XCTAssertEqual(($0 as? ResultsLogError)?.message,
+                           "this run has no execution log (it was interrupted before any scenario started): 20260928-010000Z-bbbbbbbb")
+        }
+        XCTAssertEqual(try build("20260928-000000Z-aaaaaaaa").map(\.heading), ["Old.s"])
+        XCTAssertThrowsError(try build("nope")) {
+            XCTAssertEqual(($0 as? ResultsLogError)?.message, "run not found: nope")
+        }
     }
 }

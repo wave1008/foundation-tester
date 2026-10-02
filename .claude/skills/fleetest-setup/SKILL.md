@@ -402,7 +402,8 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 - シナリオを書いて通すまでの短い手引き(英語): `<TOOL_ROOT>/docs/user-docs/reference/tools/agent_guide.md`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
-- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張
+- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`
+- **利用者に実行を頼まれたら `ft_start_run`**(`fleetest run --profile` と同じ実行を裏で始めてすぐ返る。進み具合と結果は `ft_run_status`・止めるのは `ft_stop_run`)。結果の履歴・前回の失敗だけ(`failed`)・全デバイスで1回ずつ(`broadcast`)・録画はこの経路だけ。シェルのサンドボックスの中のエージェントからも動く。`ft_run_scenario` はシナリオを書いている途中の確認用(履歴・録画を残さない)。結果の集計(不安定・遅い・実行ログ)は `ft_results`
 <!-- fleetest:end -->
 ```
 

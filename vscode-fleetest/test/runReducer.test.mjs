@@ -466,3 +466,18 @@ test("scenarioRequeued は出力行と requeued アクション(待機中へ戻�
   assert.ok(r.actions[0].text.includes("(1/2)"));
   assert.deepEqual(r.actions[1], { type: "requeued", scenario: "Foo.S0010" });
 });
+
+test("sceneFinished: skipped は成功と区別して ⚠️ とスキップ表記になる(passed:true のまま届く)", () => {
+  const events = [
+    { kind: "sceneFinished", scenario: "S.T1", scene: 1, sceneTitle: "実行", passed: true, skipped: false },
+    { kind: "sceneFinished", scenario: "S.T1", scene: 2, sceneTitle: "飛ばした", passed: true, skipped: true },
+    { kind: "sceneFinished", scenario: "S.T1", scene: 3, sceneTitle: "失敗", passed: false, skipped: false },
+  ];
+  const texts = feed(events).filter((a) => a.type === "output").map((a) => a.text);
+  assert.equal(texts.length, 3);
+  assert.match(texts[0], /✅/);
+  assert.match(texts[1], /⚠️/);
+  assert.doesNotMatch(texts[1], /✅/);
+  assert.match(texts[1], /スキップ|Skipped/);
+  assert.match(texts[2], /❌/);
+});

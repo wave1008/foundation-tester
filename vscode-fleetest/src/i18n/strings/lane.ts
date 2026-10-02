@@ -16,6 +16,7 @@ export const laneStrings = {
   "lane.sceneFinished": { ja: "  {mark} シーン{scene} {label}", en: "  {mark} Scene {scene} {label}" },
   "lane.pass": { ja: "成功", en: "Passed" },
   "lane.fail": { ja: "失敗", en: "Failed" },
+  "lane.skipped": { ja: "スキップ(実行されず)", en: "Skipped (not run)" },
   "lane.fixSuggestion": { ja: "  💡 修正提案: {detail}", en: "  💡 Fix suggestion: {detail}" },
   "lane.paused": { ja: "  ⏸ 一時停止: {description}", en: "  ⏸ Paused: {description}" },
   "lane.runFinished": {

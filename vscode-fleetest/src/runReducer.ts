@@ -48,6 +48,14 @@ export function createRunReducerState(): RunReducerState {
   return { scenarios: new Map() };
 }
 
+/** sceneFinished の印と語。skipped(実行されなかった scene。passed は true のまま)を成功と区別する
+ * 唯一の箇所 — runLaneModel.ts もここを使う。 */
+export function sceneFinishedMarkLabel(event: { passed: boolean; skipped?: boolean }): { mark: string; label: string } {
+  if (!event.passed) return { mark: "❌", label: tLane("lane.fail") };
+  if (event.skipped) return { mark: "⚠️", label: tLane("lane.skipped") };
+  return { mark: "✅", label: tLane("lane.pass") };
+}
+
 /** ステップの status → アイコン。runLaneModel.ts(ログレーン)も同じアイコンを使う。 */
 export const STATUS_MARK: Record<string, string> = {
   passed: "✅",
@@ -108,8 +116,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
 
     case "sceneFinished": {
       const scene = event.scene ?? 0;
-      const mark = event.passed ? "✅" : "❌";
-      const label = event.passed ? tLane("lane.pass") : tLane("lane.fail");
+      const { mark, label } = sceneFinishedMarkLabel(event);
       return [
         {
           type: "output",

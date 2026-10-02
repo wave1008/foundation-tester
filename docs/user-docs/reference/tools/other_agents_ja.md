@@ -59,8 +59,22 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 ```
 
 Codex は MCP のツールを呼ぶたびに承認を求めます(画面の探索では数十回になり、非対話の
-`codex exec` では全部拒否されます)。承認なしで通すなら `[mcp_servers.fleetest]` に
-`default_tools_approval_mode = "approve"` を足します(codex-cli 0.150 で確認)。
+`codex exec` では全部拒否されます)。おすすめは、**全体は承認なしで通し、本番の実行 `ft_start_run` だけ
+承認を求める**設定です(codex-cli 0.150 で確認):
+
+```toml
+[mcp_servers.fleetest]
+default_tools_approval_mode = "approve"
+
+[mcp_servers.fleetest.tools.ft_start_run]
+approval_mode = "prompt"
+```
+
+画面の探索やシナリオ作成中の確認は止まらず、テストの実行を頼んだときにだけ1回聞かれます。
+`ft_start_run` は実行プロファイルの setup / teardown スクリプトを動かし、`runner` で別の機械へ送ることも
+できるためです。承認を求める範囲の選び方は [MCP サーバ](./mcp_server_ja.md#サンドボックスと承認)にあります。
+非対話の `codex exec` では `prompt` のツールは断られるので、`codex exec` で実行まで任せるときは
+この1つ(`[mcp_servers.fleetest.tools.ft_start_run]`)を外します。
 
 > **そのまま追記しないでください。** TOML は同じテーブルの重複を許さないので、
 > `[mcp_servers.fleetest]` が2つになると**設定ファイル全体が無効**になります。既にある場合は
@@ -102,7 +116,9 @@ Codex はシェルコマンドをサンドボックスの中で実行します�
 影響はきれいに2つに分かれます(2026-08-27 に実測)。
 
 **影響なし(設定不要)** — `ft_*` ツール経由の作業すべて。画面の探索・シナリオ作成・実行・
-シミュレータや実機の駆動。`--sandbox read-only` でもファイルシステムと loopback に
+シミュレータや実機の駆動。結果の履歴や録画を残す本番の実行も `ft_start_run` で通ります
+(シェルの `fleetest run` は下の理由で通らないので、エージェントにはこちらを使わせます)。
+サンドボックスの外でプロジェクトのコードが動くことの注意は[MCP サーバ](mcp_server_ja.md#サンドボックスと承認)にあります。`--sandbox read-only` でもファイルシステムと loopback に
 アクセスできます。
 
 **`danger-full-access` 以外では通らない** — 導入・更新の手順。シェル経由で走るためです:

@@ -135,7 +135,9 @@ enum DeviceMachineRunner {
             let failedSet = LastResultsStore.failedIDs(project: project, profile: profileName)
             selected = selected.filter { failedSet.contains($0.id) }
             guard !selected.isEmpty else {
-                FleetRunner.log("No scenarios failed last time (everything passed, or nothing has run)")
+                FleetRunner.log(LastResultsStore.nothingFailedMessage(
+                    recordedCount: LastResultsStore.recordedCount(project: project, profile: profileName),
+                    failedCount: failedSet.count))
                 return 0
             }
             FleetRunner.log("→ Re-running the \(selected.count) scenario(s) that failed last time")

@@ -159,6 +159,24 @@ final class RemoteDispatcherScenarioTextsTests: XCTestCase {
         XCTAssertTrue(LastResultsStore.failedIDs(project: project, profile: nil).contains("Login.S0030"))
     }
 
+    /// 回収した記録のうち notApplicable(合成の passed:false)は失敗として書かない。
+    /// noWorker / interrupted(始まらなかった事故)は書く(ローカルの recordSkipped と同じ規則)
+    func testWriteLastResultsSkipsNotApplicableButKeepsNotStartedAccidents() {
+        let texts: [(url: URL, text: String)] = [
+            (tempDir.appendingPathComponent("d.json"),
+             "{\"scenarioID\": \"Skip.NA\", \"passed\": false, \"profile\": \"ios-inapp\", \"skipKind\": \"notApplicable\"}"),
+            (tempDir.appendingPathComponent("e.json"),
+             "{\"scenarioID\": \"Skip.NoWorker\", \"passed\": false, \"profile\": \"ios-inapp\", \"skipKind\": \"noWorker\"}"),
+            (tempDir.appendingPathComponent("f.json"),
+             "{\"scenarioID\": \"Skip.Int\", \"passed\": false, \"profile\": \"ios-inapp\", \"skipKind\": \"interrupted\"}"),
+        ]
+        dispatcher.writeLastResults(texts: texts, project: project)
+        let failed = LastResultsStore.failedIDs(project: project, profile: "ios-inapp")
+        XCTAssertFalse(failed.contains("Skip.NA"))
+        XCTAssertTrue(failed.contains("Skip.NoWorker"))
+        XCTAssertTrue(failed.contains("Skip.Int"))
+    }
+
     /// 回収の rsync が一部だけ転送で終わっても(終了コード ≠ 0)、転送できた分の後処理は進める ——
     /// 出力を捨てる形・「成功したときだけ一覧を返す」形に戻さない(RemoteDispatchTests が本物の rsync で
     /// 「一部失敗でも出力に転送できた分が並ぶ」ことを確かめている)

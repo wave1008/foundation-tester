@@ -357,6 +357,14 @@ enum ProfileRunner {
                                fmSettings: fmSettings), fmSettings)
         }
 
+        // 供給段(ワーカー構築・install 等)の例外で1本も始まらずに抜けるときは、残りを `--failed` の
+        // 「直近失敗」として残す(対象外は上で外れて items に居ない)。orchestrator へ渡したら
+        // 以後の未実行は RunOrchestrator が recordSkipped で残す。api run の catch と対
+        var scenariosHandedToOrchestrator = false
+        defer {
+            if !scenariosHandedToOrchestrator { recorder?.recordLastResultsFailed(items.map(\.info.id)) }
+        }
+
         // **回す本数を超える台数を用意しない**(ResolvedProfile.limitingDevices の宣言参照)。
         // 本数はここで確定している(items は呼び出し側で解決済み)ので、ブリッジ供給・アプリ版チェック・
         // blank triage が丸ごと縮む。platform 未指定のシナリオは**両方**に数える(どちらでも走りうる)。
@@ -584,6 +592,7 @@ enum ProfileRunner {
         // ここから先は RunOrchestrator.run() が必ず finish() まで進む(non-throwing)ので、
         // "preparing" の後始末は orchestrator 側の finish()/remove に委ねる
         progressHandedToOrchestrator = true
+        scenariosHandedToOrchestrator = true
         async let summary = orchestrator.run(items: itemsToRun, defaultPlatform: defaultPlatform,
                                              dispatch: dispatch)
 

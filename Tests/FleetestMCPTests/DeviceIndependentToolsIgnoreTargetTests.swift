@@ -28,6 +28,7 @@ final class DeviceIndependentToolsIgnoreTargetTests: XCTestCase {
         XCTAssertEqual(independent, [
             "ft_list_devices", "ft_list_projects", "ft_list_scenarios",
             "ft_dsl_commands", "ft_dry_run", "ft_draft_scenario", "ft_doctor",
+            "ft_start_run", "ft_run_status", "ft_stop_run", "ft_results",
         ])
     }
 

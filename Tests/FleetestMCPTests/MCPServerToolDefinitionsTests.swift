@@ -28,6 +28,9 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
         // 記録済みの操作列から下書きを組むだけ = デバイスに触らない
         "ft_draft_scenario": [],
         "ft_list_devices": ["platform", "profile"],
+        // run の起動・状態・停止。宛先は実行プロファイルが決める(profile は run の入力で、デバイス選択ではない)
+        "ft_start_run": ["profile"], "ft_run_status": [], "ft_stop_run": [],
+        "ft_results": [],
         "ft_logs": ["platform", "serial", "port", "udid"],
     ]
 

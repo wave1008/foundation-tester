@@ -742,7 +742,7 @@ else:
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
 - シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`
-- **利用者に実行を頼まれたら `swift run fleetest run --profile <実行プロファイル>`**(この作業フォルダで)。結果の履歴(`fleetest results`)・前回の失敗だけ(`--failed`)・全デバイスで1回ずつ(`--broadcast`)・録画はこの経路だけ。`ft_run_scenario` はシナリオを書いている途中の確認用(履歴・録画を残さない)"""
+- **利用者に実行を頼まれたら `ft_start_run`**(`fleetest run --profile` と同じ実行を裏で始めてすぐ返る。進み具合と結果は `ft_run_status`・止めるのは `ft_stop_run`)。結果の履歴・前回の失敗だけ(`failed`)・全デバイスで1回ずつ(`broadcast`)・録画はこの経路だけ。シェルのサンドボックスの中のエージェントからも動く。`ft_run_scenario` はシナリオを書いている途中の確認用(履歴・録画を残さない)。結果の集計(不安定・遅い・実行ログ)は `ft_results`"""
 block = BEGIN + "\n" + BODY + "\n" + END
 
 existing = ""

@@ -73,6 +73,16 @@ public struct SceneRecordData: Sendable {
             return true
         }
     }
+
+    /// 「実行されなかった scene」の唯一の定義(手順を1つ以上持ち、全部 skipped)。
+    /// 打ち切りで本体を飛ばした scene は失敗した手順を持たず `passed` が true のままなので、
+    /// 成功と区別する印はこれ。sceneFinished の `skipped`・結果 JSON・レポートの印はここから導く
+    public var isSkipped: Bool {
+        !steps.isEmpty && steps.allSatisfy {
+            if case .skipped = $0.status { return true }
+            return false
+        }
+    }
 }
 
 public struct ScenarioRecordData: Sendable {
@@ -549,15 +559,17 @@ public final class FTDriveCore {
 
         currentSection = nil
         // 合否は**この scene**のもの(入れ子の内側で `scenes.last` を読むと外側の結果が内側になる)
-        let passed = withState { () -> Bool in
+        let (passed, skipped) = withState { () -> (Bool, Bool) in
             sceneIndexStack.removeLast()
-            return record.scenes[sceneIndex].passed
+            let scene = record.scenes[sceneIndex]
+            return (scene.passed, scene.isSkipped)
         }
         var finished = ScenarioEvent(kind: "sceneFinished")
         finished.scenario = scenarioID
         finished.scene = number
         finished.sceneTitle = title
         finished.passed = passed
+        finished.skipped = skipped
         emit(finished)
     }
 

@@ -959,8 +959,8 @@ extension MCPServer {
     /// 「ref を受ける引数が1つ増えたのにガードが知らない」が起きない。
     /// **綴りの類似で判定しない**(3度踏んだ): `ref` → `fromRef` →
     /// `scrollFrame` と、名前からは ref だと分からない引数が毎回出てきた
-    static let nonRefIntegerKeys = ["lastN", "lines", "maxElements", "maxSwipes", "maxWidth",
-                                    "port", "sinceSeconds"]
+    static let nonRefIntegerKeys = ["lastN", "limit", "lines", "maxElements", "maxSwipes", "maxWidth",
+                                    "minRuns", "pid", "port", "sinceSeconds"]
 
     static func usesRememberedDeviceState(_ args: [String: Any]) -> Bool {
         if Self.refBearingKeys.contains(where: { args[$0] != nil }) { return true }

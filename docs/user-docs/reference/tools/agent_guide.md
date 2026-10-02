@@ -93,17 +93,24 @@ class SignInExample {
 ## Runs the user asks for
 
 `ft_run_scenario` is for checking while you write a scenario; it leaves no result history (`results/`) and no recording.
-When the user asks you to run tests, use `fleetest run` in the work folder (`swift run fleetest run ...`).
+When the user asks you to run tests, use `ft_start_run`. It starts the same run as `fleetest run --profile` in the
+background and returns at once; follow progress and the result with `ft_run_status` (stop it with `ft_stop_run`).
+`ft_start_run` may ask the user for approval, depending on their settings. If it is refused, do not work around it
+with `fleetest run` in the shell or similar; tell the user the run needs their approval (the approval setting is the
+safety line the user chose).
+It runs inside the MCP server, so it also works for agents whose shell is sandboxed.
 
-| Request | Command |
+| Request | Tool (arguments) |
 |---|---|
-| Run (all, a class, one test) | `fleetest run --profile <name> [--scenario <Class>[.<method>]]` |
-| Only what failed last time | `fleetest run --profile <name> --failed` |
-| Once on every device | `fleetest run --profile <name> --broadcast [--scenario ...]` |
-| Unstable or slower tests | `fleetest results flaky` / `fleetest results insights` / `fleetest results slow` |
-| Execution log | `fleetest results log latest [--scenario <id>]` |
+| Run (all, a class, one test) | `ft_start_run` (`profile`, and `scenario: ["<Class>[.<method>]"]` if needed) |
+| Only what failed last time | `ft_start_run` (`profile`, `failed: true`) |
+| Once on every device | `ft_start_run` (`profile`, `broadcast: true`) |
+| Result, failed scenarios and their reports | `ft_run_status` |
+| Unstable, slower or regressed tests | `ft_results` (`query: "flaky"` / `"slow"` / `"insights"`) |
+| The execution log of a run | `ft_results` (`query: "log"`, `runId` default `latest`, optionally `scenario`) |
 
-Do not add `app:` to a scenario or point at a bridge port by hand to run it on every device.
+`ft_results` prints the same text as `fleetest results <query>`. Do not add `app:` to a scenario or point at a bridge port by hand
+to run it on every device.
 
 ## Pausing or retiring tests
 
@@ -113,6 +120,11 @@ Do not move files into `_disabled/`; mark them. Both marks drop the test from bu
 - Retired: `@Deleted("reason")`
 
 Both can be put on a class or on an individual `@Test`.
+
+## Naming devices in reports
+
+In reports to the user, do not call a simulator or emulator a "physical device". That word means
+only a real iPhone / Android connected over USB (`kind: "physical"` in the run profile). When unsure, say "device".
 
 ## Writing for specific UI components
 

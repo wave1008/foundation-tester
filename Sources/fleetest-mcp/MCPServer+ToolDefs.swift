@@ -648,7 +648,7 @@ extension MCPServer {
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ], scope: .project),
         tool("ft_dry_run", "Dry-run a scenario without any device. Fails (isError) on selector syntax errors; flags expectation blocks with no assertions and #ids never seen in an ft_snapshot as ⚠️ lines (not failures — fix them anyway). Takes seconds. "
-            + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (real device) — it cannot tell whether a selector matches a real element. "
+            + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (on a device) — it cannot tell whether a selector matches a real element. "
             + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run)", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
@@ -662,9 +662,10 @@ extension MCPServer {
             + "the element list and screenshot at the moment of failure (for the first failed scenario), and the report path. "
             + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run). "
             + "Unlike fleetest run it does not run the profile's setup/teardown scripts, "
-            + "send the device home first, or record into results/ — use fleetest run for a full run. "
+            + "send the device home first, or record into results/ — ft_start_run does the full run. "
             + "It installs the app only on iOS with a profile whose app has autoInstall "
-            + "(copied into the workspace, installed when the installed copy is out of date); otherwise install it with ft_install", [
+            + "(copied into the workspace, installed when the installed copy is out of date); otherwise install it with ft_install. "
+            + "When the user asks to run tests, use ft_start_run instead — this tool is the quick check while writing a scenario", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination). "
@@ -674,6 +675,39 @@ extension MCPServer {
             "serial": ["type": "string", "description": "Android device serial (default: the connected device)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ], required: ["id"]),
+        tool("ft_start_run", "Start a full test run — the same as `fleetest run --profile <name>` — in the background and return at once. "
+            + "It records results history, reports and recordings, and supports failed-only (failed) and once-on-every-device (broadcast) runs. "
+            + "Poll it with ft_run_status and stop it with ft_stop_run. Use this when the user asks to run tests; "
+            + "ft_run_scenario stays the quick check while writing a scenario. Only one run started here can be active at a time", [
+            "profile": ["type": "string", "description": "Run profile name (profiles/runs/<name>.json); it picks the devices"],
+            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
+            "runner": ["type": "string", "description": "Send this run to another machine instead of the one its devices name: a machine registered with `fleetest remote machines add`, or local (raw hosts are refused)"],
+            "scenario": ["type": "array", "items": ["type": "string"],
+                         "description": "Only these scenarios: a class name or Class.method (default: all)"],
+            "folder": ["type": "array", "items": ["type": "string"],
+                       "description": "Only the scenarios under these folders of the project's scenarios/ directory"],
+            "failed": ["type": "boolean", "description": "Run only the scenarios that failed last time"],
+            "broadcast": ["type": "boolean", "description": "Run the selected scenarios once on every device of the profile instead of splitting them across devices"],
+        ], required: ["profile"], scope: .project),
+        tool("ft_run_status", "Show the state of a run started with ft_start_run: running (progress done/total/failed and phase), "
+            + "or finished (exit code, pass/fail totals, the failed scenarios with their report paths, the results directory) plus the log tail", [
+            "pid": ["type": "integer", "description": "pid returned by ft_start_run (default: the most recent run started here)"],
+        ], scope: .none),
+        tool("ft_stop_run", "Stop a run started with ft_start_run by sending SIGTERM (it tears down on its own and may take a while; "
+            + "poll ft_run_status until it reports finished)", [
+            "pid": ["type": "integer", "description": "pid returned by ft_start_run (default: the most recent run started here)"],
+        ], scope: .none),
+        tool("ft_results", "Read the run-results history of a project — the same output as `fleetest results <query>` (text, no JSON). "
+            + "Use it after ft_start_run, and for flaky, slow or regressed scenarios and a run's per-scenario execution log. "
+            + "query: list (recent runs), summary (per-scenario pass rate and duration), flaky (pass/fail flips), trend (one scenario's history; needs scenario), "
+            + "devices (per device and platform), slow (slowest scenarios), insights (regressions, consecutive failures, stale selectors), log (a run's execution log)", [
+            "query": ["type": "string", "enum": MCPResultsRequest.queries, "description": "What to read"],
+            "since": ["type": "string", "description": "Start of the period: a duration (90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000); default 90d. Not for log"],
+            "scenario": ["type": "string", "description": "Scenario ID (Class.method): filter for summary and log, required for trend"],
+            "runId": ["type": "string", "description": "log only: the run ID, or latest (default) — ft_run_status prints it"],
+            "limit": ["type": "integer", "description": "list (default 20) and slow (default 10): number of rows"],
+            "minRuns": ["type": "integer", "description": "flaky only: minimum runs for a scenario to count (default 5)"],
+        ], required: ["query"], scope: .project),
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
         tool("ft_doctor", "Check Foundation Models availability", [:], scope: .none),

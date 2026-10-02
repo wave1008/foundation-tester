@@ -59,7 +59,12 @@ public enum ArgumentBounds {
         "scale": Bound(min: 0, minExclusive: true),
         "port": Bound(min: 1, max: 65535),
         "waitSeconds": Bound(min: 0),
+        // ft_run_status / ft_stop_run の pid(Int32 に収まる正の整数)
+        "pid": Bound(min: 1, max: Double(Int32.max)),
         "repeat": Bound(min: 1),
+        // ft_results の行数・最小標本数
+        "limit": Bound(min: 1),
+        "minRuns": Bound(min: 1),
         "ref": .unbounded,
         "fromRef": .unbounded,
         "x": .unbounded,
@@ -85,7 +90,7 @@ public enum ArgumentBounds {
     /// ここで断るのは「明示したのに空」だけ
     public static let mustNotBeEmpty: Set<String> = [
         "bundleId", "bundle", "url", "packagePath", "path", "id", "selector", "steps",
-        "label", "classifier", "name",
+        "label", "classifier", "name", "profile", "runner", "query", "since", "runId",
     ]
 
     /// 違反なら文言、範囲内(または値域を持たない引数)なら nil

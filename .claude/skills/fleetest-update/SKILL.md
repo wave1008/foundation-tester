@@ -227,10 +227,6 @@ claude plugin update fleetest@foundation-tester
 
 ### 7. 動作確認
 
-最小の1本を通して回帰がないことを確認する。**WORK_DIR で**:
-
-```
-fleetest run --project <ProjectName> --profile ios
-```
-
-（clone 構成は `swift run fleetest run ...`。）
+最小の1本を通して回帰がないことを確認する。`ft_start_run`(project=`<ProjectName>`, profile=`ios`,
+scenario=`["<クラス名>.<メソッド>"]`)で始め、`ft_run_status` で結果を引く(`fleetest run --profile` と同じ実行。
+作業フォルダで `swift run fleetest run` を起こすので、更新後のソースでビルドされる)。

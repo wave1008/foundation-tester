@@ -564,3 +564,33 @@ test("buildScenarioDevices: machine を渡すと各シナリオに焼き込む(�
     { scenarioID: "A.S0010", platform: "ios", device: "iPhone 16", machine: "M1Ultra" },
   ]);
 });
+
+test("buildRecordingTree: scenes[].skipped の scene は passed でなく中立(other)。実行された scene は緑のまま", () => {
+  const source = extractScenarioTreeSource({
+    scenarioID: "Aborted",
+    startedAt: "2026-07-23T15:55:00Z",
+    passed: false,
+    scenes: [
+      { scene: 1, title: "実行", passed: false },
+      { scene: 2, title: "飛ばした", passed: true, skipped: true },
+      { scene: 3, title: "古い形", passed: true },
+    ],
+    timeline: [
+      { scene: 1, index: 0, description: "tap #a", status: "failed", at: "2026-07-23T15:55:01Z" },
+      { scene: 2, index: 1, description: "skipped the body of scene 2", status: "skipped", at: "2026-07-23T15:55:02Z" },
+      { scene: 3, index: 2, description: "tap #c", status: "passed", at: "2026-07-23T15:55:03Z" },
+    ],
+  });
+  assert.deepEqual([...source.sceneSkipped], [2]);
+  const tree = buildRecordingTree([source], [recordingFor("Aborted")]);
+  assert.deepEqual(tree[0].scenes.map((s) => s.status), ["failed", "other", "passed"]);
+  assert.equal(tree[0].status, "failed");
+});
+
+test("extractScenarioTreeSource: skipped 欄の無い古い記録は sceneSkipped が空", () => {
+  const source = extractScenarioTreeSource({
+    scenarioID: "Old", startedAt: "2026-07-23T00:00:00Z", passed: true,
+    scenes: [{ scene: 1, title: "t", passed: true }],
+  });
+  assert.equal(source.sceneSkipped.size, 0);
+});

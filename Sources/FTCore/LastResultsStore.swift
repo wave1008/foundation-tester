@@ -23,7 +23,7 @@ public enum LastResultsStore {
     /// RepoRoot.find()(ブリッジ資産の在り処)とは別物。**`profile` は必須引数**
     /// (nil は「profile-less」の意味で `noProfileKey` へ畳む。既定値を置くと呼び出し忘れが
     /// コンパイルで見えなくなる)
-    static func stateDir(project: TestProject, profile: String?) -> URL {
+    public static func stateDir(project: TestProject, profile: String?) -> URL {
         let root = ScenarioHost.packageRoot() ?? project.rootURL
             .deletingLastPathComponent().deletingLastPathComponent()
         return root.appendingPathComponent(".fleetest/last-results")
@@ -46,6 +46,28 @@ public enum LastResultsStore {
     /// 無ければ空集合
     public static func failedIDs(project: TestProject, profile: String?) -> Set<String> {
         failedIDs(stateDir: stateDir(project: project, profile: profile))
+    }
+
+    /// 記録のあるシナリオ数(passed / failed の別なく)。`--failed` が空のとき「全部緑」と
+    /// 「まだ1本も走っていない」を言い分けるための材料
+    public static func recordedCount(project: TestProject, profile: String?) -> Int {
+        recordedCount(stateDir: stateDir(project: project, profile: profile))
+    }
+
+    static func recordedCount(stateDir: URL) -> Int {
+        (try? FileManager.default.contentsOfDirectory(atPath: stateDir.path))?.count ?? 0
+    }
+
+    /// `--failed` の対象が空だったときの発話(`run` の単機経路・フリート経路で共有)。
+    /// **空は「直近失敗 ∩ 選んだ範囲(--scenario / --folder)」** —— 直近失敗が範囲の外にだけあるときに
+    /// 「全部緑」と言うと誤る(failedCount = 範囲で絞る前の直近失敗の数)
+    public static func nothingFailedMessage(recordedCount: Int, failedCount: Int) -> String {
+        if failedCount > 0 {
+            return "None of the selected scenarios failed last time (\(failedCount) scenario(s) outside this selection did)"
+        }
+        return recordedCount == 0
+            ? "No results recorded yet for this project/profile (nothing has run), so there is nothing to re-run"
+            : "No scenarios failed last time (every recorded scenario passed)"
     }
 
     static func failedIDs(stateDir: URL) -> Set<String> {

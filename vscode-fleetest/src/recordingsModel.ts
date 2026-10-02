@@ -369,6 +369,9 @@ export interface ScenarioTreeSource {
   readonly passed: boolean;
   /** raw.scenes[].passed(scene番号→passed)。シーン合否判定の優先ソースとして使う。 */
   readonly scenePassed: ReadonlyMap<number, boolean>;
+  /** raw.scenes[].skipped が true の scene 番号(実行されなかった scene。passed は true のまま
+   * なので成功と区別するための印。欄が無い古い記録は空)。 */
+  readonly sceneSkipped: ReadonlySet<number>;
   /** raw.timeline(欠落/非配列は空配列)。 */
   readonly timeline: readonly RawTimelineStep[];
 }
@@ -400,10 +403,12 @@ export function extractScenarioTreeSource(raw: unknown): ScenarioTreeSource | nu
   }
   const passed = raw.passed === true;
   const scenePassed = new Map<number, boolean>();
+  const sceneSkipped = new Set<number>();
   if (Array.isArray(raw.scenes)) {
     for (const s of raw.scenes) {
       if (isRecord(s) && typeof s.scene === "number" && typeof s.passed === "boolean") {
         scenePassed.set(s.scene, s.passed);
+        if (s.skipped === true) sceneSkipped.add(s.scene);
       }
     }
   }
@@ -411,7 +416,7 @@ export function extractScenarioTreeSource(raw: unknown): ScenarioTreeSource | nu
     ? raw.timeline.map(parseTimelineStep).filter((s): s is RawTimelineStep => s !== null)
     : [];
   const title = typeof raw.title === "string" && raw.title !== "" ? raw.title : null;
-  return { scenarioID: raw.scenarioID, title, startedAt: raw.startedAt, passed, scenePassed, timeline };
+  return { scenarioID: raw.scenarioID, title, startedAt: raw.startedAt, passed, scenePassed, sceneSkipped, timeline };
 }
 
 /** timeline を scene 番号でグルーピングする(欠落は0番、ScenarioRecordBuilder の event.scene ?? 0 と
@@ -474,7 +479,10 @@ export function buildRecordingTree(
       return {
         scene: group.scene,
         sceneTitle,
-        status: aggregateStatus(steps.map((s) => s.status), scenario.scenePassed.get(group.scene)),
+        // 実行されなかった scene は passed のまま記録されるので、成功(緑)でなく中立(グレー)にする
+        status: scenario.sceneSkipped.has(group.scene)
+          ? "other"
+          : aggregateStatus(steps.map((s) => s.status), scenario.scenePassed.get(group.scene)),
         offsetMs: steps[0]?.offsetMs ?? offsetMsForWallClock(segments, scenario.startedAt),
         steps,
       };

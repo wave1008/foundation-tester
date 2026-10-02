@@ -57,6 +57,8 @@ final class MCPServer {
     var preparedPhysicalAndroid: SessionFlags { SessionFlags(server: self, path: \.preparedPhysicalAndroid) }
     var bridgeRecoveryFailed: SessionFlags { SessionFlags(server: self, path: \.bridgeRecoveryFailed) }
 
+    /// ft_start_run が起こした run の台帳(MCPServer+RunJobs.swift)。stored property なのでここに置く
+    let runJobs = MCPRunJobRegistry()
     /// 探索中の操作列(ft_draft_scenario の材料。InteractionLog 参照)
     var interactions = InteractionLog()
     /// 次の新しい世代に割り当てる base。**セッションに1つ**(engineKey ごとではない)・**単調増加のみ**。

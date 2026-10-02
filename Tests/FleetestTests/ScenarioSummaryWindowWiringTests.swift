@@ -57,9 +57,20 @@ final class ScenarioSummaryWindowWiringTests: XCTestCase {
         }
     }
 
+    /// MCP の ft_results は CLI の `fleetest results` と同じ出力を返すので、窓も CLI と同じ(`.max`)
+    func testMCPResultsKeepsTheWholeSinceWindowLikeTheCLI() throws {
+        let code = try Self.codeOnly(Self.source("Sources/fleetest-mcp/MCPServer+Results.swift"))
+        for function in Self.windowedFunctions {
+            let calls = try Self.callArguments(in: code, function: function)
+            XCTAssertEqual(calls.count, 1, "MCPServer+Results の \(function) 呼び出しが1件ではない")
+            XCTAssertTrue(calls[0].contains("recentRuns: .max"),
+                          "ft_results の \(function) は CLI と同じく --since の窓をそのまま集計すること。実際: \(calls[0])")
+        }
+    }
+
     /// 呼び手が増えたら窓の選択を1件ずつ決めさせる(既定値が無いので渡し忘れは起きないが、
     /// 新しい経路がどちらを名乗ったかはここで目に入る)
-    func testWindowedAggregatesHaveExactlyTwoCallSitesEach() throws {
+    func testWindowedAggregatesHaveExactlyThreeCallSitesEach() throws {
         let sourcesDir = Self.source("Sources")
         for function in Self.windowedFunctions {
             var total = 0
@@ -68,8 +79,8 @@ final class ScenarioSummaryWindowWiringTests: XCTestCase {
                 guard url.lastPathComponent != "RunResultsQuery.swift" else { continue }  // 定義元
                 total += try Self.callArguments(in: try Self.codeOnly(url), function: function).count
             }
-            XCTAssertEqual(total, 2,
-                           "\(function) の呼び手は api results と CLI の results の2つ。"
+            XCTAssertEqual(total, 3,
+                           "\(function) の呼び手は api results・CLI の results・MCP の ft_results の3つ。"
                            + "増えたならその経路の窓を決めて本数を更新する")
         }
     }

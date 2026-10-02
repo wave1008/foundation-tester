@@ -760,7 +760,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 作った recorder を繋ぐだけ(`attachRecorder`。既に中断済みならその場で markInterrupted)
         let recorder: RunRecorder? = (!dryRun && debugOptions == nil)
             ? RunRecorder.begin(project: testProject, profile: profile, trigger: "api",
-                                runGroup: runGroup)
+                                runGroup: runGroup,
+                                lastResultsDir: LastResultsStore.stateDir(project: testProject,
+                                                                          profile: profile))
             : nil
         if let recorder { interruptState.attachRecorder(recorder) }
 
@@ -876,6 +878,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                              performanceMode: performanceMode, fmSettings: fmSettings,
                              setOverrides: profileOverrides.mapValues(\.token),
                              abortReason: error.localizedDescription)
+            // `--failed` が拾えるよう、始まらなかった分を直近失敗として残す(`run` の供給段は
+            // ProfileRunner.run の defer が同じ記録を書く。**対象外は selected に既に居ない**)
+            recorder?.recordLastResultsFailed(selected.map(\.id))
             throw error
         }
 
@@ -1426,13 +1431,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             started.sceneTitle = sceneTitle
             return [started.encodedLine()]
 
-        case .sceneFinished(let worker, let flowURL, let scene, let sceneTitle, let passed):
+        case .sceneFinished(let worker, let flowURL, let scene, let sceneTitle, let passed, let skipped):
             var finished = ScenarioEvent(kind: "sceneFinished")
             finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
             finished.scene = scene
             finished.sceneTitle = sceneTitle
             finished.passed = passed
+            finished.skipped = skipped
             return [finished.encodedLine()]
 
         case .workerFailed(let worker, let message):

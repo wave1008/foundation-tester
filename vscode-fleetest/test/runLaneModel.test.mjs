@@ -480,3 +480,16 @@ test("log: worker 無しは status アクションも出す / worker 付きは�
   assert.equal(withWorker.some((a) => a.type === "status"), false,
     "レーンに属す log は見出しを奪わない");
 });
+
+test("sceneFinished: skipped のシーンは ⚠️ とスキップ表記(成功の ✅ にしない)", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "sceneFinished", scenario: "S.T1", scene: 1, sceneTitle: "実行", passed: true, skipped: false },
+    { kind: "sceneFinished", scenario: "S.T1", scene: 2, sceneTitle: "飛ばした", passed: true, skipped: true },
+  ]);
+  const lines = actions.filter((a) => a.type === "line").map((a) => a.text);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /✅/);
+  assert.match(lines[1], /⚠️/);
+  assert.doesNotMatch(lines[1], /✅/);
+});

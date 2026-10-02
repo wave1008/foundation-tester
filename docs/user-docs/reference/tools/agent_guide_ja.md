@@ -90,17 +90,23 @@ class SignInExample {
 ## 利用者に頼まれた実行
 
 `ft_run_scenario` はシナリオを書いている途中の確認用で、結果の履歴(`results/`)も録画も残さない。
-利用者に「実行して」と頼まれたら、作業フォルダで `fleetest run` を使う(`swift run fleetest run …`)。
+利用者に「実行して」と頼まれたら `ft_start_run` を使う。`fleetest run --profile` と同じ実行を裏で始めて
+すぐ返るので、`ft_run_status` で進み具合と結果を見る(止めるのは `ft_stop_run`)。
+`ft_start_run` は利用者の設定で承認を求めることがある。断られたら、シェルの `fleetest run` などで回り道をせず、
+実行に承認が要ることを利用者に伝える(承認の設定は利用者が選んだ安全の線引き)。MCP サーバの中で動くので、
+シェルのサンドボックスの中のエージェントからも使える。
 
-| 頼まれたこと | コマンド |
+| 頼まれたこと | ツール(引数) |
 |---|---|
-| 実行する(全部・クラス・1本) | `fleetest run --profile <名前> [--scenario <クラス>[.<メソッド>]]` |
-| 前回落ちたものだけ | `fleetest run --profile <名前> --failed` |
-| 全デバイスで1回ずつ | `fleetest run --profile <名前> --broadcast [--scenario …]` |
-| 不安定・遅くなったテスト | `fleetest results flaky` / `fleetest results insights` / `fleetest results slow` |
-| 実行ログ | `fleetest results log latest [--scenario <id>]` |
+| 実行する(全部・クラス・1本) | `ft_start_run`(`profile`、必要なら `scenario: ["<クラス>[.<メソッド>]"]`) |
+| 前回落ちたものだけ | `ft_start_run`(`profile`, `failed: true`) |
+| 全デバイスで1回ずつ | `ft_start_run`(`profile`, `broadcast: true`) |
+| 結果・失敗したシナリオとレポート | `ft_run_status` |
+| 不安定・遅くなった・悪化したテスト | `ft_results`(`query: "flaky"` / `"slow"` / `"insights"`) |
+| 1 run の実行ログ | `ft_results`(`query: "log"`・`runId` 既定 `latest`・必要なら `scenario`) |
 
-全デバイスで回すためにシナリオへ `app:` を足したり、ブリッジのポートを手で指したりしない。
+`ft_results` は `fleetest results <query>` と同じ文面を返す。全デバイスで回すためにシナリオへ `app:` を足したり、
+ブリッジのポートを手で指したりしない。
 
 ## テストを止める・廃止する
 
@@ -110,6 +116,11 @@ class SignInExample {
 - 廃止: `@Deleted("理由")`
 
 クラスにも個々の `@Test` にも付けられる。
+
+## 報告での呼び方
+
+利用者への報告では、Simulator・Emulator を「実機」と呼ばない。「実機」は USB でつないだ本物の iPhone / Android
+だけを指す(実行プロファイルの `kind: "physical"`)。どちらか分からないときは「デバイス」と書く。
 
 ## UI 部品ごとの書き方
 

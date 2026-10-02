@@ -55,6 +55,9 @@ public final class RunRecorder: @unchecked Sendable {
     private var liveFiles: [String: [(fileName: String, worker: String?,
                                       guarded: Int, guardSkipped: Int, guardStaleFrame: Int)]] = [:]
     private let hostMetrics: HostMetricsRecorder?
+    /// `--failed` の記録(`LastResultsStore`)の置き場。nil = 書かない。ScenarioHost が書けない
+    /// 「始まらなかったシナリオ」(recordSkipped / 供給段の例外)を失敗として残すための口
+    private let lastResultsDir: URL?
     /// [occlusion-guard] run 横断の累積(write(_:) で record.steps から加算・finish() で
     /// RunMetaRecord へ載せる)。lock で保護(並列ワーカーが同時に record() を呼ぶため)
     private var guardedTotal = 0
@@ -64,7 +67,7 @@ public final class RunRecorder: @unchecked Sendable {
     private init(runID: String, projectName: String, profile: String?, machine: String,
                 trigger: String, startedAt: String, runDir: URL,
                 hostMetrics: HostMetricsRecorder?, issuer: String?, toolchain: String?,
-                runGroup: String?) {
+                runGroup: String?, lastResultsDir: URL?) {
         self.runID = runID
         self.projectName = projectName
         self.profile = profile
@@ -76,11 +79,16 @@ public final class RunRecorder: @unchecked Sendable {
         self.issuer = issuer
         self.toolchain = toolchain
         self.runGroup = runGroup
+        self.lastResultsDir = lastResultsDir
     }
 
+    /// - lastResultsDir: 本番の呼び手(run / api run)は `LastResultsStore.stateDir(project:profile:)` を
+    ///   渡す(`RunRecorderLastResultsWiringTests` が固定)。既定の nil は「書かない」で、テストが
+    ///   実リポジトリの `.fleetest/last-results` を汚さないための既定
     public static func begin(project: TestProject, profile: String?, trigger: String,
                              captureHostMetrics: Bool = true,
-                             runGroup: String? = nil) -> RunRecorder {
+                             runGroup: String? = nil,
+                             lastResultsDir: URL? = nil) -> RunRecorder {
         let machine = resolveMachine()
         let runID = makeRunID()
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
@@ -99,7 +107,8 @@ public final class RunRecorder: @unchecked Sendable {
         let recorder = RunRecorder(
             runID: runID, projectName: project.name, profile: profile, machine: machine,
             trigger: trigger, startedAt: startedAt, runDir: runDir, hostMetrics: hostMetrics,
-            issuer: issuer, toolchain: toolchain, runGroup: runGroup)
+            issuer: issuer, toolchain: toolchain, runGroup: runGroup,
+            lastResultsDir: lastResultsDir)
 
         let meta = RunMetaRecord(
             runID: runID, project: project.name, profile: profile, host: machine,
@@ -156,6 +165,15 @@ public final class RunRecorder: @unchecked Sendable {
             failedSteps: [FailedStepRecord(index: 0, description: reason)],
             skipKind: kind)
         write(record)
+        if kind.countsAsFailedLastTime { recordLastResultsFailed([scenarioID]) }
+    }
+
+    /// `--failed` 用の「直近失敗」を書く(best-effort)。始まらなかったシナリオ用
+    public func recordLastResultsFailed(_ scenarioIDs: [String]) {
+        guard let lastResultsDir else { return }
+        for id in scenarioIDs {
+            LastResultsStore.record(stateDir: lastResultsDir, scenarioID: id, passed: false)
+        }
     }
 
     /// 中断(SIGINT/SIGTERM)で**始まらなかった**シナリオの理由(RunOrchestrator のキュー残りと

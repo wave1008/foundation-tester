@@ -72,6 +72,8 @@ these; naming a second device requires future calls to be explicit again.
 | `ft_screenshot` | Screenshot image, for visual inspection |
 | `ft_capture_element` | Saves an element as a sample image of an image classifier and reports the training check (samples for `checkIsON` / `imageIs`; see [imageIs](../commands/image_assertion.md)) |
 | `ft_list_scenarios` / `ft_run_scenario` | List scenarios / run deterministically (auto-builds; compile errors are returned as-is). A class name as `id` runs every scenario of the class except `@Deleted`/`@Draft`, like `fleetest run`. `profile:` cannot be combined with `port`/`serial`/`platform`/`udid`. **Unlike `fleetest run` it does not run the profile's setup/teardown scripts, send the device home first, or record into `results/`** (use the CLI for a full run). It installs the app only on iOS with a `profile:` whose app has `autoInstall` (copied into the workspace, then installed when the installed copy is out of date); otherwise install it with `ft_install`. **A failure comes back as isError** with the failing step, the element list and screenshot at the moment of failure (first failed scenario only), and the report path |
+| `ft_start_run` / `ft_run_status` / `ft_stop_run` | The real run, same as `fleetest run --profile`. `ft_start_run` starts it in the background and returns at once (`profile` required; `scenario` / `folder` are arrays; `failed`, `broadcast`, and `runner` to send this run to another machine — a registered machine name or `local`); `ft_run_status` returns progress and the result (runID, pass/fail, reports of failed scenarios, the tail of the log). Stop it with `ft_stop_run` (SIGTERM). Includes result history (`results/`), recordings and the setup/teardown scripts. It runs inside the MCP server, so agents whose shell is sandboxed (such as Codex by default) can use it too. One run at a time per server |
+| `ft_results` | The run-results history, same text as `fleetest results <query>` (no JSON). `query` is required: `list`, `summary`, `flaky`, `trend` (needs `scenario`), `devices`, `slow`, `insights` or `log` (a run's per-scenario execution log; `runId`, default `latest`). Optional: `since` (default `90d`; not for `log`), `scenario`, `limit` (`list` / `slow`), `minRuns` (`flaky`). Reads files only, so it works for agents whose shell is sandboxed (such as Codex by default) |
 | `ft_dry_run` | Device-free validation: fails (isError) on selector syntax errors; flags assertion-less expectations and unknown `#id`s as ⚠️ lines (warnings, not failures). For a scenario that declares no platform, `platform:` (default ios) picks the `ios { } / android { }` branch and the `#id` ledger |
 | `ft_list_projects` | List test projects and their run profiles |
 | `ft_draft_scenario` | Turn a recorded exploration into a Swift scenario draft (not written to disk) |
@@ -102,6 +104,34 @@ uses the XCUITest engine.
 The tools intentionally do not include an "explore" tool: exploration and judgment stay with the
 calling agent (it already has a snapshot and operation primitives to explore with), while
 `fleetest` supplies determinism — operate, replay, verify.
+
+## Sandbox and approval
+
+The MCP server runs **outside** the agent's shell sandbox. Tools that build and run
+(`ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run`) therefore execute the project's code outside
+the sandbox: `Package.swift`, the scenarios (`.swift`), and, for `ft_start_run`, the run profile's setup / teardown
+scripts.
+
+- **Choose what to approve by what runs outside the sandbox.** If MCP tools pass without approval, code the agent
+  wrote into the work folder (for example by following instructions hidden in the app's screen) runs outside the
+  sandbox with no human check. When the agent types `fleetest run` in its shell, the sandbox or the approval prompt
+  stops it there.
+
+  | Tools that ask for approval | Convenience | What goes past a human |
+  |---|---|---|
+  | none | never interrupted | nothing (assumes a repository and app you trust) |
+  | `ft_start_run` (recommended) | once, when you ask for a test run | setup / teardown scripts, sending a run to another machine |
+  | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` | asked at every compile and check while writing scenarios | every execution of code outside the sandbox |
+
+  For Codex, see [Other agents](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
+  under `[mcp_servers.fleetest.tools.<tool name>]` per tool). `writes`, which skips approval only for read-only tools,
+  also counts screen operations (taps, typing) as writes, so exploring a screen means dozens of approvals.
+- **`ft_start_run`'s `runner` accepts only registered machine names and `local`.** Raw destinations such as
+  `user@host` are refused, so scenarios and profiles are never sent to a machine the user has not registered.
+  Register machines with `fleetest remote machines add`. The CLI's `fleetest run --runner` accepts raw destinations too.
+- `ft_stop_run` / `ft_run_status` only handle runs that this server started with `ft_start_run`.
+- `ft_start_run` passes checked arguments as an array to a fixed command (`fleetest run`); no shell is involved, so
+  no arbitrary command can be injected through the arguments.
 
 ## Structured output (opt-in)
 

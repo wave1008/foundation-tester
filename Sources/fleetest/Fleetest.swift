@@ -745,7 +745,9 @@ struct RunScenarios: AsyncParsableCommand {
             let failedSet = LastResultsStore.failedIDs(project: testProject, profile: profile)
             selected = selected.filter { failedSet.contains($0.id) }
             guard !selected.isEmpty else {
-                ConsoleOut.out("No scenarios failed last time (everything passed, or nothing has run)")
+                ConsoleOut.out(LastResultsStore.nothingFailedMessage(
+                    recordedCount: LastResultsStore.recordedCount(project: testProject, profile: profile),
+                    failedCount: failedSet.count))
                 return
             }
             ConsoleOut.out("→ Re-running the \(selected.count) scenario(s) that failed last time")
@@ -810,7 +812,9 @@ struct RunScenarios: AsyncParsableCommand {
 
         PhaseLog.mark("fm-doctor")
         let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli",
-                                         runGroup: runGroup)
+                                         runGroup: runGroup,
+                                         lastResultsDir: LastResultsStore.stateDir(project: testProject,
+                                                                                   profile: profile))
         PhaseLog.mark("recorder-begin")
         // **interruptState はロック取得の直後(build より前)に登録済み**(このコメントより上、
         // dispatchLock の直前)。ここでは作った recorder を繋ぐだけ(`attachRecorder`。既に

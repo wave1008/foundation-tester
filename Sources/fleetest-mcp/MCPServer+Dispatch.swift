@@ -803,6 +803,18 @@ extension MCPServer {
         case "ft_run_scenario":
             return try await runScenario(args)
 
+        case "ft_start_run":
+            return try startRun(args)
+
+        case "ft_run_status":
+            return try runStatus(args)
+
+        case "ft_stop_run":
+            return try stopRun(args)
+
+        case "ft_results":
+            return try await ftResults(args)
+
         case "ft_list_projects":
             return try listProjects()
 

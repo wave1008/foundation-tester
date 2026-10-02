@@ -183,6 +183,9 @@ export interface SceneFinishedEvent {
   scene?: number;
   sceneTitle?: string;
   passed: boolean;
+  /** 手順が全部 skipped で実行されなかった scene(passed は true のまま)。ホストは常に書く
+   * (対向は Sources/FTCore/ScenarioEvent.swift の skipped)。 */
+  skipped: boolean;
   worker?: string;
 }
 

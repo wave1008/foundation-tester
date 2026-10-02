@@ -91,9 +91,17 @@ final class RunEventNDJSONTests: XCTestCase {
         XCTAssertEqual(started["sceneTitle"] as? String, "ログイン")
 
         let finished = try single(.sceneFinished(worker: workerLabel, flowURL: flowURL,
-                                                 scene: 2, sceneTitle: "ログイン", passed: false))
+                                                 scene: 2, sceneTitle: "ログイン", passed: false,
+                                                 skipped: false))
         XCTAssertEqual(finished["kind"] as? String, "sceneFinished")
         XCTAssertEqual(finished["passed"] as? Bool, false)
+        XCTAssertEqual(finished["skipped"] as? Bool, false, "skipped は常に書く(拡張は必須で読む)")
+
+        let skippedScene = try single(.sceneFinished(worker: workerLabel, flowURL: flowURL,
+                                                     scene: 3, sceneTitle: "後段", passed: true,
+                                                     skipped: true))
+        XCTAssertEqual(skippedScene["passed"] as? Bool, true)
+        XCTAssertEqual(skippedScene["skipped"] as? Bool, true)
     }
 
     // MARK: - step

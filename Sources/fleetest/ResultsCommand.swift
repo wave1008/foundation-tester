@@ -1,7 +1,7 @@
 // ResultsCommand.swift
 // results/ 配下(RunResultsStore)の実行結果 DB を集計して表示する CLI。
 // 集計ロジックは RunResultsQuery(FTCore、vscode 拡張の api コマンドと共用)に置き、
-// このファイルは表示整形とオプション解釈のみを担当する。
+// 表の整形は FTCore.ResultsRendering(MCP の ft_results と共有)。このファイルはオプション解釈と --json のみ。
 
 import ArgumentParser
 import Foundation
@@ -29,7 +29,7 @@ struct ResultsQueryOptions: ParsableArguments {
     var project: String?
 
     @Option(help: "Start of the period: a duration (e.g. 90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000)")
-    var since: String = "90d"
+    var since: String = ResultsRendering.defaultSince
 
     @Flag(help: "Print the result as a single line of JSON")
     var json = false
@@ -60,39 +60,6 @@ private func printResultsJSON<T: Encodable>(_ value: T) throws {
     ConsoleOut.out(String(data: data, encoding: .utf8)!)
 }
 
-/// startedAt(ISO8601 UTC)をローカルタイムゾーンの人間可読表示に変換する。パース不能ならそのまま返す
-// formatLocal / SimpleTable は FleetestTests から検証するため internal(private へ戻さない)。
-func formatLocal(_ iso8601: String) -> String {
-    guard let date = ISO8601DateFormatter().date(from: iso8601) else { return iso8601 }
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    return formatter.string(from: date)
-}
-
-/// 日本語混じりでも桁数(character count)基準で揃える簡易テーブル(半角想定・厳密な幅計算はしない)
-enum SimpleTable {
-    static func render(headers: [String], rows: [[String]]) -> String {
-        let columnCount = headers.count
-        var widths = headers.map(\.count)
-        for row in rows {
-            for i in 0..<columnCount {
-                widths[i] = max(widths[i], (i < row.count ? row[i] : "").count)
-            }
-        }
-        func padRow(_ cells: [String]) -> String {
-            (0..<columnCount).map { i -> String in
-                let cell = i < cells.count ? cells[i] : ""
-                return cell + String(repeating: " ", count: widths[i] - cell.count)
-            }.joined(separator: "  ")
-        }
-        var lines = [padRow(headers)]
-        lines.append(widths.map { String(repeating: "-", count: $0) }.joined(separator: "  "))
-        lines.append(contentsOf: rows.map(padRow))
-        return lines.joined(separator: "\n")
-    }
-}
-
 // MARK: - list
 
 struct ResultsListCommand: AsyncParsableCommand {
@@ -101,7 +68,7 @@ struct ResultsListCommand: AsyncParsableCommand {
     @OptionGroup var options: ResultsQueryOptions
 
     @Option(help: "Number of rows to show")
-    var limit: Int = 20
+    var limit: Int = ResultsRendering.defaultListLimit
 
     func run() throws {
         let (_, resultsDir, sinceDate) = try options.resolve()
@@ -112,22 +79,7 @@ struct ResultsListCommand: AsyncParsableCommand {
             try printResultsJSON(rows)
             return
         }
-        guard !rows.isEmpty else {
-            ConsoleOut.out("No matching runs")
-            return
-        }
-        let headers = ["runID", "time", "trigger", "profile", "machine", "passed/failed/total"]
-        let tableRows = rows.map { meta -> [String] in
-            let counts: String
-            if let total = meta.total, let passed = meta.passed, let failed = meta.failed {
-                counts = "\(passed)/\(failed)/\(total)"
-            } else {
-                counts = "(incomplete)"
-            }
-            return [meta.runID, formatLocal(meta.startedAt), meta.trigger,
-                    meta.profile ?? "-", meta.host, counts]
-        }
-        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(ResultsRendering.list(rows))
     }
 }
 
@@ -153,19 +105,7 @@ struct ResultsSummaryCommand: AsyncParsableCommand {
             try printResultsJSON(rows)
             return
         }
-        guard !rows.isEmpty else {
-            ConsoleOut.out("No matching scenarios")
-            return
-        }
-        let headers = ["scenario", "runs", "pass rate", "avg ms", "median ms", "last run", "last result"]
-        let tableRows = rows.map { row -> [String] in
-            [row.scenarioID, String(row.runs), String(format: "%.1f%%", row.successRate),
-             row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-",
-             row.medianDurationMs.map { String(format: "%.0f", $0) } ?? "-",
-             row.lastRunAt.map(formatLocal) ?? "-",
-             row.lastPassed.map { $0 ? "✅" : "❌" } ?? "-"]
-        }
-        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(ResultsRendering.summary(rows))
     }
 }
 
@@ -178,7 +118,7 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
     @OptionGroup var options: ResultsQueryOptions
 
     @Option(name: .customLong("min-runs"), help: "Minimum number of runs to include a scenario")
-    var minRuns: Int = 5
+    var minRuns: Int = ResultsRendering.defaultMinRuns
 
     func run() throws {
         let (_, resultsDir, sinceDate) = try options.resolve()
@@ -190,17 +130,7 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
             try printResultsJSON(rows)
             return
         }
-        guard !rows.isEmpty else {
-            ConsoleOut.out("No flaky scenarios (candidates need --min-runs \(minRuns)+ and mixed pass/fail)")
-            return
-        }
-        let headers = ["scenario", "runs", "fail rate", "flip score", "recent results (new→old)"]
-        let tableRows = rows.map { row -> [String] in
-            [row.scenarioID, String(row.runs), String(format: "%.1f%%", row.failureRate),
-             String(format: "%.2f", row.flakinessScore),
-             row.recentResults.map { $0 ? "✅" : "❌" }.joined()]
-        }
-        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(ResultsRendering.flaky(rows, minRuns: minRuns))
     }
 }
 
@@ -223,26 +153,7 @@ struct ResultsTrendCommand: AsyncParsableCommand {
             try printResultsJSON(rows)
             return
         }
-        guard !rows.isEmpty else {
-            ConsoleOut.out("No run history for: \(scenario)")
-            return
-        }
-        // バーはスキップ合成レコードを除いた最大 durationMs を 20 文字とした相対値
-        let maxDuration = rows.filter { !RunResultsQuery.isSkippedSynthetic($0) }
-            .map(\.durationMs).max() ?? 0
-        let headers = ["startedAt", "runID", "passed", "durationMs", "worker", "machine", "bar"]
-        let tableRows = rows.map { record -> [String] in
-            let bar: String
-            if RunResultsQuery.isSkippedSynthetic(record) || maxDuration == 0 {
-                bar = ""
-            } else {
-                let length = max(1, Int((Double(record.durationMs) / Double(maxDuration)) * 20))
-                bar = String(repeating: "█", count: length)
-            }
-            return [formatLocal(record.startedAt), record.runID, record.passed ? "✅" : "❌",
-                    String(record.durationMs), record.worker ?? "-", record.host, bar]
-        }
-        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(ResultsRendering.trend(rows, scenario: scenario))
     }
 }
 
@@ -263,24 +174,7 @@ struct ResultsDevicesCommand: AsyncParsableCommand {
             try printResultsJSON(report)
             return
         }
-        guard !report.byWorker.isEmpty else {
-            ConsoleOut.out("No matching runs")
-            return
-        }
-        ConsoleOut.out("[per worker]")
-        ConsoleOut.out(SimpleTable.render(
-            headers: ["worker", "runs", "pass rate", "avg ms"],
-            rows: report.byWorker.map { row in
-                [row.worker, String(row.runs), String(format: "%.1f%%", row.successRate),
-                 row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-"]
-            }))
-        ConsoleOut.out("\n[per platform]")
-        ConsoleOut.out(SimpleTable.render(
-            headers: ["platform", "runs", "pass rate", "avg ms"],
-            rows: report.byPlatform.map { row in
-                [row.platform, String(row.runs), String(format: "%.1f%%", row.successRate),
-                 row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-"]
-            }))
+        ConsoleOut.out(ResultsRendering.devices(report))
     }
 }
 
@@ -293,7 +187,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
     @OptionGroup var options: ResultsQueryOptions
 
     @Option(help: "Number of rows to show")
-    var limit: Int = 10
+    var limit: Int = ResultsRendering.defaultSlowLimit
 
     func run() throws {
         let (_, resultsDir, sinceDate) = try options.resolve()
@@ -304,25 +198,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             try printResultsJSON(rows)
             return
         }
-        guard !rows.isEmpty else {
-            ConsoleOut.out("No matching scenarios")
-            return
-        }
-        // 同じ scenarioID を複数 platform で回すプロジェクトでは1シナリオが複数行に分かれる
-        // (slowTests は (scenarioID, platform) で束ねる)ので platform 欄を出す
-        let headers = ["scenario", "platform", "runs", "avg ms", "p90 ms", "regression", "slowest scene"]
-        let tableRows = rows.map { row -> [String] in
-            let delta = row.deltaPct.map { String(format: "%+.0f%%", $0) } ?? "-"
-            let slowestScene: String
-            if let scene = row.slowestScene, let avg = row.slowestSceneAvgMs {
-                slowestScene = "\(scene) (\(String(format: "%.0f", avg))ms)"
-            } else {
-                slowestScene = "-"
-            }
-            return [row.scenarioID, row.platform, String(row.runs), String(format: "%.0f", row.avgDurationMs),
-                    String(format: "%.0f", row.p90DurationMs), delta, slowestScene]
-        }
-        ConsoleOut.out(SimpleTable.render(headers: headers, rows: tableRows))
+        ConsoleOut.out(ResultsRendering.slow(rows))
     }
 }
 
@@ -346,18 +222,6 @@ struct ResultsInsightsCommand: AsyncParsableCommand {
             try printResultsJSON(rows)
             return
         }
-        guard !rows.isEmpty else {
-            ConsoleOut.out("Nothing needs attention")
-            return
-        }
-        for row in rows {
-            let icon: String
-            switch row.severity {
-            case "critical": icon = "🔴"
-            case "warn": icon = "🟡"
-            default: icon = "🔵"
-            }
-            ConsoleOut.out("\(icon) \(row.message)")
-        }
+        ConsoleOut.out(ResultsRendering.insights(rows))
     }
 }

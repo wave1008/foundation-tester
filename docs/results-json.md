@@ -360,7 +360,7 @@ Android の凍結事後判定(`AndroidHealthProbe.observeBlankAndRepair`)が試�
 | passed | Bool | シナリオ全体の成否 |
 | timedOut | Bool? | タイムアウトで強制終了したか |
 | startedAt / durationMs | String / Int | |
-| scenes | [SceneResultRecord] | シーン単位の合否・所要 |
+| scenes | [SceneResultRecord] | シーン単位の合否・所要(`scene` / `title` / `passed` / `durationMs`)。**`skipped`(Bool?)= 手順を1つ以上持ち全部 skipped で実行されなかった scene**(打ち切りで本体を飛ばした scene。`passed` は true のままなので成功と区別する印はこの欄)。**true のときだけ書く**(欄が無い = skipped ではない。古い記録・手順が無い scene・実行された scene)。定義は `SceneRecordData.isSkipped` の1箇所 |
 | steps | StepCountsRecord | 状態別のステップ数(`total` / `passed` / `failed` / `skipped` / `healed` / `passedViaFallback` / `inconclusive` / `viaHeldValue` / `guarded` / `guardSkipped` / `guardStaleFrame`。最後の3つは下記) |
 | failedSteps | [FailedStepRecord]? | **失敗時のみ**。下記 |
 | fixSuggestions | [FixSuggestionRecord]? | セレクタの修正提案(**成否によらず**残る) |

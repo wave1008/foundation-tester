@@ -10,6 +10,7 @@ paths:
   - "Sources/FTCore/RunProgressLedger.swift"
   - "Sources/FTCore/RunRecord*.swift"
   - "Sources/FTCore/RunResults*.swift"
+  - "Sources/FTCore/Results*.swift"
   - "Sources/FTCore/TimeBoundParse.swift"
   - "Sources/fleetest/ApiRunCommand.swift"
   - "Sources/fleetest/Fleetest.swift"

@@ -363,12 +363,16 @@ public struct SceneResultRecord: Codable, Sendable {
     public var title: String
     public var passed: Bool
     public var durationMs: Int?
+    /// 手順が全部 skipped で実行されなかった scene(`passed` は true のまま)。true のときだけ書く
+    /// (後発の Optional。古い記録には無く、無い = skipped ではない。docs/results-json.md)
+    public var skipped: Bool?
 
-    public init(scene: Int, title: String, passed: Bool, durationMs: Int? = nil) {
+    public init(scene: Int, title: String, passed: Bool, durationMs: Int? = nil, skipped: Bool? = nil) {
         self.scene = scene
         self.title = title
         self.passed = passed
         self.durationMs = durationMs
+        self.skipped = skipped
     }
 }
 
@@ -563,6 +567,18 @@ public enum ScenarioSkipKind: String, Codable, Sendable {
     /// 履歴(insights の連続失敗・新規失敗・flaky)には入れない —— 利用者が止めただけで、シナリオの
     /// 性質ではない(入れると中断のたびに「回帰の疑い」が並ぶ)
     case interrupted
+
+    /// `fleetest run --failed` の「直近失敗」に数えるか(**唯一の定義**。`RunRecorder.recordSkipped` と
+    /// `RemoteRunDispatcher.writeLastResults` が使う)。始まらなかった事故(noWorker / interrupted)は
+    /// 数える —— 数えないと全滅した run のあとの `--failed` が「失敗なし」になる。
+    /// 意図された対象外(notApplicable)は数えない。**新しい case を足したらここで必ず決める**
+    /// (default を置かない = 追随漏れをコンパイルで止める)
+    public var countsAsFailedLastTime: Bool {
+        switch self {
+        case .notApplicable: return false
+        case .noWorker, .interrupted: return true
+        }
+    }
 }
 
 public struct ScenarioRunRecord: Codable, Sendable {
@@ -832,7 +848,8 @@ public struct ScenarioRecordBuilder {
         let title = event.sceneTitle ?? sceneTitles[scene] ?? ""
         let passed = event.passed ?? true
         let durationMs = event.durationMs ?? sceneDurationAccum[scene]
-        scenes.append(SceneResultRecord(scene: scene, title: title, passed: passed, durationMs: durationMs))
+        scenes.append(SceneResultRecord(scene: scene, title: title, passed: passed, durationMs: durationMs,
+                                        skipped: event.skipped == true ? true : nil))
     }
 
     public func build(passed: Bool, timedOut: Bool, startedAt: Date, durationMs: Int,

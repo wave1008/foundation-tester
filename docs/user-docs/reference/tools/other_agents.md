@@ -61,8 +61,22 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 ```
 
 Codex asks for approval every time it calls an MCP tool (dozens of times while exploring screens,
-and non-interactive `codex exec` rejects them all). To let the calls through without approval, add
-`default_tools_approval_mode = "approve"` to `[mcp_servers.fleetest]` (confirmed with codex-cli 0.150).
+and non-interactive `codex exec` rejects them all). The recommended setting **lets calls through without approval
+but asks before the real run, `ft_start_run`** (confirmed with codex-cli 0.150):
+
+```toml
+[mcp_servers.fleetest]
+default_tools_approval_mode = "approve"
+
+[mcp_servers.fleetest.tools.ft_start_run]
+approval_mode = "prompt"
+```
+
+Exploring screens and the checks while writing a scenario are not interrupted; you are asked once, when you ask for
+a test run. `ft_start_run` runs the run profile's setup / teardown scripts and can send the run to another machine
+with `runner`. How to choose what to approve is in [MCP server](./mcp_server.md#sandbox-and-approval).
+Non-interactive `codex exec` refuses `prompt` tools, so remove that one table (`[mcp_servers.fleetest.tools.ft_start_run]`)
+when you let `codex exec` run tests.
 
 > **Do not blindly append it.** TOML does not allow a table to be defined twice, so a second
 > `[mcp_servers.fleetest]` invalidates the **whole file**. If an entry already exists, edit the
@@ -104,8 +118,10 @@ Codex runs shell commands inside a sandbox, and **the MCP server runs outside it
 splits cleanly in two (measured 2026-08-27).
 
 **Unaffected, no configuration needed** — everything through the `ft_*` tools: exploring screens,
-authoring and running scenarios, driving simulators and physical devices. Even with
-`--sandbox read-only` the server reaches the file system and loopback.
+authoring and running scenarios, driving simulators and physical devices. The real run that keeps result
+history and recordings also works through `ft_start_run` (the shell's `fleetest run` does not, for the reasons
+below, so have the agent use this). The caveat that the project's code then runs outside the sandbox is in
+[MCP server](mcp_server.md#sandbox-and-approval). Even with `--sandbox read-only` the server reaches the file system and loopback.
 
 **Blocked unless `danger-full-access`** — the install and update runbooks, because they run through
 the shell:
