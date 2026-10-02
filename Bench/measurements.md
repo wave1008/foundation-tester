@@ -7,6 +7,38 @@
 
 ---
 
+## 2026-10-02 ツール定義の説明文を 29% 削っても手数は動かなかった
+
+**問い**: `tools/list` の説明文(69,557 字 → 49,620 字。引数名・型・必須は不変)を削った版で、
+まっさらなエージェントの完了と手数が落ちないか。削ったのは主に共通引数・snapshotAfter 系の
+説明(約25本・13本へ複製される)と長いツール説明で、座標系とセレクタ書式は instructions へ1回だけ
+書いた(+232 字)。
+
+**方法**: 変更前(HEAD を worktree に出して `--tool-root`)と変更後を、同じ Simulator(iPhone 17 Pro・
+in-app 8123 / xcuitest 8124)で順に `--repeat 3`。タスクは `cmp-scroll-find` / `cmp-text-input` /
+`cmp-noid-directional` / `ios-authoring-fix-late`。
+
+| task | ok 前→後 | tools 前→後 | files 前→後 | err 前→後 |
+|---|---|---|---|---|
+| cmp-noid-directional | 3/3 → 3/3 | 7 → 7 | 2 → 1 | 0 → 0 |
+| cmp-scroll-find | 3/3 → 3/3 | 5 → 5 | 1 → 1 | 0 → 0 |
+| cmp-text-input | 3/3 → 3/3 | 5 → 5 | 1 → 1 | 0 → 0 |
+| ios-authoring-fix-late | 3/3 → 3/3 | 3 → 3 | 5 → 3 | 1 → 1 |
+
+**結論**: 完了・手数とも同じ。削った説明は手数に寄与していなかった。両側とも
+「まっさらな読み手ではない」の警告は 0。
+
+**観測(害ではない)**: 変更後は `waitForChange: true` の記録が 8 → 18 件に増えた(短くした説明で
+目に留まりやすくなった可能性)。それに伴い「the difference was already present」の注記が 5 → 9 回に
+増えたが、手数は動いていない。
+
+**陽性対照の限界**: 説明文はサーバが `tools/list` で返すだけで記録(stream-json)に残らないので、
+「変更後の定義が読まれた」ことは記録からは数えられない。差し替えは、変更後の run が本線の
+`swift build --product fleetest-mcp` を通っていること(`bench.log` の冒頭)と、ビルド後のバイナリの
+`tools/list` を直接測った字数(上の 49,620)で確かめた。
+
+---
+
 ## 2026-09-25(5) 失敗時の証跡の効果は Android でも同じく出た
 
 **問い**: 2026-09-25(1) の「失敗時の要素一覧とスクショを ft_run_scenario の応答に載せる」(b34fd4a3)の

@@ -11,87 +11,110 @@ extension MCPServer {
 
     // MARK: - ツール定義
 
-    // **共通引数の説明は最小限にする**: 5つ × デバイス系ツールで定義全体の約4割を占めるため、
-    // 1文字が13倍になる(実測)。意味は enum と名前で足りる
+    // **繰り返し載る説明は短文+詳細は serverInstructions**: 共通引数は約25本、
+    // snapshotAfter 系は13本のツールへ複製されるので、1文字が十数倍の費用になる(毎セッションの
+    // コンテキスト)。ニュアンスを足したくなったら serverInstructions 側へ(initialize で1回だけ渡る)
     static let platformProperty: [String: Any] = [
         "type": "string", "enum": ["ios", "android"], "description": "default ios",
     ]
     static let portProperty: [String: Any] = [
-        "type": "integer", "description": "iOS bridge port (default: the running bridge)",
+        "type": "integer", "description": "iOS bridge port",
     ]
     static let serialProperty: [String: Any] = [
-        "type": "string", "description": "Android device serial (default: the connected device)",
+        "type": "string", "description": "Android device serial",
     ]
     static let profileProperty: [String: Any] = [
-        "type": "string",
-        "description": "profiles/runs/<name>. Same device and engine as ft_run_scenario",
+        "type": "string", "description": "Run profile name (profiles/runs/)",
     ]
     static let projectProperty: [String: Any] = [
         "type": "string", "description": "Test project name",
     ]
-    /// iOS の宛先を udid で指す(H)。ft_list_devices が出す udid をそのまま渡せる
-    // **繰り返し載る説明は短文+詳細は serverInstructions**。
-    // ここを長くすると全ツールに複製されて毎セッションのコンテキスト費用になる —— ニュアンスを
-    // 足したくなったら serverInstructions 側へ(initialize で1回だけ渡る)
     static let udidProperty: [String: Any] = [
-        "type": "string",
-        "description": "iOS device UDID to drive — simulator or physical (as printed by ft_list_devices)",
+        "type": "string", "description": "iOS device UDID (from ft_list_devices)",
     ]
     /// 操作系ツールの「結果の木も一緒に返す」スイッチ。**撮り直し不要と言い切る**(言わないと
     /// 読み手は木を受け取ったうえで習慣的に ft_snapshot を撃つ)
     static let snapshotAfterProperty: [String: Any] = [
         "type": "boolean",
-        "description": "Append the resulting screen's element list (as ft_snapshot would) — "
-            + "saves the follow-up ft_snapshot call",
+        "description": "Append the resulting tree — no follow-up ft_snapshot needed",
     ]
     /// 操作系ツールが共有する waitFor/waitSeconds(ft_snapshot と同じ待ちのロジックを流用。
     /// snapshotAfterBody 参照)。**snapshotAfter: true と併用が前提** — 無いときは操作は
-    /// 実行したうえで note だけ返す(throw しない。操作自体は成功しているため)
+    /// 実行したうえで note だけ返す(throw しない。操作自体は成功しているため)。
+    /// **説明に `a||b` を残す**(`selectorQuoteStrippedKeys` との同期テストの印)
     static let snapshotAfterWaitForProperty: [String: Any] = [
         "type": "string",
-        "description": "Requires snapshotAfter: true. Wait for this selector on the resulting "
-            + "screen (syntax: #id, a label, .type, a||b — quotes wrapped around the whole "
-            + "selector are stripped)",
+        "description": "Needs snapshotAfter. Selector to wait for on the result (#id, label, .type, a||b)",
     ]
     static let snapshotAfterWaitSecondsProperty: [String: Any] = [
-        "type": "number",
-        "description": "Seconds to wait for waitFor (default 5, same as ft_snapshot and the DSL's waitSeconds:)",
+        "type": "number", "description": "Max wait for waitFor/waitForChange (default 5)",
     ]
     /// **「何かが変わる」を待つ**: 再検索のように**同じセレクタのまま中身だけ入れ替わる**画面では
     /// waitFor が古い結果に即マッチして待ちにならない(実測: Google マップの経路再検索で
     /// `waitFor "*IC 運賃*"` が旧結果へ当たった)。waitFor とは排他(待つ理由が違う)
     static let snapshotAfterWaitForChangeProperty: [String: Any] = [
         "type": "boolean",
-        "description": "Requires snapshotAfter: true, and not with waitFor. Poll until the tree "
-            + "differs from the one before the action (for screens that refresh in place, where a "
-            + "selector you would wait for is already on the old content)",
+        "description": "Needs snapshotAfter; not with waitFor. Wait until the tree differs from "
+            + "before the action (screens that refresh in place)",
     ]
     /// ft_snapshot と操作系が共有する木の畳み方(2つ目の定義を作らない)。
     /// どのツールでも既定は畳む・隠さないなので、説明文もそのまま通用する
     static let expandBulkProperty: [String: Any] = [
-        "type": "boolean", "description": "List every element of a large same-id group "
-            + "individually (default: 20+ folded into one line)",
+        "type": "boolean", "description": "Unfold groups of 20+ same-id elements (folded by default)",
     ]
     static let interactiveOnlyProperty: [String: Any] = [
-        "type": "boolean", "description": "Hide layout-only lines — refs/frames unchanged, "
-            + "and a hidden element can still be tapped by ref",
+        "type": "boolean", "description": "Hide layout-only lines (refs unchanged; hidden ones stay tappable by ref)",
+    ]
+    /// 木を返すツールの畳み方2つ
+    static let foldingProperties: [String: Any] = [
+        "expandBulk": expandBulkProperty,
+        "interactiveOnly": interactiveOnlyProperty,
+    ]
+    /// 操作系ツールの snapshotAfter 一式。`waitForChange: false` は ft_launch 用 —— 起動前の木
+    /// (前のアプリか、同じ画面へ戻る再起動)と比べても「着地した」とは言えず、同じ画面へ戻る
+    /// 再起動では締め切りまで待つだけになる
+    static func afterActionProperties(waitForChange: Bool = true) -> [String: Any] {
+        var props = foldingProperties
+        props["snapshotAfter"] = snapshotAfterProperty
+        props["waitFor"] = snapshotAfterWaitForProperty
+        props["waitSeconds"] = snapshotAfterWaitSecondsProperty
+        if waitForChange { props["waitForChange"] = snapshotAfterWaitForChangeProperty }
+        return props
+    }
+    static let refProperty: [String: Any] = ["type": "integer", "description": "ft_snapshot ref"]
+    static let pointXProperty: [String: Any] = ["type": "number", "description": "ft_snapshot coordinates"]
+    static let pointYProperty: [String: Any] = ["type": "number", "description": "ft_snapshot coordinates"]
+    static let bundleIdProperty: [String: Any] = [
+        "type": "string", "description": "bundle ID (iOS) / package name (Android)",
+    ]
+    static let lastLaunchedBundleIdProperty: [String: Any] = [
+        "type": "string",
+        "description": "bundle ID (iOS) / package name (Android). Default: the last ft_launch",
+    ]
+    static let scenarioIdProperty: [String: Any] = [
+        "type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name",
+    ]
+    static let defaultProjectProperty: [String: Any] = [
+        "type": "string", "description": "Test project name (default: the default project)",
+    ]
+    static let skipBuildProperty: [String: Any] = ["type": "boolean", "description": "Skip the swift build"]
+    static let runPidProperty: [String: Any] = [
+        "type": "integer", "description": "pid from ft_start_run (default: the latest)",
     ]
     /// **ft_snapshot にだけ置く**(操作系や scroll_to は木を何度も撮るので、1回限りの指定が
     /// どの取得に効いたのか読み手に説明できない)。上限に当たった応答の注記がこの引数を名指しする
     static let maxElementsProperty: [String: Any] = [
         "type": "integer",
         "description": "Element limit for THIS read only (default \(BridgeAPI.maxSnapshotElements),"
-            + " max \(BridgeAPI.maxSnapshotElementsCeiling)). Raise it when a note says elements"
-            + " were dropped by the limit — on a dense web page the dropped ones are the body text,"
-            + " and scrolling will never bring them back",
+            + " max \(BridgeAPI.maxSnapshotElementsCeiling)). Raise it when a note says the limit"
+            + " dropped elements — scrolling will never bring them back",
     ]
     /// press/drag/pinch が共有する秒数上限の上書き口(既定 `BridgeAPI.defaultMaxGestureSeconds`・
     /// 最大 `BridgeAPI.gestureSecondsCeiling`)
     static let maxGestureSecondsProperty: [String: Any] = [
         "type": "number",
-        "description": "Raise the \(Int(BridgeAPI.defaultMaxGestureSeconds))-second cap on the"
-            + " duration/hold-time argument above for THIS call only"
-            + " (up to \(Int(BridgeAPI.gestureSecondsCeiling))s)",
+        "description": "Raise the \(Int(BridgeAPI.defaultMaxGestureSeconds))s cap on duration/hold"
+            + " for THIS call (max \(Int(BridgeAPI.gestureSecondsCeiling))s)",
     ]
     /// 共通引数の詳細。**各ツールのプロパティ説明は短文に留め、ニュアンスはここに1本化する**
     /// (initialize の instructions で1回だけ渡る。プロパティ側に書くと全ツールへ複製され、
@@ -114,6 +137,10 @@ extension MCPServer {
         a second device (or both platforms, with platform omitted too), a call that names no \
         target is refused with the candidates listed instead of being sent to the most recent \
         one — running against the wrong device changes its real state, which no retry undoes.
+
+        Coordinates (x/y and frames) are always in ft_snapshot units — iOS=pt / Android=px — never \
+        screenshot pixels. Selector arguments use the DSL syntax: #id, a label, .type, a||b; quotes \
+        wrapped around the whole selector are stripped.
 
         Tree options on tools that return an element list: expandBulk unfolds groups of 20+ \
         non-interactive leaves sharing one id (map pins and the like) that are folded into one \
@@ -163,8 +190,7 @@ extension MCPServer {
     /// 「一度断られたから付けておく」という使い方をされると、拒否そのものが無意味になる
     static let allowVersionSkewProperty: [String: Any] = [
         "type": "boolean",
-        "description": "Operate despite a bridge protocol version mismatch — every such "
-            + "response carries a warning",
+        "description": "Proceed despite a bridge version mismatch (every reply warns)",
     ]
 
     /// ft_screenshot の既定。**費用は画素数で決まる**(バイト数ではない) —— 平坦な UI では
@@ -176,411 +202,227 @@ extension MCPServer {
 
     static let toolDefinitions: [[String: Any]] = [
         tool("ft_status", "Check the device/bridge connection state", [:]),
-        tool("ft_list_devices", "List the devices this Mac can drive (simulators, emulators and "
-            + "physical devices) with the udid/serial the other tools take. It works before any "
-            + "profile exists — with no devices in any run profile it lists what is booted or connected now. "
-            + "profile: narrows the list to that run profile's devices; devices that live on another "
-            + "machine are named but not listed (they cannot be driven from here)", [
+        tool("ft_list_devices", "List the devices this Mac can drive (simulators, emulators, physical) "
+            + "with the udid/serial other tools take. Works before any profile exists (lists what is "
+            + "booted or connected). profile: only that run profile's devices — ones on another "
+            + "machine are named but not listed", [
             "platform": ["type": "string", "enum": ["ios", "android"],
                          "description": "Only this platform (default: both)"],
             "profile": profileProperty,
         ], scope: .project),
-        tool("ft_list_apps", "List the apps installed on the device. Use it to find the bundle ID "
-            + "(iOS) / package name (Android) that ft_launch takes. By default it lists user apps "
-            + "only — the maps, browser and other preinstalled apps are system apps, so reach for "
-            + "filter or includeSystem when the app you want is not in the list", [
-            "filter": ["type": "string", "description": "Only apps whose bundle ID or display name "
-                + "contains this (case-insensitive). Passing it searches system apps too, unless "
-                + "you also pass includeSystem: false"],
-            "includeSystem": ["type": "boolean", "description": "List system apps as well, marked "
-                + "[system]. Display names are iOS-only — Android's package manager reports "
-                + "package names only"],
+        tool("ft_list_apps", "List installed apps, to find the bundle ID / package name ft_launch takes. "
+            + "User apps only by default — Maps, browsers and other preinstalled apps are system apps: "
+            + "use filter or includeSystem", [
+            "filter": ["type": "string", "description": "Bundle ID or display name contains this "
+                + "(case-insensitive); also searches system apps unless includeSystem: false"],
+            "includeSystem": ["type": "boolean", "description": "Also list system apps, marked "
+                + "[system] (display names are iOS-only)"],
         ]),
-        tool("ft_logs", "Read why the app died. iOS returns the crash report summary and the .ips "
-            + "path for a simulator — there is no runtime log on iOS, so a running app yields "
-            + "nothing here; Android returns recent logcat lines. It never goes through the bridge, "
-            + "so it still answers after a crash took the bridge with it. A physical iPhone keeps "
-            + "its crash reports on the device — pass udid or port (the bridge port it had, even if "
-            + "that bridge is gone now) or have driven it earlier in this session, so the tool can "
-            + "say so instead of reporting no crash", [
-            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "
-                + "Defaults to the bundle ID of the last ft_launch"],
+        tool("ft_logs", "Read why the app died. iOS: the crash report summary and .ips path (no runtime "
+            + "log, so a running app yields nothing). Android: recent logcat. Never contacts the bridge, "
+            + "so it works after a crash killed it. A physical iPhone keeps its reports on the device — "
+            + "pass udid or port (or have driven it this session) so it says so instead of reporting no crash", [
+            "bundleId": lastLaunchedBundleIdProperty,
             "platform": platformProperty,
             "serial": serialProperty,
-            "udid": ["type": "string", "description": "iOS device UDID — matched against this "
-                + "session's memory and the bridge's device record without contacting the bridge, "
-                + "so it works after the bridge died. A simulator's crash reports are narrowed to "
-                + "that device"],
+            "udid": ["type": "string", "description": "iOS device UDID — resolved without the bridge "
+                + "(works after it died); narrows a simulator's reports to it"],
             "port": ["type": "integer", "description": "iOS bridge port the device had — read "
-                + "without contacting it, so it works after the bridge died"],
-            "lines": ["type": "integer", "description": "Android: how many recent lines to return (default 100)"],
+                + "without contacting it"],
+            "lines": ["type": "integer", "description": "Android: recent lines to return (default 100)"],
             "sinceSeconds": ["type": "integer", "description": "How far back to look (default 300)"],
             "all": ["type": "boolean", "description": "Android: read the main buffer too, not just crashes"],
         ], scope: .none),
-        tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk, or .apks — a split bundle, installed via bundletool)", [
-            "packagePath": ["type": "string", "description": "Absolute path of the package file"],
+        tool("ft_install", "Install a package (iOS: .app / Android: .apk, or .apks via bundletool)", [
+            "packagePath": ["type": "string", "description": "Absolute path"],
         ], required: ["packagePath"]),
-        tool("ft_launch", "Launch the app (terminating it first if it is already running). The app "
-            + "itself may restore its previous UI state on launch — system apps such as Maps often "
-            + "do — so do not assume the first screen: check with ft_snapshot, or pass snapshotAfter (with "
-            + "waitFor for an element only the expected first screen has — the tree right after launch can "
-            + "still be the splash). "
-            + "iOS: com.apple.springboard attaches to the home screen instead, without launching "
-            + "anything — that is how you read the home screen or a system dialog. "
-            + "resume: true brings it back to front WITHOUT terminating it first — its state is "
-            + "kept (xcuitest engine or Android only; on inapp/hybrid this is refused, since those "
-            + "engines have no activate-without-relaunch and would silently do a normal launch)", [
-            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
-            "resume": ["type": "boolean", "description": "Bring the app to front without "
-                + "terminating it — its state is kept. xcuitest engine or Android only"],
-            // waitForChange は置かない: 起動前の木(前のアプリか、同じ画面へ戻る再起動)と比べても
-            // 「着地した」とは言えず、同じ画面へ戻る再起動では締め切りまで待つだけになる
-            "snapshotAfter": snapshotAfterProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["bundleId"]),
-        tool("ft_open_url", "Deliver a URL (deep link) to the app WITHOUT restarting it — unlike "
-            + "ft_launch, the app keeps running and whatever it navigates to is pushed on top of the "
-            + "current screen. Use this to jump into a specific screen of an already-running app; use "
-            + "ft_launch when you need it from the first screen instead. Delivery is asynchronous, so "
-            + "snapshotAfter waits for the screen to change before reading (pass waitFor when the "
-            + "destination needs more than 'something changed', or waitForChange: false to read "
-            + "immediately)", [
-            "url": ["type": "string", "description": "The URL/deep link to deliver"],
-            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name — the Android "
-                + "intent target. Defaults to the bundle ID of the last ft_launch"],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["url"]),
-        tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
-            + "A line marked scroll is a scrolling container you can pass as scrollFrame. "
-            + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [
-            "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b (quotes wrapped around the whole selector are stripped)"],
-            "waitSeconds": ["type": "number", "description": "Seconds to wait for waitFor (default 5; same name and default as the DSL's waitSeconds:)"],
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
+        tool("ft_launch", "Launch the app, terminating it first if running. Apps (Maps etc.) may restore "
+            + "their previous UI, so do not assume the first screen — check with ft_snapshot, or pass "
+            + "snapshotAfter + waitFor an element only the expected screen has (right after launch can "
+            + "still be the splash). iOS: com.apple.springboard attaches to the home screen without "
+            + "launching — use it to read the home screen or a system dialog", [
+            "bundleId": bundleIdProperty,
+            "resume": ["type": "boolean", "description": "Bring it to front WITHOUT terminating (state "
+                + "kept). xcuitest engine or Android only — refused on inapp/hybrid, which would relaunch"],
+        ], extra: afterActionProperties(waitForChange: false), required: ["bundleId"]),
+        tool("ft_open_url", "Deliver a URL/deep link WITHOUT restarting the app (unlike ft_launch); the "
+            + "destination is pushed over the current screen. Delivery is async, so snapshotAfter waits "
+            + "for a change before reading (waitFor for a specific destination, waitForChange: false to "
+            + "read immediately)", [
+            "url": ["type": "string", "description": "URL / deep link"],
+            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (the Android "
+                + "intent target). Default: the last ft_launch"],
+        ], extra: afterActionProperties(), required: ["url"]),
+        tool("ft_snapshot", "Get the current screen's element list. Line: [ref] Type \"label\" id=... (x,y WxH); "
+            + "lines marked scroll are containers usable as scrollFrame. Use refs for tap/type. "
+            + "waitFor polls for you", [
+            "waitFor": ["type": "string", "description": "Wait until this selector is on screen (#id, label, .type, a||b)"],
+            "waitSeconds": ["type": "number", "description": "Max wait for waitFor (default 5)"],
             "maxElements": maxElementsProperty,
-        ]),
-        tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
-            + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "
-            + "one that is gone is refused; a scroll leftover is tapped with a warning naming what "
-            + "it may have hit instead. " + coordinateCaveat, [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
-            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
-            + "It APPENDS to whatever the field already holds by default — pass replace: true to clear it "
-            + "first, or call ft_clear_input yourself. "
-            + "text is required unless pressEnter is true — pressEnter alone fires the Enter/IME action. "
-            + "Typing itself never closes the soft keyboard. pressEnter fires the Enter/IME action — on "
-            + "UIKit/SwiftUI the return key usually closes the keyboard as a side effect; Compose and Flutter "
-            + "keep it open, so do not retry pressEnter waiting for the keyboard to go away.", [
-            "text": ["type": "string", "description": "Omit it to fire Enter only"],
-            "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
-            "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
+        ], extra: foldingProperties),
+        tool("ft_tap", "Tap an element (ref) or a point (x,y). A ref is re-checked against a fresh tree: "
+            + "moved → retargeted, gone → refused, scroll leftover → tapped with a warning. " + coordinateCaveat, [
+            "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
+        ], extra: afterActionProperties()),
+        tool("ft_type", "Type text; with ref it taps the field and waits for focus. APPENDS by default — "
+            + "replace: true (or ft_clear_input) to replace. Typing never closes the keyboard; Enter "
+            + "usually does on UIKit/SwiftUI but not on Compose/Flutter — do not retry pressEnter to close it", [
+            "text": ["type": "string", "description": "Omit to fire Enter only"],
+            "pressEnter": ["type": "boolean", "description": "Fire the Enter/IME action (search, submit)"],
+            "ref": ["type": "integer", "description": "Input field ref (default: the focused element)"],
             // **値段と、二重払いの避け方まで書く**: replace は素の type の
             // 約2倍かかる(実測 6.1s 対 2.3s)。内訳は clear の1往復と、**打った結果の読み返し**
             // (in-app iOS は clear/type の成否を検証せず YES を返すので、読み返さないと
             // 「replaced」が嘘になる)。snapshotAfter を付ければその1枚と共有する
-            "replace": ["type": "boolean", "description": "Clear the field before typing, instead "
-                + "of appending. Costs a clear round trip plus one read-back that verifies what the "
-                + "field ends up holding — with snapshotAfter (and no pressEnter) that read is the "
-                + "same one, so pass it instead of taking a separate ft_snapshot"],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
+            "replace": ["type": "boolean", "description": "Clear before typing. Costs a clear plus a "
+                + "verifying read-back — with snapshotAfter (no pressEnter) that read is shared, so "
+                + "prefer it over a separate ft_snapshot"],
+        ], extra: afterActionProperties()),
         // **引数名が「指の向き」と言い切っていること**: 隣の ft_scroll_to の `direction` はコンテンツの向きで
         // 意味が逆。説明を遅延ロードするクライアントは名前だけで書くので、同じ名前にしない
-        tool("ft_swipe", "Swipe one screenful by finger direction (finger: up = scroll down the content). "
-            + "To reach a specific element use "
-            + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
+        tool("ft_swipe", "Swipe one screenful by finger direction (finger up = content scrolls down). "
+            + "To reach an element use ft_scroll_to — it stops on it and returns fresh refs", [
             "finger": ["type": "string", "enum": ["up", "down", "left", "right"],
-                       "description": "Direction the finger moves (same vocabulary as the DSL's swipe). "
-                           + "The opposite of ft_scroll_to's direction, which names where the content goes"],
+                       "description": "Finger direction (as the DSL's swipe) — the opposite of "
+                           + "ft_scroll_to's direction, which names where the content goes"],
             "scrollFrame": ["type": ["string", "integer"],
-                            "description": "Swipe inside this scrolling container only, instead of the "
-                                + "whole screen — selector of the container (e.g. #list_rows), or its "
-                                + "ft_snapshot ref (an integer) when it has no unique id. Use this when "
-                                + "the thing you want to move has no selector to search for with "
-                                + "ft_scroll_to (e.g. a horizontally-scrolling table), or the screen has "
-                                + "more than one scrollable area. Same syntax as the DSL: #id, a label, "
-                                + ".type, a||b (quotes wrapped around the whole value are stripped). A "
-                                + "selector must match a container the tree marks scroll; a ref does "
-                                + "NOT have to be one — any element with a non-zero frame works (e.g. a "
-                                + "Compose chip row or carousel that interactiveOnly hides — take the "
-                                + "ref from a full snapshot), and the reply names the frame it used when "
-                                + "the element is not marked scroll. If the area you want is not in the "
-                                + "tree at all (e.g. a web page's inner overflow scroller, where only "
-                                + "the whole page is a container), the finger passes outside it and "
-                                + "nothing moves; use ft_drag with coordinates instead"],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["finger"]),
-        tool("ft_scroll_to", "Scroll until a selector is on screen, then return the fresh element list. "
-            + "Use this instead of repeating ft_swipe + ft_snapshot: it runs the same search the DSL's "
-            + "scrollTo does (settling, container-sized steps, overshoot recovery) and the refs it returns "
-            + "are taken after the scroll", [
-            "selector": ["type": "string", "description": "Same syntax as the DSL: #id, a label, .type, a||b (a plain label is written bare — quotes wrapped around the whole selector are stripped)"],
+                            "description": "Swipe inside this container instead of the whole screen: "
+                                + "a selector (#id, label, .type, a||b) of a line marked scroll, or any "
+                                + "ft_snapshot ref with a non-zero frame (e.g. a chip row interactiveOnly "
+                                + "hides). Use it when there is nothing to ft_scroll_to (a horizontal "
+                                + "table) or several scroll areas. An area absent from the tree (a web "
+                                + "page's inner scroller) will not move — use ft_drag"],
+        ], extra: afterActionProperties(), required: ["finger"]),
+        tool("ft_scroll_to", "Scroll until a selector is on screen and return the fresh tree — the DSL's "
+            + "scrollTo search (settling, container-sized steps, overshoot recovery). Use it instead of "
+            + "repeating ft_swipe + ft_snapshot", [
+            "selector": ["type": "string", "description": "#id, label, .type, a||b (write a label bare)"],
             "direction": ["type": "string", "enum": ["down", "up", "right", "left"],
                           "description": "Content direction to read towards (default down)"],
             "scrollFrame": ["type": ["string", "integer"],
-                            "description": "Selector of the scrolling container to search inside (e.g. #list_rows), "
-                                + "or its ft_snapshot ref (an integer) when the container has no unique id — "
-                                + "a duplicated or missing id makes a selector unusable. Pass it when the screen "
-                                + "has more than one scrollable area — ft_snapshot marks those lines scroll and "
-                                + "says so at the top. A selector must match one of those marked-scroll lines; "
-                                + "a ref does NOT have to be one — any element with a non-zero frame works "
-                                + "(e.g. a Compose chip row or carousel that interactiveOnly hides — take the "
-                                + "ref from a full snapshot), and the reply names the frame it used when the "
-                                + "element is not marked scroll. When passing a selector: same syntax as the "
-                                + "DSL: #id, a label, .type, a||b (quotes wrapped around the whole value are "
-                                + "stripped)"],
-            "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8, same as the DSL)"],
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["selector"]),
-        tool("ft_batch", "Run several operation/scroll DSL steps in one approval, stopping at "
-            + "the first failure; the reply shows the screen after the last executed step. "
-            + "Steps are DSL lines in one string, separated by ';' (or newlines); arguments "
-            + "are quoted ('x' and \"x\" are equivalent) and space-separated — no parentheses "
-            + "or commas: type '#field' 'abc'; scrollTo '#item' direction: .down. "
-            + "Argument names follow the DSL signatures (ft_dsl_commands prints them); ft_batch "
-            + "takes a subset per command and names the ones it does take when it refuses a label. "
-            + "A passing batch converts 1:1 into scenario lines (Swift needs parentheses "
-            + "and commas) — steps that used ref are converted using the selector they were "
-            + "resolved to, not the ref. Only operation/scroll commands run — lifecycle/"
-            + "data-wiping commands (launchApp, clearAppData, …) and assertions are rejected "
-            + "with the tool to call instead. Target elements by selector, not ref, except on "
-            + "the FIRST step: ref (from ft_snapshot/ft_tap/ft_scroll_to) is accepted there "
-            + "because nothing has run yet to make it stale; every later step needs a selector, "
-            + "since a step can change the tree and a ref taken before it would silently hit a "
-            + "different element by then. A first-step ref is re-checked against a fresh "
-            + "snapshot and converted to the selector it resolves to (reported in the reply) "
-            + "before anything runs; a ref with no selector that would pick it out uniquely is "
-            + "rejected — call ft_tap with that ref instead, then batch the rest.", [
+                            "description": "Container to search inside when the screen has several "
+                                + "scroll areas: a selector (#id, label, .type, a||b) of a line marked "
+                                + "scroll, or any ft_snapshot ref with a non-zero frame (use a ref when "
+                                + "the id is missing or duplicated, or for a row interactiveOnly hides)"],
+            "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8)"],
+        ], extra: foldingProperties, required: ["selector"]),
+        tool("ft_batch", "Run several operation/scroll DSL steps in one approval, stopping at the first "
+            + "failure; replies with the screen after the last step. Arguments are quoted and "
+            + "space-separated, no parentheses or commas: type '#field' 'abc'; scrollTo '#item' "
+            + "direction: .down (argument names as ft_dsl_commands prints). A passing batch converts "
+            + "1:1 into scenario lines. Lifecycle/data-wiping commands and assertions are rejected. "
+            + "Only the FIRST step may use ref: N (re-checked, then converted to its selector; refused "
+            + "when no unique selector exists — ft_tap it instead); later steps need selectors, since "
+            + "an earlier step can make a ref stale", [
             "steps": ["type": "string",
-                      "description": "Up to \(batchStepLimit) DSL lines in one string, e.g. "
-                        + "\"tap '#nav_input'; type '#field' 'batch'; "
-                        + "scrollTo '#btn_submit' direction: .down\" — ';' and newlines "
-                        + "(outside quotes) separate steps. The first step may target its "
-                        + "element with ref: N (an ft_snapshot ref) instead of a selector — "
-                        + "e.g. \"tap ref: 12; type '#field' 'batch'\" — every step after the "
-                        + "first must use a selector"],
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["steps"]),
-        tool("ft_rotate", "Rotate the device and return the screen in the new orientation. "
-            + "It waits for the rotation to settle (re-reading until the tree stops changing), "
-            + "so the tree that comes back is normally already relaid out — every frame is in "
-            + "the new coordinate system and refs taken before the rotation no longer resolve. "
-            + "If it could not confirm settling within budget, a note says so and the frames may "
-            + "still be mid-relayout. On Android it also turns auto-rotate off (otherwise the "
-            + "angle does not stick); rotating back to portrait restores the device's own "
-            + "auto-rotate setting, so leave it in landscape and the setting stays off until "
-            + "you rotate back — a scenario written with rotateTo() does the same restore when "
-            + "it ends, but only this same connection remembers the setting to restore, so a "
-            + "device left in landscape across a dropped connection keeps auto-rotate off", [
-            "orientation": ["type": "string",
-                            "enum": ["portrait", "landscape"]],
+                      "description": "Up to \(batchStepLimit) DSL lines separated by ';' or newlines, "
+                        + "e.g. \"tap ref: 12; type '#field' 'batch'\""],
+        ], extra: foldingProperties, required: ["steps"]),
+        tool("ft_rotate", "Rotate the device and return the settled tree in the new orientation (new "
+            + "coordinates; earlier refs no longer resolve; a note says if settling was not confirmed). "
+            + "Android: turns auto-rotate off; rotating back to portrait restores it, but only on this "
+            + "same connection", [
+            "orientation": ["type": "string", "enum": ["portrait", "landscape"]],
         ], required: ["orientation"]),
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["target"]),
-        tool("ft_hide_keyboard", "Close the soft keyboard. Android only: it sends the back key only while the "
-            + "keyboard is up, so it never navigates back. Afterwards it waits until the element list stops "
-            + "reporting the keyboard (Android can keep reporting it for seconds, hiding the elements under it). "
-            + "iOS has no side-effect-free way to close it, so this is refused there — ft_type pressEnter: true "
-            + "closes a single-line field's keyboard instead", [
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_clear_app_data", "Wipe the app's data and permissions. "
-            + "Stops the app, so ft_launch after it. Scenarios start from clearAppData(), so explore from that same state. "
-            + "iOS simulator: wipes in place. iOS physical device: devicectl has no equivalent, so this "
-            + "reinstalls the app instead — pass packagePath, or run ft_install first so it can reuse that path", [
-            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
-            "packagePath": ["type": "string", "description": "iOS physical device only: package to "
-                + "reinstall from (.app/.ipa). Defaults to the path of the last ft_install"],
+        ], extra: afterActionProperties(), required: ["target"]),
+        tool("ft_hide_keyboard", "Close the soft keyboard. Android only (sends back only while the "
+            + "keyboard is up, then waits until the tree stops reporting it). Refused on iOS — "
+            + "ft_type pressEnter: true closes a single-line field's keyboard",
+            afterActionProperties()),
+        tool("ft_clear_app_data", "Wipe the app's data and permissions; stops the app (ft_launch after). "
+            + "Scenarios start from clearAppData(), so explore from this state. An iOS physical device "
+            + "reinstalls instead — pass packagePath or ft_install first", [
+            "bundleId": bundleIdProperty,
+            "packagePath": ["type": "string", "description": "iOS physical device: .app/.ipa to "
+                + "reinstall (default: the last ft_install)"],
         ], required: ["bundleId"]),
         tool("ft_clear_input", "Empty an input field (ft_type appends, so clear first to replace)", [
-            "ref": ["type": "integer", "description": "Reference number of the field (default: the focused one)"],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_draft_scenario", "Turn the operations you just performed with ft_* into a Swift "
-            + "scenario draft and return it as text (it writes no file — place it yourself under "
-            + "TestProjects/<project>/scenarios/). Every step is written with the selector this "
-            + "server recommended at the time; a step that had no stable selector is kept as a TODO "
-            + "comment so the draft still matches what you did. The expectation block comes back "
-            + "EMPTY on purpose — assertions are never guessed, and ft_dry_run reports the empty "
-            + "block so it cannot be forgotten. The reply lists the steps it used, numbered — an "
-            + "exploration records dead ends and retries as faithfully as the real path, so read "
-            + "that listing and call again with drop:/lastN: to cut the detours", [
-            "all": ["type": "boolean", "description": "Draft from every recorded interaction "
-                + "instead of only those since the last ft_launch (the default)"],
-            "className": ["type": "string", "description": "Name of the generated class "
-                + "(default: DraftedScenario)"],
+            "ref": ["type": "integer", "description": "Field ref (default: the focused one)"],
+        ], extra: afterActionProperties()),
+        tool("ft_draft_scenario", "Turn the ft_* operations you performed into a Swift scenario draft "
+            + "(text only — save it under TestProjects/<project>/scenarios/ yourself). Steps use the "
+            + "recommended selectors; ones without a stable selector become TODO comments. Expectation "
+            + "blocks are left EMPTY on purpose (ft_dry_run flags them). The reply numbers the steps "
+            + "— call again with drop:/lastN: to cut detours", [
+            "all": ["type": "boolean", "description": "Use every recorded interaction, not only "
+                + "those since the last ft_launch"],
+            "className": ["type": "string", "description": "Class name (default DraftedScenario)"],
             "drop": ["type": "array", "items": ["type": "integer"],
-                     "description": "Step numbers (1-based, as printed in the listing) to leave "
-                        + "out — use it to remove dead-end taps and retries. Applied after lastN"],
-            "lastN": ["type": "integer", "description": "Keep only the last N recorded steps "
-                + "before applying drop. Use it when the useful part is at the end of a long "
-                + "exploration"],
+                     "description": "Step numbers to omit (dead ends, retries); applied after lastN"],
+            "lastN": ["type": "integer", "description": "Keep only the last N steps (before drop)"],
             "scenes": ["type": "array", "items": ["type": "integer"],
-                       "description": "Step numbers (as printed in the listing) that START a new "
-                        + "scene — e.g. [9, 13] gives scene 1 = steps 1-8, scene 2 = 9-12, "
-                        + "scene 3 = 13-end. Each scene gets its own empty expectation, so "
-                        + "dry-run asks what every one of them proves. Scene boundaries are never "
-                        + "guessed: they say what a scene is for, which the recording cannot know"],
+                       "description": "Step numbers that START a new scene — e.g. [9, 13] gives "
+                        + "1-8, 9-12, 13-end; each gets its own empty expectation"],
             "title": ["type": "string", "description": "Text put in @Test(...)"],
         ], scope: .none),
-        tool("ft_dsl_commands", "List the Swift DSL commands with their signatures — the source of truth for "
-            + "writing scenarios. Call it before writing code so you do not invent commands. "
-            + "Without arguments it returns names and signatures only. Also lists the project's own "
-            + "helper functions marked @FTCommand(\"summary\") in scenarios/ (extension FTElement "
-            + "methods included, called as select(...).name(...)) — marked [project: file:line] in "
-            + "the reply. These are real functions written by the project: prefer them when they fit "
-            + "the flow, they encode the team's own conventions. They run only inside a scenario "
-            + ".swift, not as MCP operations", [
+        tool("ft_dsl_commands", "List the Swift DSL commands with signatures — call it before writing "
+            + "scenarios so you do not invent commands. Also lists the project's @FTCommand helpers in "
+            + "scenarios/ (marked [project: file:line]): prefer them when they fit; they run only "
+            + "inside a scenario, not via MCP", [
             "category": ["type": "string", "description": "Only this category (operation/scroll/existence/text/value/app/control/…/project)"],
             "name": ["type": "string", "description": "Only this command, with its full summary"],
-            "project": ["type": "string", "description": "Scan this project's scenarios/ for "
-                + "@FTCommand helpers (defaults to the only project in TestProjects/, or the "
-                + "default project, when there is one to default to)"],
+            "project": ["type": "string", "description": "Project whose helpers to list (default: "
+                + "the only or default project)"],
         ], scope: .none),
-        tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). Two ft_tap calls do not work "
-            + "(the round trip exceeds the OS double-tap window). Pass profile: on iOS — without it these "
-            + "tools use XCUITest, where Compose apps never receive a double tap (see docs/commands.md). "
+        tool("ft_double_tap", "Double-tap an element (ref) or a point (x,y); two ft_tap calls miss the OS "
+            + "double-tap window. On iOS pass profile: — without it XCUITest is used, and Compose apps "
+            + "never receive the double tap. " + coordinateCaveat, [
+            "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
+        ], extra: afterActionProperties()),
+        tool("ft_drag", "Drag between points — for diagonal pans, and to expand a bottom sheet (drag its "
+            + "grabber up). Start at fromRef (re-checked) or fromX/fromY; end at toX/toY or move by "
+            + "dx/dy. A long durationSeconds drags slowly with no inertia; a short one flicks. "
             + coordinateCaveat, [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
-            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_drag", "Drag from a point to a point — the only way to pan diagonally (set both axes), "
-            + "and the way to expand a half-open bottom sheet (drag its grabber upward). "
-            + "Start from fromRef (an element, re-checked against a fresh tree) or fromX/fromY; "
-            + "end at toX/toY, or dx/dy to move by that much. "
-            + "Coordinates use the same system as the ft_snapshot frames (iOS=pt / Android=px). "
-            + "A long durationSeconds drags slowly and leaves no inertia; a short one flicks. "
-            + coordinateCaveat, [
-            "fromRef": ["type": "integer", "description": "Reference number to start the drag from (its centre). Use it for a sheet grabber instead of reading its frame yourself"],
+            "fromRef": ["type": "integer", "description": "Start at this ref's centre (e.g. a sheet grabber)"],
             "fromX": ["type": "number"],
             "fromY": ["type": "number"],
             "toX": ["type": "number"],
             "toY": ["type": "number"],
-            "dx": ["type": "number", "description": "Horizontal travel from the start point (pass this or toX, not both)"],
-            "dy": ["type": "number", "description": "Vertical travel from the start point — negative moves up (pass this or toY, not both)"],
-            "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
+            "dx": ["type": "number", "description": "Horizontal travel (instead of toX)"],
+            "dy": ["type": "number", "description": "Vertical travel, negative = up (instead of toY)"],
+            "durationSeconds": ["type": "number", "description": "Travel time (default 1.5)"],
             "maxGestureSeconds": maxGestureSecondsProperty,
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_pinch","Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Target it with ref, "
-            + "or with x/y on a map or canvas that has no element of its own — without either, the pinch "
-            + "falls on the content under the centre of the screen, or on the whole screen when there is "
-            + "no such element (then a bottom sheet on top of it may take the gesture instead). "
-            + "The actual zoom can be smaller than requested (fingers stay inside the target). "
-            + "Pass profile: on iOS — without it Flutter apps do not zoom (see docs/commands.md).", [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
-            "x": ["type": "number", "description": "Centre of the pinch, iOS=pt / Android=px (same coordinate system as the snapshot frames). "
-                + "All engines honour it, including iOS XCUITest — only an Xcode build without its private coordinate-pinch API "
-                + "falls back to pinching an element instead, and says so"],
-            "y": ["type": "number", "description": "Centre of the pinch, iOS=pt / Android=px"],
-            "radius": ["type": "number", "description": "Half the width of the pinched area around x/y "
-                + "(default: 22% of the screen's short side, clamped to stay on screen)"],
+        ], extra: afterActionProperties()),
+        tool("ft_pinch", "Pinch to zoom: scale > 1 zooms in, < 1 out. Target a ref, or x/y on a map or "
+            + "canvas; with neither it pinches the content at the screen centre (a bottom sheet on top "
+            + "may take it). The zoom can fall short (fingers stay inside the target). On iOS pass "
+            + "profile: — without it Flutter apps do not zoom", [
+            "ref": refProperty,
+            "x": ["type": "number", "description": "Pinch centre (ft_snapshot coordinates)"],
+            "y": ["type": "number", "description": "Pinch centre (ft_snapshot coordinates)"],
+            "radius": ["type": "number", "description": "Half-width of the pinched area (default 22% "
+                + "of the screen's short side)"],
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
-            "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
+            "durationSeconds": ["type": "number", "description": "Duration (default 0.5)"],
             "maxGestureSeconds": maxGestureSecondsProperty,
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_gesture", "Replay several fingers' timed paths as ONE continuous touch sequence — "
-            + "fingers touch down together and never lift between segments, unlike calling "
-            + "ft_tap/ft_drag/ft_pinch repeatedly (each of those is its own separate touch). Use it for "
-            + "gestures those tools cannot express: a pattern-lock swipe across several dots, a "
-            + "long-press that then drags, a custom multi-finger rotate, or anything needing more than "
-            + "2 fingers. This tool has no selector form — coordinates are absolute "
-            + "(iOS=pt / Android=px, same system as the ft_snapshot frames). Each finger touches down "
-            + "at (x, y), optionally after waiting startSeconds; its steps then move it "
-            + "({x, y, durationSeconds}) or hold it still ({holdSeconds}) in order, without lifting; "
-            + "the last point lifts the finger. A finger with no steps is a plain tap-and-lift. "
-            + "Coordinates skip the ref safety checks ft_tap's ref form gets (occlusion, scroll "
-            + "leftovers, a container whose centre misses its own content) — read positions off a "
-            + "fresh ft_snapshot.", [
+        ], extra: afterActionProperties()),
+        tool("ft_gesture", "Replay several fingers' timed paths as ONE continuous touch — no lifting "
+            + "between segments, unlike repeated ft_tap/ft_drag/ft_pinch. For pattern locks, "
+            + "press-then-drag, custom rotations, 3+ fingers. Coordinates only (no selector form). "
+            + "Each finger touches down at (x, y) after startSeconds, runs its steps in order — moves "
+            + "{x, y, durationSeconds} or holds {holdSeconds} — and lifts at the end; no steps = a tap. "
+            + coordinateCaveat, [
             "fingers": [
                 "type": "array", "minItems": 1, "maxItems": TouchGesture.maxFingers,
                 "description": "1-\(TouchGesture.maxFingers) finger paths, touching down together",
                 "items": [
                     "type": "object",
                     "properties": [
-                        "x": ["type": "number", "description": "Touch-down point, iOS=pt / Android=px"],
-                        "y": ["type": "number", "description": "Touch-down point, iOS=pt / Android=px"],
-                        "startSeconds": ["type": "number", "description": "Delay this finger's "
-                            + "touch-down by this many seconds (default 0) — place a second finger "
-                            + "down after the first"],
+                        "x": ["type": "number", "description": "Touch-down point"],
+                        "y": ["type": "number", "description": "Touch-down point"],
+                        "startSeconds": ["type": "number", "description": "Delay before touch-down (default 0)"],
                         "steps": [
                             "type": "array",
-                            "description": "Moves and holds applied in order, without lifting the finger",
                             "items": [
                                 "type": "object",
-                                "description": "Either a move ({x, y, durationSeconds}) or a hold "
-                                    + "({holdSeconds}), never both",
+                                "description": "A move ({x, y, durationSeconds}) or a hold ({holdSeconds}), not both",
                                 "properties": [
-                                    "x": ["type": "number", "description": "Move: point to travel to"],
-                                    "y": ["type": "number", "description": "Move: point to travel to"],
-                                    "durationSeconds": ["type": "number",
-                                        "description": "Move: travel time in seconds"],
-                                    "holdSeconds": ["type": "number",
-                                        "description": "Hold: stay still this many seconds"],
+                                    "x": ["type": "number"],
+                                    "y": ["type": "number"],
+                                    "durationSeconds": ["type": "number"],
+                                    "holdSeconds": ["type": "number"],
                                 ],
                             ],
                         ],
@@ -589,124 +431,102 @@ extension MCPServer {
                 ],
             ],
             "maxGestureSeconds": maxGestureSecondsProperty,
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ], required: ["fingers"]),
+        ], extra: afterActionProperties(), required: ["fingers"]),
         // **名前が「長押し」と言い切っていること**。ツールの説明が
         // 遅延ロードされるクライアントでは、呼ぶかどうかを**名前だけ**で決める瞬間があり、
         // 「press」だけだと「ハードウェアキーを押す」と読まれる
-        tool("ft_long_press", "Long-press (press and hold) an element (ref) or a coordinate (x,y). "
-            + "This is NOT a hardware key press. Use x/y on a map or "
-            + "canvas, where the point you want has no element of its own. " + coordinateCaveat, [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
-            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
-            "holdSeconds": ["type": "number", "description": "Hold time in seconds (default 1.0; "
-                + "same vocabulary as the DSL's tap(holdSeconds:))"],
+        tool("ft_long_press", "Long-press (press and hold — NOT a hardware key) an element (ref) or a "
+            + "point (x,y — e.g. on a map, where the point has no element). " + coordinateCaveat, [
+            "ref": refProperty, "x": pointXProperty, "y": pointYProperty,
+            "holdSeconds": ["type": "number", "description": "Hold time (default 1.0, as the DSL's "
+                + "tap(holdSeconds:))"],
             "maxGestureSeconds": maxGestureSecondsProperty,
-            "snapshotAfter": snapshotAfterProperty,
-            "waitForChange": snapshotAfterWaitForChangeProperty,
-            "waitFor": snapshotAfterWaitForProperty,
-            "waitSeconds": snapshotAfterWaitSecondsProperty,
-            "expandBulk": expandBulkProperty,
-            "interactiveOnly": interactiveOnlyProperty,
-        ]),
-        tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification. "
-            + "It comes back downscaled — the pixels are NOT the coordinate system, so read x/y off "
-            + "ft_snapshot (iOS=pt / Android=px) and never off this image", [
-            "maxWidth": ["type": "integer", "description": "Width limit in pixels (default 600). "
-                + "Raise it for dense screens where small labels stop being readable"],
+        ], extra: afterActionProperties()),
+        tool("ft_screenshot", "Take a screenshot for visual checks. It is downscaled — never read x/y "
+            + "off it; use ft_snapshot coordinates", [
+            "maxWidth": ["type": "integer", "description": "Width limit in px (default 600); raise it "
+                + "for dense screens"],
             "quality": ["type": "number", "description": "JPEG quality 0-1 (default 0.6)"],
-            "fullSize": ["type": "boolean", "description": "Return the original PNG at full "
-                + "resolution instead, for when fine detail matters"],
+            "fullSize": ["type": "boolean", "description": "Return the full-resolution PNG"],
         ]),
-        tool("ft_capture_element", "Save an element as a sample image of an image classifier: "
-            + "vision/classifiers/<classifier>/<label>/ in the test project. The element is cropped by its "
-            + "accessibility frame exactly as checkIsON/checkIsOFF (CheckStateClassifier) and imageIs "
-            + "(DefaultClassifier) crop it when judging. Afterwards the classifier is trained if needed and "
-            + "the samples it cannot tell apart are reported", [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot (or use selector)"],
-            "selector": ["type": "string", "description": "Selector of the element, same syntax as the DSL (or use ref)"],
+        tool("ft_capture_element", "Save an element's crop as an image-classifier sample under "
+            + "vision/classifiers/<classifier>/<label>/ — cropped by its accessibility frame exactly as "
+            + "checkIsON/checkIsOFF and imageIs crop it. Retrains if needed and reports samples it "
+            + "cannot tell apart", [
+            "ref": ["type": "integer", "description": "ft_snapshot ref (or selector)"],
+            "selector": ["type": "string", "description": "Element selector (or ref)"],
             "classifier": ["type": "string", "enum": ["CheckStateClassifier", "DefaultClassifier"],
                            "description": "CheckStateClassifier (labels [ON] / [OFF] / [INDETERMINATE]) or "
                                + "DefaultClassifier (any folder ending with a bracketed name, e.g. @i/Settings/[Camera Icon])"],
             "label": ["type": "string", "description": "Label folder under the classifier"],
-            "name": ["type": "string", "description": "File name of the sample (default: capture-<date>.png)"],
+            "name": ["type": "string", "description": "Sample file name (default capture-<date>.png)"],
             "project": projectProperty,
         ], required: ["classifier", "label"]),
-        tool("ft_terminate", "Terminate the running app. Fails if no target is known (neither "
-            + "bundleId nor a prior ft_launch in this session) instead of silently doing nothing", [
-            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "
-                + "Defaults to the bundle ID of the last ft_launch"],
+        tool("ft_terminate", "Terminate the app (fails if neither bundleId nor a prior ft_launch names it)", [
+            "bundleId": lastLaunchedBundleIdProperty,
         ]),
-        tool("ft_list_scenarios", "List the Swift DSL scenarios (TestProjects/<name>/scenarios/). Builds automatically; compile errors are returned as-is", [
-            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
+        tool("ft_list_scenarios", "List the scenarios (TestProjects/<name>/scenarios/). Builds first; "
+            + "compile errors are returned as-is", [
+            "project": defaultProjectProperty,
+            "skipBuild": skipBuildProperty,
         ], scope: .project),
-        tool("ft_dry_run", "Dry-run a scenario without any device. Fails (isError) on selector syntax errors; flags expectation blocks with no assertions and #ids never seen in an ft_snapshot as ⚠️ lines (not failures — fix them anyway). Takes seconds. "
-            + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (on a device) — it cannot tell whether a selector matches a real element. "
-            + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run)", [
-            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
-            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
+        tool("ft_dry_run", "Check a scenario without a device, in seconds: errors on selector syntax; "
+            + "warns (⚠️) on empty expectation blocks and #ids never seen in ft_snapshot — fix those too. "
+            + "Run it after ft_list_scenarios and before ft_run_scenario; it cannot tell whether a "
+            + "selector matches. A class name runs all its scenarios except @Deleted/@Draft", [
+            "id": scenarioIdProperty,
+            "project": defaultProjectProperty,
+            "skipBuild": skipBuildProperty,
             "platform": ["type": "string", "enum": ["ios", "android"],
-                        "description": "Platform for a scenario that declares none — decides which "
-                            + "ios { } / android { } branch and which #id ledger the dry-run checks "
-                            + "(default ios)"],
+                        "description": "For a scenario that declares none: which ios { } / android { } "
+                            + "branch and #id ledger to check (default ios)"],
         ], required: ["id"], scope: .project),
-        tool("ft_run_scenario", "Run a scenario deterministically. Builds automatically. On failure the result is isError and carries the failing step's error, "
-            + "the element list and screenshot at the moment of failure (for the first failed scenario), and the report path. "
-            + "A class name runs every scenario of the class except @Deleted/@Draft (same as fleetest run). "
-            + "Unlike fleetest run it does not run the profile's setup/teardown scripts, "
-            + "send the device home first, or record into results/ — ft_start_run does the full run. "
-            + "It installs the app only on iOS with a profile whose app has autoInstall "
-            + "(copied into the workspace, installed when the installed copy is out of date); otherwise install it with ft_install. "
-            + "When the user asks to run tests, use ft_start_run instead — this tool is the quick check while writing a scenario", [
-            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name"],
-            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination). "
-                + "Cannot be combined with platform/port/serial/udid — the profile picks the device"],
-            "heal": ["type": "boolean", "description": "Override for locator self-healing by locator fingerprint (defaults to the profile setting, or false without a profile; independent of fm)"],
-            "port": ["type": "integer", "description": "iOS bridge port (default: the running bridge)"],
-            "serial": ["type": "string", "description": "Android device serial (default: the connected device)"],
-            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
+        tool("ft_run_scenario", "Quick check of a scenario (or a class, minus @Deleted/@Draft) while "
+            + "writing it; builds first. On failure returns the failing step's error, tree, screenshot "
+            + "and report path. Unlike ft_start_run it skips setup/teardown scripts, going home first and "
+            + "results/; it installs the app only for an iOS profile with autoInstall (else ft_install). "
+            + "When the user asks to run tests, use ft_start_run", [
+            "id": scenarioIdProperty,
+            "project": defaultProjectProperty,
+            "profile": ["type": "string", "description": "Run profile (picks device, heal and report "
+                + "destination); not with platform/port/serial/udid"],
+            "heal": ["type": "boolean", "description": "Override fingerprint-based locator self-healing "
+                + "(default: the profile's setting, else false)"],
+            "skipBuild": skipBuildProperty,
         ], required: ["id"]),
-        tool("ft_start_run", "Start a full test run — the same as `fleetest run --profile <name>` — in the background and return at once. "
-            + "It records results history, reports and recordings, and supports failed-only (failed) and once-on-every-device (broadcast) runs. "
-            + "Poll it with ft_run_status and stop it with ft_stop_run. Use this when the user asks to run tests; "
-            + "ft_run_scenario stays the quick check while writing a scenario. Only one run started here can be active at a time", [
-            "profile": ["type": "string", "description": "Run profile name (profiles/runs/<name>.json); it picks the devices"],
-            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
-            "runner": ["type": "string", "description": "Send this run to another machine instead of the one its devices name: a machine registered with `fleetest remote machines add`, or local (raw hosts are refused)"],
+        tool("ft_start_run", "Start a full test run (= fleetest run --profile) in the background and "
+            + "return at once; records history, reports and recordings. Poll with ft_run_status, stop "
+            + "with ft_stop_run. Use this when the user asks to run tests. One active run at a time", [
+            "profile": ["type": "string", "description": "Run profile (profiles/runs/<name>.json); it picks the devices"],
+            "project": defaultProjectProperty,
+            "runner": ["type": "string", "description": "Run on this machine registered with `fleetest "
+                + "remote machines add`, or local (raw hosts are refused)"],
             "scenario": ["type": "array", "items": ["type": "string"],
-                         "description": "Only these scenarios: a class name or Class.method (default: all)"],
+                         "description": "Only these (class or Class.method; default all)"],
             "folder": ["type": "array", "items": ["type": "string"],
-                       "description": "Only the scenarios under these folders of the project's scenarios/ directory"],
-            "failed": ["type": "boolean", "description": "Run only the scenarios that failed last time"],
-            "broadcast": ["type": "boolean", "description": "Run the selected scenarios once on every device of the profile instead of splitting them across devices"],
+                       "description": "Only scenarios under these folders of scenarios/"],
+            "failed": ["type": "boolean", "description": "Only the scenarios that failed last time"],
+            "broadcast": ["type": "boolean", "description": "Run each selected scenario on every device "
+                + "instead of splitting them"],
         ], required: ["profile"], scope: .project),
-        tool("ft_run_status", "Show the state of a run started with ft_start_run: running (progress done/total/failed and phase), "
-            + "or finished (exit code, pass/fail totals, the failed scenarios with their report paths, the results directory) plus the log tail", [
-            "pid": ["type": "integer", "description": "pid returned by ft_start_run (default: the most recent run started here)"],
+        tool("ft_run_status", "State of an ft_start_run run: progress while running; exit code, totals, "
+            + "failed scenarios with report paths and the results directory once finished; plus the log tail", [
+            "pid": runPidProperty,
         ], scope: .none),
-        tool("ft_stop_run", "Stop a run started with ft_start_run by sending SIGTERM (it tears down on its own and may take a while; "
-            + "poll ft_run_status until it reports finished)", [
-            "pid": ["type": "integer", "description": "pid returned by ft_start_run (default: the most recent run started here)"],
+        tool("ft_stop_run", "Stop an ft_start_run run (SIGTERM; teardown may take a while — poll "
+            + "ft_run_status)", [
+            "pid": runPidProperty,
         ], scope: .none),
-        tool("ft_results", "Read the run-results history of a project — the same output as `fleetest results <query>` (text, no JSON). "
-            + "Use it after ft_start_run, and for flaky, slow or regressed scenarios and a run's per-scenario execution log. "
-            + "query: list (recent runs), summary (per-scenario pass rate and duration), flaky (pass/fail flips), trend (one scenario's history; needs scenario), "
-            + "devices (per device and platform), slow (slowest scenarios), insights (regressions, consecutive failures, stale selectors), log (a run's execution log)", [
-            "query": ["type": "string", "enum": MCPResultsRequest.queries, "description": "What to read"],
-            "since": ["type": "string", "description": "Start of the period: a duration (90s/30m/2h/30d), a date (YYYY-MM-DD) or an epoch (@1757280000); default 90d. Not for log"],
-            "scenario": ["type": "string", "description": "Scenario ID (Class.method): filter for summary and log, required for trend"],
-            "runId": ["type": "string", "description": "log only: the run ID, or latest (default) — ft_run_status prints it"],
-            "limit": ["type": "integer", "description": "list (default 20) and slow (default 10): number of rows"],
-            "minRuns": ["type": "integer", "description": "flaky only: minimum runs for a scenario to count (default 5)"],
+        tool("ft_results", "Read a project's results history (= fleetest results <query>, text). query: "
+            + "list, summary (pass rate, duration), flaky, trend (needs scenario), devices, slow, insights "
+            + "(regressions, repeated failures, stale selectors), log (a run's execution log)", [
+            "query": ["type": "string", "enum": MCPResultsRequest.queries],
+            "since": ["type": "string", "description": "Period start: 90s/30m/2h/30d, YYYY-MM-DD or "
+                + "@epoch (default 90d; not for log)"],
+            "scenario": ["type": "string", "description": "Class.method: filters summary/log; required for trend"],
+            "runId": ["type": "string", "description": "log: run ID or latest (default)"],
+            "limit": ["type": "integer", "description": "Rows for list (default 20) / slow (default 10)"],
+            "minRuns": ["type": "integer", "description": "flaky: minimum runs to count (default 5)"],
         ], required: ["query"], scope: .project),
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
@@ -867,14 +687,14 @@ extension MCPServer {
     /// 座標形は ref の安全網(遮蔽・残像・中身外し)を1つも通らない。**設計上そうなる**が、
     /// 説明に書いていないと読み手が ref 形と同じ信頼度だと思い込む(棚卸しで判明)
     static let coordinateCaveat = "Coordinates skip the ref safety checks (occlusion, scroll"
-        + " leftovers, a container whose centre misses its own content), so prefer a ref when the"
-        + " element is in the tree."
+        + " leftovers, off-content centres) — prefer a ref."
 
     static func tool(_ name: String, _ description: String,
-                     _ properties: [String: Any], required: [String] = [],
+                     _ properties: [String: Any], extra: [String: Any] = [:],
+                     required: [String] = [],
                      scope: ToolScope = .device) -> [String: Any] {
-        var props = properties
-        // 個別宣言があればそちらを優先する(ft_run_scenario は profile/port/serial により詳細な説明を持つ)
+        var props = properties.merging(extra) { own, _ in own }
+        // 個別宣言・extra があればそちらを優先する(ft_run_scenario の profile・ft_logs の udid/port は独自の説明を持つ)
         switch scope {
         case .device:
             for (key, value) in commonDeviceProperties where props[key] == nil {
