@@ -1,6 +1,6 @@
 ---
 name: fleetest-scenario
-description: セットアップ済みのプロジェクトに、Swift DSL のテストシナリオ(.swift)を1本作成する。テスト対象アプリを実機/仮想機で実際に操作しながら画面スナップショットから実セレクタを採取し、@TestClass/@Test/scene(CAE)の形に落として、コンパイル検証まで通す。「シナリオを書いて」「テストコードを作って」「〇〇のテストを追加して」「この画面遷移をテストにして」等の依頼で使う。まだセットアップ前なら /fleetest-setup、対象アプリ/デバイスの登録が無ければ /fleetest-profiles。
+description: セットアップ済みのプロジェクトに、Swift DSL のテストシナリオ(.swift)を1本作成する。テスト対象アプリをデバイス(Simulator・Emulator・実機)で実際に操作しながら画面スナップショットから実セレクタを採取し、@TestClass/@Test/scene(CAE)の形に落として、コンパイル検証まで通す。「シナリオを書いて」「テストコードを作って」「〇〇のテストを追加して」「この画面遷移をテストにして」等の依頼で使う。まだセットアップ前なら /fleetest-setup、対象アプリ/デバイスの登録が無ければ /fleetest-profiles。
 ---
 
 # fleetest シナリオ作成 runbook
@@ -41,7 +41,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
   project のヘルパーは `ft_batch` では実行できない(シナリオの .swift に直接書く)。
 - **画面に Material3 の定番部品(ページャ・ボトムシート・メニュー・日付ピッカー・ドロワー・
   引っ張って更新・スナックバー・検索バー 等)があるなら、書く前に
-  docs/user-docs/in_action/ui_component_patterns_ja.md の該当節を読む**。モーダルの間は背後が木から
+  docs/user-docs/reference/writing/ui_component_patterns_ja.md の該当節を読む**。モーダルの間は背後が木から
   消える・入力欄の値は `.value` に出る・横の容器は `scrollFrame:` が要る、といった部品固有の書き方と、
   ツールの現時点の制約(黙って誤る操作)の回避策がある。そこに書いた回避策で書く
 - **セレクタは推測せず、実画面から採取する**。id / ラベル / 型は `ft_snapshot`(または拡張のライブ操作

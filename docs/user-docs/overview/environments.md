@@ -24,7 +24,7 @@ things. If you enable it later, they just start working.
 - **Occlusion guard** — the `requireVisible` check of `exist`, which keeps an element that is in
   the tree but covered by something else from passing as "visible".
 
-(Self-healing does not use FM — see [Self-healing](../running/self_healing.md) — so it works the
+(Self-healing does not use FM — see [Self-healing](../reference/running/self_healing.md) — so it works the
 same with or without Apple Intelligence.)
 
 All of it runs on-device; screen data from your app never leaves your Mac.

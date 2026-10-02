@@ -7,7 +7,7 @@ yet, run `/fleetest:fleetest-setup` from [Getting Started](getting-started.md) f
 > **With Codex**: do steps 1 and 2 in a session started with `codex --sandbox danger-full-access`.
 > The default sandbox blocks cloning into the neighbouring folder and driving the simulators. From
 > step 3 on the default sandbox works (`ft_*` runs inside the MCP server). See
-> [Other agents](tools/other_agents.md) for registering the MCP server and setting its approvals.
+> [Other agents](reference/tools/other_agents.md) for registering the MCP server and setting its approvals.
 
 ## 1. Prepare the sample app
 
@@ -102,13 +102,13 @@ is started automatically at run time). The run profiles are named after the plat
 
 </details>
 
-See [Profiles](./project/profiles.md) for the details.
+See [Profiles](./reference/project/profiles.md) for the details.
 
 ## 3. Create the test scenarios
 
 Either way, you get Swift files under `TestProjects/<project>/scenarios/`, with selectors taken
 from the real screens. To read what was written, see
-[Selector Expression](./selector/selector_expression.md).
+[Selector Expression](./reference/selector/selector_expression.md).
 
 ### Do it with the AI assistant
 
@@ -197,6 +197,10 @@ Open the report in `reports/`. In VSCode, the Test Explorer shows pass/fail on e
 can open the report from there.
 
 </details>
+
+## What to read next
+
+How to ask for the same steps against your own app is covered in the [Tutorial](tutorial/asking_ai.md).
 
 ### Link
 - [index](index.md)

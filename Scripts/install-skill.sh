@@ -9,7 +9,7 @@
 # 置き先は Claude Code の規約位置 `.claude/skills/`。**他のエージェント**(Codex・Cline 等)は
 # `--dir <path>` でそのエージェントのスキル置き場を指定する(SKILL.md はツール中立の
 # markdown なので、スキル機構が無いエージェントには必要なときに読ませればよい。
-# docs/user-docs/tools/other_agents.md)。
+# docs/user-docs/reference/tools/other_agents.md)。
 #
 # 注: Claude Code はプラグイン機構が推奨(スキル自動更新つき・正典を参照する薄いアダプタ):
 #   claude plugin marketplace add wave1008/foundation-tester →

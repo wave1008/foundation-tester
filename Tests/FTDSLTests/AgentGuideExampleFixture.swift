@@ -1,4 +1,4 @@
-// このファイルは docs/user-docs/tools/agent_guide.md(と _ja.md)の Swift の見本と1文字も違わない
+// このファイルは docs/user-docs/reference/tools/agent_guide.md(と _ja.md)の Swift の見本と1文字も違わない
 // (AgentGuideExampleTests が等号で固定する)。**テストターゲットに置いてあるので swift test がコンパイルする**
 // = DSL を改名したとき、手引きの見本だけが古くなるのを防ぐ。見本を変えたらここも貼り替える。
 // ---- ここから手引きの見本 ----

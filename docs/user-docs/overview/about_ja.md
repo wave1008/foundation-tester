@@ -90,7 +90,7 @@ iOS シミュレータでは2本のブリッジを同時に張り、操作ごと
   注入できないため、XCUITest だけで動きます。
 - Android にはエンジンの選択肢はありません(adb 越しのブリッジ1本で動きます)。
 - XCUITest だけで動かしたいときは、実行プロファイルの `iosInappEngine` を `false` にします
-  ([実行プロファイルの設定項目](../project/run_profile_ja.md))。
+  ([実行プロファイルの設定項目](../reference/project/run_profile_ja.md))。
 
 ## しくみ
 

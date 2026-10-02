@@ -27,7 +27,7 @@ clone からビルドまではエージェントが進めるので、手で行�
 - **Android をテストするなら**: Android Studio をインストールし、使いたい AVD を作成して起動しておく。
   システムイメージは Play Store ではなく **Google APIs** を選ぶ —— Play Store イメージは `user`
   ビルドで、アプリの release ビルドはその上で WebView の中身を出せない(詳細は
-  [selector/webview_ja.md](selector/webview_ja.md))
+  [selector/webview_ja.md](reference/selector/webview_ja.md))
 
 ## 3. Fleetest のインストール
 
@@ -62,7 +62,7 @@ claude plugin install fleetest@foundation-tester --scope user
 ください。
 
 Claude Code 以外のエージェント(Codex・Cline など)を使う場合は
-[その他のエージェント](tools/other_agents_ja.md)を参照してください。手順書はツール中立なので
+[その他のエージェント](reference/tools/other_agents_ja.md)を参照してください。手順書はツール中立なので
 そのまま使えますが、インストーラの実行と MCP サーバの登録は自分で行います。
 
 ## 4. Fleetest の更新
@@ -74,7 +74,7 @@ Claude Code 以外のエージェント(Codex・Cline など)を使う場合は
 
 デバイスモニターの「設定」タブで確認と実行ができます。更新があるとタブの隣に「更新する」
 ボタンが現れ、押すとそのまま取り込みが始まります。完了したら**再読み込み**を押してください
-(押さないと更新前の拡張が動き続けます)。詳細は [VSCode 拡張](tools/vscode_extension_ja.md)。
+(押さないと更新前の拡張が動き続けます)。詳細は [VSCode 拡張](reference/tools/vscode_extension_ja.md)。
 
 ### ターミナルから更新する
 

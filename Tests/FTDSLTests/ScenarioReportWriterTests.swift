@@ -55,6 +55,33 @@ final class ScenarioReportWriterTests: XCTestCase {
         XCTAssertFalse(content.contains("- Device:"), content)
     }
 
+    // MARK: - scene 見出しの印
+
+    /// 打ち切りで本体を飛ばした scene は ✅ にしない(実行していない scene が成功に見える)
+    func testSceneSkippedByAbortIsNotMarkedPassed() throws {
+        var record = ScenarioRecordData(id: "Sample.testCase", title: "サンプル",
+                                        app: "com.example.app", platform: "ios")
+        var failed = SceneRecordData(number: 1, title: "落ちる")
+        failed.steps = [DSLStepRecord(index: 1, section: nil, description: "exist \"#a\"",
+                                      status: .failed("element not found"), file: "", line: 0)]
+        var skipped = SceneRecordData(number: 2, title: "飛ばされる")
+        skipped.steps = [DSLStepRecord(index: 2, section: nil, description: "skipped the body of scene 2",
+                                       status: .skipped("not run because the scenario was aborted"),
+                                       file: "", line: 0)]
+        var ran = SceneRecordData(number: 3, title: "通る")
+        ran.steps = [DSLStepRecord(index: 3, section: nil, description: "tap \"#b\"", status: .passed,
+                                   file: "", line: 0)]
+        record.scenes = [failed, skipped, ran]
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let content = try String(contentsOf: try ScenarioReportWriter.write(record: record, to: dir),
+                                 encoding: .utf8)
+        XCTAssertTrue(content.contains("## scene 1: 落ちる — ❌\n"), content)
+        XCTAssertTrue(content.contains("## scene 2: 飛ばされる — ⚠️ skipped\n"), content)
+        XCTAssertTrue(content.contains("## scene 3: 通る — ✅\n"), content)
+    }
+
     // MARK: - screenshot() の埋め込み(該当ステップの直後)
 
     func testWriteEmbedsStepScreenshotImmediatelyAfterItsStep() throws {

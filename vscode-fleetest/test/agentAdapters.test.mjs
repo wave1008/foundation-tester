@@ -3,7 +3,7 @@
 // そこへは「規約位置から正典を参照する薄いアダプタ」だけを置く:
 //   Claude Code → .claude-plugin/plugin.json + .claude-plugin/marketplace.json
 // 他のエージェント(Codex 等)向けの配布アダプタは置かない —— 正典の SKILL.md は
-// ツール中立の markdown なので、そのまま読ませる(docs/user-docs/tools/other_agents.md)。
+// ツール中立の markdown なので、そのまま読ませる(docs/user-docs/reference/tools/other_agents.md)。
 // スキルの呼び出し名は SKILL.md frontmatter の name から決まるため、ディレクトリ名との一致も見る。
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート(protocolVersion.test.mjs と同じ前提)。

@@ -8,7 +8,7 @@
 // ここが両者のドリフトを落とす。
 //
 // **インストーラが用意するのは Claude Code の規約位置だけ**。他のエージェント(Codex 等)は
-// MCP 登録と SKILL.md 直読みで使う(docs/user-docs/tools/other_agents.md)ので、
+// MCP 登録と SKILL.md 直読みで使う(docs/user-docs/reference/tools/other_agents.md)ので、
 // その設定ファイル・規約位置へ書く経路が復活していないことも見る。
 //
 // process.cwd() は npm test 実行時に vscode-fleetest ルート。

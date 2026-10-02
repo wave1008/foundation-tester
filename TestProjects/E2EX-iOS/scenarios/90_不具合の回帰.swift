@@ -2,7 +2,7 @@
 // E2EX-CMP で見つけた fleetest 側の不具合の回帰テスト(2026-09-28)。修正済みのものは緑を保つこと。
 // **S0020 の iOS XCUITest だけは未修正で赤**(XCUITest は容器が「まだ送れるか」を申告しないので、
 // 端を確かめる送りが上端で「引っ張る」になる)。利用者向けの説明は
-// docs/user-docs/in_action/ui_component_patterns_ja.md の「現時点の制約」。
+// docs/user-docs/reference/writing/ui_component_patterns_ja.md の「現時点の制約」。
 // 検索バーへの type の重複(iOS hybrid・修正済み)は 15_検索バー.swift が見る。
 
 import FTDSL

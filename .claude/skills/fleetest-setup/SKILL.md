@@ -190,7 +190,7 @@ bash <SCRIPTS>/install.sh --name <ProjectName> --platform <ios|android|both> [--
 
 - **インストーラが規約位置(`.claude/`・`.mcp.json`)を用意するのは Claude Code だけ**。入口の
   `AGENTS.md` は他のエージェントも読む。他のエージェント(Codex・Cline 等)で使う受け手には、MCP サーバの
-  登録と手順書の渡し方を docs/user-docs/tools/other_agents_ja.md で案内する（生成物が不要なら
+  登録と手順書の渡し方を docs/user-docs/reference/tools/other_agents_ja.md で案内する（生成物が不要なら
   `--skip-mcp` / `--skip-entry-point`）。
 - **`<SCRIPTS>` の install.sh を使う**(ステップ0と同じ置き場。この手順書と同じ版なので引数が必ず
   通じる。クローンの clone・pull はインストーラが行う)。**`curl … | bash` で実行しない**(ステップ0)。
@@ -399,7 +399,7 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
      渡してください。 -->
 
 - シナリオ作成・対象アプリ/デバイスの追加・更新は手順書に従う: `<TOOL_ROOT>/.claude/skills/fleetest-scenario/SKILL.md`・`fleetest-profiles/SKILL.md`・`fleetest-update/SKILL.md`(Claude Code ではスキル `/fleetest-scenario` 等として呼べる)
-- シナリオを書いて通すまでの短い手引き(英語): `<TOOL_ROOT>/docs/user-docs/tools/agent_guide.md`
+- シナリオを書いて通すまでの短い手引き(英語): `<TOOL_ROOT>/docs/user-docs/reference/tools/agent_guide.md`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
 - シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張
@@ -428,7 +428,7 @@ Claude Code は v2.1.277 から AGENTS.md を読むが、同じ場所か上に C
 
 インストーラが用意するのは Claude Code の規約位置だけ。受け手が Codex・Cline などを使うなら、
 **MCP サーバの登録**（そのクライアントの設定書式へ `Scripts/mcp-server.sh` を起動する
-エントリを足す）と**手順書の渡し方**を docs/user-docs/tools/other_agents_ja.md で案内する。
+エントリを足す）と**手順書の渡し方**を docs/user-docs/reference/tools/other_agents_ja.md で案内する。
 **エージェントが受け手のグローバル設定（`~/.codex/config.toml` など）を書き換えてはいけない** ——
 セキュリティ境界であり、TOML は同じテーブルの重複でファイル全体が無効になる。
 

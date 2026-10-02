@@ -126,12 +126,12 @@ const readPage = (p) => readFileSync(path.join(DOCS, p), "utf8");
 // ここが伸びるのは翻訳漏れを追認しているとき。
 const JA_IN_EN_ALLOWLIST = [
   // 参照先 vscode-fleetest/README.md が日本語のみ。節を探すための原文なので訳すと辿れない
-  { file: "running/results_analysis.md", text: "結果ダッシュボード" },
-  { file: "running/parallel_execution.md", text: "並列実行とログレーン" },
-  { file: "project/profiles.md", text: "実行プロファイルの編集支援" },
+  { file: "reference/running/results_analysis.md", text: "結果ダッシュボード" },
+  { file: "reference/running/parallel_execution.md", text: "並列実行とログレーン" },
+  { file: "reference/project/profiles.md", text: "実行プロファイルの編集支援" },
   // ja/en 両ロケールの端末に当てる例。日本語側を訳すと例が成立しない
-  { file: "commands/ios_alert_handler.md", text: "トラッキング" },
-  { file: "commands/ios_alert_handler.md", text: "許可" },
+  { file: "reference/commands/ios_alert_handler.md", text: "トラッキング" },
+  { file: "reference/commands/ios_alert_handler.md", text: "許可" },
 ];
 
 test("英語ページに翻訳漏れの日本語が無い", () => {
@@ -176,7 +176,7 @@ test("run_profile.md が実行プロファイルの全キーを列挙してい�
   assert.ok(block, "RunProfileDocument の knownKeys を読めない(定義の形が変わった)");
   const known = [...block[1].matchAll(/"([a-zA-Z]+)"/g)].map((m) => m[1]).sort();
 
-  for (const page of ["project/run_profile.md", "project/run_profile_ja.md"]) {
+  for (const page of ["reference/project/run_profile.md", "reference/project/run_profile_ja.md"]) {
     const documented = [...readPage(page).matchAll(/^\| `([a-zA-Z]+)`/gm)].map((m) => m[1]).sort();
     assert.deepEqual([...new Set(documented)], [...new Set(known)],
       `${page} と RunProfile.knownKeys が食い違う`);
@@ -190,7 +190,7 @@ test("typed_selector.md が Sel の語彙を全部載せている", () => {
   const vocabulary = [...new Set(api)].sort();
   assert.ok(vocabulary.includes("not"), "Sel.not が消えた(テストの前提が古い)");
 
-  for (const page of ["selector/typed_selector.md", "selector/typed_selector_ja.md"]) {
+  for (const page of ["reference/selector/typed_selector.md", "reference/selector/typed_selector_ja.md"]) {
     const source = readPage(page);
     const missing = vocabulary.filter((name) => !source.includes(`.${name}(`));
     assert.deepEqual(missing, [],

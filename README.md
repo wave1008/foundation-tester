@@ -90,7 +90,7 @@ claude plugin install fleetest@foundation-tester --scope user
 `.mcp.json` は `--skip-mcp`、入口(`AGENTS.md` と、それを読み込むだけの `CLAUDE.md`)は
 `--skip-entry-point` で抑止できるが、
 **`.claude/settings.json`(Bash 許可リスト)は現状抑止できない**(無害・無視される)。
-手順の詳細は [docs/user-docs/tools/other_agents_ja.md](docs/user-docs/tools/other_agents_ja.md)
+手順の詳細は [docs/user-docs/reference/tools/other_agents_ja.md](docs/user-docs/reference/tools/other_agents_ja.md)
 (Codex のサンドボックス設定も同ページ)。
 
 **エージェント無しで入れる**: ツールを clone してから、同じ機械作業をインストーラで行う(冪等):
@@ -520,7 +520,7 @@ Android: `fleetest-androidstream`)経由でほぼリアルタイムに更新す�
   プラグイン root = repo ルートなので、同梱すると相対パス依存の設定がプラグインに載って配られ、
   クローンの外でエージェントを起動した受け手の MCP が必ず落ちていた
 - **その他のエージェント** → インストーラは触らない(設定の場所も書式も受け手のグローバル資産)。
-  手順は [docs/user-docs/tools/other_agents_ja.md](docs/user-docs/tools/other_agents_ja.md)
+  手順は [docs/user-docs/reference/tools/other_agents_ja.md](docs/user-docs/reference/tools/other_agents_ja.md)
 
 | ツール | 内容 |
 |---|---|

@@ -40,7 +40,7 @@ public enum ScenarioReportWriter {
         for scene in record.scenes {
             md += "\n## scene \(scene.number)"
             if !scene.title.isEmpty { md += ": \(scene.title)" }
-            md += " — \(scene.passed ? "✅" : "❌")\n"
+            md += " — \(sceneMark(scene))\n"
 
             var section: String? = "(uncategorized)"
             for step in scene.steps {
@@ -135,6 +135,17 @@ public enum ScenarioReportWriter {
         case let (nil, identifier?): return "(\(identifier))"
         case (nil, nil): return nil
         }
+    }
+
+    /// scene 見出しの印。打ち切りで本体を飛ばした scene は失敗した手順を持たないので passed が true のまま ——
+    /// 手順が全部 skipped なら ✅ を付けない(実行していない scene が成功に見える)
+    static func sceneMark(_ scene: SceneRecordData) -> String {
+        if !scene.passed { return "❌" }
+        let allSkipped = !scene.steps.isEmpty && scene.steps.allSatisfy {
+            if case .skipped = $0.status { return true }
+            return false
+        }
+        return allSkipped ? "⚠️ skipped" : "✅"
     }
 
     static func line(for step: DSLStepRecord) -> String {

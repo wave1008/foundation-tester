@@ -17,9 +17,16 @@ final class ScaffoldDemoScenarioTests: XCTestCase {
         let range = try XCTUnwrap(source.range(of: marker), "区切り行が無い")
         let compiled = String(source[range.upperBound...])
         // 複数行リテラルは最後の行の改行を含まない。コピーのファイルは改行で終わるので1文字足して比べる
-        let scaffolded = ProjectScaffold.demoScenario(app: "com.example.scaffoldfixture") + "\n"
+        // 受け手の導入は ID を渡さないので、写しは仮 ID(= @Draft 付き)の形にする。@Draft の行もコンパイルさせるため
+        let scaffolded = ProjectScaffold.demoScenario(app: "com.example.myapp") + "\n"
         XCTAssertEqual(compiled, scaffolded,
                        "雛形が変わった。ScaffoldDemoScenarioFixture.swift の区切り行より下をこれに貼り替える:\n"
                        + scaffolded)
+    }
+
+    /// 実 ID を渡した雛形は一括実行に載る(@Draft を付けない)。仮 ID のときだけ外す
+    func testDemoIsDraftOnlyWhileAppIDIsThePlaceholder() {
+        XCTAssertTrue(ProjectScaffold.demoScenario(app: "com.example.myapp").contains("\n@Draft("))
+        XCTAssertFalse(ProjectScaffold.demoScenario(app: "com.sutec.mobile").contains("@Draft"))
     }
 }

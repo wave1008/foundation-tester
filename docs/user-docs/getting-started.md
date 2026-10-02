@@ -27,7 +27,7 @@ To keep the installation smooth, have the devices you will test on ready beforeh
 - **If you test Android**: install Android Studio, then create and boot the AVD you want to use.
   Prefer a **Google APIs** system image over a Play Store one — Play Store images are `user`
   builds, and a release build of your app cannot expose its WebView content on them (see
-  [selector/webview.md](selector/webview.md))
+  [selector/webview.md](reference/selector/webview.md))
 
 ## 3. Installing Fleetest
 
@@ -61,7 +61,7 @@ claude plugin install fleetest@foundation-tester --scope user
 If you want to go through the steps manually one at a time, see
 `.claude/skills/fleetest-setup/SKILL.md`.
 
-Using another agent (Codex, Cline, …)? See [Other agents](tools/other_agents.md). The runbooks
+Using another agent (Codex, Cline, …)? See [Other agents](reference/tools/other_agents.md). The runbooks
 are tool-neutral and apply unchanged, but you run the installer and register the MCP server
 yourself.
 
@@ -76,7 +76,7 @@ It only checks — it never pulls the update in by itself. If you don't want the
 The device monitor's "Settings" tab is where you check and apply updates. When an update is
 available, an "Update now" button appears next to the tab; clicking it starts the update. When
 it finishes, click **Reload window** (otherwise the pre-update extension keeps running). Details
-in [VSCode extension](tools/vscode_extension.md).
+in [VSCode extension](reference/tools/vscode_extension.md).
 
 ### From a terminal
 

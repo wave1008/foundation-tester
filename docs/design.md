@@ -5021,7 +5021,7 @@ runbook の正典は `.claude/skills/<name>/SKILL.md`(ツール中立の markdow
 標準の stdio MCP サーバ、runbook はツール中立の markdown。**エージェントごとに面倒を見ると、
 規約位置・プラグインのサブコマンド名・版照合の方法・設定ファイルの書式が全部そのエージェント
 固有の分岐になり、増やすたびに4箇所(Swift・install.sh・install-skill.sh・update.sh)へ手で
-写す**ことになる。案内は docs/user-docs/tools/other_agents.md に集約し、コードは
+写す**ことになる。案内は docs/user-docs/reference/tools/other_agents.md に集約し、コードは
 Claude Code の1系統だけを持つ。**受け手のグローバル設定(`~/.codex/config.toml` 等)には
 1バイトも書かない** —— セキュリティ境界であり、TOML は同じテーブルの重複でファイル全体が
 無効になるので、素朴な追記は受け手の設定を壊す。
@@ -5230,7 +5230,7 @@ miss で引き直す。追加コストは miss 経路の adb 1往復(構造的�
 誤った直し方を指す(`WebViewDOMFallbackTests` が断定文言を否定で固定)。**挙動は変えない**
 (警告だけ)。子の stderr を中継する `ScenarioHost` は、ドライバが自分で `⚠️` を付けた行に
 重ねない(`fleetest run` で `⚠️ ⚠️` になっていた)。受け手向けの説明は
-docs/user-docs/selector/webview(.md/_ja.md)。
+docs/user-docs/reference/selector/webview(.md/_ja.md)。
 
 ## ブラウザの中身は DOM から読む(2026-08-13)
 

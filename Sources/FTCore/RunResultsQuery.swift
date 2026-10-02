@@ -917,7 +917,7 @@ public enum RunResultsQuery {
 
     /// **原因を断定しない**(CLAUDE.md「環境要因の失敗という分類は置かない」)——
     /// timedOut/ステップ未到達という**記録された経路**を数えているだけで、機械が混んでいた・
-    /// アプリが重かったの区別はできない。docs/user-docs/running/results_analysis.md の
+    /// アプリが重かったの区別はできない。docs/user-docs/reference/running/results_analysis.md の
     /// 「infraFailures と『原因』について」と同じ言い回しに揃える
     private static func infraFailureInsights(
         scenarioID: String, platform: String, chronological: [ScenarioRunRecord]

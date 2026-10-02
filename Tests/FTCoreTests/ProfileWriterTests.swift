@@ -6,7 +6,7 @@ final class ProfileWriterTests: XCTestCase {
 
     func testAppProfilePlacesFieldsInFixedSections() {
         let object = ProfileWriter.mergingAppProfile(
-            into: [:], platform: "ios", appName: "MyApp",
+            into: [:], platform: "ios", appName: "MyApp", defaultAppName: "Project",
             appID: "com.example.myapp", appPath: "~/builds/MyApp.app")
         let common = object["common"] as? [String: Any]
         XCTAssertNil(common?["appName"], "appName は common に書かない(platform セクションのみ)")
@@ -22,35 +22,58 @@ final class ProfileWriterTests: XCTestCase {
     /// ios と android を別々に呼べば、それぞれ別の表示名を持てる(この契約変更の核)
     func testAppProfileAllowsDifferentAppNamePerPlatform() {
         var object = ProfileWriter.mergingAppProfile(
-            into: [:], platform: "ios", appName: "MyApp (iOS)",
+            into: [:], platform: "ios", appName: "MyApp (iOS)", defaultAppName: "Project",
             appID: "com.example.myapp", appPath: nil)
         object = ProfileWriter.mergingAppProfile(
-            into: object, platform: "android", appName: "MyApp (Android)",
+            into: object, platform: "android", appName: "MyApp (Android)", defaultAppName: "Project",
             appID: "com.example.myapp", appPath: nil)
         XCTAssertEqual((object["ios"] as? [String: Any])?["appName"] as? String, "MyApp (iOS)")
         XCTAssertEqual((object["android"] as? [String: Any])?["appName"] as? String, "MyApp (Android)")
     }
 
-    /// appPath を外したら残骸を残さない。autoInstall も書かない(あとで appPath を足したときに
-    /// 「false が焼き付いていて入らない」を作らないため)
-    func testAppProfileWithoutPathLeavesNoResidue() {
-        let withPath = ProfileWriter.mergingAppProfile(
-            into: [:], platform: "android", appName: "A", appID: "com.a", appPath: "~/a.apk")
-        let withoutPath = ProfileWriter.mergingAppProfile(
-            into: withPath, platform: "android", appName: "A", appID: "com.a", appPath: nil)
-        XCTAssertNil((withoutPath["common"] as? [String: Any])?["autoInstall"])
-        XCTAssertNil((withoutPath["android"] as? [String: Any])?["appPath"])
+    /// 省略は「既存を残す」。デバイスを足すために appPath / appName 無しで呼び直しても、
+    /// 先に書いた appPath(= 自動インストール)と表示名を消さない。autoInstall も書かない
+    func testOmittedAppPathAndNameKeepExistingValues() {
+        let first = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "android", appName: "Shop", defaultAppName: "Project",
+            appID: "com.a", appPath: "~/a.apk")
+        let again = ProfileWriter.mergingAppProfile(
+            into: first, platform: "android", appName: nil, defaultAppName: "Project",
+            appID: "com.a", appPath: nil)
+        let section = again["android"] as? [String: Any]
+        XCTAssertEqual(section?["appPath"] as? String, "~/a.apk")
+        XCTAssertEqual(section?["appName"] as? String, "Shop")
+        XCTAssertNil((again["common"] as? [String: Any])?["autoInstall"])
+    }
+
+    /// --app-ref の省略は「既存の実行プロファイルのアプリ」。無ければプロジェクト名の小文字。明示が最優先
+    func testAppRefFollowsExistingRunProfileWhenOmitted() {
+        XCTAssertEqual(ProfileWriter.resolvedAppRef(
+            explicit: nil, existingRunProfile: ["app": "sut-store"], projectName: "TutVerify"), "sut-store")
+        XCTAssertEqual(ProfileWriter.resolvedAppRef(
+            explicit: nil, existingRunProfile: [:], projectName: "TutVerify"), "tutverify")
+        XCTAssertEqual(ProfileWriter.resolvedAppRef(
+            explicit: "other", existingRunProfile: ["app": "sut-store"], projectName: "TutVerify"), "other")
+    }
+
+    /// 表示名が既存にも無いときだけ defaultAppName(プロジェクト名)を書く
+    func testOmittedAppNameFallsBackToDefaultOnlyWhenAbsent() {
+        let object = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "ios", appName: nil, defaultAppName: "Project",
+            appID: "com.a", appPath: nil)
+        XCTAssertEqual((object["ios"] as? [String: Any])?["appName"] as? String, "Project")
+        XCTAssertNil((object["ios"] as? [String: Any])?["appPath"])
     }
 
     /// 利用者が明示した autoInstall は温存する(こちらの都合で消さない)
     func testAppProfileKeepsExplicitAutoInstall() {
         var object = ProfileWriter.mergingAppProfile(
-            into: [:], platform: "ios", appName: "A", appID: "com.a", appPath: "~/a.app")
+            into: [:], platform: "ios", appName: "A", defaultAppName: "Project", appID: "com.a", appPath: "~/a.app")
         var common = object["common"] as? [String: Any] ?? [:]
         common["autoInstall"] = false          // 利用者が opt-out した状態
         object["common"] = common
         let updated = ProfileWriter.mergingAppProfile(
-            into: object, platform: "ios", appName: "A", appID: "com.a", appPath: "~/a.app")
+            into: object, platform: "ios", appName: "A", defaultAppName: "Project", appID: "com.a", appPath: "~/a.app")
         XCTAssertEqual((updated["common"] as? [String: Any])?["autoInstall"] as? Bool, false,
                        "利用者の明示指定を消さない")
     }

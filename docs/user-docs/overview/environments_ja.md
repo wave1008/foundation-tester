@@ -23,7 +23,7 @@ Apple Intelligence(Foundation Models)は無くても動きますが、有効に�
 - **遮蔽チェック(occlusion-guard)** —— `exist` の `requireVisible` 判定で、木には在るが
   別のものに覆われている要素を「見えている」と誤って緑にしないための確認です。
 
-(自己修復は FM を使いません —— [自己修復](../running/self_healing_ja.md)参照 —— そのため
+(自己修復は FM を使いません —— [自己修復](../reference/running/self_healing_ja.md)参照 —— そのため
 Apple Intelligence の有無に関わらず同じように動きます。)
 
 処理はすべてオンデバイスで、アプリの画面情報が Mac の外に出ることはありません。

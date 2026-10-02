@@ -413,12 +413,20 @@ public enum ProjectScaffold {
     /// 雛形が置くデモシナリオのファイル名(拡張子なし)
     public static let demoScenarioFileName = "sample_test"
 
+    /// `--app-id` を省いたときのアプリ ID。受け手の導入(install.sh)は ID を渡さず、プロファイルは後で
+    /// 別名(`profile setup --app-ref`)として作るので、デモがこの ID のまま残るのが普通の流れ
+    public static let placeholderAppID = "com.example.myapp"
+
     /// 受け手が最初に読むシナリオ。**実セレクタは書けない**(雛形生成の時点で対象アプリの画面を
     /// 知らない)ので、実コードは launchApp と appIs だけに留め、操作・検証の書き方はコメントで示す。
     /// この形ならデバイスを登録した時点でそのまま緑になる —— 動かないコードから始めると、
-    /// 受け手は自分の設定を疑うことになる
+    /// 受け手は自分の設定を疑うことになる。**ID が placeholderAppID のままなら @Draft を付ける** ——
+    /// 入っていないアプリを起動して「全部実行」が毎回1本赤になる(チュートリアルの通し検証で踏んだ)
     static func demoScenario(app: String) -> String {
-        """
+        let draft = app == placeholderAppID
+            ? "\n@Draft(\"app: が仮の ID のまま。自分のアプリの ID に直すか app: を消して実行プロファイルに従わせてから、この行を消す\")"
+            : ""
+        return """
         // \(demoScenarioFileName).swift
         // 雛形が置いたデモ。**消して構いません**(自分のシナリオを書き始めるときの雛形として使う)。
         // コマンドの一覧と引数は docs/commands.md、書き方の流れは docs/user-docs/ を参照。
@@ -428,7 +436,7 @@ public enum ProjectScaffold {
         // app: 対象アプリの bundle ID / package name。プロファイル
         // (profiles/apps/*.json)とは独立にここで指定する。
         // platform: を書くとその OS でだけ実行される(省略時は両方)。
-        @TestClass(app: "\(app)")
+        @TestClass(app: "\(app)")\(draft)
         class デモ {
 
             @Test("アプリが起動して前面に出る")

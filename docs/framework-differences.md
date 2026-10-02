@@ -287,7 +287,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 共通契約の SUT に載らない**定番部品**は、別の5 SUT(`E2EXAppCMP/`・`E2EXAppFlutter/`・`E2EXAppRN/`・`E2EXAppAndroid/`・
 `E2EXAppIOS/`。画面・`#id`・echo の契約は `E2EXAppCMP/docs/ui-contract.md` と `ui-contract-wave2.md`、SUT ごとの差分は
 各 `docs/ui-contract.md`)と `TestProjects/E2EX-*` で確かめる。回すのは `Scripts/e2ex.sh`。
-**利用者向けの書き方は `docs/user-docs/in_action/ui_component_patterns_ja.md` が正典**(ここは結論だけ)。
+**利用者向けの書き方は `docs/user-docs/reference/writing/ui_component_patterns_ja.md` が正典**(ここは結論だけ)。
 既知の制約に当たるシナリオは `@Draft("既知の制約: …" / "調査中: …")` で既定の実行から外してある(名指しで回すと再現する)。
 
 | 部品 | 違い | 区分 |

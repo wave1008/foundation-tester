@@ -18,8 +18,8 @@ paths:
   - "Tests/FTDSLTests/CheckStatePreferDSLTests.swift"
   - "Tests/FTDSLTests/ExistImageDSLTests.swift"
   - "Tests/FTDSLTests/FTElementChainTests.swift"
-  - "docs/user-docs/testclass/custom_commands.md"
-  - "docs/user-docs/testclass/custom_commands_ja.md"
+  - "docs/user-docs/reference/testclass/custom_commands.md"
+  - "docs/user-docs/reference/testclass/custom_commands_ja.md"
 ---
 
 # 画像(findImage / checkIsON / 画像分類) の規律

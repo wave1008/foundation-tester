@@ -96,7 +96,7 @@ On an iOS simulator, Fleetest keeps two bridges up at once and picks one for eac
   bridge, so it runs on XCUITest alone.
 - Android has no engine choice (it runs on a single bridge over adb).
 - To run on XCUITest alone, set `iosInappEngine` to `false` in the run profile
-  (see [Run profile settings](../project/run_profile.md)).
+  (see [Run profile settings](../reference/project/run_profile.md)).
 
 ## How it works
 

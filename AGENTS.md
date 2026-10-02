@@ -12,6 +12,6 @@
   その規則の効くファイル)。CLAUDE.md の規律の約8割はこちらにある
 - **スキルは手順書として読む**。`.claude/skills/<名前>/SKILL.md` はツール中立の markdown で、
   `/fleetest-setup` のような呼び出しの仕組みは無いので、該当する SKILL.md を読んで従う
-- **MCP(`ft_*`)の登録と Codex のサンドボックス**は docs/user-docs/tools/other_agents_ja.md。
+- **MCP(`ft_*`)の登録と Codex のサンドボックス**は docs/user-docs/reference/tools/other_agents_ja.md。
   サンドボックスが縛るのはシェルだけで、ビルド・テスト・導入(シェル経由)は設定に左右される ——
   `network_access` / `writable_roots` の値を根拠に「通る」と断定しない

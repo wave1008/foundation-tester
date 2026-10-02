@@ -29,21 +29,29 @@ public enum ProfileWriter {
         device.keys.contains(where: deviceBodyKeys.contains)
     }
 
+    /// `profile setup` が使うアプリプロファイル名。省略時は既存の実行プロファイルが指すものを使う ——
+    /// デバイスを足すために呼び直すと(fleetest-profiles の手順)プロジェクト名へ黙って差し替わり、
+    /// 別の(仮 ID の)アプリプロファイルまで作ってしまう。既存も無ければプロジェクト名の小文字
+    public static func resolvedAppRef(explicit: String?, existingRunProfile: [String: Any],
+                                      projectName: String) -> String {
+        explicit ?? (existingRunProfile["app"] as? String) ?? projectName.lowercased()
+    }
+
     /// アプリプロファイルをマージする。フィールドの置き場所は固定(AppProfileSection.merging):
     /// appName・app(ID)・appPath は platform セクション、autoInstall は common(こちらは触らない)。
-    /// 既存の未知キーは温存し、指定した値だけを上書きする。
+    /// 既存の未知キーは温存し、指定した値だけを上書きする。**nil は「既存を残す」** ——
+    /// `profile setup` はデバイスを足すたびに呼ばれる(fleetest-profiles の手順)ので、省略を削除と読むと
+    /// 足しただけで appPath(= 自動インストール)と表示名が黙って消える。appName は既存も無ければ defaultAppName。
     public static func mergingAppProfile(
         into object: [String: Any], platform: String,
-        appName: String, appID: String, appPath: String?
+        appName: String?, defaultAppName: String, appID: String, appPath: String?
     ) -> [String: Any] {
         var object = object
         var section = (object[platform] as? [String: Any]) ?? [:]
-        section["appName"] = appName
+        section["appName"] = appName ?? (section["appName"] as? String) ?? defaultAppName
         section["app"] = appID
         if let appPath {
             section["appPath"] = appPath
-        } else {
-            section.removeValue(forKey: "appPath")
         }
         object[platform] = section
         return object

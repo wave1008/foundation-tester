@@ -50,10 +50,10 @@ present, and what only fleetest has.
 |---|---|
 | Nicknames (selector / screen / dataset nicknames) | selectors written directly; no indirection layer |
 | `screenIs` / `screenIsOf` / `isScreen(Of)` / `waitScreen(Of)` / `switchScreen` | `screenLooksLike("description")` (FM visual check), or `exist(sel)` on an element unique to that screen |
-| `dontExistImage` / `canFindImage` / `imageContains` (image template matching assertions) | Check the result of [`findImage`](../commands/find_image.md) with `.isEmpty`, or `screenLooksLike("description")` (FM visual verification). `findImage*` / `findImages` / `existImage*` / [`imageIs`](../commands/image_assertion.md) exist under the same names |
+| `dontExistImage` / `canFindImage` / `imageContains` (image template matching assertions) | Check the result of [`findImage`](../reference/commands/find_image.md) with `.isEmpty`, or `screenLooksLike("description")` (FM visual verification). `findImage*` / `findImages` / `existImage*` / [`imageIs`](../reference/commands/image_assertion.md) exist under the same names |
 | `tapWithoutScroll` / `existWithoutScroll` / `selectWithoutScroll` / `existImageWithoutScroll` | Pass `scroll: .noScroll` to the command (`exist(sel, scroll: .noScroll)`). To cancel for a whole block, use `withoutScroll { }` |
 | `tapWithScrollDown` / `existWithScrollUp` / `selectWithScrollLeft` / `findImageWithScrollDown` and the like (`*WithScroll*`) | Pass `scroll:` to the command (`tap(sel, scroll: .down)` / `existImage(label, scroll: .down)`). Scrolling is specified only through the `scroll:` argument |
-| `macro` | a plain Swift function, optionally marked `@FTCommand("summary")` to list it in the DSL command index (`ft_dsl_commands`) so an agent can find and reuse it — see [Custom commands](../testclass/custom_commands.md) |
+| `macro` | a plain Swift function, optionally marked `@FTCommand("summary")` to list it in the DSL command index (`ft_dsl_commands`) so an agent can find and reuse it — see [Custom commands](../reference/testclass/custom_commands.md) |
 | `manual` / `knownIssue` | not available — a failing command always aborts the scenario; there is no escape hatch to mark a failure as expected |
 | `must` / `should` / `want`, `SKIP` / `MANUAL` / `NOTIMPL` | not available — for OS-specific tests use `@TestClass(platform:)` / `@Test(platform:)` instead |
 | Datasets (`account` / `app` / `data` / `dataPattern`) | Swift literals or constants written directly in the scenario |

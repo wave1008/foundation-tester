@@ -36,16 +36,16 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Android: serial of a physical device (the left column of adb devices)")
     var serial: String?
 
-    @Option(help: "App profile name (profiles/apps/<ref>.json; defaults to the lowercased project name)")
+    @Option(help: "App profile name (profiles/apps/<ref>.json; omitted: the one the run profile already uses, else the lowercased project name)")
     var appRef: String?
 
-    @Option(help: "Display name of the app (defaults to the project name)")
+    @Option(help: "Display name of the app (omitted: keeps the existing one, else the project name)")
     var appName: String?
 
     @Option(name: .customLong("app-id"), help: "App bundle ID / package name")
     var appID: String
 
-    @Option(help: "Path to a built .app/.apk/.apks (setting it enables autoInstall)")
+    @Option(help: "Path to a built .app/.apk/.apks (setting it enables autoInstall; omitted: keeps the existing one)")
     var appPath: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to the platform name)")
@@ -103,9 +103,12 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     private func setUp(platform: String) async throws -> [String: Any] {
         let testProject = try ScenarioHost.project(named: project)
         var deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
-        let appRef = self.appRef ?? testProject.name.lowercased()
         let runName = run ?? platform
         let fm = FileManager.default
+        let appRef = ProfileWriter.resolvedAppRef(
+            explicit: self.appRef,
+            existingRunProfile: try readObject(testProject.runsDir.appendingPathComponent("\(runName).json")),
+            projectName: testProject.name)
         var deviceDetail = ""
 
         var device = Self.deviceEntry(platform: platform, name: deviceName,
@@ -174,7 +177,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let appURL = testProject.appsDir.appendingPathComponent("\(appRef).json")
         let updatedApp = ProfileWriter.mergingAppProfile(
             into: try readObject(appURL), platform: platform,
-            appName: appName ?? testProject.name, appID: appID, appPath: appPath)
+            appName: appName, defaultAppName: testProject.name, appID: appID, appPath: appPath)
         try ProfileWriter.json(updatedApp).write(to: appURL, options: .atomic)
 
         // ---- 実行プロファイル(デバイスの実体を持つ。既存なら app を揃えてデバイスを upsert) ----

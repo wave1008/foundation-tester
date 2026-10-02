@@ -17,7 +17,7 @@ paths:
   - "Tests/FleetestMCPTests/BatchLineParserTests.swift"
   - "docs/commands.md"
   - "docs/shirates-parity.md"
-  - "docs/user-docs/commands/**"
+  - "docs/user-docs/reference/commands/**"
 ---
 
 # DSL コマンド(索引・引数名・スクロール指定・操作の待ち) の規律

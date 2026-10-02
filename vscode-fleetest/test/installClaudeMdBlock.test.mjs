@@ -67,7 +67,7 @@ test("ファイルが無ければ作り、2回目は変えない(冪等)", () =>
   // 向けの手順書・手引きの**絶対パス**(受け手の作業場所からクローンを指す)の両方が要る
   assert.ok(first.text.includes("`/fleetest-scenario`"), "スキルの呼び出し記法が / でない");
   assert.ok(first.text.includes(`${TOOL_ROOT}/.claude/skills/fleetest-scenario/SKILL.md`), first.text);
-  assert.ok(first.text.includes(`${TOOL_ROOT}/docs/user-docs/tools/agent_guide.md`), first.text);
+  assert.ok(first.text.includes(`${TOOL_ROOT}/docs/user-docs/reference/tools/agent_guide.md`), first.text);
 });
 
 test("CLAUDE.md には @AGENTS.md の読み込みだけを置く(本文を二重に持たない)", () => {

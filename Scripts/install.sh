@@ -11,7 +11,7 @@
 #           MCP 登録(.mcp.json)/ エージェントの入口(AGENTS.md + CLAUDE.md)/ 検証ゲート。
 #           **冪等**(済んだ手順は skip)。
 #           規約位置を用意するのは Claude Code だけ(他のエージェントは MCP 登録と
-#           SKILL.md 直読みで使う。docs/user-docs/tools/other_agents.md)。
+#           SKILL.md 直読みで使う。docs/user-docs/reference/tools/other_agents.md)。
 # やらないこと: プロファイル(apps/ + runs/)の作成(クイックスタートの仕事)・appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
@@ -620,7 +620,7 @@ fi
 # 登録先は <WORK_DIR>/.mcp.json(AgentIntegration.mcpRegistrationTarget。
 # プロジェクトスコープ・JSON)。**他のエージェント(Codex 等)への登録は行わない** ——
 # 設定の場所も書式も受け手のグローバル設定側にあり、インストーラが触ると
-# セキュリティ境界と既存の設定を壊しうる。手順は docs/user-docs/tools/other_agents.md。
+# セキュリティ境界と既存の設定を壊しうる。手順は docs/user-docs/reference/tools/other_agents.md。
 if [ "$DO_MCP" = "0" ]; then
   record "MCP" skip "--skip-mcp"
 else
@@ -738,10 +738,11 @@ else:
     BODY = "## テスト(fleetest)\n\n" + MANAGED + """
 
 - シナリオ作成・対象アプリ/デバイスの追加・更新は手順書に従う: `""" + skills + """/fleetest-scenario/SKILL.md`・`fleetest-profiles/SKILL.md`・`fleetest-update/SKILL.md`(Claude Code ではスキル `/fleetest-scenario` 等として呼べる)
-- シナリオを書いて通すまでの短い手引き(英語): `""" + tool_root + """/docs/user-docs/tools/agent_guide.md`
+- シナリオを書いて通すまでの短い手引き(英語): `""" + tool_root + """/docs/user-docs/reference/tools/agent_guide.md`
 - 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
 - DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
-- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
+- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`
+- **利用者に実行を頼まれたら `swift run fleetest run --profile <実行プロファイル>`**(この作業フォルダで)。結果の履歴(`fleetest results`)・前回の失敗だけ(`--failed`)・全デバイスで1回ずつ(`--broadcast`)・録画はこの経路だけ。`ft_run_scenario` はシナリオを書いている途中の確認用(履歴・録画を残さない)"""
 block = BEGIN + "\n" + BODY + "\n" + END
 
 existing = ""

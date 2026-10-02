@@ -1,0 +1,105 @@
+# プロファイル
+
+実行は `TestProjects/<name>/profiles/` 配下の2種類の JSON プロファイルを組み合わせて構成します
+(継承ではなく参照による組み合わせです)。
+
+| 種類 | ファイル | 役割 |
+|---|---|---|
+| アプリプロファイル | `apps/<name>.json` | テスト対象アプリ(bundle ID / パッケージ名、ビルド成果物のパス) |
+| 実行プロファイル | `runs/<name>.json` | どのアプリ+どのデバイス(それぞれ居るマシンを名乗る)+実行時設定([run_profile_ja.md](./run_profile_ja.md)参照) |
+
+## アプリプロファイル
+
+`apps/<name>.json` は `common` セクションと `ios`/`android` セクションを後勝ちでマージします
+(OS 別セクションが優先):
+
+```json
+{ "common":  { "autoInstall": true },
+  "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp",
+               "appPath": "~/builds/SampleApp.app" },
+  "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp",
+               "appPath": "builds/app-debug.apk" } }
+```
+
+- `autoInstall` は `common` からのみ読まれます(既定は `appPath` か `appPathPhysical` の有無。
+  パスがあってもインストールを止めたいときだけ `false` を明示します)。
+- `appName`(表示名)・`app`(bundle ID / パッケージ名)・`appPath` は `ios`/`android` セクションに
+  書いたものだけが採用されます(`common` に書いても無視されるため、表示名を OS ごとに書き分けられます)。
+- `appName` は**ホーム画面でアイコンの下に出る名前そのもの**にします。名前を省いた `tapAppIcon()` はこれを
+  探し、システムアラートがこのアプリのものかもこの名前で判定します。プロファイルを区別するための注記
+  (「(実機)」等)は足さないでください。iOS では、`appPath` のアプリから読んだ表示名(`CFBundleDisplayName`、
+  無ければ `CFBundleName`。ローカライズされた名前も含む)のどれとも一致しないと、実行時(と
+  `api validate-profile`)に警告が出ます。
+- `appPath` の相対パスは既定でリポジトリルート基準です(`~` 展開・絶対パスも可)。Android は
+  `.apk` のほか `.apks`(App Bundle 由来のスプリット束)も書けます(インストールには
+  `bundletool` が要ります)。iOS の `appPath` は `.app`(シミュレータはそれしか入りません)、
+  `appPathPhysical` は `.app` でも `.ipa` でも書けます。
+- ツールはそのパッケージからアプリの UI フレームワーク(Compose Multiplatform / Flutter / それ以外)も
+  読み、スクロールの直後のタップの前に肩代わりのジェスチャが要るかを決めます。答えは bundle ID ごとに
+  覚えます。パッケージも覚えた答えも無いとき(物理端末に別の方法で入れたアプリ)は、アクセシビリティの木の
+  要素ごとに決めます(Compose / Flutter が出す自前描画の要素には送り、ビューを持つ要素には送りません)。
+  実行時に1回そう言います。一度 `appPath` / `appPathPhysical` にパッケージを指せば、以後は覚えた答えで動きます。
+- `healthCheckURL`(`common` のみ・任意): 実行開始前に到達確認するバックエンドの URL
+  (3秒タイムアウト。不達でも警告だけでブロックしません)。
+
+## デバイス
+
+実行プロファイルの `devices` 配列は、その実行が使うデバイスの実体を列挙します。各要素は自分が
+居るマシンを名乗り、そのマシンと組み合わせて一意な名前を持ちます。そのため別のマシンに同名の
+デバイスが居てもよく、同じデバイスを複数の実行プロファイルに載せて `enabled` で個別に切り替えられます。
+全キーと実行時設定の一覧は [run_profile_ja.md](./run_profile_ja.md) を参照してください。
+
+```json
+{ "app": "myapp",
+  "devices": [
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
+    { "platform": "android", "machine": "M1Max", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
+    { "platform": "android", "machine": "local", "name": "emulator2", "enabled": false, "avd": "Pixel_8_Android_14" }
+  ],
+  "heal": true }
+```
+
+- `machine` は、手元の Mac なら `"local"`、`fleetest remote machines add` で登録したマシン名なら
+  そのデバイスの実行を SSH 経由でそのマシンへディスパッチします([remote_runners_ja.md](../../in_action/remote_runners_ja.md)参照)。
+- iOS シミュレータは `name` をシミュレータ自身の名前(Xcode の **Name** = simctl の名前)にし、
+  `osVersion` を Xcode の **OS Version**(例 `"iOS 27.0"`)にします —— `udid` が無いときはこの2つで
+  シミュレータを探します。`model`(Xcode の **Model**)は表示専用です。全キーの一覧は
+  [run_profile_ja.md](./run_profile_ja.md) を参照してください。
+- 実機は `"kind": "physical"` と、シミュレータ/AVD 参照の代わりに識別子を書きます。
+  iOS は `udid`(`xcrun devicectl list devices` の `hardwareProperties.udid` の形式)、
+  Android は `serial`(`adb devices` の左列)です:
+
+```json
+{ "platform": "ios", "machine": "local", "name": "iPhone 実機", "kind": "physical",
+  "udid": "00008130-000A1B2C3D4E5678" }
+```
+
+- **実機は端末側で自動ロックを切っておいてください**。iOS は 設定 → 画面表示と明るさ →
+  自動ロック → **なし**、Android は 設定 → ディスプレイ → 画面消灯 を十分長く。
+  **ツールは端末を起こしません** —— 待ちの長いステップの最中に画面が消えると、以後のアプリ起動が
+  OS に拒否されて実行が止まります。ロックされた状態で始めようとした場合は、その旨を名指しして
+  止めます(自動での解除は原理的にできません。端末へ入力する手段がその端末上のランナー自身で、
+  ランナーが動いていない状態では何も送れないためです)。
+
+`fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存シミュレータ
+(iPad を除く)、Android は既存 AVD のうち API レベルが最大のものを選びます。
+
+## コマンド
+
+| コマンド | 説明 |
+|---|---|
+| `fleetest profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | アプリ/実行プロファイルをまとめて整合させて作成する(冪等) |
+| `fleetest profile list` | 実行プロファイルの一覧とそのデバイスを表示する |
+
+## VSCode での編集
+
+VSCode 拡張の「プロファイル」タブから実行/アプリプロファイルを対話的に編集できます
+(実行プロファイルの節には全実行プロファイルのデバイスの和集合が並び、チェックボックスで
+そのプロファイルが走らせるデバイスを選びます)。また `profiles/{apps,runs}/*.json` には拡張が提供する
+JSON スキーマ(`schemas/*.schema.json`)が適用され、手で編集する際も補完・ホバー・構造レベルの
+検証が効きます。詳細は
+[vscode-fleetest/README.md](../../../../vscode-fleetest/README.md)(「実行プロファイルの編集支援」)を
+参照してください。
+
+### Link
+- [index](../../index_ja.md)

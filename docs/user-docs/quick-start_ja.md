@@ -8,7 +8,7 @@
 > **Codex を使う場合**: ステップ1・2は `codex --sandbox danger-full-access` で起動したセッションで
 > 行ってください。既定のサンドボックスでは、隣のフォルダへの clone とシミュレータの操作が塞がれます。
 > ステップ3以降は既定のままで動きます(`ft_*` は MCP サーバの中で動くため)。MCP の登録と承認の
-> 設定は[その他のエージェント](tools/other_agents_ja.md)を参照してください。
+> 設定は[その他のエージェント](reference/tools/other_agents_ja.md)を参照してください。
 
 ## 1. サンプルアプリを用意する
 
@@ -102,13 +102,13 @@ fleetest profile setup --platform android --app-id com.sutec.mobile --auto-devic
 
 </details>
 
-プロファイルの詳細は[プロファイル](./project/profiles_ja.md)。
+プロファイルの詳細は[プロファイル](./reference/project/profiles_ja.md)。
 
 ## 3. テストシナリオを作る
 
 どちらの進め方でも、`TestProjects/<プロジェクト>/scenarios/` に Swift ファイルができます。
 セレクタは実画面から採られます。書かれる内容を読みたいときは
-[セレクタ式](./selector/selector_expression_ja.md)を参照してください。
+[セレクタ式](./reference/selector/selector_expression_ja.md)を参照してください。
 
 ### AI アシスタントで実行
 
@@ -196,6 +196,10 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 開けます。
 
 </details>
+
+## 次に読む
+
+ここまでの流れを、自分のアプリで進めるための頼み方は[チュートリアル](tutorial/asking_ai_ja.md)にまとめてあります。
 
 ### Link
 - [index](index_ja.md)

@@ -1,4 +1,4 @@
-// このファイルは ProjectScaffold.demoScenario(app: "com.example.scaffoldfixture") の出力と1文字も違わない
+// このファイルは ProjectScaffold.demoScenario(app: "com.example.myapp") の出力と1文字も違わない
 // (ScaffoldDemoScenarioTests が等号で固定する)。**置き場所がテストターゲットなので swift test がコンパイルする**
 // = 雛形に廃止した書き方が残ると、受け手の最初のビルドより先にここで落ちる。雛形を変えたらここも貼り替える
 // (貼り付け用の全文はテストの失敗メッセージが出す)。
@@ -12,7 +12,8 @@ import FTDSL
 // app: 対象アプリの bundle ID / package name。プロファイル
 // (profiles/apps/*.json)とは独立にここで指定する。
 // platform: を書くとその OS でだけ実行される(省略時は両方)。
-@TestClass(app: "com.example.scaffoldfixture")
+@TestClass(app: "com.example.myapp")
+@Draft("app: が仮の ID のまま。自分のアプリの ID に直すか app: を消して実行プロファイルに従わせてから、この行を消す")
 class デモ {
 
     @Test("アプリが起動して前面に出る")
@@ -23,7 +24,7 @@ class デモ {
                 condition {
                     launchApp()
                 }.expectation {
-                    appIs("com.example.scaffoldfixture")
+                    appIs("com.example.myapp")
                     screenshot("起動直後")
                 }
             }

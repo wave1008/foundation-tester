@@ -10,9 +10,9 @@ fleetest を長く使っていると、ディスクに溜まるものや、macOS
 
 | 対象 | 処理 | 詳細 |
 |---|---|---|
-| 録画・レポート・ログ・ブリッジ診断ログ | テストが終わると裏で、上限の 90% を超えたカテゴリを古いものから削除します | [VSCode 拡張](../tools/vscode_extension_ja.md)の「ログ・録画のクリーンアップ」 |
-| iOS Simulator の壁紙キャッシュ・診断ログ・ニュースのウィジェットの控え | fleetest が Simulator を起動する直前に削除します(停止しているデバイスだけ) | [VSCode 拡張](../tools/vscode_extension_ja.md)の「iOS Simulator の壁紙キャッシュ(CLI のみ)」 |
-| Android エミュレータのデータ | テストの開始時に、データがしきい値(既定 8GB)を超えていれば Wipe Data します。アプリのインストールが容量不足で失敗したときも Wipe Data して入れ直します | [実行プロファイルの設定項目](../project/run_profile_ja.md)の `wipeDataOnBloat` |
+| 録画・レポート・ログ・ブリッジ診断ログ | テストが終わると裏で、上限の 90% を超えたカテゴリを古いものから削除します | [VSCode 拡張](../reference/tools/vscode_extension_ja.md)の「ログ・録画のクリーンアップ」 |
+| iOS Simulator の壁紙キャッシュ・診断ログ・ニュースのウィジェットの控え | fleetest が Simulator を起動する直前に削除します(停止しているデバイスだけ) | [VSCode 拡張](../reference/tools/vscode_extension_ja.md)の「iOS Simulator の壁紙キャッシュ(CLI のみ)」 |
+| Android エミュレータのデータ | テストの開始時に、データがしきい値(既定 8GB)を超えていれば Wipe Data します。アプリのインストールが容量不足で失敗したときも Wipe Data して入れ直します | [実行プロファイルの設定項目](../reference/project/run_profile_ja.md)の `wipeDataOnBloat` |
 | デバイス側のブリッジ | fleetest の版が変わると、次に使うときに入れ直し・作り直しをします | — |
 | 応答しなくなったブリッジ | 拡張が検出すると、テストが走っていない間に自動で修復を試みます(設定 `fleetest.autoRepairBridge`、既定 ON) | — |
 | 更新の確認 | 拡張が1日1回確認して通知します(取り込みはしません) | [はじめに](../getting-started_ja.md)の「Fleetest の更新」 |
@@ -89,12 +89,12 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 ### 画像の見本
 
 `findImage` などで使う画像の見本は、OS の版ごとに見え方が変わります。テストに使う端末の OS を更新したら、
-新しい OS で見本を採り足してください([画像で探す](../commands/find_image_ja.md))。
+新しい OS で見本を採り足してください([画像で探す](../reference/commands/find_image_ja.md))。
 
 ### 自己修復の提案
 
 自己修復を使っている場合は、テストのあとに出る修正の提案を確認して適用してください
-([自己修復](../running/self_healing_ja.md))。fleetest はシナリオのソースを自動では書き換えないので、
+([自己修復](../reference/running/self_healing_ja.md))。fleetest はシナリオのソースを自動では書き換えないので、
 適用するまでは、実行のたびに同じ提案が出続けます。
 
 ### Link

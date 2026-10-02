@@ -80,7 +80,7 @@ clone 構成では受け手の CLAUDE.md は**クローン自身の追跡ファ�
 エージェント固有の分岐になり、**Swift・install.sh・install-skill.sh・update.sh の4箇所へ
 手で写す**ことになる。中核はどれもエージェント固有ではない(機械作業 = インストーラ /
 `ft_*` = 標準の stdio MCP サーバ / runbook = ツール中立の markdown)ので、案内を
-docs/user-docs/tools/other_agents に集約する形に寄せた。経緯と表は docs/design.md §15。
+docs/user-docs/reference/tools/other_agents に集約する形に寄せた。経緯と表は docs/design.md §15。
 
 受け手のグローバル設定へ1バイトも書かないのは、そこがセキュリティ境界であることに加え、
 **TOML は同じテーブルの重複でファイル全体が無効になる**ため。

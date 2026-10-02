@@ -31,7 +31,7 @@ struct ProjectCommand: AsyncParsableCommand {
         var name: String
 
         @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
-        var appID: String = "com.example.myapp"
+        var appID: String = ProjectScaffold.placeholderAppID
 
         @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
         var platform: String = "both"

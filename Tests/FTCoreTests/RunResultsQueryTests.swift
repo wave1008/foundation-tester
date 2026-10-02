@@ -657,7 +657,7 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(row?.count, 2)
         XCTAssertTrue(row?.message.contains("vs 0 assertion failure(s)") ?? false)
         // 「環境要因の失敗」を主張しない(記録された経路を数えているだけ)。
-        // docs/user-docs/running/results_analysis.md の注記と揃える
+        // docs/user-docs/reference/running/results_analysis.md の注記と揃える
         XCTAssertFalse(row?.message.contains("infrastructure-caused") ?? true,
                        "原因を断定する文言を戻していないか")
     }

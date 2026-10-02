@@ -7,16 +7,19 @@ distributed across a **fleet** of devices to shorten the wall-clock time, replay
 because ordinary playback never waits on LLM inference, and it is **free** of cloud device farms
 and per-run API billing. See [What is fleetest?](overview/about.md).
 
-fleetest is an E2E test tool for iOS / Android apps on macOS. Scenarios are written in a
-Shirates-style Swift DSL and replayed deterministically — ordinary playback uses no LLM.
-Foundation Models (on-device) are used only for a few specific features: visual verification with
-`screenLooksLike` and occlusion-guard's text visual verification. Self-healing of broken selectors is
-deterministic (locator fingerprint matching) and does not use FM. Tests can
-be authored by an agent (MCP), recorded from the VSCode extension, or written by hand — all
-three produce the same `.swift` scenarios. On iOS it runs on a **hybrid engine**: a bridge
-injected into the app drives it fast, and only operations that can be reached solely from outside
-the app are routed to XCUITest automatically — so your scenarios never name a path and your app
-needs no changes ([details](overview/about.md)).
+fleetest is an E2E test tool for iOS / Android apps on macOS. **You normally use it by asking an AI
+assistant such as Claude Code in natural language** — creating tests, running them, investigating failures
+and keeping tests up with app changes can all be left to it, and you never need to handle the test code or
+the MCP tools directly. If you are new, start with the [Quick start](quick-start.md), then go on to the
+[Tutorial](#tutorial).
+
+The tests the AI assistant creates are scenarios in a Shirates-style Swift DSL, replayed
+deterministically — ordinary playback uses no LLM. Foundation Models (on-device) are used only for a few
+specific features: visual verification with `screenLooksLike` and text visual verification.
+Self-healing of broken selectors is deterministic (locator fingerprint matching) and does not use FM.
+On iOS it runs on a **hybrid engine**: a bridge injected into the app drives it fast, and only operations
+that can be reached solely from outside the app are routed to XCUITest automatically — so your scenarios
+never name a path and your app needs no changes ([details](overview/about.md)).
 
 ## Repository
 
@@ -30,104 +33,20 @@ needs no changes ([details](overview/about.md)).
 - [Quick start](quick-start.md)
 - [For Shirates users](overview/for_shirates_users.md)
 
-## Tutorial (Basic)
+## Tutorial
 
-### Creating project
+How to use fleetest by asking an AI assistant in natural language. No programming knowledge is needed.
 
-- [Creating a test project](project/creating_project.md)
-- [Profiles (app / run)](project/profiles.md)
-- [Run profile settings](project/run_profile.md)
+- [Asking the AI assistant](tutorial/asking_ai.md)
+- [Preparing the app and devices](tutorial/preparing_app_and_devices.md)
+- [Creating tests](tutorial/creating_tests.md)
+- [Running tests](tutorial/running_tests.md)
+- [Reading results and investigating failures](tutorial/investigating_failures.md)
+- [Keeping tests up with app changes](tutorial/keeping_up_with_app_changes.md)
+- [Watching in VSCode](tutorial/watching_in_vscode.md)
 
-### Creating TestClass
+## Operations
 
-- [Creating a TestClass](testclass/creating_testclass.md)
-- [Select and assert](testclass/select_and_assert.md)
-- [How text visual verification decides](testclass/text_visual_check.md)
-- [Test code structure](testclass/testcode_structure.md)
-- [Custom commands](testclass/custom_commands.md)
-- [Test result files](testclass/test_result_files.md)
-
-### Selector
-
-- [Selector expression](selector/selector_expression.md)
-- [Relative selector and scope](selector/relative_selector.md)
-- [Typed selector (Sel)](selector/typed_selector.md)
-- [Elements inside WebView](selector/webview.md)
-
-### Function/Property
-
-- Tap element
-    - [tap, tapAppIcon](commands/tap.md)
-- Select element
-    - [select, lastElement](commands/select.md)
-    - [Find by image (findImage, findImages, existImage)](commands/find_image.md)
-- Install and launch app
-    - [installApp, removeApp, clearAppData](commands/install_app.md)
-    - [launchApp, restartApp, terminateApp, openURL](commands/launch_app.md)
-- Navigation
-    - [home, back, appSwitcher, rotateTo](commands/navigation.md)
-- Swipe/Scroll screen
-    - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](commands/swipe.md)
-    - [scroll (scrollTo, scrollDown, withScrollDown, scrollFrame, ...)](commands/scroll.md)
-    - [flick](commands/flick.md)
-    - [Gestures for maps and canvases (doubleTap, pinchIn, pinchOut, gesture, hold)](commands/gestures.md)
-- Editing and keyboard operations
-    - [type](commands/type.md)
-    - [clearInput](commands/clear_input.md)
-    - [pressEnter, hideKeyboard](commands/press_enter_hide_keyboard.md)
-- Asserting existence
-    - [exist, notExist, countIs](commands/existence_assertion.md)
-- Asserting attribute
-    - [Text assertion (textIs, textContains, ...)](commands/text_assertion.md)
-    - [Value assertion (valueIs, valueContains, ...)](commands/value_assertion.md)
-    - [id assertion (idIs)](commands/id_assertion.md)
-    - [State assertion (enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF)](commands/state_assertion.md)
-    - [Image assertion (imageIs)](commands/image_assertion.md)
-- Asserting others
-    - [Keyboard assertion (keyboardIsShown, keyboardIsNotShown)](commands/keyboard_assertion.md)
-    - [Screen assertion (screenLooksLike)](commands/screen_assertion.md)
-    - [App assertion (appIs)](commands/app_assertion.md)
-- Asserting any value
-    - [Any value assertion (thisIs, thisContains, ...)](commands/any_value_assertion.md)
-- Asserting anything
-    - [Anything assertion (verify)](commands/verify.md)
-- Reading values
-    - [Reading values of the grabbed element (.text, .value, .id, lastElement)](commands/reading_values.md)
-- Branch
-    - [ifCanSelect, ios, android](commands/branch.md)
-- Repeating action
-    - [repeatWhileCanSelect, doUntilTrue](commands/repeat.md)
-- Syncing
-    - [wait, waitForDisplay, waitForClose](commands/wait.md)
-- Descriptor
-    - [group, procedure, setUp, tearDown](commands/descriptors.md)
-- Screenshot
-    - [screenshot](commands/screenshot.md)
-- Handling irregulars
-    - [irregularHandler](commands/irregular_handler.md)
-    - [suppressHandler, useHandler, disableHandler, enableHandler](commands/suppress_handler.md)
-    - [iOS system alerts (iosAlertHandler)](commands/ios_alert_handler.md)
-
-### Running
-
-- [Running scenarios (fleetest run)](running/running_scenarios.md)
-- [dry-run (No-Load-Run)](running/dry_run.md)
-- [Self-healing](running/self_healing.md)
-- [Parallel execution](running/parallel_execution.md)
-- [Analysing results (fleetest results, dashboard)](running/results_analysis.md)
-
-### Tools
-
-- [VSCode extension](tools/vscode_extension.md)
-- [MCP server](tools/mcp_server.md)
-- [Claude Code skills](tools/claude_code_skills.md)
-- [Other agents](tools/other_agents.md)
-- [Agent guide](tools/agent_guide.md)
-
-## Tutorial (In action)
-
-- [Writing robust scenarios](in_action/writing_robust_scenarios.md)
-- [UI component patterns and quirks](in_action/ui_component_patterns.md)
 - [Running on CI](in_action/ci.md)
 - [Remote runners](in_action/remote_runners.md)
 - [Setting up a remote runner](in_action/remote_runner_setup.md)
@@ -136,6 +55,108 @@ needs no changes ([details](overview/about.md)).
 - [Maintenance for long-term use](in_action/maintenance.md)
 
 ## Reference
+
+The specification of scenarios (Swift DSL), the CLI and MCP. Use it when you want to read the
+scenarios the AI assistant wrote, or to write some yourself.
+
+### Projects and profiles
+
+- [Creating a test project](reference/project/creating_project.md)
+- [Profiles (app / run)](reference/project/profiles.md)
+- [Run profile settings](reference/project/run_profile.md)
+
+### Creating TestClass
+
+- [Creating a TestClass](reference/testclass/creating_testclass.md)
+- [Select and assert](reference/testclass/select_and_assert.md)
+- [How text visual verification decides](reference/testclass/text_visual_check.md)
+- [Test code structure](reference/testclass/testcode_structure.md)
+- [Custom commands](reference/testclass/custom_commands.md)
+- [Test result files](reference/testclass/test_result_files.md)
+
+### Selector
+
+- [Selector expression](reference/selector/selector_expression.md)
+- [Relative selector and scope](reference/selector/relative_selector.md)
+- [Typed selector (Sel)](reference/selector/typed_selector.md)
+- [Elements inside WebView](reference/selector/webview.md)
+
+### Function/Property
+
+- Tap element
+    - [tap, tapAppIcon](reference/commands/tap.md)
+- Select element
+    - [select, lastElement](reference/commands/select.md)
+    - [Find by image (findImage, findImages, existImage)](reference/commands/find_image.md)
+- Install and launch app
+    - [installApp, removeApp, clearAppData](reference/commands/install_app.md)
+    - [launchApp, restartApp, terminateApp, openURL](reference/commands/launch_app.md)
+- Navigation
+    - [home, back, appSwitcher, rotateTo](reference/commands/navigation.md)
+- Swipe/Scroll screen
+    - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](reference/commands/swipe.md)
+    - [scroll (scrollTo, scrollDown, withScrollDown, scrollFrame, ...)](reference/commands/scroll.md)
+    - [flick](reference/commands/flick.md)
+    - [Gestures for maps and canvases (doubleTap, pinchIn, pinchOut, gesture, hold)](reference/commands/gestures.md)
+- Editing and keyboard operations
+    - [type](reference/commands/type.md)
+    - [clearInput](reference/commands/clear_input.md)
+    - [pressEnter, hideKeyboard](reference/commands/press_enter_hide_keyboard.md)
+- Asserting existence
+    - [exist, notExist, countIs](reference/commands/existence_assertion.md)
+- Asserting attribute
+    - [Text assertion (textIs, textContains, ...)](reference/commands/text_assertion.md)
+    - [Value assertion (valueIs, valueContains, ...)](reference/commands/value_assertion.md)
+    - [id assertion (idIs)](reference/commands/id_assertion.md)
+    - [State assertion (enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF)](reference/commands/state_assertion.md)
+    - [Image assertion (imageIs)](reference/commands/image_assertion.md)
+- Asserting others
+    - [Keyboard assertion (keyboardIsShown, keyboardIsNotShown)](reference/commands/keyboard_assertion.md)
+    - [Screen assertion (screenLooksLike)](reference/commands/screen_assertion.md)
+    - [App assertion (appIs)](reference/commands/app_assertion.md)
+- Asserting any value
+    - [Any value assertion (thisIs, thisContains, ...)](reference/commands/any_value_assertion.md)
+- Asserting anything
+    - [Anything assertion (verify)](reference/commands/verify.md)
+- Reading values
+    - [Reading values of the grabbed element (.text, .value, .id, lastElement)](reference/commands/reading_values.md)
+- Branch
+    - [ifCanSelect, ios, android](reference/commands/branch.md)
+- Repeating action
+    - [repeatWhileCanSelect, doUntilTrue](reference/commands/repeat.md)
+- Syncing
+    - [wait, waitForDisplay, waitForClose](reference/commands/wait.md)
+- Descriptor
+    - [group, procedure, setUp, tearDown](reference/commands/descriptors.md)
+- Screenshot
+    - [screenshot](reference/commands/screenshot.md)
+- Handling irregulars
+    - [irregularHandler](reference/commands/irregular_handler.md)
+    - [suppressHandler, useHandler, disableHandler, enableHandler](reference/commands/suppress_handler.md)
+    - [iOS system alerts (iosAlertHandler)](reference/commands/ios_alert_handler.md)
+
+### Running
+
+- [Running scenarios (fleetest run)](reference/running/running_scenarios.md)
+- [dry-run (No-Load-Run)](reference/running/dry_run.md)
+- [Self-healing](reference/running/self_healing.md)
+- [Parallel execution](reference/running/parallel_execution.md)
+- [Analysing results (fleetest results, dashboard)](reference/running/results_analysis.md)
+
+### Tools
+
+- [VSCode extension](reference/tools/vscode_extension.md)
+- [MCP server](reference/tools/mcp_server.md)
+- [Claude Code skills](reference/tools/claude_code_skills.md)
+- [Other agents](reference/tools/other_agents.md)
+- [Agent guide](reference/tools/agent_guide.md)
+
+### Writing scenarios
+
+- [Writing robust scenarios](reference/writing/writing_robust_scenarios.md)
+- [UI component patterns and quirks](reference/writing/ui_component_patterns.md)
+
+### Specifications
 
 - [DSL command reference (Japanese)](../commands.md)
 - [Results JSON schema (Japanese)](../results-json.md)

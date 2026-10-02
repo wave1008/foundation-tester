@@ -75,7 +75,7 @@ pipeline {
 - **1台の Mac で同時に走る実行は1本です。** 同じエージェントで2本目の `fleetest run` は開始せず、
   `another fleetest run is already running on this Mac` で止まります。同じエージェントを使う
   ジョブが重ならないようにするか、失敗させずに順番待ちさせる `--wait-lock <秒>` を付けてください
-  ([並列実行](../running/parallel_execution_ja.md)参照)。
+  ([並列実行](../reference/running/parallel_execution_ja.md)参照)。
 
 ## flaky シナリオの扱い(リトライ機構は意図的に無い)
 

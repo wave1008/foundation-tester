@@ -8,7 +8,7 @@
 //
 // **インストーラが規約位置を用意するのは Claude Code だけ**(Codex を含む他のエージェントは
 // 標準の stdio MCP サーバ + ツール中立の SKILL.md を自前の設定で読む = 規約位置を持たない。
-// docs/user-docs/tools/other_agents.md)。エージェント判定の分岐をここへ戻さない ——
+// docs/user-docs/reference/tools/other_agents.md)。エージェント判定の分岐をここへ戻さない ——
 // 判定できない相手に「等価物」を捏造すると、書いた場所と読む場所が食い違ったまま
 // **どちらも「正しく動く」**ので失敗が沈黙する。
 

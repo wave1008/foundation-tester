@@ -158,7 +158,7 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 - Codex の場合、**プロジェクトスコープの `.codex/config.toml` は使わない**。あれは
   `~/.codex/config.toml` 側でそのプロジェクトが trusted のときしか読まれないため、書いても
   **黙って効かない**状態を作れてしまう。
-- 案内の全体像は docs/user-docs/tools/other_agents_ja.md。
+- 案内の全体像は docs/user-docs/reference/tools/other_agents_ja.md。
 
 #### サンドボックスの確認(Codex)
 

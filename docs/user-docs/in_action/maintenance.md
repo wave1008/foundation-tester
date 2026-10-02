@@ -10,9 +10,9 @@ You don't need to do anything for these.
 
 | What | What happens | Details |
 |---|---|---|
-| Recordings, reports, logs, bridge diagnostic logs | After a test run finishes, any category above 90% of its limit is trimmed in the background, oldest first | "Cleaning Up Logs and Recordings" in [VSCode extension](../tools/vscode_extension.md) |
-| iOS Simulator wallpaper cache, diagnostic logs, and the News widget's saved items | Removed right before fleetest boots a Simulator (only Simulators that are stopped) | "iOS Simulator wallpaper cache (CLI only)" in [VSCode extension](../tools/vscode_extension.md) |
-| Android emulator data | At the start of a test run, the emulator gets a Wipe Data if its data is over the threshold (8 GB by default). It also gets a Wipe Data, followed by one more install attempt, when installing the app fails because the device is out of storage | `wipeDataOnBloat` in [Run profile settings](../project/run_profile.md) |
+| Recordings, reports, logs, bridge diagnostic logs | After a test run finishes, any category above 90% of its limit is trimmed in the background, oldest first | "Cleaning Up Logs and Recordings" in [VSCode extension](../reference/tools/vscode_extension.md) |
+| iOS Simulator wallpaper cache, diagnostic logs, and the News widget's saved items | Removed right before fleetest boots a Simulator (only Simulators that are stopped) | "iOS Simulator wallpaper cache (CLI only)" in [VSCode extension](../reference/tools/vscode_extension.md) |
+| Android emulator data | At the start of a test run, the emulator gets a Wipe Data if its data is over the threshold (8 GB by default). It also gets a Wipe Data, followed by one more install attempt, when installing the app fails because the device is out of storage | `wipeDataOnBloat` in [Run profile settings](../reference/project/run_profile.md) |
 | Bridges on the devices | When the fleetest version changes, they are reinstalled or rebuilt the next time they are used | — |
 | Bridges that stop responding | When the extension detects one, it tries to repair it while no test is running (setting `fleetest.autoRepairBridge`, on by default) | — |
 | Update checks | The extension checks once a day and notifies you (it never pulls anything by itself) | "Updating Fleetest" in [Getting started](../getting-started.md) |
@@ -94,12 +94,12 @@ space with `fleetest remote status`. `remote clean` stops if a test is running.
 
 The image samples you use with `findImage` and the like look different on each OS version. When you
 update the OS of a device you test on, add samples taken on the new OS
-([Finding by image](../commands/find_image.md)).
+([Finding by image](../reference/commands/find_image.md)).
 
 ### Self-healing suggestions
 
 If you use self-healing, review the fix suggestions that appear after a test run and apply them
-([Self-healing](../running/self_healing.md)). fleetest never rewrites your scenario source by itself, so
+([Self-healing](../reference/running/self_healing.md)). fleetest never rewrites your scenario source by itself, so
 the same suggestions keep appearing on every run until you apply them.
 
 ### Link

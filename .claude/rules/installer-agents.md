@@ -24,7 +24,7 @@ paths:
   - "Tests/FTCoreTests/SelectorInventoryTests.swift"
   - "Tests/FTCoreTests/ToolchainFingerprintTests.swift"
   - "docs/user-docs/getting-started*.md"
-  - "docs/user-docs/tools/other_agents*.md"
+  - "docs/user-docs/reference/tools/other_agents*.md"
   - "vscode-fleetest/src/monitorUpdateController.ts"
   - "vscode-fleetest/src/toolRootResolve.ts"
   - "vscode-fleetest/src/updateCheck.ts"
@@ -103,7 +103,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   - **runbook 本体(`.claude/skills/<name>/SKILL.md`)は複製しない** —— Claude Code へは
     規約位置から正典を参照する薄いアダプタ(`.claude-plugin/`)だけを置く
   - **他のエージェント(Codex・Cline 等)向けの分岐をコードに戻さない**。案内は
-    **docs/user-docs/tools/other_agents(.md/_ja.md) の1箇所**に集約する → maintainer-notes §2.1
+    **docs/user-docs/reference/tools/other_agents(.md/_ja.md) の1箇所**に集約する → maintainer-notes §2.1
   - **受け手のグローバル設定(`~/.codex/config.toml` 等)には1バイトも書かない**
     (`agentIntegration.test.mjs` / `agentAdapters.test.mjs` が落とす)
   - **正典をシンボリックリンクの側へ移さない** → maintainer-notes §2.4。

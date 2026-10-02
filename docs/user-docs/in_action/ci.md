@@ -77,7 +77,7 @@ pipeline {
 - **One run at a time per Mac.** A second `fleetest run` on the same agent does not start — it
   stops with `another fleetest run is already running on this Mac`. Either keep jobs that share an
   agent from overlapping, or add `--wait-lock <seconds>` so the second one queues instead of
-  failing (see [Parallel execution](../running/parallel_execution.md)).
+  failing (see [Parallel execution](../reference/running/parallel_execution.md)).
 
 ## Flaky scenarios (no retry mechanism, by design)
 
