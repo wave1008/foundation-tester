@@ -17,7 +17,7 @@ The agent drives the clone and the build, so there is little to do by hand.
 
 The Foundation Models features (visual verification, screen-description checks) are experimental
 and require macOS 27+. Self-healing (locator fingerprint matching) does not use FM and works on
-any supported macOS. Details in [Requirements](overview/environments.md).
+any supported macOS. Details in [Environment](overview/environments.md).
 
 ## 2. Before you start
 

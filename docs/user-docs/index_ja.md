@@ -26,7 +26,7 @@ FM を使いません。iOS は**ハイブリッドエンジン**で動きます
 ## 概要
 
 - [fleetest とは](overview/about_ja.md)
-- [動作環境](overview/environments_ja.md)
+- [環境](overview/environments_ja.md)
 - [はじめに(インストール)](getting-started_ja.md)
 - [クイックスタート](quick-start_ja.md)
 - [Shirates 利用者向けの対応表](overview/for_shirates_users_ja.md)

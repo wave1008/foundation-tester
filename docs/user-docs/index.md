@@ -28,7 +28,7 @@ never name a path and your app needs no changes ([details](overview/about.md)).
 ## Overview
 
 - [What is fleetest?](overview/about.md)
-- [Environments](overview/environments.md)
+- [Environment](overview/environments.md)
 - [Getting Started (Installation)](getting-started.md)
 - [Quick start](quick-start.md)
 - [For Shirates users](overview/for_shirates_users.md)
