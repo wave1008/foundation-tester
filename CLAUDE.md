@@ -19,7 +19,7 @@
   `index_ja.md`。1ページ = `<name>.md`(英)+ `<name>_ja.md`(日)で**片方だけ変えない**
   (`userDocsIntegrity.test.mjs` が対の欠落・切れたリンク・言語の混線・index 未掲載を検出)。
   DSL の挙動を変えたら docs/commands.md と併せて該当ページも直す
-- 受け手向けの導入(事前準備・インストール・更新・アンインストールだけ): docs/user-docs/getting-started_ja.md
+- 受け手向けの導入(事前準備・インストールだけ): docs/user-docs/getting-started_ja.md。更新は docs/user-docs/update_ja.md・アンインストールは docs/user-docs/uninstall_ja.md
 - DSL コマンドリファレンス(全コマンドの引数・挙動): docs/commands.md
 - CI 連携(`fleetest run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行。**受け手の配布口は main の1本**で版固定の導線は案内しない。

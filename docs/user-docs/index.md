@@ -31,11 +31,8 @@ never name a path and your app needs no changes ([details](overview/about.md)).
 - [Environment](overview/environments.md)
 - [Getting Started (Installation)](getting-started.md)
 - [Quick start](quick-start.md)
-- [For Shirates users](overview/for_shirates_users.md)
 
 ## Tutorial
-
-How to use fleetest by asking an AI assistant in natural language. No programming knowledge is needed.
 
 - [Asking the AI assistant](tutorial/asking_ai.md)
 - [Preparing the app and devices](tutorial/preparing_app_and_devices.md)
@@ -47,6 +44,8 @@ How to use fleetest by asking an AI assistant in natural language. No programmin
 
 ## Operations
 
+- [Update](update.md)
+- [Uninstall](uninstall.md)
 - [Running on CI](in_action/ci.md)
 - [Remote runners](in_action/remote_runners.md)
 - [Setting up a remote runner](in_action/remote_runner_setup.md)
@@ -160,3 +159,4 @@ scenarios the AI assistant wrote, or to write some yourself.
 
 - [DSL command reference (Japanese)](../commands.md)
 - [Results JSON schema (Japanese)](../results-json.md)
+- [For Shirates users](overview/for_shirates_users.md)

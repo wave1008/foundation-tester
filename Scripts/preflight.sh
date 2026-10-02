@@ -408,7 +408,7 @@ case "$verdict" in
   installed)
     say "ℹ️ Already installed (external-package layout). Do not run setup again."
     say "   Update → /fleetest-update / add profiles → /fleetest-profiles / scenarios → /fleetest-scenario"
-    say "   To reinstall, uninstall first (docs/user-docs/getting-started.md, the uninstall section)."
+    say "   To reinstall, uninstall first (docs/user-docs/uninstall.md)."
     say "   See projects= / mcp_registered= / vscode_extension= above for what already exists."
     exit 2 ;;
   *)

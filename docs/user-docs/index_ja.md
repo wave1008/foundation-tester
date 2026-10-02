@@ -29,11 +29,8 @@ FM を使いません。iOS は**ハイブリッドエンジン**で動きます
 - [環境](overview/environments_ja.md)
 - [はじめに(インストール)](getting-started_ja.md)
 - [クイックスタート](quick-start_ja.md)
-- [Shirates 利用者向けの対応表](overview/for_shirates_users_ja.md)
 
 ## チュートリアル
-
-AIアシスタントに自然言語で頼んで使う流れです。プログラミングの知識は要りません。
 
 - [AIアシスタントへの頼み方](tutorial/asking_ai_ja.md)
 - [アプリとデバイスを用意する](tutorial/preparing_app_and_devices_ja.md)
@@ -45,6 +42,8 @@ AIアシスタントに自然言語で頼んで使う流れです。プログラ
 
 ## 運用
 
+- [更新](update_ja.md)
+- [アンインストール](uninstall_ja.md)
 - [CI で回す](in_action/ci_ja.md)
 - [リモートランナー](in_action/remote_runners_ja.md)
 - [リモートランナーのセットアップ](in_action/remote_runner_setup_ja.md)
@@ -158,3 +157,4 @@ AIアシスタントに自然言語で頼んで使う流れです。プログラ
 
 - [DSL コマンドリファレンス](../commands.md)
 - [結果 JSON のスキーマ](../results-json.md)
+- [Shirates 利用者向けの対応表](overview/for_shirates_users_ja.md)

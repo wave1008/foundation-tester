@@ -87,7 +87,7 @@ bash <SCRIPTS>/preflight.sh
   - デバイス・アプリ・実行プロファイルの追加 → `/fleetest-profiles`
   - シナリオの作成 → `/fleetest-scenario`
   - **再インストール**(clone 先の変更・導入のやり直し)→ **まずアンインストールを 🧑 に案内**し、
-    完了を確認してから `/fleetest-setup` を再実行する。手順は docs/user-docs/getting-started_ja.md「アンインストール」
+    完了を確認してから `/fleetest-setup` を再実行する。手順は docs/user-docs/uninstall_ja.md
     (3層+ WORK_DIR 側の生成物削除。`TestProjects/` は資産なので残してよい)。アンインストール前に
     セットアップを続行しない。`Package.swift` 等の部分的な書き換えで済まさない(1箇所でも残すと
     旧 clone と新 clone に分裂し、更新が旧側に当たり続ける)
@@ -300,7 +300,7 @@ products 未宣言でも `swift build --product fleetest-mcp` は暗黙 product 
   2. WORK_DIR の `.mcp.json` に次の `fleetest` サーバを書く（既存 `.mcp.json` があれば
      `mcpServers.fleetest` キーは**この TOOL_ROOT の値で上書き**し、他のサーバは温存する。
      既存の `fleetest` が**別のパス**を指していたら、上書きした旨と旧パスを 🧑 に報告する —
-     旧 clone を残すと clone 先が分裂するため。不要なら削除は getting-started「アンインストール」）。
+     旧 clone を残すと clone 先が分裂するため。不要なら削除は docs/user-docs/uninstall_ja.md）。
      `<ABS_TOOL_ROOT>` は 1 の実値に置換（パスに空白があっても壊れないよう引用符は保持）:
 
 ```json
@@ -474,4 +474,4 @@ clone 構成では既定 `.build/debug/fleetest` のままでよい）。プロ�
 外部パッケージ構成では、以後の `/fleetest-setup`(環境検証・プロジェクトとプロファイルの作成案内・動作確認)は `fleetest init` が
 WORK_DIR に置いた**受け手専用スキル**が担う。更新（新しい修正版が出たとき）は `/fleetest-update` を使う
 （TOOL_ROOT で git pull → swift build 再ビルド → 依存版を揃える → 拡張再インストール → Reload Window）。
-手動手順は docs/user-docs/getting-started_ja.md「更新」。
+手動手順は docs/user-docs/update_ja.md。

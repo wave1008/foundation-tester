@@ -1,20 +1,12 @@
 # Quick Start
 
 The shortest path from a completed setup to creating test scenarios for a sample app and running
-them. You do not write scenarios by hand. If you don't have a work folder with `TestProjects/`
-yet, install Fleetest by following [Getting Started](getting-started.md) first.
-
-> **With Codex**: during steps 1 and 2, Codex may ask whether it can run a command outside its
-> sandbox (cloning into the neighbouring folder, driving the Simulators). Allow it. From step 3 on,
-> `ft_*` runs inside the MCP server, so no such prompt appears. See
-> [Other agents](reference/tools/other_agents.md) for registering the MCP server and setting its approvals.
+them. You do not write scenarios by hand.
 
 ## 1. Prepare the sample app
 
 The app under test is [sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile), a sample
-e-commerce shopping app (Compose Multiplatform, for both iOS and Android). Download it next to your
-work folder and build it. The app fetches its products and images from a server, so start the
-server as well.
+e-commerce shopping app (Compose Multiplatform, for both iOS and Android).
 
 ### Do it with the AI assistant
 
@@ -64,8 +56,7 @@ See `server/README.md` in sut-ec-mobile for the details of starting the server.
 
 ## 2. Prepare the profiles
 
-A run needs two profiles — an app profile for the target app, and a run profile that lists the
-devices to use. The app ID is `com.sutec.mobile` on both iOS and Android.
+Create the app profile and the run profile.
 
 ### Do it with the AI assistant
 
@@ -110,9 +101,7 @@ See [Profiles](./reference/project/profiles.md) for the details.
 
 ## 3. Create the test scenarios
 
-Either way, you get Swift files under `TestProjects/<project>/scenarios/`, with selectors taken
-from the real screens. To read what was written, see
-[Selector Expression](./reference/selector/selector_expression.md).
+Let's create exploratory tests for the login screen.
 
 ### Do it with the AI assistant
 
@@ -121,47 +110,21 @@ Create exploratory tests for the login screen of sut-ec-mobile (SUT Store) only.
 ```
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
-operating it, and turns the behavior it finds into test scenarios. To target a different screen,
-replace the screen name. Saying which of iOS or Android to explore on makes it certain (for example
+operating it, and turns the behavior it finds into test scenarios.
+Saying which of iOS or Android to explore on makes it certain (for example
 "... for the login screen of sut-ec-mobile (SUT Store) only, on Android.").
 
-<details>
-<summary><b>Do it manually (click to show details)</b></summary>
+## 4. Run it on a device
 
-Open the VSCode extension's device monitor and record in the Live Control tab. Operate the app
-shown on screen, and what you did is generated as a scenario.
-
-</details>
-
-## 4. Verify without a device (dry-run)
-
-Before touching a device, run a dry-run. It catches selector syntax errors, unreachable scenes,
-and `expectation` blocks with no assertions, in a few seconds.
+Let's run the test scenarios you created.
 
 ### Do it with the AI assistant
 
 ```text
-Verify the scenarios you created with a dry-run
+Run the scenarios you created on iOS
 ```
 
-<details>
-<summary><b>Do it manually (click to show details)</b></summary>
-
-```bash
-fleetest run --dry-run
-```
-
-</details>
-
-## 5. Run it on a device
-
-### Do it with the AI assistant
-
-```text
-Run the scenarios you created with the ios profile
-```
-
-For scenarios created on Android, name the `android` profile instead.
+For scenarios created on Android, ask "Run them on Android" instead.
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
@@ -182,11 +145,11 @@ From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
 
 </details>
 
-## 6. Read the results
+## 5. Read the results
 
-Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`, pass or
-fail. It contains the result of each step with screenshots, and on failure the failure message,
-the element list at the point of failure, and any self-healing suggestions.
+Every run writes a Markdown report per scenario to `TestProjects/<project>/reports/`.
+
+Let's summarize the reports and analyze the errors.
 
 ### Do it with the AI assistant
 
@@ -201,10 +164,6 @@ Open the report in `reports/`. In VSCode, the Test Explorer shows pass/fail on e
 can open the report from there.
 
 </details>
-
-## What to read next
-
-How to ask for the same steps against your own app is covered in the [Tutorial](tutorial/asking_ai.md).
 
 ### Link
 - [index](index.md)

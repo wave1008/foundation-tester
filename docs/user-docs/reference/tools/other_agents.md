@@ -40,8 +40,8 @@ copies of the skills). `.mcp.json` can be suppressed with `--skip-mcp`, and the 
 ignore it. For any other agent you register the MCP server in step 2 below (the installer never
 writes to an agent's global settings).
 
-Prerequisites, updates and uninstall are covered in
-[Getting started](../../getting-started.md).
+Prerequisites are covered in [Getting started](../../getting-started.md), updating in
+[Update](../../update.md), and uninstalling in [Uninstall](../../uninstall.md).
 
 ## 2. Register the MCP server
 
