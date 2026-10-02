@@ -270,6 +270,19 @@ fleetest monitor resume
 これで長らく保留だった「**E2E の再キューは環境か実装か**」も**環境**と確定した
 (xcuitest 実行で観測した19件の再キューも同じ機構と見てよい)。
 
+## クラッシュダイアログは回帰スクリプトが止めて戻す(2026-10-03)
+
+`Scripts/e2e.sh` / `e2ex.sh` / `e2e-negative.sh` は実行中だけ macOS の問題レポーター(Simulator のアプリが
+落ちるたびに出る。陽性対照のクラッシュ検知が毎回落とす)を止め、終了時に元の値へ戻す(`Scripts/crash-dialog.sh`)。
+`e2ex.sh --on` は向こうの機械で止める。止めても `.ips` は書かれるのでクラッシュ検知は効く(陽性対照で確認済み)。
+
+- `DialogType` は**書くだけでは効かない** —— ReportCrash を `launchctl kickstart -k gui/$(id -u)/com.apple.ReportCrash`
+  で読み直させる(戻すときも同じ)
+- 同じ機械で重なっても、戻すのは最後に終わったスクリプトだけ(保持者を `~/.fleetest-crash-dialog/holders/<pid>` で数える)
+- **SIGKILL で戻せずに死ぬと、次にどれかを回すまで止まったまま**。手で戻すなら:
+  `defaults delete com.apple.CrashReporter DialogType && launchctl kickstart -k gui/$(id -u)/com.apple.ReportCrash && rm -rf ~/.fleetest-crash-dialog`
+  (元から `DialogType` を設定していたなら `~/.fleetest-crash-dialog/original` の2行目の値を書き戻す)
+
 ## flake・性能の判定規律(1回の結果で断じない)
 
 - **発生率は台帳で出す**: `python3 Scripts/flake-ledger.py`(結果 JSON の全数・デバイス不要・約1秒。
