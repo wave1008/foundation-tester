@@ -268,11 +268,15 @@
   "containerInference": true,
   "heal": true,
   "homeOnStart": true,
-  "iosInappEngine": false,
+  "iosInappEngine": true,
   "record": true,
   "scenarioTimeout": 180,
   "screenLooksLike": true,
   "fmTextOcclusionCheck": true,
   "updateWebView": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "ocrTextOcclusionCheck": true,
+  "preferCheckStateClassifier": true,
+  "iosPreActionWarmup": true,
+  "playProtectBypass": true
 }
