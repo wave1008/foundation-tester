@@ -214,6 +214,14 @@ button.bulk-cancel:hover:not(:disabled) {
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
   box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
 }
+/* テストセッションの「戻る」は見落とされやすいので主ボタンの配色で塗る。 */
+#recordings-back {
+  background-color: var(--vscode-button-background, #0078d4);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+#recordings-back:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground, #026ec1);
+}
 /* .icon-button の正方形 22px 幅ではラベル文字が入らないため width だけ auto にして拡張する。 */
 .icon-button.with-label {
   width: auto;
