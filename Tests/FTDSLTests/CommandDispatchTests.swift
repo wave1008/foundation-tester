@@ -63,7 +63,9 @@ final class CommandDispatchTests: XCTestCase {
                                        frame: FTRect(x: 0, y: 20, width: 10, height: 10), depth: 0)],
                 truncatedCount: 0)
         }
-        func tap(ref: Int) async throws { tapped.append(ref) }
+        /// tap(ref:) の直前に呼ぶ(静止画の録画で「操作の前に撮れているか」を見る用)
+        var onTap: (() -> Void)?
+        func tap(ref: Int) async throws { onTap?(); tapped.append(ref) }
         /// 座標タップ(`tap(x:y:)`)の到達点。ref タップと**別に**記録する ——
         /// 混ぜると「セレクタで解決したのか座標で撃ったのか」を区別できない
         private(set) var tappedPoints: [(x: Double, y: Double)] = []
@@ -1405,5 +1407,39 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(fallback.tappedRefs, [1])
         XCTAssertEqual(typeDriver.homeCount, 0)
         XCTAssertEqual(typeDriver.tappedRefs, [])
+    }
+
+    /// 静止画方式の録画: **最初の操作の直前に1回だけ**撮り、以降は操作の直後だけ撮る。
+    /// 検証だけのステップでは撮らない(最初の操作より前の検証でも「直前の1枚」は撮らない)
+    func testStillFramesCaptureOnceBeforeTheFirstActionThenAfterEachAction() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-stills-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func frameCount() -> Int {
+            ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []).filter { $0.hasSuffix(".png") }.count
+        }
+
+        let driver = RecordingDriver()
+        var framesAtTaps: [Int] = []
+        // 撮影のファイル名はミリ秒の時刻なので、偽のドライバが一瞬で撮ると前後の2枚が同名で上書きされる。
+        // tap で 2ms 進めて分ける(デバイスでは撮影1回に数十 ms かかるので起きない)
+        driver.onTap = { framesAtTaps.append(frameCount()); usleep(2_000) }
+        let core = makeCore(driver: driver)
+        core.stillFrameCapture = StillFrameCapture(dir: dir)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                FTDSL.expectation { exist("#cleanup") }
+                action { tap("#cleanup") }
+                FTDSL.expectation { exist("#cleanup") }
+                action { tap("#cleanup") }
+            }
+        }
+
+        XCTAssertEqual(framesAtTaps, [1, 2], "1回目の tap の前に1枚(直前の分)・2回目の前には1回目の直後の1枚が足されているだけ")
+        XCTAssertEqual(frameCount(), 3, "直前の1枚 + 操作2回の直後の2枚")
     }
 }

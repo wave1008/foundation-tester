@@ -384,6 +384,9 @@ public final class FTDriveCore {
     /// 静止画方式の録画(`--still-frames-dir`)。操作のステップと失敗したステップの直後に1枚撮る
     /// (captureStillFrameIfRecording)。nil なら撮らない
     public var stillFrameCapture: StillFrameCapture?
+    /// 最初の操作の直前の1枚を撮ったか(captureStillFrameBeforeFirstAction)。1シナリオ = 1 FTDriveCore
+    /// なので印はインスタンスに持つ
+    private var capturedBeforeFirstAction = false
     /// DSL の `iosAlertHandler` からの登録(発火したら台帳から外れる。
     /// 規則の意味は FTCore.SystemAlertRule)
     func addSystemAlertRule(_ rule: SystemAlertRule) {
@@ -809,6 +812,7 @@ public final class FTDriveCore {
         StallMeter.shared.startIfNeeded()
         let stallStart = StallMeter.shared.threadStallMilliseconds
         let poolStallStart = StallMeter.shared.poolStallMilliseconds
+        if step.action != nil { captureStillFrameBeforeFirstAction() }
         let outcome = FTSync.run(scheduleDelay: scheduleDelay) {
             await executor.execute(step, fingerprint: cachedFingerprint)
         }
@@ -1153,6 +1157,7 @@ public final class FTDriveCore {
         }
         // 上の一覧のうち、アプリを前面へ出すものだけ(起動の前の絵を控える対象)
         let launches = command == "launchApp" || command == "restartApp"
+        if !isAssertion { captureStillFrameBeforeFirstAction() }
         let clock = ContinuousClock()
         let start = clock.now
         let result = FTSync.runThrowing { [executor, launches] in
@@ -1197,10 +1202,23 @@ public final class FTDriveCore {
     /// (1枚 約 50ms = SE3 実測。ステップごとに払う)。**recordStep の外で呼ぶ** —— recordStep は
     /// stateLock を持ったまま走るので、その中でデバイスを待たない
     private func captureStillFrameIfRecording(changedScreen: Bool, status: StepResult.Status) {
-        guard let stillFrameCapture else { return }
         var failed = false
         if case .failed = status { failed = true }
         guard changedScreen || failed else { return }
+        captureStillFrame()
+    }
+
+    /// 最初の操作の**直前**に1回だけ撮る。撮らないと動画は最初の操作の「後」の絵から始まり、
+    /// 操作する前の画面(起動直後など)が残らない。シナリオ開始時ではなくここで撮るのは、開始から
+    /// 最初の操作までの準備(launch 待ち等)の間の絵より、操作の直前の絵のほうが役に立つため(ユーザー決定)
+    private func captureStillFrameBeforeFirstAction() {
+        guard stillFrameCapture != nil, !capturedBeforeFirstAction else { return }
+        capturedBeforeFirstAction = true
+        captureStillFrame()
+    }
+
+    private func captureStillFrame() {
+        guard let stillFrameCapture else { return }
         let driver = self.driver
         let requestedAt = Date()
         guard let png = FTSync.run({ try? await driver.screenshot() }) ?? nil else { return }

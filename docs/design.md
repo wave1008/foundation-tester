@@ -3879,7 +3879,9 @@ targeting = bundletool にしか決められない。feature module を足した
   (screenrecord)は Android 実機だと静止画面でフレームが流れないため(詳細 docs/verification.md)
 - iOS 実機の録画は**静止画のコマ送り**(`StillFrameRecorder`)。`simctl io recordVideo` はシミュレータ専用で、
   macOS 27 は iPhone を AVCaptureDevice として出す DAL プラグインも無い。シナリオ実行プロセスが操作のステップと
-  失敗したステップの直後に `/screenshot` を1枚撮って `--still-frames-dir` へ `<epoch ms>.png` で置き、
+  失敗したステップの直後に `/screenshot` を1枚撮って `--still-frames-dir` へ `<epoch ms>.png` で置き
+  (**最初の操作の直前にも1枚** = これが無いと動画は最初の操作の後の絵から始まる。シナリオ開始時でなく
+  直前にするのはユーザー決定)、
   ワーカー停止時に `StillFrameMovieEncoder` が時刻どおりの mp4 にまとめて既存の切り出しへ渡す。
   **ホストが撮り続ける方式は不採用** —— 撮影と操作が同じブリッジを奪い合い、5 コマ/秒でも `/snapshot` が
   76ms → 114ms に延びた(SE3 実測。上限は約 20 コマ/秒)。子は操作と同じ順番でブリッジを使うので奪い合わない。
