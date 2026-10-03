@@ -101,7 +101,7 @@ with the same combination pre-selected.
 
 | Command | Description |
 |---|---|
-| `fleetest profile setup --platform <ios\|android\|both> --app-id <id> [--auto-device] [...]` | Create/refresh the app and run profiles together (idempotent) |
+| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device] [...]` | Create/refresh the app and run profiles together (idempotent). `--platform` is also written to the app profile's `platform`; adding the other OS to an existing app profile makes it `hybrid` |
 | `fleetest profile list` | List run profiles and their devices |
 
 ## Editing in VS Code

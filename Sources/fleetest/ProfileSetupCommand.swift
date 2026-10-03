@@ -18,7 +18,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
-    @Option(help: "Target platform: ios / android / both")
+    @Option(help: "Target platform: ios / android / hybrid (both). Written to the app profile's platform; adding the other OS to an existing app profile makes it hybrid")
     var platform: String
 
     @Option(help: "Device name (iOS simulator: the simulator's own name, as shown in Xcode). With --auto-device it defaults to \"<model>(<OS>)-NN\" (e.g. \"iPhone 17 Pro(iOS 27.0)-01\"); with --avd it defaults to the AVD's display name")
@@ -70,19 +70,19 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         }
         let platforms: [String]
         switch platform {
-        case "both":
+        case "hybrid":
             platforms = ["ios", "android"]
             // 同じ名前を両プラットフォームに使うと、後の1回が前の1回を上書き/重複エラーになる
             if run != nil {
-                throw ValidationError("--platform both cannot be combined with --run"
+                throw ValidationError("--platform hybrid cannot be combined with --run"
                     + " (each platform needs its own run profile name)")
             }
             if deviceName != nil {
-                throw ValidationError("--platform both cannot be combined with --device-name"
+                throw ValidationError("--platform hybrid cannot be combined with --device-name"
                     + " (logical names must be unique across ios and android)")
             }
         case "ios", "android": platforms = [platform]
-        default: throw ValidationError("--platform must be one of ios / android / both: \(platform)")
+        default: throw ValidationError("--platform must be one of ios / android / hybrid: \(platform)")
         }
         // 1回の呼び出しで両方作れるようにする(承認回数を減らすため。値は各プラットフォームで解決)
         var devices: [[String: Any]] = []

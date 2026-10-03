@@ -33,7 +33,8 @@ public enum ProfileWriter {
     }
 
     /// アプリプロファイルをマージする。appName・app(ID)・appPath は ios/android セクション、
-    /// 最上位の platform/autoInstall/healthCheckURL は触らない。
+    /// 最上位の platform は mergedAppPlatform で必ず書く(省略 = hybrid なので、書かないと iOS だけで
+    /// 作っても両 OS 対象になる)。autoInstall/healthCheckURL は触らない。
     /// 既存の未知キーは温存し、指定した値だけを上書きする。**nil は「既存を残す」** ——
     /// `profile setup` はデバイスを足すたびに呼ばれる(fleetest-profiles の手順)ので、省略を削除と読むと
     /// 足しただけで appPath(= 自動インストール)と表示名が黙って消える。appName は既存も無ければ defaultAppName。
@@ -42,6 +43,7 @@ public enum ProfileWriter {
         appName: String?, defaultAppName: String, appID: String, appPath: String?
     ) -> [String: Any] {
         var object = object
+        object["platform"] = mergedAppPlatform(existing: object, adding: platform)
         var section = (object[platform] as? [String: Any]) ?? [:]
         section["appName"] = appName ?? (section["appName"] as? String) ?? defaultAppName
         section["app"] = appID
@@ -50,6 +52,23 @@ public enum ProfileWriter {
         }
         object[platform] = section
         return object
+    }
+
+    /// 既存の対象 OS に platform("ios" / "android")を足した結果の `platform` 値。
+    /// 狭めない: 既存が hybrid か別の OS なら hybrid。キーが無い・値が読めない既存は、ios/android
+    /// セクションを1つでも持てば hybrid とみなす(resolve の解釈と同じ。黙って対象から外さない)。
+    /// 何も持たない新規だけが platform そのものになる
+    public static func mergedAppPlatform(existing object: [String: Any], adding platform: String) -> String {
+        let current: AppPlatformScope?
+        if let raw = object["platform"] as? String, let scope = AppPlatformScope(rawValue: raw) {
+            current = scope
+        } else if object["platform"] != nil || object["ios"] != nil || object["android"] != nil {
+            current = .hybrid
+        } else {
+            current = nil
+        }
+        guard let current, current.rawValue != platform else { return platform }
+        return AppPlatformScope.hybrid.rawValue
     }
 
     /// 新しい実行プロファイル。devices は RunDeviceEntry の形(platform / machine / name / 実体)の辞書。

@@ -84,7 +84,7 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 (承認回数が増えるだけで、選定規則はコマンド側に入っている):
 
 ```
-fleetest profile setup --project <プロジェクト> --platform <ios|android|both> --auto-device \
+fleetest profile setup --project <プロジェクト> --platform <ios|android|hybrid> --auto-device \
   --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
 ```
 
@@ -104,7 +104,8 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|bo
 - **`profile setup` が「システムイメージのライセンス承諾が必要」と言って止まったら**(Android で選ばれたイメージが未導入のとき。
   何も導入せずに止まる): メッセージの package・サイズ・ライセンスを示し、選択ダイアログで本人に承諾してよいか聞く。
   承諾なら**同じコマンドに `--accept-licenses` を足して**再実行する。**本人の承諾なしに勝手に付けない**。
-- `--platform both` で iOS と Android を1回で作る(論理名はそれぞれ「機種(OS)-01」)。
+- `--platform hybrid` で iOS と Android を1回で作る(論理名はそれぞれ「機種(OS)-01」)。
+  `--platform` はアプリプロファイルの対象 OS(`platform`)にも書かれる。既存のアプリプロファイルに別の OS を足すと `hybrid` になる。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
   (iOS: `--device-name "<シミュレータ名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
 - 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は

@@ -320,7 +320,7 @@ public enum ProjectScaffold {
 
         ### 2. 実行プロファイルのデバイス
         - `fleetest profile setup --project \(name) --platform ios --app-id <bundle id> --auto-device` で
-          使えるデバイスを選んで書く(Android は `--platform android`、両方は `both`。手で書くときは下の形)
+          使えるデバイスを選んで書く(Android は `--platform android`、両方は `hybrid`。手で書くときは下の形)
         - 🧑 `TestProjects/\(name)/profiles/runs/<名前>.json` の `devices` に列挙(書式は同ディレクトリの README.md):
 
         ```json

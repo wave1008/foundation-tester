@@ -46,6 +46,41 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertNil(again["autoInstall"])
     }
 
+    /// 対象 OS は必ず書く(省略 = hybrid なので、書かないと iOS だけで作っても両 OS 対象になる)
+    func testNewAppProfileTargetsOnlyTheRequestedPlatform() {
+        let ios = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "ios", appName: "A", defaultAppName: "Project", appID: "com.a", appPath: nil)
+        XCTAssertEqual(ios["platform"] as? String, "ios")
+        let android = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "android", appName: "A", defaultAppName: "Project", appID: "com.a", appPath: nil)
+        XCTAssertEqual(android["platform"] as? String, "android")
+    }
+
+    /// 同じ OS の呼び直しは狭めも広げもしない。別の OS を足すと hybrid(--platform hybrid は ios → android の順に呼ぶ)
+    func testAddingTheOtherPlatformMakesItHybrid() {
+        let ios = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "ios", appName: "A", defaultAppName: "Project", appID: "com.a", appPath: nil)
+        let again = ProfileWriter.mergingAppProfile(
+            into: ios, platform: "ios", appName: nil, defaultAppName: "Project", appID: "com.a", appPath: nil)
+        XCTAssertEqual(again["platform"] as? String, "ios")
+        let both = ProfileWriter.mergingAppProfile(
+            into: ios, platform: "android", appName: "A", defaultAppName: "Project", appID: "com.a", appPath: nil)
+        XCTAssertEqual(both["platform"] as? String, "hybrid")
+        let stillBoth = ProfileWriter.mergingAppProfile(
+            into: both, platform: "ios", appName: nil, defaultAppName: "Project", appID: "com.a", appPath: nil)
+        XCTAssertEqual(stillBoth["platform"] as? String, "hybrid", "hybrid を片方の OS へ狭めない")
+    }
+
+    /// platform キーの無い既存(= resolve は hybrid と読む)は、セクションがあれば hybrid のまま書き出す
+    func testExistingProfileWithoutPlatformKeyStaysHybrid() {
+        let legacy: [String: Any] = ["ios": ["app": "com.a", "appName": "A"]]
+        XCTAssertEqual(ProfileWriter.mergedAppPlatform(existing: legacy, adding: "ios"), "hybrid")
+        XCTAssertEqual(ProfileWriter.mergedAppPlatform(existing: ["platform": "IOS"], adding: "ios"), "hybrid",
+                       "読めない値は狭めない")
+        XCTAssertEqual(ProfileWriter.mergedAppPlatform(existing: ["autoInstall": false], adding: "android"), "android",
+                       "OS のセクションが無ければ新規と同じ")
+    }
+
     /// --app-ref の省略は「既存の実行プロファイルのアプリ」。無ければプロジェクト名の小文字。明示が最優先
     func testAppRefFollowsExistingRunProfileWhenOmitted() {
         XCTAssertEqual(ProfileWriter.resolvedAppRef(
