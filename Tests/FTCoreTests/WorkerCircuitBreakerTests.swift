@@ -1,4 +1,4 @@
-import FTCore
+@testable import FTCore
 import XCTest
 
 /// 離脱には証拠(streak の間に別レーンが通った)を要求する(WorkerCircuitBreaker の冒頭)
@@ -82,5 +82,25 @@ final class WorkerCircuitBreakerTests: XCTestCase {
         b.recordPass()
         XCTAssertEqual(b.carriedFailures, 0)
         XCTAssertEqual(b.recordFailure(runPasses: 1), .keep)
+    }
+
+    /// 復帰したレーンは台帳にこの run の失敗も含むので「前の run から」とは言わない
+    /// (負荷テスト: 復帰直後の離脱が同じ run の 3 件を「carried over from earlier runs」と書いた)
+    func testCarriedNoteNamesWhereTheFailuresCameFrom() {
+        XCTAssertEqual(RunOrchestrator.carriedNote(0, revived: false), "")
+        XCTAssertEqual(RunOrchestrator.carriedNote(0, revived: true), "")
+        XCTAssertEqual(RunOrchestrator.carriedNote(3, revived: false),
+                       " (including 3 carried over from earlier runs)")
+        XCTAssertEqual(RunOrchestrator.carriedNote(3, revived: true),
+                       " (including 3 carried over from before this lane was revived)")
+    }
+
+    /// 復帰の有無は superviseWorker の復帰回数から渡す(渡し忘れると復帰後も「earlier runs」に戻る)
+    func testSupervisorPassesTheRevivedFlag() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/RunOrchestrator.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(code.contains("runWorker(current, queue: queue, revived: revives > 0)"))
+        XCTAssertEqual(code.components(separatedBy: "Self.carriedNote(breaker.carriedFailures, revived: revived)").count - 1, 2)
     }
 }

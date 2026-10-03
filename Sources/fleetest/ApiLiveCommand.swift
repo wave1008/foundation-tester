@@ -190,6 +190,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         // serve は1プロセスが1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる
         let staleFrameTracker = LiveStaleFrameTracker()
         let screenMemo = LiveScreenMemo()
+        let runnerHealth = LiveRunnerHealthMemo()
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
         let reader = Thread {
@@ -242,6 +243,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 // **LiveBridgeAutoStarter は XCUITest しか起動しない**(旧ビルド再起動・接続拒否からの
                 // 起動、どちらも launchBridge が xcodebuild で起動する)ので、以後の期待エンジンも固定
                 primaryEngine = "xcuitest"
+                await runnerHealth.reset()
                 logStderr("switched the driver to \(endpoint.host):\(port) (announced by the runner)")
             }
             // **port の本人確認(udid + エンジン)を毎コマンド撃つ**(maintainer-notes §51.2・§51.10 と同型の穴):
@@ -297,15 +299,21 @@ struct ApiLiveServe: AsyncParsableCommand {
                                                       bridgeStarting: starting))
                     await follower?.follow(driver: driver)
                     await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
-                                          staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
+                                          staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
+                                  runnerHealth: runnerHealth)
                     ResidentProcessGuard.noteCommandEnd()
                     continue
                 }
             }
+            let commandStarted = Date()
             await handle(command: command, driver: driver, starter: starter, follower: follower,
                         ownAppBundleID: ownAppBundleID, deviceLease: deviceLease, port: port,
-                        staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
+                        staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
+                        runnerHealth: runnerHealth)
             ResidentProcessGuard.noteCommandEnd()
+            await checkRunnerHealth(command: command, elapsed: Date().timeIntervalSince(commandStarted),
+                                    primaryEngine: primaryEngine, port: port,
+                                    autoStarts: starter != nil, memo: runnerHealth)
         }
         // stdin EOF / シグナルでループを抜けた。自分の印を残すと、使っていないデバイスを他プロセスが
         // 「対話セッションが使用中」として避け続ける(MCPServer.run の後始末と同じ理由)
@@ -595,12 +603,35 @@ struct ApiLiveServe: AsyncParsableCommand {
             + " Check the udid with `fleetest api list-devices`."
     }
 
+    /// **遅かった操作の直後だけ** XCUITest ランナーを 1 問測り、劣化していれば次の観測の notes と
+    /// stderr で知らせる(判定・門・注入口は run と同じ `RunnerAccessibilityHealth`。2つ目の判定を作らない)。
+    /// 実測: sim の DragUI.druid の remote element に毎問 ~17s かかる状態で、ライブ操作は命令ごとに
+    /// 30s の watchdog に当たって serve の強制終了を 15 回繰り返し、利用者には何も言っていなかった。
+    /// 門は run の測り直しと同じ値(劣化したランナーでは 1 問を含む操作は必ずこれを越え、健全な速い
+    /// 操作では測らない)。frame(自動更新)は人の操作ではないので見ない。in-app 単独は XCUITest を持たない
+    private func checkRunnerHealth(command: ApiLiveServeCommand, elapsed: TimeInterval,
+                                   primaryEngine: String?, port: UInt16, autoStarts: Bool,
+                                   memo: LiveRunnerHealthMemo) async {
+        guard driverOptions.resolvedPlatform == "ios", primaryEngine == "xcuitest",
+              command.cmd != "frame", await !memo.warned,
+              let repoRoot = try? RepoRoot.find() else { return }
+        let injected = RunnerAccessibilityHealth.injectedSlowPorts().contains(port)
+        guard RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: Int(elapsed * 1000),
+                                                      injected: injected) else { return }
+        let seconds = injected ? nil : await RunnerAccessibilityHealth.probe(port: port, repoRoot: repoRoot)
+        guard injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: seconds) else { return }
+        let note = RunnerAccessibilityHealth.liveDegradedNote(port: port, probeSeconds: seconds,
+                                                             injected: injected, autoStarts: autoStarts)
+        if await memo.noteDegraded(note) { logStderr(note) }
+    }
+
     /// 1コマンドを処理する: refresh 以外はまずアクションを実行して actionResult を出し、
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
     private func handle(
         command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?,
         follower: LiveSessionFollower?, ownAppBundleID: String?, deviceLease: LiveDeviceLease?,
-        port: UInt16, staleFrameTracker: LiveStaleFrameTracker, screenMemo: LiveScreenMemo
+        port: UInt16, staleFrameTracker: LiveStaleFrameTracker, screenMemo: LiveScreenMemo,
+        runnerHealth: LiveRunnerHealthMemo
     ) async {
         // **コマンドが通るたびにデバイスの印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
         // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する——駆動している事実に変わりはない)
@@ -622,7 +653,8 @@ struct ApiLiveServe: AsyncParsableCommand {
                                               bridgeStarting: starting))
             await follower?.follow(driver: driver)
             await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
-                                  staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
+                                  staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
+                                  runnerHealth: runnerHealth)
             return
         }
         if command.cmd == "frame" {
@@ -648,7 +680,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         // 別のアプリが出た)ことがあり、古いセッションのまま撮ると画面ではなく最後の状態が載る
         await follower?.follow(driver: driver)
         await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
-                              staleFrameTracker: staleFrameTracker, screenMemo: screenMemo)
+                              staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
+                                  runnerHealth: runnerHealth)
     }
 
     /// 各イベントの `bridgeStarting` フィールドの唯一の算出元(starter が無ければ false)。
@@ -1053,7 +1086,8 @@ struct ApiLiveServe: AsyncParsableCommand {
     private func emitObservation(driver: AppDriver, starter: LiveBridgeAutoStarter?,
                                  follower: LiveSessionFollower?, port: UInt16,
                                  staleFrameTracker: LiveStaleFrameTracker,
-                                 screenMemo: LiveScreenMemo) async {
+                                 screenMemo: LiveScreenMemo,
+                                 runnerHealth: LiveRunnerHealthMemo) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
@@ -1063,6 +1097,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                                identifier: $0.identifier, value: $0.value, frame: $0.frame)
             }
             let notes = await staleFrameTracker.staleNotes(png: png, elements: snap.elements)
+                + runnerHealth.takeNotes()
             await screenMemo.note(snap.screen)
             emitLine(ApiLiveSnapshotEvent(
                 ok: true, error: nil,
@@ -1150,6 +1185,34 @@ actor LiveStaleFrameTracker {
             + " observation, but the image is byte-identical to the previous one — the display may"
             + " be frozen on an old frame. Don't trust what's on screen from this image alone;"
             + " interact again (or refresh) and see whether the picture actually changes."]
+    }
+}
+
+/// ランナーの劣化(`RunnerAccessibilityHealth`)の注記の控え。劣化を測ったら次の観測1回にだけ載せ、
+/// **知らせた後は測らない**(劣化したランナーでは 1 問に数秒〜十数秒かかり、毎回測ると次の操作が
+/// 拡張の SERVE_REQUEST_TIMEOUT を越える)。解除はブリッジが起動し直されたとき(`reset`)だけ ——
+/// 対処文が勧めるのが起動し直しなので、それ以外で消す理由が無い。serve は1プロセス1台なので1つで足りる。
+/// **not private**(テストが `@testable import fleetest` で直接呼ぶため)
+actor LiveRunnerHealthMemo {
+    private var pending: [String] = []
+    private(set) var warned = false
+
+    /// 劣化を知らせる。初回だけ true(呼び手が stderr へも出す)
+    func noteDegraded(_ note: String) -> Bool {
+        guard !warned else { return false }
+        warned = true
+        pending = [note]
+        return true
+    }
+
+    func reset() {
+        warned = false
+        pending = []
+    }
+
+    func takeNotes() -> [String] {
+        defer { pending = [] }
+        return pending
     }
 }
 

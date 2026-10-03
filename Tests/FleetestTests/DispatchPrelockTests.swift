@@ -221,6 +221,31 @@ final class DispatchPrelockTests: XCTestCase {
         prelock.releaseAll()
     }
 
+    /// 取れなかった機械を飛ばすときに「その機械の run が待機列に並ぶ」と言わない —— 子は待たない
+    /// (`--wait-lock` は親だけが使う)。負荷テストで、こう言った直後に子が即座に拒否され
+    /// その機械のシナリオが全部結果なしになった
+    func testASkippedMachineIsNotDescribedAsQueueing() {
+        var logged: [String] = []
+        let prelock = DispatchPrelock(actions: DispatchPrelock.Actions(
+            keys: { Self.keys($0) },
+            probeHardwareUUID: Self.noProbe,
+            acquire: { machine in
+                guard machine.machine != "M1Ultra" else {
+                    throw RemoteDispatchError.remoteSetupFailed("another dispatch is already running")
+                }
+                return (machine.host, { _ in })
+            },
+            log: { logged.append($0) }))
+
+        prelock.acquireInOrder(machines: ["M1Max", "M1Ultra"])
+        XCTAssertEqual(logged, [
+            "==> could not take the dispatch lock on \(Self.host("M1Ultra")) up front"
+            + " — that machine's sub-run tries once more without waiting"
+            + " and fails with the reason if it is still held"])
+        XCTAssertEqual(Set(prelock.markers.keys), ["M1Max"])
+        prelock.releaseAll()
+    }
+
     /// 宛先が1つの run では採りに行かない(1台では循環が作れず、順序に意味が無い)・警告も出さない
     func testASingleDestinationIsNeitherProbedNorWarnedAbout() {
         var logged: [String] = []

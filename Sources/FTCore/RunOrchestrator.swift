@@ -1097,8 +1097,13 @@ public final class RunOrchestrator {
                                     consecutiveFailures: breaker.consecutiveFailures)
     }
 
-    static func carriedNote(_ carried: Int) -> String {
-        carried > 0 ? " (including \(carried) carried over from earlier runs)" : ""
+    /// `revived`: 同じ run の中で復帰したレーン。台帳はこの run の失敗も含むので「前の run」とは言えない
+    /// (言っていた頃、復帰直後の離脱が同じ run の 3 件を「earlier runs」と名指していた)
+    static func carriedNote(_ carried: Int, revived: Bool) -> String {
+        guard carried > 0 else { return "" }
+        return revived
+            ? " (including \(carried) carried over from before this lane was revived)"
+            : " (including \(carried) carried over from earlier runs)"
     }
 
     /// シナリオ記録(ScenarioRunRecord.worker)と join できる形。論理名が無い経路では nil
@@ -1547,7 +1552,7 @@ public final class RunOrchestrator {
         var totalFailed = 0
         var revives = 0
         while true {
-            switch await runWorker(current, queue: queue) {
+            switch await runWorker(current, queue: queue, revived: revives > 0) {
             case .completed(let f):
                 return totalFailed + f
             case .retired(let f, let retired):
@@ -1593,7 +1598,7 @@ public final class RunOrchestrator {
         }
     }
 
-    private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> WorkerExit {
+    private func runWorker(_ worker: RunWorker, queue: ScenarioQueue, revived: Bool) async -> WorkerExit {
         // 期限付き(ウェッジしたブリッジで 120s×N 待たないため。withDeadline 参照)。
         guard await withDeadline(seconds: 10, { try await worker.driver.status() }) != nil else {
             await reportWorkerFailed(worker, "cannot connect (no response to status)", cause: .noResponse)
@@ -1813,12 +1818,12 @@ public final class RunOrchestrator {
                     break
                 case .trip(let consecutive):
                     unusableReason = "\(consecutive) consecutive worker failures"
-                        + Self.carriedNote(breaker.carriedFailures)
+                        + Self.carriedNote(breaker.carriedFailures, revived: revived)
                     unusableCause = .consecutiveFailures
                 case .held(let consecutive, let announce):
                     if announce {
                         let message = "\(consecutive) consecutive failures on this lane"
-                            + Self.carriedNote(breaker.carriedFailures)
+                            + Self.carriedNote(breaker.carriedFailures, revived: revived)
                             + " while no other lane"
                             + " has passed since the streak began — keeping the lane (a lane is retired"
                             + " for consecutive failures only when another lane passed meanwhile)"

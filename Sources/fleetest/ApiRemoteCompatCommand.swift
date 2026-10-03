@@ -30,6 +30,12 @@ struct ApiRemoteCompatCommand: AsyncParsableCommand {
 
     func run() async throws {
         let testProject = try ScenarioHost.project(named: project)
+        // **実在を先に確かめる** —— 下の解決は無いプロファイルを「機械が無い」(plan も単一機械の解決も
+        // nil)に畳み、machines:[] = 「ズレ無し」を exit 0 で返していた(契約は解決エラーだけ非0)
+        let names = ProfileResolver.runProfileNames(project: testProject)
+        guard names.contains(profile) else {
+            throw ProfileError.runProfileNotFound(name: profile, available: names)
+        }
         let machineNames = try Self.remoteHostNames(project: testProject, profile: profile)
 
         let repoRoot = try? RepoRoot.find()

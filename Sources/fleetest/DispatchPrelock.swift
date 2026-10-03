@@ -115,9 +115,12 @@ final class DispatchPrelock {
                 markers[machine.machine] = marker
             } catch {
                 if abortIfInterrupted() { return false }
-                // 理由は子が改めて取りに行くときに出す(同じ拒否文言を2回書かない)
+                // 理由は子が改めて取りに行くときに出す(同じ拒否文言を2回書かない)。
+                // **子は待たない**(`--wait-lock` は親だけが使う)ので「待機列に並ぶ」とは言わない ——
+                // 言っていた頃、負荷テストで子は即座に拒否されてその機械のシナリオが全部結果なしになった
                 actions.log("==> could not take the dispatch lock on \(machine.host) up front"
-                    + " — that machine's run queues for it on its own")
+                    + " — that machine's sub-run tries once more without waiting"
+                    + " and fails with the reason if it is still held")
             }
         }
         return true

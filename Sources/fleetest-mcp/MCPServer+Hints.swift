@@ -135,7 +135,7 @@ extension MCPServer {
     /// 埋もれる。救済ありは長さに関わらず出す(遅さの主因を切り分けたい回だから)
     static let scrollTimingNoteThresholdMs = 2000
 
-    /// ft_scroll_to の所要時間の内訳(成功時のみ)。**純粋関数**にして計測点(ContinuousClock)と
+    /// ft_scroll_to の所要時間の内訳(成功・見つからない の両方の応答の先頭)。**純粋関数**にして計測点(ContinuousClock)と
     /// 切り離す。swipes が nil(runScrollSearch を経由しなかった)でも壊れない
     static func scrollTimingNote(totalMs: Int, swipes: Int?, rescueMs: Int?) -> String {
         guard totalMs >= scrollTimingNoteThresholdMs || rescueMs != nil else { return "" }

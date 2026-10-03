@@ -112,6 +112,23 @@ public enum RunnerAccessibilityHealth {
         return Set(raw.split(separator: ",").compactMap { UInt16($0.trimmingCharacters(in: .whitespaces)) })
     }
 
+    /// ライブ操作(`api live serve`)で、遅かった操作の直後に 1 問測って劣化していたときの注記
+    /// (観測イベントの notes と stderr へ同じ文)。**ライブ操作は起動し直さず知らせるだけ**
+    /// —— 人が操作している最中に数十秒の起動し直しを割り込ませない(新しい検知は警告から)。
+    /// `autoStarts` = この serve が udid を持ち、止めたブリッジを次の操作で自動起動できる
+    public static func liveDegradedNote(port: UInt16, probeSeconds: TimeInterval?, injected: Bool,
+                                        autoStarts: Bool) -> String {
+        let measured = injected ? "is injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)"
+            : "answered a one-element accessibility query in \(String(format: "%.1f", probeSeconds ?? 0))s"
+        let restart = autoStarts
+            ? "`fleetest bridge down --port \(port)` (live control starts it again on the next action)"
+            : "`fleetest bridge down --port \(port)`, then start it again"
+        return "the xcuitest bridge on port \(port) \(measured); normal is under 0.3s, and every"
+            + " operation here pays that wait on each accessibility query (a stale remote element"
+            + " after a system daemon restart). Restart the bridge first: \(restart);"
+            + " if it is still this slow afterwards, reboot the simulator"
+    }
+
     /// 起動し直すときの 1 行(呼び手はそのまま log へ)
     public static func restartMessage(name: String, port: UInt16, probeSeconds: TimeInterval?, injected: Bool) -> String {
         let measured = injected ? "injected as slow (FT_FAKE_SLOW_RUNNER_PORTS)"
