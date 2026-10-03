@@ -859,6 +859,10 @@ may have been swallowed by it (nothing was re-sent: repeating it could double-fi
 **既定では自動で閉じるのは1つだけ** —— `openURL` の初回確認アラート(端末+アプリの組で同意は
 永続する)。権限ダイアログは**既定では**自動了承しない(許可/拒否はテストの意図そのもの)。
 毎回同じ答えでよいなら、実行プロファイルに**押してよいラベルを並べる**と自動で押す(下記)。
+**XCUITest を通る操作がアラートに遮られたときも押さない** —— その操作は届かず、ランナーが 422 で
+「a system alert is in front of the app (title: …, buttons: …)」と名指しして失敗する(撃ち直さない)。
+XCTest の既定の割り込みハンドラ(ボタンを押して撃ち直す。「許可」も押す)は止めてある
+(`Runner/FleetestRunnerUITests/InterruptionGuard.swift`)。
 
 | エンジン | 書き方 |
 |---|---|

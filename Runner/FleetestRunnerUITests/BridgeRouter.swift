@@ -73,8 +73,9 @@ final class BridgeRouter {
     private static let timingAlwaysLogMs: Double = 1500
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
+        InterruptionGuard.shared.reset()
         do {
-            let response: BridgeHTTPServer.Response
+            var response: BridgeHTTPServer.Response
             switch (request.method, request.path) {
             case ("GET", "/status"): response = handleStatus()
             case ("POST", "/session"): response = try handleLaunch(request.body)
@@ -111,10 +112,22 @@ final class BridgeRouter {
             if request.method == "POST", Self.mutatingPaths.contains(request.path) {
                 settlePending = true
             }
+            // **アラートに遮られて XCTest が諦めた操作を 200 にしない**(issue は record で握りつぶされる)。
+            // 422 = 「セッションはあるが今は無理」(409 は requireApp だけ = ホストが activate を撃つ)
+            if let blocked = InterruptionGuard.shared.take() {
+                response = .error(InterruptionGuard.message(blocked), status: 422)
+            }
             return response
         } catch let error as BridgeError {
+            // 遮られて諦めた結果の二次的な失敗(要素が見つからない等)より、遮った事実を先に言う
+            if let blocked = InterruptionGuard.shared.take() {
+                return .error(InterruptionGuard.message(blocked), status: 422)
+            }
             return .error(error.message, status: error.status)
         } catch {
+            if let blocked = InterruptionGuard.shared.take() {
+                return .error(InterruptionGuard.message(blocked), status: 422)
+            }
             return .error("\(error)", status: 500)
         }
     }

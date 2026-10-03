@@ -106,6 +106,13 @@ the alert to clear (or be closed by a registered button), and fails with
   failure above.
 - **A leftover alert survives across runs, too.** A warning is printed at the start of a run if
   a device already has one on screen.
+- **An operation that goes through XCUITest is not delivered while an alert is in front.**
+  This covers the xcuitest engine, and in hybrid the operations the in-app engine cannot perform
+  (home, the app switcher, coordinate drags and long presses). The step fails with
+  `a system alert is in front of the app (title: …, buttons: …)` and the alert is left as it
+  is — the tool never presses an alert button on its own, and never retries the operation
+  (XCTest's default interruption handler, which would press a button — "Allow" included — and
+  retry, is turned off).
 - **`clearAppData()` resets permissions**, so the same prompts appear again on the next run —
   useful when a scenario should always start from the not-yet-decided state.
 - **Stuck via MCP?** `ft_launch bundleId: com.apple.springboard` attaches non-destructively so

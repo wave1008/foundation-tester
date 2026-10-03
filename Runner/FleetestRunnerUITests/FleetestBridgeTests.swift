@@ -28,6 +28,9 @@ final class FleetestBridgeTests: XCTestCase {
         let portString = ProcessInfo.processInfo.environment["FT_PORT"] ?? ""
         let port = UInt16(portString) ?? BridgeAPI.defaultPort
 
+        // XCTest の既定の割り込みハンドラ(アラートのボタンを押して操作を撃ち直す)を止める(InterruptionGuard 参照)
+        InterruptionGuard.shared.install(on: self)
+
         FastInput.installSwizzle()  // 高速入力(quiescence スキップ)。失敗しても通常動作
         let router = BridgeRouter()
         let server = BridgeHTTPServer(port: port) { router.handle($0) }
