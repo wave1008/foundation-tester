@@ -254,8 +254,9 @@ struct RemoteCommand: AsyncParsableCommand {
     // MARK: - unlock
 
     /// 死んだディスパッチが残した dispatch.lock だけを外す(判定は FTRemote.RemoteDispatchUnlock)。
-    /// `--force-lock` と違い走っているかもしれないロックは絶対に触らない。**奪う口はここに置かない**
-    /// (「死んだロックを外す」と「奪う」を分けてあるのが既存の設計)。
+    /// 既定では走っているかもしれないロックは絶対に触らない。**奪うのは `--force` を明示したときだけ**
+    /// (`RemoteDispatchUnlock.decideForced`。生死の確認もしない —— 他人の Mac の pid は見えず、
+    /// ランナー上の pgrep も転送・ビルド中のディスパッチを見逃すので、確かめた体裁を作らない)。
     /// **`--runner local` は手元の `~/.fleetest/dispatch.lock`**(他コマンドの `--runner local` /
     /// `--device-machine local` と同じ語彙。判定は `RemoteDispatchUnlock.decideThisMachine`)
     struct Unlock: AsyncParsableCommand {
@@ -263,7 +264,7 @@ struct RemoteCommand: AsyncParsableCommand {
             commandName: "unlock",
             abstract: "Release a dispatch lock that a dead dispatch left behind on a remote runner,"
                 + " or (--runner local) the one left on this Mac"
-                + " (never releases a lock whose run is still alive; docs/remote-runner.md §5)")
+                + " (never releases a lock whose run is still alive unless --force; docs/remote-runner.md §5)")
 
         @Option(name: .customLong("runner"), parsing: .upToNextOption,
                 help: "Remote runner: a registered machine (fleetest remote machines), a raw user@host/host, or `local` for this Mac. Repeatable, required")
@@ -272,6 +273,10 @@ struct RemoteCommand: AsyncParsableCommand {
         @Option(name: .customLong("remote-dir"),
                 help: "Runner-only base directory on the remote host (default: the machine registry's entry, or ~/fleetest-runner)")
         var remoteDir: String?
+
+        @Flag(name: .customLong("force"),
+              help: "Release the lock whoever holds it, without checking whether their run is still going (it may break that run)")
+        var force = false
 
         /// **指定したのに黙って効かない形を作らない** —— `--runner local` に base は無い
         /// (ロックは `~/.fleetest` 固定・生存の確認は base を絞らない pgrep)
@@ -292,7 +297,7 @@ struct RemoteCommand: AsyncParsableCommand {
                 ConsoleOut.out("== \(raw) ==")
                 do {
                     if MachineDispatch.isExplicitLocal(raw) {
-                        try Self.unlockThisMachine()
+                        try Self.unlockThisMachine(force: force)
                     } else {
                         try unlockOne(raw)
                     }
@@ -307,7 +312,7 @@ struct RemoteCommand: AsyncParsableCommand {
         /// 手元のロック。**リモートと同じ綴りのコマンドを ssh ではなく `/bin/sh -c` で撃つ**
         /// (`LocalDispatchLock` と同じ規律 —— 取得・解放・読み取りの定義元を増やさない)。
         /// 文言はすべて手元の話として言う(`remote unlock` の "remote host" を流用しない)
-        static func unlockThisMachine() throws {
+        static func unlockThisMachine(force: Bool) throws {
             let home = NSHomeDirectory()
             ConsoleOut.out("this Mac → \(RemoteDispatchLock.lockDirPath(home: home))")
             let probeResult = try localShell(RemoteDispatchLock.probeCommand(home: home))
@@ -315,10 +320,12 @@ struct RemoteCommand: AsyncParsableCommand {
                 throw LocalDispatchLockError(message: "could not read the dispatch lock on this Mac"
                     + " (status \(probeResult.status))\n\(probeResult.tail)")
             }
-            let decision = RemoteDispatchUnlock.decideThisMachine(
-                probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
-                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
-                livePIDs: { liveDispatchedRunPIDsOnThisMachine() }, startTime: ProcessLiveness.startTime)
+            let decision = force
+                ? RemoteDispatchUnlock.decideForced(probe: probe)
+                : RemoteDispatchUnlock.decideThisMachine(
+                    probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
+                    myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
+                    livePIDs: { liveDispatchedRunPIDsOnThisMachine() }, startTime: ProcessLiveness.startTime)
             switch decision {
             case .nothingToDo:
                 ConsoleOut.out("→ no dispatch lock on this Mac; nothing to do")
@@ -360,11 +367,13 @@ struct RemoteCommand: AsyncParsableCommand {
                 throw RemoteDispatchError.remoteSetupFailed(
                     "could not read the dispatch lock on \(target) (status \(probeResult.status))\n\(probeResult.tail)")
             }
-            var decision = RemoteDispatchUnlock.decide(
-                probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
-                myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
-                startTime: ProcessLiveness.startTime)
-            if case .release = decision {
+            var decision = force
+                ? RemoteDispatchUnlock.decideForced(probe: probe)
+                : RemoteDispatchUnlock.decide(
+                    probe: probe, myIssuer: LocalConfig.resolveIssuerId(),
+                    myHost: ProcessInfo.processInfo.hostName, pidAlive: ProcessLiveness.isAlive,
+                    startTime: ProcessLiveness.startTime)
+            if !force, case .release = decision {
                 decision = RemoteDispatchUnlock.guardingLiveRemoteRun(
                     decision, livePIDs: liveDispatchedRunPIDs(target: target, base: layout.base))
             }

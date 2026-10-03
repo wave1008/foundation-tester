@@ -36,7 +36,7 @@ final class RemoteUnlockLocalRouteTests: XCTestCase {
     /// 生存の確認も base を絞らない pgrep の1つを通す
     func testTheLocalRouteNeverGoesThroughSsh() throws {
         let unlock = try unlockSource()
-        guard let start = unlock.range(of: "static func unlockThisMachine()") else {
+        guard let start = unlock.range(of: "static func unlockThisMachine(force: Bool)") else {
             return XCTFail("手元の経路が見つからない")
         }
         let localRoute = String(unlock[start.lowerBound...])
@@ -47,11 +47,21 @@ final class RemoteUnlockLocalRouteTests: XCTestCase {
                       "共有のコマンドをシェルへ渡していない")
     }
 
-    /// **奪う口は unlock に置かない**(「死んだロックを外す」と「奪う」を分けてあるのが既存の設計。
-    /// 奪うのは run 側の `--force-lock` だけ)
-    func testUnlockHasNoStealingSwitch() throws {
-        let unlock = try unlockSource()
-        XCTAssertFalse(unlock.contains("@Flag"), "unlock にフラグを足している(奪う口を作っていないか)")
-        XCTAssertFalse(unlock.contains("forceAcquireCommand"), "unlock が奪う経路を呼んでいる")
+    /// **奪う口は `--force` の1つだけ**で、手元・リモートの両経路が同じ `decideForced` を通る。
+    /// 既定(`--force` 無し)のリモート経路は、生きている run の確認(`guardingLiveRemoteRun`)を外さない
+    func testUnlockStealsOnlyThroughTheForceFlag() throws {
+        // unlockSource() は手元の経路までで切れるので、リモートの経路(unlockOne)まで含めて読む
+        let text = try Self.source("Sources/fleetest/RemoteCommands.swift")
+        guard let start = text.range(of: "struct Unlock: AsyncParsableCommand"),
+              let end = text.range(of: "static func liveDispatchedRunPIDs(target:", range: start.upperBound..<text.endIndex)
+        else { return XCTFail("Unlock の範囲が見つからない = 走査を見直す") }
+        let unlock = String(text[start.lowerBound..<end.lowerBound])
+        XCTAssertEqual(unlock.components(separatedBy: "@Flag").count - 1, 1, "unlock のフラグは --force だけ")
+        XCTAssertTrue(unlock.contains("@Flag(name: .customLong(\"force\")"))
+        XCTAssertEqual(unlock.components(separatedBy: "RemoteDispatchUnlock.decideForced(probe: probe)").count - 1, 2,
+                       "手元とリモートの両方が decideForced を通っていない")
+        XCTAssertTrue(unlock.contains("if !force, case .release = decision {"),
+                      "既定の unlock から生きている run の確認が外れている")
+        XCTAssertFalse(unlock.contains("forceAcquireCommand"), "unlock が取得の経路で奪っている(外すだけでよい)")
     }
 }

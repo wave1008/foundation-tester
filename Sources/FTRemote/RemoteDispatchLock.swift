@@ -272,8 +272,9 @@ public enum RemoteDispatchLock {
 }
 
 /// `fleetest remote unlock`: **自分の死んだディスパッチが残したロックだけ**を外す判定(純粋関数)。
-/// `--force-lock` は他人の走っている run を奪えるので、残ったロックの片付けにそれを使わせない
-/// (受け手要望: 複数人でフリートを共有すると、残ったロック + --force-lock が事故になる)。
+/// 他人のロック・生死を確かめられないロックを外すのは `remote unlock --force`(`decideForced`)だけで、
+/// 既定の unlock は奪わない(受け手要望: 複数人でフリートを共有すると、残ったロックを黙って
+/// 奪う口が事故になる)。
 ///
 /// 規則(上から順に最初に当たったもの):
 /// - ロック無し → 何もしない
@@ -303,7 +304,8 @@ public enum RemoteDispatchUnlock {
             guard info.issuer == myIssuer else {
                 let holder = holderPhrase(info)
                 return .refuse(reason: "the lock is held by \(holder), not by you (\(myIssuer))"
-                    + " — only the owner can unlock it; --force-lock steals it and may kill their run")
+                    + " — only the owner can unlock it; `fleetest remote unlock --force` takes it anyway"
+                    + " and may break their run")
             }
             // ホスト名は大文字小文字を区別しない(ProcessInfo.hostName は小文字・`hostname` は
             // 大文字で返すことがある。同じ機械を別物と見ると、生きている自分の run のロックを外す)
@@ -431,6 +433,22 @@ public enum RemoteDispatchUnlock {
                 reason: "it was dispatched to this Mac by \(holderPhrase(info)) and no run it started"
                     + " is left here")
             return guardingLiveRemoteRun(release, livePIDs: livePIDs(), scope: .thisMachine)
+        }
+    }
+
+    /// `fleetest remote unlock --force`: 持ち主・生死を問わずロックを外す(**奪う口**)。
+    /// 守っている run がまだ動いていても外すので、その run と次の run が同じデバイスに乗り得る ——
+    /// だから既定の unlock には混ぜず、明示したときだけ通す。外す相手は reason に名指しで残す
+    /// (誰の run を奪ったかを後から辿れるように)。info が読めないロックも外す(既定の unlock が
+    /// 「尊重して外さない」側に倒している分の逃げ道がここ)
+    public static func decideForced(probe: RemoteDispatchLock.Probe) -> Decision {
+        switch probe {
+        case .absent:
+            return .nothingToDo
+        case .held(nil):
+            return .release(reason: "forced; its owner was unknown (info.json could not be read)")
+        case .held(let info?):
+            return .release(reason: "forced; it was held by \(holderPhrase(info)) since \(info.acquiredAt)")
         }
     }
 

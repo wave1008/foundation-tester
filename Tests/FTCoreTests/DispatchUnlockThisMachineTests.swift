@@ -147,4 +147,22 @@ final class DispatchUnlockThisMachineTests: XCTestCase {
         XCTAssertEqual(probe.terminationStatus, 0, "一致なしも 0 で終わること")
         return RemoteDispatchLock.parseLivePIDs(String(decoding: output, as: UTF8.self))
     }
+
+    // MARK: - remote unlock --force(decideForced)
+
+    /// 他人のロックでも、生きているかもしれなくても外す。外した相手は名指しで残す
+    func testForcedReleasesSomeoneElsesLockAndNamesTheHolder() {
+        XCTAssertEqual(RemoteDispatchUnlock.decideForced(probe: .held(dispatchedHere)),
+                       .release(reason: "forced; it was held by alice (from alice-mbp, pid 77) since 2026-09-21T09:30:00Z"))
+    }
+
+    /// 既定の unlock が「尊重して外さない」読めないロックも外す
+    func testForcedReleasesAnUnreadableLock() {
+        XCTAssertEqual(RemoteDispatchUnlock.decideForced(probe: .held(nil)),
+                       .release(reason: "forced; its owner was unknown (info.json could not be read)"))
+    }
+
+    func testForcedDoesNothingWithoutALock() {
+        XCTAssertEqual(RemoteDispatchUnlock.decideForced(probe: .absent), .nothingToDo)
+    }
 }

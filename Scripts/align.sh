@@ -20,10 +20,15 @@ cd "$(git rev-parse --show-toplevel)"
 # `git checkout` + `swift build` をするので、実行中のバイナリが差し替わって SIGKILL される。
 # maintainer-notes §4.1 と同じ事故がリモートで起きる)。
 # 代わりに **`remote unlock` を試みてから測り直す** —— あれは「**自分の**死んだディスパッチの
-# ロックだけ」を外すので、生きている run と他人のロックは残り、そのときは従来どおり落ちる
+# ロックだけ」を外すので、生きている run と他人のロックは残り、そのときは従来どおり落ちる。
+# `--force-lock` は**持ち主を問わず奪う**(`remote unlock --force`)。その run が止まっていると
+# 人が確かめたときだけ使う —— 動いていれば向こうのバイナリが差し替わってその run を壊す
 FORCE=0
-if [ "${1:-}" = "--force" ]; then FORCE=1; shift; fi
-[ $# -eq 0 ] || { echo "usage: Scripts/align.sh [--force]" >&2; exit 2; }
+case "${1:-}" in
+  --force) FORCE=1; shift ;;
+  --force-lock) FORCE=2; shift ;;
+esac
+[ $# -eq 0 ] || { echo "usage: Scripts/align.sh [--force | --force-lock]" >&2; exit 2; }
 
 FLEETEST="${FLEETEST:-.build/debug/fleetest}"
 [ -x "$FLEETEST" ] || { echo "❌ $FLEETEST が無い(swift build を先に)" >&2; exit 1; }
@@ -72,14 +77,21 @@ if [ -n "$BUSY" ] && [ "$FORCE" = 1 ]; then
   echo "==> --force: 自分の死んだロックだけ外して測り直す(生きている run は殺さない)"
   "$FLEETEST" remote unlock $HOST_ARGS 2>&1 | sed 's/^/   /' || true
   BUSY=$(busy_hosts)
+elif [ -n "$BUSY" ] && [ "$FORCE" = 2 ]; then
+  echo "$BUSY" | sed 's/^/   /'
+  echo "==> --force-lock: 持ち主を問わずロックを奪って測り直す"
+  "$FLEETEST" remote unlock --force $HOST_ARGS 2>&1 | sed 's/^/   /' || true
+  BUSY=$(busy_hosts)
 fi
 if [ -n "$BUSY" ]; then
   echo "❌ 揃えられない機がある。push もしていない:" >&2
   echo "$BUSY" | sed 's/^/   /' >&2
   if [ "$FORCE" = 1 ]; then
-    echo "   --force でも外れなかった = 走っている run か、他人のロック。**待つ**のが正解" >&2
+    echo "   --force でも外れなかった = 走っている run か、他人のロック。**待つ**か、止まっていると確かめたうえで --force-lock" >&2
+  elif [ "$FORCE" = 2 ]; then
+    echo "   --force-lock でも外れなかった(到達できない機か、unlock の失敗。上の出力を見る)" >&2
   else
-    echo "   (走っている run が終わるのを待つ。自分の死んだロックなら --force か fleetest remote unlock)" >&2
+    echo "   (走っている run が終わるのを待つ。自分の死んだロックなら --force。止まっていると確かめた他人のロックなら --force-lock)" >&2
   fi
   exit 1
 fi
