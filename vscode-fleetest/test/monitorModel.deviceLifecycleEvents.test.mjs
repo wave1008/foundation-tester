@@ -62,7 +62,7 @@ const VALID_DEVICE_CATALOG = {
         apiLevel: 37,
         package: "system-images;android-37;google_apis;arm64-v8a",
         tag: "google_apis",
-        versionName: "Android 17",
+        versionName: "Android 17", nameLabel: "Android 17, API 37, APIs",
       },
     ],
     downloadableSystemImages: [],
@@ -74,7 +74,7 @@ const VALID_DEVICE_CATALOG = {
     deviceTypes: [
       { identifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro", name: "iPhone 17 Pro", productFamily: "iPhone" },
     ],
-    runtimes: [{ identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", version: "27.0" }],
+    runtimes: [{ identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", nameLabel: "iOS 27.0", version: "27.0" }],
   },
 };
 
@@ -142,7 +142,7 @@ test("isDeviceCatalogJson: downloadableSystemImages の中身と downloadableErr
     {
       abi: "arm64-v8a", apiLevel: 36, license: "android-sdk-arm-dbt-license",
       package: "system-images;android-36;google_apis;arm64-v8a",
-      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 16",
+      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 16", nameLabel: "Android 16, API 36, APIs",
     },
   ];
   withDownloadable.android.downloadableError = null;
@@ -164,7 +164,7 @@ test("isDeviceCatalogJson: downloadableSystemImages の要素の型不正は全�
   badAbi.android.downloadableSystemImages = [{
     abi: 1, apiLevel: 36, license: null,
     package: "system-images;android-36;google_apis;arm64-v8a",
-    sizeBytes: null, tag: "google_apis", versionName: "Android 16",
+    sizeBytes: null, tag: "google_apis", versionName: "Android 16", nameLabel: "Android 16, API 36, APIs",
   }];
   assert.equal(isDeviceCatalogJson(badAbi), false);
 
@@ -172,7 +172,7 @@ test("isDeviceCatalogJson: downloadableSystemImages の要素の型不正は全�
   badSizeBytes.android.downloadableSystemImages = [{
     abi: "arm64-v8a", apiLevel: 36, license: null,
     package: "system-images;android-36;google_apis;arm64-v8a",
-    sizeBytes: "1900000000", tag: "google_apis", versionName: "Android 16",
+    sizeBytes: "1900000000", tag: "google_apis", versionName: "Android 16", nameLabel: "Android 16, API 36, APIs",
   }];
   assert.equal(isDeviceCatalogJson(badSizeBytes), false);
 

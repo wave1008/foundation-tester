@@ -3913,7 +3913,7 @@ targeting = bundletool にしか決められない。feature module を足した
   "devices": [
     { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro-01", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro-02", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
-    { "platform": "android", "machine": "local", "name": "emulator1", "avd": "Pixel_9" }
+    { "platform": "android", "machine": "local", "name": "Pixel 9(Android 15, API 35, APIs)-01", "avd": "Pixel_9_Android_15_API_35_APIs_-01" }
   ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }

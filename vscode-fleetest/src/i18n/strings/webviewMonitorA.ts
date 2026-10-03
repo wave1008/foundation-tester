@@ -230,6 +230,10 @@ export const webviewMonitorAStrings = {
     ja: "台数は 1〜99 で入力してください。",
     en: "Enter a number between 1 and 99.",
   },
+  "wvMonitor.deviceAdd.batchSerialExhausted": {
+    ja: "「{base}」の連番(01〜99)に空きが {count} 個ありません。既存のデバイスを減らすか台数を減らしてください。",
+    en: "Fewer than {count} serial numbers (01-99) are free for \"{base}\". Delete some devices or lower the count.",
+  },
   "wvMonitor.deviceBatch.creating": { ja: "作成中...", en: "Creating..." },
   "wvMonitor.deviceBatch.waiting": { ja: "待機中", en: "Waiting" },
   "wvMonitor.deviceBatch.done": { ja: "作成しました", en: "Created" },

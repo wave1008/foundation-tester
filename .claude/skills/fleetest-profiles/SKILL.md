@@ -72,7 +72,7 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 - デバイスの論理名(実行プロファイルから参照する `name`)
 
 **指定がなければ既定**: そのマシンで **利用可能な最新 OS** の仮想デバイスを使う。無ければ作成する
-(下のステップ4のアルゴリズム)。論理名の既定は iOS `simulator1` / Android `emulator1`(scaffold の runs 雛形と対)。
+(下のステップ4のアルゴリズム)。論理名の既定は「機種(OS)-NN」(例 `iPhone 17 Pro(iOS 27.0)-01` / `Pixel 10(Android 16, API 36, APIs)-01`。`--auto-device` が付ける)。
 
 ### 4. プロファイルを作る(**1コマンド。JSON は手書きしない**)
 
@@ -87,9 +87,14 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|bo
   --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
 ```
 
-- `--auto-device` の選定規則: **iOS = 最新 OS の既存シミュレータ(iPad は除外・名前に "Pro" を含むものを優先)** /
-  **Android = config.ini の API レベルが最大の既存 AVD**。0台なら作成方法を示してエラーになる。
-- `--platform both` で iOS と Android を1回で作る(論理名は simulator1 / emulator1)。
+- `--auto-device` の選定規則: 機種と OS は **iOS = 最新 OS の既存シミュレータ(iPad は除外・名前に "Pro" を含むものを優先)** /
+  **Android = config.ini の API レベルが最大の既存 AVD** から決める。登録するのは**その機種・OS の「機種(OS)-NN」**:
+  手元に同じ形の名前があり、かつ**中身(iOS = 機種+runtime / Android = 機種+system image)も選定元と同じ**なら番号最小のものを再利用し
+  (冪等。同じ形の名前なら拡張で作ったデバイスもそのまま使う)、無ければ**空いている最小の番号**(`-01` が別の中身で埋まっていれば `-02`)で
+  専用の仮想デバイスを新規作成する。OS 部分は iOS = runtime 名(`iOS 27.0`)/ Android = `Android 16, API 36, APIs`
+  (Play Store イメージは `Play`。例 `Pixel 10(Android 16, API 36, Play)-01`)。**利用者の既存シミュレータ/AVD は改名も削除もしない**。
+  選定元が 0台なら作成方法を示してエラーになる。
+- `--platform both` で iOS と Android を1回で作る(論理名はそれぞれ「機種(OS)-01」)。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
   (iOS: `--device-name "<シミュレータ名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
 - 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は
@@ -106,6 +111,7 @@ fleetest api create-device --project <プロジェクト> --profile <実行プ�
 `--model` / `--os` の値は `fleetest api device-catalog` の
 `ios.deviceTypes[i].identifier` / `ios.runtimes[i].identifier`(Android は `android.models[i].id` /
 `android.systemImages[i].package`)。**このカタログ取得は新規作成のときだけ**行う。
+`--name` は「機種(OS)-NN」の形(例 `iPhone 17 Pro(iOS 27.0)-01` / `Pixel 10(Android 16, API 36, APIs)-01`。括弧は半角で機種名との間に空白を入れない・連番は2桁)を勧める。
 
 Android のシステムイメージは同じ OS バージョンでも Play Store 版(`...;google_apis_playstore;...`)と
 Google APIs 版(`...;google_apis;...`)がある。**指定が無ければ `google_apis` を選ぶ**

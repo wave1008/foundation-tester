@@ -6,6 +6,7 @@
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
+import { baseName, nextUnusedNames } from './deviceNaming.js';
 import { formatBytesAuto } from '../../retentionModel';
 import { selectedRunProfile } from './runProfilesTab.js';
 import { btnDeviceAddExisting, catalogEntries, catalogNamesForMachine, prefixedOsVersion } from './runProfileDevicesTab.js';
@@ -147,7 +148,7 @@ function androidInstalledOsOptions() {
   }
   return deviceCatalog.android.systemImages
     .filter((s) => s.tag === dlgService.value)
-    .map((s) => ({ value: s.package, label: androidOsLabel(s) }));
+    .map((s) => ({ value: s.package, label: androidOsLabel(s), nameLabel: s.nameLabel }));
 }
 
 // ダウンロードが要る(インストール済みでない)Android システムイメージ。size/license は
@@ -162,6 +163,7 @@ function androidDownloadableOsOptions() {
     .map((s) => ({
       value: s.package,
       label: androidOsLabel(s),
+      nameLabel: s.nameLabel,
       sizeBytes: s.sizeBytes ?? null,
       license: s.license ?? null,
     }));
@@ -172,7 +174,7 @@ function osOptionsFor(platform) {
     return [];
   }
   if (platform === 'ios') {
-    return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name }));
+    return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name, nameLabel: r.nameLabel }));
   }
   return [...androidInstalledOsOptions(), ...androidDownloadableOsOptions()];
 }
@@ -228,20 +230,24 @@ function platformIssue(platform) {
   };
 }
 
-// いま選んでいるホストで name が衝突するか(実体・登録のどちらか)。**別ホストの同名は衝突ではない**
+// いま選んでいるホストで使われている名前(実体・登録のどちらも)。**別ホストの同名は含めない**
 // (FTCore.DeviceMachineGrouping と同じ「一意なのは (machine, name)」)。
-function nameClashesOnCurrentMachine(name, platform, source) {
+function namesOnCurrentMachine(platform, source) {
   const machine = source.kind === 'remote' ? source.machine : undefined;
-  if (catalogNamesForMachine(machine).includes(name)) {
-    return true;
-  }
+  const names = [...catalogNamesForMachine(machine)];
   // 実体側(このホストから取得済みの一覧)。ピッカー経由で開いているので行が揃っている
   const rows = platform === 'ios' ? devicePickIosRows : devicePickAndroidRows;
-  return rows.some((row) => {
-    if (row.device) { return row.device.name === name; }
-    if (row.avd) { return row.avd.displayName === name; }
-    return false;
-  });
+  for (const row of rows) {
+    const name = row.device ? row.device.name : (row.avd ? row.avd.displayName : null);
+    if (name) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+function nameClashesOnCurrentMachine(name, platform, source) {
+  return namesOnCurrentMachine(platform, source).includes(name);
 }
 
 function selectedOptionLabel(select) {
@@ -249,22 +255,28 @@ function selectedOptionLabel(select) {
   return opt ? opt.textContent : '';
 }
 
-// dlgOs の現在の選択肢の「素のラベル」(ダウンロード候補の容量接尾辞を含まない)。値→ラベルの対応
-// (refreshModelAndOsOptions が張り直す)。自動生成名にサイズ表記が混ざるのを防ぐため、
-// autoDeviceName はここを見る(select の textContent は容量接尾辞つきのことがある)。
-let osLabelByValue = new Map();
+// dlgOs の値 → 仮想デバイス名の OS 部分(カタログの nameLabel。refreshModelAndOsOptions が張り直す)。
+// 選択肢の表示ラベル(API・ABI・容量接尾辞つき)とは別物で、名前にはこちらだけを使う。
+let osNameLabelByValue = new Map();
 // dlgOs の値(package)→ダウンロード候補の情報({sizeBytes, license})。ここに載っている値を選んで
 // いる間だけ、OK/バッチ作成の送信に installSystemImage を足す(ラベル文字列は解析しない)。
 let downloadableByPackage = new Map();
 
-// iOS = "モデル名(ランタイム名)"、Android = "モデル名(versionName)"(モデル未選択なら空文字)。
-function autoDeviceName() {
+// 名前欄の既定値の base「機種(OS ラベル)」。モデル・OS 未選択なら空文字
+function autoDeviceBase() {
   const modelLabel = selectedOptionLabel(dlgModel);
-  if (!modelLabel) {
+  const osLabel = osNameLabelByValue.get(dlgOs.value);
+  return modelLabel && osLabel ? baseName(modelLabel, osLabel) : '';
+}
+
+// 既定の名前 = base + このホストで使われていない最小の番号(モデル・OS 未選択なら空文字)
+function autoDeviceName() {
+  const base = autoDeviceBase();
+  if (!base) {
     return '';
   }
-  const osLabel = osLabelByValue.get(dlgOs.value) ?? selectedOptionLabel(dlgOs);
-  return osLabel ? modelLabel + '(' + osLabel + ')' : modelLabel;
+  const names = nextUnusedNames(base, namesOnCurrentMachine(getDialogPlatform(), currentDeviceSource()), 1);
+  return names[0] ?? base;
 }
 
 function refreshAutoName() {
@@ -323,16 +335,16 @@ function refreshModelAndOsOptions() {
   dlgServiceRow.hidden = platform !== 'android';
   fillSelect(dlgModel, modelOptionsFor(platform));
 
-  osLabelByValue = new Map();
+  osNameLabelByValue = new Map();
   downloadableByPackage = new Map();
   if (platform === 'android') {
     const installed = androidInstalledOsOptions();
     const downloadable = androidDownloadableOsOptions();
     for (const opt of installed) {
-      osLabelByValue.set(opt.value, opt.label);
+      osNameLabelByValue.set(opt.value, opt.nameLabel);
     }
     for (const opt of downloadable) {
-      osLabelByValue.set(opt.value, opt.label);
+      osNameLabelByValue.set(opt.value, opt.nameLabel);
       downloadableByPackage.set(opt.value, { sizeBytes: opt.sizeBytes, license: opt.license });
     }
     fillSelectGrouped(
@@ -343,7 +355,7 @@ function refreshModelAndOsOptions() {
   } else {
     const options = osOptionsFor(platform);
     for (const opt of options) {
-      osLabelByValue.set(opt.value, opt.label);
+      osNameLabelByValue.set(opt.value, opt.nameLabel);
     }
     fillSelect(dlgOs, options);
   }
@@ -586,16 +598,6 @@ dlgOk.addEventListener('click', () => {
 
 // ---- バッチ作成 -------------------------------------------------------------
 
-/** 「デバイス名 + `-` + 連番2桁」。**`-01` 始まり**(ユーザー指示。既存フリートの命名と同じ)で、
- *  #dlg-batch-count の上限 99 とあわせて -01〜-99 の範囲に収まる。 */
-export function batchDeviceNames(base, count) {
-  const names = [];
-  for (let i = 1; i <= count; i += 1) {
-    names.push(base + '-' + String(i).padStart(2, '0'));
-  }
-  return names;
-}
-
 /** #dlg-batch-count の値。**number 入力の min/max に任せない** —— 手打ちの範囲外や空欄は
  *  そのまま読めてしまうので、ここで弾いて null を返す。 */
 export function parseBatchCount(raw) {
@@ -654,7 +656,9 @@ dlgBatch.addEventListener('click', () => {
   if (dlgBatch.disabled || deviceAddCreating || !deviceCatalog) {
     return;
   }
-  const base = dlgName.value.trim();
+  // 名前を手で編集していなければ自動の base、編集していれば入力文字列が base。
+  // どちらも「使われていない番号」を小さい順に count 個(既存を上書きしない)
+  const base = dlgNameDirty ? dlgName.value.trim() : autoDeviceBase();
   if (base.length === 0) {
     dlgError.classList.remove('info');
     dlgError.textContent = t('wvMonitor.deviceAdd.nameRequired');
@@ -668,7 +672,12 @@ dlgBatch.addEventListener('click', () => {
   }
   const platform = getDialogPlatform();
   const source = currentDeviceSource();
-  const names = batchDeviceNames(base, count);
+  const names = nextUnusedNames(base, namesOnCurrentMachine(platform, source), count);
+  if (names.length < count) {
+    dlgError.classList.remove('info');
+    dlgError.textContent = t('wvMonitor.deviceAdd.batchSerialExhausted', { base: base, count: String(count) });
+    return;
+  }
   // 上書きの確認はホスト側(webview の window.confirm は効かない)。衝突の判定はこちら ――
   // 一覧(登録済み+実体)を持っているのは webview だけ。単発 OK と同じ規則を名前ごとに当てる
   const overwriteNames = names.filter((name) => nameClashesOnCurrentMachine(name, platform, source));

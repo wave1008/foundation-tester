@@ -156,6 +156,36 @@ public enum SimulatorCatalog {
         return result
     }
 
+    /// 既存シミュレータを同じ機種・同じ runtime で作り直すのに要る識別子
+    public struct Blueprint: Sendable, Equatable {
+        public let deviceTypeIdentifier: String
+        public let runtimeIdentifier: String
+    }
+
+    /// UDID → 作り直し用の識別子。simctl が非ゼロで終われば空(= 「無い」ではなく「読めない」。
+    /// 呼び手は引けなかったことをエラーにする)
+    public static func blueprintsByUDID() -> [String: Blueprint] {
+        guard let result = try? Shell.run(["xcrun", "simctl", "list", "-j", "devices"],
+                                          timeout: simctlTimeoutSeconds),
+              result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [:] }
+        return blueprints(simctlJSON: json)
+    }
+
+    /// blueprintsByUDID の解析部(純粋関数)。devices のキーが runtime identifier
+    static func blueprints(simctlJSON json: [String: Any]) -> [String: Blueprint] {
+        var result: [String: Blueprint] = [:]
+        for (runtime, list) in (json["devices"] as? [String: [[String: Any]]]) ?? [:] {
+            for device in list {
+                guard let udid = device["udid"] as? String,
+                      let typeID = device["deviceTypeIdentifier"] as? String else { continue }
+                result[udid] = Blueprint(deviceTypeIdentifier: typeID, runtimeIdentifier: runtime)
+            }
+        }
+        return result
+    }
+
     /// 起動中 → OS 降順 → 名前順(resolve が「先頭=最良候補」に依存する契約)
     private static func sorted(_ devices: [SimDeviceInfo]) -> [SimDeviceInfo] {
         devices.sorted {

@@ -11,11 +11,6 @@ import Foundation
 
 public enum ProfileWriter {
 
-    /// プラットフォームごとの既定デバイス論理名(scaffold の runs 雛形と対。片方だけ変えない)
-    public static func defaultDeviceName(platform: String) -> String {
-        platform == "android" ? "emulator1" : "simulator1"
-    }
-
     /// デバイス「実体」を表すキー(host / name は**論理名と所在**であって実体ではない)。
     /// **キー数で実体の有無を判定しない** —— host を常に書くようになったことで
     /// `profile setup` の `device.count == 1` という番兵が恒真になり、`--auto-device` が

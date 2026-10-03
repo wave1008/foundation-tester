@@ -1,0 +1,30 @@
+{
+  "baseName": [
+    { "model": "iPhone 17 Pro", "osLabel": "iOS 27.0", "expected": "iPhone 17 Pro(iOS 27.0)" },
+    { "model": "Pixel 9", "osLabel": "Android 15, API 35, APIs", "expected": "Pixel 9(Android 15, API 35, APIs)" },
+    { "model": "Pixel 10", "osLabel": "Android 16, API 36, Play", "expected": "Pixel 10(Android 16, API 36, Play)" }
+  ],
+  "nextUnusedNames": [
+    { "base": "A(B)", "existing": [], "count": 2, "expected": ["A(B)-01", "A(B)-02"] },
+    { "base": "A(B)", "existing": ["A(B)-01", "A(B)-03"], "count": 3, "expected": ["A(B)-02", "A(B)-04", "A(B)-05"] },
+    { "base": "A(B)", "existing": ["A(B)-02"], "count": 1, "expected": ["A(B)-01"] },
+    { "base": "iPhone 17 Pro(iOS 27.0)", "existing": ["iPhone 17 Pro Max(iOS 27.0)-01"], "count": 1, "expected": ["iPhone 17 Pro(iOS 27.0)-01"] },
+    { "base": "A(B)", "existing": ["A(B)-1", "A(B)-001", "A(B)-ab", "A(B)-", "A(B)", "A(B)-1a"], "count": 2, "expected": ["A(B)-01", "A(B)-02"] },
+    { "base": "A(B)", "existing": ["A(B)-98"], "count": 3, "expected": ["A(B)-01", "A(B)-02", "A(B)-03"] },
+    { "base": "A(B)", "existing": ["A(B)-97", "A(B)-98", "A(B)-99"], "count": 2, "expected": ["A(B)-01", "A(B)-02"] },
+    { "base": "P.9(x)", "existing": ["PX9(x)-01"], "count": 1, "expected": ["P.9(x)-01"] },
+    { "base": "A(B)", "existing": [
+        "A(B)-01","A(B)-02","A(B)-03","A(B)-04","A(B)-05","A(B)-06","A(B)-07","A(B)-08","A(B)-09","A(B)-10",
+        "A(B)-11","A(B)-12","A(B)-13","A(B)-14","A(B)-15","A(B)-16","A(B)-17","A(B)-18","A(B)-19","A(B)-20",
+        "A(B)-21","A(B)-22","A(B)-23","A(B)-24","A(B)-25","A(B)-26","A(B)-27","A(B)-28","A(B)-29","A(B)-30",
+        "A(B)-31","A(B)-32","A(B)-33","A(B)-34","A(B)-35","A(B)-36","A(B)-37","A(B)-38","A(B)-39","A(B)-40",
+        "A(B)-41","A(B)-42","A(B)-43","A(B)-44","A(B)-45","A(B)-46","A(B)-47","A(B)-48","A(B)-49","A(B)-50",
+        "A(B)-51","A(B)-52","A(B)-53","A(B)-54","A(B)-55","A(B)-56","A(B)-57","A(B)-58","A(B)-59","A(B)-60",
+        "A(B)-61","A(B)-62","A(B)-63","A(B)-64","A(B)-65","A(B)-66","A(B)-67","A(B)-68","A(B)-69","A(B)-70",
+        "A(B)-71","A(B)-72","A(B)-73","A(B)-74","A(B)-75","A(B)-76","A(B)-77","A(B)-78","A(B)-79","A(B)-80",
+        "A(B)-81","A(B)-82","A(B)-83","A(B)-84","A(B)-85","A(B)-86","A(B)-87","A(B)-88","A(B)-89","A(B)-90",
+        "A(B)-91","A(B)-92","A(B)-93","A(B)-94","A(B)-95","A(B)-96","A(B)-97","A(B)-98"
+      ], "count": 3, "expected": ["A(B)-99"] },
+    { "base": "A(B)", "existing": [], "count": 0, "expected": [] }
+  ]
+}

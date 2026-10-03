@@ -760,6 +760,8 @@ export interface AndroidCatalogSystemImage {
   readonly package: string;
   readonly tag: string;
   readonly versionName: string;
+  /** 仮想デバイス名の OS 部分(Sources/FTCore/VirtualDeviceNaming.swift の androidOSLabel) */
+  readonly nameLabel: string;
 }
 
 /** インストール済みでない(ダウンロードが要る)Android システムイメージ1件。license/sizeBytes は
@@ -772,6 +774,8 @@ export interface AndroidCatalogDownloadableSystemImage {
   readonly sizeBytes: number | null;
   readonly tag: string;
   readonly versionName: string;
+  /** 仮想デバイス名の OS 部分(Sources/FTCore/VirtualDeviceNaming.swift の androidOSLabel) */
+  readonly nameLabel: string;
 }
 
 /** Sources/fleetest/ApiDeviceCatalogCommand.swift の ApiAndroidCatalog.errorCode と対。
@@ -800,6 +804,8 @@ export interface IosCatalogDeviceType {
 export interface IosCatalogRuntime {
   readonly identifier: string;
   readonly name: string;
+  /** 仮想デバイス名の OS 部分(CLI が作る。iOS は name と同じ) */
+  readonly nameLabel: string;
   readonly version: string;
 }
 
@@ -827,7 +833,8 @@ function isAndroidCatalogSystemImage(value: unknown): value is AndroidCatalogSys
     typeof value.apiLevel === "number" &&
     typeof value.package === "string" &&
     typeof value.tag === "string" &&
-    typeof value.versionName === "string"
+    typeof value.versionName === "string" &&
+    typeof value.nameLabel === "string"
   );
 }
 
@@ -840,7 +847,8 @@ function isAndroidCatalogDownloadableSystemImage(value: unknown): value is Andro
     typeof value.package === "string" &&
     (value.sizeBytes === null || typeof value.sizeBytes === "number") &&
     typeof value.tag === "string" &&
-    typeof value.versionName === "string"
+    typeof value.versionName === "string" &&
+    typeof value.nameLabel === "string"
   );
 }
 
@@ -858,6 +866,7 @@ function isIosCatalogRuntime(value: unknown): value is IosCatalogRuntime {
     isRecord(value) &&
     typeof value.identifier === "string" &&
     typeof value.name === "string" &&
+    typeof value.nameLabel === "string" &&
     typeof value.version === "string"
   );
 }

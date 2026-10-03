@@ -374,7 +374,7 @@ export const panelsStrings = {
   "panels.deviceAdd.osVersionLabel": { ja: "OSバージョン", en: "OS Version" },
   "panels.deviceAdd.servicesLabel": { ja: "サービス", en: "Services" },
   "panels.deviceAdd.nameLabel": { ja: "デバイス名", en: "Device Name" },
-  // 左下のバッチ作成(同じ設定で「デバイス名-連番2桁(-01 始まり)」をまとめて作る)
+  // 左下のバッチ作成(同じ設定で「デバイス名-連番2桁」を空いている番号からまとめて作る)
   "panels.deviceAdd.batchCreate": { ja: "バッチ作成", en: "Batch create" },
   "panels.deviceAdd.batchCountTitle": {
     ja: "作成する台数(1-99)",

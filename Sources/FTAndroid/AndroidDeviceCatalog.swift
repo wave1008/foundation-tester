@@ -185,6 +185,12 @@ public enum AndroidDeviceCatalog {
         return (model, api.map { RunProfileDeviceEditor.androidVersionName(apiLevel: $0) })
     }
 
+    /// AVD の system image(config.ini の image.sysdir.1 から導出。読めなければ nil)
+    public static func avdSystemImage(id: String) -> (package: String, apiLevel: Int, tag: String)? {
+        avdConfigValue(id: id, key: "image.sysdir.1")
+            .flatMap { VirtualDeviceNaming.androidImage(fromSysdir: $0) }
+    }
+
     public static func installedAVDs() -> [(id: String, displayName: String?)] {
         let home = avdHomeDirectory()
         guard let entries = try? FileManager.default.contentsOfDirectory(

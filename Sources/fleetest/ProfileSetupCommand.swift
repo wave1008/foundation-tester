@@ -21,7 +21,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Target platform: ios / android / both")
     var platform: String
 
-    @Option(help: "Device name (iOS simulator: the simulator's own name, as shown in Xcode; defaults to ios=simulator1 / android=emulator1)")
+    @Option(help: "Device name (iOS simulator: the simulator's own name, as shown in Xcode). With --auto-device it defaults to \"<model>(<OS>)-NN\" (e.g. \"iPhone 17 Pro(iOS 27.0)-01\"); with --avd it defaults to the AVD's display name")
     var deviceName: String?
 
     @Option(help: "iOS: OS version (e.g. \"iOS 27.0\"; \"27.0\" is also accepted)")
@@ -51,7 +51,9 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to the platform name)")
     var run: String?
 
-    @Flag(help: "Pick a device automatically (iOS: an existing simulator on the newest OS, excluding iPads / Android: the existing AVD with the highest API level)")
+    @Flag(help: ArgumentHelp("Pick a device automatically (iOS: the model/OS of an existing simulator on the newest OS, excluding iPads / Android: the model/system image of the existing AVD with the highest API level)."
+        + " Registers \"<model>(<OS>)-NN\": reuses the lowest-numbered one whose model and runtime/system image also match, else creates one with the lowest unused number."
+        + " The OS label is the runtime name (iOS) or \"Android 16, API 36, APIs\" (\"..., Play\" for Play Store images). Your own simulators/AVDs are never renamed or deleted"))
     var autoDevice = false
 
     func run() async throws {
@@ -102,7 +104,9 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @discardableResult
     private func setUp(platform: String) async throws -> [String: Any] {
         let testProject = try ScenarioHost.project(named: project)
-        var deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
+        let explicitName = self.deviceName
+        // 名前未定は ""(実体の判定 hasDeviceBody は name を見ない)。下の確定後に空なら ValidationError
+        var deviceName = explicitName ?? ""
         let runName = run ?? platform
         let fm = FileManager.default
         let appRef = ProfileWriter.resolvedAppRef(
@@ -115,16 +119,23 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                                       osVersion: os, udid: udid, avd: avd, serial: serial)
         // 実体が1つも指定されていないときだけ自動選定する。**キー数では判定しない**
         // (platform/machine/name は常に入っている。ProfileWriter.hasDeviceBody の宣言を参照)
+        var autoProvisioned = false
         if !ProfileWriter.hasDeviceBody(device), autoDevice {
+            autoProvisioned = true
+            let log: (String) -> Void = { ConsoleOut.out("   \($0)") }
             if platform == "ios" {
-                let picked = try Self.pickSimulator()
-                Self.stampSimulator(picked, model: SimulatorCatalog.modelNamesByUDID()[picked.udid],
-                                    into: &device)
-                ConsoleOut.out("   Auto-picked (ios): \(picked.name) / \(device["osVersion"] ?? "") / \(picked.udid)")
+                let ensured = try VirtualDeviceFactory.ensureSimulator(
+                    like: try Self.pickSimulator(), explicitName: explicitName, log: log)
+                Self.stampSimulator(ensured.info, model: ensured.model, into: &device)
+                ConsoleOut.out("   Auto-picked (ios): \(ensured.info.name) / \(ensured.info.os) / "
+                    + "\(ensured.info.udid) (\(ensured.created ? "created" : "existing"))")
             } else {
-                let picked = try Self.pickAVD()
-                device["avd"] = picked
-                ConsoleOut.out("   Auto-picked (android): \(picked)")
+                let ensured = try VirtualDeviceFactory.ensureAVD(
+                    like: try Self.pickAVD(), explicitName: explicitName, log: log)
+                device["avd"] = ensured.id
+                device["name"] = ensured.name
+                ConsoleOut.out("   Auto-picked (android): \(ensured.name) / \(ensured.id) "
+                    + "(\(ensured.created ? "created" : "existing"))")
             }
         }
         // 実機判定を誤ると実機向けの準備処理が走って run が壊れる。iOS はカタログ上の
@@ -139,20 +150,30 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         }
         // iOS シミュレータは name をシミュレータ自身の名前に揃え、機種名(model)を控える。
         // udid 指定ならそのデバイス、名前指定なら名前(+ os)で引く。見つからなければ下の登録済み検索へ落ちる
-        if platform == "ios", device["kind"] == nil, udid != nil || self.deviceName != nil,
+        if platform == "ios", device["kind"] == nil, !autoProvisioned, udid != nil || explicitName != nil,
            let simulators = try? SimulatorCatalog.devices().filter({ !$0.physical }) {
             let match: SimDeviceInfo?
             if let udid {
                 match = simulators.first { $0.udid == udid }
             } else {
-                match = try? SimulatorCatalog.resolve(spec: DeviceSpec(name: deviceName, osVersion: os), in: simulators)
+                match = try? SimulatorCatalog.resolve(spec: DeviceSpec(name: explicitName ?? "", osVersion: os), in: simulators)
             }
             if let match {
                 Self.stampSimulator(match, model: SimulatorCatalog.modelNamesByUDID()[match.udid],
                                     into: &device)
             }
         }
+        // Android で --avd だけ指定されたときの名前は、その AVD の表示名(無ければ ID)
+        if platform == "android", explicitName == nil, let avd {
+            let installed = AndroidDeviceCatalog.installedAVDs().first { $0.id == avd }
+            device["name"] = installed?.displayName ?? avd
+        }
         deviceName = (device["name"] as? String) ?? deviceName
+        guard !deviceName.isEmpty else {
+            throw ValidationError("cannot decide the device name for \(platform): pass --device-name,"
+                + " a concrete device (iOS: --udid, Android: --avd), or --auto-device")
+        }
+        device["name"] = deviceName
 
         // 実体の指定が無い場合は「他の実行プロファイルに登録済みの手元のデバイスを使う」意味にする
         // (create-device が追記した直後など。無ければどう作ればよいか分からないのでエラー)

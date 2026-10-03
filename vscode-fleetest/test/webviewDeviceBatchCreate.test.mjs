@@ -77,7 +77,7 @@ const READY_CATALOG = {
     models: [{ id: "pixel_9", name: "Pixel 9" }],
     systemImages: [{
       abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis;arm64-v8a",
-      tag: "google_apis", versionName: "Android 16",
+      tag: "google_apis", versionName: "Android 16", nameLabel: "Android 16, API 36, APIs",
     }],
   },
   ios: {
@@ -88,7 +88,7 @@ const READY_CATALOG = {
       name: "iPhone 17 Pro", productFamily: "iPhone",
     }],
     runtimes: [{
-      identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", version: "27.0",
+      identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", nameLabel: "iOS 27.0", version: "27.0",
     }],
   },
 };
@@ -174,7 +174,7 @@ test("台数は 1-99 の外だと送らずエラーを出す(number 入力の mi
   assert.equal(message.names[98], "iPhone 17 Pro(iOS 27.0)-99", "末尾は -99(2桁に収まる)");
 });
 
-test("既存と同名になるぶんだけ overwriteNames に載る", (t) => {
+test("既存の番号は飛ばして空き番号で作るので overwriteNames は空になる", (t) => {
   const posted = [];
   const { window, document } = createWebview((message) => posted.push(message));
   t.after(() => window.close());
@@ -187,9 +187,42 @@ test("既存と同名になるぶんだけ overwriteNames に載る", (t) => {
 
   const message = posted.find((m) => m.type === "batchCreateDevices");
   assert.deepEqual(Array.from(message.names), [
-    "iPhone 17 Pro(iOS 27.0)-01", "iPhone 17 Pro(iOS 27.0)-02", "iPhone 17 Pro(iOS 27.0)-03",
+    "iPhone 17 Pro(iOS 27.0)-01", "iPhone 17 Pro(iOS 27.0)-03", "iPhone 17 Pro(iOS 27.0)-04",
   ]);
-  assert.deepEqual(Array.from(message.overwriteNames), ["iPhone 17 Pro(iOS 27.0)-02"], "衝突した1台だけ");
+  assert.deepEqual(Array.from(message.overwriteNames), []);
+});
+
+test("名前を手で編集したときは入力文字列を base に空き番号で作る", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  openAddModal(window, document, [{ name: "mine-01", udid: "SIM-1", os: "27.0" }]);
+  const name = document.getElementById("dlg-name");
+  name.value = "mine";
+  name.dispatchEvent(new window.Event("input", { bubbles: true }));
+  document.getElementById("dlg-batch-count").value = "2";
+  click(window, document.getElementById("dlg-batch"));
+
+  const message = posted.find((m) => m.type === "batchCreateDevices");
+  assert.deepEqual(Array.from(message.names), ["mine-02", "mine-03"]);
+});
+
+test("空き番号が足りないときは送らずに理由を出す", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+
+  const taken = [];
+  for (let n = 1; n <= 99; n += 1) {
+    taken.push({ name: "iPhone 17 Pro(iOS 27.0)-" + String(n).padStart(2, "0"), udid: "SIM-" + n, os: "27.0" });
+  }
+  openAddModal(window, document, taken);
+  document.getElementById("dlg-batch-count").value = "2";
+  click(window, document.getElementById("dlg-batch"));
+
+  assert.equal(posted.filter((m) => m.type === "batchCreateDevices").length, 0);
+  assert.notEqual(document.getElementById("dlg-error").textContent, "");
 });
 
 test("開始で追加ダイアログが閉じて進行窓が開き、進行→完了で OK が押せるようになる", (t) => {
@@ -498,7 +531,7 @@ const CATALOG_WITH_DOWNLOADABLE = {
     downloadableSystemImages: [{
       abi: "arm64-v8a", apiLevel: 36, license: "android-sdk-arm-dbt-license",
       package: "system-images;android-36;google_apis;arm64-v8a",
-      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 16",
+      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 16", nameLabel: "Android 16, API 36, APIs",
     }],
     downloadableError: null,
   },
@@ -539,7 +572,7 @@ test("バッチ作成: インストール済みの OS を選んだままなら i
   const catalog = structuredClone(CATALOG_WITH_DOWNLOADABLE);
   catalog.android.systemImages = [{
     abi: "arm64-v8a", apiLevel: 35, package: "system-images;android-35;google_apis;arm64-v8a",
-    tag: "google_apis", versionName: "Android 15",
+    tag: "google_apis", versionName: "Android 15", nameLabel: "Android 15, API 35, APIs",
   }];
 
   post(window, profileInfoMessage());

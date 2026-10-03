@@ -52,9 +52,9 @@
 ```json
 { "app": "myapp",
   "devices": [
-    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
-    { "platform": "android", "machine": "M1Max", "name": "emulator1", "avd": "Pixel 9(Android 16)" },
-    { "platform": "android", "machine": "local", "name": "emulator2", "enabled": false, "avd": "Pixel_8_Android_14" }
+    { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro(iOS 27.0)-01", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
+    { "platform": "android", "machine": "M1Max", "name": "Pixel 9(Android 16, API 36, APIs)-01", "avd": "Pixel_9_Android_16_API_36_APIs_-01" },
+    { "platform": "android", "machine": "local", "name": "Pixel 8(Android 14, API 34, APIs)-01", "enabled": false, "avd": "Pixel_8_Android_14_API_34_APIs_-01" }
   ],
   "heal": true }
 ```

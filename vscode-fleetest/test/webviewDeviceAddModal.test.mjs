@@ -94,15 +94,15 @@ function catalogWithoutAndroidModels() {
       systemImages: [
         {
           abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis_playstore;arm64-v8a",
-          tag: "google_apis_playstore", versionName: "Android 16",
+          tag: "google_apis_playstore", versionName: "Android 16", nameLabel: "Android 16, API 36, Play",
         },
         {
           abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis;arm64-v8a",
-          tag: "google_apis", versionName: "Android 16",
+          tag: "google_apis", versionName: "Android 16", nameLabel: "Android 16, API 36, APIs",
         },
         {
           abi: "arm64-v8a", apiLevel: 35, package: "system-images;android-35;google_apis;arm64-v8a",
-          tag: "google_apis", versionName: "Android 15",
+          tag: "google_apis", versionName: "Android 15", nameLabel: "Android 15, API 35, APIs",
         },
       ],
     },
@@ -114,7 +114,7 @@ function catalogWithoutAndroidModels() {
         name: "iPhone 17 Pro", productFamily: "iPhone",
       }],
       runtimes: [{
-        identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", version: "27.0",
+        identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", nameLabel: "iOS 27.0", version: "27.0",
       }],
     },
   };
@@ -210,8 +210,8 @@ test("作成には選んだサービスのシステムイメージを渡す", (t
   assert.equal(create.platform, "android");
   assert.equal(create.model, "pixel_9");
   assert.equal(create.os, "system-images;android-36;google_apis_playstore;arm64-v8a");
-  // 名前はモデルと OS ラベルから自動生成される(サービスはラベルに含めない)
-  assert.equal(create.name, "Pixel 9(Android 16(API 36) / arm64-v8a)");
+  // 名前はモデルとカタログの nameLabel(サービス名つき)+空き番号から自動生成される
+  assert.equal(create.name, "Pixel 9(Android 16, API 36, Play)-01");
 });
 
 test("モデルが空のプラットフォームでは理由を出し OK を押させない", (t) => {
@@ -409,7 +409,7 @@ function catalogWithDownloadable() {
     {
       abi: "arm64-v8a", apiLevel: 37, license: "android-sdk-arm-dbt-license",
       package: "system-images;android-37;google_apis;arm64-v8a",
-      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 17",
+      sizeBytes: 1900000000, tag: "google_apis", versionName: "Android 17", nameLabel: "Android 17, API 37, APIs",
     },
   ];
   catalog.android.downloadableError = null;
@@ -528,7 +528,7 @@ test("自動生成名はダウンロード候補の容量接尾辞を含まな�
   os.value = "system-images;android-37;google_apis;arm64-v8a";
   os.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  assert.equal(document.getElementById("dlg-name").value, "Pixel 9(Android 17(API 37) / arm64-v8a)");
+  assert.equal(document.getElementById("dlg-name").value, "Pixel 9(Android 17, API 37, APIs)-01");
   assert.doesNotMatch(document.getElementById("dlg-name").value, /GB/);
 });
 

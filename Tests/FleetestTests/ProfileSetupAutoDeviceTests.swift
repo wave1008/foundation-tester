@@ -23,7 +23,7 @@ final class ProfileSetupAutoDeviceTests: XCTestCase {
                        udid: String? = nil, avd: String? = nil, serial: String? = nil)
         -> [String: Any] {
         ProfileSetupCommand.deviceEntry(
-            platform: platform, name: ProfileWriter.defaultDeviceName(platform: platform),
+            platform: platform, name: "dev",
             osVersion: os, udid: udid, avd: avd, serial: serial)
     }
 

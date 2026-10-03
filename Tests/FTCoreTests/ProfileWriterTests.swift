@@ -105,11 +105,6 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertEqual(positions, positions.sorted(), text)
     }
 
-    func testDefaultDeviceNameMatchesScaffold() {
-        XCTAssertEqual(ProfileWriter.defaultDeviceName(platform: "ios"), "simulator1")
-        XCTAssertEqual(ProfileWriter.defaultDeviceName(platform: "android"), "emulator1")
-    }
-
     // MARK: - 実体の有無(キー数で判定してはいけない)
 
     /// **本丸**: platform + machine + name だけの1件は「実体なし」。ここが true になると

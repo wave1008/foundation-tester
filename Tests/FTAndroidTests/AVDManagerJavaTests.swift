@@ -116,7 +116,7 @@ final class AVDManagerJavaTests: XCTestCase {
 
     /// avdmanager/sdkmanager を撃つ `Shell.run` はすべて `avdManagerCommand`/`sdkToolCommand` を
     /// 通す。素で撃つと、ランナー機(JDK 無し)でその経路だけ「Unable to locate a Java Runtime」に
-    /// 戻る。撃つ場所は6つ(avdmanager: 導入直後の確認・一覧・作成・削除・作り直し前の削除 /
+    /// 戻る。撃つ場所は7つ(avdmanager: 導入直後の確認・一覧・作成・削除・作り直し前の削除・profile setup の機種名引き /
     /// sdkmanager: システムイメージ導入)で、増減したらここを見直す
     func testEveryAVDManagerCallGoesThroughTheJavaResolution() throws {
         let enumerator = FileManager.default.enumerator(at: sourcesRoot, includingPropertiesForKeys: nil)!
@@ -142,7 +142,7 @@ final class AVDManagerJavaTests: XCTestCase {
             }
         }
         XCTAssertEqual(bypasses, [], "avdmanager/sdkmanager を avdManagerCommand/sdkToolCommand を通さずに撃っている")
-        XCTAssertEqual(routed, 6, "avdmanager/sdkmanager を撃つ場所が増減した(走査が届いていない可能性もある)")
+        XCTAssertEqual(routed, 7, "avdmanager/sdkmanager を撃つ場所が増減した(走査が届いていない可能性もある)")
     }
 
     /// `Shell.run(` の直後から、対応する `)` までの引数の文字列(近くの別のコードを拾わない)

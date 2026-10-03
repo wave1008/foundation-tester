@@ -1103,7 +1103,7 @@ function renderDeviceAddOverlay(): string {
         <span class="modal-hint">${t("panels.deviceAdd.installCmdlineToolsHint")}</span>
       </div>
       <div class="modal-buttons">
-        <!-- 左下。同じ設定(OS種別/モデル/OSバージョン)で「デバイス名-連番2桁(-01 始まり)」を一括作成する。
+        <!-- 左下。同じ設定(OS種別/モデル/OSバージョン)で「デバイス名-連番2桁」を空いている番号(01〜99)から一括作成する。
              件数は 1-99(min/max は JS 側でも検証する ―― number 入力は手打ちで範囲外を通す)。 -->
         <div class="modal-buttons-left">
           <button id="dlg-batch" class="secondary" type="button">${t("panels.deviceAdd.batchCreate")}</button>

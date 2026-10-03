@@ -84,7 +84,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                   let version = dict["version"] as? String,
                   (dict["platform"] as? String) == "iOS",
                   (dict["isAvailable"] as? Bool) == true else { return nil }
-            return ApiIOSRuntime(identifier: identifier, name: name, version: version)
+            return ApiIOSRuntime(identifier: identifier, name: name, nameLabel: name, version: version)
         }
 
         // beta更新を重ねた環境では simctl が同じ identifier を複数返すため重複排除する
@@ -256,7 +256,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                         abi: abi, apiLevel: apiLevel,
                         package: "system-images;android-\(apiLevel);\(tag);\(abi)",
                         tag: tag,
-                        versionName: RunProfileDeviceEditor.androidVersionName(apiLevel: apiLevel)))
+                        versionName: RunProfileDeviceEditor.androidVersionName(apiLevel: apiLevel),
+                        nameLabel: VirtualDeviceNaming.androidOSLabel(apiLevel: apiLevel, tag: tag)))
                 }
             }
         }
@@ -321,6 +322,8 @@ private struct ApiIOSDeviceType: Encodable {
 private struct ApiIOSRuntime: Encodable {
     let identifier: String
     let name: String
+    /// 仮想デバイス名「<機種>(<nameLabel>)-NN」の OS 部分(= name。命名規則は VirtualDeviceNaming)
+    let nameLabel: String
     /// simctl の "version" フィールドそのまま(例 "27.0")
     let version: String
 }
@@ -370,6 +373,8 @@ struct ApiAndroidSystemImage: Encodable {
     let package: String
     let tag: String
     let versionName: String
+    /// 仮想デバイス名の OS 部分(VirtualDeviceNaming.androidOSLabel。例 "Android 16, API 36, APIs")
+    let nameLabel: String
 }
 
 /// SystemImageRepository.Entry の出力形。license/sizeBytes は XML に欠けていることがあるため
@@ -382,6 +387,7 @@ struct ApiAndroidDownloadableSystemImage: Encodable {
     let sizeBytes: Int?
     let tag: String
     let versionName: String
+    let nameLabel: String
 
     init(_ entry: SystemImageRepository.Entry) {
         abi = entry.abi
@@ -391,10 +397,11 @@ struct ApiAndroidDownloadableSystemImage: Encodable {
         sizeBytes = entry.sizeBytes
         tag = entry.tag
         versionName = entry.versionName
+        nameLabel = VirtualDeviceNaming.androidOSLabel(apiLevel: entry.apiLevel, tag: entry.tag)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case abi, apiLevel, license, package, sizeBytes, tag, versionName
+        case abi, apiLevel, license, package, sizeBytes, tag, versionName, nameLabel
     }
 
     func encode(to encoder: Encoder) throws {
@@ -406,5 +413,6 @@ struct ApiAndroidDownloadableSystemImage: Encodable {
         try container.encode(sizeBytes, forKey: .sizeBytes)
         try container.encode(tag, forKey: .tag)
         try container.encode(versionName, forKey: .versionName)
+        try container.encode(nameLabel, forKey: .nameLabel)
     }
 }

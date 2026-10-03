@@ -116,7 +116,7 @@ final class DeviceCatalogParsingTests: XCTestCase {
 
     private func image(api: Int, tag: String, abi: String = "arm64-v8a") -> ApiAndroidSystemImage {
         ApiAndroidSystemImage(abi: abi, apiLevel: api, package: "system-images;android-\(api);\(tag);\(abi)",
-                              tag: tag, versionName: "Android \(api)")
+                              tag: tag, versionName: "Android \(api)", nameLabel: "Android \(api)")
     }
 
     func testSystemImageSortsByDescendingAPILevelFirst() {

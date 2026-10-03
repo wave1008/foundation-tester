@@ -190,7 +190,7 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 | `results list / summary / flaky / trend / devices / slow / insights / log` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
 | `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
-| `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`(iOS はシミュレータ自身の名前)/`--avd`、`--app-id`、`--auto-device` は既存デバイスから自動選定(iOS は iPad を除外)) |
+| `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`(iOS はシミュレータ自身の名前)/`--avd`、`--app-id`、`--auto-device` は既存デバイスの機種・OS から自動選定(iOS は iPad を除外)し、「機種(OS)-NN」(例 `iPhone 17 Pro(iOS 27.0)-01`)の名前で登録する。OS 部分は iOS が runtime 名・Android が `Android 16, API 36, APIs`(Play Store イメージは `Android 16, API 36, Play`)。名前が合い、かつ機種・イメージも同じものがあれば番号最小を再利用し、無ければ空いている最小の番号で新規作成する。利用者の既存デバイスは改名・削除しない) |
 | `profile list` | 実行プロファイルの一覧とそのデバイスの解決チェック |
 | `install <パッケージパス>` | .app / .apk のインストール |
 | `launch / terminate <bundle-id>` | アプリの起動・終了 |
@@ -232,7 +232,7 @@ TestProjects/SampleApp/
   "devices": [
     { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro" },
     { "platform": "ios", "machine": "local", "name": "iPhone 17 Pro Max", "osVersion": "iOS 27.0", "model": "iPhone 17 Pro Max" },
-    { "platform": "android", "machine": "M2Ultra", "name": "emulator1", "avd": "Pixel 9(Android 16)" }
+    { "platform": "android", "machine": "M2Ultra", "name": "Pixel 9(Android 16, API 36, APIs)-01", "avd": "Pixel_9_Android_16_API_36_APIs_-01" }
   ],
   "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
 ```
