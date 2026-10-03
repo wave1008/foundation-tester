@@ -381,6 +381,9 @@ public final class FTDriveCore {
     public var appDisplayName: String? {
         didSet { executor.expectedAppDisplayName = appDisplayName }
     }
+    /// 物理 iPhone の録画(`--still-frames-dir`)。操作のステップと失敗したステップの直後に1枚撮る
+    /// (captureStillFrameIfRecording)。nil なら撮らない
+    public var stillFrameCapture: StillFrameCapture?
     /// DSL の `iosAlertHandler` からの登録(発火したら台帳から外れる。
     /// 規則の意味は FTCore.SystemAlertRule)
     func addSystemAlertRule(_ rule: SystemAlertRule) {
@@ -855,6 +858,7 @@ public final class FTDriveCore {
                    screenshotData: outcome?.evidenceImage,
                    screenshotLabel: outcome?.evidenceImage == nil ? nil
                        : step.action == "existImage" ? "judged-by-findImage" : "image-judged-by-classifier")
+        captureStillFrameIfRecording(changedScreen: step.action != nil, status: status)
 
         // 修正提案。修復は指紋照合だけなので、`healedStep` は指紋で掴んだ要素を書けるセレクタへ
         // 写したもの。**永続化はしない**(指紋は毎回再導出でき、誤った一致を固定すると注記ごと消える)
@@ -1180,11 +1184,27 @@ public final class FTDriveCore {
                    at: ISO8601Millis.string(from: Date()),
                    notes: resolvedNote.map { [$0] } ?? [],
                    command: command, failureKind: failureKind)
+        captureStillFrameIfRecording(changedScreen: !isAssertion, status: status)
 
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
         }
         return status
+    }
+
+    /// 録画中の物理 iPhone で、画面を変え得たステップ(操作)か失敗したステップの直後に1枚撮る
+    /// (IOSStillFrameRecorder が停止時に mp4 へまとめる)。検証だけのステップは画面を変えないので撮らない
+    /// (1枚 約 50ms = SE3 実測。ステップごとに払う)。**recordStep の外で呼ぶ** —— recordStep は
+    /// stateLock を持ったまま走るので、その中でデバイスを待たない
+    private func captureStillFrameIfRecording(changedScreen: Bool, status: StepResult.Status) {
+        guard let stillFrameCapture else { return }
+        var failed = false
+        if case .failed = status { failed = true }
+        guard changedScreen || failed else { return }
+        let driver = self.driver
+        let requestedAt = Date()
+        guard let png = FTSync.run({ try? await driver.screenshot() }) ?? nil else { return }
+        stillFrameCapture.save(png, at: requestedAt)
     }
 
     /// screenshot コマンドの実体。performCustom を使わないのは、取得した Data をこのステップの

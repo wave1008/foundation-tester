@@ -4,6 +4,8 @@
 // 実セッション(simctl/adb)や実エンコードは makeSession/extractClip 注入で置き換える。
 
 import XCTest
+import CoreGraphics
+import ImageIO
 @testable import FTCore
 
 final class VideoRecordingCoordinatorTests: XCTestCase {
@@ -131,51 +133,93 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(decoded.recordings.count, 0)
     }
 
-    /// **物理 iPhone は録れない**(simctl recordVideo はシミュレータ専用)—— 理由を名指しし、
-    /// 数えて index を書く(黙って録らない形にしない。§19 P4)。シミュレータ・Android 実機は対象外
-    func testPhysicalIPhoneIsNamedAsUnrecordableAndCounted() async throws {
-        let physicalIOS = DriverConnection(platform: "ios", port: 8150, udid: "00008030-XXXX", physical: true)
-        XCTAssertTrue(VideoRecordingCoordinator.unrecordableReason(platform: "ios", connection: physicalIOS)?
-                          .contains("record: true is ignored on this device") == true)
-        XCTAssertNil(VideoRecordingCoordinator.unrecordableReason(
-            platform: "ios", connection: DriverConnection(platform: "ios", port: 8100, udid: "SIM")))
-        XCTAssertNil(VideoRecordingCoordinator.unrecordableReason(
-            platform: "android", connection: DriverConnection(platform: "android", serial: "93MAY0CY1M",
-                                                              physical: true)))
-
+    /// **物理 iPhone は静止画の録画**(IOSStillFrameRecorder)—— 撮影先を子へ渡せ、置かれた静止画が
+    /// 停止時に mp4 になってシナリオのクリップとして index に載る(実エンコード・実切り出し)
+    func testPhysicalIPhoneRecordsStillFramesIntoAClip() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
-        var sessionsMade = 0
         let coordinator = VideoRecordingCoordinator(
-            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
-            makeSession: { _, _, _ in sessionsMade += 1; return DeadSession() })
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false))
+        let physicalIOS = DriverConnection(platform: "ios", port: 8150, udid: "00008030-XXXX", physical: true)
         let worker = RunWorker(label: "SE3(ios:8150)", platform: "ios", driver: UnusedDriver(),
                                connection: physicalIOS, logicalName: "SE3")
         let started = await coordinator.start(worker)
-        XCTAssertFalse(started)
-        XCTAssertEqual(sessionsMade, 0, "録れない台では録画セッションを起こさない")
-        await registerInterval(coordinator, worker: worker, scenarioID: "T.S0010")
+        XCTAssertTrue(started, "物理 iPhone も録画を開始する")
+        let maybeDir = await coordinator.stillFramesDir(workerLabel: worker.label)
+        let dir = try XCTUnwrap(maybeDir, "物理 iPhone には撮影先がある")
+        XCTAssertTrue(dir.path.hasPrefix(tmp.appendingPathComponent("recordings").path), dir.path)
+
+        let t0 = Date().addingTimeInterval(-3)
+        await coordinator.scenarioStarted(workerLabel: worker.label, scenarioID: "T.S0010", at: t0)
+        let capture = StillFrameCapture(dir: dir)
+        capture.save(try Self.png(width: 100, height: 200), at: t0.addingTimeInterval(0.2))
+        capture.save(try Self.png(width: 100, height: 200), at: t0.addingTimeInterval(0.8))
+        await coordinator.scenarioFinished(workerLabel: worker.label, at: t0.addingTimeInterval(1.5), passed: false)
+        await coordinator.stop(worker)
         await coordinator.finish()
 
-        let indexURL = tmp.appendingPathComponent("recordings/index.json")
-        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: Data(contentsOf: indexURL))
-        XCTAssertEqual(decoded.sourcesFailed, 1, "録れなかった台として数え、録画タブから消さない")
+        let decoded = try JSONDecoder().decode(
+            RecordingIndex.self, from: Data(contentsOf: tmp.appendingPathComponent("recordings/index.json")))
+        XCTAssertEqual(decoded.recordings.map(\.scenarioID), ["T.S0010"])
+        XCTAssertNil(decoded.sourcesFailed, "録画に失敗した台は無い(0 は欄ごと省かれる)")
+        let clip = try XCTUnwrap(decoded.recordings.first)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tmp.appendingPathComponent(clip.file).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path), "撮影先は停止時に消す")
     }
 
-    /// 配線: ワーカー起動時に理由を `workerLog` で出してから start を呼ぶ(ソース走査)
-    func testOrchestratorWarnsBeforeStartingRecording() throws {
-        let url = URL(fileURLWithPath: #filePath)
+    /// 撮影先があるのは物理 iPhone だけ(シミュレータ・Android は本物の動画)
+    func testOnlyPhysicalIPhoneHasAStillFramesDir() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp),
+            makeSession: fixedSessionFactory(tmp: tmp))
+        let simulator = makeWorker(1)
+        _ = await coordinator.start(simulator)
+        let stillsDir = await coordinator.stillFramesDir(workerLabel: simulator.label)
+        XCTAssertNil(stillsDir)
+    }
+
+    /// 配線: 子へ撮影先を渡す(RunOrchestrator → runOne → ScenarioHost の引数)、子は操作と失敗のステップで撮る
+    func testStillFramesDirIsWiredToTheScenarioProcess() throws {
+        let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/FTCore/RunOrchestrator.swift")
-        let code = try String(contentsOf: url, encoding: .utf8)
-        guard let warn = code.range(of: "VideoRecordingCoordinator.unrecordableReason(platform: worker.platform"),
-              let start = code.range(of: "if await videoRecording?.start(worker) == true {") else {
-            return XCTFail("録画の警告か起動の呼び出しが見つからない = 走査を見直す")
+        func source(_ path: String) throws -> String {
+            try String(contentsOf: root.appendingPathComponent(path), encoding: .utf8)
         }
-        XCTAssertTrue(warn.lowerBound < start.lowerBound, "警告は start より前")
-        let between = String(code[warn.lowerBound..<start.lowerBound])
-        XCTAssertTrue(between.contains("continuation.yield(.workerLog(worker: worker.label, message: reason))"),
-                      "理由を workerLog で出していない")
+        let orchestrator = try source("Sources/FTCore/RunOrchestrator.swift")
+        guard let start = orchestrator.range(of: "if await videoRecording?.start(worker) == true {"),
+              let lookup = orchestrator.range(of: "let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)")
+        else { return XCTFail("録画の起動か撮影先の取得が見つからない = 走査を見直す") }
+        XCTAssertTrue(start.lowerBound < lookup.lowerBound, "撮影先は録画を起動した後に引く")
+        XCTAssertTrue(orchestrator.contains("stillFramesDir: stillFramesDir,\n                onEvent:"),
+                      "runOne へ撮影先を渡していない")
+        XCTAssertTrue(orchestrator.contains("registerChildProcess: registerChildProcess, stillFramesDir: stillFramesDir)"),
+                      "runOne が ScenarioHost.run へ撮影先を渡していない")
+        XCTAssertTrue(try source("Sources/FTCore/ScenarioHost.swift")
+                        .contains(#"args += ["--still-frames-dir", stillFramesDir.path]"#))
+        let runner = try source("Sources/FTScenarioRunner/ScenarioRunnerMain.swift")
+        XCTAssertTrue(runner.contains(#"@Option(name: .customLong("still-frames-dir"),"#))
+        XCTAssertTrue(runner.contains("core.stillFrameCapture = stillFramesDir.map"))
+        let runtime = try source("Sources/FTDSL/FTRuntime.swift")
+        XCTAssertTrue(runtime.contains("captureStillFrameIfRecording(changedScreen: step.action != nil, status: status)"),
+                      "StepExecutor 経由のステップで撮っていない")
+        XCTAssertTrue(runtime.contains("captureStillFrameIfRecording(changedScreen: !isAssertion, status: status)"),
+                      "performCustom 経由のステップ(launchApp 等)で撮っていない")
+    }
+
+    private static func png(width: Int, height: Int) throws -> Data {
+        let ctx = try XCTUnwrap(CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        ctx.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 0.8, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try XCTUnwrap(ctx.makeImage())
+        let data = NSMutableData()
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        return data as Data
     }
 
     /// 切り出しが期限超過したら、そこで断念する(残りのクリップは1件も試みない)はず

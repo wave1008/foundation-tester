@@ -750,6 +750,8 @@ public enum ScenarioRunner {
                               /// ScenarioHost.run(registerChildProcess:) への素通し
                               /// (RunOrchestrator が中断口として保持する同名プロパティ参照)
                               registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
+                              /// ScenarioHost.run(stillFramesDir:) への素通し(物理 iPhone の録画)
+                              stillFramesDir: URL? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -773,7 +775,7 @@ public enum ScenarioRunner {
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
             appPath: appPath, appName: appName, appBundleID: appBundleID,
-            registerChildProcess: registerChildProcess) { event in
+            registerChildProcess: registerChildProcess, stillFramesDir: stillFramesDir) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -1627,13 +1629,6 @@ public final class RunOrchestrator {
                                         name: worker.logicalName ?? worker.label,
                                         platform: worker.platform)
 
-        // **録れないデバイス(物理 iPhone)は run の頭で名指しして警告する**(`record: true` を指定したのに
-        // 黙って効かない形を作らない。判定は VideoRecordingCoordinator.unrecordableReason の1箇所)
-        if videoRecording != nil,
-           let reason = VideoRecordingCoordinator.unrecordableReason(platform: worker.platform,
-                                                                     connection: worker.connection) {
-            continuation.yield(.workerLog(worker: worker.label, message: reason))
-        }
         // 録画プロセスの起動に成功したときだけ RecordingLease を書く(record:false・adb/udid 不明・
         // プロセス spawn 失敗はいずれも false を返し、lease は書かれない)
         if await videoRecording?.start(worker) == true {
@@ -1642,6 +1637,8 @@ public final class RunOrchestrator {
                 await recordingLeases.acquire(leaseKey)
             }
         }
+        // 物理 iPhone の録画は子が操作の直後に撮る静止画(IOSStillFrameRecorder)。それ以外は nil
+        let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)
 
         var failed = 0
         // 連続失敗は前の run から引き継ぐ(LaneFailureStreakStore)。鍵が無い(論理名なし)・注入が無いときは 0 から
@@ -1675,6 +1672,7 @@ public final class RunOrchestrator {
                 appPath: appTargets[worker.platform]?
                     .packagePath(physical: worker.connection.physical),
                 registerChildProcess: registerChildProcess,
+                stillFramesDir: stillFramesDir,
                 onEvent: { [continuation, fmCounter = self.fmUnavailable] event in
                     // **FM 全滅のまま走ったシナリオを数える**(合否は変えない。summary の
                     // fmUnavailableScenarios。ここで数えるのは、実行結果に FM の可否が

@@ -330,6 +330,9 @@ public enum ScenarioHost {
                            /// この関数の終わりで必ず呼ぶ(呼ばないと長時間 run で登録簿が肥大化する)。
                            /// nil(未注入)なら中断の対象にならない(既存呼び出し元は無変更のまま)
                            registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
+                           /// 物理 iPhone の録画で、子が操作の直後に静止画を置く先(IOSStillFrameRecorder)。
+                           /// nil なら撮らない
+                           stillFramesDir: URL? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let fm = settings.fm
         let containerInference = settings.containerInference
@@ -436,6 +439,8 @@ public enum ScenarioHost {
         args += installArguments(hostInstall: installHandler != nil, appPath: appPath)
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
+        // dry-run は撮らない(デバイスに触らない)
+        if let stillFramesDir, !dryRun { args += ["--still-frames-dir", stillFramesDir.path] }
         process.arguments = args
 
         let stdout = Pipe()

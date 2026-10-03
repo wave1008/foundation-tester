@@ -152,6 +152,10 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(help: "The target is a physical device (disables the simctl-based fast launch and the not-installed preflight)")
     var physical = false
 
+    @Option(name: .customLong("still-frames-dir"),
+            help: "Save a screenshot after each action step into this directory (recording on a physical iPhone; passed in by the orchestrator)")
+    var stillFramesDir: String?
+
     @Option(name: .customLong("bridge-host"),
             help: "Host of the iOS bridge (default 127.0.0.1; for physical devices use the LAN IP or the iproxy loopback)")
     var bridgeHost: String?
@@ -514,6 +518,7 @@ struct RunScenario: AsyncParsableCommand {
         // 入れ直し(実機の clearAppData)専用。**host-install でも落とさない**理由は宣言の doc
         core.appPackagePath = appPath
         core.appDisplayName = appName
+        core.stillFrameCapture = stillFramesDir.map { StillFrameCapture(dir: URL(fileURLWithPath: $0)) }
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
         if runPlatform == "android", let serial {

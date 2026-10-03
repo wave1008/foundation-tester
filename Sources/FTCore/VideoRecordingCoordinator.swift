@@ -62,6 +62,8 @@ actor VideoRecordingCoordinator {
         let session: any DeviceVideoRecorderSession
         let workerID: String
         let platform: String
+        /// 物理 iPhone の静止画の撮影先(IOSStillFrameRecorder)。それ以外は nil
+        let stillFramesDir: URL?
     }
 
     /// 1 シナリオの実行区間(壁時計)。end が nil の間は実行中(scenarioFinished 未着)。
@@ -104,9 +106,6 @@ actor VideoRecordingCoordinator {
     /// (実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
     /// 「local だけバッジが出ない」ように見えた)
     private var sourcesFailed = 0
-    /// sourcesFailed のうち「録れないデバイス」(物理 iPhone)のぶん。finish の警告文を分けるためだけに持つ
-    /// (index の `sourcesFailed` には含める = 録画タブから消えない側)
-    private var sourcesUnsupported = 0
 
     private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
     /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
@@ -145,12 +144,6 @@ actor VideoRecordingCoordinator {
         // クリップの最終ファイル名(scenarioID 由来)とは別名前空間(ソースは切り出し後に削除される一時物)
         let sourceStem = "src-\(uniqueSourceStem(for: workerID))"
 
-        // **録れないデバイスは起動を試みず、数えて false**(警告は RunOrchestrator がワーカー起動時に出す)
-        if Self.unrecordableReason(platform: worker.platform, connection: worker.connection) != nil {
-            sourcesFailed += 1
-            sourcesUnsupported += 1
-            return false
-        }
         let session: (any DeviceVideoRecorderSession)?
         if let makeSession {
             session = makeSession(worker, recordingsDir, sourceStem)
@@ -163,20 +156,15 @@ actor VideoRecordingCoordinator {
             sourcesFailed += 1
             return false
         }
-        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform)
+        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform,
+                                           stillFramesDir: (session as? IOSStillFrameRecorder)?.stillsDir)
         return true
     }
 
-    /// **録画できないデバイスの理由**(nil = 録れる)。`record: true` は `--set record=true` でも指定できるので、
-    /// 「指定したのに黙って効かない形を作らない」規律の対象 —— 物理 iPhone で 4 本緑・`recordings/` 無し・
-    /// 警告 0 行だった(SE3・§19 P4)。RunOrchestrator がワーカー起動時にこれを `workerLog` で出し、
-    /// `start` は数えて false を返す。**判定はここ1箇所**(defaultSession の nil と同じ条件)
-    public static func unrecordableReason(platform: String, connection: DriverConnection) -> String? {
-        guard platform == "ios", connection.physical else { return nil }
-        return "[recording] record: true is ignored on this device — video capture uses the"
-            + " simulator's `simctl io recordVideo`, and a physical iPhone has no equivalent"
-            + " (physical Android devices still record via adb screenrecord)."
-            + " No clip will be saved for this worker."
+    /// そのワーカーの子(シナリオ実行プロセス)が静止画を置く先。録画中の物理 iPhone だけ非 nil
+    /// (RunOrchestrator → ScenarioHost の `--still-frames-dir`)
+    func stillFramesDir(workerLabel: String) -> URL? {
+        active[workerLabel]?.stillFramesDir
     }
 
     private static func defaultSession(worker: RunWorker, config: VideoRecordingConfig,
@@ -185,11 +173,13 @@ actor VideoRecordingCoordinator {
         let session: (any DeviceVideoRecorderSession)?
         switch worker.platform {
         case "ios":
-            // 実機は録画不可(simctl io recordVideo はシミュレータ専用)。nil で静かにスキップする
-            // = 既存の「録画失敗は run を失敗させない」構造にそのまま乗る。Android 実機は
-            // adb screenrecord なのでそのまま録れる
-            session = worker.connection.physical ? nil : worker.connection.udid.map {
-                IOSSimulatorVideoRecorder(udid: $0, workDir: recordingsDir, fileStem: sourceStem)
+            // 物理 iPhone は動画を取り出せないので、操作の直後の静止画をまとめる(IOSStillFrameRecorder)
+            if worker.connection.physical {
+                session = IOSStillFrameRecorder(workDir: recordingsDir, fileStem: sourceStem)
+            } else {
+                session = worker.connection.udid.map {
+                    IOSSimulatorVideoRecorder(udid: $0, workDir: recordingsDir, fileStem: sourceStem)
+                }
             }
         case "android":
             if let serial = worker.connection.serial, let adbPath = config.androidADBPath {
@@ -238,15 +228,10 @@ actor VideoRecordingCoordinator {
             ConsoleOut.err(
                 "⚠️ [recording] \(clipsFailed)/\(clipsAttempted) clips could not be extracted")
         }
-        if sourcesFailed - sourcesUnsupported > 0 {
+        if sourcesFailed > 0 {
             ConsoleOut.err(
-                "⚠️ [recording] \(sourcesFailed - sourcesUnsupported) device(s) produced no usable recording"
+                "⚠️ [recording] \(sourcesFailed) device(s) produced no usable recording"
                  + " (the recorder started but nothing readable came out)")
-        }
-        if sourcesUnsupported > 0 {
-            ConsoleOut.err(
-                "⚠️ [recording] \(sourcesUnsupported) device(s) cannot be recorded"
-                 + " (physical iPhone — no simctl recordVideo); no clips were saved for them")
         }
         RecordingIndexIO.write(entries, runDir: config.runDir,
                                clipsAttempted: clipsAttempted, clipsFailed: clipsFailed,
