@@ -68,7 +68,7 @@ behind for the next run.
 ## Don't pin `app:` / `platform:` if the scenario should run on both OS
 
 Leaving `@TestClass(app:)` and `platform:` unset lets the same scenario run against both
-`--profile ios` and `--profile android`, resolving the target app from whichever run profile is
+`--profile ios-run` and `--profile android-run`, resolving the target app from whichever run profile is
 active. Only set them when a scenario is genuinely OS-specific (a platform-only setting screen,
 for instance) — otherwise you'd need to duplicate the class per OS.
 

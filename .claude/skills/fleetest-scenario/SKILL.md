@@ -68,7 +68,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
   `../foundation-tester/.build/debug/fleetest ...`(判定は `Sources/FTScenarioRunner/` の有無)。
   以降 `fleetest` はこれを指す。MCP(`ft_*`)が使えるならそちらを優先。
 - **プラットフォーム**: iOS か Android か。**両対応なら platform は書かない**(同じコードが
-  `--profile ios` と `--profile android` の両方で走る)。片方の OS でしか意味を持たないときだけ
+  `--profile ios-run` と `--profile android-run` の両方で走る)。片方の OS でしか意味を持たないときだけ
   `@TestClass(platform: "ios")` / `@Test(..., platform: "android")` を書く ——
   宣言した OS を回さない run では skipped(対象外)として記録され、失敗にならない。
   **プロファイルの登録状況は、アプリが片方専用だという根拠にならない** —— 実行プロファイルもアプリ

@@ -15,7 +15,7 @@ fleetest run --project SampleApp --profile all
 通常 iOS デバイスがあれば `ios`)で走ります。**`platform:` を明示していて、その OS が実行の
 デバイスに含まれていないシナリオは、キューに入らずスキップされます** —— 同じプロファイルの
 もう一方の OS のデバイスは、そのシナリオぶんは空回りするだけです。プラットフォーム非依存の
-シナリオを両 OS で回すには、`--profile ios` と `--profile android` を別々に実行してください。
+シナリオを両 OS で回すには、`--profile ios-run` と `--profile android-run` を別々に実行してください。
 
 ## 実行プロファイルを使わない場合(手動 `--port`)
 

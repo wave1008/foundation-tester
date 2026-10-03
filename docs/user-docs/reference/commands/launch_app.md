@@ -33,7 +33,7 @@ terminateApp()
      `android.app`.
 
   Normally you do not write `app:` at all: the same scenario then targets each platform's own
-  app when run with `--profile ios` and `--profile android`, without duplicating the class.
+  app when run with `--profile ios-run` and `--profile android-run`, without duplicating the class.
   Write `app:` only when a project mixes scenarios for more than one app and a scenario needs to
   pin its target explicitly.
 - **`openURL` does not restart the process** — that is the difference from `launchApp(url:)`,

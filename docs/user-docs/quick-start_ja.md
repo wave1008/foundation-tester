@@ -89,7 +89,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 `--app-path` にビルドしたアプリを渡すと、実行時にデバイスへ自動でインストールされます。
 `--auto-device` は、最新の iOS ランタイムと最新の Pixel を使う Simulator/Emulator を自動で選びます
 (足りなければ作成します。iOS のランタイムが未導入のときは数 GB をダウンロードするので数分〜数十分かかります。
-起動していないものは実行時に自動で起動します)。アプリプロファイルと実行プロファイルの名前は、どちらもプラットフォーム名(`ios` と `android`)になります。
+起動していないものは実行時に自動で起動します)。アプリプロファイルの名前は `ios-app`・`android-app`、実行プロファイルの名前は `ios-run`・`android-run` になります。
 手で登録するのは1台です。2台目は VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」で足せます。
 
 セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/project1/` が無ければ先に作ります。
@@ -129,10 +129,10 @@ AIアシスタントはデバイス上でアプリを起動し、ログイン画
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
-`--profile` には、ステップ2で用意した実行プロファイルの名前(`ios`。Android なら `android`)を渡します。
+`--profile` には、ステップ2で用意した実行プロファイルの名前(`ios-run`。Android なら `android-run`)を渡します。
 アプリ・デバイス・実行時設定はそこから解決されます。
 
 VSCode からは **Test Explorer** でシナリオを選び、**実行**をクリックします。

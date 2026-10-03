@@ -9,10 +9,10 @@ enabling self-healing with `--set`.
 
 ```bash
 # Clone configuration (working inside the foundation-tester clone)
-swift run fleetest run --profile ios
+swift run fleetest run --profile ios-run
 
 # External package configuration (a separate work folder with TestProjects/)
-../foundation-tester/.build/debug/fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
 ## Common options

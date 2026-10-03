@@ -36,7 +36,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Android: serial of a physical device (the left column of adb devices)")
     var serial: String?
 
-    @Option(help: "App profile name (profiles/apps/<ref>.json; omitted: the one the run profile already uses, else the --platform value: ios / android / hybrid)")
+    @Option(help: "App profile name (profiles/apps/<ref>.json; omitted: the one the run profile already uses, else <platform>-app: ios-app / android-app / hybrid-app)")
     var appRef: String?
 
     @Option(help: "Display name of the app (omitted: keeps the existing one, else the project name)")
@@ -48,7 +48,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Path to a built .app/.apk/.apks (setting it enables autoInstall; omitted: keeps the existing one)")
     var appPath: String?
 
-    @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to the platform name)")
+    @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to <platform>-run: ios-run / android-run)")
     var run: String?
 
     @Flag(help: ArgumentHelp("Pick a device automatically (iOS: the newest runtime of the selected Xcode (installed with xcodebuild -downloadPlatform iOS when missing: several GB, can take a long time) and the newest plain iPhone <N> (no Pro/Plus/Air/e/mini/SE variants) that it supports / Android: the newest Pixel phone model (pixel_<number> or pixel_<number>a; the plain one wins a tie; Pro/Fold variants are excluded) with the newest google_apis system image for this Mac's ABI, installed or downloadable)."
@@ -96,7 +96,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             let allURL = testProject.runsDir.appendingPathComponent("all.json")
             if FileManager.default.fileExists(atPath: allURL.path) {
                 var object = try readObject(allURL)
-                object["app"] = appRef ?? platform
+                object["app"] = appRef ?? ProfileWriter.defaultAppRef(platform: platform)
                 for device in devices {
                     object = try RunProfileDeviceEditor.upsertingDevice(inRunProfileObject: object, device: device)
                 }
@@ -114,7 +114,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let explicitName = self.deviceName
         // 名前未定は ""(実体の判定 hasDeviceBody は name を見ない)。下の確定後に空なら ValidationError
         var deviceName = explicitName ?? ""
-        let runName = run ?? platform
+        let runName = run ?? ProfileWriter.defaultRunName(platform: platform)
         let fm = FileManager.default
         let appRef = ProfileWriter.resolvedAppRef(
             explicit: self.appRef,

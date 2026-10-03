@@ -53,7 +53,7 @@ With more devices, tests are distributed to them automatically and the overall t
 ### Do it with the AI assistant
 
 ```text
-Add two more iPhone Simulators to the fleetest run profile ios.
+Add two more iPhone Simulators to the fleetest run profile ios-run.
 If there aren't enough, you can create them with the same model and OS.
 Then show me the profile's updated device list.
 ```

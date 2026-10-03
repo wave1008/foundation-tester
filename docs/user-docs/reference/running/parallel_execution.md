@@ -15,7 +15,7 @@ A scenario declared with no `platform:` runs on whichever OS is the run's defaul
 platform with a worker, normally `ios` if any iOS device is present). **A scenario that declares
 `platform:` explicitly, and whose declared OS isn't among the run's devices, is skipped rather
 than queued** — the other OS's devices in the same profile just sit idle for it. To run a
-platform-agnostic scenario on both OSes, run `--profile ios` and `--profile android` separately.
+platform-agnostic scenario on both OSes, run `--profile ios-run` and `--profile android-run` separately.
 
 ## Without a run profile (manual `--port`)
 

@@ -61,8 +61,9 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 (ビルド済み `.app`/`.apk`。相対は WORK_DIR 基準・`~`・絶対可)。未指定なら省略する
 (後から `profiles/apps/` を編集して向けられる)。
 
-`appRef`(アプリプロファイルのファイル名)は既定で対象 OS 名(`ios` / `android` / `hybrid`)になる。
-`--app-ref` は渡さない(既存の実行プロファイルがあればそのアプリプロファイルを使い続ける)。
+`appRef`(アプリプロファイルのファイル名)は既定で `<plat>-app`(`ios-app` / `android-app` / `hybrid-app`)、
+実行プロファイル名は既定で `<plat>-run`(`ios-run` / `android-run`)になる。
+`--app-ref` / `--run` は渡さない(既存の実行プロファイルがあればそのアプリプロファイルを使い続ける)。
 
 ### 3. 🧑 デバイスの指定を確認
 
@@ -142,14 +143,14 @@ Android で `android.models` が空(`android.errorCode` = `avdmanager-missing`)�
 fleetest profile list --project <プロジェクト>
 ```
 
-作った実行プロファイル `<plat>` が **アプリ名・デバイス @ マシン名** まで解決し、`❌`/`⚠️` が出ない
+作った実行プロファイル `<plat>-run` が **アプリ名・デバイス @ マシン名** まで解決し、`❌`/`⚠️` が出ない
 ことを確認してユーザーに要約報告する。赤が出たら原因(デバイス名の不一致・アプリパス不在など)を
 そのまま見せて相談する。
 
 ## 完了後
 
-- 実行: エージェントは `ft_start_run`(profile=`<plat>`。進み具合と結果は `ft_run_status`)。人が端末から打つなら
-  `fleetest run --project <プロジェクト> --profile <plat>`。どちらも仮想デバイスか実機が要る。
+- 実行: エージェントは `ft_start_run`(profile=`<plat>-run`。進み具合と結果は `ft_run_status`)。人が端末から打つなら
+  `fleetest run --project <プロジェクト> --profile <plat>-run`。どちらも仮想デバイスか実機が要る。
 - 別プラットフォームや別アプリを足すときは、この `/fleetest-profiles` をもう一度実行する
   (実行プロファイルの `devices` には追記。別アプリは `--app-ref` で別のアプリプロファイルを追加)。
 - **別の機械(リモートランナー)のデバイスを足すときは `fleetest profile setup`/`api create-device`

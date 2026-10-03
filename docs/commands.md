@@ -667,7 +667,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 2. 実行プロファイル(`runs/<name>.json` の `app`)→ アプリプロファイル(`apps/<name>.json`)→
    **実行中 platform の `ios.app` / `android.app`**
 
-**通常は `app:` を書かない**。書かなければ同じシナリオが `--profile ios` と `--profile android` で
+**通常は `app:` を書かない**。書かなければ同じシナリオが `--profile ios-run` と `--profile android-run` で
 それぞれのアプリを対象に走る(OS で bundle ID が違っていてもクラスを複製しなくてよい)。
 `app:` を書くのは、1プロジェクトに複数アプリのシナリオが混在していてシナリオ側で固定したいときだけ。
 明示とプロファイルが食い違うと、明示を採ったうえで run ログに警告が1行出る。

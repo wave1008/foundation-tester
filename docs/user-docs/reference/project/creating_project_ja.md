@@ -8,8 +8,8 @@
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/ios.json              # アプリプロファイル(/fleetest-profiles = `profile setup` が作る。create 直後は無い)
-│   └── runs/ios.json              # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
+│   ├── apps/ios-app.json          # アプリプロファイル(/fleetest-profiles = `profile setup` が作る。create 直後は無い)
+│   └── runs/ios-run.json          # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # ランナーへの委譲(編集不要)
 │   ├── Generated/                 # ライブ操作の録画が生成したシナリオ

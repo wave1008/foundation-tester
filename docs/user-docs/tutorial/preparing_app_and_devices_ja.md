@@ -53,7 +53,7 @@ VSCode 拡張のデバイスモニターの「プロファイル」タブから�
 ### AIアシスタントで実行
 
 ```text
-fleetest の実行プロファイル ios に、iPhone の Simulator をあと2台追加して。
+fleetest の実行プロファイル ios-run に、iPhone の Simulator をあと2台追加して。
 使える Simulator が無ければ、同じ機種・同じ OS で作成してよい。
 追加したら、実行プロファイルのデバイス一覧を報告して。
 ```

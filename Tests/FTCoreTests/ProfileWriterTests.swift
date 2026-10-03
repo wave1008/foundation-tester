@@ -81,18 +81,24 @@ final class ProfileWriterTests: XCTestCase {
                        "OS のセクションが無ければ新規と同じ")
     }
 
-    /// --app-ref の省略は「既存の実行プロファイルのアプリ」。無ければ対象 OS 名。明示が最優先
+    /// --app-ref の省略は「既存の実行プロファイルのアプリ」。無ければ `<platform>-app`。明示が最優先
     func testAppRefFollowsExistingRunProfileWhenOmitted() {
         XCTAssertEqual(ProfileWriter.resolvedAppRef(
             explicit: nil, existingRunProfile: ["app": "sut-store"], platform: "ios"), "sut-store")
         XCTAssertEqual(ProfileWriter.resolvedAppRef(
-            explicit: nil, existingRunProfile: [:], platform: "ios"), "ios")
+            explicit: nil, existingRunProfile: [:], platform: "ios"), "ios-app")
         XCTAssertEqual(ProfileWriter.resolvedAppRef(
-            explicit: nil, existingRunProfile: [:], platform: "android"), "android")
+            explicit: nil, existingRunProfile: [:], platform: "android"), "android-app")
         XCTAssertEqual(ProfileWriter.resolvedAppRef(
-            explicit: nil, existingRunProfile: [:], platform: "hybrid"), "hybrid")
+            explicit: nil, existingRunProfile: [:], platform: "hybrid"), "hybrid-app")
         XCTAssertEqual(ProfileWriter.resolvedAppRef(
             explicit: "other", existingRunProfile: ["app": "sut-store"], platform: "ios"), "other")
+    }
+
+    /// --run の省略は `<platform>-run`
+    func testDefaultRunNameIsPlatformRun() {
+        XCTAssertEqual(ProfileWriter.defaultRunName(platform: "ios"), "ios-run")
+        XCTAssertEqual(ProfileWriter.defaultRunName(platform: "android"), "android-run")
     }
 
     /// 表示名が既存にも無いときだけ defaultAppName(プロジェクト名)を書く

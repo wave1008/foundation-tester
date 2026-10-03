@@ -9,10 +9,10 @@
 
 ```bash
 # クローン構成(foundation-tester のクローン内で作業している場合)
-swift run fleetest run --profile ios
+swift run fleetest run --profile ios-run
 
 # 外部パッケージ構成(TestProjects/ を持つ別の作業フォルダ)
-../foundation-tester/.build/debug/fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
 ## 主なオプション

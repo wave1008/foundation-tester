@@ -44,11 +44,11 @@ Run only the fleetest login test on Android.
 
 ```bash
 # Everything
-../foundation-tester/.build/debug/fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios-run
 
 # Per class (file) or per single test
-../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest
-../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest.S0010
+../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario LoginTest
+../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario LoginTest.S0010
 ```
 
 In VSCode, select a scenario in the Test Explorer and click "Run".
@@ -83,7 +83,7 @@ Re-run only the fleetest scenarios that failed on iOS last time.
 <summary><b>Do it manually (click to show details)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios --failed
+../foundation-tester/.build/debug/fleetest run --profile ios-run --failed
 ```
 
 </details>

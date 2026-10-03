@@ -88,8 +88,8 @@ Go back to your work folder and run:
 Passing the built app to `--app-path` makes the run install it on the device automatically.
 `--auto-device` picks a Simulator/Emulator with the newest iOS runtime and the newest Pixel (and creates it
 when missing; a missing iOS runtime is downloaded first: several GB, several minutes to tens of minutes;
-one that is not running is started automatically at run time). The app profiles and the run profiles are both named after the
-platforms (`ios` and `android`). These commands register one device; add the second one with "Add device" on the
+one that is not running is started automatically at run time). The app profiles are named `ios-app` and `android-app`, and the
+run profiles `ios-run` and `android-run`. These commands register one device; add the second one with "Add device" on the
 "Profiles" tab of the VSCode extension's device monitor.
 
 The setup creates no test project. The AI assistant creates `TestProjects/project1/` first when it is missing;
@@ -129,10 +129,10 @@ For scenarios created on Android, ask "Run them on Android" instead.
 <summary><b>Do it manually (click to show details)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
-`--profile` takes the name of the run profile from step 2 (`ios`, or `android` for Android).
+`--profile` takes the name of the run profile from step 2 (`ios-run`, or `android-run` for Android).
 The app, the devices, and the run-time settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.

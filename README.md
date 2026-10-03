@@ -173,7 +173,7 @@ swift run fleetest bridge up --with-sample-app
 # 4. 決定的実行(LLM なし。失敗があれば exit code 1)
 swift run fleetest run                         # 全シナリオ(プロジェクトが1つなら --project 省略可)
 swift run fleetest run --scenario ログインテスト  # クラス名 or クラス名.メソッド名で指定
-swift run fleetest run --profile ios           # 実行プロファイル(ブリッジ供給・自動インストール込み)
+swift run fleetest run --profile ios-run       # 実行プロファイル(ブリッジ供給・自動インストール込み)
 ```
 
 ## コマンド一覧
@@ -212,8 +212,8 @@ Package.swift のマーカー区間を自動更新する(プロジェクト間�
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/ios.json              # アプリ(`profile setup` が作る): autoInstall は最上位、appName/bundle ID(app)/appPath は ios/android
-│   └── runs/ios.json              # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
+│   ├── apps/ios-app.json          # アプリ(`profile setup` が作る): autoInstall は最上位、appName/bundle ID(app)/appPath は ios/android
+│   └── runs/ios-run.json          # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
 └── .fleetest/locator-fingerprints.json  # ロケータの指紋(プロジェクト別)
@@ -305,7 +305,7 @@ Android シナリオも iOS と同様に `--platform android` を付けて実行
 の3層構造を持つ。プロジェクトの `scenarios/` に .swift を置いて `swift build` すれば自動発見される。
 **対象アプリはコードに書かない** —— 実行プロファイル(`runs/<name>.json`)→ アプリプロファイル
 (`apps/<name>.json`)→ 実行中 platform の `ios.app` / `android.app` から解決されるので、
-OS で bundle ID が違っても同じシナリオを `--profile ios` / `--profile android` で回せる
+OS で bundle ID が違っても同じシナリオを `--profile ios-run` / `--profile android-run` で回せる
 (コード側で固定したいときだけ `@TestClass(app: "...")` と書く。そちらが勝つ)。
 
 ```swift

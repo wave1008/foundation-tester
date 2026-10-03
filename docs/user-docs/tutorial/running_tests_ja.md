@@ -44,11 +44,11 @@ fleetest のログインのテストだけを Android で実行して。
 
 ```bash
 # 全部
-../foundation-tester/.build/debug/fleetest run --profile ios
+../foundation-tester/.build/debug/fleetest run --profile ios-run
 
 # クラス(ファイル)単位・1本単位
-../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest
-../foundation-tester/.build/debug/fleetest run --profile ios --scenario LoginTest.S0010
+../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario LoginTest
+../foundation-tester/.build/debug/fleetest run --profile ios-run --scenario LoginTest.S0010
 ```
 
 VSCode では Test Explorer でシナリオを選び、「実行」をクリックします。
@@ -83,7 +83,7 @@ fleetest で、前回 iOS で落ちたシナリオだけを実行し直して。
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-../foundation-tester/.build/debug/fleetest run --profile ios --failed
+../foundation-tester/.build/debug/fleetest run --profile ios-run --failed
 ```
 
 </details>

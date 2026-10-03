@@ -8,8 +8,8 @@ This page covers the project layout and the commands that manage it.
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/ios.json              # app profiles (created by /fleetest-profiles = `profile setup`; none right after create)
-│   └── runs/ios.json              # run profiles (created by `profile setup`; app + device list, each naming its machine + run-time settings)
+│   ├── apps/ios-app.json          # app profiles (created by /fleetest-profiles = `profile setup`; none right after create)
+│   └── runs/ios-run.json          # run profiles (created by `profile setup`; app + device list, each naming its machine + run-time settings)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # delegates to the runner (do not edit)
 │   ├── Generated/                 # scenarios generated from Live Control recordings

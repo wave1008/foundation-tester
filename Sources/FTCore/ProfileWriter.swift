@@ -26,12 +26,18 @@ public enum ProfileWriter {
 
     /// `profile setup` が使うアプリプロファイル名。省略時は既存の実行プロファイルが指すものを使う ——
     /// デバイスを足すために呼び直すと(fleetest-profiles の手順)既定名へ黙って差し替わり、
-    /// 別の(仮 ID の)アプリプロファイルまで作ってしまう。既存も無ければ対象 OS 名
-    /// (`--platform` の値そのまま = ios / android / hybrid。hybrid は両 OS で同じ1つを共有する)
+    /// 別の(仮 ID の)アプリプロファイルまで作ってしまう。既存も無ければ `defaultAppRef`
     public static func resolvedAppRef(explicit: String?, existingRunProfile: [String: Any],
                                       platform: String) -> String {
-        explicit ?? (existingRunProfile["app"] as? String) ?? platform
+        explicit ?? (existingRunProfile["app"] as? String) ?? defaultAppRef(platform: platform)
     }
+
+    /// アプリプロファイルの既定名 `<platform>-app`(platform は `--platform` の値そのまま =
+    /// ios / android / hybrid。hybrid は両 OS で同じ1つを共有する)
+    public static func defaultAppRef(platform: String) -> String { "\(platform)-app" }
+
+    /// 実行プロファイルの既定名 `<platform>-run`(platform は ios / android。hybrid は OS ごとに分けて作る)
+    public static func defaultRunName(platform: String) -> String { "\(platform)-run" }
 
     /// アプリプロファイルをマージする。appName・app(ID)・appPath は ios/android セクション、
     /// 最上位の platform は mergedAppPlatform で必ず書く(省略 = hybrid なので、書かないと iOS だけで
