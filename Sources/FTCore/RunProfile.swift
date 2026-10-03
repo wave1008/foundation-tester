@@ -464,7 +464,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 同期相手: vscode-fleetest/schemas/run-profile.schema.json と RunProfileFormFields
     public var playProtectBypass: Bool?
     /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
-    /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
+    /// 1本の mp4 へ切り出すか(**既定 true**。profile-less は false = `profileLessBase`)。実体は RunOrchestrator への VideoRecordingConfig 注入
     /// (VideoRecordingCoordinator.swift)。録画失敗は run を失敗させない(警告ログのみ)
     public var record: Bool?
     /// true なら成功したシナリオのクリップは保存せず、失敗(frozen 含む)シナリオのみ切り出す
@@ -798,7 +798,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let playProtectBypass: Bool
     /// run 開始時に各デバイスへ home() を撃つか(RunProfileDocument.homeOnStart。**既定 true**)
     public let homeOnStart: Bool
-    /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
+    /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。**既定 true**。profile-less は false)
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
     public let recordFailuresOnly: Bool
@@ -817,17 +817,19 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let recordBitrateKbps: Int?
 
     /// `--profile` を使わない実行(`--port`/`--serial` 直指定)の基底。**プロファイルの既定を
-    /// そのまま使わない** —— 2つだけ意図的に違う(`fmTextOcclusionCheck` はプロファイルと同じ既定 true。
+    /// そのまま使わない** —— 3つだけ意図的に違う(`fmTextOcclusionCheck` はプロファイルと同じ既定 true。
     /// ユーザー決定):
     ///   `heal` … profile-less は**修復しない**(`ScenarioExecutionSettings.init` の既定と同じ。
     ///     素の run で壊れたセレクタを黙って別要素へ解決させない)
     ///   `homeOnStart` … profile-less は**デバイスに触らない**。この設定は一斉起動直後の
     ///     黒画面を防ぐためのもので、既に起動しているブリッジへ繋ぐだけの経路では、手で用意した
     ///     画面を Home で流してしまう
+    ///   `record` … profile-less は**録画しない**。録画のセッションは RunOrchestrator が持ち、この経路の
+    ///     大半は通らないので、既定 true のままだと `recordNeedsRejecting` で run ごと断られる
     /// **`--set` はこの基底の上に当てる**ので、`--set heal=true` はそのまま効く。
     /// 既定はリテラルで固定するテストを置くこと(`DeviceIndependentRunSettingsTests`)
     public static let profileLessBase = RunProfileDocument(
-        heal: false, homeOnStart: false)
+        heal: false, homeOnStart: false, record: false)
 
     public static func resolve(_ doc: RunProfileDocument) -> DeviceIndependentRunSettings {
         // FM を使うかは子トグルから導く(親スイッチは無い)。両方 false なら
@@ -848,7 +850,7 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
             enableAnimations: doc.enableAnimations ?? false,
             playProtectBypass: doc.playProtectBypass ?? true,
             homeOnStart: doc.homeOnStart ?? true,
-            record: doc.record ?? false,
+            record: doc.record ?? true,
             recordFailuresOnly: doc.recordFailuresOnly ?? false,
             recordFullResolution: doc.recordFullResolution ?? false,
             reportDir: doc.reportDir,
@@ -1001,7 +1003,7 @@ public struct ResolvedProfile: Sendable {
     public let homeOnStart: Bool
     /// Play Protect の照会をバイパスするか(RunProfileDocument.playProtectBypass。**既定 true**)
     public let playProtectBypass: Bool
-    /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
+    /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。**既定 true**。profile-less は false)
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
     public let recordFailuresOnly: Bool

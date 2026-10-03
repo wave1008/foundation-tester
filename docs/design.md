@@ -4054,7 +4054,7 @@ domInterop 経路だけ**(委譲モード・xcuitest
 約 +0.4 秒で、スイート全体では並列に隠れて差が出ない(25周比較 88.9s vs 90.0s)。
 UI は実行プロファイル設定の iOS セクション(inapp エンジン ON のときだけ表示)。
 
-`record`(既定 false)を true にすると、各ワーカー(デバイス)で run 全体を録画し続けつつ
+`record`(既定 true。`--profile` を使わない実行だけは false)が true のとき、各ワーカー(デバイス)で run 全体を録画し続けつつ
 (iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、
 ファイナライズ時に**テスト関数(シナリオ)ごとに1本の mp4**へ壁時計区間で切り出して
 `<runDir>/recordings/` に保存する(AVAssetReader/Writer で該当区間だけ半分解像度+低 bitrate の

@@ -359,15 +359,17 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
     /// **profile-less の基底はリテラルで固定する**。heal をプロファイルの既定(true)のまま使うと、
     /// 素の `fleetest run` で壊れたセレクタを黙って別要素へ解決しうる。homeOnStart も同じで、
     /// 既に起動しているブリッジへ繋ぐだけの経路で手元の画面を Home で流してしまう。
+    /// record も同じで、録画のセッションを持たない経路が大半なので、既定 true のままだと run ごと断られる。
     /// テキストの視覚検証はプロファイルと同じ ON(ユーザー決定 2026-09-15)。
     /// **`RunProfileDocument` の既定を参照して書かない** —— production の定数で期待値を書くと
     /// 両方が同時に動いたときに素通りする
-    func testProfileLessBasePinsTheTwoDeliberateDifferences() {
+    func testProfileLessBasePinsTheThreeDeliberateDifferences() {
         let base = DeviceIndependentRunSettings.profileLessBase
         XCTAssertEqual(base.heal, false, "profile-less の heal は OFF")
         XCTAssertEqual(base.homeOnStart, false, "profile-less はデバイスに触らない")
+        XCTAssertEqual(base.record, false, "profile-less は録画しない")
 
-        // 残りはプロファイルの既定と同じであること(2つ以外を勝手に倒していない)
+        // 残りはプロファイルの既定と同じであること(3つ以外を勝手に倒していない)
         let settings = DeviceIndependentRunSettings.resolve(base)
         XCTAssertTrue(settings.fm.fmTextOcclusionCheck, "profile-less でもテキストの視覚検証は ON")
         XCTAssertTrue(settings.fm.enabled)
@@ -398,7 +400,7 @@ final class DeviceIndependentRunSettingsTests: XCTestCase {
         XCTAssertFalse(settings.enableAnimations)
         XCTAssertTrue(settings.playProtectBypass)
         XCTAssertTrue(settings.homeOnStart)
-        XCTAssertFalse(settings.record)
+        XCTAssertTrue(settings.record)
         XCTAssertFalse(settings.recordFailuresOnly)
         XCTAssertFalse(settings.recordFullResolution)
         // スカラー4欄は「未指定ならこの構造体では既定へ倒さない」契約(呼び出し側が既定を持つ)

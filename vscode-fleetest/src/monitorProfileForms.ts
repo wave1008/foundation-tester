@@ -193,10 +193,10 @@ export interface RunProfileFormFields {
  * wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。defaultTimeout は GUI のフォーム欄では
  * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
- * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。record/recordFailuresOnly/
+ * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  * heal/screenLooksLike/fmTextOcclusionCheck/ocrTextOcclusionCheck/preferCheckStateClassifier/containerInference/
- * homeOnStart/playProtectBypass はスキーマ既定と合わせ既定 true。
+ * homeOnStart/playProtectBypass/record はスキーマ既定と合わせ既定 true。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -225,7 +225,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const recoverCpuFallbackToGpu =
     typeof source.recoverCpuFallbackToGpu === "boolean" ? source.recoverCpuFallbackToGpu : false;
-  const record = typeof source.record === "boolean" ? source.record : false;
+  const record = typeof source.record === "boolean" ? source.record : true;
   const recordFailuresOnly = typeof source.recordFailuresOnly === "boolean" ? source.recordFailuresOnly : false;
   const recordFullResolution = typeof source.recordFullResolution === "boolean" ? source.recordFullResolution : false;
   const devices: RunProfileDeviceEntry[] = Array.isArray(source.devices)
@@ -348,8 +348,9 @@ export function updateRunProfileInObject(
   result.homeOnStart = fields.homeOnStart;
   result.iosPreActionWarmup = fields.iosPreActionWarmup;  // 同上(既定 true 側)
   result.playProtectBypass = fields.playProtectBypass;  // 同上(既定 true 側)
+  result.record = fields.record;  // 同上(既定 true 側。CLI の `doc.record ?? true` と一致)
   for (const key of [
-    "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
+    "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
     "enableAnimations",
   ] as const) {
     if (fields[key]) {

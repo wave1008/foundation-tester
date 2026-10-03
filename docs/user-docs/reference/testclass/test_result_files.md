@@ -28,9 +28,9 @@ consume that format directly.
 
 ## Video recordings
 
-Setting `record: true` in the run profile records each device for the whole run and slices
+When the run profile's `record` is `true` (the default), fleetest records each device for the whole run and slices
 out one clip per scenario into `<runDir>/recordings/`. A failing run doesn't lose the video
-— recording failures don't fail the run itself.
+— recording failures don't fail the run itself. Set `record: false` to turn recording off.
 
 ## Locator fingerprints
 

@@ -743,11 +743,21 @@ final class ProfileResolverTests: XCTestCase {
 
     // MARK: - record
 
-    func testRecordDefaultsToFalseWhenUnspecified() throws {
+    func testRecordDefaultsToTrueWhenUnspecified() throws {
         try writeStandardFixture()  // "all" は record 未指定
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all")
-        XCTAssertFalse(resolved.record, "省略時は既定 false のはず")
+        XCTAssertTrue(resolved.record, "省略時は既定 true のはず")
+    }
+
+    func testRecordExplicitFalseIsReflected() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "record": false }
+        """, to: project.runsDir, name: "norecord")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "norecord")
+        XCTAssertFalse(resolved.record)
     }
 
     func testRecordExplicitTrueIsReflected() throws {

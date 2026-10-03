@@ -173,8 +173,8 @@
     },
     "record": {
       "type": "boolean",
-      "description": "各デバイスの画面録画を有効化する(既定 false)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
-      "default": false
+      "description": "各デバイスの画面録画を有効化する(既定 true)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
+      "default": true
     },
     "recordFailuresOnly": {
       "type": "boolean",

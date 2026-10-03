@@ -658,7 +658,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     app: "",
@@ -681,7 +681,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     wipeDataThresholdGB: "",
     recoverCpuFallbackToGpu: false,
     locale: "",
-    record: false,
+    record: true,
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
@@ -733,7 +733,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     wipeDataThresholdGB: "",
     recoverCpuFallbackToGpu: false,
     locale: "",
-    record: false,
+    record: true,
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
@@ -863,11 +863,11 @@ test("parseRunProfileForForm: locale は string ならそのまま返し、非 s
   assert.equal(parseRunProfileForForm({ locale: {} }).locale, "");
 });
 
-test("parseRunProfileForForm: record は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+test("parseRunProfileForForm: record は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
   assert.equal(parseRunProfileForForm({ record: true }).record, true);
   assert.equal(parseRunProfileForForm({ record: false }).record, false);
-  assert.equal(parseRunProfileForForm({}).record, false);
-  assert.equal(parseRunProfileForForm({ record: "true" }).record, false);
+  assert.equal(parseRunProfileForForm({}).record, true);
+  assert.equal(parseRunProfileForForm({ record: "false" }).record, true);
 });
 
 test("parseRunProfileForForm: recordFailuresOnly/recordFullResolution は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
@@ -1029,7 +1029,7 @@ test("updateRunProfileInObject: 基本更新(app/heal/fmTextOcclusionCheck/scree
     { platform: "ios", machine: "local", name: "シミュ1" },
     { platform: "android", machine: "local", name: "エミュ1" },
   ]);
-  assert.equal("record" in result.object, false); // record:false はキーを書かない
+  assert.equal(result.object.record, false); // record は既定 true 側なので false も書く(落とすと既定の true へ戻る)
   assert.equal("recordFailuresOnly" in result.object, false);
   assert.equal("recordBitrateKbps" in result.object, false);
   assert.equal("recordFullResolution" in result.object, false);
@@ -1066,8 +1066,8 @@ test("updateRunProfileInObject: remoteControl.workspace は空文字でセクシ
   assert.deepEqual(preserved.object.remoteControl, { workspace: "../new-ws", futureKey: true });
 });
 
-test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
-  for (const key of ["record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "enableAnimations"]) {
+test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
+  for (const key of ["recordFailuresOnly", "recordFullResolution", "iosFastInput", "enableAnimations"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.ok, true);
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);
@@ -1082,8 +1082,8 @@ test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/i
   }
 });
 
-test("updateRunProfileInObject: heal/fmTextOcclusionCheck/screenLooksLike/containerInference は true/false どちらも常時書き込む(キー削除しない)", () => {
-  for (const key of ["heal", "fmTextOcclusionCheck", "screenLooksLike", "containerInference"]) {
+test("updateRunProfileInObject: heal/fmTextOcclusionCheck/screenLooksLike/containerInference/record は true/false どちらも常時書き込む(キー削除しない)", () => {
+  for (const key of ["heal", "fmTextOcclusionCheck", "screenLooksLike", "containerInference", "record"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);
 
