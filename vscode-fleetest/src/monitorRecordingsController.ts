@@ -12,6 +12,7 @@ import {
   buildRecordingErrorEntries,
   buildRecordingTree,
   buildScenarioDevices,
+  buildScenarioDevicesFromRecords,
   firstRecordingEntryByScenario,
   groupTreeByClass,
   extractScenarioFailureSource,
@@ -146,11 +147,12 @@ export class MonitorRecordingsController {
   }
 
   /** run 完了時の自動表示。**録画を読めたときだけ** reveal 付きで送る(録画しない run・index.json 未作成は
-   *  何も送らない = 一覧ビューへ戻す ok:false も送らない)。タブを切り替えるかは webview が決める
+   *  何も送らない = 一覧ビューへ戻す ok:false も送らない。録画しない run も一覧からは開けるが、
+   *  完了のたびにタブを奪うのは録画を見たいときだけ)。タブを切り替えるかは webview が決める
    *  (「デバイスモニター」タブを見ているときだけ。main.js の recordingsSession)。 */
   async revealRun(project: string, runID: string): Promise<void> {
     const session = await this.buildSession(project, runID);
-    if (session) {
+    if (session?.recorded) {
       this.deps.post({ ...session, reveal: true });
     }
   }
@@ -258,7 +260,9 @@ export class MonitorRecordingsController {
         .map(extractScenarioTreeSource)
         .filter((s): s is NonNullable<typeof s> => s !== null);
       treeScenarios.push(...buildRecordingTree(treeSources, detail.index.recordings));
-      devices.push(...buildScenarioDevices(detail.index.recordings, detail.machine));
+      devices.push(...(detail.recorded
+        ? buildScenarioDevices(detail.index.recordings, detail.machine)
+        : buildScenarioDevicesFromRecords(detail.scenarios, detail.machine)));
       if (detail.machine !== null && !machines.includes(detail.machine)) {
         machines.push(detail.machine);
       }
@@ -289,6 +293,7 @@ export class MonitorRecordingsController {
       machine: details[0]!.machine,
       machines,
       devices,
+      recorded: details.some((d) => d.recorded),
       clipsAttempted,
       clipsFailed,
       sourcesFailed,

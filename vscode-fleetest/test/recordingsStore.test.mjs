@@ -50,7 +50,7 @@ function runDir(root, project, runID) {
   return path.join(root, "TestProjects", project, "results", "runs", month, runID);
 }
 
-test("listRecordingSessions: recordings/index.json が無い run は含めない", async () => {
+test("listRecordingSessions: recordings/index.json も finishedAt も無い run(実行中・異常終了)は含めない", async () => {
   const root = makeWorkspace();
   try {
     const withRecordings = runDir(root, "SampleApp", "20260723-000000");
@@ -67,6 +67,25 @@ test("listRecordingSessions: recordings/index.json が無い run は含めない
     );
     assert.equal(sessions[0].passed, 4);
     assert.equal(sessions[0].failed, 1);
+    assert.equal(sessions[0].recorded, true);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("listRecordingSessions: 録画しなかった完了済みの run は recorded:false で一覧に出す", async () => {
+  const root = makeWorkspace();
+  try {
+    writeJson(path.join(runDir(root, "SampleApp", "20260722-000000"), "run.json"), {
+      startedAt: "2026-07-22T00:00:00Z", finishedAt: "2026-07-22T00:05:00Z", passed: 5, failed: 0,
+    });
+    const sessions = await listRecordingSessions(root);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].runID, "20260722-000000");
+    assert.equal(sessions[0].recorded, false);
+    assert.equal(sessions[0].passed, 5);
+    assert.equal(sessions[0].clipsAttempted, null);
+    assert.equal(sessions[0].sourcesFailed, null);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -230,6 +249,8 @@ test("listRecordingSessions: schemaVersion:1(v1)の古いセッションは一�
   const root = makeWorkspace();
   try {
     writeJson(path.join(runDir(root, "SampleApp", "20260701-000000"), "recordings", "index.json"), V1_INDEX);
+    // 完了済みでも「録画なし」として出さない(録画はしたが読めない run を録画なしと誤って見せない)
+    writeJson(path.join(runDir(root, "SampleApp", "20260701-000000"), "run.json"), { finishedAt: "2026-07-01T00:05:00Z" });
     writeJson(path.join(runDir(root, "SampleApp", "20260702-000000"), "recordings", "index.json"), SAMPLE_INDEX);
     const sessions = await listRecordingSessions(root);
     assert.deepEqual(
@@ -283,13 +304,29 @@ test("loadRecordingSessionDetail: scenarios/ ディレクトリが無くてもin
   }
 });
 
-test("loadRecordingSessionDetail: recordings/index.json が無ければnull", async () => {
+test("loadRecordingSessionDetail: recordings/index.json も finishedAt も無ければnull", async () => {
   const root = makeWorkspace();
   try {
     const dir = runDir(root, "SampleApp", "20260723-000000");
     writeJson(path.join(dir, "run.json"), { startedAt: "2026-07-23T00:00:00Z" });
     const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260723-000000");
     assert.equal(detail, null);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("loadRecordingSessionDetail: 録画しなかった完了済みの run は空の索引と recorded:false で読む", async () => {
+  const root = makeWorkspace();
+  try {
+    const dir = runDir(root, "SampleApp", "20260723-000000");
+    writeJson(path.join(dir, "run.json"), { startedAt: "2026-07-23T00:00:00Z", finishedAt: "2026-07-23T00:05:00Z" });
+    writeJson(path.join(dir, "scenarios", "Login.json"), { scenarioID: "Login", startedAt: "2026-07-23T00:00:00Z", passed: true });
+    const detail = await loadRecordingSessionDetail(root, "SampleApp", "20260723-000000");
+    assert.ok(detail);
+    assert.equal(detail.recorded, false);
+    assert.deepEqual(detail.index.recordings, []);
+    assert.equal(detail.scenarios.length, 1);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

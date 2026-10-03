@@ -1,5 +1,5 @@
 // recordingsStore.ts
-// テストセッション(同名タブの一覧。recordings/index.json のある run)の列挙・読み込み。fs 直読みのみで vscode 非依存
+// テストセッション(同名タブの一覧。recordings/index.json のある run と、録画しなかった完了済みの run)の列挙・読み込み。fs 直読みのみで vscode 非依存
 // (monitorRecordingsController.ts から呼ぶ。テストは test/recordingsStore.test.mjs)。
 //
 // レイアウト: <workspaceRoot>/TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/
@@ -22,6 +22,9 @@ export interface RecordingSessionSummary {
   readonly machines: readonly string[];
   readonly passed: number | null;
   readonly failed: number | null;
+  /** recordings/index.json がある(録画した)セッション。束ねたセッションは1つでもあれば true。
+   *  false = 録画しなかった run(clipsAttempted・clipsFailed・sourcesFailed は null)。 */
+  readonly recorded: boolean;
   /** recordings/index.json の同名フィールド(任意。無ければ null)。 */
   readonly clipsAttempted: number | null;
   readonly clipsFailed: number | null;
@@ -124,7 +127,40 @@ function runDirFor(workspaceRoot: string, project: string, runID: string): strin
   return path.join(runsDir, month, runID);
 }
 
-/** recordings/index.json のある run を新しい順(runID 降順)に列挙する。上限 SESSION_LIMIT 件。
+/**
+ * run がセッションになるかを判定し、録画の索引を返す。
+ * - index.json が有効 → 録画あり
+ * - index.json が**無く** run.json に finishedAt がある → 録画なし(空の索引)。finishedAt の無い
+ *   run は実行中か異常終了で、録画あり run も index.json は全ワーカー終了後に書かれるので揃う
+ * - index.json が**あるのに読めない**(壊れた・v1)→ 対象外。録画なしと誤って見せない
+ */
+async function readSessionIndex(
+  runDir: string, meta: Record<string, unknown> | null,
+): Promise<{ index: RecordingIndex; recorded: boolean } | null> {
+  const indexPath = path.join(runDir, "recordings", "index.json");
+  const indexRaw = await readJson(indexPath);
+  if (isRecordingIndex(indexRaw)) {
+    return { index: indexRaw, recorded: true };
+  }
+  if (await pathExists(indexPath)) {
+    return null;
+  }
+  if (stringField(meta, "finishedAt") === undefined) {
+    return null;
+  }
+  return { index: { schemaVersion: 2, recordings: [] }, recorded: false };
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** セッションになる run(readSessionIndex)を新しい順(runID 降順)に列挙する。上限 SESSION_LIMIT 件。
  *  onlyProject を渡すとそのプロジェクトだけ(上限はそのプロジェクト内で数える)。省略で全プロジェクト横断。 */
 export async function listRecordingSessions(
   workspaceRoot: string, onlyProject?: string,
@@ -139,16 +175,16 @@ export async function listRecordingSessions(
       const monthDir = path.join(runsDir, month);
       for (const runID of await listDirNames(monthDir)) {
         const runDir = path.join(monthDir, runID);
-        const indexRaw = await readJson(path.join(runDir, "recordings", "index.json"));
-        if (!isRecordingIndex(indexRaw)) {
+        const metaRaw = await readJson(path.join(runDir, "run.json"));
+        const meta = isRecord(metaRaw) ? metaRaw : null;
+        const session = await readSessionIndex(runDir, meta);
+        if (session === null) {
           continue;
         }
         // isRecordingIndex は clipsAttempted/clipsFailed の型を検証しない(型不一致でも
         // index 全体は有効なまま)ため、ここで record として再取得し stringField/numberField と同じ
         // 寛容さで読む。
-        const indexRecord = indexRaw as unknown as Record<string, unknown>;
-        const metaRaw = await readJson(path.join(runDir, "run.json"));
-        const meta = isRecord(metaRaw) ? metaRaw : null;
+        const indexRecord = session.index as unknown as Record<string, unknown>;
         const machine = sessionMachineLabel(meta, aliases);
         sessions.push({
           project,
@@ -159,6 +195,7 @@ export async function listRecordingSessions(
           machines: machine === null ? [] : [machine],
           passed: numberField(meta, "passed") ?? null,
           failed: numberField(meta, "failed") ?? null,
+          recorded: session.recorded,
           clipsAttempted: numberField(indexRecord, "clipsAttempted") ?? null,
           clipsFailed: numberField(indexRecord, "clipsFailed") ?? null,
           sourcesFailed: numberField(indexRecord, "sourcesFailed") ?? null,
@@ -222,6 +259,7 @@ function combineSessions(
     machines,
     passed: sum(first.passed, next.passed),
     failed: sum(first.failed, next.failed),
+    recorded: first.recorded || next.recorded,
     clipsAttempted: sum(first.clipsAttempted, next.clipsAttempted),
     clipsFailed: sum(first.clipsFailed, next.clipsFailed),
     sourcesFailed: sum(first.sourcesFailed, next.sourcesFailed),
@@ -258,7 +296,9 @@ export async function resolveSessionRunIDs(
 
 export interface RecordingSessionDetailRaw {
   readonly runDir: string;
+  /** 録画しなかった run(recorded=false)では recordings が空の索引。 */
   readonly index: RecordingIndex;
+  readonly recorded: boolean;
   /** 表示用のマシン名(登録名へ読み替え済み。sessionMachineLabel)。読めなければ null。 */
   readonly machine: string | null;
   /** scenarios/*.json の生 JSON(ScenarioRunRecord 相当)。検証・変換は呼び出し側
@@ -266,15 +306,17 @@ export interface RecordingSessionDetailRaw {
   readonly scenarios: readonly unknown[];
 }
 
-/** セッション詳細(index.json + scenarios/*.json)を読む。index.json が無い/壊れていれば null。 */
+/** セッション詳細(index.json + scenarios/*.json)を読む。セッションにならない run(readSessionIndex)は null。 */
 export async function loadRecordingSessionDetail(
   workspaceRoot: string,
   project: string,
   runID: string,
 ): Promise<RecordingSessionDetailRaw | null> {
   const runDir = runDirFor(workspaceRoot, project, runID);
-  const indexRaw = await readJson(path.join(runDir, "recordings", "index.json"));
-  if (!isRecordingIndex(indexRaw)) {
+  const metaRaw = await readJson(path.join(runDir, "run.json"));
+  const meta = isRecord(metaRaw) ? metaRaw : null;
+  const session = await readSessionIndex(runDir, meta);
+  if (session === null) {
     return null;
   }
   const scenariosDir = path.join(runDir, "scenarios");
@@ -287,10 +329,8 @@ export async function loadRecordingSessionDetail(
   const scenarios = (await Promise.all(files.map((f) => readJson(path.join(scenariosDir, f))))).filter(
     (s) => s !== null,
   );
-  const metaRaw = await readJson(path.join(runDir, "run.json"));
-  const machine = sessionMachineLabel(isRecord(metaRaw) ? metaRaw : null,
-                                      await readMachineAliases(workspaceRoot));
-  return { runDir, index: indexRaw, machine, scenarios };
+  const machine = sessionMachineLabel(meta, await readMachineAliases(workspaceRoot));
+  return { runDir, index: session.index, recorded: session.recorded, machine, scenarios };
 }
 
 /** run.json の fmSettings(docs/results-json.md)。寛容に読む(欠落した欄は null)。 */

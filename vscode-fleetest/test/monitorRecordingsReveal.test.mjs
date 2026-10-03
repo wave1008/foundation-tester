@@ -65,7 +65,9 @@ test("revealRun: 録画のある run は reveal 付きで再生データを送�
 
 test("revealRun: 録画の無い run(index.json 無し)では何も送らない", async (t) => {
   const { workspaceRoot, controller, posts } = makeController(t);
-  writeJson(path.join(runDir(workspaceRoot, "SampleApp", "20260911-020000"), "run.json"), { passed: 1, failed: 0 });
+  // 完了済み = 一覧からは開けるセッションでも、完了時の自動表示はしない
+  writeJson(path.join(runDir(workspaceRoot, "SampleApp", "20260911-020000"), "run.json"),
+            { passed: 1, failed: 0, finishedAt: "2026-09-11T02:05:00Z" });
 
   await controller.revealRun("SampleApp", "20260911-020000");
 
@@ -84,6 +86,25 @@ test("openSession: 利用者が開いた応答には reveal を付けない(見�
   assert.equal(posts[0].reveal, undefined);
   assert.equal(posts[1].ok, false);
   assert.equal(posts[1].reveal, undefined);
+});
+
+test("openSession: 録画しなかった run は recorded:false で開き、デバイスは scenarios/*.json から取る", async (t) => {
+  const { workspaceRoot, controller, posts } = makeController(t);
+  const dir = runDir(workspaceRoot, "SampleApp", "20260911-030000");
+  writeJson(path.join(dir, "run.json"), { passed: 1, failed: 0, finishedAt: "2026-09-11T03:05:00Z" });
+  writeJson(path.join(dir, "scenarios", "S0010.json"), {
+    scenarioID: "クラス名.S0010", title: "t", startedAt: "2026-09-11T03:00:00Z", passed: true,
+    worker: "android:Pixel 9", platform: "android",
+  });
+
+  await controller.openSession("SampleApp", "20260911-030000");
+
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].ok, true);
+  assert.equal(posts[0].recorded, false);
+  assert.deepEqual(posts[0].videos, []);
+  assert.deepEqual(posts[0].devices.map((d) => [d.scenarioID, d.platform, d.device]),
+                   [["クラス名.S0010", "android", "Pixel 9"]]);
 });
 
 // ---- 一覧のプロジェクト絞り込みと「(すべて)」(refreshSessions / selectProject) ----

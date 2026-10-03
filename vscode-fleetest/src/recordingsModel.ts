@@ -112,6 +112,31 @@ export function buildScenarioDevices(
   return devices;
 }
 
+/**
+ * 録画しなかった run 向け: scenarios/*.json の worker/platform から scenarioID → 実行デバイスを作る
+ * (重複 scenarioID は先頭。platform が ios/android 以外・欄の欠けた記録は飛ばす)。
+ */
+export function buildScenarioDevicesFromRecords(
+  scenarios: readonly unknown[],
+  machine: string | null = null,
+): readonly RecordingScenarioDevice[] {
+  const devices: RecordingScenarioDevice[] = [];
+  const seen = new Set<string>();
+  for (const raw of scenarios) {
+    if (typeof raw !== "object" || raw === null) {
+      continue;
+    }
+    const { scenarioID, worker, platform } = raw as Record<string, unknown>;
+    if (typeof scenarioID !== "string" || typeof worker !== "string"
+      || (platform !== "ios" && platform !== "android") || seen.has(scenarioID)) {
+      continue;
+    }
+    seen.add(scenarioID);
+    devices.push({ scenarioID, platform, device: deviceNameFromWorker(worker, platform), machine });
+  }
+  return devices;
+}
+
 /** エラー一覧1件(オフセット計算済み)。offsetMs は動画内位置(ms、範囲外はclamp済み)。 */
 export interface RecordingErrorEntry {
   readonly scenarioID: string;

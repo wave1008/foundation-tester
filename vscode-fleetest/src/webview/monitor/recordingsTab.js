@@ -121,7 +121,7 @@ function resetVideoAvailability() {
  * hasAnyVideo=false: video・再生中表示・コントロールを隠し、理由付きメッセージへ差し替える
  * (clipsFailed>0なら切り出し失敗の件数付き、そうでなければ汎用の「録画がない」文言)。
  * hasAnyVideo=true かつ clipsFailed>0: 通常表示のまま控えめな欠落件数の注記だけ足す。 */
-function applyVideoAvailability(hasAnyVideo, clipsFailed, sourcesFailed) {
+function applyVideoAvailability(hasAnyVideo, clipsFailed, sourcesFailed, recorded) {
   resetVideoAvailability();
   if (hasAnyVideo) {
     if (clipsFailed !== null && clipsFailed > 0) {
@@ -135,8 +135,9 @@ function applyVideoAvailability(hasAnyVideo, clipsFailed, sourcesFailed) {
   recordingsControlsBlock.style.display = 'none';
   // **理由の優先順は「録れていない」→「切り出せなかった」→ 汎用** —— 録画自体が失敗している
   // ときに「切り出しに失敗」と出すと、直す場所(simctl / screenrecord 側)を取り違える
-  noVideoMessage.textContent =
-    sourcesFailed !== null && sourcesFailed > 0
+  noVideoMessage.textContent = !recorded
+    ? t('recordings.player.notRecorded')
+    : sourcesFailed !== null && sourcesFailed > 0
       ? t('recordings.player.allSourcesFailed', { count: sourcesFailed })
       : clipsFailed !== null && clipsFailed > 0
         ? t('recordings.player.allClipsFailed', { count: clipsFailed })
@@ -262,6 +263,13 @@ function renderSessions(sessions) {
 
     const failures = document.createElement('div');
     failures.className = 'recordings-session-failures';
+    // 録画しなかったセッション。欠落ではないので失敗色にしない
+    if (session.recorded === false) {
+      const notRecorded = document.createElement('span');
+      notRecorded.className = 'recordings-session-counts recordings-session-not-recorded';
+      notRecorded.textContent = t('recordings.sessions.notRecorded');
+      failures.appendChild(notRecorded);
+    }
     if (session.clipsFailed !== null && session.clipsFailed > 0) {
       const clipsFailed = document.createElement('span');
       clipsFailed.className = 'recordings-session-counts recordings-session-counts-failed';
@@ -723,7 +731,7 @@ function buildStepNode(scenario, scene, step, clsStatus, hasVideo) {
     label,
     status: step.status,
     collapsible: false,
-    noVideo: !hasVideo,
+    noVideo: currentDetail.recorded && !hasVideo,
     onActivate: () => {
       setErrorFilter({ scenarioID: scenario.scenarioID, scene: scene.scene, stepIndex: step.index }, label);
       seekToOffset(scenario.scenarioID, step.offsetMs);
@@ -760,7 +768,7 @@ function buildSceneNode(scenario, scene, clsStatus, hasVideo) {
       collapsible: hasSteps,
       expanded,
       childrenEl,
-      noVideo: !hasVideo,
+      noVideo: currentDetail.recorded && !hasVideo,
       onActivate: () => {
         setErrorFilter({ scenarioID: scenario.scenarioID, scene: scene.scene }, label);
         seekToOffset(scenario.scenarioID, scene.offsetMs);
@@ -796,7 +804,7 @@ function buildScenarioNode(scenario, clsStatus) {
     collapsible: hasScenes,
     expanded,
     childrenEl,
-    noVideo: !hasVideo,
+    noVideo: currentDetail.recorded && !hasVideo,
     onActivate: () => {
       const parts = scenarioCaptionParts(scenario);
       setErrorFilter({ scenarioID: scenario.scenarioID }, `${parts.cls}/${parts.title}`);
@@ -970,6 +978,8 @@ export function applyRecordingsSession(message) {
     devicesByScenario: new Map((message.devices || []).map((d) => [d.scenarioID, d])),
     // 束ねたセッションかどうかの判定に使う(2台以上ならタイルにマシン名も出す)
     machines,
+    // false = 録画しなかったセッション(ツリー各行の「録画なし」注記を省き、再生ビューで1回だけ言う)
+    recorded: message.recorded !== false,
     selectedScenarioID: null,
     errors: message.errors || [],
   };
@@ -979,7 +989,7 @@ export function applyRecordingsSession(message) {
   setErrorFilter(null);
   renderTree(message.tree || []);
   showPlayerView();
-  applyVideoAvailability(currentDetail.videosByScenario.size > 0, clipsFailed, sourcesFailed);
+  applyVideoAvailability(currentDetail.videosByScenario.size > 0, clipsFailed, sourcesFailed, currentDetail.recorded);
   if (scenarioNav.length > 0) {
     seekToOffset(scenarioNav[0].scenarioID, 0);
   }

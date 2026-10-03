@@ -392,6 +392,38 @@ test("再生: 動画0本でも一覧へ戻らず、理由と件数を出して�
   assert.ok(window.document.querySelectorAll(".recordings-tree-row").length > 0);
 });
 
+test("一覧: recorded:false のセッション行に「録画なし」を出す(録画ありの行には出さない)", (t) => {
+  const { window, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({
+    type: "recordingsSessions",
+    sessions: [
+      { project: "SampleApp", runID: "20260817-000001", startedAt: "2026-08-17T00:00:01Z",
+        passed: 3, failed: 0, recorded: false, clipsAttempted: null, clipsFailed: null },
+      { project: "SampleApp", runID: "20260817-000002", startedAt: "2026-08-17T00:00:02Z",
+        passed: 3, failed: 0, recorded: true, clipsAttempted: 5, clipsFailed: 0 },
+    ],
+  });
+
+  const rows = window.document.querySelectorAll(".recordings-session-item");
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].querySelector(".recordings-session-not-recorded")?.textContent, "録画なし");
+  assert.equal(rows[1].querySelector(".recordings-session-not-recorded"), null);
+});
+
+test("再生: 録画しなかったセッションは「録画していません」を出し、ツリー各行の注記は省く", (t) => {
+  const { window, video, sendToWebview } = createWebview();
+  t.after(() => window.close());
+  sendToWebview({ ...SESSION_MESSAGE, videos: [], recorded: false, clipsAttempted: null, clipsFailed: null });
+
+  assert.equal(video.style.display, "none");
+  const message = window.document.querySelector(".recordings-no-video-message");
+  assert.notEqual(message.style.display, "none");
+  assert.equal(message.textContent, "このセッションは録画していません。");
+  assert.ok(window.document.querySelectorAll(".recordings-tree-row").length > 0);
+  assert.equal(window.document.querySelectorAll(".recordings-tree-no-video-note").length, 0);
+});
+
 test("再生: 一部だけ欠落しているときはプレイヤーを出したまま注記を添える", (t) => {
   const { window, video, sendToWebview } = createWebview();
   t.after(() => window.close());

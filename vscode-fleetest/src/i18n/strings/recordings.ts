@@ -29,6 +29,8 @@ export const recordingsStrings = {
   "recordings.sessions.sourcesFailed": {
     ja: "録画失敗{count}台", en: "recording failed on {count} device(s)",
   },
+  // 同・録画しなかったセッション(実行プロファイルの record:false 等)
+  "recordings.sessions.notRecorded": { ja: "録画なし", en: "Not recorded" },
   // 実行したマシン・デバイスの表示(セッション一覧の行 / 再生ビュー)。値そのもの(マシン名・
   // デバイス名)は記録由来なので訳さない —— ここにあるのは肩書きと省略表記だけ。
   "recordings.meta.machineTitle": { ja: "実行マシン", en: "Machine" },
@@ -40,6 +42,9 @@ export const recordingsStrings = {
   // 再生ビュー: 動画が1本も無いセッションを開いたときの理由表示(死んだプレイヤーの代わり)。
   "recordings.player.noVideo": {
     ja: "このセッションに再生できる録画がありません。", en: "No recordings available to play in this session.",
+  },
+  "recordings.player.notRecorded": {
+    ja: "このセッションは録画していません。", en: "This session was not recorded.",
   },
   "recordings.player.allClipsFailed": {
     ja: "切り出しに失敗したため録画は残っていません({count}件)。",

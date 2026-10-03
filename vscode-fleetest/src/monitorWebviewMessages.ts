@@ -489,8 +489,8 @@ export type MonitorToWebviewMessage =
       readonly action: "unlock" | "approveAutomation" | null;
     }
   // ---- 録画タブ ---------------------------------------------------------------------------
-  // セッション一覧(recordingsStore.ts が TestProjects/<current>/results/runs/*/*/recordings/index.json を
-  // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。projects/current はプロジェクト
+  // セッション一覧(recordingsStore.ts が TestProjects/<current>/results/runs/*/*/ の recordings/index.json の
+  // ある run と録画しなかった完了済みの run を列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。projects/current はプロジェクト
   // 選択の中身(ダッシュボードの "projects" と同じ意味。current "" = 未解決で sessions は空)。
   // all = 「(すべて)」選択中(全プロジェクト横断。current は fleetest.project の解決結果のまま)。
   // refreshing = sessions は前回読み込んだ結果(キャッシュ)で、読み込み中。終わると false で送り直す
@@ -502,7 +502,7 @@ export type MonitorToWebviewMessage =
       readonly all: boolean;
       readonly refreshing: boolean;
     }
-  // recordingsOpen への応答。ok:false は index.json 未検出等(webview は一覧ビューのまま)。
+  // recordingsOpen への応答。ok:false はセッションにならない run(recordingsStore.ts の readSessionIndex)(webview は一覧ビューのまま)。
   // videos は scenarioID→動画 webview URI(MonitorPanelDeps.videoWebviewUri で変換済み。1エントリ=
   // 1シナリオのクリップ契約なので worker タブは無い)。errors は動画内オフセット計算済み
   // (recordingsModel.ts の buildRecordingErrorEntries、at 昇順)。
@@ -524,6 +524,9 @@ export type MonitorToWebviewMessage =
       readonly machine: string | null;
       readonly machines: readonly string[] | null;
       readonly devices: readonly RecordingScenarioDevice[] | null;
+      // false = 録画しなかったセッション(recordingsStore.ts の readSessionIndex)。webview は再生ビューに
+      // 「録画していない」を出し、ツリー各行の「録画なし」注記を省く。ok:false の応答では載せない
+      readonly recorded?: boolean;
       // recordings/index.json の同名フィールド(RecordingSessionSummary と同じ意味・寛容さ)。videos が
       // 空/一部欠落のとき、webview の再生ビューが理由を出すのに使う。ok:false の応答では載せない
       // (省略 = webview 側が「無い」として扱う)。

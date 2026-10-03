@@ -8,7 +8,7 @@ import type { RecordingSessionSummary } from "./recordingsStore";
 
 const STATE_KEY = "monitor.recordingsSessionsCache";
 /** RecordingSessionSummary の形を変えたら上げる(古い形の控えは読まずに捨てる)。 */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 interface StoredCache {
   readonly version: number;
