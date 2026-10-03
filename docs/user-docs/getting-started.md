@@ -38,3 +38,4 @@ collected in [Troubleshooting](in_action/troubleshooting.md).
 
 ### Link
 - [index](index.md)
+- [Quick start](quick-start.md)

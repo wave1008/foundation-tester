@@ -13,12 +13,10 @@
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、
-1. サーバを起動(/health が ok を返すまで確認)。このセッションを閉じても動き続けるように起動する(nohup などで)
-2. Android の debug APK をビルド
-3. iOS Simulator 向け(arm64 のみ、署名なし)をビルド
+サーバを起動(/health が ok を返すまで確認)。このセッションを閉じても動き続けるように起動する(nohup などで)。
 前提: JDK 17 と Apple Container が必要。無ければ Homebrew で入れてよい。
 シェルの設定ファイルは変更しない。
-完了条件: 成果物のパスを報告。インストールと起動確認は不要。
+完了条件: /health が ok を返したことを報告。アプリのビルドは不要。
 ```
 
 <details>
@@ -37,7 +35,32 @@ cd sut-ec-mobile
 ./scripts/dev-server.sh    # http://localhost:8090
 ```
 
-続けてアプリをビルドします。
+サーバの起動方法の詳細は sut-ec-mobile の `server/README.md` にあります。
+
+</details>
+
+## 2. プロファイルを用意する
+
+アプリプロファイルと実行プロファイルを作成します。
+
+### AIアシスタントで実行
+
+iOS の場合:
+
+```text
+sut-ec-mobile のiOSアプリをビルドし、プロファイルを作成してください。
+```
+
+Android の場合:
+
+```text
+sut-ec-mobile のAndroidアプリをビルドし、プロファイルを作成してください。
+```
+
+<details>
+<summary><b>手動で実行(クリックで詳細表示)</b></summary>
+
+sut-ec-mobile のフォルダでアプリをビルドします。
 
 ```bash
 # iOS Simulator(-destination の name は手元にある Simulator の名前にする)
@@ -50,30 +73,6 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ./gradlew :composeApp:assembleDebug
 #   -> composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
-
-サーバの起動方法の詳細は sut-ec-mobile の `server/README.md` にあります。
-
-</details>
-
-## 2. プロファイルを用意する
-
-アプリプロファイルと実行プロファイルを作成します。
-
-### AIアシスタントで実行
-
-```text
-このフォルダの隣にある sut-ec-mobile のアプリ(ビルド済み)向けに、fleetest のプロファイルを作成して。
-1. iOS と Android それぞれのアプリプロファイルと実行プロファイルを fleetest profile setup で作成(JSON は手で書かない)
-2. fleetest profile list で、アプリとデバイスまで解決されることを確認
-設定値: アプリの表示名は SUT Store、アプリ ID は iOS / Android とも com.sutec.mobile、アプリのパスは sut-ec-mobile のビルド済みの .app(iOS Simulator 向け)と .apk、デバイスは自動選択(--auto-device)。
-利用できる Simulator / Emulator が無ければ作成してよい。
-完了条件: 作成した実行プロファイルの名前を報告。テストの実行は不要。
-```
-
-実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
-
-<details>
-<summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 作業フォルダに戻って実行します。
 
@@ -112,8 +111,6 @@ sut-ec-mobile(SUT Store)のログイン画面だけを対象に、探索的テ�
 
 AIアシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
 見つけた挙動をテストシナリオに落とします。
-iOS と Android のどちらで探索するかは、指示に添えると確実です(例:「…ログイン画面だけを対象に、
-Android で探索的テストを作成して。」)。
 
 ## 4. デバイスで実行する
 

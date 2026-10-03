@@ -11,13 +11,11 @@ e-commerce shopping app (Compose Multiplatform, for both iOS and Android).
 ### Do it with the AI assistant
 
 ```text
-Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then:
-1. Start the server (check until /health returns ok). Start it so that it keeps running after this session is closed (with nohup or similar)
-2. Build the Android debug APK
-3. Build for the iOS Simulator (arm64 only, unsigned)
+Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then
+start the server (check until /health returns ok). Start it so that it keeps running after this session is closed (with nohup or similar).
 Prerequisites: JDK 17 and Apple Container are required. If they are missing, you may install them with Homebrew.
 Do not modify shell configuration files.
-Done when: you report the paths of the build outputs. Installing and launching the app is not needed.
+Done when: you report that /health returned ok. Building the app is not needed.
 ```
 
 <details>
@@ -36,7 +34,32 @@ Leave the server running in another terminal:
 ./scripts/dev-server.sh    # http://localhost:8090
 ```
 
-Then build the app:
+See `server/README.md` in sut-ec-mobile for the details of starting the server.
+
+</details>
+
+## 2. Prepare the profiles
+
+Create the app profile and the run profile.
+
+### Do it with the AI assistant
+
+For iOS:
+
+```text
+Build the sut-ec-mobile iOS app and create the profiles.
+```
+
+For Android:
+
+```text
+Build the sut-ec-mobile Android app and create the profiles.
+```
+
+<details>
+<summary><b>Do it manually (click to show details)</b></summary>
+
+Build the app in the sut-ec-mobile folder:
 
 ```bash
 # iOS Simulator (set the name in -destination to a Simulator you have)
@@ -49,30 +72,6 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ./gradlew :composeApp:assembleDebug
 #   -> composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
-
-See `server/README.md` in sut-ec-mobile for the details of starting the server.
-
-</details>
-
-## 2. Prepare the profiles
-
-Create the app profile and the run profile.
-
-### Do it with the AI assistant
-
-```text
-Create the fleetest profiles for the sut-ec-mobile app (already built) that sits next to this folder.
-1. Create the app profile and the run profile for each of iOS and Android with fleetest profile setup (do not write the JSON by hand)
-2. Check with fleetest profile list that the app and the devices resolve
-Values: the app's display name is SUT Store, the app ID is com.sutec.mobile on both iOS and Android, the app paths are the already-built .app (for the iOS Simulator) and .apk in sut-ec-mobile, and the device is picked automatically (--auto-device).
-If no Simulator / Emulator is available, you may create one.
-Done when: you report the names of the run profiles you created. Running tests is not needed.
-```
-
-The run profiles are named after the platforms (`ios` and `android`).
-
-<details>
-<summary><b>Do it manually (click to show details)</b></summary>
 
 Go back to your work folder and run:
 
@@ -112,8 +111,6 @@ Create exploratory tests for the login screen of sut-ec-mobile (SUT Store) only.
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
 operating it, and turns the behavior it finds into test scenarios.
-Saying which of iOS or Android to explore on makes it certain (for example
-"... for the login screen of sut-ec-mobile (SUT Store) only, on Android.").
 
 ## 4. Run it on a device
 

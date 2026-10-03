@@ -38,3 +38,4 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 ### Link
 - [index](index_ja.md)
+- [クイックスタート](quick-start_ja.md)
