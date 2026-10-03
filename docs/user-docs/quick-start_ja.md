@@ -88,8 +88,9 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 ```
 
 `--app-path` にビルドしたアプリを渡すと、実行時にデバイスへ自動でインストールされます。
-`--auto-device` は、このマシンで利用可能な Simulator/Emulator を自動で選びます(起動していない
-ものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
+`--auto-device` は、最新の iOS ランタイムと最新の Pixel を使う Simulator/Emulator を自動で選びます
+(足りなければ作成します。iOS のランタイムが未導入のときは数 GB をダウンロードするので数分〜数十分かかります。
+起動していないものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
 
 セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/default/` が無ければ先に作ります。
 手で進めるときは、上のコマンドの前に `fleetest project create default --platform <ios|android|both>` を実行します

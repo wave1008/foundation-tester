@@ -793,6 +793,19 @@ export interface AndroidCatalog {
   readonly downloadableSystemImages: readonly AndroidCatalogDownloadableSystemImage[];
   /** ダウンロード候補の取得自体が失敗した理由(英語。枠だけ i18n)。失敗していなければ null。 */
   readonly downloadableError: string | null;
+  /** 推奨の機種とイメージ(CLI の profile setup --auto-device と同じ規則。決められなければ null)。
+   * package は導入済み・ダウンロード可能のどちらでもよい(tag は google_apis)。 */
+  readonly recommended: AndroidCatalogRecommended | null;
+}
+
+export interface AndroidCatalogRecommended {
+  readonly modelId: string;
+  readonly package: string;
+}
+
+export interface IosCatalogRecommended {
+  readonly deviceTypeIdentifier: string;
+  readonly runtimeIdentifier: string;
 }
 
 export interface IosCatalogDeviceType {
@@ -814,6 +827,11 @@ export interface IosCatalog {
   readonly error: string | null;
   readonly deviceTypes: readonly IosCatalogDeviceType[];
   readonly runtimes: readonly IosCatalogRuntime[];
+  /** まだ入っていないが xcodebuild -downloadPlatform iOS で入れられるランタイム(0 または 1 件。
+   * identifier は導入後の予測値)。 */
+  readonly downloadableRuntimes: readonly IosCatalogRuntime[];
+  /** 推奨の機種とランタイム(CLI の profile setup --auto-device と同じ規則。決められなければ null)。 */
+  readonly recommended: IosCatalogRecommended | null;
 }
 
 /** `fleetest api device-catalog` の stdout 1行(単発 JSON)の形。 */
@@ -884,7 +902,11 @@ function isAndroidCatalog(value: unknown): value is AndroidCatalog {
     value.systemImages.every(isAndroidCatalogSystemImage) &&
     Array.isArray(value.downloadableSystemImages) &&
     value.downloadableSystemImages.every(isAndroidCatalogDownloadableSystemImage) &&
-    (value.downloadableError === null || typeof value.downloadableError === "string")
+    (value.downloadableError === null || typeof value.downloadableError === "string") &&
+    (value.recommended === null ||
+      (isRecord(value.recommended) &&
+        typeof value.recommended.modelId === "string" &&
+        typeof value.recommended.package === "string"))
   );
 }
 
@@ -896,7 +918,13 @@ function isIosCatalog(value: unknown): value is IosCatalog {
     Array.isArray(value.deviceTypes) &&
     value.deviceTypes.every(isIosCatalogDeviceType) &&
     Array.isArray(value.runtimes) &&
-    value.runtimes.every(isIosCatalogRuntime)
+    value.runtimes.every(isIosCatalogRuntime) &&
+    Array.isArray(value.downloadableRuntimes) &&
+    value.downloadableRuntimes.every(isIosCatalogRuntime) &&
+    (value.recommended === null ||
+      (isRecord(value.recommended) &&
+        typeof value.recommended.deviceTypeIdentifier === "string" &&
+        typeof value.recommended.runtimeIdentifier === "string"))
   );
 }
 
@@ -1102,8 +1130,8 @@ export interface InstallSystemImageFinishedEvent {
   readonly error: string | null;
 }
 
-/** `fleetest api install-system-image` の NDJSON 1行分のイベント(create-device と違い作成物を
- * 持たないので device フィールドが無い。isCreateDeviceEvent と同じ判定方針)。 */
+/** `fleetest api install-system-image` / `install-ios-runtime` の NDJSON 1行分のイベント(同形。
+ * create-device と違い作成物を持たないので device フィールドが無い。isCreateDeviceEvent と同じ判定方針)。 */
 export type InstallSystemImageEvent = InstallSystemImageLogEvent | InstallSystemImageFinishedEvent;
 
 export function isInstallSystemImageEvent(value: unknown): value is InstallSystemImageEvent {
@@ -1128,6 +1156,14 @@ export function isInstallSystemImageEvent(value: unknown): value is InstallSyste
  */
 export function installSystemImageApiArgs(pkg: string): string[] {
   return ["api", "install-system-image", "--package", pkg, "--accept-licenses"];
+}
+
+/**
+ * `fleetest api install-ios-runtime` の CLI 引数。version は device-catalog の
+ * ios.downloadableRuntimes[].version(選択中の Xcode の SDK の版。CLI が一致を検査する)。
+ */
+export function installIOSRuntimeApiArgs(version: string): string[] {
+  return ["api", "install-ios-runtime", "--version", version];
 }
 
 /**

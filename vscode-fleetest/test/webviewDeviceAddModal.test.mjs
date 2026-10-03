@@ -605,3 +605,194 @@ test("バッチ作成: 導入中のスピナーは作成開始(進行窓へ切�
   post(window, { type: "batchCreateStarted", names: ["dev-01"] });
   assert.equal(progress.hidden, true, "進行窓へ切り替わったら消す");
 });
+
+// ---- 推奨の初期選択(CLI の --auto-device と同じ規則の結果 = catalog.*.recommended) ----------
+
+const IOS_PRO_17 = "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro";
+const IOS_PRO_18 = "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro";
+const IOS_RT_26 = "com.apple.CoreSimulator.SimRuntime.iOS-26-2";
+const IOS_RT_27 = "com.apple.CoreSimulator.SimRuntime.iOS-27-0";
+const ANDROID_API_35 = "system-images;android-35;google_apis;arm64-v8a";
+const ANDROID_API_36 = "system-images;android-36;google_apis;arm64-v8a";
+
+/** 推奨が先頭ではない(利用者が何も触らなければ先頭が選ばれてしまう)並びのカタログ */
+function catalogWithRecommended() {
+  const image = (api, tag, label) => ({
+    abi: "arm64-v8a", apiLevel: api, package: `system-images;android-${api};${tag};arm64-v8a`,
+    tag, versionName: `Android ${api}`, nameLabel: label,
+  });
+  return {
+    android: {
+      available: true, error: null, errorCode: null,
+      models: [{ id: "pixel_9", name: "Pixel 9" }, { id: "pixel_10", name: "Pixel 10" }],
+      systemImages: [
+        image(36, "google_apis_playstore", "Android 36, API 36, Play"),
+        image(35, "google_apis", "Android 35, API 35, APIs"),
+      ],
+      downloadableSystemImages: [],
+      downloadableError: null,
+      recommended: { modelId: "pixel_10", package: ANDROID_API_35 },
+    },
+    ios: {
+      available: true, error: null,
+      deviceTypes: [
+        { identifier: IOS_PRO_17, name: "iPhone 17 Pro", productFamily: "iPhone" },
+        { identifier: IOS_PRO_18, name: "iPhone 18 Pro", productFamily: "iPhone" },
+      ],
+      runtimes: [
+        { identifier: IOS_RT_26, name: "iOS 26.2", nameLabel: "iOS 26.2", version: "26.2" },
+        { identifier: IOS_RT_27, name: "iOS 27.0", nameLabel: "iOS 27.0", version: "27.0" },
+      ],
+      downloadableRuntimes: [],
+      recommended: { deviceTypeIdentifier: IOS_PRO_18, runtimeIdentifier: IOS_RT_27 },
+    },
+  };
+}
+
+function changeValue(window, element, value) {
+  element.value = value;
+  element.dispatchEvent(new window.Event("change", { bubbles: true }));
+}
+
+test("推奨: カタログを受け取ると iOS の機種と OS が推奨に合い、名前も推奨に追随する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithRecommended());
+
+  assert.equal(document.getElementById("dlg-model").value, IOS_PRO_18);
+  assert.equal(document.getElementById("dlg-os").value, IOS_RT_27);
+  assert.equal(document.getElementById("dlg-name").value, "iPhone 18 Pro(iOS 27.0)-01");
+});
+
+test("推奨: Android へ切り替えると機種・OS・サービスが推奨に合う(推奨の tag が既定と違ってもサービスが追随する)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  const catalog = catalogWithRecommended();
+  catalog.android.recommended = { modelId: "pixel_10", package: "system-images;android-36;google_apis_playstore;arm64-v8a" };
+  applyCatalog(window, catalog);
+  switchTo(window, document, "android");
+
+  assert.equal(document.getElementById("dlg-service").value, "google_apis_playstore");
+  assert.equal(document.getElementById("dlg-model").value, "pixel_10");
+  assert.equal(document.getElementById("dlg-os").value, "system-images;android-36;google_apis_playstore;arm64-v8a");
+});
+
+test("推奨: 推奨が null(決められない環境)なら従来どおり先頭を選ぶ", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  const catalog = catalogWithRecommended();
+  catalog.ios.recommended = null;
+  applyCatalog(window, catalog);
+
+  assert.equal(document.getElementById("dlg-model").value, IOS_PRO_17);
+  assert.equal(document.getElementById("dlg-os").value, IOS_RT_26);
+});
+
+test("推奨: 利用者が選び直した機種は、サービス変更や再描画で推奨へ勝手に戻さない", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithRecommended());
+  switchTo(window, document, "android");
+  assert.equal(document.getElementById("dlg-model").value, "pixel_10");
+
+  changeValue(window, document.getElementById("dlg-model"), "pixel_9");
+  // サービスを変えても機種の選び直しは保たれる(OS は新サービスの先頭へ)
+  changeValue(window, document.getElementById("dlg-service"), "google_apis_playstore");
+  assert.equal(document.getElementById("dlg-model").value, "pixel_9");
+  assert.equal(document.getElementById("dlg-os").value, "system-images;android-36;google_apis_playstore;arm64-v8a");
+  assert.equal(document.getElementById("dlg-name").value, "Pixel 9(Android 36, API 36, Play)-01");
+});
+
+test("推奨: iOS で OS を選び直すと、その選択が保たれ名前も追随する", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithRecommended());
+
+  changeValue(window, document.getElementById("dlg-os"), IOS_RT_26);
+  assert.equal(document.getElementById("dlg-os").value, IOS_RT_26);
+  assert.equal(document.getElementById("dlg-name").value, "iPhone 18 Pro(iOS 26.2)-01", "名前は選択に追随する");
+});
+
+// ---- iOS のダウンロード候補 -----------------------------------------------------------------
+
+function catalogWithIosDownload() {
+  const catalog = catalogWithRecommended();
+  catalog.ios.runtimes = [{ identifier: IOS_RT_26, name: "iOS 26.2", nameLabel: "iOS 26.2", version: "26.2" }];
+  catalog.ios.downloadableRuntimes = [{ identifier: IOS_RT_27, name: "iOS 27.0", nameLabel: "iOS 27.0", version: "27.0" }];
+  return catalog;
+}
+
+test("iOS: ダウンロード候補があれば「インストール済み」「ダウンロードが必要」に分け、容量の接尾辞は付けず、推奨のダウンロード候補が選ばれる", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithIosDownload());
+
+  const groups = [...document.getElementById("dlg-os").querySelectorAll("optgroup")];
+  assert.deepEqual(groups.map((g) => g.label), ["インストール済み", "ダウンロードが必要"]);
+  assert.deepEqual([...groups[0].querySelectorAll("option")].map((o) => o.textContent), ["iOS 26.2"]);
+  assert.deepEqual([...groups[1].querySelectorAll("option")].map((o) => o.textContent), ["iOS 27.0"], "容量の接尾辞を付けない");
+  assert.equal(document.getElementById("dlg-os").value, IOS_RT_27);
+  assert.match(document.getElementById("dlg-error").textContent, /ダウンロードが必要/);
+  assert.equal(document.getElementById("dlg-ok").disabled, false);
+});
+
+test("iOS: ダウンロード候補が無ければ optgroup を出さない(従来の見た目)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithRecommended());
+  assert.equal(document.getElementById("dlg-os").querySelectorAll("optgroup").length, 0);
+});
+
+test("iOS: ダウンロード候補で OK すると createDevice に installRuntime({version})だけを載せる(installSystemImage は載せない)", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithIosDownload());
+
+  document.getElementById("dlg-ok").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const message = posted.find((m) => m.type === "createDevice");
+  assert.ok(message, "createDevice を送る");
+  assert.equal(message.platform, "ios");
+  assert.equal(message.os, IOS_RT_27);
+  assert.deepEqual({ ...message.installRuntime }, { version: "27.0" });
+  assert.equal("installSystemImage" in message, false);
+});
+
+test("iOS: インストール済みの OS を選んでいれば installRuntime を送らない", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithIosDownload());
+  changeValue(window, document.getElementById("dlg-os"), IOS_RT_26);
+
+  document.getElementById("dlg-ok").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const message = posted.find((m) => m.type === "createDevice");
+  assert.ok(message);
+  assert.equal("installRuntime" in message, false);
+});
+
+test("iOS: ダウンロード候補でバッチ作成すると batchCreateDevices に installRuntime を載せ、スピナーの文言は iOS 用になる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithIosDownload());
+
+  document.getElementById("dlg-batch").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const message = posted.find((m) => m.type === "batchCreateDevices");
+  assert.ok(message, "batchCreateDevices を送る");
+  assert.deepEqual({ ...message.installRuntime }, { version: "27.0" });
+  assert.equal("installSystemImage" in message, false);
+
+  post(window, { type: "deviceAddProgress", phase: "installing" });
+  assert.match(document.getElementById("dlg-progress-text").textContent, /iOS のシミュレータランタイム/);
+});

@@ -424,7 +424,7 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
 (platform, machine, name) を持つ全ての実行プロファイルから外れます。「デバイスを追加」ボタンも
 この節にあり、選択中の実行プロファイルへ直接デバイスを追加します。デバイスの作成では、CLI の
 `fleetest api device-catalog`(利用可能な機種/OSの一覧取得)・`fleetest api installed-devices`
-(導入済みシミュレータ/AVDの一覧取得)・`fleetest api create-device`(新規デバイス作成)を
+(導入済みシミュレータ/AVDの一覧取得)・`fleetest api create-device`(新規デバイス作成。iOS ランタイムが未導入なら先に `fleetest api install-ios-runtime`)を
 `src/monitorDeviceOps.ts` 経由の単発 spawn で呼び出します。実行プロファイル・アプリプロファイルは
 `profiles/{runs,apps}/*.json` を直接読み書きします(スキーマ・構造は上記「実行プロファイルの
 編集支援」参照)。

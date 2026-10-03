@@ -81,8 +81,10 @@
   止めます(自動での解除は原理的にできません。端末へ入力する手段がその端末上のランナー自身で、
   ランナーが動いていない状態では何も送れないためです)。
 
-`fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は最新 OS の既存 Simulator
-(iPad を除く)、Android は既存 AVD のうち API レベルが最大のものを選びます。
+`fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は選択中の Xcode の最新ランタイム
+(未導入なら `xcodebuild -downloadPlatform iOS` で自動導入します。数 GB で、数分〜数十分かかります)と、
+それが対応する最新の `iPhone <N>`(Pro・Pro Max・Plus・Air・e・mini・SE 等の装飾つきは除く)、Android は最新の `Pixel <N>` か `Pixel <N>a`(同じ N なら無印。Pro・Fold 等の装飾つきは除く)と API レベルが最大の `google_apis` システムイメージを
+選びます。VSCode 拡張の「デバイスを追加」ダイアログも、最初に同じ組み合わせを選んだ状態で開きます。
 
 ## コマンド
 

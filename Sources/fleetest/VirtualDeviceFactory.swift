@@ -44,16 +44,29 @@ enum VirtualDeviceFactory {
             throw Failure("simulator model not found: \(deviceTypeID)")
         }
 
-        let runtimesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "runtimes"])
-        guard runtimesResult.status == 0,
-              let runtimesData = runtimesResult.output.data(using: .utf8),
-              let runtimesJSON = (try? JSONSerialization.jsonObject(with: runtimesData))
-                as? [String: Any],
-              let rawRuntimes = runtimesJSON["runtimes"] as? [[String: Any]] else {
-            throw Failure("simctl list runtimes failed: \(runtimesResult.tail)")
+        let listRuntimes = { () throws -> [[String: Any]] in
+            let runtimesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "runtimes"])
+            guard runtimesResult.status == 0,
+                  let runtimesData = runtimesResult.output.data(using: .utf8),
+                  let runtimesJSON = (try? JSONSerialization.jsonObject(with: runtimesData))
+                    as? [String: Any],
+                  let rawRuntimes = runtimesJSON["runtimes"] as? [[String: Any]] else {
+                throw Failure("simctl list runtimes failed: \(runtimesResult.tail)")
+            }
+            return rawRuntimes
         }
-        guard let runtimeEntry = rawRuntimes.first(where: { ($0["identifier"] as? String) == runtimeID }),
-              let runtimeVersion = runtimeEntry["version"] as? String else {
+        let findRuntime = { (raw: [[String: Any]]) in
+            raw.first(where: { ($0["identifier"] as? String) == runtimeID })
+        }
+        var foundRuntime = findRuntime(try listRuntimes())
+        // 未導入でも、選択中の Xcode の SDK の版が入れるランタイム(DevicePicker.predictedIOSRuntimeIdentifier)
+        // と一致するときだけ導入してから作る。一致しない identifier は導入の当てが無いので従来どおり not found
+        if foundRuntime == nil, let sdk = IOSRuntimeInstaller.sdkVersion(),
+           DevicePicker.predictedIOSRuntimeIdentifier(version: sdk) == runtimeID {
+            try installRuntime(version: sdk, identifier: runtimeID, log: log)
+            foundRuntime = findRuntime(try listRuntimes())
+        }
+        guard let runtimeEntry = foundRuntime, let runtimeVersion = runtimeEntry["version"] as? String else {
             throw Failure("runtime not found: \(runtimeID)")
         }
 
@@ -72,6 +85,15 @@ enum VirtualDeviceFactory {
         }
         log("Created the simulator (UDID: \(udid))")
         return CreatedSimulator(udid: udid, deviceTypeName: deviceTypeName, runtimeVersion: runtimeVersion)
+    }
+
+    /// IOSRuntimeInstaller の Failure を、この型の Failure(呼び手が表示に使う)へ写して導入する
+    private static func installRuntime(version: String, identifier: String, log: (String) -> Void) throws {
+        do {
+            try IOSRuntimeInstaller.install(version: version, expectedIdentifier: identifier, log: log)
+        } catch let error as IOSRuntimeInstaller.Failure {
+            throw Failure(error.message)
+        }
     }
 
     /// 判定は削除コマンドと同じ FTCore.DeviceDeletion(起動中は消さない)。
@@ -208,52 +230,35 @@ enum VirtualDeviceFactory {
         let created: Bool
     }
 
-    /// simctl の runtime identifier → name("iOS 27.0")。simctl が非ゼロ・該当なしは Failure
-    private static func runtimeName(identifier: String) throws -> String {
-        let result = try Shell.run(["xcrun", "simctl", "list", "-j", "runtimes"])
-        guard let output = result.outputIfSucceeded,
-              let data = output.data(using: .utf8),
-              let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let runtimes = json["runtimes"] as? [[String: Any]] else {
-            throw Failure("simctl list runtimes failed: \(result.tail)")
-        }
-        guard let name = runtimes.first(where: { ($0["identifier"] as? String) == identifier })?["name"] as? String else {
-            throw Failure("runtime not found: \(identifier)")
-        }
-        return name
-    }
-
-    /// 選んだ既存シミュレータ(picked)と同じ機種・OS の「<機種>(<OS>)-NN」を用意する。
-    /// 手元に `<base>-NN` で中身(deviceType・runtime)が picked と同じものがあれば番号最小を再利用(冪等)、
-    /// 無ければ未使用の最小番号で新規作成する。**picked 自身は改名も削除もしない**。
-    /// explicitName があれば連番の代わりにその名前の完全一致で使う(中身は確かめない)
-    static func ensureSimulator(like picked: SimDeviceInfo, explicitName: String?,
+    /// 自動選定した機種・ランタイム(target)の「<機種>(<OS>)-NN」を用意する。
+    /// 手元に `<base>-NN` で中身(blueprint の deviceType と runtime)が target と同じものがあれば番号最小を
+    /// 再利用(冪等)、無ければ未使用の最小番号で新規作成する。**既存シミュレータは改名も削除もしない**。
+    /// explicitName があれば連番の代わりにその名前の完全一致で使う(中身は確かめない)。
+    /// **ランタイムの導入は作るときだけ**(要ダウンロードは同じ版の既存が在り得ないので必ず導入 → 作成)
+    static func ensureSimulator(target: IOSAutoDevice, explicitName: String?,
                                 log: (String) -> Void) throws -> EnsuredSimulator {
-        let blueprints = SimulatorCatalog.blueprintsByUDID()
-        guard let model = SimulatorCatalog.modelNamesByUDID()[picked.udid],
-              let blueprint = blueprints[picked.udid] else {
-            throw Failure("cannot read the model/runtime of simulator \(picked.name) (\(picked.udid))"
-                + " from simctl; specify one explicitly with --udid")
-        }
         let simulators = try SimulatorCatalog.devices().filter { !$0.physical }
         let name: String
         if let explicitName {
             if let found = simulators.first(where: { $0.name == explicitName }) {
-                let foundModel = SimulatorCatalog.modelNamesByUDID()[found.udid] ?? model
+                let foundModel = SimulatorCatalog.modelNamesByUDID()[found.udid] ?? target.modelName
                 return EnsuredSimulator(info: found, model: foundModel, created: false)
             }
             name = explicitName
         } else {
-            let base = VirtualDeviceNaming.baseName(
-                model: model, osLabel: try runtimeName(identifier: blueprint.runtimeIdentifier))
-            let sameContent = { (device: SimDeviceInfo) in blueprints[device.udid] == blueprint }
+            let base = VirtualDeviceNaming.baseName(model: target.modelName, osLabel: target.runtimeName)
+            let blueprints = SimulatorCatalog.blueprintsByUDID()
+            let sameContent = { (device: SimDeviceInfo) in
+                blueprints[device.udid]?.deviceTypeIdentifier == target.deviceTypeID
+                    && blueprints[device.udid]?.runtimeIdentifier == target.runtimeID
+            }
             // simulators は 起動中 → OS 降順(SimulatorCatalog.resolve と同じ曖昧さの扱い)。
             // 同名が複数あれば中身が一致する最初の1台
             if let existingName = VirtualDeviceNaming.lowestMatching(
                 base: base, names: simulators.map(\.name),
                 matches: { candidate in simulators.contains { $0.name == candidate && sameContent($0) } }),
                let found = simulators.first(where: { $0.name == existingName && sameContent($0) }) {
-                let foundModel = SimulatorCatalog.modelNamesByUDID()[found.udid] ?? model
+                let foundModel = SimulatorCatalog.modelNamesByUDID()[found.udid] ?? target.modelName
                 return EnsuredSimulator(info: found, model: foundModel, created: false)
             }
             guard let next = VirtualDeviceNaming.nextUnusedNames(
@@ -262,9 +267,12 @@ enum VirtualDeviceFactory {
             }
             name = next
         }
+        if target.needsDownload {
+            try installRuntime(version: target.runtimeVersion, identifier: target.runtimeID, log: log)
+        }
         let made = try createSimulator(
-            name: name, deviceTypeID: blueprint.deviceTypeIdentifier,
-            runtimeID: blueprint.runtimeIdentifier, overwrite: false, log: log)
+            name: name, deviceTypeID: target.deviceTypeID,
+            runtimeID: target.runtimeID, overwrite: false, log: log)
         let info = SimDeviceInfo(udid: made.udid, name: name, os: "iOS \(made.runtimeVersion)", booted: false)
         return EnsuredSimulator(info: info, model: made.deviceTypeName, created: true)
     }
@@ -275,15 +283,13 @@ enum VirtualDeviceFactory {
         let created: Bool
     }
 
-    /// 選んだ既存 AVD(pickedID)と同じ機種・system image の「<機種>(<OS>)-NN」を用意する(方針は ensureSimulator と同じ。
-    /// 中身 = hw.device.name と image package)。機種の表示名は avdmanager list device の Name、引けなければ hw.device.name のまま
-    static func ensureAVD(like pickedID: String, explicitName: String?,
+    /// 機種(deviceID・modelName)と system image の「<機種>(<OS>)-NN」を用意する(方針は ensureSimulator と同じ。
+    /// 中身 = hw.device.name と image package)。手元に `<base>-NN` で中身が一致する AVD があれば番号最小を再利用、
+    /// 無ければ未使用の最小番号で新規作成する。explicitName があれば連番の代わりにその名前の完全一致で使う(中身は確かめない)。
+    /// package のイメージは導入済みであること(導入は呼び手の責務)
+    static func ensureAVD(deviceID: String, modelName: String, package: String, apiLevel: Int, tag: String,
+                          explicitName: String?, beforeCreate: () throws -> Void = {},
                           log: (String) -> Void) throws -> EnsuredAVD {
-        guard let deviceID = AndroidDeviceCatalog.avdModelAndOS(id: pickedID).model,
-              let image = AndroidDeviceCatalog.avdSystemImage(id: pickedID) else {
-            throw Failure("cannot read hw.device.name / image.sysdir.1 from the config.ini of AVD \(pickedID);"
-                + " specify one explicitly with --avd")
-        }
         let installed = AndroidDeviceCatalog.installedAVDs()
         let labelOf = { (avd: (id: String, displayName: String?)) in avd.displayName ?? avd.id }
         let name: String
@@ -293,18 +299,11 @@ enum VirtualDeviceFactory {
             }
             name = explicitName
         } else {
-            var modelLabel = deviceID
-            if let avdmanager = AndroidSDKLocator.findAVDManager(),
-               let listed = try? Shell.run(AndroidSDKLocator.avdManagerCommand(avdmanager, ["list", "device"])),
-               let output = listed.outputIfSucceeded,
-               let listedName = ApiDeviceCatalogCommand.parseDeviceDefinitions(output).first(where: { $0.id == deviceID })?.name {
-                modelLabel = listedName
-            }
             let base = VirtualDeviceNaming.baseName(
-                model: modelLabel, osLabel: VirtualDeviceNaming.androidOSLabel(apiLevel: image.apiLevel, tag: image.tag))
+                model: modelName, osLabel: VirtualDeviceNaming.androidOSLabel(apiLevel: apiLevel, tag: tag))
             let sameContent = { (avd: (id: String, displayName: String?)) in
                 AndroidDeviceCatalog.avdModelAndOS(id: avd.id).model == deviceID
-                    && AndroidDeviceCatalog.avdSystemImage(id: avd.id)?.package == image.package
+                    && AndroidDeviceCatalog.avdSystemImage(id: avd.id)?.package == package
             }
             if let existingName = VirtualDeviceNaming.lowestMatching(
                 base: base, names: installed.map(labelOf),
@@ -318,7 +317,9 @@ enum VirtualDeviceFactory {
             }
             name = next
         }
-        let id = try createAVD(name: name, deviceID: deviceID, package: image.package, overwrite: false, log: log)
+        // 導入(ライセンス承諾)は作るときだけ要る。再利用できるなら呼ばない
+        try beforeCreate()
+        let id = try createAVD(name: name, deviceID: deviceID, package: package, overwrite: false, log: log)
         return EnsuredAVD(id: id, name: name, created: true)
     }
 }

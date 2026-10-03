@@ -87,13 +87,22 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|bo
   --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
 ```
 
-- `--auto-device` の選定規則: 機種と OS は **iOS = 最新 OS の既存シミュレータ(iPad は除外・名前に "Pro" を含むものを優先)** /
-  **Android = config.ini の API レベルが最大の既存 AVD** から決める。登録するのは**その機種・OS の「機種(OS)-NN」**:
-  手元に同じ形の名前があり、かつ**中身(iOS = 機種+runtime / Android = 機種+system image)も選定元と同じ**なら番号最小のものを再利用し
+- `--auto-device` の選定規則: **iOS = ランタイムは選択中の Xcode の SDK の版(`xcrun --sdk iphonesimulator --show-sdk-version`)に届く最新
+  (導入済みが届いていなければ未導入と判定)、機種はそのランタイムが対応する `iPhone <N>`(装飾なし)ちょうどのうち N が最大
+  (Pro・Pro Max・Plus・Air・Duo・e・mini・SE・iPad は除く)** /
+  **Android = 機種は最新の Pixel スマートフォン(`avdmanager list device` の id が `pixel_<数字>` か `pixel_<数字>a` ちょうどのうち数字が最大。
+  同じ数字なら無印を優先。`pixel_9_pro` `pixel_fold` 等の装飾つきは除く)、システムイメージは tag `google_apis`・この Mac の ABI で API レベルが最大のもの
+  (導入済みとダウンロード可能の合算。同じ API なら導入済み)**。登録するのは**その機種・OS の「機種(OS)-NN」**:
+  手元に同じ形の名前があり、かつ**中身(iOS = 機種+runtime / Android = 機種+system image)も選定結果と同じ**なら番号最小のものを再利用し
   (冪等。同じ形の名前なら拡張で作ったデバイスもそのまま使う)、無ければ**空いている最小の番号**(`-01` が別の中身で埋まっていれば `-02`)で
   専用の仮想デバイスを新規作成する。OS 部分は iOS = runtime 名(`iOS 27.0`)/ Android = `Android 16, API 36, APIs`
-  (Play Store イメージは `Play`。例 `Pixel 10(Android 16, API 36, Play)-01`)。**利用者の既存シミュレータ/AVD は改名も削除もしない**。
-  選定元が 0台なら作成方法を示してエラーになる。
+  (例 `Pixel 10(Android 16, API 36, APIs)-01`)。**利用者の既存シミュレータ/AVD は改名も削除もしない**。
+  iOS のランタイムが未導入なら、**デバイスを新しく作る直前に `xcodebuild -downloadPlatform iOS` で自動導入する**
+  (ライセンス承諾のフラグは要らない。**数 GB のダウンロードで数分〜数十分かかり、コマンドはその間返らない**。
+  事前に本人へ時間がかかる旨を伝え、出力を待つ。再利用できる既存デバイスがあれば導入しない。ランタイムだけを先に入れたいときは `fleetest api install-ios-runtime --version <SDK の版>`。導入済みなら何もせず、SDK の版と違う版は拒む)。
+- **`profile setup` が「システムイメージのライセンス承諾が必要」と言って止まったら**(Android で選ばれたイメージが未導入のとき。
+  何も導入せずに止まる): メッセージの package・サイズ・ライセンスを示し、選択ダイアログで本人に承諾してよいか聞く。
+  承諾なら**同じコマンドに `--accept-licenses` を足して**再実行する。**本人の承諾なしに勝手に付けない**。
 - `--platform both` で iOS と Android を1回で作る(論理名はそれぞれ「機種(OS)-01」)。
 - 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
   (iOS: `--device-name "<シミュレータ名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。

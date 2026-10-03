@@ -335,21 +335,35 @@ export const deviceOpsStrings = {
     ja: "システムイメージの導入に失敗しました。",
     en: "Failed to install the system image.",
   },
-  "deviceOps.log.installSystemImageStartFailed": {
-    ja: "[fleetest] install-system-image({package})の起動に失敗しました: {error}",
-    en: "[fleetest] Failed to start install-system-image({package}): {error}",
+  // ---- ダウンロードが要る iOS ランタイムの導入 + 作成(導入は install-ios-runtime を作成の前に1回だけ) ----
+  "deviceOps.installRuntimeConfirmMessage": {
+    ja: "{machine} に iOS {version} のシミュレータランタイムをダウンロードしてから、「{name}」を作成します(数 GB・数分〜数十分かかります)。",
+    en: "This downloads the iOS {version} simulator runtime on {machine} and then creates \"{name}\" (several GB; can take several minutes to tens of minutes).",
   },
-  "deviceOps.log.installSystemImageFailed": {
-    ja: "[fleetest] install-system-image({package})が失敗しました: {error}",
-    en: "[fleetest] install-system-image({package}) failed: {error}",
+  "deviceOps.installRuntimeBatchConfirmMessage": {
+    ja: "{machine} に iOS {version} のシミュレータランタイムをダウンロードしてから、{count} 台のデバイスを作成します({first} 〜 {last})(数 GB・数分〜数十分かかります)。",
+    en: "This downloads the iOS {version} simulator runtime on {machine} and then creates {count} devices ({first} - {last}) (several GB; can take several minutes to tens of minutes).",
   },
-  "deviceOps.log.installSystemImageRuntimeError": {
-    ja: "[fleetest] install-system-image({package})の実行でエラーが発生しました: {error}",
-    en: "[fleetest] An error occurred while running install-system-image({package}): {error}",
+  "deviceOps.installRuntimeConfirmButton": { ja: "ダウンロードして作成", en: "Download and Create" },
+  "deviceOps.installRuntimeFailedGeneric": {
+    ja: "iOS シミュレータランタイムの導入に失敗しました。",
+    en: "Failed to install the iOS simulator runtime.",
   },
-  "deviceOps.log.installSystemImageClosed": {
-    ja: "[fleetest] install-system-image({package})が終了しました(exit code: {exitCode})",
-    en: "[fleetest] install-system-image({package}) finished (exit code: {exitCode})",
+  "deviceOps.log.installApiStartFailed": {
+    ja: "[fleetest] {tool}({id})の起動に失敗しました: {error}",
+    en: "[fleetest] Failed to start {tool}({id}): {error}",
+  },
+  "deviceOps.log.installApiFailed": {
+    ja: "[fleetest] {tool}({id})が失敗しました: {error}",
+    en: "[fleetest] {tool}({id}) failed: {error}",
+  },
+  "deviceOps.log.installApiRuntimeError": {
+    ja: "[fleetest] {tool}({id})の実行でエラーが発生しました: {error}",
+    en: "[fleetest] An error occurred while running {tool}({id}): {error}",
+  },
+  "deviceOps.log.installApiClosed": {
+    ja: "[fleetest] {tool}({id})が終了しました(exit code: {exitCode})",
+    en: "[fleetest] {tool}({id}) finished (exit code: {exitCode})",
   },
   "deviceOps.batchAlreadyRunning": {
     ja: "デバイスの作成が実行中です。",

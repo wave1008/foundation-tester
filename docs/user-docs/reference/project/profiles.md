@@ -86,8 +86,11 @@ list and every run-time setting.
   refused by name (unlocking it automatically is impossible: the only thing that can send input
   to the device is the runner on that device, and it is not running yet).
 
-`fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest-OS
-existing Simulator (excluding iPads); for Android, the existing AVD with the highest API level.
+`fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest runtime of the
+selected Xcode (installed with `xcodebuild -downloadPlatform iOS` when missing: several GB, several minutes to
+tens of minutes) and the newest plain `iPhone <N>` it supports (Pro, Pro Max, Plus, Air, e, mini and SE variants are excluded); for Android, the newest `Pixel <N>` or `Pixel <N>a` (the plain one wins a tie; Pro, Fold and other variants are excluded) with the
+`google_apis` system image of the highest API level. The VSCode extension's "Add device" dialog also opens
+with the same combination pre-selected.
 
 ## Commands
 

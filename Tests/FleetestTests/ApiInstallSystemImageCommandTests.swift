@@ -57,13 +57,13 @@ final class ApiInstallSystemImageCommandTests: XCTestCase {
     // MARK: - components(of:)
 
     func testComponentsOfSplitsApiLevelTagAbi() {
-        let parts = ApiInstallSystemImageCommand.components(of: validPackage)
+        let parts = SystemImageInstaller.components(of: validPackage)
         XCTAssertEqual(parts?.apiLevel, "36")
         XCTAssertEqual(parts?.tag, "google_apis")
         XCTAssertEqual(parts?.abi, "arm64-v8a")
     }
 
     func testComponentsOfIsNilForAMalformedPackage() {
-        XCTAssertNil(ApiInstallSystemImageCommand.components(of: "system-images;android-36"))
+        XCTAssertNil(SystemImageInstaller.components(of: "system-images;android-36"))
     }
 }

@@ -96,4 +96,36 @@ extension ProfileSetupAutoDeviceTests {
                                                        udid: nil, avd: nil, serial: nil)
         XCTAssertEqual(prefixed["osVersion"] as? String, "iOS 26.2")
     }
+
+    /// 未導入のイメージは --accept-licenses が無ければ何も入れずに止まる(ライセンスを自動で承諾しない契約)。
+    /// 文言には本人に確認するための材料(package・サイズ・ライセンス)と再実行の指示が要る
+    func testUninstalledImageRefusesWithoutAcceptLicenses() {
+        let target = ProfileSetupCommand.AndroidAutoTarget(
+            deviceID: "pixel_10", modelName: "Pixel 10",
+            image: DevicePicker.SystemImageCandidate(
+                package: "system-images;android-37;google_apis;arm64-v8a", apiLevel: 37,
+                tag: "google_apis", abi: "arm64-v8a"),
+            isInstalled: false, sizeBytes: 1_500_000_000, license: "android-sdk-license")
+        var logged: [String] = []
+        XCTAssertThrowsError(try ProfileSetupCommand.installIfNeeded(
+            target, acceptLicenses: false, log: { logged.append($0) })) { error in
+            let text = "\(error)"
+            XCTAssertTrue(text.contains("system-images;android-37;google_apis;arm64-v8a"), text)
+            XCTAssertTrue(text.contains("1500 MB"), text)
+            XCTAssertTrue(text.contains("android-sdk-license"), text)
+            XCTAssertTrue(text.contains("--accept-licenses"), text)
+        }
+        XCTAssertEqual(logged, [], "止まるときは導入を始めない")
+    }
+
+    /// 導入済みなら承諾の有無に関わらず何もしない
+    func testInstalledImageNeedsNoLicense() throws {
+        let target = ProfileSetupCommand.AndroidAutoTarget(
+            deviceID: "pixel_10", modelName: "Pixel 10",
+            image: DevicePicker.SystemImageCandidate(
+                package: "system-images;android-36;google_apis;arm64-v8a", apiLevel: 36,
+                tag: "google_apis", abi: "arm64-v8a"),
+            isInstalled: true, sizeBytes: nil, license: nil)
+        try ProfileSetupCommand.installIfNeeded(target, acceptLicenses: false, log: { _ in })
+    }
 }

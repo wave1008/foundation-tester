@@ -100,7 +100,7 @@ function fillSelect(select, options) {
 }
 
 /** fillSelect のグループ付き版。downloadable が空なら**フラット**に描く(optgroup を
- * 出さない = ダウンロード候補が無いとき・iOS では見出しを出さない)。
+ * 出さない = ダウンロード候補が無いときは見出しを出さない)。
  * downloadable が非空のときだけ「インストール済み」/「ダウンロードが必要」の2 optgroup に分ける
  * (installed が空でも見出しごと出さない = 空グループを見せない)。 */
 function fillSelectGrouped(select, installed, downloadable) {
@@ -169,14 +169,52 @@ function androidDownloadableOsOptions() {
     }));
 }
 
+function iosInstalledOsOptions() {
+  if (!deviceCatalog) {
+    return [];
+  }
+  return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name, nameLabel: r.nameLabel }));
+}
+
+// 未導入の iOS ランタイム(0 または 1 件。identifier は導入後の予測値)。容量は CLI も知らないので
+// 接尾辞は付けない。version は OK 押下時に installRuntime を組み立てるのに使う。
+function iosDownloadableOsOptions() {
+  if (!deviceCatalog) {
+    return [];
+  }
+  return (deviceCatalog.ios.downloadableRuntimes || [])
+    .map((r) => ({ value: r.identifier, label: r.name, nameLabel: r.nameLabel, runtimeVersion: r.version }));
+}
+
 function osOptionsFor(platform) {
   if (!deviceCatalog) {
     return [];
   }
   if (platform === 'ios') {
-    return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name, nameLabel: r.nameLabel }));
+    return [...iosInstalledOsOptions(), ...iosDownloadableOsOptions()];
   }
   return [...androidInstalledOsOptions(), ...androidDownloadableOsOptions()];
+}
+
+// カタログの推奨(CLI の profile setup --auto-device と同じ規則の結果)を {model, os, tag?} に直す。
+// 無ければ null(推奨が決められない環境では従来どおり先頭を選ぶ)。
+function recommendedFor(platform) {
+  if (!deviceCatalog) {
+    return null;
+  }
+  if (platform === 'ios') {
+    const rec = deviceCatalog.ios.recommended;
+    return rec ? { model: rec.deviceTypeIdentifier, os: rec.runtimeIdentifier } : null;
+  }
+  const rec = deviceCatalog.android.recommended;
+  // package = system-images;android-<N>;<tag>;<abi>
+  return rec ? { model: rec.modelId, os: rec.package, tag: rec.package.split(';')[2] } : null;
+}
+
+function selectIfPresent(select, value) {
+  if (value && [...select.options].some((option) => option.value === value)) {
+    select.value = value;
+  }
 }
 
 function downloadableSizeSuffix(sizeBytes) {
@@ -258,8 +296,9 @@ function selectedOptionLabel(select) {
 // dlgOs の値 → 仮想デバイス名の OS 部分(カタログの nameLabel。refreshModelAndOsOptions が張り直す)。
 // 選択肢の表示ラベル(API・ABI・容量接尾辞つき)とは別物で、名前にはこちらだけを使う。
 let osNameLabelByValue = new Map();
-// dlgOs の値(package)→ダウンロード候補の情報({sizeBytes, license})。ここに載っている値を選んで
-// いる間だけ、OK/バッチ作成の送信に installSystemImage を足す(ラベル文字列は解析しない)。
+// dlgOs の値 → ダウンロード候補の情報(Android: {sizeBytes, license} / iOS: {runtimeVersion})。
+// ここに載っている値を選んでいる間だけ、OK/バッチ作成の送信に installSystemImage(Android)/
+// installRuntime(iOS)を足す(ラベル文字列は解析しない)。
 let downloadableByPackage = new Map();
 
 // 名前欄の既定値の base「機種(OS ラベル)」。モデル・OS 未選択なら空文字
@@ -306,6 +345,9 @@ function downloadableInfoText() {
   if (!info) {
     return '';
   }
+  if (info.runtimeVersion !== undefined) {
+    return t('wvMonitor.deviceAdd.downloadableRuntimeInfo');
+  }
   const sizeNote = info.sizeBytes === null
     ? ''
     : t('wvMonitor.deviceAdd.downloadableInfoSizeNote', { size: formatBytesAuto(info.sizeBytes) });
@@ -330,9 +372,17 @@ function refreshErrorOrInfo(platform) {
 
 // 選択中プラットフォームの選択肢とエラー表示・OK 可否を1箇所で同期する(プラットフォーム切替でも
 // カタログ受信直後でも同じ結果になるよう、呼び出し側で dlgError/dlgOk を触らない)。
-function refreshModelAndOsOptions() {
+// recommend:true(カタログ受信・プラットフォーム切替)は機種と OS(Android はサービスも)を推奨に合わせる。
+// false(サービス変更など)は利用者の選択を保つ(残せなければ先頭)。
+function refreshModelAndOsOptions(recommend = false) {
   const platform = getDialogPlatform();
+  const rec = recommend ? recommendedFor(platform) : null;
+  const previousModel = dlgModel.value;
+  const previousOs = dlgOs.value;
   dlgServiceRow.hidden = platform !== 'android';
+  if (rec && platform === 'android') {
+    selectIfPresent(dlgService, rec.tag);
+  }
   fillSelect(dlgModel, modelOptionsFor(platform));
 
   osNameLabelByValue = new Map();
@@ -353,19 +403,30 @@ function refreshModelAndOsOptions() {
       downloadable.map((opt) => ({ value: opt.value, label: opt.label + downloadableSizeSuffix(opt.sizeBytes) })),
     );
   } else {
-    const options = osOptionsFor(platform);
-    for (const opt of options) {
+    const installed = iosInstalledOsOptions();
+    const downloadable = iosDownloadableOsOptions();
+    for (const opt of [...installed, ...downloadable]) {
       osNameLabelByValue.set(opt.value, opt.nameLabel);
     }
-    fillSelect(dlgOs, options);
+    for (const opt of downloadable) {
+      downloadableByPackage.set(opt.value, { runtimeVersion: opt.runtimeVersion });
+    }
+    fillSelectGrouped(dlgOs, installed, downloadable.map((opt) => ({ value: opt.value, label: opt.label })));
   }
 
+  if (rec) {
+    selectIfPresent(dlgModel, rec.model);
+    selectIfPresent(dlgOs, rec.os);
+  } else {
+    selectIfPresent(dlgModel, previousModel);
+    selectIfPresent(dlgOs, previousOs);
+  }
   refreshAutoName();
   refreshErrorOrInfo(platform);
 }
 
-dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions());
-dlgPlatformAndroid.addEventListener('change', () => refreshModelAndOsOptions());
+dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions(true));
+dlgPlatformAndroid.addEventListener('change', () => refreshModelAndOsOptions(true));
 // サービスを変えると選べる OS バージョンが変わる(モデルは変わらないが、空になったときの
 // 理由表示と OK 可否も refreshModelAndOsOptions が面倒を見る)
 dlgService.addEventListener('change', () => refreshModelAndOsOptions());
@@ -424,7 +485,9 @@ export function applyDeviceAddProgress(message) {
   }
   dlgProgressText.textContent = message.phase === 'creating'
     ? t('wvMonitor.deviceAdd.progressCreating')
-    : t('wvMonitor.deviceAdd.progressInstalling');
+    : t(getDialogPlatform() === 'ios'
+      ? 'wvMonitor.deviceAdd.progressInstallingRuntime'
+      : 'wvMonitor.deviceAdd.progressInstalling');
   dlgProgress.hidden = false;
 }
 
@@ -465,7 +528,7 @@ export function applyDeviceCatalog(message) {
   setDialogControlsEnabled(true);
   applyPlatformAvailability();
   // dlgError / dlgOk は refreshModelAndOsOptions が選択中プラットフォームに応じて設定する
-  refreshModelAndOsOptions();
+  refreshModelAndOsOptions(true);
 }
 
 // avdmanager が無いときだけ出る導入ボタン。完了まで数分かかるため、押下後はモーダル全体を
@@ -553,6 +616,18 @@ deviceAddOverlay.addEventListener('keydown', (event) => {
   event.preventDefault();
   dlgOk.click();
 });
+// ダウンロード候補を選んでいるときだけ送信に足す欄: Android = installSystemImage(ライセンス同意つきの導入)/
+// iOS = installRuntime(確認のあと install-ios-runtime で導入する)。選んでいなければ空。
+function downloadInstallFields(install) {
+  if (!install) {
+    return {};
+  }
+  if (install.runtimeVersion !== undefined) {
+    return { installRuntime: { version: install.runtimeVersion } };
+  }
+  return { installSystemImage: { package: dlgOs.value, sizeBytes: install.sizeBytes, license: install.license } };
+}
+
 dlgOk.addEventListener('click', () => {
   if (dlgOk.disabled || deviceAddCreating || !deviceCatalog) {
     return;
@@ -573,6 +648,7 @@ dlgOk.addEventListener('click', () => {
   // 一連を1メッセージで依頼する(2枚モーダルを避けるため。値は package/sizeBytes/license のみ ——
   // ラベル文字列は運ばない)。
   const install = downloadableByPackage.get(dlgOs.value);
+  const installFields = downloadInstallFields(install);
   deviceAddCreating = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
@@ -591,7 +667,7 @@ dlgOk.addEventListener('click', () => {
     // source が remote のときはホスト側が register によらず --no-register を強制する(§13)。
     register: !deviceAddFromPicker,
     overwrite: overwrite,
-    ...(install ? { installSystemImage: { package: dlgOs.value, sizeBytes: install.sizeBytes, license: install.license } } : {}),
+    ...installFields,
     source: currentDeviceSource(),
   });
 });
@@ -684,6 +760,7 @@ dlgBatch.addEventListener('click', () => {
   // バッチ全体が同じ OS バージョンで作られるため、ダウンロード候補なら1件だけ installSystemImage を
   // 載せる(単発 OK と同じ判定・同じ形)。
   const install = downloadableByPackage.get(dlgOs.value);
+  const installFields = downloadInstallFields(install);
   // 確認中も追加ダイアログを固める(Enter 連打・×での取り消しを止める)。
   // 開始できなければ batchCreateFinished(started:false)で元に戻す
   deviceAddCreating = true;
@@ -698,7 +775,7 @@ dlgBatch.addEventListener('click', () => {
     model: dlgModel.value,
     os: dlgOs.value,
     overwriteNames: overwriteNames,
-    ...(install ? { installSystemImage: { package: dlgOs.value, sizeBytes: install.sizeBytes, license: install.license } } : {}),
+    ...installFields,
     source: source,
   });
 });

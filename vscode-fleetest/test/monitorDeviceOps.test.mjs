@@ -16,9 +16,12 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { runAfterInstall } from "../src/installGate";
 import { MonitorDeviceOps } from "../src/monitorDeviceOps";
 import {
   firstLine,
+  installRuntimeBatchConfirmMessage,
+  installRuntimeConfirmMessage,
   installSystemImageBatchConfirmMessage,
   installSystemImageConfirmMessage,
   occupancyDetailLine,
@@ -840,6 +843,19 @@ test("installSystemImageBatchConfirmMessage: 台数・先頭/末尾の名前を�
   assert.match(message, /android-sdk-license/);
 });
 
+test("installRuntimeConfirmMessage / installRuntimeBatchConfirmMessage: 版・マシン・名前・台数と、数 GB かかる旨を運ぶ", () => {
+  const single = installRuntimeConfirmMessage({ machine: "M1", name: "dev00", version: "27.0" });
+  assert.match(single, /M1/);
+  assert.match(single, /iOS 27\.0/);
+  assert.match(single, /dev00/);
+  assert.match(single, /数 GB/);
+  const batch = installRuntimeBatchConfirmMessage({ machine: "M1", count: 3, first: "dev-01", last: "dev-03", version: "27.0" });
+  assert.match(batch, /iOS 27\.0/);
+  assert.match(batch, /3 台/);
+  assert.match(batch, /dev-01/);
+  assert.match(batch, /dev-03/);
+});
+
 test("署名の案内は全文がバナーへ渡る", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleetest-deviceops-signing-"));
   const binaryPath = path.join(dir, "fleetest");
@@ -1079,4 +1095,53 @@ test("削除の modal は手元でも occupancyDetail を通す(remote で絞ら
     /detail: this\.occupancyDetail\(msg\.source\.kind === "remote" \? msg\.source\.machine : null\)/,
     "削除の modal は手元(null)も occupancyDetail へ渡す",
   );
+});
+
+// ---- 作成の前に導入を1回だけ行う門(runAfterInstall。バッチ・単発・Android/iOS 共通) ----
+
+test("runAfterInstall: 導入が失敗したら proceed(create-device ループ)を1度も呼ばず、エラーを返す", async () => {
+  let installs = 0;
+  let creates = 0;
+  const result = await runAfterInstall(
+    async () => { installs += 1; return { ok: false, error: "iOS 26.2 cannot be installed" }; },
+    async () => { creates += 1; return "created"; },
+    "fallback",
+  );
+  assert.deepEqual(result, { proceeded: false, error: "iOS 26.2 cannot be installed" });
+  assert.equal(installs, 1);
+  assert.equal(creates, 0);
+});
+
+test("runAfterInstall: error が null の失敗は fallbackError を使う", async () => {
+  const result = await runAfterInstall(async () => ({ ok: false, error: null }), async () => 1, "fallback");
+  assert.deepEqual(result, { proceeded: false, error: "fallback" });
+});
+
+test("runAfterInstall: 導入が成功したら導入の後に proceed へ進む", async () => {
+  const order = [];
+  const result = await runAfterInstall(
+    async () => { order.push("install"); return { ok: true, error: null }; },
+    async () => { order.push("create"); return 42; },
+    "fallback",
+  );
+  assert.deepEqual(result, { proceeded: true, value: 42 });
+  assert.deepEqual(order, ["install", "create"]);
+});
+
+test("runAfterInstall: 導入が不要(undefined)なら導入せず proceed へ進む", async () => {
+  const result = await runAfterInstall(undefined, async () => "ok", "fallback");
+  assert.deepEqual(result, { proceeded: true, value: "ok" });
+});
+
+// 呼び出し側の配線(vscode スタブでは modal が解決しないので実行では通せない): 単発・バッチとも
+// iOS は install-ios-runtime を create-device の前に呼び、create-device 側へ導入を任せない
+test("iOS のダウンロード候補は単発もバッチも install-ios-runtime を作成の前に1回だけ呼ぶ配線", () => {
+  const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
+  const source = fs.readFileSync(path.join(srcDir, "monitorDeviceCreateOps.ts"), "utf8");
+  assert.match(source, /private async confirmRuntimeDownloadThenCreate[\s\S]*?install-ios-runtime[\s\S]*?this\.spawnCreateDevice\(msg\)/,
+    "単発: install-ios-runtime の成功後に create-device");
+  assert.match(source, /runAfterInstall\(installStep, \(\) => this\.createBatchSerially\(msg\)/,
+    "バッチ: 導入の門の内側でだけ1台ずつ作る");
+  assert.match(source, /if \(runtime\) \{\s*return \(\) => new Promise[\s\S]*?"install-ios-runtime"/,
+    "バッチ: iOS の導入は install-ios-runtime");
 });

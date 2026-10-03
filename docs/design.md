@@ -3919,11 +3919,23 @@ targeting = bundletool にしか決められない。feature module を足した
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
 
-`fleetest profile setup --auto-device` の選定規則(`DevicePicker`)— iOS は**最新 OS の
-既存シミュレータ**(名前に "Pro" を含むものを優先)、Android は config.ini の **API レベルが
-最大の既存 AVD**。**iOS は iPad を候補から除外する**(除外しないと "Pro" 優先が iPad Pro を
-掴む)。除外が効くのは自動選定だけで、`--device-name`/`--udid` や `api create-device` で
-iPad を明示指定する経路は従来どおり通る。
+`fleetest profile setup --auto-device` の選定規則(`DevicePicker`。**規則は Swift の1箇所**で、
+`api device-catalog` の `recommended` と拡張の「デバイスを追加」の初期選択も同じ関数の結果):
+- **iOS**: ランタイムは選択中の Xcode の SDK の版(`xcrun --sdk iphonesimulator --show-sdk-version`。
+  `xcodebuild -downloadPlatform iOS` が入れる版)に届く導入済みの最大、届かなければ**要ダウンロード**
+  (`IOSRuntimeInstaller`。導入はデバイスを新しく作る直前だけ)。機種はそのランタイムが対応する
+  `iPhone-<N>` ちょうど(Pro・Pro Max・Plus・Air・Duo・e・mini・SE・iPad は除く)のうち N 最大。
+- **Android**: 機種は最新の `pixel_<N>` / `pixel_<N>a`(同じ N なら無印。Pro・Fold 等は除く)、イメージは tag `google_apis`・ホスト ABI で API 最大
+  (導入済み + ダウンロード可能。同じ API なら導入済み)。未導入は `--accept-licenses` のときだけ導入する。
+
+`api device-catalog` の契約(プロトコル版 40): iOS に `downloadableRuntimes`(要ダウンロードのときだけ1件、
+`{identifier(導入後の予測値), name, nameLabel, version}`)と `recommended`(`{deviceTypeIdentifier, runtimeIdentifier}`
+または null)、Android に `recommended`(`{modelId, package}` または null)。いずれも必須。
+`api create-device` は iOS で `--os` がインストール済みに無く、SDK の版の予測 identifier と一致するときだけ
+ランタイムを導入してから作る(一致しなければ `runtime not found`)。
+`api install-ios-runtime --version <版>` はランタイムの導入だけを行う独立コマンド(NDJSON は `install-system-image` と同形: log* → finished {ok, error}。ok:false は exit 1)。
+導入済みなら何もせず ok、選択中の Xcode の SDK の版(`xcodebuild -downloadPlatform iOS` が入れられる唯一の版)と主・副が一致しない版は何も入れずに拒む(判定は純粋関数 `decide`)。
+拡張の「デバイスを追加」は iOS のダウンロード候補で、確認の後、単発・バッチとも create-device の前にこれを1回だけ呼び、失敗したら1台も作らずに中止する(Android の `install-system-image` と同じ扱い。バッチで1台ずつ create-device に導入を任せると失敗のたびに再試行するため)。create-device 内の自動導入は profile setup と直接呼びのために残す。
 
 FM(Foundation Models)を使うのは `fmTextOcclusionCheck`(occlusion-guard の FM の段。OCR の段
 `ocrTextOcclusionCheck` と独立で、guard はどちらかが true なら走る = FTRuntime が合成)・`screenLooksLike` のどちらかが true のときだけで、いずれも既定 true

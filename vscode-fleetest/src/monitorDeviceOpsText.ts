@@ -190,6 +190,32 @@ export function installSystemImageBatchConfirmMessage(params: {
   });
 }
 
+/** iOS ランタイムをダウンロードして導入してから作る単発作成の確認メッセージ(純粋関数)。 */
+export function installRuntimeConfirmMessage(params: {
+  readonly machine: string;
+  readonly name: string;
+  readonly version: string;
+}): string {
+  return t("deviceOps.installRuntimeConfirmMessage", params);
+}
+
+/** 同上のバッチ版。 */
+export function installRuntimeBatchConfirmMessage(params: {
+  readonly machine: string;
+  readonly count: number;
+  readonly first: string;
+  readonly last: string;
+  readonly version: string;
+}): string {
+  return t("deviceOps.installRuntimeBatchConfirmMessage", {
+    machine: params.machine,
+    count: String(params.count),
+    first: params.first,
+    last: params.last,
+    version: params.version,
+  });
+}
+
 /**
  * 破壊的操作の確認に添える占有の1行(その機械で run が走っているときだけ)。
  * **`machine === null` は手元**で、呼び名は既存の1つ(`deviceOps.machineLocalLabel`)。

@@ -1,5 +1,5 @@
 // monitorDeviceCreateOps.ts
-// プロファイルタブのデバイス追加/削除(create-device・delete-device・install-system-image)を担う。
+// プロファイルタブのデバイス追加/削除(create-device・delete-device・install-system-image・install-ios-runtime)を担う。
 // MonitorDeviceOps(monitorDeviceOps.ts)が内部に1つ保持し、既存の public メソッドはここへ委譲する
 // (サブコントローラ間の直接参照禁止。deps は MonitorPanelDeps の狭いサブセット)。
 
@@ -8,10 +8,12 @@ import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { childEnv } from "./childEnv";
 import { resolveProjectName } from "./config";
+import { type InstallOutcome, runAfterInstall } from "./installGate";
 import { checkForDyldLaunchFailure } from "./dyldLaunchNotice";
 import { t } from "./i18n";
 import {
   deleteDeviceApiArgs,
+  installIOSRuntimeApiArgs,
   installSystemImageApiArgs,
   isCreateDeviceEvent,
   isDeleteDeviceEvent,
@@ -23,6 +25,8 @@ import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import { type DeviceCommandSource, deviceCommandArgs } from "./remoteRunArgs";
 import {
+  installRuntimeBatchConfirmMessage,
+  installRuntimeConfirmMessage,
   installSystemImageBatchConfirmMessage,
   installSystemImageConfirmMessage,
   occupancyDetailLine,
@@ -102,6 +106,11 @@ export class MonitorDeviceCreateOps {
       void this.confirmAndInstallThenCreate(msg, msg.installSystemImage);
       return;
     }
+    // 未導入の iOS ランタイム: 確認1枚のあと install-ios-runtime → create-device
+    if (msg.installRuntime) {
+      void this.confirmRuntimeDownloadThenCreate(msg, msg.installRuntime);
+      return;
+    }
     // 上書き(既存の実体を消して作り直す)は破壊的なので、ローカル・リモートを問わず確認する。
     // リモートの確認文はマシン名も出す(どの機械の実体を消すかが要点)
     if (msg.overwrite) {
@@ -150,13 +159,27 @@ export class MonitorDeviceCreateOps {
       const first = msg.names[0] ?? "";
       const last = msg.names[msg.names.length - 1] ?? "";
       const install = msg.installSystemImage;
+      const runtime = msg.installRuntime;
       // **確認は1回だけ**。上書き・ダウンロード導入が要るときは同じ文面(または
       // installSystemImageBatchConfirmMessage)に書き足す —— 2枚に分けると、2枚目を断ったときに
       // **衝突していないぶんまで巻き添えで中止**になり、「どこまで作られたのか」が押した人にも分からない
       let message: string;
       let confirmLabel: string;
       let detail: string | undefined;
-      if (install) {
+      if (runtime) {
+        message = installRuntimeBatchConfirmMessage({
+          machine, count: msg.names.length, first, last, version: runtime.version,
+        });
+        detail = [
+          msg.overwriteNames.length > 0
+            ? t("deviceOps.installSystemImageBatchOverwriteNote", {
+                machine, count: String(msg.overwriteNames.length), names: msg.overwriteNames.join(", "),
+              })
+            : undefined,
+          this.occupancyDetail(msg.source.kind === "remote" ? msg.source.machine : null),
+        ].filter((line): line is string => line !== undefined).join("\n\n");
+        confirmLabel = t("deviceOps.installRuntimeConfirmButton");
+      } else if (install) {
         message = installSystemImageBatchConfirmMessage({
           machine, count: msg.names.length, first, last,
           packageName: install.package, sizeBytes: install.sizeBytes, license: install.license,
@@ -191,55 +214,86 @@ export class MonitorDeviceCreateOps {
         abort(t("deviceOps.createCancelled"));
         return;
       }
-      if (install) {
+      const installStep = this.installStepFor(install, runtime, msg.source);
+      if (installStep) {
         this.deps.post({ type: "deviceAddProgress", phase: "installing" });
-        const installOutcome = await new Promise<{ ok: boolean; error: string | null }>((resolve) => {
-          this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => resolve({ ok, error }));
-        });
-        if (!installOutcome.ok) {
-          abort(installOutcome.error ?? t("deviceOps.installSystemImageFailedGeneric"));
-          return;
-        }
       }
-      this.deps.post({ type: "batchCreateStarted", names: msg.names });
-      const overwrite = new Set(msg.overwriteNames);
-      const created: { name: string; avd: string | null; udid: string | null }[] = [];
-      const failed: { name: string; error: string | null }[] = [];
-      for (const [index, name] of msg.names.entries()) {
-        this.deps.post({ type: "batchCreateProgress", index, name, state: "running", error: null });
-        const outcome = await new Promise<CreateDeviceOutcome>((resolve) => {
-          this.spawnCreateDevice(
-            {
-              type: "createDevice",
-              platform: msg.platform,
-              name,
-              model: msg.model,
-              os: msg.os,
-              // 登録はピッカーの OK(runProfileDevicesSync)が行う。ここは物理作成だけ
-              register: false,
-              overwrite: overwrite.has(name),
-              source: msg.source,
-            },
-            resolve,
-          );
-        });
-        if (outcome.ok) {
-          created.push({ name, avd: outcome.device?.avd ?? null, udid: outcome.device?.udid ?? null });
-        } else {
-          failed.push({ name, error: outcome.error });
-        }
-        this.deps.post({
-          type: "batchCreateProgress",
-          index,
-          name,
-          state: outcome.ok ? "ok" : "failed",
-          error: outcome.error,
-        });
+      const failedGeneric = runtime
+        ? t("deviceOps.installRuntimeFailedGeneric")
+        : t("deviceOps.installSystemImageFailedGeneric");
+      const gated = await runAfterInstall(installStep, () => this.createBatchSerially(msg), failedGeneric);
+      if (!gated.proceeded) {
+        abort(gated.error);
+        return;
       }
-      this.deps.post({ type: "batchCreateFinished", started: true, created, failed, error: null });
+      this.deps.post({ type: "batchCreateFinished", started: true, created: gated.value.created, failed: gated.value.failed, error: null });
     } finally {
       this.creatingDevice = false;
     }
+  }
+
+  /** 導入が要るときだけ、導入を1回実行する関数を返す(Android = install-system-image / iOS = install-ios-runtime)。 */
+  private installStepFor(
+    install: BatchCreateDevicesMessage["installSystemImage"],
+    runtime: BatchCreateDevicesMessage["installRuntime"],
+    source: DeviceCommandSource,
+  ): (() => Promise<InstallOutcome>) | undefined {
+    if (runtime) {
+      return () => new Promise((resolve) => {
+        this.spawnInstallApi("install-ios-runtime", runtime.version, installIOSRuntimeApiArgs(runtime.version), source,
+          (ok, error) => resolve({ ok, error }));
+      });
+    }
+    if (install) {
+      return () => new Promise((resolve) => {
+        this.spawnInstallApi("install-system-image", install.package, installSystemImageApiArgs(install.package), source,
+          (ok, error) => resolve({ ok, error }));
+      });
+    }
+    return undefined;
+  }
+
+  /** 導入が済んだあと、names を1台ずつ順に作る(batchCreateStarted/Progress を post し、結果を返す)。 */
+  private async createBatchSerially(msg: BatchCreateDevicesMessage): Promise<{
+    created: { name: string; avd: string | null; udid: string | null }[];
+    failed: { name: string; error: string | null }[];
+  }> {
+    this.deps.post({ type: "batchCreateStarted", names: msg.names });
+    const overwrite = new Set(msg.overwriteNames);
+    const created: { name: string; avd: string | null; udid: string | null }[] = [];
+    const failed: { name: string; error: string | null }[] = [];
+    for (const [index, name] of msg.names.entries()) {
+      this.deps.post({ type: "batchCreateProgress", index, name, state: "running", error: null });
+      const outcome = await new Promise<CreateDeviceOutcome>((resolve) => {
+        this.spawnCreateDevice(
+          {
+            type: "createDevice",
+            platform: msg.platform,
+            name,
+            model: msg.model,
+            os: msg.os,
+            // 登録はピッカーの OK(runProfileDevicesSync)が行う。ここは物理作成だけ
+            register: false,
+            overwrite: overwrite.has(name),
+            source: msg.source,
+          },
+          resolve,
+        );
+      });
+      if (outcome.ok) {
+        created.push({ name, avd: outcome.device?.avd ?? null, udid: outcome.device?.udid ?? null });
+      } else {
+        failed.push({ name, error: outcome.error });
+      }
+      this.deps.post({
+        type: "batchCreateProgress",
+        index,
+        name,
+        state: outcome.ok ? "ok" : "failed",
+        error: outcome.error,
+      });
+    }
+    return { created, failed };
   }
 
   /** リモート作成の modal 確認(§11・§13 と同じ showWarningMessage({modal:true}) 方式。
@@ -316,7 +370,8 @@ export class MonitorDeviceCreateOps {
       return;
     }
     this.deps.post({ type: "deviceAddProgress", phase: "installing" });
-    this.spawnInstallSystemImage(install.package, msg.source, (ok, error) => {
+    this.spawnInstallApi("install-system-image", install.package, installSystemImageApiArgs(install.package),
+      msg.source, (ok, error) => {
       if (!ok) {
         this.creatingDevice = false;
         this.deps.post({
@@ -332,6 +387,61 @@ export class MonitorDeviceCreateOps {
       // creatingDevice の解除は spawnCreateDevice 側の respond(onResult 省略時)に任せる
       this.spawnCreateDevice(msg);
     });
+  }
+
+  /**
+   * 未導入の iOS ランタイムを選んだときの「デバイスを追加」OK(runCreateDevice から)。確認は1枚だけ
+   * (上書き・リモートの確認と統合する)。同意を得てから `install-ios-runtime` を1回実行し、成功したときだけ
+   * create-device へ進む(create-device 内の自動導入は、導入済みなので発火しない)。
+   * 呼び出しに時間の上限は置かない(spawn にタイムアウトは無く、CLI 側の上限は
+   * IOSRuntimeInstaller.downloadTimeoutSeconds)。
+   */
+  private async confirmRuntimeDownloadThenCreate(
+    msg: CreateDeviceMessage,
+    runtime: NonNullable<CreateDeviceMessage["installRuntime"]>,
+  ): Promise<void> {
+    const machine = msg.source.kind === "remote" ? msg.source.machine : null;
+    const where = machine ?? t("deviceOps.createOverwriteLocalMachine");
+    const detailLines = [
+      msg.overwrite
+        ? t("deviceOps.installSystemImageOverwriteNote", { machine: where, name: msg.name })
+        : undefined,
+      this.occupancyDetail(machine),
+    ].filter((line): line is string => line !== undefined);
+    const confirmLabel = t("deviceOps.installRuntimeConfirmButton");
+    const choice = await vscode.window.showWarningMessage(
+      installRuntimeConfirmMessage({ machine: where, name: msg.name, version: runtime.version }),
+      { modal: true, detail: detailLines.join("\n\n") },
+      confirmLabel,
+    );
+    if (choice !== confirmLabel) {
+      this.creatingDevice = false;
+      this.deps.post({
+        type: "createDeviceResult",
+        ok: false,
+        name: msg.name,
+        error: t("deviceOps.createCancelled"),
+        device: null,
+      });
+      return;
+    }
+    this.deps.post({ type: "deviceAddProgress", phase: "installing" });
+    this.spawnInstallApi("install-ios-runtime", runtime.version, installIOSRuntimeApiArgs(runtime.version),
+      msg.source, (ok, error) => {
+        if (!ok) {
+          this.creatingDevice = false;
+          this.deps.post({
+            type: "createDeviceResult",
+            ok: false,
+            name: msg.name,
+            error: error ?? t("deviceOps.installRuntimeFailedGeneric"),
+            device: null,
+          });
+          return;
+        }
+        this.deps.post({ type: "deviceAddProgress", phase: "creating" });
+        this.spawnCreateDevice(msg);
+      });
   }
 
   /**
@@ -505,18 +615,21 @@ export class MonitorDeviceCreateOps {
   }
 
   /**
-   * `fleetest api install-system-image --package <pkg> --accept-licenses` を実行する
-   * (confirmAndInstallThenCreate/runBatchCreateDevices からの実処理)。ダウンロードは数分かかりうる
-   * ため timeout は設けない(runInstallCmdlineTools と同じ方針)。作成物を持たないコマンドなので
-   * spawnCreateDevice と違い device は返さない —— 結果は (ok, error) だけの callback で渡す。
+   * 導入コマンド(`api install-system-image` / `api install-ios-runtime`。どちらも NDJSON は
+   * log* → finished {ok, error} で同形)を実行する(確認後の単発・バッチからの実処理)。
+   * tool は log の接頭辞、id は package / iOS の版。ダウンロードは数分かかりうるため timeout は
+   * 設けない(runInstallCmdlineTools と同じ方針)。作成物を持たないコマンドなので spawnCreateDevice と違い
+   * device は返さない —— 結果は (ok, error) だけの callback で渡す。
    */
-  private spawnInstallSystemImage(
-    pkg: string,
+  private spawnInstallApi(
+    tool: "install-system-image" | "install-ios-runtime",
+    id: string,
+    apiArgs: string[],
     source: DeviceCommandSource,
     onResult: (ok: boolean, error: string | null) => void,
   ): void {
     const config = this.deps.getConfig();
-    const args = deviceCommandArgs(source, installSystemImageApiArgs(pkg));
+    const args = deviceCommandArgs(source, apiArgs);
 
     let responded = false;
     const respond = (ok: boolean, error: string | null): void => {
@@ -537,7 +650,7 @@ export class MonitorDeviceCreateOps {
       });
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        t("deviceOps.log.installSystemImageStartFailed", { package: pkg, error: String(error) }),
+        t("deviceOps.log.installApiStartFailed", { tool, id, error: String(error) }),
       );
       respond(false, String(error));
       return;
@@ -547,17 +660,18 @@ export class MonitorDeviceCreateOps {
       (value) => {
         if (!isInstallSystemImageEvent(value)) {
           this.deps.outputChannel.appendLine(
-            t("deviceOps.log.unknownLine", { label: `install-system-image ${pkg}`, value: JSON.stringify(value) }),
+            t("deviceOps.log.unknownLine", { label: `${tool} ${id}`, value: JSON.stringify(value) }),
           );
           return;
         }
         if (value.kind === "log") {
-          this.deps.outputChannel.appendLine(`[install-system-image ${pkg}] ${value.message}`);
+          this.deps.outputChannel.appendLine(`[${tool} ${id}] ${value.message}`);
         } else {
           if (!value.ok) {
             this.deps.outputChannel.appendLine(
-              t("deviceOps.log.installSystemImageFailed", {
-                package: pkg,
+              t("deviceOps.log.installApiFailed", {
+                tool,
+                id,
                 error: value.error ?? t("deviceOps.detailUnknown"),
               }),
             );
@@ -565,18 +679,18 @@ export class MonitorDeviceCreateOps {
           respond(value.ok, value.error);
         }
       },
-      (line) => this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[${tool} ${id} stdout] ${line}`),
     );
     // finished を経由せず落ちた場合の唯一の手掛かり(spawnCreateDevice の lastStderr と同じ理由)。
     let lastStderr = "";
     const stderrParser = new NdjsonParser(
-      (value) => this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stderr] ${JSON.stringify(value)}`),
+      (value) => this.deps.outputChannel.appendLine(`[${tool} ${id} stderr] ${JSON.stringify(value)}`),
       (line) => {
         const trimmed = line.trim();
         if (trimmed.length > 0) {
           lastStderr = trimmed;
         }
-        this.deps.outputChannel.appendLine(`[install-system-image ${pkg} stderr] ${line}`);
+        this.deps.outputChannel.appendLine(`[${tool} ${id} stderr] ${line}`);
       },
     );
 
@@ -588,7 +702,7 @@ export class MonitorDeviceCreateOps {
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(
-        t("deviceOps.log.installSystemImageRuntimeError", { package: pkg, error: error.message }),
+        t("deviceOps.log.installApiRuntimeError", { tool, id, error: error.message }),
       );
       respond(false, error.message);
     });
@@ -596,7 +710,7 @@ export class MonitorDeviceCreateOps {
       stdoutParser.end();
       stderrParser.end();
       this.deps.outputChannel.appendLine(
-        t("deviceOps.log.installSystemImageClosed", { package: pkg, exitCode: String(exitCode) }),
+        t("deviceOps.log.installApiClosed", { tool, id, exitCode: String(exitCode) }),
       );
       const detail = lastStderr.length > 0
         ? `${t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) })}: ${lastStderr}`

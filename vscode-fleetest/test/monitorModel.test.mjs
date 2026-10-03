@@ -486,6 +486,25 @@ test("isMonitorFromWebviewMessage: createDevice の installSystemImage は省略
   );
 });
 
+test("isMonitorFromWebviewMessage: createDevice / batchCreateDevices の installRuntime は version 非空文字列のみ", () => {
+  const create = {
+    type: "createDevice", platform: "ios", name: "dev00",
+    model: "com.apple.CoreSimulator.SimDeviceType.iPhone-18-Pro",
+    os: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", register: false, source: { kind: "local" },
+  };
+  const batch = {
+    type: "batchCreateDevices", platform: "ios", names: ["dev-01"], model: create.model, os: create.os,
+    overwriteNames: [], source: { kind: "local" },
+  };
+  for (const base of [create, batch]) {
+    assert.equal(isMonitorFromWebviewMessage(base), true, "省略は true");
+    assert.equal(isMonitorFromWebviewMessage({ ...base, installRuntime: { version: "27.0" } }), true);
+    assert.equal(isMonitorFromWebviewMessage({ ...base, installRuntime: { version: "" } }), false);
+    assert.equal(isMonitorFromWebviewMessage({ ...base, installRuntime: {} }), false);
+    assert.equal(isMonitorFromWebviewMessage({ ...base, installRuntime: { version: 27 } }), false);
+  }
+});
+
 test("isMonitorFromWebviewMessage: recordingsExport は project/runID(共に非空文字列)が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", project: "p", runID: "r" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "recordingsExport", project: "p", runID: "" }), false);

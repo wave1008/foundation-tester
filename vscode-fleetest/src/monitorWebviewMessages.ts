@@ -728,6 +728,10 @@ export type MonitorFromWebviewMessage =
         readonly sizeBytes: number | null;
         readonly license: string | null;
       };
+      /** 選んだ OS が未導入の iOS ランタイム(カタログの downloadableRuntimes)のときだけ載る
+       * (installSystemImage と排他)。ホストは確認モーダルを1枚挟んでから
+       * `api install-ios-runtime` → 成功後に通常の create-device という順で実行する。 */
+      readonly installRuntime?: { readonly version: string };
       readonly source: DeviceCommandSource;
     }
   // 「デバイスを追加」左下の「バッチ作成」。names は webview が「デバイス名-連番2桁(-01 始まり)」で
@@ -751,6 +755,8 @@ export type MonitorFromWebviewMessage =
         readonly sizeBytes: number | null;
         readonly license: string | null;
       };
+      /** createDevice の installRuntime と同じ形・同じ扱い。導入は1回だけ行い、失敗したら1台も作らずに中止する。 */
+      readonly installRuntime?: { readonly version: string };
       readonly source: DeviceCommandSource;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
@@ -1040,6 +1046,11 @@ function isInstallSystemImageRequestLike(
   );
 }
 
+/** createDevice/batchCreateDevices の installRuntime の検証(version は非空文字列必須)。 */
+function isInstallRuntimeRequestLike(value: unknown): value is { version: string } {
+  return isRecord(value) && typeof value.version === "string" && value.version !== "";
+}
+
 /** deviceRestartGpu / devicesRestartGpu の1台ぶん(name 必須・machine は省略か非空文字列)。 */
 function isGpuRestartTarget(value: unknown): value is { name: string; machine?: string } {
   if (typeof value !== "object" || value === null) {
@@ -1128,6 +1139,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         // 真偽値以外を通すと確認は「作成」の文言なのに上書きが走る
         (value.overwrite === undefined || typeof value.overwrite === "boolean") &&
         (value.installSystemImage === undefined || isInstallSystemImageRequestLike(value.installSystemImage)) &&
+        (value.installRuntime === undefined || isInstallRuntimeRequestLike(value.installRuntime)) &&
         isDeviceCommandSourceLike(value.source)
       );
     case "batchCreateDevices":
@@ -1144,6 +1156,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         Array.isArray(value.overwriteNames) &&
         value.overwriteNames.every((name) => typeof name === "string" && name !== "") &&
         (value.installSystemImage === undefined || isInstallSystemImageRequestLike(value.installSystemImage)) &&
+        (value.installRuntime === undefined || isInstallRuntimeRequestLike(value.installRuntime)) &&
         isDeviceCommandSourceLike(value.source)
       );
     case "runProfileDevicesSync":

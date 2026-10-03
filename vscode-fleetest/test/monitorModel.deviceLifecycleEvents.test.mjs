@@ -24,6 +24,7 @@ import {
   deviceLifecycleStatusFor,
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
+  installIOSRuntimeApiArgs,
   installSystemImageApiArgs,
   isCreateDeviceEvent,
   isDeleteDeviceEvent,
@@ -67,6 +68,7 @@ const VALID_DEVICE_CATALOG = {
     ],
     downloadableSystemImages: [],
     downloadableError: null,
+    recommended: { modelId: "pixel_9_pro", package: "system-images;android-37;google_apis;arm64-v8a" },
   },
   ios: {
     available: true,
@@ -75,6 +77,11 @@ const VALID_DEVICE_CATALOG = {
       { identifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro", name: "iPhone 17 Pro", productFamily: "iPhone" },
     ],
     runtimes: [{ identifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0", name: "iOS 27.0", nameLabel: "iOS 27.0", version: "27.0" }],
+    downloadableRuntimes: [],
+    recommended: {
+      deviceTypeIdentifier: "com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro",
+      runtimeIdentifier: "com.apple.CoreSimulator.SimRuntime.iOS-27-0",
+    },
   },
 };
 
@@ -86,7 +93,7 @@ test("isDeviceCatalogJson: available:false 側は models/deviceTypes 等が空�
   const value = {
     android: {
       available: false, error: "adb が見つかりません", errorCode: "sdk-missing", models: [], systemImages: [],
-      downloadableSystemImages: [], downloadableError: null,
+      downloadableSystemImages: [], downloadableError: null, recommended: null,
     },
     ios: VALID_DEVICE_CATALOG.ios,
   };
@@ -179,6 +186,34 @@ test("isDeviceCatalogJson: downloadableSystemImages の要素の型不正は全�
   const badDownloadableError = structuredClone(VALID_DEVICE_CATALOG);
   badDownloadableError.android.downloadableError = 123;
   assert.equal(isDeviceCatalogJson(badDownloadableError), false);
+});
+
+test("isDeviceCatalogJson: recommended / downloadableRuntimes の欠落・型不正は false、null は true(CLI は常に送る)", () => {
+  for (const [os, key] of [["android", "recommended"], ["ios", "recommended"], ["ios", "downloadableRuntimes"]]) {
+    const missing = structuredClone(VALID_DEVICE_CATALOG);
+    delete missing[os][key];
+    assert.equal(isDeviceCatalogJson(missing), false, `${os}.${key}`);
+  }
+  const nulls = structuredClone(VALID_DEVICE_CATALOG);
+  nulls.android.recommended = null;
+  nulls.ios.recommended = null;
+  assert.equal(isDeviceCatalogJson(nulls), true);
+
+  const badAndroid = structuredClone(VALID_DEVICE_CATALOG);
+  badAndroid.android.recommended = { modelId: "pixel_9_pro" }; // package 欠落
+  assert.equal(isDeviceCatalogJson(badAndroid), false);
+
+  const badIos = structuredClone(VALID_DEVICE_CATALOG);
+  badIos.ios.recommended = { deviceTypeIdentifier: "x", runtimeIdentifier: 27 };
+  assert.equal(isDeviceCatalogJson(badIos), false);
+
+  const withDownload = structuredClone(VALID_DEVICE_CATALOG);
+  withDownload.ios.downloadableRuntimes = [{
+    identifier: "com.apple.CoreSimulator.SimRuntime.iOS-28-0", name: "iOS 28.0", nameLabel: "iOS 28.0", version: "28.0",
+  }];
+  assert.equal(isDeviceCatalogJson(withDownload), true);
+  withDownload.ios.downloadableRuntimes[0].version = 28;
+  assert.equal(isDeviceCatalogJson(withDownload), false);
 });
 
 // ---- isInstalledDevicesJson ----
@@ -307,6 +342,12 @@ test("installSystemImageApiArgs: --package と --accept-licenses を渡す", () 
     installSystemImageApiArgs("system-images;android-36;google_apis;arm64-v8a"),
     ["api", "install-system-image", "--package", "system-images;android-36;google_apis;arm64-v8a", "--accept-licenses"],
   );
+});
+
+// ---- installIOSRuntimeApiArgs ----
+
+test("installIOSRuntimeApiArgs: --version だけを渡す(ライセンスの承諾フラグは無い)", () => {
+  assert.deepEqual(installIOSRuntimeApiArgs("27.0"), ["api", "install-ios-runtime", "--version", "27.0"]);
 });
 
 // ---- deleteDeviceApiArgs ----

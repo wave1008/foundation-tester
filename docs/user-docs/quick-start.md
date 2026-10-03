@@ -87,8 +87,9 @@ Go back to your work folder and run:
 ```
 
 Passing the built app to `--app-path` makes the run install it on the device automatically.
-`--auto-device` picks an available Simulator/Emulator on this machine (one that is not running
-is started automatically at run time). The run profiles are named after the platforms (`ios` and
+`--auto-device` picks a Simulator/Emulator with the newest iOS runtime and the newest Pixel (and creates it
+when missing; a missing iOS runtime is downloaded first: several GB, several minutes to tens of minutes;
+one that is not running is started automatically at run time). The run profiles are named after the platforms (`ios` and
 `android`).
 
 The setup creates no test project. The AI assistant creates `TestProjects/default/` first when it is missing;

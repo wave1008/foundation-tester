@@ -51,10 +51,17 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to the platform name)")
     var run: String?
 
-    @Flag(help: ArgumentHelp("Pick a device automatically (iOS: the model/OS of an existing simulator on the newest OS, excluding iPads / Android: the model/system image of the existing AVD with the highest API level)."
+    @Flag(help: ArgumentHelp("Pick a device automatically (iOS: the newest runtime of the selected Xcode (installed with xcodebuild -downloadPlatform iOS when missing: several GB, can take a long time) and the newest plain iPhone <N> (no Pro/Plus/Air/e/mini/SE variants) that it supports / Android: the newest Pixel phone model (pixel_<number> or pixel_<number>a; the plain one wins a tie; Pro/Fold variants are excluded) with the newest google_apis system image for this Mac's ABI, installed or downloadable)."
         + " Registers \"<model>(<OS>)-NN\": reuses the lowest-numbered one whose model and runtime/system image also match, else creates one with the lowest unused number."
-        + " The OS label is the runtime name (iOS) or \"Android 16, API 36, APIs\" (\"..., Play\" for Play Store images). Your own simulators/AVDs are never renamed or deleted"))
+        + " The OS label is the runtime name (iOS) or \"Android 16, API 36, APIs\" (\"..., Play\" for Play Store images). Your own simulators/AVDs are never renamed or deleted."
+        + " An Android system image that is not installed needs --accept-licenses"))
     var autoDevice = false
+
+    @Flag(name: .customLong("accept-licenses"), help: ArgumentHelp(
+        "Accept the Android SDK license(s) of the system image that --auto-device has to download."
+        + " Without it the command refuses and installs nothing. The caller must ask the person first;"
+        + " this CLI never accepts licenses on its own"))
+    var acceptLicenses = false
 
     func run() async throws {
         guard InitCommand.isValidAppID(appID) else {
@@ -124,14 +131,24 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             autoProvisioned = true
             let log: (String) -> Void = { ConsoleOut.out("   \($0)") }
             if platform == "ios" {
-                let ensured = try VirtualDeviceFactory.ensureSimulator(
-                    like: try Self.pickSimulator(), explicitName: explicitName, log: log)
+                let ensured: VirtualDeviceFactory.EnsuredSimulator
+                do {
+                    ensured = try VirtualDeviceFactory.ensureSimulator(
+                        target: try IOSAutoDevice.resolve(), explicitName: explicitName, log: log)
+                } catch let error as IOSRuntimeInstaller.Failure {
+                    throw ValidationError(error.message)
+                }
                 Self.stampSimulator(ensured.info, model: ensured.model, into: &device)
                 ConsoleOut.out("   Auto-picked (ios): \(ensured.info.name) / \(ensured.info.os) / "
                     + "\(ensured.info.udid) (\(ensured.created ? "created" : "existing"))")
             } else {
+                let target = try await Self.pickAndroidTarget()
+                let acceptLicenses = self.acceptLicenses
                 let ensured = try VirtualDeviceFactory.ensureAVD(
-                    like: try Self.pickAVD(), explicitName: explicitName, log: log)
+                    deviceID: target.deviceID, modelName: target.modelName, package: target.image.package,
+                    apiLevel: target.image.apiLevel, tag: target.image.tag, explicitName: explicitName,
+                    beforeCreate: { try Self.installIfNeeded(target, acceptLicenses: acceptLicenses, log: log) },
+                    log: log)
                 device["avd"] = ensured.id
                 device["name"] = ensured.name
                 ConsoleOut.out("   Auto-picked (android): \(ensured.name) / \(ensured.id) "
@@ -282,45 +299,78 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         return object
     }
 
-    /// 既存シミュレータから1台選ぶ。SimulatorCatalog は 起動中 → OS 降順 → 名前順 なので、
-    /// 最新 OS の中で "Pro" を優先する(無ければ先頭)。**iPad は自動選定の対象外**。
-    /// 作成はしない(重い・失敗理由が増える)
-    static func pickSimulator() throws -> SimDeviceInfo {
-        let simulators = try SimulatorCatalog.devices().filter { !$0.physical }
-        guard let index = DevicePicker.pickSimulatorIndex(
-            simulators.map { (name: $0.name, os: $0.os) }) else {
-            if simulators.contains(where: { DevicePicker.isIPad(name: $0.name) }) {
-                throw ValidationError("no simulator is eligible for auto-selection"
-                    + " (iPads are excluded). Install an iPhone simulator, "
-                    + "or specify one explicitly with --device-name/--os or --udid")
-            }
-            throw ValidationError("no simulators available"
-                + " (install a runtime/device via Xcode, or create one with fleetest api create-device)")
-        }
-        return simulators[index]
+    /// Android の自動選定で使うシステムイメージの tag(拡張の「デバイスを追加」の既定
+    /// DEFAULT_ANDROID_SERVICE = modals.js と同じ。片方だけ変えない)
+    static let autoDeviceSystemImageTag = "google_apis"
+
+    struct AndroidAutoTarget {
+        let deviceID: String
+        let modelName: String
+        let image: DevicePicker.SystemImageCandidate
+        let isInstalled: Bool
+        let sizeBytes: Int?
+        let license: String?
     }
 
-    /// 既存 AVD から1台選ぶ。config.ini の image.sysdir.1 に含まれる API レベルが最大のもの
-    /// (名前の見た目では新旧を判定できない。同点なら名前順で決定的に)
-    static func pickAVD() throws -> String {
-        let binary = try DeviceBooter.findEmulatorBinary()
-        let result = try Shell.run([binary, "-list-avds"])
-        // 失敗を「AVD が無い」と言わない
-        guard let listed = result.outputIfSucceeded else {
-            throw ValidationError("emulator -list-avds failed (exit \(result.status)): \(result.tail)")
+    /// 最新の Pixel(pixel_<数字> / pixel_<数字>a)と、tag = google_apis・ホスト ABI で API が最大のイメージ
+    /// (インストール済み + ダウンロード可能。同じ API ならインストール済み)を選ぶ。作成も導入もしない
+    static func pickAndroidTarget() async throws -> AndroidAutoTarget {
+        guard let avdmanager = AndroidSDKLocator.findAVDManager() else {
+            throw ValidationError(AndroidSDKLocator.avdManagerMissingMessage + ". "
+                + AndroidSDKLocator.avdManagerInstallHint)
         }
-        let avds = listed.split(separator: "\n").map(String.init)
-            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        let candidates = avds.map { avd -> (name: String, apiLevel: Int) in
-            let config = home.appendingPathComponent(".android/avd/\(avd).avd/config.ini")
-            let text = (try? String(contentsOf: config, encoding: .utf8)) ?? ""
-            return (avd, DevicePicker.apiLevel(fromConfigINI: text))
+        let listed = try Shell.run(AndroidSDKLocator.avdManagerCommand(avdmanager, ["list", "device"]))
+        guard let output = listed.outputIfSucceeded else {
+            throw ValidationError("avdmanager list device failed (exit \(listed.status)): \(listed.tail)")
         }
-        guard let picked = DevicePicker.pickAVD(candidates) else {
-            throw ValidationError("no AVDs available"
-                + " (create one in Android Studio, or with fleetest api create-device)")
+        let models = ApiDeviceCatalogCommand.parseDeviceDefinitions(output).map { (id: $0.id, name: $0.name) }
+        guard DevicePicker.newestPixelPhone(models) != nil else {
+            throw ValidationError("no Pixel phone model (pixel_<number> or pixel_<number>a) found in avdmanager list device;"
+                + " specify an AVD explicitly with --avd")
         }
-        return picked
+
+        guard let sdkRoot = AndroidSDKLocator.findSDKRoot() else {
+            throw ValidationError("Android SDK not found (check ANDROID_HOME / ANDROID_SDK_ROOT)")
+        }
+        let installedImages = ApiDeviceCatalogCommand.systemImages(sdkRoot: sdkRoot)
+        let (downloadable, downloadableError) = await SystemImageRepository.fetchDownloadable(
+            installedPackages: Set(installedImages.map(\.package)))
+        if let downloadableError {
+            ConsoleOut.err("⚠️ \(downloadableError); choosing among the installed system images only")
+        }
+        let candidate = { (package: String, apiLevel: Int, tag: String, abi: String) in
+            DevicePicker.SystemImageCandidate(package: package, apiLevel: apiLevel, tag: tag, abi: abi)
+        }
+        guard let picked = DevicePicker.androidAutoTarget(
+            models: models,
+            installed: installedImages.map { candidate($0.package, $0.apiLevel, $0.tag, $0.abi) },
+            downloadable: downloadable.map { candidate($0.package, $0.apiLevel, $0.tag, $0.abi) },
+            tag: autoDeviceSystemImageTag, abi: SystemImageRepository.hostABI) else {
+            throw ValidationError("no \(autoDeviceSystemImageTag) system image for \(SystemImageRepository.hostABI)"
+                + " is installed or downloadable; specify an AVD explicitly with --avd")
+        }
+        let entry = downloadable.first { $0.package == picked.image.package }
+        return AndroidAutoTarget(
+            deviceID: picked.model.id, modelName: picked.model.name, image: picked.image, isInstalled: picked.isInstalled,
+            sizeBytes: entry?.sizeBytes, license: entry?.license)
+    }
+
+    /// 未導入のイメージを入れる。ライセンスは --accept-licenses が無ければ承諾せず止める
+    /// (本人への確認はエージェントの責務。SystemImageInstaller の契約)
+    static func installIfNeeded(_ target: AndroidAutoTarget, acceptLicenses: Bool,
+                                log: (String) -> Void) throws {
+        guard !target.isInstalled else { return }
+        guard acceptLicenses else {
+            let size = target.sizeBytes.map { "\($0 / 1_000_000) MB" } ?? "unknown"
+            throw ValidationError("the system image \(target.image.package) (download size: \(size);"
+                + " license: \(target.license ?? "unknown")) is not installed, and installing it requires"
+                + " accepting its Android SDK license. Nothing was installed. Ask the person whether to accept;"
+                + " if they agree, run the same command again with --accept-licenses")
+        }
+        do {
+            try SystemImageInstaller.install(package: target.image.package, log: log)
+        } catch let error as SystemImageInstaller.Failure {
+            throw ValidationError(error.message)
+        }
     }
 }

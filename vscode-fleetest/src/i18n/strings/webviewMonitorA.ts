@@ -267,6 +267,10 @@ export const webviewMonitorAStrings = {
     ja: "システムイメージをダウンロードして導入しています(数分かかります)...",
     en: "Downloading and installing the system image (this can take several minutes)...",
   },
+  "wvMonitor.deviceAdd.progressInstallingRuntime": {
+    ja: "iOS のシミュレータランタイムをダウンロードして導入しています(数 GB・数分〜数十分かかります)...",
+    en: "Downloading and installing the iOS simulator runtime (several GB; this can take several minutes to tens of minutes)...",
+  },
   "wvMonitor.deviceAdd.progressCreating": { ja: "デバイスを作成しています...", en: "Creating the device..." },
   // OS バージョンのドロップダウンをグループ分けするときの見出し(インストール済み/未のとき優先だけ)。
   // downloadableSystemImages が空ならグループ分けせず出す(片方だけの環境で見た目を変えない)。
@@ -279,6 +283,10 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceAdd.downloadableInfo": {
     ja: "このOSバージョンはダウンロードが必要です{sizeNote}。OK を押すとライセンスの確認のあとで導入し、そのまま作成します。",
     en: "This OS version needs to be downloaded{sizeNote}. Pressing OK installs it (after a license confirmation) and then creates the device.",
+  },
+  "wvMonitor.deviceAdd.downloadableRuntimeInfo": {
+    ja: "このiOSバージョンはダウンロードが必要です(数 GB・数分〜数十分)。OK を押すと確認のあとでダウンロードし、そのまま作成します。",
+    en: "This iOS version needs to be downloaded (several GB; several minutes to tens of minutes). Pressing OK downloads it (after a confirmation) and then creates the device.",
   },
   "wvMonitor.deviceAdd.downloadableInfoSizeNote": { ja: "(約 {size})", en: " (about {size})" },
 

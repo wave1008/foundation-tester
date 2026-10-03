@@ -31,22 +31,22 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
             deviceTypesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "devicetypes"])
         } catch {
             return ApiIOSCatalog(available: false, error: error.localizedDescription,
-                                 deviceTypes: [], runtimes: [])
+                                 deviceTypes: [], runtimes: [], downloadableRuntimes: [], recommended: nil)
         }
         guard deviceTypesResult.status == 0 else {
             return ApiIOSCatalog(available: false, error: deviceTypesResult.tail,
-                                 deviceTypes: [], runtimes: [])
+                                 deviceTypes: [], runtimes: [], downloadableRuntimes: [], recommended: nil)
         }
         let runtimesResult: Shell.Result
         do {
             runtimesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "runtimes"])
         } catch {
             return ApiIOSCatalog(available: false, error: error.localizedDescription,
-                                 deviceTypes: [], runtimes: [])
+                                 deviceTypes: [], runtimes: [], downloadableRuntimes: [], recommended: nil)
         }
         guard runtimesResult.status == 0 else {
             return ApiIOSCatalog(available: false, error: runtimesResult.tail,
-                                 deviceTypes: [], runtimes: [])
+                                 deviceTypes: [], runtimes: [], downloadableRuntimes: [], recommended: nil)
         }
 
         guard let deviceTypesData = deviceTypesResult.output.data(using: .utf8),
@@ -55,7 +55,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
               let rawDeviceTypes = deviceTypesJSON["devicetypes"] as? [[String: Any]] else {
             return ApiIOSCatalog(
                 available: false, error: "cannot parse the simctl list devicetypes output",
-                deviceTypes: [], runtimes: [])
+                deviceTypes: [], runtimes: [], downloadableRuntimes: [], recommended: nil)
         }
         guard let runtimesData = runtimesResult.output.data(using: .utf8),
               let runtimesJSON = (try? JSONSerialization.jsonObject(with: runtimesData))
@@ -63,7 +63,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
               let rawRuntimes = runtimesJSON["runtimes"] as? [[String: Any]] else {
             return ApiIOSCatalog(
                 available: false, error: "cannot parse the simctl list runtimes output",
-                deviceTypes: [], runtimes: [])
+                deviceTypes: [], runtimes: [], downloadableRuntimes: [], recommended: nil)
         }
 
         // productFamily が iPhone/iPad のみ対象。devicetypes は実機確認済みで既に
@@ -89,10 +89,38 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
         // beta更新を重ねた環境では simctl が同じ identifier を複数返すため重複排除する
         // (新しい順に並べた後の先勝ち。UI に同名項目が並ぶのを防ぐ)。deviceTypes も保険で同様
+        // 自動選定は CLI の profile setup --auto-device と同じ関数(DevicePicker.iosAutoTarget)を通す。
+        // 判定の入力は「simctl の導入済みランタイム」と「選択中の Xcode の SDK の版」
+        let runtimeInfos = IOSRuntimeInstaller.parseRuntimes(rawRuntimes)
+        let sdkVersion = IOSRuntimeInstaller.sdkVersion()
+        let allDeviceTypeIDs = rawDeviceTypes.compactMap { $0["identifier"] as? String }
+        let downloadable: [ApiIOSDownloadableRuntime]
+        if case .needsDownload(let version)? = DevicePicker.newestIOSRuntime(
+            installed: runtimeInfos.map { ($0.identifier, $0.version, $0.name) }, sdkVersion: sdkVersion),
+           let identifier = DevicePicker.predictedIOSRuntimeIdentifier(version: version) {
+            downloadable = [ApiIOSDownloadableRuntime(
+                identifier: identifier, name: "iOS \(version)", nameLabel: "iOS \(version)", version: version)]
+        } else {
+            downloadable = []
+        }
+        var recommended: ApiIOSRecommended?
+        if let target = DevicePicker.iosAutoTarget(
+            runtimes: runtimeInfos, deviceTypeIdentifiers: allDeviceTypeIDs, sdkVersion: sdkVersion) {
+            switch target.runtime {
+            case .installed(let identifier):
+                recommended = ApiIOSRecommended(
+                    deviceTypeIdentifier: target.deviceTypeIdentifier, runtimeIdentifier: identifier)
+            case .needsDownload(let version):
+                recommended = DevicePicker.predictedIOSRuntimeIdentifier(version: version).map {
+                    ApiIOSRecommended(deviceTypeIdentifier: target.deviceTypeIdentifier, runtimeIdentifier: $0)
+                }
+            }
+        }
         return ApiIOSCatalog(
             available: true, error: nil,
             deviceTypes: uniqued(deviceTypes, by: \.identifier),
-            runtimes: uniqued(Array(runtimes.reversed()), by: \.identifier))
+            runtimes: uniqued(Array(runtimes.reversed()), by: \.identifier),
+            downloadableRuntimes: downloadable, recommended: recommended)
     }
 
     /// 並び順を保ったまま key の重複を排除する(先勝ち)
@@ -112,7 +140,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                 available: false,
                 error: "Android SDK not found (check ANDROID_HOME / ANDROID_SDK_ROOT)",
                 errorCode: "sdk-missing",
-                models: [], systemImages: [], downloadableSystemImages: [], downloadableError: nil)
+                models: [], systemImages: [], downloadableSystemImages: [], downloadableError: nil,
+                recommended: nil)
         }
 
         // システムイメージはディレクトリ走査のみで済むため avdmanager の有無に関わらず取得する
@@ -133,7 +162,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                 error: AndroidSDKLocator.avdManagerMissingMessage,
                 errorCode: "avdmanager-missing",
                 models: [], systemImages: systemImages,
-                downloadableSystemImages: downloadableSystemImages, downloadableError: downloadableError)
+                downloadableSystemImages: downloadableSystemImages, downloadableError: downloadableError,
+                recommended: nil)
         }
 
         let result: Shell.Result
@@ -144,21 +174,31 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                                      errorCode: "avdmanager-failed",
                                      models: [], systemImages: systemImages,
                                      downloadableSystemImages: downloadableSystemImages,
-                                     downloadableError: downloadableError)
+                                     downloadableError: downloadableError, recommended: nil)
         }
         guard result.status == 0 else {
             return ApiAndroidCatalog(available: true, error: result.tail,
                                      errorCode: "avdmanager-failed",
                                      models: [], systemImages: systemImages,
                                      downloadableSystemImages: downloadableSystemImages,
-                                     downloadableError: downloadableError)
+                                     downloadableError: downloadableError, recommended: nil)
         }
 
         let models = Self.parseDeviceDefinitions(result.output)
+        // 自動選定は CLI の profile setup --auto-device と同じ関数(DevicePicker.androidAutoTarget)を通す
+        let candidate = { (package: String, apiLevel: Int, tag: String, abi: String) in
+            DevicePicker.SystemImageCandidate(package: package, apiLevel: apiLevel, tag: tag, abi: abi)
+        }
+        let recommended = DevicePicker.androidAutoTarget(
+            models: models.map { (id: $0.id, name: $0.name) },
+            installed: systemImages.map { candidate($0.package, $0.apiLevel, $0.tag, $0.abi) },
+            downloadable: downloadable.map { candidate($0.package, $0.apiLevel, $0.tag, $0.abi) },
+            tag: ProfileSetupCommand.autoDeviceSystemImageTag, abi: SystemImageRepository.hostABI
+        ).map { ApiAndroidRecommended(modelId: $0.model.id, package: $0.image.package) }
         return ApiAndroidCatalog(available: true, error: nil, errorCode: nil, models: models,
                                  systemImages: systemImages,
                                  downloadableSystemImages: downloadableSystemImages,
-                                 downloadableError: downloadableError)
+                                 downloadableError: downloadableError, recommended: recommended)
     }
 
     /// avdmanager list device の出力(ブロック形式)をパースする:
@@ -229,7 +269,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
     /// SDK ルートの system-images/android-<N>/<tag>/<abi>/ をディレクトリ走査してシステムイメージ
     /// 一覧を作る(avdmanager 不要・高速。android-<N> の N が整数でないもの(コードネーム版等)は
     /// スキップする)
-    private static func systemImages(sdkRoot: URL) -> [ApiAndroidSystemImage] {
+    static func systemImages(sdkRoot: URL) -> [ApiAndroidSystemImage] {
         let fm = FileManager.default
         let systemImagesDir = sdkRoot.appendingPathComponent("system-images")
         guard let apiDirs = try? fm.contentsOfDirectory(
@@ -299,9 +339,15 @@ private struct ApiIOSCatalog: Encodable {
     let error: String?
     let deviceTypes: [ApiIOSDeviceType]
     let runtimes: [ApiIOSRuntime]
+    /// まだ入っていないが `xcodebuild -downloadPlatform iOS` で入れられるランタイム。
+    /// 選択中の Xcode の SDK の版が導入済みの最大より新しいときだけ1件、他は空。
+    /// vscode-fleetest/src/monitorProfileForms.ts の IOSCatalog と対。片方だけ変えない
+    let downloadableRuntimes: [ApiIOSDownloadableRuntime]
+    /// 自動選定(DevicePicker.iosAutoTarget)の結果。決められなければ null
+    let recommended: ApiIOSRecommended?
 
     private enum CodingKeys: String, CodingKey {
-        case available, error, deviceTypes, runtimes
+        case available, error, deviceTypes, runtimes, downloadableRuntimes, recommended
     }
 
     func encode(to encoder: Encoder) throws {
@@ -310,7 +356,27 @@ private struct ApiIOSCatalog: Encodable {
         try container.encode(error, forKey: .error)
         try container.encode(deviceTypes, forKey: .deviceTypes)
         try container.encode(runtimes, forKey: .runtimes)
+        try container.encode(downloadableRuntimes, forKey: .downloadableRuntimes)
+        try container.encode(recommended, forKey: .recommended)
     }
+}
+
+/// identifier は導入後に simctl が付ける値の予測(DevicePicker.predictedIOSRuntimeIdentifier)
+private struct ApiIOSDownloadableRuntime: Encodable {
+    let identifier: String
+    let name: String
+    let nameLabel: String
+    let version: String
+}
+
+private struct ApiIOSRecommended: Encodable {
+    let deviceTypeIdentifier: String
+    let runtimeIdentifier: String
+}
+
+private struct ApiAndroidRecommended: Encodable {
+    let modelId: String
+    let package: String
 }
 
 private struct ApiIOSDeviceType: Encodable {
@@ -344,10 +410,13 @@ private struct ApiAndroidCatalog: Encodable {
     /// downloadableSystemImages の取得で一部/全部が失敗した理由(取れた分は entries に残す)。
     /// 省略可能フィールドとして明示的に null を encode する
     let downloadableError: String?
+    /// 自動選定(DevicePicker.androidAutoTarget)の結果。決められなければ(avdmanager 無し含む)null。
+    /// package は導入済み・ダウンロード可能のどちらでもよい(tag は google_apis)
+    let recommended: ApiAndroidRecommended?
 
     private enum CodingKeys: String, CodingKey {
         case available, error, errorCode, models, systemImages
-        case downloadableSystemImages, downloadableError
+        case downloadableSystemImages, downloadableError, recommended
     }
 
     func encode(to encoder: Encoder) throws {
@@ -359,6 +428,7 @@ private struct ApiAndroidCatalog: Encodable {
         try container.encode(systemImages, forKey: .systemImages)
         try container.encode(downloadableSystemImages, forKey: .downloadableSystemImages)
         try container.encode(downloadableError, forKey: .downloadableError)
+        try container.encode(recommended, forKey: .recommended)
     }
 }
 
