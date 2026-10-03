@@ -65,6 +65,25 @@ public struct TestClassMacro {
         }
     }
 
+    /// 改名前のライフサイクル名(`setUp` / `tearDown`)。**普通のメソッドとして黙って呼ばれなくなる**
+    /// (コンパイルエラーにならない)ので、ここで名指しする
+    static let renamedLifecycle: [String: String] = ["setUp": "beforeEach", "tearDown": "afterEach"]
+
+    static func diagnoseRenamedLifecycle(in declaration: some DeclGroupSyntax,
+                                         context: some MacroExpansionContext) {
+        for member in declaration.memberBlock.members {
+            guard let fn = member.decl.as(FunctionDeclSyntax.self),
+                  let renamed = renamedLifecycle[fn.name.text],
+                  fn.signature.parameterClause.parameters.isEmpty else { continue }
+            context.diagnose(Diagnostic(
+                node: Syntax(fn.name),
+                message: FTDSLDiagnostic(
+                    "\(fn.name.text)() is never called: the per-test hook is \(renamed)()"
+                        + " — rename it to func \(renamed)()",
+                    id: "renamed-lifecycle", severity: .warning)))
+        }
+    }
+
     /// 型宣言のメンバーから @Test メソッドを収集する
     static func scenarioMethods(in declaration: some DeclGroupSyntax,
                                 context: some MacroExpansionContext) -> [ScenarioMethod] {
@@ -160,6 +179,7 @@ extension TestClassMacro: ExtensionMacro {
         let (app, platform) = arguments(of: node)
         let methods = scenarioMethods(in: declaration, context: context)
         // 診断は extension ロールの1箇所だけで出す(peer ロールでも出すと同じ警告が2回出る)
+        diagnoseRenamedLifecycle(in: declaration, context: context)
         SharedStateDiagnostics.diagnose(
             SharedStateDiagnostics.findings(in: declaration, className: className,
                                             testMethods: Set(methods.map(\.name))),

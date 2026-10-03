@@ -199,3 +199,62 @@ final class SharedStateDiagnosticsWiringTests: XCTestCase {
         )
     }
 }
+
+/// 改名前の setUp() / tearDown() は普通のメソッドとして黙って呼ばれなくなるので警告する
+final class RenamedLifecycleDiagnosticsTests: XCTestCase {
+    func testOldLifecycleNamesAreFlagged() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class T {
+                func setUp() {
+                }
+                func tearDown() {
+                }
+                func setUp(value: Int) {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func setUp() {
+                }
+                func tearDown() {
+                }
+                func setUp(value: Int) {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+
+                        ])
+                }
+            }
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "setUp() is never called: the per-test hook is beforeEach() — rename it to func beforeEach()",
+                    line: 3, column: 10, severity: .warning),
+                DiagnosticSpec(
+                    message: "tearDown() is never called: the per-test hook is afterEach() — rename it to func afterEach()",
+                    line: 5, column: 10, severity: .warning),
+            ],
+            macroSpecs: [
+                "TestClass": MacroSpec(type: TestClassMacro.self, conformances: ["FTDSL.FTTestClassDefinition"]),
+            ]
+        )
+    }
+}
