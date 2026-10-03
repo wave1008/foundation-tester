@@ -8,7 +8,7 @@
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp.json        # アプリプロファイル(/fleetest-profiles = `profile setup` が作る。create 直後は無い)
+│   ├── apps/ios.json              # アプリプロファイル(/fleetest-profiles = `profile setup` が作る。create 直後は無い)
 │   └── runs/ios.json              # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # ランナーへの委譲(編集不要)
@@ -36,7 +36,7 @@ TestProjects/SampleApp/
 
 `fleetest init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
 `--no-project` を付けるとプロジェクトは作らず、`Package.swift` と空の `TestProjects/` だけを置きます
-(セットアップはこちらを使い、`default` プロジェクトは後から `/fleetest-profiles` か VSCode 拡張が作ります。
+(セットアップはこちらを使い、`project1` プロジェクトは後から `/fleetest-profiles` か VSCode 拡張が作ります。
 `--no-project` は `--name` / `--app-id` と併用できません)。
 `--fleetest-path` はローカルのクローンを指定し(`.package(path:)`)、`--fleetest-url` は代わりに
 git URL へ依存させます(`--fleetest-branch` で追従するブランチを指定。既定は `main`)。
@@ -67,13 +67,13 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 1. `TestProjects/` にプロジェクトが1つだけならそれを使う
 2. それ以外なら、設定済みのデフォルトプロジェクトを使う
-3. それも無ければ、`default` という名前のプロジェクトがあればそれを使う
+3. それも無ければ、`project1` という名前のプロジェクトがあればそれを使う
 4. どれも無ければ、候補一覧付きのエラーで停止する
 
-## `default` プロジェクト
+## `project1` プロジェクト
 
-VSCode 拡張は起動時に `TestProjects/default/` が無ければ(または空なら)`fleetest project create default`
-で作成し、`fleetest.project` が空のときはこの `default` を初期選択にします。すぐにシナリオを置ける器として
+VSCode 拡張は起動時に `TestProjects/project1/` が無ければ(または空なら)`fleetest project create project1`
+で作成し、`fleetest.project` が空のときはこの `project1` を初期選択にします。すぐにシナリオを置ける器として
 使えます(プロファイルはまだ無いので `/fleetest-profiles` か `fleetest profile setup` で作り、デモシナリオの仮の bundle ID は実行前に差し替えてください)。
 別の名前で作ったプロジェクトを使うときは、拡張の「プロジェクトを選択」か `fleetest.project` で切り替えます。
 

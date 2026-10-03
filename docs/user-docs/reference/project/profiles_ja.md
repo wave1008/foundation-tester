@@ -95,7 +95,7 @@
 
 | コマンド | 説明 |
 |---|---|
-| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device] [...]` | アプリ/実行プロファイルをまとめて整合させて作成する(冪等)。`--platform` はアプリプロファイルの `platform` にも書かれ、既存のアプリプロファイルに別の OS を足すと `hybrid` になる |
+| `fleetest profile setup --platform <ios\|android\|hybrid> --app-id <id> [--auto-device] [...]` | アプリ/実行プロファイルをまとめて整合させて作成する(冪等)。`--platform` はアプリプロファイルの `platform` にも書かれ、既存のアプリプロファイルに別の OS を足すと `hybrid` になる。アプリプロファイル名は `--app-ref` で指定し、省略時は実行プロファイルが既に指すもの、それも無ければ `--platform` の値(`ios` / `android` / `hybrid`) |
 | `fleetest profile list` | 実行プロファイルの一覧とそのデバイスを表示する |
 
 ## VSCode での編集

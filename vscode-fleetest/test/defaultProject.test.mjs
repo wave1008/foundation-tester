@@ -1,6 +1,6 @@
 // defaultProject.test.mjs
 // 起動時の既定プロジェクト用意(src/defaultProject.ts)。判定(present/missing)と、無いときだけ
-// CLI(`project create default`)を叩く配線。相手は test/fixtures/mock-project-create.mjs
+// CLI(`project create project1`)を叩く配線。相手は test/fixtures/mock-project-create.mjs
 // (cli.test.mjs と同じく node <fixture> として spawn する)。
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -45,7 +45,7 @@ function makeCli(lines, env) {
 test("defaultProjectState: 無い・空・.DS_Store だけ = missing / 中身があれば present", (t) => {
   const root = makeWorkspace();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const dir = path.join(root, "TestProjects", "default");
+  const dir = path.join(root, "TestProjects", "project1");
   assert.equal(defaultProjectState(root), "missing");
   fs.mkdirSync(dir);
   assert.equal(defaultProjectState(root), "missing");
@@ -55,7 +55,7 @@ test("defaultProjectState: 無い・空・.DS_Store だけ = missing / 中身が
   assert.equal(defaultProjectState(root), "present");
 });
 
-test("ensureDefaultProject: 無ければ project create default を叩き、雛形ができれば created", async (t) => {
+test("ensureDefaultProject: 無ければ project create project1 を叩き、雛形ができれば created", async (t) => {
   const root = makeWorkspace();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const lines = [];
@@ -65,8 +65,8 @@ test("ensureDefaultProject: 無ければ project create default を叩き、雛�
     workspaceRoot: root, binaryPath: "unused", cli, log: (line) => logged.push(line),
   });
   assert.deepEqual(outcome, { kind: "created" });
-  assert.deepEqual(cli.invocations, [["project", "create", "default"]]);
-  assert.ok(fs.existsSync(path.join(root, "TestProjects", "default", "scenarios", "_Main.swift")));
+  assert.deepEqual(cli.invocations, [["project", "create", "project1"]]);
+  assert.ok(fs.existsSync(path.join(root, "TestProjects", "project1", "scenarios", "_Main.swift")));
   assert.ok(logged.some((line) => line.includes("Created the project")), "stdout の文が log へ流れる");
   assert.ok(!lines.some((line) => line.includes("JSON")), "JSON.parse 失敗の行を出力パネルに残さない");
 });
@@ -74,7 +74,7 @@ test("ensureDefaultProject: 無ければ project create default を叩き、雛�
 test("ensureDefaultProject: 既にあれば spawn しない", async (t) => {
   const root = makeWorkspace();
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  fs.mkdirSync(path.join(root, "TestProjects", "default", "scenarios"), { recursive: true });
+  fs.mkdirSync(path.join(root, "TestProjects", "project1", "scenarios"), { recursive: true });
   const cli = makeCli([]);
   const outcome = await ensureDefaultProject({
     workspaceRoot: root, binaryPath: "unused", cli, log: () => undefined,

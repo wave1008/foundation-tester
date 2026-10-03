@@ -13,7 +13,7 @@ if (args[0] !== "project" || args[1] !== "create" || typeof args[2] !== "string"
   process.exit(64);
 }
 if (process.env.MOCK_PROJECT_CREATE_FAIL === "1") {
-  writeSync(2, "Error: the project already exists: /x/TestProjects/default\n");
+  writeSync(2, "Error: the project already exists: /x/TestProjects/project1\n");
   process.exit(1);
 }
 const scenarios = path.join(process.cwd(), "TestProjects", args[2], "scenarios");

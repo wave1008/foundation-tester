@@ -76,11 +76,11 @@ public enum ProjectStore {
             .sorted { $0.name < $1.name }
     }
 
-    /// VSCode 拡張が起動時に用意する既定プロジェクトの名前(`TestProjects/default/`)。
+    /// VSCode 拡張が起動時に用意する既定プロジェクトの名前(`TestProjects/project1/`)。
     /// 拡張(vscode-fleetest/src/projectResolution.ts の DEFAULT_PROJECT_NAME)と同じ文字列
     /// (defaultProjectNameSync.test.mjs が突き合わせる)。省略時の解決でも同じ名前を優先する ——
     /// 拡張と CLI/MCP で「どのプロジェクトか」が食い違わないため
-    public static let defaultProjectName = "default"
+    public static let defaultProjectName = "project1"
 
     /// プロジェクト解決。name 指定 → 一致するもの。
     /// 省略時: 1 つならそれ → defaultProject(LocalConfig)→ `defaultProjectName` のプロジェクト →

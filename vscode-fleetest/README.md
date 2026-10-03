@@ -1019,7 +1019,7 @@ vscode-fleetest/
 │   ├── projectResolution.ts     # 対象プロジェクトの解決規則(候補一覧からの絞り込み判定。CLI/MCP の ProjectStore.find と対。vscode 非依存)
 │   ├── projectResolutionMessages.ts # projectResolution.ts の "missing" 判定を利用者向け文言にする(t() を使うため vscode 依存)
 │   ├── projectSelection.ts      # webview のプロジェクト選択(ダッシュボード・録画タブ)から fleetest.project 設定を書き換える
-│   ├── defaultProject.ts        # 起動時に既定プロジェクト(TestProjects/default/)を用意する(雛形は `fleetest project create` に委ねる。vscode 非依存)
+│   ├── defaultProject.ts        # 起動時に既定プロジェクト(TestProjects/project1/)を用意する(雛形は `fleetest project create` に委ねる。vscode 非依存)
 │   ├── binaryPathResolve.ts     # fleetest バイナリパスの解決(clone 構成: .build/debug/fleetest、外部パッケージ構成: PATH。vscode 非依存)
 │   ├── compatCheck.ts           # 起動時プレフライト。`fleetest api version` を単発実行し CLI↔拡張のプロトコル版を照合
 │   ├── protocolVersion.ts       # 拡張側のプロトコル版定数(Sources/FTCore/ProtocolVersion.swift と一致必須)

@@ -9,7 +9,7 @@
 シナリオは `TestProjects/<project>/scenarios/**/*.swift` から構成される
 folder → class → `@Test` メソッドの3階層ツリーとして Testing ビューに表示されます。対象の
 `<project>` は `fleetest.project` 設定で選びます。空のときは自動判定で、拡張は起動時に
-`TestProjects/default/` が無ければ `fleetest project create default` で作成し、これを初期選択にします
+`TestProjects/project1/` が無ければ `fleetest project create project1` で作成し、これを初期選択にします
 ([テストプロジェクトの作成](../project/creating_project_ja.md))。各テスト項目には
 3つの実行プロファイルがあります。
 
@@ -246,7 +246,7 @@ iOS 27 の Simulator では、PosterBoard(壁紙ギャラリー)が壁紙の版�
 | 設定 | 既定値 | 説明 |
 |---|---|---|
 | `fleetest.binaryPath` | `.build/debug/fleetest` | `fleetest` バイナリのパス。見つからなければ `PATH` から探す |
-| `fleetest.project` | `""` | 対象のテストプロジェクト名。空なら自動判定(1つならそれ。複数なら `default`) |
+| `fleetest.project` | `""` | 対象のテストプロジェクト名。空なら自動判定(1つならそれ。複数なら `project1`) |
 | `fleetest.profile` | `""` | 使用する実行プロファイル名。設定するとデバイス/アプリの決定がこちらに委ねられる |
 | `fleetest.heal` | `false` | 実行/デバッグで `--set heal=true` を有効にし、自己修復の確認パネルを開く |
 | `fleetest.buildBeforeRun` | `true` | 実行前に Swift プロジェクトをビルドする |

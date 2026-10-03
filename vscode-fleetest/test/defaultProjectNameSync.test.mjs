@@ -22,5 +22,5 @@ test("既定プロジェクト名が Swift と拡張で一致する", () => {
   assert.ok(tsMatch, "projectResolution.ts から DEFAULT_PROJECT_NAME を抽出できません");
 
   assert.equal(tsMatch[1], swiftMatch[1]);
-  assert.equal(swiftMatch[1], "default", "既定名はリテラルで固定する");
+  assert.equal(swiftMatch[1], "project1", "既定名はリテラルで固定する");
 });

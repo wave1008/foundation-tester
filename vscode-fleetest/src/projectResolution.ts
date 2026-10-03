@@ -3,10 +3,10 @@
 // 同じ規則を CLI/MCP も持つ(Sources/FTCore/TestProject.swift ProjectStore.find)。片方だけ変えない
 // (CLI 側は候補に無い設定値を notFound(name:available:) で名指しする。ここの "missing" が対応物)。
 
-/** 拡張が起動時に用意する既定プロジェクト名(`TestProjects/default/`)。
+/** 拡張が起動時に用意する既定プロジェクト名(`TestProjects/project1/`)。
  * Sources/FTCore/TestProject.swift の ProjectStore.defaultProjectName と同じ文字列
  * (defaultProjectNameSync.test.mjs が突き合わせる)。 */
-export const DEFAULT_PROJECT_NAME = "default";
+export const DEFAULT_PROJECT_NAME = "project1";
 
 export type ProjectResolution =
   | { kind: "resolved"; project: string }

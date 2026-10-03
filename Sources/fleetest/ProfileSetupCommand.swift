@@ -36,7 +36,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "Android: serial of a physical device (the left column of adb devices)")
     var serial: String?
 
-    @Option(help: "App profile name (profiles/apps/<ref>.json; omitted: the one the run profile already uses, else the lowercased project name)")
+    @Option(help: "App profile name (profiles/apps/<ref>.json; omitted: the one the run profile already uses, else the --platform value: ios / android / hybrid)")
     var appRef: String?
 
     @Option(help: "Display name of the app (omitted: keeps the existing one, else the project name)")
@@ -96,7 +96,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             let allURL = testProject.runsDir.appendingPathComponent("all.json")
             if FileManager.default.fileExists(atPath: allURL.path) {
                 var object = try readObject(allURL)
-                object["app"] = appRef ?? testProject.name.lowercased()
+                object["app"] = appRef ?? platform
                 for device in devices {
                     object = try RunProfileDeviceEditor.upsertingDevice(inRunProfileObject: object, device: device)
                 }
@@ -119,7 +119,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let appRef = ProfileWriter.resolvedAppRef(
             explicit: self.appRef,
             existingRunProfile: try readObject(testProject.runsDir.appendingPathComponent("\(runName).json")),
-            projectName: testProject.name)
+            platform: self.platform)
         var deviceDetail = ""
 
         var device = Self.deviceEntry(platform: platform, name: deviceName,

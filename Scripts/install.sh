@@ -68,7 +68,7 @@ Usage: install.sh [options]
 
   --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --name <name>      Create a project with this name (letters, digits, _ and -). Optional: without it no project is
-                     created (only an empty TestProjects/); /fleetest-profiles creates TestProjects/default later
+                     created (only an empty TestProjects/); /fleetest-profiles creates TestProjects/project1 later
   --app-id <id>      Bundle ID / package name of the app under test (only with --name; optional)
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-clone         Do not clone when missing (an existing clone is required)
@@ -556,7 +556,7 @@ elif project_exists; then
 elif [ -z "$PROJECT_NAME" ] && { [ "$LAYOUT" = "clone" ] || [ -f "$WORK_DIR/Package.swift" ]; }; then
   # 既存パッケージ・クローン構成でプロジェクトの指定が無い = 作らない(後から /fleetest-profiles)。
   # 無関係な Package.swift への導入拒否は、プロジェクトを作る分岐(下)だけが持つ
-  record "project" skip "no project requested (/fleetest-profiles creates TestProjects/default)"
+  record "project" skip "no project requested (/fleetest-profiles creates TestProjects/project1)"
 elif [ "$LAYOUT" = "clone" ]; then
   echo "==> fleetest project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
@@ -577,7 +577,7 @@ else
   if [ -z "$PROJECT_NAME" ]; then
     ( cd "$WORK_DIR" && "$FT" init --no-project --fleetest-path "$TOOL_ROOT" ) \
       || die "project" "fleetest init failed" 4
-    record "project" ok "created the consumer package (no project yet — /fleetest-profiles creates TestProjects/default)"
+    record "project" ok "created the consumer package (no project yet — /fleetest-profiles creates TestProjects/project1)"
   else
     ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
         "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \

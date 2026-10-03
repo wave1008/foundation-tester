@@ -48,13 +48,13 @@ cd sut-ec-mobile
 iOS の場合:
 
 ```text
-sut-ec-mobile の iOS アプリをビルドして、プロファイルを作成して。
+sut-ec-mobile の iOS アプリをビルドし、プロファイルを作成して。デバイスは2台にして。
 ```
 
 Android の場合:
 
 ```text
-sut-ec-mobile の Android アプリをビルドして、プロファイルを作成して。
+sut-ec-mobile の Android アプリをビルドし、プロファイルを作成して。デバイスは2台にして。
 ```
 
 <details>
@@ -89,10 +89,11 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 `--app-path` にビルドしたアプリを渡すと、実行時にデバイスへ自動でインストールされます。
 `--auto-device` は、最新の iOS ランタイムと最新の Pixel を使う Simulator/Emulator を自動で選びます
 (足りなければ作成します。iOS のランタイムが未導入のときは数 GB をダウンロードするので数分〜数十分かかります。
-起動していないものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
+起動していないものは実行時に自動で起動します)。アプリプロファイルと実行プロファイルの名前は、どちらもプラットフォーム名(`ios` と `android`)になります。
+手で登録するのは1台です。2台目は VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」で足せます。
 
-セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/default/` が無ければ先に作ります。
-手で進めるときは、上のコマンドの前に `fleetest project create default` を実行します
+セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/project1/` が無ければ先に作ります。
+手で進めるときは、上のコマンドの前に `fleetest project create project1` を実行します
 (VSCode 拡張も Reload Window 後の起動時に作ります)。
 
 </details>

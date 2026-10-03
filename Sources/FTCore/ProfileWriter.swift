@@ -25,11 +25,12 @@ public enum ProfileWriter {
     }
 
     /// `profile setup` が使うアプリプロファイル名。省略時は既存の実行プロファイルが指すものを使う ——
-    /// デバイスを足すために呼び直すと(fleetest-profiles の手順)プロジェクト名へ黙って差し替わり、
-    /// 別の(仮 ID の)アプリプロファイルまで作ってしまう。既存も無ければプロジェクト名の小文字
+    /// デバイスを足すために呼び直すと(fleetest-profiles の手順)既定名へ黙って差し替わり、
+    /// 別の(仮 ID の)アプリプロファイルまで作ってしまう。既存も無ければ対象 OS 名
+    /// (`--platform` の値そのまま = ios / android / hybrid。hybrid は両 OS で同じ1つを共有する)
     public static func resolvedAppRef(explicit: String?, existingRunProfile: [String: Any],
-                                      projectName: String) -> String {
-        explicit ?? (existingRunProfile["app"] as? String) ?? projectName.lowercased()
+                                      platform: String) -> String {
+        explicit ?? (existingRunProfile["app"] as? String) ?? platform
     }
 
     /// アプリプロファイルをマージする。appName・app(ID)・appPath は ios/android セクション、

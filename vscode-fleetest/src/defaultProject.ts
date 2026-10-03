@@ -1,5 +1,5 @@
 // defaultProject.ts
-// 起動時に既定プロジェクト(TestProjects/default/)を用意する(vscode 非依存。文言は呼び手が持つ)。
+// 起動時に既定プロジェクト(TestProjects/project1/)を用意する(vscode 非依存。文言は呼び手が持つ)。
 // 雛形と Package.swift への登録は CLI(`fleetest project create`)に委ねる —— 拡張が JSON や
 // _Main.swift を自前で書くと CLI の雛形と二重管理になる。
 // 呼び出しは FleetestCli のキューに乗せる(Package.swift を書き換えるので、list-scenarios の

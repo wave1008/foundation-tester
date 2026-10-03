@@ -90,7 +90,7 @@ public enum ProjectScaffold {
     }
 
     /// `fleetest init --no-project` が置く空の `TestProjects/`。VSCode 拡張はこのディレクトリが
-    /// 無いと何も登録しない(あれば `default` プロジェクトを自動作成する)ので、器だけは必ず作る。
+    /// 無いと何も登録しない(あれば `project1` プロジェクトを自動作成する)ので、器だけは必ず作る。
     public static func ensureEmptyProjectsDirectory(repoRoot: URL) throws {
         try FileManager.default.createDirectory(
             at: ProjectStore.projectsDir(repoRoot: repoRoot), withIntermediateDirectories: true)
@@ -271,7 +271,6 @@ public enum ProjectScaffold {
     }
 
     static func recipientSetupSkill(projectName name: String) -> String {
-        let appRef = name.lowercased()
         return """
         ---
         name: fleetest-setup
@@ -329,11 +328,11 @@ public enum ProjectScaffold {
 
         ### 3. 対象アプリのパス(appPath)は設定しない
         bundle ID がプレースホルダ(`com.example.myapp`)のままなら、実IDが判明した時点で
-        `profiles/apps/\(appRef).json` の `app` を差し替える(アプリの起動(launch)に必須。
+        `profiles/apps/<対象 OS 名>.json` の `app` を差し替える(アプリの起動(launch)に必須。
         それまでのビルド・dry-run はプレースホルダで完走できる)。
         `appPath` はセットアップでは**聞かない・書かない**(未設定なら自動インストールは無効 =
         インストール済みのアプリをそのまま使う)。自動インストールが必要になったら、後から
-        `TestProjects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
+        `TestProjects/\(name)/profiles/apps/<対象 OS 名>.json` の `appPath` をビルド済みアプリへ向ける
         (`appName`・bundle ID(`app`)・`appPath` は ios/android セクション、`autoInstall` は最上位キー)。
         **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない**:
 
@@ -392,7 +391,7 @@ public enum ProjectScaffold {
     }
 
     /// `init --no-project` 用。プロジェクト名・アプリ参照を焼き込まない(プロジェクトは
-    /// `/fleetest-profiles` が `default` で作る)。
+    /// `/fleetest-profiles` が `project1` で作る)。
     static func recipientSetupSkillWithoutProject() -> String {
         return """
         ---
@@ -430,18 +429,18 @@ public enum ProjectScaffold {
         `fleetest doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
 
         ### 2. テストプロジェクトと実行プロファイルを作る
-        `/fleetest-profiles` を実行する。`TestProjects/` にプロジェクトが無ければ、名前 `default` で作ったうえで
+        `/fleetest-profiles` を実行する。`TestProjects/` にプロジェクトが無ければ、名前 `project1` で作ったうえで
         アプリプロファイルと実行プロファイル(デバイス)まで作る(名前は聞かない)。
 
         ### 3. シナリオを1本用意
-        - `TestProjects/default/docs/testbases/` にテストの元資料(仕様・観点)を置き、それを根拠にシナリオを書く(任意だが推奨)。
-        - `/fleetest-scenario` で書く、または `TestProjects/default/scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)。
+        - `TestProjects/project1/docs/testbases/` にテストの元資料(仕様・観点)を置き、それを根拠にシナリオを書く(任意だが推奨)。
+        - `/fleetest-scenario` で書く、または `TestProjects/project1/scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)。
 
         ### 4. デバイス不要の動作確認
         ```bash
-        swift build --product fleetest-scenarios-default
-        fleetest api list-scenarios --project default
-        fleetest api run --project default --scenario <クラス名> --dry-run --skip-build
+        swift build --product fleetest-scenarios-project1
+        fleetest api list-scenarios --project project1
+        fleetest api run --project project1 --scenario <クラス名> --dry-run --skip-build
         ```
 
         ## 更新(新しい版が出たとき)

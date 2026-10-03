@@ -106,7 +106,7 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 
 **このセットアップは何も質問しない**(人にしか解決できない阻害 = license 同意・sudo・Xcode 導入などを除く)。
 プロジェクト名・bundle ID・プラットフォームは聞かない —— テストプロジェクトとプロファイルは、セットアップの後に
-`/fleetest-profiles`(クイックスタート)が作る(プロジェクト名は常に `default`。iOS/Android・アプリID はそこで聞く)。
+`/fleetest-profiles`(クイックスタート)が作る(プロジェクト名は常に `project1`。iOS/Android・アプリID はそこで聞く)。
 **clone 先も聞かない**（`tool_root=` を完了報告で伝えれば足りる)。
 受け手が別の clone 先を明示した場合だけ、そのパスを TOOL_ROOT にする。
 
@@ -244,8 +244,8 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
   `.vscode/settings.json`(`fleetest.binaryPath`。`fleetest.project` は書かない = 拡張が単一/既定プロジェクトを
   自分で解決する)が生成され、受け手専用の `/fleetest-setup` スキルが `.claude/skills/` に上書きされる
   (次回以降の実行はそちらを使う。この実行はロード済み手順のまま継続してよい)。
-  **プロジェクトは作られない** —— セットアップの後、`/fleetest-profiles` が `TestProjects/default/` を作る
-  (VSCode 拡張も、`TestProjects/` があって `default` が無ければ起動時に自動で作る)。
+  **プロジェクトは作られない** —— セットアップの後、`/fleetest-profiles` が `TestProjects/project1/` を作る
+  (VSCode 拡張も、`TestProjects/` があって `project1` が無ければ起動時に自動で作る)。
   ローカルパス依存なので `swift build` はネットワーク不要・
   TOOL_ROOT を `git pull` すれば fleetest 側も更新される。git 依存にしたい場合のみ `--fleetest-url
   https://github.com/wave1008/foundation-tester.git` を使う(`--fleetest-path` と排他。追従先は `main`。
@@ -255,7 +255,7 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
   以降このスキル内で `fleetest ...` と書いたら `../foundation-tester/.build/debug/fleetest ...` を実行する。
 
 - **clone 構成**: プロジェクトは作らない(クローンの `TestProjects/` に既にあるものを使う。要るときは
-  `/fleetest-profiles` が `swift run fleetest project create default` で作る)。
+  `/fleetest-profiles` が `swift run fleetest project create project1` で作る)。
 
 **検証ゲート(init 後の .gitignore)**: WORK_DIR が git リポジトリ(既存 repo 直下を含む)なら、
 `.gitignore` に `.build/` と `TestProjects/*/reports/` があることを確認する(`fleetest init` が自動整備する。
@@ -266,11 +266,11 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
 
 ### 6. プロジェクトとプロファイルは後から作る(質問も設定もしない)
 
-テストプロジェクト(`TestProjects/default/`)・アプリプロファイル(bundle ID・`appPath`)・実行プロファイルは
+テストプロジェクト(`TestProjects/project1/`)・アプリプロファイル(bundle ID・`appPath`)・実行プロファイルは
 セットアップでは作らない・聞かない・書かない。ステップ9の案内どおり、`/fleetest-profiles`
 (クイックスタート)で iOS/Android とアプリIDを聞いて作る。`appPath` はそこでも**聞かない**
 （未設定なら `autoInstall` は無効 = インストール済みのアプリをそのまま使う。後から
-`TestProjects/default/profiles/apps/<appRef>.json` の `appPath` をビルド済みアプリ
+`TestProjects/project1/profiles/apps/<appRef>.json` の `appPath` をビルド済みアプリ
 （ios は `.app`、android は `.apk`。相対パスは WORK_DIR 基準・`~`・絶対可）へ向けられる）。
 **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない。**
 
@@ -457,7 +457,7 @@ Claude Code 以外のエージェントは、このコピーを使わずクロ�
   「**『MCP を登録して』と頼めば登録します**。登録後は AIアシスタントを再起動して、このフォルダで
   新しいセッションを開いてください」と案内する（ステップ7.7。手で設定する手順を先に並べない）
 - **テストプロジェクトとプロファイルの作成はまだ**。続けて `/fleetest-profiles` を実行する
-  （iOS/Android とアプリIDを聞いて `TestProjects/default/` とプロファイルを作る）。最初のシナリオ作成は
+  （iOS/Android とアプリIDを聞いて `TestProjects/project1/` とプロファイルを作る）。最初のシナリオ作成は
   `/fleetest-scenario`。流れはクイックスタート(`<TOOL_ROOT>/docs/user-docs/quick-start_ja.md`。
   英語は `quick-start.md`)
 

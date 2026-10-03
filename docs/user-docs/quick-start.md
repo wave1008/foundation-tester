@@ -47,13 +47,13 @@ Create the app profile and the run profile.
 For iOS:
 
 ```text
-Build the sut-ec-mobile iOS app and create its profiles.
+Build the sut-ec-mobile iOS app and create its profiles with two devices.
 ```
 
 For Android:
 
 ```text
-Build the sut-ec-mobile Android app and create its profiles.
+Build the sut-ec-mobile Android app and create its profiles with two devices.
 ```
 
 <details>
@@ -88,11 +88,12 @@ Go back to your work folder and run:
 Passing the built app to `--app-path` makes the run install it on the device automatically.
 `--auto-device` picks a Simulator/Emulator with the newest iOS runtime and the newest Pixel (and creates it
 when missing; a missing iOS runtime is downloaded first: several GB, several minutes to tens of minutes;
-one that is not running is started automatically at run time). The run profiles are named after the platforms (`ios` and
-`android`).
+one that is not running is started automatically at run time). The app profiles and the run profiles are both named after the
+platforms (`ios` and `android`). These commands register one device; add the second one with "Add device" on the
+"Profiles" tab of the VSCode extension's device monitor.
 
-The setup creates no test project. The AI assistant creates `TestProjects/default/` first when it is missing;
-by hand, run `fleetest project create default` before the commands above
+The setup creates no test project. The AI assistant creates `TestProjects/project1/` first when it is missing;
+by hand, run `fleetest project create project1` before the commands above
 (the VSCode extension also creates it on startup after Reload Window).
 
 </details>

@@ -8,7 +8,7 @@ This page covers the project layout and the commands that manage it.
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp.json        # app profiles (created by /fleetest-profiles = `profile setup`; none right after create)
+│   ├── apps/ios.json              # app profiles (created by /fleetest-profiles = `profile setup`; none right after create)
 │   └── runs/ios.json              # run profiles (created by `profile setup`; app + device list, each naming its machine + run-time settings)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # delegates to the runner (do not edit)
@@ -37,7 +37,7 @@ There are two ways this project's Package.swift can reference foundation-tester:
 
 `fleetest init` scaffolds the external configuration (a `Package.swift` plus a first test
 project). With `--no-project` it creates no project: only the `Package.swift` and an empty `TestProjects/`
-(the setup uses this; the `default` project is created later by `/fleetest-profiles` or the VSCode extension;
+(the setup uses this; the `project1` project is created later by `/fleetest-profiles` or the VSCode extension;
 `--no-project` cannot be combined with `--name` / `--app-id`). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
 on a git URL instead (`--fleetest-branch` selects the branch to track; it defaults to `main`).
 
@@ -67,13 +67,13 @@ Most commands accept `--project <name>`. When it is omitted, the tool resolves i
 
 1. If `TestProjects/` contains exactly one project, use it.
 2. Otherwise, fall back to the configured default project.
-3. Otherwise, use the project named `default` if there is one.
+3. Otherwise, use the project named `project1` if there is one.
 4. Otherwise, fail with a list of candidate project names.
 
-## The `default` project
+## The `project1` project
 
-When the VSCode extension starts, it creates `TestProjects/default/` with `fleetest project create default`
-if it is missing (or empty), and selects `default` initially while `fleetest.project` is empty. It is a
+When the VSCode extension starts, it creates `TestProjects/project1/` with `fleetest project create project1`
+if it is missing (or empty), and selects `project1` initially while `fleetest.project` is empty. It is a
 ready-made place for your first scenarios (it has no profiles yet; create them with `/fleetest-profiles`
 or `fleetest profile setup`, and replace the demo scenario's placeholder bundle ID before running). To work in a project you created under another name, switch with the "Select project" command or
 the `fleetest.project` setting.

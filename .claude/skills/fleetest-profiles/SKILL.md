@@ -21,10 +21,10 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 
 - **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/TestProjects/<プロジェクト>/profiles/` に住む。
   TestProjects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
-  **プロジェクトが1つも無ければ作る(名前は常に `default`。VSCode 拡張の自動作成と同じ名前で、名前は聞かない)**:
-  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create default
+  **プロジェクトが1つも無ければ作る(名前は常に `project1`。VSCode 拡張の自動作成と同じ名前で、名前は聞かない)**:
+  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create project1
   [--app-id <アプリID>]` を実行してからステップ3以降へ進む(`--app-id` はデモシナリオにだけ入る。
-  プロファイルは書かない = ステップ3以降の `profile setup` が作る)(プロジェクト名は以降 `default`)。
+  プロファイルは書かない = ステップ3以降の `profile setup` が作る)(プロジェクト名は以降 `project1`)。
   WORK_DIR に fleetest のパッケージ(`Package.swift` に fleetest の依存か `foundation-tester` の記述)が無ければ
   作らず `/fleetest-setup` を案内する。
 - **fleetest CLI の在り処**: clone 構成は `swift run fleetest ...`、外部パッケージ構成は
@@ -61,8 +61,8 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 (ビルド済み `.app`/`.apk`。相対は WORK_DIR 基準・`~`・絶対可)。未指定なら省略する
 (後から `profiles/apps/` を編集して向けられる)。
 
-`appRef`(アプリプロファイルのファイル名)は `appName` を小文字化・`^[a-z0-9_-]+$` に整えた値にする
-(例 `SUT Store` → `sut-store`)。整えられない文字が多ければ🧑に確認する。
+`appRef`(アプリプロファイルのファイル名)は既定で対象 OS 名(`ios` / `android` / `hybrid`)になる。
+`--app-ref` は渡さない(既存の実行プロファイルがあればそのアプリプロファイルを使い続ける)。
 
 ### 3. 🧑 デバイスの指定を確認
 
@@ -111,6 +111,10 @@ fleetest profile setup --project <プロジェクト> --platform <ios|android|hy
 - 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は
   `fleetest api create-device`(→ 下の 4-b)で作ってから、`profile setup --device-name <作った名前>` を呼ぶ。
 - `--app-path` は入力があったときだけ渡す(渡すと `autoInstall` が有効になる)。
+- **台数の指定があれば**(例「デバイスは2台にして」): `--auto-device` は1回で1台(`-01`)しか登録せず、
+  呼び直しても同じ `-01` を再利用する。2台目以降は `-01` と同じ機種・OS で、空いている番号(`-02` …)を使い 4-b の
+  create-device で作り、`profile setup --device-name <作った名前>` で同じ実行プロファイルへ追記する。
+  ステップ5の報告に全台を並べる。
 
 #### 4-b. 新規作成が要るとき(create-device)
 
@@ -147,7 +151,7 @@ fleetest profile list --project <プロジェクト>
 - 実行: エージェントは `ft_start_run`(profile=`<plat>`。進み具合と結果は `ft_run_status`)。人が端末から打つなら
   `fleetest run --project <プロジェクト> --profile <plat>`。どちらも仮想デバイスか実機が要る。
 - 別プラットフォームや別アプリを足すときは、この `/fleetest-profiles` をもう一度実行する
-  (実行プロファイルの `devices` には追記、アプリプロファイルは新しい `appRef` で追加)。
+  (実行プロファイルの `devices` には追記。別アプリは `--app-ref` で別のアプリプロファイルを追加)。
 - **別の機械(リモートランナー)のデバイスを足すときは `fleetest profile setup`/`api create-device`
   を使わない**(どちらも `"machine": "local"` のデバイスしか作らない)。`fleetest remote machines add` で
   そのマシンを登録したうえで、`profiles/runs/<name>.json` の `devices` に

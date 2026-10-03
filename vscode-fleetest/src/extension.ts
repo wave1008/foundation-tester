@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const cli = new FleetestCli(outputChannel);
   const getConfig = (): FleetestConfig => readConfig(workspaceRoot);
 
-  // 既定プロジェクト(TestProjects/default/)を用意する。**最初に CLI キューへ積む**ので、
+  // 既定プロジェクト(TestProjects/project1/)を用意する。**最初に CLI キューへ積む**ので、
   // 後続の list-scenarios(ビルド)より先に Package.swift の登録が済む。無いときだけ spawn
   // (defaultProject.ts)。作成の成否は最後の testTree.refresh() の前に受け取る
   if (defaultProjectState(workspaceRoot) === "missing") {

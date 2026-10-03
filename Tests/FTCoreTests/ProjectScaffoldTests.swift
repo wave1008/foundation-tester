@@ -286,7 +286,7 @@ final class ProjectScaffoldTests: XCTestCase {
                               encoding: .utf8)
         XCTAssertTrue(body.hasPrefix("---\nname: fleetest-setup\n"))
         XCTAssertTrue(body.contains("/fleetest-profiles"))
-        XCTAssertTrue(body.contains("TestProjects/default/"))
+        XCTAssertTrue(body.contains("TestProjects/project1/"))
         XCTAssertFalse(body.contains("--project Demo"))
         XCTAssertFalse(body.contains("--app-id"), "アプリ ID はスキルが聞く。焼き込まない")
     }

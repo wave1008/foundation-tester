@@ -212,7 +212,7 @@ Package.swift のマーカー区間を自動更新する(プロジェクト間�
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp.json        # アプリ(`profile setup` が作る): autoInstall は最上位、appName/bundle ID(app)/appPath は ios/android
+│   ├── apps/ios.json              # アプリ(`profile setup` が作る): autoInstall は最上位、appName/bundle ID(app)/appPath は ios/android
 │   └── runs/ios.json              # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
