@@ -28,6 +28,11 @@ devices — see Scope below). Names and behavior follow Shirates.
   unknown, and is not re-run after the device recovers.
 - `tearDownDevice()` can read the memo too (it runs after the device has finished its work, so it
   sees the final values).
+- Trying to pass a value through a test-class property (`var`) produces a build warning when the writer
+  and the reader run in different processes — written in one `@Test` and read in another, or written in
+  `setUpDevice()` and read in the tests. Writing in `beforeEach()` and reading in the same test or
+  `afterEach()` works and is not flagged. Writes through helper functions and mutations such as
+  `x.append(…)` are not detected, so no warning is not a guarantee.
 
 ## Example
 

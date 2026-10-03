@@ -159,6 +159,11 @@ extension TestClassMacro: ExtensionMacro {
         let className = cls.name.text
         let (app, platform) = arguments(of: node)
         let methods = scenarioMethods(in: declaration, context: context)
+        // 診断は extension ロールの1箇所だけで出す(peer ロールでも出すと同じ警告が2回出る)
+        SharedStateDiagnostics.diagnose(
+            SharedStateDiagnostics.findings(in: declaration, className: className,
+                                            testMethods: Set(methods.map(\.name))),
+            in: context)
         // クラスに @Deleted が付いていれば全シナリオが削除済み扱い
         let classDeleted = hasDeleted(cls.attributes)
         // クラスに @Draft が付いていれば全シナリオが実装中扱い
