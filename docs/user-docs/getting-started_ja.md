@@ -18,16 +18,18 @@ Fleetest のインストールの手順です。
 
 ## 3. Fleetest のインストール
 
-1. **テスト専用の新規フォルダ**を VSCode で開き、AIアシスタントを起動して次のように頼みます
+1. **テスト専用の新規フォルダ**を作成し、VSCode で開きます
+
+2. AIアシスタントを起動して次のように指示します
 
 ```text
-https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して、
+https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-2. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します
+3. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します
 
-3. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします(デバイスモニターが開きます)
+4. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
 インストールが済んだら、[クイックスタート](quick-start_ja.md)でテストを作って実行してみましょう。
 

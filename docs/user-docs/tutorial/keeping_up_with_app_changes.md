@@ -22,8 +22,8 @@ If a step passed thanks to self-healing, the report keeps a **suggestion** like 
 #### Do it with the AI assistant
 
 ```text
-Check the self-healing suggestions in the most recent fleetest report, and apply the reasonable ones to the scenarios.
-After applying, run those scenarios and confirm they pass.
+Review the self-healing suggestions in the latest fleetest report and apply the reasonable ones to the scenarios.
+Then run those scenarios and confirm they pass.
 ```
 
 <details>
@@ -44,7 +44,7 @@ When the screen layout or the steps themselves change, self-healing can't keep u
 
 ```text
 The My Shop login screen has a new design (the email address and password are now on separate screens).
-Update the fleetest scenarios related to login to match the current screens. After updating, run them to confirm.
+Update the login-related fleetest scenarios to match the current screens, then run them to confirm.
 ```
 
 The AI assistant actually operates the current screens, reads them again, and rewrites the scenarios.
@@ -58,8 +58,8 @@ When the app gains new announcement dialogs, surveys, OS permission dialogs and 
 many tests may fail all at once. It is more efficient to ask for them to be handled together than to fix test by test.
 
 ```text
-A "What's new" announcement dialog now sometimes appears right after My Shop launches.
-In every test, if it appears, press "Close" and move on.
+My Shop now sometimes shows a "What's new" dialog right after launch.
+Update every test so that, if the dialog appears, it taps "Close" and continues.
 ```
 
 ## Make tests harder to break
@@ -67,8 +67,8 @@ In every test, if it appears, press "Close" and move on.
 Tests that fail with every app change are worth rethinking in how they are written.
 
 ```text
-Review the fleetest scenarios and list any ways of writing them that are easily broken by app text changes or differences in screen size.
-Fix them only after I have checked the list.
+Review the fleetest scenarios and list anything written in a way that is likely to break when the app's text changes or the screen size differs.
+Don't fix anything until I've reviewed the list.
 ```
 
 The viewpoints for robustness are collected in [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md).
@@ -80,7 +80,7 @@ For tests of a feature whose screen is gone entirely, you can keep them by marki
 (marked tests run only when you name them explicitly).
 
 ```text
-The My Shop coupon screen has been retired. Mark the scenarios related to coupons as deprecated.
+The My Shop coupon screen has been removed. Mark the coupon-related scenarios as deprecated.
 ```
 
 ## Learn more

@@ -15,11 +15,11 @@ You can create both by asking an AI assistant. You do not need to write JSON by 
 ### Do it with the AI assistant
 
 ```text
-Create the fleetest profiles for my app.
-The app's display name is "My Shop", the app ID is com.example.myshop on iOS and com.example.myshop.android on Android.
-The built apps are ~/builds/MyShop.app (for the iOS Simulator) and ~/builds/myshop-debug.apk.
-For devices, pick Simulators / Emulators with the newest OS available on this Mac.
-Done when: you report the names of the run profiles you created. Running tests is not needed.
+Create fleetest profiles for my app.
+The display name is "My Shop". The app ID is com.example.myshop on iOS and com.example.myshop.android on Android.
+The builds are ~/builds/MyShop.app (for the iOS Simulator) and ~/builds/myshop-debug.apk.
+For devices, use Simulators / Emulators with the newest OS available on this Mac.
+When you're done, tell me the names of the run profiles you created. There's no need to run any tests.
 ```
 
 - Use the **display name** exactly as it appears under the icon on the home screen (do not add notes such as "(for testing)").
@@ -54,8 +54,8 @@ With more devices, tests are distributed to them automatically and the overall t
 
 ```text
 Add two more iPhone Simulators to the fleetest run profile ios.
-If there are none, you may create them with the same model and the same OS.
-Done when: you report the device list of the run profile after the addition.
+If there aren't enough, you can create them with the same model and OS.
+Then show me the profile's updated device list.
 ```
 
 The number of devices that can run at once is limited by the Mac's memory and CPU. If adding devices makes things slower, ask to reduce them.
@@ -78,8 +78,8 @@ fleetest cannot wake a device whose screen has turned off.
 
 ```text
 Register the iPhone connected over USB as a new fleetest run profile named ios-physical.
-Use the app from the existing app profile. The app for the physical device is ~/builds/MyShop.ipa.
-Done when: you report the name of the run profile and whether the device was recognized.
+Use the app from the existing app profile; the build for physical devices is ~/builds/MyShop.ipa.
+Then tell me the profile name and whether the device was recognized.
 ```
 
 If several physical devices are connected, name the one you mean by its model ("Register the iPhone 15 connected over USB...").

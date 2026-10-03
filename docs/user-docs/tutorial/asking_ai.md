@@ -33,7 +33,7 @@ Limit each request to **one screen or one flow of operations**, and when it is d
 Saying whether to run on iOS or Android makes the result more reliable.
 
 ```text
-Create an exploratory test that covers only the cart screen, on Android.
+Create an exploratory test for just the cart screen, on Android.
 ```
 
 If you know the name of the run profile (the setting that says which devices to run on), writing it is the
@@ -44,7 +44,7 @@ most reliable ("run it with the ios profile").
 Saying where to stop keeps the AI assistant from drifting into extra work.
 
 ```text
-... Done when: you report the file name of the scenario you created. Running on a device is not needed.
+... Stop once you've told me the file name of the new scenario. There's no need to run it on a device.
 ```
 
 ### 4. Make the request independent of the conversation
@@ -59,7 +59,7 @@ An AI assistant can confuse an "app bug" with a "problem in how the test is writ
 **Whether it is acceptable to rewrite the app's expected values** when a test fails is for you to decide.
 
 ```text
-Investigate the cause of the failure and report it. Do not fix the scenario yet.
+Find out why it failed and report back. Don't fix the scenario yet.
 ```
 
 With a request like this, you can separate the investigation from the fix.

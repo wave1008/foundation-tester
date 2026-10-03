@@ -11,7 +11,7 @@ Before running on a device, a verification that does not use a device (dry-run) 
 ### Do it with the AI assistant
 
 ```text
-Verify all the fleetest scenarios with a dry-run. If there are warnings, list them and report.
+Dry-run all fleetest scenarios and list any warnings.
 ```
 
 <details>
@@ -30,7 +30,7 @@ In VSCode, select a scenario in the Test Explorer and use "Run (dry-run)".
 ### Do it with the AI assistant
 
 ```text
-Run all the fleetest scenarios on iOS. When it finishes, report pass or fail.
+Run all fleetest scenarios on iOS and report the results when it's done.
 ```
 
 To run only one test or a subset, specify them by test name or screen.
@@ -76,7 +76,7 @@ Run the fleetest login test once on every iOS device.
 After fixing the app, you can run only the tests that failed last time to confirm.
 
 ```text
-Re-run only the scenarios that failed last time on iOS in fleetest.
+Re-run only the fleetest scenarios that failed on iOS last time.
 ```
 
 <details>

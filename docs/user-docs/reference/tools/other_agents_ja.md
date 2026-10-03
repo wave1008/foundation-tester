@@ -20,7 +20,7 @@ fleetest の中核は**エージェント固有ではありません**。Claude 
 テスト専用の新規フォルダを VSCode で開き、エージェントを起動して次のように頼みます:
 
 ```text
-https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して、
+https://github.com/wave1008/foundation-tester をこのフォルダの隣に clone して
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 

@@ -18,16 +18,18 @@ For the supported macOS, Xcode, Android SDK and other requirements, see [Environ
 
 ## 3. Installing Fleetest
 
-1. Open a **new, test-only folder** in VSCode, start your AI assistant, and ask it:
+1. Create a **new, test-only folder** and open it in VSCode
+
+2. Start your AI assistant and give it this instruction:
 
 ```text
 Clone https://github.com/wave1008/foundation-tester next to this folder, then set it up by
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-2. When the installation finishes, run `Developer: Reload Window` in VSCode
+3. When the installation finishes, run `Developer: Reload Window` in VSCode
 
-3. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode (it opens the device monitor)
+4. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 
 Once it is installed, create and run a test in the [Quick start](quick-start.md).
 

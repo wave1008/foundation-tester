@@ -7,7 +7,7 @@ Every time you run tests, the results are kept, pass or fail. You can leave the 
 ### Do it with the AI assistant
 
 ```text
-Summarize the most recent fleetest run. If there are failures, list the failed scenarios and the steps where they failed.
+Summarize the latest fleetest run. If anything failed, list the failed scenarios and the steps where they failed.
 ```
 
 <details>
@@ -31,8 +31,8 @@ Below is an excerpt of a real report (from the sample app: a test that failed wh
 ### Do it with the AI assistant
 
 ```text
-For the scenarios that failed in the most recent fleetest run, investigate the cause from the reports and report back.
-Also separate whether it looks like an app bug or a problem with how the test is written. Don't fix the scenarios yet.
+Use the reports to find out why scenarios failed in the latest fleetest run, and report back.
+For each one, say whether it looks like an app bug or a problem with how the test is written. Don't fix the scenarios yet.
 ```
 
 **Adding "don't fix them" matters**. If you ask the AI assistant to investigate and fix at the same time,
@@ -62,7 +62,7 @@ If you keep running tests, you start to see tests that sometimes pass and someti
 ### Do it with the AI assistant
 
 ```text
-From the past fleetest run results, find the unstable scenarios that sometimes pass and sometimes fail, and the scenarios that have been getting slower.
+Go through past fleetest results and find scenarios that are flaky (sometimes pass, sometimes fail) and scenarios that have been getting slower.
 ```
 
 <details>

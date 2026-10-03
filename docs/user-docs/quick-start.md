@@ -11,11 +11,11 @@ e-commerce shopping app (Compose Multiplatform, for both iOS and Android).
 ### Do it with the AI assistant
 
 ```text
-Clone https://github.com/wave1008/sut-ec-mobile next to this folder, then
-start the server (check until /health returns ok). Start it so that it keeps running after this session is closed (with nohup or similar).
-Prerequisites: JDK 17 and Apple Container are required. If they are missing, you may install them with Homebrew.
-Do not modify shell configuration files.
-Done when: you report that /health returned ok. Building the app is not needed.
+Clone https://github.com/wave1008/sut-ec-mobile next to this folder and start the server.
+Use nohup or similar so the server keeps running after this session ends.
+The server needs JDK 17 and Apple Container. If either is missing, you can install it with Homebrew.
+Don't modify any shell configuration files. There's no need to build the app.
+Let me know once /health returns ok.
 ```
 
 <details>
@@ -47,13 +47,13 @@ Create the app profile and the run profile.
 For iOS:
 
 ```text
-Build the sut-ec-mobile iOS app and create the profiles.
+Build the sut-ec-mobile iOS app and create its profiles.
 ```
 
 For Android:
 
 ```text
-Build the sut-ec-mobile Android app and create the profiles.
+Build the sut-ec-mobile Android app and create its profiles.
 ```
 
 <details>
@@ -106,7 +106,7 @@ Let's create exploratory tests for the login screen.
 ### Do it with the AI assistant
 
 ```text
-Create exploratory tests for the login screen of sut-ec-mobile (SUT Store) only.
+Create exploratory tests for just the login screen of sut-ec-mobile (SUT Store).
 ```
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
@@ -119,7 +119,7 @@ Let's run the test scenarios you created.
 ### Do it with the AI assistant
 
 ```text
-Run the scenarios you created on iOS
+Run the scenarios you created on iOS.
 ```
 
 For scenarios created on Android, ask "Run them on Android" instead.
@@ -147,7 +147,7 @@ Let's summarize the reports and analyze the errors.
 ### Do it with the AI assistant
 
 ```text
-Summarize the results of that run. If anything failed, find the cause from the report
+Summarize the results of that run. If anything failed, use the report to find out why.
 ```
 
 <details>

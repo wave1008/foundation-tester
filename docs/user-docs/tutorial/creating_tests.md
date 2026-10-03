@@ -14,7 +14,7 @@ You specify a screen and let the AI assistant decide what to check as well. This
 ### Do it with the AI assistant
 
 ```text
-Create an exploratory test that covers only the My Shop login screen.
+Create an exploratory test for just the My Shop login screen.
 ```
 
 The AI assistant operates the login screen, tries invalid input, submitting with empty fields, moving between screens and so on,
@@ -34,11 +34,11 @@ When the steps you want to check are already decided, write the steps and "what 
 ### Do it with the AI assistant
 
 ```text
-Create a test for My Shop with the following steps. Create it on iOS.
+Create an iOS test for My Shop with these steps:
 1. Open the first product in the product list
 2. Tap "Add to cart"
 3. Open the cart screen
-What to check: the cart contains 1 item, and its product name is the same as the product opened from the list.
+Then check that the cart has 1 item, and that its name matches the product you opened from the list.
 ```
 
 If you do not write "what to check", you may get a test that only performs operations and verifies nothing.
@@ -49,7 +49,7 @@ If you do not write "what to check", you may get a test that only performs opera
 ### Do it with the AI assistant
 
 ```text
-Add a case to the My Shop login test: when the password is shorter than 8 characters, an error message is shown.
+Add a case to the My Shop login test: a password shorter than 8 characters should show an error message.
 ```
 
 Even if you do not know which file the existing scenario is in, the AI assistant finds it.
@@ -64,7 +64,7 @@ For an app with the same screens and the same IDs (such as Compose Multiplatform
 one scenario can run on both OSes.
 
 ```text
-Make the My Shop login test run on both iOS and Android. Run it on both devices to confirm.
+Make the My Shop login test work on both iOS and Android, then run it on both to confirm.
 ```
 
 For parts where the screens differ by OS, the AI assistant writes them separately as per-OS branches.
@@ -75,8 +75,8 @@ Screens that sometimes appear and sometimes do not, such as first-launch guides,
 are the biggest cause of unstable tests. When you notice one, mention it in your request.
 
 ```text
-My Shop sometimes shows a dialog called "Spring campaign" right after launch. It closes with "Close" at the top right.
-Fix the login test so that it closes the dialog if it appears and then continues.
+My Shop sometimes shows a "Spring campaign" dialog right after launch. "Close" at the top right dismisses it.
+Update the login test so that it closes the dialog when it appears, then continues.
 ```
 
 **Include the dialog's name and the label of its close button** (and, if you can, a screenshot of the screen while it is shown).
@@ -90,7 +90,7 @@ press "Start Recording", operate the app shown on screen, and then press "Stop R
 operations become a scenario. A scenario created by recording has no "what must be visible for it to succeed", so
 
 ```text
-There is a scenario created by recording in scenarios/Generated/. Add verification of what is shown on the screen to each scene.
+scenarios/Generated/ contains a scenario created by recording. Add checks for what's on screen to each scene.
 ```
 
 ask the AI assistant to finish it like this, and it becomes a complete test. For details, see

@@ -16,10 +16,10 @@
 
 ```text
 自分のアプリ向けに、fleetest のプロファイルを作成して。
-アプリの表示名は「My Shop」、アプリ ID は iOS が com.example.myshop、Android が com.example.myshop.android。
-ビルド済みのアプリは ~/builds/MyShop.app(iOS Simulator 向け)と ~/builds/myshop-debug.apk。
-デバイスはこの Mac で使える最新 OS の Simulator / Emulator を選んで。
-完了条件: 作成した実行プロファイルの名前を報告。テストの実行は不要。
+アプリの表示名は「My Shop」。アプリ ID は iOS が com.example.myshop、Android が com.example.myshop.android。
+ビルド済みのアプリは ~/builds/MyShop.app(iOS Simulator 向け)と ~/builds/myshop-debug.apk にある。
+デバイスには、この Mac で使える最新 OS の Simulator / Emulator を選んで。
+作成した実行プロファイルの名前を報告したら終わりにして。テストは実行しなくてよい。
 ```
 
 - **表示名**は、ホーム画面でアイコンの下に出る名前そのものにします(「(テスト用)」などの注記を足さない)。
@@ -54,8 +54,8 @@ VSCode 拡張のデバイスモニターの「プロファイル」タブから�
 
 ```text
 fleetest の実行プロファイル ios に、iPhone の Simulator をあと2台追加して。
-無ければ同じ機種・同じ OS で作成してよい。
-完了条件: 追加後の実行プロファイルのデバイス一覧を報告。
+使える Simulator が無ければ、同じ機種・同じ OS で作成してよい。
+追加したら、実行プロファイルのデバイス一覧を報告して。
 ```
 
 同時に動かせる台数は Mac のメモリと CPU で決まります。増やして遅くなったら、減らすよう頼んでください。
@@ -78,8 +78,8 @@ fleetest は画面の消えた端末を起こせません。
 
 ```text
 USB でつないだ iPhone を、fleetest の新しい実行プロファイル ios-physical として登録して。
-アプリは既存のアプリプロファイルのものを使う。実機向けのアプリは ~/builds/MyShop.ipa。
-完了条件: 実行プロファイルの名前と、端末が認識されたかを報告。
+アプリは既存のアプリプロファイルのものを使い、実機向けのビルドには ~/builds/MyShop.ipa を使って。
+登録したら、実行プロファイルの名前と、端末が認識されたかどうかを報告して。
 ```
 
 実機を複数つないでいるときは、どの端末かを機種名で添えてください(「USB でつないだ iPhone 15 を…」)。
@@ -94,7 +94,7 @@ iOS の実機向けアプリは署名済みのもの(`.ipa` または `.app`)が
 登録を直すよう頼みます。
 
 ```text
-fleetest のアプリプロファイルの iOS のアプリのパスを ~/builds/MyShop-2.0.app に変えて。
+fleetest のアプリプロファイルにある iOS のアプリのパスを、~/builds/MyShop-2.0.app に変えて。
 ```
 
 ## もっと詳しく
