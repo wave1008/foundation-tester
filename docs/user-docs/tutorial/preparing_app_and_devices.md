@@ -12,7 +12,7 @@ You can create both by asking an AI assistant. You do not need to write JSON by 
 
 ## First registration
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Create fleetest profiles for my app.
@@ -50,7 +50,7 @@ You can also create and edit them from the **Profiles** tab of the VSCode extens
 With more devices, tests are distributed to them automatically and the overall time gets shorter
 (you do not need to rewrite any scenario).
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Add two more iPhone Simulators to the fleetest run profile ios-run.
@@ -74,7 +74,7 @@ A physical device connected over USB can also be used for tests. **First turn of
 (iOS: Settings → Display & Brightness → Auto-Lock → Never. Android: Settings → Display → set Screen timeout long enough).
 fleetest cannot wake a device whose screen has turned off.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Register the iPhone connected over USB as a new fleetest run profile named ios-physical.

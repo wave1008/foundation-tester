@@ -4,7 +4,7 @@ Every time you run tests, the results are kept, pass or fail. You can leave the 
 
 ## Have the results summarized
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Summarize the latest fleetest run. If anything failed, list the failed scenarios and the steps where they failed.
@@ -28,7 +28,7 @@ Below is an excerpt of a real report (from the sample app: a test that failed wh
 
 <img src="../images/tutorial/en/report_failure.png" width="600" alt="Excerpt of a failed report: the failed step and its message, the element list at the moment of failure (collapsed), and the screenshot">
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Use the reports to find out why scenarios failed in the latest fleetest run, and report back.
@@ -59,7 +59,7 @@ whether it is based on the facts written in the report.
 
 If you keep running tests, you start to see tests that sometimes pass and sometimes fail.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Go through past fleetest results and find scenarios that are flaky (sometimes pass, sometimes fail) and scenarios that have been getting slower.

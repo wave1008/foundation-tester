@@ -9,7 +9,7 @@
 [sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile)(Compose Multiplatform・iOS / Android 両対応)
 を使います。
 
-### AIアシスタントで実行
+### AIへの指示文
 
 ```text
 https://github.com/wave1008/sut-ec-mobile をこのフォルダの隣に clone して、サーバを起動して。
@@ -43,7 +43,7 @@ cd sut-ec-mobile
 
 アプリプロファイルと実行プロファイルを作成します。
 
-### AIアシスタントで実行
+### AIへの指示文
 
 iOS の場合:
 
@@ -104,20 +104,22 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 
 ログイン画面を対象に、探索的テストを作成してみましょう。
 
-### AIアシスタントで実行
+### AIへの指示文
 
 ```text
-sut-ec-mobile(SUT Store)のログイン画面だけを対象に、探索的テストを作成して。
+sut-ec-mobile(SUT Store)のログイン画面だけを対象に、探索的テストを作成して。アプリを日本語モードに切り替える処理は setUp に書いて。
 ```
 
 AIアシスタントはデバイス上でアプリを起動し、ログイン画面を操作しながら要素を読み取って、
 見つけた挙動をテストシナリオに落とします。
+sut-ec-mobile の表示言語(アカウント → 言語)はデバイスごとに保存されるので、`setUp`(各テストの前に毎回実行される共通処理)で切り替えておくと、
+どのデバイスでも同じ表示でテストが動きます。英語で作るなら「英語モード」と頼みます。
 
 ## 4. デバイスで実行する
 
 作成したテストシナリオを実行してみましょう。
 
-### AIアシスタントで実行
+### AIへの指示文
 
 ```text
 作成したシナリオを iOS で実行して。
@@ -146,7 +148,7 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 
 レポートを要約し、エラーを分析してみましょう。
 
-### AIアシスタントで実行
+### AIへの指示文
 
 ```text
 今の実行結果を要約し、失敗があればレポートから原因を調べて。

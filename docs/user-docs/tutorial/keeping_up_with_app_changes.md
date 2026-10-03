@@ -19,7 +19,7 @@ If a step passed thanks to self-healing, the report keeps a **suggestion** like 
 
 ### Apply the suggestions to the scenario
 
-#### Do it with the AI assistant
+#### Prompt for the AI
 
 ```text
 Review the self-healing suggestions in the latest fleetest report and apply the reasonable ones to the scenarios.
@@ -40,7 +40,7 @@ Compare the before and after, choose the suggestions to apply, and press "Apply 
 
 When the screen layout or the steps themselves change, self-healing can't keep up. Ask while including what changed.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 The My Shop login screen has a new design (the email address and password are now on separate screens).

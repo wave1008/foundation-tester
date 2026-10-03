@@ -11,7 +11,7 @@ You can use it without being able to read its contents, but if you want to check
 
 You specify a screen and let the AI assistant decide what to check as well. This suits your first test.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Create an exploratory test for just the My Shop login screen.
@@ -31,7 +31,7 @@ Here is the result of actually asking this for the sample app ([SUT Store](https
 
 When the steps you want to check are already decided, write the steps and "what must be visible for it to succeed".
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Create an iOS test for My Shop with these steps:
@@ -46,7 +46,7 @@ If you do not write "what to check", you may get a test that only performs opera
 
 ## Add to an existing test
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Add a case to the My Shop login test: a password shorter than 8 characters should show an error message.

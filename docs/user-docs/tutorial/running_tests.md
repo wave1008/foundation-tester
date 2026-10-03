@@ -8,7 +8,7 @@ plays the role of "starting the run and reading the results".
 
 Before running on a device, a verification that does not use a device (dry-run) finds typos and missing verifications in a few seconds.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Dry-run all fleetest scenarios and list any warnings.
@@ -27,7 +27,7 @@ In VSCode, select a scenario in the Test Explorer and use "Run (dry-run)".
 
 ## Run
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Run all fleetest scenarios on iOS and report the results when it's done.

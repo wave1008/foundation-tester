@@ -8,7 +8,7 @@ them. You do not write scenarios by hand.
 The app under test is [sut-ec-mobile](https://github.com/wave1008/sut-ec-mobile), a sample
 e-commerce shopping app (Compose Multiplatform, for both iOS and Android).
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Clone https://github.com/wave1008/sut-ec-mobile next to this folder and start the server.
@@ -42,7 +42,7 @@ See `server/README.md` in sut-ec-mobile for the details of starting the server.
 
 Create the app profile and the run profile.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 For iOS:
 
@@ -104,20 +104,22 @@ See [Profiles](./reference/project/profiles.md) for the details.
 
 Let's create exploratory tests for the login screen.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
-Create exploratory tests for just the login screen of sut-ec-mobile (SUT Store).
+Create exploratory tests for just the login screen of sut-ec-mobile (SUT Store). Put the step that switches the app to English mode in setUp.
 ```
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
 operating it, and turns the behavior it finds into test scenarios.
+sut-ec-mobile saves its display language (Account → Language) on each device, so switching it in `setUp` (the shared
+step that runs before every test) makes the tests see the same screens on every device. Ask for "Japanese mode" to create them in Japanese.
 
 ## 4. Run it on a device
 
 Let's run the test scenarios you created.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Run the scenarios you created on iOS.
@@ -145,7 +147,7 @@ Every run writes a Markdown report per scenario to `TestProjects/<project>/repor
 
 Let's summarize the reports and analyze the errors.
 
-### Do it with the AI assistant
+### Prompt for the AI
 
 ```text
 Summarize the results of that run. If anything failed, use the report to find out why.
