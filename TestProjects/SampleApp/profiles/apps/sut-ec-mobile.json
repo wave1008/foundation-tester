@@ -1,4 +1,5 @@
 {
+  "platform": "hybrid",
   "android": {
     "appName": "SUT Store",
     "app": "com.sutec.mobile",

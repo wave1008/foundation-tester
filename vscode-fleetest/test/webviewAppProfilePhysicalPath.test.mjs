@@ -84,7 +84,8 @@ const APP_PROFILE_DATA = {
   ok: true,
   error: null,
   fields: {
-    common: { autoInstall: "true" },
+    platform: "hybrid",
+    autoInstall: "true",
     ios: {
       appName: "サンプル",
       app: "com.example.sampleapp",

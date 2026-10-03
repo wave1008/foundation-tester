@@ -57,6 +57,10 @@ export const webviewMonitorBStrings = {
 
   // runProfileDevicesTab.js
   "wvMonitor2.common.remove": { ja: "除去", en: "Remove" },
+  "wvMonitor2.runProfileDevice.scopeWarning": {
+    ja: "アプリプロファイル「{app}」の対象 OS が {platform} のため、登録されている {other} のデバイス {count} 台({names})は一覧に出さず、実行時も無視します(JSON からは消していません)",
+    en: "App profile \"{app}\" targets {platform}, so the {count} registered {other} device(s) ({names}) are hidden here and ignored at run time (they are kept in the JSON)",
+  },
   "wvMonitor2.runProfileDevice.empty": {
     ja: "デバイスがありません。上のボタンから追加できます。",
     en: "No devices. You can add one from the button above.",

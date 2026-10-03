@@ -10,21 +10,26 @@
 
 ## アプリプロファイル
 
-`apps/<name>.json` は `common` セクションと `ios`/`android` セクションを後勝ちでマージします
-(OS 別セクションが優先):
+`apps/<name>.json` は最上位のキー(`platform`・`autoInstall`・`healthCheckURL`)と、
+`ios`/`android` セクションで構成します:
 
 ```json
-{ "common":  { "autoInstall": true },
+{ "platform": "hybrid",
+  "autoInstall": true,
   "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp",
                "appPath": "~/builds/SampleApp.app" },
   "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp",
                "appPath": "builds/app-debug.apk" } }
 ```
 
-- `autoInstall` は `common` からのみ読まれます(既定は `appPath` か `appPathPhysical` の有無。
+- `platform`(任意): `"ios"` / `"android"` / `"hybrid"` — アプリが動く OS。`hybrid` は両方で、省略も `hybrid` と同じです
+  (VSCode 拡張のプロファイル画面で保存すると `hybrid` も明示で書きます)。
+  アプリが対象にしない OS のデバイスは**実行時に無視**されます(1台ごとに警告が出ます。実行プロファイルの
+  JSON は変わりません)。全デバイスが無視される実行は、アプリプロファイル名を挙げてエラーになります。
+- `autoInstall` は最上位のキーです(既定は `appPath` か `appPathPhysical` の有無。
   パスがあってもインストールを止めたいときだけ `false` を明示します)。
 - `appName`(表示名)・`app`(bundle ID / パッケージ名)・`appPath` は `ios`/`android` セクションに
-  書いたものだけが採用されます(`common` に書いても無視されるため、表示名を OS ごとに書き分けられます)。
+  書いたものだけが採用されます(表示名を OS ごとに書き分けられます)。
 - `appName` は**ホーム画面でアイコンの下に出る名前そのもの**にします。名前を省いた `tapAppIcon()` はこれを
   探し、システムアラートがこのアプリのものかもこの名前で判定します。プロファイルを区別するための注記
   (「(実機)」等)は足さないでください。iOS では、`appPath` のアプリから読んだ表示名(`CFBundleDisplayName`、
@@ -39,7 +44,7 @@
   覚えます。パッケージも覚えた答えも無いとき(物理端末に別の方法で入れたアプリ)は、アクセシビリティの木の
   要素ごとに決めます(Compose / Flutter が出す自前描画の要素には送り、ビューを持つ要素には送りません)。
   実行時に1回そう言います。一度 `appPath` / `appPathPhysical` にパッケージを指せば、以後は覚えた答えで動きます。
-- `healthCheckURL`(`common` のみ・任意): 実行開始前に到達確認するバックエンドの URL
+- `healthCheckURL`(最上位・任意): 実行開始前に到達確認するバックエンドの URL
   (3秒タイムアウト。不達でも警告だけでブロックしません)。
 
 ## デバイス

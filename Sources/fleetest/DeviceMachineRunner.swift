@@ -38,9 +38,11 @@ enum DeviceMachineRunner {
     /// 外した機械へ自動ディスパッチする/手元でリモートのデバイスを探す。全部外れたら断る
     static func plan(project: TestProject, profileName: String,
                      explicitHost: String?, deviceFilter: [String],
-                     disabledMachines: Set<String>) throws -> [Group]? {
+                     disabledMachines: Set<String>,
+                     overrides: [String: RunProfileSetValue] = [:]) throws -> [Group]? {
         if explicitHost != nil { return nil }
-        var devices = ProfileResolver.runDeviceMachines(project: project, runProfileName: profileName)
+        var devices = ProfileResolver.runDeviceMachines(
+            project: project, runProfileName: profileName, overrides: overrides)
         if !deviceFilter.isEmpty {
             let wanted = Set(deviceFilter)
             devices = devices.filter { wanted.contains($0.name) }

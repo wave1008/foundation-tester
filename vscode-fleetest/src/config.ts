@@ -310,8 +310,8 @@ export function listAppProfileNames(workspaceRoot: string, project: string): str
 
 /**
  * TestProjects/<project>/profiles/apps/<name>.json から platform 向けの起動対象を読む。
- * app/appPath は platform セクションのみ参照する(RunProfile.swift AppProfileSection.merging:
- * common へのフォールバックは無い。common.app は非推奨)。bundle が無ければ null。
+ * app/appPath は platform セクションのみ参照する(RunProfile.swift AppProfile.section(for:))。
+ * bundle が無ければ null。
  */
 export function readAppProfileTarget(
   workspaceRoot: string,
@@ -356,7 +356,7 @@ export interface AppProfileDetail {
 }
 
 /** ライブ操作パネルの詳細表示用。readAppProfileTarget と違い bundle 欠落でも null にせず、
- * 表示名(platform セクションのみ。common からは継承しない)と
+ * 表示名(platform セクションのみ)と
  * platform セクションの app / appPath を個別に返す。ファイル未読/解析失敗のみ null。 */
 export function readAppProfileDetail(
   workspaceRoot: string,
@@ -374,9 +374,7 @@ export function readAppProfileDetail(
     const section = typeof record[platform] === "object" && record[platform] !== null
       ? (record[platform] as Record<string, unknown>) : undefined;
     const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-    // 表示名は platform セクションのみ。**common からは継承しない**(Sources/FTCore/RunProfile.swift
-    // の AppProfileSection.merging と同期。common に残っている appName は CLI 側が未知キーとして
-    // 警告する対象なので、ここで拾うと警告と表示が食い違う)
+    // 表示名は platform セクションのみ(Sources/FTCore/RunProfile.swift の AppProfile.section(for:) と同期)
     const appName = str(section?.appName);
     const bundle = str(section?.app);
     const rawAppPath = str(section?.appPath);

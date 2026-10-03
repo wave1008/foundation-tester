@@ -1,7 +1,6 @@
 {
-  "common": {
-    "autoInstall": true
-  },
+  "platform": "android",
+  "autoInstall": true,
   "android": {
     "appName": "FT E2EX Android",
     "app": "com.ftester.e2ex.android",

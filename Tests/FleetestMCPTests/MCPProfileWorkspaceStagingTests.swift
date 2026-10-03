@@ -34,7 +34,7 @@ final class MCPProfileWorkspaceStagingTests: XCTestCase {
         try FileManager.default.createDirectory(
             at: source.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "binary".write(to: source, atomically: true, encoding: .utf8)
-        try #"{"common":{"autoInstall":true},"android":{"app":"com.example.sample","appPath":"\#(source.path)"}}"#
+        try #"{"autoInstall":true,"android":{"app":"com.example.sample","appPath":"\#(source.path)"}}"#
             .write(to: profiles.appendingPathComponent("apps/app.json"), atomically: true, encoding: .utf8)
         let emu = #"{"platform":"android","machine":"local","name":"Emu","avd":"Pixel_9"}"#
         try #"{"app":"app","devices":[\#(emu)]}"#

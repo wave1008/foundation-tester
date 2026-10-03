@@ -1,8 +1,7 @@
 {
-  "common": {
-    "autoInstall": true,
-    "healthCheckURL": "http://localhost:8090/"
-  },
+  "platform": "hybrid",
+  "autoInstall": true,
+  "healthCheckURL": "http://localhost:8090/",
   "ios": {
     "appName": "SUT Store",
     "app": "com.sutec.mobile",

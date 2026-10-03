@@ -30,8 +30,9 @@ import {
   type MonitorRunEntry,
 } from "./monitorDeviceModel";
 import type { DeviceOpKind, DeviceOpQueueStatus } from "./monitorDeviceLifecycle";
+import { isAppPlatformScope } from "./monitorProfileForms";
 import type {
-  AppProfileCommonFields,
+  AppPlatformScope,
   AppProfileFormFields,
   AppProfileIOSFields,
   AppProfilePlatformFields,
@@ -154,6 +155,9 @@ export type MonitorToWebviewMessage =
       readonly filter: MonitorDeviceFilter;
       /** 対象プロジェクトのアプリプロファイル名一覧(profiles/apps/ 直下)。 */
       readonly apps: readonly string[];
+      /** アプリプロファイル名 → 対象 OS(最上位 platform。欠落・読めない = hybrid)。実行プロファイルの
+       * 編集欄が、参照するアプリの対象 OS でセクションとデバイス一覧を絞るのに使う。 */
+      readonly appPlatforms: Readonly<Record<string, AppPlatformScope>>;
       /** 対象プロジェクト名(解決できなければ "")。ワークスペース欄の既定値
        * "TestProjects/<project>/workspace" を透かしで出すのに使う(相対パスはリポジトリルート
        * 基準なので、この文字列はそのまま入力しても既定と同じ場所を指す)。 */
@@ -315,8 +319,14 @@ export type MonitorToWebviewMessage =
       readonly error: string | null;
     }
   // apps/<name>.json の FileSystemWatcher(onDidChange)による外部編集の通知(runProfileFileChanged
-  // と同じ方針)。
-  | { readonly type: "appProfileFileChanged"; readonly name: string }
+  // と同じ方針)。appPlatforms は profileInfo と同じ形の最新値 —— 対象 OS の変化を実行プロファイルの
+  // 編集欄へ届けるのにここへ載せる(profileInfo を再送すると、アプリプロファイルの編集欄が自動保存の
+  // たびに読み込み中へ差し替わり、入力中のフォーカスが外れる)。
+  | {
+      readonly type: "appProfileFileChanged";
+      readonly name: string;
+      readonly appPlatforms: Readonly<Record<string, AppPlatformScope>>;
+    }
   // 名前入力モーダル(#name-input-overlay)を開く。プロファイル追加/コピー/名前変更(monitorPanel.ts
   // の promptName)に共通で使う。id は拡張側の使い捨てトークンで nameInputConfirm/Cancel と対応付ける。
   | {
@@ -1013,14 +1023,7 @@ function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
   );
 }
 
-/** アプリプロファイル common セクション(自動インストールのみ。表示名は ios/android のそれぞれで
- * 持ち common からは継承しない)の検証。autoInstall は common に一本化されているため
- * "true"/"false" の2値のみ受理する。 */
-function isAppProfileCommonFieldsLike(value: unknown): value is AppProfileCommonFields {
-  return isRecord(value) && (value.autoInstall === "true" || value.autoInstall === "false");
-}
-
-/** アプリプロファイル ios/android セクション(3項目)の検証。autoInstall は common 側で検証する。 */
+/** アプリプロファイル ios/android セクション(3項目)の検証。autoInstall・platform は最上位で検証する。 */
 function isAppProfilePlatformFieldsLike(value: unknown): value is AppProfilePlatformFields {
   return (
     isRecord(value) &&
@@ -1271,7 +1274,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.profile === "string" &&
         value.profile !== "" &&
         isRecord(value.fields) &&
-        isAppProfileCommonFieldsLike(value.fields.common) &&
+        isAppPlatformScope(value.fields.platform) &&
+        (value.fields.autoInstall === "true" || value.fields.autoInstall === "false") &&
         isAppProfileIOSFieldsLike(value.fields.ios) &&
         isAppProfilePlatformFieldsLike(value.fields.android)
       );

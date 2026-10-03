@@ -10,22 +10,27 @@ combined by reference rather than by inheritance:
 
 ## App profiles
 
-`apps/<name>.json` merges a `common` section with an `ios`/`android` section (the OS-specific
-section wins on conflicts):
+`apps/<name>.json` has top-level keys (`platform`, `autoInstall`, `healthCheckURL`) plus an
+`ios` and an `android` section:
 
 ```json
-{ "common":  { "autoInstall": true },
+{ "platform": "hybrid",
+  "autoInstall": true,
   "ios":     { "appName": "Sample App", "app": "com.example.sampleapp",
                "appPath": "~/builds/SampleApp.app" },
   "android": { "appName": "Sample App", "app": "com.example.sampleapp",
                "appPath": "builds/app-debug.apk" } }
 ```
 
-- `autoInstall` is only read from `common` (default: whether `appPath` or `appPathPhysical` is
+- `platform` (optional): `"ios"`, `"android"` or `"hybrid"` — the OS(es) the app runs on. `hybrid` means
+  both, and omitting the key means the same (saving from the VS Code extension's Profiles tab writes
+  `hybrid` explicitly too). Devices of an OS the app does not target are **ignored at run time**
+  (each one is reported as a warning; the run profile's JSON is not changed). A run whose devices are
+  all ignored fails with an error naming the app profile.
+- `autoInstall` is a top-level key (default: whether `appPath` or `appPathPhysical` is
   set — write `false` explicitly to opt out even with a path present).
 - `appName` (display name), `app` (bundle ID / package) and `appPath` are only read from the
-  `ios`/`android` sections (writing them in `common` is ignored, so the display name can differ
-  per OS).
+  `ios`/`android` sections, so the display name can differ per OS.
 - `appName` must be exactly the name shown under the app icon on the home screen: `tapAppIcon()`
   without a name looks for it, and a system alert is attributed to your app by it. Do not add a
   suffix to tell profiles apart (e.g. "(device)"). On iOS, a run (and `api validate-profile`)
@@ -42,7 +47,7 @@ section wins on conflicts):
   accessibility tree (custom-drawn elements, as Compose / Flutter expose them, get the gesture; view-backed
   ones do not) and the run says so once. Point `appPath` / `appPathPhysical` at the package once to
   settle it for good.
-- `healthCheckURL` (in `common`, optional): a backend URL checked at the start of a run
+- `healthCheckURL` (top-level, optional): a backend URL checked at the start of a run
   (3-second timeout, warns but does not block).
 
 ## Devices

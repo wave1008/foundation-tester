@@ -366,7 +366,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                deviceNames: devices, runner: runner, deviceMachine: deviceMachine,
                allMachines: allMachines,
                devices: ProfileResolver.runDeviceMachines(
-                   project: testProject, runProfileName: profile)) {
+                   project: testProject, runProfileName: profile, overrides: profileOverrides)) {
             throw ValidationError(message)
         }
         // デバイスが複数の機械にまたがる実行プロファイルは、ホストごとの子プロセス(`fleetest api
@@ -378,7 +378,8 @@ struct ApiRunCommand: AsyncParsableCommand {
            let groups = try DeviceMachineRunner.plan(
                project: testProject, profileName: profile, explicitHost: runner,
                deviceFilter: devices,
-               disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load())) {
+               disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load()),
+               overrides: profileOverrides) {
             if debug {
                 throw ValidationError(
                     "--debug is not supported with a profile that spans multiple machines"

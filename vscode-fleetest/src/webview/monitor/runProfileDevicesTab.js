@@ -64,6 +64,7 @@ export function prefixedOsVersion(platform, os) {
 
 export const btnDeviceAddExisting = document.getElementById('btn-run-profile-device-add-existing');
 const deviceList = document.getElementById('run-profile-devices');
+const scopeWarning = document.getElementById('run-profile-devices-scope-warning');
 const deviceMenu = document.getElementById('run-profile-device-menu');
 const deviceMenuItemBtn = document.getElementById('run-profile-device-menu-item');
 const deviceMenuWipeBtn = document.getElementById('run-profile-device-menu-wipe');
@@ -80,6 +81,72 @@ let rowElements = new Map();
 // 選択中デバイスの**キー**(複数選択、Finder/VSCode 標準セマンティクス)。
 let selectedKeys = new Set();
 let selectionAnchor = null;
+// 参照するアプリプロファイルの対象 OS(runProfilesTab.js の applyRunProfilePlatformScope が渡す)。
+// 対象外 OS の行は**表示だけ**落とす —— rows には残すので、currentDeviceEntries は JSON の
+// エントリを消さずに書き戻す(実行時に無視するのは Sources/FTCore の AppPlatformScope)
+let platformScope = 'hybrid';
+let platformScopeApp = '';
+
+function inScope(row) {
+  return platformScope === 'hybrid' || row.platform === platformScope;
+}
+
+/** runProfilesTab.js が、実行プロファイルのアプリ(と、その対象 OS)が決まるたびに呼ぶ。 */
+export function setDevicePlatformScope(scope, app) {
+  if (scope === platformScope && app === platformScopeApp) {
+    return;
+  }
+  // 作り直す前に、画面のチェック状態を行へ写す(作り直しで未保存のチェックを失わない)
+  for (const row of rows) {
+    const el = rowElements.get(row.key);
+    if (el) {
+      row.checked = el.checkbox.checked;
+    }
+  }
+  platformScope = scope;
+  platformScopeApp = app;
+  for (const key of [...selectedKeys]) {
+    const row = rows.find((r) => r.key === key);
+    if (!row || !inScope(row)) {
+      selectedKeys.delete(key);
+    }
+  }
+  if (selectionAnchor !== null && !selectedKeys.has(selectionAnchor)) {
+    selectionAnchor = null;
+  }
+  if (rows.length > 0 || rowElements.size > 0) {
+    renderRows();
+  } else {
+    renderScopeWarning();
+  }
+}
+
+function rowChecked(row) {
+  const el = rowElements.get(row.key);
+  if (el) {
+    return el.checkbox.checked;
+  }
+  return row.checked ?? (row.wasInProfile && row.enabled);
+}
+
+// JSON に登録済みで対象 OS から外れた行(enabled:false も含む = 台帳に居る分)を名指しする
+function renderScopeWarning() {
+  const hidden = rows.filter((row) => row.wasInProfile && !inScope(row));
+  if (hidden.length === 0) {
+    scopeWarning.style.display = 'none';
+    scopeWarning.textContent = '';
+    return;
+  }
+  const label = (platform) => (platform === 'ios' ? 'iOS' : 'Android');
+  scopeWarning.textContent = t('wvMonitor2.runProfileDevice.scopeWarning', {
+    app: platformScopeApp,
+    platform: label(platformScope),
+    other: label(platformScope === 'ios' ? 'android' : 'ios'),
+    count: hidden.length,
+    names: hidden.map((row) => row.name).join(', '),
+  });
+  scopeWarning.style.display = '';
+}
 
 /** runProfilesTab.js の renderRunProfileEditor / requestRunProfileLoad が、選択中プロファイルの
  * devices(フルボディ)で行一覧を作り直すときに呼ぶ。 */
@@ -124,6 +191,7 @@ export function clearDeviceRows() {
   selectionAnchor = null;
   rowElements = new Map();
   deviceList.textContent = '';
+  renderScopeWarning();
   closeDeviceMenu();
   btnDeviceAddExisting.disabled = true;
 }
@@ -137,8 +205,7 @@ export function clearDeviceRows() {
 export function currentDeviceEntries() {
   const result = [];
   for (const row of rows) {
-    const el = rowElements.get(row.key);
-    const checked = el ? el.checkbox.checked : row.wasInProfile && row.enabled;
+    const checked = rowChecked(row);
     if (!row.wasInProfile && !checked) {
       continue;
     }
@@ -219,7 +286,9 @@ export function compareDeviceRowsForDisplay(a, b) {
 function renderRows() {
   deviceList.textContent = '';
   rowElements = new Map();
-  if (rows.length === 0) {
+  renderScopeWarning();
+  const visibleRows = rows.filter(inScope);
+  if (visibleRows.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'run-profile-device-empty';
     empty.textContent = t('wvMonitor2.runProfileDevice.empty');
@@ -227,12 +296,12 @@ function renderRows() {
     updateSelectionUi();
     return;
   }
-  for (const row of [...rows].sort(compareDeviceRowsForDisplay)) {
+  for (const row of [...visibleRows].sort(compareDeviceRowsForDisplay)) {
     const rowEl = document.createElement('div');
     rowEl.className = 'run-profile-device-row-item';
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.checked = row.wasInProfile && row.enabled;
+    checkbox.checked = row.checked ?? (row.wasInProfile && row.enabled);
     checkbox.addEventListener('click', (event) => event.stopPropagation());
     const nameLine = document.createElement('div');
     nameLine.className = 'run-profile-device-name-line';

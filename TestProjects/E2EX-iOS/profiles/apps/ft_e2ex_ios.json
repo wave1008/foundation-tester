@@ -1,7 +1,6 @@
 {
-  "common": {
-    "autoInstall": true
-  },
+  "platform": "ios",
+  "autoInstall": true,
   "ios": {
     "appName": "FT E2EX iOS",
     "app": "com.ftester.e2ex.ios",

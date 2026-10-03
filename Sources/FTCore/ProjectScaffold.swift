@@ -334,11 +334,11 @@ public enum ProjectScaffold {
         `appPath` はセットアップでは**聞かない・書かない**(未設定なら自動インストールは無効 =
         インストール済みのアプリをそのまま使う)。自動インストールが必要になったら、後から
         `TestProjects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
-        (`appName`・bundle ID(`app`)・`appPath` は ios/android セクション、`autoInstall` は common)。
+        (`appName`・bundle ID(`app`)・`appPath` は ios/android セクション、`autoInstall` は最上位キー)。
         **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない**:
 
         ```json
-        { "common": { "autoInstall": true },
+        { "autoInstall": true,
           "ios":    { "appName": "\(name)", "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
         ```
         `appPath` の相対パスはリポジトリルート基準(`builds/x.app` → `<repoRoot>/builds/x.app`)。`~`・絶対パスも可。

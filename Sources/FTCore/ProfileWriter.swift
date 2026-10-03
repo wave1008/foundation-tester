@@ -32,8 +32,8 @@ public enum ProfileWriter {
         explicit ?? (existingRunProfile["app"] as? String) ?? projectName.lowercased()
     }
 
-    /// アプリプロファイルをマージする。フィールドの置き場所は固定(AppProfileSection.merging):
-    /// appName・app(ID)・appPath は platform セクション、autoInstall は common(こちらは触らない)。
+    /// アプリプロファイルをマージする。appName・app(ID)・appPath は ios/android セクション、
+    /// 最上位の platform/autoInstall/healthCheckURL は触らない。
     /// 既存の未知キーは温存し、指定した値だけを上書きする。**nil は「既存を残す」** ——
     /// `profile setup` はデバイスを足すたびに呼ばれる(fleetest-profiles の手順)ので、省略を削除と読むと
     /// 足しただけで appPath(= 自動インストール)と表示名が黙って消える。appName は既存も無ければ defaultAppName。

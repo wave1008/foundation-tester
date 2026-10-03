@@ -1455,6 +1455,10 @@ function openDevicePickModal() {
   devicePickCancel.disabled = false;
   // ホストの既定は常にローカル(実行プロファイルは単独の既定ホストを持たない)。
   resetDevicePickMachine();
+  // 実行プロファイルが継承した対象 OS の候補だけを出す(runProfilesTab.js が #run-profile-section に
+  // 写した値。隠した側の行は初期状態のままなので OK で追加されない)
+  devicePickOverlay.dataset.platformScope =
+    document.getElementById('run-profile-section').dataset.platformScope || 'hybrid';
   beginDevicePickLoading();
   devicePickOverlay.classList.add('visible');
   vscode.postMessage({ type: 'installedDevicesRequest', source: currentDeviceSource() });

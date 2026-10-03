@@ -17,7 +17,9 @@ import {
 } from "./config";
 import {
   addDevicesToRunProfile,
+  type AppPlatformScope,
   type AppProfileFormFields,
+  appPlatformScopeOf,
   buildRunProfileTemplate,
   machineDeviceDetail,
   type MonitorFromWebviewMessage,
@@ -32,14 +34,25 @@ import {
   validateNewProjectName,
   validateNewRunProfileName,
 } from "./monitorModel";
+import { isRecord } from "./monitorDeviceModel";
 import { type HookScaffoldResult, resolveWorkspaceDir, writeHookScriptTemplates } from "./runHookScaffold";
 import type { MonitorPanelDeps } from "./monitorPanel";
 import {
   MONITOR_RESTART_DEBOUNCE_MS,
+  appProfileNeedsRestart,
   monitorRestartNeeded,
   runProfileNeedsRestart,
   runProfileScopeKey,
 } from "./monitorScopeFiles";
+
+/** apps/<name>.json(絶対パス)の対象 OS。読めなければ hybrid(絞らない。エラーは CLI の validate が出す)。 */
+function readAppPlatformScope(file: string): AppPlatformScope {
+  try {
+    return appPlatformScopeOf(JSON.parse(fs.readFileSync(file, "utf8")));
+  } catch {
+    return "hybrid";
+  }
+}
 
 type RunProfileDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileDevicesSync" }>;
 type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
@@ -73,6 +86,8 @@ export class MonitorProfilesController {
   private readonly runFormWrites = new Map<string, string>();
   /** 直近の変化が手編集だった実行プロファイル(次のフォーム保存で1回再起動する。runProfileNeedsRestart) */
   private readonly runEditedOutside = new Set<string>();
+  /** アプリプロファイルごと(鍵 = 絶対パス)の、直近に見た対象 OS(appProfileNeedsRestart の前回値)。 */
+  private readonly appPlatformSeen = new Map<string, AppPlatformScope>();
   /**
    * 名前入力モーダル(#name-input-overlay)の応答待ち状態。promptName() 呼び出しごとに id を払い出し、
    * webview からの nameInputConfirm/Cancel の id と突き合わせて resolve する。
@@ -112,9 +127,26 @@ export class MonitorProfilesController {
     );
     this.appsFileWatcher.onDidCreate(() => this.postProfileInfo());
     this.appsFileWatcher.onDidDelete(() => this.postProfileInfo());
-    this.appsFileWatcher.onDidChange((uri) => {
-      this.deps.post({ type: "appProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
-    });
+    this.appsFileWatcher.onDidChange((uri) => this.handleAppProfileFileChanged(uri.fsPath));
+  }
+
+  /** apps/<name>.json の変化(watcher onDidChange)。フォームへ再ロードの合図と最新の appPlatforms を送り、
+   * 対象 OS が監視中の実行プロファイルに効く変化ならモニターを再起動する。 */
+  handleAppProfileFileChanged(filePath: string): void {
+    const name = path.basename(filePath, ".json");
+    const key = path.resolve(filePath);
+    const previous = this.appPlatformSeen.get(key);
+    // appPlatforms() が指紋 appPlatformSeen も更新する(profileInfo を再送しない理由は
+    // monitorWebviewMessages.ts の appProfileFileChanged)
+    this.deps.post({ type: "appProfileFileChanged", name, appPlatforms: this.appPlatforms() });
+    const next = this.appPlatformSeen.get(key) ?? readAppPlatformScope(key);
+    const selectedProfile = this.deps.getConfig().profile;
+    if (appProfileNeedsRestart({
+      previous, next, appName: name, selectedProfile,
+      selectedProfileApp: this.selectedRunProfileApp(selectedProfile),
+    })) {
+      this.restartMonitorDebounced();
+    }
   }
 
   /** dispose() から呼ばれる: 名前入力待ちの Promise が残っていればキャンセル扱いで解決する。 */
@@ -130,6 +162,10 @@ export class MonitorProfilesController {
     if (!monitorRestartNeeded(path.basename(uri.fsPath, ".json"), this.deps.getConfig().profile)) {
       return;
     }
+    this.restartMonitorDebounced();
+  }
+
+  private restartMonitorDebounced(): void {
     if (this.monitorRestartTimer) {
       clearTimeout(this.monitorRestartTimer);
     }
@@ -203,6 +239,7 @@ export class MonitorProfilesController {
       current: config.profile,
       filter: config.monitorDeviceFilter,
       apps,
+      appPlatforms: this.appPlatforms(),
       project: resolution.kind === "resolved" ? resolution.project : "",
       projectDir: resolution.kind === "resolved" ? this.projectDir(resolution.project) : "",
       devices: devices.map((device) => ({
@@ -222,6 +259,42 @@ export class MonitorProfilesController {
         model: device.model,
       })),
     });
+  }
+
+  /** 対象プロジェクトの全アプリプロファイルの対象 OS(profileInfo / appProfileFileChanged の appPlatforms)。 */
+  private appPlatforms(): Record<string, AppPlatformScope> {
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      return {};
+    }
+    const apps = listAppProfileNames(this.deps.workspaceRoot, resolution.project);
+    return Object.fromEntries(apps.map((name) => [name, this.appPlatformScope(resolution.project, name)]));
+  }
+
+  /** apps/<name>.json の対象 OS。モニター再起動の判定用の指紋(appPlatformSeen)もここで更新する。 */
+  private appPlatformScope(project: string, name: string): AppPlatformScope {
+    const file = path.resolve(path.join(this.appsDir(project), `${name}.json`));
+    const scope = readAppPlatformScope(file);
+    this.appPlatformSeen.set(file, scope);
+    return scope;
+  }
+
+  /** 選択中の実行プロファイル(fleetest.profile)が参照するアプリプロファイル名。読めなければ undefined。 */
+  private selectedRunProfileApp(selectedProfile: string): string | undefined {
+    if (selectedProfile === "") {
+      return undefined;
+    }
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      return undefined;
+    }
+    try {
+      const parsed: unknown = JSON.parse(
+        fs.readFileSync(path.join(this.runsDir(resolution.project), `${selectedProfile}.json`), "utf8"));
+      return isRecord(parsed) && typeof parsed.app === "string" ? parsed.app : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   /** プロジェクトのデバイスカタログ(config.ts の listProjectDeviceCatalog)。postProfileInfo と
@@ -582,8 +655,8 @@ export class MonitorProfilesController {
     try {
       fs.mkdirSync(appsDir, { recursive: true });
       // テンプレートは appName のみ(埋めるべき候補一覧が無く buildRunProfileTemplate とは異なる)。
-      // 表示名は ios/android のそれぞれに書く(common からは継承しないため、common には appName を書かない)。
-      const template = { android: { appName: name }, common: {}, ios: { appName: name } };
+      // 表示名は ios/android のそれぞれに書く。platform は既定の hybrid も明示で書く(updateAppProfileInObject と同じ)。
+      const template = { platform: "hybrid", ios: { appName: name }, android: { appName: name } };
       fs.writeFileSync(path.join(appsDir, `${name}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
       this.deps.outputChannel.appendLine(t("profiles.log.appProfileAdded", { name }));
       this.postProfileInfo();

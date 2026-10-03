@@ -1,4 +1,5 @@
 {
+  "platform": "hybrid",
   "ios": {
     "appName": "default",
     "app": "com.example.myapp"

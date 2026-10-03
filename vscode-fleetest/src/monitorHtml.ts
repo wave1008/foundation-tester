@@ -532,7 +532,7 @@ function renderProjectSection(): string {
 }
 
 function renderRunProfileSection(): string {
-  return `<div id="run-profile-section" class="profile-section run-profile-section">
+  return `<div id="run-profile-section" class="profile-section run-profile-section" data-platform-scope="hybrid">
       <div class="profile-toolbar">
         <span class="profile-toolbar-title">${t("panels.common.runProfile")}</span>
         <select id="run-profile-select" style="display: none;"></select>
@@ -561,6 +561,9 @@ function renderRunProfileSection(): string {
             <span class="profile-actions-label">${t("panels.runProfile.addDevicesLabel")}</span>
             <button id="btn-run-profile-device-add-existing" class="icon-button" title="${t("panels.runProfile.addExistingTitle")}" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
           </div>
+          <!-- 参照するアプリの対象 OS から外れたデバイスが JSON に居るときだけ出す(消さない・実行時は無視。
+               runProfileDevicesTab.js の renderScopeWarning) -->
+          <div id="run-profile-devices-scope-warning" class="modal-row run-profile-devices-scope-warning" style="display: none;"></div>
           <div class="profile-body run-profile-devices-pane">
             <div id="run-profile-devices" class="run-profile-device-list"></div>
           </div>
@@ -585,7 +588,7 @@ function renderRunProfileSection(): string {
               </div>
             </div>
           </div>
-          <div class="run-profile-section-group">
+          <div class="run-profile-section-group platform-ios">
             <div class="run-profile-section-title">${t("panels.runProfile.iosSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-ios-inapp-engine">
@@ -602,7 +605,7 @@ function renderRunProfileSection(): string {
               </div>
             </div>
           </div>
-          <div class="run-profile-section-group">
+          <div class="run-profile-section-group platform-android">
             <div class="run-profile-section-title">${t("panels.runProfile.androidSectionTitle")}</div>
             <div class="modal-row profile-checkbox-row">
               <input type="checkbox" id="run-profile-recover-cpu-fallback">
@@ -689,7 +692,7 @@ function renderRunProfileSection(): string {
 }
 
 function renderAppProfileSection(): string {
-  return `<div id="app-profile-section" class="profile-section app-profile-section">
+  return `<div id="app-profile-section" class="profile-section app-profile-section" data-platform-scope="hybrid">
       <div class="profile-toolbar">
         <span class="profile-toolbar-title">${t("panels.common.appProfile")}</span>
         <select id="app-profile-select" style="display: none;"></select>
@@ -705,16 +708,15 @@ function renderAppProfileSection(): string {
       <div id="app-profile-body" class="app-profile-body">
         <div id="app-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="app-profile-editor" class="app-profile-editor" style="display: none;">
-          <!-- common.app/appPath/appNameは廃止済み(ランタイムが無視するため入力欄なし。表示名は
-               ios/androidのみで指定し、commonからは継承しない)。
-               autoInstallは共通でのみ設定可能。**未指定の既定はパッケージパスの有無**
-               (RunProfile.swift の resolve と同期。片方だけ変えない)。 -->
-          <div class="app-profile-group-title">${t("panels.appProfile.commonGroupTitle")}</div>
+          <!-- 最上位の platform / autoInstall(RunProfile.swift の AppProfile と同期)。autoInstall の
+               **未指定の既定はパッケージパスの有無**(RunProfile.swift の resolve と同期。片方だけ変えない)。 -->
+          ${renderAppPlatformScopeRow()}
           <div class="modal-row profile-checkbox-row">
-            <input type="checkbox" id="app-profile-common-auto-install">
-            <label for="app-profile-common-auto-install">${t("panels.appProfile.autoInstallLabel")}</label>
+            <input type="checkbox" id="app-profile-auto-install">
+            <label for="app-profile-auto-install">${t("panels.appProfile.autoInstallLabel")}</label>
           </div>
 
+          <div class="app-profile-platform-group platform-ios">
           <div class="app-profile-group-title app-profile-group-title-ios">iOS</div>
           <div class="modal-row">
             <label for="app-profile-ios-app-name">${t("panels.appProfile.displayNameLabel")}</label>
@@ -736,7 +738,9 @@ function renderAppProfileSection(): string {
             <input type="text" id="app-profile-ios-app-path-physical">
           </div>
           <div class="modal-row profile-hint">${t("panels.appProfile.packagePathPhysicalHint")}</div>
+          </div>
 
+          <div class="app-profile-platform-group platform-android">
           <div class="app-profile-group-title app-profile-group-title-android">Android</div>
           <div class="modal-row">
             <label for="app-profile-android-app-name">${t("panels.appProfile.displayNameLabel")}</label>
@@ -750,10 +754,26 @@ function renderAppProfileSection(): string {
             <label for="app-profile-android-app-path">${t("panels.appProfile.packagePathLabel")}</label>
             <input type="text" id="app-profile-android-app-path">
           </div>
+          </div>
 
         </div>
       </div>
     </div>`;
+}
+
+/** アプリプロファイルの対象 OS(最上位 platform。自動保存の対象)。選んでいない OS の欄は
+ * .platform-ios / .platform-android を data-platform-scope で隠す —— アプリプロファイルは
+ * #app-profile-section、実行プロファイルは参照するアプリの値を #run-profile-section に写す
+ * (appProfilesTab.js / runProfilesTab.js・style.css)。 */
+function renderAppPlatformScopeRow(): string {
+  return `<div id="app-profile-platform-row" class="modal-row app-profile-platform-row" title="${t("panels.profiles.platformScopeTitle")}">
+            <label>${t("panels.profiles.platformScopeLabel")}</label>
+            <div class="modal-radio-group">
+              <label class="modal-radio"><input type="radio" id="app-profile-platform-ios" name="app-profile-platform" value="ios">iOS</label>
+              <label class="modal-radio"><input type="radio" id="app-profile-platform-android" name="app-profile-platform" value="android">Android</label>
+              <label class="modal-radio"><input type="radio" id="app-profile-platform-hybrid" name="app-profile-platform" value="hybrid" checked>${t("panels.profiles.platformScopeHybrid")}</label>
+            </div>
+          </div>`;
 }
 
 function renderProfilesPanel(): string {
@@ -1182,7 +1202,7 @@ function renderDevicePickOverlay(): string {
         </span>
       </div>
       <div id="device-pick-list" class="device-pick-list">
-        <div id="device-pick-ios-group" class="device-pick-group">
+        <div id="device-pick-ios-group" class="device-pick-group platform-ios">
           <!-- 見出しの文言は JS が台数付きで差し替えるので、**内側の span を名前付きにする**
                (見出し div へ直接書くと textContent の代入で「デバイスを作成 +」ごと消える)。 -->
           <div class="device-pick-group-title">
@@ -1192,7 +1212,7 @@ function renderDevicePickOverlay(): string {
           </div>
           <div id="device-pick-ios-body" class="device-pick-group-body"></div>
         </div>
-        <div id="device-pick-android-group" class="device-pick-group">
+        <div id="device-pick-android-group" class="device-pick-group platform-android">
           <div class="device-pick-group-title">
             <span id="device-pick-android-title">${t("panels.devicePick.androidGroupTitle")}</span>
             <span class="device-pick-add-label">${t("panels.devicePick.addNewLabel")}</span>

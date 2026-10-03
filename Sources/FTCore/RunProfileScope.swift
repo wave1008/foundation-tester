@@ -28,11 +28,17 @@ public enum RunProfileScope {
         guard let devices = runDoc.devices, !devices.isEmpty else {
             throw ProfileError.missingDevices(run: runProfileName)
         }
-        let roster = DeviceRoster(
-            entries: DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: enabledOnly))
-        guard !roster.isEmpty else {
+        let all = DeviceMachineGrouping.entries(runDevices: devices, enabledOnly: enabledOnly)
+        guard !all.isEmpty else {
             throw ProfileError.noEnabledDevices(run: runProfileName)
         }
-        return roster
+        // アプリプロファイルが読めないときは絞らない(エラーは resolve が受け持つ)
+        let scope = AppPlatformScoping.scope(project: project, runDoc: runDoc)
+        let scoped = AppPlatformScoping.partition(all, scope: scope)
+        guard !scoped.kept.isEmpty else {
+            throw ProfileError.noDevicesForAppPlatform(
+                run: runProfileName, app: runDoc.app ?? "", scope: scope, ignored: scoped.ignored.count)
+        }
+        return DeviceRoster(entries: scoped.kept)
     }
 }

@@ -596,7 +596,7 @@ struct RunScenarios: AsyncParsableCommand {
                 deviceNames: devices, runner: runner, deviceMachine: deviceMachine,
                 allMachines: allMachines,
                 devices: ProfileResolver.runDeviceMachines(
-                    project: ambiguityProject, runProfileName: profile)) {
+                    project: ambiguityProject, runProfileName: profile, overrides: profileOverrides)) {
                 throw ValidationError(message)
             }
         }
@@ -607,7 +607,8 @@ struct RunScenarios: AsyncParsableCommand {
            let groups = try DeviceMachineRunner.plan(
                project: try ScenarioHost.project(named: project), profileName: profile,
                explicitHost: runner, deviceFilter: devices,
-               disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load())) {
+               disabledMachines: MachineEnablement.disabledMachines(config: LocalConfig.load()),
+               overrides: profileOverrides) {
             let exitCode = try await DeviceMachineRunner.run(
                 project: try ScenarioHost.project(named: project), profileName: profile,
                 groups: groups, scenarios: scenarios, folders: folders,

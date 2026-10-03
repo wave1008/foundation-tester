@@ -30,6 +30,11 @@ final class RunProfileScopeTests: XCTestCase {
             .write(to: project.runsDir.appendingPathComponent("\(name).json"))
     }
 
+    private func writeAppProfile(_ json: String, name: String = "a") throws {
+        try FileManager.default.createDirectory(at: project.appsDir, withIntermediateDirectories: true)
+        try Data(json.utf8).write(to: project.appsDir.appendingPathComponent("\(name).json"))
+    }
+
     private func device(_ platform: String, _ name: String, machine: String = "local",
                         enabled: Bool? = nil, udid: String? = nil) -> [String: Any] {
         var d: [String: Any] = ["platform": platform, "machine": machine, "name": name]
@@ -134,5 +139,48 @@ final class RunProfileScopeTests: XCTestCase {
         XCTAssertThrowsError(try RunProfileScope.roster(project: project, runProfileName: "noplatform")) { error in
             guard case ProfileError.decodeFailed = error else { return XCTFail("\(error)") }
         }
+    }
+
+    // MARK: - アプリプロファイルの platform(対象 OS)
+
+    func testRosterIgnoresDevicesOfOtherPlatform() throws {
+        try writeAppProfile(#"{ "platform": "ios", "ios": { "app": "x" } }"#)
+        try writeRunProfile("mixed", devices: [device("ios", "シミュ1"), device("android", "エミュ1")])
+        let result = try RunProfileScope.roster(project: project, runProfileName: "mixed")
+        XCTAssertEqual(result.ios?.devices?.map(\.name), ["シミュ1"])
+        XCTAssertNil(result.android?.devices)
+    }
+
+    func testRosterKeepsBothPlatformsForHybridAndForMissingKey() throws {
+        try writeRunProfile("mixed", devices: [device("ios", "シミュ1"), device("android", "エミュ1")])
+        try writeAppProfile(#"{ "platform": "hybrid" }"#)
+        XCTAssertEqual(try RunProfileScope.roster(project: project, runProfileName: "mixed").android?.devices?.count, 1)
+        try writeAppProfile(#"{ "ios": { "app": "x" } }"#)
+        XCTAssertEqual(try RunProfileScope.roster(project: project, runProfileName: "mixed").android?.devices?.count, 1)
+    }
+
+    /// アプリプロファイルが無い・読めないときは絞らない(エラーは resolve が受け持つ)
+    func testRosterDoesNotFailWithoutAppProfile() throws {
+        try writeRunProfile("mixed", devices: [device("ios", "シミュ1"), device("android", "エミュ1")])
+        XCTAssertEqual(try RunProfileScope.roster(project: project, runProfileName: "mixed").android?.devices?.count, 1)
+        try writeAppProfile(#"{ "platform": "wat" }"#)
+        XCTAssertEqual(try RunProfileScope.roster(project: project, runProfileName: "mixed").android?.devices?.count, 1)
+    }
+
+    func testRosterThrowsWhenEveryDeviceIsOutOfScope() throws {
+        try writeAppProfile(#"{ "platform": "ios" }"#)
+        try writeRunProfile("droid", devices: [device("android", "エミュ1"), device("android", "エミュ2")])
+        XCTAssertThrowsError(try RunProfileScope.roster(project: project, runProfileName: "droid")) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "run profile droid has no enabled ios devices (app profile a targets ios only; 2 android device(s) are ignored)")
+        }
+    }
+
+    func testRunDeviceMachinesIgnoresOtherPlatform() throws {
+        try writeAppProfile(#"{ "platform": "android" }"#)
+        try writeRunProfile("mixed", devices: [device("ios", "シミュ1"), device("android", "エミュ1")])
+        let machines = ProfileResolver.runDeviceMachines(project: project, runProfileName: "mixed")
+        XCTAssertEqual(machines.map(\.name), ["エミュ1"])
     }
 }

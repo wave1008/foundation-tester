@@ -82,7 +82,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 **bundle ID を推測・探索で決めない。プロジェクトに登録済みのアプリプロファイルから選ばせる。**
 
 1. `TestProjects/<proj>/profiles/apps/*.json` を列挙する(または `fleetest profile list`)。各ファイルの
-   `common.appName`(表示名)と `ios.app` / `android.app`(bundle ID・パッケージ名)を読む。
+   `ios.appName`/`android.appName`(表示名)と `ios.app` / `android.app`(bundle ID・パッケージ名)を読む。
 2. 🧑 **どのアプリプロファイルを対象にするかをユーザーに確認**する(選択ダイアログ。候補が
    1つでも確認する)。**確認した bundle ID をコードに書いてはいけない** —— 対象アプリは
    実行プロファイル(`profiles/runs/<name>.json` → アプリプロファイル → 実行中 platform の

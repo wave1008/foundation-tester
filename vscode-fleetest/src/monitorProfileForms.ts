@@ -495,17 +495,30 @@ export function orderedDeviceEntry(entry: {
 }
 
 // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム -------------------------------
-// handleAppProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム common/ios/android 3グループ
-// 変換の純粋関数(parseRunProfileForForm/updateRunProfileInObject と同じ方針)。
-// autoInstall は common だけが持つ(ios/android のセクションでは読まず・書かず・触らない)。
+// handleAppProfileLoad/Save(monitorProfilesController.ts)が使う、JSON⇔フォーム変換の純粋関数
+// (parseRunProfileForForm/updateRunProfileInObject と同じ方針)。最上位に platform/autoInstall、
+// OS ごとの欄は ios/android セクション(Sources/FTCore/RunProfile.swift の AppProfile と同期)。
 
-/** アプリプロファイル common セクション。autoInstall だけを持つ(表示名・アプリID・パスは
- * ios/android のそれぞれに書き、common からは継承しない)ため ios/android と型を分離。 */
-export interface AppProfileCommonFields {
-  readonly autoInstall: "true" | "false";
+/** アプリプロファイルの対象 OS(最上位 "platform")。欠落 = hybrid(iOS・Android 両方)。
+ * Swift 側は AppPlatformScope。実行プロファイルはこれを継承し、対象外 OS のデバイスを無視する。 */
+export type AppPlatformScope = "ios" | "android" | "hybrid";
+
+export const APP_PLATFORM_SCOPES: readonly AppPlatformScope[] = ["ios", "android", "hybrid"];
+
+export function isAppPlatformScope(value: unknown): value is AppPlatformScope {
+  return typeof value === "string" && (APP_PLATFORM_SCOPES as readonly string[]).includes(value);
 }
 
-/** アプリプロファイル ios/android セクションの3フィールド(autoInstall は common だけが持つ)。 */
+/** apps/<name>.json のトップレベルから対象 OS を読む。欠落・非オブジェクト = hybrid。
+ * 不正な値も hybrid に倒す(表示の絞り込みにだけ使う。不正値のエラーは CLI の validate が出す)。 */
+export function appPlatformScopeOf(profileObject: unknown): AppPlatformScope {
+  if (!isRecord(profileObject)) {
+    return "hybrid";
+  }
+  return isAppPlatformScope(profileObject.platform) ? profileObject.platform : "hybrid";
+}
+
+/** アプリプロファイル ios/android セクションの3フィールド(autoInstall は最上位だけが持つ)。 */
 export interface AppProfilePlatformFields {
   readonly appName: string;
   readonly app: string;
@@ -521,16 +534,13 @@ export interface AppProfileIOSFields extends AppProfilePlatformFields {
   readonly appPathPhysical: string;
 }
 
-/** アプリプロファイル設定フォームの common/ios/android 3グループ分のフィールド。 */
+/** アプリプロファイル設定フォームのフィールド(最上位の platform/autoInstall + ios/android)。 */
 export interface AppProfileFormFields {
-  readonly common: AppProfileCommonFields;
+  readonly platform: AppPlatformScope;
+  readonly autoInstall: "true" | "false";
   readonly ios: AppProfileIOSFields;
   readonly android: AppProfilePlatformFields;
 }
-
-const EMPTY_APP_PROFILE_COMMON_FIELDS: AppProfileCommonFields = {
-  autoInstall: "true",
-};
 
 const EMPTY_APP_PROFILE_PLATFORM_FIELDS: AppProfilePlatformFields = {
   appName: "",
@@ -543,20 +553,7 @@ const EMPTY_APP_PROFILE_IOS_FIELDS: AppProfileIOSFields = {
   appPathPhysical: "",
 };
 
-/** apps/<name>.json の common セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
- * common が持つのは autoInstall だけ(表示名・アプリID・パスは ios/android のそれぞれで読む)。 */
-function parseAppProfileCommonSection(value: unknown): AppProfileCommonFields {
-  if (!isRecord(value)) {
-    return EMPTY_APP_PROFILE_COMMON_FIELDS;
-  }
-  // **未指定 = 有効**(Swift の resolve が `autoInstall ?? (appPath があるか)` = パスがあれば入れる。
-  // RunProfile.swift と同期)。明示の false だけが OFF
-  const autoInstall = value.autoInstall === false ? "false" : "true";
-  return { autoInstall };
-}
-
-/** apps/<name>.json の ios/android セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
- * autoInstall は common 側で読むためここでは読まない。 */
+/** apps/<name>.json の ios/android セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。 */
 function parseAppProfilePlatformSection(value: unknown): AppProfilePlatformFields {
   if (!isRecord(value)) {
     return EMPTY_APP_PROFILE_PLATFORM_FIELDS;
@@ -576,14 +573,17 @@ function parseAppProfileIOSSection(value: unknown): AppProfileIOSFields {
   return { ...parseAppProfilePlatformSection(value), appPathPhysical };
 }
 
-/** apps/<name>.json のトップレベルから common/ios/android 3グループを読み取る(非オブジェクトなら null)。 */
+/** apps/<name>.json のトップレベルからフォームの値を読み取る(非オブジェクトなら null)。
+ * autoInstall は**未指定 = 有効**(Swift の resolve が `autoInstall ?? (appPath があるか)`。
+ * RunProfile.swift と同期)。明示の false だけが OFF。 */
 export function parseAppProfileForForm(profileObject: unknown): AppProfileFormFields | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
   }
   const source = profileObject as Record<string, unknown>;
   return {
-    common: parseAppProfileCommonSection(source.common),
+    platform: appPlatformScopeOf(source),
+    autoInstall: source.autoInstall === false ? "false" : "true",
     ios: parseAppProfileIOSSection(source.ios),
     android: parseAppProfilePlatformSection(source.android),
   };
@@ -594,36 +594,11 @@ export type AppProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * common セクションを fields で更新した新オブジェクトを組み立てる(未知キー保持)。
- * autoInstall は "false" なら false を明示し、"true" なら既存の明示 true だけ残してキーを消す(未指定が
- * 既定の有効と同値。Swift は `autoInstall ?? appPath の有無`)。
- * existing が undefined かつ autoInstall=true(値が何も無い)なら undefined を返しセクション
- * 自体を作らない。existing が定義済み(空オブジェクト含む)ならセクションは保持する
- * (healthCheckURL 等の他キーはここで触れず existing のスプレッドで保たれる)。
- */
-function updateAppProfileCommonSection(
-  existing: Record<string, unknown> | undefined,
-  fields: AppProfileCommonFields,
-): Record<string, unknown> | undefined {
-  const hasAnyValue = fields.autoInstall === "false";
-  if (existing === undefined && !hasAnyValue) {
-    return undefined;
-  }
-  const result: Record<string, unknown> = { ...(existing ?? {}) };
-  if (fields.autoInstall === "false") {
-    result.autoInstall = false;
-  } else if (result.autoInstall !== true) {
-    delete result.autoInstall;
-  }
-  return result;
-}
-
-/**
- * ios/android セクションを fields で更新した新オブジェクトを組み立てる(updateAppProfileCommonSection
- * と同じ方針)。autoInstall は common だけが持つ(ここでは触らない)。
+ * ios/android セクションを fields で更新した新オブジェクトを組み立てる(未知キー保持)。
  * **触るのは欄のあるキーだけ** —— appPathPhysical の欄は iOS にしか無いので、android の fields
  * には持たせず、ここでも消しに行かない(消しに行くと手書きの android.appPathPhysical が保存の
  * たびに落ちる)。新規セクション作成の要否(hasAnyValue)も欄のあるキーだけで判定する。
+ * 対象 OS から外れた側のセクションも消さない(表示を隠すだけ。戻したときに値が残っているように)。
  */
 function updateAppProfilePlatformSection(
   existing: Record<string, unknown> | undefined,
@@ -652,9 +627,12 @@ function updateAppProfilePlatformSection(
 }
 
 /**
- * apps/<name>.json を common/ios/android 3グループの内容で更新した新オブジェクトを組み立てる
- * (未知キー保持。profileObject が非オブジェクトなら ok:false)。各セクションの構築は
- * updateAppProfileCommonSection/updateAppProfilePlatformSection を参照。
+ * apps/<name>.json をフォームの内容で更新した新オブジェクトを組み立てる
+ * (未知キー保持。profileObject が非オブジェクトなら ok:false)。
+ * - platform: 3値とも常に明示で書く(hybrid も。読みは欠落 = hybrid だが、保存した JSON で対象 OS が読み取れるように)。
+ * - autoInstall: "false" なら false を明示し、"true" なら既存の明示 true だけ残してキーを消す
+ *   (未指定が既定の有効と同値)。
+ * 鍵の並びは platform → autoInstall → 残り(Sources/FTCore の OrderedProfileJSON と揃える)。
  */
 export function updateAppProfileInObject(
   profileObject: unknown,
@@ -663,16 +641,22 @@ export function updateAppProfileInObject(
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return { ok: false, error: t("monitor.appProfile.invalidFormat") };
   }
-  const source = profileObject as Record<string, unknown>;
-  const result: Record<string, unknown> = { ...source };
-
-  const existingCommon = isRecord(source.common) ? (source.common as Record<string, unknown>) : undefined;
-  const updatedCommon = updateAppProfileCommonSection(existingCommon, fields.common);
-  if (updatedCommon === undefined) {
-    delete result.common;
-  } else {
-    result.common = updatedCommon;
+  if (!isAppPlatformScope(fields.platform)) {
+    return { ok: false, error: t("monitor.appProfile.invalidFormat") };
   }
+  const source = profileObject as Record<string, unknown>;
+  const rest: Record<string, unknown> = { ...source };
+  delete rest.platform;
+  delete rest.autoInstall;
+
+  const result: Record<string, unknown> = {};
+  result.platform = fields.platform;
+  if (fields.autoInstall === "false") {
+    result.autoInstall = false;
+  } else if (source.autoInstall === true) {
+    result.autoInstall = true;
+  }
+  Object.assign(result, rest);
 
   for (const key of ["ios", "android"] as const) {
     const existingSection = isRecord(source[key]) ? (source[key] as Record<string, unknown>) : undefined;

@@ -24,9 +24,8 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     private func writeStandardFixture() throws {
-        // common で有効なキーは autoInstall のみ。appName/app/appPath は platform セクション
         try write("""
-        { "common":  { "autoInstall": true },
+        { "autoInstall": true,
           "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/SampleApp.app" },
           "android": { "appName": "サンプルアプリ", "app": "com.example.sampleapp", "appPath": "builds/app-debug.apk" } }
         """, to: project.appsDir, name: "sampleapp")
@@ -67,7 +66,7 @@ final class ProfileResolverTests: XCTestCase {
                            declared: "builds/SampleApp.app",
                            workspaceRoot: project.rootURL.appendingPathComponent("workspace")),
                        "インストール元は既定ワークスペースのステージ先")
-        XCTAssertTrue(ios.autoInstall, "common の autoInstall: true が両 platform に効く")
+        XCTAssertTrue(ios.autoInstall, "最上位の autoInstall: true が両 platform に効く")
         let android = try XCTUnwrap(resolved.apps["android"])
         XCTAssertEqual(android.bundleID, "com.example.sampleapp")
         XCTAssertEqual(android.sourcePath,
@@ -78,7 +77,7 @@ final class ProfileResolverTests: XCTestCase {
                            declared: "builds/app-debug.apk",
                            workspaceRoot: project.rootURL.appendingPathComponent("workspace")),
                        "android のインストール元も既定ワークスペースのステージ先")
-        XCTAssertTrue(android.autoInstall, "common の autoInstall: true が両 platform に効く")
+        XCTAssertTrue(android.autoInstall, "最上位の autoInstall: true が両 platform に効く")
 
         XCTAssertEqual(resolved.reportDir.path,
                        project.rootURL.appendingPathComponent("reports").path)
@@ -115,27 +114,10 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.defaultTimeout, 1.5)
     }
 
-    func testAppSectionOverridesCommon() throws {
-        // common.app は廃止済みで resolve では無視される(validate は警告のみ)
-        try write("""
-        { "common":  { "app": "com.example.common" },
-          "android": { "appName": "A", "app": "com.example.android" } }
-        """, to: project.appsDir, name: "app2")
-        try write("""
-        { "app": "app2", "devices": [ { "platform": "android", "machine": "local", "name": "d1", "avd": "Pixel_9" } ] }
-        """, to: project.runsDir, name: "r")
-
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.apps["android"]?.bundleID, "com.example.android")
-        XCTAssertNil(resolved.apps["ios"], "デバイスの無い platform のアプリは解決しない")
-        XCTAssertEqual(resolved.apps["android"]?.autoInstall, false,
-                       "appPath が無ければ入れようがないので既定は無効")
-    }
-
     /// false を明示したときだけ止まる(opt-out)
     func testExplicitFalseOptsOutEvenWithAppPath() throws {
         try write("""
-        { "common": { "autoInstall": false },
+        { "autoInstall": false,
           "android": { "appName": "アプリ", "app": "com.example.android", "appPath": "builds/app.apk" } }
         """, to: project.appsDir, name: "app4")
         try write("""
@@ -146,67 +128,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.apps["android"]?.autoInstall, false)
     }
 
-    // MARK: - common セクションの app / appPath 廃止
-
-    func testCommonAppNotInheritedFailsWithMissingBundleID() throws {
-        try write("""
-        { "common": { "app": "com.example.common" },
-          "ios":    { "appPath": "a.app" } }
-        """, to: project.appsDir, name: "app2")
-        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
-                  to: project.runsDir, name: "r")
-
-        XCTAssertThrowsError(try ProfileResolver.resolve(
-            project: project, runName: "r")) { error in
-            guard case ProfileError.missingBundleID(let platform, _) = error else {
-                return XCTFail("missingBundleID のはず: \(error)")
-            }
-            XCTAssertEqual(platform, "ios")
-        }
-    }
-
-    func testCommonAppNotInheritedWhenPlatformSectionMissing() throws {
-        try write("""
-        { "common": { "app": "com.example.common" } }
-        """, to: project.appsDir, name: "app2")
-        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
-                  to: project.runsDir, name: "r")
-
-        XCTAssertThrowsError(try ProfileResolver.resolve(
-            project: project, runName: "r")) { error in
-            guard case ProfileError.missingBundleID = error else {
-                return XCTFail("missingBundleID のはず: \(error)")
-            }
-        }
-    }
-
-    func testCommonAppPathNotInherited() throws {
-        try write("""
-        { "common": { "appPath": "common/x.app" },
-          "ios":    { "app": "com.example.app" } }
-        """, to: project.appsDir, name: "app2")
-        try write(#"{ "app": "app2", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
-                  to: project.runsDir, name: "r")
-
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertNil(resolved.apps["ios"]?.appPath, "common の appPath は引き継がれないはず")
-    }
-
-    /// 合成が読まないキーは**未知キーとして警告する**(移行の案内は置かない。黙って無視しないことだけ守る)
-    func testValidateWarnsOnCommonAppAndAppPathAsUnknownKeys() throws {
-        let data = #"""
-        { "common": { "app": "com.example.app", "appPath": "x.app" } }
-        """#.data(using: .utf8)!
-
-        let (errors, warnings) = ProfileResolver.validate(
-            kind: .app, data: data, context: "apps/app2.json")
-        XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
-        XCTAssertTrue(warnings.contains("apps/app2.json common: unknown key \"app\" is ignored"),
-                      "\(warnings)")
-        XCTAssertTrue(warnings.contains("apps/app2.json common: unknown key \"appPath\" is ignored"),
-                      "\(warnings)")
-    }
-
+    
     /// 読まなくなった `iosSystemAlertButtons` は未知キーとして警告する(黙って無視しない)
     func testValidateWarnsOnRemovedSystemAlertKeyAsUnknown() throws {
         let data = #"""
@@ -216,19 +138,6 @@ final class ProfileResolverTests: XCTestCase {
         let (_, warnings) = ProfileResolver.validate(
             kind: .run, data: data, context: "runs/legacy.json")
         XCTAssertTrue(warnings.contains("runs/legacy.json: unknown key \"iosSystemAlertButtons\" is ignored"),
-                      "\(warnings)")
-    }
-
-    /// common.appName は読まない: 黙って無視せず未知キーとして警告する
-    func testValidateWarnsWhenAppNameInCommonSection() throws {
-        let data = #"""
-        { "common": { "appName": "A" }, "ios": { "app": "com.example.app" } }
-        """#.data(using: .utf8)!
-
-        let (errors, warnings) = ProfileResolver.validate(
-            kind: .app, data: data, context: "apps/app2.json")
-        XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
-        XCTAssertTrue(warnings.contains("apps/app2.json common: unknown key \"appName\" is ignored"),
                       "\(warnings)")
     }
 
@@ -243,11 +152,11 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(warnings.isEmpty, "platform 側の指定では警告は出ないはず: \(warnings)")
     }
 
-    // MARK: - autoInstall(common でのみ指定可+既定 false)
+    // MARK: - autoInstall(最上位のみ+既定は appPath の有無)
 
-    func testAutoInstallExplicitTrueInCommonSectionIsEnabled() throws {
+    func testAutoInstallExplicitTrueIsEnabled() throws {
         try write("""
-        { "common": { "autoInstall": true },
+        { "autoInstall": true,
           "ios":    { "app": "com.example.app", "appPath": "a.app" } }
         """, to: project.appsDir, name: "app3")
         try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
@@ -257,9 +166,9 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.apps["ios"]?.autoInstall, true)
     }
 
-    func testAutoInstallExplicitFalseInCommonSectionIsDisabled() throws {
+    func testAutoInstallExplicitFalseIsDisabled() throws {
         try write("""
-        { "common": { "autoInstall": false },
+        { "autoInstall": false,
           "ios":    { "app": "com.example.app", "appPath": "a.app" } }
         """, to: project.appsDir, name: "app3")
         try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
@@ -282,7 +191,7 @@ final class ProfileResolverTests: XCTestCase {
                        "appPath があるので既定で有効")
     }
 
-    /// platform セクションの autoInstall は無視される(置き場所は common に一本化)。
+    /// platform セクションの autoInstall は無視される(置き場所は最上位に一本化)。
     /// ここでは false を置いても効かない = appPath 由来の既定(有効)のままになる
     func testAutoInstallInPlatformSectionIsIgnored() throws {
         try write("""
@@ -296,55 +205,7 @@ final class ProfileResolverTests: XCTestCase {
                        "platform セクションの autoInstall は無視されるはず")
     }
 
-    func testAutoInstallPlatformValueDoesNotOverrideCommon() throws {
-        try write("""
-        { "common": { "autoInstall": false },
-          "ios":    { "app": "com.example.app", "appPath": "a.app", "autoInstall": true } }
-        """, to: project.appsDir, name: "app3")
-        try write(#"{ "app": "app3", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
-                  to: project.runsDir, name: "r")
-
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.apps["ios"]?.autoInstall, false,
-                       "common の autoInstall が platform 側の指定より優先されるはず")
-    }
-
-    func testSectionMergingFieldSources() throws {
-        // resolve() を経由せず section(for:) を直接検証(platform セクション欠落ケース)
-        let profile = AppProfile(common: AppProfileSection(
-            appName: "A", app: "com.example.app", appPath: "x.app", autoInstall: true))
-        let section = profile.section(for: "ios")
-        XCTAssertNil(section.appName, "common の appName は引き継がれないはず(この契約変更の核)")
-        XCTAssertNil(section.app, "common の app は引き継がれないはず")
-        XCTAssertNil(section.appPath, "common の appPath は引き継がれないはず")
-        XCTAssertEqual(section.autoInstall, true, "autoInstall は common から引き継ぐはず")
-    }
-
-    /// appName は platform セクション自身の値が採用される(ios/android で異なる表示名を持てる)
-    func testSectionMergingUsesPlatformAppName() throws {
-        let profile = AppProfile(
-            common: AppProfileSection(autoInstall: true),
-            ios: AppProfileSection(appName: "iOS 版", app: "com.example.app"),
-            android: AppProfileSection(appName: "Android 版", app: "com.example.app"))
-        XCTAssertEqual(profile.section(for: "ios").appName, "iOS 版")
-        XCTAssertEqual(profile.section(for: "android").appName, "Android 版")
-    }
-
-    /// resolve() を経由した契約確認: common.appName は継承されず、appRef へフォールバックする
-    func testResolveDoesNotInheritAppNameFromCommon() throws {
-        try write("""
-        { "common": { "appName": "共通表示名" },
-          "ios":    { "app": "com.example.app" } }
-        """, to: project.appsDir, name: "app5")
-        try write(#"{ "app": "app5", "devices": [ { "platform": "ios", "machine": "local", "name": "d", "osVersion": "iOS 27.0" } ] }"#,
-                  to: project.runsDir, name: "r")
-
-        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
-        XCTAssertEqual(resolved.appName, "app5",
-                       "common.appName は継承されないので、参照名 app5 にフォールバックするはず")
-    }
-
-    /// autoInstall は common でしか読まない = platform 側は未知キーとして警告する
+    /// autoInstall は最上位でしか読まない = platform 側は未知キーとして警告する
     func testValidateWarnsOnPlatformAutoInstallAsUnknown() throws {
         let data = #"""
         { "ios":     { "appName": "A", "app": "com.example.app", "autoInstall": true },
@@ -360,9 +221,9 @@ final class ProfileResolverTests: XCTestCase {
                       "\(warnings)")
     }
 
-    func testValidateNoWarningWhenAutoInstallInCommonSection() throws {
+    func testValidateNoWarningWhenAutoInstallTopLevel() throws {
         let data = #"""
-        { "common": { "autoInstall": true },
+        { "autoInstall": true,
           "ios":    { "appName": "A", "app": "com.example.app" } }
         """#.data(using: .utf8)!
 
@@ -370,7 +231,7 @@ final class ProfileResolverTests: XCTestCase {
             kind: .app, data: data, context: "apps/app3.json")
         XCTAssertTrue(errors.isEmpty, "エラーは出ないはず: \(errors)")
         XCTAssertTrue(warnings.isEmpty,
-                      "common の autoInstall は正当な設定場所なので警告は出ないはず: \(warnings)")
+                      "最上位の autoInstall は正当な設定場所なので警告は出ないはず: \(warnings)")
     }
 
     /// enabled: false のデバイスは解決対象から外す(警告も出さない = 意図した状態)
@@ -1158,5 +1019,99 @@ final class ProfileResolverTests: XCTestCase {
                       "Android 実機の serial 欠落エラーが出るはず: \(errors)")
         XCTAssertFalse(warnings.contains { $0.contains("kind") || $0.contains("serial") },
                        "kind/serial は既知キーなので未知キー警告を出さない: \(warnings)")
+    }
+
+    // MARK: - アプリプロファイルの platform(対象 OS)
+
+    private func writeScopeFixture(platform: String?, devices: String) throws {
+        let key = platform.map { #""platform": "\#($0)","# } ?? ""
+        try write("""
+        { \(key)
+          "ios":     { "app": "com.example.app" },
+          "android": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "scoped")
+        try write(#"{ "app": "scoped", "devices": [\#(devices)] }"#, to: project.runsDir, name: "r")
+    }
+
+    private let iosDev = #"{ "platform": "ios", "machine": "local", "name": "Phone", "osVersion": "iOS 27.0" }"#
+    private let droidDev = #"{ "platform": "android", "machine": "local", "name": "Pixel 9", "avd": "Pixel_9" }"#
+
+    func testPlatformIosIgnoresAndroidDevicesWithWarning() throws {
+        try writeScopeFixture(platform: "ios", devices: "\(iosDev), \(droidDev)")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+        XCTAssertEqual(resolved.devices.map(\.name), ["Phone"])
+        XCTAssertNil(resolved.apps["android"])
+        XCTAssertTrue(resolved.warnings.contains(
+            #"device "Pixel 9" (android) is ignored: app profile "scoped" targets ios only"#),
+            "\(resolved.warnings)")
+    }
+
+    func testPlatformAndroidIgnoresIosDevices() throws {
+        try writeScopeFixture(platform: "android", devices: "\(iosDev), \(droidDev)")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+        XCTAssertEqual(resolved.devices.map(\.name), ["Pixel 9"])
+        XCTAssertTrue(resolved.warnings.contains(
+            #"device "Phone" (ios) is ignored: app profile "scoped" targets android only"#),
+            "\(resolved.warnings)")
+    }
+
+    func testPlatformMissingOrHybridKeepsBothPlatforms() throws {
+        for platform in [nil, "hybrid"] as [String?] {
+            try writeScopeFixture(platform: platform, devices: "\(iosDev), \(droidDev)")
+            let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+            XCTAssertEqual(resolved.devices.map(\.name), ["Phone", "Pixel 9"], "\(String(describing: platform))")
+            XCTAssertFalse(resolved.warnings.contains { $0.contains("is ignored") })
+        }
+    }
+
+    func testAllDevicesOutOfScopeThrowsNamedError() throws {
+        try writeScopeFixture(platform: "ios", devices: droidDev)
+        XCTAssertThrowsError(try ProfileResolver.resolve(project: project, runName: "r")) { error in
+            XCTAssertEqual(
+                (error as? LocalizedError)?.errorDescription,
+                "run profile r has no enabled ios devices (app profile scoped targets ios only; 1 android device(s) are ignored)")
+        }
+    }
+
+    func testRunDeviceMachinesFollowsAppPlatform() throws {
+        try writeScopeFixture(platform: "ios", devices: "\(iosDev), \(droidDev)")
+        XCTAssertEqual(
+            ProfileResolver.runDeviceMachines(project: project, runProfileName: "r").map(\.name), ["Phone"])
+    }
+
+    /// `--set app=` は対象 OS を変える。ディスパッチの計画(runDeviceMachines)は resolve() と同じ上書きを
+    /// 当てないと、計画と resolve が別のデバイス集合を見て、片方の OS のデバイスが黙って走らない
+    func testRunDeviceMachinesAppliesSetAppOverride() throws {
+        try writeScopeFixture(platform: "ios", devices: "\(iosDev), \(droidDev)")
+        try write(#"{ "ios": { "app": "com.example.app" }, "android": { "app": "com.example.app" } }"#,
+                  to: project.appsDir, name: "both")
+        let overrides: [String: RunProfileSetValue] = ["app": .string("both")]
+        XCTAssertEqual(
+            ProfileResolver.runDeviceMachines(project: project, runProfileName: "r", overrides: overrides)
+                .map(\.name), ["Phone", "Pixel 9"])
+        XCTAssertEqual(
+            try ProfileResolver.resolve(project: project, runName: "r", overrides: overrides).devices.map(\.name),
+            ["Phone", "Pixel 9"])
+    }
+
+    func testInvalidPlatformValueIsADecodeError() throws {
+        try writeScopeFixture(platform: "windows", devices: iosDev)
+        XCTAssertThrowsError(try ProfileResolver.resolve(project: project, runName: "r")) { error in
+            guard case ProfileError.decodeFailed = error else { return XCTFail("\(error)") }
+        }
+        let data = try Data(contentsOf: project.appsDir.appendingPathComponent("scoped.json"))
+        let (errors, _) = ProfileResolver.validate(kind: .app, data: data, context: "apps/scoped.json")
+        XCTAssertFalse(errors.isEmpty, "validate(kind: .app) が不正な platform をエラーにするはず")
+    }
+
+    /// common セクションは廃止: 未知キーとして警告し、autoInstall も効かない
+    func testLegacyCommonSectionIsUnknownAndIgnored() throws {
+        try write(#"{ "common": { "autoInstall": false }, "ios": { "app": "com.example.app", "appPath": "a.app" } }"#,
+                  to: project.appsDir, name: "legacy")
+        try write(#"{ "app": "legacy", "devices": [\#(iosDev)] }"#, to: project.runsDir, name: "r")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r")
+        XCTAssertEqual(resolved.apps["ios"]?.autoInstall, true, "common.autoInstall は読まない")
+        XCTAssertTrue(resolved.warnings.contains("apps/legacy.json: unknown key \"common\" is ignored"),
+                      "\(resolved.warnings)")
     }
 }

@@ -8,7 +8,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
-import { clearDeviceRows, currentDeviceEntries, renderDeviceRows } from './runProfileDevicesTab.js';
+import { clearDeviceRows, currentDeviceEntries, renderDeviceRows, setDevicePlatformScope } from './runProfileDevicesTab.js';
 
 // 選択は「編集対象」であり、「デバイスモニター」タブの実行プロファイル選択(fleetest.profile)とは独立。
 // 自動保存(確定ボタンは無い): チェック/選択は change で即、テキストは change(= blur か Enter で
@@ -30,6 +30,7 @@ const btnRunProfileRemove = document.getElementById('btn-run-profile-remove');
 const btnRunProfileRename = document.getElementById('btn-run-profile-rename');
 const runProfilePlaceholder = document.getElementById('run-profile-placeholder');
 const runProfileEditor = document.getElementById('run-profile-editor');
+const runProfileSection = document.getElementById('run-profile-section');
 const runProfileApp = document.getElementById('run-profile-app');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFmTextOcclusionCheck = document.getElementById('run-profile-fm-text-occlusion-check');
@@ -67,6 +68,8 @@ const runProfileTextInputs = [
 // 直近受信の一覧(profileInfo 由来)。
 let runProfileNames = [];
 let runProfileApps = [];
+// アプリプロファイル名 → 対象 OS(profileInfo.appPlatforms。monitorWebviewMessages.ts の契約)。
+let runProfileAppPlatforms = {};
 // 編集対象の実行プロファイル名(一覧が0件なら null)。modals.js が読み取り専用で参照する。
 export let selectedRunProfile = null;
 // 直近ロード(runProfileData ok:true)時点のフィールド値。null の間はフォーム非表示。
@@ -123,6 +126,7 @@ function requestRunProfileLoad(silent) {
 export function applyRunProfileInfo(message) {
   runProfileNames = Array.isArray(message.profiles) ? message.profiles : [];
   runProfileApps = message.apps;
+  applyRunProfileAppPlatforms(message);
   // ワークスペース未入力時の既定を透かしで出す。相対パスはリポジトリルート基準なので、
   // この文字列はそのまま入力しても既定と同じ場所を指す(Sources/FTCore/RunProfile.swift の
   // ProfileResolver.resolveWorkspaceRoot と同期)。project が解決できないホストでは出さない
@@ -242,6 +246,7 @@ function renderRunProfileEditor(fields) {
 
   renderRunProfileAppSelect(fields.app);
   renderDeviceRows(fields.devices);
+  applyRunProfilePlatformScope();
   runProfileHeal.checked = fields.heal;
   runProfileFmTextOcclusionCheck.checked = fields.fmTextOcclusionCheck;
   runProfileScreenLooksLike.checked = fields.screenLooksLike;
@@ -299,6 +304,26 @@ function renderRunProfileAppSelect(value) {
   }
   runProfileApp.value = value;
 }
+
+// 実行プロファイルは参照するアプリプロファイルの対象 OS を継承する(Sources/FTCore の
+// AppPlatformScope と同じ意味。対象外 OS のデバイスは実行時に無視される)。選んでいない OS の
+// セクションは #run-profile-section の data-platform-scope で隠し、デバイス一覧も絞る。
+// 未指定・未知のアプリは hybrid(絞らない)
+/** profileInfo / appProfileFileChanged の appPlatforms を受けて写し直す。再ロードの応答は値が同じなら
+ * 作り直さない(applyRunProfileData)ので、アプリ側の対象 OS だけが変わったときもここで反映する。 */
+export function applyRunProfileAppPlatforms(message) {
+  runProfileAppPlatforms = message.appPlatforms && typeof message.appPlatforms === 'object' ? message.appPlatforms : {};
+  applyRunProfilePlatformScope();
+}
+
+function applyRunProfilePlatformScope() {
+  const app = runProfileApp.value;
+  // 名前がプロトタイプのメンバー(constructor 等)と重なっても拾わないよう自前のキーだけを見る
+  const scope = Object.hasOwn(runProfileAppPlatforms, app) ? runProfileAppPlatforms[app] : 'hybrid';
+  runProfileSection.dataset.platformScope = scope;
+  setDevicePlatformScope(scope, app);
+}
+runProfileApp.addEventListener('change', applyRunProfilePlatformScope);
 
 // inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
 // (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。

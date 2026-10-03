@@ -86,7 +86,10 @@ is unavailable.
 - The **Profiles** tab lists, creates, copies, renames and deletes test projects themselves,
   and lists, creates, copies, renames, deletes and edits run/app profiles. A run profile's
   section shows the union of every run profile's devices with checkboxes (checked = this
-  profile runs it), and its own "Add device" button.
+  profile runs it), and its own "Add device" button. Choosing an app profile's **Target OS**
+  (iOS / Android / Hybrid) hides the fields of the other OS. A run profile inherits the target OS
+  of the app it references and shows only that OS's sections and devices. If devices of another
+  OS are registered, it names them in a warning (they stay in the JSON and are ignored at run time).
 - The **Settings** tab holds display, update, log-and-recording cleanup, and remote machine
   settings, including the update-check and update actions described below. The **Tools** section
   at its top has a "Processes" button that brings up that tab.

@@ -3764,15 +3764,22 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
 
 `TestProjects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
 
-**アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
-`autoInstall` は **common のみ**採用(未指定時の既定は
+**アプリケーションプロファイル** `apps/<name>.json` — 最上位キーは `platform` / `autoInstall` / `healthCheckURL` /
+`ios` / `android`(それ以外の最上位キーは未知キーとして警告)。
+`platform`(`ios`/`android`/`hybrid`。省略 = hybrid)は対象 OS で、**対象外 OS のデバイスは実行時に無視**する
+(resolve は1台ごとに警告・全滅ならエラー。`RunProfileScope.roster`/`runDeviceMachines` も同じ判定 =
+`AppPlatformScoping` の1箇所。実行プロファイルの JSON は変えない)。拡張のプロファイルタブも同じ意味で絞る ——
+`profileInfo.appPlatforms`(アプリ名 → 対象 OS)を実行プロファイルの編集欄が引き、選んでいない OS の
+セクションとデバイス行を**表示だけ**隠して名指しで警告する(保存は JSON のエントリを残す)。モニターの
+再起動判定の指紋(`runProfileScopeKey`)は `app` も含み、アプリの `platform` の変化も再起動の契機
+(`appProfileNeedsRestart`)。
+`autoInstall` は最上位のみ(未指定時の既定は
 `appPath`/`appPathPhysical` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、
 `appName`(表示名)・bundle ID(`app`)・`appPath`・`appPathPhysical` は
-**ios/android セクションのみ**採用(common に書くと merging で無視され validate が警告する。
-表示名を OS ごとに書き分けられるようにするため、common の `appName` は継承しない):
+**ios/android セクションのみ**採用(表示名を OS ごとに書き分けられる):
 
 ```json
-{ "common":  { "autoInstall": true },
+{ "autoInstall": true,
   "ios":     { "appName": "サンプルアプリ", "app": "com.example.sampleapp",
                "appPath": "~/builds/SampleApp.app",
                "appPathPhysical": "~/builds/device/SampleApp.app" },
@@ -3806,7 +3813,7 @@ resolve の時点で警告する**(インストール失敗はブリッジ供給
 79MB を毎回ほどかない)。限界は**足りない split を見つけられない**こと(何が入るべきかは
 targeting = bundletool にしか決められない。feature module を足した回だけ入れ直しを取りこぼす)。
 
-`healthCheckURL`(common のみ・任意)— アプリが依存するバックエンドの死活確認 URL。実行開始前に
+`healthCheckURL`(最上位・任意)— アプリが依存するバックエンドの死活確認 URL。実行開始前に
 3秒タイムアウトで到達確認し、不達なら警告する(実行はブロックしない)。バックエンド停止中は
 アプリが非同期処理でクラッシュし「Application is not running」で全滅して原因が見えにくいため
 (2026-07-21 実害)、入口で気づけるようにする。
@@ -4137,7 +4144,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    **1台のときだけ**それを自動採用する(2026-08-06。複数なら AVD 名付きで列挙してエラー)。
    はぐれ Android 機が1台混ざっていると、それが唯一の候補になって診断画面がそれになりうるので、
    規模ランの調査前に `adb -s <serial> emu kill` で掃除する(2026-07-16)
-2. **アプリ解決**: common → デバイスの platform セクションの後勝ちマージ。`app`(bundle ID)必須
+2. **アプリ解決**: デバイスの platform セクション(ios/android)から。`app`(bundle ID)必須
 3. **並列数 = 解決後のデバイス数**(maxParallel は存在しない)。プラットフォーム毎にワーカーを立て、
    RunOrchestrator の platform 別キューで両OS同時並列実行
 4. platform 未指定(@TestClass / @Test 両対応)のシナリオは iOS ワーカーがいれば ios キューへ。

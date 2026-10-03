@@ -12,8 +12,9 @@ export function monitorRestartNeeded(name: string, selectedProfile: string): boo
   return selectedProfile === "" || name === selectedProfile;
 }
 
-/** 実行プロファイルのうち `api monitor` が読むのは `devices` だけ
- * (Sources/fleetest/ApiMonitorCommand.swift の RunProfileScope)。その指紋を返す。
+/** 実行プロファイルのうち `api monitor` が読むのは `devices` と `app`
+ * (Sources/fleetest/ApiMonitorCommand.swift の RunProfileScope。app は参照先アプリプロファイルの
+ * 対象 OS で devices を絞るため)。その指紋を返す。
  * 読めない・オブジェクトでないなら null(= 判定できないので再起動する側へ倒す)。
  * **プロファイル画面は1操作ごとに自動保存する**ので、これで絞らないと FM のチェック1つでも
  * 配信が張り直しになる。monitor が読むキーを増やしたらここにも足す */
@@ -28,7 +29,23 @@ export function runProfileScopeKey(text: string): string | null {
     return null;
   }
   const source = parsed as Record<string, unknown>;
-  return JSON.stringify(source.devices ?? null);
+  return JSON.stringify([source.app ?? null, source.devices ?? null]);
+}
+
+/** アプリプロファイルの対象 OS(platform)の変化でモニターを再起動するか。前回値が無い(初見)なら
+ * 判定しない —— 指紋は profileInfo の送信時に全アプリ分を取るので、初見はモニター起動前の変化ではない。
+ * 対象は選択中の実行プロファイルが参照するアプリだけ(未選択は全実行プロファイルの和集合なので全アプリ)。 */
+export function appProfileNeedsRestart(change: {
+  previous: string | undefined;
+  next: string;
+  appName: string;
+  selectedProfile: string;
+  selectedProfileApp: string | undefined;
+}): boolean {
+  if (change.previous === undefined || change.previous === change.next) {
+    return false;
+  }
+  return change.selectedProfile === "" || change.selectedProfileApp === change.appName;
 }
 
 /** 監視スコープが変わったか。前回の指紋が無い(初見)・今回が読めないときは「変わった」側へ倒す */

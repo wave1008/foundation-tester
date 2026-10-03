@@ -51,6 +51,7 @@ import {
 } from './appProfilesTab.js';
 import {
   applyRunProfileInfo,
+  applyRunProfileAppPlatforms,
   applyRunProfileSelected,
   applyRunProfileData,
   applyRunProfileSaveResult,
@@ -252,6 +253,7 @@ window.addEventListener('message', (event) => {
       break;
     case 'appProfileFileChanged':
       applyAppProfileFileChanged(message);
+      applyRunProfileAppPlatforms(message);
       break;
     case 'nameInputOpen':
       applyNameInputOpen(message);

@@ -18,7 +18,7 @@ public enum OrderedProfileJSON {
     public static let preferredKeyOrder = [
         "platform", "machine", "name", "enabled", "host", "app", "appName",
         // セクションはアルファベット順(android → ios)ではなく、読み手の期待どおり ios → android
-        "common", "ios", "android", "devices", "kind",
+        "autoInstall", "healthCheckURL", "ios", "android", "devices", "kind",
     ]
 
     /// 人が読む前提のファイル向けの整形(末尾改行あり)。JSONSerialization の

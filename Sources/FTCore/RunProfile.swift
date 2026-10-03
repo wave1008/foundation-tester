@@ -1,6 +1,6 @@
 // RunProfile.swift
 // 実行プロファイルの組み合わせ型モデル。
-//   apps/<name>.json     … アプリケーションプロファイル(common/ios/android セクション)
+//   apps/<name>.json     … アプリケーションプロファイル(最上位 platform/autoInstall/healthCheckURL + ios/android セクション)
 //   runs/<name>.json     … 実行プロファイル(app 参照+デバイスの実体リスト+実行時設定)
 // ProfileResolver が 2 つを合成して ResolvedProfile(検証済み)を作る。
 // 実行コード(CLI/MCP)は ResolvedProfile のみを参照する。
@@ -13,9 +13,7 @@ import Foundation
 
 // MARK: - JSON ドキュメント(ファイルの素の形)
 
-/// アプリケーションプロファイルの 1 セクション。フィールドごとに有効な記述場所が異なる
-/// (対応表は merging 参照): appName・app・appPath = platform のみ /
-/// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)
+/// アプリケーションプロファイルの ios/android セクション
 public struct AppProfileSection: Codable, Sendable, Equatable {
     /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)
     public var appName: String?
@@ -29,74 +27,66 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     /// プロファイルを分けない**ためのフィールド(ユーザー決定)。
     /// Android は同じ APK が両方で動くので普通は書かない
     public var appPathPhysical: String?
-    /// 実行前に appPath を自動インストールするか(既定 false = 無効)
-    public var autoInstall: Bool?
-    /// アプリが依存するバックエンドの死活確認 URL(common のみ)。実行開始前に到達確認し、
-    /// 不達なら警告する(バックエンド停止でアプリがクラッシュ→全滅する事故の早期検知。
-    /// 実害から追加)。ブロックはしない(オフライン検証を妨げない)
-    public var healthCheckURL: String?
 
     public init(appName: String? = nil, app: String? = nil,
-                appPath: String? = nil, appPathPhysical: String? = nil,
-                autoInstall: Bool? = nil,
-                healthCheckURL: String? = nil) {
+                appPath: String? = nil, appPathPhysical: String? = nil) {
         self.appName = appName
         self.app = app
         self.appPath = appPath
         self.appPathPhysical = appPathPhysical
-        self.autoInstall = autoInstall
-        self.healthCheckURL = healthCheckURL
     }
 
-    /// セクションごとに**合成(merging)が実際に読むキーだけ**を既知とする。読まないキーを
-    /// 既知に入れると checkAppProfileKeys の未知キー警告をすり抜け、書いたのに効かない設定が黙る
-    static let commonKnownKeys: Set<String> = ["autoInstall", "healthCheckURL"]
-    static let platformKnownKeys: Set<String> = ["appName", "app", "appPath", "appPathPhysical"]
+    /// ios/android セクションが読むキー。読まないキーを既知に入れると checkAppProfileKeys の
+    /// 未知キー警告をすり抜け、書いたのに効かない設定が黙る
+    static let knownKeys: Set<String> = ["appName", "app", "appPath", "appPathPhysical"]
+}
 
-    /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
-    /// 採用元が異なる: appName・app・appPath = platform のみ(OS ごとに書き分けるため。
-    /// 表示名も common からは継承しない) /
-    /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)(インストール可否は OS 間で揃えるべき運用設定のため)。
-    /// common セクションの appName/app/appPath・platform セクションの autoInstall/healthCheckURL は
-    /// ここで無視される(validate が未知キーとして警告する)。
-    /// other が nil(platform セクション自体が無い)場合も同じ規則で合成するため、
-    /// early return せず常に other?.field / self.field を明示的に選ぶ
-    func merging(_ other: AppProfileSection?) -> AppProfileSection {
-        AppProfileSection(
-            appName: other?.appName,
-            app: other?.app,
-            appPath: other?.appPath,
-            appPathPhysical: other?.appPathPhysical,
-            autoInstall: autoInstall,
-            healthCheckURL: healthCheckURL)  // autoInstall と同じく common のみ
+/// アプリプロファイルの対象 OS。キー無しは hybrid と同じ扱い(両 OS)
+public enum AppPlatformScope: String, Codable, Sendable, Equatable, CaseIterable {
+    case ios, android, hybrid
+
+    public func includes(platform: String) -> Bool {
+        self == .hybrid || self.rawValue == platform
     }
 }
 
+/// アプリプロファイル。最上位キーは platform / autoInstall / healthCheckURL / ios / android
+/// (**この並びが書き出し順の契約**: OrderedProfileJSON)。autoInstall・healthCheckURL は OS 横断の運用設定
 public struct AppProfile: Codable, Sendable, Equatable {
-    public var common: AppProfileSection?
+    /// 対象 OS(省略 = hybrid = 両方)。対象外 OS のデバイスは実行時に無視される(AppPlatformScoping)
+    public var platform: AppPlatformScope?
+    /// 実行前に appPath を自動インストールするか(未指定なら appPath の有無で決まる。false 明示で opt-out)
+    public var autoInstall: Bool?
+    /// アプリが依存するバックエンドの死活確認 URL。実行開始前に到達確認し、不達なら警告する
+    /// (バックエンド停止でアプリがクラッシュ→全滅する事故の早期検知)。ブロックはしない
+    public var healthCheckURL: String?
     public var ios: AppProfileSection?
     public var android: AppProfileSection?
 
-    public init(common: AppProfileSection? = nil, ios: AppProfileSection? = nil,
-                android: AppProfileSection? = nil) {
-        self.common = common
+    public init(platform: AppPlatformScope? = nil, autoInstall: Bool? = nil,
+                healthCheckURL: String? = nil,
+                ios: AppProfileSection? = nil, android: AppProfileSection? = nil) {
+        self.platform = platform
+        self.autoInstall = autoInstall
+        self.healthCheckURL = healthCheckURL
         self.ios = ios
         self.android = android
     }
 
-    static let knownKeys: Set<String> = ["common", "ios", "android"]
+    static let knownKeys: Set<String> = ["platform", "autoInstall", "healthCheckURL", "ios", "android"]
+    /// セクション(中身を検査する)キー
+    static let sectionKeys: [String] = ["ios", "android"]
 
-    /// common と platform セクションを合成した実効セクション(規則は merging 参照)
+    /// platform に対応するセクション(無ければ空)
     public func section(for platform: String) -> AppProfileSection {
-        let base = common ?? AppProfileSection()
         switch platform {
-        case "ios": return base.merging(ios)
-        case "android": return base.merging(android)
-        default: return base
+        case "ios": return ios ?? AppProfileSection()
+        case "android": return android ?? AppProfileSection()
+        default: return AppProfileSection()
         }
     }
 
-    /// ログの見出し用の表示名(ios/android セクションのみ採用。common には appName を置けない — merging 参照)。
+    /// ログの見出し用の表示名(ios/android セクションのみ)。
     /// **OS を畳んだ値なので tapAppIcon の既定に使わない**(OS ごとの名前は `section(for:).appName`)
     public var resolvedAppName: String? {
         ios?.appName ?? android?.appName
@@ -917,9 +907,9 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     /// 実機向けパッケージのインストールに使う絶対パス(ステージング先。nil = 未指定)
     public let appPathPhysical: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効。
-    /// common セクションで明示的に true にした場合のみ有効)
+    /// アプリプロファイルの最上位 autoInstall)
     public let autoInstall: Bool
-    /// バックエンド死活確認 URL(AppProfileSection.healthCheckURL)
+    /// バックエンド死活確認 URL(AppProfile.healthCheckURL)
     public let healthCheckURL: String?
     /// その OS のアイコン名(`<platform>.appName`)。tapAppIcon() の引数省略時の既定として子へ渡す。
     /// **OS ごとに持つ** —— 同じアプリでもランチャの表示名は OS で違う(E2E-Flutter は iOS
@@ -1139,6 +1129,8 @@ public enum ProfileError: Error, LocalizedError {
     case physicalDeviceMissingIdentifier(name: String, platform: String, run: String)
     /// kind=physical に dylib 注入エンジンが指定された(実機は注入不可)
     case physicalDeviceUnsupportedEngine(name: String, engine: String, run: String)
+    /// アプリプロファイルの platform が対象外にした結果、走らせるデバイスが 0 台
+    case noDevicesForAppPlatform(run: String, app: String, scope: AppPlatformScope, ignored: Int)
 
     public var errorDescription: String? {
         switch self {
@@ -1161,7 +1153,7 @@ public enum ProfileError: Error, LocalizedError {
                 + " on machine \(DeviceMachineGrouping.display(deviceMachine))"
                 + " (\(duplicateDeviceNameRule))"
         case .missingBundleID(let platform, let appProfile):
-            // common の app は廃止(merging 参照)のため、案内は platform セクション限定
+            // 案内は platform セクション限定
             return "app profile \(appProfile) has no \"app\" (bundle ID / package name) for \(platform)"
                 + " (add it in the \(platform) section)"
         case .invalidWipeDataThreshold(let run):
@@ -1179,6 +1171,11 @@ public enum ProfileError: Error, LocalizedError {
             return "device \"\(name)\" in run profile \(run) is kind=physical, so "
                 + "engine=\(engine) cannot be used (dylib injection is impossible on physical devices; "
                 + "omit engine or set it to \"xcuitest\")"
+        case .noDevicesForAppPlatform(let run, let app, let scope, let ignored):
+            let other = scope == .ios ? "android" : "ios"
+            return "run profile \(run) has no enabled \(scope.rawValue) devices"
+                + " (app profile \(app) targets \(scope.rawValue) only;"
+                + " \(ignored) \(other) device(s) are ignored)"
         }
     }
 
@@ -1222,14 +1219,19 @@ public enum ProfileResolver {
     /// 実行プロファイルが使う(enabled の)デバイスを「どの機械に居るか」付きで返す(ディスパッチ判定用。
     /// フルの resolve() はアプリ解決まで行い、machine を決める前に落ちうるのでこちらを使う)。
     /// 読めなければ空(警告と中止は resolve() が受け持つ)
-    public static func runDeviceMachines(project: TestProject,
-                                         runProfileName: String) -> [RunDeviceMachine] {
+    /// - overrides: `--set` の上書き。**resolve() と同じものを渡す** —— `--set app=` は対象 OS を変え、
+    ///   どのデバイスが走るかが変わる(渡さないとディスパッチの計画と resolve が別のデバイス集合を見る)
+    public static func runDeviceMachines(project: TestProject, runProfileName: String,
+                                         overrides: [String: RunProfileSetValue] = [:]) -> [RunDeviceMachine] {
         let runURL = project.runsDir.appendingPathComponent("\(runProfileName).json")
         guard let runData = try? Data(contentsOf: runURL),
-              let runDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData) else {
+              let loadedRunDoc = try? JSONDecoder().decode(RunProfileDocument.self, from: runData) else {
             return []
         }
-        return DeviceMachineGrouping.entries(runDevices: runDoc.devices ?? [], enabledOnly: true)
+        let runDoc = loadedRunDoc.applyingOverrides(overrides)
+        let entries = DeviceMachineGrouping.entries(runDevices: runDoc.devices ?? [], enabledOnly: true)
+        return AppPlatformScoping.partition(
+            entries, scope: AppPlatformScoping.scope(project: project, runDoc: runDoc)).kept
             .map { RunDeviceMachine(machine: $0.machine, name: $0.name, platform: $0.platform) }
     }
 
@@ -1367,9 +1369,20 @@ public enum ProfileResolver {
             throw ProfileError.duplicateDeviceName(
                 name: duplicate.name, deviceMachine: duplicate.machine, run: runName)
         }
-        let enabledEntries = DeviceMachineGrouping.entries(runDevices: deviceRefs, enabledOnly: true)
-        guard !enabledEntries.isEmpty else {
+        let allEnabledEntries = DeviceMachineGrouping.entries(runDevices: deviceRefs, enabledOnly: true)
+        guard !allEnabledEntries.isEmpty else {
             throw ProfileError.noEnabledDevices(run: runName)
+        }
+        // アプリプロファイルの platform が対象外にした OS のデバイスは無視(JSON は変えない)
+        let appScope = appProfile.platform ?? .hybrid
+        let scoped = AppPlatformScoping.partition(allEnabledEntries, scope: appScope)
+        for entry in scoped.ignored {
+            warnings.append(AppPlatformScoping.ignoredWarning(entry: entry, app: appRef, scope: appScope))
+        }
+        let enabledEntries = scoped.kept
+        guard !enabledEntries.isEmpty else {
+            throw ProfileError.noDevicesForAppPlatform(
+                run: runName, app: appRef, scope: appScope, ignored: scoped.ignored.count)
         }
 
         // 4. iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
@@ -1412,7 +1425,7 @@ public enum ProfileResolver {
             }
         }
 
-        // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
+        // 5. アプリ解決(デバイスのある platform ごと。)
         // appPath の相対パスは常に「リポジトリルート」基準(project.rootURL =
         // <repoRoot>/TestProjects/<name> の2階層上。= アプリの原本の場所)。**ワークスペースの
         // 有無・既定/明示のどれでもこの基準は変えない**(ワークスペース基準へ切り替えない ——
@@ -1469,9 +1482,9 @@ public enum ProfileResolver {
                 // **appPath があれば既定で有効**。パスを書いたのに入らない(既定 false)方が
                 // 事故で、警告を出さないと気付けない設計だった。止めたいときだけ
                 // autoInstall: false を明示する(opt-out)。実インストールは中身が変わったときだけ
-                autoInstall: section.autoInstall
+                autoInstall: appProfile.autoInstall
                     ?? (section.appPath != nil || section.appPathPhysical != nil),
-                healthCheckURL: section.healthCheckURL)
+                healthCheckURL: appProfile.healthCheckURL)
             // **iOS の実機にシミュレータ用ビルドは入らない**(未署名 = 0xe8008014)。
             // インストールの失敗は run の途中(ブリッジ供給の後)に出るので、
             // ここで先に言う。止めはしない。**appPath 自体が実機用ビルドなら鳴らさない**
@@ -1754,12 +1767,9 @@ public enum ProfileResolver {
 
     private static func checkAppProfileKeys(_ json: [String: Any], context: String) -> [String] {
         var warnings = checkKeys(json, allowed: AppProfile.knownKeys, context: context)
-        for key in AppProfile.knownKeys {
+        for key in AppProfile.sectionKeys {
             guard let section = json[key] as? [String: Any] else { continue }
-            // common と ios/android で許容キーが違う(commonKnownKeys 参照)
-            let allowed = key == "common"
-                ? AppProfileSection.commonKnownKeys : AppProfileSection.platformKnownKeys
-            warnings += checkKeys(section, allowed: allowed, context: "\(context) \(key)")
+            warnings += checkKeys(section, allowed: AppProfileSection.knownKeys, context: "\(context) \(key)")
         }
         return warnings
     }

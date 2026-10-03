@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { monitorRestartNeeded, runProfileNeedsRestart, runProfileScopeChanged, runProfileScopeKey } from "../src/monitorScopeFiles";
+import {
+  appProfileNeedsRestart,
+  monitorRestartNeeded,
+  runProfileNeedsRestart,
+  runProfileScopeChanged,
+  runProfileScopeKey,
+} from "../src/monitorScopeFiles";
 
 // 監視対象になりうるのは実行プロファイル(profiles/runs/*.json)の変化だけ。
 test("run profile changes restart only for the selected profile", () => {
@@ -11,10 +17,12 @@ test("run profile changes restart only for the selected profile", () => {
 
 // プロファイル画面は1操作ごとに自動保存するので、monitor が読まない欄(FM のトグル等)の変更で
 // 配信を張り直さない。monitor が読むのは devices だけ(ApiMonitorCommand.swift)
-test("run profile scope key only reflects devices", () => {
+test("run profile scope key only reflects devices and app", () => {
   const base = { app: "a", devices: [{ platform: "ios", name: "s1" }], heal: true, defaultTimeout: 5 };
   const key = runProfileScopeKey(JSON.stringify(base));
-  assert.equal(runProfileScopeKey(JSON.stringify({ ...base, heal: false, defaultTimeout: 8, app: "b" })), key);
+  assert.equal(runProfileScopeKey(JSON.stringify({ ...base, heal: false, defaultTimeout: 8 })), key);
+  // app は参照先アプリプロファイルの対象 OS で devices が絞られるので監視スコープに入る
+  assert.notEqual(runProfileScopeKey(JSON.stringify({ ...base, app: "b" })), key);
   assert.notEqual(runProfileScopeKey(JSON.stringify({ ...base, devices: [{ platform: "ios", name: "s1", machine: "M1Max" }] })), key);
   assert.notEqual(runProfileScopeKey(JSON.stringify({ ...base, devices: [] })), key);
   assert.equal(runProfileScopeKey("{not json"), null);
@@ -36,4 +44,13 @@ test("hand edits always restart; form saves restart only on scope change or righ
   // monitor は全キーをデコードするので、手で直した無関係な欄でも復旧に再起動が要る
   assert.equal(change(false, false, "k", "k"), true, "手編集はスコープが同じでも再起動する");
   assert.equal(change(true, true, "k", "k"), true, "手編集の後の最初のフォーム保存は再起動する");
+});
+
+test("app profile platform change restarts only when it reaches the monitored run profile", () => {
+  const base = { previous: "hybrid", next: "ios", appName: "sample", selectedProfile: "ios-1", selectedProfileApp: "sample" };
+  assert.equal(appProfileNeedsRestart(base), true);
+  assert.equal(appProfileNeedsRestart({ ...base, next: "hybrid" }), false, "対象 OS が変わらない保存(表示名の編集等)では再起動しない");
+  assert.equal(appProfileNeedsRestart({ ...base, previous: undefined }), false, "初見は判定しない");
+  assert.equal(appProfileNeedsRestart({ ...base, selectedProfileApp: "other" }), false, "選択中の実行プロファイルが参照しないアプリ");
+  assert.equal(appProfileNeedsRestart({ ...base, selectedProfile: "", selectedProfileApp: undefined }), true, "未選択は全実行プロファイルが対象");
 });

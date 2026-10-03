@@ -17,14 +17,13 @@ const appProfilePlaceholder = document.getElementById('app-profile-placeholder')
 const appProfileEditor = document.getElementById('app-profile-editor');
 const appProfileError = document.getElementById('app-profile-error');
 
-// common: autoInstallのみ(表示名はios/androidそれぞれに持ち、commonからは継承しない)。
-// ios/android: appName/app/appPath(autoInstallはcommonに一本化)。
+// 最上位: platform(対象 OS のラジオ)・autoInstall。ios/android: appName/app/appPath。
 // appPathPhysical(実機に配るビルド)はiOSだけ — Androidは同じAPKが両方で動くので欄が無く、
 // フィールドにも持たない(持たせるとmonitorProfileForms.tsが手書きのandroid.appPathPhysicalを消す)。
+const appProfileSection = document.getElementById('app-profile-section');
+const appProfileAutoInstall = document.getElementById('app-profile-auto-install');
+const appProfilePlatformRadios = document.querySelectorAll('input[name="app-profile-platform"]');
 const appProfileGroups = {
-  common: {
-    autoInstall: document.getElementById('app-profile-common-auto-install'),
-  },
   ios: {
     appName: document.getElementById('app-profile-ios-app-name'),
     app: document.getElementById('app-profile-ios-app'),
@@ -44,13 +43,32 @@ const APP_PROFILE_PLATFORM_FIELD_KEYS = {
 };
 const APP_PROFILE_PLATFORM_GROUP_NAMES = ['ios', 'android'];
 
-// チェックボックス⇄"true"/"false"文字列(monitorProfileForms.ts AppProfileCommonFields.autoInstallと同じ)。
+// チェックボックス⇄"true"/"false"文字列(monitorProfileForms.ts AppProfileFormFields.autoInstallと同じ)。
 // 保存意味論: false→autoInstall:falseを明示、true→キーを書かない(未指定=有効。既存の明示 true は残す)。
-function getAppProfileAutoInstall(dom) {
-  return dom.autoInstall.checked ? 'true' : 'false';
+function getAppProfileAutoInstall() {
+  return appProfileAutoInstall.checked ? 'true' : 'false';
 }
-function setAppProfileAutoInstall(dom, value) {
-  dom.autoInstall.checked = value === 'true';
+
+// 対象 OS(ios/android/hybrid。monitorProfileForms.ts の AppPlatformScope)。選んでいない OS の欄は
+// #app-profile-section の data-platform-scope で隠す(style.css)。隠した欄の値も保存時はそのまま送る
+function getAppProfilePlatform() {
+  for (const radio of appProfilePlatformRadios) {
+    if (radio.checked) {
+      return radio.value;
+    }
+  }
+  return 'hybrid';
+}
+function setAppProfilePlatform(value) {
+  for (const radio of appProfilePlatformRadios) {
+    radio.checked = radio.value === value;
+  }
+  appProfileSection.dataset.platformScope = value;
+}
+for (const radio of appProfilePlatformRadios) {
+  radio.addEventListener('change', () => {
+    appProfileSection.dataset.platformScope = getAppProfilePlatform();
+  });
 }
 
 // 直近受信の一覧(profileInfo.apps 由来)。
@@ -198,7 +216,8 @@ function renderAppProfileEditor(fields) {
   appProfileSaveQueued = false;
   appProfileError.textContent = '';
 
-  setAppProfileAutoInstall(appProfileGroups.common, fields.common.autoInstall);
+  setAppProfilePlatform(fields.platform);
+  appProfileAutoInstall.checked = fields.autoInstall === 'true';
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
     const values = fields[group];
@@ -215,9 +234,8 @@ function renderAppProfileEditor(fields) {
 // appProfileSaveのfieldsと同じ形で集める(text系はtrim済み)。
 function collectAppProfileFields() {
   const fields = {
-    common: {
-      autoInstall: getAppProfileAutoInstall(appProfileGroups.common),
-    },
+    platform: getAppProfilePlatform(),
+    autoInstall: getAppProfileAutoInstall(),
   };
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
     const dom = appProfileGroups[group];
@@ -232,7 +250,7 @@ function collectAppProfileFields() {
 
 function appProfileValuesEqual(fields) {
   const current = collectAppProfileFields();
-  if (current.common.autoInstall !== fields.common.autoInstall) {
+  if (current.platform !== fields.platform || current.autoInstall !== fields.autoInstall) {
     return false;
   }
   return APP_PROFILE_PLATFORM_GROUP_NAMES.every((group) => {
