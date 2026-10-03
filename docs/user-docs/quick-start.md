@@ -107,13 +107,14 @@ Let's create exploratory tests for the login screen.
 ### Prompt for the AI
 
 ```text
-Create exploratory tests for just the login screen of sut-ec-mobile (SUT Store). Put the step that switches the app to English mode in beforeEach.
+Create exploratory tests for just the login screen of sut-ec-mobile (SUT Store). Put the step that switches the app to English mode in setUpDevice.
 ```
 
 The AI assistant launches the app on a device, reads the elements of the login screen while
 operating it, and turns the behavior it finds into test scenarios.
-sut-ec-mobile saves its display language (Account → Language) on each device, so switching it in `beforeEach` (the shared
-step that runs before every test) makes the tests see the same screens on every device. Ask for "Japanese mode" to create them in Japanese.
+sut-ec-mobile saves its display language (Account → Language) on each device, so switching it in `setUpDevice` (the shared
+step that runs at most once per run, per device) makes the tests see the same screens on every device. The switch **stays on the device**,
+so it does not need to go in `beforeEach`, which runs before every test. Ask for "Japanese mode" to create them in Japanese.
 
 ## 4. Run it on a device
 
