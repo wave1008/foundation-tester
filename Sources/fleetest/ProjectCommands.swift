@@ -33,9 +33,6 @@ struct ProjectCommand: AsyncParsableCommand {
         @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
         var appID: String = ProjectScaffold.placeholderAppID
 
-        @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
-        var platform: String = "both"
-
         func run() async throws {
             guard InitCommand.isValidAppID(appID) else {
                 throw ValidationError("invalid --app-id: \(appID)"
@@ -43,14 +40,12 @@ struct ProjectCommand: AsyncParsableCommand {
             }
             let root = try fleetestRepoRoot()
             let project = try ProjectScaffold.createAndRegister(
-                name: name, app: appID, repoRoot: root,
-                platforms: try InitCommand.platforms(from: platform))
+                name: name, app: appID, repoRoot: root)
 
             ConsoleOut.out("✅ Created the project: TestProjects/\(name)/")
             ConsoleOut.out("   Scenarios:  TestProjects/\(name)/scenarios/ (add .swift files with @TestClass)")
-            ConsoleOut.out("   Profiles:   TestProjects/\(name)/profiles/{apps,machines,runs}/")
             ConsoleOut.out("   Build:      swift build --product \(project.productName)")
-            ConsoleOut.out("   Run:        fleetest run --project \(name) --profile ios")
+            ConsoleOut.out("   Profiles:   none yet; create them with /fleetest-profiles (`fleetest profile setup`)")
         }
     }
 
@@ -290,7 +285,7 @@ struct ProfileCommand: AsyncParsableCommand {
 
             let runs = ProfileResolver.runProfileNames(project: testProject)
             guard !runs.isEmpty else {
-                ConsoleOut.out("No run profiles (add .json files under profiles/runs/)")
+                ConsoleOut.out("No run profiles yet. Create them with /fleetest-profiles (`fleetest profile setup`)")
                 return
             }
 

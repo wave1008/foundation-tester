@@ -93,7 +93,7 @@ one that is not running is started automatically at run time). The run profiles 
 `android`).
 
 The setup creates no test project. The AI assistant creates `TestProjects/default/` first when it is missing;
-by hand, run `fleetest project create default --platform <ios|android|both>` before the commands above
+by hand, run `fleetest project create default` before the commands above
 (the VSCode extension also creates it on startup after Reload Window).
 
 </details>

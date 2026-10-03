@@ -189,7 +189,7 @@ swift run fleetest run --profile ios           # 実行プロファイル(ブリ
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights / log` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app-id`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
-| `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
+| `init` | 外部パッケージ構成の scaffold(プロファイルは書かない。`profile setup` が作る)(受け手ディレクトリを fleetest テストパッケージ化。スキル入口 `/fleetest-setup` の既定経路) |
 | `profile setup` | アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`(iOS はシミュレータ自身の名前)/`--avd`、`--app-id`、`--auto-device` は自動選定(iOS は選択中の Xcode の最新ランタイム(無ければ `xcodebuild -downloadPlatform iOS` で自動導入。数 GB で時間がかかる)と、それが対応する最新の `iPhone <N>`(Pro・Pro Max・Plus・Air・e・mini・SE 等の装飾つきは除く)/ Android は最新の Pixel(`pixel_<数字>` か `pixel_<数字>a`。同じ数字なら無印。Pro・Fold 等は除く)と tag `google_apis` で API が最大のシステムイメージ。未導入のイメージは `--accept-licenses` が必要で、付けなければ何も入れずに止まる)し、「機種(OS)-NN」(例 `iPhone 17 Pro(iOS 27.0)-01`)の名前で登録する。OS 部分は iOS が runtime 名・Android が `Android 16, API 36, APIs`。名前が合い、かつ機種・イメージも同じものがあれば番号最小を再利用し、無ければ空いている最小の番号で新規作成する。利用者の既存デバイスは改名・削除しない。ランタイムだけを先に導入するのは `fleetest api install-ios-runtime --version <SDK の版>`(NDJSON。導入済みなら何もしない・SDK の版と違う版は拒む。拡張の「デバイスを追加」が create-device の前に1回だけ呼ぶ)) |
 | `profile list` | 実行プロファイルの一覧とそのデバイスの解決チェック |
 | `install <パッケージパス>` | .app / .apk のインストール |
@@ -212,8 +212,8 @@ Package.swift のマーカー区間を自動更新する(プロジェクト間�
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp.json        # アプリ: autoInstall は common、appName/bundle ID(app)/appPath は ios/android
-│   └── runs/ios.json              # 実行プロファイル(アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
+│   ├── apps/sampleapp.json        # アプリ(`profile setup` が作る): autoInstall は common、appName/bundle ID(app)/appPath は ios/android
+│   └── runs/ios.json              # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
 └── .fleetest/locator-fingerprints.json  # ロケータの指紋(プロジェクト別)

@@ -20,8 +20,7 @@ public enum ProjectScaffold {
     /// 名前検証 → 雛形生成 → Package.swift マーカー区間更新までを一括で行う
     /// (fleetest project create から使う)
     @discardableResult
-    public static func createAndRegister(name: String, app: String, repoRoot: URL,
-                                         platforms: [String] = ["ios", "android"]) throws -> TestProject {
+    public static func createAndRegister(name: String, app: String, repoRoot: URL) throws -> TestProject {
         guard ProjectStore.isValidName(name) else {
             throw ProjectStoreError.invalidName(name)
         }
@@ -31,7 +30,7 @@ public enum ProjectScaffold {
         guard canScaffold(into: project.rootURL) else {
             throw ProjectScaffoldError.alreadyExists(project.rootURL)
         }
-        try create(project: project, app: app, platforms: platforms)
+        try create(project: project, app: app)
         try PackageManifestEditor.updateProjects(
             manifestURL: repoRoot.appendingPathComponent("Package.swift"),
             projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name),
@@ -451,10 +450,9 @@ public enum ProjectScaffold {
     }
 
     /// プロジェクト雛形を生成する(ディレクトリは存在しない前提。Package.swift の更新は呼び出し側)
-    /// platforms は雛形を作る実行プロファイル(runs/<plat>.json)の対象。指示していない
-    /// プラットフォームの run を残すとデバイス名の不整合として現れるので、必要なものだけ作る
-    public static func create(project: TestProject, app: String,
-                              platforms: [String] = ["ios", "android"]) throws {
+    /// **apps/・runs/ にプロファイル JSON は書かない**(中身の無い雛形は最初の `profile list` を赤くする。
+    /// 実体は /fleetest-profiles = `profile setup` が作る)。`app` はデモシナリオにだけ入る
+    public static func create(project: TestProject, app: String) throws {
         let fm = FileManager.default
         for dir in [project.generatedDir, project.disabledDir,
                     project.appsDir, project.runsDir,
@@ -481,27 +479,13 @@ public enum ProjectScaffold {
         try demoScenario(app: app).write(
             to: project.scenariosDir.appendingPathComponent("\(demoScenarioFileName).swift"),
             atomically: true, encoding: .utf8)
-
-        let appRef = project.name.lowercased()
-        try appProfileTemplate(appName: project.name, app: app).write(
-            to: project.appsDir.appendingPathComponent("\(appRef).json"),
-            atomically: true, encoding: .utf8)
-        for platform in platforms where knownPlatforms.contains(platform) {
-            try runProfileTemplate(app: appRef).write(
-                to: project.runsDir.appendingPathComponent("\(platform).json"),
-                atomically: true, encoding: .utf8)
-        }
     }
-
-    /// run を作る対象。これ以外の値は無視する(呼び出し側の platforms は検証済みだが、
-    /// 未知の名前で runs/<名前>.json ができると解決できないプロファイルが残る)
-    static let knownPlatforms: Set<String> = ["ios", "android"]
 
     /// 雛形が置くデモシナリオのファイル名(拡張子なし)
     public static let demoScenarioFileName = "sample_test"
 
-    /// `--app-id` を省いたときのアプリ ID。受け手の導入(install.sh)は ID を渡さず、プロファイルは後で
-    /// 別名(`profile setup --app-ref`)として作るので、デモがこの ID のまま残るのが普通の流れ
+    /// `--app-id` を省いたときのデモシナリオのアプリ ID。導入(install.sh)は ID を渡さず、プロファイルは
+    /// 雛形と無関係に `profile setup` が作るので、デモがこの ID のまま残るのが普通の流れ
     public static let placeholderAppID = "com.example.myapp"
 
     /// 受け手が最初に読むシナリオ。**実セレクタは書けない**(雛形生成の時点で対象アプリの画面を
@@ -595,6 +579,7 @@ public enum ProjectScaffold {
 
     実行プロファイル(ファイル名 = プロファイル名)。使うアプリ(`app` = apps/ のファイル名)と、
     走らせるデバイスの実体(`devices`)と、実行時の設定を持つ。
+    **ここに置く実行プロファイルは `/fleetest-profiles`(`fleetest profile setup`)が作る**(雛形は作らない)。
 
     `devices` の1要素:
     - `platform`(必須): `"ios"` / `"android"`
@@ -625,38 +610,4 @@ public enum ProjectScaffold {
     }
     ```
     """
-
-    // 置き場所は固定: appName/app(ID)/appPath は platform セクション、autoInstall は common
-    // (AppProfileSection.merging 参照)
-    public static func appProfileTemplate(appName: String, app: String) -> String {
-        """
-        {
-          "ios": {
-            "appName": "\(appName)",
-            "app": "\(app)"
-          },
-          "android": {
-            "appName": "\(appName)",
-            "app": "\(app)"
-          }
-        }
-        """
-    }
-
-    // os は書かない(名前一致の最新ランタイムに解決される)。版を固定するとホストの Xcode に
-    // 無いランタイムを指して解決不能になる(macOS/Xcode の世代差で実際に起きる)
-
-    /// **devices は空**(ユーザー決定)。実体の無い論理名を置くと最初の `profile list` が
-    /// 「そのデバイスが解決できない」で赤くなり、本当にやるべきこと(デバイスの登録)が読み取りにくくなる
-    public static func runProfileTemplate(app: String) -> String {
-        // キー順は ProfileWriter.runProfile と揃える(app → devices → …)
-        return """
-        {
-          "app": "\(app)",
-          "devices": [],
-          "fmTextOcclusionCheck": true,
-          "heal": true
-        }
-        """
-    }
 }

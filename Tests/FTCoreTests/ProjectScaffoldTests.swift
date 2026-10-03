@@ -137,69 +137,28 @@ final class ProjectScaffoldTests: XCTestCase {
         XCTAssertEqual(content, existing, "変則表記でも既にあると判定し不変")
     }
 
-    // MARK: - create(生成する run とマシンプロファイル)
+    // MARK: - create(プロファイルは書かない)
 
     private func makeProject() -> TestProject {
         TestProject(name: "MyApp", rootURL: packageRoot.appendingPathComponent("TestProjects/MyApp"))
     }
 
-    private func runNames(_ project: TestProject) throws -> [String] {
-        try FileManager.default.contentsOfDirectory(atPath: project.runsDir.path)
-            .filter { $0.hasSuffix(".json") }.sorted()
-    }
-
-    /// iOS だけ指示したのに android/all の run が残ると、実体の無いデバイスで
-    /// profile list が赤くなる(受け手の環境で実際に起きた)
-    func testOnlyRequestedPlatformRunsAreCreated() throws {
+    /// apps/・runs/ は作るが JSON は1つも書かない(実体は `profile setup` が作る。中身の無い
+    /// 雛形は最初の `profile list` を赤くする)。runs/ には書式の README だけ置く。machines/ は作らない
+    func testCreateWritesNoProfilesOnlyDirectoriesAndRunsReadme() throws {
         let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
-        XCTAssertEqual(try runNames(project), ["ios.json"])
-    }
-
-    /// 両方指示しても run はプラットフォームごとの2本だけ(横断の all は作らない。ユーザー決定)
-    func testBothPlatformsCreateOnlyPerPlatformRuns() throws {
-        let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp",
-                                   platforms: ["ios", "android"])
-        XCTAssertEqual(try runNames(project), ["android.json", "ios.json"])
-    }
-
-    /// machines/ は作らない(デバイスは実行プロファイルが持つ)。runs/ に書式の README を置く
-    func testNoMachinesFolderAndARunsReadme() throws {
-        let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
-        XCTAssertFalse(FileManager.default.fileExists(
+        try ProjectScaffold.create(project: project, app: "com.example.myapp")
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        for dir in [project.appsDir, project.runsDir] {
+            XCTAssertTrue(fm.fileExists(atPath: dir.path, isDirectory: &isDirectory)
+                          && isDirectory.boolValue, dir.path)
+            let json = try fm.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".json") }
+            XCTAssertEqual(json, [], dir.path)
+        }
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: project.runsDir.path), ["README.md"])
+        XCTAssertFalse(fm.fileExists(
             atPath: project.profilesDir.appendingPathComponent("machines").path))
-        XCTAssertEqual(
-            try FileManager.default.contentsOfDirectory(atPath: project.runsDir.path).sorted(),
-            ["README.md", "ios.json"])
-    }
-
-    /// run にトップレベルの machine を書かない(デバイスごとに持つ)
-    func testRunProfilesHaveNoTopLevelMachine() throws {
-        let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp",
-                                   platforms: ["ios", "android"])
-        for file in ["ios.json", "android.json"] {
-            let data = try Data(contentsOf: project.runsDir.appendingPathComponent(file))
-            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            XCTAssertNil(object["machine"], file)
-        }
-    }
-
-    /// run の devices は空(ユーザー決定)。雛形のマシンプロファイルも空なので、論理名を置くと
-    /// 最初の `profile list` が「そのデバイスが解決できない」で赤くなり、本当にやるべきこと
-    /// (デバイスの登録)が読み取りにくくなる
-    func testRunProfileDevicesAreEmpty() throws {
-        let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp",
-                                   platforms: ["ios", "android"])
-        for file in ["ios.json", "android.json"] {
-            let data = try Data(contentsOf: project.runsDir.appendingPathComponent(file))
-            let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
-            let devices = try XCTUnwrap(object["devices"] as? [Any], file)
-            XCTAssertTrue(devices.isEmpty, file)
-        }
     }
 
     /// 雛形はデモシナリオを1本置く。**コンパイルできることと dry-run を通ることが要件**なので、
@@ -207,7 +166,7 @@ final class ProjectScaffoldTests: XCTestCase {
     /// 「置かれること」「対象アプリの ID が埋まること」「推測のセレクタが混ざらないこと」
     func testDemoScenarioIsScaffolded() throws {
         let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.demo", platforms: ["ios"])
+        try ProjectScaffold.create(project: project, app: "com.example.demo")
         // **リテラルで書く**(production の定数で組むと、改名の変異をテストが追随して素通しする)
         let url = project.scenariosDir.appendingPathComponent("sample_test.swift")
         let source = try String(contentsOf: url, encoding: .utf8)
@@ -247,7 +206,7 @@ final class ProjectScaffoldTests: XCTestCase {
 
         // 空の器へ create が通り、通常の雛形が揃う
         let project = TestProject(name: "Empty", rootURL: empty)
-        try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
+        try ProjectScaffold.create(project: project, app: "com.example.myapp")
         XCTAssertTrue(fm.fileExists(atPath: project.scenariosDir.appendingPathComponent("_Main.swift").path))
     }
 
@@ -255,7 +214,7 @@ final class ProjectScaffoldTests: XCTestCase {
     /// 初回実行まで scripts/ = setup.sh の置き場所が見えない)。名前の正は WorkspaceScaffold
     func testCreatePlacesDefaultWorkspaceFolders() throws {
         let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp", platforms: ["ios"])
+        try ProjectScaffold.create(project: project, app: "com.example.myapp")
         let workspace = project.rootURL
             .appendingPathComponent(WorkspaceScaffold.defaultRootName)
         for name in WorkspaceScaffold.directoryNames {

@@ -12,7 +12,10 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.common.unspecified": { ja: "(未指定)", en: "(Unspecified)" },
 
   // runProfilesTab.js
-  "wvMonitor2.runProfile.none": { ja: "実行プロファイルがありません。", en: "No run profiles." },
+  "wvMonitor2.runProfile.none": {
+    ja: "実行プロファイルがありません。/fleetest-profiles で作成するか、[+] で追加します。",
+    en: "No run profiles. Create them with /fleetest-profiles, or add one with [+].",
+  },
   "wvMonitor2.runProfile.loadFailed": {
     ja: "実行プロファイルを読み込めませんでした。",
     en: "Failed to load the run profile.",

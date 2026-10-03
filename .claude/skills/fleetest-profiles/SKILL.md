@@ -22,8 +22,9 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 - **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/TestProjects/<プロジェクト>/profiles/` に住む。
   TestProjects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
   **プロジェクトが1つも無ければ作る(名前は常に `default`。VSCode 拡張の自動作成と同じ名前で、名前は聞かない)**:
-  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create default --platform <ios|android|both>
-  [--app-id <アプリID>]` を実行してからステップ3以降へ進む(プロジェクト名は以降 `default`)。
+  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create default
+  [--app-id <アプリID>]` を実行してからステップ3以降へ進む(`--app-id` はデモシナリオにだけ入る。
+  プロファイルは書かない = ステップ3以降の `profile setup` が作る)(プロジェクト名は以降 `default`)。
   WORK_DIR に fleetest のパッケージ(`Package.swift` に fleetest の依存か `foundation-tester` の記述)が無ければ
   作らず `/fleetest-setup` を案内する。
 - **fleetest CLI の在り処**: clone 構成は `swift run fleetest ...`、外部パッケージ構成は
@@ -52,8 +53,8 @@ description: fleetest のアプリプロファイル・実行プロファイル�
   `tapAppIcon()` の既定の探し先と、システムアラートがこのアプリのものかの判定に使うので、
   区別のための注記(「(実機)」等)や略称を足さない(食い違うと iOS は run 開始時に警告が出る)
 - **アプリID**(iOS は bundle ID、Android はパッケージ名。例 `com.sutec.mobile`。
-  **分からなくても中断しない**: init 由来プロファイルの既存値(プレースホルダ `com.example.myapp` 含む)の
-  まま進め、実行前に `profiles/apps/` の `app` を実IDへ差し替える必要があることを 🧑 に伝えて
+  **分からなくても中断しない**: 仮の ID `com.example.myapp` を `--app-id` に渡して
+  進め、実行前に `profiles/apps/` の `app` を実IDへ差し替える必要があることを 🧑 に伝えて
   ステップ7の報告にも残す)
 
 **パッケージパス(`appPath`)は聞かない**。ユーザーが自発的に伝えてきた場合のみ使う

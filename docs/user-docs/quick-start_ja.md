@@ -93,7 +93,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 起動していないものは実行時に自動で起動します)。実行プロファイルの名前はプラットフォーム名(`ios` と `android`)になります。
 
 セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/default/` が無ければ先に作ります。
-手で進めるときは、上のコマンドの前に `fleetest project create default --platform <ios|android|both>` を実行します
+手で進めるときは、上のコマンドの前に `fleetest project create default` を実行します
 (VSCode 拡張も Reload Window 後の起動時に作ります)。
 
 </details>

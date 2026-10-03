@@ -34,7 +34,7 @@ final class ProjectMutationTests: XCTestCase {
     private func makeProject(_ name: String, app: String = "com.example.myapp") throws -> TestProject {
         let project = TestProject(
             name: name, rootURL: ProjectStore.projectsDir(repoRoot: repoRoot).appendingPathComponent(name))
-        try ProjectScaffold.create(project: project, app: app, platforms: ["ios"])
+        try ProjectScaffold.create(project: project, app: app)
         return project
     }
 
@@ -46,7 +46,8 @@ final class ProjectMutationTests: XCTestCase {
     // MARK: - copy
 
     func testCopyDuplicatesFilesAndRegistersInManifest() throws {
-        try makeProject("Source")
+        let source = try makeProject("Source")
+        try Data("{}".utf8).write(to: source.appsDir.appendingPathComponent("source.json"))
         let copy = try ProjectMutation.copy(
             source: "Source", newName: "Copied", repoRoot: repoRoot, verify: false)
 

@@ -8,8 +8,8 @@
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp.json        # アプリプロファイル(既定名 = プロジェクト名の小文字。中に ios/android の節を持つ)
-│   └── runs/ios.json              # 実行プロファイル(アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
+│   ├── apps/sampleapp.json        # アプリプロファイル(/fleetest-profiles = `profile setup` が作る。create 直後は無い)
+│   └── runs/ios.json              # 実行プロファイル(`profile setup` が作る。アプリ+各自マシンを名乗るデバイス一覧+実行時設定)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # ランナーへの委譲(編集不要)
 │   ├── Generated/                 # ライブ操作の録画が生成したシナリオ
@@ -37,7 +37,7 @@ TestProjects/SampleApp/
 `fleetest init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
 `--no-project` を付けるとプロジェクトは作らず、`Package.swift` と空の `TestProjects/` だけを置きます
 (セットアップはこちらを使い、`default` プロジェクトは後から `/fleetest-profiles` か VSCode 拡張が作ります。
-`--no-project` は `--name` / `--app-id` / `--platform` と併用できません)。
+`--no-project` は `--name` / `--app-id` と併用できません)。
 `--fleetest-path` はローカルのクローンを指定し(`.package(path:)`)、`--fleetest-url` は代わりに
 git URL へ依存させます(`--fleetest-branch` で追従するブランチを指定。既定は `main`)。
 
@@ -45,7 +45,7 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 | コマンド | 説明 |
 |---|---|
-| `fleetest project create <name> [--app-id <bundleID>] [--platform ios\|android\|both]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する |
+| `fleetest project create <name> [--app-id <bundleID>]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する(プロファイルは書かない。`/fleetest-profiles` で作る) |
 | `fleetest project list` | テストプロジェクトの一覧と `Package.swift` への登録有無を表示する |
 | `fleetest project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
 | `fleetest project copy <source> <newName>` | プロジェクトを新しい名前で複製し `Package.swift` に登録する。実行の産物とキャッシュ(`reports/`・`results/`・`.fleetest/`)は複製されないので、複製先はまっさらな状態から始まる |
@@ -74,7 +74,7 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 VSCode 拡張は起動時に `TestProjects/default/` が無ければ(または空なら)`fleetest project create default`
 で作成し、`fleetest.project` が空のときはこの `default` を初期選択にします。すぐにシナリオを置ける器として
-使えます(アプリプロファイルの bundle ID はプレースホルダなので、実行前に差し替えてください)。
+使えます(プロファイルはまだ無いので `/fleetest-profiles` か `fleetest profile setup` で作り、デモシナリオの仮の bundle ID は実行前に差し替えてください)。
 別の名前で作ったプロジェクトを使うときは、拡張の「プロジェクトを選択」か `fleetest.project` で切り替えます。
 
 ### Link

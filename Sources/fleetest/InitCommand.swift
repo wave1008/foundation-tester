@@ -25,9 +25,6 @@ struct InitCommand: AsyncParsableCommand {
     @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
     var appID: String?
 
-    @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
-    var platform: String?
-
     @Option(name: .customLong("fleetest-path"),
             help: "Path to a local foundation-tester (depends via .package(path:); for PoCs)")
     var fleetestPath: String?
@@ -52,8 +49,7 @@ struct InitCommand: AsyncParsableCommand {
 
         if noProject {
             let conflicting = [name != nil ? "--name" : nil,
-                               appID != nil ? "--app-id" : nil,
-                               platform != nil ? "--platform" : nil].compactMap { $0 }
+                               appID != nil ? "--app-id" : nil].compactMap { $0 }
             guard conflicting.isEmpty else {
                 throw ValidationError("--no-project cannot be combined with "
                     + conflicting.joined(separator: " / "))
@@ -91,8 +87,7 @@ struct InitCommand: AsyncParsableCommand {
                 try ProjectScaffold.ensureEmptyProjectsDirectory(repoRoot: cwd)
             } else {
                 project = try ProjectScaffold.createAndRegister(
-                    name: projectName, app: resolvedAppID, repoRoot: cwd,
-                    platforms: try Self.platforms(from: platform ?? "both"))
+                    name: projectName, app: resolvedAppID, repoRoot: cwd)
             }
             let scaffoldedProjectName: String? = noProject ? nil : projectName
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように
@@ -126,12 +121,11 @@ struct InitCommand: AsyncParsableCommand {
             ConsoleOut.out("   Dependency: \(dependencyLine)")
             if let project {
                 ConsoleOut.out("   Project:    TestProjects/\(projectName)/ (add .swift files with @TestClass under scenarios/)")
-                ConsoleOut.out("   App config: point appPath in TestProjects/\(projectName)/profiles/apps/ at your own build")
+                ConsoleOut.out("   Profiles:   none yet; create them with /fleetest-profiles (`fleetest profile setup`)")
                 ConsoleOut.out("   Build:      swift build --product \(project.productName)")
-                ConsoleOut.out("   Run:        fleetest run --project \(projectName) --profile ios")
             } else {
                 ConsoleOut.out("   Project:    none yet (empty TestProjects/); create one later with /fleetest-profiles"
-                    + " or `fleetest project create default --platform <ios|android>`")
+                    + " or `fleetest project create default`")
             }
             if wroteVSCodeSettings {
                 ConsoleOut.out(project == nil
@@ -170,16 +164,5 @@ struct InitCommand: AsyncParsableCommand {
             s = "_" + s
         }
         return s.isEmpty ? "App" : s
-    }
-}
-
-extension InitCommand {
-    /// --platform の値を scaffold へ渡す配列にする(both = 両方)
-    static func platforms(from value: String) throws -> [String] {
-        switch value {
-        case "both": return ["ios", "android"]
-        case "ios", "android": return [value]
-        default: throw ValidationError("--platform must be one of ios / android / both: \(value)")
-        }
     }
 }

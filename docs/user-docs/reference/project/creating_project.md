@@ -8,8 +8,8 @@ This page covers the project layout and the commands that manage it.
 ```
 TestProjects/SampleApp/
 ├── profiles/
-│   ├── apps/sampleapp.json        # app profile (default: lowercased project name; ios/android sections inside)
-│   └── runs/ios.json              # run profiles (app + device list, each naming its machine + run-time settings)
+│   ├── apps/sampleapp.json        # app profiles (created by /fleetest-profiles = `profile setup`; none right after create)
+│   └── runs/ios.json              # run profiles (created by `profile setup`; app + device list, each naming its machine + run-time settings)
 ├── scenarios/                     # Swift DSL
 │   ├── _Main.swift                # delegates to the runner (do not edit)
 │   ├── Generated/                 # scenarios generated from Live Control recordings
@@ -38,14 +38,14 @@ There are two ways this project's Package.swift can reference foundation-tester:
 `fleetest init` scaffolds the external configuration (a `Package.swift` plus a first test
 project). With `--no-project` it creates no project: only the `Package.swift` and an empty `TestProjects/`
 (the setup uses this; the `default` project is created later by `/fleetest-profiles` or the VSCode extension;
-`--no-project` cannot be combined with `--name` / `--app-id` / `--platform`). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
+`--no-project` cannot be combined with `--name` / `--app-id`). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
 on a git URL instead (`--fleetest-branch` selects the branch to track; it defaults to `main`).
 
 ## Managing projects
 
 | Command | Description |
 |---|---|
-| `fleetest project create <name> [--app-id <bundleID>] [--platform ios\|android\|both]` | Scaffold a new test project and register it in `Package.swift` |
+| `fleetest project create <name> [--app-id <bundleID>]` | Scaffold a new test project and register it in `Package.swift` (writes no profiles; create them with `/fleetest-profiles`) |
 | `fleetest project list` | List test projects and whether they are registered in `Package.swift` |
 | `fleetest project sync` | Regenerate the `Package.swift` marker section from a scan of `TestProjects/` (run this after a manual copy or a `git pull`) |
 | `fleetest project copy <source> <newName>` | Duplicate a project under a new name and register it in `Package.swift`. Excludes run artifacts and caches (`reports/`, `results/`, `.fleetest/`) so the copy starts clean |
@@ -74,8 +74,8 @@ Most commands accept `--project <name>`. When it is omitted, the tool resolves i
 
 When the VSCode extension starts, it creates `TestProjects/default/` with `fleetest project create default`
 if it is missing (or empty), and selects `default` initially while `fleetest.project` is empty. It is a
-ready-made place for your first scenarios (the app profile's bundle ID is a placeholder; replace it before
-running). To work in a project you created under another name, switch with the "Select project" command or
+ready-made place for your first scenarios (it has no profiles yet; create them with `/fleetest-profiles`
+or `fleetest profile setup`, and replace the demo scenario's placeholder bundle ID before running). To work in a project you created under another name, switch with the "Select project" command or
 the `fleetest.project` setting.
 
 ### Link
