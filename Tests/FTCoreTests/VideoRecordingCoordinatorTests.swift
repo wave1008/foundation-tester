@@ -123,14 +123,21 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
 
         let worker = makeWorker(1)
         let started = await coordinator.start(worker)
-        XCTAssertFalse(started, "録画を開始できなかったワーカーは false")
+        XCTAssertTrue(started, "動画を起動できなければ静止画方式へ切り替える")
         await registerInterval(coordinator, worker: worker, scenarioID: "T.S0010")
+        // 静止画が1枚も撮られないまま止まる = 切り替えた先でも何も残らなかった
+        await coordinator.stop(worker)
         await coordinator.finish()
 
         let indexURL = tmp.appendingPathComponent("recordings/index.json")
         let decoded = try JSONDecoder().decode(RecordingIndex.self, from: Data(contentsOf: indexURL))
         XCTAssertEqual(decoded.sourcesFailed, 1, "録画できなかった台数を残す")
         XCTAssertEqual(decoded.recordings.count, 0)
+        XCTAssertEqual(decoded.sourceIssues, [
+            RecordingSourceIssue(worker: "ios:test1", phase: .start, reason: .emptyTestRecording,
+                                 stillFramesFallback: true),
+            RecordingSourceIssue(worker: "ios:test1", phase: .stop),
+        ], "起動時に切り替えた事実と、止めたら何も無かった事実の両方を残す")
     }
 
     /// **物理 iPhone は静止画の録画**(StillFrameRecorder)—— 撮影先を子へ渡せ、置かれた静止画が
@@ -167,7 +174,8 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: dir.path), "撮影先は停止時に消す")
     }
 
-    /// 撮影先があるのは物理 iPhone だけ(シミュレータ・Android は本物の動画)
+    /// 動画を起動できたデバイス(シミュレータ・Android)には撮影先が無い = 静止画のコストを払わせない
+    /// (撮影先があるのは物理 iPhone と、動画を起動できず切り替えたデバイスだけ)
     func testOnlyPhysicalIPhoneHasAStillFramesDir() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
@@ -180,27 +188,37 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertNil(stillsDir)
     }
 
-    /// recordStillFrames:true なら物理 iPhone 以外(シミュレータ・Android)も静止画で録る。
-    /// Android は adb が無くても録れる(撮るのは子なので adb の録画に依存しない)
-    func testStillFramesConfigRecordsEveryPlatformAsStills() async throws {
+    /// **動画の録画を起動できないデバイスは静止画方式へ切り替わり**、子が置いた静止画がクリップになる
+    /// (iOS シミュレータの試し撮りが空になる等で、そのデバイスの録画が丸ごと消えていた)
+    func testFailedVideoStartFallsBackToStillFramesAndProducesAClip() async throws {
         let tmp = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: tmp) }
         let coordinator = VideoRecordingCoordinator(
-            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, stillFrames: true))
-        let simulator = RunWorker(label: "sim(ios:8100)", platform: "ios", driver: UnusedDriver(),
-                                  connection: DriverConnection(platform: "ios", port: 8100, udid: "SIM-UDID"),
-                                  logicalName: "sim")
-        let emulator = RunWorker(label: "emu(android:emulator-5554)", platform: "android", driver: UnusedDriver(),
-                                 connection: DriverConnection(platform: "android", serial: "emulator-5554"),
-                                 logicalName: "emu")
-        for worker in [simulator, emulator] {
-            let started = await coordinator.start(worker)
-            XCTAssertTrue(started, worker.label)
-            let dir = await coordinator.stillFramesDir(workerLabel: worker.label)
-            XCTAssertNotNil(dir, "\(worker.label) に撮影先が無い = 動画で録ろうとしている")
-            await coordinator.stop(worker)
-        }
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, failuresOnly: false),
+            makeSession: { _, _, _ in DeadSession() })
+        let worker = makeWorker(1)
+        let started = await coordinator.start(worker)
+        XCTAssertTrue(started)
+        let maybeDir = await coordinator.stillFramesDir(workerLabel: worker.label)
+        let dir = try XCTUnwrap(maybeDir, "切り替えたのに子へ渡す撮影先が無い")
+
+        let t0 = Date().addingTimeInterval(-3)
+        await coordinator.scenarioStarted(workerLabel: worker.label, scenarioID: "T.S0010", at: t0)
+        let capture = StillFrameCapture(dir: dir)
+        capture.save(try Self.png(width: 100, height: 200), at: t0.addingTimeInterval(0.2))
+        capture.save(try Self.png(width: 100, height: 200), at: t0.addingTimeInterval(0.8))
+        await coordinator.scenarioFinished(workerLabel: worker.label, at: t0.addingTimeInterval(1.5), passed: true)
+        await coordinator.stop(worker)
         await coordinator.finish()
+
+        let decoded = try JSONDecoder().decode(
+            RecordingIndex.self, from: Data(contentsOf: tmp.appendingPathComponent("recordings/index.json")))
+        XCTAssertEqual(decoded.recordings.map(\.scenarioID), ["T.S0010"])
+        XCTAssertNil(decoded.sourcesFailed, "切り替えて録れたデバイスは録画失敗に数えない")
+        XCTAssertEqual(decoded.sourceIssues, [
+            RecordingSourceIssue(worker: "ios:test1", phase: .start, reason: .emptyTestRecording,
+                                 stillFramesFallback: true),
+        ], "救えた切り替えも事実として残す(後から頻度と理由を数えるため)")
     }
 
     /// 配線: 子へ撮影先を渡す(RunOrchestrator → runOne → ScenarioHost の引数)、子は操作と失敗のステップで撮る
@@ -472,6 +490,8 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
 private actor DeadSession: DeviceVideoRecorderSession {
     func start() async -> Bool { false }
     func stop() async -> RecordingSource? { nil }
+    /// 理由が存在型越しに届くか(要件でなく既定実装だけだと nil に落ちる)を見るため、既定と違う値を返す
+    func startFailure() async -> RecordingStartFailure? { .emptyTestRecording }
 }
 
 /// 開始はできるが読めるソースが残らないセッション(録画プロセスは動いたのに空だった形)

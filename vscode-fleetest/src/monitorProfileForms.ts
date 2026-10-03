@@ -121,7 +121,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 // (未知キー保持のイミュータブルな方針。addDevicesToRunProfile と同じ)。
 
 /** 実行プロファイル設定フォームのフィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
- * recordStillFrames/recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
+ * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
  * iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。fmTextOcclusionCheck/screenLooksLike/ocrTextOcclusionCheck は
@@ -181,8 +181,6 @@ export interface RunProfileFormFields {
   readonly recordFailuresOnly: boolean;
   readonly recordBitrateKbps: string;
   readonly recordFullResolution: boolean;
-  /** 全デバイスを静止画のコマ送りで録画する(Sources/FTCore/RunProfile.swift の同名キー。既定 false) */
-  readonly recordStillFrames: boolean;
   /** remoteControl.workspace(ネストしたセクション。Sources/FTCore/RunProfile.swift の同名キーと同期)。
    * アプリのバイナリ/資材を置くフォルダ。リモートの Mac にはこのフォルダが運ばれる。 */
   readonly workspace: string;
@@ -196,7 +194,7 @@ export interface RunProfileFormFields {
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。defaultTimeout は GUI のフォーム欄では
  * 扱わない(CLI `--set defaultTimeout=` と手編集のためにキーとしては有効なまま。
  * updateRunProfileInObject の `{ ...source }` がそのまま保つ)。recordFailuresOnly/
- * recordFullResolution/recordStillFrames/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
+ * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1000)。
  * heal/screenLooksLike/fmTextOcclusionCheck/ocrTextOcclusionCheck/preferCheckStateClassifier/containerInference/
  * homeOnStart/playProtectBypass/record はスキーマ既定と合わせ既定 true。
  */
@@ -230,7 +228,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const record = typeof source.record === "boolean" ? source.record : true;
   const recordFailuresOnly = typeof source.recordFailuresOnly === "boolean" ? source.recordFailuresOnly : false;
   const recordFullResolution = typeof source.recordFullResolution === "boolean" ? source.recordFullResolution : false;
-  const recordStillFrames = typeof source.recordStillFrames === "boolean" ? source.recordStillFrames : false;
   const devices: RunProfileDeviceEntry[] = Array.isArray(source.devices)
     ? source.devices
         .map((device) => {
@@ -297,7 +294,6 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     recordFailuresOnly,
     recordBitrateKbps,
     recordFullResolution,
-    recordStillFrames,
     workspace,
   };
 }
@@ -315,7 +311,7 @@ export type RunProfileUpdateResult =
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * recordFailuresOnly/recordFullResolution/recordStillFrames/iosFastInput/enableAnimations は false のとき
+ * record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は false のとき
  * キー自体を書かない
  * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
  * round-trip が安定する)。
@@ -354,7 +350,7 @@ export function updateRunProfileInObject(
   result.playProtectBypass = fields.playProtectBypass;  // 同上(既定 true 側)
   result.record = fields.record;  // 同上(既定 true 側。CLI の `doc.record ?? true` と一致)
   for (const key of [
-    "recordFailuresOnly", "recordFullResolution", "recordStillFrames", "iosFastInput", "recoverCpuFallbackToGpu",
+    "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
     "enableAnimations",
   ] as const) {
     if (fields[key]) {

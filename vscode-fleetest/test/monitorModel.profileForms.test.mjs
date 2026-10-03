@@ -57,7 +57,6 @@ const VALID_RUN_PROFILE_SAVE = {
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
-    recordStillFrames: false,
   },
 };
 
@@ -117,7 +116,6 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         recordFailuresOnly: true,
         recordBitrateKbps: "",
         recordFullResolution: true,
-        recordStillFrames: true,
       },
     }),
     true,
@@ -626,7 +624,6 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     recordFailuresOnly: true,
     recordBitrateKbps: 2000,
     recordFullResolution: true,
-    recordStillFrames: true,
     remoteControl: { workspace: "../sut-ec-mobile-workspace" },
   });
   assert.deepEqual(parsed, {
@@ -657,7 +654,6 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     recordFailuresOnly: true,
     recordBitrateKbps: "2000",
     recordFullResolution: true,
-    recordStillFrames: true,
     workspace: "../sut-ec-mobile-workspace",
   });
 });
@@ -689,7 +685,6 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
-    recordStillFrames: false,
     workspace: "",
   });
 });
@@ -715,7 +710,6 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     recordFailuresOnly: "true",
     recordBitrateKbps: {},
     recordFullResolution: "true",
-    recordStillFrames: "true",
     remoteControl: "not-an-object",
   });
   assert.deepEqual(parsed, {
@@ -743,7 +737,6 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
-    recordStillFrames: false,
     workspace: "",
   });
 });
@@ -1015,7 +1008,6 @@ const BASE_RUN_PROFILE_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   recordFullResolution: false,
-  recordStillFrames: false,
   workspace: "",
 };
 
@@ -1074,8 +1066,8 @@ test("updateRunProfileInObject: remoteControl.workspace は空文字でセクシ
   assert.deepEqual(preserved.object.remoteControl, { workspace: "../new-ws", futureKey: true });
 });
 
-test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/recordStillFrames/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
-  for (const key of ["recordFailuresOnly", "recordFullResolution", "recordStillFrames", "iosFastInput", "enableAnimations"]) {
+test("updateRunProfileInObject: recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
+  for (const key of ["recordFailuresOnly", "recordFullResolution", "iosFastInput", "enableAnimations"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.ok, true);
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);

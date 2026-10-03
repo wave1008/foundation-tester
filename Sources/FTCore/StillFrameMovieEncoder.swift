@@ -1,5 +1,5 @@
 // StillFrameMovieEncoder.swift
-// 静止画方式の録画(物理 iPhone・recordStillFrames)で、別プロセスが `<epochMs>.png` で保存した静止画列を mp4 にする。
+// 静止画方式の録画(物理 iPhone・動画を起動できなかったデバイス)で、別プロセスが `<epochMs>.png` で保存した静止画列を mp4 にする。
 // AVFoundation のみ(外部プロセスなし)。各フレームは自分の時刻から次のフレームの時刻まで表示し、
 // 最後のフレームは endAt まで保持する(endSession で尺を揃える。VideoRecordingFinalizer と同じ理屈)。
 // 出力は VideoRecordingFinalizer.extractClip が後で利用者のビットレートで再エンコードする中間ソース。

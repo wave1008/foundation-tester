@@ -4,7 +4,8 @@
 // schemaVersion===2 のみ受け付ける):
 //   { "schemaVersion": 2, "recordings": [ { "scenarioID", "worker", "platform", "file",
 //     "segments": [ { "startedAt"(ISO8601+ミリ秒), "durationMs" } ] } ],
-//     "clipsAttempted", "clipsFailed", "sourcesFailed" }
+//     "clipsAttempted", "clipsFailed", "sourcesFailed",
+//     "sourceIssues": [ { "worker", "phase": "start"|"stop", "reason"?, "stillFramesFallback" } ] }
 // 1 recordings[] エントリ = 1 シナリオ(テスト関数)のクリップ。segments はそのクリップに
 // 含まれる実録画区間(壁時計。ワーカーの録画区間とシナリオ区間の交差。Android は複数になり得る)。
 // clipsAttempted/clipsFailed/sourcesFailed は run 全体の集計(optional。
@@ -13,6 +14,9 @@
 // **sourcesFailed は「録画ソースが1本も使えなかったワーカー数」** —— 切り出しまで到達しないので
 // clipsAttempted には現れない。これを書かないと**録画が全滅した run は index ごと消えて
 // 「録画していない run」と見分けが付かない**(実害)。
+// **sourceIssues はデバイスごとの録画ソースの問題(事実だけ)**: 起動できなかった(start。理由は録画クラスが
+// 観測したものだけ = RecordingStartFailure、言えなければ欄ごと省く)/ 止めたら使えるファイルが無かった(stop)。
+// 静止画方式へ切り替えて録画を続けたものも残す(stillFramesFallback)。空なら欄ごと省く。
 // フィールド追加のみ(optional)なら ProtocolVersion 不要。この形自体を変える場合は
 // 拡張側の対応するパーサも合わせて直すこと。
 
@@ -48,6 +52,44 @@ public struct RecordingIndexEntry: Codable, Sendable {
     }
 }
 
+/// 録画を起動できなかった理由(録画クラスが観測したことだけ。推測で名乗らない)。rawValue が index.json の値
+public enum RecordingStartFailure: String, Codable, Sendable {
+    /// simctl が "Host recording is already in progress"(端末側にセッションが残っている)
+    case hostRecordingBusy
+    /// 試し撮りを閉じたら 0 バイトだった
+    case emptyTestRecording
+    /// 試し撮りが SIGINT で止まらなかった
+    case testRecordingDidNotStop
+    /// 録画プロセス(simctl / adb)を起こせなかった
+    case cannotLaunchRecorder
+    /// 起こしたが開始の合図("Recording started")が出なかった
+    case startNotConfirmed
+    /// そのデバイスの録画を作れなかった(UDID / adb が無い等)
+    case unavailable
+}
+
+public struct RecordingSourceIssue: Codable, Sendable, Equatable {
+    public enum Phase: String, Codable, Sendable {
+        case start
+        case stop
+    }
+    /// RecordingIndexEntry.worker と同じ id
+    public var worker: String
+    public var phase: Phase
+    /// phase == .start のときだけ。言えないときは nil(欄ごと省く)
+    public var reason: RecordingStartFailure?
+    /// 静止画方式へ切り替えて録画を続けたか(phase == .start のときだけ true になりうる)
+    public var stillFramesFallback: Bool
+
+    public init(worker: String, phase: Phase, reason: RecordingStartFailure? = nil,
+                stillFramesFallback: Bool = false) {
+        self.worker = worker
+        self.phase = phase
+        self.reason = reason
+        self.stillFramesFallback = stillFramesFallback
+    }
+}
+
 public struct RecordingIndex: Codable, Sendable {
     public static let currentSchemaVersion = 2
 
@@ -59,16 +101,19 @@ public struct RecordingIndex: Codable, Sendable {
     public var clipsFailed: Int?
     /// 録画ソースが1本も使えなかったワーカー数(起動できなかった/停止時に読めるファイルが無かった)
     public var sourcesFailed: Int?
+    /// デバイスごとの録画ソースの問題(冒頭の契約)。空なら nil
+    public var sourceIssues: [RecordingSourceIssue]?
 
     public init(schemaVersion: Int = RecordingIndex.currentSchemaVersion,
                 recordings: [RecordingIndexEntry],
                 clipsAttempted: Int? = nil, clipsFailed: Int? = nil,
-                sourcesFailed: Int? = nil) {
+                sourcesFailed: Int? = nil, sourceIssues: [RecordingSourceIssue]? = nil) {
         self.schemaVersion = schemaVersion
         self.recordings = recordings
         self.clipsAttempted = clipsAttempted
         self.clipsFailed = clipsFailed
         self.sourcesFailed = sourcesFailed
+        self.sourceIssues = sourceIssues
     }
 }
 
@@ -77,15 +122,15 @@ public enum RecordingIndexIO {
     public static let indexFileName = "index.json"
 
     /// runDir/recordings/index.json を書く。entries が空でも **clipsAttempted > 0 か
-    /// sourcesFailed > 0 なら書く** —— 「切り出しを試みたが取れなかった」run と
+    /// sourcesFailed > 0 か sourceIssues があれば書く** —— 「切り出しを試みたが取れなかった」run と
     /// 「録画ソースが1本も使えなかった」run のどちらも、拡張の録画タブから消さないため
     /// (消すと「録画していない run」と区別が付かない)。すべて 0/空なら書かず、
     /// recordings/ が(他に何も残さず)空なら消す
     public static func write(_ entries: [RecordingIndexEntry], runDir: URL,
                              clipsAttempted: Int = 0, clipsFailed: Int = 0,
-                             sourcesFailed: Int = 0) {
+                             sourcesFailed: Int = 0, sourceIssues: [RecordingSourceIssue] = []) {
         let dir = runDir.appendingPathComponent(directoryName)
-        guard clipsAttempted > 0 || sourcesFailed > 0 || !entries.isEmpty else {
+        guard clipsAttempted > 0 || sourcesFailed > 0 || !entries.isEmpty || !sourceIssues.isEmpty else {
             if let contents = try? FileManager.default.contentsOfDirectory(atPath: dir.path),
                contents.isEmpty {
                 try? FileManager.default.removeItem(at: dir)
@@ -98,7 +143,8 @@ public enum RecordingIndexIO {
             recordings: entries,
             clipsAttempted: clipsAttempted > 0 ? clipsAttempted : nil,
             clipsFailed: clipsAttempted > 0 ? clipsFailed : nil,
-            sourcesFailed: sourcesFailed > 0 ? sourcesFailed : nil)
+            sourcesFailed: sourcesFailed > 0 ? sourcesFailed : nil,
+            sourceIssues: sourceIssues.isEmpty ? nil : sourceIssues)
         guard let data = try? encoder.encode(index) else { return }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? data.write(to: dir.appendingPathComponent(indexFileName), options: .atomic)

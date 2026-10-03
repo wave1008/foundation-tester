@@ -12,7 +12,12 @@ import Foundation
 public struct VideoRecordingConfig: Sendable {
     /// bitrateKbps 省略時の既定。`RunProfileDocument.effectiveRecordBitrateKbps` が
     /// (--profile あり/profile-less の)両経路でこの値を共有する唯一の定義元
-    public static let defaultBitrateKbps = 1500
+    /// 1000: 実測(M2 Ultra・iOS シミュレータ / Android エミュレータ・静的な画面とスクロールの2本・
+    /// 500/1000/1500/3000 × 解像度 ON/OFF を各2回)で、1500 → 1000 は iOS のクリップが 15〜35% 小さくなり、
+    /// OCR で読める文字の割合は差が見えなかった(条件内の揺れ ±10pt 以下)。500 は iOS の半分解像度(既定)で
+    /// 誤読が 2〜5 倍に増えたので下限。数値の全体は docs/performance-tuning.md §3.31。
+    /// Android は半分解像度の映像が 1000 に届く量を使わないので、ほぼ変わらない
+    public static let defaultBitrateKbps = 1000
 
     /// recordings/index.json・録画ファイルの書き出し先(RunRecorder.runDir)
     public let runDir: URL
@@ -27,19 +32,14 @@ public struct VideoRecordingConfig: Sendable {
     /// true なら半分解像度化をスキップ(Android は screenrecord 自体の --size 指定も省略)
     /// (RunProfileDocument.recordFullResolution)
     public let fullResolution: Bool
-    /// true なら全デバイスを StillFrameRecorder(操作の直後の静止画のコマ送り)で録る
-    /// (RunProfileDocument.recordStillFrames)。物理 iPhone はこれに関わらず常に静止画
-    public let stillFrames: Bool
 
     public init(runDir: URL, androidADBPath: String? = nil, failuresOnly: Bool = false,
-                bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false,
-                stillFrames: Bool = false) {
+                bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false) {
         self.runDir = runDir
         self.androidADBPath = androidADBPath
         self.failuresOnly = failuresOnly
         self.bitrateKbps = bitrateKbps
         self.fullResolution = fullResolution
-        self.stillFrames = stillFrames
     }
 }
 
@@ -60,6 +60,13 @@ protocol DeviceVideoRecorderSession: Sendable {
     /// 録画自体が始まっていない/停止時に何も拾えなかった場合は nil
     /// (呼び出し側は警告ログのみで run を失敗させない)
     func stop() async -> RecordingSource?
+    /// start() が false を返したときの理由(観測したものだけ。言えなければ nil)。**要件として宣言する** ——
+    /// 既定実装だけだと存在型越しの呼び出しが既定の nil に落ち、録画クラスの答えが黙って捨てられる
+    func startFailure() async -> RecordingStartFailure?
+}
+
+extension DeviceVideoRecorderSession {
+    func startFailure() async -> RecordingStartFailure? { nil }
 }
 
 actor VideoRecordingCoordinator {
@@ -111,6 +118,8 @@ actor VideoRecordingCoordinator {
     /// (実害: この Mac の simctl が 0 バイトの .mov を作る状態で、
     /// 「local だけバッジが出ない」ように見えた)
     private var sourcesFailed = 0
+    /// デバイスごとの録画ソースの問題(index.json の sourceIssues。RecordingIndex.swift の契約)
+    private var sourceIssues: [RecordingSourceIssue] = []
 
     private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
     /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
@@ -140,7 +149,11 @@ actor VideoRecordingCoordinator {
 
     /// worker.label(物理ワーカー)ごとにセッションを開始する。revive 後の新ワーカーは
     /// worker.label が変わるため独立したセッション(=別ソース)になる。
-    /// 戻り値: 録画プロセスの起動に成功したら true(呼び出し側の RecordingLease 書き込み判定用)
+    /// 戻り値: 録画の起動に成功したら true(呼び出し側の RecordingLease 書き込み判定用)。
+    /// **動画の録画を起動できなければ静止画方式(StillFrameRecorder)へ切り替える** —— iOS シミュレータの
+    /// `simctl` の試し撮りが空になる等で、そのデバイスの録画が丸ごと消えていた(残った録画セッションを
+    /// 実行前に片付けるようにした後も、デバイス×実行の約2%)。切り替えは失敗した経路だけに払わせる(静止画は撮影1枚 約110〜165ms を
+    /// 操作ごとに払うので、常用はしない)。静止画も起動できなければ従来どおり sourcesFailed に数える
     @discardableResult
     func start(_ worker: RunWorker) async -> Bool {
         let workerID = "\(worker.platform):\(worker.logicalName ?? worker.label)"
@@ -156,17 +169,35 @@ actor VideoRecordingCoordinator {
             session = Self.defaultSession(worker: worker, config: config,
                                           recordingsDir: recordingsDir, sourceStem: sourceStem)
         }
-        guard let session else { return false }
-        guard await session.start() else {
-            sourcesFailed += 1
-            return false
+        if let session, await session.start() {
+            register(session, worker: worker, workerID: workerID)
+            return true
         }
-        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform,
-                                           stillFramesDir: (session as? StillFrameRecorder)?.stillsDir)
-        return true
+        let reason: RecordingStartFailure? = if let session { await session.startFailure() } else { .unavailable }
+        if !(session is StillFrameRecorder) {
+            let stills = StillFrameRecorder(workDir: recordingsDir, fileStem: sourceStem)
+            if await stills.start() {
+                ConsoleOut.err("⚠️ [recording] \(workerID): screen recording could not start"
+                    + (reason.map { " (\($0.rawValue))" } ?? "")
+                    + " — recording this device as still frames taken after each action instead")
+                sourceIssues.append(RecordingSourceIssue(worker: workerID, phase: .start, reason: reason,
+                                                         stillFramesFallback: true))
+                register(stills, worker: worker, workerID: workerID)
+                return true
+            }
+        }
+        sourceIssues.append(RecordingSourceIssue(worker: workerID, phase: .start, reason: reason))
+        sourcesFailed += 1
+        return false
     }
 
-    /// そのワーカーの子(シナリオ実行プロセス)が静止画を置く先。静止画で録画中のワーカーだけ非 nil
+    private func register(_ session: any DeviceVideoRecorderSession, worker: RunWorker, workerID: String) {
+        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform,
+                                           stillFramesDir: (session as? StillFrameRecorder)?.stillsDir)
+    }
+
+    /// そのワーカーの子(シナリオ実行プロセス)が静止画を置く先。静止画で録画中のワーカー(物理 iPhone・
+    /// 動画を起動できず切り替えたデバイス)だけ非 nil
     /// (RunOrchestrator → ScenarioHost の `--still-frames-dir`)
     func stillFramesDir(workerLabel: String) -> URL? {
         active[workerLabel]?.stillFramesDir
@@ -176,10 +207,6 @@ actor VideoRecordingCoordinator {
                                        recordingsDir: URL,
                                        sourceStem: String) -> (any DeviceVideoRecorderSession)? {
         let session: (any DeviceVideoRecorderSession)?
-        // recordStillFrames は全デバイスを静止画のコマ送りで録る(撮るのは子なので OS を問わない)
-        if config.stillFrames {
-            return StillFrameRecorder(workDir: recordingsDir, fileStem: sourceStem)
-        }
         switch worker.platform {
         case "ios":
             // 物理 iPhone は動画を取り出せないので、操作の直後の静止画をまとめる(StillFrameRecorder)
@@ -244,7 +271,7 @@ actor VideoRecordingCoordinator {
         }
         RecordingIndexIO.write(entries, runDir: config.runDir,
                                clipsAttempted: clipsAttempted, clipsFailed: clipsFailed,
-                               sourcesFailed: sourcesFailed)
+                               sourcesFailed: sourcesFailed, sourceIssues: sourceIssues)
     }
 
     /// 1 ワーカーのフル録画を停止し、そのワーカーで実行された各シナリオの区間ごとに
@@ -259,7 +286,10 @@ actor VideoRecordingCoordinator {
             // **ただしアイドルワーカーは数えない** —— `deviceKeepCount` は本数+予備1台を残すので、
             // 本数 < 台数の run では予備が必ず空になる。数えると小さい run のたびに誤警報が出て、
             // 「録画が本当に全滅した run」と見分けが付かなくなる(この警告は全滅の検出が目的)
-            if !intervals.isEmpty { sourcesFailed += 1 }
+            if !intervals.isEmpty {
+                sourcesFailed += 1
+                sourceIssues.append(RecordingSourceIssue(worker: entry.workerID, phase: .stop))
+            }
             return
         }
         defer { for file in source.files { try? FileManager.default.removeItem(at: file) } }

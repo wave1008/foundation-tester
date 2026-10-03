@@ -52,7 +52,6 @@ const runProfileRecordOptions = document.getElementById('run-profile-record-opti
 const runProfileRecordFailuresOnly = document.getElementById('run-profile-record-failures-only');
 const runProfileRecordBitrate = document.getElementById('run-profile-record-bitrate');
 const runProfileRecordFullResolution = document.getElementById('run-profile-record-full-resolution');
-const runProfileRecordStillFrames = document.getElementById('run-profile-record-still-frames');
 const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
 const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileWorkspace = document.getElementById('run-profile-workspace');
@@ -263,7 +262,6 @@ function renderRunProfileEditor(fields) {
   runProfileRecordFailuresOnly.checked = fields.recordFailuresOnly;
   runProfileRecordBitrate.value = fields.recordBitrateKbps;
   runProfileRecordFullResolution.checked = fields.recordFullResolution;
-  runProfileRecordStillFrames.checked = fields.recordStillFrames;
   updateRecordOptionsVisibility();
   runProfileWipeThreshold.value = fields.wipeDataThresholdGB;
   runProfileLocale.value = fields.locale;
@@ -311,7 +309,7 @@ function updateInappOptionsVisibility() {
 runProfileIosInappEngine.addEventListener('change', () => {
   updateInappOptionsVisibility();
 });
-// record ON のときだけ配下のサブオプション(recordFailuresOnly/recordStillFrames/recordFullResolution/
+// record ON のときだけ配下のサブオプション(recordFailuresOnly/recordFullResolution/
 // recordBitrateKbps)を表示する(値そのものは record の状態に関わらず保持・保存する)。
 function updateRecordOptionsVisibility() {
   runProfileRecordOptions.style.display = runProfileRecord.checked ? '' : 'none';
@@ -368,7 +366,6 @@ function runProfileValuesEqual(fields) {
     runProfileRecordFailuresOnly.checked === fields.recordFailuresOnly &&
     runProfileRecordBitrate.value === fields.recordBitrateKbps &&
     runProfileRecordFullResolution.checked === fields.recordFullResolution &&
-    runProfileRecordStillFrames.checked === fields.recordStillFrames &&
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
     runProfileWorkspace.value === fields.workspace &&
@@ -462,7 +459,6 @@ function collectRunProfileFields() {
     recordFailuresOnly: runProfileRecordFailuresOnly.checked,
     recordBitrateKbps: runProfileRecordBitrate.value.trim(),
     recordFullResolution: runProfileRecordFullResolution.checked,
-    recordStillFrames: runProfileRecordStillFrames.checked,
     wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
     locale: runProfileLocale.value.trim(),
     workspace: runProfileWorkspace.value.trim(),

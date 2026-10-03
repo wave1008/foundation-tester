@@ -134,8 +134,8 @@ export const panelsStrings = {
   },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
-    ja: "高速なinappエンジンを使用する",
-    en: "Use the fast in-app engine",
+    ja: "高速なinappエンジンを使用する（Simulatorのみ有効）",
+    en: "Use the fast in-app engine (Simulator only)",
   },
   "panels.runProfile.iosFastInputLabel": {
     ja: "高速入力を有効にする(アニメーションの完了を待たずに操作するため、テストが不安定になることがあります)",
@@ -179,10 +179,6 @@ export const panelsStrings = {
     en: "Container-inference corrections for taps/scrolls",
   },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
-  "panels.runProfile.recordStillFramesLabel": {
-    ja: "静止画を繋げて動画にする",
-    en: "Build the video from still frames",
-  },
   "panels.runProfile.recordFailuresOnlyLabel": {
     ja: "OKになったテストの録画は保存しない",
     en: "Don't keep recordings of tests that passed",
@@ -190,7 +186,7 @@ export const panelsStrings = {
   "panels.runProfile.recordBitrateLabel": { ja: "保存するクリップの目標ビットレート(kbps)", en: "Target bitrate for saved clips (kbps)" },
   "panels.runProfile.reportDirLabel": { ja: "レポートディレクトリ", en: "Report directory" },
   "panels.runProfile.recordFullResolutionLabel": {
-    ja: "フル解像度で保存",
+    ja: "フル解像度で保存する",
     en: "Save at full resolution",
   },
   "panels.runProfile.localeLabel": { ja: "ロケール", en: "Locale" },

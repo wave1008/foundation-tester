@@ -46,6 +46,17 @@ export interface RecordingIndex {
    *  Sources/FTCore/RecordingIndex.swift と同期)。**これが無いと録画全滅の run が
    *  「録画していない run」と見分けられない** */
   readonly sourcesFailed?: number;
+  /** デバイスごとの録画ソースの問題(事実だけ。拡張はまだ表示しない)。形と値の定義元は
+   *  Sources/FTCore/RecordingIndex.swift の RecordingSourceIssue / RecordingStartFailure */
+  readonly sourceIssues?: readonly RecordingSourceIssue[];
+}
+
+export interface RecordingSourceIssue {
+  readonly worker: string;
+  readonly phase: "start" | "stop";
+  /** 起動できなかった理由(phase "start" のときだけ。言えないときは欄ごと省かれる) */
+  readonly reason?: string;
+  readonly stillFramesFallback: boolean;
 }
 
 /** recordingsSession 応答でwebviewへ渡す1シナリオ分の動画情報。videoUri は webview.asWebviewUri 済み。 */

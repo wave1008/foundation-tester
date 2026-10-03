@@ -37,7 +37,7 @@ final class MCPDeviceAvoidanceTests: XCTestCase {
             iosFastInput: false, iosPreActionWarmup: true, containerInference: true,
             ocrTextOcclusionCheck: true, preferCheckStateClassifier: true, enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
-            recordBitrateKbps: 1500, recordFullResolution: false, recordStillFrames: false, warnings: [])
+            recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
     }
 
     /// 印の保持者として使える「自分でも親でもない、生きている pid」。launchd(1)は常に生きている

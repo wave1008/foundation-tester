@@ -470,16 +470,12 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// true なら成功したシナリオのクリップは保存せず、失敗(frozen 含む)シナリオのみ切り出す
     /// (既定 false = 全シナリオ保存)。record:false のときは無関係
     public var recordFailuresOnly: Bool?
-    /// クリップ再エンコードの目標 bitrate(kbps。既定 1500)。AVVideoAverageBitRateKey と
+    /// クリップ再エンコードの目標 bitrate(kbps。既定 1000 = VideoRecordingConfig.defaultBitrateKbps)。AVVideoAverageBitRateKey と
     /// Android screenrecord --bit-rate の両方に適用(*1000 して bps に変換)
     public var recordBitrateKbps: Int?
     /// true なら半分解像度化をスキップしフル解像度のまま出力する(既定 false)。
     /// Android は screenrecord 自体の --size 指定も省略する(録画元から既にフル解像度になる)
     public var recordFullResolution: Bool?
-    /// true なら全デバイスで、操作の直後に撮った静止画を時刻どおりに並べた mp4 を録画にする(既定 false)。
-    /// 物理 iPhone はこの設定に関わらず常にこの方式(動画を取り出す手段が無い)。recordBitrateKbps/
-    /// recordFullResolution は静止画から作った mp4 の切り出し(再エンコード)にもそのまま効く
-    public var recordStillFrames: Bool?
     /// ワークスペース(ファイル同期)宣言。省略可(既定 = リポジトリルート基準)
     public var remoteControl: RemoteControlSection?
 
@@ -497,8 +493,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 enableAnimations: Bool? = nil, homeOnStart: Bool? = nil,
                 playProtectBypass: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
-                recordFullResolution: Bool? = nil, recordStillFrames: Bool? = nil,
-                remoteControl: RemoteControlSection? = nil) {
+                recordFullResolution: Bool? = nil, remoteControl: RemoteControlSection? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
@@ -525,7 +520,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
         self.recordFullResolution = recordFullResolution
-        self.recordStillFrames = recordStillFrames
         self.remoteControl = remoteControl
     }
 
@@ -539,8 +533,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "iosFastInput", "iosPreActionWarmup", "enableAnimations", "homeOnStart",
         "playProtectBypass",
         "containerInference",
-        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "recordStillFrames",
-        "remoteControl",
+        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution", "remoteControl",
     ]
 
     /// `--set` が受ける値の宣言型(配列・オブジェクトは対象外 = `arrayOrObjectKeys` で別に断る)
@@ -569,7 +562,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "containerInference": .bool, "enableAnimations": .bool, "homeOnStart": .bool,
         "playProtectBypass": .bool, "updateWebView": .bool, "wipeDataOnBloat": .bool,
         "recoverCpuFallbackToGpu": .bool, "record": .bool, "recordFailuresOnly": .bool,
-        "recordFullResolution": .bool, "recordStillFrames": .bool,
+        "recordFullResolution": .bool,
         "reportDir": .string, "defaultTimeout": .double, "scenarioTimeout": .int,
         "recordBitrateKbps": .int, "app": .string, "locale": .string,
         "wipeDataThresholdGB": .double,
@@ -579,7 +572,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     fileprivate static let arrayOrObjectKeys: Set<String> = ["devices", "remoteControl"]
 
     /// `fleetest run --set <key>=<value>` / `fleetest api run --set` が受け付けるキー全部
-    /// (Bool 19 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
+    /// (Bool 18 + スカラー8。キー名はプロファイル JSON のキーそのもの ——
     /// kebab 変換をしない)。**`RunProfileDocument` の Bool/String/Int/Double 欄の全部から
     /// `devices`・`remoteControl`(配列・オブジェクトで `key=value` を持たない)を除いたもの**。
     /// この等号は `RunProfileSetOverrideKeysTests` が Mirror で固定する
@@ -613,7 +606,6 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
             case ("record", .bool(let v)): copy.record = v
             case ("recordFailuresOnly", .bool(let v)): copy.recordFailuresOnly = v
             case ("recordFullResolution", .bool(let v)): copy.recordFullResolution = v
-            case ("recordStillFrames", .bool(let v)): copy.recordStillFrames = v
             case ("reportDir", .string(let v)): copy.reportDir = v
             case ("defaultTimeout", .double(let v)): copy.defaultTimeout = v
             case ("scenarioTimeout", .int(let v)): copy.scenarioTimeout = v
@@ -812,8 +804,6 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
     public let recordFailuresOnly: Bool
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
-    /// 全デバイスを静止画のコマ送りで録画するか(RunProfileDocument.recordStillFrames。既定 false)
-    public let recordStillFrames: Bool
     /// レポート出力先(RunProfileDocument.reportDir)。**未指定(nil)のときの既定は呼び出し側が持つ**
     /// (Bool 欄と違いここでは既定値へ倒さない ——「reports」相対 or 絶対のどちらもプロジェクト
     /// ルート基準で解決するのは呼び出し側の責務)
@@ -863,7 +853,6 @@ public struct DeviceIndependentRunSettings: Sendable, Equatable {
             record: doc.record ?? true,
             recordFailuresOnly: doc.recordFailuresOnly ?? false,
             recordFullResolution: doc.recordFullResolution ?? false,
-            recordStillFrames: doc.recordStillFrames ?? false,
             reportDir: doc.reportDir,
             defaultTimeout: doc.defaultTimeout,
             scenarioTimeout: doc.scenarioTimeout,
@@ -1018,12 +1007,10 @@ public struct ResolvedProfile: Sendable {
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
     public let recordFailuresOnly: Bool
-    /// クリップ再エンコードの目標 bitrate(kbps。RunProfileDocument.recordBitrateKbps。既定 1500)
+    /// クリップ再エンコードの目標 bitrate(kbps。RunProfileDocument.recordBitrateKbps。既定 1000)
     public let recordBitrateKbps: Int
     /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
     public let recordFullResolution: Bool
-    /// 全デバイスを静止画のコマ送りで録画するか(RunProfileDocument.recordStillFrames。既定 false)
-    public let recordStillFrames: Bool
     /// **絶対パス解決済みのワークスペースルート**(remoteControl.workspace / `--workspace` 上書きの
     /// 実効値)。**常に非 nil**(既定 `<project.rootURL>/workspace` —— ワークスペースは
     /// 常に有効。`ProfileResolver.resolveWorkspaceRoot`)。appPath の原本の解決基準はこれの
@@ -1566,7 +1553,6 @@ public enum ProfileResolver {
             recordFailuresOnly: settings.recordFailuresOnly,
             recordBitrateKbps: RunProfileDocument.effectiveRecordBitrateKbps(runDoc.recordBitrateKbps),
             recordFullResolution: settings.recordFullResolution,
-            recordStillFrames: settings.recordStillFrames,
             workspaceRoot: workspaceRoot,
             setupHook: setupHook,
             teardownHook: teardownHook,

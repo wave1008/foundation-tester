@@ -35,6 +35,10 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     private let fileStem: String
 
     private var stopRequested = false
+    /// start() が false を返した理由(DeviceVideoRecorderSession.startFailure)
+    private var lastStartFailure: RecordingStartFailure?
+
+    func startFailure() async -> RecordingStartFailure? { lastStartFailure }
     private var restarts = 0
     private var partIndex = 0
     private var process: Process?
@@ -56,6 +60,12 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     func start() async -> Bool {
         killStaleRecording()
         if let failure = await smokeCheckWithRetries() {
+            lastStartFailure = switch failure {
+            case .hostRecordingBusy: .hostRecordingBusy
+            case .emptyFile: .emptyTestRecording
+            case .didNotStop: .testRecordingDidNotStop
+            case .cannotStart: .cannotLaunchRecorder
+            }
             switch failure {
             case .hostRecordingBusy:
                 // 録画ありの run は供給の段階で再起動して解いている(HostRecordingProbe)。ここへ来るのは
@@ -206,6 +216,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             try process.run()
         } catch {
             warn("cannot start recordVideo: \(error.localizedDescription)")
+            lastStartFailure = .cannotLaunchRecorder
             return false
         }
         // stderr は**プロセスの生存中ずっと**読み続ける(EOF まで drain)。"Recording started" 検出後に
@@ -233,6 +244,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
                 for await _ in exitStream {}
             }
             try? FileManager.default.removeItem(at: url)
+            lastStartFailure = .startNotConfirmed
             return false
         }
         self.process = process

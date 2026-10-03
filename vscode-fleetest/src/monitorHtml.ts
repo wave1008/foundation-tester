@@ -576,16 +576,12 @@ function renderRunProfileSection(): string {
                 <label for="run-profile-record-failures-only">${t("panels.runProfile.recordFailuresOnlyLabel")}</label>
               </div>
               <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-record-still-frames">
-                <label for="run-profile-record-still-frames">${t("panels.runProfile.recordStillFramesLabel")}</label>
-              </div>
-              <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-record-full-resolution">
                 <label for="run-profile-record-full-resolution">${t("panels.runProfile.recordFullResolutionLabel")}</label>
               </div>
               <div class="modal-row">
                 <label for="run-profile-record-bitrate">${t("panels.runProfile.recordBitrateLabel")}</label>
-                <input type="text" id="run-profile-record-bitrate" class="run-profile-number-input" placeholder="1500">
+                <input type="text" id="run-profile-record-bitrate" class="run-profile-number-input" placeholder="1000">
               </div>
             </div>
           </div>

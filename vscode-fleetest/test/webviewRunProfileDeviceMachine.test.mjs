@@ -111,7 +111,6 @@ const RUN_PROFILE_DATA = {
     recordFailuresOnly: false,
     recordBitrateKbps: "",
     recordFullResolution: false,
-    recordStillFrames: false,
     wipeDataThresholdGB: "",
     locale: "",
     workspace: "",

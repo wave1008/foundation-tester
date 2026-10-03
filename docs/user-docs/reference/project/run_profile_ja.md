@@ -41,11 +41,10 @@
 | `enableAnimations` | bool | `false` | 実行のためにアプリのアニメーションを無効化せず残す |
 | `homeOnStart` | bool | `--profile` 実行は `true`・プロファイル無しの素の `fleetest run` は `false` | 実行開始時に各デバイスへ Home を1回撃つ(一斉起動直後に画面が黒いまま止まるのを防ぐ) |
 | `playProtectBypass` | bool | `true` | Android の `adb install` で Play Protect の照会(「アプリをセキュリティ確認のために送信しますか?」)を通さない。インストールの間だけ「USB 経由でアプリを確認」を切って元に戻す(アプリを Google へ送らない)。`false` はキルスイッチ: ツールは端末の設定に触らず、release 署名の APK は端末側のダイアログで止まったままになる(ツールはそのダイアログに答えない) |
-| `record` | bool | `true` | 各ワーカーの画面を run 全体で録画し、シナリオごとの clip に切り出す。物理 iPhone は動画を取り出す手段が無いので、最初の操作の直前と、操作したステップ・失敗したステップの直後に撮った画面を時刻どおりに並べた clip になる(コマ送り。撮影1回ごとに約 50ms かかる)。Android の実機は通常どおり録画する |
+| `record` | bool | `true` | 各ワーカーの画面を run 全体で録画し、シナリオごとの clip に切り出す。物理 iPhone は動画を取り出す手段が無いので、最初の操作の直前と、操作したステップ・失敗したステップの直後に撮った画面を時刻どおりに並べた clip になる(コマ送り。撮影1回ごとに約 50ms かかる)。Android の実機は通常どおり録画する。シミュレータ・エミュレータ・Android 実機で画面録画を起動できなかったデバイスも、警告を出してこのコマ送りに切り替える(実測: 撮影1枚あたり iOS シミュレータで約 110ms・Android エミュレータで約 165ms) |
 | `recordFailuresOnly` | bool | `false` | `record: true` のとき、失敗(frozen 含む)したシナリオの clip のみ残す |
-| `recordBitrateKbps` | int | `1500` | 保存する clip の再エンコード bitrate |
-| `recordFullResolution` | bool | `false` | `record: true` のとき、半分解像度化をスキップする |
-| `recordStillFrames` | bool | `false` | `record: true` のとき、全デバイスの clip を画面録画ではなく、物理 iPhone と同じコマ送り(最初の操作の直前と、操作したステップ・失敗したステップの直後に撮った画面)にする。撮影のぶんだけ各ステップに時間がかかる。保存する clip には `recordBitrateKbps` と `recordFullResolution` がそのまま効く |
+| `recordBitrateKbps` | int | `1000` | 保存する clip の再エンコード bitrate |
+| `recordFullResolution` | bool | `false` | `record: true` のとき、半分解像度化をスキップする。テストの所要時間は変わらないが、クリップの容量(実測: 約1.2〜2.4倍)と、全テストが終わった後のクリップの切り出しの待ち(実測: 約1.1〜2.5倍)が増える。どちらも画面の動きが多いほど大きい |
 | `remoteControl` | object | — | リモート実行のワークスペース宣言(`{ "workspace": "<path>" }`)。[remote_runners_ja.md](../../in_action/remote_runners_ja.md) 参照 |
 
 ## FM の使われ方

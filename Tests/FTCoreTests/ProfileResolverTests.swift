@@ -775,24 +775,21 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all")
         XCTAssertFalse(resolved.recordFailuresOnly, "省略時は既定 false のはず")
-        XCTAssertEqual(resolved.recordBitrateKbps, 1500, "省略時は既定 1500kbps のはず")
+        XCTAssertEqual(resolved.recordBitrateKbps, 1000, "省略時は既定 1000kbps のはず")
         XCTAssertFalse(resolved.recordFullResolution, "省略時は既定 false のはず")
-        XCTAssertFalse(resolved.recordStillFrames, "省略時は既定 false のはず")
     }
 
     func testRecordOptionsExplicitValuesAreReflected() throws {
         try writeStandardFixture()
         try write("""
         { "app": "sampleapp", "devices": [ { "platform": "ios", "machine": "local", "name": "メイン機", "osVersion": "iOS 27.0", "udid": "AAAA-1111" } ], "record": true,
-          "recordFailuresOnly": true, "recordBitrateKbps": 3000, "recordFullResolution": true,
-          "recordStillFrames": true }
+          "recordFailuresOnly": true, "recordBitrateKbps": 3000, "recordFullResolution": true }
         """, to: project.runsDir, name: "recordOptions")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "recordOptions")
         XCTAssertTrue(resolved.recordFailuresOnly)
         XCTAssertEqual(resolved.recordBitrateKbps, 3000)
         XCTAssertTrue(resolved.recordFullResolution)
-        XCTAssertTrue(resolved.recordStillFrames)
     }
 
     func testRecordBitrateKbpsNonPositiveFallsBackToDefault() throws {
@@ -802,7 +799,7 @@ final class ProfileResolverTests: XCTestCase {
         """, to: project.runsDir, name: "recordBadBitrate")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "recordBadBitrate")
-        XCTAssertEqual(resolved.recordBitrateKbps, 1500, "0以下は既定にフォールバックするはず")
+        XCTAssertEqual(resolved.recordBitrateKbps, 1000, "0以下は既定にフォールバックするはず")
     }
 
     // MARK: - locale

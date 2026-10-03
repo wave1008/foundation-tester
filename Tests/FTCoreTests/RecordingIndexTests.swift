@@ -98,6 +98,23 @@ final class RecordingIndexTests: XCTestCase {
         XCTAssertNil(decoded.clipsAttempted, "切り出しまで到達していないので attempted は書かない")
     }
 
+    /// 録画ソースの問題だけがある run(静止画へ切り替えた予備のデバイス等)も index を書く。
+    /// 理由が言えない問題は reason の欄ごと省く
+    func testSourceIssuesAloneStillWriteTheIndex() throws {
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("FTCoreTests-recording-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        RecordingIndexIO.write([], runDir: tempDir, sourceIssues: [
+            RecordingSourceIssue(worker: "android:emu", phase: .stop),
+        ])
+
+        let data = try Data(contentsOf: tempDir.appendingPathComponent("recordings/index.json"))
+        let decoded = try JSONDecoder().decode(RecordingIndex.self, from: data)
+        XCTAssertEqual(decoded.sourceIssues, [RecordingSourceIssue(worker: "android:emu", phase: .stop)])
+        XCTAssertFalse(String(decoding: data, as: UTF8.self).contains("\"reason\""))
+    }
+
     func testWriteProducesReadableIndex() throws {
         let tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTCoreTests-recording-\(UUID().uuidString)")

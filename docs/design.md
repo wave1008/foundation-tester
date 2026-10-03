@@ -3885,10 +3885,18 @@ targeting = bundletool にしか決められない。feature module を足した
   ワーカー停止時に `StillFrameMovieEncoder` が時刻どおりの mp4 にまとめて既存の切り出しへ渡す。
   **ホストが撮り続ける方式は不採用** —— 撮影と操作が同じブリッジを奪い合い、5 コマ/秒でも `/snapshot` が
   76ms → 114ms に延びた(SE3 実測。上限は約 20 コマ/秒)。子は操作と同じ順番でブリッジを使うので奪い合わない。
-  撮影1回 約 50ms をステップごとに払う。**実行プロファイルの `recordStillFrames: true` は全デバイス
-  (シミュレータ・エミュレータ・Android 実機)をこの方式に切り替える**(撮るのは子なので OS を問わない。
-  `VideoRecordingCoordinator.defaultSession`)。`recordBitrateKbps`/`recordFullResolution` は静止画から作った
-  mp4 の切り出し(再エンコード)にもそのまま効く
+  撮影1回 約 50ms をステップごとに払う。**動画の録画を起動できなかったデバイス(シミュレータの試し撮りが空・
+  adb が無い等)もこの方式へ切り替える**(`VideoRecordingCoordinator.start`。警告を1行出す)。iOS シミュレータは
+  9/17 の修正後もデバイス×実行の約2%で録画が丸ごと消えていた(3/135)。**常用はしない** —— 設定で全デバイスを
+  静止画にする `recordStillFrames` を一度置いたが外した(2026-10-04 ユーザー決定): 撮影1枚あたりの実測
+  (2026-10-03・M2 Ultra・モニター停止・E2E の「起動と画面遷移」1本 = 14枚・静止画/録画なしを交互に5回ずつ・
+  シナリオの durationMs の差 ÷ 14)が iOS シミュレータ 約 112ms(6415 vs 4850ms・+32%)/ Android
+  エミュレータ 約 165ms(7939 vs 5634ms・+41%)で、操作と操作の間の出来事(遷移・読み込み表示)も残らない。
+  物理 iPhone の「約 50ms」は `/screenshot` 単体の値で、こちらは PNG の書き出しまで含む子の側の実費。
+  **救えるのは起動時に気づける失敗だけ** —— 止めたら中身が空だった型は切り替えられない(9/17 以降の3件が
+  どちらの型かは判別できなかった。理由は stderr にしか出ておらず、結果に残っていなかった)。**以後は
+  `recordings/index.json` の `sourceIssues` に事実として残す**(デバイス・起動時/停止時・録画クラスが観測した
+  理由・静止画へ切り替えたか。`RecordingIndex.swift`)。録画まわりの計測の全体は docs/performance-tuning.md §3.31
 - 実機で成立しない機能は無効化される: Reduce Motion 自動設定、autoInstall の差分スキップ(コンテナを読めないため
   毎回インストール)。Android 実機は録画(`adb screenrecord`)も従来どおり動く
 - `model` / `osVersion` は実機では**表示専用**(登録時に控えるだけで同定には使わない。端末を挿し替えても
@@ -4098,8 +4106,10 @@ run 自体は完了させる。期限側は敗者 task に触れず放置する(
 
 録画の付随設定(すべて `record: true` のときのみ意味を持つ): `recordFailuresOnly`(既定 false)
 は true で成功したシナリオのクリップを保存せず失敗(frozen 含む)分のみ残す。`recordBitrateKbps`
-(既定 1500)は再エンコードの bitrate(kbps)で AVVideoAverageBitRateKey と Android screenrecord
-`--bit-rate` の両方に適用。`recordFullResolution`(既定 false)は true で半分解像度化(iOS 再エンコード
+(既定 1000)は再エンコードの bitrate(kbps)で AVVideoAverageBitRateKey と Android screenrecord
+`--bit-rate` の両方に適用。既定は 2026-10-04 の実測で 1500 から下げた(iOS のクリップが 15〜35% 小さくなり、
+OCR で読める文字の割合に差が見えない。500 は iOS の半分解像度で誤読が 2〜5 倍。条件と数値は
+docs/performance-tuning.md §3.31)。`recordFullResolution`(既定 false)は true で半分解像度化(iOS 再エンコード
 時の縮小・Android `screenrecord --size`)をスキップしフル解像度のまま出力する。
 
 `locale`(既定 "ja_JP")は Android エミュレータのブート完了時(`api start-device` と wipe 後の再起動)に

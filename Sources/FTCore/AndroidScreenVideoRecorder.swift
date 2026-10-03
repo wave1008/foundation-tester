@@ -37,9 +37,13 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     private var currentProcess: Process?
     /// 進行中セグメントの exit 監視タスク。stop 側はこれの完了(=最終 pull まで終わったこと)を待つ
     private var watchTask: Task<Void, Never>?
+    /// start() が false を返した理由(DeviceVideoRecorderSession.startFailure)
+    private var lastStartFailure: RecordingStartFailure?
+
+    func startFailure() async -> RecordingStartFailure? { lastStartFailure }
 
     init(serial: String, adbPath: String, workDir: URL, fileStem: String,
-        bitrateKbps: Int = 1500, fullResolution: Bool = false) {
+        bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false) {
         self.serial = serial
         self.adbPath = adbPath
         self.workDir = workDir
@@ -108,6 +112,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
             try process.run()
         } catch {
             warn("cannot start screenrecord: \(error.localizedDescription)")
+            lastStartFailure = .cannotLaunchRecorder
             return false
         }
         currentProcess = process

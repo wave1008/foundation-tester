@@ -1637,7 +1637,7 @@ public final class RunOrchestrator {
                 await recordingLeases.acquire(leaseKey)
             }
         }
-        // 静止画方式の録画(物理 iPhone・recordStillFrames)は子が操作の直後に撮る(StillFrameRecorder)。動画で録るなら nil
+        // 静止画方式の録画(物理 iPhone・動画を起動できなかったデバイス)は子が操作の直後に撮る(StillFrameRecorder)。動画で録るなら nil
         let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)
 
         var failed = 0

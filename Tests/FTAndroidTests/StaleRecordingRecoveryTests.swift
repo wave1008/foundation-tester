@@ -57,7 +57,7 @@ final class StaleRecordingRecoveryTests: XCTestCase {
             iosFastInput: false, iosPreActionWarmup: true, containerInference: true,
             ocrTextOcclusionCheck: true, preferCheckStateClassifier: true, enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: record, recordFailuresOnly: false,
-            recordBitrateKbps: 1500, recordFullResolution: false, recordStillFrames: false, warnings: [])
+            recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
     }
 
     private func sim(_ label: String, port: UInt16 = 8123) -> RunWorker {

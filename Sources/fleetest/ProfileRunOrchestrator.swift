@@ -23,7 +23,7 @@ enum ProfileRunOrchestrator {
         return VideoRecordingConfig(
             runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB(),
             failuresOnly: resolved.recordFailuresOnly, bitrateKbps: resolved.recordBitrateKbps,
-            fullResolution: resolved.recordFullResolution, stillFrames: resolved.recordStillFrames)
+            fullResolution: resolved.recordFullResolution)
     }
 
     /// 供給(iOS lateWorkers 等)がまだ済んでいない間もボードに1本出す(段階「準備中」)。

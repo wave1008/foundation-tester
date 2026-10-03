@@ -960,8 +960,7 @@ struct RunScenarios: AsyncParsableCommand {
                                    failuresOnly: noProfileSettings.recordFailuresOnly,
                                    bitrateKbps: RunProfileDocument.effectiveRecordBitrateKbps(
                                        noProfileSettings.recordBitrateKbps),
-                                   fullResolution: noProfileSettings.recordFullResolution,
-                                   stillFrames: noProfileSettings.recordStillFrames)
+                                   fullResolution: noProfileSettings.recordFullResolution)
             : nil
 
         // 供給段の例外(AndroidDriver 初期化等)は run.json を完了させずに投げていた。
