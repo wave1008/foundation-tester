@@ -614,6 +614,81 @@ else
   record ".gitignore" skip "not a git repository"
 fi
 
+# 拡張の表示言語(fleetest.language)を OS の第一言語から決めて VSCode のユーザー設定へ書く
+# (ja 系 → ja / それ以外・読めない → en)。拡張の既定 auto は VSCode の表示言語に追従するので、
+# 日本語の macOS でも VSCode が英語のままだと英語になる。
+# **キーが既にあれば1バイトも書かない**(update.sh が毎回ここを通る = 受け手が設定タブで選んだ値を
+# 守る)。settings.json は JSONC なので json で読み書きせず、最初の `{` の直後へ1行差し込む
+# (コメント・書式を保つ)。open('w') で書く = dotfiles のシンボリックリンクを置き換えない。
+# $1 = settings.json のパス / $2 = OS の第一言語(例 ja-JP)。出力は record に渡す詳細文
+apply_extension_language() {
+  python3 - "$1" "$2" <<'PYLANG'
+import os, re, sys
+path, os_lang = sys.argv[1], sys.argv[2]
+lang = "ja" if os_lang.lower().startswith("ja") else "en"
+line = '"fleetest.language": "%s"' % lang
+if not os.path.exists(path):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write("{\n    %s\n}\n" % line)
+    print("ok|fleetest.language=%s (OS language: %s)" % (lang, os_lang or "unknown"))
+    sys.exit(0)
+text = open(path, encoding="utf-8").read()
+
+def meaningful(s, i):
+    """i 以降で、空白・コメント・文字列の外にある最初の文字の位置(無ければ -1)"""
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c.isspace():
+            i += 1
+        elif s.startswith("//", i):
+            j = s.find("\n", i)
+            i = n if j < 0 else j + 1
+        elif s.startswith("/*", i):
+            j = s.find("*/", i + 2)
+            i = n if j < 0 else j + 2
+        else:
+            return i
+    return -1
+
+def has_key(s):
+    # 文字列・コメントの外の "fleetest.language" をキーとして数える(値に同じ文字列があっても誤らない)
+    i, n = 0, len(s)
+    while i < n:
+        c = s[i]
+        if s.startswith("//", i):
+            j = s.find("\n", i); i = n if j < 0 else j + 1
+        elif s.startswith("/*", i):
+            j = s.find("*/", i + 2); i = n if j < 0 else j + 2
+        elif c == '"':
+            j = i + 1
+            while j < n and s[j] != '"':
+                j += 2 if s[j] == "\\" else 1
+            if s[i + 1:j] == "fleetest.language":
+                k = meaningful(s, j + 1)
+                if k >= 0 and s[k] == ":":
+                    return True
+            i = j + 1
+        else:
+            i += 1
+    return False
+
+if has_key(text):
+    print("skip|fleetest.language is already set (left as is)")
+    sys.exit(0)
+start = meaningful(text, 0)
+if start < 0 or text[start] != "{":
+    print("warn|could not parse %s, so fleetest.language was not set (set it from the Settings tab)" % path)
+    sys.exit(0)
+nxt = meaningful(text, start + 1)
+sep = "" if nxt >= 0 and text[nxt] == "}" else ","
+with open(path, "w", encoding="utf-8") as f:
+    f.write(text[:start + 1] + "\n    " + line + sep + text[start + 1:])
+print("ok|fleetest.language=%s (OS language: %s)" % (lang, os_lang or "unknown"))
+PYLANG
+}
+
 # ---- 7. VSCode 拡張(SKILL ステップ7) -----------------------------------------
 if [ "$DO_EXTENSION" = "0" ]; then
   record "extension" skip "--skip-extension"
@@ -624,6 +699,15 @@ else
   step_started=$SECONDS
   if ( cd "$TOOL_ROOT/vscode-fleetest" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
     record "extension" ok "installed (takes effect after Reload Window; $(elapsed_since $step_started))"
+    # 書き先は install-local.sh が入れる VSCode(~/.vscode/extensions)のユーザー設定
+    if ! command -v python3 >/dev/null 2>&1; then
+      record "language" warn "python3 is missing, so fleetest.language was not set (set it from the Settings tab)"
+    else
+      os_lang=$(defaults read -g AppleLanguages 2>/dev/null | sed -n 's/^[[:space:]]*"\{0,1\}\([A-Za-z_-]*\)"\{0,1\},\{0,1\}$/\1/p' | awk 'NR==1')
+      lang_out=$(apply_extension_language "$HOME/Library/Application Support/Code/User/settings.json" "$os_lang" 2>>"$RAW_SINK") \
+        || lang_out="warn|could not write the VSCode user settings, so fleetest.language was not set (set it from the Settings tab)"
+      record "language" "${lang_out%%|*}" "${lang_out#*|}"
+    fi
   else
     show_log_tail
     soft_fail "extension" "npm install / install-local failed (the CLI and MCP still work)" 7

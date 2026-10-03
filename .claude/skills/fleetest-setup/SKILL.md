@@ -285,6 +285,10 @@ cd ../foundation-tester/vscode-fleetest && npm install && npm run install-local
 （clone 構成なら `cd vscode-fleetest && ...`。）`install-local` はパッケージ→インストール→到達確認まで
 一括で行う。**exit code で成否判定**。
 
+install.sh はインストール成功後に、拡張の表示言語 `fleetest.language` を OS の第一言語から決めて
+VSCode のユーザー設定へ書く（日本語なら `ja`・それ以外は `en`）。**キーが既にあれば触らない**
+（受け手が設定タブで選んだ値を更新で上書きしない）。手で導入した場合は書かれない（既定の `auto`）。
+
 ### 7.5 MCP サーバの登録（エージェントから ft_* ツールを使う）
 
 VSIX とは別の消費面。エージェントがアプリを直接操作してシナリオを生成するための MCP サーバ

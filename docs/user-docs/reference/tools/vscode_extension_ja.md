@@ -187,6 +187,9 @@ iOS の Compose アプリでは、実機と `xcuitest` だけの構成でダブ�
 `fleetest.language`(`auto`/`ja`/`en`)は拡張自体の UI 表示言語を制御します。`auto` は VSCode の
 表示言語に追従します。「設定」タブの **「表示言語(Display Language)」** からも切り替えられます。
 
+インストーラ(`Scripts/install.sh`)は、OS の言語が日本語なら `ja`、それ以外なら `en` を VSCode の
+ユーザー設定へ書きます。既に `fleetest.language` を設定している場合は変更しません。
+
 ## ログ・録画のクリーンアップ
 
 録画・レポート・ログは実行のたびに溜まるので、カテゴリごとに上限を決めて古いものから削除します。

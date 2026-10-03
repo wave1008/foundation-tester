@@ -190,6 +190,9 @@ reads `git ls-remote` and never modifies the repository.
 `fleetest.language` (`auto`/`ja`/`en`) controls the extension's own UI text. `auto` follows VS
 Code's display language. You can also switch it from **"Display Language"** in the Settings tab.
 
+The installer (`Scripts/install.sh`) writes `ja` to your VS Code user settings when the macOS language is
+Japanese, and `en` otherwise. It leaves `fleetest.language` untouched if you have already set it.
+
 ## Cleaning Up Logs and Recordings
 
 Recordings, reports, and logs pile up with every run, so each category has a size limit and the
