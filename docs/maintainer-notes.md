@@ -3262,3 +3262,60 @@ production の文字列そのものを走らせる(`; true` を外すと落ち�
 続けて**モニター内のタブ切替では配信を止めない**ことにした(ユーザー決定。張り直しの間タイルが映らない)。条件はパネルの表示と
 「ライブ更新」の2つ。ライブ操作タブは選んだ1台に専用の配信を張るので、**その1台だけタイル側が畳む**(`liveStreamKey`。
 鍵は udid / serial で照らす = タイルの iOS 実機はポートを鍵にするので target.key では外れる)。`devicesTabVisible` の通知は撤去。
+
+## 64. 3時間負荷テストで出た穴(2026-10-03)
+
+構成: §62 と同じ(フリート run の周回〔手元 + M1Max / M1Ultra / M1mini〕126 周・`api run` の取り合い 44 周・MCP ファズ 53,411 回
+〔実機 iPhone SE3・Pixel 4a・Pixel 3a + 取り合い用 sim-08 / emulator-5562〕・ライブ操作ファズ 15,424 命令〔sim-09 / -10・emulator-5566〕・
+CLI ファズ 9,311 回・INT / SIGKILL〔run の親・MCP〕/ ランナーと Android ブリッジの強制停止)に、**`--wait-lock` で待機列に並ぶ `api run`**
+(Pixel 4a の実機プロファイル)を足した。この Mac の FM は開始時から死んでいた(`ModelManagerError 1001`)。
+
+### 64.1 `api remote-compat` が無いプロファイルを「ズレ無し」と答えていた
+契約は「`--project/--profile` の解決エラーだけ非0」なのに、無いプロファイルは `DeviceMachineRunner.plan` も単一機械の解決
+(`try?`)も nil に畳まれ、`machines:[]` を exit 0 で返していた(拡張の実行前チェックが素通りする)。実在を先に確かめる
+(`ProfileResolver.runProfileNames`。`run --dry-run` と同じ形)。同型の掃討: `api list-devices` / `restart-bridge` / `start-device` は
+正しく断る。MCP の `ft_list_devices` は「見つからないので全プロファイルを表示」と明言して続ける設計なので対象外。**型**: 不明を確定値に畳む。
+
+### 64.2 先取りできなかった機械について「その機械の run が自分で待機列に並ぶ」と言っていた
+`DispatchPrelock` は取れなかった機械を飛ばし、子に取り直させる。子へ `--wait-lock` は渡さない(待つのは親だけ)ので、子は**待たずに**
+同じ拒否で落ちる —— 実地: `api run` の周回が M1Ultra を握っていた間に始まったフリート run で、M1Ultra の 16 本が結果なしになった直前に
+「queues for it on its own」と出ていた。挙動は設計どおり(既定は即失敗)で、**ログだけが事実と違った**。「待たずに1回取り直し、
+取れなければ理由つきで落ちる」に直した。
+
+### 64.3 同じ run の中で復帰したレーンの離脱を「前の run からの持ち越し」と書いていた
+連続失敗の台帳(`LaneFailureStreakStore`)は失敗のたびに書くので、同じ run の中で復帰したレーンが `runWorker` に入り直すと、
+その run 自身の失敗が `carriedFailures` として読み戻される。離脱し直す挙動は設計どおり(§63.2)で、文言の「earlier runs」だけが
+誤り。`runWorker(revived:)` を渡し、復帰後は「carried over from before this lane was revived」と言う。
+
+### 64.4 ライブ操作に「AX 照会のたびに待つランナー」の検知が無かった(警告として足した)
+sim-09 で DragUI の `druid`(pid は生きている・AX サーバだけ無い = `kAXErrorServerNotFound`)の remote element に XCTest が
+**毎問 ~17 秒**待たされ、ライブ操作の命令が 30 秒の command watchdog に当たって serve の強制終了を 15 回以上繰り返した
+(利用者には何も言っていない)。run には同じ状態の測り直し(§19.27 `RunnerAccessibilityHealth`・供給時と緑のシナリオの後)があるのに
+live には無かった。**遅かった操作の直後だけ**同じ門・同じ1問で測り、劣化していれば次の観測の notes と stderr で1回だけ知らせる
+(起動し直しは割り込ませない = 新しい検知は警告から。解除は自動起動で宛先を引き直したとき)。
+**9/11 の記録との食い違い**: 当時は「druid を `kickstart -k` しても直らない(新しい pid を同じように待つ)」だったが、今回は
+druid を止めたら**再起動されず**(on-demand)、照会が即座に 1 秒に数回へ戻った。どちらが一般的かは未確定。
+
+### 64.5 XCTest の既定の割り込みハンドラがアラートのボタン(「許可」も)を押して操作を撃ち直していた
+ランナーは割り込みモニタを登録していなかったので、操作がシステムアラートに遮られると XCTest の既定のハンドラが
+ボタンを押して**遮られた操作を撃ち直していた**(ログの `Default interruption handler attempting to dismiss alert by
+tapping …` の後に `Synthesize event`)。負荷テストでは sim-10 で通知の権限アラートに**「許可」**、実機 SE3 で音声入力の
+アラートに「Siri、音声入力とプライバシーについて…」を押した(SE3 はこの直後にランナーが予期せず終了しブリッジが止まった)。
+対照(sim-09・写真の権限アラート越しの ref タップ): 「許可しない」を押して権限が denied に変わり、元のタップを撃ち直し、
+ツールには「✅ tap」だけが返った。「吸われた操作は撃ち直さない」「登録が無ければ閉じない」に反する。
+**直したこと**: `InterruptionGuard`(ランナー)が**何もせず true を返す**モニタを置く。XCTest は約 7 秒モニタを
+呼び直したあと「Failed to handle UI interruptions」の issue を記録して**その操作を諦める**(ボタンは押されず、操作も
+合成されない —— 実測)。issue は `record` の上書きが握りつぶすので、モニタが控えた題名とボタンで `BridgeRouter.handle` が
+**422** を返す(控えないと「何も起きていないのに 200」)。**false を返すと既定のハンドラへ落ちる**(`RunnerInterruptionGuardScanTests`)。
+実地: ref タップ・座標タップ・スワイプが 422 で返り、アラートも権限も変わらず、読み取り(snapshot・/systemalert)は通る。
+**払うもの**: 遮られた操作1回に約 7 秒(XCTest が諦めるまで。縮める口は無い)。失敗経路でだけ払う。
+ブリッジ版 139 → 140。in-app エンジンのタップは XCTest を通らないので対象外(背面へ届く件は `_disabled/94` の既知の制約のまま)。
+
+### 64.6 ツールの不具合ではなかったもの(記録のみ)
+- run 親の SIGKILL: 次の run が 4 機すべてのロックを回収・リモートに子の run の取り残し無し・手元の子は 10 秒以内に終了
+- `--wait-lock` の待機列: `dispatchWaiting`(position・elapsed・limit)が出て、空いたら開始
+- ライブ操作の自動起動の引き金は 10 回とも本物の接続拒否(probe 経由 0 = §62.1 の候補②は今回出ず)
+- `ft_clear_app_data` が sim で一度 201.5 秒(通常 3〜15 秒)。手順のうち cfprefsd の `kickstart -k` が 1〜9 秒と揺れる。
+  どの段かは特定できていない(`Shell.run` は時間切れ無し)
+- M1mini(8GB)は平常時 3.6%・今回 10%(他のリモートは 0.1〜0.4%)。初回シナリオの launch / 最初の操作に集中 = 機械の容量
+- CMP の iOS アプリの SIGSEGV は Compose Multiplatform の `InteropWrappingView.accessibilityContainer`(WebView を包む a11y)の中
