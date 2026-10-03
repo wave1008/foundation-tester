@@ -120,6 +120,15 @@ struct DriverOptions: ParsableArguments {
         }
     }
 
+    /// **ポート 0 を断る**(`--port` を持つコマンドが validate から呼ぶ。DriverOptions は
+    /// `rejectDeviceTargetMismatch` 経由・`bridge down` は直接)。UInt16 の型は 65536 以上を弾くが 0 は通り、
+    /// 「接続拒否・ランナーが止まった」と誤った案内に化けていた(負荷テストの CLI ファズ)
+    static func rejectZeroPort(_ port: UInt16?) throws {
+        if port == 0 {
+            throw ValidationError("--port must be between 1 and 65535 (got 0)")
+        }
+    }
+
     /// **platform と宛先(--port は iOS 専用・--serial は Android 専用)の食い違いを断る**
     /// (判定は `FTCore.DeviceTargetConsistency` の1箇所。MCP の `MCPServer.deviceTargetMismatchRefusal`
     /// と共有——片方だけ変えない)。**ArgumentParser は OptionGroup の `validate()` を自動で呼ばない**
@@ -128,6 +137,7 @@ struct DriverOptions: ParsableArguments {
     /// - extraIOSTarget: DriverOptions 自身は udid を持たないので、udid を別に持つコマンド
     ///   (`api live serve` 等)は自分の udid の有無をここへ渡す
     func rejectDeviceTargetMismatch(extraIOSTarget: Bool = false) throws {
+        try Self.rejectZeroPort(port)
         if let mismatch = FTCore.DeviceTargetConsistency.mismatch(
             platform: platform, gaveIOSTarget: port != nil || extraIOSTarget, gaveAndroidTarget: serial != nil) {
             throw ValidationError(Self.deviceTargetMismatchMessage(mismatch))
@@ -424,6 +434,7 @@ struct RunScenarios: AsyncParsableCommand {
     }
 
     func validate() throws {
+        try ports.forEach { try DriverOptions.rejectZeroPort($0) }  // 判定は DriverOptions の1箇所
         // レポートは run 後に書くので、書けない先は**始める前に**言う(フリート run では
         // 20 分走ってから分かっていた)。末尾の書き込み失敗が警告のみの規律は変えない
         // (判定は FTCore.JUnitOutputPath の doc)

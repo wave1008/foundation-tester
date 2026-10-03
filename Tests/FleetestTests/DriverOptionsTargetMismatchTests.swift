@@ -97,9 +97,10 @@ final class DriverOptionsTargetMismatchTests: XCTestCase {
     }
 
     /// udid と port は両方 iOS の宛先なので、platform ios と併用しても食い違いではない
+    /// (port は走査範囲の内側 —— udid つきは自動起動するので範囲外は別の検査で断る)
     func testApiLiveServeAllowsPlatformIOSWithUDIDAndPort() {
         XCTAssertNoThrow(try ApiLiveServe.parse(
-            ["--platform", "ios", "--udid", "257324AF-0000", "--port", "8200"]))
+            ["--platform", "ios", "--udid", "257324AF-0000", "--port", "8130"]))
     }
 
     /// `--serial` だけなら android へ解決する(ios に倒すと既定ポートの別のデバイスを操作する)

@@ -276,13 +276,20 @@ extension MCPServer {
         }?.key
     }
 
-    /// 別の宛先(または別の指し方)で採った ref を撃たれたときの拒否文。
-    /// **engineKey をそのまま出す** —— 呼び手が実際に書いた引数の形なので照合できる
+    /// 別の宛先(または別の指し方)で採った ref を撃たれたときの拒否文。engineKey をそのまま出す。
+    /// **`udid` を渡された呼び出しは engineKey の port を呼び手が書いていない**(MCP が udid を
+    /// その回のポートへ解決して載せる = injectingPort)ので、そう言い添える —— 言わないと、udid しか
+    /// 渡していない呼び手に「このポートを指した」と読ませ、同じ端末のどこが変わったのか分からない
     static func refFromAnotherTargetMessage(ref: Int, takenUnder: String,
-                                            firedAt: String) -> String {
-        "[\(ref)] was taken under a different target (\(takenUnder)), but this call addressed"
-            + " \(firedAt) — refusing, because ref numbers are scoped to the target they were"
-            + " taken from. Forwarding it would let that bridge resolve the number in its own"
+                                            firedAt: String, udid: String?) -> String {
+        let resolvedNote = udid.map {
+            " (this call gave udid \($0), which resolved to that port this time — one device can"
+                + " answer on more than one bridge port: its in-app and xcuitest engines, or a bridge"
+                + " restarted on another port)"
+        } ?? ""
+        return "[\(ref)] was taken under a different target (\(takenUnder)), but this call addressed"
+            + " \(firedAt)\(resolvedNote) — refusing, because ref numbers are scoped to the target they"
+            + " were taken from. Forwarding it would let that bridge resolve the number in its own"
             + " numbering and silently operate a different element."
             + " Take a fresh ft_snapshot for this target and use the new refs."
     }
@@ -954,7 +961,8 @@ extension MCPServer {
             guard nextRefBase > 0 else { return (ref, "") }
             if let owner = otherKeyHolding(ref, args: args) {
                 throw MCPError(Self.refFromAnotherTargetMessage(
-                    ref: ref, takenUnder: owner, firedAt: Self.engineKey(args)))
+                    ref: ref, takenUnder: owner, firedAt: Self.engineKey(args),
+                    udid: (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }))
             }
             throw MCPError("unknown ref [\(ref)] — it is not from any recent snapshot"
                 + " (refs are per-snapshot; the last 5 snapshots were checked)."

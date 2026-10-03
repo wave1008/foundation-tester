@@ -84,6 +84,17 @@ public enum AndroidDeviceCatalog {
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
     }
 
+    /// `adb devices` の全行の serial → 状態(device / offline / unauthorized …)
+    public static func listedSerialStates() throws -> [String: String] {
+        var states: [String: String] = [:]
+        for line in try adbDevicesOutput().split(separator: "\n").dropFirst() {
+            let fields = line.split(separator: "\t")
+            guard fields.count >= 2 else { continue }
+            states[String(fields[0])] = String(fields[1]).trimmingCharacters(in: .whitespaces)
+        }
+        return states
+    }
+
     /// adb が把握している全エミュレータの serial(offline/unauthorized 含む)。
     /// シャットダウン時は offline のエミュレータにも kill を送る必要がある
     public static func allEmulatorSerials() throws -> [String] {

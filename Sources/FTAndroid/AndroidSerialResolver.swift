@@ -82,6 +82,12 @@ public enum AndroidSerialResolver {
         "no Android device is connected (`adb devices` lists none)."
         + " Start an emulator with `fleetest devices up`, or connect a device with USB debugging enabled."
 
+    /// 明示された serial が `adb devices` に1行も無いとき(AndroidTargetResolution.explicitSerialRefusal)
+    public static func notListedMessage(serial: String) -> String {
+        "serial \(serial) is not connected to adb on this machine (`adb devices` does not list it"
+            + " — a typo, an unplugged device, or an emulator that is not running). Check `adb devices -l`."
+    }
+
     public static func ambiguousMessage(_ devices: [Device]) -> String {
         "several Android devices are connected: \(devices.map(\.label).joined(separator: ", "))."
             + " Pass serial: to pick one, or profile: to use a run profile's device."

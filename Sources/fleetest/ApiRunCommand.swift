@@ -200,6 +200,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// 引数だけで決まる検査は全部ここに置く(プロジェクト解決やファイル I/O が要るものは run() に残す)。
     /// ArgumentParser は parse 時にこれを呼ぶので、swift build の前・NDJSON を1行も出す前に落ちる
     func validate() throws {
+        try ports.forEach { try DriverOptions.rejectZeroPort($0) }  // 判定は DriverOptions の1箇所
         guard !scenarios.isEmpty else {
             throw ValidationError("specify at least one --scenario")
         }

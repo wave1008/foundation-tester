@@ -33,8 +33,10 @@ public enum AndroidLogcat {
         let adbPath = try AndroidDriver.findADB()
         // **logcat は宛先が居ないと「waiting for device」で戻らない**(-d でも。実測: 居ない serial で
         // 10s の打ち切りまで固まり、打ち切りの文言は「居ない」と言わない)。一覧が引けないときは不明 = 従来どおり進む
+        // **一覧の全行(offline / unauthorized も)で照らす** —— state=device だけの connectedSerials で照らすと、
+        // 載っている端末を「adb devices does not list it」と事実と違う言い方で断じる(AndroidTargetResolution と同じ規律)
         if let reason = notConnectedReason(serial: serial,
-                                           connected: try? AndroidDeviceCatalog.connectedSerials()) {
+                                           connected: (try? AndroidDeviceCatalog.listedSerialStates()).map { Array($0.keys) }) {
             throw NotConnected(reason: reason)
         }
 

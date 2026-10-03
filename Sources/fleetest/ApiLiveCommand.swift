@@ -139,6 +139,11 @@ struct ApiLiveServe: AsyncParsableCommand {
         try driverOptions.rejectVersionSkewFlag(in: "api live")
         // udid は DriverOptions が持たない別オプションなので、ここで足す
         try driverOptions.rejectDeviceTargetMismatch(extraIOSTarget: !(udid ?? "").isEmpty)
+        // **自動起動できる構成(iOS + udid)では bridge up と同じ範囲検査を通す** —— 範囲外の --port でも
+        // 自動起動は成功し、run/MCP から見つからない孤立ブリッジを作っていた(負荷テストで 8170 に起動)
+        if driverOptions.resolvedPlatform == "ios", !(udid ?? "").isEmpty {
+            try Bridge.Up.validatePort(driverOptions.port, in: BridgeDiscovery.portRange)
+        }
     }
 
     /// `ResidentProcessGuard.startCommandWatchdog(maxSeconds:)` に渡す基準値[秒]。拡張側の

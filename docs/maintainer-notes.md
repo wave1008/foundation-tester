@@ -3319,3 +3319,23 @@ tapping …` の後に `Synthesize event`)。負荷テストでは sim-10 で通
   どの段かは特定できていない(`Shell.run` は時間切れ無し)
 - M1mini(8GB)は平常時 3.6%・今回 10%(他のリモートは 0.1〜0.4%)。初回シナリオの launch / 最初の操作に集中 = 機械の容量
 - CMP の iOS アプリの SIGSEGV は Compose Multiplatform の `InteropWrappingView.accessibilityContainer`(WebView を包む a11y)の中
+
+### 64.7 文言・検査の食い違い5件(CLI ファズと K6 の実験から)
+- **存在しない serial を「止まっている・応答が遅い」と案内していた**(`snapshot --serial emulator-9999` → bridgeUnreachable の見出し)。
+  宛先の決定(`AndroidTargetResolution.serial`。CLI の手動操作と MCP が共有)で、明示された serial を `adb devices` の**全行(状態つき)**と
+  照らし、**一覧に1行も無いときだけ**断る(`explicitSerialRefusal`)。offline / unauthorized は「居ない」ではないので断らない ——
+  state=device だけを数える `connectedSerials` で照らすと誤る。一覧が引けなければ不明 = 断らない
+- **`--port 0` が検査を通り**「接続拒否・ランナーが止まった」と案内していた(UInt16 の型は 65536 以上だけを弾く)。
+  `DriverOptions.rejectZeroPort` を DriverOptions の利用者(`rejectDeviceTargetMismatch` 経由)・`bridge down`・`run` / `api run` /
+  `run-file` の `--port` に通す(run と api run は検査規則も揃える)
+- **ライブ操作の自動起動が走査範囲の外のポートでブリッジを起こしていた**(負荷テストの 8170 / 8172。`bridge up` は同じポートを断る)。
+  自動起動できる構成(iOS + `--udid`)では `Bridge.Up.validatePort` を通す。udid が無ければ既存のブリッジへ繋ぐだけなので断らない
+- **`The driver returned an error (0)`**: 外部コマンドが終了コード 0 のまま出力で失敗を告げた形(am start の「Error: Activity not started」・
+  pm の「Success」無し)。文言の組み立て(`DriverError.badResponse`)で status 0 は数字を出さない
+- **udid だけを渡した MCP の呼び出しへ、別宛先の拒否文が「このポートを指した」と言っていた**(MCP が udid をその回のポートへ解決して
+  載せる = `injectingPort`。sim-08 の in-app と xcuitest を udid だけで行き来して 33 回出た)。udid がそのポートへ解決されたこと・
+  同じ端末でも複数のブリッジのポートがあり得ることを言い添える
+- **同型の掃討(レビューで発見)**: 「adb devices does not list it」と言う既存の2箇所 —— MCP の接続断の補足
+  (`androidConnectionLostHint`。言ったうえで覚えている宛先も捨てる)と `ft_logs` の事前確認(`AndroidLogcat.notConnectedReason`)—— も
+  state=device だけの `connectedSerials()` で照らしており、offline / unauthorized の端末を「載っていない」と断じていた(再現はしていない・
+  失敗の言い方の誤り)。全行の一覧(`listedSerialStates`)で照らす。3箇所は `testNotListedClaimsCheckEveryListedLine` が走査で縛る

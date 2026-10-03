@@ -344,7 +344,10 @@ public enum DriverError: Error, LocalizedError {
         case .bridgeConnectionRefused(let context, let detail):
             return DriverErrorMessage.connectionRefused(context: context, detail: detail)
         case .badResponse(let status, let body):
-            return "The driver returned an error (\(status)): \(body)"
+            // **status 0 は数字を出さない** —— 外部コマンドが終了コード 0 のまま出力で失敗を告げた形
+            // (am start の「Error: Activity not started」・pm の「Success」無し)で、「error (0)」は矛盾して読める
+            return status == 0 ? "The driver returned an error: \(body)"
+                : "The driver returned an error (\(status)): \(body)"
         case .bridgeIdentityMismatch(let detail):
             return detail
         }

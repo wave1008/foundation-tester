@@ -107,7 +107,7 @@ extension MCPServer {
     }
 
     /// Android(serial 経由のブリッジ)の死活。**iOS のような安価な「待受しているか」判定が無い**
-    /// ので、`AndroidSerialResolver.connectedSerials()`(`adb devices`)への再照会そのものを
+    /// ので、`AndroidDeviceCatalog.listedSerialStates()`(`adb devices` の全行)への再照会そのものを
     /// 識別材料にする —— adb の失敗文言は経路(clear/install/forward…)ごとに違って狭く確実な
     /// 部分文字列が取れないので、文字列ではなく probe で確かめる。
     /// **forgetConnection の Android 分岐(lastExplicitAndroidSerial の消去)はここが唯一の呼び手**
@@ -125,8 +125,10 @@ extension MCPServer {
         // probe だけで判定するので、広めに構えても実害は「adb devices を1回余計に撃つ」だけ
         // **adb devices が読めない回は「消えた」と言わない**(空の一覧に畳むと、つながっている端末を
         // 「no longer connected」と言い切り、覚えている宛先まで捨てる)
-        guard let connected = try? AndroidDeviceCatalog.connectedSerials(),
-              Self.androidSerialVanished(serial, connected: connected)
+        // **一覧の全行(offline / unauthorized も)で照らす** —— 消えたと言ってよいのは1行も無いときだけ
+        // (state=device だけの connectedSerials だと、offline の端末を「does not list it」と言い宛先まで捨てる)
+        guard let listed = try? AndroidDeviceCatalog.listedSerialStates(),
+              Self.androidSerialVanished(serial, connected: Array(listed.keys))
         else { return "" }
         forgetConnection(key)
         return "\nThe Android device behind \(connection) is no longer connected (adb devices"

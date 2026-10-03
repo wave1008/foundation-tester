@@ -57,6 +57,10 @@ struct RunFileCommand: AsyncParsableCommand {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
     var serial: String?
 
+    func validate() throws {
+        try ports.forEach { try DriverOptions.rejectZeroPort($0) }  // 判定は DriverOptions の1箇所
+    }
+
     func run() async throws {
         let urls = try files.map { path -> URL in
             let url = URL(fileURLWithPath: path).standardizedFileURL

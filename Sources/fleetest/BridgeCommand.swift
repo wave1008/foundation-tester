@@ -214,6 +214,7 @@ struct Bridge: AsyncParsableCommand {
         var resolvedPort: UInt16 { port ?? BridgeAPI.defaultPort }
 
         func validate() throws {
+            try DriverOptions.rejectZeroPort(port)
             if let mismatch = FTCore.DeviceTargetConsistency.mismatch(
                 platform: platform, gaveIOSTarget: port != nil, gaveAndroidTarget: serial != nil) {
                 throw ValidationError(DriverOptions.deviceTargetMismatchMessage(mismatch))
