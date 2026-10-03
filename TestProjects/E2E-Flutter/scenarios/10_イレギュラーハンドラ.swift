@@ -11,8 +11,8 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.flutter")
 class イレギュラーハンドラが自動でダイアログを閉じること {
 
-    // 宣言の寿命はシナリオ1本なので setUp に置くのが定石(docs/commands.md)
-    func setUp() {
+    // 宣言の寿命はシナリオ1本なので beforeEach に置くのが定石(docs/commands.md)
+    func beforeEach() {
         irregularHandler("#txt_dialog_title", dismiss: "#btn_dialog_cancel")
     }
 

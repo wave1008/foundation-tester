@@ -55,6 +55,7 @@ final class ScenarioHostDeadlineExclusionTests: XCTestCase {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: "Login.S0010",
             connection: DriverConnection(platform: "ios"),
+            deviceSession: RunDeviceSession(),
             settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false),
                                                 scenarioTimeout: scenarioTimeout),
             reportDir: root.appendingPathComponent("reports").path,

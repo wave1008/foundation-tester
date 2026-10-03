@@ -1052,6 +1052,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
+        // --port 直指定のデバイスは platform ごとに1台(ios = --port・android = --serial)
+        let deviceSessions = RunDeviceSessionBook()
         for (index, info) in selected.enumerated() {
             if interruptState.isStopped {
                 // 始まらなかった分を記録して失敗に数える(RunRecorder.recordInterruptedBeforeStart)
@@ -1071,6 +1073,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
+                deviceSession: deviceSessions.session(for: scenarioPlatform),
                 settings: settings, reportDir: reportDirPath,
                 dryRun: dryRun, debug: debugOptions, recording: recording,
                 appBundleID: appID,
@@ -1083,6 +1086,22 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioEnd = Date()
             timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
             if passed { passedCount += 1 } else { failedCount += 1 }
+        }
+        // デバイスの仕事が終わった後の tearDownDevice(結果は NDJSON の契約に載せず stderr へ)
+        if !interruptState.isStopped {
+            for scenarioPlatform in Set(selected.map { $0.platform ?? effectivePlatform }).sorted() {
+                let connection = scenarioPlatform == "android"
+                    ? DriverConnection(platform: "android", serial: serial)
+                    : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: nil)
+                for outcome in await ScenarioHost.runDeviceTearDowns(
+                    project: project, connection: connection,
+                    deviceSession: deviceSessions.session(for: scenarioPlatform),
+                    settings: settings, reportDir: reportDirPath, dryRun: dryRun,
+                    appPath: nil, appName: nil, appBundleID: appID,
+                    registerChildProcess: { interruptState.registerChildProcess($0) }) {
+                    logStderr(ScenarioHost.describe(outcome))
+                }
+            }
         }
         return RunOutcome(passed: passedCount, failed: failedCount,
                           testSeconds: timing.testSeconds,
@@ -1203,6 +1222,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         var passedCount = 0
         var failedCount = 0
         var timing = ScenarioTimingTracker()
+        // ワーカー(デバイス)ごとに1つ。dry-run はデバイスが無いので platform ごと
+        let deviceSessions = RunDeviceSessionBook()
+        // セッション鍵 → 片付けに使う接続と platform(ループの後の tearDownDevice 用)
+        var sessionTargets: [String: (connection: DriverConnection, platform: String)] = [:]
         for (index, info) in selected.enumerated() {
             if interruptState.isStopped {
                 // 始まらなかった分を記録して失敗に数える(RunRecorder.recordInterruptedBeforeStart)
@@ -1215,11 +1238,14 @@ struct ApiRunCommand: AsyncParsableCommand {
 
             let connection: DriverConnection
             let recordingWorker: String?
+            let sessionKey: String
             if dryRun {
                 connection = DriverConnection(platform: scenarioPlatform)
                 recordingWorker = nil
+                sessionKey = scenarioPlatform
             } else if let worker = workers.first(where: { $0.platform == scenarioPlatform }) {
                 connection = worker.connection
+                sessionKey = BroadcastPlan.laneKey(of: worker)
                 // id 形式は workersReadyInfo/workerID(runWithProfileParallel)と同一規則
                 recordingWorker = "\(worker.platform):\(worker.logicalName ?? worker.label)"
             } else {
@@ -1237,6 +1263,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let recording = recorder.map {
                 ScenarioRecording(recorder: $0, worker: recordingWorker, title: info.title)
             }
+            sessionTargets[sessionKey] = (connection, scenarioPlatform)
 
             let scenarioStart = Date()
             // この経路(--dry-run/--debug)は installHandler(RPC)を配線しない — dry-run はデバイスに
@@ -1244,6 +1271,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
+                deviceSession: deviceSessions.session(for: sessionKey),
                 settings: ApiRun.withDryRunFM(ScenarioExecutionSettings(resolved), dryRun: dryRun),
                 reportDir: reportDirPath,
                 dryRun: dryRun,
@@ -1260,6 +1288,23 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioEnd = Date()
             timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
             if passed { passedCount += 1 } else { failedCount += 1 }
+        }
+        if !interruptState.isStopped {
+            for key in sessionTargets.keys.sorted() {
+                guard let target = sessionTargets[key] else { continue }
+                for outcome in await ScenarioHost.runDeviceTearDowns(
+                    project: project, connection: target.connection,
+                    deviceSession: deviceSessions.session(for: key),
+                    settings: ApiRun.withDryRunFM(ScenarioExecutionSettings(resolved), dryRun: dryRun),
+                    reportDir: reportDirPath, dryRun: dryRun,
+                    appPath: dryRun ? nil : resolved.apps[target.platform]?
+                        .packagePath(physical: target.connection.physical),
+                    appName: resolved.apps[target.platform]?.appName,
+                    appBundleID: resolved.apps[target.platform]?.bundleID,
+                    registerChildProcess: { interruptState.registerChildProcess($0) }) {
+                    logStderr(ScenarioHost.describe(outcome))
+                }
+            }
         }
         return RunOutcome(passed: passedCount, failed: failedCount,
                           testSeconds: timing.testSeconds,

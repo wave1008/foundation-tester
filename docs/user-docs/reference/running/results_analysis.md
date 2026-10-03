@@ -91,7 +91,7 @@ The tool records only observable facts — it does not guess whether a failure w
 
 | You want to know | Look at |
 |---|---|
-| Which phase failed | `failedSteps[].section` = `condition` / `action` / `expectation` / `setUp` / `tearDown` |
+| Which phase failed | `failedSteps[].section` = `condition` / `action` / `expectation` / `beforeEach` / `afterEach` |
 | Which command failed | `failedSteps[].command` |
 | Which failure path | `failedSteps[].failureKind` (see below) |
 | What was happening at that step | `failedSteps[].notes` (e.g. `interruption-dismissed`) |

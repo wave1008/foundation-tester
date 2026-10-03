@@ -739,6 +739,7 @@ enum EnvironmentFault {
 public enum ScenarioRunner {
     /// 戻り値: 実行結果。進捗は onEvent で通知される
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
+                              deviceSession: RunDeviceSession,
                               settings: ScenarioExecutionSettings, reportDir: URL,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
@@ -769,6 +770,7 @@ public enum ScenarioRunner {
         var driverUnreachableFailure = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
+            deviceSession: deviceSession,
             settings: settings, reportDir: reportDir.path,
             debug: debug, recording: recording,
             installHandler: installHandler.map { handler in
@@ -958,6 +960,9 @@ public final class RunOrchestrator {
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
     private let recorder: RunRecorder?
+    /// run 全体で1つ。レーン鍵(論理名)ごとのデバイスセッション。復帰したワーカーも同じ論理名なので
+    /// 同じセッションを引き継ぐ(復帰はアプリのデータを消さないので setUpDevice は再実行しない)
+    private let deviceSessions = RunDeviceSessionBook()
     /// run profile の record:true 時のワーカー動画録画(nil = 無効)。VideoRecordingCoordinator.swift
     private let videoRecording: VideoRecordingCoordinator?
     /// recordingFinalizing を出す時点の判定(TestingSlots の宣言参照)
@@ -1664,6 +1669,7 @@ public final class RunOrchestrator {
             let slowestStep = SlowestStepSnapshot()
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
+                deviceSession: deviceSessions.session(for: BroadcastPlan.laneKey(of: worker)),
                 settings: settings, reportDir: reportDir,
                 debug: debug,
                 recorder: recorder, installHandler: installHandler,
@@ -1851,6 +1857,20 @@ public final class RunOrchestrator {
             }
             await progressState?.scenarioFinished(laneKey: progressLaneKey, passed: false)
             failed += 1
+        }
+        // キューを掃き切ったデバイスだけが片付ける(離脱は上で return 済み・中断中は新しい子を起こさない)
+        if await !interruptRequested.isRequested() {
+            let outcomes = await ScenarioHost.runDeviceTearDowns(
+                project: project, connection: worker.connection,
+                deviceSession: deviceSessions.session(for: BroadcastPlan.laneKey(of: worker)),
+                settings: settings, reportDir: reportDir.path, dryRun: false,
+                appPath: appTargets[worker.platform]?.packagePath(physical: worker.connection.physical),
+                appName: appTargets[worker.platform]?.appName,
+                appBundleID: appBundleIDs[worker.platform],
+                registerChildProcess: registerChildProcess)
+            for outcome in outcomes {
+                continuation.yield(.workerLog(worker: worker.label, message: ScenarioHost.describe(outcome)))
+            }
         }
         if let leaseKey { await runLeases.release(leaseKey) }
         // 切り出し(stopRecording)より前に閉じる —— 最後のワーカーの切り出しこそが待ち時間の本体

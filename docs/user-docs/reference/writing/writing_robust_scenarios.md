@@ -45,7 +45,7 @@ ifCanSelect("Not Now", waitSeconds: 2) {
 ```
 
 For an in-app message that can appear at any point during a scene (a promo modal, for example),
-declare an `irregularHandler` once in `setUp()` instead of guarding every step — it closes the
+declare an `irregularHandler` once in `beforeEach()` instead of guarding every step — it closes the
 message automatically wherever it shows up. (OS-level system dialogs, like iOS permission
 prompts, are handled separately — see `iosAlertHandler` — since they live outside the app's own
 element tree.)
@@ -58,10 +58,10 @@ before you ever touch a device: it flags any `expectation` block with zero asser
 `#id` that doesn't appear in a screen you've actually captured with `ft_snapshot`. Always run
 dry-run once after writing a scenario, before running it on a device.
 
-## Failure aborts the whole scenario — `tearDown` still runs
+## Failure aborts the whole scenario — `afterEach` still runs
 
 A failing command stops the scenario immediately; every later step, including later scenes, is
-skipped. The one exception is `tearDown()`, which always runs even after a failure — put cleanup
+skipped. The one exception is `afterEach()`, which always runs even after a failure — put cleanup
 there (deleting data your scenario created, for example) so a failed run doesn't leave state
 behind for the next run.
 

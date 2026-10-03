@@ -24,15 +24,15 @@ class チェックアウトできること {
     private let メール = "e2e-checkout@example.com"
     private let パスワード = "Passw0rd1!"
 
-    func setUp() {
+    func beforeEach() {
         launchApp()
     }
 
     /// **未ログイン状態へ戻す**。他のシナリオ(タブナビゲーション・言語切替 等)はアカウント画面に
     /// 「ログイン / 登録」が出ることを前提にしており、ログインしたまま抜けると軒並み落ちる
     /// (2026-08-10 に実際に5本落とした)。失敗はシナリオ全体を中断するので、緑経路の scene ではなく
-    /// tearDown に置く。住所・支払い方法・注文履歴はサーバー側に残るが、未ログインなら見えない
-    func tearDown() {
+    /// afterEach に置く。住所・支払い方法・注文履歴はサーバー側に残るが、未ログインなら見えない
+    func afterEach() {
         ifCanSelect("#btn_back") { tap("#btn_back") }
         ifCanSelect("#tab_account") { tap("#tab_account") }
         ifCanSelect("#btn_logout", waitSeconds: 1) { tap("#btn_logout") }

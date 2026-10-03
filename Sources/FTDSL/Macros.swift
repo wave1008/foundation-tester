@@ -17,9 +17,19 @@
 /// `<platform>.app`)から解決される。`app:` は書かなくてよく、書いた場合はそちらが勝つ
 /// (1プロジェクトに複数アプリのシナリオが混在する構成のための上書き。食い違いは警告が出る)。
 ///
-/// 同じクラスに `func setUp()` / `func tearDown()`(引数なし・非async・非throws)を書くと、
+/// 同じクラスに `func beforeEach()` / `func afterEach()`(引数なし・非async・非throws)を書くと、
 /// 各 @Test の前後で自動実行される(基底クラスからの継承は見ない)。
-/// setUp の失敗はそのシナリオを中断し、tearDown は**失敗後でも実行される**。
+/// beforeEach の失敗はそのシナリオを中断し、afterEach は**失敗後でも実行される**。
+///
+/// `func setUpDevice()` は**1回の run × 1デバイス × 1クラスで高々1回**、そのデバイスに配られた
+/// そのクラスの最初のシナリオの beforeEach の前に走る(走らせるかは親が決める。順序は
+/// setUpDevice → beforeEach → 本体 → afterEach)。失敗したらそのシナリオは中断し、同じデバイスの
+/// 後続シナリオは走らせずに失敗として記録される。**setUpDevice で設定したインスタンスのプロパティは
+/// そのシナリオのプロセスだけで見える**(シナリオごとに別プロセス)—— 他のシナリオへは
+/// `writeMemo` / `readMemo` で渡す。
+///
+/// `func tearDownDevice()` はシナリオの run クロージャに入らず descriptor の欄になる。親が**デバイスの仕事が
+/// 終わった後**に専用の子(`--device-teardown-only`)で1デバイス1回呼ぶ(ScenarioHost.runDeviceTearDowns)。
 @attached(extension, conformances: FTTestClassDefinition, names: named(ftDescriptor))
 @attached(peer, names: prefixed(__FTReg_))
 public macro TestClass(app: String? = nil, platform: String? = nil) =

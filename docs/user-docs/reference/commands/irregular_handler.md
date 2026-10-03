@@ -7,12 +7,12 @@ it automatically whenever it does.
 
 | function | description |
 |---|---|
-| `irregularHandler(detect, dismiss:, maxDismissals: 10)` | Declares an interruption. Whenever `detect` resolves during any later step (operation or assertion), it is closed automatically — `dismiss` is tapped if given, otherwise `detect` itself is tapped. Typically declared once in `setUp()`. |
+| `irregularHandler(detect, dismiss:, maxDismissals: 10)` | Declares an interruption. Whenever `detect` resolves during any later step (operation or assertion), it is closed automatically — `dismiss` is tapped if given, otherwise `detect` itself is tapped. Typically declared once in `beforeEach()`. |
 
 ## Example
 
 ```swift
-func setUp() {
+func beforeEach() {
     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
 }
 ```

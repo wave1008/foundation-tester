@@ -88,7 +88,7 @@ results/runs/<YYYY-MM>/<runID>/
 
 | 知りたいこと | 見る欄 |
 |---|---|
-| どのフェーズで落ちたか | `failedSteps[].section` = `condition` / `action` / `expectation` / `setUp` / `tearDown` |
+| どのフェーズで落ちたか | `failedSteps[].section` = `condition` / `action` / `expectation` / `beforeEach` / `afterEach` |
 | 何のコマンドで落ちたか | `failedSteps[].command` |
 | どの経路で落ちたか | `failedSteps[].failureKind`(下記) |
 | そのステップで何が起きていたか | `failedSteps[].notes`(`interruption-dismissed` 等) |

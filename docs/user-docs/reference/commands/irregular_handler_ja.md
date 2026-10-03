@@ -6,12 +6,12 @@
 
 | 関数 | 説明 |
 |---|---|
-| `irregularHandler(検出sel, dismiss: 閉じるsel?, maxDismissals: 10)` | 割り込みを宣言します。以降のどのステップでも(操作でも検証でも)`検出sel` が解決できた時点で自動的に閉じます —— `dismiss` があればそれをタップ、無ければ `検出sel` 自体をタップします。通常は `setUp()` で1回宣言します。 |
+| `irregularHandler(検出sel, dismiss: 閉じるsel?, maxDismissals: 10)` | 割り込みを宣言します。以降のどのステップでも(操作でも検証でも)`検出sel` が解決できた時点で自動的に閉じます —— `dismiss` があればそれをタップ、無ければ `検出sel` 自体をタップします。通常は `beforeEach()` で1回宣言します。 |
 
 ## 例
 
 ```swift
-func setUp() {
+func beforeEach() {
     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
 }
 ```

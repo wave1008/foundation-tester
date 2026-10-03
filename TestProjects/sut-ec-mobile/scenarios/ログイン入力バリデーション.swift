@@ -11,15 +11,15 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
 class ログイン入力バリデーションが働くこと {
 
-    // 3 本の @Test すべてが「ログイン画面を開いた状態」から始まるので前提整備は setUp に置く
+    // 3 本の @Test すべてが「ログイン画面を開いた状態」から始まるので前提整備は beforeEach に置く
     // (各 @Test の前に毎回実行される)。**ログアウト状態が前提**: アプリのデータは launchApp で
     // 消えないため、前のシナリオのセッションが残っているとアカウント画面がプロフィール表示になり
-    // #btn_login が存在しない。setUp の失敗はシナリオごと中断されるので前提が崩れたまま走らない
-    func setUp() {
+    // #btn_login が存在しない。beforeEach の失敗はシナリオごと中断されるので前提が崩れたまま走らない
+    func beforeEach() {
         launchApp()
         ifCanSelect("#btn_back") { tap("#btn_back") }
         tap("#tab_account")
-        // 待ち2つの理由と実害は ログイン失敗.swift の setUp を参照
+        // 待ち2つの理由と実害は ログイン失敗.swift の beforeEach を参照
         waitForDisplay("#btn_benchmark")
         waitForClose("#account_loading")
         // 4.7インチ実機ではアカウント画面の下端が下部タブバーに潜る(D-02)。末尾まで送ってから

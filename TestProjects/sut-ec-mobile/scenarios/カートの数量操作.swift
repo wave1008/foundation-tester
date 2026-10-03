@@ -13,16 +13,16 @@ class カートの数量を操作できること {
         ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
-    // 2 本の @Test がどちらも「空カート + 腕時計1点」から始まるので前提整備は setUp に置く
+    // 2 本の @Test がどちらも「空カート + 腕時計1点」から始まるので前提整備は beforeEach に置く
     // (各 @Test の前に毎回実行される)。着地の確認は各シナリオの scene 1 で行う
-    func setUp() {
+    func beforeEach() {
         launchApp()
         resetAndAddOneWatch()
     }
 
-    // カートは実行を跨いで累積するため、失敗後でも必ず空へ戻す(tearDown は失敗後でも実行される。
+    // カートは実行を跨いで累積するため、失敗後でも必ず空へ戻す(afterEach は失敗後でも実行される。
     // 失敗はシナリオ全体を中断するので、後始末をシナリオ内の scene に置いても実行されない)
-    func tearDown() {
+    func afterEach() {
         ifCanSelect("#btn_back") { tap("#btn_back") }
         ifCanSelect("#tab_cart") { tap("#tab_cart") }
         emptyCart()
@@ -41,7 +41,7 @@ class カートの数量を操作できること {
     @Test("カートで数量を増やすと合計が再計算される")
     func S0010() {
         scenario {
-            scene(1, "空カートに腕時計を1点追加できている(setUp の着地確認)") {
+            scene(1, "空カートに腕時計を1点追加できている(beforeEach の着地確認)") {
                 expectation {
                     exist("合計")
                     exist("¥18,000")  // 1点=¥18,000
@@ -67,11 +67,11 @@ class カートの数量を操作できること {
     // TC-42(SC-42)準拠: 数量1で − → 明細が自動削除される、を期待する。
     // 【現状 RED / 不具合 D-01】実装は数量1で #btn_qty_decrement が disabled で削除されない
     // (削除はゴミ箱のみ)。仕様違反のため本テストは意図的に RED。修正(1→0自動削除の実装)で緑化する。
-    // 失敗はシナリオ全体を中断するため、残留の後始末はシナリオ内ではなく tearDown が担う。
+    // 失敗はシナリオ全体を中断するため、残留の後始末はシナリオ内ではなく afterEach が担う。
     @Test("数量1から減らすとカートから削除される")
     func S0020() {
         scenario {
-            scene(1, "空カートに腕時計を1点追加できている(setUp の着地確認)") {
+            scene(1, "空カートに腕時計を1点追加できている(beforeEach の着地確認)") {
                 expectation {
                     exist("合計")
                 }

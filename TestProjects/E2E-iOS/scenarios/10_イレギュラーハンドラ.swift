@@ -12,8 +12,8 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.ios", platform: "ios")
 class イレギュラーハンドラでダイアログが自動的に閉じられること {
 
-    func setUp() {
-        // 宣言の寿命はシナリオ1本。setUp に置けば各 @Test の前に自動で入る
+    func beforeEach() {
+        // 宣言の寿命はシナリオ1本。beforeEach に置けば各 @Test の前に自動で入る
         irregularHandler("確認", dismiss: "#btn_dialog_cancel")
     }
 

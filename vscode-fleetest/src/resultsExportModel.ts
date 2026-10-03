@@ -27,7 +27,7 @@ function pushDistinct(list: string[], seen: Set<string>, value: string | null): 
 export interface ResultsExportTimelineStep {
   readonly scene: number | null;
   readonly sceneTitle: string | null;
-  /** condition/action/expectation/setUp/tearDown。CAE ブロック外は null。 */
+  /** condition/action/expectation/setUpDevice/beforeEach/afterEach。CAE ブロック外は null。 */
   readonly section: string | null;
   readonly index: number;
   readonly description: string;

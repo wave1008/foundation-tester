@@ -51,14 +51,14 @@ class ログインテスト {
 - コマンド(`tap`、`type`、`exist` など)は**同期・非 throw の自由関数**です。`try`/`await`
   もクロージャ引数(`{ it in }`)も不要で、暗黙にカレントの実行コンテキストへ作用します。
 
-## setUp / tearDown
+## beforeEach / afterEach
 
 ```swift
 class ログインテスト {
-    func setUp() {
+    func beforeEach() {
         irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
     }
-    func tearDown() {
+    func afterEach() {
         // 失敗しても必ず走らせたい後始末
     }
 
@@ -67,9 +67,20 @@ class ログインテスト {
 }
 ```
 
-`setUp()` と `tearDown()` は、クラス内の各 `@Test` の前後で自動実行されます。
-**`tearDown()` は失敗後でも実行される**ため、シナリオが途中で中断してもスキップされては
+`beforeEach()` と `afterEach()` は、クラス内の各 `@Test` の前後で自動実行されます。
+**`afterEach()` は失敗後でも実行される**ため、シナリオが途中で中断してもスキップされては
 困る後始末をここに置きます。
+
+`func setUpDevice()`(任意)は、**1回の run × 1デバイス × 1クラスで高々1回**、そのデバイスに
+配られたそのクラスの最初のシナリオの `beforeEach()` の前に自動実行されます。テストごとに繰り返したく
+ない準備(アプリの言語切り替えなど)に使います。シナリオは1本ずつ別プロセスなので、ここで設定した
+インスタンスのプロパティはその最初のシナリオからしか見えません。値の受け渡しは `writeMemo` /
+`readMemo` を使ってください([メモ](../commands/memo_ja.md))。
+
+`func tearDownDevice()`(任意)は、**そのデバイスがその run のシナリオをすべて終えた後**に、そのデバイスで
+そのクラスのシナリオが1本でも走っていれば**1回だけ**自動実行されます。`setUpDevice()` で用意したものの片付けに
+使います(`setUpDevice()` が失敗していても走ります)。デバイスが途中で使えなくなった場合や、run を中断した場合は
+走りません。結果は run のログとレポートに残りますが、テストの合否には数えません。
 
 ## 未完成・廃止のマーク
 

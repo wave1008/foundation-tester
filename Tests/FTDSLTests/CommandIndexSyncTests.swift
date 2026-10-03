@@ -71,7 +71,12 @@ final class CommandIndexSyncTests: XCTestCase {
         let thisAssertions = names(in: try source("ValueAssertions.swift"),
                                    prefix: "func this", anchoredToLineStart: false)
             .map { "this" + $0 }
-        let declared = commands.union(thisAssertions)
+        // 型のメンバ(`element.memoTextAs` 等)は行頭の `public func` に出ないので、字下げ込みで拾って名指しの集合と突き合わせる
+        // (無条件に足すと、ソースから消しても索引の照合が緑のまま通る)
+        let members = names(in: commandsSource, prefix: "public func ", anchoredToLineStart: false)
+            .intersection(DSLCommandIndex.memberOnlyNames)
+        XCTAssertEqual(members, DSLCommandIndex.memberOnlyNames, "memberOnlyNames に載せたメンバがソースに無い")
+        let declared = commands.union(thisAssertions).union(members)
         let indexed = Set(DSLCommandIndex.all.map(\.name))
 
         XCTAssertEqual(indexed.subtracting(declared), [],

@@ -52,14 +52,14 @@ class LoginTest {
   `try`/`await` and no closure argument (`{ it in }`) are needed — they implicitly act on the
   current execution context.
 
-## setUp / tearDown
+## beforeEach / afterEach
 
 ```swift
 class LoginTest {
-    func setUp() {
+    func beforeEach() {
         irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
     }
-    func tearDown() {
+    func afterEach() {
         // cleanup that must always run
     }
 
@@ -68,9 +68,21 @@ class LoginTest {
 }
 ```
 
-`setUp()` and `tearDown()` run automatically around every `@Test` in the class.
-**`tearDown()` still runs even after a failure** — it is the place to put cleanup that must
+`beforeEach()` and `afterEach()` run automatically around every `@Test` in the class.
+**`afterEach()` still runs even after a failure** — it is the place to put cleanup that must
 not be skipped when a scenario is aborted mid-way.
+
+`func setUpDevice()` (optional) runs **at most once per run, per device, per class**, before
+`beforeEach()` of the first scenario of that class that lands on the device — for preparation that
+should not repeat for every test (for example switching the app's language). Each scenario is
+its own process, so instance properties set there are visible only to that first scenario; share
+values with `writeMemo` / `readMemo` (see [memo](../commands/memo.md)).
+
+`func tearDownDevice()` (optional) runs **once, after the device has finished all of its scenarios
+in the run**, if at least one scenario of that class ran on the device — for cleaning up what
+`setUpDevice()` prepared (it runs even if `setUpDevice()` failed). It does not run on a device that
+dropped out mid-run or when the run is interrupted. Its result is written to the run log and a
+report, but it does not count toward the test results.
 
 ## Marking work in progress or retired tests
 

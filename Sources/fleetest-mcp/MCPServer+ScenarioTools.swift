@@ -86,11 +86,14 @@ extension MCPServer {
         var passedCount = 0
         var failedCount = 0
         var outcomes: [(id: String, passed: Bool, reportPath: String?)] = []
+        // 1回の呼び出し = 1デバイスセッション
+        let deviceSession = RunDeviceSession()
         for info in infos {
             // dry-run は NullDriver 固定なので接続情報は使われない(platform だけが ios { } / android { } を分ける)
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id,
                 connection: DriverConnection(platform: info.platform ?? fallbackPlatform),
+                deviceSession: deviceSession,
                 // **`enabled: false`(= 子へ --no-fm)**。dry-run にはデバイスも画面も無いので、
                 // FM を引く経路をまとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
@@ -100,6 +103,13 @@ extension MCPServer {
                 }
             if passed { passedCount += 1 } else { failedCount += 1 }
             outcomes.append((info.id, passed, nil))  // レポートは消える一時ディレクトリなので載せない
+        }
+        for outcome in await ScenarioHost.runDeviceTearDowns(
+            project: project, connection: DriverConnection(platform: fallbackPlatform),
+            deviceSession: deviceSession, settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+            reportDir: tempDir.path, dryRun: true,
+            appPath: nil, appName: nil, appBundleID: nil, registerChildProcess: nil) {
+            lines.append(ScenarioHost.describe(outcome))
         }
         // レポートは一時ディレクトリに書かれ、この関数を抜けると消える。
         // 案内すると開けないパスを渡すことになるので落とす(dry-run に証跡は要らない)
@@ -258,9 +268,12 @@ extension MCPServer {
         // 最初に落ちたシナリオのレポート(証跡の読み先)。scenarioFinished が運ぶ
         var firstFailedReport: String?
         var outcomes: [(id: String, passed: Bool, reportPath: String?)] = []
+        // 1回の呼び出し = 1デバイス(connection は1つ)= 1セッション
+        let deviceSession = RunDeviceSession()
         for info in infos {
             let passed = await ScenarioHost.run(project: project, scenarioID: info.id,
                                        connection: connection,
+                                       deviceSession: deviceSession,
                                        settings: exec, reportDir: reportDir,
                                        appPath: appPath, appName: appName,
                                        appBundleID: appBundleID) { event in
@@ -273,6 +286,12 @@ extension MCPServer {
                 }
             }
             if passed { passedCount += 1 } else { failedCount += 1 }
+        }
+        for outcome in await ScenarioHost.runDeviceTearDowns(
+            project: project, connection: connection, deviceSession: deviceSession,
+            settings: exec, reportDir: reportDir, dryRun: false,
+            appPath: appPath, appName: appName, appBundleID: appBundleID, registerChildProcess: nil) {
+            lines.append(ScenarioHost.describe(outcome))
         }
         if infos.count > 1 {
             lines.append("\(passedCount) passed / \(failedCount) failed")

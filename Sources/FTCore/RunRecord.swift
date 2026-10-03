@@ -427,7 +427,7 @@ public struct FailedStepRecord: Codable, Sendable {
     public var scene: Int?
     public var sceneTitle: String?
     /// **どのフェーズで落ちたか**: condition / action / expectation(CAE ブロック)、
-    /// setUp / tearDown(ライフサイクル)、いずれの外なら nil。
+    /// beforeEach / afterEach(ライフサイクル)、いずれの外なら nil。
     /// 「共有フローや端末の準備で落ちた」と「テスト内容で落ちた」を機械的に分けるための一次情報
     public var section: String?
     public var description: String
@@ -474,7 +474,7 @@ public struct FailedStepRecord: Codable, Sendable {
 public struct TimelineStepRecord: Codable, Sendable {
     public var scene: Int?
     public var sceneTitle: String?
-    /// condition / action / expectation / setUp / tearDown(ScenarioEvent.section 由来。CAE ブロック外は nil)。
+    /// condition / action / expectation / beforeEach / afterEach(ScenarioEvent.section 由来。CAE ブロック外は nil)。
     /// 拡張の「テスト結果をエクスポート」が列の振り分けに使う。この欄を持たない旧レコードも nil
     public var section: String?
     public var index: Int

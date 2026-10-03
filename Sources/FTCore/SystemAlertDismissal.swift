@@ -51,7 +51,7 @@ public struct SystemAlertRule: Sendable, Equatable {
 /// 使う場合も、登録が枚数ぶんあるので取り合いにならない。
 ///
 /// 値型で実装する(状態を共有する必要が無く、持ち主は StepExecutor の1箇所だけ)。
-/// 寿命は StepExecutor と同じ = シナリオ1本。`setUp()` に書けば各 @Test の前に登録される
+/// 寿命は StepExecutor と同じ = シナリオ1本。`beforeEach()` に書けば各 @Test の前に登録される
 public struct SystemAlertWatchlist: Sendable {
     private var watches: [SystemAlertRule]
 

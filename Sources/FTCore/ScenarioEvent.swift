@@ -10,6 +10,9 @@
 // status に "began"/"ended"、durationMs に began なら上限 ms・ended なら実測 ms を積む。
 // ScenarioHost.run が横取りして watchdog の延長分(WatchdogExtension)へ積み、emit へは渡さない
 // — installRequest と同じく **fleetest api の NDJSON 契約には現れない**。
+// memoWrite / memoClear / deviceSetUp / deviceTearDown はデバイスセッション(DeviceSessionHandoff.swift)の子→親通知専用。
+// memoWrite は memoKey/memoValue、deviceSetUp は status に "began"/"passed"/"failed"、deviceTearDown は "declared"(クラスが tearDownDevice を持つ)。
+// ScenarioHost.run が横取りして RunDeviceSession へ反映し、emit へは渡さない(同じく api 契約に現れない)。
 
 import Foundation
 
@@ -111,6 +114,9 @@ public struct ScenarioEvent: Codable, Sendable {
     public var requestID: Int?
     /// kind == installRequest。installApp() の明示引数(nil = 親が実行プロファイルの appPath を解決する)
     public var installPath: String?
+    /// kind == memoWrite。writeMemo のキーと値(DeviceSessionHandoff.swift)
+    public var memoKey: String?
+    public var memoValue: String?
     /// kind == step。[occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive`
     /// 判定を通ったか(StepOutcome.guardEntered)。action など occlusionFlip を通らないステップでは
     /// false(意味を持つのは assert のみ)。後発の追加フィールドで Optional = 旧クライアント互換

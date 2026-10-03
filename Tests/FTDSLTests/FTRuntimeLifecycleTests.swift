@@ -2,7 +2,7 @@ import XCTest
 @testable import FTDSL
 import FTCore
 
-/// group(共通ステップ)と setUp / tearDown の記録・中断セマンティクス。
+/// group(共通ステップ)と beforeEach / afterEach の記録・中断セマンティクス。
 /// DSL コマンドはカレントスレッドのグローバル状態を触るため、各テストで bootstrap → tearDown する。
 final class FTRuntimeLifecycleTests: XCTestCase {
 
@@ -189,14 +189,14 @@ final class FTRuntimeLifecycleTests: XCTestCase {
                 }
             }
         }
-        ftRunTearDown { tap("#cleanup") }
+        ftRunAfterEach { tap("#cleanup") }
 
         let recorded = steps(core)
         XCTAssertTrue(isFailed(recorded[0].status))
         XCTAssertTrue(isSkipped(recorded[1].status), "失敗後の後続はスキップされる")
-        XCTAssertEqual(recorded[2].section, "tearDown")
+        XCTAssertEqual(recorded[2].section, "afterEach")
         XCTAssertFalse(isSkipped(recorded[2].status), "片付けは失敗後でも実行する")
-        XCTAssertEqual(driver.tapped, [1], "tearDown の tap だけが実際に発火する")
+        XCTAssertEqual(driver.tapped, [1], "afterEach の tap だけが実際に発火する")
     }
 
     func testTearDownFailureIsRecordedAndDoesNotHideSceneFailure() {
@@ -205,7 +205,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         defer { FTRuntime.tearDown() }
 
         scenario { scene(1, "s") { action { tap("#cleanup") } } }
-        ftRunTearDown { exist("#missing", requireVisible: false, waitSeconds: 0) }
+        ftRunAfterEach { exist("#missing", requireVisible: false, waitSeconds: 0) }
 
         XCTAssertFalse(core.finalRecord.passed, "片付けの失敗もシナリオ失敗として残る")
     }
@@ -216,15 +216,15 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }
 
-        ftRunSetUp { exist("#missing", requireVisible: false, waitSeconds: 0) }
+        ftRunBeforeEach { exist("#missing", requireVisible: false, waitSeconds: 0) }
         scenario {
             scene(1, "s") { action { tap("#cleanup") } }
             scene(2, "s2") { action { tap("#cleanup") } }
         }
 
-        XCTAssertTrue(driver.tapped.isEmpty, "setUp が失敗したら本体は 1 ステップも実行しない")
+        XCTAssertTrue(driver.tapped.isEmpty, "beforeEach が失敗したら本体は 1 ステップも実行しない")
         let recorded = steps(core)
-        XCTAssertEqual(recorded[0].section, "setUp")
+        XCTAssertEqual(recorded[0].section, "beforeEach")
         XCTAssertTrue(isFailed(recorded[0].status))
         XCTAssertTrue(recorded.dropFirst().allSatisfy { isSkipped($0.status) })
     }
@@ -235,7 +235,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }
 
-        ftRunSetUp { tap("#cleanup") }
+        ftRunBeforeEach { tap("#cleanup") }
         scenario { scene(1, "s") { action { tap("#cleanup") } } }
 
         XCTAssertEqual(driver.tapped, [1, 1])

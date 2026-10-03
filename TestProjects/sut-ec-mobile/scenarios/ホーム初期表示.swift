@@ -9,7 +9,7 @@ class ホームが初期表示されること {
 
     // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、
     // 既知の開始点へ揃えてからテスト本体を走らせる
-    func setUp() {
+    func beforeEach() {
         launchApp()
         tap("#tab_home")  // 直前画面から再開しても正規化
     }

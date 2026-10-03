@@ -25,7 +25,7 @@ final class ApiRunNDJSONPathParityTests: XCTestCase {
     /// 新しい欄を ScenarioEvent に足すと、ここに入れるか fixture へ足すかを選ばされる
     private let nonStepFields: Set<String> = [
         "worker", "title", "file", "line", "oldSelector", "newSelector", "passed", "reportPath",
-        "message", "fm", "requestID", "installPath", "appCrash", "skipped",
+        "message", "fm", "requestID", "installPath", "appCrash", "skipped", "memoKey", "memoValue",
     ]
 
     private func fullStepEvent() -> ScenarioEvent {

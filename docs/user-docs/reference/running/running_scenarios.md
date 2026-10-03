@@ -53,7 +53,7 @@ in `Package.swift` (profiles, reports and self-healing are borrowed from an exis
 
 `fleetest run` exits `0` when everything passed, `1` if anything failed. Inside a scenario, a
 failing command aborts the rest of that scenario (all remaining scenes and steps are skipped) —
-`tearDown()` still runs. See [testcode_structure.md](../testclass/testcode_structure.md) for the
+`afterEach()` still runs. See [testcode_structure.md](../testclass/testcode_structure.md) for the
 full failure model.
 
 ## Android

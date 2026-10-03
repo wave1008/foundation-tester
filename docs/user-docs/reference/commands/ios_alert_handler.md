@@ -45,7 +45,7 @@ confirmation.
   `#id` / `.type` are not accepted (they have no meaning against a SpringBoard title).
 - **One call announces one alert.** The registration is consumed once a matching alert is
   pressed; register again to handle a second alert. Register before the action that triggers
-  the alert — `setUp()` works, registering it once per `@Test` (same lifetime as
+  the alert — `beforeEach()` works, registering it once per `@Test` (same lifetime as
   `irregularHandler`).
 - **Registrations are tried in order**, and only pressed when the scenario's own requested
   element could not be resolved on either the app side or SpringBoard side — an alert the

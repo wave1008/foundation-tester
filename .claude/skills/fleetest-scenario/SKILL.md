@@ -251,8 +251,8 @@ id の照合は**ステップ2で `ft_snapshot` を撮った画面ぶんだけ**
 testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行結果が仕様に従わない箇所の扱いを標準化する:
 
 - **仕様違反は緑にしない**。テストを実挙動に寄せて通す(=仕様違反を緑で隠す)ことはせず、**仕様どおりの
-  期待のまま RED(失敗)**にして追跡する(緑で隠すと退行検知にならない)。後始末は `tearDown` に置く
-  (失敗でシナリオは中断するが、tearDown だけは失敗後でも実行されるため残留を防げる)。
+  期待のまま RED(失敗)**にして追跡する(緑で隠すと退行検知にならない)。後始末は `afterEach` に置く
+  (失敗でシナリオは中断するが、afterEach だけは失敗後でも実行されるため残留を防げる)。
 - **バグは1件1ファイルで専用フォルダに起票**する(詳細=個別ファイル)。置き場所:
   `TestProjects/<proj>/issues/defects/`。命名・テンプレート・凡例は同フォルダ `README.md`(`D-<連番2桁>-<slug>.md`)。
   **状態の一覧は同フォルダ `INDEX.md`(対応状況ダッシュボード)**に集約し、起票・状態変更時は個別ファイルと
@@ -275,7 +275,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 - コマンドは**同期・非 throw のモジュールレベル関数**。`try`/`await`/`{ it in }` 不要。カレント
   コンテキストを暗黙参照する。
 - 失敗セマンティクス: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
-  throw しない。`tearDown` だけは失敗後でも実行される)。
+  throw しない。`afterEach` だけは失敗後でも実行される)。
 - `@Deleted("理由")` をクラス/メソッドに付けると論理削除(一括実行から除外・完全一致 ID でのみ実行可)。
 - `@Draft("理由")` は実装中(未完成)マーク。除外・実行可否の規則は `@Deleted` と同じで、意味だけが違う
   (Deleted=もう使わない / Draft=これから使う)。`fleetest draft-scenario` の生成物にはこちらが付く。
@@ -293,10 +293,10 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` / `installApp(path?)` / `removeApp(id?)` / `appIs(id, waitSeconds:)` / `tapAppIcon(name?)`(ホーム画面のアイコンをタップ。省略時はプロファイルの appName) |
 | 待機/分岐 | `wait(秒)` / `waitForDisplay(sel, waitSeconds:)`(表示まで待つ。スクロールしない)/ `waitForClose(sel, waitSeconds:)`(消えるまで待つ。スクロールしない)/ `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
 | 反復 | `repeatWhileCanSelect(sel, maxLoopCount: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `waitSeconds:`) |
-| 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を setUp で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない)。**そのモーダル自体を検証・操作したい区間**では `suppressHandler { … }`(1つの CAE ブロックの内側)か `disableHandler()` … `enableHandler()`(**CAE を跨ぐとき**)で自動クローズを止める |
+| 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を beforeEach で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない)。**そのモーダル自体を検証・操作したい区間**では `suppressHandler { … }`(1つの CAE ブロックの内側)か `disableHandler()` … `enableHandler()`(**CAE を跨ぐとき**)で自動クローズを止める |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
 | 記録 | `screenshot(filename?)`(ファイル名はラベル無し)(現在の画面を撮り、このステップ直後にレポートへ埋め込む) |
-| 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
+| 前後処理 | テストクラスに `func beforeEach()` / `func afterEach()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`**(空要素を返す。`.isEmpty` で分岐)。
   「出るか不定」を表す引数は無いので、アプリ内メッセージは `irregularHandler`、その場限りの分岐は

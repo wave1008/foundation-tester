@@ -13,7 +13,7 @@ class イレギュラーハンドラーが不定なダイアログを自動的�
 
     // 宣言の寿命はシナリオ1本。以降どのステップでも #txt_dialog_title が出た時点で
     // #btn_dialog_cancel を自動タップする(閉じ方はアプリ作者しか知らないためツールは推測しない)
-    func setUp() {
+    func beforeEach() {
         irregularHandler("#txt_dialog_title", dismiss: "#btn_dialog_cancel")
     }
 

@@ -230,21 +230,61 @@ struct RunScenario: AsyncParsableCommand {
           help: "Start paused before the first step (only effective with --debug)")
     var pauseOnStart = false
 
+    @Flag(name: .customLong("device-session-stdin"),
+          help: "Read the device session (shared memo and the setUpDevice flag) from the first line of stdin (set by ScenarioHost)")
+    var deviceSessionStdin = false
+
+    @Flag(name: .customLong("device-teardown-only"),
+          help: "Run only the tearDownDevice() of the test class named by --scenario (set by ScenarioHost after the device finished its scenarios)")
+    var deviceTeardownOnly = false
+
     func run() async throws {
+        // **stdin の1行目はデバイスセッション**(DeviceSessionHandoff.swift)。制御コマンドの読み手
+        // スレッドや他の stdin 読みより先に、ここで読み切る
+        var deviceSession: DeviceSessionHandoff?
+        if deviceSessionStdin {
+            guard let line = readLine(strippingNewline: true),
+                  let handoff = DeviceSessionHandoff.decode(line: line) else {
+                ConsoleOut.err("--device-session-stdin: the first stdin line is missing or is not a device session")
+                throw ExitCode(64)
+            }
+            deviceSession = handoff
+        }
         // stdout を常に行バッファにする(パイプ既定は全バッファでプロセス終了まで滞留)。2つの理由:
         //   - step 等イベントを実行中に逐次ホストへ届ける(ライブ操作パネルの操作記録の都度更新など)
         //   - --debug の paused イベントがパイプに滞留するとホストと相互待ちでデッドロックする
         // ホスト側 stdout も同様に常時行バッファ(ApiRunCommand.swift の setvbuf(_IOLBF))。
         setvbuf(stdout, nil, _IOLBF, 0)
-        guard let (testClass, descriptor) = ScenarioDiscovery.find(id: scenario) else {
-            let available = ScenarioDiscovery.allTestClasses()
-                .flatMap { c in c.scenarios.map { "\(c.className).\($0.name)" } }
-            ConsoleOut.err("scenario not found: \(scenario)\navailable: \(available.joined(separator: ", "))")
-            throw ExitCode(64)
+        let testClass: FTTestClassDescriptor
+        let scenarioID: String
+        let scenarioTitle: String
+        let runPlatform: String
+        let body: @Sendable () -> Void
+        if deviceTeardownOnly {
+            // --scenario はクラス名。記録上の ID は "<Class>.tearDownDevice"(@Test と衝突しない = メソッド名は1つだけ)
+            guard let found = ScenarioDiscovery.allTestClasses().first(where: { $0.className == scenario }),
+                  let tearDownDevice = found.tearDownDevice else {
+                ConsoleOut.err("--device-teardown-only: no test class named \(scenario) declares tearDownDevice()")
+                throw ExitCode(64)
+            }
+            testClass = found
+            scenarioID = "\(found.className).tearDownDevice"
+            scenarioTitle = "tearDownDevice"
+            runPlatform = found.platform ?? platform
+            body = tearDownDevice
+        } else {
+            guard let (found, descriptor) = ScenarioDiscovery.find(id: scenario) else {
+                let available = ScenarioDiscovery.allTestClasses()
+                    .flatMap { c in c.scenarios.map { "\(c.className).\($0.name)" } }
+                ConsoleOut.err("scenario not found: \(scenario)\navailable: \(available.joined(separator: ", "))")
+                throw ExitCode(64)
+            }
+            testClass = found
+            scenarioID = "\(found.className).\(descriptor.name)"
+            scenarioTitle = descriptor.title
+            runPlatform = descriptor.effectivePlatform(classPlatform: found.platform) ?? platform
+            body = descriptor.run
         }
-
-        let scenarioID = "\(testClass.className).\(descriptor.name)"
-        let runPlatform = descriptor.effectivePlatform(classPlatform: testClass.platform) ?? platform
 
         // 既定アプリ(bundle ID)。優先順・警告文・未解決時の文言は FTCore.ScenarioAppResolution が
         // 唯一の定義元で、ここは転写するだけ(MCP・他経路と判断を割らないため)
@@ -473,8 +513,14 @@ struct RunScenario: AsyncParsableCommand {
 
         var started = ScenarioEvent(kind: "scenarioStarted")
         started.scenario = scenarioID
-        started.title = descriptor.title
+        started.title = scenarioTitle
         emit(started)
+        // 親はこの申告があったクラスだけを、デバイスの仕事の後に片付ける(RunDeviceSession.takePendingTearDowns)
+        if !deviceTeardownOnly, testClass.tearDownDevice != nil {
+            var declared = ScenarioEvent(kind: "deviceTearDown")
+            declared.status = "declared"
+            emit(declared)
+        }
 
         let fingerprintCacheURL = projectDir.map {
             URL(fileURLWithPath: $0).appendingPathComponent(".fleetest/locator-fingerprints.json")
@@ -486,7 +532,7 @@ struct RunScenario: AsyncParsableCommand {
         // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
-                               scenarioID: scenarioID, scenarioTitle: descriptor.title,
+                               scenarioID: scenarioID, scenarioTitle: scenarioTitle,
                                delegate: delegate, healingEnabled: heal,
                                fmTextOcclusionCheckEnabled: !noFMTextOcclusionCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
@@ -518,6 +564,10 @@ struct RunScenario: AsyncParsableCommand {
         // 入れ直し(実機の clearAppData)専用。**host-install でも落とさない**理由は宣言の doc
         core.appPackagePath = appPath
         core.appDisplayName = appName
+        if let deviceSession {
+            core.deviceMemo = deviceSession.memo
+            core.runSetUpDevice = deviceSession.runSetUpDevice
+        }
         core.stillFrameCapture = stillFramesDir.map { StillFrameCapture(dir: URL(fileURLWithPath: $0)) }
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
@@ -584,7 +634,7 @@ struct RunScenario: AsyncParsableCommand {
         // シナリオ本体は専用スレッドで同期実行(協調スレッドプールを塞がない)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let thread = Thread {
-                descriptor.run()
+                body()
                 continuation.resume()
             }
             thread.name = "fleetest-dsl"
@@ -606,9 +656,12 @@ struct RunScenario: AsyncParsableCommand {
 
         // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」
         // 「アサーションが1本も無い」を修正提案として残す(いずれも緑のまま腐る経路。docs/design.md §10)
-        core.warnAboutNeverResolvedIDs()
-        core.warnAboutMissingAssertions()
-        core.warnAboutUnknownIDs()
+        // tearDownDevice の子は片付けなので「アサーションが無い」等の提案を出さない(@Test ではない)
+        if !deviceTeardownOnly {
+            core.warnAboutNeverResolvedIDs()
+            core.warnAboutMissingAssertions()
+            core.warnAboutUnknownIDs()
+        }
         // flushLocatorFingerprints() はここでは呼ばない —— 上の `defer` が関数を抜けるたび
         // (この直後の正常継続でも、どこかで throw しても)必ず1回だけ呼ぶ
 

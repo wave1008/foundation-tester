@@ -53,7 +53,7 @@ swift run fleetest run --profile ios-run
 
 `fleetest run` は全て成功なら `0`、1つでも失敗すれば `1` を返します。シナリオ内では、コマンドが
 失敗すると**そのシナリオの以降のステップは全て中断**されます(残る scene・ステップは全て
-スキップ)。`tearDown()` だけは失敗後も実行されます。失敗モデルの詳細は
+スキップ)。`afterEach()` だけは失敗後も実行されます。失敗モデルの詳細は
 [testcode_structure_ja.md](../testclass/testcode_structure_ja.md) を参照してください。
 
 ## Android

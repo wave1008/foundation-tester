@@ -21,7 +21,7 @@ class UIベンチマークを操作できること {
 
     // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、
     // 以降の正規化・基準作りは各シナリオの scene 1 が担う
-    func setUp() {
+    func beforeEach() {
         launchApp()
     }
 

@@ -15,8 +15,8 @@
 ## 例
 
 ```swift
-func setUp() {
-    irregularHandler("#promo_modal", dismiss: "#btn_promo_close")   // 宣言は setUp のままでよい
+func beforeEach() {
+    irregularHandler("#promo_modal", dismiss: "#btn_promo_close")   // 宣言は beforeEach のままでよい
 }
 
 suppressHandler {
@@ -57,7 +57,7 @@ condition {
   「a declared interruption was on screen but automatic closing is suppressed here」が
   追加されます —— 成功しているステップには何も足されません。
 - **`disableHandler()` の後に `enableHandler()` を呼び忘れると、抑止はシナリオの終わりまで
-  効いたままになります** —— 中断した場合、その後に実行されるのは `tearDown()` だけなので、
+  効いたままになります** —— 中断した場合、その後に実行されるのは `afterEach()` だけなので、
   片付けの最中に出た割り込みも自動では閉じられません。これが気になる場合はブロック形を
   使ってください。
 - OS のシステムダイアログ(権限の許可等)はどちらにも影響されません —— あちらは別の機構です

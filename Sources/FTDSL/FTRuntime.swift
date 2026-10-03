@@ -253,6 +253,13 @@ public final class FTDriveCore {
     private var lastElementWarned = false
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
+    /// デバイスセッションのメモ(キー → 書いた順の値)。親が `--device-session-stdin` で渡した写しで始まり、
+    /// 書き込みは `memoWrite` / `memoClear` イベントで親へ片道通知する(応答は無い)。
+    /// 契約は FTCore/DeviceSessionHandoff.swift。DSL スレッド専有で lock 不要
+    public var deviceMemo: [String: [String]] = [:]
+    /// true = このシナリオの beforeEach の前に setUpDevice を走らせる。親だけが決める(子は従うだけ)。
+    /// 既定 true = 人が子を直接起動した場合(親の台帳が無い)
+    public var runSetUpDevice = true
     /// verify() のブロック内で走ったアサーション数を数えるスタック。ネストした verify を
     /// support するため「今アクティブな全フレーム」に加算する(noteAssertion 参照)。
     /// group と同様 DSL スレッド専有で lock 不要
@@ -671,9 +678,9 @@ public final class FTDriveCore {
             emitEvent: false, file: "", line: 0)
     }
 
-    /// setUp / tearDown の実行。
-    /// allowAfterFailure=false(setUp): 中で失敗したら本体と同じくシナリオ中断(handleFailure)。
-    /// allowAfterFailure=true(tearDown): 中断中でも片付けが走るよう一度フラグを解除し、
+    /// beforeEach / afterEach の実行。
+    /// allowAfterFailure=false(beforeEach): 中で失敗したら本体と同じくシナリオ中断(handleFailure)。
+    /// allowAfterFailure=true(afterEach): 中断中でも片付けが走るよう一度フラグを解除し、
     ///   実行後に「元の中断」と「片付け中の失敗」の OR で復元する(どちらも握りつぶさない)。
     /// 画面凍結(deviceFrozen)とユーザー中断(debug の stop)では両方とも実行しない —
     /// 前者は別デバイスで振り直すので死んだデバイスへの操作が無駄、後者は「止めた」のに
@@ -1057,7 +1064,7 @@ public final class FTDriveCore {
     }
 
     /// 否定側でしか現れず、一度も解決できなかった `#id` を弱い提案として残す。
-    /// シナリオ終了時に1回だけ呼ぶ(ftRunTearDown 後)
+    /// シナリオ終了時に1回だけ呼ぶ(ftRunAfterEach 後)
     public func warnAboutNeverResolvedIDs() {
         for (id, description) in negativeOnlyIDs.sorted(by: { $0.key < $1.key })
         where !resolvedIDs.contains(id) {
@@ -1500,7 +1507,7 @@ public final class FTDriveCore {
     /// 白フレームを凍結の根拠にしない
     func handleFailure(stepDescription: String, reason: String, systemAlertPresent: Bool = false) {
         // 失敗したら**シナリオ全体を中断**する(Shirates と同じ。scene を跨いで続行しない。
-        // tearDown だけは runLifecycle(allowAfterFailure:) がこのフラグを一時解除して実行する)
+        // afterEach だけは runLifecycle(allowAfterFailure:) がこのフラグを一時解除して実行する)
         scenarioAborted = true
 
         // 失敗時のスクリーンショット+要素一覧。Android は画面凍結(白フレーム)で

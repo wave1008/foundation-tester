@@ -23,13 +23,13 @@ class 注文履歴に確定した注文が並ぶこと {
     private let メール = "e2e-orderhistory@example.com"
     private let パスワード = "Passw0rd1!"
 
-    func setUp() {
+    func beforeEach() {
         launchApp()
     }
 
-    /// **未ログイン状態へ戻す**(理由は チェックアウト.swift の tearDown と同じ)。
+    /// **未ログイン状態へ戻す**(理由は チェックアウト.swift の afterEach と同じ)。
     /// 他のシナリオはアカウント画面に「ログイン / 登録」が出ることを前提にしている
-    func tearDown() {
+    func afterEach() {
         ifCanSelect("#btn_back") { tap("#btn_back") }
         ifCanSelect("#tab_account") { tap("#tab_account") }
         // 4.7インチ実機ではアカウント画面の下端が下部タブバーに潜る(D-02)。末尾まで送ってから

@@ -21,7 +21,7 @@ class UIベンチマークの密度チップが正しいこと {
 
     // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、
     // 既知の開始点へ揃えてからテスト本体を走らせる
-    func setUp() {
+    func beforeEach() {
         launchApp()
         // launchApp が benchmark/day 画面から再開する場合に備え、タブが見える状態へ正規化。
         // Scaffold ルート testTag は AX に出ないため leaf 要素で在圏判定する。
@@ -31,7 +31,7 @@ class UIベンチマークの密度チップが正しいこと {
 
     // 年数は rememberSaveable で保持される。緑経路は scene 6 が 3年へ戻すが、失敗は
     // シナリオ全体を中断して scene 6 に届かないため、カレンダーに居る失敗時はここで戻す
-    func tearDown() {
+    func afterEach() {
         ifCanSelect("#chip_years_3", waitSeconds: 1) { tap("#chip_years_3") }
     }
 

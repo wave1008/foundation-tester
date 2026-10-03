@@ -52,13 +52,19 @@ public struct FTTestClassDescriptor {
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
     public let scenarios: [FTScenarioDescriptor]
+    /// クラスの tearDownDevice()(マクロ生成。無ければ nil)。シナリオの子では走らせず、デバイスの仕事が
+    /// 終わった後に親が `--device-teardown-only` の専用の子で呼ぶ(ScenarioHost.runDeviceTearDowns)。
+    /// 非 nil の間、各シナリオの子は親へ deviceTearDown "declared" を申告する
+    public let tearDownDevice: (@Sendable () -> Void)?
 
     public init(className: String, app: String? = nil, platform: String? = nil,
-                scenarios: [FTScenarioDescriptor]) {
+                scenarios: [FTScenarioDescriptor],
+                tearDownDevice: (@Sendable () -> Void)? = nil) {
         self.className = className
         self.app = app
         self.platform = platform
         self.scenarios = scenarios
+        self.tearDownDevice = tearDownDevice
     }
 }
 

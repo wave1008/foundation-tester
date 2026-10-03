@@ -1,6 +1,6 @@
 // 09_否定と個数と方向セレクタ.swift
 // fleetest 機能: notExist / countIs / enabledIsTrue / enabledIsFalse / checkIsON / checkIsOFF / 相対セレクタ `基準:below(...)` `基準:above(...)` /
-// 共通ステップ group / クラスの setUp・tearDown の検証。
+// 共通ステップ group / クラスの beforeEach・afterEach の検証。
 // 型を使うセレクタは OS 共通で書ける(ブリッジが役割へ正規化するため。ui-contract.md 全体規約)。
 
 import FTDSL
@@ -10,21 +10,21 @@ class 否定と個数と方向セレクタが正しく動くこと {
 
     // 各 @Test の前に自動実行される。セッションカウンタを1つ進めておき、
     // 「本体より前に走った」ことを scene 1 で観測する
-    func setUp() {
+    func beforeEach() {
         launchApp()
         tap("#nav_lifecycle")
         tap("#btn_session_inc")
     }
 
     // 各 @Test の後に自動実行される(失敗後でも実行される契約)
-    func tearDown() {
+    func afterEach() {
         tap("#tab_home")
     }
 
     @Test("否定・個数・状態アサーションと方向セレクタ・共通ステップ")
     func S0010() {
         scenario {
-            scene(1, "setUp が本体より前に実行されている") {
+            scene(1, "beforeEach が本体より前に実行されている") {
                 expectation {
                     select("#txt_screen_title").textIs("ライフサイクル")
                     select("#txt_session_count").textIs("session=1")

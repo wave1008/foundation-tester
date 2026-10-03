@@ -66,7 +66,7 @@ public func expectation(_ body: () -> Void) -> CAEChain { CAEChain().expectation
 /// Shirates の**イレギュラーハンドラー**(TestContext.irregularHandler)に相当する。
 /// 以降どのステップでも、出た時点で閉じてから本来の操作を続ける(アクションでも検証でも効く。
 /// 各所に `ifCanSelect` を撒く必要がなくなる)。
-/// **宣言の寿命はシナリオ1本**なので `setUp()` に書くのが定石(各 `@Test` の前に自動で入る)。
+/// **宣言の寿命はシナリオ1本**なので `beforeEach()` に書くのが定石(各 `@Test` の前に自動で入る)。
 ///
 ///     irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
 ///     irregularHandler("#btn_announce_close")   // 検出したものをそのままタップする場合
@@ -113,7 +113,7 @@ public func irregularHandler(_ detect: Sel, dismiss: Sel? = nil,
 ///
 /// **1回の呼び出し = 1枚のアラートの予告**。押せたら登録は外れ、全部外れたら監視も止まる
 /// (登録が無い間は判定の往復を1回も払わない)。同じアラートを2枚待つなら2回呼ぶ。
-/// アラートが出る操作の**前に**呼ぶこと(setUp() に書けば各 @Test の前に登録される)。
+/// アラートが出る操作の**前に**呼ぶこと(beforeEach() に書けば各 @Test の前に登録される)。
 ///
 /// ボタンのラベルは**各分岐の完全一致**で、ツールは既定ボタンを推測しない(取り違えると
 /// 意図しない権限のまま run が緑で進む)。押したことは必ず run ログに残る。

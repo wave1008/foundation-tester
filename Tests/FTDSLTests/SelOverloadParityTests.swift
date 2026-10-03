@@ -21,6 +21,7 @@ final class SelOverloadParityTests: XCTestCase {
         "iosAlertHandler",      // OS アラートのボタンラベル(SpringBoard 側。アプリのセレクタではない)
         "findImage", "findImages", "existImage",  // 見本画像のラベル(DefaultClassifier)
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
+        "writeMemo", "readMemo",  // メモのキーと値(デバイスセッション)
     ]
 
     /// **検証コマンド**(2026-08-04 以降): String を取るが**期待値であってセレクタではない**

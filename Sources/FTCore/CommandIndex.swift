@@ -39,7 +39,7 @@ public struct DSLCommandInfo: Sendable, Encodable {
 public enum DSLCommandIndex {
 
     /// 索引に載せない `public func`(マクロが生成する呼び出し口で、利用者は書かない)
-    public static let internalNames: Set<String> = ["ftRunSetUp", "ftRunTearDown"]
+    public static let internalNames: Set<String> = ["ftRunBeforeEach", "ftRunSetUpDevice", "ftRunAfterEach", "ftRunTearDownDevice"]
 
     /// 分類の一覧(索引に出てくる順)。`api dsl-commands --category` の help はここから導出する
     /// (手書きの列挙は分類を足したときに必ずずれる)
@@ -410,6 +410,19 @@ public enum DSLCommandIndex {
         .init("doUntilTrue", "control", "doUntilTrue(description, waitSeconds:, intervalSeconds:, maxLoopCount:) { condition }",
               "Repeats until the async condition is true. For app or external state, not elements."),
 
+        // MARK: memo (per-device values shared by the scenarios of one run)
+        .init("writeMemo", "memo", "writeMemo(key, text)",
+              "Appends a value to the key's history in the device memo. The memo is shared only by the"
+                  + " scenarios that run on the same device in one run (see setUpDevice)."),
+        .init("readMemo", "memo", "readMemo(key)",
+              "Returns the last value written under the key, or \"\" when there is none (not a failure;"
+                  + " the step carries the memo-key-not-found note)."),
+        .init("clearMemo", "memo", "clearMemo()",
+              "Clears the whole device memo."),
+        .init("memoTextAs", "memo", "element.memoTextAs(key) / string.memoTextAs(key)",
+              "Writes an element's text (the first non-empty of label and value) or a String to the memo under the key and"
+                  + " returns the element or string, so it chains: select(\"#total\").memoTextAs(\"total\")."),
+
         // MARK: this (device-independent values)
         .init("thisIs", "this", "value.thisIs(expected, strict:)", "Asserts equality."),
         .init("thisIsNot", "this", "value.thisIsNot(expected, strict:)", "Asserts inequality."),
@@ -440,4 +453,8 @@ public enum DSLCommandIndex {
     /// `exist(...)` の戻り値だけが持つメソッド(自由関数の対応が無い)。chainable の照合に使う。
     /// **現在は空** —— チェーンできる検証はすべて同名の1引数自由関数を持つ
     public static let chainOnlyNames: Set<String> = []
+
+    /// 自由関数ではなく型のメンバとして生える索引項目(`element.memoTextAs` / `string.memoTextAs`)。
+    /// 「ソースにあるが索引に無い」の照合は行頭の `public func` を拾うので、これらはその対象外
+    public static let memberOnlyNames: Set<String> = ["memoTextAs"]
 }

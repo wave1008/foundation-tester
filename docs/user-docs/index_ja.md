@@ -106,6 +106,8 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
     - [まとめて検証(verify)](reference/commands/verify_ja.md)
 - 値の読み出し
     - [掴んだ要素の値を読む(.text, .value, .id, lastElement)](reference/commands/reading_values_ja.md)
+- シナリオ間で値を共有
+    - [メモ(writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo_ja.md)
 - 分岐
     - [ifCanSelect, ios, android](reference/commands/branch_ja.md)
 - 反復
@@ -113,7 +115,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - 同期
     - [wait, waitForDisplay, waitForClose](reference/commands/wait_ja.md)
 - 記述子
-    - [group, procedure, setUp, tearDown](reference/commands/descriptors_ja.md)
+    - [group, procedure, beforeEach, afterEach](reference/commands/descriptors_ja.md)
 - スクリーンショット
     - [screenshot](reference/commands/screenshot_ja.md)
 - イレギュラーの処理

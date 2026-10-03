@@ -317,6 +317,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら起動の遅いデバイス・高負荷**で、ランナー喪失の手前にいる
     case launchActivatedBeforeForeground = "launch-activated-before-foreground"
 
+    /// `readMemo` のキーが**このデバイスのメモに無かった**(`""` を返した)。メモはデバイス単位なので、
+    /// 書いた関数が別のデバイスへ配られた形でも立つ。**どこで書かれたかは推測しない**(事実だけ)
+    case memoKeyNotFound = "memo-key-not-found"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -425,6 +429,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .launchActivatedBeforeForeground:
             return "the test runner did not see the app in the foreground after launching it, so it was"
                 + " asked to activate it anyway (which can make the runner relaunch the app)"
+        case .memoKeyNotFound:
+            return "nothing was written under this key on this device in this run (the memo is per device)"
         case .unchangedTapBeforeFailure:
             return "a tap before this failure did not change the app's tree at all"
         case .actedOutsideContainer:

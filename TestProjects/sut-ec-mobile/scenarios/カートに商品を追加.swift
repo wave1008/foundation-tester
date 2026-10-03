@@ -7,7 +7,7 @@
 //
 // 擬陽性対策（維持）: カートはセッションを跨いで保持され累積する。単なる存在確認だと前回残留で緑になり
 // 追加失敗を見逃す。→ 冒頭で全行削除して「空」を基準化し（scene1）、追加後の存在確認を意味あるものにする。
-// 末尾で追加分を削除して副作用を残さない（scene4 + 失敗時は tearDown）。
+// 末尾で追加分を削除して副作用を残さない（scene4 + 失敗時は afterEach）。
 
 import FTDSL
 
@@ -16,7 +16,7 @@ class カートに商品を追加できること {
 
     // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、
     // 以降の正規化・基準作りは各シナリオの scene 1 が担う
-    func setUp() {
+    func beforeEach() {
         launchApp()
     }
 
@@ -26,9 +26,9 @@ class カートに商品を追加できること {
         ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
-    // カートは実行を跨いで累積する。緑経路の後始末 scene に加えて tearDown でも空へ戻す —
+    // カートは実行を跨いで累積する。緑経路の後始末 scene に加えて afterEach でも空へ戻す —
     // 失敗はシナリオ全体を中断するので、後始末 scene は失敗時に実行されない
-    func tearDown() {
+    func afterEach() {
         ifCanSelect("#btn_back") { tap("#btn_back") }
         ifCanSelect("#tab_cart") { tap("#tab_cart") }
         emptyCart()

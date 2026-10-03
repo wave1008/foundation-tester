@@ -54,7 +54,7 @@ public struct TestClassMacro {
     }
 
     /// 同一クラス内に「引数なし・非async・非throws」の指定名メソッドがあるか
-    /// (setUp / tearDown のライフサイクル検出。基底クラスからの継承は見ない = 同じクラスに書く)
+    /// (beforeEach / afterEach / setUpDevice / tearDownDevice のライフサイクル検出。基底クラスからの継承は見ない = 同じクラスに書く)
     static func hasLifecycleMethod(_ name: String, in declaration: some DeclGroupSyntax) -> Bool {
         declaration.memberBlock.members.contains { member in
             guard let fn = member.decl.as(FunctionDeclSyntax.self), fn.name.text == name else {
@@ -164,20 +164,30 @@ extension TestClassMacro: ExtensionMacro {
         // クラスに @Draft が付いていれば全シナリオが実装中扱い
         let classDraft = hasDraft(cls.attributes)
 
-        // setUp/tearDown があれば run クロージャに織り込む。ftRunSetUp/ftRunTearDown で包むのは
-        // 記録のセクション分けと、失敗時の扱い(setUp 失敗=シナリオ中断 / tearDown=失敗後も実行)のため
-        let hasSetUp = hasLifecycleMethod("setUp", in: declaration)
-        let hasTearDown = hasLifecycleMethod("tearDown", in: declaration)
+        // setUpDevice/beforeEach/afterEach があれば run クロージャに織り込む。ftRunSetUpDevice/ftRunBeforeEach/ftRunAfterEach で
+        // 包むのは記録のセクション分けと、失敗時の扱い(beforeEach 失敗=シナリオ中断 / afterEach=失敗後も実行)のため。
+        // setUpDevice を走らせるかは実行時に親が決める(ftRunSetUpDevice が core.runSetUpDevice を見る)。
+        // 順序は setUpDevice → beforeEach → 本体 → afterEach
+        let hasSetUpDevice = hasLifecycleMethod("setUpDevice", in: declaration)
+        let hasBeforeEach = hasLifecycleMethod("beforeEach", in: declaration)
+        let hasAfterEach = hasLifecycleMethod("afterEach", in: declaration)
+        // tearDownDevice はシナリオの run クロージャに入れない(親が専用の子で呼ぶ。Descriptors.swift の欄)
+        let hasTearDownDevice = hasLifecycleMethod("tearDownDevice", in: declaration)
+        let tearDownDeviceArg = hasTearDownDevice
+            ? ",\n            tearDownDevice: { let ftInstance = \(className)(); "
+              + "FTDSL.ftRunTearDownDevice { ftInstance.tearDownDevice() } }"
+            : ""
         let entries = methods.map { m in
             let deletedArg = (classDeleted || m.deleted) ? "\n                deleted: true," : ""
             let draftArg = (classDraft || m.draft) ? "\n                draft: true," : ""
             // ライフサイクル無しのときは 1 式のまま(生成コードを増やさない)
             var body = "\(className)().\(m.name)()"
-            if hasSetUp || hasTearDown {
+            if hasSetUpDevice || hasBeforeEach || hasAfterEach {
                 body = "let ftInstance = \(className)(); "
-                if hasSetUp { body += "FTDSL.ftRunSetUp { ftInstance.setUp() }; " }
+                if hasSetUpDevice { body += "FTDSL.ftRunSetUpDevice { ftInstance.setUpDevice() }; " }
+                if hasBeforeEach { body += "FTDSL.ftRunBeforeEach { ftInstance.beforeEach() }; " }
                 body += "ftInstance.\(m.name)()"
-                if hasTearDown { body += "; FTDSL.ftRunTearDown { ftInstance.tearDown() }" }
+                if hasAfterEach { body += "; FTDSL.ftRunAfterEach { ftInstance.afterEach() }" }
             }
             let platformArg = m.platformExpr.map { "\n                platform: \($0)," } ?? ""
             return """
@@ -198,7 +208,7 @@ extension TestClassMacro: ExtensionMacro {
                         platform: \(raw: platform),
                         scenarios: [
             \(raw: entries)
-                        ])
+                        ]\(raw: tearDownDeviceArg))
                 }
             }
             """)

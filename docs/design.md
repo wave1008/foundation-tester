@@ -2692,8 +2692,8 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   出た時点で閉じてから本来の操作を続ける(`StepExecutor.dismissInterruption`)。
   各所に `ifCanSelect` を撒く必要がなくなる
 - **宣言の寿命はシナリオ1本**(ハンドラは `FTDriveCore` が持つ = 1プロセス1シナリオ)。
-  `setUp()` に書けば各 `@Test` の前に自動で入るので実質1箇所で済む。
-  setUp を持たないクラスでは `@Test` ごとに書く
+  `beforeEach()` に書けば各 `@Test` の前に自動で入るので実質1箇所で済む。
+  beforeEach を持たないクラスでは `@Test` ごとに書く
 - **アクションでも検証でも発火する**。割り込みは `exist` / `textIs` の**待機中にこそ出る**ので、
   アクション側だけだと宣言した意味が半分失われる(ポーリングの各周回で照合する)
 - **閉じ方はアプリ作者しか知らないのでツールは推測しない**。宣言が無ければ何もしない。
@@ -2713,12 +2713,12 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 - **`group("名前") { }`** は記録の見え方だけを変える(実行・失敗セマンティクスは素の列と同一)。
   内側のステップ説明に `[名前]`(入れ子は `[外/内]`)を前置する。前置は `FTDriveCore.recordStep` の
   1 点でだけ行い、**修正提案の description は素のまま**(ソース行との照合に使うため)
-- **`setUp()` / `tearDown()`**: 同じクラスに引数なし・非async・非throws で書くと `@TestClass` マクロが
+- **`beforeEach()` / `afterEach()`**: 同じクラスに引数なし・非async・非throws で書くと `@TestClass` マクロが
   各 `@Test` の run クロージャに織り込む(基底クラスからの継承は見ない)。ライフサイクル無しの
   クラスの生成コードは従来どおり(`X().method()` の 1 式のまま)
-  - **setUp の失敗はシナリオごと中断**する。`scene(n)` の入口は `sceneAborted` を毎回 false に戻すため、
-    scene をまたいで効く `scenarioAborted` へ昇格させている(ここを外すと setUp 失敗が無視される)
-  - **tearDown は失敗後でも実行**する(中断フラグを一時解除 → 実行後に「元の中断」と「片付け中の失敗」の
+  - **beforeEach の失敗はシナリオごと中断**する。`scene(n)` の入口は `sceneAborted` を毎回 false に戻すため、
+    scene をまたいで効く `scenarioAborted` へ昇格させている(ここを外すと beforeEach 失敗が無視される)
+  - **afterEach は失敗後でも実行**する(中断フラグを一時解除 → 実行後に「元の中断」と「片付け中の失敗」の
     OR で復元)。片付けが飛ぶと後続シナリオを汚すため。ただし**画面凍結・ユーザー中断(debug stop)では
     実行しない**(前者は別デバイスで振り直すので無駄、後者は「止めた」のに片付けで再び止まるのが不合理)
 
@@ -2729,6 +2729,25 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   (メッセージ送信なしの class_getSuperclass のみ)で自動発見する
 - **1 プロセス = 1 シナリオ実行**のサブプロセス方式。ホスト(CLI/GUI/MCP)は ScenarioHost 経由で
   起動し、NDJSON イベント(FTCore/ScenarioEvent)を受信。ビルドはホスト側で1回だけ
+- **デバイスセッション**(メモと `setUpDevice` の済み印。契約は `FTCore/DeviceSessionHandoff.swift`):
+  状態は**親が 1 run × レーンキー(デバイス)ごとに持つ**(`RunDeviceSession`)。子は
+  `--device-session-stdin` で起動され、**stdin の 1 行目**に `DeviceSessionHandoff`(メモの写し +
+  `runSetUpDevice`)を受け取る(制御コマンドの読み手より先に読む)。子→親は `ScenarioEvent` の
+  `memoWrite` / `memoClear` / `deviceSetUp` を**片道通知**(応答なし)で送り、`ScenarioHost.run` が
+  横取りして状態へ反映する(`fleetest api` の NDJSON 契約には出さない)。1 デバイスはシナリオを
+  1 本ずつ順に回し、親は子の stdout を読み切ってから次を起こすので、次の子は必ず最新の写しを受ける。
+  **`setUpDevice` は高々 1 回**: 親が「試行した」時点で済み印を付け、結果不明(子が落ちた等)でも
+  同じデバイスで撃ち直さず、デバイスの復旧後も同じ run では再実行しない。失敗したクラスの後続は
+  走らせずに失敗として記録する。**`tearDownDevice` はシナリオの子では走らせない** —— 共有キューでは
+  「このデバイスでのクラス最後のシナリオ」が取り出し時点で決まらない(残りを別デバイスが取りうる)。各シナリオの子が
+  `deviceTearDown`(status `declared`)で「このクラスは tearDownDevice を持つ」と申告し、親は**デバイスがキューを
+  掃き切った後**(`RunOrchestrator.runWorker` の末尾・逐次の各経路はループの後)に、申告のあったクラスだけを
+  `--device-teardown-only` の専用の子で1本ずつ走らせる(`ScenarioHost.runDeviceTearDowns`。取り出した時点で済み印 =
+  高々1回)。結果は results に載せない(`<クラス>.tearDownDevice` は @Test ではないので `--failed` に拾わせない)。
+  離脱・中断したデバイスでは走らない。MCP は**呼び出しごとに新しいセッション**(空のメモ)。人が直接起動した子は
+  `--device-session-stdin` なしで空のメモ・`runSetUpDevice = true` から始まる。**子の stdin は常にパイプ**
+  (親の stdin を継がない。MCP サーバの stdin = プロトコルの経路を子へ渡さない)で、書き手の fd は `F_SETNOSIGPIPE`
+  (起動直後に死んだ子への write で親ごと落ちない)
 - シナリオ本体は**専用スレッドで同期実行**し、async の StepExecutor/AppDriver へは
   セマフォで橋渡し(FTSync)。ブロックするのは専用スレッドのみで協調プールは塞がない。
   **上限(既定120秒)で諦めたら op を必ず cancel する**(2026-07-30)。放置すると諦めたはずの
@@ -2740,7 +2759,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   この上限は `procedure` / `doUntilTrue` にも効き、`doUntilTrue(waitSeconds:)` に 120 秒より
   長い値を書いても待てない(利用者向けの記述は docs/commands.md)
 - 失敗セマンティクス: コマンド NG → **シナリオ全体を中断**(以降のステップは scene を跨いで
-  すべて skipped。throw を使わない Shirates 的中断)。tearDown だけは失敗後でも実行される。
+  すべて skipped。throw を使わない Shirates 的中断)。afterEach だけは失敗後でも実行される。
   2026-07-27 変更(ユーザー決定): 以前は scene 単位のスキップで次の scene へ進んでいたが、
   失敗後の画面状態は不定で、続けても壊れた前提の誤った緑・誤った赤を生むだけのため廃止
   (`abortScenarioOnFailure()` も既定化に伴い撤去)

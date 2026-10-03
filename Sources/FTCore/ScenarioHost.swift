@@ -315,6 +315,9 @@ public enum ScenarioHost {
 
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
+                           /// このデバイス × この run(呼び出し)で共有するメモと setUpDevice の済み印。
+                           /// 既定値を置かない = 渡し忘れ(デバイスごとに別のセッションを作る誤配線)をコンパイルで止める
+                           deviceSession: RunDeviceSession,
                            settings: ScenarioExecutionSettings = ScenarioExecutionSettings(),
                            reportDir: String,
                            dryRun: Bool = false,
@@ -333,6 +336,10 @@ public enum ScenarioHost {
                            /// 静止画方式の録画で、子が操作の直後に静止画を置く先(StillFrameRecorder)。
                            /// nil なら撮らない
                            stillFramesDir: URL? = nil,
+                           /// true = シナリオではなくクラスの tearDownDevice だけを走らせる(runDeviceTearDowns 専用)。
+                           /// scenarioID は "<Class>.tearDownDevice"。結果の記録(LastResultsStore)には載せない
+                           /// = `--failed` が存在しないシナリオを拾わない
+                           deviceTearDownOnly: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let fm = settings.fm
         let containerInference = settings.containerInference
@@ -383,7 +390,7 @@ public enum ScenarioHost {
             finished.passed = false
             eventLog?.appendHost(finished)
             emit(finished)
-            if !dryRun {
+            if !dryRun, !deviceTearDownOnly {
                 LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
                                         profile: settings.profileName)
             }
@@ -396,6 +403,14 @@ public enum ScenarioHost {
             return false
         }
 
+        let className = RunDeviceSession.className(ofScenarioID: scenarioID)
+        // tearDownDevice は setUpDevice の成否に関わらず走らせる(片付け)。setUpDevice も走らせない
+        guard let handoff = deviceTearDownOnly
+                ? deviceSession.tearDownHandoff() : deviceSession.handoff(className: className) else {
+            return abortBeforeLaunch("setUpDevice of \(className) failed earlier on this device in this run,"
+                                     + " so this scenario was not run")
+        }
+
         let runner: URL
         do {
             runner = try runnerURL(project: project)
@@ -406,7 +421,8 @@ public enum ScenarioHost {
         let process = Process()
         process.executableURL = runner
         process.environment = childEnvironment()
-        var args = ["run", "--scenario", scenarioID,
+        // tearDownDevice は @Test ではないので、子へはクラス名だけを渡す
+        var args = ["run", "--scenario", deviceTearDownOnly ? className : scenarioID,
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
                     "--project-dir", project.rootURL.path]
@@ -436,6 +452,8 @@ public enum ScenarioHost {
             if debug.pauseOnStart { args.append("--pause-on-start") }
             for location in debug.breakpoints { args += ["--breakpoint", location] }
         }
+        args.append("--device-session-stdin")
+        if deviceTearDownOnly { args.append("--device-teardown-only") }
         args += installArguments(hostInstall: installHandler != nil, appPath: appPath)
         if let appName { args += ["--app-name", appName] }
         if let appBundleID { args += ["--app", appBundleID] }
@@ -447,12 +465,15 @@ public enum ScenarioHost {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        var stdinPipe: Pipe?
-        if debug != nil || installHandler != nil {
-            let pipe = Pipe()
-            process.standardInput = pipe
-            stdinPipe = pipe
+        // stdin は常に作る: 1行目は DeviceSessionHandoff(子は --device-session-stdin で最初に読む)
+        let stdinPipe: Pipe? = Pipe()
+        process.standardInput = stdinPipe
+        // 子が先に死んでいると読み手の無いパイプへの write は SIGPIPE で親ごと落ちる(Shell.swift と同じ)。
+        // fd 単位で止めて EPIPE を Swift のエラーで受ける(handoff・installResult・debug 制御の全 write)
+        if let writer = stdinPipe?.fileHandleForWriting {
+            _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
         }
+        let keepsStdinOpen = debug != nil || installHandler != nil
 
         let processExited = ProcessExitWait.prepare(process)
         do {
@@ -464,6 +485,15 @@ public enum ScenarioHost {
         // 呼び出し側の実装 = ApiRunCommand/Fleetest の RunInterruptState 参照)
         let unregisterChildProcess = registerChildProcess?(process)
         defer { unregisterChildProcess?() }
+        // 子の終了後(watchdog 打ち切り含む全 return 経路)に began のままのクラスを failed にする
+        defer { deviceSession.scenarioEnded(className: className) }
+        // 子が死んでいる場合の broken pipe は無視(handleInstallRequest と同じ理由)
+        var stdinClosed = false
+        try? stdinPipe?.fileHandleForWriting.write(contentsOf: Data((handoff.encodedLine() + "\n").utf8))
+        if !keepsStdinOpen {
+            try? stdinPipe?.fileHandleForWriting.close()
+            stdinClosed = true
+        }
         if let debug, let stdinPipe {
             debug.onControl(ScenarioRunControl(handle: stdinPipe.fileHandleForWriting))
         }
@@ -551,6 +581,7 @@ public enum ScenarioHost {
                     await handleInstallRequest(event, installHandler: installHandler, stdinPipe: stdinPipe)
                     continue
                 }
+                if deviceSession.apply(event, className: className) { continue }
                 if event.kind == "deadlineExclusion" {
                     await extensionTracker.apply(status: event.status, durationMs: event.durationMs)
                     continue
@@ -567,7 +598,7 @@ public enum ScenarioHost {
         for await _ in processExited {}
         // イベントログのハンドルはここで閉じない(EventLogAppender がプロセス寿命で1本持つ。
         // シナリオ毎に閉じると次のシナリオの追記先が失われる)。write(2) は無バッファなので flush 不要
-        try? stdinPipe?.fileHandleForWriting.close()
+        if !stdinClosed { try? stdinPipe?.fileHandleForWriting.close() }
 
         // watchdog と正常終了のどちらが先に claim したかで timeout を確定する。cancel は
         // 終了待ちの後で行う: SIGTERM を子が無視する場合、killer の 2s 猶予後の SIGKILL が
@@ -596,7 +627,7 @@ public enum ScenarioHost {
             finished.passed = false
             eventLog?.appendHost(finished)
             emit(finished)
-            if !dryRun {
+            if !dryRun, !deviceTearDownOnly {
                 LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false,
                                         profile: settings.profileName)
             }
@@ -611,7 +642,7 @@ public enum ScenarioHost {
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         let result = passed ?? (process.terminationStatus == 0)
         // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)
-        if !dryRun {
+        if !dryRun, !deviceTearDownOnly {
             LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result,
                                     profile: settings.profileName)
         }
@@ -656,6 +687,7 @@ public enum ScenarioHost {
         // dry-run は NullDriver 固定のため接続情報は使われない(platform はダミー)
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
+                               deviceSession: RunDeviceSession(),
                                // **`enabled: false`**(デバイスも画面も無いので FM を引く経路をまとめて止める。
                                // 個別に切ると残った経路が FM の直列化待ちを払う)
                                settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),

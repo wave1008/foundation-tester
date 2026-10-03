@@ -222,14 +222,19 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `irregularHandler`(lambda 登録) | `irregularHandler(検出sel, dismiss:, maxDismissals: 10)` | 🟡 宣言形が違う |
 | — | `iosAlertHandler(alert:, button:)` | 🟢 OS のシステムアラート(権限・ATT = SpringBoard の別プロセス)を1枚ずつ予告して押す。in-app の木に載らないので `irregularHandler` では扱えない形。押せたら登録が外れ、全部外れたら監視も止まる |
 | `onScreen` ハンドラ / `onError` ハンドラ | — | ➖ **失敗時の収集はツールが持つ**(2026-08-21 判定)。`onError` 相当(スクショ・木・ログ末尾)は失敗経路が自動で残すので、利用者が書く余地は無い。`onScreen`(画面ごとの前処理)はニックネーム/画面定義の機構込みで、fleetest は画面を宣言しない |
-| — | `group("名前") { }` / `setUp()` / `tearDown()` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
+| — | `group("名前") { }` / `@Test(platform:)`(対象OS宣言。対象外は skipped 記録) | 🟢 |
 | — | `@Draft`(実装中マーク。一括実行から除外・ID 明示で実行可) | 🟢 |
+| `beforeEach(context)` | `beforeEach()` | ✅ 同名(引数 `context` は無い)。各 `@Test` の前に走る(Shirates の `setup()` = testrun・プロファイルを読みドライバを用意する枠組み側の処理には当たらない。fleetest では実行プロファイルと親プロセスが受け持つ)。失敗したらそのシナリオだけ中断 |
+| `afterEach(context)` | `afterEach()` | ✅ 同名(引数 `context` は無い)。各 `@Test` の後に走り、**失敗後でも走る** |
+| `setEventHandlers(context)` | `beforeEach()` の中で `irregularHandler(...)` を呼ぶ | 🟡 専用の口は無い。登録はシナリオのプロセスの中でしか効かないので、毎回走る `beforeEach()` に書く(`setUpDevice()` に書くと2本目以降のシナリオでは消えている) |
+| `beforeAll` / `beforeAllAfterSetup`(クラス単位) | `setUpDevice()` | 🟡 **スコープがデバイス単位**: 1回の run × 1デバイス × 1クラスで高々1回(そのデバイスに配られた最初のシナリオの `beforeEach()` の前)。クラスの全シナリオの前に1回ではない(シナリオが別デバイスへ散るため)。失敗なら同じデバイスの後続は走らせずに失敗。値の受け渡しは `writeMemo` / `readMemo` |
+| `afterAll`(クラス単位) | `tearDownDevice()` | 🟡 **スコープがデバイス単位で、走る時点がデバイスの仕事の後**: そのデバイスでそのクラスのシナリオが1本でも走っていれば、デバイスがキューを掃き切った後に1回(専用のプロセス)。結果は run ログとレポートに残り、合否には数えない。離脱・中断したデバイスでは走らない |
 
 ## データストレージ・キャッシュ
 
 | Shirates | fleetest | |
 |---|---|---|
-| `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | Swift 変数 + `exist().text` | ➖ **Swift の変数で足りる**(掴んだ値は `select(…).text` で読める)。専用の記憶域はスコープが曖昧になり、どこで書いた値かを追えなくなる |
+| `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | 同名・同挙動(`writeMemo` は履歴に追記・`readMemo` は最後の値か `""`・`memoTextAs` は要素と String の両方) | 🟢 **スコープは「1回の run × 1デバイス」**。Shirates は1 run で1デバイスを動かすので JVM グローバルのメモと同じ範囲。fleetest はシナリオごとに別プロセスなので、親(run を束ねる側)がデバイスごとに持って子へ渡す。別デバイスの値は見えない(`readMemo` は `""` + 注記 `memo-key-not-found`)。`ft_batch` は受けない |
 | `account` / `app` / `data` / `dataPattern` | — | ➖ **テストデータの外部化は持たない**(Shirates は JSON のデータセットを引く)。fleetest は Swift のリテラル・定数で書く —— 生成側が直書きでき、間接参照は読み取りコストが勝つ |
 | `clipboard` / `readClipboard` / `writeClipboard` | — | ⏳ **足す**(2026-08-21 判定。基準①)。コピー・ペースト機能そのものを検証する画面でだけ要る。**足す条件**: そういう画面が受け手に出たとき(それまでは無くても回る) |
 | `disableCache` / `refreshCache` / `syncCache` / `onDirectAccess` 等 | 内部で自動管理(利用者に露出しない) | ➖ 露出すると生成側が性能問題を誤った手段で解こうとする |

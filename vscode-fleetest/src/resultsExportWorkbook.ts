@@ -78,8 +78,9 @@ const SECTION_LABEL_KEY: { readonly [section: string]: MessageKey } = {
   condition: "resultsExport.section.condition",
   action: "resultsExport.section.action",
   expectation: "resultsExport.section.expectation",
-  setUp: "resultsExport.section.setUp",
-  tearDown: "resultsExport.section.tearDown",
+  setUpDevice: "resultsExport.section.setUpDevice",
+  beforeEach: "resultsExport.section.beforeEach",
+  afterEach: "resultsExport.section.afterEach",
 };
 
 function baseFont(overrides: Partial<XlsxFont> = {}): XlsxFont {

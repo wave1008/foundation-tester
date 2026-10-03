@@ -14,12 +14,12 @@ class ログイン画面を開けること {
     // 状態の正規化まで(**ログイン画面を開く操作そのものはこのテストの検証対象**なので本体に残す)。
     // ログアウト状態が前提: 前のシナリオのセッションが残っているとアカウント画面がプロフィール
     // 表示になり #btn_login が存在しない(ログイン失敗.swift と同じ理由)
-    func setUp() {
+    func beforeEach() {
         launchApp()
         // 押し込み画面から再開した場合に一覧へ正規化(タブ根なら無害)
         ifCanSelect("#btn_back") { tap("#btn_back") }
         tap("#tab_account")
-        // 待ち2つの理由と実害は ログイン失敗.swift の setUp を参照
+        // 待ち2つの理由と実害は ログイン失敗.swift の beforeEach を参照
         waitForDisplay("#btn_benchmark")
         waitForClose("#account_loading")
         // 4.7インチ実機ではアカウント画面の下端が下部タブバーに潜る(D-02)。末尾まで送ってから

@@ -130,7 +130,7 @@ guarded だけで上限を超えたときは他のカテゴリと同じく**事�
 
 | 知りたいこと | 見る欄 |
 |---|---|
-| どのフェーズで落ちたか | `failedSteps[].section` = `condition` / `action` / `expectation` / `setUp` / `tearDown` |
+| どのフェーズで落ちたか | `failedSteps[].section` = `condition` / `action` / `expectation` / `beforeEach` / `afterEach` |
 | 何のコマンドで落ちたか | `failedSteps[].command`(`tap` / `exist` …) |
 | どの経路で落ちたか | `failedSteps[].failureKind`(下表) |
 | そのステップに何が起きていたか | `failedSteps[].notes`(`interruption-dismissed` 等) |
@@ -403,7 +403,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 |---|---|---|
 | index | Int | シナリオ内の通し番号 |
 | scene / sceneTitle | Int? / String? | 所属シーン |
-| section | String? | `condition` / `action` / `expectation` / `setUp` / `tearDown`。ブロック外は無し |
+| section | String? | `condition` / `action` / `expectation` / `beforeEach` / `afterEach`。ブロック外は無し |
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
@@ -417,7 +417,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 
 全ステップを到着順に持つ(録画再生 UI のステップツリー用)。
 `scene` / `sceneTitle` / `section` / `index` / `description` / `status` / `at` / `durationMs` / `notes`。
-`section` は FailedStepRecord と同じ値(condition/action/expectation/setUp/tearDown。CAE ブロック外は省略)で、
+`section` は FailedStepRecord と同じ値(condition/action/expectation/beforeEach/afterEach。CAE ブロック外は省略)で、
 拡張の「テスト結果をエクスポート」が列の振り分けに使う。2026-09-20 より前の記録には無い。
 **run 横断で注記を数えるときは `description` の文言一致ではなく `notes` を見る**
 (文言を変えた瞬間に集計が 0 件になる)。

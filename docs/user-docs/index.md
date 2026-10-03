@@ -107,6 +107,8 @@ scenarios the AI assistant wrote, or to write some yourself.
     - [Anything assertion (verify)](reference/commands/verify.md)
 - Reading values
     - [Reading values of the grabbed element (.text, .value, .id, lastElement)](reference/commands/reading_values.md)
+- Sharing values between scenarios
+    - [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo.md)
 - Branch
     - [ifCanSelect, ios, android](reference/commands/branch.md)
 - Repeating action
@@ -114,7 +116,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - Syncing
     - [wait, waitForDisplay, waitForClose](reference/commands/wait.md)
 - Descriptor
-    - [group, procedure, setUp, tearDown](reference/commands/descriptors.md)
+    - [group, procedure, beforeEach, afterEach](reference/commands/descriptors.md)
 - Screenshot
     - [screenshot](reference/commands/screenshot.md)
 - Handling irregulars

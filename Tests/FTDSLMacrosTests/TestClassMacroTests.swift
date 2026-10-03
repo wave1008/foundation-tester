@@ -425,14 +425,14 @@ final class TestClassMacroTests: XCTestCase {
             macroSpecs: macros
         )
     }
-    func testSetUpとTearDownがrunに織り込まれる() {
+    func testBeforeEachとAfterEachがrunに織り込まれる() {
         assertMacroExpansion(
             """
             @TestClass(app: "com.example.app")
             class T {
-                func setUp() {
+                func beforeEach() {
                 }
-                func tearDown() {
+                func afterEach() {
                 }
                 @Test("t")
                 func S0010() {
@@ -442,9 +442,9 @@ final class TestClassMacroTests: XCTestCase {
             expandedSource:
             """
             class T {
-                func setUp() {
+                func beforeEach() {
                 }
-                func tearDown() {
+                func afterEach() {
                 }
                 func S0010() {
                 }
@@ -468,15 +468,122 @@ final class TestClassMacroTests: XCTestCase {
                             title: "t",
                             run: {
                                 let ftInstance = T();
-                                FTDSL.ftRunSetUp {
-                                    ftInstance.setUp()
+                                FTDSL.ftRunBeforeEach {
+                                    ftInstance.beforeEach()
                                 };
                                 ftInstance.S0010();
-                                FTDSL.ftRunTearDown {
-                                    ftInstance.tearDown()
+                                FTDSL.ftRunAfterEach {
+                                    ftInstance.afterEach()
                                 }
                             }),
                         ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testSetUpDeviceはbeforeEachの前に織り込まれる() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.example.app")
+            class T {
+                func setUpDevice() {
+                }
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func setUpDevice() {
+                }
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.example.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                let ftInstance = T();
+                                FTDSL.ftRunSetUpDevice {
+                                    ftInstance.setUpDevice()
+                                };
+                                ftInstance.S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    /// tearDownDevice はシナリオの run に入らず、descriptor の欄になる(親が専用の子で呼ぶ)
+    func testTearDownDeviceはdescriptorの欄になりrunには入らない() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.example.app")
+            class T {
+                func tearDownDevice() {
+                }
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func tearDownDevice() {
+                }
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.example.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                T().S0010()
+                            }),
+                        ],
+                        tearDownDevice: {
+                            let ftInstance = T();
+                            FTDSL.ftRunTearDownDevice {
+                                ftInstance.tearDownDevice()
+                            }
+                        })
                 }
             }
             """,

@@ -10,8 +10,8 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class サインアップ入力バリデーションが働くこと {
 
-    // ログアウト状態が前提。待ち2つの理由と実害は ログイン失敗.swift の setUp を参照
-    func setUp() {
+    // ログアウト状態が前提。待ち2つの理由と実害は ログイン失敗.swift の beforeEach を参照
+    func beforeEach() {
         launchApp()
         ifCanSelect("#btn_back") { tap("#btn_back") }
         tap("#tab_account")

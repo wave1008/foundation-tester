@@ -85,6 +85,7 @@ export const resultsExportStrings = {
   "resultsExport.section.condition": { ja: "事前条件", en: "Condition" },
   "resultsExport.section.action": { ja: "操作", en: "Action" },
   "resultsExport.section.expectation": { ja: "期待結果", en: "Expectation" },
-  "resultsExport.section.setUp": { ja: "setUp", en: "setUp" },
-  "resultsExport.section.tearDown": { ja: "tearDown", en: "tearDown" },
+  "resultsExport.section.setUpDevice": { ja: "setUpDevice", en: "setUpDevice" },
+  "resultsExport.section.beforeEach": { ja: "beforeEach", en: "beforeEach" },
+  "resultsExport.section.afterEach": { ja: "afterEach", en: "afterEach" },
 } satisfies MessageDict;

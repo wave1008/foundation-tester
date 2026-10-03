@@ -36,7 +36,7 @@ public final class InAppDriver: AppDriver {
     }
 
     public func terminate() async throws {
-        // launchApp を経ずに terminateApp が来る経路がある(tearDown だけで終了する等)。
+        // launchApp を経ずに terminateApp が来る経路がある(afterEach だけで終了する等)。
         // その場合は**注入先アプリ**を対象にする: in-app ブリッジは対象アプリのプロセス内に
         // 常駐しているので、/status.sessionBundleID が「今動いているアプリ」の唯一の情報源。
         // ブリッジ無応答 = 対象アプリが既に居ない → 何もせず成功にする

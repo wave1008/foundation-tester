@@ -481,7 +481,7 @@ public func useHandler(_ body: () -> Void) {
 /// `suppressHandler { }` は1つの CAE ブロックの内側にしか置けないので、
 /// 「`condition` で止めて `expectation` で戻す」はこちらでしか書けない(ユーザー指摘)。
 ///
-/// **戻し忘れはシナリオの終わりまで効く**。中断した場合、以降の画面操作は tearDown だけなので、
+/// **戻し忘れはシナリオの終わりまで効く**。中断した場合、以降の画面操作は afterEach だけなので、
 /// 片付けが割り込みに吸われうる点だけ意識する(気になるなら `suppressHandler { }` を使う)
 public func disableHandler() {
     FTRuntime.requireCore(command: "disableHandler").executor.handlersDisabled = true
@@ -651,16 +651,41 @@ public func verify(_ message: String, file: StaticString = #filePath, line: UInt
     core.recordStep(description: description, status: .passed, file: "\(file)", line: Int(line))
 }
 
-/// @TestClass マクロが setUp() の呼び出しを包むために生成する(利用者が直接書くものではない)。
-/// setUp 内の失敗はシナリオ全体を中断させる(前提が崩れた状態で本体を走らせない)。
-public func ftRunSetUp(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "setUp").runLifecycle("setUp", allowAfterFailure: false, body)
+/// @TestClass マクロが beforeEach() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// beforeEach 内の失敗はシナリオ全体を中断させる(前提が崩れた状態で本体を走らせない)。
+public func ftRunBeforeEach(_ body: () -> Void) {
+    FTRuntime.requireCore(command: "beforeEach").runLifecycle("beforeEach", allowAfterFailure: false, body)
 }
 
-/// @TestClass マクロが tearDown() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// @TestClass マクロが setUpDevice() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// 走らせるかは親が決める(`core.runSetUpDevice`)。**親は「試行した」時点で済み印を付ける**ので、
+/// 結果が不明でも同じデバイスで撃ち直されない。失敗はシナリオ中断(後続シナリオは親が走らせずに落とす)。
+/// 中断・画面凍結・ユーザー停止で本体が走らなかったときは "began" も出さない。
+/// setUpDevice で設定したインスタンスのプロパティは**このシナリオのプロセスだけ**で見える
+/// (他のシナリオへは writeMemo / readMemo で渡す)
+public func ftRunSetUpDevice(_ body: () -> Void) {
+    let core = FTRuntime.requireCore(command: "setUpDevice")
+    guard core.runSetUpDevice, !core.scenarioAborted, !core.deviceFrozen, !core.stoppedByUser else { return }
+    func event(_ status: String) -> ScenarioEvent {
+        var event = ScenarioEvent(kind: "deviceSetUp")
+        event.status = status
+        return event
+    }
+    core.emit(event("began"))
+    core.runLifecycle("setUpDevice", allowAfterFailure: false, body)
+    core.emit(event(core.scenarioAborted || core.deviceFrozen || core.stoppedByUser ? "failed" : "passed"))
+}
+
+/// @TestClass マクロが afterEach() の呼び出しを包むために生成する(利用者が直接書くものではない)。
 /// **失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)。中断フラグは実行後に復元する。
-public func ftRunTearDown(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "tearDown").runLifecycle("tearDown", allowAfterFailure: true, body)
+public func ftRunAfterEach(_ body: () -> Void) {
+    FTRuntime.requireCore(command: "afterEach").runLifecycle("afterEach", allowAfterFailure: true, body)
+}
+
+/// @TestClass マクロが tearDownDevice() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// 呼ばれるのは `--device-teardown-only` の専用の子だけ(親がデバイスの仕事の後に1クラス1回起こす)
+public func ftRunTearDownDevice(_ body: () -> Void) {
+    FTRuntime.requireCore(command: "tearDownDevice").runLifecycle("tearDownDevice", allowAfterFailure: true, body)
 }
 
 /// 条件が満たされるまで任意の Swift コードを繰り返す(Shirates の doUntilTrue 相当)。

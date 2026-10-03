@@ -15,8 +15,8 @@ Lets a scenario operate a modal itself instead of having a declared
 ## Example
 
 ```swift
-func setUp() {
-    irregularHandler("#promo_modal", dismiss: "#btn_promo_close")   // declaration stays in setUp
+func beforeEach() {
+    irregularHandler("#promo_modal", dismiss: "#btn_promo_close")   // declaration stays in beforeEach
 }
 
 suppressHandler {
@@ -58,7 +58,7 @@ condition {
   interruption was on screen but automatic closing is suppressed here"* — nothing is added when
   the step succeeds.
 - **Forgetting to call `enableHandler()` after `disableHandler()` leaves suppression on for the
-  rest of the scenario** — after an abort, only `tearDown()` still runs, so any interruption
+  rest of the scenario** — after an abort, only `afterEach()` still runs, so any interruption
   during cleanup will not be auto-closed either. Use the block form when this matters.
 - OS system dialogs (permission prompts) are not affected by any of these — that is a separate
   mechanism, see [iosAlertHandler](./ios_alert_handler.md). In particular, an alert that a

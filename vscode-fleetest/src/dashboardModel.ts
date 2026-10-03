@@ -125,7 +125,7 @@ export interface FailedStepRecord {
   readonly index: number;
   readonly scene?: number | null;
   readonly sceneTitle?: string | null;
-  /** "condition" / "action" / "expectation" / "setUp" / "tearDown"。ブロック外は無し。 */
+  /** "condition" / "action" / "expectation" / "setUpDevice" / "beforeEach" / "afterEach"。ブロック外は無し。 */
   readonly section?: string | null;
   readonly description: string;
   /** DSL のコマンド名。description を割って作らないこと。 */

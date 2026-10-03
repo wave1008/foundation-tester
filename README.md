@@ -433,13 +433,13 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
   (**両軸を非 0 にすると斜め**)・`pinchOut` / `pinchIn` でズーム・`doubleTap` でズームイン。
   **iOS は Compose のダブルタップだけエンジンで成否が分かれる**(既定の hybrid なら全て動き、
   `xcuitest` エンジンでは Compose のダブルタップだけが成立しない。`xcuitest` 単独と実機に残る穴は docs/commands.md の表)
-- **出るか不定のアプリ内メッセージ**は `irregularHandler` を setUp で1回宣言すると自動で閉じる
+- **出るか不定のアプリ内メッセージ**は `irregularHandler` を beforeEach で1回宣言すると自動で閉じる
   (アプリ内の要素だけが対象。**OS のダイアログには効かない** —— 権限ダイアログは既定では自動で
   押さないので、`iosAlertHandler` か実行プロファイルで答えを決める。docs/commands.md)。**1ステップで最大10回**まで閉じ、
   回数は `maxDismissals:` で変えられる。**アプリ本体とは別の `UIWindow` に載るモーダル**も
   木に載り、**覆われた背面は木から消える**(覆われたまま緑になるのを防ぐ。docs/commands.md)
-- テストクラスの `func setUp()` / `func tearDown()` は各 `@Test` の前後で自動実行。
-  **tearDown は失敗後でも実行される**
+- テストクラスの `func beforeEach()` / `func afterEach()` は各 `@Test` の前後で自動実行。
+  **afterEach は失敗後でも実行される**
 
 **イレギュラー処理・データセットアップはコードでそのまま書ける**のが YAML 時代との最大の違い:
 
@@ -456,7 +456,7 @@ condition {
 ```
 
 - 失敗セマンティクス: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
-  tearDown だけは失敗後でも実行される)。
+  afterEach だけは失敗後でも実行される)。
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
 - レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   失敗時の要素一覧、失敗スクリーンショット、**修正提案**)

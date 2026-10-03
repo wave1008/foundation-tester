@@ -57,6 +57,7 @@ final class ScenarioHostDebugTests: XCTestCase {
             await ScenarioHost.run(
                 project: project, scenarioID: "ログイン画面.S0010",
                 connection: DriverConnection(platform: "ios"),
+                deviceSession: RunDeviceSession(),
                 settings: ScenarioExecutionSettings(fm: FMConfig()),
                 reportDir: tempDir.path,
                 dryRun: true, debug: options) { event in

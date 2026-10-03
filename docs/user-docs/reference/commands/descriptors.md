@@ -1,4 +1,4 @@
-# group, procedure, setUp, tearDown
+# group, procedure, beforeEach, afterEach
 
 Structuring commands: grouping steps in the report, running arbitrary Swift as one step, and
 per-test setup/teardown.
@@ -9,19 +9,21 @@ per-test setup/teardown.
 |---|---|
 | `group("name") { }` | Prefixes the steps inside with `[name]` in the report. Execution and failure semantics are unchanged. |
 | `procedure("description") { try await ... }` | Runs arbitrary async Swift as one recorded step. A thrown error fails the scenario. |
-| `func setUp()` | Defined on the test class; runs automatically before each `@Test`. |
-| `func tearDown()` | Defined on the test class; runs automatically after each `@Test`, **including after a failure**. |
+| `func beforeEach()` | Defined on the test class; runs automatically before each `@Test`. |
+| `func setUpDevice()` | Defined on the test class; runs **at most once per run, per device, per class** — before `beforeEach()` of the first scenario of that class that lands on the device. Share what it prepares with [`writeMemo` / `readMemo`](memo.md). |
+| `func afterEach()` | Defined on the test class; runs automatically after each `@Test`, **including after a failure**. |
+| `func tearDownDevice()` | Defined on the test class; runs **once, after the device has finished all of its scenarios in the run** (if at least one scenario of that class ran on the device). Use it to clean up after `setUpDevice()`. |
 
 ## Example
 
 ```swift
 @TestClass(app: "com.example.myapp", platform: "ios")
 class LoginFlow {
-    func setUp() {
+    func beforeEach() {
         irregularHandler("#promo_modal", dismiss: "#btn_promo_close")
     }
 
-    func tearDown() {
+    func afterEach() {
         terminateApp()
     }
 
@@ -54,8 +56,10 @@ class LoginFlow {
   failure.** Raw Swift inside a block is not skipped when an earlier step in the scene has
   failed, so wrap anything that should not fire on a broken state in `procedure { }` (a
   thrown error there aborts the scenario the same way a failed command does).
-- `tearDown()` still runs after a `@Test` fails — use it for cleanup that must happen either
+- `setUpDevice()` runs in the process of that first scenario only, so **instance properties it sets are not visible to other scenarios** — pass values with `writeMemo` / `readMemo`. If it fails, the remaining scenarios of that class on the same device are recorded as failed without running, and it is never retried on that device within the run.
+- `afterEach()` still runs after a `@Test` fails — use it for cleanup that must happen either
   way (e.g. terminating the app).
+- `tearDownDevice()` runs in a process of its own and can read the memo. It runs even if `setUpDevice()` failed, but not on a device that dropped out mid-run or when the run is interrupted. Its result goes to the run log and a report and does not count toward the test results.
 - `@Deleted("reason")` and `@Draft("reason")` mark a `@TestClass` or `@Test` as retired or
   in-progress; both are excluded from bulk runs (all-scenarios, folder, class-name) and can
   only be run by an exact ID. See

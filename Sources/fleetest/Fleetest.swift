@@ -1210,6 +1210,7 @@ struct RunScenarios: AsyncParsableCommand {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         var failedCount = 0
+        let deviceSession = RunDeviceSession()
         for item in items {
             let platform = item.info.platform ?? resolvedPlatform
             // quiet: runSequential と同じ扱い(成功なら結果1行・失敗ならバッファ全体)
@@ -1217,6 +1218,7 @@ struct RunScenarios: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: item.info.id,
                 connection: DriverConnection(platform: platform),
+                deviceSession: deviceSession,
                 // **`enabled: false`(= 子へ --no-fm)**。デバイスも画面も無いので FM を引く経路を
                 // まとめて止める(個別に切ると残った経路が FM の直列化待ちを払う)
                 settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
@@ -1235,6 +1237,13 @@ struct RunScenarios: AsyncParsableCommand {
                 if !passed { ConsoleOut.out(buffer.joined(separator: "\n")) }
             }
             if !passed { failedCount += 1 }
+        }
+        for outcome in await ScenarioHost.runDeviceTearDowns(
+            project: project, connection: DriverConnection(platform: resolvedPlatform),
+            deviceSession: deviceSession, settings: ScenarioExecutionSettings(fm: FMConfig(enabled: false)),
+            reportDir: tempDir.path, dryRun: true,
+            appPath: nil, appName: nil, appBundleID: appID, registerChildProcess: nil) {
+            ConsoleOut.out(ScenarioHost.describe(outcome))
         }
         return failedCount
     }
@@ -1270,6 +1279,9 @@ struct RunScenarios: AsyncParsableCommand {
             primingWorkers, homeOnStart: homeOnStart) { ConsoleOut.out($0) }
 
         var failedCount = 0
+        // 逐次実行のデバイスは platform ごとに1台(ios = --port・android = --serial)
+        var deviceSessions: [String: RunDeviceSession] = [:]
+        var sessionConnections: [String: DriverConnection] = [:]
         for (index, item) in items.enumerated() {
             if interruptState.isStopped {
                 // 始まらなかった分を記録して失敗に数える(RunRecorder.recordInterruptedBeforeStart)
@@ -1292,10 +1304,15 @@ struct RunScenarios: AsyncParsableCommand {
             _ = try await driver.status()
             let worker = RunWorker(label: platform, platform: platform,
                                    driver: driver, connection: connection)
+            let deviceSession = deviceSessions[platform] ?? RunDeviceSession()
+            deviceSessions[platform] = deviceSession
+            sessionConnections[platform] = connection
             // quiet: 全行をバッファし、成功なら結果1行のみ・失敗ならバッファ全体(失敗詳細)を出す
             var buffer: [String] = []
             let outcome = await ScenarioRunner.runOne(
-                project: project, item: item, worker: worker, settings: settings,
+                project: project, item: item, worker: worker,
+                deviceSession: deviceSession,
+                settings: settings,
                 reportDir: URL(fileURLWithPath: reportDir),
                 recorder: recorder,
                 appBundleID: appID,
@@ -1316,6 +1333,18 @@ struct RunScenarios: AsyncParsableCommand {
                 }
             }
             if outcome != .passed { failedCount += 1 }
+        }
+        if !interruptState.isStopped {
+            for platform in deviceSessions.keys.sorted() {
+                guard let session = deviceSessions[platform], let connection = sessionConnections[platform] else { continue }
+                for outcome in await ScenarioHost.runDeviceTearDowns(
+                    project: project, connection: connection, deviceSession: session,
+                    settings: settings, reportDir: reportDir, dryRun: false,
+                    appPath: nil, appName: nil, appBundleID: appID,
+                    registerChildProcess: { interruptState.registerChildProcess($0) }) {
+                    ConsoleOut.out(ScenarioHost.describe(outcome))
+                }
+            }
         }
         return (failedCount, interruptState.isStopped)
     }

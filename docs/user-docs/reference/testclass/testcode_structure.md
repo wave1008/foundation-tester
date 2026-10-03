@@ -33,7 +33,7 @@ the scene is proving, not just "step 2".
 ## Failure semantics
 
 A failing command aborts the whole scenario: **every step after it is skipped, across all
-remaining scenes** — not just the rest of the current scene. `tearDown()` is the one
+remaining scenes** — not just the rest of the current scene. `afterEach()` is the one
 exception; it still runs.
 
 **Raw Swift code inside a block is not skipped** by this mechanism (only DSL commands are).
