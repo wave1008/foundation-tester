@@ -120,4 +120,92 @@ final class MCPDeviceLeaseFileShapeTests: XCTestCase {
         XCTAssertNil(MCPDeviceLease.holderPID(stateDir: stateDir, key: "UB", excluding: []))
         XCTAssertEqual(MCPDeviceLease.holderPID(stateDir: stateDir, key: "UC", excluding: []), other)
     }
+
+    // MARK: - ライブ操作の印(見ているだけ / 操作した)
+
+    private func setMarkDate(_ date: Date, stateDir: URL, pid: Int32) throws {
+        try FileManager.default.setAttributes(
+            [.modificationDate: date], ofItemAtPath: MCPDeviceLease.leaseURL(stateDir: stateDir, key: udid, pid: pid).path)
+    }
+
+    /// **本命**: モニターで見ているだけのライブ操作には MCP は警告しない(前回の印があっても)
+    func testMCPStaysQuietWhileTheLiveControlOnlyWatches() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let me = ProcessInfo.processInfo.processIdentifier
+        XCTAssertNil(MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me))
+        try setMarkDate(Date().addingTimeInterval(-60), stateDir: stateDir, pid: me)
+        MCPDeviceLease.write(stateDir: stateDir, key: udid, pid: otherLivePID, role: .live(lastAction: nil))
+        XCTAssertNil(MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me))
+    }
+
+    /// ライブ操作が MCP の前回の呼び出しより後に操作したら、ライブ操作を名指しして言う
+    func testMCPWarnsWhenTheLiveControlOperatedSinceItsPreviousCall() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let me = ProcessInfo.processInfo.processIdentifier
+        _ = MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me)
+        try setMarkDate(Date().addingTimeInterval(-60), stateDir: stateDir, pid: me)
+        MCPDeviceLease.write(stateDir: stateDir, key: udid, pid: otherLivePID, role: .live(lastAction: Date()))
+        XCTAssertEqual(MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me),
+                       "⚠️ the monitor's live control (pid 1) operated this device since your previous call —"
+                       + " refs and snapshots taken before that may be stale. Take a fresh snapshot before acting on them.")
+        // 次の呼び出しは前回の印(いま書いた)より後に操作が無いので黙る
+        XCTAssertNil(MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me))
+    }
+
+    /// 前回の印より前の操作・このデバイスで初めての呼び出しは黙る(古くなる ref をまだ持っていない)
+    func testMCPStaysQuietForOperationsBeforeItsPreviousCallOrOnItsFirstCall() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let me = ProcessInfo.processInfo.processIdentifier
+        MCPDeviceLease.write(stateDir: stateDir, key: udid, pid: otherLivePID,
+                             role: .live(lastAction: Date().addingTimeInterval(-60)))
+        XCTAssertNil(MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me), "初回")
+        XCTAssertNil(MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me), "前回より前の操作")
+    }
+
+    /// 見ているだけのライブ操作も「使用中」として数える(デバイスを止める門・run の回避が読む)
+    func testAWatchingLiveControlStillHoldsTheDevice() {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        MCPDeviceLease.write(stateDir: stateDir, key: udid, pid: otherLivePID, role: .live(lastAction: nil))
+        XCTAssertEqual(MCPDeviceLease.holderPID(stateDir: stateDir, key: udid, excluding: []), otherLivePID)
+        XCTAssertEqual(MCPDeviceLease.liveHolders(stateDir: stateDir, excluding: []), [udid: otherLivePID])
+    }
+
+    /// ライブ操作側: 見ているだけなら MCP が居ても黙り、操作した回だけ言う。操作の時刻は観測の回に引き継ぐ
+    func testLiveControlWarnsOnlyWhenItOperatesAndCarriesTheLastActionTime() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let me = ProcessInfo.processInfo.processIdentifier
+        MCPDeviceLease.write(stateDir: stateDir, key: udid, pid: otherLivePID)
+        XCTAssertNil(MCPDeviceLease.writeLiveAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me, acting: false))
+        let acted = Date(timeIntervalSince1970: 1_800_000_000.5)
+        XCTAssertEqual(
+            MCPDeviceLease.writeLiveAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me, acting: true, now: acted),
+            "⚠️ another MCP session (pid 1) is driving this device too — the two"
+                + " sessions move each other's screens, so refs and snapshots go stale under you."
+                + " Drive another device, or finish one of the sessions.")
+        _ = MCPDeviceLease.writeLiveAndWarnIfInUse(stateDir: stateDir, key: udid, pid: me, acting: false)
+        let url = MCPDeviceLease.leaseURL(stateDir: stateDir, key: udid, pid: me)
+        XCTAssertEqual(MCPDeviceLease.record(at: url)?.role, .live(lastAction: acted))
+    }
+
+    /// 2形以外の中身(3欄・印の語が違う)は保持者として拾わない
+    func testMalformedLiveContentIsIgnored() throws {
+        let stateDir = makeStateDir()
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        guard let started = ProcessLiveness.startTime(otherLivePID) else {
+            throw XCTSkip("この環境では pid 1 の開始時刻が読めない")
+        }
+        let url = MCPDeviceLease.leaseURL(stateDir: stateDir, key: udid, pid: otherLivePID)
+        for text in ["1 \(Int(started.timeIntervalSince1970)) live",
+                     "1 \(Int(started.timeIntervalSince1970)) watch 0"] {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            XCTAssertNil(MCPDeviceLease.holder(at: url), text)
+        }
+    }
 }
+

@@ -34,10 +34,12 @@ struct LiveDeviceLease {
                                pid: ProcessInfo.processInfo.processIdentifier, log: log)
     }
 
-    /// そのデバイスを run か別の対話セッションが使用中なら、既存の警告文をそのまま stderr へ流す
-    /// (新しい文言を作らない。MCPServer.markDeviceInUse と同じ口)
-    func refresh() {
-        if let warning = MCPDeviceLease.writeAndWarnIfInUse(stateDir: stateDir, key: key, pid: pid) {
+    /// そのデバイスを run か別の対話セッションが使用中なら、警告文をそのまま stderr へ流す
+    /// (文言は MCPDeviceLease の1箇所)。`acting` = このコマンドがデバイスを操作する
+    /// (`ApiLiveServeCommand.drivesDevice`。起動直後・自動の画面更新・観測は false)
+    func refresh(acting: Bool) {
+        if let warning = MCPDeviceLease.writeLiveAndWarnIfInUse(stateDir: stateDir, key: key, pid: pid,
+                                                                acting: acting) {
             log(warning)
         }
     }

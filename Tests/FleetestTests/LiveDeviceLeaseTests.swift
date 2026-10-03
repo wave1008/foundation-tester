@@ -20,12 +20,12 @@ final class LiveDeviceLeaseTests: XCTestCase {
         try? FileManager.default.removeItem(at: stateDir)
     }
 
-    /// refresh() は MCPDeviceLease.holderPID から読める同じ印を書くこと(DeviceBooter 等の
-    /// 読み手はここしか見ないので、別の場所・別の書式へ書くと届かない)
+    /// refresh は MCPDeviceLease.holderPID から読める同じ印を書くこと(DeviceBooter 等の
+    /// 読み手はここしか見ないので、別の場所・別の書式へ書くと届かない)。見ているだけ(acting: false)でも数える
     func testRefreshIsVisibleThroughMCPDeviceLease() {
         let pid = ProcessInfo.processInfo.processIdentifier
         let lease = LiveDeviceLease(stateDir: stateDir, key: "UDID-LIVE", pid: pid, log: { _ in })
-        lease.refresh()
+        lease.refresh(acting: false)
         XCTAssertEqual(MCPDeviceLease.holderPID(stateDir: stateDir, key: "UDID-LIVE", excluding: []), pid)
     }
 
@@ -33,7 +33,7 @@ final class LiveDeviceLeaseTests: XCTestCase {
     func testReleaseRemovesOnlyOwnLease() {
         let pid = ProcessInfo.processInfo.processIdentifier
         let lease = LiveDeviceLease(stateDir: stateDir, key: "UDID-LIVE", pid: pid, log: { _ in })
-        lease.refresh()
+        lease.refresh(acting: false)
         // launchd(1) は必ず生きているので「他プロセスの印」の陽性対照に使える(MCPDeviceLeaseTests と同じ手法)
         MCPDeviceLease.write(stateDir: stateDir, key: "UDID-OTHER", pid: 1)
         lease.release()
@@ -50,8 +50,21 @@ final class LiveDeviceLeaseTests: XCTestCase {
         let lease = LiveDeviceLease(stateDir: stateDir, key: "UDID-LIVE",
                                     pid: ProcessInfo.processInfo.processIdentifier,
                                     log: { logged.append($0) })
-        lease.refresh()
+        lease.refresh(acting: false)
         XCTAssertTrue(logged.contains { $0.contains("a fleetest run (pid 1) is using this device right now") },
                       "\(logged)")
+    }
+
+    /// 観測だけのコマンドは操作に数えない(MCP への警告の根拠になるので、取り違えると見ているだけで警告が戻る)
+    func testOnlyRefreshAndFrameAreObservationOnly() {
+        func command(_ cmd: String, raw: [String: Any] = [:]) -> ApiLiveServeCommand {
+            ApiLiveServeCommand(cmd: cmd, raw: raw.merging(["cmd": cmd]) { a, _ in a })
+        }
+        XCTAssertFalse(command("refresh").drivesDevice)
+        XCTAssertFalse(command("frame").drivesDevice)
+        XCTAssertTrue(command("tap").drivesDevice)
+        XCTAssertTrue(command("launch").drivesDevice)
+        XCTAssertFalse(command("tap", raw: ["ref": "abc"]).drivesDevice,
+                       "型違いの行は perform を撃たない")
     }
 }

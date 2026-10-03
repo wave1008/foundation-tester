@@ -191,7 +191,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         let deviceLease = LiveDeviceLease.make(
             platform: driverOptions.resolvedPlatform, udid: udid,
             explicitAndroidSerial: driverOptions.serial, log: { logStderr($0) })
-        deviceLease?.refresh()
+        deviceLease?.refresh(acting: false)
         // serve は1プロセスが1台を見続けるので、MCP の engineKey 付き辞書と違い記録は1つで足りる
         let staleFrameTracker = LiveStaleFrameTracker()
         let screenMemo = LiveScreenMemo()
@@ -639,8 +639,9 @@ struct ApiLiveServe: AsyncParsableCommand {
         runnerHealth: LiveRunnerHealthMemo
     ) async {
         // **コマンドが通るたびにデバイスの印を上書きする**(MCPServer.call の markDeviceInUse と同じ粒度。
-        // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する——駆動している事実に変わりはない)
-        deviceLease?.refresh()
+        // 型違い・未知の cmd で終わる回も含めて全コマンドで更新する)。操作したかは印の中で区別する
+        // (MCP への警告は操作した回だけ = MCPDeviceLease の「中身は2形」)
+        deviceLease?.refresh(acting: command.drivesDevice)
         if let decodeError = command.decodeError {
             // cmd は読めたが他の引数の型が違う行。JSON でない/cmd が無い(黙殺)とは分け、
             // 操作は行わず、その cmd が正常なときと同じ終端イベントで答える —— 拡張は
@@ -1298,6 +1299,12 @@ struct ApiLiveServeCommand {
     let fingers: [GestureFinger]?
     /// 型違いの引数のうち1件目の説明(無ければ nil)。cmd 自体はこの型を作れている時点で読めている
     let decodeError: String?
+
+    /// このコマンドがデバイスを操作するか(対話セッションへの警告に使う = `LiveDeviceLease.refresh`)。
+    /// 観測だけのコマンドは `refresh` / `frame` の2つ。型違いの行は操作しない(handle が perform を撃たない)
+    var drivesDevice: Bool {
+        decodeError == nil && cmd != "refresh" && cmd != "frame"
+    }
 
     /// このコマンドが正当に占有しうる時間[秒]。command watchdog の allowance
     /// (`ResidentProcessGuard.noteCommandStart(allowanceSeconds:)`)に渡す。

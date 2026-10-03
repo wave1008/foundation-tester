@@ -21,8 +21,8 @@ final class ApiLiveDeviceLeaseWiringTests: XCTestCase {
             return XCTFail("LiveDeviceLease.make の呼び出しが見当たらない")
         }
         guard let refreshRange = code.range(
-            of: "deviceLease?.refresh()", range: makeRange.upperBound..<code.endIndex) else {
-            return XCTFail("作った直後に deviceLease?.refresh() を呼んでいない"
+            of: "deviceLease?.refresh(acting: false)", range: makeRange.upperBound..<code.endIndex) else {
+            return XCTFail("作った直後に deviceLease?.refresh(acting: false) を呼んでいない"
                 + " — 最初のコマンドまで印が無い隙ができる")
         }
         XCTAssertTrue(makeRange.upperBound < refreshRange.lowerBound)
@@ -47,8 +47,8 @@ final class ApiLiveDeviceLeaseWiringTests: XCTestCase {
             return XCTFail("handle の本体が見当たらない — テストを見直すこと")
         }
         let beforeFirstBranch = firstStatement[firstStatement.startIndex..<decodeErrorRange.lowerBound]
-        XCTAssertTrue(beforeFirstBranch.contains("deviceLease?.refresh()"),
-                      "handle は最初の分岐(decodeError)より前に deviceLease?.refresh() を呼ぶこと"
+        XCTAssertTrue(beforeFirstBranch.contains("deviceLease?.refresh(acting: command.drivesDevice)"),
+                      "handle は最初の分岐(decodeError)より前に deviceLease?.refresh(acting: command.drivesDevice) を呼ぶこと"
                       + " — 型違い・未知の cmd で終わる回も台を駆動している事実に変わりは無い")
     }
 

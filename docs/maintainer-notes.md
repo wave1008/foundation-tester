@@ -1910,7 +1910,12 @@ run ボードも供給フェーズの run を `phase: "preparing"` で正しく�
   デバイスへ `api stop-device` が**無言で通った**(実地で確認)。`MCPDeviceLease` と**同じファイル・同じ鍵・
   同じ接頭辞**に委譲する(`LiveDeviceLease`)。**読む側を増やさない**のが要点 ——
   印を2種類にすると、読み手(`deviceInUseRefusal` / `limitingDevicesAvoidingMCP`)のどちらかが
-  必ず読み忘れる。文言が「another MCP session」のままなのは承知の上の簡易化で、doc に理由を残した
+  必ず読み忘れる。
+  **後日(2026-10-03)の追記**: 印を区別しなかったため、クイックスタートの流れ(AIアシスタントが探索する様子を
+  モニターで見る)で MCP に「another MCP session (pid N) is driving this device too … finish one of the sessions」が
+  出た。serve は**選択しただけで**起動直後から印を書くので、見ているだけが「駆動」に数えられていた。読み手は増やさず
+  **中身に「最後に操作した時刻」を足して**、警告だけを「自分の前回の印以降に相手が操作した」ときに絞った
+  (`MCPDeviceLease.writeLiveAndWarnIfInUse` / `ApiLiveServeCommand.drivesDevice`)。止める門・run の回避は従来どおり数える
 - **B3 / B4**: `ft_draft_scenario` が `className: "9 bad name"` を**そのまま `class 9 bad name {` に
   生成**していた(コンパイルできない .swift をツールが書き出す)。判定は `ScenarioCodeGen.
   isWritableClassName` の1箇所・文言は MCP 側。**日本語のクラス名は正当**(この repo のシナリオが
