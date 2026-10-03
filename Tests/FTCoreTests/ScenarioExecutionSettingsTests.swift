@@ -53,6 +53,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             record: true,
             recordFailuresOnly: true,
             recordFullResolution: true,
+            recordStillFrames: true,
             reportDir: "/tmp/reports",
             defaultTimeout: 12.5,
             scenarioTimeout: 42,
@@ -67,7 +68,8 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             iosFastInput: false,
             iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
-            recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
+            recordFullResolution: false, recordStillFrames: false,
+            reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
             recordBitrateKbps: nil))
         XCTAssertNil(settings.profileName)
     }
@@ -90,7 +92,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
             preferCheckStateClassifier: false,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
-            recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
+            recordBitrateKbps: 1500, recordFullResolution: false, recordStillFrames: false, warnings: [])
         assertNoFieldStaysDefault(ScenarioExecutionSettings(profile))
     }
 }

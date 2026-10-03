@@ -750,7 +750,7 @@ public enum ScenarioRunner {
                               /// ScenarioHost.run(registerChildProcess:) への素通し
                               /// (RunOrchestrator が中断口として保持する同名プロパティ参照)
                               registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
-                              /// ScenarioHost.run(stillFramesDir:) への素通し(物理 iPhone の録画)
+                              /// ScenarioHost.run(stillFramesDir:) への素通し(静止画方式の録画)
                               stillFramesDir: URL? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
@@ -1637,7 +1637,7 @@ public final class RunOrchestrator {
                 await recordingLeases.acquire(leaseKey)
             }
         }
-        // 物理 iPhone の録画は子が操作の直後に撮る静止画(IOSStillFrameRecorder)。それ以外は nil
+        // 静止画方式の録画(物理 iPhone・recordStillFrames)は子が操作の直後に撮る(StillFrameRecorder)。動画で録るなら nil
         let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)
 
         var failed = 0

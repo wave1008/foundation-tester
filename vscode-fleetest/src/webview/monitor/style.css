@@ -1921,6 +1921,11 @@ html.select-all-guard * {
 #run-profile-editor .modal-row > label {
   flex: 0 0 170px;
 }
+/* 170px に収まらない長いラベル(録画の目標ビットレート)は折り返さず中身の幅にする(右の数値欄は短いので並ぶ) */
+#run-profile-editor .modal-row > label[for="run-profile-record-bitrate"] {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
 /* 短い値しか入らない欄は `.modal-row > input` の flex:1 1 auto で行幅まで伸ばさない。
    幅 = 字数 × ch + 左右 padding 12px + 枠(border-box)。数値 = 6字(bitrate「12000」・
    しきい値/timeout「12.5」)、ロケール = 11字(「zh_Hant_TW」10字) */

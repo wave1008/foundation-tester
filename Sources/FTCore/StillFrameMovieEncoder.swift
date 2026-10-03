@@ -1,5 +1,5 @@
 // StillFrameMovieEncoder.swift
-// 物理 iPhone は動画録画できないため、別プロセスが `<epochMs>.png` で保存した静止画列を mp4 にする。
+// 静止画方式の録画(物理 iPhone・recordStillFrames)で、別プロセスが `<epochMs>.png` で保存した静止画列を mp4 にする。
 // AVFoundation のみ(外部プロセスなし)。各フレームは自分の時刻から次のフレームの時刻まで表示し、
 // 最後のフレームは endAt まで保持する(endSession で尺を揃える。VideoRecordingFinalizer と同じ理屈)。
 // 出力は VideoRecordingFinalizer.extractClip が後で利用者のビットレートで再エンコードする中間ソース。
@@ -42,7 +42,7 @@ enum StillFrameMovieEncoder {
     }
 
     /// frames を [frames[0].at, endAt] の尺の mp4(H.264)として outputURL に書く。**原点は frames[0].at 固定**
-    /// (先頭が復号できなくても動かさない —— 呼び手 IOSStillFrameRecorder が segments の開始に frames[0].at を
+    /// (先頭が復号できなくても動かさない —— 呼び手 StillFrameRecorder が segments の開始に frames[0].at を
     /// 使うので、ずらすと壁時計と動画内の位置が食い違う)。
     /// frame i は先頭からの相対時刻で表示を始め、最後のフレームは endAt まで保持する。
     /// 復号できないフレームと、時刻が前フレーム以前(同 ms・逆行)のフレームは読み飛ばす。

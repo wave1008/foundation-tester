@@ -47,7 +47,7 @@ final class ResolvedProfileDeviceScopeTests: XCTestCase {
             preferCheckStateClassifier: true,
             enableAnimations: false,
             homeOnStart: true, playProtectBypass: true, record: false, recordFailuresOnly: false,
-            recordBitrateKbps: 1500, recordFullResolution: false, warnings: [])
+            recordBitrateKbps: 1500, recordFullResolution: false, recordStillFrames: false, warnings: [])
     }
 
     private func hosts(_ profile: ResolvedProfile) -> [String] {

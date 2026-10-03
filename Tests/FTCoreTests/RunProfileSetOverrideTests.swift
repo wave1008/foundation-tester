@@ -285,6 +285,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         case "record": return doc.record.map(RunProfileSetValue.bool)
         case "recordFailuresOnly": return doc.recordFailuresOnly.map(RunProfileSetValue.bool)
         case "recordFullResolution": return doc.recordFullResolution.map(RunProfileSetValue.bool)
+        case "recordStillFrames": return doc.recordStillFrames.map(RunProfileSetValue.bool)
         case "reportDir": return doc.reportDir.map(RunProfileSetValue.string)
         case "defaultTimeout": return doc.defaultTimeout.map(RunProfileSetValue.double)
         case "scenarioTimeout": return doc.scenarioTimeout.map(RunProfileSetValue.int)
@@ -307,7 +308,7 @@ final class RunProfileDocumentApplyingOverridesTests: XCTestCase {
         "containerInference": "false", "enableAnimations": "true", "homeOnStart": "false",
         "playProtectBypass": "false", "updateWebView": "false", "wipeDataOnBloat": "false",
         "recoverCpuFallbackToGpu": "true", "record": "true", "recordFailuresOnly": "true",
-        "recordFullResolution": "true",
+        "recordFullResolution": "true", "recordStillFrames": "true",
         "reportDir": "/tmp/out", "defaultTimeout": "12.5", "scenarioTimeout": "45",
         "recordBitrateKbps": "2000", "app": "sample-app",
         "locale": "en_US", "wipeDataThresholdGB": "4.5",

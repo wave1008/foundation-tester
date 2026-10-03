@@ -121,6 +121,7 @@ const RUN_PROFILE_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   recordFullResolution: false,
+  recordStillFrames: false,
   workspace: "",
 };
 

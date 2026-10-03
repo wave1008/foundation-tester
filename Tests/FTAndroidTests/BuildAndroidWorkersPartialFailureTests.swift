@@ -77,6 +77,7 @@ final class BuildAndroidWorkersPartialFailureTests: XCTestCase {
             recordFailuresOnly: false,
             recordBitrateKbps: 1500,
             recordFullResolution: false,
+            recordStillFrames: false,
             warnings: [])
     }
 

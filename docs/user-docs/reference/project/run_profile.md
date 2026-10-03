@@ -45,6 +45,7 @@ for how `--profile` selects one.
 | `recordFailuresOnly` | bool | `false` | With `record: true`, keep only clips for failed (including frozen) scenarios |
 | `recordBitrateKbps` | int | `1500` | Re-encoding bitrate for saved clips |
 | `recordFullResolution` | bool | `false` | With `record: true`, skip the half-resolution re-encode |
+| `recordStillFrames` | bool | `false` | With `record: true`, make every device's clip the same slideshow a physical iPhone gets (screens captured right after each action step and each failed step), instead of a screen recording. Each capture adds time to that step. `recordBitrateKbps` and `recordFullResolution` still apply to the saved clips |
 | `remoteControl` | object | — | Workspace declaration for remote execution (`{ "workspace": "<path>" }`); see [remote_runners.md](../../in_action/remote_runners.md) |
 
 ## FM usage

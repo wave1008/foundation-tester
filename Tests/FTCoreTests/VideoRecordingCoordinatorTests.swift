@@ -133,7 +133,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         XCTAssertEqual(decoded.recordings.count, 0)
     }
 
-    /// **物理 iPhone は静止画の録画**(IOSStillFrameRecorder)—— 撮影先を子へ渡せ、置かれた静止画が
+    /// **物理 iPhone は静止画の録画**(StillFrameRecorder)—— 撮影先を子へ渡せ、置かれた静止画が
     /// 停止時に mp4 になってシナリオのクリップとして index に載る(実エンコード・実切り出し)
     func testPhysicalIPhoneRecordsStillFramesIntoAClip() async throws {
         let tmp = try makeTempDir()
@@ -178,6 +178,29 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
         _ = await coordinator.start(simulator)
         let stillsDir = await coordinator.stillFramesDir(workerLabel: simulator.label)
         XCTAssertNil(stillsDir)
+    }
+
+    /// recordStillFrames:true なら物理 iPhone 以外(シミュレータ・Android)も静止画で録る。
+    /// Android は adb が無くても録れる(撮るのは子なので adb の録画に依存しない)
+    func testStillFramesConfigRecordsEveryPlatformAsStills() async throws {
+        let tmp = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let coordinator = VideoRecordingCoordinator(
+            config: VideoRecordingConfig(runDir: tmp, androidADBPath: nil, stillFrames: true))
+        let simulator = RunWorker(label: "sim(ios:8100)", platform: "ios", driver: UnusedDriver(),
+                                  connection: DriverConnection(platform: "ios", port: 8100, udid: "SIM-UDID"),
+                                  logicalName: "sim")
+        let emulator = RunWorker(label: "emu(android:emulator-5554)", platform: "android", driver: UnusedDriver(),
+                                 connection: DriverConnection(platform: "android", serial: "emulator-5554"),
+                                 logicalName: "emu")
+        for worker in [simulator, emulator] {
+            let started = await coordinator.start(worker)
+            XCTAssertTrue(started, worker.label)
+            let dir = await coordinator.stillFramesDir(workerLabel: worker.label)
+            XCTAssertNotNil(dir, "\(worker.label) に撮影先が無い = 動画で録ろうとしている")
+            await coordinator.stop(worker)
+        }
+        await coordinator.finish()
     }
 
     /// 配線: 子へ撮影先を渡す(RunOrchestrator → runOne → ScenarioHost の引数)、子は操作と失敗のステップで撮る

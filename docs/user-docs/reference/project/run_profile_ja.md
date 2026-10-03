@@ -45,6 +45,7 @@
 | `recordFailuresOnly` | bool | `false` | `record: true` のとき、失敗(frozen 含む)したシナリオの clip のみ残す |
 | `recordBitrateKbps` | int | `1500` | 保存する clip の再エンコード bitrate |
 | `recordFullResolution` | bool | `false` | `record: true` のとき、半分解像度化をスキップする |
+| `recordStillFrames` | bool | `false` | `record: true` のとき、全デバイスの clip を画面録画ではなく、物理 iPhone と同じコマ送り(操作したステップと失敗したステップの直後に撮った画面)にする。撮影のぶんだけ各ステップに時間がかかる。保存する clip には `recordBitrateKbps` と `recordFullResolution` がそのまま効く |
 | `remoteControl` | object | — | リモート実行のワークスペース宣言(`{ "workspace": "<path>" }`)。[remote_runners_ja.md](../../in_action/remote_runners_ja.md) 参照 |
 
 ## FM の使われ方

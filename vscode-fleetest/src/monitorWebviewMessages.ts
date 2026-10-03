@@ -1252,6 +1252,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.recordFailuresOnly === "boolean" &&
         typeof value.fields.recordBitrateKbps === "string" &&
         typeof value.fields.recordFullResolution === "boolean" &&
+        typeof value.fields.recordStillFrames === "boolean" &&
         // 型で必須の3欄(monitorProfileForms.ts)。欠けると updateRunProfileInObject が undefined を代入して
         // ON/OFF が黙って既定へ戻る・workspace.trim() が投げる
         typeof value.fields.playProtectBypass === "boolean" &&

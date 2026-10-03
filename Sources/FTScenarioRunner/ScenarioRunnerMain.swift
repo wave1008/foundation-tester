@@ -153,7 +153,7 @@ struct RunScenario: AsyncParsableCommand {
     var physical = false
 
     @Option(name: .customLong("still-frames-dir"),
-            help: "Save a screenshot after each action step into this directory (recording on a physical iPhone; passed in by the orchestrator)")
+            help: "Save a screenshot after each action step into this directory (still-frame recording; passed in by the orchestrator)")
     var stillFramesDir: String?
 
     @Option(name: .customLong("bridge-host"),

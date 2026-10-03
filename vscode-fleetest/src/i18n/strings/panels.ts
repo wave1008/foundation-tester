@@ -179,15 +179,19 @@ export const panelsStrings = {
     en: "Container-inference corrections for taps/scrolls",
   },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
+  "panels.runProfile.recordStillFramesLabel": {
+    ja: "静止画を繋げて動画にする",
+    en: "Build the video from still frames",
+  },
   "panels.runProfile.recordFailuresOnlyLabel": {
     ja: "OKになったテストの録画は保存しない",
     en: "Don't keep recordings of tests that passed",
   },
-  "panels.runProfile.recordBitrateLabel": { ja: "ビットレート(kbps)", en: "Bitrate (kbps)" },
+  "panels.runProfile.recordBitrateLabel": { ja: "保存するクリップの目標ビットレート(kbps)", en: "Target bitrate for saved clips (kbps)" },
   "panels.runProfile.reportDirLabel": { ja: "レポートディレクトリ", en: "Report directory" },
   "panels.runProfile.recordFullResolutionLabel": {
-    ja: "フル解像度で保存(画質はビットレート次第)",
-    en: "Save at full resolution (quality depends on bitrate)",
+    ja: "フル解像度で保存",
+    en: "Save at full resolution",
   },
   "panels.runProfile.localeLabel": { ja: "ロケール", en: "Locale" },
   "panels.runProfile.remoteControlSectionTitle": { ja: "リモート制御", en: "Remote control" },

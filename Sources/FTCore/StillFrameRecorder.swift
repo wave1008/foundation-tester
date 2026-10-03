@@ -1,4 +1,5 @@
-// 物理 iPhone の「録画」。動画を取り出す手段が無い(simctl io recordVideo はシミュレータ専用・macOS 27 は
+// 静止画方式の「録画」。物理 iPhone は常にこれ(recordStillFrames:true なら全デバイス)。
+// 物理 iPhone は動画を取り出す手段が無い(simctl io recordVideo はシミュレータ専用・macOS 27 は
 // iPhone を AVCaptureDevice として出す DAL プラグインも無い = docs/verification.md「実機の画面配信」)ので、
 // シナリオ実行プロセスが操作の直後に撮った静止画(StillFrameCapture)を、停止時に時刻どおりの mp4 へまとめる。
 // ホストが撮り続ける方式は採らない —— 撮影と操作が同じブリッジを奪い合い、5 コマ/秒でも /snapshot が
@@ -26,7 +27,7 @@ public struct StillFrameCapture: Sendable {
     }
 }
 
-actor IOSStillFrameRecorder: DeviceVideoRecorderSession {
+actor StillFrameRecorder: DeviceVideoRecorderSession {
     nonisolated let stillsDir: URL
     private let movieURL: URL
 

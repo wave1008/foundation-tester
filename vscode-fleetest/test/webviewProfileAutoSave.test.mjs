@@ -105,6 +105,7 @@ const RUN_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   recordFullResolution: false,
+  recordStillFrames: false,
   workspace: "",
 };
 
@@ -286,4 +287,32 @@ test("Esc は未保存の編集を捨てて読み直す", (t) => {
   typeAndCommit(window, threshold, "abc");
   threshold.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   assert.ok(posted.some((m) => m.type === "runProfileLoad" && m.profile === "ios"));
+});
+
+test("録画セクション: 並びは OK の録画を保存しない → 静止画 → フル解像度 → ビットレート。静止画の ON/OFF に関わらず全部表示し、切り替えで保存する", (t) => {
+  const { document, posted, send } = loadedRunProfile(t);
+  send(runProfileData({ ...RUN_FIELDS, record: true }));
+  const options = document.getElementById("run-profile-record-options");
+  const order = [...options.querySelectorAll("input")].map((el) => el.id);
+  assert.deepEqual(order, [
+    "run-profile-record-failures-only",
+    "run-profile-record-still-frames",
+    "run-profile-record-full-resolution",
+    "run-profile-record-bitrate",
+  ]);
+  const visible = (id) => {
+    for (let el = document.getElementById(id); el && el !== options; el = el.parentElement) {
+      if (el.style.display === "none") return false;
+    }
+    return true;
+  };
+
+  posted.length = 0;
+  document.getElementById("run-profile-record-still-frames").click();
+  const sent = saves(posted);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].fields.recordStillFrames, true);
+  for (const id of ["run-profile-record-full-resolution", "run-profile-record-bitrate"]) {
+    assert.equal(visible(id), true, `静止画 ON でも ${id} を出す`);
+  }
 });

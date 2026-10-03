@@ -45,6 +45,7 @@ const FORM_FIELDS = {
   recordFailuresOnly: false,
   recordBitrateKbps: "",
   recordFullResolution: false,
+  recordStillFrames: false,
   wipeDataThresholdGB: "",
   locale: "",
   workspace: "",

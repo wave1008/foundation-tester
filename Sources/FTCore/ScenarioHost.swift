@@ -330,7 +330,7 @@ public enum ScenarioHost {
                            /// この関数の終わりで必ず呼ぶ(呼ばないと長時間 run で登録簿が肥大化する)。
                            /// nil(未注入)なら中断の対象にならない(既存呼び出し元は無変更のまま)
                            registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
-                           /// 物理 iPhone の録画で、子が操作の直後に静止画を置く先(IOSStillFrameRecorder)。
+                           /// 静止画方式の録画で、子が操作の直後に静止画を置く先(StillFrameRecorder)。
                            /// nil なら撮らない
                            stillFramesDir: URL? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {

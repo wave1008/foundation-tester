@@ -381,7 +381,7 @@ public final class FTDriveCore {
     public var appDisplayName: String? {
         didSet { executor.expectedAppDisplayName = appDisplayName }
     }
-    /// 物理 iPhone の録画(`--still-frames-dir`)。操作のステップと失敗したステップの直後に1枚撮る
+    /// 静止画方式の録画(`--still-frames-dir`)。操作のステップと失敗したステップの直後に1枚撮る
     /// (captureStillFrameIfRecording)。nil なら撮らない
     public var stillFrameCapture: StillFrameCapture?
     /// DSL の `iosAlertHandler` からの登録(発火したら台帳から外れる。
@@ -1192,8 +1192,8 @@ public final class FTDriveCore {
         return status
     }
 
-    /// 録画中の物理 iPhone で、画面を変え得たステップ(操作)か失敗したステップの直後に1枚撮る
-    /// (IOSStillFrameRecorder が停止時に mp4 へまとめる)。検証だけのステップは画面を変えないので撮らない
+    /// 静止画方式で録画中に、画面を変え得たステップ(操作)か失敗したステップの直後に1枚撮る
+    /// (StillFrameRecorder が停止時に mp4 へまとめる)。検証だけのステップは画面を変えないので撮らない
     /// (1枚 約 50ms = SE3 実測。ステップごとに払う)。**recordStep の外で呼ぶ** —— recordStep は
     /// stateLock を持ったまま走るので、その中でデバイスを待たない
     private func captureStillFrameIfRecording(changedScreen: Bool, status: StepResult.Status) {

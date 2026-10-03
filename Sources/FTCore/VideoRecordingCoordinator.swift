@@ -27,14 +27,19 @@ public struct VideoRecordingConfig: Sendable {
     /// true なら半分解像度化をスキップ(Android は screenrecord 自体の --size 指定も省略)
     /// (RunProfileDocument.recordFullResolution)
     public let fullResolution: Bool
+    /// true なら全デバイスを StillFrameRecorder(操作の直後の静止画のコマ送り)で録る
+    /// (RunProfileDocument.recordStillFrames)。物理 iPhone はこれに関わらず常に静止画
+    public let stillFrames: Bool
 
     public init(runDir: URL, androidADBPath: String? = nil, failuresOnly: Bool = false,
-                bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false) {
+                bitrateKbps: Int = VideoRecordingConfig.defaultBitrateKbps, fullResolution: Bool = false,
+                stillFrames: Bool = false) {
         self.runDir = runDir
         self.androidADBPath = androidADBPath
         self.failuresOnly = failuresOnly
         self.bitrateKbps = bitrateKbps
         self.fullResolution = fullResolution
+        self.stillFrames = stillFrames
     }
 }
 
@@ -62,7 +67,7 @@ actor VideoRecordingCoordinator {
         let session: any DeviceVideoRecorderSession
         let workerID: String
         let platform: String
-        /// 物理 iPhone の静止画の撮影先(IOSStillFrameRecorder)。それ以外は nil
+        /// 静止画の撮影先(StillFrameRecorder)。動画で録るワーカーは nil
         let stillFramesDir: URL?
     }
 
@@ -157,11 +162,11 @@ actor VideoRecordingCoordinator {
             return false
         }
         active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform,
-                                           stillFramesDir: (session as? IOSStillFrameRecorder)?.stillsDir)
+                                           stillFramesDir: (session as? StillFrameRecorder)?.stillsDir)
         return true
     }
 
-    /// そのワーカーの子(シナリオ実行プロセス)が静止画を置く先。録画中の物理 iPhone だけ非 nil
+    /// そのワーカーの子(シナリオ実行プロセス)が静止画を置く先。静止画で録画中のワーカーだけ非 nil
     /// (RunOrchestrator → ScenarioHost の `--still-frames-dir`)
     func stillFramesDir(workerLabel: String) -> URL? {
         active[workerLabel]?.stillFramesDir
@@ -171,11 +176,15 @@ actor VideoRecordingCoordinator {
                                        recordingsDir: URL,
                                        sourceStem: String) -> (any DeviceVideoRecorderSession)? {
         let session: (any DeviceVideoRecorderSession)?
+        // recordStillFrames は全デバイスを静止画のコマ送りで録る(撮るのは子なので OS を問わない)
+        if config.stillFrames {
+            return StillFrameRecorder(workDir: recordingsDir, fileStem: sourceStem)
+        }
         switch worker.platform {
         case "ios":
-            // 物理 iPhone は動画を取り出せないので、操作の直後の静止画をまとめる(IOSStillFrameRecorder)
+            // 物理 iPhone は動画を取り出せないので、操作の直後の静止画をまとめる(StillFrameRecorder)
             if worker.connection.physical {
-                session = IOSStillFrameRecorder(workDir: recordingsDir, fileStem: sourceStem)
+                session = StillFrameRecorder(workDir: recordingsDir, fileStem: sourceStem)
             } else {
                 session = worker.connection.udid.map {
                     IOSSimulatorVideoRecorder(udid: $0, workDir: recordingsDir, fileStem: sourceStem)
