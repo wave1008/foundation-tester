@@ -165,6 +165,6 @@ cd <TOOL_ROOT>/vscode-fleetest && npm install && npm run install-local
 
 ### 7. 動作確認
 
-最小の1本を通して回帰がないことを確認する。`ft_start_run`(project=`<ProjectName>`, profile=`ios`,
+最小の1本を通して回帰がないことを確認する。`ft_start_run`(project=`<ProjectName>`, profile=`<実行プロファイル名>`(既定 `ios-run`),
 scenario=`["<クラス名>.<メソッド>"]`)で始め、`ft_run_status` で結果を引く(`fleetest run --profile` と同じ実行。
 作業フォルダで `swift run fleetest run` を起こすので、更新後のソースでビルドされる)。
