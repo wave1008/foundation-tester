@@ -147,7 +147,7 @@ final class ProjectScaffoldTests: XCTestCase {
     /// 雛形は最初の `profile list` を赤くする)。runs/ には書式の README だけ置く。machines/ は作らない
     func testCreateWritesNoProfilesOnlyDirectoriesAndRunsReadme() throws {
         let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp")
+        try ProjectScaffold.create(project: project)
         let fm = FileManager.default
         var isDirectory: ObjCBool = false
         for dir in [project.appsDir, project.runsDir] {
@@ -161,24 +161,15 @@ final class ProjectScaffoldTests: XCTestCase {
             atPath: project.profilesDir.appendingPathComponent("machines").path))
     }
 
-    /// 雛形はデモシナリオを1本置く。**コンパイルできることと dry-run を通ることが要件**なので、
-    /// 実セレクタを使う操作は書かない(対象アプリの画面を知らない)。ここで固定するのは
-    /// 「置かれること」「対象アプリの ID が埋まること」「推測のセレクタが混ざらないこと」
-    func testDemoScenarioIsScaffolded() throws {
+    /// 雛形はシナリオを置かない(scenarios/ 直下の .swift は _Main.swift だけ)。
+    /// **リテラルで書く**(production の定数で組むと、改名の変異をテストが追随して素通しする)
+    func testScaffoldPlacesNoScenario() throws {
         let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.demo")
-        // **リテラルで書く**(production の定数で組むと、改名の変異をテストが追随して素通しする)
-        let url = project.scenariosDir.appendingPathComponent("sample_test.swift")
-        let source = try String(contentsOf: url, encoding: .utf8)
-        XCTAssertTrue(source.contains(#"@TestClass(app: "com.example.demo")"#), source)
-        XCTAssertTrue(source.contains(#"appIs("com.example.demo")"#), source)
-        // 実行されるコードにセレクタは無い(書き方の例はコメントの中だけ)
-        let live = source
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-            .joined(separator: "\n")
-        XCTAssertFalse(live.contains("#"), "実行されるコードに #id セレクタを書かない")
-        XCTAssertFalse(live.contains("tap("), "実行されるコードに操作を書かない")
+        try ProjectScaffold.create(project: project)
+        let swiftFiles = try FileManager.default
+            .contentsOfDirectory(atPath: project.scenariosDir.path)
+            .filter { $0.hasSuffix(".swift") }
+        XCTAssertEqual(swiftFiles, ["_Main.swift"])
     }
 
     /// 空のディレクトリは雛形を置いてよい(受け手・拡張が先に mkdir しただけの器)。
@@ -206,7 +197,7 @@ final class ProjectScaffoldTests: XCTestCase {
 
         // 空の器へ create が通り、通常の雛形が揃う
         let project = TestProject(name: "Empty", rootURL: empty)
-        try ProjectScaffold.create(project: project, app: "com.example.myapp")
+        try ProjectScaffold.create(project: project)
         XCTAssertTrue(fm.fileExists(atPath: project.scenariosDir.appendingPathComponent("_Main.swift").path))
     }
 
@@ -214,7 +205,7 @@ final class ProjectScaffoldTests: XCTestCase {
     /// 初回実行まで scripts/ = setup.sh の置き場所が見えない)。名前の正は WorkspaceScaffold
     func testCreatePlacesDefaultWorkspaceFolders() throws {
         let project = makeProject()
-        try ProjectScaffold.create(project: project, app: "com.example.myapp")
+        try ProjectScaffold.create(project: project)
         let workspace = project.rootURL
             .appendingPathComponent(WorkspaceScaffold.defaultRootName)
         for name in WorkspaceScaffold.directoryNames {

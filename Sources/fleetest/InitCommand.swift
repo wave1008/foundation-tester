@@ -2,7 +2,7 @@
 // カレントディレクトリに、fleetest を SPM 依存として引く Package.swift(空マーカー区間つき)を書き、
 // 直後に最初のテストプロジェクトを createAndRegister(external 自動判定で .product 参照スタンザ)する。
 // --no-project ではプロジェクトを作らず空の TestProjects/ だけ置く(プロジェクトは /fleetest-profiles か
-// VSCode 拡張が `default` で後から作る)。
+// VSCode 拡張が `project1` で後から作る)。
 // 対向: Sources/FTCore/ProjectScaffold.externalManifest / PackageManifestEditor(external モード)。
 
 import ArgumentParser
@@ -21,9 +21,6 @@ struct InitCommand: AsyncParsableCommand {
 
     @Option(help: "Project name (becomes an SPM target name; defaults to one derived from the current directory)")
     var name: String?
-
-    @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
-    var appID: String?
 
     @Option(name: .customLong("fleetest-path"),
             help: "Path to a local foundation-tester (depends via .package(path:); for PoCs)")
@@ -48,11 +45,8 @@ struct InitCommand: AsyncParsableCommand {
         }
 
         if noProject {
-            let conflicting = [name != nil ? "--name" : nil,
-                               appID != nil ? "--app-id" : nil].compactMap { $0 }
-            guard conflicting.isEmpty else {
-                throw ValidationError("--no-project cannot be combined with "
-                    + conflicting.joined(separator: " / "))
+            guard name == nil else {
+                throw ValidationError("--no-project cannot be combined with --name")
             }
         }
 
@@ -61,11 +55,6 @@ struct InitCommand: AsyncParsableCommand {
         guard noProject || ProjectStore.isValidName(projectName) else {
             throw ValidationError("invalid project name: \(projectName)"
                 + " (letters, digits, _ and - only; specify one with --name)")
-        }
-        let resolvedAppID = appID ?? ProjectScaffold.placeholderAppID
-        guard Self.isValidAppID(resolvedAppID) else {
-            throw ValidationError("invalid --app-id: \(resolvedAppID)"
-                + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
         }
 
         let dependencyLine: String
@@ -86,8 +75,7 @@ struct InitCommand: AsyncParsableCommand {
             if noProject {
                 try ProjectScaffold.ensureEmptyProjectsDirectory(repoRoot: cwd)
             } else {
-                project = try ProjectScaffold.createAndRegister(
-                    name: projectName, app: resolvedAppID, repoRoot: cwd)
+                project = try ProjectScaffold.createAndRegister(name: projectName, repoRoot: cwd)
             }
             let scaffoldedProjectName: String? = noProject ? nil : projectName
             // 受け手が自分のプロジェクトをエージェントで開いて fleetest-setup で残りを駆動できるように

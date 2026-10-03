@@ -1,10 +1,8 @@
 import XCTest
 @testable import fleetest
 
-/// `--app-id` was written straight into profiles/apps/*.json and the scaffolded scenario
-/// (`@TestClass(app:)` / `appIs(...)`) without any character check. `InitCommand.isValidAppID`
-/// is shared by `init`/`project create`/`profile setup` (all three feed the same scaffold/profile
-/// sinks) — the allowed set matches `AndroidWebViewDOM.probeCommand`'s.
+/// `--app-id` of `profile setup` is written straight into profiles/apps/*.json, so
+/// `InitCommand.isValidAppID` checks it — the allowed set matches `AndroidWebViewDOM.probeCommand`'s.
 final class InitCommandAppIDValidationTests: XCTestCase {
 
     func testAcceptsOrdinaryBundleIDsAndPackageNames() {

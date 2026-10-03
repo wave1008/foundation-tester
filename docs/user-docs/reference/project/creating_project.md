@@ -45,7 +45,7 @@ on a git URL instead (`--fleetest-branch` selects the branch to track; it defaul
 
 | Command | Description |
 |---|---|
-| `fleetest project create <name> [--app-id <bundleID>]` | Scaffold a new test project and register it in `Package.swift` (writes no profiles; create them with `/fleetest-profiles`) |
+| `fleetest project create <name>` | Scaffold a new test project and register it in `Package.swift` (writes no profiles; create them with `/fleetest-profiles`) |
 | `fleetest project list` | List test projects and whether they are registered in `Package.swift` |
 | `fleetest project sync` | Regenerate the `Package.swift` marker section from a scan of `TestProjects/` (run this after a manual copy or a `git pull`) |
 | `fleetest project copy <source> <newName>` | Duplicate a project under a new name and register it in `Package.swift`. Excludes run artifacts and caches (`reports/`, `results/`, `.fleetest/`) so the copy starts clean |
@@ -74,8 +74,8 @@ Most commands accept `--project <name>`. When it is omitted, the tool resolves i
 
 When the VSCode extension starts, it creates `TestProjects/project1/` with `fleetest project create project1`
 if it is missing (or empty), and selects `project1` initially while `fleetest.project` is empty. It is a
-ready-made place for your first scenarios (it has no profiles yet; create them with `/fleetest-profiles`
-or `fleetest profile setup`, and replace the demo scenario's placeholder bundle ID before running). To work in a project you created under another name, switch with the "Select project" command or
+ready-made place for your first scenarios (it has no scenarios or profiles yet; create the profiles with `/fleetest-profiles`
+or `fleetest profile setup`). To work in a project you created under another name, switch with the "Select project" command or
 the `fleetest.project` setting.
 
 ### Link

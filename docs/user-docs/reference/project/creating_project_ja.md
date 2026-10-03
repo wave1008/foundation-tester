@@ -45,7 +45,7 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 | コマンド | 説明 |
 |---|---|
-| `fleetest project create <name> [--app-id <bundleID>]` | 新しいテストプロジェクトを作成し `Package.swift` に登録する(プロファイルは書かない。`/fleetest-profiles` で作る) |
+| `fleetest project create <name>` | 新しいテストプロジェクトを作成し `Package.swift` に登録する(プロファイルは書かない。`/fleetest-profiles` で作る) |
 | `fleetest project list` | テストプロジェクトの一覧と `Package.swift` への登録有無を表示する |
 | `fleetest project sync` | `TestProjects/` を走査して `Package.swift` のマーカー区間を再生成する(手動コピーや `git pull` の後に実行する) |
 | `fleetest project copy <source> <newName>` | プロジェクトを新しい名前で複製し `Package.swift` に登録する。実行の産物とキャッシュ(`reports/`・`results/`・`.fleetest/`)は複製されないので、複製先はまっさらな状態から始まる |
@@ -74,7 +74,7 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 
 VSCode 拡張は起動時に `TestProjects/project1/` が無ければ(または空なら)`fleetest project create project1`
 で作成し、`fleetest.project` が空のときはこの `project1` を初期選択にします。すぐにシナリオを置ける器として
-使えます(プロファイルはまだ無いので `/fleetest-profiles` か `fleetest profile setup` で作り、デモシナリオの仮の bundle ID は実行前に差し替えてください)。
+使えます(シナリオもプロファイルもまだ無いので、プロファイルは `/fleetest-profiles` か `fleetest profile setup` で作ってください)。
 別の名前で作ったプロジェクトを使うときは、拡張の「プロジェクトを選択」か `fleetest.project` で切り替えます。
 
 ### Link

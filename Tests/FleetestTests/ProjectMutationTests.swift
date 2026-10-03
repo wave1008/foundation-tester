@@ -31,10 +31,10 @@ final class ProjectMutationTests: XCTestCase {
     }
 
     @discardableResult
-    private func makeProject(_ name: String, app: String = "com.example.myapp") throws -> TestProject {
+    private func makeProject(_ name: String) throws -> TestProject {
         let project = TestProject(
             name: name, rootURL: ProjectStore.projectsDir(repoRoot: repoRoot).appendingPathComponent(name))
-        try ProjectScaffold.create(project: project, app: app)
+        try ProjectScaffold.create(project: project)
         return project
     }
 

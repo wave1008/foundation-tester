@@ -22,9 +22,9 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 - **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/TestProjects/<プロジェクト>/profiles/` に住む。
   TestProjects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
   **プロジェクトが1つも無ければ作る(名前は常に `project1`。VSCode 拡張の自動作成と同じ名前で、名前は聞かない)**:
-  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create project1
-  [--app-id <アプリID>]` を実行してからステップ3以降へ進む(`--app-id` はデモシナリオにだけ入る。
-  プロファイルは書かない = ステップ3以降の `profile setup` が作る)(プロジェクト名は以降 `project1`)。
+  ステップ1・2でプラットフォームとアプリIDが決まった後、`fleetest project create project1`
+  を実行してからステップ3以降へ進む(シナリオもプロファイルも書かない = プロファイルはステップ3以降の
+  `profile setup` が作る)(プロジェクト名は以降 `project1`)。
   WORK_DIR に fleetest のパッケージ(`Package.swift` に fleetest の依存か `foundation-tester` の記述)が無ければ
   作らず `/fleetest-setup` を案内する。
 - **fleetest CLI の在り処**: clone 構成は `swift run fleetest ...`、外部パッケージ構成は

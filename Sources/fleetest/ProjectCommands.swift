@@ -30,17 +30,9 @@ struct ProjectCommand: AsyncParsableCommand {
         @Argument(help: "Project name (becomes an SPM target name, so only letters, digits, _ and -)")
         var name: String
 
-        @Option(name: .customLong("app-id"), help: "Bundle ID / package name of the app under test")
-        var appID: String = ProjectScaffold.placeholderAppID
-
         func run() async throws {
-            guard InitCommand.isValidAppID(appID) else {
-                throw ValidationError("invalid --app-id: \(appID)"
-                    + " (bundle ID / package name: letters, digits, '.', '_' and '-' only)")
-            }
             let root = try fleetestRepoRoot()
-            let project = try ProjectScaffold.createAndRegister(
-                name: name, app: appID, repoRoot: root)
+            let project = try ProjectScaffold.createAndRegister(name: name, repoRoot: root)
 
             ConsoleOut.out("✅ Created the project: TestProjects/\(name)/")
             ConsoleOut.out("   Scenarios:  TestProjects/\(name)/scenarios/ (add .swift files with @TestClass)")

@@ -1473,7 +1473,7 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
 - **`app:` は通常書かない**(2026-08-19)。既定アプリは
   **実行プロファイル → アプリプロファイル → 実行中 platform の `ios.app` / `android.app`** から
   解決される(`FTCore.ScenarioAppResolution` が唯一の定義元。親が `--app` で子へ渡す)。
-  これで**同じシナリオを `--profile ios` と `--profile android` で別 bundle ID の
+  これで**同じシナリオを `--profile ios-run` と `--profile android-run` で別 bundle ID の
   アプリに対して回せる**(OS で ID が違うアプリのためにクラスを複製しなくてよい)。
   `app:` を書いた場合は**そちらが勝つ** —— 1プロジェクトに複数アプリのシナリオが混在する構成を
   壊さないため(実行プロファイル側にシナリオを絞り込む仕組みが無く、プロファイルを常に勝たせると
@@ -3757,7 +3757,7 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
 - プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`(日本語はクラス名側で使う)
 - `--project` 省略時の解決: TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → `default` という名前の
   プロジェクト(拡張が起動時に用意する。`ProjectStore.defaultProjectName`)→ 候補一覧付きエラー
-- CLI: `fleetest project create <name> [--app-id <bundleID>]` / `project list` / `project sync`
+- CLI: `fleetest project create <name>` / `project list` / `project sync`
   (手動コピーや git pull 後の TestProjects/ ↔ マーカー区間の再整合)
 
 ### 11.2 プロファイルは 2 種の組み合わせ
@@ -4155,7 +4155,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    `appPath` はリポジトリルート基準、`reportDir` はプロジェクトルート基準(RunProfile.resolve)
 6. 合成後は必須検証済みの `ResolvedProfile` になり、実行コードはこれだけを見る
 
-### 11.4 実行フロー(fleetest run --project P --profile ios)
+### 11.4 実行フロー(fleetest run --project P --profile ios-run)
 
 1. **`--set` は読み込んだ `RunProfileDocument` へ合成の前に当てる**(`ProfileResolver.resolve` の
    `overrides:`)。**解決後の `ResolvedProfile` を上書きしない** —— 欄ごとに上書きを配線すると
@@ -4186,7 +4186,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
      キューにだけ入れる。自分の platform のキューが無いワーカーは1本も受け取らずに終わる。
      → **両OSのデバイスを供給する実行プロファイル(`all` 等)を使っても、platform 未指定の
      シナリオは片方の OS でしか走らない**(供給された他方のデバイスは空回り)。
-     platform 非依存に書いたシナリオを両OSで回すなら `--profile ios` と `--profile android` を
+     platform 非依存に書いたシナリオを両OSで回すなら `--profile ios-run` と `--profile android-run` を
      別々に実行する。シナリオ数や負荷には依存しない決定的な挙動(2026-07-22 実測)
 6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
    exist/textIs/valueIs の `waitSeconds: Double? = nil` の既定値になる

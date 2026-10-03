@@ -20,7 +20,7 @@ public enum ProjectScaffold {
     /// 名前検証 → 雛形生成 → Package.swift マーカー区間更新までを一括で行う
     /// (fleetest project create から使う)
     @discardableResult
-    public static func createAndRegister(name: String, app: String, repoRoot: URL) throws -> TestProject {
+    public static func createAndRegister(name: String, repoRoot: URL) throws -> TestProject {
         guard ProjectStore.isValidName(name) else {
             throw ProjectStoreError.invalidName(name)
         }
@@ -30,7 +30,7 @@ public enum ProjectScaffold {
         guard canScaffold(into: project.rootURL) else {
             throw ProjectScaffoldError.alreadyExists(project.rootURL)
         }
-        try create(project: project, app: app)
+        try create(project: project)
         try PackageManifestEditor.updateProjects(
             manifestURL: repoRoot.appendingPathComponent("Package.swift"),
             projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name),
@@ -450,8 +450,8 @@ public enum ProjectScaffold {
 
     /// プロジェクト雛形を生成する(ディレクトリは存在しない前提。Package.swift の更新は呼び出し側)
     /// **apps/・runs/ にプロファイル JSON は書かない**(中身の無い雛形は最初の `profile list` を赤くする。
-    /// 実体は /fleetest-profiles = `profile setup` が作る)。`app` はデモシナリオにだけ入る
-    public static func create(project: TestProject, app: String) throws {
+    /// 実体は /fleetest-profiles = `profile setup` が作る)。シナリオは置かない(_Main.swift だけ)
+    public static func create(project: TestProject) throws {
         let fm = FileManager.default
         for dir in [project.generatedDir, project.disabledDir,
                     project.appsDir, project.runsDir,
@@ -474,72 +474,6 @@ public enum ProjectScaffold {
         try testbasesReadme.write(
             to: project.testbasesDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
-
-        try demoScenario(app: app).write(
-            to: project.scenariosDir.appendingPathComponent("\(demoScenarioFileName).swift"),
-            atomically: true, encoding: .utf8)
-    }
-
-    /// 雛形が置くデモシナリオのファイル名(拡張子なし)
-    public static let demoScenarioFileName = "sample_test"
-
-    /// `--app-id` を省いたときのデモシナリオのアプリ ID。導入(install.sh)は ID を渡さず、プロファイルは
-    /// 雛形と無関係に `profile setup` が作るので、デモがこの ID のまま残るのが普通の流れ
-    public static let placeholderAppID = "com.example.myapp"
-
-    /// 受け手が最初に読むシナリオ。**実セレクタは書けない**(雛形生成の時点で対象アプリの画面を
-    /// 知らない)ので、実コードは launchApp と appIs だけに留め、操作・検証の書き方はコメントで示す。
-    /// この形ならデバイスを登録した時点でそのまま緑になる —— 動かないコードから始めると、
-    /// 受け手は自分の設定を疑うことになる。**ID が placeholderAppID のままなら @Draft を付ける** ——
-    /// 入っていないアプリを起動して「全部実行」が毎回1本赤になる(チュートリアルの通し検証で踏んだ)
-    static func demoScenario(app: String) -> String {
-        let draft = app == placeholderAppID
-            ? "\n@Draft(\"app: が仮の ID のまま。自分のアプリの ID に直すか app: を消して実行プロファイルに従わせてから、この行を消す\")"
-            : ""
-        return """
-        // \(demoScenarioFileName).swift
-        // 雛形が置いたデモ。**消して構いません**(自分のシナリオを書き始めるときの雛形として使う)。
-        // コマンドの一覧と引数は docs/commands.md、書き方の流れは docs/user-docs/ を参照。
-
-        import FTDSL
-
-        // app: 対象アプリの bundle ID / package name。プロファイル
-        // (profiles/apps/*.json)とは独立にここで指定する。
-        // platform: を書くとその OS でだけ実行される(省略時は両方)。
-        @TestClass(app: "\(app)")\(draft)
-        class デモ {
-
-            @Test("アプリが起動して前面に出る")
-            func S0010() {
-                scenario {
-                    // scene = 画面。condition(前提)→ action(操作)→ expectation(検証)の順に書く。
-                    scene(1, "アプリを起動する") {
-                        condition {
-                            launchApp()
-                        }.expectation {
-                            appIs("\(app)")
-                            screenshot("起動直後")
-                        }
-                    }
-
-                    // 以降は書き方の例。セレクタ("#id" や "テキスト")を自分のアプリのものに
-                    // 差し替えて有効化する。**セレクタは推測で書かない** —— `ft_snapshot`(MCP)か
-                    // `fleetest snapshot` で実際の画面から採る。
-                    //
-                    // scene(2, "ログインする") {
-                    //     action {
-                    //         tap("#input_id")
-                    //         type("demo")
-                    //         tap("#btn_login")
-                    //     }.expectation {
-                    //         exist("#txt_home")
-                    //         select("#txt_user").textIs("demo")
-                    //     }
-                    // }
-                }
-            }
-        }
-        """
     }
 
     static let mainSwift = """
