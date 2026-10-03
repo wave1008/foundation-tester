@@ -228,6 +228,10 @@ export function registerMonitorPanel(
     // モニターパネルを開いてダッシュボードタブを選択する動きに変える。
     vscode.commands.registerCommand("fleetest.showResultsDashboard", () => controller.show("dashboard")),
     vscode.commands.registerCommand("fleetest.showLiveControl", () => controller.showLiveControl()),
+    // Reload Window で開いていたモニターを開き直す。activationEvents の onWebviewPanel:fleetestMonitor と対。
+    vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
+      deserializeWebviewPanel: async (panel) => controller.restore(panel),
+    }),
   );
 
   return {
@@ -632,16 +636,39 @@ export class MonitorPanelController implements vscode.Disposable {
     }
 
     const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Beside, {
-      enableScripts: true,
+      ...this.webviewOptions(),
       retainContextWhenHidden: true,
+    });
+    this.adoptPanel(panel, initialTab);
+  }
+
+  /** Reload Window 後に VSCode が復元したパネルを引き取る(registerWebviewPanelSerializer)。
+   * 既に開いている(復元前に show が走った)なら復元側を閉じてシングルトンを保つ。 */
+  restore(panel: vscode.WebviewPanel): void {
+    if (this.panel) {
+      panel.dispose();
+      return;
+    }
+    // webview の options は永続化されないので張り直す(retainContextWhenHidden はパネル側で復元される)。
+    panel.webview.options = this.webviewOptions();
+    this.adoptPanel(panel, undefined);
+  }
+
+  private webviewOptions(): vscode.WebviewOptions {
+    return {
+      enableScripts: true,
       // TestProjects/ 配下は録画タブの動画(mp4)読み込みに必要(monitorRecordingsController.ts が
       // asWebviewUri で変換するファイルはこの配下)。
       localResourceRoots: [
         vscode.Uri.joinPath(this.extensionUri, "media"),
         vscode.Uri.joinPath(vscode.Uri.file(this.workspaceRoot), "TestProjects"),
       ],
-    });
+    };
+  }
+
+  private adoptPanel(panel: vscode.WebviewPanel, initialTab: string | undefined): void {
     this.panel = panel;
+    this.panelVisible = panel.visible;
     panel.webview.html = renderHtml(panel.webview, this.extensionUri);
 
     panel.webview.onDidReceiveMessage((message: unknown) => this.handleWebviewMessage(message));
