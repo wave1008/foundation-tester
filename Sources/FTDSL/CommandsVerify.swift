@@ -20,7 +20,7 @@ import FTCore
 /// 方向は**コンテンツ基準**(`.down` = 下に読み進める)
 @discardableResult
 public func exist(_ selector: String, requireVisible: Bool = true, waitSeconds: Double? = nil,
-                  scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                  scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     existImpl(FTSelector.parse(selector), requireVisible: requireVisible, waitSeconds: waitSeconds,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
@@ -28,7 +28,7 @@ public func exist(_ selector: String, requireVisible: Bool = true, waitSeconds: 
 
 @discardableResult
 public func exist(_ selector: Sel, requireVisible: Bool = true, waitSeconds: Double? = nil,
-                  scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                  scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     existImpl(selector.ftSelector, requireVisible: requireVisible, waitSeconds: waitSeconds,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
@@ -36,7 +36,7 @@ public func exist(_ selector: Sel, requireVisible: Bool = true, waitSeconds: Dou
 
 @discardableResult
 private func existImpl(_ selector: FTSelector, requireVisible: Bool, waitSeconds: Double?,
-                       scroll: FTScrollOption?, maxSwipes: Int,
+                       scroll: FTScrollOption?, maxSwipes: Int?,
                        file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "exist")
     let scroll = core.effectiveScroll(scroll)
@@ -44,7 +44,7 @@ private func existImpl(_ selector: FTSelector, requireVisible: Bool, waitSeconds
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue,
                         timeout: waitSeconds ?? core.defaultTimeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        maxSwipes: scroll == nil ? nil : (maxSwipes ?? core.tunables.defaultMaxSwipes),
                         occlusionGuard: requireVisible,
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let result = perform("exist", selector, step: step, description: "exist \"\(selector.text)\"",
@@ -65,7 +65,7 @@ private func existImpl(_ selector: FTSelector, requireVisible: Bool, waitSeconds
 @discardableResult
 public func select(_ selector: String, requireVisible: Bool = true,
                    waitSeconds: Double? = nil,
-                   scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                   scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     selectImpl(FTSelector.parse(selector), requireVisible: requireVisible,
               waitSeconds: waitSeconds,
@@ -75,7 +75,7 @@ public func select(_ selector: String, requireVisible: Bool = true,
 @discardableResult
 public func select(_ selector: Sel, requireVisible: Bool = true,
                    waitSeconds: Double? = nil,
-                   scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                   scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     selectImpl(selector.ftSelector, requireVisible: requireVisible,
               waitSeconds: waitSeconds,
@@ -85,7 +85,7 @@ public func select(_ selector: Sel, requireVisible: Bool = true,
 @discardableResult
 private func selectImpl(_ selector: FTSelector, requireVisible: Bool,
                         waitSeconds: Double?,
-                        scroll: FTScrollOption?, maxSwipes: Int,
+                        scroll: FTScrollOption?, maxSwipes: Int?,
                         file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "select")
     let scroll = core.effectiveScroll(scroll)
@@ -93,7 +93,7 @@ private func selectImpl(_ selector: FTSelector, requireVisible: Bool,
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue,
                         timeout: waitSeconds ?? core.defaultTimeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        maxSwipes: scroll == nil ? nil : (maxSwipes ?? core.tunables.defaultMaxSwipes),
                         occlusionGuard: requireVisible,
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let result = perform("select", selector, step: step,
@@ -123,7 +123,7 @@ private func selectImpl(_ selector: FTSelector, requireVisible: Bool,
 public func findImage(_ label: String, threshold: Double = FindImage.defaultThreshold,
                       aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
                       waitSeconds: Double = FindImage.defaultWaitSeconds,
-                      scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                      scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                       file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     findImageImpl(command: "findImage", label, threshold: threshold,
                   aspectRatioTolerance: aspectRatioTolerance, waitSeconds: waitSeconds,
@@ -134,13 +134,13 @@ public func findImage(_ label: String, threshold: Double = FindImage.defaultThre
 /// 違いは「見つからなかったときに落ちるか」だけで、それは action 名で executor が決める)
 private func findImageImpl(command: String, _ label: String, threshold: Double,
                            aspectRatioTolerance: Double, waitSeconds: Double,
-                           scroll: FTScrollOption?, maxSwipes: Int,
+                           scroll: FTScrollOption?, maxSwipes: Int?,
                            file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: command)
     let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: command, direction: scroll?.swipe.rawValue, expected: label,
                         timeout: waitSeconds,
-                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        maxSwipes: scroll == nil ? nil : (maxSwipes ?? core.tunables.defaultMaxSwipes),
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil),
                         imageThreshold: threshold, aspectRatioTolerance: aspectRatioTolerance)
     let result = core.perform(step: step, description: "\(command) \"\(label)\"", command: command,
@@ -161,7 +161,7 @@ private func findImageImpl(command: String, _ label: String, threshold: Double,
 public func existImage(_ label: String, threshold: Double = FindImage.defaultThreshold,
                        aspectRatioTolerance: Double = FindImage.defaultAspectRatioTolerance,
                        waitSeconds: Double? = nil,
-                       scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                       scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     let core = FTRuntime.requireCore(command: "existImage")
     return findImageImpl(command: "existImage", label, threshold: threshold,
@@ -667,21 +667,21 @@ private func textAssert(_ assert: String, verb: String, selector: FTSelector, ex
 /// scroll: 指定すると**その方向へスクロールしながら探し、見つかったら不在検証を即失敗させる**
 /// (exist(scroll:) の裏返し。見つからなければ現在のビューポートでの消滅待ちへ進む)
 public func notExist(_ selector: String, waitSeconds: Double? = nil,
-                     scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                     scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
     notExistImpl(FTSelector.parse(selector), waitSeconds: waitSeconds,
                 scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func notExist(_ selector: Sel, waitSeconds: Double? = nil,
-                     scroll: FTScrollOption? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                     scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
     notExistImpl(selector.ftSelector, waitSeconds: waitSeconds,
                 scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func notExistImpl(_ selector: FTSelector, waitSeconds: Double?,
-                          scroll: FTScrollOption?, maxSwipes: Int,
+                          scroll: FTScrollOption?, maxSwipes: Int?,
                           file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "notExist")
     let scroll = core.effectiveScroll(scroll)
@@ -689,7 +689,7 @@ private func notExistImpl(_ selector: FTSelector, waitSeconds: Double?,
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue,
                         timeout: waitSeconds ?? core.defaultTimeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        maxSwipes: scroll == nil ? nil : (maxSwipes ?? core.tunables.defaultMaxSwipes),
                         scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     perform("notExist", selector, step: step, description: "notExist \"\(selector.text)\"",
             file: file, line: line)
@@ -697,20 +697,21 @@ private func notExistImpl(_ selector: FTSelector, waitSeconds: Double?,
 
 /// 要素が表示されるまで待つ(スクロールしない)。exist の可視性確認込みの形にタイムアウトだけ差し替えたもの
 @discardableResult
-public func waitForDisplay(_ selector: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+public func waitForDisplay(_ selector: String, waitSeconds: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     waitForDisplayImpl(FTSelector.parse(selector), waitSeconds: waitSeconds, file: file, line: line)
 }
 
 @discardableResult
-public func waitForDisplay(_ selector: Sel, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+public func waitForDisplay(_ selector: Sel, waitSeconds: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     waitForDisplayImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line)
 }
 
 @discardableResult
-private func waitForDisplayImpl(_ selector: FTSelector, waitSeconds: Double,
+private func waitForDisplayImpl(_ selector: FTSelector, waitSeconds: Double?,
                                 file: StaticString, line: UInt) -> FTElement {
+    let waitSeconds = waitSeconds ?? FTRuntime.requireCore(command: "waitForDisplay").tunables.screenWaitTimeout
     let step = FlowStep(assert: "exists", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         timeout: waitSeconds, occlusionGuard: true)
@@ -721,18 +722,19 @@ private func waitForDisplayImpl(_ selector: FTSelector, waitSeconds: Double,
 
 /// 要素が消えるまで待つ(スクロールしない)。expression 省略(直前セレクタ再利用)は実装しない
 /// (`lastElement` はあるが、待ち対象がソース上で読めなくなるため待ち系には省略形を置かない)
-public func waitForClose(_ selector: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+public func waitForClose(_ selector: String, waitSeconds: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     waitForCloseImpl(FTSelector.parse(selector), waitSeconds: waitSeconds, file: file, line: line)
 }
 
-public func waitForClose(_ selector: Sel, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+public func waitForClose(_ selector: Sel, waitSeconds: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     waitForCloseImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line)
 }
 
-private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double,
+private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double?,
                               file: StaticString, line: UInt) {
+    let waitSeconds = waitSeconds ?? FTRuntime.requireCore(command: "waitForClose").tunables.screenWaitTimeout
     let step = FlowStep(assert: "notExists", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         timeout: waitSeconds)
@@ -882,7 +884,7 @@ public struct FTElement {
         guard let imageLabel else {
             return tapImpl(selector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
                            waitSeconds: nil, scroll: nil,
-                           maxSwipes: FlowStep.defaultMaxSwipes, containerInference: nil, file: file, line: line)
+                           maxSwipes: nil, containerInference: nil, file: file, line: line)
         }
         guard let imageFrame else {
             FTRuntime.requireCore(command: "tap").performCustom(

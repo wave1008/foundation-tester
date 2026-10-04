@@ -750,7 +750,7 @@ extension StepExecutor {
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
             scrollSearchNote = recordedScrollSearchNote(result)
-            guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result)) }
+            guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result, defaultMaxSwipes: tunables.defaultMaxSwipes)) }
         }
         var deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
@@ -1141,7 +1141,7 @@ extension StepExecutor {
             // 探索していない。exist 側(executeAssertExists)と同じく
             // scrollNotFoundMessage 経由の文言でその場に失敗させる
             if result.scrollFrameMissing {
-                return failed(.notFound, Self.scrollNotFoundMessage(step, result))
+                return failed(.notFound, Self.scrollNotFoundMessage(step, result, defaultMaxSwipes: tunables.defaultMaxSwipes))
             }
             // **探索中に上限で切り詰められていたら「無い」を結論にしない**(同じ理由。
             // `truncatedDuringSearch` の注記だけでは**検証は通ってしまう**)。通り過ぎた

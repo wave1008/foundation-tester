@@ -12,6 +12,7 @@ final class HoldDSLTests: XCTestCase {
         let element: ElementInfo?
         /// 呼ばれた順に積む(hold が送られたことと、ブロックが走ったことの前後関係を見るため)
         private(set) var log: [String] = []
+        private(set) var holdDurations: [Double] = []
         init(element: ElementInfo?) { self.element = element }
 
         func status() async throws -> StatusResponse {
@@ -33,6 +34,7 @@ final class HoldDSLTests: XCTestCase {
         func press(ref: Int, duration: Double) async throws {}
         func hold(x: Double, y: Double, duration: Double) async throws {
             log.append("holdSent")
+            holdDurations.append(duration)
         }
         func screenshot() async throws -> Data { Data() }
         func terminate() async throws {}
@@ -41,10 +43,10 @@ final class HoldDSLTests: XCTestCase {
         var recordedLog: [String] { log }
     }
 
-    private func makeCore(driver: AppDriver) -> FTDriveCore {
+    private func makeCore(driver: AppDriver, tunables: RunTunables = RunTunables()) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0060", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
+                    delegate: nil, healingEnabled: false, tunables: tunables, dryRun: false,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-hold-test-\(UUID().uuidString).json"),
                     emit: { _ in })
@@ -75,6 +77,27 @@ final class HoldDSLTests: XCTestCase {
 
         XCTAssertTrue(core.finalRecord.passed, "\(core.finalRecord)")
         XCTAssertEqual(driver.recordedLog, ["holdSent", "blockRan"])
+    }
+
+    /// `holdSeconds:` 省略は実行時に `core.tunables.defaultHoldDuration` で解決する(陽性対照:
+    /// 既定でない値を載せた core で、送られた秒数がその値になる)。明示した秒数は tunables に負けない
+    func testOmittedHoldSecondsResolvesFromTheCoreTunables() throws {
+        let driver = HoldDriver(element: makeElement())
+        let core = makeCore(driver: driver, tunables: RunTunables(defaultHoldDuration: 0.3))
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    hold("#btn_tooltip_anchor") {}
+                    hold("#btn_tooltip_anchor", holdSeconds: 0.2) {}
+                }
+            }
+        }
+
+        XCTAssertTrue(core.finalRecord.passed, "\(core.finalRecord)")
+        XCTAssertEqual(driver.holdDurations, [0.3, 0.2])
     }
 
     /// 対象が解決できなければブロックは走らない(select と同じ「押せる前提が崩れたら何もしない」規律)

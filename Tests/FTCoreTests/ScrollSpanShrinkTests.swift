@@ -210,7 +210,7 @@ final class ScrollSpanShrinkTests: XCTestCase {
                                                                   swipes: 3, stoppedUnmoving: true,
                                                                   contentEverMoved: false,
                                                                   keyboardFrame: keyboard)
-        let message = StepExecutor.scrollNotFoundMessage(step, stuckUnderKeyboard)
+        let message = StepExecutor.scrollNotFoundMessage(step, stuckUnderKeyboard, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("the soft keyboard covers (0,509 390x335)"), message)
         XCTAssertTrue(message.contains("pass scrollFrame or close the keyboard"), message)
 
@@ -219,14 +219,14 @@ final class ScrollSpanShrinkTests: XCTestCase {
                                                           swipes: 3, stoppedUnmoving: true,
                                                           contentEverMoved: true,
                                                           keyboardFrame: keyboard)
-        XCTAssertFalse(StepExecutor.scrollNotFoundMessage(step, reachedEnd).contains("soft keyboard"),
+        XCTAssertFalse(StepExecutor.scrollNotFoundMessage(step, reachedEnd, defaultMaxSwipes: 8).contains("soft keyboard"),
                        "末尾に着いた回にはキーボードを名指ししない")
 
         let noKeyboard = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
                                                           viaXCUITest: false, hintJumps: 0,
                                                           swipes: 3, stoppedUnmoving: true,
                                                           contentEverMoved: false)
-        XCTAssertFalse(StepExecutor.scrollNotFoundMessage(step, noKeyboard).contains("soft keyboard"),
+        XCTAssertFalse(StepExecutor.scrollNotFoundMessage(step, noKeyboard, defaultMaxSwipes: 8).contains("soft keyboard"),
                        "キーボードが無いのに名指ししてはいけない")
     }
 }

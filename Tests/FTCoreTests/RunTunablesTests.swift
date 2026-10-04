@@ -12,6 +12,16 @@ final class RunTunablesTests: XCTestCase {
         XCTAssertEqual(t.defaultTimeout, 5)
         XCTAssertEqual(t.commandTimeout, 120)
         XCTAssertEqual(t.injectedAppProbeTimeout, 10)
+        XCTAssertEqual(t.defaultMaxSwipes, 8)
+        XCTAssertEqual(t.defaultSwipeDuration, 1.5)
+        XCTAssertEqual(t.defaultFlickDuration, 0.25)
+        XCTAssertEqual(t.defaultFlickInterval, 0.3)
+        XCTAssertEqual(t.defaultPinchDuration, 0.5)
+        XCTAssertEqual(t.defaultHoldDuration, 3)
+        XCTAssertEqual(t.screenWaitTimeout, 15)
+        XCTAssertEqual(t.doUntilTrueTimeout, 10)
+        XCTAssertEqual(t.doUntilTrueInterval, 0.5)
+        XCTAssertEqual(t.doUntilTrueMaxLoopCount, 100)
     }
 
     func testProfileDefaultTimeoutMapsIntoTunables() {
@@ -39,7 +49,15 @@ final class RunTunablesTests: XCTestCase {
 
     func testHostArgumentIsSortedKeyJSON() throws {
         let json = try ScenarioHost.tunablesArgument(
-            RunTunables(defaultTimeout: 7.5, commandTimeout: 33, injectedAppProbeTimeout: 4))
-        XCTAssertEqual(json, #"{"commandTimeout":33,"defaultTimeout":7.5,"injectedAppProbeTimeout":4}"#)
+            RunTunables(defaultTimeout: 7.5, commandTimeout: 33, injectedAppProbeTimeout: 4,
+                        defaultMaxSwipes: 3, defaultSwipeDuration: 2.5, defaultFlickDuration: 0.75,
+                        defaultFlickInterval: 0.6, defaultPinchDuration: 1.25, defaultHoldDuration: 4,
+                        screenWaitTimeout: 21, doUntilTrueTimeout: 12, doUntilTrueInterval: 0.75,
+                        doUntilTrueMaxLoopCount: 7))
+        XCTAssertEqual(json, #"{"commandTimeout":33,"defaultFlickDuration":0.75,"defaultFlickInterval":0.6,"#
+            + #""defaultHoldDuration":4,"defaultMaxSwipes":3,"defaultPinchDuration":1.25,"#
+            + #""defaultSwipeDuration":2.5,"defaultTimeout":7.5,"doUntilTrueInterval":0.75,"#
+            + #""doUntilTrueMaxLoopCount":7,"doUntilTrueTimeout":12,"injectedAppProbeTimeout":4,"#
+            + #""screenWaitTimeout":21}"#)
     }
 }

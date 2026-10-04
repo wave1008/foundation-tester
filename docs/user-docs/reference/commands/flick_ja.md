@@ -6,9 +6,9 @@
 
 | 関数 | 説明 |
 |---|---|
-| `flickCenterToTop(scrollFrame:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` / `flickCenterToBottom` / `flickCenterToLeft` / `flickCenterToRight` | 画面(または `scrollFrame`)の中央を起点に、その方向の端へ払います。`durationSeconds` の上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます。 |
-| `flickLeftToRight(scrollFrame:startMarginRatio:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` / `flickRightToLeft` | 端から端へ横方向に払います。`startMarginRatio` は省略時 `scrollRight` 等と同じ既定値(0.2)です。`durationSeconds` の上限は上と同じです。 |
-| `flickBottomToTop(scrollFrame:startMarginRatio:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` / `flickTopToBottom` | 端から端へ縦方向に払います。`durationSeconds` の上限は上と同じです。 |
+| `flickCenterToTop(scrollFrame:durationSeconds: Double? = nil maxGestureSeconds: repeat: 1 intervalSeconds: Double? = nil)` / `flickCenterToBottom` / `flickCenterToLeft` / `flickCenterToRight` | 画面(または `scrollFrame`)の中央を起点に、その方向の端へ払います。`durationSeconds` の上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます。 `durationSeconds` を省くと 0.25 秒、`intervalSeconds` を省くと 0.3 秒。 |
+| `flickLeftToRight(scrollFrame:startMarginRatio:durationSeconds: Double? = nil maxGestureSeconds: repeat: 1 intervalSeconds: Double? = nil)` / `flickRightToLeft` | 端から端へ横方向に払います。`startMarginRatio` は省略時 `scrollRight` 等と同じ既定値(0.2)です。`durationSeconds` の上限は上と同じです。 `durationSeconds` を省くと 0.25 秒、`intervalSeconds` を省くと 0.3 秒。 |
+| `flickBottomToTop(scrollFrame:startMarginRatio:durationSeconds: Double? = nil maxGestureSeconds: repeat: 1 intervalSeconds: Double? = nil)` / `flickTopToBottom` | 端から端へ縦方向に払います。`durationSeconds` の上限は上と同じです。 `durationSeconds` を省くと 0.25 秒、`intervalSeconds` を省くと 0.3 秒。 |
 
 ## 例
 

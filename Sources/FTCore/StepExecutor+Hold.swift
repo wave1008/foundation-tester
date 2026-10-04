@@ -57,7 +57,7 @@ extension StepExecutor {
         let rect = Self.visibleTapRect(for: element, in: snapshot.elements,
                                        inferring: step.containerInference ?? true,
                                        scale: driver.pointScale) ?? element.frame
-        let duration = step.duration ?? FlowStep.defaultHoldSeconds
+        let duration = step.duration ?? tunables.defaultHoldDuration
         // **指を置く前に OCR の暖機を済ませる**: ブロックの最初の視覚検証が暖機を待つと(実測 12 秒)、
         // その間に指が離れて押している間だけ出る部品が消える。occlusionFlip と同じ条件で待つ
         // (詰まった読みがある間は待たない)。待った時間は視覚検証の内訳へ入れる

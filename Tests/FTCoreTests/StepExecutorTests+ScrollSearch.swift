@@ -645,7 +645,7 @@ extension StepExecutorTests {
         XCTAssertTrue(result.reverseSweepMoved,
                       "逆走査が画面を動かしたのに reverseSweepMoved が立っていない")
 
-        let message = StepExecutor.scrollNotFoundMessage(step, result)
+        let message = StepExecutor.scrollNotFoundMessage(step, result, defaultMaxSwipes: 8)
         XCTAssertFalse(message.contains("not reaching a scrolling area"), message)
         XCTAssertFalse(message.contains("reached its end"), message)
         XCTAssertTrue(message.contains("this element is not on this screen"), message)

@@ -195,9 +195,10 @@ private func pollForegroundMatch(driver: AppDriver, target: String,
 /// fleetest はニックネーム機構を持たないため、引数は ID そのもの。
 /// waitSeconds までポーリングする。Android は失敗メッセージに actual の package 名を含める
 /// (iOS は前面 bundle ID を取得する手段が無いため自然と省かれる。foregroundAppID 参照)
-public func appIs(_ appID: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+public func appIs(_ appID: String, waitSeconds: Double? = nil,
                   file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appIs")
+    let waitSeconds = waitSeconds ?? core.tunables.screenWaitTimeout
     let driver = core.driver
     core.performCustom(description: "appIs \"\(appID)\"", command: "appIs", file: file, line: line,
                        isAssertion: true) {
@@ -349,7 +350,7 @@ public func tapAppIcon(_ appIconName: String? = nil,
                                                     kind: kind, startMarginRatio: startRatio) {
                 try await driver.drag(fromX: path.fromX, fromY: path.fromY,
                                       toX: path.toX, toY: path.toY,
-                                      pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: FlowStep.defaultFlickDurationSeconds)
+                                      pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: core.tunables.defaultFlickDuration)
             } else {
                 // 座標を作れない(画面が小さすぎる等): 向き基準の汎用スワイプへ落ちる
                 // (flick アクションの座標算出失敗と同じ扱い)
@@ -695,12 +696,15 @@ public func ftRunTearDownDevice(_ body: () -> Void) {
 /// action が true を返せば成功。waitSeconds 経過または maxLoopCount 到達で NG(シナリオ中断)。
 /// action が throw した場合は**リトライせず**その場で NG にする(状態の待ちと実行時エラーを混ぜない)。
 /// dry-run では body を実行せず1ステップとして記録するだけ(performCustom の既定動作)
-public func doUntilTrue(_ title: String, waitSeconds: Double = 10, intervalSeconds: Double = 0.5,
-                        maxLoopCount: Int = 100,
+public func doUntilTrue(_ title: String, waitSeconds: Double? = nil, intervalSeconds: Double? = nil,
+                        maxLoopCount: Int? = nil,
                         file: StaticString = #filePath, line: UInt = #line,
                         _ body: @escaping () async throws -> Bool) {
-    FTRuntime.requireCore(command: "doUntilTrue")
-        .performCustom(description: "doUntilTrue \"\(title)\"", command: "doUntilTrue", file: file, line: line) {
+    let core = FTRuntime.requireCore(command: "doUntilTrue")
+    let waitSeconds = waitSeconds ?? core.tunables.doUntilTrueTimeout
+    let intervalSeconds = intervalSeconds ?? core.tunables.doUntilTrueInterval
+    let maxLoopCount = maxLoopCount ?? core.tunables.doUntilTrueMaxLoopCount
+    core.performCustom(description: "doUntilTrue \"\(title)\"", command: "doUntilTrue", file: file, line: line) {
             let deadline = Date().addingTimeInterval(waitSeconds)
             var loops = 0
             while true {

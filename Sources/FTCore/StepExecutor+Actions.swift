@@ -130,7 +130,7 @@ extension StepExecutor {
                 // 実測: 同名 `#recycler_view` が4つある画面で先頭の横チップ行を
                 // 掴んだまま「element not found」としか言わず、曖昧だったことが伝わらなかった
                 let why = pendingScrollFrameNote.map { " (\($0))" } ?? ""
-                return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result) + why))
+                return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result, defaultMaxSwipes: tunables.defaultMaxSwipes) + why))
             }
             searchSwiped = true
         }
@@ -895,7 +895,7 @@ extension StepExecutor {
                         + Self.truncationHint(snapshot)
                         + Self.keyboardResizedHint(snapshot)))
             }
-            let swipeDuration = step.duration ?? FlowStep.defaultSwipeDurationSeconds
+            let swipeDuration = step.duration ?? tunables.defaultSwipeDuration
             do {
                 start = clock.now
                 try await actingDriver.drag(fromX: element.frame.centerX, fromY: element.frame.centerY,
@@ -1509,7 +1509,7 @@ extension StepExecutor {
             }
             viaXCUITest = try await pinchWithFallback(
                 frame: target, identifier: identifier, scale: scale,
-                durationSeconds: step.duration ?? FlowStep.defaultPinchDurationSeconds,
+                durationSeconds: step.duration ?? tunables.defaultPinchDuration,
                 phase: &phase)
         case "doubleTap":
             viaXCUITest = try await doubleTapWithFallback(x: target.centerX, y: target.centerY,
@@ -1529,7 +1529,7 @@ extension StepExecutor {
             }
             viaXCUITest = try await dragWithFallback(
                 path: path,
-                durationSeconds: step.duration ?? FlowStep.defaultSwipeDurationSeconds,
+                durationSeconds: step.duration ?? tunables.defaultSwipeDuration,
                 phase: &phase)
         case "gesture":
             // 検査は写す前(比率)の段で言う(TouchGesture.resolve の doc)。失敗はデバイスに触らず返す

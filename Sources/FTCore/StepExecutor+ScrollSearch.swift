@@ -163,8 +163,10 @@ extension StepExecutor {
     /// 読み手が「見つからないのに緑」と誤読しないよう理由文で契約を名乗る
     static let selectNotFoundReason = "element not found; select returned an empty element"
 
+    /// `defaultMaxSwipes`: step に上限が無いときの既定(呼び手の `tunables.defaultMaxSwipes`)
     static func scrollNotFoundMessage(_ step: FlowStep,
-                                      _ result: ScrollSearchResult? = nil) -> String {
+                                      _ result: ScrollSearchResult? = nil,
+                                      defaultMaxSwipes: Int) -> String {
         // **fail-fast は別の文**: 実際にはスワイプを1本も送っていないので、通常の
         // 「N 回振って見つからなかった」は嘘になる
         if result?.scrollFrameMissing == true {
@@ -172,7 +174,7 @@ extension StepExecutor {
         }
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         let vertical = direction == .up || direction == .down
-        let limit = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
+        let limit = max(0, step.maxSwipes ?? defaultMaxSwipes)
         // 打ち切ったときは**実際の回数**を出す(上限を名乗ると「8回も振ったのに」と読めてしまう)
         let swipes = result?.stoppedUnmoving == true ? (result?.swipes ?? limit) : limit
         // **「stopped early」と言わない**。旧文言は「途中で諦めた」としか
@@ -461,7 +463,7 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         // 負値だと 0...(-1) が ClosedRange 生成で trap(クラッシュ)するため 0 で下限クランプ
-        let maxSwipes = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
+        let maxSwipes = max(0, step.maxSwipes ?? tunables.defaultMaxSwipes)
         var viaXCUITest = false
         var hintJumps = 0
         var settleCapped = false

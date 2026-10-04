@@ -126,7 +126,7 @@ final class ScrollSearchStopTests: XCTestCase {
                                                          viaXCUITest: false, hintJumps: 0,
                                                          swipes: 3, stoppedUnmoving: true,
                                                          contentEverMoved: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, reachedEnd)
+        let message = StepExecutor.scrollNotFoundMessage(step, reachedEnd, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("reached its end"), message)
         XCTAssertTrue(message.contains("raising maxSwipes will not help"), message)
         XCTAssertFalse(message.contains("nothing moved at all"),
@@ -140,7 +140,7 @@ final class ScrollSearchStopTests: XCTestCase {
                                                          viaXCUITest: false, hintJumps: 0,
                                                          swipes: 3, stoppedUnmoving: true,
                                                          contentEverMoved: false)
-        let message = StepExecutor.scrollNotFoundMessage(step, neverMoved)
+        let message = StepExecutor.scrollNotFoundMessage(step, neverMoved, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("nothing moved at all"), message)
         XCTAssertFalse(message.contains("reached its end"), message)
     }
@@ -158,7 +158,7 @@ final class ScrollSearchStopTests: XCTestCase {
                                                               swipes: 3, stoppedUnmoving: true,
                                                               contentEverMoved: false,
                                                               reverseSweepMoved: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, sweptButMissed)
+        let message = StepExecutor.scrollNotFoundMessage(step, sweptButMissed, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("this element is not on this screen"), message)
         XCTAssertFalse(message.contains("nothing moved at all"),
                        "逆走査で動いているのに「1度も動かなかった」と言っている: \(message)")
@@ -181,7 +181,7 @@ final class ScrollSearchStopTests: XCTestCase {
                                                          swipes: 3, stoppedUnmoving: true,
                                                          contentEverMoved: false)
         XCTAssertFalse(neverMoved.reverseSweepMoved)
-        let message = StepExecutor.scrollNotFoundMessage(step, neverMoved)
+        let message = StepExecutor.scrollNotFoundMessage(step, neverMoved, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("nothing moved at all"), message)
     }
 
@@ -239,7 +239,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
                                                        hintJumps: 0, swipes: 3, stoppedUnmoving: true,
                                                        containerIsPartialHeight: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("half-open bottom sheet"), message)
     }
 
@@ -250,7 +250,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
                                                        hintJumps: 0, swipes: 3, stoppedUnmoving: true,
                                                        containerIsPartialHeight: false)
-        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped, defaultMaxSwipes: 8)
         XCTAssertFalse(message.contains("bottom sheet"), message)
     }
 
@@ -341,7 +341,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let step = scrollTo("missing", maxSwipes: 8)
         let stillGoing = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
                                                           viaXCUITest: false, hintJumps: 0, swipes: 8)
-        let message = StepExecutor.scrollNotFoundMessage(step, stillGoing)
+        let message = StepExecutor.scrollNotFoundMessage(step, stillGoing, defaultMaxSwipes: 8)
         XCTAssertFalse(message.contains("bottom sheet"), message)
     }
 
@@ -352,7 +352,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let step = scrollTo("missing", maxSwipes: 8)
         let result = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
                                                       hintJumps: 0, swipes: 0, scrollFrameMissing: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, result)
+        let message = StepExecutor.scrollNotFoundMessage(step, result, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("search was not run"), message)
     }
 
@@ -360,7 +360,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let step = scrollTo("missing", maxSwipes: 8)
         let result = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
                                                       hintJumps: 0, swipes: 3, scrollFrameMissing: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, result)
+        let message = StepExecutor.scrollNotFoundMessage(step, result, defaultMaxSwipes: 8)
         XCTAssertFalse(message.contains("was not run"), message)
         XCTAssertTrue(message.contains("disappeared from the tree after 3 swipe(s)"), message)
     }
@@ -379,7 +379,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
                                                        hintJumps: 0, swipes: 3, stoppedUnmoving: true,
                                                        containerIsPartialHeight: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped, defaultMaxSwipes: 8)
         XCTAssertFalse(message.contains("bottom sheet"), message)
     }
 
@@ -390,7 +390,7 @@ final class ScrollSearchStopTests: XCTestCase {
                                                        hintJumps: 0, swipes: 3, stoppedUnmoving: true,
                                                        containerIsPartialHeight: true)
         stopped.directionMatchedScrollFrameCandidate = "#carousel_tags"
-        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped, defaultMaxSwipes: 8)
         XCTAssertTrue(message.contains("scrollFrame: #carousel_tags"), message)
     }
 
@@ -399,7 +399,7 @@ final class ScrollSearchStopTests: XCTestCase {
         let step = scrollToRight("missing", maxSwipes: 8)
         let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
                                                        hintJumps: 0, swipes: 3, stoppedUnmoving: true)
-        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped, defaultMaxSwipes: 8)
         XCTAssertFalse(message.contains("scrollFrame:"), message)
     }
 

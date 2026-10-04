@@ -251,8 +251,8 @@ extension StepExecutor {
             return StepOutcome(status: .failed("unknown flick kind: \(step.direction ?? "")"))
         }
         let times = max(1, step.maxSwipes ?? 1)
-        let durationSeconds = step.duration ?? FlowStep.defaultFlickDurationSeconds
-        let intervalSeconds = step.intervalSeconds ?? FlowStep.defaultFlickIntervalSeconds
+        let durationSeconds = step.duration ?? tunables.defaultFlickDuration
+        let intervalSeconds = step.intervalSeconds ?? tunables.defaultFlickInterval
 
         var path: FTSwipePath?
         if Self.coordinateScrollEnabled {
@@ -383,7 +383,7 @@ extension StepExecutor {
         let start = clock.now
         let latchedBefore = dragFallbackLatched
         try await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY, pressSeconds: FlowStep.defaultDragPressSeconds,
-                                   durationSeconds: step.duration ?? FlowStep.defaultSwipeDurationSeconds)
+                                   durationSeconds: step.duration ?? tunables.defaultSwipeDuration)
         phase.actionMs += Self.ms(clock.now - start)
         return StepOutcome(status: .passed,
                            driverFallback: dragFallbackLatched && !latchedBefore ? "fell back to XCUITest" : nil)
@@ -414,7 +414,7 @@ extension StepExecutor {
         let result = try await runScrollSearch(step: step, phase: &phase)
         let note = recordedScrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
         guard result.found else {
-            return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result)))
+            return StepOutcome(status: failed(.notFound, Self.scrollNotFoundMessage(step, result, defaultMaxSwipes: tunables.defaultMaxSwipes)))
         }
         resolvedElementThisStep = result.element
         if let fallback = result.fallback {

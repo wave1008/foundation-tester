@@ -43,7 +43,7 @@ extension StepExecutor {
         var scan = ImageScan(found: [], nearest: nil, classified: false)
         if let rawDirection = step.direction {
             let direction = FTSwipeDirection(rawValue: rawDirection) ?? .up
-            let maxSwipes = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
+            let maxSwipes = max(0, step.maxSwipes ?? tunables.defaultMaxSwipes)
             var previous: String?
             var unchanged = 0
             var swipes = 0

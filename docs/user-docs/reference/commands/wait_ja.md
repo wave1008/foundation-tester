@@ -7,8 +7,8 @@
 | 関数 | 説明 |
 |---|---|
 | `wait(秒)` | 固定待ち。小数可。 |
-| `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待ちます(**スクロールしません**)。戻り値は `FTElement` で、`exist` と同様にチェーンできます。見つからなければシナリオを失敗させます。 |
-| `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待ちます(**スクロールしません**)。`sel` は省略できません(直前セレクタを再利用する省略形はありません)。 |
+| `waitForDisplay(sel, waitSeconds: Double? = nil)` | 要素が表示されるまで待ちます(**スクロールしません**)。戻り値は `FTElement` で、`exist` と同様にチェーンできます。見つからなければシナリオを失敗させます。 `waitSeconds` を省くと 15 秒。 |
+| `waitForClose(sel, waitSeconds: Double? = nil)` | 要素が消えるまで待ちます(**スクロールしません**)。`sel` は省略できません(直前セレクタを再利用する省略形はありません)。 `waitSeconds` を省くと 15 秒。 |
 
 ## 例
 

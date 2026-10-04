@@ -6,9 +6,9 @@ A single fast finger stroke — screen (or `scrollFrame`) based, in one of 8 dir
 
 | function | description |
 |---|---|
-| `flickCenterToTop(scrollFrame:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` / `flickCenterToBottom` / `flickCenterToLeft` / `flickCenterToRight` | Flicks from the center of the screen (or `scrollFrame`) toward that edge. `durationSeconds` is capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. |
-| `flickLeftToRight(scrollFrame:startMarginRatio:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` / `flickRightToLeft` | Flicks edge to edge, horizontally. `startMarginRatio` defaults to the same value `scrollRight` etc. use (0.2). Same `durationSeconds` cap as above. |
-| `flickBottomToTop(scrollFrame:startMarginRatio:durationSeconds: 0.25 maxGestureSeconds: repeat: 1 intervalSeconds: 0.3)` / `flickTopToBottom` | Flicks edge to edge, vertically. Same `durationSeconds` cap as above. |
+| `flickCenterToTop(scrollFrame:durationSeconds: Double? = nil maxGestureSeconds: repeat: 1 intervalSeconds: Double? = nil)` / `flickCenterToBottom` / `flickCenterToLeft` / `flickCenterToRight` | Flicks from the center of the screen (or `scrollFrame`) toward that edge. `durationSeconds` is capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. `durationSeconds` defaults to 0.25 seconds and `intervalSeconds` to 0.3 seconds when omitted. |
+| `flickLeftToRight(scrollFrame:startMarginRatio:durationSeconds: Double? = nil maxGestureSeconds: repeat: 1 intervalSeconds: Double? = nil)` / `flickRightToLeft` | Flicks edge to edge, horizontally. `startMarginRatio` defaults to the same value `scrollRight` etc. use (0.2). Same `durationSeconds` cap as above. `durationSeconds` defaults to 0.25 seconds and `intervalSeconds` to 0.3 seconds when omitted. |
+| `flickBottomToTop(scrollFrame:startMarginRatio:durationSeconds: Double? = nil maxGestureSeconds: repeat: 1 intervalSeconds: Double? = nil)` / `flickTopToBottom` | Flicks edge to edge, vertically. Same `durationSeconds` cap as above. `durationSeconds` defaults to 0.25 seconds and `intervalSeconds` to 0.3 seconds when omitted. |
 
 ## Example
 

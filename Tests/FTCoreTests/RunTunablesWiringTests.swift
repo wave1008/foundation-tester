@@ -40,17 +40,40 @@ final class RunTunablesWiringTests: XCTestCase {
         XCTAssertTrue(runner.contains("tunables: runTunables,"), "FTDriveCore へ tunables を渡していない")
     }
 
-    /// 待ちを明示しないステップの既定は `tunables.defaultTimeout`。固定値へ戻すとプロファイルの
-    /// defaultTimeout が DSL の検証コマンドにしか効かない形に戻る
-    func testStepExecutorNeverFallsBackToTheFixedDefaultWait() throws {
+    /// 実行時に解決する既定は `tunables.<欄>`。固定値へ戻すとプロファイル(将来のキー)で変えても
+    /// StepExecutor だけ古い値で動く
+    func testStepExecutorNeverFallsBackToTheFixedDefaults() throws {
         let dir = Self.repoRoot.appendingPathComponent("Sources/FTCore")
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
             .filter { $0.hasPrefix("StepExecutor") && $0.hasSuffix(".swift") }
         XCTAssertGreaterThan(files.count, 5, "走査が StepExecutor のファイルに届いていない")
-        let offenders = try files.filter {
-            try source("Sources/FTCore/\($0)").contains("?? FlowStep.defaultWaitSeconds")
+        let constants = ["defaultWaitSeconds", "defaultMaxSwipes", "defaultSwipeDurationSeconds",
+                         "defaultFlickDurationSeconds", "defaultFlickIntervalSeconds",
+                         "defaultPinchDurationSeconds", "defaultHoldSeconds", "defaultIsScreenWaitSeconds"]
+        for constant in constants {
+            let offenders = try files.filter {
+                try source("Sources/FTCore/\($0)").contains("?? FlowStep.\(constant)")
+            }
+            XCTAssertEqual(offenders, [], "固定値 FlowStep.\(constant) へのフォールバックが残っている(tunables を使う)")
         }
-        XCTAssertEqual(offenders, [], "step.timeout の既定に固定値を使っている(tunables.defaultTimeout を使う)")
+    }
+
+    /// DSL の既定引数は nil にして `core.tunables` で解く。`= FlowStep.<定数>` の既定引数や
+    /// `?? FlowStep.<定数>` が戻ると、その引数だけ実行時の既定に追随しなくなる
+    func testDSLNeverBakesInTheFixedDefaults() throws {
+        let dir = Self.repoRoot.appendingPathComponent("Sources/FTDSL")
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasSuffix(".swift") }
+        XCTAssertGreaterThan(files.count, 5, "走査が FTDSL のファイルに届いていない")
+        let constants = ["defaultWaitSeconds", "defaultMaxSwipes", "defaultSwipeDurationSeconds",
+                         "defaultFlickDurationSeconds", "defaultFlickIntervalSeconds",
+                         "defaultPinchDurationSeconds", "defaultHoldSeconds", "defaultIsScreenWaitSeconds"]
+        for file in files {
+            let text = try source("Sources/FTDSL/\(file)")
+            for constant in constants {
+                XCTAssertFalse(text.contains("= FlowStep.\(constant)") || text.contains("?? FlowStep.\(constant)"),
+                               "\(file): FlowStep.\(constant) を既定に焼き込んでいる(core.tunables を使う)")
+            }
+        }
     }
 
     func testDriveCoreHandsTheTunablesToTheExecutor() throws {

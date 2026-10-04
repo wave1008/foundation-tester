@@ -7,8 +7,8 @@ Fixed pauses and explicit waits for an element to appear or disappear.
 | function | description |
 |---|---|
 | `wait(seconds)` | Fixed sleep. Decimal seconds allowed. |
-| `waitForDisplay(sel, waitSeconds: 15)` | Waits until the element is displayed (does not scroll). Returns an `FTElement`, chainable the same way `exist` is. Fails the scenario if it never appears. |
-| `waitForClose(sel, waitSeconds: 15)` | Waits until the element disappears (does not scroll). `sel` is required — there is no "reuse the previous selector" shorthand. |
+| `waitForDisplay(sel, waitSeconds: Double? = nil)` | Waits until the element is displayed (does not scroll). Returns an `FTElement`, chainable the same way `exist` is. Fails the scenario if it never appears. `waitSeconds` defaults to 15 seconds when omitted. |
+| `waitForClose(sel, waitSeconds: Double? = nil)` | Waits until the element disappears (does not scroll). `sel` is required — there is no "reuse the previous selector" shorthand. `waitSeconds` defaults to 15 seconds when omitted. |
 
 ## Example
 
