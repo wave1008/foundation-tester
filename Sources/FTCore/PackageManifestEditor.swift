@@ -49,8 +49,7 @@ public enum PackageManifestEditor {
                     name: "fleetest-scenarios-\(name)",
                     dependencies: \(deps),
                     path: "TestProjects/\(name)/scenarios",
-                    exclude: ["_disabled"],
-                    swiftSettings: swift5Mode
+                    exclude: ["_disabled"]
                 ),
         """
     }

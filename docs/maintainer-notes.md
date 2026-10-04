@@ -550,8 +550,8 @@ dry-run との対比で「実機の前に落とす」等と書いていた 20 �
 - **FoundationModels `init(sampling:)` の deprecated ×8**: 後継 `init(samplingMode:)` は macOS 27 SDK のみ。platforms は macOS 26 なので置き換えると 26 でビルドが通らなくなる(Package.swift の platforms コメントと同じ理由)。macOS 26 SDK では出ない
 - **SecureTransport `SSL*` の deprecated ×12**(`PhysicalSafariInspector`): 実機 iOS の lockdown TLS は自前ソケット上で証明書を指定して握手する形で、Network.framework に同じ口が無い(design.md §実機だけの罠)
 - **Sendable 捕捉・非同期文脈の `wait`/`lock`(37 件)は同日に 0 にした**。production 側は子プロセスの stdout 読み切りを `FTRemote.PipeLinePump`(専用スレッドで読み、EOF は AsyncStream で待つ)へ寄せ(FleetRunner / ApiRunMachineFanout)、`FTScenarioDescriptor.run` を `@Sendable` に(マクロ生成のクロージャはクロージャ内で作ったインスタンスしか捕捉しないのでテストクラスの Sendable 化は不要)、AV の切り出し状態は `ClipExtractionState` に束ねた。テスト側は `FTTestSupport.LockedBox`。陽性対照は `PipeLinePumpTests`(変異 2/2 検出)
-- **言語モード**: 2026-10-04 にツール本体とテストを Swift 6 言語モードへ移した(§66)。Swift 5 のまま残すのは
-  シナリオのターゲット(TestProjects/ = 受け手と同じ設定)だけ。**`-warnings-as-errors` の `unsafeFlags` は不可**
+- **言語モード**: 2026-10-04 に全ターゲット(ツール本体・テスト・シナリオ・受け手の Package.swift の雛形)を Swift 6
+  言語モードへ移した(§66・§66.7)。言語モードは書き足さず tools-version 6.0 の既定に任せる。**`-warnings-as-errors` の `unsafeFlags` は不可**
   (受け手の外部パッケージが依存として解決できなくなる)
 
 ---
@@ -3491,3 +3491,14 @@ kAXErrorAPIDisabled(§65.7)で、反転の回のスクリーンショットは**
 (x = 402 − 横の y − 高さ・y = 横の x)で返った。「許可しない」は横の画面の下端でほぼ見切れていて、ref のタップは「done」と
 答えたまま空振りした(5 回)。縦に戻すと同じ ref のタップで1回で閉じた。横向きの iPhone で SpringBoard を操作する形は稀で、
 直すにはランナーの座標の写像の調査が要るので記録だけ。次に横向きの system UI を扱う変更を入れるときに確かめる
+
+### 66.7 シナリオと受け手の雛形も Swift 6 にした(同日)
+移行の時点ではシナリオのターゲット(と `fleetest init` が受け手に書く設定)だけ Swift 5 に残していたが、「受け手に並行性の
+注釈を強いる」という理由は推測だった。**シナリオ 14 ターゲット・293 ファイル(受け手と同じ作りの sut-ec-mobile 等を含む)を
+Swift 6 言語モードでビルドすると診断 0 件**(陽性対照 = グローバルな `var` を Task から書き換える1ファイルは Swift 6 で
+エラー)。DSL どおりに書いたシナリオはグローバルな可変状態を持たず、並行に動く部分は FTDSL / FTCore の中に閉じているため。
+ユーザー判断で、本体の Package.swift のシナリオのターゲット・`PackageManifestEditor.targetEntry`・
+`ProjectScaffold.externalManifest` から言語モードの指定を外し、tools-version 6.0 の既定(Swift 6)に揃えた。
+**既存の受け手**は `project sync`(更新の手順に含まれる)でマーカー区間が作り直された時点で Swift 6 になる。手書きの
+`let swift5Mode` の定義は参照されないまま残るが害は無い。受け手が DSL の外に書いたヘルパーにグローバルな可変状態があれば、
+そこは Swift 6 のエラーになる(ツールからは見えない)

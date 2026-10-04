@@ -259,6 +259,9 @@ final class ProjectScaffoldTests: XCTestCase {
             + "        // === fleetest projects begin(fleetest project create/sync が自動生成。手編集禁止)===\n"
             + "        // === fleetest projects end ===\n"
             + "    ]"), "マーカー区間が空のまま targets の中に入っている")
+        // 受け手のシナリオも本体と同じ Swift 6 言語モード(tools-version 6.0 の既定。言語モードを書き足さない)
+        XCTAssertTrue(manifest.hasPrefix("// swift-tools-version: 6.0"), manifest)
+        XCTAssertFalse(manifest.contains("swiftLanguageMode"), manifest)
     }
 
     func testVSCodeSettingsWithoutProjectOmitsProjectKeyButKeepsBinaryPath() throws {

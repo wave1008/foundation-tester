@@ -2,11 +2,6 @@
 import CompilerPluginSupport
 import PackageDescription
 
-// ツール本体とテストは Swift 6 言語モード(tools-version 6.0 の既定)。シナリオのターゲットだけ Swift 5 ——
-// 受け手が書くコードに並行性の注釈を強いない(fleetest init が受け手の Package.swift に書く設定と同じ。
-// 名前は PackageManifestEditor が生成するスタンザが参照するので変えない)
-let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
-
 let package = Package(
     name: "foundation-tester",
     platforms: [
@@ -145,99 +140,85 @@ let package = Package(
             name: "fleetest-scenarios-E2E-Android",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-Android/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-CMP",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-CMP/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-Flutter",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-Flutter/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-RN",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-RN/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-iOS",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2E-iOS/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-Android",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2EX-Android/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-CMP",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2EX-CMP/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-Flutter",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2EX-Flutter/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-RN",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2EX-RN/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-iOS",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/E2EX-iOS/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-SampleApp",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/SampleApp/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-default",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/default/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-project1",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/project1/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-sut-ec-mobile",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/sut-ec-mobile/scenarios",
-            exclude: ["_disabled"],
-            swiftSettings: swift5Mode
+            exclude: ["_disabled"]
         ),
         // === fleetest projects end ===
         // headless iOS シミュレータ画面キャプチャ(ObjC単体・CoreSimulator/SimulatorKitはdlopen)

@@ -5130,7 +5130,7 @@ false green になる(以前 install.sh のステップ7.7 が実際に出して
 
 - **公開 products**: `Package.swift` の `products:` に `.library`(FTScenarioRunner / FTDSL / FTCore)と
   `.executable`(fleetest)。受け手のシナリオターゲットはこれを `.product(package: "foundation-tester")` で引く。
-- **`fleetest init`**: 受け手の Package.swift(空マーカー区間 + swift5Mode + fleetest 依存)を書き、
+- **`fleetest init`**: 受け手の Package.swift(空マーカー区間 + fleetest 依存。言語モードは tools-version 6.0 の既定 = Swift 6)を書き、
   `ProjectScaffold.createAndRegister` が最初のプロジェクトを登録。**`--no-project` ではプロジェクトを作らず空の
   `TestProjects/` だけ置く**(`fleetest.project` も `.vscode/settings.json` に書かない・受け手スキルも名前を焼かない。
   install.sh は `--name` 無しの新規導入でこちらを使い、プロジェクト `default` は `/fleetest-profiles` か VSCode 拡張が後から作る。

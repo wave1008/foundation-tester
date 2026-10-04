@@ -69,8 +69,6 @@ public enum ProjectScaffold {
         // swift-tools-version: 6.0
         import PackageDescription
 
-        let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
-
         let package = Package(
             name: "\(packageName)",
             platforms: [

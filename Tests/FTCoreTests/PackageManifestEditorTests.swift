@@ -39,6 +39,8 @@ final class PackageManifestEditorTests: XCTestCase {
         XCTAssertTrue(content.contains(#"name: "fleetest-scenarios-SampleApp""#))
         XCTAssertTrue(content.contains(#"path: "TestProjects/Demo/scenarios""#))
         XCTAssertTrue(content.contains(#"exclude: ["_disabled"]"#))
+        // シナリオは tools-version 6.0 の既定 = Swift 6 言語モード(言語モードを書き足さない)
+        XCTAssertFalse(content.contains("swiftSettings"), content)
         XCTAssertTrue(content.contains(".target(name: \"Core\"),"))
         XCTAssertTrue(content.contains(".testTarget(name: \"CoreTests\"),"))
 
