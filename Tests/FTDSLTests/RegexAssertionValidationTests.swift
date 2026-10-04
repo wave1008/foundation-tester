@@ -32,7 +32,7 @@ final class RegexAssertionValidationTests: XCTestCase {
     private func makeCore(dryRun: Bool) -> FTDriveCore {
         FTDriveCore(driver: StubDriver(), platform: "ios", app: "com.example.app",
                    scenarioID: "T.S0010", scenarioTitle: "t",
-                   delegate: nil, healingEnabled: false, dryRun: dryRun,
+                   delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: dryRun,
                    fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                        .appendingPathComponent("ft-regex-validation-\(UUID().uuidString).json"),
                    emit: { _ in })

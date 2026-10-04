@@ -63,7 +63,7 @@ final class TypeReadbackTargetTests: XCTestCase {
     /// 埋まり、ステップは緑・注記 `type-retyped` が立つ
     func testTypeStepRetypesAfterAMidStringDrop() async {
         let driver = ReadbackSequenceDriver(values: ["", "hllo123", "hello123"])
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(
             FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hello123"))
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
         XCTAssertTrue(outcome.notes.contains(.typeRetyped), "\(outcome.notes)")
@@ -75,7 +75,7 @@ final class TypeReadbackTargetTests: XCTestCase {
     /// アプリ側の加工なので、1回打ち直したら v104 より前と同じく受理する(停滞 → 失敗にしない)
     func testTypeStepStopsRetypingWhenTheFieldKeepsDroppingTheSameCharacters() async {
         let driver = ReadbackSequenceDriver(values: ["", "12", "12", "12", "12", "12"])
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(
             FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "a1b2"))
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
         XCTAssertEqual(driver.clears, TypeReadback.maxRetypes)
@@ -88,7 +88,7 @@ final class TypeReadbackTargetTests: XCTestCase {
     /// 収束した打ち直しには「諦めた」注記が立たない(逆向き)
     func testConvergedRetypeIsNotMarkedAbandoned() async {
         let driver = ReadbackSequenceDriver(values: ["", "hllo123", "hello123"])
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(
             FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hello123"))
         XCTAssertFalse(outcome.notes.contains(.typeRetypeAbandoned), "\(outcome.notes)")
     }
@@ -100,7 +100,7 @@ final class TypeReadbackTargetTests: XCTestCase {
         StepExecutor.typedTextOnScreenOverrideForTesting = onScreen.map { visible in { _ in (visible, fact) } }
         defer { StepExecutor.typedTextOnScreenOverrideForTesting = nil }
         let driver = ReadbackSequenceDriver(values: values)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(
             FlowStep(action: "type", locator: FlowLocator(id: "field"), text: text))
         return (outcome, driver)
     }
@@ -260,7 +260,7 @@ final class TypeReadbackTargetTests: XCTestCase {
     /// 検証したい「打った文字がそのまま入ったか」ではなく追記の話になる
     private func runTypeStep(fieldValue: String, typing: String) async -> StepOutcome {
         let driver = ReadbackStubDriver(before: "", after: fieldValue)
-        return await StepExecutor(driver: driver, isAndroid: false).execute(
+        return await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(
             FlowStep(action: "type", locator: FlowLocator(id: "field"), text: typing))
     }
 

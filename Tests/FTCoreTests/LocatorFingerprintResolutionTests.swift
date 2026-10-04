@@ -51,7 +51,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     func testUniqueFingerprintMatchHeals() async {
         let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -71,7 +71,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     func testAmbiguousFingerprintIsNotAdopted() async {
         let snap = snapshot([element(1, id: "row_a", label: "修復対象"),
                              element(2, id: "row_b", label: "修復対象")])
-        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -88,7 +88,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     /// 0件一致でも同じく不採用(型が違う=1件も一致しない)
     func testNoFingerprintMatchIsNotAdopted() async {
         let snap = snapshot([element(1, type: "cell", id: "btn_new", label: "修復対象")])
-        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         // 指紋の type は "button" だが現在の要素は "cell" = 0件一致
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
@@ -112,7 +112,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
                                 frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 0)
         let snap = snapshot([field])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "textField", label: nil, placeholder: "検索")
 
@@ -132,7 +132,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     func testSelectIsNotResolvedByFingerprint() async {
         let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
         let driver = StubDriver(snap)
-        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: driver, healingEnabled: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "select", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 
@@ -150,7 +150,7 @@ final class LocatorFingerprintResolutionTests: XCTestCase {
     /// `testUniqueFingerprintMatchHeals`(同じ画面・同じ指紋で healingEnabled=true)
     func testHealingDisabledIgnoresFingerprint() async {
         let snap = snapshot([element(1, id: "btn_new", label: "修復対象")])
-        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: false, isAndroid: false)
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
         let fp = LocatorFingerprint(type: "button", label: "修復対象", placeholder: nil)
 

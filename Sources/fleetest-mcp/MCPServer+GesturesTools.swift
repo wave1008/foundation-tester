@@ -39,7 +39,7 @@ extension MCPServer {
             }
             let step = FlowStep(action: "swipe", direction: direction.rawValue)
             let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
-            let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid, isAndroid: isAndroid,
+            let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid, isAndroid: isAndroid, tunables: RunTunables(),
                                         uiFramework: uiFrameworkHint)
             let outcome = await executor.execute(step)
             guard StepExecutor.isSuccess(outcome.status) else {
@@ -77,7 +77,7 @@ extension MCPServer {
             : "note: the scrollFrame ref was re-checked against the current tree\(scrollFrameArg.note).\n"
         let step = Self.swipeScrollFrameStep(direction: direction, scrollFrameArg: scrollFrameArg)
         let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(swipeDriver, args: args)
-        let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid, isAndroid: isAndroid,
+        let executor = StepExecutor(driver: swipeDriver, releasesScrollTouch: !isAndroid, isAndroid: isAndroid, tunables: RunTunables(),
                                     uiFramework: uiFrameworkHint)
         let outcome = await executor.execute(step)
         guard StepExecutor.isSuccess(outcome.status) else {
@@ -206,7 +206,7 @@ extension MCPServer {
         let hideDriver = try await driver(args)
         let (isAndroid, uiFramework) = await resolveExecutorHints(hideDriver, args: args)
         let executor = StepExecutor(driver: hideDriver, releasesScrollTouch: !isAndroid,
-                                    isAndroid: isAndroid, uiFramework: uiFramework)
+                                    isAndroid: isAndroid, tunables: RunTunables(), uiFramework: uiFramework)
         let outcome = await executor.execute(FlowStep(action: "hideKeyboard"))
         guard StepExecutor.isSuccess(outcome.status) else {
             let reason: String
@@ -429,7 +429,7 @@ extension MCPServer {
         let fromY = from.y
         let durationSeconds = try Self.doubleArgument(args, "durationSeconds") ?? FlowStep.defaultSwipeDurationSeconds
         try await dragDriver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
-                                  pressSeconds: 0.05, durationSeconds: durationSeconds)
+                                  pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: durationSeconds)
         // 下書きには DSL の `swipePointToPoint` として残す(座標タップと同じ扱い = 実行できる行 +
         // セレクタへ置き換えるべきことを行末コメントに)。fromRef で始めても終点は座標なので同じ形
         lastTapTargets[Self.engineKey(args)] = nil

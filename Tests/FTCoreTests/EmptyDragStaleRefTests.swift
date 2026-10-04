@@ -91,7 +91,7 @@ final class EmptyDragStaleRefTests: XCTestCase {
         let driver = EmptyDragFiresRowDriver(dragChangesScreen: true)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
-        let result = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false,
+        let result = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .compose)
             .execute(step)
 
@@ -111,7 +111,7 @@ final class EmptyDragStaleRefTests: XCTestCase {
         let driver = EmptyDragFiresRowDriver(dragChangesScreen: false)
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"))
 
-        let result = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false,
+        let result = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .compose)
             .execute(step)
 

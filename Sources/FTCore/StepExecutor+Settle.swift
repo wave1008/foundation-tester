@@ -492,7 +492,7 @@ extension StepExecutor {
     /// (両経路とも失敗したら黙って進む = `try?` と同じ扱い)
     func emptyDrag(x: Double, y: Double, toX: Double, toY: Double) async {
         try? await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY,
-                                    pressSeconds: 0.05, durationSeconds: Self.emptyDragSeconds)
+                                    pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: Self.emptyDragSeconds)
     }
 
     /// **座標ドラッグの唯一の入口**(空打ち・見切れ回復の slowDrag・ヒント跳躍の hintDrag)。

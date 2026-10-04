@@ -140,7 +140,7 @@ enum FleetRunner {
     /// 実時間に見えないよう、`printAssignment` は実績ゼロのとき推定を出さない。
     /// `FleetSplitTests.testAllUnknownDurationsSplitByCountRegardlessOfWeight` が
     /// 「値を変えても割り当てが変わらない」ことを固定する
-    private static let unknownDurationUnitWeight = 1.0
+    static let unknownDurationUnitWeight = 1.0
 
     /// `--split`: シナリオ一覧をローカルで解決 → LPT で各エントリへ割り当て → 確定した
     /// --scenario を渡して子プロセスを起動する。空バケツのエントリはディスパッチしない
@@ -174,7 +174,7 @@ enum FleetRunner {
 
         let historyRuns = max(1, lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
-        let since = Date().addingTimeInterval(-30 * 24 * 60 * 60)  // LPTOrdering.historyDays と同じ窓
+        let since = RunResultsStore.lptHistorySince()
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: since,
                                                   maxObservationsPerScenario: historyRuns)
         let durations = LPTScheduler.durations(from: records)

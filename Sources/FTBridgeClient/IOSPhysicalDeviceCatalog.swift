@@ -93,11 +93,15 @@ public enum IOSPhysicalDeviceCatalogError: Error, LocalizedError {
 
 public enum IOSPhysicalDeviceCatalog {
 
+    /// devicectl の一覧取得系(list devices / apps / processes)1回の締切(秒)。devicectl は稀に応答しない。
+    /// 既定として他の呼び手が前提にしているので変えない
+    public static let devicectlTimeoutSeconds: Double = 30
+
     /// 接続状態に関わらず devicectl が知っている実機すべて(接続中 → 名前順)
     public static func devices() throws -> [IOSPhysicalDeviceInfo] {
         // devicectl は稀に応答しないため時限化(締切ループが無効化するのを防ぐ)
         let result = try Shell.run(
-            ["xcrun", "devicectl", "list", "devices", "--json-output", "-", "-q"], timeout: 30)
+            ["xcrun", "devicectl", "list", "devices", "--json-output", "-", "-q"], timeout: devicectlTimeoutSeconds)
         guard result.status == 0,
               let data = result.output.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

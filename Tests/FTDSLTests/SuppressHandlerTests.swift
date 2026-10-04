@@ -63,7 +63,7 @@ final class SuppressHandlerTests: XCTestCase {
                           emit: @escaping (ScenarioEvent) -> Void = { _ in }) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: false,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-suppress-handler-test.json"),
                     fallbackDriver: nil, emit: emit)

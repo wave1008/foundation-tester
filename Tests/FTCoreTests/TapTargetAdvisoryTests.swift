@@ -1004,7 +1004,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// 無効な要素を叩いたら**ステップ注記に出る**(失敗にはしない)
     func testDisabledTargetSurfacesInTheStepNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
 
         XCTAssertEqual(driver.taps, 1, "注記は出すが撃つのはやめない(拒否ではない)")
@@ -1016,7 +1016,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// 有効な要素では注記を足さない
     func testEnabledTargetAddsNoNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: false)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         XCTAssertEqual(driver.taps, 1)
         XCTAssertNil(outcome.driverFallback, "余計な注記が付いた: \(outcome.driverFallback ?? "")")
@@ -1028,7 +1028,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     func testDriverNoteDoesNotSwallowTheAdvisory() async throws {
         let driver = AdvisoryProbeDriver(disabled: true,
                                          driverNote: "activate misfired: synthesized a touch instead")
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("disabled"), "advisory が消えた: \(note)")
@@ -1038,7 +1038,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// **doubleTap にも載る**(配線のテスト。定数 nil に差し替えると落ちること)
     func testDoubleTapCarriesTheAdvisory() async throws {
         let driver = AdvisoryProbeDriver(disabled: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "doubleTap", locator: FlowLocator(id: "target")))
         XCTAssertTrue(outcome.driverFallback?.contains("disabled") == true,
                       "doubleTap で注記が出ていない: \(outcome.driverFallback ?? "nil")")
@@ -1073,7 +1073,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// カレンダーで #slot_07 への ref タップが無警告の no-op だった)
     func testOffscreenCentreAdvisoryReachesTheStepNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: false, offscreen: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         XCTAssertEqual(driver.taps, 1, "警告は出すが撃つのはやめない(拒否ではない)")
         XCTAssertTrue(outcome.driverFallback?.contains("outside the visible screen") == true,
@@ -1083,7 +1083,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// **中身外しの配線**(有効な要素なので disabled 側の早期 return を通らない経路)
     func testMissedContentAdvisoryReachesTheStepNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: false, missesContent: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("#inner"), "中身外しの注記が出ていない: \(note)")
@@ -1151,7 +1151,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// 素の tap で overlayCovering が注記に出る
     func testTapCarriesOverlayCoveringAdvisory() async throws {
         let driver = FixedSnapshotDriver(overlayCoveringSnapshot())
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("#overlay"), "overlayCovering の注記が出ていない: \(note)")
@@ -1161,7 +1161,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// 素の tap で scrolledOut が注記に出る
     func testTapCarriesScrolledOutAdvisory() async throws {
         let driver = FixedSnapshotDriver(scrolledOutSnapshot())
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("#scroller"), "scrolledOut の注記が出ていない: \(note)")
@@ -1171,7 +1171,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// 長押し(hold>0 = press(ref:) 経路)でも新チェーンが出る
     func testLongPressCarriesOverlayCoveringAdvisory() async throws {
         let driver = FixedSnapshotDriver(overlayCoveringSnapshot())
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target"), duration: 0.5))
         XCTAssertEqual(driver.presses, 1, "長押しは press(ref:) 経路を通るはず")
         let note = outcome.driverFallback ?? ""
@@ -1181,7 +1181,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// doubleTap(advisory() 経由)でも scrolledOut が出る
     func testDoubleTapCarriesScrolledOutAdvisory() async throws {
         let driver = FixedSnapshotDriver(scrolledOutSnapshot())
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "doubleTap", locator: FlowLocator(id: "target")))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("#scroller"), "doubleTap で scrolledOut の注記が出ていない: \(note)")
@@ -1191,7 +1191,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// raw frame の中心を前提にした遮蔽の名指しは嘘になる)
     func testVisibleTapRectPathDoesNotCarryTheChain() async throws {
         let driver = FixedSnapshotDriver(clippedStraddleSnapshot())
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("tapped the visible part"), "寄せた注記が出ていない: \(note)")
@@ -1206,7 +1206,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// (E2E-CMP の `#field_single` が witness)では外れる。詳細は StepExecutor.readbackTarget
     func testTypeEchoesExistingValueInTheNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: false, existingValue: "東京タワー")
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "レストラン"))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("東京タワー"), note)
@@ -1217,7 +1217,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// secureTextField: 既存値の中身は出さず、あることだけを言う
     func testTypeMasksExistingValueForSecureField() async throws {
         let driver = AdvisoryProbeDriver(disabled: false, existingValue: "s3cr3t", secure: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "more"))
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("already holds a value"), note)
@@ -1227,7 +1227,7 @@ final class TapAdvisoryWiringTests: XCTestCase {
     /// 空値なら注記を足さない(毎回付くと意味を失う)
     func testTypeWithNoExistingValueAddsNoNote() async throws {
         let driver = AdvisoryProbeDriver(disabled: false)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "type", locator: FlowLocator(id: "target"), text: "hello"))
         XCTAssertNil(outcome.driverFallback, "空値なのに注記が付いた: \(outcome.driverFallback ?? "")")
     }
@@ -1394,7 +1394,7 @@ final class TapResolvedTargetNamingTests: XCTestCase {
     func testNamesTheResolvedTargetWhenAnAdvisoryFires() async throws {
         let driver = TapDriver(elements: [field(ref: 8, id: "txtMailAddress",
                                                 type: "other", enabled: false)])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "txtMailAddress"), timeout: 1)
 
         let note = await executor.execute(step).driverFallback ?? ""
@@ -1413,7 +1413,7 @@ final class TapResolvedTargetNamingTests: XCTestCase {
         // ここではブリッジ申告のキーボード矩形を使って確実に2本出す)
         let driver = TapDriver(elements: [target],
                                keyboardFrame: FTRect(x: 0, y: 380, width: 1080, height: 2020))
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "txtMailAddress"), timeout: 1)
 
         let note = await executor.execute(step).driverFallback ?? ""
@@ -1427,7 +1427,7 @@ final class TapResolvedTargetNamingTests: XCTestCase {
     func testStaysSilentWithoutAnAdvisory() async throws {
         let driver = TapDriver(elements: [field(ref: 9, id: "textInputEditText",
                                                 type: "textField", enabled: true)])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "textInputEditText"), timeout: 1)
 
         let note = await executor.execute(step).driverFallback ?? ""

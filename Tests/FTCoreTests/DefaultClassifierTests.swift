@@ -109,7 +109,7 @@ final class DefaultClassifierTests: XCTestCase {
 
     private func imageIs(_ expected: String, screenIsCircle: Bool, projectRoot: URL?) async -> StepOutcome {
         let executor = StepExecutor(driver: ImageDriver(screenPNG: Self.iconPNG(circle: screenIsCircle, shift: 2)),
-                                    isAndroid: false)
+                                    isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = projectRoot
         return await executor.execute(FlowStep(assert: "imageIs", locator: FlowLocator(id: "icon"),
                                                expected: expected, timeout: 0))

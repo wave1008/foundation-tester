@@ -114,12 +114,6 @@ struct RunScenario: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run", abstract: "Run a single scenario")
 
-    /// in-app ブリッジへの起動時プローブ(注入先アプリの判別)の締切。秒。
-    /// **待ちは判断の正しさと引き換え**: 短いと冷えた実機ブリッジを「無応答」と誤読し、
-    /// 長いと suspend 中のアプリ(TCP は受理して答えない)でその秒数を丸ごと払う。
-    /// 10 は ユーザー指示(いずれ実行プロファイルで指定できるようにする)
-    static let injectedAppProbeTimeout: TimeInterval = 10
-
     @Option(help: "Scenario ID (Class.method)")
     var scenario: String
 
@@ -192,9 +186,19 @@ struct RunScenario: AsyncParsableCommand {
             help: "Root of the test project (where state such as locator fingerprints is stored; defaults to the current directory)")
     var projectDir: String?
 
-    @Option(name: .customLong("default-timeout"),
-            help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5)")
-    var defaultTimeout: Double?
+    @Option(name: .customLong("tunables"),
+            help: "JSON of RunTunables (set by ScenarioHost; omitted = defaults)")
+    var tunables: String?
+
+    /// `--tunables` の復号。**失敗は既定へ倒さず止める**(環境で正解が変わる値を黙って既定に戻さない)
+    static func decodeTunables(_ json: String?) throws -> RunTunables {
+        guard let json else { return RunTunables() }
+        do {
+            return try JSONDecoder().decode(RunTunables.self, from: Data(json.utf8))
+        } catch {
+            throw ValidationError("--tunables is not valid RunTunables JSON: \(error.localizedDescription)")
+        }
+    }
 
     @Flag(name: .customLong("host-install"),
           help: "Route installApp() through the orchestrator via a stdin/stdout RPC instead of installing directly (set by ScenarioHost when an install handler is configured)")
@@ -239,6 +243,8 @@ struct RunScenario: AsyncParsableCommand {
     var deviceTeardownOnly = false
 
     func run() async throws {
+        let runTunables = try Self.decodeTunables(tunables)
+        FTSync.commandTimeout = runTunables.commandTimeout
         // **stdin の1行目はデバイスセッション**(DeviceSessionHandoff.swift)。制御コマンドの読み手
         // スレッドや他の stdin 読みより先に、ここで読み切る
         var deviceSession: DeviceSessionHandoff?
@@ -342,13 +348,13 @@ struct RunScenario: AsyncParsableCommand {
                     // relaunch で bridge を張り直す)、別アプリ(Preferences 等)なら mismatch=XCUITest
                     // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
                     // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
-                    // 締切は injectedAppProbeTimeout(**短くしない**。理由はその宣言)。
+                    // 締切は tunables.injectedAppProbeTimeout(**短くしない**。理由はその宣言)。
                     // **uiFramework をこの締切に預けない**のは下の問い合わせ参照(外れても判断は変わらない)
-                    let probe = BridgeClient(port: port, timeoutSeconds: Self.injectedAppProbeTimeout,
+                    let probe = BridgeClient(port: port, timeoutSeconds: runTunables.injectedAppProbeTimeout,
                                              host: bridgeHost ?? BridgeEndpoint.loopbackHost,
                                              physicalUDID: physical ? udid : nil,
                                              simulatorUDID: physical ? nil : udid)
-                    let probeStatus = try? await probe.status(timeout: Self.injectedAppProbeTimeout)
+                    let probeStatus = try? await probe.status(timeout: runTunables.injectedAppProbeTimeout)
                     // 静的な材料を先に見る(デバイスの応答が要らない = プローブの締切に判断を預けない)。
                     // 自己申告は**対象アプリ自身の申告のときだけ**使う —— 注入先が別アプリなら
                     // bridgeReport(_:about:) が捨てるので、下の別アプリ分岐で判定し直す必要は無い
@@ -534,6 +540,7 @@ struct RunScenario: AsyncParsableCommand {
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: appBundleID,
                                scenarioID: scenarioID, scenarioTitle: scenarioTitle,
                                delegate: delegate, healingEnabled: heal,
+                               tunables: runTunables,
                                fmTextOcclusionCheckEnabled: !noFMTextOcclusionCheck,
                                screenLooksLikeEnabled: !noScreenLooksLike,
                                containerInference: !noContainerInference,
@@ -543,7 +550,6 @@ struct RunScenario: AsyncParsableCommand {
                                dryRun: dryRun,
                                fingerprintCacheURL: fingerprintCacheURL,
                                selectorInventoryURL: selectorInventoryURL,
-                               defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                typeDriverGestures: typeDriverGestures,

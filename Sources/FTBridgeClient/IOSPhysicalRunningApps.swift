@@ -27,9 +27,9 @@ public enum IOSPhysicalRunningApps {
     /// タイムアウトは投げる**(呼び手 LiveSessionFollower が back-off の起点にするため)。
     /// JSON が読めても該当プロセスが1つも無いのは正常系(空配列を返す。ホーム画面等)。
     /// **apps は呼び手が控えを渡す**(インストール済みの一覧は滅多に変わらないので毎回払わない)。
-    /// **timeout の既定 30 は変えない**(他の呼び手はこの秒数を前提にしている)
+    /// **timeout の既定(`IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds`)は変えない**(他の呼び手はこの秒数を前提にしている)
     public static func running(
-        udid: String, apps: [IOSPhysicalAppCatalog.App], timeout: Double = 30
+        udid: String, apps: [IOSPhysicalAppCatalog.App], timeout: Double = IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds
     ) throws -> [String] {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-devicectl-processes-\(UUID().uuidString).json")

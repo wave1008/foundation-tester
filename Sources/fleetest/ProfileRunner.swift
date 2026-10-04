@@ -830,7 +830,7 @@ private func warnIfWebViewVersionsDiffer(serials: [String], log: (String) -> Voi
     guard serials.count > 1 else { return }
     let versions = AndroidWebViewVersions.collect(serials: serials) { serial, args in
         guard let adb = try? AndroidDriver.findADB() else { return nil }
-        return try? Shell.run([adb, "-s", serial] + args, timeout: 10).outputIfSucceeded
+        return try? Shell.run([adb, "-s", serial] + args, timeout: AndroidDeviceCatalog.adbTimeoutSeconds).outputIfSucceeded
     }
     if let warning = AndroidWebViewVersions.mixedVersionWarning(versions) { log(warning) }
 }

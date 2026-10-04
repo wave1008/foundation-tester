@@ -6,6 +6,8 @@ import FTCore
 import Foundation
 
 public enum RunLease {
+    /// lease の mtime がこの秒数より古いと失効扱い[秒]。ハートビート(`SupplyLeaseHolder.defaultHeartbeatSeconds` = 5)の
+    /// 3回分。`RecordingLease` も同じ周期で打つので共有する
     public static let stalenessSeconds: TimeInterval = 15
 
     /// key: iOS=シミュレータ UDID / Android=adb serial

@@ -17,10 +17,29 @@ final class InputInjector {
 
     private InputInjector() {}
 
+    /** tap の DOWN から UP までの間隔(ms) */
+    private static final long TAP_UP_DELAY_MS = 20;
+    /** doubleTap の2回のタップの間隔(ms)。Android は 60ms(xcuitest は接触 0.08s + 2本目まで 0.25s、in-app は 0.08s。OS ごとの合成方式に合わせた値) */
+    private static final long DOUBLE_TAP_GAP_MS = 60;
+    /** SET_TEXT 受理後も未反映が続くとき、IME を張り直すまでの待ち(ms)。firstFireAt / lastClickAt の両方からこれだけ経ってから */
+    private static final long REINJECT_AFTER_MS = 700;
+    /** フォーカスが立たないとき ACTION_CLICK を撃ち直す最短間隔(ms) */
+    private static final long CLICK_RETRY_INTERVAL_MS = 200;
+    /** 入力確認ループの1周ごとの休み(ms) */
+    private static final long RETRY_POLL_MS = 20;
+    /** reconnectInput で BACK を送った後、IME 折り畳みのレイアウト移動が済むのを待つ時間(ms) */
+    private static final long IME_COLLAPSE_SETTLE_MS = 150;
+    /** setTextAppending(フォーカス中への追記)の確認期限(ms) */
+    private static final long SET_TEXT_APPENDING_DEADLINE_MS = 2000;
+    /** setTextAppending のループ内で根ノードを待つ上限(ms) */
+    private static final long FOCUS_ROOT_WAIT_MS = 500;
+    /** pressImeEnter が根ノードを待つ上限(ms) */
+    private static final long IME_ENTER_ROOT_WAIT_MS = 2000;
+
     static void tap(UiAutomation ua, double x, double y) {
         long downTime = SystemClock.uptimeMillis();
         inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, x, y));
-        inject(ua, event(downTime, SystemClock.uptimeMillis() + 20, MotionEvent.ACTION_UP, x, y));
+        inject(ua, event(downTime, SystemClock.uptimeMillis() + TAP_UP_DELAY_MS, MotionEvent.ACTION_UP, x, y));
     }
 
     static void press(UiAutomation ua, double x, double y, double durationSeconds) {
@@ -93,7 +112,7 @@ final class InputInjector {
             double t = (double) i / steps;
             inject(ua, event(downTime, downTime + (long) (t * durationMs), MotionEvent.ACTION_MOVE,
                     fromX + (toX - fromX) * t, fromY + (toY - fromY) * t));
-            SystemClock.sleep(16);
+            SystemClock.sleep(GESTURE_TICK_MS);
         }
         long upTime = syntheticUpTime ? downTime + durationMs : SystemClock.uptimeMillis();
         inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, toX, toY));
@@ -166,8 +185,8 @@ final class InputInjector {
                     // (BACK。IME window が見えているときだけ = 画面を戻さない)最新 bounds の
                     // 中心を実タップし、セッションを張り直す。ACTION_CLICK では張り直らない(実測)
                     if (focused && firstFireAt != 0
-                            && SystemClock.uptimeMillis() - firstFireAt >= 700
-                            && SystemClock.uptimeMillis() - lastClickAt >= 700) {
+                            && SystemClock.uptimeMillis() - firstFireAt >= REINJECT_AFTER_MS
+                            && SystemClock.uptimeMillis() - lastClickAt >= REINJECT_AFTER_MS) {
                         reconnectInput(ua, target);
                         lastClickAt = SystemClock.uptimeMillis();
                         firstFireAt = 0;
@@ -191,7 +210,7 @@ final class InputInjector {
                         } else {
                             lastState = "ACTION_SET_TEXT refused (the input connection may not be established yet)";
                         }
-                    } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
+                    } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= CLICK_RETRY_INTERVAL_MS) {
                         // フォーカスが立たない(タップがキーボードに吸われた等)。ACTION_CLICK は
                         // ノード直アクションなので座標ズレと無縁にフォーカスを要求できる
                         if (!target.isVisibleToUser()) {
@@ -216,7 +235,7 @@ final class InputInjector {
                         + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted)
                         + "; giving up rather than typing into the wrong field)");
             }
-            SystemClock.sleep(20);
+            SystemClock.sleep(RETRY_POLL_MS);
         }
     }
 
@@ -232,7 +251,7 @@ final class InputInjector {
                     KeyEvent.KEYCODE_BACK, 0));
             injectKey(ua, new KeyEvent(downTime, SystemClock.uptimeMillis(),
                     KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
-            SystemClock.sleep(150);
+            SystemClock.sleep(IME_COLLAPSE_SETTLE_MS);
         }
         target.refresh();   // BACK 直後は IME 折り畳みでレイアウトが動く → bounds を取り直す
         Rect fresh = new Rect();
@@ -498,8 +517,8 @@ final class InputInjector {
                     masked = target.isPassword();
                     boolean focused = target.isFocused();
                     if (focused && firstFireAt != 0
-                            && SystemClock.uptimeMillis() - firstFireAt >= 700
-                            && SystemClock.uptimeMillis() - lastClickAt >= 700) {
+                            && SystemClock.uptimeMillis() - firstFireAt >= REINJECT_AFTER_MS
+                            && SystemClock.uptimeMillis() - lastClickAt >= REINJECT_AFTER_MS) {
                         reconnectInput(ua, target);   // setTextAppendingAt と同じ張り直し
                         lastClickAt = SystemClock.uptimeMillis();
                         firstFireAt = 0;
@@ -517,7 +536,7 @@ final class InputInjector {
                         } else {
                             lastState = "ACTION_SET_TEXT refused (the input connection may not be established yet)";
                         }
-                    } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
+                    } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= CLICK_RETRY_INTERVAL_MS) {
                         if (!target.isVisibleToUser()) {
                             target.performAction(AccessibilityNodeInfo.AccessibilityAction
                                     .ACTION_SHOW_ON_SCREEN.getId(), null);
@@ -538,7 +557,7 @@ final class InputInjector {
                         + timeoutMs + "ms waited; "
                         + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted) + ")");
             }
-            SystemClock.sleep(20);
+            SystemClock.sleep(RETRY_POLL_MS);
         }
     }
 
@@ -564,7 +583,7 @@ final class InputInjector {
      * (そちらのコメント参照。読みから作り直すとマスク文字列の書き込み・二重追記になる)。
      */
     static void setTextAppending(UiAutomation ua, String text) {
-        long deadline = SystemClock.uptimeMillis() + 2000;
+        long deadline = SystemClock.uptimeMillis() + SET_TEXT_APPENDING_DEADLINE_MS;
         String lastState = "no-input-focus: nothing has input focus (tap the field by ref first)";
         String combined = null;
         String before = null;
@@ -574,7 +593,7 @@ final class InputInjector {
         int accepted = 0;
         while (true) {
             try {
-                AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 500);
+                AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, FOCUS_ROOT_WAIT_MS);
                 // 入れ物へ倒れた findFocus から combined を作ると空読み + 拒否で 2 秒待って 500
                 // (focusedEditable の doc)
                 AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
@@ -617,7 +636,7 @@ final class InputInjector {
                 throw new BridgeRouter.BridgeException(500, lastState + " (2000ms waited; "
                         + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted) + ")");
             }
-            SystemClock.sleep(20);
+            SystemClock.sleep(RETRY_POLL_MS);
         }
     }
 
@@ -697,7 +716,7 @@ final class InputInjector {
                 throw new BridgeRouter.BridgeException(409, lastState + " (" + timeoutMs + "ms waited; "
                         + failureFacts(ua, lastRead, masked, lastRefreshOK, accepted) + ")");
             }
-            SystemClock.sleep(20);
+            SystemClock.sleep(RETRY_POLL_MS);
         }
     }
 
@@ -709,7 +728,7 @@ final class InputInjector {
      * (この関数自体は SDK_INT を見ない)。
      */
     static void pressImeEnter(UiAutomation ua) {
-        AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 2000);
+        AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, IME_ENTER_ROOT_WAIT_MS);
         // 入れ物へ倒れた findFocus に ACTION_IME_ENTER を撃つと必ず失敗する(focusedEditable の doc)
         AccessibilityNodeInfo focus = root == null ? null : focusedEditable(root);
         if (focus == null) {
@@ -731,7 +750,7 @@ final class InputInjector {
      */
     static void doubleTap(UiAutomation ua, double x, double y) {
         tap(ua, x, y);
-        SystemClock.sleep(60);
+        SystemClock.sleep(DOUBLE_TAP_GAP_MS);
         tap(ua, x, y);
     }
 

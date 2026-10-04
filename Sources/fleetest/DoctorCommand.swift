@@ -344,7 +344,7 @@ struct Doctor: AsyncParsableCommand {
         // 画面ロックで死んだ実機のトンネルが採番範囲のポートを握ったまま、doctor は緑だった)
         var silentPorts: [UInt16] = []
         for port in BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31) {
-            guard let status = BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
+            guard let status = BridgeLauncher.probeForeignBridge(port: port, timeout: BridgeLauncher.quickProbeTimeoutSeconds)
             else { silentPorts.append(port); continue }
             let pidPath = stateDir.appendingPathComponent("bridge-\(port).pid")
             let inAppPath = InAppBridgeState.url(stateDir: stateDir, port: port)

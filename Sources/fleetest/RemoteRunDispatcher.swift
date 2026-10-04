@@ -1330,11 +1330,11 @@ struct RemoteRunDispatcher {
         return output.isEmpty ? nil : output
     }
 
-    /// 全 ssh 共通の基底引数。ConnectTimeout が無いと到達不能ホストで TCP 既定(75秒超)固まる。
+    /// 全 ssh 共通の基底引数。
     /// キープアライブ(`SSHOptions.keepAliveArgs`)は接続**後**に黙って死んだ回線を切るためのもので
     /// ConnectTimeout(接続そのものの上限)とは効く場面が別 — 両方要る
     private var sshBase: [String] {
-        ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
+        ["ssh"] + SSHOptions.batchConnectArgs + SSHOptions.keepAliveArgs
     }
 
     /// リモート実行専用(§16.1): `-tt` で疑似 TTY を強制割り当てると、ローカル ssh が

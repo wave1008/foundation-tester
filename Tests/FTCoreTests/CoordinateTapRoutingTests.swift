@@ -17,7 +17,7 @@ final class CoordinateTapRoutingTests: XCTestCase {
         let primary = CoordinateTapStub(elements: [menuItem])
         let xcuitest = CoordinateTapStub(elements: [])
         let executor = StepExecutor(driver: primary, typeDriver: withTypeDriver ? xcuitest : nil,
-                                    isAndroid: false, uiFramework: uiFramework)
+                                    isAndroid: false, tunables: RunTunables(), uiFramework: uiFramework)
         let outcome = await executor.execute(FlowStep(action: "tap", x: x, y: y))
         return (outcome, primary, xcuitest)
     }

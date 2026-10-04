@@ -752,7 +752,7 @@ extension StepExecutor {
             scrollSearchNote = recordedScrollSearchNote(result)
             guard result.found else { return failed(.notFound, Self.scrollNotFoundMessage(step, result)) }
         }
-        var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        var deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -788,7 +788,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -864,13 +864,13 @@ extension StepExecutor {
                 }
                 // launch storyboard(一様色)を実 occlusion と誤らないよう、このステップの
                 // 予算をもう一度だけ払って待ち直す。延長幅はこの deadline を作った式の再利用
-                // (`step.timeout ?? FlowStep.defaultWaitSeconds`)—— 新しい定数は置かない
+                // (`step.timeout ?? tunables.defaultTimeout`)—— 新しい定数は置かない
                 if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil,
                    SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
                                                 lastSnapshotMs: lastSnapshotMs,
                                                 commandTimeoutMs: commandTimeoutMs) {
                     firstFrameExtended = true
-                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
                     noteCodesThisStep.insert(.firstFramePending)
                     continue
                 }
@@ -878,12 +878,12 @@ extension StepExecutor {
                 // それがガード自身の所要(FM 待ち)のせいで初回ポーリングを1周もできなかったのと
                 // 区別が付かない。timeout==0 は「初回1回だけ」の意味を壊さないので延長しない
                 if !guardCostExtended, guardEvalCount == 1, lastOcclusion != nil,
-                   (step.timeout ?? FlowStep.defaultWaitSeconds) > 0,
+                   (step.timeout ?? tunables.defaultTimeout) > 0,
                    SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
                                                 lastSnapshotMs: lastSnapshotMs,
                                                 commandTimeoutMs: commandTimeoutMs) {
                     guardCostExtended = true
-                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
                     // 撮り直しが目的なので直近スクショの再利用を切る(sleep を経ないため下の
                     // `cachedScreenshot = nil` を通らない。切らないと同じ絵に同じ verdict が出る)
                     cachedScreenshot = nil
@@ -907,7 +907,7 @@ extension StepExecutor {
             if let fallback = stale.fallback { return .passedViaFallback(fallback) }
             return .passed
         }
-        return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
+        return failed(.notFound, "element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? tunables.defaultTimeout))s)"
                        + Self.truncationHint(lastSnapshot)
                        + Self.keyboardResizedHint(lastSnapshot)
                        + tapDiagnosisHint(lastSnapshot?.elements)
@@ -921,7 +921,7 @@ extension StepExecutor {
         guard let expected = step.expected else {
             return .skipped("expected was not specified")
         }
-        var deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        var deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -955,7 +955,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1042,24 +1042,24 @@ extension StepExecutor {
                 }
                 // launch storyboard(一様色)を実 occlusion と誤らないよう、このステップの
                 // 予算をもう一度だけ払って待ち直す。延長幅はこの deadline を作った式の再利用
-                // (`step.timeout ?? FlowStep.defaultWaitSeconds`)—— 新しい定数は置かない
+                // (`step.timeout ?? tunables.defaultTimeout`)—— 新しい定数は置かない
                 if !firstFrameExtended, firstFrameBlankObserved, lastOcclusion != nil,
                    SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
                                                 lastSnapshotMs: lastSnapshotMs,
                                                 commandTimeoutMs: commandTimeoutMs) {
                     firstFrameExtended = true
-                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
                     noteCodesThisStep.insert(.firstFramePending)
                     continue
                 }
                 // [F22] 詳細は executeAssertExists の同名の分岐コメント参照(exists と同契約)
                 if !guardCostExtended, guardEvalCount == 1, lastOcclusion != nil,
-                   (step.timeout ?? FlowStep.defaultWaitSeconds) > 0,
+                   (step.timeout ?? tunables.defaultTimeout) > 0,
                    SlowSnapshotBudget.mayRetake(stepElapsedMs: Self.ms(clock.now - stepStart),
                                                 lastSnapshotMs: lastSnapshotMs,
                                                 commandTimeoutMs: commandTimeoutMs) {
                     guardCostExtended = true
-                    deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+                    deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
                     // 撮り直しが目的なので直近スクショの再利用を切る(sleep を経ないため下の
                     // `cachedScreenshot = nil` を通らない。切らないと同じ絵に同じ verdict が出る)
                     cachedScreenshot = nil
@@ -1156,7 +1156,7 @@ extension StepExecutor {
         }
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -1174,7 +1174,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1246,7 +1246,7 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
+        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? tunables.defaultTimeout))s)"
                        + tapDiagnosisHint(lastElements))
     }
 
@@ -1261,7 +1261,7 @@ extension StepExecutor {
            step.expected == nil {
             return .skipped("expected was not specified")
         }
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -1288,7 +1288,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1382,7 +1382,7 @@ extension StepExecutor {
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         let wantEnabled = assert == "enabled"
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -1400,7 +1400,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1451,7 +1451,7 @@ extension StepExecutor {
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         let wantShown = assert == "keyboardShown"
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -1467,7 +1467,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1501,8 +1501,8 @@ extension StepExecutor {
             return .failed("cannot determine the keyboard state (the bridge may be outdated)")
         }
         return .failed(wantShown
-            ? "keyboard is not shown (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)"
-            : "keyboard is still shown (timeout \(FTSeconds.format(step.timeout ?? FlowStep.defaultWaitSeconds))s)")
+            ? "keyboard is not shown (timeout \(FTSeconds.format(step.timeout ?? tunables.defaultTimeout))s)"
+            : "keyboard is still shown (timeout \(FTSeconds.format(step.timeout ?? tunables.defaultTimeout))s)")
     }
 
     private func executeAssertChecked(
@@ -1518,7 +1518,7 @@ extension StepExecutor {
         let classifier = await loadedVisionClassifier(CheckStateClassifier.name)
         // 優先はステップ指定(DSL の `prefer:`)> 実行プロファイル
         let prefersClassifier = step.preferCheckStateClassifier ?? preferCheckStateClassifier
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -1536,7 +1536,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1615,7 +1615,7 @@ extension StepExecutor {
                 + " (labels: \(classifier.labels.map(VisionClassifier.shortLabel).sorted().joined(separator: ", ")))")
         }
         let clock = ContinuousClock()
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         var backoff = PollBackoff()
         var found = false
         var lastClassification: VisionClassifier.Classification?
@@ -1758,7 +1758,7 @@ extension StepExecutor {
         // `||` は**候補集合の和**(Shirates 準拠)。全節の候補を合わせ、同じ要素は1度だけ数える。
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
         let chain = [locator] + (step.fallbacks ?? [])
-        let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+        let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
         let stepStart = clock.now
         var freshRetry = AssertFreshRetry(bypassOnRepoll: repollBypassesCache)
         var lastSnapshotMs = 0
@@ -1778,7 +1778,7 @@ extension StepExecutor {
             let snapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += snapshotMs
             lastSnapshotMs = snapshotMs
-            if Double(snapshotMs) / 1000 > (step.timeout ?? FlowStep.defaultWaitSeconds) {
+            if Double(snapshotMs) / 1000 > (step.timeout ?? tunables.defaultTimeout) {
                 noteCodesThisStep.insert(.slowSnapshot)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)

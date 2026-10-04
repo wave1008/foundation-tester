@@ -51,7 +51,7 @@ final class GestureSettleTests: XCTestCase {
     func testScrollWithAScrollFrameIsAimedAtTheSettledFrame() async throws {
         try XCTSkipUnless(StepExecutor.coordinateScrollEnabled, "FT_SCROLL_TARGET=legacy では枠を使わない")
         let driver = PathDriver(trees: sliding)
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         var step = FlowStep(action: "scroll", direction: "up", maxSwipes: 1)
         step.scrollFrame = FlowLocator(id: "list_rows")
 
@@ -66,7 +66,7 @@ final class GestureSettleTests: XCTestCase {
     /// swipe が枠を使うのはキーボードが出ているときだけ(避けるため)。そのときも静止した木から取る
     func testSwipeWithAKeyboardWaitsForTheScreenToSettle() async throws {
         let driver = PathDriver(trees: sliding, keyboard: FTRect(x: 0, y: 600, width: 400, height: 200))
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
@@ -77,7 +77,7 @@ final class GestureSettleTests: XCTestCase {
 
     func testStillScreenDoesNotNote() async throws {
         let driver = PathDriver(trees: [[list(x: 0)]])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         var step = FlowStep(action: "scroll", direction: "up", maxSwipes: 1)
         step.scrollFrame = FlowLocator(id: "list_rows")
 

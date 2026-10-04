@@ -129,6 +129,11 @@ final class SnapshotBuilder {
 
     private SnapshotBuilder() {}
 
+    /** waitForRoot のポーリング間隔(ms) */
+    private static final long ROOT_POLL_MS = 50;
+    /** build が根ノードを待つ上限(ms) */
+    private static final long BUILD_ROOT_WAIT_MS = 2000;
+
     /** アクティブウィンドウの root。a11y 接続直後は null のことがあるためリトライする */
     static AccessibilityNodeInfo waitForRoot(UiAutomation ua, long timeoutMs) {
         long deadline = SystemClock.uptimeMillis() + timeoutMs;
@@ -136,7 +141,7 @@ final class SnapshotBuilder {
             AccessibilityNodeInfo root = ua.getRootInActiveWindow();
             if (root != null) return root;
             if (SystemClock.uptimeMillis() >= deadline) return null;
-            SystemClock.sleep(50);
+            SystemClock.sleep(ROOT_POLL_MS);
         }
     }
 
@@ -182,7 +187,7 @@ final class SnapshotBuilder {
      *  context: displayBounds の WindowManager 取得用(null 可・その場合はウィンドウの根へ落ちる) */
     static Result build(UiAutomation ua, Context context, boolean forceRefresh, int maxElements)
             throws JSONException {
-        AccessibilityNodeInfo root = waitForRoot(ua, 2000);
+        AccessibilityNodeInfo root = waitForRoot(ua, BUILD_ROOT_WAIT_MS);
         if (root == null) {
             throw new IllegalStateException("cannot read the UI tree of the active window");
         }

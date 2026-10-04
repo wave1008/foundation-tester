@@ -66,7 +66,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     /// 申告が続けば読み続けずに終わる(猶予の後の申告 + 確認の読み)
     func testStopsAsSoonAsTheDriverReportsTheEdge() async throws {
         let driver = EdgeReportingDriver(edgeAfter: 2)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertNil(outcome.driverFallback,
@@ -80,7 +80,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     /// ここが無いと「端に着いた」と言われた時点で終わり、続きを見ない
     func testKeepsGoingWhenTheTreeChangedAfterTheReportedEdge() async throws {
         let driver = EdgeReportingDriver(edgeAfter: 2, growsAfterEdge: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertGreaterThan(driver.snapshotCount, 4,
@@ -97,7 +97,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     /// 飛んだ直後の申告で確定すると、最初の窓の末尾より先を送らない(RN の scrollToRightEdge で実測)
     func testDoesNotSettleOnTheFirstClaimWhenTheListGrowsOutsideTheWindow() async throws {
         let driver = ScriptedEdgeDriver(moves: [true, false, true, false, false, false])
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertNil(outcome.driverFallback, "端と認識できていない: \(outcome.driverFallback ?? "-")")
@@ -110,7 +110,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     func testUnchangedRuleAlsoWaitsForTheGraceWhenTheListGrowsOutsideTheWindow() async throws {
         let driver = ScriptedEdgeDriver(moves: [true, false, true, false, false, false],
                                         claims: false, hints: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertNil(outcome.driverFallback, "端と認識できていない: \(outcome.driverFallback ?? "-")")
@@ -124,7 +124,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     func testCountsTheDriversMoveWhenTheLayoutLooksTheSameAfterEachJump() async throws {
         let driver = ScriptedEdgeDriver(moves: [true, false, true, false, true, false, false],
                                         hints: true, sameLayout: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertNil(outcome.driverFallback, "端と認識できていない: \(outcome.driverFallback ?? "-")")
@@ -135,7 +135,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
     /// 本当の端では**猶予1回 + 空振り1回**で終わる(申告を待ち続けて上限まで振らない)
     func testATrueEdgeCostsOneExtraSwipe() async throws {
         let driver = ScriptedEdgeDriver(moves: [true, false, false, false, false, false])
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertNil(outcome.driverFallback, "端と認識できていない: \(outcome.driverFallback ?? "-")")
@@ -152,7 +152,7 @@ final class EdgeReportedByDriverTests: XCTestCase {
         let driver = ScriptedEdgeDriver(moves: [false, false, false])
         let clock = ContinuousClock()
         let start = clock.now
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(edgeStep())
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(edgeStep())
         let elapsed = clock.now - start
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }

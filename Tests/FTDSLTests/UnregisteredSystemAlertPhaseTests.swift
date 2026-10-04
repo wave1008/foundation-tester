@@ -73,7 +73,7 @@ final class UnregisteredSystemAlertPhaseTests: XCTestCase {
         let fallback = AlertingFallback()
         let core = FTDriveCore(driver: primary, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(),
                                fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-unregistered-alert-phase-test.json"),

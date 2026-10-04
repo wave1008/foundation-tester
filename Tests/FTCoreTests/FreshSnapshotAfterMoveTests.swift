@@ -17,7 +17,7 @@ final class FreshSnapshotAfterMoveTests: XCTestCase {
         let log = CallLog()
         let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [[button()]])
         driver.bypassSupported = true
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         _ = await executor.execute(FlowStep(action: "scroll", direction: "up", maxSwipes: 1))
         let afterScroll = driver.bypassedSnapshotCount
@@ -37,7 +37,7 @@ final class FreshSnapshotAfterMoveTests: XCTestCase {
         let log = CallLog()
         let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [[button()]])
         driver.bypassSupported = true
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "cb_agree")))
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "cb_agree")))
@@ -49,7 +49,7 @@ final class FreshSnapshotAfterMoveTests: XCTestCase {
     func testDriverWithoutBypassIsUnaffected() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [[button()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(FlowStep(action: "scroll", direction: "up", maxSwipes: 1))
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "cb_agree")))

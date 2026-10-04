@@ -93,10 +93,9 @@ final class ExistImageDSLTests: XCTestCase {
     private func makeCore(driver: AppDriver, root: URL, defaultTimeout: Double) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0040", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(defaultTimeout: defaultTimeout),
                     visionClassifierProjectRoot: root, dryRun: false,
                     fingerprintCacheURL: root.appendingPathComponent("fp.json"),
-                    defaultTimeout: defaultTimeout,
                     emit: { _ in })
     }
 

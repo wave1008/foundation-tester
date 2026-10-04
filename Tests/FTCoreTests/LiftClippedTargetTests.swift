@@ -101,7 +101,7 @@ final class LiftClippedTargetTests: XCTestCase {
             scene(rowFrame: heightGrownStillCovered),
             scene(rowFrame: liftedClear),
         ])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_s_B1")))
 
@@ -119,7 +119,7 @@ final class LiftClippedTargetTests: XCTestCase {
     func testGivesUpWhenNothingMoves() async throws {
         let driver = DragCountedDriver(screen: screen,
                                        statesByDragCount: [scene(rowFrame: clippedByTop)])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_s_B1")))
 

@@ -33,7 +33,7 @@ final class NestedSceneRecordingTests: XCTestCase {
     private func makeCore(emit: @escaping (ScenarioEvent) -> Void = { _ in }) -> FTDriveCore {
         FTDriveCore(driver: StubDriver(), platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: true,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: true,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-nested-scene-test.json"),
                     emit: emit)

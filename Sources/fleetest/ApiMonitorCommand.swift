@@ -40,6 +40,9 @@ import ImageIO
 import UniformTypeIdentifiers
 
 struct ApiMonitorCommand: AsyncParsableCommand {
+    /// 配信フレーム/スクリーンショットの長辺の既定(px)。`api device-stream` も同じ値を使う
+    static let defaultMaxWidth = 480
+
     static let configuration = CommandConfiguration(
         commandName: "monitor",
         abstract: "Poll every device in the run profiles (or, with --profile, only that profile's"
@@ -54,7 +57,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     var interval: Double = 2.0
 
     @Option(name: .customLong("max-width"), help: "Maximum size of the screenshot long edge in px (default 480)")
-    var maxWidth: Int = 480
+    var maxWidth: Int = ApiMonitorCommand.defaultMaxWidth
 
     @Option(help: "Run profile name (when given, only that profile's enabled devices are monitored; otherwise the devices of every run profile)")
     var profile: String?

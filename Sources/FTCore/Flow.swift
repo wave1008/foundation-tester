@@ -76,9 +76,8 @@ public struct FlowStep: Codable, Sendable {
 
     /// `tap(holdSeconds:)` の既定。**0 = 通常タップ**(Shirates の `tapHoldSeconds` 準拠)。
     /// 0 より大きいときだけ長押しとしてブリッジの /press へ回す(StepExecutor)
-    /// ステップが待ち時間を明示しないときの既定(秒)。**新しく決めた数字ではない** ——
-    /// `exist` 系がずっと使ってきた既定をここに集約しただけ(散らばった `?? 5` の唯一の定義元)
-    public static let defaultWaitSeconds: Double = 5
+    /// ステップが待ち時間を明示しないときの既定(秒)。値の定義元は `DefaultWait.seconds`(MCP と共有)
+    public static let defaultWaitSeconds: Double = DefaultWait.seconds
     public static let defaultTapHoldSeconds: Double = 0
     /// `hold(holdSeconds:)` の既定(秒)。**`hold` は常に長押し**なので tap と違い 0 ではない。
     /// DSL の既定引数はこの1つに揃える
@@ -98,6 +97,10 @@ public struct FlowStep: Codable, Sendable {
     /// swipePointToPoint / swipeElementToElement の既定の移動時間(秒)。
     /// shirates-core の Const.SWIPE_DURATION_SECONDS 準拠。DSL の既定引数はこの1つに揃える
     public static let defaultSwipeDurationSeconds: Double = 1.5
+
+    /// ホストが合成する座標ドラッグの「押下から移動開始までの静止時間」(秒)。ブリッジ側の `DragRequest.press`
+    /// が nil のときの最小値と同じ値(ブリッジには FTCore のこのファイルが入らないので値で揃えている)
+    public static let defaultDragPressSeconds: Double = 0.05
 
     /// flickXxx の既定の移動時間(秒)。shirates-core の Const.FLICK_DURATION_SECONDS 準拠。
     /// swipe と低レベル実装は同じ(等速 pointerMove 1本)で、既定値だけ短い

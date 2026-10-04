@@ -1384,7 +1384,7 @@ public final class RunOrchestrator: Sendable {
             // (RunResultsStore.scanRecords → LPTScheduler.durations)だが **machine 優先はしない**
             // (preferringMachine 無し。手元の run の見積もりに他機の実績を混ぜるかは別の設計判断)
             let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
-            let since = Date().addingTimeInterval(-30 * 24 * 60 * 60)  // LPTOrdering.historyDays と同じ窓
+            let since = RunResultsStore.lptHistorySince()
             // LPTOrdering.apply と同じ下限(0/負値を渡されても「実績なし」に安全側で倒れる。
             // FleetRunner.runSplit の historyRuns 節と同じ)
             let records = RunResultsStore.scanRecords(

@@ -70,7 +70,7 @@ final class ScrollSearchClipRecoveryTests: XCTestCase {
                             direction: "up", maxSwipes: 8)
         step.scrollFrame = FlowLocator(id: "no_such_container")
 
-        let outcome = await StepExecutor(driver: driver, isAndroid: false).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(step)
 
         XCTAssertEqual(driver.swipeCount, 0, "scrollFrame が解決できないなら寄せの1本も振らないこと")
         guard case .failed(let reason) = outcome.status else {
@@ -92,7 +92,7 @@ final class ScrollSearchClipRecoveryTests: XCTestCase {
         step.scrollFrame = FlowLocator(id: "list")
 
         let outcome = await StepExecutor(driver: driver, releasesScrollTouch: true,
-                                         isAndroid: false).execute(step)
+                                         isAndroid: false, tunables: RunTunables()).execute(step)
 
         guard case .passed = outcome.status else {
             return XCTFail("寄せた後に見つかるはずなので pass: \(outcome.status)")

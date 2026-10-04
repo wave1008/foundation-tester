@@ -80,7 +80,7 @@ final class CheckStatePreferDSLTests: XCTestCase {
                      _ body: @escaping () -> Void) -> (passed: Bool, description: String) {
         let core = FTDriveCore(driver: DisagreeingDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false, dryRun: false,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-prefer-test-\(UUID().uuidString).json"),
                                emit: { _ in })

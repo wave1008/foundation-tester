@@ -18,17 +18,18 @@ final class RemoteDispatchLockFailureMessageTests: XCTestCase {
             .deletingLastPathComponent()   // リポジトリルート
     }
 
-    /// `"ssh"` リテラルを書いてよいのは sshBase の定義行だけ
+    /// `"ssh"` リテラルを書いてよいのは sshBase の定義行だけ(定義は `SSHOptions.batchConnectArgs` を通す)
     func testNoSshIsSpawnedOutsideSshBase() throws {
         let lines = try String(
             contentsOf: repoRoot.appendingPathComponent("Sources/fleetest/RemoteRunDispatcher.swift"),
             encoding: .utf8).components(separatedBy: "\n")
         let offenders = lines.enumerated().filter { _, line in
-            line.contains("\"ssh\"") && !line.contains("BatchMode=yes")
+            line.contains("\"ssh\"") && !line.contains("SSHOptions.batchConnectArgs")
         }.map { "\($0.offset + 1): \($0.element.trimmingCharacters(in: .whitespaces))" }
         XCTAssertEqual(offenders, [], "sshBase を通さない ssh(BatchMode/ConnectTimeout 無し)")
-        XCTAssertTrue(lines.contains { $0.contains("\"ssh\", \"-o\", \"BatchMode=yes\", \"-o\", \"ConnectTimeout=10\"") },
+        XCTAssertTrue(lines.contains { $0.contains("[\"ssh\"] + SSHOptions.batchConnectArgs") },
                       "sshBase の定義が見つからない(書式を見直す)")
+        XCTAssertEqual(SSHOptions.batchConnectArgs, ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"])
     }
 
     // MARK: - dispatchLockFailureMessage

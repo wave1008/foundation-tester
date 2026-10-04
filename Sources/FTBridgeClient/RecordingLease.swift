@@ -7,7 +7,7 @@ import FTCore
 import Foundation
 
 public enum RecordingLease {
-    public static let stalenessSeconds: TimeInterval = 15
+    public static let stalenessSeconds: TimeInterval = RunLease.stalenessSeconds
 
     /// key: iOS=シミュレータ UDID / Android=adb serial
     public static func leaseURL(stateDir: URL, key: String) -> URL {

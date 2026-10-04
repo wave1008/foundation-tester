@@ -48,7 +48,7 @@ final class HealSuggestionRecordingTests: XCTestCase {
         FTDriveCore(
             driver: ScreenDriver(id: id), platform: "ios", app: "com.example.app",
             scenarioID: "Heal.S0010", scenarioTitle: "t",
-            delegate: nil, healingEnabled: true,
+            delegate: nil, healingEnabled: true, tunables: RunTunables(),
             fmTextOcclusionCheckEnabled: false, dryRun: false,
             fingerprintCacheURL: fingerprints,
             emit: emit)

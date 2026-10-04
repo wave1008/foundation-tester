@@ -1,9 +1,7 @@
 // RemoteCommands.swift
 // `fleetest remote status` / `fleetest remote clean` (docs/remote-runner.md §16.4・§16.5)。
 // フリート運用の診断・掃除。純粋ロジックは Sources/FTRemote/RemoteDispatch.swift 側
-// (RemoteStatusProbe/RemoteCleanPlan、単体テスト対象)。ssh の張り方は
-// Sources/fleetest/RemoteRunDispatcher.swift と同じ規律(BatchMode=yes・ConnectTimeout=10)だが
-// そちらは private のため複製する。
+// (RemoteStatusProbe/RemoteCleanPlan、単体テスト対象)。
 // `remote setup` / `remote exec` は Sources/fleetest/RemoteSetupCommand.swift(RemoteCommand の
 // extension として Setup/Exec/Align/Teardown を定義。ここではサブコマンド一覧への登録だけ行う)。
 // `remote machines` (list/add/remove) はここで定義する。登録簿(machine→ssh 実体)は
@@ -17,9 +15,8 @@ import FTCore
 import FTRemote
 import Foundation
 
-/// 全 ssh 共通の基底引数。ConnectTimeout が無いと到達不能ホストで TCP 既定(75秒超)固まる
-/// (RemoteRunDispatcher.sshBase と同じ規律)
-private let remoteSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
+/// 全 ssh 共通の基底引数
+private let remoteSSHBase = ["ssh"] + SSHOptions.batchConnectArgs + SSHOptions.keepAliveArgs
 
 struct RemoteCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

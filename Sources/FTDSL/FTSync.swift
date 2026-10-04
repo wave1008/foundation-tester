@@ -6,13 +6,13 @@ import Foundation
 import FTCore
 import Synchronization
 
-enum FTSync {
+public enum FTSync {
     /// コマンド 1 回の上限待機秒数
-    static var commandTimeout: TimeInterval {
+    public static var commandTimeout: TimeInterval {
         get { commandTimeoutStorage.withLock { $0 } }
         set { commandTimeoutStorage.withLock { $0 = newValue } }
     }
-    private static let commandTimeoutStorage = Mutex<TimeInterval>(120)
+    private static let commandTimeoutStorage = Mutex<TimeInterval>(RunTunables().commandTimeout)
 
     /// DSL スレッドの op を協調プールへ渡す包み。@unchecked の根拠 = DSL スレッドは op の完了まで
     /// semaphore で止まっている(op の捕捉物に同時に触る者がいない)。**例外は時間切れ** —— cancel は

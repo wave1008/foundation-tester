@@ -319,7 +319,7 @@ public enum ScenarioCodeGen {
                     args.append("direction: .\(scroll.rawValue)")
                 }
                 args += scrollFrameArgs(step)
-                if let maxSwipes = step.maxSwipes, maxSwipes != 8 {
+                if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxSwipes {
                     args.append("maxSwipes: \(maxSwipes)")
                 }
                 return "scrollTo(\(args.joined(separator: ", ")))"
@@ -415,7 +415,7 @@ public enum ScenarioCodeGen {
     }
 
     static func timeoutArg(_ step: FlowStep) -> String {
-        if let timeout = step.timeout, timeout != 5 { return ", waitSeconds: \(FTSeconds.format(timeout))" }
+        if let timeout = step.timeout, timeout != FlowStep.defaultWaitSeconds { return ", waitSeconds: \(FTSeconds.format(timeout))" }
         return ""
     }
 

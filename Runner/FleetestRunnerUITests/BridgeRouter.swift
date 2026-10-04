@@ -19,6 +19,17 @@ struct BridgeError: Error {
 
 final class BridgeRouter {
 
+    /// attachOnly の /session が前面到達を待つ上限[秒]。起動済みのアプリへ繋ぐだけなので短い(launch 後の待ちより短い)
+    private static let attachForegroundWaitSeconds: TimeInterval = 5
+    /// launch/activate 後の /session が前面到達を待つ上限[秒]。尽きたら 500
+    private static let launchForegroundWaitSeconds: TimeInterval = 10
+    /// captureSettled の入口からの総経過上限[秒]。収束しない画面でも旧実装の固定 350ms より遅くならない
+    private static let settleBudgetSeconds: TimeInterval = 0.35
+    /// タッチダウンの最短接触/ドラッグ・ピンチ所要の床[秒]。0 にするとタッチダウンが載らず不発になる
+    private static let gestureMinSeconds: TimeInterval = 0.05
+    /// /pinch の durationSeconds 未指定時の所要[秒]
+    private static let pinchDefaultSeconds: TimeInterval = 0.5
+
     // 現在のセッション状態。直近スナップショットの ref→frame 対応表を保持し、
     // tap/press は座標タップとして解決する(要素クエリ再構築より頑健)。
     private var app: XCUIApplication?
@@ -173,7 +184,7 @@ final class BridgeRouter {
             // simctl 等で起動済みのアプリへのプロキシ接続のみ(activate() の約1s を払わない。
             // 前面到達の確認だけ行う=未起動なら即エラーで呼び出し側が診断できる)
             guard target.state == .runningForeground
-                || target.wait(for: .runningForeground, timeout: 5) else {
+                || target.wait(for: .runningForeground, timeout: BridgeRouter.attachForegroundWaitSeconds) else {
                 throw BridgeError(500, "the app to attach to is not in the foreground:"
                     + " \(req.bundleID) (check whether simctl launch succeeded)")
             }
@@ -182,7 +193,7 @@ final class BridgeRouter {
         } else {
             target.launch()
         }
-        guard target.state == .runningForeground || target.wait(for: .runningForeground, timeout: 10) else {
+        guard target.state == .runningForeground || target.wait(for: .runningForeground, timeout: BridgeRouter.launchForegroundWaitSeconds) else {
             throw BridgeError(500, "could not launch \(req.bundleID) — check that it is installed")
         }
         app = target
@@ -299,7 +310,7 @@ final class BridgeRouter {
         // 待ち切る設計にはしない。スクロール後の静止は**ホスト側の settleAfterScroll**
         // (frame が連続 2 回同じ・最大 600ms)が担うので、ここで粘る必要はない。
         let minSettle: TimeInterval = 0.12   // 遷移の立ち上がりを待つ床(取得 1 回ぶん相当)
-        let budget: TimeInterval = 0.35
+        let budget: TimeInterval = BridgeRouter.settleBudgetSeconds
         let deadline = Date().addingTimeInterval(budget)
 
         Thread.sleep(forTimeInterval: minSettle)
@@ -710,7 +721,7 @@ final class BridgeRouter {
                 distance = Double(max(screen.width, screen.height))
             }
             if let violation = BridgeAPI.gestureDurationViolation("swipe",
-                                                                   seconds: 0.05 + distance / rawVelocity,
+                                                                   seconds: BridgeRouter.gestureMinSeconds + distance / rawVelocity,
                                                                    cap: BridgeAPI.gestureSecondsCeiling) {
                 throw BridgeError(400, violation)
             }
@@ -760,10 +771,10 @@ final class BridgeRouter {
         let toCoordinate = coordinate(app, to)
         FastInput.with(fast) {
             if let velocity {
-                fromCoordinate.press(forDuration: 0.05, thenDragTo: toCoordinate,
+                fromCoordinate.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: toCoordinate,
                                       withVelocity: velocity, thenHoldForDuration: 0)
             } else {
-                fromCoordinate.press(forDuration: 0.05, thenDragTo: toCoordinate)
+                fromCoordinate.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: toCoordinate)
             }
         }
     }
@@ -821,7 +832,7 @@ final class BridgeRouter {
         }
         let from = coordinate(app, CGPoint(x: req.fromX, y: req.fromY))
         let to = coordinate(app, CGPoint(x: req.toX, y: req.toY))
-        let press = max(req.press ?? 0.05, 0.05)
+        let press = max(req.press ?? BridgeRouter.gestureMinSeconds, BridgeRouter.gestureMinSeconds)
         if let violation = BridgeAPI.gestureDurationViolation("drag", seconds: press,
                                                                cap: BridgeAPI.gestureSecondsCeiling) {
             throw BridgeError(400, violation)
@@ -831,7 +842,7 @@ final class BridgeRouter {
             return .json(OKResponse())
         }
         let distance = hypot(req.toX - req.fromX, req.toY - req.fromY)
-        let duration = max(requestedDuration, 0.05)
+        let duration = max(requestedDuration, BridgeRouter.gestureMinSeconds)
         // velocity の単位は pt/秒。極端値はクランプ(0除算・非現実的な速度の防止)
         let velocity = max(10.0, min(distance / duration, 5000.0))
         // クランプ後の velocity で実際の所要を見積もる(requestedDuration は上限クランプが無いため、
@@ -930,7 +941,7 @@ final class BridgeRouter {
         guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
             throw BridgeError(400, "scale must be positive, finite and not 1 (got \(req.scale))")
         }
-        let duration = max(req.durationSeconds ?? 0.5, 0.05)
+        let duration = max(req.durationSeconds ?? BridgeRouter.pinchDefaultSeconds, BridgeRouter.gestureMinSeconds)
         // requestedDuration 自体は下限クランプしか無い(座標ジェスチャへそのまま渡る)ので、
         // ここで先に断る
         if let violation = BridgeAPI.gestureDurationViolation("pinch", seconds: duration,
@@ -1183,7 +1194,7 @@ final class BridgeRouter {
         let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.995))
         let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.73))
         // press は 0 にしない(タッチダウンが載らず不発になる。handleDrag の下限 0.05 と同じ)
-        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(2850),
+        start.press(forDuration: BridgeRouter.gestureMinSeconds, thenDragTo: end, withVelocity: XCUIGestureVelocity(2850),
                     thenHoldForDuration: 0.0)
         #endif
     }

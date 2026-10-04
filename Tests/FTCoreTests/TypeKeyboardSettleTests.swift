@@ -77,7 +77,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
         // **実機(iPhone 13)は xcuitest エンジン = 読み返しを持たない**。ここを true にしたまま
         // 発火することが、今回直した欠陥(読み返しに頼ると発火しない)の再発防止そのもの
         driver.verifiesTypedText = true
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         let typeOutcome = await executor.execute(
             FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "hello"))
@@ -107,7 +107,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
         ])
         driver.keyboardFrames = [nil, FTRect(x: 0, y: 600, width: 400, height: 200)]
         driver.verifiesTypedText = true
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(
             FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "hello"))
@@ -132,7 +132,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
             [inputField(value: "hello"), sendButton(y: 700)],
         ])
         driver.verifiesTypedText = false
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(
             FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "hello"))
@@ -184,7 +184,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
         ])
         driver.keyboardFrames = [shown, hidden, hidden, hidden, shown]
         driver.verifiesTypedText = true
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(
             FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "secret42"))
@@ -205,7 +205,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
         ])
         driver.keyboardFrames = [shown, hidden]
         driver.verifiesTypedText = true
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(
             FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: "abc\n"))
@@ -252,7 +252,7 @@ final class TypeKeyboardSettleTests: XCTestCase {
         ])
         driver.keyboardFrames = keyboardFrames
         driver.verifiesTypedText = true
-        let executor = StepExecutor(driver: driver, isAndroid: isAndroid)
+        let executor = StepExecutor(driver: driver, isAndroid: isAndroid, tunables: RunTunables())
         _ = await executor.execute(
             FlowStep(action: "type", locator: FlowLocator(id: "wv_input"), text: typeText))
         let outcome = await executor.execute(

@@ -18,7 +18,7 @@ extension StepExecutorTests {
                                     screenshots: [Self.blankPNG])
         let delegate = NoVerdictVisibilityDelegate()
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionOCRMode: .off, isAndroid: false)
+                                    occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 0, occlusionGuard: true)
 
@@ -41,7 +41,7 @@ extension StepExecutorTests {
                                     screenshots: [Self.blankPNG])
         let delegate = NoVerdictVisibilityDelegate()
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionInkThreshold: 0, occlusionOCRMode: .off, isAndroid: false)
+                                    occlusionInkThreshold: 0, occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 0, occlusionGuard: true)
 
@@ -70,7 +70,7 @@ extension StepExecutorTests {
         // visible: true でも呼ばれないことを確かめたいので、あえて可視で埋める
         let delegate = FakeVisibilityDelegate(visible: true)
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionOCRMode: .off, isAndroid: false)
+                                    occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 0, occlusionGuard: true)
 
@@ -95,7 +95,7 @@ extension StepExecutorTests {
             let delegate = FakeVisibilityDelegate(visible: true)
             delegate.visibleState = state
             let executor = StepExecutor(driver: primary, delegate: delegate,
-                                        occlusionOCRMode: .off, isAndroid: false)
+                                        occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
             let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                 timeout: 0, occlusionGuard: true)
 
@@ -110,7 +110,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]],
                                     screenshots: [Self.blankPNG])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                    occlusionOCRMode: .off, isAndroid: false)
+                                    occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
         let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                                       timeout: 0, occlusionGuard: true))
         XCTAssertFalse(outcome.notes.contains(.textPartiallyHidden), "\(outcome.notes)")
@@ -126,7 +126,7 @@ extension StepExecutorTests {
                                     screenshots: [Self.blankPNG])
         let delegate = FakeVisibilityDelegate(visible: false)
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionOCRMode: .off, fmVisibilityCheckEnabled: false, isAndroid: false)
+                                    occlusionOCRMode: .off, fmVisibilityCheckEnabled: false, isAndroid: false, tunables: RunTunables())
         let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                                       timeout: 0, occlusionGuard: true))
 

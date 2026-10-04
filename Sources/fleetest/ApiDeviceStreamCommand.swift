@@ -52,7 +52,7 @@ struct ApiDeviceStreamCommand: AsyncParsableCommand {
     var fps: Int = 8
 
     @Option(name: .customLong("max-width"), help: "Maximum size of the frame long edge in px")
-    var maxWidth: Int = 480
+    var maxWidth: Int = ApiMonitorCommand.defaultMaxWidth
 
     @Option(help: "Wire format: mjpeg (v1) or h264 (v2)")
     var codec: String = "mjpeg"

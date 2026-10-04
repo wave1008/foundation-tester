@@ -1242,7 +1242,7 @@ private func emitLine<T: Encodable>(_ value: T) {
 /// ドラッグ/ピンチが watchdog に途中で殺されうる
 enum ApiLiveGestureDefaults {
     /// drag の「押下してから動かし始めるまでの静止時間」既定[秒]
-    static let dragPressSeconds: Double = 0.05
+    static let dragPressSeconds: Double = FlowStep.defaultDragPressSeconds
     /// drag の「移動にかける時間」既定[秒]
     static let dragDurationSeconds: Double = 0.3
     /// pinch の「変形にかける時間」既定[秒]

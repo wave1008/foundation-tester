@@ -77,7 +77,7 @@ extension StepExecutor {
             if swipes > 0 { notes.append("\(swipes) swipe\(swipes == 1 ? "" : "s")") }
         } else {
             let clock = ContinuousClock()
-            let deadline = Date().addingTimeInterval(step.timeout ?? FlowStep.defaultWaitSeconds)
+            let deadline = Date().addingTimeInterval(step.timeout ?? tunables.defaultTimeout)
             var backoff = PollBackoff()
             while true {
                 let start = clock.now

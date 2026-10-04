@@ -12,7 +12,8 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// checkIsON / checkIsOFF で CheckStateClassifier を優先するか(プロファイルの `preferCheckStateClassifier`)
     public var preferCheckStateClassifier: Bool
     public var containerInference: Bool
-    public var defaultTimeout: Double?
+    /// 環境で正解が変わる既定の束(`defaultTimeout` 含む)。子プロセスへは `--tunables` で運ぶ
+    public var tunables: RunTunables
     public var scenarioTimeout: Int?
     /// 実行プロファイル名(`LastResultsStore` が `(project, profile)` 単位で `--failed` の記録を
     /// 分けるための鍵)。**profile-less な run(`DeviceIndependentRunSettings` 経由)は
@@ -25,30 +26,34 @@ public struct ScenarioExecutionSettings: Sendable, Equatable {
     /// `homeOnStart` はデバイスに触る工程の設定なのでここには入れない
     public init(fm: FMConfig = FMConfig(), heal: Bool = false, occlusionOCR: Bool = true,
                 preferCheckStateClassifier: Bool = true,
-                containerInference: Bool = true, defaultTimeout: Double? = nil,
+                containerInference: Bool = true, tunables: RunTunables = RunTunables(),
                 scenarioTimeout: Int? = nil, profileName: String? = nil) {
         self.fm = fm
         self.heal = heal
         self.occlusionOCR = occlusionOCR
         self.preferCheckStateClassifier = preferCheckStateClassifier
         self.containerInference = containerInference
-        self.defaultTimeout = defaultTimeout
+        self.tunables = tunables
         self.scenarioTimeout = scenarioTimeout
         self.profileName = profileName
     }
 
     public init(_ settings: DeviceIndependentRunSettings) {
+        var t = RunTunables()
+        if let v = settings.defaultTimeout { t.defaultTimeout = v }
         self.init(fm: settings.fm, heal: settings.heal, occlusionOCR: settings.ocrTextOcclusionCheck,
                   preferCheckStateClassifier: settings.preferCheckStateClassifier,
                   containerInference: settings.containerInference,
-                  defaultTimeout: settings.defaultTimeout, scenarioTimeout: settings.scenarioTimeout)
+                  tunables: t, scenarioTimeout: settings.scenarioTimeout)
     }
 
     public init(_ resolved: ResolvedProfile) {
+        var t = RunTunables()
+        if let v = resolved.defaultTimeout { t.defaultTimeout = v }
         self.init(fm: resolved.fm, heal: resolved.heal, occlusionOCR: resolved.ocrTextOcclusionCheck,
                   preferCheckStateClassifier: resolved.preferCheckStateClassifier,
                   containerInference: resolved.containerInference,
-                  defaultTimeout: resolved.defaultTimeout, scenarioTimeout: resolved.scenarioTimeout,
+                  tunables: t, scenarioTimeout: resolved.scenarioTimeout,
                   profileName: resolved.runName)
     }
 }

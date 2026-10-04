@@ -74,7 +74,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         let probing = ProbeInFlight()
 
         while !stop.isSet {
-            await Self.sleepInterruptible(seconds: interval, stop: stop)
+            await ApiMonitorCommand.sleepInterruptible(seconds: interval, stop: stop)
             guard !stop.isSet else { break }
 
             let cpu = cpuSampler.sample()
@@ -100,16 +100,6 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
                 ConsoleOut.out(line)
                 logger?.append(line)
             }
-        }
-    }
-
-    /// SIGTERM/SIGINT/EOF を最大 0.1 秒粒度で検知しながら interval 秒待つ
-    /// (待ち時間いっぱい固まって終了が遅れないようにするため。ApiMonitorCommand.swift と同じ実装)
-    private static func sleepInterruptible(seconds: Double, stop: StopFlag) async {
-        var remaining = seconds
-        while remaining > 0, !stop.isSet {
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            remaining -= 0.1
         }
     }
 

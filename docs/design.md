@@ -4207,7 +4207,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
      シナリオは片方の OS でしか走らない**(供給された他方のデバイスは空回り)。
      platform 非依存に書いたシナリオを両OSで回すなら `--profile ios-run` と `--profile android-run` を
      別々に実行する。シナリオ数や負荷には依存しない決定的な挙動(2026-07-22 実測)
-6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
+6. `defaultTimeout` は ScenarioHost が子へ渡す `--tunables`(`RunTunables` の JSON)→ FTDriveCore に渡り、
    exist/textIs/valueIs の `waitSeconds: Double? = nil` の既定値になる
 7. ワーカー構築(供給+インストール)は ProfileWorkerFactory(FTAndroid)に共通化され、
    CLI(ProfileRunner)と `fleetest api run`(VSCode 拡張など UI 入口向けの共通経路)が共用する

@@ -223,7 +223,7 @@ final class CheckStateClassifierTests: XCTestCase {
         try Self.checkboxPNG(on: true, shift: 1).write(to: dir.appendingPathComponent("[OFF]/wrong.png"))
         let executor = StepExecutor(driver: ImageDriver(element: element(type: "button"),
                                                         screenPNG: Self.checkboxPNG(on: true, shift: 2)),
-                                    isAndroid: false)
+                                    isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = root
         _ = await executor.execute(FlowStep(assert: "checked", locator: FlowLocator(id: "cb"), timeout: 0))
         XCTAssertEqual(executor.visionClassifierMismatches[CheckStateClassifier.name]?.contains { $0.sample == "[OFF]/wrong.png" },
@@ -279,7 +279,7 @@ final class CheckStateClassifierTests: XCTestCase {
 
         for assert in ["checked", "notChecked"] {
             let driver = ImageDriver(element: element(type: "button"), screenPNG: Self.indeterminatePNG(shift: 2))
-            let executor = StepExecutor(driver: driver, isAndroid: false)
+            let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             executor.visionClassifierProjectRoot = root
             let outcome = await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0))
             guard case .failed(let reason) = outcome.status else { return XCTFail("\(assert) は落ちるはず") }
@@ -318,7 +318,7 @@ final class CheckStateClassifierTests: XCTestCase {
     private func run(_ assert: String, a11y element: ElementInfo, imageOn: Bool, projectRoot: URL?,
                      prefer: Bool, stepPrefer: Bool? = nil) async -> StepOutcome {
         let driver = ImageDriver(element: element, screenPNG: Self.checkboxPNG(on: imageOn, shift: 2))
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = projectRoot
         executor.preferCheckStateClassifier = prefer
         return await executor.execute(FlowStep(assert: assert, locator: FlowLocator(id: "cb"), timeout: 0,

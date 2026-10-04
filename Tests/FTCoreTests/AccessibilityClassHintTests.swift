@@ -34,7 +34,7 @@ final class AccessibilityClassHintTests: XCTestCase {
     private func dragCount(uiFramework: AppUIFramework?, axClass: String?) async -> Int {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row(axClass: axClass)]])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false,
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: uiFramework)
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
         guard case .passed = await executor.execute(step).status else {
@@ -66,7 +66,7 @@ final class AccessibilityClassHintTests: XCTestCase {
     func testAndroidNeverDrags() async {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row(axClass: "UIAccessibilityElement")]])
-        let executor = StepExecutor(driver: primary, releasesScrollTouch: false, isAndroid: true, uiFramework: nil)
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: false, isAndroid: true, tunables: RunTunables(), uiFramework: nil)
         _ = await executor.execute(FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2))
         XCTAssertTrue(primary.dragCalls.isEmpty)
     }

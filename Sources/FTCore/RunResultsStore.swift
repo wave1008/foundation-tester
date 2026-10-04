@@ -10,6 +10,13 @@ import CryptoKit
 import Foundation
 
 public enum RunResultsStore {
+    /// LPT が実績として見る期間[日]。短すぎると新規プロジェクトで実績ゼロ、長すぎると古い値に引きずられる
+    public static let lptHistoryDays = 30.0
+
+    /// `lptHistoryDays` 日前の時刻(`scanRecords` の `since` に渡す)
+    public static func lptHistorySince(now: Date = Date()) -> Date {
+        now.addingTimeInterval(-lptHistoryDays * 24 * 60 * 60)
+    }
 
     // MARK: - パス導出
 
@@ -351,7 +358,7 @@ public enum RunResultsStore {
     ///   が窓から押し出されて実績ゼロになる(実害: E2E-Flutter/android の投入順が崩れ壁時計 +10s。
     ///   docs/performance-tuning.md §3.7)。返すレコード自体は絞らない(呼び出し側が platform 別に
     ///   集計するので、混在 run の他 platform 分は無害)。
-    /// `maxObservationsPerScenario` で遡る run ディレクトリ数の上限(観測数の何倍まで見るか)。
+    /// 遡る run ディレクトリ数の上限倍率(`maxObservationsPerScenario` または、`countingPlatform` 指定時は `maxRuns` の何倍まで見るか)。
     /// 8 = 上限 5 なら 40 run。プロファイルを交互に回しても直前のフル run 群には十分届き、
     /// 結果 JSON 全件(1 プロジェクト 3,500〜4,500 件)を毎 run 読む事故は防げる
     public static let observationScanLimitFactor = 8
@@ -404,9 +411,9 @@ public enum RunResultsStore {
             if let cap = maxObservationsPerScenario,
                runDirsInspected >= cap * observationScanLimitFactor { break }
             // countingPlatform 指定時は枠が埋まるまで遡るため、対象 platform が長く走っていないと
-            // 窓の全 run を読みかねない。maxRuns の 8 倍で打ち切る(3 プロファイル交互でも
+            // 窓の全 run を読みかねない。maxRuns の observationScanLimitFactor 倍で打ち切る(3 プロファイル交互でも
             // 5 枠は 15 run 程で埋まる)。打ち切った場合は集まった分だけで並べる(安全側に倒す)。
-            if let maxRuns, countingPlatform != nil, runDirsInspected >= maxRuns * 8 { break }
+            if let maxRuns, countingPlatform != nil, runDirsInspected >= maxRuns * observationScanLimitFactor { break }
             runDirsInspected += 1
             let before = results.count
             let scenariosDir = runDir.appendingPathComponent("scenarios")

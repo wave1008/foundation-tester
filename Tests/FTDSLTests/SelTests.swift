@@ -241,7 +241,7 @@ final class SelScrollVariantDispatchTests: XCTestCase {
     private func makeCore(driver: AppDriver) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0030", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: false,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-sel-scroll-test.json"),
                     emit: { _ in })

@@ -77,7 +77,7 @@ final class RepollCacheBypassTests: XCTestCase {
         let driver = StaleCacheDriver(stale: [], fresh: [target()])
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "txt_delayed"),
                             timeout: 5, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver, isAndroid: true, uiFramework: .compose).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables(), uiFramework: .compose).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "\(outcome.status)")
         XCTAssertEqual(driver.reads, [false, true], "2 回目の読みで迂回して見つける")
     }
@@ -87,7 +87,7 @@ final class RepollCacheBypassTests: XCTestCase {
         let driver = StaleCacheDriver(stale: [], fresh: [target()])
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "txt_delayed"),
                             timeout: 0.5, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: driver, isAndroid: true, uiFramework: .androidView).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables(), uiFramework: .androidView).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "期限切れ直前の取り直しで見つかる: \(outcome.status)")
         XCTAssertGreaterThan(driver.reads.filter { !$0 }.count, 1, "素取得を繰り返してから")
         XCTAssertEqual(driver.reads.last, true)
@@ -115,7 +115,7 @@ final class RepollCacheBypassTests: XCTestCase {
     func testTapOnComposeAndroidResolvesOnTheSecondRead() async {
         let driver = StaleCacheDriver(stale: [], fresh: [target()])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "txt_delayed"), timeout: 5)
-        let outcome = await StepExecutor(driver: driver, isAndroid: true, uiFramework: .compose).execute(step)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables(), uiFramework: .compose).execute(step)
         XCTAssertTrue(isPassed(outcome.status), "\(outcome.status)")
         XCTAssertEqual(driver.tappedRefs, [1])
         XCTAssertEqual(driver.reads.first, false, "1 回目の読みは払わない")
@@ -135,7 +135,7 @@ final class RepollCacheBypassTests: XCTestCase {
     func testTapAfterARepolledExistReadsPastTheStaleCache() async {
         let driver = StaleCacheDriver(stale: [resetButton(y: 300)],
                                       fresh: [target(), resetButton(y: 388)])
-        let executor = StepExecutor(driver: driver, isAndroid: true, uiFramework: .compose)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables(), uiFramework: .compose)
         let exist = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "txt_delayed"),
                                                     timeout: 5, occlusionGuard: false))
         XCTAssertTrue(isPassed(exist.status), "\(exist.status)")
@@ -154,7 +154,7 @@ final class RepollCacheBypassTests: XCTestCase {
     func testTapAfterAFirstReadExistDoesNotBypass() async {
         let driver = StaleCacheDriver(stale: [target(), resetButton(y: 388)],
                                       fresh: [target(), resetButton(y: 388)])
-        let executor = StepExecutor(driver: driver, isAndroid: true, uiFramework: .compose)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables(), uiFramework: .compose)
         _ = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "txt_delayed"),
                                             timeout: 5, occlusionGuard: false))
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_async_reset")))

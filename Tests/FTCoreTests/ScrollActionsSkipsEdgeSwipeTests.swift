@@ -12,7 +12,7 @@ final class ScrollActionsSkipsEdgeSwipeTests: XCTestCase {
     /// scrollToTop(finger "down")。容器が forward/down しか申告しない = もう上へは動けない
     func testScrollToTopSendsNoSwipesWhenScrollActionsAlreadyAtTop() async throws {
         let driver = ScrollActionsDriver(scrollActions: ["forward", "down"])
-        let outcome = await StepExecutor(driver: driver, isAndroid: true)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
             .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.swipes, 0, "端と分かっている容器へ確認の swipe を送ってしまった")
@@ -21,7 +21,7 @@ final class ScrollActionsSkipsEdgeSwipeTests: XCTestCase {
     /// 同じ容器が両方向を申告するとき(まだ端ではない)は、これまでどおり実際に撃って確かめる
     func testScrollToTopStillSwipesWhenScrollActionsAllowFurtherMovement() async throws {
         let driver = ScrollActionsDriver(scrollActions: ["backward", "forward"])
-        let outcome = await StepExecutor(driver: driver, isAndroid: true)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
             .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertGreaterThan(driver.swipes, 0, "端ではない容器なのに1本も送らずに終わった")
@@ -32,7 +32,7 @@ final class ScrollActionsSkipsEdgeSwipeTests: XCTestCase {
     /// 画面中央を含む最小の容器(内側)の申告で端と分かる
     func testNestedContainersUseTheInnermostOneAtTheScreenCentre() async throws {
         let driver = ScrollActionsDriver(scrollActions: ["forward", "down"], nestedInRefreshLayout: true)
-        let outcome = await StepExecutor(driver: driver, isAndroid: true)
+        let outcome = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
             .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.swipes, 0, "入れ子で内側の申告を見ずに確認の swipe を送った")
@@ -41,7 +41,7 @@ final class ScrollActionsSkipsEdgeSwipeTests: XCTestCase {
     /// iOS 相当(scrollActions を申告しない)は今までどおり: 署名の不変化だけで確定するので撃つ
     func testScrollToTopStillSwipesWhenScrollActionsUnknown() async throws {
         let driver = ScrollActionsDriver(scrollActions: nil)
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertGreaterThan(driver.swipes, 0, "scrollActions 未申告なのに撃たずに終わった(iOS の挙動が変わった)")

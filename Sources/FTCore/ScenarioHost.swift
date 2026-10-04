@@ -99,8 +99,15 @@ public enum ScenarioHostError: Error, LocalizedError {
 public enum ScenarioHost {
 
     /// scenarioTimeout(ホスト側 watchdog)の既定秒。profile にも CLI にも未指定なら使う。
-    /// この値は子には渡さない(--default-timeout=子内部の検証待ちとは別物)
+    /// この値は子には渡さない(tunables.defaultTimeout=子内部の検証待ちとは別物)
     public static let defaultScenarioTimeout = 90
+
+    /// 子の `--tunables` の値。子側のデコードは FTScenarioRunner の `RunScenario.decodeTunables`
+    public static func tunablesArgument(_ tunables: RunTunables) throws -> String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return String(decoding: try encoder.encode(tunables), as: UTF8.self)
+    }
 
     /// watchdog の待ち時間。**負値は 0 秒へ**(即発火。trap しない側へ倒すだけで、
     /// 正の値への丸めはしない — 入口検証(`RunProfileSetOverride`/`api validate-profile`/
@@ -347,7 +354,7 @@ public enum ScenarioHost {
         let containerInference = settings.containerInference
         let occlusionOCR = settings.occlusionOCR
         let preferCheckStateClassifier = settings.preferCheckStateClassifier
-        let defaultTimeout = settings.defaultTimeout
+        let tunables = settings.tunables
         let scenarioTimeout = settings.scenarioTimeout
         let startedAt = Date()
         let clock = ContinuousClock()
@@ -442,7 +449,11 @@ public enum ScenarioHost {
         if let deviceName = connection.deviceName { args += ["--device-name", deviceName] }
         if connection.physical { args.append("--physical") }
         if let host = connection.host { args += ["--bridge-host", host] }
-        if let defaultTimeout { args += ["--default-timeout", FTSeconds.format(defaultTimeout)] }
+        do {
+            args += ["--tunables", try tunablesArgument(tunables)]
+        } catch {
+            return abortBeforeLaunch("cannot encode the run tunables: \(error.localizedDescription)")
+        }
         // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
         if !containerInference { args.append("--no-container-inference") }
         // occlusion guard の OCR 事前判定(FMConfig の外。fmTextOcclusionCheck が off なら guard 自体が
@@ -542,7 +553,7 @@ public enum ScenarioHost {
                 guard !Task.isCancelled, ProcessLiveness.isAlive(process.processIdentifier),
                       await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
-                try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
+                try? await Task.sleep(nanoseconds: UInt64(Shell.killGraceSeconds * 1_000_000_000))  // SIGTERM → SIGKILL の猶予
                 // process.isRunning は内部で waitpid して子を reap してしまい、終了待ち
                 // (processExited)が通知を取りこぼす恐れがある(SIGTERM を無視した子で
                 // 実測: run 全体が凍結)。kill(pid, 0) は reap せず生存確認だけ行う。

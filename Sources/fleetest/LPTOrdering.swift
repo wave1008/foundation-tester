@@ -4,7 +4,7 @@
 //
 // 実績は結果 JSON(TestProjects/<p>/results/runs/**/scenarios/*.json)の durationMs。
 // 範囲を二重に絞る:
-//   - 直近 historyDays 日: 古い実績はアプリもシナリオも変わっていて代表値にならない
+//   - 直近 RunResultsStore.lptHistoryDays 日: 古い実績はアプリもシナリオも変わっていて代表値にならない
 //   - **シナリオごとに直近 maxRuns 観測**: 結果 JSON は run × シナリオ数で増え続ける(実測で
 //     1 プロジェクト 3,500〜4,500 件)。毎 run 全件読むと run の固定費になるため上限を付ける
 //     (中央値の代表性は 5 観測で十分)。**数えるのは run ではなくシナリオごとの観測**
@@ -21,8 +21,6 @@ import FTCore
 import Foundation
 
 enum LPTOrdering {
-    /// 実績として見る期間。短すぎると新規プロジェクトで実績ゼロ、長すぎると古い値に引きずられる
-    private static let historyDays = 30.0
     /// **シナリオ1本あたり**読み込む実績の件数(新しい方から)の既定値。I/O の頭打ち。
     /// **VSCode 設定 fleetest.lptHistoryRuns の既定値・CLI --lpt-history-runs の既定値と同じ値**
     /// (3箇所で一致させる。片方だけ変えると設定タブが表示する件数と実際に走る件数が食い違う。
@@ -48,7 +46,7 @@ enum LPTOrdering {
         guard enabled, items.count > 1 else { return items }
 
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
-        let since = Date().addingTimeInterval(-historyDays * 24 * 60 * 60)
+        let since = RunResultsStore.lptHistorySince()
         let maxRuns = max(1, historyRuns)
         // 窓は **シナリオごとの観測数**で数える(RunResultsStore.scanRecords の
         // maxObservationsPerScenario)。run 数で数えると、調査中の 1 シナリオだけの run が窓を
@@ -69,7 +67,7 @@ enum LPTOrdering {
             known.contains("\($0.info.id)\u{1}\($0.info.platform ?? defaultPlatform)")
         }.count
         log("🔀 LPT ordering: \(withHistory)/\(items.count) with history"
-            + " (up to \(maxRuns) run(s) per scenario in the last \(Int(historyDays)) day(s), "
+            + " (up to \(maxRuns) run(s) per scenario in the last \(Int(RunResultsStore.lptHistoryDays)) day(s), "
             + "descending per-platform median (same-machine runs preferred); "
             + "scenarios without history go first)")
         return ordered

@@ -40,7 +40,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
     private func makeCore(driver: AppDriver, dryRun: Bool) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: dryRun,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: dryRun,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-heal-test.json"),
                     emit: { _ in })

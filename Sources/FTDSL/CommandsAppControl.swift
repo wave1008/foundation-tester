@@ -349,7 +349,7 @@ public func tapAppIcon(_ appIconName: String? = nil,
                                                     kind: kind, startMarginRatio: startRatio) {
                 try await driver.drag(fromX: path.fromX, fromY: path.fromY,
                                       toX: path.toX, toY: path.toY,
-                                      pressSeconds: 0.05, durationSeconds: FlowStep.defaultFlickDurationSeconds)
+                                      pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: FlowStep.defaultFlickDurationSeconds)
             } else {
                 // 座標を作れない(画面が小さすぎる等): 向き基準の汎用スワイプへ落ちる
                 // (flick アクションの座標算出失敗と同じ扱い)

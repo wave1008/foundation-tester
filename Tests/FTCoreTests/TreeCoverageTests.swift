@@ -518,7 +518,7 @@ final class TreeCoverageStepNoteTests: XCTestCase {
     func testAPassingAbsenceOnAnUnderreportedTreeCarriesTheNote() async {
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "submit"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree()), isAndroid: false).execute(step)
+        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree()), isAndroid: false, tunables: RunTunables()).execute(step)
         XCTAssertTrue(outcome.notes.contains(.treeUnderreported),
                       "部分的な木で成立した不在が黙って通った: \(outcome.notes) / \(outcome.status)")
     }
@@ -527,7 +527,7 @@ final class TreeCoverageStepNoteTests: XCTestCase {
     func testACompleteTreeCarriesNoNote() async {
         let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "submit"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: FixedTreeDriver(fullTree()), isAndroid: false).execute(step)
+        let outcome = await StepExecutor(driver: FixedTreeDriver(fullTree()), isAndroid: false, tunables: RunTunables()).execute(step)
         XCTAssertFalse(outcome.notes.contains(.treeUnderreported), "\(outcome.notes)")
     }
 
@@ -535,7 +535,7 @@ final class TreeCoverageStepNoteTests: XCTestCase {
     func testTheNoteAlsoReachesCount() async {
         let step = FlowStep(assert: "count", locator: FlowLocator(id: "submit"),
                             timeout: 0, expectedCount: 0)
-        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree()), isAndroid: false).execute(step)
+        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree()), isAndroid: false, tunables: RunTunables()).execute(step)
         XCTAssertTrue(outcome.notes.contains(.treeUnderreported), "count: \(outcome.notes)")
     }
 
@@ -547,7 +547,7 @@ final class TreeCoverageStepNoteTests: XCTestCase {
     func testAPositiveAssertDoesNotCarryTheNote() async {
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "top"),
                             timeout: 0, occlusionGuard: false)
-        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree()), isAndroid: false).execute(step)
+        let outcome = await StepExecutor(driver: FixedTreeDriver(gappyTree()), isAndroid: false, tunables: RunTunables()).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
         XCTAssertFalse(outcome.notes.contains(.treeUnderreported),
                        "通った肯定形に付いた: \(outcome.notes)")
@@ -558,7 +558,7 @@ final class TreeCoverageStepNoteTests: XCTestCase {
         let step = FlowStep(assert: "notExists", locator: FlowLocator(label: "Example Domain"),
                             timeout: 0, occlusionGuard: false)
         let outcome = await StepExecutor(driver: FixedTreeDriver(modalCollapsedBrowserTree()),
-                                         isAndroid: false).execute(step)
+                                         isAndroid: false, tunables: RunTunables()).execute(step)
         XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
         XCTAssertTrue(outcome.notes.contains(.treeUnderreported),
                       "モーダルで消えた本文への notExists が黙って通った: \(outcome.notes)")

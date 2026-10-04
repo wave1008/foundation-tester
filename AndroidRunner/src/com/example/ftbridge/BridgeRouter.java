@@ -29,6 +29,20 @@ import java.util.Set;
 
 final class BridgeRouter implements BridgeHttpServer.Handler {
 
+    /** type/clear の確認期限(ms)。Android は値をまとめて注入して読み返す(xcuitest は1キーずつ打鍵して読み返すため 8s) */
+    private static final long TEXT_INPUT_CONFIRM_BUDGET_MS = 4000;
+    /** swipe の durationMs 未指定時の所要(ms) */
+    private static final long SWIPE_DEFAULT_STROKE_MS = 300;
+    /** press の duration 未指定時の長押し秒数(s) */
+    private static final double PRESS_DEFAULT_SECONDS = 1.0;
+    /** プロセス終了要求の応答を返し切るための猶予(ms)。経過後に System.exit */
+    private static final long EXIT_GRACE_MS = 500;
+    /** snapshot 再試行前の KEYCODE_WAKEUP 後に display が起きるのを待つ時間(ms) */
+    private static final long WAKEUP_SETTLE_MS = 500;
+    /** 起動後に対象が前面に来るのを待つ間のポーリング間隔(ms) */
+    private static final long FOREGROUND_POLL_MS = 50;
+    /** stableActivePackage() の再確認の間隔(ms)。遷移中とみなした2回連続不一致のときだけ空ける */
+    private static final long PACKAGE_RECHECK_MS = 30;
     /** /session の起動待ち上限(ms)。root ウィンドウが対象パッケージに切り替わるまでの上限。
      *  超過は 500 エラー(黙って成功にしない) */
     private static final long LAUNCH_CAP_MS = 10_000;
@@ -171,7 +185,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // LambdaMetafactory が解決できずビルドが落ちる
         Thread t = new Thread(new Runnable() {
             @Override public void run() {
-                SystemClock.sleep(500);
+                SystemClock.sleep(EXIT_GRACE_MS);
                 System.exit(0);
             }
         });
@@ -291,7 +305,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             // root=null が waitForRoot の 2s を超えて続く一時ストール(高負荷時の画面消灯/描画停止で
             // 実測。黒スクショと対の症状)。WAKEUP 注入で display を起こしてから1回だけ再試行する
             shell("input keyevent KEYCODE_WAKEUP");
-            SystemClock.sleep(500);
+            SystemClock.sleep(WAKEUP_SETTLE_MS);
             try {
                 result = SnapshotBuilder.build(ua(), instrumentation.getContext(), forceRefresh, maxElements);
             } catch (IllegalStateException second) {
@@ -336,7 +350,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             tapUnlessAlreadyFocused(center, refIds.get(ref));
             // 確認と注入を統合した経路(InputInjector.setTextAppendingAt のコメント参照)。
             // resource-id を渡す: キーボードの開閉で座標がズレても同じ要素を追跡し直すため
-            InputInjector.setTextAppendingAt(ua(), center[0], center[1], refIds.get(ref), text, 4000);
+            InputInjector.setTextAppendingAt(ua(), center[0], center[1], refIds.get(ref), text, TEXT_INPUT_CONFIRM_BUDGET_MS);
         } else {
             InputInjector.setTextAppending(ua(), text);
         }
@@ -362,9 +376,9 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             int ref = body.optInt("ref");
             double[] center = centerOf(ref);
             tapUnlessAlreadyFocused(center, refIds.get(ref));
-            InputInjector.clearTextAt(ua(), center[0], center[1], refIds.get(ref), 4000);
+            InputInjector.clearTextAt(ua(), center[0], center[1], refIds.get(ref), TEXT_INPUT_CONFIRM_BUDGET_MS);
         } else {
-            InputInjector.clearFocused(ua(), 4000);
+            InputInjector.clearFocused(ua(), TEXT_INPUT_CONFIRM_BUDGET_MS);
         }
         settle();
         return ok();
@@ -383,7 +397,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // 明示値は既定と同値でも必ず計算に使う(「既定と同じなら無視」だと、既定を変えた瞬間に
         // ホストの指定が黙って無視される)
         double span = body.optDouble("distance", vertical ? 0.4 : 0.6);
-        long strokeMs = body.optLong("durationMs", 300);
+        long strokeMs = body.optLong("durationMs", SWIPE_DEFAULT_STROKE_MS);
         boolean syntheticUp = body.optBoolean("fling", false);
         double half = Math.min(Math.max(span, 0.05), 0.9) / 2;
         double[] from, to;
@@ -724,7 +738,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handlePress(JSONObject body) {
         // ref または x/y(iOS ブリッジと同じ受理形。ホストは ref を自前解決して x/y で送る)
         double[] center = resolvePoint(body);
-        double duration = body.optDouble("duration", 1.0);
+        double duration = body.optDouble("duration", PRESS_DEFAULT_SECONDS);
         InputInjector.press(ua(), center[0], center[1], duration);
         settle();
         return ok();
@@ -815,7 +829,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             if (SystemClock.uptimeMillis() >= deadline) {
                 return false;
             }
-            SystemClock.sleep(50);
+            SystemClock.sleep(FOREGROUND_POLL_MS);
         }
         long remaining = Math.max(0, deadline - SystemClock.uptimeMillis());
         quietWaiter.quietWait(bundleID, QuietWaiter.QUIET_MS, remaining);
@@ -1038,7 +1052,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         while (!(current == null ? previous == null : current.equals(previous))
                 && SystemClock.uptimeMillis() < deadline) {
             previous = current;
-            SystemClock.sleep(30);
+            SystemClock.sleep(PACKAGE_RECHECK_MS);
             current = activePackage();
         }
         return current;

@@ -244,7 +244,7 @@ public enum PortHolder {
 
     private static func terminateThenKill(pid: Int32) {
         kill(pid, SIGTERM)
-        BridgeLauncher.confirmDeaths(pids: [pid], timeout: 5)
+        BridgeLauncher.confirmDeaths(pids: [pid], timeout: BridgeLauncher.terminateGraceSeconds)
     }
 
     private static func waitForRelease(port: UInt16, description: String) -> PortHolderOutcome {

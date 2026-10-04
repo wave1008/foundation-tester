@@ -42,7 +42,7 @@ final class AuthoringGuardTests: XCTestCase {
                           inventoryURL: URL? = nil) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: platform, app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(),
                     screenLooksLikeEnabled: screenLooksLikeEnabled, dryRun: dryRun,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-authoring-guard-test.json"),

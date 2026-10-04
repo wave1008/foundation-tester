@@ -25,7 +25,7 @@ final class SystemAlertProbeFailureTests: XCTestCase {
                                     snapshotElements: [[button(ref: 1, "btn_freeze_3s")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         if probeFails { fallback.systemAlertError = ProbeDown() }
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         if registered {
             executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*写真*", button: "許可"))
         }

@@ -39,8 +39,8 @@ final class InAppTapActivateRetryTests: XCTestCase {
         XCTAssertTrue(body.contains("AppUIFramework(rawValue: uiFramework)?.retriesUnfiredActivate ?? true"),
                       "tapByRef が AppUIFramework.retriesUnfiredActivate を読んでいません(不明は撃ち直す側)")
         guard let gate = body.range(of: "guard retriesUnfiredActivate else"),
-              let retry = body.range(of: "retry(2, stale: node, window: window)") else {
-            return XCTFail("撃ち直しの分岐か retry(2) の呼び出しが見つかりません")
+              let retry = body.range(of: "retry(Self.tapByRefRetryAttempts, stale: node, window: window)") else {
+            return XCTFail("撃ち直しの分岐か retry(tapByRefRetryAttempts) の呼び出しが見つかりません")
         }
         XCTAssertLessThan(gate.lowerBound, retry.lowerBound, "分岐は撃ち直しの前に置く")
     }

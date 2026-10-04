@@ -9,11 +9,11 @@ final class ApiRunDryRunFMTests: XCTestCase {
 
     func testDryRunSwitchesFMOffEntirely() {
         var input = ScenarioExecutionSettings(fm: FMConfig(enabled: true, fmTextOcclusionCheck: true), heal: true)
-        input.defaultTimeout = 7
+        input.tunables.defaultTimeout = 7
         let out = ApiRun.withDryRunFM(input, dryRun: true)
         XCTAssertFalse(out.fm.enabled, "dry-run では FM を有効のまま通さない")
         XCTAssertFalse(out.fm.fmTextOcclusionCheck)
-        XCTAssertEqual(out.defaultTimeout, 7, "fm 以外の欄は触らない")
+        XCTAssertEqual(out.tunables.defaultTimeout, 7, "fm 以外の欄は触らない")
         XCTAssertTrue(out.heal, "heal は FM ではないので触らない")
     }
 

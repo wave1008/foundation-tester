@@ -29,7 +29,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         let model = try VisionClassifier.loadBlocking(set, cacheDirectory: CheckStateClassifier.cacheDirectory(projectRoot: root))
         let driver = FakeAppDriver(name: "primary", log: CallLog())
         driver.screenshots = [try Self.blackPNG()]
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         let element = ElementInfo(ref: 1, type: "checkBox", identifier: "cb", label: nil, value: nil,
                                   placeholder: nil, enabled: true,
                                   frame: FTRect(x: 100, y: 800, width: 200, height: 200), depth: 1)
@@ -127,7 +127,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let driver = SequenceDriver(elements: fixture.screenElements,
                                     shots: [try Self.blackPNG(), FindImageTests.screenPNG()])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = root
 
         let outcome = await findCircle(executor)
@@ -147,7 +147,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let before = CheckStateClassifierTests.checkboxPNG(on: true, shift: 0, canvas: 120)
         let driver = SequenceDriver(elements: fixture.screenElements, shots: [before, FindImageTests.screenPNG()])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = root
         // 遷移前の画面で視覚検証が控えた絵と木(木は今と違う)
         let previousTree = [ElementInfo(ref: 9, type: "button", identifier: "nav_noid", label: nil, value: nil,
@@ -171,7 +171,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let before = CheckStateClassifierTests.checkboxPNG(on: true, shift: 0, canvas: 120)
         let driver = SequenceDriver(elements: fixture.screenElements, shots: [before])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = root
         let previousTree = [ElementInfo(ref: 9, type: "button", identifier: "nav_noid", label: nil, value: nil,
                                         placeholder: nil, enabled: true,
@@ -198,7 +198,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         let root = try fixture.makeProjectForExtension()
         defer { try? FileManager.default.removeItem(at: root) }
         let driver = SequenceDriver(elements: fixture.screenElements, shots: [FindImageTests.screenPNG()])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = root
 
         let outcome = await findCircle(executor)
@@ -231,7 +231,7 @@ final class BlankScreenshotJudgementTests: XCTestCase {
         let driver = FakeAppDriver(name: "primary", log: CallLog())
         driver.screenshots = shots
         let delegate = ScreenVerdictDelegate()
-        let executor = StepExecutor(driver: driver, delegate: delegate, isAndroid: true)
+        let executor = StepExecutor(driver: driver, delegate: delegate, isAndroid: true, tunables: RunTunables())
         let outcome = await executor.execute(FlowStep(assert: "screenMatches", expected: "ホーム画面"))
         return (outcome, delegate)
     }

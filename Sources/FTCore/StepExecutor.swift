@@ -523,6 +523,8 @@ public final class StepExecutor {
     /// `advisoryKind` の判定そのものは変えない —— 判定は1箇所、文言だけが OS で違う。
     /// **既定値を置かない**(呼び忘れをコンパイルで止める。overlayWindows: と同じ規律)
     let isAndroid: Bool
+    /// ステップが待ちを明示しないときの既定(`tunables.defaultTimeout`)など、環境で正解が変わる既定
+    let tunables: RunTunables
 
     /// 対象アプリの UI フレームワーク(`AppUIFrameworkQuery` の答え。nil = 不明)。
     /// **使うのは空打ちの発火条件(shouldEmptyDrag)と、待つ間の読み直しの迂回(repollBypassesCache)だけ**。
@@ -618,12 +620,15 @@ public final class StepExecutor {
                 screenLooksLikeEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
                 isAndroid: Bool,
+                // 既定を持たない(渡し忘れをコンパイルで止める)。既定値の定義元は RunTunables.init
+                tunables: RunTunables,
                 uiFramework: AppUIFramework? = nil,
                 containerInference: Bool = true,
                 defersPartialSheetRecovery: Bool = false,
                 commandTimeoutSeconds: TimeInterval? = nil) {
         self.releasesScrollTouch = releasesScrollTouch
         self.isAndroid = isAndroid
+        self.tunables = tunables
         self.uiFramework = uiFramework
         self.containerInference = containerInference
         self.defersPartialSheetRecovery = defersPartialSheetRecovery

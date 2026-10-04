@@ -49,7 +49,7 @@ final class FailureEvidenceScreenshotTests: XCTestCase {
                                    physical: Bool = true) -> Data? {
         let core = FTDriveCore(driver: primary ?? ShotDriver(shot: inApp), platform: "ios",
                                app: "com.example.app", scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(),
                                fallbackDriver: fallback, physical: physical, emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }

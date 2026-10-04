@@ -65,7 +65,7 @@ final class HeldValueAssertTests: XCTestCase {
                      _ body: @escaping () -> Void) -> FTDriveCore {
         let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: delegate, healingEnabled: false,
+                               delegate: delegate, healingEnabled: false, tunables: RunTunables(),
                                fmTextOcclusionCheckEnabled: fmTextOcclusionCheck, occlusionOCREnabled: fmTextOcclusionCheck,
                                dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
@@ -88,7 +88,7 @@ final class HeldValueAssertTests: XCTestCase {
         let driver = MutatingDriver()
         let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(),
                                fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-held-assert-notes-test.json"),

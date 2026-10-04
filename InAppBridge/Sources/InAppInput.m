@@ -34,6 +34,13 @@ extern IOHIDEventRef IOHIDEventCreateDigitizerFingerEvent(CFAllocatorRef allocat
 extern void IOHIDEventAppendEvent(IOHIDEventRef parent, IOHIDEventRef child, uint32_t options);
 extern void IOHIDEventSetIntegerValue(IOHIDEventRef event, uint32_t field, CFIndex value);
 
+// 合成タップで began と ended を別のランループ回に分けるときの待ち[秒]。タップジェスチャ認識器が began を処理する猶予
+#define FT_TAP_PHASE_DELAY_SECONDS 0.03
+// FTSynthDoubleTap の gapSeconds の上限[秒]。これを超える指定は判定窓(約 300ms)を外れるので無効扱い
+#define FT_DOUBLE_TAP_GAP_MAX_SECONDS 0.25
+// gapSeconds が無効(0 以下・NaN・上限超え)のときの既定[秒]。Compose の下限 40ms より長く判定窓より十分短い
+#define FT_DOUBLE_TAP_GAP_FALLBACK_SECONDS 0.08
+
 // IOHIDEventTypes.h の ABI 固定値。kIOHIDEventTypeDigitizer=11、field base=type<<16。
 #define FT_HID_RANGE    0x00000001u
 #define FT_HID_TOUCH    0x00000002u
@@ -105,7 +112,7 @@ void FTSynthTap(UIWindow *window, CGPoint point) {
     UITouch *t = ftMakeTouch(window, hit, point, ts);
     ftDispatch(window, t, point, UITouchPhaseBegan);
     // タップジェスチャ認識器が began を処理する猶予(同一ランループで ended まで送ると遷移不能)
-    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.03]];
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:FT_TAP_PHASE_DELAY_SECONDS]];
     [t setPhase:UITouchPhaseEnded];
     [t _setLocationInWindow:point resetPrevious:NO];
     [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
@@ -157,7 +164,7 @@ static void ftTapWithCount(UIWindow *window, CGPoint point, NSUInteger tapCount)
     UITouch *t = ftMakeTouch(window, hit, point, ts);
     [t setTapCount:tapCount];
     ftDispatch(window, t, point, UITouchPhaseBegan);
-    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.03]];
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:FT_TAP_PHASE_DELAY_SECONDS]];
     [t setPhase:UITouchPhaseEnded];
     [t _setLocationInWindow:point resetPrevious:NO];
     [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
@@ -169,7 +176,7 @@ static void ftTapWithCount(UIWindow *window, CGPoint point, NSUInteger tapCount)
 // doubleTap はここが 0ms になるため Compose では単タップに落ちる。2026-08-04 実測)。
 // 長すぎると今度は判定窓(約 300ms)を外れる。
 void FTSynthDoubleTap(UIWindow *window, CGPoint point, double gapSeconds) {
-    if (!(gapSeconds > 0) || gapSeconds > 0.25) gapSeconds = 0.08;
+    if (!(gapSeconds > 0) || gapSeconds > FT_DOUBLE_TAP_GAP_MAX_SECONDS) gapSeconds = FT_DOUBLE_TAP_GAP_FALLBACK_SECONDS;
     ftTapWithCount(window, point, 1);
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gapSeconds]];
     ftTapWithCount(window, point, 2);

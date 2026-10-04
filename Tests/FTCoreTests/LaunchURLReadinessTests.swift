@@ -25,7 +25,7 @@ final class LaunchURLReadinessTests: XCTestCase {
         let launchScreen = [element(1, "staticText")]
         let home = [element(1, "staticText"), element(2, "button", id: "nav_selector")]
         let driver = SnapshotSequenceDriver(trees: [launchScreen, launchScreen, home])
-        let ready = try await StepExecutor(driver: driver, isAndroid: false).awaitInteractiveUI(timeoutMs: 10_000)
+        let ready = try await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).awaitInteractiveUI(timeoutMs: 10_000)
         XCTAssertTrue(ready)
         XCTAssertEqual(driver.snapshotCount, 3, "ホームが載った 3 枚目で返る")
     }
@@ -34,7 +34,7 @@ final class LaunchURLReadinessTests: XCTestCase {
     func testGivesUpAfterTheBudgetWhenNothingTappableAppears() async throws {
         let driver = SnapshotSequenceDriver(trees: [[element(1, "staticText")]])
         let started = Date()
-        let ready = try await StepExecutor(driver: driver, isAndroid: false).awaitInteractiveUI(timeoutMs: 300)
+        let ready = try await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).awaitInteractiveUI(timeoutMs: 300)
         XCTAssertFalse(ready)
         let elapsed = Date().timeIntervalSince(started)
         XCTAssertGreaterThanOrEqual(elapsed, 0.3)

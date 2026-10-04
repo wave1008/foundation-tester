@@ -31,7 +31,7 @@ final class ValueAssertionOptionalTests: XCTestCase {
     private func run(_ body: @escaping () -> Void) -> [DSLStepRecord] {
         let core = FTDriveCore(driver: StubDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false, dryRun: false,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-value-optional-\(UUID().uuidString).json"),
                                emit: { _ in })

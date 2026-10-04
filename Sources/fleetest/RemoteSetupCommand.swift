@@ -1,8 +1,6 @@
 // RemoteSetupCommand.swift
 // `fleetest remote setup` / `teardown` / `align` / `exec` (docs/remote-runner.md §14)。
 // 純粋ロジックは Sources/FTRemote/RemoteSetup.swift 側(RemoteSetupPlan、単体テスト対象)。
-// ssh の張り方は Sources/fleetest/RemoteRunDispatcher.swift・RemoteCommands.swift と同じ規律
-// (BatchMode=yes・ConnectTimeout=10)だが、そちらは private のため複製する。
 
 import ArgumentParser
 import Darwin
@@ -11,9 +9,8 @@ import FTCore
 import FTRemote
 import Foundation
 
-// キープアライブ(SSHOptions.keepAliveArgs)の根拠は RemoteRunDispatcher.sshBase と同じ
-private let setupSSHBase = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
-private let setupSCPBase = ["scp", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"] + SSHOptions.keepAliveArgs
+private let setupSSHBase = ["ssh"] + SSHOptions.batchConnectArgs + SSHOptions.keepAliveArgs
+private let setupSCPBase = ["scp"] + SSHOptions.batchConnectArgs + SSHOptions.keepAliveArgs
 
 /// 進行の1行出力。**print は使わない** —— stdout が端末でないとき libc の行バッファが効かず、
 /// 分単位かかる install/align の進行が最後まで出ない(ログへリダイレクトすると「止まったのか

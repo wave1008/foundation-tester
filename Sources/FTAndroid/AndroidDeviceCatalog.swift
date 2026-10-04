@@ -47,7 +47,7 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
 
 public enum AndroidDeviceCatalog {
 
-    /// この列挙の adb 呼び出しの締切(秒)。`api monitor` の既定周期 2 秒のループから呼ばれるので、
+    /// 単発の adb 呼び出し(列挙・getprop 等)の締切(秒)。`api monitor` の既定周期 2 秒のループから呼ばれるので、
     /// wedge した adbd に無期限に握らせない(数 tick ぶんで諦める)。尽きると Shell が子を kill して
     /// `ShellError.timedOut` を投げる = 各呼び出し側は「取得できない」と同じ扱い
     /// (bootCompleted は false、avdName は次の経路へ)

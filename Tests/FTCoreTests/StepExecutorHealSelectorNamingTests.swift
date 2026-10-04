@@ -47,7 +47,7 @@ final class StepExecutorHealSelectorNamingTests: XCTestCase {
     }
 
     private func execute(_ snap: SnapshotResponse, fingerprint: LocatorFingerprint) async -> StepOutcome {
-        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+        let executor = StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false, tunables: RunTunables())
         // 素の locator は木のどこにも無い(旧セレクタが古くなった想定)→ 指紋照合へ進む
         return await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "stale_id")),
                                       fingerprint: fingerprint)

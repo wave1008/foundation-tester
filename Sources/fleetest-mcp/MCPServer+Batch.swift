@@ -571,7 +571,7 @@ extension MCPServer {
         let beforeBatch = lastSnapshots[Self.engineKey(args)]
         let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(batchDriver, args: args)
         let executor = StepExecutor(driver: batchDriver, releasesScrollTouch: !isAndroid,
-                                    isAndroid: isAndroid, uiFramework: uiFrameworkHint)
+                                    isAndroid: isAndroid, tunables: RunTunables(), uiFramework: uiFrameworkHint)
         let clock = ContinuousClock()
 
         // **1手目の ref はここで初めて解決する**(driver が要る: RefGuard の再照合と

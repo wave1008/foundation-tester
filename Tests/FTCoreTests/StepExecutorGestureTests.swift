@@ -14,7 +14,7 @@ extension StepExecutorTests {
     func testGestureWithoutLocatorTargetsTheWholeScreen() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let finger = FTFinger(x: 0.25, y: 0.5).move(x: 0.75, y: 0.5, durationSeconds: 0.3)
         let step = FlowStep(action: "gesture", gesture: [finger])
 
@@ -36,7 +36,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let pad = framed(ref: 1, id: "pad", x: 10, y: 40, width: 300, height: 200)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[pad]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let finger = FTFinger(x: 0, y: 0).move(x: 1, y: 1, durationSeconds: 0.2)
         let step = FlowStep(action: "gesture", locator: FlowLocator(id: "pad"), gesture: [finger])
 
@@ -56,7 +56,7 @@ extension StepExecutorTests {
     func testGestureRejectsEmptySpecWithoutTouchingTheDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "gesture", gesture: [])
 
         let outcome = await executor.execute(step)
@@ -76,7 +76,7 @@ extension StepExecutorTests {
     func testGestureRejectsTotalOverTheDefaultCapWithoutTouchingTheDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let finger = FTFinger(x: 0.2, y: 0.2).move(x: 0.8, y: 0.8, durationSeconds: 11)
         let step = FlowStep(action: "gesture", gesture: [finger])
 
@@ -93,7 +93,7 @@ extension StepExecutorTests {
     func testGestureWithinMaxGestureSecondsOverrideReachesTheDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let finger = FTFinger(x: 0.2, y: 0.2).move(x: 0.8, y: 0.8, durationSeconds: 11)
         var step = FlowStep(action: "gesture", gesture: [finger])
         step.maxGestureSeconds = 30
@@ -111,7 +111,7 @@ extension StepExecutorTests {
     func testGestureMaxGestureSecondsAboveCeilingFailsAtTheEntryGate() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let finger = FTFinger(x: 0.2, y: 0.2).move(x: 0.8, y: 0.8, durationSeconds: 1)
         var step = FlowStep(action: "gesture", gesture: [finger])
         step.maxGestureSeconds = 61
@@ -131,7 +131,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.gestureError = DriverError.badResponse(status: 501, body: "in-app では gesture が効きません")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let finger = FTFinger(x: 0.5, y: 0.5).hold(seconds: 0.1)
         let step = FlowStep(action: "gesture", gesture: [finger])
 

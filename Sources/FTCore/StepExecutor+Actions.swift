@@ -900,7 +900,7 @@ extension StepExecutor {
                 start = clock.now
                 try await actingDriver.drag(fromX: element.frame.centerX, fromY: element.frame.centerY,
                                             toX: endElement.frame.centerX, toY: endElement.frame.centerY,
-                                            pressSeconds: 0.05, durationSeconds: swipeDuration)
+                                            pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: swipeDuration)
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
                 // in-app エンジンは drag を一切実装しない(501)ため、hybrid では typeDriver=XCUITest
@@ -1649,7 +1649,7 @@ extension StepExecutor {
         try await gestureWithFallback(phase: &phase) {
             try await $0.drag(fromX: path.fromX, fromY: path.fromY,
                               toX: path.toX, toY: path.toY,
-                              pressSeconds: 0.05, durationSeconds: durationSeconds)
+                              pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: durationSeconds)
         }
     }
 
@@ -1702,7 +1702,7 @@ extension StepExecutor {
         start = clock.now
         try await td.drag(fromX: from.frame.centerX, fromY: from.frame.centerY,
                           toX: to.frame.centerX, toY: to.frame.centerY,
-                          pressSeconds: 0.05, durationSeconds: durationSeconds)
+                          pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: durationSeconds)
         phase.actionMs += Self.ms(clock.now - start)
         return true
     }
@@ -1743,7 +1743,7 @@ extension StepExecutor {
         var probe = await probeSystemAlert(fb, phase: &phase)
         guard SystemUIGate.isCovered(probe) else { return nil }
 
-        let deadline = clock.now.advanced(by: .seconds(step.timeout ?? FlowStep.defaultWaitSeconds))
+        let deadline = clock.now.advanced(by: .seconds(step.timeout ?? tunables.defaultTimeout))
         var backoff = PollBackoff()
         var covering = SystemUIGate.describeCovering(probe)
         // **最後に読めたボタンの並び**を持ち回る(失敗の言い分に実際の名前を出すため。
@@ -1816,7 +1816,7 @@ extension StepExecutor {
 
     /// 対象が**操作可能になるまで**待つ(`tap` だけ)。戻り値 nil = 待たなかった/待ち切れなかった
     /// (呼び手はそのまま撃つ)。予算はステップの `timeout`、無ければ既定の待ち
-    /// (`FlowStep.defaultWaitSeconds`。**新しい数字は作らない**)。
+    /// (`tunables.defaultTimeout`。**新しい数字は作らない**)。
     ///
     /// **`enabled` を明示したセレクタでは待たない** —— `&&enabled=false` は
     /// 「無効なものを狙って掴む」宣言なので、待つと必ず予算を捨てる
@@ -1827,7 +1827,7 @@ extension StepExecutor {
         guard !constrained else { return nil }
         let clock = ContinuousClock()
         let began = clock.now
-        let deadline = began.advanced(by: .seconds(step.timeout ?? FlowStep.defaultWaitSeconds))
+        let deadline = began.advanced(by: .seconds(step.timeout ?? tunables.defaultTimeout))
         var backoff = PollBackoff()
         while clock.now < deadline {
             var start = clock.now

@@ -18,7 +18,7 @@ final class HoldStepTests: XCTestCase {
     func testHoldStartSendsExactlyOneHoldAtTheElementsCentre() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         let outcome = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 3))
@@ -36,7 +36,7 @@ final class HoldStepTests: XCTestCase {
     func testHoldEndWaitsUntilTheLiftTime() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         let start = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 0.5))
@@ -58,7 +58,7 @@ final class HoldStepTests: XCTestCase {
     func testHoldEndDoesNotSleepAgainWhenTheBlockAlreadyOutlastedTheHold() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         let start = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 0.2))
@@ -84,7 +84,7 @@ final class HoldStepTests: XCTestCase {
     func testAFailureAfterTheFingerLiftedCarriesTheNote() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let start = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 0.2))
         guard case .passed = start.status else { return XCTFail("\(start.status)") }
@@ -100,7 +100,7 @@ final class HoldStepTests: XCTestCase {
     func testAFailureWhileTheFingerIsDownCarriesNoNote() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let start = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 8))
         guard case .passed = start.status else { return XCTFail("\(start.status)") }
@@ -115,7 +115,7 @@ final class HoldStepTests: XCTestCase {
     func testASecondHoldWhileOneIsInFlightFails() async throws {
         let log = CallLog()
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         let first = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 3))
@@ -135,7 +135,7 @@ final class HoldStepTests: XCTestCase {
         let driver = FakeAppDriver(name: "d", log: log, snapshotElements: [[makeElement()]])
         driver.holdError = DriverError.badResponse(status: 501, body: "This driver does not support hold")
         // typeDriver を渡さない: gestureWithFallback に回す先が無いので、501 がそのまま素通りする
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
 
         let outcome = await executor.execute(FlowStep(
             action: "holdStart", locator: FlowLocator(id: "btn_tooltip_anchor"), duration: 1))

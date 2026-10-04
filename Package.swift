@@ -299,6 +299,8 @@ let package = Package(
             // swiftbuild が直ったら削除可
             dependencies: [
                 "FTDSL",
+                // RunTunablesBoundaryTests が子側の --tunables 復号を直接呼ぶ
+                "FTScenarioRunner",
                 "FTTestSupport",
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),

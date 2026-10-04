@@ -226,7 +226,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 報告から説明できるように残す。判定は `ReinstallSource`
     case reinstalledToClearData = "reinstalled-to-clear-data"
 
-    /// snapshot 1回の実測がこのステップの待ち予算(`step.timeout ?? FlowStep.defaultWaitSeconds`)を
+    /// snapshot 1回の実測がこのステップの待ち予算(`step.timeout ?? tunables.defaultTimeout`)を
     /// 超えた(`TimelineStepRecord.snapshotMs` で内訳を追える)。**判定は変えない** ——
     /// このステップの合否とは無関係に、遅かった事実だけを残す。`SlowSnapshotBudget` が
     /// 期限後の追加取り直しをこの所要を根拠に止める判断の材料と同じ計測値。

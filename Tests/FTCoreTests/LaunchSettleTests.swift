@@ -29,7 +29,7 @@ final class LaunchSettleTests: XCTestCase {
             afterShift,   // 動いた
             afterShift,   // 静止
         ])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         executor.noteAppLaunched()
         XCTAssertTrue(executor.pendingLaunchSettle)
 
@@ -46,7 +46,7 @@ final class LaunchSettleTests: XCTestCase {
     func testSettleIsPaidOncePerLaunchAndNotNotedWhenAlreadyStill() async {
         let log = CallLog()
         let driver = FakeAppDriver(name: "primary", log: log, snapshotElements: [afterShift])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "nav_scroll"))
 
         var before = driver.snapshotCallCount

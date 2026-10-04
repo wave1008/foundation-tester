@@ -137,7 +137,7 @@ private final class ClosingAnimationDriver: AppDriver {
 final class InterruptDismissalCapTests: XCTestCase {
 
     private func executor(_ driver: AppDriver, maxDismissals: Int? = nil) -> StepExecutor {
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let handler = maxDismissals.map {
             StepExecutor.InterruptHandler(detect: FlowLocator(id: "promo_modal"),
                                           dismiss: FlowLocator(id: "btn_promo_close"),

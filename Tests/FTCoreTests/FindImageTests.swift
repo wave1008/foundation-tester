@@ -207,7 +207,7 @@ final class FindImageTests: XCTestCase {
 
     private func run(_ action: String, label: String = "[Circle Icon]", threshold: Double?,
                      projectRoot: URL?) async -> StepOutcome {
-        let executor = StepExecutor(driver: ScreenDriver(elements: screenElements), isAndroid: false)
+        let executor = StepExecutor(driver: ScreenDriver(elements: screenElements), isAndroid: false, tunables: RunTunables())
         executor.visionClassifierProjectRoot = projectRoot
         return await executor.execute(FlowStep(action: action, expected: label, timeout: 0,
                                                imageThreshold: threshold))

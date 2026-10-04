@@ -54,12 +54,12 @@ final class LocatorFingerprintClampedResolutionTests: XCTestCase {
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_old"))
 
         // 陽性対照: 実在する行の指紋はこの画面で解決する(除外が行き過ぎていない)
-        let control = await StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+        let control = await StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false, tunables: RunTunables())
             .execute(step, fingerprint: LocatorFingerprint(type: "cell", label: "行 16", placeholder: nil))
         XCTAssertTrue(control.notes.contains(.healFingerprintMatch), "前提: 実在する行で指紋が効いていない")
 
         // raw では type+label の一致がちょうど1件("行 15")だが、その要素はクランプされた幽霊
-        let outcome = await StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false)
+        let outcome = await StepExecutor(driver: StubDriver(snap), healingEnabled: true, isAndroid: false, tunables: RunTunables())
             .execute(step, fingerprint: LocatorFingerprint(type: "cell", label: "行 15", placeholder: nil))
 
         XCTAssertFalse(outcome.notes.contains(.healFingerprintMatch),

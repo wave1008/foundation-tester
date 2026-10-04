@@ -32,7 +32,7 @@ final class HideKeyboardWaitTests: XCTestCase {
             Array(repeating: [title()], count: 6) + [[title(), tab()]])
         driver.keyboardFrames = Array(repeating: keyboard, count: 6) + [nil]
         driver.bypassSupported = true
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         _ = await executor.execute(FlowStep(action: "hideKeyboard"))
         let tap = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "tab_home")))
         XCTAssertTrue(isPassed(tap.status), "\(tap.status)")
@@ -44,7 +44,7 @@ final class HideKeyboardWaitTests: XCTestCase {
         func reads(hideFirst: Bool) async -> Int {
             let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[title(), tab()]])
             driver.bypassSupported = true
-            let executor = StepExecutor(driver: driver, isAndroid: true)
+            let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
             if hideFirst { _ = await executor.execute(FlowStep(action: "hideKeyboard")) }
             let before = driver.snapshotCallCount
             _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "tab_home")))
@@ -57,17 +57,17 @@ final class HideKeyboardWaitTests: XCTestCase {
 
     func testIOSDoesNotArmTheWait() async {
         let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[title()]])
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         _ = await executor.execute(FlowStep(action: "hideKeyboard"))
         XCTAssertNil(executor.pendingHideKeyboardWait)
     }
 
-    /// 上限は hideKeyboard ステップの待ち時間(既定は FlowStep.defaultWaitSeconds)。消えなくても打ち切って進む
+    /// 上限は hideKeyboard ステップの待ち時間(既定は tunables.defaultTimeout)。消えなくても打ち切って進む
     func testTheWaitStopsAtTheHideKeyboardStepTimeout() async {
         let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[title()]])
         driver.keyboardFrame = keyboard
         driver.bypassSupported = true
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         _ = await executor.execute(FlowStep(action: "hideKeyboard", timeout: 0.3))
         XCTAssertEqual(executor.pendingHideKeyboardWait, 0.3)
         let clock = ContinuousClock()
@@ -75,7 +75,7 @@ final class HideKeyboardWaitTests: XCTestCase {
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "tab_home"), timeout: 0))
         XCTAssertLessThan(clock.now - start, .seconds(3), "上限 0.3 秒で打ち切る(既定の 5 秒まで待たない)")
 
-        let defaulted = StepExecutor(driver: driver, isAndroid: true)
+        let defaulted = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
         _ = await defaulted.execute(FlowStep(action: "hideKeyboard"))
         XCTAssertEqual(defaulted.pendingHideKeyboardWait, 5, "省略時は既定の待ち時間(5 秒)")
     }

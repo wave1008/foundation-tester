@@ -41,7 +41,7 @@ final class FTElementChainTests: XCTestCase {
     private func makeCore(driver: AppDriver) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: false,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-chain-test.json"),
                     emit: { _ in })

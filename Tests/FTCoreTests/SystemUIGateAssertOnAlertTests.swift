@@ -32,7 +32,7 @@ final class SystemUIGateAssertOnAlertTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
                                                                buttons: ["許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         // 登録のボタンはアラートのボタンと一致させる = 門が閉じられる形にしておく
         // (閉じられない登録だと「閉じなかった」のが規律のおかげか登録のおかげか分からない)
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "許可"))

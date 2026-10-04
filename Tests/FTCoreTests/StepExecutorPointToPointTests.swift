@@ -9,7 +9,7 @@ final class StepExecutorPointToPointTests: XCTestCase {
     func testPointToPointDragsBetweenTheGivenCoordinates() async {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "swipePointToPoint", duration: 0.3, x: 200, y: 550, toX: 200, toY: 250)
 
         let outcome = await executor.execute(step)
@@ -28,7 +28,7 @@ final class StepExecutorPointToPointTests: XCTestCase {
     /// 秒数の既定(duration nil)は 1.5 秒(Shirates の SWIPE_DURATION_SECONDS)
     func testDefaultDurationIsTheSwipeDefault() async {
         let primary = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[]])
-        _ = await StepExecutor(driver: primary, isAndroid: false)
+        _ = await StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "swipePointToPoint", x: 1, y: 2, toX: 3, toY: 4))
         XCTAssertEqual(primary.lastDragArgs?.durationSeconds, 1.5)
     }
@@ -38,7 +38,7 @@ final class StepExecutorPointToPointTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.dragError = DriverError.badResponse(status: 501, body: "in-app has no drag")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
 
         let outcome = await executor.execute(
             FlowStep(action: "swipePointToPoint", x: 10, y: 20, toX: 30, toY: 40))
@@ -52,7 +52,7 @@ final class StepExecutorPointToPointTests: XCTestCase {
     func testDurationAboveTheCapIsRefusedBeforeTouchingTheDevice() async {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let outcome = await StepExecutor(driver: primary, isAndroid: false)
+        let outcome = await StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "swipePointToPoint", duration: 11, x: 1, y: 2, toX: 3, toY: 4))
         guard case .failed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertTrue(log.entries.isEmpty, "\(log.entries)")
@@ -60,7 +60,7 @@ final class StepExecutorPointToPointTests: XCTestCase {
 
     func testMissingEndPointFails() async {
         let primary = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[]])
-        let outcome = await StepExecutor(driver: primary, isAndroid: false)
+        let outcome = await StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "swipePointToPoint", x: 1, y: 2))
         guard case .failed(let reason) = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertTrue(reason.contains("endX"), reason)

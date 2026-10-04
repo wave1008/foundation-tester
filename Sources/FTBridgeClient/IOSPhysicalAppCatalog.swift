@@ -51,9 +51,9 @@ public enum IOSPhysicalAppCatalog {
 
     /// udid の実機のインストール済みアプリ一覧。`--json-output` はこのサブコマンドで
     /// stdout("-")を受け付けないため、一時ファイルへ書かせてから読む(list devices と違う点)。
-    /// **timeout の既定 30 は変えない**(他の呼び手はこの秒数を前提にしている)。
+    /// **timeout の既定(`IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds`)は変えない**(他の呼び手はこの秒数を前提にしている)。
     /// 短い timeout を渡すのは毎コマンド撃つ呼び手(LiveSessionFollower)だけ
-    public static func apps(udid: String, timeout: Double = 30) throws -> [App] {
+    public static func apps(udid: String, timeout: Double = IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds) throws -> [App] {
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("fleetest-devicectl-apps-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: outputURL) }

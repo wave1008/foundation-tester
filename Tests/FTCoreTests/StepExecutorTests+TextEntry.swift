@@ -19,7 +19,7 @@ extension StepExecutorTests {
         // fallback: "ログイン" の完全一致
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 2, label: "ログイン")]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         // 部分一致は記法で明示する(素の "ログイン" は完全一致なので primary に当たらない)
         let step = FlowStep(action: "tap",
                             locator: FlowLocator(label: "ログイン", labelMatch: .contains))
@@ -49,7 +49,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 7, label: "許可")]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "許可"))
 
         let outcome = await executor.execute(step)
@@ -69,7 +69,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[labeled(ref: 1, label: "ログインに失敗しました")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap",
                             locator: FlowLocator(label: "ログイン", labelMatch: .contains))
 
@@ -91,7 +91,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[labeled(ref: 1, label: "ログイン")]])
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 2, label: "ログイン")]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "ログイン"))
 
         let outcome = await executor.execute(step)
@@ -110,7 +110,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "target")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
 
         let outcome = await executor.execute(step)
@@ -131,7 +131,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[element(ref: 1, id: "field_email")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "field_email")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -156,7 +156,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "field_email")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -178,7 +178,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[element(ref: 1, id: "field_note")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "field_note")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "hi\n")
 
         let outcome = await executor.execute(step)
@@ -199,7 +199,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[element(ref: 1, id: "field_note")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "field_note")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -219,7 +219,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", text: "hi\n")
 
         let outcome = await executor.execute(step)
@@ -236,7 +236,7 @@ extension StepExecutorTests {
     func testTypeWithoutLocatorUsesPrimaryWhenNoTypeDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", text: "hi\n")
 
         let outcome = await executor.execute(step)
@@ -256,7 +256,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[element(ref: 1, id: "field_note")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "field_note")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "line1\nline2")
 
         let outcome = await executor.execute(step)
@@ -278,7 +278,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[inputField(ref: 1, id: "field")]])
         // verifiesTypedText は既定 true(FakeAppDriver の既定。AppDriver 既定の false とは逆)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -299,7 +299,7 @@ extension StepExecutorTests {
             snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
                               [inputField(ref: 1, id: "field", value: "hi")]])
         primary.verifiesTypedText = false
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -330,7 +330,7 @@ extension StepExecutorTests {
             guard mutations > 1 else { return }
             primary.snapshotElements.append([self.inputField(ref: 1, id: "field", value: "hi")])
         }
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -359,7 +359,7 @@ extension StepExecutorTests {
             guard mutations > 2 else { return }
             primary.snapshotElements.append([self.inputField(ref: 1, id: "field", value: "hi")])
         }
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -383,7 +383,7 @@ extension StepExecutorTests {
             snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
                               [inputField(ref: 1, id: "field", value: "••")]])
         primary.verifiesTypedText = false
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -404,7 +404,7 @@ extension StepExecutorTests {
             snapshotElements: [[inputField(ref: 1, id: "field", value: nil)],
                               [inputField(ref: 1, id: "field", value: "h")]])
         primary.verifiesTypedText = false
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "hi")
 
         let outcome = await executor.execute(step)
@@ -426,7 +426,7 @@ extension StepExecutorTests {
             snapshotElements: [[inputField(ref: 1, id: "field", value: "old")],
                               [inputField(ref: 1, id: "field", value: nil)]])
         // verifiesTypedText 既定 true(呼び出し順だけを見るテストなので読み返しは起こさない)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true)
 
         let outcome = await executor.execute(step)
@@ -452,7 +452,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(
             name: "primary", log: log,
             snapshotElements: [[inputField(ref: 1, id: "field", value: "still there")]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true)
 
         let outcome = await executor.execute(step)
@@ -471,7 +471,7 @@ extension StepExecutorTests {
     func testTypeWithoutLocatorWithReplaceClearsFocusedElementFirst() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", text: "new", replace: true)
 
         let outcome = await executor.execute(step)
@@ -489,7 +489,7 @@ extension StepExecutorTests {
     func testTypeWithoutLocatorWithoutReplaceNeverClears() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", text: "new")
 
         let outcome = await executor.execute(step)
@@ -506,7 +506,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[inputField(ref: 1, id: "field", value: "old")]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new")
 
         let outcome = await executor.execute(step)
@@ -541,7 +541,7 @@ extension StepExecutorTests {
             guard mutations > 2 else { return }
             primary.snapshotElements.append([self.inputField(ref: 1, id: "field", value: "new")])
         }
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field"), text: "new", replace: true)
 
         let outcome = await executor.execute(step)
@@ -564,7 +564,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
@@ -586,7 +586,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         primary.pressEnterError = DriverError.badResponse(status: 409, body: "not compose")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
@@ -607,7 +607,7 @@ extension StepExecutorTests {
                                     snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         primary.pressEnterError = DriverError.badResponse(status: 500, body: "server error")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
@@ -626,7 +626,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         primary.pressEnterError = DriverError.badResponse(status: 409, body: "not compose")
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
@@ -646,7 +646,7 @@ extension StepExecutorTests {
             name: "primary", log: log,
             snapshotElements: [[inputField(ref: 1, id: "field", focused: false)],
                               [inputField(ref: 1, id: "field", focused: true)]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
@@ -668,7 +668,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(
             name: "primary", log: log,
             snapshotElements: [[inputField(ref: 1, id: "field", focused: false)]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
@@ -690,7 +690,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[inputField(ref: 1, id: "field", focused: true)]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "field")))
         let tapIndex = try XCTUnwrap(log.entries.lastIndex { $0.hasPrefix("primary.tap") }, "\(log.entries)")
@@ -709,7 +709,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[inputField(ref: 1, id: "field", focused: false)]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
 
         _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "field")))
         let outcome = await executor.execute(FlowStep(action: "type", text: "pqr\n"))
@@ -725,7 +725,7 @@ extension StepExecutorTests {
     func testHideKeyboardCallsDriverDirectlyWithoutSnapshot() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "hideKeyboard")
 
         let outcome = await executor.execute(step)
@@ -745,7 +745,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log)
         primary.hideKeyboardError = DriverError.badResponse(status: 501, body: "not supported")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "hideKeyboard")
 
         let outcome = await executor.execute(step)
@@ -766,7 +766,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.keyboardShownFrames = [false, true]
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "keyboardShown", timeout: 3)
 
         guard case .passed = await executor.execute(step).status else {
@@ -780,7 +780,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         primary.keyboardShownFrames = [true, false]
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "keyboardNotShown", timeout: 3)
 
         guard case .passed = await executor.execute(step).status else {
@@ -796,7 +796,7 @@ extension StepExecutorTests {
         let log = CallLog()
         // keyboardShownFrames を設定しない → SnapshotResponse.keyboardShown は常に nil
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "keyboardShown", timeout: 0)
 
         guard case .failed(let message) = await executor.execute(step).status else {
@@ -812,7 +812,7 @@ extension StepExecutorTests {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 7, id: "field_note")]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
         let outcome = await executor.execute(step)
@@ -830,7 +830,7 @@ extension StepExecutorTests {
     func testClearInputWithoutLocatorClearsFocusedElement() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput")
 
         let outcome = await executor.execute(step)
@@ -851,7 +851,7 @@ extension StepExecutorTests {
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "field_note")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
         let outcome = await executor.execute(step)
@@ -882,7 +882,7 @@ extension StepExecutorTests {
             status: 422, body: "フォーカスされた入力欄がありません")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "field_note")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
         let outcome = await executor.execute(step)
@@ -904,7 +904,7 @@ extension StepExecutorTests {
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "btn_submit")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .uikit)
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "btn_submit"))
 
@@ -927,7 +927,7 @@ extension StepExecutorTests {
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 2, id: "btn_submit")]])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false,
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .uikit)
         let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "new", replace: true)
 
@@ -950,7 +950,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log)
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput")
 
         let outcome = await executor.execute(step)
@@ -979,7 +979,7 @@ extension StepExecutorTests {
             [inputField(ref: 2, id: "field_note", value: "residual")],
             [inputField(ref: 2, id: "field_note", value: nil)],
         ])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
         let outcome = await executor.execute(step)
@@ -1005,7 +1005,7 @@ extension StepExecutorTests {
             [inputField(ref: 2, id: "field_note", value: "still there")],
             [inputField(ref: 2, id: "field_note", value: "still there")],
         ])
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
         let outcome = await executor.execute(step)
@@ -1025,7 +1025,7 @@ extension StepExecutorTests {
             [inputField(ref: 7, id: "field_note", value: "type here", placeholder: "type here")],
         ])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
         let outcome = await executor.execute(step)
@@ -1046,7 +1046,7 @@ extension StepExecutorTests {
             [inputField(ref: 1, id: "field_note", value: "residual", focused: true)],
         ])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
-        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput")
 
         let outcome = await executor.execute(step)
@@ -1067,7 +1067,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
             [inputField(ref: 1, id: "other_field", value: "unrelated")],
         ])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput")
 
         let outcome = await executor.execute(step)

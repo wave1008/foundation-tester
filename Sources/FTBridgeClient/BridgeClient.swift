@@ -867,7 +867,7 @@ public final class BridgeClient: AppDriver, Sendable {
         let screen = tree.screen
         try await drag(fromX: screen.x + 1, fromY: screen.y + screen.height * 0.5,
                        toX: screen.x + screen.width * 0.65, toY: screen.y + screen.height * 0.5,
-                       pressSeconds: 0.05, durationSeconds: 0.25)
+                       pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: 0.25)
     }
 
     /// ナビゲーションバーの戻るボタン。**識別子で引く**(位置や順序で当てると、左に別のボタンを

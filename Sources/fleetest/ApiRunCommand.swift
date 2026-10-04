@@ -1041,7 +1041,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
 
         var settings = ApiRun.withDryRunFM(ScenarioExecutionSettings(noProfileSettings), dryRun: dryRun)
-        settings.defaultTimeout = effectiveDefaultTimeout
+        if let effectiveDefaultTimeout { settings.tunables.defaultTimeout = effectiveDefaultTimeout }
         settings.scenarioTimeout = effectiveScenarioTimeout
 
         // SIGINT/SIGTERM を受けたら、次のシナリオへ進まず・今動いている子を SIGTERM してから

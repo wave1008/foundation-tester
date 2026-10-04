@@ -324,11 +324,11 @@ enum DeviceMachineRunner {
         let notApplicable = selected.filter { !runnableIDs.contains($0.id) }
         let historyRuns = max(1, lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
-        let since = Date().addingTimeInterval(-30 * 24 * 60 * 60)  // LPTOrdering.historyDays と同じ窓
+        let since = RunResultsStore.lptHistorySince()
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: since,
                                                   maxObservationsPerScenario: historyRuns)
         let durations = LPTScheduler.durations(from: records)
-        let unknown = durations.isEmpty ? 1.0
+        let unknown = durations.isEmpty ? FleetRunner.unknownDurationUnitWeight
             : (durations.map(\.medianMs).sorted()[durations.count / 2])
         // facts はディスパッチのたびに RemoteRunDispatcher が書く。初回(キャッシュ無し)は
         // machine=nil・offset=0 で MachineContext が単純な混合見積りへ退化する(FleetRunner と同じ)。

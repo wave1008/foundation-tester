@@ -37,7 +37,7 @@ final class DeviceSessionMemoTests: XCTestCase {
     private func makeCore(sink: Sink, runSetUpDevice: Bool = true) -> FTDriveCore {
         let core = FTDriveCore(driver: NullDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false, dryRun: true,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: true,
                                fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                                    .appendingPathComponent("ft-memo-test.json"),
                                emit: { sink.add($0) })

@@ -142,7 +142,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let delegate = FakeVisibilityDelegate(visible: false)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -161,7 +161,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
-        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -178,7 +178,7 @@ final class StepExecutorTests: XCTestCase {
         let el = textElement(id: "msg", label: "こんにちは")
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                    occlusionOCRMode: .off, isAndroid: false)
+                                    occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -193,7 +193,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let el = textElement(id: "msg", label: "こんにちは")
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
-        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false, tunables: RunTunables())
         let assertStep = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                   timeout: 1, occlusionGuard: true)
 
@@ -215,7 +215,7 @@ final class StepExecutorTests: XCTestCase {
                                                        [textElement(id: "msg", label: "B")]],
                                     screenshots: [stuckPNG, stuckPNG, freshPNG])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -246,7 +246,7 @@ final class StepExecutorTests: XCTestCase {
                                                        [textElement(id: "msg", label: "B")]],
                                     screenshots: [stuckPNG])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -273,7 +273,7 @@ final class StepExecutorTests: XCTestCase {
                                                        [textElement(id: "msg", label: "B")]],
                                     screenshots: [stuckPNG])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -315,7 +315,7 @@ final class StepExecutorTests: XCTestCase {
                                                            [textElement(id: "msg", label: "B")]],
                                         screenshots: [stuckPNG])
             let delegate = FakeVisibilityDelegate(visible: true)
-            let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+            let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
             var step = FlowStep(assert: assertKind, locator: FlowLocator(id: "msg"),
                                 timeout: 2, occlusionGuard: true)
             if assertKind == "textEquals" { step.expected = "B" }
@@ -361,7 +361,7 @@ final class StepExecutorTests: XCTestCase {
                                                        [textElement(id: "msg", label: "B")]],
                                     screenshots: [stuckPNG])
         let delegate = FakeVisibilityDelegate(visible: false)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true, tunables: RunTunables())
 
         await executor.recordPreLaunchFrame()
         let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
@@ -381,7 +381,7 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[textElement(id: "msg", label: "A")]],
                                     screenshots: [Data([0x01])])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true, tunables: RunTunables())
 
         await executor.recordPreLaunchFrame()
         let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
@@ -398,7 +398,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "A")]],
                                     screenshots: [Data([0x01])])
-        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true), isAndroid: false, tunables: RunTunables())
 
         await executor.recordPreLaunchFrame()
 
@@ -416,7 +416,7 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[textElement(id: "msg", label: "A")]],
                                     screenshots: [blackPNG])
         let delegate = FakeVisibilityDelegate(visible: false)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                                       timeout: 1, occlusionGuard: true))
         guard case .passed = outcome.status else {
@@ -438,7 +438,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[element]],
                                     screenshots: [png])
         let delegate = FakeVisibilityDelegate(visible: false)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: true, tunables: RunTunables())
         let outcome = await executor.execute(FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                                       timeout: 1, occlusionGuard: true))
         guard case .passed = outcome.status else {
@@ -558,7 +558,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])   // 常に空
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[match]])
         let delegate = SequenceVisibilityDelegate([false])   // ガードが走れば覆いで失敗させる
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
                             expected: "OK", timeout: 2, occlusionGuard: true)
 
@@ -579,7 +579,7 @@ final class StepExecutorTests: XCTestCase {
         // 1周目: 一致(覆い)→ 2周目以降: 不一致
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[el("OK")], [el("NG")]])
-        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]), isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
                             expected: "OK", timeout: 1, occlusionGuard: true)
 
@@ -599,7 +599,7 @@ final class StepExecutorTests: XCTestCase {
                              frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
         let delegate = FakeVisibilityDelegate(visible: false)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "Hello, World"),
                             timeout: 1, occlusionGuard: true)
 
@@ -616,7 +616,7 @@ final class StepExecutorTests: XCTestCase {
         let el = textElement(id: "msg", label: "こんにちは")
         // 1周目: 覆われて存在 → 2周目以降: 消失(空)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el], []])
-        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: false), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: false), isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -633,7 +633,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 0)
 
         guard case .passed = await executor.execute(step).status else {
@@ -647,7 +647,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "msg"), maxSwipes: -1)
 
         guard case .passed = await executor.execute(step).status else {
@@ -660,7 +660,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let el = textElement(id: "msg", label: "合致")
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
-        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]), isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]), isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
                             expected: "合致", timeout: 1, occlusionGuard: true)
 
@@ -678,7 +678,7 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let delegate = FakeVisibilityDelegate(visible: false)
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionGuardEnabled: false, isAndroid: false)
+                                    occlusionGuardEnabled: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -740,7 +740,7 @@ final class StepExecutorTests: XCTestCase {
                                     screenshots: [screenFillingTextPNG(label)])
         let delegate = FakeVisibilityDelegate(visible: false)
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionInkThreshold: 1000, isAndroid: false)
+                                    occlusionInkThreshold: 1000, isAndroid: false, tunables: RunTunables())
         executor.occlusionOCRMode = .on
         // 近道は「モデルが載っている」ときだけ撃つ(RegionText.shouldTakeShortcut)。
         // この検証が見たいのは OCR が読めた先の分岐なので、載っている状態に固定する
@@ -764,7 +764,7 @@ final class StepExecutorTests: XCTestCase {
                                     screenshots: [screenFillingTextPNG(label)])
         let delegate = FakeVisibilityDelegate(visible: true)
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionInkThreshold: 1000, isAndroid: false)
+                                    occlusionInkThreshold: 1000, isAndroid: false, tunables: RunTunables())
         executor.occlusionOCRMode = .measure
         // 近道は「モデルが載っている」ときだけ撃つ(RegionText.shouldTakeShortcut)。
         // この検証が見たいのは OCR が読めた先の分岐なので、載っている状態に固定する
@@ -786,7 +786,7 @@ final class StepExecutorTests: XCTestCase {
                                     screenshots: [screenFillingTextPNG(label)])
         let delegate = FakeVisibilityDelegate(visible: false)
         let executor = StepExecutor(driver: primary, delegate: delegate,
-                                    occlusionInkThreshold: 1000, isAndroid: false)
+                                    occlusionInkThreshold: 1000, isAndroid: false, tunables: RunTunables())
         executor.occlusionOCRMode = .off
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
@@ -816,7 +816,7 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[screenFillingTextElement(label: label)]],
                                     screenshots: [screenFillingTextPNG(label)])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                    occlusionInkThreshold: 1000, isAndroid: false)
+                                    occlusionInkThreshold: 1000, isAndroid: false, tunables: RunTunables())
         executor.occlusionOCRMode = .on
         let before = RegionText.prewarmRequestCount
         XCTAssertEqual(RegionText.prewarmRequestCount, before, "生成だけでは暖機を頼まない")
@@ -835,7 +835,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                    isAndroid: false)
+                                    isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -850,7 +850,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[offscreenTextElement()]])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -867,7 +867,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                    isAndroid: false)
+                                    isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: false)
 
@@ -882,7 +882,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: false),
-                                    occlusionGuardEnabled: false, isAndroid: false)
+                                    occlusionGuardEnabled: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -897,7 +897,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                    isAndroid: false)
+                                    isAndroid: false, tunables: RunTunables())
         let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
         XCTAssertFalse(outcome.guardEntered, "tap は occlusionFlip を通らないはず")
     }
@@ -920,7 +920,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let delegate = NoVerdictVisibilityDelegate()
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -940,7 +940,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -959,7 +959,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[offscreenTextElement()]])
         let delegate = FakeVisibilityDelegate(visible: true)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -979,7 +979,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[offscreenTextElement()]])
-        let executor = StepExecutor(driver: primary, delegate: nil, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: nil, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -997,7 +997,7 @@ final class StepExecutorTests: XCTestCase {
             let primary = FakeAppDriver(name: "primary", log: log,
                                         snapshotElements: [[offscreenTextElement()]])
             let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
-                                        occlusionGuardEnabled: master, isAndroid: false)
+                                        occlusionGuardEnabled: master, isAndroid: false, tunables: RunTunables())
             let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                                 timeout: 1, occlusionGuard: perStep)
 
@@ -1012,7 +1012,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[offscreenTextElement()]])
-        let executor = StepExecutor(driver: primary, delegate: nil, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: nil, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "select", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -1037,7 +1037,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
                                                                buttons: ["許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1064,7 +1064,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(
             present: true, title: "“App”は通知を送信します。よろしいですか？", buttons: ["許可しない", "許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.noteAppLaunched()
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1091,7 +1091,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(
             present: true, title: "トラッキング", buttons: ["Appにトラッキングしないように要求", "許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "home"), timeout: 0)
 
         let outcome = await executor.execute(step)
@@ -1110,7 +1110,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "home"), timeout: 0)
 
         let outcome = await executor.execute(step)
@@ -1129,7 +1129,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限",
                                                                buttons: ["許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "一致しない"))
         executor.noteAppLaunched()
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
@@ -1149,7 +1149,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "一致しないラベル"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
 
@@ -1171,7 +1171,7 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[element(ref: 1, id: "target")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)   // 登録なし
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())   // 登録なし
         let tap = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
         let exists = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1189,7 +1189,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "target")]])
-        let executor = StepExecutor(driver: primary, isAndroid: false)   // fallback 無し
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())   // fallback 無し
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1208,7 +1208,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "一致しないラベル"))
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "許可"), timeout: 1)
 
@@ -1228,7 +1228,7 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[element(ref: 1, id: "target")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "一致しないラベル"))
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1247,7 +1247,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "権限")]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*一致しない*", button: "許可"))
         // locator を一切取らない swipe。覆われている間は失敗すること
         let step = FlowStep(action: "swipe", direction: "up", timeout: 1)
@@ -1282,7 +1282,7 @@ final class StepExecutorTests: XCTestCase {
                 value: nil, placeholder: nil, enabled: true,
                 frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)]]
         }
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*写真ライブラリ*", button: "許可しない"))
         let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "result"),
                             expected: "photos=denied", timeout: 2)
@@ -1301,7 +1301,7 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 9, label: "許可しない")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "一致しないラベル"))
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "許可しない"), timeout: 2)
 
@@ -1318,7 +1318,7 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         // 覆われていない(presentを返さない)
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "許可"))
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "missing"), timeout: 1)
 
@@ -1346,7 +1346,7 @@ final class StepExecutorTests: XCTestCase {
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報"),
                                       SystemAlertProbeResponse(present: true, title: "トラッキング"),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*位置情報*", button: "許可"))
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*トラッキング*", button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
@@ -1369,7 +1369,7 @@ final class StepExecutorTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報"),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*位置情報*", button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
 
@@ -1398,7 +1398,7 @@ final class StepExecutorTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可"),
                                                          labeled(ref: 8, label: "OK")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "消えない")]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*消えない*", button: "許可"))
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*消えない*", button: "OK"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
@@ -1433,7 +1433,7 @@ final class StepExecutorTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキングの許可"),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*トラッキング*", button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
 
@@ -1463,7 +1463,7 @@ final class StepExecutorTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報の利用",
                                                                buttons: ["許可"])]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*トラッキング*", button: "許可"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
 
@@ -1487,7 +1487,7 @@ final class StepExecutorTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "トラッキングの許可"),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*トラッキング*", button: "許可"))
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*権限*", button: "OK"))
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)
@@ -1513,7 +1513,7 @@ final class StepExecutorTests: XCTestCase {
                                                          labeled(ref: 9, label: "許可")]])
         fallback.systemAlertFrames = [SystemAlertProbeResponse(present: true, title: "位置情報"),
                                       SystemAlertProbeResponse(present: false)]
-        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false)
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
         executor.systemAlertWatchlist.register(SystemAlertRule(alert: "*位置情報*", button: "許可"))
         guard case .passed = await executor.execute(
             FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 5)).status else {
@@ -1535,7 +1535,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let delegate = CountingScreenDelegate()
-        let executor = StepExecutor(driver: primary, delegate: delegate, screenLooksLikeEnabled: false, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, screenLooksLikeEnabled: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .skipped(let msg) = await executor.execute(step).status else {
@@ -1551,7 +1551,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let delegate = CountingScreenDelegate()
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .passed = await executor.execute(step).status else {
@@ -1566,7 +1566,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let delegate = ScriptedScreenDelegate([false, true])
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .passed = await executor.execute(step).status else {
@@ -1581,7 +1581,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let delegate = ScriptedScreenDelegate([false, false])
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .failed = await executor.execute(step).status else {
@@ -1599,7 +1599,7 @@ final class StepExecutorTests: XCTestCase {
                                     screenshots: [Self.nonBlankPNG] + Array(repeating: Self.blankPNG, count: 5))
         let delegate = ScriptedScreenDelegate([false])
         let frozen = LockedBox(0)
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         executor.onDeviceFrozen = { frozen.mutate { $0 += 1 } }
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
@@ -1616,7 +1616,7 @@ final class StepExecutorTests: XCTestCase {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let delegate = ScriptedScreenDelegate([true])
-        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .passed = await executor.execute(step).status else {

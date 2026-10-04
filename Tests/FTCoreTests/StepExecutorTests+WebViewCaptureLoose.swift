@@ -18,7 +18,7 @@ extension StepExecutorTests {
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[webView, text]],
                                     screenshots: [Self.blankPNG])
         let executor = StepExecutor(driver: primary, delegate: NoVerdictVisibilityDelegate(),
-                                    occlusionOCRMode: .off, isAndroid: false)
+                                    occlusionOCRMode: .off, isAndroid: false, tunables: RunTunables())
         // ラベルの前方一致で掴む = 部分一致(実ラベルは "wv_result=link"。E2E で落ちた `"wv_result=*"` と同じ形)
         let step = FlowStep(assert: "exists", locator: FlowLocator(label: "wv_result=", labelMatch: .startsWith),
                             timeout: 0, occlusionGuard: true)

@@ -11,7 +11,7 @@ final class ScenarioExecutionSettingsTests: XCTestCase {
         let settings = ScenarioExecutionSettings()
         XCTAssertEqual(settings.occlusionOCR, true)
         XCTAssertEqual(settings.containerInference, true)
-        XCTAssertNil(settings.defaultTimeout)
+        XCTAssertEqual(settings.tunables, RunTunables())
         XCTAssertNil(settings.scenarioTimeout)
         XCTAssertNil(settings.profileName)
         XCTAssertEqual(settings.fm, FMConfig())

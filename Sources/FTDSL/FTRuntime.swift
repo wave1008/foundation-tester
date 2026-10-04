@@ -219,8 +219,9 @@ public final class FTDriveCore {
     /// **flush() を1度呼ぶまでディスクへは書かない**(LocatorFingerprintCache.swift 参照)
     let fingerprintCache: LocatorFingerprintCache
     /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)。
-    /// 既定値の定義元は FTCore.DefaultWait(MCP の defaultWaitSeconds と共有)
+    /// = `tunables.defaultTimeout`。既定値の定義元は RunTunables.init(MCP は FTCore.DefaultWait を共有)
     public let defaultTimeout: Double
+    public let tunables: RunTunables
 
     private(set) var record: ScenarioRecordData
     /// **いま記録している scene** の `record.scenes` 上の添字(runScene が入口で push・出口で pop)。
@@ -434,6 +435,8 @@ public final class FTDriveCore {
     public init(driver: AppDriver, platform: String, app: String,
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
+                // 既定を持たない(渡し忘れをコンパイルで止める)。既定値の定義元は RunTunables.init
+                tunables: RunTunables,
                 // occlusion-guard の FM の段(`fmTextOcclusionCheck`)。OCR の段(occlusionOCREnabled)と独立
                 fmTextOcclusionCheckEnabled: Bool = true, screenLooksLikeEnabled: Bool = true,
                 // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
@@ -449,7 +452,6 @@ public final class FTDriveCore {
                 dryRun: Bool = false,
                 fingerprintCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
-                defaultTimeout: Double? = nil,
                 fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
@@ -485,6 +487,7 @@ public final class FTDriveCore {
                                      screenLooksLikeEnabled: screenLooksLikeEnabled,
                                      releasesScrollTouch: platform == "ios",
                                      isAndroid: platform == "android",
+                                     tunables: tunables,
                                      uiFramework: uiFramework,
                                      containerInference: containerInference,
                                      commandTimeoutSeconds: FTSync.commandTimeout)
@@ -497,7 +500,8 @@ public final class FTDriveCore {
         self.knownIDs = dryRun
             ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)
             : nil
-        self.defaultTimeout = defaultTimeout ?? DefaultWait.seconds
+        self.tunables = tunables
+        self.defaultTimeout = tunables.defaultTimeout
         let serializedEmit = SerializedSink(emit)
         let emit: @Sendable (ScenarioEvent) -> Void = { serializedEmit($0) }
         self.emit = emit

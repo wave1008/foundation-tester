@@ -122,7 +122,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         let core = FTDriveCore(
             driver: PlainScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0010", scenarioTitle: "t",
-            delegate: nil, healingEnabled: false, dryRun: false,
+            delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
             fingerprintCacheURL: fingerprintURL,
             emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -146,7 +146,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         func core(_ driver: AppDriver, platform: String, emit: @escaping (ScenarioEvent) -> Void) -> FTDriveCore {
             FTDriveCore(driver: driver, platform: platform, app: "com.example.app",
                         scenarioID: "Fingerprint.PerPlatform", scenarioTitle: "t",
-                        delegate: nil, healingEnabled: true, dryRun: false,
+                        delegate: nil, healingEnabled: true, tunables: RunTunables(), dryRun: false,
                         fingerprintCacheURL: fingerprintURL, emit: emit)
         }
 
@@ -190,7 +190,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             let core = FTDriveCore(
                 driver: SeedScreenDriver(), platform: "ios", app: "com.example.app",
                 scenarioID: "Fingerprint.S0040", scenarioTitle: "t",
-                delegate: nil, healingEnabled: false, dryRun: false,
+                delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                 fingerprintCacheURL: fingerprintURL,
                 emit: { _ in })
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -206,7 +206,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         let core2 = FTDriveCore(
             driver: DriftedScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0040", scenarioTitle: "t",
-            delegate: nil, healingEnabled: true, dryRun: false,
+            delegate: nil, healingEnabled: true, tunables: RunTunables(), dryRun: false,
             fingerprintCacheURL: fingerprintURL,
             emit: { run2Events.append($0) })
         FTRuntime.bootstrap(core: core2, dslThread: Thread.current)
@@ -236,7 +236,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         let core = FTDriveCore(
             driver: PlainScreenDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.S0050", scenarioTitle: "t",
-            delegate: nil, healingEnabled: false, dryRun: false,
+            delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
             fingerprintCacheURL: fingerprintURL,
             emit: { _ in })
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -348,7 +348,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             let core = FTDriveCore(
                 driver: WiringTwoButtonDriver(), platform: "ios", app: "com.example.app",
                 scenarioID: "Fingerprint.ExpiryWiring", scenarioTitle: "t",
-                delegate: nil, healingEnabled: false, dryRun: false,
+                delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
                 fingerprintCacheURL: fingerprintURL,
                 emit: { _ in })
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -363,7 +363,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
         let core2 = FTDriveCore(
             driver: WiringOneButtonDriver(), platform: "ios", app: "com.example.app",
             scenarioID: "Fingerprint.ExpiryWiring", scenarioTitle: "t",
-            delegate: nil, healingEnabled: false, dryRun: false,
+            delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: false,
             fingerprintCacheURL: fingerprintURL,
             emit: { _ in })
         FTRuntime.bootstrap(core: core2, dslThread: Thread.current)
@@ -427,7 +427,7 @@ final class LocatorFingerprintRecordingTests: XCTestCase {
             let core = FTDriveCore(
                 driver: FixedElementsDriver(elements), platform: "ios", app: "com.example.app",
                 scenarioID: scenarioID, scenarioTitle: "t",
-                delegate: nil, healingEnabled: true, dryRun: false,
+                delegate: nil, healingEnabled: true, tunables: RunTunables(), dryRun: false,
                 fingerprintCacheURL: fingerprintURL,
                 emit: { events.append($0) })
             FTRuntime.bootstrap(core: core, dslThread: Thread.current)

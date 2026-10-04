@@ -82,7 +82,7 @@ final class EdgeSignatureTests: XCTestCase {
     /// **配線**: 先頭で木が揺れ続けても scrollToTop が上限まで払い切らない
     func testScrollToTopStopsAtTheTopDespiteTheFlickeringTree() async throws {
         let driver = try FlickeringTopDriver()
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertFalse((outcome.driverFallback ?? "").contains("stopped at the limit"),
@@ -131,7 +131,7 @@ private final class FlickeringTopDriver: AppDriver {
 final class EdgeOscillationTests: XCTestCase {
     func testScrollToTopStopsWhenTheTreeOscillatesAtTheTop() async throws {
         let driver = OscillatingTopDriver()
-        let outcome = await StepExecutor(driver: driver, isAndroid: false)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
             .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 20))
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertFalse((outcome.driverFallback ?? "").contains("stopped at the limit"),

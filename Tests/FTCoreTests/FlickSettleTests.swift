@@ -26,7 +26,7 @@ final class FlickSettleTests: XCTestCase {
             [list(x: 0)],     // 止まった
             [list(x: 0)],
         ])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         let outcome = await executor.execute(flick())
 
@@ -39,7 +39,7 @@ final class FlickSettleTests: XCTestCase {
     func testFlickOnAStillScreenDoesNotNote() async throws {
         try XCTSkipUnless(StepExecutor.coordinateScrollEnabled, "FT_SCROLL_TARGET=legacy では枠を使わない")
         let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [[list(x: 0)]])
-        let executor = StepExecutor(driver: driver, isAndroid: true)
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
 
         let outcome = await executor.execute(flick())
 

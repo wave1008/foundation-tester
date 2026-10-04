@@ -382,7 +382,7 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let start = clock.now
         let latchedBefore = dragFallbackLatched
-        try await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY, pressSeconds: 0.05,
+        try await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY, pressSeconds: FlowStep.defaultDragPressSeconds,
                                    durationSeconds: step.duration ?? FlowStep.defaultSwipeDurationSeconds)
         phase.actionMs += Self.ms(clock.now - start)
         return StepOutcome(status: .passed,
@@ -540,7 +540,7 @@ extension StepExecutor {
         }
         phase.actionMs += Self.ms(clock.now - start)
         // 木からキーボードが消えるのを待つのは次のロケータ操作の解決(pendingHideKeyboardWait の doc)
-        if isAndroid { pendingHideKeyboardWait = step.timeout ?? FlowStep.defaultWaitSeconds }
+        if isAndroid { pendingHideKeyboardWait = step.timeout ?? tunables.defaultTimeout }
         return StepOutcome(status: .passed)
     }
 

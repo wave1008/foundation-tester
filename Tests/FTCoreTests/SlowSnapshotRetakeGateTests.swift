@@ -21,7 +21,7 @@ final class SlowSnapshotRetakeGateTests: XCTestCase {
                                     snapshotElements: [[mismatchedEnabledElement()]])
         primary.bypassSupported = true
         primary.snapshotDelay = .milliseconds(200)
-        let executor = StepExecutor(driver: primary, isAndroid: false, commandTimeoutSeconds: 0.05)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), commandTimeoutSeconds: 0.05)
         let step = FlowStep(assert: "enabled", locator: FlowLocator(id: "target"), timeout: 0)
 
         let outcome = await executor.execute(step)
@@ -41,7 +41,7 @@ final class SlowSnapshotRetakeGateTests: XCTestCase {
                                     snapshotElements: [[mismatchedEnabledElement()]])
         primary.bypassSupported = true
         primary.snapshotDelay = .milliseconds(200)
-        let executor = StepExecutor(driver: primary, isAndroid: false)
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(assert: "enabled", locator: FlowLocator(id: "target"), timeout: 0)
 
         let outcome = await executor.execute(step)

@@ -615,7 +615,7 @@ final class FTInAppBridge {
         /// 静止した画面ではすぐ抜ける。取り直しは座標のためだけに 1 回(RN のコールドラウンチでレイアウトが
         /// 確定する前の frame を叩いた実害)。省くのは 250ms の小休止と 2 回目の取り直し・activate
         func synthAtCurrentFrame(stale: NSObject, window: UIWindow) {
-            InAppSettle.waitOnMain(capMs: 800) { _ in
+            InAppSettle.waitOnMain(capMs: Self.tapByRefSettleCapMs) { _ in
                 if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window) {
                     adoptFreshFrame(fresh)
                 }
@@ -636,7 +636,7 @@ final class FTInAppBridge {
                 return
             }
             // AX ツリーの配線はアニメ整定より遅れることがあるため、固定の小休止で1回だけ粘る
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250)) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Self.tapByRefRetryPauseMs)) {
                 retry(remaining - 1, stale: stale, window: window)
             }
         }
@@ -667,8 +667,8 @@ final class FTInAppBridge {
             // 遷移アニメーションが終わるのを待ってから取り直す(イベント駆動・上限 800ms)
             // ここの打ち切りは note にしない: activate 不発の再試行までの繋ぎで、
             // 続く finish() の整定結果が最終的な申告になる
-            InAppSettle.waitOnMain(capMs: 800) { _ in
-                retry(2, stale: node, window: window)
+            InAppSettle.waitOnMain(capMs: Self.tapByRefSettleCapMs) { _ in
+                retry(Self.tapByRefRetryAttempts, stale: node, window: window)
             }
         }
         // 最悪ケース: 整定 800ms + 再試行2回(+250ms) + アクション後整定 2500ms
@@ -1218,6 +1218,15 @@ final class FTInAppBridge {
         return .refused
     }
 
+    /// tapByRef が activate / 合成タッチの前に画面の整定を待つ上限[ms]。尽きたら打ち切って撃つ。
+    /// in-app は CFRunLoop の無アニメ区間を見る(Android はアクセシビリティイベントの途切れ、観測している信号が違う)
+    private static let tapByRefSettleCapMs = 800
+    /// tapByRef の activate 撃ち直し前の小休止[ms]。AX ツリーの配線がアニメ整定より遅れることがあるため
+    private static let tapByRefRetryPauseMs = 250
+    /// tapByRef の activate 取り直しの試行回数(初回 + 小休止を挟んだ1回)
+    private static let tapByRefRetryAttempts = 2
+    /// ダブルタップの1本目を離してから2本目を押すまで[秒]。in-app 合成は 0.08(xcuitest は接触 0.08s + 2本目まで 0.25s、Android は 60ms。OS ごとの合成方式に合わせた値)
+    private static let doubleTapGapSeconds = 0.08
     /// 走査上限。AX ツリーは深いことがあるので暴走を止める(実測の受理は 20〜100 要素目)
     private static let axScrollMaxVisits = 2000
 
@@ -1408,7 +1417,7 @@ final class FTInAppBridge {
         try requireSelfRenderedFramework("doubleTap")
         try performWithSettle { window in
             let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
-            FTSynthDoubleTap(window, p, 0.08)
+            FTSynthDoubleTap(window, p, Self.doubleTapGapSeconds)
         }
         return ok()
     }

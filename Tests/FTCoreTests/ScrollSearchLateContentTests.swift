@@ -10,7 +10,7 @@ final class ScrollSearchLateContentTests: XCTestCase {
     /// **witness**: 末尾で 0.8 秒後に続きを足す一覧の、2回目の読み込みの先の行へ届く
     func testSearchWaitsForContentAppendedAfterReachingTheEnd() async throws {
         let driver = LateAppendingListDriver(appendDelay: 0.8)
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_35"),
                             direction: "up", maxSwipes: 30)
         var phase = StepExecutor.PhaseAccumulator()
@@ -21,7 +21,7 @@ final class ScrollSearchLateContentTests: XCTestCase {
     /// 逆向き: 続きが来ない一覧は今までどおり打ち切る(上限まで振り続けない)
     func testSearchStillStopsAtAListThatNeverGrows() async throws {
         let driver = LateAppendingListDriver(appendDelay: nil)
-        let executor = StepExecutor(driver: driver, isAndroid: false)
+        let executor = StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_35"),
                             direction: "up", maxSwipes: 30)
         var phase = StepExecutor.PhaseAccumulator()

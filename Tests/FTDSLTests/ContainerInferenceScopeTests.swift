@@ -36,7 +36,7 @@ final class ContainerInferenceScopeTests: XCTestCase {
     private func makeCore() -> FTDriveCore {
         FTDriveCore(driver: StubDriver(), platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
-                    delegate: nil, healingEnabled: false, dryRun: true,
+                    delegate: nil, healingEnabled: false, tunables: RunTunables(), dryRun: true,
                     fingerprintCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-container-inference-test.json"),
                     emit: { _ in })

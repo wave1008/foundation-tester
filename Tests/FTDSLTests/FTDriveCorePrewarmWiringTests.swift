@@ -39,7 +39,7 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         let before = RegionText.prewarmRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
-                        delegate: nil, healingEnabled: false,
+                        delegate: nil, healingEnabled: false, tunables: RunTunables(),
                         fmTextOcclusionCheckEnabled: true, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before + 1,
                        "DSL のシナリオ開始時に暖機を始めていない")
@@ -51,7 +51,7 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         let before = RegionText.prewarmRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
-                        delegate: nil, healingEnabled: false,
+                        delegate: nil, healingEnabled: false, tunables: RunTunables(),
                         fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }
@@ -61,7 +61,7 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         let before = RegionText.prewarmRequestCount
         let core = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
-                               delegate: nil, healingEnabled: false,
+                               delegate: nil, healingEnabled: false, tunables: RunTunables(),
                                fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: true, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before + 1)
         XCTAssertTrue(core.executor.occlusionGuardEnabled, "OCR の段だけでも guard は走るはず")
@@ -73,7 +73,7 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         let before = RegionText.prewarmRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
-                        delegate: nil, healingEnabled: false,
+                        delegate: nil, healingEnabled: false, tunables: RunTunables(),
                         fmTextOcclusionCheckEnabled: true, occlusionOCREnabled: false, emit: { _ in })
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }

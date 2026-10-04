@@ -98,7 +98,7 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
         guard !serials.isEmpty, let adb = try? AndroidDriver.findADB() else { return [] }
         func getprop(_ serial: String, _ key: String) -> String {
             // 失敗の出力(「error: device offline」等)を機種名として出さない
-            (try? Shell.run([adb, "-s", serial, "shell", "getprop", key], timeout: 10).outputIfSucceeded)?
+            (try? Shell.run([adb, "-s", serial, "shell", "getprop", key], timeout: AndroidDeviceCatalog.adbTimeoutSeconds).outputIfSucceeded)?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         }
         return serials.map { serial in

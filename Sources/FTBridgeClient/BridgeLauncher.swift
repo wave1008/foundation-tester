@@ -496,7 +496,7 @@ public struct BridgeLauncher: Sendable {
         guard !pids.isEmpty else { return }
         for pid in pids { kill(pid, SIGTERM) }
         var remaining = Set(pids)
-        let deadline = Date().addingTimeInterval(5)
+        let deadline = Date().addingTimeInterval(Self.terminateGraceSeconds)
         while Date() < deadline, !remaining.isEmpty {
             remaining = remaining.filter { ProcessLiveness.isAlive($0) }
             if remaining.isEmpty { break }
@@ -549,7 +549,7 @@ public struct BridgeLauncher: Sendable {
         kill(pid, SIGTERM)
         // 死亡確認してから pid ファイルを消す。即削除すると assignPort がそのポートを空きと誤認し、
         // まだ生きているプロセスとの同ポート再起動で bindFailed(48) を招く(stopAndWait と同じ理由)。
-        Self.confirmDeathThenRemovePidFile(pid: pid, pidPath: pidPath, timeout: 5)
+        Self.confirmDeathThenRemovePidFile(pid: pid, pidPath: pidPath, timeout: Self.terminateGraceSeconds)
     }
 
     /// pid が今も「このポート専用の」FleetestRunner ランナーかを ps で確認する
@@ -613,9 +613,15 @@ public struct BridgeLauncher: Sendable {
         let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
         guard let ps, ps.status == 0, ps.output.contains("FleetestRunner") else { return false }
         kill(pid, SIGTERM)
-        confirmDeaths(pids: [pid], timeout: 5)
+        confirmDeaths(pids: [pid], timeout: Self.terminateGraceSeconds)
         return true
     }
+
+    /// ローカルポートの /status を1回だけ引く短い応答待ち(秒)。ポート走査・旧版判定用で、答えなければ「居ない/判定材料なし」とみなす
+    public static let quickProbeTimeoutSeconds: TimeInterval = 0.4
+
+    /// SIGTERM を送った旧ブリッジ/ランナーの消滅確認の待ち上限(秒)。尽きた pid は SIGKILL する
+    static let terminateGraceSeconds: TimeInterval = 5
 
     /// SIGTERM 済みの pid の消滅を timeout まで待ち、生き残れば SIGKILL してから pid ファイルを削除する。
     /// 同期版(stop が使う。async は stopAndWait 参照)。
@@ -882,7 +888,7 @@ public struct BridgeLauncher: Sendable {
                 .replacingOccurrences(of: "bridge-", with: ""))
         }
         // 直後の simctl shutdown と XCUITest teardown の競合防止(confirmDeaths のコメント参照)
-        confirmDeaths(pids: terminated, timeout: 5)
+        confirmDeaths(pids: terminated, timeout: Self.terminateGraceSeconds)
         return stopped
     }
 
@@ -966,7 +972,7 @@ public struct BridgeLauncher: Sendable {
             }
         }
         // 直後の simctl shutdown all と XCUITest teardown の競合防止(confirmDeaths のコメント参照)
-        confirmDeaths(pids: terminated, timeout: 5)
+        confirmDeaths(pids: terminated, timeout: Self.terminateGraceSeconds)
         return stopped
     }
 

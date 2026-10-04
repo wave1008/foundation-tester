@@ -143,7 +143,7 @@ struct Bridge: AsyncParsableCommand {
             let preexistingPorts = Set(BridgeLauncher.portsMatching(udid: resolvedUDID, repoRoot: root))
             // 旧版を名乗るもの(provision が止めて起動し直す)。応答しないものは判定材料が無いので含めない
             let stalePorts = Set(preexistingPorts.filter { port in
-                BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
+                BridgeLauncher.probeForeignBridge(port: port, timeout: BridgeLauncher.quickProbeTimeoutSeconds)
                     .map { $0.protocolVersion != BridgeAPI.bridgeProtocolVersion } ?? false
             })
             // 起動は provision() 経由(直接 startDetached しない)。同一シミュレータに XCUITest

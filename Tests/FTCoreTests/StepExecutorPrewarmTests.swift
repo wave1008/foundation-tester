@@ -13,7 +13,7 @@ final class StepExecutorPrewarmTests: XCTestCase {
     func testPrewarmsWhenTheGuardIsOnByDefault() {
         let before = RegionText.prewarmRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,
-                         occlusionOCRMode: .on, occlusionGuardEnabled: true, isAndroid: false)
+                         occlusionOCRMode: .on, occlusionGuardEnabled: true, isAndroid: false, tunables: RunTunables())
         XCTAssertEqual(RegionText.prewarmRequestCount, before + 1,
                        "ガードが効く executor で暖機を始めていない")
     }
@@ -22,7 +22,7 @@ final class StepExecutorPrewarmTests: XCTestCase {
     func testDoesNotPrewarmWhenTheMasterSwitchIsOff() {
         let before = RegionText.prewarmRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,
-                         occlusionOCRMode: .on, occlusionGuardEnabled: false, isAndroid: false)
+                         occlusionOCRMode: .on, occlusionGuardEnabled: false, isAndroid: false, tunables: RunTunables())
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }
 
@@ -31,7 +31,7 @@ final class StepExecutorPrewarmTests: XCTestCase {
     func testDoesNotPrewarmWhenTheGuardIsOffByDefault() {
         let before = RegionText.prewarmRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: false,
-                         occlusionOCRMode: .on, occlusionGuardEnabled: true, isAndroid: false)
+                         occlusionOCRMode: .on, occlusionGuardEnabled: true, isAndroid: false, tunables: RunTunables())
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }
 
@@ -39,7 +39,7 @@ final class StepExecutorPrewarmTests: XCTestCase {
     func testDoesNotPrewarmWhenOCRIsOff() {
         let before = RegionText.prewarmRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,
-                         occlusionOCRMode: .off, occlusionGuardEnabled: true, isAndroid: false)
+                         occlusionOCRMode: .off, occlusionGuardEnabled: true, isAndroid: false, tunables: RunTunables())
         XCTAssertEqual(RegionText.prewarmRequestCount, before)
     }
 }

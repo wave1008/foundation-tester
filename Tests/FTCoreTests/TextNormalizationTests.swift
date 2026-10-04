@@ -187,7 +187,7 @@ final class TextNormalizationWiringTests: XCTestCase {
                                   label: "\u{200B}715円", value: nil, placeholder: nil,
                                   enabled: true,
                                   frame: FTRect(x: 0, y: 0, width: 50, height: 20), depth: 1)
-        return StepExecutor(driver: OneScreenDriver([element]), isAndroid: false)
+        return StepExecutor(driver: OneScreenDriver([element]), isAndroid: false, tunables: RunTunables())
     }
 
     private func step(strict: Bool?) -> FlowStep {
