@@ -411,4 +411,35 @@ final class UDIDBridgeDiagnosisMessageTests: XCTestCase {
         }
         XCTAssertEqual(result, .unknown)
     }
+
+    // MARK: - 走査が取りこぼし、診断の probe には答えたブリッジ(2026-10-04 の負荷テスト)
+
+    /// 本人確認できなかった「答えたポート」があれば「居ない」と言わず、bridge up も勧めない
+    /// (run が使っている端末に2本目を起動させる案内を出していた)
+    func testAnsweredButUnconfirmedPortIsNotReportedAsMissing() {
+        var diagnosis = MCPServer.UDIDBridgeDiagnosis(
+            listeningButUnresponsive: [], heldByRunPID: nil, lookup: .simulator)
+        diagnosis.answeredPorts = [8123]
+        let text = MCPServer.noResponsiveBridgeMessage(udid: "SIM-1", diagnosis: diagnosis)
+        XCTAssertFalse(text.contains("no running bridge"), text)
+        XCTAssertFalse(text.contains("bridge up --device"), text)
+        XCTAssertTrue(text.contains("8123"), text)
+    }
+
+    /// 仕分け: 一致は採用・不明は「居ない」と言わない根拠・別の udid は捨てる
+    func testClassifyAnsweredPorts() {
+        let result = MCPServer.classifyAnsweredPorts([
+            (8123, .confirmedMatch), (8130, .unknown), (8140, .confirmedMismatch(actualUDID: "OTHER")),
+        ])
+        XCTAssertEqual(result.confirmed, [8123])
+        XCTAssertEqual(result.unconfirmed, [8130])
+    }
+
+    /// 答えたポートが無ければ従来どおり「居ない」の文面(陰性の対)
+    func testNoAnsweredPortStillReportsMissing() {
+        let diagnosis = MCPServer.UDIDBridgeDiagnosis(
+            listeningButUnresponsive: [], heldByRunPID: nil, lookup: .simulator)
+        let text = MCPServer.noResponsiveBridgeMessage(udid: "SIM-1", diagnosis: diagnosis)
+        XCTAssertTrue(text.contains("no running bridge"), text)
+    }
 }

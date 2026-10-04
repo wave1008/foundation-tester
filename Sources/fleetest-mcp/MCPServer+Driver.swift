@@ -443,8 +443,28 @@ extension MCPServer {
                 break
             }
         }
-        let diagnosis = await Self.udidBridgeDiagnosis(udid: udid)
+        var diagnosis = await Self.udidBridgeDiagnosis(udid: udid)
+        // **走査が取りこぼし、診断の probe には答えたブリッジ**(走査の2秒の窓の間だけ busy だった)。
+        // 捨てると「居ない・bridge up しろ」になり、run が使っている端末に2本目を起動させる
+        var identities: [(UInt16, ExplicitPortIdentity)] = []
+        for answered in diagnosis.answeredPorts.sorted() {
+            identities.append((answered, await Self.explicitPortIdentityProbe(
+                port: answered, udid: udid, repoRoot: try? RepoRoot.find())))
+        }
+        let answered = Self.classifyAnsweredPorts(identities)
+        if !answered.confirmed.isEmpty {
+            return try reconcilePort(port, udid: udid, udidPorts: answered.confirmed)
+        }
+        diagnosis.answeredPorts = answered.unconfirmed
         return try reconcilePort(port, udid: udid, udidPorts: udidPorts, diagnosis: diagnosis)
+    }
+
+    /// 診断で答えたポートの本人確認の仕分け(純粋関数)。一致 = 採用・不明 = 「居ない」と言わない根拠・
+    /// 別の udid = 捨てる(台帳が古いだけで、この udid のブリッジではない)
+    static func classifyAnsweredPorts(_ identities: [(UInt16, ExplicitPortIdentity)])
+        -> (confirmed: [UInt16], unconfirmed: [UInt16]) {
+        (identities.filter { $0.1 == .confirmedMatch }.map(\.0),
+         identities.filter { $0.1 == .unknown }.map(\.0))
     }
 
     /// 明示 port だけを狙い撃ちして udid を本人確認した結果(maintainer-notes §51.6)。**「確かめられない」を
@@ -534,6 +554,10 @@ extension MCPServer {
         /// 勧めて2本目を起動させかけた。**`var` + 既定値**(`wedgedPorts` と同じ理由: 合成
         /// memberwise init で省略可能にするため `let` にしない)
         var timedOut: Bool = false
+        /// 走査には載らなかったが、診断の probe には `/status` が答えたポート(= busy から戻った生きた
+        /// ブリッジの可能性)。**本人確認できなかった分だけを残す**(確認できた分は `portForIOS` が採用し、
+        /// 別の udid を名乗った分は捨てる)。非空なら「居ない」とは言わない
+        var answeredPorts: [UInt16] = []
 
         /// 診断を呼ばなかった(必要が無かった)ときの既定。**`timedOut` は `false`** ——
         /// `reconcilePort` の default 引数・省略呼び出しのテストがこの値を「診断していない」
@@ -642,7 +666,8 @@ extension MCPServer {
         return UDIDBridgeDiagnosis(
             listeningButUnresponsive: candidates.ports.filter { probes[$0] == .timedOut },
             heldByRunPID: candidates.heldByRunPID, lookup: candidates.lookup,
-            wedgedPorts: candidates.ports.filter { probes[$0] == .transportFailed })
+            wedgedPorts: candidates.ports.filter { probes[$0] == .transportFailed },
+            answeredPorts: candidates.ports.filter { probes[$0] == .answered })
     }
 
     /// `probedUDIDBridgeDiagnosis` が専用 Thread で集める材料(候補ポート・run 保持者・実体判定)
@@ -779,6 +804,9 @@ extension MCPServer {
         guard !diagnosis.timedOut else {
             return Self.bridgeDiagnosisUnconfirmedMessage(udid: udid)
         }
+        guard diagnosis.answeredPorts.isEmpty else {
+            return Self.bridgeAnsweredUnconfirmedMessage(udid: udid, ports: diagnosis.answeredPorts)
+        }
         guard diagnosis.wedgedPorts.isEmpty else {
             return Self.bridgeWedgedOnUDIDMessage(udid: udid, diagnosis: diagnosis)
         }
@@ -788,6 +816,16 @@ extension MCPServer {
         return "no running bridge is on udid \(udid). ft_list_devices shows which devices have one;"
             + " \(Self.bridgeUpSuggestion(udid: udid, lookup: diagnosis.lookup))"
             + " (a device without a bridge cannot be driven from MCP)"
+    }
+
+    /// 診断の probe には答えたが本人確認(udid)ができなかったときの文面。**「居ない」と断定せず
+    /// `bridge up` も勧めない**(答えた = 何かが生きている。2本目を起動させない)
+    static func bridgeAnsweredUnconfirmedMessage(udid: String, ports: [UInt16]) -> String {
+        let list = ports.map(String.init).joined(separator: ", ")
+        return "a bridge recorded for udid \(udid) answered on port \(list), but which device it serves"
+            + " could not be confirmed right now (the Mac or the device may be busy)."
+            + " This does not mean the bridge is gone, and `fleetest bridge up` is not suggested;"
+            + " retry the call in a moment."
     }
 
     /// 診断(`udidBridgeDiagnosis`)自体が予算内に終わらなかったときの文面(maintainer-notes §51.6)。**「居ない」と

@@ -196,5 +196,7 @@ final class BridgeWedgedTransportTests: XCTestCase {
                      "wedgedPorts の分類が transportFailed を見ていない")
         XCTAssertTrue(body.contains(".timedOut"),
                      "listeningButUnresponsive の分類が timedOut を見ていない")
+        XCTAssertTrue(body.contains("answeredPorts: candidates.ports.filter { probes[$0] == .answered }"),
+                     "診断で答えたポートを集めていない(捨てると busy から戻ったブリッジを「居ない」と言う)")
     }
 }
