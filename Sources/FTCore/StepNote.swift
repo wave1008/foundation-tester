@@ -263,6 +263,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 待って走査をやり直した(`FindImage.anomalyRetryDelays`)。**判定は変えない** —— 戻れば通常どおり照合し、
     /// 戻らなければ失敗。**率が上がったら機械の GPU が混んでいる**(実測: 配信 24fps + 8 並列で最初の照合の約半数)
     case visionAnomalyRetried = "vision-anomaly-retried"
+    /// Vision の異常を検知した走査を、長寿命の補助プロセス(`fleetest api vision-serve`)に特徴量を計算させてやり直し、
+    /// **補助の値が門(縮退・測り直し)を通って**その結果を採った(待たずに済んだ)。判定は変えない。
+    /// **率が上がったら、シナリオのプロセスの Vision が負荷下の初期化で壊れている回が多い**(`FindImage.retryingTransientAnomalies`)
+    case visionHelperRescued = "vision-helper-rescued"
+    /// Vision の異常を検知して補助プロセスに頼もうとしたが、補助が無い・答えない・unhealthy だったので既存の待ち直しへ落ちた
+    /// (補助の値が門で落ちた回には立たない)。**立ち続けるなら補助プロセスが起動していない・暖機が終わらない**
+    case visionHelperUnavailable = "vision-helper-unavailable"
     /// 起動直後の最初のロケータ操作の前に配置の静止を待ち、**待っている間に実際に木が動いた**
     /// (= 待たなければずれる前の座標を撃っていた)。立たない = 既に静止していた(`pendingLaunchSettle`)
     case settledAfterLaunch = "settled-after-launch"
@@ -285,6 +292,13 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// の doc 参照。**立つのは救えた回だけ**(最初から静止していれば立てない。guard-retaken と同じ思想)。
     /// **率が上がったらキーボードの押し上げが大きい/遅い画面**(WebView 等)を通っている
     case settledAfterKeyboard = "settled-after-keyboard"
+
+    /// Android の `type` の後、ソフトキーボードが木に出るまで `KeyboardWait.appearSeconds` 待ったが出なかった
+    /// (待ちをやめて従来どおり解決した)。**率が上がったら上限が足りないか、キーボードを出さない欄**
+    case keyboardNotShownAfterType = "keyboard-not-shown-after-type"
+    /// 上の待ちを待ち切った後のロケータ操作の解決の木で、キーボードが出ていた(= 上限不足の事例)。
+    /// 控えは次の type かキーボードの観測で消える。**立つなら `KeyboardWait.appearSeconds` を疑う**
+    case keyboardAppearedLate = "keyboard-appeared-late"
 
     /// 容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま**操作した**
     /// (止めないのは設計どおり = docs/design.md「スクロール残像(ghost)は拒否せず、警告して撃つ」)。
@@ -342,6 +356,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
             return "the screen was still laying out after the launch, so the target was resolved again once it settled"
         case .visionAnomalyRetried:
             return "Vision returned untrustworthy image feature prints, so the image search waited and ran again"
+        case .visionHelperRescued:
+            return "Vision returned untrustworthy image feature prints, so the image search was redone with"
+                + " the prints computed by the long-lived Vision helper process"
+        case .visionHelperUnavailable:
+            return "Vision returned untrustworthy image feature prints and the Vision helper process could not"
+                + " help, so the image search waited and ran again"
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
@@ -426,6 +446,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .settledAfterKeyboard:
             return "the preceding type shifted the on-screen layout (keyboard), so this waited for"
                 + " it to settle before resolving the target"
+        case .keyboardNotShownAfterType:
+            return "the soft keyboard did not appear within the wait after the preceding type, so this"
+                + " resolved the target without it"
+        case .keyboardAppearedLate:
+            return "the soft keyboard appeared only after the wait following the preceding type had"
+                + " given up, so the target may have been resolved before the layout moved"
         case .launchActivatedBeforeForeground:
             return "the test runner did not see the app in the foreground after launching it, so it was"
                 + " asked to activate it anyway (which can make the runner relaunch the app)"

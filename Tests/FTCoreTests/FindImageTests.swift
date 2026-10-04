@@ -619,3 +619,135 @@ extension FindImageTests {
         }
     }
 }
+
+// MARK: - 補助プロセスの救済(特徴量の供給元の差し替え)
+
+extension FindImageTests {
+    private final class RescueLog: @unchecked Sendable {
+        var sources: [String] = []
+        var sleeps: [Double] = []
+        var outcomes: [FindImage.RescueOutcome] = []
+    }
+
+    private func scan(_ log: RescueLog, rescue: FindImage.PrintSource?, inProcessFails: Bool = true,
+                      anomaly: FindImage.MatchError = .degeneratePrints(template: "off.png")) async throws -> String {
+        try await FindImage.retryingTransientAnomalies(
+            delays: { _ in [0.5, 1, 2, 4, 8] },
+            sleep: { log.sleeps.append($0) },
+            onRetry: { _, _ in },
+            rescueSource: rescue,
+            onRescue: { log.outcomes.append($0) }) { source in
+            log.sources.append(source.label)
+            // 供給元から実際に値を取る(補助が例外を投げる経路も通る)。in-process は縮退を返す役
+            if source.label == FindImage.PrintSource.inProcess.label {
+                if inProcessFails { throw anomaly }
+                return "scanned"
+            }
+            _ = try await source.compute(FindImage.blankSentinel)
+            return "rescued"
+        }
+    }
+
+    private func healthyHelper(calls: LockedValue<Int>) -> FindImage.PrintSource {
+        FindImage.PrintSource(label: "helper") { _ in
+            calls.withLock { $0 += 1 }
+            return try await FindImage.featurePrint(FindImage.blankSentinel)
+        }
+    }
+
+    func testHelperRescuesAnAnomalyWithoutWaiting() async throws {
+        let log = RescueLog()
+        let calls = LockedValue(0)
+        let result = try await scan(log, rescue: healthyHelper(calls: calls))
+        XCTAssertEqual(result, "rescued")
+        XCTAssertEqual(log.sources, ["in-process", "helper"], "最初は自プロセス・次に補助で同じ走査をやり直す")
+        XCTAssertEqual(log.sleeps, [], "補助が通れば待たない")
+        XCTAssertEqual(log.outcomes, [.rescued])
+        XCTAssertEqual(calls.value, 1)
+    }
+
+    func testUnhealthyOrThrowingHelperFallsBackToTheExistingWaits() async throws {
+        for failure in [VisionHelperError.unhealthy, .unavailable("no socket"), .failed("x")] {
+            let log = RescueLog()
+            let helper = FindImage.PrintSource(label: "helper") { _ in throw failure }
+            do {
+                _ = try await scan(log, rescue: helper)
+                XCTFail("戻らない異常を通してはいけない")
+            } catch let error as FindImage.PersistentAnomaly {
+                XCTAssertEqual(log.sleeps, [0.5, 1, 2, 4, 8], "既存のスケジュールどおり待つ: \(failure)")
+                XCTAssertEqual(error.retries, 5)
+            }
+            XCTAssertEqual(log.outcomes, [.unavailable])
+            XCTAssertEqual(log.sources.filter { $0 == "helper" }.count, 1, "救済は走査につき1回")
+        }
+    }
+
+    /// 補助の値が門で落ちた(異常のまま)なら、補助は「使えなかった」とは言わず既存の待ち直しへ落ちる
+    func testHelperPrintRejectedByTheGateFallsBackWithoutAnUnavailableNote() async throws {
+        let log = RescueLog()
+        let helper = FindImage.PrintSource(label: "helper") { _ in
+            throw FindImage.MatchError.inconsistentPrints(template: "off.png", distance: 0.3)
+        }
+        let result = try await FindImage.retryingTransientAnomalies(
+            delays: { _ in [0.5, 1] }, sleep: { log.sleeps.append($0) }, onRetry: { _, _ in },
+            rescueSource: helper, onRescue: { log.outcomes.append($0) }) { source in
+            log.sources.append(source.label)
+            if source.label == "in-process", log.sources.filter({ $0 == "in-process" }).count == 1 {
+                throw FindImage.MatchError.degeneratePrints(template: "off.png")
+            }
+            if source.label == "helper" { _ = try await source.compute(FindImage.blankSentinel) }
+            return "scanned"
+        }
+        XCTAssertEqual(result, "scanned")
+        XCTAssertEqual(log.outcomes, [])
+        XCTAssertEqual(log.sleeps, [0.5])
+    }
+
+    func testHelperIsNeverTouchedWhenThereIsNoAnomaly() async throws {
+        let log = RescueLog()
+        let calls = LockedValue(0)
+        let result = try await scan(log, rescue: healthyHelper(calls: calls), inProcessFails: false)
+        XCTAssertEqual(result, "scanned")
+        XCTAssertEqual(log.sources, ["in-process"])
+        XCTAssertEqual(calls.value, 0)
+        XCTAssertEqual(log.outcomes, [])
+    }
+
+    /// 一色の絵・古い絵は Vision の異常ではない = 補助に頼まない
+    func testHelperIsNotAskedForBlankOrStaleScreens() async throws {
+        for anomaly in [FindImage.MatchError.blankScreenshot, .staleScreenshot] {
+            let log = RescueLog()
+            let calls = LockedValue(0)
+            do {
+                _ = try await scan(log, rescue: healthyHelper(calls: calls), anomaly: anomaly)
+            } catch is FindImage.PersistentAnomaly {}
+            XCTAssertEqual(calls.value, 0, "\(anomaly)")
+            XCTAssertFalse(log.sources.contains("helper"))
+        }
+    }
+
+    /// 走査(match と見本の控え)は特徴量を計算元(`prints.source`)からだけ得る。in-process を直に呼ぶ行が残ると、
+    /// 補助に差し替えた走査の一部だけが壊れた Vision を使い続ける(ソース走査)
+    func testMatchTakesEveryPrintFromTheGivenSource() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/FindImage.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        let templatePrint = try XCTUnwrap(source.range(of: "static func templatePrint("))
+        let tail = source[templatePrint.lowerBound...]
+        let body = tail.components(separatedBy: "\n").filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("///")
+            && !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }.joined(separator: "\n")
+        XCTAssertFalse(body.contains("try await featurePrint("), "in-process の featurePrint を直に呼んでいる行がある")
+        XCTAssertEqual(body.components(separatedBy: "source.compute(").count - 1, 4,
+                       "見本の控え・白紙・測り直し・候補の切り出しの4か所が計算元を通る")
+    }
+
+    func testScanWiresTheHelperThroughTheExecutor() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/StepExecutor+FindImage.swift")
+        let source = try String(contentsOf: url, encoding: .utf8)
+        for needle in ["VisionHelperClient.fromEnvironment()", "rescueSource: helper,", ".visionHelperRescued",
+                       ".visionHelperUnavailable", "printSource: printSource", "CandidatePrints(source: printSource)"] {
+            XCTAssertTrue(source.contains(needle), "StepExecutor+FindImage.swift に \(needle) が無い")
+        }
+    }
+}

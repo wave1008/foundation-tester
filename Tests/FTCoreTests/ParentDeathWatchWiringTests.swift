@@ -18,7 +18,7 @@ final class ParentDeathWatchWiringTests: XCTestCase {
         try String(contentsOf: Self.repoRoot.appendingPathComponent(path), encoding: .utf8)
     }
 
-    /// `fleetest` / `fleetest-scenarios` の子を `Process()` で起こす6箇所すべてが
+    /// `fleetest` / `fleetest-scenarios` の子を `Process()` で起こす7箇所すべてが
     /// `FT_PARENT_PID` を環境へ書いていること
     func testEverySpawnSiteWritesTheParentPIDEnvironmentKey() throws {
         let spawnSites = [
@@ -28,6 +28,7 @@ final class ParentDeathWatchWiringTests: XCTestCase {
             "Sources/fleetest/RemoteMonitorFanout.swift",
             "Sources/fleetest/FleetRunner.swift",
             "Sources/fleetest-mcp/MCPServer+RunJobs.swift",
+            "Sources/FTCore/VisionHelperHost.swift",
         ]
         for path in spawnSites {
             let text = try source(path)

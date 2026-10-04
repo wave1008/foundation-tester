@@ -156,8 +156,15 @@ extension StepExecutor {
         // 動いていなければ比較だけで追加コストはゼロ。動いていたときだけ収束を待って撮り直す。
         // **読み返し(verifiesTypedText)の有無やエンジンに依存しない** —— type を実行した
         // ドライバが何であれ、ここで木を見て比べる
+        // 前の type の出現待ちを待ち切った後、キーボードが今ここで出ていれば上限不足の事例として数える
+        if keyboardWaitExhausted,
+           Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+            keyboardWaitExhausted = false
+            noteCodesThisStep.insert(.keyboardAppearedLate)
+        }
         if pendingTypeKeyboardCheck {
             pendingTypeKeyboardCheck = false
+            keyboardWaitExhausted = false
             // 出し直しの途中で隠れているなら、戻るまで待ってから整定を見る(keyboardHiddenAfterType の doc)。
             // 上限は焦点待ちの共有値(戻らなければ正当に閉じたと見てそのまま進む)
             // 戻りを待った回は、戻った位置が打つ前と同じでも中身はこれから動くので必ず整定を見る
@@ -174,6 +181,26 @@ extension StepExecutor {
                     start = clock.now
                     snapshot = try await freshSnapshot(.afterOwnMove)
                     phase.snapshotMs += Self.ms(clock.now - start)
+                }
+            }
+            // Android の type は IME の表示を待たずに返る: 出るまで撮り直す(KeyboardWait の doc)。
+            // 出れば下の keyboardShifted(nil → 矩形)が true になり整定へつながる
+            if KeyboardWait.shouldAwaitAppearance(
+                isAndroid: isAndroid, before: keyboardFrameBeforeType, after: snapshot.keyboardFrame,
+                screen: snapshot.screen, typedNewline: pendingTypeEndedWithNewline) {
+                let deadline = clock.now + .milliseconds(Int(KeyboardWait.appearSeconds * 1000))
+                while clock.now < deadline,
+                      !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                    let waitStart = clock.now
+                    try await Task.sleep(for: .milliseconds(Int(KeyboardWait.pollSeconds * 1000)))
+                    phase.waitMs += Self.ms(clock.now - waitStart)
+                    start = clock.now
+                    snapshot = try await freshSnapshot(.afterOwnMove)
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                }
+                if !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                    noteCodesThisStep.insert(.keyboardNotShownAfterType)
+                    keyboardWaitExhausted = true
                 }
             }
             if waitedForKeyboard

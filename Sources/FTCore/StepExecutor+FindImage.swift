@@ -130,6 +130,8 @@ extension StepExecutor {
         // Vision の一時的な異常は待って走査ごとやり直す(撮り直しも含む = デバイスへの操作は撃たない)。
         // 絵が追いつかないまま待ちが尽きたら、古い絵の確認を外して最新の絵で照合する(FindImage.staleRetryDelays)
         var judgeStale = true
+        // 異常を検知した最初の1回だけ補助プロセスに頼む(平常時はここから先 helper に一切触れない)
+        let helper = VisionHelperClient.fromEnvironment().map { FindImage.PrintSource.helper($0) }
         while true {
         do {
         return try await FindImage.retryingTransientAnomalies(
@@ -147,11 +149,15 @@ extension StepExecutor {
                 } else {
                     noteCodesThisStep.insert(.visionAnomalyRetried)
                 }
-            }) {
+            },
+            rescueSource: helper,
+            onRescue: { outcome in
+                noteCodesThisStep.insert(outcome == .rescued ? .visionHelperRescued : .visionHelperUnavailable)
+            }) { printSource in
             try await VisionUsageLedger.batched {
                 try await scanImageOnce(templates: templates, label: label, single: single, threshold: threshold,
                                         tolerance: tolerance, snapshot: snapshot, carried: carried,
-                                        judgeStale: judgeStale, phase: &phase)
+                                        judgeStale: judgeStale, printSource: printSource, phase: &phase)
             }
         }
         } catch let error as FindImage.PersistentAnomaly where error.last.isStaleScreenshot && judgeStale {
@@ -162,7 +168,7 @@ extension StepExecutor {
 
     private func scanImageOnce(templates: [URL], label: String, single: Bool, threshold: Double?,
                                tolerance: Double, snapshot: SnapshotResponse, carried: FindImage.Match?,
-                               judgeStale: Bool,
+                               judgeStale: Bool, printSource: FindImage.PrintSource,
                                phase: inout PhaseAccumulator) async throws -> ImageScan {
         let clock = ContinuousClock()
         let shotStart = clock.now
@@ -203,7 +209,7 @@ extension StepExecutor {
             }, nearest: nearest, classified: classified, compared: compared)
         }
         var perTemplate: [[FindImage.Match]] = []
-        let prints = FindImage.CandidatePrints()
+        let prints = FindImage.CandidatePrints(source: printSource)
         for template in templates {
             let matches = try await FindImage.match(template: template, elements: snapshot.elements,
                                                     screen: snapshot.screen, screenshot: screenshot,

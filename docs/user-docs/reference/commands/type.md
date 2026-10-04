@@ -27,6 +27,9 @@ type("#note", "new contents", replace: true)
   trailing newline is likewise sent as Enter. If the intent is to commit (search/submit), use
   [`pressEnter()`](./press_enter_hide_keyboard.md) instead — `type("watch\n")` does not tell the
   reader whether a newline or a submit was intended.
+- **On Android, the next action waits for the soft keyboard.** `type` returns before the keyboard is shown, so the
+  next action waits up to 1.5 seconds for it to appear before resolving its target (otherwise the layout can move
+  after the target was resolved). If it does not appear, the action proceeds as usual.
 - **`tap(inputField)` → `type("some text")` is supported.** On Android, input fields are often a
   container (Material's `TextInputLayout`) wrapping the actual field (`TextInputEditText`), and
   the `#id` frequently resolves to the container. Tapping the container does not always move

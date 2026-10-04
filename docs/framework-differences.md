@@ -255,6 +255,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | Flutter / Compose / SwiftUI / RN | 起動直後の白い画面(blank)の長さが描画の重さに比例する(誤った再起動は Flutter 10・Compose 3・SwiftUI/RN 0) | C | blank の判定窓を約10秒にする |
 | React Native | JS が listener を登録する前に届いた warm な URL を捨てる | A | `launchApp(url:)` は最初の画面が描かれてから URL を配送する |
 | Flutter(Android 12 の実機) | 入力欄の外を叩いて IME が閉じ始めると、dumpsys は即「非表示」なのに a11y の木は**約 5.4 秒**キーボードを申告し続け、下端のタブバーを `isVisibleToUser = false` で落とす(`refresh` しても同じ。Pixel 3a で実測・Pixel 4a の Android 13 は 0.32 秒) | A | `hideKeyboard` の後、次のロケータ操作の最初の解決で木がキーボードを申告していれば消えるまで待ってから整定を見る(`pendingHideKeyboardWait`。上限 5 秒 = `FlowStep.defaultWaitSeconds`(実測の 5.4 秒は IME が閉じ始めた時刻から。hideKeyboard の時点では残り約 4.7 秒)。Android だけ・消えていれば費用ゼロ) |
+| Android(全般・OS で割れる) | `type` は焦点を要求して文字を書き込むとすぐ返り、ソフトキーボードの表示を待たない(表示要求から表示完了まで中央値 0.2 秒・最大 0.89 秒)。次の解決の木にまだ無いと、後で出てダイアログが動き古い座標を撃つ。iOS の `type` は出現まで返らないので起きない | A | Android だけ、打つ前も次の木にもキーボードが無く改行で終わらない `type` の後、次のロケータ操作の解決の前に最大 1.5 秒(`KeyboardWait.appearSeconds`)、出現を待ってから整定を見る。出なければ注記 `keyboard-not-shown-after-type`・以降の木で出たら `keyboard-appeared-late` |
 | Flutter(Android) | 起動直後の数百 ms はタップを取りこぼす。タップ直後は入力接続が未確立 | B | SUT のシナリオは起動直後・タップ直後に `exist` を1往復挟む |
 
 ---

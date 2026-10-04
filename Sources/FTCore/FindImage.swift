@@ -90,6 +90,14 @@ public enum FindImage {
         }
         public var errorDescription: String? { description }
 
+        /// Vision 自身の異常(縮退・測り直しの不一致)。一色の絵・古い絵は含まない(補助プロセスの救済の対象外)
+        var isVisionAnomaly: Bool {
+            switch self {
+            case .degeneratePrints, .inconsistentPrints: return true
+            default: return false
+            }
+        }
+
         var isStaleScreenshot: Bool { if case .staleScreenshot = self { return true } else { return false } }
 
         /// 待てば戻る状態(Vision の異常・一色の絵。`retryingTransientAnomalies` が待って走査をやり直す対象)
@@ -137,12 +145,45 @@ public enum FindImage {
                                               sleep: (Double) async throws -> Void,
                                               onRetry: (Int, MatchError) -> Void,
                                               _ body: () async throws -> T) async throws -> T {
+        try await retryingTransientAnomalies(delays: delays, sleep: sleep, onRetry: onRetry,
+                                             rescueSource: nil, onRescue: { _ in }) { _ in try await body() }
+    }
+
+    /// 補助プロセスの救済の結果(`onRescue` へ渡す)。**門で落ちた回は呼ばない**(既存の注記のまま待ち直しへ落ちる)
+    enum RescueOutcome: Equatable { case rescued, unavailable }
+
+    /// 上の版 + **最初の Vision の異常(`isVisionAnomaly`)の待ちの前に**、`rescueSource`(長寿命の補助プロセス)で同じ走査を
+    /// 1 回だけやり直す。補助の値でも門(`match`)は同じに掛かるので、通れば結果を採って `.rescued`・
+    /// 補助が無い・答えない・unhealthy(`VisionHelperError`)なら `.unavailable` で既存の待ち直しへ落ちる・
+    /// 補助の値が門で落ちた(異常のまま)なら黙って既存の待ち直しへ落ちる。救済は走査につき 1 回
+    /// (最初の失敗で打ち切る = 補助が刺さっていても余計に待たない)。`body` には計算元を渡す(平常時は `.inProcess`)
+    static func retryingTransientAnomalies<T>(delays: (MatchError) -> [Double],
+                                              sleep: (Double) async throws -> Void,
+                                              onRetry: (Int, MatchError) -> Void,
+                                              rescueSource: PrintSource?,
+                                              onRescue: (RescueOutcome) -> Void,
+                                              _ body: (PrintSource) async throws -> T) async throws -> T {
         var attempt = 0
         var waited = 0.0
+        var rescueTried = false
         while true {
             do {
-                return try await body()
+                return try await body(.inProcess)
             } catch let error as MatchError where error.isTransient {
+                if !rescueTried, error.isVisionAnomaly, let rescueSource {
+                    rescueTried = true
+                    do {
+                        let rescued = try await body(rescueSource)
+                        onRescue(.rescued)
+                        return rescued
+                    } catch is CancellationError {
+                        throw CancellationError()
+                    } catch is VisionHelperError {
+                        onRescue(.unavailable)
+                    } catch {
+                        // 門で落ちた異常・一色や古い絵・設定の誤り: 既存の待ち直しがそのまま扱う
+                    }
+                }
                 let schedule = delays(error)
                 guard attempt < schedule.count else {
                     if attempt == 0 { throw error }
@@ -280,7 +321,8 @@ public enum FindImage {
 
     /// テンプレートの特徴量。プロセス内の控え(パス・更新時刻・大きさ)→ 永続控え(中身と OS の版が一致)→ 計算、の順。
     /// **計算したものは永続控えにまだ書かない**(書くのは match が門を通した後 = `persistTemplatePrint`)
-    static func templatePrint(_ url: URL, image: CGImage) async throws -> FeaturePrintObservation {
+    static func templatePrint(_ url: URL, image: CGImage,
+                              source: PrintSource = .inProcess) async throws -> FeaturePrintObservation {
         let key = memoryKey(url)
         if let cached = templateLock.withLock({ templatePrints[key] }) { return cached }
         if let stored = TemplatePrintStore.lookup(url) {
@@ -292,7 +334,7 @@ public enum FindImage {
             }
             return stored
         }
-        let observation = try await featurePrint(image)
+        let observation = try await source.compute(image)
         templateLock.withLock { templatePrints[key] = observation }
         return observation
     }
@@ -362,7 +404,9 @@ public enum FindImage {
     /// **走査ごとに作り直す**(別のスクリーンショットの特徴量で照合しない)
     public final class CandidatePrints: @unchecked Sendable {
         private var prints: [String: FeaturePrintObservation] = [:]
-        public init() {}
+        /// 特徴量の計算元(この走査の見本・白紙・候補すべて。既定はこのプロセスの Vision)
+        let source: PrintSource
+        public init(source: PrintSource = .inProcess) { self.source = source }
         /// 実際に特徴量を計算した回数(控えから返した回は数えない)
         public private(set) var computed = 0
         /// 縮退の門の白紙の特徴量(走査で1回だけ作り、全見本の判定に使い回す)
@@ -392,11 +436,11 @@ public enum FindImage {
                                     templateWidth: Double(templateImage.width),
                                     templateHeight: Double(templateImage.height), tolerance: tolerance)
         guard !candidates.isEmpty else { return [] }
-        let templateObservation = try await templatePrint(template, image: templateImage)
+        let templateObservation = try await templatePrint(template, image: templateImage, source: prints.source)
         // 縮退の門: 白紙は走査で1回だけ作る(判定は見本ごと = 距離の計算だけ)
         let blank: FeaturePrintObservation
         if let cached = prints.blank { blank = cached } else {
-            blank = try await featurePrint(blankSentinel)
+            blank = try await prints.source.compute(blankSentinel)
             prints.blank = blank
         }
         if isDegenerate(templateDistanceToBlank: try templateObservation.distance(to: blank)) {
@@ -410,7 +454,7 @@ public enum FindImage {
         let firstUse = !templateLock.withLock { verifiedTemplateKeys.contains(key) }
         if !prints.machineRechecked || firstUse {
             prints.machineRechecked = true
-            let selfDistance = Double(try templateObservation.distance(to: try await featurePrint(templateImage)))
+            let selfDistance = Double(try templateObservation.distance(to: try await prints.source.compute(templateImage)))
             if !isConsistent(selfDistance: selfDistance) {
                 discardTemplatePrints(after: template)
                 throw MatchError.inconsistentPrints(template: template.lastPathComponent, distance: selfDistance)
@@ -423,7 +467,7 @@ public enum FindImage {
             guard let observation = try await prints.observation(for: candidate.visibleFrame, compute: {
                 guard let crop = VisionClassifier.crop(image: screenshot, frame: candidate.visibleFrame, screen: screen)
                 else { return nil }
-                return try await featurePrint(crop)
+                return try await prints.source.compute(crop)
             }) else { continue }
             let distance = try templateObservation.distance(to: observation)
             matches.append(Match(element: candidate.element, visibleFrame: candidate.visibleFrame,

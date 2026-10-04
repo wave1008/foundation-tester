@@ -1032,6 +1032,11 @@ public final class StepExecutor {
     /// **`pendingTypeKeyboardCheck` と同時に書く**(`keyboardHiddenAfterType` が読む)
     var pendingTypeEndedWithNewline = false
 
+    /// `KeyboardWait.appearSeconds` を待ち切ってもキーボードが木に出なかった印(`keyboard-appeared-late` の数え用)。
+    /// 以降のロケータ操作の解決の木でキーボードが出ていたら注記を立てて消す。次の type の消費時にも消す。
+    /// シナリオ(StepExecutor)をまたいで持たない
+    var keyboardWaitExhausted = false
+
     /// 打つ前に出ていたキーボードが、打った後の最初の木で画面外に居るか(純粋関数)。
     /// **secure 欄では iOS がキーボードを一度隠して出し直す**(実測: 打っている間と、type が
     /// 返ってから約 0.8 秒は画面外・その間 0.45 秒ほど木が静止する)ので、整定待ちだけだと隠れている間に
@@ -1044,8 +1049,7 @@ public final class StepExecutor {
 
     /// 隠れたキーボードは nil ではなく画面外(y が画面の下端以上)の矩形で申告されることがある
     public static func keyboardOnScreen(_ frame: FTRect?, screen: FTRect) -> Bool {
-        guard let frame, frame.height > 0 else { return false }
-        return frame.y < screen.y + screen.height
+        KeyboardWait.onScreen(frame, screen: screen)
     }
 
     /// キーボードが「新しく出た」「矩形が動いた」「消えた」のいずれかで true(純粋関数)。

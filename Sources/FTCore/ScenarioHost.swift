@@ -128,6 +128,8 @@ public enum ScenarioHost {
             env["DEVELOPER_DIR"] = dir
         }
         env[ParentDeathWatch.environmentKey] = String(getpid())
+        // 補助プロセスの救済(VisionHelperHost)。起こしていない run には外の環境の古い値も持ち込ませない
+        env[VisionHelperWire.socketEnvironmentKey] = VisionHelperHost.activeSocketPath
         return env
     }
 

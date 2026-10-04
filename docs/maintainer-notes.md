@@ -3258,6 +3258,7 @@ production の文字列そのものを走らせる(`; true` を外すと落ち�
 (当時は同時実行で再現しなかった)と同じ結論に、今回は再現する witness(10 台で約 6%)の上で到達した。
 **再検討条件**: 長く生きた外部プロセスでは同じ負荷で 0/8,000(9/29 実測)なので、次の候補は
 **特徴量の計算を長寿命の補助プロセスへ移す**(プロセスの生存管理 = process-lifecycle.md の規律一式が要る大きな変更)。
+→ 10/4 に「異常のときだけ」の形で実装した(§67)。
 
 ### 63.4 配信が消えたのを「run が止めた・戻らない」と取り違えた(実際はパネルが隠れていた)
 実験の途中で Android の配信が 6→0 本になり 50 分戻らなかったのを、run が配信を畳んで戻せないと読んだ。拡張の出力では
@@ -3475,8 +3476,19 @@ watchdog(基準 30 秒)の窓は本人確認・操作・観測をまとめて数
 
 ### 66.4 E2EX の1本(M1Ultra・負荷下)
 E2EX-CMP / android の「ダイアログの変種」S0020 で、入力の後に「保存」を押したのに結果が `prompt=cancel`(タップは成功扱い)。
-キーボードの出現でダイアログが動く途中のタップが外に当たった形が疑わしい。手元で同じシナリオのクラスを 10 回反復して全緑。
-Swift 6 の退行ではないと判断したが、原因は未確定
+**原因を確定した**(2026-10-04 夜、M1Ultra で E2EX-CMP android を 8 台 × 10 周・ImeTracker を epoch 時刻で採取。赤は 1/10 で再現):
+Android の type は焦点を要求して文字を書き込むとすぐ返り、**キーボードの表示を待たない**。赤の回(-06)は
+type 39.592〜40.109 → 表示要求 39.973 → 「保存」の解決の木(約 40.15)にはまだキーボードが無い → **表示完了(onShown)40.383** →
+ダイアログが動いてからタップが届き外れた(40.546 に閉じる要求)。「打つ前後でキーボードが動いたら整定を待つ」
+(`keyboardShifted`)は解決の木でしか比べないので、表示が遅れると成立しない —— 赤の回だけ「保存」の `waitMs` が 0、緑の3回は約 60ms
+(整定を見ている)。**直した**(2026-10-05・検証は未了): `FTCore.KeyboardWait`(`appearSeconds` 1.5 秒・`pollSeconds` 0.15 秒)。
+`shouldAwaitAppearance` = **Android かつ 打つ前に画面上にキーボードが無い かつ 次の解決の木にも無い かつ 改行で終わっていない**ときだけ、
+`pendingTypeKeyboardCheck` の消費の中で 0.15 秒おきに撮り直し、木に出たら既存の整定(`keyboardShifted` → `settledSignature`・
+注記 `settled-after-keyboard`)へつなぐ。上限 1.5 秒の根拠は 2026-10-05 の実測(M2Ultra と M1Ultra・エミュレータ 8 台並列で
+E2EX-CMP android を各 10 周、ImeTracker の onRequestShow→onShown 計 140 件、中央値 0.20 秒・最大 0.89 秒)。
+**出なかったら**注記 `keyboard-not-shown-after-type` を立てて従来どおり進む(キーボードを出さない欄は type ごとに最大 1.5 秒を払う)。
+待ち切った印を控え、以降のロケータ操作の木でキーボードが出ていたら `keyboard-appeared-late`(上限不足の事例を数える。
+次の type かキーボードの観測で消える)
 
 ### 66.5 負荷テスト後の xcuitest エンジンの E2E(`--ios-xcuitest --local`)
 E2E-iOS 54・E2E-Flutter 45 は全緑。E2E-RN の赤は全部 sim-08 で、**負荷テストの MCP ファズが横向きにしたまま残した**
@@ -3491,6 +3503,7 @@ kAXErrorAPIDisabled(§65.7)で、反転の回のスクリーンショットは**
 (x = 402 − 横の y − 高さ・y = 横の x)で返った。「許可しない」は横の画面の下端でほぼ見切れていて、ref のタップは「done」と
 答えたまま空振りした(5 回)。縦に戻すと同じ ref のタップで1回で閉じた。横向きの iPhone で SpringBoard を操作する形は稀で、
 直すにはランナーの座標の写像の調査が要るので記録だけ。次に横向きの system UI を扱う変更を入れるときに確かめる
+(対処: ブリッジ v143。横向きの SpringBoard への ref のタップ(`/systemui/tap` と、セッションが SpringBoard の `/tap`)は撃たずに 422 で断り、縦に戻すよう案内する(`BridgeAPI.springBoardTapWouldMiss`)。**直せてはいない**: 横向きの SpringBoard の木は画面を 874x874(縦と横の和)と申告し、「許可しない」は x=-1.7 から始まる縦の座標系のまま返る。要素そのもので叩く(`XCUIElement.tap()`)も試したが、XCTest がその要素を「アラートに遮られている」と判定し、InterruptionGuard の下では操作を諦めた(2026-10-04 に Simulator で実測)。DSL の `tap("許可しない")` は横向きでは要素が画面からはみ出すので `visibleTapRect` の座標タップへ回り、`SystemUIDriver.tap(x:y:)` がアプリのセッションの `/tap` へ流す → 割り込み検知の 422(黙って通りはしない))
 
 ### 66.7 シナリオと受け手の雛形も Swift 6 にした(同日)
 移行の時点ではシナリオのターゲット(と `fleetest init` が受け手に書く設定)だけ Swift 5 に残していたが、「受け手に並行性の
@@ -3502,3 +3515,37 @@ Swift 6 言語モードでビルドすると診断 0 件**(陽性対照 = グロ
 **既存の受け手**は `project sync`(更新の手順に含まれる)でマーカー区間が作り直された時点で Swift 6 になる。手書きの
 `let swift5Mode` の定義は参照されないまま残るが害は無い。受け手が DSL の外に書いたヘルパーにグローバルな可変状態があれば、
 そこは Swift 6 のエラーになる(ツールからは見えない)
+
+## 67. Vision の特徴量の異常を長寿命の補助プロセスで救う(2026-10-04)
+
+**事実**(10/1 の 10 台並列の実験の結果 JSON の全数): Vision の異常で落ちた 92 件は**全部がそのシナリオのプロセスで最初の画像ステップ**で、
+**全部が 15.5 秒(`FindImage.anomalyRetryDelays`)待っても戻らなかった**(`PersistentAnomaly`)。2つ目以降の画像ステップは 0/3,425。
+9/29 の実測では長く生きたプロセスは同じ負荷で 0/約 8,000。→ **負荷下で初期化されたプロセスの Vision はそのプロセスの中では壊れたまま・
+長寿命のプロセスは健全**。§63.3 の再検討条件の候補(特徴量の計算を長寿命のプロセスへ)を、異常のときだけ使う形で入れた。
+
+**設計**
+- 補助プロセス = `fleetest api vision-serve`(`VisionHelperServer`)。Unix ドメインソケット `~/.fleetest/vision-<親 pid>.sock`
+  (sun_path 104 バイト上限のため短い名前)・長さ前置き(4 バイト big endian)の JSON・要求は PNG 1 枚 → 応答は `FeaturePrintObservation`。
+  1 スレッドが暖機・accept・処理を直列に回す(Vision を並行に撃たない)。暖機の門・上限・間隔は `FindImage+Prewarm.swift` と共有
+  (白紙との縮退・測り直しの一致。見本が無いので固定の探り画像で見る = 要求の画像を白紙と比べると白い切り出しが毎回 unhealthy になる)。
+  答える前にも毎回同じ門を掛け、落ちたら unhealthy で答えて暖機をやり直す。
+- 起動 = `RunOrchestrator.run` の1箇所(`VisionHelperHost`。`fleetest run`・`fleetest api run`・リモートのランナー機の run が共有)。
+  画像の見本を持つプロジェクトだけ・プロセスに1つ(参照を数える)・`ParentDeathWatch.childEnvironment()` + stdin の EOF で親の死に連動。
+  シナリオのプロセスへは `FT_VISION_HELPER_SOCKET`(`ScenarioHost.childEnvironment`)。
+- 使う側 = `FindImage.retryingTransientAnomalies(rescueSource:onRescue:)`。**失敗の経路だけ**: Vision の異常(縮退・測り直しの不一致)を
+  最初に検知したとき、待ちの前に同じ走査を特徴量の計算元(`FindImage.PrintSource`)を補助に差し替えて1回だけやり直す。
+  **門は補助の値にもそのまま掛かる**(外さない)。通れば結果を採り注記 `vision-helper-rescued`・補助が無い/答えない/unhealthy なら
+  `vision-helper-unavailable` で既存の待ち直し(15.5 秒)へ落ちる・門で落ちたら既存の注記のまま待ち直しへ。**平常時の走査は補助に一切触れない**。
+  1 要求の期限は `VisionHelperWire.requestDeadlineSeconds`(5 秒・実測ではなく、約 20ms × 待ち 10 件の約 5 倍。尽きたら待ち直しへ)。
+- 対象外: VisionClassifier(Core ML)と OCR(異常が観測されていない)。
+
+**検証**(2026-10-04〜05、この Mac):
+- 単体: 本物のソケットで補助と往復した特徴量が in-process と一致・探り画像は健全な機械で白紙と区別できる・PNG の往復で距離 0。
+  変異4つ(救済を試さない・unavailable の注記を落とす・実行機が補助を渡さない・子の環境にソケットを載せない)を全部殺す
+  (3つ目は当初生き残った = 配線テストが `rescueSource:` の語の有無しか見ていなかった → `rescueSource: helper,` まで縛った)
+- **陽性対照**: 注入口 `FT_FAKE_VISION_ANOMALY=1`(`VisionAnomalyInjection`。このプロセスの特徴量だけを一色の画像の値にする =
+  測り直しの門で食い違う。補助の値と暖機には効かせない)で E2E-Android「画像で要素を探す」4 本 → 照合した画像ステップ 8 つ全部に
+  `vision-helper-rescued`・全緑・1 ステップ 0.5〜1.0 秒(待ち直しの 15.5 秒に落ちない)
+- 10/1 と同じ構成(エミュレータ 10 台 × Android 4 SUT × 3 周 = 570 本・画像ステップ 381)では**異常が 1 件も起きなかった**
+  (注記 0)= **本物の異常に効くかはまだ測れていない**。各 run の終わりで補助は終了し、ソケットは残らなかった。
+  **次に異常が出る条件(負荷テスト・配信 24fps + 多並列)で `vision-helper-rescued` と PersistentAnomaly を数える**

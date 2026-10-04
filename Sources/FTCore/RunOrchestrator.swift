@@ -1303,6 +1303,10 @@ public final class RunOrchestrator: Sendable {
     ///   取るかだけ** —— スタッガ・CPU 門・復帰・lease・録画・ドレインは同じ経路を通る
     public func run(items: [ScenarioRunItem], defaultPlatform: String,
                     dispatch: ScenarioDispatch = .shared) async -> RunSummary {
+        // Vision の特徴量の救済用の補助プロセス(run / api run / リモートのランナー機の run が共有する唯一の入口。
+        // デバッグ実行では起こさない)。見本を持たないプロジェクトでは何も起こらない(VisionHelperHost)
+        let visionHelper = debug == nil ? VisionHelperHost.acquire(project: project) : nil
+        defer { visionHelper?.release() }
         var failed = 0
         /// キューの key(shared = platform / broadcast = レーン key)。ワーカーがどれを取るかは queueKey
         let queues: [String: ScenarioQueue]
