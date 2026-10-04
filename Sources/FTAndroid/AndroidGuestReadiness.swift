@@ -18,6 +18,13 @@ public enum AndroidGuestReadiness {
         return nil
     }
 
+    /// adb shell が期限内に答えなかった(凍結・起動途中・極端な負荷)。`adb devices` には device のまま載る
+    public static func noAnswerMessage(serial: String, seconds: Double) -> String {
+        "\(serial) did not answer `adb shell` within \(Int(seconds))s (the device may be frozen or still"
+            + " booting; `adb devices` can still list it) — the bridge was not started. If it stays this way,"
+            + " restart the device"
+    }
+
     public static func stillStartingMessage(marker: String, serial: String) -> String {
         "the Android guest's system server on \(serial) is still starting"
             + " (adb reported: \(marker)) — settings and the bridge APK cannot be applied"

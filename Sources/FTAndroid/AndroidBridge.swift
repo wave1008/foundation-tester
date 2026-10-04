@@ -51,7 +51,7 @@ extension AndroidDriver {
     /// .bridgeConnectionRefused を投げる/付け替える箇所は必ずこれを通す**(直書きで
     /// physicalDevice を書き漏らすと iOS 向けの案内が Android の失敗に付いたときと
     /// 同じ事故が起きる)
-    private func androidContext() -> DriverErrorContext {
+    func androidContext() -> DriverErrorContext {
         DriverErrorContext(engine: .android, physicalDevice: isPhysicalAndroidDevice)
     }
 
@@ -238,8 +238,20 @@ extension AndroidDriver {
         // sys.boot_completed は起動直後でも既に 1 なのでゲートに使えない(ProfileWorkerFactory の
         // waitForDurableBridge を参照)。代わりに animations 段がどのみち打つ get を1本先出しし、
         // guest の system_server がまだ無い印(スタックトレース)が乗っていれば早期に名指しする
-        if let probe = try? adb(["shell", "settings", "get", "global", "window_animation_scale"]),
-           let marker = AndroidGuestReadiness.systemServerStartingMarker(in: probe.output) {
+        // **期限つき** —— 凍結した端末はここで答えず、続く段(設定・install・起動)も全部答えない
+        let probe: Shell.Result?
+        do {
+            probe = try adbProbe(["shell", "settings", "get", "global", "window_animation_scale"],
+                                 timeout: Self.deviceAnswerTimeoutSeconds)
+        } catch ShellError.timedOut {
+            throw DriverError.bridgeUnreachable(
+                context: androidContext(),
+                detail: AndroidGuestReadiness.noAnswerMessage(
+                    serial: serial ?? "?", seconds: Self.deviceAnswerTimeoutSeconds))
+        } catch {
+            probe = nil
+        }
+        if let probe, let marker = AndroidGuestReadiness.systemServerStartingMarker(in: probe.output) {
             throw DriverError.bridgeUnreachable(
                 context: androidContext(),
                 detail: AndroidGuestReadiness.stillStartingMessage(marker: marker, serial: serial ?? "?"))
@@ -473,10 +485,54 @@ extension AndroidDriver {
         return bridgeRunningVerdict(pidofResult(serial: serial, adbPath: adbPath, timeout: timeout))
     }
 
+    /// 端末が `adb shell` に答えるまで待つ上限[秒](doctor / bridge status の問い合わせと、ブリッジの
+    /// コールド起動の最初の問い合わせ)。凍結した端末の adbd は答えないので、期限が無いと1台に呼び手全体
+    /// (MCP は呼び出しを順に処理する = 他の端末への呼び出しまで)を握られる。値は wedge した adbd に握らせない
+    /// 既存の締切(`AndroidHealthProbe.adbTimeoutSeconds`)と同じ。尽きたらその端末の残りの段を撃たない
+    static let deviceAnswerTimeoutSeconds: Double = AndroidHealthProbe.adbTimeoutSeconds
+
+    /// `dumpsys package <bridge>` の読み。**読めなかったことを「未導入」に畳まない**
+    /// (畳むと、凍結・切断した端末に「初回操作で自動導入される」と言う)
+    enum InstalledVersionReading: Equatable {
+        case installed(Int)
+        case notInstalled
+        case unknown
+    }
+
+    /// 純粋関数(テストが直接叩く)。`result` が nil = adb が起動できなかった/返らなかった
+    static func installedVersionReading(_ result: Shell.Result?) -> InstalledVersionReading {
+        guard let result, result.status == 0 else { return .unknown }
+        if let range = result.output.range(of: #"versionCode=(\d+)"#, options: .regularExpression),
+           let code = Int(result.output[range].dropFirst("versionCode=".count)) {
+            return .installed(code)
+        }
+        return result.output.contains("Unable to find package") ? .notInstalled : .unknown
+    }
+
     /// doctor / bridge status 用の1行サマリ
-    public func bridgeDoctorSummary() -> String {
-        guard let version = installedBridgeVersionCode() else {
-            return "bridge not installed (installed automatically on first use)"
+    public func bridgeDoctorSummary() -> String { bridgeDoctorReport().summary }
+
+    /// `answered` = 端末が期限内に adb へ答えたか。false のとき呼び手は同じ端末への追加の問い合わせ
+    /// (`animationScaleWarning` 等)を飛ばす(凍結した端末1台ごとに期限 × 問い合わせ数を払わない)
+    public func bridgeDoctorReport() -> (summary: String, answered: Bool) {
+        let timeout = Self.deviceAnswerTimeoutSeconds
+        let dump: Shell.Result?
+        do {
+            dump = try adbProbe(["shell", "dumpsys", "package", Self.bridgePackage], timeout: timeout)
+        } catch ShellError.timedOut {
+            return ("bridge state unknown — the device did not answer adb within \(Int(timeout))s"
+                + " (it may be frozen or still booting)", false)
+        } catch {
+            dump = nil
+        }
+        let version: Int
+        switch Self.installedVersionReading(dump) {
+        case .installed(let code):
+            version = code
+        case .notInstalled:
+            return ("bridge not installed (installed automatically on first use)", true)
+        case .unknown:
+            return ("bridge state unknown (adb could not read the installed package)", true)
         }
         var summary = "bridge v\(version)"
         if version > Self.expectedBridgeVersionCode {
@@ -488,7 +544,8 @@ extension AndroidDriver {
         }
         // pidofDigitsOnly を通す(adb 自体の失敗の出力を pid と誤認して「動いている」と
         // 言わない・逆に「停止」とも言い切らない。bridgeRunningVerdict と同じ判定)
-        switch Self.pidofResult(serial: serial, adbPath: adbPath).map(\.output).flatMap(Self.pidofDigitsOnly) {
+        switch Self.pidofResult(serial: serial, adbPath: adbPath, timeout: timeout)
+            .map(\.output).flatMap(Self.pidofDigitsOnly) {
         case .some(let pid) where !pid.isEmpty:
             summary += " running (pid \(pid)"
                 + (findExistingForward().map { ", forward tcp:\($0)" } ?? "") + ")"
@@ -497,21 +554,41 @@ extension AndroidDriver {
         case .none:
             summary += " status unknown (adb did not answer pidof as expected)"
         }
-        return summary
+        return (summary, true)
     }
 
     /// doctor 用: window/transition/animator の *_scale のいずれかが 0 でなければ注意文言を返す(全て0ならnil)。
-    /// 未設定(get が "null" を返す)は Android の既定値である 1.0 相当として扱い、警告対象に含める
+    /// 未設定(get が "null" を返す)は Android の既定値である 1.0 相当として扱い、警告対象に含める。
+    /// **読めなかった key(adb 失敗・期限切れ)は「ON」と言わず、読めなかったと別に言う**
+    /// (黙って諦めない。未設定と取り違えて「ON」と断定もしない)
     public func animationScaleWarning() -> String? {
-        let nonZero = AnimationPolicy.androidScaleKeys.filter { key in
-            let value = (try? adb(["shell"] + AndroidAnimationSettings.getArguments(key: key)))?.output
-            return !AndroidAnimationSettings.matches(rawValue: value, animationsEnabled: false)
+        Self.animationScaleWarning(readings: AnimationPolicy.androidScaleKeys.map { key in
+            guard let read = try? adbProbe(["shell"] + AndroidAnimationSettings.getArguments(key: key),
+                                           timeout: Self.deviceAnswerTimeoutSeconds),
+                  read.status == 0 else { return (key, nil) }
+            return (key, read.output)
+        })
+    }
+
+    /// 純粋関数(テストが直接叩く)。`value` が nil = その key は読めなかった
+    static func animationScaleWarning(readings: [(key: String, value: String?)]) -> String? {
+        let nonZero = readings.filter { reading in
+            reading.value.map { !AndroidAnimationSettings.matches(rawValue: $0, animationsEnabled: false) } ?? false
+        }.map(\.key)
+        let unread = readings.filter { $0.value == nil }.map(\.key)
+        var parts: [String] = []
+        if !nonZero.isEmpty {
+            // doctor は実行プロファイルを知らないので断定しない(enableAnimations:true なら意図どおり)
+            parts.append("animation settings are on (\(nonZero.joined(separator: ", "))). "
+                + "Screenshots can grab a stale frame even after the quiet check. "
+                + "Unless the run profile sets enableAnimations, the next run turns them off automatically")
         }
-        guard !nonZero.isEmpty else { return nil }
-        // doctor は実行プロファイルを知らないので断定しない(enableAnimations:true なら意図どおり)
-        return "animation settings are on (\(nonZero.joined(separator: ", "))). "
-            + "Screenshots can grab a stale frame even after the quiet check. "
-            + "Unless the run profile sets enableAnimations, the next run turns them off automatically"
+        if !unread.isEmpty {
+            // run の apply は読めない key も put する(AndroidAnimationSettings.matches)
+            parts.append("could not read the animation settings (\(unread.joined(separator: ", "))) —"
+                + " adb did not answer `settings get`; the next run sets them anyway")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
     /// installed が expected より新しいときだけ拒否理由を返す(等しい/古い/未インストールは

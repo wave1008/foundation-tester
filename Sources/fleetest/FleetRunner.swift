@@ -111,7 +111,10 @@ enum FleetRunner {
                 }
             }
             var collected: [Int: FleetEntryOutcome] = [:]
-            for await (index, outcome) in group { collected[index] = outcome }
+            for await (index, outcome) in group {
+                collected[index] = outcome
+                prelock.release(afterChildOf: outcome.host, exitCode: outcome.exitCode)
+            }
             return fleet.runs.indices.compactMap { collected[$0] }
         }
 
@@ -256,7 +259,10 @@ enum FleetRunner {
                 }
             }
             var collected: [Int: FleetEntryOutcome] = [:]
-            for await (index, outcome) in group { collected[index] = outcome }
+            for await (index, outcome) in group {
+                collected[index] = outcome
+                prelock.release(afterChildOf: outcome.host, exitCode: outcome.exitCode)
+            }
             return active.map { collected[$0.0]! }
         }
 

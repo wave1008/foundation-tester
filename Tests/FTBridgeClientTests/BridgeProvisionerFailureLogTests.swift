@@ -43,4 +43,27 @@ final class BridgeProvisionerFailureLogTests: XCTestCase {
         XCTAssertTrue(text.contains(compact("for outcome in collected {")))
         XCTAssertTrue(text.contains(compact("try Self.resolveOutcomes(collected)")))
     }
+
+    /// **起動より前の段(UDID の解決・採番)で落ちた機も、その機だけの失敗として集約へ合流すること**。
+    /// 手順1/4 で throw すると、Simulator が1台消えた(作り直された)・実機が1台外れただけで
+    /// 健全な残り全台の iOS レーンが空になる
+    func testResolveAndPlanningFailuresStayPerDevice() throws {
+        let text = compact(try source())
+        XCTAssertTrue(text.contains(compact(
+            "do { let sim = try SimulatorCatalog.resolve(spec: device.spec, in: catalog)")),
+            "UDID の解決が do/catch の外にある —— 1台の解決失敗が provision 全体の throw になる")
+        let planning = try XCTUnwrap(text.range(of: compact("do { if engine == \"hybrid\" {")),
+                                     "採番の do ブロックが見つからない")
+        let planningCatch = try XCTUnwrap(text.range(
+            of: compact("} catch { earlyFailures[index] = error continue }"),
+            range: planning.upperBound..<text.endIndex))
+        let planningBody = text[planning.lowerBound..<planningCatch.lowerBound]
+        XCTAssertEqual(planningBody.components(separatedBy: "tryplanBridge(").count - 1, 3,
+                       "planBridge の3呼び出しのどれかが採番の do/catch の外にある")
+        XCTAssertEqual(text.components(separatedBy: "tryplanBridge(").count - 1, 3)
+        XCTAssertEqual(text.components(separatedBy: "trySimulatorCatalog.resolve(").count - 1, 1)
+        XCTAssertTrue(text.contains(compact(
+            "if let error = earlyFailures[index] { return (name: devices[index].name, result: .failure(error)) }")),
+            "早い段の失敗が集約(collected)へ合流していない —— 理由のログも全滅の throw も欠ける")
+    }
 }

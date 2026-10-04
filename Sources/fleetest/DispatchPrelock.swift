@@ -66,6 +66,10 @@ final class DispatchPrelock {
 
     /// 機械ラベル → 子の環境へ入れる印の値。**取れた機械だけ**が載る
     private(set) var markers: [String: String] = [:]
+    /// 取れたロックの宛先 → その宛先の印を配ったラベル(別名は同じ宛先に並ぶ)
+    private var labelsByHost: [String: Set<String>] = [:]
+    /// 子が終わったラベルとその終了コード(nil = 不明)
+    private var finishedCodes: [String: Int32?] = [:]
 
     init(actions: Actions) {
         self.actions = actions
@@ -106,6 +110,7 @@ final class DispatchPrelock {
             if abortIfInterrupted() { return false }
             if let marker = markerByHost[machine.host] {
                 markers[machine.machine] = marker
+                labelsByHost[machine.host, default: []].insert(machine.machine)
                 continue
             }
             do {
@@ -113,6 +118,7 @@ final class DispatchPrelock {
                 held.append((machine, release))
                 markerByHost[machine.host] = marker
                 markers[machine.machine] = marker
+                labelsByHost[machine.host, default: []].insert(machine.machine)
             } catch {
                 if abortIfInterrupted() { return false }
                 // 理由は子が改めて取りに行くときに出す(同じ拒否文言を2回書かない)。
@@ -189,6 +195,29 @@ final class DispatchPrelock {
     /// (`abortIfInterrupted`)や、この引数をまだ渡していない呼び手(`FleetRunner`)はこちらに落ちる。
     /// 受け手側(`RemoteRunDispatcher.releaseDispatchLockAsParent`)は「不明」を「正常終了」と
     /// 混同せず安全側(生死を確かめてから外す)に倒すので、省略しても壊れない
+    /// **1つのラベルへ配った子が終わった時点で、その宛先のロックを外す**(全部の子を待たない ——
+    /// 待つと、早く終わった機械も一番遅い子が終わるまで握られ、他の run や align が入れない)。
+    /// 同じ宛先を指す別名のラベルがあれば、**それらの子が全部終わってから**外す。
+    /// 呼び手は「1ラベルにつき子は1つ」の fan-out(`DeviceMachineRunner` / `ApiRunMachineFanout` /
+    /// `FleetRunner` = ホストの重複は `FleetProfile.validate` が断る)。同じラベルに子が2つ並ぶ呼び手を
+    /// 足すなら、1つ目の子の終了で外れてしまうので数え方を変えること
+    func release(afterChildOf label: String, exitCode: Int32?) {
+        guard let index = held.firstIndex(where: { labelsByHost[$0.machine.host]?.contains(label) == true })
+        else { return }
+        finishedCodes.updateValue(exitCode, forKey: label)
+        let labels = labelsByHost[held[index].machine.host] ?? []
+        guard labels.allSatisfy({ finishedCodes.keys.contains($0) }) else { return }
+        held[index].release(Self.combinedExitCode(labels.map { finishedCodes[$0] ?? nil }))
+        held.remove(at: index)
+    }
+
+    /// 同じ宛先を共有した子たちの終了コードを1つにする(純粋関数)。**1つでも不明・異常があればそれ**
+    /// (受け手 `releaseDispatchLockAsParent` が生死を確かめてから外す)、全部が正常(0/1)なら 1 優先
+    static func combinedExitCode(_ codes: [Int32?]) -> Int32? {
+        if let abnormal = codes.first(where: { $0 != 0 && $0 != 1 }) { return abnormal }
+        return codes.contains(1) ? 1 : 0
+    }
+
     func releaseAll(exitCodes: [String: Int32] = [:]) {
         for entry in held.reversed() { entry.release(exitCodes[entry.machine.machine]) }
         held.removeAll()

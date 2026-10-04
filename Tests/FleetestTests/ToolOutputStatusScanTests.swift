@@ -118,9 +118,6 @@ final class ToolOutputStatusScanTests: XCTestCase {
         "AndroidBridge.ensureForward",
         "AndroidBridge.findExistingForward",
         "AndroidBridge.stopBridge",
-        // AndroidAnimationSettings.matches の契約(値が読めなければ「違う」と見て警告する。
-        // ユーザー方針: 黙って諦めない)をそのまま使う doctor 診断
-        "AndroidBridge.animationScaleWarning",
     ]
 
     /// **戻すと落ちる根拠**: `Shell.run(...).output` を status を見ずに解析する関数を足すと、

@@ -3344,3 +3344,71 @@ tapping …` の後に `Synthesize event`)。負荷テストでは sim-10 で通
   (`androidConnectionLostHint`。言ったうえで覚えている宛先も捨てる)と `ft_logs` の事前確認(`AndroidLogcat.notConnectedReason`)—— も
   state=device だけの `connectedSerials()` で照らしており、offline / unauthorized の端末を「載っていない」と断じていた(再現はしていない・
   失敗の言い方の誤り)。全行の一覧(`listedSerialStates`)で照らす。3箇所は `testNotListedClaimsCheckEveryListedLine` が走査で縛る
+
+## 65. 3時間負荷テストで出た穴(2026-10-04)
+
+2026-10-04 07:57〜11:00。構成: §64 と同じ(フリート run の周回 29 周〔手元 + M1Max / M1Ultra / M1mini。全プロファイル `--wait-lock` で並ぶ〕・`api run` の取り合い 56 周
+〔`--wait-lock` の実機 Pixel 4a・短い待ち・即時失敗・dry-run〕・MCP ファズ〔実機 iPhone SE3・Pixel 4a・Pixel 3a + 取り合い用 sim-08 /
+emulator-5562。実機は操作のたびに前面が SUT か確かめる〕42,736 回・ライブ操作ファズ〔sim-09 / -10・emulator-5564〕12,091 命令・CLI ファズ 2,568 回・INT / SIGKILL
+〔run の親・MCP・serve〕/ ランナーと Android ブリッジの強制停止)。この Mac の FM は開始時から死んでいた。**M1Max は当日朝に Simulator と AVD が
+作り直されていて、プロファイルの端末が1台も実在しなかった**(全周回でその機械は結果なし = 環境)。途中で別の作業のコミットが本線に積まれ、
+リモートが版不一致で弾かれたので align し直した(版の門は設計どおり)。**新しい型**: 凍結した端末への期限なしの `adb shell`(65.2・65.6)。
+
+### 65.1 iOS の供給が1台の Simulator の不在で、健全な残り全台を道連れにしていた
+`BridgeProvisioner.provision` の手順7は「供給できなかった機はその機だけ離脱させ残りで走る」(`FleetOutcome`)なのに、その手前の
+手順1(UDID / 名前の解決)と手順4(採番)が `try` で回していたので、**1台の解決失敗が provision 全体の throw** になり iOS レーンが丸ごと空になった
+(実地: M1Max の作り直しで UDID が消えた回)。実機が1台外れたときも同じ。早い段の失敗もその機だけの失敗として控え、手順7の集約へ合流させる
+(全滅のときだけ従来どおり最初の理由で throw)。`BridgeProvisionerFailureLogTests` が走査で縛る。**型**: 1台の失敗で全体を落とす(§6)。
+
+### 65.2 凍結した端末1台で `doctor` が返らなくなっていた(+「未導入」「アニメーション ON」への畳み込み)
+`doctor` / `bridge status` の Android 節は `adb shell dumpsys package` / `pidof` / `settings get` を**期限なし**で撃つので、`adb devices` には
+device のまま載り `adb shell` が返らない凍結した emulator(負荷テストで1台が 38 分そうなった)で無期限に止まった(CLI ファズで 180 秒の
+時間切れ 15 回・凍結の時間帯と完全に一致)。期限(`deviceAnswerTimeoutSeconds` = `AndroidHealthProbe.adbTimeoutSeconds`)を付け、尽きた端末は
+「15 秒以内に adb shell に答えなかった(凍結か起動中)」と名指しして残りの問い合わせを飛ばす。あわせて、読めなかった `dumpsys` を
+**「未導入(初回操作で自動導入)」に畳んでいた**のを `.unknown` に、読めなかった `settings get` を**「アニメーション ON」と言っていた**のを
+「読めなかった」に分けた(黙りはしない = ユーザー方針「黙って諦めない」の本体は run の `apply` 側で、doctor はそれを流用していた)。
+陽性対照: 凍結中の emulator-5564 で修正前は無期限・修正後は 32 秒で完走して名指し。
+
+### 65.3 `fleetest launch` だけ「未インストールなら撃たない」門を通らず、XCUITest ランナーを落としていた
+未インストールの bundle で `XCUIApplication.launch()` を撃つとランナーが約 60 秒ハングして自壊する(§T1)。MCP の ft_launch とライブ操作には
+`InstalledAppCheck.launchGuard` の門があるのに、CLI の `launch` は素通しで、約 55 秒後に「ドライバに届かない・bridge up を確認」と事実と違う案内を
+出してランナーを落とした(実地)。CLI にも同じ門を通す(読みはライブ操作と共有の `LaunchInstallVerdict`。実機の /status は udid を返さないので
+`BridgeClient.physicalUDID` で補う)。`/status` が読めないときは門を素通しにして、届かないことを launch 自身に言わせる。
+`LaunchInstallGateScanTests` が Sources/fleetest の launch / activate の全呼び出しを走査する(免除は理由つき)。
+
+### 65.4 ライブ操作の `clearAppData` が名指しの未インストール bundle へ activate してランナーを落としていた
+65.3 の走査で見つけた同型。`clearAppData` は対象のアプリへセッションを寄せる(`pointAtApp` = activate)ので、未インストールの bundle を渡すと
+activate でランナーが落ちた(陽性対照: serve が 30 秒の watchdog で終了し、ブリッジも無応答)。寄せる前に launch と同じ門を通す。
+
+### 65.5 複数機械の run が、終わった機械の dispatch.lock を一番遅い子が終わるまで握っていた
+`DeviceMachineRunner` / `ApiRunMachineFanout` は「子の終了コードが分かった時点で解放する」と注記しながら、全部の子の `withTaskGroup` が
+返ってから `releaseAll` していた。版不一致で 3.6 秒で落ちたリモートも、自分の分を2分で終えたリモートも、手元の子が終わる 12 分後まで
+ロックを握ったまま遊んでいた(結果の `idle=` に 587〜755 秒と出ていた)—— その間、他の Mac からの run と align が入れない(align が実際に
+「dispatch.lock が握られている」で止まった)。子が終わるたびに `DispatchPrelock.release(afterChildOf:exitCode:)` で外す。同じ宛先を指す
+別名は全部の子が終わってから外し、終了コードは1つでも不明・異常ならそれを渡す(受け手が生死を確かめてから外す既存の口)。`FleetRunner`
+(`--fleet`。ホストの重複は検証で断る = 1宛先1子)にも通した。**未確認**: リモートを含む実 run での解放時刻(単体は偽ランナーで固定)。
+
+### 65.6 凍結した Android 端末1台で、MCP が他の端末への呼び出しまで返さなくなっていた
+65.2 の同型の掃討。emulator のコンソールで VM を止める(`adb emu avd stop`)と同じ凍結を作れるので、端末に触る入口を総当たりした。
+ブリッジのコールド起動(`ensureBridge`)は端末側の `adb shell` を**期限なしで順に**撃つ(設定・install・起動)ので、その最初の問い合わせで
+永久に止まり、**MCP は呼び出しを順に処理するため、後ろに並んだ健全な端末への ft_status まで 200 秒以上返らなかった**(CLI の snapshot /
+tap / screenshot / launch / list-apps / bridge up も同様)。コールド起動の最初の問い合わせを期限つきの門にして尽きたら名指しで断り、
+ブリッジを通らない短い命令(keyevent・force-stop・dumpsys window・回転の settings・pm list)は期限つき(`adbAnswering`)に、
+所要の読めない `pm clear` は入口で1回だけ応答を確かめる(`requireDeviceAnswers`)。長押しの `input swipe` や install は期限を掛けない
+(正当に長い)。修正後は凍結端末への各呼び出しが 15〜33 秒で「adb shell に答えない」と返り、健全な端末の呼び出しも通る。
+`AndroidDeviceAnswerTimeoutScanTests` が素の `adb(` での短い命令の再混入を落とす。**残り**: ライブ操作は1命令で操作と観測の2回払うので
+凍結端末では 30 秒の watchdog に当たる(修正前も同じく強制終了。後退ではない)。
+
+### 65.7 ツールの不具合ではなかったもの・見送ったもの(記録のみ)
+- **kAXErrorAPIDisabled の長い継続**: sim-08 / -09 / -10 で、ある時間帯に前面アプリの読みが数分〜13 分続けて失敗した(案内は「一時的・数秒で
+  直る」)。sim-08 では XCTest でアプリを launch し直すと即座に読めたが、新しく起動した Simulator で 30 分・60 回読んでも 0 件で再現せず、
+  「起動直後の時間帯」「XCTest が起こしていないアプリ」の仮説はどちらも否定。原因が分からないので案内文は変えていない
+- 失敗文言の英語 `false positive (occlusion…)` は日本語で禁止した極性の語(§11)の英語版だが、negative controls・user-docs・design が
+  参照する契約なので今回は変えていない
+- CLI の Android `terminate` は起動の記録が無いと何もせずに「✅ Terminated」と言う(iOS はセッション中のアプリを止める。MCP は正直に言う)
+- `ft_snapshot` の巨大な `waitSeconds` は §62.6 のとおり上限なし(呼び手の明示)。M1mini では別のワークスペース(`~/dev/foundation-tester`・
+  別版)のブリッジが端末を握っていて設計どおり止めずに断った。sim-10 の自動起動 9 回は §59.6 / §62.1 と同じ「押下の途中でランナーが塞がり、
+  接続が失われた末にアプリが消える」型(クラッシュレポート無し)
+- run 親への INT は 18 秒で止まり全機のロックを外して中断のシナリオを interrupted と区別した / SIGKILL の後も次の run は待機列から始まった /
+  待機列の追い越しは無い(「2件が先に並んでいる」で断る)/ 常駐プロセス(モニター・配信・MCP)に増え続けるメモリは無い(MCP は約
+  145〜260MB で頭打ち)

@@ -195,10 +195,13 @@ enum ApiRunMachineFanout {
                 }
             }
             var collected: [Int: FleetEntryOutcome] = [:]
-            for await (position, outcome) in taskGroup { collected[position] = outcome }
+            for await (position, outcome) in taskGroup {
+                collected[position] = outcome
+                prelock.release(afterChildOf: outcome.host, exitCode: outcome.exitCode)
+            }
             return (0..<active.count).compactMap { collected[$0] }
         }
-        // 理由は DeviceMachineRunner.run と同じ(子の終了コードが分かった時点で解放する)
+        // 残りの安全網(各機械は子の終了時に解放済み。理由は DeviceMachineRunner.run と同じ)
         prelock.releaseAll(exitCodes: Dictionary(
             outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first }))
         // 全子が最後の .exited を継続へ渡し終えたあとでのみ finish してよい(withTaskGroup は

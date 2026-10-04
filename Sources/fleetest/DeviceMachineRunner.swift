@@ -238,13 +238,16 @@ enum DeviceMachineRunner {
                 }
             }
             var collected: [Int: FleetEntryOutcome] = [:]
-            for await (index, outcome) in taskGroup { collected[index] = outcome }
+            for await (index, outcome) in taskGroup {
+                collected[index] = outcome
+                prelock.release(afterChildOf: outcome.host, exitCode: outcome.exitCode)
+            }
             return active.compactMap { collected[$0.0] }
         }
-        // **子の終了コードが分かった時点で解放する**(defer より早い ―― 正常終了(0/1)の機械は
-        // 無条件、それ以外は生死を確かめてから。RemoteRunDispatcher.releaseDispatchLockAsParent
-        // の宣言参照)。末尾の bare `defer { prelock.releaseAll() }` は安全網として残るが、ここで
-        // 空になった held には何もしない(二重解放は無害)
+        // 各機械のロックは**その子が終わった時点で**上の `release(afterChildOf:)` が外し済み
+        // (正常終了(0/1)は無条件、それ以外は生死を確かめてから。RemoteRunDispatcher.releaseDispatchLockAsParent
+        // の宣言参照)。ここと末尾の bare `defer { prelock.releaseAll() }` は残り(子を起こさなかった
+        // 機械)の安全網で、空になった held には何もしない(二重解放は無害)
         prelock.releaseAll(exitCodes: Dictionary(
             outcomes.map { ($0.host, $0.exitCode) }, uniquingKeysWith: { first, _ in first }))
 

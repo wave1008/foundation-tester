@@ -156,6 +156,39 @@ public final class AndroidDriver: AppDriver {
         return try AdbInstallVerifier.withVerificationOff(adb: rawAdb) { try rawAdb(args) }
     }
 
+    /// 診断(doctor / bridge status)用の期限つき adb。凍結した端末の adbd は `adb shell` を返さないので、
+    /// 期限を付けないと1台の凍結が診断全体を握る(超過は `ShellError.timedOut`)。install 系は撃たない
+    /// (Play Protect の門を通らない)
+    func adbProbe(_ args: [String], timeout: Double) throws -> Shell.Result {
+        var full = [adbPath]
+        if let serial { full += ["-s", serial] }
+        return try Shell.run(full + args, timeout: timeout)
+    }
+
+    /// 短く返るはずの端末側の命令(keyevent・force-stop・dumpsys window・settings)を期限つきで撃つ。
+    /// 尽きたら「端末が adb shell に答えない」で断る(凍結した端末の adbd は返らず、期限が無いと
+    /// 呼び手全体 = MCP なら他の端末への呼び出しまでを握る)。**長さが読めない命令(長押しの input swipe・
+    /// pm clear・install)には使わない** —— そちらは `requireDeviceAnswers()` を入口で1回撃つ
+    func adbAnswering(_ args: [String]) throws -> Shell.Result {
+        do {
+            return try adbProbe(args, timeout: Self.deviceAnswerTimeoutSeconds)
+        } catch ShellError.timedOut {
+            throw noAnswerError()
+        }
+    }
+
+    /// 端末が `adb shell` に答えるかを期限つきで1回確かめる。adb 自体の失敗(オフライン等)はここでは
+    /// 断らず、続く本番の呼び出しにその理由を言わせる
+    func requireDeviceAnswers() throws {
+        _ = try adbAnswering(["shell", "true"])
+    }
+
+    func noAnswerError() -> DriverError {
+        .bridgeUnreachable(context: androidContext(),
+                           detail: AndroidGuestReadiness.noAnswerMessage(
+                               serial: serial ?? "?", seconds: Self.deviceAnswerTimeoutSeconds))
+    }
+
     /// 門を通さない素の adb。`adb(_:)` と `installSplitBundle` の門の内側からだけ呼ぶ
     private func rawAdb(_ args: [String]) throws -> Shell.Result {
         var full = [adbPath]
@@ -183,6 +216,7 @@ public final class AndroidDriver: AppDriver {
     /// アプリを残してデータだけ消す(`pm clear`)。**refs も落とす**: 消したあとの画面は
     /// 別物なので、古い ref でのタップを「先に snapshot」エラーへ倒す(launch と同じ規律)
     public func clearAppData(bundleID: String) async throws {
+        try requireDeviceAnswers()
         let result = try adb(["shell", "pm", "clear", bundleID])
         guard result.status == 0, result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),
@@ -288,7 +322,7 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func foregroundAppID() async throws -> String? {
-        let result = try adb(["shell", "dumpsys", "window", "windows"])
+        let result = try adbAnswering(["shell", "dumpsys", "window", "windows"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "dumpsys window windows failed: \(result.tail)")
@@ -299,7 +333,9 @@ public final class AndroidDriver: AppDriver {
     /// パッケージが入っているか。**判定できないときは nil**(adb 不調でも「未インストール」と
     /// 断じない)。launch 失敗の切り分け文言に使う
     public func isInstalled(bundleID: String) -> Bool? {
-        guard let result = try? adb(["shell", "pm", "list", "packages", bundleID]),
+        // 期限つき(凍結した端末は答えない。尽きたら不明 = nil。launch の門・一覧の呼び手を握らせない)
+        guard let result = try? adbProbe(["shell", "pm", "list", "packages", bundleID],
+                                         timeout: Self.deviceAnswerTimeoutSeconds),
               result.status == 0 else { return nil }
         // pm list packages は前方一致で引くので、行の完全一致で判定する
         return result.output.split(separator: "\n")
@@ -354,7 +390,7 @@ public final class AndroidDriver: AppDriver {
     /// タスク一覧(最近使ったアプリ)を開く。**gRPC の名前付きキーは使わない**(理由は home())。
     /// adb keyevent 直行。
     public func openAppSwitcher() async throws {
-        let result = try adb(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
+        let result = try adbAnswering(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to open the app switcher: \(result.tail)")
@@ -370,7 +406,7 @@ public final class AndroidDriver: AppDriver {
     /// gpio-keys に載る KEY_POWER/KEY_SLEEP = sleepWake だけは届く。docs/design.md §16.3)。
     /// adb keyevent 直行。
     public func home() async throws {
-        let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
+        let result = try adbAnswering(["shell", "input", "keyevent", "KEYCODE_HOME"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to go to the home screen: \(result.tail)")
@@ -382,7 +418,7 @@ public final class AndroidDriver: AppDriver {
     /// 前の画面へ戻る。**gRPC "GoBack" は使わない** — 成功を返すのにキーが届かない
     /// (実機で確認。KEY_WAKEUP 不発と同型の無音 no-op。機序は home())。adb keyevent 直行。
     public func back() async throws {
-        let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
+        let result = try adbAnswering(["shell", "input", "keyevent", "KEYCODE_BACK"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to go back: \(result.tail)")
@@ -523,7 +559,7 @@ public final class AndroidDriver: AppDriver {
         if captureKeyboardOnNextSnapshot {
             captureKeyboardOnNextSnapshot = false
             // 失敗(非 0)の出力を解析すると「出ていない」と確定してしまう = 不明(nil)のまま残す
-            if let dumpsys = try? adb(["shell", "dumpsys", "window", "windows"]), dumpsys.status == 0 {
+            if let dumpsys = try? adbAnswering(["shell", "dumpsys", "window", "windows"]), dumpsys.status == 0 {
                 snapshot.keyboardShown = AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys.output)
             }
         }
@@ -579,13 +615,13 @@ public final class AndroidDriver: AppDriver {
     /// 撃つ(hideKeyboard は冪等が契約。出ていなければ no-op)
     public func hideKeyboard() async throws {
         // **読めないを「出ていない」に畳まない**(デバイスが居ない・adb が詰まった回に成功を返していた)
-        let dumpsys = try adb(["shell", "dumpsys", "window", "windows"])
+        let dumpsys = try adbAnswering(["shell", "dumpsys", "window", "windows"])
         guard dumpsys.status == 0 else {
             throw DriverError.badResponse(status: Int(dumpsys.status),
                 body: "could not read whether the keyboard is showing (dumpsys window): \(dumpsys.tail)")
         }
         guard AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys.output) else { return }
-        let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
+        let result = try adbAnswering(["shell", "input", "keyevent", "KEYCODE_BACK"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to hide the keyboard: \(result.tail)")
@@ -698,7 +734,7 @@ public final class AndroidDriver: AppDriver {
         // gRPC の名前付きキーは使わない(理由は home())。"Enter" は GoHome/AppSwitch と同じ
         // sendKey なので同型の無音 no-op になる — ここは成功が返ると adb へ落ちない救済経路で、
         // 失敗の型が沈黙(誤った成功)なので単独では再現していないが塞ぐ
-        let result = try adb(["shell", "input", "keyevent", "66"])
+        let result = try adbAnswering(["shell", "input", "keyevent", "66"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to send the Enter key: \(result.tail)")
@@ -880,12 +916,12 @@ public final class AndroidDriver: AppDriver {
     /// **終了コードを見る**(失敗の出力を既定の 0/1 へ畳むと、`restoreOrientationIfNeeded` が
     /// その偽の値をデバイスへ書き戻す)。"null"(未設定)は成功の出力なので既定へ倒してよい
     private func currentRotationSettings() throws -> (userRotation: Int, accelerometerRotation: Int) {
-        let userResult = try adb(["shell", "settings", "get", "system", "user_rotation"])
+        let userResult = try adbAnswering(["shell", "settings", "get", "system", "user_rotation"])
         guard userResult.status == 0 else {
             throw DriverError.badResponse(status: Int(userResult.status),
                 body: "failed to read user_rotation: \(userResult.tail)")
         }
-        let accelResult = try adb(["shell", "settings", "get", "system", "accelerometer_rotation"])
+        let accelResult = try adbAnswering(["shell", "settings", "get", "system", "accelerometer_rotation"])
         guard accelResult.status == 0 else {
             throw DriverError.badResponse(status: Int(accelResult.status),
                 body: "failed to read accelerometer_rotation: \(accelResult.tail)")
@@ -901,9 +937,9 @@ public final class AndroidDriver: AppDriver {
         if originalRotationSettings == nil {
             originalRotationSettings = try currentRotationSettings()
         }
-        _ = try adb(["shell", "settings", "put", "system", "user_rotation",
-                     String(Self.androidRotation(for: orientation))])
-        _ = try adb(["shell", "settings", "put", "system", "accelerometer_rotation", "0"])
+        _ = try adbAnswering(["shell", "settings", "put", "system", "user_rotation",
+                              String(Self.androidRotation(for: orientation))])
+        _ = try adbAnswering(["shell", "settings", "put", "system", "accelerometer_rotation", "0"])
         let wantsLandscape = orientation != .portrait
         let deadline = Date().addingTimeInterval(Self.rotationDeadlineSeconds)
         while Date() < deadline {
@@ -918,10 +954,10 @@ public final class AndroidDriver: AppDriver {
     public func restoreOrientationIfNeeded() async throws {
         guard let original = originalRotationSettings else { return }
         originalRotationSettings = nil
-        _ = try adb(["shell", "settings", "put", "system", "user_rotation",
-                     String(original.userRotation)])
-        _ = try adb(["shell", "settings", "put", "system", "accelerometer_rotation",
-                     String(original.accelerometerRotation)])
+        _ = try adbAnswering(["shell", "settings", "put", "system", "user_rotation",
+                              String(original.userRotation)])
+        _ = try adbAnswering(["shell", "settings", "put", "system", "accelerometer_rotation",
+                              String(original.accelerometerRotation)])
     }
 
     /// `restoreAutoRotateIfItWasOn` の判定(純粋。`originalRotationSettings` から決める)
@@ -1143,7 +1179,7 @@ public final class AndroidDriver: AppDriver {
         restoreStateIfNeeded()
         if let package = currentPackage {
             // 動いていないアプリの force-stop も 0 を返すので、非 0 は adb 自体の失敗(デバイスが居ない等)
-            let result = try adb(["shell", "am", "force-stop", package])
+            let result = try adbAnswering(["shell", "am", "force-stop", package])
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
                     body: "failed to stop \(package): \(result.tail)")
@@ -1220,7 +1256,9 @@ public final class AndroidDriver: AppDriver {
 
     /// **終了コードを見る**(失敗の出力から「入っているアプリは 0 個」を作らない)
     private func packageIDs(scope: String) throws -> [String] {
-        let result = try adb(["shell", "pm", "list", "packages", scope])
+        // 期限つき(凍結した端末は答えない。尽きたら ShellError.timedOut = 何を何秒で切ったかを言う)
+        let result = try adbProbe(["shell", "pm", "list", "packages", scope],
+                                  timeout: Self.deviceAnswerTimeoutSeconds)
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "failed to list installed packages: \(result.tail)")

@@ -838,28 +838,8 @@ struct ApiLiveServe: AsyncParsableCommand {
     private func launchGuard(bundle: String, driver: AppDriver, ownAppBundleID: String?) async throws {
         guard bundle != ownAppBundleID else { return }
         let isAndroid = driverOptions.resolvedPlatform == "android"
-        let verdict: InstalledAppCheck.InstallVerdict
-        if isAndroid {
-            if let android = driver as? AndroidDriver, let installed = android.isInstalled(bundleID: bundle) {
-                verdict = installed ? .installed : .notInstalled
-            } else {
-                verdict = .unknown("adb")
-            }
-        } else if let udid {
-            // 実機は simctl ではなく devicectl(§19.3 M8 と同じ切り分け。simctl に実機の udid を
-            // 渡すと的外れな失敗になる)
-            if SimulatorCatalog.isPhysical(udid: udid) == true {
-                if let apps = try? IOSPhysicalAppCatalog.apps(udid: udid) {
-                    verdict = apps.contains { $0.id == bundle } ? .installed : .notInstalled
-                } else {
-                    verdict = .unknown("devicectl could not list installed apps")
-                }
-            } else {
-                verdict = InstalledAppCheck.simulatorInstallVerdict(udid: udid, bundleID: bundle)
-            }
-        } else {
-            verdict = .unknown("no udid to check installation with")
-        }
+        let verdict = LaunchInstallVerdict.read(bundleID: bundle, driver: driver,
+                                                isAndroid: isAndroid, udid: udid)
         switch InstalledAppCheck.launchGuard(
             verdict: verdict, isAndroid: isAndroid, engine: isAndroid ? nil : "xcuitest", bundleID: bundle) {
         case .allow:
@@ -1036,8 +1016,12 @@ struct ApiLiveServe: AsyncParsableCommand {
             let bundle = try await resolveBundleForClearAppData(
                 command: command, driver: driver, follower: follower)
             // clearAppData はホスト側で `terminate()`(= セッションのアプリ)を撃ってから
-            // コンテナを消すので、対象のアプリへセッションを寄せてからでないと別のものを殺す
-            try await follower?.pointAtApp(bundle, driver: driver)
+            // コンテナを消すので、対象のアプリへセッションを寄せてからでないと別のものを殺す。
+            // 寄せるのは activate = 未インストールの bundle だとランナーが落ちるので launch と同じ門を先に通す
+            if let follower {
+                try await launchGuard(bundle: bundle, driver: driver, ownAppBundleID: ownAppBundleID)
+                try await follower.pointAtApp(bundle, driver: driver)
+            }
             try await driver.clearAppData(bundleID: bundle)
             follower?.noteSessionDropped()
         case "install":

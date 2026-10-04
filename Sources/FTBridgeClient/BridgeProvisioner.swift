@@ -480,13 +480,21 @@ public struct BridgeProvisioner {
 
         let catalog = try SimulatorCatalog.devices()
 
-        // 1. デバイス指定 → シミュレータ実体(UDID)
+        // 1. デバイス指定 → シミュレータ実体(UDID)。**解決できない機はその機だけ失敗として控え**、
+        // 手順7の集約へ合流させる(ここで throw すると、消えた Simulator・外れた実機 1台で
+        // 健全な残り全台の iOS レーンが空になる)。手順4の採番も同じ扱い。キーは devices の添字
+        var earlyFailures: [Int: Error] = [:]
         var targets: [(name: String, spec: DeviceSpec, sim: SimDeviceInfo)] = []
-        for (name, spec) in devices {
-            let sim = try SimulatorCatalog.resolve(spec: spec, in: catalog)
-            targets.append((name, spec, sim))
+        var targetIndices: [Int] = []
+        for (index, device) in devices.enumerated() {
+            do {
+                let sim = try SimulatorCatalog.resolve(spec: device.spec, in: catalog)
+                targets.append((device.name, device.spec, sim))
+                targetIndices.append(index)
+            } catch {
+                earlyFailures[index] = error
+            }
         }
-
 
         // 2. 稼働中ブリッジのスキャン(ポート → (UDID, engine)。同一 UDID に inapp/xcuitest が
         // 共存する hybrid のため、engine まで見て正しいブリッジを再利用する)
@@ -523,33 +531,39 @@ public struct BridgeProvisioner {
         // 今このツリーの in-app ソースが作る dylib の digest(再利用判定に使う。
         // 計算できない構成では nil = 版と注入先だけで判定する)
         let inappSourceDigest = try? BridgeSourceSet.inApp.digest(repoRoot: repoRoot)
-        for (index, target) in targets.enumerated() {
+        for (position, target) in targets.enumerated() {
+            let index = targetIndices[position]
             let engine = target.spec.engine ?? "xcuitest"
             var bridges: [(engine: String, plan: EnginePlan)] = []
-            if engine == "hybrid" {
-                // in-app(主)+ XCUITest(フォールバック)の2ブリッジ
-                bridges.append(("inapp", try planBridge(
-                    engine: "inapp", preferred: target.spec.port, name: target.name,
-                    sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
-                    preinstallAppPath: preinstallAppPath,
-                    running: running, starting: startingByUDID,
-                    inappSourceDigest: inappSourceDigest,
-                    claimed: &claimed, usedPorts: &usedPorts)))
-                bridges.append(("xcuitest", try planBridge(
-                    engine: "xcuitest", preferred: nil, name: target.name,
-                    sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
-                    preinstallAppPath: preinstallAppPath,
-                    running: running, starting: startingByUDID,
-                    inappSourceDigest: inappSourceDigest,
-                    claimed: &claimed, usedPorts: &usedPorts)))
-            } else {
-                bridges.append((engine, try planBridge(
-                    engine: engine, preferred: target.spec.port, name: target.name,
-                    sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
-                    preinstallAppPath: preinstallAppPath,
-                    running: running, starting: startingByUDID,
-                    inappSourceDigest: inappSourceDigest,
-                    claimed: &claimed, usedPorts: &usedPorts)))
+            do {
+                if engine == "hybrid" {
+                    // in-app(主)+ XCUITest(フォールバック)の2ブリッジ
+                    bridges.append(("inapp", try planBridge(
+                        engine: "inapp", preferred: target.spec.port, name: target.name,
+                        sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
+                        preinstallAppPath: preinstallAppPath,
+                        running: running, starting: startingByUDID,
+                        inappSourceDigest: inappSourceDigest,
+                        claimed: &claimed, usedPorts: &usedPorts)))
+                    bridges.append(("xcuitest", try planBridge(
+                        engine: "xcuitest", preferred: nil, name: target.name,
+                        sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
+                        preinstallAppPath: preinstallAppPath,
+                        running: running, starting: startingByUDID,
+                        inappSourceDigest: inappSourceDigest,
+                        claimed: &claimed, usedPorts: &usedPorts)))
+                } else {
+                    bridges.append((engine, try planBridge(
+                        engine: engine, preferred: target.spec.port, name: target.name,
+                        sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
+                        preinstallAppPath: preinstallAppPath,
+                        running: running, starting: startingByUDID,
+                        inappSourceDigest: inappSourceDigest,
+                        claimed: &claimed, usedPorts: &usedPorts)))
+                }
+            } catch {
+                earlyFailures[index] = error
+                continue
             }
             plans.append(DevicePlan(index: index, name: target.name, sim: target.sim,
                                     engine: engine, bridges: bridges))
@@ -629,8 +643,10 @@ public struct BridgeProvisioner {
         // 「凍結機はレーンから外して残りで走る」(BlankWorkerTriage)と同じ思想へ揃える。
         //
         // **全滅のときだけ throw する**(呼び出し側が run 全体の失敗として扱えるように)。
-        let collected = plans.compactMap { plan in
-            outcomes[plan.index].map { (name: plan.name, result: $0) }
+        let collected = devices.indices.compactMap {
+            index -> (name: String, result: Result<ProvisionedIOSDevice, Error>)? in
+            if let error = earlyFailures[index] { return (name: devices[index].name, result: .failure(error)) }
+            return outcomes[index].map { (name: devices[index].name, result: $0) }
         }
         // **理由は resolve より前に、1台ずつ全部出す**。`FleetOutcome.resolve` は全滅のとき
         // **最初の1件だけを throw** するので、ここで出しておかないと残りの理由が消える ——

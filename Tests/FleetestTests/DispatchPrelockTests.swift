@@ -563,6 +563,65 @@ final class DispatchPrelockTests: XCTestCase {
     }
 
     /// 取得・解放の呼び出し順を記録する(別スレッドからは触らない)
+    // MARK: - 子ごとの解放
+
+    private func recordingPrelock(_ recorder: Recorder,
+                                  hostOf: @escaping (String) -> String = { DispatchPrelockTests.host($0) }) -> DispatchPrelock {
+        DispatchPrelock(actions: DispatchPrelock.Actions(
+            keys: { $0.map { DispatchOrder.Machine(machine: $0, host: hostOf($0), hardwareUUID: Self.uuids[$0]) } },
+            probeHardwareUUID: { _ in nil },
+            acquire: { machine in
+                (machine.host, { code in recorder.append("release:\(machine.host):\(code.map(String.init) ?? "nil")") })
+            },
+            log: { _ in }))
+    }
+
+    /// **早く終わった機械のロックは、その子が終わった時点で外す**(一番遅い子を待たない ——
+    /// 待つと、終わった機械も他の run や align に塞がれたまま残る)
+    func testAFinishedChildReleasesItsMachineWithoutWaitingForTheOthers() {
+        let recorder = Recorder()
+        let prelock = recordingPrelock(recorder)
+        prelock.acquireInOrder(machines: ["M1Max", "M1Ultra"])
+        prelock.release(afterChildOf: "M1Ultra", exitCode: 1)
+        XCTAssertEqual(recorder.entries, ["release:\(Self.host("M1Ultra")):1"])
+        prelock.releaseAll()
+        XCTAssertEqual(recorder.entries.last, "release:\(Self.host("M1Max")):nil")
+        XCTAssertEqual(recorder.entries.count, 2, "解放済みの機械を二重に外している")
+    }
+
+    /// 同じ宛先を指す別名は、**全部の子が終わってから**外す(片方が走っている宛先を外さない)
+    func testAnAliasedDestinationIsReleasedOnlyAfterEveryChildSharingItEnds() {
+        let recorder = Recorder()
+        let prelock = recordingPrelock(recorder, hostOf: { _ in "shared.local" })
+        prelock.acquireInOrder(machines: ["M1Max", "M1Ultra"])
+        prelock.release(afterChildOf: "M1Max", exitCode: 0)
+        XCTAssertEqual(recorder.entries, [], "別名の子がまだ走っている宛先を外した")
+        prelock.release(afterChildOf: "M1Ultra", exitCode: 0)
+        XCTAssertEqual(recorder.entries, ["release:shared.local:0"])
+    }
+
+    /// 共有した子の1つでも不明・異常なら、それを渡す(受け手が生死を確かめてから外す)
+    func testCombinedExitCodePrefersTheUnknownOrAbnormalOne() {
+        XCTAssertEqual(DispatchPrelock.combinedExitCode([0, 1]), 1)
+        XCTAssertEqual(DispatchPrelock.combinedExitCode([0, 0]), 0)
+        XCTAssertEqual(DispatchPrelock.combinedExitCode([0, nil]), nil)
+        XCTAssertEqual(DispatchPrelock.combinedExitCode([1, 137]), 137)
+    }
+
+    /// 1ラベル1子の fan-out は、子が終わるたびに解放を撃つこと(全子の収集後にまとめて撃たない)
+    func testFanoutsReleaseEachMachineAsItsChildEnds() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for file in ["Sources/fleetest/DeviceMachineRunner.swift", "Sources/fleetest/ApiRunMachineFanout.swift",
+                     "Sources/fleetest/FleetRunner.swift"] {
+            let text = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
+                .components(separatedBy: .whitespacesAndNewlines).joined()
+            XCTAssertTrue(text.contains("collected[index]=outcomeprelock.release(afterChildOf:outcome.host,exitCode:outcome.exitCode)")
+                          || text.contains("collected[position]=outcomeprelock.release(afterChildOf:outcome.host,exitCode:outcome.exitCode)"),
+                          "\(file): 子の終了ごとの解放が無い")
+        }
+    }
+
     private final class Recorder: @unchecked Sendable {
         private let lock = NSLock()
         private var items: [String] = []

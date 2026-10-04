@@ -41,6 +41,57 @@ final class AndroidBridgeRunningProbeTests: XCTestCase {
     }
 }
 
+/// doctor / bridge status の「導入済みの版」の読み。**読めなかったこと(adb 失敗・期限切れ)を
+/// 「未導入」に畳まない** —— 畳むと凍結・切断した端末に「初回操作で自動導入される」と言う
+final class AndroidBridgeInstalledVersionReadingTests: XCTestCase {
+
+    func testVersionCodeIsInstalled() {
+        XCTAssertEqual(AndroidDriver.installedVersionReading(
+            Shell.Result(status: 0, output: "Packages:\n    versionCode=85 minSdk=26 targetSdk=34\n")),
+            .installed(85))
+    }
+
+    func testUnableToFindPackageIsNotInstalled() {
+        XCTAssertEqual(AndroidDriver.installedVersionReading(
+            Shell.Result(status: 0, output: "Unable to find package: com.example.ftbridge\nDomain verification status:\n")),
+            .notInstalled)
+    }
+
+    func testNoResultIsUnknown() {
+        XCTAssertEqual(AndroidDriver.installedVersionReading(nil), .unknown)
+    }
+
+    func testAdbFailureIsUnknownNotNotInstalled() {
+        XCTAssertEqual(AndroidDriver.installedVersionReading(
+            Shell.Result(status: 1, output: "error: device offline")), .unknown)
+    }
+
+    /// 終了コード 0 でも、版も「見つからない」も無い出力は判定できない
+    func testUnrecognisedOutputIsUnknown() {
+        XCTAssertEqual(AndroidDriver.installedVersionReading(Shell.Result(status: 0, output: "")), .unknown)
+    }
+}
+
+/// doctor のアニメーション警告。**読めなかった key を「ON」と言わず、黙りもしない**
+final class AndroidAnimationScaleWarningTests: XCTestCase {
+
+    func testAllZeroIsSilent() {
+        XCTAssertNil(AndroidDriver.animationScaleWarning(readings: [("a", "0"), ("b", "0.0\n")]))
+    }
+
+    func testNullIsTheDefaultOneAndWarnsAsOn() {
+        let warning = AndroidDriver.animationScaleWarning(readings: [("a", "null"), ("b", "0")])
+        XCTAssertEqual(warning?.contains("animation settings are on (a)"), true)
+    }
+
+    func testUnreadKeyIsReportedButNotCalledOn() throws {
+        let warning = try XCTUnwrap(AndroidDriver.animationScaleWarning(readings: [("a", nil), ("b", "0")]),
+                                    "読めない key を黙って飛ばしている")
+        XCTAssertFalse(warning.contains("are on"), "読めない key を「ON」と断定している")
+        XCTAssertTrue(warning.contains("could not read the animation settings (a)"))
+    }
+}
+
 /// `isBridgeRunning` / `pidofResult` が `ensureBridge()` / `startBridge()` を呼んでいないことの
 /// ソース走査(観測がブリッジを起動する副作用を復活させないための固定)。方針は
 /// `ApiMonitorAndroidCaptureSourceScanTests` と同じ(コメント除去 → 関数本体を切り出し→正規表現)。

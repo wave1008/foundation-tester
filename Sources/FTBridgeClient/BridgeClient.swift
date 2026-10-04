@@ -16,8 +16,9 @@ public final class BridgeClient: AppDriver {
     let sessionTimeout: TimeInterval
     /// 高速入力(quiescence スキップ)。init 時に FT_FAST_INPUT 環境変数から確定
     let fastInput: Bool
-    /// 実機の UDID(nil = シミュレータ)。install の simctl / devicectl 分岐にのみ使う
-    let physicalUDID: String?
+    /// 実機の UDID(nil = シミュレータ)。install の simctl / devicectl 分岐と、`fleetest launch` の
+    /// インストール確認(実機の /status は udid を返さない)に使う
+    public let physicalUDID: String?
     /// 既知のシミュレータ UDID(ワーカー構築時に分かっている場合だけ入る。nil = ブリッジに聞く)。
     /// **これが無いと removeApp() の直後に installApp() できない** —— 対象の特定が `status()` に
     /// 依存するため、アプリごと in-app ブリッジを消した後は「入れる先を教えてくれる相手」が
