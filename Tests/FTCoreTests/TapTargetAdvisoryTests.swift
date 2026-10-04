@@ -1434,4 +1434,11 @@ final class TapResolvedTargetNamingTests: XCTestCase {
 
         XCTAssertFalse(note.contains("resolved to"), note)
     }
+
+    func testSpringBoardTapIsRefusedOnlyWhenLandscape() {
+        XCTAssertTrue(BridgeAPI.springBoardTapWouldMiss(bundleID: "com.apple.springboard", isLandscape: true))
+        XCTAssertFalse(BridgeAPI.springBoardTapWouldMiss(bundleID: "com.apple.springboard", isLandscape: false))
+        XCTAssertFalse(BridgeAPI.springBoardTapWouldMiss(bundleID: "com.example.app", isLandscape: true))
+        XCTAssertFalse(BridgeAPI.springBoardTapWouldMiss(bundleID: nil, isLandscape: true))
+    }
 }

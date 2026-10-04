@@ -469,8 +469,22 @@ final class BridgeRouter {
             throw BridgeError(404,
                 "unknown system-UI reference number [\(ref)] — run GET /systemui/snapshot first")
         }
+        if BridgeAPI.springBoardTapWouldMiss(bundleID: "com.apple.springboard",
+                                             isLandscape: XCUIDevice.shared.orientation.isLandscape) {
+            throw refuseLandscapeSpringBoardTap()
+        }
         coordinate(systemUIAnchor(), CGPoint(x: frame.midX, y: frame.midY)).tap()
         return .json(OKResponse())
+    }
+
+    /// 横向きの SpringBoard は枠を縦の座標系のまま返し(画面は縦と横の和)、座標で撃つと done のまま空振りする。
+    /// 要素で叩く(`XCUIElement.tap()`)も効かない: XCTest がその要素を「アラートに遮られている」と判定し、
+    /// InterruptionGuard の下では操作を諦める(2026-10-04 実測。maintainer-notes §66.6)。
+    /// 当たらないと分かっている操作で done を返さず 422 で断る(422 = セッションはあるが今は無理)
+    private func refuseLandscapeSpringBoardTap() -> BridgeError {
+        BridgeError(422, "the device is in landscape: SpringBoard reports its elements in portrait coordinates,"
+            + " so a tap on them would miss (XCTest also refuses to tap them by element in this state)."
+            + " Rotate the device back to portrait, then tap the system UI again")
     }
 
     /// `/systemui/*` の座標ジェスチャが原点にするアプリ。
@@ -608,6 +622,10 @@ final class BridgeRouter {
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         let app = try requireForegroundAppForGesture()
+        if req.ref != nil, BridgeAPI.springBoardTapWouldMiss(bundleID: sessionBundleID,
+                                                             isLandscape: XCUIDevice.shared.orientation.isLandscape) {
+            throw refuseLandscapeSpringBoardTap()
+        }
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、

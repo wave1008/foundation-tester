@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 141
+    public static let bridgeProtocolVersion = 143
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -133,6 +133,14 @@ public enum BridgeAPI {
                                                  windowWidth: Double, windowHeight: Double) -> Bool {
         guard cardWidth > 0, cardHeight > 0 else { return false }
         return cardWidth < windowWidth - 1 || cardHeight < windowHeight - 1
+    }
+
+    /// XCUITest ランナーが SpringBoard へのタップを撃たずに断るか(当たらないと分かっている)。
+    /// 横向きの SpringBoard は枠を縦の座標系のまま返すので座標は空振りし、要素で叩いても XCTest が
+    /// 「遮られている」と諦める(自アプリは枠とタップの座標系が揃うので対象外)。
+    /// BridgeRouter.handleTap / handleSystemUITap が呼ぶ。条件を広げると他経路の挙動が変わる
+    public static func springBoardTapWouldMiss(bundleID: String?, isLandscape: Bool) -> Bool {
+        isLandscape && bundleID == "com.apple.springboard"
     }
 
     public static func isHomeButtonPhoneScreen(width: Double, height: Double) -> Bool {
