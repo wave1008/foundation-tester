@@ -550,7 +550,9 @@ dry-run との対比で「実機の前に落とす」等と書いていた 20 �
 - **FoundationModels `init(sampling:)` の deprecated ×8**: 後継 `init(samplingMode:)` は macOS 27 SDK のみ。platforms は macOS 26 なので置き換えると 26 でビルドが通らなくなる(Package.swift の platforms コメントと同じ理由)。macOS 26 SDK では出ない
 - **SecureTransport `SSL*` の deprecated ×12**(`PhysicalSafariInspector`): 実機 iOS の lockdown TLS は自前ソケット上で証明書を指定して握手する形で、Network.framework に同じ口が無い(design.md §実機だけの罠)
 - **Sendable 捕捉・非同期文脈の `wait`/`lock`(37 件)は同日に 0 にした**。production 側は子プロセスの stdout 読み切りを `FTRemote.PipeLinePump`(専用スレッドで読み、EOF は AsyncStream で待つ)へ寄せ(FleetRunner / ApiRunMachineFanout)、`FTScenarioDescriptor.run` を `@Sendable` に(マクロ生成のクロージャはクロージャ内で作ったインスタンスしか捕捉しないのでテストクラスの Sendable 化は不要)、AV の切り出し状態は `ClipExtractionState` に束ねた。テスト側は `FTTestSupport.LockedBox`。陽性対照は `PipeLinePumpTests`(変異 2/2 検出)
-- **ゲートの選択肢**: `swiftLanguageMode(.v5)` のまま `.treatWarning(_:as: .error)` で群ごとにエラー化する案は tools-version 6.2 が要る(受け手の最低環境は macOS 26 = Xcode 26 = Swift 6.2 なので可能)が、群の無い診断(冗長 `public`・非同期文脈のロック)は対象外。**`-warnings-as-errors` の `unsafeFlags` は不可**(受け手の外部パッケージが依存として解決できなくなる)
+- **言語モード**: 2026-10-04 にツール本体とテストを Swift 6 言語モードへ移した(§66)。Swift 5 のまま残すのは
+  シナリオのターゲット(TestProjects/ = 受け手と同じ設定)だけ。**`-warnings-as-errors` の `unsafeFlags` は不可**
+  (受け手の外部パッケージが依存として解決できなくなる)
 
 ---
 
@@ -3412,3 +3414,66 @@ tap / screenshot / launch / list-apps / bridge up も同様)。コールド起�
 - run 親への INT は 18 秒で止まり全機のロックを外して中断のシナリオを interrupted と区別した / SIGKILL の後も次の run は待機列から始まった /
   待機列の追い越しは無い(「2件が先に並んでいる」で断る)/ 常駐プロセス(モニター・配信・MCP)に増え続けるメモリは無い(MCP は約
   145〜260MB で頭打ち)
+
+## 66. Swift 6 言語モードへの移行と、その後の3時間負荷テスト(2026-10-04)
+
+**移行**: ツール本体とテストを Swift 6 言語モードへ(シナリオのターゲットだけ Swift 5 = 受け手と同じ)。complete 検査の診断は
+自前のコードで約 120 件(可変のグローバル状態 ≈40・MCP の JSON 定数 ≈30・非 Sendable の受け渡し ≈30)+ 移行の途中で出た分。
+可変のグローバル状態は `Mutex`(Synchronization)へ寄せ、型の Sendable はコンパイラに確かめさせた。共通の部品は
+`Sources/FTCore/LockedValue.swift` の3つ(`LockedValue` = 捕捉した `var` の置き換え / `SerializedSink` = スレッド安全の
+契約が無い呼び手の log・emit を直列化 / `UncheckedTransfer` = 子タスクへ渡す非 Sendable の `AppDriver`)。
+**`AppDriver` は Sendable にしていない**(テストの偽ドライバが 100 を超え、`var calls` を持つ)—— `RunWorker` は
+「1レーン = 1 Task が順に叩く」を根拠に `@unchecked Sendable`。
+
+**移行の監査で見つけた既存の競合**(どれも Swift 5 では黙って通っていた):
+- `RunOrchestrator.bridgeUnreachable` が判定をオーケストレータの `var` で運んでいた —— iOS の複数レーンが並行に呼ぶと、
+  別レーンが「ブリッジが別の端末に奪われた」原因を nil で消し、単なる到達不能として報告した。戻り値で運ぶ形にし、
+  `RunOrchestrator` を(unchecked でない)Sendable にした = 可変メンバーの再混入はコンパイラが止める
+- `BridgeLauncher.probeForeignBridge` がセマフォの期限切れの後に、完了ハンドラが遅れて書く値を読んでいた
+- `BridgeClient` の token・端送り・要素上限などが無保護(Android のクライアントは共有され、`withDeadline` は期限切れの
+  先行呼び出しを残す)→ `Mutex` に集約
+- MCP の `ghostFlagsComputations`・`PhaseLog.last`・`DispatchPrelockTests` の捕捉変数
+**踏んだ罠**: `UIFrameworkMarkers.swift` は **in-app dylib に単体でコンパイルされる**(`InAppBridge/build.sh` の5ファイル)
+ので、FTCore の他の型(`LockedValue`)を使うと dylib のビルドだけが壊れる(`swift test` は緑のまま。契約テストが
+変更を検出してブリッジ v141 に上げた)。テストのターゲットはエラーが1ファイルずつしか出ないので、一時的に
+`swiftLanguageMode(.v5)` + `enableExperimentalFeature("StrictConcurrency")` にして全件を警告で洗い出してから戻した。
+回帰: フル E2E(in-app)391 本全緑・E2EX は 1 本だけ赤(66.4)。
+
+**負荷テスト**: 14:44〜17:45。構成は §65 と同じ(フリート run 46 周・api run 60 周・MCP ファズ 50,367 回〔実機 SE3・Pixel 4a・
+Pixel 3a + sim-08 / emulator-5562〕・ライブ操作ファズ 14,358 命令〔sim-09 / -10・emulator-5564〕・CLI ファズ 3,738 回・
+障害注入 9 回〔run 親への INT / SIGKILL・Android ブリッジ / ランナーの強制停止〕)。この Mac の FM は開始時から死んでいた。
+**`fleetest` 系のクラッシュレポートは全期間で 0 件**(`Mutex` の再入による異常終了も無い)。INT は 15 秒で止まりロックを
+外した / SIGKILL の後も次の周回は待機列から始まった / 終了後の dispatch.lock は手元・リモート3機とも空き。
+
+### 66.1 走査が取りこぼし診断の probe には答えたブリッジを、MCP が「居ない・bridge up しろ」と言っていた
+udid 指定の解決で、走査(2秒の窓)の間だけ busy だったブリッジが直後の診断の probe には答えると、`.answered` はどの分類
+(busy / wedged)にも入らず「no running bridge… `fleetest bridge up` で起動せよ」に落ちた(run が使う sim-08 に対して
+6 回中 1 回再現)。§51.6(診断の時間切れを「居ない」に畳む)と同じ型の残り。答えたポートは本人確認が一致すれば採用し、
+確かめられなければ「居ない」と言わず bridge up も勧めない(`classifyAnsweredPorts`)。同型の掃討: CLI の既定ポートの
+経路は既に busy を分けている(`BridgeDiscovery.busyMessage`)。
+
+### 66.2 ライブ操作の command watchdog が、内側の期限より先に serve ごと強制終了していた
+watchdog(基準 30 秒)の窓は本人確認・操作・観測をまとめて数えるのに、猶予は launch / activate / install / ジェスチャの
+命令そのものの分しか無かった。①`Timeout.session`(45 秒)で撃つ appSwitcher / home / terminate / refresh / frame に猶予 0
+(appSwitcher 30.7 秒で強制終了)②clearAppData は activate と terminate の2回ぶん要るのに 0(30.2 秒)③すべての命令の
+後に来る観測(session)が数えられていない(press 1.2 秒が 32 秒で強制終了)。命令の分(`watchdogAllowanceSeconds`)と
+観測の分(`observationAllowanceSeconds`)を足した窓を渡す。**拡張は 20 秒の要求上限で先に張り直す**ので、
+影響したのは serve を直接使う呼び手(エージェント・ハーネス)。
+
+### 66.3 直していない観察(記録のみ)
+- **M1mini への ssh が接続確立の途中で切られた**(`kex_exchange_identification: Connection reset by peer`)。リモートの
+  コマンドは1度も走らず、そのレーンの2本が結果なし(exit 255)。sshd の接続制限(MaxStartups)が疑わしいが未確認。
+  何も実行されていないことを文言の照合で判定して撃ち直す形は、仕分けを文言で決めない規律と衝突するので入れていない
+- **xcuitest の手元レーンの赤**(1周で 29 本中 11 本)は、テキストの視覚検証の OCR 段が絵から何も読めなかった反転で、
+  **スクリーンショットはアプリの領域が真っ白**(木には要素がある)= Compose Multiplatform の iOS アプリが負荷下で描画できて
+  いない状態を正しく捉えた赤。配信 32 本が張られていた。同じ周回の M1Ultra の xcuitest レーンは全緑
+- 実機 SE3 で `ft_type` が 63 秒止まった後に USB の転送路が固まり(wedged の診断は正しく出た)、次の run の供給が死んだ台帳を
+  片付けてポートを Simulator へ割り当て直した —— その後の MCP の「ブリッジが無い」は事実どおり
+- M1Max は §65 と同じく Simulator / AVD が作り直されていてプロファイルの端末が実在しない(環境)。M1mini は別ワークスペースの
+  ブリッジを設計どおり止めずに断った
+- ハーネスの障害注入(`faults.sh`)が udid の空のまま `pgrep -f "xcodebuild.*"` で任意のランナーを撃っていた(ツールの事象ではない)
+
+### 66.4 E2EX の1本(M1Ultra・負荷下)
+E2EX-CMP / android の「ダイアログの変種」S0020 で、入力の後に「保存」を押したのに結果が `prompt=cancel`(タップは成功扱い)。
+キーボードの出現でダイアログが動く途中のタップが外に当たった形が疑わしい。手元で同じシナリオのクラスを 10 回反復して全緑。
+Swift 6 の退行ではないと判断したが、原因は未確定

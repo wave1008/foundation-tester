@@ -75,10 +75,12 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   既定ポートの別の実機を「自分」と読む)→ maintainer-notes §47。
   **1コマンドの中で撃つ外部呼び出しの timeout は command watchdog(30 秒)より十分短く**し、失敗は控えて
   毎コマンド撃ち直さない(`DevicectlBackoff`)—— watchdog が serve を殺すたびに自動起動が走る。
-  **内側の上限が command watchdog の基準値を超えるコマンド(launch/activate = xcuitest の
-  session 45秒・install = 実機 devicectl の 600秒)は `ApiLiveServeCommand.watchdogAllowanceSeconds`
-  でその分を watchdog に足す**(拡張側は `serveCommandAllowanceMs` が同じ値を ms で持つ。片方だけ
-  変えない)—— 猶予が無いと、正当な失敗の後始末(観測の撮り直し)中に watchdog が serve ごと殺す。
+  **内側の上限が command watchdog の基準値を超えるコマンド(`Timeout.session` 45秒で撃つ launch/activate/
+  appSwitcher/home/terminate/refresh/frame・その2回ぶんの clearAppData・install = 実機 devicectl の 600秒)は
+  `ApiLiveServeCommand.watchdogAllowanceSeconds` でその分を watchdog に足す**(拡張側は `serveCommandAllowanceMs` が
+  launch/install を ms で持つ。片方だけ変えない)。**窓は本人確認・操作・観測をまとめて数えるので、観測を撃つ命令は
+  `observationAllowanceSeconds`(session)も足す**(窓に渡すのは和の `watchdogWindowAllowanceSeconds`)——
+  猶予が無いと、内側の期限より先に watchdog が serve ごと殺す → maintainer-notes §66。
   **実機に2本目のランナーを立てない**(ライブ操作の自動起動 `LiveBridgeAutoStarter.launchBridge` が、同じ実機を
   宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中のデバイスを
   待って引き取るので門は置かない)→ maintainer-notes §49.4。
