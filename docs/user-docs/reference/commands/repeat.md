@@ -7,7 +7,7 @@ Repeats a block while a selector resolves, or until an arbitrary condition becom
 | function | description |
 |---|---|
 | `repeatWhileCanSelect(sel, maxLoopCount: 10, waitSeconds: 0, title:) { }` | Repeats the block while the selector keeps resolving. For an unknown number of matching items (e.g. dismissing a variable number of cards). Reaching `maxLoopCount` is not a failure, but it is recorded. |
-| `doUntilTrue("description", waitSeconds: Double? = nil, intervalSeconds: Double? = nil, maxLoopCount: Int? = nil) { condition }` | Repeats until `condition` (`() async throws -> Bool`) returns true. For app or external state you cannot express as a selector — not for waiting on an element (use each command's `waitSeconds:` for that). A thrown error fails immediately without retrying. When omitted: `waitSeconds` 10 seconds, `intervalSeconds` 0.5 seconds, `maxLoopCount` 100. |
+| `doUntilTrue("description", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { condition }` | Repeats until `condition` (`() async throws -> Bool`) returns true. For app or external state you cannot express as a selector — not for waiting on an element (use each command's `waitSeconds:` for that). A thrown error fails immediately without retrying. |
 
 ## Example
 

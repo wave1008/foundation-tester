@@ -244,7 +244,6 @@ struct RunScenario: AsyncParsableCommand {
 
     func run() async throws {
         let runTunables = try Self.decodeTunables(tunables)
-        FTSync.commandTimeout = runTunables.commandTimeout
         // **stdin の1行目はデバイスセッション**(DeviceSessionHandoff.swift)。制御コマンドの読み手
         // スレッドや他の stdin 読みより先に、ここで読み切る
         var deviceSession: DeviceSessionHandoff?

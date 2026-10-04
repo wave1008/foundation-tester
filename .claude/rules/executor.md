@@ -9,6 +9,7 @@ paths:
   - "Sources/FTCore/LocatorResolver.swift"
   - "Sources/FTCore/RunOrchestrator.swift"
   - "Sources/FTCore/RunProfile.swift"
+  - "Sources/FTCore/RunTunables.swift"
   - "Sources/FTCore/ScenarioExecutionSettings*.swift"
   - "Sources/FTCore/ScenarioExecutionSettings.swift"
   - "Sources/FTCore/ScenarioHost.swift"
@@ -69,6 +70,12 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   チェックボックスも無い)—— FM を呼ぶかは `FMConfig.enabled = fmTextOcclusionCheck || screenLooksLike`
   で導く(両方 false なら実行バイナリへ `--no-fm`)。親と子で同じ状態を2か所に持っていた
   → maintainer-notes §23
+- **受け手の環境で正解が変わる既定(待ち・締切・操作の所要)は `FTCore.RunTunables` に置く**
+  (`ScenarioExecutionSettings.tunables` で運び、子へは `--tunables` の JSON 1つ)。欄名は将来の
+  プロファイルのキー名。開放は `RunProfileDocument` に欄を足して変換 init で写すだけ。判定の閾値・
+  安全網の上限は入れない。読むのは `StepExecutor` / `FTDriveCore` の `tunables` で、
+  `?? FlowStep.defaultXxx` の固定値へ落とさない(`RunTunablesWiringTests`)。**MCP とコード生成は
+  プロファイルを持たないので `FlowStep` の定数のまま**
 - **システムアラートの判定は2段**: 登録がある間は `SystemUIGate` が毎ステップ止める / 登録が
   無いときは **launch 直後の最初の触る操作と失敗時だけ1回聞いて** `system-alert-present` の注記と
   題名を残す(止めない・閉じない)。常時監視へ広げない。

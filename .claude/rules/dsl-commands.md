@@ -66,3 +66,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **抑止したまま落ちたときだけ**注記に出す(危険は「抑止したまま忘れる」)。
   witness は `TestProjects/E2E-iOS/scenarios/15_別ウィンドウのモーダル.swift` の S0050 と、全 SUT の
   `10_イレギュラーハンドラ.swift`(CMP は `11_`)の S0020(命令形がブロックを跨ぐ)・S0030(`useHandler` の入れ子)
+- **環境で正解が変わる既定を持つ引数は `x: T? = nil` にし、`core.tunables.<欄>` で解く**
+  (`= FlowStep.defaultXxx` を既定引数に焼き込まない。焼き込むと実行時の既定に追随しない。
+  `RunTunablesWiringTests.testDSLNeverBakesInTheFixedDefaults`)。新しい既定は `RunTunables` に欄を足す
+  (executor.md)。意味を表す既定(`holdSeconds: 0` = 通常タップ・`scale`・安全網の上限)は値のまま

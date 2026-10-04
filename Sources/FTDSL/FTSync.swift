@@ -6,9 +6,9 @@ import Foundation
 import FTCore
 import Synchronization
 
-public enum FTSync {
+enum FTSync {
     /// コマンド 1 回の上限待機秒数
-    public static var commandTimeout: TimeInterval {
+    static var commandTimeout: TimeInterval {
         get { commandTimeoutStorage.withLock { $0 } }
         set { commandTimeoutStorage.withLock { $0 = newValue } }
     }

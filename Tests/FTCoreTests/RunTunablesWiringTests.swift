@@ -31,8 +31,6 @@ final class RunTunablesWiringTests: XCTestCase {
         XCTAssertTrue(runner.contains("customLong(\"tunables\")"), "--tunables を受け取れない")
         XCTAssertTrue(runner.contains("let runTunables = try Self.decodeTunables(tunables)"),
                       "--tunables を復号していない")
-        XCTAssertTrue(runner.contains("FTSync.commandTimeout = runTunables.commandTimeout"),
-                      "commandTimeout を DSL の締切へ反映していない")
         XCTAssertTrue(runner.contains("timeoutSeconds: runTunables.injectedAppProbeTimeout"),
                       "起動時プローブの締切に injectedAppProbeTimeout を使っていない")
         XCTAssertTrue(runner.contains("probe.status(timeout: runTunables.injectedAppProbeTimeout)"),
@@ -79,5 +77,9 @@ final class RunTunablesWiringTests: XCTestCase {
     func testDriveCoreHandsTheTunablesToTheExecutor() throws {
         let runtime = try source("Sources/FTDSL/FTRuntime.swift")
         XCTAssertTrue(runtime.contains("tunables: tunables,"), "StepExecutor へ tunables を渡していない")
+        XCTAssertTrue(runtime.contains("FTSync.commandTimeout = tunables.commandTimeout"),
+                      "commandTimeout を DSL の締切へ反映していない")
+        XCTAssertTrue(runtime.contains("commandTimeoutSeconds: tunables.commandTimeout"),
+                      "StepExecutor の締切が tunables と別の出どころになっている")
     }
 }

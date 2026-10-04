@@ -490,7 +490,7 @@ public final class FTDriveCore {
                                      tunables: tunables,
                                      uiFramework: uiFramework,
                                      containerInference: containerInference,
-                                     commandTimeoutSeconds: FTSync.commandTimeout)
+                                     commandTimeoutSeconds: tunables.commandTimeout)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
@@ -502,6 +502,9 @@ public final class FTDriveCore {
             : nil
         self.tunables = tunables
         self.defaultTimeout = tunables.defaultTimeout
+        // DSL コマンドの壁時計の締切(FTSync はプロセス大域)。シナリオから書き換えられないよう FTSync は
+        // internal のままここで設定する(DSL コマンドは core を組んだ後にしか走らない)
+        FTSync.commandTimeout = tunables.commandTimeout
         let serializedEmit = SerializedSink(emit)
         let emit: @Sendable (ScenarioEvent) -> Void = { serializedEmit($0) }
         self.emit = emit

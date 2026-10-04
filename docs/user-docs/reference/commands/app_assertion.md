@@ -6,7 +6,7 @@ Asserts which app is currently in the foreground.
 
 | function | description |
 |---|---|
-| `appIs(id, waitSeconds: Double? = nil)` | Asserts the foreground app equals `id` (iOS bundle ID / Android package name), polling up to `waitSeconds`. `waitSeconds` defaults to 15 seconds when omitted. |
+| `appIs(id, waitSeconds: 15)` | Asserts the foreground app equals `id` (iOS bundle ID / Android package name), polling up to `waitSeconds`. |
 
 ## Example
 

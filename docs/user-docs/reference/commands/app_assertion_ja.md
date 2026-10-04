@@ -6,7 +6,7 @@
 
 | 関数 | 説明 |
 |---|---|
-| `appIs(id, waitSeconds: Double? = nil)` | フォアグラウンドのアプリが `id`(iOS は bundle ID、Android は package 名)と一致することを、`waitSeconds` までポーリングしながら検証します。 `waitSeconds` を省くと 15 秒。 |
+| `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS は bundle ID、Android は package 名)と一致することを、`waitSeconds` までポーリングしながら検証します。 |
 
 ## 例
 
