@@ -149,7 +149,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// `ResidentProcessGuard.startCommandWatchdog(maxSeconds:)` に渡す基準値[秒]。拡張側の
     /// SERVE_REQUEST_TIMEOUT_MS(20秒。vscode-fleetest/src/monitorLiveController.ts)より大きくする
     /// —— 通常は拡張の kill→respawn が先に効き、これは拡張が kill しない場合の最終安全弁。
-    /// コマンドが正当にこれより長く占有しうるとき(軌跡・press/drag/pinch・launch/activate・install)は
+    /// コマンドが正当にこれより長く占有しうるとき(軌跡・press/drag/pinch・`Timeout.session` で撃つもの・clearAppData・install)は
     /// `ApiLiveServeCommand.watchdogAllowanceSeconds` ぶん延ばす
     static let commandWatchdogMaxSeconds: Double = 30
 
@@ -1301,7 +1301,11 @@ struct ApiLiveServeCommand {
     /// カバーする必要がある。内側の上限は xcuitest 経由が `BridgeClient.Timeout.session`
     /// (45秒)で in-app(30秒)より大きいので、大きい方を猶予にする。
     /// **install**: 実機は `devicectl device install app` に `BridgeClient.Timeout.physicalInstall`
-    /// (600秒)を渡すため、その全量を猶予にする。**他のコマンドは 0**(固定の watchdog 基準値だけで足りる)
+    /// (600秒)を渡すため、その全量を猶予にする。
+    /// **appSwitcher/home/terminate/refresh/frame**: ブリッジへ `Timeout.session` で撃つ(snapshot・screenshot を含む)
+    /// ので、猶予が無いと内側の期限より先に watchdog が serve ごと落とす(負荷テストで appSwitcher 30.7 秒の強制終了)。
+    /// **clearAppData**: セッションを寄せる activate と terminate の2回をどちらも `Timeout.session` で撃つ。
+    /// **他のコマンドは 0**(内側の上限 `Timeout.interaction` 20秒が固定の watchdog 基準値に収まる)
     var watchdogAllowanceSeconds: Double {
         switch cmd {
         case "gesture":
@@ -1313,8 +1317,10 @@ struct ApiLiveServeCommand {
                 + (duration ?? ApiLiveGestureDefaults.dragDurationSeconds)
         case "pinch":
             return duration ?? ApiLiveGestureDefaults.pinchDurationSeconds
-        case "launch", "activate":
+        case "launch", "activate", "appSwitcher", "home", "terminate", "refresh", "frame":
             return BridgeClient.Timeout.session
+        case "clearAppData":
+            return 2 * BridgeClient.Timeout.session
         case "install":
             return BridgeClient.Timeout.physicalInstall
         default:

@@ -143,4 +143,26 @@ final class ApiLiveCommandBudgetTests: XCTestCase {
         let totalWatchdogBudget = ApiLiveServe.commandWatchdogMaxSeconds + cmd.watchdogAllowanceSeconds
         XCTAssertGreaterThan(totalWatchdogBudget, 600)
     }
+
+    /// ブリッジへ `Timeout.session`(45秒)で撃つコマンドは、その期限ぶんの猶予を持つ
+    /// (猶予0だと内側の期限より先に watchdog が serve ごと落とす。2026-10-04 の負荷テスト)
+    func testSessionTimeoutCommandsGetTheSessionAllowance() {
+        for cmd in ["appSwitcher", "home", "terminate", "refresh", "frame"] {
+            XCTAssertEqual(command(cmd, [:]).watchdogAllowanceSeconds, 45, cmd)
+        }
+    }
+
+    /// clearAppData は activate(セッションを寄せる)と terminate の2回ぶん
+    func testClearAppDataAllowanceCoversActivateAndTerminate() {
+        XCTAssertEqual(command("clearAppData", ["bundle": "com.example"]).watchdogAllowanceSeconds, 90)
+    }
+
+    /// 猶予を足した上限が、内側の期限(session)を必ず超える
+    func testSessionCommandsOutlastTheirInnerTimeout() {
+        for cmd in ["appSwitcher", "home", "terminate", "refresh", "frame", "clearAppData"] {
+            XCTAssertGreaterThan(
+                ApiLiveServe.commandWatchdogMaxSeconds + command(cmd, [:]).watchdogAllowanceSeconds,
+                BridgeClient.Timeout.session, cmd)
+        }
+    }
 }
