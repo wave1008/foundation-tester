@@ -238,7 +238,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             // 軌跡・press/drag/pinch の duration は利用者が指定した時間どおりに再生する(縮めない)
             // ので、その再生時間ぶん・launch/activate/install は内側の上限ぶん watchdog を延ばす
             // (watchdogAllowanceSeconds 参照)
-            ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.watchdogAllowanceSeconds)
+            ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.watchdogWindowAllowanceSeconds)
             // 自動起動が成功した直後は宛先を引き直す(実機 LAN: 起動前の loopback から告知アドレスへ。
             // usb: host はループバックのままだが establish が新たに token を記録している ——
             // host だけで判定すると usb は再取得されず、起動前の token 無し driver を握ったままになる)
@@ -1306,6 +1306,18 @@ struct ApiLiveServeCommand {
     /// ので、猶予が無いと内側の期限より先に watchdog が serve ごと落とす(負荷テストで appSwitcher 30.7 秒の強制終了)。
     /// **clearAppData**: セッションを寄せる activate と terminate の2回をどちらも `Timeout.session` で撃つ。
     /// **他のコマンドは 0**(内側の上限 `Timeout.interaction` 20秒が固定の watchdog 基準値に収まる)
+    /// 操作の後の観測(snapshot・frame)ぶんの猶予[秒]。watchdog の窓は本人確認・操作・観測をまとめて数えるので、
+    /// 観測を撃つ命令は `Timeout.session` を足す(足さないと tap 20 秒 + 観測 45 秒が基準 30 秒を超え、
+    /// 負荷下の press 1.2 秒が 32 秒で強制終了された)。refresh/frame は観測そのものが命令なので
+    /// `watchdogAllowanceSeconds` 側で数え済み。型違いの行も actionResult(ok:false) の後に観測を撃つ(handle の注記)
+    var observationAllowanceSeconds: Double {
+        guard cmd != "refresh", cmd != "frame" else { return 0 }
+        return BridgeClient.Timeout.session
+    }
+
+    /// `ResidentProcessGuard.noteCommandStart` に渡す窓の猶予(命令そのもの + 操作後の観測)
+    var watchdogWindowAllowanceSeconds: Double { watchdogAllowanceSeconds + observationAllowanceSeconds }
+
     var watchdogAllowanceSeconds: Double {
         switch cmd {
         case "gesture":

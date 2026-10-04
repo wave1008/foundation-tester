@@ -165,4 +165,35 @@ final class ApiLiveCommandBudgetTests: XCTestCase {
                 BridgeClient.Timeout.session, cmd)
         }
     }
+
+    /// 操作の後に観測(snapshot)を撃つ命令は、その期限(45秒)ぶんを窓に足す
+    func testDrivingCommandsAddTheObservationToTheWindow() {
+        XCTAssertEqual(command("tap", ["ref": 1]).observationAllowanceSeconds, 45)
+        XCTAssertEqual(command("press", ["x": 1, "y": 2, "duration": 1.2]).watchdogWindowAllowanceSeconds, 46.2)
+    }
+
+    /// refresh/frame は観測そのものが命令なので二重に足さない(猶予は命令側の 45 秒だけ)
+    func testObservationOnlyCommandsAddNoObservation() {
+        XCTAssertEqual(command("refresh", [:]).observationAllowanceSeconds, 0)
+        XCTAssertEqual(command("frame", [:]).observationAllowanceSeconds, 0)
+        XCTAssertEqual(command("refresh", [:]).watchdogWindowAllowanceSeconds, 45)
+    }
+
+    /// 窓(基準 + 猶予)が「操作の内側の上限 20 秒 + 観測 45 秒」を超える(負荷下の press で踏んだ形)
+    func testWindowOutlastsInteractionPlusObservation() {
+        let cmd = command("press", ["x": 1, "y": 2, "duration": 1.2])
+        XCTAssertGreaterThan(ApiLiveServe.commandWatchdogMaxSeconds + cmd.watchdogWindowAllowanceSeconds,
+                             20 + 1.2 + 45)
+    }
+
+    /// serve のループが窓の猶予(命令 + 観測)を watchdog へ渡していること(命令側だけに戻すと単体は緑のまま)
+    func testServeLoopPassesTheWindowAllowance() throws {
+        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/fleetest/ApiLiveCommand.swift"), encoding: .utf8)
+        XCTAssertTrue(source.contains(
+            "ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.watchdogWindowAllowanceSeconds)"))
+        XCTAssertFalse(source.contains(
+            "ResidentProcessGuard.noteCommandStart(allowanceSeconds: command.watchdogAllowanceSeconds)"))
+    }
 }
