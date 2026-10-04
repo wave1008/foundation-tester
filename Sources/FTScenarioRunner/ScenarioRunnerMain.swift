@@ -614,6 +614,7 @@ struct RunScenario: AsyncParsableCommand {
             installControl = control
         }
         if debugControl != nil || installControl != nil {
+            let (debugControl, installControl) = (debugControl, installControl)
             // stdin の制御コマンドは専用スレッドで読む(DSL スレッドは停止中・RPC 待ちでブロックする)。
             // EOF(ホスト終了)で読み終わり、プロセス終了とともに消える。debug と host-install の
             // 制御コマンドは同じ stdin を共有し、"cmd" の値で振り分ける

@@ -444,6 +444,14 @@ private final class StopGate: @unchecked Sendable {
 /// 同期コンテキスト(RunRecorder は async ではない)から確実に stop() できるよう GCD/Task ではなく
 /// 素の Thread + StopGate + DispatchSemaphore で実装する(async ランタイムに依存しない)。
 public final class HostMetricsRecorder: @unchecked Sendable {
+    /// サンプラーと書き手は記録スレッドだけが触る(init は渡したあと触らない)。@unchecked の根拠はこの受け渡し
+    private struct ThreadOwned: @unchecked Sendable {
+        let cpu: CPUSampler
+        let gpu: GPUSampler
+        let memory: MemorySampler
+        let logger: HostMetricsLog
+    }
+
     private let logger: HostMetricsLog?
     /// HostMetricsLog が開けた(=書き込み先がある)ときだけ true。false ならスレッドは
     /// そもそも起動していない(stop() のセマフォ待ちを無意味に行わないための判定に使う)
@@ -460,16 +468,19 @@ public final class HostMetricsRecorder: @unchecked Sendable {
         self.hasThread = openedLogger != nil
         guard let logger = openedLogger else { return }
 
-        let cpuSampler = CPUSampler(logFailure: logFailure)
-        let gpuSampler = GPUSampler(logFailure: logFailure)
-        let memorySampler = MemorySampler(logFailure: logFailure)
+        let owned = ThreadOwned(cpu: CPUSampler(logFailure: logFailure),
+                                gpu: GPUSampler(logFailure: logFailure),
+                                memory: MemorySampler(logFailure: logFailure),
+                                logger: logger)
         let stopFlag = self.stopFlag
         let exitSemaphore = self.exitSemaphore
-        // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
-        var fmPrevious: [Int32: FMUsageLedger.Counters]?
-        var visionPrevious: [Int32: VisionUsageLedger.Counters]?
 
         let thread = Thread {
+            let (cpuSampler, gpuSampler, memorySampler, logger) =
+                (owned.cpu, owned.gpu, owned.memory, owned.logger)
+            // nil = 基準未取得。最初の drain は控えるだけで増分を出さない(FMUsageLedger.drain 参照)
+            var fmPrevious: [Int32: FMUsageLedger.Counters]?
+            var visionPrevious: [Int32: VisionUsageLedger.Counters]?
             // 初回は差分が取れないサンプラー(CPU)のための捨てサンプル
             // (常駐 CLI の run() 冒頭と同じ理由。最初の interval 経過後の1行目から値を出せる)
             _ = cpuSampler.sample()

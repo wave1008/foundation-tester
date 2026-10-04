@@ -6,6 +6,7 @@
 // 陽性対照(順序付けが無ければ同じ2台で循環が作れる)も同じ偽ランナーで撃つ。
 
 import FTRemote
+import FTTestSupport
 import Foundation
 import XCTest
 @testable import fleetest
@@ -494,7 +495,8 @@ final class DispatchPrelockTests: XCTestCase {
             if owner == "B", host == Self.host("M1Ultra") { blocked.fulfill() }
         }
         let runA = DispatchPrelock(actions: Self.fleetActions(fleet: fleet, owner: "A"))
-        let runB = DispatchPrelock(actions: Self.fleetActions(fleet: fleet, owner: "B"))
+        // runB は別スレッドが取り切るまで本スレッドは触らない(expectation の完了で順序づく)
+        nonisolated(unsafe) let runB = DispatchPrelock(actions: Self.fleetActions(fleet: fleet, owner: "B"))
 
         runA.acquireInOrder(machines: ["M1Max", "M1Ultra"])
         XCTAssertEqual(fleet.log, ["A:\(Self.host("M1Ultra"))", "A:\(Self.host("M1Max"))"])
@@ -525,8 +527,8 @@ final class DispatchPrelockTests: XCTestCase {
         let second = Self.host("M1Max")
         let aTookFirst = DispatchSemaphore(value: 0)
         let bTookSecond = DispatchSemaphore(value: 0)
-        var aGotSecond = true
-        var bGotFirst = true
+        let aGotSecond = LockedBox(true)
+        let bGotFirst = LockedBox(true)
         let done = expectation(description: "両者が諦める")
         done.expectedFulfillmentCount = 2
 
@@ -534,19 +536,19 @@ final class DispatchPrelockTests: XCTestCase {
             XCTAssertTrue(fleet.acquire(host: first, owner: "A", waitSeconds: 5))
             aTookFirst.signal()
             bTookSecond.wait()
-            aGotSecond = fleet.acquire(host: second, owner: "A", waitSeconds: 0.5)
+            aGotSecond.mutate { $0 = fleet.acquire(host: second, owner: "A", waitSeconds: 0.5) }
             done.fulfill()
         }
         DispatchQueue.global().async {
             XCTAssertTrue(fleet.acquire(host: second, owner: "B", waitSeconds: 5))
             bTookSecond.signal()
             aTookFirst.wait()
-            bGotFirst = fleet.acquire(host: first, owner: "B", waitSeconds: 0.5)
+            bGotFirst.mutate { $0 = fleet.acquire(host: first, owner: "B", waitSeconds: 0.5) }
             done.fulfill()
         }
         wait(for: [done], timeout: 20)
-        XCTAssertFalse(aGotSecond, "循環が再現していない(陽性対照になっていない)")
-        XCTAssertFalse(bGotFirst, "循環が再現していない(陽性対照になっていない)")
+        XCTAssertFalse(aGotSecond.value, "循環が再現していない(陽性対照になっていない)")
+        XCTAssertFalse(bGotFirst.value, "循環が再現していない(陽性対照になっていない)")
     }
 
     private static func fleetActions(fleet: FakeRunnerFleet, owner: String) -> DispatchPrelock.Actions {

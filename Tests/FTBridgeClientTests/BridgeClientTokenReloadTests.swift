@@ -5,9 +5,11 @@
 import XCTest
 @testable import FTBridgeClient
 import FTCore
+import FTTestSupport
 
 /// token ヘッダを見て 401 / 200 を返すループバックの偽ブリッジ(/status だけ)
-private final class TokenCheckingBridge {
+// seenTokens は lock で守る・serverFD は init だけが書く(受け付けスレッド起動前)
+private final class TokenCheckingBridge: @unchecked Sendable {
     private var serverFD: Int32 = -1
     let port: UInt16
     let accepted: String
@@ -86,18 +88,18 @@ final class BridgeClientTokenReloadTests: XCTestCase {
         let bridge = try TokenCheckingBridge(accepted: "new-token")
         defer { bridge.stop() }
         let client = BridgeClient(port: bridge.port, timeoutSeconds: 10, token: "old-token")
-        var reloads = 0
-        client.tokenReloader = { reloads += 1; return "new-token" }
+        let reloads = LockedBox(0)
+        client.tokenReloader = { reloads.mutate { $0 += 1 }; return "new-token" }
 
         let status = try await client.status()
 
         XCTAssertTrue(status.ready)
         XCTAssertEqual(bridge.seenTokens, ["old-token", "new-token"])
-        XCTAssertEqual(reloads, 1)
+        XCTAssertEqual(reloads.value, 1)
         // 以後は新しい token で撃つ(毎回 401 → 読み直し、にはならない)
         _ = try await client.status()
         XCTAssertEqual(bridge.seenTokens, ["old-token", "new-token", "new-token"])
-        XCTAssertEqual(reloads, 1)
+        XCTAssertEqual(reloads.value, 1)
     }
 
     /// 読み直しても同じ値なら撃ち直さず、名指しで断る(台帳が古い・別のブリッジのもの)

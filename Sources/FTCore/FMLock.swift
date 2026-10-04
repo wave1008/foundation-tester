@@ -33,6 +33,7 @@
 // FT_FM_SERIALIZE=0 で無効化できる(A/B 計測用の殺しスイッチ。無効時 acquire は常に true)。
 
 import Foundation
+import Synchronization
 
 public enum FMLock {
     /// 直列化が有効か。FT_FM_SERIALIZE=0 のときだけ無効
@@ -51,7 +52,18 @@ public enum FMLock {
     /// テストだけが使う差し替え口。**production は常に nil**(`FT_FM_CONCURRENCY` を見る)。
     /// 枠数は最初の `descriptors()` で1回だけ解決して固定するため、テストがこれを変えたら
     /// `resetForTesting()` も呼んでキャッシュを作り直させること(変えただけでは効かない)
-    static var concurrencyForTesting: Int?
+    static var concurrencyForTesting: Int? {
+        get { testingOverrides.withLock { $0.concurrency } }
+        set { testingOverrides.withLock { $0.concurrency = newValue } }
+    }
+
+    /// state とは別のロック(`descriptors()` が state を握ったまま `concurrency` を読むので、同じ
+    /// ロックに入れると再入で詰まる)
+    private struct TestingOverrides {
+        var concurrency: Int?
+        var lockDirectory: URL?
+    }
+    private static let testingOverrides = Mutex(TestingOverrides())
 
     /// 解決順は **環境変数 → 設定ファイル → 既定**。
     /// 環境変数はリモートのディスパッチが運ぶ値(登録簿 `RemoteHostEntry.fmConcurrency`)で、
@@ -75,12 +87,14 @@ public enum FMLock {
         return defaultConcurrency
     }
 
-    private static let stateLock = NSLock()
-    /// プロセス内で現在保持中の枠番号(0..<concurrency)。**枠は交換可能** —— acquire/leave は
+    /// `heldSlots`: プロセス内で現在保持中の枠番号(0..<concurrency)。**枠は交換可能** —— acquire/leave は
     /// 個数さえ対応していればどれを返しても正しいので、release は先着順を問わず popLast() で
     /// 1つ返す(呼び出し元の FMGate は取った枠を覚えず defer { leave() } するだけの契約のため)
-    private static var heldSlots: [Int] = []
-    private static var cachedFDs: [Int32]?
+    private struct SlotState {
+        var heldSlots: [Int] = []
+        var cachedFDs: [Int32]?
+    }
+    private static let slotState = Mutex(SlotState())
 
     /// テストだけが使う置き場の差し替え口。**枠は機械で共有する資源**なので、素のままだと
     /// `swift test` が**走っている本物の run から枠を奪い/奪われる** —— 実際にフル
@@ -88,11 +102,14 @@ public enum FMLock {
     /// テストは自分専用のディレクトリを指し、本番の枠に触れないこと(台帳の
     /// `LedgerWriteRole` と同じ「テストは本番の資源に触らない」規律)。
     /// 差し替えたら `resetForTesting()` も呼ぶこと(fd キャッシュを作り直させる)
-    static var lockDirectoryForTesting: URL?
+    static var lockDirectoryForTesting: URL? {
+        get { testingOverrides.withLock { $0.lockDirectory } }
+        set { testingOverrides.withLock { $0.lockDirectory = newValue } }
+    }
 
     private static func lockURL(slot: Int) -> URL {
-        if let lockDirectoryForTesting {
-            return lockDirectoryForTesting.appendingPathComponent("fm.lock.\(slot)")
+        if let dir = lockDirectoryForTesting {
+            return dir.appendingPathComponent("fm.lock.\(slot)")
         }
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
@@ -107,24 +124,24 @@ public enum FMLock {
     /// 保持中の flock を閉じて手放す(close は flock を解放する)うえ heldSlots も消え、
     /// 後の release() が何も返せない。設定の変更はプロセスの起動時に効く
     private static func descriptors() -> [Int32]? {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        if let cachedFDs { return cachedFDs }
-        let n = concurrency
+        slotState.withLock { st in
+            if let cached = st.cachedFDs { return cached }
+            let n = concurrency
 
-        try? FileManager.default.createDirectory(
-            at: lockURL(slot: 0).deletingLastPathComponent(), withIntermediateDirectories: true)
-        var fds: [Int32] = []
-        for slot in 0..<n {
-            let fd = open(lockURL(slot: slot).path, O_CREAT | O_RDWR, 0o644)
-            guard fd >= 0 else {
-                fds.forEach { close($0) }
-                return nil
+            try? FileManager.default.createDirectory(
+                at: lockURL(slot: 0).deletingLastPathComponent(), withIntermediateDirectories: true)
+            var fds: [Int32] = []
+            for slot in 0..<n {
+                let fd = open(lockURL(slot: slot).path, O_CREAT | O_RDWR, 0o644)
+                guard fd >= 0 else {
+                    fds.forEach { close($0) }
+                    return nil
+                }
+                fds.append(fd)
             }
-            fds.append(fd)
+            st.cachedFDs = fds
+            return fds
         }
-        cachedFDs = fds
-        return fds
     }
 
     /// 取得できたら true。timeout したら false(呼び出し側は FM をスキップする)。
@@ -144,31 +161,31 @@ public enum FMLock {
     /// 同じ fd を共有する別スレッドからの LOCK_EX は既に保持済みとして即成功してしまう。
     /// 枠ごとに「このプロセスが既に持っているか」を heldSlots で見てから試す
     private static func tryAcquire(_ fds: [Int32]) -> Int? {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        for (slot, fd) in fds.enumerated() where !heldSlots.contains(slot) {
-            guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { continue }
-            heldSlots.append(slot)
-            return slot
+        slotState.withLock { st in
+            for (slot, fd) in fds.enumerated() where !st.heldSlots.contains(slot) {
+                guard flock(fd, LOCK_EX | LOCK_NB) == 0 else { continue }
+                st.heldSlots.append(slot)
+                return slot
+            }
+            return nil
         }
-        return nil
     }
 
     public static func release() {
         guard isEnabled, let fds = descriptors() else { return }
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        guard let slot = heldSlots.popLast() else { return }
-        _ = flock(fds[slot], LOCK_UN)
+        slotState.withLock {
+            guard let slot = $0.heldSlots.popLast() else { return }
+            _ = flock(fds[slot], LOCK_UN)
+        }
     }
 
     /// テストだけが使う: `concurrencyForTesting` を変えたあと fd キャッシュを畳んで
     /// 作り直させる(同一プロセス内で枠数を差し替えるための口)
     static func resetForTesting() {
-        stateLock.lock()
-        defer { stateLock.unlock() }
-        cachedFDs?.forEach { close($0) }
-        cachedFDs = nil
-        heldSlots.removeAll()
+        slotState.withLock {
+            $0.cachedFDs?.forEach { close($0) }
+            $0.cachedFDs = nil
+            $0.heldSlots.removeAll()
+        }
     }
 }

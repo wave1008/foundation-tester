@@ -3,6 +3,7 @@
 
 import XCTest
 @testable import FTBridgeClient
+import FTTestSupport
 
 final class AssignPortTests: XCTestCase {
     private var repoRoot: URL!
@@ -203,16 +204,16 @@ final class AssignPortTests: XCTestCase {
     // MARK: - 別デバイスの in-app ブリッジ(/status 無応答で `used` に乗らない)を弾く
 
     func testFirstPassSkipsPortHeldByAnotherDevice() throws {
-        var seenArgs: [(UInt16, String)] = []
+        let seenArgs = LockedBox<[(UInt16, String)]>([])
         let provisioner = provisioner { port, udid in
-            seenArgs.append((port, udid))
+            seenArgs.mutate { $0.append((port, udid)) }
             return port == 8123
         }
         var used: Set<UInt16> = []
         XCTAssertEqual(
             try provisioner.assignPort(preferred: nil, used: &used, ownerUDID: ownerUDID), 8124,
             "別デバイスに握られている 8123 は飛ばして次の空きへ")
-        XCTAssertTrue(seenArgs.contains { $0 == (8123, ownerUDID) },
+        XCTAssertTrue(seenArgs.value.contains { $0 == (8123, ownerUDID) },
                       "ownerUDID がそのまま述語へ渡ること")
     }
 

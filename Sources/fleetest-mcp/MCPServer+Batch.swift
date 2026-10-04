@@ -46,9 +46,9 @@ extension MCPServer {
     /// 行パーサ)がラベルの許否をここと突き合わせ、未対応ラベルを黙って捨てずに拒否する
     /// (`BatchKeyTypeCoverageTests` が「signature から導出できるか keys に載っているか」を
     /// 全ビルダに対して確認する)。順序は「サポートしている引数」のメッセージにそのまま出る
-    struct BatchStepBuilder {
+    struct BatchStepBuilder: Sendable {
         let keys: [String]
-        let build: ([String: Any]) throws -> (step: FlowStep, summary: String)
+        let build: @Sendable ([String: Any]) throws -> (step: FlowStep, summary: String)
     }
 
     static let batchStepBuilders: [String: BatchStepBuilder] = [

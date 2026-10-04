@@ -2,6 +2,9 @@
 import CompilerPluginSupport
 import PackageDescription
 
+// ツール本体とテストは Swift 6 言語モード(tools-version 6.0 の既定)。シナリオのターゲットだけ Swift 5 ——
+// 受け手が書くコードに並行性の注釈を強いない(fleetest init が受け手の Package.swift に書く設定と同じ。
+// 名前は PackageManifestEditor が生成するスタンザが参照するので変えない)
 let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
 
 let package = Package(
@@ -38,15 +41,13 @@ let package = Package(
         // ステップモデル・AppDriverプロトコル・StepExecutor・スナップショット描画など
         // プラットフォーム非依存の中核(外部依存ゼロ)
         .target(
-            name: "FTCore",
-            swiftSettings: swift5Mode
+            name: "FTCore"
         ),
         // SSH ディスパッチ・ランナー登録簿・dispatch.lock(利用側は fleetest CLI だけ。
         // FTScenarioRunner = 受け手のシナリオ実行バイナリにはリンクしない)
         .target(
             name: "FTRemote",
-            dependencies: ["FTCore"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore"]
         ),
         // CoreSimulator 直叩きシム(ObjC・dlopen。SimulatorCatalog の simctl 高速化用)
         .target(
@@ -58,20 +59,17 @@ let package = Package(
         // dependencies に足す
         .target(
             name: "FTTestSupport",
-            dependencies: ["FTCore"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore"]
         ),
         // XCUITestランナー(ブリッジ)へのHTTPクライアントと起動管理
         .target(
             name: "FTBridgeClient",
-            dependencies: ["FTCore", "FTCoreSimShim"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore", "FTCoreSimShim"]
         ),
         // FoundationModels 補助層(テキストの視覚検証・シナリオの下書きと命名・FM の死活と診断)
         .target(
             name: "FTFoundationModels",
-            dependencies: ["FTCore"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore"]
         ),
         // エミュレータ EmulatorController gRPC クライアント(Generated/ は protoc 生成コードの
         // vendored コピー。proto の正は third_party/emulator-proto/。再生成手順は同ディレクトリの
@@ -88,8 +86,7 @@ let package = Package(
         // Android ドライバ(常駐ブリッジ。AppDriver の別実装)
         .target(
             name: "FTAndroid",
-            dependencies: ["FTCore", "FTBridgeClient", "FTEmulatorGrpc"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore", "FTBridgeClient", "FTEmulatorGrpc"]
         ),
         // MCP サーバ(stdio)。Claude Code 等のエージェントからブリッジ操作・フロー実行を使えるようにする
         .executableTarget(
@@ -102,8 +99,7 @@ let package = Package(
                 "FTBridgeClient",
                 "FTFoundationModels",
                 "FTAndroid",
-            ],
-            swiftSettings: swift5Mode
+            ]
         ),
         .executableTarget(
             name: "fleetest",
@@ -115,8 +111,7 @@ let package = Package(
                 "FTAndroid",
                 "FTDSL",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            swiftSettings: swift5Mode
+            ]
         ),
         // @TestClass/@Test マクロ実装(swift-syntax はこのターゲットに閉じる)
         .macro(
@@ -124,14 +119,12 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-            ],
-            swiftSettings: swift5Mode
+            ]
         ),
         // Shirates 風 Swift テスト DSL(シナリオ記述用のユーザー向けライブラリ)
         .target(
             name: "FTDSL",
-            dependencies: ["FTCore", "FTDSLMacros"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore", "FTDSLMacros"]
         ),
         // fleetest-scenarios の CLI 実装(list/run・NDJSON イベント出力)
         .target(
@@ -143,8 +136,7 @@ let package = Package(
                 "FTFoundationModels",
                 "FTAndroid",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            swiftSettings: swift5Mode
+            ]
         ),
         // テストプロジェクト(TestProjects/<name>/scenarios/)のシナリオ実行ターゲット。
         // _disabled/ は退避場所(コンパイル対象外。並列デモ等をここに置く)
@@ -283,28 +275,23 @@ let package = Package(
         ),
         .testTarget(
             name: "FTCoreTests",
-            dependencies: ["FTCore", "FTRemote", "FTTestSupport"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTCore", "FTRemote", "FTTestSupport"]
         ),
         .testTarget(
             name: "FTBridgeClientTests",
-            dependencies: ["FTBridgeClient", "FTCore", "FTTestSupport"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTBridgeClient", "FTCore", "FTTestSupport"]
         ),
         .testTarget(
             name: "FTFoundationModelsTests",
-            dependencies: ["FTFoundationModels", "FTCore"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTFoundationModels", "FTCore"]
         ),
         .testTarget(
             name: "FTAndroidTests",
-            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient", "FTEmulatorGrpc", "FTTestSupport"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient", "FTEmulatorGrpc", "FTTestSupport"]
         ),
         .testTarget(
             name: "FTTestSupportTests",
-            dependencies: ["FTTestSupport"],
-            swiftSettings: swift5Mode
+            dependencies: ["FTTestSupport"]
         ),
         // fleetest-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の
         // fleetest_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象。
@@ -313,16 +300,14 @@ let package = Package(
         // パーサへ戻せるか」を検証する。移動前は FTDSL 側のこの関数を叩いていた)
         .testTarget(
             name: "FleetestMCPTests",
-            dependencies: ["fleetest-mcp", "FTCore", "FTTestSupport"],
-            swiftSettings: swift5Mode
+            dependencies: ["fleetest-mcp", "FTCore", "FTTestSupport"]
         ),
         // CLI 本体(executableTarget)の純粋ロジック。FleetestMCPTests と同じく @testable import で
         // 入る。対象は外部プロセス・デバイスに触らない部分だけ(カタログのパースと整列・集計・
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
             name: "FleetestTests",
-            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient", "FTTestSupport"],
-            swiftSettings: swift5Mode
+            dependencies: ["fleetest", "FTCore", "FTRemote", "FTAndroid", "FTBridgeClient", "FTTestSupport"]
         ),
         .testTarget(
             name: "FTDSLTests",
@@ -336,16 +321,14 @@ let package = Package(
                 "FTTestSupport",
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-            ],
-            swiftSettings: swift5Mode
+            ]
         ),
         .testTarget(
             name: "FTDSLMacrosTests",
             dependencies: [
                 "FTDSLMacros",
                 .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
-            ],
-            swiftSettings: swift5Mode
+            ]
         ),
     ]
 )

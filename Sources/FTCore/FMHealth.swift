@@ -16,6 +16,7 @@
 // (ScenarioEvent.fm → ScenarioRecordBuilder → ScenarioRunRecord.fm → 結果 JSON)。
 
 import Foundation
+import Synchronization
 
 /// FM 呼び出しの用途別実測。用途キーは "occlusion" / "screenLooksLike"
 public struct FMKindUsage: Codable, Sendable {
@@ -94,11 +95,13 @@ public enum FMHealth {
         let ok: Bool
     }
 
-    private static let lock = NSLock()
-    private static var samples: [String: [Sample]] = [:]
-    private static var firstError: String?
-    private static var skipped = 0
-    private static var gateWaitMs: [Double] = []
+    private struct State {
+        var samples: [String: [Sample]] = [:]
+        var firstError: String?
+        var skipped = 0
+        var gateWaitMs: [Double] = []
+    }
+    private static let state = Mutex(State())
 
     /// FM 呼び出し1件を記録する。kind は "occlusion" / "screenLooksLike" 等。
     ///
@@ -108,14 +111,14 @@ public enum FMHealth {
     /// 経路を分けて持つ理由は FMLiveness.swift 冒頭 ②
     public static func record(kind: String, path: FMLiveness.Path,
                               ms: Double, ok: Bool, error: String? = nil) {
-        lock.lock()
-        samples[kind, default: []].append(Sample(ms: ms, ok: ok))
-        if !ok, firstError == nil, let error {
-            // 入れ子を畳んだ連鎖(FMHealth.describe)を切らない長さ。300 だと真因の domain が
-            // 途中で切れて特定できなかった(M1Ultra 調査)
-            firstError = String(error.prefix(800))
+        state.withLock {
+            $0.samples[kind, default: []].append(Sample(ms: ms, ok: ok))
+            if !ok, $0.firstError == nil, let error {
+                // 入れ子を畳んだ連鎖(FMHealth.describe)を切らない長さ。300 だと真因の domain が
+                // 途中で切れて特定できなかった(M1Ultra 調査)
+                $0.firstError = String(error.prefix(800))
+            }
         }
-        lock.unlock()
         // サーキットブレーカへの通知はここに集約する(呼び出し側に増やさない)
         if ok { FMBreaker.recordSuccess() } else { FMBreaker.recordFailure() }
         // ファイル I/O を伴うため必ずロックの外側で呼ぶ(FMUsageLedger.record の doc 参照)
@@ -169,59 +172,50 @@ public enum FMHealth {
 
     /// FMGate で止められ FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
     public static func recordSkip() {
-        lock.lock()
-        defer { lock.unlock() }
-        skipped += 1
+        state.withLock { $0.skipped += 1 }
     }
 
     /// FMGate.enter() が FMLock.acquire() で実際に待たされた時間。**取得できた回だけ**呼ぶ
     /// (timeout で諦めた回は recordSkip の役目 —— 待ち時間として混ぜない)
     public static func recordGateWait(ms: Double) {
-        lock.lock()
-        defer { lock.unlock() }
-        gateWaitMs.append(ms)
+        state.withLock { $0.gateWaitMs.append(ms) }
     }
 
     public static func snapshot() -> Snapshot {
-        lock.lock()
-        defer { lock.unlock() }
-        let all = samples.values.flatMap { $0 }
-        return Snapshot(successes: all.filter { $0.ok }.count,
-                        failures: all.filter { !$0.ok }.count,
-                        skipped: skipped,
-                        firstError: firstError)
+        state.withLock { st in
+            let all = st.samples.values.flatMap { $0 }
+            return Snapshot(successes: all.filter { $0.ok }.count,
+                            failures: all.filter { !$0.ok }.count,
+                            skipped: st.skipped,
+                            firstError: st.firstError)
+        }
     }
 
     /// 結果 JSON へ載せる実測。呼び出しが1件も無ければ nil(FM を使わない実行を汚さない)
     public static func usage() -> FMUsageRecord? {
-        lock.lock()
-        defer { lock.unlock() }
-        let all = samples.values.flatMap { $0 }
-        guard !all.isEmpty else { return nil }
-        var byKind: [String: FMKindUsage] = [:]
-        for (kind, list) in samples where !list.isEmpty {
-            let ms = list.map { $0.ms }
-            byKind[kind] = FMKindUsage(
-                calls: list.count, failures: list.filter { !$0.ok }.count,
-                totalMs: Self.totalMs(ms), p50Ms: Self.percentileMs(ms, 0.5),
-                maxMs: Self.maxMs(ms))
+        state.withLock { st in
+            let all = st.samples.values.flatMap { $0 }
+            guard !all.isEmpty else { return nil }
+            var byKind: [String: FMKindUsage] = [:]
+            for (kind, list) in st.samples where !list.isEmpty {
+                let ms = list.map { $0.ms }
+                byKind[kind] = FMKindUsage(
+                    calls: list.count, failures: list.filter { !$0.ok }.count,
+                    totalMs: Self.totalMs(ms), p50Ms: Self.percentileMs(ms, 0.5),
+                    maxMs: Self.maxMs(ms))
+            }
+            let allMs = all.map { $0.ms }
+            return FMUsageRecord(
+                calls: all.count, failures: all.filter { !$0.ok }.count,
+                totalMs: Self.totalMs(allMs), p50Ms: Self.percentileMs(allMs, 0.5),
+                maxMs: Self.maxMs(allMs), byKind: byKind,
+                gateWaitTotalMs: Self.totalMs(st.gateWaitMs), gateWaitP50Ms: Self.percentileMs(st.gateWaitMs, 0.5),
+                gateWaitMaxMs: Self.maxMs(st.gateWaitMs), skipped: st.skipped, firstError: st.firstError)
         }
-        let allMs = all.map { $0.ms }
-        return FMUsageRecord(
-            calls: all.count, failures: all.filter { !$0.ok }.count,
-            totalMs: Self.totalMs(allMs), p50Ms: Self.percentileMs(allMs, 0.5),
-            maxMs: Self.maxMs(allMs), byKind: byKind,
-            gateWaitTotalMs: Self.totalMs(gateWaitMs), gateWaitP50Ms: Self.percentileMs(gateWaitMs, 0.5),
-            gateWaitMaxMs: Self.maxMs(gateWaitMs), skipped: skipped, firstError: firstError)
     }
 
     public static func reset() {
-        lock.lock()
-        samples.removeAll()
-        firstError = nil
-        skipped = 0
-        gateWaitMs.removeAll()
-        lock.unlock()
+        state.withLock { $0 = State() }
         // 連続失敗は機械全体の置き場にある(FMLiveness)。ロックの外で戻す(ファイル I/O)
         FMLiveness.resetFailureStreak(.text)
         FMLiveness.resetFailureStreak(.vision)

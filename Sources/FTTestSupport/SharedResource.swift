@@ -10,6 +10,7 @@
 // 残留し、以降の全実行が無期限に止まる。flock は fd を握るプロセスが死ねばカーネルが片付ける。
 
 import Foundation
+import Synchronization
 
 public struct SharedResource: Sendable {
     public let key: String
@@ -59,13 +60,10 @@ public struct SharedResource: Sendable {
     // **異なるキーの入れ子は禁止**(順序次第で相互デッドロックする)。ここでは検出せず、
     // 呼び出し側の規律として守ること。
 
-    private static let stateLock = NSLock()
-    private static var heldBy: [String: ObjectIdentifier] = [:]
+    private static let heldBy = Mutex<[String: ObjectIdentifier]>([:])
 
     private static func checkNotReentrant(key: String) throws {
-        stateLock.lock()
-        let holder = heldBy[key]
-        stateLock.unlock()
+        let holder = heldBy.withLock { $0[key] }
         guard holder != ObjectIdentifier(Thread.current) else {
             throw LockError(description:
                 "SharedResource(\(key)): 同一スレッドでの再入。同じキーを入れ子で locked{} すると" +
@@ -74,9 +72,8 @@ public struct SharedResource: Sendable {
     }
 
     private static func markHeld(key: String) {
-        stateLock.lock()
-        heldBy[key] = ObjectIdentifier(Thread.current)
-        stateLock.unlock()
+        let me = ObjectIdentifier(Thread.current)
+        heldBy.withLock { $0[key] = me }
     }
 
     /// **保持者と一致するかを見ずに消す**。async の body は acquire と別スレッドで再開しうるので、
@@ -84,9 +81,7 @@ public struct SharedResource: Sendable {
     /// 「再入」と誤判定される。flock がキーごとに1保持者を保証する(同一プロセスでも fd が
     /// 別なら排他される)ので、ここに来た時点の保持者は必ず自分 = 無条件に消してよい
     private static func clearHeld(key: String) {
-        stateLock.lock()
-        heldBy[key] = nil
-        stateLock.unlock()
+        heldBy.withLock { $0[key] = nil }
     }
 
     // MARK: - fd の開閉

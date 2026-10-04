@@ -22,41 +22,35 @@
 
 import Foundation
 import FoundationModels
+import Synchronization
 
 enum OcclusionPrewarm {
 
-    private static let lock = NSLock()
-    private static var stored: (session: LanguageModelSession, instructions: String)?
+    private static let stored = Mutex<(session: LanguageModelSession, instructions: String)?>(nil)
 
     /// セッションを1つ作って `prewarm()` を撃ち、スロットへ置く。既にあれば置き換える
     static func prewarm(instructions: String) {
         let session = LanguageModelSession(instructions: instructions)
         session.prewarm()
-        lock.lock()
-        stored = (session, instructions)
-        lock.unlock()
+        stored.withLock { $0 = (session, instructions) }
     }
 
     /// 暖機済みセッションを取り出す(instructions が一致するときだけ)。取り出したら空にする
     static func take(matching instructions: String) -> LanguageModelSession? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard let held = stored, held.instructions == instructions else { return nil }
-        stored = nil
-        return held.session
+        stored.withLock { slot in
+            guard let held = slot, held.instructions == instructions else { return nil }
+            slot = nil
+            return held.session
+        }
     }
 
     /// テストだけが使う。スロットを空にする
     static func resetForTesting() {
-        lock.lock()
-        stored = nil
-        lock.unlock()
+        stored.withLock { $0 = nil }
     }
 
     /// テストだけが使う。スロットが埋まっているか
     static var isHoldingForTesting: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return stored != nil
+        stored.withLock { $0 != nil }
     }
 }

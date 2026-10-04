@@ -12,6 +12,7 @@
 // 対策は「バッファを介さず、1回の呼び出し分をロックの下で1本の byte 列として書き切る」ことに尽きる
 // (FileHandle.write と違い、生の write(2) はブロックバッファを持たないのでロックの下にいる限り安全)。
 import Foundation
+import Synchronization
 
 public enum ConsoleOut {
     /// stdout 書き手と stderr 書き手が同じ1個のロックを取る(上記の理由により分けない)
@@ -23,28 +24,27 @@ public enum ConsoleOut {
     /// **全レーンが同時に固まる**。ステップの壁時計の締め切り(FTSync.commandTimeout)が
     /// この待ちに食われていないかを記録から判定するための計器。
     /// 読み手は `blockedMilliseconds` の差分を取る(cpuMs と同じ使い方)
-    private static let meterLock = NSLock()
-    private static var blockedMs = 0
-    private static var longestBlockMs = 0
+    private struct Meter { var blockedMs = 0; var longestBlockMs = 0 }
+    private static let meter = Mutex(Meter())
 
     /// プロセス開始からの累計。差分を取って「このステップの間に何ミリ秒ブロックされたか」を出す
     public static var blockedMilliseconds: Int {
-        meterLock.lock(); defer { meterLock.unlock() }; return blockedMs
+        meter.withLock { $0.blockedMs }
     }
 
     /// 1 回の書き込みが返るまでの最長。合計だけだと「細かい待ちが多い」と
     /// 「1 回で 100 秒詰まった」を区別できない
     public static var longestBlockMilliseconds: Int {
-        meterLock.lock(); defer { meterLock.unlock() }; return longestBlockMs
+        meter.withLock { $0.longestBlockMs }
     }
 
     private static func recordBlocked(_ duration: Duration) {
         let ms = Int(duration.components.seconds) * 1000
             + Int(duration.components.attoseconds / 1_000_000_000_000_000)
-        meterLock.lock()
-        blockedMs += ms
-        longestBlockMs = max(longestBlockMs, ms)
-        meterLock.unlock()
+        meter.withLock {
+            $0.blockedMs += ms
+            $0.longestBlockMs = max($0.longestBlockMs, ms)
+        }
     }
 
     /// `print(text)` 相当。呼び出し側は末尾に改行を付けない(ここで1個だけ付与する)
@@ -132,7 +132,7 @@ public enum ConsoleOut {
     }
 
     /// `giveUp` の報告の間引き。**emit のロックの下でだけ触る**(giveUp はロックを握ったまま呼ばれる)
-    private static var giveUpReporter = GiveUpReporter()
+    private static let giveUpReporter = Mutex(GiveUpReporter())
 
     /// 読み手が閉じた(EPIPE)失敗は**プロセスで1回だけ**報告する —— `fleetest results log | head` のように
     /// 読み手が先に閉じると以後の書き込みが全部 EPIPE になり、残りの行数ぶん同じ警告が並ぶ。
@@ -157,7 +157,7 @@ public enum ConsoleOut {
             _ = Foundation.write(fd, &newline, 1)
         }
         guard fd != FileHandle.standardError.fileDescriptor,
-              giveUpReporter.shouldReport(errno: code) else { return }
+              giveUpReporter.withLock({ $0.shouldReport(errno: code) }) else { return }
         let reason = code == 0 ? "write returned 0" : String(cString: strerror(code))
         let message = "[fleetest] output write gave up after \(written)/\(total) bytes"
             + " (fd \(fd), errno \(code): \(reason))\n"

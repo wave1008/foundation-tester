@@ -224,7 +224,7 @@ public enum RunResultsStore {
     /// §失敗の記録の規律と同じ理由)—— ここは decode の成否・schemaVersion の比較・startedAt の
     /// パース可否という**事実**だけを数える。**古い形を読めるようにする互換は入れない**
     /// (ユーザー方針: 未公開ツールなので読み替えを置かない)
-    struct SkipCounts: Equatable {
+    struct SkipCounts: Equatable, Sendable {
         var decodeFailure = 0
         var schemaTooNew = 0
         var windowStartedAtUnparseable = 0
@@ -486,17 +486,15 @@ public enum RunResultsStore {
         let ranges = chunkRanges(count: files.count,
                                  chunkCount: ProcessInfo.processInfo.activeProcessorCount)
         let chunkCount = ranges.count
-        var chunkResults = [[ScannedRecord]](repeating: [], count: chunkCount)
-        var chunkSkipped = [SkipCounts](repeating: SkipCounts(), count: chunkCount)
-
-        // 各チャンクは自分のスロットにだけ書く(共有ロック不要)。decoder はチャンクごとに作る
-        chunkResults.withUnsafeMutableBufferPointer { resultsBuffer in
-            chunkSkipped.withUnsafeMutableBufferPointer { skippedBuffer in
-                DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
+        let scanFiles = files
+        // 各チャンクは自分のスロットにだけ書く(ロックはチャンクの終わりに1回だけ)。decoder はチャンクごとに作る
+        let slots = LockedValue((results: [[ScannedRecord]](repeating: [], count: chunkCount),
+                                 skipped: [SkipCounts](repeating: SkipCounts(), count: chunkCount)))
+        DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
                     let decoder = JSONDecoder()
                     var local: [ScannedRecord] = []
                     var localSkipped = SkipCounts()
-                    for file in files[ranges[chunkIndex]] {
+                    for file in scanFiles[ranges[chunkIndex]] {
                         guard let data = try? Data(contentsOf: file),
                               let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
                             localSkipped.decodeFailure += 1
@@ -514,11 +512,12 @@ public enum RunResultsStore {
                         }
                         local.append(ScannedRecord(url: file, record: record))
                     }
-                    resultsBuffer[chunkIndex] = local
-                    skippedBuffer[chunkIndex] = localSkipped
-                }
-            }
+                    slots.withLock {
+                        $0.results[chunkIndex] = local
+                        $0.skipped[chunkIndex] = localSkipped
+                    }
         }
+        let (chunkResults, chunkSkipped) = slots.value
 
         // 逐次経路の skipped の数え方は「読めない・版が新しすぎる」だけで、日付範囲外は数えない。
         // ここも同じ(壊れたディレクトリ一覧の失敗は逐次と同様 continue で黙って飛ばす)
@@ -561,17 +560,14 @@ public enum RunResultsStore {
         let ranges = chunkRanges(count: targetRunDirs.count,
                                  chunkCount: ProcessInfo.processInfo.activeProcessorCount)
         let chunkCount = ranges.count
-        var chunkRuns = [[RunMetaRecord]](repeating: [], count: chunkCount)
-        var chunkEntries = [[ScannedRecord]](repeating: [], count: chunkCount)
-        var chunkMetaSkipped = [SkipCounts](repeating: SkipCounts(), count: chunkCount)
-        var chunkRecordSkipped = [SkipCounts](repeating: SkipCounts(), count: chunkCount)
         let sinceKey = since.map(windowKey)
         let untilKey = until.map(windowKey)
-
-        chunkRuns.withUnsafeMutableBufferPointer { runsBuffer in
-            chunkEntries.withUnsafeMutableBufferPointer { entriesBuffer in
-                chunkMetaSkipped.withUnsafeMutableBufferPointer { metaSkippedBuffer in
-                    chunkRecordSkipped.withUnsafeMutableBufferPointer { recordSkippedBuffer in
+        let scanDirs = targetRunDirs
+        // 各チャンクは自分のスロットにだけ書く(ロックはチャンクの終わりに1回だけ)
+        let slots = LockedValue((runs: [[RunMetaRecord]](repeating: [], count: chunkCount),
+                                 entries: [[ScannedRecord]](repeating: [], count: chunkCount),
+                                 metaSkipped: [SkipCounts](repeating: SkipCounts(), count: chunkCount),
+                                 recordSkipped: [SkipCounts](repeating: SkipCounts(), count: chunkCount)))
                         DispatchQueue.concurrentPerform(iterations: chunkCount) { chunkIndex in
                             // ISO8601DateFormatter はチャンクごとに1個(スレッド間で共有しない)
                             let formatter = ISO8601DateFormatter()
@@ -579,7 +575,7 @@ public enum RunResultsStore {
                             var localEntries: [ScannedRecord] = []
                             var localMetaSkipped = SkipCounts()
                             var localRecordSkipped = SkipCounts()
-                            for runDir in targetRunDirs[ranges[chunkIndex]] {
+                            for runDir in scanDirs[ranges[chunkIndex]] {
                                 let outcome = runOutcome(runDir: runDir, packCacheDir: packCacheDir,
                                                          executableKey: executableKey)
                                 localEntries += outcome.entries
@@ -598,15 +594,14 @@ public enum RunResultsStore {
                                     }
                                 }
                             }
-                            runsBuffer[chunkIndex] = localRuns
-                            entriesBuffer[chunkIndex] = localEntries
-                            metaSkippedBuffer[chunkIndex] = localMetaSkipped
-                            recordSkippedBuffer[chunkIndex] = localRecordSkipped
+                            slots.withLock {
+                                $0.runs[chunkIndex] = localRuns
+                                $0.entries[chunkIndex] = localEntries
+                                $0.metaSkipped[chunkIndex] = localMetaSkipped
+                                $0.recordSkipped[chunkIndex] = localRecordSkipped
+                            }
                         }
-                    }
-                }
-            }
-        }
+        let (chunkRuns, chunkEntries, chunkMetaSkipped, chunkRecordSkipped) = slots.value
 
         var totalMetaSkipped = SkipCounts()
         for c in chunkMetaSkipped { totalMetaSkipped.add(c) }

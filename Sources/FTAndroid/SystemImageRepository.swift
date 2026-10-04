@@ -17,7 +17,7 @@ import FTCore
 
 public enum SystemImageRepository {
 
-    public struct Entry: Equatable {
+    public struct Entry: Equatable, Sendable {
         public let abi: String
         public let apiLevel: Int
         public let license: String?
@@ -45,7 +45,7 @@ public enum SystemImageRepository {
     }
 
     /// タグごとの XML(Google の実レイアウト)。1ファイル約200KB
-    public struct Source: Equatable {
+    public struct Source: Equatable, Sendable {
         public let label: String
         public let url: URL
         public init(label: String, url: URL) { self.label = label; self.url = url }

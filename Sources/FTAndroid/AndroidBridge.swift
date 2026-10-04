@@ -75,9 +75,14 @@ extension AndroidDriver {
 
         // 同一 serial の並行初回操作は1本の startBridge に集約する(進行中があれば相乗り)。
         let key = bridgeKey
-        let setup = Self.beginSetup(key: key) { [self] in
+        // @unchecked: setup Task は self を触るが、呼び手はこの Task の完了まで await で止まる
+        // (value を待つ間 self を別に操作しない)ので self の利用は常に1本
+        struct DriverBox: @unchecked Sendable { let driver: AndroidDriver }
+        let box = DriverBox(driver: self)
+        let setup = Self.beginSetup(key: key) {
+            let driver = box.driver
             do {
-                let client = try await startBridge()
+                let client = try await driver.startBridge()
                 Self.setRegistry(key, .active(client))
                 return client
             } catch {

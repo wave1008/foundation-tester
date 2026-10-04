@@ -7,7 +7,8 @@ import XCTest
 import FTCore
 
 /// GET /status に固定の JSON を返し、受けたパスを記録する最小 HTTP スタブ。
-private final class StatusStubServer {
+/// @unchecked: `_paths` は lock の下・`serverFD` は init と stop(テストのスレッド)だけが書く
+private final class StatusStubServer: @unchecked Sendable {
     private var serverFD: Int32 = -1
     let port: UInt16
     private let lock = NSLock()

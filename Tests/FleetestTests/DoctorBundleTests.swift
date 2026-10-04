@@ -100,6 +100,7 @@ final class DoctorBundleTests: XCTestCase {
 
     // MARK: - 直近 n 件の runID
 
+    @discardableResult
     private func makeRunDir(resultsDir: URL, runID: String) throws -> URL {
         let dir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

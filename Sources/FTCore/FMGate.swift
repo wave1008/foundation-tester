@@ -20,6 +20,7 @@
 // .cachesDirectory で再起動を生き延びるため、放っておくと再起動後も cooldown 経過まで死んだまま扱う)。
 
 import Foundation
+import Synchronization
 
 public enum FMGate {
     /// FM を 1 回呼んでよいか。true を返したら **`defer { leave() }` で必ず返す**(推奨ではなく必須)。
@@ -74,18 +75,28 @@ public enum FMBreaker {
         ProcessInfo.processInfo.environment["FT_FM_BREAKER"] != "0"
     }
 
-    private static let lock = NSLock()
-    private static var consecutiveFailures = 0
+    private static let consecutiveFailures = Mutex(0)
+    private static let testingOverrides = Mutex(TestingOverrides())
+    private struct TestingOverrides {
+        var stateURL: URL?
+        var bootTime: Date?
+    }
 
     /// **テストだけが使う差し替え口**(production は nil)。状態はホスト単位の共有ファイルで、
     /// それ自体は意図どおり(ワーカーのプロセスを跨いで落ちた事実を伝える)。ところが
     /// テストを**プロセス並列**で走らせると、無関係なテストの `reset()` が同じファイルを消して
     /// 判定と competing する(実測: `swift test --parallel` で FMBreakerTests が必ず落ちる)。
     /// テスト側はプロセスごとの一時パスをここへ入れて隔離する
-    static var stateURLForTesting: URL?
+    static var stateURLForTesting: URL? {
+        get { testingOverrides.withLock { $0.stateURL } }
+        set { testingOverrides.withLock { $0.stateURL = newValue } }
+    }
 
     /// **テストだけが使う差し替え口**(production は nil)。マシン再起動の判定に使う起動時刻を固定する
-    static var bootTimeForTesting: Date?
+    static var bootTimeForTesting: Date? {
+        get { testingOverrides.withLock { $0.bootTime } }
+        set { testingOverrides.withLock { $0.bootTime = newValue } }
+    }
 
     /// 本番の置き場。**ホスト単位で1つ**(ここが共有であること自体が仕様 —— 14 ワーカーが
     /// 別プロセスでも落ちた事実を共有できる)。パスの形はテストが I/O 抜きで表明する
@@ -143,19 +154,17 @@ public enum FMBreaker {
     /// FM が答えを返せた。連続失敗カウンタを戻し、落ちていたら復帰させる
     public static func recordSuccess() {
         guard isEnabled else { return }
-        lock.lock()
-        consecutiveFailures = 0
-        lock.unlock()
+        consecutiveFailures.withLock { $0 = 0 }
         try? FileManager.default.removeItem(at: stateURL)
     }
 
     /// FM が失敗した。threshold に達したら落とす
     public static func recordFailure() {
         guard isEnabled else { return }
-        lock.lock()
-        consecutiveFailures += 1
-        let shouldTrip = consecutiveFailures >= threshold
-        lock.unlock()
+        let shouldTrip = consecutiveFailures.withLock { count in
+            count += 1
+            return count >= threshold
+        }
         guard shouldTrip else { return }
         let url = stateURL
         try? FileManager.default.createDirectory(
@@ -167,9 +176,7 @@ public enum FMBreaker {
 
     /// テスト用。ホスト単位の状態を消す
     public static func reset() {
-        lock.lock()
-        consecutiveFailures = 0
-        lock.unlock()
+        consecutiveFailures.withLock { $0 = 0 }
         try? FileManager.default.removeItem(at: stateURL)
     }
 }

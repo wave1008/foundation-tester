@@ -3,6 +3,7 @@
 // プロセス起動・ネットワーク I/O はここに置かない(呼び出し側 = Sources/fleetest/RemoteRunDispatcher.swift)。
 
 import Foundation
+import Synchronization
 import FTCore
 
 public enum RemoteDispatchError: Error, LocalizedError {
@@ -1354,32 +1355,37 @@ public enum RemotePathRewrite {
 
 /// チャンク境界が行の途中に来る ssh stdout ストリームを行単位に組み立て直す。feed が返すのは
 /// 「完成した行」だけ(末尾の未完行は次の feed まで内部に保持)。flush は run 終了後の残りを返す
-public final class StreamLineSplitter {
-    private var buffer = Data()
+public final class StreamLineSplitter: Sendable {
+    // 読み手のスレッドが feed し、合流後に呼び手が flush する(Mutex は Sendable にするため)
+    private let buffer = Mutex(Data())
 
     public init() {}
 
     public func feed(_ data: Data) -> [String] {
         guard !data.isEmpty else { return [] }
-        buffer.append(data)
-        var lines: [String] = []
-        while let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-            var lineData = buffer[buffer.startIndex..<newlineIndex]
-            if lineData.last == UInt8(ascii: "\r") { lineData = lineData.dropLast() }
-            lines.append(String(decoding: lineData, as: UTF8.self))
-            buffer.removeSubrange(buffer.startIndex...newlineIndex)
+        return buffer.withLock { buffer in
+            buffer.append(data)
+            var lines: [String] = []
+            while let newlineIndex = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                var lineData = buffer[buffer.startIndex..<newlineIndex]
+                if lineData.last == UInt8(ascii: "\r") { lineData = lineData.dropLast() }
+                lines.append(String(decoding: lineData, as: UTF8.self))
+                buffer.removeSubrange(buffer.startIndex...newlineIndex)
+            }
+            return lines
         }
-        return lines
     }
 
     /// 末尾 CR も落とす: `-tt` 経由のリモート実行(§16.1)は行末以外に CR を混ぜないが、
     /// 子プロセスが改行前に kill されると「CR だけ来て \n が来ない」未完行が buffer に残り得るため
     public func flush() -> String? {
-        guard !buffer.isEmpty else { return nil }
-        defer { buffer.removeAll() }
-        var data = buffer
-        if data.last == UInt8(ascii: "\r") { data.removeLast() }
-        return String(decoding: data, as: UTF8.self)
+        buffer.withLock { buffer in
+            guard !buffer.isEmpty else { return nil }
+            defer { buffer.removeAll() }
+            var data = buffer
+            if data.last == UInt8(ascii: "\r") { data.removeLast() }
+            return String(decoding: data, as: UTF8.self)
+        }
     }
 }
 

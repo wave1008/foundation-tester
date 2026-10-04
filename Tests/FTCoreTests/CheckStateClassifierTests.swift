@@ -174,22 +174,21 @@ final class CheckStateClassifierTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
         let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
-        let lock = NSLock()
-        var trained = 0
-        var errors: [Error] = []
+        let trained = LockedBox(0)
+        let errors = LockedBox<[Error]>([])
         DispatchQueue.concurrentPerform(iterations: 4) { _ in
             var usage = VisionClassifier.VisionUsage()
             do {
                 let didTrain = try VisionClassifier.withCacheLock(cache) {
                     try VisionClassifier.ensureModel(set, cacheDirectory: cache, usage: &usage)
                 }
-                lock.lock(); if didTrain { trained += 1 }; lock.unlock()
+                if didTrain { trained.mutate { $0 += 1 } }
             } catch {
-                lock.lock(); errors.append(error); lock.unlock()
+                errors.mutate { $0.append(error) }
             }
         }
-        XCTAssertTrue(errors.isEmpty, "\(errors)")
-        XCTAssertEqual(trained, 1, "見本1組につき学習は1回")
+        XCTAssertTrue(errors.value.isEmpty, "\(errors.value)")
+        XCTAssertEqual(trained.value, 1, "見本1組につき学習は1回")
     }
 
     // MARK: - 学習の点検(自分の見本を取り違えないか)

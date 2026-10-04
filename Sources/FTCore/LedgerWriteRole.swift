@@ -14,17 +14,15 @@
 // opt-in する入口の集合は LedgerWriteRoleWiringTests がソース走査で固定する。
 
 import Foundation
+import Synchronization
 
 public enum LedgerWriteRole {
-    private static let lock = NSLock()
-    private static var isProduction = false
+    private static let isProduction = Mutex(false)
 
     /// production の実行ファイルが起動直後に1回呼ぶ。呼ばなければ `permitsProductionWrite` は
     /// 常に false のまま(= FMLiveness/FMUsageLedger/VisionUsageLedger は既定の書き込み先を開かない)
     public static func enableForProduction() {
-        lock.lock()
-        isProduction = true
-        lock.unlock()
+        isProduction.withLock { $0 = true }
     }
 
     /// 既定の書き込み先(~/.fleetest/…)を開いてよいか。**各台帳の環境変数によるディレクトリ
@@ -33,15 +31,11 @@ public enum LedgerWriteRole {
     /// `XCTestConfigurationFilePath` の判定は呼び出し側が別途重ねる二重の備え
     /// (FMLiveness.swift / UsageLedger.swift)
     public static var permitsProductionWrite: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return isProduction
+        isProduction.withLock { $0 }
     }
 
     /// テスト専用。プロセス内の opt-in 状態を初期値へ戻す
     static func resetForTesting() {
-        lock.lock()
-        isProduction = false
-        lock.unlock()
+        isProduction.withLock { $0 = false }
     }
 }

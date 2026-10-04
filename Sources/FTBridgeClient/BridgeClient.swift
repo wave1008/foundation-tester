@@ -2,8 +2,23 @@
 
 import Foundation
 import FTCore
+import Synchronization
 
-public final class BridgeClient: AppDriver {
+public final class BridgeClient: AppDriver, Sendable {
+    /// 可変状態はすべてここに集約(スナップショット/スワイプ/回転の各状態)。
+    /// withLock の中で await・I/O をしない。複合の読み書き(消費・取り出し)は1回の withLock で行う
+    private struct Mutable {
+        var token: String?
+        var tokenReloader: @Sendable () -> String? = { nil }
+        var lastActionNote: String?
+        var pendingElementLimit: Int?
+        var resolvedBrowserDOMTarget: BrowserDOMTarget??
+        var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
+        var atEdgeOnLastSwipe: Bool?
+        var originalOrientation: FTOrientation?
+    }
+    private let mutable: Mutex<Mutable>
+
     let baseURL: URL
     /// 接続先ポート。`.fleetest/bridge-<port>.device`(実機の記録)を読むために保持する
     /// — baseURL の文字列から逆算しない(host:port の往復に依存すると URL 生成規則が
@@ -33,12 +48,18 @@ public final class BridgeClient: AppDriver {
     /// argv は `ps -E` で見え、拡張の孤児掃除(orphanSweep)や LocalStreamHolder が実際に
     /// `ps -E` を撃って出力をログへ流す経路がある。台帳ファイル(.fleetest/bridge-<port>.endpoint)
     /// 経由なら露出面が増えない
-    private(set) var token: String?
+    private(set) var token: String? {
+        get { mutable.withLock { $0.token } }
+        set { mutable.withLock { $0.token = newValue } }
+    }
     /// **401 を受けたときに台帳の token を読み直す口**(既定 = `.fleetest/bridge-<port>.endpoint`)。
     /// ブリッジを起動し直すと token が変わり、init で固定した値のままでは以後すべて 401 で
     /// 「接続断」とも扱われず戻れなかった(実機 iPhone 13・§19.3)。読み直して**1 回だけ**撃ち直す。
     /// テストは差し替えて注入する
-    var tokenReloader: () -> String? = { nil }
+    var tokenReloader: @Sendable () -> String? {
+        get { mutable.withLock { $0.tokenReloader } }
+        set { mutable.withLock { $0.tokenReloader = newValue } }
+    }
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)。
     ///
     /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(実測)。
@@ -51,7 +72,10 @@ public final class BridgeClient: AppDriver {
 
     /// tap(ref:) が受け取った OKResponse.note(AppDriver.lastActionNote 参照)。
     /// tap(ref:) 呼び出しの冒頭で必ずクリアする(残ると別ステップに誤って付く)。
-    public private(set) var lastActionNote: String?
+    public private(set) var lastActionNote: String? {
+        get { mutable.withLock { $0.lastActionNote } }
+        set { mutable.withLock { $0.lastActionNote = newValue } }
+    }
 
     /// **前提: この接続先は XCUITest ランナー**(BridgeRouter.handleType が読み返し済み)。
     /// **InAppDriver は同じ HTTP プロトコルを in-app ブリッジへ話すのに使うため、この既定 true を
@@ -147,10 +171,10 @@ public final class BridgeClient: AppDriver {
         self.port = port
         self.physicalUDID = physicalUDID
         self.simulatorUDID = simulatorUDID
-        self.token = token
-        self.tokenReloader = {
+        // init 内は self のプロパティ経由にせず Mutex を直接組む(全格納プロパティ確定前)
+        self.mutable = Mutex(Mutable(token: token, tokenReloader: {
             (try? RepoRoot.find()).flatMap { BridgeEndpoint.load(port: port, repoRoot: $0).token }
-        }
+        }))
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
         // (実行プロファイル iosFastInput / CLI `--set iosFastInput=true` を `FTCore.RunEnvironment` が
         //  FT_FAST_INPUT=1 へ注入。BridgeClient は hybrid のフォールバック経路でも生成されるため
@@ -524,8 +548,7 @@ public final class BridgeClient: AppDriver {
     /// 旧ランナー(版 < 79)は 404 —— 呼び手(`SystemUIDriver`)が
     /// `POST /session springboard` + `GET /snapshot` の旧経路へ落ちる
     public func systemUISnapshot() async throws -> SnapshotResponse? {
-        let limit = pendingElementLimit
-        pendingElementLimit = nil
+        let limit = takePendingElementLimit()
         let query = limit.map { "max=\(BridgeAPI.resolvedSnapshotElementLimit($0))" }
         do {
             return try await get("/systemui/snapshot", query: query,
@@ -627,7 +650,17 @@ public final class BridgeClient: AppDriver {
 
     /// 次の1回だけ効く要素上限(AppDriver.raiseElementLimitOnNextSnapshot)。
     /// **消費は snapshot(query:) の1箇所**(取りこぼすと以後の木が全部膨らむ)
-    private var pendingElementLimit: Int?
+    private var pendingElementLimit: Int? {
+        get { mutable.withLock { $0.pendingElementLimit } }
+        set { mutable.withLock { $0.pendingElementLimit = newValue } }
+    }
+    /// 取り出して nil に戻す(1回の withLock = 並行する2本が同じ上限を二重に消費しない)
+    private func takePendingElementLimit() -> Int? {
+        mutable.withLock { state in
+            defer { state.pendingElementLimit = nil }
+            return state.pendingElementLimit
+        }
+    }
 
     public func raiseElementLimitOnNextSnapshot(_ max: Int?) {
         pendingElementLimit = max
@@ -645,8 +678,7 @@ public final class BridgeClient: AppDriver {
     private func snapshot(query: String?) async throws -> SnapshotResponse {
         // 上限の指定は**消費してから**送る(送信に失敗しても次の呼び出しへ持ち越さない ——
         // 持ち越すと「1回だけ」の契約が壊れ、以後の整定ループまで重い木を引く)
-        let limit = pendingElementLimit
-        pendingElementLimit = nil
+        let limit = takePendingElementLimit()
         let merged = [query, limit.map { "max=\(BridgeAPI.resolvedSnapshotElementLimit($0))" }]
             .compactMap { $0 }.joined(separator: "&")
         var response: SnapshotResponse = try await get("/snapshot",
@@ -709,7 +741,7 @@ public final class BridgeClient: AppDriver {
     /// (= ハードウェア UDID)**。**devicectl の identifier とは別物**(`ResolvedTarget.physical` /
     /// `installTarget()` が持つのは devicectl 用の識別子で、usbmuxd の `ReadPairRecord`/
     /// `ListDevices` には通らない。`IOSPhysicalDeviceInfo.udid` がハードウェア UDID)
-    enum BrowserDOMTarget: Equatable {
+    enum BrowserDOMTarget: Equatable, Sendable {
         case simulator(udid: String)
         case physical(udid: String)
     }
@@ -717,11 +749,17 @@ public final class BridgeClient: AppDriver {
     /// **クライアント1つにつき1回だけ解決してキャッシュする** —— `status()`/カタログ列挙は
     /// snapshot のたびに引くと重い(相手は接続の生存中に変わらない前提)。
     /// 外側 Optional = 未解決、内側 Optional = 解決済みで対象外(解決不能)
-    private var resolvedBrowserDOMTarget: BrowserDOMTarget??
+    private var resolvedBrowserDOMTarget: BrowserDOMTarget?? {
+        get { mutable.withLock { $0.resolvedBrowserDOMTarget } }
+        set { mutable.withLock { $0.resolvedBrowserDOMTarget = newValue } }
+    }
     /// Safari に差し込んだ DOM の要素の中心(ref → 画面座標・pt)。**ランナーはこの ref を知らない**
     /// (ホストが最大 ref + 1 から振る = ランナーの refFrames の範囲外 → 404 unknown reference number)ので、
     /// ref を受ける操作はこの表で座標へ解く(Android の refCenters と同じ考え)。スナップショットのたびに作り直す
-    private var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
+    private var browserDOMCenters: [Int: (x: Double, y: Double)] {
+        get { mutable.withLock { $0.browserDOMCenters } }
+        set { mutable.withLock { $0.browserDOMCenters = newValue } }
+    }
 
     private func browserDOMTarget() async -> BrowserDOMTarget? {
         if let resolvedBrowserDOMTarget { return resolvedBrowserDOMTarget }
@@ -846,7 +884,10 @@ public final class BridgeClient: AppDriver {
 
     /// 直前の端送りで「もう端」とブリッジが答えたか(`AppDriver.reachedEdgeOnLastSwipe`)。
     /// **答えない旧ブリッジでは nil のまま** = ホストは木の署名で判定する
-    public private(set) var atEdgeOnLastSwipe: Bool?
+    public private(set) var atEdgeOnLastSwipe: Bool? {
+        get { mutable.withLock { $0.atEdgeOnLastSwipe } }
+        set { mutable.withLock { $0.atEdgeOnLastSwipe = newValue } }
+    }
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
 
     public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
@@ -956,7 +997,10 @@ public final class BridgeClient: AppDriver {
     /// Captured only on this client's first `rotate(to:)` call in the current scenario (nil = not
     /// used yet, or already restored). Read from the bridge (GET /status) rather than assumed,
     /// since the bridge is the source of truth for its own orientation.
-    private var originalOrientation: FTOrientation?
+    private var originalOrientation: FTOrientation? {
+        get { mutable.withLock { $0.originalOrientation } }
+        set { mutable.withLock { $0.originalOrientation = newValue } }
+    }
 
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         if originalOrientation == nil {

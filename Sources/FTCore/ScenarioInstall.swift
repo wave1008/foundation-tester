@@ -32,7 +32,7 @@ public actor ScenarioInstallControl {
     /// 取りこぼす競合は起きない。timeoutSeconds 経過で自動的に ok:false へ解決する
     /// (呼び出し側は FTSync.commandTimeout の外枠より内側の値を渡すこと — 外枠だと汎用の
     /// "operation timed out" になり installApp 固有の事情が消える)
-    public func request(timeoutSeconds: Double, emit: (Int) -> Void) async -> Result {
+    public func request(timeoutSeconds: Double, emit: @Sendable (Int) -> Void) async -> Result {
         nextID += 1
         let id = nextID
         let timeoutTask = Task { [weak self] in

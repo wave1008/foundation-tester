@@ -28,7 +28,7 @@ final class RetentionSweeperRootsTests: XCTestCase {
         // ツールのクローン: ブリッジのログ
         try fm.createDirectory(at: tool.appendingPathComponent(".fleetest"), withIntermediateDirectories: true)
         try Data("b".utf8).write(to: tool.appendingPathComponent(".fleetest/bridge-9999.log"))
-        addTeardownBlock { try? fm.removeItem(at: base) }
+        addTeardownBlock { try? FileManager.default.removeItem(at: base) }
     }
 
     /// レポートは**パッケージ側**から拾う(ツール側には TestProjects が無い)

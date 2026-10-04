@@ -61,7 +61,8 @@ final class SafariWebInspectorTests: XCTestCase {
 
     // MARK: - アプリ選択(**別プロセスを Safari と誤認しない**)
 
-    private static let sampleApps: [String: [String: Any]] = [
+    // 読み取り専用の固定値(テスト中に変更しない)
+    nonisolated(unsafe) private static let sampleApps: [String: [String: Any]] = [
         "PID:33764": ["WIRApplicationNameKey": "Safari",
                       "WIRApplicationBundleIdentifierKey": "com.apple.mobilesafari"],
         "PID:8357": ["WIRApplicationNameKey": "amsengagementd",

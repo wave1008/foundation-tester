@@ -11,7 +11,8 @@ import XCTest
 import FTCore
 
 /// 受けたリクエストのパスと本文を記録し、すべて 200 `{"ok":true}` を返す最小 HTTP スタブ。
-private final class BodyRecordingStubServer {
+// _bodies は lock 配下・serverFD は init と stop だけが書く(受け付けスレッドは fd をコピーして持つ)
+private final class BodyRecordingStubServer: @unchecked Sendable {
     private var serverFD: Int32 = -1
     let port: UInt16
     private let lock = NSLock()

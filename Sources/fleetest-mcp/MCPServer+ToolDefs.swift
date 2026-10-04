@@ -14,27 +14,28 @@ extension MCPServer {
     // **繰り返し載る説明は短文+詳細は serverInstructions**: 共通引数は約25本、
     // snapshotAfter 系は13本のツールへ複製されるので、1文字が十数倍の費用になる(毎セッションの
     // コンテキスト)。ニュアンスを足したくなったら serverInstructions 側へ(initialize で1回だけ渡る)
-    static let platformProperty: [String: Any] = [
+    // 以下の JSON スキーマ定数は起動時に1回だけ組み立てる不変リテラル(以後だれも変更しない)なので nonisolated(unsafe)
+    nonisolated(unsafe) static let platformProperty: [String: Any] = [
         "type": "string", "enum": ["ios", "android"], "description": "default ios",
     ]
-    static let portProperty: [String: Any] = [
+    nonisolated(unsafe) static let portProperty: [String: Any] = [
         "type": "integer", "description": "iOS bridge port",
     ]
-    static let serialProperty: [String: Any] = [
+    nonisolated(unsafe) static let serialProperty: [String: Any] = [
         "type": "string", "description": "Android device serial",
     ]
-    static let profileProperty: [String: Any] = [
+    nonisolated(unsafe) static let profileProperty: [String: Any] = [
         "type": "string", "description": "Run profile name (profiles/runs/)",
     ]
-    static let projectProperty: [String: Any] = [
+    nonisolated(unsafe) static let projectProperty: [String: Any] = [
         "type": "string", "description": "Test project name",
     ]
-    static let udidProperty: [String: Any] = [
+    nonisolated(unsafe) static let udidProperty: [String: Any] = [
         "type": "string", "description": "iOS device UDID (from ft_list_devices)",
     ]
     /// 操作系ツールの「結果の木も一緒に返す」スイッチ。**撮り直し不要と言い切る**(言わないと
     /// 読み手は木を受け取ったうえで習慣的に ft_snapshot を撃つ)
-    static let snapshotAfterProperty: [String: Any] = [
+    nonisolated(unsafe) static let snapshotAfterProperty: [String: Any] = [
         "type": "boolean",
         "description": "Append the resulting tree — no follow-up ft_snapshot needed",
     ]
@@ -42,31 +43,31 @@ extension MCPServer {
     /// snapshotAfterBody 参照)。**snapshotAfter: true と併用が前提** — 無いときは操作は
     /// 実行したうえで note だけ返す(throw しない。操作自体は成功しているため)。
     /// **説明に `a||b` を残す**(`selectorQuoteStrippedKeys` との同期テストの印)
-    static let snapshotAfterWaitForProperty: [String: Any] = [
+    nonisolated(unsafe) static let snapshotAfterWaitForProperty: [String: Any] = [
         "type": "string",
         "description": "Needs snapshotAfter. Selector to wait for on the result (#id, label, .type, a||b)",
     ]
-    static let snapshotAfterWaitSecondsProperty: [String: Any] = [
+    nonisolated(unsafe) static let snapshotAfterWaitSecondsProperty: [String: Any] = [
         "type": "number", "description": "Max wait for waitFor/waitForChange (default \(number(defaultWaitSeconds)))",
     ]
     /// **「何かが変わる」を待つ**: 再検索のように**同じセレクタのまま中身だけ入れ替わる**画面では
     /// waitFor が古い結果に即マッチして待ちにならない(実測: Google マップの経路再検索で
     /// `waitFor "*IC 運賃*"` が旧結果へ当たった)。waitFor とは排他(待つ理由が違う)
-    static let snapshotAfterWaitForChangeProperty: [String: Any] = [
+    nonisolated(unsafe) static let snapshotAfterWaitForChangeProperty: [String: Any] = [
         "type": "boolean",
         "description": "Needs snapshotAfter; not with waitFor. Wait until the tree differs from "
             + "before the action (screens that refresh in place)",
     ]
     /// ft_snapshot と操作系が共有する木の畳み方(2つ目の定義を作らない)。
     /// どのツールでも既定は畳む・隠さないなので、説明文もそのまま通用する
-    static let expandBulkProperty: [String: Any] = [
+    nonisolated(unsafe) static let expandBulkProperty: [String: Any] = [
         "type": "boolean", "description": "Unfold groups of 20+ same-id elements (folded by default)",
     ]
-    static let interactiveOnlyProperty: [String: Any] = [
+    nonisolated(unsafe) static let interactiveOnlyProperty: [String: Any] = [
         "type": "boolean", "description": "Hide layout-only lines (refs unchanged; hidden ones stay tappable by ref)",
     ]
     /// 木を返すツールの畳み方2つ
-    static let foldingProperties: [String: Any] = [
+    nonisolated(unsafe) static let foldingProperties: [String: Any] = [
         "expandBulk": expandBulkProperty,
         "interactiveOnly": interactiveOnlyProperty,
     ]
@@ -81,29 +82,29 @@ extension MCPServer {
         if waitForChange { props["waitForChange"] = snapshotAfterWaitForChangeProperty }
         return props
     }
-    static let refProperty: [String: Any] = ["type": "integer", "description": "ft_snapshot ref"]
-    static let pointXProperty: [String: Any] = ["type": "number", "description": "ft_snapshot coordinates"]
-    static let pointYProperty: [String: Any] = ["type": "number", "description": "ft_snapshot coordinates"]
-    static let bundleIdProperty: [String: Any] = [
+    nonisolated(unsafe) static let refProperty: [String: Any] = ["type": "integer", "description": "ft_snapshot ref"]
+    nonisolated(unsafe) static let pointXProperty: [String: Any] = ["type": "number", "description": "ft_snapshot coordinates"]
+    nonisolated(unsafe) static let pointYProperty: [String: Any] = ["type": "number", "description": "ft_snapshot coordinates"]
+    nonisolated(unsafe) static let bundleIdProperty: [String: Any] = [
         "type": "string", "description": "bundle ID (iOS) / package name (Android)",
     ]
-    static let lastLaunchedBundleIdProperty: [String: Any] = [
+    nonisolated(unsafe) static let lastLaunchedBundleIdProperty: [String: Any] = [
         "type": "string",
         "description": "bundle ID (iOS) / package name (Android). Default: the last ft_launch",
     ]
-    static let scenarioIdProperty: [String: Any] = [
+    nonisolated(unsafe) static let scenarioIdProperty: [String: Any] = [
         "type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios) or a class name",
     ]
-    static let defaultProjectProperty: [String: Any] = [
+    nonisolated(unsafe) static let defaultProjectProperty: [String: Any] = [
         "type": "string", "description": "Test project name (default: the default project)",
     ]
-    static let skipBuildProperty: [String: Any] = ["type": "boolean", "description": "Skip the swift build"]
-    static let runPidProperty: [String: Any] = [
+    nonisolated(unsafe) static let skipBuildProperty: [String: Any] = ["type": "boolean", "description": "Skip the swift build"]
+    nonisolated(unsafe) static let runPidProperty: [String: Any] = [
         "type": "integer", "description": "pid from ft_start_run (default: the latest)",
     ]
     /// **ft_snapshot にだけ置く**(操作系や scroll_to は木を何度も撮るので、1回限りの指定が
     /// どの取得に効いたのか読み手に説明できない)。上限に当たった応答の注記がこの引数を名指しする
-    static let maxElementsProperty: [String: Any] = [
+    nonisolated(unsafe) static let maxElementsProperty: [String: Any] = [
         "type": "integer",
         "description": "Element limit for THIS read only (default \(BridgeAPI.maxSnapshotElements),"
             + " max \(BridgeAPI.maxSnapshotElementsCeiling)). Raise it when a note says the limit"
@@ -111,7 +112,7 @@ extension MCPServer {
     ]
     /// press/drag/pinch が共有する秒数上限の上書き口(既定 `BridgeAPI.defaultMaxGestureSeconds`・
     /// 最大 `BridgeAPI.gestureSecondsCeiling`)
-    static let maxGestureSecondsProperty: [String: Any] = [
+    nonisolated(unsafe) static let maxGestureSecondsProperty: [String: Any] = [
         "type": "number",
         "description": "Raise the \(Int(BridgeAPI.defaultMaxGestureSeconds))s cap on duration/hold"
             + " for THIS call (max \(Int(BridgeAPI.gestureSecondsCeiling))s)",
@@ -176,7 +177,7 @@ extension MCPServer {
         """
 
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
-    static let commonDeviceProperties: [(String, [String: Any])] = [
+    nonisolated(unsafe) static let commonDeviceProperties: [(String, [String: Any])] = [
         ("platform", platformProperty),
         ("port", portProperty),
         ("serial", serialProperty),
@@ -188,7 +189,7 @@ extension MCPServer {
 
     /// 版ズレの押し通し(G-3)。**押し通した回の応答には毎回警告が付く**ことまで書く ——
     /// 「一度断られたから付けておく」という使い方をされると、拒否そのものが無意味になる
-    static let allowVersionSkewProperty: [String: Any] = [
+    nonisolated(unsafe) static let allowVersionSkewProperty: [String: Any] = [
         "type": "boolean",
         "description": "Proceed despite a bridge version mismatch (every reply warns)",
     ]
@@ -213,7 +214,7 @@ extension MCPServer {
     /// (リテラルで書くと定数を変えた日に説明だけが古い値を言い続ける)
     static func number(_ value: Double) -> String { String(format: "%g", value) }
 
-    static let toolDefinitions: [[String: Any]] = [
+    nonisolated(unsafe) static let toolDefinitions: [[String: Any]] = [
         tool("ft_status", "Check the device/bridge connection state", [:]),
         tool("ft_list_devices", "List the devices this Mac can drive (simulators, emulators, physical) "
             + "with the udid/serial other tools take. Works before any profile exists (lists what is "

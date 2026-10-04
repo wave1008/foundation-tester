@@ -13,6 +13,7 @@ import CoreText
 import Foundation
 import CoreML
 import ImageIO
+import Synchronization
 import Vision
 
 public enum RegionTextGateMode: String, Sendable {
@@ -44,21 +45,24 @@ public enum RegionText {
     /// 走る(prewarmOnce)。off のときは撃たない(ゲートを切った run に Vision を読ませない)。
     public static func prewarmIfNeeded(mode: RegionTextGateMode) {
         guard mode != .off else { return }
-        prewarmLock.lock()
-        prewarmRequests += 1
-        prewarmLock.unlock()
+        prewarmRequests.withLock { $0 += 1 }
         _ = prewarmOnce
     }
 
     /// 配線の確認用(テスト)。実際のモデル読み込み回数ではなく「暖機を頼んだ回数」
     public static var prewarmRequestCount: Int {
-        prewarmLock.lock()
-        defer { prewarmLock.unlock() }
-        return prewarmRequests
+        prewarmRequests.withLock { $0 }
     }
 
-    private static let prewarmLock = NSLock()
-    private static var prewarmRequests = 0
+    private static let prewarmRequests = Mutex(0)
+
+    /// テストの差し替え口をまとめて持つ(個別の static var は Swift 6 でデータ競合になる)
+    private struct TestingHooks {
+        var recognize: (@Sendable (CGImage) async throws -> [String])?
+        var prewarmFinish: (@Sendable () async -> Void)?
+        var warm: Bool?
+    }
+    private static let testingHooks = Mutex(TestingHooks())
 
     /// 探りの撃ち直しに使ってよい合計時間の上限。**根拠**(実測、`FT_OCR_HANG_SAMPLE=1`
     /// 採取): 探り 1 回の所要は 130〜235ms(空で返る回のほうが速い)。手元のフリート実行 26 プロセス中
@@ -84,7 +88,10 @@ public enum RegionText {
     /// テストが Vision を実際に叩かずに探りの結果を制御するための差し替え口(production では nil)。
     /// **既定が nil であること自体は `RegionTextRecognizeOverrideDefaultTests` が固定する**
     /// (`warmOverrideForTesting` と同じ規律)
-    public static var recognizeOverrideForTesting: (@Sendable (CGImage) async throws -> [String])?
+    public static var recognizeOverrideForTesting: (@Sendable (CGImage) async throws -> [String])? {
+        get { testingHooks.withLock { $0.recognize } }
+        set { testingHooks.withLock { $0.recognize = newValue } }
+    }
 
     /// 探りを撃ち、空(またはエラー)なら `interval` だけ待って `budget` を使い切るまで撃ち直す。
     /// **少なくとも 1 回は撃つ**(budget が 0 でも最初の 1 回は必ず走る)。読めた時点で即終了。
@@ -164,10 +171,8 @@ public enum RegionText {
         }
     }
 
-    private static let warmLock = NSLock()
-    private static var warm = false
-    /// 同期関数に閉じ込める(async 文脈で lock/unlock を直に書くと Swift 6 で診断が出る)
-    private static func markWarm() { warmLock.lock(); warm = true; warmLock.unlock() }
+    private static let warm = Mutex(false)
+    private static func markWarm() { warm.withLock { $0 = true } }
 
     /// 暖機が「終わった」(成否を問わない)ことを async の待ち手へ知らせる信号。**待ち手は複数
     /// 許す**(occlusionFlip が並行に複数走っても壊れないため)。同期関数に閉じ込める
@@ -211,7 +216,10 @@ public enum RegionText {
     /// いれば実際の `prewarmFinishSignal` を待たず、この関数の完了をそのまま待ち対象にする ——
     /// 実 Vision を積む本物の暖機は「進行中」を狙った時刻に作れないため。**既定が nil であること
     /// 自体は `RegionTextAwaitPrewarmTests` が固定する**(`warmOverrideForTesting` と同じ規律)
-    public static var prewarmFinishOverrideForTesting: (@Sendable () async -> Void)?
+    public static var prewarmFinishOverrideForTesting: (@Sendable () async -> Void)? {
+        get { testingHooks.withLock { $0.prewarmFinish } }
+        set { testingHooks.withLock { $0.prewarmFinish = newValue } }
+    }
 
     /// `awaitPrewarm` の戻り値。呼び手(occlusionFlip)は `waited` を締め切りの計上に使う
     public enum WarmWaitOutcome: Sendable, Equatable {
@@ -300,13 +308,16 @@ public enum RegionText {
     /// ステップごとに予算(`occlusionBudget`)を丸ごと捨てることになる
     public static var isWarm: Bool {
         if let forced = warmOverrideForTesting { return forced }
-        warmLock.lock(); defer { warmLock.unlock() }; return warm
+        return warm.withLock { $0 }
     }
 
     /// テストから既知の状態にするための差し替え口(production では nil のまま)。
     /// **既定が nil であること自体は `RegionTextWarmDefaultTests` が固定する** ——
     /// 差し替えだけになると「暖機を一度も通らない」変更が緑で通る
-    public static var warmOverrideForTesting: Bool?
+    public static var warmOverrideForTesting: Bool? {
+        get { testingHooks.withLock { $0.warm } }
+        set { testingHooks.withLock { $0.warm = newValue } }
+    }
 
     /// 暖機の探りの結果から「モデルが載った」と言ってよいか。
     /// **文字を描いた探りが実際に読めたときだけ** —— 呼び出しが成功しても 1 行も返らない状態が
@@ -327,16 +338,15 @@ public enum RegionText {
         mode != .off && warm && abandonedInFlight == 0
     }
 
-    private static let inFlightLock = NSLock()
-    private static var abandoned = 0
+    private static let abandoned = Mutex(0)
 
     /// 予算切れで諦めたが、まだ走っている読みの本数(shouldTakeShortcut の doc)
     public static var abandonedInFlight: Int {
-        inFlightLock.lock(); defer { inFlightLock.unlock() }; return abandoned
+        abandoned.withLock { $0 }
     }
 
     private static func noteAbandoned(_ delta: Int) {
-        inFlightLock.lock(); abandoned = max(0, abandoned + delta); inFlightLock.unlock()
+        abandoned.withLock { $0 = max(0, $0 + delta) }
     }
 
     /// 拡大後に許す画素数の上限。**根拠**: コーパスの crop は最大でも約 0.19 MP で、

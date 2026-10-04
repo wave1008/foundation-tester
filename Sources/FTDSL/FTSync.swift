@@ -4,10 +4,22 @@
 
 import Foundation
 import FTCore
+import Synchronization
 
 enum FTSync {
     /// コマンド 1 回の上限待機秒数
-    static var commandTimeout: TimeInterval = 120
+    static var commandTimeout: TimeInterval {
+        get { commandTimeoutStorage.withLock { $0 } }
+        set { commandTimeoutStorage.withLock { $0 = newValue } }
+    }
+    private static let commandTimeoutStorage = Mutex<TimeInterval>(120)
+
+    /// DSL スレッドの op を協調プールへ渡す包み。@unchecked の根拠 = DSL スレッドは op の完了まで
+    /// semaphore で止まっている(op の捕捉物に同時に触る者がいない)。**例外は時間切れ** —— cancel は
+    /// 送るが op は走り切りうるので、その間だけ DSL スレッドの次の命令と重なる(既知・run の注記の通り)
+    private struct UncheckedOperation<T>: @unchecked Sendable {
+        let body: () async -> T
+    }
 
     private final class Box<T>: @unchecked Sendable {
         var value: T?
@@ -42,6 +54,7 @@ enum FTSync {
         let box = Box<T>()
         let queuedAt = ContinuousClock().now
         let exclusionSnapshot = DeadlineExclusion.snapshot()
+        let work = UncheckedOperation(body: op)
         let task = Task.detached(priority: .userInitiated) {
             if let scheduleDelay {
                 // **最初の1命令が走った時刻**。ここまでの差は「順番待ち」で、ステップは1命令も
@@ -49,7 +62,7 @@ enum FTSync {
                 let waited = ContinuousClock().now - queuedAt
                 scheduleDelay.record(Int((waited / .milliseconds(1)).rounded()))
             }
-            box.value = await op()
+            box.value = await work.body()
             semaphore.signal()
         }
         var remaining = timeout

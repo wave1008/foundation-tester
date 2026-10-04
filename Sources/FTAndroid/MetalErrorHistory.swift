@@ -4,16 +4,17 @@
 
 import FTCore
 import Foundation
+import Synchronization
 
 public enum MetalErrorHistory {
     /// このファイルが 5MB を超えたら .1 へロールオーバーする閾値。
     /// AndroidHealthProbe.metalErrorLogSizeCap と同値だが対象ファイルが別なので独立定義。
     static let rotationCapBytes = 5_000_000
 
-    private static let lock = NSLock()
     /// serial ごとの直近記録 count。カウントはブート内で単調増加するため、前回と同値なら
     /// 書かなくても変化点の記録だけで全履歴(いつ・どの値まで増えたか)を忠実に再構成できる。
-    private static var lastRecorded: [String: Int] = [:]
+    /// 比較からファイル追記まで同じ withLock の中で行う(意図的: 追記の直列化も兼ねる)。
+    private static let lastRecorded = Mutex<[String: Int]>([:])
 
     static var defaultFile: URL {
         EmulatorLog.directory.appendingPathComponent("metal-history.ndjson")
@@ -32,25 +33,23 @@ public enum MetalErrorHistory {
     public static func record(avdID: String, serial: String, count: Int, at: Date = Date(),
                               file: URL? = nil) {
         let target = file ?? defaultFile
-        lock.lock()
-        defer { lock.unlock() }
-        if lastRecorded[serial] == count { return }
-        lastRecorded[serial] = count
-        // metalErrorCount のログサイズ超過センチネル(Int.max)は妥当な JSON 数値ではないため
-        // -1 に変換して記録する(count フィールドを常に有効な数値に保つため)
-        let recordedCount = count == Int.max ? -1 : count
-        guard let line = encode(HistoryLine(
-            ts: ISO8601DateFormatter().string(from: at), avd: avdID, serial: serial,
-            count: recordedCount)) else { return }
-        appendLine(line, to: target)
+        lastRecorded.withLock { recorded in
+            if recorded[serial] == count { return }
+            recorded[serial] = count
+            // metalErrorCount のログサイズ超過センチネル(Int.max)は妥当な JSON 数値ではないため
+            // -1 に変換して記録する(count フィールドを常に有効な数値に保つため)
+            let recordedCount = count == Int.max ? -1 : count
+            guard let line = encode(HistoryLine(
+                ts: ISO8601DateFormatter().string(from: at), avd: avdID, serial: serial,
+                count: recordedCount)) else { return }
+            appendLine(line, to: target)
+        }
     }
 
     /// テスト専用: in-memory の直近値辞書をクリアする。本体コード(observeIssues 等)からは
     /// 呼ばないこと(呼ぶと「変化時のみ記録」の判定基準が失われる)。
     public static func _resetForTesting() {
-        lock.lock()
-        defer { lock.unlock() }
-        lastRecorded.removeAll()
+        lastRecorded.withLock { $0.removeAll() }
     }
 
     private static func encode(_ line: HistoryLine) -> String? {

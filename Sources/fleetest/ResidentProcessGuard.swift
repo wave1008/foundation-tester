@@ -6,14 +6,19 @@
 
 import FTCore
 import Foundation
+import Synchronization
 
 enum ResidentProcessGuard {
-    private static let lock = NSLock()
-    private static var watchdogTimer: DispatchSourceTimer?
-    private static var forcedExitScheduled = false
-    private static var commandStartedAt: DispatchTime?
-    private static var commandAllowanceSeconds: Double = 0
-    private static var commandWatchdogTimer: DispatchSourceTimer?
+    /// 全状態を1つの Mutex で守る。タイマーのハンドラ(専用キュー)からも読むが、
+    /// どのハンドラも exit するか短い読み取りだけで、withLock の中でブロックしない
+    private struct State {
+        var watchdogTimer: DispatchSourceTimer?
+        var forcedExitScheduled = false
+        var commandStartedAt: DispatchTime?
+        var commandAllowanceSeconds: Double = 0
+        var commandWatchdogTimer: DispatchSourceTimer?
+    }
+    private static let state = Mutex(State())
 
     /// 起動時の親PIDを記録し、5秒間隔で監視して親が変わったら(reparent=親死亡による孤児化)
     /// stderr に1行ログして exit(0) する。起動時点で親が既に pid 1(意図的なデーモン化)なら
@@ -22,30 +27,31 @@ enum ResidentProcessGuard {
         let initialParentPID = getppid()
         guard initialParentPID != 1 else { return }
 
-        lock.lock()
-        defer { lock.unlock() }
-        guard watchdogTimer == nil else { return }
+        state.withLock { state in
+            guard state.watchdogTimer == nil else { return }
 
-        let queue = DispatchQueue(label: "fleetest-resident-process-guard-watchdog")
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 5, repeating: 5)
-        timer.setEventHandler {
-            guard getppid() != initialParentPID else { return }
-            logStderr(logLabel, "Parent process exited — shutting down (watchdog)")
-            exit(0)
+            let queue = DispatchQueue(label: "fleetest-resident-process-guard-watchdog")
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.schedule(deadline: .now() + 5, repeating: 5)
+            timer.setEventHandler {
+                guard getppid() != initialParentPID else { return }
+                logStderr(logLabel, "Parent process exited — shutting down (watchdog)")
+                exit(0)
+            }
+            timer.resume()
+            state.watchdogTimer = timer
         }
-        timer.resume()
-        watchdogTimer = timer
     }
 
     /// EOF/シグナル検知後、afterSeconds(既定2秒。拡張側の SIGTERM→SIGKILL の猶予と同じ意図)
     /// 後に stderr に1行ログして exit(0) する安全弁。通常はコマンドループが先に自然終了するため
     /// 発火しない。EOF・シグナルの両経路から呼ばれうるので多重呼び出しは1回に潰す。
     static func scheduleForcedExit(afterSeconds: Double = 2.0, logLabel: String) {
-        lock.lock()
-        guard !forcedExitScheduled else { lock.unlock(); return }
-        forcedExitScheduled = true
-        lock.unlock()
+        let alreadyScheduled = state.withLock { state in
+            defer { state.forcedExitScheduled = true }
+            return state.forcedExitScheduled
+        }
+        guard !alreadyScheduled else { return }
 
         let queue = DispatchQueue(label: "fleetest-resident-process-guard-forced-exit")
         queue.asyncAfter(deadline: .now() + afterSeconds) {
@@ -62,45 +68,41 @@ enum ResidentProcessGuard {
     /// SERVE_REQUEST_TIMEOUT_MS=20秒)より大きくする: 通常は拡張が先に kill→respawn し、これは
     /// 拡張が kill しない場合(パネル閉等)の最終安全弁。
     static func startCommandWatchdog(maxSeconds: Double, logLabel: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        guard commandWatchdogTimer == nil else { return }
+        state.withLock { state in
+            guard state.commandWatchdogTimer == nil else { return }
 
-        let queue = DispatchQueue(label: "fleetest-resident-process-guard-command-watchdog")
-        let timer = DispatchSource.makeTimerSource(queue: queue)
-        timer.schedule(deadline: .now() + 1, repeating: 1)
-        timer.setEventHandler {
-            lock.lock()
-            let started = commandStartedAt
-            let limit = maxSeconds + commandAllowanceSeconds
-            lock.unlock()
-            guard let started else { return }
-            let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- started.uptimeNanoseconds)
-                / 1_000_000_000
-            if elapsed > limit {
-                logStderr(logLabel,
-                    "A single command stalled for over \(Int(limit))s — force-quitting (command watchdog)")
-                exit(0)
+            let queue = DispatchQueue(label: "fleetest-resident-process-guard-command-watchdog")
+            let timer = DispatchSource.makeTimerSource(queue: queue)
+            timer.schedule(deadline: .now() + 1, repeating: 1)
+            timer.setEventHandler {
+                let (started, allowance) = Self.state.withLock { ($0.commandStartedAt, $0.commandAllowanceSeconds) }
+                let limit = maxSeconds + allowance
+                guard let started else { return }
+                let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- started.uptimeNanoseconds)
+                    / 1_000_000_000
+                if elapsed > limit {
+                    logStderr(logLabel,
+                        "A single command stalled for over \(Int(limit))s — force-quitting (command watchdog)")
+                    exit(0)
+                }
             }
+            timer.resume()
+            state.commandWatchdogTimer = timer
         }
-        timer.resume()
-        commandWatchdogTimer = timer
     }
 
     /// 1コマンドの処理開始を記録する(startCommandWatchdog の監視対象)。
     /// `allowanceSeconds` = そのコマンドが正当に占有する時間(軌跡の再生時間など)。上限はこのぶん延びる
     static func noteCommandStart(allowanceSeconds: Double) {
-        lock.lock()
-        commandStartedAt = .now()
-        commandAllowanceSeconds = max(0, allowanceSeconds)
-        lock.unlock()
+        state.withLock {
+            $0.commandStartedAt = .now()
+            $0.commandAllowanceSeconds = max(0, allowanceSeconds)
+        }
     }
 
     /// 1コマンドの処理完了を記録する(アイドル=監視対象外に戻す)。
     static func noteCommandEnd() {
-        lock.lock()
-        commandStartedAt = nil
-        lock.unlock()
+        state.withLock { $0.commandStartedAt = nil }
     }
 
     private static func logStderr(_ label: String, _ message: String) {

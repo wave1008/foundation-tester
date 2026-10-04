@@ -37,6 +37,7 @@
 
 import FTCore
 import Foundation
+import Synchronization
 
 public enum AdbInstallVerifier {
 
@@ -115,7 +116,11 @@ public enum AdbInstallVerifier {
     /// テストだけが使う差し替え口。**production は常に nil**(既定の `~/.fleetest` を使う)。
     /// 実 `~/.fleetest` を触ると並列に走る他のテスト・実運用の錠と衝突するため、
     /// テストは自分専用の一時ディレクトリを指すこと(FMLock の `lockDirectoryForTesting` と同じ規律)
-    static var lockDirectoryForTesting: URL?
+    static var lockDirectoryForTesting: URL? {
+        get { lockDirectoryOverride.withLock { $0 } }
+        set { lockDirectoryOverride.withLock { $0 = newValue } }
+    }
+    private static let lockDirectoryOverride = Mutex<URL?>(nil)
 
     static var lockDirectory: URL {
         lockDirectoryForTesting ?? RetentionSweepLock.defaultDirectory

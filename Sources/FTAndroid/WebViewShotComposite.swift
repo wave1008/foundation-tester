@@ -12,6 +12,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import Synchronization
 import UniformTypeIdentifiers
 
 enum WebViewShotComposite {
@@ -157,19 +158,14 @@ enum WebViewShotComposite {
     /// `AndroidDriver(serial:)` を作り直すので、インスタンスに閉じた once は毎フレーム鳴る
     /// (手元と M1Max の両方で毎秒出続けた実測)。NSLock は並列の撮影が同時に来るため
     static func hasWarnedBlankCapture(serial: String) -> Bool {
-        blankCaptureWarnLock.lock()
-        defer { blankCaptureWarnLock.unlock() }
-        return blankCaptureWarnedSerials.contains(serial)
+        blankCaptureWarnedSerials.withLock { $0.contains(serial) }
     }
 
     /// 警告を出したと印を付ける(以後 `hasWarnedBlankCapture` が true を返す)
     static func markBlankCaptureWarned(serial: String) {
-        blankCaptureWarnLock.lock()
-        defer { blankCaptureWarnLock.unlock() }
-        blankCaptureWarnedSerials.insert(serial)
+        blankCaptureWarnedSerials.withLock { _ = $0.insert(serial) }
     }
-    private static let blankCaptureWarnLock = NSLock()
-    private static var blankCaptureWarnedSerials = Set<String>()
+    private static let blankCaptureWarnedSerials = Mutex(Set<String>())
 
     static func cgImage(fromPNG data: Data) -> CGImage? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }

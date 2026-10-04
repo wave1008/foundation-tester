@@ -2,6 +2,7 @@
 // 木に添える注記・ヒント(sheet・ghost・スクロール・類似ラベル・切り詰め・pinch・focus・座標等)。WebView・グリッドは MCPServer+WebViewHints.swift、曖昧ラベル・重複 id は MCPServer+LabelHints.swift。本体は MCPServer.swift(instance 状態はそちらに置く)
 
 import Foundation
+import Synchronization
 import FTFoundationModels
 import FTAndroid
 import FTBridgeClient
@@ -284,10 +285,14 @@ extension MCPServer {
     /// 「cache を渡し忘れた呼び出しが1つある」形をテストが素通しする(実際に変異2件が生き延びた)。
     /// 読むテストは直前に 0 を入れて直後に読む: `swift test --parallel` はテストごとに
     /// プロセスを分け、直列実行なら順に走るので、どちらでも他のテストと混ざらない
-    static var ghostFlagsComputations = 0
+    static var ghostFlagsComputations: Int {
+        get { ghostFlagsComputationsStore.withLock { $0 } }
+        set { ghostFlagsComputationsStore.withLock { $0 = newValue } }
+    }
+    private static let ghostFlagsComputationsStore = Mutex(0)
 
     static func ghostFlags(_ snapshot: SnapshotResponse) -> [Int: String] {
-        ghostFlagsComputations += 1
+        ghostFlagsComputationsStore.withLock { $0 += 1 }
         let refs = Set(ghostRefs(snapshot)).union(RefGuard.stackedRefs(snapshot.elements))
         var flags: [Int: String] = [:]
         for element in snapshot.elements where refs.contains(element.ref) {

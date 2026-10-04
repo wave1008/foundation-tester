@@ -5,7 +5,7 @@
 import Foundation
 import FTCore
 
-public struct InAppLauncher {
+public struct InAppLauncher: Sendable {
     public let repoRoot: URL
     public let udid: String
     public let port: UInt16

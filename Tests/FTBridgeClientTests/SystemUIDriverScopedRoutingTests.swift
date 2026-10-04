@@ -13,7 +13,8 @@ import XCTest
 import FTCore
 
 /// 受けた「METHOD PATH」を順に記録し、パスごとに決めた status を返す最小 HTTP スタブ。
-private final class RoutingStubServer {
+/// @unchecked: `_paths` は lock の下・`serverFD` は init と stop(テストのスレッド)だけが書く
+private final class RoutingStubServer: @unchecked Sendable {
     private var serverFD: Int32 = -1
     let port: UInt16
     private let lock = NSLock()

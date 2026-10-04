@@ -139,12 +139,13 @@ public func installApp(_ appPackageFile: String? = nil,
         if let installControl = core.installControl {
             // 110s: FTSync.commandTimeout(120s。performCustom を包む外枠)より内側に収め、
             // ここで先に installApp 固有の理由を返す(外枠だと汎用の "operation timed out" になる)
+            let (emit, scenarioID) = (core.emit, core.scenarioID)
             let result = await installControl.request(timeoutSeconds: 110) { id in
                 var event = ScenarioEvent(kind: "installRequest")
-                event.scenario = core.scenarioID
+                event.scenario = scenarioID
                 event.requestID = id
                 event.installPath = appPackageFile
-                core.emit(event)
+                emit(event)
             }
             guard result.ok else { throw FTCommandError.message(result.message) }
             if !result.message.isEmpty { core.emit(.log("ℹ️ \(result.message)")) }

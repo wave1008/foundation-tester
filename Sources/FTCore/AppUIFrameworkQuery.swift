@@ -16,6 +16,7 @@
 // 今と一致するときだけ使う。
 
 import Foundation
+import Synchronization
 
 public enum AppUIFrameworkSource: String, Sendable, CaseIterable {
     case package, installedBundle, ledger, bridgeReport
@@ -206,24 +207,17 @@ public enum AppUIFrameworkQuery {
 
     // MARK: - プロセス内の控え(静的な答えだけ。鍵は OS + bundle ID)
 
-    private static let memoLock = NSLock()
-    private static var memo: [String: AppUIFrameworkAnswer] = [:]
+    private static let memo = Mutex<[String: AppUIFrameworkAnswer]>([:])
 
     private static func remember(_ answer: AppUIFrameworkAnswer, for bundleID: String, platform: String) {
-        memoLock.lock()
-        memo["\(platform)/\(bundleID)"] = answer
-        memoLock.unlock()
+        memo.withLock { $0["\(platform)/\(bundleID)"] = answer }
     }
 
     private static func remembered(for bundleID: String, platform: String) -> AppUIFrameworkAnswer? {
-        memoLock.lock()
-        defer { memoLock.unlock() }
-        return memo["\(platform)/\(bundleID)"]
+        memo.withLock { $0["\(platform)/\(bundleID)"] }
     }
 
     static func forgetRememberedAnswers() {
-        memoLock.lock()
-        memo.removeAll()
-        memoLock.unlock()
+        memo.withLock { $0.removeAll() }
     }
 }

@@ -462,7 +462,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
                    path: FTSwipePath?) async throws {}
     }
 
-    private func worker(_ label: String, frozen: Bool) -> RunWorker {
+    private static func worker(_ label: String, frozen: Bool) -> RunWorker {
         RunWorker(label: label, platform: "ios", driver: SwitchableDriver(frozen: frozen),
                   connection: DriverConnection(platform: "ios", port: 8123, serial: nil,
                                                udid: "UDID-\(label)"))
@@ -470,14 +470,14 @@ final class BlankWorkerRecoveryTests: XCTestCase {
 
     /// 回復できたら**全レーンで開始**(除外0)
     func testRecoveredDevicesStayInTheLanes() async {
-        let frozen = [worker("a", frozen: true), worker("b", frozen: false)]
+        let frozen = [Self.worker("a", frozen: true), Self.worker("b", frozen: false)]
         let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
             frozen,
             recover: { _, _ in
                 recoverCalls.mutate { $0 += 1 }
                 // 回復 = ブリッジを張り直した健全なワーカー一覧を返す
-                return [self.worker("a", frozen: false), self.worker("b", frozen: false)]
+                return [Self.worker("a", frozen: false), Self.worker("b", frozen: false)]
             },
             log: { _ in })
         XCTAssertEqual(recoverCalls.value, 1)
@@ -492,10 +492,10 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     func testUnrecoverableDeviceIsExcludedAfterTheRetries() async {
         let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
-            [worker("dead", frozen: true), worker("ok", frozen: false)],
+            [Self.worker("dead", frozen: true), Self.worker("ok", frozen: false)],
             recover: { _, _ in
                 recoverCalls.mutate { $0 += 1 }
-                return [self.worker("dead", frozen: true), self.worker("ok", frozen: false)]
+                return [Self.worker("dead", frozen: true), Self.worker("ok", frozen: false)]
             },
             log: { _ in })
         // **定数と突き合わせない**: 定数ごと 1 に書き換える変異を素通しする(2026-08-09 に実際に素通しした)。
@@ -513,7 +513,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     func testNoRecoveryMeansImmediateExclusion() async {
         let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
-            [worker("dead", frozen: true)],
+            [Self.worker("dead", frozen: true)],
             recover: { _, _ in recoverCalls.mutate { $0 += 1 }; return nil },
             log: { _ in })
         XCTAssertEqual(recoverCalls.value, 1)
@@ -524,7 +524,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     func testHealthyFleetNeverCallsRecovery() async {
         let recoverCalls = LockedBox(0)
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
-            [worker("a", frozen: false)],
+            [Self.worker("a", frozen: false)],
             recover: { _, _ in recoverCalls.mutate { $0 += 1 }; return nil },
             log: { _ in })
         XCTAssertEqual(recoverCalls.value, 0)
@@ -539,13 +539,13 @@ final class BlankWorkerRecoveryTests: XCTestCase {
         let seen = LockedBox<[[String]]>([])
         let attempt = LockedBox(0)
         _ = await BlankWorkerTriage.excludeBlankScreenWorkers(
-            [worker("dead(ios:8100)", frozen: true)],
+            [Self.worker("dead(ios:8100)", frozen: true)],
             recover: { _, current in
                 seen.mutate { $0.append(current.map(\.label)) }
                 var next = 0
                 attempt.mutate { $0 += 1; next = $0 }
                 // 1回目の回復でポートが変わる(= label が変わる)。2回目もまだ凍結のまま
-                return [self.worker("dead(ios:82\(next)0)", frozen: true)]
+                return [Self.worker("dead(ios:82\(next)0)", frozen: true)]
             },
             log: { _ in })
         XCTAssertEqual(seen.value.first, ["dead(ios:8100)"], "1回目は元の一覧")
@@ -557,7 +557,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     /// label をそのまま差し引く実装だと、回復した機は「別の未知の機」として見失われ
     /// run.json の blankRepairs に一度も乗らない(実害: M1Ultra の -02 が blankRepairs: null のまま)
     func testRepairedTrackingSurvivesALabelChangeFromRecovery() async {
-        func w(_ label: String, port: UInt16, frozen: Bool) -> RunWorker {
+        @Sendable func w(_ label: String, port: UInt16, frozen: Bool) -> RunWorker {
             RunWorker(label: label, platform: "ios", driver: SwitchableDriver(frozen: frozen),
                       connection: DriverConnection(platform: "ios", port: port, serial: nil,
                                                    udid: "UDID-fixed"),
@@ -585,7 +585,7 @@ final class BlankWorkerRecoveryTests: XCTestCase {
     /// 回復を渡さない呼び出しは**従来どおり弾くだけ**(既存の呼び出し元を壊さない)
     func testWithoutRecoveryItStillJustExcludes() async {
         let result = await BlankWorkerTriage.excludeBlankScreenWorkers(
-            [worker("dead", frozen: true)], log: { _ in })
+            [Self.worker("dead", frozen: true)], log: { _ in })
         XCTAssertEqual(result.excluded, ["dead"])
     }
 }

@@ -4,6 +4,7 @@
 // FM フックはサブプロセス側が持つ。ワーカーのドライバはウォームアップ・接続確認用。
 
 import Foundation
+import Synchronization
 
 /// 実行対象シナリオ。URL(scenario:// スキーム)が一意キー(呼び出し側の実行レーン管理と互換)
 public struct ScenarioRunItem: Identifiable, Sendable {
@@ -76,7 +77,10 @@ public enum WorkerStagger {
     }
 }
 
-public struct RunWorker {
+/// @unchecked: `driver`(非 Sendable)は1レーン=1 Task が順に叩く(ホスト側の用途は /status・snapshot の
+/// プローブだけ。シナリオ本体は別プロセスが `connection` で直接話す)。期限切れの withDeadline が残した
+/// 先行呼び出しとは重なりうるので、driver の実装は並行呼び出しに耐えること(BridgeClient は Mutex)。
+public struct RunWorker: @unchecked Sendable {
     /// 表示・イベント上の識別子。形式は2系統ある:
     ///   プロファイル経路 = `makeLabel` の "<デバイス名>(<platform>:<serial|port>)"
     ///   非プロファイル経路(--port/--serial)= "ios:<port>" / "android"
@@ -950,7 +954,7 @@ private enum WorkerExit {
 
 /// シナリオ群をワーカー群で並列消化する。進捗は events(AsyncStream)で配信され、
 /// run() の完了時に finish する。イベントはバッファされるため消費開始が遅れても失われない。
-public final class RunOrchestrator {
+public final class RunOrchestrator: Sendable {
     public let events: AsyncStream<RunEvent>
     private let continuation: AsyncStream<RunEvent>.Continuation
     private let workers: [RunWorker]
@@ -1012,7 +1016,11 @@ public final class RunOrchestrator {
     /// run() の頭で構築し、その run の間だけ生きる(run をまたいで使い回さない)。
     /// 並行ワーカーが開始する前に一度だけ代入し、以降は読むだけ(TestingSlots 等と違い actor に
     /// しないのは、生成が run() の単一箇所に閉じているため)
-    private var progressState: RunProgressState?
+    private var progressState: RunProgressState? {
+        get { progressStateBox.withLock { $0 } }
+        set { progressStateBox.withLock { $0 = newValue } }
+    }
+    private let progressStateBox = Mutex<RunProgressState?>(nil)
     /// ワーカー離脱(retired)時の後始末(ウェッジしたブリッジプロセスの停止等)。復帰(revive)の
     /// 有無に関係なく離脱の度に必ず呼ぶ — 復帰しない離脱(キュー空・上限到達)で kill を省くと、
     /// ウェッジしたランナーがシミュレータを掴んだまま生き残り、次回 run の新ブリッジと
@@ -1248,14 +1256,15 @@ public final class RunOrchestrator {
     /// iOS ワーカーの失敗後チェック。1 周ごとの判定は `BridgeLiveness.decide`(純粋関数)。
     /// 観察窓は 60s —— 失敗直後は AX 飽和で健全ブリッジも数十秒 /status に応答しない
     /// (プレフライト不採用と同じ教訓。短い期限は必ず誤検知する)。
-    /// 直近の判定が true を返したときの事実(離脱理由に写す)。読んだら nil に戻す
-    /// (次の判定に持ち越さない)
-    private var lastBridgeIdentityMismatch: String?
-    private var lastBridgeUnreachableDetail: String?
+    /// 不達と判定したときの事実(離脱理由に写す)。**戻り値で運ぶ** —— レーンが並行して呼ぶので
+    /// オーケストレータのメンバー経由だと別レーンの判定が上書き・消去する
+    private enum BridgeUnreachableVerdict {
+        case identityMismatch(String)
+        case unreachable(detail: String?)
+    }
 
-    private func bridgeUnreachable(_ worker: RunWorker) async -> Bool {
-        lastBridgeIdentityMismatch = nil
-        lastBridgeUnreachableDetail = nil
+    /// nil = 到達できる
+    private func bridgeUnreachable(_ worker: RunWorker) async -> BridgeUnreachableVerdict? {
         let deadline = Date().addingTimeInterval(BRIDGE_PROBE_OBSERVE_SECONDS)
         var lastSize = bridgeLogSize?(worker)
         let hasLogSignal = lastSize != nil  // in-app 等ホスト側ログが無い場合は窓いっぱい /status のみで判定
@@ -1273,12 +1282,10 @@ public final class RunOrchestrator {
                 logSilenceThreshold: BRIDGE_PROBE_LOG_SILENCE_SECONDS,
                 windowExpired: Date() >= deadline) {
             case .reachable:
-                return false
+                return nil
             case .unreachable(let detail):
-                if case .hijacked = probe { lastBridgeIdentityMismatch = detail } else {
-                    lastBridgeUnreachableDetail = detail
-                }
-                return true
+                if case .hijacked = probe, let detail { return .identityMismatch(detail) }
+                return .unreachable(detail: detail)
             case .keepObserving:
                 break
             }
@@ -1768,12 +1775,13 @@ public final class RunOrchestrator {
             // しまい、iOS の既存挙動 —— 起動し直し→復活→再キュー —— が起きなくなる)
             if unusableReason == nil, outcome == .failed || outcome == .driverUnreachable,
                worker.platform == "ios",
-               await bridgeUnreachable(worker) {
-                if let mismatch = lastBridgeIdentityMismatch {
+               let verdict = await bridgeUnreachable(worker) {
+                switch verdict {
+                case .identityMismatch(let mismatch):
                     unusableReason = "a bridge that now belongs to another device (\(mismatch))"
                     unusableCause = .bridgeTakenOver
-                } else {
-                    unusableReason = lastBridgeUnreachableDetail.map { "an unreachable bridge (\($0))" }
+                case .unreachable(let detail):
+                    unusableReason = detail.map { "an unreachable bridge (\($0))" }
                         ?? "an unreachable bridge"
                     unusableCause = .bridgeUnreachable
                 }

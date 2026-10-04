@@ -12,7 +12,7 @@ import XCTest
 final class RunProgressLedgerTests: XCTestCase {
     /// isAlive を差し替えるテストは開始時刻も差し替える(既定の実 startTime は手元に実在する同じ pid を読み、
     /// ホストのプロセス表しだいで「記録より後に起動 = 別物」と判定されて結果が揺れる)
-    private static let unknownStart: (Int32) -> Date? = { _ in nil }
+    private static let unknownStart: @Sendable (Int32) -> Date? = { _ in nil }
 
 
     private func tempDir() -> URL {

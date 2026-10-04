@@ -95,7 +95,7 @@ actor VideoRecordingCoordinator {
 
     private let config: VideoRecordingConfig
     /// セッション生成の差し替え(テスト注入用。引数は worker, recordingsDir, sourceStem)
-    private let makeSession: ((RunWorker, URL, String) -> (any DeviceVideoRecorderSession)?)?
+    private let makeSession: (@Sendable (RunWorker, URL, String) -> (any DeviceVideoRecorderSession)?)?
     private let extractClip: ClipExtractor
     /// ソース総尺(ms)→ エクスポート期限(秒)
     private let exportDeadline: @Sendable (Int) -> Double
@@ -132,7 +132,7 @@ actor VideoRecordingCoordinator {
     private var entries: [RecordingIndexEntry] = []
 
     init(config: VideoRecordingConfig,
-         makeSession: ((RunWorker, URL, String) -> (any DeviceVideoRecorderSession)?)? = nil,
+         makeSession: (@Sendable (RunWorker, URL, String) -> (any DeviceVideoRecorderSession)?)? = nil,
          extractClip: ClipExtractor? = nil,
          exportDeadline: (@Sendable (Int) -> Double)? = nil) {
         self.config = config

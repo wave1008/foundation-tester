@@ -168,7 +168,7 @@ final class MCPOffscreenCoordinateGuardTests: XCTestCase {
     private static let coordinateNames: Set<String> = ["x", "y", "fromX", "fromY", "toX", "toY", "dx", "dy"]
 
     /// (ツール, 引数) → その引数**だけ**を画面外(390x844 の外)にした呼び出し
-    private static let offscreenCalls: [String: [String: Any]] = [
+    nonisolated(unsafe) private static let offscreenCalls: [String: [String: Any]] = [
         "ft_tap.x": ["x": 5000.0, "y": 10.0],
         "ft_tap.y": ["x": 10.0, "y": 5000.0],
         "ft_double_tap.x": ["x": -1.0, "y": 10.0],

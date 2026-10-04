@@ -4,7 +4,7 @@
 import Foundation
 import FTCore
 
-public struct BridgeLauncher {
+public struct BridgeLauncher: Sendable {
     public let repoRoot: URL
     public let device: String
     public let port: UInt16
@@ -593,16 +593,18 @@ public struct BridgeLauncher {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
         let semaphore = DispatchSemaphore(value: 0)
-        var result: StatusResponse?
+        // 期限切れの後も完了ハンドラは遅れて書きに来る(LockedValue の注記)
+        let result = LockedValue<StatusResponse?>(nil)
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         URLSession(configuration: config).dataTask(with: request) { data, _, _ in
             defer { semaphore.signal() }
             guard let data else { return }
-            result = try? JSONDecoder().decode(StatusResponse.self, from: data)
+            let decoded = try? JSONDecoder().decode(StatusResponse.self, from: data)
+            result.value = decoded
         }.resume()
         _ = semaphore.wait(timeout: .now() + timeout + 0.5)
-        return result
+        return result.value
     }
 
     /// doctor の刈り取り用: pid が FleetestRunner のランナーであることを ps で確認してから

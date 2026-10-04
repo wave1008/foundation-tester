@@ -13,10 +13,11 @@
 // 機械グローバルな場所に置く(~/.fleetest は ftbridge.apk 等が既に居る既存の機械グローバル置き場)。
 
 import Foundation
+import Synchronization
 
-public final class UsageLedger {
+public final class UsageLedger: Sendable {
     /// pid 1件ぶんの、そのプロセスが生きている間の単調増加累計
-    public struct Counters: Equatable {
+    public struct Counters: Equatable, Sendable {
         public var calls: Int
         public var failures: Int
         public var totalMs: Int
@@ -29,7 +30,7 @@ public final class UsageLedger {
     }
 
     /// 直近の drain からの増分(ホスト全プロセス合計)
-    public struct Delta {
+    public struct Delta: Sendable {
         public let calls: Int
         public let failures: Int
         public let totalMs: Int
@@ -52,14 +53,12 @@ public final class UsageLedger {
     private let subdirectory: String
     private let directoryOverrideKey: String
 
-    private let lock = NSLock()
-    private var calls = 0
-    private var failures = 0
-    private var totalMs = 0
-    private let writeLock = NSLock()
-    private var lastWrittenCalls = 0
-    private let reapLock = NSLock()
-    private var reaped = false
+    private struct Totals { var calls = 0; var failures = 0; var totalMs = 0 }
+    private let totals = Mutex(Totals())
+    /// 書き込み済みの累計 calls。ロックを握ったままファイルへ書く(書き込みの直列化が目的)
+    private let lastWrittenCalls = Mutex(0)
+    /// 掃除の門。ロックを握ったまま掃除する(掃除が済むまで他の書き手を最初の書き込みへ進ませない)
+    private let reaped = Mutex(false)
 
     init(subdirectory: String, directoryOverrideKey: String) {
         self.subdirectory = subdirectory
@@ -103,17 +102,17 @@ public final class UsageLedger {
     func record(_ batch: [(ok: Bool, ms: Double)]) {
         guard !batch.isEmpty else { return }
         reapOnce()
-        lock.lock()
-        for call in batch {
-            calls += 1
-            if !call.ok { failures += 1 }
-            totalMs += Int(call.ms.rounded())
+        let entry = totals.withLock { t in
+            for call in batch {
+                t.calls += 1
+                if !call.ok { t.failures += 1 }
+                t.totalMs += Int(call.ms.rounded())
+            }
+            return FileEntry(
+                pid: ProcessInfo.processInfo.processIdentifier,
+                calls: t.calls, failures: t.failures, totalMs: t.totalMs,
+                updatedAt: Date().timeIntervalSince1970)
         }
-        let entry = FileEntry(
-            pid: ProcessInfo.processInfo.processIdentifier,
-            calls: calls, failures: failures, totalMs: totalMs,
-            updatedAt: Date().timeIntervalSince1970)
-        lock.unlock()
         write(entry)
     }
 
@@ -124,19 +123,19 @@ public final class UsageLedger {
         // 書き込みは直列化し、**古い累計で新しい累計を上書きしない**。counters のロックを抜けてから
         // 書くので、並行呼び出しでは後発の entry が先に着地しうる。上書きすると読み手の差分が
         // 1回ぶん落ちる —— 差分は負にしない(max(0,…))ので、その1回は永久に取り戻せない
-        writeLock.lock()
-        defer { writeLock.unlock() }
-        guard entry.calls > lastWrittenCalls else { return }
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        guard let data = try? JSONEncoder().encode(entry) else { return }
-        let target = dir.appendingPathComponent("\(entry.pid).json")
-        let tmp = dir.appendingPathComponent(".\(entry.pid).\(UUID().uuidString).tmp")
-        guard (try? data.write(to: tmp)) != nil else { return }
-        guard rename(tmp.path, target.path) == 0 else {
-            try? FileManager.default.removeItem(at: tmp)
-            return
+        lastWrittenCalls.withLock { last in
+            guard entry.calls > last else { return }
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            guard let data = try? JSONEncoder().encode(entry) else { return }
+            let target = dir.appendingPathComponent("\(entry.pid).json")
+            let tmp = dir.appendingPathComponent(".\(entry.pid).\(UUID().uuidString).tmp")
+            guard (try? data.write(to: tmp)) != nil else { return }
+            guard rename(tmp.path, target.path) == 0 else {
+                try? FileManager.default.removeItem(at: tmp)
+                return
+            }
+            last = entry.calls
         }
-        lastWrittenCalls = entry.calls
     }
 
     /// 直近スナップショットからの増分を返す。呼び出し側(host-metrics のサンプリングループ)が
@@ -207,13 +206,13 @@ public final class UsageLedger {
     /// `<自分の pid>.json` はあちらでは決して消えない。自分の pid を書くのは自分だけなので、
     /// 最初の書き込みの前に在るものは前任者の残骸に限る)
     private func reapOnce() {
-        reapLock.lock()
-        defer { reapLock.unlock() }
-        guard !reaped else { return }
-        reaped = true
-        let dir = directory
-        reapStaleOwnEntry(in: dir, pid: ProcessInfo.processInfo.processIdentifier)
-        reapDead(in: dir)
+        reaped.withLock { done in
+            guard !done else { return }
+            done = true
+            let dir = directory
+            reapStaleOwnEntry(in: dir, pid: ProcessInfo.processInfo.processIdentifier)
+            reapDead(in: dir)
+        }
     }
 
     /// 一度きりの門(`reaped`)と分けてあるのはテストのため —— 門は プロセス全体の状態なので、
@@ -235,14 +234,8 @@ public final class UsageLedger {
     /// インスタンスの状態(累計・書き込み済み累計・掃除の門)を初期化する。**テスト専用** ——
     /// 門を戻さないと「最初の record」の経路を2度と通せない
     func resetForTesting() {
-        lock.lock()
-        calls = 0; failures = 0; totalMs = 0
-        lock.unlock()
-        writeLock.lock()
-        lastWrittenCalls = 0
-        writeLock.unlock()
-        reapLock.lock()
-        reaped = false
-        reapLock.unlock()
+        totals.withLock { $0 = Totals() }
+        lastWrittenCalls.withLock { $0 = 0 }
+        reaped.withLock { $0 = false }
     }
 }

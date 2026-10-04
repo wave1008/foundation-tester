@@ -116,7 +116,8 @@ public struct ScenarioRecordData: Sendable {
 
 // MARK: - ランタイム
 
-public final class FTRuntime {
+// 可変メンバー(core / dslThread)は全て `lock` の下でだけ触る
+public final class FTRuntime: @unchecked Sendable {
     public static let shared = FTRuntime()
 
     /// core / dslThread を守る。**DSL スレッド以外からも読まれる**(誤って別スレッドから呼ばれた
@@ -176,6 +177,13 @@ struct PerformResult {
 
 // MARK: - ドライブコア(コマンドの実体)
 
+/// `FTDriveCore` を別スレッドのコールバックへ弱参照で渡す包み。@unchecked の根拠 = 受け取り側は
+/// stateLock で守られた口(markDeviceFrozen)しか呼ばない
+private struct WeakDriveCore: @unchecked Sendable {
+    weak var core: FTDriveCore?
+    init(_ core: FTDriveCore) { self.core = core }
+}
+
 public final class FTDriveCore {
     let driver: AppDriver
     /// home / appSwitcher 用のドライバ。**in-app エンジンは自プロセス外を触れないので原理的に
@@ -205,7 +213,8 @@ public final class FTDriveCore {
     let executor: StepExecutor
     let scenarioID: String
     let scenarioTitle: String
-    let emit: (ScenarioEvent) -> Void
+    /// 呼び手の emit を直列化したもの(DSL スレッド・actor・暖機タスクから並行に呼ばれる)
+    let emit: @Sendable (ScenarioEvent) -> Void
     /// ロケータ指紋(LocatorFingerprint.swift 冒頭コメント参照。失敗経路でだけ参照する決定的なドリフト解決)。
     /// **flush() を1度呼ぶまでディスクへは書かない**(LocatorFingerprintCache.swift 参照)
     let fingerprintCache: LocatorFingerprintCache
@@ -489,11 +498,15 @@ public final class FTDriveCore {
             ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)
             : nil
         self.defaultTimeout = defaultTimeout ?? DefaultWait.seconds
+        let serializedEmit = SerializedSink(emit)
+        let emit: @Sendable (ScenarioEvent) -> Void = { serializedEmit($0) }
         self.emit = emit
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
                                          app: app, platform: platform,
                                          deviceName: deviceName, deviceIdentifier: deviceIdentifier)
-        self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
+        // FTSync の detached Task から呼ばれる。markDeviceFrozen は stateLock の下の状態と emit だけを触る
+        let frozenTarget = WeakDriveCore(self)
+        self.executor.onDeviceFrozen = { frozenTarget.core?.markDeviceFrozen() }
         self.executor.visionClassifierProjectRoot = visionClassifierProjectRoot
         self.executor.preferCheckStateClassifier = preferCheckStateClassifier
         // **シナリオ開始時に暖機を始める**(Vision のモデル初回ロードはプロセスに1回・数十秒
@@ -525,8 +538,8 @@ public final class FTDriveCore {
         }
         // 自動押下は権限という後に響く状態を変えるので、必ず run ログに残す
         // (installApp の再注入の注記と同じ ℹ️ 経路)
-        self.executor.onSystemAlertDismissed = { [weak self] message in
-            self?.emit(.log("ℹ️ \(message)"))
+        self.executor.onSystemAlertDismissed = { message in
+            emit(.log("ℹ️ \(message)"))
         }
     }
 

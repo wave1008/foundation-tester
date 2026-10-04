@@ -9,7 +9,7 @@ import XCTest
 
 final class BridgeLogRotationSamplerTests: XCTestCase {
 
-    private func rawCandidate(port: UInt16 = 8123) -> BridgeLogRotationSampler.RawCandidate {
+    private static func rawCandidate(port: UInt16 = 8123) -> BridgeLogRotationSampler.RawCandidate {
         BridgeLogRotationSampler.RawCandidate(
             port: port, bundleBytes: 10, usageBytes: 20, limitBytes: 100,
             bundlePath: URL(fileURLWithPath: "/tmp/bridge-\(port)-1.xcresult"))
@@ -64,18 +64,18 @@ final class BridgeLogRotationSamplerTests: XCTestCase {
 
     /// 測れた値は次に測り直すまで控えに残る(周期は控えを読むだけ)
     func testSnapshotHoldsTheLastMeasuredValue() {
-        let sampler = BridgeLogRotationSampler(measure: { self.rawCandidate() }, bundleExists: { _ in true })
+        let sampler = BridgeLogRotationSampler(measure: { Self.rawCandidate() }, bundleExists: { _ in true })
         XCTAssertNil(sampler.snapshot())
         sampler.scheduleIfDue()
         waitUntil { sampler.snapshot() != nil }
-        XCTAssertEqual(sampler.snapshot(), rawCandidate())
+        XCTAssertEqual(sampler.snapshot(), Self.rawCandidate())
     }
 
     /// 起動し直しで束が消えたら、次に測り直す前でも控えを捨てる(古いポートを別のデバイスの
     /// ブリッジが使い始めても、そのデバイスを指さない)
     func testSnapshotDropsTheCandidateOnceItsBundleIsGone() {
         let exists = LockedFlag(true)
-        let sampler = BridgeLogRotationSampler(measure: { self.rawCandidate() },
+        let sampler = BridgeLogRotationSampler(measure: { Self.rawCandidate() },
                                                bundleExists: { _ in exists.value })
         sampler.scheduleIfDue()
         waitUntil { sampler.snapshot() != nil }
@@ -103,12 +103,12 @@ final class BridgeLogRotationSamplerTests: XCTestCase {
     /// 対応が引けない候補(このマシンが観測していないポート)は nil
     func testMappingReturnsNilWhenThePortMatchesNoObservedDevice() {
         let states = [connectedIOSState(name: "iPhone 17", port: 8124)]
-        XCTAssertNil(BridgeLogRotationCandidateMapping.candidate(raw: rawCandidate(port: 8123), states: states))
+        XCTAssertNil(BridgeLogRotationCandidateMapping.candidate(raw: Self.rawCandidate(port: 8123), states: states))
     }
 
     func testMappingResolvesTheDeviceByPort() {
         let states = [connectedIOSState(name: "iPhone 17", port: 8123)]
-        let candidate = BridgeLogRotationCandidateMapping.candidate(raw: rawCandidate(port: 8123), states: states)
+        let candidate = BridgeLogRotationCandidateMapping.candidate(raw: Self.rawCandidate(port: 8123), states: states)
         XCTAssertEqual(candidate?.name, "iPhone 17")
         XCTAssertEqual(candidate?.port, 8123)
         XCTAssertEqual(candidate?.bundleBytes, 10)
@@ -122,7 +122,7 @@ final class BridgeLogRotationSamplerTests: XCTestCase {
         let android = DeviceRuntimeState(
             target: MonitorTarget(platform: "android", spec: DeviceSpec(name: "Pixel")),
             state: "connected", detail: "", iosPort: nil, androidSerial: "emulator-5554")
-        XCTAssertNil(BridgeLogRotationCandidateMapping.candidate(raw: rawCandidate(port: 8123), states: [android]))
+        XCTAssertNil(BridgeLogRotationCandidateMapping.candidate(raw: Self.rawCandidate(port: 8123), states: [android]))
     }
 
     // MARK: - NDJSON の形(vscode-fleetest/src/monitorBridgeLogRotation.ts と同期)

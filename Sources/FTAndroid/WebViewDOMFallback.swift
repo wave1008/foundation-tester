@@ -18,11 +18,12 @@
 // AndroidDriver を作り直すので、インスタンスに閉じた once は毎フレーム鳴る)。
 
 import Foundation
+import Synchronization
 
 enum WebViewDOMFallback {
 
     /// 言う価値のある理由。**nil = 黙る**(正常な過渡・言えない事実)
-    enum Reason: Equatable {
+    enum Reason: Equatable, Sendable {
         /// システムもアプリも非 debuggable = devtools ソケットは構造的に開かない
         case structurallyClosed
         /// 同名プロセスが複数でソケットを1つに選べない(推測で選ぶと別プロセスの DOM を木へ差し込む)
@@ -143,33 +144,25 @@ enum WebViewDOMFallback {
 
     /// (serial, package) ごとに**診断は1回**。まだ診断していないときだけ true
     static func needsDiagnosis(serial: String, package: String) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return !diagnosed.contains(Key(serial: serial, package: package))
+        memo.withLock { !$0.diagnosed.contains(Key(serial: serial, package: package)) }
     }
 
     /// 結論が出た(`isConclusive`)ときだけ呼ぶ。以後この (serial, package) では問い合わせも
     /// 警告もしない = 警告は高々1回
     static func markDiagnosed(serial: String, package: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        diagnosed.insert(Key(serial: serial, package: package))
+        memo.withLock { _ = $0.diagnosed.insert(Key(serial: serial, package: package)) }
     }
 
     /// 結論の理由を控える(`markDiagnosed` の後)。**stderr の警告は1回でも、木の申告は毎回**要る ——
     /// snapshot ごとに `webViewPath = dom-unread` と note を載せるのに、診断をやり直さず引く
     /// (F25: 警告が stderr だけで MCP の応答・結果 JSON に残らなかった)
     static func rememberReason(_ reason: Reason, serial: String, package: String) {
-        lock.lock()
-        defer { lock.unlock() }
-        reasons[Key(serial: serial, package: package)] = reason
+        memo.withLock { $0.reasons[Key(serial: serial, package: package)] = reason }
     }
 
     /// 診断済みで、端末の事実として DOM が読めない (serial, package) の理由。過渡・未診断は nil
     static func recordedReason(serial: String, package: String) -> Reason? {
-        lock.lock()
-        defer { lock.unlock() }
-        return reasons[Key(serial: serial, package: package)]
+        memo.withLock { $0.reasons[Key(serial: serial, package: package)] }
     }
 
     /// snapshot に載せる短い理由(`SnapshotResponse.note`。StepExecutor の失敗文言と MCP の注記が
@@ -189,14 +182,13 @@ enum WebViewDOMFallback {
 
     /// テスト専用: プロセス内メモを空にする
     static func resetDiagnosisMemoForTesting() {
-        lock.lock()
-        defer { lock.unlock() }
-        diagnosed.removeAll()
-        reasons.removeAll()
+        memo.withLock { $0.diagnosed.removeAll(); $0.reasons.removeAll() }
     }
 
     private struct Key: Hashable { let serial: String; let package: String }
-    private static let lock = NSLock()
-    private static var diagnosed = Set<Key>()
-    private static var reasons: [Key: Reason] = [:]
+    private struct Memo {
+        var diagnosed = Set<Key>()
+        var reasons: [Key: Reason] = [:]
+    }
+    private static let memo = Mutex(Memo())
 }

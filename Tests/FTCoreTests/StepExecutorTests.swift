@@ -4,6 +4,7 @@ import CoreText
 import ImageIO
 import UniformTypeIdentifiers
 @testable import FTCore
+import FTTestSupport
 
 final class StepExecutorTests: XCTestCase {
     /// 白ベタ = BlankFrameDetector が凍結と判定する画像
@@ -1597,16 +1598,16 @@ final class StepExecutorTests: XCTestCase {
         let primary = FakeAppDriver(name: "primary", log: log,
                                     screenshots: [Self.nonBlankPNG] + Array(repeating: Self.blankPNG, count: 5))
         let delegate = ScriptedScreenDelegate([false])
-        let frozen = CallLog()   // @Sendable クロージャからは参照型で数える
+        let frozen = LockedBox(0)
         let executor = StepExecutor(driver: primary, delegate: delegate, isAndroid: false)
-        executor.onDeviceFrozen = { frozen.entries.append("frozen") }
+        executor.onDeviceFrozen = { frozen.mutate { $0 += 1 } }
         let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
 
         guard case .skipped(let msg) = await executor.execute(step).status else {
             XCTFail("撮り直しが白フレームなら凍結として skip するはず"); return
         }
         XCTAssertTrue(msg.contains("frozen display"), "凍結として報告すること: \(msg)")
-        XCTAssertEqual(frozen.entries.count, 1, "requeue のため onDeviceFrozen を呼ぶこと")
+        XCTAssertEqual(frozen.value, 1, "requeue のため onDeviceFrozen を呼ぶこと")
         XCTAssertEqual(delegate.verifyScreenCalls, 1, "白フレームを FM に渡してはいけない")
     }
 

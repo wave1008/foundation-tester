@@ -20,6 +20,7 @@
 
 import Foundation
 import FTCore
+import Synchronization
 
 final class InterruptRelay {
     private enum Target {
@@ -38,9 +39,14 @@ final class InterruptRelay {
 
     private static let signals: [Int32] = [SIGINT, SIGTERM, SIGHUP]
     private static let queue = DispatchQueue(label: "fleetest.interrupt-relay")
-    private static let lock = NSLock()
-    private static var targets: [ObjectIdentifier: Target] = [:]
-    private static var sources: [DispatchSourceSignal] = []
+    /// 登録簿とシグナルソースの両方をこの1つの Mutex で守る(登録の 0→1 でソースを立て 1→0 で戻す
+    /// 判定が、登録の増減と同じ臨界区間でなければならない)。シグナルハンドラは `queue` 上の
+    /// DispatchSource で走る通常のコンテキストなので、ここでロックを取ってよい
+    private struct State {
+        var targets: [ObjectIdentifier: Target] = [:]
+        var sources: [DispatchSourceSignal] = []
+    }
+    private static let state = Mutex(State())
 
     private let id: ObjectIdentifier
     /// 自分が observer 版のときだけ非 nil(識別子アンカーを生かし続けるため)
@@ -66,11 +72,11 @@ final class InterruptRelay {
     ///     (刺さった場合は人が kill -9 する)
     static func forwarding(to process: Process, escalateAfter: TimeInterval? = 2) -> InterruptRelay {
         let id = ObjectIdentifier(process)
-        lock.lock()
-        defer { lock.unlock() }
-        let wasEmpty = targets.isEmpty
-        targets[id] = .process(process, escalateAfter: escalateAfter)
-        if wasEmpty { installSources() }
+        state.withLock { state in
+            let wasEmpty = state.targets.isEmpty
+            state.targets[id] = .process(process, escalateAfter: escalateAfter)
+            if wasEmpty { installSources(&state) }
+        }
         return InterruptRelay(id: id)
     }
 
@@ -81,34 +87,32 @@ final class InterruptRelay {
     static func observing(_ onInterrupt: @escaping @Sendable () -> Void) -> InterruptRelay {
         let token = ObserverToken()
         let id = ObjectIdentifier(token)
-        lock.lock()
-        defer { lock.unlock() }
-        let wasEmpty = targets.isEmpty
-        targets[id] = .observer(onInterrupt)
-        if wasEmpty { installSources() }
+        state.withLock { state in
+            let wasEmpty = state.targets.isEmpty
+            state.targets[id] = .observer(onInterrupt)
+            if wasEmpty { installSources(&state) }
+        }
         return InterruptRelay(id: id, observerToken: token)
     }
 
     /// 横取りをやめる。**最後の1つが止まったときだけ**既定動作へ戻す(以降の中断は普通に
     /// このプロセスを終わらせる)。二重に呼んでも無害
     func stop() {
-        Self.lock.lock()
-        defer { Self.lock.unlock() }
-        guard !stopped else { return }
-        stopped = true
-        Self.targets.removeValue(forKey: id)
-        if Self.targets.isEmpty { Self.uninstallSources() }
+        Self.state.withLock { state in
+            guard !stopped else { return }
+            stopped = true
+            state.targets.removeValue(forKey: id)
+            if state.targets.isEmpty { Self.uninstallSources(&state) }
+        }
     }
 
     /// 現在登録されている子の数(テスト用)
     static var registeredCount: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return targets.count
+        state.withLock { $0.targets.count }
     }
 
-    // lock を握ったまま呼ぶ
-    private static func installSources() {
+    // state の withLock の中から呼ぶ
+    private static func installSources(_ state: inout State) {
         for sig in signals {
             // **DispatchSourceSignal は既定動作を止めない**ので、先に無視へ倒す
             // (これを忘れると、ハンドラが動く前にプロセスごと終わる)
@@ -116,21 +120,19 @@ final class InterruptRelay {
             let source = DispatchSource.makeSignalSource(signal: sig, queue: queue)
             source.setEventHandler { forwardToAll() }
             source.resume()
-            sources.append(source)
+            state.sources.append(source)
         }
     }
 
-    // lock を握ったまま呼ぶ
-    private static func uninstallSources() {
-        for source in sources { source.cancel() }
-        sources.removeAll()
+    // state の withLock の中から呼ぶ
+    private static func uninstallSources(_ state: inout State) {
+        for source in state.sources { source.cancel() }
+        state.sources.removeAll()
         for sig in signals { signal(sig, SIG_DFL) }
     }
 
     private static func forwardToAll() {
-        lock.lock()
-        let snapshot = Array(targets.values)
-        lock.unlock()
+        let snapshot = state.withLock { Array($0.targets.values) }
         for target in snapshot {
             switch target {
             case .process(let process, let escalateAfter):

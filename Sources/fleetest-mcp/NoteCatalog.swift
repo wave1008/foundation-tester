@@ -47,7 +47,7 @@ enum NoteCatalog {
         }
     }
 
-    struct Entry {
+    struct Entry: Sendable {
         /// 安定した鍵。**`once`/`onceNonEmpty` の鍵と同じ名前空間**(短縮の状態を共有する)なので、
         /// 既存の鍵を持つ注記は同じ文字列を使うこと(変えると短縮の履歴が切れる)
         let key: String
@@ -56,7 +56,7 @@ enum NoteCatalog {
         /// 初回だけ満額・2回目以降は短縮(`onceNonEmpty` を通す)か、毎回同じ文か
         let abbreviates: Bool
         /// 本体。`abbreviated` は短縮形を出すかどうか
-        let render: (Input, _ abbreviated: Bool) -> String
+        let render: @Sendable (Input, _ abbreviated: Bool) -> String
     }
 
     /// **並び順がそのまま応答の並び順**。入れ替えると読み手の目に入る順番が変わるので、

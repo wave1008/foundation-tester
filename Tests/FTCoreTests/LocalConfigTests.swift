@@ -4,6 +4,7 @@
 import Foundation
 import XCTest
 @testable import FTCore
+import FTTestSupport
 
 // クラス名は LocalConfigIssuerIdTests(素の LocalConfigTests は ProjectStoreTests.swift に既存)
 final class LocalConfigIssuerIdTests: XCTestCase {
@@ -170,8 +171,7 @@ final class LocalConfigSaveAtomicityTests: XCTestCase {
         initial.fmConcurrency = 1
         try initial.save(to: url)
 
-        let torn = NSLock()
-        var tornReads = 0
+        let tornReads = LockedBox(0)
         let group = DispatchGroup()
         group.enter()
         DispatchQueue.global().async {
@@ -188,10 +188,10 @@ final class LocalConfigSaveAtomicityTests: XCTestCase {
         DispatchQueue.global().async {
             defer { group.leave() }
             for _ in 0..<3_000 where LocalConfig.load(from: url).fmConcurrency == nil {
-                torn.lock(); tornReads += 1; torn.unlock()
+                tornReads.mutate { $0 += 1 }
             }
         }
         group.wait()
-        XCTAssertEqual(tornReads, 0, "読み手が途中まで書かれた config.json を見た")
+        XCTAssertEqual(tornReads.value, 0, "読み手が途中まで書かれた config.json を見た")
     }
 }

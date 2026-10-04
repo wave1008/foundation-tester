@@ -32,6 +32,7 @@
 import Foundation
 import FoundationModels
 import FTCore
+import Synchronization
 
 public enum FMLivenessProbe {
     /// 台帳を取り直す間隔。**FM の間欠死の観測に使ってきた刻みと同じ**
@@ -180,24 +181,21 @@ public enum FMLivenessProbe {
     /// プロセス内カウンタでよい —— 撃つのは長生きの `api host-metrics --fm-probe` か doctor(1回)
     static func ledgerState(afterProbe path: FMLiveness.Path, failed: Bool,
                             threshold: Int = FMBreaker.threshold) -> FMLiveness.State? {
-        lock.lock()
-        defer { lock.unlock() }
-        guard failed else {
-            consecutiveFailures[path] = 0
-            return .alive
+        consecutiveFailures.withLock { counts in
+            guard failed else {
+                counts[path] = 0
+                return .alive
+            }
+            let next = (counts[path] ?? 0) + 1
+            counts[path] = next
+            return next >= threshold ? .dead : nil
         }
-        let next = (consecutiveFailures[path] ?? 0) + 1
-        consecutiveFailures[path] = next
-        return next >= threshold ? .dead : nil
     }
 
-    private static let lock = NSLock()
-    private static var consecutiveFailures: [FMLiveness.Path: Int] = [:]
+    private static let consecutiveFailures = Mutex<[FMLiveness.Path: Int]>([:])
 
     /// テスト用。経路ごとの連続失敗の記憶を捨てる
     static func resetConsecutiveFailuresForTesting() {
-        lock.lock()
-        consecutiveFailures.removeAll()
-        lock.unlock()
+        consecutiveFailures.withLock { $0.removeAll() }
     }
 }

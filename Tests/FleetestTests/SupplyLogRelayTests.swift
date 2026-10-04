@@ -11,7 +11,7 @@ final class SupplyLogRelayTests: XCTestCase {
     func testHoldsLinesUntilStartThenFlushesInOrder() {
         let relay = SupplyLogRelay()
         let written = LockedBox([String]())
-        let write: (String) -> Void = { line in written.mutate { $0.append(line) } }
+        let write: @Sendable (String) -> Void = { line in written.mutate { $0.append(line) } }
 
         relay.emit("a", write: write)
         relay.emit("b", write: write)
@@ -24,7 +24,7 @@ final class SupplyLogRelayTests: XCTestCase {
     func testEmitsImmediatelyAfterStart() {
         let relay = SupplyLogRelay()
         let written = LockedBox([String]())
-        let write: (String) -> Void = { line in written.mutate { $0.append(line) } }
+        let write: @Sendable (String) -> Void = { line in written.mutate { $0.append(line) } }
 
         relay.start(write: write)
         relay.emit("a", write: write)
@@ -36,7 +36,7 @@ final class SupplyLogRelayTests: XCTestCase {
     func testConcurrentEmitsAreAllDelivered() {
         let relay = SupplyLogRelay()
         let written = LockedBox([String]())
-        let write: (String) -> Void = { line in written.mutate { $0.append(line) } }
+        let write: @Sendable (String) -> Void = { line in written.mutate { $0.append(line) } }
 
         let count = 200
         DispatchQueue.concurrentPerform(iterations: count) { index in

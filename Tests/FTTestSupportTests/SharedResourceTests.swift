@@ -28,13 +28,8 @@ final class SharedResourceTests: XCTestCase {
     /// —— サブプロセスを起こさずに相互排他を検証できる
     func testMutualExclusionAcrossThreads() {
         let resource = SharedResource.iosSimulatorHost
-        let eventsLock = NSLock()
-        var events: [String] = []
-        func record(_ event: String) {
-            eventsLock.lock()
-            events.append(event)
-            eventsLock.unlock()
-        }
+        let events = LockedBox<[String]>([])
+        @Sendable func record(_ event: String) { events.mutate { $0.append(event) } }
         let group = DispatchGroup()
         for _ in 0..<2 {
             group.enter()
@@ -48,7 +43,7 @@ final class SharedResourceTests: XCTestCase {
             }.start()
         }
         XCTAssertEqual(group.wait(timeout: .now() + 10), .success, "スレッドが時間内に終わらない")
-        XCTAssertEqual(events, ["start", "end", "start", "end"], "入れ子になっている(相互排他が効いていない)")
+        XCTAssertEqual(events.value, ["start", "end", "start", "end"], "入れ子になっている(相互排他が効いていない)")
     }
 
     /// 異なるキー同士は互いを待たない

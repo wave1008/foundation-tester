@@ -64,7 +64,7 @@ public final class HybridFallbackDriver: AppDriver {
     /// この3操作は元々 withFallback 経由で 501/ルート不明404 を拾っていたので、409 を足すときに
     /// そちらを落とすと後退になる(DSL 側の同じ判定が 409 だけを見るのは、あちらが 501 を
     /// hideKeyboard と同じ経路で別に扱うため)
-    private static let textInputFallbackWorthy: (Error) -> Bool = {
+    private static let textInputFallbackWorthy: @Sendable (Error) -> Bool = {
         DriverError.isEngineIncapable($0) || DriverError.isTextInputFallback($0)
     }
 

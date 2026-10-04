@@ -33,6 +33,7 @@
 // 書き手: FMHealth.record(実仕事の成否)と FTFoundationModels の FMLivenessProbe。
 
 import Foundation
+import Synchronization
 
 public enum FMLiveness {
     /// 観測できた生死。**不明はここに無い**(不明は Verdict そのものが nil)
@@ -161,9 +162,13 @@ public enum FMLiveness {
     /// この間隔を無視して即書く**(死んだ瞬間を遅らせない)
     static let writeCoalesceSeconds: TimeInterval = 5
 
-    private static let lock = NSLock()
-    /// このプロセスが最後にディスクへ書いた内容(経路ごと)。coalesce の判定にだけ使う
-    private static var lastWritten: [Path: Verdict] = [:]
+    /// `lastWritten`: このプロセスが最後にディスクへ書いた内容(経路ごと)。coalesce の判定にだけ使う。
+    /// `localStreak`: 書けないとき(テスト)のプロセス内の連続失敗数
+    private struct Memo {
+        var lastWritten: [Path: Verdict] = [:]
+        var localStreak: [Path: Int] = [:]
+    }
+    private static let memo = Mutex(Memo())
 
     // MARK: - 置き場
 
@@ -207,22 +212,17 @@ public enum FMLiveness {
                               // 生になったらエラーは捨てる(Verdict.error の doc)
                               error: state == .dead ? error : nil,
                               ms: ms)
-        lock.lock()
-        let previous = lastWritten[path]
+        let previous = memo.withLock { $0.lastWritten[path] }
         // 状態が同じで、書いたばかりなら書かない(writeCoalesceSeconds の doc)
         if let previous, previous.state == verdict.state,
            verdict.checkedAt - previous.checkedAt < writeCoalesceSeconds {
-            lock.unlock()
             return
         }
-        lock.unlock()
         // **控えを進めるのは実際に着地した回だけ**。書けなかった判定(自分より新しい観測が
         // 既に居た等)で控えを進めると、以後の同じ状態の書き込みが「書いたばかり」として
         // 畳まれ、ディスクに1度も着地しない状態が続く
         guard write(path: path, verdict: verdict) else { return }
-        lock.lock()
-        lastWritten[path] = verdict
-        lock.unlock()
+        memo.withLock { $0.lastWritten[path] = verdict }
     }
 
     @discardableResult
@@ -311,15 +311,13 @@ public enum FMLiveness {
         _ = updateStreak(path) { _ in 0 }
     }
 
-    private static var localStreak: [Path: Int] = [:]
-
     private static func updateStreak(_ path: Path, _ change: (Int) -> Int) -> Int {
         guard let url = writeURL?.deletingLastPathComponent().appendingPathComponent(streakFileName) else {
-            lock.lock()
-            defer { lock.unlock() }
-            let next = change(localStreak[path] ?? 0)
-            localStreak[path] = next
-            return next
+            return memo.withLock {
+                let next = change($0.localStreak[path] ?? 0)
+                $0.localStreak[path] = next
+                return next
+            }
         }
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -343,9 +341,6 @@ public enum FMLiveness {
 
     /// テスト用。プロセス内の coalesce の記憶を捨てる(ディスクは触らない)
     public static func resetWriteMemo() {
-        lock.lock()
-        lastWritten.removeAll()
-        localStreak.removeAll()
-        lock.unlock()
+        memo.withLock { $0 = Memo() }
     }
 }

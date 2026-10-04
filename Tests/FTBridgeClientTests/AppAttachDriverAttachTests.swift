@@ -10,7 +10,8 @@ import FTCore
 /// 受けたリクエストのパスを順に記録し、すべて 200 `{}` を返す最小 HTTP スタブ。
 /// **private ではなく internal**: HybridFallbackDriverTests.swift(同じ FTBridgeClientTests
 /// ターゲット)が実物の AppAttachDriver 経由の統合テストで再利用する
-final class RecordingStubServer {
+/// @unchecked: `_paths` は lock の下・`serverFD` は init と stop(テストのスレッド)だけが書く
+final class RecordingStubServer: @unchecked Sendable {
     private var serverFD: Int32 = -1
     let port: UInt16
     private let lock = NSLock()

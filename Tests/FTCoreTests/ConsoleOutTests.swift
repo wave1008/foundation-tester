@@ -6,6 +6,7 @@
 import Foundation
 import XCTest
 @testable import FTCore
+import FTTestSupport
 
 final class ConsoleOutTests: XCTestCase {
 
@@ -22,13 +23,13 @@ final class ConsoleOutTests: XCTestCase {
         let writeFD = pipe.fileHandleForWriting.fileDescriptor
         let readHandle = pipe.fileHandleForReading
 
-        var collected = Data()
+        let collected = LockedBox(Data())
         let readerDone = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .utility).async {
             while true {
                 let chunk = readHandle.availableData
                 if chunk.isEmpty { break }  // 書き込み端が閉じられた(EOF)
-                collected.append(chunk)
+                collected.mutate { $0.append(chunk) }
             }
             readerDone.signal()
         }
@@ -49,7 +50,7 @@ final class ConsoleOutTests: XCTestCase {
         try pipe.fileHandleForWriting.close()
         readerDone.wait()
 
-        let text = try XCTUnwrap(String(data: collected, encoding: .utf8))
+        let text = try XCTUnwrap(String(data: collected.value, encoding: .utf8))
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         XCTAssertEqual(lines.count, writerCount * linesPerWriter,
                        "行数が合わない = どこかの emit が分割されて別の行として数えられている")
@@ -68,13 +69,13 @@ final class ConsoleOutTests: XCTestCase {
         let writeFD = pipe.fileHandleForWriting.fileDescriptor
         let readHandle = pipe.fileHandleForReading
 
-        var collected = Data()
+        let collected = LockedBox(Data())
         let readerDone = DispatchSemaphore(value: 0)
         DispatchQueue.global(qos: .utility).async {
             while true {
                 let chunk = readHandle.availableData
                 if chunk.isEmpty { break }
-                collected.append(chunk)
+                collected.mutate { $0.append(chunk) }
             }
             readerDone.signal()
         }
@@ -92,7 +93,7 @@ final class ConsoleOutTests: XCTestCase {
         try pipe.fileHandleForWriting.close()
         readerDone.wait()
 
-        let text = try XCTUnwrap(String(data: collected, encoding: .utf8))
+        let text = try XCTUnwrap(String(data: collected.value, encoding: .utf8))
         let lines = text.split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
         XCTAssertEqual(lines.count, iterations * 2)
         for line in lines {

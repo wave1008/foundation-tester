@@ -18,14 +18,14 @@ public enum ProcessExitWait {
     }
 
     /// 同期待機用。返り値のクロージャが終了までブロックする。
-    public static func prepareBlocking(_ process: Process) -> () -> Void {
+    public static func prepareBlocking(_ process: Process) -> @Sendable () -> Void {
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }
         return { semaphore.wait() }
     }
 
     /// 時限同期待機用。返り値に deadline を渡すと、子の終了 or 期限到達まで待って結果を返す。
-    public static func prepareTimed(_ process: Process) -> (DispatchTime) -> DispatchTimeoutResult {
+    public static func prepareTimed(_ process: Process) -> @Sendable (DispatchTime) -> DispatchTimeoutResult {
         let semaphore = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in semaphore.signal() }
         return { semaphore.wait(timeout: $0) }
@@ -50,7 +50,8 @@ public enum ShellError: Error, CustomStringConvertible, LocalizedError {
 /// パイプの読み取りを**中断できる**形で持つ(`readDataToEndOfFile` は EOF まで戻らない)。
 /// 孫プロセスが書込端を継承したまま残ると EOF は永遠に来ないので、呼び手が期限で `cancel()` する。
 /// `poll` の刻み(200ms)は「中断の応答性」だけを決め、読み取りの遅さには効かない
-private final class PipeDrain {
+// @unchecked: 可変状態(buffer / cancelled)はすべて lock 配下・fd と done は不変
+private final class PipeDrain: @unchecked Sendable {
     private let fd: Int32
     private let lock = NSLock()
     private var buffer = Data()
@@ -89,7 +90,7 @@ private final class PipeDrain {
 }
 
 public enum Shell {
-    public struct Result {
+    public struct Result: Sendable {
         public let status: Int32
         public let output: String
         /// エラー表示用にログ末尾だけ返す

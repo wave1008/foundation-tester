@@ -5,6 +5,7 @@
 // 落ちないようにする(RunResultsStore 側も同様に不正日時を許容している)。
 
 import Foundation
+import Synchronization
 
 public enum RunResultsQuery {
 
@@ -37,22 +38,22 @@ public enum RunResultsQuery {
         isInterruptedBeforeStart(record) || record.interrupted == true
     }
 
-    private static let isoFormatter = ISO8601DateFormatter()
+    // ISO8601DateFormatter は Apple が thread-safe と明記(生成後に設定を変えないこと)
+    nonisolated(unsafe) private static let isoFormatter = ISO8601DateFormatter()
 
     /// ISO8601 パース(ICU)は1回あたり数µs〜十µs掛かり、この関数は**ソートの比較器の中**から
     /// 呼ばれる(= 同じ文字列を n log n 回パースする)。メモ化しないと 90 日窓の集計が
     /// パースだけで数十秒になる(実測: E2E-CMP 84s → メモ化で解消)。
     /// キャッシュは (プロセス内の distinct startedAt 数) でしか育たないので上限は設けない
-    private static let dateCacheLock = NSLock()
-    private static var dateCache: [String: Date] = [:]
+    private static let dateCache = Mutex<[String: Date]>([:])
 
     private static func date(from startedAt: String) -> Date {
-        dateCacheLock.lock()
-        defer { dateCacheLock.unlock() }
-        if let cached = dateCache[startedAt] { return cached }
-        let parsed = isoFormatter.date(from: startedAt) ?? .distantPast
-        dateCache[startedAt] = parsed
-        return parsed
+        dateCache.withLock { cache in
+            if let cached = cache[startedAt] { return cached }
+            let parsed = isoFormatter.date(from: startedAt) ?? .distantPast
+            cache[startedAt] = parsed
+            return parsed
+        }
     }
 
     private static func median(_ values: [Int]) -> Double? {

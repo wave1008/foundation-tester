@@ -24,6 +24,7 @@ import CoreML
 import CryptoKit
 import Foundation
 import ImageIO
+import Synchronization
 import UniformTypeIdentifiers
 import Vision
 #if canImport(CreateML)
@@ -243,37 +244,36 @@ public enum VisionClassifier {
         public var errorDescription: String? { description }
     }
 
-    private static let processLock = NSLock()
-    private static var loaded: [String: Model] = [:]
+    /// 学習・推論の点検もこのロックの内側で走る(別 digest の同時学習を直列化する意図)
+    private static let loaded = Mutex<[String: Model]>([:])
 
     /// プロセス内の控えを捨てる(ファイルのキャッシュから読み直すことをテストで確かめるため)
     static func forgetLoadedModelsForTesting() {
-        processLock.lock(); loaded = [:]; processLock.unlock()
+        loaded.withLock { $0 = [:] }
     }
 
     /// 学習済みモデルを返す(無ければ学ぶ)。**ブロックする** —— 協調スレッドプールの上で呼ばない
     /// (呼び手は `load(_:cacheDirectory:)` の async 版)
     public static func loadBlocking(_ set: TrainingSet, cacheDirectory: URL) throws -> Model {
-        // 学習と点検の推論は processLock の内側で走るので、控えへの記録は解放の後にまとめて書く
+        // 学習と点検の推論は `loaded` のロックの内側で走るので、控えへの記録は解放の後にまとめて書く
         // (VisionUsageLedger.record はファイル I/O をするのでロックの外から呼ぶ規律)。
-        // defer は逆順に走る = unlock → 記録
         var usage = VisionUsage()
         defer { usage.flush() }
-        processLock.lock()
-        defer { processLock.unlock() }
-        if let model = loaded[set.digest] { return model }
-        // 読み込みもロックを通す: 別プロセスが上書きしている最中のモデル・点検結果を読まない
-        let model = try withCacheLock(cacheDirectory) {
-            _ = try ensureModel(set, cacheDirectory: cacheDirectory, usage: &usage)
-            let compiled = try MLModel.compileModel(at: CacheLayout.model(cacheDirectory))
-            let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
-                              labels: set.labels.keys.sorted())
-            model.mismatches = selfCheck(model, set, cachedAt: CacheLayout.selfCheck(cacheDirectory), usage: &usage)
+        return try loaded.withLock { cache in
+            if let model = cache[set.digest] { return model }
+            // 読み込みもロックを通す: 別プロセスが上書きしている最中のモデル・点検結果を読まない
+            let model = try withCacheLock(cacheDirectory) {
+                _ = try ensureModel(set, cacheDirectory: cacheDirectory, usage: &usage)
+                let compiled = try MLModel.compileModel(at: CacheLayout.model(cacheDirectory))
+                let model = Model(vnModel: try VNCoreMLModel(for: MLModel(contentsOf: compiled)),
+                                  labels: set.labels.keys.sorted())
+                model.mismatches = selfCheck(model, set, cachedAt: CacheLayout.selfCheck(cacheDirectory), usage: &usage)
+                return model
+            }
+            model.controls = controlSamples(set, excluding: model.mismatches)
+            cache[set.digest] = model
             return model
         }
-        model.controls = controlSamples(set, excluding: model.mismatches)
-        loaded[set.digest] = model
-        return model
     }
 
     /// 分類器ごとの置き場所(`cacheDirectory` 直下)。モデル・点検結果・digest は1組だけ持つ

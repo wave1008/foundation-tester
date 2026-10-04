@@ -23,9 +23,13 @@ private final class FlakyInstallDriver: AppDriver, @unchecked Sendable {
         self.failureText = failureText
     }
     func install(packagePath: String) async throws {
-        lock.lock(); defer { lock.unlock() }
-        installCalls += 1
-        if remainingFailures > 0 { remainingFailures -= 1; throw InstallFailure(text: failureText) }
+        let fail: Bool = lock.withLock {
+            installCalls += 1
+            guard remainingFailures > 0 else { return false }
+            remainingFailures -= 1
+            return true
+        }
+        if fail { throw InstallFailure(text: failureText) }
     }
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "-", osVersion: "-", sessionBundleID: nil)
@@ -62,17 +66,16 @@ private final class RecordingRecovery: @unchecked Sendable {
     var recovery: AndroidStorageRecovery {
         AndroidStorageRecovery(
             avdBySerial: { [self] in
-                self.lock.lock(); defer { self.lock.unlock() }
-                return self.wipes.isEmpty ? self.mapBefore : self.mapAfter
+                self.lock.withLock { self.wipes.isEmpty ? self.mapBefore : self.mapAfter }
             },
             wipe: { [self] device, avd, locale, _ in
-                self.lock.lock(); defer { self.lock.unlock() }
-                self.wipes.append((device, avd, locale))
-                self.order.append("wipe")
+                self.lock.withLock {
+                    self.wipes.append((device, avd, locale))
+                    self.order.append("wipe")
+                }
             },
             awaitPackageManager: { [self] serial in
-                self.lock.lock(); defer { self.lock.unlock() }
-                self.order.append("await:\(serial)")
+                self.lock.withLock { self.order.append("await:\(serial)") }
                 return 0
             })
     }

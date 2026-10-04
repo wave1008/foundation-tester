@@ -1432,7 +1432,7 @@ struct RemoteRunDispatcher {
         let remoteRoot = layout.workDir
         let localRoot = localRepoRoot.path
         let mode = self.mode
-        func relayLine(_ line: String) {
+        @Sendable func relayLine(_ line: String) {
             // ディスパッチ単位の隔離先 → 回収先(reports/)を**先に**当てる(collectJUnit と
             // 同じ順序 — 理由は RemoteReportLink.rewriteDispatchReportPaths の宣言)
             let reportsRedirected = RemoteReportLink.rewriteDispatchReportPaths(

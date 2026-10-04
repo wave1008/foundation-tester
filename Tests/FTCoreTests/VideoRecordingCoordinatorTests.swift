@@ -91,7 +91,7 @@ final class VideoRecordingCoordinatorExportTests: XCTestCase {
     /// 60 秒 1 セグメントのソースを返すセッションを生成する makeSession(sourceStem 由来の
     /// ダミーファイルは実在しなくてよい。finalize は削除を試みるだけで読まない)
     private func fixedSessionFactory(tmp: URL)
-        -> (RunWorker, URL, String) -> (any DeviceVideoRecorderSession)? {
+        -> @Sendable (RunWorker, URL, String) -> (any DeviceVideoRecorderSession)? {
         let startedAt = ISO8601Millis.string(from: recordStart)
         return { _, recordingsDir, sourceStem in
             FixedSourceSession(source: RecordingSource(

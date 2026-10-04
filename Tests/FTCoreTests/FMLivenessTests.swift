@@ -219,8 +219,7 @@ final class FMLivenessTests: XCTestCase {
         try SharedResource.hostCaches.locked {
             let base = Date().timeIntervalSince1970
             let iterations = 200
-            let violations = NSLock()
-            var reverted: [String] = []
+            let reverted = LockedBox<[String]>([])
             let group = DispatchGroup()
             for path in [FMLiveness.Path.text, .vision] {
                 group.enter()
@@ -235,15 +234,13 @@ final class FMLivenessTests: XCTestCase {
                                           now: Date(timeIntervalSince1970: checkedAt))
                         let onDisk = FMLiveness.read()?[path]?.checkedAt ?? -1
                         if onDisk < checkedAt {
-                            violations.lock()
-                            reverted.append("\(path.rawValue) #\(i): disk=\(onDisk) < mine=\(checkedAt)")
-                            violations.unlock()
+                            reverted.mutate { $0.append("\(path.rawValue) #\(i): disk=\(onDisk) < mine=\(checkedAt)") }
                         }
                     }
                 }
             }
             group.wait()
-            XCTAssertEqual(reverted, [], "相手の書き込みが自分の経路を古い値へ戻した")
+            XCTAssertEqual(reverted.value, [], "相手の書き込みが自分の経路を古い値へ戻した")
             let final = FMLiveness.read()
             XCTAssertEqual(final?.text?.checkedAt, base + Double(iterations - 1))
             XCTAssertEqual(final?.vision?.checkedAt, base + Double(iterations - 1))

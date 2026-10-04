@@ -75,15 +75,23 @@ public enum UIFrameworkMarkers {
     /// E2E-RN の実行ファイル 6 MB で 4.3 → 2.0 ms。1 回の走査で 3 語を照合する形は 129 ms で縮まない
     /// (Data.range(of:) の走査のほうが Swift のバイト単位ループより速い)
     static func presentNeedles(_ needles: [String], in binaries: [Data]) -> Set<String> {
-        var hits = [Bool](repeating: false, count: needles.count)
-        let lock = NSLock()
+        let hits = HitSlots(count: needles.count)
         DispatchQueue.concurrentPerform(iterations: needles.count) { index in
             let pattern = Data(needles[index].utf8)
-            let hit = binaries.contains { $0.range(of: pattern) != nil }
-            lock.lock()
-            hits[index] = hit
-            lock.unlock()
+            hits.set(index, binaries.contains { $0.range(of: pattern) != nil })
         }
-        return Set(needles.indices.filter { hits[$0] }.map { needles[$0] })
+        let found = hits.values
+        return Set(needles.indices.filter { found[$0] }.map { needles[$0] })
     }
+}
+
+/// `presentNeedles` の並列の書き込み先。**このファイルは in-app ブリッジの dylib にも単体で
+/// コンパイルされる**(InAppBridge/build.sh)ので FTCore の他の型(LockedValue)を使わない。
+/// @unchecked の根拠 = `slots` は lock の下でしか触らない
+private final class HitSlots: @unchecked Sendable {
+    private let lock = NSLock()
+    private var slots: [Bool]
+    init(count: Int) { slots = [Bool](repeating: false, count: count) }
+    func set(_ index: Int, _ hit: Bool) { lock.withLock { slots[index] = hit } }
+    var values: [Bool] { lock.withLock { slots } }
 }

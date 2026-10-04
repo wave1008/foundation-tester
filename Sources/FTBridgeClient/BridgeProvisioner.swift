@@ -3,6 +3,7 @@
 // 同時に動く他プロセスのブリッジ管理と競合しないポート割当を行う。
 
 import Foundation
+import Synchronization
 import FTCore
 
 public struct ProvisionedIOSDevice: Sendable {
@@ -100,11 +101,10 @@ public enum BridgeProvisionerError: Error, LocalizedError {
 /// fleetest プロセスが同時に provision すると同じ空きポートを選び bindFailed(48) を起こす。provision()
 /// 全体をこのロックで直列化して防ぐ(pid 予約ロジックには手を入れない)。flock はプロセス終了で
 /// 自動解放されるためデッドロックしない。1 プロセス内の複数デバイス並列起動は provision 内部で維持される。
-public final class ProvisionLock {
+public final class ProvisionLock: Sendable {
     enum LockError: Error { case openFailed(Int32) }
     private let fd: Int32
-    private let releaseLock = NSLock()
-    private var released = false
+    private let released = Mutex(false)
 
     /// stateDir/<lockName> を flock 対象にする。既定は provision.lock(ブリッジ供給用)。
     /// 別用途(例: 実行プロファイルへのデバイス追記)は別 lockName を渡して独立させる。
@@ -129,10 +129,10 @@ public final class ProvisionLock {
     /// **冪等**。早期解放(ポート確保が済んだ時点)と関数末尾の defer の両方から呼ばれるので、
     /// 2 回目を素通しにしないと close(fd) が無関係な fd を閉じる(fd は再利用される)
     public func release() {
-        releaseLock.lock()
-        let already = released
-        released = true
-        releaseLock.unlock()
+        let already = released.withLock { already in
+            defer { already = true }
+            return already
+        }
         guard !already else { return }
         _ = flock(fd, LOCK_UN)
         close(fd)
@@ -372,7 +372,7 @@ actor ClaimOnce {
     }
 }
 
-public struct BridgeProvisioner {
+public struct BridgeProvisioner: Sendable {
     let repoRoot: URL
     /// 稼働ブリッジのスキャン・自動採番の範囲(既定: 8123〜8154)
     let portRange: ClosedRange<UInt16>
@@ -402,7 +402,7 @@ public struct BridgeProvisioner {
 
     /// 1 デバイス・1 エンジン分の供給プラン。planBridge(副作用なし・await なし)が確定し、
     /// 実処理(停止・起動)は並列実行フェーズが担う。ポート採番はプランニングで確定済み。
-    enum EnginePlan {
+    enum EnginePlan: Sendable {
         case reuse(port: UInt16)
         /// 別の実在するワークスペースのブリッジ(BridgeOwnership.foreign)をそのまま使う。
         /// **起動し直さない・測り直しで止めない** —— こちらにはツールチェーンの記録も劣化の印も
@@ -437,7 +437,7 @@ public struct BridgeProvisioner {
     }
 
     /// 1 デバイス分のプラン。bridges は実行順(hybrid: inapp → xcuitest の 2 要素、他は 1 要素)
-    struct DevicePlan {
+    struct DevicePlan: Sendable {
         /// 元のデバイス順(結果配列の並びの復元と「最初のエラー」の決定に使う)
         let index: Int
         let name: String
@@ -459,12 +459,8 @@ public struct BridgeProvisioner {
                           log: @escaping (String) -> Void) async throws -> [ProvisionedIOSDevice] {
         // 呼び出し側の log(logStderr / print 等)はスレッド安全の契約が無い。
         // 並列フェーズからは必ずこのロック付きラッパーを使う
-        let logLock = NSLock()
-        let safeLog: (String) -> Void = { message in
-            logLock.lock()
-            defer { logLock.unlock() }
-            log(message)
-        }
+        let serialized = SerializedSink(log)
+        let safeLog: @Sendable (String) -> Void = { serialized($0) }
 
         // クロスプロセス排他: scan→採番→起動(pid ファイル書き込み)を跨いで直列化する。
         // 他 fleetest プロセスと同じ空きポートを取り合う bindFailed(48) を防ぐ(ProvisionLock 参照)。
@@ -930,7 +926,7 @@ public struct BridgeProvisioner {
     /// 前にここで必ず直列に済ませる(並列に buildIfNeeded / buildForTesting が走ると出力が競合する)。
     /// xctestrun 不在時の build-for-testing もここへ前倒し(起動フェーズの startDetached では作らない)
     private func prepareSharedBuilds(plans: [DevicePlan],
-                                     log: @escaping (String) -> Void) async throws {
+                                     log: @escaping @Sendable (String) -> Void) async throws {
         let launches = plans.flatMap { plan in
             plan.bridges.filter { $0.plan.isLaunch }
                 .map { (sim: plan.sim, engine: $0.engine, port: $0.plan.port) }
@@ -1001,7 +997,7 @@ public struct BridgeProvisioner {
     /// inapp が失敗したら xcuitest は実行しない(直列版と同じ)
     private func executeDevice(plan: DevicePlan, bundleID: String?, preinstallAppPath: String?,
                                claimBarrier: PortClaimBarrier,
-                               log: @escaping (String) -> Void) async throws -> ProvisionedIOSDevice {
+                               log: @escaping @Sendable (String) -> Void) async throws -> ProvisionedIOSDevice {
         var portsByEngine: [String: UInt16] = [:]
         // **XCUITest ランナーを先に、in-app を後に**(Self.executionOrder): ランナーの起動し直し
         // (劣化・旧版)は XCTest の teardown が対象アプリを終了させ、そのプロセスに住む in-app
@@ -1062,7 +1058,7 @@ public struct BridgeProvisioner {
     /// これを見てシミュレータごとの再起動を試す)
     private func restartRunner(name: String, sim: SimDeviceInfo, port: UInt16,
                                claimed: @escaping @Sendable () async -> Void,
-                               log: @escaping (String) -> Void) async throws
+                               log: @escaping @Sendable (String) -> Void) async throws
         -> (port: UInt16, helped: Bool, afterSeconds: TimeInterval?) {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                       physical: sim.physical)
@@ -1089,7 +1085,7 @@ public struct BridgeProvisioner {
     /// **リースのあるデバイスはここへ来る前に呼び手(supplySlownessAction)が弾く**
     private func restartSimulatorAndRunner(name: String, sim: SimDeviceInfo, port: UInt16,
                                            claimed: @escaping @Sendable () async -> Void,
-                                           log: @escaping (String) -> Void) async throws
+                                           log: @escaping @Sendable (String) -> Void) async throws
         -> (port: UInt16, helped: Bool, afterSeconds: TimeInterval?) {
         try await rebootSimulator(udid: sim.udid, name: name)
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
@@ -1150,7 +1146,7 @@ public struct BridgeProvisioner {
     /// 同じ Mac の別の run の採番がこのポートを空きと読まないため。ready 待ちは供給と同じく
     /// ロックの外(ポート確保 = `claimed` の時点で解く)。健全なら 1 問だけでロックに触れない
     public func recheckRunner(name: String, udid: String, port: UInt16, injected: Bool,
-                              log: @escaping (String) -> Void) async
+                              log: @escaping @Sendable (String) -> Void) async
         -> (outcome: RunnerRecheckOutcome, probeSeconds: TimeInterval?) {
         // 直らなかったデバイスは測りもしない(劣化したデバイスの 1 問は約 3 秒 = 緑のたびに払うことになる)
         guard !RunnerRestartFutility.shared.contains(udid: udid) else { return (.skipped, nil) }
@@ -1198,7 +1194,7 @@ public struct BridgeProvisioner {
     private func executeBridge(engine: String, plan: EnginePlan, name: String, sim: SimDeviceInfo,
                                bundleID: String?, preinstallAppPath: String?,
                                claimed: @escaping @Sendable () async -> Void,
-                               log: @escaping (String) -> Void) async throws -> UInt16 {
+                               log: @escaping @Sendable (String) -> Void) async throws -> UInt16 {
         switch plan {
         case .reuse(let port):
             // **再利用する XCUITest ランナーは 1 問だけ測ってから使う**(RunnerAccessibilityHealth):
@@ -1653,7 +1649,7 @@ public struct BridgeProvisioner {
     /// (provision() が該当デバイスだけ離脱させて続行する)。
     private func ensureAppInstalled(deviceName: String, sim: SimDeviceInfo, bundleID: String,
                                     preinstallAppPath: String?, needsInstall: Bool,
-                                    log: @escaping (String) -> Void) throws {
+                                    log: @escaping @Sendable (String) -> Void) throws {
         if let preinstallAppPath {
             guard needsInstall else { return }
             log("→ \(deviceName): installing \(bundleID) (autoInstall: the contents changed)...")

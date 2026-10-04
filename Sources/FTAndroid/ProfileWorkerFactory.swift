@@ -133,8 +133,9 @@ public enum ProfileWorkerFactory {
         guard !targets.isEmpty else { return }
         await withTaskGroup(of: String?.self) { group in
             for (label, driver) in targets {
+                let transfer = UncheckedTransfer(driver)
                 group.addTask {
-                    nonPortraitWarning(label: label, orientation: try? await driver.status().orientation)
+                    nonPortraitWarning(label: label, orientation: try? await transfer.value.status().orientation)
                 }
             }
             for await line in group { if let line { log(line) } }
@@ -701,13 +702,14 @@ public enum ProfileWorkerFactory {
             // 2 段の締切から導く(独立した定数を置かない)
             let budgetSeconds: TimeInterval = device.spec.isPhysical
                 ? 2 * BridgeLauncher.startupTimeoutSeconds : 60
+            let serializedLog = SerializedSink(log)
             let provisioned = await withTaskGroup(of: [ProvisionedIOSDevice]?.self) { group in
                 group.addTask {
                     try? await provisioner.provision(
                         devices: [(device.name, device.spec)],
                         bundleID: iosApp?.bundleID,
                         preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
-                        log: log)
+                        log: { serializedLog($0) })
                 }
                 group.addTask {
                     try? await Task.sleep(nanoseconds: UInt64(budgetSeconds * 1_000_000_000))
@@ -728,8 +730,9 @@ public enum ProfileWorkerFactory {
                 // 疎通を確認してから返す(無検証で返すと呼び出し側が「復帰成功→即 status 死亡」で
                 // 復帰上限を空費し、REVIVE_TIMEOUT の再試行ループが機能しない)。ウェッジした
                 // ブリッジは応答を返さないことがあるため 10s 期限で打ち切る(iOS 分岐の 60s と同型)
+                let probe = UncheckedTransfer(driver)
                 let reachable = await withTaskGroup(of: Bool.self) { group in
-                    group.addTask { (try? await driver.status()) != nil }
+                    group.addTask { (try? await probe.value.status()) != nil }
                     group.addTask {
                         try? await Task.sleep(nanoseconds: 10_000_000_000)
                         return false
@@ -787,12 +790,8 @@ public enum ProfileWorkerFactory {
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         // 呼び出し元の log はスレッド安全という契約が無い(CLI 側 print 等)ため、並列区間からは
         // このロック越しラッパーのみを使う。
-        let lock = NSLock()
-        let safeLog: (String) -> Void = { msg in
-            lock.lock()
-            defer { lock.unlock() }
-            log(msg)
-        }
+        let serialized = SerializedSink(log)
+        let safeLog: @Sendable (String) -> Void = { serialized($0) }
 
         var candidates: [(index: Int, worker: RunWorker, app: ResolvedAppTarget, appPath: String)] = []
         var passthrough: [(index: Int, worker: RunWorker)] = []

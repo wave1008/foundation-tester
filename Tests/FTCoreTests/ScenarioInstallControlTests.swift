@@ -1,6 +1,7 @@
 // installApp() の子側 RPC 待機機構(ScenarioInstall.swift)を実プロセス無しで固定する
 import XCTest
 @testable import FTCore
+import FTTestSupport
 
 final class ScenarioInstallControlTests: XCTestCase {
 
@@ -57,16 +58,16 @@ final class ScenarioInstallControlTests: XCTestCase {
 
     func testRequestIDsIncrementAcrossCalls() async {
         let control = ScenarioInstallControl()
-        var seenIDs: [Int] = []
+        let seenIDs = LockedBox<[Int]>([])
         _ = await control.request(timeoutSeconds: 5) { id in
-            seenIDs.append(id)
+            seenIDs.mutate { $0.append(id) }
             Task { await control.resolve(id: id, ok: true, message: "") }
         }
         _ = await control.request(timeoutSeconds: 5) { id in
-            seenIDs.append(id)
+            seenIDs.mutate { $0.append(id) }
             Task { await control.resolve(id: id, ok: true, message: "") }
         }
-        XCTAssertEqual(seenIDs, [1, 2])
+        XCTAssertEqual(seenIDs.value, [1, 2])
     }
 
     /// 未知の id への resolve は無視される(タイムアウト後に遅れて届いた応答等)

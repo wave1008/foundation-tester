@@ -60,7 +60,7 @@ final class AdbInstallVerifierTests: XCTestCase {
     /// 既に 0 なら触らない(戻す必要も無い)
     func testLeavesTheSettingAloneWhenAlreadyOff() throws {
         var calls: [[String]] = []
-        let value = try AdbInstallVerifier.withVerificationOff(adb: { args in
+        let value = AdbInstallVerifier.withVerificationOff(adb: { args in
             calls.append(args); return Shell.Result(status: 0, output: "0\n")
         }) { 42 }
         XCTAssertEqual(value, 42)
@@ -70,7 +70,7 @@ final class AdbInstallVerifierTests: XCTestCase {
     /// 読めなければ切らずに body だけ(設定を壊す側に倒さない)
     func testRunsTheBodyWithoutTouchingTheSettingWhenTheReadFails() throws {
         var calls: [[String]] = []
-        _ = try AdbInstallVerifier.withVerificationOff(adb: { args in
+        AdbInstallVerifier.withVerificationOff(adb: { args in
             calls.append(args); return Shell.Result(status: 1, output: "")
         }) { () }
         XCTAssertEqual(calls, [["get-serialno"], AdbInstallVerifier.readArguments])
@@ -106,7 +106,7 @@ final class AdbInstallVerifierTests: XCTestCase {
         for _ in 0..<2 {
             group.enter()
             DispatchQueue.global().async {
-                _ = try? AdbInstallVerifier.withVerificationOff(run: { args in
+                AdbInstallVerifier.withVerificationOff(run: { args in
                     if args == ["get-serialno"] { return (0, "same-device\n") }
                     if args == AdbInstallVerifier.readArguments { return (0, "1\n") }
                     return (0, "")
@@ -136,7 +136,7 @@ final class AdbInstallVerifierTests: XCTestCase {
         for serial in ["device-a", "device-b"] {
             group.enter()
             DispatchQueue.global().async {
-                _ = try? AdbInstallVerifier.withVerificationOff(run: { args in
+                AdbInstallVerifier.withVerificationOff(run: { args in
                     if args == ["get-serialno"] { return (0, "\(serial)\n") }
                     if args == AdbInstallVerifier.readArguments { return (0, "1\n") }
                     return (0, "")
@@ -155,7 +155,7 @@ final class AdbInstallVerifierTests: XCTestCase {
     /// キルスイッチ(FT_PLAY_PROTECT_BYPASS=0)は端末に1バイトも書かない。未設定・"1" はバイパスする
     func testKillSwitchLeavesTheDeviceUntouched() throws {
         var calls: [[String]] = []
-        let value = try AdbInstallVerifier.withVerificationOff(run: { args in
+        let value = AdbInstallVerifier.withVerificationOff(run: { args in
             calls.append(args); return (0, "null")
         }, body: { 7 }, environment: ["FT_PLAY_PROTECT_BYPASS": "0"])
         XCTAssertEqual(value, 7)

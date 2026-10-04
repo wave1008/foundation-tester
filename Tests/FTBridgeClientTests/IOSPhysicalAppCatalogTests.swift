@@ -14,22 +14,23 @@ final class IOSPhysicalAppCatalogTests: XCTestCase {
          "result": ["apps": apps]]
     }
 
-    private static let fleetestEntry: [String: Any] = [
+    // 4つの static let は読み取り専用の JSON 固定値(テスト中に変更しない)
+    nonisolated(unsafe) private static let fleetestEntry: [String: Any] = [
         "bundleIdentifier": "com.ftester.e2e.ios", "name": "FT E2E iOS",
         "url": "file:///private/var/containers/Bundle/Application/AAAA/E2EAppIOS.app",
         "internalApp": false, "hidden": false, "removable": true, "builtByDeveloper": true,
         "appClip": false, "containerAccessible": true, "defaultApp": false,
         "version": "1.0.0", "bundleVersion": "1",
     ]
-    private static let safariEntry: [String: Any] = [
+    nonisolated(unsafe) private static let safariEntry: [String: Any] = [
         "bundleIdentifier": "com.apple.mobilesafari", "name": "Safari",
         "url": "file:///private/var/containers/Bundle/Application/BBBB/MobileSafari.app",
     ]
-    private static let appleMapsEntry: [String: Any] = [
+    nonisolated(unsafe) private static let appleMapsEntry: [String: Any] = [
         "bundleIdentifier": "com.apple.Maps", "name": "Maps",
         "url": "file:///private/var/containers/Bundle/Application/CCCC/Maps.app",
     ]
-    private static let googleMapsEntry: [String: Any] = [
+    nonisolated(unsafe) private static let googleMapsEntry: [String: Any] = [
         "bundleIdentifier": "com.google.Maps", "name": "Google Maps",
         "url": "file:///private/var/containers/Bundle/Application/DDDD/Maps.app",
     ]

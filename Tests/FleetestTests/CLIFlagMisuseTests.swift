@@ -25,7 +25,7 @@ final class CLIFlagMisuseTests: XCTestCase {
     }
 
     func testHostMetricsSummaryRejectsAMissingExplicitLog() throws {
-        var command = try ApiHostMetricsSummaryCommand.parse(["--log", "/nonexistent-\(UUID().uuidString).ndjson"])
+        let command = try ApiHostMetricsSummaryCommand.parse(["--log", "/nonexistent-\(UUID().uuidString).ndjson"])
         XCTAssertThrowsError(try command.run()) { error in
             XCTAssertTrue("\(error)".contains("--log file not found"), "\(error)")
         }

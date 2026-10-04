@@ -18,7 +18,7 @@ final class SimulatorStorageProbeTests: XCTestCase {
     func testWalkMatchesDuAndDoesNotDependOnThreadCount() throws {
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent("SimulatorStorageProbeTests-\(UUID().uuidString)")
-        addTeardownBlock { try? fm.removeItem(at: base) }
+        addTeardownBlock { try? FileManager.default.removeItem(at: base) }
         let root = base.appendingPathComponent("data")
         for a in 0..<4 {
             for b in 0..<5 {
@@ -56,7 +56,7 @@ final class SimulatorStorageProbeTests: XCTestCase {
     func testPassedDeadlineReturnsNil() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("SimulatorStorageProbeTests-\(UUID().uuidString)")
-        addTeardownBlock { try? fm.removeItem(at: root) }
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
         try fm.createDirectory(at: root.appendingPathComponent("a"), withIntermediateDirectories: true)
         try Data(repeating: 1, count: 4096).write(to: root.appendingPathComponent("a/f"))
         XCTAssertNil(SimulatorStorageProbe.allocatedBytes(under: root, threads: 4,

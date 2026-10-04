@@ -20,7 +20,7 @@ import Foundation
 
 public enum IOSPhysicalDeviceLock {
 
-    public enum State: Equatable {
+    public enum State: Equatable, Sendable {
         case locked
         case unlocked
         /// 読めなかった(devicectl が無い・端末が居ない・形式が変わった)。**促さない**

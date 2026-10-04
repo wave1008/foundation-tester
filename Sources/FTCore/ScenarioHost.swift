@@ -5,6 +5,7 @@
 // ホスト常駐中も再ビルドだけで反映、1シナリオ1プロセスの分離。
 
 import Foundation
+import Synchronization
 
 /// シナリオのメタデータ(fleetest-scenarios list --json の1エントリ)
 public struct ScenarioInfo: Codable, Sendable, Hashable {
@@ -232,10 +233,10 @@ public enum ScenarioHost {
         guard RegionText.mode(environment: ProcessInfo.processInfo.environment) != .off else { return }
         // **1 プロセスにつき 1 回**。複数の機械に跨る profile は同じ親の中で run 経路を 3 回通る
         // (実測: warm-ocr が 3 本同時に走った)。同じキャッシュを 3 本が競ってコンパイルするだけ
-        warmupLock.lock()
-        let already = warmupStarted
-        warmupStarted = true
-        warmupLock.unlock()
+        let already = warmupStarted.withLock { started in
+            defer { started = true }
+            return started
+        }
         guard !already else { return }
         guard let runner = try? runnerURL(project: project) else { return }
         let process = Process()
@@ -267,8 +268,7 @@ public enum ScenarioHost {
         return all
     }
 
-    private static let warmupLock = NSLock()
-    private static var warmupStarted = false
+    private static let warmupStarted = Mutex(false)
 
     public static func list(project: TestProject) throws -> [ScenarioInfo] {
         let runner = try runnerURL(project: project)
@@ -719,31 +719,50 @@ public enum ScenarioHost {
     /// EOF(空 Data)で残りを流して終了する
     static func lineStream(_ handle: FileHandle) -> AsyncStream<String> {
         AsyncStream { continuation in
-            // readabilityHandler は FileHandle 内部のキューで直列に呼ばれる
-            var buffer = Data()
+            // readabilityHandler は FileHandle 内部のキューで直列に呼ばれる(Mutex は Swift 6 の
+            // 捕捉検査を通すためで、競合は起きない)
+            let buffer = LineBuffer()
             handle.readabilityHandler = { handle in autoreleasepool {
                 // 呼び出しごとの解放の区切りは Foundation の内部キュー次第なので明示する
                 // (自動解放の NSData が長いシナリオの間ずっと溜まらないように)
                 let chunk = handle.availableData
                 if chunk.isEmpty {  // EOF
                     handle.readabilityHandler = nil
-                    if !buffer.isEmpty {
-                        continuation.yield(String(decoding: buffer, as: UTF8.self))
-                        buffer.removeAll()
-                    }
+                    if let rest = buffer.drain() { continuation.yield(rest) }
                     continuation.finish()
                     return
                 }
-                buffer.append(chunk)
-                while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    let line = String(decoding: buffer[buffer.startIndex..<newline],
-                                      as: UTF8.self)
-                    buffer.removeSubrange(buffer.startIndex...newline)
-                    continuation.yield(line)
-                }
+                for line in buffer.append(chunk) { continuation.yield(line) }
             } }
             continuation.onTermination = { _ in
                 handle.readabilityHandler = nil
+            }
+        }
+    }
+
+    /// `lineStream` の改行待ちの端数
+    final class LineBuffer: Sendable {
+        private let data = Mutex(Data())
+
+        /// 追記して、改行で閉じた行を取り出す(端数は残す)
+        func append(_ chunk: Data) -> [String] {
+            data.withLock { buffer in
+                buffer.append(chunk)
+                var lines: [String] = []
+                while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                    lines.append(String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self))
+                    buffer.removeSubrange(buffer.startIndex...newline)
+                }
+                return lines
+            }
+        }
+
+        /// EOF で残りの端数を取り出す(空なら nil)
+        func drain() -> String? {
+            data.withLock { buffer in
+                guard !buffer.isEmpty else { return nil }
+                defer { buffer.removeAll() }
+                return String(decoding: buffer, as: UTF8.self)
             }
         }
     }

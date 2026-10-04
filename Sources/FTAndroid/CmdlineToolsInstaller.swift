@@ -10,6 +10,7 @@
 import CryptoKit
 import Foundation
 import FTCore
+import Synchronization
 
 public enum CmdlineToolsInstaller {
 
@@ -97,7 +98,7 @@ public enum CmdlineToolsInstaller {
 
     /// $ANDROID_SDK/cmdline-tools/latest へ導入する。progress は人間向けの1行進捗
     /// (呼び出し側が stderr / OUTPUT へ流す)。既に avdmanager があれば何もしない。
-    public static func install(progress: @escaping (String) -> Void) async throws -> InstallResult {
+    public static func install(progress: @escaping @Sendable (String) -> Void) async throws -> InstallResult {
         guard let sdkRoot = AndroidSDKLocator.findSDKRoot() else {
             throw InstallError("Android SDK not found"
                 + " (check ANDROID_HOME / ANDROID_SDK_ROOT)")
@@ -159,7 +160,7 @@ public enum CmdlineToolsInstaller {
     /// 進捗を出しながらファイルへ落とす。URLSession.bytes の逐次 await は 156MB では遅すぎるため
     /// downloadTask + デリゲートを使う(進捗は 5% ごと = 20 行程度に間引く。OUTPUT を埋めないため)
     private static func download(
-        archive: Archive, to destination: URL, progress: @escaping (String) -> Void
+        archive: Archive, to destination: URL, progress: @escaping @Sendable (String) -> Void
     ) async throws {
         let delegate = DownloadDelegate(total: archive.size, destination: destination,
                                         report: progress)
@@ -175,65 +176,76 @@ public enum CmdlineToolsInstaller {
 
     /// downloadTask の進捗通知と完了待ち。didFinishDownloadingTo の location はデリゲートから
     /// 戻ると消えるため、その場で移動しきる
-    private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate {
+    private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, Sendable {
+        /// run(開始側)とデリゲートキュー(通知側)が触る可変状態。resume は withLock の外で呼ぶ
+        private struct State {
+            var nextReport: Int
+            var continuation: CheckedContinuation<Void, Error>?
+            var moveError: Error?
+            var finished = false
+        }
         private let total: Int
         private let destination: URL
-        private let report: (String) -> Void
-        private var nextReport: Int
-        private var continuation: CheckedContinuation<Void, Error>?
-        private var moveError: Error?
-        private var finished = false
+        private let report: @Sendable (String) -> Void
+        private let state: Mutex<State>
 
-        init(total: Int, destination: URL, report: @escaping (String) -> Void) {
+        init(total: Int, destination: URL, report: @escaping @Sendable (String) -> Void) {
             self.total = total
             self.destination = destination
             self.report = report
-            self.nextReport = max(total / 20, 1)
+            self.state = Mutex(State(nextReport: max(total / 20, 1)))
         }
 
         func run(session: URLSession, url: URL) async throws {
             try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-                continuation = cont
+                state.withLock { $0.continuation = cont }
                 session.downloadTask(with: url).resume()
             }
         }
 
         /// 成功系(didFinishDownloadingTo → didCompleteWithError(nil))で2回呼ばれるので1回に潰す
         private func finish(_ result: Result<Void, Error>) {
-            guard !finished else { return }
-            finished = true
-            continuation?.resume(with: result)
-            continuation = nil
+            let cont: CheckedContinuation<Void, Error>? = state.withLock { state in
+                guard !state.finished else { return nil }
+                state.finished = true
+                defer { state.continuation = nil }
+                return state.continuation
+            }
+            cont?.resume(with: result)
         }
 
         func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                         didWriteData bytesWritten: Int64, totalBytesWritten: Int64,
                         totalBytesExpectedToWrite: Int64) {
-            guard total > 0, totalBytesWritten >= Int64(nextReport) else { return }
+            let due: Bool = state.withLock { state in
+                guard total > 0, totalBytesWritten >= Int64(state.nextReport) else { return false }
+                state.nextReport += max(total / 20, 1)
+                return true
+            }
+            guard due else { return }
             report("    \(Int(totalBytesWritten) * 100 / total)% "
                 + "(\(Int(totalBytesWritten) / 1_048_576)/\(total / 1_048_576) MB)")
-            nextReport += max(total / 20, 1)
         }
 
         func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask,
                         didFinishDownloadingTo location: URL) {
             if let response = downloadTask.response as? HTTPURLResponse,
                !(200..<300).contains(response.statusCode) {
-                moveError = InstallError("failed to fetch the archive (HTTP \(response.statusCode))")
+                state.withLock { $0.moveError = InstallError("failed to fetch the archive (HTTP \(response.statusCode))") }
                 return
             }
             do {
                 try? FileManager.default.removeItem(at: destination)
                 try FileManager.default.moveItem(at: location, to: destination)
             } catch {
-                moveError = error
+                state.withLock { $0.moveError = error }
             }
         }
 
         func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
             if let error {
                 finish(.failure(error))
-            } else if let moveError {
+            } else if let moveError = state.withLock({ $0.moveError }) {
                 finish(.failure(moveError))
             } else {
                 finish(.success(()))
