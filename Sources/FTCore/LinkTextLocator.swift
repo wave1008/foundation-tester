@@ -7,6 +7,17 @@ import Foundation
 public enum LinkTextLocator {
     public enum Source: String, Sendable { case tree, ocr }
 
+    /// OCR の撮影の回数(初回を含む)。**1文字も読めない絵 = 画面の切り替えの途中の撮影**(遅い Emulator で
+    /// 文字が描かれる前の白い絵を撮り「OCR read no text」で落ちた。E2EY-CMP の Android・M1Ultra。
+    /// 同じ画面の失敗時の絵では読めた)を、切り替えの所要(数百 ms)を越えて撮り直す
+    public static let ocrShotAttempts = 3
+    /// 撮り直しの間隔(3 回で約 1 秒 = 画面の切り替えのアニメーションより長い)
+    public static let ocrReshotInterval: Duration = .milliseconds(500)
+    /// 1回の OCR の予算。定常は 1 段 100〜300ms・段は最大 3 で 1 秒未満(暖機は先に `awaitPrewarm` で
+    /// 済ませる)。これを超えるのは読みが固まった形(E2EY-Android で 120 秒のステップの時間切れまで返らなかった)。
+    /// 尽きたら理由を言って失敗する(固まった読みは止めずに放す = `TaskBudget`)
+    public static let ocrBudget: Duration = .seconds(10)
+
     public struct Point: Equatable, Sendable {
         public let x: Double
         public let y: Double

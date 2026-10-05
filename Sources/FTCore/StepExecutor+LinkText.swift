@@ -12,15 +12,30 @@ extension StepExecutor {
         var ocrLines: [String] = []
         var ocrAttempts = 0
         if point == nil {
+            // 暖機を待つ(待った分は DeadlineExclusion が締め切りから差し引く。テキストの視覚検証の OCR と同じ使い方)
+            _ = await RegionText.awaitPrewarm(mode: .on)
             let clock = ContinuousClock()
-            let start = clock.now
-            let png = try await driver.screenshot()
-            phase.snapshotMs += Self.ms(clock.now - start)
-            if let located = await RegionText.locateLink(linkText: linkText, pngData: png,
-                                                         frame: element.frame, screen: snapshot.screen) {
-                ocrLines = located.lines
-                ocrAttempts = located.attempts
-                if let p = located.point { point = .init(x: p.x, y: p.y, source: .ocr) }
+            for attempt in 1...LinkTextLocator.ocrShotAttempts {
+                if attempt > 1 { try? await Task.sleep(for: LinkTextLocator.ocrReshotInterval) }
+                let start = clock.now
+                let png = try await driver.screenshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                let frame = element.frame, screen = snapshot.screen
+                let outcome = await TaskBudget.run(LinkTextLocator.ocrBudget) {
+                    await RegionText.locateLink(linkText: linkText, pngData: png, frame: frame, screen: screen)
+                }
+                guard case .value(let located) = outcome else {
+                    return StepOutcome(status: failed(.timeout,
+                        "cannot find the link text \"\(linkText)\" inside \(TapTargetGeometry.describe(element)):"
+                            + " OCR did not finish within \(LinkTextLocator.ocrBudget) (the text recognizer is stuck)"))
+                }
+                ocrAttempts += located?.attempts ?? 0
+                if let located {
+                    ocrLines = located.lines
+                    if let p = located.point { point = .init(x: p.x, y: p.y, source: .ocr); break }
+                }
+                // 文字が読めたのに見つからない = その絵にリンクの文字列が無い(撮り直しても変わらない)
+                if !ocrLines.isEmpty { break }
             }
         }
         guard let point else {
