@@ -66,4 +66,19 @@ final class UncoverOutsideContainerTests: XCTestCase {
         rows = els.filter { $0.ref == 4 }
         XCTAssertTrue(ContainerGeometry.isOutsideContainer(rows[0], in: els, screen: screen), "押し出された行は ghost のまま")
     }
+
+    /// 形3(iOS の RN): FAB を包む Animated.View が木に出ず、深さでたどると直前の上部バー(y=168〜224)が
+    /// 親に見える = 容器の外の ghost と読み、一覧を送って FAB を隠していた。実際に撮った木(in-app・E2EY-RN の
+    /// 隠れるバーの画面)で、中心を含む申告スクロール容器で代えて浮いた物と読むことを固定する
+    func testFloatingFabWhoseWrapperIsMissingFromTheTreeIsNotAGhost() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Fixtures/E2EYTrees/rn-ios-hide-bars.json")
+        let snapshot = try JSONDecoder().decode(SnapshotResponse.self, from: Data(contentsOf: url))
+        let fab = try XCTUnwrap(snapshot.elements.first { $0.identifier == "fab_hiding" })
+        XCTAssertFalse(ContainerGeometry.isOutsideContainer(fab, in: snapshot.elements, screen: snapshot.screen),
+                       "浮いた FAB は送らず撃つ")
+        // 行(仲間の居る要素)は浮いた物と読まない = ghost の判定を潰していない
+        let row = try XCTUnwrap(snapshot.elements.first { $0.identifier == "row_h_00" })
+        XCTAssertFalse(ContainerGeometry.isFloatingOverDeclaredScroller(row, in: snapshot.elements))
+    }
 }

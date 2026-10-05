@@ -730,7 +730,7 @@ select("#txt_loading_result").textIs("loading=row_l_03")
 tap("#fab_hiding", scroll: .up)
 ```
 
-**Current limitation**: where the hidden bar stays in the tree under the bar above it (Flutter), the tap may hit the covering bar.
+**Current limitation**: a bar hidden with Flutter's `AnimatedSlide` is still reported at its original place in the tree while hidden, so the search does not scroll and the tap may land where the button no longer is.
 
 ## Partial swipes (revealing buttons, swipe to reply)
 

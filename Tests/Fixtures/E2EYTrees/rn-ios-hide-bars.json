@@ -1,0 +1,424 @@
+{
+ "elements": [
+  {
+   "depth": 14,
+   "enabled": true,
+   "frame": {
+    "height": 17,
+    "width": 386,
+    "x": 8,
+    "y": 124
+   },
+   "identifier": "txt_hide_result",
+   "label": "hide=top_action",
+   "ref": 1,
+   "type": "staticText"
+  },
+  {
+   "depth": 15,
+   "enabled": true,
+   "frame": {
+    "height": 17,
+    "width": 386,
+    "x": 8,
+    "y": 124
+   },
+   "label": "hide=top_action",
+   "ref": 2,
+   "type": "staticText"
+  },
+  {
+   "depth": 14,
+   "enabled": true,
+   "frame": {
+    "height": 17,
+    "width": 386,
+    "x": 8,
+    "y": 143
+   },
+   "identifier": "txt_bars_state",
+   "label": "bars=shown",
+   "ref": 3,
+   "type": "staticText"
+  },
+  {
+   "depth": 15,
+   "enabled": true,
+   "frame": {
+    "height": 17,
+    "width": 386,
+    "x": 8,
+    "y": 143
+   },
+   "label": "bars=shown",
+   "ref": 4,
+   "type": "staticText"
+  },
+  {
+   "depth": 16,
+   "enabled": true,
+   "frame": {
+    "height": 706,
+    "width": 402,
+    "x": 0,
+    "y": 168
+   },
+   "ref": 5,
+   "scrollable": true,
+   "type": "other"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 226
+   },
+   "identifier": "row_h_00",
+   "label": "行 H00",
+   "ref": 6,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 278
+   },
+   "identifier": "row_h_01",
+   "label": "行 H01",
+   "ref": 7,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 330
+   },
+   "identifier": "row_h_02",
+   "label": "行 H02",
+   "ref": 8,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 382
+   },
+   "identifier": "row_h_03",
+   "label": "行 H03",
+   "ref": 9,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 434
+   },
+   "identifier": "row_h_04",
+   "label": "行 H04",
+   "ref": 10,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 486
+   },
+   "identifier": "row_h_05",
+   "label": "行 H05",
+   "ref": 11,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 538
+   },
+   "identifier": "row_h_06",
+   "label": "行 H06",
+   "ref": 12,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 590
+   },
+   "identifier": "row_h_07",
+   "label": "行 H07",
+   "ref": 13,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 642
+   },
+   "identifier": "row_h_08",
+   "label": "行 H08",
+   "ref": 14,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 694
+   },
+   "identifier": "row_h_09",
+   "label": "行 H09",
+   "ref": 15,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 746
+   },
+   "identifier": "row_h_10",
+   "label": "行 H10",
+   "ref": 16,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 798
+   },
+   "identifier": "row_h_11",
+   "label": "行 H11",
+   "ref": 17,
+   "type": "button"
+  },
+  {
+   "depth": 19,
+   "enabled": true,
+   "frame": {
+    "height": 48,
+    "width": 386,
+    "x": 8,
+    "y": 850
+   },
+   "identifier": "row_h_12",
+   "label": "行 H12",
+   "ref": 18,
+   "type": "button"
+  },
+  {
+   "depth": 15,
+   "enabled": true,
+   "frame": {
+    "height": 56,
+    "width": 402,
+    "x": 0,
+    "y": 168
+   },
+   "identifier": "bar_top_hiding",
+   "ref": 19,
+   "type": "other"
+  },
+  {
+   "depth": 16,
+   "enabled": true,
+   "frame": {
+    "height": 21.666664123535156,
+    "width": 84.33333587646484,
+    "x": 12,
+    "y": 185
+   },
+   "label": "受信トレイ",
+   "ref": 20,
+   "type": "staticText"
+  },
+  {
+   "depth": 17,
+   "enabled": true,
+   "frame": {
+    "height": 21.666664123535156,
+    "width": 84.33333587646484,
+    "x": 12,
+    "y": 185
+   },
+   "label": "受信トレイ",
+   "ref": 21,
+   "type": "staticText"
+  },
+  {
+   "depth": 16,
+   "enabled": true,
+   "frame": {
+    "height": 44,
+    "width": 88.33334350585938,
+    "x": 301.6666564941406,
+    "y": 174
+   },
+   "identifier": "btn_top_action",
+   "label": "並べ替え",
+   "ref": 22,
+   "type": "button"
+  },
+  {
+   "depth": 16,
+   "enabled": true,
+   "frame": {
+    "height": 56,
+    "width": 56,
+    "x": 330,
+    "y": 746
+   },
+   "identifier": "fab_hiding",
+   "label": "作成",
+   "ref": 23,
+   "type": "button"
+  },
+  {
+   "depth": 15,
+   "enabled": true,
+   "frame": {
+    "height": 56,
+    "width": 402,
+    "x": 0,
+    "y": 818
+   },
+   "identifier": "bar_bottom_hiding",
+   "ref": 24,
+   "type": "other"
+  },
+  {
+   "depth": 16,
+   "enabled": true,
+   "frame": {
+    "height": 44,
+    "width": 60.33333206176758,
+    "x": 63.33333206176758,
+    "y": 824
+   },
+   "identifier": "btn_bottom_a",
+   "label": "受信",
+   "ref": 25,
+   "type": "button"
+  },
+  {
+   "depth": 16,
+   "enabled": true,
+   "frame": {
+    "height": 44,
+    "width": 88.33332824707031,
+    "x": 250.3333282470703,
+    "y": 824
+   },
+   "identifier": "btn_bottom_b",
+   "label": "フォルダ",
+   "ref": 26,
+   "type": "button"
+  },
+  {
+   "depth": 9,
+   "enabled": true,
+   "frame": {
+    "height": 54,
+    "width": 402,
+    "x": 0,
+    "y": 62
+   },
+   "identifier": "スクロールで隠れるバー",
+   "ref": 27,
+   "type": "navigationBar"
+  },
+  {
+   "depth": 10,
+   "enabled": true,
+   "frame": {
+    "height": 44,
+    "width": 44,
+    "x": 16,
+    "y": 62
+   },
+   "identifier": "BackButton",
+   "label": "Back",
+   "ref": 28,
+   "type": "button"
+  },
+  {
+   "depth": 11,
+   "enabled": true,
+   "frame": {
+    "height": 16.999998092651367,
+    "width": 144.3333282470703,
+    "x": 128.66666666666669,
+    "y": 75.33333333333333
+   },
+   "identifier": "txt_screen_title",
+   "label": "スクロールで隠れるバー",
+   "ref": 29,
+   "type": "staticText"
+  },
+  {
+   "depth": 12,
+   "enabled": true,
+   "frame": {
+    "height": 16.999998092651367,
+    "width": 144.3333282470703,
+    "x": 128.66666666666669,
+    "y": 75.33333333333333
+   },
+   "label": "スクロールで隠れるバー",
+   "ref": 30,
+   "type": "staticText"
+  }
+ ],
+ "keyboardShown": false,
+ "screen": {
+  "height": 874,
+  "width": 402,
+  "x": 0,
+  "y": 0
+ },
+ "sessionBundleID": "com.ftester.e2ey.rn",
+ "truncatedCount": 0
+}

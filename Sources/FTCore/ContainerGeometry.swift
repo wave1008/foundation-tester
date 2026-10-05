@@ -174,7 +174,11 @@ public enum ContainerGeometry {
     /// 申告が無い木(Compose iOS)は nearestScrollableAncestor が nil = 従来どおり
     static func isFloatingOverDeclaredScroller(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
         guard let index = elements.firstIndex(where: { $0.ref == element.ref }),
-              let scroller = nearestScrollableAncestor(of: element, at: index, in: elements),
+              // 深さでたどれないときは、要素の中心を含む最小の申告スクロール容器で代える —— 包むビューが木に出ない
+              // FAB(RN の iOS の Animated.View)は、深さでたどると直前に並んだ上部バーが親に見え、祖先に
+              // スクロール容器が居ない(E2EY-RN の隠れるバー: 上部バーの外 = ghost と読んで一覧を送っていた)
+              let scroller = nearestScrollableAncestor(of: element, at: index, in: elements)
+                ?? smallestDeclaredScroller(containingCentreOf: element, in: elements),
               // Web の中身は常にスクロールの中身(position:fixed の浮きは稀)。固定コーパスの
               // and-browser_weather_weekly「洗濯指数10」は仲間の居ない真の ghost で、WebView が申告容器
               !scroller.type.lowercased().contains("webview"),
@@ -188,6 +192,16 @@ public enum ContainerGeometry {
                 && abs($0.frame.width - element.frame.width) <= floatingPeerTolerance
         }
     }
+    static func smallestDeclaredScroller(containingCentreOf element: ElementInfo,
+                                         in elements: [ElementInfo]) -> ElementInfo? {
+        let cx = element.frame.x + element.frame.width / 2, cy = element.frame.y + element.frame.height / 2
+        return elements.filter {
+            $0.ref != element.ref && $0.scrollable == true && $0.frame.width > 0 && $0.frame.height > 0
+                && cx >= $0.frame.x && cx <= $0.frame.x + $0.frame.width
+                && cy >= $0.frame.y && cy <= $0.frame.y + $0.frame.height
+        }.min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+    }
+
     /// 浮いているとみなす、要素が申告容器の枠に載る面積比(半分以上。縁をまたぐ要素は従来の扱い)
     static let floatingOverlapRatio = 0.5
     /// 仲間とみなす x/幅の差(pt/px の丸め)
