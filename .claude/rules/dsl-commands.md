@@ -12,7 +12,7 @@ paths:
   - "Sources/FTDSLMacros/**"
   - "Tests/FTDSLTests/**"
   - "Tests/FTDSLTests/CommandIndexSyncTests.swift"
-  - "Tests/FTDSLTests/FTDriveCorePrewarmWiringTests.swift"
+  - "Tests/FTDSLTests/FTDriveCoreOCRModelCompileWiringTests.swift"
   - "Tests/FTDSLTests/SelTests.swift"
   - "Tests/FleetestMCPTests/BatchLineParserTests.swift"
   - "docs/commands.md"

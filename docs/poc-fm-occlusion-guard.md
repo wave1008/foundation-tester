@@ -759,7 +759,7 @@ OCR が判定不能で FM が見えないと言った回だけ)。根拠:
 - 配線: FTRuntime が `occlusionGuardEnabled = fmTextOcclusionCheck || ocrTextOcclusionCheck` と
   `fmVisibilityCheckEnabled = fmTextOcclusionCheck` を渡す。`--no-fm` で delegate が nil でも OCR の段は走る
 - テスト: `OCROnlyVisibilityTests`(merge の全組み合わせ)・`OCROnlyVisibilityWiringTests`(FM より前に OCR の赤で
-  返らない・merge が FM の後)・`FTDriveCorePrewarmWiringTests`(OCR だけでも guard が走る)・
+  返らない・merge が FM の後)・`FTDriveCoreOCRModelCompileWiringTests`(OCR だけでも guard が走る)・
   `testFMStageOffNeverCallsFM`。変異 5 件をすべて検出
 
 ## 6. 既知の限界
