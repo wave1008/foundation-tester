@@ -6,9 +6,11 @@ import XCTest
 import FTCore
 
 final class InAppSyntheticInputScopeTests: XCTestCase {
-    func testOnlySwiftUIRejectsSyntheticTap() {
+    func testOnlySwiftUIAccessibilityNodesRejectSyntheticTap() {
         for framework in AppUIFramework.allCases {
-            XCTAssertEqual(framework.rejectsSyntheticTap, framework == .swiftUI, "\(framework)")
+            XCTAssertEqual(framework.rejectsSyntheticTap(nodeIsView: false), framework == .swiftUI, "\(framework)")
+            // UIView の要素(アラートのボタン・UIKit 部品)は SwiftUI のアプリでも合成タッチのまま
+            XCTAssertFalse(framework.rejectsSyntheticTap(nodeIsView: true), "\(framework)")
         }
     }
 
@@ -17,7 +19,7 @@ final class InAppSyntheticInputScopeTests: XCTestCase {
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         let bridge = try String(contentsOf: root.appendingPathComponent("InAppBridge/Sources/InAppBridge.swift"),
                                 encoding: .utf8)
-        XCTAssertTrue(bridge.contains("rejectsSyntheticTap == true"))
+        XCTAssertTrue(bridge.contains("rejectsSyntheticTap(nodeIsView: node is UIView) == true"))
         XCTAssertTrue(bridge.contains("ScrollDelegateNotification.shouldNotify("))
     }
 

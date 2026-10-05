@@ -663,7 +663,7 @@ final class FTInAppBridge {
             }
             // SwiftUI の合成タッチは onTapGesture / Button のジェスチャを発火しない(無言の空振りになる)。
             // 501 でホストに XCUITest の座標タップへ回させる(UIKit / RN は合成タッチが効く形があるので対象外)
-            if AppUIFramework(rawValue: self.uiFramework)?.rejectsSyntheticTap == true {
+            if AppUIFramework(rawValue: self.uiFramework)?.rejectsSyntheticTap(nodeIsView: node is UIView) == true {
                 thrown = InAppError(501, "activate did not fire on this SwiftUI element and a synthetic touch"
                     + " would be silently ignored (UIGestureRecognizer does not accept synthetic touches)."
                     + " hybrid falls back to XCUITest")

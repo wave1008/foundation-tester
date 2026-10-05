@@ -35,9 +35,11 @@ public enum AppUIFramework: String, Codable, Sendable, CaseIterable {
     public var retriesUnfiredActivate: Bool { isSelfRendered }
 
     /// in-app の ref タップで activate が不発のとき、合成タッチを撃たず 501 を返すか(ホストが XCUITest へ回す)。
-    /// SwiftUI は合成タッチで Button / onTapGesture が発火しない(framework-differences §2.1)。
-    /// UIKit(セル選択等)と RN(Pressable)は合成タッチで効く形があるので対象外
-    public var rejectsSyntheticTap: Bool { self == .swiftUI }
+    /// **SwiftUI の a11y ノード(UIView でない)だけ**: 合成タッチで Button / onTapGesture が発火しない。
+    /// SwiftUI のアプリの中でも **UIView の要素**(`.alert` の実体の UIAlertController のボタン・
+    /// UIViewRepresentable の UIKit 部品)は合成タッチが効き、XCUITest へ回すとランナーが「アラートが手前」で
+    /// 断るので対象外(E2E-iOS / E2EX-iOS のダイアログで退行した)。UIKit・RN・自前描画も対象外
+    public func rejectsSyntheticTap(nodeIsView: Bool) -> Bool { self == .swiftUI && !nodeIsView }
 }
 
 /// in-app の contentOffset 経路が、指の払いの終わりを知らせる delegate 通知(WillBeginDragging /
