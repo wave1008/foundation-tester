@@ -544,7 +544,7 @@ test("FM は機械ごとの行に正しく振り分けられる", (t) => {
   assert.equal(fmOf(""), "0", "手元も別に集計される");
 });
 
-test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(値は '–')の表示になる", (t) => {
+test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(値の欄は空)の表示になる", (t) => {
   {
     const { window, document } = createWebview();
     t.after(() => window.close());
@@ -567,8 +567,8 @@ test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(値�
 
     const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
     assert.ok(entry.classList.contains("hm-fm-dead"), "窓内が全滅なら dead");
-    // 死んでいる間の回数には意味が無いので出さない(死はグレーの線とツールチップが言う)
-    assert.equal(values(rowFor(document, "mac2")).at(-1), "–");
+    // 死んでいる間の回数には意味が無いので出さない。'–' も出さない(バッジと並んで「– ⚠︎N/A」になる)
+    assert.equal(values(rowFor(document, "mac2")).at(-1), "");
   }
 });
 
@@ -587,7 +587,7 @@ test("呼び出しが0件でも、台帳が死と言えば dead になる", (t) 
 
   const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
   assert.ok(entry.classList.contains("hm-fm-dead"), "呼び出し0件でも台帳の死は dead");
-  assert.equal(values(rowFor(document, "mac2")).at(-1), "–", "回数(0)は出さない");
+  assert.equal(values(rowFor(document, "mac2")).at(-1), "", "回数(0)も '–' も出さない(「⚠︎N/A」だけ)");
   // **セルのツールチップは死を語らない**(ユーザー決定 2026-09-03)。経路の名指しは右のバッジ、
   // 理由と観測時刻はそのバッジのツールチップが持つ。ここで繰り返すと、レート統計を見に来た
   // 人が毎回説明を読まされる

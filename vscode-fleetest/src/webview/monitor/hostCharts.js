@@ -341,10 +341,10 @@ function hmRenderFmLabel(row) {
   // 「全部失敗」がすぐ立ってしまい落ち着かないため。
   const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
-  // **死んでいる間は回数を出さない**(ユーザー決定)。死んだ FM の「0回」は
-  // 事実ではあるが読み手を誤らせる —— 0 は「使われていない」とも読めるうえ、死んでいる間の
-  // 回数には意味が無い。欠測と同じ '–' に倒し、死であることはグレーの線とツールチップが言う
-  entry.value.textContent = dead ? '–' : (partial ? '⚠' : '') + callsText;
+  // **死んでいる間は値の欄に何も出さない**(ユーザー決定)。死んだ FM の「0回」は事実ではあるが読み手を誤らせ、
+  // '–' を出すと右のバッジと並んで「– ⚠︎N/A」になる。死はグレーの線と右のバッジ(⚠︎N/A 等)だけが言う
+  // (欄そのものは CSS の .hm-fm-dead で畳む)
+  entry.value.textContent = dead ? '' : (partial ? '⚠' : '') + callsText;
   let title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.fmTitle', {
     seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',

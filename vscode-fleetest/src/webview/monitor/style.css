@@ -930,12 +930,12 @@ body.vscode-high-contrast-light .hm-capacity {
 .hm-fm-dead-badge.hm-visible {
   display: inline-block;
 }
-/* 死んでいる間の FM の値は必ず '–' の1文字なので、数字のための幅(min-width 32px)を
-   予約しない —— 予約したままだと '–' とバッジの間に 28px の空白が空く。
+/* 死んでいる間の FM の値の欄は空(ユーザー決定: 「– ⚠︎N/A」でなく「⚠︎N/A」)なので欄ごと畳む ——
+   幅(min-width 32px)を残すとグラフとバッジの間に空白が空く。
    **バッジは行の最後尾**なので、ここを畳んでも左の列は動かない。
    バッジの出る行は必ずこの状態なので、行ごとにバッジの開始位置がずれることもない。 */
 .host-metric.hm-fm-dead .hm-value {
-  min-width: 0;
+  display: none;
 }
 .host-metric.hm-fm-warn .hm-value {
   color: var(--vscode-editorWarning-foreground, #e6a700);
