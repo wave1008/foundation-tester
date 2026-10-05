@@ -243,8 +243,8 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     case ocrShortcutNotWarm = "ocr-shortcut-not-warm"
     case ocrShortcutBusy = "ocr-shortcut-busy"
 
-    /// 近道を撃つ前に暖機の完了を待った(ユーザー決定: run の開始時には待たない・
-    /// 近道を呼ぶ時点でだけ待つ)。待った時間は `DeadlineExclusion` 経由で締め切りから差し引かれる
+    /// 近道を撃つ前に暖機の完了を待った(受け皿。ふつうは ScenarioHost.awaitOCRWarmup が最初のシナリオの前に
+    /// warm-ocr を待ち終えている)。待った時間は `DeadlineExclusion` 経由で締め切りから差し引かれる
     /// ので判定は変えない。**率が上がったら暖機の開始(FTDriveCore.init)が間に合っていない**
     /// (実行プロファイルのマスタースイッチが効いているのに最初のガードより前に終わらない)
     case ocrWarmupWaited = "ocr-warmup-waited"

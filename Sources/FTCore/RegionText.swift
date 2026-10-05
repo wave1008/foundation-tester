@@ -240,7 +240,7 @@ public enum RegionText {
     public static let prewarmWaitCap: Duration = .seconds(120)
 
     /// occlusion-guard の OCR 近道を実際に撃つ直前に呼ぶ。**暖機が終わるまで待つ**
-    /// (ユーザー決定: run の開始時には待たない・近道を呼ぶ時点でだけ待つ)。
+    /// (受け皿。ふつうは `ScenarioHost.awaitOCRWarmup` が最初のシナリオを起こす前に warm-ocr を待ち終えている)。
     /// 既に暖まっていれば待たない(`.alreadyWarm`)。まだ始まっていなければここで始める
     /// (`prewarmIfNeeded`)。**mode が off のときは呼ばない**(呼び手の責任。off の run に
     /// Vision を読ませない契約は prewarmIfNeeded と同じ)。待った時間は

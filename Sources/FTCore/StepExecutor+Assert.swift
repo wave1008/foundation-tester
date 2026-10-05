@@ -235,8 +235,8 @@ extension StepExecutor {
         // 詳細は RegionText のコメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
-        // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(ユーザー決定。
-        // run の開始時には待たない)。諦めた読みが走っている間は待たない
+        // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(受け皿。ふつうは
+        // ScenarioHost.awaitOCRWarmup が最初のシナリオを起こす前に warm-ocr を待ち終えている)。諦めた読みが走っている間は待たない
         // (shouldTakeShortcut と同じ理由 — 詰まった読みの後ろに積み増さない)。待った時間は
         // DeadlineExclusion 経由で締め切り(FTSync/scenarioTimeout)から差し引かれるので、
         // ここで払っても呼び出し元のステップ/シナリオが不当に打ち切られない

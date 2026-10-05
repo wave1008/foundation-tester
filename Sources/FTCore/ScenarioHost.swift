@@ -263,6 +263,31 @@ public enum ScenarioHost {
         process.standardError = FileHandle.nullDevice
         process.qualityOfService = .utility
         try? process.run()
+        if process.processIdentifier > 0 {
+            warmupPID.withLock { $0 = process.processIdentifier }
+        }
+    }
+
+    /// `warmOCRCache` が起こした `warm-ocr` の pid(nil = 起こしていない)。`awaitOCRWarmup` が待つ相手
+    static let warmupPID = Mutex<pid_t?>(nil)
+    /// 待った秒数を run のログへ出したか(1 run = 1 プロセスにつき1回だけ出す)
+    private static let warmupWaitReported = Mutex(false)
+
+    /// **最初のシナリオを起こす前に `warm-ocr` が終わるまで待つ**(ユーザー決定。以前の
+    /// 「run の開始時には待たない」を取り消した)。シナリオの最中に暖機を待つと、締め切りは差し引かれても
+    /// アプリの時間は進み、一時的な状態を確かめる手順が壊れた(E2EY-Android の骨組み: `select` が 39 秒待つ間に
+    /// 2 秒の読み込み中が終わった)。暖まっていれば子は約 0.5 秒で終わるので、ふつうは待たない。
+    /// 上限は `RegionText.prewarmWaitCap`(尽きたらシナリオ内の `awaitPrewarm` が従来どおり受ける)。
+    /// 戻り値は待った時間(子がもう居なければ nil)。全ワーカーが同じ子を待つ
+    static func awaitOCRWarmup(cap: Duration = RegionText.prewarmWaitCap,
+                               poll: Duration = .milliseconds(200)) async -> Duration? {
+        guard let pid = warmupPID.withLock({ $0 }), ProcessLiveness.isAlive(pid) else { return nil }
+        let clock = ContinuousClock()
+        let start = clock.now
+        while ProcessLiveness.isAlive(pid), clock.now - start < cap {
+            try? await Task.sleep(for: poll)
+        }
+        return clock.now - start
     }
 
     /// **シナリオを実際に走らせる経路**の一覧取得。`list` に加えて認識器の暖機を背景で起こす
@@ -350,6 +375,12 @@ public enum ScenarioHost {
                            /// = `--failed` が存在しないシナリオを拾わない
                            deviceTearDownOnly: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
+        // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRWarmup の doc)
+        if !dryRun, let waited = await awaitOCRWarmup(), waited >= .seconds(1),
+           warmupWaitReported.withLock({ reported in defer { reported = true }; return !reported }) {
+            onEvent(ScenarioEvent.log("⏳ waited \(continuousClockMs(waited) / 1000)s for the OCR recognizer to finish compiling"
+                        + " before starting scenarios (first run after a rebuild)"))
+        }
         let fm = settings.fm
         let containerInference = settings.containerInference
         let occlusionOCR = settings.occlusionOCR

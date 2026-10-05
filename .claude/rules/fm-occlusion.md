@@ -148,8 +148,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **occlusion-guard の反転は、1 回目のガード評価が締切を跨いだ回だけ 1 度延長して撮り直す**
   (`guard-retaken`。FM 待ちはアプリの応答ではないので待ち予算から引かない。同じ絵は
   `VisibilityVerdictMemo` が同じ verdict を返すので、テストでは撮り直しごとに違う絵を渡す)
-- **occlusion-guard の OCR 近道は、暖機が終わっていなければ終わるまで待ってから撃つ**(ユーザー決定
-  2026-09-15。**run の開始時には待たない**。経緯は maintainer-notes §18・§20): 認識器(Espresso)の
+- **occlusion-guard の OCR 近道は、暖機が終わっていなければ終わるまで待ってから撃つ**(2026-09-15)。
+  **2026-10-06 のユーザー決定で、最初のシナリオを起こす前に `warm-ocr` の完了を待つ**(`ScenarioHost.awaitOCRWarmup`。
+  9/15 の「run の開始時には待たない」は取り消し。シナリオの中で待つとアプリの時間が進み、一時的な状態を確かめる手順が
+  壊れた = E2EY-Android の骨組み。ステップ内の待ちは受け皿として残す。経緯は maintainer-notes §18・§20・§69.5): 認識器(Espresso)の
   コンパイルキャッシュは**プロセス名とバイナリの素性ごと・コンパイルがプロセスの生存中に終わったときだけ
   コミット**。**シナリオを実際に走らせる経路は `ScenarioHost.listForRun`**(run / api run / 機械分担の
   3 箇所。`OCRWarmupWiringTests` が等号で固定)で同じプロセス名の待てる子 `warm-ocr` を背景で起こす。
