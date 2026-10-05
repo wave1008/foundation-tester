@@ -115,13 +115,13 @@ export const webviewMonitorBStrings = {
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
   "wvMonitor2.hostCharts.visionTitle": {
-    ja: "VN {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
-    en: "VN {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
+    ja: "Vision {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
+    en: "Vision {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
   },
-  "wvMonitor2.hostCharts.visionWarmingShort": { ja: "暖機中", en: "warming" },
+  "wvMonitor2.hostCharts.visionWarmingShort": { ja: "compiling", en: "compiling" },
   "wvMonitor2.hostCharts.visionWarmingTitle": {
-    ja: "OCR の認識器を暖機中({count} プロセス)",
-    en: "Warming up the OCR recognizer ({count} process(es))",
+    ja: "OCR モデルをコンパイル中({count} プロセス)",
+    en: "Compiling the OCR model ({count} process(es))",
   },
   "wvMonitor2.hostCharts.fmTitle": {
     ja: "FM {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",

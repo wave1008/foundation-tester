@@ -825,7 +825,7 @@ test("VN のツールチップは窓の移動窓レートを出す", (t) => {
     send(window, hostMetricsSample(undefined, 0.1));
   }
 
-  assert.match(visionTitle(document, "mac2"), /VN 1\.0回\/秒|VN 1\.0\/s/,
+  assert.match(visionTitle(document, "mac2"), /Vision 1\.0回\/秒|Vision 1\.0\/s/,
     "直近5 tick で1回ずつ観測できた = 1.0/秒");
 });
 
@@ -913,7 +913,7 @@ test("無効な機械のスパークラインは全系列とも同じ1色(色を
   assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
 });
 
-test("OCR の暖機中は VN のチャートの上に暖機中の語を重ね、値のセルは回数のまま・ツールチップに暖機の行が付く", (t) => {
+test("OCR モデルのコンパイル中は VN のチャートの上に compiling を重ね、値のセルは回数のまま・ツールチップにコンパイルの行が付く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const texts = [];
@@ -931,14 +931,14 @@ test("OCR の暖機中は VN のチャートの上に暖機中の語を重ね、
   // 線を引くには 2 点要る(1点だけだと hmDraw が何も描かない)
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
-  assert.ok(overlaid().some((x) => /暖機中|warming/.test(x)), "暖機中の語が VN のチャートに描かれていない");
+  assert.ok(overlaid().includes("compiling"), "compiling が VN のチャートに描かれていない");
   assert.equal(cell.querySelector(".hm-value").textContent, "3", "値のセルは回数のまま");
-  assert.match(cell.title, /^(OCR の認識器を暖機中\(2 プロセス\)|Warming up the OCR recognizer \(2 process\(es\)\))/);
+  assert.match(cell.title, /^(OCR モデルをコンパイル中\(2 プロセス\)|Compiling the OCR model \(2 process\(es\)\))/);
 
   texts.length = 0;
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 0 }));
   assert.equal(overlaid().length, 0, "暖機が終われば重ねない");
-  assert.doesNotMatch(cell.title, /暖機中|Warming up/);
+  assert.doesNotMatch(cell.title, /コンパイル中|Compiling the OCR/);
 });
 
 test("hmWarmingBands は暖機中の tick を右詰めの x 範囲にし、隣り合う tick を結合する", async () => {
