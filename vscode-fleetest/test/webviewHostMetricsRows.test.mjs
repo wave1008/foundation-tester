@@ -917,12 +917,13 @@ test("OCR モデルのコンパイル中は VN のチャートの上に compilin
   const { window, document } = createWebview();
   t.after(() => window.close());
   const texts = [];
+  const strokes = [];
   window.HTMLCanvasElement.prototype.getContext = function () {
     const canvas = this;
     return {
       setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
-      stroke() {}, fillRect() {},
-      fillText(text) { texts.push({ canvas, text }); },
+      stroke() { strokes.push({ canvas, color: this.strokeStyle }); }, fillRect() {},
+      fillText(text) { texts.push({ canvas, text, color: this.fillStyle }); },
     };
   };
   const cell = visionCell(document, "");
@@ -932,6 +933,10 @@ test("OCR モデルのコンパイル中は VN のチャートの上に compilin
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
   assert.ok(overlaid().includes("compiling"), "compiling が VN のチャートに描かれていない");
+  // 文字の色は系列(線)と同じ(ユーザー決定)
+  const lineColor = strokes.filter((x) => cell.contains(x.canvas)).at(-1).color;
+  assert.ok(texts.filter((x) => cell.contains(x.canvas)).every((x) => x.color === lineColor),
+            "compiling の文字色が Vision の線の色と違う");
   assert.equal(cell.querySelector(".hm-value").textContent, "3", "値のセルは回数のまま");
   assert.match(cell.title, /^(OCR モデルをコンパイル中\(2 プロセス\)|Compiling the OCR model \(2 process\(es\)\))/);
 

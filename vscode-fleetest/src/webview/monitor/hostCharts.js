@@ -536,7 +536,8 @@ function hmDraw(row, entry, scale) {
     ctx.font = `600 10px ${style.fontFamily || 'sans-serif'}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillStyle = style.color || palette[entry.colorKey];
+    // 文字は系列と同じ色(ユーザー決定。機械が無効でグレーのときは文字もグレー)
+    ctx.fillStyle = color;
     ctx.fillText(t('wvMonitor2.hostCharts.visionWarmingShort'), width / 2, height / 2);
   }
 }
