@@ -159,12 +159,39 @@ public enum ContainerGeometry {
                                           screen: FTRect) -> Bool {
         guard let container = clippingContainer(of: element, in: elements) else { return false }
         guard ScrollGeometry.intersection(element.frame, container) == nil else { return false }
+        if isFloatingOverDeclaredScroller(element, in: elements) { return false }
         let containerIsViewport = TapTargetGeometry.ancestors(of: element, in: elements)
             .contains { $0.scrollable == true && sameFrame($0.frame, container) }
         return !isChromePinnedOutside(element, container: container,
                                       containerIsViewport: containerIsViewport,
                                       in: elements, screen: screen)
     }
+
+    /// **スクロール容器の上に浮いている物**(FAB・固定ボタン。木の上では容器の子に再配線されるだけの
+    /// 兄弟)か。ghost(スクロールで押し出された中身)は **申告スクロール容器の枠の外**にあるか、
+    /// **同じ型・同じ x/幅の仲間が他に居る**(行・カード)。浮いている物は枠の内側に大半が載り、仲間が居ない。
+    /// 送って容器へ入れようとしても動かない(送るのは容器の中身)ので、掴み直しの対象にしない。
+    /// 申告が無い木(Compose iOS)は nearestScrollableAncestor が nil = 従来どおり
+    static func isFloatingOverDeclaredScroller(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }),
+              let scroller = nearestScrollableAncestor(of: element, at: index, in: elements),
+              // Web の中身は常にスクロールの中身(position:fixed の浮きは稀)。固定コーパスの
+              // and-browser_weather_weekly「洗濯指数10」は仲間の居ない真の ghost で、WebView が申告容器
+              !scroller.type.lowercased().contains("webview"),
+              let overlap = ScrollGeometry.intersection(element.frame, scroller.frame),
+              element.frame.width * element.frame.height > 0,
+              overlap.width * overlap.height >= element.frame.width * element.frame.height * floatingOverlapRatio
+        else { return false }
+        return !elements.contains {
+            $0.ref != element.ref && $0.type == element.type
+                && abs($0.frame.x - element.frame.x) <= floatingPeerTolerance
+                && abs($0.frame.width - element.frame.width) <= floatingPeerTolerance
+        }
+    }
+    /// 浮いているとみなす、要素が申告容器の枠に載る面積比(半分以上。縁をまたぐ要素は従来の扱い)
+    static let floatingOverlapRatio = 0.5
+    /// 仲間とみなす x/幅の差(pt/px の丸め)
+    static let floatingPeerTolerance = 2.0
 
     /// 容器の外側の帯に固定された chrome(下部タブ・上部バー)か。ghost(スクロールで容器の外へ
     /// 押し出された行)と区別する。判定は自分自身、または**自分を含む祖先**(タブのラベルのように

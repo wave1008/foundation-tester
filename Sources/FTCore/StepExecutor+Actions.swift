@@ -1605,9 +1605,15 @@ extension StepExecutor {
         var coverName: String?
         let clock = ContinuousClock()
         for _ in 0..<maxLifts {
-            guard let container = ContainerGeometry.clippingContainer(
-                    of: current, in: currentSnapshot.elements,
-                    inferring: step.containerInference ?? true) else { return nil }
+            // 対象を含む容器が無い(隠れるバー等)なら、画面の主たる縦の容器を送り先にする
+            // (`uncoverOutsideScrollJump`。覆いが名前つきで容器の縁に接しているときだけ jump が出る)
+            let ownContainer = ContainerGeometry.clippingContainer(
+                of: current, in: currentSnapshot.elements, inferring: step.containerInference ?? true)
+            let outsideContainer = ownContainer == nil
+                ? TapTargetGeometry.primaryScrollContainer(in: currentSnapshot.elements,
+                                                           screen: currentSnapshot.screen)?.frame
+                : nil
+            guard let container = ownContainer ?? outsideContainer else { return nil }
             let keyboard = KeyboardOcclusion.resolve(reported: currentSnapshot.keyboardFrame,
                                                      in: currentSnapshot.elements)
             var jump: Double?
@@ -1626,8 +1632,11 @@ extension StepExecutor {
             if jump == nil,
                let over = TapTargetGeometry.overlayCoveringForUncover(
                    current, in: currentSnapshot.elements, screen: currentSnapshot.screen) {
-                jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: over,
-                                                           container: container)
+                jump = outsideContainer == nil
+                    ? TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: over,
+                                                          container: container)
+                    : TapTargetGeometry.uncoverOutsideScrollJump(target: current, coveredBy: over,
+                                                                 container: container)
                 coverName = coverName ?? TapTargetGeometry.describe(over)
                 coverRect = over.frame
             }

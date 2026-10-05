@@ -656,6 +656,37 @@ public enum TapTargetGeometry {
         return atTop || atBottom
     }
 
+    /// **容器の外に居る対象**(スクロールで隠れる上部バー等)が、**容器の縁に接する名前つきの物**に
+    /// 中心を覆われているとき、画面の主たる縦の容器を少し戻す量(`uncoverScrollJump` と同じ符号規約)。
+    /// 対象を含む容器が無いので送る容器を決められない —— 隠れるバーは「内容を少し戻すと出る」定番なので
+    /// 主たる容器(`primaryScrollContainer`)を `minimumJump` だけ戻す。**送るだけで撃たないので取り消せない
+    /// 操作にならない**。覆いが容器の縁に接していない・対象が容器の中に居る(= 既存の `uncoverScrollJump` の領分)
+    /// 形では nil
+    public static func uncoverOutsideScrollJump(target: ElementInfo, coveredBy over: ElementInfo,
+                                                container: FTRect, minimumJump: Double = 60) -> Double? {
+        let named = !(over.label ?? "").isEmpty || !(over.identifier ?? "").isEmpty
+        guard named, container.height > 0 else { return nil }
+        let targetCentreY = target.frame.y + target.frame.height / 2
+        guard targetCentreY < container.y || targetCentreY > container.y + container.height else { return nil }
+        let overBottom = over.frame.y + over.frame.height
+        if abs(overBottom - container.y) <= pinnedBandEdgeTolerance { return -minimumJump }
+        if abs(over.frame.y - (container.y + container.height)) <= pinnedBandEdgeTolerance { return minimumJump }
+        return nil
+    }
+
+    /// 画面の主たる縦のスクロール容器 = `scrollable` を申告する要素のうち画面の
+    /// `primaryContainerMinimumAreaRatio` 以上を占める最大のもの(対象を含む容器が無い形の送り先)
+    public static func primaryScrollContainer(in elements: [ElementInfo], screen: FTRect) -> ElementInfo? {
+        let screenArea = screen.width * screen.height
+        guard screenArea > 0 else { return nil }
+        return elements.filter {
+            $0.scrollable == true && $0.frame.height >= $0.frame.width * 0.5
+                && $0.frame.width * $0.frame.height >= screenArea * primaryContainerMinimumAreaRatio
+        }.max { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+    }
+    /// 主たる容器とみなす面積比(画面比)。実測 E2EY-Flutter 一覧 402x700 / 402x874(0.80)・小さな横レーン(0.05 未満)を外す
+    static let primaryContainerMinimumAreaRatio = 0.3
+
     /// 縁に「揃っている」とみなす差(座標の単位 = pt / Android は px)。貼り付く見出しは容器の縁に
     /// 正確に載る(実測 RN: 見出し y=403・容器 y=403)ので、丸めのぶんだけ許す
     static let pinnedBandEdgeTolerance = 2.0
