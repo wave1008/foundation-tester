@@ -1,0 +1,14 @@
+{
+  "platform": "hybrid",
+  "autoInstall": true,
+  "ios": {
+    "appName": "FT E2EY",
+    "app": "com.ftester.e2ey",
+    "appPath": "E2EYAppCMP/dist/ios-simulator/FTE2EY.app"
+  },
+  "android": {
+    "appName": "FT E2EY",
+    "app": "com.ftester.e2ey",
+    "appPath": "E2EYAppCMP/dist/android/ft-e2ey-debug.apk"
+  }
+}

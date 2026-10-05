@@ -1,0 +1,9 @@
+{
+  "platform": "android",
+  "autoInstall": true,
+  "android": {
+    "appName": "FT E2EY Android",
+    "app": "com.ftester.e2ey.android",
+    "appPath": "E2EYAppAndroid/dist/android/ft-e2ey-android-debug.apk"
+  }
+}

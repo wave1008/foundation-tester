@@ -67,6 +67,10 @@
 `E2EXAppIOS/` → TestProjects/E2EX-*。回すのは `Scripts/e2ex.sh`・`e2e.sh` の対象外)。契約は `E2EXAppCMP/docs/ui-contract.md` と
 `ui-contract-wave2.md`、書き方と癖は docs/user-docs/reference/writing/ui_component_patterns_ja.md、差の索引は docs/framework-differences.md §5.1
 
+**実アプリで頻出しツールの判定を直撃する作りの SUT がさらに5つ**(`E2EYAppCMP/` 等 → TestProjects/E2EY-*。
+入れ子スクロール・反転チャット・読み込み中の骨組み・途中まで払うスワイプ 等の12画面。回すのは `Scripts/e2ey.sh`)。
+契約は `E2EYAppCMP/docs/ui-contract.md`(各画面の「罠」は意図して残す性質 = SUT 側で回避しない)
+
 
 ## 領域ごとの規律(`.claude/rules/`)
 

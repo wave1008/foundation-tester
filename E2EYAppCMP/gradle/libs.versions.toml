@@ -1,0 +1,27 @@
+[versions]
+kotlin = "2.4.10"
+composeMultiplatform = "1.11.0"
+agp = "8.9.1"
+androidCompileSdk = "35"
+androidTargetSdk = "35"
+androidMinSdk = "24"
+coroutines = "1.10.2"
+androidxActivity = "1.10.1"
+# org.jetbrains.androidx.navigation の KMP 版。compose 1.11.0 / kotlin 2.4.10 で解決確認済み
+# (android variant は available-at で androidx.navigation:navigation-compose-android:2.9.1 に解決される)。
+navigationCompose = "2.9.0"
+# BackHandler(commonMain)。compose.ui の別アーティファクトで、版は composeMultiplatform と揃える。
+uiBackhandler = "1.11.0"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+navigation-compose = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backhandler", version.ref = "uiBackhandler" }
+
+[plugins]
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+androidApplication = { id = "com.android.application", version.ref = "agp" }
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

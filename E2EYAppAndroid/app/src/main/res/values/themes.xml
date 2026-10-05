@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.FTE2EY" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@android:color/white</item>
+        <!-- E2EAppAndroid で実測済みの罠(textAllCaps が a11y ラベルまで大文字化する)への予防線。
+             Material3 の既定ボタンは既に false だが、明示して他スタイルの巻き込みを防ぐ。 -->
+        <item name="android:textAllCaps">false</item>
+        <item name="textAllCaps">false</item>
+    </style>
+
+    <!-- 全画面ダイアログ(DialogFragment STYLE_NORMAL)用。windowIsFloating を false にして
+         フローティングの縁・スクリムを消す(onStart で MATCH_PARENT へ layout し直す前提)。 -->
+    <style name="Theme.FTE2EY.FullScreenDialog" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

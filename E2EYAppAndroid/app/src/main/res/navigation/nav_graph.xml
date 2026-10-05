@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- タイトルの唯一の正は android:label(MainActivity が txt_screen_title へ写す)。 -->
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.ftester.e2ey.android.fragments.HomeFragment"
+        android:label="E2EY ホーム"
+        tools:layout="@layout/fragment_home" />
+
+    <fragment
+        android:id="@+id/nestedFragment"
+        android:name="com.ftester.e2ey.android.fragments.NestedFragment"
+        android:label="入れ子スクロール"
+        tools:layout="@layout/fragment_nested" />
+
+    <fragment
+        android:id="@+id/chatFragment"
+        android:name="com.ftester.e2ey.android.fragments.ChatFragment"
+        android:label="反転チャット"
+        tools:layout="@layout/fragment_chat" />
+
+    <fragment
+        android:id="@+id/loadingFragment"
+        android:name="com.ftester.e2ey.android.fragments.LoadingFragment"
+        android:label="読み込みの状態"
+        tools:layout="@layout/fragment_loading" />
+
+    <fragment
+        android:id="@+id/swipeActionsFragment"
+        android:name="com.ftester.e2ey.android.fragments.SwipeActionsFragment"
+        android:label="スワイプの操作"
+        tools:layout="@layout/fragment_swipe_actions" />
+
+    <fragment
+        android:id="@+id/selectFragment"
+        android:name="com.ftester.e2ey.android.fragments.SelectFragment"
+        android:label="選択モード"
+        tools:layout="@layout/fragment_select" />
+
+    <fragment
+        android:id="@+id/linksFragment"
+        android:name="com.ftester.e2ey.android.fragments.LinksFragment"
+        android:label="文中リンク"
+        tools:layout="@layout/fragment_links" />
+
+    <fragment
+        android:id="@+id/pinFragment"
+        android:name="com.ftester.e2ey.android.fragments.PinFragment"
+        android:label="PIN と OTP"
+        tools:layout="@layout/fragment_pin" />
+
+    <fragment
+        android:id="@+id/backGuardFragment"
+        android:name="com.ftester.e2ey.android.fragments.BackGuardFragment"
+        android:label="戻るの横取り"
+        tools:layout="@layout/fragment_back_guard" />
+
+    <fragment
+        android:id="@+id/editorFragment"
+        android:name="com.ftester.e2ey.android.fragments.EditorFragment"
+        android:label="編集"
+        tools:layout="@layout/fragment_editor" />
+
+    <fragment
+        android:id="@+id/playerFragment"
+        android:name="com.ftester.e2ey.android.fragments.PlayerFragment"
+        android:label="引き伸ばせるシート"
+        tools:layout="@layout/fragment_player" />
+
+    <fragment
+        android:id="@+id/hideBarsFragment"
+        android:name="com.ftester.e2ey.android.fragments.HideBarsFragment"
+        android:label="スクロールで隠れるバー"
+        tools:layout="@layout/fragment_hide_bars" />
+
+    <fragment
+        android:id="@+id/tabHeaderFragment"
+        android:name="com.ftester.e2ey.android.fragments.TabHeaderFragment"
+        android:label="折りたたみヘッダとタブ"
+        tools:layout="@layout/fragment_tab_header" />
+
+    <fragment
+        android:id="@+id/staggeredFragment"
+        android:name="com.ftester.e2ey.android.fragments.StaggeredFragment"
+        android:label="高さの揃わないグリッド"
+        tools:layout="@layout/fragment_staggered" />
+
+</navigation>

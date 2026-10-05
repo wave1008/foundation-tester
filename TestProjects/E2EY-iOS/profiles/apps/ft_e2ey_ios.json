@@ -1,0 +1,9 @@
+{
+  "platform": "ios",
+  "autoInstall": true,
+  "ios": {
+    "appName": "FT E2EY iOS",
+    "app": "com.ftester.e2ey.ios",
+    "appPath": "E2EYAppIOS/dist/ios-simulator/FTE2EYIOS.app"
+  }
+}

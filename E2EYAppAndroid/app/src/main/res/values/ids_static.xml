@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- レイアウトの外(コード)で View に付ける固定の #id。 -->
+<resources>
+    <item name="tab_posts" type="id" />
+    <item name="tab_media" type="id" />
+    <item name="tab_likes" type="id" />
+</resources>

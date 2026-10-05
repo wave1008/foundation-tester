@@ -197,6 +197,36 @@ let package = Package(
             exclude: ["_disabled"]
         ),
         .executableTarget(
+            name: "fleetest-scenarios-E2EY-Android",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EY-Android/scenarios",
+            exclude: ["_disabled"]
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EY-CMP",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EY-CMP/scenarios",
+            exclude: ["_disabled"]
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EY-Flutter",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EY-Flutter/scenarios",
+            exclude: ["_disabled"]
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EY-RN",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EY-RN/scenarios",
+            exclude: ["_disabled"]
+        ),
+        .executableTarget(
+            name: "fleetest-scenarios-E2EY-iOS",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "TestProjects/E2EY-iOS/scenarios",
+            exclude: ["_disabled"]
+        ),
+        .executableTarget(
             name: "fleetest-scenarios-SampleApp",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "TestProjects/SampleApp/scenarios",

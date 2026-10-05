@@ -1,0 +1,14 @@
+{
+  "platform": "hybrid",
+  "autoInstall": true,
+  "ios": {
+    "appName": "FT E2EY RN",
+    "app": "com.ftester.e2ey.rn",
+    "appPath": "E2EYAppRN/dist/ios-simulator/FTE2EYRN.app"
+  },
+  "android": {
+    "appName": "FT E2EY RN",
+    "app": "com.ftester.e2ey.rn",
+    "appPath": "E2EYAppRN/dist/android/ft-e2ey-rn-release.apk"
+  }
+}
