@@ -36,7 +36,7 @@ bash ../foundation-tester/Scripts/install.sh
 The installer also writes the Claude Code artefacts (`.mcp.json`, `.claude/settings.json`, and
 copies of the skills). `.mcp.json` can be suppressed with `--skip-mcp`, and the entry point
 (`AGENTS.md`, plus a `CLAUDE.md` that only imports it) with `--skip-entry-point`;
-`.claude/settings.json` (the Bash permission allowlist) currently cannot — other agents simply
+`.claude/settings.json` (the Bash permission allowlist and the rules that make the fleetest clone read-only) currently cannot — other agents simply
 ignore it. For any other agent you register the MCP server in step 2 below (the installer never
 writes to an agent's global settings).
 
@@ -160,6 +160,17 @@ update.sh, `swift build`)**, and decline it when the assistant is trying to chan
 For the same reason, do not add the clone to `writable_roots` and do not start Codex with `danger-full-access`.
 The entry point the installer puts in the work folder's `AGENTS.md` also says to treat the clone as read-only,
 and Codex follows it by reporting mistakes in the clone instead of fixing them itself.
+
+## Using other AI assistants (Cline, Cursor, Copilot and so on)
+
+fleetest writes no settings for these assistants. What protects the fleetest clone is the behaviour rule in the
+`AGENTS.md` entry point (it reaches only assistants that read `AGENTS.md`) and each assistant's own approval
+settings (fleetest has not measured how these assistants behave).
+
+- Set the assistant up so that file writes outside the work folder, and commands run there, are never approved automatically
+- When the assistant asks to write to the clone, decline unless it is the install or update steps (install.sh, update.sh, `swift build`)
+- For an assistant that does not read `AGENTS.md`, copy the contents of the entry-point block (from `<!-- fleetest:begin -->`
+  to `<!-- fleetest:end -->`) into that assistant's rules file
 
 ### Link
 - [index](../../index.md)
