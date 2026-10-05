@@ -913,17 +913,31 @@ test("無効な機械のスパークラインは全系列とも同じ1色(色を
   assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
 });
 
-test("OCR の暖機中は VN の値のセルが暖機中の語になり、ツールチップに暖機の行が付く", (t) => {
+test("OCR の暖機中は VN のチャートの上に暖機中の語を重ね、値のセルは回数のまま・ツールチップに暖機の行が付く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-
-  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
+  const texts = [];
+  window.HTMLCanvasElement.prototype.getContext = function () {
+    const canvas = this;
+    return {
+      setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
+      stroke() {}, fillRect() {},
+      fillText(text) { texts.push({ canvas, text }); },
+    };
+  };
   const cell = visionCell(document, "");
-  assert.match(cell.querySelector(".hm-value").textContent, /暖機中|warming/);
+  const overlaid = () => texts.filter((x) => cell.contains(x.canvas)).map((x) => x.text);
+
+  // 線を引くには 2 点要る(1点だけだと hmDraw が何も描かない)
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
+  assert.ok(overlaid().some((x) => /暖機中|warming/.test(x)), "暖機中の語が VN のチャートに描かれていない");
+  assert.equal(cell.querySelector(".hm-value").textContent, "3", "値のセルは回数のまま");
   assert.match(cell.title, /^(OCR の認識器を暖機中\(2 プロセス\)|Warming up the OCR recognizer \(2 process\(es\)\))/);
 
+  texts.length = 0;
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 0 }));
-  assert.equal(cell.querySelector(".hm-value").textContent, "3", "暖機が終われば従来どおり回数");
+  assert.equal(overlaid().length, 0, "暖機が終われば重ねない");
   assert.doesNotMatch(cell.title, /暖機中|Warming up/);
 });
 

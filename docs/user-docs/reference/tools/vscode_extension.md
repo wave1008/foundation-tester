@@ -52,7 +52,7 @@ is unavailable.
   to its right (hover it for the stopped path, the reason and when it was observed). While it is shown, checks
   that use FM (`screenLooksLike` and the FM stage of text visual verification) may not run.
   While the OCR recognizer is warming up (for example on the first run after a rebuild; tens of seconds), the VN chart
-  shows a band and its value reads **warming**. Meanwhile the run waits for the warmup before starting its first scenario.
+  shows a band with **warming** drawn over it. Meanwhile the run waits for the warmup before starting its first scenario.
   Turning on **"Show memory size, CPU cores, and GPU cores in the device monitor"** (Machines section of the
   Settings tab, off by default) adds each machine's capacity to the labels, such as `MEM 192` (GB) / `CPU 24` /
   `GPU 76` (`MEM -` until the values arrive).

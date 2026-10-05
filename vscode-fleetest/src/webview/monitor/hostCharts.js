@@ -407,8 +407,8 @@ function hmRenderVisionLabel(row) {
   // 単位と一致させる)。
   const latest = row.vision.window.length > 0 ? row.vision.window[row.vision.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
-  const warming = row.vision.warming.length > 0 && row.vision.warming[row.vision.warming.length - 1];
-  entry.value.textContent = warming ? t('wvMonitor2.hostCharts.visionWarmingShort') : callsText;
+  const warming = hmIsWarmingNow(row);
+  entry.value.textContent = callsText;
   const warmingLine = warming
     ? t('wvMonitor2.hostCharts.visionWarmingTitle', { count: String(row.vision.warmingCount) }) + '\n'
     : '';
@@ -419,6 +419,11 @@ function hmRenderVisionLabel(row) {
     failures: stats ? String(stats.failures) : '–',
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
+}
+
+/** 直近 tick が OCR の暖機中か(VN のチャートに重ねる語・ツールチップの行) */
+function hmIsWarmingNow(row) {
+  return row.vision.warming.length > 0 && row.vision.warming[row.vision.warming.length - 1];
 }
 
 function hmPushSample(entry, ratio) {
@@ -528,6 +533,15 @@ function hmDraw(row, entry, scale) {
     segment.push(point);
   }
   flushSegment();
+  // 暖機中の語はチャートの上に重ねる(ユーザー決定。値のセルは回数のまま)。線の後に描いて隠れないようにする
+  if (entry === row.entries.vision && hmIsWarmingNow(row)) {
+    const style = window.getComputedStyle(document.body);
+    ctx.font = `600 10px ${style.fontFamily || 'sans-serif'}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = style.color || palette[entry.colorKey];
+    ctx.fillText(t('wvMonitor2.hostCharts.visionWarmingShort'), width / 2, height / 2);
+  }
 }
 
 function hmFormatPercent(ratio) {
