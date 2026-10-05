@@ -301,7 +301,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // **読み直しはキャッシュごと捨てる**(API 34+)。node.refresh() はキャッシュを更新しないので、読み直した直後の
         // 素取得が古い木を返し続ける —— Compose は親の配置だけがずれた変化(縮むヘッダ)を a11y のイベントで知らせず、
         // キャッシュが払う前のまま残った(E2EY-CMP の折りたたみヘッダ: 次のタブのタップがヘッダの開いた位置を撃った)。
-        // 34 未満(手元の実機 API 32/33)は従来どおり(ホストの nextResolveBypassesCache が受ける)
+        // 34 未満(手元の実機 API 32/33)はホストの A11yCacheStalenessGuard(FTAndroid)が素取得を確かめて受ける
         if (forceRefresh && Build.VERSION.SDK_INT >= 34) ua().clearCache();
         SnapshotBuilder.Result result;
         try {

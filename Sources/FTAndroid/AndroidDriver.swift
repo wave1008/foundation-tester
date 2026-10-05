@@ -480,6 +480,21 @@ public final class AndroidDriver: AppDriver {
             $0.raiseElementLimitOnNextSnapshot(limit)
             return try await $0.snapshot(bypassingCache: bypass)
         }
+        // **読み直しの後の素取得は、古いキャッシュの木かもしれない**(A11yCacheStalenessGuard の doc)。
+        // 比べるのは正規化(双子の畳み込み・DOM の差し込み)の前の、ブリッジが返したままの木
+        let signature = A11yCacheStalenessGuard.signature(snapshot.elements)
+        if bypass {
+            cacheStalenessGuard.noteRefreshed(signature)
+        } else if cacheStalenessGuard.plainReadNeedsConfirmation(signature) {
+            let refreshed = try await withBridge {
+                $0.raiseElementLimitOnNextSnapshot(limit)
+                return try await $0.snapshot(bypassingCache: true)
+            }
+            if cacheStalenessGuard.confirm(plain: signature,
+                                           refreshed: A11yCacheStalenessGuard.signature(refreshed.elements)) {
+                snapshot = refreshed
+            }
+        }
         // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
         // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
         snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
@@ -869,6 +884,8 @@ public final class AndroidDriver: AppDriver {
     public private(set) var atEdgeOnLastSwipe: Bool?
     /// 次の snapshot を1回だけキャッシュ迂回にする(a11y のスクロール操作の直後。swipe の端送り参照)
     private var nextSnapshotBypassesCache = false
+    /// 読み直しの後の素取得を確かめる控え(A11yCacheStalenessGuard)
+    private var cacheStalenessGuard = A11yCacheStalenessGuard()
     public var reachedEdgeOnLastSwipe: Bool? { atEdgeOnLastSwipe }
 
     /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。
