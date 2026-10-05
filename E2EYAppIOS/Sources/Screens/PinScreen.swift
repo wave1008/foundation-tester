@@ -51,6 +51,9 @@ struct PinScreen: View {
                     Text(i <= chars.count ? String(chars[i - 1]) : "")
                         .frame(width: 44, height: 52)
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary))
+                        // 空の Text は a11y 要素にならないので、ラベルを明示した要素として立てる(#otp_box_N が木に出る条件)
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(i <= chars.count ? String(chars[i - 1]) : "OTP \(i)")
                         .accessibilityIdentifier("otp_box_\(i)")
                 }
             }

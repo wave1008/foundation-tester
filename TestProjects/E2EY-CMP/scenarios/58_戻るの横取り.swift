@@ -77,7 +77,6 @@ class 戻るが横取りされても扱えること {
                     tap("#btn_back")
                 }.expectation {
                     exist("#txt_discard_title")
-                    select("#txt_screen_title").textIs("編集")
                 }
             }
             scene(2, "編集を続ける") {
@@ -85,7 +84,8 @@ class 戻るが横取りされても扱えること {
                     tap("#btn_keep")
                 }.expectation {
                     notExist("#txt_discard_title")
-                    select("#field_title").textIs("abc")
+                    select("#txt_screen_title").textIs("編集")
+                    select("#field_title").valueIs("abc")
                 }
             }
             scene(3, "システムの戻る → 破棄") {

@@ -39,6 +39,8 @@ export function TabHeaderScreen() {
         <EchoText testID={Tags.txtTabhdrTab}>{`tab=${tab}`}</EchoText>
         <EchoText testID={Tags.txtTabhdrHeader}>{`header=${collapsed ? 'collapsed' : 'expanded'}`}</EchoText>
       </View>
+      {/* 縮んだヘッダがコンテナの上へはみ出して上の echo を覆う(iOS)のでクリップする */}
+      <View style={styles.tabsClip}>
       <Tabs.Container
         headerHeight={HEADER_HEIGHT}
         onTabChange={({ tabName }) => setTab(String(tabName))}
@@ -82,6 +84,7 @@ export function TabHeaderScreen() {
           </Tabs.Tab>
         ))}
       </Tabs.Container>
+      </View>
     </View>
   );
 }
@@ -89,6 +92,7 @@ export function TabHeaderScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#ffffff' },
   echo: { padding: 8, gap: 2 },
+  tabsClip: { flex: 1, overflow: 'hidden' },
   header: {
     height: HEADER_HEIGHT,
     justifyContent: 'center',

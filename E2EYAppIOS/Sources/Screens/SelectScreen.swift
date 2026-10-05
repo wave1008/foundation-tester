@@ -37,11 +37,13 @@ struct SelectScreen: View {
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .accessibilityIdentifier(name)
         } else {
-            Text("項目 \(Tags.two(n))")
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { result = "select=open:\(name)" }
-                .onLongPressGesture {
+            Button { result = "select=open:\(name)" } label: {
+                Text("項目 \(Tags.two(n))")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onLongPressGesture {
                     selection = [n]
                     editMode = .active
                 }

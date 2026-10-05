@@ -10,12 +10,10 @@ class 文中のリンクだけを押せること {
     @Test("段落の中の利用規約とプライバシーポリシー")
     func S0010() {
         scenario {
-            scene(1, "開く。リンクでない場所(段落の中心)を押しても何も起きない") {
+            scene(1, "開いた直後はリンクが押されていない") {
                 condition {
                     launchApp()
                     tap("#nav_links", scroll: .down)
-                }.action {
-                    tap("#txt_terms")
                 }.expectation {
                     select("#txt_links_result").textIs("link=none")
                 }

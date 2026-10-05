@@ -80,7 +80,7 @@ class 戻るの横取りを扱えること {
                     tap("#btn_keep")
                 }.expectation {
                     select("#txt_screen_title").textIs("編集")
-                    select("#field_title").textIs("abc")
+                    select("#field_title").valueIs("abc")
                 }
             }
             scene(3, "もう一度戻って破棄") {

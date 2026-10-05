@@ -22,6 +22,10 @@ class 読み込みの状態の変化を待てること {
             scene(2, "読み込み直した直後に #row_l_03 を押す") {
                 action {
                     tap("#btn_reload")
+                }.expectation {
+                    select("#txt_loading_state").textIs("state=loading")
+                    select("#row_l_03").enabledIsFalse()
+                }.action {
                     tap("#row_l_03")
                 }.expectation {
                     select("#txt_loading_result").textIs("loading=row_l_03")

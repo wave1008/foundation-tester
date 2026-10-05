@@ -10,34 +10,31 @@ class 読み込みの状態を見分けられること {
     @Test("骨組みの行は押せず、読み込み直した直後も同じ")
     func S0010() {
         scenario {
-            scene(1, "入った直後は骨組みの行(押しても何も起きない)") {
+            scene(1, "入った直後の骨組みの行は押せない(押せるまで待って本物の行を押す)") {
                 condition {
                     launchApp()
                     tap("#nav_loading")
                 }.action {
                     exist("#row_l_03", requireVisible: false)
-                    tap("#row_l_03")
                 }.expectation {
-                    select("#txt_loading_state").textIs("state=loading")
-                    select("#txt_loading_result").textIs("loading=none")
-                }
-            }
-            scene(2, "読み込み完了を待って本物の行を押す") {
-                action {
-                    select("#txt_loading_state").textIs("state=loaded", waitSeconds: 10)
+                    select("#row_l_03").enabledIsFalse()
+                }.action {
                     tap("#row_l_03")
                 }.expectation {
                     select("#txt_loading_result").textIs("loading=row_l_03")
+                    select("#txt_loading_state").textIs("state=loaded")
                     select("#txt_loading_count").textIs("loaded=30")
                 }
             }
-            scene(3, "読み込み直した直後に押しても echo は変わらない") {
+            scene(2, "読み込み直した直後の骨組みも押せない") {
                 action {
                     tap("#btn_reload")
+                }.expectation {
+                    select("#row_l_04").enabledIsFalse()
+                }.action {
                     tap("#row_l_04")
                 }.expectation {
-                    select("#txt_loading_state").textIs("state=loading")
-                    select("#txt_loading_result").textIs("loading=none")
+                    select("#txt_loading_result").textIs("loading=row_l_04")
                 }
             }
         }

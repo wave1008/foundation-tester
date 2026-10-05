@@ -83,7 +83,7 @@ class シートが畳まれていても背面を操作できること {
                     launchApp()
                     tap("#nav_player", scroll: .down)
                 }.action {
-                    swipeBy("#mini_player", dxRatio: 0, dyRatio: -6, durationSeconds: 0.4)
+                    swipeElementToElement("#mini_player", "#txt_sheet_state", durationSeconds: 0.5)
                 }.expectation {
                     select("#txt_sheet_state").textMatches("^sheet=(half|expanded)$", waitSeconds: 5)
                 }

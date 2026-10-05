@@ -19,15 +19,21 @@ class 送りの向きでバーが隠れても扱えること {
                     exist("#btn_bottom_a")
                 }
             }
-            scene(2, "下へ送って行を押すとバーは隠れている") {
+            scene(2, "探索で行を押す") {
                 action {
                     tap("#row_h_33", scroll: .down, maxSwipes: 20)
                 }.expectation {
                     select("#txt_hide_result").textIs("hide=row_h_33")
-                    select("#txt_bars_state").textIs("bars=hidden")
                 }
             }
-            scene(3, "上へ戻すとバーが現れ、下部バーのボタンを押せる") {
+            scene(3, "最後に下へ送るとバーは隠れている") {
+                action {
+                    scrollDown()
+                }.expectation {
+                    select("#txt_bars_state").textIs("bars=hidden", waitSeconds: 5)
+                }
+            }
+            scene(4, "上へ戻すとバーが現れ、下部バーのボタンを押せる") {
                 action {
                     scrollToTop()
                 }.expectation {
@@ -38,7 +44,7 @@ class 送りの向きでバーが隠れても扱えること {
                     select("#txt_hide_result").textIs("hide=bottom_b")
                 }
             }
-            scene(4, "上部バーのボタンと FAB") {
+            scene(5, "上部バーのボタンと FAB") {
                 action {
                     tap("#btn_top_action")
                 }.expectation {

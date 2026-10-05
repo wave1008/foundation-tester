@@ -122,7 +122,8 @@ class SelectFragment : Fragment(R.layout.fragment_select) {
             val t = holder.text
             t.id = DynamicIds.of(t.context, "sel_row_${label(n)}")
             t.text = "項目 ${label(n)}"
-            t.setCheckMarkDrawable(if (selectMode) checkMarkRes else 0)
+            // AppCompatCheckedTextView は resId=0 で NotFoundException を投げるので、消すときは null の Drawable を渡す
+            if (selectMode && checkMarkRes != 0) t.setCheckMarkDrawable(checkMarkRes) else t.setCheckMarkDrawable(null)
             t.isChecked = selectMode && n in selected
             t.setOnClickListener {
                 if (selectMode) {

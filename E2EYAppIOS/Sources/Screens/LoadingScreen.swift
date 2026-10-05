@@ -80,7 +80,7 @@ struct LoadingScreen: View {
                         Button { } label: { Text("記事 \(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
                             .buttonStyle(.plain)
                             .disabled(true)
-                            .redacted(reason: .placeholder)
+                            .opacity(0.4)
                             .accessibilityLabel("記事 \(Tags.two(i))")
                             .accessibilityIdentifier(name)
                     }

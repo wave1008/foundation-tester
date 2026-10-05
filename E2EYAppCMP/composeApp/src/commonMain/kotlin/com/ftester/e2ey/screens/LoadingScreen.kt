@@ -53,8 +53,9 @@ fun LoadingScreen() {
         count = 30; state = "loaded"
     }
 
+    // layoutInfo は count 更新の直後は1フレーム古い(骨組み 8 行など)ので、総数が count に届くまで末尾とみなさない。
     val atEnd = listState.layoutInfo.let { info ->
-        info.totalItemsCount > 0 && info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
+        info.totalItemsCount >= count && info.totalItemsCount > 0 && info.visibleItemsInfo.lastOrNull()?.index == info.totalItemsCount - 1
     }
     LaunchedEffect(atEnd, state, count) {
         if (!atEnd || state != "loaded" || count == 0) return@LaunchedEffect

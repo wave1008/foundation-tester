@@ -48,7 +48,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
     return false;
   }
 
-  Widget _mini() => tagged(
+  // tagged()(MergeSemantics)で包むと子の #txt_mini_title / #btn_mini_play が木から消える
+  Widget _mini() => taggedContainer(
     Tags.miniPlayer,
     InkWell(
       onTap: () => _sheet.animateTo(

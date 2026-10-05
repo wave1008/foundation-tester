@@ -58,8 +58,16 @@ struct PlayerScreen: View {
     private var sheetContent: some View {
         if detent == .collapsed {
             HStack {
-                Text("再生中: トラック 1").accessibilityIdentifier("txt_mini_title")
-                Spacer()
+                Button { detent = .half } label: {
+                    HStack {
+                        Text("再生中: トラック 1")
+                        Spacer()
+                    }
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("txt_mini_title")
                 Button(playing ? "一時停止" : "再生") {
                     playing.toggle()
                     result = playing ? "player=play" : "player=pause"
@@ -68,8 +76,7 @@ struct PlayerScreen: View {
             }
             .padding(.horizontal, 16)
             .frame(maxHeight: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture { detent = .half }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("mini_player")
         } else {
             VStack(spacing: 0) {

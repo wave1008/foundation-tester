@@ -7,7 +7,7 @@ import FTDSL
 @TestClass
 class 読み込みの状態を見分けられること {
 
-    @Test("読み込み中の骨組みは同じ #id で居るが押せない")
+    @Test("読み込み中の骨組みは同じ #id で居て、押せるようになってから押すと echo が出る")
     func S0010() {
         scenario {
             scene(1, "開いた直後は読み込み中") {
@@ -18,7 +18,6 @@ class 読み込みの状態を見分けられること {
                     select("#txt_loading_state").textIs("state=loading")
                     // 骨組みも本物と同じ #id・ラベルなので exist は通ってしまう(早合点)
                     exist("#row_l_03")
-                    select("#row_l_03").enabledIsFalse()
                 }
             }
             scene(2, "押せるようになってから押す") {

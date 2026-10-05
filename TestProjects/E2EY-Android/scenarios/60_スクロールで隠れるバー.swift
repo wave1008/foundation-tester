@@ -91,10 +91,9 @@ class スクロールで隠れるバーを扱えること {
                     select("#txt_hide_result").textIs("hide=row_h_33")
                 }
             }
-            scene(3, "上へ戻してから FAB") {
+            scene(3, "FAB(隠れていれば上へ送って出す)") {
                 action {
-                    scrollUp()
-                    tap("#fab_hiding")
+                    tap("#fab_hiding", scroll: .up)
                 }.expectation {
                     select("#txt_hide_result").textIs("hide=fab")
                 }

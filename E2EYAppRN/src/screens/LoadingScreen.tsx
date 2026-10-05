@@ -20,6 +20,7 @@ export function LoadingScreen() {
   const [count, setCount] = useState(PAGE1);
   const [result, setResult] = useState('loading=none');
   const failedOnce = useRef(false);
+  const lastY = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const later = (ms: number, fn: () => void) => {
@@ -57,9 +58,11 @@ export function LoadingScreen() {
   };
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (phase !== 'loaded') return;
     const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
-    if (contentOffset.y <= 0) return;
+    // 前方へ動いたときだけ判定する(内容の増減に伴う補正の onScroll で末尾と誤判定しない)
+    const forward = contentOffset.y > lastY.current;
+    lastY.current = contentOffset.y;
+    if (phase !== 'loaded' || !forward) return;
     if (contentOffset.y + layoutMeasurement.height < contentSize.height - END_MARGIN) return;
     if (count >= PAGE2) setPhase('end');
     else loadMore();

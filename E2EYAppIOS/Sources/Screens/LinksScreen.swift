@@ -29,11 +29,13 @@ struct LinksScreen: View {
             VStack(alignment: .leading, spacing: 24) {
                 Text(terms).font(.footnote).accessibilityIdentifier("txt_terms")
                 Text(post).font(.footnote).accessibilityIdentifier("txt_post")
-                Text(inner)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .contentShape(Rectangle())
-                    .onTapGesture { result = "link=row" }
-                    .accessibilityIdentifier("row_with_link")
+                Button { result = "link=row" } label: {
+                    Text(inner)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("row_with_link")
             }
             .padding(16)
             Spacer()

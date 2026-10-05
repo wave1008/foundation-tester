@@ -7,32 +7,25 @@ import FTDSL
 @TestClass
 class 読み込みの状態を見分けられること {
 
-    @Test("骨組みの行は押せず、読み込み後に押せる")
+    @Test("骨組みの行を押すと、押せるようになるのを待って本物の行が押される")
     func S0010() {
         scenario {
-            scene(1, "開いた直後の骨組みの行は押しても反応しない") {
+            scene(1, "開いた直後の骨組みの行を押す") {
                 condition {
                     launchApp()
                     tap("#nav_loading", scroll: .down)
                 }.action {
                     tap("#row_l_03")
                 }.expectation {
-                    select("#txt_loading_result").textIs("loading=none")
+                    select("#txt_loading_result").textIs("loading=row_l_03")
                     select("#txt_loading_state").textIs("state=loaded", waitSeconds: 8)
                     select("#txt_loading_count").textIs("loaded=30")
-                }
-            }
-            scene(2, "読み込みが終わると同じ #id の行が押せる") {
-                action {
-                    tap("#row_l_03")
-                }.expectation {
-                    select("#txt_loading_result").textIs("loading=row_l_03")
                 }
             }
         }
     }
 
-    @Test("読み込み直した直後の行は押せない")
+    @Test("読み込み直した直後の行は無効で、読み込み後に押せる")
     func S0020() {
         scenario {
             scene(1, "読み込み済みにする") {
@@ -43,12 +36,18 @@ class 読み込みの状態を見分けられること {
                     select("#txt_loading_state").textIs("state=loaded", waitSeconds: 8)
                 }
             }
-            scene(2, "読み込み直した直後に押す") {
+            scene(2, "読み込み直した直後の骨組みの行は無効") {
                 action {
                     tap("#btn_reload")
+                }.expectation {
+                    select("#row_l_05").enabledIsFalse()
+                }
+            }
+            scene(3, "押すと読み込み後の本物の行が押される") {
+                action {
                     tap("#row_l_05")
                 }.expectation {
-                    select("#txt_loading_result").textIs("loading=none")
+                    select("#txt_loading_result").textIs("loading=row_l_05")
                     select("#txt_loading_state").textIs("state=loaded", waitSeconds: 8)
                 }
             }

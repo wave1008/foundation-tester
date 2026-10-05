@@ -99,7 +99,7 @@ class スワイプの距離で結果が変わること {
                     tap("#nav_swipe_actions", scroll: .down)
                 }.action {
                     swipeBy("#sw_row_5", dxRatio: -0.45, dyRatio: 0, durationSeconds: 0.4)
-                    tap("スワイプ行 5")
+                    tap("#sw_row_5")
                 }.expectation {
                     select("#txt_swipe_actions_result").textIs("action=none")
                 }

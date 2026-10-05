@@ -80,7 +80,7 @@ class 引き伸ばせるシートの背面と中身を操作できること {
                     launchApp()
                     tap("#nav_player", scroll: .down)
                 }.action {
-                    flickBottomToTop(scrollFrame: "#mini_player")
+                    swipeElementToElement("#mini_player", "#txt_sheet_state", durationSeconds: 0.5)
                 }.expectation {
                     select("#txt_sheet_state").textMatches("^sheet=(half|expanded)$", waitSeconds: 5)
                 }

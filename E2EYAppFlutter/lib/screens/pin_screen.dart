@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart' as mui show DefaultMaterialLocalizations, Material, MaterialType;
 import 'package:pinput/pinput.dart';
 
 import '../tags.dart';
@@ -105,13 +106,22 @@ class _PinScreenState extends State<PinScreen> {
             // 実体は隠れた入力欄 1 つ(Pinput)。箱は表示だけ
             taggedContainer(
               Tags.fieldOtp,
-              Pinput.builder(
-                length: _otpLength,
-                controller: _otp,
-                focusNode: _otpFocus,
-                keyboardType: TextInputType.number,
-                onCompleted: _onOtpCompleted,
-                builder: (context, s) => _box(s),
+              // Pinput は material_ui パッケージの Material と MaterialLocalizations を要求する
+              // (flutter/material.dart の同名の型とは別物で、Scaffold・MaterialApp では満たされない)
+              Localizations.override(
+                context: context,
+                delegates: const [mui.DefaultMaterialLocalizations.delegate],
+                child: mui.Material(
+                  type: mui.MaterialType.transparency,
+                  child: Pinput.builder(
+                    length: _otpLength,
+                    controller: _otp,
+                    focusNode: _otpFocus,
+                    keyboardType: TextInputType.number,
+                    onCompleted: _onOtpCompleted,
+                    builder: (context, s) => _box(s),
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 24),

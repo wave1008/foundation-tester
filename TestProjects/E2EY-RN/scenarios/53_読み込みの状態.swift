@@ -15,8 +15,8 @@ class 読み込み中の骨組みと末尾の読み込みを扱えること {
                     launchApp()
                     tap("#nav_loading", scroll: .down)
                 }.expectation {
-                    select("#txt_loading_state").textIs("state=loading")
-                    // 骨組みの行も同じ #id で居る(存在待ちでは読み込み完了を判定できない)
+                    // 骨組みの行も同じ #id で居る(存在待ちでは読み込み完了を判定できない)。
+                    // state=loading は 2 秒の窓なので、遷移の所要が長いデバイスでは読めない(読まない)
                     exist("#row_l_03")
                 }
             }
@@ -32,7 +32,7 @@ class 読み込み中の骨組みと末尾の読み込みを扱えること {
         }
     }
 
-    @Test("読み込み直した直後の骨組みの行を押しても何も起きない")
+    @Test("読み込み直した直後の骨組みの行は無効で、押すと読み込み後の本物の行が押される")
     func S0020() {
         scenario {
             scene(1, "読み込み済みにして押す") {
@@ -45,12 +45,18 @@ class 読み込み中の骨組みと末尾の読み込みを扱えること {
                     select("#txt_loading_result").textIs("loading=row_l_03")
                 }
             }
-            scene(2, "読み込み直した直後に押す") {
+            scene(2, "読み込み直した直後は骨組みが無効") {
                 action {
                     tap("#btn_reload")
+                }.expectation {
+                    select("#row_l_05").enabledIsFalse()
+                }
+            }
+            scene(3, "押すと押せるまで待って本物の行が押される") {
+                action {
                     tap("#row_l_05")
                 }.expectation {
-                    select("#txt_loading_result").textIs("loading=none")
+                    select("#txt_loading_result").textIs("loading=row_l_05")
                 }
             }
         }

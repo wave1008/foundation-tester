@@ -68,7 +68,7 @@ class 戻る操作の横取りに対処できること {
                     tap("#btn_keep")
                 }.expectation {
                     notExist("#txt_discard_title")
-                    select("#field_title").textIs("abc")
+                    select("#field_title").valueIs("abc")
                 }
             }
             scene(3, "もう一度戻って破棄") {

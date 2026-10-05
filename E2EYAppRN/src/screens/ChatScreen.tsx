@@ -4,7 +4,6 @@ import {
   KeyboardAvoidingView,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Platform,
   StyleSheet,
   TextInput,
   View,
@@ -79,7 +78,8 @@ export function ChatScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      // Android も 'padding'(edge-to-edge ではキーボードが窓を縮めず、入力バーが IME の裏に隠れる)
+      behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
       <View style={styles.echo}>

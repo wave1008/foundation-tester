@@ -25,7 +25,8 @@ struct TabHeaderScreen: View {
                 TaggedText(tag: "txt_tabhdr_header", text: "header=\(expanded ? "expanded" : "collapsed")")
             }
             ScrollView {
-                LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                // 縮みは onScrollGeometryChange で読む(名前付き座標空間 + PreferenceKey はスクロール内容から値が届かず collapsed 固定になった)
+                VStack(spacing: 0) {
                     VStack(spacing: 12) {
                         Text("プロフィール見出し").font(.title3).accessibilityIdentifier("txt_profile_header")
                         Button("フォロー") { result = "tabhdr=follow" }
@@ -35,18 +36,18 @@ struct TabHeaderScreen: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: headerHeight)
                     .background(Color.purple.opacity(0.12))
-                    .background(GeometryReader { geo in
-                        Color.clear.preference(key: HeaderBottomKey.self, value: geo.frame(in: .named("tab_scroll")).maxY)
-                    })
-                    Section {
-                        pages
-                    } header: {
-                        tabBar
+                    LazyVStack(spacing: 0, pinnedViews: [.sectionHeaders]) {
+                        Section {
+                            pages
+                        } header: {
+                            tabBar
+                        }
                     }
                 }
             }
-            .coordinateSpace(name: "tab_scroll")
-            .onPreferenceChange(HeaderBottomKey.self) { bottom in expanded = bottom > tabBarHeight }
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in
+                expanded = headerHeight - y > tabBarHeight
+            }
         }
         .screenTitleTag("折りたたみヘッダとタブ")
     }
@@ -88,9 +89,4 @@ struct TabHeaderScreen: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $tab)
     }
-}
-
-private struct HeaderBottomKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

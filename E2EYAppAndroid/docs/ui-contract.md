@@ -59,8 +59,8 @@
 - **A9 のシート**: ミニプレーヤー(64dp)は常に先頭に居て、半分・全開では見出し(`#txt_player_title`)とキューがその下に出る。
   畳んだ状態でキューを木に残すか(画面外に clip されたノードが a11y に出るか)は未確認
 - **A10 の `bars=hidden`** は上部バー(`AppBarLayout`)が完全に隠れた状態(スクロールが止まった時点)。`snap` は付けていない
-  (途中で止まると `shown`)。FAB は `hide()` のアニメーションの後 `GONE`(木から消える)。**FAB の隠れるきっかけは `dyConsumed`**
-  なので、上部バーが先に畳まれている間(`RecyclerView` が消費していない送り)は FAB はまだ隠れない
+  (途中で止まると `shown`)。FAB は `hide()` のアニメーションの後 `GONE`(木から消える)。**FAB は消費前の `dy` で隠れ**、
+  一覧が動いた分(`dyConsumed`/`dyUnconsumed` < 0)でも現れる
 - **A11 のヘッダは `CollapsingToolbarLayout` ではなく素の `LinearLayout`(`scroll|exitUntilCollapsed`)**。`CollapsingToolbarLayout` は
   `android:minHeight` が無いと床が決まらず、pin した子ごと `AppBarLayout` が高さ 0 まで畳まれて木から消える(E2EX の実測)罠があるが、
   この画面ではタブ列がスクロールフラグ無しで残るので `AppBarLayout` は 0 にならない。ヘッダは縮み切ると見えなくなる(床 0)。

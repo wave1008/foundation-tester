@@ -51,10 +51,11 @@ class スワイプの操作を撃ち分けられること {
                     select("#txt_swipe_actions_count").textIs("rows=6")
                 }
             }
-            scene(2, "4 行目を右端から左端近くまで払う(full swipe)") {
+            scene(2, "4 行目を右寄りから左端近くまで払う(full swipe)") {
                 action {
+                    // 始点を端(OS の戻るジェスチャ帯)に置かない
                     gesture("#sw_row_4") {
-                        FTFinger(x: 0.95, y: 0.5).move(x: 0.05, y: 0.5, durationSeconds: 0.4)
+                        FTFinger(x: 0.88, y: 0.5).move(x: 0.05, y: 0.5, durationSeconds: 0.4)
                     }
                 }.expectation {
                     select("#txt_swipe_actions_result").textIs("action=row4:delete", waitSeconds: 3)

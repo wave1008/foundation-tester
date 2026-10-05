@@ -91,8 +91,9 @@ fun PlayerScreen() {
                             modifier = Modifier.testTag("btn_player_collapse")
                         ) { Text("⌄", modifier = Modifier.clearAndSetSemantics { contentDescription = "畳む" }) }
                     }
-                    // 全開で画面を満たす高さ。畳み・半分のときは下側が画面外で、キューは木に居続ける。
-                    LazyColumn(modifier = Modifier.fillMaxWidth().height(this@BoxWithConstraints.maxHeight - 128.dp).testTag("list_queue")) {
+                    // 全開でも上部の固定領域(#txt_sheet_state・#txt_player_result)を覆わない高さ(ドラッグハンドル 48dp +
+                    // 固定領域 80dp を空ける)。畳み・半分のときは下側が画面外で、キューは木に居続ける。
+                    LazyColumn(modifier = Modifier.fillMaxWidth().height(this@BoxWithConstraints.maxHeight - 256.dp).testTag("list_queue")) {
                         items(30) { n ->
                             Box(
                                 modifier = Modifier.fillMaxWidth().height(56.dp)

@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -40,6 +41,7 @@ import com.ftester.e2ey.ui.TaggedText
 private fun pad2(n: Int) = n.toString().padStart(2, '0')
 
 // A10: nestedScroll で送りの向きを読み、上部バー・FAB・下部バーを平行移動で隠す(木には居続ける)。
+// 隠れたバーが上の echo 領域へはみ出して覆わないよう、容器を clipToBounds で切る。
 @Composable
 fun HideBarsScreen() {
     var result by remember { mutableStateOf("none") }
@@ -63,7 +65,7 @@ fun HideBarsScreen() {
             TaggedText("txt_hide_result", "hide=$result")
             TaggedText("txt_bars_state", if (hidden) "bars=hidden" else "bars=shown")
         }
-        Box(modifier = Modifier.weight(1f).fillMaxWidth().nestedScroll(connection)) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().nestedScroll(connection)) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 56.dp, bottom = 56.dp)

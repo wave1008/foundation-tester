@@ -31,12 +31,8 @@ struct HideBarsScreen: View {
                         }
                         Color.clear.frame(height: barHeight)
                     }
-                    .background(GeometryReader { geo in
-                        Color.clear.preference(key: OffsetKey.self, value: -geo.frame(in: .named("hide_scroll")).minY)
-                    })
                 }
-                .coordinateSpace(name: "hide_scroll")
-                .onPreferenceChange(OffsetKey.self) { y in track(y) }
+                .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in track(y) }
 
                 VStack(spacing: 0) {
                     HStack {
@@ -47,6 +43,7 @@ struct HideBarsScreen: View {
                     .padding(.horizontal, 16)
                     .frame(height: barHeight)
                     .background(Color(.secondarySystemBackground))
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("bar_top_hiding")
                     .offset(y: hidden ? -barHeight : 0)
                     .opacity(hidden ? 0 : 1)
@@ -71,6 +68,7 @@ struct HideBarsScreen: View {
                     }
                     .frame(height: barHeight)
                     .background(Color(.secondarySystemBackground))
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("bar_bottom_hiding")
                     .offset(y: hidden ? barHeight : 0)
                     .opacity(hidden ? 0 : 1)
@@ -90,9 +88,4 @@ struct HideBarsScreen: View {
         else if delta > 6 { hidden = true }
         else if delta < -2 { hidden = false }
     }
-}
-
-private struct OffsetKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

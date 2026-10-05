@@ -73,11 +73,13 @@ class 戻るを横取りされても期待どおりに戻れること {
                     tap("#btn_open_editor")
                     type("#field_title", "abc")
                 }.expectation {
-                    select("#field_title").textIs("abc")
+                    select("#field_title").valueIs("abc")
                 }
             }
             scene(2, "戻ると確認が割り込む") {
                 action {
+                    // Android は開いたキーボードが最初の戻るを受けるので、先に閉じる
+                    android { hideKeyboard() }
                     back()
                 }.expectation {
                     select("#txt_discard_title").textIs("変更を破棄しますか?")
@@ -104,6 +106,7 @@ class 戻るを横取りされても期待どおりに戻れること {
                     tap("#nav_back_guard", scroll: .down)
                     tap("#btn_open_editor")
                     type("#field_title", "xyz")
+                    android { hideKeyboard() }
                     back()
                 }.expectation {
                     exist("#btn_keep")
@@ -114,7 +117,7 @@ class 戻るを横取りされても期待どおりに戻れること {
                     tap("#btn_keep")
                 }.expectation {
                     select("#txt_screen_title").textIs("編集")
-                    select("#field_title").textIs("xyz")
+                    select("#field_title").valueIs("xyz")
                     notExist("#txt_discard_title")
                 }
             }

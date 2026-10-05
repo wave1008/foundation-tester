@@ -100,7 +100,7 @@ class 引き伸ばせるシートを操作できること {
                     launchApp()
                     tap("#nav_player", scroll: .down)
                 }.action {
-                    swipeBy("#txt_mini_title", dxRatio: 0, dyRatio: -0.9, durationSeconds: 0.4)
+                    swipeElementToElement("#txt_mini_title", "#txt_sheet_state", durationSeconds: 0.4)
                 }.expectation {
                     select("#txt_sheet_state").textMatches("^sheet=(half|expanded)$")
                 }

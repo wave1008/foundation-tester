@@ -110,7 +110,7 @@ class 引き伸ばせるシートの中と背面を操作できること {
             }
             scene(2, "上へ払う") {
                 action {
-                    swipeBy("#mini_player", dxRatio: 0, dyRatio: -4, durationSeconds: 0.5)
+                    swipeElementToElement("#mini_player", "#txt_sheet_state", durationSeconds: 0.5)
                 }.expectation {
                     select("#txt_sheet_state").textMatches("^sheet=(half|expanded)$", waitSeconds: 3)
                 }

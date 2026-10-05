@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
 
 import { Tags } from '../tags';
@@ -14,13 +15,15 @@ const MAIN = Array.from({ length: 40 }, (_, n) => n);
 const QUEUE = Array.from({ length: 30 }, (_, n) => n);
 
 export function PlayerScreen() {
+  const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheet>(null);
   const [index, setIndex] = useState(0);
   const [result, setResult] = useState('player=none');
   const [playing, setPlaying] = useState(false);
 
   return (
-    <View style={styles.root}>
+    // 畳んだシートをジェスチャナビのバーの上に置く(下端からの上払いが OS のホーム操作に取られる)
+    <View style={[styles.root, { paddingBottom: insets.bottom }]}>
       <View style={styles.echo}>
         <EchoText testID={Tags.txtSheetState}>{`sheet=${STATES[index]}`}</EchoText>
         <EchoText testID={Tags.txtPlayerResult}>{result}</EchoText>
