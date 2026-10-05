@@ -696,7 +696,17 @@ extension StepExecutor {
                 // ここで足すと同文が2回付く)
                 adviseTarget(TapTargetGeometry.occlusionAdvisory(
                     for: element, in: snapshot.elements, screen: snapshot.screen, isAndroid: isAndroid))
-                try await actingDriver.tap(ref: element.ref)
+                do {
+                    try await actingDriver.tap(ref: element.ref)
+                } catch {
+                    // in-app が「activate 不発・合成タッチは効かない」(SwiftUI)で 501 を返したら、
+                    // 今の木の枠の中心を XCUITest の座標タップで押す(ref は別名前空間なので渡さない)。
+                    // 撃ち直しではない: 501 は in-app が何も撃たずに返した場合だけ
+                    guard DriverError.isEngineIncapable(error),
+                          let td = typeDriver else { throw error }
+                    try await td.tap(x: element.frame.centerX, y: element.frame.centerY)
+                    driverFallback = Self.joinNotes(driverFallback, "fell back to XCUITest")
+                }
             }
             phase.actionMs += Self.ms(clock.now - start)
             // ドライバが「無言 no-op になり得る経路を通った」と申告した注記(例: InAppBridge の

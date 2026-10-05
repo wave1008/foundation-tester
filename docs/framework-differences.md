@@ -331,6 +331,8 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | 上端へ戻す最後の1本のドラッグが、端を越えた余りで入れ子の親(SwipeRefreshLayout・RefreshControl)を引っ張り更新を走らせる → 端送りは a11y のスクロール操作で送る(ブリッジ v78 `POST /scrollAction`。軸の合う最小の容器・軸が分からなければ従来のドラッグ・送れない向きなら「もう端」) | Android |
 | 反転したリスト(RN の `inverted`・transform で上下反転した UITableView のチャット)を in-app で送れず、最新の位置で「もう端」と判定して探索が1回も送らない → contentOffset 経路が容器の座標の反転を見て指の向きを裏返す(`FTSwipeDirection.inContentSpace`・v144。E2EY の反転チャット) | iOS in-app(UIKit 系) |
 | キーボード側の窓に載る `inputAccessoryView` の入力バー(Signal の会話画面の形)が in-app の木に出ない(キーのために窓ごと除いていた)→ first responder と first responder である VC の accessory の部分木だけを木に足す(`inputAccessoryRoots`・v144。E2EY-iOS の反転チャット) | iOS in-app |
+| SwiftUI の `Text` + `onTapGesture`・ミニプレーヤー・OTP の箱を in-app で押すと、activate が不発のあと合成タッチ(UIGestureRecognizer が受理しない)に落ちて 200 のまま空振りする → SwiftUI だけ 501 を返し、ホストが XCUITest で今の枠の中心を座標タップする(`AppUIFramework.rejectsSyntheticTap`・v145。RN・Compose・Flutter・UIKit は従来の合成タッチ。E2EY-iOS) | iOS in-app |
+| `scrollViewDidEndDragging` 等の「止まった」で位置を確定する UIKit アプリ(反転チャットの `at_bottom`・ページ送り・末尾の追加読み込み)が、in-app の contentOffset 送りで反応しない(`scrollViewDidScroll` しか呼ばれない)→ アプリ自身の delegate へ WillBeginDragging → WillEndDragging → DidEndDragging(減速なし)を合成する。SwiftUI の内部 delegate・WKScrollView は呼ばない(`ScrollDelegateNotification`・v145。E2EY-iOS) | iOS in-app |
 
 **残っている制約(`@Draft` の理由と対応)**: Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の

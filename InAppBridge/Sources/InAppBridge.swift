@@ -661,6 +661,15 @@ final class FTInAppBridge {
                 finish(window)
                 return
             }
+            // SwiftUI の合成タッチは onTapGesture / Button のジェスチャを発火しない(無言の空振りになる)。
+            // 501 でホストに XCUITest の座標タップへ回させる(UIKit / RN は合成タッチが効く形があるので対象外)
+            if AppUIFramework(rawValue: self.uiFramework)?.rejectsSyntheticTap == true {
+                thrown = InAppError(501, "activate did not fire on this SwiftUI element and a synthetic touch"
+                    + " would be silently ignored (UIGestureRecognizer does not accept synthetic touches)."
+                    + " hybrid falls back to XCUITest")
+                sem.signal()
+                return
+            }
             guard retriesUnfiredActivate else {
                 synthAtCurrentFrame(stale: node, window: window)
                 return
@@ -1335,7 +1344,22 @@ final class FTInAppBridge {
         var clamped = offset
         clamped.y = min(max(offset.y, minY), maxY)
         clamped.x = min(max(offset.x, minX), maxX)
+        guard clamped != sv.contentOffset else { return }
+        // アプリ自身の delegate には、実際の指の払いと同じ順で「始まり → 終わり(減速なし)」を知らせる。
+        // 通知が無いと「止まった」で位置を確定・追加読み込みするアプリが反応しない(scrollViewDidScroll しか呼ばれない)
+        guard let delegate = sv.delegate,
+              ScrollDelegateNotification.shouldNotify(
+                  delegateClassName: NSStringFromClass(type(of: delegate)),
+                  scrollViewClassName: NSStringFromClass(type(of: sv))) else {
+            sv.setContentOffset(clamped, animated: false)
+            return
+        }
+        delegate.scrollViewWillBeginDragging?(sv)
         sv.setContentOffset(clamped, animated: false)
+        var target = clamped
+        delegate.scrollViewWillEndDragging?(sv, withVelocity: .zero, targetContentOffset: &target)
+        if target != clamped { sv.setContentOffset(target, animated: false) }
+        delegate.scrollViewDidEndDragging?(sv, willDecelerate: false)
     }
 
     private static func visibleScrollViews(in window: UIWindow) -> [UIScrollView] {

@@ -33,6 +33,28 @@ public enum AppUIFramework: String, Codable, Sendable, CaseIterable {
     /// 約 1.6 万回で一度も効かず、1 回あたり約 0.4 秒(整定 + 固定 250ms + 取り直し 2 回)を払うだけだった。
     /// 自前描画で分ける(Flutter は効いた実測が無いが、個別の値で分けると語彙を足した日に黙って外れる)
     public var retriesUnfiredActivate: Bool { isSelfRendered }
+
+    /// in-app の ref タップで activate が不発のとき、合成タッチを撃たず 501 を返すか(ホストが XCUITest へ回す)。
+    /// SwiftUI は合成タッチで Button / onTapGesture が発火しない(framework-differences §2.1)。
+    /// UIKit(セル選択等)と RN(Pressable)は合成タッチで効く形があるので対象外
+    public var rejectsSyntheticTap: Bool { self == .swiftUI }
+}
+
+/// in-app の contentOffset 経路が、指の払いの終わりを知らせる delegate 通知(WillBeginDragging /
+/// WillEndDragging / DidEndDragging)を合成してよい相手か。**アプリ自身の delegate だけ**:
+/// SwiftUI の ScrollView は内部クラスが delegate で、合成の通知で内部状態を乱さない(従来どおり offset だけ)。
+/// WKScrollView の delegate は WebKit 内部で、同じ理由で呼ばない。delegate が無ければ呼ぶ相手もいない
+public enum ScrollDelegateNotification {
+    /// Swift クラス名は公開型が `SwiftUI.X`、非公開・ジェネリックが `_TtC7SwiftUI…` / `_TtGC7SwiftUI…` /
+    /// `_TtCC7SwiftUI…` で出る。アプリ名に SwiftUI を含むだけの型を巻き込まないよう接頭辞で見る
+    static let swiftUIClassPrefixes = ["SwiftUI.", "_TtC7SwiftUI", "_TtGC7SwiftUI", "_TtCC7SwiftUI"]
+    static let webKitScrollViewClass = "WKScrollView"
+
+    public static func shouldNotify(delegateClassName: String?, scrollViewClassName: String) -> Bool {
+        guard let delegateClassName else { return false }
+        if scrollViewClassName == webKitScrollViewClass { return false }
+        return !swiftUIClassPrefixes.contains { delegateClassName.hasPrefix($0) }
+    }
 }
 
 public enum UIFrameworkMarkers {
