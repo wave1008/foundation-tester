@@ -47,6 +47,9 @@ id _Nullable FTCurrentTextReceiver(void);
 /// xcuitest の typeText("\n") へ回す判断をする)。
 BOOL FTPressEnterOnComposeFirstResponder(void);
 
+/// 現在の first responder(sendAction 捕捉 → ビュー木探索)。in-app の木が `inputAccessoryView` を拾うのに使う
+id _Nullable FTCurrentFirstResponderObject(void);
+
 /// type 失敗(409)時の診断: first responder の実クラスと入力プロトコル対応状況
 NSString *FTFirstResponderDiagnostics(void);
 

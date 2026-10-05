@@ -287,6 +287,10 @@ static UIResponder * _Nullable ftCurrentFirstResponder(void) {
     return nil;
 }
 
+id _Nullable FTCurrentFirstResponderObject(void) {
+    return ftCurrentFirstResponder();
+}
+
 // 前方宣言(定義は診断セクション)
 static NSArray<UIView *> *ftTextReceivers(void);
 

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 143
+    public static let bridgeProtocolVersion = 144
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1059,6 +1059,19 @@ public enum FTSwipeIntent: String, Codable, CaseIterable {
 /// **ジェスチャの向き**(指の動き)。ブリッジの /swipe はこれを受ける
 public enum FTSwipeDirection: String, Codable, CaseIterable {
     case up, down, left, right
+
+    /// 画面上の指の向きを、上下 / 左右が反転したスクロールビュー自身の座標での向きへ写す(in-app の
+    /// contentOffset 経路が使う)。反転リスト(RN の `inverted` = scaleY(-1)・transform で上下反転した
+    /// UITableView のチャット)では「指を下へ = 過去を出す」が contentOffset の**増える**側になる。
+    /// 写さないと最新の位置(offset 0)で「もう端」と判定し、探索が1回も送らずに打ち切られる(E2EY の反転チャット)
+    public func inContentSpace(flipX: Bool, flipY: Bool) -> FTSwipeDirection {
+        switch self {
+        case .up: return flipY ? .down : .up
+        case .down: return flipY ? .up : .down
+        case .left: return flipX ? .right : .left
+        case .right: return flipX ? .left : .right
+        }
+    }
 }
 
 /// Device orientation for the `rotateTo` DSL command / `ft_rotate` MCP tool / POST /rotate.

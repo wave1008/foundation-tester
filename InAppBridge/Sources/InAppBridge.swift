@@ -223,7 +223,8 @@ final class FTInAppBridge {
             // 0 要素になる(_AXSSetAutomationEnabled は Flutter engine に効かない)。冪等・非 Flutter は no-op。
             // 起動直後は FlutterViewController が未生成のことがあるため boot 時でなく snapshot ごとに呼ぶ
             FTEnsureFlutterSemantics()
-            return InAppSnapshot.capture(windows: Self.visibleWindows(keyWindow: window), max: limit)
+            return InAppSnapshot.capture(windows: Self.visibleWindows(keyWindow: window),
+                                         extraRoots: Self.inputAccessoryRoots(keyWindow: window), max: limit)
         }
         // **キーボードはキーウィンドウの外**(UITextEffectsWindow)に載るため、AX ツリー走査
         // (InAppSnapshot の sawKeyboard)では見つからない。表示中かと実矩形を同一時点で読むため
@@ -1279,11 +1280,13 @@ final class FTInAppBridge {
     /// 目的は端そのもの。長文(利用規約等)では往復回数がページ数に比例していた
     private static func scroll(_ sv: UIScrollView, direction: FTSwipeDirection,
                                path: FTSwipePath?, toEdge: Bool = false) {
-        if toEdge { scrollToEdge(sv, direction: direction); return }
-        guard let path else { scrollByPage(sv, direction: direction); return }
+        let flip = axisFlips(sv)
+        let content = direction.inContentSpace(flipX: flip.x, flipY: flip.y)
+        if toEdge { scrollToEdge(sv, direction: content); return }
+        guard let path else { scrollByPage(sv, direction: content); return }
         var offset = sv.contentOffset
-        offset.x += path.fromX - path.toX
-        offset.y += path.fromY - path.toY
+        offset.x += (path.fromX - path.toX) * (flip.x ? -1 : 1)
+        offset.y += (path.fromY - path.toY) * (flip.y ? -1 : 1)
         clampAndApply(sv, offset)
     }
 
@@ -1313,6 +1316,15 @@ final class FTInAppBridge {
         case .right: offset.x -= stepX
         }
         clampAndApply(sv, offset)
+    }
+
+    /// スクロールビュー自身の座標の軸が、画面(窓)の軸に対して反転しているか(祖先の transform も含む)。
+    /// 指の向き → contentOffset の増減の写像はこれで裏返す(`FTSwipeDirection.inContentSpace`)
+    private static func axisFlips(_ sv: UIScrollView) -> (x: Bool, y: Bool) {
+        let origin = sv.convert(CGPoint.zero, to: nil)
+        let unitX = sv.convert(CGPoint(x: 1, y: 0), to: nil)
+        let unitY = sv.convert(CGPoint(x: 0, y: 1), to: nil)
+        return (unitX.x < origin.x, unitY.y < origin.y)
     }
 
     /// コンテンツ範囲へ丸めてから適用する(はみ出すとバウンスして戻る = 動かないのと同じ)
@@ -1379,7 +1391,9 @@ final class FTInAppBridge {
     }
 
     /// 指定方向へまだ動かせるか(1pt でも余地があれば真)。指の向きとスクロール方向は逆。
-    private static func hasRoom(_ sv: UIScrollView, _ direction: FTSwipeDirection) -> Bool {
+    private static func hasRoom(_ sv: UIScrollView, _ finger: FTSwipeDirection) -> Bool {
+        let flip = axisFlips(sv)
+        let direction = finger.inContentSpace(flipX: flip.x, flipY: flip.y)
         let inset = sv.adjustedContentInset
         let maxY = max(-inset.top, sv.contentSize.height + inset.bottom - sv.bounds.height)
         let maxX = max(-inset.left, sv.contentSize.width + inset.right - sv.bounds.width)
@@ -1565,6 +1579,7 @@ final class FTInAppBridge {
                 // 揃えて書く4つ組の一部だけを差し替えると ref が食い違う。指紋を比べるだけ
                 FTEnsureFlutterSemantics()
                 let fresh = InAppSnapshot.capture(windows: Self.visibleWindows(keyWindow: key),
+                                                  extraRoots: Self.inputAccessoryRoots(keyWindow: key),
                                                   max: BridgeAPI.resolvedSnapshotElementLimit(nil))
                 now = InAppRenderCatchUp.treePrint(fresh.elements)
             }
@@ -1713,6 +1728,32 @@ final class FTInAppBridge {
             result.append(window)
         }
         return result
+    }
+
+    /// キーボード側の窓(`visibleWindows` が除く UITextEffectsWindow / UIRemoteKeyboardWindow)に載る
+    /// **`inputAccessoryView` の部分木**。チャットの入力バーをこれで出す作りがある(Signal の会話画面 =
+    /// 画面の VC が自分で first responder になり、キーボードが閉じていても入力バーはこの窓に居る)。
+    /// 拾うのは first responder の accessory と、first responder である VC の accessory だけ ——
+    /// **first responder でない VC の `inputAccessoryView` を読まない**(遅延生成するアプリで読んだだけで作られる)
+    static func inputAccessoryRoots(keyWindow: UIWindow) -> [UIView] {
+        var roots: [UIView] = []
+        func add(_ view: UIView?) {
+            guard let view, view.window != nil, !view.isHidden, view.alpha > 0.01,
+                  !roots.contains(where: { $0 === view }) else { return }
+            roots.append(view)
+        }
+        if let responder = FTCurrentFirstResponderObject() as? UIResponder {
+            add(responder.inputAccessoryView)
+        }
+        var stack: [UIViewController] = keyWindow.rootViewController.map { [$0] } ?? []
+        var visits = 0
+        while let vc = stack.popLast(), visits < 200 {
+            visits += 1
+            if vc.isFirstResponder { add(vc.inputAccessoryView) }
+            stack.append(contentsOf: vc.children)
+            if let presented = vc.presentedViewController { stack.append(presented) }
+        }
+        return roots
     }
 
     /// **その要素が載っている窓**。合成タッチはこの窓へ撃つ(2026-08-20 の受け手報告)。

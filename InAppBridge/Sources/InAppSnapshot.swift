@@ -60,7 +60,9 @@ enum InAppSnapshot {
     /// 判定は**その窓が実際にタッチを受ける位置か**(`hitTest`)。全画面の暗幕は受けるので
     /// 背面は落ち、素通しの窓(`isUserInteractionEnabled = false`)は受けないので背面は残る。
     /// **並びは奥から手前**(ホストの遮蔽判定が「後に出るものが上」を前提にしている)
-    static func capture(windows: [UIWindow],
+    /// `extraRoots`: 窓の外から足す根(キーボード側の窓に載る `inputAccessoryView`。窓ごと載せるとキーが
+    /// 写り込むので部分木だけ)。最前面として扱う = 覆いの判定は掛けない
+    static func capture(windows: [UIWindow], extraRoots: [UIView] = [],
                         max limit: Int = BridgeAPI.maxSnapshotElements) -> Result {
         let screen = windows.first?.bounds ?? .zero
         // 同じオブジェクトが2経路から届くことがある(Compose iOS の interop は WKWebView を
@@ -71,6 +73,10 @@ enum InAppSnapshot {
         let ordered = FTInAppBridge.backToFront(windows)   // 奥 → 手前
         for (index, window) in ordered.enumerated() {
             collect(window, depth: 0, screen: screen, front: Array(ordered[(index + 1)...]),
+                    clip: nil, flutter: nil, visited: &visited, gathered: &gathered)
+        }
+        for root in extraRoots {
+            collect(root, depth: 0, screen: screen, front: [],
                     clip: nil, flutter: nil, visited: &visited, gathered: &gathered)
         }
 

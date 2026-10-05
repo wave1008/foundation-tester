@@ -329,6 +329,8 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | 貼り付く見出し(操作不能のテキストの帯)に潜った行を押すと見出しに当たる → 撃つ前に送って外す対象を「容器の縁に揃った名前つきの帯」へ広げる(`TapTargetGeometry.isPinnedTextBand`。名前の無い暗幕・縁から浮いたラベルは従来どおり外さない) | 全エンジン |
 | Flutter の iOS でオーバーレイを出した画面の a11y の矩形が 1/画面倍率に縮み、タップが全部ずれる → in-app ブリッジが「FlutterView ÷ 倍率」を申告するセマンティクスの容器を見つけ、その下を実の枠へ写す(`FTCore.AXFrameRescale`・v132。PlatformView の中身は実の枠なので掛けない) | iOS in-app |
 | 上端へ戻す最後の1本のドラッグが、端を越えた余りで入れ子の親(SwipeRefreshLayout・RefreshControl)を引っ張り更新を走らせる → 端送りは a11y のスクロール操作で送る(ブリッジ v78 `POST /scrollAction`。軸の合う最小の容器・軸が分からなければ従来のドラッグ・送れない向きなら「もう端」) | Android |
+| 反転したリスト(RN の `inverted`・transform で上下反転した UITableView のチャット)を in-app で送れず、最新の位置で「もう端」と判定して探索が1回も送らない → contentOffset 経路が容器の座標の反転を見て指の向きを裏返す(`FTSwipeDirection.inContentSpace`・v144。E2EY の反転チャット) | iOS in-app(UIKit 系) |
+| キーボード側の窓に載る `inputAccessoryView` の入力バー(Signal の会話画面の形)が in-app の木に出ない(キーのために窓ごと除いていた)→ first responder と first responder である VC の accessory の部分木だけを木に足す(`inputAccessoryRoots`・v144。E2EY-iOS の反転チャット) | iOS in-app |
 
 **残っている制約(`@Draft` の理由と対応)**: Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
