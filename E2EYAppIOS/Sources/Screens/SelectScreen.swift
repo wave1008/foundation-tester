@@ -2,11 +2,14 @@ import SwiftUI
 
 /// A5: `List(selection:)` + EditMode。`#btn_edit` は自前の Button で editMode を切り替える。
 /// 通常モードの「開く」と長押しは editMode が非活性の枝だけに付ける(活性の枝に付けると List の選択タップと競合する)。
+/// 長押しは Button に onLongPressGesture を付けても Button の押下に負けるので simultaneousGesture。
 struct SelectScreen: View {
     @State private var rows = Array(1...20)
     @State private var selection = Set<Int>()
     @State private var editMode = EditMode.inactive
     @State private var result = "select=none"
+    /// 長押しで選択モードへ入った指の離しが Button の押下として届くので、その1回の「開く」を捨てる。leave() でも解く(離しが届かない場合)。
+    @State private var longPressed = false
 
     private var selecting: Bool { editMode == .active }
 
@@ -37,17 +40,23 @@ struct SelectScreen: View {
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 .accessibilityIdentifier(name)
         } else {
-            Button { result = "select=open:\(name)" } label: {
+            Button {
+                if longPressed { longPressed = false; return }
+                result = "select=open:\(name)"
+            } label: {
                 Text("項目 \(Tags.two(n))")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .onLongPressGesture {
+            .simultaneousGesture(
+                LongPressGesture().onEnded { _ in
+                    longPressed = true
                     selection = [n]
                     editMode = .active
                 }
-                .accessibilityIdentifier(name)
+            )
+            .accessibilityIdentifier(name)
         }
     }
 
@@ -74,6 +83,7 @@ struct SelectScreen: View {
     }
 
     private func leave() {
+        longPressed = false
         selection = []
         editMode = .inactive
     }

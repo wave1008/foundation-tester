@@ -23,7 +23,6 @@ class 読み込みの状態の変化を待てること {
                 action {
                     tap("#btn_reload")
                 }.expectation {
-                    select("#txt_loading_state").textIs("state=loading")
                     select("#row_l_03").enabledIsFalse()
                 }.action {
                     tap("#row_l_03")

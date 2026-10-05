@@ -51,6 +51,8 @@ export function PlayerScreen() {
           enablePanDownToClose={false}
           handleComponent={null}
           onChange={setIndex}
+          // 払いで動いた先を、止まるのを待たずに反映する(止まった後の onChange が来ない場合の備え)
+          onAnimate={(_from: number, to: number) => setIndex(to)}
           style={styles.sheet}
           // 既定の accessible 畳み込みを止める(gorhom は中身を1要素へ畳みうる)
           accessible={false}

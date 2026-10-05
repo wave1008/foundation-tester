@@ -1,6 +1,8 @@
 // 54_スワイプの操作.swift
 // 確かめる癖: 払う距離で結果が変わる(途中まで = ボタンが出て止まる / 大半 = ボタンを押さずに削除まで走る)・
 // 払うまでボタンが木に居ない・スワイプで返信(閾値を越えて離すと元へ戻り、行は消えない)。
+// 途中まで払うのはゆっくり(2 秒): 速く離すと AnchoredDraggable の fling が次のアンカー(削除)まで送る
+// (XCUITest の払いは離す速度を持つ。0.4 秒では iOS で削除まで走った)。
 
 import FTDSL
 
@@ -22,7 +24,7 @@ class スワイプの距離で結果が変わること {
             }
             scene(2, "3 行目を途中まで払ってアーカイブ") {
                 action {
-                    swipeBy("#sw_row_3", dxRatio: -0.45, dyRatio: 0, durationSeconds: 0.4)
+                    swipeBy("#sw_row_3", dxRatio: -0.45, dyRatio: 0, durationSeconds: 2.0)
                 }.expectation {
                     exist("#btn_sw_archive_3")
                 }.action {
@@ -33,7 +35,7 @@ class スワイプの距離で結果が変わること {
             }
             scene(3, "2 行目を途中まで払って削除ボタン") {
                 action {
-                    swipeBy("#sw_row_2", dxRatio: -0.45, dyRatio: 0, durationSeconds: 0.4)
+                    swipeBy("#sw_row_2", dxRatio: -0.45, dyRatio: 0, durationSeconds: 2.0)
                     tap("#btn_sw_delete_2")
                 }.expectation {
                     select("#txt_swipe_actions_result").textIs("action=row2:delete")
@@ -78,7 +80,7 @@ class スワイプの距離で結果が変わること {
             }
             scene(2, "1 行目を左から右へ途中まで払ってピン留め") {
                 action {
-                    swipeBy("#sw_row_1", dxRatio: 0.3, dyRatio: 0, durationSeconds: 0.4)
+                    swipeBy("#sw_row_1", dxRatio: 0.3, dyRatio: 0, durationSeconds: 2.0)
                 }.expectation {
                     exist("#btn_sw_pin_1")
                 }.action {
@@ -98,7 +100,7 @@ class スワイプの距離で結果が変わること {
                     launchApp()
                     tap("#nav_swipe_actions", scroll: .down)
                 }.action {
-                    swipeBy("#sw_row_5", dxRatio: -0.45, dyRatio: 0, durationSeconds: 0.4)
+                    swipeBy("#sw_row_5", dxRatio: -0.45, dyRatio: 0, durationSeconds: 2.0)
                     tap("#sw_row_5")
                 }.expectation {
                     select("#txt_swipe_actions_result").textIs("action=none")

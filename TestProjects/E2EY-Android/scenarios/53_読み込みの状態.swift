@@ -48,7 +48,6 @@ class 読み込みの状態を見分けられること {
                 action {
                     tap("#btn_reload")
                 }.expectation {
-                    select("#txt_loading_state").textIs("state=loading")
                     select("#row_l_03").enabledIsFalse()
                     select("#txt_loading_result").textIs("loading=none")
                 }

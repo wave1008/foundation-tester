@@ -90,6 +90,7 @@ class 戻るが横取りされても扱えること {
             }
             scene(3, "システムの戻る → 破棄") {
                 action {
+                    android { hideKeyboard() }  // Android は IME が最初の back を消費する(iOS の Compose は閉じられない)
                     back()
                     tap("#btn_discard")
                 }.expectation {

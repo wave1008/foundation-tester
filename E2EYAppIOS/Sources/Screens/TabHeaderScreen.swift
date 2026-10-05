@@ -75,6 +75,7 @@ struct TabHeaderScreen: View {
                                 Text("\(t.rowLabel) \(Tags.two(i))")
                                     .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
                                     .padding(.horizontal, 16)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier(name)

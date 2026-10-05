@@ -7,9 +7,17 @@ import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.core.view.ViewCompat
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 
-// Thunderbird の HideFabOnScrollBehavior と同じ作り。hide() は消えきると GONE になり木からも消える。
+// Thunderbird の HideFabOnScrollBehavior と同じ作り。hide() は消えきると木からも消える。
+// 既定の hide() は GONE にするが、CoordinatorLayout は GONE の子の Behavior へスクロールを配らないので
+// 二度と show() が呼ばれない。INVISIBLE に替えて(木からは消える)戻せるようにしてある。
 class HideFabOnScrollBehavior(context: Context, attrs: AttributeSet?) :
     CoordinatorLayout.Behavior<FloatingActionButton>(context, attrs) {
+
+    private val invisibleWhenHidden = object : FloatingActionButton.OnVisibilityChangedListener() {
+        override fun onHidden(fab: FloatingActionButton) {
+            fab.visibility = View.INVISIBLE
+        }
+    }
 
     override fun onStartNestedScroll(
         coordinatorLayout: CoordinatorLayout, child: FloatingActionButton, directTargetChild: View,
@@ -21,7 +29,7 @@ class HideFabOnScrollBehavior(context: Context, attrs: AttributeSet?) :
         coordinatorLayout: CoordinatorLayout, child: FloatingActionButton, target: View,
         dx: Int, dy: Int, consumed: IntArray, type: Int,
     ) {
-        if (dy > 0) child.hide() else if (dy < 0) child.show()
+        if (dy > 0) child.hide(invisibleWhenHidden) else if (dy < 0) child.show()
     }
 
     // 一覧が実際に動いた分でも向きを拾う(上へ戻す送りの取りこぼしを塞ぐ)。

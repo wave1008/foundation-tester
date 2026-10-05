@@ -59,7 +59,8 @@ class 引き伸ばせるシートを操作できること {
                     }
                 }.expectation {
                     select("#txt_player_result").textIs("player=queue:queue_row_21")
-                    select("#txt_sheet_state").textIs("sheet=expanded")
+                    // 行が木に居て探索の払いが要らないので、シートが伸びるかは実装次第(半分のままでもよい)
+                    select("#txt_sheet_state").textMatches("^sheet=(half|expanded)$")
                 }
             }
         }
