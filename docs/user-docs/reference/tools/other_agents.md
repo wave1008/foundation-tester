@@ -152,5 +152,14 @@ permission problems (one is a nested sandbox, the other a mach service). When th
 asks whether it can run the command outside the sandbox; allow it and the install or update
 carries on (confirmed with Codex in VSCode — no special launch option is needed).
 
+**The default sandbox keeps the fleetest clone read-only.** `workspace-write` cannot write outside the work
+folder, so writes to the neighbouring `foundation-tester` are denied both through the editing tool (apply_patch)
+and through the shell (`sed -i`, redirection, python) (measured 2026-10-06). A denied operation turns into a
+request to run it outside the sandbox. **Approve that only for the install and update steps (install.sh,
+update.sh, `swift build`)**, and decline it when the assistant is trying to change the clone for anything else.
+For the same reason, do not add the clone to `writable_roots` and do not start Codex with `danger-full-access`.
+The entry point the installer puts in the work folder's `AGENTS.md` also says to treat the clone as read-only,
+and Codex follows it by reporting mistakes in the clone instead of fixing them itself.
+
 ### Link
 - [index](../../index.md)
