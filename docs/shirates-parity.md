@@ -53,8 +53,9 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | fleetest | |
 |---|---|---|
-| `tap` | `tap(sel, holdSeconds:maxGestureSeconds:containerInference:waitSeconds:scroll:maxSwipes:)` | ✅ Shirates と同じく**掴んだ要素を返す**(`tap("#ok").textIs("OK")`)。セレクタで1要素を掴む他の操作(`type(sel, …)` / `clearInput(sel)` / `doubleTap(sel)` / `swipeBy(sel, …)` / `pinchOut(sel)` / `pinchIn(sel)` / `gesture(sel)` / `swipeElementToElement` / `scrollTo`)も同じ |
+| `tap` | `tap(sel, holdSeconds:maxGestureSeconds:containerInference:linkText:waitSeconds:scroll:maxSwipes:)` | ✅ Shirates と同じく**掴んだ要素を返す**(`tap("#ok").textIs("OK")`)。セレクタで1要素を掴む他の操作(`type(sel, …)` / `clearInput(sel)` / `doubleTap(sel)` / `swipeBy(sel, …)` / `pinchOut(sel)` / `pinchIn(sel)` / `gesture(sel)` / `swipeElementToElement` / `scrollTo`)も同じ |
 | `tap(holdSeconds:)` | 同名 | ✅ |
+| — | `tap(sel, linkText:)` | 🟢 **Shirates に無い拡張**。段落の中の文中リンクを、解決した要素の中での文字列の位置で押す(名前は Espresso の `openLinkWithText` に倣う)。位置は木の子孫 → OCR の順で、見つからなければ失敗(要素の中心へ落とさない)。押すのは座標タップの既存経路 |
 | `tapWithScrollDown/Up/Left/Right` | `tap(sel, scroll: .down)` | 🟡 関数は置かない(下記「スクロールの指定は `scroll:` だけ」) |
 | `tapWithoutScroll` | `tap(sel, scroll: .noScroll)` | 🟡 関数は置かない(ユーザー決定 2026-09-19: スクロールの指定は `scroll:` に寄せる。Shirates の名前は `UnavailableCommands.swift` が書き方を返す) |
 | `select` / `selectWithScroll*` / `selectWithoutScroll` | `select`(`selectWithScroll*` は `select(sel, scroll: .down)`・`selectWithoutScroll` は `scroll: .noScroll`) | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |

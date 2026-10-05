@@ -54,7 +54,7 @@ extension MCPServer {
     static let batchStepBuilders: [String: BatchStepBuilder] = [
         "tap": BatchStepBuilder(
             keys: ["selector", "holdSeconds", "maxGestureSeconds", "waitSeconds", "scroll", "maxSwipes",
-                   "x", "y"]
+                   "x", "y", "linkText"]
         ) { raw in
             let hold = raw["holdSeconds"] as? Double ?? FlowStep.defaultTapHoldSeconds
             let duration = hold == FlowStep.defaultTapHoldSeconds ? nil : hold
@@ -66,6 +66,9 @@ extension MCPServer {
             if let x = raw["x"] as? Double, let y = raw["y"] as? Double {
                 guard raw["scroll"] == nil, raw["maxSwipes"] == nil else {
                     throw MCPError("tap x: y: does not search — scroll:/maxSwipes: only apply to a selector")
+                }
+                guard raw["linkText"] == nil else {
+                    throw MCPError("tap linkText: applies to a selector — it locates text inside the resolved element")
                 }
                 guard raw["selector"] == nil else {
                     throw MCPError("tap takes either a selector or x/y, not both —"
@@ -84,7 +87,8 @@ extension MCPServer {
                                 fallbacks: batchFallbacks(selector),
                                 direction: search.direction,
                                 timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes,
-                                duration: duration, maxGestureSeconds: maxGestureSeconds)
+                                duration: duration, maxGestureSeconds: maxGestureSeconds,
+                                linkText: raw["linkText"] as? String)
             return (step, "tap \"\(selector.text)\"")
         },
         "select": BatchStepBuilder(keys: ["selector", "waitSeconds", "scroll", "maxSwipes"]) { raw in

@@ -209,11 +209,12 @@ public enum FTScrollOption: Sendable, Equatable {
 public func tap(_ selector: String, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 maxGestureSeconds: Double? = nil,
                 containerInference: Bool? = nil,
+                linkText: String? = nil,
                 waitSeconds: Double? = nil,
                 scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     tapImpl(FTSelector.parse(selector), holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
-            waitSeconds: waitSeconds,
+            waitSeconds: waitSeconds, linkText: linkText,
             scroll: scroll, maxSwipes: maxSwipes, containerInference: containerInference,
             file: file, line: line)
 }
@@ -222,11 +223,12 @@ public func tap(_ selector: String, holdSeconds: Double = FlowStep.defaultTapHol
 public func tap(_ selector: Sel, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
                 maxGestureSeconds: Double? = nil,
                 containerInference: Bool? = nil,
+                linkText: String? = nil,
                 waitSeconds: Double? = nil,
                 scroll: FTScrollOption? = nil, maxSwipes: Int? = nil,
                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     tapImpl(selector.ftSelector, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
-            waitSeconds: waitSeconds,
+            waitSeconds: waitSeconds, linkText: linkText,
             scroll: scroll, maxSwipes: maxSwipes, containerInference: containerInference,
             file: file, line: line)
 }
@@ -243,7 +245,7 @@ func contextScrollFrame(_ core: FTDriveCore, scrolling: Bool) -> FlowLocator? {
 
 /// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
 func tapImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Double?,
-             waitSeconds: Double?,
+             waitSeconds: Double?, linkText: String? = nil,
              scroll: FTScrollOption?, maxSwipes: Int?, containerInference: Bool?,
              file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "tap")
@@ -256,7 +258,8 @@ func tapImpl(_ selector: FTSelector, holdSeconds: Double, maxGestureSeconds: Dou
                         duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds,
                         maxGestureSeconds: maxGestureSeconds,
                         containerInference: core.effectiveContainerInference(containerInference),
-                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil),
+                        linkText: linkText)
     let hold = holdSeconds == FlowStep.defaultTapHoldSeconds ? "" : " (hold \(FTSeconds.format(holdSeconds))s)"
     let result = perform("tap", selector, step: step,
                          description: "tap \"\(selector.text)\"" + hold,

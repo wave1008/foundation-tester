@@ -6,7 +6,8 @@
 
 | 関数 | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:waitSeconds:scroll:maxSwipes:)` | セレクタにマッチする最初の要素をタップします。`holdSeconds` を 0 より大きくすると長押しになります(既定 0 = 通常タップ。上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。タップ前に対象が操作可能になるまで待ちます(後述)。タップした要素を返すので、検証をそのままチェーンできます(`tap("#btn_ok").textIs("OK")`)。 |
+| `tap(sel, holdSeconds: 0, maxGestureSeconds:containerInference:linkText:waitSeconds:scroll:maxSwipes:)` | セレクタにマッチする最初の要素をタップします。`holdSeconds` を 0 より大きくすると長押しになります(既定 0 = 通常タップ。上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます)。タップ前に対象が操作可能になるまで待ちます(後述)。タップした要素を返すので、検証をそのままチェーンできます(`tap("#btn_ok").textIs("OK")`)。 |
+| `tap(sel, linkText: "文字列")` | セレクタで解決した要素の**中で** `linkText` が描かれている位置をタップします。段落の中の文中リンクのように、Compose Multiplatform・Android の View(`ClickableSpan`)・SwiftUI(`AttributedString` のリンク)ではアクセシビリティの木にノードとして出ないものを押すためのものです。位置は、まず木(`linkText` に label か value が一致する子孫。Flutter・React Native はリンクがノードとして出ます)、無ければ要素の画素を OCR で読んで決めます。どちらでも見つからなければステップは失敗し、OCR が読めた行を添えます。要素の中心へ黙って落とすことはありません。どちらで決めたか(`tree` / `ocr`)はステップの注記に残ります。2行に折り返したリンクは OCR では見つかりません。`linkText:` を省くと従来と変わりません。 |
 | `tap(x: Double, y: Double, holdSeconds: 0, maxGestureSeconds:)` | 座標を直接タップします。座標は snapshot の `screen` と同じ座標系です(iOS = pt / Android = px。dp ではありません)。セレクタで指せるならそちらを優先してください。iOS の in-app エンジンでは、画面外とソフトキーボードの上の点は失敗になります(in-app はキーを押せません。先に `pressEnter` でキーボードを閉じてください)。スクロール容器で切れて見えていない要素は、frame が点を含んでも押しません。 |
 | `tap(sel, scroll: .noScroll)` | `withScrollDown { }` ブロックの中でも、この1コマンドだけスクロールせずにタップします。 |
 | `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップします。名前省略時はアプリプロファイルの `appName` が使われます。 |
@@ -17,6 +18,7 @@
 tap("#login_btn||ログイン")
 tap("設定", scroll: .down)             // 折り返しの下にある項目を探索してからタップ
 tap("#row_03", holdSeconds: 1)         // 長押し
+tap("#txt_terms", linkText: "利用規約")           // 段落の中のリンク
 tap(x: 120, y: 640)                    // セレクタで指せないときだけ
 ```
 

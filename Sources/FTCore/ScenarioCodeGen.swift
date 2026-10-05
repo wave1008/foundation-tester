@@ -160,7 +160,8 @@ public enum ScenarioCodeGen {
                     return "tap(x: \(FTSeconds.format(x)), y: \(FTSeconds.format(y))\(hold)\(cap))"
                 }
                 let inference = step.containerInference == false ? ", containerInference: false" : ""
-                return "tap(\(literal(selector))\(hold)\(cap)\(inference)\(actionWaitArg(step))\(searchScrollArgs(step)))"
+                let link = step.linkText.map { ", linkText: \(literal($0))" } ?? ""
+                return "tap(\(literal(selector))\(hold)\(cap)\(inference)\(link)\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "type":
                 let replaceArg = step.replace == true ? ", replace: true" : ""
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。

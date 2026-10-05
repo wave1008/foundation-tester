@@ -163,6 +163,9 @@ public struct FlowStep: Codable, Sendable {
     /// ひと続きのジェスチャの指の経路(DSL の `gesture` の結果ビルダーが積む)。
     /// 座標は対象の枠に対する比率(`TouchGesture.resolve` が絶対座標へ写す)。**`gesture` 以外は未使用**
     public var gesture: [FTFinger]?
+    /// `tap(sel, linkText:)` の対象文字列。locator で解決した要素の**中で**この文字列が描かれている位置を押す
+    /// (`LinkTextLocator`)。**tap 以外は未使用**。nil = 従来どおり要素の中心
+    public var linkText: String?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -183,7 +186,9 @@ public struct FlowStep: Codable, Sendable {
                 toX: Double? = nil, toY: Double? = nil,
                 imageThreshold: Double? = nil, aspectRatioTolerance: Double? = nil,
                 preferCheckStateClassifier: Bool? = nil,
-                gesture: [FTFinger]? = nil) {
+                gesture: [FTFinger]? = nil,
+                linkText: String? = nil) {
+        self.linkText = linkText
         self.preferCheckStateClassifier = preferCheckStateClassifier
         self.gesture = gesture
         self.x = x

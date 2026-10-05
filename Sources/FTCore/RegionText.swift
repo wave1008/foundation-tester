@@ -641,6 +641,12 @@ public enum RegionText {
     }
 
     private static func recognize(_ image: CGImage, languages: [String]) async throws -> [String] {
+        try await recognizeObservations(image, languages: languages)
+            .compactMap { $0.topCandidates(1).first?.string }
+    }
+
+    /// `recognize` と `RegionText.locateLink` が共有する唯一の Vision 呼び出し(設定の二重実装を作らない)
+    static func recognizeObservations(_ image: CGImage, languages: [String]) async throws -> [RecognizedTextObservation] {
         var request = RecognizeTextRequest()
         // 実測 p50 33ms なので速度のために fast へ落とさない(欠けを取りこぼすほうが高くつく)。
         request.recognitionLevel = .accurate
@@ -653,7 +659,7 @@ public enum RegionText {
                 }
             }
         }
-        return try await request.perform(on: image).compactMap { $0.topCandidates(1).first?.string }
+        return try await request.perform(on: image)
     }
 
     /// 正規化した期待文字列が空なら false。行を返ってきた順に連結した文字列、または各行単体の

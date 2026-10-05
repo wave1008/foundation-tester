@@ -91,7 +91,7 @@ public enum DSLCommandIndex {
 
         // MARK: operation
         .init("tap", "operation",
-              "tap(selector, holdSeconds:, maxGestureSeconds:, containerInference:, waitSeconds:, scroll:, maxSwipes:)",
+              "tap(selector, holdSeconds:, maxGestureSeconds:, containerInference:, linkText:, waitSeconds:, scroll:, maxSwipes:)",
               // **座標形はオーバーロードなので別項目にできない**(索引は関数名で一意。
               // signature 文字列は BatchArgSpecTable が位置引数名を導出するのにも使うので触らない)
               "Taps an element. holdSeconds greater than 0 makes it a long press, capped at 10s by "
@@ -103,7 +103,11 @@ public enum DSLCommandIndex {
                 + "element.tap(holdSeconds:, maxGestureSeconds:): an element grabbed by "
                 + "findImage/findImages is tapped at the centre of the found frame."
                 + " The selector form returns the element it grabbed (like exist / select), so"
-                + " assertions chain directly: tap(\"#ok\").textIs(\"OK\").",
+                + " assertions chain directly: tap(\"#ok\").textIs(\"OK\")."
+                + " linkText: taps the place where that string is drawn inside the resolved element"
+                + " (an inline link in a paragraph: tap(\"#terms\", linkText: \"Terms of Service\")):"
+                + " a descendant node with that label if the tree has one, else the text is located"
+                + " by OCR on the element's pixels; fails if neither finds it (never taps the centre).",
               chainable: true),
         .init("hold", "operation",
               "hold(selector, holdSeconds:, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:) { }",

@@ -471,7 +471,7 @@ enum BatchStepResolver {
     // (containerInference/requireVisible は未対応のため boolKeys に無い。scroll は `.down` 等の dotIdent)
     /// ビルダが宣言するキーは必ずこの4表のどれか1つに載る(載せ忘れると、その引数を書いた行が
     /// 「does not accept」で弾かれる。`BatchKeyTypeCoverageTests` が漏れを検出する)
-    static let stringKeys: Set<String> = ["selector", "text", "direction", "to", "scrollFrame",
+    static let stringKeys: Set<String> = ["selector", "text", "linkText", "direction", "to", "scrollFrame",
                                           "orientation", "scroll"]
     static let intKeys: Set<String> = ["maxSwipes", "repeat", "ref"]
     static let doubleKeys: Set<String> = [

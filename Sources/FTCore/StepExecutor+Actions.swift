@@ -637,6 +637,11 @@ extension StepExecutor {
                 reported: snapshot.overlayWindowFrames).advisory(for: element))
             adviseTarget(TapTargetGeometry.disabledAdvisory(for: element))
             adviseTarget(duplicateRegionAdvisory(element, in: snapshot))
+            // 文中リンク: 要素の中の文字列の位置を座標で撃つ(中心へ黙って落とさない)
+            if let linkText = step.linkText {
+                return try await executeTapLinkText(linkText, element: element, snapshot: snapshot,
+                                                    step: step, notes: driverFallback, phase: &phase)
+            }
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
