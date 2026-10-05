@@ -586,6 +586,7 @@ extension StepExecutor {
                 // **見えないときは失敗させず空要素を返す**(呼び出し側が `.text == nil` で分岐できる)。
                 // exist(検証)と違い select は「掴む」操作なので、見えない事実は値で表す
                 resolvedElementThisStep = nil
+                notVisibleSelectionThisStep = element
                 return StepOutcome(status: .passed,
                                    driverFallback: "not visible: returned an empty element")
             }

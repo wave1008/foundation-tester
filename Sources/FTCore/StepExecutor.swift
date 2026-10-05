@@ -181,6 +181,11 @@ public struct StepOutcome: Sendable {
     /// 要素)。失敗時は常に nil(掴めなかったのに値が読める状態を作らない)。notExists/count/
     /// screenMatches のように要素が1つに定まらない assert も nil のまま
     public let resolvedElement: ElementInfo?
+    /// `select` が見えないと判定した要素(利用者には空の要素を返す = `resolvedElement` は nil)。
+    /// **状態だけを読む検証(`enabledIsTrue` / `enabledIsFalse`)が「選んだ時点の値」として使うためだけ**に運ぶ ——
+    /// 骨組みの行のように文字を描かない要素は、視覚検証が時間を使って「見えない」と結論する間に状態が変わり、
+    /// 次の `enabledIsFalse` が取り直した木で落ちた(E2EY-Android の読み込み中)
+    public let notVisibleSelection: ElementInfo?
     /// スクロール探索で実際に撃ったスワイプ数(runScrollSearch を経由したときだけ非nil。
     /// scrollSwipesThisStep と同じ受け渡し形)。MCP の ft_scroll_to が所要時間の内訳に使う
     public let scrollSwipes: Int?
@@ -199,6 +204,7 @@ public struct StepOutcome: Sendable {
                timing: StepTiming? = nil, driverFallback: String? = nil,
                notes: [StepNote] = [], guardEntered: Bool = false,
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
+               notVisibleSelection: ElementInfo? = nil,
                scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
                evidenceImage: Data? = nil,
                imageMatches: [FindImage.Match]? = nil,
@@ -209,6 +215,7 @@ public struct StepOutcome: Sendable {
         self.guardEntered = guardEntered
         self.observedChecked = observedChecked
         self.resolvedElement = resolvedElement
+        self.notVisibleSelection = notVisibleSelection
         self.scrollSwipes = scrollSwipes
         self.status = status
         self.healedStep = healedStep
@@ -679,6 +686,7 @@ public final class StepExecutor {
         observedCheckedThisStep = nil
         guardEnteredThisStep = false
         resolvedElementThisStep = nil
+        notVisibleSelectionThisStep = nil
         scrollSwipesThisStep = nil
         noteCodesThisStep = []
         firstFrameBlankObserved = false
@@ -710,6 +718,8 @@ public final class StepExecutor {
                                    // 失敗した操作の要素を持ち帰らないようここで落とす
                                    resolvedElement: Self.isSuccess(outcome.status)
                                        ? resolvedElementThisStep : nil,
+                                   notVisibleSelection: Self.isSuccess(outcome.status)
+                                       ? notVisibleSelectionThisStep : nil,
                                    scrollSwipes: scrollSwipesThisStep,
                                    failureKind: failureKind(for: outcome.status),
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
@@ -863,6 +873,8 @@ public final class StepExecutor {
     /// (execute が StepOutcome.resolvedElement に載せる)。observedCheckedThisStep と同じ受け渡し形
     /// (StepExecutor+Assert.swift の各 executeAssert* から書くため internal)。失敗時は立てない。
     var resolvedElementThisStep: ElementInfo?
+    /// `select` が見えないと判定した要素(execute が StepOutcome.notVisibleSelection に載せる)
+    var notVisibleSelectionThisStep: ElementInfo?
     /// スクロール探索が実際に撃ったスワイプ数(execute が StepOutcome.scrollSwipes に載せる)。
     /// recordedScrollSearchNote(StepExecutor+ScrollSearch.swift)が書く。
     /// resolvedElementThisStep と同じ受け渡し形

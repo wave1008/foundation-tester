@@ -99,7 +99,8 @@ private func selectImpl(_ selector: FTSelector, requireVisible: Bool,
     let result = perform("select", selector, step: step,
                         description: "select \"\(selector.text)\"",
                         file: file, line: line)
-    return FTElement(selector: selector, matched: result.element)
+    return FTElement(selector: selector, matched: result.element,
+                     notVisibleSelection: result.notVisibleSelection)
 }
 
 // MARK: - findImage / findImages / existImage(画像で要素を探す・検証する。Shirates Vision の移植)
@@ -833,15 +834,19 @@ public struct FTElement {
     /// **チェーンの初回判定にはこの値を使う**(満たしていればデバイスを見ない。
     /// FTDriveCore.perform の高速経路 / 判定範囲は HeldElementAssert)
     let matched: ElementInfo?
+    /// `select` が見えないと判定した要素(`matched` は nil のまま = 利用者には空の要素)。**状態だけを読む検証
+    /// (`enabledIsTrue` / `enabledIsFalse`)だけ**が「選んだ時点の値」として使う(`StepOutcome.notVisibleSelection`)
+    let notVisibleSelection: ElementInfo?
 
     /// findImage / findImages で掴んだ要素のときだけ非 nil(探したラベル)。`tap()` を座標で撃つ印
     let imageLabel: String?
     /// findImage / findImages が見つけた要素の、画面に見えている部分の枠(`tap()` はこの中心を叩く)
     let imageFrame: FTRect?
 
-    init(selector: FTSelector, matched: ElementInfo? = nil) {
+    init(selector: FTSelector, matched: ElementInfo? = nil, notVisibleSelection: ElementInfo? = nil) {
         self.selector = selector
         self.matched = matched
+        self.notVisibleSelection = notVisibleSelection
         self.imageLabel = nil
         self.imageFrame = nil
     }
@@ -860,6 +865,7 @@ public struct FTElement {
                 imageLabel: imageLabel,
                 reason: imageMatch == nil ? "not found" : "no writable selector")
         self.matched = imageMatch?.element
+        self.notVisibleSelection = nil
         self.imageLabel = imageLabel
         self.imageFrame = imageMatch?.visibleFrame
     }
@@ -1208,7 +1214,7 @@ public struct FTElement {
     public func enabledIsTrue(waitSeconds: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("enabled", verb: "enabledIsTrue", selector: selector,
-                      waitSeconds: waitSeconds, held: matched, file: file, line: line)
+                      waitSeconds: waitSeconds, held: matched ?? notVisibleSelection, file: file, line: line)
         return self
     }
 
@@ -1216,7 +1222,7 @@ public struct FTElement {
     public func enabledIsFalse(waitSeconds: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("disabled", verb: "enabledIsFalse", selector: selector,
-                      waitSeconds: waitSeconds, held: matched, file: file, line: line)
+                      waitSeconds: waitSeconds, held: matched ?? notVisibleSelection, file: file, line: line)
         return self
     }
 

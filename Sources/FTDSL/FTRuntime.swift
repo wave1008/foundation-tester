@@ -171,6 +171,8 @@ public final class FTRuntime: @unchecked Sendable {
 struct PerformResult {
     let status: StepResult.Status
     let element: ElementInfo?
+    /// `select` が見えないと判定した要素(StepOutcome.notVisibleSelection)
+    var notVisibleSelection: ElementInfo? = nil
     /// findImage / findImages が見つけた要素(StepOutcome.imageMatches)
     var imageMatches: [FindImage.Match]? = nil
 }
@@ -939,6 +941,7 @@ public final class FTDriveCore {
         }
         noteAssertionUnlessSkipped(status)
         return PerformResult(status: status, element: outcome?.resolvedElement,
+                             notVisibleSelection: outcome?.notVisibleSelection,
                              imageMatches: outcome?.imageMatches)
     }
 

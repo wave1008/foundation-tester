@@ -17,6 +17,8 @@ final class HeldValueAssertTests: XCTestCase {
         var firstLabel = "1,200"
         var secondLabel = "1,500"
         var enabled = true
+        /// 後半(mutatesAfter を超えた後)の enabled。nil = 前半と同じ(骨組みが本物に変わる形を作る)
+        var enabledAfterMutation: Bool?
         var checked: Bool?
 
         func status() async throws -> StatusResponse {
@@ -29,7 +31,9 @@ final class HeldValueAssertTests: XCTestCase {
         func launch(bundleID: String) async throws {}
         func snapshot() async throws -> SnapshotResponse {
             snapshotCount += 1
-            let label = (mutatesAfter > 0 && snapshotCount > mutatesAfter) ? secondLabel : firstLabel
+            let mutated = mutatesAfter > 0 && snapshotCount > mutatesAfter
+            let label = mutated ? secondLabel : firstLabel
+            let enabled = mutated ? (enabledAfterMutation ?? self.enabled) : self.enabled
             return SnapshotResponse(
                 sessionBundleID: nil,
                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
@@ -57,6 +61,16 @@ final class HeldValueAssertTests: XCTestCase {
                                   screenshotPNG: Data) async
             -> (visible: Bool, state: String, reason: String, observedText: String)? {
             (visible: true, state: "fullyVisible", reason: "", observedText: expectedText)
+        }
+    }
+
+    /// 「見えない」と答える delegate(骨組みの行 = 文字が描かれていない形)
+    private final class InvisibleDelegate: ReplayDelegate {
+        func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
+        func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                                  screenshotPNG: Data) async
+            -> (visible: Bool, state: String, reason: String, observedText: String)? {
+            (visible: false, state: "notRendered", reason: "nothing drawn", observedText: "")
         }
     }
 
@@ -235,6 +249,36 @@ final class HeldValueAssertTests: XCTestCase {
         assertAllPassed(core)
         XCTAssertEqual(driver.snapshotCount, 2,
                        "FM が無いだけで可視性照合の設定を無視して掴んだ値で通している")
+    }
+
+    /// **select が見えないと判定した要素でも、enabledIs* は選んだ時点の状態で判定する**。witness: E2EY-Android の
+    /// 骨組み —— 文字の無い灰色の帯を視覚検証が FM に訊く間(約 1.6 秒)に 2 秒の読み込み中が終わり、取り直した木で
+    /// enabledIsFalse が落ちた。利用者に返す要素は空のまま(text は読ませない)
+    func testNotVisibleSelectionServesTheStateAssertionWithTheValueAtSelection() {
+        let driver = MutatingDriver()
+        driver.enabled = false
+        driver.enabledAfterMutation = true
+        let selectOnly = MutatingDriver()
+        _ = run(driver: selectOnly, delegate: InvisibleDelegate(), fmTextOcclusionCheck: true) { select("#total") }
+        driver.mutatesAfter = selectOnly.snapshotCount   // select の後の取り直しはすべて「本物」(有効)を返す
+        var grabbedText: String? = "unset"
+        let core = run(driver: driver, delegate: InvisibleDelegate(), fmTextOcclusionCheck: true) {
+            let element = select("#total")
+            grabbedText = element.text
+            element.enabledIsFalse(waitSeconds: 0.5)
+        }
+        assertAllPassed(core)
+        XCTAssertNil(grabbedText, "見えない要素の text を利用者へ返している")
+    }
+
+    /// 見えないと判定した要素の値で、**文字の検証は通さない**(視覚検証の目的 = 見えていない値で緑にしない)
+    func testNotVisibleSelectionIsNotUsedForTextAssertions() {
+        let driver = MutatingDriver()
+        let core = run(driver: driver, delegate: InvisibleDelegate(), fmTextOcclusionCheck: true) {
+            select("#total").textIs("1,200", waitSeconds: 0.5)
+        }
+        XCTAssertTrue(steps(core).contains { if case .failed = $0.status { return true }; return false },
+                      "見えない要素の値で textIs が通っている")
     }
 
     /// idIs も掴んだ値で判定する(id は画面に描かれず古くなりようがない)

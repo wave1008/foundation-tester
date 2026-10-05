@@ -37,6 +37,10 @@ select("#toggle_notifications").checkIsON()
   scenario has seen the element on, a missing report is read as off. `checkIsOFF` on an element that was
   never seen on passes without knowing the state, and a warning is shown at the end of the run.
 - An element in an indeterminate (partially checked) state fails both `checkIsON` and `checkIsOFF`.
+- `enabledIsTrue` / `enabledIsFalse` after `select` judge the **state at the moment of the select** (if it does not
+  match, they read the screen again and wait). An element that draws no text (such as a loading skeleton row) makes
+  `select` return an empty element because it is not visible; the state at the moment of the select is still used
+  (its text value is not exposed).
 
 ## Judging the checked state from images (CheckStateClassifier)
 

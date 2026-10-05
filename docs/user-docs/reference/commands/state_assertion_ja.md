@@ -37,6 +37,9 @@ select("#toggle_notifications").checkIsON()
   一度オンを確かめた要素に限り、報告が無いことをオフと判定します。一度もオンを見ていない要素の
   `checkIsOFF` は状態が分からないまま通り、run 終了時に警告が出ます。
 - 「一部だけ選択」(indeterminate)の要素は、`checkIsON` でも `checkIsOFF` でも失敗します。
+- `select` の後の `enabledIsTrue` / `enabledIsFalse` は、**選んだ時点の状態**で判定します(満たしていなければ
+  取り直して待ちます)。文字を描かない要素(読み込み中の骨組みの行など)は、`select` が「見えない」と判定して
+  空の要素を返しますが、その場合も選んだ時点の状態で判定します(文字の値は読ませません)。
 
 ## 画像でチェック状態を判定する(CheckStateClassifier)
 
