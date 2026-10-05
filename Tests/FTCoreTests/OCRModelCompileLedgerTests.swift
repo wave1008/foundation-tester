@@ -43,4 +43,23 @@ final class OCRModelCompileLedgerTests: XCTestCase {
     func testMinimumAgeIsPinned() {
         XCTAssertEqual(OCRModelCompileLedger.minimumAge, 1.0)
     }
+
+    /// 印は `<pid>` の名前のファイル1つだけ(一時ファイルを経由しない)。残骸は数えるときに消える
+    func testMarkIsAPlainPidFileAndLeftoversAreReaped() throws {
+        let dir = tempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        VisionLedgerProbe.mark(dir, pid)
+        let deadPid: Int32 = 99999
+        try XCTSkipIf(ProcessLiveness.isAlive(deadPid))
+        FileManager.default.createFile(atPath: dir.appendingPathComponent("99999.sb-b0c544ff-gG7Aks").path, contents: nil)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path).sorted(),
+                       ["99999.sb-b0c544ff-gG7Aks", String(pid)].sorted())
+        _ = OCRModelCompileLedger.activeCount(in: dir, now: Date().addingTimeInterval(2))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: dir.path), [String(pid)])
+    }
+}
+
+private enum VisionLedgerProbe {
+    static func mark(_ dir: URL, _ pid: Int32) { OCRModelCompileLedger.markPresent(in: dir, pid: pid) }
 }

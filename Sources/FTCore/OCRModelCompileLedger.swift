@@ -47,9 +47,13 @@ public enum OCRModelCompileLedger {
     /// (コンパイルしていないのに)。コールドのコンパイルは 20 秒以上なので、1 秒遅れて帯が出ても見落とさない
     static let minimumAge: TimeInterval = 1.0
 
+    /// **`FileManager.createFile` を使わない** —— 一時ファイル(`<pid>.sb-…`)に書いてから付け替える作りで、
+    /// シナリオのプロセスでは付け替えが済まずに一時ファイルだけが残り(原因は未特定)、印が立たなかった。
+    /// `open(O_CREAT)` は付け替えをしない
     static func markPresent(in dir: URL, pid: Int32) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: dir.appendingPathComponent(String(pid)).path, contents: nil)
+        let fd = open(dir.appendingPathComponent(String(pid)).path, O_WRONLY | O_CREAT, 0o644)
+        if fd >= 0 { close(fd) }
     }
 
     static func markAbsent(in dir: URL, pid: Int32) {
@@ -60,7 +64,14 @@ public enum OCRModelCompileLedger {
         guard let names = try? FileManager.default.contentsOfDirectory(atPath: dir.path) else { return 0 }
         var alive = 0
         for name in names {
-            guard let pid = Int32(name) else { continue }
+            guard let pid = Int32(name) else {
+                // pid の名前でないもの(以前の作りが残した `<pid>.sb-…` 等)は、書いた pid がもう居なければ掃除する
+                let owner = Int32(name.prefix { $0.isNumber })
+                if owner.map({ !ProcessLiveness.isAlive($0) }) ?? true {
+                    try? FileManager.default.removeItem(at: dir.appendingPathComponent(name))
+                }
+                continue
+            }
             if ProcessLiveness.isAlive(pid) {
                 let created = (try? FileManager.default.attributesOfItem(
                     atPath: dir.appendingPathComponent(name).path)[.modificationDate]) as? Date
