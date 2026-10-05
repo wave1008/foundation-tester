@@ -135,7 +135,7 @@ export const webviewMonitorBStrings = {
   // 誰も FM を使っていない間に死んでいることを知らせるのがこの行の役目
   // FM チャートの右のバッジ。**死んでいるときだけ出る** —— 生きている行と不明の行は何も出さない
   // (不明を出すと、プローブの谷間で点滅し続ける)。
-  // 台帳由来の形(`⚠︎N/A`)は日英同じ語なので hostCharts.js が直に組む。
+  // 台帳由来の形(`N/A`)は日英同じ語なので hostCharts.js が直に組む。
   // 台帳が無く、窓の中の呼び出しが全部失敗した形だけは**経路を名指しできない**ので事実を言う
   "wvMonitor2.hostCharts.fmDeadBadgeAllFailed": { ja: "⚠︎ FM 全呼び出し失敗", en: "⚠︎ all FM calls failed" },
   "wvMonitor2.hostCharts.fmAgeSeconds": { ja: "{seconds}秒前", en: "{seconds}s ago" },

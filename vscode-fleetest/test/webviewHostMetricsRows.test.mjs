@@ -567,7 +567,7 @@ test("窓内に失敗が混ざると warn(⚠)、全て失敗すると dead(値�
 
     const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
     assert.ok(entry.classList.contains("hm-fm-dead"), "窓内が全滅なら dead");
-    // 死んでいる間の回数には意味が無いので出さない。'–' も出さない(バッジと並んで「– ⚠︎N/A」になる)
+    // 死んでいる間の回数には意味が無いので出さない。'–' も出さない(バッジと並んで「– N/A」になる)
     assert.equal(values(rowFor(document, "mac2")).at(-1), "");
   }
 });
@@ -587,7 +587,7 @@ test("呼び出しが0件でも、台帳が死と言えば dead になる", (t) 
 
   const entry = rowFor(document, "mac2").querySelector('.host-metric[data-metric="fm"]');
   assert.ok(entry.classList.contains("hm-fm-dead"), "呼び出し0件でも台帳の死は dead");
-  assert.equal(values(rowFor(document, "mac2")).at(-1), "", "回数(0)も '–' も出さない(「⚠︎N/A」だけ)");
+  assert.equal(values(rowFor(document, "mac2")).at(-1), "", "回数(0)も '–' も出さない(「N/A」だけ)");
   // **セルのツールチップは死を語らない**(ユーザー決定 2026-09-03)。経路の名指しは右のバッジ、
   // 理由と観測時刻はそのバッジのツールチップが持つ。ここで繰り返すと、レート統計を見に来た
   // 人が毎回説明を読まされる
@@ -636,7 +636,7 @@ function fmDeadBadge(document, machine) {
   return badge.classList.contains("hm-visible") ? badge.textContent : null;
 }
 
-// バッジは経路を問わず `⚠︎N/A`(ユーザー決定)。どの経路かはツールチップの理由が持つ
+// バッジは経路を問わず `N/A`(ユーザー決定)。どの経路かはツールチップの理由が持つ
 test("台帳由来の死を FM チャートの右に語で出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -647,7 +647,7 @@ test("台帳由来の死を FM チャートの右に語で出す", (t) => {
   }));
   send(window, hostMetricsSample(undefined, 0.1));
 
-  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎N/A");
+  assert.equal(fmDeadBadge(document, "mac2"), "N/A");
   assert.match(
     rowFor(document, "mac2").querySelector(".hm-fm-dead-badge").title,
     /ModelManagerError\(1001\)/,
@@ -663,7 +663,7 @@ test("両方死んでも1語で出す", (t) => {
     fmCalls: 0, fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: a / vision: b",
   }));
   send(window, hostMetricsSample(undefined, 0.1));
-  assert.equal(fmDeadBadge(document, "mac2"), "⚠︎N/A");
+  assert.equal(fmDeadBadge(document, "mac2"), "N/A");
 });
 
 // **生きている行と不明の行には何も出さない**。不明で出すと、プローブの谷間や旧版 CLI の
@@ -699,7 +699,7 @@ test("新しい機械の行は、手元が死んでいても語を持たずに�
   send(window, hostMetricsSample(undefined, 0.1, {
     fmTextState: "dead", fmVisionState: "dead", fmDeadReason: "text: x / vision: y",
   }));
-  assert.equal(fmDeadBadge(document, ""), "⚠︎N/A");
+  assert.equal(fmDeadBadge(document, ""), "N/A");
 
   // ここで初めてリモートの行ができる(手元の行の複製)
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });

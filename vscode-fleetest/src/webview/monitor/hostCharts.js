@@ -54,9 +54,6 @@ const HM_COLORS = {
 /** 手元の行の表示名(左端のラベル)。CLI 側の DeviceMachineGrouping.localDisplayName と同じ語。 */
 const HM_LOCAL_LABEL = LOCAL_MACHINE_LABEL;
 
-/** 死んでいる経路に付ける印。値のセル(hmRenderFmLabel)には付けない —— あちらは '–' で、
- *  「どの経路が」を言えるのはこのバッジだけ。 */
-const HM_DEAD_MARK = '⚠︎';
 
 const hmContainer = document.getElementById('host-metrics');
 const hmLocalRowEl = hmContainer.querySelector('.hm-row[data-machine=""]');
@@ -342,7 +339,7 @@ function hmRenderFmLabel(row) {
   const latest = row.fm.window.length > 0 ? row.fm.window[row.fm.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
   // **死んでいる間は値の欄に何も出さない**(ユーザー決定)。死んだ FM の「0回」は事実ではあるが読み手を誤らせ、
-  // '–' を出すと右のバッジと並んで「– ⚠︎N/A」になる。死はグレーの線と右のバッジ(⚠︎N/A 等)だけが言う
+  // '–' を出すと右のバッジと並んで「– N/A」になる。死はグレーの線と右のバッジ(N/A 等)だけが言う
   // (欄そのものは CSS の .hm-fm-dead で畳む)
   entry.value.textContent = dead ? '' : (partial ? '⚠' : '') + callsText;
   let title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.fmTitle', {
@@ -373,7 +370,7 @@ function hmRenderFmLabel(row) {
 
 /** FM の死を語で出す。**生きている行と不明の行には何も出さない**(ユーザー決定)
  *  —— 不明で出すと、プローブの谷間で点滅し続ける。
- *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら `⚠︎N/A`(理由は
+ *  根拠が2つある(台帳 / 窓内の全滅)ので語も分ける: 台帳なら `N/A`(理由は
  *  ツールチップ)、窓内の全滅は台帳の理由が無いので「全呼び出し失敗」という事実だけ述べる。 */
 function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
   const badge = row.deadBadge;
@@ -383,10 +380,10 @@ function hmRenderDeadBadge(row, { dead, deadPaths, stats }) {
     badge.removeAttribute('title');
     return;
   }
-  // 台帳由来の死は経路を問わず `⚠︎N/A` の1語(ユーザー決定。日英とも同じ語なので辞書を通さない)。
+  // 台帳由来の死は経路を問わず `N/A` の1語(ユーザー決定。日英とも同じ語なので辞書を通さない)。
   // どの経路が死んだかはツールチップの理由(row.liveness.reason)が持つ
   badge.textContent = deadPaths.length > 0
-    ? `${HM_DEAD_MARK}N/A`
+    ? 'N/A'
     : t('wvMonitor2.hostCharts.fmDeadBadgeAllFailed');
   badge.classList.add('hm-visible');
   // 語だけでは「なぜ・いつから」が分からない。理由はここにも付ける(FM セルのツールチップと

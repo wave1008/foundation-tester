@@ -48,7 +48,7 @@ is unavailable.
   "Waiting..." badge.
 - Toolbar buttons start/stop every device in view and restart the monitor process.
 - The toolbar charts (MEM / CPU / GPU / VN / FM) show the Mac's load and the call counts of image analysis (VN)
-  and Foundation Models (FM). When FM becomes unusable, the FM chart turns gray and **⚠︎N/A** appears
+  and Foundation Models (FM). When FM becomes unusable, the FM chart turns gray and **N/A** appears
   to its right (hover it for the stopped path, the reason and when it was observed). While it is shown, checks
   that use FM (`screenLooksLike` and the FM stage of text visual verification) may not run.
   While the OCR recognizer is warming up (for example on the first run after a rebuild; tens of seconds), the VN chart
