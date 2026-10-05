@@ -319,7 +319,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | 上端で状態が行き来する一覧(RefreshIndicator)で上限まで送る → **一度見た署名へ戻ったら進んでいない**(ドライバが動いたと申告した直後は数えない) | Flutter iOS |
 | in-app の `tap(x:y:)` が Popup の外側に届かないのに緑 → 自前描画(か不明)で要素の無い点は XCUITest | iOS hybrid |
 | `swipeBy` の始点が Android の戻るの帯 → 帯の幅を SystemUI の dump から読んで経路を寄せる / 比率 >0.9 は注記 | Android |
-| 画面の最下端から始まる座標ドラッグ(`swipeElementToElement` / `swipePointToPoint` / `swipeBy`)が Android のホーム操作に取られアプリが離脱する → 下端のジェスチャ帯(dump の `mBottomGestureHeight`・読めなければ 48dp × 密度。実測した値ではない)の中なら始点を帯の上へ寄せて注記(`ScrollGeometry.clearingBottomGestureBand`)。`gesture` の多点は寄せない | Android |
+| 画面の最下端から始まる座標ドラッグ(`swipeElementToElement` / `swipePointToPoint` / `swipeBy`)が Android のホーム操作に取られアプリが離脱する → 下端のジェスチャ帯(dump の `mBottomGestureHeight`。Pixel 9 の Emulator・ジェスチャーナビで 84px = 32dp を実測。読めなければ 48dp × 密度 = 3 ボタンの高さを上限とした見積り)の中なら始点を帯の上へ寄せて注記(`ScrollGeometry.clearingBottomGestureBand`)。`gesture` の多点は寄せない | Android |
 | 横の探索の scrollFrame が画面に半分未満しか見えず(縦の一覧の中の横の一覧が下端で切れる)払いが画面の縁に乗って数枚しか進まない → 探索の前に外側の縦の容器を送って枠を窓へ入れる(`ScrollGeometry.bringIntoView`・上限2回) | iOS(E2EY-iOS)・Flutter |
 | `scrollToTop` の確認の払いが更新を撃つ → Android ブリッジ(v74)の `scrollActions` で送らずに端を確定。**容器は画面中央を含む最小のもの**(入れ子の SwipeRefreshLayout で効かなかった) | Android |
 | スクロール探索が、末尾で続きを読み込む一覧を途中で打ち切る → 探索の打ち切りにも `edgeClaimGraceAfterMove` | 全エンジン |
@@ -336,7 +336,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | SwiftUI の `Text` + `onTapGesture`・ミニプレーヤー・OTP の箱を in-app で押すと、activate が不発のあと合成タッチ(UIGestureRecognizer が受理しない)に落ちて 200 のまま空振りする → SwiftUI だけ 501 を返し、ホストが XCUITest で今の枠の中心を座標タップする(`AppUIFramework.rejectsSyntheticTap`・v145。RN・Compose・Flutter・UIKit は従来の合成タッチ。E2EY-iOS) | iOS in-app |
 | `scrollViewDidEndDragging` 等の「止まった」で位置を確定する UIKit アプリ(反転チャットの `at_bottom`・ページ送り・末尾の追加読み込み)が、in-app の contentOffset 送りで反応しない(`scrollViewDidScroll` しか呼ばれない)→ アプリ自身の delegate へ WillBeginDragging → WillEndDragging → DidEndDragging(減速なし)を合成する。SwiftUI の内部 delegate・WKScrollView は呼ばない(`ScrollDelegateNotification`・v145。E2EY-iOS) | iOS in-app |
 
-**残っている制約(`@Draft` の理由と対応)**: Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
+**残っている制約(`@Draft` の理由と対応)**: **E2EY**: Android の scrollToTop で、自前の nestedScroll(Compose)・collapsible-tab-view(RN)で縮めたヘッダが開かない(端送りが a11y のスクロール操作 = 縮んだヘッダを開く操作を誰も申告しない。指のドラッグに戻すと引っ張って更新に化ける)/ Compose(iOS in-app)の反転リストの探索が1ページ単位の a11y scroll で対象を下端の外に置いたまま行き過ぎる / RN の collapsible-tab-view でタブを替えた直後、ヘッダに覆われた行が木では覆われていない位置に居る(覆っている物が木に出ないので名指しできない)/ Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
 **XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest` で 13 本)**: CMP の refresh S0020(上) /

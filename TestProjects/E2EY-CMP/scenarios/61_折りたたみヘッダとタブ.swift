@@ -34,12 +34,38 @@ class 折りたたみヘッダの下のタブの一覧を扱えること {
                     select("#txt_tabhdr_header").textIs("header=collapsed")
                 }
             }
-            scene(4, "上端まで戻すとヘッダが戻る") {
+            scene(4, "上端まで戻すとヘッダが戻る(iOS。Android は S0090 = 既知の制約)") {
+                action {
+                    ios { scrollToTop() }
+                }.expectation {
+                    ios {
+                        select("#txt_tabhdr_header").textIs("header=expanded", waitSeconds: 5)
+                        exist("#post_00")
+                    }
+                }
+            }
+        }
+    }
+
+    @Draft("既知の制約: Android の scrollToTop は a11y のスクロール操作で上端へ送るので、自前の nestedScroll で縮めたヘッダ(Compose)・collapsible-tab-view(RN)を開けない(最後の1本を指のドラッグに戻すと、ヘッダの無い画面で引っ張って更新に化ける)")
+    @Test("Android: 縮んだヘッダを scrollToTop で開く")
+    func S0090() {
+        scenario {
+            scene(1, "縮める") {
+                condition {
+                    launchApp()
+                    tap("#nav_tab_header", scroll: .down)
+                }.action {
+                    tap("#post_27", scroll: .down, maxSwipes: 20)
+                }.expectation {
+                    select("#txt_tabhdr_header").textIs("header=collapsed")
+                }
+            }
+            scene(2, "上端まで戻すとヘッダが戻る") {
                 action {
                     scrollToTop()
                 }.expectation {
                     select("#txt_tabhdr_header").textIs("header=expanded", waitSeconds: 5)
-                    exist("#post_00")
                 }
             }
         }

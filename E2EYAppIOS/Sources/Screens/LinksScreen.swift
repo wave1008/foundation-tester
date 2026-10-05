@@ -29,13 +29,13 @@ struct LinksScreen: View {
             VStack(alignment: .leading, spacing: 24) {
                 Text(terms).font(.footnote).accessibilityIdentifier("txt_terms")
                 Text(post).font(.footnote).accessibilityIdentifier("txt_post")
-                Button { result = "link=row" } label: {
-                    Text(inner)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("row_with_link")
+                // onTapGesture だけの行(Button にしない): SwiftUI の合成タッチの空振りの witness
+                // (in-app は activate が効かず、ホストが XCUITest へ回して押す。framework-differences §5.1)
+                Text(inner)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { result = "link=row" }
+                    .accessibilityIdentifier("row_with_link")
             }
             .padding(16)
             Spacer()

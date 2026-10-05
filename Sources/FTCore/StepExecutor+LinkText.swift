@@ -31,6 +31,20 @@ extension StepExecutor {
                     + " no descendant in the tree has that label, and the text was not found in the element's pixels"
                     + " (\(read); \(ocrAttempts) OCR pass\(ocrAttempts == 1 ? "" : "es"))"))
         }
+        // **OCR で決めた点は1つのノードの中の点**。in-app の座標タップは「点を含むノードを activate」するので、
+        // 段落ノードの activate(= 押した位置と無関係なリンク)に化ける。hybrid では本物のタッチ(XCUITest)で撃つ。
+        // 木の子孫で決めた点はそのノード自身なので従来の経路でよい
+        if point.source == .ocr, let td = typeDriver {
+            let clock = ContinuousClock()
+            let start = clock.now
+            try await td.tap(x: point.x, y: point.y)
+            phase.actionMs += Self.ms(clock.now - start)
+            return StepOutcome(status: .passed,
+                               driverFallback: Self.joinNotes(notes,
+                                   "link text \"\(linkText)\" located by ocr"
+                                       + " at (\(Int(point.x.rounded())), \(Int(point.y.rounded())))",
+                                   "sent via XCUITest (a point inside one node)"))
+        }
         let tapped = try await executeDirectCoordinateTap(step: step, x: point.x, y: point.y, phase: &phase)
         return StepOutcome(status: tapped.status,
                            driverFallback: Self.joinNotes(notes,

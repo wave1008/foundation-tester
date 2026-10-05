@@ -3,6 +3,8 @@
 // フレームワークと版次第で、文の中心はリンクでない場所に当たる。行全体が押せる行の中の入れ子のリンク。
 // 契約の罠: iOS は accessible な祖先が子を1要素へ畳む(E2EYAppRN/docs/ui-contract.md)。
 
+// 文中のリンクは `tap(要素, linkText:)` で押す(子ノードに出る Flutter / RN は木で、出ない CMP / Android / iOS は OCR で位置を決める)。
+
 import FTDSL
 
 @TestClass
@@ -21,14 +23,14 @@ class 文中のリンクを個別に押せること {
             }
             scene(2, "利用規約") {
                 action {
-                    tap("利用規約")
+                    tap("#txt_terms", linkText: "利用規約")
                 }.expectation {
                     select("#txt_links_result").textIs("link=terms")
                 }
             }
             scene(3, "プライバシーポリシー") {
                 action {
-                    tap("プライバシーポリシー")
+                    tap("#txt_terms", linkText: "プライバシーポリシー")
                 }.expectation {
                     select("#txt_links_result").textIs("link=privacy")
                 }
@@ -49,14 +51,14 @@ class 文中のリンクを個別に押せること {
             }
             scene(2, "@alice") {
                 action {
-                    tap("@alice")
+                    tap("#txt_post", linkText: "@alice")
                 }.expectation {
                     select("#txt_links_result").textIs("link=mention:alice")
                 }
             }
             scene(3, "URL(外へ遷移しない)") {
                 action {
-                    tap("https://example.com/a")
+                    tap("#txt_post", linkText: "https://example.com/a")
                 }.expectation {
                     select("#txt_links_result").textIs("link=url")
                     exist("#txt_links_result")
@@ -100,7 +102,7 @@ class 文中のリンクを個別に押せること {
             }
             scene(2, "文中の こちら だけ") {
                 action {
-                    tap("こちら")
+                    tap("#row_with_link", linkText: "こちら")
                 }.expectation {
                     select("#txt_links_result").textIs("link=inner")
                 }

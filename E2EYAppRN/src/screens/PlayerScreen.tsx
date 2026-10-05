@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
+import { runOnJS, useAnimatedReaction, useSharedValue } from 'react-native-reanimated';
 
 import { Tags } from '../tags';
 import { EchoText, TaggedButton } from '../ui';
@@ -18,6 +19,15 @@ export function PlayerScreen() {
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheet>(null);
   const [index, setIndex] = useState(0);
+  // シートの位置そのもの(UI スレッドの共有値)から段を決める。外部の指の払いで動いたとき onChange / onAnimate が
+  // 来ない回があった(E2EY-RN の S0040: シートは上端まで動いたのに sheet=collapsed のまま)
+  const animatedIndex = useSharedValue(0);
+  useAnimatedReaction(
+    () => Math.round(animatedIndex.value),
+    (cur, prev) => {
+      if (cur !== prev) runOnJS(setIndex)(cur);
+    },
+  );
   const [result, setResult] = useState('player=none');
   const [playing, setPlaying] = useState(false);
 
@@ -50,6 +60,7 @@ export function PlayerScreen() {
           enableDynamicSizing={false}
           enablePanDownToClose={false}
           handleComponent={null}
+          animatedIndex={animatedIndex}
           onChange={setIndex}
           // 払いで動いた先を、止まるのを待たずに反映する(止まった後の onChange が来ない場合の備え)
           onAnimate={(_from: number, to: number) => setIndex(to)}
