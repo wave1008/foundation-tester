@@ -178,6 +178,6 @@
   "wipeDataOnBloat": true,
   "ocrTextOcclusionCheck": true,
   "preferCheckStateClassifier": true,
-  "iosPreActionWarmup": true,
+  "iosPreActionPing": true,
   "playProtectBypass": true
 }

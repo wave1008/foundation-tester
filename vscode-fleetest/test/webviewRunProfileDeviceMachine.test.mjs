@@ -99,7 +99,7 @@ const RUN_PROFILE_DATA = {
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
-    iosPreActionWarmup: true,
+    iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
     enableAnimations: false,

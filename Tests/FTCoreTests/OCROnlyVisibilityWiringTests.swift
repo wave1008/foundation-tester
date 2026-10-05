@@ -34,7 +34,7 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
                        "delegate が無いだけで guard を止めると OCR だけの検証が効かない")
         XCTAssertTrue(text.contains(
             "let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive(environment: ProcessInfo.processInfo.environment)"))
-        XCTAssertTrue(text.contains("if fmAvailable { delegate?.prewarmVisibilityCheck() }"),
+        XCTAssertTrue(text.contains("if fmAvailable { delegate?.preloadVisibilityCheck() }"),
                       "コンパイルも fmAvailable でだけ撃つはず")
     }
 

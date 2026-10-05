@@ -122,7 +122,7 @@ export function validateNewProjectName(name: string, existing: readonly string[]
 
 /** 実行プロファイル設定フォームのフィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、
- * iosFastInput / iosPreActionWarmup は「iOS」セクションのサブオプション
+ * iosFastInput / iosPreActionPing は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
  * runProfilesTab.js の責務)。fmTextOcclusionCheck/screenLooksLike/ocrTextOcclusionCheck は
  * 「Advanced Features」セクションの独立トグル(親チェックボックスは無い。fmTextOcclusionCheck は
@@ -164,8 +164,8 @@ export interface RunProfileFormFields {
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   /// **既定 true**。domInterop の委譲イベント直前にランナーへ1回問い合わせてから撃つ
-  /// (attach セッションの静かなイベント欠落の防御。Swift 側は iosPreActionWarmup → FT_PRE_ACTION_WARMUP)
-  readonly iosPreActionWarmup: boolean;
+  /// (attach セッションの静かなイベント欠落の防御。Swift 側は iosPreActionPing → FT_PRE_ACTION_PING)
+  readonly iosPreActionPing: boolean;
   /// **既定 true**。一斉 launch 直後の黒画面(描画要求が無いだけ)を避ける予防措置
   readonly homeOnStart: boolean;
   /// **既定 true**。Android install 中だけ Play Protect の照会をバイパスするキルスイッチ
@@ -217,7 +217,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
-  const iosPreActionWarmup = typeof source.iosPreActionWarmup === "boolean" ? source.iosPreActionWarmup : true;
+  const iosPreActionPing = typeof source.iosPreActionPing === "boolean" ? source.iosPreActionPing : true;
   const homeOnStart = typeof source.homeOnStart === "boolean" ? source.homeOnStart : true;
   const playProtectBypass = typeof source.playProtectBypass === "boolean" ? source.playProtectBypass : true;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
@@ -280,7 +280,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     preferCheckStateClassifier,
     iosInappEngine,
     iosFastInput,
-    iosPreActionWarmup,
+    iosPreActionPing,
     homeOnStart,
     playProtectBypass,
     enableAnimations,
@@ -346,7 +346,7 @@ export function updateRunProfileInObject(
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
   // 既定 true 側なので containerInference と同じく常に書く(false を落とすと既定へ戻ってしまう)
   result.homeOnStart = fields.homeOnStart;
-  result.iosPreActionWarmup = fields.iosPreActionWarmup;  // 同上(既定 true 側)
+  result.iosPreActionPing = fields.iosPreActionPing;  // 同上(既定 true 側)
   result.playProtectBypass = fields.playProtectBypass;  // 同上(既定 true 側)
   result.record = fields.record;  // 同上(既定 true 側。CLI の `doc.record ?? true` と一致)
   for (const key of [

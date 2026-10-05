@@ -40,7 +40,7 @@ const runProfilePreferCheckStateClassifier = document.getElementById('run-profil
 const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
-const runProfileIosPreActionWarmup = document.getElementById('run-profile-ios-pre-action-warmup');
+const runProfileIosPreActionPing = document.getElementById('run-profile-ios-pre-action-ping');
 const runProfileInappOptions = document.getElementById('run-profile-inapp-options');
 const runProfileHomeOnStart = document.getElementById('run-profile-home-on-start');
 const runProfilePlayProtectBypass = document.getElementById('run-profile-play-protect-bypass');
@@ -255,7 +255,7 @@ function renderRunProfileEditor(fields) {
   updateInappOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
-  runProfileIosPreActionWarmup.checked = fields.iosPreActionWarmup;
+  runProfileIosPreActionPing.checked = fields.iosPreActionPing;
   runProfileHomeOnStart.checked = fields.homeOnStart;
   runProfilePlayProtectBypass.checked = fields.playProtectBypass;
   runProfileEnableAnimations.checked = fields.enableAnimations;
@@ -325,8 +325,8 @@ function applyRunProfilePlatformScope() {
 }
 runProfileApp.addEventListener('change', applyRunProfilePlatformScope);
 
-// inapp エンジン ON のときだけ配下のサブオプション(iosPreActionWarmup)を表示する
-// (暖機は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
+// inapp エンジン ON のときだけ配下のサブオプション(iosPreActionPing)を表示する
+// (直前の接続確認は hybrid の domInterop 経路にしか無い = xcuitest エンジンでは効果が無いため。
 //  値そのものはエンジンの状態に関わらず保持・保存する)。
 function updateInappOptionsVisibility() {
   runProfileInappOptions.style.display = runProfileIosInappEngine.checked ? '' : 'none';
@@ -379,7 +379,7 @@ function runProfileValuesEqual(fields) {
     runProfilePreferCheckStateClassifier.checked === fields.preferCheckStateClassifier &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
-    runProfileIosPreActionWarmup.checked === fields.iosPreActionWarmup &&
+    runProfileIosPreActionPing.checked === fields.iosPreActionPing &&
     runProfileHomeOnStart.checked === fields.homeOnStart &&
     runProfilePlayProtectBypass.checked === fields.playProtectBypass &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
@@ -472,7 +472,7 @@ function collectRunProfileFields() {
     preferCheckStateClassifier: runProfilePreferCheckStateClassifier.checked,
     iosInappEngine: runProfileIosInappEngine.checked,
     iosFastInput: runProfileIosFastInput.checked,
-    iosPreActionWarmup: runProfileIosPreActionWarmup.checked,
+    iosPreActionPing: runProfileIosPreActionPing.checked,
     homeOnStart: runProfileHomeOnStart.checked,
     playProtectBypass: runProfilePlayProtectBypass.checked,
     enableAnimations: runProfileEnableAnimations.checked,

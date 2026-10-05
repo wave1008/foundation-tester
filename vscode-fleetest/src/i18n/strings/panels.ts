@@ -147,9 +147,9 @@ export const panelsStrings = {
     ja: "高速入力を有効にする(アニメーションの完了を待たずに操作するため、テストが不安定になることがあります)",
     en: "Enable fast input (acts without waiting for animations, which may make tests unstable)",
   },
-  "panels.runProfile.iosPreActionWarmupLabel": {
-    ja: "WebView画面はアクション前に暖機を行い安定性を向上させる",
-    en: "On WebView screens, warm up before actions to improve stability",
+  "panels.runProfile.iosPreActionPingLabel": {
+    ja: "WebView画面は直前の接続確認(ランナーへの問い合わせ)を行い安定性を向上させる",
+    en: "On WebView screens, ping the runner right before each action to improve stability",
   },
   "panels.runProfile.androidSectionTitle": { ja: "Android", en: "Android" },
   "panels.runProfile.updateWebViewLabel": {

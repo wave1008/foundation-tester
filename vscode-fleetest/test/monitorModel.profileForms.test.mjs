@@ -44,7 +44,7 @@ const VALID_RUN_PROFILE_SAVE = {
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
-    iosPreActionWarmup: true,
+    iosPreActionPing: true,
     homeOnStart: true,
     enableAnimations: false,
     reportDir: "reports",
@@ -103,7 +103,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields22�
         preferCheckStateClassifier: false,
         iosInappEngine: false,
         iosFastInput: true,
-        iosPreActionWarmup: false,
+        iosPreActionPing: false,
         homeOnStart: true,
         enableAnimations: true,
         reportDir: "",
@@ -640,7 +640,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     preferCheckStateClassifier: false,
     iosInappEngine: false,
     iosFastInput: true,
-    iosPreActionWarmup: false,
+    iosPreActionPing: false,
     homeOnStart: true,
     playProtectBypass: false,
     enableAnimations: true,
@@ -670,7 +670,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
     preferCheckStateClassifier: false,
     iosInappEngine: false,
     iosFastInput: true,
-    iosPreActionWarmup: false,
+    iosPreActionPing: false,
     homeOnStart: true,
     playProtectBypass: false,
     enableAnimations: true,
@@ -688,7 +688,7 @@ test("parseRunProfileForForm: 正常な値は各フィールドをそのまま�
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionWarmup=true)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/recordBitrateKbps/workspace=''、devices=[]、heal/screenLooksLike/fmTextOcclusionCheck/containerInference=true、iosInappEngine=true、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=true、recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false、iosPreActionPing=true)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     app: "",
@@ -701,7 +701,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(app/reportDir/locale/reco
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
-    iosPreActionWarmup: true,
+    iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
     enableAnimations: false,
@@ -753,7 +753,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(heal が文�
     preferCheckStateClassifier: true,
     iosInappEngine: true,
     iosFastInput: false,
-    iosPreActionWarmup: true,
+    iosPreActionPing: true,
     homeOnStart: true,
     playProtectBypass: true,
     enableAnimations: false,
@@ -1049,7 +1049,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   preferCheckStateClassifier: true,
   iosInappEngine: true,
   iosFastInput: false,
-  iosPreActionWarmup: true,
+  iosPreActionPing: true,
   homeOnStart: true,
   enableAnimations: false,
   reportDir: "reports",

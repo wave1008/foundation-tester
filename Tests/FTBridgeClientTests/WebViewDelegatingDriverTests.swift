@@ -297,7 +297,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         XCTAssertEqual(result.elements.count, 2, "in-app の DOM snapshot が返るはず")
         // 中心 = (20+60/2, 40+20/2)
         XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "tap(50.0,50.0)"],
-                       "入場時の暖機 + イベント直前の暖機のあと、座標で渡すこと(ref を渡さない)")
+                       "入場時の接続確認 + イベント直前の接続確認のあと、座標で渡すこと(ref を渡さない)")
         XCTAssertEqual(primary.calls, ["snapshot"], "委譲 snapshot を撮らない")
     }
 
@@ -343,7 +343,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         } catch {
             XCTAssertTrue("\(error)".contains("99"), "どの ref か分かる文言であること: \(error)")
         }
-        XCTAssertEqual(delegated.calls, ["snapshot"], "暖機以外で XCUITest を触ってはいけない")
+        XCTAssertEqual(delegated.calls, ["snapshot"], "接続確認以外で XCUITest を触ってはいけない")
     }
 
     /// WebView 画面を離れたら domInterop も畳む(古い ref/座標を持ち越さない)
@@ -358,7 +358,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         _ = try await driver.snapshot()
         try await driver.tap(ref: 1)
 
-        // 入場時の暖機1回だけが残る。通常画面へ戻った後は一切触らない
+        // 入場時の接続確認1回だけが残る。通常画面へ戻った後は一切触らない
         XCTAssertEqual(delegated.calls, ["snapshot"], "通常画面へ戻ったら XCUITest を触らない")
         XCTAssertEqual(primary.calls, ["snapshot", "snapshot", "tap(1)"])
     }
@@ -398,10 +398,10 @@ final class WebViewDelegatingDriverTests: XCTestCase {
 
     /// **読み(snapshot)ではランナーを触らない**。domInterop の読みは in-app 3ms 級で、
     /// ここで毎回ランナーへ問い合わせると委譲と同じコストに戻り、この機能の意味が消える。
-    /// ランナーを触ってよいのは入場時の暖機と**委譲イベントの直前**だけ
-    /// (イベント直前の暖機は attach セッションの静かなイベント欠落を防ぐ実測起点の防御。
+    /// ランナーを触ってよいのは入場時の接続確認と**委譲イベントの直前**だけ
+    /// (イベント直前の接続確認は attach セッションの静かなイベント欠落を防ぐ実測起点の防御。
     /// A/B は docs/verification.md §interop WebView)
-    func testDomInteropWarmsDelegatedOnlyOnEntryAndBeforeEvents() async throws {
+    func testDomInteropPingsDelegatedOnlyOnEntryAndBeforeEvents() async throws {
         let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)], webViewPath: "dom-interop")
         let primary = FakeDriver(snapshots: [dom])
         let delegated = FakeDriver(snapshots: [snapshot([])])
@@ -419,23 +419,23 @@ final class WebViewDelegatingDriverTests: XCTestCase {
 
         XCTAssertEqual(delegated.calls, ["snapshot", "snapshot", "tap(50.0,50.0)",
                                          "snapshot", "tap(50.0,50.0)"],
-                       "委譲イベントは毎回、直前の暖機とセットで撃つこと")
+                       "委譲イベントは毎回、直前の接続確認とセットで撃つこと")
     }
 
-    /// プロファイル iosPreActionWarmup=false(FT_PRE_ACTION_WARMUP=0)では暖機を撃たない。
+    /// プロファイル iosPreActionPing=false(FT_PRE_ACTION_PING=0)では接続確認を撃たない。
     /// **既定(引数省略)が ON であること**は上の各テストが init を引数無しで呼んで守っている
-    func testDomInteropWarmUpCanBeDisabledByProfileOption() async throws {
+    func testDomInteropPingCanBeDisabledByProfileOption() async throws {
         let dom = snapshot([element(1, "WebView"), element(2, "Link", web: true)],
                            webViewPath: "dom-interop")
         let primary = FakeDriver(snapshots: [dom])
         let delegated = FakeDriver(snapshots: [snapshot([])])
         let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated,
-                                             preActionWarmup: false)
+                                             preActionPing: false)
 
         _ = try await driver.snapshot()
         try await driver.tap(ref: 2)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "tap(50.0,50.0)"],
-                       "OFF では入場時の暖機だけ(イベント直前は撃たない)")
+                       "OFF では入場時の接続確認だけ(イベント直前は撃たない)")
     }
 }

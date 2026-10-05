@@ -60,12 +60,12 @@ public final class FMReplayDelegate: ReplayDelegate {
     // MARK: Occlusion guard(PoC)
 
     /// FTCore(`StepExecutor.occlusionFlip`)がスクショを撮る前に呼ぶ。**生成は伴わない**ので
-    /// FMGate は通さない(枠を消費しない)が、**死んでいる FM を暖め続けない**ようブレーカは見る。
-    /// 効き方と置き場の理由は OcclusionPrewarm.swift の冒頭
-    public func prewarmVisibilityCheck() {
-        guard OcclusionVerifier.prewarmEnabled(environment: ProcessInfo.processInfo.environment),
+    /// FMGate は通さない(枠を消費しない)が、**死んでいる FM を先読みし続けない**ようブレーカは見る。
+    /// 効き方と置き場の理由は OcclusionPreload.swift の冒頭
+    public func preloadVisibilityCheck() {
+        guard OcclusionVerifier.preloadEnabled(environment: ProcessInfo.processInfo.environment),
               !FMBreaker.isOpen else { return }
-        OcclusionPrewarm.prewarm(instructions: OcclusionVerifier.instructions)
+        OcclusionPreload.preload(instructions: OcclusionVerifier.instructions)
     }
 
     public func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,

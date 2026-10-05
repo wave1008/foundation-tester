@@ -15,7 +15,7 @@ final class MCPProfileWorkspaceStagingTests: XCTestCase {
     private var root: URL!
     private var saved: [String: String?] = [:]
     private let envKeys = ["FT_PACKAGE_ROOT", RunEnvironmentKeys.fastInput,
-                           RunEnvironmentKeys.preActionWarmup, RunEnvironmentKeys.animations,
+                           RunEnvironmentKeys.preActionPing, RunEnvironmentKeys.animations,
                            RunEnvironmentKeys.playProtectBypass]
 
     override func setUpWithError() throws {

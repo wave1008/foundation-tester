@@ -378,7 +378,7 @@
   "heal": true,
   "homeOnStart": true,
   "iosInappEngine": true,
-  "iosPreActionWarmup": true,
+  "iosPreActionPing": true,
   "ocrTextOcclusionCheck": true,
   "playProtectBypass": true,
   "record": true,

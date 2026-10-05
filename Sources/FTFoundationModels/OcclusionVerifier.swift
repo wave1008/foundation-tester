@@ -63,12 +63,12 @@ public struct OcclusionVerifier {
     /// シナリオで実際に踏んだ。E2E-RN M1Max 実測)。コンパイル済みなら数百 ms で返る
     static let nearMissOCRBudget: Duration = .seconds(60)
 
-    /// 暖機(`prewarmVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PREWARM=0` で撃たない
-    static func prewarmEnabled(environment: [String: String]) -> Bool {
-        environment["FT_FM_OCCLUSION_PREWARM"] != "0"
+    /// 先読み(`preloadVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PRELOAD=0` で撃たない
+    static func preloadEnabled(environment: [String: String]) -> Bool {
+        environment["FT_FM_OCCLUSION_PRELOAD"] != "0"
     }
 
-    /// 転写の instructions。**暖機したセッションと本番の呼び出しで同一の文字列**でなければ意味がない
+    /// 転写の instructions。**先読みしたセッションと本番の呼び出しで同一の文字列**でなければ意味がない
     /// (instructions が違えば prefill も別物)ので、ここ1箇所に置く
     static let instructions = """
     You read text in screenshots of mobile apps for automated tests. The image is a crop around
@@ -98,7 +98,7 @@ public struct OcclusionVerifier {
         guard await FMGate.enter(path: .vision) else { return nil }
         defer { FMGate.leave() }
 
-        guard let first = await Self.transcribe(crop, instructions: Self.instructions, prewarmed: true)
+        guard let first = await Self.transcribe(crop, instructions: Self.instructions, preloaded: true)
         else { return nil }
         var verdict = TranscriptMatch.judge(transcript: first, expected: expectedText)
         var observed = first
@@ -107,7 +107,7 @@ public struct OcclusionVerifier {
             // 読めなくても判定は等倍と同じ向き(空・別の文字)なので、reason は拡大側の転写で作る
             let enlarged = RegionText.enlarged(crop, by: Self.enlargedRetryFactor)
             if enlarged !== crop,
-               let second = await Self.transcribe(enlarged, instructions: Self.instructions, prewarmed: false) {
+               let second = await Self.transcribe(enlarged, instructions: Self.instructions, preloaded: false) {
                 let retried = TranscriptMatch.judge(transcript: second, expected: expectedText)
                 if retried.visible || second.count > first.count {
                     verdict = retried
@@ -149,10 +149,10 @@ public struct OcclusionVerifier {
     /// nil = FM の失敗(呼び出し側はガードを素通りさせる。記録しないと「FM 全滅で無効」と
     /// 「疑わしい要素が無く正常」が区別できないので、成功も失敗も FMHealth へ計上する)
     @available(macOS 27, *)
-    private static func transcribe(_ image: CGImage, instructions: String, prewarmed: Bool) async -> String? {
-        // 暖機済みがあれば使う(無ければその場で作る)。
+    private static func transcribe(_ image: CGImage, instructions: String, preloaded: Bool) async -> String? {
+        // 先読み済みがあれば使う(無ければその場で作る)。
         // **取り出したら捨てる** —— respond を通したセッションは会話履歴を持つので使い回せない
-        let session = (prewarmed ? OcclusionPrewarm.take(matching: instructions) : nil)
+        let session = (preloaded ? OcclusionPreload.take(matching: instructions) : nil)
             ?? LanguageModelSession(instructions: instructions)
         let startedAt = Date()
         do {

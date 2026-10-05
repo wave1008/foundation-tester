@@ -28,7 +28,7 @@ final class RunTunablesTests: XCTestCase {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
             iosFastInput: false,
-            iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
+            iosPreActionPing: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: 12.5, scenarioTimeout: nil,
             recordBitrateKbps: nil))
@@ -40,7 +40,7 @@ final class RunTunablesTests: XCTestCase {
         let settings = ScenarioExecutionSettings(DeviceIndependentRunSettings(
             fm: FMConfig(), heal: false, ocrTextOcclusionCheck: true, preferCheckStateClassifier: true,
             iosFastInput: false,
-            iosPreActionWarmup: true, containerInference: true, enableAnimations: false,
+            iosPreActionPing: true, containerInference: true, enableAnimations: false,
             playProtectBypass: true, homeOnStart: true, record: false, recordFailuresOnly: false,
             recordFullResolution: false, reportDir: nil, defaultTimeout: nil, scenarioTimeout: nil,
             recordBitrateKbps: nil))

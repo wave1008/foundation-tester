@@ -37,7 +37,7 @@ public protocol ReplayDelegate: AnyObject {
     /// 既定実装は何もしない。**プロトコル要件として宣言する**のが必須 —— extension だけに置くと
     /// 存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、実装が呼ばれないまま黙って
     /// 素通りする(AppDriver で実際に踏んだ型。AppDriverDefaultDispatchTests 参照)
-    func prewarmVisibilityCheck()
+    func preloadVisibilityCheck()
 }
 
 public extension ReplayDelegate {
@@ -47,7 +47,7 @@ public extension ReplayDelegate {
         nil
     }
 
-    func prewarmVisibilityCheck() {}
+    func preloadVisibilityCheck() {}
 }
 
 public struct StepResult: Sendable {

@@ -875,7 +875,7 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
   `BridgeClient` が要素の中心を控え、`tap` / `press` は座標で撃ち、`type` / `clearInput` は座標で焦点を
   立ててから ref 無しで撃つ。`hitTest` はランナーへ聞かず「答えられない」を返す(聞くと「引き当て不能」が
   返り、木が画面を代表していないという別の検知の根拠に化ける)
-- **画面に入るとき1回だけ委譲側を暖める**(`delegated.snapshot()`)。これが XCUITest の attach を
+- **画面に入るとき1回だけ委譲側へ接続確認する**(`delegated.snapshot()`)。これが XCUITest の attach を
   兼ねており、省くと**最初の座標タップが 200 を返しても効かない**。1画面1回に留めること
   (毎 snapshot 撃つと委譲と同じコストに戻る)。
 - **DOM 由来の要素は `ElementInfo.web = true`** で申告する。ホスト(`WebViewDelegatingDriver`)は
@@ -1082,10 +1082,10 @@ inapp の ref タップも座標フォールバックに落ち、同じ壊れた
 | `TestbaseDrafter.swift` | テスト設計資料 → シナリオ下書き(§17)。FM 不可用時は決定的パーサへ落ちる |
 | `FMLivenessProbe.swift` | FM の死活プローブ(§リモート「FM の「死活」は回数とは別の軸」)。**FMGate を通さない** |
 | `FMLoadGenerator.swift` | `fleetest doctor --fm-load` の負荷測定。**FMGate を通さない**(測っている対象が門になるため) |
-| `OcclusionPrewarm.swift` | occlusion-guard の暖機。**FMGate を通らない**(生成を伴わないので枠を消費させない) |
+| `OcclusionPreload.swift` | occlusion-guard の先読み。**FMGate を通らない**(生成を伴わないので枠を消費させない) |
 
 - 生成を伴う FM 呼び出し(`ReplayAssist` / `OcclusionVerifier` / `ScenarioNamer` / `TestbaseDrafter`)は
-  `FMGate.enter()` を通す(§1.1)。死活プローブ・負荷生成・暖機の3つは意図してこの門を通らない。
+  `FMGate.enter()` を通す(§1.1)。死活プローブ・負荷生成・先読みの3つは意図してこの門を通らない。
   出力の実例・運用知見は §8.6。
 
 ---
@@ -4083,13 +4083,13 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 (`Runner/FleetestRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが
 あちらは解釈しない = quiescence の概念が無いため)。
 
-`iosPreActionWarmup`(**既定 true**)は **interop WebView 画面(domInterop モード)の委譲イベント
-直前に、ランナーへ木を1回読ませてから撃つ**(`WebViewDelegatingDriver.warmDelegatedForEvent`)。
+`iosPreActionPing`(**既定 true**)は **interop WebView 画面(domInterop モード)の委譲イベント
+直前に、ランナーへ木を1回読ませてから撃つ**(`WebViewDelegatingDriver.pingDelegatedBeforeEvent`)。
 attach したままの XCUITest セッションは、ランナーに問い合わせないまま数秒置いた直後の
 座標イベントを **200 を返しつつ届け損なう**(実測 約13%。ページは pointerdown すら見ない。
 機構は非公開で特定できておらず、観測に立脚した防御。A/B と経緯は docs/verification.md
 §interop WebView)。時間閾値にしないのは、短いギャップでも確率的に落ちる実測があり安全な
-境界を引けないため。false は `FT_PRE_ACTION_WARMUP=0` として注入される(`FTCore.RunEnvironment`
+境界を引けないため。false は `FT_PRE_ACTION_PING=0` として注入される(`FTCore.RunEnvironment`
 が唯一の定義元 —— ProfileRunner / ApiRunCommand の profile 有無2経路 / Fleetest.swift の
 profile 無し経路と、fleetest-mcp の resolveProfileTarget から呼ばれる)。**効くのは hybrid の
 domInterop 経路だけ**(委譲モード・xcuitest

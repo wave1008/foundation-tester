@@ -58,9 +58,9 @@ public final class WebViewDelegatingDriver: AppDriver {
     private static let delegatedNote = "WebView screen — delegated to XCUITest"
 
     public init(primary: AppDriver, delegated: AppDriver,
-                preActionWarmup: Bool =
-                    ProcessInfo.processInfo.environment[RunEnvironmentKeys.preActionWarmup] != "0") {
-        self.preActionWarmup = preActionWarmup
+                preActionPing: Bool =
+                    ProcessInfo.processInfo.environment[RunEnvironmentKeys.preActionPing] != "0") {
+        self.preActionPing = preActionPing
         self.primary = primary
         self.delegated = delegated
     }
@@ -115,7 +115,7 @@ public final class WebViewDelegatingDriver: AppDriver {
             // (ホストはフレームワーク固有の知識を持たない) — "dom-interop" なら操作だけ座標で
             // XCUITest へ回すモードに入る。それ以外(nil/"dom")は通常どおり primary 一本
             if inapp.webViewPath == WebViewPath.domInterop {
-                // **この区間で初めて委譲側を使う前に1回だけ暖める**。旧経路は必ず
+                // **この区間で初めて委譲側を使う前に1回だけ接続確認する**。旧経路は必ず
                 // delegated.snapshot() を通っており、それが attach と WebView の AX 活性化を
                 // 兼ねていた。省くと最初の座標タップが 200 を返しても実際には効かないことがある
                 // (CMP で再現)。1画面あたり1回だけなので DOM 経路の利得は保たれる
@@ -207,26 +207,26 @@ public final class WebViewDelegatingDriver: AppDriver {
         return (frame.centerX, frame.centerY)
     }
 
-    /// domInterop の**委譲イベント直前の暖機**。attach したままの XCUITest セッションは、
+    /// domInterop の**委譲イベント直前の接続確認**。attach したままの XCUITest セッションは、
     /// ランナーに問い合わせないまま数秒置いた直後の座標イベントを **200 を返しつつ届け損なう**
     /// (実測: アイドル ~3.5s で ~14%・~1s でも数%。SUT の JS プローブで「ページは pointerdown
     /// すら見ていない」を確認)。直前にランナーへ木を1回読ませると 0/25(A/B は
     /// docs/verification.md §interop WebView)。**時間閾値にしない** —— 短いギャップでも
     /// 確率的に落ちる実測があり、安全な境界を引けない。機構(testmanagerd の何が冷えるのか)は
-    /// 非公開で特定できておらず、この暖機は観測に立脚した防御
-    /// 実行プロファイル iosPreActionWarmup(既定 true)。OFF は FT_PRE_ACTION_WARMUP=0 で届く
+    /// 非公開で特定できておらず、この接続確認は観測に立脚した防御
+    /// 実行プロファイル iosPreActionPing(既定 true)。OFF は FT_PRE_ACTION_PING=0 で届く
     /// (注入は唯一 `FTCore.RunEnvironment`)
-    private let preActionWarmup: Bool
+    private let preActionPing: Bool
 
-    private func warmDelegatedForEvent() async {
-        guard preActionWarmup else { return }
+    private func pingDelegatedBeforeEvent() async {
+        guard preActionPing else { return }
         _ = try? await delegated.snapshot()
     }
 
     public func tap(ref: Int) async throws {
         guard mode == .domInterop else { try await screenDriver.tap(ref: ref); return }
         let p = try domInteropPoint(ref: ref)
-        await warmDelegatedForEvent()
+        await pingDelegatedBeforeEvent()
         try await delegated.tap(x: p.x, y: p.y)
     }
     public func tap(x: Double, y: Double) async throws { try await screenDriver.tap(x: x, y: y) }
@@ -245,7 +245,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         }
         let point = try domInteropPoint(ref: ref)
         let before = domValues[ref]
-        await warmDelegatedForEvent()
+        await pingDelegatedBeforeEvent()
         try await delegated.tap(x: point.x, y: point.y)
         try await delegated.type(ref: nil, text: text)
         // **値を報告する要素だけ**読み返す(報告しない要素は検証不能 = 撃ちっぱなしのまま。
@@ -263,7 +263,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         guard mode == .domInterop else { try await screenDriver.clearInput(ref: ref); return }
         if let ref {
             let p = try domInteropPoint(ref: ref)
-            await warmDelegatedForEvent()
+            await pingDelegatedBeforeEvent()
             try await delegated.tap(x: p.x, y: p.y)
         }
         try await delegated.clearInput(ref: nil)
@@ -297,7 +297,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws {
         guard mode == .domInterop else { try await screenDriver.press(ref: ref, duration: duration); return }
         let p = try domInteropPoint(ref: ref)
-        await warmDelegatedForEvent()
+        await pingDelegatedBeforeEvent()
         try await delegated.press(x: p.x, y: p.y, duration: duration)
     }
     public func press(x: Double, y: Double, duration: Double) async throws {

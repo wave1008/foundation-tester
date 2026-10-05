@@ -10,51 +10,51 @@ final class RunEnvironmentTests: XCTestCase {
 
     func testAllDefaultsWriteOnlyAnimationsOff() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [:])
         XCTAssertEqual(vars, [RunEnvironmentKeys.animations: "0"])
     }
 
     func testFastInputTrueWritesOne() {
         let vars = RunEnvironment.variables(
-            iosFastInput: true, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: true, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [:])
         XCTAssertEqual(vars[RunEnvironmentKeys.fastInput], "1")
     }
 
     func testFastInputFalseWritesNothing() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [:])
         XCTAssertNil(vars[RunEnvironmentKeys.fastInput])
     }
 
-    func testPreActionWarmupFalseWritesZero() {
+    func testPreActionPingFalseWritesZero() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: false, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: false, enableAnimations: false,
             playProtectBypass: true, current: [:])
-        XCTAssertEqual(vars[RunEnvironmentKeys.preActionWarmup], "0")
+        XCTAssertEqual(vars[RunEnvironmentKeys.preActionPing], "0")
     }
 
-    func testPreActionWarmupTrueWritesNothing() {
+    func testPreActionPingTrueWritesNothing() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [:])
-        XCTAssertNil(vars[RunEnvironmentKeys.preActionWarmup])
+        XCTAssertNil(vars[RunEnvironmentKeys.preActionPing])
     }
 
     /// **playProtectBypass=true のとき何も書かない** —— 環境側のキルスイッチ(手動 export の
     /// "0")を上書きしてはならない
     func testPlayProtectBypassTrueWritesNothing() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [:])
         XCTAssertNil(vars[RunEnvironmentKeys.playProtectBypass])
     }
 
     func testPlayProtectBypassFalseWritesZero() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: false, current: [:])
         XCTAssertEqual(vars[RunEnvironmentKeys.playProtectBypass], "0")
     }
@@ -65,7 +65,7 @@ final class RunEnvironmentTests: XCTestCase {
             for warmup in [false, true] {
                 for bypass in [false, true] {
                     let vars = RunEnvironment.variables(
-                        iosFastInput: fastInput, iosPreActionWarmup: warmup,
+                        iosFastInput: fastInput, iosPreActionPing: warmup,
                         enableAnimations: false, playProtectBypass: bypass, current: [:])
                     XCTAssertNotNil(vars[RunEnvironmentKeys.animations],
                                     "fastInput=\(fastInput) warmup=\(warmup) bypass=\(bypass)")
@@ -76,14 +76,14 @@ final class RunEnvironmentTests: XCTestCase {
 
     func testAnimationsEnabledWritesOne() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: true,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: true,
             playProtectBypass: true, current: [:])
         XCTAssertEqual(vars[RunEnvironmentKeys.animations], "1")
     }
 
     func testAnimationsDisabledWritesZero() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [:])
         XCTAssertEqual(vars[RunEnvironmentKeys.animations], "0")
     }
@@ -92,25 +92,25 @@ final class RunEnvironmentTests: XCTestCase {
     /// 手動 export の両方を尊重する(単純な上書きにしない)
     func testAnimationsAlreadyOnInEnvironmentWinsOverFalseSetting() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: false,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: false,
             playProtectBypass: true, current: [RunEnvironmentKeys.animations: "1"])
         XCTAssertEqual(vars[RunEnvironmentKeys.animations], "1")
     }
 
     func testAnimationsEnabledSettingWinsOverOffEnvironment() {
         let vars = RunEnvironment.variables(
-            iosFastInput: false, iosPreActionWarmup: true, enableAnimations: true,
+            iosFastInput: false, iosPreActionPing: true, enableAnimations: true,
             playProtectBypass: true, current: [RunEnvironmentKeys.animations: "0"])
         XCTAssertEqual(vars[RunEnvironmentKeys.animations], "1")
     }
 
     func testAllTrueVariant() {
         let vars = RunEnvironment.variables(
-            iosFastInput: true, iosPreActionWarmup: false, enableAnimations: true,
+            iosFastInput: true, iosPreActionPing: false, enableAnimations: true,
             playProtectBypass: false, current: [:])
         XCTAssertEqual(vars, [
             RunEnvironmentKeys.fastInput: "1",
-            RunEnvironmentKeys.preActionWarmup: "0",
+            RunEnvironmentKeys.preActionPing: "0",
             RunEnvironmentKeys.animations: "1",
             RunEnvironmentKeys.playProtectBypass: "0",
         ])

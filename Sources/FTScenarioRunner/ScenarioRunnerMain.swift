@@ -752,10 +752,10 @@ final class LazyFMDelegate: ReplayDelegate {
         await resolve()?.verifyScreen(expected: expected, screenshotPNG: screenshotPNG)
     }
 
-    // occlusion-guard の暖機。**転送を忘れると既定実装(no-op)に落ち、暖機だけが黙って
+    // occlusion-guard の先読み。**転送を忘れると既定実装(no-op)に落ち、先読みだけが黙って
     // 効かなくなる**(下の verifyElementVisible と同じ罠)。生成を伴わないので同期でよい
-    func prewarmVisibilityCheck() {
-        resolve()?.prewarmVisibilityCheck()
+    func preloadVisibilityCheck() {
+        resolve()?.preloadVisibilityCheck()
     }
 
     // occlusion-guard(exist の既定)の FM 照合。転送しないと ReplayDelegate 既定実装(nil)に落ち、
