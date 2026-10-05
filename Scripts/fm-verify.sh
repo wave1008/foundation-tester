@@ -16,6 +16,9 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$PWD"
+# _disabled/ の出し入れで run ごとにシナリオの実行ファイルがビルドし直される = 毎回コールドの OCR モデルの
+# コンパイル(35〜42 秒)を最初のシナリオの前に待たない(ScenarioHost.waitsForOCRModelCompile)
+export FT_OCR_COMPILE_WAIT=off
 FLEETEST="$ROOT/.build/debug/fleetest"
 PROJECT="E2E-CMP"
 PROFILE="ios-fm"

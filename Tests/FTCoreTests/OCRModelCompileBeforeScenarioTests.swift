@@ -53,6 +53,13 @@ final class OCRModelCompileBeforeScenarioTests: XCTestCase {
         XCTAssertLessThan(elapsed, .seconds(3), "上限で打ち切る(子が終わるまで待たない)")
     }
 
+    /// 検証スクリプトだけが立てる殺しスイッチ。既定(未設定)は待つ
+    func testWaitSwitchDefaultsToWaitingAndOffSkips() {
+        XCTAssertTrue(ScenarioHost.waitsForOCRModelCompile(environment: [:]))
+        XCTAssertTrue(ScenarioHost.waitsForOCRModelCompile(environment: ["FT_OCR_COMPILE_WAIT": "on"]))
+        XCTAssertFalse(ScenarioHost.waitsForOCRModelCompile(environment: ["FT_OCR_COMPILE_WAIT": "off"]))
+    }
+
     func testPinnedCapIsTheModelCompileCap() {
         XCTAssertEqual(RegionText.modelCompileWaitCap, .seconds(120))
     }
@@ -67,5 +74,18 @@ final class OCRModelCompileBeforeScenarioTests: XCTestCase {
         let wait = try XCTUnwrap(rest.range(of: "await awaitOCRModelCompile()"))
         let timing = try XCTUnwrap(rest.range(of: "let startedAt = Date()"))
         XCTAssertLessThan(wait.lowerBound, timing.lowerBound)
+        let gate = try XCTUnwrap(rest.range(of: "waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment)"),
+                                 "待ちの前にスイッチを見ていない")
+        XCTAssertLessThan(gate.lowerBound, wait.lowerBound)
+    }
+
+    /// `_disabled/` を出し入れする検証スクリプトはスイッチを立てる(立てないと run ごとに 35〜42 秒待つ)
+    func testVerificationScriptsTurnTheWaitOff() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        for name in ["heal-verify.sh", "e2e-negative.sh", "fm-verify.sh"] {
+            let script = try String(contentsOf: root.appendingPathComponent("Scripts/\(name)"), encoding: .utf8)
+            XCTAssertTrue(script.contains("\nexport FT_OCR_COMPILE_WAIT=off\n"), name)
+        }
     }
 }

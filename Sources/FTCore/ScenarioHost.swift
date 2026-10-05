@@ -279,6 +279,14 @@ public enum ScenarioHost {
     /// 2 秒の読み込み中が終わった)。コンパイル済みなら子は約 0.5 秒で終わるので、ふつうは待たない。
     /// 上限は `RegionText.modelCompileWaitCap`(尽きたらシナリオ内の `awaitModelCompile` が従来どおり受ける)。
     /// 戻り値は待った時間(子がもう居なければ nil)。全ワーカーが同じ子を待つ
+    /// `FT_OCR_COMPILE_WAIT=off` なら最初のシナリオの前に待たない(ユーザー決定)。使うのは
+    /// `_disabled/` のシナリオを出し入れする検証スクリプト(heal-verify / e2e-negative / fm-verify)だけ ——
+    /// 出し入れのたびにシナリオの実行ファイルがビルドし直され、短い run の1本ごとにコールドのコンパイル
+    /// (35〜42 秒)を待っていた。待たなくてもシナリオ内の `awaitModelCompile` が OCR を使う時点で受ける
+    static func waitsForOCRModelCompile(environment: [String: String]) -> Bool {
+        environment["FT_OCR_COMPILE_WAIT"] != "off"
+    }
+
     static func awaitOCRModelCompile(cap: Duration = RegionText.modelCompileWaitCap,
                                poll: Duration = .milliseconds(200)) async -> Duration? {
         guard let pid = ocrCompilePID.withLock({ $0 }), ProcessLiveness.isAlive(pid) else { return nil }
@@ -376,7 +384,8 @@ public enum ScenarioHost {
                            deviceTearDownOnly: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRModelCompile の doc)
-        if !dryRun, let waited = await awaitOCRModelCompile(), waited >= .seconds(1),
+        if !dryRun, waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment),
+           let waited = await awaitOCRModelCompile(), waited >= .seconds(1),
            ocrCompileWaitReported.withLock({ reported in defer { reported = true }; return !reported }) {
             onEvent(ScenarioEvent.log("⏳ waited \(continuousClockMs(waited) / 1000)s for the OCR model to finish compiling"
                         + " before starting scenarios (first run after a rebuild)"))
