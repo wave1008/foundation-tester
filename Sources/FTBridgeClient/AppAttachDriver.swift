@@ -114,7 +114,12 @@ public final class AppAttachDriver: AppDriver {
         }
     }
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
-    public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
+    /// 座標も ref を使わないので撃つ前に対象へ揃える(揃えないと前に attach した別アプリを指したまま
+    /// ランナーが「対象アプリが動いていない」(503)で断る。文中リンクの OCR の点を撃つ経路で踏む)
+    public func tap(x: Double, y: Double) async throws {
+        try await ensureAttached()
+        try await client.tap(x: x, y: y)
+    }
 
     /// ref を使わないので pressEnter と同じ回復を入れる(上の pressEnter のコメント参照)
     public func hideKeyboard() async throws {

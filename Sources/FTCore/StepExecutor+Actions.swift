@@ -709,7 +709,12 @@ extension StepExecutor {
                     // 撃ち直しではない: 501 は in-app が何も撃たずに返した場合だけ
                     guard DriverError.isEngineIncapable(error),
                           let td = typeDriver else { throw error }
-                    try await td.tap(x: element.frame.centerX, y: element.frame.centerY)
+                    // 長押しと同じく XCUITest の木で引き直して ref で押す(木を撮る段でランナーのセッションが
+                    // 今のアプリへ向く。座標を直に撃つと、直前のプロファイルのアプリに向いたままのランナーが
+                    // 「対象アプリが動いていない」(503)で断った = E2E-iOS で実測)。引き直せなければ座標
+                    if try await !tapViaTypeDriver(td, step: step, phase: &phase) {
+                        try await td.tap(x: element.frame.centerX, y: element.frame.centerY)
+                    }
                     driverFallback = Self.joinNotes(driverFallback, "fell back to XCUITest")
                 }
             }
@@ -1197,6 +1202,21 @@ extension StepExecutor {
 
     /// typeDriver で press を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
     /// 取り直す(typeViaTypeDriver と同じ理由)。解決できなければ false(呼び出し側で再スロー)。
+    /// typeDriver で tap する(`pressViaTypeDriver` と同じ: ref はブリッジごとに別名前空間なので取り直す)。
+    /// 解決できなければ false
+    private func tapViaTypeDriver(_ td: AppDriver, step: FlowStep,
+                                  phase: inout PhaseAccumulator) async throws -> Bool {
+        let clock = ContinuousClock()
+        var start = clock.now
+        let snapshot = try await td.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard let resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return false }
+        start = clock.now
+        try await td.tap(ref: resolved.element.ref)
+        phase.actionMs += Self.ms(clock.now - start)
+        return true
+    }
+
     private func pressViaTypeDriver(_ td: AppDriver, step: FlowStep,
                                     phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
