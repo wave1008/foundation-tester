@@ -54,10 +54,13 @@ final class UncoverOutsideContainerTests: XCTestCase {
         var els: [ElementInfo] = []
         els.append(el(1, "other", FTRect(x: 0, y: 168, width: 402, height: 706), scrollable: true))
         els[0].depth = 1
-        var rows: [ElementInfo] = [(2, 60.0), (3, 112.0), (4, -10.0)].map { ref, y in
-            var r = el(Int(ref), "button", label: "行", FTRect(x: 8, y: y, width: 386, height: 48)); r.depth = 2; return r }
+        var rows: [ElementInfo] = [(2, 200.0), (3, 252.0), (4, -10.0)].map { ref, y in
+            var r = el(Int(ref), "button", label: "行", FTRect(x: 8, y: y, width: 386, height: 48)); r.depth = 3; return r }
+        // 行は容器(wrapper)の中に並び、FAB は同じ深さで後ろに続く = 木の上では wrapper の兄弟で枠の外
+        var wrapper = el(10, "other", FTRect(x: 0, y: 168, width: 402, height: 300)); wrapper.depth = 2
+        els.insert(wrapper, at: 1)
         els += rows
-        var fab = el(9, "button", id: "fab_hiding", FTRect(x: 330, y: 700, width: 56, height: 56)); fab.depth = 2
+        var fab = el(9, "button", id: "fab_hiding", FTRect(x: 330, y: 700, width: 56, height: 56)); fab.depth = 3
         els.append(fab)
         XCTAssertFalse(ContainerGeometry.isOutsideContainer(fab, in: els, screen: screen), "浮いた FAB は送らず撃つ")
         rows = els.filter { $0.ref == 4 }
