@@ -126,11 +126,29 @@ public enum LocalStreamHolder {
         return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
     }
 
-    /// いま動いている全プロセス(env 付き)。`ps` が失敗したら空 = 誰も持っていない側に倒す
-    /// (配信を起こさない誤りより、二重を1周期見逃す誤りのほうが軽い。次の周期で拾う)
+    /// 配信の補助プロセスの実行ファイル名(`DeviceIdentity.matchers` の helper の全集合)
+    static let helperPrograms: Set<String> = ["fleetest-simstream", "fleetest-devicepoll", "fleetest-androidstream"]
+
+    /// 行のうち配信の補助プロセスの pid(env 無しの一覧から拾う)。純粋関数
+    static func helperPIDs(in rows: [ProcessRow]) -> [Int32] {
+        rows.filter { row in
+            row.tokens.first.map { helperPrograms.contains(URL(fileURLWithPath: $0).lastPathComponent) } ?? false
+        }.map(\.pid)
+    }
+
+    /// 配信の補助プロセスの行(env 付き)。`ps` が失敗したら空 = 誰も持っていない側に倒す
+    /// (配信を起こさない誤りより、二重を1周期見逃す誤りのほうが軽い。次の周期で拾う)。
+    /// **env 付きの全プロセスの一覧を毎周読まない** —— 13MB あり、モニターの周回が毎周 約 1.4 秒を
+    /// その解析に払っていた。env 無しの一覧で補助プロセスの pid を拾い、その pid だけ env 付きで読む
     public static func snapshot() -> [ProcessRow] {
-        guard let result = try? Shell.run(["ps", "-E", "-ww", "-axo", "pid=,etime=,command="], timeout: 10),
-              result.status == 0 else { return [] }
+        guard let all = try? Shell.run(["ps", "-ww", "-axo", "pid=,etime=,command="], timeout: 10),
+              all.status == 0 else { return [] }
+        let pids = helperPIDs(in: parse(psOutput: all.output))
+        guard !pids.isEmpty else { return [] }
+        // 拾ってから読むまでに終わった pid があると ps は**残りを出しつつ**非 0 で終わる = 出力が空のときだけ失敗とみなす
+        guard let result = try? Shell.run(["ps", "-E", "-ww", "-o", "pid=,etime=,command=",
+                                           "-p", pids.map(String.init).joined(separator: ",")], timeout: 10),
+              result.status == 0 || !result.output.isEmpty else { return [] }
         return parse(psOutput: result.output)
     }
 

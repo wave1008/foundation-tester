@@ -167,4 +167,26 @@ final class LocalStreamHolderTests: XCTestCase {
         XCTAssertTrue(source.contains("LocalStreamHolder.heldByOther("), "監視が手元の二重配信を判定していない")
         XCTAssertTrue(source.contains("LocalStreamHolder.snapshot()"), "ps の一覧を周期ごとに1回取っていない")
     }
+
+    /// 補助プロセスの名前の一覧は、デバイスの種類ごとの照合(matchers)の helper の全集合と一致する
+    /// (ずれると snapshot の1段目で補助プロセスを取りこぼし、二重配信を見逃す)
+    func testHelperProgramsCoverEveryMatcher() {
+        let identities: [LocalStreamHolder.DeviceIdentity] = [
+            .iosSimulator(udid: "U"), .iosPhysical(port: 8123), .android(serial: "emulator-5554"),
+        ]
+        let fromMatchers = Set(identities.flatMap { $0.matchers.map(\.helper) })
+        XCTAssertEqual(LocalStreamHolder.helperPrograms, fromMatchers)
+    }
+
+    /// env 無しの一覧から補助プロセスの pid だけを拾う(env 付きで読むのはその pid だけ)
+    func testHelperPIDsPicksOnlyStreamHelpers() {
+        let rows = LocalStreamHolder.parse(psOutput: """
+        101 01:00 /usr/sbin/syslogd
+        202 00:10 /repo/.build/debug/fleetest-androidstream --serial emulator-5554
+        303 00:20 /repo/.build/debug/fleetest-simstream --udid ABC
+        404 00:05 /repo/.build/debug/fleetest api monitor --project P
+        505 00:07 /repo/.build/debug/fleetest-devicepoll --port 8123
+        """)
+        XCTAssertEqual(LocalStreamHolder.helperPIDs(in: rows), [202, 303, 505])
+    }
 }

@@ -282,6 +282,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 await Self.sleepInterruptible(seconds: Self.pausedPollSeconds, stop: stop)
                 continue
             }
+            let cycleStart = ContinuousClock.now
 
             // --profile 指定時はスコープを絞る意図のため未登録デバイスは合成しない
             let (observed, skipped) = await Self.determineStates(
@@ -507,13 +508,18 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 plannedIDs.insert(simctlPickID)
             }
 
-            for state in eligible + (simctlPicked.map { [$0] } ?? [])
-            where plannedIDs.contains(state.target.id) {
+            let captureStates = (eligible + (simctlPicked.map { [$0] } ?? []))
+                .filter { plannedIDs.contains($0.target.id) }
+            // **撮るのは並列**(1台ずつだと Android 8 台で約 2 秒 = 0.2〜0.3 秒 × 台数を毎周払っていた)。
+            // 判定・配信は下で従来どおり1台ずつ・同じ順で回す
+            let fetched = await Self.fetchScreenshots(captureStates, repoRoot: monitorRepoRoot)
+            for state in captureStates {
                 guard !stop.isSet else { break }
 
                 let png: Data
                 do {
-                    png = try await Self.fetchScreenshot(state: state, repoRoot: monitorRepoRoot)
+                    guard let result = fetched[state.target.id] else { throw MonitorError.noEndpoint }
+                    png = try result.get()
                 } catch {
                     // 過渡的競合として扱う: タイルへは出さず stderr ログのみ(同一デバイスで
                     // 連続する間は再ログしない)、フレームは skip(前回フレームが Webview に残る)
@@ -565,7 +571,45 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
             }
 
-            await Self.sleepInterruptible(seconds: interval, stop: stop)
+            await Self.sleepInterruptible(
+                seconds: Self.sleepBeforeNextCycle(interval: interval,
+                                                   elapsed: cycleStart.duration(to: ContinuousClock.now)),
+                stop: stop)
+        }
+    }
+
+    /// 周回の間隔は**開始から開始まで**(処理の後に interval を丸ごと足すと、run 中は 1 周 約 7.5 秒になっていた
+    /// = 状態の確認 1.3 秒 + 確認 2 秒 + 撮影 2 秒 + 待ち 2 秒)。処理が interval を超えても**最低
+    /// `minimumCycleGap` は空ける** —— 混雑して処理が長い機械で、休まず回り続けて負荷を足さないため
+    static func sleepBeforeNextCycle(interval: Double, elapsed: Duration) -> Double {
+        let elapsedSeconds = Double(elapsed.components.seconds)
+            + Double(elapsed.components.attoseconds) / 1e18
+        return max(interval - elapsedSeconds, minimumCycleGap)
+    }
+
+    /// 周回の間の最低の空き(秒)。0.5 = 既定の interval(2 秒)の 1/4。処理が interval を超える混雑時でも
+    /// 1 周の 1/4 以上はモニターが手を止める
+    static let minimumCycleGap: Double = 0.5
+
+    /// 撮る対象を並列で撮る(id → 結果)。**順番と配信の判断は呼び手が持つ**(ここは取得だけ)
+    static func fetchScreenshots(_ states: [DeviceRuntimeState],
+                                 repoRoot: URL?) async -> [String: Result<Data, Error>] {
+        await withTaskGroup(of: (String, Result<Data, Error>).self,
+                            returning: [String: Result<Data, Error>].self) { group in
+            for state in states {
+                let transfer = UncheckedTransfer(state)
+                group.addTask {
+                    do {
+                        return (transfer.value.target.id,
+                                .success(try await fetchScreenshot(state: transfer.value, repoRoot: repoRoot)))
+                    } catch {
+                        return (transfer.value.target.id, .failure(error))
+                    }
+                }
+            }
+            var results: [String: Result<Data, Error>] = [:]
+            for await (id, result) in group { results[id] = result }
+            return results
         }
     }
 
