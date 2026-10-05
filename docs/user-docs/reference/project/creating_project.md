@@ -37,7 +37,7 @@ There are two ways this project's Package.swift can reference foundation-tester:
 
 `fleetest init` scaffolds the external configuration (a `Package.swift` plus a first test
 project). With `--no-project` it creates no project: only the `Package.swift` and an empty `TestProjects/`
-(the setup uses this; the `project1` project is created later by `/fleetest-profiles` or the VSCode extension;
+(the installation uses this; the `project1` project is created later by `/fleetest-profiles` or the VSCode extension;
 `--no-project` cannot be combined with `--name` / `--app-id`). `--fleetest-path` points at a local clone (`.package(path:)`); `--fleetest-url` depends
 on a git URL instead (`--fleetest-branch` selects the branch to track; it defaults to `main`).
 

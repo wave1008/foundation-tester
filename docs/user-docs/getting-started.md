@@ -31,6 +31,10 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 
 4. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 
+5. If you use an **AI assistant other than Claude Code**, ask it to "register the MCP server". Then restart the
+   assistant and open a new session in this folder (this enables the `ft_*` tools used to explore screens and run scenarios).
+   For details, see "Register the MCP server" in [AI Assistants Other Than Claude Code](reference/tools/other_agents.md).
+
 Once it is installed, create and run a test in the [Quick start](quick-start.md).
 
 ## 4. Troubleshooting

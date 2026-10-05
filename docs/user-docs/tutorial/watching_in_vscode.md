@@ -1,7 +1,7 @@
 # Watching in VSCode
 
 While the AI assistant creates and runs tests, you can **watch** what is happening in the VSCode extension.
-The VSCode extension is installed by the setup in [Getting started](../getting-started.md).
+The VSCode extension comes with the installation in [Getting started](../getting-started.md).
 
 ## Device Monitor
 

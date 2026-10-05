@@ -1,6 +1,6 @@
 # クイックスタート
 
-セットアップ完了後、サンプルアプリを対象にテストシナリオを作り、実行するまでの最短手順です。
+[はじめに(インストール)](getting-started_ja.md)が済んだ後、サンプルアプリを対象にテストシナリオを作り、実行するまでの最短手順です。
 シナリオを手で書く必要はありません。
 
 ## 1. サンプルアプリを用意する
@@ -92,7 +92,7 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 起動していないものは実行時に自動で起動します)。アプリプロファイルの名前は `ios-app`・`android-app`、実行プロファイルの名前は `ios-run`・`android-run` になります。
 手で登録するのは1台です。2台目は VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」で足せます。
 
-セットアップはテストプロジェクトを作りません。AIアシスタントは `TestProjects/project1/` が無ければ先に作ります。
+インストールではテストプロジェクトは作られません。AIアシスタントは `TestProjects/project1/` が無ければ先に作ります。
 手で進めるときは、上のコマンドの前に `fleetest project create project1` を実行します
 (VSCode 拡張も Reload Window 後の起動時に作ります)。
 
@@ -165,3 +165,4 @@ VSCode からは **Test Explorer** でシナリオを選び、**実行**をク�
 
 ### Link
 - [index](index_ja.md)
+- [はじめに(インストール)](getting-started_ja.md)

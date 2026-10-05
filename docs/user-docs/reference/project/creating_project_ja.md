@@ -36,7 +36,7 @@ TestProjects/SampleApp/
 
 `fleetest init` は外部パッケージ構成(`Package.swift` + 最初のテストプロジェクト)を生成します。
 `--no-project` を付けるとプロジェクトは作らず、`Package.swift` と空の `TestProjects/` だけを置きます
-(セットアップはこちらを使い、`project1` プロジェクトは後から `/fleetest-profiles` か VSCode 拡張が作ります。
+(インストールはこちらを使い、`project1` プロジェクトは後から `/fleetest-profiles` か VSCode 拡張が作ります。
 `--no-project` は `--name` / `--app-id` と併用できません)。
 `--fleetest-path` はローカルのクローンを指定し(`.package(path:)`)、`--fleetest-url` は代わりに
 git URL へ依存させます(`--fleetest-branch` で追従するブランチを指定。既定は `main`)。

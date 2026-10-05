@@ -31,6 +31,10 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 
 4. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 
+5. **Claude Code 以外の AIアシスタント**を使う場合は、「MCP を登録して」と頼みます。登録したら AIアシスタントを
+   再起動し、このフォルダで新しいセッションを開きます(画面の探索やシナリオの実行に使う `ft_*` ツールが使えるようになります)。
+   詳しくは [Claude Code 以外の AIアシスタント](reference/tools/other_agents_ja.md)の「MCP サーバを登録する」を参照してください
+
 インストールが済んだら、[クイックスタート](quick-start_ja.md)でテストを作って実行してみましょう。
 
 ## 4. トラブルシュート

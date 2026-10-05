@@ -1,7 +1,7 @@
 # Quick Start
 
-The shortest path from a completed setup to creating test scenarios for a sample app and running
-them. You do not write scenarios by hand.
+The shortest path from a completed [Getting Started (Installation)](getting-started.md) to creating test
+scenarios for a sample app and running them. You do not write scenarios by hand.
 
 ## 1. Prepare the sample app
 
@@ -92,7 +92,7 @@ one that is not running is started automatically at run time). The app profiles 
 run profiles `ios-run` and `android-run`. These commands register one device; add the second one with "Add device" on the
 "Profiles" tab of the VSCode extension's device monitor.
 
-The setup creates no test project. The AI assistant creates `TestProjects/project1/` first when it is missing;
+The installation creates no test project. The AI assistant creates `TestProjects/project1/` first when it is missing;
 by hand, run `fleetest project create project1` before the commands above
 (the VSCode extension also creates it on startup after Reload Window).
 
@@ -164,3 +164,4 @@ can open the report from there.
 
 ### Link
 - [index](index.md)
+- [Getting Started (Installation)](getting-started.md)
