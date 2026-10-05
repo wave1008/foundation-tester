@@ -12,12 +12,10 @@ class 文中のリンクを押せること {
     @Test("利用規約とプライバシーポリシー(1つの文の中の2つのリンク)")
     func S0010() {
         scenario {
-            scene(1, "文の中心はリンクではない") {
+            scene(1, "開いた直後はリンクが押されていない") {
                 condition {
                     launchApp()
                     tap("#nav_links")
-                }.action {
-                    tap("#txt_terms")
                 }.expectation {
                     select("#txt_links_result").textIs("link=none")
                 }
