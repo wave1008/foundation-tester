@@ -3622,3 +3622,82 @@ E2E-Android 494.8 → 497.7 秒(+0.6%・中央値 −0.1%・回転のシナリ�
 陽性対照: `FT_FAKE_VISION_ANOMALY=1` で補助を生かしたままなら救済されて緑(`vision-helper-rescued`)、補助を撃ち続けると
 「…waiting; no rescue either — the Vision helper process is unavailable (connect: errno 2)」で赤。変異5件を検出。
 
+
+## 69. E2EY(実アプリの作りの SUT)を作って出たツールの穴と、作業の規律(2026-10-05)
+
+GitHub の公開アプリ(nowinandroid・compose-samples・Element-X・Signal・IceCubes・NetNewsWire・immich・AppFlowy・Bluesky・
+Mattermost・Rocket.Chat 等)の UI を調べ、E2E / E2EX に無い**ツールの判定を直撃する作り**12画面を5フレームワークの SUT にした
+(`E2EYApp*` → `TestProjects/E2EY-*`・契約 `E2EYAppCMP/docs/ui-contract.md`・`Scripts/e2ey.sh`)。初回は全プロファイル赤(89行)。
+SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原因の分かったツールの限界を `@Draft` で外し緑の基準線にした。
+**本数の半分以上は SUT とシナリオの誤り**で、ツールの穴は下の小節のもの。
+
+### 69.1 iOS の in-app で直したもの(ブリッジ v144〜v146)
+- **反転したリスト**(RN の `inverted`・transform で上下反転した UITableView のチャット): contentOffset 経路が指の向きを
+  変形の無い容器の前提で写していた。最新の位置(offset 0)を「もう端」と読み、探索が1回も送らなかった
+  → 容器の座標の反転を見て向きを裏返す(`FTSwipeDirection.inContentSpace`・`axisFlips`)
+- **`inputAccessoryView` の入力バー**(Signal の会話画面の形): キーを写さないためにキーボード側の窓(UITextEffectsWindow)を
+  丸ごと除いていたので、そこに載る入力欄が木に無かった → first responder と first responder である VC の accessory の
+  部分木だけを足す(`inputAccessoryRoots`。first responder でない VC の `inputAccessoryView` は読まない = 遅延生成させない)
+- **スクロールの終了の通知**: in-app の `setContentOffset` は `scrollViewDidScroll` しか呼ばないので、「止まった」で
+  位置を確定・追加読み込みする UIKit のアプリが反応しなかった → アプリ自身の delegate にだけ WillBeginDragging →
+  WillEndDragging(速度 0)→ DidEndDragging(減速なし)を合成する(SwiftUI の内部クラスと WKScrollView には呼ばない)
+- **SwiftUI の `onTapGesture` だけの要素**: activate が不発 → 合成タッチは UIGestureRecognizer に受理されず **200 のまま空振り**
+  → 501 を返してホストが XCUITest で押す。**v145 は SwiftUI のアプリなら全要素を回して退行した** —— `.alert` の実体の
+  UIAlertController のボタン(UIView・合成タッチが効く)まで XCUITest へ回り、ランナーが「アラートが手前」で断った
+  (E2E-iOS 7本・E2EX-iOS 4本が赤)。v146 で **UIView でない SwiftUI の a11y ノードだけ**に限った
+  (`AppUIFramework.rejectsSyntheticTap(nodeIsView:)`)。RN・Compose・Flutter・UIKit は合成タッチが効くので従来どおり
+- **XCUITest へ回すタップは対象アプリへ揃えてから撃つ**: hybrid の予備(`AppAttachDriver`)は前のプロファイルのアプリに
+  向いたまま再利用されることがあり、座標タップを直に撃つとランナーが「対象アプリが動いていない」(503)で断った。
+  木を撮る段で向け直すので、回すタップは長押しと同じく XCUITest の木で引き直して ref で押す。`AppAttachDriver.tap(x:y:)` だけ
+  `ensureAttached` が抜けていた(他の ref 無しの操作は持っていた)
+
+### 69.2 ホスト側で直したもの
+- **文中リンクを押す DSL** `tap(要素, linkText:)`(Espresso の `openLinkWithText` に名前を倣う): 位置は木の子孫 → OCR の順で決める
+  (Flutter・RN はリンクが子ノード。Compose・View の ClickableSpan・SwiftUI の AttributedString は木に出ない)。
+  - **OCR で決めた点は1つのノードの中の点** —— in-app の座標タップは「点を含むノードを activate」するので段落の activate
+    (= 押した位置と無関係なリンク)に化ける。hybrid では XCUITest の本物のタッチで撃つ
+  - **遅い Emulator では画面の切り替えの途中の白い絵を撮る**(M1Ultra の CMP の Android で「OCR read no text」。同じ画面の
+    失敗時の絵・同じ画像の M1Ultra の OCR では読めた)→ 1文字も読めない絵は 0.5 秒おきに最大3回撮り直す。
+    **文字が読めたのに語が無いなら撮り直さない**(撮り直しても変わらない)。OCR が返らない形(Android View で 120 秒の
+    時間切れ)には暖機を `awaitPrewarm` で先に待ち、1回の読みに 10 秒の予算
+- **Android の下端のジェスチャ帯**: 画面の最下端から始まる座標ドラッグ(常駐のミニプレーヤーを引き上げる払い)がホーム操作に
+  取られてアプリが落ちた → `mBottomGestureHeight`(Pixel 9 Emulator・ジェスチャーナビで **84px = 32dp を実測**)の中なら始点を
+  帯の上へ寄せる。読めなければ 48dp × 密度
+- **一部しか見えていない scrollFrame の横の探索**: 先に外側の縦の容器を送って窓へ入れる(可視率 50% 未満のときだけ)。
+  **E2EY-iOS の `#card_9_14` はこれでも緑にならず `@Draft`**
+- **浮いた FAB を ghost と読んで一覧を送っていた**: FAB を包むビューが木に出ない(RN の iOS の `Animated.View`)と、深さでたどった
+  親が直前に並んだ上部バーになり、その枠と交わらない FAB を「容器の外へ押し出された中身」と読んで掴み直しの送りを撃った
+  (送るとバーと FAB が隠れる画面なので「見つからない」で落ちた)→ 祖先にスクロール容器が居なければ、中心を含む最小の申告
+  スクロール容器で代えて浮いた物と読む(`isFloatingOverDeclaredScroller`。仲間の居る行は ghost のまま)。
+  **単純化した木の単体テストは変異で生き残った**(容器の推定の経路が実物と違った)ので、実際に撮った木を
+  `Tests/Fixtures/E2EYTrees/` に固定してから変異を確かめた
+
+### 69.3 直していない(`@Draft` の理由と、木だけでは決められない理由)
+- **Flutter の `AnimatedSlide` で隠したバー**は、隠れている間も**セマンティクスが元の位置のまま**(木では見えている)。
+  探索は送らずに撃ち、見た目には無いボタンを押す。木だけでは見分けられない = 押す前に絵で確かめる設計が要る
+- Android の `scrollToTop` は a11y のスクロール操作で上端へ送るので、自前の nestedScroll(Compose)・collapsible-tab-view(RN)で
+  縮めたヘッダを開く操作を誰も申告せず「もう端」で止まる。最後の1本を指のドラッグに戻すと v78 で塞いだ「引っ張って更新に化ける」が戻る
+- ほか: Compose(iOS)の反転リストは a11y の scroll が1ページ単位で飛び、対象を下端の外に置いたまま行き過ぎる(向きの逆転では
+  ない = 木で確かめた)/ 半分開いた gorhom のシートの中の探索 / RN でタブを替えた直後に覆いが木に出ない / CMP の Android で
+  ヘッダが縮みきる前の座標でタブを撃つ。一覧は docs/framework-differences.md §5.1「残っている制約」
+
+### 69.4 作業の規律(次に同じ作業をする人へ)
+- **SUT の「罠」をエージェントが消しに来る**: 委譲先が赤を消すために、離した速さを見ない `draggable` への書き換え・最寄りの
+  アンカーへ落とす `FlingBehavior` を入れた(どちらも契約の「払う速さで結果が割れる」を SUT 側で消す)→ 取り消した。
+  **正しい直しはシナリオ側**(途中まで払うのは `durationSeconds: 2.0` でゆっくり)。指示書には「罠は意図して残す性質・
+  回避しない」と、**ツールの限界の候補を一覧で渡し、シナリオを座標や別の書き方に替えて隠さない**ことを書く
+- **シナリオの誤りの頻出形**: `swipeBy` の比率は片側 0.9 で頭打ち(`dyRatio: -6` は効かない。対象より遠くへは
+  `swipeElementToElement`)/ テキスト欄の読み返しは `valueIs`(value に入る)/ 段落の中央を押して「何も起きない」は解像度依存 /
+  骨組みの行を押すと `tap` は押せるまで待って本物を押す(正しい挙動)/ Android は `type` の後の `back()` が IME に食われる
+  (`android { hideKeyboard() }`)/ Compose の iOS は `hideKeyboard` が 501
+- **FM が止まった機械では視覚検証が OCR だけになり、一時的な赤が多い**(この Mac と M1Ultra の両方で ANE の no memory)。
+  同じコミットで回し直して消えるかを先に見る(E2EX-CMP の4本・E2E-CMP の XCUITest 12本はどれも回し直しで消えた)。
+  再起動で戻った実績がある
+- **RN の `pod install` は hermes-engine の checksum を機械ごとに書き換える**(podspec の評価が環境に依存)。ランナーのクローンの
+  追跡ファイルを汚し、align の reset で `Podfile.lock` だけが戻ると `Pods/Manifest.lock` と食い違って次のビルドが止まる
+  (M1Ultra の E2EX で潜んでいた)→ build-ios.sh が揃える
+- **リモートの run を止める**: 手元の ssh と向こうの `e2ey.sh` への TERM では `fleetest run` が止まらず、**INT** で止まった。
+  止めた run の `dispatch.lock`(持ち主は向こうの機械自身)は、`fleetest run` が残っていないのを確かめてから `align.sh --force-lock`
+- **worktree の中では `ToolVersionTests.testDescribeStartingAtRepoRootFindsRevision` が落ちる**(`.git` がファイル)。
+  本線では緑なので、委譲先の「1件だけ赤」がこれなら無関係
+- **回帰は変更が通るシナリオに絞る**(ユーザー指示)。この回は文中リンクの直しの確認に E2EY の全体を回しかけた

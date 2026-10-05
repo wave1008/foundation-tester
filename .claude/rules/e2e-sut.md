@@ -10,6 +10,8 @@ paths:
   - "Scripts/negative-controls.json"
   - "Scripts/negative_controls_judge.py"
   - "TestProjects/E2E-*/**"
+  - "E2EYApp*/**"
+  - "TestProjects/E2EY-*/**"
   - "Tests/FleetestTests/DeepLinkSchemeSyncTests.swift"
 ---
 
@@ -63,3 +65,10 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   iOS の権限アラートはボタンで答えるまで消えない(アプリを止めても権限をリセットしても残る)ので、アラートを出す対照には
   `resetPhotos` を付ける(前後で補助シナリオ `98_写真の権限アラートを閉じる` が閉じる)。表の順序も崩さない。
   載せ忘れは `vscode-fleetest/test/negativeControls.test.mjs` が落とす。経緯は docs/verification.md §陽性対照スイート
+
+- **E2EY(`E2EYApp*` / `TestProjects/E2EY-*`)の SUT の「罠」は意図して残す性質で、SUT 側で回避しない**
+  (契約 `E2EYAppCMP/docs/ui-contract.md` の各画面の「罠」)。赤を消すために罠を消す直し(離した速さを見ない
+  `draggable` への書き換え・最寄りのアンカーへ落とす `FlingBehavior` 等)は**取り消す** —— 直すのはシナリオ(払う速さ等)
+  かツール。ツールの限界と分かった赤は `@Draft("既知の制約: …")` で外し、docs/framework-differences.md §5.1 の
+  「残っている制約」に並べる。委譲するときは指示書にこれと、**ツールの限界の候補の一覧**(シナリオを座標や別の書き方に
+  替えて隠さない)を書く → maintainer-notes §69.4
