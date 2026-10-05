@@ -860,10 +860,23 @@ public enum DeviceBooter {
     /// ロックが原因と決め打ちしない
     enum StaleAVDLock {
         static let multiInstanceMarker = "Running multiple emulators with the same AVD"
+        /// スナップショットのロックの残骸。Mac の再起動・強制終了でスナップショットの処理の途中だった AVD に残り、
+        /// 以後の起動はこれを待って時間切れで終わる(M1Ultra の再起動の後 5 台が 3 回ずつ失敗した。-no-snapshot でも見る)
+        static let snapshotPendingMarker = "snapshot operation for"
 
-        static func shouldRetry(logTail: [String], avdProcessRunning: Bool) -> Bool {
-            guard !avdProcessRunning else { return false }
-            return logTail.contains { $0.contains(multiInstanceMarker) }
+        /// 消して撃ち直すロックのファイル名(AVD のディレクトリ直下)。空 = 自己修復しない。
+        /// **その AVD を握るプロセスが居れば何も消さない**(生きているロックを消すと壊れる)。
+        /// `entries` は AVD ディレクトリのファイル名(`snapshot.lock.tmp-*` の残骸を拾うため)。
+        /// multiinstance.lock は消さない(全 AVD に常時あるファイル)
+        static func lockFilesToRemove(logTail: [String], avdProcessRunning: Bool, entries: [String]) -> [String] {
+            guard !avdProcessRunning else { return [] }
+            if logTail.contains(where: { $0.contains(multiInstanceMarker) }) {
+                return ["hardware-qemu.ini.lock"]
+            }
+            if logTail.contains(where: { $0.contains(snapshotPendingMarker) && $0.contains("pending") }) {
+                return ["snapshot.lock.lock"] + entries.filter { $0.hasPrefix("snapshot.lock.tmp-") }.sorted()
+            }
+            return []
         }
     }
 
@@ -886,24 +899,25 @@ public enum DeviceBooter {
     /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する。
     /// ロケールはここでは渡さない(`-change-locale` は Play イメージでは効かない = 実測)。呼び手がブート完了後に
     /// `applyLocale`(ブリッジ /locale)で適用する
-    /// **stale ロックは1回だけ自己修復する** —— 早期終了のログが多重起動を示し、かつ実際には
-    /// その AVD を握るプロセスが1つも無いときだけ hardware-qemu.ini.lock を消して撃ち直す
-    /// (multiinstance.lock は消さない=全 AVD 常時存在するファイル)
+    /// **stale ロックは1回だけ自己修復する** —— 早期終了のログが残ったロック(多重起動・スナップショットの処理中)を
+    /// 示し、かつ実際にはその AVD を握るプロセスが1つも無いときだけ、そのロックを消して撃ち直す(StaleAVDLock)
     static func startEmulator(avd: String, gpuMode: String = "host",
                               log: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
         do {
             return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode)
         } catch let failure as EarlyExitFailure {
-            guard StaleAVDLock.shouldRetry(
-                logTail: failure.logTail, avdProcessRunning: emulatorProcessRunning(avdID: avd)
-            ) else {
+            let directory = AndroidDeviceCatalog.avdContentDirectory(id: avd)
+            let stale = StaleAVDLock.lockFilesToRemove(
+                logTail: failure.logTail, avdProcessRunning: emulatorProcessRunning(avdID: avd),
+                entries: (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+            guard !stale.isEmpty else {
                 throw DeviceBooterError.commandFailed(failure.detail)
             }
-            let lockURL = AndroidDeviceCatalog.avdContentDirectory(id: avd)
-                .appendingPathComponent("hardware-qemu.ini.lock")
-            try? FileManager.default.removeItem(at: lockURL)
-            log("→ \(avd): found a stale hardware-qemu.ini.lock with no emulator process holding it"
-                + " — removed it and retrying the boot once")
+            for name in stale {
+                try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+            }
+            log("→ \(avd): found stale lock file(s) (\(stale.joined(separator: ", "))) with no emulator process"
+                + " holding the AVD — removed them and retrying the boot once")
             do {
                 return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode)
             } catch let retryFailure as EarlyExitFailure {

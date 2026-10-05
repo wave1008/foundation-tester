@@ -3727,6 +3727,12 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
   「見切れ」で量が 0 になって払いに落ちていた → 戻しは必ずドラッグ(小さい量は 60pt へ広げる)・1pt 未満のはみ出しは見つかったとする。
   **「中心が容器の中なら撃つ」は一度入れて自分のレビューで外した** —— 見切れた行の中心を撃つと別の行に当たる実測(Compose iOS)を
   `isClippedByViewport` が守っている
+- **Mac を再起動すると、スナップショットの処理の途中だった AVD にロックの残骸が残る**(M1Ultra の 18:24 の再起動の後、
+  -03〜-07 の `snapshot.lock.lock` が同時刻で残り、起動は `A snapshot operation for '<AVD>' is pending and timeout has
+  expired` で 3 回ずつ落ちた。run は残りの 3 台で黙って続き、利用者には「エミュレータが 3 つしか起動しない」に見えた)。
+  `-no-snapshot` で起こしてもこのロックは見る → 起動し直しの自己修復(`StaleAVDLock.lockFilesToRemove`)を、多重起動の
+  `hardware-qemu.ini.lock` に加えてこの形にも広げた(`snapshot.lock.lock` と `snapshot.lock.tmp-*`。その AVD を握る
+  プロセスが居れば何も消さない規則は同じ)
 - **ツールの限界に見えてシナリオの予算だったもの**: `#card_9_14` は縁の帯の問題を直した後も 8 本で届かなかった
   (1本 222pt・カード 148pt = 末尾まで約 10 本)。計測で周回ごとの位置を見て確定 → シナリオに `maxSwipes: 12`
 

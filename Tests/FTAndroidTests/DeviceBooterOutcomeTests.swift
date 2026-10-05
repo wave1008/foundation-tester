@@ -4,7 +4,7 @@
 //   が「全滅か・部分失敗か」を要約し、CLI/API 側が exit code を決める。
 // 不具合2: stale な hardware-qemu.ini.lock でレーンが恒久的に死に、エラー文言も
 //   「AVD 名を確認しろ」と誤誘導していた —— DeviceBooter.fatalLines がログ本文から根因の行を拾い、
-//   DeviceBooter.StaleAVDLock.shouldRetry が「消して撃ち直してよいか」を判定する。
+//   DeviceBooter.StaleAVDLock.lockFilesToRemove が「どのロックを消して撃ち直すか」を判定する。
 
 import XCTest
 @testable import FTAndroid
@@ -121,26 +121,39 @@ final class DeviceBooterFatalLinesTests: XCTestCase {
 
 final class StaleAVDLockTests: XCTestCase {
 
-    /// 不具合2の核心: ログが多重起動を示し、かつその AVD を握る実プロセスが1つも無いときだけ
-    /// 消してよい
-    func testRetriesWhenLogIndicatesMultiInstanceAndNoProcessHoldsTheAVD() {
-        XCTAssertTrue(DeviceBooter.StaleAVDLock.shouldRetry(
-            logTail: ["FATAL | Running multiple emulators with the same AVD is an experimental feature."],
-            avdProcessRunning: false))
+    private let multiInstance = ["FATAL | Running multiple emulators with the same AVD is an experimental feature."]
+    /// 実測(M1Ultra の再起動の後): -03〜-07 の 5 台がこれで 3 回ずつ落ちた
+    private let snapshotPending =
+        ["FATAL        | A snapshot operation for 'Pixel_9_Android_15_-03' is pending and timeout has expired. Exiting..."]
+    private let entries = ["config.ini", "hardware-qemu.ini.lock", "multiinstance.lock",
+                           "snapshot.lock.lock", "snapshot.lock.tmp-qkHPlJ", "userdata-qemu.img"]
+
+    /// 不具合2の核心: ログが多重起動を示し、かつその AVD を握る実プロセスが1つも無いときだけ消してよい
+    func testMultiInstanceRemovesOnlyTheHardwareLock() {
+        XCTAssertEqual(DeviceBooter.StaleAVDLock.lockFilesToRemove(
+            logTail: multiInstance, avdProcessRunning: false, entries: entries), ["hardware-qemu.ini.lock"])
+    }
+
+    func testPendingSnapshotRemovesTheSnapshotLockAndItsTempLeftovers() {
+        XCTAssertEqual(DeviceBooter.StaleAVDLock.lockFilesToRemove(
+            logTail: snapshotPending, avdProcessRunning: false, entries: entries),
+                       ["snapshot.lock.lock", "snapshot.lock.tmp-qkHPlJ"])
     }
 
     /// **生きているプロセスのロックは絶対に消さない** —— pid 再利用で壊れた実例と同じ形の再発防止
-    func testNeverRetriesWhenAnEmulatorProcessIsActuallyRunning() {
-        XCTAssertFalse(DeviceBooter.StaleAVDLock.shouldRetry(
-            logTail: ["FATAL | Running multiple emulators with the same AVD is an experimental feature."],
-            avdProcessRunning: true))
+    func testNeverRemovesAnythingWhenAnEmulatorProcessIsActuallyRunning() {
+        for tail in [multiInstance, snapshotPending] {
+            XCTAssertEqual(DeviceBooter.StaleAVDLock.lockFilesToRemove(
+                logTail: tail, avdProcessRunning: true, entries: entries), [])
+        }
     }
 
-    /// 原因不明の早期終了(AVD 名の誤り等)まで自己修復に倒さない
-    func testDoesNotRetryWhenTheLogDoesNotMentionMultiInstance() {
-        XCTAssertFalse(DeviceBooter.StaleAVDLock.shouldRetry(
-            logTail: ["FATAL | invalid AVD name"], avdProcessRunning: false))
-        XCTAssertFalse(DeviceBooter.StaleAVDLock.shouldRetry(logTail: [], avdProcessRunning: false))
+    /// 原因不明の早期終了(AVD 名の誤り等)まで自己修復に倒さない。multiinstance.lock は常に消さない
+    func testDoesNotRemoveAnythingForOtherFailures() {
+        XCTAssertEqual(DeviceBooter.StaleAVDLock.lockFilesToRemove(
+            logTail: ["FATAL | invalid AVD name"], avdProcessRunning: false, entries: entries), [])
+        XCTAssertEqual(DeviceBooter.StaleAVDLock.lockFilesToRemove(
+            logTail: [], avdProcessRunning: false, entries: entries), [])
     }
 }
 
