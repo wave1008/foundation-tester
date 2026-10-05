@@ -114,9 +114,14 @@ public enum FindImage {
         public let last: MatchError
         public let retries: Int
         public let waitedSeconds: Double
+        /// 補助プロセスに頼んだのに助からなかった理由(頼まなかった・補助の無い run は nil)。
+        /// **「補助が居ない・答えない・自分の Vision も不健全」と「補助の値でも同じ門で落ちた」(= 機械全体の異常)を
+        /// 分ける唯一の事実**。`vision-helper-unavailable` の注記は前者しか立たず理由も持たない
+        public let helperFailure: String?
         public var description: String {
             last.description + "; it was still so after re-measuring \(retries) times over"
                 + " \(String(format: "%.1f", waitedSeconds)) seconds of waiting"
+                + (helperFailure.map { "; no rescue either — \($0)" } ?? "")
         }
         public var errorDescription: String? { description }
     }
@@ -166,6 +171,7 @@ public enum FindImage {
         var attempt = 0
         var waited = 0.0
         var rescueTried = false
+        var helperFailure: String?
         while true {
             do {
                 return try await body(.inProcess)
@@ -178,16 +184,19 @@ public enum FindImage {
                         return rescued
                     } catch is CancellationError {
                         throw CancellationError()
-                    } catch is VisionHelperError {
+                    } catch let failure as VisionHelperError {
+                        helperFailure = failure.description
                         onRescue(.unavailable)
                     } catch {
-                        // 門で落ちた異常・一色や古い絵・設定の誤り: 既存の待ち直しがそのまま扱う
+                        // 門で落ちた異常・一色や古い絵・設定の誤り: 既存の待ち直しがそのまま扱う(注記は立てない)
+                        helperFailure = "the scan redone with the helper's prints failed too (\(error))"
                     }
                 }
                 let schedule = delays(error)
                 guard attempt < schedule.count else {
                     if attempt == 0 { throw error }
-                    throw PersistentAnomaly(last: error, retries: attempt, waitedSeconds: waited)
+                    throw PersistentAnomaly(last: error, retries: attempt, waitedSeconds: waited,
+                                            helperFailure: helperFailure)
                 }
                 onRetry(attempt + 1, error)
                 try await sleep(schedule[attempt])

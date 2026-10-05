@@ -3585,7 +3585,7 @@ springboard 退避(launch + snapshot)と**期限つきの呼び出しを最大5�
 - **§67 の Vision の補助が初めて負荷下で働いた**: 救済 8 シナリオ(全緑)/ 補助も使えず待ち直しへ落ちた 7 シナリオ(うち 6 赤)。
   **使えなかった回は E2E-CMP android の3 run と E2E-RN android の1 run に偏り**、`--set` の有無とは無関係。**使えなかった理由
   (補助が居ない・答えない・自分の Vision も不健全 = `VisionHelperError`)は記録に残らない**ので、ここで判定が止まる。
-  次に直すなら `vision-helper-unavailable` の回に `VisionHelperError` の文言を失敗の detail へ足す(事実の追加)
+  → 68.6 で失敗の文言に理由を載せた
 - M1Max は §65・§66 と同じく Simulator / AVD が作り直されたまま(iOS 27 の 17 Pro も Pixel 9 も無い = 環境)。M1mini は別ワークスペース
   (`~/dev/foundation-tester`)のブリッジが端末を握っていて設計どおり断った
 - 手元の -05〜-08 の Simulator で録画の試し撮り(1 秒)が毎周空になり、静止画へ縮退した(縮退は設計どおり・基準の計測の時は空にならなかった)。
@@ -3612,3 +3612,13 @@ RN +1.0%・Android +8.0%(中央値 +1.7%)、iOS 側は +8〜+17%(CMP は −20%)
 iOS は今回の差分が通らない経路なので、**同じ条件で HEAD と修正版を続けて回す対照**(E2E-iOS + E2E-Android)で帰属を確かめた:
 E2E-Android 494.8 → 497.7 秒(+0.6%・中央値 −0.1%・回転のシナリオ 3,834 → 3,878ms)、E2E-iOS 668.0 → 575.4 秒(HEAD 側の方が遅い)
 = **退行なし・iOS の伸びは負荷テスト後の条件差**。修正後の全体計測の赤 2 本は CMP iOS の描画欠け(OCR が「J00m=ÌI」と読んだ・アプリ領域が一色)。
+
+### 68.6 Vision の補助が助けられなかった理由を失敗の文言に載せる(同日)
+68.3 の判定を止めていた欠けを埋めた。`FindImage.PersistentAnomaly.helperFailure` に、補助に頼んだのに助からなかった事実を1つ持たせ、
+戻らない異常の失敗文の末尾に `; no rescue either — <理由>` を足す。理由は2種類: **`VisionHelperError` の文言**(居ない・答えない =
+`unavailable(connect: errno 2)` 等 / 補助自身の Vision も不健全 = `unhealthy`)と、**補助の値でも同じ門で落ちた**
+(`the scan redone with the helper's prints failed too (…)` = 機械全体の異常。この形は従来どおり注記を立てない)。補助の無い run と
+頼まなかった走査は文言を変えない。`RescueOutcome` と注記の集合は変えていない。
+陽性対照: `FT_FAKE_VISION_ANOMALY=1` で補助を生かしたままなら救済されて緑(`vision-helper-rescued`)、補助を撃ち続けると
+「…waiting; no rescue either — the Vision helper process is unavailable (connect: errno 2)」で赤。変異5件を検出。
+

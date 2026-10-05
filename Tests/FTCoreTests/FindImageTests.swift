@@ -676,6 +676,10 @@ extension FindImageTests {
             } catch let error as FindImage.PersistentAnomaly {
                 XCTAssertEqual(log.sleeps, [0.5, 1, 2, 4, 8], "既存のスケジュールどおり待つ: \(failure)")
                 XCTAssertEqual(error.retries, 5)
+                // 助からなかった理由が失敗の文言に載る(注記だけでは居ない・答えない・不健全を分けられない)
+                XCTAssertEqual(error.helperFailure, failure.description)
+                XCTAssertTrue(error.description.hasSuffix(
+                    "; no rescue either — \(failure.description)"), error.description)
             }
             XCTAssertEqual(log.outcomes, [.unavailable])
             XCTAssertEqual(log.sources.filter { $0 == "helper" }.count, 1, "救済は走査につき1回")
@@ -701,6 +705,36 @@ extension FindImageTests {
         XCTAssertEqual(result, "scanned")
         XCTAssertEqual(log.outcomes, [])
         XCTAssertEqual(log.sleeps, [0.5])
+    }
+
+    /// 補助の値でも門で落ち、待っても戻らなかった = 機械全体の異常。注記は立てないが、失敗の文言にその事実を載せる
+    func testHelperPrintRejectedAndPersistingIsNamedInTheFailure() async throws {
+        let log = RescueLog()
+        let helper = FindImage.PrintSource(label: "helper") { _ in
+            throw FindImage.MatchError.inconsistentPrints(template: "off.png", distance: 0.3)
+        }
+        do {
+            _ = try await scan(log, rescue: helper)
+            XCTFail("戻らない異常を通してはいけない")
+        } catch let error as FindImage.PersistentAnomaly {
+            let reason = try XCTUnwrap(error.helperFailure)
+            XCTAssertTrue(reason.hasPrefix("the scan redone with the helper's prints failed too ("), reason)
+            XCTAssertTrue(reason.contains(FindImage.MatchError.inconsistentPrints(template: "off.png", distance: 0.3).description),
+                          reason)
+        }
+        XCTAssertEqual(log.outcomes, [])
+    }
+
+    /// 補助の無い run(環境変数なし)は従来の文言のまま
+    func testNoHelperLeavesTheFailureUnchanged() async throws {
+        let log = RescueLog()
+        do {
+            _ = try await scan(log, rescue: nil)
+            XCTFail("戻らない異常を通してはいけない")
+        } catch let error as FindImage.PersistentAnomaly {
+            XCTAssertNil(error.helperFailure)
+            XCTAssertFalse(error.description.contains("no rescue"), error.description)
+        }
     }
 
     func testHelperIsNeverTouchedWhenThereIsNoAnomaly() async throws {
