@@ -1,16 +1,16 @@
 // Vision のモデルの初回ロードは**プロセスに1回・実測 25〜108 秒**。DSL の経路
 // (FTDriveCore)では executor 既定の occlusionGuard が常に false なので、StepExecutor.init の
-// 暖機ゲート(executor 既定でガードが効くときだけ撃つ)は実質発火しない —— ステップ指定
+// コンパイルの門(executor 既定でガードが効くときだけ撃つ)は実質発火しない —— ステップ指定
 // (exist の requireVisible 既定 true)でガードが立つのが通常形のため。だから FTDriveCore.init が
-// 実行プロファイルのマスタースイッチ(fmTextOcclusionCheckEnabled)だけを見て別に暖機を頼む
-// (StepExecutorPrewarmTests と対の配線テスト)。
+// 実行プロファイルのマスタースイッチ(fmTextOcclusionCheckEnabled)だけを見て別にコンパイルを頼む
+// (StepExecutorOCRModelCompileTests と対の配線テスト)。
 
 import FTCore
 import XCTest
 
 @testable import FTDSL
 
-final class FTDriveCorePrewarmWiringTests: XCTestCase {
+final class FTDriveCoreOCRModelCompileWiringTests: XCTestCase {
 
     private final class SilentDriver: AppDriver {
         func status() async throws -> StatusResponse {
@@ -35,46 +35,46 @@ final class FTDriveCorePrewarmWiringTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    func testPrewarmsAtScenarioStartWhenTheMasterSwitchIsOn() {
-        let before = RegionText.prewarmRequestCount
+    func testStartsTheModelCompileAtScenarioStartWhenTheMasterSwitchIsOn() {
+        let before = RegionText.modelCompileRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false, tunables: RunTunables(),
                         fmTextOcclusionCheckEnabled: true, emit: { _ in })
-        XCTAssertEqual(RegionText.prewarmRequestCount, before + 1,
-                       "DSL のシナリオ開始時に暖機を始めていない")
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before + 1,
+                       "DSL のシナリオ開始時にOCR モデルのコンパイルを始めていない")
     }
 
     /// FM の段も OCR の段も off の run では撃たない
     /// (occlusionGuardEnabled が false = どのステップでもガードは走らないので Vision は要らない)
-    func testDoesNotPrewarmWhenBothStagesAreOff() {
-        let before = RegionText.prewarmRequestCount
+    func testDoesNotStartTheModelCompileWhenBothStagesAreOff() {
+        let before = RegionText.modelCompileRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false, tunables: RunTunables(),
                         fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: false, emit: { _ in })
-        XCTAssertEqual(RegionText.prewarmRequestCount, before)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 
-    /// FM の段が off でも OCR の段が on なら guard は OCR だけで走るので暖機する
-    func testPrewarmsWhenOnlyTheOCRStageIsOn() {
-        let before = RegionText.prewarmRequestCount
+    /// FM の段が off でも OCR の段が on なら guard は OCR だけで走るのでコンパイルを始める
+    func testStartsTheModelCompileWhenOnlyTheOCRStageIsOn() {
+        let before = RegionText.modelCompileRequestCount
         let core = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                                scenarioID: "T.S0010", scenarioTitle: "t",
                                delegate: nil, healingEnabled: false, tunables: RunTunables(),
                                fmTextOcclusionCheckEnabled: false, occlusionOCREnabled: true, emit: { _ in })
-        XCTAssertEqual(RegionText.prewarmRequestCount, before + 1)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before + 1)
         XCTAssertTrue(core.executor.occlusionGuardEnabled, "OCR の段だけでも guard は走るはず")
         XCTAssertFalse(core.executor.fmVisibilityCheckEnabled, "FM の段は off のはず")
     }
 
     /// OCR の殺しスイッチ(occlusionOCREnabled: false)が効いていれば Vision に触らない
-    func testDoesNotPrewarmWhenOCRIsOff() {
-        let before = RegionText.prewarmRequestCount
+    func testDoesNotStartTheModelCompileWhenOCRIsOff() {
+        let before = RegionText.modelCompileRequestCount
         _ = FTDriveCore(driver: SilentDriver(), platform: "ios", app: "com.example.app",
                         scenarioID: "T.S0010", scenarioTitle: "t",
                         delegate: nil, healingEnabled: false, tunables: RunTunables(),
                         fmTextOcclusionCheckEnabled: true, occlusionOCREnabled: false, emit: { _ in })
-        XCTAssertEqual(RegionText.prewarmRequestCount, before)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 }

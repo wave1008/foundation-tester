@@ -1,5 +1,5 @@
-// 画像照合の特徴量(GenerateImageFeaturePrintRequest・既定の装置 = ANE)の暖機。OCR の暖機(RegionText)とは
-// 別のモデル・別の装置なので、あちらが温まっていてもこちらは冷えたまま。
+// 画像照合の特徴量(GenerateImageFeaturePrintRequest・既定の装置 = ANE)の暖機。OCR モデルのコンパイル(RegionText)とは
+// 別のモデル・別の装置なので、あちらがコンパイル済みでもこちらは冷えたまま。
 // Vision の異常(縮退・測り直しの不一致)は**プロセスで最初に特徴量を計算したときだけ**起き数秒で戻る
 // (`FindImage.anomalyRetryDelays` の doc の実測)ので、シナリオ開始時に裏で計算し、健全な値が返るまで
 // 繰り返して、その時間をシナリオの操作(起動・タップ)と重ねる。
