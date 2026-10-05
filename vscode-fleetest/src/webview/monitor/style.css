@@ -877,6 +877,9 @@ html[lang="en"] .header-count {
 }
 .hm-label {
   font-size: 11px;
+  /* 「MEM 192」を1行に保つ(ユーザー決定)。幅が足りないと flex がラベルを縮め、空白で 2 段に折り返していた */
+  white-space: nowrap;
+  flex-shrink: 0;
   /* 控えめな文字色から少しだけ本文色へ寄せる(テーマ追従のまま明るさだけ上げる) */
   color: color-mix(in srgb, var(--vscode-descriptionForeground) 70%, var(--vscode-foreground));
 }
