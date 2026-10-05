@@ -51,7 +51,9 @@ class システムアラートの陽性対照 {
                     tap("#nav_diagnostics", scroll: .down)
                 }.action {
                     tap("#btn_request_photos")
-                    wait(2)
+                    // **アラートが出たことを観測してから撃つ**(固定の wait(2) では、アラートが遅れて出た回に背面の tap が
+                    // 覆われる前に通り、落ちる場所が後段の exist にずれていた。出す時機は OS が決める = 16 と同じ待ち方)
+                    exist("許可しない", waitSeconds: 15)
                     // 人手では触れないボタン。**ここで止まる**
                     tap("#btn_freeze_3s")
                 }.expectation {
