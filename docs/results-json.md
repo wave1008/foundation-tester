@@ -296,7 +296,7 @@ FM を呼ぶ構成だったかは `fmTextOcclusionCheck || screenLooksLike` で�
 | cpuCores | Int | その機械の論理コア数(`ProcessInfo.processorCount`)。**必須欄**(拡張は欠けた行を捨てる)。モニターの `CPU n` |
 | gpuCores | Int? | その機械の GPU コア数(IOAccelerator の `gpu-core-count`。プロセスで1回だけ読む)。**null = 読めない機械**(キーは省略しない)。モニターの `GPU n` |
 | fmCalls / fmFailures / fmTotalMs | Int? | そのサンプリング間隔で完了した FM 呼び出し(この機械の全プロセス合計。供給元は `FMUsageLedger`)。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
-| visionCalls / visionFailures / visionTotalMs | Int? | そのサンプリング間隔で完了した Vision / Core ML(FM 以外)の呼び出し(この機械の全プロセス合計。供給元は `VisionUsageLedger`。モニターの VN)。数えるのは4種: **OCR の `recognize` 1回**(occlusion-guard Tier-2 の `RegionText`。拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)/ **画像分類器の推論1回**(`VisionClassifier`。checkIsON/OFF・imageIs と、学習直後の見本の点検で見本1枚につき1回)/ **学習1回** / **画像特徴量の生成1回**(`FindImage`。findImage / findImages が候補1件ごとに1回・テンプレートはプロセス内で初回だけ)。OCR の暖機は数えない。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
+| visionCalls / visionFailures / visionTotalMs | Int? | そのサンプリング間隔で完了した Vision / Core ML(FM 以外)の呼び出し(この機械の全プロセス合計。供給元は `VisionUsageLedger`。モニターの Vision)。数えるのは4種: **OCR の `recognize` 1回**(occlusion-guard Tier-2 の `RegionText`。拡大はしごは読めるまで最大3段まで撃つので、1回のガードで最大3件になりうる)/ **画像分類器の推論1回**(`VisionClassifier`。checkIsON/OFF・imageIs と、学習直後の見本の点検で見本1枚につき1回)/ **学習1回** / **画像特徴量の生成1回**(`FindImage`。findImage / findImages が候補1件ごとに1回・テンプレートはプロセス内で初回だけ)。OCR の暖機は数えない。**null = 控えを読めなかった(不明)/ 0 = 呼び出しが無かった**。混ぜない |
 | fmTextState / fmVisionState | String? | `"alive"` / `"dead"` / **null = 不明**(観測が無い・`FMLiveness.freshSeconds` より古い)。**呼び出しが0件でも埋まる**のが回数欄との決定的な違い —— 誰も FM を使っていない間、回数だけでは「使われていない」と「死んでいる」が同じ絵になる |
 | fmDeadReason | String? | 死んでいる経路と理由(`text: … / vision: …`)。**1Hz で流れる行なので 200 文字で切る**(全文は `fleetest doctor --fm-only` と `scenarios/*.json` の `fm.firstError`) |
 | fmCheckedAt | Double? | 上の死活を観測した epoch 秒(新しいほうの経路)。**いつの観測かを必ず見る** —— 最大 120 秒古くなりうる |
@@ -407,7 +407,7 @@ screenLooksLike がこの回数ぶん静かに素通りしたことを事後に�
 | description | String | 人間可読なステップ説明(group の前置・注記の括弧書きを含む) |
 | command | String? | DSL のコマンド名。**`description` を割って作らないこと** |
 | failureKind | String? | 上表 |
-| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-warmup-waited` / `ocr-warmup-capped` / `ocr-shortcut-not-warm` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)。`blank-screenshot`(テキストの視覚検証のスクショが下端の帯を除いて真っ黒 = 絵が撮れていない・表示の凍結。判定せずに素通りした)。`webview-capture-blank`(テキストの視覚検証の対象が WebView の内側にあり、木の上では覆われていないのに、その文字の領域が絵では一色だった = iOS のスクショが WebView の層を取り逃した。判定せずに素通りした。木に載らない覆いは見逃すので**率を見る注記**)。`ocr-read-what-fm-missed` / `fm-read-what-ocr-missed`(テキストの視覚検証で OCR と FM の判定が割れ、見えていると読めた側を採って緑にした。前者は FM が見えないと言い OCR が読めた回・後者はその逆。**率を見る注記**)。`check-state-classified`(checkIsON / checkIsOFF の状態を CheckStateClassifier が要素の画像から判定した。a11y の報告ではない)。`check-state-classifier-failed`(見本画像はあるのに学習か読み込みに失敗し、a11y だけで判定した)。`vision-anomaly-retried`(findImage / findImages / existImage で Vision の異常を検知し、待って走査をやり直した。判定は変えない。**率が上がったら機械の GPU が混んでいる**)。`vision-helper-rescued`(同じ異常を検知した走査を、run が起こした長寿命の補助プロセスに特徴量を計算させてやり直し、補助の値が門を通って待たずに済んだ。**率が上がったら、シナリオのプロセスの Vision が負荷下の初期化で壊れる回が多い**)。`vision-helper-unavailable`(補助に頼もうとしたが無い・答えない・unhealthy で、既存の待ち直しへ落ちた。**立ち続けるなら補助が起動していない**)。`blank-screenshot-retaken`(findImage / findImages / existImage のスクショのアプリの領域が一色だったので、照合せずに待って撮り直した。戻らなければ失敗)。`settled-before-gesture`(flick・swipe・scroll の前に木の静止を待ち、待っている間に実際に木が動いた = 動いている最中か古い枠へ指を置いていた回)。`settled-after-launch`(起動直後の最初のロケータ操作の前に配置の静止を待ち、待っている間に実際に木が動いた = 待たなければずれる前の座標を撃っていた回)。`settled-after-keyboard`(直前の `type` がキーボードを出して画面が動いたので、次の操作の解決前に整定を待ち、**待っている間に実際に木が変わった**回だけ立つ。立たない = 待った時点で既に静止していた)。`keyboard-not-shown-after-type`(Android の `type` の後、ソフトキーボードが木に出るのを最大 1.5 秒待ったが出なかった。待ちをやめて従来どおり解決した。**率が上がったら上限不足かキーボードを出さない欄**)。`keyboard-appeared-late`(上の待ちを待ち切った後のロケータ操作の木でキーボードが出ていた = 上限不足の事例)。`acted-outside-container`(容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま操作した。**ステップは緑のまま**(設計どおり止めない)なので、後段の検証が無いシナリオではこれが「別の物に当たったかもしれない」唯一の痕跡)。`unchanged-tap-before-failure`(検証が失敗したとき、それより前のタップのうち画面を 1 ピクセルも変えなかったものを失敗文言で名指しした。**判定は変えない**。直前のタップだけでなく、tap が続いた場合は次のタップの時点で画面が変わっていなかった前のタップも名指しする。**iOS の木はアプリのプロセスだけ**なので、権限の要求など OS のアラートを出したタップも無変化に見える —— iOS の文言は「飲まれた」と言い切らずその可能性を併記する)。`launch-activated-before-foreground`(xcuitest の高速起動で、起動させた後にランナーがアプリを前面と見ないまま activate を頼んだ。activate が通れば緑のまま。**ランナーごと落ちる手前**の印)。自己修復の注記は `heal-fingerprint-match`(指紋照合で解決)/ `heal-unwritable`(一致したが一意に書けるセレクタが無い)の2つ(2026-09-15 に FM ヒール関連の `heal-proposal-rejected` / `heal-answer-unresolved` / `heal-no-replacement` / `heal-confidence-injected` を撤去 → maintainer-notes §22)) |
+| notes | [String]? | `StepNote` の rawValue(`interruption-dismissed` / `settle-capped` / `visibility-guard-skipped` / `system-alert-present` 等。全部の定義は `Sources/FTCore/StepNote.swift`。occlusion-guard・OCR の近道に関わる `guard-retaken` / `ocr-budget-exhausted` / `ocr-compile-waited` / `ocr-compile-capped` / `ocr-shortcut-not-ready` / `ocr-shortcut-busy` の読み方は下の §TimelineStepRecord(`guardMs` / `ocrMs` の段)。`blank-screenshot`(テキストの視覚検証のスクショが下端の帯を除いて真っ黒 = 絵が撮れていない・表示の凍結。判定せずに素通りした)。`webview-capture-blank`(テキストの視覚検証の対象が WebView の内側にあり、木の上では覆われていないのに、その文字の領域が絵では一色だった = iOS のスクショが WebView の層を取り逃した。判定せずに素通りした。木に載らない覆いは見逃すので**率を見る注記**)。`ocr-read-what-fm-missed` / `fm-read-what-ocr-missed`(テキストの視覚検証で OCR と FM の判定が割れ、見えていると読めた側を採って緑にした。前者は FM が見えないと言い OCR が読めた回・後者はその逆。**率を見る注記**)。`check-state-classified`(checkIsON / checkIsOFF の状態を CheckStateClassifier が要素の画像から判定した。a11y の報告ではない)。`check-state-classifier-failed`(見本画像はあるのに学習か読み込みに失敗し、a11y だけで判定した)。`vision-anomaly-retried`(findImage / findImages / existImage で Vision の異常を検知し、待って走査をやり直した。判定は変えない。**率が上がったら機械の GPU が混んでいる**)。`vision-helper-rescued`(同じ異常を検知した走査を、run が起こした長寿命の補助プロセスに特徴量を計算させてやり直し、補助の値が門を通って待たずに済んだ。**率が上がったら、シナリオのプロセスの Vision が負荷下の初期化で壊れる回が多い**)。`vision-helper-unavailable`(補助に頼もうとしたが無い・答えない・unhealthy で、既存の待ち直しへ落ちた。**立ち続けるなら補助が起動していない**)。`blank-screenshot-retaken`(findImage / findImages / existImage のスクショのアプリの領域が一色だったので、照合せずに待って撮り直した。戻らなければ失敗)。`settled-before-gesture`(flick・swipe・scroll の前に木の静止を待ち、待っている間に実際に木が動いた = 動いている最中か古い枠へ指を置いていた回)。`settled-after-launch`(起動直後の最初のロケータ操作の前に配置の静止を待ち、待っている間に実際に木が動いた = 待たなければずれる前の座標を撃っていた回)。`settled-after-keyboard`(直前の `type` がキーボードを出して画面が動いたので、次の操作の解決前に整定を待ち、**待っている間に実際に木が変わった**回だけ立つ。立たない = 待った時点で既に静止していた)。`keyboard-not-shown-after-type`(Android の `type` の後、ソフトキーボードが木に出るのを最大 1.5 秒待ったが出なかった。待ちをやめて従来どおり解決した。**率が上がったら上限不足かキーボードを出さない欄**)。`keyboard-appeared-late`(上の待ちを待ち切った後のロケータ操作の木でキーボードが出ていた = 上限不足の事例)。`acted-outside-container`(容器の外にあると判定した対象を、掴み直しと追加の送りを上限まで行っても外のまま操作した。**ステップは緑のまま**(設計どおり止めない)なので、後段の検証が無いシナリオではこれが「別の物に当たったかもしれない」唯一の痕跡)。`unchanged-tap-before-failure`(検証が失敗したとき、それより前のタップのうち画面を 1 ピクセルも変えなかったものを失敗文言で名指しした。**判定は変えない**。直前のタップだけでなく、tap が続いた場合は次のタップの時点で画面が変わっていなかった前のタップも名指しする。**iOS の木はアプリのプロセスだけ**なので、権限の要求など OS のアラートを出したタップも無変化に見える —— iOS の文言は「飲まれた」と言い切らずその可能性を併記する)。`launch-activated-before-foreground`(xcuitest の高速起動で、起動させた後にランナーがアプリを前面と見ないまま activate を頼んだ。activate が通れば緑のまま。**ランナーごと落ちる手前**の印)。自己修復の注記は `heal-fingerprint-match`(指紋照合で解決)/ `heal-unwritable`(一致したが一意に書けるセレクタが無い)の2つ(2026-09-15 に FM ヒール関連の `heal-proposal-rejected` / `heal-answer-unresolved` / `heal-no-replacement` / `heal-confidence-injected` を撤去 → maintainer-notes §22)) |
 | detail | String? | 失敗理由(英語・人間可読) |
 | file / line | String? / Int? | ソース位置 |
 | durationMs | Int? | 所要 |
@@ -449,25 +449,25 @@ snapshot/action/wait のどれにも計上されない時間だった実測。
 
 `guardMs > 0` のステップを1プロセス内で並べると、**最初にガードへ入った1ステップだけが
 36〜108 秒を払い、以降は 100〜300ms** になる —— 仕事量ではなく**プロセスにつき 1 回の初期化**である
-(正体は下の「36〜108 秒の正体」)。入っている対策は ①暖機は executor を作った時点で始め、
-**別の暖機(`warm-ocr`)が走っていればその完了を待ってから読む** ②**モデルが載って実際に読めるまで
+(正体は下の「36〜108 秒の正体」)。入っている対策は ①コンパイルは executor を作った時点で始め、
+**別のコンパイル(`compile-ocr`)が走っていればその完了を待ってから読む** ②**モデルが載って実際に読めるまで
 近道(OCR)は撃たない**(撃つとステップごとに予算を捨てるだけで、判定は結局 FM が下す)③**諦めた読みが
 走っている間は積み増さない** ④載った後の劣化に備え OCR 段に予算
 (`RegionText.occlusionBudget` = 1.3 秒 = 置き換える相手である FM 照合の実測下限)を持たせ、
 超えたら FM へ落として注記 `ocr-budget-exhausted` を残す(設計は docs/design.md §Tier-2 の続き)。
 **`ocr-budget-exhausted` の率が上がったら Vision が劣化している**(モデルが載っていない・OS 側の不調)。
-**暖機が終わっていなければ、近道の直前で終わるまで待つ**(2026-09-15)。**2026-10-06 からは最初のシナリオを起こす前に
-`warm-ocr` の完了を待つ**(run のログに `waited Ns for the OCR recognizer` が出る。その秒数はシナリオの所要に入らない)ので、
-ステップ内の待ちは受け皿。待った回は `ocr-warmup-waited`(待った時間は `ocrMs` と `guardMs` に入る。**ステップと
-シナリオの締め切りからは差し引かれる** = 待ちで赤にならない)、上限(120 秒。正当な暖機の実測最大 108 秒
-+ 1 割)に達した回は `ocr-warmup-capped`(認識器のコンパイルがハングした形。FM に回る)。
-待った後も近道を**撃たなかった**回は理由を分けて残す: `ocr-shortcut-not-warm`(暖機は終わったが読めない =
+**コンパイルが終わっていなければ、近道の直前で終わるまで待つ**(2026-09-15)。**2026-10-06 からは最初のシナリオを起こす前に
+`compile-ocr` の完了を待つ**(run のログに `waited Ns for the OCR model` が出る。その秒数はシナリオの所要に入らない)ので、
+ステップ内の待ちは受け皿。待った回は `ocr-compile-waited`(待った時間は `ocrMs` と `guardMs` に入る。**ステップと
+シナリオの締め切りからは差し引かれる** = 待ちで赤にならない)、上限(120 秒。正当なコンパイルの実測最大 108 秒
++ 1 割)に達した回は `ocr-compile-capped`(認識器のコンパイルがハングした形。FM に回る)。
+待った後も近道を**撃たなかった**回は理由を分けて残す: `ocr-shortcut-not-ready`(コンパイルは終わったが読めない =
 Vision が空を返す状態、または上限に達した)/ `ocr-shortcut-busy`(③のゲート = 予算切れで諦めた読みが
 まだ走っている。こちらは待たない)。どちらも「FM に訊いた」事実であって失敗ではない。
 **OCR が効くはずの薄いテキストで反転したら、まずこの 4 つの有無を見る**(近道が走っていれば `ocrMs > 0`。
 OCR を実行プロファイルで切った run にはどれも付かない)。
 **ビルドし直した直後の初回 run は、最初のシナリオが始まるまでが延びる**(認識器のコンパイルは実行ファイル
-ごと。warm-ocr のコミットを最初のシナリオの前に待つ)。2 回目以降は各シナリオの暖機(0.2〜0.3 秒)が最初の
+ごと。compile-ocr のコミットを最初のシナリオの前に待つ)。2 回目以降は各シナリオのコンパイル(0.2〜0.3 秒)が最初の
 ガードまでに終わるので、ほぼ付かない。
 
 **occlusion-guard の撮り直し(`guard-retaken`)**: 1 回目のガード評価(FM の直列化待ち + 推論)がステップの
@@ -482,9 +482,9 @@ timeout を跨いだまま「見えていない」と出たときだけ、締切
 (コールド 20〜45 秒 × 言語集合 2)が**そのプロセスの生存中に終わったときだけ**コミットされる。
 シナリオ実行プロセス(1シナリオ=1プロセス)はほぼ終わる前に死んで `.tmp` を残すだけ
 (E2E-CMP で完了 1 / 放置 53)なので、**全プロセスが毎回ゼロから払っていた**。対策は
-`fleetest-scenarios-<project> warm-ocr` —— run の開始時に**同じプロセス名の待てる子**を背景で 1 本
+`fleetest-scenarios-<project> compile-ocr` —— run の開始時に**同じプロセス名の待てる子**を背景で 1 本
 起こしてコミットさせる(`ScenarioHost.listForRun`。dry-run / MCP では起こさない。親の死を生き延びる
-= コミット前に殺さない。機械で同時に 1 本 = `OCRWarmupLock`)。実測: シナリオ側の暖機
+= コミット前に殺さない。機械で同時に 1 本 = `OCRModelCompileLock`)。実測: シナリオ側のコンパイル
 22,980ms → 216ms、実 crop の初回読み 21,830ms → 98〜122ms。
 
 **コマンド上限(`FTSync.commandTimeout` = 120 秒)で打ち切られたステップも `durationMs` と `at` を

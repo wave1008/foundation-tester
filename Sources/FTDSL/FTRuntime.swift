@@ -213,7 +213,7 @@ public final class FTDriveCore {
     let executor: StepExecutor
     let scenarioID: String
     let scenarioTitle: String
-    /// 呼び手の emit を直列化したもの(DSL スレッド・actor・暖機タスクから並行に呼ばれる)
+    /// 呼び手の emit を直列化したもの(DSL スレッド・actor・コンパイルタスクから並行に呼ばれる)
     let emit: @Sendable (ScenarioEvent) -> Void
     /// ロケータ指紋(LocatorFingerprint.swift 冒頭コメント参照。失敗経路でだけ参照する決定的なドリフト解決)。
     /// **flush() を1度呼ぶまでディスクへは書かない**(LocatorFingerprintCache.swift 参照)
@@ -471,7 +471,7 @@ public final class FTDriveCore {
         self.homeScreenDriverOverride = homeScreenDriver
         // executor 既定の occlusionGuard(StepExecutor.init 引数)は渡さない = 常に false。
         // 実際にガードが効くかはステップ指定(exist の requireVisible 既定 true)次第なので、
-        // StepExecutor.init 内の暖機開始(executor 既定でガードが効くときだけ撃つ)は DSL の経路では
+        // StepExecutor.init 内のコンパイル開始(executor 既定でガードが効くときだけ撃つ)は DSL の経路では
         // ほぼ素通りする。ここで実行プロファイルのマスタースイッチだけを見て別に頼む(下)
         let occlusionOCRResolvedMode: RegionTextGateMode = occlusionOCREnabled
             ? RegionText.mode(environment: ProcessInfo.processInfo.environment)
@@ -516,19 +516,19 @@ public final class FTDriveCore {
         self.executor.onDeviceFrozen = { frozenTarget.core?.markDeviceFrozen() }
         self.executor.visionClassifierProjectRoot = visionClassifierProjectRoot
         self.executor.preferCheckStateClassifier = preferCheckStateClassifier
-        // **シナリオ開始時に暖機を始める**(Vision のモデル初回ロードはプロセスに1回・数十秒
+        // **シナリオ開始時にコンパイルを始める**(Vision のモデル初回ロードはプロセスに1回・数十秒
         // かかる)。StepExecutor.init の既定ゲート(executor 既定でガードが効くときだけ撃つ)は
         // DSL の経路では実質発火しない(executor 既定の occlusionGuard は常に false)ため、
-        // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは prewarmIfNeeded
+        // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは compileModelIfNeeded
         // 自身が no-op(occlusionOCRResolvedMode の doc)
         if fmTextOcclusionCheckEnabled || occlusionOCREnabled {
-            RegionText.prewarmIfNeeded(mode: occlusionOCRResolvedMode)
+            RegionText.compileModelIfNeeded(mode: occlusionOCRResolvedMode)
         }
         // 画像照合の特徴量も同じくシナリオ開始時に(見本を持つプロジェクトだけ。FindImage+Prewarm.swift)
         if !dryRun {
             FindImage.prewarmIfNeeded(projectRoot: visionClassifierProjectRoot, isAndroid: platform == "android")
         }
-        // 暖機待ち(RegionText.awaitPrewarm)が締め切りから差し引かれるよう、子→親へ知らせる。
+        // コンパイル待ち(RegionText.awaitModelCompile)が締め切りから差し引かれるよう、子→親へ知らせる。
         // **1 プロセス 1 シナリオ**なので observer は process 全体で1個のままでよい。
         // ScenarioHost はこの kind を emit へ渡さず横取りする(ScenarioEvent.swift のコメント参照)
         DeadlineExclusion.observer = { change in

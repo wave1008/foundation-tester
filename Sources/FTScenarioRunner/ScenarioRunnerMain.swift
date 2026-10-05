@@ -29,7 +29,7 @@ struct Root: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "fleetest-scenarios",
         abstract: "List and run Swift DSL scenarios (the runner invoked by fleetest run)",
-        subcommands: [ListScenarios.self, RunScenario.self, WarmOCR.self]
+        subcommands: [ListScenarios.self, RunScenario.self, CompileOCR.self]
     )
 }
 
@@ -37,15 +37,15 @@ struct Root: AsyncParsableCommand {
 
 /// Vision の認識器のコンパイルキャッシュを**このプロセス名で**コミットさせる(ホストが run の
 /// 開始時に背景で起こす。理由と実測は `RegionText.commitCompileCache`)。結果は JSON 1 行
-struct WarmOCR: AsyncParsableCommand {
+struct CompileOCR: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "warm-ocr",
-        abstract: "Warm the on-device text recognizer so later scenario processes start fast")
+        commandName: "compile-ocr",
+        abstract: "Compile the on-device text recognizer model so later scenario processes start fast")
 
     func run() async throws {
-        // 機械で同時に 1 本(OCRWarmupLock の冒頭)。取れなければ別の暖機が走っているので何もしない
-        guard let lock = OCRWarmupLock.tryAcquire(processName: ProcessInfo.processInfo.processName) else {
-            ConsoleOut.out(#"{"warmups":[],"skipped":"another warm-ocr is running"}"#)
+        // 機械で同時に 1 本(OCRModelCompileLock の冒頭)。取れなければ別のコンパイルが走っているので何もしない
+        guard let lock = OCRModelCompileLock.tryAcquire(processName: ProcessInfo.processInfo.processName) else {
+            ConsoleOut.out(#"{"compiles":[],"skipped":"another compile-ocr is running"}"#)
             return
         }
         defer { try? lock.close() }
@@ -53,7 +53,7 @@ struct WarmOCR: AsyncParsableCommand {
         let rows = results.map { r -> [String: Any] in
             ["languages": r.languages, "ms": r.ms, "lines": r.lines, "error": r.error ?? ""]
         }
-        if let data = try? JSONSerialization.data(withJSONObject: ["warmups": rows]),
+        if let data = try? JSONSerialization.data(withJSONObject: ["compiles": rows]),
            let line = String(data: data, encoding: .utf8) {
             ConsoleOut.out(line)
         }

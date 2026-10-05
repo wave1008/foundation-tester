@@ -71,7 +71,7 @@ final class FTSyncTests: XCTestCase {
     }
 }
 
-/// `DeadlineExclusion` に積まれた時間(OCR 暖機待ち等)を締め切りから差し引く。
+/// `DeadlineExclusion` に積まれた時間(OCR コンパイル待ち等)を締め切りから差し引く。
 /// **延長できるのは実際に差し引かれた分だけ**(打ち切りの意味は変えない)
 final class FTSyncDeadlineExclusionTests: XCTestCase {
 

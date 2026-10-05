@@ -1,4 +1,4 @@
-// `DeadlineExclusion`: 「ツールの都合で待った時間」(今のところ RegionText.awaitPrewarm の待ちだけ)
+// `DeadlineExclusion`: 「ツールの都合で待った時間」(今のところ RegionText.awaitModelCompile の待ちだけ)
 // を締め切りの計算から差し引くための帳簿。完了分の合計・進行中の経過・observer への通知を確かめる。
 
 import XCTest

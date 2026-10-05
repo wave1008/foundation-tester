@@ -51,7 +51,7 @@ final class StaleFrameTextVisibleWiringTests: XCTestCase {
         let code = try Self.source
         let start = try XCTUnwrap(code.range(of: "private func staleFrameShowsExpectedText("))
         let body = String(code[start.lowerBound...].prefix(1400))
-        // 近道が撃てないときは確かめない(未 warm の読みで古い絵を通さない)
+        // 近道が撃てないときは確かめない(未コンパイル の読みで古い絵を通さない)
         XCTAssertTrue(body.contains("RegionText.shouldTakeShortcut("), "OCR の近道の門を通していない")
         // 丸ごと読めた(readable)ときだけ古くないとみなす
         XCTAssertTrue(body.contains("case .read(let readable, _) = outcome, readable"),

@@ -314,7 +314,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 
 | 症状 → 直し方 | 起きた構成 |
 |---|---|
-| M3 SearchBar(iOS)で `type` が入力を重複(`apapapapap`)→ 値が1文字も動かなければ OCR で画面を見る(暖機を待つ・キリル同形異字を `OCRHomoglyphs` で畳む)・追送は1回まで | iOS hybrid |
+| M3 SearchBar(iOS)で `type` が入力を重複(`apapapapap`)→ 値が1文字も動かなければ OCR で画面を見る(コンパイルを待つ・キリル同形異字を `OCRHomoglyphs` で畳む)・追送は1回まで | iOS hybrid |
 | HorizontalPager の `scrollToLeftEdge` が端の手前で止まる → 端の署名に id とラベル(**送っている容器の中だけ**。容器の外の表示は送りの副作用で変わる = `edgeContentRegion`) | 全エンジン |
 | 上端で状態が行き来する一覧(RefreshIndicator)で上限まで送る → **一度見た署名へ戻ったら進んでいない**(ドライバが動いたと申告した直後は数えない) | Flutter iOS |
 | in-app の `tap(x:y:)` が Popup の外側に届かないのに緑 → 自前描画(か不明)で要素の無い点は XCUITest | iOS hybrid |

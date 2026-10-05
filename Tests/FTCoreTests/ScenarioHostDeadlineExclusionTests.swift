@@ -1,5 +1,5 @@
 // `ScenarioHost.run` の scenarioTimeout(壁時計 watchdog)は、子が emit する
-// deadlineExclusion(began/ended)ぶんだけ締め切りを延ばす(RegionText.awaitPrewarm がその待ちを
+// deadlineExclusion(began/ended)ぶんだけ締め切りを延ばす(RegionText.awaitModelCompile がその待ちを
 // 締め切りから差し引くための仕組み。ScenarioEvent.swift のコメント参照)。
 // **延長できるのは実際に差し引かれた分だけ**(打ち切りの意味は変えない)ことと、
 // **deadlineExclusion イベントは installRequest と同じく emit(onEvent)へ渡らない**

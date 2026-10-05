@@ -215,20 +215,20 @@ final class RegionTextTests: XCTestCase {
         XCTAssertFalse(resolved.readable)
     }
 
-    /// 暖機を頼むのは on / measure のときだけ(off の run に Vision を読ませない)
-    func testPrewarmIsRequestedOnlyWhenGateIsActive() {
-        let before = RegionText.prewarmRequestCount
-        RegionText.prewarmIfNeeded(mode: .off)
-        XCTAssertEqual(RegionText.prewarmRequestCount, before, "off では暖機しない")
-        RegionText.prewarmIfNeeded(mode: .on)
-        RegionText.prewarmIfNeeded(mode: .measure)
-        XCTAssertEqual(RegionText.prewarmRequestCount, before + 2)
+    /// コンパイルを頼むのは on / measure のときだけ(off の run に Vision を読ませない)
+    func testModelCompileIsRequestedOnlyWhenGateIsActive() {
+        let before = RegionText.modelCompileRequestCount
+        RegionText.compileModelIfNeeded(mode: .off)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before, "off ではコンパイルしない")
+        RegionText.compileModelIfNeeded(mode: .on)
+        RegionText.compileModelIfNeeded(mode: .measure)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before + 2)
     }
 
-    /// 暖機は何度呼んでも安全で、そのあとの読み取りを壊さない(背景で走るので待たない)
-    func testPrewarmIsIdempotentAndLeavesReadsWorking() async throws {
-        RegionText.prewarmIfNeeded(mode: .on)
-        RegionText.prewarmIfNeeded(mode: .on)
+    /// コンパイルは何度呼んでも安全で、そのあとの読み取りを壊さない(背景で走るので待たない)
+    func testModelCompileIsIdempotentAndLeavesReadsWorking() async throws {
+        RegionText.compileModelIfNeeded(mode: .on)
+        RegionText.compileModelIfNeeded(mode: .on)
         let png = makeTextPNG("ログイン")
         let rect = FTRect(x: 0, y: 0, width: 240, height: 80)
         let readingRaw = await RegionText.read(pngData: png, frame: rect, screen: rect)
@@ -251,69 +251,69 @@ final class RegionTextLanguageCorrectionTests: XCTestCase {
     }
 }
 
-/// 差し替え口(`prewarmFinishOverrideForTesting`)だけになると「暖機の待ちを一度も通らない」
-/// 変更が緑のまま通るので、**production の既定**をここで固定する(warmOverrideForTesting と同じ規律)
-final class RegionTextAwaitPrewarmOverrideDefaultTests: XCTestCase {
+/// 差し替え口(`modelCompileFinishOverrideForTesting`)だけになると「コンパイルの待ちを一度も通らない」
+/// 変更が緑のまま通るので、**production の既定**をここで固定する(modelReadyOverrideForTesting と同じ規律)
+final class RegionTextAwaitModelCompileOverrideDefaultTests: XCTestCase {
     func testOverrideIsNotSetInProduction() {
-        XCTAssertNil(RegionText.prewarmFinishOverrideForTesting,
+        XCTAssertNil(RegionText.modelCompileFinishOverrideForTesting,
                      "差し替え口が残っている(テストが後始末していない)")
     }
 }
 
-/// `RegionText.awaitPrewarm` — 暖機の完了を async から待つ。実 Vision の所要は制御できないので、
-/// `prewarmFinishOverrideForTesting` で「進行中の時間」を作って測る(warmOverrideForTesting と
-/// 組み合わせて warmed/finishedCold を作り分ける)
-final class RegionTextAwaitPrewarmTests: XCTestCase {
+/// `RegionText.awaitModelCompile` — コンパイルの完了を async から待つ。実 Vision の所要は制御できないので、
+/// `modelCompileFinishOverrideForTesting` で「進行中の時間」を作って測る(modelReadyOverrideForTesting と
+/// 組み合わせて compiled/finishedUnready を作り分ける)
+final class RegionTextAwaitModelCompileTests: XCTestCase {
 
     override func tearDown() {
-        RegionText.warmOverrideForTesting = nil
-        RegionText.prewarmFinishOverrideForTesting = nil
+        RegionText.modelReadyOverrideForTesting = nil
+        RegionText.modelCompileFinishOverrideForTesting = nil
         super.tearDown()
     }
 
-    func testAlreadyWarmReturnsImmediatelyWithoutWaiting() async {
-        RegionText.warmOverrideForTesting = true
+    func testAlreadyReadyReturnsImmediatelyWithoutWaiting() async {
+        RegionText.modelReadyOverrideForTesting = true
         let clock = ContinuousClock()
         let start = clock.now
-        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
+        let outcome = await RegionText.awaitModelCompile(mode: .on, cap: .seconds(5))
         let elapsed = clock.now - start
-        XCTAssertEqual(outcome, .alreadyWarm)
-        XCTAssertLessThan(elapsed, .milliseconds(50), "既に暖まっているのに待っている(所要 \(elapsed))")
+        XCTAssertEqual(outcome, .alreadyReady)
+        XCTAssertLessThan(elapsed, .milliseconds(50), "既にコンパイル済みのに待っている(所要 \(elapsed))")
     }
 
-    func testWaitsForAnInProgressWarmupThenReportsWarmed() async {
-        RegionText.warmOverrideForTesting = false
-        RegionText.prewarmFinishOverrideForTesting = {
+    func testWaitsForAnInProgressCompileThenReportsCompiled() async {
+        RegionText.modelReadyOverrideForTesting = false
+        RegionText.modelCompileFinishOverrideForTesting = {
             try? await Task.sleep(for: .milliseconds(150))
-            RegionText.warmOverrideForTesting = true  // 暖機が成功して読めた体
+            RegionText.modelReadyOverrideForTesting = true  // コンパイルが成功して読めた体
         }
-        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
-        guard case .warmed(let waited) = outcome else { return XCTFail("warmed を返していない: \(outcome)") }
+        let outcome = await RegionText.awaitModelCompile(mode: .on, cap: .seconds(5))
+        guard case .compiled(let waited) = outcome else { return XCTFail("compiled を返していない: \(outcome)") }
         XCTAssertGreaterThanOrEqual(waited, .milliseconds(130),
                                     "進行中の完了を待たずに返っている(所要 \(waited))")
     }
 
-    func testWaitsForAnInProgressWarmupThenReportsFinishedColdWhenStillNotReadable() async {
-        RegionText.warmOverrideForTesting = false
-        RegionText.prewarmFinishOverrideForTesting = {
+    func testWaitsForAnInProgressCompileThenReportsFinishedUnreadyWhenStillNotReadable() async {
+        RegionText.modelReadyOverrideForTesting = false
+        RegionText.modelCompileFinishOverrideForTesting = {
             try? await Task.sleep(for: .milliseconds(150))
-            // warmOverrideForTesting は false のまま = 終わったが読めなかった(Vision 劣化)体
+            // modelReadyOverrideForTesting は false のまま = 終わったが読めなかった(Vision 劣化)体
         }
-        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .seconds(5))
-        guard case .finishedCold(let waited) = outcome else { return XCTFail("finishedCold を返していない: \(outcome)") }
+        let outcome = await RegionText.awaitModelCompile(mode: .on, cap: .seconds(5))
+        guard case .finishedUnready(let waited) = outcome else { return XCTFail("finishedUnready を返していない: \(outcome)") }
         XCTAssertGreaterThanOrEqual(waited, .milliseconds(130))
     }
 
     /// **所要を直接測る**(戻り値の内訳を信じず、実際にかかった壁時計時間で確かめる)。
     /// cap を短く渡し、戻るまでの時間が cap 付近であること
     func testCapsTheWaitAtTheLimit() async {
-        RegionText.warmOverrideForTesting = false
-        RegionText.prewarmFinishOverrideForTesting = {
+        RegionText.modelReadyOverrideForTesting = false
+        RegionText.modelCompileFinishOverrideForTesting = {
             try? await Task.sleep(for: .seconds(5))  // cap より十分長い(TaskBudget は仕事を止めない)
         }
         let clock = ContinuousClock()
         let start = clock.now
-        let outcome = await RegionText.awaitPrewarm(mode: .on, cap: .milliseconds(150))
+        let outcome = await RegionText.awaitModelCompile(mode: .on, cap: .milliseconds(150))
         let elapsed = clock.now - start
         guard case .capped = outcome else { return XCTFail("capped を返していない: \(outcome)") }
         XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(150), "上限より早く諦めている(所要 \(elapsed))")
@@ -322,7 +322,7 @@ final class RegionTextAwaitPrewarmTests: XCTestCase {
 }
 
 /// 差し替え口(`recognizeOverrideForTesting`)だけになると「探りの撃ち直しを一度も通らない」
-/// 変更が緑のまま通るので、production の既定をここで固定する(warmOverrideForTesting と同じ規律)
+/// 変更が緑のまま通るので、production の既定をここで固定する(modelReadyOverrideForTesting と同じ規律)
 final class RegionTextRecognizeOverrideDefaultTests: XCTestCase {
     func testOverrideIsNotSetInProduction() {
         XCTAssertNil(RegionText.recognizeOverrideForTesting,
@@ -341,9 +341,9 @@ private final class LockedCallCount: @unchecked Sendable {
     func incrementAndGet() -> Int { lock.lock(); n += 1; defer { lock.unlock() }; return n }
 }
 
-/// `RegionText.probeWithRetry` — 暖機の探りが空(またはエラー)を返しても撃ち直すことの担保。
+/// `RegionText.probeWithRetry` — コンパイルの探りが空(またはエラー)を返しても撃ち直すことの担保。
 /// 実測(2026-09-16、`FT_OCR_HANG_SAMPLE=1` 採取): 手元のフリート実行 26 プロセス中 15 本が
-/// 探り 1 回だけで空を引いて warm にならず、その run は OCR 使用率 0% になった。
+/// 探り 1 回だけで空を引いて ready にならず、その run は OCR 使用率 0% になった。
 /// Vision を実際に叩かず `recognizeOverrideForTesting` で結果を制御する
 final class RegionTextProbeWithRetryTests: XCTestCase {
 
@@ -359,7 +359,7 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
         return ctx.makeImage()!
     }
 
-    /// 1 回目が空・2 回目で読める → warm になる(= 撃ち直しが効いている)
+    /// 1 回目が空・2 回目で読める → ready になる(= 撃ち直しが効いている)
     func testRetriesUntilReadable() async {
         let callCount = LockedCallCount()
         RegionText.recognizeOverrideForTesting = { _ in
@@ -371,10 +371,10 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
         XCTAssertNil(error)
         XCTAssertEqual(attempts, 2, "撃ち直した回数が記録されていない")
         XCTAssertEqual(callCount.value, 2)
-        XCTAssertTrue(RegionText.warmedUp(probe: lines))
+        XCTAssertTrue(RegionText.modelReady(probe: lines))
     }
 
-    /// 常に空 → 予算内で止まる(無限ループしない)・warm にならない。
+    /// 常に空 → 予算内で止まる(無限ループしない)・ready にならない。
     /// 所要は戻り値でなく**実測(経過時間)**で確かめる
     func testStopsWithinBudgetWhenAlwaysEmpty() async {
         RegionText.recognizeOverrideForTesting = { _ in [] }
@@ -383,7 +383,7 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
         let (lines, _, attempts) = await RegionText.probeWithRetry(
             image: dummyImage(), budget: .milliseconds(300), interval: .milliseconds(50))
         let elapsed = clock.now - start
-        XCTAssertFalse(RegionText.warmedUp(probe: lines))
+        XCTAssertFalse(RegionText.modelReady(probe: lines))
         XCTAssertGreaterThan(attempts, 1, "撃ち直していない")
         XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(300), "予算より早く諦めている(所要 \(elapsed))")
         XCTAssertLessThan(elapsed, .milliseconds(600), "予算を大きく超えて撃ち続けている(所要 \(elapsed))")
@@ -411,8 +411,8 @@ final class RegionTextProbeWithRetryTests: XCTestCase {
     /// 明示して呼ぶので、これが無いと既定を 0 に落とす変更(= 撃ち直しが production で1度も
     /// 起きない)が緑のまま通る(2026-09-16 の変異チェックで実際に生き残った)
     func testDefaultRetryBudgetAndIntervalArePinned() {
-        XCTAssertEqual(RegionText.prewarmRetryBudget, .seconds(2))
-        XCTAssertEqual(RegionText.prewarmRetryInterval, .milliseconds(50))
+        XCTAssertEqual(RegionText.modelCompileRetryBudget, .seconds(2))
+        XCTAssertEqual(RegionText.modelCompileRetryInterval, .milliseconds(50))
     }
 
     /// **引数を省いた呼び出し(= production と同じ形)でも撃ち直す**。既定値の固定と対で、

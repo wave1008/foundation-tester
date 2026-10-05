@@ -234,15 +234,15 @@ public enum ScenarioHost {
     /// occlusion-guard の OCR 近道が使う Vision の認識器を、**シナリオ実行バイナリと同じプロセス名**で
     /// 1回撃ち切ってコンパイルキャッシュをコミットさせる(理由と実測は `RegionText.commitCompileCache`)。
     /// **待たない** —— デバイス供給と並行して走らせる(コールドで 20〜45 秒 × 2 言語集合。
-    /// 暖まっていれば 0.5 秒)。最初の数本のシナリオは間に合わないことがあるが、以後は全部速い。
+    /// コンパイル済みなら 0.5 秒)。最初の数本のシナリオは間に合わないことがあるが、以後は全部速い。
     /// OCR の殺しスイッチが効いている run では起こさない(使わない Vision を読ませない)。
-    /// 失敗は握りつぶす(暖機であって合否に関わらない)。**起こすのは `listForRun` だけ**
-    /// (dry-run / MCP / codegen の一覧取得(`list`)では起こさない。`OCRWarmupWiringTests`)
-    static func warmOCRCache(project: TestProject) {
+    /// 失敗は握りつぶす(コンパイルであって合否に関わらない)。**起こすのは `listForRun` だけ**
+    /// (dry-run / MCP / codegen の一覧取得(`list`)では起こさない。`OCRModelCompileWiringTests`)
+    static func startOCRModelCompile(project: TestProject) {
         guard RegionText.mode(environment: ProcessInfo.processInfo.environment) != .off else { return }
         // **1 プロセスにつき 1 回**。複数の機械に跨る profile は同じ親の中で run 経路を 3 回通る
-        // (実測: warm-ocr が 3 本同時に走った)。同じキャッシュを 3 本が競ってコンパイルするだけ
-        let already = warmupStarted.withLock { started in
+        // (実測: compile-ocr が 3 本同時に走った)。同じキャッシュを 3 本が競ってコンパイルするだけ
+        let already = ocrCompileStarted.withLock { started in
             defer { started = true }
             return started
         }
@@ -250,10 +250,10 @@ public enum ScenarioHost {
         guard let runner = try? runnerURL(project: project) else { return }
         let process = Process()
         process.executableURL = runner
-        process.arguments = ["warm-ocr"]
+        process.arguments = ["compile-ocr"]
         // **親の死で巻き込まない**(`FT_PARENT_PID` を渡さない = ParentDeathWatch を武装しない)。
-        // 1 シナリオだけの短い run(約 30 秒)では親が先に終わるが、暖機はコールドで 20〜45 秒 × 2 で、
-        // 親と一緒に死ぬとコンパイルがコミットされず、次の run もまたゼロから払う(この暖機が
+        // 1 シナリオだけの短い run(約 30 秒)では親が先に終わるが、コンパイルはコールドで 20〜45 秒 × 2 で、
+        // 親と一緒に死ぬとコンパイルがコミットされず、次の run もまたゼロから払う(このコンパイルが
         // 直そうとしている当のもの)。自分で終わる有限(≤ 約 1.5 分)の子なので孤児の心配は無い。
         // 拡張の孤児掃除も `FT_PARENT_PID` の印を持つものだけを殺すので巻き込まれない
         var env = ProcessInfo.processInfo.environment
@@ -264,24 +264,24 @@ public enum ScenarioHost {
         process.qualityOfService = .utility
         try? process.run()
         if process.processIdentifier > 0 {
-            warmupPID.withLock { $0 = process.processIdentifier }
+            ocrCompilePID.withLock { $0 = process.processIdentifier }
         }
     }
 
-    /// `warmOCRCache` が起こした `warm-ocr` の pid(nil = 起こしていない)。`awaitOCRWarmup` が待つ相手
-    static let warmupPID = Mutex<pid_t?>(nil)
+    /// `startOCRModelCompile` が起こした `compile-ocr` の pid(nil = 起こしていない)。`awaitOCRModelCompile` が待つ相手
+    static let ocrCompilePID = Mutex<pid_t?>(nil)
     /// 待った秒数を run のログへ出したか(1 run = 1 プロセスにつき1回だけ出す)
-    private static let warmupWaitReported = Mutex(false)
+    private static let ocrCompileWaitReported = Mutex(false)
 
-    /// **最初のシナリオを起こす前に `warm-ocr` が終わるまで待つ**(ユーザー決定。以前の
-    /// 「run の開始時には待たない」を取り消した)。シナリオの最中に暖機を待つと、締め切りは差し引かれても
+    /// **最初のシナリオを起こす前に `compile-ocr` が終わるまで待つ**(ユーザー決定。以前の
+    /// 「run の開始時には待たない」を取り消した)。シナリオの最中にコンパイルを待つと、締め切りは差し引かれても
     /// アプリの時間は進み、一時的な状態を確かめる手順が壊れた(E2EY-Android の骨組み: `select` が 39 秒待つ間に
-    /// 2 秒の読み込み中が終わった)。暖まっていれば子は約 0.5 秒で終わるので、ふつうは待たない。
-    /// 上限は `RegionText.prewarmWaitCap`(尽きたらシナリオ内の `awaitPrewarm` が従来どおり受ける)。
+    /// 2 秒の読み込み中が終わった)。コンパイル済みなら子は約 0.5 秒で終わるので、ふつうは待たない。
+    /// 上限は `RegionText.modelCompileWaitCap`(尽きたらシナリオ内の `awaitModelCompile` が従来どおり受ける)。
     /// 戻り値は待った時間(子がもう居なければ nil)。全ワーカーが同じ子を待つ
-    static func awaitOCRWarmup(cap: Duration = RegionText.prewarmWaitCap,
+    static func awaitOCRModelCompile(cap: Duration = RegionText.modelCompileWaitCap,
                                poll: Duration = .milliseconds(200)) async -> Duration? {
-        guard let pid = warmupPID.withLock({ $0 }), ProcessLiveness.isAlive(pid) else { return nil }
+        guard let pid = ocrCompilePID.withLock({ $0 }), ProcessLiveness.isAlive(pid) else { return nil }
         let clock = ContinuousClock()
         let start = clock.now
         while ProcessLiveness.isAlive(pid), clock.now - start < cap {
@@ -290,19 +290,19 @@ public enum ScenarioHost {
         return clock.now - start
     }
 
-    /// **シナリオを実際に走らせる経路**の一覧取得。`list` に加えて認識器の暖機を背景で起こす
-    /// (`warmOCRCache`)。一覧だけ要る経路(dry-run / MCP / codegen)は `list` を使う ——
-    /// 使わない Vision を読ませない。呼び出し元の集合は `OCRWarmupWiringTests` が等号で固定
-    /// `dryRun` の run では起こさない —— ステップを実行しないので OCR も走らず、しかも暖機は親の死を
+    /// **シナリオを実際に走らせる経路**の一覧取得。`list` に加えて認識器のコンパイルを背景で起こす
+    /// (`startOCRModelCompile`)。一覧だけ要る経路(dry-run / MCP / codegen)は `list` を使う ——
+    /// 使わない Vision を読ませない。呼び出し元の集合は `OCRModelCompileWiringTests` が等号で固定
+    /// `dryRun` の run では起こさない —— ステップを実行しないので OCR も走らず、しかもコンパイルは親の死を
     /// 生き延びる子(下の doc)なので、dry-run を使う終了テスト(`CrossLayerTerminationTests`)が
     /// 「子孫が残った」と正しく落とす
     public static func listForRun(project: TestProject, dryRun: Bool) throws -> [ScenarioInfo] {
         let all = try list(project: project)
-        if !dryRun { warmOCRCache(project: project) }
+        if !dryRun { startOCRModelCompile(project: project) }
         return all
     }
 
-    private static let warmupStarted = Mutex(false)
+    private static let ocrCompileStarted = Mutex(false)
 
     public static func list(project: TestProject) throws -> [ScenarioInfo] {
         let runner = try runnerURL(project: project)
@@ -375,10 +375,10 @@ public enum ScenarioHost {
                            /// = `--failed` が存在しないシナリオを拾わない
                            deviceTearDownOnly: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
-        // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRWarmup の doc)
-        if !dryRun, let waited = await awaitOCRWarmup(), waited >= .seconds(1),
-           warmupWaitReported.withLock({ reported in defer { reported = true }; return !reported }) {
-            onEvent(ScenarioEvent.log("⏳ waited \(continuousClockMs(waited) / 1000)s for the OCR recognizer to finish compiling"
+        // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRModelCompile の doc)
+        if !dryRun, let waited = await awaitOCRModelCompile(), waited >= .seconds(1),
+           ocrCompileWaitReported.withLock({ reported in defer { reported = true }; return !reported }) {
+            onEvent(ScenarioEvent.log("⏳ waited \(continuousClockMs(waited) / 1000)s for the OCR model to finish compiling"
                         + " before starting scenarios (first run after a rebuild)"))
         }
         let fm = settings.fm
@@ -548,7 +548,7 @@ public enum ScenarioHost {
         let watchdogSeconds: Int? = (debug == nil)
             ? (scenarioTimeout ?? defaultScenarioTimeout) : nil
         let timeoutGuard = TimeoutGuard()
-        // 子の deadlineExclusion(OCR 暖機待ち等)を集計する。watchdog が無い(--debug)ときも
+        // 子の deadlineExclusion(OCR コンパイル待ち等)を集計する。watchdog が無い(--debug)ときも
         // 作る ——読み取りループ側は watchdogSeconds の有無を見ずに素通りさせるだけなので、
         // ここで nil 分岐を持たせるより単純
         let extensionTracker = WatchdogExtensionTracker()
@@ -886,7 +886,7 @@ private actor TimeoutGuard {
 /// 子の `deadlineExclusion` イベント(began/ended)から watchdog に足すべき延長分を計算する
 /// 純粋関数。**began だけ**(まだ ended が来ていない)= 上限(capMs)ぶんを仮に見込む。
 /// **ended** = 仮の見込みを消して実測(ms)へ置き換える。複数回の begin/end も正しく合計する
-/// (1 プロセスで暖機が複数回走ることは今のところ無いが、限定はしない)。internal にしてあるのは
+/// (1 プロセスでコンパイルが複数回走ることは今のところ無いが、限定はしない)。internal にしてあるのは
 /// `@testable import` から直接固定するため
 struct WatchdogExtension: Sendable, Equatable {
     private var completedMs = 0

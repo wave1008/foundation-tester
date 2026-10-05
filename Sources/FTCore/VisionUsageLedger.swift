@@ -2,7 +2,7 @@
 //   - RegionText.read(occlusion-guard Tier-2 の OCR)= `recognize` 1回で1件
 //   - VisionClassifier(checkIsON/OFF・imageIs の画像分類器)= 推論1回・学習1回でそれぞれ1件
 //   - FindImage(findImage / findImages)= 画像特徴量(FeaturePrint)の生成1回で1件
-// Vision を呼ぶ経路を足したらここへも記録する(モニターの VN グラフが黙って欠ける)。
+// Vision を呼ぶ経路を足したらここへも記録する(モニターの Vision グラフが黙って欠ける)。
 //
 // FMUsageLedger と同じ理由・同じ形: host-metrics 自身が Vision を叩いて測ると測定対象を自分で
 // 消費してしまうため、実際に呼んでいる各プロセスがここへ書き、host-metrics が毎 tick 読む。
@@ -10,7 +10,7 @@
 // vscode-fleetest/src/monitorProcessManager.ts の HostMetricsRawEvent と対。
 //
 // 中身の実装は UsageLedger.swift に共通化してある(FMUsageLedger と共有。コピーしない)。
-// **OCR の暖機(RegionText.prewarmOnce)は記録しない** —— ガードの実仕事ではなく初回ロードは
+// **OCR のコンパイル(RegionText.modelCompileOnce)は記録しない** —— ガードの実仕事ではなく初回ロードは
 // 25〜47 秒かかるので、数えると実測が化ける。
 //
 // 置き場は ~/.fleetest/vision-usage/(FT_VISION_USAGE_DIR で差し替え。テスト用)。

@@ -1,15 +1,15 @@
-// 最初のシナリオを起こす前に warm-ocr の完了を待つ(ScenarioHost.awaitOCRWarmup。ユーザー決定)。
-// witness: E2EY-Android の骨組み —— シナリオの中で暖機を 39 秒待つ間に 2 秒の読み込み中が終わり、次の検証が本物の行を読んだ。
+// 最初のシナリオを起こす前に compile-ocr の完了を待つ(ScenarioHost.awaitOCRModelCompile。ユーザー決定)。
+// witness: E2EY-Android の骨組み —— シナリオの中でコンパイルを 39 秒待つ間に 2 秒の読み込み中が終わり、次の検証が本物の行を読んだ。
 // 所要は戻り値でなく壁時計で測る(予算のテストの規律)
 
 import Foundation
 import XCTest
 @testable import FTCore
 
-final class OCRWarmupBeforeScenarioTests: XCTestCase {
+final class OCRModelCompileBeforeScenarioTests: XCTestCase {
 
     override func tearDown() {
-        ScenarioHost.warmupPID.withLock { $0 = nil }
+        ScenarioHost.ocrCompilePID.withLock { $0 = nil }
         super.tearDown()
     }
 
@@ -18,15 +18,15 @@ final class OCRWarmupBeforeScenarioTests: XCTestCase {
         process.executableURL = URL(fileURLWithPath: "/bin/sleep")
         process.arguments = [seconds]
         try process.run()
-        ScenarioHost.warmupPID.withLock { $0 = process.processIdentifier }
+        ScenarioHost.ocrCompilePID.withLock { $0 = process.processIdentifier }
         return process
     }
 
-    func testWaitsUntilTheWarmupChildExits() async throws {
+    func testWaitsUntilTheCompileChildExits() async throws {
         let child = try spawnSleep("1.5")
         let clock = ContinuousClock()
         let start = clock.now
-        let waited = await ScenarioHost.awaitOCRWarmup()
+        let waited = await ScenarioHost.awaitOCRModelCompile()
         let elapsed = clock.now - start
         XCTAssertNotNil(waited)
         XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(1200), "子が生きている間は待つ")
@@ -34,10 +34,10 @@ final class OCRWarmupBeforeScenarioTests: XCTestCase {
         XCTAssertFalse(child.isRunning)
     }
 
-    func testDoesNotWaitWithoutAWarmupChild() async {
+    func testDoesNotWaitWithoutACompileChild() async {
         let clock = ContinuousClock()
         let start = clock.now
-        let waited = await ScenarioHost.awaitOCRWarmup()
+        let waited = await ScenarioHost.awaitOCRModelCompile()
         XCTAssertNil(waited)
         XCTAssertLessThan(clock.now - start, .milliseconds(100))
     }
@@ -47,14 +47,14 @@ final class OCRWarmupBeforeScenarioTests: XCTestCase {
         defer { child.terminate() }
         let clock = ContinuousClock()
         let start = clock.now
-        _ = await ScenarioHost.awaitOCRWarmup(cap: .milliseconds(500))
+        _ = await ScenarioHost.awaitOCRModelCompile(cap: .milliseconds(500))
         let elapsed = clock.now - start
         XCTAssertGreaterThanOrEqual(elapsed, .milliseconds(450))
         XCTAssertLessThan(elapsed, .seconds(3), "上限で打ち切る(子が終わるまで待たない)")
     }
 
-    func testPinnedCapIsThePrewarmCap() {
-        XCTAssertEqual(RegionText.prewarmWaitCap, .seconds(120))
+    func testPinnedCapIsTheModelCompileCap() {
+        XCTAssertEqual(RegionText.modelCompileWaitCap, .seconds(120))
     }
 
     /// 配線: シナリオの所要(startedAt)に含めないよう、計時より前で待つ
@@ -64,7 +64,7 @@ final class OCRWarmupBeforeScenarioTests: XCTestCase {
             .appendingPathComponent("Sources/FTCore/ScenarioHost.swift"), encoding: .utf8)
         let body = try XCTUnwrap(source.range(of: "public static func run(project: TestProject, scenarioID: String,"))
         let rest = source[body.upperBound...]
-        let wait = try XCTUnwrap(rest.range(of: "await awaitOCRWarmup()"))
+        let wait = try XCTUnwrap(rest.range(of: "await awaitOCRModelCompile()"))
         let timing = try XCTUnwrap(rest.range(of: "let startedAt = Date()"))
         XCTAssertLessThan(wait.lowerBound, timing.lowerBound)
     }

@@ -23,7 +23,7 @@ public enum RetentionSweepLock {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(fileName)
         // **`FileManager.createFile` を使わない** —— 既存のパスに書くと別の inode に置き換わり、
-        // 先客の flock(旧 inode に付いている)と衝突しなくなる(OCRWarmupLock と同じ罠)。
+        // 先客の flock(旧 inode に付いている)と衝突しなくなる(OCRModelCompileLock と同じ罠)。
         // pid も同じ fd へ ftruncate + write で書く(inode を変えない)
         let fd = open(url.path, O_RDWR | O_CREAT, 0o644)
         guard fd >= 0 else { return nil }

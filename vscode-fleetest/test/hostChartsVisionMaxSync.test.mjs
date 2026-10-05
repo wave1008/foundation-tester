@@ -1,4 +1,4 @@
-// VN スパークラインの縦軸の下限が、Swift 側の OCR 拡大再読みの段数と一致していることの検証。
+// Vision スパークラインの縦軸の下限が、Swift 側の OCR 拡大再読みの段数と一致していることの検証。
 //
 // occlusion-guard の1ステップは、読めなければ crop を拡大して読み直す(RegionText.upscaleLadder)
 // ので最大 upscaleLadder.count 回まで OCR を撃つ。**ズレても両方とも成功する**(描画も判定も
@@ -19,7 +19,7 @@ import { test } from "node:test";
 const ROOT = process.cwd();
 const REPO = path.join(ROOT, "..");
 
-test("VN グラフの下限が Swift 側の upscaleLadder の段数と一致する", () => {
+test("Vision グラフの下限が Swift 側の upscaleLadder の段数と一致する", () => {
   const swift = readFileSync(path.join(REPO, "Sources/FTCore/RegionText.swift"), "utf8");
   const ladderMatch = swift.match(/upscaleLadder\s*=\s*\[([^\]]*)\]/);
   assert.ok(ladderMatch, "RegionText.swift から upscaleLadder を抽出できません");
@@ -30,10 +30,10 @@ test("VN グラフの下限が Swift 側の upscaleLadder の段数と一致す�
   assert.ok(chartsMatch, "hostChartScale.js から HM_VISION_MAX_RATE を抽出できません");
 
   assert.equal(Number(chartsMatch[1]), steps,
-    "VN グラフの下限が RegionText.upscaleLadder の段数とズレています");
+    "Vision グラフの下限が RegionText.upscaleLadder の段数とズレています");
 });
 
-test("VN の縦軸は HM_VISION_MAX_RATE を下限としたオートスケール", async () => {
+test("Vision の縦軸は HM_VISION_MAX_RATE を下限としたオートスケール", async () => {
   const { hmCountScale, HM_VISION_MAX_RATE } = await import("../src/webview/monitor/hostChartScale.js");
   assert.equal(HM_VISION_MAX_RATE, 3, "この後の期待値はすべて HM_VISION_MAX_RATE=3 前提");
   const scale = (samples) => hmCountScale(samples, HM_VISION_MAX_RATE);
@@ -46,9 +46,9 @@ test("VN の縦軸は HM_VISION_MAX_RATE を下限としたオートスケール
   assert.equal(scale([null, null]), 3, "全欠測なら下限");
 });
 
-// FM と VN は別々の縦軸(片方に合わせると読めなくなる) —— 同じ hmCountScale を通っても
+// FM と Vision は別々の縦軸(片方に合わせると読めなくなる) —— 同じ hmCountScale を通っても
 // floor が違えば結果が違うことを確かめる
-test("FM と VN は同じ入力でも下限が違えば結果が違う", async () => {
+test("FM と Vision は同じ入力でも下限が違えば結果が違う", async () => {
   const { hmCountScale, HM_FM_MAX_RATE, HM_VISION_MAX_RATE } = await import("../src/webview/monitor/hostChartScale.js");
   assert.notEqual(HM_FM_MAX_RATE, HM_VISION_MAX_RATE, "下限が同じなら別軸にする意味の一部が消える");
   assert.equal(hmCountScale([0, 1], HM_FM_MAX_RATE), HM_FM_MAX_RATE);

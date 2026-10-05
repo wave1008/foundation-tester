@@ -712,7 +712,7 @@ extension MCPServer {
     }
 
     /// 協調スレッドプールを塞がない同期実行の器。**専用 Thread**(`FTCore.RegionText
-    /// .prewarmOnce` / `HostMetricsSampler` / `ParentDeathWatch.arm` と同じ作法)を起こし、
+    /// .modelCompileOnce` / `HostMetricsSampler` / `ParentDeathWatch.arm` と同じ作法)を起こし、
     /// `work` の戻り値を継続で1回だけ渡す。`work` は真にブロッキングな同期処理(`Shell.run` 等)を
     /// 置いてよい場所 —— ここより外(呼び出し元の async 文脈)では絶対に直呼びしない
     static func runOffCooperativePool<T: Sendable>(

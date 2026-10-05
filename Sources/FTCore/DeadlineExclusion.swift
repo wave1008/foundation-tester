@@ -1,5 +1,5 @@
 // 「ツールの都合で待った時間」を締め切り(FTSync のコマンド待ち・ScenarioHost の scenarioTimeout)
-// の計算から差し引くための帳簿。今のところ対象は OCR 近道の暖機待ち(RegionText.awaitPrewarm)だけ。
+// の計算から差し引くための帳簿。今のところ対象は OCR 近道のコンパイル待ち(RegionText.awaitModelCompile)だけ。
 // **1 プロセス 1 シナリオ・ステップは逐次実行**なので、プロセス全体で1個の状態でよい
 // (begin/end は重ねて呼ばれない前提)。lock は別スレッド/Task(NDJSON 読み取りループ・
 // killer タスク)からの読み取りを守るためのもの。
@@ -38,14 +38,14 @@ public enum DeadlineExclusion {
     private static let state = Mutex(State())
 
     /// 待ちが始まる瞬間に呼ぶ。**待ちが 0 なら呼ばない**(呼び手の契約 —
-    /// RegionText.awaitPrewarm は既に暖まっていれば begin しない)
+    /// RegionText.awaitModelCompile は既にコンパイル済みなら begin しない)
     public static func begin(cap: Duration) -> Token {
         state.withLock { $0.activeSince = ContinuousClock().now }
         observer?(.began(capMs: ms(cap)))
         return Token()
     }
 
-    /// 待ちが終わった瞬間に呼ぶ(結果が warmed/finishedCold/capped のどれでも呼ぶ)
+    /// 待ちが終わった瞬間に呼ぶ(結果が compiled/finishedUnready/capped のどれでも呼ぶ)
     public static func end(_ token: Token) {
         let now = ContinuousClock().now
         let elapsedMs: Int = state.withLock {

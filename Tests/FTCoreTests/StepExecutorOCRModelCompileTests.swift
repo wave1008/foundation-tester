@@ -1,6 +1,6 @@
 // Vision のモデルの初回ロードは**プロセスに1回・実測 25〜108 秒**で、ガードの中から呼ぶと
 // 最初にガードへ入った1ステップがそれを丸ごと払う(2026-09-10 のフル E2E: そのステップだけ
-// 36〜108 秒・以降は 100〜300ms)。だから暖機は executor を作った時点で始める。
+// 36〜108 秒・以降は 100〜300ms)。だからコンパイルは executor を作った時点で始める。
 // **ただしガードが効かない run では撃たない** —— 使いもしない Vision を読ませない。
 
 import Foundation
@@ -8,39 +8,39 @@ import CoreML
 import XCTest
 @testable import FTCore
 
-final class StepExecutorPrewarmTests: XCTestCase {
+final class StepExecutorOCRModelCompileTests: XCTestCase {
 
-    func testPrewarmsWhenTheGuardIsOnByDefault() {
-        let before = RegionText.prewarmRequestCount
+    func testStartsModelCompileWhenTheGuardIsOnByDefault() {
+        let before = RegionText.modelCompileRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,
                          occlusionOCRMode: .on, occlusionGuardEnabled: true, isAndroid: false, tunables: RunTunables())
-        XCTAssertEqual(RegionText.prewarmRequestCount, before + 1,
-                       "ガードが効く executor で暖機を始めていない")
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before + 1,
+                       "ガードが効く executor でコンパイルを始めていない")
     }
 
     /// マスタースイッチ(実行プロファイルの fmTextOcclusionCheck)が off の run では撃たない
-    func testDoesNotPrewarmWhenTheMasterSwitchIsOff() {
-        let before = RegionText.prewarmRequestCount
+    func testDoesNotStartModelCompileWhenTheMasterSwitchIsOff() {
+        let before = RegionText.modelCompileRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,
                          occlusionOCRMode: .on, occlusionGuardEnabled: false, isAndroid: false, tunables: RunTunables())
-        XCTAssertEqual(RegionText.prewarmRequestCount, before)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 
     /// executor 既定でガードが効かない run でも撃たない(ステップ指定で立つ稀な場合は
     /// 予算つきの OCR 段が面倒を見る。RegionText.occlusionBudget)
-    func testDoesNotPrewarmWhenTheGuardIsOffByDefault() {
-        let before = RegionText.prewarmRequestCount
+    func testDoesNotStartModelCompileWhenTheGuardIsOffByDefault() {
+        let before = RegionText.modelCompileRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: false,
                          occlusionOCRMode: .on, occlusionGuardEnabled: true, isAndroid: false, tunables: RunTunables())
-        XCTAssertEqual(RegionText.prewarmRequestCount, before)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 
     /// OCR の殺しスイッチ(FT_OCCLUSION_OCR=0)が効いていれば Vision に触らない
-    func testDoesNotPrewarmWhenOCRIsOff() {
-        let before = RegionText.prewarmRequestCount
+    func testDoesNotStartModelCompileWhenOCRIsOff() {
+        let before = RegionText.modelCompileRequestCount
         _ = StepExecutor(driver: SilentDriver(), occlusionGuard: true,
                          occlusionOCRMode: .off, occlusionGuardEnabled: true, isAndroid: false, tunables: RunTunables())
-        XCTAssertEqual(RegionText.prewarmRequestCount, before)
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before)
     }
 }
 
@@ -73,50 +73,50 @@ private final class SilentDriver: AppDriver {
 /// 予算(RegionText.occlusionBudget)を丸ごと捨てるだけで、判定は結局 FM が下す
 final class OCRShortcutGateTests: XCTestCase {
 
-    func testTakesTheShortcutOnlyWhenTheModelIsWarm() {
-        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, warm: true, abandonedInFlight: 0))
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, warm: false, abandonedInFlight: 0),
+    func testTakesTheShortcutOnlyWhenTheModelIsReady() {
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, ready: true, abandonedInFlight: 0))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, ready: false, abandonedInFlight: 0),
                        "モデルが載っていないのに近道を撃っている")
     }
 
-    /// 殺しスイッチ(FT_OCCLUSION_OCR=0)は暖まっていても撃たない
-    func testKillSwitchWinsOverWarm() {
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .off, warm: true, abandonedInFlight: 0))
+    /// 殺しスイッチ(FT_OCCLUSION_OCR=0)はコンパイルが済んでいても撃たない
+    func testKillSwitchWinsOverReady() {
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .off, ready: true, abandonedInFlight: 0))
     }
 
-    /// コーパス採取(measure)は暖まっていれば撃つ(採るのが目的)
-    func testMeasureModeTakesTheShortcutWhenWarm() {
-        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .measure, warm: true, abandonedInFlight: 0))
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .measure, warm: false, abandonedInFlight: 0))
+    /// コーパス採取(measure)はコンパイル済みなら撃つ(採るのが目的)
+    func testMeasureModeTakesTheShortcutWhenReady() {
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .measure, ready: true, abandonedInFlight: 0))
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .measure, ready: false, abandonedInFlight: 0))
     }
 
     /// **諦めた読みが走っている間は撃たない**(積み増すと全部予算切れになる。shouldTakeShortcut の doc)
     func testDoesNotPileUpBehindAnAbandonedRead() {
-        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, warm: true, abandonedInFlight: 1),
+        XCTAssertFalse(RegionText.shouldTakeShortcut(mode: .on, ready: true, abandonedInFlight: 1),
                        "詰まった読みの後ろに新しい読みを積んでいる")
-        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, warm: true, abandonedInFlight: 0))
+        XCTAssertTrue(RegionText.shouldTakeShortcut(mode: .on, ready: true, abandonedInFlight: 0))
     }
 }
 
-/// 暖機の探りの結果から warm と言ってよいかの判定(`RegionText.warmedUp`)。
-/// **読めなかった回を warm と言うと**、劣化した Vision に対して近道を撃ち続け、
+/// コンパイルの探りの結果から ready と言ってよいかの判定(`RegionText.modelReady`)。
+/// **読めなかった回を ready と言うと**、劣化した Vision に対して近道を撃ち続け、
 /// ステップごとに予算を捨てることになる
-final class RegionTextWarmVerdictTests: XCTestCase {
+final class RegionTextModelReadyVerdictTests: XCTestCase {
 
-    func testWarmOnlyWhenTheProbeActuallyRead() {
-        XCTAssertTrue(RegionText.warmedUp(probe: ["ログイン"]))
-        // **呼び出しが成功しても 1 行も返らない**状態が実在する(RegionText.warmedUp の doc)
-        XCTAssertFalse(RegionText.warmedUp(probe: []), "1行も読めていないのに warm と言っている")
-        XCTAssertFalse(RegionText.warmedUp(probe: nil), "読めていないのに warm と言っている")
+    func testReadyOnlyWhenTheProbeActuallyRead() {
+        XCTAssertTrue(RegionText.modelReady(probe: ["ログイン"]))
+        // **呼び出しが成功しても 1 行も返らない**状態が実在する(RegionText.modelReady の doc)
+        XCTAssertFalse(RegionText.modelReady(probe: []), "1行も読めていないのに ready と言っている")
+        XCTAssertFalse(RegionText.modelReady(probe: nil), "読めていないのに ready と言っている")
     }
 }
 
-/// 差し替え口(`warmOverrideForTesting`)だけになると「暖機を一度も通らない」変更が
+/// 差し替え口(`modelReadyOverrideForTesting`)だけになると「コンパイルを一度も通らない」変更が
 /// 緑のまま通るので、**production の既定**をここで固定する
-final class RegionTextWarmDefaultTests: XCTestCase {
+final class RegionTextModelReadyDefaultTests: XCTestCase {
 
-    func testWarmOverrideIsNotSetInProduction() {
-        XCTAssertNil(RegionText.warmOverrideForTesting,
+    func testModelReadyOverrideIsNotSetInProduction() {
+        XCTAssertNil(RegionText.modelReadyOverrideForTesting,
                      "差し替え口が残っている(テストが後始末していない)")
         XCTAssertNil(RegionText.lateFinishObserverForTesting,
                      "差し込み口が残っている(テストが後始末していない)")

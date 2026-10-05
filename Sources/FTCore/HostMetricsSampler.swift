@@ -338,9 +338,9 @@ public struct HostMetricsSample: Encodable {
     public let visionCalls: Int?
     public let visionFailures: Int?
     public let visionTotalMs: Int?
-    /// この瞬間に OCR の認識器を暖機している、この機械のプロセス数(0 = 暖機なし。供給元は VisionWarmupLedger)。
+    /// この瞬間に OCR の認識器をコンパイルしている、この機械のプロセス数(0 = コンパイルなし。供給元は OCRModelCompileLedger)。
     /// 対向: vscode-fleetest/src/monitorProcessManager.ts の HostMetricsRawEvent
-    public let visionWarming: Int
+    public let ocrCompiling: Int
     /// FM の**死活**(FTCore.FMLiveness)。呼び出し回数とは別の軸 —— 上の3欄は「使われたか」しか
     /// 言えず、**誰も呼んでいない間は死んでいても 0 件と同じ絵になる**。ここは経路ごとの
     /// 最後の観測で、"alive" / "dead" / **null = 不明**(観測が無い・古い)の3値。混ぜないこと。
@@ -363,7 +363,7 @@ public struct HostMetricsSample: Encodable {
                 memUsedBytes: Int?, memTotalBytes: Int?,
                 fmCalls: Int?, fmFailures: Int?, fmTotalMs: Int?,
                 visionCalls: Int?, visionFailures: Int?, visionTotalMs: Int?,
-                visionWarming: Int,
+                ocrCompiling: Int,
                 fmLiveness: FMLiveness.Reading = FMLiveness.Reading(text: nil, vision: nil)) {
         self.ts = ts
         self.cpu = cpu
@@ -378,7 +378,7 @@ public struct HostMetricsSample: Encodable {
         self.visionCalls = visionCalls
         self.visionFailures = visionFailures
         self.visionTotalMs = visionTotalMs
-        self.visionWarming = visionWarming
+        self.ocrCompiling = ocrCompiling
         self.fmTextState = fmLiveness.text?.state.rawValue
         self.fmVisionState = fmLiveness.vision?.state.rawValue
         self.fmDeadReason = fmLiveness.deadSummary(limit: Self.deadReasonLimit)
@@ -388,7 +388,7 @@ public struct HostMetricsSample: Encodable {
 
     private enum CodingKeys: String, CodingKey {
         case kind, ts, cpu, cpuCores, gpu, gpuCores, memUsedBytes, memTotalBytes, fmCalls, fmFailures, fmTotalMs
-        case visionCalls, visionFailures, visionTotalMs, visionWarming
+        case visionCalls, visionFailures, visionTotalMs, ocrCompiling
         case fmTextState, fmVisionState, fmDeadReason, fmCheckedAt
     }
 
@@ -408,7 +408,7 @@ public struct HostMetricsSample: Encodable {
         try container.encode(visionCalls, forKey: .visionCalls)
         try container.encode(visionFailures, forKey: .visionFailures)
         try container.encode(visionTotalMs, forKey: .visionTotalMs)
-        try container.encode(visionWarming, forKey: .visionWarming)
+        try container.encode(ocrCompiling, forKey: .ocrCompiling)
         try container.encode(fmTextState, forKey: .fmTextState)
         try container.encode(fmVisionState, forKey: .fmVisionState)
         try container.encode(fmDeadReason, forKey: .fmDeadReason)
@@ -509,7 +509,7 @@ public final class HostMetricsRecorder: @unchecked Sendable {
                     memUsedBytes: mem?.used, memTotalBytes: mem?.total,
                     fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
                     visionCalls: vision?.calls, visionFailures: vision?.failures, visionTotalMs: vision?.totalMs,
-                    visionWarming: VisionWarmupLedger.activeCount(),
+                    ocrCompiling: OCRModelCompileLedger.activeCount(),
                     // run の記録器は**読むだけ**(プローブは撃たない)。run 中は実呼び出しが
                     // 台帳を養い続けるので、撃つ必要が無い(FMLivenessProbe.refresh の門①)
                     fmLiveness: FMLiveness.current())

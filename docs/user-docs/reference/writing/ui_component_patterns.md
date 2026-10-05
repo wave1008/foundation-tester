@@ -281,7 +281,7 @@ tap("OK")
 
 **Turn visual verification off when checking short-lived components**: `exist("Deleted", requireVisible: false)`.
 Text visual verification captures the screen and reads it, which takes time (more so with many parallel
-lanes, on a busy machine, or on a project's first run while OCR warms up). If the component disappears
+lanes, on a busy machine, or on a project's first run while the OCR model compiles). If the component disappears
 before the verification finishes, the step fails with "not found" even though it was shown. With it
 turned off, the check only confirms that the element is in the tree.
 

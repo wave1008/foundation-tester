@@ -58,21 +58,21 @@ extension StepExecutor {
                                        inferring: step.containerInference ?? true,
                                        scale: driver.pointScale) ?? element.frame
         let duration = step.duration ?? tunables.defaultHoldDuration
-        // **指を置く前に OCR の暖機を済ませる**: ブロックの最初の視覚検証が暖機を待つと(実測 12 秒)、
+        // **指を置く前に OCR のコンパイルを済ませる**: ブロックの最初の視覚検証がコンパイルを待つと(実測 12 秒)、
         // その間に指が離れて押している間だけ出る部品が消える。occlusionFlip と同じ条件で待つ
         // (詰まった読みがある間は待たない)。待った時間は視覚検証の内訳へ入れる
         // 見るのは実行プロファイルの親スイッチ(ステップの既定ガードは off で、各 exist が自分で立てる)
         if occlusionGuardEnabled, occlusionOCRMode != .off,
-           RegionText.abandonedInFlight == 0, !RegionText.isWarm {
+           RegionText.abandonedInFlight == 0, !RegionText.isModelReady {
             let waitStart = ContinuousClock().now
-            let waitOutcome = await RegionText.awaitPrewarm(mode: occlusionOCRMode)
+            let waitOutcome = await RegionText.awaitModelCompile(mode: occlusionOCRMode)
             let waitedMs = Self.ms(ContinuousClock().now - waitStart)
             if waitedMs > 0 {
                 phase.guardMs += waitedMs
                 phase.ocrMs += waitedMs
-                noteCodesThisStep.insert(.ocrWarmupWaited)
+                noteCodesThisStep.insert(.ocrCompileWaited)
             }
-            if case .capped = waitOutcome { noteCodesThisStep.insert(.ocrWarmupCapped) }
+            if case .capped = waitOutcome { noteCodesThisStep.insert(.ocrCompileCapped) }
         }
         let clock = ContinuousClock()
         // **送る直前**の時刻から離し時刻を数える(送信・応答の往復ぶんずれない)

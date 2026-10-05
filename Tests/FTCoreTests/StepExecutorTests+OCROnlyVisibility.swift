@@ -10,7 +10,7 @@ extension StepExecutorTests {
 
     /// FM に実際に訊いたが答えが無く(NoVerdictVisibilityDelegate)、OCR の読みも無い(off)。
     /// **低インク(Self.blankPNG)でも不可視とは言わない** —— 読んでいないのにインク量だけで判定していた
-    /// (E2E の暖機前のステップで実際に出た)。FM に訊いた回なので visibilityGuardSkipped は立つ
+    /// (E2E のコンパイル前のステップで実際に出た)。FM に訊いた回なので visibilityGuardSkipped は立つ
     func testNoVerdictFromFMWithoutOCRReadingDoesNotJudgeByInkAlone() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,

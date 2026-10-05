@@ -35,7 +35,7 @@ final class OCROnlyVisibilityWiringTests: XCTestCase {
         XCTAssertTrue(text.contains(
             "let fmAvailable = fmConfigured && FMVisionSupport.isSupported && !FMNoVerdictInjection.isActive(environment: ProcessInfo.processInfo.environment)"))
         XCTAssertTrue(text.contains("if fmAvailable { delegate?.prewarmVisibilityCheck() }"),
-                      "暖機も fmAvailable でだけ撃つはず")
+                      "コンパイルも fmAvailable でだけ撃つはず")
     }
 
     /// FM の段を使わない / 使えないとき FM を呼ばず OCROnlyVisibility へ落ち、FM に訊いていないので

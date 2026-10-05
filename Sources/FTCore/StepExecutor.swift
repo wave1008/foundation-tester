@@ -646,16 +646,16 @@ public final class StepExecutor {
         self.occlusionGuardEnabled = occlusionGuardEnabled
         self.fmVisibilityCheckEnabled = fmVisibilityCheckEnabled
         self.screenLooksLikeEnabled = screenLooksLikeEnabled
-        // **ガードに入った時ではなく、ここで**暖機を始める。Vision のモデルの初回ロードは
+        // **ガードに入った時ではなく、ここで**コンパイルを始める。Vision のモデルの初回ロードは
         // プロセスに1回・実測 25〜108 秒かかるので、ここで前もって頼んでおく(実際に近道を撃つ前に
-        // 終わるまで待つのは RegionText.awaitPrewarm。occlusionFlip から呼ぶ)。
+        // 終わるまで待つのは RegionText.awaitModelCompile。occlusionFlip から呼ぶ)。
         // 撃つのは**この executor の既定でガードが効くとき**だけ ——
-        // ガードが一度も撃たれない run に Vision を読ませない(prewarmIfNeeded の doc)。
+        // ガードが一度も撃たれない run に Vision を読ませない(compileModelIfNeeded の doc)。
         // **DSL の経路(FTDriveCore)はここを素通りする** —— executor 既定の occlusionGuard は
         // 常に false で、実際に効くかはステップ指定(requireVisible)次第なので、
         // FTDriveCore.init が実行プロファイルのマスタースイッチだけを見て別に頼む
         if occlusionGuardEnabled, occlusionGuard {
-            RegionText.prewarmIfNeeded(mode: occlusionOCRMode)
+            RegionText.compileModelIfNeeded(mode: occlusionOCRMode)
         }
     }
 

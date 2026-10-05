@@ -42,52 +42,52 @@ public enum RegionText {
 
     /// Vision のモデルが載っていないと**プロセスで最初の 1 回だけ 25〜47 秒**かかる(2 回目以降は
     /// 40〜130ms)。ガードが撃たれる前に背景で載せておく。モデルの読み込みはプロセスに1回だけ
-    /// 走る(prewarmOnce)。off のときは撃たない(ゲートを切った run に Vision を読ませない)。
-    public static func prewarmIfNeeded(mode: RegionTextGateMode) {
+    /// 走る(modelCompileOnce)。off のときは撃たない(ゲートを切った run に Vision を読ませない)。
+    public static func compileModelIfNeeded(mode: RegionTextGateMode) {
         guard mode != .off else { return }
-        prewarmRequests.withLock { $0 += 1 }
-        _ = prewarmOnce
+        modelCompileRequests.withLock { $0 += 1 }
+        _ = modelCompileOnce
     }
 
-    /// 配線の確認用(テスト)。実際のモデル読み込み回数ではなく「暖機を頼んだ回数」
-    public static var prewarmRequestCount: Int {
-        prewarmRequests.withLock { $0 }
+    /// 配線の確認用(テスト)。実際のモデル読み込み回数ではなく「コンパイルを頼んだ回数」
+    public static var modelCompileRequestCount: Int {
+        modelCompileRequests.withLock { $0 }
     }
 
-    private static let prewarmRequests = Mutex(0)
+    private static let modelCompileRequests = Mutex(0)
 
     /// テストの差し替え口をまとめて持つ(個別の static var は Swift 6 でデータ競合になる)
     private struct TestingHooks {
         var recognize: (@Sendable (CGImage) async throws -> [String])?
-        var prewarmFinish: (@Sendable () async -> Void)?
-        var warm: Bool?
+        var modelCompileFinish: (@Sendable () async -> Void)?
+        var modelReady: Bool?
     }
     private static let testingHooks = Mutex(TestingHooks())
 
     /// 探りの撃ち直しに使ってよい合計時間の上限。**根拠**(実測、`FT_OCR_HANG_SAMPLE=1`
     /// 採取): 探り 1 回の所要は 130〜235ms(空で返る回のほうが速い)。手元のフリート実行 26 プロセス中
-    /// 15 本が探り1回だけで空を引いて warm にならず、その run は OCR 使用率 0%(FM が死んでいれば
+    /// 15 本が探り1回だけで空を引いて ready にならず、その run は OCR 使用率 0%(FM が死んでいれば
     /// 視覚検証が丸ごと素通りする)。置き換える相手(FM 段)の実測下限は 1.3 秒/回で、ガードは
     /// 1 シナリオに数十回入るので、この上限を使い切っても最大 FM 1〜2 回分のコストで済む。
-    /// **尽きても挙動は変わらない**(warm にならず `ocr-shortcut-not-warm` の注記で FM へ)
-    public static let prewarmRetryBudget: Duration = .seconds(2)
+    /// **尽きても挙動は変わらない**(ready にならず `ocr-shortcut-not-ready` の注記で FM へ)
+    public static let modelCompileRetryBudget: Duration = .seconds(2)
 
     /// 撃ち直しの間隔。**根拠**: 探り自体が 130〜235ms かかるので、間隔を空けずに連打すると
-    /// `prewarmRetryBudget` を読みの所要だけでほぼ使い切り、撃ち直しの機会が実質 1 回で終わる。
+    /// `modelCompileRetryBudget` を読みの所要だけでほぼ使い切り、撃ち直しの機会が実質 1 回で終わる。
     /// 50ms は探りの所要の下限より短く、2 秒の予算内で複数回の撃ち直しを確保する
-    public static let prewarmRetryInterval: Duration = .milliseconds(50)
+    public static let modelCompileRetryInterval: Duration = .milliseconds(50)
 
-    /// 暖機の探りが使う認識器。**テストは `recognizeOverrideForTesting` で差し替え、Vision を
+    /// コンパイルの探りが使う認識器。**テストは `recognizeOverrideForTesting` で差し替え、Vision を
     /// 実際に叩かない**。探りは常に `renderedProbe()` の ASCII 文字列("fleetest")なので、
     /// `languages(for:)` の言語判定は通さず `defaultLanguages` 固定でよい
-    static func recognizeForPrewarm(_ image: CGImage) async throws -> [String] {
+    static func recognizeForModelCompile(_ image: CGImage) async throws -> [String] {
         if let override = recognizeOverrideForTesting { return try await override(image) }
         return try await recognize(image, languages: defaultLanguages)
     }
 
     /// テストが Vision を実際に叩かずに探りの結果を制御するための差し替え口(production では nil)。
     /// **既定が nil であること自体は `RegionTextRecognizeOverrideDefaultTests` が固定する**
-    /// (`warmOverrideForTesting` と同じ規律)
+    /// (`modelReadyOverrideForTesting` と同じ規律)
     public static var recognizeOverrideForTesting: (@Sendable (CGImage) async throws -> [String])? {
         get { testingHooks.withLock { $0.recognize } }
         set { testingHooks.withLock { $0.recognize = newValue } }
@@ -96,9 +96,9 @@ public enum RegionText {
     /// 探りを撃ち、空(またはエラー)なら `interval` だけ待って `budget` を使い切るまで撃ち直す。
     /// **少なくとも 1 回は撃つ**(budget が 0 でも最初の 1 回は必ず走る)。読めた時点で即終了。
     /// テストが直接 await できるよう async 関数として独立させてある —— production の呼び手
-    /// (`prewarmOnce`)は専用スレッドから DispatchSemaphore でこの完了を待つだけ
-    static func probeWithRetry(image: CGImage, budget: Duration = RegionText.prewarmRetryBudget,
-                               interval: Duration = RegionText.prewarmRetryInterval)
+    /// (`modelCompileOnce`)は専用スレッドから DispatchSemaphore でこの完了を待つだけ
+    static func probeWithRetry(image: CGImage, budget: Duration = RegionText.modelCompileRetryBudget,
+                               interval: Duration = RegionText.modelCompileRetryInterval)
         async -> (lines: [String]?, error: String?, attempts: Int) {
         let clock = ContinuousClock()
         let deadline = clock.now + budget
@@ -108,10 +108,10 @@ public enum RegionText {
         while true {
             attempts += 1
             do {
-                let lines = try await recognizeForPrewarm(image)
+                let lines = try await recognizeForModelCompile(image)
                 lastLines = lines
                 lastError = nil
-                if warmedUp(probe: lines) { return (lines, nil, attempts) }
+                if modelReady(probe: lines) { return (lines, nil, attempts) }
             } catch {
                 lastLines = nil
                 lastError = "\(error)"
@@ -121,23 +121,23 @@ public enum RegionText {
         }
     }
 
-    private static let prewarmOnce: Void = {
+    private static let modelCompileOnce: Void = {
         // **専用スレッド**(協調スレッドプールに載せない): 下の flock はブロックする。
-        // 別の暖機(`warm-ocr`)がコンパイル中ならその完了を待ってから読む —— 待たずに自分でも
+        // 別のコンパイル(`compile-ocr`)がコンパイル中ならその完了を待ってから読む —— 待たずに自分でも
         // コンパイルすると 8 レーンぶんが同じモデルを同時に焼いて CPU を奪い合い、自分の分は
-        // プロセスが先に死んでコミットされない(OCRWarmupLock の冒頭)
+        // プロセスが先に死んでコミットされない(OCRModelCompileLock の冒頭)
         let thread = Thread {
             // **「終わった」を必ず立てる**(読めた/読めない/画像不正のどの return 経路でも)。
-            // `awaitPrewarm` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
+            // `awaitModelCompile` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
             // (defer は LIFO なので、待ち手が起きる時点で flock は既に閉じている)
-            defer { prewarmFinishSignal.markFinished() }
-            let warmupMark = VisionWarmupLedger.begin()
-            defer { VisionWarmupLedger.end(warmupMark) }
-            let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
+            defer { modelCompileFinishSignal.markFinished() }
+            let compileMark = OCRModelCompileLedger.begin()
+            defer { OCRModelCompileLedger.end(compileMark) }
+            let lock = OCRModelCompileLock.acquire(processName: ProcessInfo.processInfo.processName)
             defer { try? lock?.close() }
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
             guard let image = renderedProbe() else {
-                recordPrewarmOutcome(lines: nil, error: "no probe image", attempts: 0)
+                recordModelCompileOutcome(lines: nil, error: "no probe image", attempts: 0)
                 return
             }
             let started = Date()
@@ -150,12 +150,12 @@ public enum RegionText {
             }
             done.wait()
             let (read, failure, attempts) = box.get()
-            recordPrewarmOutcome(lines: read, error: failure,
+            recordModelCompileOutcome(lines: read, error: failure,
                                  ms: Int(Date().timeIntervalSince(started) * 1000), attempts: attempts)
-            guard warmedUp(probe: read) else { return }
-            markWarm()
+            guard modelReady(probe: read) else { return }
+            markModelReady()
         }
-        thread.name = "fleetest-ocr-prewarm"
+        thread.name = "fleetest-ocr-compile"
         thread.qualityOfService = .userInitiated
         thread.start()
     }()
@@ -173,13 +173,13 @@ public enum RegionText {
         }
     }
 
-    private static let warm = Mutex(false)
-    private static func markWarm() { warm.withLock { $0 = true } }
+    private static let modelReadyState = Mutex(false)
+    private static func markModelReady() { modelReadyState.withLock { $0 = true } }
 
-    /// 暖機が「終わった」(成否を問わない)ことを async の待ち手へ知らせる信号。**待ち手は複数
+    /// コンパイルが「終わった」(成否を問わない)ことを async の待ち手へ知らせる信号。**待ち手は複数
     /// 許す**(occlusionFlip が並行に複数走っても壊れないため)。同期関数に閉じ込める
-    /// (markWarm と同じ理由 — async 文脈で lock を直に触らない)
-    private final class PrewarmFinishSignal: @unchecked Sendable {
+    /// (markModelReady と同じ理由 — async 文脈で lock を直に触らない)
+    private final class ModelCompileFinishSignal: @unchecked Sendable {
         private let lock = NSLock()
         private var finished = false
         private var waiters: [CheckedContinuation<Void, Never>] = []
@@ -195,7 +195,7 @@ public enum RegionText {
 
         /// 既に終わっていれば即 resume。**継続を2回 resume しない**(finished かどうかの判定と
         /// waiters への追加を同じロックの中で行う)
-        /// 暖機が(読めたか否かに関わらず)もう終わっているか。終わっていれば待つ必要が無い
+        /// コンパイルが(読めたか否かに関わらず)もう終わっているか。終わっていれば待つ必要が無い
         var isFinished: Bool { lock.lock(); defer { lock.unlock() }; return finished }
 
         func waitUntilFinished() async {
@@ -212,62 +212,62 @@ public enum RegionText {
         }
     }
 
-    private static let prewarmFinishSignal = PrewarmFinishSignal()
+    private static let modelCompileFinishSignal = ModelCompileFinishSignal()
 
-    /// `awaitPrewarm` が待つ本体をテストが差し替えるための口(production では nil)。設定されて
-    /// いれば実際の `prewarmFinishSignal` を待たず、この関数の完了をそのまま待ち対象にする ——
-    /// 実 Vision を積む本物の暖機は「進行中」を狙った時刻に作れないため。**既定が nil であること
-    /// 自体は `RegionTextAwaitPrewarmTests` が固定する**(`warmOverrideForTesting` と同じ規律)
-    public static var prewarmFinishOverrideForTesting: (@Sendable () async -> Void)? {
-        get { testingHooks.withLock { $0.prewarmFinish } }
-        set { testingHooks.withLock { $0.prewarmFinish = newValue } }
+    /// `awaitModelCompile` が待つ本体をテストが差し替えるための口(production では nil)。設定されて
+    /// いれば実際の `modelCompileFinishSignal` を待たず、この関数の完了をそのまま待ち対象にする ——
+    /// 実 Vision を積む本物のコンパイルは「進行中」を狙った時刻に作れないため。**既定が nil であること
+    /// 自体は `RegionTextAwaitModelCompileTests` が固定する**(`modelReadyOverrideForTesting` と同じ規律)
+    public static var modelCompileFinishOverrideForTesting: (@Sendable () async -> Void)? {
+        get { testingHooks.withLock { $0.modelCompileFinish } }
+        set { testingHooks.withLock { $0.modelCompileFinish = newValue } }
     }
 
-    /// `awaitPrewarm` の戻り値。呼び手(occlusionFlip)は `waited` を締め切りの計上に使う
-    public enum WarmWaitOutcome: Sendable, Equatable {
-        /// 呼んだ時点で既に暖まっていた(待っていない)
-        case alreadyWarm
-        /// 待って暖まった
-        case warmed(waited: Duration)
-        /// 待ったが暖機が終わっても読めなかった(Vision が劣化している状態。RegionText.warmedUp の doc)
-        case finishedCold(waited: Duration)
+    /// `awaitModelCompile` の戻り値。呼び手(occlusionFlip)は `waited` を締め切りの計上に使う
+    public enum ModelCompileWaitOutcome: Sendable, Equatable {
+        /// 呼んだ時点で既にコンパイルが済んでいた(待っていない)
+        case alreadyReady
+        /// 待ってコンパイルが済んだ
+        case compiled(waited: Duration)
+        /// 待ったがコンパイルが終わっても読めなかった(Vision が劣化している状態。RegionText.modelReady の doc)
+        case finishedUnready(waited: Duration)
         /// `cap` を使い切っても終わらなかった
         case capped(waited: Duration)
     }
 
-    /// `awaitPrewarm` の待ちの上限。**根拠**: 暖機が正当にかかった実測の最大 108 秒
+    /// `awaitModelCompile` の待ちの上限。**根拠**: コンパイルが正当にかかった実測の最大 108 秒
     /// (ビルドし直した直後の Espresso コンパイル)に余裕 1 割。これを超えて戻らないのは
     /// ANE のコンパイルがハングした形(過去に 352〜1080 秒の実測 = fm-flap-ane-load-failure)。
     /// **尽きたら待つのをやめて FM に回す**(occlusionFlip の既存の見送り経路。止めない)
-    public static let prewarmWaitCap: Duration = .seconds(120)
+    public static let modelCompileWaitCap: Duration = .seconds(120)
 
-    /// occlusion-guard の OCR 近道を実際に撃つ直前に呼ぶ。**暖機が終わるまで待つ**
-    /// (受け皿。ふつうは `ScenarioHost.awaitOCRWarmup` が最初のシナリオを起こす前に warm-ocr を待ち終えている)。
-    /// 既に暖まっていれば待たない(`.alreadyWarm`)。まだ始まっていなければここで始める
-    /// (`prewarmIfNeeded`)。**mode が off のときは呼ばない**(呼び手の責任。off の run に
-    /// Vision を読ませない契約は prewarmIfNeeded と同じ)。待った時間は
+    /// occlusion-guard の OCR 近道を実際に撃つ直前に呼ぶ。**コンパイルが終わるまで待つ**
+    /// (受け皿。ふつうは `ScenarioHost.awaitOCRModelCompile` が最初のシナリオを起こす前に compile-ocr を待ち終えている)。
+    /// 既にコンパイル済みなら待たない(`.alreadyReady`)。まだ始まっていなければここで始める
+    /// (`compileModelIfNeeded`)。**mode が off のときは呼ばない**(呼び手の責任。off の run に
+    /// Vision を読ませない契約は compileModelIfNeeded と同じ)。待った時間は
     /// `DeadlineExclusion` へ計上する(締め切りの計算からこの待ちを差し引くため)
-    public static func awaitPrewarm(mode: RegionTextGateMode,
-                                    cap: Duration = prewarmWaitCap) async -> WarmWaitOutcome {
-        if isWarm { return .alreadyWarm }
-        // 暖機が終わったのに読めない(Vision が空を返す)状態では、ガードのたびに差し引きの窓を開けない
+    public static func awaitModelCompile(mode: RegionTextGateMode,
+                                    cap: Duration = modelCompileWaitCap) async -> ModelCompileWaitOutcome {
+        if isModelReady { return .alreadyReady }
+        // コンパイルが終わったのに読めない(Vision が空を返す)状態では、ガードのたびに差し引きの窓を開けない
         // (待つものが無いのに子→親の deadlineExclusion を毎ステップ 2 行ずつ流すことになる)
-        if prewarmFinishOverrideForTesting == nil, prewarmFinishSignal.isFinished { return .finishedCold(waited: .zero) }
-        prewarmIfNeeded(mode: mode)
+        if modelCompileFinishOverrideForTesting == nil, modelCompileFinishSignal.isFinished { return .finishedUnready(waited: .zero) }
+        compileModelIfNeeded(mode: mode)
         let clock = ContinuousClock()
         let start = clock.now
         let token = DeadlineExclusion.begin(cap: cap)
-        let waitBody = prewarmFinishOverrideForTesting ?? { await prewarmFinishSignal.waitUntilFinished() }
+        let waitBody = modelCompileFinishOverrideForTesting ?? { await modelCompileFinishSignal.waitUntilFinished() }
         let outcome = await TaskBudget.run(cap) { await waitBody() }
         DeadlineExclusion.end(token)
         let waited = clock.now - start
         switch outcome {
         case .exhausted: return .capped(waited: waited)
-        case .value: return isWarm ? .warmed(waited: waited) : .finishedCold(waited: waited)
+        case .value: return isModelReady ? .compiled(waited: waited) : .finishedUnready(waited: waited)
         }
     }
 
-    /// **コンパイル結果をキャッシュへコミットさせる**ための暖機(待つ版)。
+    /// **コンパイル結果をキャッシュへコミットさせる**ためのコンパイル(待つ版)。
     ///
     /// Espresso(Vision の認識器の実体)のコンパイルキャッシュは**プロセス名ごと**
     /// (`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache`)で、コンパイル
@@ -275,33 +275,33 @@ public enum RegionText {
     /// シナリオ実行プロセス(1シナリオ=1プロセス・20〜60 秒)は終わる前に死んで `.tmp` を残すだけで、
     /// 次のプロセスがまたゼロから払っていた(実測: E2E-CMP で完了 1 / 放置 53)。
     /// 鍵は**プロセス名とバイナリの素性の両方**(別名にコピーしてもコールド・作り直してもコールド。
-    /// 同一ソースの再ビルドは決定的で同じバイナリになるため、そこでは暖まったままに見える)。
+    /// 同一ソースの再ビルドは決定的で同じバイナリになるため、そこではコンパイルが済んだままに見える)。
     /// つまり保守者はコミットのたびに SUT ごと 1 回払い直す(背景・供給と並行)。受け手は導入ごとに 1 回。
-    /// だから **同じプロセス名の、待てるプロセス**(`fleetest-scenarios-<project> warm-ocr`)で
+    /// だから **同じプロセス名の、待てるプロセス**(`fleetest-scenarios-<project> compile-ocr`)で
     /// 1回撃ち切る。以後そのプロセス名の初回読みは 160〜290ms になる。
     /// 読ませる言語集合は `languages(for:)` が返しうる2つ(モデルが別で、別々にコンパイルされる)
-    public static let warmupLanguageSets: [[String]] = [["en-US"], defaultLanguages]
+    public static let compileLanguageSets: [[String]] = [["en-US"], defaultLanguages]
 
-    public struct WarmupResult: Sendable {
+    public struct ModelCompileResult: Sendable {
         public let languages: [String]
         public let ms: Int
         public let lines: [String]
         public let error: String?
     }
 
-    public static func commitCompileCache() async -> [WarmupResult] {
-        let warmupMark = VisionWarmupLedger.begin()
-        defer { VisionWarmupLedger.end(warmupMark) }
+    public static func commitCompileCache() async -> [ModelCompileResult] {
+        let compileMark = OCRModelCompileLedger.begin()
+        defer { OCRModelCompileLedger.end(compileMark) }
         guard let image = renderedProbe() else { return [] }
-        var results: [WarmupResult] = []
-        for languages in warmupLanguageSets {
+        var results: [ModelCompileResult] = []
+        for languages in compileLanguageSets {
             let started = Date()
             do {
                 let lines = try await recognize(image, languages: languages)
-                results.append(WarmupResult(languages: languages, ms: Int(Date().timeIntervalSince(started) * 1000),
+                results.append(ModelCompileResult(languages: languages, ms: Int(Date().timeIntervalSince(started) * 1000),
                                             lines: lines, error: nil))
             } catch {
-                results.append(WarmupResult(languages: languages, ms: Int(Date().timeIntervalSince(started) * 1000),
+                results.append(ModelCompileResult(languages: languages, ms: Int(Date().timeIntervalSince(started) * 1000),
                                             lines: [], error: "\(error)"))
             }
         }
@@ -310,25 +310,25 @@ public enum RegionText {
 
     /// Vision のモデルが載って**実際に読めた**か。載っていない間に近道(OCR)を撃つと、
     /// ステップごとに予算(`occlusionBudget`)を丸ごと捨てることになる
-    public static var isWarm: Bool {
-        if let forced = warmOverrideForTesting { return forced }
-        return warm.withLock { $0 }
+    public static var isModelReady: Bool {
+        if let forced = modelReadyOverrideForTesting { return forced }
+        return modelReadyState.withLock { $0 }
     }
 
     /// テストから既知の状態にするための差し替え口(production では nil のまま)。
-    /// **既定が nil であること自体は `RegionTextWarmDefaultTests` が固定する** ——
-    /// 差し替えだけになると「暖機を一度も通らない」変更が緑で通る
-    public static var warmOverrideForTesting: Bool? {
-        get { testingHooks.withLock { $0.warm } }
-        set { testingHooks.withLock { $0.warm = newValue } }
+    /// **既定が nil であること自体は `RegionTextModelReadyDefaultTests` が固定する** ——
+    /// 差し替えだけになると「コンパイルを一度も通らない」変更が緑で通る
+    public static var modelReadyOverrideForTesting: Bool? {
+        get { testingHooks.withLock { $0.modelReady } }
+        set { testingHooks.withLock { $0.modelReady = newValue } }
     }
 
-    /// 暖機の探りの結果から「モデルが載った」と言ってよいか。
+    /// コンパイルの探りの結果から「モデルが載った」と言ってよいか。
     /// **文字を描いた探りが実際に読めたときだけ** —— 呼び出しが成功しても 1 行も返らない状態が
     /// 実在する(この Mac で Vision が終日 `[]` を返していた実測がある)。そこで近道を撃つと
     /// 毎ステップ予算(occlusionBudget)を捨てるだけで、判定は結局 FM が下す。
     /// 探りは `renderedProbe()` = 必ず文字がある画像なので、空 = 読めていない
-    public static func warmedUp(probe: [String]?) -> Bool { !(probe ?? []).isEmpty }
+    public static func modelReady(probe: [String]?) -> Bool { !(probe ?? []).isEmpty }
 
     /// OCR の近道を撃ってよいか。純粋関数(呼び出し側の配線は1箇所)。
     /// - **モデルが載るまでは撃たない** —— 載っていない間に撃っても予算を捨てるだけで、判定は
@@ -337,9 +337,9 @@ public enum RegionText {
     ///   最初の実 crop の読みが詰まっている間、ステップごとに新しい読みを積み増して 12 本が
     ///   全部予算切れになり、捌けた瞬間に協調スレッドプールが 6.4 秒止まった。1 本詰まったら
     ///   それが戻るまで FM に任せるほうが、予算を 12 回捨てるより安い
-    public static func shouldTakeShortcut(mode: RegionTextGateMode, warm: Bool,
+    public static func shouldTakeShortcut(mode: RegionTextGateMode, ready: Bool,
                                           abandonedInFlight: Int) -> Bool {
-        mode != .off && warm && abandonedInFlight == 0
+        mode != .off && ready && abandonedInFlight == 0
     }
 
     private static let abandoned = Mutex(0)
@@ -372,7 +372,7 @@ public enum RegionText {
         return ctx.makeImage() ?? image
     }
 
-    /// 暖機用の小さな画像(白地に黒の1語)。AppKit を使わない(WindowServer に依存させない)
+    /// コンパイル用の小さな画像(白地に黒の1語)。AppKit を使わない(WindowServer に依存させない)
     private static func renderedProbe() -> CGImage? {
         let width = 120, height = 40
         guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
@@ -433,7 +433,7 @@ public enum RegionText {
     /// (判定は変えない。読めなかったことを反転の根拠にしない契約は resolve の doc と同じ)。
     ///
     /// **走っている OCR は止めない** —— Vision のモデルの初回ロードは**プロセスに1回**なので、
-    /// ここで止めると次のステップもまた予算を使い切る。放っておけばそのまま暖機として効き、
+    /// ここで止めると次のステップもまた予算を使い切る。放っておけばそのままコンパイルとして効き、
     /// 2 回目以降は 40〜130ms で返る(実測: 予算を入れる前は最初にガードへ入った
     /// 1ステップだけが 36〜108 秒を払い、以降は 100〜300ms だった)
     public enum BudgetedReading: Sendable {
@@ -472,18 +472,18 @@ public enum RegionText {
         var hasReturned: Bool { lock.lock(); defer { lock.unlock() }; return returned }
     }
 
-    /// 暖機の探りの顛末(FT_OCR_HANG_SAMPLE=1 のとき)。**warm にならない理由**はここにしか出ない。
+    /// コンパイルの探りの顛末(FT_OCR_HANG_SAMPLE=1 のとき)。**ready にならない理由**はここにしか出ない。
     /// `attempts` = 撃った回数(撃ち直し込み。画像不正で 1 回も撃てなければ 0)
-    static func recordPrewarmOutcome(lines: [String]?, error: String?, ms: Int = 0, attempts: Int = 1) {
+    static func recordModelCompileOutcome(lines: [String]?, error: String?, ms: Int = 0, attempts: Int = 1) {
         guard hangSamplingEnabled(environment: ProcessInfo.processInfo.environment) else { return }
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".fleetest/ocr-late", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let pid = ProcessInfo.processInfo.processIdentifier
-        let entry: [String: Any] = ["pid": pid, "prewarm": true, "ms": ms, "attempts": attempts,
-                                    "lines": lines ?? [], "error": error ?? "", "warm": warmedUp(probe: lines)]
+        let entry: [String: Any] = ["pid": pid, "compile": true, "ms": ms, "attempts": attempts,
+                                    "lines": lines ?? [], "error": error ?? "", "ready": modelReady(probe: lines)]
         if let data = try? JSONSerialization.data(withJSONObject: entry) {
-            try? data.write(to: dir.appendingPathComponent("prewarm-\(pid).json"))
+            try? data.write(to: dir.appendingPathComponent("compile-\(pid).json"))
         }
     }
 
@@ -526,7 +526,7 @@ public enum RegionText {
 
     /// 諦めた読みが戻り、`abandonedInFlight` を引いた**直後**に呼ぶ(テスト用。本番では nil)。
     /// 「戻ったら減る」を壁時計の上限なしに確かめるため —— 読みの所要は負荷で数秒に伸びる
-    /// (全件並列の swift test で 5 秒の待ちを越えて落ちた)(`warmOverrideForTesting` と同じ規律)
+    /// (全件並列の swift test で 5 秒の待ちを越えて落ちた)(`modelReadyOverrideForTesting` と同じ規律)
     nonisolated(unsafe) public static var lateFinishObserverForTesting: (@Sendable () -> Void)?
 
     public static func resolveWithinBudget(expected: String, pngData: Data,
@@ -572,7 +572,7 @@ public enum RegionText {
     /// `lines` は各 observation の topCandidates(1) を Vision が返した順に並べたもの。
     ///
     /// **`recognize` を実際に撃った回だけ `VisionUsageLedger` へ記録する**(crop が作れず到達しなかった
-    /// 回は数えない。暖機(prewarmOnce)は `read` を経由しないのでここには入らない = 数えない)。
+    /// 回は数えない。コンパイル(modelCompileOnce)は `read` を経由しないのでここには入らない = 数えない)。
     public static func read(pngData: Data, frame: FTRect, screen: FTRect,
                             cropPadding: CGFloat = 24,
                             languages: [String] = defaultLanguages,

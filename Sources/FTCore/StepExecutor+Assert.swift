@@ -235,23 +235,23 @@ extension StepExecutor {
         // 詳細は RegionText のコメントと docs/poc-fm-occlusion-guard.md §5.17。off のときはこの if を通らない
         var ocrReading: RegionText.Reading?
         var ocrReadable = false
-        // **近道を実際に撃つ時点で暖機が終わっていなければ、終わるまで待つ**(受け皿。ふつうは
-        // ScenarioHost.awaitOCRWarmup が最初のシナリオを起こす前に warm-ocr を待ち終えている)。諦めた読みが走っている間は待たない
+        // **近道を実際に撃つ時点でコンパイルが終わっていなければ、終わるまで待つ**(受け皿。ふつうは
+        // ScenarioHost.awaitOCRModelCompile が最初のシナリオを起こす前に compile-ocr を待ち終えている)。諦めた読みが走っている間は待たない
         // (shouldTakeShortcut と同じ理由 — 詰まった読みの後ろに積み増さない)。待った時間は
         // DeadlineExclusion 経由で締め切り(FTSync/scenarioTimeout)から差し引かれるので、
         // ここで払っても呼び出し元のステップ/シナリオが不当に打ち切られない
-        if occlusionOCRMode != .off, RegionText.abandonedInFlight == 0, !RegionText.isWarm {
+        if occlusionOCRMode != .off, RegionText.abandonedInFlight == 0, !RegionText.isModelReady {
             let waitStart = clock.now
-            let waitOutcome = await RegionText.awaitPrewarm(mode: occlusionOCRMode)
+            let waitOutcome = await RegionText.awaitModelCompile(mode: occlusionOCRMode)
             let waitedMs = Self.ms(clock.now - waitStart)
             if waitedMs > 0 {
                 phase.guardMs += waitedMs
                 phase.ocrMs += waitedMs
-                noteCodesThisStep.insert(.ocrWarmupWaited)
+                noteCodesThisStep.insert(.ocrCompileWaited)
             }
-            if case .capped = waitOutcome { noteCodesThisStep.insert(.ocrWarmupCapped) }
+            if case .capped = waitOutcome { noteCodesThisStep.insert(.ocrCompileCapped) }
         }
-        if RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm,
+        if RegionText.shouldTakeShortcut(mode: occlusionOCRMode, ready: RegionText.isModelReady,
                                          abandonedInFlight: RegionText.abandonedInFlight) {
             // **この段は guardMs に計上する** —— スクショ(actionMs)と違いどの内訳にも入って
             // いなかった
@@ -275,8 +275,8 @@ extension StepExecutor {
             }
         } else if occlusionOCRMode != .off {
             // 近道を見送った**理由**を残す(見送り自体は正しい判断。薄いテキストの witness が FM に
-            // 落ちて反転した回に、未 warm か予算切れの読みが残っていたかを後から切り分けるため)
-            noteCodesThisStep.insert(RegionText.isWarm ? .ocrShortcutBusy : .ocrShortcutNotWarm)
+            // 落ちて反転した回に、未コンパイルか予算切れの読みが残っていたかを後から切り分けるため)
+            noteCodesThisStep.insert(RegionText.isModelReady ? .ocrShortcutBusy : .ocrShortcutNotReady)
         }
         // OCR の読みだけの判定。**FM の段が使えるときは赤でも FM に回す**(ユーザー決定。最終判定は下の突き合わせ)。
         // 読んでいない(nil)は judge が判定不能を返す
@@ -366,10 +366,10 @@ extension StepExecutor {
     /// 絵は既に新しい状態なのに木が後から追いつき、同じ条件を満たす(実測: Compose の iOS で
     /// スイッチを叩いた直後、絵は `location=on` なのに木は `location=off`。静止した画面の絵が変わるのを
     /// 撮り直しの予算いっぱい待っていた)。本当に古い絵(E2E-RN の WebView で `wv_result=-` のまま)には
-    /// 期待する文字が無いので従来どおり待つ。OCR の近道が撃てない(off・未 warm・詰まり)ときは確かめない
+    /// 期待する文字が無いので従来どおり待つ。OCR の近道が撃てない(off・未コンパイル・詰まり)ときは確かめない
     private func staleFrameShowsExpectedText(_ png: Data, expectedText: String, element: ElementInfo,
                                              screen: FTRect, phase: inout PhaseAccumulator) async -> Bool {
-        guard RegionText.shouldTakeShortcut(mode: occlusionOCRMode, warm: RegionText.isWarm,
+        guard RegionText.shouldTakeShortcut(mode: occlusionOCRMode, ready: RegionText.isModelReady,
                                             abandonedInFlight: RegionText.abandonedInFlight) else { return false }
         let clock = ContinuousClock()
         let start = clock.now

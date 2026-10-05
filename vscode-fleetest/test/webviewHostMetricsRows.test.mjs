@@ -1,4 +1,4 @@
-// ツールバーのホストグラフ(MEM/CPU/GPU/VN/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
+// ツールバーのホストグラフ(MEM/CPU/GPU/Vision/FM)を**機械ごとの行**にする配線テスト(hostCharts.js)。
 // 実 HTML+実バンドルを jsdom で動かす方式は webviewSelectAllButton.test.mjs と同じ。
 //
 // ここで見るのは行の集合と宛先の分岐だけ(描画そのものは jsdom にキャンバスが無いので測れない):
@@ -89,7 +89,7 @@ function machineLabels(document) {
   return rows(document).map((row) => row.querySelector(".hm-machine").textContent);
 }
 
-/** 1行ぶんの表示値(MEM/CPU/GPU/VN/FM の順)。 */
+/** 1行ぶんの表示値(MEM/CPU/GPU/Vision/FM の順)。 */
 function values(row) {
   return [...row.querySelectorAll(".host-metric")].map((metric) => metric.querySelector(".hm-value").textContent);
 }
@@ -98,7 +98,7 @@ function rowFor(document, machine) {
   return document.querySelector(`#host-metrics .hm-row[data-machine="${machine}"]`);
 }
 
-/** VN のセル(値・class の検証に使う)。 */
+/** Vision のセル(値・class の検証に使う)。 */
 function visionCell(document, machine) {
   return rowFor(document, machine).querySelector('[data-metric="vision"]');
 }
@@ -110,14 +110,14 @@ function fmTitle(document, machine) {
   return rowFor(document, machine).querySelector('[data-metric="fm"]').title;
 }
 
-/** VN のツールチップ。fmTitle と同じ理由(窓の集計はここでしか検証できない)。 */
+/** Vision のツールチップ。fmTitle と同じ理由(窓の集計はここでしか検証できない)。 */
 function visionTitle(document, machine) {
   return visionCell(document, machine).title;
 }
 
 /** fm/vision 省略時は calls:0(既知の0件、欠測ではない)。欠測にしたいテストは { calls: null } … を
  *  渡す(旧来どおり fmCalls/visionCalls のフルキー名で上書きする)。
- *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**で VN には無い
+ *  死活(fmTextState/fmVisionState/fmDeadReason/fmCheckedAt)は**回数とは別の軸**で Vision には無い
  *  ので、省略時は不明(null)= 旧 CLI の行と同じ形。 */
 function hostMetricsSample(machine, cpu, fm = {}, vision = {}, cpuCores = 8) {
   const {
@@ -125,12 +125,12 @@ function hostMetricsSample(machine, cpu, fm = {}, vision = {}, cpuCores = 8) {
     fmTextState = null, fmVisionState = null, fmDeadReason = null,
     fmCheckedAt = Date.now() / 1000,
   } = fm;
-  const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0, visionWarming = 0 } = vision;
+  const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0, ocrCompiling = 0 } = vision;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
     cpu, cpuCores, gpu: 0.25, gpuCores: 38, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
     fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
-    visionCalls, visionFailures, visionTotalMs, visionWarming,
+    visionCalls, visionFailures, visionTotalMs, ocrCompiling,
   };
 }
 
@@ -157,7 +157,7 @@ test("hostMetricsMachines で機械ごとの行が増え、左端が local / <�
   for (const row of rows(document)) {
     assert.deepEqual(
       [...row.querySelectorAll(".host-metric")].map((m) => m.dataset.metric),
-      ["mem", "cpu", "gpu", "vision", "fm"], "どの行も MEM/CPU/GPU/VN/FM の5系列を持つ",
+      ["mem", "cpu", "gpu", "vision", "fm"], "どの行も MEM/CPU/GPU/Vision/FM の5系列を持つ",
     );
   }
   assert.equal(document.querySelectorAll("#hm-cpu").length, 1, "複製した行に id を残さない");
@@ -799,9 +799,9 @@ test("FM の縦軸は全行で共有される(行ごとに伸縮しない)", (t)
     `高さの比は値の比(8:2=4)になるはず。実際 ${(high / low).toFixed(2)}(行ごとなら約2.5)`);
 });
 
-// VN は GPU と FM の間(供給元は同じ hostMetrics の visionCalls/visionFailures/visionTotalMs)。
+// Vision は GPU と FM の間(供給元は同じ hostMetrics の visionCalls/visionFailures/visionTotalMs)。
 // 数え方・窓・欠測の扱いは FM の系列に倣うが、**死活・バッジは持たない**。
-test("VN は機械ごとの行に積まれ、値のセルは直近 tick の呼び出し回数", (t) => {
+test("Vision は機械ごとの行に積まれ、値のセルは直近 tick の呼び出し回数", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
@@ -815,7 +815,7 @@ test("VN は機械ごとの行に積まれ、値のセルは直近 tick の呼�
   assert.equal(visionOf("mac2"), "2", "最後の tick の回数がそのまま値のセルに出る(窓の平均ではない)");
 });
 
-test("VN のツールチップは窓の移動窓レートを出す", (t) => {
+test("Vision のツールチップは窓の移動窓レートを出す", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
@@ -844,9 +844,9 @@ test("visionCalls が null は欠測(–)、0 は 0(不明と0件を混ぜない
   assert.equal(visionOf("mac2"), "0", "既知の0件(呼び出しが無かった)は欠測と区別する");
 });
 
-// FM の失敗はガード自体を無効化するので死活の軸が要るが、VN の失敗はその回の判定が別の経路
-// (OCR は FM・分類器は a11y)へ回るだけで判定能力は落ちない —— VN には死活もバッジも作らない(FM が死んでいても道連れにしない)
-test("FM が死んでいても VN の系列は死の扱いを受けない", (t) => {
+// FM の失敗はガード自体を無効化するので死活の軸が要るが、Vision の失敗はその回の判定が別の経路
+// (OCR は FM・分類器は a11y)へ回るだけで判定能力は落ちない —— Vision には死活もバッジも作らない(FM が死んでいても道連れにしない)
+test("FM が死んでいても Vision の系列は死の扱いを受けない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   send(window, { type: "hostMetricsMachines", machines: ["mac2"] });
@@ -858,9 +858,9 @@ test("FM が死んでいても VN の系列は死の扱いを受けない", (t) 
   const fmEntry = rowFor(document, "mac2").querySelector('[data-metric="fm"]');
   assert.ok(fmEntry.classList.contains("hm-fm-dead"), "前提: FM は死んでいる");
   const entry = visionCell(document, "mac2");
-  assert.equal(entry.classList.contains("hm-fm-dead"), false, "VN のセルに hm-fm-dead は付かない");
-  assert.equal(entry.classList.contains("hm-fm-warn"), false, "VN のセルに hm-fm-warn も付かない");
-  assert.equal(entry.querySelector(".hm-value").textContent, "3", "VN の回数はそのまま出る");
+  assert.equal(entry.classList.contains("hm-fm-dead"), false, "Vision のセルに hm-fm-dead は付かない");
+  assert.equal(entry.classList.contains("hm-fm-warn"), false, "Vision のセルに hm-fm-warn も付かない");
+  assert.equal(entry.querySelector(".hm-value").textContent, "3", "Vision の回数はそのまま出る");
 });
 
 // jsdom は CSS を読まないので、薄くする宣言そのものをテキストで押さえる(進捗バーと同じ理由)。
@@ -913,7 +913,7 @@ test("無効な機械のスパークラインは全系列とも同じ1色(色を
   assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
 });
 
-test("OCR モデルのコンパイル中は VN のチャートの上に compiling を重ね、値のセルは回数のまま・ツールチップにコンパイルの行が付く", (t) => {
+test("OCR モデルのコンパイル中は Vision のチャートの上に compiling を重ね、値のセルは回数のまま・ツールチップにコンパイルの行が付く", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const texts = [];
@@ -930,9 +930,9 @@ test("OCR モデルのコンパイル中は VN のチャートの上に compilin
   const overlaid = () => texts.filter((x) => cell.contains(x.canvas)).map((x) => x.text);
 
   // 線を引くには 2 点要る(1点だけだと hmDraw が何も描かない)
-  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
-  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
-  assert.ok(overlaid().includes("compiling"), "compiling が VN のチャートに描かれていない");
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 2 }));
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 2 }));
+  assert.ok(overlaid().includes("compiling"), "compiling が Vision のチャートに描かれていない");
   // 文字の色は系列(線)と同じ(ユーザー決定)
   const lineColor = strokes.filter((x) => cell.contains(x.canvas)).at(-1).color;
   assert.ok(texts.filter((x) => cell.contains(x.canvas)).every((x) => x.color === lineColor),
@@ -941,17 +941,17 @@ test("OCR モデルのコンパイル中は VN のチャートの上に compilin
   assert.match(cell.title, /^(OCR モデルをコンパイル中\(2 プロセス\)|Compiling the OCR model \(2 process\(es\)\))/);
 
   texts.length = 0;
-  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 0 }));
-  assert.equal(overlaid().length, 0, "暖機が終われば重ねない");
-  assert.doesNotMatch(cell.title, /コンパイル中|Compiling the OCR/);
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 0 }));
+  assert.equal(overlaid().length, 0, "コンパイルが終われば重ねない");
+  assert.doesNotMatch(cell.title, /コンパイル中|Compiling/);
 });
 
-test("hmWarmingBands は暖機中の tick を右詰めの x 範囲にし、隣り合う tick を結合する", async () => {
-  const { hmWarmingBands } = await import("../src/webview/monitor/hostChartScale.js");
-  assert.deepEqual(hmWarmingBands([false, false], 60, 59), []);
+test("hmCompilingBands はコンパイル中の tick を右詰めの x 範囲にし、隣り合う tick を結合する", async () => {
+  const { hmCompilingBands } = await import("../src/webview/monitor/hostChartScale.js");
+  assert.deepEqual(hmCompilingBands([false, false], 60, 59), []);
   // 59px / 59 区間 = stepX 1。2件は右詰めで index 58, 59 → x=58, 59
-  assert.deepEqual(hmWarmingBands([false, true], 60, 59), [{ x0: 58.5, x1: 59 }]);
-  assert.deepEqual(hmWarmingBands([true, true, false, true], 60, 59), [
+  assert.deepEqual(hmCompilingBands([false, true], 60, 59), [{ x0: 58.5, x1: 59 }]);
+  assert.deepEqual(hmCompilingBands([true, true, false, true], 60, 59), [
     { x0: 55.5, x1: 57.5 },
     { x0: 58.5, x1: 59 },
   ]);

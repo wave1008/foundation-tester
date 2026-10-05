@@ -240,18 +240,18 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     case ocrBudgetExhausted = "ocr-budget-exhausted"
     /// OCR の近道を撃たなかった理由。「近道が効くはず」の witness(薄いテキスト)が FM に落ちて
     /// 反転したとき、理由が残らないと 1 回で切れない(負荷テスト F29)
-    case ocrShortcutNotWarm = "ocr-shortcut-not-warm"
+    case ocrShortcutNotReady = "ocr-shortcut-not-ready"
     case ocrShortcutBusy = "ocr-shortcut-busy"
 
-    /// 近道を撃つ前に暖機の完了を待った(受け皿。ふつうは ScenarioHost.awaitOCRWarmup が最初のシナリオの前に
-    /// warm-ocr を待ち終えている)。待った時間は `DeadlineExclusion` 経由で締め切りから差し引かれる
-    /// ので判定は変えない。**率が上がったら暖機の開始(FTDriveCore.init)が間に合っていない**
+    /// 近道を撃つ前にコンパイルの完了を待った(受け皿。ふつうは ScenarioHost.awaitOCRModelCompile が最初のシナリオの前に
+    /// compile-ocr を待ち終えている)。待った時間は `DeadlineExclusion` 経由で締め切りから差し引かれる
+    /// ので判定は変えない。**率が上がったらコンパイルの開始(FTDriveCore.init)が間に合っていない**
     /// (実行プロファイルのマスタースイッチが効いているのに最初のガードより前に終わらない)
-    case ocrWarmupWaited = "ocr-warmup-waited"
-    /// 暖機の待ちが `RegionText.prewarmWaitCap`(120 秒)を使い切っても終わらなかった。
+    case ocrCompileWaited = "ocr-compile-waited"
+    /// コンパイルの待ちが `RegionText.modelCompileWaitCap`(120 秒)を使い切っても終わらなかった。
     /// **判定は変えない**(読めなかったのと同じ扱いで FM へ)。**率が上がったら Vision の
     /// コンパイルがハングしている**(ANE を避けていてもこの型は起こりうる。fm-flap-ane-load-failure)
-    case ocrWarmupCapped = "ocr-warmup-capped"
+    case ocrCompileCapped = "ocr-compile-capped"
 
     /// checkIsON / checkIsOFF の状態を **CheckStateClassifier が要素の画像から判定した**
     /// (a11y の報告ではない)。見本画像の不足・見た目の変更で誤りうる側なので、判定の出どころを残す
@@ -268,7 +268,7 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら、シナリオのプロセスの Vision が負荷下の初期化で壊れている回が多い**(`FindImage.retryingTransientAnomalies`)
     case visionHelperRescued = "vision-helper-rescued"
     /// Vision の異常を検知して補助プロセスに頼もうとしたが、補助が無い・答えない・unhealthy だったので既存の待ち直しへ落ちた
-    /// (補助の値が門で落ちた回には立たない)。**立ち続けるなら補助プロセスが起動していない・暖機が終わらない**
+    /// (補助の値が門で落ちた回には立たない)。**立ち続けるなら補助プロセスが起動していない・コンパイルが終わらない**
     case visionHelperUnavailable = "vision-helper-unavailable"
     /// 起動直後の最初のロケータ操作の前に配置の静止を待ち、**待っている間に実際に木が動いた**
     /// (= 待たなければずれる前の座標を撃っていた)。立たない = 既に静止していた(`pendingLaunchSettle`)
@@ -339,10 +339,10 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     public var text: String {
         switch self {
         case .ocrBudgetExhausted: return "the OCR shortcut ran out of budget (asked FM instead)"
-        case .ocrShortcutNotWarm: return "the OCR shortcut was skipped: the recognizer was not warm yet (asked FM instead)"
+        case .ocrShortcutNotReady: return "the OCR shortcut was skipped: the OCR model was not ready yet (asked FM instead)"
         case .ocrShortcutBusy: return "the OCR shortcut was skipped: an earlier OCR read was still running past its budget (asked FM instead)"
-        case .ocrWarmupWaited: return "the OCR shortcut waited for the recognizer to finish loading before using it"
-        case .ocrWarmupCapped: return "the wait for the OCR recognizer to finish loading ran out (asked FM instead)"
+        case .ocrCompileWaited: return "the OCR shortcut waited for the OCR model to finish compiling before using it"
+        case .ocrCompileCapped: return "the wait for the OCR model to finish compiling ran out (asked FM instead)"
         case .checkStateClassified: return "the check state was judged by CheckStateClassifier from the element's image"
         case .holdEndedBeforeBlock:
             return "the hold's block ran longer than holdSeconds, so the finger was already up for"

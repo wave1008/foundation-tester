@@ -58,9 +58,9 @@ public struct OcclusionVerifier {
     static let enlargedRetryFactor = 2
 
     /// 惜しい転写のときの OCR 確認に許す時間。Tier-2 の近道(1.3 秒)と違い、ここで諦めると**誤った赤**に
-    /// なるので、Vision の初回コンパイル(実測 25〜47 秒。RegionText.prewarmIfNeeded の doc)を待ち切れる
+    /// なるので、Vision の初回コンパイル(実測 25〜47 秒。RegionText.compileModelIfNeeded の doc)を待ち切れる
     /// 長さにする。払うのは「プロセスで最初の読みが惜しい転写だった回」だけ(align 直後の最初の
-    /// シナリオで実際に踏んだ。E2E-RN M1Max 実測)。暖まっていれば数百 ms で返る
+    /// シナリオで実際に踏んだ。E2E-RN M1Max 実測)。コンパイル済みなら数百 ms で返る
     static let nearMissOCRBudget: Duration = .seconds(60)
 
     /// 暖機(`prewarmVisibilityCheck`)の殺しスイッチ。`FT_FM_OCCLUSION_PREWARM=0` で撃たない
@@ -120,8 +120,8 @@ public struct OcclusionVerifier {
         // 掛けた OCR は読める(RegionText.usesLanguageCorrection)。**OCR は素通りの根拠にしかしない**
         // (丸ごと読めたときだけ visible。読めなければ判定は FM の転写のまま = 規律どおり)。
         // 通常はここへ来る前に Tier-2 の OCR が同じ crop を読んで FM を省いているので、ここに
-        // 届くのは OCR が暖まっていない・予算切れの回だけ。
-        // **ocrTextOcclusionCheck(off)を見ない**(ユーザー決定: 精度優先。off は暖機しないのでこの回だけ
+        // 届くのは OCR のモデルがコンパイル済みでない・予算切れの回だけ。
+        // **ocrTextOcclusionCheck(off)を見ない**(ユーザー決定: 精度優先。off はコンパイルしないのでこの回だけ
         // 初回コンパイルを払いうる = nearMissOCRBudget の 60 秒)。トグルに従わせると字形の取り違えが誤った赤になる
         if !verdict.visible,
            TranscriptMatch.isNearMiss(transcript: first, expected: expectedText)

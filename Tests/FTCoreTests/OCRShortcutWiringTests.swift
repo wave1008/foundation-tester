@@ -13,14 +13,14 @@ final class OCRShortcutWiringTests: XCTestCase {
             .deletingLastPathComponent().appendingPathComponent("Sources/FTCore/StepExecutor+Assert.swift")
     }
 
-    func testExecutorPassesTheLiveInFlightCountAndWarmState() throws {
+    func testExecutorPassesTheLiveInFlightCountAndReadyState() throws {
         let text = try String(contentsOf: assertFile, encoding: .utf8)
         let calls = text.components(separatedBy: "RegionText.shouldTakeShortcut(").dropFirst()
         // occlusionFlip の近道と、古いと判定した絵の確認(staleFrameShowsExpectedText)の2箇所。増えたら見直す
         XCTAssertEqual(calls.count, 2, "門の呼び出しの数が変わった(増えた口も生の状態を渡すか見直す)")
         for call in calls {
             let head = String(call.prefix(200))
-            XCTAssertTrue(head.contains("warm: RegionText.isWarm"), "warm を生の状態から渡していない: \(head)")
+            XCTAssertTrue(head.contains("ready: RegionText.isModelReady"), "ready を生の状態から渡していない: \(head)")
             XCTAssertTrue(head.contains("abandonedInFlight: RegionText.abandonedInFlight"),
                           "諦めた読みの本数を生の値から渡していない(定数だと積み増しが再発する): \(head)")
         }

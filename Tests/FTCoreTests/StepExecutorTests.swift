@@ -172,7 +172,7 @@ final class StepExecutorTests: XCTestCase {
 
     /// スクショ再利用: 操作を挟まない連続ガードでは 1 回のスクショを使い回す。
     /// **OCR は切る**: 再利用の窓(200ms)は OCR と無関係で、OCR が有効だと最初のガードが本物の Vision の
-    /// 暖機を待つ(RegionText.awaitPrewarm)ぶん窓を越え、機械の Vision の状態でこのテストが揺れる
+    /// コンパイルを待つ(RegionText.awaitModelCompile)ぶん窓を越え、機械の Vision の状態でこのテストが揺れる
     func testGuardReusesScreenshotAcrossConsecutiveAsserts() async throws {
         let log = CallLog()
         let el = textElement(id: "msg", label: "こんにちは")
@@ -744,8 +744,8 @@ final class StepExecutorTests: XCTestCase {
         executor.occlusionOCRMode = .on
         // 近道は「モデルが載っている」ときだけ撃つ(RegionText.shouldTakeShortcut)。
         // この検証が見たいのは OCR が読めた先の分岐なので、載っている状態に固定する
-        RegionText.warmOverrideForTesting = true
-        defer { RegionText.warmOverrideForTesting = nil }
+        RegionText.modelReadyOverrideForTesting = true
+        defer { RegionText.modelReadyOverrideForTesting = nil }
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -768,8 +768,8 @@ final class StepExecutorTests: XCTestCase {
         executor.occlusionOCRMode = .measure
         // 近道は「モデルが載っている」ときだけ撃つ(RegionText.shouldTakeShortcut)。
         // この検証が見たいのは OCR が読めた先の分岐なので、載っている状態に固定する
-        RegionText.warmOverrideForTesting = true
-        defer { RegionText.warmOverrideForTesting = nil }
+        RegionText.modelReadyOverrideForTesting = true
+        defer { RegionText.modelReadyOverrideForTesting = nil }
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
 
@@ -797,18 +797,18 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1, "off では OCR に関わらず FM を呼ぶはず")
     }
 
-    /// 暖機を頼むのは**ガードが実際に走る回**(生成のたびに頼むと、ガードが一度も撃たれない
+    /// コンパイルを頼むのは**ガードが実際に走る回**(生成のたびに頼むと、ガードが一度も撃たれない
     /// executor でも Vision のモデルを読み込む)。
-    /// **暖機の状態はプロセス全体で共有する**: 同じプロセスで先に走ったテストが暖機を終わらせていると、
-    /// ガードは頼まずに抜けるのが正しい動き(`RegionText.awaitPrewarm`)なので、「まだ暖まっていない・
-    /// 暖機も終わっていない」を差し替え口で固定する(`swift test --filter StepExecutorTests` の
+    /// **コンパイルの状態はプロセス全体で共有する**: 同じプロセスで先に走ったテストがコンパイルを終わらせていると、
+    /// ガードは頼まずに抜けるのが正しい動き(`RegionText.awaitModelCompile`)なので、「まだコンパイル済みでない・
+    /// コンパイルも終わっていない」を差し替え口で固定する(`swift test --filter StepExecutorTests` の
     /// 1 プロセス実行で、並び順しだいで落ちていた)
-    func testOCRPrewarmIsRequestedWhenTheGuardRuns() async throws {
-        RegionText.warmOverrideForTesting = false
-        RegionText.prewarmFinishOverrideForTesting = {}
+    func testOCRModelCompileIsRequestedWhenTheGuardRuns() async throws {
+        RegionText.modelReadyOverrideForTesting = false
+        RegionText.modelCompileFinishOverrideForTesting = {}
         defer {
-            RegionText.warmOverrideForTesting = nil
-            RegionText.prewarmFinishOverrideForTesting = nil
+            RegionText.modelReadyOverrideForTesting = nil
+            RegionText.modelCompileFinishOverrideForTesting = nil
         }
         let log = CallLog()
         let label = "こんにちは"
@@ -818,12 +818,12 @@ final class StepExecutorTests: XCTestCase {
         let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true),
                                     occlusionInkThreshold: 1000, isAndroid: false, tunables: RunTunables())
         executor.occlusionOCRMode = .on
-        let before = RegionText.prewarmRequestCount
-        XCTAssertEqual(RegionText.prewarmRequestCount, before, "生成だけでは暖機を頼まない")
+        let before = RegionText.modelCompileRequestCount
+        XCTAssertEqual(RegionText.modelCompileRequestCount, before, "生成だけではコンパイルを頼まない")
         let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
                             timeout: 1, occlusionGuard: true)
         _ = await executor.execute(step)
-        XCTAssertGreaterThan(RegionText.prewarmRequestCount, before)
+        XCTAssertGreaterThan(RegionText.modelCompileRequestCount, before)
     }
 
     // MARK: - guardEntered(occlusion-guard がどれだけ効いたかの分母。RunRecord の guarded 集計元)

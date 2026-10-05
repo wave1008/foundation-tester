@@ -402,7 +402,7 @@ public enum VisionClassifier {
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }
 
-    /// 学習(キャッシュに無いとき)の待ちは締め切りから差し引く(DeadlineExclusion。OCR の暖機と同じ扱い)
+    /// 学習(キャッシュに無いとき)の待ちは締め切りから差し引く(DeadlineExclusion。OCR のコンパイルと同じ扱い)
     public static func load(_ set: TrainingSet, cacheDirectory: URL) async throws -> Model {
         let needsTraining = isStale(set, cacheDirectory: cacheDirectory)
         let token = needsTraining ? DeadlineExclusion.begin(cap: trainingCap) : nil

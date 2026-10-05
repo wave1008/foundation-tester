@@ -1,12 +1,12 @@
-// OCR の認識器(Vision)を暖機している間の、機械共通の印。暖機するプロセス(シナリオ・warm-ocr の子)が
-// `~/.fleetest/vision-warmup/<pid>` を置き、host-metrics 常駐プロセスが毎 tick 数える
-// (モニターの VN チャートの暖機の帯。UsageLedger と同じ「呼ぶ側が書き、host-metrics が読む」形)。
-// 置き場は FT_VISION_WARMUP_DIR で差し替え可(テスト用)。殺されたプロセスの残骸は activeCount が掃除する。
+// OCR の認識器(Vision)をコンパイルしている間の、機械共通の印。コンパイルするプロセス(シナリオ・compile-ocr の子)が
+// `~/.fleetest/ocr-compile/<pid>` を置き、host-metrics 常駐プロセスが毎 tick 数える
+// (モニターの Vision チャートのコンパイルの帯。UsageLedger と同じ「呼ぶ側が書き、host-metrics が読む」形)。
+// 置き場は FT_OCR_COMPILE_DIR で差し替え可(テスト用)。殺されたプロセスの残骸は activeCount が掃除する。
 
 import Foundation
 import Synchronization
 
-public enum VisionWarmupLedger {
+public enum OCRModelCompileLedger {
     public struct Token: Sendable {
         fileprivate init() {}
     }
@@ -14,12 +14,12 @@ public enum VisionWarmupLedger {
     private static let depth = Mutex(0)
 
     static var directory: URL {
-        if let override = ProcessInfo.processInfo.environment["FT_VISION_WARMUP_DIR"], !override.isEmpty {
+        if let override = ProcessInfo.processInfo.environment["FT_OCR_COMPILE_DIR"], !override.isEmpty {
             return URL(fileURLWithPath: override, isDirectory: true)
         }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".fleetest", isDirectory: true)
-            .appendingPathComponent("vision-warmup", isDirectory: true)
+            .appendingPathComponent("ocr-compile", isDirectory: true)
     }
 
     /// 同一プロセスで重ねて呼ばれうるので参照カウント。印のファイルは 0→1 で作り 1→0 で消す
@@ -39,12 +39,12 @@ public enum VisionWarmupLedger {
         }
     }
 
-    /// いま暖機しているプロセス数(この機械)。生きていない pid のファイルは残骸として消す
+    /// いまコンパイルしているプロセス数(この機械)。生きていない pid のファイルは残骸として消す
     public static func activeCount() -> Int { activeCount(in: directory) }
 
-    /// 数えるのは**置かれてからこれ以上たった印だけ**。暖まっている機械でもシナリオの開始時の探りは
-    /// 0.2〜0.3 秒かかり、1 秒刻みのサンプルがその一瞬を拾うとチャートに暖機の帯がちらつく
-    /// (暖機していないのに)。コールドの暖機は 20 秒以上なので、1 秒遅れて帯が出ても見落とさない
+    /// 数えるのは**置かれてからこれ以上たった印だけ**。コンパイル済み機械でもシナリオの開始時の探りは
+    /// 0.2〜0.3 秒かかり、1 秒刻みのサンプルがその一瞬を拾うとチャートにコンパイルの帯がちらつく
+    /// (コンパイルしていないのに)。コールドのコンパイルは 20 秒以上なので、1 秒遅れて帯が出ても見落とさない
     static let minimumAge: TimeInterval = 1.0
 
     static func markPresent(in dir: URL, pid: Int32) {

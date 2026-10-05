@@ -12,8 +12,8 @@ extension StepExecutor {
         var ocrLines: [String] = []
         var ocrAttempts = 0
         if point == nil {
-            // 暖機を待つ(待った分は DeadlineExclusion が締め切りから差し引く。テキストの視覚検証の OCR と同じ使い方)
-            _ = await RegionText.awaitPrewarm(mode: .on)
+            // コンパイルを待つ(待った分は DeadlineExclusion が締め切りから差し引く。テキストの視覚検証の OCR と同じ使い方)
+            _ = await RegionText.awaitModelCompile(mode: .on)
             let clock = ContinuousClock()
             for attempt in 1...LinkTextLocator.ocrShotAttempts {
                 if attempt > 1 { try? await Task.sleep(for: LinkTextLocator.ocrReshotInterval) }

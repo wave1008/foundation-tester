@@ -146,7 +146,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **健全性 watchdog(`monitorHealthWatchdog`)はまだリモートを見ない** —— Wi-Fi 修復に
   相当する `api` の口が無く、そこだけ手元の adb 直叩きのため。実機はどちらの watchdog も
   見ない(供給に数分かかり枠を専有する。機械に依らない除外)。
-  **ホストの負荷(MEM/CPU/GPU/VN/FM。VN = Vision / Core ML の呼び出し = OCR と画像分類器)も同じ** —— 拡張が
+  **ホストの負荷(MEM/CPU/GPU/Vision/FM。Vision = Vision / Core ML の呼び出し = OCR と画像分類器)も同じ** —— 拡張が
   `remote exec <runner> -- api host-metrics` を機械ごとに立て、ツールバーのグラフを
   **機械ごとの行**にする(左端は手元が `local`・以降は機械名。1行のときはラベルを出さない)。
   **行の集合は直近の monitorDevices に居る機械で決める**(表示フィルタは通さない = ssh の churn を

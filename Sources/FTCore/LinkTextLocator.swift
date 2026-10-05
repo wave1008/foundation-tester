@@ -13,7 +13,7 @@ public enum LinkTextLocator {
     public static let ocrShotAttempts = 3
     /// 撮り直しの間隔(3 回で約 1 秒 = 画面の切り替えのアニメーションより長い)
     public static let ocrReshotInterval: Duration = .milliseconds(500)
-    /// 1回の OCR の予算。定常は 1 段 100〜300ms・段は最大 3 で 1 秒未満(暖機は先に `awaitPrewarm` で
+    /// 1回の OCR の予算。定常は 1 段 100〜300ms・段は最大 3 で 1 秒未満(コンパイルは先に `awaitModelCompile` で
     /// 済ませる)。これを超えるのは読みが固まった形(E2EY-Android で 120 秒のステップの時間切れまで返らなかった)。
     /// 尽きたら理由を言って失敗する(固まった読みは止めずに放す = `TaskBudget`)
     public static let ocrBudget: Duration = .seconds(10)

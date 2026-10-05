@@ -54,7 +54,7 @@ final class HostMetricsRecorderTests: XCTestCase {
         let sample = HostMetricsSample(
             ts: 0, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
             fmCalls: nil, fmFailures: nil, fmTotalMs: nil,
-            visionCalls: nil, visionFailures: nil, visionTotalMs: nil, visionWarming: 0)
+            visionCalls: nil, visionFailures: nil, visionTotalMs: nil, ocrCompiling: 0)
         let line = try XCTUnwrap(sample.encodedLine())
         let obj = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
@@ -69,7 +69,7 @@ final class HostMetricsRecorderTests: XCTestCase {
         let sample = HostMetricsSample(
             ts: 0, cpu: nil, gpu: nil, memUsedBytes: nil, memTotalBytes: nil,
             fmCalls: nil, fmFailures: nil, fmTotalMs: nil,
-            visionCalls: nil, visionFailures: nil, visionTotalMs: nil, visionWarming: 0)
+            visionCalls: nil, visionFailures: nil, visionTotalMs: nil, ocrCompiling: 0)
         let line = try XCTUnwrap(sample.encodedLine())
         let obj = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])

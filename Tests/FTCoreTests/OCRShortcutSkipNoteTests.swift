@@ -1,5 +1,5 @@
-// OCR の近道を見送った回に理由の注記(ocr-shortcut-not-warm / ocr-shortcut-busy)が残ること。
-// RegionText.isWarm / abandonedInFlight はプロセス全体の状態で差し替え口が無いので、配線は
+// OCR の近道を見送った回に理由の注記(ocr-shortcut-not-ready / ocr-shortcut-busy)が残ること。
+// RegionText.isModelReady / abandonedInFlight はプロセス全体の状態で差し替え口が無いので、配線は
 // ソース走査で固定する(見送りの分岐が両方の注記を持ち、OCR が off のときは何も付けない)。
 
 import XCTest
@@ -22,13 +22,13 @@ final class OCRShortcutSkipNoteTests: XCTestCase {
         let block = String(text[gate.lowerBound..<memo.lowerBound])
         XCTAssertTrue(block.contains("} else if occlusionOCRMode != .off {"),
                       "OCR が off のときは注記を付けない(利用者が切った近道を「見送った」と言わない)")
-        XCTAssertTrue(block.contains(".ocrShortcutBusy : .ocrShortcutNotWarm"),
-                      "見送りの理由は warm かどうかで 2 つに分ける")
+        XCTAssertTrue(block.contains(".ocrShortcutBusy : .ocrShortcutNotReady"),
+                      "見送りの理由は ready かどうかで 2 つに分ける")
     }
 
     func testTheTwoReasonsHaveDistinctTexts() {
-        XCTAssertNotEqual(StepNote.ocrShortcutNotWarm.text, StepNote.ocrShortcutBusy.text)
-        XCTAssertTrue(StepNote.ocrShortcutNotWarm.text.contains("not warm"))
+        XCTAssertNotEqual(StepNote.ocrShortcutNotReady.text, StepNote.ocrShortcutBusy.text)
+        XCTAssertTrue(StepNote.ocrShortcutNotReady.text.contains("not ready"))
         XCTAssertTrue(StepNote.ocrShortcutBusy.text.contains("still running"))
     }
 }

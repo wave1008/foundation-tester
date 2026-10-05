@@ -39,8 +39,8 @@ paths:
   - "Tests/FTCoreTests/StepExecutorTests+OCROnlyVisibility.swift"
   - "Tests/FTCoreTests/OCRShortcutWiringTests.swift"
   - "Tests/FTCoreTests/OCRToggleWiringTests.swift"
-  - "Tests/FTCoreTests/OCRWarmupWaitGateTests.swift"
-  - "Tests/FTCoreTests/OCRWarmupWiringTests.swift"
+  - "Tests/FTCoreTests/OCRModelCompileWaitGateTests.swift"
+  - "Tests/FTCoreTests/OCRModelCompileWiringTests.swift"
   - "Tests/FTCoreTests/OCRWitnessBandExploration.swift"
   - "Tests/FTCoreTests/OcclusionCropRectTests.swift"
   - "Tests/FTCoreTests/OverlayWindowOcclusionTests.swift"
@@ -111,7 +111,7 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   覆いの「Cookieの設定」に当たって素通りする)。
   **読ませる言語は期待文字列から決める**(`languages(for:)`。ASCII の期待値に日本語モデルを
   載せると所要が 2.3 倍になる)。**FM の「惜しい」転写の OCR 読み直し(`OcclusionVerifier.nearMissOCRBudget`)は `ocrTextOcclusionCheck` を見ない**
-  (ユーザー決定: 精度優先。off でも字形の取り違えを誤った赤にしない。off は暖機しないのでその回だけ初回コンパイルを
+  (ユーザー決定: 精度優先。off でも字形の取り違えを誤った赤にしない。off はコンパイルしないのでその回だけ初回コンパイルを
   払いうる。利用者向けは run_profile に明記)。**言語補正は日本語の集合でだけ掛ける**(`usesLanguageCorrection(for:)`。
   en ロケールの端末は「単」を中国語フォントの字形で描き、補正なしだと Vision も FM も「单」と読む。
   ASCII は切ったまま = 欠けを推測で埋めさせない)。読めなければ crop を
@@ -148,23 +148,23 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
 - **occlusion-guard の反転は、1 回目のガード評価が締切を跨いだ回だけ 1 度延長して撮り直す**
   (`guard-retaken`。FM 待ちはアプリの応答ではないので待ち予算から引かない。同じ絵は
   `VisibilityVerdictMemo` が同じ verdict を返すので、テストでは撮り直しごとに違う絵を渡す)
-- **occlusion-guard の OCR 近道は、暖機が終わっていなければ終わるまで待ってから撃つ**(2026-09-15)。
-  **2026-10-06 のユーザー決定で、最初のシナリオを起こす前に `warm-ocr` の完了を待つ**(`ScenarioHost.awaitOCRWarmup`。
+- **occlusion-guard の OCR 近道は、コンパイルが終わっていなければ終わるまで待ってから撃つ**(2026-09-15)。
+  **2026-10-06 のユーザー決定で、最初のシナリオを起こす前に `compile-ocr` の完了を待つ**(`ScenarioHost.awaitOCRModelCompile`。
   9/15 の「run の開始時には待たない」は取り消し。シナリオの中で待つとアプリの時間が進み、一時的な状態を確かめる手順が
   壊れた = E2EY-Android の骨組み。ステップ内の待ちは受け皿として残す。経緯は maintainer-notes §18・§20・§69.5): 認識器(Espresso)の
   コンパイルキャッシュは**プロセス名とバイナリの素性ごと・コンパイルがプロセスの生存中に終わったときだけ
   コミット**。**シナリオを実際に走らせる経路は `ScenarioHost.listForRun`**(run / api run / 機械分担の
-  3 箇所。`OCRWarmupWiringTests` が等号で固定)で同じプロセス名の待てる子 `warm-ocr` を背景で起こす。
-  一覧だけの経路(dry-run / MCP / codegen)は `list`。**プロセス内の暖機(探り)は DSL ではシナリオ開始時に
+  3 箇所。`OCRModelCompileWiringTests` が等号で固定)で同じプロセス名の待てる子 `compile-ocr` を背景で起こす。
+  一覧だけの経路(dry-run / MCP / codegen)は `list`。**プロセス内のコンパイル(探り)は DSL ではシナリオ開始時に
   FTRuntime が始める**(executor の既定ガードは off でステップごとに効かせるので、`StepExecutor.init` の
   条件だけに頼ると最初のガードの中で初めて始まり、全シナリオの最初のガードが近道を逃していた)。
-  近道の直前で `RegionText.awaitPrewarm(cap:)` を待ち(上限 `prewarmWaitCap` 120 秒 = 正当な暖機の
-  実測最大 108 秒 + 1 割。超えたら ANE のハングと見て FM へ・注記 `ocr-warmup-capped`)、
+  近道の直前で `RegionText.awaitModelCompile(cap:)` を待ち(上限 `modelCompileWaitCap` 120 秒 = 正当なコンパイルの
+  実測最大 108 秒 + 1 割。超えたら ANE のハングと見て FM へ・注記 `ocr-compile-capped`)、
   **待った時間はステップ(FTSync 120 秒)とシナリオ(scenarioTimeout)の締め切りから差し引く**
   (`DeadlineExclusion`。子→親の `deadlineExclusion` イベントはホストが横取りし api の NDJSON には出さない)。
-  暖機の待ちはアプリの応答ではないので待ち予算に数えない(9/10 の「初期化をステップの予算で払って
+  コンパイルの待ちはアプリの応答ではないので待ち予算に数えない(9/10 の「初期化をステップの予算で払って
   締め切りに当たる」事故を、待たないことではなく差し引くことで防ぐ)。
-  近道を撃つのは **warm(探りが 1 行以上読めた)かつ 詰まった読みが無い**ときだけ(`shouldTakeShortcut`。
+  近道を撃つのは **ready(探りが 1 行以上読めた)かつ 詰まった読みが無い**ときだけ(`shouldTakeShortcut`。
   純粋関数・配線は走査で固定)、予算 1.3 秒 = 置き換える相手の実測下限、**諦めても読みは止めない**。
   認識器は ANE を避ける(定常の所要は同じ・装置で読みが変わる分はコーパスに固定)。
   **締め切り・予算のテストは戻り値でなく所要を直接測る**(`TaskBudgetTests`)

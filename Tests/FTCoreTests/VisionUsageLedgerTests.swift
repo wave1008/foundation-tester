@@ -132,8 +132,8 @@ final class VisionUsageLedgerTests: XCTestCase {
     }
 
     /// `RegionText.read` が実際に `recognize` を撃った回だけ控えへ書く。Vision の可否で ok の真偽が
-    /// フレークしうる環境を避けるため、見るのは **calls が1増えること**だけ(暖機は read を経由
-    /// しないので混ざらないことも同時に見える —— 暖機ぶんまで足されるなら +1 では止まらない)
+    /// フレークしうる環境を避けるため、見るのは **calls が1増えること**だけ(コンパイルは read を経由
+    /// しないので混ざらないことも同時に見える —— コンパイルぶんまで足されるなら +1 では止まらない)
     func testRegionTextReadRecordsExactlyOneCall() async throws {
         try await SharedResource.hostCaches.locked {
             let (data, rect) = try png("swipe-down.png")

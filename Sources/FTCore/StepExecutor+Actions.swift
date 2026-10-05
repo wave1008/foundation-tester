@@ -978,7 +978,7 @@ extension StepExecutor {
                                  typedOnly: String,
                                  phase: inout PhaseAccumulator) async throws -> String? {
         let clock = ContinuousClock()
-        // var: OCR の暖機を待った分だけ後ろへずらす(アプリの応答ではない待ちを予算から引かない)
+        // var: OCR のコンパイルを待った分だけ後ろへずらす(アプリの応答ではない待ちを予算から引かない)
         var deadline = Date().addingTimeInterval(Self.typeVerifyBudgetSeconds)
         var rounds = 0
         var stagnantRounds = 0
@@ -1032,7 +1032,7 @@ extension StepExecutor {
                     checkedScreenForTypedText = true
                     let seen = await typedTextIsOnScreen(driver, element: element, text: typedOnly,
                                                          deadline: deadline)
-                    deadline = deadline.addingTimeInterval(seen.warmupWaitSeconds)
+                    deadline = deadline.addingTimeInterval(seen.compileWaitSeconds)
                     screenCheckFact = seen.fact
                     if seen.visible {
                         noteCodesThisStep.insert(.typeReadbackUnchanged)
@@ -1075,14 +1075,14 @@ extension StepExecutor {
     }
 
     /// 打った文字が欄の領域に描かれているかを OCR で見る(`verifyTypedText` の「値が1文字も動かない」形の
-    /// 判別だけに使う)。**認識器の暖機が終わるまで待ってから読む**(冷えたまま読むと読み返しの予算を
+    /// 判別だけに使う)。**認識器のコンパイルが終わるまで待ってから読む**(コンパイル前のまま読むと読み返しの予算を
     /// 使い切って届かなかった側へ倒れ、追送で重複した。実測 `apap`)。待った時間は `DeadlineExclusion` が
     /// ステップの締め切りから引き、呼び手は読み返しの締め切りをずらす。読みの予算は読み返しの締め切りの
     /// 残り(新しい定数を置かない)。**ocrTextOcclusionCheck を見ない**(視覚検証の OCR 段のスイッチ。
     /// 近い誤読の読み直しと同じく精度側の用途)。撮れない・読めない・予算切れは visible=false。
     /// **`fact` は visible=false の内訳**(描かれていない / 読みが成立しなかった を混ぜない。値は含めない)
     func typedTextIsOnScreen(_ driver: AppDriver, element: ElementInfo, text: String, deadline: Date) async
-        -> (visible: Bool, warmupWaitSeconds: TimeInterval, fact: String?) {
+        -> (visible: Bool, compileWaitSeconds: TimeInterval, fact: String?) {
         if let override = Self.typedTextOnScreenOverrideForTesting {
             let answer = override(text)
             return (answer.visible, 0, answer.fact)
@@ -1097,9 +1097,9 @@ extension StepExecutor {
             return (false, 0, "the screenshot was black apart from the system bars")
         }
         let waited: TimeInterval
-        switch await RegionText.awaitPrewarm(mode: .on) {
-        case .alreadyWarm: waited = 0
-        case .warmed(let d), .finishedCold(let d), .capped(let d):
+        switch await RegionText.awaitModelCompile(mode: .on) {
+        case .alreadyReady: waited = 0
+        case .compiled(let d), .finishedUnready(let d), .capped(let d):
             waited = Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
         }
         let deadline = deadline.addingTimeInterval(waited)
