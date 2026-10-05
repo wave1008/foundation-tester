@@ -42,9 +42,41 @@ class 引き伸ばせるシートの中と背面を操作できること {
         }
     }
 
-    @Draft("既知の制約: 半分開いた gorhom のシートの中の一覧を探索で送れない(iOS は「最初から端」・Android は「何も動かない」)")
-    @Test("ミニプレーヤーを押すと半分になり、半分からキューの奥へ探索で届く")
+    @Test("ミニプレーヤーを押すと半分になり、半分からキューの奥へ探索で届く", platform: "android")
     func S0020() {
+        scenario {
+            scene(1, "開く") {
+                condition {
+                    launchApp()
+                    tap("#nav_player", scroll: .down)
+                }.expectation {
+                    select("#txt_sheet_state").textIs("sheet=collapsed")
+                }
+            }
+            scene(2, "ミニプレーヤーを押して半分へ") {
+                action {
+                    tap("#mini_player")
+                }.expectation {
+                    select("#txt_sheet_state").textIs("sheet=half", waitSeconds: 3)
+                    exist("#txt_player_title")
+                }
+            }
+            scene(3, "キューの奥の行を探索で押す(1回目はシートの伸長に吸われる)") {
+                action {
+                    withScrollDown(scrollFrame: "#list_queue") {
+                        tap("#queue_row_21")
+                    }
+                }.expectation {
+                    select("#txt_player_result").textIs("player=queue:queue_row_21")
+                    select("#txt_sheet_state").textIs("sheet=expanded")
+                }
+            }
+        }
+    }
+
+    @Draft("既知の制約: iOS では半分の gorhom のシートが一覧の上からの払いで伸びない(XCUITest の本物の払いでも in-app でも同じ。見出しからの払いなら伸びる)。木にグラバーが出ないので、探索は伸ばす場所を決められない")
+    @Test("ミニプレーヤーを押すと半分になり、半分からキューの奥へ探索で届く(iOS)", platform: "ios")
+    func S0021() {
         scenario {
             scene(1, "開く") {
                 condition {

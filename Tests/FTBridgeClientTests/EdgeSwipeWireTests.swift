@@ -121,4 +121,15 @@ final class EdgeSwipeWireTests: XCTestCase {
         let gesture = try await sentSwipe(intent: .gesture)
         XCTAssertNil(gesture.edge, "DSL の swipe(ジェスチャ目的)で edge が立っている")
     }
+
+    /// searchFling は探索の1本(edge は立てない)で、Android へ離す瞬間の速度を頼む(fling)。
+    /// 既定の search は fling を立てない(慣性で対象を飛び越す)
+    func testSearchFlingSetsFlingButNotEdge() async throws {
+        let retry = try await sentSwipe(intent: .searchFling)
+        XCTAssertEqual(retry.fling, true, "動かなかった直後の1本が速度 0 で離され、段に吸着する容器が戻す")
+        XCTAssertNil(retry.edge, "探索の1本で edge が立つと端まで飛ぶ")
+        XCTAssertEqual(retry.scroll, true)
+        let search = try await sentSwipe(intent: .search)
+        XCTAssertNil(search.fling, "既定の探索に慣性を足すと対象を飛び越す")
+    }
 }

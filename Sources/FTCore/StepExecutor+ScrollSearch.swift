@@ -560,8 +560,22 @@ extension StepExecutor {
                                 ?? ContainerGeometry.clippingContainer(of: element, in: snapshot.elements,
                                                           inferring: step.containerInference ?? true))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
+                // **in-app の自前描画(Compose / Flutter)の送りは path の長さに関係なく a11y の scroll = 1ページ**なので、
+                // 見切れを戻す1本が逆側へ飛び越して往復し、予算を使い切った(E2EY-CMP の反転チャット: 容器の外の
+                // #msg_40 を8本で拾えず)。この経路では戻しを必ず距離どおりのドラッグで撃ち(下の slowDrag)、
+                // **縁にぴったり(浮動小数の差で見切れ扱い)なら見つかったとする**。
+                // 中心が中なら撃つ、にはしない —— 見切れた行の中心を撃つと別の行に当たる(Compose iOS の実測・上の doc)。
+                // SwiftUI は含めない(下の +28% は SwiftUI の実測)
+                let pagesPerSwipe = typeDriver != nil
+                    && AppUIFrameworkQuery.hostsOwnTouches(element, app: uiFramework) == true
+                // 1pt 未満のはみ出しは縁ぴったり(実測: 下端 766.67 と容器の下端 766.67 が浮動小数で割れた)
+                let flushWithEdge = pagesPerSwipe
+                    && !Self.isClippedByViewport(element, screen: FTRect(x: viewport.x - 1, y: viewport.y - 1,
+                                                                         width: viewport.width + 2,
+                                                                         height: viewport.height + 2))
                 if attempt < maxSwipes,
-                   Self.isClippedByViewport(element, screen: viewport) {
+                   Self.isClippedByViewport(element, screen: viewport),
+                   !flushWithEdge {
                     // **寄せる前にも fail-fast を通す**(未検出側と同じ判定)。ここを飛ばすと
                     // 解決できない明示 scrollFrame のまま viewport が画面全体へ落ち、寄せの1本が
                     // 文書化した「1本も振らない」を素通りして全画面スワイプになる
@@ -583,9 +597,10 @@ extension StepExecutor {
                     // scrollFrame あり = path は元々容器基準の短い送りなので置き換えない
                     // (置き換えると SwiftUI で +28% の実退行。92s/72s の A/B で確定)。
                     // ジャンプ量 40pt 未満は嘘 frame(クランプ)の兆候なので通常のスワイプへ
-                    if path == nil,
-                       let jump = Self.clipRecoveryJump(for: element, viewport: viewport,
-                                                        finger: back),
+                    // 1ページの払いよりは、小さな量を広げて寄せるほうが近い(dragGesture は 50 以下を撃たない)
+                    if path == nil || pagesPerSwipe,
+                       let raw = Self.clipRecoveryJump(for: element, viewport: viewport, finger: back),
+                       case let jump = pagesPerSwipe ? (raw < 0 ? -1 : 1) * max(abs(raw), 60) : raw,
                        abs(jump) >= 40,
                        // **キーボードを避けて掴む**: slowDrag は渡した container をそのまま
                        // 自分の viewport にも使う(始点・終点の両方に効く)ので、ここで
@@ -794,8 +809,12 @@ extension StepExecutor {
                     previousSnapshot = snapshot
                     continue
                 }
-                if try await swipeWithFallback(direction, intent: .search,
-                                               path: scrollPath(step: step, intent: .search,
+                // **この探索がまだ1度も動かせておらず、直前の1本も何も動かさなかったときだけ**離す瞬間に
+                // 速度を残す(FTSwipeIntent.searchFling)。一度でも動いた後は掛けない —— 木の公開の遅れで
+                // 「動かなかった」に見える周回があり、そこで慣性を足すと対象を飛び越す
+                let intent: FTSwipeIntent = !contentEverMoved && unmovedRounds > 0 ? .searchFling : .search
+                if try await swipeWithFallback(direction, intent: intent,
+                                               path: scrollPath(step: step, intent: intent,
                                                                 in: snapshot),
                                                phase: &phase) { viaXCUITest = true }
                 swipes += 1

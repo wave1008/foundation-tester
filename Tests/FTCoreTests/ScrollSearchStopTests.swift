@@ -12,6 +12,7 @@ private final class CountingDriver: AppDriver {
     /// 何周目でも同じ木を返す = 「振っても動かない」画面
     let frame: [ElementInfo]
     private(set) var swipeCount = 0
+    private(set) var intents: [FTSwipeIntent] = []
 
     init(frame: [ElementInfo]) { self.frame = frame }
 
@@ -32,6 +33,7 @@ private final class CountingDriver: AppDriver {
     func swipe(_ direction: FTSwipeDirection) async throws { swipeCount += 1 }
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
         swipeCount += 1
+        intents.append(intent)
     }
     func snapshot() async throws -> SnapshotResponse {
         SnapshotResponse(sessionBundleID: nil,
@@ -44,6 +46,7 @@ private final class CountingDriver: AppDriver {
 /// `movesAtMost` を絞ると**動いた末に凍る**(= リストの末尾に着いた形)になる
 private final class MovingDriver: AppDriver {
     private(set) var swipeCount = 0
+    private(set) var intents: [FTSwipeIntent] = []
     private var snapshots = 0
     private let movesAtMost: Int
 
@@ -66,6 +69,7 @@ private final class MovingDriver: AppDriver {
     func swipe(_ direction: FTSwipeDirection) async throws { swipeCount += 1 }
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
         swipeCount += 1
+        intents.append(intent)
     }
     func snapshot() async throws -> SnapshotResponse {
         snapshots += 1
@@ -114,6 +118,22 @@ final class ScrollSearchStopTests: XCTestCase {
                       "上限を上げても無駄だと言っていない: \(reason)")
         XCTAssertFalse(reason.contains("after 8 scroll(s)"),
                        "実際には振っていない回数を名乗っている: \(reason)")
+    }
+
+    /// **動かなかった直後の1本だけ離す瞬間に速度を残す**(FTSwipeIntent.searchFling)。
+    /// witness: E2EY-RN の Android で、半分の gorhom のシートが速度 0 の払いを元の段へ戻し、探索が
+    /// 「1度も動かなかった」で落ちた(同じ座標の adb の払い・fling 付きの払いはシートを全開まで伸ばした)
+    func testSearchFlingsOnlyAfterASwipeThatMovedNothing() async throws {
+        let still = CountingDriver(frame: Self.still)
+        _ = await StepExecutor(driver: still, isAndroid: true, tunables: RunTunables())
+            .execute(scrollTo("missing", maxSwipes: 8))
+        XCTAssertEqual(still.intents, [.search, .searchFling])
+
+        let moving = MovingDriver()
+        _ = await StepExecutor(driver: moving, isAndroid: true, tunables: RunTunables())
+            .execute(scrollTo("missing", maxSwipes: 4))
+        XCTAssertFalse(moving.intents.isEmpty)
+        XCTAssertEqual(Set(moving.intents), [.search], "動いている探索は慣性を足さない(飛び越す)")
     }
 
     /// **末尾に着いた回を「途中で諦めた」と読ませない**。

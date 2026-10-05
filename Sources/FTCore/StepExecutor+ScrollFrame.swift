@@ -290,7 +290,12 @@ extension StepExecutor {
     /// (`ElementInfo.scrollActions` を読むため。scrollToEdge の空振り回避に使う)。
     /// **未指定(scrollFrame も rect も無い)は、画面に scrollable がちょうど1つのときだけ確定**
     /// (2つ以上・0個は「どれに当たるか分からない」ので nil = 呼び手は今までどおり撃って確かめる)
-    static func scrollContainerElement(step: FlowStep, in snapshot: SnapshotResponse) -> ElementInfo? {
+    /// `vertical`(払う軸)を渡すと、**軸の違う向きだけを申告した容器を外す**(同じ枠に横のページャと縦の一覧が
+    /// 重なる画面で、ページャの申告「forward・right」を縦の端と読み、scrollToTop が1本も払わずに終わった。
+    /// E2EY-CMP の折りたたみヘッダ)。軸を申告しない容器(nil・汎用の backward/forward だけ)は残す。
+    /// 同期相手: AndroidRunner の BridgeRouter.smallestScrollableOnAxis(あちらは軸の分からない容器も外す)
+    static func scrollContainerElement(step: FlowStep, in snapshot: SnapshotResponse,
+                                       vertical: Bool? = nil) -> ElementInfo? {
         if let rect = step.scrollFrameRect {
             return snapshot.elements.first { $0.scrollable == true && ContainerGeometry.sameFrame($0.frame, rect) }
         }
@@ -302,9 +307,32 @@ extension StepExecutor {
         // 端の確認の送りが更新を撃っていた)。`edgeContentRegion` と同じ規則
         let screen = snapshot.screen
         return snapshot.elements
-            .filter { $0.scrollable == true
-                && StepExecutor.frame($0.frame, containsX: screen.centerX, y: screen.centerY) }
-            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+            .filter { element in
+                element.scrollable == true
+                    && StepExecutor.frame(element.frame, containsX: screen.centerX, y: screen.centerY)
+                    && !(vertical.map { Self.declaresOnlyOtherAxis(element.scrollActions, vertical: $0) } ?? false)
+            }
+            .min { a, b in
+                let areaA = a.frame.width * a.frame.height, areaB = b.frame.width * b.frame.height
+                if areaA != areaB { return areaA < areaB }
+                // **同じ大きさなら払う軸の向きを申告している容器を採る**(RN の collapsible-tab-view: 同じ枠に
+                // 汎用の forward だけの容器が2つと up/down を申告する一覧。先頭を採ると縦の端と読み、
+                // scrollToTop が1本も払わずに終わった)
+                guard let vertical else { return false }
+                return Self.declaresAxis(a.scrollActions, vertical: vertical)
+                    && !Self.declaresAxis(b.scrollActions, vertical: vertical)
+            }
+    }
+
+    static func declaresAxis(_ actions: [String]?, vertical: Bool) -> Bool {
+        let onAxis: Set<String> = vertical ? ["up", "down"] : ["left", "right"]
+        return actions?.contains(where: onAxis.contains) ?? false
+    }
+
+    /// 向きつきの申告(up/down/left/right)が、払う軸と違う側だけにあるか
+    static func declaresOnlyOtherAxis(_ actions: [String]?, vertical: Bool) -> Bool {
+        guard let actions else { return false }
+        return !declaresAxis(actions, vertical: vertical) && declaresAxis(actions, vertical: !vertical)
     }
 
     /// `container` を包む scrollable(端の判定で「外側がまだ送れるか」を見る相手)。

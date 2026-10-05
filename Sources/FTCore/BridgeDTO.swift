@@ -1052,8 +1052,12 @@ public struct ClearRequest: Codable {
 /// - `search`: `scrollTo` / `scrollDown` 等。**飛距離がビューポート高を超えると要素を飛び越す**
 ///   ので、1回の移動量を欲張らない
 /// - `edge`: `scrollToEdge`。行き過ぎても無害なので**最速で端まで**送ってよい
+/// - `searchFling`: 探索の1本が**木を1文字も変えなかった直後だけ**撃つ1本。距離は `search` と同じで、
+///   離す瞬間に速度を残す(Android の `fling`。iOS は既定の search と同じ)。速度 0 で離すと、段に吸着する容器(gorhom のシート等)は
+///   伸ばした分を元の段へ戻し「何も動かない」に見える(E2EY-RN の A9: 半分のシートのキュー)。
+///   常用しない = 探索の1本が慣性で伸びて対象を飛び越す
 public enum FTSwipeIntent: String, Codable, CaseIterable {
-    case gesture, search, edge
+    case gesture, search, edge, searchFling
 }
 
 /// **ジェスチャの向き**(指の動き)。ブリッジの /swipe はこれを受ける

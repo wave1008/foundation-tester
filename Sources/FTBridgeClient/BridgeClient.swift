@@ -899,7 +899,7 @@ public final class BridgeClient: AppDriver, Sendable {
             body: SwipeRequest(direction: direction, fast: fastFlag,
                                scroll: intent == .gesture ? nil : true,
                                durationMs: Self.strokeMs(for: intent, path: path),
-                               fling: intent == .edge ? true : nil,
+                               fling: Self.fling(for: intent),
                                velocity: Self.velocity(for: intent, path: path),
                                path: path,
                                edge: intent == .edge ? true : nil),
@@ -932,6 +932,12 @@ public final class BridgeClient: AppDriver, Sendable {
     /// 「較正できるまで触らない」に従う)
     static func strokeMs(for intent: FTSwipeIntent, path: FTSwipePath?) -> Int? {
         intent == .edge ? edgeSwipeDurationMs : nil
+    }
+
+    /// ACTION_UP を合成時刻で送るか(Android だけが読む。`SwipeRequest.fling`)。探索の既定は送らない
+    /// (慣性で対象を飛び越す)。`searchFling` は探索が動かなかった直後の1本だけ(FTSwipeIntent の doc)
+    static func fling(for intent: FTSwipeIntent) -> Bool? {
+        intent == .edge || intent == .searchFling ? true : nil
     }
 
     /// XCUITest ランナー側の同じ用途のノブ(points/sec。`XCUIGestureVelocity`)。

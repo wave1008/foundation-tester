@@ -182,7 +182,8 @@ extension StepExecutor {
             // 確認の1本を送ると引っ張り更新に化ける実測があるため、送る前に分かるものは送らない)。
             // 容器を一意に決められない・申告が無い(iOS・旧ブリッジ)ときは nil のままなので
             // 今までどおり撃って確かめる
-            if let scrollingElement = Self.scrollContainerElement(step: step, in: settled.snapshot),
+            if let scrollingElement = Self.scrollContainerElement(step: step, in: settled.snapshot,
+                                                                  vertical: direction == .up || direction == .down),
                ScrollActionAvailability.atEdge(
                    container: scrollingElement,
                    enclosing: Self.enclosingScrollables(of: scrollingElement, step: step, in: settled.snapshot),

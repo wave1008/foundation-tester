@@ -47,7 +47,6 @@ class 折りたたみヘッダの下のタブの一覧を扱えること {
         }
     }
 
-    @Draft("既知の制約: Android の scrollToTop は a11y のスクロール操作で上端へ送るので、自前の nestedScroll で縮めたヘッダ(Compose)・collapsible-tab-view(RN)を開けない(最後の1本を指のドラッグに戻すと、ヘッダの無い画面で引っ張って更新に化ける)")
     @Test("Android: 縮んだヘッダを scrollToTop で開く")
     func S0090() {
         scenario {
@@ -71,7 +70,6 @@ class 折りたたみヘッダの下のタブの一覧を扱えること {
         }
     }
 
-    @Draft("既知の制約: Android でヘッダが縮みきる前の座標でタブを撃ち、押す前に対象が動いて別のタブに当たる(iOS は緑)")
     @Test("タブを替える・横に払って替える")
     func S0020() {
         scenario {

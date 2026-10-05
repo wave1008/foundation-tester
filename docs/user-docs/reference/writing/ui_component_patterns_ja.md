@@ -135,6 +135,15 @@ swipeElementToElement("#sheet_title", "#row_04", durationSeconds: 0.3)
 | Android View | `BottomSheetDialogFragment`。共通 |
 | SwiftUI(iOS) | `.sheet` + `.presentationDetents([.medium, .large])`。dismiss 判定はアプリが自前管理 |
 
+**現時点の制約**: RN の `@gorhom/bottom-sheet` の常駐シート(`BottomSheet`)を半分まで開いた状態では、**iOS の探索がシートを
+伸ばせない**(シートの中の一覧の上からの払いでは、XCUITest の払いでも伸びない。Android は伸ばしてから中を送る)。
+回避策: 探す前にシートの見出しから上へ払って全開にする
+
+```swift
+swipeElementToElement("#txt_player_title", "#txt_sheet_state", durationSeconds: 0.5)
+tap("#queue_row_21", scroll: .down)
+```
+
 ## ドロップダウンメニュー / ポップアップメニュー
 
 - 項目は `#id` でもラベルでも押せる
@@ -405,6 +414,10 @@ type("...")   // または type(".textField", "...") で入力欄を型で指す
 | SwiftUI(iOS) | `List` + `.navigationBarTitleDisplayMode(.large)`。**実際に伸縮するシステムの大見出し自体には識別子が付かない**(戻るボタンと同じ理由で UINavigationBar の内部描画に公開 API が無い)。契約の「大きな見出し」相当は別要素として置かれ、`#txt_collapse_result` は縮小後も木に残る固定位置に置かれている |
 
 行を押すと echo が出る点・echo が縮んでも木に残る位置に置かれている点は全フレームワーク共通です。
+
+**現時点の制約**: RN の `react-native-collapsible-tab-view` で**タブを替えた直後、iOS では一覧の先頭の行がヘッダの裏に居る**
+ことがある。in-app エンジンの木には覆っている物が出ないので、fleetest は覆いを避けて送れない(XCUITest エンジンでは
+失敗文が `#Toolbar` を名指しする)。ヘッダの下に見えている行を押す
 
 ## 貼り付く見出し
 
@@ -680,8 +693,6 @@ select("#txt_links_result").textIs("link=terms")
 
 - 最初から最下部(最新)に居るので、過去へは上へ送る(`withScrollUp(scrollFrame: "#list_chat") { tap("#msg_20") }`)
 - 入力バーがキーボード側に載る作り(UIKit の `inputAccessoryView`)でも、入力欄は `#id` で指せる
-
-**現時点の制約**: Compose(iOS)の反転した一覧は、探索が1ページ単位で飛ぶため過去の行を取りこぼすことがある。
 
 ## 読み込み中の骨組み(スケルトン)
 

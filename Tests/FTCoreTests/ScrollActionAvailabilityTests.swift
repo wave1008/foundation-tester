@@ -96,6 +96,41 @@ final class ScrollActionAvailabilityTests: XCTestCase {
                                                       forSwipe: .down))
     }
 
+    // MARK: - 同じ枠に横のページャと縦の一覧(実測 E2EY-CMP の Android: ページャ ["forward","right"]・
+    // 一覧 ["backward","forward","up","down"]。ページャを採って scrollToTop が1本も払わずに終わった)
+
+    private func pagerAndList() -> [ElementInfo] {
+        [scrollable(ref: 10, y: 677, height: 1684, actions: ["forward", "right"]),
+         scrollable(ref: 11, y: 677, height: 1684, actions: ["backward", "forward", "up", "down"])]
+    }
+
+    func testVerticalEdgeIgnoresAHorizontalPagerWithTheSameFrame() {
+        let snapshot = SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                        elements: pagerAndList(), truncatedCount: 0)
+        let step = FlowStep(action: "scrollToEdge", direction: "down")
+        XCTAssertEqual(StepExecutor.scrollContainerElement(step: step, in: snapshot, vertical: true)?.ref, 11)
+        XCTAssertEqual(StepExecutor.scrollContainerElement(step: step, in: snapshot, vertical: false)?.ref, 10)
+    }
+
+    /// RN の collapsible-tab-view(実測): 同じ枠に汎用の forward だけの容器が2つと、up/down を申告する一覧
+    func testSameSizeTiePrefersTheContainerDeclaringTheAxis() {
+        let elements = [scrollable(ref: 6, y: 495, height: 1929, actions: ["forward"]),
+                        scrollable(ref: 7, y: 495, height: 1929, actions: ["forward"]),
+                        scrollable(ref: 8, y: 495, height: 1929, actions: ["backward", "forward", "up", "down"])]
+        let snapshot = SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                        elements: elements, truncatedCount: 0)
+        let step = FlowStep(action: "scrollToEdge", direction: "down")
+        XCTAssertEqual(StepExecutor.scrollContainerElement(step: step, in: snapshot, vertical: true)?.ref, 8)
+    }
+
+    func testScrollToTopSwipesWhenOnlyTheListCanStillMove() async {
+        let driver = FakeAppDriver(name: "primary", log: CallLog(), snapshotElements: [pagerAndList()])
+        _ = await StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
+            .execute(FlowStep(action: "scrollToEdge", direction: "down", maxSwipes: 3))
+        XCTAssertTrue(driver.log.entries.contains("primary.swipe"),
+                      "ページャの申告を縦の端と読んで1本も払っていない: \(driver.log.entries)")
+    }
+
     func testInnerThatCanMoveIsNotAtEdgeWhateverTheEnclosingSays() {
         let list = scrollable(ref: 2, y: 340, height: 2084, actions: ["backward", "forward"])
         let outer = scrollable(ref: 1, y: 168, height: 2256, actions: ["forward"])

@@ -37,7 +37,6 @@ class 入れ子のスクロールで画面外のカードを押せること {
         }
     }
 
-    @Draft("既知の制約: 一部しか見えていない段を scrollFrame に指した横の探索が、画面の縁の帯で払われて数枚しか進まない")
     @Test("横の探索のあと縦の探索で別の段へ")
     func S0020() {
         scenario {
@@ -47,8 +46,9 @@ class 入れ子のスクロールで画面外のカードを押せること {
                     tap("#nav_nested")
                 }.action {
                     scrollTo("#txt_shelf_9")
+                    // 段の幅 370pt を1本 222pt で送るので、末尾(カード 14)には既定の 8 本では届かない
                     withScrollRight(scrollFrame: "#shelf_9") {
-                        tap("#card_9_14")
+                        tap("#card_9_14", maxSwipes: 12)
                     }
                 }.expectation {
                     select("#txt_nested_result").textIs("nested=card_9_14")

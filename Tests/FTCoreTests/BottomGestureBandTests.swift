@@ -71,6 +71,17 @@ final class BottomGestureBandTests: XCTestCase {
         XCTAssertGreaterThan(reach.jump, 0)      // 枠が下 = 指を上へ
     }
 
+    /// 実物の外側(画面の下端で止まる一覧 #list_nested = 143〜873)。枠の中心 y=887 は外側の下に出ている
+    func testBringIntoViewFindsTheOuterListEvenWhenTheFrameCentreIsBelowIt() throws {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let shelf = FTRect(x: 16, y: 827, width: 370, height: 120)
+        let outer = element(2, "list_nested", FTRect(x: 0, y: 143, width: 402, height: 730), scrollable: true)
+        let reach = try XCTUnwrap(ScrollGeometry.bringIntoView(frame: shelf, screen: screen,
+                                                               elements: [outer, element(29, "shelf_9", shelf, scrollable: true)]))
+        XCTAssertEqual(reach.outer.y, 143)
+        XCTAssertGreaterThan(reach.jump, 0)
+    }
+
     func testBringIntoViewIsNilWhenVisibleEnoughOrNoEnclosingContainer() {
         let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
         let outer = element(1, "outer", FTRect(x: 0, y: 100, width: 402, height: 900), scrollable: true)

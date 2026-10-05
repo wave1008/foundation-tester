@@ -142,6 +142,15 @@ swipeElementToElement("#sheet_title", "#row_04", durationSeconds: 0.3)
 | Android View | `BottomSheetDialogFragment`. Same as above |
 | SwiftUI (iOS) | `.sheet` + `.presentationDetents([.medium, .large])`. The app manages the dismiss verdict itself |
 
+**Current limitation**: with RN's `@gorhom/bottom-sheet` persistent sheet (`BottomSheet`) half open, **the search cannot expand
+the sheet on iOS** (a swipe that starts on the list inside the sheet does not expand it, even a real XCUITest swipe; Android
+expands it and then scrolls the list). Workaround: swipe up from the sheet's title to open it fully before searching
+
+```swift
+swipeElementToElement("#txt_player_title", "#txt_sheet_state", durationSeconds: 0.5)
+tap("#queue_row_21", scroll: .down)
+```
+
 ## Dropdown menu / popup menu
 
 - Items can be pressed by `#id` or by label
@@ -418,6 +427,10 @@ down.
 
 Pressing a row shows an echo, and the echo stays in the tree at a fixed position even after
 collapsing, on every framework.
+
+**Current limitation**: with RN's `react-native-collapsible-tab-view`, **right after switching tabs the first rows of the list can
+sit behind the header on iOS**. The in-app engine's tree does not show what covers them, so fleetest cannot scroll them out
+from under it (on the XCUITest engine the failure message names `#Toolbar`). Tap a row that is visible below the header
 
 ## Sticky header
 
@@ -705,8 +718,6 @@ select("#txt_links_result").textIs("link=terms")
 - The list starts at the bottom (newest), so older messages are found by scrolling up
   (`withScrollUp(scrollFrame: "#list_chat") { tap("#msg_20") }`)
 - Even when the input bar lives on the keyboard side (UIKit `inputAccessoryView`), the field can be addressed by `#id`
-
-**Current limitation**: on Compose (iOS) an inverted list may skip older rows, because the search moves one page at a time.
 
 ## Loading skeletons
 

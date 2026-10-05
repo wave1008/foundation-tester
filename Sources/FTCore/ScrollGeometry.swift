@@ -132,7 +132,9 @@ public enum ScrollGeometry {
     /// 返す `outer` は**画面と交差させた**外側の容器、`jump` は `StepExecutor.dragGesture` と同じ規約
     /// (正 = 指を上へ)で、枠の中心を画面の 40% の高さへ寄せる量(`offscreenJump` の着地と同じ)。
     /// 外側の容器が無い・十分に見えている・動かせる幅が無いときは nil(呼び手は従来どおり探索する)。
-    /// 外側 = 枠の中心を含み、枠より高く、枠そのものでない最小の scrollable
+    /// 外側 = 枠の中心の x を含み・枠と縦に重なり、枠より高く、枠そのものでない最小の scrollable
+    /// (**中心の y は求めない** —— 半分を切って見えている枠は、中心が外側の容器の縁の外に出ている。
+    /// E2EY-iOS の `#shelf_9`: 中心 y=887・外側の一覧の下端 873 で外側が見つからず、送らずに探索した)
     public static func bringIntoView(frame: FTRect, screen: FTRect,
                                      elements: [ElementInfo]) -> (outer: FTRect, jump: Double)? {
         guard frame.height > 0, screen.height > 0 else { return nil }
@@ -142,7 +144,7 @@ public enum ScrollGeometry {
             .filter {
                 $0.scrollable == true && $0.frame.height > frame.height
                     && frame.centerX >= $0.frame.x && frame.centerX <= $0.frame.x + $0.frame.width
-                    && frame.centerY >= $0.frame.y && frame.centerY <= $0.frame.y + $0.frame.height
+                    && frame.y < $0.frame.y + $0.frame.height && frame.y + frame.height > $0.frame.y
                     && ScrollRegionMatch.overlap($0.frame, frame) < ScrollRegionMatch.minimumOverlap
             }
             .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
@@ -346,7 +348,7 @@ public enum FTScrollDefaults {
         // 探索は保守側(重なり 50%)。**慣性を消せないので刻み = 実移動量にはならない** ——
         // 速度を落として慣性を消す案は iOS では効くが Android に同じノブが無く、
         // 実測で収束しなかった。行き過ぎは探索の失敗に直結するので控えめに取る
-        case .search: return 0.25            // スパン 0.5・重なり 50%
+        case .search, .searchFling: return 0.25   // スパン 0.5・重なり 50%
         case .gesture, .edge: return 0.2     // スパン 0.6
         }
     }
