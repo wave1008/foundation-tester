@@ -125,7 +125,8 @@ public enum ProjectScaffold {
     /// **fleetest の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
     /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望)。
     /// 既存の設定は温存し、重複しないエントリだけ足す(他ツールの許可を消さない)。
-    /// 追加するのはこのツール由来のコマンドに限る — 汎用の `Bash(*)` は絶対に書かない。
+    /// 追加するのはこのツール由来のコマンドに限る — 汎用の `Bash(*)` は絶対に書かない
+    /// (例外はクローンの Read の allow だけ。対になる Edit の deny と組で書く)。
     /// **MCP は fleetest のツールを丸ごと許可し、本番の実行 `ft_start_run` だけ ask に置く**(ask が allow に
     /// 勝つ = Claude Code で実測)。setup/teardown スクリプトと別の機械への送り出しはこのツールに
     /// しか無いので、人の確認を残す(Codex の推奨設定と同じ線引き。docs の MCP サーバ §サンドボックスと承認)。
@@ -169,8 +170,23 @@ public enum ProjectScaffold {
             }
             permissions["ask"] = ask
         }
+        // クローンを読み取り専用にする(maintainer-notes §2.5)。Read の allow = 外を初めて読むときの確認を省く・
+        // Edit の deny = 編集ツールと Claude Code が認識する Bash のファイル操作を止める。
+        // **クローン構成(作業フォルダがクローンの内側)では書かない**(自分の作業ツリーを読み取り専用にする)。
+        // deny は Read の allow を初めて足すときだけ書く(ask と同じ: 利用者が外した deny を補修で戻さない)
+        if let rules = cloneReadOnlyRules(packageRoot: packageRoot, toolRoot: toolRoot),
+           !allow.contains(rules.read) {
+            added.append(rules.read)
+            var deny = (permissions["deny"] as? [String]) ?? []
+            if !deny.contains(rules.edit) {
+                deny.append(rules.edit)
+                added.append(rules.edit)
+            }
+            permissions["deny"] = deny
+        }
         guard !added.isEmpty else { return [] }
-        allow.append(contentsOf: added.filter { $0 != mcpStartRunPermission })
+        let denied = Set((permissions["deny"] as? [String]) ?? [])
+        allow.append(contentsOf: added.filter { $0 != mcpStartRunPermission && !denied.contains($0) })
         permissions["allow"] = allow
         settings["permissions"] = permissions
 
@@ -179,6 +195,17 @@ public enum ProjectScaffold {
             withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try data.write(to: url, options: .atomic)
         return added
+    }
+
+    /// クローンを読み取り専用にする規則の組。パスは Claude Code の `//` 始まり = 絶対パスの形
+    /// (`/` 1つだと settings.json の置き場所からの相対になる)。toolRoot が無い・相対・作業フォルダを含むなら nil
+    static func cloneReadOnlyRules(packageRoot: URL, toolRoot: String?) -> (read: String, edit: String)? {
+        guard let toolRoot, toolRoot.hasPrefix("/") else { return nil }
+        let clone = URL(fileURLWithPath: toolRoot).resolvingSymlinksInPath().standardizedFileURL.path
+        let work = packageRoot.resolvingSymlinksInPath().standardizedFileURL.path
+        if work == clone || work.hasPrefix(clone + "/") { return nil }
+        let root = toolRoot.hasSuffix("/") ? String(toolRoot.dropLast()) : toolRoot
+        return ("Read(/\(root)/**)", "Edit(/\(root)/**)")
     }
 
     /// 受け手のパッケージに `.vscode/settings.json` を書く(fleetest init から呼ぶ)。

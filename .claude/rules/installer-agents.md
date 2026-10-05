@@ -80,7 +80,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
     書く受け手専用の別内容)。`--skip-skills` / クローン構成 / 置き先がクローンの内側は skip。
     変わった回は再起動を案内する(`installCopiedSkills.test.mjs`)→ maintainer-notes §2.3
   - **毎回 `fleetest api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
-    `--skip-project` の更新で既存の受け手に永久に届かない)
+    `--skip-project` の更新で既存の受け手に永久に届かない)。**クローンへの `Read` の allow と `Edit` の
+    deny も同じ箇所で書く**(クローン構成では書かない・deny は初回だけ)。**シナリオを実行する ft_* / CLI を
+    allow から外す案は実測で守りにならなかったので戻さない** → maintainer-notes §2.5
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + **Claude Code の
   スキルのコピーの更新(install.sh のステップ7.8 が行う)。
   `.claude/skills/fleetest-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら

@@ -125,10 +125,15 @@ scripts.
 
   For Claude Code, the installer writes "allow the fleetest tools (`mcp__fleetest`), ask only before `ft_start_run`
   (`ask`)" into the work folder's `.claude/settings.json` (the recommended shape; remove it from `ask` if you do not
-  want the prompt, and later updates will not put it back). In Auto mode, the AI decides on its own whether to ask.
+  want the prompt, and later updates will not put it back). It also makes the fleetest clone read-only (reading is
+  allowed, editing is denied); this is skipped when the work folder is inside the clone. In Auto mode, the AI decides
+  on its own whether to ask, but it judges the tool call, not the contents of the scenarios.
   For Codex, see [AI assistants other than Claude Code](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
   under `[mcp_servers.fleetest.tools.<tool name>]` per tool). `writes`, which skips approval only for read-only tools,
   also counts screen operations (taps, typing) as writes, so exploring a screen means dozens of approvals.
+- **Check the contents of scenarios you receive from others before running them.** A scenario runs as arbitrary
+  Swift code, even in a dry run. Neither the approval settings nor Auto mode look at that code; they only see the
+  act of running it.
 - **`ft_start_run`'s `runner` accepts only registered machine names and `local`.** Raw destinations such as
   `user@host` are refused, so scenarios and profiles are never sent to a machine the user has not registered.
   Register machines with `fleetest remote machines add`. The CLI's `fleetest run --runner` accepts raw destinations too.

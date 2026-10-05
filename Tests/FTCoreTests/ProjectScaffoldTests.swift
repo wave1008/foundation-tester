@@ -296,7 +296,8 @@ final class ProjectScaffoldTests: XCTestCase {
         let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot,
                                                             toolRoot: "/tools/ft")
         XCTAssertFalse(added.isEmpty)
-        for entry in added where !entry.hasPrefix("mcp__") {
+        for entry in added where !entry.hasPrefix("mcp__")
+            && entry != "Read(//tools/ft/**)" && entry != "Edit(//tools/ft/**)" {
             XCTAssertTrue(entry.hasPrefix("Bash("), "許可するのは Bash のみ: \(entry)")
             XCTAssertNotEqual(entry, "Bash(*)")
             // 許可範囲はツールのクローン配下か fleetest CLI か読み取り専用の simctl list に限る
@@ -349,7 +350,8 @@ final class ProjectScaffoldTests: XCTestCase {
         let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
         let allow = try XCTUnwrap(permissions["allow"] as? [String])
         XCTAssertTrue(allow.contains("Bash(git status:*)"), "既存の許可を消さない")
-        XCTAssertEqual(permissions["deny"] as? [String], ["Bash(rm:*)"], "deny を消さない")
+        XCTAssertEqual(permissions["deny"] as? [String], ["Bash(rm:*)", "Edit(//tools/ft/**)"],
+                       "既存の deny を消さず、クローンの Edit だけ後ろに足す")
         XCTAssertEqual(object["model"] as? String, "opus", "無関係なキーを消さない")
     }
 
@@ -376,6 +378,45 @@ final class ProjectScaffoldTests: XCTestCase {
             with: Data(contentsOf: claudeSettingsURL)) as? [String: Any])
         let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
         XCTAssertEqual(permissions["ask"] as? [String], [])
+    }
+
+    /// クローンは読み取り専用: Read は allow・Edit は deny(allow に Edit を混ぜない)。パスは `//` 始まりの絶対形
+    func testClaudeSettingsMakesTheCloneReadOnly() throws {
+        _ = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: claudeSettingsURL)) as? [String: Any])
+        let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
+        let allow = permissions["allow"] as? [String] ?? []
+        XCTAssertTrue(allow.contains("Read(//tools/ft/**)"))
+        XCTAssertFalse(allow.contains("Edit(//tools/ft/**)"))
+        XCTAssertEqual(permissions["deny"] as? [String], ["Edit(//tools/ft/**)"])
+    }
+
+    /// クローン構成(作業フォルダ = クローン)では書かない。書くと保守者の作業ツリーが読み取り専用になる
+    func testClaudeSettingsSkipsCloneRulesWhenWorkingInsideTheClone() throws {
+        let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot,
+                                                            toolRoot: packageRoot.path)
+        XCTAssertFalse(added.contains { $0.hasPrefix("Read(") || $0.hasPrefix("Edit(") }, "\(added)")
+        let nested = packageRoot.appendingPathComponent("TestProjects")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+        let addedNested = try ProjectScaffold.writeClaudeSettings(packageRoot: nested,
+                                                                  toolRoot: packageRoot.path)
+        XCTAssertFalse(addedNested.contains { $0.hasPrefix("Read(") || $0.hasPrefix("Edit(") },
+                       "クローンの内側の作業フォルダでも書かない: \(addedNested)")
+    }
+
+    /// 利用者が deny を外したら、補修(install.sh が毎回呼ぶ)で書き戻さない
+    func testClaudeSettingsDoesNotRestoreADenyTheUserRemoved() throws {
+        try FileManager.default.createDirectory(
+            at: claudeSettingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"permissions":{"allow":["Read(//tools/ft/**)"],"deny":[]}}"#
+            .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
+        let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot, toolRoot: "/tools/ft")
+        XCTAssertFalse(added.contains("Edit(//tools/ft/**)"))
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(contentsOf: claudeSettingsURL)) as? [String: Any])
+        let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
+        XCTAssertEqual(permissions["deny"] as? [String], [])
     }
 
     func testClaudeSettingsIsIdempotent() throws {
