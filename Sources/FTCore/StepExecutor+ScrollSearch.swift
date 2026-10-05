@@ -481,6 +481,8 @@ extension StepExecutor {
         var truncatedDuringSearch = 0
         // スクロールした容器(中身が入れ替わった領域)。逆走査の刻みの基準
         var scrolledContainer: FTRect?
+        // 横の探索の前に外側の縦の容器を送った回数(上限 2。送るたびに枠の位置が変わるので毎周測り直す)
+        var bringIntoViewDrags = 0
         for attempt in 0...maxSwipes {
             // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
             // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
@@ -635,6 +637,26 @@ extension StepExecutor {
                                               maxTruncatedDuringSearch: truncatedDuringSearch,
                                               element: element)
                 }
+            }
+            // **横の探索で枠がほとんど窓の外なら、先に外側の縦の容器を送って枠を窓へ入れる**
+            // (見えている帯が低いと横の払いが画面の縁に乗る。`ScrollGeometry.bringIntoView`)。
+            // 探索の払いを1本も撃っていない間だけ・上限 2 回。外側が無ければ従来どおり探索する
+            if !vertical, bringIntoViewDrags < 2, swipes == bringIntoViewDrags,
+               step.scrollFrame != nil || step.scrollFrameRect != nil,
+               let frame = scrollContainer(step: step, in: snapshot, vertical: false),
+               let reach = ScrollGeometry.bringIntoView(
+                   frame: frame,
+                   screen: ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: effectiveKeyboard),
+                   elements: snapshot.elements),
+               await slowDrag(jump: reach.jump, container: reach.outer, vertical: true, phase: &phase) {
+                bringIntoViewDrags += 1
+                swipes += 1
+                previousSnapshot = snapshot
+                if pendingScrollFrameNote == nil {
+                    pendingScrollFrameNote = "the scrollFrame was mostly off-screen, so the enclosing"
+                        + " scroll area was moved first to bring it into view"
+                }
+                continue
             }
             if attempt < maxSwipes {
                 // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。

@@ -97,7 +97,7 @@ public enum ScrollGeometry {
     ///   従来と同じ nil。**既定値を置かない**(swipeBy の全経路に確実に渡させる)
     public static func panPath(container: FTRect, viewport: FTRect,
                                dxRatio: Double, dyRatio: Double,
-                               backGestureEdgeWidths: (left: Double, right: Double)) -> FTSwipePath? {
+                               backGestureEdgeWidths: (left: Double, right: Double, bottom: Double)) -> FTSwipePath? {
         guard let intersected = intersection(container, viewport),
               let area = excludingBackGestureEdges(intersected, viewport: viewport,
                                                     widths: backGestureEdgeWidths) else { return nil }
@@ -111,13 +111,56 @@ public enum ScrollGeometry {
     /// `panPath` の水平除外。viewport(画面)の物理端から詰めるので、対象領域が画面端まで
     /// 届いていない場合は影響しない。両側から詰め切って幅が残らなければ nil
     static func excludingBackGestureEdges(_ area: FTRect, viewport: FTRect,
-                                          widths: (left: Double, right: Double)) -> FTRect? {
+                                          widths: (left: Double, right: Double, bottom: Double)) -> FTRect? {
         let left = max(widths.left, 0)
         let right = max(widths.right, 0)
         let minX = max(area.x, viewport.x + left)
         let maxX = min(area.x + area.width, viewport.x + viewport.width - right)
-        guard maxX > minX else { return nil }
-        return FTRect(x: minX, y: area.y, width: maxX - minX, height: area.height)
+        // 下端はホーム・アプリ切替の帯。viewport の下端から詰める(帯の中に始点を置くと OS に取られる)
+        let maxY = min(area.y + area.height, viewport.y + viewport.height - max(widths.bottom, 0))
+        guard maxX > minX, maxY > area.y else { return nil }
+        return FTRect(x: minX, y: area.y, width: maxX - minX, height: maxY - area.y)
+    }
+
+    /// 横の探索の scrollFrame が画面にこの割合未満しか見えていないとき、先に外側の縦の容器を送る。
+    /// 根拠: 横の払いは見えている帯の中心線を撃つので、帯が低いと指が画面の縁(iOS のホームインジケータの
+    /// 34pt・Android のジェスチャ帯)に乗り、払いが取られるか数枚しか進まない(E2EY-iOS の `#shelf_9` は
+    /// 高さ 120 のうち 47pt だけ見えて、8 回の払いで 3 枚)。半分を切ると中心線が縁へ寄るのでこの値
+    public static let minVisibleRatioForCrossAxisSearch: Double = 0.5
+
+    /// 横の探索の枠を窓の中へ入れるための、外側の縦の容器と送る量(純粋)。
+    /// 返す `outer` は**画面と交差させた**外側の容器、`jump` は `StepExecutor.dragGesture` と同じ規約
+    /// (正 = 指を上へ)で、枠の中心を画面の 40% の高さへ寄せる量(`offscreenJump` の着地と同じ)。
+    /// 外側の容器が無い・十分に見えている・動かせる幅が無いときは nil(呼び手は従来どおり探索する)。
+    /// 外側 = 枠の中心を含み、枠より高く、枠そのものでない最小の scrollable
+    public static func bringIntoView(frame: FTRect, screen: FTRect,
+                                     elements: [ElementInfo]) -> (outer: FTRect, jump: Double)? {
+        guard frame.height > 0, screen.height > 0 else { return nil }
+        let visibleHeight = intersection(frame, screen)?.height ?? 0
+        guard visibleHeight / frame.height < minVisibleRatioForCrossAxisSearch else { return nil }
+        let outer = elements
+            .filter {
+                $0.scrollable == true && $0.frame.height > frame.height
+                    && frame.centerX >= $0.frame.x && frame.centerX <= $0.frame.x + $0.frame.width
+                    && frame.centerY >= $0.frame.y && frame.centerY <= $0.frame.y + $0.frame.height
+                    && ScrollRegionMatch.overlap($0.frame, frame) < ScrollRegionMatch.minimumOverlap
+            }
+            .min { $0.frame.width * $0.frame.height < $1.frame.width * $1.frame.height }
+        guard let outer, let reach = intersection(outer.frame, screen) else { return nil }
+        let jump = frame.centerY - (screen.y + screen.height * 0.4)
+        guard abs(jump) > 1 else { return nil }
+        return (reach, jump)
+    }
+
+    /// 座標ドラッグの始点が下端のジェスチャ帯(ホーム・アプリ切替)の中なら、帯の上端の 1px 上へ寄せる。
+    /// 帯の外ならそのまま。**帯の幅が 0(iOS・3ボタン)なら何もしない**。
+    /// 返す `moved` は注記用。終点は帯の中でも OS に取られない(認識は押下位置で決まる)ので寄せない
+    public static func clearingBottomGestureBand(y: Double, viewport: FTRect,
+                                                 bottom: Double) -> (y: Double, moved: Bool) {
+        guard bottom > 0 else { return (y, false) }
+        let limit = viewport.y + viewport.height - bottom
+        guard y > limit else { return (y, false) }
+        return (limit - 1, true)
     }
 
     /// 比率の上限(片側)。非有限は 0(= 動かさない)に倒す

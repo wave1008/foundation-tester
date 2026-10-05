@@ -317,7 +317,7 @@ public final class AppAttachDriver: AppDriver {
     public func systemUICovering() async throws -> SystemUICoveringResponse? { try await client.systemUICovering() }
     public var lastActionNote: String? { client.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { client.reachedEdgeOnLastSwipe }
-    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await client.backGestureEdgeWidths()
     }
 }

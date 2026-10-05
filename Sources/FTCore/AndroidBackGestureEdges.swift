@@ -1,24 +1,29 @@
 // AndroidBackGestureEdges.swift
 // `adb shell dumpsys activity service com.android.systemui/.SystemUIService` の出力から、
 // ジェスチャナビゲーションが back として奪う左右の帯幅(px)を読む純粋パーサ。
-// swipeBy(座標ドラッグ)の始点・終点をこの帯の外へ逃がすために ScrollGeometry.panPath が使う
+// 座標ドラッグ(swipeBy / swipePointToPoint / swipeElementToElement)の始点・終点をこの帯の外へ逃がすために
+// ScrollGeometry.panPath と StepExecutor.clearingBottomGestureBand が使う
 // (帯の内側に始点/終点を置くと、そのドラッグが back として消費され画面がアプリから離脱する)。
 
 import Foundation
 
 public enum AndroidBackGestureEdges {
 
-    /// - Returns: `mIsGestureHandlingEnabled=true` のときだけ `(mEdgeWidthLeft, mEdgeWidthRight)`。
-    ///   `false`(3ボタン navigation)は除外不要なので `(0, 0)`。ブロックが無い/値が読めないときは
+    /// - Returns: `mIsGestureHandlingEnabled=true` のときだけ `(mEdgeWidthLeft, mEdgeWidthRight, 下端の帯の高さ)`。
+    ///   下端は `mBottomGestureHeight` が読めればその値、読めなければ `bottomFallback`(OS の版で
+    ///   ダンプに出ない。呼び手が dp 上限 × 密度で渡す。根拠は `AndroidDriver.backGestureEdgeWidths`)。
+    ///   `false`(3ボタン navigation)は除外不要なので `(0, 0, 0)`。ブロックが無い/値が読めないときは
     ///   nil(呼び手は除外しない側に倒す)。**`EdgeBackGestureHandler:` ブロックはダンプ中に複数回
     ///   現れうるが、値は同一なので最初の1つを採る**
-    public static func parse(_ dumpsys: String) -> (left: Double, right: Double)? {
+    public static func parse(_ dumpsys: String, bottomFallback: Double = 0) -> (left: Double, right: Double, bottom: Double)? {
         guard let block = block(named: "EdgeBackGestureHandler:", in: dumpsys) else { return nil }
         guard let enabled = boolValue(named: "mIsGestureHandlingEnabled", in: block) else { return nil }
-        guard enabled else { return (0, 0) }
+        guard enabled else { return (0, 0, 0) }
         guard let left = doubleValue(named: "mEdgeWidthLeft", in: block),
               let right = doubleValue(named: "mEdgeWidthRight", in: block) else { return nil }
-        return (left, right)
+        let reported = doubleValue(named: "mBottomGestureHeight", in: block)
+        let bottom = reported.flatMap { $0 > 0 ? $0 : nil } ?? max(bottomFallback, 0)
+        return (left, right, bottom)
     }
 
     /// ヘッダ行より深いインデントの行だけをブロックとして切り出す(次に同じ/浅いインデントの

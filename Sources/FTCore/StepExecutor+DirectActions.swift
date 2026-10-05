@@ -382,12 +382,25 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let start = clock.now
         let latchedBefore = dragFallbackLatched
-        try await dragWithFallback(fromX: x, fromY: y, toX: toX, toY: toY, pressSeconds: FlowStep.defaultDragPressSeconds,
+        var startY = y
+        var bandNote: String?
+        if let band = await driver.backGestureEdgeWidths(), band.bottom > 0 {
+            let screen = try await snapshotForScrollFrame(phase: &phase).screen
+            let cleared = ScrollGeometry.clearingBottomGestureBand(y: y, viewport: screen, bottom: band.bottom)
+            startY = cleared.y
+            if cleared.moved { bandNote = Self.bottomBandNote }
+        }
+        try await dragWithFallback(fromX: x, fromY: startY, toX: toX, toY: toY, pressSeconds: FlowStep.defaultDragPressSeconds,
                                    durationSeconds: step.duration ?? tunables.defaultSwipeDuration)
         phase.actionMs += Self.ms(clock.now - start)
         return StepOutcome(status: .passed,
-                           driverFallback: dragFallbackLatched && !latchedBefore ? "fell back to XCUITest" : nil)
+                           driverFallback: Self.joinNotes(
+                               dragFallbackLatched && !latchedBefore ? "fell back to XCUITest" : nil, bandNote))
     }
+
+    /// 始点を下端のジェスチャ帯の外へ寄せたときの注記(Android のジェスチャナビ。
+    /// 帯の中から始めると OS のホーム・アプリ切替に取られてアプリが離脱する)
+    static let bottomBandNote = "start point moved above the Android bottom gesture band (home / app switch)"
 
     // ピンチ・ダブルタップ・相対ドラッグ(斜め可)の**対象未指定版** = 画面全体を対象にする。
     // ロケータ付きは下の switch(要素解決・ヒール・スクロール探索にそのまま乗せるため)で、

@@ -666,7 +666,7 @@ extension StepExecutorTests {
     func testSwipeByOnAndroidKeepsBothEndpointsOutsideTheBackGestureEdges() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
-        primary.backGestureEdgeWidthsValue = (left: 78, right: 78)
+        primary.backGestureEdgeWidthsValue = (left: 78, right: 78, bottom: 0)
         let executor = StepExecutor(driver: primary, isAndroid: true, tunables: RunTunables())
         // 画面 400x800(FakeAppDriver.snapshot)の全幅を使う最大比率のドラッグ
         let step = FlowStep(action: "swipeBy", dxRatio: 0.9, dyRatio: 0)

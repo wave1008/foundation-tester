@@ -231,7 +231,7 @@ public protocol AppDriver {
     /// (install(packagePath:) と同じ理由)。**ラッパードライバは base の値を透過すること**
     /// (既定 nil に落とすと、gesture navigation の端末で swipeBy がこの帯の中に始点/終点を
     /// 置き back に化ける。`ScrollGeometry.panPath` の `backGestureEdgeWidths` 参照)
-    func backGestureEdgeWidths() async -> (left: Double, right: Double)?
+    func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)?
 }
 
 extension DriverError: StepFailureKindProviding {
@@ -458,7 +458,7 @@ public extension AppDriver {
     var pointScale: Double { 1 }
 
     /// 既定は nil(除外なし)。答えられるのは Android(AndroidDriver)だけ
-    func backGestureEdgeWidths() async -> (left: Double, right: Double)? { nil }
+    func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? { nil }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)

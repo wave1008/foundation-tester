@@ -288,7 +288,7 @@ public final class HybridFallbackDriver: AppDriver {
     public var supportsCacheBypass: Bool { active.supportsCacheBypass }
     public var pointScale: Double { active.pointScale }
     public var verifiesTypedText: Bool { active.verifiesTypedText }
-    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await active.backGestureEdgeWidths()
     }
     public func status() async throws -> StatusResponse { try await active.status() }

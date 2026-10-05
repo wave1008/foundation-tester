@@ -80,7 +80,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// **どちらの経路でも同じ端末**なので mode を見ない(委譲へ落ちた回だけ床が変わるのを防ぐ)
     public var pointScale: Double { primary.pointScale }
     /// pointScale と同じ理由(端末の性質。mode を見ない)
-    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await primary.backGestureEdgeWidths()
     }
 

@@ -47,7 +47,7 @@ public final class AndroidDriver: AppDriver {
     private var cachedPointScale: Double?
 
     /// `backGestureEdgeWidths()` の読めた値(端末ごとに固定)。読めなかった回は控えない
-    private var cachedBackGestureEdgeWidths: (left: Double, right: Double)?
+    private var cachedBackGestureEdgeWidths: (left: Double, right: Double, bottom: Double)?
 
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
@@ -442,14 +442,21 @@ public final class AndroidDriver: AppDriver {
     /// InputInjector が ACTION_SET_TEXT のたび自前で読み返す(docs/design.md §Android のテキスト注入の規律)
     public var verifiesTypedText: Bool { true }
 
-    /// 読めた値(3ボタン navigation の (0,0) を含む)は端末ごとに1度だけ控える。**読めなかった回は
+    static let bottomGestureBandFallbackDp: Double = 48
+
+    /// 読めた値(3ボタン navigation の (0,0,0) を含む)は端末ごとに1度だけ控える。**読めなかった回は
     /// 控えない** —— adb の一時的な失敗を控えると、その端末では以後ずっと帯を避けなくなる。
     /// 失敗は投げず除外なし側へ倒す(`AndroidBackGestureEdges.parse` 参照)
-    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         if let cachedBackGestureEdgeWidths { return cachedBackGestureEdgeWidths }
         let result = try? adb(["shell", "dumpsys", "activity", "service",
                                "com.android.systemui/.SystemUIService"])
-        let value = result?.outputIfSucceeded.flatMap(AndroidBackGestureEdges.parse)
+        // 下端の帯はダンプに高さが出ない版がある。フォールバックは AOSP の 3ボタンバー高(48dp)=
+        // ジェスチャナビの帯(それ以下)の上限。実測した値ではない(尽きたら dump の値を読む側を足す)
+        let bottomFallback = Self.bottomGestureBandFallbackDp * pointScale
+        let value = result?.outputIfSucceeded.flatMap {
+            AndroidBackGestureEdges.parse($0, bottomFallback: bottomFallback)
+        }
         if let value { cachedBackGestureEdgeWidths = value }
         return value
     }

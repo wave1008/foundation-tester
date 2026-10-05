@@ -264,7 +264,7 @@ final class ScrollGeometryTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
         let path = ScrollGeometry.panPath(container: screen, viewport: screen,
                                           dxRatio: 0.5, dyRatio: -0.25,
-                                          backGestureEdgeWidths: (0, 0))
+                                          backGestureEdgeWidths: (0, 0, 0))
         XCTAssertEqual(path?.fromX, 100)
         XCTAssertEqual(path?.fromY, 500)
         XCTAssertEqual(path?.toX, 300)
@@ -277,7 +277,7 @@ final class ScrollGeometryTests: XCTestCase {
         let container = FTRect(x: 100, y: 200, width: 200, height: 100)
         let path = ScrollGeometry.panPath(container: container, viewport: screen,
                                           dxRatio: 0.5, dyRatio: 0,
-                                          backGestureEdgeWidths: (0, 0))
+                                          backGestureEdgeWidths: (0, 0, 0))
         // 中心 (200, 250)・移動量 100 → ±50
         XCTAssertEqual(path?.fromX, 150)
         XCTAssertEqual(path?.toX, 250)
@@ -291,7 +291,7 @@ final class ScrollGeometryTests: XCTestCase {
         let container = FTRect(x: 200, y: 0, width: 400, height: 800)   // 右半分だけが画面内
         let path = ScrollGeometry.panPath(container: container, viewport: screen,
                                           dxRatio: 1.0, dyRatio: 0,
-                                          backGestureEdgeWidths: (0, 0))
+                                          backGestureEdgeWidths: (0, 0, 0))
         // 交差は x=200..400(幅 200)・中心 300。比率は 0.9 で頭打ち = 移動量 180
         XCTAssertEqual(path?.fromX, 210)
         XCTAssertEqual(path?.toX, 390)
@@ -302,7 +302,7 @@ final class ScrollGeometryTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
         let path = ScrollGeometry.panPath(container: screen, viewport: screen,
                                           dxRatio: 5, dyRatio: -5,
-                                          backGestureEdgeWidths: (0, 0))
+                                          backGestureEdgeWidths: (0, 0, 0))
         XCTAssertEqual(path?.fromX, 20)     // 中心 200 − 0.9*400/2
         XCTAssertEqual(path?.toX, 380)
         XCTAssertEqual(path?.fromY, 760)
@@ -314,13 +314,13 @@ final class ScrollGeometryTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
         XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
                                             dxRatio: 0, dyRatio: 0,
-                                            backGestureEdgeWidths: (0, 0)))
+                                            backGestureEdgeWidths: (0, 0, 0)))
         XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
                                             dxRatio: .nan, dyRatio: .nan,
-                                            backGestureEdgeWidths: (0, 0)))
+                                            backGestureEdgeWidths: (0, 0, 0)))
         XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
                                             dxRatio: 0.001, dyRatio: 0.001,
-                                            backGestureEdgeWidths: (0, 0)))
+                                            backGestureEdgeWidths: (0, 0, 0)))
     }
 
     /// 交差しない領域では作れない(path と同じ契約)
@@ -328,7 +328,7 @@ final class ScrollGeometryTests: XCTestCase {
         XCTAssertNil(ScrollGeometry.panPath(container: FTRect(x: 500, y: 0, width: 100, height: 100),
                                             viewport: FTRect(x: 0, y: 0, width: 400, height: 800),
                                             dxRatio: 0.5, dyRatio: 0.5,
-                                            backGestureEdgeWidths: (0, 0)))
+                                            backGestureEdgeWidths: (0, 0, 0)))
     }
 
     /// 実測(Pixel 9・1080x2424、ジェスチャ navigation 帯 78px): 除外なしでは back を奪う端まで
@@ -337,7 +337,7 @@ final class ScrollGeometryTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
         let path = try XCTUnwrap(ScrollGeometry.panPath(container: screen, viewport: screen,
                                                         dxRatio: -0.9, dyRatio: 0,
-                                                        backGestureEdgeWidths: (78, 78)))
+                                                        backGestureEdgeWidths: (78, 78, 0)))
         XCTAssertGreaterThanOrEqual(min(path.fromX, path.toX), 78)
         XCTAssertLessThanOrEqual(max(path.fromX, path.toX), 1002)
     }
@@ -348,7 +348,7 @@ final class ScrollGeometryTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 1080, height: 2424)
         let path = ScrollGeometry.panPath(container: screen, viewport: screen,
                                           dxRatio: -0.9, dyRatio: 0,
-                                          backGestureEdgeWidths: (0, 0))
+                                          backGestureEdgeWidths: (0, 0, 0))
         XCTAssertEqual(path?.fromX, 1026)
         XCTAssertEqual(path?.toX, 54)
     }
@@ -358,7 +358,7 @@ final class ScrollGeometryTests: XCTestCase {
         let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
         XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
                                             dxRatio: 0.5, dyRatio: 0,
-                                            backGestureEdgeWidths: (200, 200)))
+                                            backGestureEdgeWidths: (200, 200, 0)))
     }
 
     // MARK: - viewport(_:excludingKeyboard:)

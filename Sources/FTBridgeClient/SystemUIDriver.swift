@@ -105,7 +105,7 @@ public final class SystemUIDriver: AppDriver {
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
     public var pointScale: Double { client.pointScale }
     public var verifiesTypedText: Bool { client.verifiesTypedText }
-    public func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+    public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         await client.backGestureEdgeWidths()
     }
 

@@ -906,9 +906,18 @@ extension StepExecutor {
                         + Self.keyboardResizedHint(snapshot)))
             }
             let swipeDuration = step.duration ?? tunables.defaultSwipeDuration
+            let startY: Double
+            if let band = await driver.backGestureEdgeWidths(), band.bottom > 0 {
+                let cleared = ScrollGeometry.clearingBottomGestureBand(
+                    y: element.frame.centerY, viewport: snapshot.screen, bottom: band.bottom)
+                startY = cleared.y
+                if cleared.moved { driverFallback = Self.joinNotes(driverFallback, Self.bottomBandNote) }
+            } else {
+                startY = element.frame.centerY
+            }
             do {
                 start = clock.now
-                try await actingDriver.drag(fromX: element.frame.centerX, fromY: element.frame.centerY,
+                try await actingDriver.drag(fromX: element.frame.centerX, fromY: startY,
                                             toX: endElement.frame.centerX, toY: endElement.frame.centerY,
                                             pressSeconds: FlowStep.defaultDragPressSeconds, durationSeconds: swipeDuration)
                 phase.actionMs += Self.ms(clock.now - start)
@@ -1527,7 +1536,7 @@ extension StepExecutor {
         case "swipeBy":
             // iOS/3ボタン navigation は nil → 除外なし(0, 0)。既定値を panPath 側に置かないのは
             // この分岐に確実に決めさせるため(ScrollGeometry.panPath の doc 参照)
-            let backGestureEdgeWidths = await driver.backGestureEdgeWidths() ?? (left: 0, right: 0)
+            let backGestureEdgeWidths = await driver.backGestureEdgeWidths() ?? (left: 0, right: 0, bottom: 0)
             guard let path = ScrollGeometry.panPath(container: target, viewport: viewport,
                                                     dxRatio: step.dxRatio ?? 0,
                                                     dyRatio: step.dyRatio ?? 0,

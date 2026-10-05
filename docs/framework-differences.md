@@ -319,6 +319,8 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | 上端で状態が行き来する一覧(RefreshIndicator)で上限まで送る → **一度見た署名へ戻ったら進んでいない**(ドライバが動いたと申告した直後は数えない) | Flutter iOS |
 | in-app の `tap(x:y:)` が Popup の外側に届かないのに緑 → 自前描画(か不明)で要素の無い点は XCUITest | iOS hybrid |
 | `swipeBy` の始点が Android の戻るの帯 → 帯の幅を SystemUI の dump から読んで経路を寄せる / 比率 >0.9 は注記 | Android |
+| 画面の最下端から始まる座標ドラッグ(`swipeElementToElement` / `swipePointToPoint` / `swipeBy`)が Android のホーム操作に取られアプリが離脱する → 下端のジェスチャ帯(dump の `mBottomGestureHeight`・読めなければ 48dp × 密度。実測した値ではない)の中なら始点を帯の上へ寄せて注記(`ScrollGeometry.clearingBottomGestureBand`)。`gesture` の多点は寄せない | Android |
+| 横の探索の scrollFrame が画面に半分未満しか見えず(縦の一覧の中の横の一覧が下端で切れる)払いが画面の縁に乗って数枚しか進まない → 探索の前に外側の縦の容器を送って枠を窓へ入れる(`ScrollGeometry.bringIntoView`・上限2回) | iOS(E2EY-iOS)・Flutter |
 | `scrollToTop` の確認の払いが更新を撃つ → Android ブリッジ(v74)の `scrollActions` で送らずに端を確定。**容器は画面中央を含む最小のもの**(入れ子の SwipeRefreshLayout で効かなかった) | Android |
 | スクロール探索が、末尾で続きを読み込む一覧を途中で打ち切る → 探索の打ち切りにも `edgeClaimGraceAfterMove` | 全エンジン |
 | フォーカスを取らない別ウィンドウ(ExposedDropdown・Spinner の候補)の中身が木に無い → Android ブリッジ(v75)が同じアプリの手前の窓の中身を足す(`inOverlayWindow`。覆いの判定から除外) | Android |

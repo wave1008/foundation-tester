@@ -206,9 +206,9 @@ final class FakeAppDriver: AppDriver {
     private(set) var dragCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
     /// `backGestureEdgeWidths()` の擬似(Android のジェスチャナビゲーション端末を模す)。
     /// 既定 nil = 除外なし(AppDriver の既定と同じ)
-    var backGestureEdgeWidthsValue: (left: Double, right: Double)?
+    var backGestureEdgeWidthsValue: (left: Double, right: Double, bottom: Double)?
 
-    func backGestureEdgeWidths() async -> (left: Double, right: Double)? {
+    func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
         backGestureEdgeWidthsValue
     }
 
