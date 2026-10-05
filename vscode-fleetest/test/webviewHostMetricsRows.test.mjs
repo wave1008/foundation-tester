@@ -59,7 +59,7 @@ function stubCanvas(window) {
   const noop = () => {};
   window.HTMLCanvasElement.prototype.getContext = () => ({
     setTransform: noop, clearRect: noop, beginPath: noop, moveTo: noop, lineTo: noop,
-    closePath: noop, stroke: noop, fill: noop, globalAlpha: 1, fillStyle: "", strokeStyle: "",
+    closePath: noop, fillRect: noop, stroke: noop, fill: noop, globalAlpha: 1, fillStyle: "", strokeStyle: "",
     lineWidth: 0, lineJoin: "", lineCap: "",
   });
 }
@@ -125,12 +125,12 @@ function hostMetricsSample(machine, cpu, fm = {}, vision = {}, cpuCores = 8) {
     fmTextState = null, fmVisionState = null, fmDeadReason = null,
     fmCheckedAt = Date.now() / 1000,
   } = fm;
-  const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0 } = vision;
+  const { visionCalls = 0, visionFailures = 0, visionTotalMs = 0, visionWarming = 0 } = vision;
   return {
     type: "hostMetrics", ...(machine ? { machine } : {}),
     cpu, cpuCores, gpu: 0.25, gpuCores: 38, memUsedBytes: 8 * 1024 * 1024 * 1024, memTotalBytes: 32 * 1024 * 1024 * 1024,
     fmCalls, fmFailures, fmTotalMs, fmTextState, fmVisionState, fmDeadReason, fmCheckedAt,
-    visionCalls, visionFailures, visionTotalMs,
+    visionCalls, visionFailures, visionTotalMs, visionWarming,
   };
 }
 
@@ -911,4 +911,29 @@ test("無効な機械のスパークラインは全系列とも同じ1色(色を
   assert.equal(off.length, 1, "無効な機械は全系列とも同じ1色");
   assert.ok(on.length > 1, "前提: 有効な機械は系列ごとに色が違う");
   assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
+});
+
+test("OCR の暖機中は VN の値のセルが暖機中の語になり、ツールチップに暖機の行が付く", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 2 }));
+  const cell = visionCell(document, "");
+  assert.match(cell.querySelector(".hm-value").textContent, /暖機中|warming/);
+  assert.match(cell.title, /^(OCR の認識器を暖機中\(2 プロセス\)|Warming up the OCR recognizer \(2 process\(es\)\))/);
+
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, visionWarming: 0 }));
+  assert.equal(cell.querySelector(".hm-value").textContent, "3", "暖機が終われば従来どおり回数");
+  assert.doesNotMatch(cell.title, /暖機中|Warming up/);
+});
+
+test("hmWarmingBands は暖機中の tick を右詰めの x 範囲にし、隣り合う tick を結合する", async () => {
+  const { hmWarmingBands } = await import("../src/webview/monitor/hostChartScale.js");
+  assert.deepEqual(hmWarmingBands([false, false], 60, 59), []);
+  // 59px / 59 区間 = stepX 1。2件は右詰めで index 58, 59 → x=58, 59
+  assert.deepEqual(hmWarmingBands([false, true], 60, 59), [{ x0: 58.5, x1: 59 }]);
+  assert.deepEqual(hmWarmingBands([true, true, false, true], 60, 59), [
+    { x0: 55.5, x1: 57.5 },
+    { x0: 58.5, x1: 59 },
+  ]);
 });

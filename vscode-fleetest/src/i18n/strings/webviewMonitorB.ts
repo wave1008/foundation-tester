@@ -118,6 +118,11 @@ export const webviewMonitorBStrings = {
     ja: "VN {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
     en: "VN {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
   },
+  "wvMonitor2.hostCharts.visionWarmingShort": { ja: "暖機中", en: "warming" },
+  "wvMonitor2.hostCharts.visionWarmingTitle": {
+    ja: "OCR の認識器を暖機中({count} プロセス)",
+    en: "Warming up the OCR recognizer ({count} process(es))",
+  },
   "wvMonitor2.hostCharts.fmTitle": {
     ja: "FM {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
     en: "FM {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",

@@ -306,7 +306,7 @@ test("リモート機のサンプルには machine が付く(手元のサンプ�
 
   const sample = (cpu) => Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 1, cpu, cpuCores: 8, gpu: 0.1, gpuCores: 10, memUsedBytes: 2, memTotalBytes: 4,
-    fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null,
+    fmCalls: null, fmFailures: null, fmTotalMs: null, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, visionWarming: 0,
   }) + "\n");
   procs[1].stdout.emit("data", sample(0.5)); // 手元の host-metrics
   procs[2].stdout.emit("data", sample(0.9)); // mac2 の host-metrics
@@ -334,7 +334,7 @@ test("hostMetrics は全欄を要求し(欠けた行は捨てる)、値と null(
   }) + "\n");
   const full = Buffer.from(JSON.stringify({
     kind: "hostMetrics", ts: 2, cpu: 0.6, cpuCores: 8, gpu: 0.2, gpuCores: 10, memUsedBytes: 3, memTotalBytes: 4,
-    fmCalls: 2, fmFailures: 1, fmTotalMs: 500, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null,
+    fmCalls: 2, fmFailures: 1, fmTotalMs: 500, fmTextState: null, fmVisionState: null, fmDeadReason: null, fmCheckedAt: null, visionCalls: null, visionFailures: null, visionTotalMs: null, visionWarming: 0,
   }) + "\n");
   procs[1].stdout.emit("data", missingFields);
   procs[1].stdout.emit("data", full);

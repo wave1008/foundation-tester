@@ -95,6 +95,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
                 memUsedBytes: mem?.used, memTotalBytes: mem?.total,
                 fmCalls: fm?.calls, fmFailures: fm?.failures, fmTotalMs: fm?.totalMs,
                 visionCalls: vision?.calls, visionFailures: vision?.failures, visionTotalMs: vision?.totalMs,
+                visionWarming: VisionWarmupLedger.activeCount(),
                 fmLiveness: FMLiveness.current())
             if let line = sample.encodedLine() {
                 ConsoleOut.out(line)

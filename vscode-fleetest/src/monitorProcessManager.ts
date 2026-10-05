@@ -107,6 +107,9 @@ type HostMetricsRawEvent = {
   readonly visionCalls: number | null;
   readonly visionFailures: number | null;
   readonly visionTotalMs: number | null;
+  /** この瞬間に OCR の認識器を暖機している、その機械のプロセス数(0 = 暖機なし。Sources 側は
+   *  FTCore.VisionWarmupLedger)。 */
+  readonly visionWarming: number;
 };
 
 /** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針。
@@ -136,7 +139,8 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     numberOrNull(record.fmCheckedAt) &&
     numberOrNull(record.visionCalls) &&
     numberOrNull(record.visionFailures) &&
-    numberOrNull(record.visionTotalMs)
+    numberOrNull(record.visionTotalMs) &&
+    typeof record.visionWarming === "number"
   );
 }
 
@@ -171,6 +175,8 @@ export type HostMetricsToWebviewMessage =
       readonly visionCalls: number | null;
       readonly visionFailures: number | null;
       readonly visionTotalMs: number | null;
+      /** OCR の認識器を暖機中のプロセス数(0 = なし)。 */
+      readonly visionWarming: number;
     }
   /** 行の集合(手元 + このリモート機。値より先に配る)。消えた機械の行は webview 側で捨てる。 */
   | { readonly type: "hostMetricsMachines"; readonly machines: readonly string[] }
@@ -930,6 +936,7 @@ export class MonitorProcessManager {
           visionCalls: value.visionCalls,
           visionFailures: value.visionFailures,
           visionTotalMs: value.visionTotalMs,
+          visionWarming: value.visionWarming,
         });
       },
       (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),

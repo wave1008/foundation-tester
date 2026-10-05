@@ -131,6 +131,8 @@ public enum RegionText {
             // `awaitPrewarm` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
             // (defer は LIFO なので、待ち手が起きる時点で flock は既に閉じている)
             defer { prewarmFinishSignal.markFinished() }
+            let warmupMark = VisionWarmupLedger.begin()
+            defer { VisionWarmupLedger.end(warmupMark) }
             let lock = OCRWarmupLock.acquire(processName: ProcessInfo.processInfo.processName)
             defer { try? lock?.close() }
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
@@ -288,6 +290,8 @@ public enum RegionText {
     }
 
     public static func commitCompileCache() async -> [WarmupResult] {
+        let warmupMark = VisionWarmupLedger.begin()
+        defer { VisionWarmupLedger.end(warmupMark) }
         guard let image = renderedProbe() else { return [] }
         var results: [WarmupResult] = []
         for languages in warmupLanguageSets {

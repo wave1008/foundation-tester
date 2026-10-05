@@ -24,7 +24,7 @@
 // FM と VN は別の量なので**別々の縦軸**(片方に合わせると読めなくなる)。
 
 import { t } from '../i18n.js';
-import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale } from './hostChartScale.js';
+import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale, hmWarmingBands } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
 import { isMachineDisabled, onMachineEnablementChanged, LOCAL_MACHINE_LABEL } from './machineColors.js';
 
@@ -107,7 +107,9 @@ function hmMakeRow(rowEl, machine) {
     // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
     // fm は死活判定(fmIsDead)にも使う。
     fm: { window: [] },
-    vision: { window: [] },
+    // warming: OCR 認識器の暖機中だった tick(直近 HM_MAX_SAMPLES 件の boolean。entries.vision.samples と同じ右詰め)。
+    // count: 直近 tick の暖機プロセス数
+    vision: { window: [], warming: [], warmingCount: 0 },
     // FM の死活(FMLiveness の最新の観測)。**窓を持たない** —— これはレートではなく
     // 「今この機械で FM を呼べるか」という水準で、直近の1サンプルがそのまま答え。
     // 'alive' / 'dead' / null=不明。呼び出しが0件でも埋まるのが回数系列との違い。
@@ -405,8 +407,12 @@ function hmRenderVisionLabel(row) {
   // 単位と一致させる)。
   const latest = row.vision.window.length > 0 ? row.vision.window[row.vision.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
-  entry.value.textContent = callsText;
-  entry.el.title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.visionTitle', {
+  const warming = row.vision.warming.length > 0 && row.vision.warming[row.vision.warming.length - 1];
+  entry.value.textContent = warming ? t('wvMonitor2.hostCharts.visionWarmingShort') : callsText;
+  const warmingLine = warming
+    ? t('wvMonitor2.hostCharts.visionWarmingTitle', { count: String(row.vision.warmingCount) }) + '\n'
+    : '';
+  entry.el.title = hmTitlePrefix(row) + warmingLine + t('wvMonitor2.hostCharts.visionTitle', {
     seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',
     calls: stats ? String(stats.calls) : '–',
@@ -468,6 +474,15 @@ function hmDraw(row, entry, scale) {
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
+  // 暖機中の帯は線より先に塗る(VN だけ)。色は系列色(グレー化のときは dead)
+  if (entry === row.entries.vision) {
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = color;
+    for (const band of hmWarmingBands(row.vision.warming, HM_MAX_SAMPLES, width)) {
+      ctx.fillRect(band.x0, 0, band.x1 - band.x0, height);
+    }
+    ctx.globalAlpha = 1;
+  }
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
     // 念のため枠外へはみ出させない(件数系列は hmCountScale が上限を含むので通常は効かない)
@@ -679,6 +694,12 @@ function hmRenderRow(row, sample) {
   row.fm.window.push({ calls: fmCalls, failures: fmFailures, totalMs: fmTotalMs });
   if (row.fm.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
     row.fm.window.shift();
+  }
+  const visionWarming = sample && typeof sample.visionWarming === 'number' ? sample.visionWarming : 0;
+  row.vision.warming.push(visionWarming > 0);
+  row.vision.warmingCount = visionWarming;
+  if (row.vision.warming.length > HM_MAX_SAMPLES) {
+    row.vision.warming.shift();
   }
   row.vision.window.push({ calls: visionCalls, failures: visionFailures, totalMs: visionTotalMs });
   if (row.vision.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
