@@ -81,6 +81,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   launch/install を ms で持つ。片方だけ変えない)。**窓は本人確認・操作・観測をまとめて数えるので、観測を撃つ命令は
   `observationAllowanceSeconds`(session)も足す**(窓に渡すのは和の `watchdogWindowAllowanceSeconds`)——
   猶予が無いと、内側の期限より先に watchdog が serve ごと殺す → maintainer-notes §66。
+  **観測の段(前面追従・screenshot・snapshot・springboard 退避・失敗の注記)は段の数を猶予へ足さず、手前で
+  `ResidentProcessGuard.noteCommandProgress()` を撃って窓を張り直す**(窓は「進まない時間」を測る。前面追従は
+  `followFrontmost` だけを通す。`LiveWatchdogProgressScanTests`)→ maintainer-notes §68.1
   **実機に2本目のランナーを立てない**(ライブ操作の自動起動 `LiveBridgeAutoStarter.launchBridge` が、同じ実機を
   宛先に持つ別ポートの xcodebuild を見たら断る。起動途中のランナーは走査に載らない。bridge up / 供給は起動途中のデバイスを
   待って引き取るので門は置かない)→ maintainer-notes §49.4。

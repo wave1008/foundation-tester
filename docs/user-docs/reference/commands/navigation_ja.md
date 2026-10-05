@@ -45,6 +45,7 @@ rotateTo(.portrait)
   戻します)。
 - **アプリがその向きを許可していないと回りません**(iOS の
   `UISupportedInterfaceOrientations`、Android の `screenOrientation`)。
+  Android は前面のアプリがその向きを禁じていれば待たずに失敗し、理由にアプリの宣言を示します。
 - このコマンドで回すあいだ、Android は自動回転を切ります(切らないと角度が保持されません)。
 
 ### Link

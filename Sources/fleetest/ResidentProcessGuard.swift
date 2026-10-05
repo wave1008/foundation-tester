@@ -100,6 +100,23 @@ enum ResidentProcessGuard {
         }
     }
 
+    /// コマンドの途中で次の段(期限つきの呼び出し1本)へ進んだことを記録し、窓をそこから張り直す
+    /// (猶予は noteCommandStart のまま)。**窓は「進まない時間」を測る** —— 命令全体を1本の窓で数えると、
+    /// 段ごとに期限のある呼び出し(観測の screenshot・snapshot・springboard 退避・前面追従)が劣化した
+    /// ランナーでそれぞれ期限近くまで掛かったとき、進んでいるのに強制終了する(猶予の足し算を3度継ぎ足した
+    /// → maintainer-notes §68.1)。アイドル中は何もしない
+    static func noteCommandProgress() {
+        state.withLock {
+            guard $0.commandStartedAt != nil else { return }
+            $0.commandStartedAt = .now()
+        }
+    }
+
+    /// 窓の起点(テスト用。アイドル中は nil)
+    static var commandStartedAtForTesting: DispatchTime? {
+        state.withLock { $0.commandStartedAt }
+    }
+
     /// 1コマンドの処理完了を記録する(アイドル=監視対象外に戻す)。
     static func noteCommandEnd() {
         state.withLock { $0.commandStartedAt = nil }

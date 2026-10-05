@@ -47,6 +47,8 @@ rotateTo(.portrait)
   (Android also restores the auto-rotate setting).
 - **The app must allow that orientation, or it will not rotate** (iOS
   `UISupportedInterfaceOrientations`, Android `screenOrientation`).
+  On Android, when the app in front forbids that orientation, `rotateTo` fails right away and
+  names the app's declaration.
 - Android disables auto-rotate while rotating through this command, since the angle would not
   otherwise hold.
 

@@ -3549,3 +3549,66 @@ Swift 6 言語モードでビルドすると診断 0 件**(陽性対照 = グロ
 - 10/1 と同じ構成(エミュレータ 10 台 × Android 4 SUT × 3 周 = 570 本・画像ステップ 381)では**異常が 1 件も起きなかった**
   (注記 0)= **本物の異常に効くかはまだ測れていない**。各 run の終わりで補助は終了し、ソケットは残らなかった。
   **次に異常が出る条件(負荷テスト・配信 24fps + 多並列)で `vision-helper-rescued` と PersistentAnomaly を数える**
+
+## 68. 10/5 の3時間負荷テスト(2026-10-05 07:36〜10:38)
+
+構成は §66 と同じ(フリート run の周回・api run の取り合い・MCP ファズ = 実機 SE3 / Pixel 4a / Pixel 3a + sim-08 / emulator-5562・
+ライブ操作 = sim-09 / -10・emulator-5564・CLI ファズ・障害注入)。今回足したのは **`--set defaultTimeout=7` を3周に1回**(RunTunables が
+子プロセスとリモートの fan-out まで運ばれる経路)と、CLI ファズの `--set` の異常値(0・負・1e308・nan・inf・空・型違い・専用フラグとの併用)。
+フリート run 121 周(実走 41 = 下の 68.4 で約 60 周を失った)・api run 62 周・MCP 52,167 回・ライブ操作 18,217 命令・CLI 4,348 回・
+障害注入 9 回(run 親への INT / SIGKILL・ランナーと Android ブリッジの強制停止)。**fleetest 系のクラッシュ・ハング 0 件**。
+`--set` の異常値はどれも名指しのエラーで止まり、`defaultTimeout=7` の周は手元・リモートとも走った。
+
+### 68.1 ライブ操作の command watchdog が「進んでいる」serve を強制終了していた(§64.4・§66.2 と同じ型の3回目)
+劣化したランナー(AX の1問に 20〜26 秒)の下で、sim-09 の serve が swipe / back / refresh / drag / pinch で 75〜112 秒の
+強制終了を繰り返した(1時間に5回)。§66.2 は窓を「命令 + 観測1本ぶん」に広げたが、観測は前面追従・screenshot・snapshot・
+springboard 退避(launch + snapshot)と**期限つきの呼び出しを最大5本**撃つので、どれも期限内に返っているのに和が窓を超えた。
+猶予の足し算を3度継ぎ足した形なので、**窓の意味を変えた**: 窓は「進まない時間」を測り、観測の各段の手前で
+`ResidentProcessGuard.noteCommandProgress()` が起点を張り直す(猶予は命令の始めに決めたまま)。前面追従は `followFrontmost` だけを通す。
+固まり(協調プールの詰まり)は従来どおり 1 段の窓で捕まる。`LiveWatchdogProgressScanTests`(張り直しの意味・段の手前の張り直し・
+`follower?.follow` の直呼びの禁止)。変異4件を検出。
+
+### 68.2 Android の回転待ちが 5 秒の固定期限で「遅い」と「回れない」を区別しようとしていた
+`AndroidDriver.rotate` は 5 秒(根拠の書かれていない定数)で落ち着かなければ 422 だった。負荷下の emulator は 5 秒を超えて回り切り
+(失敗の 3〜17 秒後に同じ指示が 1 秒以内で成功)、**10/4 の負荷テストでは DSL の `rotateTo landscape` がこれで赤**になっていた
+(E2E-Android「横向きでも操作できること」)。一方で 5 秒が要るのは「回れない」(ランチャー・縦専用)を見分けるためだけだった。
+**回れないことは adb で直接読める**: `dumpsys window displays` の `mLastOrientation`(前面の SCREEN_ORIENTATION_*)と `mRotation`。
+ランチャーは nosensor = 5 で user_rotation を書いても表示は 0 のまま(Pixel 9 emulator / Pixel 3a・4a で実測)。宣言が向きを禁じていれば
+2回続けて観測した時点で理由を名指して断り(`AndroidDisplayRotation.refusal`)、宣言が回れるなら画面が追いつくまで待つ。上限は判定ではなく
+安全上限(`rotationStallCapSeconds` = `BridgeClient.Timeout.interaction` 20 秒)。読めないダンプは「回れない」に畳まず待つ。
+実地: ランチャーへの landscape は emulator 1.4 秒・Pixel 3a 2.9 秒で「nosensor = 5」と名指しで失敗(以前は 5 秒の後に理由なし)、
+アプリ(CMP / RN)は 1 秒未満で回転・portrait で自動回転の設定も戻った。
+**iOS の同じ型は直していない**(`RotationSettle.deadlineSeconds` = 3 秒。xcuitest は失敗文に `UISupportedInterfaceOrientations` を名指しする)
+—— 今回のデータで iOS の回転の赤は 0 件(再現していない)。変えるならブリッジの版も上がる。
+
+### 68.3 直していない観察(記録のみ)
+- **§67 の Vision の補助が初めて負荷下で働いた**: 救済 8 シナリオ(全緑)/ 補助も使えず待ち直しへ落ちた 7 シナリオ(うち 6 赤)。
+  **使えなかった回は E2E-CMP android の3 run と E2E-RN android の1 run に偏り**、`--set` の有無とは無関係。**使えなかった理由
+  (補助が居ない・答えない・自分の Vision も不健全 = `VisionHelperError`)は記録に残らない**ので、ここで判定が止まる。
+  次に直すなら `vision-helper-unavailable` の回に `VisionHelperError` の文言を失敗の detail へ足す(事実の追加)
+- M1Max は §65・§66 と同じく Simulator / AVD が作り直されたまま(iOS 27 の 17 Pro も Pixel 9 も無い = 環境)。M1mini は別ワークスペース
+  (`~/dev/foundation-tester`)のブリッジが端末を握っていて設計どおり断った
+- 手元の -05〜-08 の Simulator で録画の試し撮り(1 秒)が毎周空になり、静止画へ縮退した(縮退は設計どおり・基準の計測の時は空にならなかった)。
+  負荷時だけの事象かは未確認
+- sim-09 のライブ操作がポート 8131 を固定(`--port`)して起こされていたため、SE3 のブリッジが落ちて起動し直すたびに空いている最小のポートを
+  取り(8133 → 8135 → 8131)、serve は起動時に「別のデバイスのブリッジ」と断り続けた(ハーネスの指定の問題。拡張は `--udid` も渡し、
+  ポートはデバイス一覧から引き直す)。udid だけで起こし直すと自動起動で復帰した
+- SE3 の「診断が予算内に終わらない」(08:20〜08:23 の 16 回)は、同じ実機へ api run が供給をかけていた時間帯で、文言も「居ないとは限らない・
+  bridge up は勧めない」と事実どおり。emulator-5562 の rotate の「locked before this session」は、同じ端末を使った run が回転を固定した後の
+  文言(その MCP セッションが回す前、の意味では正しい)
+- 手元の赤 76 件のうち 58 件はファズと共有している端末(-05・-06・-08)。残りは負荷下の CMP iOS の描画欠けを OCR 段が捉えた赤(§66.3)と
+  負荷下の画像照合(上の Vision)
+
+### 68.4 負荷テストの途中で本線の Sources を編集して run を全部壊した(運用の事故)
+68.2 の修正を負荷テスト中に本線で書き始め、コンパイルの通らない途中の `AndroidDriver.swift` が 09:04〜09:27 の約 60 周を 16 秒の
+ビルド失敗にした。**`fleetest run --skip-build` でもシナリオ実行バイナリ(`fleetest-scenarios-<project>`)は FTCore / FTAndroid /
+FTBridgeClient を含めて毎回ビルドされる**。stash で HEAD に戻して再開し、続きは git worktree で書いた。
+**デバイス実行・負荷テストの最中の修正は worktree で書く**(CLAUDE.md の「E2E 実行中に swift build を打たない」の延長)。
+
+### 68.5 修正後の検証と性能
+`swift test --parallel` 全 8,735 件緑・変異 10 件すべて検出(「2枚目のディスプレイを混ぜない」は当初生き残り、1枚目に欄が無い境界のテストを足した)。
+性能は `Scripts/e2e.sh --performance --local`(朝の基準 = HEAD 943c5566・全緑)と比べた。共通 392 本で Android 側は CMP −0.6%・Flutter +1.4%・
+RN +1.0%・Android +8.0%(中央値 +1.7%)、iOS 側は +8〜+17%(CMP は −20%)とばらつき、ホスト CPU の中央値も 55% → 63%。
+iOS は今回の差分が通らない経路なので、**同じ条件で HEAD と修正版を続けて回す対照**(E2E-iOS + E2E-Android)で帰属を確かめた:
+E2E-Android 494.8 → 497.7 秒(+0.6%・中央値 −0.1%・回転のシナリオ 3,834 → 3,878ms)、E2E-iOS 668.0 → 575.4 秒(HEAD 側の方が遅い)
+= **退行なし・iOS の伸びは負荷テスト後の条件差**。修正後の全体計測の赤 2 本は CMP iOS の描画欠け(OCR が「J00m=ÌI」と読んだ・アプリ領域が一色)。

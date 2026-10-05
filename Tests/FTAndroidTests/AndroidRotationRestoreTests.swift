@@ -30,4 +30,10 @@ final class AndroidRotationRestoreTests: XCTestCase {
     func testNoRecordMeansNothingToRestore() {
         XCTAssertEqual(AndroidDriver.autoRotateRestorePlan(original: nil), .nothingToRestore)
     }
+
+    /// 回転の待ちは判定の期限ではなく安全上限(宣言が回れないときは即座に断る)。値はリテラルで固定する
+    func testRotationWaitConstantsArePinned() {
+        XCTAssertEqual(AndroidDriver.rotationStallCapSeconds, 20)
+        XCTAssertEqual(AndroidDriver.rotationRefusalConfirmations, 2)
+    }
 }

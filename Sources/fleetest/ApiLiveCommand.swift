@@ -150,7 +150,8 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// SERVE_REQUEST_TIMEOUT_MS(20秒。vscode-fleetest/src/monitorLiveController.ts)より大きくする
     /// —— 通常は拡張の kill→respawn が先に効き、これは拡張が kill しない場合の最終安全弁。
     /// コマンドが正当にこれより長く占有しうるとき(軌跡・press/drag/pinch・`Timeout.session` で撃つもの・clearAppData・install)は
-    /// `ApiLiveServeCommand.watchdogAllowanceSeconds` ぶん延ばす
+    /// `ApiLiveServeCommand.watchdogAllowanceSeconds` ぶん延ばす。観測の各段(前面追従・screenshot・snapshot・
+    /// springboard 退避)の手前では `ResidentProcessGuard.noteCommandProgress` で窓を張り直す(段の数を猶予へ足さない)
     static let commandWatchdogMaxSeconds: Double = 30
 
     func run() async throws {
@@ -302,7 +303,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                     let starting = await bridgeStartingFlag(starter)
                     emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget,
                                                       bridgeStarting: starting))
-                    await follower?.follow(driver: driver)
+                    await followFrontmost(follower, driver: driver)
                     await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
                                           staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
                                   runnerHealth: runnerHealth)
@@ -657,7 +658,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             }
             emitLine(ApiLiveActionResultEvent(ok: false, error: decodeError, app: follower?.sessionTarget,
                                               bridgeStarting: starting))
-            await follower?.follow(driver: driver)
+            await followFrontmost(follower, driver: driver)
             await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
                                   staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
                                   runnerHealth: runnerHealth)
@@ -684,7 +685,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
         // **観測の直前にもう一度追従させる**: 直前の操作で前面が変わっている(ホームへ戻った・
         // 別のアプリが出た)ことがあり、古いセッションのまま撮ると画面ではなく最後の状態が載る
-        await follower?.follow(driver: driver)
+        await followFrontmost(follower, driver: driver)
         await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
                               staleFrameTracker: staleFrameTracker, screenMemo: screenMemo,
                                   runnerHealth: runnerHealth)
@@ -887,7 +888,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     private func perform(command: ApiLiveServeCommand, driver: AppDriver,
                          follower: LiveSessionFollower?, ownAppBundleID: String?,
                          screenMemo: LiveScreenMemo) async throws {
-        if Self.followsFrontmost(command.cmd) { await follower?.follow(driver: driver) }
+        if Self.followsFrontmost(command.cmd) { await followFrontmost(follower, driver: driver) }
         switch command.cmd {
         case "tap":
             if let ref = command.ref {
@@ -1079,6 +1080,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                                  screenMemo: LiveScreenMemo,
                                  runnerHealth: LiveRunnerHealthMemo) async {
         do {
+            ResidentProcessGuard.noteCommandProgress()
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
             let snap = try await snapshotWithSessionFallback(driver: driver, follower: follower)
@@ -1096,6 +1098,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 image: jpeg.data.base64EncodedString(), elements: elements, notes: notes,
                 bridgeStarting: await bridgeStartingFlag(starter)))
         } catch {
+            ResidentProcessGuard.noteCommandProgress()
             let message = await annotated(error, starter: starter, triggering: true, port: port)
             // **annotated の後で読む**(bridgeStartingFlag のコメント参照)
             emitLine(ApiLiveSnapshotEvent(
@@ -1105,17 +1108,29 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
     }
 
+    /// 前面追従(devicectl・AX の照会を自前の予算で撃つ)。前後で watchdog の窓を張り直す
+    /// (`ResidentProcessGuard.noteCommandProgress` の宣言)。**`follower?.follow` を直接呼ばない**
+    /// (`LiveWatchdogProgressScanTests`)
+    private func followFrontmost(_ follower: LiveSessionFollower?, driver: AppDriver) async {
+        guard let follower else { return }
+        ResidentProcessGuard.noteCommandProgress()
+        await follower.follow(driver: driver)
+        ResidentProcessGuard.noteCommandProgress()
+    }
+
     /// スクリーンショットのみの観測イベント(kind:"frame")。自動画面更新用に AX スナップショット
     /// を省いて軽量化している(要素一覧は更新されない=鮮度判定に要る木が無いので撃たない)。
     /// 自動フレームは受動的観測のため起動はトリガーせず、starter の既知の状態を bridgeStarting へ
     /// 反映する(failed のときだけ error にも文言が付く)
     private func emitFrame(driver: AppDriver, starter: LiveBridgeAutoStarter?, port: UInt16) async {
         do {
+            ResidentProcessGuard.noteCommandProgress()
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
             emitLine(ApiLiveFrameEvent(ok: true, error: nil, image: jpeg.data.base64EncodedString(),
                                        bridgeStarting: await bridgeStartingFlag(starter)))
         } catch {
+            ResidentProcessGuard.noteCommandProgress()
             let message = await annotated(error, starter: starter, triggering: false, port: port)
             // **annotated の後で読む**(bridgeStartingFlag のコメント参照)
             emitLine(ApiLiveFrameEvent(ok: false, error: message, image: nil,
@@ -1136,11 +1151,14 @@ struct ApiLiveServe: AsyncParsableCommand {
     private func snapshotWithSessionFallback(driver: AppDriver,
                                              follower: LiveSessionFollower?) async throws -> SnapshotResponse {
         do {
+            ResidentProcessGuard.noteCommandProgress()
             return try await driver.snapshot()
         } catch DriverError.badResponse(let status, _)
                     where (status == 409 || status == 422) && Self.usesSpringboardFallback(platform: driverOptions.resolvedPlatform) {
+            ResidentProcessGuard.noteCommandProgress()
             try await driver.launch(bundleID: LiveSessionTarget.springboard)
             follower?.noteSessionChanged(to: LiveSessionTarget.springboard)
+            ResidentProcessGuard.noteCommandProgress()
             return try await driver.snapshot()
         }
     }

@@ -87,7 +87,8 @@ public final class BridgeClient: AppDriver, Sendable {
     /// **public**: `ApiLiveServe`(Sources/fleetest/ApiLiveCommand.swift)の command watchdog が
     /// launch/activate の猶予としてそのまま参照する(数字をリテラルで重複させない)
     public enum Timeout {
-        static let interaction: TimeInterval = 20  // tap/swipe/type/press/drag
+        /// **public**: AndroidDriver.rotate の待ちの安全上限が参照する
+        public static let interaction: TimeInterval = 20  // tap/swipe/type/press/drag
         // snapshot は a11y ツリー直列化で並列飽和時に伸びるため session 側に置く(誤爆回避)
         public static let session: TimeInterval = 45  // launch/activate/screenshot/status/terminate/snapshot/appswitcher/home
         /// 実機の `devicectl device install/uninstall app` に与える timeout(install/uninstall の

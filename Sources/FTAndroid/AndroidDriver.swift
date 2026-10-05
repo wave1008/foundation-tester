@@ -931,7 +931,15 @@ public final class AndroidDriver: AppDriver {
         return (userRotation, accel)
     }
 
-    private static let rotationDeadlineSeconds: Double = 5.0
+    /// 回転の待ちの安全上限[秒]。**判定には使わない** —— 回れない形(縦専用・ランチャー等の宣言)は
+    /// `AndroidDisplayRotation.refusal` で即座に断るので、これを払うのは宣言が回れるのに画面が追いつかない
+    /// ときだけ(負荷下の emulator で 5 秒を超えて回り切った実測あり。以前の 5 秒の判定期限はそれを赤にしていた)。
+    /// 値は1操作の HTTP 予算(`BridgeClient.Timeout.interaction`)と同じ —— それより長く占有すると、
+    /// MCP / ライブ操作の外側の期限(command watchdog 等)に掛かる。尽きたら「宣言は回れる・画面はまだ」と言う
+    static let rotationStallCapSeconds: Double = BridgeClient.Timeout.interaction
+    /// 宣言による拒否を確定する連続観測回数。前面が切り替わる瞬間の `mLastOrientation` は直前のアプリの
+    /// 値が残りうるので、1回の観測では断らない
+    static let rotationRefusalConfirmations = 2
 
     public func rotate(to orientation: FTOrientation) async throws -> FTOrientation {
         if originalRotationSettings == nil {
@@ -941,14 +949,37 @@ public final class AndroidDriver: AppDriver {
                               String(Self.androidRotation(for: orientation))])
         _ = try adbAnswering(["shell", "settings", "put", "system", "accelerometer_rotation", "0"])
         let wantsLandscape = orientation != .portrait
-        let deadline = Date().addingTimeInterval(Self.rotationDeadlineSeconds)
+        let deadline = Date().addingTimeInterval(Self.rotationStallCapSeconds)
+        var refusals = 0
+        var lastDisplay = AndroidDisplayRotation.State(requestedOrientation: nil, rotation: nil)
         while Date() < deadline {
             let screen = try await snapshot(bypassingCache: true).screen
             if (screen.width > screen.height) == wantsLandscape { return orientation }
+            // 読めなければ判定しない(不明を「回れない」に畳まず待つ側)
+            if let dump = try? adbAnswering(["shell", "dumpsys", "window", "displays"]).outputIfSucceeded {
+                lastDisplay = AndroidDisplayRotation.parse(dump)
+            }
+            if let requested = lastDisplay.requestedOrientation,
+               let reason = AndroidDisplayRotation.refusal(requestedOrientation: requested,
+                                                           rotation: lastDisplay.rotation,
+                                                           wantsLandscape: wantsLandscape) {
+                refusals += 1
+                if refusals >= Self.rotationRefusalConfirmations {
+                    throw DriverError.badResponse(status: 422, body: "cannot rotate to \(orientation.rawValue): "
+                        + reason + ". The rotation fleetest set stays in effect; bring an app that can rotate"
+                        + " to the front first")
+                }
+            } else {
+                refusals = 0
+            }
             try await Task.sleep(nanoseconds: 300_000_000)
         }
-        throw DriverError.badResponse(status: 422, body: "orientation did not settle to "
-            + "\(orientation.rawValue) within \(Self.rotationDeadlineSeconds)s")
+        let requested = lastDisplay.requestedOrientation.map(AndroidDisplayRotation.orientationName) ?? "unknown"
+        let rotation = lastDisplay.rotation.map(String.init) ?? "unknown"
+        let cap = Int(Self.rotationStallCapSeconds)
+        throw DriverError.badResponse(status: 422, body: "orientation did not settle to \(orientation.rawValue)"
+            + " within \(cap)s although the app in front does not refuse it (requested orientation: \(requested),"
+            + " display rotation: \(rotation)). The rotation fleetest set stays in effect, so the screen may still turn")
     }
 
     public func restoreOrientationIfNeeded() async throws {
