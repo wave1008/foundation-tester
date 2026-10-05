@@ -863,6 +863,8 @@ public enum DeviceBooter {
         /// スナップショットのロックの残骸。Mac の再起動・強制終了でスナップショットの処理の途中だった AVD に残り、
         /// 以後の起動はこれを待って時間切れで終わる(M1Ultra の再起動の後 5 台が 3 回ずつ失敗した。-no-snapshot でも見る)
         static let snapshotPendingMarker = "snapshot operation for"
+        /// 自己修復する残骸の種類の数(多重起動・スナップショット)。撃ち直しの上限
+        static let kinds = 2
 
         /// 消して撃ち直すロックのファイル名(AVD のディレクトリ直下)。空 = 自己修復しない。
         /// **その AVD を握るプロセスが居れば何も消さない**(生きているロックを消すと壊れる)。
@@ -903,27 +905,31 @@ public enum DeviceBooter {
     /// 示し、かつ実際にはその AVD を握るプロセスが1つも無いときだけ、そのロックを消して撃ち直す(StaleAVDLock)
     static func startEmulator(avd: String, gpuMode: String = "host",
                               log: @escaping @Sendable (String) -> Void = { _ in }) async throws -> String {
-        do {
-            return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode)
-        } catch let failure as EarlyExitFailure {
-            let directory = AndroidDeviceCatalog.avdContentDirectory(id: avd)
-            let stale = StaleAVDLock.lockFilesToRemove(
-                logTail: failure.logTail, avdProcessRunning: emulatorProcessRunning(avdID: avd),
-                entries: (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
-            guard !stale.isEmpty else {
-                throw DeviceBooterError.commandFailed(failure.detail)
-            }
-            for name in stale {
-                try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
-            }
-            log("→ \(avd): found stale lock file(s) (\(stale.joined(separator: ", "))) with no emulator process"
-                + " holding the AVD — removed them and retrying the boot once")
+        let directory = AndroidDeviceCatalog.avdContentDirectory(id: avd)
+        var removed: Set<String> = []
+        // **残骸は種類ごとに1回ずつ消して撃ち直す**(上限 = StaleAVDLock.kinds)。再起動で強制終了された AVD には
+        // スナップショットのロックと多重起動のロックが両方残り、片方を消した撃ち直しがもう片方で落ちた(M1Ultra の -03)。
+        // 同じファイルをもう一度消すことになったら止める(消しても戻ってくる = 残骸ではない)
+        for _ in 0...StaleAVDLock.kinds {
             do {
                 return try await attemptStartEmulator(avd: avd, gpuMode: gpuMode)
-            } catch let retryFailure as EarlyExitFailure {
-                throw DeviceBooterError.commandFailed(retryFailure.detail)
+            } catch let failure as EarlyExitFailure {
+                let stale = StaleAVDLock.lockFilesToRemove(
+                    logTail: failure.logTail, avdProcessRunning: emulatorProcessRunning(avdID: avd),
+                    entries: (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? [])
+                guard !stale.isEmpty, removed.isDisjoint(with: stale) else {
+                    throw DeviceBooterError.commandFailed(failure.detail)
+                }
+                for name in stale {
+                    try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+                }
+                removed.formUnion(stale)
+                log("→ \(avd): found stale lock file(s) (\(stale.joined(separator: ", "))) with no emulator process"
+                    + " holding the AVD — removed them and retrying the boot")
             }
         }
+        throw DeviceBooterError.commandFailed(
+            "the emulator kept exiting on stale lock files after removing \(removed.sorted().joined(separator: ", ")) (\(avd))")
     }
 
     private static func attemptStartEmulator(avd: String, gpuMode: String) async throws -> String {

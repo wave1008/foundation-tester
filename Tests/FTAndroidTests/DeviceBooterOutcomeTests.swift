@@ -148,6 +148,11 @@ final class StaleAVDLockTests: XCTestCase {
         }
     }
 
+    /// 撃ち直しの上限 = 残骸の種類の数(再起動の後はスナップショットと多重起動のロックが両方残る = M1Ultra の -03)
+    func testRetryBudgetCoversBothLockKinds() {
+        XCTAssertEqual(DeviceBooter.StaleAVDLock.kinds, 2)
+    }
+
     /// 原因不明の早期終了(AVD 名の誤り等)まで自己修復に倒さない。multiinstance.lock は常に消さない
     func testDoesNotRemoveAnythingForOtherFailures() {
         XCTAssertEqual(DeviceBooter.StaleAVDLock.lockFilesToRemove(
