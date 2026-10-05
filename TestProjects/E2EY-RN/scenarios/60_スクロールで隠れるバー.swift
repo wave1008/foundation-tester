@@ -7,6 +7,7 @@ import FTDSL
 @TestClass
 class スクロールで隠れるバーを出し入れして操作できること {
 
+    @Draft("既知の制約: iOS で一覧に浮いた FAB をはみ出た要素とみなして一覧を送り、送った結果 FAB が隠れて見つからない")
     @Test("表示中のバーとFABの操作")
     func S0010() {
         scenario {

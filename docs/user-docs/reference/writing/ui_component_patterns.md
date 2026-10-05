@@ -685,6 +685,60 @@ gesture-handler `Gesture.Pinch()`, Android View's `PinchZoomImageView` (a custom
 `ScaleGestureDetector` implementation), SwiftUI's `MagnificationGesture`). Every framework clips the
 zoomed content so it does not spill outside the frame.
 
+## Inline links (links, mentions and URLs inside one sentence)
+
+- Use `tap(element, linkText: "text")`: it taps where that text is drawn inside the element
+- Flutter and RN expose links as child nodes, so the position comes from the tree. Compose, Android Views
+  (`ClickableSpan`) and SwiftUI (`AttributedString` links) do not, so the position comes from reading the
+  screenshot with OCR (the step note says `located by tree` / `located by ocr`)
+- `tap("Terms")` only hits the whole paragraph and cannot press the link. Do not tap the paragraph centre to
+  check that "nothing happens" — which word sits at the centre depends on the screen width
+- A link wrapped across two lines may not be found by OCR
+
+```swift
+tap("#txt_terms", linkText: "Terms of Service")
+select("#txt_links_result").textIs("link=terms")
+```
+
+## Inverted chat lists (newest at the bottom)
+
+- The list starts at the bottom (newest), so older messages are found by scrolling up
+  (`withScrollUp(scrollFrame: "#list_chat") { tap("#msg_20") }`)
+- Even when the input bar lives on the keyboard side (UIKit `inputAccessoryView`), the field can be addressed by `#id`
+
+**Current limitation**: on Compose (iOS) an inverted list may skip older rows, because the search moves one page at a time.
+
+## Loading skeletons
+
+- When the placeholder rows carry the same `#id` and labels as the real rows, `exist` already passes while loading
+- `tap` waits until its target is enabled, so you can `tap` right after reloading (if the skeleton is exposed as
+  disabled, the tap lands once the real row appears)
+- For lists that show a temporary "loading" / "retry" row at the end, press retry before searching further
+
+```swift
+tap("#btn_reload")
+tap("#row_l_03")          // waits through the skeleton and taps the real row
+select("#txt_loading_result").textIs("loading=row_l_03")
+```
+
+## Bars that hide on scroll
+
+- Bars and FABs that hide when you scroll down are not in the tree while hidden; use `tap(sel, scroll: .up)` to
+  scroll back a little and bring them out first
+
+```swift
+tap("#fab_hiding", scroll: .up)
+```
+
+**Current limitation**: where the hidden bar stays in the tree under the bar above it (Flutter), the tap may hit the covering bar.
+
+## Partial swipes (revealing buttons, swipe to reply)
+
+- Swipe **slowly** for a partial swipe (`swipeBy("#sw_row_3", dxRatio: -0.45, dyRatio: 0, durationSeconds: 2.0)`).
+  A fast release lets the component fling to the next stop (all the way to delete)
+- `swipeBy` caps its ratio at 0.9 per side. To drag further than the element itself (for example pulling up a
+  sheet) use `swipeElementToElement("#mini_player", "#txt_sheet_state")`
+
 ## Framework-native components
 
 A single screen collecting the components unique to each framework. Its content differs per SUT, so

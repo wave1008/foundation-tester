@@ -661,6 +661,58 @@ gesture-handler の `Gesture.Pinch()` / Android View `PinchZoomImageView`(`Scale
 自前実装)/ SwiftUI `MagnificationGesture`)。拡大した中身は枠の外へはみ出さないよう
 どのフレームワークもクリップしています。
 
+## 文中リンク(1つの文の中のリンク・メンション・URL)
+
+- 押すのは `tap(要素, linkText: "文字列")`。要素の中でその文字列が描かれている位置を押す
+- Flutter・RN はリンクが子ノードとして木に出るので、木で位置を決める。Compose・Android View(`ClickableSpan`)・
+  SwiftUI(`AttributedString` のリンク)は木に出ないので、画面の絵を OCR で読んで位置を決める
+  (結果の注記に `located by tree` / `located by ocr`)
+- `tap("利用規約")` は段落全体に当たるだけで、リンクの位置は押せない。段落の中央を押して「何も起きない」を
+  確かめる書き方は、画面幅で中央に来る文字が変わるので書かない
+- 2行に折り返したリンクは OCR で見つからないことがある
+
+```swift
+tap("#txt_terms", linkText: "利用規約")
+select("#txt_links_result").textIs("link=terms")
+```
+
+## 反転したチャット(新しいものが下)
+
+- 最初から最下部(最新)に居るので、過去へは上へ送る(`withScrollUp(scrollFrame: "#list_chat") { tap("#msg_20") }`)
+- 入力バーがキーボード側に載る作り(UIKit の `inputAccessoryView`)でも、入力欄は `#id` で指せる
+
+**現時点の制約**: Compose(iOS)の反転した一覧は、探索が1ページ単位で飛ぶため過去の行を取りこぼすことがある。
+
+## 読み込み中の骨組み(スケルトン)
+
+- 読み込み中も本物と同じ `#id`・ラベルの行を出す作りでは、`exist` は骨組みの時点で通る
+- `tap` は対象が押せるようになるまで待ってから撃つので、読み込み直した直後に `tap` してよい
+  (骨組みが無効として公開されていれば、本物に変わってから押される)
+- 一覧の末尾に一時的に出る「読み込み中」「再試行」の行は、再試行を押してから続きを探す
+
+```swift
+tap("#btn_reload")
+tap("#row_l_03")          // 骨組みの間は待ち、本物になってから押す
+select("#txt_loading_result").textIs("loading=row_l_03")
+```
+
+## スクロールで隠れるバー
+
+- 下へ送ると隠れるバーや FAB は、`tap(sel, scroll: .up)` で少し戻して出してから押す(隠れた物は木に居ない)
+
+```swift
+tap("#fab_hiding", scroll: .up)
+```
+
+**現時点の制約**: 隠れたバーが木に残ったまま上のバーに覆われる作り(Flutter)では、覆っている物を押すことがある。
+
+## 途中まで払うスワイプ(ボタンを出す・返信)
+
+- 途中まで払うときは**ゆっくり**払う(`swipeBy("#sw_row_3", dxRatio: -0.45, dyRatio: 0, durationSeconds: 2.0)`)。
+  速く離すと部品の fling が次の段(削除まで)へ送る
+- `swipeBy` の比率は片側 0.9 で頭打ち。シートを引き上げるように対象より遠くへ払うときは
+  `swipeElementToElement("#mini_player", "#txt_sheet_state")`
+
 ## フレームワーク固有部品
 
 各フレームワークにしか無い定番部品を1画面にまとめた節です。中身は SUT ごとに違うので、
