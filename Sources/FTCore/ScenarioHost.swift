@@ -287,6 +287,25 @@ public enum ScenarioHost {
         environment["FT_OCR_COMPILE_WAIT"] != "off"
     }
 
+    /// 待つべき compile-ocr が今走っているか(スイッチ込み)。RunOrchestrator が run の段階を "compiling" にするかの判定に使う
+    static var isOCRModelCompileWaitPending: Bool {
+        guard waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment),
+              let pid = ocrCompilePID.withLock({ $0 }) else { return false }
+        return ProcessLiveness.isAlive(pid)
+    }
+
+    /// 最初のシナリオの前の待ち(スイッチを見て待ち、1 秒以上待ったら run のログへ 1 回だけ言う)。
+    /// 呼び手は2つ: RunOrchestrator(シナリオの印 = run ボードの経過の起点より前)と、それを通らない
+    /// 経路の受け皿の ScenarioHost.run
+    static func awaitOCRModelCompileBeforeScenarios(log: (String) -> Void) async {
+        guard waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment),
+              let waited = await awaitOCRModelCompile(), waited >= .seconds(1),
+              ocrCompileWaitReported.withLock({ reported in defer { reported = true }; return !reported })
+        else { return }
+        log("⏳ waited \(continuousClockMs(waited) / 1000)s for the OCR model to finish compiling"
+            + " before starting scenarios (first run after a rebuild)")
+    }
+
     static func awaitOCRModelCompile(cap: Duration = RegionText.modelCompileWaitCap,
                                poll: Duration = .milliseconds(200)) async -> Duration? {
         guard let pid = ocrCompilePID.withLock({ $0 }), ProcessLiveness.isAlive(pid) else { return nil }
@@ -383,12 +402,10 @@ public enum ScenarioHost {
                            /// = `--failed` が存在しないシナリオを拾わない
                            deviceTearDownOnly: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
-        // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRModelCompile の doc)
-        if !dryRun, waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment),
-           let waited = await awaitOCRModelCompile(), waited >= .seconds(1),
-           ocrCompileWaitReported.withLock({ reported in defer { reported = true }; return !reported }) {
-            onEvent(ScenarioEvent.log("⏳ waited \(continuousClockMs(waited) / 1000)s for the OCR model to finish compiling"
-                        + " before starting scenarios (first run after a rebuild)"))
+        // 所要(startedAt / clockStart)に含めないよう、計時より前で待つ(awaitOCRModelCompile の doc)。
+        // RunOrchestrator 経由ならシナリオの印より前で待ち終えているので、ここは即抜ける
+        if !dryRun {
+            await awaitOCRModelCompileBeforeScenarios { onEvent(ScenarioEvent.log($0)) }
         }
         let fm = settings.fm
         let containerInference = settings.containerInference

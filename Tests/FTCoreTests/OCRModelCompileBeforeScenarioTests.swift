@@ -64,19 +64,48 @@ final class OCRModelCompileBeforeScenarioTests: XCTestCase {
         XCTAssertEqual(RegionText.modelCompileWaitCap, .seconds(120))
     }
 
+    private func source(_ relativePath: String) throws -> String {
+        try String(contentsOf: URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent(relativePath), encoding: .utf8)
+    }
+
     /// 配線: シナリオの所要(startedAt)に含めないよう、計時より前で待つ
     func testScenarioHostRunWaitsBeforeItStartsTiming() throws {
-        let source = try String(contentsOf: URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Sources/FTCore/ScenarioHost.swift"), encoding: .utf8)
+        let source = try source("Sources/FTCore/ScenarioHost.swift")
         let body = try XCTUnwrap(source.range(of: "public static func run(project: TestProject, scenarioID: String,"))
         let rest = source[body.upperBound...]
-        let wait = try XCTUnwrap(rest.range(of: "await awaitOCRModelCompile()"))
+        let wait = try XCTUnwrap(rest.range(of: "await awaitOCRModelCompileBeforeScenarios"))
         let timing = try XCTUnwrap(rest.range(of: "let startedAt = Date()"))
         XCTAssertLessThan(wait.lowerBound, timing.lowerBound)
-        let gate = try XCTUnwrap(rest.range(of: "waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment)"),
-                                 "待ちの前にスイッチを見ていない")
-        XCTAssertLessThan(gate.lowerBound, wait.lowerBound)
+    }
+
+    /// 配線: run の経路はシナリオの印(run ボードの経過・残りの起点)より前で待つ。ScenarioHost.run の中だけで
+    /// 待つと、何も動いていない間にレーンの経過と残りの秒読みが進む
+    func testRunOrchestratorWaitsBeforeTheScenarioMark() throws {
+        let source = try source("Sources/FTCore/RunOrchestrator.swift")
+        let body = try XCTUnwrap(source.range(of: "private func runWorker(_ worker: RunWorker"))
+        let rest = source[body.upperBound...]
+        let began = try XCTUnwrap(rest.range(of: "progressState?.ocrCompileWaitBegan()"))
+        let joined = try XCTUnwrap(rest.range(of: "progressState?.laneJoined("))
+        let wait = try XCTUnwrap(rest.range(of: "await ScenarioHost.awaitOCRModelCompileBeforeScenarios"))
+        let ended = try XCTUnwrap(rest.range(of: "progressState?.ocrCompileWaitEnded()"))
+        let mark = try XCTUnwrap(rest.range(of: "progressState?.scenarioStarted("))
+        XCTAssertLessThan(began.lowerBound, joined.lowerBound, "レーンを見せる最初の記帳から compiling にする")
+        XCTAssertLessThan(wait.lowerBound, ended.lowerBound)
+        XCTAssertLessThan(ended.lowerBound, mark.lowerBound)
+    }
+
+    /// 待ちの判定はスイッチを見る(off の検証スクリプトでは compiling を立てない・待たない)
+    func testWaitPendingHonoursTheSwitchAndTheChild() throws {
+        XCTAssertFalse(ScenarioHost.isOCRModelCompileWaitPending, "子が居なければ待たない")
+        let child = try spawnSleep("5")
+        defer { child.terminate() }
+        XCTAssertTrue(ScenarioHost.isOCRModelCompileWaitPending)
+        let source = try source("Sources/FTCore/ScenarioHost.swift")
+        let body = try XCTUnwrap(source.range(of: "static var isOCRModelCompileWaitPending: Bool {"))
+        XCTAssertTrue(source[body.upperBound...].prefix(300)
+            .contains("waitsForOCRModelCompile(environment: ProcessInfo.processInfo.environment)"))
     }
 
     /// `_disabled/` を出し入れする検証スクリプトはスイッチを立てる(立てないと run ごとに 35〜42 秒待つ)

@@ -92,6 +92,20 @@ test("runGroup を共有する run は1行に束ね、進捗と失敗数を合�
   assert.deepEqual(g.runs.map((r) => r.machine), ["M1Max", "M1Ultra"], "machine 昇順");
 });
 
+test("束ねた段階は進んだ方: running > compiling > preparing > building", () => {
+  const phaseOf = (a, b) => {
+    let state = applyMonitorRunsEvent(new Map(), { machine: "A", observed: true,
+      runs: [run({ runID: "a", runGroup: "g", phase: a })] });
+    state = applyMonitorRunsEvent(state, { machine: "B", observed: true,
+      runs: [run({ runID: "b", runGroup: "g", phase: b })] });
+    return buildRunGroups(state)[0].phase;
+  };
+  assert.equal(phaseOf("preparing", "compiling"), "compiling");
+  assert.equal(phaseOf("compiling", "running"), "running");
+  assert.equal(phaseOf("building", "compiling"), "compiling");
+  assert.equal(phaseOf("building", "preparing"), "preparing");
+});
+
 test("runGroup の無い run はそれ自身で1グループ(runID が鍵)", () => {
   const state = applyMonitorRunsEvent(new Map(), {
     observed: true,

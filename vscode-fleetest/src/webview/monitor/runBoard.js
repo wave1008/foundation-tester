@@ -609,12 +609,13 @@ function updateRow(row, run) {
   // profile はプロファイル無し実行(--dry-run 等)では省略されうる(FTCore.RunProgressRecord.profile)。
   row.scopeEl.textContent = run.profile ? `${run.project} / ${run.profile}` : run.project;
 
-  // **走り出す前(ビルド中・供給中)は進捗を出さない** —— 本数も割合もまだ意味を持たない
+  // **走り出す前(ビルド中・供給中・Vision のコンパイル待ち)は進捗を出さない** —— 本数も割合もまだ意味を持たない
   // (docs/design.md §18.5)。経過だけは出す(どれくらい待っているかが分かる)
   const beforeRunning = run.phase !== 'running';
   row.progressEl.style.display = beforeRunning ? 'none' : '';
   if (beforeRunning) {
-    row.countsEl.textContent = t(run.phase === 'building' ? 'runBoard.building' : 'runBoard.preparing');
+    row.countsEl.textContent = t(run.phase === 'building' ? 'runBoard.building'
+      : run.phase === 'compiling' ? 'runBoard.compiling' : 'runBoard.preparing');
   } else {
     const pct = run.total > 0 ? Math.max(0, Math.min(1, run.done / run.total)) * 100 : 0;
     row.progressBarEl.style.width = pct + '%';

@@ -33,6 +33,27 @@ final class RunProgressStateTests: XCTestCase {
                          write: { journal.recordWrite($0) }, remove: { journal.recordRemove() })
     }
 
+    /// compile-ocr の待ちの間は段階が "compiling" で残りを出さない(読み手は受信時点の残りから秒読みするので、
+    /// 出すと何も動いていない間に減っていく)。待ちを抜けたら "running" と残りが戻る
+    func testCompileWaitShowsCompilingWithoutEtaThenRunning() async {
+        let journal = Journal()
+        let key = RunProgressEstimate.ScenarioKey(scenarioID: "05_検索", platform: "ios")
+        let state = makeState(journal, total: 2, estimates: [key: 10_000], pendingScenarios: [key, key])
+        await state.ocrCompileWaitBegan()
+        await state.laneJoined(key: "UDID-A", name: "iPhone 17-01", platform: "ios")
+        await state.ocrCompileWaitBegan()
+        await state.laneJoined(key: "UDID-B", name: "iPhone 17-02", platform: "ios")
+        // 2本目の待ち始めは内容が変わらないので書かない(同じ record は書かない規律)
+        XCTAssertEqual(journal.writes.map(\.phase), ["compiling", "compiling", "compiling"],
+                       "最初の記帳から compiling(running を一瞬挟まない)")
+        XCTAssertTrue(journal.writes.allSatisfy { $0.etaSeconds == nil })
+        await state.ocrCompileWaitEnded()
+        XCTAssertEqual(journal.writes.last?.phase, "compiling", "待っているレーンが残っている間は compiling のまま")
+        await state.ocrCompileWaitEnded()
+        XCTAssertEqual(journal.writes.last?.phase, "running")
+        XCTAssertEqual(journal.writes.last?.etaSeconds, 10, "2本×10秒 ÷ 2レーン")
+    }
+
     func testJoiningTheSameLaneWithIdenticalContentDoesNotWriteTwice() async {
         let journal = Journal()
         let state = makeState(journal)

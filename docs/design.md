@@ -5540,7 +5540,7 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
 - **生存判定は pid だけ**(`ProcessLiveness.isAlive`。mtime を見ない = `FMUsageLedger` と同じ)。
   SIGKILL で残った控えは読み手が無視し、`RunCompletionSweep` と `remote clean` の保持ポリシーが掃く
   (`StreamLease` と同じ扱い)
-- **run の段階を `phase` で持つ**(`"building"` → `"preparing"` → `"running"`。ユーザー指摘
+- **run の段階を `phase` で持つ**(`"building"` → `"preparing"` → `"compiling"` → `"running"`。ユーザー指摘
   2026-09-20)—— 台帳を `RunOrchestrator` からしか書かないと、**ビルド・転送・デバイスの供給
   (実測で合計 20 秒。リモートはさらに長い)の間は run が1本も無い**ことになり、走っているのに
   ボードでは「空き」に見える。**書き始めは run の入口**(シナリオのビルドより前)で、
@@ -5560,6 +5560,13 @@ CLI 実行・他人の run・ランナー機で直に打たれた run は `inRun
   `RunOrchestrator` の1箇所。**どの段階も run / api run の両経路に置く**(片方だけだと
   その経路が無言になる)。**orchestrator へ渡る前に抜けたら消す**(defer。プロセスが
   すぐ死なない経路への保険)
+- **`"compiling"` は `"preparing"` と `"running"` の間**(ユーザー決定 2026-10-06)。最初のシナリオの前に
+  `compile-ocr` を待っている間だけ立てる(`RunProgressState.ocrCompileWaitBegan` / `Ended`。書き手は
+  `RunOrchestrator`)。待ちは**シナリオの印より前**(`runWorker`)に置く —— `ScenarioHost.run` の中で待つと、
+  何も動いていない間にレーンの経過と残りの秒読みが進んでいた(シナリオの所要の実績は待ちの後から
+  計っているので、画面の数え方と食い違う)。全レーンが同じ1本を待つので run 全体の段階として持ち、
+  待ちの間は進捗・残りを出さない(延長の秒数を見積もる定数を置かない)。待ち終えたらレーンの経過は
+  0 から始まり、残りもその時点で計算し直される
 - **書くのはデバイスを実際に回しているプロセスだけ**。機械分担の run(親が手元・子が各機械)で
   親も書くと二重計上になる。束ねるのは読み手で、鍵は `runGroup`(単機 run は runID 自身)
 - **レーンの `name` はモニターのタイルと同じ名前**(`RunWorker.logicalName` = 実行プロファイルの

@@ -591,8 +591,10 @@ actor RunProgressState {
             pid: pid, runID: runID, runGroup: runGroup, issuer: issuer, project: project,
             profile: profile, startedAt: startedAt, total: total, done: done, failed: failed,
             requeued: requeuedCount, laneDropouts: laneDropoutsCount,
-            etaSeconds: currentEtaSeconds(), lanes: lanesByKey.values.sorted { $0.key < $1.key },
-            phase: "running")
+            // コンパイル待ちの間は残りを出さない(読み手は受信時点の値から秒読みするので、出すと待ちの間に減っていく)
+            etaSeconds: ocrCompileWaiters > 0 ? nil : currentEtaSeconds(),
+            lanes: lanesByKey.values.sorted { $0.key < $1.key },
+            phase: ocrCompileWaiters > 0 ? "compiling" : "running")
         guard record != lastWritten else { return }
         lastWritten = record
         write?(record)
@@ -641,6 +643,20 @@ actor RunProgressState {
     func laneLeft(key: String) {
         guard lanesByKey.removeValue(forKey: key) != nil else { return }
         laneDropoutsCount += 1
+        flush()
+    }
+
+    /// compile-ocr を待っているレーンの数。1 以上の間は段階を "compiling" にする(全レーンが同じ1本を待つ =
+    /// run 全体の段階。待ちの間はシナリオの印を打たないので、経過・残りの秒読みも始まらない)
+    private var ocrCompileWaiters = 0
+
+    func ocrCompileWaitBegan() {
+        ocrCompileWaiters += 1
+        flush()
+    }
+
+    func ocrCompileWaitEnded() {
+        ocrCompileWaiters = max(0, ocrCompileWaiters - 1)
         flush()
     }
 
@@ -1639,6 +1655,11 @@ public final class RunOrchestrator: Sendable {
         // (--port 等 udid/serial の無い経路。この orchestrator では progressState 自体が
         // 未注入なので実質関係ない)でも記帳自体は続けられるよう label へ縮退する
         let progressLaneKey = leaseKey ?? worker.label
+        // compile-ocr の待ちがあるなら、レーンを見せる最初の記帳から段階を "compiling" にする(running を一瞬挟まない)
+        let waitsForOCRCompile = ScenarioHost.isOCRModelCompileWaitPending
+        if waitsForOCRCompile {
+            await progressState?.ocrCompileWaitBegan()
+        }
         // **名前はモニターのタイルと同じ logicalName**(実行プロファイルの devices[].name)——
         // label はポート込み("…-01(ios:8130)")なので、同じデバイスがボードとタイルで別名に見える
         await progressState?.laneJoined(key: progressLaneKey,
@@ -1655,6 +1676,14 @@ public final class RunOrchestrator: Sendable {
         }
         // 静止画方式の録画(物理 iPhone・動画を起動できなかったデバイス)は子が操作の直後に撮る(StillFrameRecorder)。動画で録るなら nil
         let stillFramesDir = await videoRecording?.stillFramesDir(workerLabel: worker.label)
+        // **シナリオの印(run ボードの経過・残りの起点)より前で待つ**。ScenarioHost.run の中で待つと、
+        // 何も動いていない間にレーンの経過と残りの秒読みが進む(シナリオの所要の実績は待ちの後から計っている)
+        if waitsForOCRCompile {
+            await ScenarioHost.awaitOCRModelCompileBeforeScenarios { message in
+                continuation.yield(.workerLog(worker: worker.label, message: message))
+            }
+            await progressState?.ocrCompileWaitEnded()
+        }
 
         var failed = 0
         // 連続失敗は前の run から引き継ぐ(LaneFailureStreakStore)。鍵が無い(論理名なし)・注入が無いときは 0 から

@@ -28,7 +28,7 @@ export interface RunBoardLane {
 /** 1 run(1機械ぶん)。ネットワークから届く生の形(machine/receivedAtMs は畳み込みの側が足す)。 */
 export interface RunBoardRawRun {
   readonly pid: number;
-  /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "running"。 */
+  /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "compiling"(Vision のコンパイル待ち)/ "running"。 */
   readonly phase: string;
   /** 結果を捨てて振り直した累計。 */
   readonly requeued: number;
@@ -125,7 +125,7 @@ export interface RunBoardGroup {
   /** 束ねた run 全体の合計(機械分担の run はレーンでなく run 単位で合算する)。 */
   /** **束ねた run の中で最も進んだ段階**(1つでも走り出していれば "running")。機械分担の run は
    * 機械ごとに進みが違うので、片方が走り出したら進捗を出す。 */
-  readonly phase: "building" | "preparing" | "running";
+  readonly phase: "building" | "preparing" | "compiling" | "running";
   /** 束ねた run の合計。**事実だけ**(判定・警告はしない。docs/design.md §18.5)。 */
   readonly requeued: number;
   readonly laneDropouts: number;
@@ -241,11 +241,13 @@ export function machinesWithoutRuns(
 }
 
 /** 束ねた run の中で最も進んだ段階。1つでも走り出していれば進捗を出したいので running が最優先。 */
-function mostAdvancedPhase(runs: readonly RunBoardRun[]): "building" | "preparing" | "running" {
-  if (runs.some((run) => run.phase === "running")) {
-    return "running";
+function mostAdvancedPhase(runs: readonly RunBoardRun[]): "building" | "preparing" | "compiling" | "running" {
+  for (const phase of ["running", "compiling", "preparing"] as const) {
+    if (runs.some((run) => run.phase === phase)) {
+      return phase;
+    }
   }
-  return runs.some((run) => run.phase === "preparing") ? "preparing" : "building";
+  return "building";
 }
 
 function sum(values: readonly number[]): number {

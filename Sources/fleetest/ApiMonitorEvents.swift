@@ -119,7 +119,7 @@ struct ApiMonitorRunProgress: Codable, Equatable {
     /// 残り見積もり(docs/design.md §18.4)。makespan の下界・実績ゼロの run は nil
     let etaSeconds: Int?
     let lanes: [ApiMonitorRunProgressLane]
-    /// 台帳の値をそのまま運ぶ("building" / "preparing" / "running")。作り替えない。
+    /// 台帳の値をそのまま運ぶ("building" / "preparing" / "compiling" / "running")。作り替えない。
     /// **版は揃える前提**(ProtocolVersion 16。欄を持たない版のランナーの行は decode できず
     /// 中継されない = align を促す既存の規律のまま)
     let phase: String

@@ -152,7 +152,7 @@ export interface MonitorRunLane {
  * 複数の MonitorRunEntry に分かれて届く(束ねるのは読み手 = runBoardModel.ts)。 */
 export interface MonitorRunEntry {
   readonly pid: number;
-  /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "running"。
+  /** "building"(シナリオのビルド中)/ "preparing"(デバイスの供給中)/ "compiling"(Vision のコンパイル待ち)/ "running"。
    * **版は揃える前提**(ProtocolVersion 16。FTCore.RunProgressRecord.phase と対)。 */
   readonly phase: string;
   /** 結果を捨てて振り直した累計。**事実だけ**(「遅い」等の判定はしない。docs/design.md §18.5)。 */

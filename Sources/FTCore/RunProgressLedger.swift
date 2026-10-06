@@ -81,7 +81,8 @@ public struct RunProgressRecord: Codable, Equatable, Sendable {
     public let etaSeconds: Int?
     public let lanes: [RunProgressLane]
     /// "building"(シナリオの swift build を**実際に呼んでいる間だけ**。`--skip-build` では
-    /// 一度も立たない)/ "preparing"(入口・ビルド後・デバイスの供給中)/ "running"
+    /// 一度も立たない)/ "preparing"(入口・ビルド後・デバイスの供給中)/ "compiling"(最初のシナリオの前に
+    /// compile-ocr を待っている間だけ。RunProgressState.ocrCompileWaitBegan)/ "running"
     public let phase: String
 
     public init(pid: Int32, runID: String?, runGroup: String?, issuer: String?, project: String,

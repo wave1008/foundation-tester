@@ -167,6 +167,20 @@ test("準備中の run は本数でなく「準備中」を出し、進捗バー
   assert.deepEqual(idle, ["local—"], "準備中でも M1Max は使用中(空きに出さない)");
 });
 
+// 最初のシナリオの前の compile-ocr の待ち(RunProgressState.ocrCompileWaitBegan)。進捗も残りもまだ意味を持たない
+test("Vision のコンパイル待ちの run は「Vision コンパイル中」を出し、進捗バーは隠す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  post(window, { type: "monitorRuns", machine: "M1Max", observed: true, runs: [{
+    pid: 41233, runID: "run-1", mine: true, phase: "compiling", requeued: 0, laneDropouts: 0,
+    project: "E2E-iOS", profile: "ios-inapp",
+    elapsedSeconds: 30, total: 4, done: 0, failed: 0, lanes: [],
+  }] });
+  const [runRow] = runRows(document);
+  assert.equal(runRow.querySelector(".run-board-counts").textContent, "Vision コンパイル中");
+  assert.equal(runRow.querySelector(".run-board-progress").style.display, "none");
+});
+
 test("進捗バーに塗り幅を設定する", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());

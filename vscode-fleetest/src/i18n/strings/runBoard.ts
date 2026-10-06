@@ -20,6 +20,7 @@ export const runBoardStrings = {
   "runBoard.requeued": { ja: "⟳{count}", en: "⟳{count}" },
   "runBoard.laneDropouts": { ja: "レーン離脱 {count}", en: "{count} lane(s) dropped" },
   "runBoard.preparing": { ja: "準備中(デバイスを用意しています)", en: "Preparing devices…" },
+  "runBoard.compiling": { ja: "Vision コンパイル中", en: "Compiling Vision…" },
   "runBoard.laneIdle": { ja: "⏹ 待機", en: "⏹ Waiting" },
   "runBoard.remainingUnknown": { ja: "—", en: "—" },
   "runBoard.remainingTime": { ja: "残 ~{time}", en: "~{time} left" },
