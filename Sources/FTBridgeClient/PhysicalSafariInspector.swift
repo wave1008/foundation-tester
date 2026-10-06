@@ -407,7 +407,7 @@ enum PairingIdentityImporter {
     /// `Shell.runData`(stdout のみ・非テキスト安全)で受け、テキスト変換を経由しない。
     /// **秘密鍵を含む一時ファイルは `defer` で必ず削除する**
     static func importIdentity(hostCertificate: Data, hostPrivateKey: Data) -> SecIdentity? {
-        let tempDir = FileManager.default.temporaryDirectory
+        let tempDir = TemporaryDirectory.url
             .appendingPathComponent("fleetest-lockdown-\(UUID().uuidString)")
         guard (try? FileManager.default.createDirectory(
             at: tempDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil

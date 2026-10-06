@@ -112,7 +112,7 @@ public enum FMLock {
             return dir.appendingPathComponent("fm.lock.\(slot)")
         }
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            ?? TemporaryDirectory.url
         return base.appendingPathComponent("fleetest", isDirectory: true)
             .appendingPathComponent("fm.lock.\(slot)")
     }

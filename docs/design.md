@@ -4331,7 +4331,13 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否。同じ理由で `DerivedData*`・
   `.inapp` 以外の `bridge-*` 台帳・`~/.fleetest/ftbridge.apk`・`dispatch.lock` / `dispatch.queue` も拒否 =
   `writeDeniedPaths` / `ledgerDenyRegexes`)。**根そのものは書かせない**(literal の拒否。親が `prepareWritableRoots` で
-  先に作り、symlink なら起動しない —— 根を symlink に差し替えられると次の枠がその先を開ける)。親が決めて子に書かせる場所
+  先に作り、symlink なら起動しない —— 根を symlink に差し替えられると次の枠がその先を開ける)。
+  **ユーザーの一時領域は子専用のものだけ**(`T/fleetest-sandbox/<実行バイナリ名>/` = 子の `TMPDIR`・`C/<実行バイナリ名>/`・
+  `T/TemporaryItems/NSIRD_<実行バイナリ名>_…`・Core ML / Create ML の `T/model_*.mlmodelc`・`T/CreateMLModels/`)。
+  子に入るコードは一時領域を `TemporaryDirectory.url` で引く(`NSTemporaryDirectory()` は `TMPDIR` を見ない。
+  `TemporaryDirectoryScanTests`)。**OS の部品が書く場所が変わると黙って縮退しうる** —— 分類器は注記
+  `vision-classifier-unavailable` とシナリオ末尾の警告で表に出し、e2e.sh はその run を赤にする
+  (学習の経路は `--retrain-classifiers`。docs/verification.md)親が決めて子に書かせる場所
   (静止画の置き場 `--still-frames-dir`)は `Scope.extraWritable` で渡す(環境変数から作らない)。
   **書けないと黙って効かなくなる型がある**(`FMLock` は取れたことになる)。拒否は E2E 中の `log stream` で拾う
 - **子が繋ぐ unix ソケットは名指しで開ける**(親の broker と画像判定の補助プロセス `VisionHelperHost`。

@@ -102,7 +102,7 @@ public enum FMBreaker {
     /// 別プロセスでも落ちた事実を共有できる)。パスの形はテストが I/O 抜きで表明する
     static var defaultStateURL: URL {
         let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
+            ?? TemporaryDirectory.url
         return base.appendingPathComponent("fleetest", isDirectory: true)
             .appendingPathComponent("fm-breaker.state")
     }
@@ -121,7 +121,7 @@ public enum FMBreaker {
     }
 
     private static var processLocalStateURL: URL {
-        URL(fileURLWithPath: NSTemporaryDirectory())
+        TemporaryDirectory.url
             .appendingPathComponent("fleetest-fm-breaker-\(getpid()).state")
     }
 

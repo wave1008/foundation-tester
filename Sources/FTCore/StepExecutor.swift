@@ -854,7 +854,7 @@ public final class StepExecutor {
     /// 分類器名 → 読み込み結果(プロセスで1回。nil の値 = 見本が無い・学習に失敗した)
     var visionClassifiersLoaded: [String: VisionClassifier.Model?] = [:]
     /// 分類器名 → 学習・読み込みに失敗した理由(失敗文言へ添える)
-    var visionClassifierErrors: [String: String] = [:]
+    public var visionClassifierErrors: [String: String] = [:]
     /// 分類器名 → 学習の点検で取り違えた見本(FTRuntime がシナリオ終了時に警告する。新しい検知なので落とさない)
     public var visionClassifierMismatches: [String: [VisionClassifier.Mismatch]] = [:]
     /// [occlusion-guard] このステップが `occlusionFlip` の `visibilityGuardActive` 判定を通ったか

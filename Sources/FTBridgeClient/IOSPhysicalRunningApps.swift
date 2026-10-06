@@ -31,7 +31,7 @@ public enum IOSPhysicalRunningApps {
     public static func running(
         udid: String, apps: [IOSPhysicalAppCatalog.App], timeout: Double = IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds
     ) throws -> [String] {
-        let outputURL = FileManager.default.temporaryDirectory
+        let outputURL = TemporaryDirectory.url
             .appendingPathComponent("fleetest-devicectl-processes-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: outputURL) }
         let result = try Shell.run(

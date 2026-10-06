@@ -206,7 +206,22 @@ E2E では赤にならないが、書けないと**黙って効かなくなる**
 
 - `<root>/.fleetest/hooks/<pid>.json` は、次の run が読んで `teardown.sh` を枠の外で実行する。
   `.fleetest/` は書けるようにしたが、`hooks/` だけ拒否に戻した。
-- `/private/tmp` は入れない(共有の置き場)。ユーザーごとの一時領域(`/var/folders/xx/yy/`)だけを開ける。
+- `/private/tmp` は入れない(共有の置き場)。**ユーザーごとの一時領域(`/var/folders/xx/yy/`)も丸ごとは開けない**
+  (他のツールが信じて読む `T/xcrun_db`・`C/clang` のモジュールキャッシュ・VSCode のシェル統合のファイルを
+  書き換えられる)。開けるのは次の5つだけ:
+  - 子専用の `T/fleetest-sandbox/<実行バイナリ名>/`(子の `TMPDIR`)と `C/<実行バイナリ名>/`
+  - Foundation の作業フォルダ `T/TemporaryItems/NSIRD_<実行バイナリ名>_…`
+  - Core ML のコンパイル先 `T/model_*.mlmodelc` と Create ML の学習の出力先 `T/CreateMLModels/`(どちらも名前に
+    プロセス名が入らず、他のプロセスのものにも当たる)
+
+  **OS の部品は `TMPDIR` を見ない**(`NSTemporaryDirectory()`・`FileManager.temporaryDirectory`・`MLModel.compileModel`・
+  Create ML。実測)。子に入るコードは `TemporaryDirectory.url` を使う(`TemporaryDirectoryScanTests`)。OS の部品の
+  書き先を閉じると**黙って縮退する**: Core ML のコンパイル先を閉じた版では分類器が「“model.mlmodelc” couldn’t be moved」で
+  全 SUT で使えず、a11y で読めない部品(E2E-iOS の `#radio_a`)だけが赤になり、読める部品は a11y へ倒れて緑のままだった。
+  Create ML の出力先は、学習済みのキャッシュを消す `Scripts/e2e.sh --retrain-classifiers` で初めて見つかった(学習は見本を
+  変えたときしか通らない)。縮退を見つける仕組みは docs/verification.md の該当節。
+  Metal のシェーダキャッシュ `C/com.apple.metal/` はユーザー全体で共有されるので閉じたまま(E2E-CMP の iOS で拒否は
+  約 1,400 件出るが、所要は変わらなかった)。
 - 同じ理由で拒否に戻したもの(2026-10-06 の棚卸し): `<root>/.fleetest/DerivedData*`(ランナーの xctestrun と .app を
   親が xcodebuild で起動する。子はランナーをビルドしない)・`bridge-*.{pid,endpoint,device,toolchain,ready,adopt,log}`
   (親が kill・外への接続・デバイスの帰属・追記に使う。**`.inapp` は子の `InAppLauncher` が書くので開けたまま** ——
@@ -372,12 +387,12 @@ UI 操作で持ち出せる(§8.3)。渡すのは `FT_*`・`LC_*` と、Sources 
 | 書ける場所の根・データコンテナを symlink に差し替えられた | 実測(§5.3) | 根は literal で拒否・親が作って symlink なら止める・正規表現を `<UUID>/` より下に |
 | 親が信じる台帳・成果物を書けた | コード(§5.3) | 拒否に足した |
 
-**棚卸しで残したもの**(未着手。重い順): ①ユーザーの一時領域 `/var/folders/xx/yy/` を丸ごと開けている —— 他のツールが
-読むキャッシュ(`T/xcrun_db` 等)を書き換えられる。ツールがそれを信じて実行するかは未実測。子専用の一時領域へ絞る
-(Vision / Core ML が使う場所は拒否ログで実測して名指しする)②親が子の書ける場所へ予測できる名前で atomic でなく
-書く箇所(Android の状態ファイル・FM ブレーカの状態・Metal 異常の履歴など)—— symlink を置かれると先を壊す ③broker の
-判定と実行の間のパスの差し替え(TOCTOU)④子が localhost で偽のブリッジを待ち受けられる ⑤レポートの Markdown
-プレビューが外部の画像を読む。
+| ユーザーの一時領域 `/var/folders/xx/yy/` を丸ごと書けた | 書ける集合の根が T・C・0・X の親だった(xcrun が細工した `xcrun_db` を信じるかは未実測) | 子専用の一時フォルダ・キャッシュ・作業フォルダだけ(§5.3) |
+
+**棚卸しで残したもの**(未着手。重い順): ①親が子の書ける場所へ予測できる名前で atomic でなく書く箇所(FM ブレーカの
+状態・Metal 異常の履歴など。Android の状態ファイルは子の分が子専用の一時フォルダへ移ったので親の分には届かない)——
+symlink を置かれると先を壊す ②broker の判定と実行の間のパスの差し替え(TOCTOU)③子が localhost で偽のブリッジを
+待ち受けられる ④レポートの Markdown プレビューが外部の画像を読む。
 
 **他のプロセスの環境変数は枠の中から読めない**(実測: `KERN_PROCARGS2` は macOS 27.2 では argv しか返さない。
 枠の外でも同じ)。コマンドラインは枠の外と同じく読める(`process-info*` を開けている)。

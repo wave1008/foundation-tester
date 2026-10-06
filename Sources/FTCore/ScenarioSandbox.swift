@@ -32,7 +32,7 @@ public enum ScenarioSandbox {
         /// (ブリッジの台帳は `RepoRoot.find()` = ツール本体側に書かれる)
         public var stateRoots: [String]
         public var home: String
-        /// ユーザーごとの一時・キャッシュ領域(`/var/folders/xx/yy/` = T と C の親)
+        /// ユーザーごとの一時・キャッシュ領域のうち子専用のもの(`childTemporaryDirectory` / `childCacheDirectory`)
         public var userTempRoots: [String]
         /// シナリオ実行バイナリの名前。Vision / Core ML のコンパイルキャッシュが
         /// `~/Library/Caches/<名前>/` に置かれる
@@ -216,7 +216,8 @@ public enum ScenarioSandbox {
             stateRoots: stateRoots(packageRoot: packageRoot, environment: environment,
                                    executable: Bundle.main.executableURL),
             home: home,
-            userTempRoots: [darwinUserDirectoryRoot()].compactMap { $0 },
+            userTempRoots: [childTemporaryDirectory(runnerName: runner.lastPathComponent),
+                            childCacheDirectory(runnerName: runner.lastPathComponent)].compactMap { $0 },
             runnerName: runner.lastPathComponent,
             remoteBridgePorts: connection.map(remoteBridgePorts) ?? [])
         scope.extraWritable = extraWritable
@@ -271,12 +272,66 @@ public enum ScenarioSandbox {
         }
     }
 
-    /// 子の `TMPDIR`。**親の値を継がせない**(差し替えられた `TMPDIR` を書ける場所に足すと、上と同じ穴になる)
-    static func childTemporaryDirectory() -> String? {
+    /// 子の `TMPDIR` = ユーザーの一時領域の中の子専用のフォルダ(`T/fleetest-sandbox/<実行バイナリ名>/`)。
+    /// **親の値を継がせない**(差し替えられた `TMPDIR` を書ける場所に足すと、上と同じ穴になる)。
+    /// **一時領域そのもの(T・C・0・X)は開けない** —— 他のツールが信じて読むもの(xcrun のツール位置キャッシュ
+    /// `T/xcrun_db`・clang のモジュールキャッシュ `C/clang`・VSCode のシェル統合)を書き換えられる。
+    /// 子のコードは `TemporaryDirectory.url` で `TMPDIR` を読む(`NSTemporaryDirectory()` は `TMPDIR` を見ない)
+    static func childTemporaryDirectory(runnerName: String) -> String? {
+        darwinUserDirectory(_CS_DARWIN_USER_TEMP_DIR).map { $0 + "fleetest-sandbox/" + runnerName + "/" }
+    }
+
+    /// 子の実行バイナリのキャッシュ(`C/<実行バイナリ名>/`)。Metal のシェーダ等はプロセス名のフォルダに置かれる
+    static func childCacheDirectory(runnerName: String) -> String? {
+        darwinUserDirectory(_CS_DARWIN_USER_CACHE_DIR).map { $0 + runnerName }
+    }
+
+    /// Foundation が atomic な書き込み・置き換えに使う作業フォルダ(`T/TemporaryItems/NSIRD_<プロセス名>_…`。正規表現)。
+    /// `NSTemporaryDirectory()` と同じく `TMPDIR` を見ないので子専用の一時フォルダの外に作られ、閉じると黙って別の経路へ
+    /// 縮退する(拒否ログで実測)。名前にプロセス名と `_` が入るので、この子のぶんだけに当たる。
+    /// **Metal のシェーダキャッシュ(`C/com.apple.metal/`)は開けない** —— ユーザー全体で共有され、閉じても所要は変わらなかった
+    static func childReplacementDirectoryRegex(runnerName: String) throws -> String? {
+        guard let temp = darwinUserDirectory(_CS_DARWIN_USER_TEMP_DIR) else { return nil }
+        return "^" + (try regexEscapedPath(canonicalPath(temp))) + "/TemporaryItems/NSIRD_"
+            + NSRegularExpression.escapedPattern(for: runnerName) + "_"
+    }
+
+    /// Seatbelt の `#"…"` に埋める実体パス(`"` と制御文字を断る)
+    private static func regexEscapedPath(_ real: String) throws -> String {
+        guard !real.contains("\""),
+              !real.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else {
+            throw ProfileError.unrepresentablePath(real)
+        }
+        return NSRegularExpression.escapedPattern(for: real)
+    }
+
+    /// Core ML がコンパイルしたモデルの置き場(`T/model_<UUID>.mlmodelc`。正規表現)。`MLModel.compileModel` は
+    /// `TMPDIR` を見ずにここへ置くので、閉じると分類器(checkIsON/OFF・imageIs)が「“model.mlmodelc” couldn’t be moved」で
+    /// 使えなくなる(実測: a11y で読めない部品の checkIsON が赤・読める部品は黙って a11y へ倒れた)。
+    /// 名前にプロセス名が入らないので、他のプロセスの `model_*.mlmodelc` にも当たる(Core ML 以外が信じて実行する物ではない)
+    /// Create ML の学習の出力先 `T/CreateMLModels/` も同じ(`MLImageClassifier` が `TMPDIR` を見ずに書く)。
+    /// 閉じると見本からの学習が「You don’t have permission to save … in the folder “CreateMLModels”」で失敗する
+    /// (学習済みのキャッシュが無い作業ツリー = 受け手が初めて見本を置いたときにだけ通る経路。実測)
+    static func compiledModelRegex() throws -> String? {
+        guard let temp = darwinUserDirectory(_CS_DARWIN_USER_TEMP_DIR) else { return nil }
+        return "^" + (try regexEscapedPath(canonicalPath(temp)))
+            + "/(model_[^/]*\\.mlmodelc|CreateMLModels)(/|$)"
+    }
+
+    /// 子が書ける正規表現の場所(データコンテナ・Foundation の作業フォルダ・Core ML のコンパイル先)。
+    /// broker の「子が書ける場所からの install を断る」判定にも同じ集合を使う
+    static func childWritableRegexes(_ scope: Scope, containerUDID: String?) throws -> [String] {
+        [try simulatorDataContainerRegex(home: scope.home, udid: containerUDID)]
+            + [try childReplacementDirectoryRegex(runnerName: scope.runnerName), try compiledModelRegex()].compactMap { $0 }
+    }
+
+    /// `confstr` のユーザーごとの領域(末尾 `/` 付き)。取れなければ nil
+    private static func darwinUserDirectory(_ name: Int32) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
-        guard confstr(_CS_DARWIN_USER_TEMP_DIR, &buffer, buffer.count) > 0 else { return nil }
-        let temp = String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
-        return temp.isEmpty ? nil : temp
+        guard confstr(name, &buffer, buffer.count) > 0 else { return nil }
+        let dir = String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+        guard !dir.isEmpty else { return nil }
+        return dir.hasSuffix("/") ? dir : dir + "/"
     }
 
     /// `.fleetest` を持つルートの候補。ツール本体側は `FTBridgeClient.RepoRoot.find()` が子の中で
@@ -325,11 +380,6 @@ public enum ScenarioSandbox {
 
     static func isLoopback(_ host: String) -> Bool {
         host == "localhost" || host == "::1" || host.hasPrefix("127.")
-    }
-
-    /// `/var/folders/xx/yy/`(`T`・`C`・`0` の親)。取れなければ nil
-    static func darwinUserDirectoryRoot() -> String? {
-        childTemporaryDirectory().map { URL(fileURLWithPath: $0).deletingLastPathComponent().path }
     }
 
     /// 子が書いてよい場所。**外で実行・解釈されるものを置く場所を足さない**(足すと、枠の中から
@@ -500,9 +550,8 @@ public enum ScenarioSandbox {
             .joined(separator: " ") + ")")
         let writable = try writablePaths(scope).map { try subpath($0) }
         let dev = devWritableLiterals.map { "(literal \"\($0)\")" } + ["(subpath \"/dev/fd\")"]
-        lines.append("(allow file-write* " + (dev + writable).joined(separator: " ")
-            + " (regex #\"" + (try simulatorDataContainerRegex(home: scope.home, udid: scope.simulatorUDID))
-            + "\"))")
+        let regexes = try childWritableRegexes(scope, containerUDID: scope.simulatorUDID).map { "(regex #\"" + $0 + "\")" }
+        lines.append("(allow file-write* " + (dev + writable + regexes).joined(separator: " ") + ")")
         // Core ML がコンパイルキャッシュを ANE のデーモンへ見せるための権利の発行
         lines.append("(allow file-issue-extension "
             + (try subpath(scope.home + "/Library/Caches/" + scope.runnerName)) + ")")
@@ -566,7 +615,8 @@ public enum ScenarioSandbox {
             toolRoots: scope.stateRoots,
             childWritableRoots: ["/dev"] + writablePaths(scope).map(canonicalPath),
             // 子が書ける場所からの install を断る判定なので、広い側(全 Simulator)で断る
-            childWritablePattern: try simulatorDataContainerRegex(home: scope.home, udid: nil),
+            childWritablePattern: try childWritableRegexes(scope, containerUDID: nil).map { "(?:" + $0 + ")" }
+                .joined(separator: "|"),
             serial: connection?.serial, adbPath: AdbLocator.adbPath(), bundletool: BundletoolLocator.find())
     }
 

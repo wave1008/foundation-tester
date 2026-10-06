@@ -1683,6 +1683,7 @@ extension StepExecutor {
             return model
         } catch {
             visionClassifierErrors[name] = ErrorText.user(error)
+            noteCodesThisStep.insert(.visionClassifierUnavailable)
             if name == CheckStateClassifier.name { noteCodesThisStep.insert(.checkStateClassifierFailed) }
             visionClassifiersLoaded[name] = .some(nil)
             return nil

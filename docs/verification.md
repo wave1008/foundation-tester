@@ -47,6 +47,19 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
   → デバイスで確かめる。**down/up を省くと必ず旧版を測る**。iOS のシミュレータはブリッジを
   起動し直すと**アプリが消えていることがある**ので、`ft_install` からやり直す
 
+## macOS・Xcode を上げたら `--retrain-classifiers` を1回付けて回す(2026-10-07)
+
+シナリオはサンドボックスの中で動き、書ける場所を名指しで開けている(docs/sandbox-seatbelt.md §5.3)。OS の部品
+(Core ML のコンパイル・Create ML の学習・Foundation の作業フォルダ)は `TMPDIR` を見ずに決まった場所へ書くので、
+**OS が書く場所を変えると、その機能は赤にならず黙って別の経路へ倒れうる**。実際に、Core ML のコンパイル先を閉じた版では
+分類器が全 SUT で使えなくなり、a11y で読める部品の checkIsON/OFF は緑のまま通った。
+
+- e2e.sh は、見本はあるのに分類器を学習・読み込みできなかった run(注記 `vision-classifier-unavailable`)を赤にする。
+  理由はシナリオ末尾の ⚠️ 行に分類器の言ったまま出る
+- **学習の経路は見本を変えたときしか通らない**(学習済みのキャッシュがあれば読むだけ)。`Scripts/e2e.sh --retrain-classifiers`
+  は各 SUT のキャッシュを消してから回す。Create ML の出力先 `T/CreateMLModels/` を閉じていたことは、これで初めて見つかった
+- 赤の原因を探すときは、run の間に `log stream` で拒否を拾う(docs/sandbox-seatbelt.md §9.1)
+
 ## 1回の実行が見るのは iOS の2エンジンのうち片方だけ
 
 `Scripts/e2e.sh` の iOS は **既定が `ios-inapp` プロファイル**(2026-08-11 に xcuitest から反転)。

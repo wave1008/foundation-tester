@@ -309,6 +309,63 @@ final class ScenarioSandboxTests: XCTestCase {
 
     /// まだ無いレポート出力先でも規則が当たる。**作れるのは出力先そのものから下だけ**で、途中の親は
     /// 作れない(だから `ScenarioHost` が起動前に作っておく)
+    /// ユーザーの一時領域は子専用のフォルダだけ。兄弟(xcrun のキャッシュ `T/xcrun_db` 等)と C の他の場所は書けない
+    func testOnlyTheChildsOwnTemporaryAndCacheDirectoriesAreWritable() throws {
+        var scope = self.scope()
+        scope.userTempRoots = [path("vf/T/fleetest-sandbox/fleetest-scenarios-X/"), path("vf/C/fleetest-scenarios-X")]
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("vf/C/clang"), withIntermediateDirectories: true)
+        try ScenarioSandbox.prepareWritableRoots(scope)
+        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path("vf/T/fleetest-sandbox/fleetest-scenarios-X/a")], scope: scope), 0)
+        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path("vf/C/fleetest-scenarios-X/a")], scope: scope), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path("vf/T/xcrun_db")], scope: scope), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path("vf/C/clang/a")], scope: scope), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path("vf/T/fleetest-sandbox/other")], scope: scope), 0)
+    }
+
+    /// Foundation の作業フォルダ(`T/TemporaryItems/NSIRD_<プロセス名>_…`)はこの子の名前のものだけ作れる。
+    /// broker もそこを「子が書ける場所」に数える(数えないと、子がそこに置いたアプリを install させられる)
+    func testOnlyThisRunnersReplacementDirectoryIsWritableAndTheBrokerCountsIt() throws {
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("TemporaryItems")
+        try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+        let own = temp.appendingPathComponent("NSIRD_fleetest-scenarios-X_\(UUID().uuidString)")
+        let other = temp.appendingPathComponent("NSIRD_fleetest-scenarios-Y_\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: own); try? FileManager.default.removeItem(at: other) }
+        XCTAssertEqual(try runSandboxed(["/bin/mkdir", own.path]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", other.path]), 0)
+        let context = try ScenarioSandbox.brokerContext(scope(), connection: nil)
+        XCTAssertTrue(SimctlPolicy.isChildWritable(own.appendingPathComponent("Evil.app").path, context: context))
+        XCTAssertFalse(SimctlPolicy.isChildWritable(other.appendingPathComponent("Evil.app").path, context: context))
+    }
+
+    /// `MLModel.compileModel` は `TMPDIR` を見ず `T/model_<UUID>.mlmodelc` に置く。閉じると分類器が使えない(E2E で実測)。
+    /// broker もそこを子が書ける場所に数える
+    func testCoreMLCompiledModelLocationIsWritableAndTheBrokerCountsIt() throws {
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+        let model = temp.appendingPathComponent("model_\(UUID().uuidString).mlmodelc")
+        let sibling = temp.appendingPathComponent("ft-not-a-model-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: model); try? FileManager.default.removeItem(at: sibling) }
+        XCTAssertEqual(try runSandboxed(["/bin/mkdir", model.path]), 0)
+        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", model.appendingPathComponent("coremldata.bin").path]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", sibling.path]), 0)
+        // Create ML の学習の出力先(`MLImageClassifier` も TMPDIR を見ない)
+        let createML = temp.appendingPathComponent("CreateMLModels")
+        try FileManager.default.createDirectory(at: createML, withIntermediateDirectories: true)
+        let trained = createML.appendingPathComponent("\(UUID().uuidString)..mlmodel")
+        defer { try? FileManager.default.removeItem(at: trained) }
+        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", trained.path]), 0)
+        let context = try ScenarioSandbox.brokerContext(scope(), connection: nil)
+        XCTAssertTrue(SimctlPolicy.isChildWritable(model.appendingPathComponent("Evil.app").path, context: context))
+        XCTAssertTrue(SimctlPolicy.isChildWritable(createML.appendingPathComponent("Evil.app").path, context: context))
+    }
+
+    func testChildTemporaryDirectoryIsADedicatedFolderInsideTheUsersTemporaryDirectory() throws {
+        let temp = try XCTUnwrap(ScenarioSandbox.childTemporaryDirectory(runnerName: "fleetest-scenarios-X"))
+        let system = NSTemporaryDirectory().hasSuffix("/") ? NSTemporaryDirectory() : NSTemporaryDirectory() + "/"
+        XCTAssertEqual(temp, system + "fleetest-sandbox/fleetest-scenarios-X/")
+        let cache = try XCTUnwrap(ScenarioSandbox.childCacheDirectory(runnerName: "fleetest-scenarios-X"))
+        XCTAssertTrue(cache.hasSuffix("/C/fleetest-scenarios-X"), cache)
+    }
+
     /// 根は枠の中から作れない(根そのものへの書き込みは拒否)ので、親が先に作る
     func testNotYetExistingReportDirectoryIsCreatedByTheParentAndOnlyItsContentsAreWritable() throws {
         var scope = self.scope()

@@ -165,7 +165,8 @@ final class ScenarioHostDeviceSessionTests: XCTestCase {
         let path = root.appendingPathComponent(".build/debug").appendingPathComponent(project.productName)
         try FileManager.default.createDirectory(
             at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let received = root.appendingPathComponent("stdin-first-line.txt").path
+        // 子はサンドボックスの中で動くので、観測は書ける出力先へ書かせる
+        let received = root.appendingPathComponent("reports/stdin-first-line.txt").path
         let script = """
         #!/bin/sh
         read first
@@ -231,7 +232,7 @@ final class ScenarioHostDeviceSessionTests: XCTestCase {
         let path = root.appendingPathComponent(".build/debug").appendingPathComponent(project.productName)
         try FileManager.default.createDirectory(
             at: path.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let argsFile = root.appendingPathComponent("args.txt").path
+        let argsFile = root.appendingPathComponent("reports/args.txt").path
         let script = """
         #!/bin/sh
         read first

@@ -32,6 +32,9 @@
 #                                   # 仮想デバイスは常に復活を試みるが、このモードでは**復活できない
 #                                   # レーンが1つでも残ると run を開始せず失敗する**(レーン数が変わると
 #                                   # 計測にならないため。既定は切り離して完走)。時間を比較する回に付ける
+#   Scripts/e2e.sh --retrain-classifiers  # 各 SUT の画像分類器の学習済みキャッシュを消してから回す
+#                                   # (学習の経路を通す。macOS・Xcode を上げたら付ける。学習できないと
+#                                   # 注記 vision-classifier-unavailable が立ち、その run を赤にする)
 #   Scripts/e2e.sh --local         # **この Mac のデバイスだけ**で回す(各 run に --runner local)。
 #                                   # E2EX を M1Ultra で同時に回すときの形(プロファイルの M1Ultra の
 #                                   # レーンを使わないので dispatch.lock がぶつからない)。
@@ -79,6 +82,10 @@ SUTS=""
 IOS_PROFILE="ios-inapp"
 # 陽性対照(期待赤)スイート。緑の run では通らない検知・門・クラッシュの記録を最後に確かめる
 NEGATIVE=1
+# 画像分類器の学習済みキャッシュを消してから回す(学習の経路は見本を変えたときしか通らない)。
+# macOS・Xcode を上げたら付けて回す —— Create ML / Core ML が書く場所が変わると、サンドボックスの中で学習が黙って失敗する
+RETRAIN_CLASSIFIERS=0
+RETRAINED_PROJECTS=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -92,6 +99,7 @@ for arg in "$@"; do
     --local) LOCAL_ONLY=1 ;;
     --performance) PERFORMANCE=1 ;;
     --no-negative) NEGATIVE=0 ;;
+    --retrain-classifiers) RETRAIN_CLASSIFIERS=1 ;;
     --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
@@ -292,10 +300,32 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   [ "$PERFORMANCE" = 1 ] && perf_flag="--performance"
   local runner_flag=""
   [ "$LOCAL_ONLY" = 1 ] && runner_flag="--runner local"
+  if [ "$RETRAIN_CLASSIFIERS" = 1 ] && ! printf '%s' "$RETRAINED_PROJECTS" | grep -qx "$1"; then
+    # プロジェクトごとに最初の1回だけ(同じプロジェクトの後のプロファイルは学習したモデルを使う)
+    rm -rf "$ROOT/TestProjects/$1/.fleetest/vision/CheckStateClassifier" \
+           "$ROOT/TestProjects/$1/.fleetest/vision/DefaultClassifier"
+    RETRAINED_PROJECTS="$RETRAINED_PROJECTS$1
+"
+    echo "→ $1: 画像分類器の学習済みキャッシュを消しました(この run で学習し直す)"
+  fi
+  local since_marker
+  since_marker="$(mktemp)"
   if "$FLEETEST" run --project "$1" --profile "$profile" $perf_flag $runner_flag; then
     echo "✅ $1 / $profile"
   else
     echo "❌ $1 / $profile"
+    FAILED=1
+  fi
+  # 見本はあるのに画像分類器を学習・読み込みできなかったシナリオ(注記 vision-classifier-unavailable =
+  # StepNote.visionClassifierUnavailable)を赤にする。checkIsON/OFF は黙って a11y へ倒れ、a11y で読める部品では
+  # 緑のまま通る(サンドボックスが Core ML のコンパイル先を断ったとき全 SUT で起きていた)。全 SUT に見本がある
+  local degraded
+  degraded="$(find "$ROOT/TestProjects/$1/results/runs" -path '*/scenarios/*.json' -newer "$since_marker" \
+    -print0 2>/dev/null | xargs -0 grep -l '"vision-classifier-unavailable"' 2>/dev/null || true)"
+  rm -f "$since_marker"
+  if [ -n "$degraded" ]; then
+    echo "❌ $1 / $profile: 見本はあるのに画像分類器を使えなかったシナリオがあります(理由はシナリオ末尾の ⚠️ 行)"
+    printf '%s\n' "$degraded" | sed 's|^|   |'
     FAILED=1
   fi
 

@@ -60,7 +60,7 @@ public final class AndroidDriver: AppDriver {
         // WiFi 接続の実機 serial は "192.168.1.23:5555" 形式で ":" を含む。ファイル名に使うと
         // Finder 上で "/" に化けるため、パス区切りになりうる文字は "_" に潰す
         let safeSerial = (serial ?? "default").map { $0 == ":" || $0 == "/" ? "_" : $0 }
-        return FileManager.default.temporaryDirectory
+        return TemporaryDirectory.url
             .appendingPathComponent("fleetest-android-\(String(safeSerial)).json")
     }
 

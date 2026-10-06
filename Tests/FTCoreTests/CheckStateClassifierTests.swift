@@ -420,6 +420,8 @@ final class CheckStateClassifierTests: XCTestCase {
         XCTAssertFalse(passed(off), "a11y はオン。壊れた分類器の [OFF] で checkIsOFF を通さない")
         XCTAssertTrue(off.notes.contains(.checkStateClassifierFailed))
         XCTAssertFalse(off.notes.contains(.checkStateClassified))
+        // 推論の対照外れ(負荷の下の揺らぎ)は「使えない」ではない = e2e.sh が赤にする注記を立てない
+        XCTAssertFalse(off.notes.contains(.visionClassifierUnavailable))
         let on = await run("checked", a11y: a11yOn, imageOn: true, projectRoot: root, prefer: true)
         XCTAssertTrue(passed(on), "a11y のオンで判定する: \(on.status)")
 
@@ -449,6 +451,7 @@ final class CheckStateClassifierTests: XCTestCase {
         let silent = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: root, prefer: true)
         guard case .failed(let reason) = silent.status else { return XCTFail("\(silent.status)") }
         XCTAssertTrue(silent.notes.contains(.checkStateClassifierFailed), "\(silent.notes)")
+        XCTAssertTrue(silent.notes.contains(.visionClassifierUnavailable), "\(silent.notes)")
         XCTAssertTrue(reason.hasPrefix("the element reports no check state and CheckStateClassifier could not judge it"),
                       reason)
         XCTAssertFalse(reason.contains("put sample images"), reason)

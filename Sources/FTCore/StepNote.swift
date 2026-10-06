@@ -259,6 +259,11 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// CheckStateClassifier の見本画像はあるのに、学習か読み込みに失敗した、または推論の対照が外れて
     /// 答えを使わなかった(`VisionClassifier.ClassifyError`)。どちらも a11y だけで判定した
     case checkStateClassifierFailed = "check-state-classifier-failed"
+    /// 見本画像はあるのに分類器(CheckStateClassifier / DefaultClassifier)を**学習・読み込みできなかった**
+    /// (`StepExecutor.loadedVisionClassifier`)。上の推論の対照外れ(負荷の下の揺らぎで起き、次の推論で戻る)と違い、
+    /// 設定・環境で決まって run の中で戻らない。**checkIsON/OFF は黙って a11y へ倒れ、a11y で読める部品では緑のまま**
+    /// なので、`Scripts/e2e.sh` はこれが立った run を赤にする(全 SUT に見本がある)
+    case visionClassifierUnavailable = "vision-classifier-unavailable"
     /// findImage / findImages / existImage で Vision の異常(縮退・測り直しの不一致)を検知し、
     /// 待って走査をやり直した(`FindImage.anomalyRetryDelays`)。**判定は変えない** —— 戻れば通常どおり照合し、
     /// 戻らなければ失敗。**率が上がったら機械の GPU が混んでいる**(実測: 配信 24fps + 8 並列で最初の照合の約半数)
@@ -350,6 +355,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .checkStateClassifierFailed:
             return "CheckStateClassifier could not be trained or loaded, or its answer could not be trusted,"
                 + " so the check state came from accessibility only"
+        case .visionClassifierUnavailable:
+            return "an image classifier has sample images but could not be trained or loaded"
+                + " (the reason is in the end-of-scenario warning)"
         case .settledBeforeGesture:
             return "the screen was still moving before the gesture, so the gesture waited for it to settle"
         case .settledAfterLaunch:

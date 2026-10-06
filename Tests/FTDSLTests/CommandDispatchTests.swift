@@ -344,6 +344,18 @@ final class CommandDispatchTests: XCTestCase {
             && $0.contains("@i/[A]/x.png") }, true, "\(messages)")
     }
 
+    /// 見本はあるのに分類器を学習・読み込みできなかったら、シナリオ終了時に理由をそのまま出す(checkIsON/OFF は
+    /// 黙って a11y へ倒れ、a11y で読める部品では緑のまま通る)
+    func testUnavailableClassifierIsWarnedWithItsOwnReason() {
+        let core = makeCore(driver: RecordingDriver())
+        core.executor.visionClassifierErrors = [CheckStateClassifier.name:
+            "“model.mlmodelc” couldn’t be moved because you don’t have permission to access “T”."]
+        core.warnAboutNeverResolvedIDs()
+        let messages = core.finalRecord.fixSuggestions.map(\.message)
+        XCTAssertEqual(messages.contains { $0.contains("CheckStateClassifier has sample images but could not be trained or loaded")
+            && $0.contains("permission to access “T”") && $0.contains("used accessibility only") }, true, "\(messages)")
+    }
+
     /// scene 番号の重複は**警告する**(失敗にはしない = 既存シナリオを止めない)
     func testDuplicateSceneNumberIsWarned() {
         let core = makeCore(driver: RecordingDriver())

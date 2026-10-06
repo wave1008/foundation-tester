@@ -40,7 +40,9 @@ extension ScenarioHost {
         scope.helperSockets = [VisionHelperHost.activeSocketPath].compactMap { $0 }
         // CoreSimulator の直叩き(FTCoreSimShim)を止めて simctl = broker 経由へ倒す
         var environment = ["FT_SIMULATOR_CONTROL": "simctl"]
-        if let temp = ScenarioSandbox.childTemporaryDirectory() { environment["TMPDIR"] = temp }
+        if let temp = ScenarioSandbox.childTemporaryDirectory(runnerName: runner.lastPathComponent) {
+            environment["TMPDIR"] = temp
+        }
         // 子の adb / bundletool を親へ送らない(枠がポートを開けているので子が自分で使う)。
         // 経路を選ぶだけで壁は変えない —— 子が立てても、閉じたポートは開かない
         if plan.allowDirectAdb { environment[SandboxGateway.directAdbKey] = "1" }

@@ -1109,6 +1109,14 @@ public final class FTDriveCore {
                     + "Turn it on and verify checkIsON as well"),
                 emitEvent: false, file: "", line: 0)
         }
+        // 見本はあるのに分類器を学習・読み込みできなかった = checkIsON/OFF は黙って a11y へ倒れている(注記
+        // vision-classifier-unavailable)。理由は分類器の言ったことをそのまま出す(原因を推測して書き足さない)
+        for (name, error) in executor.visionClassifierErrors.sorted(by: { $0.key < $1.key }) {
+            let message = "\(name) has sample images but could not be trained or loaded during this scenario: \(error)"
+                + (name == CheckStateClassifier.name ? " — checkIsON / checkIsOFF used accessibility only" : "")
+            emit(.log("⚠️ " + message))
+            addSuggestion(FixSuggestion(isStrong: false, message: message), emitEvent: false, file: "", line: 0)
+        }
         // 画像分類器が自分の見本を取り違えている = 本番の画像でも取り違えうる(学習の点検。VisionClassifier.selfCheck)
         for (name, mismatches) in executor.visionClassifierMismatches.sorted(by: { $0.key < $1.key }) {
             let shown = mismatches.prefix(5).map(VisionClassifier.describe).joined(separator: "; ")

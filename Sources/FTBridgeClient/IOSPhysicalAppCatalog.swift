@@ -54,7 +54,7 @@ public enum IOSPhysicalAppCatalog {
     /// **timeout の既定(`IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds`)は変えない**(他の呼び手はこの秒数を前提にしている)。
     /// 短い timeout を渡すのは毎コマンド撃つ呼び手(LiveSessionFollower)だけ
     public static func apps(udid: String, timeout: Double = IOSPhysicalDeviceCatalog.devicectlTimeoutSeconds) throws -> [App] {
-        let outputURL = FileManager.default.temporaryDirectory
+        let outputURL = TemporaryDirectory.url
             .appendingPathComponent("fleetest-devicectl-apps-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: outputURL) }
         let result = try Shell.run(
