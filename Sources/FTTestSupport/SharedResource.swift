@@ -90,7 +90,7 @@ public struct SharedResource: Sendable {
         try FileManager.default.createDirectory(
             at: Self.lockDirectory, withIntermediateDirectories: true)
         while true {
-            let fd = open(lockFileURL.path, O_CREAT | O_RDWR, 0o644)
+            let fd = open(lockFileURL.path, O_CREAT | O_NOFOLLOW | O_RDWR, 0o644)
             if fd >= 0 { return fd }
             if errno == EINTR { continue }
             throw LockError(description:

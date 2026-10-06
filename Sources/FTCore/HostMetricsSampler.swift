@@ -34,7 +34,7 @@ public final class HostMetricsLog {
             try? FileManager.default.createDirectory(
                 atPath: dir, withIntermediateDirectories: true)
         }
-        let opened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        let opened = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_APPEND, 0o644)
         guard opened >= 0 else {
             logFailure("cannot open the log file: \(path) (errno \(errno)). Logging disabled")
             return nil
@@ -91,7 +91,7 @@ public final class HostMetricsLog {
             logIfNeeded("rename during log rotation failed: \(path) (errno \(errno))")
             return
         }
-        let reopened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
+        let reopened = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_APPEND, 0o644)
         guard reopened >= 0 else {
             logIfNeeded("failed to reopen after log rotation: \(path) (errno \(errno))")
             return

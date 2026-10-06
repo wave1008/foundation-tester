@@ -298,7 +298,7 @@ public enum VisionClassifier {
     static func withCacheLock<T>(_ cacheDirectory: URL, _ body: () throws -> T) throws -> T {
         try FileManager.default.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         // FileManager.createFile を使わない(既存の inode を置き換えて先客の flock と衝突しなくなる)
-        let fd = open(CacheLayout.lock(cacheDirectory).path, O_WRONLY | O_CREAT, 0o644)
+        let fd = open(CacheLayout.lock(cacheDirectory).path, O_WRONLY | O_CREAT | O_NOFOLLOW, 0o644)
         if fd >= 0 { flock(fd, LOCK_EX) }
         defer { if fd >= 0 { close(fd) } }
         return try body()
@@ -354,7 +354,8 @@ public enum VisionClassifier {
                                            predicted: answer?.label, confidence: answer?.confidence ?? 0))
             }
         }
-        if let data = try? JSONEncoder().encode(mismatches) { try? data.write(to: url) }
+        // atomic に置き換える(置き場はサンドボックスの子も書けるので、その場で書くと子が置いた symlink の先を書き換える)
+        if let data = try? JSONEncoder().encode(mismatches) { try? data.write(to: url, options: .atomic) }
         return mismatches
     }
 

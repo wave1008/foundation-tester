@@ -78,7 +78,7 @@ enum TemplatePrintStore {
         let directory = file.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // FileManager.createFile を使わない(既存の inode を置き換えて先客の flock と衝突しなくなる)
-        let fd = open(directory.appendingPathComponent("\(fileName).lock").path, O_WRONLY | O_CREAT, 0o644)
+        let fd = open(directory.appendingPathComponent("\(fileName).lock").path, O_WRONLY | O_CREAT | O_NOFOLLOW, 0o644)
         if fd >= 0 { flock(fd, LOCK_EX) }
         defer { if fd >= 0 { close(fd) } }
         var contents = read(file)

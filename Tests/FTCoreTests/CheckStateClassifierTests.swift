@@ -406,6 +406,24 @@ final class CheckStateClassifierTests: XCTestCase {
     /// **壊れた推論は失敗を返さず、どの画像にも同じラベルを確信度 1.00 で答える**(2026-09-19 負荷テスト:
     /// ON が写った crop を [OFF] 1.00 と答えた)。対照が外れたら答えを使わず a11y で判定する ——
     /// とくに**誤った緑**(a11y はオンなのに checkIsOFF が分類器の [OFF] で通る)を塞ぐ
+    /// 点検結果(selfcheck.json)の置き場はサンドボックスの子も書ける。子が置いた symlink の先を親が書き換えない(atomic に置き換える)
+    func testSelfCheckReplacesASymlinkInsteadOfWritingThroughIt() throws {
+        let root = try Self.makeProject()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let set = try XCTUnwrap(try VisionClassifier.trainingSet(at: CheckStateClassifier.directory(projectRoot: root)))
+        let cache = CheckStateClassifier.cacheDirectory(projectRoot: root)
+        _ = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
+        let victim = root.appendingPathComponent("victim.txt")
+        try Data("keep".utf8).write(to: victim)
+        let selfCheck = VisionClassifier.CacheLayout.selfCheck(cache)
+        try FileManager.default.removeItem(at: selfCheck)
+        try FileManager.default.createSymbolicLink(at: selfCheck, withDestinationURL: victim)
+        VisionClassifier.forgetLoadedModelsForTesting()
+        _ = try VisionClassifier.loadBlocking(set, cacheDirectory: cache)
+        XCTAssertEqual(FileManager.default.contents(atPath: victim.path), Data("keep".utf8))
+        XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: selfCheck.path), "symlink は置き換わる")
+    }
+
     func testAnswerIsNotUsedWhenAControlSampleIsMisclassified() async throws {
         let root = try Self.makeProject()
         defer { try? FileManager.default.removeItem(at: root) }

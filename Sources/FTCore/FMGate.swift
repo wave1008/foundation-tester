@@ -169,9 +169,9 @@ public enum FMBreaker {
         let url = stateURL
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        // 中身は使わない(mtime が落ちた時刻)。既にあれば mtime を更新する
-        try? Data().write(to: url)
-        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+        // 中身は使わない(mtime が落ちた時刻)。**atomic に置き換える** = 新しいファイルになるので mtime も今になる。
+        // 置き場はサンドボックスの子も書けるので、その場で書くと子が置いた symlink の先を切り詰める
+        try? Data().write(to: url, options: .atomic)
     }
 
     /// テスト用。ホスト単位の状態を消す

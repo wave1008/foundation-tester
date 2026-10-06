@@ -111,7 +111,7 @@ public final class ProvisionLock: Sendable {
     public init(stateDir: URL, lockName: String = "provision.lock") throws {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
         let path = stateDir.appendingPathComponent(lockName).path
-        fd = open(path, O_CREAT | O_RDWR, 0o644)
+        fd = open(path, O_CREAT | O_NOFOLLOW | O_RDWR, 0o644)
         guard fd >= 0 else { throw LockError.openFailed(errno) }
     }
 

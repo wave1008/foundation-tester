@@ -153,7 +153,7 @@ public enum AdbInstallVerifier {
         let directory = lockDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("adb-install-verifier-\(key).lock")
-        let fd = open(url.path, O_RDWR | O_CREAT, 0o644)
+        let fd = open(url.path, O_RDWR | O_CREAT | O_NOFOLLOW, 0o644)
         guard fd >= 0 else { return try body() }
         defer { close(fd) }
         _ = flock(fd, LOCK_EX)

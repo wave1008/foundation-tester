@@ -254,7 +254,7 @@ public enum FMLiveness {
     /// なので待ちは短い)。開けない・取れないときは nil。同一プロセスの別スレッドも open ごとに
     /// 別の open file description になるので互いに排他される
     private static func openLocked(_ lockURL: URL) -> Int32? {
-        let fd = open(lockURL.path, O_CREAT | O_RDWR, 0o644)
+        let fd = open(lockURL.path, O_CREAT | O_NOFOLLOW | O_RDWR, 0o644)
         guard fd >= 0 else { return nil }
         while flock(fd, LOCK_EX) != 0 {
             if errno == EINTR { continue }

@@ -415,6 +415,16 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("home/.fleetest/dispatch.lock")]), 0)
         XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("home/.fleetest/dispatch.queue")]), 0)
         XCTAssertEqual(try touch("home/.fleetest/fm-liveness.json"), 0)
+        // 親だけが書く場所(子が symlink を置くと親が先を書き換える・消す)
+        XCTAssertNotEqual(try touch("home/.fleetest/retention-sweep.lock"), 0)
+        XCTAssertNotEqual(try touch("tool/.fleetest/cleanup.log"), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("repo/.fleetest/recording-probe")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("home/Library/Caches/fleetest/webview")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/ln", "-s", path("home"), path("home/Library/Caches/fleetest/webview")]), 0)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("home/Library/Logs/fleetest/emulator"),
+                                                withIntermediateDirectories: true)
+        XCTAssertNotEqual(try touch("home/Library/Logs/fleetest/emulator/metal-history.ndjson"), 0)
+        XCTAssertEqual(try touch("home/Library/Caches/fleetest/fm.lock.0"), 0, "FM のロックは子も使う")
     }
 
     func testSecretLocationsAreUnreadableAndOtherFilesAreReadable() throws {

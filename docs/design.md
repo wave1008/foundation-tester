@@ -4333,7 +4333,8 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
 - **書ける場所は `writablePaths` の1箇所**。足すときは「そこに置いた物が枠の外で実行・解釈されないか」を
   先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否。同じ理由で `DerivedData*`・
   `.inapp` 以外の `bridge-*` 台帳・`~/.fleetest/ftbridge.apk`・`dispatch.lock` / `dispatch.queue` も拒否 =
-  `writeDeniedPaths` / `ledgerDenyRegexes`)。**根そのものは書かせない**(literal の拒否。親が `prepareWritableRoots` で
+  `writeDeniedPaths` / `ledgerDenyRegexes`)。**親だけが書く場所も拒否する**(WebView のキャッシュ・掃除のロック・`cleanup.log`・録画の点検・Emulator のログ)。
+  子も使う場所へ親が書くときは symlink を辿らない(上書きは atomic・ロックの `open` は `O_NOFOLLOW` = `NoFollowOpenScanTests`)。**根そのものは書かせない**(literal の拒否。親が `prepareWritableRoots` で
   先に作り、symlink なら起動しない —— 根を symlink に差し替えられると次の枠がその先を開ける)。
   **ユーザーの一時領域は子専用のものだけ**(`T/fleetest-sandbox/<実行バイナリ名>/` = 子の `TMPDIR`・`C/<実行バイナリ名>/`・
   `T/TemporaryItems/NSIRD_<実行バイナリ名>_…`・Core ML / Create ML の `T/model_*.mlmodelc`・`T/CreateMLModels/`)。

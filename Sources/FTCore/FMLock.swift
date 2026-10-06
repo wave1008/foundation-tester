@@ -132,7 +132,7 @@ public enum FMLock {
                 at: lockURL(slot: 0).deletingLastPathComponent(), withIntermediateDirectories: true)
             var fds: [Int32] = []
             for slot in 0..<n {
-                let fd = open(lockURL(slot: slot).path, O_CREAT | O_RDWR, 0o644)
+                let fd = open(lockURL(slot: slot).path, O_CREAT | O_NOFOLLOW | O_RDWR, 0o644)
                 guard fd >= 0 else {
                     fds.forEach { close($0) }
                     return nil

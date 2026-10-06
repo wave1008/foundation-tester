@@ -947,8 +947,8 @@ actor EventLogAppender {
         if !opened {
             opened = true
             if let path = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] {
-                // O_CREAT があるので事前の createFile は不要
-                let fd = Darwin.open(path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+                // O_CREAT | O_NOFOLLOW があるので事前の createFile は不要
+                let fd = Darwin.open(path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o644)
                 if fd >= 0 { handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true) }
             }
         }

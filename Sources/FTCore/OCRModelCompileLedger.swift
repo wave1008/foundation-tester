@@ -49,10 +49,10 @@ public enum OCRModelCompileLedger {
 
     /// **`FileManager.createFile` を使わない** —— 一時ファイル(`<pid>.sb-…`)に書いてから付け替える作りで、
     /// シナリオのプロセスでは付け替えが済まずに一時ファイルだけが残り(原因は未特定)、印が立たなかった。
-    /// `open(O_CREAT)` は付け替えをしない
+    /// `open(O_CREAT | O_NOFOLLOW)` は付け替えをしない
     static func markPresent(in dir: URL, pid: Int32) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let fd = open(dir.appendingPathComponent(String(pid)).path, O_WRONLY | O_CREAT, 0o644)
+        let fd = open(dir.appendingPathComponent(String(pid)).path, O_WRONLY | O_CREAT | O_NOFOLLOW, 0o644)
         if fd >= 0 { close(fd) }
     }
 

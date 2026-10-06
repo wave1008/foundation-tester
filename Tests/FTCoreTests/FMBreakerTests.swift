@@ -116,4 +116,16 @@ final class FMBreakerTests: XCTestCase {
         FMBreaker.bootTimeForTesting = Date().addingTimeInterval(-3600)
         XCTAssertTrue(FMBreaker.isOpen, "再起動していなければトリップは有効なまま")
     }
+
+    /// 状態ファイルの置き場はサンドボックスの子も書ける。子が置いた symlink の先を親が切り詰めない(atomic に置き換える)
+    func testTrippingReplacesASymlinkInsteadOfTruncatingWhatItPointsTo() throws {
+        let victim = stateDir.appendingPathComponent("victim.txt")
+        try Data("keep".utf8).write(to: victim)
+        let state = try XCTUnwrap(FMBreaker.stateURLForTesting)
+        try FileManager.default.createSymbolicLink(at: state, withDestinationURL: victim)
+        for _ in 0..<FMBreaker.threshold { FMBreaker.recordFailure() }
+        XCTAssertEqual(FileManager.default.contents(atPath: victim.path), Data("keep".utf8))
+        XCTAssertNil(try? FileManager.default.destinationOfSymbolicLink(atPath: state.path), "symlink は置き換わる")
+        XCTAssertTrue(FMBreaker.isOpen, "落ちた事実は記録される")
+    }
 }

@@ -32,7 +32,7 @@ public final class ScenarioEventLog: @unchecked Sendable {
         let eventsDir = runDir.appendingPathComponent("events")
         try? FileManager.default.createDirectory(at: eventsDir, withIntermediateDirectories: true)
         let inflightURL = eventsDir.appendingPathComponent(".inflight-\(UUID().uuidString).ndjson")
-        let opened = Darwin.open(inflightURL.path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+        let opened = Darwin.open(inflightURL.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o644)
         guard opened >= 0 else {
             ConsoleOut.err("[fleetest] cannot open scenario event log at \(inflightURL.path)")
             return nil

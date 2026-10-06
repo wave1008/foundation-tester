@@ -71,6 +71,15 @@ IP アドレスもドメイン名も書けない。書けるのは `"localhost:8
 - **`localhost` は自機の全アドレスを含む**。この Mac の LAN 側のアドレス(`10.0.0.104`)への接続も
   `(remote ip "localhost:*")` で通った。
 - LAN 越しのブリッジ(実機)を開けるには、ポートで絞るしかない(`"*:<port>"`)。
+- **localhost もポート単位の許可制にできる**(2026-10-07 実測)。`(deny network-outbound (remote ip "localhost:*"))`
+  の後に `(allow network-outbound (remote ip "localhost:18081"))` と書くと、18081 は通り、待ち受けのある
+  18082 は繋げない(curl の終了コード 7)。1つの規則に `(remote ip "localhost:18081") (remote ip "localhost:18082")`
+  と並べれば複数を開けられる。**範囲は書けない**(`"localhost:18081-18082"` は `invalid port in network address`)
+  ので、開けるポートは全部列挙する。
+  - 拒否を確かめるときは、そのポートで**待ち受けているサーバを置く**。誰も待ち受けていないポートも同じ終了コード 7 になる。
+  - 規則は `sandbox-exec` の時点で決まり、後から足せない。子が繋ぐポートは起動前に決まっている必要がある。
+    現状は Android のブリッジ(`adb forward tcp:0` = adb が選ぶ)と WebView の DOM(操作の途中で張る forward)が
+    起動前に決まらないので、`localhost:*` を開けている(§8.2)。
 
 ### 2.6 `network*` に `(local ip "localhost:*")` を書くと全部通る
 
@@ -227,6 +236,12 @@ E2E では赤にならないが、書けないと**黙って効かなくなる**
   (親が kill・外への接続・デバイスの帰属・追記に使う。**`.inapp` は子の `InAppLauncher` が書くので開けたまま** ——
   代わりに読む側が udid と bundleID を文法で検める)・`~/.fleetest/ftbridge.apk`(親が全 Android 端末へ入れる)・
   `~/.fleetest/dispatch.lock` と `dispatch.queue`(1マシン1 run の門)。
+- **親だけが書く場所も閉じる**(子が symlink を置くと、親が先を書き換える・消す): `~/Library/Caches/fleetest/webview/`
+  (親が run の開始時に「残す1件以外」を消し、置かれた APK を全端末へ入れる = フォルダをホームへの symlink にされると
+  ホームの直下を消す)・`~/.fleetest/retention-sweep.lock`(切り詰めて pid を書く)・ツール本体の `.fleetest/cleanup.log`・
+  `.fleetest/recording-probe/`・`~/Library/Logs/fleetest/emulator/`(`metal-history.ndjson` に追記・`<avd>.log` を開き直す)。
+  子も使う場所の書き込みは symlink を辿らない形にする: 上書きは atomic(FM ブレーカの状態・分類器の `selfcheck.json`)、
+  ロックの `open(…O_CREAT…)` は `O_NOFOLLOW`(`NoFollowOpenScanTests`)。
 - **根そのものは書かせない**。subpath は根自身にも当たるので、子は空にした根を `rmdir` して同じパスに symlink を
   作れた(実測)。次の起動で `canonicalPath` がその先を書ける場所に入れる。根は `(deny file-write* (literal …))` で
   閉じ、親が起動前に作って symlink なら止める(`prepareWritableRoots`)。アプリのデータコンテナも同じ型で、
@@ -389,11 +404,12 @@ UI 操作で持ち出せる(§8.3)。渡すのは `FT_*`・`LC_*` と、Sources 
 
 | ユーザーの一時領域 `/var/folders/xx/yy/` を丸ごと書けた | 書ける集合の根が T・C・0・X の親だった(xcrun が細工した `xcrun_db` を信じるかは未実測) | 子専用の一時フォルダ・キャッシュ・作業フォルダだけ(§5.3) |
 | broker の判定と実行の間にパスを差し替えられた | 子が送ったパスの文字列のまま実行していた(途中に子が書ける場所の symlink を挟むと「子が書けない場所」として検めさせ、実行の直前に向きを変えられる)。devicectl の出力ファイルは親が子の場所へ書いていた | 検めたパスを実体パスに固定して実行する(`BrokerPolicy.pinned`。install の元・注入するライブラリ・`.apks`)。devicectl の出力は親だけの一時ファイルに書かせ、中身を応答で返して子が枠の中で書く |
+| 親が子の書ける場所へ symlink を辿って書いていた | 棚卸し(コード)。最も重いのは WebView のキャッシュ(ホームの直下を消させられる) | 親だけが書く場所は拒否・子も使う場所は atomic と `O_NOFOLLOW`(§5.3) |
 
-**棚卸しで残したもの**(未着手。重い順): ①親が子の書ける場所へ予測できる名前で atomic でなく書く箇所(FM ブレーカの
-状態・Metal 異常の履歴など。Android の状態ファイルは子の分が子専用の一時フォルダへ移ったので親の分には届かない)——
-symlink を置かれると先を壊す ②子が localhost で偽のブリッジを待ち受けられる ③レポートの Markdown プレビューが
-外部の画像を読む。
+**棚卸しで残したもの**(未着手。重い順): ①子が localhost で偽のブリッジを待ち受けられる ②レポートの Markdown プレビューが
+外部の画像を読む ③子が中身を偽れる台帳(`iproxy-<port>.pid`・`install-check/` = 親がアプリを入れ直さない)④書ける根の下の
+サブフォルダを symlink にする型(親は決まった名前のファイルを作る・消すだけ)⑤分類器の学習の一時物(`model.tmp.mlmodel`・
+`training/`)と補助プロセスのソケットの `chmod` のレース。
 
 **他のプロセスの環境変数は枠の中から読めない**(実測: `KERN_PROCARGS2` は macOS 27.2 では argv しか返さない。
 枠の外でも同じ)。コマンドラインは枠の外と同じく読める(`process-info*` を開けている)。

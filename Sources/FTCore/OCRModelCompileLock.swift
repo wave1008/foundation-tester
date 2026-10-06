@@ -17,7 +17,7 @@ public enum OCRModelCompileLock {
                                    .appendingPathComponent(".fleetest", isDirectory: true)) -> FileHandle? {
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("ocr-compile-\(processName).lock")
-        let fd = open(url.path, O_WRONLY | O_CREAT, 0o644)
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_NOFOLLOW, 0o644)
         guard fd >= 0 else { return nil }
         guard flock(fd, LOCK_EX) == 0 else { close(fd); return nil }
         return FileHandle(fileDescriptor: fd, closeOnDealloc: true)
@@ -31,8 +31,8 @@ public enum OCRModelCompileLock {
         let url = directory.appendingPathComponent("ocr-compile-\(processName).lock")
         // **`FileManager.createFile` を使わない** —— 既存のパスに書くと別の inode に置き換わり、
         // 先客の flock(旧 inode に付いている)と衝突しなくなる(テストで踏んだ)。
-        // O_CREAT は既存ファイルをそのまま開く
-        let fd = open(url.path, O_WRONLY | O_CREAT, 0o644)
+        // O_CREAT | O_NOFOLLOW は既存ファイルをそのまま開く
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_NOFOLLOW, 0o644)
         guard fd >= 0 else { return nil }
         guard flock(fd, LOCK_EX | LOCK_NB) == 0 else {
             close(fd)

@@ -455,11 +455,17 @@ public enum ScenarioSandbox {
     /// 書いてよい場所の中で、書かせない場所。どれも**親が中身を信じて枠の外で実行・配布するもの**:
     /// `hooks/` = 次の run が `teardown.sh` を実行(`RunHooks`)/ `DerivedData*` = ランナーの xctestrun と .app を
     /// 親が xcodebuild で起動(子はランナーをビルドしない)/ `ftbridge.apk` = 親が全 Android 端末へ入れる /
-    /// `dispatch.lock`・`dispatch.queue` = 1マシン1 run の門(消すと他人の run に重ねられる)
+    /// `dispatch.lock`・`dispatch.queue` = 1マシン1 run の門(消すと他人の run に重ねられる)。
+    /// **親だけが書く場所も閉じる**(子が symlink を置くと、親が先を書き換える・消す): WebView のキャッシュ
+    /// (親が run の開始時に「残す1件以外」を消し、置かれた APK を全端末へ入れる)・掃除のロック(親が切り詰めて pid を書く)・
+    /// `cleanup.log`・録画の点検フォルダ・Emulator のログ(`metal-history.ndjson` に追記・`<avd>.log` を開き直す)
     static func writeDeniedPaths(_ scope: Scope) -> [String] {
         scope.stateRoots.flatMap { root in
-            ["hooks", "DerivedData", "DerivedData-device"].map { root + "/.fleetest/" + $0 }
-        } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue"].map { scope.home + "/.fleetest/" + $0 }
+            ["hooks", "DerivedData", "DerivedData-device", "cleanup.log", "recording-probe"]
+                .map { root + "/.fleetest/" + $0 }
+        } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue", "retention-sweep.lock"]
+            .map { scope.home + "/.fleetest/" + $0 }
+            + ["Library/Caches/fleetest/webview", "Library/Logs/fleetest/emulator"].map { scope.home + "/" + $0 }
     }
 
     /// 常に読ませない場所(ホーム相対)。シナリオの駆動に要らない認証情報・個人データの定番の置き場で、
