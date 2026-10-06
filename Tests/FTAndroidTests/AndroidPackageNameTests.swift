@@ -60,6 +60,29 @@ final class AndroidPackageNameTests: XCTestCase {
         XCTAssertFalse(driver.installedPackageIsCurrent(packageID: "x;reboot", apkPath: "/nonexistent.apk"))
     }
 
+    /// Android ブリッジの POST /session も同じ文法で断る(attemptLaunch が shell へ連結する)。
+    /// Java の正規表現を取り出し、Swift の判定と同じ答えを返すことを標本で確かめる
+    func testBridgeLaunchUsesTheSameGrammar() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let java = try String(contentsOf: root.appendingPathComponent(
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java"), encoding: .utf8)
+        let marker = "return name.matches(\""
+        let start = try XCTUnwrap(java.range(of: marker), "isShellSafePackageName の形が変わった")
+        let pattern = String(java[start.upperBound...].prefix { $0 != "\"" })
+        let regex = try NSRegularExpression(pattern: "^(?:\(pattern))\\z")
+        for name in ["com.ftester.e2e", "android", "jp.Co_2.x", "x;reboot", "com.x y", "-p", ".x", "1x", "a-b", "",
+                     "com.x$(id)", "Ünicode", "com.x\n"] {
+            let javaAccepts = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) != nil
+            XCTAssertEqual(javaAccepts, AndroidPackageName.isShellSafe(name), name.debugDescription)
+        }
+        let launch = try XCTUnwrap(java.range(of: "private BridgeHttpServer.Response handleLaunch("))
+        let body = java[launch.upperBound...]
+        let guardAt = try XCTUnwrap(body.range(of: "isShellSafePackageName(bundleID)"), "handleLaunch が検めていない")
+        let firstShell = try XCTUnwrap(body.range(of: "attemptLaunch(bundleID)"))
+        XCTAssertLessThan(guardAt.lowerBound, firstShell.lowerBound, "検める前に attemptLaunch を呼んでいる")
+    }
+
     /// 同型の再発を落とす: Sources/FTAndroid でパッケージ名の変数を `adb shell` の引数・端末側の
     /// スクリプト文字列へ埋める行は、同じ関数の手前(直前 15 行以内)で `AndroidPackageName` を通す
     func testShellSitesEmbeddingPackageNamesAreGuarded() throws {

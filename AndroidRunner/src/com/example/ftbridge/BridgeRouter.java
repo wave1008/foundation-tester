@@ -847,6 +847,12 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (bundleID.isEmpty()) {
             throw new BridgeException(400, "bundleID is required");
         }
+        // attemptLaunch が shell("am force-stop " + bundleID) 等へ連結する。executeShellCommand は sh を
+        // 通さず空白で区切るので、空白入りの名前は別の引数に化ける(sessionBundleID にも残る)
+        if (!isShellSafePackageName(bundleID)) {
+            throw new BridgeException(400, "not a valid Android package name: \"" + bundleID
+                    + "\" (letters, digits, '_' and '.' only, starting with a letter)");
+        }
         // キーボードの初回シートを、アプリを出す前に済ませる(言語ごとに1回。ImeOnboarding の冒頭コメント)
         ImeOnboarding.primeOnce(instrumentation, ua());
         if (attemptLaunch(bundleID)) return ok();
@@ -999,6 +1005,14 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
         throw new BridgeException(500,
                 "cannot determine the display size for the gesture. Run GET /snapshot first");
+    }
+
+    /**
+     * 先頭が英字・残りが英数字 / `_` / `.` だけ。**同期相手: Sources/FTAndroid/AndroidPackageName.swift の
+     * isShellSafe**(AndroidPackageNameTests.testBridgeLaunchUsesTheSameGrammar が正規表現の一致を見る)
+     */
+    static boolean isShellSafePackageName(String name) {
+        return name.matches("[A-Za-z][A-Za-z0-9_.]*");
     }
 
     /** HOME ランチャーのパッケージ名(復旧時の前面掃除で除外するため)。解決不能なら null */

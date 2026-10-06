@@ -161,7 +161,7 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/build.sh": "b136074f6bd0753af9c4186ec066407492125748aef24dd13e6556cfd3c3524a",
             "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "249d457eeaecfcd43c031ccacf7dbf3dac249a4a9e22b014d2b7041617de91dd",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "78fe5cc272782a091bbbc512d1693bed0a192cf363548699a586cb0f3d614824",
-            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "86943a908634a472dce1f7c2562683665d553726806f8c038d6ffb3a7f418e28",
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "f8cdd8236239948e5d47b7a9b32cc26ae3d2345800d639d633ca1e879c8dc91d",
             "AndroidRunner/src/com/example/ftbridge/DisplayHeartbeat.java": "b00ff62b9a909e7e46df1a7a1aa1f39ba0a5711834092148adfee9f6bd6c7d9a",
             "AndroidRunner/src/com/example/ftbridge/ImeOnboarding.java": "fe2d90d892046f64e4893c008148d47886e36bceb244dd9e68e560b368f0193b",
             "AndroidRunner/src/com/example/ftbridge/KeyboardPrimerActivity.java": "f5a4751486cd8349a8f10b65332d6a3e1d77c3d82e0528e8518ec646aad152d9",
