@@ -48,6 +48,41 @@ final class RunnerSlownessLeaseIOTests: XCTestCase {
             udid: "udid-a", stateDir: stateDir, selfPID: livePID + 1, parentPID: 1))
     }
 
+    /// **呼び手がそのデバイスを持つ run(自分か親が run-lease の書き手)なら他人と数えない**。run の子 =
+    /// シナリオ実行のプロセスが自分の run のデバイスのブリッジを立て直す形。親でも自分でもない run-lease は他人のまま
+    func testOwnOrParentRunLeaseIsNotForeignInTheOwnRunVariant() {
+        RunLease.write(stateDir: stateDir, key: "serial-a", pid: livePID)
+        XCTAssertFalse(RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(
+            key: "serial-a", stateDir: stateDir, selfPID: livePID + 1, parentPID: livePID))
+        XCTAssertFalse(RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(
+            key: "serial-a", stateDir: stateDir, selfPID: livePID, parentPID: 1))
+        XCTAssertTrue(RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(
+            key: "serial-a", stateDir: stateDir, selfPID: livePID + 1, parentPID: livePID + 2))
+        // 親を数えない既定の版は、親の lease を他人と読む(止める門と一致させる側)
+        XCTAssertTrue(RunnerAccessibilityHealth.hasForeignLease(
+            udid: "serial-a", stateDir: stateDir, selfPID: livePID + 1, parentPID: livePID))
+    }
+
+    /// **MCP から引き取った run は、MCP の印が残っていても他人と数えない**(引き取りは run の設計。数えると
+    /// 引き取った run が Android ブリッジを立て直せずレーンが落ちる)。既定の版は同じ状態を他人と読む
+    func testOwnRunWinsOverAnMCPLeaseInTheOwnRunVariant() {
+        // MCP の印の持ち主は「自分でも親(ここでは 1 と申告)でもない生きた pid」= テストプロセスの親
+        let mcpPID = getppid()
+        RunLease.write(stateDir: stateDir, key: "serial-a", pid: livePID)
+        MCPDeviceLease.write(stateDir: stateDir, key: "serial-a", pid: mcpPID)
+        XCTAssertFalse(RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(
+            key: "serial-a", stateDir: stateDir, selfPID: livePID, parentPID: 1))
+        XCTAssertTrue(RunnerAccessibilityHealth.hasForeignLease(
+            udid: "serial-a", stateDir: stateDir, selfPID: livePID, parentPID: 1))
+    }
+
+    /// run でない呼び手(MCP・ライブ操作)には、他の MCP セッションの印は他人
+    func testOwnRunVariantStillCountsAForeignMCPSessionForNonRunCallers() {
+        MCPDeviceLease.write(stateDir: stateDir, key: "serial-a", pid: livePID)
+        XCTAssertTrue(RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(
+            key: "serial-a", stateDir: stateDir, selfPID: livePID + 1, parentPID: livePID + 2))
+    }
+
     /// 死んだ(存在しない)pid の lease ファイルは無視する(RunLease/MCPDeviceLease 自体の生存判定に委ねる)
     func testDeadHolderIsNotForeign() {
         RunLease.write(stateDir: stateDir, key: "udid-a", pid: 2_000_000)

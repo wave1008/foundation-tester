@@ -1154,6 +1154,12 @@ public struct BridgeProvisioner: Sendable {
         guard injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: probeSeconds) else {
             return (probeSeconds == nil ? .unmeasured : .healthy, probeSeconds)
         }
+        // **他のセッションのランナーは起動し直さない**(呼び手は run 自身のレーンと MCP)。run が自分のレーンを
+        // 測り直すときは、引き取った MCP の印があっても起動し直す(hasForeignLeaseUnlessOwnRun)
+        if RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(key: udid, stateDir: fleetestStateDir) {
+            log(RunnerAccessibilityHealth.keptBecauseLeasedNowMessage(name: name, port: port))
+            return (.skipped, probeSeconds)
+        }
         let sim: SimDeviceInfo
         let provisionLock: ProvisionLock
         do {

@@ -1220,7 +1220,9 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - **共通コア部分は iOS ブリッジと同一プロトコル**(§4.5) → ホストは `BridgeClient` を無改修で流用
   (`adb forward tcp:0 tcp:8123` 経由)。AppDriver/FTFoundationModels/FTCore は引き続き無変更
 - 純フレームワーク API の Java のみ(androidx/gradle 不要、SDK 付属ツールでビルド、
-  prebuilt APK を同梱)。初回操作時に自動インストール・自動起動(`AndroidBridge.swift`)
+  prebuilt APK を同梱)。初回操作時に自動インストール・自動起動(`AndroidBridge.swift`)。**他のセッション(run・MCP)が
+  使っているデバイスでは作り直さない**(force-stop がそのセッションのブリッジごと落とす)。呼び手がそのデバイスを持つ
+  run(とその子のシナリオ)なら MCP から引き取ったデバイスでも作り直す(`RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun`)
 - 実測: snapshot 2.0s → 8.7ms(中央値)、フロー8本 87s → 38s。日本語 type も
   ACTION_SET_TEXT で IME 不要(ADBKeyboard は不使用)
 - ブリッジ単一実装。adb 直叩き経路(uiautomator dump/input/screencap、Unicode IME 自動導入)は持たない。

@@ -183,6 +183,31 @@ public enum RunnerAccessibilityHealth {
             selfPID: selfPID)
     }
 
+    /// **呼び手がそのデバイスを持つ run なら他人と数えない**版(ブリッジを立て直す・起動し直す自動の経路用)。
+    /// - run-lease の書き手が自分か親(run の子 = ScenarioHost が直接起こすシナリオ実行のプロセス)なら false。
+    ///   **MCP の印があっても false** —— run は台が足りないと MCP の触っているデバイスを引き取る設計で
+    ///   (引き取りの警告は MCP 側に出る)、引き取った run がブリッジを立て直せないとレーンが落ちる
+    /// - それ以外は上の純粋関数のまま(止める門との一致は `LeaseJudgementAgreementTests`)。止める門・供給の
+    ///   シミュレータ再起動は従来どおり「印があれば run でも触らない」で、この版を使わない
+    public static func hasForeignLeaseUnlessOwnRun(
+        key: String, stateDir: URL,
+        selfPID: Int32 = ProcessInfo.processInfo.processIdentifier, parentPID: Int32 = getppid()
+    ) -> Bool {
+        let runHolder = RunLease.holderPID(stateDir: stateDir, key: key)
+        if let runHolder, runHolder == selfPID || runHolder == parentPID { return false }
+        return hasForeignLease(
+            runLeaseHolder: runHolder,
+            mcpLeaseHolder: MCPDeviceLease.holderPID(stateDir: stateDir, key: key,
+                                                     excluding: [selfPID, parentPID]),
+            selfPID: selfPID)
+    }
+
+    /// 他のセッションが使っているので起動し直さない・作り直さない、の1行(自動起動・自動回復の門が共有する)
+    public static func deviceHeldByAnotherSessionMessage(device: String, what: String) -> String {
+        "not \(what) for \(device): another session (a fleetest run or an MCP session) is using this device,"
+            + " and doing so would take its bridge down. Wait for that session to finish, or drive another device"
+    }
+
     /// シミュレータごと再起動する前の 1 行。「前の run で」と言えるのは、この印が
     /// `RunnerSlownessStore` でプロセスを跨いで残るため(`RunnerRestartFutility` はプロセス内だけ)
     public static func restartingSimulatorMessage(name: String, port: UInt16) -> String {
@@ -207,12 +232,13 @@ public enum RunnerAccessibilityHealth {
             + " automatically for this device)"
     }
 
-    /// 印はあるが、このデバイスを今どこかのセッション(run または MCP)が使用中なので触らないときの 1 行
+    /// 今遅かったが、このデバイスを他のセッション(run または MCP)が使用中なので起動し直さないときの 1 行
     public static func keptBecauseLeasedNowMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (it answered slowly, but another session is using this device right now, so it is not restarted)"
     }
 
+    /// 印はあるが、このデバイスを今どこかのセッション(run または MCP)が使用中なので触らないときの 1 行
     public static func keptBecauseLeasedMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (it was slow in an earlier run, but another session is using this device right now,"

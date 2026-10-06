@@ -40,3 +40,14 @@ final class MonkeyFailureDetailTests: XCTestCase {
         XCTAssertEqual(AndroidDriver.monkeyFailureDetail("adb: device offline"), "adb: device offline")
     }
 }
+
+/// 「使用中」の断りの文言(到達不能の決まり文句を含まない完成文)
+final class AndroidBridgeHeldByAnotherSessionMessageTests: XCTestCase {
+    func testTheRefusalNamesTheFactAndDoesNotSuggestBridgeUp() {
+        let text = AndroidBridgeHeldByAnotherSession(serial: "emulator-5556").localizedDescription
+        XCTAssertTrue(text.contains("emulator-5556"))
+        XCTAssertTrue(text.contains("another session"))
+        XCTAssertFalse(text.contains("bridge up"), "同じ門で断られる bridge up を勧めている")
+        XCTAssertFalse(text.contains("Cannot reach the driver"), "到達不能の決まり文句で包まれている")
+    }
+}

@@ -140,6 +140,11 @@ remote element を諦める時間だけ待つ。隣のデバイスでは同じ�
 - **run の途中でも再発する**。素の xcuitest レーン(シミュレータ)では、緑のシナリオの直後に**ステップの
   snapshot 所要が 2 秒以上だったときだけ**同じ 1 問で測り直し、劣化していれば同じポートで起動し直す
   (`RunnerMidRunRecheck`。hybrid / in-app / 実機は対象外 = 理由は同ファイル)。健全な run は 1 問も払わない
+- **他のセッションが使っているデバイスのランナーは起動し直さない**(2026-10-06): run-lease・MCP の印が他のプロセスに
+  あれば、供給・MCP の自動回復・ライブ操作の自動起動は起動し直さずに「another session is using this device」と1行出す。
+  run が自分のレーンを測り直すときだけは、MCP から引き取ったデバイスでも起動し直す(`hasForeignLeaseUnlessOwnRun`)。
+  陽性対照は lease を手で書く —— **Bash ツールの zsh では `$BASHPID` が空**なので、`sleep 900 & SP=$!` の pid を書く
+  (maintainer-notes §70.1)
 - **ランナーを起動し直しても直らない形がある**。起動し直した直後にもう 1 問測り、新しいランナーでも遅ければ
   「the slowness is not in the runner process」と 1 行出して、そのプロセスではもう起動し直さない
   (`RunnerRestartFutility`)。実測: -01 は起動し直すたびに 2.7〜3.0 秒のまま(同時刻の他のデバイスは 0.03 秒)で、

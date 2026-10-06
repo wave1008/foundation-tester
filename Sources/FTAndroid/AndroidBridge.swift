@@ -85,6 +85,10 @@ extension AndroidDriver {
                 let client = try await driver.startBridge()
                 Self.setRegistry(key, .active(client))
                 return client
+            } catch let held as AndroidBridgeHeldByAnotherSession {
+                // キャッシュしない: 再生は到達不能の決まり文句で包まれる。判定は lease を読むだけで安い
+                Self.setRegistry(key, nil)
+                throw held
             } catch {
                 Self.setRegistry(key, .unavailable(
                     retryAfter: Date().addingTimeInterval(Self.unavailableRetryInterval),
@@ -94,6 +98,10 @@ extension AndroidDriver {
         }
         do {
             return try await setup.value
+        } catch let held as AndroidBridgeHeldByAnotherSession {
+            // 到達不能ではない(ブリッジは他のセッションの物で、触らないと決めただけ)。到達不能の
+            // 決まり文句(「bridge up を試せ」= 同じ門で断られる)で包まない
+            throw held
         } catch {
             throw Self.unreachableError(detail: Self.rawFailureDetail(error),
                                         physicalDevice: isPhysicalAndroidDevice)
@@ -235,9 +243,20 @@ extension AndroidDriver {
         // 既に稼働中で版一致ならそのまま使う(CLI の別プロセスが起動済みのケース)。
         // 版不一致(旧ブリッジプロセスが常駐したまま)は素通しせず、下の再インストール+
         // force-stop+再起動で更新する(APK 差し替えだけでは稼働中プロセスは旧版のまま)
-        if let (client, version, timing) = await probeBridge(hostPort: hostPort),
+        let probed = await probeBridge(hostPort: hostPort)
+        if let (client, version, timing) = probed,
            version == Self.expectedBridgeVersionCode, timing == timingRequested {
             return client
+        }
+        // **他のセッション(run・MCP)が使っているデバイスのブリッジは作り直さない**(下の force-stop が
+        // そのセッションの instrumentation ごと落とす)。計時フラグだけが違うなら作り直さずそのまま使う
+        // (計時はログの有無だけ)。呼び手が run(とその子 = シナリオ)なら MCP から引き取ったデバイスでも立て直す
+        if let serial, let stateDir = (try? RepoRoot.find())?.appendingPathComponent(".fleetest"),
+           RunnerAccessibilityHealth.hasForeignLeaseUnlessOwnRun(key: serial, stateDir: stateDir) {
+            if let (client, version, _) = probed, version == Self.expectedBridgeVersionCode {
+                return client
+            }
+            throw AndroidBridgeHeldByAnotherSession(serial: serial)
         }
 
         // sys.boot_completed は起動直後でも既に 1 なのでゲートに使えない(ProfileWorkerFactory の
@@ -718,5 +737,17 @@ extension AndroidDriver {
             Use the repository's AndroidRunner/prebuilt/ftbridge.apk, or set
             FT_ANDROID_BRIDGE_APK=<path to the APK> (rebuild it with AndroidRunner/build.sh)
             """)
+    }
+}
+
+/// Android ブリッジが応答しないが、そのデバイスを他のセッション(run・MCP)が使っているので作り直さなかった。
+/// **DriverError にしない** —— bridgeUnreachable にすると到達不能の決まり文句(「`fleetest bridge up` を試せ」)が付くが、
+/// その bridge up も同じ門で断られる。文言は完成文(`errorDescription` をそのまま出す)
+public struct AndroidBridgeHeldByAnotherSession: Error, LocalizedError {
+    public let serial: String
+    public var errorDescription: String? {
+        "the Android bridge on \(serial) is not answering, and it was not restarted: another session"
+            + " (a fleetest run or an MCP session) is using this device, and restarting it would take that"
+            + " session's bridge down. Wait for that session to finish, or drive another device"
     }
 }

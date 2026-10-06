@@ -130,6 +130,13 @@ public enum XCUIBridgeResolver {
             return giveUp("cannot start the XCUITest bridge"
                 + " (device \"\(device)\" is ambiguous: \(booted.count) booted)")
         }
+        // **他のセッションが使っているデバイスに2本目のランナーを立てない**(同じシミュレータの2本目は
+        // 1本目 = そのセッションのランナーを追い出す)
+        if RunnerAccessibilityHealth.hasForeignLease(
+            udid: booted[0].udid, stateDir: repoRoot.appendingPathComponent(".fleetest")) {
+            return giveUp(RunnerAccessibilityHealth.deviceHeldByAnotherSessionMessage(
+                device: device, what: "starting an XCUITest bridge"))
+        }
         // 空きポート選択 → 起動(pid ファイルが書かれるまで)は provision() と同じ
         // ProvisionLock で直列化する。取れなければ(他プロセスが未解放等)ロック無しで
         // 進む = 既存挙動のまま(採番衝突より起動できないことのほうが害が大きい)

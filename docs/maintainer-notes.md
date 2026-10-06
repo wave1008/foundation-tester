@@ -3792,9 +3792,21 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
   `RunnerAccessibilityHealth.hasForeignLease` を見る。陽性対照: 生きた別プロセスの run-lease + `FT_FAKE_SLOW_RUNNER_PORTS` で
   「not rechecking/restarting … another session」が出て起動し直さない / lease 無しでは起動し直す。
   **陽性対照の罠**: Bash ツールの zsh では `$BASHPID` が空 —— lease に空の pid を書いて「門が効かない」と見えた
-- **直していない同型(未再現)**: ライブ操作の自動起動(`LiveBridgeAutoStarter.launchBridge`)・MCP の in-app 解決時の XCUITest
-  自動起動(`XCUIBridgeResolver.start`)・Android ブリッジの作り直し(`AndroidBridge.startBridge` の force-stop)・run 自身の
-  レーンの測り直し(`recheckRunner` の内側に門を置くと、run の親子構成次第で自分のレーンの回復が止まる恐れ = デバイスでの対照が要る)
+- **同型(未再現)も同日に塞いだ**: run 自身のレーンと MCP が共有する測り直し(`recheckRunner`)・ライブ操作の自動起動
+  (`LiveBridgeAutoStarter.launchBridge`。「使用中」は連続失敗に数えない = 数えると failed に固定され相手が終わっても戻らない)・
+  MCP の in-app 解決時の XCUITest 自動起動(`XCUIBridgeResolver.start`)・Android ブリッジの作り直し(`AndroidBridge.startBridge` の
+  force-stop。計時フラグだけ違うなら作り直さず使う)。門の位置は `ForeignLeaseAutoRestartGateTests` が固定する
+- **呼び手がそのデバイスを持つ run なら他人と数えない**(`hasForeignLeaseUnlessOwnRun`。Android ブリッジの作り直しと
+  `recheckRunner` が使う): run-lease の書き手が自分か親(シナリオ実行のプロセスは run が直接起こす子で、Android ブリッジを
+  立て直すのはそこ)なら、**MCP の印が残っていても**作り直す —— run は台が足りないと MCP の触っているデバイスを引き取る
+  設計で、レビューで「引き取った run がブリッジを立て直せずレーンが落ちる」退行を見つけて直した(最初の版は親の lease だけを
+  自分側に数え、MCP の印は他人のままだった)。既定の `hasForeignLease` は止める門(`stopRefusal`)と答えを揃える
+  (`LeaseJudgementAgreementTests`)ので純粋関数は変えず、供給のシミュレータ再起動・`.proceedNormally` も従来どおり。陽性対照(Emulator): 他人の lease = 断る /
+  親の lease(`bash -c` の子として撃つ)= 立て直す / lease なし = 立て直す。ライブ操作(sim-10): 他人の lease = 4 回とも skipped・
+  lease なし = 自動起動
+- **Android の断りは `DriverError` にしない**(`AndroidBridgeHeldByAnotherSession`): `bridgeUnreachable` にすると到達不能の
+  決まり文句(「`fleetest bridge up` を試せ」= 同じ門で断られる)が前置きに付き、失敗キャッシュの再生でも付く。
+  `ensureBridge` は包まず・キャッシュせずに投げ直す(判定は lease を読むだけで安い)
 
 ### 70.2 Android の `activate` の失敗文言に monkey の引数エコーが十数行載っていた
 理由は最後の1行(`** No activities found to run, monkey aborted.`)だけ → `AndroidDriver.monkeyFailureDetail` でエコーを落とす

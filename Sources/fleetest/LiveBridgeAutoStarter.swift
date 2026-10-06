@@ -158,6 +158,11 @@ actor LiveBridgeAutoStarter {
             consecutiveFailures = 0
             startedSinceLastCheck = true
             logStderr("Bridge auto-start succeeded (udid: \(udid), port: \(port))")
+        case .failure(AutoStarterError.deviceHeldByAnotherSession(let detail)):
+            // 連続失敗に数えない —— 数えると、他のセッションが使っている間に上限へ達して failed(恒久)に
+            // 固定され、そのセッションが終わっても二度と自動起動しない
+            state = .idle
+            logStderr("Bridge auto-start skipped: \(detail)")
         case .failure(let error):
             consecutiveFailures += 1
             let detail = error.localizedDescription
@@ -181,6 +186,16 @@ actor LiveBridgeAutoStarter {
         repoRoot: URL, udid: String, port: UInt16, physical: Bool, wired: Bool, stopFirst: Bool = false
     ) async -> Result<Void, Error> {
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: udid, port: port, physical: physical)
+        // **他のセッション(run・MCP)が使っているデバイスにはランナーを起動しない**: 同じシミュレータの
+        // 2本目のランナーは1本目を追い出す(run は別ポートでこのデバイスを持っていることがある)。
+        // 旧ビルドの起動し直し(stopFirst)も同じく相手のブリッジを止めるので、ここで両方を断る。
+        // ロックより前に見る(lease を読むのにロックは要らない。後だと run の供給中は断るだけのために待つ)
+        if RunnerAccessibilityHealth.hasForeignLease(
+            udid: udid, stateDir: repoRoot.appendingPathComponent(".fleetest")) {
+            return .failure(AutoStarterError.deviceHeldByAnotherSession(
+                RunnerAccessibilityHealth.deviceHeldByAnotherSessionMessage(
+                    device: udid, what: stopFirst ? "restarting the bridge" : "starting the bridge")))
+        }
         let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
         await provisionLock?.acquire()
         var lockReleased = false
@@ -303,9 +318,13 @@ private enum AutoStarterError: Error, LocalizedError {
     /// port は実行プロファイルが固定するため、freePort のような採番替えができない
     /// (XCUIBridgeResolver.start と違い、次の空きポートへは逃がせない)
     case portHeldByForeignProcess(port: UInt16, holder: String)
+    /// 連続失敗に数えない(finishLaunch)。detail は完成文
+    case deviceHeldByAnotherSession(String)
 
     var errorDescription: String? {
         switch self {
+        case .deviceHeldByAnotherSession(let detail):
+            return detail
         case .staleStopFailed(let port):
             return "cannot stop the stale bridge (no pid file). " +
                 "Run `fleetest bridge down --port \(port)`"
