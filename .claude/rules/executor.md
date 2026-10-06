@@ -13,6 +13,10 @@ paths:
   - "Sources/FTCore/ScenarioExecutionSettings*.swift"
   - "Sources/FTCore/ScenarioExecutionSettings.swift"
   - "Sources/FTCore/ScenarioHost.swift"
+  - "Sources/FTCore/ScenarioHost+Sandbox.swift"
+  - "Sources/FTCore/ScenarioSandbox.swift"
+  - "Sources/FTCore/SandboxBroker.swift"
+  - "Sources/FTCore/SandboxProxy.swift"
   - "Sources/FTCore/StepExecutor*.swift"
   - "Sources/FTCore/SystemUIGate*.swift"
   - "Sources/FTCore/SystemUIGate.swift"
@@ -38,6 +42,10 @@ paths:
   - "Tests/FTCoreTests/ScenarioHostSkipBuildStaleTests.swift"
   - "Tests/FTCoreTests/ScenarioHostWatchdogDurationTests.swift"
   - "Tests/FTCoreTests/ScenarioHostWatchdogExitedChildTests.swift"
+  - "Tests/FTCoreTests/ScenarioSandboxTests.swift"
+  - "Tests/FTCoreTests/ScenarioSandboxPlanTests.swift"
+  - "Tests/FTCoreTests/ScenarioSandboxWiringTests.swift"
+  - "Tests/FTCoreTests/SandboxBrokerTests.swift"
   - "Tests/FTCoreTests/SystemUIGateAssertOnAlertTests.swift"
   - "Tests/FTCoreTests/SystemUIGateTests.swift"
   - "Tests/FTDSLTests/FTRuntimeFailureKindTests.swift"
@@ -82,3 +90,14 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **失敗時の証跡の絵は hybrid なら XCUITest(`XCUIScreen`)で撮る**(`FTRuntime.handleFailure`。in-app の絵は
   アプリの window しか描かず OS のアラートが写らない)。**iOS の「飲まれたタップ」注記はアラートの可能性を
   併記する**(iOS の木はアプリのプロセスだけ = アラートを出したタップも無変化に見える)
+- **シナリオのサンドボックス(Seatbelt・常に有効)**: 全拒否が土台の Seatbelt でシナリオ実行バイナリを包む
+  (`FTCore.ScenarioSandbox`。入口は `ScenarioHost.sandboxedLaunch` = 実行・dry-run・`list`・`compile-ocr` の全部。
+  `ScenarioSandboxWiringTests`)。外せるのはマシン側の `sandbox.disabled` だけ。守る規律5つ:
+  **①シナリオ実行バイナリを起こす経路を足したら入口を通す**(起こし方に関わらず利用者のコードが動きうる)/
+  **②子が書く場所を足したら `writablePaths` にも足す**(親が決める場所は `Scope.extraWritable`)・
+  **`simctl` / `devicectl` の呼び出しを足したら `SimctlPolicy` / `DevicectlPolicy` にも足す**
+  (子は CoreSimulator / CoreDevice に繋げず、親の `SandboxBroker` が代行する)/
+  **③緩める口をプロジェクトと環境変数に置かない**(設定はマシン側の固定パスだけ・`HOME` / `TMPDIR` /
+  `XDG_CONFIG_HOME` / `FT_*_DIR` から書ける場所や読ませない場所を広げない)/
+  **④開けるものは名指しで足す**(全許可へ戻さない。全許可の枠からは `simctl spawn` と `open -a` で外へ出られた)/
+  **⑤拒否は先に起こした `log stream` で拾う**。規則の形・書式の罠・壁の外に残るものは docs/design.md §11.7

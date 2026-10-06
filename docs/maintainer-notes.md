@@ -3821,3 +3821,49 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
 - **ライブ操作専用の Emulator が 06:34:12 にゲスト再起動**(`sys.boot.reason=reboot`・QEMU は生存)。fleetest の唯一の撃ち手
   (`ProfileWorkerFactory.rebootGuest`)を通った記録は無い
 - CMP iOS の負荷下の白紙描画(OCR 段の赤)・GPU 負荷下の Vision の特徴量の異常は既知の型のまま
+
+## 71. シナリオのサンドボックスを常に有効にした(2026-10-06)
+
+**発端**: シナリオは任意の Swift として実行され、`import FTDSL` だけで FTCore の `Shell.run`(public)に届く。
+MCP の `ft_run_scenario` / `ft_dry_run` / `ft_list_scenarios` は受け手の設定で確認なしに通るので、エージェントが
+書いたシナリオ(アプリの画面に紛れ込んだ指示に従ったものを含む)が Bash の承認を経ずにホストで動く。
+§2.5 で「シナリオを実行する ft_* を allow から外す」案は分類器が悪意あるシナリオを 2/2 通したので不採用になっている。
+
+**比べて採らなかった案**:
+
+- **LLM でシナリオの危険性を判定する(PreToolUse フック + `claude -p`)**: 試作では隠した `Shell.run` を
+  見抜いた(Haiku 4.5・13.6 秒・約 $0.008)が、判定であって強制ではない。実行時の文字列の組み立て・評価役を
+  誘導する文ですり抜けうる。他ツールの先例でも言語内の隔離は破られている(Playwright MCP の `vm` 脱出 →
+  `browser_run_code_unsafe` へ改名、Maestro の JS は HTTP で外へ出られる)。`type: "agent"` のフックは `ask` を
+  返せず、失敗時に通すか止めるかも未定義
+- **コンパイル時の許可リスト(import と `@_` 属性の走査・`MemberImportVisibility`・strict memory safety)**:
+  決定論的で安いが、DSL の公開面を絞る(FTDSL の `@_exported import FTCore` をやめる)作業が要り、DSL 自身の
+  範囲の操作は止めない。壁(Seatbelt)を先に置いた
+
+**決定(ユーザー)**: PoC(ブランチ `poc/sandbox`)の Seatbelt を移植。**常に有効**・設定はマシン側だけ・
+許可ドメインはマシン側・読み取りの既定の拒否を内蔵・`devicectl` も親が代行。設計は docs/design.md §11.7、
+実測は docs/sandbox-seatbelt.md。
+
+### 71.1 緩める口をエージェントの書ける場所に置かない
+
+PoC は任意機能だったので、設定は実行プロファイル(プロジェクトの中)にあった。攻撃の相手がエージェントなら、
+プロジェクトに `sandbox: false` を書くだけで外せる。移植では包む判断を `ScenarioHost.sandboxedLaunch` の中で
+完結させ(マシン側の設定だけを読む)、呼び手は何も運ばない。副産物として PoC の配線(fleetest・MCP・拡張・
+`RunProfile` の 39 ファイル)が丸ごと要らなくなった。
+
+**同じ理由で環境変数も口にしない**。PoC は `HOME`・`TMPDIR`・`XDG_CONFIG_HOME`・`FT_*_DIR`・`FT_TOOL_ROOT` から
+書ける場所と読ませない場所を組んでいた(`.mcp.json` の `env` やコマンド行で差し替えられる)。移植の途中で気づいて
+塞いだ(表は docs/sandbox-seatbelt.md §8.5)。**枠の形を決める値を足すときは、それを誰が書けるかを先に見る**。
+
+### 71.2 包むと「起動できない」が子の終了に化ける
+
+`sandbox-exec` は自分が起動してから中でランナーを exec するので、起動できないランナー(ディレクトリ・実行権なし)が
+`Process.run()` の throw にならず、子の終了コードになった。失敗の記録(結果 JSON)が残らず、
+`ScenarioHostRunnerUnavailableTests` が落ちて気づいた。包む前に実行可能かを確かめて同じ文言で止める。
+**包む・中継する層を挟むと、下の層の「起動できない」は上の層の「終わった」に化ける**。
+
+### 71.3 壁の外に残るもの(閉じていない)
+
+localhost のサービス(ブリッジ・adb = Emulator の shell)・デバイスを介した持ち出し・テスト対象のアプリ・
+setup / teardown スクリプト(`ft_start_run` の確認で受ける)・`Package.swift`(SwiftPM 自身の枠で評価)。
+シナリオの中身の安全は約束しない(受け手 docs にも同じことを書いた)。

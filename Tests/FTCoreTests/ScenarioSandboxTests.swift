@@ -140,6 +140,10 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertTrue(profile.hasPrefix("(version 1)\n(deny default)\n"), profile)
         XCTAssertFalse(profile.contains("(allow default)"))
         XCTAssertFalse(profile.contains("CoreSimulator.CoreSimulatorService"))
+        // LaunchServices は読み取り専用の写像だけ(Create ML の UTType 判定)。アプリの起動と登録の口は閉じたまま
+        XCTAssertTrue(profile.contains("(global-name \"com.apple.lsd.mapdb\")"))
+        XCTAssertFalse(profile.contains("com.apple.CoreServices.coreservicesd"))
+        XCTAssertFalse(profile.contains("com.apple.lsd.modifydb"))
         // 名前の無い unix ソケット全般は開けない(開けると Docker のソケット等に届く)
         XCTAssertFalse(profile.contains("(remote unix-socket))"))
     }
@@ -162,6 +166,22 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertEqual(try runSandboxed(probe, scope: undeclared), cannotConnect)
         var declared = undeclared
         declared.brokerSocket = broker.socketPath
+        XCTAssertNotEqual(try runSandboxed(probe, scope: declared), cannotConnect)
+    }
+
+    /// 画像判定の補助プロセスのソケットも、名指ししたときだけ繋がる(閉じたままだと Vision の異常を救えない)
+    func testHelperSocketIsReachableOnlyWhenDeclared() throws {
+        let listener = try SandboxBroker(
+            context: SimctlPolicy.Context(udid: nil, deviceName: nil, toolRoots: [], childWritableRoots: []),
+            directory: NSTemporaryDirectory(), execute: { _, _, _ in (0, Data()) })
+        defer { listener.stop() }
+        let probe = ["/usr/bin/curl", "-s", "-m", "3", "--unix-socket", listener.socketPath, "http://helper/"]
+        let cannotConnect: Int32 = 7
+        var undeclared = scope()
+        undeclared.userTempRoots = [NSTemporaryDirectory()]
+        XCTAssertEqual(try runSandboxed(probe, scope: undeclared), cannotConnect)
+        var declared = undeclared
+        declared.helperSockets = [listener.socketPath]
         XCTAssertNotEqual(try runSandboxed(probe, scope: declared), cannotConnect)
     }
 

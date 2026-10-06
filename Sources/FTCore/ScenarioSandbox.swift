@@ -43,6 +43,10 @@ public enum ScenarioSandbox {
         /// 親の `SandboxBroker` のソケット(Simulator の操作を頼む口)。一覧取得のように
         /// デバイスを駆動しない起動では nil
         public var brokerSocket: String?
+        /// 他に繋がせる unix ソケット(画像判定の補助プロセス `VisionHelperHost`)。**名指しで開ける**
+        /// (パス無しの `(remote unix-socket)` は Docker 等の強い口まで開く)。閉じたままだと Vision の異常を
+        /// 救えず、ANE が壊れた機械で画像照合と分類器が落ちる(connect が EPERM。拒否ログには出なかった)
+        public var helperSockets: [String] = []
         /// 許可ドメインへプロキシ経由で出るか(`allowedDomains` が空でないとき)。TLS の証明書の検証に
         /// 要るサービスを開ける
         public var usesProxy = false
@@ -372,6 +376,10 @@ public enum ScenarioSandbox {
         "com.apple.diagnosticd",
         "com.apple.bsd.dirhelper",
         "com.apple.system.opendirectoryd.membership",
+        // LaunchServices のデータベースの読み取り専用の写像(UTType の判定)。閉じると Create ML が見本の画像を
+        // 1枚も見つけられず(`No data found for label`)、チェック状態の分類器が学習できない(実測)。
+        // **アプリを起こす `coreservicesd` と登録を書き換える `lsd.modifydb` は閉じたまま**(`open -a` は断られる)
+        "com.apple.lsd.mapdb",
         // Core ML のコンパイル済みモデル(ANE)と FoundationModels の推論
         "com.apple.appleneuralengine",
         "com.apple.modelmanager",
@@ -408,7 +416,7 @@ public enum ScenarioSandbox {
         // (実測)。向きごとに分け、外向きは宛先(remote)だけで絞る。`localhost` は自機の全アドレスを含む
         lines.append("(deny network*)")
         lines.append("(allow network-outbound (remote ip \"localhost:*\"))")
-        if let socket = scope.brokerSocket {
+        for socket in [scope.brokerSocket].compactMap({ $0 }) + scope.helperSockets {
             lines.append("(allow network-outbound (remote unix-socket (path-literal "
                 + (try quoted(canonicalPath(socket))) + ")))")
         }

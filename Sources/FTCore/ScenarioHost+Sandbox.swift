@@ -32,6 +32,8 @@ extension ScenarioHost {
             project: project, plan: plan, reportDir: reportDir, extraWritable: extraWritable,
             packageRoot: packageRoot(),
             runner: runner, connection: connection)
+        // 子は環境変数で受けた補助プロセスへ繋ぐ(`childEnvironment` と同じ値を読む)
+        scope.helperSockets = [VisionHelperHost.activeSocketPath].compactMap { $0 }
         // CoreSimulator の直叩き(FTCoreSimShim)を止めて simctl = broker 経由へ倒す
         var environment = ["FT_SIMULATOR_CONTROL": "simctl"]
         if let temp = ScenarioSandbox.childTemporaryDirectory() { environment["TMPDIR"] = temp }

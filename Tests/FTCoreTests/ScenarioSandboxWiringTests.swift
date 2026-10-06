@@ -45,6 +45,14 @@ final class ScenarioSandboxWiringTests: XCTestCase {
         XCTAssertTrue(entry.contains("ScenarioSandbox.wrap("))
     }
 
+    /// 子が繋ぐ画像判定の補助プロセスのソケットを入口が名指しする(子へ渡す環境変数と同じ値)
+    func testVisionHelperSocketIsDeclaredToTheSandbox() throws {
+        let entry = try source("Sources/FTCore/ScenarioHost+Sandbox.swift")
+        XCTAssertTrue(entry.contains("scope.helperSockets = [VisionHelperHost.activeSocketPath]"))
+        let host = try source("Sources/FTCore/ScenarioHost.swift")
+        XCTAssertTrue(host.contains("env[VisionHelperWire.socketEnvironmentKey] = VisionHelperHost.activeSocketPath"))
+    }
+
     /// 子の `TMPDIR` は親の値を継がせず明示する(差し替えた `TMPDIR` を書ける場所に入れない)
     func testChildTemporaryDirectoryIsSetExplicitly() throws {
         let entry = try source("Sources/FTCore/ScenarioHost+Sandbox.swift")
