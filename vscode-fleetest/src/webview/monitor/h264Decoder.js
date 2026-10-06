@@ -101,12 +101,52 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
   let reportedWidth = 0;
   let reportedHeight = 0;
 
+  // 間引いたフレームは捨てずに最新の1枚だけ保留し、間隔が空いたら描く。**捨てると画面が静止した
+  // 直前の1枚(アニメーションの最終フレーム)が描かれず、途中の絵が残る** —— 静止画面では次の
+  // フレームが来ないので上書きされない(写真の権限ダイアログがフェードイン途中の半透明のまま残った)
+  let heldFrame = null;
+  let heldTimer = null;
+
+  function releaseHeld() {
+    if (heldTimer !== null) {
+      clearTimeout(heldTimer);
+      heldTimer = null;
+    }
+    if (heldFrame) {
+      heldFrame.close();
+      heldFrame = null;
+    }
+  }
+
   function handleFrame(frame) {
-    const now = performance.now();
-    if (now - lastDrawTime < DRAW_INTERVAL_MS) {
+    if (state === 'disposed') {
       frame.close();
       return;
     }
+    const now = performance.now();
+    const wait = lastDrawTime + DRAW_INTERVAL_MS - now;
+    if (wait > 0) {
+      if (heldFrame) {
+        heldFrame.close();
+      }
+      heldFrame = frame;
+      if (heldTimer === null) {
+        heldTimer = setTimeout(() => {
+          heldTimer = null;
+          const held = heldFrame;
+          heldFrame = null;
+          if (held) {
+            drawFrame(held, performance.now());
+          }
+        }, wait);
+      }
+      return;
+    }
+    releaseHeld();
+    drawFrame(frame, now);
+  }
+
+  function drawFrame(frame, now) {
     lastDrawTime = now;
     // close() 後の VideoFrame は displayWidth/Height が 0 を返す(WebCodecs 仕様の detach)。
     // 実寸はここで控えてから描画・close すること
@@ -181,6 +221,7 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
   function dispose() {
     state = 'disposed';
     pendingChunks = [];
+    releaseHeld();
     if (decoder) {
       try {
         decoder.close();

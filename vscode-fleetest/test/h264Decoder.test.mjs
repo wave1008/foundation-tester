@@ -7,6 +7,7 @@
 // 検証対象:
 // - onFirstFrame/onDimensions が close 前の実寸を受け取る(0 が渡らない)
 // - 解像度が変わったら onDimensions が再び呼ばれる(初回だけだと枠に古い比率が残る)
+// - 間引きの間隔内に届いた最後のフレームも後で必ず描かれる(捨てると静止画面に途中の絵が残る)
 
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
@@ -94,7 +95,7 @@ test("解像度が変わったら onDimensions が再び呼ばれる", async () 
 
   renderer.pushChunk(KEYFRAME, true, 0, 0);
   await settle();
-  // 描画は 66ms に間引かれる(間隔を空けないと2枚目は捨てられる)
+  // 描画は 66ms に間引かれる(間隔を空けないと2枚目は後回しになる)
   await new Promise((resolve) => setTimeout(resolve, 80));
   renderer.pushChunk(KEYFRAME, true, 0, 0);
   await settle();
@@ -122,4 +123,53 @@ test("使い回しの canvas が既に同じ寸法でも、新しいレンダラ
   await settle();
 
   assert.deepEqual(dims, [{ width: 1080, height: 2424 }]);
+});
+
+// 間引きの間隔内に続けて届いたフレームを捨てると、それが静止前の最後の1枚だった場合に
+// 上書きするフレームが二度と来ず、アニメーション途中の絵が残る(写真の権限ダイアログが
+// フェードイン途中の半透明のまま残った)。最後の1枚は間隔が空いた時点で描かれる
+test("間引きの間隔内に届いた最後のフレームも後で描かれる(途中の絵を残さない)", async () => {
+  const first = makeFrame(1080, 2424);
+  const middle = makeFrame(1080, 2424);
+  const last = makeFrame(1080, 2424);
+  installWebCodecs([first, middle, last]);
+  const drawn = [];
+  const canvas = { width: 0, height: 0, getContext: () => ({ drawImage: (f) => drawn.push(f) }) };
+  const renderer = createH264Renderer({
+    canvas,
+    onError: () => assert.fail("onError が呼ばれた"),
+    onFirstFrame: () => {},
+  });
+
+  renderer.pushChunk(KEYFRAME, true, 0, 0);
+  await settle();
+  renderer.pushChunk(KEYFRAME, false, 0, 0);
+  renderer.pushChunk(KEYFRAME, false, 0, 0);
+  assert.deepEqual(drawn, [first]);
+
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.deepEqual(drawn, [first, last]);
+  renderer.dispose();
+});
+
+test("dispose は保留中のフレームを描かずに閉じる", async () => {
+  const first = makeFrame(1080, 2424);
+  const held = makeFrame(1080, 2424);
+  installWebCodecs([first, held]);
+  const drawn = [];
+  const canvas = { width: 0, height: 0, getContext: () => ({ drawImage: (f) => drawn.push(f) }) };
+  const renderer = createH264Renderer({
+    canvas,
+    onError: () => assert.fail("onError が呼ばれた"),
+    onFirstFrame: () => {},
+  });
+
+  renderer.pushChunk(KEYFRAME, true, 0, 0);
+  await settle();
+  renderer.pushChunk(KEYFRAME, false, 0, 0);
+  renderer.dispose();
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  assert.deepEqual(drawn, [first]);
+  assert.equal(held.displayWidth, 0, "保留していたフレームが close されていない");
 });
