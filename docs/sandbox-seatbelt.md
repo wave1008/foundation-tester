@@ -443,11 +443,13 @@ print("WITNESS net=\((try? String(contentsOf: URL(string: "https://example.com")
 - **リモートのランナー**: M1Ultra の E2EX(8 プロファイル 392 本・赤 1 本 = Android のツールチップの既知の性質)、
   手元からの送り出し 1 本、ランナー上の dry-run(🔒 の行)
 - **攻撃の止まり方(dry-run の簡易版)**: ホームへの書き込み・`~/.ssh` の読み取り・外部への通信・`open -a` が全部失敗
+- **iOS の実機(iPhone SE3・XCUITest エンジン)**: 起動と画面遷移の 1 本と、ディープリンクの 1 本(`launchApp(url:)` =
+  実機では `devicectl device process openURL` を親が代行)が枠の中で緑
 
 **確認していない**:
 
-- **iOS の実機**。`devicectl` の代行(`DevicectlPolicy`)は単体テストだけ。LAN 越しのブリッジのポートを開ける
-  規則も単体テストだけ
+- **iOS の実機の `devicectl` の他の形**(アプリ一覧・プロセス一覧・ロック状態・インストール)は単体テストだけ。
+  LAN 越しのブリッジのポートを開ける規則も単体テストだけ
 - **FoundationModels**。2026-09-30 と 2026-10-06 はこの Mac の FM が死んでいた(10-06 は枠の外でも ANE の
   エラー 53)。`com.apple.modelmanager` は開けてあるが、枠の中で推論が通るかは未確認
 - **受け手の外部パッケージ構成**。ツール本体側の `.fleetest/` を開ける処理は単体テストだけ
