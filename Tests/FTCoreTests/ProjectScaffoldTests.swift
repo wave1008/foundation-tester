@@ -297,7 +297,8 @@ final class ProjectScaffoldTests: XCTestCase {
                                                             toolRoot: "/tools/ft")
         XCTAssertFalse(added.isEmpty)
         for entry in added where !entry.hasPrefix("mcp__")
-            && entry != "Read(//tools/ft/**)" && entry != "Edit(//tools/ft/**)" {
+            && entry != "Read(//tools/ft/**)" && entry != "Edit(//tools/ft/**)"
+            && entry != "Edit(~/.config/fleetest/**)" {
             XCTAssertTrue(entry.hasPrefix("Bash("), "許可するのは Bash のみ: \(entry)")
             XCTAssertNotEqual(entry, "Bash(*)")
             // 許可範囲はツールのクローン配下か fleetest CLI か読み取り専用の simctl list に限る
@@ -350,8 +351,9 @@ final class ProjectScaffoldTests: XCTestCase {
         let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
         let allow = try XCTUnwrap(permissions["allow"] as? [String])
         XCTAssertTrue(allow.contains("Bash(git status:*)"), "既存の許可を消さない")
-        XCTAssertEqual(permissions["deny"] as? [String], ["Bash(rm:*)", "Edit(//tools/ft/**)"],
-                       "既存の deny を消さず、クローンの Edit だけ後ろに足す")
+        XCTAssertEqual(permissions["deny"] as? [String],
+                       ["Bash(rm:*)", "Edit(//tools/ft/**)", "Edit(~/.config/fleetest/**)"],
+                       "既存の deny を消さず、クローンとマシン側の設定の Edit だけ後ろに足す")
         XCTAssertEqual(object["model"] as? String, "opus", "無関係なキーを消さない")
     }
 
@@ -389,7 +391,7 @@ final class ProjectScaffoldTests: XCTestCase {
         let allow = permissions["allow"] as? [String] ?? []
         XCTAssertTrue(allow.contains("Read(//tools/ft/**)"))
         XCTAssertFalse(allow.contains("Edit(//tools/ft/**)"))
-        XCTAssertEqual(permissions["deny"] as? [String], ["Edit(//tools/ft/**)"])
+        XCTAssertEqual(permissions["deny"] as? [String], ["Edit(//tools/ft/**)", "Edit(~/.config/fleetest/**)"])
     }
 
     /// クローン構成(作業フォルダ = クローン)では書かない。書くと保守者の作業ツリーが読み取り専用になる

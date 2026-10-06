@@ -248,9 +248,17 @@ public enum ScenarioHost {
         }
         guard !already else { return }
         guard let runner = try? runnerURL(project: project) else { return }
+        // 枠を組めないならコンパイルしない(合否に関わらない。枠なしでは起こさない)
+        let launch: SandboxedLaunch?
+        do {
+            launch = try sandboxedLaunch(project: project, runner: runner, arguments: ["compile-ocr"],
+                                         reportDir: nil, connection: nil, drivesDevice: false)
+        } catch {
+            return
+        }
         let process = Process()
-        process.executableURL = runner
-        process.arguments = ["compile-ocr"]
+        process.executableURL = launch?.executable ?? runner
+        process.arguments = launch?.arguments ?? ["compile-ocr"]
         // **親の死で巻き込まない**(`FT_PARENT_PID` を渡さない = ParentDeathWatch を武装しない)。
         // 1 シナリオだけの短い run(約 30 秒)では親が先に終わるが、コンパイルはコールドで 20〜45 秒 × 2 で、
         // 親と一緒に死ぬとコンパイルがコミットされず、次の run もまたゼロから払う(このコンパイルが
@@ -258,6 +266,7 @@ public enum ScenarioHost {
         // 拡張の孤児掃除も `FT_PARENT_PID` の印を持つものだけを殺すので巻き込まれない
         var env = ProcessInfo.processInfo.environment
         if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir { env["DEVELOPER_DIR"] = dir }
+        if let launch { env.merge(launch.environment) { $1 } }
         process.environment = env
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -314,7 +323,18 @@ public enum ScenarioHost {
 
     public static func list(project: TestProject) throws -> [ScenarioInfo] {
         let runner = try runnerURL(project: project)
-        let result = try Shell.run([runner.path, "list", "--json"])
+        var command = [runner.path, "list", "--json"]
+        do {
+            if let launch = try sandboxedLaunch(project: project, runner: runner, arguments: ["list", "--json"],
+                                                reportDir: nil, connection: nil, drivesDevice: false) {
+                // Shell.run は /usr/bin/env 経由なので、先頭の NAME=VALUE が子の環境になる
+                command = launch.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+                    + [launch.executable.path] + launch.arguments
+            }
+        } catch {
+            throw ScenarioHostError.listFailed(error.localizedDescription)
+        }
+        let result = try Shell.run(command)
         guard result.status == 0 else {
             throw ScenarioHostError.listFailed(result.tail)
         }
@@ -513,6 +533,34 @@ public enum ScenarioHost {
         // dry-run は撮らない(デバイスに触らない)
         if let stillFramesDir, !dryRun { args += ["--still-frames-dir", stillFramesDir.path] }
         process.arguments = args
+        // 包むと `sandbox-exec` 自体は起動でき、ランナーの exec の失敗は子の終了に化けて失敗の記録が残らない。
+        // 起動できない形(ディレクトリ・実行権なし)は包む前に `Process.run()` の throw と同じ扱いで止める
+        var isDirectory: ObjCBool = false
+        if !FileManager.default.fileExists(atPath: runner.path, isDirectory: &isDirectory) || isDirectory.boolValue
+            || !FileManager.default.isExecutableFile(atPath: runner.path) {
+            return abortBeforeLaunch("Cannot start the runner: \(runner.path) is not an executable file")
+        }
+        // 包むと決まったのに枠を組めないときは起こさない(枠なしで黙って走らせない)。dry-run も包む ——
+        // シナリオの本体(利用者の Swift)は dry-run でも実行される(`NullDriver` はドライバを替えるだけ)
+        var sandboxBroker: SandboxBroker?
+        defer { sandboxBroker?.stop() }
+        do {
+            if let launch = try sandboxedLaunch(
+                project: project, runner: runner, arguments: args, reportDir: reportDir,
+                extraWritable: (dryRun ? nil : stillFramesDir).map { [$0.path] } ?? [],
+                connection: connection, drivesDevice: !dryRun) {
+                sandboxBroker = launch.broker
+                process.executableURL = launch.executable
+                process.arguments = launch.arguments
+                process.environment = (process.environment ?? [:]).merging(launch.environment) { $1 }
+                // シナリオごとに出す: 枠に断られた失敗(EPERM)は、この行が無いと原因に辿り着けない
+                let notice = ScenarioEvent.log(ScenarioSandbox.notice)
+                eventLog?.appendHost(notice)
+                emit(notice)
+            }
+        } catch {
+            return abortBeforeLaunch("sandbox: " + error.localizedDescription)
+        }
 
         let stdout = Pipe()
         let stderr = Pipe()
