@@ -151,6 +151,15 @@ as arbitrary Swift code (a dry run executes them too).
   bridges (including other devices' bridges and other services listening on this Mac's localhost). It can send the contents of files it could read to a
   device as input to an app. The app under test itself runs outside the sandbox. The setup / teardown scripts that
   `ft_start_run` runs and `Package.swift`, which is evaluated at build time, are not covered by the sandbox.
+  - **Every localhost port is open** (there is no setting to narrow it, because on some paths a bridge's port is only
+    decided after the scenario has started; only the adb server and Emulator ports are closed). The sandbox is
+    therefore only as strong as the services listening on this Mac's localhost. On a Mac that runs untrusted
+    scenarios, do not leave these running:
+    - Anything that runs code without authentication (debug ports of browsers or Node.js, Jupyter, Docker exposed
+      over TCP, and so on): a scenario can run code outside the sandbox through it
+    - Local proxies (traffic inspection tools, corporate proxy agents, SSH port forwards, and so on): a scenario can
+      bypass `allowedDomains` and reach any destination
+  - A scenario can also connect to the bridges of other devices on the same Mac, so it can read and operate their screens.
 - **Choose what to approve by what runs outside the sandbox.**
 
   | Tools that ask for approval | Convenience | What goes past a human |
