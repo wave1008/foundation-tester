@@ -533,7 +533,7 @@ function hmDraw(row, entry, scale) {
   // コンパイル中の語はチャートの上に重ねる(ユーザー決定。値のセルは回数のまま)。線の後に描いて隠れないようにする
   if (entry === row.entries.vision && hmIsCompilingNow(row)) {
     const style = window.getComputedStyle(document.body);
-    ctx.font = `600 10px ${style.fontFamily || 'sans-serif'}`;
+    ctx.font = `10px ${style.fontFamily || 'sans-serif'}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     // 文字は系列と同じ色(ユーザー決定。機械が無効でグレーのときは文字もグレー)
