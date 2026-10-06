@@ -768,6 +768,8 @@ public enum ScenarioRunner {
                               appName: String? = nil,
                               appBundleID: String? = nil,
                               appPath: String? = nil,
+                              /// ScenarioHost.run(hostNotices:) への素通し
+                              hostNotices: [String] = [],
                               /// ScenarioHost.run(registerChildProcess:) への素通し
                               /// (RunOrchestrator が中断口として保持する同名プロパティ参照)
                               registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
@@ -797,6 +799,7 @@ public enum ScenarioRunner {
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
             appPath: appPath, appName: appName, appBundleID: appBundleID,
+            hostNotices: hostNotices,
             registerChildProcess: registerChildProcess, stillFramesDir: stillFramesDir) { event in
             switch event.kind {
             case "sceneStarted":
@@ -1045,6 +1048,10 @@ public final class RunOrchestrator: Sendable {
     /// retired ワーカーの論理デバイス復帰。nil(未注入)なら復帰を試みず即ギブアップ
     /// (呼び出し側がプロファイル経由の場合のみ注入。--port 等の非プロファイル経路では nil)
     private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
+    /// 各シナリオを子へ渡す直前に、画面に残ったシステムアラートを消す(`ResidualSystemAlertClearing`)。
+    /// 戻り値はレーンへ出す1行(nil = 何もしなかった)。**init に既定値を置かない**(呼び手の渡し忘れを
+    /// コンパイルで止める。消せない経路は警告だけを返す口を明示して渡す)
+    private let clearResidualSystemAlert: (@Sendable (RunWorker) async -> String?)?
     /// 緑で終わったシナリオの直後に、そのレーンの XCUITest ランナーを測り直す(劣化していれば同じポートで
     /// 起動し直す)。引数 = worker・そのシナリオのステップ snapshot 所要の最大(ms。無ければ nil)・
     /// そのレーンへ 1 行出す口。測るか・どう起動し直すかは FTBridgeClient 側の知識なので
@@ -1159,6 +1166,7 @@ public final class RunOrchestrator: Sendable {
                 writeRunProgress: (@Sendable (RunProgressRecord) -> Void)? = nil,
                 removeRunProgress: (@Sendable () -> Void)? = nil,
                 progressHistoryRuns: Int,
+                clearResidualSystemAlert: (@Sendable (RunWorker) async -> String?)?,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
                 recheckRunner: RunnerRecheck? = nil,
@@ -1192,6 +1200,7 @@ public final class RunOrchestrator: Sendable {
         self.progressHistoryRuns = progressHistoryRuns
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
+        self.clearResidualSystemAlert = clearResidualSystemAlert
         self.recheckRunner = recheckRunner
         self.lateWorkers = lateWorkers
         self.installHandler = installHandler
@@ -1700,6 +1709,9 @@ public final class RunOrchestrator: Sendable {
         // ここで打ち切ると in-flight の子プロセスと記録の整合が崩れる。子を止めるのは
         // registerChildProcess 経由の SIGTERM で、呼び出し側の責務)
         while await !interruptRequested.isRequested(), let item = await queue.next() {
+            // 録画の区間・進捗の開始より前に置く(消すのに掛かった時間をシナリオに数えない)。
+            // 何をしたかは**そのシナリオのログ**に残す(結果のイベントログに載る = 権限を拒否で閉じた等が残る)
+            let residualAlertNotice = await clearResidualSystemAlert?(worker)
             // 動画のシナリオ毎クリップ切り出し用の壁時計区間通知(録画無効時は no-op)。
             // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
             await videoRecording?.scenarioStarted(
@@ -1717,6 +1729,7 @@ public final class RunOrchestrator: Sendable {
                 appBundleID: appBundleIDs[worker.platform],
                 appPath: appTargets[worker.platform]?
                     .packagePath(physical: worker.connection.physical),
+                hostNotices: residualAlertNotice.map { [$0] } ?? [],
                 registerChildProcess: registerChildProcess,
                 stillFramesDir: stillFramesDir,
                 onEvent: { [continuation, fmCounter = self.fmUnavailable] event in

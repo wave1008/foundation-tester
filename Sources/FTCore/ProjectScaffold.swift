@@ -174,13 +174,15 @@ public enum ProjectScaffold {
         // Edit の deny = 編集ツールと Claude Code が認識する Bash のファイル操作を止める。
         // **クローン構成(作業フォルダがクローンの内側)では書かない**(自分の作業ツリーを読み取り専用にする)。
         // deny は Read の allow を初めて足すときだけ書く(ask と同じ: 利用者が外した deny を補修で戻さない)
+        // マシン側の設定(`~/.config/fleetest/`)も同じ組で閉じる —— シナリオのサンドボックスを外す口
+        // (`sandbox.disabled`)がそこにある(`ScenarioSandbox.MachineSettings`)
         if let rules = cloneReadOnlyRules(packageRoot: packageRoot, toolRoot: toolRoot),
            !allow.contains(rules.read) {
             added.append(rules.read)
             var deny = (permissions["deny"] as? [String]) ?? []
-            if !deny.contains(rules.edit) {
-                deny.append(rules.edit)
-                added.append(rules.edit)
+            for rule in [rules.edit, machineConfigEditDeny] where !deny.contains(rule) {
+                deny.append(rule)
+                added.append(rule)
             }
             permissions["deny"] = deny
         }
@@ -196,6 +198,9 @@ public enum ProjectScaffold {
         try data.write(to: url, options: .atomic)
         return added
     }
+
+    /// マシン側の設定の編集を止める規則(`~/` は Claude Code のホーム相対の形)
+    static let machineConfigEditDeny = "Edit(~/.config/fleetest/**)"
 
     /// クローンを読み取り専用にする規則の組。パスは Claude Code の `//` 始まり = 絶対パスの形
     /// (`/` 1つだと settings.json の置き場所からの相対になる)。toolRoot が無い・相対・作業フォルダを含むなら nil

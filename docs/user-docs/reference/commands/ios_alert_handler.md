@@ -102,8 +102,22 @@ the alert to clear (or be closed by a registered button), and fails with
 
 - **A scenario that triggers an alert must close it within that same scenario.** SpringBoard
   draws it, so it survives `terminateApp()` and even `removeApp()` — it stays on screen for
-  whatever runs on that device next, and every following scenario on it hits the covering
-  failure above.
+  whatever runs on that device next.
+- **fleetest dismisses a leftover alert before the next scenario starts**, in this order:
+  1. If it has a button that decides nothing — `Cancel` / `Close`, or `OK` when it is the only
+     button (and the same labels in a Japanese UI) — fleetest presses it (under a second; works on
+     physical devices too).
+  2. If it is a permission dialog, fleetest presses its deny button (`Don't Allow`, and its Japanese
+     counterpart).
+     **The app's permission for it is now denied**, and the scenario's log says so; a scenario that
+     starts with `clearAppData()` is back to undecided anyway.
+  3. Otherwise, on a Simulator, fleetest restarts SpringBoard without pressing anything and rebuilds
+     that device's bridge (about 20 seconds; needs a run profile, `--profile`).
+  An affirming button (`Allow` and so on) is never pressed. Labels are matched exactly. What
+  was done appears in the scenario's log as `🧹 … a system alert was left on screen before this scenario (…)`.
+  On a physical device, or in a run without a run profile, an alert with none of the buttons above
+  stays, a warning is printed before each scenario, and every following scenario on that device
+  hits the covering failure above.
 - **A leftover alert survives across runs, too.** A warning is printed at the start of a run if
   a device already has one on screen.
 - **An operation that goes through XCUITest is not delivered while an alert is in front.**

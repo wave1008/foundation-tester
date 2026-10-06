@@ -3821,3 +3821,76 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
 - **ライブ操作専用の Emulator が 06:34:12 にゲスト再起動**(`sys.boot.reason=reboot`・QEMU は生存)。fleetest の唯一の撃ち手
   (`ProfileWorkerFactory.rebootGuest`)を通った記録は無い
 - CMP iOS の負荷下の白紙描画(OCR 段の赤)・GPU 負荷下の Vision の特徴量の異常は既知の型のまま
+
+## 71. シナリオのサンドボックスを常に有効にした(2026-10-06)
+
+**発端**: シナリオは任意の Swift として実行され、`import FTDSL` だけで FTCore の `Shell.run`(public)に届く。
+MCP の `ft_run_scenario` / `ft_dry_run` / `ft_list_scenarios` は受け手の設定で確認なしに通るので、エージェントが
+書いたシナリオ(アプリの画面に紛れ込んだ指示に従ったものを含む)が Bash の承認を経ずにホストで動く。
+§2.5 で「シナリオを実行する ft_* を allow から外す」案は分類器が悪意あるシナリオを 2/2 通したので不採用になっている。
+
+**比べて採らなかった案**:
+
+- **LLM でシナリオの危険性を判定する(PreToolUse フック + `claude -p`)**: 試作では隠した `Shell.run` を
+  見抜いた(Haiku 4.5・13.6 秒・約 $0.008)が、判定であって強制ではない。実行時の文字列の組み立て・評価役を
+  誘導する文ですり抜けうる。他ツールの先例でも言語内の隔離は破られている(Playwright MCP の `vm` 脱出 →
+  `browser_run_code_unsafe` へ改名、Maestro の JS は HTTP で外へ出られる)。`type: "agent"` のフックは `ask` を
+  返せず、失敗時に通すか止めるかも未定義
+- **コンパイル時の許可リスト(import と `@_` 属性の走査・`MemberImportVisibility`・strict memory safety)**:
+  決定論的で安いが、DSL の公開面を絞る(FTDSL の `@_exported import FTCore` をやめる)作業が要り、DSL 自身の
+  範囲の操作は止めない。壁(Seatbelt)を先に置いた
+
+**決定(ユーザー)**: PoC(ブランチ `poc/sandbox`)の Seatbelt を移植。**常に有効**・設定はマシン側だけ・
+許可ドメインはマシン側・読み取りの既定の拒否を内蔵・`devicectl` も親が代行。設計は docs/design.md §11.7、
+実測は docs/sandbox-seatbelt.md。
+
+### 71.1 緩める口をエージェントの書ける場所に置かない
+
+PoC は任意機能だったので、設定は実行プロファイル(プロジェクトの中)にあった。攻撃の相手がエージェントなら、
+プロジェクトに `sandbox: false` を書くだけで外せる。移植では包む判断を `ScenarioHost.sandboxedLaunch` の中で
+完結させ(マシン側の設定だけを読む)、呼び手は何も運ばない。副産物として PoC の配線(fleetest・MCP・拡張・
+`RunProfile` の 39 ファイル)が丸ごと要らなくなった。
+
+**同じ理由で環境変数も口にしない**。PoC は `HOME`・`TMPDIR`・`XDG_CONFIG_HOME`・`FT_*_DIR`・`FT_TOOL_ROOT` から
+書ける場所と読ませない場所を組んでいた(`.mcp.json` の `env` やコマンド行で差し替えられる)。移植の途中で気づいて
+塞いだ(表は docs/sandbox-seatbelt.md §8.5)。**枠の形を決める値を足すときは、それを誰が書けるかを先に見る**。
+
+### 71.2 包むと「起動できない」が子の終了に化ける
+
+`sandbox-exec` は自分が起動してから中でランナーを exec するので、起動できないランナー(ディレクトリ・実行権なし)が
+`Process.run()` の throw にならず、子の終了コードになった。失敗の記録(結果 JSON)が残らず、
+`ScenarioHostRunnerUnavailableTests` が落ちて気づいた。包む前に実行可能かを確かめて同じ文言で止める。
+**包む・中継する層を挟むと、下の層の「起動できない」は上の層の「終わった」に化ける**。
+
+### 71.3 壁の外に残るもの(閉じていない)
+
+localhost のサービス(ブリッジ・adb = Emulator の shell)・デバイスを介した持ち出し・テスト対象のアプリ・
+setup / teardown スクリプト(`ft_start_run` の確認で受ける)・`Package.swift`(SwiftPM 自身の枠で評価)。
+シナリオの中身の安全は約束しない(受け手 docs にも同じことを書いた)。
+
+## 72. 残ったシステムアラートを各シナリオの前にボタンを押さずに消す(2026-10-06)
+
+**発端**: XCUITest エンジンの E2E で `iosAlertHandler` が発火せず写真の許可アラートが -07 に残り、同じレーンの
+後続シナリオが 16 回「a system alert is in front of the app」で落ちてレーンの復帰も使い切った。
+**決定(ユーザー)**: 各シナリオの開始時に消す。最初は**ボタンを押さずに**(SpringBoard の起こし直し)としたが、
+起こし直しは約 20 秒かかるため、**3段の使い分け**に改めた: ①何も決めないボタン(キャンセル・閉じる・1つだけの
+OK)を押す ②権限のダイアログは拒否側を押して、権限が拒否になった旨をシナリオのログ(結果のイベントログ)に残す
+③どれも無ければ起こし直し。是認側は押さない・ラベルは完全一致。押してよい一覧は `ResidualSystemAlertClearing`
+の2つだけ(`SystemAlertDismissal` の「推測しない」の例外は、前のシナリオの残り物を消すこの1点)。
+押す木は **SpringBoard の木**(`/systemui/snapshot` + `systemUITap`)—— `snapshot()` はセッション中のアプリの木で
+アラートが写らず、最初の陽性対照は「ボタンが木に無い」で失敗した。押してから消えるまでは押す往復込みで約 0.8 秒
+(3回とも1回目の問い合わせで消えた)。判定と文言は `FTCore.ResidualSystemAlertClearing`、実体は
+`ProfileWorkerFactory.clearResidualSystemAlert`、呼ぶのは `RunOrchestrator` の各シナリオの直前
+(録画の区間より前。init に既定値を置かない)。
+
+- **SpringBoard の起こし直し(`launchctl kickstart -k system/com.apple.SpringBoard`)は XCUITest ランナーの
+  HTTP も殺す**(実測: 起こし直しの直後から `/status` が無応答・親の `xcodebuild` は残る)。だからそのデバイスの
+  ブリッジを作り直す(`api restart-bridge` と同じ手順)。所要は約 5 秒 + 14 秒 = 約 20 秒、残っていたときだけ
+- **起こし直しの直後の「アラートは無い」は当てにならない**(3.2 秒で `present:false` が返ったが画面は真っ黒 =
+  SpringBoard が居ないので見えないだけ)。確認は作り直したブリッジに聞く
+- **確認の問い合わせが取れない(nil)を「消えた」に倒さない**。陽性対照で、別のワークスペースが起こした
+  ランナー(供給が「そのまま使う」に倒れ、死んだポートを返す)のまま「消せた」と報告した。答えが取れて
+  `present:false` のときだけ成功、それ以外は理由付きの失敗
+- 実機は起こし直せない・プロファイルの無い run はブリッジを作り直せないので警告だけ
+
+**`iosAlertHandler` が XCUITest エンジンで発火しなかった原因は未調査**(in-app のフル E2E では同じシナリオが緑)。

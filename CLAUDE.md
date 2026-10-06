@@ -30,6 +30,8 @@
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - **UI フレームワーク別の差異の索引**(揃えている / 揃っていない / 経路だけ違う、の3区分で横に並べる):
   docs/framework-differences.md。**フレームワークで挙動が割れる変更を入れたら表に1行足す**
+- シナリオのサンドボックス(Seatbelt)の知見(実測した性質・要った許可・調べ方・壁の外に残るもの):
+  docs/sandbox-seatbelt.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
@@ -47,7 +49,9 @@
   (どちらも書式を変えた瞬間に静かに壊れる。仕分けは `DriverError` の case で行う)。
   渡し忘れは `CommandNamePlumbingTests` がソース走査で落とす
 - **割り込みに吸われた操作は撃ち直さない**(届いていた場合に二重実行 = 送信・購入で取り返しが
-  つかない)。ツールが閉じるのは**ステップ開始時点で出ている割り込み**まで。**間に湧いた分の
+  つかない)。ツールが閉じるのは**ステップ開始時点で出ている割り込み**まで(加えて、前のシナリオが残した
+  システムアラートはシナリオの開始前に消す。押すのは何も決めないボタンと権限の拒否側だけ・無ければ Simulator は
+  SpringBoard の起こし直し = maintainer-notes §72)。**間に湧いた分の
   復帰はシナリオ側**(docs/commands.md §割り込みが「操作を吸った」ときの扱い)。
   **自動リトライを再提案しない**
 
@@ -132,6 +136,9 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   user-docs・docs/shirates-parity.md・`ft_batch` のキー・引数名は `waitSeconds:` 等の規律(dsl-commands.md)
 - 受け手のフロー(install.sh・スキル)を変える → SKILL.md のステップ番号と 1:1(`installStepSync.test.mjs`)・
   受け手のファイルを書くのはステップ7.6 の入口だけ(installer-agents.md)
+- シナリオ実行バイナリを起こす経路・子が書く場所・子からの `simctl` / `devicectl` の呼び出しを足す → サンドボックスの
+  入口(`ScenarioHost.sandboxedLaunch`)・`ScenarioSandbox.writablePaths`・`SimctlPolicy` / `DevicectlPolicy` にも足す
+  (executor.md。常に有効なので漏れはデバイス実行で赤になるか、黙って効かなくなる)
 - iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorBootCleanup.beforeBoot(udid:)`
   (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2・§12.4.3)
 - モニターの周期に計測を足す → 周期の中で待たない(裏で回して控えを読むだけ。`DeviceStorageSampler`)

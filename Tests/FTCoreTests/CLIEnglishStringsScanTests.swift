@@ -38,6 +38,8 @@ final class CLIEnglishStringsScanTests: XCTestCase {
          "受け手の Package.swift へ書き込むマーカー(既存のファイルに実在するので変えられない)"),
         ("Sources/FTCore/BridgeSourceSet.swift",
          "versionConstantHint の読み手は BridgeContractTests の失敗文言(保守者向け)"),
+        ("Sources/FTCore/ResidualSystemAlertClearing.swift",
+         "iOS の日本語 UI のボタンのラベルとの照合表(入力の照合であって表示ではない)"),
         ("Sources/FTCore/WebViewDOMSnapshot.swift",
          "ブリッジへ渡す JS の本文(中の日本語はそのコードのコメント。表示文字列ではない)"),
     ]

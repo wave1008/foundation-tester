@@ -108,20 +108,46 @@ calling agent (it already has a snapshot and operation primitives to explore wit
 ## Sandbox and approval
 
 The MCP server runs **outside** the agent's shell sandbox. Tools that build and run
-(`ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run`) therefore execute the project's code outside
-the sandbox: `Package.swift`, the scenarios (`.swift`), and, for `ft_start_run`, the run profile's setup / teardown
-scripts.
+(`ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run`) execute the project's scenarios (`.swift`)
+as arbitrary Swift code (a dry run executes them too).
 
-- **Choose what to approve by what runs outside the sandbox.** If MCP tools pass without approval, code the agent
-  wrote into the work folder (for example by following instructions hidden in the app's screen) runs outside the
-  sandbox with no human check. When the agent types `fleetest run` in its shell, the sandbox or the approval prompt
-  stops it there.
+- **Scenarios always run inside fleetest's sandbox (macOS Seatbelt)**, whether they are started from MCP, the CLI or
+  the extension. Inside the sandbox a scenario:
+  - can write only to the report directory, the project's `.fleetest/` and temporary directories. It cannot write
+    the scenario sources, the fleetest clone, or anywhere else in your home folder.
+  - cannot read the usual places for credentials and personal data (`~/.ssh`, `~/.aws`, `~/.config`, keychains,
+    browser profiles, cookies, Mail, Messages and so on).
+  - can connect only within this Mac (the bridges, adb). Outside connections go through a proxy, and only to the
+    domains you allow.
+  - cannot launch other apps, or operate the Simulator or a physical device beyond the fixed operations fleetest
+    uses (fleetest itself performs those operations on the scenario's behalf and lets only known shapes through).
+- **The sandbox settings live only in `sandbox` in this Mac's `~/.config/fleetest/config.json`** (never in the
+  project, because an agent can rewrite the project).
+
+  ```json
+  {
+    "sandbox": {
+      "denyRead": ["~/work/secrets"],
+      "allowedDomains": ["api.example.com", "*.example.org"]
+    }
+  }
+  ```
+
+  `denyRead` **adds** places to the built-in list; `allowedDomains` lists destinations scenarios may reach (leave it
+  out and nothing outside this Mac is reachable). `"disabled": true` turns the sandbox off on this Mac. An unknown key
+  or broken JSON stops the scenario from starting with an error. For Claude Code, the installer writes a rule into the
+  work folder's `.claude/settings.json` that denies editing that folder.
+- **Some things stay outside the sandbox.** A scenario can still connect to services running on this Mac such as the
+  bridges and adb (adb can run commands inside an Emulator). It can send the contents of files it could read to a
+  device as input to an app. The app under test itself runs outside the sandbox. The setup / teardown scripts that
+  `ft_start_run` runs and `Package.swift`, which is evaluated at build time, are not covered by the sandbox.
+- **Choose what to approve by what runs outside the sandbox.**
 
   | Tools that ask for approval | Convenience | What goes past a human |
   |---|---|---|
   | none | never interrupted | nothing (assumes a repository and app you trust) |
   | `ft_start_run` (recommended) | once, when you ask for a test run | setup / teardown scripts, sending a run to another machine |
-  | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` | asked at every compile and check while writing scenarios | every execution of code outside the sandbox |
+  | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` | asked at every compile and check while writing scenarios | every scenario execution |
 
   For Claude Code, the installer writes "allow the fleetest tools (`mcp__fleetest`), ask only before `ft_start_run`
   (`ask`)" into the work folder's `.claude/settings.json` (the recommended shape; remove it from `ask` if you do not
@@ -131,9 +157,9 @@ scripts.
   For Codex, see [AI assistants other than Claude Code](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
   under `[mcp_servers.fleetest.tools.<tool name>]` per tool). `writes`, which skips approval only for read-only tools,
   also counts screen operations (taps, typing) as writes, so exploring a screen means dozens of approvals.
-- **Check the contents of scenarios you receive from others before running them.** A scenario runs as arbitrary
-  Swift code, even in a dry run. Neither the approval settings nor Auto mode look at that code; they only see the
-  act of running it.
+- **Check the contents of scenarios you receive from others before running them.** The sandbox protects this Mac,
+  but it does not stop what is listed above as staying outside, nor operations on the app under test or its accounts
+  (deleting, purchasing and so on).
 - **`ft_start_run`'s `runner` accepts only registered machine names and `local`.** Raw destinations such as
   `user@host` are refused, so scenarios and profiles are never sent to a machine the user has not registered.
   Register machines with `fleetest remote machines add`. The CLI's `fleetest run --runner` accepts raw destinations too.

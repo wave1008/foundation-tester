@@ -151,8 +151,8 @@ public enum ProfileWorkerFactory {
             + " Rotate it back to portrait (e.g. rotateTo(.portrait) or the live view)"
     }
 
-    /// run 開始時点で画面に残っているアラートを**警告する**(閉じない。理由と背景は
-    /// FTCore.ResidualSystemAlertTriage)。閉じたいならシナリオの `iosAlertHandler`。
+    /// run 開始時点で画面に残っているアラートを**警告する**(ここでは閉じない。理由と背景は
+    /// FTCore.ResidualSystemAlertTriage)。各シナリオの直前に残っていれば `clearResidualSystemAlert` が消す
     ///
     /// **SpringBoard を見られる接続でしか判定できない**ので、engine=inapp 単独のデバイスは黙って飛ばす
     /// (in-app ブリッジは注入先アプリのプロセスしか見えない = 「アラートが無い」と誤って言える)。
@@ -203,6 +203,135 @@ public enum ProfileWorkerFactory {
                 }
             }
             for await line in group { if let line { log(line) } }
+        }
+    }
+
+    /// 各シナリオの前に、画面に残ったシステムアラートを消す(どう消すかは FTCore.ResidualSystemAlertClearing の
+    /// 3段)。`profile` が nil の経路(プロファイルの無い run)はブリッジを作り直せないので、押せるボタンが
+    /// 無ければ警告だけ。戻り値はそのシナリオのログへ出す1行(nil = 残っていない・判定できない)
+    public static func clearResidualSystemAlert(
+        worker: RunWorker, profile: (resolved: ResolvedProfile, repoRoot: URL)?
+    ) async -> String? {
+        guard let client = systemUIClient(for: worker) else { return nil }
+        let probe = await probeSystemAlert(client)
+        let device = profile?.resolved.iosDevices.first { $0.name == worker.logicalName }
+        let plan = ResidualSystemAlertClearing.plan(
+            probe: probe, label: worker.label, physical: worker.connection.physical,
+            canRebuildBridge: device != nil && worker.connection.udid != nil)
+        guard let probe else { return nil }
+        let alert = ResidualSystemAlertClearing.describe(probe)
+        switch plan {
+        case .nothing:
+            return nil
+        case .warnOnly(let line):
+            return line
+        case .press(let button, let deniesPermission):
+            return await pressResidualAlertButton(
+                client: client, label: worker.label, alert: alert, button: button,
+                deniesPermission: deniesPermission)
+        case .clear:
+            guard let device, let (resolved, repoRoot) = profile, let udid = worker.connection.udid else {
+                return nil
+            }
+            return await respringAndRebuild(
+                worker: worker, client: client, alert: alert, udid: udid,
+                device: (device.name, device.spec), resolved: resolved, repoRoot: repoRoot)
+        }
+    }
+
+    /// 残ったアラートのボタンを押す。木は **SpringBoard の木**(`/systemui/snapshot` = セッションを触らない)から取り、
+    /// その ref は同じ名前空間の `systemUITap` で押す(`snapshot()` はセッション中のアプリの木で、アラートが写らない。
+    /// 実測: 「ボタンが木に無い」で失敗した)。押した後に**答えが取れて** `present:false` になったときだけ成功
+    static func pressResidualAlertButton(client: BridgeClient, label: String, alert: String, button: String,
+                                         deniesPermission: Bool) async -> String {
+        guard let snapshot = try? await client.systemUISnapshot(),
+              let ref = ResidualSystemAlertClearing.buttonRef(label: button, in: snapshot.elements) else {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: label, alert: alert, reason: "the button \u{201C}\(button)\u{201D} was not found in the tree")
+        }
+        do {
+            try await client.systemUITap(ref: ref)
+        } catch {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: label, alert: alert, reason: "pressing \u{201C}\(button)\u{201D} failed: \(error.localizedDescription)")
+        }
+        // 待つのは閉じたと観測できるまで。上限は問い合わせ 6 回 × 0.5 秒 = 約 3 秒(実測: 押した直後の
+        // 1回目の問い合わせで3回とも消えていた・押す往復を含めて約 0.8 秒。尽きたら「残っている」と言う)
+        for _ in 0..<6 {
+            if let after = await probeSystemAlert(client), !after.present {
+                return ResidualSystemAlertClearing.pressedMessage(
+                    label: label, alert: alert, button: button, deniesPermission: deniesPermission)
+            }
+            try? await Task.sleep(nanoseconds: 500_000_000)
+        }
+        return ResidualSystemAlertClearing.failedMessage(
+            label: label, alert: alert, reason: "it is still there after pressing \u{201C}\(button)\u{201D}")
+    }
+
+    /// SpringBoard を起こし直して消し(ボタンを押さない)、一緒に死ぬ XCUITest ランナーを作り直す
+    static func respringAndRebuild(worker: RunWorker, client: BridgeClient, alert: String, udid: String,
+                                   device: (name: String, spec: DeviceSpec), resolved: ResolvedProfile,
+                                   repoRoot: URL) async -> String {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let respring = try? Shell.run(["xcrun", "simctl", "spawn", udid, "launchctl", "kickstart", "-k",
+                                       "system/com.apple.SpringBoard"], timeout: 30)
+        guard respring?.status == 0 else {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: worker.label, alert: alert,
+                reason: "restarting SpringBoard failed (\(respring?.tail ?? "simctl did not run"))")
+        }
+        // `api restart-bridge` と同じ手順(止めてから同じデバイスへ供給し直す)。同じポートで戻らないと
+        // ワーカーのドライバが別の宛先を指したままになるので確かめる
+        _ = BridgeLauncher.stopRunnersMatching(udid: udid, repoRoot: repoRoot)
+        let iosApp = resolved.apps["ios"]
+        let provisionLog = LockedValue<[String]>([])
+        let provisioned = try? await BridgeProvisioner(repoRoot: repoRoot).provision(
+            devices: [device], bundleID: iosApp?.bundleID, preinstallAppPath: nil,
+            log: { line in provisionLog.withLock { $0.append(line) } })
+        let lastProvisionLine = provisionLog.withLock { $0.last } ?? "no output"
+        guard let rebuilt = provisioned?.first else {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: worker.label, alert: alert,
+                reason: "the bridge did not come back after restarting SpringBoard (\(lastProvisionLine))")
+        }
+        let expectedPort = worker.connection.xcuiPort ?? worker.connection.port
+        guard (rebuilt.xcuiPort ?? rebuilt.port) == expectedPort else {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: worker.label, alert: alert,
+                reason: "the bridge came back on port \(rebuilt.xcuiPort ?? rebuilt.port) instead of"
+                    + " \(expectedPort.map(String.init) ?? "?")")
+        }
+        // **答えが取れたときだけ「消えた」と言う**(取れない = ブリッジが戻っていない。nil を「無い」に倒すと
+        // 死んだランナーのまま「消せた」と報告する。実測: 別のワークスペースが起こしたランナーで起きた)
+        guard let after = await probeSystemAlert(client) else {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: worker.label, alert: alert,
+                reason: "the XCUITest bridge does not answer after restarting SpringBoard (\(lastProvisionLine))")
+        }
+        if after.present {
+            return ResidualSystemAlertClearing.failedMessage(
+                label: worker.label, alert: alert,
+                reason: "it is still there after restarting SpringBoard (\(ResidualSystemAlertClearing.describe(after)))")
+        }
+        let elapsed = clock.now - start
+        return ResidualSystemAlertClearing.clearedMessage(
+            label: worker.label, alert: alert,
+            seconds: Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
+    }
+
+    /// `/systemalert` を 5 秒で打ち切る(固まったブリッジに各シナリオの前で待たされない。打ち切り = 判定しない)
+    static func probeSystemAlert(_ client: BridgeClient) async -> SystemAlertProbeResponse? {
+        let target = UncheckedTransfer(client)
+        return await withTaskGroup(of: SystemAlertProbeResponse?.self) { group in
+            group.addTask { (try? await target.value.systemAlert()) ?? nil }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 

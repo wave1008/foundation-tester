@@ -38,13 +38,16 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     /// **既定値はここに持たない** —— 唯一の定義元は `RetentionPolicy` の static。
     /// nil(欄ごと無い)は「全部既定」であって「掃除しない」ではない
     public var retention: RetentionPolicy?
+    /// シナリオ実行バイナリのサンドボックス(`ScenarioSandbox`)。**読むのは `ScenarioSandbox.machineSettings` だけ**
+    /// —— `XDG_CONFIG_HOME` を無視して実ホームの固定パスから読む(環境変数で別の設定へ向けて枠を緩めさせない)
+    public var sandbox: ScenarioSandbox.MachineSettings?
 
     public init(defaultProject: String? = nil,
                 lastRunProfile: [String: String]? = nil,
                 developmentTeam: String? = nil, bundleIDPrefix: String? = nil,
                 remoteHosts: [RemoteHostEntry]? = nil, issuerId: String? = nil,
                 fmConcurrency: Int? = nil, localMachineEnabled: Bool? = nil,
-                retention: RetentionPolicy? = nil) {
+                retention: RetentionPolicy? = nil, sandbox: ScenarioSandbox.MachineSettings? = nil) {
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
         self.developmentTeam = developmentTeam
@@ -54,6 +57,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
         self.fmConcurrency = fmConcurrency
         self.localMachineEnabled = localMachineEnabled
         self.retention = retention
+        self.sandbox = sandbox
     }
 
     /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。

@@ -146,6 +146,10 @@ enum ProfileRunOrchestrator {
                                          directory: RunProgressLedger.directory())
             },
             progressHistoryRuns: progressHistoryRuns,
+            clearResidualSystemAlert: { worker in
+                await ProfileWorkerFactory.clearResidualSystemAlert(
+                    worker: worker, profile: (resolved, repoRoot))
+            },
             cleanupRetiredWorker: { retired in
                 // ウェッジした旧ブリッジ(/status 無応答)は provision の再利用スキャンに映らないまま
                 // 生き残り、シミュレータを掴み続ける。離脱検知の時点で UDID 照合で明示停止する
