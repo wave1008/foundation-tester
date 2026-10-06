@@ -2,6 +2,11 @@
 import CompilerPluginSupport
 import PackageDescription
 
+// Extra dependencies for each project's scenario target: "<project name>": [dependencies].
+// fleetest project sync keeps this declaration. Declare the packages themselves in
+// `dependencies:` of the Package as usual.
+let fleetestScenarioDependencies: [String: [Target.Dependency]] = [:]
+
 let package = Package(
     name: "foundation-tester",
     platforms: [
@@ -138,115 +143,115 @@ let package = Package(
         // === fleetest projects begin(fleetest project create/sync が自動生成。手編集禁止)===
         .executableTarget(
             name: "fleetest-scenarios-E2E-Android",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2E-Android"] ?? []),
             path: "TestProjects/E2E-Android/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-CMP",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2E-CMP"] ?? []),
             path: "TestProjects/E2E-CMP/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-Flutter",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2E-Flutter"] ?? []),
             path: "TestProjects/E2E-Flutter/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-RN",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2E-RN"] ?? []),
             path: "TestProjects/E2E-RN/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2E-iOS",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2E-iOS"] ?? []),
             path: "TestProjects/E2E-iOS/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-Android",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EX-Android"] ?? []),
             path: "TestProjects/E2EX-Android/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-CMP",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EX-CMP"] ?? []),
             path: "TestProjects/E2EX-CMP/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-Flutter",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EX-Flutter"] ?? []),
             path: "TestProjects/E2EX-Flutter/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-RN",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EX-RN"] ?? []),
             path: "TestProjects/E2EX-RN/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EX-iOS",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EX-iOS"] ?? []),
             path: "TestProjects/E2EX-iOS/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EY-Android",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EY-Android"] ?? []),
             path: "TestProjects/E2EY-Android/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EY-CMP",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EY-CMP"] ?? []),
             path: "TestProjects/E2EY-CMP/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EY-Flutter",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EY-Flutter"] ?? []),
             path: "TestProjects/E2EY-Flutter/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EY-RN",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EY-RN"] ?? []),
             path: "TestProjects/E2EY-RN/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-E2EY-iOS",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["E2EY-iOS"] ?? []),
             path: "TestProjects/E2EY-iOS/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-SampleApp",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["SampleApp"] ?? []),
             path: "TestProjects/SampleApp/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-default",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["default"] ?? []),
             path: "TestProjects/default/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-project1",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["project1"] ?? []),
             path: "TestProjects/project1/scenarios",
             exclude: ["_disabled"]
         ),
         .executableTarget(
             name: "fleetest-scenarios-sut-ec-mobile",
-            dependencies: ["FTScenarioRunner", "FTDSL"],
+            dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["sut-ec-mobile"] ?? []),
             path: "TestProjects/sut-ec-mobile/scenarios",
             exclude: ["_disabled"]
         ),

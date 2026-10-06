@@ -59,6 +59,87 @@ final class PackageManifestEditorTests: XCTestCase {
             .contains("fleetest-scenarios-"))
     }
 
+    func testSyncDeclaresExtraDependenciesOnceAndKeepsWhatTheUserWrote() throws {
+        try PackageManifestEditor.updateProjects(
+            manifestURL: manifestURL, projectNames: ["Demo"], verify: false)
+        var content = try String(contentsOf: manifestURL, encoding: .utf8)
+        XCTAssertTrue(content.contains(
+            "let fleetestScenarioDependencies: [String: [Target.Dependency]] = [:]\n\nlet package = Package("),
+            content)
+        XCTAssertTrue(content.contains(
+            #"dependencies: ["FTScenarioRunner", "FTDSL"] + (fleetestScenarioDependencies["Demo"] ?? []),"#),
+            content)
+
+        content = content.replacingOccurrences(
+            of: "[String: [Target.Dependency]] = [:]",
+            with: "[String: [Target.Dependency]] = [\n    \"Demo\": [\"Helpers\"],\n]")
+        try content.write(to: manifestURL, atomically: true, encoding: .utf8)
+        try PackageManifestEditor.updateProjects(
+            manifestURL: manifestURL, projectNames: ["Demo", "Other"], verify: false)
+        let synced = try String(contentsOf: manifestURL, encoding: .utf8)
+        XCTAssertTrue(synced.contains("    \"Demo\": [\"Helpers\"],\n]"), "利用者が書いた依存を sync が消した")
+        XCTAssertEqual(synced.components(separatedBy: "let fleetestScenarioDependencies").count, 2,
+                       "宣言は1つだけ")
+        XCTAssertTrue(synced.contains(#"(fleetestScenarioDependencies["Other"] ?? [])"#), synced)
+    }
+
+    func testDeclarationGoesAfterImportWhenThereIsNoLetPackage() throws {
+        let manifest = "import PackageDescription\nvar package = Package(name: \"x\")\n"
+        let updated = try PackageManifestEditor.ensureExtraDependenciesDeclaration(
+            in: manifest, manifestURL: manifestURL)
+        XCTAssertTrue(updated.hasPrefix(
+            "import PackageDescription\n\n// Extra dependencies"), updated)
+        XCTAssertThrowsError(try PackageManifestEditor.ensureExtraDependenciesDeclaration(
+            in: "// nothing", manifestURL: manifestURL))
+    }
+
+    func testUnknownExtraDependencyKeysAreTheOnesThatAreNotProjects() {
+        let manifest = """
+        let fleetestScenarioDependencies: [String: [Target.Dependency]] = [
+            "Demo": [.product(name: "SwiftOTP", package: "SwiftOTP")],
+            "Dmeo": [
+                "Helpers",
+            ],
+        ]
+        let package = Package(name: "x", targets: [.target(name: "Helpers", path: "Sources/Helpers")])
+        """
+        XCTAssertEqual(PackageManifestEditor.unknownExtraDependencyKeys(
+            in: manifest, projectNames: ["Demo"]), ["Dmeo"])
+        XCTAssertEqual(PackageManifestEditor.unknownExtraDependencyKeys(
+            in: manifest, projectNames: ["Demo", "Dmeo"]), [])
+        XCTAssertEqual(PackageManifestEditor.unknownExtraDependencyKeys(
+            in: "let fleetestScenarioDependencies: [String: [Target.Dependency]] = [:]\n\"X\": 1\n",
+            projectNames: []), [], "空の辞書の後ろの行を読まない")
+    }
+
+    /// 受け手の雛形に依存を足して SwiftPM に評価させる(生成した式が型検査を通り、依存がターゲットに載る)
+    func testRecipientManifestPassesExtraDependenciesToTheScenarioTarget() throws {
+        let manifest = ProjectScaffold.externalManifest(
+            packageName: "Recipient", dependencyLine: ".package(path: \"../foundation-tester\"),")
+            .replacingOccurrences(
+                of: "[String: [Target.Dependency]] = [:]",
+                with: "[String: [Target.Dependency]] = [\n    \"Demo\": [\"Helpers\"],\n]")
+            .replacingOccurrences(
+                of: "        \(PackageManifestEditor.beginMarker)",
+                with: "        .target(name: \"Helpers\", path: \"Helpers\"),\n"
+                    + "        \(PackageManifestEditor.beginMarker)")
+        try manifest.write(to: manifestURL, atomically: true, encoding: .utf8)
+        try PackageManifestEditor.updateProjects(
+            manifestURL: manifestURL, projectNames: ["Demo"], external: true, verify: true)
+
+        let dump = try Shell.run(["swift", "package", "dump-package"],
+                                 cwd: manifestURL.deletingLastPathComponent())
+        let output = try XCTUnwrap(dump.outputIfSucceeded, dump.tail)
+        let start = try XCTUnwrap(output.firstIndex(of: "{"), output)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(
+            with: Data(output[start...].utf8)) as? [String: Any])
+        let targets = try XCTUnwrap(json["targets"] as? [[String: Any]])
+        let scenario = try XCTUnwrap(targets.first { $0["name"] as? String == "fleetest-scenarios-Demo" })
+        let deps = "\(scenario["dependencies"] ?? "")"
+        XCTAssertTrue(deps.contains("Helpers"), deps)
+        XCTAssertTrue(deps.contains("FTDSL"), deps)
+    }
+
     func testMarkersMissingThrows() throws {
         try "// no markers".write(to: manifestURL, atomically: true, encoding: .utf8)
         XCTAssertThrowsError(try PackageManifestEditor.updateProjects(

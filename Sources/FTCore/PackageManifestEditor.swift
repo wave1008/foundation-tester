@@ -3,6 +3,8 @@
 // プロジェクト毎の executableTarget "fleetest-scenarios-<name>" はこの区間に自動生成され、
 // fleetest project create/sync だけが書き換える(手編集禁止)。
 // 書換後は swift package dump-package で構文検証し、失敗時は元の内容へロールバックする。
+// 受け手が足す依存はマーカー区間の外の辞書 `fleetestScenarioDependencies`(プロジェクト名 → 依存)に書き、
+// 生成するターゲットはそれを参照するだけ(区間の中へ手で足すと sync が消す)。
 
 import Foundation
 
@@ -32,6 +34,20 @@ public enum PackageManifestEditor {
     public static let endMarker =
         "// === fleetest projects end ==="
 
+    /// 受け手が編集する辞書の名前。生成するターゲットはこれを名指しで参照するので、改名すると既存の
+    /// 受け手の Package.swift が壊れる(`ensureExtraDependenciesDeclaration` が足すのは新しい名前だけ)
+    public static let extraDependenciesName = "fleetestScenarioDependencies"
+
+    /// 辞書が無い Package.swift に足す宣言。受け手の Package.swift に残るので英語で書く
+    static let extraDependenciesDeclaration = """
+        // Extra dependencies for each project's scenario target: "<project name>": [dependencies].
+        // fleetest project sync keeps this declaration. Declare the packages themselves in
+        // `dependencies:` of the Package as usual.
+        let \(extraDependenciesName): [String: [Target.Dependency]] = [:]
+
+
+        """
+
     /// 1 プロジェクト分の executableTarget エントリ(targets 配列内、8 スペースインデント)。
     /// external = true(fleetest init が生成する受け手のパッケージ)では FTScenarioRunner/FTDSL を
     /// 内部ターゲット参照ではなく `.product(name:..., package: "foundation-tester")` で引く。
@@ -47,7 +63,7 @@ public enum PackageManifestEditor {
         return """
                 .executableTarget(
                     name: "fleetest-scenarios-\(name)",
-                    dependencies: \(deps),
+                    dependencies: \(deps) + (\(extraDependenciesName)["\(name)"] ?? []),
                     path: "TestProjects/\(name)/scenarios",
                     exclude: ["_disabled"]
                 ),
@@ -83,6 +99,12 @@ public enum PackageManifestEditor {
         var updated = original
         updated.replaceSubrange(start..<end,
                                 with: section(projectNames: projectNames, external: external) + "\n")
+        updated = try ensureExtraDependenciesDeclaration(in: updated, manifestURL: manifestURL)
+        let unknown = unknownExtraDependencyKeys(in: updated, projectNames: projectNames)
+        if !unknown.isEmpty {
+            ConsoleOut.err("⚠️ \(extraDependenciesName) in \(manifestURL.path) has keys that are not projects "
+                + "(their dependencies are not used): \(unknown.joined(separator: ", "))")
+        }
         guard updated != original else { return }
 
         try updated.write(to: manifestURL, atomically: true, encoding: .utf8)
@@ -94,6 +116,46 @@ public enum PackageManifestEditor {
                 throw PackageManifestEditorError.validationFailed(result.tail)
             }
         }
+    }
+
+    /// 辞書の宣言が無ければ `let package` の直前(無ければ `import PackageDescription` の直後)へ足す。
+    /// 生成したターゲットが名指しで参照するので、無いままだと Package.swift がコンパイルできない
+    static func ensureExtraDependenciesDeclaration(in content: String, manifestURL: URL) throws -> String {
+        guard content.range(of: #"\b(let|var)\s+\#(extraDependenciesName)\b"#,
+                            options: .regularExpression) == nil else { return content }
+        var updated = content
+        if let packageLine = updated.range(of: #"(?m)^let\s+package\s*="#, options: .regularExpression) {
+            updated.insert(contentsOf: extraDependenciesDeclaration, at: packageLine.lowerBound)
+        } else if let importLine = updated.range(of: #"(?m)^import\s+PackageDescription[^\n]*\n"#,
+                                                 options: .regularExpression) {
+            updated.insert(contentsOf: "\n" + extraDependenciesDeclaration, at: importLine.upperBound)
+        } else {
+            throw PackageManifestEditorError.validationFailed(
+                "Could not find where to declare \(extraDependenciesName) in \(manifestURL.path)"
+                    + " (no `let package =` and no `import PackageDescription` line)")
+        }
+        return updated
+    }
+
+    /// 辞書のキーのうち登録済みのプロジェクトでないもの(綴り違いは黙って依存が空になるので警告する)。
+    /// 宣言の行から、行頭が `]` の行(辞書の閉じ)までの各行の行頭の `"キー":` を拾う。式で組み立てた
+    /// 辞書は読めないが、そのときは何も拾わない(誤った警告は出さない)
+    static func unknownExtraDependencyKeys(in content: String, projectNames: [String]) -> [String] {
+        let lines = content.components(separatedBy: "\n")
+        guard let start = lines.firstIndex(where: {
+            $0.range(of: #"^\s*(let|var)\s+\#(extraDependenciesName)\b"#, options: .regularExpression) != nil
+        }) else { return [] }
+        if lines[start].contains("[:]") { return [] }
+        var keys: [String] = []
+        for line in lines[(start + 1)...] {
+            if line.hasPrefix("]") { break }
+            guard let match = line.range(of: #"^\s*"[^"]+"\s*:"#, options: .regularExpression) else { continue }
+            let key = line[match].trimmingCharacters(in: .whitespaces).dropFirst()
+                .prefix(while: { $0 != "\"" })
+            keys.append(String(key))
+        }
+        let known = Set(projectNames)
+        return keys.filter { !known.contains($0) }
     }
 
     /// マーカー区間に登録済みのプロジェクト名を抽出する(名前順)

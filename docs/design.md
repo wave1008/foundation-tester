@@ -3773,6 +3773,11 @@ executableTarget `fleetest-scenarios-<name>`(path: `TestProjects/<name>/scenario
   `swift package dump-package` で検証し、失敗時は元内容へロールバック(PackageManifestEditor)。
   マニフェスト内容自体が変わるため SwiftPM のマニフェストキャッシュ stale が構造的に起きない
   (Package.swift 内で FileManager 走査して動的生成する案はキャッシュ stale リスクで却下)
+- **受け手が足す依存は区間の外の辞書 `fleetestScenarioDependencies`**(プロジェクト名 → `[Target.Dependency]`)。
+  生成するターゲットは `dependencies: [FTScenarioRunner, FTDSL] + (辞書["<name>"] ?? [])` で参照するだけ。
+  宣言が無い Package.swift には sync が空で足す(参照だけ生成すると Package.swift がコンパイルできない)。
+  辞書のキーがプロジェクトでなければ sync が警告する(綴り違いは黙って依存が空になる)。辞書の名前は既存の
+  受け手の Package.swift に残るので改名しない
 - プロジェクト間はビルド隔離される(1 プロジェクトのコンパイルエラーが他を止めない)。
   バイナリ毎に objc 走査が分かれるため、シナリオ一覧のプロジェクト別化は発見ロジック無変更で成立
 - プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`(日本語はクラス名側で使う)
@@ -4374,7 +4379,8 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
 - **デバイスを介した持ち出し**。読めたファイルの中身を、アプリへの入力として送れる
 - **テスト対象のアプリ**。Simulator の中のプロセスは枠の外のホストプロセス
 - **setup / teardown スクリプトと `Package.swift`**。前者は `ft_start_run` の確認(`ask`)で受け、後者は
-  SwiftPM 自身のサンドボックスで評価される
+  SwiftPM 自身のサンドボックスで評価される。`fleetestScenarioDependencies`(§11.1)で足した依存のビルド
+  (マクロ・ビルドプラグインを含む)も枠の外 = SwiftPM とコンパイラ自身のサンドボックスだけ
 
 ## 12. デバイスモニターの画面配信と自己修復(2026-07-14)
 

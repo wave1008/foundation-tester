@@ -55,6 +55,39 @@ git URL へ依存させます(`--fleetest-branch` で追従するブランチを
 `Package.swift` のマーカー区間(`// === fleetest projects begin/end ===` の間)は
 `create`/`sync` が全置換で再生成するので、手で編集しないでください。
 
+## シナリオで使う依存を足す
+
+シナリオからは Foundation などのシステムのモジュールと `FTDSL` をそのまま import できます。
+それ以外の Swift パッケージや、複数のプロジェクトで共有する自前のターゲットを使うときは、
+`Package.swift` の2箇所に書きます。
+
+1. パッケージ自体を `Package` の `dependencies:` に足す(SwiftPM の通常の書き方)
+2. 使うプロジェクトの名前をキーにして、`fleetestScenarioDependencies` に依存を足す
+
+```swift
+let fleetestScenarioDependencies: [String: [Target.Dependency]] = [
+    "myapp": [
+        .product(name: "SwiftOTP", package: "SwiftOTP"),
+        "SharedHelpers",                 // 同じ Package.swift で定義した自前のターゲット
+    ],
+]
+
+let package = Package(
+    ...
+    dependencies: [
+        .package(path: "../foundation-tester"),
+        .package(url: "https://github.com/<owner>/SwiftOTP", from: "<version>"),
+    ],
+    ...
+```
+
+`fleetestScenarioDependencies` はマーカー区間の外にあるので、`create`/`sync` は書き換えません
+(宣言が無い `Package.swift` には `sync` が空の宣言を足します)。キーがプロジェクト名と一致しないと
+その依存は使われないため、`sync` が警告を出します。
+
+足した依存のビルド(マクロやビルドプラグインを含む)は、シナリオのサンドボックスの外で動きます。
+信頼できるパッケージだけを足してください。
+
 ## プロジェクト名の制約
 
 プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$` に従う必要があります

@@ -69,7 +69,7 @@ public enum ProjectScaffold {
         // swift-tools-version: 6.0
         import PackageDescription
 
-        let package = Package(
+        \(PackageManifestEditor.extraDependenciesDeclaration)let package = Package(
             name: "\(packageName)",
             platforms: [
                 // fleetest 本体の Package.swift と一致させる(本体より低いと解決に失敗する)。
