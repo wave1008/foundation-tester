@@ -282,4 +282,24 @@ final class ResultsLogReportTests: XCTestCase {
             XCTAssertEqual(($0 as? ResultsLogError)?.message, "run not found: nope")
         }
     }
+
+    /// runID はそのままパスに足されるので、`..` を含む ID で別の場所の run.json・events/ を読ませない
+    /// (MCP の ft_results の runId から来る)。迂回先が実在する形にして、門が無ければ読めることを担保する
+    func testRunIDThatWalksOutOfItsDirectoryIsRefused() throws {
+        let victim = "20260928-000000Z-aaaaaaaa"
+        try writeRun(victim, events: ["Victim.s": ["secret"]])
+        let monthDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: victim).deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: monthDir.appendingPathComponent("202609"),
+                                                withIntermediateDirectories: true)
+        let walking = "202609/../\(victim)"
+        XCTAssertTrue(FileManager.default.fileExists(atPath: RunResultsStore.runDir(
+            resultsDir: resultsDir, runID: walking).appendingPathComponent("events").path),
+            "陽性対照: 迂回した runID が実在の run を指していない")
+        for runID in [walking, "..", ".", ""] {
+            XCTAssertThrowsError(try build(runID), runID) {
+                XCTAssertEqual(($0 as? ResultsLogError)?.message, "not a run ID: \(runID.debugDescription)")
+            }
+        }
+        XCTAssertEqual(try build(victim).map(\.heading), ["Victim.s"])
+    }
 }

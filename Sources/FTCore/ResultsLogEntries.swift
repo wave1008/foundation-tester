@@ -31,6 +31,10 @@ public enum ResultsLogReport {
             }
             resolvedRunID = latest.runID
         } else {
+            // MCP の ft_results(runId)からも来る
+            guard RunResultsStore.isSingleComponentRunID(requestedRunID) else {
+                throw ResultsLogError(message: "not a run ID: \(requestedRunID.debugDescription)")
+            }
             resolvedRunID = requestedRunID
         }
 

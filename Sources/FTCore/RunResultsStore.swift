@@ -24,6 +24,12 @@ public enum RunResultsStore {
         projectRoot.appendingPathComponent("results")
     }
 
+    /// 外から受けた runID が runs/<YYYY-MM>/ の1階層に収まるか。`runDir` は runID をそのまま
+    /// パスに足すので、`/` や `..` を含むと results/ の外の run.json・events/ を読ませる
+    public static func isSingleComponentRunID(_ runID: String) -> Bool {
+        !runID.isEmpty && runID != "." && runID != ".." && !runID.contains("/") && !runID.contains("\0")
+    }
+
     /// runID 先頭の yyyyMMdd(UTC)から YYYY-MM を導出して配置する
     public static func runDir(resultsDir: URL, runID: String) -> URL {
         let runsDir = resultsDir.appendingPathComponent("runs")
