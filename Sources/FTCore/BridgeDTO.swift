@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 146
+    public static let bridgeProtocolVersion = 147
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -205,6 +205,42 @@ public enum BridgeAPI {
         }
         return diff == 0
     }
+
+    /// ブラウザが送った要求を断る(nil = 通す)。ループバックの待受に認証は無いので、閲覧中のページが
+    /// `http://127.0.0.1:<port>` へ送る要求(応答を読まない POST でも操作は届く)と DNS リバインディング
+    /// (ホスト名を 127.0.0.1 に向け直して応答まで読む)をここで止める。正規の呼び手(URLSession・
+    /// ブリッジの Java・curl)は `Origin` も `Sec-Fetch-Site` も付けない。`Sec-Fetch-Site: none` は
+    /// 人がアドレス欄に打った要求なので通す。`requireLoopbackHost` はトークンの無い待受だけ true
+    /// (LAN の実機は Host が端末の IP になり、そちらはトークンが守る)。Host の無い要求は通す
+    /// (ブラウザは必ず付ける)。**同期相手: AndroidRunner の BridgeHttpServer.browserRequestRefusal**
+    /// (`BridgeBrowserGuardJavaSyncTests`)
+    public static func browserRequestRefusal(origin: String?, secFetchSite: String?, host: String?,
+                                             requireLoopbackHost: Bool) -> String? {
+        if origin != nil { return "requests from a web page are not accepted (Origin header)" }
+        if let site = secFetchSite,
+           site.trimmingCharacters(in: .whitespaces).lowercased() != "none" {
+            return "requests from a web page are not accepted (Sec-Fetch-Site: \(site))"
+        }
+        guard requireLoopbackHost, let host else { return nil }
+        let name = loopbackHostName(host)
+        guard browserGuardLoopbackHosts.contains(name) else {
+            return "requests must address the loopback interface (Host: \(host))"
+        }
+        return nil
+    }
+
+    /// Host ヘッダから名前だけを取る(`[::1]:8123` → `::1`・`127.0.0.1:8123` → `127.0.0.1`)。小文字
+    static func loopbackHostName(_ host: String) -> String {
+        let trimmed = host.trimmingCharacters(in: .whitespaces).lowercased()
+        if trimmed.hasPrefix("["), let close = trimmed.firstIndex(of: "]") {
+            return String(trimmed[trimmed.index(after: trimmed.startIndex)..<close])
+        }
+        // コロンが2つ以上 = 括弧なしの IPv6(ポート無し)
+        if trimmed.filter({ $0 == ":" }).count > 1 { return trimmed }
+        return trimmed.split(separator: ":", maxSplits: 1).first.map(String.init) ?? trimmed
+    }
+
+    public static let browserGuardLoopbackHosts: Set<String> = ["127.0.0.1", "localhost", "::1"]
 
     /// press/drag/swipe/pinch が iOS で XCTest に合成させる時間の**既定**上限(秒)。Android の
     /// 注入丸め(10 秒)と同じ値。**唯一の定義元**(`ArgumentBounds.numeric` の

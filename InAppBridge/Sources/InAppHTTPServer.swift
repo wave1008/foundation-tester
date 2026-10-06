@@ -15,6 +15,10 @@ final class InAppHTTPServer {
         /// BridgeHTTPServer.Request と同じ(両方が同じホストから同じ URL を受ける)
         let query: String
         let body: Data
+        /// ブラウザ由来かの判定材料(BridgeAPI.browserRequestRefusal)
+        let origin: String?
+        let secFetchSite: String?
+        let host: String?
 
         /// クエリ1個の取り出し。同期相手: Runner の BridgeHTTPServer.Request.queryValue
         func queryValue(_ key: String) -> String? {
@@ -104,6 +108,13 @@ final class InAppHTTPServer {
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, socklen_t(MemoryLayout<timeval>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
+                    // 待受はループバックだけでトークンも無いので、Host も常に検める
+                    if let refusal = BridgeAPI.browserRequestRefusal(
+                        origin: request.origin, secFetchSite: request.secFetchSite, host: request.host,
+                        requireLoopbackHost: true) {
+                        writeResponse(clientFD, .error(refusal, status: 403))
+                        return
+                    }
                     // accept ループ(バックグラウンド)上でハンドラを呼ぶ。整定待ちはメインの
                     // ランループを回す必要があるため、ここでメインを main.sync でブロックしない
                     // (ブロックするとオブザーバが発火せずデッドロック)。UIKit へのアクセスは
@@ -139,10 +150,19 @@ final class InAppHTTPServer {
         guard parts.count >= 2 else { return nil }
 
         var contentLength = 0
+        var origin: String?
+        var secFetchSite: String?
+        var host: String?
         for line in lines.dropFirst() {
             let kv = line.split(separator: ":", maxSplits: 1)
-            if kv.count == 2, kv[0].lowercased() == "content-length" {
-                contentLength = Int(kv[1].trimmingCharacters(in: .whitespaces)) ?? 0
+            guard kv.count == 2 else { continue }
+            let value = kv[1].trimmingCharacters(in: .whitespaces)
+            switch kv[0].lowercased() {
+            case "content-length": contentLength = Int(value) ?? 0
+            case "origin": origin = value
+            case "sec-fetch-site": secFetchSite = value
+            case "host": host = value
+            default: break
             }
         }
         // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=nil→400)。
@@ -159,7 +179,7 @@ final class InAppHTTPServer {
         return Request(method: String(parts[0]),
                        path: cut.map { String(target[target.startIndex..<$0]) } ?? target,
                        query: cut.map { String(target[target.index(after: $0)...]) } ?? "",
-                       body: body)
+                       body: body, origin: origin, secFetchSite: secFetchSite, host: host)
     }
 
     private func writeResponse(_ fd: Int32, _ response: Response) {

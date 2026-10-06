@@ -17,6 +17,10 @@ final class BridgeHTTPServer {
         let body: Data
         /// `X-FT-Token` ヘッダの値(無ければ nil)。同期相手: BridgeAPI.bridgeTokenHeader
         let token: String?
+        /// ブラウザ由来かの判定材料(BridgeAPI.browserRequestRefusal)
+        let origin: String?
+        let secFetchSite: String?
+        let host: String?
 
         /// クエリ1個の取り出し(値は素のまま = 数値パラメータしか受けないので decode は要らない)。
         /// 同期相手: AndroidRunner の BridgeRouter.queryParam
@@ -69,6 +73,8 @@ final class BridgeHTTPServer {
     private(set) var isRunning = false
     /// bindAll(実機 LAN)のときだけ非 nil。start() で一度だけ確定し、以後の照合はこれと比較する
     private var expectedToken: String?
+    /// ループバックだけで待ち受けるか(Host もループバックに限る。LAN の待受は Host が端末の IP になる)
+    private var listensOnLoopbackOnly = true
 
     /// 最終リクエスト時刻(ProcessInfo.systemUptime = 単調クロック。壁時計の NTP ジャンプで
     /// TTL を誤爆させない)。accept スレッドが書き、テストスレッド(FleetestBridgeTests の
@@ -130,6 +136,7 @@ final class BridgeHTTPServer {
         // 既定をループバックのままにするのは、シミュレータ運用で LAN に晒さないため
         let bindAll = ProcessInfo.processInfo.environment["FT_BIND_ALL"] == "1"
         addr.sin_addr = in_addr(s_addr: bindAll ? INADDR_ANY : inet_addr("127.0.0.1"))
+        listensOnLoopbackOnly = !bindAll
 
         // LAN(非ループバック)は認証必須。不変条件: bindAll ⟺ トークン要(BridgeAPI 参照)。
         // 空/不在のまま LAN へ開くくらいなら起動しない(fail closed) —— 同期相手:
@@ -222,7 +229,11 @@ final class BridgeHTTPServer {
             setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, socklen_t(MemoryLayout<timeval>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
-                    if let expectedToken,
+                    if let refusal = BridgeAPI.browserRequestRefusal(
+                        origin: request.origin, secFetchSite: request.secFetchSite, host: request.host,
+                        requireLoopbackHost: listensOnLoopbackOnly) {
+                        writeResponse(clientFD, .error(refusal, status: 403))
+                    } else if let expectedToken,
                        !BridgeAPI.bridgeTokenMatches(expected: expectedToken, provided: request.token) {
                         // 手掛かりを返さない(トークンの有無・長さも言わない)。XCUITest には触れない
                         writeResponse(clientFD, .error("unauthorized", status: 401))
@@ -288,14 +299,21 @@ final class BridgeHTTPServer {
 
         var contentLength = 0
         var token: String?
+        var origin: String?
+        var secFetchSite: String?
+        var host: String?
         let tokenHeaderKey = BridgeAPI.bridgeTokenHeader.lowercased()
         for line in lines.dropFirst() {
             let kv = line.split(separator: ":", maxSplits: 1)
             guard kv.count == 2 else { continue }
-            if kv[0].lowercased() == "content-length" {
-                contentLength = Int(kv[1].trimmingCharacters(in: .whitespaces)) ?? 0
-            } else if kv[0].lowercased() == tokenHeaderKey {
-                token = kv[1].trimmingCharacters(in: .whitespaces)
+            let value = kv[1].trimmingCharacters(in: .whitespaces)
+            switch kv[0].lowercased() {
+            case "content-length": contentLength = Int(value) ?? 0
+            case tokenHeaderKey: token = value
+            case "origin": origin = value
+            case "sec-fetch-site": secFetchSite = value
+            case "host": host = value
+            default: break
             }
         }
         // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=nil→400)。
@@ -313,7 +331,7 @@ final class BridgeHTTPServer {
                        path: cut.map { String(target[target.startIndex..<$0]) } ?? target,
                        query: cut.map { String(target[target.index(after: $0)...]) } ?? "",
                        body: body,
-                       token: token)
+                       token: token, origin: origin, secFetchSite: secFetchSite, host: host)
     }
 
     private func writeResponse(_ fd: Int32, _ response: Response) {

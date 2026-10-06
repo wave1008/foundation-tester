@@ -22,12 +22,50 @@ final class BridgeHttpServer {
         /** "?" 以降の生文字列("?" 自体は含まない)。無ければ空文字。パースは呼び出し側の責務 */
         final String query;
         final byte[] body;
-        Request(String method, String path, String query, byte[] body) {
+        /** ブラウザ由来かの判定材料(browserRequestRefusal)。無ければ null */
+        final String origin;
+        final String secFetchSite;
+        final String host;
+        Request(String method, String path, String query, byte[] body,
+                String origin, String secFetchSite, String host) {
             this.method = method;
             this.path = path;
             this.query = query;
             this.body = body;
+            this.origin = origin;
+            this.secFetchSite = secFetchSite;
+            this.host = host;
         }
+    }
+
+    /**
+     * ブラウザが送った要求を断る(null = 通す)。待受はループバックで認証が無いので、閲覧中のページから
+     * adb forward 越しに届く要求と DNS リバインディングをここで止める。Host のポートは見ない
+     * (adb forward でホスト側のポートは端末側と違う)。
+     * **同期相手: Sources/FTCore/BridgeDTO.swift の BridgeAPI.browserRequestRefusal**
+     * (BridgeBrowserGuardJavaSyncTests が文言と許すホスト名の一致を見る)
+     */
+    static String browserRequestRefusal(String origin, String secFetchSite, String host) {
+        if (origin != null) return "requests from a web page are not accepted (Origin header)";
+        if (secFetchSite != null && !secFetchSite.trim().equalsIgnoreCase("none")) {
+            return "requests from a web page are not accepted (Sec-Fetch-Site: " + secFetchSite + ")";
+        }
+        if (host == null) return null;
+        String name = loopbackHostName(host);
+        if (name.equals("127.0.0.1") || name.equals("localhost") || name.equals("::1")) return null;
+        return "requests must address the loopback interface (Host: " + host + ")";
+    }
+
+    /** Host ヘッダから名前だけを取る(`[::1]:8123` → `::1`)。小文字 */
+    static String loopbackHostName(String host) {
+        String trimmed = host.trim().toLowerCase(java.util.Locale.ROOT);
+        if (trimmed.startsWith("[")) {
+            int close = trimmed.indexOf(']');
+            if (close > 0) return trimmed.substring(1, close);
+        }
+        if (trimmed.indexOf(':') != trimmed.lastIndexOf(':')) return trimmed;
+        int colon = trimmed.indexOf(':');
+        return colon >= 0 ? trimmed.substring(0, colon) : trimmed;
     }
 
     static final class Response {
@@ -103,8 +141,12 @@ final class BridgeHttpServer {
                     Request request = readRequest(sock.getInputStream());
                     long readAt = android.os.SystemClock.uptimeMillis();
                     Response response;
+                    String refusal = request == null ? null
+                            : browserRequestRefusal(request.origin, request.secFetchSite, request.host);
                     if (request == null) {
                         response = Response.error(400, "cannot parse the request");
+                    } else if (refusal != null) {
+                        response = Response.error(403, refusal);
                     } else {
                         try {
                             response = handler.handle(request);
@@ -154,14 +196,27 @@ final class BridgeHttpServer {
         String query = queryStart >= 0 ? rawTarget.substring(queryStart + 1) : "";
 
         int contentLength = 0;
-        for (String line : lines) {
+        String origin = null;
+        String secFetchSite = null;
+        String host = null;
+        for (int i = 1; i < lines.length; i++) {
+            String line = lines[i];
             int colon = line.indexOf(':');
-            if (colon > 0 && line.substring(0, colon).equalsIgnoreCase("Content-Length")) {
+            if (colon <= 0) continue;
+            String key = line.substring(0, colon);
+            String value = line.substring(colon + 1).trim();
+            if (key.equalsIgnoreCase("Content-Length")) {
                 try {
-                    contentLength = Integer.parseInt(line.substring(colon + 1).trim());
+                    contentLength = Integer.parseInt(value);
                 } catch (NumberFormatException e) {
                     contentLength = 0;  // iOS の Int(...) ?? 0 と同じ寛容化(throw で接続を落とさない)
                 }
+            } else if (key.equalsIgnoreCase("Origin")) {
+                origin = value;
+            } else if (key.equalsIgnoreCase("Sec-Fetch-Site")) {
+                secFetchSite = value;
+            } else if (key.equalsIgnoreCase("Host")) {
+                host = value;
             }
         }
         // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=null→400)。
@@ -174,7 +229,7 @@ final class BridgeHttpServer {
             if (n <= 0) break;
             body.write(chunk, 0, n);
         }
-        return new Request(requestLine[0], path, query, body.toByteArray());
+        return new Request(requestLine[0], path, query, body.toByteArray(), origin, secFetchSite, host);
     }
 
     private static int indexOfHeaderEnd(byte[] data) {
