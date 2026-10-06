@@ -12,12 +12,15 @@ import Network
 
 public enum SandboxDomainPolicy {
     /// `example.com` は完全一致、`*.example.com` は1段以上のサブドメイン(裸の `example.com` は含まない)。
-    /// 大文字小文字は無視し、末尾のドットは落とす。IP アドレスの直書きも文字列として同じ規則で照合する
-    public static func allows(host: String, patterns: [String]) -> Bool {
+    /// 末尾に `:port` があればそのポートだけ、無ければ全ポート(CONNECT は任意の TCP を中継するので、
+    /// ポートを書かないと同じホストの別サービスへも届く)。大文字小文字は無視し、末尾のドットは落とす。
+    /// IP アドレスの直書きも文字列として同じ規則で照合する
+    public static func allows(host: String, port: UInt16, patterns: [String]) -> Bool {
         let name = normalized(host)
         guard !name.isEmpty else { return false }
         return patterns.contains { pattern in
-            let rule = normalized(pattern)
+            guard let (rule, rulePort) = split(pattern) else { return false }
+            if let rulePort, rulePort != port { return false }
             if rule.hasPrefix("*.") {
                 let suffix = String(rule.dropFirst(1))  // ".example.com"
                 return name.count > suffix.count && name.hasSuffix(suffix)
@@ -32,13 +35,42 @@ public enum SandboxDomainPolicy {
         return name
     }
 
-    /// 構成ファイルに書ける形か(`*` 単独や途中のワイルドカードは受けない = 「全部通す」を書けなくする)
+    /// 構成ファイルの1行を (ホスト, ポート) に分ける。nil = 書けない形。
+    /// `:` が1つ = `host:port`、2つ以上 = 角括弧なしの IPv6(ポートなし)。IPv6 にポートを付けるのは `[v6]:port` だけ
+    /// (角括弧なしで末尾をポートと読むと `2001:db8::1` の `1` がポートになる)
+    static func split(_ pattern: String) -> (host: String, port: UInt16?)? {
+        let lowered = pattern.lowercased()
+        func port(_ text: Substring) -> UInt16? {
+            guard !text.isEmpty, text.allSatisfy({ $0.isASCII && $0.isNumber }),
+                  let value = UInt16(text), value > 0 else { return nil }
+            return value
+        }
+        if lowered.hasPrefix("[") {
+            guard let close = lowered.firstIndex(of: "]") else { return nil }
+            let host = String(lowered[lowered.index(after: lowered.startIndex)..<close])
+            guard host.contains(":") else { return nil }  // 角括弧は IPv6 だけ
+            let rest = lowered[lowered.index(after: close)...]
+            if rest.isEmpty { return (host, nil) }
+            guard rest.hasPrefix(":"), let value = port(rest.dropFirst()) else { return nil }
+            return (host, value)
+        }
+        let pieces = lowered.split(separator: ":", omittingEmptySubsequences: false)
+        if pieces.count == 2 {
+            guard let value = port(pieces[1]) else { return nil }
+            return (normalized(String(pieces[0])), value)
+        }
+        return (normalized(lowered), nil)
+    }
+
+    /// 構成ファイルに書ける形か(`*` 単独や途中のワイルドカードは受けない = 「全部通す」を書けなくする。
+    /// ポートは 1〜65535 の1つだけ = 範囲や `:*` も書けない)
     public static func isValidPattern(_ pattern: String) -> Bool {
-        let rule = normalized(pattern)
+        guard let (rule, _) = split(pattern) else { return false }
         let body = rule.hasPrefix("*.") ? String(rule.dropFirst(2)) : rule
         guard !body.isEmpty, !body.hasPrefix("."), !body.hasSuffix("."), !body.contains("..") else {
             return false
         }
+        // `:` はホスト部に残った IPv6 だけ(`host:port` は split で分かれている)
         return body.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "." || $0 == ":") }
     }
 
@@ -144,9 +176,9 @@ public final class SandboxProxy: @unchecked Sendable {
         guard let target = SandboxDomainPolicy.target(requestLine: requestLine) else {
             return refuse(client, status: "400 Bad Request", message: "unsupported proxy request")
         }
-        guard SandboxDomainPolicy.allows(host: target.host, patterns: patterns) else {
+        guard SandboxDomainPolicy.allows(host: target.host, port: target.port, patterns: patterns) else {
             return refuse(client, status: "403 Forbidden",
-                          message: "\(target.host) is not in allowedDomains of the sandbox configuration")
+                          message: "\(target.host):\(target.port) is not in allowedDomains of the sandbox configuration")
         }
         guard let port = NWEndpoint.Port(rawValue: target.port) else {
             return refuse(client, status: "400 Bad Request", message: "bad port")

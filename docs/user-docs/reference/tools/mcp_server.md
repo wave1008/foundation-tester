@@ -134,7 +134,7 @@ as arbitrary Swift code (a dry run executes them too).
   {
     "sandbox": {
       "denyRead": ["~/work/secrets"],
-      "allowedDomains": ["api.example.com", "*.example.org"]
+      "allowedDomains": ["api.example.com:443", "*.example.org"]
     }
   }
   ```

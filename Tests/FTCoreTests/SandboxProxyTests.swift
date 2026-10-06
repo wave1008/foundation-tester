@@ -7,18 +7,18 @@ final class SandboxDomainPolicyTests: XCTestCase {
 
     func testExactAndWildcardMatching() {
         let patterns = ["api.example.com", "*.cdn.example.net"]
-        XCTAssertTrue(SandboxDomainPolicy.allows(host: "api.example.com", patterns: patterns))
-        XCTAssertTrue(SandboxDomainPolicy.allows(host: "API.Example.COM.", patterns: patterns))
-        XCTAssertTrue(SandboxDomainPolicy.allows(host: "a.cdn.example.net", patterns: patterns))
-        XCTAssertTrue(SandboxDomainPolicy.allows(host: "a.b.cdn.example.net", patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "api.example.com", port: 443, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "API.Example.COM.", port: 443, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "a.cdn.example.net", port: 443, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "a.b.cdn.example.net", port: 443, patterns: patterns))
         // ワイルドカードは裸のドメインを含まない・接尾辞の一致は区切りを跨がない
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "cdn.example.net", patterns: patterns))
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "evilcdn.example.net", patterns: patterns))
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "example.com", patterns: patterns))
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "api.example.com.evil.org", patterns: patterns))
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "xapi.example.com", patterns: patterns))
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "", patterns: patterns))
-        XCTAssertFalse(SandboxDomainPolicy.allows(host: "api.example.com", patterns: []))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "cdn.example.net", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "evilcdn.example.net", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "example.com", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "api.example.com.evil.org", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "xapi.example.com", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "api.example.com", port: 443, patterns: []))
     }
 
     /// 「全部通す」を書けない(`*` 単独・途中のワイルドカード)
@@ -28,6 +28,34 @@ final class SandboxDomainPolicyTests: XCTestCase {
             XCTAssertFalse(SandboxDomainPolicy.isValidPattern(bad), bad)
         }
         for good in ["example.com", "*.example.com", "localhost", "api-1.example.co.jp", "10.0.0.5"] {
+            XCTAssertTrue(SandboxDomainPolicy.isValidPattern(good), good)
+        }
+    }
+
+    /// ポートを書いた行はそのポートだけ・書かない行は全ポート(CONNECT は任意の TCP を中継する)
+    func testPortRestrictsOnlyTheEntriesThatNameIt() {
+        let patterns = ["api.example.com:443", "*.cdn.example.net:8443", "files.example.org", "[2001:db8::1]:443", "2001:db8::2"]
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "api.example.com", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "api.example.com", port: 5432, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "a.cdn.example.net", port: 8443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "a.cdn.example.net", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "cdn.example.net", port: 8443, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "files.example.org", port: 22, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "files.example.org", port: 443, patterns: patterns))
+        // IPv6: 角括弧つきはポートを持つ・角括弧なしは全ポート(末尾の `:2` をポートと読まない)
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "2001:db8::1", port: 443, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "2001:db8::1", port: 80, patterns: patterns))
+        XCTAssertTrue(SandboxDomainPolicy.allows(host: "2001:db8::2", port: 80, patterns: patterns))
+        XCTAssertFalse(SandboxDomainPolicy.allows(host: "2001:db8:", port: 2, patterns: patterns))
+    }
+
+    func testPortSyntax() {
+        for bad in ["example.com:", "example.com:0", "example.com:65536", "example.com:abc", "example.com:443-8443",
+                    "example.com:*", "*:443", "example.com:+443", "[example.com]:443", "[::1]443", "[::1]:", "[::1"] {
+            XCTAssertFalse(SandboxDomainPolicy.isValidPattern(bad), bad)
+        }
+        for good in ["example.com:443", "*.example.com:8443", "10.0.0.5:8080", "[::1]:443", "[2001:db8::1]",
+                     "2001:db8::1", "example.com:65535", "example.com:1"] {
             XCTAssertTrue(SandboxDomainPolicy.isValidPattern(good), good)
         }
     }
@@ -109,6 +137,20 @@ final class SandboxProxyTests: XCTestCase {
         XCTAssertTrue(other.hasPrefix("HTTP/1.1 403"), other)
         let relative = try exchange(port: proxy.port, request: "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n")
         XCTAssertTrue(relative.hasPrefix("HTTP/1.1 400"), relative)
+    }
+
+    func testPortRestrictedEntryTunnelsOnlyThatPort() throws {
+        let upstream = try EchoServer()
+        defer { upstream.stop() }
+        let proxy = try SandboxProxy(allowedDomains: ["localhost:\(upstream.port)"])
+        defer { proxy.stop() }
+        let tunnelled = try exchange(
+            port: proxy.port, request: "CONNECT localhost:\(upstream.port) HTTP/1.1\r\n\r\n", thenSend: "ping\n")
+        XCTAssertTrue(tunnelled.contains("echo:ping"), tunnelled)
+        let otherPort = upstream.port == 65535 ? upstream.port - 1 : upstream.port + 1
+        let refused = try exchange(port: proxy.port, request: "CONNECT localhost:\(otherPort) HTTP/1.1\r\n\r\n")
+        XCTAssertTrue(refused.hasPrefix("HTTP/1.1 403"), refused)
+        XCTAssertTrue(refused.contains("localhost:\(otherPort)"), refused)
     }
 
     func testEnvironmentPointsEveryProxyVariableAtTheListener() throws {

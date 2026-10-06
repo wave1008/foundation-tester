@@ -118,7 +118,7 @@ public enum ScenarioSandbox {
                     + " (known: \(MachineSettings.knownKeys.sorted().joined(separator: ", ")))"
             case .invalidDomain(let path, let pattern):
                 return "sandbox settings in \(path): \(pattern.debugDescription) is not a valid"
-                    + " allowedDomains entry (write a host name such as api.example.com or *.example.com)"
+                    + " allowedDomains entry (write a host name such as api.example.com or *.example.com, optionally with one port such as api.example.com:443)"
             case .redirectOutsideSandbox(let key, let path):
                 return "\(key)=\(path) points outside the locations a sandboxed scenario may write"
                     + " (the scenario's .fleetest, the report directory, or this user's temporary directory)"
