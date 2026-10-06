@@ -389,6 +389,9 @@ public enum ScenarioHost {
                            appPath: String? = nil,
                            appName: String? = nil,
                            appBundleID: String? = nil,
+                           /// 親がこのシナリオの直前にしたこと(残ったシステムアラートを消した等)。シナリオのログと
+                           /// 結果のイベントログ(`events/<fileBase>.ndjson`)に1行ずつ残す
+                           hostNotices: [String] = [],
                            /// 呼び出し側(ローカル `api run`/`run`)が中断(SIGINT/SIGTERM)を
                            /// 受けたとき、いま動いているこの子を SIGTERM で止められるように登録する
                            /// 口。呼ばれるのは子の起動に成功した直後だけ・戻り値の unregister は
@@ -560,6 +563,11 @@ public enum ScenarioHost {
             }
         } catch {
             return abortBeforeLaunch("sandbox: " + error.localizedDescription)
+        }
+        for line in hostNotices {
+            let notice = ScenarioEvent.log(line)
+            eventLog?.appendHost(notice)
+            emit(notice)
         }
 
         let stdout = Pipe()

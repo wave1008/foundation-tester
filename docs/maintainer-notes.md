@@ -3872,8 +3872,14 @@ setup / teardown スクリプト(`ft_start_run` の確認で受ける)・`Packag
 
 **発端**: XCUITest エンジンの E2E で `iosAlertHandler` が発火せず写真の許可アラートが -07 に残り、同じレーンの
 後続シナリオが 16 回「a system alert is in front of the app」で落ちてレーンの復帰も使い切った。
-**決定(ユーザー)**: 各シナリオの開始時に、**ボタンを押さずに**消す(押すボタンの推測はしない =
-`SystemAlertDismissal` の規律は不変)。判定と文言は `FTCore.ResidualSystemAlertClearing`、実体は
+**決定(ユーザー)**: 各シナリオの開始時に消す。最初は**ボタンを押さずに**(SpringBoard の起こし直し)としたが、
+起こし直しは約 20 秒かかるため、**3段の使い分け**に改めた: ①何も決めないボタン(キャンセル・閉じる・1つだけの
+OK)を押す ②権限のダイアログは拒否側を押して、権限が拒否になった旨をシナリオのログ(結果のイベントログ)に残す
+③どれも無ければ起こし直し。是認側は押さない・ラベルは完全一致。押してよい一覧は `ResidualSystemAlertClearing`
+の2つだけ(`SystemAlertDismissal` の「推測しない」の例外は、前のシナリオの残り物を消すこの1点)。
+押す木は **SpringBoard の木**(`/systemui/snapshot` + `systemUITap`)—— `snapshot()` はセッション中のアプリの木で
+アラートが写らず、最初の陽性対照は「ボタンが木に無い」で失敗した。押してから消えるまでは押す往復込みで約 0.8 秒
+(3回とも1回目の問い合わせで消えた)。判定と文言は `FTCore.ResidualSystemAlertClearing`、実体は
 `ProfileWorkerFactory.clearResidualSystemAlert`、呼ぶのは `RunOrchestrator` の各シナリオの直前
 (録画の区間より前。init に既定値を置かない)。
 

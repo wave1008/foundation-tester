@@ -752,6 +752,8 @@ public enum ScenarioRunner {
                               appName: String? = nil,
                               appBundleID: String? = nil,
                               appPath: String? = nil,
+                              /// ScenarioHost.run(hostNotices:) への素通し
+                              hostNotices: [String] = [],
                               /// ScenarioHost.run(registerChildProcess:) への素通し
                               /// (RunOrchestrator が中断口として保持する同名プロパティ参照)
                               registerChildProcess: (@Sendable (Process) -> @Sendable () -> Void)? = nil,
@@ -781,6 +783,7 @@ public enum ScenarioRunner {
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
             },
             appPath: appPath, appName: appName, appBundleID: appBundleID,
+            hostNotices: hostNotices,
             registerChildProcess: registerChildProcess, stillFramesDir: stillFramesDir) { event in
             switch event.kind {
             case "sceneStarted":
@@ -1677,10 +1680,9 @@ public final class RunOrchestrator: Sendable {
         // ここで打ち切ると in-flight の子プロセスと記録の整合が崩れる。子を止めるのは
         // registerChildProcess 経由の SIGTERM で、呼び出し側の責務)
         while await !interruptRequested.isRequested(), let item = await queue.next() {
-            // 録画の区間・進捗の開始より前に置く(消すのに掛かった時間をシナリオに数えない)
-            if let clearResidualSystemAlert, let line = await clearResidualSystemAlert(worker) {
-                continuation.yield(.workerLog(worker: worker.label, message: line))
-            }
+            // 録画の区間・進捗の開始より前に置く(消すのに掛かった時間をシナリオに数えない)。
+            // 何をしたかは**そのシナリオのログ**に残す(結果のイベントログに載る = 権限を拒否で閉じた等が残る)
+            let residualAlertNotice = await clearResidualSystemAlert?(worker)
             // 動画のシナリオ毎クリップ切り出し用の壁時計区間通知(録画無効時は no-op)。
             // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
             await videoRecording?.scenarioStarted(
@@ -1698,6 +1700,7 @@ public final class RunOrchestrator: Sendable {
                 appBundleID: appBundleIDs[worker.platform],
                 appPath: appTargets[worker.platform]?
                     .packagePath(physical: worker.connection.physical),
+                hostNotices: residualAlertNotice.map { [$0] } ?? [],
                 registerChildProcess: registerChildProcess,
                 stillFramesDir: stillFramesDir,
                 onEvent: { [continuation, fmCounter = self.fmUnavailable] event in
