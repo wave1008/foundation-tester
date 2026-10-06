@@ -131,10 +131,11 @@ public enum RegionText {
             // `awaitModelCompile` の待ち手はこれが立つまで戻らない。lock の close より先に宣言する
             // (defer は LIFO なので、待ち手が起きる時点で flock は既に閉じている)
             defer { modelCompileFinishSignal.markFinished() }
-            let compileMark = OCRModelCompileLedger.begin()
-            defer { OCRModelCompileLedger.end(compileMark) }
             let lock = OCRModelCompileLock.acquire(processName: ProcessInfo.processInfo.processName)
             defer { try? lock?.close() }
+            // 印は flock を取った**後**に立てる(ロック待ちのプロセスをモニターの compiling に数えない)
+            let compileMark = OCRModelCompileLedger.begin()
+            defer { OCRModelCompileLedger.end(compileMark) }
             // 空の画像では認識器が言語モデルまで読み込まないことがあるので、文字を描いて読ませる
             guard let image = renderedProbe() else {
                 recordModelCompileOutcome(lines: nil, error: "no probe image", attempts: 0)
