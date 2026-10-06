@@ -721,6 +721,9 @@ extension MCPServer {
         }
         var schema: [String: Any] = ["type": "object", "properties": props]
         if !required.isEmpty { schema["required"] = required }
-        return ["name": name, "description": description, "inputSchema": schema]
+        var definition: [String: Any] = ["name": name, "description": description, "inputSchema": schema]
+        // 表に無いツールは annotations を持たない(ToolAnnotationsTests が落とす)
+        if let effect = toolEffects[name] { definition["annotations"] = annotations(for: effect) }
+        return definition
     }
 }
