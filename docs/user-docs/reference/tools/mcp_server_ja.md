@@ -132,7 +132,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   ```
 
   `denyRead` は既定の一覧に**足す**場所、`allowedDomains` はシナリオから通してよい宛先です(省略すると外部へは
-  一切出られません)。`"disabled": true` でこの Mac のサンドボックスを外せます。`"allowDirectAdb": true` にすると、
+  一切出られません。書き方とシナリオからの繋ぎ方は[シナリオから外部へ通信する](../writing/network_access_ja.md))。`"disabled": true` でこの Mac のサンドボックスを外せます。`"allowDirectAdb": true` にすると、
   シナリオが adb と bundletool を fleetest 本体に頼まず自分で使えるようになります(adb サーバと Emulator のポート、
   `~/.android` を開けます)。そのぶん、シナリオから Emulator の中のシェル経由で外部へ出られ、繋がった全 Android 端末に
   届くようになります(ほかの制限はそのまま)。所要時間はほぼ変わらないので(adb 1回あたり 1ms 未満の差)、

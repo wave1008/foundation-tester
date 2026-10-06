@@ -145,6 +145,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 
 - [Writing robust scenarios](reference/writing/writing_robust_scenarios.md)
 - [UI component patterns and quirks](reference/writing/ui_component_patterns.md)
+- [Network access from scenarios](reference/writing/network_access.md)
 
 ### Specifications
 

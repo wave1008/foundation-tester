@@ -140,7 +140,8 @@ as arbitrary Swift code (a dry run executes them too).
   ```
 
   `denyRead` **adds** places to the built-in list; `allowedDomains` lists destinations scenarios may reach (leave it
-  out and nothing outside this Mac is reachable). `"disabled": true` turns the sandbox off on this Mac.
+  out and nothing outside this Mac is reachable; for the syntax and how to connect from a scenario, see
+  [Network access from scenarios](../writing/network_access.md)). `"disabled": true` turns the sandbox off on this Mac.
   `"allowDirectAdb": true` lets scenarios use adb and bundletool themselves instead of through fleetest (it opens the
   adb server and Emulator ports and `~/.android`). A scenario can then get out through a shell inside an Emulator and
   reach every connected Android device (the other restrictions stay). It makes no practical speed difference (under
