@@ -74,6 +74,26 @@ final class RunnerSlownessProvisioningWiringTests: XCTestCase {
         text.components(separatedBy: .whitespacesAndNewlines).joined()
     }
 
+    /// **通常のプローブで遅かったときの起動し直し(.proceedNormally)も、他のセッションの印を見てから撃つ**
+    /// (2026-10-06 負荷テスト: 印の無いデバイスはこの分岐へ来るので、兄弟の2分岐だけに門があっても
+    /// MCP・bridge up・start-device の供給が run の引き取ったランナーを起動し直せた)。
+    /// 門は restartRunner の呼び出しより前・同じ分岐の中にあること
+    func testProceedNormallyRestartChecksForeignLeasesFirst() throws {
+        let text = compact(try source())
+        guard let branch = text.range(of: "case.proceedNormally:") else {
+            return XCTFail(".proceedNormally 分岐が見当たらない — テストを見直すこと")
+        }
+        let rest = text[branch.upperBound...]
+        guard let restart = rest.range(of: "returntryawaitrestartRunner(") else {
+            return XCTFail(".proceedNormally の restartRunner が見当たらない — テストを見直すこと")
+        }
+        let beforeRestart = String(rest[rest.startIndex..<restart.lowerBound])
+        XCTAssertTrue(beforeRestart.contains("RunnerAccessibilityHealth.hasForeignLease(udid:sim.udid,stateDir:fleetestStateDir)"),
+                      ".proceedNormally の起動し直しが他のセッションの印を見ていない")
+        XCTAssertTrue(beforeRestart.contains("keptBecauseLeasedNowMessage("),
+                      "印があって起動し直さなかったことを1行言っていない")
+    }
+
     /// **供給の入口(.reuse の xcuitest 分岐)が、通常のプローブより先に run をまたいだ印を読むこと**。
     /// 印が消えると、毎 run 同じ起動し直しの空振りを繰り返す旧挙動に戻る
     func testReuseBranchReadsThePersistedMarkBeforeProbing() throws {

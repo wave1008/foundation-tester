@@ -124,9 +124,11 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
         // ③ライブ操作の自動起動・起動し直し。対象は呼び出し元(ライブ操作のセッション)が指した
         // その1台だけで、他プロセスの持ち物を横取りしない
         "LiveBridgeAutoStarter.launchBridge",
-        // ③供給(provision)経路の内部処理。今まさに供給しようとしているその1台のブリッジを
-        // 起動し直すだけ。ここに lease 判定を足すと run 自体が起動できなくなる
-        // (docs/remote-runner.md §18.7「門は CLI の口にだけ置く」)
+        // ③供給(provision)経路の内部処理。ここに lease 判定を足すと run 自体が起動できなくなる
+        // (docs/remote-runner.md §18.7「門は CLI の口にだけ置く」)。**ただし「供給しているその1台は
+        // 自分の物」は成り立たない** —— MCP の自動回復・bridge up・start-device も供給を通る。
+        // 起動し直しを撃つ分岐の手前で hasForeignLease を見る(executeBridge の .reuse 3分岐・
+        // MCP の2つの自動回復。RunnerSlownessProvisioningWiringTests / BridgeRecoveryWiringTests)
         "XCUIBridgeResolver.start",
         "BridgeProvisioner.restartRunner",
         "BridgeProvisioner.restartSimulatorAndRunner",

@@ -173,7 +173,7 @@ public enum RunnerAccessibilityHealth {
     /// I/O 版。selfPID/parentPID は既定値(本番はこのまま呼ぶ)。MCP の印は自分と親の分を数えない
     /// (`DeviceBooter.mcpLeaseHolderPID` と同じ理由: MCP が起こしたコマンドが自分のデバイスを
     /// 「他人が使用中」と誤読しない)
-    static func hasForeignLease(udid: String, stateDir: URL,
+    public static func hasForeignLease(udid: String, stateDir: URL,
                                 selfPID: Int32 = ProcessInfo.processInfo.processIdentifier,
                                 parentPID: Int32 = getppid()) -> Bool {
         hasForeignLease(
@@ -208,6 +208,11 @@ public enum RunnerAccessibilityHealth {
     }
 
     /// 印はあるが、このデバイスを今どこかのセッション(run または MCP)が使用中なので触らないときの 1 行
+    public static func keptBecauseLeasedNowMessage(name: String, port: UInt16) -> String {
+        "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
+            + " (it answered slowly, but another session is using this device right now, so it is not restarted)"
+    }
+
     public static func keptBecauseLeasedMessage(name: String, port: UInt16) -> String {
         "→ \(name): reusing the xcuitest bridge on port \(port) as it is"
             + " (it was slow in an earlier run, but another session is using this device right now,"

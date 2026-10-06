@@ -371,13 +371,25 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    /// monkey の失敗出力から引数のエコー(`bash arg:` / `args:` / ` arg:` / `data=`。失敗のたびに十数行)を
+    /// 落とし、理由の行(例 `** No activities found to run, monkey aborted.`)だけを残す。
+    /// 残る行が無ければ元の出力をそのまま返す(理由を消して空文にしない)
+    static func monkeyFailureDetail(_ output: String) -> String {
+        let echoPrefixes = ["bash arg:", "args:", "arg:", "data="]
+        let kept = output.split(separator: "\n").filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            return !trimmed.isEmpty && !echoPrefixes.contains { trimmed.hasPrefix($0) }
+        }
+        return kept.isEmpty ? output : kept.joined(separator: "\n")
+    }
+
     /// ランチャー intent を送る(起動中ならタスクが前面に来るだけ)。
     public func activate(bundleID: String) async throws {
         let result = try adb(["shell", "monkey", "-p", bundleID,
                               "-c", "android.intent.category.LAUNCHER", "1"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "failed to bring the app to the foreground: \(result.tail)")
+                body: "failed to bring the app to the foreground: \(Self.monkeyFailureDetail(result.tail))")
         }
         // monkey は intent 送信のみで遷移完了を待たないため、直後の snapshot が遷移前の画面を
         // 掴まないよう整定を待つ(settleViaBridge)

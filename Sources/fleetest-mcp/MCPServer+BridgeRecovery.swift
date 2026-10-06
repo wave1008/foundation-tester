@@ -46,12 +46,28 @@ extension MCPServer {
     /// このセッションで一度失敗した engineKey は再挑戦しない(`bridgeRecoveryFailed`。1回のビルド
     /// 失敗に分単位を払う経路なので、環境そのものが壊れているデバイスへ毎呼び出し撃ち続けない ——
     /// LiveBridgeAutoStarter.maxConsecutiveFailures と同じ「無限リトライにしない」規律だが、
-    /// MCP は1呼び出しで完結するので上限は1回で足りる)。実機は provision() の対象外
+    /// MCP は1呼び出しで完結するので上限は1回で足りる)。実機は provision() の対象外。
+    /// **他のセッション(run・別の MCP)が使っているデバイスには撃たない**(`heldByAnotherSession` =
+    /// `RunnerAccessibilityHealth.hasForeignLease`)—— 起動し直すのはそのデバイスのランナーなので、
+    /// run が引き取ったデバイスでは run のレーンを落とす。引数に既定値を置かない = 呼び手の渡し忘れを止める
     static func shouldAttemptXCUITestBridgeRecovery(
-        isConnectionRefused: Bool, engine: String?, alreadyFailedThisSession: Bool, isPhysical: Bool?
+        isConnectionRefused: Bool, engine: String?, alreadyFailedThisSession: Bool, isPhysical: Bool?,
+        heldByAnotherSession: Bool
     ) -> Bool {
-        guard isConnectionRefused, engine == "xcuitest", !alreadyFailedThisSession else { return false }
+        guard isConnectionRefused, engine == "xcuitest", !alreadyFailedThisSession,
+              !heldByAnotherSession else { return false }
         return isPhysical == false
+    }
+
+    /// run-lease / 他の MCP セッションの印(自分と親の分は数えない)。判定は供給の門と同じ1箇所
+    static func heldByAnotherSession(udid: String, repoRoot: URL) -> Bool {
+        RunnerAccessibilityHealth.hasForeignLease(
+            udid: udid, stateDir: repoRoot.appendingPathComponent(".fleetest"))
+    }
+
+    static func skippedForAnotherSessionMessage(action: String, udid: String, port: UInt16) -> String {
+        "not \(action) the xcuitest bridge on port \(port) for \(udid): another session (a fleetest run"
+            + " or another MCP session) is using this device — restarting its runner would break that session"
     }
 
     /// 起動し直しの実行。判定は `shouldAttemptXCUITestBridgeRecovery` の1箇所(重複条件を書かない)。
@@ -62,13 +78,20 @@ extension MCPServer {
         if case DriverError.bridgeConnectionRefused = error { isConnectionRefused = true }
         else { isConnectionRefused = false }
         let key = Self.engineKey(args)
-        guard let port = connectedPorts[key], let udid = udids[key] ?? nil else { return false }
+        guard let port = connectedPorts[key], let udid = udids[key] ?? nil,
+              let repoRoot = try? RepoRoot.find() else { return false }
+        let heldByAnotherSession = Self.heldByAnotherSession(udid: udid, repoRoot: repoRoot)
         guard Self.shouldAttemptXCUITestBridgeRecovery(
             isConnectionRefused: isConnectionRefused, engine: engines[key],
             alreadyFailedThisSession: bridgeRecoveryFailed.contains(key),
-            isPhysical: SimulatorCatalog.isPhysical(udid: udid))
-        else { return false }
-        guard let repoRoot = try? RepoRoot.find() else { return false }
+            isPhysical: SimulatorCatalog.isPhysical(udid: udid), heldByAnotherSession: heldByAnotherSession)
+        else {
+            if isConnectionRefused, heldByAnotherSession {
+                Self.logStderr("bridge recovery: " + Self.skippedForAnotherSessionMessage(
+                    action: "rebuilding", udid: udid, port: port))
+            }
+            return false
+        }
         Self.logStderr("bridge recovery: port \(port) refused the connection — rebuilding the"
             + " xcuitest bridge for \(udid) and retrying the call once")
         let spec = DeviceSpec(name: udid, udid: udid, port: port, engine: "xcuitest")
@@ -87,11 +110,13 @@ extension MCPServer {
 
     /// **純粋関数**: xcuitest ランナーの測り直しを撃つかの判定材料。閾値・材料の是非は
     /// `RunnerAccessibilityHealth.shouldRecheck` に委ね(新しい時間の定数を置かない)、
-    /// ここで足すのはエンジン・実機の絞り込みだけ(RunnerMidRunRecheck.target と同じ絞り込み)
+    /// ここで足すのはエンジン・実機の絞り込みだけ(RunnerMidRunRecheck.target と同じ絞り込み)と、
+    /// **他のセッションが使っているデバイスを除くこと**(`heldByAnotherSession`。起動し直すのは
+    /// そのセッションのランナー。run 自身は RunnerMidRunRecheck で自分のレーンを測り直す)
     static func shouldAttemptXCUITestRunnerRecheck(
-        engine: String?, isPhysical: Bool?, maxStepSnapshotMs: Int?, injected: Bool
+        engine: String?, isPhysical: Bool?, maxStepSnapshotMs: Int?, injected: Bool, heldByAnotherSession: Bool
     ) -> Bool {
-        guard engine == "xcuitest", isPhysical == false else { return false }
+        guard engine == "xcuitest", isPhysical == false, !heldByAnotherSession else { return false }
         return RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: maxStepSnapshotMs, injected: injected)
     }
 
@@ -109,11 +134,18 @@ extension MCPServer {
         // 成功呼び出しの後に走るので、遅かった回(稀)だけに絞ってから simctl/devicectl を撃つ
         // (先に引くと健全な呼び出しのたびに一覧照会を払うことになる)
         guard RunnerAccessibilityHealth.shouldRecheck(maxStepSnapshotMs: elapsedMs, injected: injected),
-              Self.shouldAttemptXCUITestRunnerRecheck(
+              let repoRoot = try? RepoRoot.find() else { return }
+        let heldByAnotherSession = Self.heldByAnotherSession(udid: udid, repoRoot: repoRoot)
+        guard Self.shouldAttemptXCUITestRunnerRecheck(
                   engine: engines[key], isPhysical: SimulatorCatalog.isPhysical(udid: udid),
-                  maxStepSnapshotMs: elapsedMs, injected: injected)
-        else { return }
-        guard let repoRoot = try? RepoRoot.find() else { return }
+                  maxStepSnapshotMs: elapsedMs, injected: injected, heldByAnotherSession: heldByAnotherSession)
+        else {
+            if heldByAnotherSession {
+                Self.logStderr(Self.skippedForAnotherSessionMessage(
+                    action: "rechecking/restarting", udid: udid, port: port))
+            }
+            return
+        }
         let result = await BridgeProvisioner(repoRoot: repoRoot).recheckRunner(
             name: udid, udid: udid, port: port, injected: injected, log: Self.logStderr)
         switch result.outcome {

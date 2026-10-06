@@ -3774,3 +3774,38 @@ SUT・シナリオの誤りを3巡潰し、残りをツールで直して、原�
 - **ツールの限界に見えてシナリオの予算だったもの**: `#card_9_14` は縁の帯の問題を直した後も 8 本で届かなかった
   (1本 222pt・カード 148pt = 末尾まで約 10 本)。計測で周回ごとの位置を見て確定 → シナリオに `maxSwipes: 12`
 
+
+## 70. 10/6 の3時間負荷テスト(2026-10-06 05:27〜08:27)
+
+手元の Simulator 8 台・Emulator 6 台 + ファズ用(sim-08〜10・Emulator 2 台)+ 実機 3 台(SE3・Pixel 4a・Pixel 3a)。
+フリート run 45 周・api run 53・MCP 48,101 回・ライブ操作 14,199 命令・CLI 3,814 回・障害注入 9 回。fleetest 系のクラッシュ 0。
+リモート 3 機は docs だけの 2 コミット遅れで互換チェックに止められ、**リモート経路はこの回の検証外**。
+
+### 70.1 MCP の自動回復が、run の引き取ったデバイスのランナーを起動し直した
+- **観測**: MCP ファズと run が取り合う sim-08 で、MCP が「遅い呼び出し」の測り直し(`recheckXCUITestRunnerIfSlow` →
+  `BridgeProvisioner.recheckRunner` → `restartRunner`)から **run のブリッジ(8141・8131・8128)を起動し直し**、run 側は
+  そのレーンが「status に応答しない」で脱落した。接続拒否からの再供給(`attemptXCUITestBridgeRecovery` → `provision`)も同じく持ち主を見ていなかった
+- **型**: 「持ち主の型」の再発で、**判定に呼び手が増えた日に免除の前提が崩れる**形(§46 と同族)。
+  `SharedResourceOwnershipParityTests` は `restartRunner` を「供給しているその1台は自分の物」として免除していたが、
+  MCP・`bridge up`・`api start-device` も供給を通るのでこの前提は成り立たない
+- **直し**: MCP の2つの自動回復と、供給の再利用時の起動し直し(`.proceedNormally`。兄弟の2分岐には門があった)の手前で
+  `RunnerAccessibilityHealth.hasForeignLease` を見る。陽性対照: 生きた別プロセスの run-lease + `FT_FAKE_SLOW_RUNNER_PORTS` で
+  「not rechecking/restarting … another session」が出て起動し直さない / lease 無しでは起動し直す。
+  **陽性対照の罠**: Bash ツールの zsh では `$BASHPID` が空 —— lease に空の pid を書いて「門が効かない」と見えた
+- **直していない同型(未再現)**: ライブ操作の自動起動(`LiveBridgeAutoStarter.launchBridge`)・MCP の in-app 解決時の XCUITest
+  自動起動(`XCUIBridgeResolver.start`)・Android ブリッジの作り直し(`AndroidBridge.startBridge` の force-stop)・run 自身の
+  レーンの測り直し(`recheckRunner` の内側に門を置くと、run の親子構成次第で自分のレーンの回復が止まる恐れ = デバイスでの対照が要る)
+
+### 70.2 Android の `activate` の失敗文言に monkey の引数エコーが十数行載っていた
+理由は最後の1行(`** No activities found to run, monkey aborted.`)だけ → `AndroidDriver.monkeyFailureDetail` でエコーを落とす
+
+### 70.3 記録だけの観察(直していない)
+- **06:27 の失敗の絵が 06:04 の白紙**(Pixel 9-06・ステータスバーの時計で判明。木は同時刻のホーム画面)。ホストにキャッシュは無く
+  ブリッジが毎回 `UiAutomation.takeScreenshot()` している = 端末側が古い合成面を 6 回返したと推定。`BlankFrameDetector.isUnjudgeable`
+  (アプリ領域だけを見る)が古さの判定(`StaleFrameDetector`)より先に「単色」で投げ、レポートの白紙判定(`isUniformBlank`)は
+  画面全体を見るのでステータスバーがあると有効な証拠として通る。2 件目が出たら扱いを決める
+- **MCP の `ft_terminate` が 180 秒返らなかった**(sim-08・run を SIGKILL した直後)。呼び出し全体の期限が無く、自己回復
+  (`provision.lock` を期限なしで待つ・ready 待ち最大 180 秒)が同期で走る。70.1 で run の持つデバイスではこの経路が止まる
+- **ライブ操作専用の Emulator が 06:34:12 にゲスト再起動**(`sys.boot.reason=reboot`・QEMU は生存)。fleetest の唯一の撃ち手
+  (`ProfileWorkerFactory.rebootGuest`)を通った記録は無い
+- CMP iOS の負荷下の白紙描画(OCR 段の赤)・GPU 負荷下の Vision の特徴量の異常は既知の型のまま

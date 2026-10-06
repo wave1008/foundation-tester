@@ -1244,6 +1244,10 @@ public struct BridgeProvisioner: Sendable {
                     if injected || RunnerAccessibilityHealth.isDegraded(probeSeconds: probeSeconds) {
                         if RunnerRestartFutility.shared.contains(udid: sim.udid) {
                             log(RunnerAccessibilityHealth.keptSlowRunnerMessage(name: name, port: port))
+                        } else if RunnerAccessibilityHealth.hasForeignLease(udid: sim.udid, stateDir: fleetestStateDir) {
+                            // 兄弟の2分岐(.restartSimulator・ツールチェーン)と同じ門: 他のセッションの
+                            // ランナーを起動し直すとそのセッションが落ちる(MCP・bridge up・start-device も通る)
+                            log(RunnerAccessibilityHealth.keptBecauseLeasedNowMessage(name: name, port: port))
                         } else {
                             log(RunnerAccessibilityHealth.restartMessage(name: name, port: port,
                                                                          probeSeconds: probeSeconds, injected: injected))

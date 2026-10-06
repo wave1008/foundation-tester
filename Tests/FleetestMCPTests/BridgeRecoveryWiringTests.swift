@@ -89,4 +89,23 @@ final class BridgeRecoveryWiringTests: XCTestCase {
         XCTAssertTrue(code.contains("take a fresh one"),
                       "ref が無効になったことを言っていない(起動し直し = アプリの再起動)")
     }
+
+    /// **両方の自動回復が持ち主の印を実際に読んで判定へ渡すこと**(純粋関数の引数は既定値なしだが、
+    /// 呼び手が `heldByAnotherSession: false` を直書きすると判定が素通りになる)。読むのは供給の門と同じ関数
+    func testBothRecoveriesReadTheLeasesAndPassThemToTheGate() throws {
+        let code = try source()
+        XCTAssertTrue(code.contains("RunnerAccessibilityHealth.hasForeignLease("),
+                      "heldByAnotherSession は供給の門(hasForeignLease)を使うこと")
+        for function in ["func attemptXCUITestBridgeRecovery(", "func recheckXCUITestRunnerIfSlow("] {
+            guard let range = code.range(of: function) else { return XCTFail("\(function) が見当たらない") }
+            let rest = code[range.upperBound...]
+            let end = [rest.range(of: "\n    func ")?.lowerBound, rest.range(of: "\n    static func ")?.lowerBound]
+                .compactMap { $0 }.min() ?? code.endIndex
+            let body = String(code[range.lowerBound..<end])
+            XCTAssertTrue(body.contains("let heldByAnotherSession = Self.heldByAnotherSession(udid: udid, repoRoot: repoRoot)"),
+                          "\(function) が持ち主の印を読んでいない")
+            XCTAssertTrue(body.contains("heldByAnotherSession: heldByAnotherSession)"),
+                          "\(function) が読んだ持ち主の印を判定へ渡していない")
+        }
+    }
 }
