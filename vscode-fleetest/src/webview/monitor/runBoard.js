@@ -620,7 +620,7 @@ function updateRow(row, run) {
     const pct = run.total > 0 ? Math.max(0, Math.min(1, run.done / run.total)) * 100 : 0;
     row.progressBarEl.style.width = pct + '%';
     row.countsEl.textContent = run.failed > 0
-      ? `${run.done}/${run.total} ✕${run.failed}`
+      ? `${run.done}/${run.total} ❌${run.failed}`
       : `${run.done}/${run.total}`;
   }
 
