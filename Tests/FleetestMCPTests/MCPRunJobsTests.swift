@@ -81,6 +81,30 @@ final class MCPRunJobsTests: XCTestCase {
         }
     }
 
+    /// 子の `fleetest run` でフラグとして読まれる値を断る(`--scenario` は upToNextOption なので、
+    /// 2つ目の値の `--runner=` が runnerRefusal を素通りして登録外の機械へ送れていた)。
+    /// 入口の配線ごと確かめるため startRun を通す(spawn の前に断るので子は起きない)
+    func testStartRunRefusesValuesThatTheChildWouldParseAsOptions() {
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() }, recordSnapshot: { _, _, _ in })
+        let cases: [([String: Any], String)] = [
+            (["profile": "p", "scenario": ["A.b", "--runner=evil@example.invalid"]], "scenario[1] must not start with \"-\""),
+            (["profile": "p", "folder": ["--junit=/tmp/x.xml"]], "folder[0] must not start with \"-\""),
+            (["profile": "--set=sandbox"], "profile must not start with \"-\""),
+            (["profile": "p", "runner": " -oProxyCommand=x"], "runner must not start with \"-\""),
+        ]
+        for (args, expected) in cases {
+            XCTAssertThrowsError(try server.startRun(args), "\(args)") {
+                XCTAssertTrue($0.localizedDescription.contains(expected), $0.localizedDescription)
+            }
+        }
+    }
+
+    func testOptionLikeValueRefusalPassesOrdinaryValues() {
+        XCTAssertNil(MCPRunJobs.optionLikeValueRefusal(
+            profile: "ios-sim", runner: "M1Ultra", scenarios: ["Login.test-1", "Cart"], folders: ["smoke/a-b"]))
+        XCTAssertNil(MCPRunJobs.optionLikeValueRefusal(profile: "p", runner: nil, scenarios: [], folders: []))
+    }
+
     func testStatusAndStopRefuseUnknownPIDs() {
         let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() }, recordSnapshot: { _, _, _ in })
         XCTAssertThrowsError(try server.runStatus([:])) {

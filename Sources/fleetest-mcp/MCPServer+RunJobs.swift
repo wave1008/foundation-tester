@@ -116,6 +116,22 @@ enum MCPRunJobs {
         return args
     }
 
+    /// `-` で始まる値を断る。**`arguments` へ渡す前に必ず呼ぶ** —— `--scenario` / `--folder` は
+    /// upToNextOption なので `["A.b", "--runner=user@host"]` の2つ目が子の `fleetest run` でフラグとして
+    /// 読まれ、`runnerRefusal` を素通りして登録外の機械へ送れる(`--junit=<任意のパス>` も同じ)。
+    /// シナリオ ID・フォルダ・プロファイル名・機械名に `-` 始まりの正当な値は無い
+    static func optionLikeValueRefusal(profile: String, runner: String?, scenarios: [String],
+                                       folders: [String]) -> String? {
+        let named: [(String, String)] = [("profile", profile)] + (runner.map { [("runner", $0)] } ?? [])
+            + scenarios.enumerated().map { ("scenario[\($0.offset)]", $0.element) }
+            + folders.enumerated().map { ("folder[\($0.offset)]", $0.element) }
+        guard let (key, value) = named.first(where: {
+            $0.1.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
+        }) else { return nil }
+        return "\(key) must not start with \"-\" (got \(value.debugDescription)): it would be read as an"
+            + " option of the spawned `fleetest run`"
+    }
+
     /// `runner` は `local` と登録簿の機械名だけを通す。**生の宛先(user@host)は断る** —— CLI の `--runner` は
     /// 受け付けるが、MCP は承認なしで呼ばれうるので、登録していない機械へシナリオ・プロファイルを送る
     /// 持ち出し口になる(どこへ送ってよいかは利用者が `fleetest remote machines add` で決める)
@@ -379,6 +395,10 @@ extension MCPServer {
         let scenarios = try Self.stringListArgument(args, "scenario")
         let folders = try Self.stringListArgument(args, "folder")
         let runner = try Self.stringArgument(args, "runner")
+        if let refusal = MCPRunJobs.optionLikeValueRefusal(
+            profile: profile, runner: runner, scenarios: scenarios, folders: folders) {
+            throw MCPError(refusal)
+        }
         if let runner, let refusal = MCPRunJobs.runnerRefusal(
             runner, registered: LocalConfig.load().remoteHosts?.map(\.machine) ?? []) {
             throw MCPError(refusal)
