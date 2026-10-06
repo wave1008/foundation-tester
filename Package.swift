@@ -255,7 +255,7 @@ let package = Package(
         .executableTarget(
             name: "fleetest-simstream",
             linkerSettings: [
-                .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
+                .linkedFramework("Foundation"),
                 .linkedFramework("CoreVideo"), .linkedFramework("IOSurface"),
                 .linkedFramework("QuartzCore"), .linkedFramework("CoreGraphics"),
                 .linkedFramework("CoreMedia"), .linkedFramework("VideoToolbox"),
@@ -266,7 +266,7 @@ let package = Package(
         .executableTarget(
             name: "fleetest-androidstream",
             linkerSettings: [
-                .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
+                .linkedFramework("Foundation"),
                 .linkedFramework("CoreVideo"), .linkedFramework("CoreMedia"),
                 .linkedFramework("VideoToolbox"), .linkedFramework("QuartzCore"),
                 .linkedFramework("CoreGraphics"), .linkedFramework("ImageIO"),

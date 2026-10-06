@@ -3,7 +3,6 @@
 // (mjpeg)。--codec h264 はデコードせずAnnex-B AUをそのままstdoutへ流す(パススルー)。
 // デコード/Annex-B分割ロジックはspike(androidcap.m)を検証済みのまま流用。
 #import <Foundation/Foundation.h>
-#import <CoreImage/CoreImage.h>
 #import <CoreVideo/CoreVideo.h>
 #import <CoreMedia/CoreMedia.h>
 #import <VideoToolbox/VideoToolbox.h>
@@ -12,12 +11,13 @@
 #import <ImageIO/ImageIO.h>
 
 static dispatch_queue_t gQueue = NULL;
-static CIContext *gCtx = nil;
 static CGColorSpaceRef gColorSpace = NULL;
 static int gFps = 12;
 static int gMaxWidth = 0;
 static double gLastEmit = 0;
 static BOOL gTrailingArmed = NO;
+// 間引きで後回しにしたトリガがあり、まだ取り込んでいない(末尾タイマーが出すべきか)。gQueue 上でのみ触る
+static BOOL gTriggerPending = NO;
 static NSTask *gAdbTask = nil;
 static BOOL gShuttingDown = NO;
 static BOOL gCodecH264 = NO;
@@ -97,35 +97,50 @@ static CVImageBufferRef gLatest = NULL;
 // (gQueue上でのみ操作)。gSPS/gPPSはmjpegデコード経路と共用する(codecは起動時に固定・排他)。
 static NSMutableData *gPendingOther = nil;
 
-// JPEG 化は2段(fleetest-simstream/main.m の ftEncodeJPEG と同じ。片方だけ変えない):
-// `JPEGRepresentationOfImage:` は macOS 27 で正常な画像にも nil を返すことがあるので、
-// 落ちたら同じ CIContext の `createCGImage` + ImageIO で書く。警告は寿命で1回
-static BOOL gJPEGFallbackLogged = NO;
-static NSData *ftEncodeJPEG(CIImage *ci) {
-    NSData *jpeg = [gCtx JPEGRepresentationOfImage:ci colorSpace:gColorSpace options:@{}];
-    if (jpeg) return jpeg;
-    CGImageRef cg = [gCtx createCGImage:ci fromRect:ci.extent];
-    if (!cg) {
-        fprintf(stderr, "warning: JPEG encode failed: CIContext could not render the image\n");
+// JPEG 化(fleetest-simstream/main.m の ftEncodeJPEG と同じ。片方だけ変えない)。
+// **CoreImage を使わない** —— macOS 27 では `CIImage imageWithCV*Buffer` から描くと
+// `JPEGRepresentationOfImage:` は nil、`createCGImage` は**真っ白の画像を成功として返す**
+// (GPU/ソフトウェア描画どちらも。iOS の IOSurface も Android のデコード結果も同じ)。
+// 失敗が沈黙するので mjpeg のタイルが白一色のまま動かなかった。VT の変換は YUV/BGRA を
+// どちらも CGImage にできる。縮小は CGBitmapContext、書き出しは ImageIO
+static NSData *ftEncodeJPEG(CVPixelBufferRef pb, uint16_t outW, uint16_t outH) {
+    CGImageRef full = NULL;
+    OSStatus st = VTCreateCGImageFromCVPixelBuffer(pb, NULL, &full);
+    if (st != noErr || !full) {
+        fprintf(stderr, "warning: JPEG encode failed: VTCreateCGImageFromCVPixelBuffer status=%d (format=0x%08x)\n",
+                (int)st, (unsigned)CVPixelBufferGetPixelFormatType(pb));
         return nil;
     }
+    CGImageRef image = full;
+    CGImageRef scaled = NULL;
+    if (CGImageGetWidth(full) != outW || CGImageGetHeight(full) != outH) {
+        CGContextRef dst = CGBitmapContextCreate(NULL, outW, outH, 8, 0, gColorSpace,
+                                                 kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little);
+        if (dst) {
+            CGContextSetInterpolationQuality(dst, kCGInterpolationMedium);
+            CGContextDrawImage(dst, CGRectMake(0, 0, outW, outH), full);
+            scaled = CGBitmapContextCreateImage(dst);
+            CGContextRelease(dst);
+        }
+        if (!scaled) {
+            CGImageRelease(full);
+            fprintf(stderr, "warning: JPEG encode failed: could not scale to %ux%u\n", outW, outH);
+            return nil;
+        }
+        image = scaled;
+    }
     NSMutableData *out = [NSMutableData data];
+    NSData *jpeg = nil;
     CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)out,
                                                                   (__bridge CFStringRef)@"public.jpeg", 1, NULL);
     if (dest) {
-        CGImageDestinationAddImage(dest, cg, NULL);
+        CGImageDestinationAddImage(dest, image, NULL);
         if (CGImageDestinationFinalize(dest)) jpeg = out;
         CFRelease(dest);
     }
-    CGImageRelease(cg);
-    if (!jpeg) {
-        fprintf(stderr, "warning: JPEG encode failed: CIContext rendered but ImageIO could not write JPEG\n");
-        return nil;
-    }
-    if (!gJPEGFallbackLogged) {
-        gJPEGFallbackLogged = YES;
-        fprintf(stderr, "warning: JPEGRepresentationOfImage failed; encoding via createCGImage+ImageIO instead\n");
-    }
+    if (scaled) CGImageRelease(scaled);
+    CGImageRelease(full);
+    if (!jpeg) fprintf(stderr, "warning: JPEG encode failed: ImageIO could not write JPEG\n");
     return jpeg;
 }
 
@@ -133,18 +148,17 @@ static NSData *ftEncodeJPEG(CIImage *ci) {
 static void ftEncodeAndEmit(void) {
     // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
     @autoreleasepool {
+        gTriggerPending = NO;
         CVImageBufferRef img = gLatest;
         if (!img) return;
-        CIImage *ci = [CIImage imageWithCVImageBuffer:img];
         size_t w = CVPixelBufferGetWidth(img), h = CVPixelBufferGetHeight(img);
         uint16_t outW = (uint16_t)w, outH = (uint16_t)h;
         if (gMaxWidth > 0 && (size_t)gMaxWidth < w) {
             double scale = (double)gMaxWidth / (double)w;
-            ci = [ci imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
             outW = (uint16_t)llround((double)w * scale);
             outH = (uint16_t)llround((double)h * scale);
         }
-        NSData *jpeg = ftEncodeJPEG(ci);
+        NSData *jpeg = ftEncodeJPEG(img, outW, outH);
         if (!jpeg) return;
         ftWriteFrame(jpeg, outW, outH);
         gLastEmit = ftNow();
@@ -161,13 +175,16 @@ static void ftOnTrigger(void) {
         ftEncodeAndEmit();
         return;
     }
+    gTriggerPending = YES;
     if (gTrailingArmed) return;
     gTrailingArmed = YES;
     double delay = (gLastEmit + interval) - n;
     if (delay < 0) delay = 0;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), gQueue, ^{
         gTrailingArmed = NO;
-        ftEncodeAndEmit();
+        // 仕掛けた後に間隔を過ぎたトリガが即時に出していれば、最新は取り込み済み(gTriggerPending が
+        // 落ちている)。確かめずに出すと約10ms 差の2本組になる。早すぎれば ftOnTrigger が仕掛け直す
+        if (gTriggerPending) ftOnTrigger();
     });
 }
 
@@ -456,7 +473,6 @@ int main(int argc, char **argv) {
     }
 
     gColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    gCtx = [CIContext contextWithOptions:@{kCIContextUseSoftwareRenderer: @NO}];
     gQueue = dispatch_queue_create("com.foundation-tester.fleetest-androidstream.frame", DISPATCH_QUEUE_SERIAL);
     gBuf = [NSMutableData data];
 

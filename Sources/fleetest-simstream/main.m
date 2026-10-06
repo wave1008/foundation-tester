@@ -1,7 +1,6 @@
 // ヘッドレス iOS シミュレータ画面キャプチャ。CoreSimulator/SimulatorKit の private API を
 // dlopen+objc_msgSend で叩く(リンクはしない。Package.swift 参照)。
 #import <Foundation/Foundation.h>
-#import <CoreImage/CoreImage.h>
 #import <CoreVideo/CoreVideo.h>
 #import <CoreMedia/CoreMedia.h>
 #import <VideoToolbox/VideoToolbox.h>
@@ -19,14 +18,19 @@
 
 static id gDesc = nil;
 static dispatch_queue_t gQueue = NULL;
-static CIContext *gCtx = nil;
 static CGColorSpaceRef gColorSpace = NULL;
 static NSUUID *gFrameCbUUID = nil;
 static NSUUID *gIoCbUUID = nil;
 static int gFps = 12;
 static int gMaxWidth = 0;
 static double gLastEmit = 0;
+// fps の間引きの基準(取り込んだ時刻)。**gLastEmit で間引かない** —— h264 の gLastEmit は VT の
+// 出力コールバックで更新されるので、投入から出力までの間に来たトリガが全部素通りし、60Hz の
+// フレームコールバックがほぼそのまま投入されていた(実測: 約14ms 間隔の2本組)
+static double gLastCapture = 0;
 static BOOL gTrailingArmed = NO;
+// 間引きで後回しにしたトリガがあり、まだ取り込んでいない(末尾タイマーが出すべきか)。gQueue 上でのみ触る
+static BOOL gTriggerPending = NO;
 static int gInitialAttempts = 0;
 static BOOL gCodecH264 = NO;
 // --codec h264 専用(IOSurfaceサイズ変化でInvalidateして作り直す。次フレームはVTが自動でキーフレームにする)。
@@ -48,7 +52,7 @@ static uintptr_t gCompGeneration = 0;
 // 何回連続で失敗したら h264 を諦めて MJPEG へ落ちるか。**2 の根拠**: 1回目は
 // そのセッション固有の malfunction かもしれない(作り直しで直る)。作り直した直後に
 // また壊れたなら、原因はセッションではなく**ホスト側の資源**なので、形式を落とすしかない。
-// 落ちた先の MJPEG は VideoToolbox を使わない(CIContext の JPEG 化)ので同じ壁に当たらない
+// 落ちた先の MJPEG は圧縮セッションを張らない(VT の画素変換 + ImageIO の JPEG 化)ので同じ壁に当たらない
 static const int kFtEncodeFailuresBeforeMJPEG = 2;
 // 「この機械では h264 でエンコードできない」を呼び出し側へ伝える exit code。
 // 契約の同期相手: vscode-fleetest/src/deviceStream.ts の CODEC_UNAVAILABLE_EXIT_CODE
@@ -152,7 +156,7 @@ static void ftWritePing(void) {
 
 // 入力の IOSurface が使える形か。**エンコーダの失敗と入力の失敗を分ける**ためにある ——
 // VT の kVTSessionMalfunctionErr は「ホストが h264 をこなせない」と読んで MJPEG へ落とすが、
-// シミュレータ側が空(0x0)や無効なサーフェスを返しているときは MJPEG(CIContext)も同じ入力で
+// シミュレータ側が空(0x0)や無効なサーフェスを返しているときは MJPEG も同じ入力で
 // 失敗し、「この機械では h264 が無理」という診断が外れたまま再起動ループになる
 // (4台同時、直前まで同じ機械で h264 が動いていた)。無効な入力はエンコード
 // 失敗に数えず、次のトリガを待つ。ログはデバイスごとに1回(60Hz で鳴らさない)
@@ -177,41 +181,54 @@ static void ftLogSurface(const char *what, IOSurfaceRef s) {
             IOSurfaceGetWidth(s), IOSurfaceGetHeight(s), IOSurfaceGetPixelFormat(s));
 }
 
-// JPEG 化は2段。**`JPEGRepresentationOfImage:` は macOS 27 で正常な BGRA surface に対しても
-// nil を返す**(実測: 1206x2622 BGRA で h264 は通り、こちらだけ失敗)。同じ CIContext の
-// `createCGImage` + ImageIO は同じ画像で成功するので、1段目が落ちたら2段目で書く。
-// 1段目を残すのは、通る環境ではそちらが速い(中間の CGImage を作らない)ため。
-// 切り替えの警告は寿命で1回だけ(毎フレーム鳴らすと fps ぶんログが並ぶ)
-static BOOL gJPEGFallbackLogged = NO;
-static NSData *ftEncodeJPEG(CIImage *ci, IOSurfaceRef s) {
-    NSData *jpeg = [gCtx JPEGRepresentationOfImage:ci colorSpace:gColorSpace options:@{}];
-    if (jpeg) return jpeg;
-    CGImageRef cg = [gCtx createCGImage:ci fromRect:ci.extent];
-    if (!cg) {
-        ftLogSurface("JPEG encode failed: CIContext could not render the image", s);
+// JPEG 化(fleetest-androidstream/main.m の ftEncodeJPEG と同じ。片方だけ変えない)。
+// **CoreImage を使わない** —— macOS 27 では `CIImage imageWithCV*Buffer` から描くと
+// `JPEGRepresentationOfImage:` は nil、`createCGImage` は**真っ白の画像を成功として返す**
+// (GPU/ソフトウェア描画どちらも。iOS の IOSurface も Android のデコード結果も同じ)。
+// 失敗が沈黙するので mjpeg のタイルが白一色のまま動かなかった。VT の変換は YUV/BGRA を
+// どちらも CGImage にできる。縮小は CGBitmapContext、書き出しは ImageIO
+static NSData *ftEncodeJPEG(CVPixelBufferRef pb, uint16_t outW, uint16_t outH) {
+    CGImageRef full = NULL;
+    OSStatus st = VTCreateCGImageFromCVPixelBuffer(pb, NULL, &full);
+    if (st != noErr || !full) {
+        fprintf(stderr, "warning: JPEG encode failed: VTCreateCGImageFromCVPixelBuffer status=%d (format=0x%08x)\n",
+                (int)st, (unsigned)CVPixelBufferGetPixelFormatType(pb));
         return nil;
     }
+    CGImageRef image = full;
+    CGImageRef scaled = NULL;
+    if (CGImageGetWidth(full) != outW || CGImageGetHeight(full) != outH) {
+        CGContextRef dst = CGBitmapContextCreate(NULL, outW, outH, 8, 0, gColorSpace,
+                                                 kCGImageAlphaNoneSkipFirst | kCGBitmapByteOrder32Little);
+        if (dst) {
+            CGContextSetInterpolationQuality(dst, kCGInterpolationMedium);
+            CGContextDrawImage(dst, CGRectMake(0, 0, outW, outH), full);
+            scaled = CGBitmapContextCreateImage(dst);
+            CGContextRelease(dst);
+        }
+        if (!scaled) {
+            CGImageRelease(full);
+            fprintf(stderr, "warning: JPEG encode failed: could not scale to %ux%u\n", outW, outH);
+            return nil;
+        }
+        image = scaled;
+    }
     NSMutableData *out = [NSMutableData data];
+    NSData *jpeg = nil;
     CGImageDestinationRef dest = CGImageDestinationCreateWithData((__bridge CFMutableDataRef)out,
                                                                   (__bridge CFStringRef)@"public.jpeg", 1, NULL);
     if (dest) {
-        CGImageDestinationAddImage(dest, cg, NULL);
+        CGImageDestinationAddImage(dest, image, NULL);
         if (CGImageDestinationFinalize(dest)) jpeg = out;
         CFRelease(dest);
     }
-    CGImageRelease(cg);
-    if (!jpeg) {
-        ftLogSurface("JPEG encode failed: CIContext rendered but ImageIO could not write JPEG", s);
-        return nil;
-    }
-    if (!gJPEGFallbackLogged) {
-        gJPEGFallbackLogged = YES;
-        fprintf(stderr, "warning: JPEGRepresentationOfImage failed; encoding via createCGImage+ImageIO instead\n");
-    }
+    if (scaled) CGImageRelease(scaled);
+    CGImageRelease(full);
+    if (!jpeg) fprintf(stderr, "warning: JPEG encode failed: ImageIO could not write JPEG\n");
     return jpeg;
 }
 
-// gQueue 上でのみ呼ぶこと(CIContext・gLastEmit・gTrailingArmed の直列性が前提)。
+// gQueue 上でのみ呼ぶこと(gLastEmit・gLastCapture・gTrailingArmed の直列性が前提)。
 static void ftEmitNow(void) {
     // 1フレームごとに入る。gQueue(GCD)の暗黙の pool はキューが空になるまで空かないので、ここで区切る
     @autoreleasepool {
@@ -224,18 +241,16 @@ static void ftEmitNow(void) {
             ftLogSurface("CVPixelBufferCreateWithIOSurface failed", s);
             return;
         }
-        CIImage *ci = [CIImage imageWithCVPixelBuffer:pb];
         size_t w = IOSurfaceGetWidth(s);
         size_t h = IOSurfaceGetHeight(s);
         uint16_t outW = (uint16_t)w;
         uint16_t outH = (uint16_t)h;
         if (gMaxWidth > 0 && (size_t)gMaxWidth < w) {
             double scale = (double)gMaxWidth / (double)w;
-            ci = [ci imageByApplyingTransform:CGAffineTransformMakeScale(scale, scale)];
             outW = (uint16_t)llround((double)w * scale);
             outH = (uint16_t)llround((double)h * scale);
         }
-        NSData *jpeg = ftEncodeJPEG(ci, s);
+        NSData *jpeg = ftEncodeJPEG(pb, outW, outH);
         CVPixelBufferRelease(pb);
         if (!jpeg) return;
         ftWriteFrame(jpeg, outW, outH);
@@ -419,6 +434,8 @@ static void ftEmitNowH264(void) {
 }
 
 static void ftEmitCurrent(void) {
+    gLastCapture = ftNow();
+    gTriggerPending = NO;
     if (gCodecH264) ftEmitNowH264(); else ftEmitNow();
 }
 
@@ -427,17 +444,20 @@ static void ftEmitCurrent(void) {
 static void ftOnTrigger(void) {
     double n = ftNow();
     double interval = 1.0 / (double)gFps;
-    if (n - gLastEmit >= interval) {
+    if (n - gLastCapture >= interval) {
         ftEmitCurrent();
         return;
     }
+    gTriggerPending = YES;
     if (gTrailingArmed) return;
     gTrailingArmed = YES;
-    double delay = (gLastEmit + interval) - n;
+    double delay = (gLastCapture + interval) - n;
     if (delay < 0) delay = 0;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay * NSEC_PER_SEC)), gQueue, ^{
         gTrailingArmed = NO;
-        ftEmitCurrent();
+        // 仕掛けた後に間隔を過ぎたトリガが即時に出していれば、最新は取り込み済み(gTriggerPending が
+        // 落ちている)。確かめずに出すと約10ms 差の2本組になる。早すぎれば ftOnTrigger が仕掛け直す
+        if (gTriggerPending) ftOnTrigger();
     });
 }
 
@@ -630,7 +650,6 @@ int main(int argc, char **argv) {
     ftRequireResp(gDesc, "setPowerState:completionQueue:completionHandler:");
 
     gColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-    gCtx = [CIContext contextWithOptions:@{kCIContextUseSoftwareRenderer: @NO}];
     gQueue = dispatch_queue_create("com.foundation-tester.fleetest-simstream.callback", DISPATCH_QUEUE_SERIAL);
     gFrameCbUUID = [NSUUID UUID];
     gIoCbUUID = [NSUUID UUID];
