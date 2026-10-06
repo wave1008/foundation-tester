@@ -30,6 +30,9 @@ struct ApiResultsCompareCommand: AsyncParsableCommand {
         guard Set(previousRunIDs).isDisjoint(with: latestRunIDs) else {
             throw ValidationError("the same runID is given on both sides")
         }
+        if let bad = (previousRunIDs + latestRunIDs).first(where: { !RunResultsStore.isSingleComponentRunID($0) }) {
+            throw ValidationError("not a run ID: \(bad.debugDescription)")
+        }
     }
 
     func run() throws {

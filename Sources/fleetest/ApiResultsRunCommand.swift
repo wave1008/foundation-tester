@@ -17,6 +17,12 @@ struct ApiResultsRunCommand: AsyncParsableCommand {
     @Option(name: .customLong("run-id"), help: "The runID to look up")
     var runID: String
 
+    func validate() throws {
+        guard RunResultsStore.isSingleComponentRunID(runID) else {
+            throw ValidationError("not a run ID: \(runID.debugDescription)")
+        }
+    }
+
     func run() throws {
         let testProject = try ScenarioHost.project(named: project)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: testProject.rootURL)
