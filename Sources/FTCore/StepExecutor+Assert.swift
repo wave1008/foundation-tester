@@ -1586,11 +1586,10 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
+        let classifierError = visionClassifierErrors[CheckStateClassifier.name] ?? classifierFailureThisStep
         return found
-            ? .failed(Self.checkStateMismatch(lastState, locator: step.locatorSummary)
-                      + Self.checkStateSourceHint(lastClassification,
-                                                  classifierError: visionClassifierErrors[CheckStateClassifier.name]
-                                                      ?? classifierFailureThisStep)
+            ? .failed(Self.checkStateFailure(lastState, locator: step.locatorSummary,
+                                             classification: lastClassification, classifierError: classifierError)
                       + tapDiagnosisHint(lastSnapshot?.elements))
             : failed(.notFound, "element not found: \(step.locatorSummary)" + Self.truncationHint(lastSnapshot)
                       + Self.keyboardResizedHint(lastSnapshot))
@@ -1730,6 +1729,21 @@ extension StepExecutor {
         }
         if let classifierError { return " (CheckStateClassifier was not used: \(classifierError))" }
         return ""
+    }
+
+    /// checkIsON/OFF の失敗文。**状態が読めず、分類器に使えなかった理由があるときは「見本を置け」と言わない** ——
+    /// 見本は置いてあり、学習・読み込み・推論の対照のどれかで使えなかった(枠の中で Create ML が見本を見つけられず
+    /// 学習できなかったとき、案内が見本を置けと勧め、本当の理由は文の末尾に回っていた)
+    static func checkStateFailure(_ state: CheckState, locator: String,
+                                  classification: VisionClassifier.Classification?,
+                                  classifierError: String?) -> String {
+        if state == .unknown, let classifierError {
+            return "the element reports no check state and CheckStateClassifier could not judge it from its image:"
+                + " \(locator) (accessibility has no selected trait and no on/off value; CheckStateClassifier:"
+                + " \(classifierError))"
+        }
+        return checkStateMismatch(state, locator: locator)
+            + checkStateSourceHint(classification, classifierError: classifierError)
     }
 
     static func checkStateMismatch(_ state: CheckState, locator: String) -> String {

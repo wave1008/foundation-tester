@@ -428,6 +428,36 @@ final class CheckStateClassifierTests: XCTestCase {
         guard case .failed(let reason) = silent.status else { return XCTFail("\(silent.status)") }
         XCTAssertTrue(reason.contains("not answering reliably"), reason)
         XCTAssertTrue(reason.contains("\"[ON]\""), "どの対照を外したかを言う: \(reason)")
+        // 見本は置いてある = 「見本を置け」と案内しない
+        XCTAssertTrue(reason.contains("CheckStateClassifier could not judge it from its image"), reason)
+        XCTAssertFalse(reason.contains("put sample images"), reason)
+    }
+
+    /// **見本は置いてあるのに学習できなかった**とき、失敗文は「見本を置け」と案内せず、分類器が使えなかった理由を
+    /// 前に出す(枠の中で Create ML が見本を見つけられず学習できなかったとき、案内が見本を置けと勧めていた)
+    func testUnusableClassifierIsReportedInsteadOfAskingForSamples() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("csc-broken-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let dir = CheckStateClassifier.directory(projectRoot: root)
+        for label in ["[ON]", "[OFF]"] {
+            let labelDir = dir.appendingPathComponent(label, isDirectory: true)
+            try FileManager.default.createDirectory(at: labelDir, withIntermediateDirectories: true)
+            // 拡張子は png だが中身は画像ではない = 見本の置き場はあるが学習できない
+            try Data("not an image".utf8).write(to: labelDir.appendingPathComponent("s0.png"))
+        }
+        let silent = await run("checked", a11y: element(type: "button"), imageOn: true, projectRoot: root, prefer: true)
+        guard case .failed(let reason) = silent.status else { return XCTFail("\(silent.status)") }
+        XCTAssertTrue(silent.notes.contains(.checkStateClassifierFailed), "\(silent.notes)")
+        XCTAssertTrue(reason.hasPrefix("the element reports no check state and CheckStateClassifier could not judge it"),
+                      reason)
+        XCTAssertFalse(reason.contains("put sample images"), reason)
+        // a11y が状態を報告する要素の失敗は従来の文(分類器の理由は後ろに添える)
+        let a11yOff = await run("checked", a11y: element(type: "switch", value: "0"), imageOn: true,
+                                projectRoot: root, prefer: true)
+        guard case .failed(let offReason) = a11yOff.status else { return XCTFail("\(a11yOff.status)") }
+        XCTAssertTrue(offReason.hasPrefix("the element is off"), offReason)
+        XCTAssertTrue(offReason.contains("CheckStateClassifier was not used"), offReason)
     }
 
     /// **分類器の判定で落ちたときだけ、判定に使ったスクリーンショットを持ち帰る**(レポートに添える)。
