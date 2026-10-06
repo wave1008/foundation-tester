@@ -4313,6 +4313,9 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   方針が断るもの: 列挙に無い動詞・形、レーン以外のデバイス、`simctl spawn` の固定2形以外、子が書ける場所からの
   `install`、`launch` の環境変数のうち決まった4つ以外とツール本体の `InAppBridge/build/` 以外の
   `DYLD_INSERT_LIBRARIES`、`devicectl --json-output` の書き先が子の書ける場所の外。
+  **検めたパスは実体パスに固定して実行する**(`BrokerPolicy.pinned`。子が送った文字列のまま実行すると、途中の symlink を
+  検めた後に差し替えられる)。**親は子の書ける場所へ書かない** —— devicectl の出力は親だけの一時ファイルに書かせ、中身を
+  応答で返して子が書く。
   **`simctl` / `devicectl` の呼び出しを足したら方針にも足す**(`devicectl` は
   `DevicectlPolicyTests.testEveryDevicectlCallInTheSourcesHasAKnownShape` がソース走査で落とす)
 - **Android の操作(adb)も親が代行する**。子が adb サーバへ繋げると `adb shell` で Emulator の中 = 枠の外から

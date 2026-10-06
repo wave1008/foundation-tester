@@ -261,6 +261,49 @@ public enum BrokerPolicy {
         }
     }
 
+    /// 検めた後・実行する直前の形(`check` を通った引数列に掛ける)。**検めたパスを実体パスに固定する** ——
+    /// 子が送ったパスの文字列のまま実行すると、途中に子が書ける場所の symlink を挟んで「子が書けない場所」として検めさせ、
+    /// 実行の直前に向きを変えて子が作ったアプリ・ライブラリを入れさせられる(判定と実行の間の差し替え)。実体パスの祖先は
+    /// 子が書けない場所なので、固定した後は差し替えようがない。対象は install の元(simctl / devicectl / adb)・
+    /// 注入するライブラリ(`SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`)・bundletool の `--apks=`。
+    /// devicectl の `--json-output <子のパス>` は親だけの一時ファイル(`outputDirectory` の下)へ差し替え、元のパスを
+    /// `childOutput` で返す —— **親は子の書ける場所へ書かない**(書くと symlink を辿らされる)。中身は応答で子へ返し、子が枠の中で書く
+    public static func pinned(_ argv: [String], outputDirectory: String)
+        -> (argv: [String], childOutput: String?, parentOutput: String?) {
+        guard let (_, tool, original) = split(argv) else { return (argv, nil, nil) }
+        let real = { (path: String) in ScenarioSandbox.canonicalPath(path) }
+        let head = argv.count - original.count
+        var prefix = Array(argv[..<head])
+        let dyld = "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES="
+        for (i, token) in prefix.enumerated() where token.hasPrefix(dyld) {
+            prefix[i] = dyld + real(String(token.dropFirst(dyld.count)))
+        }
+        var args = original
+        var childOutput: String?
+        var parentOutput: String?
+        switch tool {
+        case "simctl":
+            if args.count == 3, args[0] == "install" { args[2] = real(args[2]) }
+        case "devicectl":
+            if args.count == 6, Array(args[0..<4]) == ["device", "install", "app", "--device"] { args[5] = real(args[5]) }
+            if let i = args.firstIndex(of: "--json-output"), i + 1 < args.count, args[i + 1] != "-" {
+                childOutput = args[i + 1]
+                let path = (outputDirectory as NSString).appendingPathComponent("ftb-out-\(UUID().uuidString).json")
+                parentOutput = path
+                args[i + 1] = path
+            }
+        case "adb":
+            if let i = args.firstIndex(of: "install"), args.count - 1 > i, let last = args.last, last.hasSuffix(".apk") {
+                args[args.count - 1] = real(last)
+            }
+        case "bundletool":
+            args = args.map { $0.hasPrefix("--apks=") ? "--apks=" + real(String($0.dropFirst("--apks=".count))) : $0 }
+        default:
+            break
+        }
+        return (prefix + args, childOutput, parentOutput)
+    }
+
     public static func check(_ argv: [String], context: SimctlPolicy.Context) -> SimctlPolicy.Refusal? {
         guard let (environment, tool, arguments) = split(argv) else {
             return SimctlPolicy.Refusal(reason: "not a simctl or devicectl command")
@@ -344,15 +387,23 @@ public final class SandboxBroker: @unchecked Sendable {
             UnixSocket.writeLine(client, ["refused": refusal.reason])
             return
         }
-        guard let executable = BrokerPolicy.executableArgv(argv, context: context) else {
+        let pinned = BrokerPolicy.pinned(argv, outputDirectory: NSTemporaryDirectory())
+        guard let executable = BrokerPolicy.executableArgv(pinned.argv, context: context) else {
             UnixSocket.writeLine(client, ["refused": "cannot resolve the command to run"])
             return
         }
         let stdin = (object["stdin"] as? String).flatMap { Data(base64Encoded: $0) }
         let result = execute(executable, object["timeout"] as? Double, stdin)
-        UnixSocket.writeLine(client, [
+        var response: [String: Any] = [
             "status": Int(result.status), "output": result.output.base64EncodedString(),
-        ])
+        ]
+        if let parentOutput = pinned.parentOutput, let childOutput = pinned.childOutput {
+            defer { unlink(parentOutput) }
+            if let data = FileManager.default.contents(atPath: parentOutput) {
+                response["outputFile"] = ["path": childOutput, "data": data.base64EncodedString()]
+            }
+        }
+        UnixSocket.writeLine(client, response)
     }
 }
 
@@ -403,6 +454,11 @@ public enum SandboxGateway {
         }
         if let refused = object["refused"] as? String {
             return (refusedStatus, Data("sandbox: refused — \(refused)".utf8))
+        }
+        // 親が代わりに作った出力ファイル(devicectl の --json-output)は子が自分で書く = 書き込みは枠が検める
+        if let file = object["outputFile"] as? [String: String], let path = file["path"],
+           let data = file["data"].flatMap({ Data(base64Encoded: $0) }) {
+            try? data.write(to: URL(fileURLWithPath: path))
         }
         let output = (object["output"] as? String).flatMap { Data(base64Encoded: $0) } ?? Data()
         return (Int32(object["status"] as? Int ?? Int(refusedStatus)), output)

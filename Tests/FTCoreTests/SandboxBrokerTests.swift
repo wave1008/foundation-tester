@@ -189,6 +189,64 @@ final class SandboxBrokerRoundTripTests: XCTestCase {
         XCTAssertEqual(recorder.all, [])
     }
 
+    /// 検めたパスは実体パスに固定してから実行する。子が書ける場所の symlink を途中に挟んで検めさせ、実行の直前に
+    /// 向きを変える(判定と実行の間の差し替え)と、子が作ったアプリ・ライブラリを入れさせられる
+    func testCheckedPathsArePinnedToTheirRealPathsBeforeRunning() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent("ftb-pin-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: base) }
+        try fm.createDirectory(at: base.appendingPathComponent("real/App.app"), withIntermediateDirectories: true)
+        try fm.createSymbolicLink(at: base.appendingPathComponent("link"), withDestinationURL: base.appendingPathComponent("real"))
+        let link = base.appendingPathComponent("link").path
+        let real = ScenarioSandbox.canonicalPath(base.appendingPathComponent("real").path)
+        func pinned(_ argv: [String]) -> [String] { BrokerPolicy.pinned(argv, outputDirectory: "/out").argv }
+
+        XCTAssertEqual(pinned(["xcrun", "simctl", "install", "UDID-1", link + "/App.app"]).last, real + "/App.app")
+        XCTAssertEqual(pinned(["SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=" + link + "/lib.dylib", "xcrun", "simctl", "launch",
+                               "UDID-1", "com.example.app"]).first,
+                       "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=" + real + "/lib.dylib")
+        XCTAssertEqual(pinned(["xcrun", "devicectl", "device", "install", "app", "--device", "P-1", link + "/App.app"]).last,
+                       real + "/App.app")
+        XCTAssertEqual(pinned(["/sdk/adb", "-s", "emulator-5554", "install", "-r", link + "/x.apk"]).last, real + "/x.apk")
+        XCTAssertTrue(pinned(["bundletool", "install-apks", "--apks=" + link + "/x.apks", "--adb=/a"])
+            .contains("--apks=" + real + "/x.apks"))
+        // パス以外は変えない
+        let terminate = ["xcrun", "simctl", "terminate", "UDID-1", "com.example.app"]
+        XCTAssertEqual(pinned(terminate), terminate)
+    }
+
+    /// devicectl の出力ファイルは親が子の書ける場所へ書かない(symlink を辿らされる)。親だけの一時ファイルに書かせ、
+    /// 中身を応答で返して子が自分で(= 枠の中から)書く
+    func testDevicectlOutputFileIsWrittenByTheChildNotByTheParent() throws {
+        let fm = FileManager.default
+        let childDir = fm.temporaryDirectory.appendingPathComponent("ftb-child-\(UUID().uuidString)")
+        try fm.createDirectory(at: childDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: childDir) }
+        let recorder = Recorder()
+        let broker = try SandboxBroker(
+            context: SimctlPolicy.Context(udid: "PHONE-1", deviceName: nil, toolRoots: [],
+                                          childWritableRoots: [ScenarioSandbox.canonicalPath(childDir.path)]),
+            directory: NSTemporaryDirectory(),
+            execute: { argv, _, _ in
+                recorder.record(argv)
+                if let i = argv.firstIndex(of: "--json-output") {
+                    try? Data("{\"ok\":1}".utf8).write(to: URL(fileURLWithPath: argv[i + 1]))
+                }
+                return (0, Data())
+            })
+        defer { broker.stop() }
+        let target = childDir.appendingPathComponent("processes.json").path
+        let result = try XCTUnwrap(SandboxGateway.forward(
+            ["xcrun", "devicectl", "device", "info", "processes", "--device", "PHONE-1", "--json-output", target],
+            timeout: nil, stdin: nil, socketPath: broker.socketPath))
+        XCTAssertEqual(result.0, 0)
+        XCTAssertEqual(fm.contents(atPath: target), Data("{\"ok\":1}".utf8))
+        let ran = try XCTUnwrap(recorder.all.first)
+        let parentPath = ran[ran.count - 1]
+        XCTAssertNotEqual(parentPath, target, "親は子のパスへ書かない")
+        XCTAssertFalse(fm.fileExists(atPath: parentPath), "親の一時ファイルは片付ける")
+    }
+
     /// broker が居ないときは simctl を**自分で実行しに行かず**失敗を返す(枠の中では繋げないので、
     /// 素通しすると CoreSimulator の接続エラーになり原因が読めない)
     func testUnreachableBrokerFailsInsteadOfFallingThrough() throws {
