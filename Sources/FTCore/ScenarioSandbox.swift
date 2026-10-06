@@ -190,12 +190,16 @@ public enum ScenarioSandbox {
 
     public enum ProfileError: Error, LocalizedError, Equatable {
         case unrepresentablePath(String)
+        case symlinkedWritableRoot(String)
 
         public var errorDescription: String? {
             switch self {
             case .unrepresentablePath(let path):
                 return "sandbox: cannot write a Seatbelt rule for a path that contains a control"
                     + " character: \(path.debugDescription)"
+            case .symlinkedWritableRoot(let path):
+                return "sandbox: \(path) is a symbolic link — a scenario may write under it, and a link would"
+                    + " let it write wherever the link points. Replace it with a real directory"
             }
         }
     }
@@ -358,8 +362,39 @@ public enum ScenarioSandbox {
             throw ProfileError.unrepresentablePath(real)
         }
         let device = udid.map { NSRegularExpression.escapedPattern(for: $0) } ?? "[^/]+"
+        // **`<UUID>` そのものは含めない**(その下だけ)。含めると子が `<UUID>` を symlink に差し替え、親の
+        // `clearAppData`(MCP・ライブ操作)が symlink の先の中身を消す(差し替えは実測で通った)
         return "^" + NSRegularExpression.escapedPattern(for: real)
-            + "/Library/Developer/CoreSimulator/Devices/" + device + "/data/Containers/Data/Application/"
+            + "/Library/Developer/CoreSimulator/Devices/" + device + "/data/Containers/Data/Application/[^/]+/"
+    }
+
+    /// 書ける場所の根を親が先に作り、symlink なら止める。**根そのものは枠で書かせない**(`profile` の
+    /// literal の拒否)ので、子が作る必要のある根(Core ML のキャッシュ・URLSession の保存先)もここで作る。
+    /// 根が symlink だと `canonicalPath` がその先を書ける場所に入れる —— 子が空にした根を `rmdir` して
+    /// ホームへの symlink に差し替えると、次のシナリオの枠がホーム全体を開ける(差し替えは実測で通った)
+    static func prepareWritableRoots(_ scope: Scope) throws {
+        let fm = FileManager.default
+        for root in writablePaths(scope) {
+            if (try? fm.destinationOfSymbolicLink(atPath: root)) != nil {
+                throw ProfileError.symlinkedWritableRoot(root)
+            }
+            try fm.createDirectory(atPath: root, withIntermediateDirectories: true)
+        }
+    }
+
+    /// 子に書かせない台帳(ツール本体側の `.fleetest`)。**`.inapp` は除く**(子の `InAppLauncher` が書く)。
+    /// 親はこれらを信じて kill(`.pid`)・外への接続(`.endpoint`)・デバイスの帰属(`.device`)を決め、
+    /// ログは symlink を辿って追記する
+    static func ledgerDenyRegexes(_ scope: Scope) throws -> [String] {
+        try scope.stateRoots.map { root in
+            let real = canonicalPath(root)
+            guard !real.contains("\""),
+                  !real.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else {
+                throw ProfileError.unrepresentablePath(real)
+            }
+            return "^" + NSRegularExpression.escapedPattern(for: real)
+                + "/\\.fleetest/(android-)?bridge-[^/]*\\.(pid|endpoint|device|toolchain|ready|adopt|log)$"
+        }
     }
 
     /// 子が書いてよい `/dev` の中。**`/dev` を丸ごと開けない** —— 同じユーザーの他の端末(`/dev/ttys*`)へ
@@ -367,10 +402,14 @@ public enum ScenarioSandbox {
     static let devWritableLiterals = ["/dev/null", "/dev/zero", "/dev/tty", "/dev/random", "/dev/urandom",
                                       "/dev/dtracehelper"]
 
-    /// 書いてよい場所の中で、書かせない場所。`<root>/.fleetest/hooks/` は次の run が読んで
-    /// `teardown.sh` を枠の外で実行する(`RunHooks`)
+    /// 書いてよい場所の中で、書かせない場所。どれも**親が中身を信じて枠の外で実行・配布するもの**:
+    /// `hooks/` = 次の run が `teardown.sh` を実行(`RunHooks`)/ `DerivedData*` = ランナーの xctestrun と .app を
+    /// 親が xcodebuild で起動(子はランナーをビルドしない)/ `ftbridge.apk` = 親が全 Android 端末へ入れる /
+    /// `dispatch.lock`・`dispatch.queue` = 1マシン1 run の門(消すと他人の run に重ねられる)
     static func writeDeniedPaths(_ scope: Scope) -> [String] {
-        scope.stateRoots.map { $0 + "/.fleetest/hooks" }
+        scope.stateRoots.flatMap { root in
+            ["hooks", "DerivedData", "DerivedData-device"].map { root + "/.fleetest/" + $0 }
+        } + ["ftbridge.apk", "dispatch.lock", "dispatch.queue"].map { scope.home + "/.fleetest/" + $0 }
     }
 
     /// 常に読ませない場所(ホーム相対)。シナリオの駆動に要らない認証情報・個人データの定番の置き場で、
@@ -468,9 +507,10 @@ public enum ScenarioSandbox {
         lines.append("(allow file-issue-extension "
             + (try subpath(scope.home + "/Library/Caches/" + scope.runnerName)) + ")")
         let denied = try writeDeniedPaths(scope).map { try subpath($0) }
-        if !denied.isEmpty {
-            lines.append("(deny file-write* " + denied.joined(separator: " ") + ")")
-        }
+            + (try ledgerDenyRegexes(scope)).map { "(regex #\"" + $0 + "\")" }
+            // 根そのもの(中身は書ける)。`prepareWritableRoots` の doc
+            + (try writablePaths(scope).map { "(literal " + (try quoted(canonicalPath($0))) + ")" })
+        lines.append("(deny file-write* " + denied.joined(separator: " ") + ")")
         let unreadable = try scope.denyRead.map { try subpath($0) }
         if !unreadable.isEmpty {
             lines.append("(deny file-read* " + unreadable.joined(separator: " ") + ")")

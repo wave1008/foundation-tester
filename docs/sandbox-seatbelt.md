@@ -207,6 +207,16 @@ E2E では赤にならないが、書けないと**黙って効かなくなる**
 - `<root>/.fleetest/hooks/<pid>.json` は、次の run が読んで `teardown.sh` を枠の外で実行する。
   `.fleetest/` は書けるようにしたが、`hooks/` だけ拒否に戻した。
 - `/private/tmp` は入れない(共有の置き場)。ユーザーごとの一時領域(`/var/folders/xx/yy/`)だけを開ける。
+- 同じ理由で拒否に戻したもの(2026-10-06 の棚卸し): `<root>/.fleetest/DerivedData*`(ランナーの xctestrun と .app を
+  親が xcodebuild で起動する。子はランナーをビルドしない)・`bridge-*.{pid,endpoint,device,toolchain,ready,adopt,log}`
+  (親が kill・外への接続・デバイスの帰属・追記に使う。**`.inapp` は子の `InAppLauncher` が書くので開けたまま** ——
+  代わりに読む側が udid と bundleID を文法で検める)・`~/.fleetest/ftbridge.apk`(親が全 Android 端末へ入れる)・
+  `~/.fleetest/dispatch.lock` と `dispatch.queue`(1マシン1 run の門)。
+- **根そのものは書かせない**。subpath は根自身にも当たるので、子は空にした根を `rmdir` して同じパスに symlink を
+  作れた(実測)。次の起動で `canonicalPath` がその先を書ける場所に入れる。根は `(deny file-write* (literal …))` で
+  閉じ、親が起動前に作って symlink なら止める(`prepareWritableRoots`)。アプリのデータコンテナも同じ型で、
+  正規表現を `Application/<UUID>/` より下だけにした(`<UUID>` を symlink に差し替えると、親の `clearAppData` が
+  先を消す。差し替えは実測で通った。`clearAppData` 側でも symlink を断る)。
 
 ---
 
@@ -359,6 +369,15 @@ UI 操作で持ち出せる(§8.3)。渡すのは `FT_*`・`LC_*` と、Sources 
 | 全 Simulator のデータコンテナが書けた | 正規表現の UDID が `[^/]+` | レーンの UDID(iOS の Simulator・UUID の形)が分かるときはその1台だけ。ポートだけを指定した run は従来どおり全台 |
 | 読ませない一覧の抜け | `~/.gradle`(署名鍵のパスワード)・`~/.m2`・App Store Connect の API 鍵・fastlane のセッション・シェルの履歴など | `defaultDenyReadHomeSubpaths` に足した。**`Library/Mobile Documents` は入れない**(iCloud の「デスクトップと書類」では `~/Documents` の実体がその下にあり、そこのプロジェクトを読めなくなる) |
 | 親の環境変数が全部子へ渡っていた | `ScenarioHost` が親の環境に入口の分を `merging` していた | 上の許可リスト |
+| 書ける場所の根・データコンテナを symlink に差し替えられた | 実測(§5.3) | 根は literal で拒否・親が作って symlink なら止める・正規表現を `<UUID>/` より下に |
+| 親が信じる台帳・成果物を書けた | コード(§5.3) | 拒否に足した |
+
+**棚卸しで残したもの**(未着手。重い順): ①ユーザーの一時領域 `/var/folders/xx/yy/` を丸ごと開けている —— 他のツールが
+読むキャッシュ(`T/xcrun_db` 等)を書き換えられる。ツールがそれを信じて実行するかは未実測。子専用の一時領域へ絞る
+(Vision / Core ML が使う場所は拒否ログで実測して名指しする)②親が子の書ける場所へ予測できる名前で atomic でなく
+書く箇所(Android の状態ファイル・FM ブレーカの状態・Metal 異常の履歴など)—— symlink を置かれると先を壊す ③broker の
+判定と実行の間のパスの差し替え(TOCTOU)④子が localhost で偽のブリッジを待ち受けられる ⑤レポートの Markdown
+プレビューが外部の画像を読む。
 
 **他のプロセスの環境変数は枠の中から読めない**(実測: `KERN_PROCARGS2` は macOS 27.2 では argv しか返さない。
 枠の外でも同じ)。コマンドラインは枠の外と同じく読める(`process-info*` を開けている)。

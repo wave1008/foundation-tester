@@ -4328,7 +4328,10 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   (ポートと adb の鍵を開け、子の横取りを止める。プロジェクト・環境変数からは開けない)。**adb の呼び出しを足したら方針にも足す**
   (`AdbPolicyBuilderSyncTests` が組み立ての出力とドライバの定数の呼び出しを表に当てる)
 - **書ける場所は `writablePaths` の1箇所**。足すときは「そこに置いた物が枠の外で実行・解釈されないか」を
-  先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否)。親が決めて子に書かせる場所
+  先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否。同じ理由で `DerivedData*`・
+  `.inapp` 以外の `bridge-*` 台帳・`~/.fleetest/ftbridge.apk`・`dispatch.lock` / `dispatch.queue` も拒否 =
+  `writeDeniedPaths` / `ledgerDenyRegexes`)。**根そのものは書かせない**(literal の拒否。親が `prepareWritableRoots` で
+  先に作り、symlink なら起動しない —— 根を symlink に差し替えられると次の枠がその先を開ける)。親が決めて子に書かせる場所
   (静止画の置き場 `--still-frames-dir`)は `Scope.extraWritable` で渡す(環境変数から作らない)。
   **書けないと黙って効かなくなる型がある**(`FMLock` は取れたことになる)。拒否は E2E 中の `log stream` で拾う
 - **子が繋ぐ unix ソケットは名指しで開ける**(親の broker と画像判定の補助プロセス `VisionHelperHost`。

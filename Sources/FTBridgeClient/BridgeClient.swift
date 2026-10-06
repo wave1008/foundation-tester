@@ -346,6 +346,12 @@ public final class BridgeClient: AppDriver, Sendable {
                 body: "could not resolve the data container for \(bundleID)")
         }
         let fm = FileManager.default
+        // コンテナが symlink なら辿って消さない(サンドボックスの中のシナリオが差し替えうる場所)
+        if (try? fm.destinationOfSymbolicLink(atPath: path)) != nil {
+            throw DriverError.badResponse(status: 500,
+                body: "the data container of \(bundleID) is a symbolic link (\(path)) — refusing to delete"
+                    + " what it points to")
+        }
         let entries = (try? fm.contentsOfDirectory(atPath: path)) ?? []
         var failed: [String] = []
         for entry in entries {

@@ -30,14 +30,12 @@ extension ScenarioHost {
                                     try ScenarioSandbox.machineSettings()
                                 }) throws -> SandboxedLaunch? {
         guard let plan = try ScenarioSandbox.plan(settings: try settings()) else { return nil }
-        if let reportDir {
-            // 枠の中から作れるのは出力先そのものから下だけ(途中の親は作れない)
-            try FileManager.default.createDirectory(atPath: reportDir, withIntermediateDirectories: true)
-        }
         var scope = try ScenarioSandbox.scope(
             project: project, plan: plan, reportDir: reportDir, extraWritable: extraWritable,
             packageRoot: packageRoot(),
             runner: runner, connection: connection)
+        // 枠の中からは根を作れない(出力先も含む)。symlink になっていたら起こさない
+        try ScenarioSandbox.prepareWritableRoots(scope)
         // 子は環境変数で受けた補助プロセスへ繋ぐ(`childEnvironment` と同じ値を読む)
         scope.helperSockets = [VisionHelperHost.activeSocketPath].compactMap { $0 }
         // CoreSimulator の直叩き(FTCoreSimShim)を止めて simctl = broker 経由へ倒す

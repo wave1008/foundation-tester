@@ -131,7 +131,7 @@ public enum SimctlPolicy {
         Refusal(reason: "simctl \(verb) was called with arguments the sandbox does not allow")
     }
 
-    static func isBundleID(_ token: String) -> Bool {
+    public static func isBundleID(_ token: String) -> Bool {
         !token.isEmpty && !token.hasPrefix("-")
             && token.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "." || $0 == "-" || $0 == "_") }
     }

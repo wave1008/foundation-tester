@@ -36,11 +36,14 @@ public enum InAppBridgeState {
     }
 
     /// 3 語目(sourceDigest)は digest を計算できない構成では書かれず(2 語)nil になる。
-    /// 読み手は nil を「出所不明」として扱うこと(= 再利用しない側に倒す)
+    /// 読み手は nil を「出所不明」として扱うこと(= 再利用しない側に倒す)。
+    /// **udid と bundleID は文法で検める**(英数・`.`・`-`・`_`、先頭が `-` でない。子 = サンドボックスの中の
+    /// シナリオもこの台帳を書けるので、`simctl terminate` の引数にフラグや別の形を差し込ませない)
     static func read(at path: URL) -> (udid: String, bundleID: String, sourceDigest: String?)? {
         guard let content = try? String(contentsOf: path, encoding: .utf8) else { return nil }
         let parts = content.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: " ")
-        guard parts.count == 2 || parts.count == 3 else { return nil }
+        guard parts.count == 2 || parts.count == 3,
+              SimctlPolicy.isBundleID(String(parts[0])), SimctlPolicy.isBundleID(String(parts[1])) else { return nil }
         return (String(parts[0]), String(parts[1]),
                 parts.count == 3 ? String(parts[2]) : nil)
     }

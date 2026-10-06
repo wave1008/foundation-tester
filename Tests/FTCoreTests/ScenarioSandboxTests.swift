@@ -309,13 +309,55 @@ final class ScenarioSandboxTests: XCTestCase {
 
     /// まだ無いレポート出力先でも規則が当たる。**作れるのは出力先そのものから下だけ**で、途中の親は
     /// 作れない(だから `ScenarioHost` が起動前に作っておく)
-    func testNotYetExistingReportDirectoryIsWritableButItsMissingParentsAreNot() throws {
+    /// 根は枠の中から作れない(根そのものへの書き込みは拒否)ので、親が先に作る
+    func testNotYetExistingReportDirectoryIsCreatedByTheParentAndOnlyItsContentsAreWritable() throws {
         var scope = self.scope()
         scope.reportDir = path("reports/new")
-        XCTAssertEqual(try runSandboxed(["/bin/mkdir", path("reports/new")], scope: scope), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("reports/new")], scope: scope), 0)
+        try ScenarioSandbox.prepareWritableRoots(scope)
         XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path("reports/new/a")], scope: scope), 0)
-        scope.reportDir = path("outside/x/y")
-        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", "-p", path("outside/x/y")], scope: scope), 0)
+    }
+
+    /// 根そのものを消して symlink に差し替えられると、次の起動で `canonicalPath` がその先を書ける場所に入れる
+    func testWritableRootsCannotBeRemovedButTheirContentsCan() throws {
+        try ScenarioSandbox.prepareWritableRoots(scope())
+        XCTAssertNotEqual(try runSandboxed(["/bin/rmdir", path("stills")]), 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path("stills")))
+        XCTAssertEqual(try touch("stills/a"), 0)
+        XCTAssertEqual(try runSandboxed(["/bin/rm", path("stills/a")]), 0)
+    }
+
+    func testASymlinkedWritableRootIsRefusedBeforeLaunch() throws {
+        try FileManager.default.removeItem(atPath: path("stills"))
+        try FileManager.default.createSymbolicLink(atPath: path("stills"), withDestinationPath: path("outside"))
+        XCTAssertThrowsError(try ScenarioSandbox.prepareWritableRoots(scope())) { error in
+            XCTAssertEqual(error as? ScenarioSandbox.ProfileError, .symlinkedWritableRoot(path("stills")))
+        }
+    }
+
+    /// アプリのデータコンテナ(`<UUID>`)そのものは差し替えられない(親の clearAppData が symlink の先を消す)
+    func testTheAppDataContainerItselfCannotBeReplaced() throws {
+        let app = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers/Data/Application/"
+        XCTAssertNotEqual(try runSandboxed(["/bin/mv", path(app + "APP-1"), path(app + "OLD")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/ln", "-s", path("outside"), path(app + "APP-2")]), 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path(app + "APP-1/Library")))
+    }
+
+    /// 親が中身を信じて動く台帳・成果物は書けない(`.inapp` は子の InAppLauncher が書くので書ける)
+    func testLedgersAndArtifactsTheParentTrustsAreNotWritable() throws {
+        try ScenarioSandbox.prepareWritableRoots(scope())
+        for name in ["bridge-8123.pid", "bridge-8123.endpoint", "bridge-8123.device", "bridge-8123.toolchain",
+                     "bridge-8123.ready", "bridge-8123.log", "bridge-8123.prev.log",
+                     "android-bridge-emulator-5554.log"] {
+            XCTAssertNotEqual(try touch("tool/.fleetest/" + name), 0, name)
+        }
+        XCTAssertEqual(try touch("tool/.fleetest/bridge-8123.inapp"), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("tool/.fleetest/DerivedData")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("repo/.fleetest/DerivedData-device")]), 0)
+        XCTAssertNotEqual(try touch("home/.fleetest/ftbridge.apk"), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("home/.fleetest/dispatch.lock")]), 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/mkdir", path("home/.fleetest/dispatch.queue")]), 0)
+        XCTAssertEqual(try touch("home/.fleetest/fm-liveness.json"), 0)
     }
 
     func testSecretLocationsAreUnreadableAndOtherFilesAreReadable() throws {

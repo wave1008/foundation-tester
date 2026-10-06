@@ -31,6 +31,18 @@ final class InAppBridgeStateTests: XCTestCase {
         XCTAssertEqual(state?.bundleID, "com.example.app")
     }
 
+    /// 台帳はサンドボックスの中のシナリオも書けるので、`simctl terminate` の引数にフラグや別の形を差し込ませない
+    func testReadRefusesTokensOutsideTheUDIDAndBundleIDGrammar() throws {
+        let path = InAppBridgeState.url(stateDir: stateDir, port: 8216)
+        for line in ["--set com.example.app", "UDID-A -com.example.app", "UDID-A com.example/../x",
+                     "UDID-A com.example.app;rm"] {
+            try line.write(to: path, atomically: true, encoding: .utf8)
+            XCTAssertNil(InAppBridgeState.read(at: path), line)
+        }
+        try "UDID-A com.example.app digest".write(to: path, atomically: true, encoding: .utf8)
+        XCTAssertNotNil(InAppBridgeState.read(at: path))
+    }
+
     func testReadReturnsNilForMissingOrMalformedFile() throws {
         let missing = InAppBridgeState.url(stateDir: stateDir, port: 8211)
         XCTAssertNil(InAppBridgeState.read(at: missing))
