@@ -344,6 +344,7 @@ button.bulk-cancel:hover:not(:disabled) {
   line-height: 1;
   text-align: center;
   cursor: default;
+  position: relative;
 }
 .host-metrics.hm-multi .hm-lock {
   display: inline-block;
@@ -351,6 +352,18 @@ button.bulk-cancel:hover:not(:disabled) {
 }
 .host-metrics.hm-multi .hm-lock.hm-lock-on {
   visibility: visible;
+}
+/* 他人の占有の持ち主。錠前の左へ絶対配置で重ねる(行の幅を変えない)。上限幅は hmFitLockIssuer が測る */
+.hm-lock-issuer {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
 }
 /* 「マシン有効」off の印(⊘無効)。枠と可視性の規律は .hm-lock と同じ(全行に同じ文言で置く =
    visibility:hidden の行も同じ幅を取るので列は揃う)。

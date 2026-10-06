@@ -272,7 +272,7 @@ function renderDevicesPanel(): string {
                出す/出さないは可視性だけで切り替える(hostCharts.js の hmApplyLock)。 -->
           <!-- 「マシン有効」off の印。錠前と同じく**全行に必ず置き**可視性だけ切り替える(hmApplyDisabled) -->
           <span class="hm-off">${t("panels.hostMetrics.machineDisabled")}</span>
-          <span class="hm-lock">🔒</span>
+          <span class="hm-lock">🔒<span class="hm-lock-issuer"></span></span>
           <span class="host-metric" id="hm-mem" data-metric="mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-cpu" data-metric="cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
           <span class="host-metric" id="hm-gpu" data-metric="gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>

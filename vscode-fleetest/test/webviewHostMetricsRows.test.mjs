@@ -184,8 +184,11 @@ test("占有の錠前は行より先に届いても出る(行の生成時に貼�
     "手元の行には出さない",
   );
 
+  assert.equal(chip.querySelector(".hm-lock-issuer").textContent, "bob", "他人の占有は錠前の左に持ち主を出す");
+
   send(window, { type: "machineLock", machine: "mac2", held: false, mine: false });
   assert.equal(chip.classList.contains("hm-lock-on"), false, "空きは無印");
+  assert.equal(chip.querySelector(".hm-lock-issuer").textContent, "", "空きに持ち主を残さない");
   assert.equal(chip.getAttribute("data-hover-tip"), null, "空きの錠前に説明を残さない");
 });
 
@@ -202,6 +205,7 @@ test("手元の行にも錠前が出る(機械名のスロットには行の呼�
   assert.ok(chip.classList.contains("hm-lock-on"), "手元の行にも錠前が点く");
   assert.match(chip.getAttribute("data-hover-tip"), /local/,
     "空文字の行キーをそのまま文言へ入れない(呼び名は 'local')");
+  assert.equal(chip.querySelector(".hm-lock-issuer").textContent, "", "自分の占有には持ち主を出さない");
 
   send(window, { type: "machineLock", machine: "", held: false, mine: true });
   assert.equal(chip.classList.contains("hm-lock-on"), false, "解放で消える");

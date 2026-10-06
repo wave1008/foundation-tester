@@ -176,14 +176,58 @@ function hmApplyLock(row, machine) {
   const label = machine === '' ? HM_LOCAL_LABEL : machine;
   // **説明はタイルと同じ自前ツールチップ**(0.2 秒)。ネイティブ `title` は遅延が約1秒で
   // 指定できず、この錠前のような小さい的では「乗せても何も出ない」に見える(指摘あり)
+  const issuer = lock?.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown');
   setHoverTip(chip, lock
     ? (lock.mine
       ? t('wvMonitor2.hostCharts.lockMine', { machine: label })
-      : t('wvMonitor2.hostCharts.lockOther', {
-        machine: label, issuer: lock.issuer || t('wvMonitor2.hostCharts.lockIssuerUnknown'),
-      }))
+      : t('wvMonitor2.hostCharts.lockOther', { machine: label, issuer }))
     : '');
+  // 他人の占有だけ、錠前の左の空き(⊘無効の枠と機械名の余り)に持ち主を出す
+  const issuerEl = chip.querySelector('.hm-lock-issuer');
+  if (issuerEl) {
+    issuerEl.textContent = lock && !lock.mine ? issuer : '';
+    hmFitLockIssuer(row);
+  }
 }
+
+/**
+ * 持ち主の文字は錠前の中に絶対配置で重ねる(行の幅を変えない = 列を揃えたまま)。幅の上限は
+ * 「機械名の文字の右端(⊘無効が見えていればその右端)から錠前の左端まで」を測って決める ——
+ * 固定値だと言語(⊘無効 / ⊘Off)と機械名の長さで機械名に重なる。行が未表示(幅 0)のときは
+ * 測れないので、hmLockIssuerObserver が表示された時点で測り直す
+ */
+function hmFitLockIssuer(row) {
+  const chip = row.el.querySelector('.hm-lock');
+  const issuerEl = chip?.querySelector('.hm-lock-issuer');
+  if (!issuerEl || issuerEl.textContent === '') {
+    return;
+  }
+  const chipLeft = chip.getBoundingClientRect().left;
+  const off = row.el.querySelector('.hm-off');
+  let leftEdge;
+  if (off && off.classList.contains('hm-off-on')) {
+    leftEdge = off.getBoundingClientRect().right;
+  } else {
+    const machine = row.el.querySelector('.hm-machine');
+    const box = machine.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(machine);
+    leftEdge = Math.min(box.left + range.getBoundingClientRect().width, box.right);
+  }
+  const HM_LOCK_ISSUER_GAP_PX = 6; // 機械名との間の余白(px)
+  const room = Math.floor(chipLeft - leftEdge - HM_LOCK_ISSUER_GAP_PX);
+  issuerEl.style.maxWidth = `${Math.max(room, 0)}px`;
+}
+
+// 行が表示される・幅が変わる(パネルを開く・言語の切替・行の追加)たびに測り直す。jsdom には無い
+const hmLockIssuerObserver = typeof ResizeObserver === 'function'
+  ? new ResizeObserver(() => {
+    for (const row of hmRows.values()) {
+      hmFitLockIssuer(row);
+    }
+  })
+  : null;
+hmLockIssuerObserver?.observe(hmContainer);
 
 /** 「マシン有効」off の印を1行へ反映する(要素は足し引きしない。hmApplyLock と同じ理由) */
 function hmApplyDisabled(row, machine) {
