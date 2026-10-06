@@ -356,6 +356,29 @@ final class CommandDispatchTests: XCTestCase {
             && $0.contains("permission to access “T”") && $0.contains("used accessibility only") }, true, "\(messages)")
     }
 
+    /// `TestLog` の2つのフォルダは、シナリオの中で初めて読んだときに作られ、core に設定したパスを返す
+    func testTestLogFoldersAreCreatedOnFirstUseDuringAScenario() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("testlog-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let core = makeCore(driver: RecordingDriver())
+        core.directoryForLog = base.appendingPathComponent("reports/2026-10-07_090503/Login")
+        core.directoryForTemp = base.appendingPathComponent("tmp/Login.S0010-x")
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: base.path), "読むまでは作らない")
+        var seen: [URL] = []
+        scenario {
+            scene(1, "s") {
+                action { seen = [TestLog.directoryForLog, TestLog.directoryForTemp] }
+            }
+        }
+        XCTAssertEqual(seen, [core.directoryForLog, core.directoryForTemp].compactMap { $0 })
+        for url in seen {
+            var isDir: ObjCBool = false
+            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue, url.path)
+        }
+    }
+
     /// scene 番号の重複は**警告する**(失敗にはしない = 既存シナリオを止めない)
     func testDuplicateSceneNumberIsWarned() {
         let core = makeCore(driver: RecordingDriver())

@@ -108,6 +108,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
     - [掴んだ要素の値を読む(.text, .value, .id, lastElement)](reference/commands/reading_values_ja.md)
 - シナリオ間で値を共有
     - [メモ(writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo_ja.md)
+    - [出力フォルダと一時フォルダ(TestLog)](reference/commands/test_log_ja.md)
 - 分岐
     - [ifCanSelect, ios, android](reference/commands/branch_ja.md)
 - 反復

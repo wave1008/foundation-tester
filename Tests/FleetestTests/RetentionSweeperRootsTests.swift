@@ -5,6 +5,7 @@
 // だからテストは必ず2つを別の一時フォルダに置く。
 
 import XCTest
+import FTCore
 @testable import fleetest
 
 final class RetentionSweeperRootsTests: XCTestCase {
@@ -39,6 +40,29 @@ final class RetentionSweeperRootsTests: XCTestCase {
         // 一時フォルダの /var は /private/var の別名なので、実体のパスで比べる
         let found = sessions.first?.paths.first?.resolvingSymlinksInPath().path ?? ""
         XCTAssertTrue(found.hasPrefix(package.resolvingSymlinksInPath().path), found)
+    }
+
+    /// 利用者が `TestLog.directoryForLog` に書いた run のフォルダ(`yyyy-MM-dd_HHmmss`)も、同じ日のレポートと
+    /// 1つのセッションに入る。名前がこの形でないフォルダには触らない・今日のぶんは守る
+    func testRunFoldersOfTestLogJoinTheReportsOfTheSameDay() throws {
+        let fm = FileManager.default
+        let reports = package.appendingPathComponent("TestProjects/app/reports")
+        let old = reports.appendingPathComponent("2026-01-01_093000/Login")
+        try fm.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 100).write(to: old.appendingPathComponent("prices.csv"))
+        try fm.createDirectory(at: reports.appendingPathComponent("my-notes"), withIntermediateDirectories: true)
+        let todayLabel = TestLogSessionLabel.label(Date())
+        try fm.createDirectory(at: reports.appendingPathComponent(todayLabel), withIntermediateDirectories: true)
+
+        let sessions = RetentionSweeper.sessions(
+            for: .reports, roots: RetentionSweeper.Roots(package: package, tool: tool), activeRunID: nil)
+        let jan1 = try XCTUnwrap(sessions.first { $0.id.hasSuffix(" 20260101") })
+        XCTAssertEqual(Set(jan1.paths.map(\.lastPathComponent)),
+                       ["scenario-20260101-120000-000-x.md", "2026-01-01_093000"])
+        XCTAssertGreaterThanOrEqual(jan1.bytes, 101, "フォルダの中身も数える")
+        XCTAssertFalse(sessions.flatMap(\.paths).contains { $0.lastPathComponent == "my-notes" })
+        let today = try XCTUnwrap(sessions.first { $0.paths.contains { $0.lastPathComponent == todayLabel } })
+        XCTAssertTrue(today.guarded, "今日の run のフォルダは消さない")
     }
 
     /// 実行プロファイルの `reportDir` が指す置き場(相対・プロジェクトの外の絶対)も拾う。

@@ -514,7 +514,9 @@ public enum ScenarioHost {
         var args = ["run", "--scenario", deviceTearDownOnly ? className : scenarioID,
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
-                    "--project-dir", project.rootURL.path]
+                    "--project-dir", project.rootURL.path,
+                    // TestLog.directoryForLog の run のフォルダ(この親プロセスの全シナリオで同じ)
+                    "--run-started-at", TestLogSessionLabel.processStart]
         if settings.heal { args.append("--heal") }
         if !fm.enabled { args.append("--no-fm") }
         if !fm.fmTextOcclusionCheck { args.append("--no-fm-text-occlusion-check") }

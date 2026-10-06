@@ -182,6 +182,10 @@ struct RunScenario: AsyncParsableCommand {
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
 
+    /// `TestLog.directoryForLog` の run のフォルダ名(`TestLogSessionLabel`)。親が渡す。無ければこの子の開始時刻
+    @Option(name: .customLong("run-started-at"), help: "Run start label (yyyy-MM-dd_HHmmss) for TestLog.directoryForLog")
+    var runStartedAt: String?
+
     @Option(name: .customLong("project-dir"),
             help: "Root of the test project (where state such as locator fingerprints is stored; defaults to the current directory)")
     var projectDir: String?
@@ -574,6 +578,15 @@ struct RunScenario: AsyncParsableCommand {
             core.runSetUpDevice = deviceSession.runSetUpDevice
         }
         core.stillFrameCapture = stillFramesDir.map { StillFrameCapture(dir: URL(fileURLWithPath: $0)) }
+        // 利用者が書けるフォルダ(サンドボックスの中で書けるのはレポートの出力先の下と子の TMPDIR の下)
+        core.directoryForLog = TestLogPaths.logDirectory(
+            reportDir: URL(fileURLWithPath: reportDir).standardizedFileURL,
+            runStartedAt: runStartedAt.flatMap { TestLogSessionLabel.day(ofLabel: $0) != nil ? $0 : nil }
+                ?? TestLogSessionLabel.label(Date()),
+            className: testClass.className)
+        core.directoryForTemp = TestLogPaths.temporaryDirectory(base: TemporaryDirectory.url, scenarioID: scenarioID)
+        // 一時フォルダはシナリオの終わりに消す(作っていなければ何もしない)。どの経路で抜けても1回
+        defer { if let temp = core.directoryForTemp { try? FileManager.default.removeItem(at: temp) } }
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
         if runPlatform == "android", let serial {

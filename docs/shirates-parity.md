@@ -236,6 +236,7 @@ fleetest の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | fleetest | |
 |---|---|---|
 | `writeMemo` / `readMemo` / `clearMemo` / `memoTextAs` | 同名・同挙動(`writeMemo` は履歴に追記・`readMemo` は最後の値か `""`・`memoTextAs` は要素と String の両方) | 🟢 **スコープは「1回の run × 1デバイス」**。Shirates は1 run で1デバイスを動かすので JVM グローバルのメモと同じ範囲。fleetest はシナリオごとに別プロセスなので、親(run を束ねる側)がデバイスごとに持って子へ渡す。別デバイスの値は見えない(`readMemo` は `""` + 注記 `memo-key-not-found`)。`ft_batch` は受けない |
+| `TestLog.directoryForLog` | `TestLog.directoryForLog`(`URL`) | 🟢 同名・同じ単位(run × テストクラス。パスは `<reportDir>/<run の開始 yyyy-MM-dd_HHmmss>/<クラス名>/`。Shirates は `testResults` 配下・fleetest はレポートの出力先の配下)。Shirates に無い一時フォルダの口 `TestLog.directoryForTemp`(シナリオごと・終わりに消す)を足した = サンドボックスの中では `NSTemporaryDirectory()` に書けないため |
 | `account` / `app` / `data` / `dataPattern` | — | ➖ **テストデータの外部化は持たない**(Shirates は JSON のデータセットを引く)。fleetest は Swift のリテラル・定数で書く —— 生成側が直書きでき、間接参照は読み取りコストが勝つ |
 | `clipboard` / `readClipboard` / `writeClipboard` | — | ⏳ **足す**(2026-08-21 判定。基準①)。コピー・ペースト機能そのものを検証する画面でだけ要る。**足す条件**: そういう画面が受け手に出たとき(それまでは無くても回る) |
 | `disableCache` / `refreshCache` / `syncCache` / `onDirectAccess` 等 | 内部で自動管理(利用者に露出しない) | ➖ 露出すると生成側が性能問題を誤った手段で解こうとする |

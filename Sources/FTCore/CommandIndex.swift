@@ -427,6 +427,14 @@ public enum DSLCommandIndex {
               "Writes an element's text (the first non-empty of label and value) or a String to the memo under the key and"
                   + " returns the element or string, so it chains: select(\"#total\").memoTextAs(\"total\")."),
 
+        // MARK: files (folders a scenario may write to; the sandbox allows nothing else)
+        .init("TestLog.directoryForLog", "files", "TestLog.directoryForLog",
+              "URL of this test class's output folder (<report directory>/<run start yyyy-MM-dd_HHmmss>/<test class>/),"
+                  + " shared by the scenarios of the class in one run. Kept with the reports; created on first use."),
+        .init("TestLog.directoryForTemp", "files", "TestLog.directoryForTemp",
+              "URL of a temporary folder for this scenario only; deleted when the scenario ends. Created on first use."
+                  + " NSTemporaryDirectory() is not writable from a scenario."),
+
         // MARK: this (device-independent values)
         .init("thisIs", "this", "value.thisIs(expected, strict:)", "Asserts equality."),
         .init("thisIsNot", "this", "value.thisIsNot(expected, strict:)", "Asserts inequality."),
@@ -461,4 +469,7 @@ public enum DSLCommandIndex {
     /// 自由関数ではなく型のメンバとして生える索引項目(`element.memoTextAs` / `string.memoTextAs`)。
     /// 「ソースにあるが索引に無い」の照合は行頭の `public func` を拾うので、これらはその対象外
     public static let memberOnlyNames: Set<String> = ["memoTextAs"]
+
+    /// 型の静的メンバとして生える索引項目(`TestLog.directoryForLog` 等)。名前は `型.メンバ` の形で索引に載る
+    public static let staticMemberNames: Set<String> = ["TestLog.directoryForLog", "TestLog.directoryForTemp"]
 }

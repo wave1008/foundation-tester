@@ -114,7 +114,8 @@ as arbitrary Swift code (a dry run executes them too).
 - **Scenarios always run inside fleetest's sandbox (macOS Seatbelt)**, whether they are started from MCP, the CLI or
   the extension. Inside the sandbox a scenario:
   - can write only to the report directory, the project's `.fleetest/` and a temporary folder of its own. It cannot write
-    the scenario sources, the fleetest clone, or anywhere else in your home folder.
+    the scenario sources, the fleetest clone, or anywhere else in your home folder. Scenario code writes to
+    [`TestLog.directoryForLog` / `TestLog.directoryForTemp`](../commands/test_log.md) (`NSTemporaryDirectory()` is not writable).
   - cannot read the usual places for credentials and personal data (`~/.ssh`, `~/.aws`, `~/.config`, `~/.gradle`,
     keychains, browser profiles, cookies, Mail, Messages, shell history and so on).
   - sees only the environment variables fleetest itself uses (`PATH`, `HOME`, `DEVELOPER_DIR`, `ANDROID_HOME`,

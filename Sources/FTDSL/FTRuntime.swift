@@ -269,6 +269,9 @@ public final class FTDriveCore {
     /// 書き込みは `memoWrite` / `memoClear` イベントで親へ片道通知する(応答は無い)。
     /// 契約は FTCore/DeviceSessionHandoff.swift。DSL スレッド専有で lock 不要
     public var deviceMemo: [String: [String]] = [:]
+    /// `TestLog.directoryForLog` / `TestLog.directoryForTemp` の実体(ScenarioRunnerMain が設定する)。nil = その文脈では使えない
+    public var directoryForLog: URL?
+    public var directoryForTemp: URL?
     /// true = このシナリオの beforeEach の前に setUpDevice を走らせる。親だけが決める(子は従うだけ)。
     /// 既定 true = 人が子を直接起動した場合(親の台帳が無い)
     public var runSetUpDevice = true

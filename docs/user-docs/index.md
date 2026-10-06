@@ -109,6 +109,7 @@ scenarios the AI assistant wrote, or to write some yourself.
     - [Reading values of the grabbed element (.text, .value, .id, lastElement)](reference/commands/reading_values.md)
 - Sharing values between scenarios
     - [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo.md)
+    - [Output folder and temporary folder (TestLog)](reference/commands/test_log.md)
 - Branch
     - [ifCanSelect, ios, android](reference/commands/branch.md)
 - Repeating action

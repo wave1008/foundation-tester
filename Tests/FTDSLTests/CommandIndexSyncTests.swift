@@ -76,7 +76,15 @@ final class CommandIndexSyncTests: XCTestCase {
         let members = names(in: commandsSource, prefix: "public func ", anchoredToLineStart: false)
             .intersection(DSLCommandIndex.memberOnlyNames)
         XCTAssertEqual(members, DSLCommandIndex.memberOnlyNames, "memberOnlyNames に載せたメンバがソースに無い")
-        let declared = commands.union(thisAssertions).union(members)
+        // 型の静的メンバ(`TestLog.directoryForLog`)は `public enum 型` と字下げした `public static var メンバ:` で拾う
+        let statics = Set(DSLCommandIndex.staticMemberNames.filter { name in
+            let parts = name.split(separator: ".", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { return false }
+            return commandsSource.contains("public enum \(parts[0]) ")
+                && commandsSource.contains("public static var \(parts[1]): ")
+        })
+        XCTAssertEqual(statics, DSLCommandIndex.staticMemberNames, "staticMemberNames に載せたメンバがソースに無い")
+        let declared = commands.union(thisAssertions).union(members).union(statics)
         let indexed = Set(DSLCommandIndex.all.map(\.name))
 
         XCTAssertEqual(indexed.subtracting(declared), [],

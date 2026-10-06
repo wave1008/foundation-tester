@@ -109,7 +109,8 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
 - **シナリオは常に fleetest のサンドボックス(macOS の Seatbelt)の中で動きます。** MCP からでも、CLI からでも、
   拡張からでも同じです。サンドボックスの中のシナリオは:
   - 書けるのは、レポートの出力先・プロジェクトの `.fleetest/`・シナリオ専用の一時フォルダなどに限られます。シナリオのソース、
-    fleetest 本体のクローン、ホームの他の場所には書けません。
+    fleetest 本体のクローン、ホームの他の場所には書けません。シナリオのコードから書くときは
+    [`TestLog.directoryForLog` / `TestLog.directoryForTemp`](../commands/test_log_ja.md) を使います(`NSTemporaryDirectory()` には書けません)。
   - 認証情報や個人データの定番の置き場(`~/.ssh`・`~/.aws`・`~/.config`・`~/.gradle`・キーチェーン・ブラウザの
     プロファイル・Cookies・メール・メッセージ・シェルの履歴など)を読めません。
   - fleetest を起こした環境の環境変数は、fleetest が使うもの(`PATH`・`HOME`・`DEVELOPER_DIR`・`ANDROID_HOME`・

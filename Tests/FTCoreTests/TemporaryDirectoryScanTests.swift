@@ -34,10 +34,14 @@ final class TemporaryDirectoryScanTests: XCTestCase {
             for case let url as URL in enumerator where url.pathExtension == "swift" {
                 scanned += 1
                 guard Self.parentOnly[url.lastPathComponent] == nil else { continue }
+                // コメントと文字列リテラル(索引の説明文が名前を出す)を除き、呼び出しの形だけを見る
+                // (`.temporaryDirectory` の部分一致にすると `TestLogPaths.temporaryDirectory(...)` に当たる)
                 let code = try String(contentsOf: url, encoding: .utf8)
                     .split(separator: "\n", omittingEmptySubsequences: false)
                     .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
-                if code.contains(where: { $0.contains("NSTemporaryDirectory()") || $0.contains(".temporaryDirectory") }) {
+                    .map { $0.replacingOccurrences(of: #""([^"\\]|\\.)*""#, with: "\"\"", options: .regularExpression) }
+                if code.contains(where: { $0.contains("NSTemporaryDirectory()")
+                    || $0.contains("FileManager.default.temporaryDirectory") }) {
                     offenders.append(module + "/" + url.lastPathComponent)
                 }
             }

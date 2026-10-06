@@ -717,6 +717,19 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 | `@FTCommand("説明")` | scenarios/ 配下に書いた**素の Swift 関数**(トップレベル、または `extension FTElement` のメソッド)に付けると、`fleetest api dsl-commands` / MCP の `ft_dsl_commands` の索引に載る(名前・シグネチャ・説明・定義位置)。展開は何も生成しない純粋なマーカー。`private`/`fileprivate` を付けた関数は他ファイルから呼べないため索引には載らず警告になる。詳細は下記「独自コマンド(`@FTCommand`)」 |
 | `irregularHandler(検出sel, dismiss: 閉じるsel?, maxDismissals: 10)` | **出るか不定のアプリ内メッセージ**(お知らせ・キャンペーン)を宣言すると、以降どのステップでも出た時点で自動的に閉じる。`dismiss` 省略時は検出したものをタップ。**セレクタは `\|\|` / `(a\|b)` の代替も効く**(`"#promo\|\|お知らせ"`。照合は先に書いたほうが勝つ)。beforeEach で 1 回宣言するのが定石。閉じたことはステップの注記に残る(**1ステップで最大10回**まで閉じる。`maxDismissals:` で宣言ごとに変えられる。長いステップの最中に2度目が湧いても閉じ切れる。2回閉じても同じものが残っていれば「閉じられていない」と判断して打ち切り、注記に残す)。**OS のシステムダイアログ(権限の許可等)はこれでは閉じない** —— 下の §システムダイアログ(iOS)参照 |
 
+### 出力フォルダと一時フォルダ(`TestLog`)
+
+シナリオはサンドボックスの中で動くので、**利用者が書けるのはこの2つ**(`NSTemporaryDirectory()` /
+`FileManager.default.temporaryDirectory` は `TMPDIR` を見ず、書けない一時領域の根を返す)。どちらも初めて読んだときに作る。
+
+| プロパティ | 説明 |
+|---|---|
+| `TestLog.directoryForLog: URL` | `<reportDir>/<run の開始 yyyy-MM-dd_HHmmss>/<テストクラス名>/`(Shirates と同じ名前・単位 = 同じ run の同じクラスで共有)。run のフォルダ名は親プロセスの開始時刻(`TestLogSessionLabel.processStart`。`--run-started-at` で子へ渡る)。レポートと一緒に残り、保持容量の掃除はレポートと同じ日の単位で消す。リモートは reportDir ごと回収される |
+| `TestLog.directoryForTemp: URL` | 子の `TMPDIR` の下にシナリオごとに一意(`<シナリオID>-<UUID>`)。**シナリオの終わりに消す** |
+
+- シナリオの外(MCP の `ft_batch` 等)では `lastElement` と同じく fatalError
+- dry-run でも本体は動くので返す(出力先は使い捨て)
+
 ### メモ(デバイス単位の値の共有)
 
 シナリオ(`@Test`)は1本ずつ別プロセスで動くので、本の間で値を渡す口がメモ。名前・挙動は Shirates の Memo と同じ。

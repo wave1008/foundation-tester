@@ -154,11 +154,22 @@ enum RetentionSweeper {
                     guard let day = reportDay(of: url.lastPathComponent) else { continue }
                     byDay[day, default: []].append(url)
                 }
-                for (day, files) in byDay {
-                    guard let measured = measure(files: files) else { continue }
+                // 利用者が `TestLog.directoryForLog` に書いた run のフォルダ(`yyyy-MM-dd_HHmmss`)も同じ日へ入れる。
+                // 名前がこの形のフォルダだけ(利用者が置いた別のフォルダには触らない)
+                var dirsByDay: [String: [URL]] = [:]
+                for sub in subdirectories(of: dir) {
+                    guard let day = TestLogSessionLabel.day(ofLabel: sub.lastPathComponent) else { continue }
+                    dirsByDay[day, default: []].append(sub)
+                }
+                for day in Set(byDay.keys).union(dirsByDay.keys) {
+                    let files = byDay[day] ?? []
+                    let dirs = dirsByDay[day] ?? []
+                    let measured = [measure(files: files)] + dirs.map { measure(directory: $0) }
+                    let present = measured.compactMap { $0 }
+                    guard !present.isEmpty else { continue }
                     sessions.append(RetentionSweep.Session(
-                        id: "\(label) \(day)", bytes: measured.bytes,
-                        newestModified: measured.newest, paths: files,
+                        id: "\(label) \(day)", bytes: present.reduce(0) { $0 + $1.bytes },
+                        newestModified: present.map(\.newest).max() ?? Date.distantPast, paths: files + dirs,
                         guarded: day >= today))
                 }
             }
