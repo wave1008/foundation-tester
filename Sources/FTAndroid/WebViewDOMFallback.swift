@@ -65,11 +65,9 @@ enum WebViewDOMFallback {
     static let probeMarker = "--ft-debuggable--"
 
     /// `ro.debuggable` とアプリの debuggable フラグをまとめて採る adb 引数(純粋)。
-    /// **綴りを検めてから素のシェル文字列へ埋める**(AndroidWebViewDOM.probeCommand と同じ規律 ——
-    /// `;` を含むパッケージ名が来ると端末上で別コマンドになる)。検めに落ちたら nil
+    /// 素のシェル文字列へ埋めるので `AndroidPackageName` で検める。落ちたら nil
     static func probeCommand(packageID: String) -> [String]? {
-        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
-        guard !packageID.isEmpty, packageID.allSatisfy({ allowed.contains($0) }) else { return nil }
+        guard AndroidPackageName.isShellSafe(packageID) else { return nil }
         return ["shell", "getprop ro.debuggable; echo \(probeMarker); "
                 + "dumpsys package \(packageID) | grep flags="]
     }

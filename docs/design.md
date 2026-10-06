@@ -4278,7 +4278,7 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
 |---|---|
 | `ScenarioSandbox` | マシン側の設定(`MachineSettings`)→ 計画(`Plan`)→ 範囲(`Scope`)→ プロファイル本文。包むかどうかを決めるのは `plan` の1箇所 |
 | `ScenarioHost.sandboxedLaunch` | 包む入口。実行(dry-run を含む)・一覧取得(`list`)・OCR のコンパイル(`compile-ocr`)の3経路がここを通る(`ScenarioSandboxWiringTests`) |
-| `SandboxBroker` / `BrokerPolicy`(`SimctlPolicy` / `DevicectlPolicy`)/ `SandboxGateway` | Simulator と iOS 実機の操作の代行(親 / 方針 / 子) |
+| `SandboxBroker` / `BrokerPolicy`(`SimctlPolicy` / `DevicectlPolicy` / `AdbPolicy`)/ `SandboxGateway` | Simulator・iOS 実機・Android の操作の代行(親 / 方針 / 子) |
 | `SandboxProxy` / `SandboxDomainPolicy` | 許可ドメインへのプロキシ |
 
 **全拒否が土台**(`(deny default)`)。全許可を土台にして書き込みと通信だけ絞る形は壁にならない ——
@@ -4309,6 +4309,17 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   `DYLD_INSERT_LIBRARIES`、`devicectl --json-output` の書き先が子の書ける場所の外。
   **`simctl` / `devicectl` の呼び出しを足したら方針にも足す**(`devicectl` は
   `DevicectlPolicyTests.testEveryDevicectlCallInTheSourcesHasAKnownShape` がソース走査で落とす)
+- **Android の操作(adb)も親が代行する**。子が adb サーバへ繋げると `adb shell` で Emulator の中 = 枠の外から
+  外部へ出られ、繋がった全端末を操作・読み出せる。子の `Shell.runRaw` が `<…>/adb …` を親へ送り、親は
+  `AdbPolicy.check` が認めた形だけを**親自身の adb**(`AdbLocator.adbPath`。子が送ったパスは使わない)で実行する。
+  方針が断るもの: 列挙に無い形(`push` / `pull` / `reverse` / `emu` / `reboot` / 任意の `shell` コマンド等)、
+  レーン以外の端末(`-s` の無い呼び出しもレーンを持つ run では断る)、パッケージ名・URL・数値の欄が文法を外れる値、
+  子が書ける場所からの `install`。枠は adb サーバ(`ANDROID_ADB_SERVER_PORT`、既定 5037)と Emulator の
+  コンソール / adbd(5554〜5585)への接続を `localhost:*` の許可より後で拒否し、`~/.android`(adb の鍵)と
+  `~/.emulator_console_auth_token` を読ませない。`.apks` のインストール(bundletool は adb サーバへ直に繋ぐ)も
+  親が代行する(`BundletoolPolicy`: `install-apks` の1形・絶対パスで子の書けない場所の `.apks`・レーンの端末だけ。
+  親自身の bundletool と adb で実行)。**adb の呼び出しを足したら方針にも足す**
+  (`AdbPolicyBuilderSyncTests` が組み立ての出力とドライバの定数の呼び出しを表に当てる)
 - **書ける場所は `writablePaths` の1箇所**。足すときは「そこに置いた物が枠の外で実行・解釈されないか」を
   先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否)。親が決めて子に書かせる場所
   (静止画の置き場 `--still-frames-dir`)は `Scope.extraWritable` で渡す(環境変数から作らない)。

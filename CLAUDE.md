@@ -136,8 +136,8 @@ grep やシェル(`cat`)で見るだけのとき・新しいファイルを読�
   user-docs・docs/shirates-parity.md・`ft_batch` のキー・引数名は `waitSeconds:` 等の規律(dsl-commands.md)
 - 受け手のフロー(install.sh・スキル)を変える → SKILL.md のステップ番号と 1:1(`installStepSync.test.mjs`)・
   受け手のファイルを書くのはステップ7.6 の入口だけ(installer-agents.md)
-- シナリオ実行バイナリを起こす経路・子が書く場所・子からの `simctl` / `devicectl` の呼び出しを足す → サンドボックスの
-  入口(`ScenarioHost.sandboxedLaunch`)・`ScenarioSandbox.writablePaths`・`SimctlPolicy` / `DevicectlPolicy` にも足す
+- シナリオ実行バイナリを起こす経路・子が書く場所・子からの `simctl` / `devicectl` / `adb` の呼び出しを足す → サンドボックスの
+  入口(`ScenarioHost.sandboxedLaunch`)・`ScenarioSandbox.writablePaths`・`SimctlPolicy` / `DevicectlPolicy` / `AdbPolicy` にも足す
   (executor.md。常に有効なので漏れはデバイス実行で赤になるか、黙って効かなくなる)
 - iOS Simulator を起動する経路を足す → 起動の**前に** `SimulatorBootCleanup.beforeBoot(udid:)`
   (`SimulatorPosterCachePurgeWiringTests`。docs/design.md §12.4.2・§12.4.3)

@@ -22,23 +22,12 @@ public enum ApksBundle {
 
     // MARK: - bundletool の解決
 
-    /// 実行コマンド(argv の先頭部分)。`FT_BUNDLETOOL` は実行ファイルでも `.jar` でもよい
-    /// (jar なら `java -jar`)。PATH に頼り切らず既知の場所も見るのは、ssh 越しの非対話シェルが
-    /// /opt/homebrew を PATH に持たないため(RemoteShell.remoteRunCommand と同じ理由)。
+    /// 探し方は FTCore の1箇所(サンドボックスの broker も同じ bundletool を使う)
     public static func findBundletool(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         isExecutable: (String) -> Bool = { FileManager.default.isExecutableFile(atPath: $0) }
     ) -> [String]? {
-        if let override = environment["FT_BUNDLETOOL"], !override.isEmpty {
-            if override.lowercased().hasSuffix(".jar") { return ["java", "-jar", override] }
-            return isExecutable(override) ? [override] : nil
-        }
-        let pathDirs = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-        for dir in pathDirs + ["/opt/homebrew/bin", "/usr/local/bin"] where !dir.isEmpty {
-            let candidate = dir.hasSuffix("/") ? dir + "bundletool" : dir + "/bundletool"
-            if isExecutable(candidate) { return [candidate] }
-        }
-        return nil
+        BundletoolLocator.find(environment: environment, isExecutable: isExecutable)
     }
 
     /// `--adb` は必ず渡す: bundletool は adb を ANDROID_HOME か PATH からしか探さず、ssh 越しの

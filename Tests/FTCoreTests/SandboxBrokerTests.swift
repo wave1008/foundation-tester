@@ -178,12 +178,14 @@ final class SandboxBrokerRoundTripTests: XCTestCase {
         XCTAssertEqual(recorder.all, [])
     }
 
-    /// simctl 以外は素通し(nil)。broker へは何も送らない
+    /// simctl / devicectl / adb 以外は素通し(nil)。broker へは何も送らない
     func testNonSimctlCommandsAreNotForwarded() throws {
         let recorder = Recorder()
         let broker = try makeBroker(recorder)
         defer { broker.stop() }
-        XCTAssertNil(SandboxGateway.forward(["adb", "devices"], timeout: nil, stdin: nil, socketPath: broker.socketPath))
+        XCTAssertNil(SandboxGateway.forward(["git", "status"], timeout: nil, stdin: nil, socketPath: broker.socketPath))
+        XCTAssertNil(SandboxGateway.forward(["/usr/bin/xcrun", "xcodebuild", "-version"], timeout: nil, stdin: nil,
+                                            socketPath: broker.socketPath))
         XCTAssertEqual(recorder.all, [])
     }
 

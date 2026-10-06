@@ -135,6 +135,36 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try runSandboxed(["/usr/bin/xcrun", "simctl", "list", "devices", "-j"]), 0)
     }
 
+    /// adb サーバと Emulator のコンソール / adbd は閉じる(開いていると `adb shell` で Emulator の中 = 枠の外から
+    /// 外部へ出られる)。規則は localhost:* の許可より後に置く(後に書いた規則が勝つ)
+    func testAdbServerAndEmulatorPortsAreDeniedAfterTheLocalhostAllowance() throws {
+        let profile = try ScenarioSandbox.profile(scope())
+        let allow = try XCTUnwrap(profile.range(of: "(allow network-outbound (remote ip \"localhost:*\"))"))
+        for port in [UInt16(5037), 5554, 5555, 5585] {
+            let deny = try XCTUnwrap(profile.range(of: "(deny network-outbound (remote ip \"localhost:\(port)\"))"),
+                                     "port \(port) is not denied")
+            XCTAssertLessThan(allow.lowerBound, deny.lowerBound, "port \(port)")
+        }
+        XCTAssertEqual(ScenarioSandbox.deniedLoopbackPorts(environment: ["ANDROID_ADB_SERVER_PORT": "6037"]).first, 6037)
+        for name in [".android", ".emulator_console_auth_token"] {
+            XCTAssertTrue(ScenarioSandbox.defaultDenyReadHomeSubpaths.contains(name), name)
+        }
+    }
+
+    /// 規則が本当に効くこと: 一時ポートの待受には繋がり(陽性対照)、Emulator のポートには繋がらない
+    func testConnectingToAnEmulatorPortFailsInsideTheSandbox() throws {
+        let open = try LoopbackListener(port: 0)
+        defer { open.close() }
+        let emulator: LoopbackListener
+        do { emulator = try LoopbackListener(port: 5585) } catch {
+            throw XCTSkip("port 5585 is in use on this machine (an Emulator may hold it)")
+        }
+        defer { emulator.close() }
+        XCTAssertEqual(try runSandboxed(["/usr/bin/nc", "-z", "-G", "2", "127.0.0.1", String(open.port)]), 0,
+                       "陽性対照: localhost の一時ポートに繋がらない")
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/nc", "-z", "-G", "2", "127.0.0.1", "5585"]), 0)
+    }
+
     func testTheBaseIsDenyDefault() throws {
         let profile = try ScenarioSandbox.profile(scope())
         XCTAssertTrue(profile.hasPrefix("(version 1)\n(deny default)\n"), profile)
@@ -319,14 +349,15 @@ private final class LoopbackListener {
     let port: UInt16
     private let descriptor: Int32
 
-    init() throws {
+    /// port 0 は空きポート
+    init(port requested: UInt16 = 0) throws {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw POSIXError(.init(rawValue: errno) ?? .EIO) }
         var address = sockaddr_in()
         address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         address.sin_family = sa_family_t(AF_INET)
         address.sin_addr.s_addr = INADDR_ANY
-        address.sin_port = 0
+        address.sin_port = requested.bigEndian
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
@@ -347,3 +378,4 @@ private final class LoopbackListener {
 
     func close() { Darwin.close(descriptor) }
 }
+

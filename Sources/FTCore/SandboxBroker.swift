@@ -1,8 +1,9 @@
 // SandboxBroker.swift
-// サンドボックスの中のシナリオ実行バイナリは CoreSimulator へ繋げない(繋げると `simctl spawn` で
-// 枠の外にプロセスを起こせる)。Simulator と iOS 実機の操作は**親が代わりに実行する**: 子の `Shell.run` が
-// `xcrun simctl …` / `xcrun devicectl …` を unix ソケット越しに親へ送り(`SandboxGateway`)、親は
-// `BrokerPolicy`(`SimctlPolicy` / `DevicectlPolicy`)が認めた形だけを枠の外で実行して結果を返す。
+// サンドボックスの中のシナリオ実行バイナリは CoreSimulator・adb サーバへ繋げない(繋げると `simctl spawn` /
+// `adb shell` で枠の外にプロセスを起こせる)。Simulator・iOS 実機・Android の操作は**親が代わりに実行する**:
+// 子の `Shell.run` が `xcrun simctl …` / `xcrun devicectl …` / `<…>/adb …` を unix ソケット越しに親へ送り
+// (`SandboxGateway`)、親は `BrokerPolicy`(`SimctlPolicy` / `DevicectlPolicy` / `AdbPolicy`)が認めた形だけを
+// 枠の外で実行して結果を返す。
 //
 // ワイヤ(1接続 = 1往復・どちらも JSON 1行。対向は同じファイルの `SandboxGateway`):
 //   要求 {"argv":[…], "timeout":秒?, "stdin":base64?}
@@ -23,14 +24,24 @@ public enum SimctlPolicy {
         /// 子が書ける場所(実体パス)。ここにある物はインストールも注入もさせない
         public var childWritableRoots: [String]
         public var childWritablePattern: String?
+        /// このレーンの Android 端末。nil(serial を持たない run)なら端末は問わない
+        public var serial: String?
+        /// 親が adb を代行するときに使う adb(子が送ってきたパスは使わない)。nil なら adb は断る
+        public var adbPath: String?
+        /// 親が `.apks` のインストールを代行するときに使う bundletool。nil なら bundletool は断る
+        public var bundletool: [String]?
 
         public init(udid: String?, deviceName: String?, toolRoots: [String],
-                    childWritableRoots: [String], childWritablePattern: String? = nil) {
+                    childWritableRoots: [String], childWritablePattern: String? = nil,
+                    serial: String? = nil, adbPath: String? = nil, bundletool: [String]? = nil) {
             self.udid = udid
             self.deviceName = deviceName
             self.toolRoots = toolRoots
             self.childWritableRoots = childWritableRoots
             self.childWritablePattern = childWritablePattern
+            self.serial = serial
+            self.adbPath = adbPath
+            self.bundletool = bundletool
         }
     }
 
@@ -206,7 +217,7 @@ public enum DevicectlPolicy {
     }
 }
 
-/// broker が代行するコマンドの振り分け(`xcrun simctl …` / `xcrun devicectl …`)
+/// broker が代行するコマンドの振り分け(`xcrun simctl …` / `xcrun devicectl …` / `<…>/adb …` / bundletool)
 public enum BrokerPolicy {
     static let tools: Set<String> = ["simctl", "devicectl"]
 
@@ -221,10 +232,33 @@ public enum BrokerPolicy {
             environment[key] = String(argv[index][argv[index].index(after: eq)...])
             index += 1
         }
+        // adb は絶対パスで起こされる(`AndroidDriver.findADB`)。名前だけで見分け、実行は親の adb で行う
+        if argv.count >= index + 2, (argv[index] as NSString).lastPathComponent == "adb" {
+            return (environment, "adb", Array(argv[(index + 1)...]))
+        }
+        // bundletool は実行ファイルか `java -jar <….jar>`(`BundletoolLocator`)。実行は親の bundletool で行う
+        if argv.count >= index + 2, (argv[index] as NSString).lastPathComponent == "bundletool" {
+            return (environment, "bundletool", Array(argv[(index + 1)...]))
+        }
+        if argv.count >= index + 4, (argv[index] as NSString).lastPathComponent == "java",
+           argv[index + 1] == "-jar", argv[index + 2].lowercased().hasSuffix(".jar") {
+            return (environment, "bundletool", Array(argv[(index + 3)...]))
+        }
         guard argv.count >= index + 3, argv[index] == "xcrun", tools.contains(argv[index + 1]) else {
             return nil
         }
         return (environment, argv[index + 1], Array(argv[(index + 2)...]))
+    }
+
+    /// 親が実際に実行する引数列。adb と bundletool は子が送ったパスを捨てて親が見つけたものへ差し替える
+    /// (子に任意の実行ファイルを `adb` / `bundletool` という名前で実行させない)
+    public static func executableArgv(_ argv: [String], context: SimctlPolicy.Context) -> [String]? {
+        guard let (_, tool, arguments) = split(argv) else { return nil }
+        switch tool {
+        case "adb": return context.adbPath.map { [$0] + arguments }
+        case "bundletool": return BundletoolPolicy.executableArgv(arguments, context: context)
+        default: return argv
+        }
     }
 
     public static func check(_ argv: [String], context: SimctlPolicy.Context) -> SimctlPolicy.Refusal? {
@@ -233,7 +267,20 @@ public enum BrokerPolicy {
         }
         if tool == "simctl" { return SimctlPolicy.check(argv, context: context) }
         guard environment.isEmpty else {
-            return SimctlPolicy.Refusal(reason: "environment variables are not accepted for devicectl")
+            return SimctlPolicy.Refusal(reason: "environment variables are not accepted for \(tool)")
+        }
+        if tool == "adb" {
+            guard context.adbPath != nil else {
+                return SimctlPolicy.Refusal(reason: "adb was not found on this Mac (set ANDROID_HOME)")
+            }
+            return AdbPolicy.check(arguments, context: context)
+        }
+        if tool == "bundletool" {
+            guard context.bundletool != nil, context.adbPath != nil else {
+                return SimctlPolicy.Refusal(reason: "bundletool or adb was not found on this Mac"
+                    + " (brew install bundletool, or set FT_BUNDLETOOL / ANDROID_HOME)")
+            }
+            return BundletoolPolicy.check(arguments, context: context)
         }
         return DevicectlPolicy.check(arguments, context: context)
     }
@@ -258,7 +305,7 @@ public final class SandboxBroker: @unchecked Sendable {
         self.context = context
         self.execute = execute ?? { argv, timeout, stdin in
             let result = try? Shell.runRaw(argv, timeout: timeout, stdin: stdin)
-            return (result?.0 ?? 127, result?.1 ?? Data("cannot run simctl".utf8))
+            return (result?.0 ?? 127, result?.1 ?? Data("cannot run \(argv.first ?? "the command")".utf8))
         }
         socketPath = (directory as NSString).appendingPathComponent("ftb-\(UUID().uuidString.prefix(8)).sock")
         descriptor = try UnixSocket.listen(path: socketPath)
@@ -290,11 +337,19 @@ public final class SandboxBroker: @unchecked Sendable {
             return
         }
         if let refusal = BrokerPolicy.check(argv, context: context) {
+            // 親のログにも残す: 子のドライバには失敗を捨てる呼び出し(`try?`)があり、子へ返すだけでは
+            // 方針の足し忘れが黙った縮退になる
+            let shown = argv.map { ($0 as NSString).lastPathComponent == "adb" ? "adb" : $0 }.joined(separator: " ")
+            ConsoleOut.err("sandbox: refused \(shown) — \(refusal.reason)")
             UnixSocket.writeLine(client, ["refused": refusal.reason])
             return
         }
+        guard let executable = BrokerPolicy.executableArgv(argv, context: context) else {
+            UnixSocket.writeLine(client, ["refused": "cannot resolve the command to run"])
+            return
+        }
         let stdin = (object["stdin"] as? String).flatMap { Data(base64Encoded: $0) }
-        let result = execute(argv, object["timeout"] as? Double, stdin)
+        let result = execute(executable, object["timeout"] as? Double, stdin)
         UnixSocket.writeLine(client, [
             "status": Int(result.status), "output": result.output.base64EncodedString(),
         ])
@@ -304,7 +359,7 @@ public final class SandboxBroker: @unchecked Sendable {
 // MARK: - 子側
 
 /// `Shell.runRaw` の入口で呼ぶ。**`FT_SANDBOX_BROKER` が立っているときだけ**働く(立てるのは
-/// サンドボックスで包むときの `ScenarioHost`)。simctl / devicectl 以外は nil を返して素通しする
+/// サンドボックスで包むときの `ScenarioHost`)。simctl / devicectl / adb / bundletool 以外は nil を返して素通しする
 public enum SandboxGateway {
     public static let environmentKey = "FT_SANDBOX_BROKER"
     /// 断られたときの終了コード(シェルの「実行できない」と同じ 126)

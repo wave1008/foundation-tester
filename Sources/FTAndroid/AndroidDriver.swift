@@ -95,15 +95,8 @@ public final class AndroidDriver: AppDriver {
     }
 
     public static func findADB() throws -> String {
-        let candidates = [
-            ProcessInfo.processInfo.environment["ANDROID_HOME"].map { $0 + "/platform-tools/adb" },
-            NSHomeDirectory() + "/Library/Android/sdk/platform-tools/adb",
-            "/usr/local/bin/adb",
-            "/opt/homebrew/bin/adb",
-        ].compactMap { $0 }
-        for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
+        // 探し方は FTCore の1箇所(サンドボックスの broker も同じ adb を使う)
+        if let path = AdbLocator.adbPath() { return path }
         // static(serial 選定より前)。android の文言は physicalDevice で分岐しないのでここでは無害
         throw DriverError.bridgeUnreachable(
             context: DriverErrorContext(engine: .android, physicalDevice: false),
@@ -311,6 +304,7 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func uninstall(bundleID: String) async throws {
+        try AndroidPackageName.require(bundleID)
         let result = try adb(["uninstall", bundleID])
         guard result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),

@@ -292,19 +292,7 @@ extension AndroidDriver {
         // デバイス内でバックグラウンド化するので adb 切断後も常駐する
         let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"])
         let repoRoot = try? RepoRoot.find()
-        // 起動元の自己申告(/status の ownerRepo。doctor の診断用)。シングルクォートで
-        // スペースを含むパスを守る(パス中の ' は稀なので非対応)
-        let owner = repoRoot.map { " -e owner '\($0.path)'" } ?? ""
-        // ブリッジ内の所要内訳ログ(既定 off)。iOS 側の FT_BRIDGE_TIMING と同じスイッチで、
-        // あちらは環境変数・こちらは instrumentation 引数として渡す
-        let timing = timingRequested ? " -e timing 1" : ""
-        // am instrument 自身の stdout/stderr は **デバイス側**の /dev/null を経由するので、
-        // ホストからは事後に読めない。デバイス側の一時ファイルへ逃がし、起動失敗のときだけ
-        // ホストへ pull する(健全なブリッジは何も出力しないので溜まらない=AndroidRunner の
-        // Java 側に println/sendStatus が無い)
-        _ = try adb(["shell",
-                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner)\(timing) "
-                     + "\(Self.bridgeComponent) </dev/null >\(Self.instrumentDeviceLogPath) 2>&1 &"])
+        _ = try adb(["shell", Self.instrumentCommand(ttl: ttl, ownerPath: repoRoot?.path, timing: timingRequested)])
 
         // ready 待ち(200ms 間隔・最大 10 秒)。起動直後は導入したての APK なので版照合は不要
         for _ in 0..<50 {
@@ -687,6 +675,19 @@ extension AndroidDriver {
     }
 
     static let pmPathMarker = "FT_PM_PATH_DONE"
+
+    /// ブリッジを常駐させる端末側の1行(純粋)。**サンドボックスの `AdbPolicy.instrumentPattern` と同じ形**
+    /// (`AdbPolicyBuilderSyncTests`)。
+    /// - owner: 起動元の自己申告(/status の ownerRepo。doctor の診断用)。端末の sh へシングルクォートで渡すので、
+    ///   `'` や改行を含むパスは付けない(付けるとクォートが壊れ、枠の中では AdbPolicy にも断られる)
+    /// - timing: ブリッジ内の所要内訳ログ(iOS 側の FT_BRIDGE_TIMING と同じスイッチ)
+    /// - am instrument の stdout/stderr は端末側の一時ファイルへ逃がし、起動失敗のときだけホストへ読む
+    ///   (健全なブリッジは何も出力しないので溜まらない)
+    static func instrumentCommand(ttl: Int, ownerPath: String?, timing: Bool) -> String {
+        let owner = ownerPath.flatMap { $0.contains("'") || $0.contains("\n") ? nil : " -e owner '\($0)'" } ?? ""
+        return "am instrument -w -e port \(bridgeDevicePort) -e ttl \(ttl)\(owner)\(timing ? " -e timing 1" : "") "
+            + "\(bridgeComponent) </dev/null >\(instrumentDeviceLogPath) 2>&1 &"
+    }
 
     /// pm path 出力 → 実在/欠落/判定不能。純粋関数(BridgeCodePathVerdictTests)
     static func codePathVerdict(output: String, status: Int32) -> Bool? {

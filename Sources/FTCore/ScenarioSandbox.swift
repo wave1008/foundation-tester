@@ -328,9 +328,12 @@ public enum ScenarioSandbox {
 
     /// 常に読ませない場所(ホーム相対)。シナリオの駆動に要らない認証情報・個人データの定番の置き場で、
     /// **網羅ではない**(ここに無い秘密は読める。足すのはマシン側の `denyRead`)。
-    /// `.android` は adb の鍵を読むので入れない。`.config` は丸ごと閉じ、`readReopenedHomeSubpaths` だけ開け直す
+    /// `.android` は adb の鍵(Emulator の adbd へ直に繋げば認証が通る)、`.emulator_console_auth_token` は
+    /// Emulator のコンソールの鍵 —— 子の adb は親が代行する(`AdbPolicy`)ので子は読まない。
+    /// `.config` は丸ごと閉じ、`readReopenedHomeSubpaths` だけ開け直す
     static let defaultDenyReadHomeSubpaths = [
         ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".config",
+        ".android", ".emulator_console_auth_token",
         ".netrc", ".git-credentials", ".npmrc", ".pypirc",
         ".claude", ".claude.json", ".codex",
         "Library/Keychains", "Library/Cookies", "Library/Safari", "Library/Mail", "Library/Messages",
@@ -425,7 +428,17 @@ public enum ScenarioSandbox {
         for port in scope.remoteBridgePorts {
             lines.append("(allow network-outbound (remote ip \"*:\(port)\"))")
         }
+        // adb サーバと Emulator のコンソール / adbd は閉じる(後に書いた規則が勝つので上の localhost:* より後)。
+        // 開いていると `adb shell` で Emulator の中 = 枠の外から外部へ出られ、繋がった全端末を操作できる。
+        // 子の adb は親が代行する(`AdbPolicy`)
+        for port in deniedLoopbackPorts() {
+            lines.append("(deny network-outbound (remote ip \"localhost:\(port)\"))")
+        }
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    static func deniedLoopbackPorts(environment: [String: String] = ProcessInfo.processInfo.environment) -> [UInt16] {
+        [AdbLocator.adbServerPort(environment: environment)] + Array(AdbLocator.emulatorPorts)
     }
 
     /// `(subpath "<実体パス>")`。Seatbelt は symlink を解決した後のパスで照合するので
@@ -450,7 +463,8 @@ public enum ScenarioSandbox {
             udid: connection?.udid, deviceName: connection?.deviceName,
             toolRoots: scope.stateRoots,
             childWritableRoots: ["/dev"] + writablePaths(scope).map(canonicalPath),
-            childWritablePattern: try simulatorDataContainerRegex(home: scope.home))
+            childWritablePattern: try simulatorDataContainerRegex(home: scope.home),
+            serial: connection?.serial, adbPath: AdbLocator.adbPath(), bundletool: BundletoolLocator.find())
     }
 
     /// symlink を解決した実体パス。**まだ無いパスでも返す** ——

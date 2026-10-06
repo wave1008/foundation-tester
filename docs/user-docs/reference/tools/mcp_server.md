@@ -117,10 +117,12 @@ as arbitrary Swift code (a dry run executes them too).
     the scenario sources, the fleetest clone, or anywhere else in your home folder.
   - cannot read the usual places for credentials and personal data (`~/.ssh`, `~/.aws`, `~/.config`, keychains,
     browser profiles, cookies, Mail, Messages and so on).
-  - can connect only within this Mac (the bridges, adb). Outside connections go through a proxy, and only to the
+  - can connect only within this Mac (the bridges). Outside connections go through a proxy, and only to the
     domains you allow.
-  - cannot launch other apps, or operate the Simulator or a physical device beyond the fixed operations fleetest
-    uses (fleetest itself performs those operations on the scenario's behalf and lets only known shapes through).
+  - cannot launch other apps, or operate the Simulator, a physical iPhone or an Android device beyond the fixed
+    operations fleetest uses (fleetest itself performs Simulator, iPhone and Android (adb) operations on the
+    scenario's behalf and lets only known shapes through; a scenario cannot connect to the adb server or the
+    Emulator console, nor read the adb keys).
 - **The sandbox settings live only in `sandbox` in this Mac's `~/.config/fleetest/config.json`** (never in the
   project, because an agent can rewrite the project).
 
@@ -138,7 +140,7 @@ as arbitrary Swift code (a dry run executes them too).
   or broken JSON stops the scenario from starting with an error. For Claude Code, the installer writes a rule into the
   work folder's `.claude/settings.json` that denies editing that folder.
 - **Some things stay outside the sandbox.** A scenario can still connect to services running on this Mac such as the
-  bridges and adb (adb can run commands inside an Emulator). It can send the contents of files it could read to a
+  bridges (including other devices' bridges and other services listening on this Mac's localhost). It can send the contents of files it could read to a
   device as input to an app. The app under test itself runs outside the sandbox. The setup / teardown scripts that
   `ft_start_run` runs and `Package.swift`, which is evaluated at build time, are not covered by the sandbox.
 - **Choose what to approve by what runs outside the sandbox.**

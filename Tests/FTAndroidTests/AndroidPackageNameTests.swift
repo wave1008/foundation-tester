@@ -91,7 +91,7 @@ final class AndroidPackageNameTests: XCTestCase {
             .appendingPathComponent("Sources/FTAndroid")
         // 引用符に挟まれた語(`"dumpsys", "package"` の文字列リテラル)は変数ではないので除く
         let identifier = try NSRegularExpression(pattern: #"(?<!")\b(bundleID|packageID|package|packageName)\b(?!")"#)
-        let deviceCommands = ["pidof", "pm path", "pm clear", "pm list", "am force-stop", "monkey"]
+        let deviceCommands = ["pidof", "pm path", "pm clear", "pm list", "am force-stop", "monkey", "dumpsys package"]
         var sites = 0
         var offenders: [String] = []
         for name in try FileManager.default.contentsOfDirectory(atPath: dir.path) where name.hasSuffix(".swift")
