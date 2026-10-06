@@ -344,6 +344,25 @@ PoC では実行プロファイルと構成ファイル(プロジェクトの中
 | `FT_*_DIR` を書ける場所に足す | 同上 | 書ける場所の中を指すときだけ通し、外なら起動前に止める |
 | `FT_TOOL_ROOT` の `.fleetest` を足す | 任意の場所の `.fleetest` が書ける | ツール本体の目印があるときだけ |
 
+**子へ渡す環境そのものも許可リストで絞る**(`ScenarioSandbox.inheritedEnvironment`)。親の環境を丸ごと継がせると、
+`.mcp.json` の `env` やシェルのトークン(`GITHUB_TOKEN`・`ANTHROPIC_API_KEY`・`AWS_*`)をシナリオが読み、
+UI 操作で持ち出せる(§8.3)。渡すのは `FT_*`・`LC_*` と、Sources の `environment["…"]` / `getenv` を
+棚卸しした鍵だけ(`PATH`・`HOME`・`DEVELOPER_DIR`・`ANDROID_HOME` など)。一覧取得は `/usr/bin/env -i` で
+起こす(`Shell.run` は `/usr/bin/env` 経由で、`-i` が無いと親の環境を継ぐ)。**利用者が環境変数でシナリオへ値を
+渡す口は無くなった**(必要になったら、マシン側の設定で鍵を名指しする形で足す)。
+
+### 8.5.1 塞いだ低コストの穴(2026-10-06)
+
+| 穴 | 実測・根拠 | 塞ぎ方 |
+|---|---|---|
+| `/dev` を丸ごと書けた | 枠の中から同じユーザーの `/dev/ttys000` を書き込みで開けた(他の端末へ偽の表示・エスケープシーケンス。TIOCSTI は `file-ioctl` の拒否で通らない) | `/dev/null`・`/dev/zero`・`/dev/tty`・`/dev/random`・`/dev/urandom`・`/dev/dtracehelper` の literal と `/dev/fd` だけ |
+| 全 Simulator のデータコンテナが書けた | 正規表現の UDID が `[^/]+` | レーンの UDID(iOS の Simulator・UUID の形)が分かるときはその1台だけ。ポートだけを指定した run は従来どおり全台 |
+| 読ませない一覧の抜け | `~/.gradle`(署名鍵のパスワード)・`~/.m2`・App Store Connect の API 鍵・fastlane のセッション・シェルの履歴など | `defaultDenyReadHomeSubpaths` に足した。**`Library/Mobile Documents` は入れない**(iCloud の「デスクトップと書類」では `~/Documents` の実体がその下にあり、そこのプロジェクトを読めなくなる) |
+| 親の環境変数が全部子へ渡っていた | `ScenarioHost` が親の環境に入口の分を `merging` していた | 上の許可リスト |
+
+**他のプロセスの環境変数は枠の中から読めない**(実測: `KERN_PROCARGS2` は macOS 27.2 では argv しか返さない。
+枠の外でも同じ)。コマンドラインは枠の外と同じく読める(`process-info*` を開けている)。
+
 ### 8.6 ブリッジの HTTP 口
 
 XCUITest ランナー・in-app・Android の3つの全エンドポイントを棚卸しした。Mac 上のファイルの読み書きや

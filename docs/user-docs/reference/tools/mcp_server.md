@@ -115,8 +115,11 @@ as arbitrary Swift code (a dry run executes them too).
   the extension. Inside the sandbox a scenario:
   - can write only to the report directory, the project's `.fleetest/` and temporary directories. It cannot write
     the scenario sources, the fleetest clone, or anywhere else in your home folder.
-  - cannot read the usual places for credentials and personal data (`~/.ssh`, `~/.aws`, `~/.config`, keychains,
-    browser profiles, cookies, Mail, Messages and so on).
+  - cannot read the usual places for credentials and personal data (`~/.ssh`, `~/.aws`, `~/.config`, `~/.gradle`,
+    keychains, browser profiles, cookies, Mail, Messages, shell history and so on).
+  - sees only the environment variables fleetest itself uses (`PATH`, `HOME`, `DEVELOPER_DIR`, `ANDROID_HOME`,
+    `FT_*` and so on) from the environment fleetest was started in. Tokens in the `env` of `.mcp.json` or in your
+    shell do not reach the scenario.
   - can connect only within this Mac (the bridges). Outside connections go through a proxy, and only to the
     domains you allow.
   - cannot launch other apps, or operate the Simulator, a physical iPhone or an Android device beyond the fixed

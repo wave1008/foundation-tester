@@ -30,13 +30,19 @@ final class ScenarioSandboxWiringTests: XCTestCase {
         let block = String(host[run.upperBound..<launch.lowerBound])
         XCTAssertTrue(block.contains("process.executableURL = launch.executable"))
         XCTAssertTrue(block.contains("process.arguments = launch.arguments"))
-        XCTAssertTrue(block.contains("merging(launch.environment)"))
+        XCTAssertTrue(block.contains("process.environment = launch.childEnvironment("))
         XCTAssertTrue(block.contains("drivesDevice: !dryRun") || host.contains("drivesDevice: !dryRun"))
         // 枠を組めないときは枠なしで起こさない
         XCTAssertTrue(block.contains("return abortBeforeLaunch("))
 
         XCTAssertTrue(host.contains("+ [launch.executable.path] + launch.arguments"), "list が枠の形で起こしていない")
         XCTAssertTrue(host.contains("process.executableURL = launch?.executable ?? runner"), "compile-ocr が枠の形で起こしていない")
+        // 子の環境は3経路とも許可リストで絞る(入口が足す分だけを親の環境に重ねると、親のトークンが子へ漏れる)
+        XCTAssertEqual(host.components(separatedBy: "launch.childEnvironment(base:").count - 1, 2)
+        XCTAssertTrue(host.contains("launch?.childEnvironment(base: env)"), "compile-ocr が親の環境を丸ごと渡している")
+        XCTAssertTrue(host.contains("command = [\"-i\"] + env.sorted"), "list が /usr/bin/env に親の環境を継がせている")
+        XCTAssertFalse(host.contains("merging(launch.environment)"))
+        XCTAssertFalse(host.contains("merge(launch.environment)"))
 
         let entry = try source("Sources/FTCore/ScenarioHost+Sandbox.swift")
         // 包むかどうかはマシン側の設定だけで決まる(プロジェクト・プロファイルの値を入口へ運ばない)

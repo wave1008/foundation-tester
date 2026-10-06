@@ -12,6 +12,12 @@ extension ScenarioHost {
         let environment: [String: String]
         /// 子が生きている間だけ要る。呼び手が子の終了後に `stop()` する
         let broker: SandboxBroker?
+
+        /// 子の環境の全体 = `base` を許可リストで絞った上に `environment` を足したもの。
+        /// **子の環境は必ずこれで作る**(`base` をそのまま渡すと親の秘密が子へ漏れる)
+        func childEnvironment(base: [String: String]) -> [String: String] {
+            ScenarioSandbox.inheritedEnvironment(base).merging(environment) { $1 }
+        }
     }
 
     /// nil = 包まない(マシン側で `sandbox.disabled: true` のときだけ)。**包むと決まったのに枠を組めないときは

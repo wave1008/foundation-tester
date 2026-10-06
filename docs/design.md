@@ -4294,6 +4294,12 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   書く場所を差し替える `FT_*_DIR`(`redirectedDirectoryKeys`)は**書ける場所の中を指すときだけ**通し、外なら
   起動前に止める(足す形にすると `~/Library/LaunchAgents` 等を書けるようにできる)・`FT_TOOL_ROOT` は
   ツール本体の目印(`Runner/project.yml`)があるときだけ採る
+- **子の環境は許可リストで作る**(`SandboxedLaunch.childEnvironment(base:)` = `ScenarioSandbox.inheritedEnvironment`
+  で親の環境を絞ってから入口の分を足す。3経路とも。一覧取得は `/usr/bin/env -i`)。親の環境を継がせると
+  `.mcp.json` の `env` やシェルのトークンをシナリオが読める。**子が読む環境変数を足したら許可リストにも足す**
+  (`FT_*`・`LC_*` は前方一致で通る。`ScenarioSandboxWiringTests` が配線を固定)
+- **`/dev` は名指しの literal と `/dev/fd` だけ書ける**(丸ごと開けると他の端末 `/dev/ttys*` へ書ける)。
+  **Simulator のデータコンテナはレーンの UDID が分かればその1台だけ**(`Scope.simulatorUDID`)
 - **設定が壊れていたら止める**(`LocalConfig.load` の「壊れていたら空設定」に倒さない。追加した `denyRead` が
   黙って消えた状態で走る)。未知のキーもエラー
 - **読み取り**: 内蔵の `defaultDenyReadHomeSubpaths`(認証情報・個人データの定番の置き場。網羅ではない)+

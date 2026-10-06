@@ -100,6 +100,61 @@ final class ScenarioSandboxTests: XCTestCase {
         XCTAssertNotEqual(try touch(device + "/a"), 0)
     }
 
+    /// レーンの UDID が分かるときは、その1台のデータコンテナだけが書ける(他の Simulator のアプリのデータを
+    /// 書き換えさせない)
+    func testSimulatorDataContainerIsLimitedToTheLaneDeviceWhenItsUDIDIsKnown() throws {
+        let other = "home/Library/Developer/CoreSimulator/Devices/UDID-2/data/Containers/Data/Application/APP-2"
+        try FileManager.default.createDirectory(at: root.appendingPathComponent(other), withIntermediateDirectories: true)
+        var narrowed = scope()
+        narrowed.simulatorUDID = "UDID-1"
+        let lane = "home/Library/Developer/CoreSimulator/Devices/UDID-1/data/Containers/Data/Application/APP-1/a"
+        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path(lane)], scope: narrowed), 0)
+        XCTAssertNotEqual(try runSandboxed(["/usr/bin/touch", path(other + "/a")], scope: narrowed), 0)
+        // UDID が分からないときは全 Simulator(ポートだけを指定した run)
+        XCTAssertEqual(try runSandboxed(["/usr/bin/touch", path(other + "/b")]), 0)
+    }
+
+    func testSimulatorUDIDComesOnlyFromAnIOSSimulatorLaneWithAUUID() {
+        let udid = "6F1C3F3E-2B7A-4C1D-9E7A-0123456789AB"
+        XCTAssertEqual(ScenarioSandbox.simulatorUDID(DriverConnection(platform: "ios", udid: udid)), udid)
+        XCTAssertNil(ScenarioSandbox.simulatorUDID(DriverConnection(platform: "ios", udid: udid, physical: true)))
+        XCTAssertNil(ScenarioSandbox.simulatorUDID(DriverConnection(platform: "android", udid: udid)))
+        XCTAssertNil(ScenarioSandbox.simulatorUDID(DriverConnection(platform: "ios", udid: "x/../..")))
+        XCTAssertNil(ScenarioSandbox.simulatorUDID(DriverConnection(platform: "ios")))
+        XCTAssertNil(ScenarioSandbox.simulatorUDID(nil))
+    }
+
+    /// `/dev` は丸ごと開けない。同じユーザーの他の端末へ書けると、偽の表示やエスケープシーケンスを流し込める
+    func testOtherTerminalsAreNotWritableButTheNullDeviceIs() throws {
+        XCTAssertEqual(try runSandboxed(["/bin/sh", "-c", "printf x > /dev/null"]), 0)
+        XCTAssertEqual(try runSandboxed(["/bin/sh", "-c", "printf x > /dev/stdout"]), 0)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: "/dev")) ?? []
+        let tty = names.filter { $0.hasPrefix("ttys") && $0.count > 4 }.map { "/dev/" + $0 }
+            .first { FileManager.default.isWritableFile(atPath: $0) }
+        let terminal = try XCTUnwrap(tty, "no writable pseudo terminal of this user to probe")
+        // 陽性対照: 枠の外では書き込みで開ける(何も書かない)
+        XCTAssertEqual(try Shell.run(["/bin/sh", "-c", "printf '' > \(terminal)"]).status, 0)
+        XCTAssertNotEqual(try runSandboxed(["/bin/sh", "-c", "printf '' > \(terminal)"]), 0)
+    }
+
+    /// 親の環境は許可リストで絞ってから子へ渡す(トークンを継がせない)。入口が足す分は残る
+    func testChildEnvironmentDropsTheParentsSecretsAndKeepsWhatTheRunnerReads() {
+        let launch = ScenarioHost.SandboxedLaunch(
+            executable: URL(fileURLWithPath: "/usr/bin/sandbox-exec"), arguments: [],
+            environment: ["TMPDIR": "/private/var/folders/x/T/", "FT_SANDBOX_BROKER": "/s"], broker: nil)
+        let env = launch.childEnvironment(base: [
+            "GITHUB_TOKEN": "t", "ANTHROPIC_API_KEY": "k", "AWS_SECRET_ACCESS_KEY": "s", "SSH_AUTH_SOCK": "/a",
+            "HTTPS_PROXY": "http://corp:8080", "TMPDIR": "/Users/u/Library/LaunchAgents",
+            "PATH": "/usr/bin", "HOME": "/Users/u", "DEVELOPER_DIR": "/Applications/Xcode.app",
+            "ANDROID_HOME": "/sdk", "LC_ALL": "C", "FT_PARENT_PID": "1",
+        ])
+        XCTAssertEqual(env, [
+            "PATH": "/usr/bin", "HOME": "/Users/u", "DEVELOPER_DIR": "/Applications/Xcode.app",
+            "ANDROID_HOME": "/sdk", "LC_ALL": "C", "FT_PARENT_PID": "1",
+            "TMPDIR": "/private/var/folders/x/T/", "FT_SANDBOX_BROKER": "/s",
+        ])
+    }
+
     func testStateRootsCollectThePackageTheCheckoutTheOverrideAndTheExecutableAncestor() throws {
         for sub in ["work/.build/checkouts/tool-a/Runner", "work/.build/checkouts/other",
                     "override/Runner", "clone/Runner", "clone/.build/debug", "not-a-tool"] {

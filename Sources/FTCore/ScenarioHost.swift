@@ -266,8 +266,7 @@ public enum ScenarioHost {
         // 拡張の孤児掃除も `FT_PARENT_PID` の印を持つものだけを殺すので巻き込まれない
         var env = ProcessInfo.processInfo.environment
         if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir { env["DEVELOPER_DIR"] = dir }
-        if let launch { env.merge(launch.environment) { $1 } }
-        process.environment = env
+        process.environment = launch?.childEnvironment(base: env) ?? env
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         process.qualityOfService = .utility
@@ -346,8 +345,9 @@ public enum ScenarioHost {
         do {
             if let launch = try sandboxedLaunch(project: project, runner: runner, arguments: ["list", "--json"],
                                                 reportDir: nil, connection: nil, drivesDevice: false) {
-                // Shell.run は /usr/bin/env 経由なので、先頭の NAME=VALUE が子の環境になる
-                command = launch.environment.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+                // Shell.run は /usr/bin/env 経由なので、`-i`(親の環境を捨てる)の後の NAME=VALUE が子の環境の全体になる
+                let env = launch.childEnvironment(base: ProcessInfo.processInfo.environment)
+                command = ["-i"] + env.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
                     + [launch.executable.path] + launch.arguments
             }
         } catch {
@@ -572,7 +572,8 @@ public enum ScenarioHost {
                 sandboxBroker = launch.broker
                 process.executableURL = launch.executable
                 process.arguments = launch.arguments
-                process.environment = (process.environment ?? [:]).merging(launch.environment) { $1 }
+                let base = process.environment ?? ProcessInfo.processInfo.environment
+                process.environment = launch.childEnvironment(base: base)
                 // シナリオごとに出す: 枠に断られた失敗(EPERM)は、この行が無いと原因に辿り着けない
                 let notice = ScenarioEvent.log(ScenarioSandbox.notice)
                 eventLog?.appendHost(notice)

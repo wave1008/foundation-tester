@@ -49,6 +49,9 @@ public enum ScenarioSandbox {
         public var helperSockets: [String] = []
         /// adb サーバと Emulator のポートを閉じないか(`MachineSettings.allowDirectAdb`)
         public var allowDirectAdb = false
+        /// レーンの Simulator の UDID。あればデータコンテナの書き込みをこの1台に絞る。nil = 全 Simulator
+        /// (ポートだけを指定した run では親に UDID が分からない)
+        public var simulatorUDID: String?
         /// 許可ドメインへプロキシ経由で出るか(`allowedDomains` が空でないとき)。TLS の証明書の検証に
         /// 要るサービスを開ける
         public var usesProxy = false
@@ -214,8 +217,34 @@ public enum ScenarioSandbox {
             remoteBridgePorts: connection.map(remoteBridgePorts) ?? [])
         scope.extraWritable = extraWritable
         scope.allowDirectAdb = plan.allowDirectAdb
+        scope.simulatorUDID = simulatorUDID(connection)
         try checkRedirects(scope, environment: environment)
         return scope
+    }
+
+    /// Simulator のレーンの UDID。UUID の形でなければ nil(正規表現へ埋めるので形を検める)
+    static func simulatorUDID(_ connection: DriverConnection?) -> String? {
+        guard let connection, connection.platform == "ios", !connection.physical,
+              let udid = connection.udid, UUID(uuidString: udid) != nil else { return nil }
+        return udid
+    }
+
+    /// 親の環境のうち子へ渡すもの(許可リスト)。**親の環境を丸ごと継がせない** —— `.mcp.json` の `env` や
+    /// シェルのトークン(`GITHUB_TOKEN` 等)をシナリオが読み、UI 操作でデバイスへ持ち出せる。
+    /// 子が読む鍵は `FT_*` とこの一覧(Sources の `environment["…"]` / `getenv` を棚卸しした結果)。
+    /// 子が読む鍵を足したらここにも足す(足し忘れると子では未設定に見える)。設定の場所を差し替える鍵は渡さない
+    /// (子が読めるのは実ホームの `~/.config/fleetest` だけ = `readReopenedHomeSubpaths`)
+    static let inheritedEnvironmentKeys: Set<String> = [
+        "PATH", "HOME", "USER", "LOGNAME", "SHELL", "TERM", "LANG", "__CF_USER_TEXT_ENCODING",
+        "DEVELOPER_DIR", "JAVA_HOME", "SSH_CONNECTION", "SSH_TTY",
+        "ANDROID_HOME", "ANDROID_SDK_ROOT", "ANDROID_AVD_HOME", "ANDROID_ADB_SERVER_PORT",
+    ]
+    static let inheritedEnvironmentPrefixes = ["FT_", "LC_"]
+
+    static func inheritedEnvironment(_ parent: [String: String]) -> [String: String] {
+        parent.filter { key, _ in
+            inheritedEnvironmentKeys.contains(key) || inheritedEnvironmentPrefixes.contains { key.hasPrefix($0) }
+        }
     }
 
     /// 子は親の環境を継ぐので、これらが立っていると既定の置き場ではなくここへ書く
@@ -321,17 +350,22 @@ public enum ScenarioSandbox {
     }
 
     /// Simulator のアプリのデータコンテナ(正規表現)。`clearAppData` が中身を直接消す
-    /// (`BridgeClient.clearAppDataOnSimulator`)。デバイスを選ばないのは、ポートだけを指定した
-    /// run では UDID が親に分からないため
-    static func simulatorDataContainerRegex(home: String) throws -> String {
+    /// (`BridgeClient.clearAppDataOnSimulator`)。`udid` が nil なら全 Simulator(`Scope.simulatorUDID`)
+    static func simulatorDataContainerRegex(home: String, udid: String?) throws -> String {
         let real = canonicalPath(home)
         guard !real.contains("\""),
               !real.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }) else {
             throw ProfileError.unrepresentablePath(real)
         }
+        let device = udid.map { NSRegularExpression.escapedPattern(for: $0) } ?? "[^/]+"
         return "^" + NSRegularExpression.escapedPattern(for: real)
-            + "/Library/Developer/CoreSimulator/Devices/[^/]+/data/Containers/Data/Application/"
+            + "/Library/Developer/CoreSimulator/Devices/" + device + "/data/Containers/Data/Application/"
     }
+
+    /// 子が書いてよい `/dev` の中。**`/dev` を丸ごと開けない** —— 同じユーザーの他の端末(`/dev/ttys*`)へ
+    /// 書けて、偽の表示やエスケープシーケンスを流し込める(実測)。`/dev/fd` は開いている記述子の別名だけ
+    static let devWritableLiterals = ["/dev/null", "/dev/zero", "/dev/tty", "/dev/random", "/dev/urandom",
+                                      "/dev/dtracehelper"]
 
     /// 書いてよい場所の中で、書かせない場所。`<root>/.fleetest/hooks/` は次の run が読んで
     /// `teardown.sh` を枠の外で実行する(`RunHooks`)
@@ -350,6 +384,18 @@ public enum ScenarioSandbox {
         "Library/Application Support/Google/Chrome", "Library/Application Support/Firefox",
         "Library/Application Support/Microsoft Edge", "Library/Application Support/BraveSoftware",
         "Library/Application Support/Arc",
+        // ビルド・配布の資格情報(署名鍵のパスワード・Maven / gem / cargo / pub / yarn のトークン・
+        // App Store Connect の API 鍵・fastlane のセッション)とシェルの履歴(打ったトークンが残る)
+        ".gradle", ".m2", ".gem/credentials", ".cargo/credentials", ".cargo/credentials.toml",
+        ".pub-cache/credentials.json", ".yarnrc", ".yarnrc.yml", ".bundle/config",
+        ".appstoreconnect", "private_keys", ".private_keys", ".fastlane", ".expo",
+        ".pgpass", ".vault-token", ".terraform.d",
+        ".zsh_history", ".zsh_sessions", ".bash_history", ".bash_sessions",
+        ".python_history", ".node_repl_history", ".psql_history", ".mysql_history",
+        // `Library/Mobile Documents` は入れない: iCloud の「デスクトップと書類」では `~/Documents` の実体がその下にあり、
+        // そこに置いたプロジェクトとシナリオ実行バイナリを読めなくなる
+        "Library/Application Support/Code", "Library/Application Support/Cursor",
+        "Library/Application Support/Slack", "Library/Application Support/Claude",
     ]
 
     /// 閉じた場所の中で、子が読む必要のある場所。`~/.config/fleetest/config.json` は子が FM の並列枠
@@ -414,8 +460,10 @@ public enum ScenarioSandbox {
         lines.append("(allow mach-lookup " + services.map { "(global-name \"\($0)\")" }
             .joined(separator: " ") + ")")
         let writable = try writablePaths(scope).map { try subpath($0) }
-        lines.append("(allow file-write* (subpath \"/dev\") " + writable.joined(separator: " ")
-            + " (regex #\"" + (try simulatorDataContainerRegex(home: scope.home)) + "\"))")
+        let dev = devWritableLiterals.map { "(literal \"\($0)\")" } + ["(subpath \"/dev/fd\")"]
+        lines.append("(allow file-write* " + (dev + writable).joined(separator: " ")
+            + " (regex #\"" + (try simulatorDataContainerRegex(home: scope.home, udid: scope.simulatorUDID))
+            + "\"))")
         // Core ML がコンパイルキャッシュを ANE のデーモンへ見せるための権利の発行
         lines.append("(allow file-issue-extension "
             + (try subpath(scope.home + "/Library/Caches/" + scope.runnerName)) + ")")
@@ -477,7 +525,8 @@ public enum ScenarioSandbox {
             udid: connection?.udid, deviceName: connection?.deviceName,
             toolRoots: scope.stateRoots,
             childWritableRoots: ["/dev"] + writablePaths(scope).map(canonicalPath),
-            childWritablePattern: try simulatorDataContainerRegex(home: scope.home),
+            // 子が書ける場所からの install を断る判定なので、広い側(全 Simulator)で断る
+            childWritablePattern: try simulatorDataContainerRegex(home: scope.home, udid: nil),
             serial: connection?.serial, adbPath: AdbLocator.adbPath(), bundletool: BundletoolLocator.find())
     }
 
