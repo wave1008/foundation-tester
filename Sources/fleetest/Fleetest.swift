@@ -1402,6 +1402,11 @@ struct RunScenarios: AsyncParsableCommand {
                                            // 残り見積もりの実績も読まれない。値自体は LPTOrdering.apply
                                            // (直前)と揃える —— 将来ここへ注入するときに窓がズレない
                                            progressHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                                           // デバイス定義が無くブリッジを作り直せない = 残ったアラートは警告だけ
+                                           clearResidualSystemAlert: { worker in
+                                               await ProfileWorkerFactory.clearResidualSystemAlert(
+                                                   worker: worker, profile: nil)
+                                           },
                                            appBundleIDs: Self.appBundleIDs(appID),
                                            registerChildProcess: { interruptState.registerChildProcess($0) })
         // **新しい InterruptRelay は登録しない**(1プロセス1組)。供給中に既に中断済みなら

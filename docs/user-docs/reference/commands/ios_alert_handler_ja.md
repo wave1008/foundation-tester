@@ -95,8 +95,14 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
 ### アラートを画面に残したときの影響
 
 - **アラートを出すシナリオは、そのシナリオ内で閉じてください。** SpringBoard が描くため、
-  `terminateApp()` や `removeApp()` をしても画面に残り、その端末で次に走る何にでも残り、
-  以降のシナリオが全部上記の失敗になります。
+  `terminateApp()` や `removeApp()` をしても画面に残り、その端末で次に走るものに残ります。
+- **Simulator では、残ったアラートを次のシナリオの開始前に fleetest が消します** —— ボタンは
+  1つも押しません。SpringBoard を起こし直し、そのデバイスのブリッジを作り直します(約 20 秒。
+  アラートが残っていたときだけ掛かります)。実行ログに
+  `🧹 … a system alert was left on screen before this scenario (…) — restarted SpringBoard …` が出ます。
+  実行プロファイル(`--profile`)を使う run だけで、使わない run は警告だけです。
+- **実機ではボタンを押さずに消す手段が無いため、残ります。** 各シナリオの前に警告が出て、
+  その端末で以降のシナリオが全部上記の失敗になります。
 - **残ったアラートは run を跨ぎます。** run 開始時に端末に既にアラートが残っていると警告が
   出ます。
 - **アラートが前面にある間、XCUITest を通る操作は届きません。** xcuitest エンジンと、hybrid で

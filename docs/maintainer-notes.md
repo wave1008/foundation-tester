@@ -3867,3 +3867,24 @@ PoC は任意機能だったので、設定は実行プロファイル(プロジ
 localhost のサービス(ブリッジ・adb = Emulator の shell)・デバイスを介した持ち出し・テスト対象のアプリ・
 setup / teardown スクリプト(`ft_start_run` の確認で受ける)・`Package.swift`(SwiftPM 自身の枠で評価)。
 シナリオの中身の安全は約束しない(受け手 docs にも同じことを書いた)。
+
+## 72. 残ったシステムアラートを各シナリオの前にボタンを押さずに消す(2026-10-06)
+
+**発端**: XCUITest エンジンの E2E で `iosAlertHandler` が発火せず写真の許可アラートが -07 に残り、同じレーンの
+後続シナリオが 16 回「a system alert is in front of the app」で落ちてレーンの復帰も使い切った。
+**決定(ユーザー)**: 各シナリオの開始時に、**ボタンを押さずに**消す(押すボタンの推測はしない =
+`SystemAlertDismissal` の規律は不変)。判定と文言は `FTCore.ResidualSystemAlertClearing`、実体は
+`ProfileWorkerFactory.clearResidualSystemAlert`、呼ぶのは `RunOrchestrator` の各シナリオの直前
+(録画の区間より前。init に既定値を置かない)。
+
+- **SpringBoard の起こし直し(`launchctl kickstart -k system/com.apple.SpringBoard`)は XCUITest ランナーの
+  HTTP も殺す**(実測: 起こし直しの直後から `/status` が無応答・親の `xcodebuild` は残る)。だからそのデバイスの
+  ブリッジを作り直す(`api restart-bridge` と同じ手順)。所要は約 5 秒 + 14 秒 = 約 20 秒、残っていたときだけ
+- **起こし直しの直後の「アラートは無い」は当てにならない**(3.2 秒で `present:false` が返ったが画面は真っ黒 =
+  SpringBoard が居ないので見えないだけ)。確認は作り直したブリッジに聞く
+- **確認の問い合わせが取れない(nil)を「消えた」に倒さない**。陽性対照で、別のワークスペースが起こした
+  ランナー(供給が「そのまま使う」に倒れ、死んだポートを返す)のまま「消せた」と報告した。答えが取れて
+  `present:false` のときだけ成功、それ以外は理由付きの失敗
+- 実機は起こし直せない・プロファイルの無い run はブリッジを作り直せないので警告だけ
+
+**`iosAlertHandler` が XCUITest エンジンで発火しなかった原因は未調査**(in-app のフル E2E では同じシナリオが緑)。

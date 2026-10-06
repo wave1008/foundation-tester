@@ -102,8 +102,15 @@ the alert to clear (or be closed by a registered button), and fails with
 
 - **A scenario that triggers an alert must close it within that same scenario.** SpringBoard
   draws it, so it survives `terminateApp()` and even `removeApp()` — it stays on screen for
-  whatever runs on that device next, and every following scenario on it hits the covering
-  failure above.
+  whatever runs on that device next.
+- **On a Simulator, fleetest dismisses a leftover alert before the next scenario starts** —
+  without pressing any of its buttons: it restarts SpringBoard and rebuilds that device's bridge
+  (about 20 seconds, paid only when an alert is left). The run log shows
+  `🧹 … a system alert was left on screen before this scenario (…) — restarted SpringBoard …`.
+  This needs a run profile (`--profile`); a run without one only warns.
+- **On a physical device the alert cannot be dismissed without pressing a button,** so it stays,
+  a warning is printed before each scenario, and every following scenario on that device hits the
+  covering failure above.
 - **A leftover alert survives across runs, too.** A warning is printed at the start of a run if
   a device already has one on screen.
 - **An operation that goes through XCUITest is not delivered while an alert is in front.**
