@@ -47,7 +47,7 @@ public enum AndroidAppProcessEvidenceQuery {
 
     /// 端末に問い合わせる(adb 2往復: pidof / logcat -d -b crash)
     public static func query(package: String, serial: String?) -> AndroidAppProcessEvidence? {
-        guard let adb = try? AndroidDriver.findADB() else { return nil }
+        guard AndroidPackageName.isShellSafe(package), let adb = try? AndroidDriver.findADB() else { return nil }
         var pidofArgs = [adb]
         if let serial { pidofArgs += ["-s", serial] }
         pidofArgs += ["shell", "pidof", package]

@@ -216,6 +216,7 @@ public final class AndroidDriver: AppDriver {
     /// アプリを残してデータだけ消す(`pm clear`)。**refs も落とす**: 消したあとの画面は
     /// 別物なので、古い ref でのタップを「先に snapshot」エラーへ倒す(launch と同じ規律)
     public func clearAppData(bundleID: String) async throws {
+        try AndroidPackageName.require(bundleID)
         try requireDeviceAnswers()
         let result = try adb(["shell", "pm", "clear", bundleID])
         guard result.status == 0, result.output.contains("Success") else {
@@ -261,7 +262,10 @@ public final class AndroidDriver: AppDriver {
     static func amStartArgs(url: String, package: String?) throws -> [String] {
         var args = ["shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
                     "-d", try quoteURLForDeviceShell(url)]
-        if let package { args.append(package) }
+        if let package {
+            try AndroidPackageName.require(package)
+            args.append(package)
+        }
         return args
     }
 
@@ -333,6 +337,7 @@ public final class AndroidDriver: AppDriver {
     /// パッケージが入っているか。**判定できないときは nil**(adb 不調でも「未インストール」と
     /// 断じない)。launch 失敗の切り分け文言に使う
     public func isInstalled(bundleID: String) -> Bool? {
+        guard AndroidPackageName.isShellSafe(bundleID) else { return nil }
         // 期限つき(凍結した端末は答えない。尽きたら不明 = nil。launch の門・一覧の呼び手を握らせない)
         guard let result = try? adbProbe(["shell", "pm", "list", "packages", bundleID],
                                          timeout: Self.deviceAnswerTimeoutSeconds),
@@ -345,6 +350,7 @@ public final class AndroidDriver: AppDriver {
     public func launch(bundleID: String) async throws {
         // force-stop+monkey+am start フォールバックと整定待ちはブリッジ側 handleLaunch() が持つ
         // (ここでの追加 sleep は不要)
+        try AndroidPackageName.require(bundleID)
         try await withBridge { try await $0.launch(bundleID: bundleID) }
         // 再起動で旧 snapshot の ref は無効。メモリ・永続化の両方から落とし、
         // 以後の tap(ref:) を「先に snapshot」エラーに倒す(古い座標への誤タップ防止)
@@ -385,6 +391,7 @@ public final class AndroidDriver: AppDriver {
 
     /// ランチャー intent を送る(起動中ならタスクが前面に来るだけ)。
     public func activate(bundleID: String) async throws {
+        try AndroidPackageName.require(bundleID)
         let result = try adb(["shell", "monkey", "-p", bundleID,
                               "-c", "android.intent.category.LAUNCHER", "1"])
         guard result.status == 0 else {
@@ -1245,6 +1252,8 @@ public final class AndroidDriver: AppDriver {
     public func terminate() async throws {
         restoreStateIfNeeded()
         if let package = currentPackage {
+            // currentPackage は永続化した状態ファイルからも戻るので、launch で検めた後でも埋める前に見る
+            try AndroidPackageName.require(package)
             // 動いていないアプリの force-stop も 0 を返すので、非 0 は adb 自体の失敗(デバイスが居ない等)
             let result = try adbAnswering(["shell", "am", "force-stop", package])
             guard result.status == 0 else {
@@ -1260,6 +1269,7 @@ public final class AndroidDriver: AppDriver {
     /// ため md5 一致で判定できる。autoInstall の差分スキップ用)。未インストール・判定不能は
     /// false(=要インストール)。
     public func installedPackageIsCurrent(packageID: String, apkPath: String) -> Bool {
+        guard AndroidPackageName.isShellSafe(packageID) else { return false }
         if ApksBundle.isApks(path: apkPath) {
             return installedSplitsAreCurrent(packageID: packageID, apksPath: apkPath)
         }
@@ -1283,7 +1293,8 @@ public final class AndroidDriver: AppDriver {
     private func installedSplitsAreCurrent(packageID: String, apksPath: String) -> Bool {
         let entries = ApksBundle.listEntries(apksPath: apksPath)
         guard !entries.isEmpty else { return false }
-        guard let probe = try? adb(["shell", ApksBundle.installedFilesScript(packageID: packageID)]),
+        guard let script = ApksBundle.installedFilesScript(packageID: packageID),
+              let probe = try? adb(["shell", script]),
               probe.status == 0,
               let installed = ApksBundle.parseInstalledFiles(probe.output) else { return false }
         return ApksBundle.installedIsFromBundle(installed: installed, entries: entries) {

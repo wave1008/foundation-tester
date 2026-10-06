@@ -342,7 +342,10 @@ UI 操作のハンドラ本体の一部は語句検索だけで、本文は読�
 
 - Simulator のブリッジに認証は無い(トークンは実機を LAN に出すときだけ)。
 - Android の `/session` は `bundleID` を検証せずに端末内の shell コマンドへ連結している。
-  端末の中の話で、Mac 上の実行ではない。
+  端末の中の話で、Mac 上の実行ではない。`UiAutomation.executeShellCommand` は sh を介さず空白で
+  区切って実行するので、`;` で別コマンドにはならない(引数の差し込みまで)。ホストの `adb shell` は
+  端末側の sh が解釈し直すので、パッケージ名を埋める箇所は全部 `AndroidPackageName` で検めてから撃つ
+  (`AndroidDriver.launch` も `/session` の前に検める)。
 
 ---
 

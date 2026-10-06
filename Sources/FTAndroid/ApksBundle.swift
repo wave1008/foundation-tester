@@ -81,9 +81,11 @@ public enum ApksBundle {
         }
     }
 
-    /// 端末側で1発で撃つ(`pm path` の各行 → 大きさと md5)。分けて撃つと adb の往復が本数分増える
-    public static func installedFilesScript(packageID: String) -> String {
-        "for p in $(pm path \(packageID) | sed 's/^package://'); do"
+    /// 端末側で1発で撃つ(`pm path` の各行 → 大きさと md5)。分けて撃つと adb の往復が本数分増える。
+    /// 素のシェル文字列へ埋めるので、`AndroidPackageName` に落ちる名前は nil(= 判定不能)
+    public static func installedFilesScript(packageID: String) -> String? {
+        guard AndroidPackageName.isShellSafe(packageID) else { return nil }
+        return "for p in $(pm path \(packageID) | sed 's/^package://'); do"
             + " echo \"$(stat -c %s $p) $(md5sum $p | cut -d' ' -f1)\"; done"
     }
 

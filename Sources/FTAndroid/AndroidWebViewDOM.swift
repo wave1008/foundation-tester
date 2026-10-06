@@ -126,11 +126,9 @@ public enum AndroidWebViewDOM {
     static let probeMarker = "--ft-sockets--"
 
     /// pid とソケット一覧をまとめて採る adb 引数(純粋)。
-    /// **綴りを検めてから素のシェル文字列へ埋める**(`;` を含むパッケージ名が来たら
-    /// 端末上で別コマンドになる)。検めに落ちたら nil = この経路を使わない
+    /// 素のシェル文字列へ埋めるので `AndroidPackageName` で検める。落ちたら nil = この経路を使わない
     static func probeCommand(packageID: String) -> [String]? {
-        let allowed = Set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-")
-        guard !packageID.isEmpty, packageID.allSatisfy({ allowed.contains($0) }) else { return nil }
+        guard AndroidPackageName.isShellSafe(packageID) else { return nil }
         // grep で端末側から絞る(一覧そのものは数百行あり、要るのは devtools の口だけ)
         return ["shell", "pidof \(packageID); echo \(probeMarker); "
                 + "cat /proc/net/unix | grep devtools_remote"]

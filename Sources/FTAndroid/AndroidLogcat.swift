@@ -129,6 +129,7 @@ public enum AndroidLogcat {
     /// `adb shell pidof <pkg>` で pid を引く。複数返る(同名プロセス)場合は先頭のみ使う。
     /// 空/失敗はどちらも nil(呼び出し側がテキスト一致へフォールバックする)
     private static func resolvePID(adbPath: String, serial: String?, packageName: String) -> String? {
+        guard AndroidPackageName.isShellSafe(packageName) else { return nil }
         var args = [adbPath]
         if let serial { args += ["-s", serial] }
         args += ["shell", "pidof", packageName]
