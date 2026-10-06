@@ -619,9 +619,13 @@ function updateRow(row, run) {
   } else {
     const pct = run.total > 0 ? Math.max(0, Math.min(1, run.done / run.total)) * 100 : 0;
     row.progressBarEl.style.width = pct + '%';
-    row.countsEl.textContent = run.failed > 0
-      ? `${run.done}/${run.total} ❌${run.failed}`
-      : `${run.done}/${run.total}`;
+    row.countsEl.textContent = `${run.done}/${run.total}`;
+    if (run.failed > 0) {
+      const failedEl = document.createElement('span');
+      failedEl.className = 'run-board-counts-failed';
+      failedEl.textContent = `❌${run.failed}`;
+      row.countsEl.append(failedEl);
+    }
   }
 
   // **詰まりは事実だけ**(0 のときは出さない)。「遅い」「異常」とは書かない ——

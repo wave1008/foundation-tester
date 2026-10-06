@@ -798,6 +798,9 @@ html[lang="en"] .header-count {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.run-board-counts-failed {
+  margin-left: 6px;
+}
 /* 詰まりの事実(再キュー・レーン離脱)。**警告色にしない** —— 事実を並べるだけで、
    遅い/異常という判定はしていない(docs/design.md §18.5) */
 .run-board-notes {

@@ -187,7 +187,7 @@ test("失敗があるときだけ ❌失敗数 を足し、無ければ本数だ
   const base = { pid: 41233, runID: "run-1", mine: true, phase: "running", requeued: 0, laneDropouts: 0,
     project: "E2E-iOS", profile: "ios-inapp", elapsedSeconds: 30, lanes: [] };
   post(window, { type: "monitorRuns", observed: true, runs: [{ ...base, total: 54, done: 54, failed: 2 }] });
-  assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent, "54/54 ❌2");
+  assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent, "54/54❌2");
   post(window, { type: "monitorRuns", observed: true, runs: [{ ...base, total: 54, done: 10, failed: 0 }] });
   assert.equal(runRows(document)[0].querySelector(".run-board-counts").textContent, "10/54");
 });
