@@ -151,6 +151,15 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   Codex での書き方は[Claude Code 以外の AIアシスタント](other_agents_ja.md)にあります(サーバ全体は `default_tools_approval_mode`、
   ツールごとは `[mcp_servers.fleetest.tools.<ツール名>]` の `approval_mode`)。読むだけのツールに承認を省く
   `writes` は、画面の操作(タップ・入力)も書き込みとして聞かれるので、探索のたびに数十回の承認になります。
+- **各ツールは MCP の annotations で性質を宣言します。** 承認の扱いをこれで分けるクライアントでは、宣言どおりに
+  扱われます。
+
+  | 宣言 | ツール |
+  |---|---|
+  | 読むだけ(`readOnlyHint: true`) | `ft_status`・`ft_list_*`・`ft_snapshot`・`ft_screenshot`・`ft_logs`・`ft_results`・`ft_run_status`・`ft_dsl_commands`・`ft_doctor`・`ft_draft_scenario` |
+  | デバイスの画面やアプリの状態を変える | タップ・入力・スワイプなどの操作、`ft_launch`・`ft_terminate`・`ft_open_url`・`ft_batch`、`ft_capture_element`(プロジェクトへ見本を書く) |
+  | 取り返しがつかない(`destructiveHint: true`) | `ft_clear_app_data`・`ft_install`・`ft_stop_run` |
+  | プロジェクトのコードを実行する(`destructiveHint: true`・`openWorldHint: true`) | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run` |
 - **他人から受け取ったシナリオは、中身を確かめてから実行してください。** サンドボックスはホストを守りますが、
   上の「外に残るもの」と、テスト対象のアプリやアカウントへの操作(削除・購入など)は止めません。
 - **`ft_start_run` の `runner` は、登録済みの機械名と `local` だけを受け付けます。** `user@host` のような
@@ -158,7 +167,8 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   機械は `fleetest remote machines add` で登録します。CLI の `fleetest run --runner` は生の宛先も受け付けます。
 - `ft_stop_run` / `ft_run_status` が扱うのは、そのサーバが `ft_start_run` で起こした実行だけです。
 - `ft_start_run` は決まったコマンド(`fleetest run`)に、検査した引数を配列で渡します(シェルを通さないので、
-  引数から任意のコマンドは注入できません)。
+  引数から任意のコマンドは注入できません)。`profile`・`runner`・`scenario`・`folder` の値が `-` で始まると断ります
+  (`fleetest run` のオプションとして読まれ、上の `runner` の制限をすり抜けられるためです)。
 
 ## 構造化出力(明示的に有効にしたときだけ)
 

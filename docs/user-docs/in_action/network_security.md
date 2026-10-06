@@ -18,6 +18,11 @@ corporate LAN that does not reach the internet. It is not a setup guide.
 - **Two conditions make a physical iPhone fall back to the LAN path**: (1) the Mac does not have
   iproxy installed, or (2) the device is connected over Wi-Fi rather than USB. Either one is
   enough to switch to LAN automatically.
+- **Loopback bridges refuse requests sent by a web browser** (bridge version iOS 147 / Android 87 and later).
+  An unauthenticated loopback listener could otherwise receive requests that a web page you are viewing sends to
+  `http://127.0.0.1:<port>`, or be reached by DNS rebinding (pointing a host name at `127.0.0.1` to read the
+  responses too). Requests with an `Origin` header, a `Sec-Fetch-Site` other than `none`, or a `Host` that is not
+  loopback are refused with **403** without touching the device. fleetest's own clients never send these headers.
 - **The in-app bridge is never bundled into a production build.** It is injected at launch via
   `DYLD_INSERT_LIBRARIES` and is not linked into the app's binary.
 

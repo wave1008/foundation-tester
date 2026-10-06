@@ -157,6 +157,15 @@ as arbitrary Swift code (a dry run executes them too).
   For Codex, see [AI assistants other than Claude Code](other_agents.md) (`default_tools_approval_mode` for the whole server, `approval_mode`
   under `[mcp_servers.fleetest.tools.<tool name>]` per tool). `writes`, which skips approval only for read-only tools,
   also counts screen operations (taps, typing) as writes, so exploring a screen means dozens of approvals.
+- **Each tool declares what it does through MCP annotations.** Clients that decide approval from them treat the
+  tools accordingly.
+
+  | Declared as | Tools |
+  |---|---|
+  | Read-only (`readOnlyHint: true`) | `ft_status`, `ft_list_*`, `ft_snapshot`, `ft_screenshot`, `ft_logs`, `ft_results`, `ft_run_status`, `ft_dsl_commands`, `ft_doctor`, `ft_draft_scenario` |
+  | Changes the device's screen or the app's state | taps, typing, swipes and other operations, `ft_launch`, `ft_terminate`, `ft_open_url`, `ft_batch`, `ft_capture_element` (writes a sample into the project) |
+  | Cannot be undone (`destructiveHint: true`) | `ft_clear_app_data`, `ft_install`, `ft_stop_run` |
+  | Runs the project's code (`destructiveHint: true`, `openWorldHint: true`) | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` |
 - **Check the contents of scenarios you receive from others before running them.** The sandbox protects this Mac,
   but it does not stop what is listed above as staying outside, nor operations on the app under test or its accounts
   (deleting, purchasing and so on).
@@ -165,7 +174,9 @@ as arbitrary Swift code (a dry run executes them too).
   Register machines with `fleetest remote machines add`. The CLI's `fleetest run --runner` accepts raw destinations too.
 - `ft_stop_run` / `ft_run_status` only handle runs that this server started with `ft_start_run`.
 - `ft_start_run` passes checked arguments as an array to a fixed command (`fleetest run`); no shell is involved, so
-  no arbitrary command can be injected through the arguments.
+  no arbitrary command can be injected through the arguments. Values of `profile`, `runner`, `scenario` and `folder`
+  that start with `-` are refused (`fleetest run` would read them as options, which could get around the `runner`
+  restriction above).
 
 ## Structured output (opt-in)
 
