@@ -47,6 +47,8 @@ public enum ScenarioSandbox {
         /// (パス無しの `(remote unix-socket)` は Docker 等の強い口まで開く)。閉じたままだと Vision の異常を
         /// 救えず、ANE が壊れた機械で画像照合と分類器が落ちる(connect が EPERM。拒否ログには出なかった)
         public var helperSockets: [String] = []
+        /// adb サーバと Emulator のポートを閉じないか(`MachineSettings.allowDirectAdb`)
+        public var allowDirectAdb = false
         /// 許可ドメインへプロキシ経由で出るか(`allowedDomains` が空でないとき)。TLS の証明書の検証に
         /// 要るサービスを開ける
         public var usesProxy = false
@@ -75,13 +77,19 @@ public enum ScenarioSandbox {
         public var denyRead: [String]?
         /// プロキシ経由で通す宛先(`example.com` / `*.example.com`)。省略・空 = 外部へは一切出られない
         public var allowedDomains: [String]?
+        /// true でシナリオが adb / bundletool を親に頼まず自分で使う(adb サーバと Emulator のポート・
+        /// `~/.android` を開ける)。**Emulator の中 = 枠の外から外部へ出られ、繋がった全 Android 端末に届く**ので
+        /// 既定は閉じる。マシン側の設定だけで開ける(プロジェクト・環境変数からは開けない)
+        public var allowDirectAdb: Bool?
 
-        static let knownKeys: Set<String> = ["disabled", "denyRead", "allowedDomains"]
+        static let knownKeys: Set<String> = ["disabled", "denyRead", "allowedDomains", "allowDirectAdb"]
 
-        public init(disabled: Bool? = nil, denyRead: [String]? = nil, allowedDomains: [String]? = nil) {
+        public init(disabled: Bool? = nil, denyRead: [String]? = nil, allowedDomains: [String]? = nil,
+                    allowDirectAdb: Bool? = nil) {
             self.disabled = disabled
             self.denyRead = denyRead
             self.allowedDomains = allowedDomains
+            self.allowDirectAdb = allowDirectAdb
         }
     }
 
@@ -89,6 +97,7 @@ public enum ScenarioSandbox {
     public struct Plan: Sendable, Equatable {
         public var denyRead: [String]
         public var allowedDomains: [String]
+        public var allowDirectAdb: Bool = false
     }
 
     public enum ConfigError: Error, LocalizedError, Equatable {
@@ -164,7 +173,10 @@ public enum ScenarioSandbox {
             throw ConfigError.invalidDomain(source, pattern: bad)
         }
         let extra = (settings.denyRead ?? []).map { expandTilde($0, home: home) }
-        return Plan(denyRead: defaultDenyRead(home: home) + extra, allowedDomains: domains)
+        let direct = settings.allowDirectAdb == true
+        let adbKeys = direct ? [] : adbDenyReadHomeSubpaths.map { home + "/" + $0 }
+        return Plan(denyRead: defaultDenyRead(home: home) + adbKeys + extra, allowedDomains: domains,
+                    allowDirectAdb: direct)
     }
 
     static func expandTilde(_ path: String, home: String) -> String {
@@ -201,6 +213,7 @@ public enum ScenarioSandbox {
             runnerName: runner.lastPathComponent,
             remoteBridgePorts: connection.map(remoteBridgePorts) ?? [])
         scope.extraWritable = extraWritable
+        scope.allowDirectAdb = plan.allowDirectAdb
         try checkRedirects(scope, environment: environment)
         return scope
     }
@@ -328,12 +341,9 @@ public enum ScenarioSandbox {
 
     /// 常に読ませない場所(ホーム相対)。シナリオの駆動に要らない認証情報・個人データの定番の置き場で、
     /// **網羅ではない**(ここに無い秘密は読める。足すのはマシン側の `denyRead`)。
-    /// `.android` は adb の鍵(Emulator の adbd へ直に繋げば認証が通る)、`.emulator_console_auth_token` は
-    /// Emulator のコンソールの鍵 —— 子の adb は親が代行する(`AdbPolicy`)ので子は読まない。
     /// `.config` は丸ごと閉じ、`readReopenedHomeSubpaths` だけ開け直す
     static let defaultDenyReadHomeSubpaths = [
         ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", ".config",
-        ".android", ".emulator_console_auth_token",
         ".netrc", ".git-credentials", ".npmrc", ".pypirc",
         ".claude", ".claude.json", ".codex",
         "Library/Keychains", "Library/Cookies", "Library/Safari", "Library/Mail", "Library/Messages",
@@ -345,6 +355,10 @@ public enum ScenarioSandbox {
     /// 閉じた場所の中で、子が読む必要のある場所。`~/.config/fleetest/config.json` は子が FM の並列枠
     /// (`FMLock.concurrency` → `LocalConfig.load`)を読む
     static let readReopenedHomeSubpaths = [".config/fleetest"]
+
+    /// adb の鍵(Emulator の adbd へ直に繋げば認証が通る)と Emulator のコンソールの鍵。子の adb は親が代行する
+    /// (`AdbPolicy`)ので子は読まない。`allowDirectAdb` のときだけ開ける(子の adb がこの鍵を使う)
+    static let adbDenyReadHomeSubpaths = [".android", ".emulator_console_auth_token"]
 
     static func defaultDenyRead(home: String) -> [String] {
         defaultDenyReadHomeSubpaths.map { home + "/" + $0 }
@@ -431,7 +445,7 @@ public enum ScenarioSandbox {
         // adb サーバと Emulator のコンソール / adbd は閉じる(後に書いた規則が勝つので上の localhost:* より後)。
         // 開いていると `adb shell` で Emulator の中 = 枠の外から外部へ出られ、繋がった全端末を操作できる。
         // 子の adb は親が代行する(`AdbPolicy`)
-        for port in deniedLoopbackPorts() {
+        for port in scope.allowDirectAdb ? [] : deniedLoopbackPorts() {
             lines.append("(deny network-outbound (remote ip \"localhost:\(port)\"))")
         }
         return lines.joined(separator: "\n") + "\n"

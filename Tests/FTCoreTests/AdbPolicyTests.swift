@@ -158,6 +158,14 @@ final class AdbPolicyTests: XCTestCase {
         XCTAssertNil(BrokerPolicy.executableArgv(child, context: noTool))
     }
 
+    /// `allowDirectAdb` のとき子は adb / bundletool を自分で実行する(親へ送らない)。simctl は送り続ける
+    func testDirectAdbPassesOnlyAdbAndBundletoolThrough() {
+        XCTAssertTrue(SandboxGateway.passesThroughWhenDirect(["/sdk/adb", "-s", "emulator-5554", "shell", "id"]))
+        XCTAssertTrue(SandboxGateway.passesThroughWhenDirect(["/b/bundletool", "install-apks", "--apks=/a.apks", "--adb=/x"]))
+        XCTAssertFalse(SandboxGateway.passesThroughWhenDirect(["xcrun", "simctl", "list", "devices", "-j"]))
+        XCTAssertFalse(SandboxGateway.passesThroughWhenDirect(["xcrun", "devicectl", "list", "devices"]))
+    }
+
     // MARK: - broker 越し(子 → 親の往復)
 
     private final class Recorder: @unchecked Sendable {

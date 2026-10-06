@@ -136,7 +136,11 @@ as arbitrary Swift code (a dry run executes them too).
   ```
 
   `denyRead` **adds** places to the built-in list; `allowedDomains` lists destinations scenarios may reach (leave it
-  out and nothing outside this Mac is reachable). `"disabled": true` turns the sandbox off on this Mac. An unknown key
+  out and nothing outside this Mac is reachable). `"disabled": true` turns the sandbox off on this Mac.
+  `"allowDirectAdb": true` lets scenarios use adb and bundletool themselves instead of through fleetest (it opens the
+  adb server and Emulator ports and `~/.android`). A scenario can then get out through a shell inside an Emulator and
+  reach every connected Android device (the other restrictions stay). It makes no practical speed difference (under
+  1 ms per adb call), so use it only when you need it. An unknown key
   or broken JSON stops the scenario from starting with an error. For Claude Code, the installer writes a rule into the
   work folder's `.claude/settings.json` that denies editing that folder.
 - **Some things stay outside the sandbox.** A scenario can still connect to services running on this Mac such as the

@@ -4318,7 +4318,8 @@ docs/user-docs/reference/tools/mcp_server_ja.md §サンドボックスと承認
   コンソール / adbd(5554〜5585)への接続を `localhost:*` の許可より後で拒否し、`~/.android`(adb の鍵)と
   `~/.emulator_console_auth_token` を読ませない。`.apks` のインストール(bundletool は adb サーバへ直に繋ぐ)も
   親が代行する(`BundletoolPolicy`: `install-apks` の1形・絶対パスで子の書けない場所の `.apks`・レーンの端末だけ。
-  親自身の bundletool と adb で実行)。**adb の呼び出しを足したら方針にも足す**
+  親自身の bundletool と adb で実行)。マシン側の `allowDirectAdb: true` だけが、子に adb / bundletool を直接使わせる
+  (ポートと adb の鍵を開け、子の横取りを止める。プロジェクト・環境変数からは開けない)。**adb の呼び出しを足したら方針にも足す**
   (`AdbPolicyBuilderSyncTests` が組み立ての出力とドライバの定数の呼び出しを表に当てる)
 - **書ける場所は `writablePaths` の1箇所**。足すときは「そこに置いた物が枠の外で実行・解釈されないか」を
   先に見る(`<root>/.fleetest/hooks/` は次の run が teardown を実行するので拒否)。親が決めて子に書かせる場所

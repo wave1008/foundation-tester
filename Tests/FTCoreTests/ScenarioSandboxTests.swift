@@ -146,9 +146,38 @@ final class ScenarioSandboxTests: XCTestCase {
             XCTAssertLessThan(allow.lowerBound, deny.lowerBound, "port \(port)")
         }
         XCTAssertEqual(ScenarioSandbox.deniedLoopbackPorts(environment: ["ANDROID_ADB_SERVER_PORT": "6037"]).first, 6037)
+        let plan = try XCTUnwrap(try ScenarioSandbox.plan(settings: .init(), home: "/H"))
+        XCTAssertFalse(plan.allowDirectAdb)
         for name in [".android", ".emulator_console_auth_token"] {
-            XCTAssertTrue(ScenarioSandbox.defaultDenyReadHomeSubpaths.contains(name), name)
+            XCTAssertTrue(plan.denyRead.contains("/H/" + name), name)
         }
+    }
+
+    /// マシン側の `allowDirectAdb` だけが adb を開ける: ポートの拒否と adb の鍵の読み取り拒否を外す
+    func testAllowDirectAdbOpensTheAdbPortsAndKeys() throws {
+        let plan = try XCTUnwrap(try ScenarioSandbox.plan(settings: .init(allowDirectAdb: true), home: "/H"))
+        XCTAssertTrue(plan.allowDirectAdb)
+        XCTAssertFalse(plan.denyRead.contains("/H/.android"))
+        XCTAssertTrue(plan.denyRead.contains("/H/.ssh"), "他の読み取り拒否はそのまま")
+        var open = scope()
+        open.allowDirectAdb = true
+        let profile = try ScenarioSandbox.profile(open)
+        XCTAssertFalse(profile.contains("(deny network-outbound (remote ip \"localhost:5037\"))"))
+        XCTAssertTrue(profile.contains("(deny network*)"), "外部への通信は閉じたまま")
+        let url = root.appendingPathComponent("config.json")
+        try Data(#"{"sandbox":{"allowDirectAdb":true}}"#.utf8).write(to: url)
+        XCTAssertEqual(try ScenarioSandbox.machineSettings(url: url).allowDirectAdb, true)
+    }
+
+    func testAllowDirectAdbLetsTheSandboxReachAnEmulatorPort() throws {
+        let emulator: LoopbackListener
+        do { emulator = try LoopbackListener(port: 5585) } catch {
+            throw XCTSkip("port 5585 is in use on this machine (an Emulator may hold it)")
+        }
+        defer { emulator.close() }
+        var open = scope()
+        open.allowDirectAdb = true
+        XCTAssertEqual(try runSandboxed(["/usr/bin/nc", "-z", "-G", "2", "127.0.0.1", "5585"], scope: open), 0)
     }
 
     /// 規則が本当に効くこと: 一時ポートの待受には繋がり(陽性対照)、Emulator のポートには繋がらない

@@ -362,6 +362,8 @@ public final class SandboxBroker: @unchecked Sendable {
 /// サンドボックスで包むときの `ScenarioHost`)。simctl / devicectl / adb / bundletool 以外は nil を返して素通しする
 public enum SandboxGateway {
     public static let environmentKey = "FT_SANDBOX_BROKER"
+    /// 立っていると adb / bundletool を親へ送らず子が自分で実行する(`MachineSettings.allowDirectAdb`)
+    public static let directAdbKey = "FT_SANDBOX_DIRECT_ADB"
     /// 断られたときの終了コード(シェルの「実行できない」と同じ 126)
     public static let refusedStatus: Int32 = 126
 
@@ -370,9 +372,18 @@ public enum SandboxGateway {
         return (path?.isEmpty ?? true) ? nil : path
     }()
 
+    static let directAdb = ProcessInfo.processInfo.environment[directAdbKey] == "1"
+
     static func intercept(_ argv: [String], timeout: Double?, stdin: Data?) -> (Int32, Data)? {
         guard let socketPath else { return nil }
+        if directAdb, passesThroughWhenDirect(argv) { return nil }
         return forward(argv, timeout: timeout, stdin: stdin, socketPath: socketPath)
+    }
+
+    /// `allowDirectAdb` のとき子が自分で実行する呼び出し(adb と bundletool)
+    static func passesThroughWhenDirect(_ argv: [String]) -> Bool {
+        guard let tool = BrokerPolicy.split(argv)?.tool else { return false }
+        return tool == "adb" || tool == "bundletool"
     }
 
     static func forward(_ argv: [String], timeout: Double?, stdin: Data?,
