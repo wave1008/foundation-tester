@@ -67,6 +67,22 @@ class SignInExample {
 - **Do not guess command names.** `ft_dsl_commands` lists every command and its signature; a name
   that is not in that index does not exist.
 
+## Passwords, test data and APIs
+
+- **Do not write passwords or accounts into scenarios.** Read them with `account("[user1].password")` and put the
+  values in the project's `dataset/accounts.json` (test data that does not depend on the screen goes to
+  `data("[order1].item")` and `dataset/data.json`). If you do not know a value, ask the user — do not put a guessed value.
+- For users who do not want real passwords in git, have them put a file of the same shape in
+  `~/.config/fleetest/dataset/<project>/` on that Mac (it overrides per attribute). Agents do not write to
+  `~/.config/fleetest/`.
+- Masking `account()` values as `***` in reports is a setting of that Mac (`redactAccountValues`); by default they are
+  not masked.
+- To prepare test data through an API, use `httpRequest(url, method:, headers:, body:)` and check the response's
+  `status` / `text` / `json` with `thisIs`. localhost is reachable as is; external hosts only when they are in that
+  Mac's `sandbox.allowedDomains` ([Network access from scenarios](../writing/network_access.md)).
+- Do not declare a `var` at file level (Swift 6 rejects it at compile time). Each `@Test` runs in its own process, so
+  values do not carry over; to pass a value between tests, use `writeMemo` / `readMemo`.
+
 ## Selectors
 
 - Prefer `#id`. A bare label (`"Home"`) matches the whole label exactly; `*text*` is a wildcard

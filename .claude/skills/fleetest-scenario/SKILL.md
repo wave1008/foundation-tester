@@ -167,8 +167,8 @@ class ログインできること {
             }
             scene(2, "資格情報を入れて送信する") {
                 action {
-                    tap("#email"); type("me@example.com")
-                    tap("#password"); type("secret")
+                    tap("#email"); type(account("[user1].id"))       // 資格情報は直書きしない
+                    tap("#password"); type(account("[user1].password"))
                     tap("#login_btn||ログイン")       // id か ラベル(節の順で先に見つかった方)
                 }.expectation {
                     exist("ようこそ")                 // 着地画面の実ラベル
@@ -295,6 +295,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | 反復 | `repeatWhileCanSelect(sel, maxLoopCount: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `waitSeconds:`) |
 | 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を beforeEach で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない)。**そのモーダル自体を検証・操作したい区間**では `suppressHandler { … }`(1つの CAE ブロックの内側)か `disableHandler()` … `enableHandler()`(**CAE を跨ぐとき**)で自動クローズを止める |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
+| テストデータ・外部 API | `account("[user1].password")` / `data("[order1].item")`(Shirates と同じ。値は `TestProjects/<proj>/dataset/accounts.json`・`data.json` に `{ "[user1]": { "id": "…", "password": "…" } }` の形で置き、その Mac の `~/.config/fleetest/dataset/<proj>/` の同名ファイルが属性単位で上書きする。dry-run はキーをそのまま返す)/ `httpRequest(url, method:, headers:, body:, waitSeconds:)`(テストデータを API で準備する。応答の `status` / `text` / `json` を `thisIs` で検証。localhost へはそのまま届く・外部の宛先はその Mac の `sandbox.allowedDomains` に載っているものだけ) |
 | 記録 | `screenshot(filename?)`(ファイル名はラベル無し)(現在の画面を撮り、このステップ直後にレポートへ埋め込む) |
 | 前後処理 | テストクラスに `func beforeEach()` / `func afterEach()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
@@ -313,6 +314,13 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   高速な inapp のまま)。409「フォーカスされた入力欄がありません」が出るのは engine=inapp 明示の
   プロファイルだけ。Android は常に inapp で type 可。type の前の `tap(入力欄)` は両 OS 共通で入れておく
   (Android inapp のフォーカス確立に必要)。
+- **パスワード・アカウントをシナリオに直書きしない**。`account()` で受け取り、値は `dataset/accounts.json` に置く
+  (本物のパスワードを git に入れたくないなら、🧑 にその Mac の `~/.config/fleetest/dataset/<proj>/accounts.json` へ
+  置いてもらう)。データセットファイルが無ければ、作る前に 🧑 に値を聞く(推測した値を置かない)。
+  `account()` の値をレポートで `***` に伏せるのはマシン側の `redactAccountValues` で、**既定は伏せない**。
+  `~/.config/fleetest/` はエージェントが書かない(🧑 が書く)
+- **ファイル直下に `var` を書かない**(Swift 6 で `is not concurrency-safe` のコンパイルエラー)。各 `@Test` は
+  別プロセスで動くので値は持ち越せない。変えない値は `let`、テスト間の受け渡しは `writeMemo` / `readMemo`
 - 同じ手順を関数に切り出して使い回してよい(private func。例: 不定ダイアログの `dismiss…IfAny()`)。
 - `procedure` は任意 Swift(データ準備等)を1ステップとして記録。throw すると NG 扱いでシナリオ中断。
 
