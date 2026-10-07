@@ -77,6 +77,7 @@ To verify values that do not depend on the screen (API responses, computed value
 |---|---|
 | `account()` / `data()` | Reading accounts and input values from JSON. Keep passwords in this Mac's settings, not in the repository |
 | `dataFile()` | Using CSV, JSON, images and other files as files |
+| `addMedia()` | Adding photos and videos to the device's photo library (not possible on a physical iOS device) |
 | `httpRequest` / `fleetestURLSession` | Creating test data through an API, cleaning up, reading server-side state |
 | [`writeMemo` / `readMemo`](../commands/memo.md) | Passing values prepared in `setUpDevice()` to other scenarios |
 
