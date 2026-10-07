@@ -212,6 +212,11 @@ public protocol AppDriver {
     /// キャッシュを捨てた snapshot(`snapshot(bypassingCache: true)`)が意味を持つか。
     /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
     var supportsCacheBypass: Bool { get }
+    /// **木が画面の動きに遅れて更新されるか**(XCUITest ランナー = true。慣性で動いている間も木の座標が
+    /// 100〜170ms おきにしか変わらない)。true のときだけ整定の周期を延ばす(`StepExecutor.laggingTreeSettlePeriodMs`)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)。
+    /// **ラッパードライバは実際に snapshot を撮る側の値を透過すること**(既定 false に落ちると早すぎる静止判定に戻る)
+    var treeLagsBehindMotion: Bool { get }
     /// **木の座標1単位あたり何 px か**(iOS = 1: 木は pt / Android = 表示密度: 木は px)。
     /// 幾何の床(`TapTargetGeometry.minimumVisibleTapExtent`)を木の単位へ換算するために使う。
     ///
@@ -454,6 +459,8 @@ public extension AppDriver {
 
     /// false のドライバでは検証側が取り直しの周回そのものを行わない(無駄な1周を増やさない)
     var supportsCacheBypass: Bool { false }
+
+    var treeLagsBehindMotion: Bool { false }
 
     /// 既定は未検証(false)= StepExecutor 側の読み返しが働く安全側。検証済みドライバだけが true を宣言する
     var verifiesTypedText: Bool { false }

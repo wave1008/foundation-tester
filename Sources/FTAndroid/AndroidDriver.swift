@@ -478,6 +478,8 @@ public final class AndroidDriver: AppDriver {
     }
 
     public var supportsCacheBypass: Bool { true }
+    /// 鮮度はキャッシュ迂回の読み直しで担う(整定の周期は従来どおり。XCUITest だけの性質)
+    public var treeLagsBehindMotion: Bool { false }
 
     /// 木は px で来るので、**pt/dp で決めた床を px へ換算する倍率**(= 表示密度)。
     /// 端末ごとに固定なので1度だけ引く(`wm density` の adb 往復をタップのたび払わない)。

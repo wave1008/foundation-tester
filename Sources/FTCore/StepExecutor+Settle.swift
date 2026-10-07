@@ -27,7 +27,8 @@ extension StepExecutor {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(
                 Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
-                                   bypassing: bypassesCache(.afterOwnMove))))
+                                   bypassing: bypassesCache(.afterOwnMove),
+                                   treeLags: driver.treeLagsBehindMotion)))
             phase.waitMs += Self.ms(clock.now - waitStart)
             let start = clock.now
             // 静止判定も**キャッシュを捨てて**撮る。古いツリーは連続して同じ座標を返すので、
@@ -66,7 +67,8 @@ extension StepExecutor {
             if LaunchURLReadiness.hasInteractiveElement(snapshot.elements) { return true }
             if clock.now >= deadline { return false }
             try await Task.sleep(for: .milliseconds(
-                Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs, bypassing: bypassesCache(.afterOwnMove))))
+                Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs, bypassing: bypassesCache(.afterOwnMove),
+                                   treeLags: false)))
         }
     }
 
@@ -272,12 +274,22 @@ extension StepExecutor {
     /// キャッシュ迂回の snapshot は Android で約 +35ms 掛かる(ブリッジ直叩きで 5.1ms → 39.9ms)ので、
     /// 差し引かないと周期が 100ms → 140ms へ伸び、**スクロール系のステップが丸ごと遅くなる**
     /// (実測: scroll 系ステップ合計 +3.2s。差し引きで -2.0s 回収)。
-    /// **迂回しないエンジン(iOS)では引かない** —— あちらは snapshot 自体が重く(xcuitest は
-    /// 数百 ms)、引くと周期が大きく縮んで「早すぎる静止判定」に倒れる
-    static func settleSleepMs(afterSnapshotMs: Int, bypassing: Bool) -> Int {
+    /// **迂回しないエンジン(iOS)では引かない** —— 引くと周期が縮んで「早すぎる静止判定」に倒れる。
+    /// **木が動きに遅れて更新されるエンジン(`AppDriver.treeLagsBehindMotion` = XCUITest)は、周期を
+    /// `laggingTreeSettlePeriodMs` 以上に保つ**(下の定数の doc)
+    static func settleSleepMs(afterSnapshotMs: Int, bypassing: Bool, treeLags: Bool) -> Int {
+        if treeLags { return max(Self.scrollSettleIntervalMs, Self.laggingTreeSettlePeriodMs - afterSnapshotMs) }
         guard bypassing else { return Self.scrollSettleIntervalMs }
         return max(Self.scrollSettleMinSleepMs, Self.scrollSettleIntervalMs - afterSnapshotMs)
     }
+
+    /// 木が動きに遅れて更新されるエンジンの整定ポーリングの周期の下限(ms)。「連続2枚が同じ = 静止」は、
+    /// 2枚の間隔が**動いている最中の木の更新間隔**より長くないと成り立たない。実測(XCUITest・Simulator・
+    /// 払った直後に 20〜40ms おきに取得): 慣性で動いている間の更新間隔は CMP 最大 134ms・RN 174ms・SwiftUI 125ms
+    /// (Flutter・CMP は木が毎回変わるので、こちらは変位のしきい値で止まる)。その 2 倍。
+    /// 取得が 2 秒かかっていた間(焦点の問い合わせの待ち。ブリッジ v156 で解消)はこれが隠れていて、
+    /// 速くなった途端に慣性の途中で撃ってタップがスクロールを止めるだけになった(E2EX-CMP の sticky)
+    static let laggingTreeSettlePeriodMs = 350
 
     /// 整定ポーリングの待ちの下限(busy loop 防止)
     static let scrollSettleMinSleepMs = 30
@@ -406,7 +418,8 @@ extension StepExecutor {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(
                 Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
-                                   bypassing: bypassesCache(.afterOwnMove))))
+                                   bypassing: bypassesCache(.afterOwnMove),
+                                   treeLags: driver.treeLagsBehindMotion)))
             phase.waitMs += Self.ms(clock.now - waitStart)
             start = clock.now
             last = try await freshSnapshot(.afterOwnMove)

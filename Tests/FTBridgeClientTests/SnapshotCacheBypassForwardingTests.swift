@@ -34,6 +34,7 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
         var missingSupports: [String] = []
         var missingElementLimit: [String] = []
         var missingPointScale: [String] = []
+        var missingTreeLag: [String] = []
         var checked = 0
         for dir in ["Sources/FTBridgeClient", "Sources/FTAndroid", "Sources/FTCore"] {
             let base = root.appendingPathComponent(dir)
@@ -60,8 +61,15 @@ final class SnapshotCacheBypassForwardingTests: XCTestCase {
                 if !source.contains("var pointScale: Double") {
                     missingPointScale.append(file.lastPathComponent)
                 }
+                // 同型の5本目: 木が動きに遅れるか(XCUITest)も**包む側が透過しないと既定の false に落ち**、
+                // 慣性の途中を静止と読んで撃つ(タップがスクロールを止めるだけで飲まれる = 沈黙する)
+                if !source.contains("var treeLagsBehindMotion: Bool") {
+                    missingTreeLag.append(file.lastPathComponent)
+                }
             }
         }
+        XCTAssertTrue(missingTreeLag.isEmpty,
+                      "同じ型は treeLagsBehindMotion も snapshot を撮る側の値を透過すること: \(missingTreeLag)")
         XCTAssertGreaterThan(checked, 3, "走査対象が見つからない = パスかシグネチャの書式が変わった")
         XCTAssertTrue(missingBypass.isEmpty,
                       "snapshot() を実装する型は bypassingCache 版も実装して base へ素通しすること"

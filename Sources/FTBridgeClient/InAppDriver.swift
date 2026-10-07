@@ -168,6 +168,8 @@ public final class InAppDriver: AppDriver {
         client.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
+    /// in-app はアプリ自身の view の幾何を読むので遅れない(包む BridgeClient の true を転送しない)
+    public var treeLagsBehindMotion: Bool { false }
     public var pointScale: Double { client.pointScale }
     /// **client.verifiesTypedText を転送しない**: client(BridgeClient)は XCUITest ランナー向けの
     /// 既定 true を持つが、ここでは同じ HTTP プロトコルで in-app ブリッジ(読み返し無し)を話している。

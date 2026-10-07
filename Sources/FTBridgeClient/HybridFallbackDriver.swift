@@ -286,6 +286,7 @@ public final class HybridFallbackDriver: AppDriver {
         active.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { active.supportsCacheBypass }
+    public var treeLagsBehindMotion: Bool { active.treeLagsBehindMotion }
     public var pointScale: Double { active.pointScale }
     public var verifiesTypedText: Bool { active.verifiesTypedText }
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {

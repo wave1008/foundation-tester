@@ -125,6 +125,10 @@ final class FakeAppDriver: AppDriver {
 
     var supportsCacheBypass: Bool { bypassSupported }
 
+    /// 木が動きに遅れるドライバ(XCUITest)を装う(整定の周期の配線テスト用)
+    var treeLags = false
+    var treeLagsBehindMotion: Bool { treeLags }
+
     /// 既定実装はフラグを捨てて snapshot() を呼ぶので、記録するには実装が要る
     func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         if bypassingCache { bypassedSnapshotCount += 1 }

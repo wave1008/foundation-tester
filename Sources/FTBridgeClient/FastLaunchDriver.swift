@@ -129,6 +129,7 @@ public final class FastLaunchDriver: AppDriver {
         base.raiseElementLimitOnNextSnapshot(max)
     }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
+    public var treeLagsBehindMotion: Bool { base.treeLagsBehindMotion }
     public var pointScale: Double { base.pointScale }
     public var verifiesTypedText: Bool { base.verifiesTypedText }
     public func backGestureEdgeWidths() async -> (left: Double, right: Double, bottom: Double)? {
