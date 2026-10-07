@@ -292,7 +292,7 @@ extension StepExecutor {
                               screenshot: screenshot, element: element, screen: screen,
                               fmVisible: nil, fmState: nil, fmObserved: nil)
             }
-            return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
+            return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot, elements: elements,
                                           element: element, screen: screen, countsAsSkipped: false,
                                           fmGaveNoVerdict: fmConfigured)
         }
@@ -320,7 +320,7 @@ extension StepExecutor {
                                   screenshot: screenshot, element: element, screen: screen,
                                   fmVisible: nil, fmState: nil, fmObserved: nil)
                 }
-                return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot,
+                return applyOCROnlyVisibility(ocrOnly, ocrReading: ocrReading, screenshot: screenshot, elements: elements,
                                               element: element, screen: screen, countsAsSkipped: true,
                                               fmGaveNoVerdict: true)
             }
@@ -356,7 +356,26 @@ extension StepExecutor {
         // (SCA 劣化で添付が落ちる仮説・起動遷移画面)、期待どおりの文字列なら「読めたのに
         // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した。
         return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
-                       + " observed=\"\(v.observedText)\"")
+                       + " observed=\"\(v.observedText)\""
+                       + Self.blankAppAreaFact(screenshot: screenshot, elements: elements, screen: screen))
+    }
+
+    /// 絵の**アプリ領域全体が一色**だったときに失敗文へ添える事実(そうでなければ空文字)。判定は変えない —— テキストの
+    /// 視覚検証は白を「描かれていない」の事実として扱う(`BlankFrameDetector.isUnjudgeable` の doc)。添えないと、
+    /// 1つの要素が隠れているのか画面全体に何も描かれていないのかを読み分けられない(実測: XCUITest の run で CMP の画面が
+    /// 真っ白に撮れ、木は中身を持つのに、要素ごとに「木にはあるが見えない」と 18 本が赤になった)。失敗の経路だけで払う
+    /// **上端で除く帯は木から決める**(いちばん上の要素の上端まで・下限は従来の2行)。ステータスバーの高さは機種で違い
+    /// (iPhone 17 Pro は 62pt = 7.1% で、固定の2行 = 6.25% から時計がはみ出して一色と判定されなかった)、
+    /// 一律に増やすと上端近くにだけ中身のある画面を「何も描かれていない」と言う。上端近くの中身は木に載るので帯は広がらない
+    static func blankAppAreaFact(screenshot: Data, elements: [ElementInfo], screen: FTRect) -> String {
+        let contentTop = elements.map(\.frame.y).filter { $0 > screen.y }.min().map { $0 - screen.y } ?? 0
+        let rows = screen.height > 0
+            ? Int((contentTop / screen.height * Double(BlankFrameDetector.blackFrameGrid)).rounded(.up)) : 0
+        guard BlankFrameDetector.isUniform(pngData: screenshot,
+                                           ignoringTopRows: max(rows, BlankFrameDetector.blackFrameIgnoredTopRows))
+        else { return "" }
+        return " — the whole app area of the screenshot is a single colour (nothing is drawn anywhere on screen,"
+            + " not just at this element)"
     }
 
     /// launch 直後の一度きりの門(上の occlusionFlip のコメント)。FM の判定と OCR だけの判定の両方が
@@ -411,7 +430,7 @@ extension StepExecutor {
     /// (macOS 26・注入・①は訊いていないので `visibilityGuardSkipped` を立てない)。
     /// `fmGaveNoVerdict` は失敗文言の出し分けだけに使う
     private func applyOCROnlyVisibility(_ judged: (outcome: OCROnlyVisibility.Outcome, ink: Double?),
-                                        ocrReading: RegionText.Reading?, screenshot: Data,
+                                        ocrReading: RegionText.Reading?, screenshot: Data, elements: [ElementInfo],
                                         element: ElementInfo, screen: FTRect, countsAsSkipped: Bool,
                                         fmGaveNoVerdict: Bool) -> StepResult.Status? {
         let ink = judged.ink
@@ -427,7 +446,8 @@ extension StepExecutor {
             let judgedBy = fmGaveNoVerdict ? "judged by OCR alone because FM gave no verdict" : "judged by OCR"
             return .failed("false positive (occlusion, \(judgedBy)):"
                            + " present in the tree but not visually visible [\(state.rawValue)]"
-                           + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\"")
+                           + " observed=\"\(ocrReading.map { $0.lines.joined(separator: " ") } ?? "")\""
+                           + Self.blankAppAreaFact(screenshot: screenshot, elements: elements, screen: screen))
         case .undetermined:
             if countsAsSkipped { noteCodesThisStep.insert(.visibilityGuardSkipped) }
             return nil

@@ -27,11 +27,29 @@ extension BridgeRouter {
                          bulkExempt: inout Int,
                          keyboardFrame: inout CGRect?,
                          offscreenHints: inout [ElementInfo],
-                         insideWebView: Bool = false) {
+                         insideWebView: Bool = false,
+                         overlayWindowIndices: Set<Int> = []) {
         var gathered: [Gathered] = []
-        gather(node, depth: depth, screen: screen, insideWebView: insideWebView,
-               gathered: &gathered,
-               keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
+        if overlayWindowIndices.isEmpty {
+            gather(node, depth: depth, screen: screen, insideWebView: insideWebView,
+                   gathered: &gathered,
+                   keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
+        } else {
+            // 根(アプリ)を自分で出してから窓ごとに辿る(手前の窓の中身に inOverlayWindow を付ける。
+            // BridgeRouter.overlayWindows の doc)。順序・深さは gather(node) 1回と同じ
+            if shouldInclude(node, screen: screen) {
+                gathered.append(Gathered(info: makeInfo(node, ref: 0, depth: depth), frame: node.frame))
+            }
+            for (index, window) in node.children.enumerated() {
+                let start = gathered.count
+                gather(window, depth: depth + 1, screen: screen, insideWebView: insideWebView,
+                       gathered: &gathered,
+                       keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
+                if overlayWindowIndices.contains(index) {
+                    for i in start..<gathered.count { gathered[i].info.inOverlayWindow = true }
+                }
+            }
+        }
 
         // isRedundant は [ElementInfo] を取るので**同じ列を2本持つ**。`deduped.map(\.info)` を
         // 毎回作ると、全件走査になった分そのまま要素ごとの配列確保になる(木が大きいほど効く)

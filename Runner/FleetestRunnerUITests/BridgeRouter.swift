@@ -228,6 +228,8 @@ final class BridgeRouter {
         /// XCUITest が実座標のまま報告するので復元は不要(2026-08-04 実測)。
         /// 読み手は StepExecutor.offscreenJump / offscreenEdgeJump
         let offscreen: [ElementInfo]
+        /// アプリ本体の窓より手前の別 UIWindow の枠(SnapshotResponse.overlayWindowFrames。`overlayWindows` の doc)
+        var overlayWindowFrames: [FTRect] = []
     }
 
     private func handleSnapshot(_ request: BridgeHTTPServer.Request) throws
@@ -259,6 +261,7 @@ final class BridgeRouter {
             keyboardFrame: cap.keyboardFrame.map {
                 FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
             },
+            overlayWindowFrames: cap.overlayWindowFrames.isEmpty ? nil : cap.overlayWindowFrames,
             truncatedTiers: cap.truncatedTiers.isEmpty ? nil : cap.truncatedTiers,
             bulkExemptCount: cap.bulkExempt > 0 ? cap.bulkExempt : nil))
     }
@@ -594,15 +597,46 @@ final class BridgeRouter {
         var bulkExempt = 0
         var keyboardFrame: CGRect?
         var offscreenHints: [ElementInfo] = []
+        let overlays = Self.overlayWindows(root: root)
         collect(root, depth: 0, screen: screen,
                 elements: &elements, frames: &frames, identities: &identities,
                 truncated: &truncated,
                 truncatedTiers: &truncatedTiers, bulkExempt: &bulkExempt,
-                keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
+                keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints,
+                overlayWindowIndices: overlays.indices)
         return Captured(elements: elements, frames: frames, identities: identities,
                         truncated: truncated,
                         truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
-                        keyboardFrame: keyboardFrame, offscreen: offscreenHints)
+                        keyboardFrame: keyboardFrame, offscreen: offscreenHints,
+                        overlayWindowFrames: overlays.frames)
+    }
+
+    /// **アプリ本体の窓より手前の別 UIWindow**(キーウィンドウにしないアプリ内メッセージ・上部バナー等)。中身は木に載るが
+    /// 窓の枠は載らないので、窓の背景がタップを受け止める帯を木から言えない(実測: 上部バナー 0,0 402x180 の下の
+    /// `#btn_back` を ref で撃つと done のまま画面が戻らなかった)。Android の `overlayWindowFrames` と同じ契約で申告する。
+    /// 実測(iPhone 17 Pro / iOS 27.0・XCUITest): `root.children` は窓で、**奥 → 手前の順**(本体 = 0 番、バナー・全面モーダルは
+    /// 1 番)。**キーボードの窓が1枚でもあるときは何も申告しない**(見逃す側に倒す): キーボードが出ると画面いっぱいの窓が
+    /// 2枚増え、その形は状態で変わる —— WebView の入力中・ソフトキーボードが画面外へ引っ込んだ状態では、目印
+    /// (`BridgeAPI.keyboardWindowMarkers`)を持たない窓が残って画面いっぱいの手前の窓と数え、ref の tap が整定を待たずに
+    /// 古い座標を撃った(E2E-iOS の WebView で 4/4)。申告しない回は辿り方も申告前と同じ(collect の分岐)
+    static func overlayWindows(root: XCUIElementSnapshot) -> (indices: Set<Int>, frames: [FTRect]) {
+        var indices = Set<Int>()
+        var frames: [FTRect] = []
+        guard !root.children.dropFirst().contains(where: { containsKeyboard($0, depth: 0) }) else { return (indices, frames) }
+        for (index, window) in root.children.enumerated() where index > 0 && window.elementType == .window {
+            let f = window.frame
+            guard f.width > 0, f.height > 0 else { continue }
+            indices.insert(index)
+            frames.append(FTRect(x: f.origin.x, y: f.origin.y, width: f.width, height: f.height))
+        }
+        return (indices, frames)
+    }
+
+    /// 窓がキーボード(とその付属)を載せているか。深さの上限は木の暴走よけ(キーボードの窓は浅い = 実測で 6 段以内)
+    private static func containsKeyboard(_ node: XCUIElementSnapshot, depth: Int) -> Bool {
+        if node.elementType == .keyboard || BridgeAPI.keyboardWindowMarkers.contains(node.identifier) { return true }
+        guard depth < 12 else { return false }
+        return node.children.contains { containsKeyboard($0, depth: depth + 1) }
     }
 
     /// 「画面」の外接矩形 = root.frame に、**ディスプレイに収まる**子(各 UIWindow)の frame を union

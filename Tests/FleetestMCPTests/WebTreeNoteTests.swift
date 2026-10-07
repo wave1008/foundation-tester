@@ -54,7 +54,8 @@ final class WebTreeNoteTests: XCTestCase {
     /// (実測: Yahoo!天気の週間画面で、落ちたほうに週間表の日付・気温が丸ごと入っていた)。
     /// 名指しは webViewGapBandsReported 本までだが、**件数は必ず言う**
     func testEveryQualifyingBandIsCountedNotJustTheLargest() {
-        let note = MCPServer.webViewGapNote(tree(leafYs: [0, 100, 200, 300, 1200, 1400, 1600, 1800]))
+        // 後半の行は間隔を不揃いにする(規則的な間隔で並ぶ行の行間は取りこぼしと数えない = TreeCoverage.isRegularRowSpacing)
+        let note = MCPServer.webViewGapNote(tree(leafYs: [0, 100, 200, 300, 1200, 1400, 1610, 1830]))
         XCTAssertTrue(note.contains("4 separate bands"), "全部数えること: \(note)")
         XCTAssertTrue(note.contains("y=340-1200 (860 tall)"), "最大の帯: \(note)")
         XCTAssertTrue(note.contains("y=1240-1400 (160 tall)"), "2本目も名指しすること: \(note)")

@@ -545,9 +545,13 @@ public final class BridgeClient: AppDriver, Sendable {
 
     /// SpringBoard のアラートが載っているか(`GET /systemalert`。XCUITest ランナーのみ)。
     /// **旧ランナーは 404 を返す** → nil(不明)で返し、呼び手は判定しない
+    /// **上限は interaction(session ではない)**: SpringBoard に目印を1問聞くだけで(実測 25〜100ms)、session(45s)の
+    /// 理由 = 木の直列化が並列で伸びる、が当てはまらない。45s まで待つのはランナーが死んでいる・塞がっているときだけで、
+    /// tap の前の照会がそのまま 45s を払い、1手で 96s(シナリオ 117s・打ち切りの 120s 寸前)になった実例がある。
+    /// 落ちても呼び手は「確かめられなかった」と注記するだけ(StepExecutor.probeSystemAlert)
     public func systemAlert() async throws -> SystemAlertProbeResponse? {
         do {
-            return try await get("/systemalert", timeout: sessionTimeout) as SystemAlertProbeResponse
+            return try await get("/systemalert", timeout: interactionTimeout) as SystemAlertProbeResponse
         } catch DriverError.badResponse(let status, _) where status == 404 {
             return nil
         }
@@ -557,8 +561,9 @@ public final class BridgeClient: AppDriver, Sendable {
     /// 版 83 より古いブリッジは 404 を返すので、その場合も nil(呼び手は黙る)
     public func systemUICovering() async throws -> SystemUICoveringResponse? {
         do {
+            // 上限は systemAlert と同じ理由で interaction
             return try await get("/systemui/covering",
-                                 timeout: sessionTimeout) as SystemUICoveringResponse
+                                 timeout: interactionTimeout) as SystemUICoveringResponse
         } catch DriverError.badResponse(let status, _) where status == 404 {
             return nil
         }

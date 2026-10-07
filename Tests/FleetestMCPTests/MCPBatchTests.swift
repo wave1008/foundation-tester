@@ -32,14 +32,24 @@ final class MCPBatchTests: XCTestCase {
         ["steps": dsl]
     }
 
+    /// 打ち込み先の入力欄を木に足す(type / clearInput は入力欄でない型を撃つ前に断るので、#login_btn へは打てない)
+    private func addTextField() {
+        driver.typedTextVerified = true
+        driver.snapshotResponse.elements.append(
+            ElementInfo(ref: 2, type: "TextField", identifier: "field_email", label: nil, value: nil,
+                        placeholder: "メール", enabled: true,
+                        frame: FTRect(x: 10, y: 80, width: 300, height: 40), depth: 1))
+    }
+
     // MARK: - 欄を空にする type(replace: true + 空文字)
 
     /// **シナリオに書ける行は batch も通す**: `type("#field", "", replace: true)` は DSL でも
     /// `ft_type` でも「欄を空にする」形。ここを断ると「通ったバッチはシナリオ行になる」の
     /// 逆向きが成り立たない
     func testEmptyTextWithReplaceEmptiesTheField() async throws {
+        addTextField()
         let text = body(try await server.call(tool: "ft_batch",
-                                              args: steps("type '#login_btn' '' replace: true")))
+                                              args: steps("type '#field_email' '' replace: true")))
         XCTAssertTrue(text.contains("(replace)"), text)
         XCTAssertFalse(text.contains("FAILED"), text)
         XCTAssertTrue(driver.calls.contains { $0.hasPrefix("type(") }, "\(driver.calls)")
@@ -278,8 +288,9 @@ final class MCPBatchTests: XCTestCase {
     // が既に固めている)
 
     func testTypeReplaceClearsBeforeTypingInABatch() async throws {
+        addTextField()
         let text = body(try await server.call(
-            tool: "ft_batch", args: steps("type '#login_btn' 'abc' replace: true")))
+            tool: "ft_batch", args: steps("type '#field_email' 'abc' replace: true")))
         XCTAssertTrue(text.contains("(replace)"), text)
         let clearIndex = driver.calls.firstIndex { $0.hasPrefix("clearInput(ref:") }
         let typeIndex = driver.calls.firstIndex { $0.hasPrefix("type(ref:") }
@@ -294,12 +305,13 @@ final class MCPBatchTests: XCTestCase {
     // MARK: - (e) 実行した各手が InteractionLog に1手ずつ入り、下書きは正形で出る
 
     func testExecutedStepsAreRecordedForTheDraft() async throws {
+        addTextField()
         _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.example.app"])
         _ = try await server.call(tool: "ft_batch",
-                                  args: steps("tap '#login_btn'; type '#login_btn' 'abc'"))
+                                  args: steps("tap '#login_btn'; type '#field_email' 'abc'"))
         let draft = body(try await server.call(tool: "ft_draft_scenario", args: [:]))
         XCTAssertTrue(draft.contains("tap(\"#login_btn\")"), draft)
-        XCTAssertTrue(draft.contains("type(\"#login_btn\", \"abc\")"), draft)
+        XCTAssertTrue(draft.contains("type(\"#field_email\", \"abc\")"), draft)
     }
 
     // MARK: - (f) ステップ数の上限を超えたら実行前に弾く

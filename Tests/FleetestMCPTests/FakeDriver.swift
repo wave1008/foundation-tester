@@ -175,6 +175,11 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("tap(x:\(x),y:\(y))", "tap")
     }
 
+    /// true = ブリッジ側が打鍵を自分で検証すると名乗る(XCUITest ランナーと同じ立場)。ホストの読み返しを通さずに
+    /// 配線だけを見るテスト用(この偽物は値を書き換えないので、読み返しを通すと「値が変わらない」で落ちる)
+    var typedTextVerified = false
+    var verifiesTypedText: Bool { typedTextVerified }
+
     func type(ref: Int?, text: String) async throws {
         try record("type(ref:\(ref.map(String.init) ?? "nil"),text:\(text))", "type")
     }

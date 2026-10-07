@@ -83,6 +83,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | Compose / Flutter(iOS in-app) | 入力欄が UITextField ではない合成 AX 要素で、in-app だけ `other` になっていた | テキスト入力の trait と `UITextInput` 準拠で型を付け、XCUITest と揃える | `InAppSnapshot.elementType` |
 | Flutter(iOS) | SnackBar の文言が「頻繁に更新される」特性だけのノードで、型が Other・id 無しのため木から落ちていた(中のボタンだけ出る) | ラベルを持つライブリージョンを `staticText` として出す(in-app・XCUITest とも) | `LiveRegionText.isLabelOnlyLiveRegion` |
 | RN(iOS・in-app) | `Pressable` は既定でアクセシビリティ要素になり、名前も id も無いと木に出ない。その中の id つきの View(`pointerEvents="none"` の欄)まで消えていた(XCUITest の木には出る) | 木に出さなかったアクセシビリティ要素は葉にせず、中を辿る | `InAppSnapshot.collect` |
+| iOS(XCUITest) | キーウィンドウにしない別 UIWindow(アプリ内メッセージ・上部バナー)は、中身は木に載るが窓の枠が載らない。窓の背景がタップを受け止める帯を木から言えず、バナーの下の要素への tap が done のまま外れた | 本体の窓より手前の窓の枠を `overlayWindowFrames` で申告し(キーボードの窓は除く)、中身に `inOverlayWindow` を付ける(Android と同じ契約。判定は `OverlayWindowOcclusion` の警告)。**キーボードの窓が出ている間は申告しない**(形が状態で変わり目印で拾い切れない = 見逃す側)。**in-app は申告しない**(タップは要素の activate で手前の窓に吸われない) | `BridgeRouter.overlayWindows` |
 | UIKit / SwiftUI(iOS in-app) | 検索欄(`UISearchBar` の中身)が in-app だけ `textField` になり、`.SearchField` がエンジンで当たり外れした | 検索の trait か `UISearchTextField` なら `searchField`(XCUITest と同じ) | `InAppSnapshot.elementType` |
 | Compose(iOS) | 容器の外の行(ghost)を、ラベル無しで木に残す | 見切れの判定を容器基準にし、画面端に積もった行の山は遮蔽物扱いしない | `clippingContainer` / `OcclusionSuspicion` |
 
@@ -169,12 +170,12 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | UIKit / SwiftUI / RN | `insertText` | `textFieldShouldReturn:` + EditingDidEndOnExit を再現(SwiftUI の `onSubmit` もこの経路) | 置換後に EditingChanged と通知を補う |
 | Flutter | `insertText` | engine の私有 API(`flutterTextInputView:performAction:withClient:`)へ配送。欠けていれば 409 | **in-app では非対応** → XCUITest へ |
 
-- **入力欄でない対象(ボタン等)への `type` / `clearInput` は、自前描画でないと確定しているとき(UIKit / SwiftUI / RN /
-  Android View)は撃つ前に失敗させる**(ドライバは打つ・消す前に対象をタップするので、撃つと押してしまう。
-  `StepExecutor.nonTextInputPreflightRefusal`。入力欄をちょうど1つ包む容器は撃つ)。同じ判定で、in-app の 409 からの
-  XCUITest への撃ち直しも止める(in-app がタップ済みのところへ XCUITest がもう一度タップすると2回押す)。
-  **Compose / Flutter / 判定不明は従来どおり回す**(型名が入力欄の判定に当てにならない)。**B**(型の対象が誤っているシナリオの
-  失敗の仕方が割れる。判定は `TypeReadback.isPositivelyNonTextInput`)
+- **入力欄でない対象(ボタン等)への `type` / `clearInput` は、フレームワークを問わず撃つ前に失敗させる**(ドライバは打つ・
+  消す前に対象をタップするので、撃つと押してしまう。`StepExecutor.nonTextInputPreflightRefusal`。入力欄をちょうど1つ包む容器と、
+  役割の確定しない `clickable` は撃つ)。編集できる要素は全経路で入力型を名乗る(iOS in-app = テキスト入力の trait、XCUITest =
+  elementType、Android = Compose / Flutter とも EditText)ので、ボタン等の型は自前描画でも入力欄ではない。**A**(MCP の ft_type と揃う)。
+  in-app の 409 からの XCUITest への撃ち直しを止めるのは、自前描画でないと確定しているとき(UIKit / SwiftUI / RN / Android View)
+  だけのまま(`TypeReadback.isPositivelyNonTextInput`)
 - **`\n` を含む `type` は、フレームワークを問わず XCUITest へ回す**(改行の意味を iOS の Return キーに揃えるため。
   in-app の `insertText("\n")` はフレームワークによって改行になったり、アクションになったり、握り潰されたりする)。
   **A**(結果を揃える)。tap の直後なら、先に焦点が立つのを待つ

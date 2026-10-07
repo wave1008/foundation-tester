@@ -166,6 +166,18 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         XCTAssertFalse(source.contains("typed.typeText("), "焦点の要素へ向けた typeText は app.typeText へ寄せる")
     }
 
+    /// **手前の別 UIWindow の枠の申告**(`overlayWindows`)は、本体の窓(0 番)を数えず、キーボードの窓があるときは何も申告しない。
+    /// 本体を数えると全要素が「手前の窓に覆われている」と言い、キーボードの窓(画面いっぱい・形が状態で変わる)を拾うと入力中に
+    /// 同じことを言ったうえ、WebView の入力の後の tap が整定を待たずに古い座標を撃った
+    func testOverlayWindowsSkipTheMainWindowAndKeyboardWindows() throws {
+        let body = try XCTUnwrap(handlerBody("overlayWindows(root:", in: try routerSource))
+        XCTAssertTrue(body.contains("where index > 0"), "本体の窓(0 番)を数えないこと: \(body)")
+        XCTAssertTrue(body.contains("guard !root.children.dropFirst().contains(where: { containsKeyboard("),
+                      "キーボードの窓が1枚でもあれば何も申告しないこと: \(body)")
+        let marker = try XCTUnwrap(handlerBody("containsKeyboard(_", in: try routerSource))
+        XCTAssertTrue(marker.contains(".keyboard") && marker.contains("BridgeAPI.keyboardWindowMarkers"), marker)
+    }
+
     /// **ランナーのテストは XCUI の失敗を記録しない**(`FleetestBridgeTests.record(_:)` がログにだけ残す)。
     /// 記録すると1件でも Tear Down してランナーごとブリッジが消える(2026-09-19: 消えた欄への typeText の失敗
     /// 1件で Tear Down・毎回再現 → 上書き後は同じ手順5回で失敗12件をログに残して生存)。`super` を呼ぶと元に戻る

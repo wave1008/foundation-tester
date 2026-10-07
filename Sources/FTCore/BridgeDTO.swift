@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 149
+    public static let bridgeProtocolVersion = 150
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -118,6 +118,10 @@ public enum BridgeAPI {
     /// 中にカード(`appSwitcherCardPrefix`)が載っているときだけ覆いと見る**(BridgeRouter.handleSystemUICovering。
     /// ホームボタン機はアプリが前面でも窓を isHittable と答える。実測 iPhone SE3)
     public static let appSwitcherMarkerPrefix = "SBSwitcherWindow"
+    /// XCUITest でキーボードを載せた窓の目印(この identifier か型 keyboard を中に持つ窓は手前の窓に数えない。
+    /// BridgeRouter.overlayWindows)。実測: iPhone 17 Pro / iOS 27.0 で、キーボード表示中に増える2枚の窓の中身が
+    /// `inputView` と `SystemInputAssistantView`(+ キー)だった
+    public static let keyboardWindowMarkers: Set<String> = ["inputView", "SystemInputAssistantView"]
     /// スイッチャーのアプリのカードの identifier(`card:<bundle>:sceneID:<bundle>-default`)。
     /// 実測: 開いているとき(iPhone 17 Pro / iOS 27.0 シミュレータ)は縮んだカードが並ぶ
     /// (281×612 が 5 枚)。閉じたあと、Face ID 機・シミュレータの窓には 1 枚も残らないが、
@@ -826,7 +830,7 @@ public struct ElementInfo: Codable, Sendable {
     /// SnapshotBuilder はそれらの木も `overlayWindowFrames` と同じ手前判定〈layer〉+ 同じ package の
     /// 条件で集め、要素の末尾に追加する)。**この要素自身は `OverlayWindowOcclusion` の遮蔽対象にしない**
     /// —— 覆っているのではなくオーバーレイの中身そのものだから(判定は OverlayWindowOcclusion.covering)。
-    /// iOS の2ブリッジは送らない(in-app/xcuitest とも可視な窓を全部歩くので原理的に必要ない)。
+    /// iOS は XCUITest が手前の別 UIWindow から集めた要素に付ける(`overlayWindowFrames` と対。in-app は送らない)。
     /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(scrollActions と同じ方針。
     /// Android は AndroidBridge.expectedBridgeVersionCode を上げる)
     public var inOverlayWindow: Bool?
@@ -929,11 +933,13 @@ public struct SnapshotResponse: Codable, Sendable {
     /// **木に出ないオーバーレイ・ウィンドウ**が覆っている矩形(画面座標)。省略は「無し、
     /// または旧ブリッジ」。読み手はホストの遮蔽警告(`OverlayWindowOcclusion`)。
     ///
-    /// **Android だけが申告する**。Android の木は `getRootInActiveWindow()` = アクティブ
+    /// **Android と iOS の XCUITest が申告する**。Android の木は `getRootInActiveWindow()` = アクティブ
     /// ウィンドウ1枚だけなので、その手前に居るポップアップ(メニュー・ツールチップ・
     /// テキスト選択のフローティングツールバー)は木に1要素も載らず、木由来の遮蔽判定では
     /// 原理的に拾えない —— `keyboardFrame` と同じ理由・同じ形の申告。
-    /// iOS は in-app が可視な窓を全部歩き、xcuitest も同様に載せるので申告しない(nil)。
+    /// iOS の XCUITest は手前の別 UIWindow の中身は木に載せるが窓の枠は載せないので、窓の背景がタップを受け止める
+    /// 帯を言えない(`BridgeRouter.overlayWindows`)。**in-app は申告しない** —— タップは要素の activate で手前の窓に
+    /// 吸われない(申告すると「タップは手前の窓に当たる」が事実と食い違う)
     ///
     /// 何を数えるかの境界は `SnapshotBuilder.hiddenWindowRects` が唯一の定義元
     /// (ステータス/ナビゲーションバーは常設なので数えない、等)

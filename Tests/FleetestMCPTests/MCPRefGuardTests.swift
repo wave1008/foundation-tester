@@ -1216,6 +1216,22 @@ final class MCPRefGuardTests: XCTestCase {
                        "面が分かっているのに一般論の誤った説明を並べないこと: \(text)")
     }
 
+    /// **画面の照会の答えは要素ごとに使い回す**(木の指紋だけで使い回すと、同じ画面の別の要素へ前の要素の答えが返り、
+    /// 警告が前の要素を名指しした。`/hittable` の答えも要素ごとに違う)
+    func testScreenProbeAnswerIsNotReusedForAnotherElementOnTheSameScreen() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "button", id: "btn_back", label: "戻る", x: 16, y: 78, w: 76, h: 48),
+            element(ref: 2, type: "button", id: "btn_ok", label: "OK", x: 16, y: 400, w: 370, h: 48),
+        ])
+        driver.systemUICoveringResponse = SystemUICoveringResponse(covering: true, marker: "cc-brightness-slider")
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let first = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(first.contains("#btn_back"), first)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let second = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 2]))
+        XCTAssertTrue(second.contains("so #btn_ok is not actually reachable"), "2つ目の要素を名指しすること: \(second)")
+    }
+
     /// 通知センター(カバーシート)は別の面として名指しする
     func testTapNamesTheNotificationCentreWhenThatIsWhatCovers() async throws {
         driver.snapshotResponse = screen([

@@ -164,10 +164,10 @@ extension StepExecutorTests {
     func testType409FallsBackToTypeDriverReactively() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_email")]])
         primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_email")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_email")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
 
@@ -249,16 +249,15 @@ extension StepExecutorTests {
                        "確実に入力欄でない対象では typeDriver を照会してはいけない: \(log.entries)")
     }
 
-    /// 自前描画(Compose/Flutter)では型名だけで「入力欄でない」と確定できない
-    /// (実測: Compose の実欄が clickable と報告される。nonInputTypeTargetNote の doc)ので、
-    /// selfRendered == true では従来どおり撃ち直すこと
+    /// 自前描画(Compose/Flutter)の本物の欄は clickable と報告されうる(nonInputTypeTargetNote の doc)ので、
+    /// 役割の確定しない型は selfRendered == true で従来どおり撃ち直すこと(ボタン型は撃つ前に断る)
     func testType409WithSelfRenderedButtonTargetStillFallsBackToTypeDriver() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "btn_submit")]])
+                                    snapshotElements: [[clickable(ref: 1, id: "btn_submit")]])
         primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "btn_submit")]])
+                                       snapshotElements: [[clickable(ref: 2, id: "btn_submit")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables(),
                                     uiFramework: .compose)
         let step = FlowStep(action: "type", locator: FlowLocator(id: "btn_submit"), text: "hi")

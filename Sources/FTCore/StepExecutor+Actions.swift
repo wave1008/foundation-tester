@@ -1268,13 +1268,15 @@ extension StepExecutor {
     }
 
     /// type/clearInput を**撃つ前に**断る文言(nil = 撃ってよい)。ドライバは打つ・消す前に対象をタップするので、
-    /// 対象がボタン等なら押してしまう(送信・購入)。断るのは `TypeReadback.isPositivelyNonTextInput`
-    /// (ネイティブ描画と分かっていて型がボタン等)のときだけ —— 自前描画では本物の入力欄が別の型で報告されるので
-    /// 型名で断らない。内側に入力欄がちょうど1つある容器(`nonInputTypeTargetNote` が non-nil)は従来どおり撃つ
+    /// 対象がボタン等なら押してしまう(送信・購入)。断るのは型が `positivelyNonTextInputTypes`(ボタン等)のとき。
+    /// **自前描画でも断る**: 編集できる要素は全経路で入力型を名乗る(iOS in-app = テキスト入力の trait、XCUITest =
+    /// elementType、Android = Compose/Flutter とも EditText)。自前描画の本物の欄が別の型に落ちるのは `clickable`
+    /// で、この集合に無い。MCP の ft_type は入力型以外を全部断る(より厳しい)ので、判断はこれで揃う側へ寄る。
+    /// 内側に入力欄がちょうど1つある容器(`nonInputTypeTargetNote` が non-nil)は従来どおり撃つ
     func nonTextInputPreflightRefusal(_ element: ElementInfo, in elements: [ElementInfo],
                                       action: String) -> String? {
         guard TapTargetGeometry.nonInputTypeTargetNote(element, in: elements) == nil,
-              TypeReadback.isPositivelyNonTextInput(element, selfRendered: uiFramework?.isSelfRendered) else {
+              TypeReadback.positivelyNonTextInputTypes.contains(element.type) else {
             return nil
         }
         return "the target is a \(element.type), not a text field — refusing before anything is"

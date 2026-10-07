@@ -114,6 +114,20 @@ final class StepExecutorTests: XCTestCase {
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
     }
 
+    /// 打ち込み先の入力欄(type / clearInput は入力欄でない型を撃つ前に断るので、打鍵の経路を見るテストはこちら)
+    func textField(ref: Int, id: String) -> ElementInfo {
+        ElementInfo(ref: ref, type: "textField", identifier: id, label: nil, value: nil,
+                   placeholder: nil, enabled: true,
+                   frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+    }
+
+    /// 役割の確定しない受け皿の型(自前描画の本物の欄が落ちる型)
+    func clickable(ref: Int, id: String) -> ElementInfo {
+        ElementInfo(ref: ref, type: "clickable", identifier: id, label: nil, value: nil,
+                   placeholder: nil, enabled: true,
+                   frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+    }
+
     /// SpringBoard の木に載るアラート本体(題名を持つ)
     private func alertTitled(_ title: String) -> ElementInfo {
         ElementInfo(ref: 100, type: "alert", identifier: nil, label: title, value: nil,

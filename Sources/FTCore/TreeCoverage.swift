@@ -78,10 +78,12 @@ public enum TreeCoverage {
             guard visible > 0 else { continue }
             guard pageExtendsBeyondViewport(container, of: snapshot) else { continue }
             let screenLongEdge = max(screen.width, screen.height)
+            let leaves = coveringLeaves(inside: container, of: snapshot)
             let bands = emptyBands(inside: container, of: snapshot)
                 .filter {
                     $0.height >= visible * gapBandContainerFraction
                         && $0.height >= screenLongEdge * gapBandScreenFraction
+                        && !isRegularRowSpacing($0, leaves: leaves)
                 }
             guard !bands.isEmpty else { continue }
             return Gap(container: container, bands: bands)
@@ -144,11 +146,7 @@ public enum TreeCoverage {
         // 偽の空白帯として発火した)。label/value のどちらかが非空なら、可視高より高くても
         // 覆いに数える。**この検知は警告専用なので、テキスト付き全面要素という曖昧な形は
         // 黙る側(見逃し)に倒す** —— 逆に倒すと健全な木を騒がせる
-        let leaves = snapshot.elements.filter {
-            $0.ref != container.ref && $0.scrollable != true && $0.type != "webView"
-                && ($0.frame.height < (bottom - top)
-                    || !($0.label ?? "").isEmpty || !($0.value ?? "").isEmpty)
-        }
+        let leaves = coveringLeaves(inside: container, of: snapshot)
         var columns: [(start: Int, count: Int)] = []
         var runStart = 0, run = 0
         for slice in 0..<gapScanSlices {
@@ -176,6 +174,45 @@ public enum TreeCoverage {
             return FTRect(x: container.frame.x, y: trueTop,
                           width: container.frame.width, height: trueBottom - trueTop)
         }
+    }
+
+    /// 帯の覆いに数える葉(`emptyBands` の doc の「葉だけを数える」「高さの上限」の規則)
+    static func coveringLeaves(inside container: ElementInfo, of snapshot: SnapshotResponse) -> [ElementInfo] {
+        let screen = snapshot.screen
+        let top = max(container.frame.y, screen.y)
+        let bottom = min(container.frame.y + container.frame.height, screen.y + screen.height)
+        return snapshot.elements.filter {
+            $0.ref != container.ref && $0.scrollable != true && $0.type != "webView"
+                && ($0.frame.height < (bottom - top)
+                    || !($0.label ?? "").isEmpty || !($0.value ?? "").isEmpty)
+        }
+    }
+
+    /// 同じ行の繰り返しとみなす frame の一致の幅(pt/px)。frame の小数の丸め(1 未満)を吸うだけの幅
+    /// (`FocusedElementMatch.frameTolerance` と同じ理由)
+    static let rowRhythmTolerance = 1.0
+
+    /// 帯が**行の並びの行間**か(純粋)。帯の直上の行 A と直下の行 B が同じ高さ・同じ x で、B の次にも同じ間隔
+    /// (A→B と B→C の y の差が同じ)で同じ形の行 C が続くなら、帯は並びの規則的な余白であって取りこぼしではない。
+    /// 取りこぼし(ブラウザの部分公開)は並びを途切れさせる —— 1行まるごと落ちれば A→B は2間隔になって C と揃わない。
+    /// 実測(E2E-iOS の WebView・XCUITest): 23pt の行が 73pt おきに並び、行間 50pt が容器比 8% に届いて
+    /// 「何も載っていない帯」と誤って注記していた
+    static func isRegularRowSpacing(_ band: FTRect, leaves: [ElementInfo]) -> Bool {
+        let t = rowRhythmTolerance
+        func sameShape(_ a: ElementInfo, _ b: ElementInfo) -> Bool {
+            abs(a.frame.x - b.frame.x) <= t && abs(a.frame.height - b.frame.height) <= t
+        }
+        let above = leaves.filter { abs($0.frame.y + $0.frame.height - band.y) <= t }
+        let below = leaves.filter { abs($0.frame.y - (band.y + band.height)) <= t }
+        for a in above {
+            for b in below where sameShape(a, b) {
+                let pitch = b.frame.y - a.frame.y
+                if leaves.contains(where: { sameShape($0, b) && abs($0.frame.y - (b.frame.y + pitch)) <= t }) {
+                    return true
+                }
+            }
+        }
+        return false
     }
 
     // MARK: - webView 容器そのものが無い形

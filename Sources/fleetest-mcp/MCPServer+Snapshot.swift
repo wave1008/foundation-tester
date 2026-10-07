@@ -109,12 +109,13 @@ extension MCPServer {
     }
 
     /// `element` の ref だけ差し替えたコピー(ElementInfo は struct。他フィールドは素通し)
-    private static func withRef(_ element: ElementInfo, _ ref: Int) -> ElementInfo {
-        ElementInfo(ref: ref, type: element.type, identifier: element.identifier,
-                   label: element.label, value: element.value, placeholder: element.placeholder,
-                   enabled: element.enabled, frame: element.frame, depth: element.depth,
-                   checked: element.checked, web: element.web, focused: element.focused,
-                   scrollable: element.scrollable, z: element.z, range: element.range)
+    /// **複写して ref だけ差し替える**(欄を1つずつ並べて作り直さない)。作り直していた頃は後から足した欄
+    /// (`inOverlayWindow`・`axClass`・`scrollActions`)を落とし、2世代目以降の木では手前の窓の中身が
+    /// 「手前の窓に覆われている」と誤って警告された(XCUITest の上部バナーの閉じるボタンで実測)
+    static func withRef(_ element: ElementInfo, _ ref: Int) -> ElementInfo {
+        var copy = element
+        copy.ref = ref
+        return copy
     }
 
     /// `snapshot.elements` の ref に一律 `base` を足したコピー。offscreen の ref は触らない
@@ -764,7 +765,7 @@ extension MCPServer {
     /// `/systemui/covering` → `/hittable`)を払っており、同じ画面へ連打するだけの探索でも
     /// 木の数だけ払っていた。**撮り直した fresh 木の指紋が前回と同じなら答えを使い回す**——
     /// この探針が答える3つはどれも「今の画面が何か」を言うもので、木がバイト同一のままなら
-    /// 答えも変わらない。
+    /// 答えも変わらない。**ただし要素ごとに使い回す**(同じ要素への連打だけが往復を省く)。
     ///
     /// **健全性の限界(意図した上限)**: 木をバイト同一に保ったまま覆う面が出入りする形
     /// (静止画面の上に Control Center が出た/消えた、等)は、次に木そのものが変わるまで
@@ -774,7 +775,13 @@ extension MCPServer {
     func memoizedScreenProbe(_ found: ElementInfo, fresh: SnapshotResponse,
                              driver: AppDriver, args: [String: Any]) async -> String {
         let key = Self.engineKey(args)
-        let fingerprint = Self.treeFingerprint(fresh)
+        // **要素も鍵に入れる**: 答えには要素ごとに変わるもの(`/hittable`・警告の中の名指し)が
+        // 混ざる。木の指紋だけで使い回すと、同じ画面の別の要素へ前の要素の答えが返る(全面の覆いの警告が前の要素を
+        // 名指しし、`/hittable` の答えも前の要素のものだった)
+        var hasher = Hasher()
+        hasher.combine(Self.treeFingerprint(fresh))
+        hasher.combine(found.ref)
+        let fingerprint = hasher.finalize()
         if let memo = lastScreenProbe[key], memo.fingerprint == fingerprint {
             return memo.warning
         }

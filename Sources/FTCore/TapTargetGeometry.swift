@@ -729,6 +729,11 @@ public enum TapTargetGeometry {
         if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters), !label.isEmpty {
             return "\(element.type) \"\(label)\""
         }
+        // id もラベルも無い入力欄はプレースホルダで名指しする(木の表記 `ph="…"` と同じ形)。型名だけだと、同じ画面の
+        // 別の入力欄(焦点が残っている欄など)と区別できず、注記が別の欄を指しているように読める
+        if let placeholder = element.placeholder.map(FlowMatchMode.normalizeInvisibleCharacters), !placeholder.isEmpty {
+            return "\(element.type) ph=\"\(placeholder)\""
+        }
         return element.type
     }
 

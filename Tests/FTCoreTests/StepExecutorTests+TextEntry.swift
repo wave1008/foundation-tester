@@ -128,9 +128,9 @@ extension StepExecutorTests {
     func testTypePrefersTypeDriverWhenComposeDetected() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_email")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_email")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_email")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
 
@@ -154,7 +154,7 @@ extension StepExecutorTests {
     func testTypeFallsToPrimaryWhenTypeDriverCannotResolve() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_email")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
@@ -175,9 +175,9 @@ extension StepExecutorTests {
     func testTypeRoutesToTypeDriverWhenTextContainsNewline() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_note")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_note")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "hi\n")
 
@@ -196,9 +196,9 @@ extension StepExecutorTests {
     func testTypeUsesPrimaryWhenTextHasNoNewline() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_note")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_note")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "hi")
 
@@ -253,9 +253,9 @@ extension StepExecutorTests {
     func testTypeRoutesToTypeDriverWhenNewlineIsMidString() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_note")]])
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_note")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "line1\nline2")
 
@@ -811,7 +811,7 @@ extension StepExecutorTests {
     func testClearInputWithSelectorUsesResolvedRef() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 7, id: "field_note")]])
+                                    snapshotElements: [[textField(ref: 7, id: "field_note")]])
         let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
@@ -847,10 +847,10 @@ extension StepExecutorTests {
     func testClearInput409FallsBackToTypeDriverReactively() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_note")]])
         primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_note")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
@@ -877,11 +877,11 @@ extension StepExecutorTests {
     func testClearInput422FallsBackToTypeDriverLike409() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+                                    snapshotElements: [[textField(ref: 1, id: "field_note")]])
         primary.clearInputError = DriverError.badResponse(
             status: 422, body: "フォーカスされた入力欄がありません")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
-                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+                                       snapshotElements: [[textField(ref: 2, id: "field_note")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver, isAndroid: false, tunables: RunTunables())
         let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
 
@@ -1113,15 +1113,32 @@ extension StepExecutorTests {
                        "断ったのに clearInput を撃った: \(log.entries)")
     }
 
-    /// 自前描画(Compose 等)では型名を信じない = 断らずに撃つ(本物の入力欄が button で報告されうる)
-    func testTypeIntoButtonTypedElementOnSelfRenderedFrameworkIsNotRefused() async throws {
+    /// 自前描画(Compose 等)でもボタン型へは撃つ前に断る —— 編集できる要素は全経路で入力型を名乗る
+    /// (nonTextInputPreflightRefusal の doc)
+    func testTypeIntoButtonTypedElementOnSelfRenderedFrameworkIsRefused() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
-                                    snapshotElements: [[element(ref: 1, id: "field_name")]])
+                                    snapshotElements: [[element(ref: 1, id: "btn_input_submit")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .compose)
+        let outcome = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "btn_input_submit"),
+                                                      text: "hello"))
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("自前描画のボタンへの type も撃つ前に断るはずが \(outcome.status)"); return
+        }
+        XCTAssertTrue(message.contains("refusing before anything is typed"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(") }, "断ったのに type を撃った: \(log.entries)")
+    }
+
+    /// 自前描画の本物の入力欄が落ちる型は clickable(役割の確定しない受け皿)—— これは断らずに撃つ
+    func testTypeIntoClickableOnSelfRenderedFrameworkIsNotRefused() async throws {
+        let log = CallLog()
+        let field = ElementInfo(ref: 1, type: "clickable", identifier: "field_name", label: nil, value: nil,
+                                placeholder: nil, enabled: true, frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[field]])
         let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .compose)
         _ = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "field_name"), text: "hello"))
         XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.type(") },
-                      "自前描画では型名で断ってはいけない: \(log.entries)")
+                      "clickable は役割の確定しない型なので断らない: \(log.entries)")
     }
 
     /// 内側に入力欄がちょうど1つある容器(ボタン型の包み)は従来どおり撃つ(警告だけ)

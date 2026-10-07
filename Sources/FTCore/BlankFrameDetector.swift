@@ -88,7 +88,14 @@ public enum BlankFrameDetector {
     /// `isEmpty` の誤った緑)。ステータスバーの有無で分けない —— アイコンの数でセルの平均が割れたり割れなかったりする。
     /// **凍結の確定には使わない**・**テキストの視覚検証には使わない**(あちらは白を「描かれていない」の事実として扱う)
     public static func isUnjudgeable(pngData: Data) -> Bool {
+        isUniform(pngData: pngData, ignoringTopRows: blackFrameIgnoredTopRows)
+    }
+
+    /// 上端の帯の行数を呼び手が決める版(32 分割の行数)。**呼ぶのはテキストの視覚検証の失敗文に事実を添える経路だけ**
+    /// (`StepExecutor.blankAppAreaFact`)。行数はその画面の木から導く(いちばん上の要素より上 = ステータスバーの帯)
+    public static func isUniform(pngData: Data, ignoringTopRows topRows: Int) -> Bool {
         let grid = blackFrameGrid
+        let topRows = min(max(topRows, 0), grid - blackFrameIgnoredBottomRows - 1)
         guard let source = CGImageSourceCreateWithData(pngData as CFData, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
               let context = CGContext(data: nil, width: grid, height: grid, bitsPerComponent: 8,
@@ -98,8 +105,8 @@ public enum BlankFrameDetector {
         context.draw(image, in: CGRect(x: 0, y: 0, width: grid, height: grid))
         guard let data = context.data else { return false }
         let pixels = data.bindMemory(to: UInt8.self, capacity: grid * grid * 4)
-        let base = blackFrameIgnoredTopRows * grid * 4
-        for row in blackFrameIgnoredTopRows..<(grid - blackFrameIgnoredBottomRows) {
+        let base = topRows * grid * 4
+        for row in topRows..<(grid - blackFrameIgnoredBottomRows) {
             for column in 0..<grid {
                 let offset = (row * grid + column) * 4
                 for channel in 0..<3
