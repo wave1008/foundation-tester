@@ -74,9 +74,43 @@ final class EdgeSignatureTests: XCTestCase {
         let list = FTRect(x: 0, y: 150, width: 400, height: 650)
         XCTAssertEqual(StepExecutor.edgeSignature(screen(count: 1), contentRegion: list),
                        StepExecutor.edgeSignature(screen(count: 2), contentRegion: list))
-        XCTAssertNotEqual(StepExecutor.edgeSignature(screen(count: 1), contentRegion: nil),
-                          StepExecutor.edgeSignature(screen(count: 2), contentRegion: nil),
-                          "前提: 領域を絞らないと回数の表示で署名が変わる")
+    }
+
+    /// **witness**: 容器が画面全体(CMP の XCUITest)だと回数の表示も容器の中に入る。固有の id を持つ文字表示は
+    /// ラベルを比べないので、上端で払うたびに更新が走っても「動いた」に数えない(E2EX-CMP 引っ張って更新で 120 秒)
+    func testUniquelyIdentifiedTextInsideAFullScreenContainerIgnoresItsLabel() {
+        func screen(count: Int) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                             elements: [
+                                ElementInfo(ref: 1, type: "staticText", identifier: "txt_refresh_count",
+                                            label: "refresh=\(count)", value: nil, placeholder: nil,
+                                            enabled: true, frame: FTRect(x: 16, y: 142, width: 78, height: 24),
+                                            depth: 1),
+                             ],
+                             truncatedCount: 0)
+        }
+        let whole = FTRect(x: 0, y: 0, width: 402, height: 874)
+        XCTAssertEqual(StepExecutor.edgeSignature(screen(count: 4), contentRegion: whole),
+                       StepExecutor.edgeSignature(screen(count: 5), contentRegion: whole))
+    }
+
+    /// 同じ id を使い回す文字表示・id の無い文字表示はラベルで比べたまま(並び直しで中身だけ変わる一覧)
+    func testSharedOrMissingIdTextStillComparesLabels() {
+        func rows(_ base: Int, id: String?) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                             elements: (0..<2).map { i in
+                                ElementInfo(ref: i + 1, type: "staticText", identifier: id,
+                                            label: "行 \(base + i)", value: nil, placeholder: nil, enabled: true,
+                                            frame: FTRect(x: 16, y: Double(200 + 56 * i), width: 300, height: 24),
+                                            depth: 2)
+                             },
+                             truncatedCount: 0)
+        }
+        let whole = FTRect(x: 0, y: 0, width: 402, height: 874)
+        for id in ["row", nil] as [String?] {
+            XCTAssertNotEqual(StepExecutor.edgeSignature(rows(0, id: id), contentRegion: whole),
+                              StepExecutor.edgeSignature(rows(10, id: id), contentRegion: whole), "\(id ?? "nil")")
+        }
     }
 
     /// **配線**: 先頭で木が揺れ続けても scrollToTop が上限まで払い切らない

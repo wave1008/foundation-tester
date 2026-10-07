@@ -310,8 +310,15 @@ extension StepExecutor {
     /// **id とラベルを比べるのは `contentRegion`(送っている容器)の中の要素だけ**: 容器の外の表示
     /// (引っ張って更新の回数など)は送りの副作用で変わるので、入れると端でも「動いた」に見えて上限まで
     /// 送り続ける(実測: Flutter の RefreshIndicator で scrollToTop が refresh=25)。nil = 全要素
+    ///
+    /// **固有の id を持つ文字表示(staticText)はラベルを比べない**(id で足りる): 容器が画面全体のとき
+    /// (CMP の XCUITest)、送りの副作用で変わる echo(引っ張って更新の `refresh=N`)が容器の中に入り、
+    /// 上端で払うたびに「動いた」に見えて 120 秒の締切まで払い続けた(E2EX-CMP 引っ張って更新)。
+    /// 面(other・cell 等)と id の無い・重複する要素はラベルを比べたまま(1面ずつ同じ位置へ並ぶページャ)
     static func edgeSignature(_ snapshot: SnapshotResponse, contentRegion: FTRect?) -> String {
         let stacked = OcclusionGeometry.stackedRefs(snapshot.elements)
+        var idCounts: [String: Int] = [:]
+        for element in snapshot.elements { if let id = element.identifier { idCounts[id, default: 0] += 1 } }
         return snapshot.elements
             .filter { element in
                 !stacked.contains(element.ref)
@@ -323,6 +330,10 @@ extension StepExecutor {
                 if let region = contentRegion,
                    !StepExecutor.frame(region, containsX: element.frame.centerX, y: element.frame.centerY) {
                     return base
+                }
+                if let id = element.identifier, idCounts[id] == 1,
+                   ElementInfo.normalizedType(element.type) == "staticText" {
+                    return base + "|\(id)"
                 }
                 return base + "|\(element.identifier ?? "")|\(element.label ?? "")"
             }

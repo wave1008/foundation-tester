@@ -153,7 +153,7 @@ extension BridgeRouter {
     }
 
     /// **Flutter のオーバーレイ後に 1/画面倍率へ縮んだ木を実の枠へ写す**(in-app の `InAppSnapshot.rescaleBelow` と
-    /// 同じ事象・判定は `AXFrameRescale` を共有)。始めるのは「Flutter のノード(`UIAccessibilityElement`)が
+    /// 同じ事象・判定は `AXFrameRescale` を共有)。始めるのは「子を持つ other のノードが
     /// ちょうど『画面 ÷ 倍率』を申告した」とき。引き継ぐのは Flutter のノードとその scroll 容器(`UIScrollView`)
     /// だけで、他の UIKit の view(PlatformView の中身 = 実の view ジオメトリを持つ)で外す。
     /// FlutterView が画面全体でない構成(add-to-app)は見つからない = 申告どおり(推測で写さない)
@@ -164,7 +164,9 @@ extension BridgeRouter {
             return axClass == nil || axClass == "UIAccessibilityElement" || axClass == "UIScrollView"
                 ? inherited : nil
         }
-        guard axClass == "UIAccessibilityElement", !screen.isEmpty else { return nil }
+        // 根のノードは id の無い other で木に出ず、クラス名は Flutter の要素(UIAccessibilityElement)と一致しない
+        // (実測 v153: その門では1度も始まらなかった)。型 other + 「ちょうど画面 ÷ 倍率・原点も割った値」の一致だけで始める
+        guard node.elementType == .other, !node.children.isEmpty, !screen.isEmpty else { return nil }
         return AXFrameRescale.shrunkSubtree(reported: ftRect(node.frame), view: ftRect(screen),
                                             screenScale: Double(UIScreen.main.scale))
     }
