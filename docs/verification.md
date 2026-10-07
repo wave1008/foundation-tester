@@ -3306,7 +3306,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 
 | 症状・ログ | 原因 | 対処 |
 |---|---|---|
-| `Unlock <name> to Continue`(deviceprep Code=-3) | 端末ロック | 解除する(**自動ロックは「なし」にしなくてよい** —— 起動後の再ロックはランナーが防ぐ) |
+| `Unlock <name> to Continue`(deviceprep Code=-3) | 端末ロック | 解除し、**自動ロックを「なし」にする**(ランナーは端末を起こさない。上の「端末の自動ロックは「なし」にしておくこと」) |
 | `Developer App Certificate is not trusted` | 証明書未信頼 | 設定 → 一般 → VPN とデバイス管理 |
 | `network connection was lost` が延々続く | WiFi 接続なのに usb を選んだ | USB で繋ぐ(自動で lan に落ちる) |
 

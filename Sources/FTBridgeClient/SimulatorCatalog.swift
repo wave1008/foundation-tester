@@ -244,10 +244,16 @@ public enum SimulatorCatalog {
     static func isPhysical(udid: String, simulators: [SimDeviceInfo],
                            physicalDevices: () -> [IOSPhysicalDeviceInfo]) -> Bool? {
         if simulators.contains(where: { $0.udid == udid }) { return false }
-        if physicalDevices().contains(where: { $0.udid == udid || $0.deviceCtlIdentifier == udid }) {
-            return true
-        }
-        return nil
+        return physicalDevice(udid: udid, simulators: [], physicalDevices: physicalDevices) != nil ? true : nil
+    }
+
+    /// isPhysical と同じ判定で、当たった実機そのものを返す(シミュレータに居る・どちらにも無い = nil)。
+    /// ハードウェア UDID と devicectl の Identifier のどちらで引いても同じ実機が返る
+    /// (呼び出し側は `udid` = ハードウェア UDID を書く。xcodebuild が受けるのはこちらだけ)
+    public static func physicalDevice(udid: String, simulators: [SimDeviceInfo],
+                                      physicalDevices: () -> [IOSPhysicalDeviceInfo]) -> IOSPhysicalDeviceInfo? {
+        if simulators.contains(where: { $0.udid == udid }) { return nil }
+        return physicalDevices().first { $0.udid == udid || $0.deviceCtlIdentifier == udid }
     }
 
     /// I/O 版。一覧の取得自体が失敗したときも nil(判別できない)

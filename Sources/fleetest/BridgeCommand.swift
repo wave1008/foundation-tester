@@ -27,7 +27,7 @@ struct Bridge: AsyncParsableCommand {
         @Flag(help: "Also build and install SampleApp (iOS only)")
         var withSampleApp = false
 
-        @Flag(help: "Treat --device as the UDID of a physical iOS device (the Identifier from xcrun devicectl list devices)")
+        @Flag(help: "Treat --device as the hardware UDID of a physical iOS device (hardwareProperties.udid in xcrun devicectl list devices, e.g. 00008130-…; not the Identifier column)")
         var physical = false
 
         @OptionGroup var driverOptions: DriverOptions

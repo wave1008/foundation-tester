@@ -1883,8 +1883,8 @@ a11y ブリッジが入力フォーカスのセマンティクスノードを持
   数百 ms かかる)→ どちらでもなければ従来どおり名前。実機と分かれば install/uninstall は
   devicectl・clearAppData は 501。`DeviceTargetResolutionTests` が規則を固定する**権限はコンテナの外(TCC.db)にある**ので後者を省くと
   「Android では権限ダイアログが出るのに iOS では出ない」という OS 差が黙って生まれる
-  (`pm clear` は権限もリセットする)。**iOS はシミュレータ専用**(実機は devicectl に同等手段が
-  無く 501)。1件でも消せなければ失敗させる(部分削除を「消えた」と言わない)。
+  (`pm clear` は権限もリセットする)。**ドライバの層では iOS はシミュレータ専用**(実機は devicectl に同等手段が
+  無く 501)。DSL と MCP は実機ではアンインストール + 入れ直しに切り替える(`reinstalled-to-clear-data`)。1件でも消せなければ失敗させる(部分削除を「消えた」と言わない)。
   キーチェーン/Keystore の値は残るので、そこに初回起動判定を置くアプリでは再現しない
 - `ifCanSelect(セレクタ, waitSeconds:) { }.ifElse { }`: 「出るか不定」の唯一の表現手段
   (`optional:` 全廃後)。既定 `waitSeconds: 0` = 即時1回判定。**`FTRuntime.perform` を

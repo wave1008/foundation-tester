@@ -393,7 +393,7 @@ public enum DSLCommandIndex {
         .init("removeApp", "app", "removeApp(appID?)",
               "Uninstalls the app. Removing the app under test breaks the rest of the run."),
         .init("clearAppData", "app", "clearAppData(appID?)",
-              "Clears app data and permissions but keeps the app. iOS is simulator only."),
+              "Clears app data and permissions but keeps the app. On a physical iPhone it reinstalls the app instead (needs appPathPhysical)."),
         .init("home", "app", "home()",
               "Goes to the home screen."),
         .init("back", "app", "back()",

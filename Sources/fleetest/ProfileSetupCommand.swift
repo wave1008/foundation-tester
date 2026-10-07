@@ -155,12 +155,14 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                     + "(\(ensured.created ? "created" : "existing"))")
             }
         }
-        // 実機判定を誤ると実機向けの準備処理が走って run が壊れる。iOS はカタログ上の
-        // physical フラグ、Android は serial の形(emulator-XXXX はエミュレータ)で決める
+        // 実機判定を誤ると実機向けの準備処理が走って run が壊れる。iOS は実機一覧で引く
+        // (SimulatorCatalog.devices() はシミュレータしか返さないので、そこの physical では判定できない)、
+        // Android は serial の形(emulator-XXXX はエミュレータ)で決める
         if platform == "ios", let udid,
-           let known = try? SimulatorCatalog.devices().first(where: { $0.udid == udid }),
-           known.physical {
-            device["kind"] = "physical"
+           let physical = SimulatorCatalog.physicalDevice(
+               udid: udid, simulators: (try? SimulatorCatalog.devices()) ?? [],
+               physicalDevices: { (try? IOSPhysicalDeviceCatalog.devices()) ?? [] }) {
+            Self.stampPhysical(physical, keepName: explicitName != nil, into: &device)
         }
         if platform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial) {
             device["kind"] = "physical"
@@ -263,6 +265,15 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             if let serial { device["serial"] = serial }
         }
         return device
+    }
+
+    /// iOS 実機の実体を1件へ書き込む(kind・ハードウェア UDID・model。name は --device-name が無いときだけ端末名)。
+    /// `--udid` に Identifier 列の値が渡されても udid はハードウェア UDID に直す(xcodebuild が受けるのはこちらだけ)
+    static func stampPhysical(_ physical: IOSPhysicalDeviceInfo, keepName: Bool, into device: inout [String: Any]) {
+        device["kind"] = "physical"
+        device["udid"] = physical.udid
+        if !keepName { device["name"] = physical.name }
+        if !physical.model.isEmpty { device["model"] = physical.model }
     }
 
     /// シミュレータの実体を1件へ書き込む(name = シミュレータの名前・osVersion・udid・model)。

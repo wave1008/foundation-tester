@@ -63,7 +63,7 @@ public enum IOSPhysicalDeviceLock {
         var state = probe(udid)
         guard state == .locked else { return state }
         log("⏳ \(deviceName) is locked — unlock it now. The runner cannot be launched on a locked "
-            + "device (it keeps the device awake once it is up).")
+            + "device, and fleetest does not keep it awake: set Settings → Display & Brightness → Auto-Lock to Never.")
         waiting(true)
         defer { waiting(false) }
         let deadline = Date().addingTimeInterval(timeout)

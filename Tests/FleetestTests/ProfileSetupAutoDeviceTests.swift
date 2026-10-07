@@ -128,4 +128,37 @@ extension ProfileSetupAutoDeviceTests {
             isInstalled: true, sizeBytes: nil, license: nil)
         try ProfileSetupCommand.installIfNeeded(target, acceptLicenses: false, log: { _ in })
     }
+
+    /// `--udid` が iOS 実機のとき、1件に kind・ハードウェア UDID・model を書く
+    /// (kind が付かないと、実機がシミュレータとして登録される)
+    func testStampPhysicalWritesKindHardwareUDIDAndModel() {
+        let phone = IOSPhysicalDeviceInfo(udid: "00008110-001460910E0A201E", name: "wave の iPhone", os: "iOS 27.0",
+                                          connected: true, transport: "wired",
+                                          deviceCtlIdentifier: "ABCDEF01-2345-6789-ABCD-EF0123456789", model: "iPhone 15")
+        var device = entry(platform: "ios", udid: "ABCDEF01-2345-6789-ABCD-EF0123456789")
+        ProfileSetupCommand.stampPhysical(phone, keepName: false, into: &device)
+        XCTAssertEqual(device["kind"] as? String, "physical")
+        XCTAssertEqual(device["udid"] as? String, "00008110-001460910E0A201E")
+        XCTAssertEqual(device["model"] as? String, "iPhone 15")
+        XCTAssertEqual(device["name"] as? String, "wave の iPhone")
+    }
+
+    /// --device-name を渡したときは、その名前を端末名で上書きしない
+    func testStampPhysicalKeepsAnExplicitName() {
+        let phone = IOSPhysicalDeviceInfo(udid: "00008110-001460910E0A201E", name: "wave の iPhone", os: "iOS 27.0",
+                                          connected: true, transport: "wired")
+        var device = entry(platform: "ios", udid: "00008110-001460910E0A201E")
+        ProfileSetupCommand.stampPhysical(phone, keepName: true, into: &device)
+        XCTAssertEqual(device["name"] as? String, "dev")
+    }
+
+    /// 配線の固定: iOS の実機判定は実機一覧で引く(SimulatorCatalog.devices() の physical は常に false)
+    func testIOSPhysicalDetectionUsesThePhysicalDeviceList() throws {
+        let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Sources/fleetest/ProfileSetupCommand.swift")
+        let code = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(code.contains("SimulatorCatalog.physicalDevice("),
+                      "profile setup は --udid を実機一覧に当てて kind を決める")
+        XCTAssertTrue(code.contains("IOSPhysicalDeviceCatalog.devices()"))
+    }
 }

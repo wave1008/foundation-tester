@@ -124,4 +124,25 @@ final class PhysicalUDIDDetectionTests: XCTestCase {
         XCTAssertEqual(result, .simulator)
         XCTAssertFalse(queried, "シミュレータで確定しているのに devicectl を引いている")
     }
+
+    /// physicalDevice は isPhysical と同じ判定で実機そのものを返す。**Identifier 列の値で引いても
+    /// ハードウェア UDID の実機が返る**(呼び出し側はこの udid を実行プロファイルへ書く。xcodebuild の
+    /// -destination が受けるのはハードウェア UDID だけ)
+    func testPhysicalDeviceFoundByIdentifierCarriesTheHardwareUDID() {
+        let phone = IOSPhysicalDeviceInfo(udid: "00008110-001460910E0A201E", name: "wave の iPhone", os: "iOS 27.0",
+                                          connected: true, transport: "wired",
+                                          deviceCtlIdentifier: "ABCDEF01-2345-6789-ABCD-EF0123456789", model: "iPhone 15")
+        let found = SimulatorCatalog.physicalDevice(
+            udid: "ABCDEF01-2345-6789-ABCD-EF0123456789", simulators: [], physicalDevices: { [phone] })
+        XCTAssertEqual(found?.udid, "00008110-001460910E0A201E")
+    }
+
+    /// シミュレータ一覧に居る UDID には実機を返さない(実機一覧も引かない)
+    func testPhysicalDeviceIsNilForASimulator() {
+        var queried = false
+        XCTAssertNil(SimulatorCatalog.physicalDevice(
+            udid: "SIM-1", simulators: [simulator(udid: "SIM-1")],
+            physicalDevices: { queried = true; return [phone(udid: "SIM-1")] }))
+        XCTAssertFalse(queried)
+    }
 }
