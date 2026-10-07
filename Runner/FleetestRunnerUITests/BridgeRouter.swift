@@ -273,11 +273,14 @@ final class BridgeRouter {
     /// ライブクエリでしか読めない)ため、**要素ごとに追加クエリを撃つのではなく**
     /// フォーカス要素だけ1回引いて突き合わせる(規則は `FocusedElementMatch`)。
     /// 見つからなければ全要素 focused なしのまま返す。`snapshot()` 1回で identifier と frame を同時に読む
-    /// (exists → frame の2回の問い合わせの間に焦点が消えると frame の読みが XCUI の失敗になる)
+    /// (exists → frame の2回の問い合わせの間に焦点が消えると frame の読みが XCUI の失敗になる)。
+    /// **先に `exists` を聞く**: 一致する要素が無いと `snapshot()` は約 2 秒待ってから失敗する
+    /// (実測 Xcode 27・Simulator: 焦点の無い画面の /snapshot が毎回 2.05s → 0.02s)。exists の後に焦点が消えても
+    /// `try?` の snapshot が nil になるだけ
     private func withFocusedFlag(_ elements: [ElementInfo], app: XCUIApplication) -> [ElementInfo] {
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        guard let snap = try? focused.snapshot() else { return elements }
+        guard focused.exists, let snap = try? focused.snapshot() else { return elements }
         let focusedFrame = FTRect(x: snap.frame.origin.x, y: snap.frame.origin.y,
                                   width: snap.frame.width, height: snap.frame.height)
         guard let index = FocusedElementMatch.index(identifier: snap.identifier, frame: focusedFrame,

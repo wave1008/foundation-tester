@@ -253,11 +253,12 @@ extension BridgeRouter {
         let frame: CGRect
     }
 
-    /// ライブクエリ1回(0.5s 級)。検証つきの主経路には持ち込まない(handleType 冒頭のコメント参照)
+    /// ライブクエリ1回(0.5s 級)。検証つきの主経路には持ち込まない(handleType 冒頭のコメント参照)。
+    /// 先に `exists`(一致が無いと `snapshot()` は約 2 秒待ってから失敗する。withFocusedFlag と同じ)
     private static func focusMark(_ app: XCUIApplication) -> FocusMark? {
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        guard let snap = try? focused.snapshot() else { return nil }
+        guard focused.exists, let snap = try? focused.snapshot() else { return nil }
         return FocusMark(identifier: snap.identifier, type: snap.elementType, frame: snap.frame)
     }
 
