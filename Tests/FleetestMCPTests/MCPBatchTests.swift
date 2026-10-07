@@ -222,7 +222,7 @@ final class MCPBatchTests: XCTestCase {
     /// 失敗した手の後の撮り直しが投げても(撃った手でアプリが落ちた形)、手ごとの結果と止まった位置を返す
     func testStepResultsSurviveWhenTheSnapshotAfterAFailureThrows() async {
         driver.failing = ["tap"]
-        driver.snapshotsFailAfterTap = true
+        driver.snapshotsFailAfterCallPrefix = "tap("
         do {
             _ = try await server.call(tool: "ft_batch", args: steps("tap '#login_btn'; tap '#login_btn'"))
             XCTFail("失敗した手を含むバッチが成功した")

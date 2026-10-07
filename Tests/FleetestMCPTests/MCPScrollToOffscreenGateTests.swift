@@ -79,4 +79,17 @@ final class MCPScrollToOffscreenGateTests: XCTestCase {
         XCTAssertTrue(text.contains("scrolled to"), text)
         XCTAssertFalse(text.contains("off screen"), text)
     }
+
+    /// 探索の後の撮り直しが投げても(送ったスワイプでアプリが落ちた形)、探索の失敗文と撮れなかった理由を返す
+    func testSearchFailureSurvivesWhenTheSnapshotAfterTheSearchThrows() async {
+        driver.snapshotsFailAfterCallPrefix = "swipe("
+        do {
+            _ = try await server.call(tool: "ft_scroll_to", args: ["selector": "#does_not_exist", "maxSwipes": 1])
+            XCTFail("見つからない要素への ft_scroll_to が成功した")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("scrollTo \"#does_not_exist\":"), message)
+            XCTAssertTrue(message.contains("Could not take a snapshot after the search"), message)
+        }
+    }
 }

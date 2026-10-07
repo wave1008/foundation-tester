@@ -1284,7 +1284,25 @@ extension MCPServer {
         // (MCPRefGuardTests)と「中心が画面外へ動いた」(MCPScrollToOffscreenGateTests)の
         // 2つのゲートが構造的に無効になる。後者は **0スワイプの witness を持つ**
         // (Apple マップの経路ページャが読み取りの合間に自分で動く)ので、スワイプ数では守れない
-        var after = try await freshSnapshot(scrollDriver, args: args)
+        var after: SnapshotResponse
+        do {
+            after = try await freshSnapshot(scrollDriver, args: args)
+        } catch {
+            // **探索が失敗していたら、撮れなくても探索の失敗文を返す** —— 撃ったスワイプでアプリが落ちると
+            // ランナーは以後の読み取りを 422 で断る。投げ直すと「何回送って見つからなかったか」が 422 の一文に
+            // 置き換わる(ft_batch の失敗の分岐と同じ型)。成功していたら撮れない以上確かめようがないので投げる
+            guard !StepExecutor.isSuccess(outcome.status) else { throw error }
+            let reason: String
+            switch outcome.status {
+            case .failed(let message), .skipped(let message), .inconclusive(let message):
+                reason = message
+            case .passed, .passedViaFallback, .healed:
+                reason = "could not confirm the result"
+            }
+            throw MCPError(scrollFrameLabelNote + "scrollTo \"\(selectorText)\": \(reason)"
+                + "\n\nCould not take a snapshot after the search: "
+                + ((error as? LocalizedError)?.errorDescription ?? "\(error)"))
+        }
         // **半開きシートは自分で広げて1度だけやり直す**。この形は失敗文で
         // 「グラバーを上へ引け」と案内済みだったが、**案内できるなら自分でできる** ——
         // 実測(Apple マップの経路詳細)では、案内どおり ft_drag してから同じ ft_scroll_to を
