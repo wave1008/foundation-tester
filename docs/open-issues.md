@@ -14,11 +14,6 @@
   - 場所: `InAppBridge/Sources/InAppSnapshot.swift:388`(UITextField の判定が :403 の searchField より先)・:367・:446、
     `Runner/FleetestRunnerUITests/BridgeRouter+Snapshot.swift:260`・263・274
   - 手がかり: 片側に寄せるか契約(`E2EAppCMP/docs/ui-contract.md`)に足し、docs/framework-differences.md に1行。in-app の版上げが要る
-- **in-app の dylib は arm64 の Simulator だけをビルドする**(09-06)
-  - 症状: `arm64-apple-ios17.0-simulator` だけなので、Intel Mac(x86_64 の Simulator)では注入できない(推測)。
-    利用者向け docs は Apple silicon を全体の必須要件として書いていない(Apple Intelligence の節だけ)
-  - 場所: `InAppBridge/build.sh:16`
-  - 手がかり: 対象外にするなら user-docs の環境に明記する。対象にするなら x86_64 もビルドして lipo でまとめる
 - **in-app の合成タッチ(synthFallback)が成否を返せない**(09-06)
   - 症状: activate が効かなかったときの FTSynthTap は成否を返さず、負荷下で RN のタップが黙って空振りし得る(9/6 に 153 回中 3 回)
   - 場所: `InAppBridge/Sources/InAppBridge.swift:585-597`(「throw は追加しない」と明記)
