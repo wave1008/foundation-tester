@@ -117,8 +117,11 @@ extension BridgeRouter {
         // WebView は入れ子で複数出る(Compose iOS の interop ラッパで実測3重)。外側だけ残さないと
         // `.webView[1]` がどれを指すか読めない。Android ブリッジの nestedWebView と同じ規則
         let isWebView = node.elementType == .webView
+        // **容器(子を持つセマンティクスのノード)は縮まずに FlutterView の実の枠を申告し続ける**ので写さない
+        // (写すと画面の3倍になる。実測: 縮むのは各容器の先頭の子 = 容器自身のノードと葉だけ)。見つけた補正は子孫へ渡す
         let rescale = Self.flutterRescale(node, screen: screen, inherited: inherited)
-        let frame = rescale.map { Self.cgRect($0.apply(Self.ftRect(node.frame))) } ?? node.frame
+        let frame = inherited.flatMap { Self.reportsTheWholeView(node.frame, screen: screen) ? nil : $0 }
+            .map { Self.cgRect($0.apply(Self.ftRect(node.frame))) } ?? node.frame
         if isWebView && insideWebView {
             for child in node.children {
                 gather(child, depth: depth, screen: screen, insideWebView: true, rescale: rescale,
@@ -164,11 +167,22 @@ extension BridgeRouter {
             return axClass == nil || axClass == "UIAccessibilityElement" || axClass == "UIScrollView"
                 ? inherited : nil
         }
-        // 根のノードは id の無い other で木に出ず、クラス名は Flutter の要素(UIAccessibilityElement)と一致しない
-        // (実測 v153: その門では1度も始まらなかった)。型 other + 「ちょうど画面 ÷ 倍率・原点も割った値」の一致だけで始める
-        guard node.elementType == .other, !node.children.isEmpty, !screen.isEmpty else { return nil }
-        return AXFrameRescale.shrunkSubtree(reported: ftRect(node.frame), view: ftRect(screen),
-                                            screenScale: Double(UIScreen.main.scale))
+        // **縮んだ枠を申告するのは容器の先頭の子(容器自身のノード = 子の無い other)**で、写すのは容器の下全体
+        // (in-app の SemanticsObjectContainer と同じ形。実測: 0,0 134x291.3 の葉の後に兄弟として要素が並ぶ)。
+        // 倍率は iPhone の 3・2 を順に当てる(どちらかにちょうど一致したときだけ写す)
+        guard !screen.isEmpty, let own = node.children.first,
+              own.elementType == .other, own.children.isEmpty else { return nil }
+        return flutterScreenScales.lazy.compactMap {
+            AXFrameRescale.shrunkSubtree(reported: ftRect(own.frame), view: ftRect(screen), screenScale: $0)
+        }.first
+    }
+
+    private static let flutterScreenScales: [Double] = [3, 2]
+
+    /// 画面(= FlutterView)と同じ枠か(誤差 1pt = AXFrameRescale.tolerance と同じ丸め)
+    private static func reportsTheWholeView(_ frame: CGRect, screen: CGRect) -> Bool {
+        abs(frame.minX - screen.minX) <= 1 && abs(frame.minY - screen.minY) <= 1
+            && abs(frame.width - screen.width) <= 1 && abs(frame.height - screen.height) <= 1
     }
 
     private static func ftRect(_ r: CGRect) -> FTRect {
