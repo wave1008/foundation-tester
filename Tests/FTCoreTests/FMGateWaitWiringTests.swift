@@ -87,6 +87,34 @@ final class FMGateWaitWiringTests: XCTestCase {
         }
     }
 
+    /// ゲートで待たされた時間は締め切りから差し引かれる(DeadlineExclusion へ計上する)。
+    /// 待たなかった回は窓を開けない
+    func testGateWaitIsExcludedFromTheDeadline() async throws {
+        if !FMLock.isEnabled { throw XCTSkip("FT_FM_SERIALIZE=0 では待ちが発生しない") }
+        try await SharedResource.hostCaches.locked {
+            FMLock.concurrencyForTesting = 1
+            FMLock.resetForTesting()
+            FMBreaker.reset()
+            FMHealth.reset()
+
+            let uncontendedSnap = DeadlineExclusion.snapshot()
+            let first = await FMGate.enter(path: .vision)
+            XCTAssertTrue(first)
+            XCTAssertEqual(DeadlineExclusion.excluded(since: uncontendedSnap), .zero,
+                           "待たなかった回は窓を開けない")
+
+            let snap = DeadlineExclusion.snapshot()
+            async let second = FMGate.enter(path: .vision)
+            try await Task.sleep(nanoseconds: UInt64(holdSeconds * 1_000_000_000))
+            FMGate.leave()
+            let acquired = await second
+            XCTAssertTrue(acquired)
+            FMGate.leave()
+            XCTAssertGreaterThanOrEqual(DeadlineExclusion.excluded(since: snap), .milliseconds(200),
+                                        "待たされた 300ms 前後が差し引かれていない(配線が死んでいる)")
+        }
+    }
+
     /// 誰も保持していなければ待ちはほぼ 0(「常に待ちを盛る」変異を落とす)
     func testGateRecordsNearZeroWaitWhenUncontended() async throws {
         try await SharedResource.hostCaches.locked {

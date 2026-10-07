@@ -231,9 +231,15 @@ extension MCPServer {
             // 渡すと子プロセスは 127.0.0.1・physical=false で走り、LAN の実機は接続拒否、usb トンネルの
             // 実機は token 無しの 401 になる(物理 iPhone 13 で 3/3。「クラッシュ」と誤帰属)
             if platform == "ios" {
-                connection = PortDirectIOSTarget(
+                let directTarget = PortDirectIOSTarget(
                     port: try await Self.resolveIOSPort(explicit: try Self.portArgument(args)))
-                    .connection(simulatorUDID: (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 })
+                // **udid を省いた `port:` 指定の Simulator でも、デバイスの印の鍵を作る**(下の lease)。
+                // ポートに結び付いた udid はブリッジの /status が申告する
+                let explicitUDID = (args["udid"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                let reportedUDID = explicitUDID == nil ? await directTarget.reportedSimulatorUDID() : nil
+                let simulatorUDID = PortDirectIOSTarget.simulatorUDID(
+                    explicit: explicitUDID, reported: reportedUDID)
+                connection = directTarget.connection(simulatorUDID: simulatorUDID)
             } else {
                 connection = DriverConnection(
                     platform: platform,

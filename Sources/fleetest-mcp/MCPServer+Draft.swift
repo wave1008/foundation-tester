@@ -111,9 +111,11 @@ extension MCPServer {
     /// 下書きの行末に残す但し書き。安定なセレクタには**付けない** ——
     /// 全行にコメントが付くと読み飛ばされ、本当に危ない行が埋もれる
     static func indexedSelectorNote(_ durability: Durability) -> String? {
-        durability == .indexed
-            ? "index-based selector — breaks if the number of same-type siblings changes"
-            : nil
+        switch durability {
+        case .stable: return nil
+        case .indexed: return "index-based selector — breaks if the number of same-type siblings changes"
+        case .relative: return "relative selector — breaks if the layout around it changes"
+        }
     }
 
     /// 下書きに入った手の番号付き一覧。**これを見て `drop:` を組む**ので、番号は

@@ -83,6 +83,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | Compose / Flutter(iOS in-app) | 入力欄が UITextField ではない合成 AX 要素で、in-app だけ `other` になっていた | テキスト入力の trait と `UITextInput` 準拠で型を付け、XCUITest と揃える | `InAppSnapshot.elementType` |
 | Flutter(iOS) | SnackBar の文言が「頻繁に更新される」特性だけのノードで、型が Other・id 無しのため木から落ちていた(中のボタンだけ出る) | ラベルを持つライブリージョンを `staticText` として出す(in-app・XCUITest とも) | `LiveRegionText.isLabelOnlyLiveRegion` |
 | RN(iOS・in-app) | `Pressable` は既定でアクセシビリティ要素になり、名前も id も無いと木に出ない。その中の id つきの View(`pointerEvents="none"` の欄)まで消えていた(XCUITest の木には出る) | 木に出さなかったアクセシビリティ要素は葉にせず、中を辿る | `InAppSnapshot.collect` |
+| UIKit / SwiftUI(iOS in-app) | 検索欄(`UISearchBar` の中身)が in-app だけ `textField` になり、`.SearchField` がエンジンで当たり外れした | 検索の trait か `UISearchTextField` なら `searchField`(XCUITest と同じ) | `InAppSnapshot.elementType` |
 | Compose(iOS) | 容器の外の行(ghost)を、ラベル無しで木に残す | 見切れの判定を容器基準にし、画面端に積もった行の山は遮蔽物扱いしない | `clippingContainer` / `OcclusionSuspicion` |
 
 ### 1.4 揃っていない木の違い(B)
@@ -96,6 +97,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | SwiftUI・Compose(iOS) | Slider の value が `"50%"` などパーセント表記 | 値は echo の文字列で確かめる |
 | SwiftUI(UITableView) | 画面外の行ラベルが、id 無しで全行分木に残る | ラベルの部分一致で不在検証しない |
 | React Native(iOS in-app) | Modal の中身と背景の木が同居して見える(XCUITest は Modal だけ) | ダイアログ内は背景と衝突しない `#id` で指す |
+| UIKit / SwiftUI(iOS in-app) | スクロール容器を `other`(+ スクロールの印)で出す(XCUITest は `scrollView` / `table` / `collectionView`)。ピッカーのドラムを `pickerWheel` で出さない(調整の trait で `slider` になる) | 容器・ドラムは型セレクタでなく `#id` かラベルで指す |
 | Flutter | ダイアログは Navigator のオーバーレイ = 普通の木なので、見出しにも `#id` が付く(SwiftUI は付かない) | 見出しは SUT ごとに id / ラベルを選ぶ |
 | CMP(iOS)・Flutter(iOS)・RN(iOS / Android) | 入力欄の `text` が値ではなく**プレースホルダ**を返す(空欄で `"単一行"`。RN は入力後も)。他は空欄で空・入力後は nil。**`value` は全 SUT で値を返し、空欄は空**(2026-10-02 実測・5 SUT × 両 OS × 両エンジン) | 入力欄の値は `value*` で見る(空欄は `valueIsEmpty`)。入力欄に `text*` を当てない。witness は全 SUT の `24_空欄と否定形の検証.swift` |
 

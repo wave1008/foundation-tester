@@ -38,6 +38,9 @@ combined by reference rather than by inheritance:
   suffix to tell profiles apart (e.g. "(device)"). On iOS, a run (and `api validate-profile`)
   warns when it matches none of the app bundle's display names read from `appPath`
   (`CFBundleDisplayName`, falling back to `CFBundleName`; localized names also count).
+  Android warns the same way when `appPath` is an `.apk` and the Android SDK `build-tools`
+  (`aapt2` / `aapt`) are present: it matches none of the app's `application-label` values
+  (localized ones also count). `.apks` / `.aab`, or no `aapt`, stay silent.
 - `appPath` is relative to the repository root by default (`~` and absolute paths also work).
   Android accepts `.apk` or `.apks` (an App Bundle split set; installing `.apks` requires
   `bundletool`). iOS `appPath` is a `.app` (Simulators install nothing else); `appPathPhysical`

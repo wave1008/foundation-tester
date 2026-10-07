@@ -157,6 +157,13 @@ public enum FMLock {
         }
     }
 
+    /// 待たずに1回だけ試す。`acquire` と同じく無効時・ロックファイルを開けないときは true。
+    /// 取れた場合は呼び手が `release()` で返す(契約は `acquire` と同じ)
+    public static func acquireWithoutWaiting() -> Bool {
+        guard isEnabled, let fds = descriptors() else { return true }
+        return tryAcquire(fds) != nil
+    }
+
     /// **同一プロセス内の排他も要る**: flock は open file description 単位なので、
     /// 同じ fd を共有する別スレッドからの LOCK_EX は既に保持済みとして即成功してしまう。
     /// 枠ごとに「このプロセスが既に持っているか」を heldSlots で見てから試す

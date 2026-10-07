@@ -214,6 +214,17 @@ extension AndroidDriver {
         }
     }
 
+    /// **読み取りだけの状態照会**(ft_status の Android 一覧用)。ブリッジが動いていなければ起動せず nil ——
+    /// `status()` は `withBridge` 経由で起動まで撃つ(APK の導入・force-stop・アニメ無効化)ので、一覧で全台へ撃つと
+    /// 他のセッションが使っている端末のブリッジまで作り直す。adb forward も新しく作らない(既存の forward だけ見る)
+    public func statusIfBridgeRunning() async -> StatusResponse? {
+        if case .active(let client) = Self.getRegistry(bridgeKey) { return try? await client.status() }
+        guard let hostPort = findExistingForward() else { return nil }
+        guard let status = try? await BridgeClient(port: hostPort, timeoutSeconds: 2).status(), status.ready
+        else { return nil }
+        return status
+    }
+
     /// bridge up --platform android 用: `.unavailable` を破棄して強制再セットアップ
     public func resetAndEnsureBridge() async throws {
         Self.setRegistry(bridgeKey, nil)

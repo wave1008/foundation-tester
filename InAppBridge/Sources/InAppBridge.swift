@@ -583,21 +583,29 @@ final class FTInAppBridge {
             }
         }
         func synthFallback(_ window: UIWindow) {
-            // FTSynthTap は成否を返さないため、要素が実際に反応したかは検知できず
-            // 無言 no-op になり得る(throw は追加しない: 誤検知で正常系を壊す方が害が大きい)。
+            // FTSynthTap は成否を返さない。整定後に絵が1画素も変わらなかったことだけを事実として注記に足す
+            // (throw はしない: 見た目を変えないタップ = 正常もあるので、誤った赤で正常系を壊す方が害が大きい)。
             // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=xcuitest を検討
             // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
             note = "activate did not fire -> synthetic touch (if the element does not respond,"
                 + " consider adding a testTag or engine=xcuitest)"
+            let before: Int
             do {
                 let p = try freshTapPoint ?? self.resolvePoint(ref: ref, x: req.x, y: req.y)
+                before = InAppRenderCatchUp.pixelPrint(window)
                 FTSynthTap(window, p)
             } catch {
                 thrown = error
                 sem.signal()
                 return
             }
-            finish(window)
+            InAppSettle.waitOnMain { converged in
+                if !converged, self.requestGeneration == myGeneration { self.lastSettleCapped = true }
+                if self.requestGeneration == myGeneration, InAppRenderCatchUp.pixelPrint(window) == before {
+                    note = (note ?? "") + "; the screen did not change after the synthetic touch"
+                }
+                sem.signal()
+            }
         }
         /// 取り直した要素の現在 frame を合成タッチの座標に採る
         func adoptFreshFrame(_ fresh: (node: NSObject, frame: CGRect)) {

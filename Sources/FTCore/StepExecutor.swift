@@ -1121,21 +1121,9 @@ public final class StepExecutor {
         return abs(delta) > 1 ? delta : nil
     }
 
-    /// **またぎ解消に必要な最小スクロール量**(+マージン)。またぎ補正に recoveryJump
-    /// (容器の 40% 位置へ寄せる)を使うと寄せ過ぎる —— 実害: SwiftUI の素の
-    /// scrollView が木に出るようになった(版58)ことで補正がネイティブ画面でも発火し、
-    /// 約330px の寄せが観測対象の echo ラベルまで仮想化の外へ流して、タップは成立したのに
-    /// アサーションが要素を見失った(E2E-iOS の3シナリオが決定的に失敗)。
-    /// 60 の床上げは dragGesture の実行下限(距離 50 超)を割らないため —— 割ると
-    /// overflow の小さいまたぎ(Compose の実測は中心が縁から 2〜12px 外)で寄せ自体が不発になる
+    /// 判定の本体は `TapTargetGeometry.straddleJump`(MCP と共有)
     static func straddleJump(for element: ElementInfo, container: FTRect) -> Double? {
-        let margin = 12.0
-        let bottomOverflow = (element.frame.y + element.frame.height)
-            - (container.y + container.height) + margin
-        let topOverflow = container.y - element.frame.y + margin
-        if bottomOverflow > margin { return max(bottomOverflow, 60) }
-        if topOverflow > margin { return -max(topOverflow, 60) }
-        return nil
+        TapTargetGeometry.straddleJump(for: element, container: container)
     }
 
     /// **報告された frame の中心が容器の外に落ちるとき、実際に見えている部分の矩形**を返す。

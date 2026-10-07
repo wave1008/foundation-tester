@@ -170,16 +170,10 @@ extension BridgeRouter {
     /// (別の要素を誤って読み返しの対象にすると、検証にも取りこぼしにもならない別要素へ delete/resend
     /// を打ち込む)
     private static func matchFocusedElement(_ focus: FocusMark, in elements: [ElementInfo]) -> ElementInfo? {
-        let matches: [ElementInfo]
-        if !focus.identifier.isEmpty {
-            matches = elements.filter { $0.identifier == focus.identifier }
-        } else {
-            let frame = FTRect(x: focus.frame.origin.x, y: focus.frame.origin.y,
-                               width: focus.frame.width, height: focus.frame.height)
-            matches = elements.filter { $0.frame == frame }
-        }
-        guard matches.count == 1 else { return nil }
-        return matches.first
+        let frame = FTRect(x: focus.frame.origin.x, y: focus.frame.origin.y,
+                           width: focus.frame.width, height: focus.frame.height)
+        return FocusedElementMatch.index(identifier: focus.identifier, frame: frame, in: elements)
+            .map { elements[$0] }
     }
 
     /// 入力の打ち切り時間(秒)と、値が変わらない周回の許容数。handleClear と同じ設計・同じ値
@@ -351,8 +345,8 @@ extension BridgeRouter {
             try Self.requirePresent(focused)
             let frame = focused.frame
             coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
-            focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
-                                     count: Self.invisibleContentDeleteBurst))
+            app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue,
+                                 count: Self.invisibleContentDeleteBurst))
         }
         let deadline = Date().addingTimeInterval(Self.clearBudgetSeconds)
         var previous: String?
@@ -367,7 +361,9 @@ extension BridgeRouter {
             try Self.requirePresent(focused)
             let frame = focused.frame
             coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
-            focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
+            // 打鍵は app 全体へ(要素へ向けると、叩いた後に焦点が動いたとき要素スコープの失敗でランナーを落とし得る。
+            // 入力先は叩いた欄 = 最前のレスポンダ。下の木で読み返す経路と同じ)
+            app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
         }
         if let residual = try Self.presentRemainingText(of: focused) {
             // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す

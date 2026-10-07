@@ -508,7 +508,7 @@ extension MCPServer {
         var raw = pending.raw
         raw["selector"] = graded.selector
         let (step, summary) = try pending.builder.build(raw)
-        let caution = graded.durability == .indexed ? graded.durability.caution : ""
+        let caution = graded.durability.caution
         let note = " (ref \(pending.ref) resolved to this selector\(caution))" + refNote
         return (step, summary, note)
     }
@@ -645,7 +645,8 @@ extension MCPServer {
         }
         let (unchangedNote, final) = try await Self.batchUnchangedNote(
             beforeBatch: beforeBatch, final: try await freshSnapshot(batchDriver, args: args),
-            stepCount: plans.count, engine: engines[Self.engineKey(args)]) {
+            stepCount: plans.count, engine: engines[Self.engineKey(args)],
+            probeSystemAlert: { try? await batchDriver.systemAlert() }) {
             // settle-lite と同じ待ち(snapshotAfterBodyWithStatus 参照。新しい定数は置かない)
             try await Task.sleep(nanoseconds: UInt64(max(0, self.settleWaitSeconds) * 1_000_000_000))
             return try await self.freshSnapshot(batchDriver, args: args)
@@ -665,9 +666,10 @@ extension MCPServer {
     /// **木がほぼ空の画面には `unrepresentedScreenCaveat` を添える**(監査。
     /// MCPServer+Snapshot.swift 参照) —— 空の木は必ず「変化なし」に一致するため
     /// `engine` は iOS のシステムダイアログの案内を出すかの判定にだけ使う
-    /// (`systemDialogHint` 参照。既定 nil = engine 不明として出す側)
+    /// (`systemDialogHint` 参照。既定 nil = engine 不明として出す側)。`probeSystemAlert` は詰まったときだけ呼ぶ
     static func batchUnchangedNote(beforeBatch: SnapshotResponse?, final: SnapshotResponse,
                                    stepCount: Int, engine: String? = nil,
+                                   probeSystemAlert: () async -> SystemAlertProbeResponse? = { nil },
                                    reread: () async throws -> SnapshotResponse) async rethrows
         -> (note: String, snapshot: SnapshotResponse) {
         guard let beforeBatch, Self.looksUnchanged(beforeBatch, final) else { return ("", final) }
@@ -679,7 +681,7 @@ extension MCPServer {
                 + " also be legitimate: the screen was already at the target state, or the steps"
                 + " went somewhere and came back."
                 + Self.unrepresentedScreenCaveat(rereadSnapshot)
-                + Self.systemDialogHint(engine: engine) + "\n", rereadSnapshot)
+                + (await Self.systemDialogHint(engine: engine, probe: probeSystemAlert())) + "\n", rereadSnapshot)
         }
         return ("note: the tree looked unchanged right after the last step, so it was re-read once"
             + " after a short wait — the tree below is the re-read, not the tree right after the"

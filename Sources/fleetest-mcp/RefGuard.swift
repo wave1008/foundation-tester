@@ -162,11 +162,21 @@ enum RefGuard {
     /// **打ち切りも「消えた」の原因になる**(欠陥①と同型): 画面が密になるとブリッジの
     /// 要素上限に押し出され、画面には出ているのに木から落ちる。原因を「画面が変わった」と
     /// 断定すると、そこで探索が止まる
-    static func goneMessage(ref: Int, target: ElementInfo, truncatedCount: Int = 0) -> String {
+    /// **キーボードが出ているなら、消えた原因の第一候補はキーボード**(木はキーボードの裏の要素を
+    /// 落とすことがある)。`keyboardShown` は直近の木の keyboardFrame の有無。「画面が変わった」と
+    /// 断定すると、キーボードを閉じれば戻る場面で探索が止まる
+    static func goneMessage(ref: Int, target: ElementInfo, truncatedCount: Int = 0,
+                            keyboardShown: Bool = false) -> String {
         let truncated = truncatedCount > 0
             ? " (or it was pushed out of the tree: \(truncatedCount) element(s) were omitted"
                 + " by the snapshot limit)"
             : ""
+        if keyboardShown {
+            return "[\(ref)] \(describe(target)) is no longer in the tree — the on-screen keyboard"
+                + " is up and may be covering it (or the screen changed after that ft_snapshot)\(truncated)."
+                + " Dismiss the keyboard (ft_hide_keyboard on Android, ft_type pressEnter: true on iOS) and take a fresh ft_snapshot,"
+                + " then use the new ref."
+        }
         return "[\(ref)] \(describe(target)) is no longer in the tree — the screen changed after"
             + " that ft_snapshot\(truncated). Take a fresh ft_snapshot and use the new ref."
     }

@@ -31,6 +31,22 @@ public struct PortDirectIOSTarget: Sendable {
                          physical: physical, host: endpoint.host)
     }
 
+    /// 呼び手が渡した udid を優先し、無ければブリッジが /status で申告した Simulator の udid
+    /// (`SIMULATOR_UDID`)。空文字は無いものとして扱う
+    public static func simulatorUDID(explicit: String?, reported: String?) -> String? {
+        for candidate in [explicit, reported] {
+            if let candidate, !candidate.isEmpty { return candidate }
+        }
+        return nil
+    }
+
+    /// ポートに結び付いた Simulator の udid をブリッジ自身に聞く(実機は記録の udid を持つので聞かない)。
+    /// 答えられない(ブリッジ不達・旧ブリッジ・実機)ときは nil = 呼び手は「鍵が無い」まま進む
+    public func reportedSimulatorUDID() async -> String? {
+        guard !physical else { return nil }
+        return try? await makeDriver(timeoutSeconds: 5).status().udid
+    }
+
     public func makeWorker(label: String, simulatorUDID: String?) -> RunWorker {
         RunWorker(label: label, platform: "ios", driver: makeDriver(),
                   connection: connection(simulatorUDID: simulatorUDID))

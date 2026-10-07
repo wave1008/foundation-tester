@@ -386,7 +386,13 @@ enum InAppSnapshot {
         // trait 判定より先に置く: WKWebView は内部に別の trait を持つ子を抱えており、
         // 後ろに置くと other に落ちてホストが webview 画面だと気付けない
         if let webViewClass, node.isKind(of: webViewClass) { return .webView }
-        if let tf = node as? UITextField { return tf.isSecureTextEntry ? .secureTextField : .textField }
+        if let tf = node as? UITextField {
+            if tf.isSecureTextEntry { return .secureTextField }
+            // 検索欄(UISearchBar の中身)は XCUITest が searchField と報告する。UITextField の判定を先に
+            // 置くと in-app だけ TextField になり、`.SearchField` がエンジンで当たり外れした
+            if tf is UISearchTextField || tf.accessibilityTraits.contains(.searchField) { return .searchField }
+            return .textField
+        }
         if node is UITextView { return .textView }
         // セルは trait を持たないため、クラスで判定しないと .other に落ちて `.Cell` セレクタが
         // xcuitest エンジンとだけ食い違う(2026-07-23 に TestProjects/E2E-iOS で実測)。

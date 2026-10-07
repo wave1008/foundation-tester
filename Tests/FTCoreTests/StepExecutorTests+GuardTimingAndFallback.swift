@@ -698,6 +698,27 @@ extension StepExecutorTests {
         XCTAssertLessThanOrEqual(outcome.timing?.waitMs ?? 0, 5)
     }
 
+    /// fallback の木で解決した無効な要素のために、primary の木を読み直して待たない
+    /// (primary の ref を fallback へ撃つ名前空間の混線)
+    func testTapResolvedViaFallbackDriverDoesNotRereadPrimaryTree() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let disabled = ElementInfo(ref: 1, type: "button", identifier: "target", label: nil, value: nil,
+                                   placeholder: nil, enabled: false,
+                                   frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[disabled]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, isAndroid: false, tunables: RunTunables())
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 1)
+
+        _ = await executor.execute(step)
+
+        // primary の解決の待ち(見つからない間の読み直し)は fallback へ切り替える前。切り替えた後は primary を読まない
+        let switched = try XCTUnwrap(log.entries.firstIndex(of: "fallback.snapshot"), "\(log.entries)")
+        XCTAssertFalse(log.entries[switched...].contains("primary.snapshot"),
+                       "fallback で解決したステップが primary の木を読み直している: \(log.entries)")
+        XCTAssertTrue(log.entries.contains("fallback.tap(ref:1)"), "\(log.entries)")
+    }
+
     /// **select は driver フォールバックを照会しない**(掴むだけでデバイス操作が無く、
     /// 掴めないことが答えになり得るコマンド。fb.snapshot() は springboard セッションを張り、
     /// 同一デバイス1セッション制約でアプリ attach を潰す実害があった。StepExecutor 側の

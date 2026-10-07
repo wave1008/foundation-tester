@@ -75,4 +75,30 @@ class ディープリンクが正しく届くこと {
             }
         }
     }
+
+    @Test("ディープリンクで起動した後に移った画面は、回転しても保たれる")
+    func S0040() {
+        scenario {
+            scene(1, "セレクタ画面への URL で起動し、戻ってホームへ移る") {
+                condition {
+                    launchApp(url: "fte2eandroid://screen/selector")
+                }.action {
+                    tap("#btn_back")
+                }.expectation {
+                    exist("#txt_home_marker")
+                }
+            }
+            scene(2, "回転で作り直されても、起動時のリンク先へ戻されない") {
+                action {
+                    rotateTo(.landscape)
+                }.expectation {
+                    exist("#txt_home_marker")
+                }.action {
+                    rotateTo(.portrait)
+                }.expectation {
+                    exist("#txt_home_marker")
+                }
+            }
+        }
+    }
 }

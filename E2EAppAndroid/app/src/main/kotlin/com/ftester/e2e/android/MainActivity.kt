@@ -41,7 +41,8 @@ class MainActivity : AppCompatActivity() {
         // View 階層の状態は運ばないので、起動時リセットの契約は変わらない。
         super.onCreate(null)
         setContentView(R.layout.activity_main)
-        (lastCustomNonConfigurationInstance as? NavState)?.let {
+        val restored = lastCustomNonConfigurationInstance as? NavState
+        restored?.let {
             tab = it.tab
             homeChild = it.homeChild
         }
@@ -61,7 +62,9 @@ class MainActivity : AppCompatActivity() {
         // 起動時リセット(ホームのルート)を先に確定させてからディープリンクを適用する
         // (E2EAppCMP/docs/ui-contract.md §ディープリンク)。
         render()
-        handleDeepLink(intent)
+        // 構成変更(回転)で作り直したときは適用しない: getIntent() は起動時のディープリンクのままなので、
+        // 適用するとリンク後に移った画面からリンク先へ戻される
+        if (restored == null) handleDeepLink(intent)
     }
 
     // singleTop: 既に前面にいるプロセスへ届いたときは onCreate を経由せずここが呼ばれる。

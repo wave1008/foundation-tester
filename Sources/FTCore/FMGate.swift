@@ -38,7 +38,18 @@ public enum FMGate {
         // FT_FM_SERIALIZE=0 でも acquire は即 true を返す(FMLock.swift)。特別扱いせずそのまま
         // 測ることで、直列化あり/なしで待ちが出る/0になるという対照そのものが計測器の陽性対照になる
         let waitStartedAt = Date()
-        guard await FMLock.acquire() else {
+        // **実際に待たされるときだけ**締め切りから差し引く窓を開ける(空いているときに毎回
+        // deadlineExclusion を流さない)。待ちは ScenarioHost の watchdog / FTSync の締め切りに
+        // 数えない(アプリの応答ではない = OCR のコンパイル待ちと同じ扱い)。上限は acquire が諦める時間
+        let acquired: Bool
+        if FMLock.acquireWithoutWaiting() {
+            acquired = true
+        } else {
+            let token = DeadlineExclusion.begin(cap: .seconds(FMLock.defaultTimeoutSeconds))
+            acquired = await FMLock.acquire()
+            DeadlineExclusion.end(token)
+        }
+        guard acquired else {
             FMHealth.recordSkip()
             return false
         }

@@ -85,7 +85,10 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                           "\(handler) は requireForegroundApp() を通すこと"
                           + "(背面のまま木を撮るとランナーが落ちてブリッジが消える)")
         }
-        let guardBody = try XCTUnwrap(handlerBody("requireForegroundApp", in: source))
+        // `()` まで含めて引く(素の名前だと先にある requireForegroundAppForInput を掴み、別の関数を検査していた)
+        let guardBody = try XCTUnwrap(handlerBody("requireForegroundApp()", in: source))
+        XCTAssertTrue(guardBody.contains("try requireLiveApp()"),
+                      "落ちたアプリは requireLiveApp の 503 で名指しする(422 だと「別のアプリが前面」と誤って言う)")
         XCTAssertTrue(guardBody.contains("BridgeError(422,"),
                       "前面でないことの申告は 422(409 = セッション消失 / "
                       + "503 = AppAttachDriver が黙って activate する)")
@@ -150,7 +153,17 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         let body = try XCTUnwrap(handlerBody("handlePressEnter", in: try routerSource))
         XCTAssertTrue(body.contains("guard focused.exists else {") && body.contains("BridgeError(422,"),
                       "焦点が無いときは 422 で断ること: \(body)")
-        XCTAssertFalse(body.contains("app.typeText("), "焦点の無いまま app 全体へ撃たないこと")
+        let check = try XCTUnwrap(body.range(of: "guard focused.exists else {"))
+        let send = try XCTUnwrap(body.range(of: "app.typeText(\"\\n\")"), "Enter は app 全体へ送ること")
+        XCTAssertLessThan(check.lowerBound, send.lowerBound, "焦点を確かめてから送ること")
+    }
+
+    /// **要素へ向けた typeText をランナーに置かない**。確かめてから撃つまでに焦点が動く・背面化すると
+    /// 要素スコープの XCUI 呼び出しが失敗してランナーを落とし得る。打鍵は app 全体へ送る(入力先は最前のレスポンダ)
+    func testRunnerNeverTypesIntoAnElementScopedQuery() throws {
+        let source = try allRunnerSources()
+        XCTAssertFalse(source.contains("focused.typeText("), "焦点の要素へ向けた typeText は app.typeText へ寄せる")
+        XCTAssertFalse(source.contains("typed.typeText("), "焦点の要素へ向けた typeText は app.typeText へ寄せる")
     }
 
     /// **ランナーのテストは XCUI の失敗を記録しない**(`FleetestBridgeTests.record(_:)` がログにだけ残す)。

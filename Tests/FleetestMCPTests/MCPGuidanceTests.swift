@@ -77,7 +77,7 @@ final class MCPGuidanceTests: XCTestCase {
     /// 読む口を出す。評価者はここで詰まり、座標でダイアログを叩いていた
     func testUnchangedTreeMentionsTheSystemDialogEscapeHatch() {
         for engine in [nil, "xcuitest"] {
-            let hint = MCPServer.systemDialogHint(engine: engine)
+            let hint = MCPServer.systemDialogHint(engine: engine, probe: nil)
             XCTAssertTrue(hint.contains("com.apple.springboard"), "engine=\(engine ?? "nil"): \(hint)")
             XCTAssertTrue(hint.contains("SpringBoard"), hint)
         }
@@ -87,9 +87,19 @@ final class MCPGuidanceTests: XCTestCase {
     /// 掴めず、Android は木のセッションごと移るので switchedAppNote が捕まえる
     func testSystemDialogHintIsIOSXCUITestOnly() {
         for engine in ["inapp", "hybrid", "android"] {
-            XCTAssertEqual(MCPServer.systemDialogHint(engine: engine), "",
+            XCTAssertEqual(MCPServer.systemDialogHint(engine: engine, probe: nil), "",
                            "engine=\(engine) にシステムダイアログの案内を出してはいけない")
         }
+    }
+
+    /// 聞いた答えで出し分ける: 「無い」と答えたのに SpringBoard のダイアログを疑わせない。在るなら名指しする
+    func testSystemDialogHintFollowsTheProbeAnswer() {
+        let none = MCPServer.systemDialogHint(engine: "xcuitest", probe: SystemAlertProbeResponse(present: false))
+        XCTAssertFalse(none.contains("If a system dialog is up"), none)
+        XCTAssertTrue(none.contains("No system alert is in front"), none)
+        let up = MCPServer.systemDialogHint(engine: "xcuitest",
+                                            probe: SystemAlertProbeResponse(present: true, title: "Allow Location?"))
+        XCTAssertTrue(up.contains("Allow Location?") && up.contains("com.apple.springboard"), up)
     }
 
     /// 関係ない失敗(404・ネットワーク)に足さない = 誤誘導しない

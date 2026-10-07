@@ -188,14 +188,15 @@ extension MCPServer {
             + " Pass serial: (or profile:) to operate one — this listing is status-only."]
         for device in AndroidSerialResolver.describe(serials: serials) {
             let line: String
+            // 一覧は読むだけ: 動いていないブリッジを起動しない(statusIfBridgeRunning の doc)
             if let driver = try? AndroidDriver(serial: device.serial),
-               let status = try? await driver.status() {
+               let status = await driver.statusIfBridgeRunning() {
                 let session = status.sessionBundleID ?? "none"
                 line = "ready: \(status.ready) / \(device.label) (\(status.osVersion))"
                     + " / session: \(session)"
             } else {
-                line = "unreachable / \(device.label) (adb responds but the bridge does not —"
-                    + " it starts on the first operation)"
+                line = "bridge not running / \(device.label) (adb responds; the bridge starts on the"
+                    + " first operation against this serial)"
             }
             lines.append("  serial \(device.serial): \(line)")
         }

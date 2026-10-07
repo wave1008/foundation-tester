@@ -18,16 +18,27 @@ public enum Durability {
     case stable
     /// `#container >> .type[n]`。同じ型の兄弟が1つ増減すると別要素を指す
     case indexed
+    /// `近傍:方向[型]`(相対セレクタ)。近傍との位置関係が変わると別要素を指す。
+    /// 索引形と分けるのは、書けなかった要素を救う最後の候補で、索引形の割合の砦(MCPSelectorDurabilityTests)に混ぜないため
+    case relative
+
+    /// 位置に依存する(印と但し書きを付ける)側か
+    public var isPositional: Bool { self != .stable }
 
     /// 一覧に添える印。安定側は無印(印が付くのは注意が要るものだけ、が読みやすい)
-    public var mark: String { self == .indexed ? "~" : "" }
+    public var mark: String { isPositional ? "~" : "" }
 
     /// 1つだけ返すとき(ft_tap の戻り値)の但し書き
     public var caution: String {
-        self == .indexed
-            ? " — index-based, so it breaks if the number of same-type siblings changes;"
+        switch self {
+        case .stable: return ""
+        case .indexed:
+            return " — index-based, so it breaks if the number of same-type siblings changes;"
                 + " prefer having the app expose an id"
-            : ""
+        case .relative:
+            return " — relative to a nearby element, so it breaks if the layout around it changes;"
+                + " prefer having the app expose an id"
+        }
     }
 }
 
@@ -261,7 +272,58 @@ public struct SelectorNaming {
            let indexed = Self.scopedSelector(scope: scopeElement, for: element, in: snapshot) {
             out.append((indexed, .indexed))
         }
+        // **最後の砦**: 一意に書けない要素へ、近くの一意な要素からの相対セレクタを足す。
+        // 既存の候補より後ろに置く = これまで書けた要素の提案は動かさない(書けなかった要素だけが救われる)
+        if !(element.identifier.map { !$0.isEmpty && idCounts[$0] == 1 } ?? false) {
+            out += relativeCandidates(for: element, in: snapshot).map { ($0, .relative) }
+        }
         return out
+    }
+
+    /// 相対セレクタで試す基準(アンカー)の数の上限。単位は個。**近い順**に試し、尽きたら書けない扱い
+    /// (nil)に倒す。根拠: 候補1つの検証は `matchDetailed` 1周で、全アンカーを試すと
+    /// 書けない要素の多い画面(id の無い画面)で O(N²) の検証になる。近いアンカーで当たらなければ
+    /// 遠いアンカーは別の要素を先に掴むことが多い(最寄りを採る規則のため)
+    static let relativeAnchorLimit = 3
+
+    /// `一意な近傍:方向[型]`。基準は**自分より先に一意に名指しできる**要素(`#id` か一意なラベル)で、
+    /// 記法は `FTSelector` の相対セレクタ(`通知:rightSwitch`)。採否は呼び元の `holds` が
+    /// parse → 解決で当人が返ることを確かめて決める。耐久性は `.relative`
+    private func relativeCandidates(for element: ElementInfo,
+                                    in snapshot: SnapshotResponse) -> [String] {
+        guard element.frame.width > 0, element.frame.height > 0 else { return [] }
+        var anchors: [(name: String, element: ElementInfo, distance: Double)] = []
+        for other in snapshot.elements where other.ref != element.ref {
+            guard other.frame.width > 0, other.frame.height > 0,
+                  let name = anchorName(for: other) else { continue }
+            let dx = other.frame.centerX - element.frame.centerX
+            let dy = other.frame.centerY - element.frame.centerY
+            anchors.append((name, other, dx * dx + dy * dy))
+        }
+        anchors.sort { $0.distance < $1.distance }
+        let typeShorthand = FTSelector.relativeTypes.first { $0.type == element.type }?.suffix
+        var out: [String] = []
+        for anchor in anchors.prefix(Self.relativeAnchorLimit) {
+            for (name, direction) in FTSelector.directions
+            where !LocatorResolver.directionalCandidates([element], anchor: anchor.element,
+                                                         direction: direction).isEmpty {
+                let step = typeShorthand.map { ":\(name)\($0)" } ?? ":\(name)(.\(element.type))"
+                out.append(anchor.name + step)
+            }
+        }
+        return out
+    }
+
+    /// アンカーに使える**一意な名指し**(`#id` か素のラベル)。`:` を含むものは相対記法の区切りと
+    /// 混ざるので使わない
+    private func anchorName(for element: ElementInfo) -> String? {
+        if let id = element.identifier, !id.isEmpty, idCounts[id] == 1, !id.contains(":") {
+            return "#\(id)"
+        }
+        let label = SnapshotRenderer.displayText(element.label ?? "")
+        guard !label.isEmpty, label.count <= SnapshotRenderer.labelDisplayLimit,
+              labelCounts[label] == 1, !label.contains(":"), !Self.needsEscaping(label) else { return nil }
+        return label
     }
 }
 

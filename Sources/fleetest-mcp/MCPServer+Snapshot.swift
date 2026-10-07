@@ -582,6 +582,10 @@ extension MCPServer {
                                                     first: snapshot, seconds: seconds,
                                                     elementLimit: try pollElementLimit(args))
                 snapshot = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
+                let unchangedSinceAction = !waited.found
+                    && beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
+                let dialogHint = unchangedSinceAction
+                    ? await Self.systemDialogHint(engine: engines[Self.engineKey(args)], driver: snapshotDriver) : ""
                 waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
                     : "waitFor \"\(waitFor)\" did not appear within \(Self.secondsText(seconds))"
                         + Self.waitTimeoutRemedy
@@ -596,11 +600,11 @@ extension MCPServer {
                         // **操作の効果も疑う**(監査): waitFor はここでしか「操作前の木」
                         // を持たない(ft_snapshot 単独には操作前が無い)。判定は settle-lite/
                         // waitForChange と同じ looksUnchanged を再利用する(2つ目の同一性判定を書かない)
-                        + (beforeAction.map { Self.looksUnchanged($0, snapshot) } == true
+                        + (unchangedSinceAction
                            ? " the tree is also identical to the one before the action, so the"
                              + " action itself may not have taken effect."
                              + Self.unrepresentedScreenCaveat(snapshot)
-                             + Self.systemDialogHint(engine: engines[Self.engineKey(args)])
+                             + dialogHint
                            : "") + "\n"
             } else if args["waitForChange"] as? Bool == true {
                 let result = try await waitForChangeBody(beforeAction: beforeAction,
@@ -615,7 +619,8 @@ extension MCPServer {
                     settleNote = "note: the tree still looked unchanged after a short re-read"
                         + " wait — the action may not have changed the screen."
                         + Self.unrepresentedScreenCaveat(reread)
-                        + Self.systemDialogHint(engine: engines[Self.engineKey(args)]) + "\n"
+                        + (await Self.systemDialogHint(engine: engines[Self.engineKey(args)],
+                                                       driver: snapshotDriver)) + "\n"
                 } else {
                     settleNote = "note: the tree looked unchanged right after the action, so it"
                         + " was re-read once after a short wait — the tree below is the re-read.\n"
@@ -1009,7 +1014,8 @@ extension MCPServer {
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
-                                                truncatedCount: fresh.truncatedCount))
+                                                truncatedCount: fresh.truncatedCount,
+                                                keyboardShown: fresh.keyboardFrame != nil || fresh.keyboardShown == true))
         case .ghost(let found):
             // **拒否せず警告して撃つ**(方針を後退させた。理由は RefGuard の宣言)。
             // **キーボード被覆だけは断る**(`keyboardRefusal` の doc)
@@ -1040,7 +1046,13 @@ extension MCPServer {
                 // 読め」と言うことになる(実機 iPhone 13 で実際に出た)
                 + (launchedBundleIDs[Self.engineKey(args)] == "com.apple.springboard" ? ""
                     : await memoizedScreenProbe(found, fresh: fresh, driver: driver, args: args))
-            guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap + labelNote) }
+            // **容器の縁にまたがる行**(DSL は内側へ寄せてから撃つ。MCP は ref を撃つだけなので警告する)。
+            // 判定は DSL と共有(`TapTargetGeometry.straddlingContainerEdge`)
+            let straddle = TapTargetGeometry.straddleAdvisory(for: found, in: fresh.elements)
+                .map { " (warning: \(RefGuard.describe(found)): \($0))" } ?? ""
+            guard moved >= RefGuard.movedThreshold else {
+                return (found.ref, overlap + straddle + labelNote)
+            }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
             // 切り分けの手掛かりとして出す(外部フィードバック。severity は低いとのこと)
@@ -1049,7 +1061,7 @@ extension MCPServer {
             return (found.ref, originNote
                 + RefGuard.preTapWarnings(found, keyboardOcclusion: keyboardOcclusion,
                                         overlayWindows: overlayWindows)
-                + RefGuard.movedNote(found: found, moved: moved, cause: cause) + labelNote)
+                + RefGuard.movedNote(found: found, moved: moved, cause: cause) + straddle + labelNote)
         }
     }
 
@@ -1113,7 +1125,8 @@ extension MCPServer {
             switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
             case .gone:
                 throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
-                                                    truncatedCount: fresh.truncatedCount))
+                                                    truncatedCount: fresh.truncatedCount,
+                                                keyboardShown: fresh.keyboardFrame != nil || fresh.keyboardShown == true))
             case .ghost(let found), .found(let found, _):
                 // **rect にできない容器を黙って渡さない**: 幅か高さが0だと、これを起点にした
                 // ジェスチャは1px も動かせる場所を持たない

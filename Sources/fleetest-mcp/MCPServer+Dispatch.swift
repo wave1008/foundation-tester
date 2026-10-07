@@ -94,7 +94,8 @@ extension MCPServer {
         switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
-                                                truncatedCount: fresh.truncatedCount))
+                                                truncatedCount: fresh.truncatedCount,
+                                                keyboardShown: fresh.keyboardFrame != nil || fresh.keyboardShown == true))
         case .ghost(let found):
             return (found, gateNote)
         case .found(let found, _):
@@ -957,9 +958,10 @@ extension MCPServer {
             // (地図等)ではタップのたび同じ index-based 注意が繰り返され、id を足せない他社
             // アプリ相手ではノイズになる。indexedSelectorNote(下書き用・L2677/L2771)とは
             // 文言が違うので鍵を共有しない
-            let caution = graded.durability == .indexed
+            let caution = graded.durability.isPositional
                 ? once("indexedSelectorCaution", full: graded.durability.caution,
-                      short: " — index-based (see the first note)")
+                      short: graded.durability == .relative ? " — relative (see the first note)"
+                          : " — index-based (see the first note)")
                 : ""
             return " (selector: \(graded.selector)\(caution))"
         }

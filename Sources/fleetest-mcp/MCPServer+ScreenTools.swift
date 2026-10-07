@@ -193,6 +193,10 @@ extension MCPServer {
             }
             return lastSnapshots[Self.engineKey(args)]
         }
+        // **検証の読み直し(verificationSnapshot)が新しい世代を採る前に、ref の解決と再現セレクタを済ませる**:
+        // 後で nativeRef / reproductionNote を呼ぶと新世代の base / 木で引くので、別の番号を撃ち、注記も消える
+        let nativeTargetRef = targetRef.map { nativeRef($0, args: args) }
+        let typedSelector = targetRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""
         if let content, !content.isEmpty {
             // **`ft_tap(容器)` → ref なし `ft_type` を成立させる**(DSL の `retypeTargetIfUnfocused` と
             // 同じ規律・判定は `InputFocusRescue` を共有)。Android は容器を叩いても前の欄の焦点を
@@ -221,7 +225,7 @@ extension MCPServer {
                 }
             }
             // targetRef はセッション ref。ブリッジへ渡す直前にだけ native へ戻す
-            let resolvedTypeRef = rescuedNativeRef ?? targetRef.map { nativeRef($0, args: args) }
+            let resolvedTypeRef = rescuedNativeRef ?? nativeTargetRef
             do {
                 try await typeDriver.type(ref: resolvedTypeRef, text: content)
                 // XCUITest ランナーが打ち直した事実(OKResponse.note)を返答に載せる
@@ -282,18 +286,17 @@ extension MCPServer {
                 note += Self.replaceVerificationNote(
                     target: priorElement, expected: "", fresh: await verificationSnapshot())
             }
-            if let ref = targetRef {
+            if let nativeTarget = nativeTargetRef, let ref = targetRef {
                 // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから。
                 // **タップの直後に撃たない**(下の awaitFocus): 直前に別の欄へ入力していると
                 // フォーカスの移動が間に合わず、Enter が**前の欄**へ飛んで黙って何も起きない
                 // (Android で観測。ime カウンタが増えなかった)
-                try await typeDriver.tap(ref: nativeRef(ref, args: args))
+                try await typeDriver.tap(ref: nativeTarget)
                 note += await awaitFocus(ref: ref, driver: typeDriver, args: args)
             }
         }
         // 入力欄も**セレクタで再現できないと書けない**(E)。ref を渡さない
         // (フォーカス任せの)呼び方では対象が確定しないので黙る
-        let typedSelector = targetRef.map { reproductionNote(resolvedRef: $0, args: args) } ?? ""
         if let content, !content.isEmpty {
             recordInteraction(action: "type", resolvedRef: targetRef, args: args, text: content,
                               replace: wantsReplace)

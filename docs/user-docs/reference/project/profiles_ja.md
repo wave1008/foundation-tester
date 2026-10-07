@@ -36,7 +36,9 @@
   探し、システムアラートがこのアプリのものかもこの名前で判定します。プロファイルを区別するための注記
   (「(実機)」等)は足さないでください。iOS では、`appPath` のアプリから読んだ表示名(`CFBundleDisplayName`、
   無ければ `CFBundleName`。ローカライズされた名前も含む)のどれとも一致しないと、実行時(と
-  `api validate-profile`)に警告が出ます。
+  `api validate-profile`)に警告が出ます。Android でも、`appPath` が `.apk` で Android SDK の
+  `build-tools`(`aapt2` / `aapt`)があれば、アプリのラベル(`application-label`。ロケール付きも含む)の
+  どれとも一致しないときに同じ警告が出ます(`.apks`・`.aab` や `aapt` が無いときは何も出ません)。
 - `appPath` の相対パスは既定でリポジトリルート基準です(`~` 展開・絶対パスも可)。Android は
   `.apk` のほか `.apks`(App Bundle 由来のスプリット束)も書けます(インストールには
   `bundletool` が要ります)。iOS の `appPath` は `.app`(Simulator はそれしか入りません)、

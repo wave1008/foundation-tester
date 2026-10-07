@@ -732,6 +732,61 @@ public enum TapTargetGeometry {
         return element.type
     }
 
+    /// 要素が画面の縁で**見切れている**か。ビューポートより大きい要素(長文など)は
+    /// どう送っても収まらないので false(送り続けて maxSwipes を使い切らせない)
+    public static func isClippedByViewport(_ element: ElementInfo, screen: FTRect) -> Bool {
+        let frame = element.frame
+        // **等しいときは「大きい」ではない**: リストの行は容器と同じ幅を持つのが普通で、
+        // `<` にすると幅一致の行が丸ごと判定から漏れる(実測: 下端で見切れた行が
+        // 可視とみなされ、タップが容器の外のタブバーに当たって別画面へ遷移した)
+        guard frame.height > 0, frame.width > 0,
+              frame.height <= screen.height, frame.width <= screen.width else { return false }
+        return frame.y < screen.y
+            || frame.y + frame.height > screen.y + screen.height
+            || frame.x < screen.x
+            || frame.x + frame.width > screen.x + screen.width
+    }
+
+    /// **またぎ解消に必要な最小スクロール量**(+マージン)。またぎ補正に recoveryJump
+    /// (容器の 40% 位置へ寄せる)を使うと寄せ過ぎる —— 実害: SwiftUI の素の
+    /// scrollView が木に出るようになった(版58)ことで補正がネイティブ画面でも発火し、
+    /// 約330px の寄せが観測対象の echo ラベルまで仮想化の外へ流して、タップは成立したのに
+    /// アサーションが要素を見失った(E2E-iOS の3シナリオが決定的に失敗)。
+    /// 60 の床上げは dragGesture の実行下限(距離 50 超)を割らないため —— 割ると
+    /// overflow の小さいまたぎ(Compose の実測は中心が縁から 2〜12px 外)で寄せ自体が不発になる
+    public static func straddleJump(for element: ElementInfo, container: FTRect) -> Double? {
+        let margin = 12.0
+        let bottomOverflow = (element.frame.y + element.frame.height)
+            - (container.y + container.height) + margin
+        let topOverflow = container.y - element.frame.y + margin
+        if bottomOverflow > margin { return max(bottomOverflow, 60) }
+        if topOverflow > margin { return -max(topOverflow, 60) }
+        return nil
+    }
+
+    /// **容器の縁にまたがった(一部が容器の外へ出ている)タップ対象**と、その容器・寄せ量。
+    /// DSL(`StepExecutor` の寄せ)と MCP(`ft_tap` の警告)が共有する唯一の判定。
+    /// 容器と全く交差しないもの(`outsideDeclaredScroller` / ghost の側)は含めない
+    public static func straddlingContainerEdge(_ element: ElementInfo, in elements: [ElementInfo],
+                                               inferring: Bool = true)
+        -> (container: FTRect, jump: Double)? {
+        guard let container = ContainerGeometry.clippingContainer(of: element, in: elements,
+                                                                  inferring: inferring),
+              ScrollGeometry.intersection(element.frame, container) != nil,
+              isClippedByViewport(element, screen: container),
+              let jump = straddleJump(for: element, container: container) else { return nil }
+        return (container, jump)
+    }
+
+    /// 縁またぎの警告文(MCP が使う。DSL は寄せるので文言を持たない)。
+    /// 見えている部分を撃っても、Compose は focus 時に内容を動かして隣の行が指の下へ来ることがある
+    public static func straddleAdvisory(for element: ElementInfo, in elements: [ElementInfo],
+                                        inferring: Bool = true) -> String? {
+        guard straddlingContainerEdge(element, in: elements, inferring: inferring) != nil else { return nil }
+        return "the target straddles the edge of its scroll container (partly clipped), so the"
+            + " tap may land on a neighbouring row — scroll it fully inside the container first"
+    }
+
     /// 「そもそも無効」。**撃つ座標に依らない**ので、どの経路でも同じことが言える
     public static func disabledAdvisory(for element: ElementInfo) -> String? {
         element.enabled ? nil : "the target is disabled, so this almost certainly did nothing"

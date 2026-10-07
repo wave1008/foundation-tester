@@ -1177,8 +1177,11 @@ struct RunScenarios: AsyncParsableCommand {
     /// (LaunchPreflightDriver のコメント)がそのまま開く。Xcode はランタイムごとに同名の
     /// シミュレータを作るので、同名2台は受け手環境で普通に起きる(実例あり)
     private static func resolveUdid(port: UInt16) async -> String? {
-        guard let status = try? await PortDirectIOSTarget(port: port).makeDriver(timeoutSeconds: 5).status(),
-              let catalog = try? SimulatorCatalog.devices() else { return nil }
+        guard let status = try? await PortDirectIOSTarget(port: port).makeDriver(timeoutSeconds: 5).status()
+        else { return nil }
+        // ブリッジが自分の Simulator の udid を申告していればそれを採る(同名の曖昧さが無い)
+        if let reported = PortDirectIOSTarget.simulatorUDID(explicit: nil, reported: status.udid) { return reported }
+        guard let catalog = try? SimulatorCatalog.devices() else { return nil }
         let matches = catalog.filter { $0.booted && $0.name == status.device }
         if matches.count == 1 { return matches[0].udid }
         ConsoleOut.err(

@@ -37,6 +37,7 @@ extension MCPServer {
             let cached = offset < gradedShown.count
                 ? gradedShown[offset] : naming.graded(for: element, in: snapshot)
             guard let graded = cached else { continue }
+            // 相対形(`.relative`)は畳まない: 畳み方はスコープ接頭辞の共有が前提で、相対形には接頭辞が無い
             guard graded.durability == .indexed else { return nil }
             anyIndexed = true
             let prefix: String

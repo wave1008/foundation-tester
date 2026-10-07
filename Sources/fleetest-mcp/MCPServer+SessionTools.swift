@@ -273,13 +273,29 @@ extension MCPServer {
         openStep.text = url
         recordAction(InteractionLog.Entry(step: openStep, unresolved: nil,
                                           summary: "openURL \"\(url)\""), args: args)
+        // **「Delivered」は配送の事実だけ**: 初回の「開きますか?」確認は自動了承がベストエフォート
+        // (BridgeClient.acknowledgeOpenURLConsent は (端末, bundleId) ごとに1回・bundleId が無いと
+        // 試さない・in-app 接続では SpringBoard を見られない)で、戻り値を持たない。
+        // 了承が効いたかは AppDriver の口からは分からないので、配送後に前面のアラートを観測して言う
+        let consentDialogNote = await Self.openURLConsentDialogNote(driver: openURLDriver)
         return text(Self.openURLSummary(url: url, bundleID: openURLBundleID,
                                         bundleIDWasRemembered: explicitBundleID == nil,
                                         routedByScheme: !(openURLDriver is AndroidDriver),
                                         snapshotAfter: args["snapshotAfter"] as? Bool == true,
                                         waitFor: args["waitFor"] as? String,
                                         waitForChangeExplicit: args["waitForChange"] as? Bool)
+            + consentDialogNote
             + waitForWithoutSnapshotAfterNote(args) + (await snapshotAfterBody(openURLArgs)))
+    }
+
+    /// 配送後に前面のシステムアラートが観測できたときだけ言う(観測できない経路では黙る =
+    /// 「出ていない」とは言えない)。確認ダイアログが残っていると配送は完了していない
+    static func openURLConsentDialogNote(driver: AppDriver) async -> String {
+        guard let alert = await frontSystemAlert(driver: driver) else { return "" }
+        return " (warning: \(alert) is in front of the app after delivery — if it is the first-time"
+            + " \"Open in …?\" confirmation, the automatic acceptance did not run or did not dismiss it,"
+            + " and the URL has not been handled yet. Handle it with `ft_launch bundleId:"
+            + " com.apple.springboard`, tap its button by ref, then `ft_launch` your app again)"
     }
 
     func ftClearAppData(_ args: [String: Any]) async throws -> [[String: Any]] {

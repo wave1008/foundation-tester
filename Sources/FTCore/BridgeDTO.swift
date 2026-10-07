@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 148
+    public static let bridgeProtocolVersion = 149
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1228,6 +1228,29 @@ public enum ScrollRegionMatch {
         let inter = w * h
         let union = a.width * a.height + b.width * b.height - inter
         return union > 0 ? inter / union : 0
+    }
+}
+
+/// XCUITest ランナーが焦点の要素(`hasKeyboardFocus` のライブクエリ)を木の要素へ突き合わせる規則
+/// (`ElementInfo.focused` の申告)。**frame の完全一致だけにしない** —— secure 欄・横向きで一致せず印が付かず、
+/// ホストの `InputFocusRescue.focusIsElsewhere` が真になって誤った警告と不要な焦点救済が走っていた。
+/// identifier が木で一意ならそれを採り(frame の座標系に依らない)、無ければ frame を許容誤差で比べて一意なものだけ採る
+public enum FocusedElementMatch {
+    /// pt。XCUI の frame は小数の丸めで 1pt 未満ずれる(ScrollPointReach.mayAccept と同じ幅)
+    public static let frameTolerance = 1.0
+
+    public static func index(identifier: String?, frame: FTRect, in elements: [ElementInfo]) -> Int? {
+        if let identifier, !identifier.isEmpty {
+            let byID = elements.indices.filter { elements[$0].identifier == identifier }
+            if byID.count == 1 { return byID[0] }
+        }
+        let byFrame = elements.indices.filter { close(elements[$0].frame, frame) }
+        return byFrame.count == 1 ? byFrame[0] : nil
+    }
+
+    private static func close(_ a: FTRect, _ b: FTRect) -> Bool {
+        abs(a.x - b.x) <= frameTolerance && abs(a.y - b.y) <= frameTolerance
+            && abs(a.width - b.width) <= frameTolerance && abs(a.height - b.height) <= frameTolerance
     }
 }
 

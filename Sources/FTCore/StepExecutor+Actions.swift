@@ -442,6 +442,7 @@ extension StepExecutor {
         }
 
         var actingDriver: AppDriver = driver
+        var switchedToFallbackDriver = false
         if action != "select", let fb = fallbackDriver {
             let primaryQuality = resolved == nil ? nil : LocatorResolver.resolveDetailed(step: step, in: snapshot)?.quality
             if resolved == nil || primaryQuality == .substring {
@@ -464,6 +465,7 @@ extension StepExecutor {
                     resolved = (r.element, r.usedFallback)
                     snapshot = fsnap
                     actingDriver = fb
+                    switchedToFallbackDriver = true
                 }
             }
         }
@@ -545,12 +547,10 @@ extension StepExecutor {
         // `straddleJump`(またぎ解消に必要な最小量。40% 位置への寄せは観測対象まで流す —
         // 定義部の実害参照)+ `slowDrag`(フリングを出さない)なので
         // 行き過ぎない。**1回だけ**(収束しなければ見えている部分を撃つ)
-        if Self.interactsByTouch(action), step.containerInference ?? true,
-           let container = ContainerGeometry.clippingContainer(of: element, in: snapshot.elements,
-                                                  inferring: true),
-           ScrollGeometry.intersection(element.frame, container) != nil,
-           Self.isClippedByViewport(element, screen: container),
-           let jump = Self.straddleJump(for: element, container: container),
+        // **fallback へ切り替えたステップでは寄せない**: 寄せは primary(`driver`)の木を撮り直して
+        // ref を引くので、fallback の木から解決した要素に primary の名前空間を混ぜる
+        if !switchedToFallbackDriver, Self.interactsByTouch(action), step.containerInference ?? true,
+           let (container, jump) = TapTargetGeometry.straddlingContainerEdge(element, in: snapshot.elements),
            await slowDrag(jump: jump, container: container, phase: &phase) {
             _ = try await settledSignature(phase: &phase)
             let refreshed = try await freshSnapshot(.afterOwnMove)
@@ -570,7 +570,8 @@ extension StepExecutor {
         // **待ち切れなくても撃つ** —— 無効な要素をわざと叩いて「反応しない」ことを確かめる
         // 書き方は正当なので、失敗にはしない(注記は出る)
         var enabledWaitNote: String?
-        if action == "tap", !element.enabled,
+        // fallback へ切り替えたステップでは待たない(待ちは primary の木を読み直す = ref の名前空間が混ざる)
+        if action == "tap", !switchedToFallbackDriver, !element.enabled,
            let waited = try await waitUntilEnabled(step: step, phase: &phase) {
             snapshot = waited.snapshot
             element = waited.element

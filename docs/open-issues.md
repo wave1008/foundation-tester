@@ -6,103 +6,32 @@
 
 直したら項目を消す(経緯はコミットに残す)。新しい残件は同じ形(症状・場所・手がかり)で足す。
 
-## iOS ブリッジ・in-app
+## 再現の材料が要るもの(材料が無いまま直すと定数か推測を持ち込む)
 
-- **型の語彙が in-app と XCUITest で割れている**(09-06)
-  - 症状: 同じ型セレクタがエンジンで当たったり外れたりする。SearchField は in-app が "TextField"・XCUITest が "SearchField"、
-    PickerWheel は in-app が返さない、ScrollView は in-app が "Other" に scrollable の印を付けるだけ
-  - 場所: `InAppBridge/Sources/InAppSnapshot.swift:388`(UITextField の判定が :403 の searchField より先)・:367・:446、
-    `Runner/FleetestRunnerUITests/BridgeRouter+Snapshot.swift:260`・263・274
-  - 手がかり: 片側に寄せるか契約(`E2EAppCMP/docs/ui-contract.md`)に足し、docs/framework-differences.md に1行。in-app の版上げが要る
-- **in-app の合成タッチ(synthFallback)が成否を返せない**(09-06)
-  - 症状: activate が効かなかったときの FTSynthTap は成否を返さず、負荷下で RN のタップが黙って空振りし得る(9/6 に 153 回中 3 回)
-  - 場所: `InAppBridge/Sources/InAppBridge.swift:585-597`(「throw は追加しない」と明記)
-  - 手がかり: 次に出たら1周目からプローブを入れる。成否の検知に `InAppRenderCatchUp` の前後比較を流用できるか
-- **XCUITest の handler で、要素を確かめてから同じ要素へ撃つまでの窓(TOCTOU)**(09-06・推測)
-  - 症状: `focused.exists` から `focused.typeText` 等までの間に焦点の移動や背面化が起きると、要素スコープの XCUI 呼び出しが失敗し
-    ランナーを落とし得る
-  - 場所: `Runner/FleetestRunnerUITests/BridgeRouter.swift:673-679`(handlePressEnter)、`BridgeRouter+TextInput.swift:350-370`(clear)
-  - 手がかり: `/type` と同じく `app.typeText` に寄せられるか
-- **XCUITest で secure 欄・横向きのとき `focused` が申告されない**(09-11)
-  - 症状: 焦点のある要素の frame と木の frame の完全一致でしか印を付けないので、印が無い → `InputFocusRescue.focusIsElsewhere` が
-    true になり、誤った警告と不要な焦点救済が走る(一致しない原因は推測)
-  - 場所: `Runner/FleetestRunnerUITests/BridgeRouter.swift:271-281`(withFocusedFlag)、`Sources/FTCore/InputFocusRescue.swift:35`
-  - 手がかり: 誤差の許容と向きの換算を入れる
-- **アプリが落ちても「別のアプリが前面」と報告される**(09-11)
-  - 症状: `requireForegroundApp()` が落ちたアプリ(`.notRunning`)も「another app is in the foreground」の 422 にする。
-    クラッシュを言う 503(`requireLiveApp`)は操作系だけが使う
-  - 場所: `Runner/FleetestRunnerUITests/BridgeRouter.swift:1332-1340`・:239・:1256
-  - 手がかり: snapshot の経路でも `.notRunning` を 503 で名指しする(ブリッジの版上げ)
-
-## StepExecutor・DSL
-
-- **fallback ドライバで解決した要素を primary の木で取り直す(ref の名前空間が混ざる)**(09-06)
-  - 症状: `actingDriver = fb` に切り替えた後も、容器をまたぐ寄せと `waitUntilEnabled` が primary の木を読み、primary の ref を
-    fb へ撃つ
-  - 場所: `Sources/FTCore/StepExecutor+Actions.swift:466`(切替)・:550・:568・:1891、`StepExecutor.swift:793`
-  - 手がかり: `actingDriver !== driver` のときは `actingDriver.snapshot()` で取り直すか、その2段を飛ばす
-- **`select` が occlusion-guard の FM 待ちを抱え、締め切りから差し引かれない**(09-06・一部残る)
-  - 症状: `select` は今も `occlusionFlip` を通って FM を待つことがあり、FM のゲート待ちは scenarioTimeout から差し引かれない。
-    OCR の段で FM の呼び出しは 97% 減り(46b54f84)、9/7 以降は打ち切りの観測が無い
-  - 場所: `Sources/FTCore/StepExecutor+Actions.swift:577-591`、`StepExecutor+Assert.swift:101〜`(`DeadlineExclusion` は OCR の
-    コンパイル等にしか掛かっていない)
-  - 手がかり: M1Ultra で E2E-iOS ios-inapp「ジェスチャ」S0010 を回し、`fm.gateWait*` と所要を見る
 - **Compose・Flutter では、DSL / ft_batch の `type` / `clearInput` が入力欄でない要素を先にタップし得る**(09-11 §19.2)
-  - 症状: ネイティブ描画(UIKit / SwiftUI / RN / Android View)は撃つ前に断るようにした(`StepExecutor.nonTextInputPreflightRefusal`)。
-    自前描画では本物の入力欄が `button` 等で報告されうるので型名で断れず、ボタンを指すと押してしまう。MCP の ft_type は
-    `TypeReadback.isTextInput` で撃つ前に断るので、自前描画では MCP と DSL の判断が割れたまま
-  - 手がかり: 自前描画で「確実に入力欄でない」を言える別の根拠(a11y の editable 属性・ブリッジの申告)を探す
+  - 症状: ネイティブ描画は撃つ前に断る(`StepExecutor.nonTextInputPreflightRefusal`)。自前描画では本物の入力欄が `button` 等で
+    報告されうるので型名で断れず、MCP の ft_type(`TypeReadback.isTextInput` で断る)と判断が割れたまま
+  - 要る材料: 自前描画で本物の入力欄が入力型以外で報告される実例(どのエンジン・どの部品か)。iOS は in-app がテキスト入力の trait、
+    XCUITest が elementType で入力型を付けるので、残るのは Android の自前描画か id が包みに付く形のどちらか。実例が取れれば、
+    その経路が申告する「編集できる」の印(Android の `isEditable`)をブリッジから運んで断る根拠にする
 - **文字だけが描画されない Simulator を検知できない**(09-06)
   - 症状: 木は正常でも絵に文字が1つも出ずタイマーも進まないデバイスを凍結と判定できず、シナリオの赤としてだけ残る
-  - 場所: `Sources/FTCore/FrozenVerdict.swift:17-43`(根拠の6種にこの形が無い)
-  - 手がかり(案の段階): ラベルを持つ要素の領域を OCR で読み、どれも読めないときに疑う。入れるなら警告から
-    (`isConclusive=false`)、`FrozenInjection` で陽性対照を通す
-
-## MCP
-
-- **`ft_type`(replace / clear-only)が検証の読み直しの後で古い ref を使う**(09-06・推測)
-  - 症状: `snapshotAfter: true` で Enter が無いと `verificationSnapshot()` が新しい世代を採り、その後で先に解いた `targetRef` を
-    新しい世代の base で native ref に戻すので、clear-only の枝の tap が別の番号を撃ち得る。`reproductionNote` も黙って消える
-  - 場所: `Sources/fleetest-mcp/MCPServer+ScreenTools.swift:185-195`・:282→:290・:296、`MCPServer+Dispatch.swift:951`
-  - 手がかり: tap と注記を merge の前に済ませるか、`generationSnapshot(containing:)` で ref の世代を引く
-- **容器の縁にまたがる行への ft_tap が無警告で done になり外れる(DSL は内側へ寄せる)**(09-11・推測)
-  - 場所: `Sources/FTCore/TapTargetGeometry.swift:172`(`outsideDeclaredScroller` は容器と全く交差しないことが条件)・:260-281、
-    DSL の寄せは `StepExecutor+Actions.swift:547-555`(`straddleJump`)、MCP は `MCPServer+Snapshot.swift:1023-1042`
-  - 手がかり: 判定と寄せを FTCore で共有する(MCP と DSL の判断が割れている)
-- **iOS で別ウィンドウの全画面モーダル・上部バナーの裏を無警告で撃つ**(09-11・推測)
-  - 症状: 木に載らない別ウィンドウを申告する `overlayWindowFrames` を返すのは Android だけ。バナーに覆われた `#btn_back` も
-    無警告で撃ち、注記は SpringBoard のダイアログを疑う(`systemDialogHint(engine:)` は照会の結果を知らない)
-  - 場所: `AndroidRunner/.../SnapshotBuilder.java:316`、`Sources/fleetest-mcp/MCPServer+Snapshot.swift:924-953`、
-    `MCPServer+Driver.swift:1567-1574`
-  - 手がかり: iOS のランナーにも窓の申告を足す(版上げ)。注記は照会の結果を受け取って出し分ける
+  - 場所: `Sources/FTCore/FrozenVerdict.swift`(根拠の6種にこの形が無い)
+  - 要る材料: この状態のスクショと木の組(1件も保存されていない)。それが無いと「どれも読めない」の閾値に根拠が置けず、
+    既存コーパスでの誤検知0も示せない。取れたら、ラベルを持つ要素の領域を OCR で読む案を警告(`isConclusive=false`)から入れ、
+    `FrozenInjection` で陽性対照を通す
+- **iOS で SpringBoard の上部バナーの裏を無警告で撃つ**(09-11・推測)
+  - アプリ自身の別ウィンドウ(全画面モーダル)は両エンジンとも木に載る(in-app は `visibleWindows` を手前順に撮る・XCUITest は
+    アプリの全窓)ので遮蔽の判定に掛かる。SpringBoard のダイアログの注記は `/systemalert` の答えで出し分けるようにした
+    (`MCPServer.systemDialogHint(engine:probe:)`)
+  - 要る材料: 通知バナーが出ている間の SpringBoard の木(どの目印で見分けられるか)。取れたら `/systemui/covering` の目印に足す
 - **キーボードで押し上げられてステータスバーの下に入った要素を、done のまま外す**(09-11・推測)
-  - 場所: ステータスバーの帯を見る判定が MCP・`TapTargetGeometry`・`RefGuard` のどこにも無い。`suspectedHiddenUnderChrome`
-    (`TapTargetGeometry.swift:444`)は覆う側が木にあることを前提にしている
-- **キーボードで要素が木から消えたとき「画面が変わった」と言う**(09-11 M13)
-  - 場所: `Sources/fleetest-mcp/MCPServer+Snapshot.swift:1010-1026`(`keyboardRefusal` は `.ghost` / `.found` のときだけ)、
-    `RefGuard.swift:170`
-  - 手がかり: `.gone` でもキーボードが出ていればキーボードを名指しする
-- **ID の無い画面で方向セレクタを候補に出さない**(09-11 M14)
-  - 場所: `Sources/FTCore/SelectorNaming.swift:185-264`(候補に相対セレクタ(`anchor:below` 等)が無い)
-- **確認ダイアログが出ても `ft_open_url` が「Delivered」と返す**(09-11)
-  - 場所: `Sources/fleetest-mcp/MCPServer+SessionTools.swift:269-282`、自動了承 `BridgeClient.acknowledgeOpenURLConsent`
-    (`Sources/FTBridgeClient/BridgeClient.swift:488-517`。戻り値が Void で、(simulator, bundleId) ごとに1回・bundleId が無いと試さない)
-- **プロファイル無し・`port:` だけで指定した iOS Simulator の `ft_run_scenario` が MCP の印を書かない**(09-11 §19.15)
-  - 場所: `Sources/FTBridgeClient/PortDirectIOSTarget.swift:30`、`Sources/fleetest-mcp/MCPServer+ScenarioTools.swift:249`
-  - 手がかり: `.fleetest/bridge-<port>.device` 等からポートに結び付いた UDID を引いて鍵にする
+  - 場所: ステータスバーの帯を見る判定が MCP・`TapTargetGeometry`・`RefGuard` のどこにも無い
+  - 要る材料: 実例の木。ステータスバーの高さは木に載らない(画面の枠だけ)ので、定数で帯を決めると機種で黙って誤る。
+    ブリッジが安全領域(safeAreaInsets / WindowInsets)を申告する形なら根拠のある判定になる
 - **WebView の通常の行間で `webViewGapNote` が出る**(09-11・推測)
-  - 場所: `Sources/FTCore/TreeCoverage.swift:33`(8%)・:44(長辺の 5%)。再現した画面が分からず、今も発火するかは未確認
-
-## 録画・モニター・拡張
-
-## CLI・その他
-
-- **appName とアイコン名の食い違いの警告が Android には無い**(09-11 §19.7)
-  - 場所: `Sources/FTCore/RunProfile.swift:1508`(`if platform == "ios"`)
-  - 手がかり: aapt / aapt2 の `dump badging` の `application-label` で候補を採る(無ければ黙る)
-- **E2EAppAndroid でディープリンクで起動したプロセスを回転させると、リンク先へ戻される**(09-11・SUT 側)
-  - 場所: `E2EAppAndroid/app/src/main/kotlin/com/ftester/e2e/android/MainActivity.kt:64`(`handleDeepLink(intent)` を無条件に呼ぶ)
-  - 手がかり: 構成変更(`lastCustomNonConfigurationInstance` が非 nil)のときは呼ばない。回転を挟む witness を1本足す
+  - 場所: `Sources/FTCore/TreeCoverage.swift`(8%・長辺の 5%)。再現した画面が分からず、今も発火するかは未確認。
+    コーパスで発火する4画面は真陽性と確かめてある(`NoteCoverageTests` の coverage 表の注記)。要る材料は誤発火した画面の木
 
 ## 判断できない・確かめ方だけあるもの
 
@@ -110,9 +39,6 @@
   - 確かめ方: Simulator で in-app で起動 → `ft_navigate home` → MCP を起動し直す → `ft_launch`(port 指定あり・なし)
   - 場所: `Sources/fleetest-mcp/MCPServer+SessionTools.swift` の `ftLaunch`、`MCPServer+Driver.swift:782` 付近、
     `Sources/FTBridgeClient/InAppDriver.swift:31`
-- **`ft_status` で Android が複数台あるとき、読み取りのはずの一覧が全台で `startBridge` を通る**(09-06・症状は推測)
-  - 確かめ方: ブリッジの無い Emulator を2台つなぎ、`ft_status platform:android` の前後で pidof を比べる
-  - 場所: `Sources/fleetest-mcp/MCPServer+Hints.swift:186-203`、`Sources/FTAndroid/AndroidBridge.swift:190`・236
 - **焦点救済の例示が別の欄を指す**(09-11 M16): どの文言を指した指摘か特定できない。今の注記
   (`MCPServer+ScreenTools.swift:210-221`)は実際に送った欄を名指ししている
 - **シートのヒントが普通のリストでも出うる**(09-11 M10・推測): bf07926c で「容器の下端が画面下端に接し、上端が上から 1/4 より下」

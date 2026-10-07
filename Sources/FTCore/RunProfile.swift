@@ -1503,12 +1503,15 @@ public enum ProfileResolver {
                     + " (it is unsigned); set appPathPhysical to a device build")
             }
             // appName はアイコン名を兼ねる(AppBundleInspector.appNameMismatchWarning の doc)。
-            // 読めるのは iOS の .app だけ(APK のラベルは aapt が要る)。候補は原本2つの和 ——
-            // 片方にしか無い名前でも一致すれば黙る(誤検知を出さない側)
-            if platform == "ios", let appName = section.appName {
+            // 読めるのは iOS の .app と Android の .apk(aapt / aapt2 が SDK に無ければ黙る。.apks・.aab は読まない)。
+            // 候補は原本2つの和 —— 片方にしか無い名前でも一致すれば黙る(誤検知を出さない側)
+            if platform == "ios" || platform == "android", let appName = section.appName {
                 var candidates: [String] = []
                 for path in [sourcePath, physicalSource].compactMap({ $0 }) {
-                    for name in AppBundleInspector.iconNameCandidates(appPath: path)
+                    let names = platform == "ios"
+                        ? AppBundleInspector.iconNameCandidates(appPath: path)
+                        : AndroidAppLabelInspector.labelCandidates(apkPath: path)
+                    for name in names
                     where !candidates.contains(name) {
                         candidates.append(name)
                     }

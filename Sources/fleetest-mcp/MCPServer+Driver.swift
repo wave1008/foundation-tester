@@ -1564,13 +1564,33 @@ extension MCPServer {
     /// settle-lite の再読み・ft_batch の still identical)だけ = **読み手が実際に詰まった瞬間**。
     /// ゲートは `springboardHint` と同じ(engine 不明 or xcuitest。in-app は注入先アプリしか
     /// 見えないので springboard を掴めず、勧めても実行できない)
-    static func systemDialogHint(engine: String?) -> String {
+    /// `probe` は詰まった瞬間に `/systemalert` へ聞いた答え(nil = 聞けなかった)。**答えで出し分ける** ——
+    /// 「無い」と答えたのに SpringBoard のダイアログを疑わせると、読み手は存在しないダイアログを探しに行く
+    static func systemDialogHint(engine: String?, probe: SystemAlertProbeResponse?) -> String {
         guard engine == nil || engine == "xcuitest" else { return "" }
+        if let probe {
+            guard probe.present else {
+                return " No system alert is in front (checked just now), so this is not a SpringBoard"
+                    + " prompt; a notification banner or another overlay this tree does not show can still"
+                    + " cover the app — look at ft_screenshot."
+            }
+            return " A system alert is in front right now"
+                + (SystemUIGate.describeCovering(probe).map { " (\($0))" } ?? "")
+                + " — it is drawn by SpringBoard, not the app, so it is not in this tree and the app cannot"
+                + " receive input while it is there. Read it with ft_launch bundleId: com.apple.springboard"
+                + " (non-destructive), operate it by ref there, then ft_launch your app again."
+        }
         return " If a system dialog is up (a permission prompt, an \"Open in …\" confirmation),"
             + " it is drawn by SpringBoard and not by the app, so it never appears in this tree"
             + " — and the app cannot receive input while it is there, which looks exactly like"
             + " this. Read it with ft_launch bundleId: com.apple.springboard (non-destructive),"
             + " operate it by ref there, then ft_launch your app again."
+    }
+
+    /// 詰まった瞬間だけ `/systemalert` に聞いてから `systemDialogHint` を作る(ゲート外の engine では聞かない)
+    static func systemDialogHint(engine: String?, driver: AppDriver) async -> String {
+        guard engine == nil || engine == "xcuitest" else { return "" }
+        return systemDialogHint(engine: engine, probe: try? await driver.systemAlert())
     }
 
     /// home/appSwitcher 直後の XCUITest は「セッションはアプリのまま・画面は別」になり、次の

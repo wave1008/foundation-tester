@@ -1023,13 +1023,18 @@ struct ApiRunCommand: AsyncParsableCommand {
         // この経路には ProfileRunner のような常設ワーカー一覧が無いので、実際に使う platform 分の
         // 使い捨てワーカーをここで1回だけ組んで渡す(ループ側の実行用インスタンスとは別物)。
         // dry-run はデバイスに触らないので撃たない
+        // `--port` 直指定の Simulator の udid(ブリッジの /status の申告)。`fleetest run` の resolveUdid と同じ目的 ——
+        // 渡さないと子の connection に udid が無く、udid を鍵にする処理(simctl 経由の操作・デバイスの印)が効かない
+        let iosUdid: String? = dryRun ? nil
+            : (Set(selected.map { $0.platform ?? effectivePlatform }).contains("ios")
+               ? await PortDirectIOSTarget(port: effectivePort).reportedSimulatorUDID() : nil)
         if !dryRun, debugOptions == nil {
             let platformsInUse = Set(selected.map { $0.platform ?? effectivePlatform })
             var primingWorkers: [RunWorker] = []
             if platformsInUse.contains("ios") {
                 // 宛先・token・実機判定は記録から(PortDirectIOSTarget。`fleetest run` と同じ判定)
                 primingWorkers.append(
-                    PortDirectIOSTarget(port: effectivePort).makeWorker(label: "ios", simulatorUDID: nil))
+                    PortDirectIOSTarget(port: effectivePort).makeWorker(label: "ios", simulatorUDID: iosUdid))
             }
             if platformsInUse.contains("android"), let driver = try? AndroidDriver(serial: serial) {
                 primingWorkers.append(RunWorker(
@@ -1066,7 +1071,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let connection = scenarioPlatform == "android"
                 ? DriverConnection(platform: "android", serial: serial)
                 // 宛先・実機判定は記録から引く(PortDirectIOSTarget。`fleetest run` と同じ判定)
-                : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: nil)
+                : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: iosUdid)
             // --platform/--port/--serial 直指定経路にはデバイス論理名が無いため worker は nil
             let recording = recorder.map { ScenarioRecording(recorder: $0, title: info.title) }
 
@@ -1092,7 +1097,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             for scenarioPlatform in Set(selected.map { $0.platform ?? effectivePlatform }).sorted() {
                 let connection = scenarioPlatform == "android"
                     ? DriverConnection(platform: "android", serial: serial)
-                    : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: nil)
+                    : PortDirectIOSTarget(port: effectivePort).connection(simulatorUDID: iosUdid)
                 for outcome in await ScenarioHost.runDeviceTearDowns(
                     project: project, connection: connection,
                     deviceSession: deviceSessions.session(for: scenarioPlatform),

@@ -241,19 +241,9 @@ extension StepExecutor {
         return finger
     }
 
-    /// 要素が画面の縁で**見切れている**か。ビューポートより大きい要素(長文など)は
-    /// どう送っても収まらないので false(送り続けて maxSwipes を使い切らせない)
+    /// 判定の本体は `TapTargetGeometry.isClippedByViewport`(MCP と共有)
     static func isClippedByViewport(_ element: ElementInfo, screen: FTRect) -> Bool {
-        let frame = element.frame
-        // **等しいときは「大きい」ではない**: リストの行は容器と同じ幅を持つのが普通で、
-        // `<` にすると幅一致の行が丸ごと判定から漏れる(実測: 下端で見切れた行が
-        // 可視とみなされ、タップが容器の外のタブバーに当たって別画面へ遷移した)
-        guard frame.height > 0, frame.width > 0,
-              frame.height <= screen.height, frame.width <= screen.width else { return false }
-        return frame.y < screen.y
-            || frame.y + frame.height > screen.y + screen.height
-            || frame.x < screen.x
-            || frame.x + frame.width > screen.x + screen.width
+        TapTargetGeometry.isClippedByViewport(element, screen: screen)
     }
 
     /// その座標のタッチが**対象ではなく手前の別要素に渡る**か。スナップショットは pre-order

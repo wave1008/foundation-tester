@@ -190,7 +190,7 @@ final class MCPSelectorDurabilityTests: XCTestCase {
     /// **割合は動いていない**(索引 25.2% は上限 25.5‰ の内側・書けない側も同様) ——
     /// 絞り込みの退行ではなく、コーパスが「全行が id を共有する密なリスト」を含むようになっただけ
     func testNarrowingKeepsIndexedAndUnwritableLow() throws {
-        var indexed = 0, unwritable = 0, total = 0
+        var indexed = 0, relative = 0, unwritable = 0, total = 0
         for name in try fixtureNames() {
             let snapshot = try fixture(name)
             let naming = MCPServer.SelectorNaming(snapshot)
@@ -198,6 +198,7 @@ final class MCPSelectorDurabilityTests: XCTestCase {
                 total += 1
                 switch naming.graded(for: element, in: snapshot)?.durability {
                 case .some(.indexed): indexed += 1
+                case .some(.relative): relative += 1
                 case .none: unwritable += 1
                 case .some(.stable): break
                 }
@@ -281,7 +282,9 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         // **id を1つも持たない web ページ**を切り詰められた状態で入れたため
         // (`and-apps_list` を入れたときと同型の理由で、絞り込みの退行ではない)
         XCTAssertLessThanOrEqual(unwritable * 1000 / max(1, total), 106,
-                                 "書けない要素の割合が増えている(実測 10.5%)")
+                                 "書けない要素の割合が増えている(実測 10.5%)")        // 相対形は書けなかった要素だけを救う(索引形・書けない側とは別に数える)。
+        // sut-e2e_noid の無ラベルの switch(隣のラベルからの `:rightSwitch`)が出ないなら生成が死んでいる
+        XCTAssertGreaterThan(relative, 0, "相対セレクタが1件も出ない = 書けない要素の救済が効いていない")
     }
 
     /// コーパスに両方の格付けが出ていること(片側しか見ていない状態を防ぐ)
@@ -307,10 +310,11 @@ final class MCPSelectorDurabilityTests: XCTestCase {
         for name in try fixtureNames() {
             let snapshot = try fixture(name)
             let naming = MCPServer.SelectorNaming(snapshot)
-            var indexed = 0, unwritable = 0
+            var indexed = 0, relative = 0, unwritable = 0
             for element in snapshot.elements {
                 switch naming.graded(for: element, in: snapshot)?.durability {
                 case .some(.indexed): indexed += 1
+                case .some(.relative): relative += 1
                 case .none: unwritable += 1
                 case .some(.stable): break
                 }
@@ -318,9 +322,9 @@ final class MCPSelectorDurabilityTests: XCTestCase {
             totalIndexed += indexed
             totalUnwritable += unwritable
             totalAll += snapshot.elements.count
-            print(String(format: "  %-30s elements=%3d indexed=%3d unwritable=%2d",
+            print(String(format: "  %-30s elements=%3d indexed=%3d relative=%3d unwritable=%2d",
                          (name as NSString).utf8String!, snapshot.elements.count,
-                         indexed, unwritable))
+                         indexed, relative, unwritable))
         }
         print("TOTAL elements=\(totalAll) indexed=\(totalIndexed)"
             + " (\(totalIndexed * 100 / max(1, totalAll))%) unwritable=\(totalUnwritable)")

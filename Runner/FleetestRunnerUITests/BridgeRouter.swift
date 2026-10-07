@@ -266,16 +266,17 @@ final class BridgeRouter {
     /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
     /// captureOnce の snapshot ツリーは `hasKeyboardFocus` を持たない(値は KVC 専用の
     /// ライブクエリでしか読めない)ため、**要素ごとに追加クエリを撃つのではなく**
-    /// フォーカス要素だけ1回引いて frame 一致で突き合わせる(handleClear と同じ経路)。
-    /// 見つからなければ全要素 focused なしのまま返す
+    /// フォーカス要素だけ1回引いて突き合わせる(規則は `FocusedElementMatch`)。
+    /// 見つからなければ全要素 focused なしのまま返す。`snapshot()` 1回で identifier と frame を同時に読む
+    /// (exists → frame の2回の問い合わせの間に焦点が消えると frame の読みが XCUI の失敗になる)
     private func withFocusedFlag(_ elements: [ElementInfo], app: XCUIApplication) -> [ElementInfo] {
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
-        guard focused.exists else { return elements }
-        let frame = focused.frame
-        let focusedFrame = FTRect(x: frame.origin.x, y: frame.origin.y,
-                                  width: frame.width, height: frame.height)
-        guard let index = elements.firstIndex(where: { $0.frame == focusedFrame }) else { return elements }
+        guard let snap = try? focused.snapshot() else { return elements }
+        let focusedFrame = FTRect(x: snap.frame.origin.x, y: snap.frame.origin.y,
+                                  width: snap.frame.width, height: snap.frame.height)
+        guard let index = FocusedElementMatch.index(identifier: snap.identifier, frame: focusedFrame,
+                                                    in: elements) else { return elements }
         var out = elements
         out[index].focused = true
         return out
@@ -662,9 +663,10 @@ final class BridgeRouter {
     /// 実ソフトキー tap はできない)。
     ///
     /// hybrid(ios-inapp)では in-app 側が合成タッチでタップ・入力してフォーカスを立てているため、
-    /// app 全体への typeText("\n") はフォーカス中の入力欄に届かないことがある。キーボード
-    /// フォーカスを持つ要素を探し、そこへ typeText する。
-    /// **見つからなければ 422 で断る**(/type・/clear の `requireKeyboardFocus` と同じ)—— 焦点が無いまま
+    /// 焦点の有無を確かめてから **app 全体へ** typeText する(/type の末尾改行と同じ形)。
+    /// 焦点の要素へ向けた typeText は、確かめた後に焦点が動く・背面化すると要素スコープの XCUI 呼び出しが
+    /// 失敗してランナーを落とし得る(確かめてから撃つまでの窓)。キーボードの入力先は最前のレスポンダなので app で届く。
+    /// **焦点が無ければ 422 で断る**(/type・/clear の `requireKeyboardFocus` と同じ)—— 焦点が無いまま
     /// `app.typeText` を撃つと XCTest が "Neither element nor any descendant has keyboard focus" で失敗し、
     /// ランナーごと落ちるか(Tear Down)、continueAfterFailure で 200 = 何も起きていないのに成功を返す。
     /// in-app は 409・Android は no-input-focus で同じ状況を断る(409 は requireApp() 専用なので 422)
@@ -676,7 +678,7 @@ final class BridgeRouter {
             throw BridgeError(422, "nothing has keyboard focus, so Enter has nowhere to go."
                 + " Tap the input field first (or type into it), then press Enter")
         }
-        focused.typeText("\n")
+        app.typeText("\n")
         return .json(OKResponse())
     }
 
@@ -1329,8 +1331,9 @@ final class BridgeRouter {
         return app
     }
 
+    /// 落ちたアプリは 422(別のアプリが前面)でなく requireLiveApp の 503(起動していない)で名指しする
     private func requireForegroundApp() throws -> XCUIApplication {
-        let app = try requireApp()
+        let app = try requireLiveApp()
         guard app.state == .runningForeground else {
             throw BridgeError(422, "the session's app (\(sessionBundleID ?? "?")) is not in the"
                 + " foreground — another app is. Reading the tree in this state hangs XCUITest and"
