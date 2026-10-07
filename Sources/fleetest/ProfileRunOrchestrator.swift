@@ -147,7 +147,8 @@ enum ProfileRunOrchestrator {
             },
             progressHistoryRuns: progressHistoryRuns,
             clearResidualSystemAlert: { worker in
-                await ProfileWorkerFactory.clearResidualSystemAlert(
+                await ProfileWorkerFactory.keepSoftwareKeyboardShown(worker: worker)
+                return await ProfileWorkerFactory.clearResidualSystemAlert(
                     worker: worker, profile: (resolved, repoRoot))
             },
             cleanupRetiredWorker: { retired in

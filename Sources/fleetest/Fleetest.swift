@@ -1407,7 +1407,8 @@ struct RunScenarios: AsyncParsableCommand {
                                            progressHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
                                            // デバイス定義が無くブリッジを作り直せない = 残ったアラートは警告だけ
                                            clearResidualSystemAlert: { worker in
-                                               await ProfileWorkerFactory.clearResidualSystemAlert(
+                                               await ProfileWorkerFactory.keepSoftwareKeyboardShown(worker: worker)
+                                               return await ProfileWorkerFactory.clearResidualSystemAlert(
                                                    worker: worker, profile: nil)
                                            },
                                            appBundleIDs: Self.appBundleIDs(appID),

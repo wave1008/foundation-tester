@@ -16,17 +16,6 @@
   - 要る材料: 実例の木。ステータスバーの高さは木に載らない(画面の枠だけ)ので、定数で帯を決めると機種で黙って誤る。
     ブリッジが安全領域(safeAreaInsets / WindowInsets)を申告する形なら根拠のある判定になる
 
-## 直したがデバイスでの確認待ち
-
-- **E2EX-CMP の XCUITest で「入力の種類ごとに入力できること」の2本が赤**(2026-10-08 に初めて XCUITest で回して判明・
-  e4c22f89 でも同じ = 既存)
-  - S0040(`#field_bottom` へ 0 文字): 欄は容器の下端で見切れ、木の枠(827..873)より描かれている範囲が狭い(絵は上の縁だけ)。
-    XCUITest は中心を撃つので焦点が立たなかった → iOS の DSL は見切れた対象を撃つ前に送る(`TapTargetGeometry.bottomEdgeClipLift`)
-  - S0030(候補 `#auto_opt_japan` が押せない): CMP の iOS は候補をキーボードを避けずに欄の下へ出し、キーボードの裏に入る。
-    送ると候補は閉じる(M1Ultra で実測)→ SUT の欄の並びで `#field_auto` を先頭に置いた(InputsScreen.kt)
-  - 確かめ方: アライン後に M1Ultra で `fleetest run --project E2EX-CMP --profile ios-xcuitest --scenario 入力の種類ごとに入力できること`
-    (SUT の作り直しを伴う)。in-app・Android も同じシナリオを1回ずつ
-
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 
 - `activateSnapshotNode` の古い木: 撃つ前に `isReachable` で照合するが、UIView まで辿れないノードは許可する

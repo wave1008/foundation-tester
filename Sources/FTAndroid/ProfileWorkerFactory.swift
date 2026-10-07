@@ -206,6 +206,23 @@ public enum ProfileWorkerFactory {
         }
     }
 
+    /// **各シナリオの前に、ソフトキーボードを縮めない設定を書き直す**(iOS の Simulator だけ)。run の開始時の書き込み
+    /// (`buildIOSWorkers`)だけでは足りない —— XCUITest が Return を撃つと iOS がハードウェアキーボードありと見なして
+    /// `AutomaticMinimizationEnabled` を true に戻し、以後のシナリオでソフトキーボードが出なくなる(実測: RN の入力画面で
+    /// XCUITest の pressEnter / 改行で終わる type の直後に 0 → 1。in-app の Enter・文字の打鍵では戻らない)。前のシナリオの
+    /// 打鍵で次のシナリオの画面の配置が変わり、台によって結果が割れた。simctl を1回撃つだけ(専用スレッドで待つ)
+    public static func keepSoftwareKeyboardShown(worker: RunWorker) async {
+        guard worker.platform == "ios", !worker.connection.physical, let udid = worker.connection.udid else { return }
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            let thread = Thread {
+                IOSSoftwareKeyboard.apply(udid: udid) { _ in }
+                done.resume()
+            }
+            thread.name = "fleetest-keep-software-keyboard"
+            thread.start()
+        }
+    }
+
     /// 各シナリオの前に、画面に残ったシステムアラートを消す(どう消すかは FTCore.ResidualSystemAlertClearing の
     /// 3段)。`profile` が nil の経路(プロファイルの無い run)はブリッジを作り直せないので、押せるボタンが
     /// 無ければ警告だけ。戻り値はそのシナリオのログへ出す1行(nil = 残っていない・判定できない)
