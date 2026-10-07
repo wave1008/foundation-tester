@@ -53,12 +53,12 @@ extension BridgeRouter {
             }
             lastContributingOverlayWindows = contributing
         }
-        // **画面全体の枠に化けた Toolbar を出さない**: キーボードを閉じた後に残る入力用のバー(WebView の前後・完了)は
-        // 枠が画面全体(実測 0,0 402x874)に化けて木に残り、ホストの覆いの判定が「すべての要素が #Toolbar に覆われている」と
-        // 読んで撃つ前の送りが空振りし、タップも吸われた(E2EX-RN の sticky・date、SwiftUI の pinch)。アプリの本物の
-        // ツールバーは帯なので、画面全体の枠にはならない
+        // **画面全体の枠の Toolbar(浮いたバーの入れ物)を出さない**: iOS 26 以降の `_UIFloatingBarContainerView` は型 toolbar・
+        // 枠が画面全体(実測 0,0 402x874)で、中のボタンとは別に手前に載る。ホストの覆いの判定が「すべての要素が #Toolbar に
+        // 覆われている」と読んで撃つ前の送りが空振りし、タップも吸われた(E2EX-RN の sticky・date、SwiftUI の pinch)。
+        // 帯の形の本物のツールバーは画面全体の枠にならない。型名はここでは小文字(typeName の後で正規化済み)
         gathered.removeAll { item in
-            item.info.type == "Toolbar" && !screen.isEmpty
+            ElementInfo.normalizedType(item.info.type) == "toolbar" && !screen.isEmpty
                 && abs(item.frame.width - screen.width) <= 1 && abs(item.frame.height - screen.height) <= 1
         }
 
