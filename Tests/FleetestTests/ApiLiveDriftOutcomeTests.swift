@@ -43,6 +43,15 @@ final class ApiLiveDriftOutcomeTests: XCTestCase {
         XCTAssertFalse(message.contains("ft_"), "MCP 向けの文言(ft_* ツール名)を人間向けに出さない: \(message)")
     }
 
+    /// 解決し直して別ポートへ移った回は「開き直せ」と言わない(実際には移っていて、撃ち直せば届く)
+    func testReroutedMessageNamesTheNewPortAndDoesNotAskToReopen() {
+        let message = ApiLiveServe.reroutedMessage(fromPort: 8127, toPort: 8135, expectedUDID: "SIM-1")
+        XCTAssertTrue(message.contains("port 8127"), message)
+        XCTAssertTrue(message.contains("port 8135"), message)
+        XCTAssertTrue(message.contains("SIM-1"), message)
+        XCTAssertFalse(message.contains("Reopen"), message)
+    }
+
     /// 毎コマンド同じ材料を渡せば同じ判定になること(黙って片方のデバイスに固定されない ——
     /// run() は driver/port/primaryEngine を書き換えずに次のコマンドへ進む)
     func testSameDriftAlwaysProducesTheSameOutcome() {

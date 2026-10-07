@@ -3894,3 +3894,64 @@ OK)を押す ②権限のダイアログは拒否側を押して、権限が拒�
 - 実機は起こし直せない・プロファイルの無い run はブリッジを作り直せないので警告だけ
 
 **`iosAlertHandler` が XCUITest エンジンで発火しなかった原因は未調査**(in-app のフル E2E では同じシナリオが緑)。
+
+## 73. 10/7 の3時間負荷テスト(2026-10-07 04:01〜07:02)
+
+手元の Simulator 8 台・Emulator 6 台 + ファズ用(sim-08〜10・Emulator 2 台)+ 実機 3 台(SE3・Pixel 4a・Pixel 3a)+
+**リモート 3 機(M1Ultra / M1Max / M1mini。途中でアラインして合流 = `--runner` の各機とファンアウト)**。
+フリート run 29 周・リモート run 11 本・api run 45・MCP 43,973 回・ライブ操作 13,003 命令・CLI 3,545 回・障害注入 11 回。
+fleetest 系のクラッシュ 0・手元で run が同時に2本走った瞬間 0(3 秒おきの監視)。
+
+### 73.1 ライブ操作が自動起動を待つ間、本人確認を飛ばして別のデバイスを操作した
+- **観測**: sim-09・sim-10 の serve と run の in-app(sim-01)が同じ空きポート 8131 を取り合い、sim-10 宛のタップ6回が
+  run 中の sim-01 へ、その後 sim-10 宛の操作が **少なくとも 50 分 sim-09 のランナーへ ok:true で**届き続けた(sim-09 の serve も同じ
+  ランナーを叩くので `Error getting main window` が多発)。run の sim-01 のレーンも 8131 を奪われ `kAXErrorAPIDisabled`
+  (XCUITest の応答)で赤
+- **原因**: 自分のブリッジが無いときの空きポートは**予約ではない**のに、placeholder の期待エンジンが nil で、
+  毎コマンドの本人確認(`HybridFallbackIdentity.drifted`)がまるごと飛んでいた
+- **直し**: 期待エンジンを `"xcuitest"` にする/別のデバイスと判明して断ったら `makeLiveDriver` で解決し直し、自分の
+  ブリッジへ乗り換えるか別の空きポートへ自動起動を回す(観測は差し替え後のドライバで撃つ。文言は「ポート N へ切り替えた・
+  撃ち直せ」= `reroutedMessage`)。`LivePlaceholderIdentityScanTests`。陽性対照: serve が選んだポートへ別の udid を名乗る
+  偽ブリッジを後から立て、タップは届かず(偽ブリッジが受けたのは `GET /status` だけ)8135 へ移って自動起動した
+
+### 73.2 ライブ操作の自動起動が Simulator で `ownerUDID: nil` = 別の Simulator のランナー/in-app を止める
+`LiveBridgeAutoStarter.launchBridge` だけが `PortHolder.stopIfOwnedBridge(ownerUDID: physical ? udid : nil)` で、nil だと
+そのポートで待ち受ける**別の Simulator のランナーアプリを kill し、in-app(run の SUT)を terminate する**(元は iproxy 分岐しか
+無かった頃の nil のまま、後から足された in-app・xcodebuild 分岐が ownerUDID に依存した = 判定に引数が増えた日の渡し忘れ)。
+**走査テスト(`testEveryStopIfOwnedBridgeCallPassesOwnerUDIDExplicitly`)はラベル `ownerUDID:` の有無しか見ておらず素通り**
+だった。udid を常に渡す・既定値 nil を外す・走査で引数の `nil` を禁止。
+
+### 73.3 MCP サーバが読めない行を黙って捨てていた
+`{"x": NaN}` のような不正な JSON の行に何も返さず、クライアントは応答を永久に待った(ファズで4ターゲットとも 420 秒)。
+JSON-RPC 2.0 どおり -32700(読めない)/ -32600(オブジェクトでない)を `id: null` で返す(空行は無視)。
+ライブ操作の serve は契約で「stderr に記録して無視」と決めているので対象外。
+
+### 73.4 ディスパッチロックの他人のロックの解放が「読む → 判定 → 無条件 rm -rf」
+自動回収・`remote unlock` は、判定の後に持ち主が入れ替わると新しい持ち主のロックを消す。`releaseIfUnchangedCommand` で
+読んだ控えと同じときだけ消す(1つのシェルの中で比べて消す)。無条件の `releaseCommand` は自分が取ったロックだけ
+(呼び手を `RemoteDispatchLockReleaseIfUnchangedTests` が等号で固定)。**再現はしていない** —— 手元の自動回収は待機列の先頭
+だけが撃つので待機者どうしでは通常競合せず、窓が開くのは unlock / 拡張の掃除との重なりと、先頭が 30 秒以上止まって
+チケットが失効した後の再開のときだけ。
+
+### 73.5 録画のクリップ切り出しが二乗だった
+`VideoRecordingFinalizer.extractClip` が `AVAssetReader.timeRange` を設定せず、クリップごとにソースの先頭から全フレームを復号して
+区間前を捨てていた。1台で 56 本を回す M1mini で 1 本目 1 秒 → 終盤 40 秒/本・シナリオ終了後の切り出しだけで 15 分前後。
+`timeRange` を区間にすると、区間頭を覆うフレームが PTS = 区間開始で1枚目に来る(静止区間でもその1枚)= 従来の付け替えと
+同じ結果(元録画 13 分で確認: 300 秒地点 12.4s → 0.56s・静止区間 34s → 0.03s)。`VideoClipTimeRangeScanTests`。
+
+### 73.6 リモートのロック待ちで、待つ理由を言っていなかった
+自分の死んだディスパッチのロックを「向こうの run がまだ動いている」ので外さないとき、`--wait-lock` では理由が一度も出ず、
+待機行は死んだ手元の pid を持ち主として示すだけだった。最初の1回だけ理由をログに出す。
+
+### 73.7 記録だけの観察(直していない)
+- 障害注入の `kill -9` が M1mini へのリモート run の手元の親に当たり、向こうの run は ppid 1 で切り出し(73.5)を続けて
+  終わった。次のファンアウトは run の終わりを待ってからロックを回収して走った(設計どおり)
+- testmanagerd(Simulator 内)が SIGTERM の猶予切れで SIGKILL された(os_trace の diagnosticd パイプ待ち = Apple 側)
+- 手元の赤はファズと共有の端末(emulator-5562/5564・sim-08)・CMP iOS の白紙描画(OCR 段)・GPU 負荷下の Vision の
+  特徴量の異常と既知の型。FM はこの機械で死んでいた(SensitiveContentAnalysisML error 15)
+- `--set defaultTimeout=1e308` は受理される(有限)。待ちの `Int(秒 * 1000)` でトラップする経路を疑い M1Max で1本回したが
+  緑(再現せず)
+- **ハーネス側の誤り**(ツールの不具合ではない): 監視パイプ末尾の `cut` がバッファして通知が届かなかった・`--runner` に
+  `--skip-build` を付けた・CLI ファズの `api run` に `--scenario` が無かった
+- **スコープ外で直したもの**: HEAD の `TemporaryDirectoryScanTests` が赤だった(144bb1cd の SandboxBroker.swift は親でしか動かず、
+  親だけの一時領域を使うのが意図)。免除表へ理由つきで足した

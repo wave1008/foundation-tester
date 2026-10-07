@@ -147,7 +147,9 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   (`provision` / `XCUIBridgeResolver` / `LiveBridgeAutoStarter` / **`ApiLiveCommand`**(要求されたデバイスの
   ブリッジがどこにも無いとき空きポートを充てる)の4経路。`ProvisionLockStartupPathsSyncTests` が
   集合を固定する。**ライブ操作の1件は「選ぶだけで起動しない」= 予約ではない**ので、
-  起動までに埋まったら `LiveBridgeAutoStarter` が占有者を名指しして諦める)。拡張の孤児掃除(`orphanSweep.ts`)は配信
+  起動までに埋まったら `LiveBridgeAutoStarter` が占有者を名指しして諦め、**自動起動を待つ間も毎コマンドの
+  本人確認を撃ち**(placeholder の期待エンジンを nil にしない)、別のデバイスが答えたら解決し直して別の空きポートへ移る
+  (`LivePlaceholderIdentityScanTests` → maintainer-notes §73.1))。拡張の孤児掃除(`orphanSweep.ts`)は配信
   (`api device-stream`・`fleetest-*stream` / `devicepoll`)も対象。**殺すのは PPID=1 かつ環境に
   `FT_PARENT_PID` を持つもの(= 拡張 / fleetest が起こしたもの)だけ** —— 手で `nohup` した同名の
   プロセスはコマンド文字列では区別できないので、所有の印で絞る(Codex 指摘 2026-09-05)

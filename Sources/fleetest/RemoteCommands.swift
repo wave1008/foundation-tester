@@ -309,6 +309,10 @@ struct RemoteCommand: AsyncParsableCommand {
         /// 手元のロック。**リモートと同じ綴りのコマンドを ssh ではなく `/bin/sh -c` で撃つ**
         /// (`LocalDispatchLock` と同じ規律 —— 取得・解放・読み取りの定義元を増やさない)。
         /// 文言はすべて手元の話として言う(`remote unlock` の "remote host" を流用しない)
+        /// 判定の後に持ち主が入れ替わっていた(`releaseIfUnchangedCommand` が changed)ときの理由
+        static let lockChangedReason = "the lock changed hands while it was being checked"
+            + " (another run took it, or it was released) — run unlock again to look at the new holder"
+
         static func unlockThisMachine(force: Bool) throws {
             let home = NSHomeDirectory()
             ConsoleOut.out("this Mac → \(RemoteDispatchLock.lockDirPath(home: home))")
@@ -329,10 +333,15 @@ struct RemoteCommand: AsyncParsableCommand {
             case .refuse(let reason):
                 throw UnlockRefused(reason: reason)
             case .release(let reason):
-                let release = try localShell(RemoteDispatchLock.releaseCommand(home: home))
+                // 読んだ控えと同じときだけ消す(判定の後に持ち主が入れ替わったら、新しい持ち主のロックに触らない)
+                let release = try localShell(RemoteDispatchLock.releaseIfUnchangedCommand(
+                    home: home, observedInfo: RemoteDispatchLock.probeInfoText(probeResult.output) ?? ""))
                 guard release.status == 0 else {
                     throw LocalDispatchLockError(message: "failed to remove the dispatch lock on this Mac"
                         + " (status \(release.status))\n\(release.tail)")
+                }
+                guard RemoteDispatchLock.releasedIfUnchanged(release.output) else {
+                    throw UnlockRefused(reason: Self.lockChangedReason)
                 }
                 ConsoleOut.out("→ released the dispatch lock on this Mac (\(reason))")
             }
@@ -380,10 +389,15 @@ struct RemoteCommand: AsyncParsableCommand {
             case .refuse(let reason):
                 throw UnlockRefused(reason: reason)
             case .release(let reason):
-                let release = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(home: layout.home)])
+                // 読んだ控えと同じときだけ消す(probe・生死の確認・消去が別の往復 = 間に持ち主が入れ替わり得る)
+                let release = try Shell.run(remoteSSHBase + [target, RemoteDispatchLock.releaseIfUnchangedCommand(
+                    home: layout.home, observedInfo: RemoteDispatchLock.probeInfoText(probeResult.output) ?? "")])
                 guard release.status == 0 else {
                     throw RemoteDispatchError.remoteSetupFailed(
                         "failed to remove the lock (status \(release.status))\n\(release.tail)")
+                }
+                guard RemoteDispatchLock.releasedIfUnchanged(release.output) else {
+                    throw UnlockRefused(reason: Unlock.lockChangedReason)
                 }
                 ConsoleOut.out("→ released the dispatch lock on \(target) (\(reason))")
             }
@@ -437,8 +451,12 @@ struct RemoteCommand: AsyncParsableCommand {
                         continue
                     }
                     let release = try Shell.run(
-                        remoteSSHBase + [target, RemoteDispatchLock.releaseCommand(home: layout.home)])
-                    if release.status == 0 {
+                        remoteSSHBase + [target, RemoteDispatchLock.releaseIfUnchangedCommand(
+                            home: layout.home,
+                            observedInfo: RemoteDispatchLock.probeInfoText(probeResult.output) ?? "")])
+                    if release.status == 0, !RemoteDispatchLock.releasedIfUnchanged(release.output) {
+                        log("[monitor] kept the dispatch lock on \(machine): it changed hands while it was being checked")
+                    } else if release.status == 0 {
                         log("[monitor] released a stale dispatch lock on \(machine) (\(reason))")
                     } else {
                         log("[monitor] could not release the stale dispatch lock on \(machine)"

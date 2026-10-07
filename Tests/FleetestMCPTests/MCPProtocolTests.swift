@@ -40,6 +40,17 @@ final class MCPProtocolTests: XCTestCase {
         XCTAssertNil(MCPServer.parseMessage("42"))
     }
 
+    /// 読めない行にも答えること(黙って捨てるとクライアントが応答を永久に待つ)。空行だけは答えない
+    func testUnreadableLinesGetAJSONRPCError() {
+        XCTAssertNil(MCPServer.unreadableLineError(""))
+        XCTAssertNil(MCPServer.unreadableLineError("   "))
+        XCTAssertEqual(MCPServer.unreadableLineError("{\"x\": NaN}")?["code"] as? Int, -32700)
+        XCTAssertEqual(MCPServer.unreadableLineError("これは JSON ではない")?["code"] as? Int, -32700)
+        XCTAssertEqual(MCPServer.unreadableLineError("{\"unclosed\": ")?["code"] as? Int, -32700)
+        XCTAssertEqual(MCPServer.unreadableLineError("[1,2,3]")?["code"] as? Int, -32600)
+        XCTAssertEqual(MCPServer.unreadableLineError("42")?["code"] as? Int, -32600)
+    }
+
     func testParseMessageAcceptsObject() throws {
         let parsed = try XCTUnwrap(MCPServer.parseMessage(#"{"method":"ping","id":1}"#))
         XCTAssertEqual(parsed["method"] as? String, "ping")

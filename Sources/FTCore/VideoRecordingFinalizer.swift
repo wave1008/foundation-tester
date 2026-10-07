@@ -69,6 +69,11 @@ enum VideoRecordingFinalizer {
         ])
         guard reader.canAdd(readerOutput) else { return false }
         reader.add(readerOutput)
+        // 区間だけを読む。無いと毎回ソースの先頭から全フレームを復号して区間前を捨てるので、クリップ数 × 録画長の
+        // 二乗になる(実測: 1台で56本の run = 元録画 13 分で、終盤は1本 40 秒・切り出しだけで 15 分前後)。
+        // 区間頭を覆うフレームは PTS を区間開始に揃えて1枚目に来る(静止区間でもその1枚)= 下の
+        // pendingBeforeClip の付け替えと同じ結果(実録画で確認: 300 秒地点 12.4s → 0.56s・静止区間 34s → 0.03s)
+        reader.timeRange = CMTimeRange(start: clipStart, end: clipEnd)
         let outputSettings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: scaledEven(naturalSize.width),

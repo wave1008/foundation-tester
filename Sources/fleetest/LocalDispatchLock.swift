@@ -270,8 +270,12 @@ final class LocalDispatchLock {
             startTime: pidStartTime) else {
             return false
         }
+        // 読んだ控えと同じときだけ消す(待機者が2人以上いると、先に回収した側が取り直した新しいロックを
+        // 後の側が消して run が2本走る = RemoteDispatchLock.releaseIfUnchangedCommand)
+        guard let released = try? shell(RemoteDispatchLock.releaseIfUnchangedCommand(
+                home: home, observedInfo: existing)),
+              RemoteDispatchLock.releasedIfUnchanged(released.output) else { return false }
         log("==> auto-releasing a stale dispatch lock on this Mac left by a dead run of ours (\(reason))")
-        _ = try? shell(RemoteDispatchLock.releaseCommand(home: home))
         return true
     }
 

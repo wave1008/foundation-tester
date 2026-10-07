@@ -21,6 +21,8 @@ final class TemporaryDirectoryScanTests: XCTestCase {
         "TemporaryDirectory.swift": "the definition itself",
         "ScenarioHost.swift": "the parent that launches the runner",
         "ScenarioHost+Sandbox.swift": "the parent's broker socket",
+        // 子の TMPDIR ではなく親だけの一時領域へ書くのが目的(子に書き換えさせない = 144bb1cd)
+        "SandboxBroker.swift": "the parent's broker (parent-only output files)",
         "ProfileWorkerFactory.swift": "device provisioning in the parent",
         "CmdlineToolsInstaller.swift": "fleetest setup",
     ]

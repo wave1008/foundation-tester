@@ -256,9 +256,12 @@ actor LiveBridgeAutoStarter {
             switch PortHolder.stopIfOwnedBridge(
                 port: port, stateDir: stateDir,
                 derivedDataPath: stateDir.appendingPathComponent("DerivedData"),
-                // 実機の自分の iproxy(台帳 .device が同じ UDID)だけを残骸として止める。
-                // 別の実機のトンネルは .foreign(下)で名指しして諦める
-                ownerUDID: physical ? udid : nil) {
+                // シミュレータでも必ず udid を渡す: nil だと、このポートで待ち受けている**別のシミュレータの**
+                // ランナーアプリを kill し、別のシミュレータの in-app(run の SUT)を terminate する
+                // (負荷テストで実測: sim-10 の自動起動が sim-01 の in-app と sim-09/-10 のランナーを止めた)。
+                // 実機は自分の iproxy(台帳 .device が同じ UDID)だけを残骸として止め、別の実機のトンネルは
+                // .foreign(下)で名指しして諦める
+                ownerUDID: udid) {
             case .stopped:
                 break
             case .notFound:

@@ -552,6 +552,7 @@ struct RemoteRunDispatcher {
             _ = try sshCapture(RemoteDispatchLock.forceAcquireCommand(home: layout.home, info: info))
             return
         }
+        var announcedKeptLock = false
         var elapsed = 0
         while true {
             let result = try Shell.run(sshBase + [host.sshTarget,
@@ -599,6 +600,13 @@ struct RemoteRunDispatcher {
                             "the dispatch lock on \(host.sshTarget) belongs to an earlier dispatch of yours"
                             + " from this Mac that is no longer running here, so it was not released:"
                             + " \(reason)")
+                    }
+                    // 待つ理由を1回だけ言う。待機行は控えの持ち主(= もう居ない手元の pid)しか名指さないので、
+                    // 言わないと「死んだ pid を待ち続けている」ようにしか読めない
+                    if !announcedKeptLock {
+                        announcedKeptLock = true
+                        log("==> the dispatch lock on \(host.sshTarget) was left by an earlier dispatch of yours"
+                            + " whose run is still going there — waiting for it to end: \(reason)")
                     }
                 case .notOurs:
                     break
@@ -678,9 +686,14 @@ struct RemoteRunDispatcher {
         switch RemoteDispatchUnlock.guardingLiveRemoteRun(
             sweep, livePIDs: liveDispatchedRunPIDs(layout: layout)) {
         case .release(let reason):
+            // 読んだ控えと同じときだけ消す(RemoteDispatchLock.releaseIfUnchangedCommand)。入れ替わっていれば
+            // 新しい持ち主のロックなので触らず、取得の待ちへ戻す
+            guard let existing,
+                  let released = try? sshCapture(RemoteDispatchLock.releaseIfUnchangedCommand(
+                      home: layout.home, observedInfo: existing)),
+                  RemoteDispatchLock.releasedIfUnchanged(released) else { return .notOurs }
             log("==> auto-releasing a stale dispatch lock on \(host.sshTarget) left by a dead process"
                 + " of ours (\(reason))")
-            _ = try? sshCapture(RemoteDispatchLock.releaseCommand(home: layout.home))
             return .released
         case .refuse(let reason):
             return .keptBecauseRunIsAlive(reason)

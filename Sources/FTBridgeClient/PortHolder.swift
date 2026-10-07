@@ -181,8 +181,9 @@ public enum PortHolder {
     /// - このポート専用の xctestrun を引数に持つ xcodebuild(残骸ランナー)。SIGTERM→SIGKILL
     /// - 実機の USB トンネル(iproxy)。**ownerUDID と台帳の UDID が一致するときだけ**(classifyIproxy)
     /// それ以外(.foreign)は kill しない。
-    /// - ownerUDID: 呼び手が「今回このポートに供給しようとしているデバイス」の UDID を分かって
-    ///   いれば渡す。既定 nil = iproxy 分岐は常に .foreign(確認できない資産は殺さない安全側)。
+    /// - ownerUDID: 呼び手が「今回このポートに供給しようとしているデバイス」の UDID。**既定値を置かない** ——
+    ///   nil は iproxy 分岐でだけ安全側(.foreign)で、シミュレータ内アプリ分岐・xcodebuild 分岐では
+    ///   別デバイスと読めずに**別のデバイスの生きたランナー/in-app を止める**側へ倒れる。
     ///   xcodebuild 分岐・in-app 分岐とも**肯定的に別デバイスと読めた回だけ** .foreign へ倒す
     ///   (RunnerDestination / foreignInAppHolder。xctestrun のファイル名や .inapp の記録はポート
     ///   しか持たないので、同じポートに居る別デバイスの生きたランナー/ブリッジを残骸として
@@ -190,7 +191,7 @@ public enum PortHolder {
     ///   生きた in-app ブリッジを「残留」として kill した)
     public static func stopIfOwnedBridge(port: UInt16, stateDir: URL,
                                          derivedDataPath: URL,
-                                         ownerUDID: String? = nil) -> PortHolderOutcome {
+                                         ownerUDID: String?) -> PortHolderOutcome {
         guard let (pid, command) = lookup(port: port) else { return .notFound }
         let description = "pid \(pid): \(command)"
 

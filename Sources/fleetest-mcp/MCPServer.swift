@@ -150,7 +150,15 @@ final class MCPServer {
         }
         while let line = readLine(strippingNewline: true) {
             // **壊れた行でループを抜けない**: 1行の不正でサーバが死ぬとセッションごと落ちる
-            guard let message = Self.parseMessage(line) else { continue }
+            guard let message = Self.parseMessage(line) else {
+                // 読めない行にも答える(JSON-RPC 2.0 の Parse error / Invalid Request を id: null で)。
+                // 黙って捨てると、その行が要求だった場合クライアントは応答を永久に待つ
+                // (負荷テストで実測: NaN を含む ft_tap の行で 420 秒無応答)
+                if let error = Self.unreadableLineError(line) {
+                    reply(id: nil, error: error)
+                }
+                continue
+            }
             await handle(message)
         }
         // stdin EOF = セッションの終わり。デバイスの印を残すと、使っていないデバイスを run が避け続ける
@@ -163,6 +171,17 @@ final class MCPServer {
     static func parseMessage(_ line: String) -> [String: Any]? {
         guard !line.isEmpty, let data = line.data(using: .utf8) else { return nil }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    /// `parseMessage` が読めなかった行への JSON-RPC のエラー。空行(空白だけを含む)は nil = 答えない。
+    /// JSON として読めないなら -32700、読めるがオブジェクトでない(配列・数値)なら -32600
+    static func unreadableLineError(_ line: String) -> [String: Any]? {
+        guard !line.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        if let data = line.data(using: .utf8),
+           (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil {
+            return ["code": -32600, "message": "invalid request: a message must be a JSON object"]
+        }
+        return ["code": -32700, "message": "parse error: the line is not valid JSON"]
     }
 
     func handle(_ message: [String: Any]) async {

@@ -239,7 +239,7 @@ final class AssignPortTests: XCTestCase {
         // lsof が見つけられなければ .notFound
         let outcome = PortHolder.stopIfOwnedBridge(
             port: try TestPorts.withNoListener(), stateDir: repoRoot.appendingPathComponent(".fleetest"),
-            derivedDataPath: repoRoot.appendingPathComponent(".fleetest/DerivedData"))
+            derivedDataPath: repoRoot.appendingPathComponent(".fleetest/DerivedData"), ownerUDID: nil)
         guard case .notFound = outcome else {
             return XCTFail(".notFound を期待: \(outcome)")
         }

@@ -213,6 +213,15 @@ final class SharedResourceOwnershipParityTests: XCTestCase {
                     対象デバイスを分かっているなら明示すること(bridge-provision.md \
                     「ownerUDID: を必ず渡す」)。
                     """)
+                // **ラベルがあるだけでは足りない**: `ownerUDID: physical ? udid : nil` が素通りして、
+                // シミュレータでは nil = 別のシミュレータの生きたランナー/in-app を止めていた(負荷テストで実測)
+                if let label = args.range(of: "ownerUDID:") {
+                    let value = args[label.upperBound...]
+                    XCTAssertFalse(value.range(of: #"\bnil\b"#, options: .regularExpression) != nil, """
+                        \(url.lastPathComponent) の PortHolder.stopIfOwnedBridge( が ownerUDID に nil を渡し得る \
+                        (\(value.prefix(80))) — nil だと別のシミュレータの生きたランナー/in-app を止める側へ倒れる
+                        """)
+                }
                 searchStart = range.upperBound
             }
         }

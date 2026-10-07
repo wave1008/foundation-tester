@@ -176,7 +176,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
 
         var (driver, port, ownAppBundleID, primaryEngine) = try await makeLiveDriver()
-        let starter = makeAutoStarter(port: port)
+        // var: 別のデバイスにポートを取られたとき、解決し直した新しいポートの起動器へ差し替える(下の .refuse)
+        var starter = makeAutoStarter(port: port)
         // **本人確認(下)も follower と同じ値を使う**(独立に導出すると判定用と実際の駆動用が
         // 食い違う恐れがある。実機かは udid の形から決まるので一度だけ解決する)
         let physical = udid.flatMap { SimulatorCatalog.isPhysical(udid: $0) } ?? false
@@ -297,11 +298,24 @@ struct ApiLiveServe: AsyncParsableCommand {
                     }
                 case .refuse(let message):
                     // **同じポートで作り直さない**: 別の実体が答えている形なので、起動し直すと乗り換えた
-                    // まま気付かず操作を撃ち続ける。このコマンドは撃たず、driver/port/primaryEngine を
-                    // 変えないので次のコマンドでも同じ判定・同じ拒否を繰り返す(黙って固定されない)
-                    logStderr(message)
+                    // まま気付かず操作を撃ち続ける。このコマンドは撃たない。
+                    // 代わりに**起動時と同じ解決(makeLiveDriver)をやり直す** —— このデバイスのブリッジが
+                    // 別ポートに居れば乗り換え、無ければ新しい空きポートへ自動起動を回す。空きポートの採番は
+                    // 予約ではないので、自動起動を待つ間に run・別の serve が同じポートを取ることがある
+                    // (負荷テストで実測: sim-09/-10 の serve と run の in-app が 8131 を取り合い、
+                    // sim-10 の操作が sim-01 → sim-09 へ届き続けた)。同じポートしか返らなければ従来どおり
+                    // 次のコマンドでも同じ判定・同じ拒否を繰り返す(黙って固定されない)。
+                    // 観測(下)は差し替え後のドライバで撃つ —— 前のドライバで撃つと他人の画面を出す
+                    var refusal = message
+                    if let resolved = try? await makeLiveDriver(), resolved.1 != port {
+                        refusal = Self.reroutedMessage(fromPort: port, toPort: resolved.1, expectedUDID: udid)
+                        (driver, port, ownAppBundleID, primaryEngine) = resolved
+                        starter = makeAutoStarter(port: port)
+                        await runnerHealth.reset()
+                    }
+                    logStderr(refusal)
                     let starting = await bridgeStartingFlag(starter)
-                    emitLine(ApiLiveActionResultEvent(ok: false, error: message, app: follower?.sessionTarget,
+                    emitLine(ApiLiveActionResultEvent(ok: false, error: refusal, app: follower?.sessionTarget,
                                                       bridgeStarting: starting))
                     await followFrontmost(follower, driver: driver)
                     await emitObservation(driver: driver, starter: starter, follower: follower, port: port,
@@ -435,7 +449,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         // **採番は `ProvisionLock` の内側で撃つ**(同時に走る供給・自動起動と同じ空きポートを
         // 選ばない = `ProvisionLockStartupPathsSyncTests` が集合を固定する経路の1つ)。
         // **これは予約ではない** —— ここではまだ `.pid` を書けないので、起動までに埋まったら
-        // `LiveBridgeAutoStarter` が占有者を名指しして諦める(ポートを固定で持つため逃がせない)
+        // `LiveBridgeAutoStarter` が占有者を名指しして諦め、毎コマンドの本人確認が別のデバイスを
+        // 見つけたら run() がこの解決をやり直して別の空きポートへ移る
         let provisionLock = try? ProvisionLock(stateDir: repoRoot.appendingPathComponent(".fleetest"))
         await provisionLock?.acquire()
         let picked = XCUIBridgeResolver.freePort(
@@ -446,7 +461,10 @@ struct ApiLiveServe: AsyncParsableCommand {
             throw DriverError.bridgeIdentityMismatch(mismatch)
         }
         let placeholder = BridgeClient(endpoint: BridgeEndpoint.load(port: freePort, repoRoot: repoRoot))
-        return (placeholder, freePort, nil, nil)
+        // 期待エンジンは nil にしない(= 毎コマンドの本人確認を飛ばさない)。予約ではないので、自動起動を
+        // 待つ間にこのポートへ別のデバイスのブリッジが立つと、nil のままでは操作がそのまま届く。
+        // 立つのは LiveBridgeAutoStarter の XCUITest だけなので "xcuitest"。無応答の間は .none で素通し
+        return (placeholder, freePort, nil, "xcuitest")
     }
 
     /// resolve(または乗り換え後の resolve)の結果から実際に使うドライバを組み立てる。
@@ -516,6 +534,12 @@ struct ApiLiveServe: AsyncParsableCommand {
 
     /// **人間向け**(拡張のライブ操作パネルを見ている人が読む。MCP のエージェント向け文言
     /// `MCPServer.differentDeviceRefusal` をそのまま流用しない)
+    /// 断った後に解決し直して別ポートへ移った回の文言(`differentDeviceMessage` の「開き直せ」は事実に反する)
+    static func reroutedMessage(fromPort: UInt16, toPort: UInt16, expectedUDID: String) -> String {
+        "port \(fromPort) now serves a different device than \(expectedUDID) — this command was not sent."
+            + " Switched this session to port \(toPort) for that device; send the command again."
+    }
+
     static func differentDeviceMessage(port: UInt16, expectedUDID: String) -> String {
         "port \(port) now serves a different device than \(expectedUDID) — this command was not sent."
             + " Reopen live control for this device (or repoint --port/--udid) to continue."

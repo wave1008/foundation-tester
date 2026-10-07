@@ -165,9 +165,38 @@ public enum RemoteDispatchLock {
     }
 
     /// 解放。成功・失敗・タイムアウト・例外いずれでも呼ぶのが呼び出し側の契約(defer で保証)。
-    /// 存在しない場合も -f で無害
+    /// 存在しない場合も -f で無害。**自分が取ったロックの解放にだけ使う** —— 他人(死んだ持ち主)の
+    /// ロックを外すのは `releaseIfUnchangedCommand`(呼び手は RemoteDispatchLockReleaseIfUnchangedTests が固定)
     public static func releaseCommand(home: String) -> String {
         "rm -rf \(RemoteShell.quote(lockDirPath(home: home)))"
+    }
+
+    /// **他人(死んだ持ち主)のロックを外すときはこちら**(自動回収・`remote unlock`)。読んだ控え
+    /// (info.json の生テキスト)と今の控えが同じときだけ消す —— 読む・判定する・消すが別の往復なので、
+    /// その間に持ち主が入れ替わる(待機列の次の run が取る)と、無条件の `releaseCommand` は**新しい
+    /// 持ち主のロックを消し、同じ機械で run が2本走る**。比較と消去は1つのシェルの中なので窓は残るが
+    /// 往復の数秒から ms 未満へ縮む。出力は `released`(消した)/ `changed`(入れ替わっていた・無くなっていた)。
+    /// `$(…)` は末尾の改行を落とすので、控えの側も末尾の改行を落としてから比べる
+    public static func releaseIfUnchangedCommand(home: String, observedInfo: String) -> String {
+        var expected = observedInfo
+        while expected.last?.isNewline == true { expected.removeLast() }
+        let dir = RemoteShell.quote(lockDirPath(home: home))
+        let info = RemoteShell.quote(infoFilePath(home: home))
+        return "if [ -d \(dir) ] && [ \"$(cat \(info) 2>/dev/null)\" = \(RemoteShell.quote(expected)) ];"
+            + " then rm -rf \(dir) && echo released; else echo changed; fi"
+    }
+
+    /// `releaseIfUnchangedCommand` の出力が「消した」か(それ以外は消していない側)
+    public static func releasedIfUnchanged(_ output: String) -> Bool {
+        output.trimmingCharacters(in: .whitespacesAndNewlines) == "released"
+    }
+
+    /// `probeCommand` の出力から info.json の生テキスト(`held` のときだけ。`releaseIfUnchangedCommand` へ渡す)
+    public static func probeInfoText(_ output: String) -> String? {
+        var lines = output.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        guard lines.first?.trimmingCharacters(in: .whitespaces) == "held" else { return nil }
+        lines.removeFirst()
+        return lines.joined(separator: "\n")
     }
 
     /// `remote unlock` 用: ロックの有無と中身を1往復で読む。1行目が `absent`(ロック無し)か
