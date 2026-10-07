@@ -37,6 +37,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
     var noCache = false
 
     func validate() throws {
+        try ResultsLimit.validate(limit)
         // flaky は各シナリオの直近 N run しか見ないので、N を超える --min-runs は必ず 0 件になる(黙って効かない)
         guard minRuns <= RunResultsQuery.recentScenarioRunsWindow else {
             throw ValidationError("--min-runs \(minRuns) can never match: flaky looks at each scenario's last"

@@ -959,8 +959,9 @@ extension MCPServer {
         guard let kb = occlusion.frame else { return "" }
         let header = "the soft keyboard covers"
             + " (\(Int(kb.x)),\(Int(kb.y)) \(Int(kb.width))x\(Int(kb.height)))"
+        // **入力欄も数える**(キーボードの下に隠れる代表が入力欄。interactiveTypes はタップの受け手だけで入力欄を含まない)
         let covered = snapshot.elements.filter {
-            RefGuard.interactiveTypes.contains($0.type) && occlusion.covers($0)
+            (RefGuard.interactiveTypes.contains($0.type) || TypeReadback.isTextInput($0)) && occlusion.covers($0)
         }
         guard !covered.isEmpty else {
             if occlusion.windowResizedAboveKeyboard {

@@ -159,10 +159,20 @@ final class MCPGuidanceTests: XCTestCase {
 
     /// 「Could not connect」だけでは何が起きたか分からない。**今どこに何が居るか**と
     /// 復帰手順まで返す(ランナー死の筆頭原因は同一シミュレータの2本目)
+    /// in-app/hybrid のブリッジが消えたときは、XCUITest のランナーと言わず ft_launch で戻すと言う
+    /// (in-app は `bridge up` で起こす物ではなく、アプリの起動で注入される)
+    func testConnectionLostForAnInAppBridgeDoesNotTalkAboutTheXCUITestRunner() {
+        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [], engine: "inapp")
+        XCTAssertFalse(message.contains("XCUITest runner"), message)
+        XCTAssertTrue(message.contains("in-app bridge"), message)
+        XCTAssertTrue(message.contains("ft_launch"), message)
+    }
+
     func testConnectionLostNamesTheCauseAndTheSurvivors() {
         let message = MCPServer.connectionLostMessage(
             connection: "port 8124",
-            running: [BridgeDiscovery.Found(port: 8130, device: "iPhone 17 Pro", engine: "xcuitest")])
+            running: [BridgeDiscovery.Found(port: 8130, device: "iPhone 17 Pro", engine: "xcuitest")],
+            engine: "xcuitest")
         XCTAssertTrue(message.contains("port 8124"), message)
         XCTAssertTrue(message.contains("8130"), message)
         XCTAssertTrue(message.contains("bridge up"), message)
@@ -170,7 +180,7 @@ final class MCPGuidanceTests: XCTestCase {
     }
 
     func testConnectionLostWithNothingRunning() {
-        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [])
+        let message = MCPServer.connectionLostMessage(connection: "port 8123", running: [], engine: "xcuitest")
         XCTAssertTrue(message.contains("no iOS bridge is running now"), message)
     }
 

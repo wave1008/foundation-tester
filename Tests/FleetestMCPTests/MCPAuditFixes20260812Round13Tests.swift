@@ -164,7 +164,7 @@ final class MCPAuditFixes20260812Round13Tests: XCTestCase {
     func testConnectionLostMessageStillNamesASmallRunningSetInFull() {
         let message = MCPServer.connectionLostMessage(
             connection: "port 8124",
-            running: [found(8130, device: "iPhone 17 Pro")])
+            running: [found(8130, device: "iPhone 17 Pro")], engine: "xcuitest")
         XCTAssertTrue(message.contains("port 8124"), message)
         XCTAssertTrue(message.contains("8130"), message)
         XCTAssertFalse(message.contains("more"), message)

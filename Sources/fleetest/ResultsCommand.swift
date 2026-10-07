@@ -62,6 +62,13 @@ private func printResultsJSON<T: Encodable>(_ value: T) throws {
 
 // MARK: - list
 
+/// `--limit` の検査(results list / slow と api results が共有)。0 以下は黙って空の一覧になるので断る
+enum ResultsLimit {
+    static func validate(_ limit: Int) throws {
+        guard limit >= 1 else { throw ValidationError("--limit must be 1 or more (got \(limit))") }
+    }
+}
+
 struct ResultsListCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(commandName: "list", abstract: "List runs, newest first")
 
@@ -69,6 +76,8 @@ struct ResultsListCommand: AsyncParsableCommand {
 
     @Option(help: "Number of rows to show")
     var limit: Int = ResultsRendering.defaultListLimit
+
+    func validate() throws { try ResultsLimit.validate(limit) }
 
     func run() throws {
         let (_, resultsDir, sinceDate) = try options.resolve()
@@ -188,6 +197,8 @@ struct ResultsSlowCommand: AsyncParsableCommand {
 
     @Option(help: "Number of rows to show")
     var limit: Int = ResultsRendering.defaultSlowLimit
+
+    func validate() throws { try ResultsLimit.validate(limit) }
 
     func run() throws {
         let (_, resultsDir, sinceDate) = try options.resolve()

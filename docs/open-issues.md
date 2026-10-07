@@ -52,11 +52,6 @@
   - 場所: `Sources/FTCore/StepExecutor+Actions.swift:577-591`、`StepExecutor+Assert.swift:101〜`(`DeadlineExclusion` は OCR の
     コンパイル等にしか掛かっていない)
   - 手がかり: M1Ultra で E2E-iOS ios-inapp「ジェスチャ」S0010 を回し、`fm.gateWait*` と所要を見る
-- **`serializeNot` が除外条件の2つ目以降の属性を捨てる**(09-06)
-  - 症状: 各 entry から最初の属性1つしか書き出さない。多属性の entry(`Sel.not(...)`・`!.button#id`)を往復させると
-    `id!=…` だけが残り、条件が広がる
-  - 場所: `Sources/FTCore/FTSelector.swift:737-750`
-  - 手がかり: `FTSelector.parse("text=OK&&!.button#x")` を直列化して parse し直し、一致するかを見る
 - **Compose・Flutter では、DSL / ft_batch の `type` / `clearInput` が入力欄でない要素を先にタップし得る**(09-11 §19.2)
   - 症状: ネイティブ描画(UIKit / SwiftUI / RN / Android View)は撃つ前に断るようにした(`StepExecutor.nonTextInputPreflightRefusal`)。
     自前描画では本物の入力欄が `button` 等で報告されうるので型名で断れず、ボタンを指すと押してしまう。MCP の ft_type は
@@ -95,17 +90,8 @@
   - 場所: `Sources/fleetest-mcp/MCPServer+Snapshot.swift:1010-1026`(`keyboardRefusal` は `.ghost` / `.found` のときだけ)、
     `RefGuard.swift:170`
   - 手がかり: `.gone` でもキーボードが出ていればキーボードを名指しする
-- **「long labels are cut off」が一度出た後は毎回出る**(09-11 M8)
-  - 場所: `Sources/fleetest-mcp/NoteCatalog.swift:146-153`、`MCPServer+Dispatch.swift:1089-1095`(`onceNonEmpty`。2回目以降は
-    長いラベルの有無を見ずに定数を返す)
 - **ID の無い画面で方向セレクタを候補に出さない**(09-11 M14)
   - 場所: `Sources/FTCore/SelectorNaming.swift:185-264`(候補に相対セレクタ(`anchor:below` 等)が無い)
-- **キーボードの注記が入力欄を数えない**(09-11)
-  - 場所: `Sources/fleetest-mcp/MCPServer+Hints.swift:962-964`(`RefGuard.interactiveTypes` に textField / textView / searchField が無い。
-    `TapTargetGeometry.swift:25-27`)
-- **in-app のポートが落ちたときも「The XCUITest runner … exited」と言う**(09-11)
-  - 場所: `Sources/fleetest-mcp/MCPServer+ConnectionLoss.swift:285-294`(呼び出し元 :97-106 がエンジンを渡していない。busy の文言 :193-203
-    だけがエンジンで分けている)
 - **確認ダイアログが出ても `ft_open_url` が「Delivered」と返す**(09-11)
   - 場所: `Sources/fleetest-mcp/MCPServer+SessionTools.swift:269-282`、自動了承 `BridgeClient.acknowledgeOpenURLConsent`
     (`Sources/FTBridgeClient/BridgeClient.swift:488-517`。戻り値が Void で、(simulator, bundleId) ごとに1回・bundleId が無いと試さない)
@@ -130,13 +116,6 @@
 
 ## CLI・その他
 
-- **負の `--limit` を受理して黙って空を返す**(09-11)
-  - 場所: `Sources/fleetest/ResultsCommand.swift:71`・:190、`ApiResultsCommand.swift:25`(`RunResultsQuery.recentRuns` が `max(0, limit)`)
-  - 手がかり: `validate()` で `limit >= 1`(`--min-runs` の検査と同じ形)
-- **ビルドと関係ないコマンドが「failed to build the scenarios:」と言う**(09-11)
-  - 症状: リポジトリの外で `results` 等を打つと、Package.swift が無いことを「failed to build the scenarios:」で報告する
-  - 場所: `Sources/FTCore/ScenarioHost.swift:147`(`project(named:)` が `.buildFailed` を投げる)・:90
-  - 手がかり: `project(named:)` 用に別の case(例 `packageRootNotFound`)
 - **appName とアイコン名の食い違いの警告が Android には無い**(09-11 §19.7)
   - 場所: `Sources/FTCore/RunProfile.swift:1508`(`if platform == "ios"`)
   - 手がかり: aapt / aapt2 の `dump badging` の `application-label` で候補を採る(無ければ黙る)

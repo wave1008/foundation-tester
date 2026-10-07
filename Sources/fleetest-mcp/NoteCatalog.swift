@@ -148,9 +148,11 @@ enum NoteCatalog {
             // 出ていた(Bench/measurements.md)。短縮形なのに満額の指示をそのまま繰り返して
             // いたのが原因。行動に要るのは `*prefix*` の書き方だけで、
             // 「最初の注記を見よ」は既に読んでいる読み手には不要
-            abbreviated
+            // **短縮形も今の画面に長いラベルがあるときだけ**(onceNonEmpty は空の判定を各注記に任せている)
+            guard let full = SnapshotRenderer.truncatedLabelNote(input.snapshot) else { return "" }
+            return abbreviated
                 ? "note: long labels are cut off with \"…\" — match with \"*prefix*\".\n"
-                : SnapshotRenderer.truncatedLabelNote(input.snapshot) ?? ""
+                : full
         },
     ]
 

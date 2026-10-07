@@ -79,6 +79,8 @@ public struct DriverConnection: Sendable, Hashable {
 public enum ScenarioHostError: Error, LocalizedError {
     case runnerNotFound(product: String)
     case buildFailed(String)
+    /// パッケージの外で打った(ビルドとは無関係。results 等も通る入口なので「ビルドに失敗」と言わない)
+    case packageRootNotFound
     case listFailed(String)
     case dryRunFailed(String)
 
@@ -88,6 +90,8 @@ public enum ScenarioHostError: Error, LocalizedError {
             return "\(product) not found (run: swift build --product \(product))"
         case .buildFailed(let log):
             return "failed to build the scenarios:\n\(log)"
+        case .packageRootNotFound:
+            return "Package.swift not found (run this inside the repository)"
         case .listFailed(let detail):
             return "cannot list scenarios: \(detail)"
         case .dryRunFailed(let detail):
@@ -144,8 +148,7 @@ public enum ScenarioHost {
     /// TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
     public static func project(named name: String? = nil) throws -> TestProject {
         guard let root = packageRoot() else {
-            throw ScenarioHostError.buildFailed(
-                "Package.swift not found (run this inside the repository)")
+            throw ScenarioHostError.packageRootNotFound
         }
         return try ProjectStore.find(name, repoRoot: root,
                                      defaultProject: LocalConfig.load().defaultProject)
@@ -160,7 +163,7 @@ public enum ScenarioHost {
     public static func build(project: TestProject, log: ((String) -> Void)? = nil,
                              willBuild: (() -> Void)? = nil) throws {
         guard let root = packageRoot() else {
-            throw ScenarioHostError.buildFailed("Package.swift not found (run this inside the repository)")
+            throw ScenarioHostError.packageRootNotFound
         }
 
         let fingerprint = BuildFingerprint.compute(repoRoot: root, scenariosDir: project.scenariosDir)

@@ -101,9 +101,13 @@ extension MCPServer {
         // `forgetDeviceState` 経由で `udids[key]` も消すようになったので、後から読むと
         // 常に nil = 「同じ機のブリッジを先に挙げる」案内が**黙って死んでいた**
         let udid = udids[key].flatMap { $0 }
+        // **エンジンも忘れる前に引く**(in-app と XCUITest で死に方と戻し方が違う。bridgeBusyHint と同じ契約)
+        let engine = connectedPorts[key].flatMap {
+            Self.resolvedEngine(known: engines[key], port: $0, repoRoot: try? RepoRoot.find())
+        }
         forgetConnection(key)
         return Self.connectionLostMessage(connection: connection, running: running,
-            sameDevice: Self.deviceName(forUDID: udid, in: running))
+            sameDevice: Self.deviceName(forUDID: udid, in: running), engine: engine)
     }
 
     /// Android(serial 経由のブリッジ)の死活。**iOS のような安価な「待受しているか」判定が無い**
@@ -282,11 +286,18 @@ extension MCPServer {
     /// 「今この端末で使えるポート」だけだった。残りは件数へ畳む(runningBridgesSummary)
     static let connectionLostShownCap = 3
 
+    /// `engine` は呼び手が resolvedEngine で解いて渡す(既定値を置かない = 渡し忘れをコンパイルで止める)。
+    /// in-app/hybrid のブリッジは対象アプリの中に居るので、XCUITest のランナーとは死に方も戻し方も違う
     static func connectionLostMessage(connection: String, running: [BridgeDiscovery.Found],
-                                      sameDevice: String? = nil) -> String {
+                                      sameDevice: String? = nil, engine: String?) -> String {
         let now = running.isEmpty
             ? "no iOS bridge is running now"
             : "running bridges now: \(Self.runningBridgesSummary(running, sameDevice: sameDevice))"
+        if engine == "inapp" || engine == "hybrid" {
+            return "\nThe in-app bridge behind \(connection) stopped answering — it lives inside the app"
+                + " under test, so the app exiting (a crash, ft_terminate, or being replaced in the"
+                + " foreground) takes it with it. \(now). ft_launch your app again to bring it back."
+        }
         return "\nThe XCUITest runner behind \(connection) exited — a second runner on the same"
             + " simulator kicks out the first, and the app under test crashing takes an in-app"
             + " bridge with it. \(now). Start one with `fleetest bridge up`; the session does not"

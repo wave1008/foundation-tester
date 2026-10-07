@@ -734,27 +734,35 @@ public struct FTSelector {
             && (locator.scope?.isEmpty ?? true) && (locator.not?.isEmpty ?? true)
     }
 
-    /// 除外条件を `属性!=値` のトークン列へ(パースの逆写像)。
-    /// entry は属性1つだけが設定されている前提(parseNegatedFilter がそう作る)
+    /// 除外条件をトークン列へ(パースの逆写像)。1件の除外は「その全属性に一致する要素を除く」(AND)。
+    /// 属性が1つなら `属性!=値`。2つ以上(`!.button#id` や `Sel.not(...)`)は、肯定形が1トークンで書けて
+    /// 読み直すと同じ条件に戻るときだけ `!` を付けて1件のまま書く。書けなければ属性ごとに分ける ——
+    /// 除外が広がる(候補が狭まる)側で、別の要素を黙って掴む側には倒れない
     private static func serializeNot(_ entries: [FlowLocator]) -> [String] {
-        entries.compactMap { entry in
-            if let id = entry.id {
-                return "\((entry.idMatch ?? .exact).filterName("id"))!=\(id)"
+        entries.flatMap { entry -> [String] in
+            let tokens = negatedAttributeTokens(entry)
+            guard tokens.count > 1 else { return tokens }
+            let positive = serializeFilters(entry)
+            if !positive.isEmpty, !positive.contains("&&"), parseFilter(positive) == entry {
+                return ["!" + positive]
             }
-            if let label = entry.label {
-                return "\((entry.labelMatch ?? .exact).filterName("text"))!=\(label)"
-            }
-            if let value = entry.value {
-                return "\((entry.valueMatch ?? .exact).filterName("value"))!=\(value)"
-            }
-            if let placeholder = entry.placeholder {
-                return "\((entry.placeholderMatch ?? .exact).filterName("placeholder"))!=\(placeholder)"
-            }
-            if let type = entry.type { return "type!=\(type)" }
-            if let checked = entry.checked { return "checked!=\(checked)" }
-            if let enabled = entry.enabled { return "enabled!=\(enabled)" }
-            return nil
+            return tokens
         }
+    }
+
+    /// 除外の1件の、設定されている属性ごとの `属性!=値`
+    private static func negatedAttributeTokens(_ entry: FlowLocator) -> [String] {
+        var tokens: [String] = []
+        if let id = entry.id { tokens.append("\((entry.idMatch ?? .exact).filterName("id"))!=\(id)") }
+        if let label = entry.label { tokens.append("\((entry.labelMatch ?? .exact).filterName("text"))!=\(label)") }
+        if let value = entry.value { tokens.append("\((entry.valueMatch ?? .exact).filterName("value"))!=\(value)") }
+        if let placeholder = entry.placeholder {
+            tokens.append("\((entry.placeholderMatch ?? .exact).filterName("placeholder"))!=\(placeholder)")
+        }
+        if let type = entry.type { tokens.append("type!=\(type)") }
+        if let checked = entry.checked { tokens.append("checked!=\(checked)") }
+        if let enabled = entry.enabled { tokens.append("enabled!=\(enabled)") }
+        return tokens
     }
 
     /// 属性フィルタ列。よく使う組み合わせは短縮形(`#id` / `.型#id` / `.型[n]`)へ畳み、

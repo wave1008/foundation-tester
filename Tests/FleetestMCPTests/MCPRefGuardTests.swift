@@ -1278,6 +1278,17 @@ final class MCPRefGuardTests: XCTestCase {
     /// `keyboardCoverageNote` の見出し座標と一覧も拡張後の実効矩形を使うこと(判定と表示が
     /// 食い違うと読み手が検算できない)。申告のままだと ref 1 は列挙に載らず
     /// 「nothing tappable is beneath it」になる(修正前の偽の全クリア)
+    /// キーボードの下に隠れた入力欄も数える(入力欄だけが隠れている画面で「nothing tappable」と言っていた)
+    func testKeyboardCoverageNoteListsACoveredTextField() {
+        var withKeyboard = screen([
+            element(ref: 1, type: "textField", id: "field_note", label: "メモ", x: 0, y: 700, w: 402, h: 44),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 590, width: 402, height: 226)
+        let note = MCPServer.keyboardCoverageNote(withKeyboard)
+        XCTAssertTrue(note.contains("[1]"), "隠れた入力欄を列挙すること: \(note)")
+        XCTAssertFalse(note.contains("nothing tappable"), note)
+    }
+
     func testKeyboardCoverageNoteUsesTheExpandedFrameForBothHeaderAndListing() {
         var withKeyboard = screen([
             element(ref: 1, type: "button", id: "tab_home", label: "ホーム", x: 0, y: 548, w: 134, h: 62),

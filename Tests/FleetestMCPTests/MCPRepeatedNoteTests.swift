@@ -95,6 +95,25 @@ final class MCPRepeatedCoordinateNoteTests: XCTestCase {
         XCTAssertTrue(secondText.contains("*prefix*"), secondText)
         XCTAssertLessThan(secondText.count, firstText.count, "2回目が短くなっていない")
     }
+
+    /// 短縮形も、今の画面に長いラベルがあるときだけ出す(一度出た後の別の画面で毎回出ていた)
+    func testTruncatedLabelShortNoteIsNotRepeatedOnAScreenWithoutLongLabels() async throws {
+        let long = String(repeating: "あ", count: SnapshotRenderer.labelDisplayLimit + 1)
+        let screen = FTRect(x: 0, y: 0, width: 390, height: 844)
+        func snapshot(label: String) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: "com.example.app", screen: screen,
+                             elements: [ElementInfo(ref: 1, type: "staticText", identifier: nil, label: label,
+                                                    value: nil, placeholder: nil, enabled: true,
+                                                    frame: FTRect(x: 10, y: 20, width: 100, height: 40), depth: 1)],
+                             truncatedCount: 0)
+        }
+        driver.snapshotResponse = snapshot(label: long)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.snapshotResponse = snapshot(label: "短い")
+        let second = try await server.call(tool: "ft_snapshot", args: [:])
+        let secondText = try XCTUnwrap(second.first?["text"] as? String)
+        XCTAssertFalse(secondText.contains("long labels are cut off"), secondText)
+    }
 }
 
 /// 変更C: unlabeledClickablesNote / ambiguousLabelsNote も同じ規則で縮む。
