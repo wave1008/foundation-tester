@@ -73,8 +73,25 @@ public enum ExploreDriverResolver {
             ?? BridgeEndpoint(port: preferred)
         // timeout を明示する(引数なしは sessionTimeout=45s に上書きされる。XCUIBridgeResolver と同じ)
         let status = try? await BridgeClient(endpoint: endpoint, timeoutSeconds: 3).status(timeout: 3)
-        let udid = (status?.device).flatMap(bootedSimulatorUDID)
-        guard status?.engine == "inapp" else {
+        // **答えないポートが、背面で止まった in-app ブリッジのことがある**(in-app はアプリの中に住むので、
+        // アプリが suspend すると HTTP に答えない)。そのポートの in-app 台帳と起動中のシミュレータが一致すれば
+        // in-app として組む —— 組まないと、起動し直した MCP の ft_launch が答えない XCUITest として扱って
+        // 49 秒待った末に断る(in-app の launch は simctl の起こし直しなのでブリッジの応答は要らない)
+        let suspended = status == nil
+            ? Self.suspendedInAppRecord(
+                record: repoRoot.flatMap { InAppBridgeState.read(at: InAppBridgeState.url(
+                    stateDir: $0.appendingPathComponent(".fleetest"), port: endpoint.port)) }
+                    .map { (udid: $0.udid, bundleID: $0.bundleID) },
+                bootedSimulators: ((try? SimulatorCatalog.devices()) ?? []).filter(\.booted)
+                    .map { (udid: $0.udid, name: $0.name) })
+            : nil
+        if let suspended {
+            logger("port \(preferred) did not answer, but it is recorded as the in-app bridge of"
+                + " \(suspended.bundleID) on \(suspended.name) (the app is suspended in the background)"
+                + " — driving it as in-app (ft_launch relaunches it)")
+        }
+        let udid = (status?.device).flatMap(bootedSimulatorUDID) ?? suspended?.udid
+        guard status?.engine == "inapp" || suspended != nil else {
             // **実機は `/status.udid` を自己申告できない**(SIMULATOR_UDID が無い)ので、
             // 名前引きも当たらない実機はここまで `udid == nil` のまま。`.device` ファイルは
             // 実機の物理トランスポート確立時にしか書かれない(BridgeDeviceRecord 宣言)ので、
@@ -94,13 +111,19 @@ public enum ExploreDriverResolver {
                             engine: status?.engine ?? "xcuitest", udid: udid ?? physicalUDID)
         }
         // in-app が居る時点で XCUITest 側は必ず要る(合成のフォールバック先 or 振り替え先)
-        let resolution = await XCUIBridgeResolver.resolve(preferred: preferred, repoRoot: repoRoot,
-                                                         logsReroute: false, logger: logger)
+        let resolution = if let suspended {
+            await XCUIBridgeResolver.resolve(preferred: preferred, inAppDevice: suspended.name,
+                                             sessionBundleID: suspended.bundleID, repoRoot: repoRoot,
+                                             logsReroute: false, logger: logger)
+        } else {
+            await XCUIBridgeResolver.resolve(preferred: preferred, repoRoot: repoRoot,
+                                             logsReroute: false, logger: logger)
+        }
         // 用意できなかったときは指定ポート(= in-app 自身)が返る
         let xcuiPort: UInt16? = resolution.endpoint.port == preferred ? nil : resolution.endpoint.port
 
-        switch plan(preferred: preferred, engine: status?.engine,
-                    sessionBundleID: status?.sessionBundleID, udid: udid, xcuiPort: xcuiPort) {
+        switch plan(preferred: preferred, engine: status?.engine ?? (suspended != nil ? "inapp" : nil),
+                    sessionBundleID: status?.sessionBundleID ?? suspended?.bundleID, udid: udid, xcuiPort: xcuiPort) {
         case .direct(let port), .rerouteToXCUI(let port):
             // ここへ来るのは in-app に注入し直せないとき(実機・同名デバイス複数・アプリ不明)。
             // **理由まで出す**: 「hybrid になるはず」で読む側が、なぜならなかったかを追えるように
@@ -157,6 +180,18 @@ public enum ExploreDriverResolver {
                 foreignApp: SessionRecoveryDriver(base: BridgeClient(endpoint: resolution.endpoint))),
                             engine: "hybrid", udid: udid, xcuiPort: xcuiPort)
         }
+    }
+
+    /// 答えないポートを「背面で止まった in-app ブリッジ」と読んでよいか(純粋関数)。台帳の udid が**起動中の**
+    /// シミュレータで、その名前が起動中のシミュレータの中で一意なときだけ(XCUITest の相方はデバイス名で探すので、
+    /// 同名2台では別の機の相方を掴む)。台帳が無い・止まったシミュレータの残骸は nil = 従来どおり答えないポートとして扱う
+    static func suspendedInAppRecord(record: (udid: String, bundleID: String)?,
+                                     bootedSimulators: [(udid: String, name: String)])
+        -> (udid: String, bundleID: String, name: String)? {
+        guard let record,
+              let name = bootedSimulators.first(where: { $0.udid == record.udid })?.name,
+              bootedSimulators.filter({ $0.name == name }).count == 1 else { return nil }
+        return (record.udid, record.bundleID, name)
     }
 
     /// 諦めた理由(Xcode はランタイムごとに同名のシミュレータを作るので、同名2台は普通に起きる)

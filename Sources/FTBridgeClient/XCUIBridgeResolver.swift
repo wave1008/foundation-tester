@@ -49,10 +49,20 @@ public enum XCUIBridgeResolver {
               status.engine == "inapp" else {
             return Resolution(endpoint: preferredEndpoint, note: nil, inApp: nil)
         }
-        let device = status.device
+        return await resolve(preferred: preferred, inAppDevice: status.device,
+                             sessionBundleID: status.sessionBundleID, repoRoot: repoRoot,
+                             autoStart: autoStart, logsReroute: logsReroute, logger: logger)
+    }
+
+    /// in-app ブリッジのデバイス名が `/status` 以外から分かっているときの入口(背面で止まった in-app ブリッジは
+    /// `/status` に答えないので、呼び手が台帳の udid からシミュレータ名を引いて渡す。ExploreDriverResolver)
+    public static func resolve(preferred: UInt16, inAppDevice device: String, sessionBundleID: String?,
+                               repoRoot: URL?, autoStart: Bool = true, logsReroute: Bool = true,
+                               logger: @escaping @Sendable (String) -> Void = { _ in }) async -> Resolution {
+        let preferredEndpoint = endpoint(port: preferred, repoRoot: repoRoot)
         let scan = await scanBridges(device: device, excluding: preferred, repoRoot: repoRoot)
         // in-app が住んでいるアプリ。**自アプリの判定に要る**ので、分かるときだけ持ち出す
-        let inApp = status.sessionBundleID.map {
+        let inApp = sessionBundleID.map {
             Resolution.InApp(endpoint: preferredEndpoint, bundleID: $0)
         }
 

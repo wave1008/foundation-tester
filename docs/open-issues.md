@@ -35,10 +35,6 @@
 
 ## 判断できない・確かめ方だけあるもの
 
-- **起動し直した MCP から、背面で suspend した in-app アプリへの `ft_launch` が届くか**(09-06)
-  - 確かめ方: Simulator で in-app で起動 → `ft_navigate home` → MCP を起動し直す → `ft_launch`(port 指定あり・なし)
-  - 場所: `Sources/fleetest-mcp/MCPServer+SessionTools.swift` の `ftLaunch`、`MCPServer+Driver.swift:782` 付近、
-    `Sources/FTBridgeClient/InAppDriver.swift:31`
 - **焦点救済の例示が別の欄を指す**(09-11 M16): どの文言を指した指摘か特定できない。今の注記
   (`MCPServer+ScreenTools.swift:210-221`)は実際に送った欄を名指ししている
 - **シートのヒントが普通のリストでも出うる**(09-11 M10・推測): bf07926c で「容器の下端が画面下端に接し、上端が上から 1/4 より下」
@@ -46,10 +42,6 @@
 - **実物の 45 秒級 snapshot で SlowSnapshotBudget が効くことは未確認**(09-08): 注入(`FT_FAKE_SNAPSHOT_DELAY_MS=65000`)でしか
   確かめていない。修正後の実物の最大は 32 秒。結果 JSON に `slow-snapshot` かつ `snapshotMs` ≥ 45000 のステップが出たら、
   120 秒の打ち切りでなく中身のある失敗で終わっているかを見る(`Sources/FTCore/SlowSnapshotBudget.swift:23`)
-- **再起動直後の冷えた xcuitest 供給の陽性対照**(09-11 §19.25): 修正は入っている(`Sources/FTBridgeClient/BridgeStartupWait.swift:10`・
-  `BridgeProvisioner.swift:1546`)。docs/verification.md の「再起動直後の最初の xcuitest 供給」の節のとおり、Mac 再起動直後に
-  `--cmp --ios-xcuitest` を回し、「booting the simulator before starting the xcuitest runner」が出て全滅しないことを見る
-- **素の Ctrl-C でのリモートの dispatch.lock の対照**(09-11 §18.3): 中断の窓は §19.21 で直したが、実地の対照は未実施
 
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 
