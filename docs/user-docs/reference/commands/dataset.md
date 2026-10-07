@@ -56,6 +56,32 @@ failure text lists every file it looked at and what was missing (never the value
 
 Dry-run and listing do not read the files and **return the key string as is** (same as Shirates' no-load run).
 
+## Using a file as it is (`dataFile`)
+
+Data that does not fit keys and values (a CSV with many rows, a JSON body to send to an API, an image...) goes in the
+dataset folder as a file, and `dataFile("file name")` returns its location (a `URL`). Read it the usual Swift way.
+
+```swift
+let rows = (try? String(contentsOf: dataFile("csv/users.csv"), encoding: .utf8)) ?? ""
+for line in rows.split(separator: "\n").dropFirst() {   // the first line is the header
+    // ...
+}
+
+let body = (try? String(contentsOf: dataFile("api/new_order.json"), encoding: .utf8)) ?? ""
+httpRequest("https://api.example.com/orders", method: "POST", body: body)
+```
+
+- It looks in the same two places as `account()` / `data()`: `~/.config/fleetest/dataset/<project name>/<file name>`
+  on the Mac that runs the scenario if it exists, otherwise `TestProjects/<project name>/dataset/<file name>`.
+- **The whole file is replaced** (there is no per-attribute override as with `accounts.json`; contents are not merged).
+- Write the file name relative to the dataset folder (folders are fine, as in `csv/users.csv`). Names that start with
+  `/` or `~`, and names containing `..`, are not allowed.
+- If it is in neither place, the step fails and the scenario stops (both paths it looked at are shown). The returned
+  `URL` then points to an empty file, so a read written right after it reads an empty string and the scenario process
+  does not crash.
+- When the file is found, no step is recorded. Dry-run does not fail even if the file is missing (it returns the empty
+  file).
+
 ## Masking secrets
 
 **Values are not masked by default.** If you write `type(account("[account1].password"))`, the password stays in the

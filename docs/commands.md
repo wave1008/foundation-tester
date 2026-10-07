@@ -780,6 +780,12 @@ longKey は**最後の `.` で**データセット名と属性名に分ける)�
   `***` に置換する。**塞げない出口**: スクリーンショット(画素)。`writeMemo` に `account()` の値を書くと、親へ運ぶ `memoWrite`
   イベントが出口で伏せられるので他シナリオへ渡るメモの値も `***` になる。`data()` は登録しない
 
+- **`dataFile(filename) -> URL`**(`ScenarioDataset.resolveFile`): データセットのフォルダのファイルの場所。マシン側
+  `~/.config/fleetest/dataset/<プロジェクト名>/<filename>` があればそれ、無ければ `<プロジェクト>/dataset/<filename>`
+  (**ファイル単位の差し替え**・中身は混ぜない)。`filename` は相対パスだけ(先頭の `/`・`~`・`..`・空の段を断る)。
+  見つからなければ失敗で中断し、**一時フォルダの空のファイル**を返す(`/dev/null` は `String(contentsOf:)` が
+  EACCES で開けないため使わない)。成功時は記録しない・dry-run は失敗にしない
+
 ### HTTP リクエスト(`httpRequest`)
 
 ```swift

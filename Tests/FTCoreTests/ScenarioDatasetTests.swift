@@ -37,6 +37,42 @@ final class ScenarioDatasetTests: XCTestCase {
         XCTAssertEqual(machineFile(.data).lastPathComponent, "data.json")
     }
 
+    // MARK: - dataFile
+
+    private func resolve(_ name: String) -> Result<URL, ScenarioDataset.Failure> {
+        ScenarioDataset.resolveFile(name, projectDir: project, home: home)
+    }
+
+    func testDataFileFallsBackToTheProjectAndTheMachineFileReplacesItWhole() throws {
+        let projectCSV = project.appendingPathComponent("dataset/csv/users.csv")
+        try write("id\nu1\n", to: projectCSV)
+        XCTAssertEqual(try resolve("csv/users.csv").get().path, projectCSV.path)
+
+        let machineCSV = URL(fileURLWithPath: home).appendingPathComponent(".config/fleetest/dataset/MyProject/csv/users.csv")
+        try write("id\nreal\n", to: machineCSV)
+        XCTAssertEqual(try resolve("csv/users.csv").get().path, machineCSV.path, "マシン側があればそれ")
+    }
+
+    func testDataFileMissingNamesBothPlaces() {
+        guard case .failure(let failure) = resolve("users.csv") else { return XCTFail("見つからないはず") }
+        XCTAssertTrue(failure.message.contains("\(home!)/.config/fleetest/dataset/MyProject/users.csv"), failure.message)
+        XCTAssertTrue(failure.message.contains(project.appendingPathComponent("dataset/users.csv").path), failure.message)
+    }
+
+    func testDataFileRejectsNamesThatLeaveTheDatasetFolderOrAreADirectory() throws {
+        try write("x", to: project.appendingPathComponent("secret.txt"))
+        for name in ["../secret.txt", "/etc/hosts", "~/x", "", "a//b", "csv/../../secret.txt"] {
+            guard case .failure(let failure) = resolve(name) else { return XCTFail("断るはず: \(name)") }
+            XCTAssertTrue(failure.message.contains("relative to the dataset folder"), failure.message)
+        }
+        try FileManager.default.createDirectory(at: project.appendingPathComponent("dataset/csv"),
+                                                withIntermediateDirectories: true)
+        guard case .failure = resolve("csv") else { return XCTFail("ディレクトリは返さない") }
+        guard case .failure = ScenarioDataset.resolveFile("a.csv", projectDir: nil, home: home) else {
+            return XCTFail("プロジェクトが分からなければ失敗")
+        }
+    }
+
     func testProjectValueIsReadByLongKey() throws {
         try write(#"{"[account1]": {"id": "alice", "password": "s3cret!"}}"#, to: projectFile(.accounts))
         let dataset = ScenarioDataset(kind: .accounts, projectDir: project, home: home)

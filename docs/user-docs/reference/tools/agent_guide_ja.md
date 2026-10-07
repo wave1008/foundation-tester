@@ -67,7 +67,8 @@ class SignInExample {
 ## パスワード・テストデータ・API
 
 - **パスワードやアカウントをシナリオに直書きしない。** `account("[user1].password")` で受け取り、値はプロジェクトの
-  `dataset/accounts.json` に置く(画面に依らないテストデータは `data("[order1].item")` と `dataset/data.json`)。
+  `dataset/accounts.json` に置く(画面に依らないテストデータは `data("[order1].item")` と `dataset/data.json`。
+  CSV や JSON の本文のようなファイルは `dataset/` に置いて `dataFile("csv/users.csv")` で場所を受け取る)。
   値が分からなければ利用者に聞く —— 推測した値を置かない。
 - 本物のパスワードを git に入れたくない利用者には、その Mac の `~/.config/fleetest/dataset/<プロジェクト>/` に
   同じ形のファイルを置いてもらう(属性単位で上書きされる)。`~/.config/fleetest/` はエージェントが書かない。

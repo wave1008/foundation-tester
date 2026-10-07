@@ -439,6 +439,12 @@ public enum DSLCommandIndex {
         .init("data", "data", "data(longKey) / data(datasetName, attributeName)",
               "Returns a value of the test data dataset (data.json, same places and override as account). Not masked."
                   + " Not recorded as a step; a missing value fails the scenario. Dry-run returns the longKey."),
+        .init("dataFile", "data", "dataFile(filename)",
+              "Returns the URL of a file in the dataset folder (CSV, JSON, images...): ~/.config/fleetest/dataset/"
+                  + "<project name>/<filename> on this Mac if it exists, otherwise <project>/dataset/<filename> (the whole"
+                  + " file is replaced, contents are not merged). filename is relative to the dataset folder (no leading /"
+                  + " or ~, no ..). Not recorded as a step; a missing file fails the scenario and returns an empty"
+                  + " placeholder file. Dry-run does not fail (returns the empty placeholder when missing)."),
         .init("httpRequest", "data", "httpRequest(url, method:, headers:, body:, waitSeconds:)",
               "Sends an HTTP request and waits for the response (HTTPResponse: status, headers with lower-case names,"
                   + " data, text, json). 4xx/5xx is not a failure (check status); a bad URL, a connection error or no"

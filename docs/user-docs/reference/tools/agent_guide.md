@@ -71,7 +71,9 @@ class SignInExample {
 
 - **Do not write passwords or accounts into scenarios.** Read them with `account("[user1].password")` and put the
   values in the project's `dataset/accounts.json` (test data that does not depend on the screen goes to
-  `data("[order1].item")` and `dataset/data.json`). If you do not know a value, ask the user — do not put a guessed value.
+  `data("[order1].item")` and `dataset/data.json`; files such as a CSV or a JSON body go in `dataset/` and
+  `dataFile("csv/users.csv")` returns their location). If you do not know a value, ask the user — do not put a guessed
+  value.
 - For users who do not want real passwords in git, have them put a file of the same shape in
   `~/.config/fleetest/dataset/<project>/` on that Mac (it overrides per attribute). Agents do not write to
   `~/.config/fleetest/`.

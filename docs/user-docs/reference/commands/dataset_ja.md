@@ -55,6 +55,32 @@ action {
 
 dry-run と一覧の取得ではファイルを読まず、**キーの文字列をそのまま返します**(Shirates の no-load 実行と同じ)。
 
+## ファイルをそのまま使う(`dataFile`)
+
+キーと値で表せないデータ(多数の行の CSV・API に送る本文の JSON・画像など)は、データセットのフォルダに
+ファイルとして置き、`dataFile("ファイル名")` で場所(`URL`)を受け取ります。読み方は Swift の普通の書き方です。
+
+```swift
+let rows = (try? String(contentsOf: dataFile("csv/users.csv"), encoding: .utf8)) ?? ""
+for line in rows.split(separator: "\n").dropFirst() {   // 1行目は見出し
+    // …
+}
+
+let body = (try? String(contentsOf: dataFile("api/new_order.json"), encoding: .utf8)) ?? ""
+httpRequest("https://api.example.com/orders", method: "POST", body: body)
+```
+
+- 探す場所は `account()` / `data()` と同じ2つです。シナリオを実行する Mac の
+  `~/.config/fleetest/dataset/<プロジェクト名>/<ファイル名>` があればそれを、無ければ
+  `TestProjects/<プロジェクト名>/dataset/<ファイル名>` を使います。
+- **差し替えはファイル単位です**(`accounts.json` のような属性単位の上書きはしません。中身を混ぜません)。
+- ファイル名はデータセットのフォルダからの相対パスで書きます(`csv/users.csv` のようにフォルダを挟めます)。
+  `/` や `~` で始まる名前と `..` を含む名前は使えません。
+- どちらにも無いときは、そのステップを失敗にしてシナリオを中断します(探した2つのパスを表示します)。
+  このとき返る `URL` は空のファイルを指すので、続けて書いた読み込みは空の文字列を読むだけで、シナリオの
+  プロセスは落ちません。
+- 見つかったときはステップを記録しません。dry-run では、見つからなくても失敗にしません(空のファイルを返します)。
+
 ## 秘密の伏せ字化
 
 **既定では伏せません。** `type(account("[account1].password"))` と書くと、ステップの説明・実行ログ・レポートに

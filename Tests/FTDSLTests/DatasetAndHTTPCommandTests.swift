@@ -194,6 +194,43 @@ final class DatasetAndHTTPCommandTests: XCTestCase {
         XCTAssertEqual(sink.events.filter { $0.kind == "step" && $0.command == "account" }.count, 1)
     }
 
+    // MARK: - dataFile
+
+    func testDataFileReturnsTheProjectFileWithoutRecordingAStep() throws {
+        try "id\nu1\n".write(to: project.appendingPathComponent("dataset/users.csv"), atomically: true, encoding: .utf8)
+        let core = makeCore()
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        let url = dataFile("users.csv")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "id\nu1\n")
+        XCTAssertEqual(steps(core).count, 0)
+        XCTAssertFalse(core.scenarioAborted)
+    }
+
+    func testMissingDataFileFailsAndReturnsAnEmptyFileThatReadsAsEmpty() throws {
+        let core = makeCore()
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        let url = dataFile("nothing.csv")
+        XCTAssertEqual(url.lastPathComponent, "fleetest-dataFile-not-found")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "", "後続の読み込みはプロセスを落とさない")
+        XCTAssertTrue(core.scenarioAborted)
+        let failed = try XCTUnwrap(steps(core).first)
+        XCTAssertEqual(failed.description, "dataFile \"nothing.csv\"")
+        guard case .failed(let reason) = failed.status else { return XCTFail("\(failed.status)") }
+        XCTAssertTrue(reason.contains(project.appendingPathComponent("dataset/nothing.csv").path), reason)
+        XCTAssertEqual(sink.events.filter { $0.kind == "step" && $0.command == "dataFile" }.count, 1)
+    }
+
+    func testDryRunDoesNotFailOnAMissingDataFile() {
+        let core = makeCore(dryRun: true)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        XCTAssertEqual(try String(contentsOf: dataFile("nothing.csv"), encoding: .utf8), "")
+        XCTAssertFalse(core.scenarioAborted)
+        XCTAssertEqual(steps(core).count, 0)
+    }
+
     // MARK: - httpRequest
 
     func testHTTPRequestGetAndPostReturnStatusHeadersBodyAndJSON() throws {

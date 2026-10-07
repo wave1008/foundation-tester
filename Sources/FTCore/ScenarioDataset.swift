@@ -51,6 +51,35 @@ public struct ScenarioDataset: Sendable {
             .appendingPathComponent("\(kind.rawValue).json")
     }
 
+    /// `dataFile()` の解決。**ファイル単位の差し替え**(マシン側に同名があればそれ、無ければプロジェクト側)。
+    /// 中身を混ぜないのは、CSV や画像は属性の単位を持たないため。`filename` は dataset フォルダからの相対パスだけ
+    /// (先頭の `/`・`~`・`..` を断る = dataset フォルダの外を指させない)
+    public static func resolveFile(_ filename: String, projectDir: URL?,
+                                   home: String = ScenarioSandbox.realHome()) -> Result<URL, Failure> {
+        let parts = filename.split(separator: "/", omittingEmptySubsequences: false)
+        guard !filename.isEmpty, !filename.hasPrefix("/"), !filename.hasPrefix("~"),
+              !parts.contains(".."), !parts.contains("") else {
+            return .failure(Failure(message: "dataFile(\(filename.debugDescription)): the file name must be a path"
+                + " relative to the dataset folder (no leading / or ~, no .., no empty component)"))
+        }
+        guard let projectDir else {
+            return .failure(Failure(message: "dataFile(\(filename.debugDescription)): no project directory is"
+                + " known to this scenario process"))
+        }
+        let machine = URL(fileURLWithPath: home)
+            .appendingPathComponent(".config/fleetest/dataset")
+            .appendingPathComponent(projectDir.standardizedFileURL.lastPathComponent)
+            .appendingPathComponent(filename)
+        let project = projectDir.appendingPathComponent("dataset").appendingPathComponent(filename)
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        for url in [machine, project] where fm.fileExists(atPath: url.path, isDirectory: &isDirectory) {
+            if !isDirectory.boolValue { return .success(url) }
+        }
+        return .failure(Failure(message: "dataFile(\(filename.debugDescription)): not found. Looked at: "
+            + "\(machine.path) (not found), \(project.path) (not found)"))
+    }
+
     private static func load(_ url: URL) -> Loaded {
         var loaded = Loaded(url: url)
         guard FileManager.default.fileExists(atPath: url.path) else {
