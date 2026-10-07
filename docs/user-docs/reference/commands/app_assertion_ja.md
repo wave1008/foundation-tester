@@ -1,4 +1,6 @@
-# appIs
+# アプリの検証(appIs)
+
+[in English](app_assertion.md)
 
 フォアグラウンドのアプリを検証します。
 

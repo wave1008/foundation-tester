@@ -1,5 +1,7 @@
 # Reading Results and Investigating Failures
 
+[in Japanese(日本語)](investigating_failures_ja.md)
+
 Every time you run tests, the results are kept, pass or fail. You can leave the reading to the AI assistant too.
 
 ## Have the results summarized
@@ -85,13 +87,15 @@ Go through past fleetest results and find scenarios that are flaky (sometimes pa
 
 ## When it might be a bug in fleetest itself
 
-If, after having the AI assistant investigate, the cause seems to be on the tool's side, report it to the maintainers.
-How to put together the diagnostic information to attach to the report is in [Troubleshooting](../in_action/troubleshooting.md).
+If, after having the AI assistant investigate, the cause seems to be on the tool's side, report it to the fleetest developers
+(where to report, and how to put together the diagnostic information to attach, are in [Troubleshooting](../in_action/troubleshooting.md)).
 
 ## Learn more
 
 - [Test result files](../reference/testclass/test_result_files.md) — what is written where
 - [Analyzing results (fleetest results and the dashboard)](../reference/running/results_analysis.md)
+
+Next: [Keeping tests up with app changes](keeping_up_with_app_changes.md)
 
 ### Link
 - [index](../index.md)

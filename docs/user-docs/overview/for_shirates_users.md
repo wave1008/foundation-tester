@@ -1,5 +1,7 @@
 # For Shirates Users
 
+[in Japanese(日本語)](for_shirates_users_ja.md)
+
 Fleetest's Swift DSL follows Shirates (Classic) conventions. Command names, argument names,
 defaults, and behavior are carried over rather than reinvented, so if you know Shirates you can
 start writing almost immediately.

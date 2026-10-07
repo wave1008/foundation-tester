@@ -1,4 +1,4 @@
-# Text visual verification
+# How text visual verification decides
 
 [in Japanese(日本語)](text_visual_check_ja.md)
 
@@ -30,6 +30,11 @@ and the check runs while either is on. With both on (the default):
 
 With FM turned off (`fmTextOcclusionCheck: false`) the OCR reading alone decides; with OCR turned off
 (`ocrTextOcclusionCheck: false`) FM alone decides.
+
+Turning OCR off makes the check slower and removes the judgement for when FM is unavailable (with both off, visual
+verification does not run). Even with OCR off, OCR re-reads the text when FM's transcription differs from the expected
+text by just one character, so that a mix-up of similar-looking characters does not fail the check by mistake
+(only then, OCR's first-time preparation can take up to 60 seconds).
 
 An element whose centre is off the screen fails before any image is looked at.
 

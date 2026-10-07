@@ -1,5 +1,7 @@
 # 独自コマンド
 
+[in English](custom_commands.md)
+
 組み込みの DSL コマンドで足りない、自分のアプリ固有の繰り返し手順(ログイン・共通の前提条件・
 [`gesture`](../commands/gestures_ja.md) で組んだ独自のマルチタッチジェスチャ等)は、`scenarios/`
 配下に**素の Swift 関数**として書きます。これは Shirates の `macro` に相当しますが、fleetest では
@@ -97,8 +99,8 @@ select("#btn_add_to_cart").tapAndConfirm("#txt_cart_badge")
 - レポートや実行ログに並ぶのは、ヘルパーの中の個々のコマンドです(ヘルパーの名前は出ません)。
   失敗したときに示されるのも、中のコマンドの行です。
 - 索引はヘルパーを**一覧するだけ**で、実行はしません。`ft_batch`(シナリオを保存せずに DSL の
-  1行ずつを直接実行する MCP ツール)が理解するのは組み込みの operation/scroll コマンドだけです——
-  project コマンドはバッチではなく、シナリオの `.swift` ファイルに直接書いてください。
+  1行ずつを直接実行する MCP ツール)が実行できるのは組み込みのコマンドだけです。
+  `@FTCommand` の関数はシナリオの `.swift` ファイルに書いてください。
 
 ### Link
 - [index](../../index_ja.md)

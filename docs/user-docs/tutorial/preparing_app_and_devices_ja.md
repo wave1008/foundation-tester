@@ -1,5 +1,7 @@
 # アプリとデバイスを用意する
 
+[in English](preparing_app_and_devices.md)
+
 テストを動かすには、**何を**(テスト対象のアプリ)**どこで**(デバイス)動かすかを fleetest に登録します。
 登録の中身は2種類のプロファイルです。
 
@@ -26,6 +28,8 @@
   fleetest はこの名前でホーム画面のアイコンを探し、システムのダイアログがどのアプリのものかを見分けます。
 - **ビルド済みのアプリのパス**を渡すと、テストの実行時にデバイスへ自動でインストールされます。
   iOS Simulator には `.app`、Android には `.apk` を渡します。
+  Simulator 向けの `.app` の作り方は[クイックスタート](../quick-start_ja.md)の手動手順の `xcodebuild` の例を参考にしてください。
+  AIアシスタントに「このプロジェクトを Simulator 向けにビルドして」と頼むこともできます。
 - iOS だけ・Android だけのアプリなら、片方だけ書けば足ります。
 
 Claude Code では `/fleetest-profiles` でも同じことができます(アプリ名などを順に質問されます)。
@@ -102,6 +106,8 @@ fleetest のアプリプロファイルにある iOS のアプリのパスを、
 
 - 設定できる項目の一覧: [プロファイル](../reference/project/profiles_ja.md)・[実行プロファイルの設定項目](../reference/project/run_profile_ja.md)
 - テストプロジェクト(テストをまとめる単位)を分けたいとき: [テストプロジェクトの作成](../reference/project/creating_project_ja.md)
+
+次へ: [テストを作る](creating_tests_ja.md)
 
 ### Link
 - [index](../index_ja.md)

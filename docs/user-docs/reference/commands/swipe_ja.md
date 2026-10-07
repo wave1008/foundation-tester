@@ -1,4 +1,6 @@
-# swipe
+# swipe, swipePointToPoint, swipeElementToElement, swipeBy
+
+[in English](swipe.md)
 
 生のジェスチャです: 画面全体のスワイプ、2点間ドラッグ、要素間ドラッグ、要素からの比率ドラッグ。
 

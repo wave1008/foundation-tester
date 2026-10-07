@@ -1,5 +1,7 @@
 # Network Exposure and Security
 
+[in Japanese(日本語)](network_security_ja.md)
+
 A summary for explaining to IT/security what this tool opens and where, when running on a
 corporate LAN that does not reach the internet. It is not a setup guide.
 How the files and destinations that test code (scenarios) can reach are restricted is covered in [The sandbox](../security/sandbox.md).
@@ -15,6 +17,8 @@ How the files and destinations that test code (scenarios) can reach are restrict
 | Android Emulator gRPC | `127.0.0.1` | A Bearer token the Emulator itself issues once per boot |
 | **Physical iPhone, USB path (default, recommended)** | An iproxy (libimobiledevice) USB tunnel. **Stays entirely on loopback** | Not needed (loopback) |
 | **Physical iPhone, LAN path** | **All of the device's network interfaces.** Reachable from the same LAN | **Token required** (see below) |
+| Remote Login (SSH) on the runner machine. Turned on there only when you use remote runs | Port 22 of the runner machine | Key-based authentication |
+| Screen Sharing on the runner machine (recommended; turned on there only when you use remote runs) | Port 5900 of the runner machine. Do not open it on the router | macOS authentication |
 
 - The bridge uses **32 ports, 8123-8154** (iOS).
 - **Two conditions make a physical iPhone fall back to the LAN path**: (1) the Mac does not have
@@ -87,10 +91,7 @@ git config --global url."https://<internal-mirror>/".insteadOf "https://github.c
 That single setting routes **both fleetest itself and all 20+ Swift dependencies** through the
 mirror.
 
-**SwiftPM has been confirmed to honour this setting** (measured 2026-09-07). A local bare clone
-was used as a stand-in mirror and given **a tag that does not exist upstream**; resolution
-succeeded with `insteadOf` in place and failed with `no versions match` without it. Dependency
-fetching therefore really does go to the mirror, and never reaches `github.com`.
+SwiftPM also follows this setting, so dependencies are fetched from the mirror rather than from `github.com`.
 
 Three things remain:
 
@@ -104,12 +105,12 @@ To redirect only the initial clone, `FLEETEST_REPO_URL=<mirror URL>` also works.
 
 ### Pinning a version
 
-There is **no supported way for a receiver to pin a version** — distribution is a single `main`.
+There is **no supported way for a user to pin a version** — distribution is a single `main`.
 On a closed network you do not need one: **how often you advance `main` on the mirror is itself
 the internal release gate**, so you control which revision is taken without changing anything the
-receiver does.
+user does.
 
-## Remote runners (dispatching to another Mac)
+## Remote runners (running tests on another Mac)
 
 The only path is **SSH with key-based authentication**. The trust model and what ends up on a runner machine are
 covered in "Using it safely" in [Remote Runners](../fleet/remote_runners.md).
@@ -121,9 +122,7 @@ runner machines too.
 ## Decisions to make operationally
 
 1. **Install `brew install libimobiledevice` on every Mac that uses a physical iPhone.** This
-   switches it to the USB tunnel and removes the LAN exposure entirely. It is also the
-   recommended default for another reason: a measured round trip drops from about 48ms to about
-   5ms, making physical-device scenarios roughly 25% faster.
+   switches it to the USB tunnel and removes the LAN exposure entirely (communication is also faster).
 2. If a Wi-Fi-connected physical device must be used anyway, **put the test devices and runner
    machines on a segregated VLAN.**
 3. On a closed network, first check whether the **Option A destinations can be allowed** (Option A

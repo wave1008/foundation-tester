@@ -1,7 +1,9 @@
-# Create Tests
+# Creating tests
+
+[in Japanese(日本語)](creating_tests_ja.md)
 
 You have an AI assistant create the tests. The AI assistant actually operates the app on a device and
-writes the test scenario while reading the elements shown on the screen. It never writes buttons or IDs that
+writes the scenario while reading the elements shown on the screen. It never writes buttons or IDs that
 are not on the screen from imagination.
 
 The result is a Swift file (scenario) under `TestProjects/<project>/scenarios/`.
@@ -90,7 +92,7 @@ press "Start Recording", operate the app shown on screen, and then press "Stop R
 operations become a scenario. A scenario created by recording has no "what must be visible for it to succeed", so
 
 ```text
-scenarios/Generated/ contains a scenario created by recording. Add checks for what's on screen to each scene.
+scenarios/Generated/ contains a scenario created by recording. Add checks for what's on screen to each test.
 ```
 
 ask the AI assistant to finish it like this, and it becomes a complete test. For details, see
@@ -101,7 +103,7 @@ ask the AI assistant to finish it like this, and it becomes a complete test. For
 | Symptom | What to ask |
 |---|---|
 | The work drags on or goes off track | Narrow the target again to one screen or one flow. Write the completion condition |
-| It is exploring on the wrong device | Specify the run profile's name ("on the devices of the ios profile") |
+| It is exploring on the wrong device | Specify the run profile's name ("on the devices of the ios-run profile") |
 | The test sometimes passes and sometimes fails | "Run this test 5 times, and if some runs fail, investigate the cause" |
 | Elements lower on the screen are not reached | "Make it reach elements that are only visible after scrolling" |
 
@@ -113,6 +115,8 @@ References for when you want to read and write the contents of a scenario (the S
 - [Selector expressions](../reference/selector/selector_expression.md) (how to point at elements on the screen)
 - [Writing robust scenarios](../reference/writing/writing_robust_scenarios.md)
 - [How to write for each UI component, and its quirks](../reference/writing/ui_component_patterns.md)
+
+Next: [Running tests](running_tests.md)
 
 ### Link
 - [index](../index.md)

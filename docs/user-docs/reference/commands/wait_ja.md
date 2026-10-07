@@ -1,5 +1,7 @@
 # wait, waitForDisplay, waitForClose
 
+[in English](wait.md)
+
 固定待ちと、要素の出現・消滅を明示的に待つコマンドです。
 
 ## 関数

@@ -1,5 +1,7 @@
 # Agent Guide: from an app screen to a passing scenario
 
+[in Japanese(日本語)](agent_guide_ja.md)
+
 This page is for **AI coding agents** that write fleetest scenarios through the `ft_*` MCP tools.
 It is the short version of the runbook (`.claude/skills/fleetest-scenario/SKILL.md` in the clone);
 read the runbook when you need the full rules.
@@ -156,7 +158,7 @@ limitations.
 
 - [MCP server](mcp_server.md)
 - [AI assistants other than Claude Code](other_agents.md)
-- [Command reference](../../../commands.md)
+- [Command reference](../../index.md) (the per-command pages under "Functions/Properties")
 
 ### Link
 - [index](../../index.md)

@@ -1,4 +1,6 @@
-# swipe
+# swipe, swipePointToPoint, swipeElementToElement, swipeBy
+
+[in Japanese(日本語)](swipe_ja.md)
 
 Raw finger gestures: a whole-screen swipe, a point-to-point drag, an element-to-element drag, or
 a ratio-based drag from an element.

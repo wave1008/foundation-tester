@@ -1,11 +1,13 @@
 # 並列実行
 
+[in English](parallel_execution.md)
+
 ## 実行プロファイルを使う場合
 
 **並列数 = 解決後のデバイス数**です。実行プロファイルの各デバイスが1ワーカーになり、シナリオは
 その間で分配されます。iOS は稼働中のブリッジを再利用し、不足分だけ起動します。実行プロファイルの
-`devices` に iOS/Android を混在させれば、1回の実行で両 OS を同時にテストできます
-([profiles_ja.md](../project/profiles_ja.md)参照)。
+`devices` に iOS/Android を混在させれば、1回の実行で iOS と Android のデバイスを同時に使えます
+(各シナリオが走るのは片方の OS だけです。下記。[profiles_ja.md](../project/profiles_ja.md)参照)。
 
 ```bash
 fleetest run --project SampleApp --profile all
@@ -37,15 +39,11 @@ fleetest bridge down --all              # 全ブリッジ停止
 
 - **デバイスを増やせば速くなるとは限りません。** Mac が飽和した先では、1本ずつのシナリオが遅くなるだけで
   全体の時間は縮まらず、画像を使う手(`findImage` / `existImage`)やテキストの視覚検証の失敗が増えます。
-  M2 Ultra・Android Emulator での実測では、6台 → 10台でシナリオの所要の中央値が 7.8秒 → 14.1秒と倍になり、
-  実行全体の時間は縮まらず、画像照合のエラーは各約 500 回のうち 2件 → 28件に増えました。
 - 台数はお使いの Mac で決めてください。数台ずつ足し、実行全体の時間が縮まらなくなったところで止めます。
   台数を増やしたときだけ赤が出るなら、減らした台数に戻します。
-- 以前の実測(M1 Max): 3本逐次 55.2秒 → 2+1並列 31.2秒。この機械では iOS 2 + Android 2 が頭打ちの点で、
-  3+3 では速くなりませんでした。
 - コールドブート直後の Simulator はアクセシビリティ IPC がタイムアウトしやすいです。ワーカーは
   開始時に snapshot ウォームアップを自動で行いますが、それでも落ちる場合は `bridge up` の後に
-  一度手動で `launch`+`snapshot` してから実行してください。
+  MCP の `ft_launch` と `ft_snapshot` でアプリを一度起動して画面を取ってから([MCP サーバ](../tools/mcp_server_ja.md)参照)実行してください。
 
 ## `--broadcast`
 
@@ -80,7 +78,7 @@ fleetest bridge down --all              # 全ブリッジ停止
 ## 並列実行が関わる他の場所
 
 - VSCode 拡張も `fleetest.profile` 設定を通じて同じ並列実行を行います
-  ([vscode-fleetest/README.md](../../../../vscode-fleetest/README.md)の「並列実行とログレーン」参照)。
+  ([VSCode 拡張](../tools/vscode_extension_ja.md)の「デバイスモニター」参照)。
 - LPT 順序付け(実績時間の長い順に投入)は直近の実行履歴でワーカー間の負荷を均します。
   `--no-lpt`/`--lpt-history-runs` で制御できます([running_scenarios_ja.md](./running_scenarios_ja.md)参照)。
 - 決定的再生は FM を呼ばないため並列にスケールします。自己修復(ロケータの指紋照合)も FM を

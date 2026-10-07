@@ -1,6 +1,8 @@
 # Getting Started (Installation)
 
-How to install Fleetest.
+[in Japanese(日本語)](getting-started_ja.md)
+
+How to install fleetest.
 
 ## 1. Environment
 
@@ -16,7 +18,7 @@ For the supported macOS, Xcode, Android SDK and other requirements, see [Environ
   - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
     With any of them, you have the assistant carry out the installation.
 
-## 3. Installing Fleetest
+## 3. Installing fleetest
 
 1. Create a **new, test-only folder** and open it in VSCode
 
@@ -37,12 +39,19 @@ following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
    assistant and open a new session in this folder (this enables the `ft_*` tools used to explore screens and run scenarios).
    For details, see "Register the MCP server" in [AI Assistants Other Than Claude Code](reference/tools/other_agents.md).
 
+6. Ask your AI assistant to "run fleetest doctor and report the result", and confirm that no errors are reported
+
+The installation creates a `foundation-tester` folder next to your work folder. In this documentation,
+`../foundation-tester/.build/debug/fleetest` in the commands you type by hand refers to the `fleetest` inside it.
+
 Once it is installed, create and run a test in the [Quick start](quick-start.md).
 
 ## 4. Troubleshooting
 
 If you run into a problem, ask your AI assistant. Common symptoms and how to narrow them down are
 collected in [Troubleshooting](in_action/troubleshooting.md).
+
+Next: [Quick start](quick-start.md)
 
 ### Link
 - [index](index.md)

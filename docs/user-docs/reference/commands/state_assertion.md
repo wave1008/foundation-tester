@@ -1,4 +1,6 @@
-# enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF
+# State assertion (enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF)
+
+[in Japanese(日本語)](state_assertion_ja.md)
 
 Checks on the enabled/disabled and checked/unchecked state of the last grabbed element.
 
@@ -71,8 +73,7 @@ sample images (same location and labels as Shirates' Vision edition).
 - Steps judged from the image carry the note `check-state-classified` in the results.
 - Each judgement also re-checks two of your own samples (one per label). If the classifier gets one of them wrong,
   its answer is not used and the checked state comes from accessibility only (note `check-state-classifier-failed`).
-  This happens when Vision / Core ML on the Mac is temporarily broken: it keeps answering the same label with full
-  confidence instead of reporting an error. If it persists, reboot the Mac.
+  This happens when Vision / Core ML on the Mac is temporarily misbehaving. If it persists, reboot the Mac.
 - When the app area of the screenshot (apart from the status bar and the bottom strip) is a single colour (all black or
   all white: nothing was captured, or nothing is drawn), the image is not judged either, and the checked state comes from accessibility only (note `check-state-classifier-failed`).
   While the step waits, it takes the screenshot again.

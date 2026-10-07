@@ -1,5 +1,7 @@
 # home, back, appSwitcher, tapAppIcon, rotateTo
 
+[in Japanese(日本語)](navigation_ja.md)
+
 OS-level navigation: home screen, back, app switcher, home screen icon, and screen rotation.
 
 ## Functions

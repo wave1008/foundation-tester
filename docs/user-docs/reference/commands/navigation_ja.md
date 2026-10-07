@@ -1,5 +1,7 @@
 # home, back, appSwitcher, tapAppIcon, rotateTo
 
+[in English](navigation.md)
+
 ホーム画面・戻る・アプリスイッチャー・ホーム画面のアイコン・画面回転など OS レベルの操作です。
 
 ## 関数

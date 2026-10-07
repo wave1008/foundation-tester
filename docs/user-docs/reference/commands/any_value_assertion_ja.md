@@ -1,4 +1,6 @@
-# thisIs 系(画面に依らない値の検証)
+# 任意の値の検証(thisIs, thisContains, …)
+
+[in English](any_value_assertion.md)
 
 デバイスに触れない値(API 応答・計算結果など)を検証します。文字列・数値・`Bool`・Optional に
 直接生え、失敗すれば他のコマンドと同じく1ステップとして記録され、シナリオを中断します。

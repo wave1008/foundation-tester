@@ -1,5 +1,7 @@
 # exist, notExist, countIs
 
+[in Japanese(日本語)](existence_assertion_ja.md)
+
 Checks whether elements matched by a selector exist, are gone, or number a given count.
 
 ## Functions

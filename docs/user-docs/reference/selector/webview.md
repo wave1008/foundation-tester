@@ -1,7 +1,9 @@
-# Elements Inside a WebView
+# Elements inside WebView
+
+[in Japanese(日本語)](webview_ja.md)
 
 Content inside a native WebView (iOS `WKWebView`, Android `android.webkit.WebView`) uses the
-same selectors and the same commands as native elements. Three conventions differ from
+same selectors and the same commands as native elements. The following conventions differ from
 native screens, though.
 
 ## `#id` availability depends on the read path
@@ -49,7 +51,7 @@ type("#email_input", "user@example.com")   // matches by id, or by placeholder i
 `placeholder` instead. This means a single `#x` clause already covers the case where only
 one of id/placeholder is exposed — the two-clause form above is for when you need to cover
 *both* possibilities because the configuration can vary at runtime (e.g. across Android
-WebView versions). See [docs/commands.md](../../../commands.md) for the full explanation.
+WebView versions).
 
 ## Android: the WebView layer can be missing from screenshots
 
@@ -60,8 +62,8 @@ image is blank in that area). This is intermittent and self-corrects on relaunch
 check** — a screenshot-based check can fail for reasons that have nothing to
 do with your scenario. Seeing the WebView content in a screenshot also requires the WebView
 debugging connection to be open (a debuggable Emulator image, a debug build of the app, or the app
-calling `WebView.setWebContentsDebuggingEnabled(true)` — the same condition as reading the DOM below); see
-[docs/commands.md](../../../commands.md) for detail.
+calling `WebView.setWebContentsDebuggingEnabled(true)` — the same condition as reading the DOM below). For screenshots in general see
+[screenshot](../commands/screenshot.md).
 
 ## Android: `user` system images (Play Store images) close the DOM path
 

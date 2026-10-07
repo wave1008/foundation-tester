@@ -1,4 +1,6 @@
-# 値の検証
+# 値の検証(valueIs, valueContains, …)
+
+[in English](value_assertion.md)
 
 要素のラベルではなく**値**(入力欄の内容など)を検証します。構成は
 [テキストの検証](./text_assertion_ja.md)と同じです。

@@ -91,7 +91,7 @@ scenarios the AI assistant wrote, or to write some yourself.
     - [installApp, removeApp, clearAppData](reference/commands/install_app.md)
     - [launchApp, restartApp, terminateApp, openURL](reference/commands/launch_app.md)
 - Navigation
-    - [home, back, appSwitcher, rotateTo](reference/commands/navigation.md)
+    - [home, back, appSwitcher, tapAppIcon, rotateTo](reference/commands/navigation.md)
 - Swipe/Scroll screen
     - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](reference/commands/swipe.md)
     - [scroll (scrollTo, scrollDown, withScrollDown, scrollFrame, ...)](reference/commands/scroll.md)
@@ -121,9 +121,9 @@ scenarios the AI assistant wrote, or to write some yourself.
     - [Reading values of the grabbed element (.text, .value, .id, lastElement)](reference/commands/reading_values.md)
 - Sharing values between scenarios
     - [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo.md)
+- Test data, files, and talking to servers
+    - [Test data and accounts (account, data, dataFile, addMedia)](reference/commands/dataset.md)
     - [Output folder and temporary folder (TestLog)](reference/commands/test_log.md)
-- Test data and talking to servers
-    - [Test data and accounts (account, data)](reference/commands/dataset.md)
     - [HTTP request (httpRequest)](reference/commands/http_request.md)
 - Branch
     - [ifCanSelect, ios, android](reference/commands/branch.md)
@@ -132,7 +132,7 @@ scenarios the AI assistant wrote, or to write some yourself.
 - Syncing
     - [wait, waitForDisplay, waitForClose](reference/commands/wait.md)
 - Descriptor
-    - [group, procedure, beforeEach, afterEach](reference/commands/descriptors.md)
+    - [group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice](reference/commands/descriptors.md)
 - Screenshot
     - [screenshot](reference/commands/screenshot.md)
 - Handling irregulars

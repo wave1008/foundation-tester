@@ -1,5 +1,7 @@
 # 要素の選択と検証
 
+[in English](select_and_assert.md)
+
 要素を掴んで状態を検証する基本を説明します。`tap` / `exist` / `select` の違いと、
 値・テキストの検証コマンドが「直前に掴んだ要素」を対象にする仕組みです。
 
@@ -40,7 +42,11 @@ exist("#total")
 ```
 
 既に掴んだ1つの要素に対して働くコマンドはこのようにチェーンでき、同じ集合は引数無しの
-暗黙形でも書けます(上の例)。
+暗黙形でも書けます(`exist` が掴んだ要素が対象になります)。
+
+```swift
+exist("#total"); textStartsWith("合計")
+```
 
 ## 暗黙の待ち
 
@@ -57,8 +63,8 @@ exist("#total")
 
 `requireVisible: false` を渡すと、`exist`(通常は覆われ・見切れを検出して検証結果を失敗に
 反転させる)と `select`(通常は空要素を返す)を裏で支えている可視性確認を省きます。
-この追加の可視性照合は、実行プロファイルで `fmTextOcclusionCheck` か `ocrTextOcclusionCheck` を `true` にした run でだけ
-実際に走ります —— それ以外の run では、このフラグ自体に省くべき処理がありません。
+この追加の可視性照合は既定で有効です(`fmTextOcclusionCheck` と `ocrTextOcclusionCheck` の両方を
+`false` にした run では走らず、そのときはこのフラグに省くべき処理がありません)。
 
 ### Link
 - [index](../../index_ja.md)

@@ -1,5 +1,7 @@
 # Network access from scenarios
 
+[in Japanese(日本語)](network_access_ja.md)
+
 Scenarios run inside a [sandbox](../../security/sandbox.md), so **by default they cannot reach anything outside the
 Mac**. When a scenario needs the network — preparing test data through an API, reading a value from a web admin
 page, and so on — allow the destination first and then connect through the proxy.

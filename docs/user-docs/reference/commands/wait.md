@@ -1,5 +1,7 @@
 # wait, waitForDisplay, waitForClose
 
+[in Japanese(日本語)](wait_ja.md)
+
 Fixed pauses and explicit waits for an element to appear or disappear.
 
 ## Functions

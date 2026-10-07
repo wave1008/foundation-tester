@@ -1,5 +1,7 @@
 # Uninstall
 
+[in Japanese(日本語)](uninstall_ja.md)
+
 How to uninstall Fleetest.
 
 ## Ask your AI assistant

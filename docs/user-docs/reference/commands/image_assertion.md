@@ -1,4 +1,6 @@
-# imageIs
+# Image assertion (imageIs)
+
+[in Japanese(日本語)](image_assertion_ja.md)
 
 Classifies the **image** of the last grabbed element with a classifier trained from sample images
 (DefaultClassifier) and asserts its label (a port of `imageIs` from Shirates' Vision edition).
@@ -54,7 +56,7 @@ fleetest vision check --project <project>
   gets wrong are named in a warning (samples that cannot be told apart will also be confused on real screens). It
   only warns; the exit code stays 0.
 - The same warning appears at the end of a scenario when a run finds such samples.
-- Over MCP, `ft_capture_element` does the same (it also accepts an `ft_snapshot` ref and returns the check after saving).
+- For using this from MCP, see [MCP server](../tools/mcp_server.md).
 
 ## Example
 

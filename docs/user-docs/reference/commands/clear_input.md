@@ -1,5 +1,7 @@
 # clearInput
 
+[in Japanese(日本語)](clear_input_ja.md)
+
 Empties an input field.
 
 ## Functions

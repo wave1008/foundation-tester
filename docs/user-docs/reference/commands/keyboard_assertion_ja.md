@@ -1,4 +1,6 @@
-# keyboardIsShown, keyboardIsNotShown
+# キーボードの検証(keyboardIsShown, keyboardIsNotShown)
+
+[in English](keyboard_assertion.md)
 
 ソフトキーボードの表示/非表示を検証します。開閉はアニメーションを伴うため、どちらも `waitSeconds` までポーリングします。
 

@@ -1,8 +1,10 @@
-# Running in CI
+# Running on CI
+
+[in Japanese(日本語)](ci_ja.md)
 
 Scenarios execute deterministically with no LLM involved, so they fit CI: exit code and JUnit XML
-are both machine-readable. This page summarizes the essentials for running a receiver package in
-CI; see [docs/ci.md](../../ci.md) for the full write-up.
+are both machine-readable. This page summarizes the essentials for running a test project in
+CI.
 
 ## Prerequisites
 
@@ -14,8 +16,8 @@ CI; see [docs/ci.md](../../ci.md) for the full write-up.
 - **Apple Intelligence is not required.** Without it (a `⚠️` line is printed at startup), deterministic execution —
   tapping, asserting, and self-healing (locator fingerprint matching, which does not use FM) — runs unaffected.
   Two things change: **`screenLooksLike` passes without being checked**, and **text visual verification judges by OCR
-  alone** ([Text visual verification](../reference/testclass/text_visual_check.md)). See the Apple Intelligence section of [docs/ci.md](../../ci.md) (in Japanese) if you
-  need visual checks enforced.
+  alone** ([Text visual verification](../reference/testclass/text_visual_check.md)). If you
+  need visual checks enforced, see "Using Apple Intelligence in CI" below.
 - Xcode (and the Android SDK, if running Android scenarios) already installed on the runner.
 
 ## Running and retrieving results
@@ -76,6 +78,26 @@ pipeline {
   stops with `another fleetest run is already running on this Mac`. Either keep jobs that share an
   agent from overlapping, or add `--wait-lock <seconds>` so the second one queues instead of
   failing (see [Parallel execution](../reference/running/parallel_execution.md)).
+
+## Using Apple Intelligence in CI (optional)
+
+Apple Intelligence works only when the runner is a physical Mac (bare metal). It cannot be enabled
+inside a macOS VM (Tart, Anka and the like), so plan on it being unavailable there.
+
+- Physical Mac (a standing Jenkins machine, for example): works.
+- AWS EC2 Mac (bare metal): should work in principle, but it is unverified.
+- macOS VM: does not work. `screenLooksLike` passes without being checked, and text visual verification judges by OCR alone.
+
+To enable it on bare metal:
+
+- Apple silicon with macOS 26 or later. `screenLooksLike` and text visual verification (image input) need macOS 27 or later.
+- Enable it once in the GUI (System Settings → Apple Intelligence & Siri; on a machine without a display, through Screen Sharing.
+  A model download runs). An EC2 Mac loses the setting when recreated from a plain AMI, so bake a custom AMI after enabling it,
+  or include the enabling in your provisioning.
+- Run `fleetest doctor --fm-only` at the start of the job and check its exit code. The setting can say "available" while
+  calls still fail, so doctor really runs an inference.
+- FM is a resource shared by the whole Mac, and only one call runs at a time. A suite that uses `screenLooksLike` heavily takes longer.
+- Self-healing (locator fingerprint matching) does not use FM, so it runs in CI regardless of Apple Intelligence.
 
 ## Flaky scenarios (no retry mechanism, by design)
 

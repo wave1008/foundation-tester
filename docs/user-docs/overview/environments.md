@@ -1,5 +1,7 @@
 # Environment
 
+[in Japanese(日本語)](environments_ja.md)
+
 ## Supported environment
 
 | Target | Requirement |
@@ -27,10 +29,10 @@ On macOS 27+, enabling Apple Intelligence lets your tests use the features that 
 
 - **`screenLooksLike`**
   - Visual verification of the screen against a natural-language description.
-- **Assisting text visibility checks**
+- **Text visual verification**
   - Visually checks whether a text is actually displayed and not hidden behind something else, which makes test verdicts more accurate.
 
-All processing is on-device; screen data from your app never leaves your Mac.
+All processing for these features is on-device; screen data from your app never leaves your Mac through them (the screen contents sent to your AI assistant when you create tests are a separate matter).
 Apple's cloud, Private Cloud Compute (PCC), is never used.
 
 ### Limitations
@@ -38,6 +40,8 @@ Apple's cloud, Private Cloud Compute (PCC), is never used.
 - **Experimental.**
 - FM features are not available on macOS 26.
 - When FM is unavailable, `screenLooksLike` is **skipped**, not failed.
+
+Next: [Getting Started (Installation)](../getting-started.md)
 
 ### Link
 - [index](../index.md)

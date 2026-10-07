@@ -1,4 +1,6 @@
-# select
+# select, lastElement
+
+[in English](select.md)
 
 デバイスを操作せずに要素を掴みます。値の読み出しや検証コマンドの起点に使います。
 

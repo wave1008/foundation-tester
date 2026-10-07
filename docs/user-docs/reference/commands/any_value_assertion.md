@@ -1,4 +1,6 @@
-# thisIs and Friends (Device-Independent Value Assertion)
+# Any value assertion (thisIs, thisContains, ...)
+
+[in Japanese(日本語)](any_value_assertion_ja.md)
 
 Checks on values that don't touch the device — API responses, computed results. They attach
 directly to strings, numbers, `Bool`, and optionals. A failure is recorded as one step, just like

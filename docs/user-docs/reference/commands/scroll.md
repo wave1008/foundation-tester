@@ -1,4 +1,6 @@
-# scroll
+# scroll (scrollTo, scrollDown, withScrollDown, scrollFrame, ...)
+
+[in Japanese(日本語)](scroll_ja.md)
 
 Content-based scrolling: search for an element while scrolling, scroll a fixed amount, or scroll
 to an edge.
@@ -49,30 +51,16 @@ These are observations, not failures:
 | note | meaning | worth checking? |
 |---|---|---|
 | `stopped at the limit of N (may not have reached the edge yet)` | Stopped at `maxSwipes` — not necessarily the actual edge | **Yes.** Raise `maxSwipes`, or check whether the screen even has an edge to reach. |
-| `the screen did not settle (poll limit)` | Waited 600ms after a swipe but the screen was still moving (long inertia, etc.). The swipe itself was still sent. | Usually not. If it appears at the same spot every run, a tap right after could land while the content is still moving — worth investigating. |
-| `fell back to XCUITest` | The in-app engine could not run this scroll and fell back (several hundred ms slower per call). | Usually not. If it happens a lot, reconsider the run profile's engine selection. |
+| `the screen did not settle (poll limit)` | The screen was still moving after a swipe (long inertia, etc.). The swipe itself was still sent. | Usually not. If it appears at the same spot every run, a tap right after could land while the content is still moving — worth investigating. |
+| `fell back to XCUITest` | The in-app engine could not run this scroll, so XCUITest did it. | Usually not. If it happens a lot, reconsider the run profile's engine selection. |
 
-## How fast an edge scroll runs depends on the engine
+## How fast an edge scroll runs
 
-`scrollToBottom` etc. repeat "swipe, then read the tree to see if it stopped moving." How much
-one swipe covers, and whether a round trip is even needed, depends on the engine:
-
-| engine | per-swipe movement | cost on long content |
-|---|---|---|
-| iOS in-app (UIKit/SwiftUI, WebView) | jumps straight to the edge (moves `contentOffset` directly — no gesture, no inertia) | independent of document length |
-| Android WebView | jumps the page in one shot via CDP (falls back to a gesture if unavailable) | independent of document length |
-| iOS in-app (Compose / Flutter) | one screen per call (the accessibility scroll API has no adjustable step) | proportional to page count |
-| iOS xcuitest | a real fling gesture (roughly 1.1 screens) | proportional to page count |
-| Android (native) | a real swipe stroke (roughly 1.2 screens) | proportional to page count; default `maxSwipes: 50` may not reach very long documents |
-
-The edge is confirmed only once the screen has not moved for 1.0 second. The paths that jump straight
-to the edge (the first two rows) pay this 1.0 second when they reach the real edge. It keeps a list that
-renders more items after a jump (such as a React Native `FlatList`) from being taken as ended before
-those items arrive.
-
-Raise `maxSwipes` for long documents on a real-gesture engine. Chaining several `flick*` calls to
-go faster is not a substitute — flick has no notion of having reached the edge; see
-[flick](./flick.md).
+`scrollToBottom` etc. repeat "scroll once, then check whether the screen stopped moving." On Android, and on iOS with the
+XCUITest engine or Compose / Flutter, one step covers about one page, so raise `maxSwipes` for long screens (the default
+`maxSwipes: 50` may not reach very long documents). iOS UIKit / SwiftUI, WebView, and the Android WebView jump straight to
+the edge, so they do not depend on document length. Chaining several `flick*` calls to go faster is not a substitute —
+flick has no notion of having reached the edge; see [flick](./flick.md).
 
 ## Example
 
@@ -94,7 +82,7 @@ implementation, for example). Three scopes to choose from:
 
 | scope | how |
 |---|---|
-| whole run (**top-level kill switch**) | environment variable `FT_CONTAINER_INFERENCE=off` — overrides all three below |
+| whole run | environment variable `FT_CONTAINER_INFERENCE=off` (only to isolate a problem) — overrides all three below |
 | one command | `tap(sel, containerInference: false)` / `scrollTo(sel, containerInference: false)` |
 | a block | `withoutContainerInference { … }` (applies to `tap`/`exist`/`select` and every other command inside) |
 | the whole run profile | the run profile's `containerInference: false` |

@@ -1,4 +1,6 @@
-# Running Scenarios
+# Running scenarios (fleetest run)
+
+[in Japanese(日本語)](running_scenarios_ja.md)
 
 `fleetest run` executes Swift DSL scenarios deterministically — ordinary playback and self-healing
 (locator fingerprint matching) never call FM. This page covers the CLI options; see
@@ -7,11 +9,11 @@ enabling self-healing with `--set`.
 
 ## Invoking the CLI
 
-```bash
-# Clone configuration (working inside the foundation-tester clone)
-swift run fleetest run --profile ios-run
+In the rest of this documentation, `fleetest` is `../foundation-tester/.build/debug/fleetest` in the
+default layout, where foundation-tester is cloned next to your work folder. Inside the
+foundation-tester clone itself, `swift run fleetest` does the same.
 
-# External package configuration (a separate work folder with TestProjects/)
+```bash
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
@@ -24,10 +26,10 @@ swift run fleetest run --profile ios-run
 | `--scenario <id>` | Scenario ID: a class name alone runs every scenario in it, or `Class.method` for one. Repeatable; defaults to all. `@Deleted`/`@Draft` scenarios only run on an exact match |
 | `--folder <folder>` | Scenario folders to run (subfolders directly under `scenarios/`). Repeatable; combinable with `--scenario`/`--failed` |
 | `--failed` | Run only the scenarios that failed last time. Results are recorded per `(project, profile)` in `.fleetest/last-results/` on every run — a scenario that failed under one run profile is not hidden by a green run of a different profile, and a profile-less run has its own bucket. `--failed` looks at the profile you pass to this same invocation (or the profile-less bucket if you omit `--profile`). "Failed" means the scenario's last attempt did not pass — this includes scenarios that could not start (no worker/device available, the run was interrupted, or device supply failed), but not scenarios skipped as not applicable (declared for another platform) |
-| `--set <key>=<value>` | Override one run profile key for this run only, using the exact key name from the profile JSON and a value matching that key's type — `true`/`false` for a boolean key (e.g. `heal`, `fmTextOcclusionCheck`, `ocrTextOcclusionCheck`, `enableAnimations`, `iosFastInput`), or a string/number for a scalar key (e.g. `--set reportDir=/tmp/out`, `--set defaultTimeout=8`). All keys are listed in [run_profile.md](../project/run_profile.md). Repeatable; works with or without `--profile`, except the keys that need a run profile's device list or supply pipeline (`iosInappEngine`, `updateWebView`, `wipeDataOnBloat`, `recoverCpuFallbackToGpu`, `app`, `locale`, `wipeDataThresholdGB`), which name the key in the error when `--profile` is missing. `record` also needs either `--profile` or `--port` given more than once (a single connection has no recording session to attach to). `reportDir` cannot be combined with `--report-dir` (same field, two ways to set it — pick one). The run profile key `app` names an app **profile**, unrelated to this command's own `--app-id` flag. `devices`/`remoteControl` are lists/objects and cannot be set this way; edit the run profile JSON instead. An unknown key, a value of the wrong type, or a list/object key is an error that explains what to do instead |
+| `--set <key>=<value>` | Override a run profile key for this run only (repeatable; works with or without `--profile`; e.g. `--set heal=true`, `--set defaultTimeout=8`). The rules — available keys, value types, keys that require `--profile` — are in [Run profile keys](../project/run_profile.md) |
 | `--dry-run` | Validate steps without touching a device (see [dry_run.md](./dry_run.md)) |
 | `--report-dir <dir>` | Directory to write reports to (default: `TestProjects/<name>/reports`). Cannot be combined with `--set reportDir=...` |
-| `--port <port>` | Bridge port for manual parallel iOS runs. Repeatable (`--port 8123 --port 8124`; see [parallel_execution.md](./parallel_execution.md)) |
+| `--port <port>` | iOS bridge port (without `--profile`). Give it more than once for a manual parallel run (`--port 8123 --port 8124`; see [parallel_execution.md](./parallel_execution.md)) |
 | `--skip-build` | Skip the `swift build` before running |
 | `--quiet` | Print only the summary (for CI and agents) |
 | `--junit <path>` | Write a JUnit XML report to this path |
@@ -37,7 +39,7 @@ swift run fleetest run --profile ios-run
 | `--runner <runner>` / `--fleet <fleet>` | Dispatch to a remote machine or a fleet of machines over SSH (see [Remote Runners](../../fleet/remote_runners.md)) |
 | `--platform <ios\|android>` | Target platform without `--profile` (default `ios`) |
 | `--app-id <bundleID>` | Default app for scenarios with no `@TestClass(app:)`, only needed without `--profile`. Unrelated to `--set app=...` (the run profile's `app` key names an app *profile*, not a bundle ID) |
-| `--port <n>` / `--serial <s>` | Bridge port (iOS) / device serial (Android) without `--profile` |
+| `--serial <s>` | Android device serial (without `--profile`) |
 
 Run `fleetest run --help` for the full, current list.
 

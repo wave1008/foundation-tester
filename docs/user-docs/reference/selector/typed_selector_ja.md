@@ -1,4 +1,6 @@
-# 型付きセレクタ(`Sel`)
+# 型付きセレクタ(Sel)
+
+[in English](typed_selector.md)
 
 セレクタ式は文字列1本なので、綴り誤りをコンパイラでは捕まえられず、実行時の構文検証に頼ることに
 なります。`Sel` は同じセレクタ記法を型で書けるようにしたもので、文字列版に**併設**されます
@@ -31,8 +33,9 @@ tap(.type(.button).not(.text("キャンセル")))         // .button&&text!=キ�
 - 相対: `.right(_)`、`.left(_)`、`.above(_)`、`.below(_)`。文字列版の相対セレクタと同じく、
   任意の `matching:` フィルタと `nth:`(近い順の序数)を取れます。
 - 型名: `.button`、`.staticText`、`.textField`、`.secureTextField`、`.switch`、それに
-  エイリアス `.input`、`.widget`、`.cell`、`.image`、`.clickable`。この語彙に無い型は
-  `.custom("...")` で書きます。
+  エイリアス `.input`(textField か secureTextField)と `.widget`(上の5つ)。ほかに、
+  OS によっては出ない `.cell`、`.image`、`.clickable` もあります(エイリアスではなく実際の型名です)。
+  この語彙に無い型は `.custom("...")` で書きます。
 
 フィルタ系メソッド(`.text`、`.type`、`.nth` など)は常に**現在の対象**に効きます —— 相対
 ステップより前なら基準、後なら解決済みの候補が対象です。

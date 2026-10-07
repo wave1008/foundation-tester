@@ -1,5 +1,7 @@
 # Typed Selector (`Sel`)
 
+[in Japanese(日本語)](typed_selector_ja.md)
+
 A selector expression is a single string, so a typo can't be caught by the compiler — only
 by the runtime syntax check. `Sel` is a type-checked, autocompleted way to write the same
 selector notation, offered alongside the string form (not a replacement for it).
@@ -32,8 +34,9 @@ execution, reporting, and self-healing behave identically either way.
 - Relative: `.right(_)`, `.left(_)`, `.above(_)`, `.below(_)` — take an optional `matching:`
   filter and `nth:` (nearest-first ordinal), mirroring the string form's relative selector.
 - Type names: `.button`, `.staticText`, `.textField`, `.secureTextField`, `.switch`, plus
-  aliases `.input`, `.widget`, and `.cell`, `.image`, `.clickable`. Anything outside this
-  vocabulary is `.custom("...")`.
+  the aliases `.input` (textField or secureTextField) and `.widget` (the five above). `.cell`,
+  `.image` and `.clickable` also exist, but they are real type names rather than aliases, and some
+  OSes never report them. Anything outside this vocabulary is `.custom("...")`.
 
 Filter methods (`.text`, `.type`, `.nth`, …) always apply to the **current target**: before a
 relative step that's the anchor, after a relative step that's the resolved candidate.

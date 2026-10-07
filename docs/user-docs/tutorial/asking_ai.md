@@ -1,7 +1,9 @@
-# How to Ask an AI Assistant
+# Asking the AI assistant
+
+[in Japanese(日本語)](asking_ai_ja.md)
 
 fleetest is designed to be used by **asking an AI assistant such as Claude Code in natural language**.
-You do not need to read or write test scenarios (Swift files) or MCP tools yourself ——
+The Swift files the AI assistant writes are called **scenarios** (one file holds several tests). You do not need to read or write scenarios or MCP tools yourself ——
 the AI assistant operates the app on a device, reads the screen, writes the scenarios, runs them, and reports the results.
 
 This page explains what you can ask for and a pattern for asking well. If you have not run anything yet,
@@ -37,7 +39,7 @@ Create an exploratory test for just the cart screen, on Android.
 ```
 
 If you know the name of the run profile (the setting that says which devices to run on), writing it is the
-most reliable ("run it with the ios profile").
+most reliable ("run it with the ios-run profile").
 
 ### 3. Write the completion condition
 
@@ -68,10 +70,10 @@ With a request like this, you can separate the investigation from the fix.
 
 <img src="../images/tutorial/en/how_it_works.png" width="720" alt="When creating tests the AI assistant operates the device and writes scenarios; when replaying, fleetest replays them without AI">
 
-The AI assistant that receives your request works using fleetest's **MCP server** (`ft_*` tools) and the **Claude Code skills**.
+The AI assistant that receives your request works using fleetest's **MCP server** (`ft_*` tools) and its **procedure guides** (skills in Claude Code).
 
 - Reads the screen, taps, and types text (actually operates the app on a device)
-- Writes test scenarios (`TestProjects/<project>/scenarios/*.swift`) from the elements read from the screen
+- Writes scenarios (`TestProjects/<project>/scenarios/*.swift`) from the elements read from the screen
 - Verifies in this order: compile, verification without a device (dry-run), then a run on a device
 
 **AI is not used to replay a finished test.** A scenario is replayed deterministically as code, so
@@ -84,6 +86,8 @@ To learn what happens inside, see the reference pages
 
 You can also use MCP-capable AI assistants such as Codex and Cline. For how to register them and the caveats (such as the Codex sandbox), see
 [AI assistants other than Claude Code](../reference/tools/other_agents.md).
+
+Next: [Preparing the app and devices](preparing_app_and_devices.md)
 
 ### Link
 - [index](../index.md)

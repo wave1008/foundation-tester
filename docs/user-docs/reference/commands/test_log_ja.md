@@ -1,5 +1,7 @@
 # 出力フォルダと一時フォルダ(TestLog)
 
+[in English](test_log.md)
+
 シナリオの中でファイルを書くときに使うフォルダを返します。シナリオはサンドボックスの中で動くので、
 **書けるのはこの2つのフォルダ(とその下)だけ**です。`NSTemporaryDirectory()` や
 `FileManager.default.temporaryDirectory` が返す場所には書けません(「You don’t have permission」で失敗します)。

@@ -1,5 +1,7 @@
 # Adding a Mac
 
+[in Japanese(日本語)](adding_mac_ja.md)
+
 These steps add another Mac (a runner machine) to your fleet so it can run your tests. For the big picture, see
 [Fleet concepts](concepts.md); for what remote runs can do and how they work in detail, see [Remote Runners](remote_runners.md).
 
@@ -31,7 +33,7 @@ In the examples below, the runner is `<user@192.168.xxx.xxx>` and its machine na
 | Someone stays logged in at the console | `stat -f%Su /dev/console` matches the runner's user |
 | System sleep disabled (display sleep and screen lock are fine) | `pmset -g \| grep " sleep"` |
 | Remote Login on | checked in Step 1 |
-| The firewall is off; if it is on, its "Block all incoming connections" is off | see item 2 of Step 0 |
+| The firewall's "Block all incoming connections" is off (the firewall itself can stay on) | see item 2 of Step 0 |
 | Homebrew is installed, in a version that supports that macOS | `brew --version` runs |
 | Xcode's license is accepted and its first-launch setup is done | `sudo xcodebuild -license accept`, then `sudo xcodebuild -runFirstLaunch` (`fleetest remote setup` stops if either is missing) |
 | Screen Sharing on (recommended: lets you log back in from your Mac after the runner restarts; `fleetest remote setup` does not require it) | System Settings → General → Sharing → Screen Sharing |
@@ -55,12 +57,12 @@ Sit at the runner or use Screen Sharing. These tasks need sudo or the GUI, so fl
 do them for you.
 
 1. **Turn on Remote Login**: System Settings → General → Sharing → Remote Login.
-2. **Check the firewall**. **If the firewall is off, there is nothing to do.** If it is on, turn
-   off only "Block all incoming connections" (System Settings → Network → Firewall → Options).
-   While that option is on, SSH is blocked too. The firewall itself can stay on. You can check the
+2. **Check that the firewall's "Block all incoming connections" is off**
+   (System Settings → Network → Firewall → Options). While that option is on, SSH is blocked too.
+   The firewall itself can stay on (if it is off, there is nothing to do). You can check the
    state with these commands:
    ```bash
-   /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate   # "Firewall is disabled" means you are done
+   /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate   # "Firewall is disabled" means the firewall itself is off (you are done)
    /usr/libexec/ApplicationFirewall/socketfilterfw --getblockall      # "… set to disabled" means OK
    ```
 3. **Turn on Screen Sharing** (recommended). It lets you log back in from your Mac after the
@@ -142,7 +144,7 @@ fleetest remote machines        # check the registration
 - If you keep the Xcode you want this runner to use somewhere other than `/Applications`, add
   `--developer-dir <path to the .app>` (for example `--developer-dir /Applications/Xcode_27.app`)
   to pin it. Omit it when the runner's `/Applications` has at most one Xcode matching each
-  product version you dispatch to it.
+  product version you run tests on it with.
 
 ### Register in the VS Code extension
 
@@ -198,16 +200,16 @@ The command goes through these stages:
    stops.
 3. Prepares fleetest and your test project under `~/fleetest-runner/` on the runner.
 4. Brings the runner's fleetest to the same version as your Mac.
-5. Only when you add `--profile <run profile>` (and optionally `--scenario <scenario id>`), sends one
-   real dispatch to the runner as a final check. Without it, this stage is reported as "not yet
+5. Only when you add `--profile <run profile>` (and optionally `--scenario <scenario id>`), runs one
+   real test on the runner as a final check. Without it, this stage is reported as "not yet
    verified" (a warning). `--skip-verify` also skips it.
 
 The exit code tells you how it ended:
 
 | Exit code | Meaning | What to do next |
 |---|---|---|
-| `0` | Done (the final dispatch check passed too) | Go on to Step 4 |
-| `2` | The required checks passed, but some items are not finished: a person still has to do something, or the final dispatch check was skipped (no `--profile`, or `--skip-verify`) | Fix the listed items and run the same command again. If only the check was skipped, running a real test in Steps 4–6 is enough |
+| `0` | Done (the final test run passed too) | Go on to Step 4 |
+| `2` | The required checks passed, but some items are not finished: a person still has to do something, or the final test-run check was skipped (no `--profile`, or `--skip-verify`) | Fix the listed items and run the same command again. If only the check was skipped, running a real test in Steps 4–6 is enough |
 | `1` | Failed | Read the message and fix it (see "Troubleshooting" below) |
 
 ## Step 4: Add the runner's devices to your run profile (on your Mac)
@@ -318,7 +320,7 @@ your Mac.
 
 - If it differs, you see "The remote runners' fleetest version differs from this machine's."
   Pressing "Update and run" brings the runner to your version and then runs.
-- If it cannot be brought in line (your changes are not pushed, the runner cannot be reached,
+- If it cannot be brought in line (your fleetest has commits that are not on GitHub yet, for example because you modified fleetest yourself; the runner cannot be reached,
   the Xcode product versions differ, and so on), you see "Cannot run: the remote runners' fleetest
   cannot be updated from here." with the reason, and the run does not start. **A difference in
   Xcode beta build number alone does not stop the run** — it is only a warning.
@@ -339,7 +341,7 @@ until the versions match.
   it once set.
 - **Each person runs `fleetest remote setup M1Max` once**. This creates their own work area on
   the runner.
-- Only one person can run at a time. For how to wait and more, see "Sharing one runner between
+- Only one person can run at a time. How to wait, what is shown and the settings are all in "Sharing one runner between
   several people" in [Remote Runners](remote_runners.md).
 
 ## Troubleshooting
@@ -360,8 +362,9 @@ until the versions match.
 | `app package not found at …` | There is no app at `appPath` on your Mac | Build the app on your Mac, or fix `appPath` |
 | A tile stays "unknown" | The runner's fleetest is out of date, or SSH cannot connect | Run Step 3 again, then press "Restart Monitor" in the toolbar |
 
-Messages not listed here are covered in the troubleshooting table at the end of
-[docs/remote-runner-setup.md](../../remote-runner-setup.md) (Japanese only).
+For a message not listed here, report it as described in "Reporting a problem" in
+[Troubleshooting](../in_action/troubleshooting.md), attaching the output of
+`fleetest remote status --runner <machine>` (Step 5) and `fleetest doctor`.
 
 ### Link
 - [index](../index.md)

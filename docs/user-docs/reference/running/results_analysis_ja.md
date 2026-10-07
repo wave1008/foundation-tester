@@ -1,9 +1,11 @@
-# 実行結果の分析
+# 結果の分析(fleetest results・ダッシュボード)
+
+[in English](results_analysis.md)
 
 `fleetest run`(CLI・`fleetest api run` とも)は実行のたびに結果を
 `TestProjects/<name>/results/` へ追記します。このページでは `fleetest results` コマンドと
 失敗の読み方を説明します。JSON スキーマの唯一の定義元は
-[../../results-json.md](../../../results-json.md)(日本語)です。
+[結果 JSON のスキーマ](../../../results-json.md)(日本語)です。
 
 ## 構成
 
@@ -44,7 +46,7 @@ results/runs/<YYYY-MM>/<runID>/
 を表示します。`<runID>` は `latest` も受け付けます。`--scenario <id>` で1シナリオだけに絞り、
 `--raw` で整形せずに元の NDJSON 行をそのまま出せます(このときシナリオごとの見出しは stderr へ出るので、stdout は NDJSON だけになります)。
 
-この機能より前に走った run、または[保持容量の掃除](../../../results-json.md)で `events/` が
+古い run、または[ログ・録画のクリーンアップ](../tools/vscode_extension_ja.md#ログ録画のクリーンアップ)で `events/` が
 既に消された run には実行ログが無く、その旨を stderr に出して非ゼロで終了します。1本も始まる前に
 中断された(またはデバイスの用意の途中で中止された)run にも実行ログは無く、文言がその理由を言います。再実行
 (凍結・環境エラー)で振り直された記録は「(superseded)」という追加の見出しで、run が kill されて
@@ -118,13 +120,12 @@ jq -r 'select(.passed==false) | .failedSteps[0]
 振り直し・run 前の除外・修復・回復操作・アプリのクラッシュ)を1台1行で結合)を表示するパネルが
 開きます(データは `fleetest results` と同じ集計を
 使い、集計期間はツールバーから 7日/30日/90日 に切り替えられます)。詳細は
-[vscode-fleetest/README.md](../../../../vscode-fleetest/README.md)の「結果ダッシュボード」を
-参照してください。
+[VSCode 拡張](../tools/vscode_extension_ja.md)の「結果ダッシュボード」を参照してください。
 
 ## CI
 
 `fleetest run --junit <path>` は JSON の結果に加えて JUnit XML レポートを出力します
-(CI のテストレポート向け)。詳細は [ci_ja.md](../../in_action/ci_ja.md) を参照してください。
+(CI のテストレポート向け)。詳細は [CI 連携](../../in_action/ci_ja.md) を参照してください。
 
 ### Link
 - [index](../../index_ja.md)

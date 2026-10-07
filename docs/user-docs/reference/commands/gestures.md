@@ -1,4 +1,6 @@
-# gestures (doubleTap, pinchOut, pinchIn, gesture, hold)
+# Gestures for maps and canvases (doubleTap, pinchIn, pinchOut, gesture, hold)
+
+[in Japanese(日本語)](gestures_ja.md)
 
 Multi-touch gestures: double tap, pinch to zoom out, pinch to zoom in, and a raw multi-finger
 gesture builder for anything those three cannot express.
@@ -48,10 +50,9 @@ points per finger, total duration capped at 10 seconds by default (`maxGestureSe
 to 60, same rule as the other gesture commands). An invalid spec (no fingers, an off-screen point,
 a non-positive duration, too long a gesture) fails the step without touching the device.
 
-**On iOS this always runs through the XCUITest engine**, even under the default hybrid engine —
-the in-app engine has no route for it (it uses the same private pointer-event API as the
-coordinate pinch). Use cases: pattern lock, long-press-then-drag without lifting (e.g. reordering
-a list), a custom two-finger rotate, gestures needing 3+ fingers, drawing or signing.
+**On iOS this command always runs through XCUITest, even under the default hybrid engine.** Use cases: pattern lock,
+long-press-then-drag without lifting (e.g. reordering a list), a custom two-finger rotate,
+gestures needing 3+ fingers, drawing or signing.
 
 ## `hold`: verifying something that only shows while pressed
 
@@ -65,14 +66,13 @@ hold("#btn_tooltip_anchor", holdSeconds: 3) {
 }
 ```
 
-The bridge lifts the finger by itself `holdSeconds` after it went down (the request that puts the
-finger down does not wait for that); the block runs while it is still down. If the block finishes
-before `holdSeconds` is up, `hold` waits for the bridge's release before returning. If the block
+The finger lifts by itself `holdSeconds` after it went down; the block runs while it is still down. If the block finishes
+before `holdSeconds` is up, `hold` waits for the release before returning. If the block
 takes longer than `holdSeconds`, the finger is already up for the rest of it — this is noted but
 not treated as a failure. Holds cannot be nested (start a second one only after the first one's
 block has finished), and if the target cannot be resolved the block does not run at all. **On iOS
-with the default hybrid engine, the press always runs through the XCUITest engine** — same as
-`tap`'s long press — because the in-app engine has no route for holding a coordinate down.
+with the default hybrid engine, the press always runs through XCUITest** (same as
+`tap`'s long press).
 
 ## Maps, image viewers, drawing canvases
 
@@ -80,27 +80,23 @@ For a map, image viewer, or drawing surface, operate it with these four commands
 pan (diagonal included), `pinchOut`/`pinchIn` to zoom, `doubleTap` to zoom in. Three things to
 keep in mind:
 
-- **A pinch is aimed by an area on every engine, and the fingers land at the same spot regardless
-  of engine.** A single rule per OS (`FTCore.PinchGesture`, host-side) decides the finger
-  coordinates, and every bridge — in-app and XCUITest alike — replays them. On iOS the two fingers
+- **The fingers of a pinch land at the same spot regardless of engine.** On iOS the two fingers
   sit side by side along the region's long side, 0.8 inside its edges; on Android they sit on the
-  region's short side, 90% of it apart, centred. XCUITest sends these coordinates through a
-  private API; only on an Xcode without that API does it fall back to resolving an element by its
-  `accessibilityIdentifier` — and it says so in a note on the step.
+  region's short side, 90% of it apart, centred. On an older Xcode a different method is used
+  instead, and a note on the step says so.
 - **`pinchOut()` / `pinchIn()` written without a target pinch a small area at the centre of the
   screen**, not the whole screen. **A pinch does not happen when the two fingers land on different
-  things**: measured on Apple Maps (2026-09-22), pinching the whole screen put the lower finger on
-  the search card, and a zoom out turned into a pan of the map (a zoom in still worked, because
-  there the fingers start at the centre and spread out). fleetest therefore picks a spot where both
-  fingers stay on the same thing, narrowing the span if it has to, and falls back to the whole
-  screen only when no such spot exists.
+  things**: pinching the whole screen can put one finger on another component and turn the pinch
+  into a pan of the map. fleetest therefore picks a spot where both fingers land on the same
+  element, narrowing the span if it has to, and pinches the whole screen only when no such spot
+  exists.
 - **On iOS, only double tap can fail to register, depending on the framework and the engine.**
   The default hybrid engine (Simulator) runs every gesture on every framework. Android has no such
   split — every gesture works everywhere:
 
   | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
   |---|---|---|---|---|
-  | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ | not measured (expected ✅ via the UIKit-based path) |
+  | `swipeBy` (diagonal included) | ✅ | ✅ | ✅ | — |
   | `doubleTap` | ✅ | ✅ **hybrid only** | ✅ | △ |
   | `pinchOut` / `pinchIn` | ✅ | ✅ | ✅ | ✅ |
   | `gesture` | ✅ | ✅ | ✅ | ✅ |
@@ -110,8 +106,8 @@ keep in mind:
     tap** (a physical device cannot be injected into, so there is no other way to send it).
   - **"△"**: it arrives, but a screen that detects taps in JavaScript (PanResponder and a clock,
     for example) can miss it intermittently.
-  - The MCP `ft_*` tools and Live Control follow the same rules (MCP uses the run's engine when you
-    pass a `profile`).
+  - **"—"** means not verified.
+  - For using this from MCP, see [MCP server](../tools/mcp_server.md).
 - **Where double tap does not register, check the zoom with `pinchOut` instead.** On a screen where
   double tap means "zoom in" (maps, photos), `pinchOut` produces the same zoom for you to verify.
   Pinch works on every framework, Compose included, with either engine:

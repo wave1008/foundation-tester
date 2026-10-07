@@ -53,6 +53,9 @@ The sandbox exists to protect this Mac. It does not stop the following.
   syntax is not officially documented. If scenarios start failing with permission errors after a macOS update,
   update fleetest.
 
+- **Using a physical iOS device on a runner machine puts a development signing key in a keychain without a password**
+  ([Adding physical devices](../fleet/adding_physical_devices.md)). Anyone who can log in to that runner machine can sign with this key.
+
 ## When things do not work
 
 | What happens | Where to look |
@@ -61,6 +64,12 @@ The sandbox exists to protect this Mac. It does not stop the following.
 | Outbound requests time out or return `403 Forbidden` | The troubleshooting table in [Network access from scenarios](../reference/writing/network_access.md) |
 | The scenario does not start and an error about the settings file appears | The JSON in `~/.config/fleetest/config.json` and whether it has unknown keys |
 | An environment variable looks empty | Only the variables fleetest uses are passed to scenarios ([Accessible folders and destinations](access.md)) |
+
+## Related
+
+- [Network Exposure and Security](../in_action/network_security.md) — the ports fleetest opens, outbound traffic, and running on a closed network
+- [The sandbox](sandbox.md)
+- [Accessible folders and destinations](access.md)
 
 ### Link
 - [index](../index.md)

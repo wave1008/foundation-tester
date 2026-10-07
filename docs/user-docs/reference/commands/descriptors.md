@@ -1,4 +1,6 @@
-# group, procedure, beforeEach, afterEach
+# group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice
+
+[in Japanese(日本語)](descriptors_ja.md)
 
 Structuring commands: grouping steps in the report, running arbitrary Swift as one step, and
 per-test setup/teardown.

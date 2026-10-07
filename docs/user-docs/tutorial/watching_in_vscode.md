@@ -1,5 +1,7 @@
 # Watching in VSCode
 
+[in Japanese(日本語)](watching_in_vscode_ja.md)
+
 While the AI assistant creates and runs tests, you can **watch** what is happening in the VSCode extension.
 The VSCode extension comes with the installation in [Getting started](../getting-started.md).
 
@@ -11,7 +13,7 @@ Run the command "fleetest: Show Device Monitor", or click
 - **The device screens line up in near real time**. You can watch the AI assistant exploring, and tests
   running in parallel on multiple devices, as they happen.
 - A device you select by clicking its tile is shown enlarged below, and its execution log (which step is running and whether it passed) streams in.
-- The run board at the top shows the runs in progress, with "how many of how many" and "how many minutes left".
+- The "Running" section at the top shows the runs in progress, with "how many of how many" and "how many minutes left".
 
 <img src="../images/tutorial/en/vscode_device_monitor.png" width="720" alt="Device Monitor">
 
@@ -65,6 +67,8 @@ success rate.
 ## Learn more
 
 See [VSCode extension](../reference/tools/vscode_extension.md) for all features and settings.
+
+Next: [The sandbox](../security/sandbox.md)
 
 ### Link
 - [index](../index.md)

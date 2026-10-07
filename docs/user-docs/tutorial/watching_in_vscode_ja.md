@@ -1,5 +1,7 @@
 # VSCode で見る
 
+[in English](watching_in_vscode.md)
+
 AIアシスタントがテストを作り、実行している間、何が起きているかは VSCode 拡張で**見る**ことができます。
 VSCode 拡張は[はじめに](../getting-started_ja.md)のインストールで入ります。
 
@@ -11,7 +13,7 @@ VSCode 拡張は[はじめに](../getting-started_ja.md)のインストールで
 - **デバイスの画面がほぼリアルタイムに並びます**。AIアシスタントが探索している様子や、テストが
   複数のデバイスで並列に走っている様子をそのまま見られます。
 - タイルをクリックして選んだデバイスは、下に拡大表示され、その実行ログ(どの手順を実行中か・成否)が流れます。
-- 上部の run ボードには、いま走っている実行が「何本中何本」「残り何分」つきで出ます。
+- 上部の「実行中」欄には、いま走っている実行が「何本中何本」「残り何分」つきで出ます。
 
 <img src="../images/tutorial/ja/vscode_device_monitor.png" width="720" alt="デバイスモニター">
 
@@ -65,6 +67,8 @@ fleetest の iOS の実行で、失敗したシナリオの録画だけ残すよ
 ## もっと詳しく
 
 全機能と設定項目は[VSCode 拡張](../reference/tools/vscode_extension_ja.md)を参照してください。
+
+次へ: [サンドボックスの考え方](../security/sandbox_ja.md)
 
 ### Link
 - [index](../index_ja.md)

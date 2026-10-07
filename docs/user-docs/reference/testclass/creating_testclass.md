@@ -1,5 +1,7 @@
 # Creating a Test Class
 
+[in Japanese(日本語)](creating_testclass_ja.md)
+
 A test scenario is a Swift file that describes a `@TestClass` with one or more `@Test`
 methods. This page covers where to put the file and the minimal shape it needs.
 

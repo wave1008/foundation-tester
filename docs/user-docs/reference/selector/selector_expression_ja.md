@@ -1,7 +1,9 @@
 # セレクタ式
 
+[in English](selector_expression.md)
+
 セレクタは文字列1本で書きます。このページは記法の全体リファレンスです。コマンドでの使い方は
-[docs/commands.md](../../../commands.md)を参照してください。
+[tap](../commands/tap_ja.md)・[exist](../commands/existence_assertion_ja.md) など各コマンドのページを参照してください。
 
 ## 記法の表
 
@@ -19,11 +21,11 @@
 | `#save&&.button&&enabled=true` | **`&&` で AND 合成**。属性は `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled`。一致方法(`Contains`/`StartsWith`/`EndsWith`/`Matches`)を持つのは `text`/`value`/`placeholder`/`id` の4属性のみで、`type`/`pos`/`checked`/`enabled` は完全一致のみ |
 | `(保存\|OK)` / `text=(保存\|OK)` | **フィルタ内 OR**。`保存\|\|OK` と等価(相対セレクタの引数では括弧を自分で書く: `:right((保存\|OK))`) |
 | `.button&&text!=キャンセル` / `.button&&!キャンセル` | **否定フィルタ**(`!値` は短縮形)。`textContains!=` `!#id` `!.button` も可。**否定だけの節・序数の否定は書けない** |
-| `.input` / `.widget` | 型エイリアス(`.input` = textField\|secureTextField / `.widget` = OS 共通の役割型5つ) |
+| `.input` / `.widget` | 型エイリアス(`.input` = textField\|secureTextField / `.widget` = button・staticText・textField・secureTextField・switch の5つ。このほかのエイリアスは無い) |
 | `#list >> .clickable[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない。**祖先がアプリの a11y ツリーに公開されている必要**があり、畳まれた容器(Flutter の `MergeSemantics` 等)は子孫が消えるためスコープに使えない |
 | `通知:rightSwitch` | **相対セレクタ**(**基準が先**)。基準の帯に入り、その方向にある最も近い候補。該当が無ければ失敗する。詳細は[相対セレクタ](./relative_selector_ja.md) |
 | `数量:right(2)` / `#a:below(.button&&項目)` / `見出し:right:belowButton` | 序数 / 任意フィルタ / 連鎖 |
-| `<変更&&.button>:right(数量)` | 基準を `<...>` で囲む(Shirates 正典形。任意。基準の範囲を目で追いやすくする) |
+| `<変更&&.button>:right(数量)` | 基準を `<...>` で囲む(Shirates での書き方。任意。基準の範囲を目で追いやすくする) |
 | `=#で始まる生ラベル` | `=` エスケープでラベル扱いを強制する(`>>` `&&` `:right` `*` を含むラベルもこれで書く) |
 
 ## 短縮形と完全形の対応
@@ -47,7 +49,7 @@
 
 `||` は**候補集合の和**を取ります。要素を1つだけ選ぶコマンドでは、**節の順に先に解決した方**を
 採用します。これにより `#login_btn||ログイン` はヒール連鎖としても働きます —— id が変わっても
-ラベルの節で解決できます。実質の優先度は id > label > type+index です。
+ラベルの節で解決できます。節は書いた順に試されるので、id → ラベル → 型+序数 の順に並べるのが定石です。
 
 ## デバイスに触れる前に構文エラーになるもの
 

@@ -1,11 +1,13 @@
 # Parallel Execution
 
+[in Japanese(日本語)](parallel_execution_ja.md)
+
 ## With a run profile
 
 **The parallelism level equals the number of resolved devices.** Each device in a run profile
 becomes a worker; scenarios are shared out across them. iOS reuses any already-running bridge
 and only starts what's missing. A run profile can mix iOS and Android devices in the same
-`devices` list to test both OSes in one run — see [profiles.md](../project/profiles.md).
+`devices` list to use iOS and Android devices together in one run (each scenario runs on only one of the two OSes — see below; see [profiles.md](../project/profiles.md)).
 
 ```bash
 fleetest run --project SampleApp --profile all
@@ -37,16 +39,12 @@ own subprocess, so platforms stay isolated).
 
 - **More devices is not always faster.** Past the point where the Mac is saturated, each scenario
   just gets slower, the total time stays flat, and image-based steps (`findImage` / `existImage`) and
-  text visual verification start to fail more often. Measured on an M2 Ultra with Android Emulators:
-  6 devices → 10 devices doubled the median scenario time (7.8s → 14.1s), did not shorten the run,
-  and raised image-matching errors from 2 to 28 in about 500 runs each.
+  text visual verification start to fail more often.
 - So find the knee on your own Mac: add devices a few at a time and stop when the wall time of the
   run stops dropping. If a run turns red only at the higher count, go back to the lower one.
-- Older measurement (M1 Max): 3 scenarios sequentially = 55.2s → 2+1 in parallel = 31.2s; there,
-  iOS 2 + Android 2 was the knee and 3+3 gained nothing.
 - A freshly cold-booted Simulator can time out on its accessibility IPC. Workers warm up with a
-  snapshot automatically at start, but if it still fails, run `bridge up` then one manual
-  `launch` + `snapshot` before the real run.
+  snapshot automatically at start, but if it still fails, run `bridge up` then launch the app and take one
+  snapshot by hand (MCP `ft_launch` and `ft_snapshot`; see [MCP Server](../tools/mcp_server.md)) before the real run.
 
 ## `--broadcast`
 
@@ -84,8 +82,8 @@ the runner is busy for everyone until it finishes — see
 ## Other places parallel execution shows up
 
 - The VS Code extension runs the same parallel execution through the `fleetest.profile` setting
-  (see the "並列実行とログレーン" section of
-  [vscode-fleetest/README.md](../../../../vscode-fleetest/README.md) (Japanese)).
+  (see the Device Monitor section of
+  [VS Code Extension](../tools/vscode_extension.md)).
 - LPT ordering (longest-past-runtime-first dispatch) balances the queue across workers using
   recent run history; `--no-lpt`/`--lpt-history-runs` control it (see
   [running_scenarios.md](./running_scenarios.md)).

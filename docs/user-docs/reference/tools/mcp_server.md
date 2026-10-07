@@ -1,5 +1,7 @@
 # MCP Server
 
+[in Japanese(日本語)](mcp_server_ja.md)
+
 `fleetest-mcp` is a stdio [MCP](https://modelcontextprotocol.io) server that exposes device
 operations, scenario execution and scenario authoring as `ft_*` tools for coding agents.
 It is the same functionality as the CLI and VS Code extension, called by an agent instead of a

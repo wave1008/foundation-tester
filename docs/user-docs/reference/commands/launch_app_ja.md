@@ -1,5 +1,7 @@
 # launchApp, restartApp, terminateApp, openURL
 
+[in English](launch_app.md)
+
 テスト対象アプリの起動・再起動・終了と、ディープリンク URL の配送を行います。
 
 ## 関数
@@ -42,7 +44,7 @@ terminateApp()
   (「"アプリ名"で開きますか?」)が1回だけ出ることがあり、hybrid/xcuitest エンジンではこれを
   自動了承します。以降は端末+アプリの組で同意が永続します。
 - 未起動のアプリに `openURL` を撃つと OS がアプリを起動して開きますが、想定用途ではありません。
-  cold start の検証自体は in-app エンジンでは表現できません。
+  未起動から URL で開く挙動の検証には、`launchApp(url:)` を使ってください。
 
 ### Link
 - [index](../../index_ja.md)

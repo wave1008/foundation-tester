@@ -1,4 +1,6 @@
-# idIs
+# id の検証(idIs)
+
+[in English](id_assertion.md)
 
 直前に掴んだ要素の identifier を検証します。
 

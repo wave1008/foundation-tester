@@ -1,5 +1,7 @@
 # Creating a Test Project
 
+[in Japanese(日本語)](creating_project_ja.md)
+
 A test project (`TestProjects/<name>/`) bundles scenarios, profiles and reports for one app.
 This page covers the project layout and the commands that manage it.
 

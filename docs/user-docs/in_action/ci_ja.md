@@ -1,8 +1,9 @@
 # CI で回す
 
+[in English](ci.md)
+
 シナリオは LLM なしの決定的実行なので CI に向いています(exit code と JUnit XML の両方で
-機械的に処理できます)。このページは受け手パッケージを CI で回すための要点だけをまとめたもので、
-詳細は [docs/ci.md](../../ci.md) を参照してください。
+機械的に処理できます)。このページは、テストプロジェクトを CI で回すための要点をまとめたものです。
 
 ## 前提
 
@@ -16,8 +17,7 @@
   自己修復(ロケータの指紋照合。FM を使いません)はそのまま動きます。変わるのは2つです。
   **`screenLooksLike` は判定されずに通ります**。**テキストの視覚検証は OCR だけで判定します**
   ([テキストの視覚検証](../reference/testclass/text_visual_check_ja.md))。
-  画面照合を CI でも効かせたい場合は [docs/ci.md](../../ci.md) の「Apple Intelligence を
-  CI で使う」を参照してください。
+  画面照合を CI でも効かせたい場合は、下の「Apple Intelligence を CI で使う」を見てください。
 - Xcode(Android を回すなら Android SDK も)がランナーに導入済みであること。
 
 ## 実行と結果の取り出し
@@ -75,6 +75,26 @@ pipeline {
   `another fleetest run is already running on this Mac` で止まります。同じエージェントを使う
   ジョブが重ならないようにするか、失敗させずに順番待ちさせる `--wait-lock <秒>` を付けてください
   ([並列実行](../reference/running/parallel_execution_ja.md)参照)。
+
+## Apple Intelligence を CI で使う(任意)
+
+Apple Intelligence は、ランナーの実体が物理 Mac(ベアメタル)のときだけ使えます。macOS の VM
+(Tart・Anka など)では有効化できないため、使えない前提で組んでください。
+
+- 物理 Mac(Jenkins 常駐機など): 使えます。
+- AWS EC2 Mac(ベアメタル): 原理的には使えるはずですが、未検証です。
+- macOS の VM: 使えません。`screenLooksLike` は判定されずに通り、テキストの視覚検証は OCR だけで判定します。
+
+ベアメタルで有効にするときの条件です。
+
+- Apple silicon で macOS 26 以上。`screenLooksLike` とテキストの視覚検証(画像入力)は macOS 27 以上が必要です。
+- 有効化は GUI で1回行います(システム設定 → Apple Intelligence と Siri。画面の無い機械は画面共有経由。
+  モデルのダウンロードが走ります)。EC2 Mac は素の AMI から作り直すと設定が消えるので、有効化したあとにカスタム AMI を作るか、
+  プロビジョニングに有効化を含めてください。
+- ジョブの先頭で `fleetest doctor --fm-only` を実行し、終了コードで確かめてください。設定画面の表示が「使える」でも
+  実際には呼べないことがあるため、doctor は実際に推論して確かめます。
+- FM はその Mac 全体で共有される資源で、同時に使えるのは1つずつです。`screenLooksLike` を多用するスイートは実行時間が伸びます。
+- 自己修復(ロケータの指紋照合)は FM を使わないので、Apple Intelligence とは無関係に CI で動きます。
 
 ## flaky シナリオの扱い(リトライ機構は意図的に無い)
 

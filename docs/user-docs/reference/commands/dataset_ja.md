@@ -1,4 +1,6 @@
-# テストデータ・アカウント(account, data)
+# テストデータ・アカウント(account, data, dataFile, addMedia)
+
+[in English](dataset.md)
 
 ログイン用のアカウントやテストデータを、シナリオのソースに直書きせず JSON ファイルから引きます。
 名前・引数・キーの書式は Shirates と同じです。

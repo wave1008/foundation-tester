@@ -1,5 +1,7 @@
 # Test Code Structure
 
+[in Japanese(日本語)](testcode_structure_ja.md)
+
 A scenario is built from `scenario → scene → condition/action/expectation` (CAE). This page
 explains what each level means for execution and reporting.
 

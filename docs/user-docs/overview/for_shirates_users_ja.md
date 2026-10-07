@@ -1,4 +1,6 @@
-# Shirates 利用者向け
+# Shirates 利用者向けの対応表
+
+[in English](for_shirates_users.md)
 
 Fleetest の Swift DSL は Shirates(Classic)の慣習に準拠しています。コマンド名・引数名・
 既定値・挙動をそのまま踏襲し、独自の改良はしていません。Shirates を知っていれば、ほぼ

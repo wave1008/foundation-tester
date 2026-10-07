@@ -1,5 +1,7 @@
 # exist, notExist, countIs
 
+[in English](existence_assertion.md)
+
 セレクタで指した要素の存在・不在・件数を検証します。
 
 ## 関数

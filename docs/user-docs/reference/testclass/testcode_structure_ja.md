@@ -1,4 +1,6 @@
-# コードの構造
+# テストコードの構造
+
+[in English](testcode_structure.md)
 
 シナリオは `scenario → scene → condition/action/expectation`(CAE)の階層で組み立てます。
 このページでは、各階層が実行とレポートにどう関わるかを説明します。

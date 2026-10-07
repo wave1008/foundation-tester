@@ -1,5 +1,7 @@
 # エージェント向けの手引き: アプリの画面から通るシナリオまで
 
+[in English](agent_guide.md)
+
 このページは、`ft_*`(MCP ツール)で fleetest のシナリオを書く **AI コーディングエージェント**向けです。
 手順書(クローンの `.claude/skills/fleetest-scenario/SKILL.md`)の短縮版で、規則の全体が要るときは
 手順書を読んでください。
@@ -148,7 +150,7 @@ class SignInExample {
 
 - [MCP サーバ](mcp_server_ja.md)
 - [Claude Code 以外の AIアシスタント](other_agents_ja.md)
-- [コマンドリファレンス](../../../commands.md)
+- [コマンドリファレンス](../../index_ja.md)(「関数/プロパティ」の各ページ)
 
 ### Link
 - [index](../../index_ja.md)

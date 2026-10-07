@@ -1,7 +1,9 @@
 # Selector Expression
 
+[in Japanese(日本語)](selector_expression_ja.md)
+
 A selector is a single string. This page is the full reference for the notation; command
-usage is in [docs/commands.md](../../../commands.md).
+usage is in the per-command pages such as [tap](../commands/tap.md) and [exist](../commands/existence_assertion.md).
 
 ## Notation table
 
@@ -19,11 +21,11 @@ Combination strength (tightest first): `&&` > `>>` > `||`.
 | `#save&&.button&&enabled=true` | **`&&` = AND**. Attributes: `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled`. Only `text`/`value`/`placeholder`/`id` support match modes (`Contains`/`StartsWith`/`EndsWith`/`Matches`); `type`/`pos`/`checked`/`enabled` are exact-match only |
 | `(Save\|OK)` / `text=(Save\|OK)` | **OR inside a filter**. Equivalent to `Save\|\|OK` (in a relative-selector argument you write the parentheses yourself: `:right((Save\|OK))`) |
 | `.button&&text!=Cancel` / `.button&&!Cancel` | **negated filter** (`!value` is the short form). `textContains!=`, `!#id`, `!.button` also work. **A clause of only a negation, or a negated ordinal, cannot be written** |
-| `.input` / `.widget` | type aliases (`.input` = textField\|secureTextField; `.widget` = the 5 roles shared across OSes) |
+| `.input` / `.widget` | type aliases (`.input` = textField\|secureTextField; `.widget` = button, staticText, textField, secureTextField, switch — the 5 roles shared across OSes. There are no other aliases) |
 | `#list >> .clickable[2]` | **scope** (ancestor >> descendant). Ordinals are counted within the scope, so screen chrome or scroll position doesn't shift them. **The ancestor must be exposed in the app's accessibility tree** — a collapsed container (e.g. Flutter's `MergeSemantics`) hides its descendants and can't be scoped into |
 | `Notification:rightSwitch` | **relative selector** (**anchor comes first**). The nearest candidate in that direction within the anchor's band; fails if none matches — see [Relative selector](./relative_selector.md) |
 | `Quantity:right(2)` / `#a:below(.button&&Item)` / `Heading:right:belowButton` | ordinal / arbitrary filter / chained relative selector |
-| `<Change&&.button>:right(Quantity)` | anchor wrapped in `<...>` (Shirates canonical form; optional, makes the anchor's extent easier to read) |
+| `<Change&&.button>:right(Quantity)` | anchor wrapped in `<...>` (the Shirates way of writing it; optional, makes the anchor's extent easier to read) |
 | `=#a raw label starting with #` | `=` escape, forces label interpretation (also used for labels containing `>>` `&&` `:right` `*`) |
 
 ## Short-form / full-form equivalence
@@ -48,7 +50,7 @@ Combination strength (tightest first): `&&` > `>>` > `||`.
 `||` takes the **union of candidate sets**; when a command needs exactly one element, it
 picks the **first clause, in order** that resolves. This means `#login_btn||Log In` also
 acts as a heal fallback chain — if the id ever changes, the label clause still resolves.
-Priority is effectively: id > label > type+index.
+Clauses are tried in the order you write them, so the usual order is id, then label, then type+index.
 
 ## Rules that produce a syntax error before touching a device
 

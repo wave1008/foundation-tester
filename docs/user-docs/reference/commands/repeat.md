@@ -1,5 +1,7 @@
 # repeatWhileCanSelect, doUntilTrue
 
+[in Japanese(日本語)](repeat_ja.md)
+
 Repeats a block while a selector resolves, or until an arbitrary condition becomes true.
 
 ## Functions

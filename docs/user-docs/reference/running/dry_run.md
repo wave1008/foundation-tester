@@ -1,4 +1,6 @@
-# dry-run
+# dry-run (No-Load-Run)
+
+[in Japanese(日本語)](dry_run_ja.md)
 
 `fleetest run --dry-run` (Shirates' No-Load-Run equivalent) enumerates and validates a scenario's
 steps **without touching a device or calling FM**. It catches mistakes that would otherwise only

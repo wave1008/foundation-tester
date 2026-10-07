@@ -1,4 +1,6 @@
-# About Fleetest
+# What is fleetest?
+
+[in Japanese(日本語)](about_ja.md)
 
 Fleetest is an E2E testing tool for mobile apps. It is designed to be used from an AI assistant
 such as Claude Code.
@@ -27,7 +29,7 @@ Results are stable, runs are fast, and there are no charges.
 
 ## Optimized with custom drivers
 
-Fleetest implements its own custom drivers for both iOS and Android and optimizes them. It does not depend on existing general-purpose drivers such as Appium, which leaves it free to make its own improvements.
+Fleetest implements its own custom drivers for both iOS and Android and optimizes them. It does not depend on existing general-purpose drivers, which leaves it free to make its own improvements.
 
 ## Hybrid engine for the iOS Simulator
 
@@ -54,9 +56,9 @@ The hybrid engine, designed for the iOS Simulator, is one of Fleetest's distinct
 
 ## Fully local execution
 
-- Tests can be run entirely locally on a Mac. Your app and screen data never leave your local network, which makes Fleetest easy to adopt in projects with high security requirements, such as those where cloud services are restricted. With a local LLM, even writing the tests can be kept fully local.
+- Tests can be run entirely locally on a Mac. **While tests run**, your app and screen data never leave your Mac. When you create tests, the screen contents are sent to the AI assistant you use. With a local LLM, even creating the tests can be kept fully local. This makes Fleetest easy to adopt in projects with high security requirements, such as those where cloud services are restricted.
 
-
+Next: [Environment](environments.md)
 
 ### Link
 - [index](../index.md)

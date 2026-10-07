@@ -1,4 +1,6 @@
-# テキストの検証
+# テキストの検証(textIs, textContains, …)
+
+[in English](text_assertion.md)
 
 要素のラベル(表示テキスト)を検証します。
 
@@ -54,7 +56,7 @@ exist("#total")
   対象を先に `select(selector, scroll: .down)` などでビューに入れてから検証してください。
 - `exist(…)` / `select(…)` / `lastElement` にチェーンした検証は、まず掴んだ時点の値で判定します。
   それで条件を満たしていればデバイスを見に行きません(ステップは記録され、説明に
-  `(from the grabbed value)` が付きます)。満たしていなければ従来どおり `waitSeconds` までポーリングします。
+  `(from the grabbed value)` が付きます)。満たしていなければ `waitSeconds` までポーリングします。
 
 ### Link
 - [index](../../index_ja.md)

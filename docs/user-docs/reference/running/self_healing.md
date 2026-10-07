@@ -1,5 +1,7 @@
 # Self-Healing
 
+[in Japanese(日本語)](self_healing_ja.md)
+
 When self-healing is enabled and a selector fails to resolve during a device run, fleetest looks
 for a stand-in element in the following order before failing the scenario:
 

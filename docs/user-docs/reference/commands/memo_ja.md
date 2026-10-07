@@ -1,5 +1,7 @@
 # メモ(writeMemo, readMemo, clearMemo, memoTextAs)
 
+[in English](memo.md)
+
 シナリオ間で値を共有します。`@Test` は1本ずつ別プロセスで動くので Swift の変数は引き継がれませんが、
 メモは**同じデバイスで後から走るシナリオ**へ引き継がれます(別のデバイスへは渡りません。下の「共有の範囲」)。名前と挙動は Shirates に合わせています。
 

@@ -1,4 +1,6 @@
-# scroll
+# スクロール(scrollTo, scrollDown, withScrollDown, scrollFrame, …)
+
+[in English](scroll.md)
 
 コンテンツ基準のスクロールです。要素が見つかるまで探索する・1画面ぶん送る・端まで送る、の3種類があります。
 
@@ -47,29 +49,16 @@ scrollTo("#row_40", scrollFrame: "#list_rows")
 | 注記 | 意味 | 気にするべきか |
 |---|---|---|
 | `stopped at the limit of N (may not have reached the edge yet)` | `maxSwipes` で打ち切った = 端に着いたとは限らない | **する**。`maxSwipes` を増やすか、そもそも端に着けない画面かを疑う |
-| `the screen did not settle (poll limit)` | スワイプ後 600ms 待っても画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。同じ箇所で毎回出るなら、静止前の座標でタップして flake る余地があるので調べる価値がある |
-| `fell back to XCUITest` | in-app エンジンで実行できずフォールバックした(1回あたり数百 ms 遅い) | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
+| `the screen did not settle (poll limit)` | スワイプ後に画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。同じ箇所で毎回出るなら、静止前の座標でタップして flake る余地があるので調べる価値がある |
+| `fell back to XCUITest` | in-app エンジンで実行できず XCUITest で行った | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
 
-## 端送りの速さはエンジンで決まる
+## 端送りの速さ
 
-`scrollToBottom` 等は「1本振る → 木を読んで動きが止まったか見る」の繰り返しです。**1回の
-送りでどれだけ進むか、そもそも往復が要るか**はエンジンで違います:
-
-| エンジン | 1回の送り | 長文の所要 |
-|---|---|---|
-| iOS in-app(UIKit/SwiftUI・WebView) | 端まで一度に寄せる(`contentOffset` を直接動かす。ジェスチャも慣性も無い) | 文書の長さに依存しない |
-| Android の WebView | CDP でページを一発で飛ばす(使えなければジェスチャへ落ちる) | 文書の長さに依存しない |
-| iOS in-app(Compose / Flutter) | 1回 = 1ページ(刻み幅を選べない API) | ページ数に比例 |
-| iOS xcuitest | 実スワイプ(約1.1画面のフリング) | ページ数に比例 |
-| Android(ネイティブ) | 実スワイプ(約1.2画面のストローク) | ページ数に比例。既定の `maxSwipes: 50` では届かない文書もある |
-
-端と確定するのは、画面が最後に動いてから 1.0 秒経った後です。端へ一度に寄せる経路(上の2行)は、
-本当の端に着いたときにこの 1.0 秒を払います。端へ飛ぶと続きを後から描き足すリスト(React Native の
-`FlatList` など)で、描き足す前に「端に着いた」と判断して途中で止まらないためです。
-
-実ジェスチャのエンジンで長文を送るときは `maxSwipes` を上げてください。`flick*` を並べて
-速くしようとするのは代用になりません —— flick は端に着いたかどうかを判定しないため
-([flick](./flick_ja.md) 参照)。
+`scrollToBottom` 等は「1回送る → 画面の動きが止まったか見る」の繰り返しです。Android と、iOS の XCUITest エンジン・
+Compose / Flutter では1回の送りが約1ページぶんなので、長い画面では `maxSwipes` を上げてください
+(既定の `maxSwipes: 50` では届かない文書もあります)。iOS の UIKit / SwiftUI・WebView と Android の WebView は
+端へ一度に寄せるので、文書の長さに依存しません。`flick*` を並べて速くしようとするのは代用になりません ——
+flick は端に着いたかどうかを判定しないため([flick](./flick_ja.md) 参照)。
 
 ## 例
 
@@ -90,7 +79,7 @@ withScrollDown {
 
 | 単位 | 方法 |
 |---|---|
-| run 全体(**最上位の殺しスイッチ**) | 環境変数 `FT_CONTAINER_INFERENCE=off`(下の3つより優先し全部無効にします) |
+| run 全体 | 環境変数 `FT_CONTAINER_INFERENCE=off`(問題を切り分けるときだけ。下の3つより優先し全部無効にします) |
 | 1コマンド | `tap(sel, containerInference: false)` / `scrollTo(sel, containerInference: false)` |
 | ブロック | `withoutContainerInference { … }`(`tap`/`exist`/`select` など全コマンドに効きます) |
 | 実行プロファイル全体 | 実行プロファイルの `containerInference: false` |

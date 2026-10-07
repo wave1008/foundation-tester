@@ -1,4 +1,6 @@
-# Claude Code スキル
+# Claude Code のスキル
+
+[in English](claude_code_skills.md)
 
 fleetest は、導入・プロファイル設定・シナリオ作成を自動化する Claude Code
 スキル群を備えています。いずれも人が手で打つのと同じスクリプト・CLI コマンドを裏で呼び出し、

@@ -1,8 +1,10 @@
 # WebView 内の要素
 
+[in English](webview.md)
+
 ネイティブの WebView(iOS `WKWebView` / Android `android.webkit.WebView`)の中身も、
 ネイティブ要素と同じセレクタ・同じコマンドで操作できます。ただし、ネイティブ画面と規約が
-3点だけ異なります。
+次の点で異なります。
 
 ## `#id` が使えるかは読み取り経路で決まる
 
@@ -45,8 +47,7 @@ type("#email_input", "user@example.com")   // id で一致、無ければ placeh
 `#x` はまず `id` の完全一致を試み、**identifier で1件も引けなかったときだけ** placeholder
 を試します。つまり `#x` の1節だけでも「id/placeholder のどちらか一方しか出ない」構成を
 カバーできます。上の2節形が必要なのは、実行時に構成が揺れて(例: Android の WebView の版)
-**両方の可能性**を覆いたいときです。詳細は
-[docs/commands.md](../../../commands.md)を参照してください。
+**両方の可能性**を覆いたいときです。
 
 ## Android: WebView の層がスクリーンショットに写らないことがある
 
@@ -57,8 +58,7 @@ Android では、端末のスクリーンショットが WebView の層をまる
 スクリーンショットに基づく確認は、シナリオ自体とは無関係な理由で失敗することがあります。
 スクリーンショットに WebView の中身を写すには、WebView のデバッグ用の接続が開いている必要も
 あります(端末が debuggable な Emulator・アプリが debug ビルド・アプリが
-`WebView.setWebContentsDebuggingEnabled(true)` を呼んでいる、のどれか。下の DOM の読み取りと同じ条件です)。詳細は
-[docs/commands.md](../../../commands.md)を参照してください。
+`WebView.setWebContentsDebuggingEnabled(true)` を呼んでいる、のどれか。下の DOM の読み取りと同じ条件です)。スクリーンショットの扱いは[screenshot](../commands/screenshot_ja.md)を参照してください。
 
 ## Android: `user` システムイメージ(Play Store イメージ)では DOM 経路が閉じる
 

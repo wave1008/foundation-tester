@@ -1,4 +1,6 @@
-# select
+# select, lastElement
+
+[in Japanese(日本語)](select_ja.md)
 
 Grabs an element without touching the device, for reading values or chaining assertions.
 

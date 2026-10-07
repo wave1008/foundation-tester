@@ -1,4 +1,6 @@
-# 値の読み取り(lastElement, .text, .value, .id)
+# 掴んだ要素の値を読む(.text, .value, .id, lastElement)
+
+[in English](reading_values.md)
 
 掴んだ要素に対して検証するだけでなく、その要素自身の値(ラベル・値・identifier)を読み取る方法です。
 
@@ -69,7 +71,7 @@ lastElement.idIs("order_btn")              // 操作コマンドも掴んだ要�
 
 チェーンした検証(`exist(…).textIs(…)`・`lastElement.textIs(…)`・暗黙形の `textIs(…)`)は、
 **まず掴んだ時点の値で判定**します。満たしていればステップは記録されますが、デバイスを見に行きません
-(説明に `(from the grabbed value)` が付きます)。満たしていなければ従来どおり `waitSeconds` まで
+(説明に `(from the grabbed value)` が付きます)。満たしていなければ `waitSeconds` まで
 ポーリングします。
 
 ```swift

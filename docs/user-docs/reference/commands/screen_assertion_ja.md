@@ -1,4 +1,6 @@
-# screenLooksLike
+# 画面の検証(screenLooksLike)
+
+[in English](screen_assertion.md)
 
 FM(Foundation Models)による見た目の画面検証です。スクリーンショットと、あなたが書く説明文を照合します。
 

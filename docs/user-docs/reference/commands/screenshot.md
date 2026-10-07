@@ -1,5 +1,7 @@
 # screenshot
 
+[in Japanese(日本語)](screenshot_ja.md)
+
 Captures the current screen and embeds it in the report.
 
 ## Functions

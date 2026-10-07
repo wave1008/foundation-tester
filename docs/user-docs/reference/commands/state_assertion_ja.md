@@ -1,4 +1,6 @@
-# enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF
+# 状態の検証(enabledIsTrue, enabledIsFalse, checkIsON, checkIsOFF)
+
+[in English](state_assertion.md)
 
 直前に掴んだ要素の有効/無効・チェック状態を検証します。
 
@@ -69,7 +71,7 @@ select("#toggle_notifications").checkIsON()
 - 画像で判定したステップには、結果に注記 `check-state-classified` が付きます。
 - 判定のたびに、置いた見本のうち2枚(ラベルごとに1枚)も分類し直します。分類器がそれを取り違えたら答えを使わず、
   アクセシビリティだけで判定します(注記 `check-state-classifier-failed`)。Mac の Vision / Core ML が一時的に
-  壊れたときに起きます(エラーを返さず、どの画像にも同じラベルを確信度いっぱいで答え続けます)。続くなら Mac を再起動してください。
+  おかしくなったときに起きます。続くなら Mac を再起動してください。
 - スクリーンショットのアプリの部分(ステータスバーと下端の帯を除く)が一色のとき(真っ黒・真っ白。撮れていない・何も描かれていない)も、画像では判定せず
   アクセシビリティだけで判定します(注記 `check-state-classifier-failed`)。待っている間は撮り直します。
 - 画像で判定したチェックが失敗すると、分類器が判定に使ったスクリーンショットを、レポートの失敗した

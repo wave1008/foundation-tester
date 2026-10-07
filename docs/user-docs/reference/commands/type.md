@@ -1,5 +1,7 @@
 # type
 
+[in Japanese(日本語)](type_ja.md)
+
 Types text into a field, either the currently focused one or a specified element.
 
 ## Functions
@@ -14,7 +16,7 @@ Types text into a field, either the currently focused one or a specified element
 
 ```swift
 tap("#field")
-type("abc")                        // traditional form: focus, then type
+type("abc")                        // tap first to focus, then type
 
 type("#email", "test@example.com") // selector form: resolve + focus + type in one step
 type("#note", "new contents", replace: true)

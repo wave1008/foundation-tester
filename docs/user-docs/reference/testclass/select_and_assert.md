@@ -1,4 +1,6 @@
-# Selecting Elements and Asserting
+# Select and assert
+
+[in Japanese(日本語)](select_and_assert_ja.md)
 
 This page covers the basics of grabbing an element and verifying its state: the difference
 between `tap`, `exist`, and `select`, and how the value/text assertion commands target
@@ -42,7 +44,11 @@ exist("#total")
 ```
 
 Any command that operates on a single already-grabbed element can chain this way, and the
-same set works as an implicit (no-argument) call, as shown above.
+same set works as an implicit (no-selector) call on the element `exist` just grabbed:
+
+```swift
+exist("#total"); textStartsWith("Total")
+```
 
 ## Implicit waiting
 
@@ -59,8 +65,8 @@ override the default for a single call.
 
 `requireVisible: false` skips the covered/off-screen check that normally backs `exist`
 (where it flips a match to failure) and `select` (where it returns an empty element). This
-extra visibility pass only actually runs on runs where the run profile has
-`fmTextOcclusionCheck` or `ocrTextOcclusionCheck` set to `true` — on other runs the flag has nothing to skip.
+extra visibility pass is on by default (it does not run when both `fmTextOcclusionCheck` and
+`ocrTextOcclusionCheck` are set to `false`, and then the flag has nothing to skip).
 
 ### Link
 - [index](../../index.md)

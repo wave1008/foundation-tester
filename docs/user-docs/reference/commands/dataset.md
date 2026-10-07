@@ -1,4 +1,6 @@
-# Test data and accounts (account, data)
+# Test data and accounts (account, data, dataFile, addMedia)
+
+[in Japanese(日本語)](dataset_ja.md)
 
 Read accounts and test data from JSON files instead of writing them into the scenario source. Names, arguments and
 the key format are the same as Shirates.

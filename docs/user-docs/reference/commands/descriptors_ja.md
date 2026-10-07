@@ -1,4 +1,6 @@
-# group, procedure, beforeEach, afterEach
+# group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice
+
+[in English](descriptors.md)
 
 ステップをレポート上でまとめる、任意の Swift を1ステップとして記録する、各テストの前後処理を
 行うための構造コマンドです。

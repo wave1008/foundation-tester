@@ -1,4 +1,6 @@
-# findImage, findImages, existImage
+# Find by image (findImage, findImages, existImage)
+
+[in Japanese(日本語)](find_image_ja.md)
 
 Finds the element on the screen whose appearance is nearest to a sample image (a port of `findImage` / `findImages`
 from Shirates' Vision edition). Use it to grab elements a selector cannot point at, such as icons with neither an id nor a label.
@@ -36,8 +38,8 @@ It uses the same samples as [imageIs](image_assertion.md).
   @a/Home/[Camera Icon]/
 ```
 
-- Put images cut out by **the element's own frame** (`fleetest vision capture` or the MCP tool
-  `ft_capture_element` cuts them for you).
+- Put images cut out by **the element's own frame** (`fleetest vision capture` cuts them for you;
+  for MCP, see [MCP server](../tools/mcp_server.md)).
 - `findImages` also uses every sample in the label folder. When several samples hit the same element, it is returned once with the nearest distance (Shirates' `findImages` uses only one sample).
 
 ## Example
@@ -62,40 +64,31 @@ existImage("[Share Icon]", scroll: .down).tap()
 ## Notes
 
 - The distance and the number of compared candidates are written to the record (the nearest distance when nothing was found). Use it to choose `threshold`.
-- **Parts of the same shape that differ only in their text (list rows, for example) are hard to tell apart.** In a
-  measurement, rows of identical-looking buttons were 0.08 to 0.15 apart, and the default `threshold` (0.15) grabbed a
-  different row. When looking for such parts, check the distances in the record and tighten `threshold` (for example `threshold: 0.03`).
-- **Capture sample images for each OS version and screen scale you test on.** The same row is 0.04 to 0.12 apart across OS
-  versions because the text is drawn differently (measured on the same row on Android 15 / 13 / 12, including differences
-  you cannot see). Devices on the same OS version are 0.001 to 0.003 apart. `findImage` / `existImage` try every
-  sample in the label folder, so adding the new sample to the same folder finds the element on both devices (you can
-  keep `threshold` tight). The same goes for `findImages`: for parts whose look changes with their state (on / off),
-  put a sample for each state and both are returned.
-- One call takes roughly 0.1 seconds for the screenshot plus about 8 milliseconds per candidate (measured on a Simulator).
+- **Parts of the same shape that differ only in their text (list rows, for example) are hard to tell apart.** Their
+  distance can fall below the default `threshold` (0.15), so a different row gets grabbed. When looking for such parts,
+  check the distances in the record and tighten `threshold` (for example `threshold: 0.03`).
+- **Capture sample images for each OS version and screen scale you test on.** The same row is drawn differently across OS
+  versions, so its distance grows even when you cannot see the difference; devices on the same OS version are almost 0
+  apart. `findImage` / `existImage` try every sample in the label folder, so adding a sample for each version to the
+  same folder finds the element on both devices (you can keep `threshold` tight). The same goes for `findImages`: for
+  parts whose look changes with their state (on / off), put a sample for each state and both are returned.
 - `waitSeconds` defaults to 0: it looks at the current screen once (it does not follow the run profile's default wait). To wait for the
   image to appear, for example right after a screen transition, pass seconds such as `waitSeconds: 3`. While scrolling, it looks once per position.
 - When `existImage` fails, the failure message says the nearest distance and the `threshold`, and the screenshot it judged is
-  attached to that step in the report. While it waits, it takes a new screenshot and compares again at growing intervals (from 0.1 second up to 1 second).
+  attached to that step in the report. While it waits, it takes a new screenshot and compares again.
 - Inside `withScrollDown { }` and the like, `findImage` and `existImage` search while scrolling. Pass `scroll: .noScroll`
   to look at the current screen only (`existImage("[Icon]", scroll: .noScroll)`).
 - To search while scrolling, pass `scroll:` (`findImage("[Icon]", scroll: .down)`), the same way as `exist` and `select`.
   No command has function-name aliases such as `findImageWithScrollDown` or `tapWithScrollDown` (writing one gives a compile error that shows the right form).
 - When there is no sample image at all, the step fails as a configuration error.
-- Occasionally the Mac's image processing (Vision) temporarily returns the same feature print for every image. Comparing in
-  that state would "find" the first candidate, so the state is detected and the step fails (the message says
-  `Vision returned the same image feature print for different images`). Retry the run.
-- In the same way, a less extreme state where Vision returns a different feature print for the same image is detected by
-  re-measuring the sample on each search (the message says `Vision returned a different image feature print for the same image`).
-  Distances in that state cannot be trusted, so the step fails. Retry the run; if it keeps happening, restart the Mac.
-- Both states are usually brief (they are seen on a busy Mac, for example with many devices streaming to the monitor at a
-  high frame rate). When either is detected, the tool waits and searches again, up to 5 times (0.5, 1, 2, 4 and 8 seconds;
-  15.5 seconds in all). This wait is not counted against the step's or the scenario's time limit, and no device operation
-  is repeated. The step records the note `vision-anomaly-retried`. The step fails only when the state lasts through every
-  wait; the message then ends with `it was still so after re-measuring 5 times over 15.5 seconds of waiting`.
-- When the app area of the screenshot (apart from the status bar and the bottom strip) is a single colour (all black
-  or all white: nothing was captured, or nothing is drawn), nothing is compared: comparing would report "not found", and a check written as `isEmpty` would pass by mistake. The tool waits
-  and takes the screenshot again in the same way (note `blank-screenshot-retaken`), and the step fails only when it
-  stays black through every wait.
+- Occasionally the Mac's image processing (Vision) temporarily returns odd feature prints, so distances cannot be
+  trusted (it shows up when the Mac is busy). When this is detected, the tool waits and searches again (no device operation
+  is repeated; the step records the note `vision-anomaly-retried`). The step fails only when the state does not clear; the
+  message starts with `Vision returned the same image feature print for different images` or
+  `Vision returned a different image feature print for the same image`. Retry the run; if it keeps happening, restart the Mac.
+- When the app area of the screenshot is a single colour (all black or all white), the screenshot is treated as not captured
+  and nothing is compared. The tool waits and takes it again (note `blank-screenshot-retaken`); the step fails if it is
+  still a single colour.
 - When the found element has a writable selector (an id or a unique label), you can chain assertions such as `textIs`.
 - Moving the screen after finding makes `tap()` hit the old coordinates. Tap right after finding.
 - Unlike Shirates, which cuts parts out by segmenting the image, the candidates are the frames of accessibility

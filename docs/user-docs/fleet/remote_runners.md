@@ -1,5 +1,7 @@
 # Remote Runners
 
+[in Japanese(日本語)](remote_runners_ja.md)
+
 `fleetest run --runner <machine>` runs your tests on another Mac (a runner machine). Your Mac
 sends the run over SSH, the runner executes it just like a local run, and the output and
 artifacts come back to your Mac.
@@ -28,10 +30,10 @@ them only on your Mac; you never edit files on the runner directly.
 ## Overview
 
 ```
-Issuing Mac (yours)                     Runner machine
+Your Mac                                Runner machine
 fleetest run --runner mac2 …             ~/fleetest-runner/               ← dedicated base directory
-  ├ compatibility check (rev, Xcode) ssh ├── foundation-tester/          ← the tool's clone (fixed name, shared)
-  ├ transfer (rsync: scenarios/config) ─> └── users/<issuerId>/work/     ← your work area (per issuer)
+  ├ version check (fleetest, Xcode)  ssh ├── foundation-tester/          ← clone of fleetest itself (fixed name, shared)
+  ├ send (scenarios/config) ───────────> └── users/<issuerId>/work/     ← your work area (per user)
   ├ display output                             ├── TestProjects/<project>/
   └ collect artifacts <──────────────────      └── .build/
 ```
@@ -85,7 +87,7 @@ Each device in a run profile names its own machine in `machine`:
 
 So **choosing a run profile also chooses which machine runs it**, and you normally do not need
 `--runner`. If a run profile's enabled devices all live on one remote machine, the run
-automatically dispatches there. If they span several machines (some `"local"`, some remote), the
+is automatically sent there. If they span several machines (some `"local"`, some remote), the
 run splits per machine and each portion runs against its own devices there.
 
 - Write `"machine": "local"` for devices on your own Mac — always write it explicitly, since
@@ -98,7 +100,6 @@ run splits per machine and each portion runs against its own devices there.
   you mean, so the run is refused. Add `--runner local` for your Mac only, `--runner <machine>` for one
   machine, or `--all-machines` to run on every machine that has a device with that name. If the name
   is on only one machine, the run goes ahead as before.
-- The old key `"host"` is no longer read (renamed to `machine` on 2026-08-26). A device written with `"host"` is treated as a local device.
 
 ## `run --runner` and `--fleet`
 
@@ -110,7 +111,17 @@ fleetest run --project <project> --fleet <name> --split          # split the sce
 
 A fleet is a list of machine and run profile pairs. Define it in
 `TestProjects/<project>/profiles/fleets/<name>.json` as `host` (machine name) and `profile`
-(run profile name) pairs. Write `"local"` for your own Mac.
+(run profile name) pairs under `runs`. Write `"local"` for your own Mac.
+
+```jsonc
+// profiles/fleets/two-runners.json
+{ "runs": [
+    { "host": "M1Max",   "profile": "ios-run" },
+    { "host": "M2Ultra", "profile": "ios-run" } ] }
+```
+
+In a fleet definition you write the machine name under the `host` key (the key differs from the
+`machine` key of a device in a run profile).
 
 - With `--split`, instead of running the same scenarios on every machine, the scenarios are
   divided among the machines. The split is estimated from how long past runs took.

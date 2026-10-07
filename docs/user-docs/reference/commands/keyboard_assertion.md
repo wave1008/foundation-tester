@@ -1,4 +1,6 @@
-# keyboardIsShown, keyboardIsNotShown
+# Keyboard assertion (keyboardIsShown, keyboardIsNotShown)
+
+[in Japanese(日本語)](keyboard_assertion_ja.md)
 
 Checks whether the soft keyboard is shown. Opening and closing are animated, so both poll up to
 `waitSeconds`.

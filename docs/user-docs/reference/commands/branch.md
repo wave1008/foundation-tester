@@ -1,5 +1,7 @@
 # ifCanSelect, ios, android
 
+[in Japanese(日本語)](branch_ja.md)
+
 Conditional execution: run a block only when a selector resolves, or only on one OS.
 
 ## Functions

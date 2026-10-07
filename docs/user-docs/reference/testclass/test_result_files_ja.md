@@ -1,8 +1,9 @@
-# 実行で何が出るか
+# テスト結果ファイル
+
+[in English](test_result_files.md)
 
 run(成否問わず)は何種類かの出力を残します。このページはその置き場所の地図です。
-詳細は[結果の分析](../running/results_analysis_ja.md)と
-[結果 JSON のスキーマ](../../../results-json.md)を参照してください。
+詳細は[結果の分析](../running/results_analysis_ja.md)を参照してください。
 
 ## Markdown レポート
 
@@ -16,8 +17,7 @@ run(成否問わず)は何種類かの出力を残します。このページは
 
 `results/runs/<YYYY-MM>/<runID>/` に機械可読な記録が入ります。run 全体は `run.json`、
 シナリオ1本ごとは `scenarios/<シナリオID>.json` です。CI のゲート判定・ダッシュボード・
-スクリプトによるトリアージはここを情報源にします。全欄のリファレンスは
-[結果 JSON のスキーマ](../../../results-json.md)。
+スクリプトによるトリアージはここを情報源にします。欄の読み方は[結果の分析](../running/results_analysis_ja.md)にあります。
 
 ## JUnit XML
 
@@ -39,7 +39,7 @@ JUnit XML ファイルも追加で出力されます。
 
 ## 直近の結果(`--failed` 用)
 
-`.fleetest/last-results/<プロジェクト>/<プロファイル>/` には、**その実行プロファイルでの**
+`TestProjects/` があるフォルダ(テストパッケージの直下)の `.fleetest/last-results/<プロジェクト>/<プロファイル>/`(プロジェクト内の `.fleetest/` とは別の場所です)には、**その実行プロファイルでの**
 直近の run でどのシナリオが成功/失敗したかが記録されます。`fleetest run --failed` はこれを
 使って失敗したシナリオだけを再実行します。記録はプロファイルごとに別々に保持され
 (プロファイル無しの実行も専用の区分を持ちます)、あるプロファイルの緑が別のプロファイルの

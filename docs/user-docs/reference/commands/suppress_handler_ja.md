@@ -1,5 +1,7 @@
 # suppressHandler, useHandler, disableHandler, enableHandler
 
+[in English](suppress_handler.md)
+
 宣言済みの [`irregularHandler`](./irregular_handler_ja.md) に自動で閉じさせず、シナリオ自身が
 モーダルを操作するための区間を作ります。
 

@@ -1,4 +1,6 @@
-# iosAlertHandler
+# iOS system alerts (iosAlertHandler)
+
+[in Japanese(日本語)](ios_alert_handler_ja.md)
 
 Announces one upcoming iOS system alert (permission prompt, ATT, "Open in …?") and the button
 to press on it.
@@ -111,8 +113,8 @@ the alert to clear (or be closed by a registered button), and fails with
      counterpart).
      **The app's permission for it is now denied**, and the scenario's log says so; a scenario that
      starts with `clearAppData()` is back to undecided anyway.
-  3. Otherwise, on a Simulator, fleetest restarts SpringBoard without pressing anything and rebuilds
-     that device's bridge (about 20 seconds; needs a run profile, `--profile`).
+  3. Otherwise, on a Simulator, fleetest restarts SpringBoard without pressing anything and reconnects
+     to that device (about 20 seconds; needs a run profile, `--profile`).
   An affirming button (`Allow` and so on) is never pressed. Labels are matched exactly. What
   was done appears in the scenario's log as `🧹 … a system alert was left on screen before this scenario (…)`.
   On a physical device, or in a run without a run profile, an alert with none of the buttons above
@@ -124,13 +126,10 @@ the alert to clear (or be closed by a registered button), and fails with
   This covers the xcuitest engine, and in hybrid the operations the in-app engine cannot perform
   (home, the app switcher, coordinate drags and long presses). The step fails with
   `a system alert is in front of the app (title: …, buttons: …)` and the alert is left as it
-  is — the tool never presses an alert button on its own, and never retries the operation
-  (XCTest's default interruption handler, which would press a button — "Allow" included — and
-  retry, is turned off).
+  is — the tool never presses an alert button on its own, and never retries the operation.
 - **`clearAppData()` resets permissions**, so the same prompts appear again on the next run —
   useful when a scenario should always start from the not-yet-decided state.
-- **Stuck via MCP?** `ft_launch bundleId: com.apple.springboard` attaches non-destructively so
-  `ft_snapshot` can read the dialog by ref; `ft_launch` back to the app under test afterward.
+- For using this from MCP, see [MCP server](../tools/mcp_server.md).
 
 ### Link
 - [index](../../index.md)

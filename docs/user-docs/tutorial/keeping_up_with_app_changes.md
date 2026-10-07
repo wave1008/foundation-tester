@@ -1,5 +1,7 @@
 # Keeping Tests Up with App Changes
 
+[in Japanese(日本語)](keeping_up_with_app_changes_ja.md)
+
 Apps keep changing. A button's ID changes, a screen's layout changes, a new dialog appears --
 and each time, the work of fixing the tests can also be left to the AI assistant.
 
@@ -12,7 +14,7 @@ absorbed on the spot by fleetest's **self-healing**, and the test continues.
   and when **exactly one** element with the same characteristics is on the screen, it uses that element instead.
   When there are multiple candidates it does not use any (reporting a failure is safer than mixing up elements).
 - It does not use AI. The result is the same every time.
-- It is enabled by default in runs that use a run profile.
+- It is enabled in runs that use a run profile, through the run profile's `heal` setting (default `true`).
 
 If a step passed thanks to self-healing, the report keeps a **suggestion** like "change this line of the scenario this way".
 **Scenario files are never rewritten automatically**.
@@ -29,7 +31,7 @@ Then run those scenarios and confirm they pass.
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
 
-If you run with self-healing enabled from the VSCode extension, a "fleetest Heal Review" panel opens when suggestions are produced.
+If you run from the VSCode Test Explorer and repair suggestions are produced, a "fleetest Heal Review" panel opens at the end of the run (`heal` in the run profile is on by default).
 Compare the before and after, choose the suggestions to apply, and press "Apply N selected".
 
 <img src="../images/tutorial/en/vscode_heal_review.png" width="720" alt="fleetest Heal Review panel">
@@ -88,6 +90,8 @@ The My Shop coupon screen has been removed. Mark the coupon-related scenarios as
 - [Self-healing](../reference/running/self_healing.md) — how it works and its settings
 - [Creating a test class](../reference/testclass/creating_testclass.md) — the incomplete and deprecated marks
 - [Maintenance for long-term use](../in_action/maintenance.md)
+
+Next: [Watching in VSCode](watching_in_vscode.md)
 
 ### Link
 - [index](../index.md)

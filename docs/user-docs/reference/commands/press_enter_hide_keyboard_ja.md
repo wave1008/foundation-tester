@@ -1,5 +1,7 @@
 # pressEnter, hideKeyboard
 
+[in English](press_enter_hide_keyboard.md)
+
 キーボードの確定アクションを発火する、またはソフトキーボードを閉じます。
 
 ## 関数

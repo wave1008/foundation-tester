@@ -1,5 +1,7 @@
 # repeatWhileCanSelect, doUntilTrue
 
+[in English](repeat.md)
+
 セレクタが解決できる限りブロックを繰り返す、または任意の条件が満たされるまで繰り返します。
 
 ## 関数

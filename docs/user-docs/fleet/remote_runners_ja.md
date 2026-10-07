@@ -1,5 +1,7 @@
 # リモート実行
 
+[in English](remote_runners.md)
+
 `fleetest run --runner <マシン名>` を使うと、テストを別の Mac(ランナー機)で実行できます。
 手元の Mac から SSH で run を送り、ランナー機でふつうに実行して、出力と成果物を手元へ持ち帰ります。
 
@@ -27,10 +29,10 @@
 ## 全体像
 
 ```
-発行側の Mac(手元)                     ランナー機
+手元の Mac                               ランナー機
 fleetest run --runner mac2 …             ~/fleetest-runner/               ← 専用ベースディレクトリ
-  ├ 適合チェック(rev・Xcode)   ssh     ├── foundation-tester/          ← ツール本体のクローン(名前固定・共有)
-  ├ 転送(rsync: シナリオ・設定) ────>  └── users/<issuerId>/work/      ← あなたの作業場所(発行者ごと)
+  ├ 版の確認(fleetest・Xcode)   ssh     ├── foundation-tester/          ← fleetest 本体のクローン(名前固定・共有)
+  ├ 送信(シナリオ・設定) ──────────>  └── users/<issuerId>/work/      ← あなたの作業場所(利用者ごと)
   ├ 出力を受け取って表示                     ├── TestProjects/<プロジェクト>/
   └ 成果物を回収 <───────────────────      └── .build/
 ```
@@ -96,7 +98,6 @@ Claude Code では、`/fleetest-remote-setup` スキルでもセットアップ�
   (手元とリモートで同じ名前を使っている)と、どのマシンで回すかを決められないので、実行は断られます。
   手元だけなら `--runner local`、特定のマシンだけなら `--runner <マシン名>`、その名前のデバイスがある
   全部のマシンで回すなら `--all-machines` を付けてください。名前が1台のマシンにしか無ければ、そのまま回ります。
-- 古いキー名 `"host"` は読みません(2026-08-26 に `machine` へ改名)。`"host"` と書いたデバイスは手元のデバイスとして扱われます。
 
 ## `run --runner` と `--fleet`
 
@@ -108,7 +109,16 @@ fleetest run --project <プロジェクト> --fleet <名前> --split      # シ�
 
 フリートは、マシンと実行プロファイルの組を並べたものです。
 `TestProjects/<プロジェクト>/profiles/fleets/<名前>.json` に、`host`(マシン名)と
-`profile`(実行プロファイル名)の組を並べて定義します。手元の Mac は `"local"` と書きます。
+`profile`(実行プロファイル名)の組を `runs` に並べて定義します。手元の Mac は `"local"` と書きます。
+
+```jsonc
+// profiles/fleets/two-runners.json
+{ "runs": [
+    { "host": "M1Max",   "profile": "ios-run" },
+    { "host": "M2Ultra", "profile": "ios-run" } ] }
+```
+
+フリート定義ではマシン名を `host` キーに書きます(実行プロファイルのデバイスの `machine` とはキー名が違います)。
 
 - `--split` を付けると、同じシナリオを全マシンで実行する代わりに、シナリオをマシンに
   振り分けます。振り分けは、過去の実行にかかった時間から見積もります。

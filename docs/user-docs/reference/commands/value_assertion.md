@@ -1,4 +1,6 @@
-# Value Assertion
+# Value assertion (valueIs, valueContains, ...)
+
+[in Japanese(日本語)](value_assertion_ja.md)
 
 Checks on an element's value (e.g. the content of a text field), as opposed to its label. Same
 shape as [Text Assertion](./text_assertion.md).

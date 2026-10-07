@@ -1,5 +1,7 @@
 # アンインストール
 
+[in English](uninstall.md)
+
 Fleetest のアンインストールの手順です。
 
 ## AIアシスタントに依頼する

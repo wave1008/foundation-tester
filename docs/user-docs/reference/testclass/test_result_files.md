@@ -1,8 +1,9 @@
-# What a Run Produces
+# Test result files
+
+[in Japanese(日本語)](test_result_files_ja.md)
 
 Every run — pass or fail — leaves several kinds of output behind. This page is a map of
-where to find them; see [Results analysis](../running/results_analysis.md) and
-[Result JSON schema](../../../results-json.md) for detail.
+where to find them; see [Results analysis](../running/results_analysis.md) for detail.
 
 ## Markdown report
 
@@ -18,8 +19,8 @@ it is not in the app's element list.
 
 `results/runs/<YYYY-MM>/<runID>/` holds the machine-readable record: `run.json` for the
 whole run and `scenarios/<scenarioID>.json` per scenario. This is the source used for CI
-gating, dashboards, and scripted triage. Full field reference:
-[Result JSON schema](../../../results-json.md).
+gating, dashboards, and scripted triage. How to read the fields is in
+[Results analysis](../running/results_analysis.md).
 
 ## JUnit XML
 
@@ -41,7 +42,7 @@ one. See [Self-healing](../running/self_healing.md).
 
 ## Last-run results (for `--failed`)
 
-`.fleetest/last-results/<project>/<profile>/` records which scenarios passed or failed on the
+`.fleetest/last-results/<project>/<profile>/` in the folder that holds `TestProjects/` (the root of the test package; not the project's own `.fleetest/`) records which scenarios passed or failed on the
 most recent run **for that run profile**, so `fleetest run --failed` can re-run just the
 failures. Records are kept separately per run profile (and in their own bucket for a
 profile-less run), so a green run of one profile never hides a red run of another.

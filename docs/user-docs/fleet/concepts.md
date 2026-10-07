@@ -51,7 +51,7 @@ accept incoming connections.
 | What you want | What to add | How |
 |---|---|---|
 | Run more devices at once so the whole suite finishes sooner | A Mac | [Adding a Mac](adding_mac.md) |
-| Share one large Mac across a team | A Mac | "When several people share one runner" in [Adding a Mac](adding_mac.md) |
+| Share one large Mac across a team | A Mac | Set it up in [Adding a Mac](adding_mac.md); how to use it is in "Sharing one runner between several people" in [Remote Runners](remote_runners.md) |
 | Check on real hardware | Physical devices | [Adding physical devices](adding_physical_devices.md) |
 | Connect physical devices to another Mac and run them there | A Mac and physical devices | Add the Mac first, then connect the devices to it |
 

@@ -1,5 +1,7 @@
 # installApp, removeApp, clearAppData
 
+[in Japanese(日本語)](install_app_ja.md)
+
 Installs, uninstalls, or resets the data of the app under test.
 
 ## Functions

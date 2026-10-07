@@ -1,5 +1,7 @@
 # 結果を読み、失敗を調べる
 
+[in English](investigating_failures.md)
+
 テストを実行するたびに、成否を問わず結果が残ります。読むのも AIアシスタントに任せられます。
 
 ## 結果を要約してもらう
@@ -85,13 +87,15 @@ fleetest の過去の実行結果から、通ったり落ちたりする不安�
 
 ## fleetest 自体の不具合かもしれないとき
 
-AIアシスタントに調べてもらっても原因がツールの側にありそうなら、保守者へ報告してください。
-報告に添える診断情報のまとめ方は[トラブルシューティング](../in_action/troubleshooting_ja.md)にあります。
+AIアシスタントに調べてもらっても原因がツールの側にありそうなら、fleetest の開発者へ報告してください
+(報告先と、添える診断情報の作り方は[トラブルシューティング](../in_action/troubleshooting_ja.md)にあります)。
 
 ## もっと詳しく
 
 - [テスト結果ファイル](../reference/testclass/test_result_files_ja.md) —— 何がどこに出るか
 - [結果の分析(fleetest results・ダッシュボード)](../reference/running/results_analysis_ja.md)
+
+次へ: [アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md)
 
 ### Link
 - [index](../index_ja.md)

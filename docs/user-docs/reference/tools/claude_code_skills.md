@@ -1,5 +1,7 @@
 # Claude Code Skills
 
+[in Japanese(日本語)](claude_code_skills_ja.md)
+
 fleetest comes with a set of Claude Code skills that automate installation,
 profile setup and scenario authoring — each one drives the same underlying scripts and CLI
 commands a human would run by hand, with verification gates and human checkpoints where a

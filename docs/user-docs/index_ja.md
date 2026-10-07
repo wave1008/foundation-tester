@@ -90,7 +90,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
     - [installApp, removeApp, clearAppData](reference/commands/install_app_ja.md)
     - [launchApp, restartApp, terminateApp, openURL](reference/commands/launch_app_ja.md)
 - ナビゲーション
-    - [home, back, appSwitcher, rotateTo](reference/commands/navigation_ja.md)
+    - [home, back, appSwitcher, tapAppIcon, rotateTo](reference/commands/navigation_ja.md)
 - 画面のスワイプ/スクロール
     - [swipe, swipePointToPoint, swipeElementToElement, swipeBy](reference/commands/swipe_ja.md)
     - [スクロール(scrollTo, scrollDown, withScrollDown, scrollFrame, …)](reference/commands/scroll_ja.md)
@@ -120,9 +120,9 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
     - [掴んだ要素の値を読む(.text, .value, .id, lastElement)](reference/commands/reading_values_ja.md)
 - シナリオ間で値を共有
     - [メモ(writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo_ja.md)
+- テストデータ・ファイル・外部との通信
+    - [テストデータ・アカウント(account, data, dataFile, addMedia)](reference/commands/dataset_ja.md)
     - [出力フォルダと一時フォルダ(TestLog)](reference/commands/test_log_ja.md)
-- テストデータ・外部との通信
-    - [テストデータ・アカウント(account, data)](reference/commands/dataset_ja.md)
     - [HTTP リクエスト(httpRequest)](reference/commands/http_request_ja.md)
 - 分岐
     - [ifCanSelect, ios, android](reference/commands/branch_ja.md)
@@ -131,7 +131,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - 同期
     - [wait, waitForDisplay, waitForClose](reference/commands/wait_ja.md)
 - 記述子
-    - [group, procedure, beforeEach, afterEach](reference/commands/descriptors_ja.md)
+    - [group, procedure, beforeEach, afterEach, setUpDevice, tearDownDevice](reference/commands/descriptors_ja.md)
 - スクリーンショット
     - [screenshot](reference/commands/screenshot_ja.md)
 - イレギュラーの処理

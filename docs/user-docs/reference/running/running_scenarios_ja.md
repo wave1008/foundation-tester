@@ -1,4 +1,6 @@
-# シナリオの実行
+# シナリオの実行(fleetest run)
+
+[in English](running_scenarios.md)
 
 `fleetest run` は Swift DSL シナリオを決定的に実行します(通常の再生も自己修復
 (ロケータの指紋照合)も FM を呼びません)。このページでは CLI オプションを説明します。`--dry-run` は
@@ -7,11 +9,11 @@
 
 ## CLI の呼び方
 
-```bash
-# クローン構成(foundation-tester のクローン内で作業している場合)
-swift run fleetest run --profile ios-run
+以降の `fleetest` は、作業フォルダの隣に foundation-tester をクローンした既定の構成では
+`../foundation-tester/.build/debug/fleetest` です。foundation-tester のクローン内で作業している場合は
+`swift run fleetest` でも同じです。
 
-# 外部パッケージ構成(TestProjects/ を持つ別の作業フォルダ)
+```bash
 ../foundation-tester/.build/debug/fleetest run --profile ios-run
 ```
 
@@ -24,10 +26,10 @@ swift run fleetest run --profile ios-run
 | `--scenario <id>` | シナリオ ID。クラス名だけならそのクラスの全シナリオ、`Class.method` で1本を指定。複数回指定可・既定は全件。`@Deleted`/`@Draft` シナリオは完全一致のときだけ実行される |
 | `--folder <folder>` | 実行するシナリオフォルダ(`scenarios/` 直下のサブフォルダ)。複数回指定可、`--scenario`/`--failed` と併用可 |
 | `--failed` | 前回失敗したシナリオだけ実行する。結果は毎回 `(project, profile)` 単位で `.fleetest/last-results/` に記録される —— あるプロファイルで落ちたシナリオが、別プロファイルの緑で隠れることはなく、`--profile` を指定しない実行は専用の区分を持つ。`--failed` はこの実行に指定した(または `--profile` 無しならその区分の)プロファイルの記録だけを見る。「失敗」はそのシナリオの直近の実行が通らなかったことで、**開始できなかったシナリオ**(担当のワーカー・デバイスが無い・run が中断された・デバイスの用意に失敗した)も含む。別の OS 向けの宣言で意図的に対象外になったシナリオは含まない |
-| `--set <キー>=<値>` | 実行プロファイル JSON のキー名そのものと、そのキーの型に合う値で、この実行だけキーを上書きする —— 真偽値キー(例: `heal`・`fmTextOcclusionCheck`・`ocrTextOcclusionCheck`・`enableAnimations`・`iosFastInput`)は `true`/`false`、スカラーキーは文字列や数値(例: `--set reportDir=/tmp/out`・`--set defaultTimeout=8`)。全キーの一覧は [run_profile_ja.md](../project/run_profile_ja.md) 参照。複数回指定可・`--profile` の有無を問わず効く(ただし実行プロファイルの devices 一覧・供給工程が要るキー(`iosInappEngine`・`updateWebView`・`wipeDataOnBloat`・`recoverCpuFallbackToGpu`・`app`・`locale`・`wipeDataThresholdGB`)だけは `--profile` が無いとキーを名指ししてエラー)。`record` は `--profile` か、`--port` を2回以上指定するかのどちらかが要る(単一接続には録画セッションを付けるところが無い)。`reportDir` は `--report-dir` と同時指定できない(同じ欄を二重に指定することになるため、どちらか一方を使う)。実行プロファイルのキー `app` はアプリ**プロファイル名**を指し、このコマンド自身の `--app-id` フラグとは別物。`devices`/`remoteControl` は配列・オブジェクトなのでこの形では指定できない(実行プロファイル JSON を直接編集する)。未知のキー・型の合わない値・配列/オブジェクトのキーはエラー(対処法を示す) |
+| `--set <キー>=<値>` | この実行だけ、実行プロファイルのキーを上書きする(複数回指定可・`--profile` の有無を問わず効く。例: `--set heal=true`・`--set defaultTimeout=8`)。使えるキー・値の型・`--profile` が要るキーなどの規則は[実行プロファイルの設定項目](../project/run_profile_ja.md)にまとめてあります |
 | `--dry-run` | デバイスに触れずステップを検証する([dry_run_ja.md](./dry_run_ja.md)参照) |
 | `--report-dir <dir>` | レポート出力先(既定: `TestProjects/<name>/reports`)。`--set reportDir=...` と同時指定できない |
-| `--port <port>` | 手動並列実行用の iOS ブリッジポート。複数回指定可(`--port 8123 --port 8124`。[parallel_execution_ja.md](./parallel_execution_ja.md)参照) |
+| `--port <port>` | iOS ブリッジのポート(`--profile` 無しのとき)。複数回指定すると手動の並列実行になる(`--port 8123 --port 8124`。[parallel_execution_ja.md](./parallel_execution_ja.md)参照) |
 | `--skip-build` | 実行前の `swift build` をスキップする |
 | `--quiet` | サマリのみ出力する(CI・エージェント向け) |
 | `--junit <path>` | JUnit XML レポートをこのパスに出力する |
@@ -37,7 +39,7 @@ swift run fleetest run --profile ios-run
 | `--runner <runner>` / `--fleet <fleet>` | SSH 経由でリモートマシン/フリートへディスパッチする([リモート実行](../../fleet/remote_runners_ja.md)参照) |
 | `--platform <ios\|android>` | `--profile` 無しでの対象プラットフォーム(既定 `ios`) |
 | `--app-id <bundleID>` | `@TestClass(app:)` 未指定シナリオの既定アプリ。`--profile` 無しのときだけ必要。`--set app=...` とは別物(実行プロファイルの `app` キーはアプリ**プロファイル名**を指す) |
-| `--port <n>` / `--serial <s>` | `--profile` 無しでのブリッジポート(iOS)/デバイス serial(Android) |
+| `--serial <s>` | Android デバイスの serial(`--profile` 無しのとき) |
 
 最新の全一覧は `fleetest run --help` を実行してください。
 

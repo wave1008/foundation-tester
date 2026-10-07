@@ -1,5 +1,7 @@
 # Claude Code 以外の AIアシスタント
 
+[in English](other_agents.md)
+
 fleetest の中核は**エージェント固有ではありません**。Claude Code では
 [スキル](./claude_code_skills_ja.md)が `/fleetest-setup` などの名前で呼べますが、それ以外のエージェント
 (Codex・Cline・Cursor・Copilot など)でも、次の3つを用意すれば同じことができます。
@@ -79,7 +81,7 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 
 Codex は MCP のツールを呼ぶたびに承認を求めます(画面の探索では数十回になり、非対話の
 `codex exec` では全部拒否されます)。おすすめは、**全体は承認なしで通し、本番の実行 `ft_start_run` だけ
-承認を求める**設定です(codex-cli 0.150 で確認):
+承認を求める**設定です):
 
 ```toml
 [mcp_servers.fleetest]
@@ -103,7 +105,7 @@ approval_mode = "prompt"
 
 ## 3. 手順書(SKILL.md)を渡す
 
-手順書の正典はクローンの中の `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md` です。特定の
+手順書の元になるファイルはクローンの中の `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md` です。特定の
 エージェントの機能に依存しないよう書いてあるので、そのまま読ませれば手順どおり進められます。
 
 | 手順書 | 内容 |
@@ -118,7 +120,7 @@ approval_mode = "prompt"
 インストーラは手順書を作業フォルダの `.claude/skills/` へ写します(Claude Code では
 `/fleetest-scenario` のように名前で呼べます)。他のエージェントは、作業フォルダの `AGENTS.md` の入口
 からたどって同じ `SKILL.md` を読ませてください。写しは `git pull` では更新されないので、更新は
-`Scripts/update.sh` に任せます(正典から写し直し、`✅ Skills: refreshed N copied SKILL.md` と
+`Scripts/update.sh` に任せます(元のファイルから写し直し、`✅ Skills: refreshed N copied SKILL.md` と
 報告します)。写した後は**エージェントを再起動**してください。
 インストーラは `.claude/skills/` に印 `.fleetest-copied` を残し、`update.sh` は**この印があるときだけ**
 新しく増えたスキルも置きます。
@@ -126,7 +128,7 @@ approval_mode = "prompt"
 ## Codex を使う場合(サンドボックス)
 
 Codex はシェルコマンドをサンドボックスの中で実行します。**MCP サーバはその外で動く**ので、
-影響はきれいに2つに分かれます(2026-08-27 に実測)。
+影響はきれいに2つに分かれます。
 
 **影響なし(設定不要)** — `ft_*` ツール経由の作業すべて。画面の探索・シナリオ作成・実行・
 Simulator や実機の駆動。結果の履歴や録画を残す本番の実行も `ft_start_run` で通ります
@@ -149,7 +151,7 @@ Simulator や実機の駆動。結果の履歴や録画を残す本番の実行�
 
 **fleetest 本体のクローンは、既定のサンドボックスで読み取り専用に保たれます。** `workspace-write` では
 作業フォルダの外へ書けないので、隣の `foundation-tester` への書き込みは、編集ツール(apply_patch)も
-シェル(`sed -i`・リダイレクト・python)も拒否されます(2026-10-06 に実測)。拒否された操作は
+シェル(`sed -i`・リダイレクト・python)も拒否されます。拒否された操作は
 「サンドボックスの外で実行してよいか」の確認になります。**許可するのは導入・更新の手順(install.sh・update.sh・
 `swift build`)だけにしてください。** それ以外でクローンを書き換えようとしていたら断ります。
 同じ理由で、クローンを `writable_roots` に足したり、`danger-full-access` で起動したりしないでください。
@@ -160,7 +162,7 @@ Codex はこれに従って、クローンの誤りを自分で直さずに報�
 
 これらの AIアシスタントには、fleetest は設定を書きません。本体のクローンを守るのは、入口の `AGENTS.md` の
 行動ルール(`AGENTS.md` を読むアシスタントにだけ届きます)と、各アシスタントの承認の設定です
-(fleetest ではこれらのアシスタントでの挙動を実測していません)。
+(fleetest ではこれらのアシスタントでの挙動を確認していません)。
 
 - 作業フォルダの外へのファイルの書き込みと、そこでのコマンドの実行を、自動で承認しない設定にしてください
 - クローンへの書き込みを求められたら、導入・更新の手順(install.sh・update.sh・`swift build`)以外は断ってください

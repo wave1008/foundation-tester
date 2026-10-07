@@ -1,5 +1,7 @@
 # clearInput
 
+[in English](clear_input.md)
+
 入力欄を空にします。
 
 ## 関数

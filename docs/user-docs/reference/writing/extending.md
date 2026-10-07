@@ -1,5 +1,7 @@
 # Adding your own features
 
+[in Japanese(日本語)](extending_ja.md)
+
 When the built-in commands are not enough, you can add features inside your own project without modifying fleetest
 itself. There are five main ways to do it. All of them are written in scenarios (`.swift`) or in files of your test project.
 

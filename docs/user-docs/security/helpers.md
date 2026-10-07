@@ -111,5 +111,10 @@ If a scenario calls `adb`, `simctl` or `devicectl` directly, fleetest itself run
 refuses the rest. For installing, launching, clearing data or opening URLs, use the DSL commands
 ([installApp](../reference/commands/install_app.md), [launchApp](../reference/commands/launch_app.md), ...).
 
+## Related
+
+- [Accessible folders and destinations](access.md) — writable places, unreadable places, destinations, settings file
+- [The sandbox](sandbox.md)
+
 ### Link
 - [index](../index.md)

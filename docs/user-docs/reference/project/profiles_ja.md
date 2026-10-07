@@ -1,4 +1,6 @@
-# プロファイル
+# プロファイル(アプリ / 実行)
+
+[in English](profiles.md)
 
 実行は `TestProjects/<name>/profiles/` 配下の2種類の JSON プロファイルを組み合わせて構成します
 (継承ではなく参照による組み合わせです)。
@@ -105,8 +107,7 @@ VSCode 拡張の「プロファイル」タブから実行/アプリプロファ
 (実行プロファイルの節には全実行プロファイルのデバイスの和集合が並び、チェックボックスで
 そのプロファイルが走らせるデバイスを選びます)。また `profiles/{apps,runs}/*.json` には拡張が提供する
 JSON スキーマ(`schemas/*.schema.json`)が適用され、手で編集する際も補完・ホバー・構造レベルの
-検証が効きます。詳細は
-[vscode-fleetest/README.md](../../../../vscode-fleetest/README.md)(「実行プロファイルの編集支援」)を
+検証が効きます。拡張の使い方は [VSCode 拡張](../tools/vscode_extension_ja.md)を
 参照してください。
 
 ### Link

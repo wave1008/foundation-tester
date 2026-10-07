@@ -1,5 +1,7 @@
 # UI Component Patterns and Quirks
 
+[in Japanese(日本語)](ui_component_patterns_ja.md)
+
 How to target, operate and verify the stock components of Compose Multiplatform, Flutter, React
 Native, Android (Views/XML) and iOS (SwiftUI) in a scenario. **This page is meant as knowledge for an
 agent (AI assistant) writing scenarios** — if the app's screen has one of these components, read the

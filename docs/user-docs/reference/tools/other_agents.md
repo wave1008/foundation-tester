@@ -1,5 +1,7 @@
 # AI Assistants Other Than Claude Code
 
+[in Japanese(日本語)](other_agents_ja.md)
+
 Nothing at the core of fleetest is agent-specific. In Claude Code the
 [skills](./claude_code_skills.md) can be called by name such as `/fleetest-setup`, but any other agent
 (Codex, Cline, Cursor, Copilot, …) can do the same work once you provide these three things:
@@ -82,7 +84,7 @@ FT_TOOL_ROOT = "<ABS_TOOL_ROOT>"
 
 Codex asks for approval every time it calls an MCP tool (dozens of times while exploring screens,
 and non-interactive `codex exec` rejects them all). The recommended setting **lets calls through without approval
-but asks before the real run, `ft_start_run`** (confirmed with codex-cli 0.150):
+but asks before the real run, `ft_start_run`** ):
 
 ```toml
 [mcp_servers.fleetest]
@@ -106,7 +108,7 @@ The arguments and the tool list are in [MCP server](./mcp_server.md).
 
 ## 3. Hand over the runbooks
 
-The canonical runbooks live in the clone at `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md`. They are
+The runbooks live in the clone at `<TOOL_ROOT>/.claude/skills/<name>/SKILL.md`. They are
 written not to depend on any one agent's features, so an agent can simply read one and follow it.
 
 | Runbook | What it does |
@@ -130,7 +132,7 @@ introduced skills **only when the marker exists**.
 ## Using Codex (the sandbox)
 
 Codex runs shell commands inside a sandbox, and **the MCP server runs outside it**, so the impact
-splits cleanly in two (measured 2026-08-27).
+splits cleanly in two.
 
 **Unaffected, no configuration needed** — everything through the `ft_*` tools: exploring screens,
 authoring and running scenarios, driving Simulators and physical devices. The real run that keeps result
@@ -154,7 +156,7 @@ carries on (confirmed with Codex in VSCode — no special launch option is neede
 
 **The default sandbox keeps the fleetest clone read-only.** `workspace-write` cannot write outside the work
 folder, so writes to the neighbouring `foundation-tester` are denied both through the editing tool (apply_patch)
-and through the shell (`sed -i`, redirection, python) (measured 2026-10-06). A denied operation turns into a
+and through the shell (`sed -i`, redirection, python). A denied operation turns into a
 request to run it outside the sandbox. **Approve that only for the install and update steps (install.sh,
 update.sh, `swift build`)**, and decline it when the assistant is trying to change the clone for anything else.
 For the same reason, do not add the clone to `writable_roots` and do not start Codex with `danger-full-access`.

@@ -1,5 +1,7 @@
 # VS Code Extension
 
+[in Japanese(日本語)](vscode_extension_ja.md)
+
 The `vscode-fleetest` extension surfaces scenarios in VS Code's Test Explorer, and adds device
 control, live inspection and result review around them. It works by spawning the same `fleetest`
 CLI used from the terminal, so behavior matches the CLI and MCP entry points.
@@ -11,7 +13,7 @@ Scenarios appear in the Testing view as a folder → class → `@Test` method tr
 `fleetest.project` setting; when it is empty the extension auto-resolves it, creating
 `TestProjects/project1/` on startup with `fleetest project create project1` if it is missing and selecting
 that `project1` project initially (see [Creating a project](../project/creating_project.md)). Each test
-item offers three run profiles:
+item can be run in three ways:
 
 - **Run** — executes the scenario on a device.
 - **Run (dry-run)** — validates the scenario without a device (selector syntax, unreachable
@@ -233,16 +235,11 @@ settings, so they also apply to tests you run directly from a terminal.
 
 ### iOS Simulator wallpaper cache (CLI only)
 
-On iOS 27 Simulators, PosterBoard (the wallpaper gallery) writes a new snapshot cache each time it
-rebuilds a wallpaper version, and never deletes the older ones. Home-screen rendering snapshots pile up
-the same way. With frequent reboots a single
-Simulator can reach tens of GB. fleetest purges a Simulator's accumulated cache right before it boots
-that Simulator (wallpaper settings and other data are left untouched). At the same time it trims the
-iOS diagnostic log store that has no size limit (Special), keeping only the newest 100 files (about 0.2 GB).
-It also removes the article copies the News widget keeps adding on every refresh and never deletes
-(about 13 MB a day); the widget rebuilds what it needs after the boot.
+iOS 27 Simulators accumulate cache with repeated boots, and a single Simulator can reach tens of GB.
+fleetest purges a Simulator's cache automatically right before it boots that Simulator (wallpaper
+settings and other data are left untouched).
 
-To purge it for Simulators that are not being booted, run `fleetest clean --simulator-poster-cache`
+To purge the Simulators that are not running in one go, run `fleetest clean --simulator-poster-cache`
 from a terminal (`--dry-run` shows the amount without deleting). It purges every **stopped**
 Simulator on this Mac and skips booted ones, naming them in the output. This isn't part of the
 categories above or the Settings tab.

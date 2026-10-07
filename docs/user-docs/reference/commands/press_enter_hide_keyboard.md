@@ -1,5 +1,7 @@
 # pressEnter, hideKeyboard
 
+[in Japanese(日本語)](press_enter_hide_keyboard_ja.md)
+
 Fires the keyboard's commit action, or closes the on-screen keyboard.
 
 ## Functions

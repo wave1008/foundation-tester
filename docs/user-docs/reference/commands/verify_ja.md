@@ -1,4 +1,6 @@
-# verify
+# まとめて検証(verify)
+
+[in English](verify.md)
 
 複数のアサーションを1つの報告単位にまとめます。
 

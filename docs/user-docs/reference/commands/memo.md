@@ -1,5 +1,7 @@
 # Memo (writeMemo, readMemo, clearMemo, memoTextAs)
 
+[in Japanese(日本語)](memo_ja.md)
+
 Share values between scenarios. Every `@Test` runs as its own process, so a Swift variable does
 not carry over; the memo carries over **to later scenarios on the same device** (not to other
 devices — see Scope below). Names and behavior follow Shirates.

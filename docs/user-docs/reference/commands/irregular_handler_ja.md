@@ -1,5 +1,7 @@
 # irregularHandler
 
+[in English](irregular_handler.md)
+
 出るか不定のアプリ内メッセージ(お知らせ・キャンペーン)を宣言し、出た時点で自動的に閉じます。
 
 ## 関数

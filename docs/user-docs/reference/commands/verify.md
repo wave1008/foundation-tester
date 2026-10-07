@@ -1,4 +1,6 @@
-# verify
+# Anything assertion (verify)
+
+[in Japanese(日本語)](verify_ja.md)
 
 Groups several assertions into one reported check.
 

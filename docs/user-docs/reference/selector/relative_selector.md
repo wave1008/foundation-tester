@@ -1,4 +1,6 @@
-# Relative Selector
+# Relative selector and scope
+
+[in Japanese(日本語)](relative_selector_ja.md)
 
 A relative selector points at a candidate by its position relative to an anchor element,
 for screens where the target has no id or reliable label of its own (e.g. a switch next to
@@ -14,7 +16,7 @@ Unlike a plain directional description, the **anchor is written first**, then a 
 the direction (`right` / `left` / `above` / `below`) plus an optional type suffix
 (`Button` / `Image` / `Input` / `Label` / `Switch` / `Widget`). This resolves to: the
 nearest `.switch` that is in the band extending from `Notification` in the `right`
-direction. **If no candidate matches, the selector fails** — it does not fall back to
+direction (the "band" is the set of candidates whose center falls within the anchor's height for left/right, or its width for above/below). **If no candidate matches, the selector fails** — it does not fall back to
 "closest thing available," since that would silently grab a different element once the
 layout changes.
 
@@ -54,7 +56,7 @@ Each step's result becomes the anchor for the next step.
 tap("<Change&&.button>:right(Quantity)")
 ```
 
-The Shirates canonical form wraps the anchor in angle brackets. This is optional syntax
+In Shirates the anchor is wrapped the anchor in angle brackets. This is optional syntax
 sugar — it parses to the same result as writing the anchor unwrapped — but makes a
 multi-word anchor easier to read at a glance.
 
@@ -78,9 +80,6 @@ Compared to Shirates(Classic)'s relative selector vocabulary:
   grid.
 - **`:flow` / `:vflow`** (flow-based grouping) are **not implemented** — they require an
   arbitrary row-grouping threshold with no principled default.
-
-See [docs/shirates-parity.md](../../../shirates-parity.md) for the full comparison and current
-status of each.
 
 ### Link
 - [index](../../index.md)

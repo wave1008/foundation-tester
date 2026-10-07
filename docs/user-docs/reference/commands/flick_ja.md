@@ -1,5 +1,7 @@
 # flick
 
+[in English](flick.md)
+
 指を1回速く動かすだけの生ジェスチャです。画面(または `scrollFrame`)基点の8方向があります。
 
 ## 関数
@@ -26,7 +28,7 @@ flickCenterToTop(scrollFrame: "#carousel")  // 特定のスクロール可能領
 - `scrollableElement` 引数はありません —— 対象領域は [scroll](./scroll_ja.md) と同じく
   `scrollFrame:` のセレクタ式で指定します。
 - Shirates の `flickAndGo*` 一族(画面遷移トリガ)や、要素基点の `flickTo*`/`flickOut*` は
-  未実装です(意図的に持たないものは docs/shirates-parity.md 参照)。
+  持ちません。
 - **`flick` は「端に着いたか」を判定しません。** `scrollToBottom` 等の代わりに flick を
   何回か並べて速く送っても、到達したかどうかは分かりません —— 払った後は自分で到達先を
   検証してください。

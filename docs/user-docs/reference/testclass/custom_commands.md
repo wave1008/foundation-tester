@@ -1,5 +1,7 @@
 # Custom Commands
 
+[in Japanese(日本語)](custom_commands_ja.md)
+
 When the built-in DSL commands don't cover a repeated step in your own app (log in, a shared
 precondition, a custom multi-finger gesture assembled with [`gesture`](../commands/gestures.md)),
 write it as a **plain Swift function** under `scenarios/`. This is what Shirates calls a `macro` —
@@ -100,8 +102,8 @@ not as a free function.
 - Reports and run logs show the commands inside your helper, one step each — not the helper's
   name. A failure points at the inner command's line.
 - The index lists your helpers; it doesn't run them. `ft_batch` (the MCP tool that executes DSL
-  lines one at a time without saving a scenario) only understands built-in operation/scroll
-  commands — a project command has to be written into the scenario `.swift` file, not batched.
+  lines one at a time without saving a scenario) can only run built-in
+  commands. Call your `@FTCommand` functions from the scenario `.swift` file instead.
 
 ### Link
 - [index](../../index.md)

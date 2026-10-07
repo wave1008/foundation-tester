@@ -1,4 +1,6 @@
-# Run Tests
+# Running tests
+
+[in Japanese(日本語)](running_tests_ja.md)
 
 A test you created runs the same way whether you ask an AI assistant or run it yourself from VSCode or the terminal.
 **AI is not used for the run itself** —— scenarios are replayed deterministically as code, so the AI assistant only
@@ -57,7 +59,8 @@ Command Palette. Without one, the run does not start and shows an error.
 
 </details>
 
-The commands above assume the default layout, with the foundation-tester clone next to your work folder.
+`--scenario` takes a class name for one file, or `ClassName.testName` for a single test.
+For what `../foundation-tester/.build/debug/fleetest` in the commands above means, see [Getting Started](../getting-started.md).
 For details, see [Running scenarios](../reference/running/running_scenarios.md).
 
 ## Run faster on multiple devices
@@ -111,6 +114,8 @@ Re-run only the fleetest scenarios that failed on iOS last time.
 
 - [Running scenarios (fleetest run)](../reference/running/running_scenarios.md) —— the full list of options
 - [Dry-run](../reference/running/dry_run.md) and [Parallel execution](../reference/running/parallel_execution.md)
+
+Next: [Reading results and investigating failures](investigating_failures.md)
 
 ### Link
 - [index](../index.md)

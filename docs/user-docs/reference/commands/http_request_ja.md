@@ -1,5 +1,7 @@
 # HTTP リクエスト(httpRequest)
 
+[in English](http_request.md)
+
 シナリオから HTTP(S) のリクエストを送り、応答を待って返します。テストデータを API で用意する・サーバ側の状態を確かめる、
 といった用途です(fleetest 独自のコマンドです)。
 

@@ -1,5 +1,7 @@
 # MCP サーバ
 
+[in English](mcp_server.md)
+
 `fleetest-mcp` はデバイス操作・シナリオ実行・シナリオ作成を `ft_*` ツールとして公開する stdio
 [MCP](https://modelcontextprotocol.io) サーバです。CLI・VSCode 拡張と同じ機能を、人間の代わりに
 エージェントから呼び出せるようにしたものです。

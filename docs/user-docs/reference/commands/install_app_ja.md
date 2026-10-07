@@ -1,5 +1,7 @@
 # installApp, removeApp, clearAppData
 
+[in English](install_app.md)
+
 テスト対象アプリのインストール・アンインストール・データ初期化を行います。
 
 ## 関数

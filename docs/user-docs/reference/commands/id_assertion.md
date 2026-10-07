@@ -1,4 +1,6 @@
-# idIs
+# id assertion (idIs)
+
+[in Japanese(日本語)](id_assertion_ja.md)
 
 Asserts the identifier of the last grabbed element.
 

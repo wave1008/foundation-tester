@@ -1,4 +1,6 @@
-# imageIs
+# 画像の検証(imageIs)
+
+[in English](image_assertion.md)
 
 直前に掴んだ要素の**画像**を、見本画像から学習した分類器(DefaultClassifier)で分類し、ラベルを検証します
 (Shirates の Vision 版の `imageIs` の移植です)。
@@ -52,7 +54,7 @@ fleetest vision check --project <プロジェクト>
 - `vision check` は必要なら学習してから、**分類器が自分の見本を取り違えないか**を確かめます。取り違えた見本は
   名指しで警告します(見本どうしが見分けられていない = 本番でも取り違えうる)。警告だけで、終了コードは 0 です。
 - シナリオの実行中に取り違えが見つかった場合も、シナリオの終わりに同じ警告が出ます。
-- MCP からは `ft_capture_element` で同じことができます(`ft_snapshot` の ref でも要素を指せ、保存後の点検結果も返ります)。
+- MCP からの使い方は [MCP サーバ](../tools/mcp_server_ja.md) を参照してください。
 
 ## 例
 

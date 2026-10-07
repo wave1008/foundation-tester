@@ -1,5 +1,7 @@
 # ifCanSelect, ios, android
 
+[in English](branch.md)
+
 セレクタが解決できたときだけ、または特定の OS のときだけブロックを実行します。
 
 ## 関数

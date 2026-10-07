@@ -1,5 +1,7 @@
 # VSCode 拡張
 
+[in English](vscode_extension.md)
+
 `vscode-fleetest` 拡張は、シナリオを VSCode の Test Explorer に表示し、その周りにデバイス操作・
 ライブ確認・結果レビューの機能を追加します。ターミナルと同じ `fleetest` CLI を spawn して動くため、
 挙動は CLI・MCP と同じになります。
@@ -10,8 +12,8 @@
 folder → class → `@Test` メソッドの3階層ツリーとして Testing ビューに表示されます。対象の
 `<project>` は `fleetest.project` 設定で選びます。空のときは自動判定で、拡張は起動時に
 `TestProjects/project1/` が無ければ `fleetest project create project1` で作成し、これを初期選択にします
-([テストプロジェクトの作成](../project/creating_project_ja.md))。各テスト項目には
-3つの実行プロファイルがあります。
+([テストプロジェクトの作成](../project/creating_project_ja.md))。各テスト項目は
+3つの方法で実行できます。
 
 - **実行** — デバイス上でシナリオを実行します。
 - **実行 (dry-run)** — デバイス不要でシナリオを検証します(セレクタの構文誤り・到達しない
@@ -229,15 +231,11 @@ iOS の Compose アプリでは、実機と `xcuitest` だけの構成でダブ�
 
 ### iOS Simulator の壁紙キャッシュ(CLI のみ)
 
-iOS 27 の Simulator では、PosterBoard(壁紙ギャラリー)が壁紙の版を作り直すたびに新しい
-スナップショットキャッシュを作り、古い版の分を消しません。ホーム画面の描画スナップショットも、同じように
-作り足されて消えません。起動を繰り返す使い方では、1台で数十 GB に
-達することがあります。fleetest は Simulator を起動する直前に、そのデバイスに溜まったキャッシュを自動で消します
-(壁紙の設定など、ほかのデータには触れません)。同じタイミングで、iOS の診断ログのうち容量の上限が無い種類
-(Special)の古いファイルも消し、新しい 100 ファイル(約 0.2GB)だけを残します。ニュースのウィジェットが
-更新のたびに溜めて消さない記事の控え(1日あたり約 13MB)も、同じタイミングで消します(ウィジェットは起動後に作り直します)。
+iOS 27 の Simulator は、起動を繰り返すとキャッシュが溜まり、1台で数十 GB に達することがあります。
+fleetest は Simulator を起動する直前に、そのデバイスのキャッシュを自動で消します(壁紙の設定など、
+ほかのデータには触れません)。
 
-起動していないデバイスの分をまとめて消したいときは、ターミナルから `fleetest clean --simulator-poster-cache` を
+停止中のデバイスの分をまとめて消したいときは、ターミナルから `fleetest clean --simulator-poster-cache` を
 実行してください(`--dry-run` で消さずに量だけ確認できます)。**停止中**の全 Simulator ぶんを消し、起動中のデバイスは
 名前だけ出して飛ばします。上のカテゴリや「設定」タブには含まれていません。
 
@@ -250,7 +248,7 @@ iOS 27 の Simulator では、PosterBoard(壁紙ギャラリー)が壁紙の版�
 | `fleetest.profile` | `""` | 使用する実行プロファイル名。設定するとデバイス/アプリの決定がこちらに委ねられる |
 | `fleetest.heal` | `false` | 実行/デバッグで `--set heal=true` を有効にし、自己修復の確認パネルを開く |
 | `fleetest.buildBeforeRun` | `true` | 実行前に Swift プロジェクトをビルドする |
-| `fleetest.lptScheduling` | `true` | 過去の実測から実行時間の長いシナリオを先に投入する(LPT) |
+| `fleetest.lptScheduling` | `true` | 過去の実行時間の記録から実行時間の長いシナリオを先に投入する(LPT) |
 | `fleetest.monitorInterval` | `2` | デバイスモニターのポーリング間隔(秒) |
 | `fleetest.liveControlOnRun` | `true` | テスト実行(dry-run 以外)開始時にライブ操作を自動表示する |
 | `fleetest.language` | `"auto"` | 拡張の UI 表示言語 |

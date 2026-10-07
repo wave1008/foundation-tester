@@ -1,7 +1,9 @@
 # Writing Robust Scenarios
 
-Conventions that keep scenarios from becoming flaky or silently useless. Full command details
-are in [the DSL command reference](../../../commands.md).
+[in Japanese(日本語)](writing_robust_scenarios_ja.md)
+
+Conventions that keep scenarios from becoming flaky or silently useless. Full details of each command
+are in the per-command pages listed in the [index](../../index.md).
 
 ## Don't add `wait` for element appearance
 

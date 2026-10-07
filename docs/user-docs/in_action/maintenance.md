@@ -1,5 +1,7 @@
 # Maintenance for long-term use
 
+[in Japanese(日本語)](maintenance_ja.md)
+
 As you keep using fleetest, some things pile up on disk and some tasks come up when you update macOS or
 Xcode. fleetest handles most of it automatically. This page lists what is handled for you and what you
 need to do yourself.
@@ -24,11 +26,8 @@ Simulator.app). A Simulator that stays booted is cleaned the next time fleetest 
 
 ### When you update fleetest
 
-When you get an update notice, follow [Update](../update.md).
-
-If you use remote runner machines, bring them to the same version as this Mac. Test runs don't start
-while the versions differ. See "After you update fleetest" in
-[Adding a Mac](../fleet/adding_mac.md).
+When you get an update notice, follow [Update](../update.md). Bringing remote runner machines to the
+same version is covered on that page too.
 
 ### When you update macOS or Xcode
 

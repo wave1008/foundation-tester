@@ -1,5 +1,7 @@
 # launchApp, restartApp, terminateApp, openURL
 
+[in Japanese(日本語)](launch_app_ja.md)
+
 Starts, restarts, stops the app under test, or delivers a deep link URL to it.
 
 ## Functions
@@ -43,7 +45,7 @@ terminateApp()
   confirmation alert ("Open in \"App Name\"?"); the hybrid and xcuitest engines dismiss it
   automatically. After that, consent for that device+app combination persists.
 - `openURL` against an app that is not running lets the OS launch it, but that is not what the
-  command is for — cold-start behavior itself cannot be exercised through the in-app engine.
+  command is for. To verify opening from a URL when the app is not running, use `launchApp(url:)`.
 
 ### Link
 - [index](../../index.md)

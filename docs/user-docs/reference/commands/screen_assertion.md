@@ -1,4 +1,6 @@
-# screenLooksLike
+# Screen assertion (screenLooksLike)
+
+[in Japanese(日本語)](screen_assertion_ja.md)
 
 Visual screen check by Foundation Models: matches a screenshot against a description you write.
 

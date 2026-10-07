@@ -1,4 +1,6 @@
-# appIs
+# App assertion (appIs)
+
+[in Japanese(日本語)](app_assertion_ja.md)
 
 Asserts which app is currently in the foreground.
 

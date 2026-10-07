@@ -1,5 +1,7 @@
 # HTTP request (httpRequest)
 
+[in Japanese(日本語)](http_request_ja.md)
+
 Sends an HTTP(S) request from the scenario, waits for the response and returns it. Use it to prepare test data through
 an API or to check server-side state (fleetest's own command).
 

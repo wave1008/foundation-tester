@@ -1,5 +1,7 @@
 # irregularHandler
 
+[in Japanese(日本語)](irregular_handler_ja.md)
+
 Declares an in-app message (promo card, announcement) that may or may not appear, and closes
 it automatically whenever it does.
 

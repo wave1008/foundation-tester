@@ -1,5 +1,7 @@
 # suppressHandler, useHandler, disableHandler, enableHandler
 
+[in Japanese(日本語)](suppress_handler_ja.md)
+
 Lets a scenario operate a modal itself instead of having a declared
 [`irregularHandler`](./irregular_handler.md) close it automatically.
 

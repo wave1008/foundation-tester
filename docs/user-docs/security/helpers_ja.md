@@ -110,5 +110,10 @@ response.status.thisIs(201)
 それ以外は断ります。アプリのインストール・起動・データの消去・URL を開くといった操作は、
 DSL のコマンド([installApp](../reference/commands/install_app_ja.md)・[launchApp](../reference/commands/launch_app_ja.md) など)を使ってください。
 
+## 関連
+
+- [アクセスできるフォルダと通信先](access_ja.md) —— 書ける場所・読めない場所・通信先・設定ファイル
+- [サンドボックスの考え方](sandbox_ja.md)
+
 ### Link
 - [index](../index_ja.md)

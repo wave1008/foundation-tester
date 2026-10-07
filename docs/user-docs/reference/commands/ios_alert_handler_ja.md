@@ -1,4 +1,6 @@
-# iosAlertHandler
+# iOS のシステムアラート(iosAlertHandler)
+
+[in English](ios_alert_handler.md)
 
 これから出る iOS のシステムアラート(権限の許可・ATT・「"◯◯"で開きますか?」)を1枚予告し、
 押すボタンを指定します。
@@ -102,8 +104,8 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
   2. 権限のダイアログなら拒否側(`許可しない` / `Don't Allow`)を押します。**そのアプリの権限は
      「拒否」になり**、そのことをシナリオのログに残します。`clearAppData()` から始まるシナリオなら
      未決定に戻るので影響しません。
-  3. どれも無ければ、Simulator では SpringBoard を起こし直し(ボタンは押しません)、そのデバイスの
-     ブリッジを作り直します(約 20 秒。実行プロファイル `--profile` を使う run だけ)。
+  3. どれも無ければ、Simulator では SpringBoard を起こし直し(ボタンは押しません)、
+     そのデバイスへの接続も張り直します(20 秒ほど。実行プロファイル `--profile` を使う run だけ)。
   是認側のボタン(`許可`・`Allow` など)はどの場合も押しません。ラベルは完全一致で照合します。
   したことはシナリオのログに `🧹 … a system alert was left on screen before this scenario (…)` と出ます。
   実機と、実行プロファイルを使わない run では、上のどのボタンも無いアラートは残り、各シナリオの前に
@@ -113,14 +115,10 @@ iosAlertHandler(alert: "*トラッキング*||*wants to track*",
 - **アラートが前面にある間、XCUITest を通る操作は届きません。** xcuitest エンジンと、hybrid で
   in-app エンジンが撃てない操作(ホーム・アプリスイッチャー・座標のドラッグや長押し)が対象です。
   ステップは `a system alert is in front of the app (title: …, buttons: …)` で失敗し、アラートは
-  そのまま残ります —— ツールがアラートのボタンを自分で押すことも、操作を撃ち直すこともありません
-  (ボタンを押して操作を撃ち直す XCTest の既定の割り込みハンドラは止めてあります。押すボタンには
-  「許可」も含まれていました)。
+  そのまま残ります —— ツールがアラートのボタンを自分で押すことも、操作を撃ち直すこともありません。
 - **`clearAppData()` で権限をリセットできます** —— 同じダイアログが次の run でも再び出るので、
   常に未決定の状態から始めたいシナリオに使えます。
-- **MCP で詰まったときは** `ft_launch bundleId: com.apple.springboard` —— 非破壊で
-  SpringBoard に attach するだけなので、`ft_snapshot` でダイアログを ref から読めます。
-  終わったら対象アプリへ `ft_launch` で戻ってください。
+- MCP からの使い方は [MCP サーバ](../tools/mcp_server_ja.md) を参照してください。
 
 ### Link
 - [index](../../index_ja.md)

@@ -1,5 +1,7 @@
 # テストを実行する
 
+[in English](running_tests.md)
+
 作ったテストは、AIアシスタントに頼んでも、VSCode・ターミナルから自分で動かしても、同じように実行されます。
 **実行そのものに AI は使いません** —— シナリオはコードとして決定的に再生されるので、AIアシスタントは
 「実行を始めて結果を読む」役だけを担います。
@@ -57,7 +59,8 @@ VSCode では Test Explorer でシナリオを選び、「実行」をクリッ�
 
 </details>
 
-上のコマンドは、作業フォルダの隣に foundation-tester のクローンがある既定の構成での呼び方です。
+`--scenario` には、クラス名で1ファイル分、`クラス名.テスト名` で1本を指定します。
+上のコマンドの `../foundation-tester/.build/debug/fleetest` の意味は[はじめに](../getting-started_ja.md)を参照してください。
 詳しくは[シナリオの実行](../reference/running/running_scenarios_ja.md)。
 
 ## 複数のデバイスで速く回す
@@ -111,6 +114,8 @@ fleetest で、前回 iOS で落ちたシナリオだけを実行し直して。
 
 - [シナリオの実行(fleetest run)](../reference/running/running_scenarios_ja.md) —— オプションの全一覧
 - [dry-run](../reference/running/dry_run_ja.md)・[並列実行](../reference/running/parallel_execution_ja.md)
+
+次へ: [結果を読み、失敗を調べる](investigating_failures_ja.md)
 
 ### Link
 - [index](../index_ja.md)

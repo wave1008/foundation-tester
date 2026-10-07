@@ -1,4 +1,6 @@
-# Profiles
+# Profiles (app / run)
+
+[in Japanese(日本語)](profiles_ja.md)
 
 A run is configured from two kinds of JSON profile under `TestProjects/<name>/profiles/`,
 combined by reference rather than by inheritance:
@@ -111,8 +113,7 @@ The VS Code extension's Profiles tab lets you edit run/app profiles interactivel
 profile section shows the union of every run profile's devices, with checkboxes selecting which
 ones this run profile runs — and `profiles/{apps,runs}/*.json` get a JSON schema
 (`schemas/*.schema.json`) contributed by the extension for completion, hover and structural
-validation while editing by hand. See the "実行プロファイルの編集支援" section of
-[vscode-fleetest/README.md](../../../../vscode-fleetest/README.md) (Japanese).
+validation while editing by hand. See [VS Code Extension](../tools/vscode_extension.md).
 
 ### Link
 - [index](../../index.md)

@@ -1,5 +1,7 @@
 # 環境
 
+[in English](environments.md)
+
 ## 対応環境
 
 | 対象 | 要件 |
@@ -27,10 +29,10 @@ macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を
 
 - **`screenLooksLike`**
   - 画面と自然文の説明を照合する視覚検証です。
-- **テキストの表示判定の補助**
+- **テキストの視覚検証**
   - テキストが実際に表示されているか、別のものに覆われて隠れていないかを視覚的に判定し、テスト結果の判定精度を向上させることができます。
 
-処理はすべてオンデバイスで、アプリの画面情報が Mac の外に出ることはありません。
+これらの機能の処理はすべてオンデバイスで、アプリの画面情報が Mac の外に出ることはありません(テストを作るときに AIアシスタントへ送られる画面の内容は別です)。
 Apple のクラウドの Private Cloud Compute (PCC) は使いません。
 
 ### 制限
@@ -38,6 +40,8 @@ Apple のクラウドの Private Cloud Compute (PCC) は使いません。
 - **experimental(実験的機能) です。**
 - macOS 26 では FM の機能は使えません。
 - FM が使えない環境では、`screenLooksLike` は失敗ではなく**スキップ**されます。
+
+次へ: [はじめに(インストール)](../getting-started_ja.md)
 
 ### Link
 - [index](../index_ja.md)

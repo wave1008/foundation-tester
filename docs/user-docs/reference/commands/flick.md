@@ -1,5 +1,7 @@
 # flick
 
+[in Japanese(日本語)](flick_ja.md)
+
 A single fast finger stroke — screen (or `scrollFrame`) based, in one of 8 directions.
 
 ## Functions
@@ -25,7 +27,7 @@ flickCenterToTop(scrollFrame: "#carousel")  // flick inside a specific scrollabl
 - There is no `scrollableElement` argument — pass the region as a `scrollFrame:` selector
   instead, same as [scroll](./scroll.md).
 - There is no `flickAndGo*` family (screen-transition triggers) and no element-anchored
-  `flickTo*` / `flickOut*` — see docs/shirates-parity.md for what is intentionally not provided.
+  `flickTo*` / `flickOut*`.
 - **`flick` has no notion of "reached the edge."** Chaining several flicks to move faster than
   `scrollToBottom` etc. does not tell you whether you arrived — verify the destination yourself
   after flicking.

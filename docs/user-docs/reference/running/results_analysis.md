@@ -1,9 +1,11 @@
-# Results Analysis
+# Analysing results (fleetest results, dashboard)
+
+[in Japanese(日本語)](results_analysis_ja.md)
 
 Every `fleetest run` (CLI or `fleetest api run`) appends its results to
 `TestProjects/<name>/results/`. This page covers the `fleetest results` commands and how to read
 a failure; the full JSON schema is the single source of truth at
-[../../results-json.md](../../../results-json.md).
+[Results JSON schema](../../../results-json.md) (Japanese).
 
 ## Layout
 
@@ -45,8 +47,8 @@ reconstructed from `events/<scenarioID>.ndjson`. `<runID>` also accepts `latest`
 <id>` to show only one scenario, and `--raw` to print the underlying NDJSON lines unformatted (the per-scenario headings then go to stderr, so stdout stays pure NDJSON)
 instead.
 
-Runs recorded before this feature existed, or whose `events/` was already cleared by retention
-cleanup (see [../../results-json.md](../../../results-json.md), Japanese), have no execution log —
+Old runs, or runs whose `events/` was already cleared by the
+[log and recording cleanup](../tools/vscode_extension.md#cleaning-up-logs-and-recordings), have no execution log —
 the command reports that on stderr and exits non-zero. A run that was interrupted (or aborted while
 preparing devices) before any scenario started has no execution log either, and the message says so.
 A scenario that was superseded by a re-run (frozen device, environment error) still shows under an
@@ -121,13 +123,13 @@ per-scenario summary, flaky scenarios, and device health (current state/storage 
 Monitor combined with run-history counts: excluded from run, requeued, pre-run exclude/repair,
 recovery operations, app crashes) — backed by the
 same `fleetest results` data (a toolbar control switches the aggregation period between 7/30/90
-days). See the "結果ダッシュボード" section of
-[vscode-fleetest/README.md](../../../../vscode-fleetest/README.md) (Japanese).
+days). See the Results Dashboard section of
+[VS Code Extension](../tools/vscode_extension.md).
 
 ## CI
 
 `fleetest run --junit <path>` writes a JUnit XML report alongside the JSON results, for CI test
-reporting. See [ci.md](../../in_action/ci.md).
+reporting. See [CI integration](../../in_action/ci.md).
 
 ### Link
 - [index](../../index.md)

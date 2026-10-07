@@ -1,5 +1,7 @@
 # screenshot
 
+[in English](screenshot.md)
+
 現在の画面を撮り、レポートに埋め込みます。
 
 ## 関数

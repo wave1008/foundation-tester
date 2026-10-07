@@ -1,4 +1,6 @@
-# Text Assertion
+# Text assertion (textIs, textContains, ...)
+
+[in Japanese(日本語)](text_assertion_ja.md)
 
 Checks on an element's label (its displayed text).
 
@@ -58,7 +60,7 @@ exist("#total")
 - When chained onto `exist(…)` / `select(…)` / `lastElement`, the check first evaluates against
   the value already grabbed. If that already satisfies the assertion, the step is recorded but no
   device round trip happens (the message shows `(from the grabbed value)`). Otherwise it polls the
-  device as usual up to `waitSeconds`.
+  device up to `waitSeconds`.
 
 ### Link
 - [index](../../index.md)

@@ -1,6 +1,8 @@
 # Quick Start
 
-The shortest path from a completed [Getting Started (Installation)](getting-started.md) to creating test
+[in Japanese(日本語)](quick-start_ja.md)
+
+The shortest path from a completed [Getting Started (Installation)](getting-started.md) to creating
 scenarios for a sample app and running them. You do not write scenarios by hand.
 
 ## 1. Prepare the sample app
@@ -17,6 +19,8 @@ The server needs JDK 17 and Apple Container. If either is missing, you can insta
 Don't modify any shell configuration files. There's no need to build the app.
 Let me know once /health returns ok.
 ```
+
+After you restart your Mac, start the server again with the same prompt.
 
 <details>
 <summary><b>Do it manually (click to show details)</b></summary>
@@ -97,24 +101,29 @@ run profiles `ios-run` and `android-run`. These commands register one device; ad
 
 </details>
 
+When it succeeds, the AI assistant reports the name of the run profile (such as `ios-run`), and that run profile is listed on the "Profiles" tab of the VSCode device monitor.
+
 See [Profiles](./reference/project/profiles.md) for the details.
 
-## 3. Create the test scenarios
+## 3. Create the scenarios
 
 Let's create exploratory tests for the login screen.
 
 ### Prompt for the AI
 
 ```text
-Create exploratory tests for just the login screen of sut-ec-mobile (SUT Store). Put the step that switches the app to English mode in setUpDevice.
+Create exploratory tests on iOS for just the login screen of sut-ec-mobile (SUT Store). Put the step that switches the app to English mode in setUpDevice. Stop once you've told me the file name of the new scenario.
 ```
 
+`setUpDevice` is where you put the preparation that is done once per device before the tests (here, switching the language).
+For Android, read "on iOS" as "on Android".
+
 The AI assistant launches the app on a device, reads the elements of the login screen while
-operating it, and turns the behavior it finds into test scenarios.
+operating it, and turns the behavior it finds into scenarios.
 
 ## 4. Run it on a device
 
-Let's run the test scenarios you created.
+Let's run the scenarios you created.
 
 ### Prompt for the AI
 
@@ -159,6 +168,8 @@ Open the report in `reports/`. In VSCode, the Test Explorer shows pass/fail on e
 can open the report from there.
 
 </details>
+
+Next: [Asking the AI assistant](tutorial/asking_ai.md)
 
 ### Link
 - [index](index.md)
