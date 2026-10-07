@@ -1,7 +1,7 @@
-# Setting Up a Remote Runner
+# Adding a Mac
 
-These steps prepare another Mac (a runner machine) to run your tests. For what remote runs can do
-and how they work, see [Remote Runners](remote_runners.md).
+These steps add another Mac (a runner machine) to your fleet so it can run your tests. For the big picture, see
+[Fleet concepts](concepts.md); for what remote runs can do and how they work in detail, see [Remote Runners](remote_runners.md).
 
 Most steps can be done either in the terminal (CLI) or in the VS Code extension. However,
 **installing fleetest on the runner (Step 3) can only be done in the terminal**.

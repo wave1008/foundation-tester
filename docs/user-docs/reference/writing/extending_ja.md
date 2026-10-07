@@ -114,7 +114,7 @@ procedure("テスト用の注文を API で作る") {
 - スクリプトに渡る環境変数は `FT_HOOK`(`setup` / `teardown`)・`FT_WORKSPACE`・`FT_PROJECT`・`FT_PROFILE`・
   `FT_REPORT_DIR`・`FT_IOS_DEVICES`・`FT_ANDROID_DEVICES`(空白区切りのデバイス名)です。値が無いときも変数自体は渡ります。
   Emulator の adb serial・Simulator の UDID は渡りません(必要なら `adb devices` などを自分で呼びます)。
-- [リモートランナー](../../in_action/remote_runners_ja.md)へ送った run では、スクリプトはランナー機の上で走ります。
+- [リモート実行](../../fleet/remote_runners_ja.md)へ送った run では、スクリプトはランナー機の上で走ります。
   ssh 越しに起こしたプロセスは同じ機械の他のアドレス(コンテナの仮想ネットワーク・LAN)へ繋げないことがあるので、
   依存サービスには `127.0.0.1` で繋いでください。
 - スクリプトはサンドボックスの外で動きます。`fleetest run` と MCP の `ft_start_run` では走りますが、
@@ -132,7 +132,7 @@ procedure("テスト用の注文を API で作る") {
 |---|---|
 | デバイスへの新しい種類の操作・新しく取得する情報 | ドライバとブリッジの機能なので、fleetest 本体の変更が要ります。組み込みのコマンドを組み合わせて書けるものだけが、自分で足せる範囲です |
 | シナリオから任意のファイルを書く・ホームの秘密を読む | シナリオはサンドボックスの中で動きます。書くときは [`TestLog.directoryForLog` / `directoryForTemp`](../commands/test_log_ja.md) を使います |
-| シナリオから他のアプリを起こす・adb や simctl を直接使う | 決まった操作だけを fleetest 本体が代わりに行います。adb はこの Mac の設定 `allowDirectAdb` で開けられます([MCP サーバ](../tools/mcp_server_ja.md)のサンドボックスの節) |
+| シナリオから他のアプリを起こす・adb や simctl を直接使う | 決まった操作だけを fleetest 本体が代わりに行います。adb はこの Mac の設定 `allowDirectAdb` で開けられます([アクセスできるフォルダと通信先](../../security/access_ja.md)) |
 | 独自コマンドを `ft_batch` で実行する | `ft_batch` が実行するのは組み込みのコマンドだけです。独自コマンドはシナリオの `.swift` に書いて実行します |
 | シェルの環境変数(トークンなど)をシナリオで読む | シナリオには fleetest が使う変数しか渡りません。秘密は `account()` のこの Mac 側のファイルに置きます |
 

@@ -70,7 +70,7 @@ list and every run-time setting.
 
 - `machine` is `"local"` for a device on this Mac, or the name of a machine registered with
   `fleetest remote machines add`, which dispatches that device's run over SSH instead of running
-  it locally (see [remote_runners.md](../../in_action/remote_runners.md)).
+  it locally (see [Remote Runners](../../fleet/remote_runners.md)).
 - For an iOS Simulator, `name` is the Simulator's own name (Xcode's **Name**, i.e. the simctl
   name) and `osVersion` is Xcode's **OS Version** (e.g. `"iOS 27.0"`) — together they are how fleetest finds
   the Simulator when `udid` is absent. `model` (Xcode's **Model**) is display-only. See
@@ -90,6 +90,7 @@ list and every run-time setting.
   the OS refuses every later app launch and the run stops. Starting against a locked device is
   refused by name (unlocking it automatically is impossible: the only thing that can send input
   to the device is the runner on that device, and it is not running yet).
+- The steps for getting a physical device ready are in [Adding physical devices](../../fleet/adding_physical_devices.md).
 
 `fleetest profile setup --auto-device` picks a device automatically: for iOS, the newest runtime of the
 selected Xcode (installed with `xcodebuild -downloadPlatform iOS` when missing: several GB, several minutes to

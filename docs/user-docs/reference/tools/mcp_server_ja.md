@@ -107,52 +107,10 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
 任意の Swift のコードとして実行します(dry-run でも動きます)。
 
 - **シナリオは常に fleetest のサンドボックス(macOS の Seatbelt)の中で動きます。** MCP からでも、CLI からでも、
-  拡張からでも同じです。サンドボックスの中のシナリオは:
-  - 書けるのは、レポートの出力先・プロジェクトの `.fleetest/`・シナリオ専用の一時フォルダなどに限られます。シナリオのソース、
-    fleetest 本体のクローン、ホームの他の場所には書けません。シナリオのコードから書くときは
-    [`TestLog.directoryForLog` / `TestLog.directoryForTemp`](../commands/test_log_ja.md) を使います(`NSTemporaryDirectory()` には書けません)。
-  - 認証情報や個人データの定番の置き場(`~/.ssh`・`~/.aws`・`~/.config`・`~/.gradle`・キーチェーン・ブラウザの
-    プロファイル・Cookies・メール・メッセージ・シェルの履歴など)を読めません。
-  - fleetest を起こした環境の環境変数は、fleetest が使うもの(`PATH`・`HOME`・`DEVELOPER_DIR`・`ANDROID_HOME`・
-    `FT_*` など)しか見えません。`.mcp.json` の `env` やシェルに置いたトークンはシナリオに渡りません。
-  - 繋げるのはこの Mac の中(ブリッジ)だけです。外部への通信は、許可したドメインだけがプロキシ経由で通ります。
-  - 他のアプリを起こしたり、Simulator・iOS 実機・Android 端末を fleetest が使う決まった操作以外で操作したりできません
-    (Simulator・iOS 実機・Android(adb)の操作は fleetest 本体が代わりに行い、決まった形だけを通します。
-    シナリオからは adb サーバと Emulator のコンソールに繋げず、adb の鍵も読めません)。
-- **サンドボックスの設定はこの Mac の `~/.config/fleetest/config.json` の `sandbox` だけ**に置きます
-  (プロジェクトの中には置きません。プロジェクトはエージェントが書き換えられるためです)。
-
-  ```json
-  {
-    "sandbox": {
-      "denyRead": ["~/work/secrets"],
-      "allowedDomains": ["api.example.com:443", "*.example.org"]
-    }
-  }
-  ```
-
-  `denyRead` は既定の一覧に**足す**場所、`allowedDomains` はシナリオから通してよい宛先です(省略すると外部へは
-  一切出られません。書き方とシナリオからの繋ぎ方は[シナリオから外部へ通信する](../writing/network_access_ja.md))。`"disabled": true` でこの Mac のサンドボックスを外せます。`"allowDirectAdb": true` にすると、
-  シナリオが adb と bundletool を fleetest 本体に頼まず自分で使えるようになります(adb サーバと Emulator のポート、
-  `~/.android` を開けます)。そのぶん、シナリオから Emulator の中のシェル経由で外部へ出られ、繋がった全 Android 端末に
-  届くようになります(ほかの制限はそのまま)。所要時間はほぼ変わらないので(adb 1回あたり 1ms 未満の差)、
-  必要なとき以外は使わないでください。知らないキーや壊れた JSON が
-  あると、シナリオを起動せずにエラーで止まります。Claude Code では、インストーラが作業フォルダの
-  `.claude/settings.json` にこのフォルダの編集を拒否する設定を書きます。
-- **サンドボックスの外に残るもの**があります。ブリッジのように、この Mac の中で動くサービスには繋げます
-  (他のデバイスのブリッジや、Mac の localhost で動く他のサービスも含みます)。読めたファイルの中身を、アプリへの入力としてデバイスへ
-  送ることもできます。テスト対象のアプリ自体も枠の外で動きます。また、`ft_start_run` が実行する
-  setup / teardown スクリプトと、ビルド時に評価される `Package.swift`、シナリオのために足した依存のビルドは
-  サンドボックスの対象外です。
-  - **localhost は全ポートが開いています**(設定で絞ることはできません。ブリッジのポートがシナリオの起動後に
-    決まる経路があるためです。閉じているのは adb サーバと Emulator のポートだけです)。そのため、この Mac の
-    localhost で待ち受けているサービスの強さが、そのままサンドボックスの強さになります。信頼できないシナリオを
-    動かす Mac では、次のものを動かしたままにしないでください。
-    - 認証なしでコードを実行できる口(ブラウザや Node.js のデバッグポート、Jupyter、TCP で公開した Docker など):
-      シナリオがサンドボックスの外でコードを実行できます
-    - ローカルのプロキシ(通信の解析ツールや社内プロキシのエージェント、SSH のポートフォワードなど):
-      `allowedDomains` を迂回して任意の宛先へ出られます
-  - 同じ Mac で動く他のデバイスのブリッジにも繋がるので、シナリオは他のデバイスの画面を読んだり操作したりできます。
+  拡張からでも同じです。書ける場所・読めない場所・通信先と、その設定(この Mac の `~/.config/fleetest/config.json` の
+  `sandbox`)は[アクセスできるフォルダと通信先](../../security/access_ja.md)にあります。サンドボックスが止めないもの
+  (localhost のサービス・他のデバイスのブリッジ・setup / teardown スクリプトなど)は
+  [注意事項と制限事項](../../security/limitations_ja.md)にあります。
 - **承認を省く範囲は、何を外で動かすかで選んでください。**
 
   | 承認を求めるツール | 使い勝手 | 人を通るもの |
@@ -179,7 +137,7 @@ MCP サーバはエージェントのシェルのサンドボックスの**外**
   | 取り返しがつかない(`destructiveHint: true`) | `ft_clear_app_data`・`ft_install`・`ft_stop_run` |
   | プロジェクトのコードを実行する(`destructiveHint: true`・`openWorldHint: true`) | `ft_list_scenarios`・`ft_dry_run`・`ft_run_scenario`・`ft_start_run` |
 - **他人から受け取ったシナリオは、中身を確かめてから実行してください。** サンドボックスはホストを守りますが、
-  上の「外に残るもの」と、テスト対象のアプリやアカウントへの操作(削除・購入など)は止めません。
+  [注意事項と制限事項](../../security/limitations_ja.md)に挙げたものと、テスト対象のアプリやアカウントへの操作(削除・購入など)は止めません。
 - **`ft_start_run` の `runner` は、登録済みの機械名と `local` だけを受け付けます。** `user@host` のような
   生の宛先は断ります(シナリオとプロファイルを、利用者が登録していない機械へ送らないため)。
   機械は `fleetest remote machines add` で登録します。CLI の `fleetest run --runner` は生の宛先も受け付けます。

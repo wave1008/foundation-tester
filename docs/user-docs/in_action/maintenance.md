@@ -28,7 +28,7 @@ When you get an update notice, follow [Update](../update.md).
 
 If you use remote runner machines, bring them to the same version as this Mac. Test runs don't start
 while the versions differ. See "After you update fleetest" in
-[Setting up a remote runner](remote_runner_setup.md).
+[Adding a Mac](../fleet/adding_mac.md).
 
 ### When you update macOS or Xcode
 
@@ -86,9 +86,8 @@ working. You can check with `fleetest doctor --fm-only` (it exits with code 1 wh
 
 ### Remote runner machines
 
-Nobody looks at a runner machine's results, reports, and recordings the way you look at your own, so
-they pile up unnoticed. Run `fleetest remote clean --runner <machine>` from time to time. You can check the free
-space with `fleetest remote status`. `remote clean` stops if a test is running.
+Cleaning up a runner machine's results, reports, and recordings is covered in "Maintaining runner machines" in
+[Remote Runners](../fleet/remote_runners.md).
 
 ### Image samples
 

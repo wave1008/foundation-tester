@@ -1,6 +1,6 @@
 # Network access from scenarios
 
-Scenarios run inside a [sandbox](../tools/mcp_server.md), so **by default they cannot reach anything outside the
+Scenarios run inside a [sandbox](../../security/sandbox.md), so **by default they cannot reach anything outside the
 Mac**. When a scenario needs the network — preparing test data through an API, reading a value from a web admin
 page, and so on — allow the destination first and then connect through the proxy.
 
@@ -65,7 +65,7 @@ code.
 | A non-HTTP connection (e.g. directly to a database) fails | It does not go through the proxy (the client cannot send `CONNECT`), or its port is not allowed |
 
 Services running on this Mac's localhost are reachable without allowing them. For what that covers and what to
-watch out for, see the sandbox section of [MCP server](../tools/mcp_server.md).
+watch out for, see [Notes and limitations](../../security/limitations.md).
 
 ### Link
 - [index](../../index.md)

@@ -102,7 +102,7 @@ Re-run only the fleetest scenarios that failed on iOS last time.
 
 ## Run on another Mac or in CI
 
-- Use the devices of another Mac: [Remote runners](../in_action/remote_runners.md)
+- Use the devices of another Mac: [Remote Runners](../fleet/remote_runners.md)
 - Run regularly on Jenkins or similar: [Run in CI](../in_action/ci.md)
 
 ## More details

@@ -1,6 +1,6 @@
 # シナリオから外部へ通信する
 
-シナリオは[サンドボックス](../tools/mcp_server_ja.md)の中で動くので、**既定では Mac の外へは一切通信できません**。
+シナリオは[サンドボックス](../../security/sandbox_ja.md)の中で動くので、**既定では Mac の外へは一切通信できません**。
 テストデータを API で用意する・Web の管理画面から値を取るなど、シナリオから外部へ通信したいときは、
 宛先を許可してからプロキシ経由で繋ぎます。
 
@@ -63,7 +63,7 @@ let response = httpRequest("https://api.example.com/health")   // プロキシ�
 | HTTP 以外の接続(DB への直接接続など)が失敗する | プロキシを通っていない(そのクライアントが `CONNECT` を送れない)か、ポートが許可されていない |
 
 この Mac の localhost で動くサービスには、許可しなくても繋がります。その範囲と注意点は
-[MCP サーバ](../tools/mcp_server_ja.md)のサンドボックスの節を見てください。
+[注意事項と制限事項](../../security/limitations_ja.md)を見てください。
 
 ### Link
 - [index](../../index_ja.md)

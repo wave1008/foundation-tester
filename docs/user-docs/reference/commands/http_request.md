@@ -3,7 +3,7 @@
 Sends an HTTP(S) request from the scenario, waits for the response and returns it. Use it to prepare test data through
 an API or to check server-side state (fleetest's own command).
 
-Scenarios run inside the [sandbox](../tools/mcp_server.md), so **the destination must be listed in `allowedDomains`**
+Scenarios run inside the [sandbox](../../security/sandbox.md), so **the destination must be listed in `allowedDomains`**
 (how to write it and what to check when it does not connect: [Network access from scenarios](../writing/network_access.md)).
 
 ## Function

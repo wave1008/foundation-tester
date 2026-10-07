@@ -45,7 +45,7 @@
 | `recordFailuresOnly` | bool | `false` | `record: true` のとき、失敗(frozen 含む)したシナリオの clip のみ残す |
 | `recordBitrateKbps` | int | `1000` | 保存する clip の再エンコード bitrate |
 | `recordFullResolution` | bool | `false` | `record: true` のとき、半分解像度化をスキップする。テストの所要時間は変わらないが、クリップの容量(実測: 約1.2〜2.4倍)と、全テストが終わった後のクリップの切り出しの待ち(実測: 約1.1〜2.5倍)が増える。どちらも画面の動きが多いほど大きい |
-| `remoteControl` | object | — | リモート実行のワークスペース宣言(`{ "workspace": "<path>" }`)。[remote_runners_ja.md](../../in_action/remote_runners_ja.md) 参照 |
+| `remoteControl` | object | — | リモート実行のワークスペース宣言(`{ "workspace": "<path>" }`)。[リモート実行](../../fleet/remote_runners_ja.md) 参照 |
 
 ## FM の使われ方
 

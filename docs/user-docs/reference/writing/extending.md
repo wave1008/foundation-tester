@@ -119,7 +119,7 @@ put scripts in the test project's workspace.
   `FT_PROFILE`, `FT_REPORT_DIR`, `FT_IOS_DEVICES` and `FT_ANDROID_DEVICES` (device names separated by spaces). The
   variables are set even when they have no value. The Emulator's adb serial and the Simulator's UDID are not passed
   (call `adb devices` and the like yourself if you need them).
-- For a run sent to a [remote runner](../../in_action/remote_runners.md), the scripts run on the runner machine.
+- For a run sent to a [remote runner](../../fleet/remote_runners.md), the scripts run on the runner machine.
   Processes started over ssh may be unable to reach other addresses on the same machine (container virtual networks,
   the LAN), so connect to dependent services through `127.0.0.1`.
 - The scripts run outside the sandbox. They run with `fleetest run` and the MCP tool `ft_start_run`, but not with
@@ -138,7 +138,7 @@ put scripts in the test project's workspace.
 |---|---|
 | New kinds of operations on the device, or new information read from it | These are driver and bridge features, so fleetest itself has to change. Only what can be written by combining built-in commands is in your hands |
 | Write arbitrary files or read secrets in your home folder from a scenario | Scenarios run inside a sandbox. Write through [`TestLog.directoryForLog` / `directoryForTemp`](../commands/test_log.md) |
-| Start other apps or use adb / simctl directly from a scenario | fleetest itself performs a fixed set of operations on the scenario's behalf. adb can be opened with `allowDirectAdb` in this Mac's settings (see the sandbox section of [MCP server](../tools/mcp_server.md)) |
+| Start other apps or use adb / simctl directly from a scenario | fleetest itself performs a fixed set of operations on the scenario's behalf. adb can be opened with `allowDirectAdb` in this Mac's settings (see [Accessible folders and destinations](../../security/access.md)) |
 | Run a custom command through `ft_batch` | `ft_batch` only runs built-in commands. Write custom commands in a scenario `.swift` file and run that |
 | Read shell environment variables (tokens and so on) in a scenario | Scenarios only receive the variables fleetest uses. Put secrets in this Mac's `account()` files |
 

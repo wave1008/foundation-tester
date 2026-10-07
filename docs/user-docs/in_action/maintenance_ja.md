@@ -27,7 +27,7 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 更新の通知が来たら、[更新](../update_ja.md)の手順で取り込みます。
 
 リモートのランナー機を使っている場合は、ランナー機も手元と同じ版に揃えます。揃っていないと、テストは
-始まりません。手順は[リモートランナーのセットアップ](remote_runner_setup_ja.md)の「fleetest を更新したとき」を
+始まりません。手順は[Mac を追加する](../fleet/adding_mac_ja.md)の「fleetest を更新したとき」を
 見てください。
 
 ### macOS や Xcode を更新したとき
@@ -82,9 +82,7 @@ Simulator の掃除は、fleetest を通して起動したときだけ走りま�
 
 ### リモートのランナー機
 
-ランナー機の結果・レポート・録画は、手元と違って誰も見ていないので、気付かないうちに溜まります。
-ときどき `fleetest remote clean --runner <マシン名>` を実行してください。空き容量は `fleetest remote status` で
-確かめられます。テストが走っているときは、`remote clean` は止まります。
+ランナー機の結果・レポート・録画の掃除は[リモート実行](../fleet/remote_runners_ja.md)の「ランナー機の保守」にあります。
 
 ### 画像の見本
 

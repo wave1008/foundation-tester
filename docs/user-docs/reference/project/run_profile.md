@@ -45,7 +45,7 @@ for how `--profile` selects one.
 | `recordFailuresOnly` | bool | `false` | With `record: true`, keep only clips for failed (including frozen) scenarios |
 | `recordBitrateKbps` | int | `1000` | Re-encoding bitrate for saved clips |
 | `recordFullResolution` | bool | `false` | With `record: true`, skip the half-resolution re-encode. Test time does not change, but clip size (measured: about 1.2–2.4×) and the wait for cutting clips after all tests finish (measured: about 1.1–2.5×) go up, more so on screens with more motion |
-| `remoteControl` | object | — | Workspace declaration for remote execution (`{ "workspace": "<path>" }`); see [remote_runners.md](../../in_action/remote_runners.md) |
+| `remoteControl` | object | — | Workspace declaration for remote execution (`{ "workspace": "<path>" }`); see [Remote Runners](../../fleet/remote_runners.md) |
 
 ## FM usage
 

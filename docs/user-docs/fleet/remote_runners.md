@@ -5,7 +5,7 @@ sends the run over SSH, the runner executes it just like a local run, and the ou
 artifacts come back to your Mac.
 
 This page covers what remote runs can do and how they work. The setup steps are in
-[Setting Up a Remote Runner](remote_runner_setup.md).
+[Adding a Mac](adding_mac.md).
 
 ## What it can do
 
@@ -42,7 +42,7 @@ foundation-tester elsewhere, it is never touched.
 ## Setup
 
 The setup steps, for both the CLI and the VS Code extension, are in
-[Setting Up a Remote Runner](remote_runner_setup.md). The flow is:
+[Adding a Mac](adding_mac.md). The flow is:
 
 1. Prepare the runner (on the runner, by hand)
 2. Set up SSH key login
@@ -66,7 +66,7 @@ This name is called the **machine name**.
   profiles refer to.
 
 Register machine names with `fleetest remote machines add` or in the Device Monitor's Settings
-tab (see Step 2 of [Setting Up a Remote Runner](remote_runner_setup.md)).
+tab (see Step 2 of [Adding a Mac](adding_mac.md)).
 
 Renaming a machine later causes no trouble. Records such as result JSON keep the host name, and
 the machine name never appears in the files or arguments sent to the runner.
@@ -154,7 +154,7 @@ The extension has no "choose where to run" screen. When you choose a run profile
 its devices name decides where the run goes.
 
 The extension can do the following (for the steps, see
-[Setting Up a Remote Runner](remote_runner_setup.md)):
+[Adding a Mac](adding_mac.md)):
 
 - **Register machines**: in the "Machines" table of the Device Monitor's Settings tab. It reads
   and writes the same registry as the CLI's `fleetest remote machines`.
@@ -198,7 +198,29 @@ using it and since when. Your own Mac works the same way for the runs you start 
 
 If you set your name in `issuerId` in `~/.config/fleetest/config.json`, that name appears in these
 messages. For setting up a runner shared by several people, see "When several people share one
-runner" in [Setting Up a Remote Runner](remote_runner_setup.md).
+runner" in [Adding a Mac](adding_mac.md).
+
+## Maintaining runner machines
+
+Nobody looks at a runner machine's results, reports, and recordings the way you look at your own, so
+they pile up unnoticed. Run `fleetest remote clean --runner <machine>` from time to time. You can check the free
+space with `fleetest remote status`. `remote clean` stops if a test is running.
+
+When you update fleetest on your Mac, bring the runner machines to the same version too (see "When you update fleetest"
+in [Adding a Mac](adding_mac.md)).
+
+## Using it safely
+
+- The only path is **SSH with key-based authentication**. No password prompt is used, and
+  **relaxed host-key checking is never used**.
+- Every argument sent to the runner is quoted.
+- **Trust model**: the runner machine itself is trusted (SSH access already means it can execute
+  arbitrary code as that user). What comes back from the runner, however, is treated as external
+  input.
+- The runner ends up holding keys, sources, scenarios, reports, and **recordings**.
+  **Recordings and screenshots can show credentials typed during a test.** In a shared lab other
+  users can read them too, so do not put production credentials in scenarios or profiles.
+- For using a runner machine across a router, see "Runners on another network (across a router)" above.
 
 ### Link
 - [index](../index.md)

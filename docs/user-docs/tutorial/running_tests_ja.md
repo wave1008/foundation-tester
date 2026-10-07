@@ -102,7 +102,7 @@ fleetest で、前回 iOS で落ちたシナリオだけを実行し直して。
 
 ## 別の Mac・CI で回す
 
-- 別の Mac のデバイスを使う: [リモートランナー](../in_action/remote_runners_ja.md)
+- 別の Mac のデバイスを使う: [リモート実行](../fleet/remote_runners_ja.md)
 - Jenkins などで定期的に回す: [CI で回す](../in_action/ci_ja.md)
 
 ## もっと詳しく

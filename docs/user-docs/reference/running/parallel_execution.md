@@ -54,7 +54,7 @@ own subprocess, so platforms stay isolated).
 once on **every** device of the run profile (e.g. a warm-up pass), rather than dividing them. It
 still needs `--profile`; `--device` narrows which devices are included (when devices with the same
 name exist on more than one machine, say which machine with `--runner` or `--all-machines`; see
-[Remote runners](../../in_action/remote_runners.md)). Results are told apart
+[Remote Runners](../../fleet/remote_runners.md)). Results are told apart
 by their `worker` field, since the same `scenarioID` appears once per device (see
 [results_analysis.md](./results_analysis.md)).
 
@@ -79,7 +79,7 @@ If you do start a second one:
 
 A runner machine follows the same rule: a run dispatched to it takes that machine's one slot, so
 the runner is busy for everyone until it finishes — see
-[remote_runners.md](../../in_action/remote_runners.md).
+[Remote Runners](../../fleet/remote_runners.md).
 
 ## Other places parallel execution shows up
 

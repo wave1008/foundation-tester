@@ -86,6 +86,7 @@ If several physical devices are connected, name the one you mean by its model ("
 Otherwise the AI assistant cannot decide which one to register and stops with a question.
 
 An app for a physical iOS device must be signed (an `.ipa` or an `.app`).
+Preparing the device itself (Developer Mode, USB debugging and so on) and using a physical device connected to another Mac are covered in [Adding physical devices](../fleet/adding_physical_devices.md).
 
 ## When you rebuild the app
 

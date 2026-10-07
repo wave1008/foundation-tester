@@ -34,7 +34,7 @@ swift run fleetest run --profile ios-run
 | `--broadcast` | Run the selected scenarios once on **every** device of the run profile, instead of sharing them out (e.g. a warm-up). Requires `--profile`; results are told apart by their `worker` field (see [results_analysis.md](./results_analysis.md)) |
 | `--no-lpt` | Disable LPT ordering (longest-past-runtime-first dispatch) and run in scenario ID order |
 | `--lpt-history-runs <n>` | Number of past runs to read for LPT ordering (default 5) |
-| `--runner <runner>` / `--fleet <fleet>` | Dispatch to a remote machine or a fleet of machines over SSH (see [remote_runners.md](../../in_action/remote_runners.md)) |
+| `--runner <runner>` / `--fleet <fleet>` | Dispatch to a remote machine or a fleet of machines over SSH (see [Remote Runners](../../fleet/remote_runners.md)) |
 | `--platform <ios\|android>` | Target platform without `--profile` (default `ios`) |
 | `--app-id <bundleID>` | Default app for scenarios with no `@TestClass(app:)`, only needed without `--profile`. Unrelated to `--set app=...` (the run profile's `app` key names an app *profile*, not a bundle ID) |
 | `--port <n>` / `--serial <s>` | Bridge port (iOS) / device serial (Android) without `--profile` |

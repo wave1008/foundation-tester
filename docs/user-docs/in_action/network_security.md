@@ -2,12 +2,14 @@
 
 A summary for explaining to IT/security what this tool opens and where, when running on a
 corporate LAN that does not reach the internet. It is not a setup guide.
+How the files and destinations that test code (scenarios) can reach are restricted is covered in [The sandbox](../security/sandbox.md).
 
 ## What listens where
 
 | What | Where it listens | Authentication |
 |---|---|---|
-| Your Mac (CLI, MCP server, monitor, live control) | **Opens no port at all.** Everything is NDJSON over standard input/output between parent and child processes only | — |
+| Your Mac (CLI, MCP server, monitor, live control) | **Opens no externally reachable port.** Everything is NDJSON over standard input/output between parent and child processes only | — |
+| The scenario sandbox's proxy | `127.0.0.1` only. Started only when `sandbox.allowedDomains` is set, on a port that changes each time | Not needed (loopback; it relays only to the `allowedDomains` destinations) |
 | iOS Simulator bridge (XCUITest / in-app) | `127.0.0.1` inside the device only. The Simulator shares its host's network stack, so your machine can reach it | Not needed (loopback) |
 | Android bridge (physical device and Emulator alike) | **Loopback inside the device only.** Reached from your machine through a dynamic local port that `adb forward` opens | Not needed (loopback) |
 | Android Emulator gRPC | `127.0.0.1` | A Bearer token the Emulator itself issues once per boot |
@@ -18,7 +20,7 @@ corporate LAN that does not reach the internet. It is not a setup guide.
 - **Two conditions make a physical iPhone fall back to the LAN path**: (1) the Mac does not have
   iproxy installed, or (2) the device is connected over Wi-Fi rather than USB. Either one is
   enough to switch to LAN automatically.
-- **Loopback bridges refuse requests sent by a web browser** (bridge version iOS 147 / Android 87 and later).
+- **Loopback bridges refuse requests sent by a web browser**.
   An unauthenticated loopback listener could otherwise receive requests that a web page you are viewing sends to
   `http://127.0.0.1:<port>`, or be reached by DNS rebinding (pointing a host name at `127.0.0.1` to read the
   responses too). Requests with an `Origin` header, a `Sec-Fetch-Site` other than `none`, or a `Host` that is not
@@ -26,7 +28,7 @@ corporate LAN that does not reach the internet. It is not a setup guide.
 - **The in-app bridge is never bundled into a production build.** It is injected at launch via
   `DYLD_INSERT_LIBRARIES` and is not linked into the app's binary.
 
-## Token authentication for the LAN path (bridge protocol version 91+)
+## Token authentication for the LAN path
 
 - Each time the bridge starts, the host generates a **32-byte random value** and passes it to the
   test runner as an environment variable.
@@ -48,7 +50,9 @@ corporate LAN that does not reach the internet. It is not a setup guide.
 - **The app under test is never sent to Google.** Android's `adb install` can otherwise be
   blocked indefinitely by a Play Protect prompt, so verification is turned off only for the
   duration of the install and always restored afterward.
-- Outbound traffic happens **only during setup and update**. **Nothing goes out while tests run.**
+- Outbound traffic happens **only during setup and update**. **Nothing goes out while tests run** (except what a
+  scenario sends to destinations listed in `sandbox.allowedDomains`; with nothing listed, a scenario cannot reach
+  anything outside the Mac. See [Accessible folders and destinations](../security/access.md)).
 
 | What is fetched | Destination | When |
 |---|---|---|
@@ -106,17 +110,8 @@ receiver does.
 
 ## Remote runners (dispatching to another Mac)
 
-- The only path is **SSH with key-based authentication**. No password prompt is used, and
-  **relaxed host-key checking is never used**.
-- Every argument sent to the runner is quoted.
-- **Trust model**: the runner machine itself is trusted (SSH access already means it can execute
-  arbitrary code as that user). What comes back from the runner, however, is treated as external
-  input.
-- The runner ends up holding keys, sources, scenarios, reports, and **recordings**.
-  **Recordings and screenshots can show credentials typed during a test.** In a shared lab other
-  users can read them too, so do not put production credentials in scenarios or profiles.
-- Reachability across routers, firewalls, and access-point client isolation is covered on the
-  separate [Remote Runners](remote_runners.md) page — not repeated here.
+The only path is **SSH with key-based authentication**. The trust model and what ends up on a runner machine are
+covered in "Using it safely" in [Remote Runners](../fleet/remote_runners.md).
 
 ## Decisions to make operationally
 

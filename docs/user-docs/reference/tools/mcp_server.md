@@ -112,56 +112,11 @@ The MCP server runs **outside** the agent's shell sandbox. Tools that build and 
 as arbitrary Swift code (a dry run executes them too).
 
 - **Scenarios always run inside fleetest's sandbox (macOS Seatbelt)**, whether they are started from MCP, the CLI or
-  the extension. Inside the sandbox a scenario:
-  - can write only to the report directory, the project's `.fleetest/` and a temporary folder of its own. It cannot write
-    the scenario sources, the fleetest clone, or anywhere else in your home folder. Scenario code writes to
-    [`TestLog.directoryForLog` / `TestLog.directoryForTemp`](../commands/test_log.md) (`NSTemporaryDirectory()` is not writable).
-  - cannot read the usual places for credentials and personal data (`~/.ssh`, `~/.aws`, `~/.config`, `~/.gradle`,
-    keychains, browser profiles, cookies, Mail, Messages, shell history and so on).
-  - sees only the environment variables fleetest itself uses (`PATH`, `HOME`, `DEVELOPER_DIR`, `ANDROID_HOME`,
-    `FT_*` and so on) from the environment fleetest was started in. Tokens in the `env` of `.mcp.json` or in your
-    shell do not reach the scenario.
-  - can connect only within this Mac (the bridges). Outside connections go through a proxy, and only to the
-    domains you allow.
-  - cannot launch other apps, or operate the Simulator, a physical iPhone or an Android device beyond the fixed
-    operations fleetest uses (fleetest itself performs Simulator, iPhone and Android (adb) operations on the
-    scenario's behalf and lets only known shapes through; a scenario cannot connect to the adb server or the
-    Emulator console, nor read the adb keys).
-- **The sandbox settings live only in `sandbox` in this Mac's `~/.config/fleetest/config.json`** (never in the
-  project, because an agent can rewrite the project).
-
-  ```json
-  {
-    "sandbox": {
-      "denyRead": ["~/work/secrets"],
-      "allowedDomains": ["api.example.com:443", "*.example.org"]
-    }
-  }
-  ```
-
-  `denyRead` **adds** places to the built-in list; `allowedDomains` lists destinations scenarios may reach (leave it
-  out and nothing outside this Mac is reachable; for the syntax and how to connect from a scenario, see
-  [Network access from scenarios](../writing/network_access.md)). `"disabled": true` turns the sandbox off on this Mac.
-  `"allowDirectAdb": true` lets scenarios use adb and bundletool themselves instead of through fleetest (it opens the
-  adb server and Emulator ports and `~/.android`). A scenario can then get out through a shell inside an Emulator and
-  reach every connected Android device (the other restrictions stay). It makes no practical speed difference (under
-  1 ms per adb call), so use it only when you need it. An unknown key
-  or broken JSON stops the scenario from starting with an error. For Claude Code, the installer writes a rule into the
-  work folder's `.claude/settings.json` that denies editing that folder.
-- **Some things stay outside the sandbox.** A scenario can still connect to services running on this Mac such as the
-  bridges (including other devices' bridges and other services listening on this Mac's localhost). It can send the contents of files it could read to a
-  device as input to an app. The app under test itself runs outside the sandbox. The setup / teardown scripts that
-  `ft_start_run` runs, `Package.swift`, which is evaluated at build time, and the build of dependencies you add for
-  your scenarios are not covered by the sandbox.
-  - **Every localhost port is open** (there is no setting to narrow it, because on some paths a bridge's port is only
-    decided after the scenario has started; only the adb server and Emulator ports are closed). The sandbox is
-    therefore only as strong as the services listening on this Mac's localhost. On a Mac that runs untrusted
-    scenarios, do not leave these running:
-    - Anything that runs code without authentication (debug ports of browsers or Node.js, Jupyter, Docker exposed
-      over TCP, and so on): a scenario can run code outside the sandbox through it
-    - Local proxies (traffic inspection tools, corporate proxy agents, SSH port forwards, and so on): a scenario can
-      bypass `allowedDomains` and reach any destination
-  - A scenario can also connect to the bridges of other devices on the same Mac, so it can read and operate their screens.
+  the extension. Where a scenario can write, what it cannot read, where it can connect, and the settings for all of
+  this (`sandbox` in this Mac's `~/.config/fleetest/config.json`) are in
+  [Accessible folders and destinations](../../security/access.md). What the sandbox does not stop (services on
+  localhost, other devices' bridges, the setup / teardown scripts and so on) is in
+  [Notes and limitations](../../security/limitations.md).
 - **Choose what to approve by what runs outside the sandbox.**
 
   | Tools that ask for approval | Convenience | What goes past a human |
@@ -188,7 +143,7 @@ as arbitrary Swift code (a dry run executes them too).
   | Cannot be undone (`destructiveHint: true`) | `ft_clear_app_data`, `ft_install`, `ft_stop_run` |
   | Runs the project's code (`destructiveHint: true`, `openWorldHint: true`) | `ft_list_scenarios`, `ft_dry_run`, `ft_run_scenario`, `ft_start_run` |
 - **Check the contents of scenarios you receive from others before running them.** The sandbox protects this Mac,
-  but it does not stop what is listed above as staying outside, nor operations on the app under test or its accounts
+  but it does not stop what [Notes and limitations](../../security/limitations.md) lists, nor operations on the app under test or its accounts
   (deleting, purchasing and so on).
 - **`ft_start_run`'s `runner` accepts only registered machine names and `local`.** Raw destinations such as
   `user@host` are refused, so scenarios and profiles are never sent to a machine the user has not registered.

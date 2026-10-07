@@ -30,18 +30,30 @@ If you are new, install it with [Getting Started](getting-started.md), then go t
 - [Keeping tests up with app changes](tutorial/keeping_up_with_app_changes.md)
 - [Watching in VSCode](tutorial/watching_in_vscode.md)
 
+## Security
+
+- [The sandbox](security/sandbox.md)
+- [Accessible folders and destinations](security/access.md)
+- [Helpful features for writing test code](security/helpers.md)
+- [Notes and limitations](security/limitations.md)
+- [Network exposure and security](in_action/network_security.md)
+
+## Expanding your fleet
+
+- [Fleet concepts](fleet/concepts.md)
+- [Adding a Mac](fleet/adding_mac.md)
+- [Adding physical devices](fleet/adding_physical_devices.md)
+- [Remote Runners](fleet/remote_runners.md)
+
 ## Operations
 
 - [Update](update.md)
 - [Uninstall](uninstall.md)
 - [Running on CI](in_action/ci.md)
-- [Remote runners](in_action/remote_runners.md)
-- [Setting up a remote runner](in_action/remote_runner_setup.md)
-- [Network exposure and security](in_action/network_security.md)
 - [Troubleshooting](in_action/troubleshooting.md)
 - [Maintenance for long-term use](in_action/maintenance.md)
 
-## Reference
+## Developer reference
 
 The specification of scenarios (Swift DSL), the CLI and MCP. Use it when you want to read the
 scenarios the AI assistant wrote, or to write some yourself.

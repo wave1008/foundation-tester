@@ -65,7 +65,7 @@
 ```
 
 - `machine` は、手元の Mac なら `"local"`、`fleetest remote machines add` で登録したマシン名なら
-  そのデバイスの実行を SSH 経由でそのマシンへディスパッチします([remote_runners_ja.md](../../in_action/remote_runners_ja.md)参照)。
+  そのデバイスの実行を SSH 経由でそのマシンへディスパッチします([リモート実行](../../fleet/remote_runners_ja.md)参照)。
 - iOS Simulator は `name` を Simulator 自身の名前(Xcode の **Name** = simctl の名前)にし、
   `osVersion` を Xcode の **OS Version**(例 `"iOS 27.0"`)にします —— `udid` が無いときはこの2つで
   Simulator を探します。`model`(Xcode の **Model**)は表示専用です。全キーの一覧は
@@ -85,6 +85,7 @@
   OS に拒否されて実行が止まります。ロックされた状態で始めようとした場合は、その旨を名指しして
   止めます(自動での解除は原理的にできません。端末へ入力する手段がその端末上のランナー自身で、
   ランナーが動いていない状態では何も送れないためです)。
+- 実機を使えるようにするまでの手順は[実機を追加する](../../fleet/adding_physical_devices_ja.md)にあります。
 
 `fleetest profile setup --auto-device` はデバイスを自動選定します。iOS は選択中の Xcode の最新ランタイム
 (未導入なら `xcodebuild -downloadPlatform iOS` で自動導入します。数 GB で、数分〜数十分かかります)と、

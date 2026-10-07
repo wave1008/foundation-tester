@@ -16,7 +16,7 @@ go through the [Quick Start](../quick-start.md) first.
 | "Run the scenarios you created on iOS" | [Run tests](running_tests.md) |
 | "Summarize the current run results. If there are failures, investigate the cause" | [Read results and investigate failures](investigating_failures.md) |
 | "I changed the design of the login screen, so fix the related tests" | [Keep tests up to date with app changes](keeping_up_with_app_changes.md) |
-| "Set up another Mac so it can be used as a runner machine" | [Remote runners](../in_action/remote_runners.md) |
+| "Set up another Mac so it can be used as a runner machine" | [Remote Runners](../fleet/remote_runners.md) |
 | "Create a setup that runs this project's tests on Jenkins" | [Run in CI](../in_action/ci.md) |
 
 You can watch runs in the VSCode extension's device monitor ([Watch in VSCode](watching_in_vscode.md)).

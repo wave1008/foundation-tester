@@ -16,7 +16,7 @@ AIアシスタントがデバイス上のアプリを実際に操作して画面
 | 「作成したシナリオを iOS で実行して」 | [テストを実行する](running_tests_ja.md) |
 | 「今の実行結果を要約して。失敗があれば原因を調べて」 | [結果を読み、失敗を調べる](investigating_failures_ja.md) |
 | 「ログイン画面のデザインを変えたので、関係するテストを直して」 | [アプリの変更にテストを追従させる](keeping_up_with_app_changes_ja.md) |
-| 「別の Mac をランナー機として使えるようにして」 | [リモートランナー](../in_action/remote_runners_ja.md) |
+| 「別の Mac をランナー機として使えるようにして」 | [リモート実行](../fleet/remote_runners_ja.md) |
 | 「このプロジェクトのテストを Jenkins で回す設定を作って」 | [CI で回す](../in_action/ci_ja.md) |
 
 実行の様子は、VSCode 拡張のデバイスモニターで見られます([VSCode で見る](watching_in_vscode_ja.md))。

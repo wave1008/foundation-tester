@@ -568,8 +568,8 @@ select("#txt_focus_echo").textIs("focus=second")
 - **On Android, across every framework, a non-focused popup window's content can be missing from the
   tree**. Android's a11y tree root is "the single active window" (`getRootInActiveWindow()`), so a
   popup that never takes focus (such as an autocomplete suggestion list) may not appear in some
-  screens. **Popups that do take focus, such as `Spinner`/`ExposedDropdownMenuBox`, now show their
-  suggestions** (bridge v75). **Tooltip popups and some autocomplete suggestions still do not**.
+  screens. **Popups that do take focus, such as `Spinner`/`ExposedDropdownMenuBox`, show their
+  suggestions**. **Tooltip popups and some autocomplete suggestions still do not**.
   Workaround: when a suggestion cannot be verified directly, check the confirmed value through the
   app's own echo instead
 - **Android refuses `ACTION_SET_TEXT` on some fields** (observed on Material's `SearchView` and some

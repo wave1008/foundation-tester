@@ -29,18 +29,30 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [アプリの変更にテストを追従させる](tutorial/keeping_up_with_app_changes_ja.md)
 - [VSCode で見る](tutorial/watching_in_vscode_ja.md)
 
+## セキュリティ
+
+- [サンドボックスの考え方](security/sandbox_ja.md)
+- [アクセスできるフォルダと通信先](security/access_ja.md)
+- [テストコードを書くときの便利機能](security/helpers_ja.md)
+- [注意事項と制限事項](security/limitations_ja.md)
+- [ネットワークの露出とセキュリティ](in_action/network_security_ja.md)
+
+## フリートを拡張する
+
+- [フリートの考え方](fleet/concepts_ja.md)
+- [Mac を追加する](fleet/adding_mac_ja.md)
+- [実機を追加する](fleet/adding_physical_devices_ja.md)
+- [リモート実行](fleet/remote_runners_ja.md)
+
 ## 運用
 
 - [更新](update_ja.md)
 - [アンインストール](uninstall_ja.md)
 - [CI で回す](in_action/ci_ja.md)
-- [リモートランナー](in_action/remote_runners_ja.md)
-- [リモートランナーのセットアップ](in_action/remote_runner_setup_ja.md)
-- [ネットワークの露出とセキュリティ](in_action/network_security_ja.md)
 - [トラブルシューティング](in_action/troubleshooting_ja.md)
 - [長く使うためのメンテナンス](in_action/maintenance_ja.md)
 
-## リファレンス
+## 開発者向けリファレンス
 
 シナリオ(Swift DSL)・CLI・MCP の仕様です。AIアシスタントが書いたシナリオを読みたいとき、
 自分で書き足したいときに参照してください。

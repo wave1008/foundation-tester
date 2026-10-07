@@ -3,7 +3,7 @@
 シナリオから HTTP(S) のリクエストを送り、応答を待って返します。テストデータを API で用意する・サーバ側の状態を確かめる、
 といった用途です(fleetest 独自のコマンドです)。
 
-シナリオは[サンドボックス](../tools/mcp_server_ja.md)の中で動くので、**宛先を `allowedDomains` に書いておく必要があります**
+シナリオは[サンドボックス](../../security/sandbox_ja.md)の中で動くので、**宛先を `allowedDomains` に書いておく必要があります**
 (書き方と繋がらないときの見方は[シナリオから外部へ通信する](../writing/network_access_ja.md))。
 
 ## 関数
