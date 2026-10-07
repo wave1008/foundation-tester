@@ -107,6 +107,10 @@ public protocol AppDriver {
     /// アプリへ URL(ディープリンク)を配送する。**起動済みのアプリへ投げる**のが本来の用途。
     /// bundleID は Android の intent 宛先指定と、iOS in-app の再注入起動にだけ使う
     func openURL(_ url: String, bundleID: String?) async throws
+    /// 写真ライブラリへ画像・動画を入れる(DSL の addMedia)。`path` は検め済みの絶対パス
+    /// (`PhotoLibraryMedia.resolve` が置き場と拡張子を見る)。iOS Simulator は simctl・Android は adb push(+ 登録の確認)・
+    /// iOS 実機は口が無いので失敗。**プロトコル要件として宣言すること**(openURL と同じ理由)
+    func addMedia(path: String) async throws
     /// openURL 直後に OS(iOS: SpringBoard)が出す初回確認アラートを、可能なら自動了承する
     /// (ベストエフォート。同意は端末+アプリの組で永続するため以後の openURL では不要になる)。
     /// springboard を見られない接続(in-app ブリッジ等)では何もしない。
@@ -497,6 +501,10 @@ public extension AppDriver {
 
     func openURL(_ url: String, bundleID: String?) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support opening a URL")
+    }
+
+    func addMedia(path: String) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support adding media to the photo library")
     }
 
     /// 既定は no-op: 実装を持つのは springboard の /session を張れる接続(BridgeClient=XCUITest

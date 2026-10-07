@@ -167,6 +167,7 @@ public enum AdbPolicy {
 
     static func shapeAllowed(_ c: [String], context: SimctlPolicy.Context) -> Bool {
         if exactCommands.contains(c) { return true }
+        if mediaShapeAllowed(c, context: context) { return true }
         let pkg = AndroidPackageNameGrammar.isShellSafe
         switch c.count {
         case 2:
@@ -209,6 +210,23 @@ public enum AdbPolicy {
         if c.count == 8 || c.count == 9,
            Array(c[0..<7]) == ["shell", "am", "start", "-W", "-a", "android.intent.action.VIEW", "-d"] {
             return quotedURL(c[7]) && (c.count == 8 || pkg(c[8]))
+        }
+        return false
+    }
+
+    /// `addMedia` の3形(push・再スキャンの broadcast・登録の確認の content query)。**元ファイルはデータセットのフォルダの中だけ**
+    /// (親が子の代わりに読む)・宛先は `/sdcard/(Pictures|Movies)/<安全な名前>` だけ。形の定義元は `PhotoLibraryMedia`
+    static func mediaShapeAllowed(_ c: [String], context: SimctlPolicy.Context) -> Bool {
+        if c.count == 3, c[0] == "push" {
+            return PhotoLibraryMedia.androidRemoteKind(c[2]) != nil
+                && PhotoLibraryMedia.isAllowedSource(c[1], roots: context.datasetRoots)
+        }
+        for kind in [PhotoLibraryMedia.Kind.image, .video] {
+            if c == PhotoLibraryMedia.androidQueryArguments(kind: kind) { return true }
+            if c.count == 7, c[6].hasPrefix("file://"),
+               let remote = PhotoLibraryMedia.androidRemoteKind(String(c[6].dropFirst("file://".count))),
+               remote.kind == kind,
+               c == PhotoLibraryMedia.androidScanArguments(kind: kind, basename: remote.basename) { return true }
         }
         return false
     }

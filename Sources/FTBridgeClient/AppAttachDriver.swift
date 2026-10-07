@@ -299,6 +299,7 @@ public final class AppAttachDriver: AppDriver {
     public func openURL(_ url: String, bundleID: String?) async throws {
         try await client.openURL(url, bundleID: bundleID)
     }
+    public func addMedia(path: String) async throws { try await client.addMedia(path: path) }
     /// **素通しが必須**: 既定実装(no-op)に落ちると、hybrid で WebViewDelegatingDriver がこの
     /// インスタンス(XCUITest 接続=springboard を見られる側)へ回した同意ステップが握りつぶされる
     public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {

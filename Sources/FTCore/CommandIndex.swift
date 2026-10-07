@@ -445,6 +445,14 @@ public enum DSLCommandIndex {
                   + " file is replaced, contents are not merged). filename is relative to the dataset folder (no leading /"
                   + " or ~, no ..). Not recorded as a step; a missing file fails the scenario and returns an empty"
                   + " placeholder file. Dry-run does not fail (returns the empty placeholder when missing)."),
+        .init("addMedia", "data", "addMedia(filename)",
+              "Adds an image (jpg, jpeg, png, heic, gif) or video (mp4, mov) from the dataset folder (same places as"
+                  + " dataFile; case-insensitive extension, anything else fails without sending) to the device's photo"
+                  + " library. iOS Simulator: simctl addmedia. Android (Emulator and physical): pushed to /sdcard/Pictures"
+                  + " or /sdcard/Movies and checked to be registered in the media library (the file name may only contain"
+                  + " letters, digits, . - _). iOS physical devices fail (no way to add media from the Mac). Nothing"
+                  + " removes the added media (Erase the device if needed). A missing or unsupported file fails the"
+                  + " scenario. Dry-run sends nothing and only records the step."),
         .init("httpRequest", "data", "httpRequest(url, method:, headers:, body:, waitSeconds:)",
               "Sends an HTTP request and waits for the response (HTTPResponse: status, headers with lower-case names,"
                   + " data, text, json). 4xx/5xx is not a failure (check status); a bad URL, a connection error or no"

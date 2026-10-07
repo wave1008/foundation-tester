@@ -104,6 +104,11 @@ public final class InAppDriver: AppDriver {
         try await withCrashContext { try await client.openURL(url, bundleID: target) }
     }
 
+    /// 写真ライブラリへの追加は simctl の役割でブリッジを経ない(BridgeClient が対象の Simulator を引く)
+    public func addMedia(path: String) async throws {
+        try await withCrashContext { try await client.addMedia(path: path) }
+    }
+
     /// in-app ブリッジは自分の bundle 以外の /session を張れないので、この接続では実際には
     /// 何も押せない(client 側が 409 で抜けて未記録のまま次の接続に委ねる)。**それでも転送する** ——
     /// 既定の no-op のままにすると「試したのか、試せなかったのか」がコードから読めなくなる

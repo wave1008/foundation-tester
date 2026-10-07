@@ -112,3 +112,31 @@ func emptyDataFilePlaceholder() -> URL {
     }
     return URL(fileURLWithPath: "/dev/null")
 }
+
+/// データセットのフォルダに置いた画像・動画をデバイスの写真ライブラリへ入れる(`addMedia("photo.png")`)。
+/// 置き場の解決は `dataFile` と同じ(`ScenarioDataset.resolveFile`)。送れる拡張子は画像 jpg/jpeg/png/heic/gif・動画 mp4/mov
+/// (大文字小文字不問。**それ以外は送らずに失敗**)。iOS Simulator は `simctl addmedia`・Android は Pictures / Movies へ
+/// push して登録を確かめる。**iOS 実機は失敗**(写真ライブラリへの口が無い)。**入れたものを消すコマンドは無い**。
+/// 見つからない・拡張子が違うときはステップを失敗にして中断する(dry-run は何も送らずステップだけ記録)。
+/// 失敗の仕分けは `DriverError`(ドライバの失敗)だけ。置き場・拡張子の失敗は素性を付けない
+public func addMedia(_ filename: String,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "addMedia")
+    let driver = core.driver
+    let description = "addMedia \(filename.debugDescription)"
+    var path = ""
+    if !core.scenarioAborted, !core.dryRun {
+        switch PhotoLibraryMedia.resolve(filename, projectDir: core.executor.visionClassifierProjectRoot) {
+        case .success(let resolved):
+            path = resolved.url.path
+        case .failure(let failure):
+            core.recordStep(description: description, status: .failed(failure.message),
+                            file: "\(file)", line: Int(line), command: "addMedia")
+            core.handleFailure(stepDescription: description, reason: failure.message)
+            return
+        }
+    }
+    core.performCustom(description: description, command: "addMedia", file: file, line: line) {
+        try await driver.addMedia(path: path)
+    }
+}

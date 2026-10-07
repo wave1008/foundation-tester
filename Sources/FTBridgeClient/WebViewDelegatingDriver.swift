@@ -371,6 +371,8 @@ public final class WebViewDelegatingDriver: AppDriver {
             await delegated.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
         }
     }
+    /// simctl 経由のホスト操作でセッション不要。画面は変えないので委譲状態は触らない
+    public func addMedia(path: String) async throws { try await primary.addMedia(path: path) }
     /// primary(in-app)は springboard を見られないので delegated(XCUITest attach)側も試す。
     /// 実際の操作は BridgeClient 側が (デバイス, bundleID) ごとに1回だけ行う
     public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {

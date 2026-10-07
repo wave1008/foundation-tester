@@ -455,6 +455,21 @@ public final class BridgeClient: AppDriver, Sendable {
         }
     }
 
+    /// 写真ライブラリへ入れる(Simulator は `simctl addmedia`)。**実機は失敗にする** —— devicectl でファイルを送れる先は
+    /// temporary / systemCrashLogs だけで、写真ライブラリへの口が無い。`path` は DSL が置き場と拡張子を検めた絶対パス
+    public func addMedia(path: String) async throws {
+        if case .physical = try await installTarget() {
+            throw DriverError.badResponse(status: 501,
+                body: "iOS physical devices have no way to add media to the photo library from the Mac;"
+                    + " run this on a Simulator or put the photo on the device by hand")
+        }
+        let target = try await simctlTarget("addMedia")
+        let result = try Shell.run(["xcrun", "simctl", "addmedia", target, path])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status), body: "simctl addmedia failed: \(result.tail)")
+        }
+    }
+
     /// **未同意の初回だけ** SpringBoard が出す「"<表示名>"で開きますか?」を自動了承する
     /// (AppDriver.acknowledgeOpenURLConsentIfPresent の実装本体。ベストエフォート、失敗は無視する)。
     ///

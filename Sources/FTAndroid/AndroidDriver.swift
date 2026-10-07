@@ -238,6 +238,43 @@ public final class AndroidDriver: AppDriver {
         persistState()
     }
 
+    /// `addMedia` が登録を待つ上限(秒)。**API 35 の Emulator では push の時点で既に登録されている**(実測。rm すると登録も消える)ので
+    /// 通常は初回の確認で抜ける。待つのは API 29 以前の端末が broadcast で単一ファイルを走査する間だけで、10 秒はその走査に
+    /// 十分な長さの見込み(該当する端末では未計測)。尽きたら登録が確認できなかったと事実だけ言って失敗にする
+    static let mediaRegistrationWaitSeconds = 10.0
+    static let mediaRegistrationPollSeconds = 0.5
+
+    /// 写真ライブラリへ入れる: 画像は `/sdcard/Pictures/<名前>`・動画は `/sdcard/Movies/<名前>` へ push し、再スキャンを1回送って、
+    /// MediaStore の `_display_name` にその名前が現れるまで待つ。名前は端末の sh へ渡るので安全な文字だけ(引用で逃げない)
+    public func addMedia(path: String) async throws {
+        let basename = (path as NSString).lastPathComponent
+        guard let kind = PhotoLibraryMedia.kind(ofFileName: basename) else {
+            throw DriverError.badResponse(status: 400, body: "addMedia: unsupported file type: \(basename)")
+        }
+        guard PhotoLibraryMedia.isShellSafeBasename(basename) else {
+            throw DriverError.badResponse(status: 400,
+                body: "addMedia: the file name may only contain letters, digits, '.', '-' and '_' (it is passed to the device shell): \(basename)")
+        }
+        try requireDeviceAnswers()
+        let push = try adb(PhotoLibraryMedia.androidPushArguments(local: path, kind: kind, basename: basename))
+        guard push.status == 0 else {
+            throw DriverError.badResponse(status: Int(push.status), body: "adb push failed: \(push.tail)")
+        }
+        // 再スキャンの失敗は見ない(API 35 では不要で、登録の有無は下の問い合わせが決める)
+        _ = try? adbAnswering(PhotoLibraryMedia.androidScanArguments(kind: kind, basename: basename))
+        let deadline = Date().addingTimeInterval(Self.mediaRegistrationWaitSeconds)
+        while true {
+            let query = try adbAnswering(PhotoLibraryMedia.androidQueryArguments(kind: kind))
+            if let output = query.outputIfSucceeded,
+               PhotoLibraryMedia.queryOutputContains(output, basename: basename) { return }
+            guard Date() < deadline else { break }
+            try await Task.sleep(nanoseconds: UInt64(Self.mediaRegistrationPollSeconds * 1_000_000_000))
+        }
+        throw DriverError.badResponse(status: 0,
+            body: "addMedia: \(basename) was pushed but its registration in the media library could not be confirmed"
+                + " within \(Int(Self.mediaRegistrationWaitSeconds)) seconds")
+    }
+
     /// URL をデバイス側シェルへ渡すためにシングルクォートで包む。`adb shell` はクライアント側の
     /// 複数引数を空白結合してからデバイス側シェルへ渡す(execve 直結ではない)ため、`&`/`?` 等の
     /// シェル特殊文字を筒抜けにしないためにこちらで引用する。URL 自体にシングルクォートを含む場合は

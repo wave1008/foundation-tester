@@ -98,6 +98,7 @@ public final class FastLaunchDriver: AppDriver {
     public func openURL(_ url: String, bundleID: String?) async throws {
         try await base.openURL(url, bundleID: bundleID)
     }
+    public func addMedia(path: String) async throws { try await base.addMedia(path: path) }
     public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
         await base.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
     }

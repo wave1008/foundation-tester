@@ -623,7 +623,8 @@ public enum ScenarioSandbox {
             // 子が書ける場所からの install を断る判定なので、広い側(全 Simulator)で断る
             childWritablePattern: try childWritableRegexes(scope, containerUDID: nil).map { "(?:" + $0 + ")" }
                 .joined(separator: "|"),
-            serial: connection?.serial, adbPath: AdbLocator.adbPath(), bundletool: BundletoolLocator.find())
+            serial: connection?.serial, adbPath: AdbLocator.adbPath(), bundletool: BundletoolLocator.find(),
+            datasetRoots: PhotoLibraryMedia.datasetRoots(projectRoot: scope.projectRoot, home: scope.home))
     }
 
     /// symlink を解決した実体パス。**まだ無いパスでも返す** ——

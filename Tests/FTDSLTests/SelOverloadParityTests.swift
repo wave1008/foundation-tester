@@ -23,7 +23,7 @@ final class SelOverloadParityTests: XCTestCase {
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
         "writeMemo", "readMemo",  // メモのキーと値(デバイスセッション)
         "account", "data",  // データセットの longKey(`[account1].password`)
-        "dataFile",         // データセットのフォルダからの相対パス
+        "dataFile", "addMedia",  // データセットのフォルダからの相対パス
         "httpRequest",      // 通信先の URL
     ]
 

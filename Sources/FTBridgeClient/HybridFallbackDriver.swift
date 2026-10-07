@@ -343,6 +343,9 @@ public final class HybridFallbackDriver: AppDriver {
     /// 座標・identifier で完結する操作と同じ扱いで withFallback に乗せる: primary(in-app)は
     /// 自前でブリッジ生存確認+注入起動を持つので通常はそのまま届く。501/ルート不明のときだけ
     /// XCUITest 側(fallback/foreignApp)の simctl/devicectl 経路へ回す
+    public func addMedia(path: String) async throws {
+        try await withFallback { try await $0.addMedia(path: path) }
+    }
     public func openURL(_ url: String, bundleID: String?) async throws {
         try await withFallback { try await $0.openURL(url, bundleID: bundleID) }
         // **委譲状態を解く**(launch/activate と同じ理由): URL の配送先アプリが前面に来たのに

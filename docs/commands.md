@@ -786,6 +786,18 @@ longKey は**最後の `.` で**データセット名と属性名に分ける)�
   見つからなければ失敗で中断し、**一時フォルダの空のファイル**を返す(`/dev/null` は `String(contentsOf:)` が
   EACCES で開けないため使わない)。成功時は記録しない・dry-run は失敗にしない
 
+- **`addMedia(_ filename: String)`**(`PhotoLibraryMedia`): データセットのフォルダの画像・動画をデバイスの写真ライブラリへ入れる。
+  置き場は `dataFile` と同じ(`ScenarioDataset.resolveFile`。見つからなければ同じ失敗文で中断)。送れる拡張子は画像
+  `jpg jpeg png heic gif`・動画 `mp4 mov`(大文字小文字不問・それ以外は送らずに失敗)。**iOS Simulator** は
+  `simctl addmedia`・**Android**(Emulator・実機)は画像を `/sdcard/Pictures/<名前>`・動画を `/sdcard/Movies/<名前>` へ
+  `adb push` し、`MEDIA_SCANNER_SCAN_FILE` を1回送って `content query` の `_display_name` に名前が現れるまで待つ
+  (上限 `AndroidDriver.mediaRegistrationWaitSeconds` = 10 秒・尽きたら「登録が確認できなかった」で失敗。API 35 の Emulator は
+  push の時点で登録済み)。名前は端末の sh へ渡るので英数字・`.`・`-`・`_` だけ。**iOS 実機は失敗**(devicectl でファイルを送れる先は
+  temporary / systemCrashLogs だけで写真ライブラリへの口が無い)。**入れたものを消すコマンドは無い**(Simulator に消す CLI が無い。
+  デバイスを Erase する)。サンドボックスの中では親が子の代わりに送る(`SimctlPolicy` の `addmedia`・`AdbPolicy` の
+  `push` / 再スキャン / 登録確認)ので、**送れるのはデータセットのフォルダの中(symlink を解決した後)だけ**
+  (`SimctlPolicy.Context.datasetRoots`)。記録する(`addMedia "<filename>"`)・dry-run は何も送らずステップだけ記録
+
 ### HTTP リクエスト(`httpRequest`)
 
 ```swift

@@ -82,6 +82,32 @@ httpRequest("https://api.example.com/orders", method: "POST", body: body)
 - When the file is found, no step is recorded. Dry-run does not fail even if the file is missing (it returns the empty
   file).
 
+## Adding a photo or video to the device (`addMedia`)
+
+`addMedia("file name")` puts an image or video from the dataset folder into the device's photo library. Use it for
+screens that pick a photo (profile picture, attachment).
+
+```swift
+addMedia("img/avatar.png")
+```
+
+- The file is looked up exactly as in `dataFile` (`~/.config/fleetest/dataset/<project name>/<file name>` on the Mac
+  that runs the scenario if it exists, otherwise `TestProjects/<project name>/dataset/<file name>`). If it is in
+  neither place, the step fails and the scenario stops.
+- Supported extensions (case does not matter): images `jpg` `jpeg` `png` `heic` `gif`, videos `mp4` `mov`. Any other
+  file fails without being sent.
+- **iOS Simulator**: the file is added to the Photos library.
+- **Android** (Emulator and physical device): the file is placed in `Pictures` (images) or `Movies` (videos) and the step
+  waits until the media library lists it. If that cannot be confirmed within 10 seconds, the step fails. The file name
+  may only contain letters, digits, `.`, `-` and `_`.
+- **iOS physical devices fail**: there is no way to add media to the photo library from the Mac. Run it on a Simulator,
+  or put the photo on the device by hand.
+- **There is no command to remove what you added.** The Simulator has no command line to delete photos; erase the
+  device if you need a clean library.
+- Because scenarios run in a sandbox, **only files inside the dataset folder can be sent** (a link that leads outside
+  the folder is refused).
+- The step is recorded as `addMedia "file name"`. Dry-run sends nothing and only records the step.
+
 ## Masking secrets
 
 **Values are not masked by default.** If you write `type(account("[account1].password"))`, the password stays in the

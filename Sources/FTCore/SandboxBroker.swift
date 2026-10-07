@@ -30,10 +30,13 @@ public enum SimctlPolicy {
         public var adbPath: String?
         /// 親が `.apks` のインストールを代行するときに使う bundletool。nil なら bundletool は断る
         public var bundletool: [String]?
+        /// 写真ライブラリへ送ってよいファイルの置き場(`PhotoLibraryMedia.datasetRoots`)。空なら `addmedia` / `push` は断る
+        public var datasetRoots: [String]
 
         public init(udid: String?, deviceName: String?, toolRoots: [String],
                     childWritableRoots: [String], childWritablePattern: String? = nil,
-                    serial: String? = nil, adbPath: String? = nil, bundletool: [String]? = nil) {
+                    serial: String? = nil, adbPath: String? = nil, bundletool: [String]? = nil,
+                    datasetRoots: [String] = []) {
             self.udid = udid
             self.deviceName = deviceName
             self.toolRoots = toolRoots
@@ -42,6 +45,7 @@ public enum SimctlPolicy {
             self.serial = serial
             self.adbPath = adbPath
             self.bundletool = bundletool
+            self.datasetRoots = datasetRoots
         }
     }
 
@@ -108,6 +112,12 @@ public enum SimctlPolicy {
             return isChildWritable(rest[1], context: context)
                 ? Refusal(reason: "simctl install from a location the sandboxed scenario can write: \(rest[1])")
                 : nil
+        case "addmedia":
+            guard rest.count == 2 else { return shape(verb) }
+            if let refusal = device(rest[0]) { return refusal }
+            // 親が子の代わりに読むので、データセットのフォルダの外(symlink で出る形を含む)は送らない
+            return PhotoLibraryMedia.isAllowedSource(rest[1], roots: context.datasetRoots)
+                ? nil : Refusal(reason: "simctl addmedia only sends an image or video inside the dataset folder: \(rest[1])")
         case "launch":
             var arguments = rest
             if arguments.first == "--terminate-running-process" { arguments.removeFirst() }
@@ -283,7 +293,7 @@ public enum BrokerPolicy {
         var parentOutput: String?
         switch tool {
         case "simctl":
-            if args.count == 3, args[0] == "install" { args[2] = real(args[2]) }
+            if args.count == 3, args[0] == "install" || args[0] == "addmedia" { args[2] = real(args[2]) }
         case "devicectl":
             if args.count == 6, Array(args[0..<4]) == ["device", "install", "app", "--device"] { args[5] = real(args[5]) }
             if let i = args.firstIndex(of: "--json-output"), i + 1 < args.count, args[i + 1] != "-" {
@@ -296,6 +306,8 @@ public enum BrokerPolicy {
             if let i = args.firstIndex(of: "install"), args.count - 1 > i, let last = args.last, last.hasSuffix(".apk") {
                 args[args.count - 1] = real(last)
             }
+            // push の元(検めた実体パスへ固定する。判定と実行の間の差し替えを許さない)
+            if let i = args.firstIndex(of: "push"), args.count == i + 3 { args[i + 1] = real(args[i + 1]) }
         case "bundletool":
             args = args.map { $0.hasPrefix("--apks=") ? "--apks=" + real(String($0.dropFirst("--apks=".count))) : $0 }
         default:
