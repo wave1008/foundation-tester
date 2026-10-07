@@ -41,6 +41,12 @@
     実スワイプになる(バウンス由来のフレーク)。長押しの 501 も同じラッチを立てる(`StepExecutor+Actions.swift:672`)
   - 場所: `Sources/FTCore/StepExecutor+Settle.swift:533`・:553
   - 手がかり: `path != nil` の 501 ではラッチを立てず、press とも分ける(`dragFallbackLatched` を分けたのと同じ理由)
+  - **Flutter の in-app の払いの不具合と組で直す**(2026-10-07 に試した): ラッチを path の有無と press で分けると、
+    E2E-Flutter の iOS in-app で S0091(05_スクロール)の scene 5 が決定的に赤になる。`scrollFrame` 無しの横の払いを
+    in-app で撃つと、画面中央の縦リストではなくカルーセルが動く(`#tag_01` が消える)。今は共有ラッチのせいで scene 5 の
+    払いが XCUITest で撃たれていて(緑のレポートに `fell back to XCUITest`)、in-app の確認用のはずの scene 5 が
+    XCUITest を確かめている。先に in-app(Flutter の UIAccessibility の scroll の対象選び)を直してから、ラッチを分ける
+
 - **fallback ドライバで解決した要素を primary の木で取り直す(ref の名前空間が混ざる)**(09-06)
   - 症状: `actingDriver = fb` に切り替えた後も、容器をまたぐ寄せと `waitUntilEnabled` が primary の木を読み、primary の ref を
     fb へ撃つ
@@ -70,9 +76,6 @@
     新しい世代の base で native ref に戻すので、clear-only の枝の tap が別の番号を撃ち得る。`reproductionNote` も黙って消える
   - 場所: `Sources/fleetest-mcp/MCPServer+ScreenTools.swift:185-195`・:282→:290・:296、`MCPServer+Dispatch.swift:951`
   - 手がかり: tap と注記を merge の前に済ませるか、`generationSnapshot(containing:)` で ref の世代を引く
-- **ft_batch の曖昧なラベルが警告なしで1件目を叩く**(09-11 M15)
-  - 場所: `Sources/fleetest-mcp/MCPServer+Batch.swift:594-630`(結果行は fallback と driverFallback しか付けない)
-  - 手がかり: 複数一致の StepNote を足すか、snapshot の `ambiguousLabelsNote` と同じ判定を batch の行に付ける
 - **容器の縁にまたがる行への ft_tap が無警告で done になり外れる(DSL は内側へ寄せる)**(09-11・推測)
   - 場所: `Sources/FTCore/TapTargetGeometry.swift:172`(`outsideDeclaredScroller` は容器と全く交差しないことが条件)・:260-281、
     DSL の寄せは `StepExecutor+Actions.swift:547-555`(`straddleJump`)、MCP は `MCPServer+Snapshot.swift:1023-1042`
@@ -102,17 +105,6 @@
   - 場所: `Sources/FTCore/TreeCoverage.swift:33`(8%)・:44(長辺の 5%)。再現した画面が分からず、今も発火するかは未確認
 
 ## 録画・モニター・拡張
-
-- **モニターの debounce で `wired` が落ちる**(09-06)
-  - 症状: USB の iPhone 実機の /status が一時的に失敗すると保持中の状態から `wired` が抜け、WiFi 越しの分身を隠す処理
-    (`ApiMonitorCommand.swift:736-737`)が効かず、分身が出たり消えたりし得る
-  - 場所: `Sources/fleetest/ApiMonitorCommand+DeviceState.swift:473-476`(`ConfirmedDeviceState` に `wired` の欄が無い)
-  - 手がかり: `ConfirmedDeviceState` に `wired` を足して保持中に引き継ぐ。`debounce` は単体テストから呼べる
-- **拡張: モニターの意図した再起動を失敗の回数に数える**(09-06・推測を含む)
-  - 症状: `restartMonitorProcess` が古いプロセスの close を最大8秒待ち、待ち切れずに `startMonitorProcess` が共有フラグ
-    `stoppingMonitor` を下ろすと、後から届いた close が `monitorFailureStreak` に入る。3回重なると諦めのバナー
-  - 場所: `vscode-fleetest/src/monitorProcessManager.ts:368`・487-488・526-530・598-640
-  - 手がかり: 停止の印をプロセスごとに持たせる(host-metrics の `child.stopping` と同じ形)
 
 ## CLI・その他
 

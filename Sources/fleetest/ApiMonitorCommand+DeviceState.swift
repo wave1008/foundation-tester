@@ -448,20 +448,20 @@ extension ApiMonitorCommand {
                 confirmed[id] = ConfirmedDeviceState(
                     state: "connected", detail: state.detail,
                     iosPort: state.iosPort, androidSerial: state.androidSerial,
-                    iosUdid: state.iosUdid, missStreak: 0)
+                    iosUdid: state.iosUdid, wired: state.wired, missStreak: 0)
                 return state
             }
             guard var current = confirmed[id], current.state == "connected" else {
                 confirmed[id] = ConfirmedDeviceState(
                     state: state.state, detail: state.detail,
-                    iosPort: nil, androidSerial: nil, iosUdid: nil, missStreak: 0)
+                    iosPort: nil, androidSerial: nil, iosUdid: nil, wired: nil, missStreak: 0)
                 return state
             }
             current.missStreak += 1
             if current.missStreak >= connectedDowngradeMissThreshold {
                 confirmed[id] = ConfirmedDeviceState(
                     state: state.state, detail: state.detail,
-                    iosPort: nil, androidSerial: nil, iosUdid: nil, missStreak: 0)
+                    iosPort: nil, androidSerial: nil, iosUdid: nil, wired: nil, missStreak: 0)
                 logDowngrade(
                     "[monitor] Lost the connection to \(id)" +
                     " (demoted after \(connectedDowngradeMissThreshold) consecutive /status failures: \(state.state))")
@@ -473,7 +473,7 @@ extension ApiMonitorCommand {
             return DeviceRuntimeState(
                 target: state.target, state: "connected", detail: current.detail,
                 iosPort: current.iosPort, androidSerial: current.androidSerial,
-                iosUdid: current.iosUdid)
+                iosUdid: current.iosUdid, wired: current.wired)
         }
     }
 

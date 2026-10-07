@@ -635,6 +635,11 @@ extension MCPServer {
                 okLine += " (matched via the fallback \(locator.summary))"
             }
             if let fallback = outcome.driverFallback { okLine += " (\(fallback))" }
+            // **曖昧なセレクタは1件目を撃ったと言う**(警告なしだと、別の同名の要素を撃っても ok にしか見えない)
+            if let count = outcome.ambiguousMatchCount {
+                okLine += " (warning: the selector matched \(count) elements — the first one was used;"
+                    + " narrow it with #id, a type, or [n])"
+            }
             okLine += refNote
             lines.append(okLine)
         }

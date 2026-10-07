@@ -198,6 +198,9 @@ public struct StepOutcome: Sendable {
     public let evidenceImage: Data?
     /// findImage / findImages / existImage が見つけた要素(距離の小さい順)。それ以外のステップと失敗時は nil
     public let imageMatches: [FindImage.Match]?
+    /// 操作の対象を解決したとき、セレクタが2件以上に一致した数(1件目を撃った。序数・相対の指定は数えない)。
+    /// 結果 JSON には載せない(MCP の ft_batch が行に添えるだけ)
+    public let ambiguousMatchCount: Int?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil,
                healedByFingerprint: Bool = false,
@@ -208,8 +211,10 @@ public struct StepOutcome: Sendable {
                scrollSwipes: Int? = nil, failureKind: StepFailureKind? = nil,
                evidenceImage: Data? = nil,
                imageMatches: [FindImage.Match]? = nil,
+               ambiguousMatchCount: Int? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
         self.imageMatches = imageMatches
+        self.ambiguousMatchCount = ambiguousMatchCount
         self.failureKind = failureKind
         self.evidenceImage = evidenceImage
         self.guardEntered = guardEntered
@@ -695,6 +700,7 @@ public final class StepExecutor {
         classifierScreenshotThisStep = nil
         classifierFailureThisStep = nil
         imageMatchesThisStep = nil
+        ambiguousMatchCountThisStep = nil
         elementLimitCeilingLatchedThisStep = false
         systemAlertAdvisoryThisStep = nil
         systemAlertProbeFailure = nil
@@ -724,7 +730,8 @@ public final class StepExecutor {
                                    scrollSwipes: scrollSwipesThisStep,
                                    failureKind: failureKind(for: outcome.status),
                                    evidenceImage: Self.isSuccess(status) ? nil : classifierScreenshotThisStep,
-                                   imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil)
+                                   imageMatches: Self.isSuccess(outcome.status) ? imageMatchesThisStep : nil,
+                                   ambiguousMatchCount: ambiguousMatchCountThisStep)
             }
             if let assert = step.assert {
                 var status = try await executeAssert(assert, step: step, phase: &phase)
@@ -897,6 +904,8 @@ public final class StepExecutor {
     var classifierFailureThisStep: String?
     /// findImage / findImages が見つけた要素(`StepOutcome.imageMatches` の元)
     var imageMatchesThisStep: [FindImage.Match]?
+    /// `StepOutcome.ambiguousMatchCount` の元(操作の対象を解決した時点で立てる)
+    var ambiguousMatchCountThisStep: Int?
 
     /// 天井の撮り直しで対象を拾ったステップの**後続読み**も天井にする per-step ラッチ。
     /// 立てるのは StepExecutor+Actions.swift の撮り直し呼び出し箇所だけ(Assert のループは

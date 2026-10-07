@@ -124,6 +124,23 @@ final class MonitorDeviceStateTests: XCTestCase {
         return result
     }
 
+    /// USB の iPhone の /status が一時的に失敗している間(connected を維持)も、USB 接続か(wired)を持ち越す
+    /// (落とすと WiFi 越しの分身を隠す処理が効かず、分身が一覧に出たり消えたりする)
+    func testWiredIsCarriedWhileConnectedIsMaintained() {
+        let target = MonitorTarget(platform: "ios", spec: DeviceSpec(name: "iPhone SE3", kind: .physical,
+                                                                       udid: "00008110-000260242EEB801E"))
+        var confirmed: [String: ConfirmedDeviceState] = [:]
+        var downgrades: [String] = []
+        _ = debounced([DeviceRuntimeState(target: target, state: "connected", detail: "", iosPort: 8123,
+                                          androidSerial: nil, iosUdid: "00008110-000260242EEB801E", wired: true)],
+                      confirmed: &confirmed, downgrades: &downgrades)
+        let maintained = debounced([DeviceRuntimeState(target: target, state: "booted", detail: "", iosPort: nil,
+                                                       androidSerial: nil, iosUdid: "00008110-000260242EEB801E")],
+                                   confirmed: &confirmed, downgrades: &downgrades)
+        XCTAssertEqual(maintained.first?.state, "connected")
+        XCTAssertEqual(maintained.first?.wired, true, "維持中に wired が落ちた")
+    }
+
     func testPromotionToConnectedIsImmediate() {
         let target = emulator()
         var confirmed: [String: ConfirmedDeviceState] = [:]

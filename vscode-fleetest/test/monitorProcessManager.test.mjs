@@ -243,6 +243,29 @@ test("stopMonitorProcess 経由の意図した終了では自動再起動しな�
   assert.equal(calls.length, 1, "意図した停止では再 spawn しない");
 });
 
+test("再起動が古いプロセスの close を待ち切れなかった後に届いた close を、予期しない終了に数えない", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"], now: 0 });
+  const calls = [];
+  let current;
+  const spawnFn = () => {
+    calls.push(1);
+    current = makeFakeProc();
+    return current;
+  };
+  const manager = new MonitorProcessManager(makeDeps(), spawnFn);
+  manager.startMonitorProcess();
+  const old = current;
+  t.mock.timers.setTime(15000);
+  manager.restartMonitorProcess();
+  // 古いプロセスの close が来ないまま安全弁で新しいプロセスを起こす
+  t.mock.timers.tick(8000); // 再起動が close を待つ安全弁(RESTART_CLOSE_TIMEOUT_MS)
+  assert.equal(calls.length, 2, "安全弁で新しいプロセスを起こす");
+  // 遅れて古いプロセスの close が届く(意図した停止の結果)
+  old.emit("close", null, "SIGKILL");
+  t.mock.timers.tick(10000);
+  assert.equal(calls.length, 2, "意図した停止の close で自動再起動した(失敗に数えた)");
+});
+
 // ---- リモート機の host-metrics(モニターのグラフをマシンごとに出す) ----
 // 手元の `api host-metrics` は**この機械しか観測できない**ので、リモート機のぶんはその機械で
 // 1本ずつ立てる。専用の ssh 経路は書かず既存の汎用転送(`remote exec`)を使う契約

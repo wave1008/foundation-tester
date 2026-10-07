@@ -529,6 +529,12 @@ extension StepExecutor {
                     + Self.webViewPathHint(snapshot)))
         }
         resolvedElementThisStep = element
+        // セレクタが2件以上に一致していたら数を控える(1件目を撃った。ft_batch が行に添える)。
+        // 序数・相対の指定は利用者が1つを選んでいるので数えない(candidates はそれらを見ない)
+        if let locator = step.locator, locator.index == nil, locator.relative?.isEmpty ?? true,
+           let count = LocatorResolver.candidates(locator, elements: snapshot.elements)?.count, count > 1 {
+            ambiguousMatchCountThisStep = count
+        }
 
         // **容器の縁にまたがった要素はそのまま撃たない**。見えている部分を撃っても、
         // Compose は focus 時に bringIntoView で内容を動かすため、離すまでに隣の行が指の下へ来る

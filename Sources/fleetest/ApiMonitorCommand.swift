@@ -992,6 +992,9 @@ struct ConfirmedDeviceState {
     /// iOS の UDID。維持(debounce)中もこれを持ち越さないと leaseKey が nil になり、
     /// 一過性の /status 失敗の間だけ inRun/recording 判定が false に振れる。
     let iosUdid: String?
+    /// iOS 実機の USB 接続か。維持中も持ち越す(落とすと WiFi 越しの分身を隠す処理が効かず、
+    /// 一過性の /status 失敗のたびに分身が一覧に出たり消えたりする)
+    let wired: Bool?
     /// confirmed が connected の間、observed が connected でなかった連続回数。
     /// connectedDowngradeMissThreshold に達するまでは降格させない
     var missStreak: Int

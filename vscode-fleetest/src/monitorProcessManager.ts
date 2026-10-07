@@ -62,7 +62,7 @@ type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
  */
 interface HostMetricsChild {
   proc: MonitorProcess | undefined;
-  /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitor と同じ役割)。 */
+  /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitors と同じ役割)。 */
   stopping: boolean;
   /** 再起動の多重起動ガード(restartPending と同じ役割)。 */
   restartPending: boolean;
@@ -199,8 +199,12 @@ export type HostMetricsToWebviewMessage =
  */
 export class MonitorProcessManager {
   private monitorProcess: MonitorProcess | undefined;
-  /** stopMonitorProcess() 経由(dispose/再起動)による意図した終了かどうか。 */
-  private stoppingMonitor = false;
+  /**
+   * stopMonitorProcess() で止めると決めたプロセス(dispose/再起動による意図した終了)。**プロセスごとに持つ** ——
+   * 共有の1フラグだと、再起動が古いプロセスの close を待ち切れずに新しいプロセスを起こしたとき、
+   * 新しい起動がフラグを下ろし、後から届いた古い close を予期しない死として失敗回数に数えていた
+   */
+  private stoppingMonitors = new WeakSet<MonitorProcess>();
   /**
    * 現在の monitor プロセスが実際に使っている監視スコープ("<project> <profile>" 形式。profile が
    * 空なら "<project> ")。fleetest.profile/project の変更で再起動が必要かどうかの判定に使う。
@@ -365,7 +369,6 @@ export class MonitorProcessManager {
     // 相手が先に死んだ後の書き込み(end等)で EPIPE が飛んでも拡張を落とさない。
     proc.stdin.on("error", () => undefined);
 
-    this.stoppingMonitor = false;
     this.monitorProcess = proc;
     // **占有の控えは monitor プロセスと寿命を共にする** —— 供給元はこのプロセスの子
     // (リモート機で走る `api monitor`)で、再起動すれば新しい子が最初のサイクルで出し直す。
@@ -484,8 +487,8 @@ export class MonitorProcessManager {
       }
       // 意図した停止(dispose/再起動)かどうかはフラグだけで判定する。
       // stdin EOF 経由で終了した場合は signal が null になるため、signal では判定できない。
-      const selfInitiated = this.stoppingMonitor;
-      this.stoppingMonitor = false;
+      const selfInitiated = this.stoppingMonitors.has(proc);
+      this.stoppingMonitors.delete(proc);
       // **OUTPUT にも必ず1行残す**(webview バナーはパネルの開き直しで消えるため、これが無いと
       // monitor がいつ・どう死んだかが後から一切追えない。受け手報告: silent 死に見えた。
       // signal=SIGKILL はバイナリ差し替え(update.sh の再ビルド)の署名)
@@ -563,7 +566,7 @@ export class MonitorProcessManager {
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;
     }
-    this.stoppingMonitor = true;
+    this.stoppingMonitors.add(proc);
     // 行儀よく stdin EOF(=終了指示)を送ってから SIGTERM も送る(どちらでもクリーンに終了する)。
     proc.stdin.end();
     proc.kill("SIGTERM");

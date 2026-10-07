@@ -234,6 +234,19 @@ final class MCPBatchTests: XCTestCase {
         }
     }
 
+    /// セレクタが2件以上に一致したら、batch の行に「1件目を撃った」と添える
+    func testAmbiguousSelectorIsFlaggedInTheStepLine() async throws {
+        let ok = { (ref: Int, y: Double) in
+            ElementInfo(ref: ref, type: "button", identifier: nil, label: "OK", value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 10, y: y, width: 100, height: 40), depth: 1)
+        }
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app", screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ok(1, 100), ok(2, 300)], truncatedCount: 0)
+        let result = try await server.call(tool: "ft_batch", args: steps("tap 'OK'"))
+        XCTAssertTrue(body(result).contains("matched 2 elements"), body(result))
+    }
+
     // MARK: - (d) 成功時にツリーが1回だけ返る
 
     func testSuccessfulBatchReturnsExactlyOneTree() async throws {
