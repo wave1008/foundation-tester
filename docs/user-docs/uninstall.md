@@ -10,6 +10,21 @@ Ask your AI assistant as follows, and it carries out the steps below for you.
 Uninstall fleetest by following ../foundation-tester/docs/user-docs/uninstall.md.
 ```
 
+## 0. Runner machines (if you use them)
+
+If you use remote runner machines, delete the work area on each runner machine before removing fleetest from your Mac:
+
+```bash
+../foundation-tester/.build/debug/fleetest remote teardown <machine>
+```
+
+If you created a signing keychain on a runner machine for physical iPhones, delete it on the runner machine too (it
+holds your signing key):
+
+```bash
+security delete-keychain ~/Library/Keychains/fleetest-signing.keychain-db
+```
+
 ## 1. VSCode extension
 
 Uninstall it from VSCode's Extensions view, then run `Developer: Reload Window` to stop the
@@ -33,8 +48,9 @@ If `.build` reappears after you delete them, fleetest processes are still runnin
 
 ## 4. Leftover files
 
-- `~/.fleetest` (records of runs on this Mac and the like) and `~/Library/Logs/fleetest` (logs)
-- Optionally `~/.config/fleetest/config.json`
+- `~/.fleetest` (records of runs on this Mac and the like), `~/Library/Logs/fleetest` (logs), and `~/Library/Caches/fleetest`
+- `~/.config/fleetest/` (settings and test data kept only on this Mac). **If you keep passwords or other secrets in
+  `dataset/`, be sure to delete it**
 - Virtual devices you created for fleetest, if you no longer need them — delete them from Xcode's
   "Devices and Simulators" or Android Studio's Device Manager
 

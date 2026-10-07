@@ -165,17 +165,23 @@ fleetest run --profile <実行プロファイル> --scenario <シナリオID>
    cd ~/fleetest-runner/users/<あなたの issuerId>/work
    ~/fleetest-runner/foundation-tester/.build/debug/fleetest run --profile <実行プロファイル> --scenario <シナリオID>
    ```
+   `issuerId` は、手元の `~/.config/fleetest/config.json` に書いた名前です。書いていなければ、手元の
+   `<ユーザー名>@<ホスト名>` になります。ランナー機で `ls ~/fleetest-runner/users/` を実行しても確かめられます。
 3. **署名の鍵を、SSH からでも使えるキーチェーンに置きます。** SSH の接続はキーチェーンがロックされた状態で始まり、
    画面で解錠しても引き継がれません。fleetest はビルドの前にキーチェーンを空のパスワードで解錠しようとするので、
    署名の鍵をパスワードの無い専用のキーチェーンへ移し、検索リストに載せます(ランナー機で実行します)。
-   ```bash
-   KC=~/Library/Keychains/fleetest-signing.keychain-db
-   security create-keychain -p "" "$KC"
-   # ログインキーチェーンから「Apple Development」の署名 ID を security export / import で移す
-   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KC"
-   security set-keychain-settings "$KC"            # 引数なし = 自動ロックしない
-   security list-keychains -d user -s "$KC" ~/Library/Keychains/login.keychain-db
-   ```
+   1. ランナー機の「キーチェーンアクセス」で、ログインキーチェーンの「自分の証明書」から
+      「Apple Development: <あなたの名前>」を選び、「書き出す」で `.p12` ファイルに保存します(一時的なパスワードを付けます)。
+   2. ランナー機のターミナルで、専用のキーチェーンを作って取り込みます。
+      ```bash
+      KC=~/Library/Keychains/fleetest-signing.keychain-db
+      security create-keychain -p "" "$KC"
+      security import ~/Desktop/dev.p12 -k "$KC" -P "<1で付けたパスワード>" -T /usr/bin/codesign
+      security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KC"
+      security set-keychain-settings "$KC"            # 引数なし = 自動ロックしない
+      security list-keychains -d user -s "$KC" ~/Library/Keychains/login.keychain-db
+      rm ~/Desktop/dev.p12                            # 書き出したファイルは消す
+      ```
    移すのは開発用(Apple Development)の署名 ID だけにしてください。この運用が許されない場合は、実機を使う
    テストをランナー機の画面(画面共有)から実行します。
 

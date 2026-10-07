@@ -21,7 +21,7 @@ fleetest は、導入・プロファイル設定・シナリオ作成を自動�
 
 | スキル | コマンド | 役割 |
 |---|---|---|
-| `fleetest-setup` | `/fleetest-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・プロジェクト作成・アプリ/実行のプロファイル設定・VSCode 拡張のインストール) |
+| `fleetest-setup` | `/fleetest-setup` | 初回導入一式(未クローンなら clone・ビルド・環境検証・VSCode 拡張のインストール。テストプロジェクトとプロファイルは作らない = `fleetest-profiles`) |
 | `fleetest-update` | `/fleetest-update` | upstream の更新取り込み(git pull → `TestProjects/`/`Package.swift` の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映) |
 | `fleetest-profiles` | `/fleetest-profiles` | アプリ/実行プロファイルを1回のフローでまとめて作成(iOS/Android の確認、アプリの表示名/アプリID を聞き、デバイスは既存を選ぶか新規作成) |
 | `fleetest-scenario` | `/fleetest-scenario` | セットアップ済みプロジェクトに Swift DSL のシナリオ(`.swift`)を1本作成(ライブ探索からコンパイル検証まで) |

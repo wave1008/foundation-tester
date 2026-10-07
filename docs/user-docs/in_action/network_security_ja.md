@@ -41,11 +41,12 @@
 
 ## 外向きの通信
 
-- **テレメトリ・解析データの送信は一切ありません**(製品コードに外部 URL が1つもありません)。
+- **テレメトリ・解析データの送信は一切ありません**。
 - Apple Intelligence(Foundation Models)は**端末内で動きます**。外へは出ません。
 - **テスト対象アプリを Google へ送りません。** Android の `adb install` は Play Protect の照会で
   止まることがあるため、インストールの間だけ検証を切って必ず元に戻します。
-- 外へ出るのは**導入と更新のときだけ**です。**テストの実行中は外へ出ません**(シナリオが
+- 外へ出るのは、**導入・更新・更新の有無の確認(VSCode 拡張が1日1回、`git ls-remote` で)・Android の
+  システムイメージの取得**のときだけです。**テストの実行中は外へ出ません**(シナリオが
   `sandbox.allowedDomains` に書いた宛先へ通信する分を除きます。何も書かなければシナリオは外へ一切出られません。
   [アクセスできるフォルダと通信先](../security/access_ja.md))。
 
@@ -56,6 +57,7 @@
 | **Swift の依存 20 本超** | `github.com`(`apple/*`・`grpc/*`・`swiftlang/*`) | `swift build` |
 | VSCode 拡張の依存 8 個 | `registry.npmjs.org` | 拡張のビルド |
 | `xcodegen`(必須)・`libimobiledevice` | Homebrew の配信元 | 導入時 |
+| Android のシステムイメージ・コマンドラインツール | `dl.google.com` | Emulator を作るとき・Android SDK のツールを入れるとき |
 
 **量が一番大きいのは Swift の依存**で、fleetest 自身のリポジトリではありません。
 Android ブリッジの APK はリポジトリに同梱してあるため、Android のビルドツールは要りません。
@@ -64,8 +66,8 @@ Android ブリッジの APK はリポジトリに同梱してあるため、Andr
 
 ### 方針 A(推奨): 上の行き先だけ HTTPS を通す
 
-許可する宛先は4つ(`raw.githubusercontent.com` / `github.com` / `registry.npmjs.org` /
-Homebrew の配信元)だけです。テレメトリが0件で、**テスト実行中は外へ出ない**ことを添えれば、
+許可する宛先は5つ(`raw.githubusercontent.com` / `github.com` / `registry.npmjs.org` /
+Homebrew の配信元 / Android を使うなら `dl.google.com`)だけです。テレメトリが0件で、**テスト実行中は外へ出ない**ことを添えれば、
 例外申請の説明がつけやすい形です。**ツール側に追加の設定は要りません。**
 
 ### 方針 B: 社内ミラー(A が通らない場合)
@@ -105,6 +107,9 @@ git config --global url."https://<社内ミラー>/".insteadOf "https://github.c
 経路は **SSH の鍵認証だけ**です。信頼モデルとランナー機に載るものは[リモート実行](../fleet/remote_runners_ja.md)の
 「安全に使うために」にあります。
 
+**ランナー機も、手元の Mac と同じ宛先へ出ます**。`fleetest remote setup` と版を揃えるたびに、ランナー機は
+GitHub から fleetest を取得してビルドします。閉域網では、上の方針 A / B をランナー機にも当ててください。
+
 ## 運用側で決めること
 
 1. **実機 iPhone を使うすべての Mac に `brew install libimobiledevice` を入れる。** USB
@@ -112,7 +117,7 @@ git config --global url."https://<社内ミラー>/".insteadOf "https://github.c
    実機のシナリオが約 25% 速くなるという結果もあり、こちらが本来の既定です。
 2. Wi-Fi 接続の実機をどうしても使うなら、**テスト用の端末とランナー機をセグメント分けした
    VLAN に置く**。
-3. 閉域網なら、まず**4つの行き先を許可できるか**を確かめる(上の「閉域網」の方針 A)。
+3. 閉域網なら、まず**方針 A の行き先を許可できるか**を確かめる(上の「閉域網」の方針 A)。
    通らなければ社内ミラー(方針 B)。**どちらも決めずに始めると導入も更新もできません。**
 4. **本番の資格情報をシナリオ・プロファイルに書かない。**
 

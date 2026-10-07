@@ -44,13 +44,13 @@ How the files and destinations that test code (scenarios) can reach are restrict
 
 ## Outbound traffic
 
-- **No telemetry or analytics is ever sent** — there is not a single external URL in the product
-  code.
+- **No telemetry or analytics is ever sent.**
 - Apple Intelligence (Foundation Models) runs **entirely on-device**. Nothing leaves the device.
 - **The app under test is never sent to Google.** Android's `adb install` can otherwise be
   blocked indefinitely by a Play Protect prompt, so verification is turned off only for the
   duration of the install and always restored afterward.
-- Outbound traffic happens **only during setup and update**. **Nothing goes out while tests run** (except what a
+- Outbound traffic happens **only during setup, updates, the update check (once a day by the VSCode extension, with
+  `git ls-remote`), and when Android system images are downloaded**. **Nothing goes out while tests run** (except what a
   scenario sends to destinations listed in `sandbox.allowedDomains`; with nothing listed, a scenario cannot reach
   anything outside the Mac. See [Accessible folders and destinations](../security/access.md)).
 
@@ -61,6 +61,7 @@ How the files and destinations that test code (scenarios) can reach are restrict
 | **20+ Swift dependencies** | `github.com` (`apple/*`, `grpc/*`, `swiftlang/*`) | `swift build` |
 | 8 VSCode extension dependencies | `registry.npmjs.org` | Building the extension |
 | `xcodegen` (required), `libimobiledevice` | Homebrew's distribution hosts | Setup |
+| Android system images and command-line tools | `dl.google.com` | Creating an Emulator, installing Android SDK tools |
 
 **By volume the Swift dependencies dominate** — not the fleetest repository itself. The Android
 bridge APK ships inside the repository, so no Android build tooling is needed.
@@ -69,8 +70,8 @@ bridge APK ships inside the repository, so no Android build tooling is needed.
 
 ### Option A (recommended): allow HTTPS to the destinations above
 
-Four destinations need to be reachable (`raw.githubusercontent.com`, `github.com`,
-`registry.npmjs.org`, Homebrew's distribution hosts). Since there is no telemetry and **nothing
+Five destinations need to be reachable (`raw.githubusercontent.com`, `github.com`,
+`registry.npmjs.org`, Homebrew's distribution hosts, and `dl.google.com` if you use Android). Since there is no telemetry and **nothing
 goes out while tests run**, this is usually straightforward to justify in an exemption request.
 **No extra configuration is needed on the tool side.**
 
@@ -113,6 +114,10 @@ receiver does.
 The only path is **SSH with key-based authentication**. The trust model and what ends up on a runner machine are
 covered in "Using it safely" in [Remote Runners](../fleet/remote_runners.md).
 
+**Runner machines reach the same destinations as your Mac.** Each `fleetest remote setup` and version alignment makes
+the runner machine fetch fleetest from GitHub and build it. On a closed network, apply Option A / B above to the
+runner machines too.
+
 ## Decisions to make operationally
 
 1. **Install `brew install libimobiledevice` on every Mac that uses a physical iPhone.** This
@@ -121,7 +126,7 @@ covered in "Using it safely" in [Remote Runners](../fleet/remote_runners.md).
    5ms, making physical-device scenarios roughly 25% faster.
 2. If a Wi-Fi-connected physical device must be used anyway, **put the test devices and runner
    machines on a segregated VLAN.**
-3. On a closed network, first check whether the **four destinations can be allowed** (Option A
+3. On a closed network, first check whether the **Option A destinations can be allowed** (Option A
    under "Closed networks" above). If not, set up an internal mirror (Option B). **Decide one of
    them before you start — otherwise neither setup nor updates work.**
 4. **Never write production credentials into scenarios or profiles.**

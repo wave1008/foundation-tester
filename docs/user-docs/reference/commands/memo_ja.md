@@ -29,7 +29,7 @@
 ## 例
 
 ```swift
-@TestClass(app: "com.example.myapp")
+@TestClass
 class OrderFlow {
     func setUpDevice() {
         launchApp()

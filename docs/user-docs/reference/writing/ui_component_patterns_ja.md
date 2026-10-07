@@ -110,8 +110,8 @@ android { tap("戻る") }       // Android View: ラベルで指す(id なし)
 | フレームワーク | 部品・差分 |
 |---|---|
 | CMP | `HorizontalPager`。共通 |
-| Flutter | `PageView`。**iOS の in-app エンジンで `withScrollRight` が効かない**(「全部品に共通すること」参照) |
-| RN | `react-native-pager-view`。同じく iOS の in-app エンジンで探索不可 |
+| Flutter | `PageView`。共通 |
+| RN | `react-native-pager-view`。共通(iOS の in-app エンジンでは、送りだけ XCUITest の実スワイプに切り替わる) |
 | Android View | `ViewPager2`。共通 |
 | SwiftUI(iOS) | `TabView(.page)`。共通(この SUT はネイティブなので in-app の制約を受けない) |
 

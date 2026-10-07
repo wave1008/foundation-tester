@@ -27,7 +27,9 @@ removeApp()
   使ってください。
 - **`clearAppData()` は権限(iOS の TCC / Android の実行時権限)も未許可へ戻します**。権限
   ダイアログが再び出るので、オンボーディングや初回起動の権限フローを検証したいときに使います。
-- `clearAppData()` は**iOS は Simulator 専用**です(実機では失敗します)。
+- iOS の実機にはデータだけを消す手段が無いので、`clearAppData()` は**アプリを入れ直して**消します(インストールの
+  ぶん時間がかかります。注記 `reinstalled-to-clear-data`)。入れ直す元として、アプリプロファイルの `appPathPhysical` に
+  実機用のビルドを設定し、`--profile` で実行してください。入れ直せないときは、アンインストールせずに失敗します。
 - `clearAppData()` は `NSUserDefaults` / `SharedPreferences` を消しますが、**キーチェーン
   (iOS)/ Keystore(Android)に置いた値は消えません**。オンボーディング判定をそこに置いている
   アプリでは初回起動が再現しません。

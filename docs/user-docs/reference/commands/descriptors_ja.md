@@ -17,7 +17,7 @@
 ## 例
 
 ```swift
-@TestClass(app: "com.example.myapp", platform: "ios")
+@TestClass
 class ログインフロー {
     func beforeEach() {
         irregularHandler("#promo_modal", dismiss: "#btn_promo_close")

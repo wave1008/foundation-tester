@@ -115,8 +115,8 @@ android { tap("Back") }       // Android View: target by label (no id)
 | Framework | Component / difference |
 |---|---|
 | CMP | `HorizontalPager`. Same as above |
-| Flutter | `PageView`. **`withScrollRight` does not work on the iOS in-app engine** (see "Common to all components") |
-| RN | `react-native-pager-view`. Same iOS in-app search limitation |
+| Flutter | `PageView`. Same as above |
+| RN | `react-native-pager-view`. Same as above (on the iOS in-app engine, only the paging switches to a real XCUITest swipe) |
 | Android View | `ViewPager2`. Same as above |
 | SwiftUI (iOS) | `TabView(.page)`. Same as above (this SUT is native, so it is not subject to the in-app limitation) |
 

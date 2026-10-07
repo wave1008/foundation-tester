@@ -52,6 +52,8 @@ Run only the fleetest login test on Android.
 ```
 
 In VSCode, select a scenario in the Test Explorer and click "Run".
+Before the first run, choose the run profile to use (for example `ios-run`) with `fleetest: Select Run Profile` in the
+Command Palette. Without one, the run does not start and shows an error.
 
 </details>
 

@@ -21,7 +21,7 @@ wait(0.5)     // only for settling that no selector can express (e.g. an in-flig
 
 ## Notes
 
-- **Element appearance is already implicit** — operations retry resolution and assertions poll
+- **Element appearance is already implicit** — operations retry resolution (about 0.7 seconds without `waitSeconds:`) and assertions poll
   until their timeout, so putting `wait()` before an `exist()` is redundant. If a wait is not
   long enough, raise the command's `waitSeconds:` (decimal allowed) instead of adding a fixed
   `wait()`.

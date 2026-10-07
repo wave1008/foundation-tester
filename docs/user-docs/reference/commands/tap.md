@@ -27,10 +27,14 @@ tap(x: 120, y: 640)                    // only when no selector is available
 - **`tap` waits for the target to become enabled before tapping.** A screen can render an
   element before it is actually interactive (a form still loading, a button disabled until
   validation passes). `tap` retries resolution until the element is `enabled`, up to the
-  step's `waitSeconds:` (default about 5 seconds). If it never becomes enabled, `tap` still taps
+  step's `waitSeconds:` (5 seconds by default). If it never becomes enabled, `tap` still taps
   it — a scenario that deliberately taps a disabled element to assert "nothing happens" keeps
   working. Waiting is skipped when the selector explicitly pins the state, e.g.
   `#btn&&enabled=false`, or when `waitSeconds: 0` is given.
+- **Waiting for the element to appear is short**: without `waitSeconds:`, resolution is retried for only about
+  0.7 seconds until the element is found (once found, `tap` waits up to 5 seconds for it to become enabled, as above).
+  For an element that appears late after a screen transition, pass `tap("#btn", waitSeconds: 5)` or wait first with
+  `waitForDisplay("#btn")`. Other operations such as `type` behave the same.
 - **Traditional form**: `tap("#field")` followed by `type("some text")` also works. On Android,
   when `#id` resolves to the input's wrapping container rather than the field itself, focus can
   fail to land in the field; `type` recovers by locating the single input inside the tapped

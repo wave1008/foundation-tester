@@ -28,7 +28,9 @@ removeApp()
 - **`clearAppData()` also resets permissions** (iOS TCC / Android runtime permissions) back to
   not-granted, so permission dialogs appear again. This is the command to reach for when testing
   onboarding or first-run permission flows.
-- `clearAppData()` is **iOS Simulator only** — it fails on a physical device.
+- A physical iPhone has no way to clear only the app's data, so `clearAppData()` **reinstalls the app** there (it takes
+  as long as an install; note `reinstalled-to-clear-data`). Set a device build in the app profile's `appPathPhysical`
+  as the source to reinstall from, and run with `--profile`. If it cannot reinstall, it fails without uninstalling.
 - `clearAppData()` clears `NSUserDefaults` / `SharedPreferences`, but **does not clear the
   Keychain (iOS) / Keystore (Android)**. If an app stores its "has been onboarded" flag there,
   first-run cannot be reproduced this way.

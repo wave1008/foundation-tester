@@ -35,16 +35,14 @@ httpRequest(_ url: String, method: String = "GET", headers: [String: String] = [
 let response = httpRequest("https://api.example.com/orders", method: "POST",
                            headers: ["Content-Type": "application/json", "Authorization": "Bearer \(account("[api].token"))"],
                            body: #"{"item": "widget"}"#)
-procedure("注文が作られた") {
-    XCTAssertEqual(response.status, 201)
-}
+response.status.thisIs(201)              // 注文が作られた
 ```
 
 ## 失敗とみなす場合
 
 - URL が不正(`http`/`https` でない・ホストが無い)・通信に失敗した・`waitSeconds` 内に応答が無かった場合は、
   そのステップを失敗にしてシナリオを中断します。
-- **`4xx` / `5xx` は失敗にしません**。`status` を自分で検証してください(失敗にしたいときは `procedure` の中で検証します)。
+- **`4xx` / `5xx` は失敗にしません**。`response.status.thisIs(201)` のように [thisIs 系](any_value_assertion_ja.md) で `status` を検証してください。
 - プロキシ(サンドボックス)の環境変数があるときは、失敗文に「接続はサンドボックスのプロキシを通る・`allowedDomains` に無い
   ホストは断られる」と添えます(原因の断定ではなく、確認する場所の案内です)。
 

@@ -45,7 +45,8 @@ same skip behavior.
 
 Each command (each step) has a **120-second wall-clock cap**. If it doesn't return in time,
 the step fails and the in-flight work is cancelled rather than left running in the
-background.
+background. The whole-scenario cap (`scenarioTimeout` in the run profile, 90 seconds by default) applies first,
+so raise `scenarioTimeout` too when you write long waits ([Run profile settings](../project/run_profile.md)).
 
 ## Structuring and passing values
 

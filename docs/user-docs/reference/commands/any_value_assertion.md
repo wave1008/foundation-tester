@@ -20,7 +20,7 @@ any other command, and aborts the scenario the same way.
 ## Example
 
 ```swift
-let total = try await fetchTotal()   // e.g. a value obtained inside procedure { }
+let total = select("#total").text    // e.g. a value read from the screen, or an httpRequest response
 total.thisContains("1,200")
 total.thisStartsWith("Total")
 (10 * 3).thisIs(30)

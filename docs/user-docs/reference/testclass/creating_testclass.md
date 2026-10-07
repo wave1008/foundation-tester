@@ -55,6 +55,7 @@ class LoginTest {
 ## beforeEach / afterEach
 
 ```swift
+@TestClass
 class LoginTest {
     func beforeEach() {
         irregularHandler("#promo_modal", dismiss: "#btn_promo_close")

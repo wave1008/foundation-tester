@@ -73,15 +73,18 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 #   -> composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
-Go back to your work folder and run:
+Go back to your work folder and run the following. The installation creates no test project, so create one first
+(when you ask the AI assistant, it is created automatically; the VSCode extension also creates it on startup after Reload Window).
 
 ```bash
+../foundation-tester/.build/debug/fleetest project create project1
+
 # iOS
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device \
   --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
@@ -91,10 +94,6 @@ when missing; a missing iOS runtime is downloaded first: several GB, several min
 one that is not running is started automatically at run time). The app profiles are named `ios-app` and `android-app`, and the
 run profiles `ios-run` and `android-run`. These commands register one device; add the second one with "Add device" on the
 "Profiles" tab of the VSCode extension's device monitor.
-
-The installation creates no test project. The AI assistant creates `TestProjects/project1/` first when it is missing;
-by hand, run `fleetest project create project1` before the commands above
-(the VSCode extension also creates it on startup after Reload Window).
 
 </details>
 
@@ -136,6 +135,8 @@ For scenarios created on Android, ask "Run them on Android" instead.
 The app, the devices, and the run-time settings are all resolved from it.
 
 From VSCode, open the **Test Explorer**, pick the scenario, and click **Run**.
+Before the first run, choose the run profile to use (for example `ios-run`) with `fleetest: Select Run Profile` in the
+Command Palette. Without one, the run does not start and shows an error.
 
 </details>
 

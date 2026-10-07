@@ -74,15 +74,18 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 #   -> composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
-作業フォルダに戻って実行します。
+作業フォルダに戻って実行します。テストプロジェクトはインストールでは作られないので、最初に作ります
+(AIアシスタントに頼んだときは自動で作られます。VSCode 拡張も Reload Window 後の起動時に作ります)。
 
 ```bash
+../foundation-tester/.build/debug/fleetest project create project1
+
 # iOS
-../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform ios --app-id com.sutec.mobile.ios --auto-device \
   --app-path ../sut-ec-mobile/build/ios-sim/Build/Products/Debug-iphonesimulator/iosApp.app
 
 # Android
-../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile --auto-device \
+../foundation-tester/.build/debug/fleetest profile setup --platform android --app-id com.sutec.mobile.android --auto-device \
   --app-path ../sut-ec-mobile/composeApp/build/outputs/apk/debug/composeApp-debug.apk
 ```
 
@@ -91,10 +94,6 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug 
 (足りなければ作成します。iOS のランタイムが未導入のときは数 GB をダウンロードするので数分〜数十分かかります。
 起動していないものは実行時に自動で起動します)。アプリプロファイルの名前は `ios-app`・`android-app`、実行プロファイルの名前は `ios-run`・`android-run` になります。
 手で登録するのは1台です。2台目は VSCode 拡張のデバイスモニターの「プロファイル」タブにある「デバイスを追加」で足せます。
-
-インストールではテストプロジェクトは作られません。AIアシスタントは `TestProjects/project1/` が無ければ先に作ります。
-手で進めるときは、上のコマンドの前に `fleetest project create project1` を実行します
-(VSCode 拡張も Reload Window 後の起動時に作ります)。
 
 </details>
 
@@ -136,6 +135,8 @@ AIアシスタントはデバイス上でアプリを起動し、ログイン画
 アプリ・デバイス・実行時設定はそこから解決されます。
 
 VSCode からは **Test Explorer** でシナリオを選び、**実行**をクリックします。
+初めて実行する前に、コマンドパレットの `fleetest: 実行プロファイルを選択` で使う実行プロファイル(例: `ios-run`)を
+選んでおきます。選んでいないと、実行は始まらずにエラーになります。
 
 </details>
 

@@ -35,16 +35,14 @@ httpRequest(_ url: String, method: String = "GET", headers: [String: String] = [
 let response = httpRequest("https://api.example.com/orders", method: "POST",
                            headers: ["Content-Type": "application/json", "Authorization": "Bearer \(account("[api].token"))"],
                            body: #"{"item": "widget"}"#)
-procedure("the order was created") {
-    XCTAssertEqual(response.status, 201)
-}
+response.status.thisIs(201)              // the order was created
 ```
 
 ## What counts as a failure
 
 - A bad URL (not `http`/`https`, or no host), a connection error, or no response within `waitSeconds` fails the step and
   aborts the scenario.
-- **`4xx` / `5xx` is not a failure.** Check `status` yourself (inside a `procedure` if you want it to fail the scenario).
+- **`4xx` / `5xx` is not a failure.** Check `status` yourself with the [thisIs family](any_value_assertion.md), as in `response.status.thisIs(201)`.
 - When the sandbox proxy environment variables are set, the failure text adds that the connection goes through the
   sandbox proxy and hosts not in `allowedDomains` are refused (a pointer on what to check, not a diagnosis).
 

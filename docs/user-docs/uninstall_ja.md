@@ -10,6 +10,21 @@ AIアシスタントに次のように頼むと、下の手順をまとめて行
 ../foundation-tester/docs/user-docs/uninstall_ja.md の手順で fleetest をアンインストールして。
 ```
 
+## 0. ランナー機(使っている場合)
+
+リモートのランナー機を使っているときは、手元の fleetest を消す前に、ランナー機の作業場所を消します。
+
+```bash
+../foundation-tester/.build/debug/fleetest remote teardown <マシン名>
+```
+
+iOS 実機のために、ランナー機に署名用のキーチェーンを作った場合は、ランナー機でそれも消します
+(署名の鍵が入っています)。
+
+```bash
+security delete-keychain ~/Library/Keychains/fleetest-signing.keychain-db
+```
+
 ## 1. VSCode 拡張
 
 VSCode の拡張ビューからアンインストールし、`Developer: Reload Window` を実行して拡張を止めます
@@ -33,8 +48,9 @@ VSCode を終了してから、作業フォルダと fleetest のクローン(�
 
 ## 4. 残るファイル
 
-- `~/.fleetest`(この Mac での実行の記録など)と `~/Library/Logs/fleetest`(ログ)
-- 必要なら `~/.config/fleetest/config.json`
+- `~/.fleetest`(この Mac での実行の記録など)・`~/Library/Logs/fleetest`(ログ)・`~/Library/Caches/fleetest`
+- `~/.config/fleetest/`(設定と、この Mac だけのテストデータ)。**`dataset/` にパスワードなどの秘密を置いているなら、
+  必ず消します**
 - fleetest のために作った仮想デバイスが不要なら、Xcode の「Devices and Simulators」や Android Studio の
   Device Manager から削除します
 

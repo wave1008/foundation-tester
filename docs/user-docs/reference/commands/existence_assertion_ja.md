@@ -20,7 +20,7 @@
 expectation {
     exist("#welcome_text||Welcome")
     notExist("#loading_spinner")
-    countIs("#row||", 5)
+    countIs("#cart_item", 3)
 }
 ```
 

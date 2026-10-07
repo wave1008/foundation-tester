@@ -27,7 +27,9 @@ Clone https://github.com/wave1008/foundation-tester next to this folder, then se
 following ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md.
 ```
 
-3. When the installation finishes, run `Developer: Reload Window` in VSCode
+3. When the installation finishes, run `Developer: Reload Window` in VSCode. Also quit your AI assistant (including
+   Claude Code) and open a new session in this folder. If asked whether to use the MCP server `fleetest`, allow it
+   (the `ft_*` tools and skills registered by the installation are available from the new session)
 
 4. Click **fleetest mobile** in the status bar at the lower-left corner of VSCode. The device monitor opens.
 

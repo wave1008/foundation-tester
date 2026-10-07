@@ -27,7 +27,9 @@ https://github.com/wave1008/foundation-tester をこのフォルダの隣に clo
 ../foundation-tester/.claude/skills/fleetest-setup/SKILL.md の手順でセットアップして。
 ```
 
-3. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します
+3. インストールが完了したら、VSCode で `Developer: Reload Window` を実行します。AIアシスタント(Claude Code を含む)も
+   一度終了し、このフォルダで新しいセッションを開きます。MCP サーバ `fleetest` の使用を確認されたら許可します
+   (インストールで登録した `ft_*` ツールとスキルは、新しいセッションから使えます)
 
 4. VSCode の左下のステータスバーに表示される **fleetest mobile** をクリックします。デバイスモニターが開きます
 

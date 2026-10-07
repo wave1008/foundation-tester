@@ -175,18 +175,24 @@ A physical device connected to a runner machine works with the same steps. **Do 
    cd ~/fleetest-runner/users/<your issuerId>/work
    ~/fleetest-runner/foundation-tester/.build/debug/fleetest run --profile <run profile> --scenario <scenario ID>
    ```
+   `issuerId` is the name you set in `~/.config/fleetest/config.json` on your Mac. If you have not set one, it is
+   `<user name>@<host name>` of your Mac. You can also check with `ls ~/fleetest-runner/users/` on the runner machine.
 3. **Keep the signing key in a keychain that works over SSH.** An SSH connection starts with the keychain locked, and
    unlocking it on the screen does not carry over. fleetest tries to unlock keychains with an empty password before
    building, so move the signing key to a dedicated keychain without a password and put it in the search list (run on
    the runner machine):
-   ```bash
-   KC=~/Library/Keychains/fleetest-signing.keychain-db
-   security create-keychain -p "" "$KC"
-   # Move the "Apple Development" signing identity from the login keychain with security export / import
-   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KC"
-   security set-keychain-settings "$KC"            # no arguments = never auto-lock
-   security list-keychains -d user -s "$KC" ~/Library/Keychains/login.keychain-db
-   ```
+   1. In Keychain Access on the runner machine, select "Apple Development: <your name>" under "My Certificates" in the
+      login keychain and save it as a `.p12` file with "Export" (give it a temporary password).
+   2. In a terminal on the runner machine, create the dedicated keychain and import it:
+      ```bash
+      KC=~/Library/Keychains/fleetest-signing.keychain-db
+      security create-keychain -p "" "$KC"
+      security import ~/Desktop/dev.p12 -k "$KC" -P "<the password from step 1>" -T /usr/bin/codesign
+      security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$KC"
+      security set-keychain-settings "$KC"            # no arguments = never auto-lock
+      security list-keychains -d user -s "$KC" ~/Library/Keychains/login.keychain-db
+      rm ~/Desktop/dev.p12                            # delete the exported file
+      ```
    Move only the development (Apple Development) signing identity. If your policy does not allow this, run tests that
    use the physical device from the runner machine's screen (screen sharing).
 

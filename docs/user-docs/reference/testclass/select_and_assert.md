@@ -11,9 +11,10 @@ between `tap`, `exist`, and `select`, and how the value/text assertion commands 
 - **`exist(sel)`** is an assertion: it fails (aborts the scenario) if nothing matches, and
   its result is recorded as a check in the report. Its return value can be chained into
   further assertions.
-- **`select(sel)`** only grabs an element — no device interaction, no visibility check by
-  default beyond what's asked. If nothing matches, it does **not** fail; it returns an empty
-  element instead, and `select` is **not** recorded as an assertion in the report (so it
+- **`select(sel)`** only grabs an element — no device interaction. Like `exist`, it checks by
+  default that the element is actually visible, but when nothing matches or the element is not
+  visible (covered or clipped), it does **not** fail; it returns an empty element instead (pass
+  `requireVisible: false` to skip the visibility check), and `select` is **not** recorded as an assertion in the report (so it
   won't count toward "at least one assertion" checks). Use it when you want to read a value,
   or chain an assertion, without adding an extra checkpoint to the report.
 

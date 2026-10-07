@@ -33,21 +33,24 @@ A scenario made by recording has no verifications in it, so ask the AI assistant
 
 ## Test list and runs (Test Explorer)
 
-In VSCode's Testing view, the project's scenarios appear in three levels: file -> class -> test.
+In VSCode's Testing view, the project's scenarios appear in three levels: folder -> class -> test.
 
-- You can select tests and press "Run" or "Run (dry-run)".
+- You can select tests and press "Run" or "Run (dry-run)". Before "Run", choose a run profile with
+  `fleetest: Select Run Profile` in the Command Palette (without one, the run does not start).
 - Pass/fail is shown right there, and you can open the failure report from it.
 
 <img src="../images/tutorial/en/vscode_test_explorer.png" width="720" alt="Test Explorer">
 
 ## Watching recordings
 
-If you have enabled recording in the run profile, the "Test Sessions" tab lets you look back at each scenario's video and steps.
+Recording is on by default, and the "Test Sessions" tab lets you look back at each scenario's video and steps.
 If the Device Monitor is showing when a run finishes, it switches to this tab automatically.
 You can also export the results to an Excel file.
 
+To save space, you can keep recordings only for failed scenarios.
+
 ```text
-Turn on recording for fleetest's iOS runs.
+For fleetest's iOS runs, keep recordings only for failed scenarios.
 ```
 
 <img src="../images/tutorial/en/vscode_test_sessions.png" width="720" alt="Test Sessions">

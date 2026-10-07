@@ -19,7 +19,7 @@
 ## 例
 
 ```swift
-let 合計 = try await fetchTotal()   // procedure { } 内で取得した値など
+let 合計 = select("#total").text     // 画面から読んだ値や httpRequest の応答など
 合計.thisContains("1,200")
 合計.thisStartsWith("合計")
 (10 * 3).thisIs(30)

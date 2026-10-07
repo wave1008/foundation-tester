@@ -69,17 +69,17 @@ fleetest の過去の実行結果から、通ったり落ちたりする不安�
 <summary><b>手動で実行(クリックで詳細表示)</b></summary>
 
 ```bash
-fleetest results flaky      # 成功も失敗もするシナリオ
-fleetest results insights   # 退行・連続失敗・遅くなったシナリオ・特定デバイスへの偏り など
-fleetest results slow       # 平均所要時間が長い順
+../foundation-tester/.build/debug/fleetest results flaky      # 成功も失敗もするシナリオ
+../foundation-tester/.build/debug/fleetest results insights   # 退行・連続失敗・遅くなったシナリオ・特定デバイスへの偏り など
+../foundation-tester/.build/debug/fleetest results slow       # 平均所要時間が長い順
 ```
 
 </details>
 
 ## 実行の様子を見返す
 
-- 実行プロファイルで録画を有効にすると、シナリオごとの動画が残ります。「iOS の実行で録画を有効にして」と
-  頼めば設定されます。録画は VSCode 拡張の「テストセッション」タブで見られます([VSCode で見る](watching_in_vscode_ja.md))。
+- 録画は既定で有効で、シナリオごとの動画が残ります(容量を抑えたいときは「失敗したシナリオの録画だけ残して」と
+  頼めます)。録画は VSCode 拡張の「テストセッション」タブで見られます([VSCode で見る](watching_in_vscode_ja.md))。
 - シナリオごとの実行ログ(各手順の成否と、実行中に出た出力)も残っています。
   「直近の実行のログインのテストの実行ログを見せて」と頼めば読めます。
 

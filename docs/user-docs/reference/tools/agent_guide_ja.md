@@ -28,7 +28,7 @@
 ```swift
 import FTDSL
 
-@TestClass(app: "com.example.app", platform: "ios")
+@TestClass
 class SignInExample {
     @Test("Signing in shows the home screen")
     func S0010() {

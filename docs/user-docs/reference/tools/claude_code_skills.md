@@ -22,7 +22,7 @@ through [Update](../../update.md) or `/fleetest-update`.
 
 | Skill | Command | Purpose |
 |---|---|---|
-| `fleetest-setup` | `/fleetest-setup` | Full initial setup: clone if needed, build, verify the environment, create your project, set up app/run profiles, and install the VS Code extension |
+| `fleetest-setup` | `/fleetest-setup` | Full initial setup: clone if needed, build, verify the environment, and install the VS Code extension (it creates no test project or profiles; use `fleetest-profiles`) |
 | `fleetest-update` | `/fleetest-update` | Pull the latest upstream fixes: git pull, resync `TestProjects/`/`Package.swift`, rebuild, reinstall the VS Code extension, and reload |
 | `fleetest-profiles` | `/fleetest-profiles` | Create app and run profiles together in one pass (asks for iOS/Android and the app's display name/ID, then picks or creates a device) |
 | `fleetest-scenario` | `/fleetest-scenario` | Author one Swift DSL scenario (`.swift`) in an already set-up project, from live exploration through compile verification |

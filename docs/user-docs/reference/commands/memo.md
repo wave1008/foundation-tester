@@ -37,7 +37,7 @@ devices — see Scope below). Names and behavior follow Shirates.
 ## Example
 
 ```swift
-@TestClass(app: "com.example.myapp")
+@TestClass
 class OrderFlow {
     func setUpDevice() {
         launchApp()

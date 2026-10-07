@@ -17,7 +17,7 @@ per-test setup/teardown.
 ## Example
 
 ```swift
-@TestClass(app: "com.example.myapp", platform: "ios")
+@TestClass
 class LoginFlow {
     func beforeEach() {
         irregularHandler("#promo_modal", dismiss: "#btn_promo_close")

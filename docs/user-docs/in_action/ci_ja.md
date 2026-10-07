@@ -12,11 +12,10 @@
   この経路の動作検証もしていません)。
 - **ログイン済みの GUI セッションのユーザーで実行してください**(Simulator 実行の一般則です)。
   ヘッドレスの `LaunchDaemon` や ssh 直のセッションでは Simulator が不安定になります。
-- **Apple Intelligence は不要です。** 無くても `screenLooksLike`・テキストの視覚検証は
-  自動的にスキップされるだけで(起動時に `⚠️` が1行出ます)、決定的実行(タップ・検証)と
-  自己修復(ロケータの指紋照合。FM を使いません)はそのまま全機能動きます。
-  **ただし `screenLooksLike`・`requireVisible` を使うシナリオは、
-  この場合は検証されずに素通り(pass)します**(run 末尾の FM 警告がその旨を出します)。
+- **Apple Intelligence は不要です。** 無くても(起動時に `⚠️` が1行出ます)、決定的実行(タップ・検証)と
+  自己修復(ロケータの指紋照合。FM を使いません)はそのまま動きます。変わるのは2つです。
+  **`screenLooksLike` は判定されずに通ります**。**テキストの視覚検証は OCR だけで判定します**
+  ([テキストの視覚検証](../reference/testclass/text_visual_check_ja.md))。
   画面照合を CI でも効かせたい場合は [docs/ci.md](../../ci.md) の「Apple Intelligence を
   CI で使う」を参照してください。
 - Xcode(Android を回すなら Android SDK も)がランナーに導入済みであること。

@@ -69,17 +69,17 @@ Go through past fleetest results and find scenarios that are flaky (sometimes pa
 <summary><b>Do it manually (click to show details)</b></summary>
 
 ```bash
-fleetest results flaky      # Scenarios that both pass and fail
-fleetest results insights   # Regressions, consecutive failures, scenarios that got slower, bias toward specific devices, etc.
-fleetest results slow       # In descending order of average duration
+../foundation-tester/.build/debug/fleetest results flaky      # Scenarios that both pass and fail
+../foundation-tester/.build/debug/fleetest results insights   # Regressions, consecutive failures, scenarios that got slower, bias toward specific devices, etc.
+../foundation-tester/.build/debug/fleetest results slow       # In descending order of average duration
 ```
 
 </details>
 
 ## Look back at how a run went
 
-- If you enable recording in the run profile, a video is kept for each scenario. Asking
-  "enable recording for the iOS runs" sets it up. You can watch recordings in the "Test Sessions" tab of the VSCode extension ([Watching in VSCode](watching_in_vscode.md)).
+- Recording is on by default, and a video is kept for each scenario (to save space, ask "keep recordings only for
+  failed scenarios"). You can watch recordings in the "Test Sessions" tab of the VSCode extension ([Watching in VSCode](watching_in_vscode.md)).
 - Per-scenario execution logs (the pass/fail of each step and the output produced during the run) are also kept.
   Ask "show me the execution log of the login test in the most recent run" to read it.
 
