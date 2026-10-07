@@ -604,6 +604,29 @@ public enum TapTargetGeometry {
         return area.height >= minimumHeight ? area : nil
     }
 
+    /// 縦ドラッグの始点 y が**入力欄の上に乗るなら、入力欄の無い高さへずらす**(距離・向きは保つ)。
+    /// SwiftUI の TextField から始めたドラッグはスクロールにならず、何も動かない
+    /// (実測 E2EX-iOS 入力画面・XCUITest: 始点が「名」の欄 425..459 で 0pt、文字の行からなら 91pt 動いた)。
+    /// `fingerUp` = 指を上へ(終点 = 始点 − distance)。ずらす先は `area` の中で終点も収まる範囲、元の始点に最も近い所。
+    /// 入力欄に乗っていなければ元の y・置き場が無ければ nil(撃っても動かないので呼び手は諦める)
+    public static func dragStartAvoidingTextInputs(fromY: Double, x: Double, distance: Double, fingerUp: Bool,
+                                                   area: FTRect, elements: [ElementInfo]) -> Double? {
+        let inputs = elements.filter {
+            TypeReadback.isTextInput($0) && x >= $0.frame.x && x <= $0.frame.x + $0.frame.width
+        }.map(\.frame)
+        func onInput(_ y: Double) -> Bool { inputs.contains { y >= $0.y && y <= $0.y + $0.height } }
+        guard onInput(fromY) else { return fromY }
+        let low = fingerUp ? area.y + distance : area.y + dragStartEdgeClearance
+        let high = fingerUp ? area.y + area.height - dragStartEdgeClearance : area.y + area.height - distance
+        guard low <= high else { return nil }
+        // 候補は欄の上下の縁のすぐ外側(欄と欄の隙間・文字の行に当たる)
+        let candidates = inputs.flatMap { [$0.y - dragStartEdgeClearance, $0.y + $0.height + dragStartEdgeClearance] }
+            .filter { $0 >= low && $0 <= high && !onInput($0) }
+        return candidates.min { abs($0 - fromY) < abs($1 - fromY) }
+    }
+    /// 始点を欄の縁・領域の縁から離す量(pt / Android は px)。縁ちょうどは丸めで欄に乗りうる
+    static let dragStartEdgeClearance = 4.0
+
     /// `advisoryKind` が `.overlayCovering` を選んだときの覆いだけを返す薄い口。
     /// **チェーンの優先順を迂回しない**ため、直接 `OcclusionGeometry.overlayCovering` を
     /// 呼ばずにここを通す(zero-frame・画面外・容器外が先に当たる形では nil)

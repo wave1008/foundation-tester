@@ -154,6 +154,18 @@ final class ScrollSpanShrinkTests: XCTestCase {
         XCTAssertLessThan(path.toY, keyboard.y, "終点がキーボードの上に乗っている: \(path)")
     }
 
+    /// **キーボードの下で見つかった要素は「見えている」で止めず、送る**(E2EX-iOS 入力画面 S0040・XCUITest:
+    /// 打った後にキーボードの下へ残った echo を見つけたで止まり、視覚検証が描かれていないと赤にした)
+    func testScrollSearchDoesNotStopOnAnElementUnderTheKeyboard() async throws {
+        let keyboard = FTRect(x: 0, y: 600, width: 402, height: 274)
+        let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 640)], keyboardFrame: keyboard)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "anchor"), direction: "down", maxSwipes: 1)
+
+        _ = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(step)
+
+        XCTAssertFalse(driver.paths.isEmpty, "キーボードの下の要素で探索が止まった(1本も送っていない)")
+    }
+
     /// キーボードが無ければ従来どおり座標を送らない(scrollFrame 未指定の既定経路は変えない)
     func testScrollActionSendsNoPathWithoutScrollFrameOrKeyboard() async throws {
         let driver = PathRecordingDriver(elements: [Self.frame(anchorY: 400)])

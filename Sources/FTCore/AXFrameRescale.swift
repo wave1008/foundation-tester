@@ -4,8 +4,9 @@
 // 実測 iPhone 17 Pro(倍率 3): FlutterView と根の容器は 402x874 のまま、**ルートのノードだけが
 // 134x291.3 = 402x874 ÷ 3** と申告し、その下の全要素が同じ比で縮む(戻るボタン 56pt → 18.7pt・y 62 → 20.7)。
 // その「ちょうど画面倍率で割った FlutterView の枠」を申告するノードを見つけ、その下を実の枠へ写す純粋判定。
-// **in-app ブリッジと共有**(InAppBridge/build.sh の SWIFT_SOURCES と BridgeSourceSet の inApp に載っている =
-// 触ったら bridgeProtocolVersion を上げる)。Foundation と FTRect(BridgeDTO)以外に依存しない
+// **in-app ブリッジと XCUITest ランナーが共有**(InAppBridge/build.sh の SWIFT_SOURCES・Runner/project.yml と
+// BridgeSourceSet の inApp / xcuitest に載っている = 触ったら bridgeProtocolVersion を上げる)。
+// Foundation と FTRect(BridgeDTO)以外に依存しない
 
 import Foundation
 

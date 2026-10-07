@@ -39,6 +39,7 @@ targets:
       - path: ../Sources/FTCore/BridgeDTO.swift
       - path: ../Sources/FTCore/SnapshotDedupe.swift
       - path: ../Sources/FTCore/TypeReadback.swift
+      - path: ../Sources/FTCore/AXFrameRescale.swift
     dependencies:
       - target: FleetestRunnerApp
     settings:

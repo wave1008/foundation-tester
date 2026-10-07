@@ -1724,7 +1724,8 @@ extension StepExecutor {
             guard let jump, let coverRect,
                   let dragArea = TapTargetGeometry.uncoverDragArea(container: container,
                                                                    cover: coverRect),
-                  await slowDrag(jump: jump, container: dragArea, phase: &phase) else { return nil }
+                  await slowDrag(jump: jump, container: dragArea,
+                                 avoidingInputsIn: currentSnapshot.elements, phase: &phase) else { return nil }
             let start = clock.now
             let after = try await freshSnapshot(.afterOwnMove)
             phase.snapshotMs += Self.ms(clock.now - start)

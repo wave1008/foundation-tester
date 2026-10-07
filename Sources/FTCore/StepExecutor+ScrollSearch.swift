@@ -414,10 +414,19 @@ extension StepExecutor {
     /// まだ速く、189px のドラッグが慣性で 700px 走って**逆向きの飛び越し**になった
     /// (Emulator で観測)。指を離す直前の速度が閾値を下回るよう、
     /// **距離ぶんの時間を必ず取る**(reverseSweepDragSpeed px/s)
+    /// `avoidingInputsIn` = 渡したら、始点が入力欄に乗るときにずらす(`dragStartAvoidingTextInputs`。縦だけ)
     func slowDrag(jump: Double, container: FTRect, vertical: Bool = true,
-                          phase: inout PhaseAccumulator) async -> Bool {
-        guard let g = Self.dragGesture(jump: jump, container: container,
+                  avoidingInputsIn elements: [ElementInfo]? = nil,
+                  phase: inout PhaseAccumulator) async -> Bool {
+        guard var g = Self.dragGesture(jump: jump, container: container,
                                        viewport: container, vertical: vertical) else { return false }
+        if vertical, let elements {
+            let distance = abs(g.toY - g.fromY)
+            guard let fromY = TapTargetGeometry.dragStartAvoidingTextInputs(
+                fromY: g.fromY, x: g.fromX, distance: distance, fingerUp: g.toY < g.fromY,
+                area: container, elements: elements) else { return false }
+            g = (g.fromX, fromY, g.toX, g.toY < g.fromY ? fromY - distance : fromY + distance)
+        }
         let clock = ContinuousClock()
         let start = clock.now
         let distance = vertical ? abs(g.toY - g.fromY) : abs(g.toX - g.fromX)
@@ -555,11 +564,16 @@ extension StepExecutor {
                 // これが無いと viewport が画面全体になり、容器の外に並ぶ ghost 要素を
                 // 「見えている」と判定して探索がそこで止まる(実測: #row_30 が
                 // label=nil・y=783 = 容器 230..692 の外で見つかり、タップが飲まれた)
-                let viewport = (scrollContainer(step: step, in: snapshot,
+                let containerViewport = (scrollContainer(step: step, in: snapshot,
                                                 vertical: direction == .up || direction == .down)
                                 ?? ContainerGeometry.clippingContainer(of: element, in: snapshot.elements,
                                                           inferring: step.containerInference ?? true))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
+                // **キーボードの下は見えていない**: 差し引かないと、打った後にキーボードの下へ残った echo を
+                // 「見つけた」で止まり、視覚検証が描かれていないと赤にした(E2EX-iOS 入力画面 S0040・XCUITest)
+                let viewport = ScrollGeometry.intersection(
+                    containerViewport, ScrollGeometry.viewport(snapshot.screen, excludingKeyboard: effectiveKeyboard))
+                    ?? containerViewport
                 // **in-app の自前描画(Compose / Flutter)の送りは path の長さに関係なく a11y の scroll = 1ページ**なので、
                 // 見切れを戻す1本が逆側へ飛び越して往復し、予算を使い切った(E2EY-CMP の反転チャット: 容器の外の
                 // #msg_40 を8本で拾えず)。この経路では戻しを必ず距離どおりのドラッグで撃ち(下の slowDrag)、

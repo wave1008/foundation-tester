@@ -102,6 +102,7 @@ extension BridgeRouter {
     /// dedupe・間引きをまとめて行う)
     private func gather(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                         insideWebView: Bool,
+                        rescale inherited: AXFrameRescale? = nil,
                         gathered: inout [Gathered],
                         keyboardFrame: inout CGRect?,
                         offscreenHints: inout [ElementInfo]) {
@@ -116,18 +117,20 @@ extension BridgeRouter {
         // WebView は入れ子で複数出る(Compose iOS の interop ラッパで実測3重)。外側だけ残さないと
         // `.webView[1]` がどれを指すか読めない。Android ブリッジの nestedWebView と同じ規則
         let isWebView = node.elementType == .webView
+        let rescale = Self.flutterRescale(node, screen: screen, inherited: inherited)
+        let frame = rescale.map { Self.cgRect($0.apply(Self.ftRect(node.frame))) } ?? node.frame
         if isWebView && insideWebView {
             for child in node.children {
-                gather(child, depth: depth, screen: screen, insideWebView: true,
+                gather(child, depth: depth, screen: screen, insideWebView: true, rescale: rescale,
                        gathered: &gathered,
                        keyboardFrame: &keyboardFrame,
                        offscreenHints: &offscreenHints)
             }
             return
         }
-        if shouldInclude(node, screen: screen) {
-            let info = makeInfo(node, ref: 0, depth: depth)
-            gathered.append(Gathered(info: info, frame: node.frame))
+        if shouldInclude(node, frame: frame, screen: screen) {
+            let info = makeInfo(node, frame: frame, ref: 0, depth: depth)
+            gathered.append(Gathered(info: info, frame: frame))
         } else if insideWebView, offscreenHints.count < BridgeAPI.maxSnapshotElements,
                   isOffscreenHintCandidate(node, screen: screen) {
             // ref 0(座標表に入れない・タップ対象にしない)。Captured.offscreen 参照。
@@ -136,17 +139,42 @@ extension BridgeRouter {
         }
         for child in node.children {
             gather(child, depth: depth + 1, screen: screen,
-                   insideWebView: insideWebView || isWebView,
+                   insideWebView: insideWebView || isWebView, rescale: rescale,
                    gathered: &gathered, keyboardFrame: &keyboardFrame,
                    offscreenHints: &offscreenHints)
         }
     }
 
-    private func shouldInclude(_ node: XCUIElementSnapshot, screen: CGRect) -> Bool {
-        let frame = node.frame
+    private func shouldInclude(_ node: XCUIElementSnapshot, frame: CGRect? = nil, screen: CGRect) -> Bool {
+        let frame = frame ?? node.frame
         guard frame.width >= 2, frame.height >= 2 else { return false }
         guard screen.isEmpty || frame.intersects(screen) else { return false }
-        return isEligible(node, screen: screen)
+        return isEligible(node, frame: frame, screen: screen)
+    }
+
+    /// **Flutter のオーバーレイ後に 1/画面倍率へ縮んだ木を実の枠へ写す**(in-app の `InAppSnapshot.rescaleBelow` と
+    /// 同じ事象・判定は `AXFrameRescale` を共有)。始めるのは「Flutter のノード(`UIAccessibilityElement`)が
+    /// ちょうど『画面 ÷ 倍率』を申告した」とき。引き継ぐのは Flutter のノードとその scroll 容器(`UIScrollView`)
+    /// だけで、他の UIKit の view(PlatformView の中身 = 実の view ジオメトリを持つ)で外す。
+    /// FlutterView が画面全体でない構成(add-to-app)は見つからない = 申告どおり(推測で写さない)
+    private static func flutterRescale(_ node: XCUIElementSnapshot, screen: CGRect,
+                                       inherited: AXFrameRescale?) -> AXFrameRescale? {
+        let axClass = axClassName(node)
+        if let inherited {
+            return axClass == nil || axClass == "UIAccessibilityElement" || axClass == "UIScrollView"
+                ? inherited : nil
+        }
+        guard axClass == "UIAccessibilityElement", !screen.isEmpty else { return nil }
+        return AXFrameRescale.shrunkSubtree(reported: ftRect(node.frame), view: ftRect(screen),
+                                            screenScale: Double(UIScreen.main.scale))
+    }
+
+    private static func ftRect(_ r: CGRect) -> FTRect {
+        FTRect(x: r.origin.x, y: r.origin.y, width: r.width, height: r.height)
+    }
+
+    private static func cgRect(_ r: FTRect) -> CGRect {
+        CGRect(x: r.x, y: r.y, width: r.width, height: r.height)
     }
 
     /// 画面外ヒント(offscreenHints)の候補判定。サイズガードは shouldInclude と共有、
@@ -156,17 +184,16 @@ extension BridgeRouter {
         let frame = node.frame
         guard frame.width >= 2, frame.height >= 2 else { return false }
         guard !screen.isEmpty, !frame.intersects(screen) else { return false }
-        return isEligible(node, screen: screen)
+        return isEligible(node, frame: frame, screen: screen)
     }
 
     /// 型・テキストによる採用資格(画面内/外は問わない)。shouldInclude(可視要素)と
     /// isOffscreenHintCandidate(WebView 配下の画面外ノード)が共有する
-    private func isEligible(_ node: XCUIElementSnapshot, screen: CGRect) -> Bool {
+    private func isEligible(_ node: XCUIElementSnapshot, frame: CGRect, screen: CGRect) -> Bool {
         // 画面の大半を覆う Other コンテナは identifier があっても除外する。
         // タップ対象になり得ず、id が「タブ」等に見えると FM の誤タップを誘発する
         // (SwiftUI の .accessibilityIdentifier がコンテナに付くケース)。
         if node.elementType == .other {
-            let frame = node.frame
             let screenArea = screen.width * screen.height
             if screenArea > 0, (frame.width * frame.height) / screenArea > 0.85 {
                 return false
@@ -217,8 +244,8 @@ extension BridgeRouter {
         .scrollView, .table, .collectionView,
     ]
 
-    private func makeInfo(_ node: XCUIElementSnapshot, ref: Int, depth: Int) -> ElementInfo {
-        let frame = node.frame
+    private func makeInfo(_ node: XCUIElementSnapshot, frame: CGRect? = nil, ref: Int, depth: Int) -> ElementInfo {
+        let frame = frame ?? node.frame
         return ElementInfo(
             ref: ref,
             type: Self.isLiveRegionText(node) ? Self.typeName(.staticText) : Self.typeName(node.elementType),
