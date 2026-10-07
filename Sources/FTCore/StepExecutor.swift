@@ -691,6 +691,7 @@ public final class StepExecutor {
         noteCodesThisStep = []
         firstFrameBlankObserved = false
         failureKindThisStep = nil
+        failureKindWithheldThisStep = false
         classifierScreenshotThisStep = nil
         classifierFailureThisStep = nil
         imageMatchesThisStep = nil
@@ -887,6 +888,9 @@ public final class StepExecutor {
     /// このステップの失敗の素性。**最初に立てたものを残す**(内側の救済経路が後から
     /// 別の理由で落ちても、読み手が知りたいのは最初に何が起きたか)
     var failureKindThisStep: StepFailureKind?
+    /// 判定そのものができなかった失敗(`failedWithoutKind`)で立つ。立っている間は素性を立てない
+    /// = 結果 JSON の failureKind を欄ごと省く(「言えないときは省く」。出口の丸め `markFailure(.assertion)` も止める)
+    var failureKindWithheldThisStep = false
     /// このステップで画像の判定(分類器・画像の照合)が最後に使ったスクリーンショット(`StepOutcome.evidenceImage` の元)
     var classifierScreenshotThisStep: Data?
     /// このステップで分類器の答えを使わなかった理由(`VisionClassifier.ClassifyError`。直近の1件)
@@ -912,7 +916,14 @@ public final class StepExecutor {
 
     /// 失敗の素性を立てる。**上書きしない** = 最初の理由が残る(failureKindThisStep の doc)
     func markFailure(_ kind: StepFailureKind) {
-        if failureKindThisStep == nil { failureKindThisStep = kind }
+        if failureKindThisStep == nil, !failureKindWithheldThisStep { failureKindThisStep = kind }
+    }
+
+    /// 期待と違ったのか見つからなかったのかを言えない失敗(木が天井でも切り詰められている・
+    /// ブリッジが状態を返さない)。失敗のまま、素性だけを立てない(`.inconclusive` にすると run が緑になる)
+    func failedWithoutKind(_ message: String) -> StepResult.Status {
+        failureKindWithheldThisStep = true
+        return .failed(message)
     }
 
     /// 素性を立てつつ失敗を返す。`return .failed(…)` の形を保ったまま素性だけ足せる

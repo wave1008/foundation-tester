@@ -746,6 +746,11 @@ extension StepExecutor {
             // フレームワーク任せで揃わない。"\n" を含まない入力は両経路で結果が同じなので、この
             // 振り分けはエンジン間の観測可能な挙動差を生まない。
             let text = step.text ?? ""
+            // **確実に入力欄でないものへは、撃つ前に断る**(nonTextInputPreflightRefusal の doc)。
+            // replace のクリアもタップを伴うので、それより前に置く
+            if let refusal = nonTextInputPreflightRefusal(element, in: snapshot.elements, action: "type") {
+                return StepOutcome(status: .failed(refusal))
+            }
             // **replace は3経路(typeDriver優先/通常/409フォールバック)より前に1回だけクリアする**。
             // 空にできていないのに書き足すと検証対象と違う値になるので、clear が失敗したら
             // type を撃たずこのステップを失敗させる
@@ -851,6 +856,9 @@ extension StepExecutor {
             pendingTypeKeyboardCheck = true
             pendingTypeEndedWithNewline = text.hasSuffix("\n")
         case "clearInput":
+            if let refusal = nonTextInputPreflightRefusal(element, in: snapshot.elements, action: "clearInput") {
+                return StepOutcome(status: .failed(refusal))
+            }
             if let td = typeDriver, preferTypeDriver,
                try await clearViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep,
@@ -1250,6 +1258,21 @@ extension StepExecutor {
     enum ClearOutcome {
         case cleared(driverFallback: String?)
         case failed(String)
+    }
+
+    /// type/clearInput を**撃つ前に**断る文言(nil = 撃ってよい)。ドライバは打つ・消す前に対象をタップするので、
+    /// 対象がボタン等なら押してしまう(送信・購入)。断るのは `TypeReadback.isPositivelyNonTextInput`
+    /// (ネイティブ描画と分かっていて型がボタン等)のときだけ —— 自前描画では本物の入力欄が別の型で報告されるので
+    /// 型名で断らない。内側に入力欄がちょうど1つある容器(`nonInputTypeTargetNote` が non-nil)は従来どおり撃つ
+    func nonTextInputPreflightRefusal(_ element: ElementInfo, in elements: [ElementInfo],
+                                      action: String) -> String? {
+        guard TapTargetGeometry.nonInputTypeTargetNote(element, in: elements) == nil,
+              TypeReadback.isPositivelyNonTextInput(element, selfRendered: uiFramework?.isSelfRendered) else {
+            return nil
+        }
+        return "the target is a \(element.type), not a text field — refusing before anything is"
+            + " \(action == "type" ? "typed" : "cleared") (\(action) taps its target first, so the"
+            + " \(element.type) would fire — a submit or a purchase). Point the selector at the input field itself."
     }
 
     /// type/clearInput が `TypeReadback.isPositivelyNonTextInput` で撃ち直しを断ったときの文言。

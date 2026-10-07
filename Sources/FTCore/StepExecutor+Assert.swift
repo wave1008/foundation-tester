@@ -1147,7 +1147,7 @@ extension StepExecutor {
             // `truncatedDuringSearch` の注記だけでは**検証は通ってしまう**)。通り過ぎた
             // 画面の木はもう手元に無いので、ここは撮り直しでは救えない = その場で判定不能にする
             if result.maxTruncatedDuringSearch > 0 {
-                return .failed(Self.undecidableTruncationMessage(
+                return failedWithoutKind(Self.undecidableTruncationMessage(
                     "absence", step: step,
                     evidence: "the tree hit the element limit during the scroll search"
                         + " (\(result.maxTruncatedDuringSearch) element(s) were omitted in at"
@@ -1196,7 +1196,7 @@ extension StepExecutor {
                 // 天井でも切り詰められている = 「無い」と「送られていない」を分けられない。
                 // ここで pass を返すのが掃討した誤った成功そのもの
                 if snapshot.truncatedCount > 0 {
-                    return .failed(Self.undecidableTruncationMessage(
+                    return failedWithoutKind(Self.undecidableTruncationMessage(
                         "absence", step: step,
                         evidence: Self.ceilingTruncationEvidence(snapshot)))
                 }
@@ -1498,7 +1498,7 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         guard lastShown != nil else {
-            return .failed("cannot determine the keyboard state (the bridge may be outdated)")
+            return failedWithoutKind("cannot determine the keyboard state (the bridge may be outdated)")
         }
         return .failed(wantShown
             ? "keyboard is not shown (timeout \(FTSeconds.format(step.timeout ?? tunables.defaultTimeout))s)"
@@ -1815,7 +1815,7 @@ extension StepExecutor {
                 noteUnderreportedTree(snapshot)
                 // 天井でも足りない木で数えた一致は根拠にならない(notExists と同じ誤った成功)
                 if snapshot.truncatedCount > 0 {
-                    return .failed(Self.undecidableTruncationMessage(
+                    return failedWithoutKind(Self.undecidableTruncationMessage(
                         "the count", step: step,
                         evidence: Self.ceilingTruncationEvidence(snapshot)))
                 }

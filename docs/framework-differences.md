@@ -163,8 +163,10 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | UIKit / SwiftUI / RN | `insertText` | `textFieldShouldReturn:` + EditingDidEndOnExit を再現(SwiftUI の `onSubmit` もこの経路) | 置換後に EditingChanged と通知を補う |
 | Flutter | `insertText` | engine の私有 API(`flutterTextInputView:performAction:withClient:`)へ配送。欠けていれば 409 | **in-app では非対応** → XCUITest へ |
 
-- **入力欄でない対象(ボタン等)への `type` / `clearInput` は、自前描画でないと確定しているとき(UIKit / SwiftUI / RN)だけ
-  XCUITest へ回さずに失敗させる**(in-app がタップ済みのところへ XCUITest がもう一度タップすると2回押す)。
+- **入力欄でない対象(ボタン等)への `type` / `clearInput` は、自前描画でないと確定しているとき(UIKit / SwiftUI / RN /
+  Android View)は撃つ前に失敗させる**(ドライバは打つ・消す前に対象をタップするので、撃つと押してしまう。
+  `StepExecutor.nonTextInputPreflightRefusal`。入力欄をちょうど1つ包む容器は撃つ)。同じ判定で、in-app の 409 からの
+  XCUITest への撃ち直しも止める(in-app がタップ済みのところへ XCUITest がもう一度タップすると2回押す)。
   **Compose / Flutter / 判定不明は従来どおり回す**(型名が入力欄の判定に当てにならない)。**B**(型の対象が誤っているシナリオの
   失敗の仕方が割れる。判定は `TypeReadback.isPositivelyNonTextInput`)
 - **`\n` を含む `type` は、フレームワークを問わず XCUITest へ回す**(改行の意味を iOS の Return キーに揃えるため。

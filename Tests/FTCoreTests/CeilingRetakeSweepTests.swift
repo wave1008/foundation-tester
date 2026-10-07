@@ -175,6 +175,19 @@ final class CeilingRetakeSweepTests: XCTestCase {
                       "切り詰めが原因でも黙って「見つからない」とだけ言っている: \(message)")
     }
 
+    /// 天井でも切り詰められていて「無い」と言えない notExist の失敗は、素性を「期待と違った(assertion)」に
+    /// 丸めず欄ごと省く(無いのか送られていないのかを言えない。失敗そのものは失敗のまま)
+    func testUndecidableTruncationFailureCarriesNoFailureKind() async {
+        let driver = CeilingRetakeStubDriver(target: nil)
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "msg"), timeout: 0)
+        let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(step)
+        guard case .failed = outcome.status else {
+            XCTFail("expected a failure, got \(outcome.status)")
+            return
+        }
+        XCTAssertNil(outcome.failureKind, "判定できなかった失敗に素性が付いた: \(String(describing: outcome.failureKind))")
+    }
+
     /// 塞ぐ穴: 既に天井で読まれた木への撮り直しは同じ木が返るだけの1枚 —— 撮らずに済ませる
     /// (retakenAtElementLimitCeiling の isAtCeiling ガード)
     func testRetakeIsSkippedWhenTheTreeIsAlreadyAtTheCeiling() async {

@@ -27,6 +27,11 @@ field.type("alice")                // same as type("#login_id", "alice")
 
 ## Notes
 
+- **Pointing it at a button or another non-input element fails before anything is typed.** `type` taps its target
+  first, so typing into a button would press it (a submit or a purchase). It refuses only when the UI framework is known
+  to be UIKit, SwiftUI, React Native or Android View and the element's type is a button, switch, link and so on
+  (Compose and Flutter can report a real input field with another type, so they are not refused). Pointing at an
+  element that wraps exactly one input field types into it with a warning.
 - **Line breaks (`\n`) follow the OS default.** On iOS this arrives as a Return key press: it
   inserts a newline in a multi-line field, or fires the field's commit action (search, done, …)
   in a single-line field — which one happens depends on the field, not on `type`. On Android, a

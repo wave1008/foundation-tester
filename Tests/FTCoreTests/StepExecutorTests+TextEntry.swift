@@ -1080,4 +1080,61 @@ extension StepExecutorTests {
                        "フォーカス要素が無ければ事後 snapshot は撮らないはず: \(log.entries)")
     }
 
+
+    /// **確実に入力欄でない対象(ネイティブ描画のボタン)へは、type を撃つ前に断る** —— ドライバは打つ前に
+    /// 対象をタップするので、撃つと送信ボタン等を押してしまう(nonTextInputPreflightRefusal の doc)
+    func testTypeIntoConfirmedNativeButtonIsRefusedBeforeAnyTap() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_input_submit")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .uikit)
+        let outcome = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "btn_input_submit"),
+                                                      text: "hello"))
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("ボタンへの type は撃つ前に断るはずが \(outcome.status)"); return
+        }
+        XCTAssertTrue(message.contains("refusing before anything is typed"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type(") },
+                       "断ったのに type を撃った: \(log.entries)")
+    }
+
+    /// clearInput も同じ(ドライバは消す前に対象をタップする)
+    func testClearInputOnConfirmedNativeButtonIsRefusedBeforeAnyTap() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_input_submit")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .uikit)
+        let outcome = await executor.execute(FlowStep(action: "clearInput", locator: FlowLocator(id: "btn_input_submit")))
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("ボタンへの clearInput は撃つ前に断るはずが \(outcome.status)"); return
+        }
+        XCTAssertTrue(message.contains("refusing before anything is cleared"), message)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.clearInput(") },
+                       "断ったのに clearInput を撃った: \(log.entries)")
+    }
+
+    /// 自前描画(Compose 等)では型名を信じない = 断らずに撃つ(本物の入力欄が button で報告されうる)
+    func testTypeIntoButtonTypedElementOnSelfRenderedFrameworkIsNotRefused() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_name")]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .compose)
+        _ = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "field_name"), text: "hello"))
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.type(") },
+                      "自前描画では型名で断ってはいけない: \(log.entries)")
+    }
+
+    /// 内側に入力欄がちょうど1つある容器(ボタン型の包み)は従来どおり撃つ(警告だけ)
+    func testTypeIntoContainerWithOneInnerFieldIsNotRefused() async throws {
+        let log = CallLog()
+        let wrapper = element(ref: 1, id: "row_height")
+        let field = ElementInfo(ref: 2, type: "textField", identifier: nil, label: nil, value: nil,
+                                placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[wrapper, field]])
+        let executor = StepExecutor(driver: primary, isAndroid: false, tunables: RunTunables(), uiFramework: .uikit)
+        _ = await executor.execute(FlowStep(action: "type", locator: FlowLocator(id: "row_height"), text: "170"))
+        XCTAssertTrue(log.entries.contains { $0.hasPrefix("primary.type(") },
+                      "入力欄を1つ包む容器は断らずに撃つ: \(log.entries)")
+    }
 }

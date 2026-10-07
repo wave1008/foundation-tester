@@ -288,6 +288,14 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     func stop() async -> RecordingSource? {
         stopRequested = true
+        // **部分の終了処理(確定・再spawn)の途中なら、その完了を待ってから止める**。handlePartExited は
+        // process を nil にしてから await するので、その間に来た stop は下の停止を素通りし、後から確定した
+        // 部分が返却済みの files から漏れて .mov が残る。待った後に次の部分が動いていれば下の停止が止める
+        var awaitedExit: Task<Void, Never>?
+        while process == nil, let pending = watchTask, pending != awaitedExit {
+            awaitedExit = pending
+            await pending.value
+        }
         if let process, let watchTask {
             // 停止は SIGINT だけ(強制終了すると moov 未書き込みでファイルが壊れ、
             // 端末側の録画セッションも残る)

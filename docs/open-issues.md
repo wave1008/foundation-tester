@@ -41,11 +41,6 @@
 
 ## StepExecutor・DSL
 
-- **判定できなかったアサートを `failureKind=assertion` に丸める**(09-06)
-  - 症状: `undecidableTruncationMessage`(3か所)と「cannot determine the keyboard state」が素の `.failed` を返し、
-    `markFailure(.assertion)` で assertion に丸められる。CLAUDE.md の「言えないときは欄ごと省く」に反する
-  - 場所: `Sources/FTCore/StepExecutor.swift:732`、`StepExecutor+Assert.swift:1150`・1199・1818・1501
-  - 手がかり: 判定不能の経路で「素性無し」を明示する印を立てるか、`StepResult.Status.inconclusive` を使う
 - **`gestureFallbackLatched` が path 付き swipe の 501 でも立つ**(09-06)
   - 症状: `scrollFrame` 付きの swipe は in-app で必ず 501 になるので1回でラッチが立ち、以後は path 無しの swipe まで XCUITest の
     実スワイプになる(バウンス由来のフレーク)。長押しの 501 も同じラッチを立てる(`StepExecutor+Actions.swift:672`)
@@ -67,11 +62,11 @@
     `id!=…` だけが残り、条件が広がる
   - 場所: `Sources/FTCore/FTSelector.swift:737-750`
   - 手がかり: `FTSelector.parse("text=OK&&!.button#x")` を直列化して parse し直し、一致するかを見る
-- **DSL / ft_batch の `type` が入力欄でない要素を先にタップしてしまう**(09-11 §19.2)
-  - 症状: `nonInputTypeTargetNote` を注記として作るだけで `type(ref:)` を撃ち、ブリッジがタップしてから断る(送信ボタンを押す)。
-    MCP の ft_type は撃つ前に `notATextFieldRefusal` で断るので割れている。6f7df1ee は撃ち直しの2回目のタップを止めただけ
-  - 場所: `Sources/FTCore/StepExecutor+Actions.swift:793-813`、`Sources/fleetest-mcp/MCPServer+ScreenTools.swift:154-158`
-  - 手がかり: 撃つ前に `TypeReadback.isPositivelyNonTextInput` 相当で断る(注記だけにしない)
+- **Compose・Flutter では、DSL / ft_batch の `type` / `clearInput` が入力欄でない要素を先にタップし得る**(09-11 §19.2)
+  - 症状: ネイティブ描画(UIKit / SwiftUI / RN / Android View)は撃つ前に断るようにした(`StepExecutor.nonTextInputPreflightRefusal`)。
+    自前描画では本物の入力欄が `button` 等で報告されうるので型名で断れず、ボタンを指すと押してしまう。MCP の ft_type は
+    `TypeReadback.isTextInput` で撃つ前に断るので、自前描画では MCP と DSL の判断が割れたまま
+  - 手がかり: 自前描画で「確実に入力欄でない」を言える別の根拠(a11y の editable 属性・ブリッジの申告)を探す
 - **文字だけが描画されない Simulator を検知できない**(09-06)
   - 症状: 木は正常でも絵に文字が1つも出ずタイマーも進まないデバイスを凍結と判定できず、シナリオの赤としてだけ残る
   - 場所: `Sources/FTCore/FrozenVerdict.swift:17-43`(根拠の6種にこの形が無い)
@@ -130,13 +125,6 @@
 
 ## 録画・モニター・拡張
 
-- **iOS Simulator の録画: 再 spawn の途中で stop すると、孤児の `.mov` が残る**(09-06・コードからの推測)
-  - 症状: `handlePartExited` が `process = nil` にした後、`spawnNextPart` を待つ間に `stop()` が割り込むと、stop はその時点の
-    `parts` を返す。後で確定した part は返却済みの `RecordingSource.files` に入らず、削除から漏れて `recordings/*-partN.mov` が残る。
-    **台帳 09-11 §19.21 は「actor の実行モデルから起きない(走査テストで固定)」としていたが、該当の走査テストは見当たらない**
-  - 場所: `Sources/FTCore/IOSSimulatorVideoRecorder.swift:259-276`・:289-300
-  - 手がかり: 再 spawn 中の Task を持って stop がその完了を待つ。`VideoRecordingCoordinator.swift:97` の `makeSession` の注入口で
-    再 spawn を遅らせれば再現できるはず
 - **モニターの debounce で `wired` が落ちる**(09-06)
   - 症状: USB の iPhone 実機の /status が一時的に失敗すると保持中の状態から `wired` が抜け、WiFi 越しの分身を隠す処理
     (`ApiMonitorCommand.swift:736-737`)が効かず、分身が出たり消えたりし得る
