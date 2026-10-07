@@ -24,7 +24,7 @@
 // FM と Vision は別の量なので**別々の縦軸**(片方に合わせると読めなくなる)。
 
 import { t } from '../i18n.js';
-import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale, hmCompilingBands } from './hostChartScale.js';
+import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
 import { isMachineDisabled, onMachineEnablementChanged, LOCAL_MACHINE_LABEL } from './machineColors.js';
 
@@ -104,9 +104,7 @@ function hmMakeRow(rowEl, machine) {
     // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
     // fm は死活判定(fmIsDead)にも使う。
     fm: { window: [] },
-    // compiling: OCR モデルのコンパイル中だった tick(直近 HM_MAX_SAMPLES 件の boolean。entries.vision.samples と同じ右詰め)。
-    // count: 直近 tick のコンパイルプロセス数
-    vision: { window: [], compiling: [], compilingCount: 0 },
+    vision: { window: [] },
     // FM の死活(FMLiveness の最新の観測)。**窓を持たない** —— これはレートではなく
     // 「今この機械で FM を呼べるか」という水準で、直近の1サンプルがそのまま答え。
     // 'alive' / 'dead' / null=不明。呼び出しが0件でも埋まるのが回数系列との違い。
@@ -448,23 +446,14 @@ function hmRenderVisionLabel(row) {
   // 単位と一致させる)。
   const latest = row.vision.window.length > 0 ? row.vision.window[row.vision.window.length - 1] : null;
   const callsText = latest && latest.calls !== null ? String(latest.calls) : '–';
-  const compiling = hmIsCompilingNow(row);
   entry.value.textContent = callsText;
-  const compilingLine = compiling
-    ? t('wvMonitor2.hostCharts.visionCompilingTitle', { count: String(row.vision.compilingCount) }) + '\n'
-    : '';
-  entry.el.title = hmTitlePrefix(row) + compilingLine + t('wvMonitor2.hostCharts.visionTitle', {
+  entry.el.title = hmTitlePrefix(row) + t('wvMonitor2.hostCharts.visionTitle', {
     seconds: String(HM_COUNT_RATE_WINDOW_TICKS),
     rate: stats ? stats.rate.toFixed(1) : '–',
     calls: stats ? String(stats.calls) : '–',
     failures: stats ? String(stats.failures) : '–',
     totalSec: stats ? (stats.totalMs / 1000).toFixed(1) : '–',
   });
-}
-
-/** 直近 tick が OCR のコンパイル中か(Vision のチャートに重ねる語・ツールチップの行) */
-function hmIsCompilingNow(row) {
-  return row.vision.compiling.length > 0 && row.vision.compiling[row.vision.compiling.length - 1];
 }
 
 function hmPushSample(entry, ratio) {
@@ -520,15 +509,6 @@ function hmDraw(row, entry, scale) {
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
-  // コンパイル中の帯は線より先に塗る(Vision だけ)。色は系列色(グレー化のときは dead)
-  if (entry === row.entries.vision) {
-    ctx.globalAlpha = 0.35;
-    ctx.fillStyle = color;
-    for (const band of hmCompilingBands(row.vision.compiling, HM_MAX_SAMPLES, width)) {
-      ctx.fillRect(band.x0, 0, band.x1 - band.x0, height);
-    }
-    ctx.globalAlpha = 1;
-  }
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
     // 念のため枠外へはみ出させない(件数系列は hmCountScale が上限を含むので通常は効かない)
@@ -574,16 +554,6 @@ function hmDraw(row, entry, scale) {
     segment.push(point);
   }
   flushSegment();
-  // コンパイル中の語はチャートの上に重ねる(ユーザー決定。値のセルは回数のまま)。線の後に描いて隠れないようにする
-  if (entry === row.entries.vision && hmIsCompilingNow(row)) {
-    const style = window.getComputedStyle(document.body);
-    ctx.font = `10px ${style.fontFamily || 'sans-serif'}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    // 文字は系列と同じ色(ユーザー決定。機械が無効でグレーのときは文字もグレー)
-    ctx.fillStyle = color;
-    ctx.fillText(t('wvMonitor2.hostCharts.visionCompilingShort'), width / 2, height / 2);
-  }
 }
 
 function hmFormatPercent(ratio) {
@@ -750,12 +720,6 @@ function hmRenderRow(row, sample) {
   row.fm.window.push({ calls: fmCalls, failures: fmFailures, totalMs: fmTotalMs });
   if (row.fm.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
     row.fm.window.shift();
-  }
-  const ocrCompiling = sample && typeof sample.ocrCompiling === 'number' ? sample.ocrCompiling : 0;
-  row.vision.compiling.push(ocrCompiling > 0);
-  row.vision.compilingCount = ocrCompiling;
-  if (row.vision.compiling.length > HM_MAX_SAMPLES) {
-    row.vision.compiling.shift();
   }
   row.vision.window.push({ calls: visionCalls, failures: visionFailures, totalMs: visionTotalMs });
   if (row.vision.window.length > HM_COUNT_RATE_WINDOW_TICKS) {

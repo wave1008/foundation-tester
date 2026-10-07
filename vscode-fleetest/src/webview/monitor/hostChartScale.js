@@ -44,26 +44,3 @@ export function hmCountScale(samples, floor) {
 export function hmSharedCountScale(perRowSamples, floor) {
   return hmCountScale(perRowSamples.flat(), floor);
 }
-
-/** コンパイル中だった tick の x 範囲(隣り合う tick は1本に結合)。flags は古い順・右詰めで描く
- *  (hmDraw の点の位置合わせと同じ)。各 tick は自分の x を中心に stepX 幅を持つ。 */
-export function hmCompilingBands(flags, maxSamples, width) {
-  const stepX = width / (maxSamples - 1);
-  const startIndex = maxSamples - flags.length;
-  const bands = [];
-  flags.forEach((compiling, i) => {
-    if (!compiling) {
-      return;
-    }
-    const centre = (startIndex + i) * stepX;
-    const x0 = Math.max(0, centre - stepX / 2);
-    const x1 = Math.min(width, centre + stepX / 2);
-    const last = bands[bands.length - 1];
-    if (last && x0 <= last.x1 + 1e-9) {
-      last.x1 = x1;
-    } else {
-      bands.push({ x0, x1 });
-    }
-  });
-  return bands;
-}

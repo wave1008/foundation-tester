@@ -118,11 +118,6 @@ export const webviewMonitorBStrings = {
     ja: "Vision {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
     en: "Vision {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",
   },
-  "wvMonitor2.hostCharts.visionCompilingShort": { ja: "compiling", en: "compiling" },
-  "wvMonitor2.hostCharts.visionCompilingTitle": {
-    ja: "OCR モデルをコンパイル中({count} プロセス)",
-    en: "Compiling the OCR model ({count} process(es))",
-  },
   "wvMonitor2.hostCharts.fmTitle": {
     ja: "FM {rate}回/秒(直近{seconds}秒: {calls}回 / 失敗{failures}回 / 計{totalSec}秒)",
     en: "FM {rate}/s (last {seconds}s: {calls} calls / {failures} failed / {totalSec}s total)",

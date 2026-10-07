@@ -917,46 +917,26 @@ test("無効な機械のスパークラインは全系列とも同じ1色(色を
   assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
 });
 
-test("OCR モデルのコンパイル中は Vision のチャートの上に compiling を重ね、値のセルは回数のまま・ツールチップにコンパイルの行が付く", (t) => {
+test("OCR のコンパイルの印(ocrCompiling)が来ても Vision のチャートには文字も帯も重ねず、ツールチップにも出さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const texts = [];
-  const strokes = [];
+  const rects = [];
   window.HTMLCanvasElement.prototype.getContext = function () {
     const canvas = this;
     return {
-      setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {},
-      stroke() { strokes.push({ canvas, color: this.strokeStyle }); }, fillRect() {},
-      fillText(text) { texts.push({ canvas, text, color: this.fillStyle }); },
+      setTransform() {}, clearRect() {}, beginPath() {}, moveTo() {}, lineTo() {}, closePath() {}, fill() {}, stroke() {},
+      fillRect() { rects.push(canvas); },
+      fillText(text) { texts.push({ canvas, text }); },
     };
   };
   const cell = visionCell(document, "");
-  const overlaid = () => texts.filter((x) => cell.contains(x.canvas)).map((x) => x.text);
 
   // 線を引くには 2 点要る(1点だけだと hmDraw が何も描かない)
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 2 }));
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 2 }));
-  assert.ok(overlaid().includes("compiling"), "compiling が Vision のチャートに描かれていない");
-  // 文字の色は系列(線)と同じ(ユーザー決定)
-  const lineColor = strokes.filter((x) => cell.contains(x.canvas)).at(-1).color;
-  assert.ok(texts.filter((x) => cell.contains(x.canvas)).every((x) => x.color === lineColor),
-            "compiling の文字色が Vision の線の色と違う");
-  assert.equal(cell.querySelector(".hm-value").textContent, "3", "値のセルは回数のまま");
-  assert.match(cell.title, /^(OCR モデルをコンパイル中\(2 プロセス\)|Compiling the OCR model \(2 process\(es\)\))/);
-
-  texts.length = 0;
-  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 0 }));
-  assert.equal(overlaid().length, 0, "コンパイルが終われば重ねない");
-  assert.doesNotMatch(cell.title, /コンパイル中|Compiling/);
-});
-
-test("hmCompilingBands はコンパイル中の tick を右詰めの x 範囲にし、隣り合う tick を結合する", async () => {
-  const { hmCompilingBands } = await import("../src/webview/monitor/hostChartScale.js");
-  assert.deepEqual(hmCompilingBands([false, false], 60, 59), []);
-  // 59px / 59 区間 = stepX 1。2件は右詰めで index 58, 59 → x=58, 59
-  assert.deepEqual(hmCompilingBands([false, true], 60, 59), [{ x0: 58.5, x1: 59 }]);
-  assert.deepEqual(hmCompilingBands([true, true, false, true], 60, 59), [
-    { x0: 55.5, x1: 57.5 },
-    { x0: 58.5, x1: 59 },
-  ]);
+  assert.equal(texts.filter((x) => cell.contains(x.canvas)).length, 0);
+  assert.equal(rects.filter((c) => cell.contains(c)).length, 0);
+  assert.equal(cell.querySelector(".hm-value").textContent, "3");
+  assert.doesNotMatch(cell.title, /コンパイル|[Cc]ompil/);
 });
