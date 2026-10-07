@@ -88,7 +88,7 @@ Apple Intelligence は、ランナーの実体が物理 Mac(ベアメタル)の�
 ベアメタルで有効にするときの条件です。
 
 - Apple silicon で macOS 26 以上。`screenLooksLike` とテキストの視覚検証(画像入力)は macOS 27 以上が必要です。
-- 有効化は GUI で1回行います(システム設定 → Apple Intelligence と Siri。画面の無い機械は画面共有経由。
+- 有効化は GUI で1回行います(macOS 27 は システム設定 → Siri で Siri をオン(Siri が Apple Intelligence を使います)、macOS 26 は システム設定 → Apple Intelligence と Siri で「Apple Intelligence」をオン。画面の無い機械は画面共有経由。
   モデルのダウンロードが走ります)。EC2 Mac は素の AMI から作り直すと設定が消えるので、有効化したあとにカスタム AMI を作るか、
   プロビジョニングに有効化を含めてください。
 - ジョブの先頭で `fleetest doctor --fm-only` を実行し、終了コードで確かめてください。設定画面の表示が「使える」でも

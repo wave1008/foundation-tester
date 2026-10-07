@@ -657,7 +657,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 ## トラブルシューティング
 
-- **オンデバイスモデル: 利用不可** → システム設定で Apple Intelligence を有効化(`doctor` が理由を表示)
+- **オンデバイスモデル: 利用不可** → Apple Intelligence を有効化する(macOS 27 は システム設定 → Siri で Siri をオン、macOS 26 は システム設定 → Apple Intelligence と Siri → Apple Intelligence。`doctor` が理由を表示)
 - **ドライバに接続できません** → iOS: `bridge up` を先に実行(ログは `.fleetest/bridge-<ポート>.log`)。
   Android: `adb devices` で接続確認
 - **シナリオのコンパイルエラーで実行できない** → `swift build --product fleetest-scenarios-<プロジェクト名>`

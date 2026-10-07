@@ -219,8 +219,9 @@ MCP のデバイス操作・`/fleetest-scenario` のシナリオ作成・dry-run
 - **exit 0**（`✅ On-device model: available`）→ 次へ。
 - **exit 1**（無効／ダウンロード中／対象外）→ **セットアップは中断せず続行する**。有効化のための
   停止・待機・質問はしない。理由を控えておき、ステップ9の完了報告に
-  「Apple Intelligence 要有効化（FM 機能を使う場合）」として残す：後から System 設定 →
-  Apple Intelligence & Siri でオンにし、`fleetest doctor --fm-only` が ✅ になれば視覚検証・
+  「Apple Intelligence 要有効化（FM 機能を使う場合）」として残す：後から システム設定 →
+  Siri で Siri をオン(macOS 27。Siri が Apple Intelligence を使う)/ システム設定 → Apple Intelligence と Siri で
+  Apple Intelligence をオン(macOS 26)にし、`fleetest doctor --fm-only` が ✅ になれば視覚検証・
   シナリオ生成がそのまま使えるようになる（セットアップのやり直しは不要）。
 
 ### 3. 環境検証ゲート

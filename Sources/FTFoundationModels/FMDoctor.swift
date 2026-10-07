@@ -96,7 +96,7 @@ public enum FMDoctor {
         case .deviceNotEligible:
             return "this device is not eligible"
         case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence is off — enable it in System Settings"
+            return "Apple Intelligence is off — enable it in System Settings (macOS 27: Siri → turn Siri on; macOS 26: Apple Intelligence & Siri → Apple Intelligence)"
         case .modelNotReady:
             return "the model is still downloading — wait a moment and retry"
         @unknown default:

@@ -26,6 +26,7 @@
 ## Features that use Foundation Models (optional)
 
 On an Apple silicon Mac with macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM).
+To enable it, on macOS 27, turn Siri on in System Settings → Siri (Siri uses Apple Intelligence); on macOS 26, turn on "Apple Intelligence" in System Settings → Apple Intelligence & Siri.
 
 - **`screenLooksLike`**
   - Visual verification of the screen against a natural-language description.

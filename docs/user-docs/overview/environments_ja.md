@@ -26,6 +26,7 @@
 ## Foundation Models を使う機能(任意)
 
 Apple silicon の Mac・macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を使う機能をテストで使用することができます。
+有効化は、macOS 27 は システム設定 → Siri で Siri をオン(Siri が Apple Intelligence を使います)、macOS 26 は システム設定 → Apple Intelligence と Siri で「Apple Intelligence」をオンにします。
 
 - **`screenLooksLike`**
   - 画面と自然文の説明を照合する視覚検証です。

@@ -94,7 +94,7 @@ pipeline {
 ベアメタルで有効化する場合の条件と罠:
 
 - Apple silicon + macOS 26+。**screenLooksLike・テキストの視覚検証(画像入力)は macOS 27+**
-- 有効化は GUI で1回(システム設定 → Apple Intelligence と Siri。ヘッドレス機は画面共有経由。
+- 有効化は GUI で1回(macOS 27 は システム設定 → Siri で Siri をオン = Apple Intelligence が有効、macOS 26 は システム設定 → Apple Intelligence と Siri → Apple Intelligence をオン。ヘッドレス機は画面共有経由。
   モデルのダウンロードが走る)。**EC2 Mac は素の AMI から再作成すると設定が消える**ので、
   有効化後にカスタム AMI を焼くか、プロビジョニングに有効化を含める
 - **確認はジョブ先頭に `fleetest doctor --fm-only`(exit code)**。availability フラグは

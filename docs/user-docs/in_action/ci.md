@@ -91,7 +91,7 @@ inside a macOS VM (Tart, Anka and the like), so plan on it being unavailable the
 To enable it on bare metal:
 
 - Apple silicon with macOS 26 or later. `screenLooksLike` and text visual verification (image input) need macOS 27 or later.
-- Enable it once in the GUI (System Settings → Apple Intelligence & Siri; on a machine without a display, through Screen Sharing.
+- Enable it once in the GUI (on macOS 27, turn Siri on in System Settings → Siri (Siri uses Apple Intelligence); on macOS 26, turn on "Apple Intelligence" in System Settings → Apple Intelligence & Siri; on a machine without a display, through Screen Sharing.
   A model download runs). An EC2 Mac loses the setting when recreated from a plain AMI, so bake a custom AMI after enabling it,
   or include the enabling in your provisioning.
 - Run `fleetest doctor --fm-only` at the start of the job and check its exit code. The setting can say "available" while
