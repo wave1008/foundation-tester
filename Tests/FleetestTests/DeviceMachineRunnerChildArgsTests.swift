@@ -1,5 +1,5 @@
 // `DeviceMachineRunner.childArgs`(マシン別サブ実行の argv 組み立て)の規律を固定する。
-// 欠陥(bug-audit-2026-09-06.md §3): 複数機械にまたがるプロファイルでは `--failed`/`--report-dir`
+// 破ると: 複数機械にまたがるプロファイルでは `--failed`/`--report-dir`
 // が黙って落ち、ローカル子は `--skip-build` 無しで親と同じビルドをもう一度払っていた。
 // `--failed` は子へは転送しない(DeviceMachineRunner.run が selected を絞ってから配る)ので
 // ここでは検査しない —— このテストは「子の argv に何が乗るか」だけを固定する。

@@ -111,8 +111,7 @@ struct RemoteRunDispatcher {
         // `defer { releaseDispatchLock }` を必ず走らせるため)。ここから下は Shell.run 越しの
         // 短い ssh 照会・rsync 転送・回収コマンドが続くが、どれも InterruptRelay に登録された
         // Process ではないので、登録が1つも無いままだと SIGINT は既定動作(即終了)のままで
-        // defer が飛ばされ、リモートの dispatch.lock が握られたまま残る
-        // (bug-audit-2026-09-06.md §3)。**何もしない observer で構わない** ——
+        // defer が飛ばされ、リモートの dispatch.lock が握られたまま残る。**何もしない observer で構わない** ——
         // 登録そのもの(signal(SIGINT, SIG_IGN))が defer の実行を保証する。実行中の ssh
         // セッションへの中断転送は runInherited/runInheritedWithLineRewrite 自身の Process
         // relay が別途行う(forwardToAll は登録された全ターゲットを呼ぶので共存しても害はない)。

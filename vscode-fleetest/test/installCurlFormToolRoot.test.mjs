@@ -6,7 +6,7 @@
 // 取れないとき、Package.swift の宣言を見ずにいきなり既定の隣(../foundation-tester)へ倒していた。
 // curl 形(BASH_SOURCE[0] が空になる)では常にこの経路を通るため、`--tool-root <custom>` で
 // 導入済みの受け手が引数無しで curl 形を再実行すると、既存のクローンを無視して
-// 別の場所へ新しく clone しようとしていた(docs/bug-audit-2026-09-06.md §3)。
+// 別の場所へ新しく clone しようとしていた。
 //
 // 本体を丸ごとは実行しない(clone/swift build を伴い重い上にネットワークが要る)。
 // TOOL_ROOT 解決ブロックだけを文字列で切り出し、`bash -s --`(標準入力からの実行 = BASH_SOURCE[0]

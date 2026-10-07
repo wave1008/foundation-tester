@@ -105,7 +105,8 @@ delete × 実際値の文字数 + 期待値 / ホストは clearInput + type)。
 `type-retype-abandoned` / XCUITest ランナーの `OKResponse.note` → `driverFallback` / MCP の返答)。
 印(`.fleetest/<engine>-e2e-verified`)は e2e.sh が全緑で自動的に書き、打ち直しの回数は門ではない ——
 **印が付いた後で結果 JSON から打ち直しを数え、真陽性(打った本文の中央が欠けた形)だけであることを
-確かめる**(2026-09-14 の結果は docs/bug-audit-2026-09-11.md §19.23)。
+確かめる**(初回の数え上げ = 2026-09-14: 39 run・type ステップ 190 で打ち直し 2 回、どちらも真陽性(E2E-RN xcuitest の
+`persist99`)・誤検知 0)。
 
 **2本を `_disabled/` へ退避して印を通す案は採らなかった** —— この2本が**打鍵の中抜けを検出できる
 唯一の場所**で、消すと検出器を失う。**記録条件を緩める案も採らない** —— 「既知の失敗」を表現する

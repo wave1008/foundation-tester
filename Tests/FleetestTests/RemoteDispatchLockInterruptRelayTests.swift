@@ -1,4 +1,4 @@
-// bug-audit-2026-09-06.md §3: `RemoteRunDispatcher.dispatch`/`dispatchApi` acquire a remote
+// `RemoteRunDispatcher.dispatch`/`dispatchApi` acquire a remote
 // `dispatch.lock` and release it via `defer { releaseDispatchLock(...) }`. Between the lock
 // acquisition and the two `runInherited*` calls (the only spots that register an
 // `InterruptRelay`), every step is a plain `Shell.run` ssh/rsync call with no relay of its own.

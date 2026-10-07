@@ -20,7 +20,6 @@ final class CommentDateScanTests: XCTestCase {
         ("Sources/fleetest-mcp/MCPServer.swift", "2025-06-18", "MCP プロトコルの版の名前"),
         ("Sources/fleetest-mcp/MCPServer.swift", "2025-03-26", "MCP プロトコルの版の名前"),
         ("Sources/fleetest-mcp/NoteCatalog.swift", "2026-08-16", "Bench/measurements.md の節の名前"),
-        ("Sources/fleetest/RemoteRunDispatcher.swift", "2026-09-06", "ファイル名 bug-audit-2026-09-06.md の一部"),
     ]
 
     private static let roots: [(dir: String, extensions: Set<String>)] = [

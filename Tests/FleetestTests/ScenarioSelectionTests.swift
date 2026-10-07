@@ -176,7 +176,7 @@ final class ScenarioSelectionTests: XCTestCase {
     }
 
     /// scenarios/ にサブフォルダが無いとき "(available: )" と空括弧を出さない
-    /// (`--folder .` 等で available が空になる実害。docs/bug-audit-2026-09-11.md §19.3)
+    /// (`--folder .` 等で available が空になる)
     func testUnknownFolderMessageWithNoAvailableFoldersExplainsFolderIsUnusable() {
         let message = RunScenarios.unknownFolderMessage(unknown: ["."], available: [])
         XCTAssertTrue(message.contains("."), message)

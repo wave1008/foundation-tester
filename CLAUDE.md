@@ -38,6 +38,7 @@
   OS で挙動が割れるもの・足す価値がある残り): docs/shirates-parity.md。
   **コマンドを足す/名前を変えるときは必ずここも更新する**
 - 保守者向けの事故台帳(規則の由来): docs/maintainer-notes.md
+- 残件(未解決の不具合の候補。直したら項目を消す): docs/open-issues.md
 
 ### 失敗の記録と操作の規律
 

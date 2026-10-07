@@ -1,6 +1,6 @@
 // サブ実行のクラッシュで結果が1件も残らないシナリオを検出する経路
 // (DeviceMachineRunner.reportMissingResults の下請け)の単体テスト。
-// 負荷テストの実測(bug-audit): `fleetest run --runner local` を SIGKILL すると、担当 11 本のうち
+// 負荷テストの実測: `fleetest run --runner local` を SIGKILL すると、担当 11 本のうち
 // 9 本が run.json に finishedAt 無し・scenarios は 2 件だけになり、`--failed` が拾えなくなっていた。
 
 import XCTest

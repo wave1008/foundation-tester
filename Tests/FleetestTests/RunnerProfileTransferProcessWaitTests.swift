@@ -1,4 +1,4 @@
-// bug-audit-2026-09-06.md §3: `RunnerProfileTransfer.localizeAndUpload` は
+// `RunnerProfileTransfer.localizeAndUpload` は
 // `RemoteRunDispatcher.dispatch`/`dispatchApi`(どちらも async)から同期的に呼ばれる。
 // `Process.waitUntilExit()` は RunLoop 通知に依存するため、async 関数の協調スレッド上で
 // 呼ぶと終了通知を取りこぼして永久ハングし得る(Sources/FTCore/Shell.swift の

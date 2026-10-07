@@ -2,7 +2,7 @@
 // monitorDeviceStreamController.ts 冒頭コメント「受信後の安全弁として残る」)が1枚遅れて届いても、
 // canvas(h264)表示を静止画へ戻さないことの回帰テスト。
 //
-// 実害(docs/bug-audit-2026-09-06.md §3 deviceTiles.js:1087): applyFrame が entry.usingH264 の間
+// 実害: applyFrame が entry.usingH264 の間
 // 無条件に disposeH264 していたため、この安全弁フレームが届くたびに h264 デコーダを作り直すことになり、
 // 次のキーフレーム到達まで表示が止まっていた。真の mjpeg フォールバック復帰(stream:true。
 // mjpeg ストリーミングヘルパー由来)のときだけ破棄してよい。
