@@ -56,6 +56,8 @@ final class BridgeRouter {
     /// この snapshot 1回に適用する要素上限(`?max=`)。**要求ごとに handleSnapshot が入れ直す**
     /// ので持ち越しは起きない(接続は1本ずつ順に処理される = 別要求と混ざらない)
     var snapshotElementLimit = BridgeAPI.maxSnapshotElements
+    /// 直近の collect で、木に中身を出した手前の窓(root.children の添字)。captureOnce が申告を絞るのに使う
+    var lastContributingOverlayWindows = Set<Int>()
 
     /// /status の idleSeconds 申告用(FleetestBridgeTests がサーバ生成後に配線する。
     /// サーバ⇔ルーターの生成順の都合でコンストラクタ注入にしない)
@@ -598,17 +600,21 @@ final class BridgeRouter {
         var keyboardFrame: CGRect?
         var offscreenHints: [ElementInfo] = []
         let overlays = Self.overlayWindows(root: root)
+        lastContributingOverlayWindows = []
         collect(root, depth: 0, screen: screen,
                 elements: &elements, frames: &frames, identities: &identities,
                 truncated: &truncated,
                 truncatedTiers: &truncatedTiers, bulkExempt: &bulkExempt,
                 keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints,
-                overlayWindowIndices: overlays.indices)
+                overlayWindowIndices: Set(overlays.map(\.index)))
+        // **木に中身を1つも出さなかった窓は申告しない**: キーボードを閉じた後に残る窓は名前の無い入れ物だけで(実測 3 段・
+        // 要素 0)、数えると以後の全要素が「手前の窓に覆われている」と警告された。アプリのバナー・モーダルは中身を出す
+        let overlayFrames = overlays.filter { lastContributingOverlayWindows.contains($0.index) }.map(\.frame)
         return Captured(elements: elements, frames: frames, identities: identities,
                         truncated: truncated,
                         truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
                         keyboardFrame: keyboardFrame, offscreen: offscreenHints,
-                        overlayWindowFrames: overlays.frames)
+                        overlayWindowFrames: overlayFrames)
     }
 
     /// **アプリ本体の窓より手前の別 UIWindow**(キーウィンドウにしないアプリ内メッセージ・上部バナー等)。中身は木に載るが
@@ -619,17 +625,15 @@ final class BridgeRouter {
     /// 2枚増え、その形は状態で変わる —— WebView の入力中・ソフトキーボードが画面外へ引っ込んだ状態では、目印
     /// (`BridgeAPI.keyboardWindowMarkers`)を持たない窓が残って画面いっぱいの手前の窓と数え、ref の tap が整定を待たずに
     /// 古い座標を撃った(E2E-iOS の WebView で 4/4)。申告しない回は辿り方も申告前と同じ(collect の分岐)
-    static func overlayWindows(root: XCUIElementSnapshot) -> (indices: Set<Int>, frames: [FTRect]) {
-        var indices = Set<Int>()
-        var frames: [FTRect] = []
-        guard !root.children.dropFirst().contains(where: { containsKeyboard($0, depth: 0) }) else { return (indices, frames) }
+    static func overlayWindows(root: XCUIElementSnapshot) -> [(index: Int, frame: FTRect)] {
+        guard !root.children.dropFirst().contains(where: { containsKeyboard($0, depth: 0) }) else { return [] }
+        var out: [(index: Int, frame: FTRect)] = []
         for (index, window) in root.children.enumerated() where index > 0 && window.elementType == .window {
             let f = window.frame
             guard f.width > 0, f.height > 0 else { continue }
-            indices.insert(index)
-            frames.append(FTRect(x: f.origin.x, y: f.origin.y, width: f.width, height: f.height))
+            out.append((index, FTRect(x: f.origin.x, y: f.origin.y, width: f.width, height: f.height)))
         }
-        return (indices, frames)
+        return out
     }
 
     /// 窓がキーボード(とその付属)を載せているか。深さの上限は木の暴走よけ(キーボードの窓は浅い = 実測で 6 段以内)

@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 150
+    public static let bridgeProtocolVersion = 151
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -121,7 +121,8 @@ public enum BridgeAPI {
     /// XCUITest でキーボードを載せた窓の目印(この identifier か型 keyboard を中に持つ窓は手前の窓に数えない。
     /// BridgeRouter.overlayWindows)。実測: iPhone 17 Pro / iOS 27.0 で、キーボード表示中に増える2枚の窓の中身が
     /// `inputView` と `SystemInputAssistantView`(+ キー)だった
-    public static let keyboardWindowMarkers: Set<String> = ["inputView", "SystemInputAssistantView"]
+    /// `Toolbar` は WebView の入力欄に付く前後・完了のバー(キーボードと同じ窓に載る。実測 0,480 402x48)
+    public static let keyboardWindowMarkers: Set<String> = ["inputView", "SystemInputAssistantView", "Toolbar"]
     /// スイッチャーのアプリのカードの identifier(`card:<bundle>:sceneID:<bundle>-default`)。
     /// 実測: 開いているとき(iPhone 17 Pro / iOS 27.0 シミュレータ)は縮んだカードが並ぶ
     /// (281×612 が 5 枚)。閉じたあと、Face ID 機・シミュレータの窓には 1 枚も残らないが、

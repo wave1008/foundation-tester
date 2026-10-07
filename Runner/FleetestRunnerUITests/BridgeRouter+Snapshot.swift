@@ -40,6 +40,7 @@ extension BridgeRouter {
             if shouldInclude(node, screen: screen) {
                 gathered.append(Gathered(info: makeInfo(node, ref: 0, depth: depth), frame: node.frame))
             }
+            var contributing = Set<Int>()
             for (index, window) in node.children.enumerated() {
                 let start = gathered.count
                 gather(window, depth: depth + 1, screen: screen, insideWebView: insideWebView,
@@ -47,8 +48,18 @@ extension BridgeRouter {
                        keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
                 if overlayWindowIndices.contains(index) {
                     for i in start..<gathered.count { gathered[i].info.inOverlayWindow = true }
+                    if gathered.count > start { contributing.insert(index) }
                 }
             }
+            lastContributingOverlayWindows = contributing
+        }
+        // **画面全体の枠に化けた Toolbar を出さない**: キーボードを閉じた後に残る入力用のバー(WebView の前後・完了)は
+        // 枠が画面全体(実測 0,0 402x874)に化けて木に残り、ホストの覆いの判定が「すべての要素が #Toolbar に覆われている」と
+        // 読んで撃つ前の送りが空振りし、タップも吸われた(E2EX-RN の sticky・date、SwiftUI の pinch)。アプリの本物の
+        // ツールバーは帯なので、画面全体の枠にはならない
+        gathered.removeAll { item in
+            item.info.type == "Toolbar" && !screen.isEmpty
+                && abs(item.frame.width - screen.width) <= 1 && abs(item.frame.height - screen.height) <= 1
         }
 
         // isRedundant は [ElementInfo] を取るので**同じ列を2本持つ**。`deduped.map(\.info)` を

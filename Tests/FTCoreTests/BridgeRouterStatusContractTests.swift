@@ -174,6 +174,9 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         XCTAssertTrue(body.contains("where index > 0"), "本体の窓(0 番)を数えないこと: \(body)")
         XCTAssertTrue(body.contains("guard !root.children.dropFirst().contains(where: { containsKeyboard("),
                       "キーボードの窓が1枚でもあれば何も申告しないこと: \(body)")
+        let capture = try XCTUnwrap(handlerBody("captureOnce(", in: try routerSource))
+        XCTAssertTrue(capture.contains("lastContributingOverlayWindows.contains"),
+                      "木に中身を出した窓だけを申告すること(キーボードを閉じた後に残る空の窓を数えない)")
         let marker = try XCTUnwrap(handlerBody("containsKeyboard(_", in: try routerSource))
         XCTAssertTrue(marker.contains(".keyboard") && marker.contains("BridgeAPI.keyboardWindowMarkers"), marker)
     }

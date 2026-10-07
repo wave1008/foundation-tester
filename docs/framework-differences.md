@@ -355,10 +355,10 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 **残っている制約(`@Draft` の理由と対応)**: **E2EY**: RN の collapsible-tab-view でタブを替えた直後、iOS では行がヘッダの裏に居る(in-app の木に覆っている物が出ないので名指しも回避もできない。XCUITest の木には `#Toolbar` として出る)/ Flutter の `AnimatedSlide` で上へ逃げたバーを、セマンティクスが元の位置のまま申告し(木では見えている)、探索が送らずに撃って見た目には無いボタンを押す(どちらも木だけでは決められない。押す前に絵で確かめる検証は FM を使う UI の視覚検証にあたり新設しない)/ iOS で半分開いた gorhom のシートが一覧の上からの払いで伸びない(XCUITest の本物の払いでも同じ・見出しからなら伸びる。木にグラバーが出ないので伸ばす場所を決められない。Android は直した)(以上 E2EY の `@Draft`)/ Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
-**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest` で 13 本)**: CMP の refresh S0020(上) /
+**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest` で 9 本。2026-10-08 に 13 → 9)**: CMP の refresh S0020(上) /
 Flutter の tooltip・menu(オーバーレイ後の 1/3 座標は XCUITest では未補正)/ RN の sticky・date(XCUITest の木は全画面の
-`#Toolbar` を手前に置くので、覆いの判定が見出しでなく Toolbar を採り lift が効かない)/ SwiftUI の pinch reset・sheet の
-探索・inputs S0020/30/40 / CMP の inputs S0030/40(打鍵が欄に入らない)。
+`#Toolbar` を手前に置くので、覆いの判定が見出しでなく Toolbar を採り lift が効かない)/ SwiftUI の pinch reset・inputs S0030/40。
+緑になったもの: CMP の inputs S0030/40(見切れた欄の送り・補完欄を先頭へ)・SwiftUI の sheet の探索・inputs S0020。
 
 **同じ型の残り(未対処・再現していない)**: テキストの視覚検証の OCR 段も英語モデルのキリル同形異字で読み違えうる
 (固定コーパス `Tests/Fixtures/OcclusionCrops/` の読みを1件ずつ見てから畳む)。

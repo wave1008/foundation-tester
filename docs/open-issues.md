@@ -16,6 +16,15 @@
   - 要る材料: 実例の木。ステータスバーの高さは木に載らない(画面の枠だけ)ので、定数で帯を決めると機種で黙って誤る。
     ブリッジが安全領域(safeAreaInsets / WindowInsets)を申告する形なら根拠のある判定になる
 
+## デバイスで赤のまま・原因未調査
+
+- **E2E-iOS の XCUITest で「WebViewの中身を操作できること」が赤になる(状態に依存)**(2026-10-08)
+  - 症状: `type "#wv_input||#WebView 入力"` の後の `tap "送信"` が、キーボードで WebView が中身を 141pt 上へ送る前の座標を撃ち、
+    隣のリンクに当たる(`wv_result=link`)。緑の回はキーボードの後の整定の待ち(`settled-after-keyboard`)が働き、赤の回は働かない
+  - 確かめた範囲: 同じソース(b30d2090)が 02:4x には 3/3 緑、05:3x には 3/3 赤 = コードではなくデバイス側の状態。
+    ソフトキーボードの設定(出る/引っ込む)を変えても赤(6 回中 5 回)。この Mac の -01 で再現(他の台は未確認)
+  - 場所: `StepExecutor+Actions.swift` の打った後の整定(`pendingTypeKeyboardCheck` → `settledSignature`)
+
 ## 設計判断で据え置いているもの(直さないと決めた。症状が出たら見直す)
 
 - `activateSnapshotNode` の古い木: 撃つ前に `isReachable` で照合するが、UIView まで辿れないノードは許可する
