@@ -110,6 +110,9 @@ scenarios the AI assistant wrote, or to write some yourself.
 - Sharing values between scenarios
     - [Memo (writeMemo, readMemo, clearMemo, memoTextAs)](reference/commands/memo.md)
     - [Output folder and temporary folder (TestLog)](reference/commands/test_log.md)
+- Test data and talking to servers
+    - [Test data and accounts (account, data)](reference/commands/dataset.md)
+    - [HTTP request (httpRequest)](reference/commands/http_request.md)
 - Branch
     - [ifCanSelect, ios, android](reference/commands/branch.md)
 - Repeating action

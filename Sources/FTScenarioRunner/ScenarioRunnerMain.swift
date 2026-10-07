@@ -157,6 +157,10 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(help: "Allow locator self-healing by locator fingerprint (does not use FM)")
     var heal = false
 
+    @Flag(name: .customLong("redact-account-values"),
+          help: "Replace values returned by account() with *** in reports and logs (set by ScenarioHost from the machine config)")
+    var redactAccountValues = false
+
     @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (text visual verification / screenLooksLike)")
     var noFM = false
 
@@ -577,6 +581,7 @@ struct RunScenario: AsyncParsableCommand {
             core.deviceMemo = deviceSession.memo
             core.runSetUpDevice = deviceSession.runSetUpDevice
         }
+        core.redactAccountValues = redactAccountValues
         core.stillFrameCapture = stillFramesDir.map { StillFrameCapture(dir: URL(fileURLWithPath: $0)) }
         // 利用者が書けるフォルダ(サンドボックスの中で書けるのはレポートの出力先の下と子の TMPDIR の下)
         core.directoryForLog = TestLogPaths.logDirectory(

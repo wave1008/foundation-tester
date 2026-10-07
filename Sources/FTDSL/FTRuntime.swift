@@ -269,6 +269,10 @@ public final class FTDriveCore {
     /// 書き込みは `memoWrite` / `memoClear` イベントで親へ片道通知する(応答は無い)。
     /// 契約は FTCore/DeviceSessionHandoff.swift。DSL スレッド専有で lock 不要
     public var deviceMemo: [String: [String]] = [:]
+    /// `account()` / `data()` のデータセット(種類ごとに初回に1回読む。ファイル読みは DSL スレッドだけが行う)
+    let datasets = LockedValue<[ScenarioDataset.Kind: ScenarioDataset]>([:])
+    /// `account()` の値を伏せ字の登録簿へ入れるか(マシン側の `redactAccountValues`。既定 false)
+    public var redactAccountValues = false
     /// `TestLog.directoryForLog` / `TestLog.directoryForTemp` の実体(ScenarioRunnerMain が設定する)。nil = その文脈では使えない
     public var directoryForLog: URL?
     public var directoryForTemp: URL?
@@ -1465,6 +1469,11 @@ public final class FTDriveCore {
                     notes: [StepNote] = [], guarded: Bool = false,
                     command: String? = nil, failureKind: StepFailureKind? = nil,
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
+        // `account()` が返した値を、レコード(レポート)と NDJSON の両方へ入る前の1箇所で伏せる。
+        // 説明・失敗の detail に引数の値が入る(`type(account(...))`)ため。全コマンドがここを通る
+        let secrets = SecretRedactor.shared
+        let description = secrets.redact(description)
+        let status = status.mappingReasons(secrets.redact)
         stateLock.lock()
         defer { stateLock.unlock() }
         stepCounter += 1

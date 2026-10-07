@@ -73,7 +73,9 @@ public enum ConsoleOut {
     /// 書き込み端 fd を渡して検証する。標準出力/標準エラーを差し替える必要が無い)。
     /// internal のままでよい(呼び出し側は out/err だけを使う)
     static func emit(_ text: String, fd: Int32) {
-        emit(Data((text + "\n").utf8), fd: fd)
+        // 文字列の出力は全部ここを通る = 子の NDJSON・テキストログ・stderr が秘密を書き出す最後の網
+        // (`SecretRedactor`。登録が無ければ素通し)。バイト列の口は MCP / 画像用で通さない
+        emit(Data((SecretRedactor.shared.redact(text) + "\n").utf8), fd: fd)
     }
 
     /// 本体(バイト列版)。改行の付与は文字列版が済ませている

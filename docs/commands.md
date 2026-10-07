@@ -757,6 +757,47 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
   (`beforeEach` で初期化して各テストで書き換える形は出さない)。見るのはライフサイクル4つと `@Test` の本体の
   `x = …` / `x += …` / `self.x` / `Self.x` だけ = 出れば正しいが、出なければ安全とは限らない
 
+### テストデータ・アカウント(`account` / `data`)
+
+名前・引数・キーの書式は Shirates と同じ(`account("[account1].password")` / `account("[account1]", "password")`。
+longKey は**最後の `.` で**データセット名と属性名に分ける)。実装は `FTCore/ScenarioDataset.swift`(純粋な読み込みと照合)・
+`FTDSL/CommandsDataset.swift`。
+
+- **置き場**: `<プロジェクト>/dataset/accounts.json`・`data.json`(Shirates の dataset JSON と同じ形。属性値は文字列だけ)と、
+  マシン側 `<実ホーム>/.config/fleetest/dataset/<プロジェクト名>/accounts.json`・`data.json`(プロジェクト名 = projectDir の
+  末尾のディレクトリ名。実ホームは `getpwuid`)。**マシン側が属性単位で上書き**し、マシン側だけの属性・データセットも使える。
+  読むのはシナリオのプロセスで種類ごとに初回の1回。サンドボックスの新しい許可は要らない(プロジェクトと
+  `~/.config/fleetest` は既存の許可で読める)
+- **成功してもステップを記録しない**(値を返す関数)。dry-run・一覧はファイルを読まず longKey をそのまま返す
+- **値が無い**(ファイル無し・データセット無し・属性無し・JSON 破損・キーに `.` が無い)とそのステップを失敗にして中断し、
+  `""` を返す。失敗文は見たファイルを**全部**と何が無かったかを言い、値は出さない。**どれかのファイルが壊れていれば、
+  他のファイルに値があっても失敗**(壊れたマシン側を飛ばして古い値で動かない)
+- **`account()` の値の伏せ字化は既定で OFF**。マシン側 `~/.config/fleetest/config.json` の `redactAccountValues: true` で有効
+  (読むのは親の `ScenarioHost.run` だけ・子へは `--redact-account-values`。プロジェクトには置かない)。
+  有効なとき(`FTCore/SecretRedactor.swift`。プロセス大域の登録簿): 返した値のデータセットの全属性
+  (4 文字以上)を登録し、`FTDriveCore.recordStep`(説明・失敗の detail = レコードと NDJSON)・`ConsoleOut` の文字列出力
+  (NDJSON・テキストログ・stderr の最後の網。JSON エスケープ形も置換)・`ScenarioReportWriter`(Markdown・失敗時の要素一覧)で
+  `***` に置換する。**塞げない出口**: スクリーンショット(画素)。`writeMemo` に `account()` の値を書くと、親へ運ぶ `memoWrite`
+  イベントが出口で伏せられるので他シナリオへ渡るメモの値も `***` になる。`data()` は登録しない
+
+### HTTP リクエスト(`httpRequest`)
+
+```swift
+httpRequest(_ url: String, method: String = "GET", headers: [String: String] = [:],
+            body: String? = nil, waitSeconds: Double? = nil) -> HTTPResponse
+```
+
+fleetest 独自。`HTTPResponse` は `status` / `headers`(名前は小文字)/ `data` / `text`(UTF-8)/ `json`(`Any?`)。
+`public let fleetestURLSession: URLSession` はサンドボックスのプロキシ(環境変数)を `connectionProxyDictionary` に設定済みの
+セッション(`FTCore/URLSessionProxy.swift`)。
+
+- DSL スレッドで `dataTask` + セマフォで同期に待つ(`FTSync` を通さない = 締切は `waitSeconds` だけ)。
+  `waitSeconds` 省略時は `RunTunables.httpRequestTimeout`(既定 30 秒。`commandTimeout` 120 より小さい)
+- **4xx/5xx は失敗にしない**。URL の不正・通信の失敗・時間切れはステップを失敗にして中断し、status 0 の空の応答を返す。
+  プロキシの環境変数があるときだけ、失敗文に「接続はサンドボックスのプロキシを通る・`allowedDomains` に無いホストは断られる」を添える
+- ステップの説明は `httpRequest <METHOD> <url> → <status>`(本文は載せない)。dry-run は送らず status 0・空の応答(ステップは記録する)
+- `ft_batch` は受けない
+
 ### 独自コマンド(`@FTCommand`)
 
 DSL コマンドで足りない繰り返し手順(ログイン・共通の前処理・自作ジェスチャの組み合わせ等)は、

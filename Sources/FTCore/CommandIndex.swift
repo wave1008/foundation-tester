@@ -427,6 +427,24 @@ public enum DSLCommandIndex {
               "Writes an element's text (the first non-empty of label and value) or a String to the memo under the key and"
                   + " returns the element or string, so it chains: select(\"#total\").memoTextAs(\"total\")."),
 
+        // MARK: data (account / test data datasets, and outbound HTTP)
+        .init("account", "data", "account(longKey) / account(datasetName, attributeName)",
+              "Returns a value of the account dataset, written as \"[account1].password\" (as in Shirates). Reads"
+                  + " <project>/dataset/accounts.json, overridden per attribute by"
+                  + " ~/.config/fleetest/dataset/<project name>/accounts.json. Not masked by default; with"
+                  + " redactAccountValues: true in the machine's ~/.config/fleetest/config.json, every attribute of the"
+                  + " dataset is masked as *** in the report, run log and result JSON (values shorter than 4 characters"
+                  + " are not masked)."
+                  + " Not recorded as a step; a missing value fails the scenario. Dry-run returns the longKey."),
+        .init("data", "data", "data(longKey) / data(datasetName, attributeName)",
+              "Returns a value of the test data dataset (data.json, same places and override as account). Not masked."
+                  + " Not recorded as a step; a missing value fails the scenario. Dry-run returns the longKey."),
+        .init("httpRequest", "data", "httpRequest(url, method:, headers:, body:, waitSeconds:)",
+              "Sends an HTTP request and waits for the response (HTTPResponse: status, headers with lower-case names,"
+                  + " data, text, json). 4xx/5xx is not a failure (check status); a bad URL, a connection error or no"
+                  + " response within waitSeconds fails the scenario. Goes through the sandbox proxy, so the host must be"
+                  + " in allowedDomains. Dry-run sends nothing and returns status 0."),
+
         // MARK: files (folders a scenario may write to; the sandbox allows nothing else)
         .init("TestLog.directoryForLog", "files", "TestLog.directoryForLog",
               "URL of this test class's output folder (<report directory>/<run start yyyy-MM-dd_HHmmss>/<test class>/),"

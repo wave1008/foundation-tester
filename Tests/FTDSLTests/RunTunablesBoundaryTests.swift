@@ -13,7 +13,7 @@ final class RunTunablesBoundaryTests: XCTestCase {
             defaultMaxSwipes: 3, defaultSwipeDuration: 2.5, defaultFlickDuration: 0.75,
             defaultFlickInterval: 0.6, defaultPinchDuration: 1.25, defaultHoldDuration: 4,
             screenWaitTimeout: 21, doUntilTrueTimeout: 12, doUntilTrueInterval: 0.75,
-            doUntilTrueMaxLoopCount: 7)
+            doUntilTrueMaxLoopCount: 7, httpRequestTimeout: 9)
         let json = try ScenarioHost.tunablesArgument(sent)
         XCTAssertEqual(try RunScenario.decodeTunables(json), sent)
     }

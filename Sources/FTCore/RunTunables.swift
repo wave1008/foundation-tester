@@ -34,6 +34,11 @@ public struct RunTunables: Codable, Sendable, Equatable {
     public var doUntilTrueInterval: Double
     /// `doUntilTrue` の評価回数の上限(回)。`maxLoopCount:` 省略時。待ち上限と別に暴走を止める
     public var doUntilTrueMaxLoopCount: Int
+    /// `httpRequest` の応答を待つ上限(秒)。`waitSeconds:` 省略時。テストデータ用の API 呼び出しは数秒で
+    /// 返るので 30 秒あれば遅い API も待てる一方、`commandTimeout`(120)より十分小さいので、
+    /// 応答しない宛先で固まっても壁時計の締切(コマンド全体の打ち切り)より先に失敗として言える。
+    /// この値を commandTimeout 以上にしない(固まったときに失敗の理由が「タイムアウト」の一言になる)
+    public var httpRequestTimeout: Double
 
     public init(defaultTimeout: Double = DefaultWait.seconds,
                 commandTimeout: Double = 120,
@@ -47,7 +52,8 @@ public struct RunTunables: Codable, Sendable, Equatable {
                 screenWaitTimeout: Double = FlowStep.defaultIsScreenWaitSeconds,
                 doUntilTrueTimeout: Double = 10,
                 doUntilTrueInterval: Double = 0.5,
-                doUntilTrueMaxLoopCount: Int = 100) {
+                doUntilTrueMaxLoopCount: Int = 100,
+                httpRequestTimeout: Double = 30) {
         self.defaultTimeout = defaultTimeout
         self.commandTimeout = commandTimeout
         self.injectedAppProbeTimeout = injectedAppProbeTimeout
@@ -61,5 +67,6 @@ public struct RunTunables: Codable, Sendable, Equatable {
         self.doUntilTrueTimeout = doUntilTrueTimeout
         self.doUntilTrueInterval = doUntilTrueInterval
         self.doUntilTrueMaxLoopCount = doUntilTrueMaxLoopCount
+        self.httpRequestTimeout = httpRequestTimeout
     }
 }

@@ -22,6 +22,8 @@ final class RunTunablesTests: XCTestCase {
         XCTAssertEqual(t.doUntilTrueTimeout, 10)
         XCTAssertEqual(t.doUntilTrueInterval, 0.5)
         XCTAssertEqual(t.doUntilTrueMaxLoopCount, 100)
+        XCTAssertEqual(t.httpRequestTimeout, 30)
+        XCTAssertLessThan(t.httpRequestTimeout, t.commandTimeout, "httpRequest の待ちは壁時計の締切より小さく保つ")
     }
 
     func testProfileDefaultTimeoutMapsIntoTunables() {
@@ -53,11 +55,11 @@ final class RunTunablesTests: XCTestCase {
                         defaultMaxSwipes: 3, defaultSwipeDuration: 2.5, defaultFlickDuration: 0.75,
                         defaultFlickInterval: 0.6, defaultPinchDuration: 1.25, defaultHoldDuration: 4,
                         screenWaitTimeout: 21, doUntilTrueTimeout: 12, doUntilTrueInterval: 0.75,
-                        doUntilTrueMaxLoopCount: 7))
+                        doUntilTrueMaxLoopCount: 7, httpRequestTimeout: 9))
         XCTAssertEqual(json, #"{"commandTimeout":33,"defaultFlickDuration":0.75,"defaultFlickInterval":0.6,"#
             + #""defaultHoldDuration":4,"defaultMaxSwipes":3,"defaultPinchDuration":1.25,"#
             + #""defaultSwipeDuration":2.5,"defaultTimeout":7.5,"doUntilTrueInterval":0.75,"#
-            + #""doUntilTrueMaxLoopCount":7,"doUntilTrueTimeout":12,"injectedAppProbeTimeout":4,"#
+            + #""doUntilTrueMaxLoopCount":7,"doUntilTrueTimeout":12,"httpRequestTimeout":9,"injectedAppProbeTimeout":4,"#
             + #""screenWaitTimeout":21}"#)
     }
 }

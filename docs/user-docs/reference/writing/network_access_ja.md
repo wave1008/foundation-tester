@@ -40,25 +40,16 @@
 プロキシは HTTPS(`CONNECT`)と平文の HTTP を受けます。`CONNECT` は中身を見ずに TCP を中継するので、
 `CONNECT` を送れるクライアントなら HTTP 以外の通信でも、許可したホストとポートへ届きます。
 
-**`URLSession` はこの環境変数を読みません。**そのままでは許可した宛先にも繋がらないので、プロキシを
-`connectionProxyDictionary` に渡します。
+**`URLSession` はこの環境変数を読みません。**自分で作った `URLSession` は、プロキシを `connectionProxyDictionary` に
+渡さないと許可した宛先にも繋がりません。`httpRequest` と `fleetestURLSession` はそれを済ませてあります。
 
 ```swift
-import Foundation
-
-/// サンドボックスのプロキシを使う URLSession。プロキシが無いとき(サンドボックスを外した Mac)は普通に繋ぐ
-func sandboxSession() -> URLSession {
-    let config = URLSessionConfiguration.ephemeral
-    if let proxy = ProcessInfo.processInfo.environment["HTTPS_PROXY"],
-       let url = URLComponents(string: proxy), let host = url.host, let port = url.port {
-        config.connectionProxyDictionary = [
-            "HTTPSEnable": 1, "HTTPSProxy": host, "HTTPSPort": port,
-            "HTTPEnable": 1, "HTTPProxy": host, "HTTPPort": port,
-        ]
-    }
-    return URLSession(configuration: config)
-}
+let response = httpRequest("https://api.example.com/health")   // プロキシ経由で繋がります
 ```
+
+[`httpRequest`](../commands/http_request_ja.md) がリクエストを送って応答を返します。自分で通信したいときは
+`fleetestURLSession` を使います(サンドボックスのプロキシを `connectionProxyDictionary` に設定済みの `URLSession` です。
+プロキシが無い場合 = この Mac でサンドボックスを外しているときは、普通に直接繋ぎます)。
 
 環境変数のプロキシを読むクライアント(`curl` や、環境変数を読む HTTP ライブラリ)は、何もしなくてもプロキシ経由になります。
 
@@ -66,7 +57,7 @@ func sandboxSession() -> URLSession {
 
 | 起きること | 理由 |
 |---|---|
-| `URLSession` で接続できない・タイムアウトする | プロキシを渡していない(上の `connectionProxyDictionary`)か、`allowedDomains` を書いていない |
+| `URLSession` で接続できない・タイムアウトする | 自作の `URLSession` にプロキシを渡していない(`httpRequest` / `fleetestURLSession` を使う)か、`allowedDomains` を書いていない |
 | プロキシが `403 Forbidden` を返す(本文 `fleetest sandbox: <host>:<port> is not in allowedDomains …`) | 宛先が `allowedDomains` に一致しない。`*.example.org` は `example.org` に一致しない・ポートを書いた行はそのポートにしか一致しない点に注意 |
 | プロキシが `502 Bad Gateway` を返す | 宛先は許可されているが、Mac からその宛先へ繋がらない |
 | HTTP 以外の接続(DB への直接接続など)が失敗する | プロキシを通っていない(そのクライアントが `CONNECT` を送れない)か、ポートが許可されていない |

@@ -18,6 +18,21 @@ final class LocalConfigIssuerIdTests: XCTestCase {
 
     private var fallback: String { "\(NSUserName())@\(ProcessInfo.processInfo.hostName)" }
 
+    // MARK: - redactAccountValues
+
+    func testRedactAccountValuesIsReadFromTheConfigAndPassedToTheChildOnlyWhenTrue() throws {
+        let url = tempConfigURL()
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        try #"{"redactAccountValues": true}"#.write(to: url, atomically: true, encoding: .utf8)
+        let on = LocalConfig.load(from: url)
+        XCTAssertEqual(on.redactAccountValues, true)
+        XCTAssertEqual(ScenarioHost.accountRedactionArguments(on), ["--redact-account-values"])
+
+        try #"{}"#.write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ScenarioHost.accountRedactionArguments(LocalConfig.load(from: url)), [], "既定は伏せない")
+        XCTAssertEqual(ScenarioHost.accountRedactionArguments(LocalConfig(redactAccountValues: false)), [])
+    }
+
     // MARK: - resolveIssuerId
 
     func testResolveIssuerIdReturnsConfiguredValue() throws {

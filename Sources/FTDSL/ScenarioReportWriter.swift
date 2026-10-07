@@ -19,6 +19,8 @@ public enum ScenarioReportWriter {
         // 並列実行時の衝突回避: ミリ秒+シナリオIDスラッグをファイル名に含める
         let baseName = "scenario-\(stamp)-\(slug(record.id))"
 
+        // `account()` の値を Markdown と証跡 JSON(失敗時の要素一覧)から伏せる。画素(スクリーンショット)は伏せられない
+        let secrets = SecretRedactor.shared
         var md = "# Scenario run report\n\n"
         md += "- Scenario: \(record.id)"
         if !record.title.isEmpty { md += " — \(record.title)" }
@@ -83,7 +85,7 @@ public enum ScenarioReportWriter {
                 // 白フレームは凍結でもアラート中でも証跡として無効 = 判定を挟まず evidenceBlank をそのまま渡す
                 evidenceScenes.append(FailureEvidence.Scene(
                     number: scene.number, title: scene.title,
-                    elements: scene.failureElements.flatMap { $0.isEmpty ? nil : $0 },
+                    elements: scene.failureElements.flatMap { $0.isEmpty ? nil : secrets.redact($0) },
                     screenshotFile: failureImageName, screenshotBlank: scene.evidenceBlank,
                     foregroundWindows: scene.failureForegroundWindows,
                     appProcess: scene.failureAppProcess))
@@ -119,6 +121,7 @@ public enum ScenarioReportWriter {
         }
 
         let url = dir.appendingPathComponent("\(baseName).md")
+        md = secrets.redact(md)
         try md.write(to: url, atomically: true, encoding: .utf8)
         // 読み手(ft_run_scenario)は証跡が無くても失敗を報告できるので、書けなくても md は返す
         if !evidenceScenes.isEmpty {

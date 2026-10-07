@@ -206,6 +206,11 @@ public enum ScenarioHost {
     /// WORK_DIR/.build/debug にビルドされる。所有 repo = packageRoot が正)。
     /// --show-bin-path(swift 起動)は最後: swift test 実行中(SPM ビルドロック保持中)に呼ぶと
     /// デッドロックするため、先の2つのファイル確認で解決させる(XCTest からも ScenarioHost.run を使えるように)。
+    /// マシン側の `redactAccountValues` を子へ渡す引数(立っていないときは何も渡さない = 伏せない)
+    static func accountRedactionArguments(_ config: LocalConfig) -> [String] {
+        config.redactAccountValues == true ? ["--redact-account-values"] : []
+    }
+
     public static func runnerURL(project: TestProject) throws -> URL {
         if let root = packageRoot() {
             let debugBinary = root.appendingPathComponent(".build/debug")
@@ -518,6 +523,7 @@ public enum ScenarioHost {
                     // TestLog.directoryForLog の run のフォルダ(この親プロセスの全シナリオで同じ)
                     "--run-started-at", TestLogSessionLabel.processStart]
         if settings.heal { args.append("--heal") }
+        args += accountRedactionArguments(LocalConfig.load())
         if !fm.enabled { args.append("--no-fm") }
         if !fm.fmTextOcclusionCheck { args.append("--no-fm-text-occlusion-check") }
         if !fm.screenLooksLike { args.append("--no-screen-looks-like") }

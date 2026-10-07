@@ -40,25 +40,17 @@ lowercase spellings and `ALL_PROXY`). **Connections that do not go through the p
 destinations.** The proxy accepts HTTPS (`CONNECT`) and plain HTTP. `CONNECT` relays TCP without looking at it, so
 any client that can send `CONNECT` reaches the allowed hosts and ports even with a non-HTTP protocol.
 
-**`URLSession` does not read these environment variables.** As is, it cannot reach even allowed destinations, so
-pass the proxy in `connectionProxyDictionary`.
+**`URLSession` does not read these environment variables.** A `URLSession` you create yourself cannot reach even
+allowed destinations unless you pass the proxy in `connectionProxyDictionary`. Use `httpRequest` or
+`fleetestURLSession`, which do that for you.
 
 ```swift
-import Foundation
-
-/// A URLSession that uses the sandbox proxy. Without a proxy (sandbox turned off on this Mac) it connects directly
-func sandboxSession() -> URLSession {
-    let config = URLSessionConfiguration.ephemeral
-    if let proxy = ProcessInfo.processInfo.environment["HTTPS_PROXY"],
-       let url = URLComponents(string: proxy), let host = url.host, let port = url.port {
-        config.connectionProxyDictionary = [
-            "HTTPSEnable": 1, "HTTPSProxy": host, "HTTPSPort": port,
-            "HTTPEnable": 1, "HTTPProxy": host, "HTTPPort": port,
-        ]
-    }
-    return URLSession(configuration: config)
-}
+let response = httpRequest("https://api.example.com/health")   // goes through the proxy
 ```
+
+[`httpRequest`](../commands/http_request.md) sends a request and returns the response. To talk to a server yourself, use
+`fleetestURLSession` — a `URLSession` with the sandbox proxy already set in `connectionProxyDictionary` (it connects
+directly when there is no proxy, e.g. the sandbox is turned off on this Mac).
 
 Clients that read proxy environment variables (`curl`, HTTP libraries that honor them) use the proxy with no extra
 code.
@@ -67,7 +59,7 @@ code.
 
 | Symptom | Reason |
 |---|---|
-| `URLSession` cannot connect or times out | The proxy is not passed (the `connectionProxyDictionary` above), or `allowedDomains` is not set |
+| `URLSession` cannot connect or times out | You use your own `URLSession` without passing the proxy (use `httpRequest` / `fleetestURLSession`), or `allowedDomains` is not set |
 | The proxy answers `403 Forbidden` (body `fleetest sandbox: <host>:<port> is not in allowedDomains …`) | The destination does not match `allowedDomains`. Note that `*.example.org` does not match `example.org`, and an entry with a port matches only that port |
 | The proxy answers `502 Bad Gateway` | The destination is allowed but cannot be reached from the Mac |
 | A non-HTTP connection (e.g. directly to a database) fails | It does not go through the proxy (the client cannot send `CONNECT`), or its port is not allowed |
