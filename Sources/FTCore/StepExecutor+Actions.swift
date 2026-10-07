@@ -1711,6 +1711,14 @@ extension StepExecutor {
                 coverName = coverName ?? TapTargetGeometry.describe(over)
                 coverRect = over.frame
             }
+            // **容器の縁に貼り付いた見出しの下に潜った対象**(木の並びでは見出しが奥 = 上の判定は拾えない。pinnedBandCovering の doc)
+            if jump == nil, ownContainer != nil,
+               let band = TapTargetGeometry.pinnedBandCovering(current, in: currentSnapshot.elements,
+                                                               container: container) {
+                jump = TapTargetGeometry.uncoverScrollJump(target: current, coveredBy: band, container: container)
+                coverName = coverName ?? TapTargetGeometry.describe(band)
+                coverRect = band.frame
+            }
             // **iOS: 容器の下端で見切れた対象**(覆いは無いが中心が描かれていない。bottomEdgeClipLift の doc)。
             // 指は見切れた行より上に当てる(行そのものを覆いとして避ける)
             if jump == nil, !isAndroid,
@@ -1739,6 +1747,7 @@ extension StepExecutor {
                 || TapTargetGeometry.overlayCoveringForUncover(
                        moved, in: after.elements, screen: after.screen) != nil
                 || (!isAndroid && TapTargetGeometry.bottomEdgeClipLift(moved, in: after.elements) != nil)
+                || TapTargetGeometry.pinnedBandCovering(moved, in: after.elements, container: container) != nil
             if !stillCovered {
                 return (moved, after,
                         "scrolled the container to bring the target out from under"

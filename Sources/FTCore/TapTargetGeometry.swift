@@ -667,6 +667,25 @@ public enum TapTargetGeometry {
     /// 覆いを**矩形**で渡す版。ソフトキーボードのように木の要素として渡せない覆い用
     /// (`KeyboardOcclusion.frame`)。操作可能かの判定は呼び手の責務 —— キーボードは
     /// 常にタッチを飲むので、呼び手はその判定を持たない
+    /// **容器の縁に貼り付いた名前つきの帯(`isPinnedTextBand`)が対象の中心を覆っているか**(覆っていればその帯)。
+    /// 貼り付く見出しは木の並びでは行より前(= 奥)に出るので `OcclusionGeometry.overlayCovering` は拾えない
+    /// (実測 E2EX-RN の sticky・XCUITest: 上へ探して止まった `#row_s_B1` 159..203 の中心が `#hdr_B` 157..190 の下で、
+    /// 撃つと見出しに当たった)。撃つ前の送り(`StepExecutor.liftCoveredTarget`)だけが使う = 送るだけで撃たない。
+    /// 自分自身・祖先・子孫と、操作できる要素(縁に寄った行もこの形に見える)は覆いにしない
+    public static func pinnedBandCovering(_ element: ElementInfo, in elements: [ElementInfo],
+                                          container: FTRect) -> ElementInfo? {
+        let cx = element.frame.centerX, cy = element.frame.centerY
+        let related = Set(ancestors(of: element, in: elements).map(\.ref))
+            .union(LocatorResolver.descendants(of: element, in: elements).map(\.ref))
+        return elements.first { band in
+            band.ref != element.ref && !related.contains(band.ref)
+                && !BridgeSnapshotThinning.operableTypes.contains(band.type)
+                && isPinnedTextBand(band, in: container)
+                && cx >= band.frame.x && cx <= band.frame.x + band.frame.width
+                && cy >= band.frame.y && cy <= band.frame.y + band.frame.height
+        }
+    }
+
     /// 容器の上端か下端に**揃って**(差 `pinnedBandEdgeTolerance` 以内)、容器の幅の大半(`pinnedBandMinimumWidthRatio`)を
     /// 占める、**名前(ラベルか id)を持つ**帯か = 貼り付く見出し・固定の小見出し。名前の無い暗幕・縁から浮いたラベルは違う
     static func isPinnedTextBand(_ over: ElementInfo, in container: FTRect) -> Bool {
