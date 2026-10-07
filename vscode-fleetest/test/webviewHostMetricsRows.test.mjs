@@ -917,7 +917,7 @@ test("無効な機械のスパークラインは全系列とも同じ1色(色を
   assert.equal(on.includes(off[0]), false, "無効の色は系列の色のどれとも違う");
 });
 
-test("OCR のコンパイルの印(ocrCompiling)が来ても Vision のチャートには文字も帯も重ねず、ツールチップにも出さない", (t) => {
+test("OCR のコンパイルの印(ocrCompiling)が来ると Vision のチャートに帯だけ塗り、文字は重ねず・ツールチップにも出さない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
   const texts = [];
@@ -936,7 +936,26 @@ test("OCR のコンパイルの印(ocrCompiling)が来ても Vision のチャー
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 2 }));
   send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 2 }));
   assert.equal(texts.filter((x) => cell.contains(x.canvas)).length, 0);
-  assert.equal(rects.filter((c) => cell.contains(c)).length, 0);
+  assert.ok(rects.filter((c) => cell.contains(c)).length > 0, "コンパイル中の帯が塗られていない");
   assert.equal(cell.querySelector(".hm-value").textContent, "3");
   assert.doesNotMatch(cell.title, /コンパイル|[Cc]ompil/);
+
+  // 印が窓(60 tick)から抜ければ帯も消える
+  for (let i = 0; i < 60; i++) {
+    send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 0 }));
+  }
+  rects.length = 0;
+  send(window, hostMetricsSample(undefined, 0.1, {}, { visionCalls: 3, ocrCompiling: 0 }));
+  assert.equal(rects.filter((c) => cell.contains(c)).length, 0, "コンパイルが窓から抜けても帯が残っている");
+});
+
+test("hmCompilingBands はコンパイル中の tick を右詰めの x 範囲にし、隣り合う tick を結合する", async () => {
+  const { hmCompilingBands } = await import("../src/webview/monitor/hostChartScale.js");
+  assert.deepEqual(hmCompilingBands([false, false], 60, 59), []);
+  // 59px / 59 区間 = stepX 1。2件は右詰めで index 58, 59 → x=58, 59
+  assert.deepEqual(hmCompilingBands([false, true], 60, 59), [{ x0: 58.5, x1: 59 }]);
+  assert.deepEqual(hmCompilingBands([true, true, false, true], 60, 59), [
+    { x0: 55.5, x1: 57.5 },
+    { x0: 58.5, x1: 59 },
+  ]);
 });

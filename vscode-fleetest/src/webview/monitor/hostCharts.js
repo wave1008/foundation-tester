@@ -24,7 +24,7 @@
 // FM と Vision は別の量なので**別々の縦軸**(片方に合わせると読めなくなる)。
 
 import { t } from '../i18n.js';
-import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale } from './hostChartScale.js';
+import { HM_FM_MAX_RATE, HM_VISION_MAX_RATE, hmSharedCountScale, hmCompilingBands } from './hostChartScale.js';
 import { setHoverTip } from './hoverTip.js';
 import { isMachineDisabled, onMachineEnablementChanged, LOCAL_MACHINE_LABEL } from './machineColors.js';
 
@@ -104,7 +104,9 @@ function hmMakeRow(rowEl, machine) {
     // ({calls,failures,totalMs} | 欠測は calls:null)。古い順に shift する。
     // fm は死活判定(fmIsDead)にも使う。
     fm: { window: [] },
-    vision: { window: [] },
+    // compiling: OCR モデルのコンパイル中だった tick(直近 HM_MAX_SAMPLES 件の boolean。entries.vision.samples と同じ右詰め)。
+    // 帯だけ描く(文字・ツールチップは出さない = 印が延びた読みでも立ち、コンパイルと区別できないため)
+    vision: { window: [], compiling: [] },
     // FM の死活(FMLiveness の最新の観測)。**窓を持たない** —— これはレートではなく
     // 「今この機械で FM を呼べるか」という水準で、直近の1サンプルがそのまま答え。
     // 'alive' / 'dead' / null=不明。呼び出しが0件でも埋まるのが回数系列との違い。
@@ -509,6 +511,15 @@ function hmDraw(row, entry, scale) {
   const stepX = width / (HM_MAX_SAMPLES - 1);
   // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
+  // コンパイル中の帯は線より先に塗る(Vision だけ)。色は系列色(グレー化のときは dead)
+  if (entry === row.entries.vision) {
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = color;
+    for (const band of hmCompilingBands(row.vision.compiling, HM_MAX_SAMPLES, width)) {
+      ctx.fillRect(band.x0, 0, band.x1 - band.x0, height);
+    }
+    ctx.globalAlpha = 1;
+  }
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
     // 念のため枠外へはみ出させない(件数系列は hmCountScale が上限を含むので通常は効かない)
@@ -720,6 +731,11 @@ function hmRenderRow(row, sample) {
   row.fm.window.push({ calls: fmCalls, failures: fmFailures, totalMs: fmTotalMs });
   if (row.fm.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
     row.fm.window.shift();
+  }
+  const ocrCompiling = sample && typeof sample.ocrCompiling === 'number' ? sample.ocrCompiling : 0;
+  row.vision.compiling.push(ocrCompiling > 0);
+  if (row.vision.compiling.length > HM_MAX_SAMPLES) {
+    row.vision.compiling.shift();
   }
   row.vision.window.push({ calls: visionCalls, failures: visionFailures, totalMs: visionTotalMs });
   if (row.vision.window.length > HM_COUNT_RATE_WINDOW_TICKS) {
