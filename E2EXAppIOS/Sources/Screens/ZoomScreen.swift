@@ -12,11 +12,15 @@ struct ZoomScreen: View {
         ScreenColumn {
             TaggedText(tag: Tags.txtZoomScale, text: "scale=" + ZoomScreen.formatted(scale))
             TaggedButton(tag: Tags.btnZoomReset, label: "元に戻す") { reset() }
+            // 契約: 拡大した中身は枠の外へはみ出さない(枠で切り取る)。切らないと 2 倍で上の「元に戻す」を覆い、座標タップが図形に当たる
             RoundedRectangle(cornerRadius: 12)
                 .fill(Color.blue.opacity(0.4))
-                .frame(width: 200, height: 200)
                 .scaleEffect(scale)
                 .offset(offset)
+                .frame(width: 200, height: 200)
+                .clipped()
+                .contentShape(Rectangle())
+                .accessibilityElement()
                 .accessibilityIdentifier(Tags.zoomTarget)
                 .gesture(
                     MagnificationGesture()

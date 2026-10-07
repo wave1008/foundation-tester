@@ -22,7 +22,8 @@ class 日付ピッカーで日付を選べること {
             }
             scene(2, "20日を選んで OK") {
                 action {
-                    tap("*1月20日*||*January 20*||20")
+                    // 英語ロケールのセルは「Tuesday, January 20」。部分一致の「*January 20*」は見出しの「January 2026」に先に当たる
+                    tap("*1月20日*||*January 20||20")
                     // Android はネイティブのダイアログ(ボタンに testID を付けられない)。iOS は自前のモーダル
                     android { tap("OK") }
                     ios { tap("#btn_date_ok") }
