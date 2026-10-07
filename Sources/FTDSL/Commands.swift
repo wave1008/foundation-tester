@@ -385,7 +385,8 @@ public func type(_ selector: Sel, _ text: String, replace: Bool = false, waitSec
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func typeImpl(_ selector: FTSelector, _ text: String, replace: Bool, waitSeconds: Double?,
+/// `FTElement.type(_:)` も通る(記録・失敗の文言・伏せ字化を自由関数と同一に保つ)
+func typeImpl(_ selector: FTSelector, _ text: String, replace: Bool, waitSeconds: Double?,
                       scroll: FTScrollOption?, maxSwipes: Int?,
                       file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "type")

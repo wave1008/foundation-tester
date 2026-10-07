@@ -133,10 +133,17 @@ public enum DSLCommandIndex {
               "The element the last single-element command grabbed. Values are frozen at grab time and cleared between scenes."),
         .init("type", "operation",
               "type(selector, text, replace:, waitSeconds:, scroll:, maxSwipes:) / type(text, replace:)",
-              "Types text. replace: true clears the field first (like clearInput) instead of appending."
+              "Types text. Prefer type(selector, text): one step resolves, focuses, types and reads the value"
+                  + " back — a preceding tap(selector) or select(selector) only adds a step."
+                  + " replace: true clears the field first (like clearInput) instead of appending."
                   + " The single-argument form targets the focused element and takes text, not a selector."
                   + " The selector form returns the element it grabbed (like exist / select), so"
-                  + " assertions chain directly."),
+                  + " assertions chain directly."
+                  + " Also chains as element.type(text, replace:, waitSeconds:) on a grabbed element:"
+                  + " select(\"#login_id\").type(\"alice\") re-resolves the grabbed selector and types"
+                  + " exactly like type(selector, text). An element grabbed by findImage/findImages has no"
+                  + " selector, so it fails without typing (tap it, then type(text)).",
+              chainable: true),
         .init("pressEnter", "operation", "pressEnter()",
               "Fires the Enter/IME action on the focused input."),
         .init("hideKeyboard", "operation", "hideKeyboard()",

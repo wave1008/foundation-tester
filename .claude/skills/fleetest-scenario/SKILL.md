@@ -167,8 +167,8 @@ class ログインできること {
             }
             scene(2, "資格情報を入れて送信する") {
                 action {
-                    tap("#email"); type(account("[user1].id"))       // 資格情報は直書きしない
-                    tap("#password"); type(account("[user1].password"))
+                    type("#email", account("[user1].id"))           // 入力は type(sel, text)。資格情報は直書きしない
+                    type("#password", account("[user1].password"))
                     tap("#login_btn||ログイン")       // id か ラベル(節の順で先に見つかった方)
                 }.expectation {
                     exist("ようこそ")                 // 着地画面の実ラベル
@@ -284,7 +284,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 | 分類 | コマンド |
 |---|---|
-| タップ/入力 | `tap(sel, waitSeconds:)` / `tap(sel, holdSeconds:)`(長押し)/ `type(text)`(直前フォーカス)/ `type(sel, text)` / `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない)/ `lastElement`(直前に掴んだ要素。**値は掴んだ時点の凍結値**なので、掴んだ直後に読むときだけ使う。離れた場所で使うなら `let e = select(…)` で受ける) |
+| タップ/入力 | `tap(sel, waitSeconds:)` / `tap(sel, holdSeconds:)`(長押し)/ **入力は `type(sel, text)` で書く**(探す・焦点を立てる・打つ・読み返すまで1ステップ。前に `tap(sel)` や `select(sel)` を置く `tap(sel); type(text)` / `tap(sel).type(text)` / `select(sel).type(text)` はステップが増えるだけなので生成しない)/ `type(text)`(フォーカス中の欄へ。セレクタで指せない欄だけ)/ `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない)/ `lastElement`(直前に掴んだ要素。**値は掴んだ時点の凍結値**なので、掴んだ直後に読むときだけ使う。離れた場所で使うなら `let e = select(…)` で受ける) |
 | スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` / `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(画面基点・8種。速い1ストロークの生ジェスチャ) |
 | スクロールしながら探す | `tap(sel, scroll: .down)` / `exist(sel, scroll: .down)`(**`tapWithScrollDown` のような関数名の別名は無い** = スクロールの指定は `scroll:` だけ)/ ブロックで囲む `withScrollDown { … }` と、打ち消し: 1コマンドだけなら `scroll: .noScroll`(`exist(sel, scroll: .noScroll)`)・ブロックなら `withoutScroll { … }`。**画像系(`findImage` / `existImage`)は別名が無く `scroll:` だけ** |
 | 検証 | セレクタを取るのは `exist(sel)` / `notExist(sel)` / `countIs(sel, 個数)` / `screenLooksLike(画面の説明文)` だけ。**要素の属性検証は「掴んでから」書く**: `select(sel).enabledIsTrue()` / `.enabledIsFalse()` / `.checkIsON()` / `.checkIsOFF()` / `.idIs("…")` / `.imageIs("[ラベル]")`(要素の画像の分類。**プロジェクトの `vision/classifiers/DefaultClassifier/` に見本画像があるときだけ**書く = 無ければ必ず失敗する。見本は `ft_capture_element`(MCP)か `fleetest vision capture` で端末から採り、`fleetest vision check` で点検する)。`verify("説明") { … }` は複数アサーションを1ステップに集約(ブロック内0個なら inconclusive = passed でも failed でもない・シナリオは続行) |

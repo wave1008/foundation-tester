@@ -8,6 +8,7 @@
 |---|---|
 | `type("文字列", replace: false)` | **フォーカス中**の要素へ入力します(先に `tap(入力欄)` でフォーカスしておきます)。引数は**テキストであってセレクタではありません** —— セレクタらしい1語(`#` で始まる・`\|\|` や `>>` を含む)を渡すと実行前に失敗します(黙って誤入力して後段の検証で落ちるのを防ぐため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使います。`replace: true` で撃つ前に(`clearInput` 相当で)クリアしてから入力します。 |
 | `type(sel, "文字列", replace:waitSeconds:scroll:maxSwipes:)` | 要素を解決してから入力します。日本語もそのまま入ります(IME 切替は不要)。`replace: true` で撃つ前にクリアしてから入力します。 |
+| `select(sel).type("文字列", replace:waitSeconds:)` | 掴んだ要素へ入力します。掴んだときのセレクタで引き直すので、`type(sel, "文字列")` と同じ動きになります。掴めなかった要素からは失敗します。`findImage` / `findImages` で掴んだ要素へは入力できません(先に `.tap()` してから `type("文字列")` と書きます)。**入力するだけなら `type(sel, "文字列")` と書きます** —— `select` のぶん1ステップ多くなるだけです。 |
 
 ## 例
 
@@ -17,6 +18,9 @@ type("abc")                        // 伝統形。フォーカスを作ってか
 
 type("#email", "test@example.com") // セレクタ形。1コマンドで解決・フォーカス・入力
 type("#note", "新しい内容", replace: true)
+
+let field = select("#login_id")    // 掴んだ要素を後で使うときだけ
+field.type("alice")                // type("#login_id", "alice") と同じ
 ```
 
 ## 注意点

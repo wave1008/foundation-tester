@@ -38,8 +38,8 @@ Read them from JSON files instead of hard-coding them. Values that may go into t
 attribute). Shell environment variables are not passed to scenarios, so put tokens here too.
 
 ```swift
-select("#login_id").type(account("[account1].id"))
-select("#login_password").type(account("[account1].password"))
+type("#login_id", account("[account1].id"))
+type("#login_password", account("[account1].password"))
 ```
 
 Details: [Test data and accounts (account, data)](../reference/commands/dataset.md)

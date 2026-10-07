@@ -30,8 +30,8 @@ function readSource() {
 }
 
 /// FTElement の**操作**(検証ではない)。3つの書き方の規則の外: 自由関数はセレクタを取る形
-/// (`tap(selector)`)が本体で、`FTElement.tap()` は掴んだ要素(findImage の結果は座標)を叩く口
-const OPERATIONS = new Set(["tap"]);
+/// (`tap(selector)` / `type(selector, text)`)が本体で、`FTElement.tap()` / `.type(text)` は掴んだ要素へ撃つ口
+const OPERATIONS = new Set(["tap", "type"]);
 
 /// FTElement の検証メソッド名(判定の実体)。**構造体の終端(行頭 })で切る** —— 切らないと
 /// 後続の型のメソッド(FTBranch.ifElse 等)まで拾う

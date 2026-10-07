@@ -825,7 +825,8 @@ public func keyboardIsNotShown(waitSeconds: Double? = nil,
 /// 一部だけ生やすと「どれがチェーンできるか」が覚えられず、書いてみるまで分からない。
 /// **例外は要素を1つに定めないコマンド**(`notExist` / `countIs` / `screenLooksLike`)で、これらは
 /// 掴んだ要素に対する検証ではないのでチェーンにしない。新しい検証コマンドを足すときは両方に足す。
-/// **操作は `tap()` だけ**で、この規則の外(自由関数は `tap(selector)`。ftElementChainSync.test.mjs の OPERATIONS)
+/// **操作は `tap()` と `type(text)` だけ**で、この規則の外(自由関数は `tap(selector)` / `type(selector, text)`。
+/// ftElementChainSync.test.mjs の OPERATIONS)
 public struct FTElement {
     let selector: FTSelector
     /// exist が照合した時点の要素(**再取得しない**。追加のデバイス往復は発生させない)。
@@ -904,6 +905,26 @@ public struct FTElement {
         coordinateTap(x: x, y: y, holdSeconds: holdSeconds, maxGestureSeconds: maxGestureSeconds,
                       description: "tap image \"\(imageLabel)\" (\(String(format: "%.1f", x)), \(String(format: "%.1f", y)))",
                       file: file, line: line)
+        return self
+    }
+
+    /// 掴んだ要素へ入力する。`type(セレクタ, 文字列)` と同じ(掴んだときのセレクタから引き直して `typeImpl` を
+    /// 通す = 記録・失敗の文言・伏せ字化が同一。空の要素からは解決の失敗になる)。
+    /// **findImage / findImages で掴んだ要素は入力せずに失敗する** —— 書けるセレクタを持たない(飾りの名前は
+    /// 引き直すと必ず落ちる)うえ、座標へは入力できない。`tap()` で焦点を立ててから `type(text)` と書く
+    @discardableResult
+    public func type(_ text: String, replace: Bool = false, waitSeconds: Double? = nil,
+                     file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+        guard let imageLabel else {
+            return typeImpl(selector, text, replace: replace, waitSeconds: waitSeconds,
+                            scroll: nil, maxSwipes: nil, file: file, line: line)
+        }
+        FTRuntime.requireCore(command: "type").performCustom(
+            description: "type image \"\(imageLabel)\" \"\(StepDescription.escapingControlCharacters(text))\"",
+            command: "type", file: file, line: line) {
+            throw FTCommandError.message(
+                "cannot type into an element found by image \"\(imageLabel)\"; tap it first and use type(text)")
+        }
         return self
     }
 

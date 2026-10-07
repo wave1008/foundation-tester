@@ -45,7 +45,6 @@ class SignInExample {
             }
             scene(2, "Signing in lands on home") {
                 action {
-                    tap("#field_email")
                     type("#field_email", "user@example.com")
                     ifCanSelect("#btn_dismiss_tips", waitSeconds: 1) {
                         tap("#btn_dismiss_tips")

@@ -38,8 +38,8 @@ let work = TestLog.directoryForTemp.appendingPathComponent("unzipped")     // �
 シェルの環境変数はシナリオに渡らないので、トークンもこちらに置きます。
 
 ```swift
-select("#login_id").type(account("[account1].id"))
-select("#login_password").type(account("[account1].password"))
+type("#login_id", account("[account1].id"))
+type("#login_password", account("[account1].password"))
 ```
 
 詳細: [テストデータ・アカウント(account, data)](../reference/commands/dataset_ja.md)

@@ -16,8 +16,8 @@ A key is `[datasetName].attributeName` and is **split at the last `.`** (`[a.b].
 
 ```swift
 action {
-    select("#login_id").type(account("[account1].id"))
-    select("#login_password").type(account("[account1].password"))
+    type("#login_id", account("[account1].id"))
+    type("#login_password", account("[account1].password"))
 }
 ```
 

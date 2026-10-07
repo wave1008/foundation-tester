@@ -43,7 +43,8 @@ class テキスト入力が正しくechoされること {
             scene(3, "パスワード欄も平文で echo される") {
                 action {
                     tap("#field_password")
-                    type("#field_password", "secret42")
+                    // 掴んだ要素からの入力(type(セレクタ, 文字列) と同じ経路)
+                    select("#field_password").type("secret42")
                 }.expectation {
                     select("#txt_echo_password").textIs("password=secret42")
                 }
