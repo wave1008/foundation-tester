@@ -148,6 +148,7 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 - [壊れにくいシナリオの書き方](reference/writing/writing_robust_scenarios_ja.md)
 - [UI 部品ごとの書き方と癖](reference/writing/ui_component_patterns_ja.md)
 - [シナリオから外部へ通信する](reference/writing/network_access_ja.md)
+- [自分で機能を足す](reference/writing/extending_ja.md)
 
 ### 仕様
 

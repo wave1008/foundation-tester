@@ -26,12 +26,12 @@ scene(1, "Sign in") {
 }
 ```
 
-## Publishing it to the command index (`@FTCommand`)
+## Listing it in the command index (`@FTCommand`)
 
 A plain function like the one above works, but it doesn't show up anywhere — an agent writing
 scenarios with the MCP server (`ft_dsl_commands`) or the `fleetest-scenario` skill has no way to
 know it exists, so it never reuses it and may write the same steps out by hand instead. Mark the
-function with `@FTCommand("summary")` to publish it:
+function with `@FTCommand("summary")` to list it in the command index:
 
 ```swift
 @FTCommand("Logs in with email and password and waits for the home screen")
@@ -54,6 +54,12 @@ app).
 
 `@FTCommand` is a marker only — it generates no code. The function behaves exactly the same
 whether or not it's marked; marking it only makes it discoverable.
+
+The index lists only the function's name, call shape, summary, and file and line — not its body.
+The MCP server builds the list by reading the scenario sources on this Mac and returns it only to
+the AI assistant connected to it (nothing is exposed on the network). Being listed does not make
+the function runnable through MCP (see `ft_batch` under "Rules" below). The summary is passed to
+the AI assistant, so write only what the function does.
 
 ### `extension FTElement` methods
 
