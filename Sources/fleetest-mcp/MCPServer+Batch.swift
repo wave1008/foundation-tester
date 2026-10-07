@@ -615,10 +615,19 @@ extension MCPServer {
                 // **止まった位置と、そこで見えている画面を一緒に返す**(scrollTo の failure と
                 // 同じ形: throw で isError にする — 呼び手が要求した手が最後まで実行されなかった
                 // という点で、要素へ届かなかった scrollTo と同種の失敗)
-                let stopped = try await freshSnapshot(batchDriver, args: args)
+                let stoppedNote = "\n\nStopped at step \(index + 1) of \(plans.count) — later steps were not run.\n\n"
+                // **撮れなくても手ごとの結果は返す** —— 撃った手でアプリが落ちると、ランナーは以後の読み取りを
+                // 422 で断る。ここで投げ直すと lines が届かず、何手目で何が起きたかが 422 の一文に置き換わる
+                let stopped: SnapshotResponse
+                do {
+                    stopped = try await freshSnapshot(batchDriver, args: args)
+                } catch {
+                    throw MCPError(lines.joined(separator: "\n") + stoppedNote
+                        + "Could not take a snapshot after the failure: "
+                        + ((error as? LocalizedError)?.errorDescription ?? "\(error)"))
+                }
                 recordSnapshot(stopped, batchDriver is AndroidDriver ? "android" : "ios", args)
-                throw MCPError(lines.joined(separator: "\n")
-                    + "\n\nStopped at step \(index + 1) of \(plans.count) — later steps were not run.\n\n"
+                throw MCPError(lines.joined(separator: "\n") + stoppedNote
                     + (await snapshotBody(stopped, driver: batchDriver, args: args)))
             }
             var okLine = "\(index + 1). \(plan.summary) — ok (\(ms)ms)"

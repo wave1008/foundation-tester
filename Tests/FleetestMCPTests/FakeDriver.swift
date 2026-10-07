@@ -33,9 +33,16 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         var errorDescription: String? { "\(what) が失敗しました" }
     }
 
+    /// true にすると、`tap(` を1度でも撃った後の snapshot が投げる(撃った操作でアプリが落ち、
+    /// ランナーが以後の読み取りを 422 で断る形を模す)
+    var snapshotsFailAfterTap = false
+
     private func record(_ call: String, _ name: String) throws {
         calls.append(call)
         if failing.contains(name) { throw Boom(what: name) }
+        if snapshotsFailAfterTap, name == "snapshot", calls.contains(where: { $0.hasPrefix("tap(") }) {
+            throw Boom(what: "snapshot after tap")
+        }
     }
 
     func status() async throws -> StatusResponse {

@@ -80,9 +80,11 @@
     新しい世代の base で native ref に戻すので、clear-only の枝の tap が別の番号を撃ち得る。`reproductionNote` も黙って消える
   - 場所: `Sources/fleetest-mcp/MCPServer+ScreenTools.swift:185-195`・:282→:290・:296、`MCPServer+Dispatch.swift:951`
   - 手がかり: tap と注記を merge の前に済ませるか、`generationSnapshot(containing:)` で ref の世代を引く
-- **ft_batch の途中でアプリが落ちると手ごとの結果が消え、422 だけが返る**(09-11)
-  - 場所: `Sources/fleetest-mcp/MCPServer+Batch.swift:618`(失敗の後の `freshSnapshot` を `try` のまま呼び、投げると `lines` が届かない)
-  - 手がかり: 失敗後の撮り直しを `try?` にして、結果行を必ず返す
+- **ft_scroll_to の探索が失敗した後の撮り直しが投げると、失敗の理由が消える**(ft_batch で直した形と同じ型)
+  - 症状: 探索の直後に必ず撮り直す(`var after = try await freshSnapshot(...)`)。撃った手でアプリが落ちていると、ランナーの
+    422 が投げられ、探索の失敗文(何回送って見つからなかったか等)が届かない
+  - 場所: `Sources/fleetest-mcp/MCPServer+Snapshot.swift:1287`(成功の経路とシートの救済も同じ撮り直しを使う)
+  - 手がかり: ft_batch(`MCPServer+Batch.swift` の失敗の分岐)と同じく、撮れないときは outcome の失敗文に撮れなかった理由を添えて返す
 - **ft_batch の曖昧なラベルが警告なしで1件目を叩く**(09-11 M15)
   - 場所: `Sources/fleetest-mcp/MCPServer+Batch.swift:594-630`(結果行は fallback と driverFallback しか付けない)
   - 手がかり: 複数一致の StepNote を足すか、snapshot の `ambiguousLabelsNote` と同じ判定を batch の行に付ける

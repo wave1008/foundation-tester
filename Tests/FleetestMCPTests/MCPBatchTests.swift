@@ -219,6 +219,21 @@ final class MCPBatchTests: XCTestCase {
                        "\(driver.calls)")
     }
 
+    /// 失敗した手の後の撮り直しが投げても(撃った手でアプリが落ちた形)、手ごとの結果と止まった位置を返す
+    func testStepResultsSurviveWhenTheSnapshotAfterAFailureThrows() async {
+        driver.failing = ["tap"]
+        driver.snapshotsFailAfterTap = true
+        do {
+            _ = try await server.call(tool: "ft_batch", args: steps("tap '#login_btn'; tap '#login_btn'"))
+            XCTFail("失敗した手を含むバッチが成功した")
+        } catch {
+            let message = error.localizedDescription
+            XCTAssertTrue(message.contains("1. ") && message.contains("FAILED"), message)
+            XCTAssertTrue(message.contains("Stopped at step 1 of 2"), message)
+            XCTAssertTrue(message.contains("Could not take a snapshot after the failure"), message)
+        }
+    }
+
     // MARK: - (d) 成功時にツリーが1回だけ返る
 
     func testSuccessfulBatchReturnsExactlyOneTree() async throws {
