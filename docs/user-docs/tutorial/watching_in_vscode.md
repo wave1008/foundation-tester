@@ -68,7 +68,7 @@ success rate.
 
 See [VSCode extension](../reference/tools/vscode_extension.md) for all features and settings.
 
-Next: [The sandbox](../security/sandbox.md)
+Next: [Network exposure and security](../security/network_security.md)
 
 ### Link
 - [index](../index.md)

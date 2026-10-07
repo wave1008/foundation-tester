@@ -40,7 +40,7 @@ bash ../foundation-tester/Scripts/update.sh
 
 Where the internet is not reachable, run `bash <clone>/Scripts/update.sh` directly (the form that fetches it with `curl`
 does not work). The setting that redirects GitHub traffic to an internal mirror is in
-[Network Exposure and Security](in_action/network_security.md).
+[Network Exposure and Security](security/network_security.md).
 
 ### Link
 - [index](index.md)

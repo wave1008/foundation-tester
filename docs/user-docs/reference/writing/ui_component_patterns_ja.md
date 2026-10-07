@@ -9,12 +9,14 @@ Compose Multiplatform・Flutter・React Native・Android(Views/XML)・iOS(SwiftU
 
 - 確かめた環境: Compose Multiplatform 1.11(Material3 1.4 相当)・Flutter・React Native 0.86.2
   (New Architecture / Fabric)・Android Views + Material Components・SwiftUI。
-  iOS 27 Simulator(hybrid エンジン / XCUITest エンジン)・Android 15 Emulator。確かめたのは 2026-09-28
+  iOS 27 Simulator(hybrid エンジン / XCUITest エンジン)・Android 15 Emulator
 - 各節の挙動は fleetest 同梱の検証アプリ群(`E2EXAppCMP/` / `E2EXAppFlutter/` / `E2EXAppRN/` /
   `E2EXAppAndroid/` / `E2EXAppIOS/`)と、そのシナリオ(`TestProjects/E2EX-{CMP,Flutter,RN,Android,iOS}/scenarios/`)
   で再現できます(同じ部品の書き方の実例として読めます)。5つのアプリは同じ画面構成・同じ `#id`・
-  同じラベル・同じ echo 文字列の契約(`E2EXAppCMP/docs/ui-contract.md` / `ui-contract-wave2.md`)を
-  各フレームワークの定番部品で実装したものです
+  同じラベル・同じ echo 文字列を、各フレームワークの定番部品で実装したものです
+- **例に出てくる `#id`(`#btn_alert`・`#pager_main` など)と、結果を確かめる表示(`drawerOpen=false` のような
+  echo 文字列)は、この検証アプリのものです**。自分のアプリでは、対応する要素の `#id`・ラベルと、アプリが実際に
+  出す表示に置き換えてください。自分のアプリが結果を画面に出さない部品は、画面の変化(要素の有無・テキスト)で確かめます
 - 各節の表は **CMP / Flutter / RN / Android View / SwiftUI(iOS)** の順に差分を並べます。
   「共通」は表の直前に書いた挙動がそのまま成り立つという意味です
 - **iOS ネイティブ(SwiftUI)には、標準のモーダルドロワーとツールチップの定番部品が無い**ため、
@@ -115,7 +117,7 @@ android { tap("戻る") }       // Android View: ラベルで指す(id なし)
 | Flutter | `PageView`。共通 |
 | RN | `react-native-pager-view`。共通(iOS の in-app エンジンでは、送りだけ XCUITest の実スワイプに切り替わる) |
 | Android View | `ViewPager2`。共通 |
-| SwiftUI(iOS) | `TabView(.page)`。共通(この SUT はネイティブなので in-app の制約を受けない) |
+| SwiftUI(iOS) | `TabView(.page)`。共通(検証アプリはネイティブなので in-app の制約を受けない) |
 
 ## ボトムシート
 
@@ -132,7 +134,7 @@ swipeElementToElement("#sheet_title", "#row_04", durationSeconds: 0.3)
 | フレームワーク | 部品・差分 |
 |---|---|
 | CMP | `ModalBottomSheet`(既定は半分まで展開)。iOS はスクリムの「閉じる」ボタンでも閉じられる(iOS の木にローカライズされたラベルのボタンが出る。ラベルはロケールで変わるのでスナップショットから採る) |
-| Flutter | `showModalBottomSheet(isScrollControlled: true)` + 固定高さ(70%)。**高さの半分を越えて払わないと閉じない**(このアプリの設定値。払う距離が足りないと戻る) |
+| Flutter | `showModalBottomSheet(isScrollControlled: true)` + 固定高さ(70%)。**高さの半分を越えて払わないと閉じない**(閉じる距離はアプリの設定による。払う距離が足りないと戻る) |
 | RN | `@gorhom/bottom-sheet` の `BottomSheetModal`。**iOS では既定で中身が `accessible=true` の1要素へ畳まれる**(見出し・選択肢・行が消える。アプリ側で `accessible={false}` を渡して回避。Android は畳まれない) |
 | Android View | `BottomSheetDialogFragment`。共通 |
 | SwiftUI(iOS) | `.sheet` + `.presentationDetents([.medium, .large])`。dismiss 判定はアプリが自前管理 |
@@ -203,7 +205,7 @@ tap("OK")
 | フレームワーク | 部品・差分 |
 |---|---|
 | CMP | `DatePickerDialog`。OK/キャンセルには `testTag` が付けられる(`#btn_date_ok` / `#btn_date_cancel`) |
-| Flutter | `showDatePicker`。**OK/Cancel には id を付けられない**(組み込みダイアログの内部。ラベルは英語の既定のまま)。**`date=null` はこの SUT では再現できない**(未選択に戻す UI が無いため、キャンセル以外は常に選択済みの日付が返る)。緩い一致(`*January 20*`)は見出し「January 2026」にも当たるので、**`*January 20, 2026*` のように年まで含める** |
+| Flutter | `showDatePicker`。**OK/Cancel には id を付けられない**(組み込みダイアログの内部。ラベルは英語の既定のまま)。**`date=null` は検証アプリでは再現できない**(未選択に戻す UI が無いため、キャンセル以外は常に選択済みの日付が返る)。緩い一致(`*January 20*`)は見出し「January 2026」にも当たるので、**`*January 20, 2026*` のように年まで含める** |
 | RN | `@react-native-community/datetimepicker`。**Android は完全ネイティブダイアログ**で OK/Cancel に `testID` が通らない(ラベルで指す)。`#btn_date_ok` / `#btn_date_cancel` は**iOS の inline モーダルだけ**に存在する |
 | Android View | `MaterialDatePicker`。OK/キャンセルはライブラリ内部のボタン(id 上書き不可)で、ラベル(`setPositiveButtonText` 等で明示設定した文字列)で指す |
 | SwiftUI(iOS) | `.sheet` + `DatePicker(.graphical)`。iOS の `DatePicker` は必ず値を持つため**`date=null` は発生しない** |
@@ -223,7 +225,7 @@ tap("OK")
 | Flutter | `Scaffold.drawer` + `Drawer`。共通 |
 | RN | `@react-navigation/drawer`。**払って開くのは画面端からのエッジスワイプで、Android のジェスチャーナビゲーションの「戻る」帯と重なる** —— シナリオでは払いに頼らずアプリの開くボタンを使う |
 | Android View | `DrawerLayout` + `NavigationView`。同じくエッジスワイプは Android OS の「戻る」帯と重なるため、**シナリオはボタンで開く** |
-| SwiftUI(iOS) | **無い**(iOS に標準のモーダルドロワーが無いため、この SUT はこの画面自体を持たない) |
+| SwiftUI(iOS) | **無い**(iOS に標準のモーダルドロワーが無いため、検証アプリはこの画面自体を持たない) |
 
 ## 引っ張って更新
 
@@ -318,7 +320,7 @@ ios { tap("<削除ボタンのラベル。スナップショットから採る>"
 |---|---|
 | CMP | `PrimaryTabRow` / `ScrollableTabRow` / `NavigationBar`。共通 |
 | Flutter | `TabBar` / `TabBar(isScrollable: true)` / `NavigationBar`。**タブのラベルに「Tab 3 of 3」のような文言が付く**ため、完全一致ではなく**部分一致 `*タブC*` で指す** |
-| RN | `material-top-tabs` / `bottom-tabs`。**ラベルに「tab, 2 of 3」が付く**ため同様に部分一致で指す。3つの Navigator(固定タブ・横スクロールタブ・下部ナビゲーションバー)が兄弟として並ぶ画面は、react-navigation の制約(1つの親画面に Navigator は1つまで)を `NavigationIndependentTree` で回避しているアプリ実装の詳細で、シナリオの書き方には影響しない |
+| RN | `material-top-tabs` / `bottom-tabs`。**ラベルに「tab, 2 of 3」が付く**ため同様に部分一致で指す |
 | Android View | `TabLayout`(fixed + scrollable)/ `BottomNavigationView`。共通 |
 | SwiftUI(iOS) | 固定タブは `Picker(.segmented)`、横スクロールタブは横 `ScrollView` のボタン列、下部は埋め込み `TabView`。**下部ナビゲーションバーの識別子が実際のタブボタンまで届くかは iOS バージョン依存で不安定** —— 届かない場合はラベルで指す |
 
@@ -353,7 +355,7 @@ ios { tap("<削除ボタンのラベル。スナップショットから採る>"
 | Flutter | `Tooltip(triggerMode: longPress)`。吹き出し本文に id を付けられないためラベルで指す。**表示中かどうかの状態は近似値**(表示イベントから固定の表示秒数だけ待って hidden とみなす実装で、非表示アニメーション完了の直接観測ではない) |
 | RN | `react-native-paper` の `Tooltip`。**`accessible` な祖先がアンカー(`IconButton`)を1要素へ畳むため、アンカー自身に付けた識別子は iOS で木から消える**(Android は畳まない)。アプリ側はより外側の `View` にアンカーの識別子を持たせて回避している。**吹き出しは押している間だけ表示され、指を離すと消える**ので、`hold("#anchor", holdSeconds: 3) { … }` のブロックの中で検証する(`tap(holdSeconds:)` は離してから検証するので確認できない) |
 | Android View | `TooltipCompat` 標準ポップアップは別プロセス描画で内容を読めない。自前の `PopupWindow`(フォーカスを取らない別ウィンドウ)も**文字は木に載らない**。出ていることは、`hold { }` の中でアプリが出す状態の表示で確かめる |
-| SwiftUI(iOS) | **無い**(iOS の長押しはコンテキストメニューに倒れる慣用のため、この SUT はこの画面自体を持たない) |
+| SwiftUI(iOS) | **無い**(iOS の長押しはコンテキストメニューに倒れる慣用のため、検証アプリはこの画面自体を持たない) |
 
 `tap(holdSeconds:)` は指を離してから次の行へ進むので、押している間だけ出る部品は次の行では
 既に消えています。`hold { }` はブロックの中身を指が下がっている間に実行します。
@@ -409,11 +411,11 @@ type("...")   // または type(".textField", "...") で入力欄を型で指す
 
 | フレームワーク | 部品・差分 |
 |---|---|
-| CMP | 画面ローカル `Scaffold` + `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior()`。ルートの `TopAppBar` も残ったまま二重に表示される契約なので、`#txt_screen_title` はそちらで読める |
+| CMP | 画面ローカル `Scaffold` + `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior()`。ルートの `TopAppBar` も残ったまま二重に表示されるので、`#txt_screen_title` はそちらで読める |
 | Flutter | `CustomScrollView` + `SliverAppBar(pinned, expandedHeight)` + `SliverList`。共通 |
 | RN | `Animated.FlatList` + `useAnimatedScrollHandler` によるスクロール連動ヘッダ(別レイヤーで重ねる自前実装)。共通 |
 | Android View | `CoordinatorLayout` + `AppBarLayout` + `CollapsingToolbarLayout`。共通 |
-| SwiftUI(iOS) | `List` + `.navigationBarTitleDisplayMode(.large)`。**実際に伸縮するシステムの大見出し自体には識別子が付かない**(戻るボタンと同じ理由で UINavigationBar の内部描画に公開 API が無い)。契約の「大きな見出し」相当は別要素として置かれ、`#txt_collapse_result` は縮小後も木に残る固定位置に置かれている |
+| SwiftUI(iOS) | `List` + `.navigationBarTitleDisplayMode(.large)`。**実際に伸縮するシステムの大見出し自体には識別子が付かない**(戻るボタンと同じ理由で UINavigationBar の内部描画に公開 API が無い)。「大きな見出し」に当たるものは別要素として置かれ、`#txt_collapse_result` は縮小後も木に残る固定位置に置かれている |
 
 行を押すと echo が出る点・echo が縮んでも木に残る位置に置かれている点は全フレームワーク共通です。
 
@@ -535,7 +537,7 @@ select("#txt_focus_echo").textIs("focus=second")
 | フレームワーク | 部品・差分 |
 |---|---|
 | CMP | `OutlinedTextField` + `ExposedDropdownMenuBox`(編集可)。**iOS はキーボードが出ると既定で画面全体が押し上げられる**(`OnFocusBehavior.FocusableAboveKeyboard` が既定。画面上部に固定したテキストが画面外へ出ることがある。アプリ側で `DoNothing` を設定すれば起きない) |
-| Flutter | `TextField` + Material `Autocomplete<String>`。数字キーパッド欄は `FilteringTextInputFormatter.digitsOnly` で数字以外を弾く(`keyboardType: number` だけでは物理キーボード等からの非数字入力を防げないため) |
+| Flutter | `TextField` + Material `Autocomplete<String>`。数字キーパッド欄は数字以外を受け付けない(`FilteringTextInputFormatter.digitsOnly`) |
 | RN | `react-native-paper` の `TextInput` + 自前の前方一致候補リスト。日本語ロケール端末の既定キーボードがローマ字→仮名変換を行うため、英字専用欄は `autoCorrect={false}` + `keyboardType="ascii-capable"` 等で素の英字キーボードにする(アプリ側の対処) |
 | Android View | `TextInputLayout` + `TextInputEditText` + `MaterialAutoCompleteTextView`(編集可)。**オートコンプリートの候補行に id が無い**(`ListPopupWindow` の無名行。ラベルで指す) |
 | SwiftUI(iOS) | `TextField`(`.numberPad` / `.vertical` axis)/ `SecureField` + `@FocusState`。**オートコンプリートの候補は iOS だけで検証**(Android は候補ウィンドウが a11y の木に出ないため。下記) |
@@ -576,7 +578,7 @@ select("#txt_fab_result").textIs("fab=add")
 | フレームワーク | 部品・差分 |
 |---|---|
 | CMP | 画面ローカル `Scaffold` の `floatingActionButton` + `bottomBar`(`BottomAppBar`)。共通 |
-| Flutter | `Scaffold.floatingActionButton`(`FloatingActionButton` + `.extended`)+ `BottomAppBar`。**同一画面に複数の FAB を置くとき、`heroTag` の衝突に注意が要る**のはアプリ実装側の話でシナリオには影響しない |
+| Flutter | `Scaffold.floatingActionButton`(`FloatingActionButton` + `.extended`)+ `BottomAppBar`。共通 |
 | RN | `react-native-paper` の `FAB` + `AnimatedFAB` + `Appbar`。共通 |
 | Android View | `CoordinatorLayout` + `BottomAppBar` + `FloatingActionButton`。**FAB の切り欠き(カドル)の分だけ幅が足りず、BottomAppBar の項目が「その他のオプション」へ畳まれることがあります**(下記) |
 | SwiftUI(iOS) | iOS に FAB の定番が無いため overlay の `Button` + `.toolbar(placement: .bottomBar)` で自作。共通 |
@@ -728,7 +730,7 @@ tap("#fab_hiding", scroll: .up)
 
 ## フレームワーク固有部品
 
-各フレームワークにしか無い定番部品を1画面にまとめた節です。中身は SUT ごとに違うので、
+各フレームワークにしか無い定番部品を1画面にまとめた節です。中身は検証アプリごとに違うので、
 対象アプリが同種の部品を使っているときだけ読んでください。共通の書き方は「`#id` かラベルで
 指す・結果は echo で確かめる」で、他の節と変わりません。
 

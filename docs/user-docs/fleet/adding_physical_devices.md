@@ -30,7 +30,7 @@ over USB in the fleetest run profile ios-physical"). The AI assistant does not d
    ```
    Without it, fleetest talks to the device over Wi-Fi (LAN) even when it is connected over USB. Over LAN each round trip
    is about 10 times slower and the connection can drop midway. The bridge is also opened to the same LAN
-   ([Network exposure and security](../in_action/network_security.md)).
+   ([Network exposure and security](../security/network_security.md)).
 2. **Sign in to Xcode with your Apple ID**: Xcode → Settings → Accounts. Installing the test bridge on the device
    needs a development signature.
 3. **Set the Team ID and the bundle ID prefix** in `~/.config/fleetest/config.json`:

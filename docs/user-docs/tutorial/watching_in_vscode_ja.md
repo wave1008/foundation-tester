@@ -68,7 +68,7 @@ fleetest の iOS の実行で、失敗したシナリオの録画だけ残すよ
 
 全機能と設定項目は[VSCode 拡張](../reference/tools/vscode_extension_ja.md)を参照してください。
 
-次へ: [サンドボックスの考え方](../security/sandbox_ja.md)
+次へ: [ネットワークの露出とセキュリティ](../security/network_security_ja.md)
 
 ### Link
 - [index](../index_ja.md)

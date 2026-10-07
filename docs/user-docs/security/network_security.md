@@ -4,7 +4,7 @@
 
 A summary for explaining to IT/security what this tool opens and where, when running on a
 corporate LAN that does not reach the internet. It is not a setup guide.
-How the files and destinations that test code (scenarios) can reach are restricted is covered in [The sandbox](../security/sandbox.md).
+How the files and destinations that test code (scenarios) can reach are restricted is covered in [The sandbox](sandbox.md).
 
 ## What listens where
 
@@ -56,7 +56,7 @@ How the files and destinations that test code (scenarios) can reach are restrict
 - Outbound traffic happens **only during setup, updates, the update check (once a day by the VSCode extension, with
   `git ls-remote`), and when Android system images are downloaded**. **Nothing goes out while tests run** (except what a
   scenario sends to destinations listed in `sandbox.allowedDomains`; with nothing listed, a scenario cannot reach
-  anything outside the Mac. See [Accessible folders and destinations](../security/access.md)).
+  anything outside the Mac. See [Accessible folders and destinations](access.md)).
 
 | What is fetched | Destination | When |
 |---|---|---|

@@ -40,7 +40,7 @@ bash ../foundation-tester/Scripts/update.sh
 
 インターネットに出られない環境では、更新も `bash <クローン>/Scripts/update.sh` を直接実行します
 (`curl` で取る形は使えません)。GitHub 宛てを社内ミラーへ向ける設定は
-[ネットワークの露出とセキュリティ](in_action/network_security_ja.md)にあります。
+[ネットワークの露出とセキュリティ](security/network_security_ja.md)にあります。
 
 ### Link
 - [index](index_ja.md)

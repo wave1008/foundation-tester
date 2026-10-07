@@ -66,7 +66,7 @@
 
 ## 関連
 
-- [ネットワークの露出とセキュリティ](../in_action/network_security_ja.md) —— fleetest が開くポート・外向きの通信・閉域網での運用
+- [ネットワークの露出とセキュリティ](network_security_ja.md) —— fleetest が開くポート・外向きの通信・閉域網での運用
 - [サンドボックスの考え方](sandbox_ja.md)
 - [アクセスできるフォルダと通信先](access_ja.md)
 

@@ -9,13 +9,16 @@ matching section before writing.
 
 - Verified on: Compose Multiplatform 1.11 (≈ Material3 1.4), Flutter, React Native 0.86.2 (New
   Architecture / Fabric), Android Views + Material Components, and SwiftUI. iOS 27 Simulator (hybrid
-  engine / XCUITest engine) and Android 15 Emulator, on 2026-09-28
+  engine / XCUITest engine) and Android 15 Emulator
 - Every behaviour here reproduces with the verification apps bundled with fleetest
   (`E2EXAppCMP/`, `E2EXAppFlutter/`, `E2EXAppRN/`, `E2EXAppAndroid/`, `E2EXAppIOS/`) and their
   scenarios (`TestProjects/E2EX-{CMP,Flutter,RN,Android,iOS}/scenarios/`), read them as worked
   examples. The five apps implement the same screen layout, the same `#id`s, the same labels and the
-  same echo strings (contract in `E2EXAppCMP/docs/ui-contract.md` / `ui-contract-wave2.md`) with each
-  framework's stock components
+  same echo strings with each framework's stock components
+- **The `#id`s in the examples (such as `#btn_alert` and `#pager_main`) and the text used to check results (echo
+  strings such as `drawerOpen=false`) belong to these verification apps.** In your app, replace them with the `#id`s and
+  labels of the matching elements and the text your app actually shows. For components whose result your app does not
+  show on screen, check the change on the screen instead (whether an element exists, its text)
 - Each section's table lists differences in the order **CMP, Flutter, RN, Android View,
   SwiftUI (iOS)**. "Same as above" means the behaviour just described holds as-is
 - **iOS native (SwiftUI) has no stock component for a modal navigation drawer or a tooltip**, so it
@@ -120,7 +123,7 @@ android { tap("Back") }       // Android View: target by label (no id)
 | Flutter | `PageView`. Same as above |
 | RN | `react-native-pager-view`. Same as above (on the iOS in-app engine, only the paging switches to a real XCUITest swipe) |
 | Android View | `ViewPager2`. Same as above |
-| SwiftUI (iOS) | `TabView(.page)`. Same as above (this SUT is native, so it is not subject to the in-app limitation) |
+| SwiftUI (iOS) | `TabView(.page)`. Same as above (the verification app is native, so it is not subject to the in-app limitation) |
 
 ## Bottom sheet
 
@@ -139,7 +142,7 @@ swipeElementToElement("#sheet_title", "#row_04", durationSeconds: 0.3)
 | Framework | Component / difference |
 |---|---|
 | CMP | `ModalBottomSheet` (expands halfway by default). On iOS the scrim's "close" button also works (the iOS tree has a button with a localized label; take it from a snapshot, since it changes with the locale) |
-| Flutter | `showModalBottomSheet(isScrollControlled: true)` + a fixed height (70%). **You must drag past half the sheet's height to close it** (this app's setting; dragging less snaps back) |
+| Flutter | `showModalBottomSheet(isScrollControlled: true)` + a fixed height (70%). **You must drag past half the sheet's height to close it** (the closing distance depends on the app's setting; dragging less snaps back) |
 | RN | `@gorhom/bottom-sheet`'s `BottomSheetModal`. **On iOS its contents default to a single `accessible=true` element** (the title, options and rows disappear; the app passes `accessible={false}` to avoid this. Android is not affected) |
 | Android View | `BottomSheetDialogFragment`. Same as above |
 | SwiftUI (iOS) | `.sheet` + `.presentationDetents([.medium, .large])`. The app manages the dismiss verdict itself |
@@ -211,7 +214,7 @@ tap("OK")
 | Framework | Component / difference |
 |---|---|
 | CMP | `DatePickerDialog`. OK/Cancel can be given a `testTag` (`#btn_date_ok` / `#btn_date_cancel`) |
-| Flutter | `showDatePicker`. **OK/Cancel cannot carry an id** (inside a built-in dialog; the labels stay the English default). **`date=null` cannot be reproduced in this SUT** (there is no UI to reset the selection to none, so anything but Cancel always returns a selected date). A loose match (`*January 20*`) also matches the header ("January 2026"), so **include the year: `*January 20, 2026*`** |
+| Flutter | `showDatePicker`. **OK/Cancel cannot carry an id** (inside a built-in dialog; the labels stay the English default). **`date=null` cannot be reproduced in the verification app** (there is no UI to reset the selection to none, so anything but Cancel always returns a selected date). A loose match (`*January 20*`) also matches the header ("January 2026"), so **include the year: `*January 20, 2026*`** |
 | RN | `@react-native-community/datetimepicker`. **Android shows a fully native dialog** whose OK/Cancel cannot carry a `testID` (target by label). `#btn_date_ok` / `#btn_date_cancel` exist **only on the iOS inline modal** |
 | Android View | `MaterialDatePicker`. OK/Cancel are the library's internal buttons (their id cannot be overridden); target by the label set via `setPositiveButtonText` etc |
 | SwiftUI (iOS) | `.sheet` + `DatePicker(.graphical)`. iOS's `DatePicker` always holds a value, so **`date=null` never occurs** |
@@ -231,7 +234,7 @@ tap("OK")
 | Flutter | `Scaffold.drawer` + `Drawer`. Same as above |
 | RN | `@react-navigation/drawer`. **Opening with a swipe uses the same screen-edge zone as Android's gesture-navigation "back"** — drive it with the app's open button instead of a swipe in scenarios |
 | Android View | `DrawerLayout` + `NavigationView`. Same edge conflict as above, so **drive it with a button in scenarios** |
-| SwiftUI (iOS) | **Not present** (iOS has no stock modal navigation drawer, so this SUT does not have this screen) |
+| SwiftUI (iOS) | **Not present** (iOS has no stock modal navigation drawer, so the verification app does not have this screen) |
 
 ## Pull to refresh
 
@@ -328,7 +331,7 @@ ios { tap("<the delete button's label from a snapshot>") }
 |---|---|
 | CMP | `PrimaryTabRow` / `ScrollableTabRow` / `NavigationBar`. Same as above |
 | Flutter | `TabBar` / `TabBar(isScrollable: true)` / `NavigationBar`. **Tab labels carry a suffix such as "Tab 3 of 3"**, so target them with a **partial match** (`*Tab C*`) instead of an exact match |
-| RN | `material-top-tabs` / `bottom-tabs`. **Labels carry a suffix such as "tab, 2 of 3"**, so target them the same way with a partial match. The screen where three Navigators (fixed tabs, horizontal-scroll tabs, bottom navigation) sit as siblings works around react-navigation's one-Navigator-per-parent-screen limit with `NavigationIndependentTree`, an app-implementation detail that does not affect how you write the scenario |
+| RN | `material-top-tabs` / `bottom-tabs`. **Labels carry a suffix such as "tab, 2 of 3"**, so target them the same way with a partial match |
 | Android View | `TabLayout` (fixed + scrollable) / `BottomNavigationView`. Same as above |
 | SwiftUI (iOS) | Fixed tabs use `Picker(.segmented)`, the horizontal-scroll tabs use a row of buttons in a `ScrollView`, and the bottom one is an embedded `TabView`. **Whether the bottom navigation bar's identifier reaches the actual tab button is iOS-version dependent and known to be flaky** — target by label when it does not reach |
 
@@ -364,7 +367,7 @@ verify a fade-based visibility toggle in Flutter, judge it by the state echo the
 | Flutter | `Tooltip(triggerMode: longPress)`. Its bubble text cannot carry an id, so target it by label. **Its "shown" state is an approximation** (the app waits a fixed display duration from the show event and then treats it as hidden — not a direct observation of the hide animation finishing) |
 | RN | `react-native-paper`'s `Tooltip`. **An `accessible` ancestor collapses the anchor (`IconButton`) into one element, so an identifier set on the anchor itself drops out of the tree on iOS** (Android is not affected). The app works around this by putting the anchor's identifier on an outer `View` instead. **The tooltip is shown only while the finger is down and disappears when it is lifted**, so verify it inside the block of `hold("#anchor", holdSeconds: 3) { … }` (`tap(holdSeconds:)` verifies after the release and cannot confirm it) |
 | Android View | `TooltipCompat`'s standard popup is drawn in a separate process, so its content cannot be read. The text of an app's own `PopupWindow` (a separate window that does not take focus) is **not in the tree either**. Confirm that it is shown from the state the app displays, inside `hold { }` |
-| SwiftUI (iOS) | **Not present** (iOS's long press convention leads to a context menu instead, so this SUT does not have this screen) |
+| SwiftUI (iOS) | **Not present** (iOS's long press convention leads to a context menu instead, so the verification app does not have this screen) |
 
 `tap(holdSeconds:)` lifts the finger before the next line runs, so a component that is shown only
 while the finger is down is already gone by then. `hold { }` runs its block while the finger is down.
@@ -421,11 +424,11 @@ down.
 
 | Framework | Component / difference |
 |---|---|
-| CMP | A screen-local `Scaffold` + `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior()`. The root `TopAppBar` also stays visible at the same time by contract, so `#txt_screen_title` can be read from there |
+| CMP | A screen-local `Scaffold` + `LargeTopAppBar` + `exitUntilCollapsedScrollBehavior()`. The root `TopAppBar` also stays visible at the same time, so `#txt_screen_title` can be read from there |
 | Flutter | `CustomScrollView` + `SliverAppBar(pinned, expandedHeight)` + `SliverList`. Same as above |
 | RN | An `Animated.FlatList` + `useAnimatedScrollHandler`-driven header (a custom implementation layered as a separate view). Same as above |
 | Android View | `CoordinatorLayout` + `AppBarLayout` + `CollapsingToolbarLayout`. Same as above |
-| SwiftUI (iOS) | `List` + `.navigationBarTitleDisplayMode(.large)`. **The system large title that actually collapses cannot carry an identifier** (same reason as the back button — UINavigationBar's internal drawing has no public API for it). The equivalent of the contract's "large heading" is a separate element instead, and `#txt_collapse_result` sits at a fixed position that stays in the tree after the header collapses |
+| SwiftUI (iOS) | `List` + `.navigationBarTitleDisplayMode(.large)`. **The system large title that actually collapses cannot carry an identifier** (same reason as the back button — UINavigationBar's internal drawing has no public API for it). The equivalent of the "large heading" is a separate element instead, and `#txt_collapse_result` sits at a fixed position that stays in the tree after the header collapses |
 
 Pressing a row shows an echo, and the echo stays in the tree at a fixed position even after
 collapsing, on every framework.
@@ -552,7 +555,7 @@ select("#txt_focus_echo").textIs("focus=second")
 | Framework | Component / difference |
 |---|---|
 | CMP | `OutlinedTextField` + `ExposedDropdownMenuBox` (editable). **On iOS, the whole screen is pushed up by default when the keyboard appears** (`OnFocusBehavior.FocusableAboveKeyboard` is the default; text fixed near the top can go off-screen. The app can set `DoNothing` to avoid this) |
-| Flutter | `TextField` + Material `Autocomplete<String>`. The number-keypad field rejects non-digit characters with `FilteringTextInputFormatter.digitsOnly` (`keyboardType: number` alone would not stop non-digit input from, say, a physical keyboard) |
+| Flutter | `TextField` + Material `Autocomplete<String>`. The number-keypad field rejects non-digit characters (`FilteringTextInputFormatter.digitsOnly`) |
 | RN | `react-native-paper`'s `TextInput` + a custom prefix-match suggestion list. Because a Japanese-locale device's default keyboard converts romaji into kana, an ASCII-only field needs `autoCorrect={false}` + `keyboardType="ascii-capable"` etc. (a workaround the app applies itself) |
 | Android View | `TextInputLayout` + `TextInputEditText` + `MaterialAutoCompleteTextView` (editable). **The autocomplete suggestion rows carry no id** (unnamed `ListPopupWindow` rows; target by label) |
 | SwiftUI (iOS) | `TextField` (`.numberPad` / `.vertical` axis) / `SecureField` + `@FocusState`. **The autocomplete suggestions are only verifiable on iOS** (on Android the suggestion popup does not appear in the a11y tree; see below) |
@@ -595,7 +598,7 @@ select("#txt_fab_result").textIs("fab=add")
 | Framework | Component / difference |
 |---|---|
 | CMP | A screen-local `Scaffold`'s `floatingActionButton` + `bottomBar` (`BottomAppBar`). Same as above |
-| Flutter | `Scaffold.floatingActionButton` (`FloatingActionButton` + `.extended`) + `BottomAppBar`. Care about a `heroTag` clash when a screen has multiple FABs is an app-implementation detail and does not affect the scenario |
+| Flutter | `Scaffold.floatingActionButton` (`FloatingActionButton` + `.extended`) + `BottomAppBar`. Same as above |
 | RN | `react-native-paper`'s `FAB` + `AnimatedFAB` + `Appbar`. Same as above |
 | Android View | `CoordinatorLayout` + `BottomAppBar` + `FloatingActionButton`. **The FAB's cradle can leave too little width, folding the BottomAppBar's items into "More options"** (below) |
 | SwiftUI (iOS) | iOS has no stock FAB, so it is a custom overlay `Button` + `.toolbar(placement: .bottomBar)`. Same as above |
@@ -754,7 +757,7 @@ tap("#fab_hiding", scroll: .up)
 
 ## Framework-native components
 
-A single screen collecting the components unique to each framework. Its content differs per SUT, so
+A single screen collecting the components unique to each framework. Its content differs per verification app, so
 read this section only if your target app uses a similar component. The common approach is the same
 as any other section — target by `#id` or label, verify with the echo.
 

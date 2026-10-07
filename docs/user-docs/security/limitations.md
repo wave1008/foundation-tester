@@ -67,7 +67,7 @@ The sandbox exists to protect this Mac. It does not stop the following.
 
 ## Related
 
-- [Network Exposure and Security](../in_action/network_security.md) — the ports fleetest opens, outbound traffic, and running on a closed network
+- [Network Exposure and Security](network_security.md) — the ports fleetest opens, outbound traffic, and running on a closed network
 - [The sandbox](sandbox.md)
 - [Accessible folders and destinations](access.md)
 

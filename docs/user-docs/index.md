@@ -32,11 +32,11 @@ If you are new, install it with [Getting Started](getting-started.md), then go t
 
 ## Security
 
+- [Network exposure and security](security/network_security.md)
 - [The sandbox](security/sandbox.md)
 - [Accessible folders and destinations](security/access.md)
 - [Helpful features for writing test code](security/helpers.md)
 - [Notes and limitations](security/limitations.md)
-- [Network exposure and security](in_action/network_security.md)
 
 ## Expanding your fleet
 

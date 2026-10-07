@@ -116,7 +116,7 @@ above. **If you write nothing, a scenario cannot reach the outside at all**, so 
 
 While tests run, fleetest itself does not go outside (except for scenarios connecting to `allowedDomains`). It goes
 outside only for installation and updates; the destinations and how to run in a closed network are in
-[Network exposure and security](../in_action/network_security.md).
+[Network exposure and security](network_security.md).
 
 ## Settings file summary
 

@@ -31,11 +31,11 @@ E2E テストツールです。名前の由来と特徴は [Fleetest とは](ove
 
 ## セキュリティ
 
+- [ネットワークの露出とセキュリティ](security/network_security_ja.md)
 - [サンドボックスの考え方](security/sandbox_ja.md)
 - [アクセスできるフォルダと通信先](security/access_ja.md)
 - [テストコードを書くときの便利機能](security/helpers_ja.md)
 - [注意事項と制限事項](security/limitations_ja.md)
-- [ネットワークの露出とセキュリティ](in_action/network_security_ja.md)
 
 ## フリートを拡張する
 

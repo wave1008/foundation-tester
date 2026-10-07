@@ -29,7 +29,7 @@ AIアシスタントは代わりに行いません。
    brew install libimobiledevice
    ```
    入れないと、USB でつないでいても Wi-Fi(LAN)経由で通信します。LAN 経由は1往復が約 10 倍遅く、
-   途中で接続が切れることもあります。また、ブリッジが同じ LAN に開きます([ネットワークの露出とセキュリティ](../in_action/network_security_ja.md))。
+   途中で接続が切れることもあります。また、ブリッジが同じ LAN に開きます([ネットワークの露出とセキュリティ](../security/network_security_ja.md))。
 2. **Xcode に Apple ID でサインインする**: Xcode → Settings → Accounts。テスト用のブリッジを実機に入れるために、
    開発用の署名が要ります。
 3. **Team ID と bundle ID の接頭辞を設定する**: `~/.config/fleetest/config.json` に書きます。
