@@ -1693,6 +1693,15 @@ extension StepExecutor {
                 coverName = coverName ?? TapTargetGeometry.describe(over)
                 coverRect = over.frame
             }
+            // **iOS: 容器の下端で見切れた対象**(覆いは無いが中心が描かれていない。bottomEdgeClipLift の doc)。
+            // 指は見切れた行より上に当てる(行そのものを覆いとして避ける)
+            if jump == nil, !isAndroid,
+               let lift = TapTargetGeometry.bottomEdgeClipLift(current, in: currentSnapshot.elements) {
+                jump = lift
+                coverName = coverName ?? "the bottom edge of its scroll container"
+                coverRect = FTRect(x: container.x, y: current.frame.y, width: container.width,
+                                   height: max(0, container.y + container.height - current.frame.y))
+            }
             // **指を当てるのは覆いを避けた領域**(理由は uncoverDragArea)
             guard let jump, let coverRect,
                   let dragArea = TapTargetGeometry.uncoverDragArea(container: container,
@@ -1710,6 +1719,7 @@ extension StepExecutor {
                 } != nil)
                 || TapTargetGeometry.overlayCoveringForUncover(
                        moved, in: after.elements, screen: after.screen) != nil
+                || (!isAndroid && TapTargetGeometry.bottomEdgeClipLift(moved, in: after.elements) != nil)
             if !stillCovered {
                 return (moved, after,
                         "scrolled the container to bring the target out from under"

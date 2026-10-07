@@ -760,13 +760,34 @@ public enum TapTargetGeometry {
     /// 60 の床上げは dragGesture の実行下限(距離 50 超)を割らないため —— 割ると
     /// overflow の小さいまたぎ(Compose の実測は中心が縁から 2〜12px 外)で寄せ自体が不発になる
     public static func straddleJump(for element: ElementInfo, container: FTRect) -> Double? {
-        let margin = 12.0
+        let margin = edgeLiftMargin
         let bottomOverflow = (element.frame.y + element.frame.height)
             - (container.y + container.height) + margin
         let topOverflow = container.y - element.frame.y + margin
-        if bottomOverflow > margin { return max(bottomOverflow, 60) }
-        if topOverflow > margin { return -max(topOverflow, 60) }
+        if bottomOverflow > margin { return max(bottomOverflow, minimumEdgeLiftJump) }
+        if topOverflow > margin { return -max(topOverflow, minimumEdgeLiftJump) }
         return nil
+    }
+
+    /// 縁から外す送りの余白(pt/px)。縁にぴったり付けると丸めで再び 1 未満はみ出すので少し内側へ
+    static let edgeLiftMargin = 12.0
+    /// 縁から外す送りの下限(pt/px)。dragGesture の実行下限(距離 50 超)を割らないため(straddleJump の doc)
+    static let minimumEdgeLiftJump = 60.0
+
+    /// **容器の下端で見切れた要素を、撃つ前に全体が見えるまで上へ送る量**(iOS の DSL の tap / type)。
+    /// iOS は ref を撃つとブリッジが frame の中心へ解決するので、見切れた要素の中心は描かれていない所に落ち、
+    /// 焦点が立たないまま打った(実測: E2EX-CMP の `#field_bottom` は枠 827..873 と申告されるが絵は上の縁しか
+    /// 描かれず、XCUITest の type が 0 文字で 422)。判定は `clippedAtContainerEdge`(警告と同じ)、欠けた高さは
+    /// 同じ幅・同じ型・同じ深さの兄弟の行の高さから推す。**Android は送らない**(見えている部分の中心で届く =
+    /// `clippedByContainer` の DSL の文言と同じ立場)。送り過ぎは害が無い(次の判定で見切れが無ければ撃つ)
+    public static func bottomEdgeClipLift(_ element: ElementInfo, in elements: [ElementInfo]) -> Double? {
+        guard let container = clippedAtContainerEdge(element, in: elements),
+              isClippedAtBottomEdge(element, container: container) else { return nil }
+        let rowHeight = elements.filter {
+            $0.ref != element.ref && $0.depth == element.depth && $0.type == element.type
+                && sameRowWidth($0.frame.width, element.frame.width)
+        }.map(\.frame.height).max() ?? element.frame.height
+        return max(rowHeight - element.frame.height + edgeLiftMargin, minimumEdgeLiftJump)
     }
 
     /// **容器の縁にまたがった(一部が容器の外へ出ている)タップ対象**と、その容器・寄せ量。

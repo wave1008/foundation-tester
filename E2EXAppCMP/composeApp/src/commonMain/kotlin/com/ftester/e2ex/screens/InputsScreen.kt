@@ -76,6 +76,50 @@ fun InputsScreen() {
             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // オートコンプリートは欄の先頭に置く: CMP の iOS は候補(ExposedDropdownMenu)をソフトキーボードを避けずに欄の下へ
+            // 出すので、下のほうの欄だとキーボードが出ている間は候補がキーボードの裏に入り、指では押せない
+            // (XCUITest の tap はキーボードに当たる。送ると候補は閉じる)
+            ExposedDropdownMenuBox(
+                expanded = autoExpanded,
+                onExpandedChange = { autoExpanded = it }
+            ) {
+                OutlinedTextField(
+                    value = autoText,
+                    onValueChange = {
+                        autoText = it
+                        autoExpanded = it.isNotEmpty()
+                    },
+                    label = { Text("国") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = autoExpanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, true)
+                        .testTag(Tags.FIELD_AUTO)
+                )
+                val filtered = AUTO_CANDIDATES.filter { (_, label) ->
+                    label.startsWith(autoText, ignoreCase = true)
+                }
+                if (filtered.isNotEmpty()) {
+                    ExposedDropdownMenu(
+                        expanded = autoExpanded,
+                        onDismissRequest = { autoExpanded = false },
+                        modifier = Modifier.exposeTestTagsAsResourceId()
+                    ) {
+                        filtered.forEach { (tag, label) ->
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                onClick = {
+                                    autoText = label
+                                    autoResult = label
+                                    autoExpanded = false
+                                },
+                                modifier = Modifier.testTag(tag)
+                            )
+                        }
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = numberText,
                 onValueChange = { numberText = it },
@@ -118,47 +162,6 @@ fun InputsScreen() {
                     .focusRequester(secondFocusRequester)
                     .onFocusChanged { if (it.isFocused) focusResult = "second" }
             )
-
-            ExposedDropdownMenuBox(
-                expanded = autoExpanded,
-                onExpandedChange = { autoExpanded = it }
-            ) {
-                OutlinedTextField(
-                    value = autoText,
-                    onValueChange = {
-                        autoText = it
-                        autoExpanded = it.isNotEmpty()
-                    },
-                    label = { Text("国") },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = autoExpanded) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable, true)
-                        .testTag(Tags.FIELD_AUTO)
-                )
-                val filtered = AUTO_CANDIDATES.filter { (_, label) ->
-                    label.startsWith(autoText, ignoreCase = true)
-                }
-                if (filtered.isNotEmpty()) {
-                    ExposedDropdownMenu(
-                        expanded = autoExpanded,
-                        onDismissRequest = { autoExpanded = false },
-                        modifier = Modifier.exposeTestTagsAsResourceId()
-                    ) {
-                        filtered.forEach { (tag, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    autoText = label
-                                    autoResult = label
-                                    autoExpanded = false
-                                },
-                                modifier = Modifier.testTag(tag)
-                            )
-                        }
-                    }
-                }
-            }
 
             OutlinedTextField(
                 value = bottomText,
