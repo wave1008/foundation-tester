@@ -809,16 +809,18 @@ extension StepExecutor {
             // (typeDriver 優先/通常/409フォールバック)で打っても、成功したら等しく次のロケータ
             // 操作へ引き継ぐ —— エンジンで挙動を変えない(読み返しの有無に依存しない)
             let keyboardBefore = snapshot.keyboardFrame
-            if let td = typeDriver, preferTypeDriver || text.contains("\n"),
-               try await typeViaTypeDriver(td, step: step, phase: &phase) {
-                keyboardFrameBeforeType = keyboardBefore
-                pendingTypeKeyboardCheck = true
-                pendingTypeEndedWithNewline = text.hasSuffix("\n")
-                // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
-                return StepOutcome(status: .passed, healedStep: healedStep,
-                                   healedByFingerprint: healedByFingerprint,
-                                   driverFallback: Self.joinNotes(td.lastActionNote, replaceFallbackNote,
-                                                                  existingValueNote, nonInputNote))
+            if let td = typeDriver, preferTypeDriver || text.contains("\n") {
+                let routed = try await typeViaTypeDriver(td, step: step, phase: &phase)
+                if routed.typed {
+                    keyboardFrameBeforeType = keyboardBefore
+                    pendingTypeKeyboardCheck = true
+                    pendingTypeEndedWithNewline = text.hasSuffix("\n")
+                    // ランナーの打ち直しの申告(OKResponse.note)はこの経路でも拾う(下の主経路と同じ)
+                    return StepOutcome(status: .passed, healedStep: healedStep,
+                                       healedByFingerprint: healedByFingerprint,
+                                       driverFallback: Self.joinNotes(driverFallback, routed.note, td.lastActionNote,
+                                                                      replaceFallbackNote, existingValueNote, nonInputNote))
+                }
             }
             do {
                 start = clock.now
@@ -851,10 +853,11 @@ extension StepExecutor {
                     return StepOutcome(status: .failed(Self.nonTextInputFallbackRefusal(
                         element, in: snapshot.elements, action: "type")))
                 }
-                guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
+                let routed = try await typeViaTypeDriver(td, step: step, phase: &phase)
+                guard routed.typed else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
                 // (typeDriver = xcuitest が自前で読み返し済みなので、ここでも読み返さない)
-                driverFallback = Self.joinNotes("fell back to XCUITest", td.lastActionNote,
+                driverFallback = Self.joinNotes("fell back to XCUITest", routed.note, td.lastActionNote,
                                                 replaceFallbackNote, existingValueNote, nonInputNote)
             }
             // **打った(do 成功/409フォールバックのどちらでも)ので、次のロケータ操作の解決で
@@ -968,17 +971,32 @@ extension StepExecutor {
 
     /// typeDriver で type を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
     /// 取り直す。解決できなければ false(呼び出し側で通常経路[inapp]へフォールバック/再スロー)。
+    /// 戻り値の note は撃つ前に送ったときの注記(liftCoveredTarget)
     private func typeViaTypeDriver(_ td: AppDriver, step: FlowStep,
-                                   phase: inout PhaseAccumulator) async throws -> Bool {
+                                   phase: inout PhaseAccumulator) async throws -> (typed: Bool, note: String?) {
         let clock = ContinuousClock()
         var start = clock.now
-        let snapshot = try await td.snapshot()
+        var snapshot = try await td.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)
-        guard let resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return false }
+        guard var resolved = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return (false, nil) }
+        // **XCUITest へ回した打鍵も、キーボードの下・見切れた欄なら撃つ前に送る**(主経路と同じ liftCoveredTarget)。
+        // XCUITest は欄を座標でタップしてから打つので、キーボードに当たると焦点が前の欄に残って打鍵が流れ込む
+        // (実測: hybrid で改行を含む type が XCUITest へ回り、キーボードの下の複数行の欄の代わりにパスワードの欄へ入った)。
+        // 判断は XCUITest の木で行う(in-app の木はキーボードを申告しない)。送った後は XCUITest の木で引き当て直す
+        var note: String?
+        if let lifted = try await liftCoveredTarget(resolved.element, in: snapshot, step: step,
+                                                    verb: "typing", phase: &phase) {
+            note = lifted.note
+            start = clock.now
+            snapshot = try await td.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            guard let again = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return (false, note) }
+            resolved = again
+        }
         start = clock.now
         try await td.type(ref: resolved.element.ref, text: step.text ?? "")
         phase.actionMs += Self.ms(clock.now - start)
-        return true
+        return (true, note)
     }
 
     /// in-app 経由の type 読み返し(AppDriver.verifiesTypedText == false のときだけ呼ばれる)。
