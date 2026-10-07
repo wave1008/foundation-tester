@@ -630,7 +630,7 @@ docs/              設計書・実装知見
 
 `fleetest run --profile <名前> --quiet --junit reports/junit.xml` が exit code(0/1)と
 JUnit XML を出す。self-hosted の Mac(Jenkins・AWS EC2 Mac 等)前提・
-Apple Intelligence 不要(FM 系は自動スキップ。GitHub ホストランナーはサポート外)。
+Apple Intelligence 不要(無ければ `screenLooksLike` は判定されずに通り、テキストの視覚検証は OCR だけで判定する。GitHub ホストランナーはサポート外)。
 Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 
 実行結果は `<project>/results/runs/<年月>/<runID>/` に JSON で貯まる。

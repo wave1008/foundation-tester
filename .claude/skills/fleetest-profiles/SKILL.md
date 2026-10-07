@@ -52,7 +52,7 @@ description: fleetest のアプリプロファイル・実行プロファイル�
 - **アプリの表示名**(`appName`。例 `SUT Store`)—— **ホーム画面でアイコンの下に出る名前そのもの**を聞く。
   `tapAppIcon()` の既定の探し先と、システムアラートがこのアプリのものかの判定に使うので、
   区別のための注記(「(実機)」等)や略称を足さない(食い違うと iOS は run 開始時に警告が出る)
-- **アプリID**(iOS は bundle ID、Android はパッケージ名。例 `com.sutec.mobile`。
+- **アプリID**(iOS は bundle ID、Android はパッケージ名。例 `com.example.shop`。OS ごとに ID が違うアプリもある(例 iOS `com.sutec.mobile.ios` / Android `com.sutec.mobile.android`)。
   **分からなくても中断しない**: 仮の ID `com.example.myapp` を `--app-id` に渡して
   進め、実行前に `profiles/apps/` の `app` を実IDへ差し替える必要があることを 🧑 に伝えて
   ステップ7の報告にも残す)

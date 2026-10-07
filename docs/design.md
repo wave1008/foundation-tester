@@ -1152,7 +1152,7 @@ Android シナリオで約 33%、iOS シナリオで約 27% 所要を短縮し�
 
 | リスク | 対策 |
 |---|---|
-| Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。**PCC/外部 LLM への差替は行わない**(§1.2)—— FM 系は自動スキップで走る |
+| Apple Intelligence 未有効 / FM 利用不可 | `fleetest doctor` で `availability` を事前診断。**PCC/外部 LLM への差替は行わない**(§1.2)—— `screenLooksLike` は判定されずに通り、テキストの視覚検証は OCR だけで判定して走る |
 | 4K コンテキスト超過 | スナップショット圧縮 + 1 ステップ 1 セッション + 応答の構造化。FM 呼び出しの失敗は `FMHealth.record` に記録して諦める(再試行はしない) |
 | 巨大な画面ツリーで snapshot が遅い | ランナー側でフィルタしてから返す(ホストに生ツリーを送らない) |
 | xcodebuild ランナーの不安定さ | `bridge up` にヘルスチェック+自動再起動。`/status` ポーリング |
