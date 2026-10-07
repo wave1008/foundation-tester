@@ -385,10 +385,16 @@ public final class StepExecutor {
     /// バウンス由来の非決定性で scrollTo 直後のタップが flake した(実害)。
     /// type 用の preferTypeDriver(廃止済み・常に false)とは別物。
     public var typeDriverGestures: Set<String>
-    /// swipe/press が「このエンジンでは不可」を1回でも受けたら true。以降は直接 typeDriver へ
-    /// (scrollTo は最大 maxSwipes 回 swipe するため、毎回往復させないため)
-    var gestureFallbackLatched = false
-    /// drag(スクロール探索直後の空打ち)専用のラッチ。**gestureFallbackLatched と共有しない**:
+    /// swipe が「このエンジンでは不可」を1回でも受けたら true。以降は直接 typeDriver へ
+    /// (scrollTo は最大 maxSwipes 回 swipe するため、毎回往復させないため)。**path の有無と press で分ける**:
+    /// path 付き(scrollFrame 指定)は in-app が必ず 501 を返すので、共有すると1回撃っただけで path 無しの
+    /// swipe まで XCUITest の実スワイプ化し、バウンス由来の flake を持ち込む(dragFallbackLatched と同じ理由)
+    var swipeFallbackLatched = false
+    /// path 付き swipe 専用(path 付きどうしの往復を省くだけ。path 無しの swipe には効かせない)
+    var pathSwipeFallbackLatched = false
+    /// press(長押し)専用。swipe とは申告も経路も別(typeDriverGestures もアクション別に持つ)
+    var pressFallbackLatched = false
+    /// drag(スクロール探索直後の空打ち)専用のラッチ。**swipeFallbackLatched と共有しない**:
     /// in-app は drag を一切実装しないので必ず 501 になるが、swipe は UIKit なら
     /// contentOffset 経路で決定的に効く。共有すると drag の 501 だけで全 swipe が XCUITest 実
     /// スワイプ化し、バウンス由来の flake を持ち込む(typeDriverGestures の注意書きと同じ理由)

@@ -659,7 +659,7 @@ extension StepExecutor {
                 // 足さない**(上ですでに1回付けている。ここで足すと同文が2回付く)
                 adviseTarget(TapTargetGeometry.occlusionAdvisory(
                     for: element, in: snapshot.elements, screen: snapshot.screen, isAndroid: isAndroid))
-                if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
+                if typeDriverGestures.contains("press") || pressFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
                                        healedByFingerprint: healedByFingerprint,
@@ -675,7 +675,7 @@ extension StepExecutor {
                     // 409 を含めない理由は DriverError.isEngineIncapable 参照
                     guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
                     guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
-                    gestureFallbackLatched = true
+                    pressFallbackLatched = true
                     driverFallback = Self.joinNotes(driverFallback, "fell back to XCUITest")
                 }
                 break

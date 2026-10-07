@@ -1188,8 +1188,8 @@ final class FTInAppBridge {
         var visited = 0
         // 指を置く点 = 画面中央(scrollFrame 無しは XCUITest / Android も画面中央を払う)
         let centre = (root as? UIView).map { CGPoint(x: $0.bounds.midX, y: $0.bounds.midY) }
-        return scrollWalk(root, accessibilityDirection(finger: finger), reaching: centre, flutter: nil,
-                          visited: &visited)
+        return scrollWalk(root, accessibilityDirection(finger: finger), reaching: centre,
+                          rootSize: (root as? UIView)?.bounds.size, flutter: nil, visited: &visited)
     }
 
     /// UIAccessibilityScrollDirection の向きは**縦と横で基準が違う**: 縦はスクロールバーの動く向き
@@ -1223,7 +1223,7 @@ final class FTInAppBridge {
         for ref in refs {
             guard let node = snapshot.nodes[ref] else { continue }
             var visited = 0
-            if scrollWalk(node, direction, reaching: nil, flutter: nil, visited: &visited) { return .scrolled }
+            if scrollWalk(node, direction, reaching: nil, rootSize: nil, flutter: nil, visited: &visited) { return .scrolled }
         }
         return .refused
     }
@@ -1242,22 +1242,29 @@ final class FTInAppBridge {
 
     /// point: 指を置く点(window 座標)。nil = 刈らない(領域指定は一致した容器を根にするので要らない)。
     /// 点があれば、枠がその点を含まない要素は**部分木ごと**飛ばす(`ScrollPointReach`)
+    /// `rootSize`: 点で走査するときの根の大きさ。根の全体を覆う要素には scroll を受理させない(`ScrollPointReach.mayAccept`)
     /// `flutter`: Flutter の縮んだ AX 矩形の補正の状態(InAppSnapshot.rescaleBelow)。刈り込みの枠を snapshot と揃える
     private static func scrollWalk(_ node: NSObject, _ direction: UIAccessibilityScrollDirection,
-                                   reaching point: CGPoint?, flutter inherited: InAppSnapshot.FlutterFrames?,
+                                   reaching point: CGPoint?, rootSize: CGSize?,
+                                   flutter inherited: InAppSnapshot.FlutterFrames?,
                                    visited: inout Int) -> Bool {
         if visited >= axScrollMaxVisits { return false }
         visited += 1
         let flutter = InAppSnapshot.rescaleBelow(node, inherited: inherited)
+        var mayAccept = true
         if let point {
             let f = InAppSnapshot.frame(node, rescale: flutter?.rescale)
             let frame = FTRect(x: Double(f.origin.x), y: Double(f.origin.y),
                                width: Double(f.width), height: Double(f.height))
             if !ScrollPointReach.mayReach(frame: frame, x: Double(point.x), y: Double(point.y)) { return false }
+            if let rootSize {
+                mayAccept = ScrollPointReach.mayAccept(frame: frame, rootWidth: Double(rootSize.width),
+                                                       rootHeight: Double(rootSize.height))
+            }
         }
-        if node.accessibilityScroll(direction) { return true }
+        if mayAccept, node.accessibilityScroll(direction) { return true }
         if let elements = node.accessibilityElements as? [NSObject] {
-            for element in elements where scrollWalk(element, direction, reaching: point, flutter: flutter, visited: &visited) {
+            for element in elements where scrollWalk(element, direction, reaching: point, rootSize: rootSize, flutter: flutter, visited: &visited) {
                 return true
             }
         }
@@ -1267,11 +1274,11 @@ final class FTInAppBridge {
         if count != NSNotFound && count > 0 {
             for i in 0..<count {
                 guard let element = node.accessibilityElement(at: i) as? NSObject else { continue }
-                if scrollWalk(element, direction, reaching: point, flutter: flutter, visited: &visited) { return true }
+                if scrollWalk(element, direction, reaching: point, rootSize: rootSize, flutter: flutter, visited: &visited) { return true }
             }
         }
         if let view = node as? UIView {
-            for sub in view.subviews where scrollWalk(sub, direction, reaching: point, flutter: flutter, visited: &visited) {
+            for sub in view.subviews where scrollWalk(sub, direction, reaching: point, rootSize: rootSize, flutter: flutter, visited: &visited) {
                 return true
             }
         }

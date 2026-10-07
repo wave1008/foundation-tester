@@ -36,17 +36,6 @@
 
 ## StepExecutor・DSL
 
-- **`gestureFallbackLatched` が path 付き swipe の 501 でも立つ**(09-06)
-  - 症状: `scrollFrame` 付きの swipe は in-app で必ず 501 になるので1回でラッチが立ち、以後は path 無しの swipe まで XCUITest の
-    実スワイプになる(バウンス由来のフレーク)。長押しの 501 も同じラッチを立てる(`StepExecutor+Actions.swift:672`)
-  - 場所: `Sources/FTCore/StepExecutor+Settle.swift:533`・:553
-  - 手がかり: `path != nil` の 501 ではラッチを立てず、press とも分ける(`dragFallbackLatched` を分けたのと同じ理由)
-  - **Flutter の in-app の払いの不具合と組で直す**(2026-10-07 に試した): ラッチを path の有無と press で分けると、
-    E2E-Flutter の iOS in-app で S0091(05_スクロール)の scene 5 が決定的に赤になる。`scrollFrame` 無しの横の払いを
-    in-app で撃つと、画面中央の縦リストではなくカルーセルが動く(`#tag_01` が消える)。今は共有ラッチのせいで scene 5 の
-    払いが XCUITest で撃たれていて(緑のレポートに `fell back to XCUITest`)、in-app の確認用のはずの scene 5 が
-    XCUITest を確かめている。先に in-app(Flutter の UIAccessibility の scroll の対象選び)を直してから、ラッチを分ける
-
 - **fallback ドライバで解決した要素を primary の木で取り直す(ref の名前空間が混ざる)**(09-06)
   - 症状: `actingDriver = fb` に切り替えた後も、容器をまたぐ寄せと `waitUntilEnabled` が primary の木を読み、primary の ref を
     fb へ撃つ

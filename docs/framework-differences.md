@@ -137,7 +137,11 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
   スクロールビューを動かしていた)。witness = `05_スクロール` S0091 scene 4 と、固定ヘッダの scene
 - **`scrollFrame` を付けないスクロール**: 「画面中央を払う」に揃える(v113)。XCUITest・Android は実際に画面中央を
   払う。in-app も**画面中央の下にあるスクロール容器だけ**を動かす(以前は in-app の Flutter・SwiftUI・RN だけ、
-  画面下のカルーセルを動かしていた)。witness = S0091 scene 5
+  画面下のカルーセルを動かしていた)。witness = S0091 scene 5。**画面の根の全体を覆う要素には受理させない**
+  (`ScrollPointReach.mayAccept`。Flutter の意味木の根の入れ物 `SemanticsObjectContainer` が、画面中央に縦リストしか無いのに
+  横の scroll を受理してカルーセルを動かしていた。受理する容器が無ければ 501 → XCUITest が画面中央を払う = 何も動かない)。
+  あわせて「不可」のラッチを path の有無と press で分けた(共有していた頃は、path 付きの 501 の後の path 無しの払いが
+  XCUITest で撃たれ、scene 5 は in-app を確かめていなかった)
 - **横方向の向き**: UIAccessibility の scroll の向きは「縦 = スクロールバーの向き(指と逆)・横 = 指の向き」。
   横も反転していた頃は、Compose / Flutter の横カルーセルが逆へ送られていた(v112 で修正)
 - **端の判定**: 「受理した容器が断った = その向きの端」と読む(Flutter は端で断る。Compose は端でも受理を返すので

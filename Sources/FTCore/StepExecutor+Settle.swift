@@ -530,7 +530,8 @@ extension StepExecutor {
                                    path: FTSwipePath? = nil,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
-        if typeDriverGestures.contains("swipe") || gestureFallbackLatched, let td = typeDriver {
+        let latched = path == nil ? swipeFallbackLatched : pathSwipeFallbackLatched
+        if typeDriverGestures.contains("swipe") || latched, let td = typeDriver {
             let start = clock.now
             try await td.swipe(direction, intent: intent, path: path)
             phase.actionMs += Self.ms(clock.now - start)
@@ -550,7 +551,7 @@ extension StepExecutor {
             let start = clock.now
             try await td.swipe(direction, intent: intent, path: path)
             phase.actionMs += Self.ms(clock.now - start)
-            gestureFallbackLatched = true
+            if path == nil { swipeFallbackLatched = true } else { pathSwipeFallbackLatched = true }
             return true
         }
     }

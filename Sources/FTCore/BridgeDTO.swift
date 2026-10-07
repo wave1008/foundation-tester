@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 147
+    public static let bridgeProtocolVersion = 148
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1241,6 +1241,18 @@ public enum ScrollPointReach {
     public static func mayReach(frame: FTRect, x: Double, y: Double) -> Bool {
         guard frame.width > 0, frame.height > 0 else { return true }
         return x >= frame.x && x <= frame.x + frame.width && y >= frame.y && y <= frame.y + frame.height
+    }
+
+    /// 指を置く点で走査するとき、この枠の要素に scroll を受理させてよいか。**画面の根の全体を覆う要素は
+    /// 「指の下の容器」と言えない**ので受理させない(中へは降りる)。Flutter の意味木の根の入れ物は、画面中央に
+    /// 縦リストしか無いのに横の scroll を受理し、画面下のカルーセルを動かしていた(E2E-Flutter S0091 scene 5)。
+    /// 画面いっぱいのリストがこれで外れても、in-app は 501 を返して XCUITest の実スワイプへ回るだけ(誤って動かさない)。
+    /// 1pt は枠の丸めの許容
+    public static func mayAccept(frame: FTRect, rootWidth: Double, rootHeight: Double) -> Bool {
+        guard rootWidth > 0, rootHeight > 0 else { return true }
+        let coversRoot = frame.x <= 1 && frame.y <= 1
+            && frame.x + frame.width >= rootWidth - 1 && frame.y + frame.height >= rootHeight - 1
+        return !coversRoot
     }
 }
 
