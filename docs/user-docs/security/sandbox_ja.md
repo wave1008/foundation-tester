@@ -61,7 +61,7 @@ fleetest のシナリオ(`.swift`)は Swift のプログラムです。画面の
 | fleetest 本体・MCP サーバ・VSCode 拡張・モニター | デバイスを用意し、代行とプロキシを受け持つ側です |
 | テスト対象のアプリ | Simulator・Emulator・端末の中で動きます |
 | `Package.swift` の評価と、足した依存のビルド | SwiftPM とコンパイラ自身のサンドボックスで動きます。信頼できるパッケージだけを足してください |
-| run の前後に走る `setup.sh` / `teardown.sh` | MCP では `ft_start_run` の確認(承認)で人が受けます |
+| run の前後に走る `setup.sh` / `teardown.sh` | `fleetest run` と MCP の `ft_start_run` で走り、`ft_run_scenario` では走りません。MCP では `ft_start_run` の確認(承認)で人が受けます |
 
 ## 速さへの影響
 

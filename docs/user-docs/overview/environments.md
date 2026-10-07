@@ -9,7 +9,7 @@
 | Common | macOS 26+ |
 | If you test iOS | Xcode 26+, iOS Simulator, [xcodegen](https://github.com/yonaskolb/XcodeGen) |
 | If you test Android | Android SDK (adb), Emulator or physical device |
-| Extension build | Node.js v24 or newer, npm v11 or newer |
+| Installing the VSCode extension | VSCode, Node.js v24 or newer, npm v11 or newer (to build and install the extension) |
 
 
 ## UI frameworks verified to work
@@ -25,7 +25,7 @@
 
 ## Features that use Foundation Models (optional)
 
-On macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM).
+On an Apple silicon Mac with macOS 27+, enabling Apple Intelligence lets your tests use the features that rely on Foundation Models (FM).
 
 - **`screenLooksLike`**
   - Visual verification of the screen against a natural-language description.

@@ -21,7 +21,7 @@ There are other places that are writable because fleetest itself uses them (they
 | Place | Used for |
 |---|---|
 | The report directory | Results, screenshots, logs |
-| `.fleetest/` in the project and the work folder, `~/.fleetest/` | fleetest's state. Things fleetest itself reads and runs or distributes in the next run or when preparing devices (`hooks/`, built runners, bridge ledgers, ...) are not writable |
+| `.fleetest/` in the project and the work folder, `~/.fleetest/` | fleetest's state. Things fleetest itself reads and runs or distributes in the next run or when preparing devices (such as `hooks/`) are not writable |
 | `~/Library/Logs/fleetest`, `~/Library/Caches/fleetest` | Logs, serializing Apple Intelligence calls |
 | `~/Library/Caches/<scenario binary name>`, `~/Library/HTTPStorages/<scenario binary name>` | Model cache for image matching, the default store of `URLSession` |
 | App data of the Simulator the scenario is using | So that `clearAppData` can delete data (other Simulators' data is not writable) |

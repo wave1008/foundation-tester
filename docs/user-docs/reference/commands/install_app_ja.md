@@ -8,9 +8,9 @@
 
 | 関数 | 説明 |
 |---|---|
-| `installApp(path?)` | アプリをインストールします(iOS: `.app` / Android: `.apk` または `.apks`)。パス省略時は実行プロファイルの `appPath` が使われます(明示引数はプロファイルより優先されます)。 |
-| `removeApp(id?)` | アプリをアンインストールします。`id` 省略時の解決は `launchApp()` の `bundleID` と同じです。 |
-| `clearAppData(bundleID?)` | アプリは残したままデータと権限だけ消します。オンボーディングや権限ダイアログが再び出るようになります。`bundleID` 省略時の解決は `launchApp()` の `bundleID` と同じです。 |
+| `installApp(appPackageFile?)` | アプリをインストールします(iOS: `.app` / Android: `.apk` または `.apks`)。`appPackageFile` 省略時は実行プロファイルの `appPath` が使われます(明示引数はプロファイルより優先されます)。 |
+| `removeApp(appID?)` | アプリをアンインストールします。`appID` 省略時の解決は `launchApp()` の `appID` と同じです。 |
+| `clearAppData(appID?)` | アプリは残したままデータと権限だけ消します。オンボーディングや権限ダイアログが再び出るようになります。`appID` 省略時の解決は `launchApp()` の `appID` と同じです。 |
 
 ## 例
 

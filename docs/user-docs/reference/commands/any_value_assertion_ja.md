@@ -7,16 +7,23 @@
 
 ## 関数
 
-| 関数 | 判定 |
-|---|---|
-| `thisIs(expected)` / `thisIsNot(expected)` | 一致 / 不一致 |
-| `thisIsTrue()` / `thisIsFalse()` | `Bool` |
-| `thisIsEmpty()` / `thisIsNotEmpty()` | 空文字 |
-| `thisIsBlank()` / `thisIsNotBlank()` | 空白のみ(空文字も blank) |
-| `thisContains(Not)` / `thisStartsWith(Not)` / `thisEndsWith(Not)` | 部分・前方・後方一致 |
-| `thisMatches(Not)` / `thisMatchesDateFormat(format)` | 正規表現 / `DateFormatter` の書式 |
-| `thisIsGreaterThan(other)` / `thisIsGreaterThanOrEqual(other)` | 数値の大なり(以上)(数値に解釈できなければ失敗) |
-| `thisIsLessThan(other)` / `thisIsLessThanOrEqual(other)` | 数値の小なり(以下)(数値に解釈できなければ失敗) |
+| 肯定 | 否定 | 判定 |
+|---|---|---|
+| `thisIs(expected, strict:)` | `thisIsNot(expected, strict:)` | 一致 / 不一致 |
+| `thisIsTrue()` | `thisIsFalse()` | `Bool` |
+| `thisIsNotEmpty()` | `thisIsEmpty()` | 空でない / 空文字 |
+| `thisIsNotBlank()` | `thisIsBlank()` | 空白のみでない / 空白のみ(空文字も blank) |
+| `thisContains(expected)` | `thisContainsNot(expected)` | 部分一致 |
+| `thisStartsWith(expected)` | `thisStartsWithNot(expected)` | 前方一致 |
+| `thisEndsWith(expected)` | `thisEndsWithNot(expected)` | 後方一致 |
+| `thisMatches(pattern)` | `thisMatchesNot(pattern)` | 正規表現 |
+| `thisMatchesDateFormat(format)` | — | `DateFormatter` の書式 |
+| `thisIsGreaterThan(other)` / `thisIsGreaterThanOrEqual(other)` | — | 数値の大なり(以上)(数値に解釈できなければ失敗) |
+| `thisIsLessThan(other)` / `thisIsLessThanOrEqual(other)` | — | 数値の小なり(以下)(数値に解釈できなければ失敗) |
+
+`thisIs` / `thisIsNot` の `strict:`(既定 `false`)は、`textIs` などと同じ比較規則の切り替えです。
+既定では目に見えない文字(ゼロ幅など)を無視して比較し、`strict: true` で一切正規化しません。
+他の関数に `strict:` はありません。
 
 ## 例
 

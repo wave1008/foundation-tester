@@ -14,6 +14,8 @@ For the supported macOS, Xcode, Android SDK and other requirements, see [Environ
   - Install Xcode and the iOS Simulator runtime
 - **If you test Android**
   - Install Android Studio (Android SDK)
+- **VSCode and Node.js**
+  - Install VSCode and Node.js v24 or newer (npm v11 or newer), which are needed to build and install the VSCode extension
 - **AI assistant**
   - Install an AI assistant that supports MCP (Claude Code, Codex, Cline, Cursor, Copilot, and so on).
     With any of them, you have the assistant carry out the installation.

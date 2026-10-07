@@ -14,7 +14,7 @@ select("#msg"); lastElement.textIs("完了")    // lastElement を明示
 select("#msg"); textIs("完了")                // 暗黙(直前に掴んだ要素)
 ```
 
-引数は `(期待値, waitSeconds:)`(肯定形は `requireVisible:` も取ります)。セレクタを渡す形はありません
+引数は `(期待値, strict:, waitSeconds:)`(肯定形は `requireVisible:` も取ります。`strict:` を取らない `textMatchesDateFormat` を除く。下の表のとおり)。セレクタを渡す形はありません
 — `textIs("#msg", "完了")` はコンパイルできません。
 
 ## 関数

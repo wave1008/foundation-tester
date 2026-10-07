@@ -10,6 +10,12 @@ Scenarios run inside the [sandbox](../../security/sandbox.md), so **the destinat
 
 ## Function
 
+| function | description |
+|---|---|
+| `httpRequest(url, method:, headers:, body:, waitSeconds:)` | Sends an HTTP(S) request, waits for the response, and returns an `HTTPResponse`. `method` defaults to `"GET"`, `headers` to empty. |
+
+Declaration:
+
 ```swift
 httpRequest(_ url: String, method: String = "GET", headers: [String: String] = [:],
             body: String? = nil, waitSeconds: Double? = nil) -> HTTPResponse

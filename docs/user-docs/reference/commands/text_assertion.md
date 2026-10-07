@@ -15,7 +15,7 @@ select("#msg"); lastElement.textIs("Done") // explicit lastElement
 select("#msg"); textIs("Done")             // implicit (the last grabbed element)
 ```
 
-Arguments are `(expected, waitSeconds:)` (the positive forms also take `requireVisible:`). There is
+Arguments are `(expected, strict:, waitSeconds:)` (the positive forms also take `requireVisible:`; `textMatchesDateFormat` takes no `strict:` — see the table below). There is
 no form that takes a selector — `textIs("#msg", "Done")` does not compile.
 
 ## Functions

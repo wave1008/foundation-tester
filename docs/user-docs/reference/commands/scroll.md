@@ -12,10 +12,10 @@ to an edge.
 | `scrollTo(sel, direction: .down, containerInference:, maxSwipes: 8)` | Scrolls until the element is found (found = success; does not tap it). |
 | `scrollDown(repeat: 1)` / `scrollUp` / `scrollRight` / `scrollLeft` | Scrolls one screenful (`repeat:` times to repeat). |
 | `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | Scrolls to the edge — until the screen stops changing. `maxSwipes` is a runaway guard; hitting it leaves a note on the step. |
-| `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | Makes every `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` inside the block search by scrolling (an explicit `scroll:` on a command still wins). **`notExist` changes meaning** inside the block — it fails as soon as the element turns up while scrolling. |
+| `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | Makes every `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` / `hold` inside the block search by scrolling (an explicit `scroll:` on a command still wins). **`notExist` changes meaning** inside the block — it fails as soon as the element turns up while scrolling. |
 | `withoutScroll { … }` | Cancels an outer `withScroll*` — commands inside resolve against the current screen only. |
 | `withoutContainerInference { … }` | Disables the container-inference corrections (below) for every command inside the block. |
-| `scroll: .noScroll` (an argument of `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage`) | Skips scrolling for this one command even inside a `withScroll*` block (it resolves against the current screen only). Leaving the argument out follows the direction of the block. |
+| `scroll: .noScroll` (an argument of `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` / `hold`) | Skips scrolling for this one command even inside a `withScroll*` block (it resolves against the current screen only). Leaving the argument out follows the direction of the block. |
 
 **Scrolling is specified only through each command's `scroll:` argument.** A direction (`.down` / `.up` / `.right` / `.left`)
 searches while scrolling that way, and `.noScroll` never scrolls, even inside a `withScroll*` block. Leaving it out follows

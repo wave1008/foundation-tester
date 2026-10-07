@@ -14,6 +14,8 @@ fleetest のインストールの手順です。
   - Xcode と iOS Simulator のランタイムをインストールしておく
 - **Android をテストする場合**
   - Android Studio(Android SDK)をインストールしておく
+- **VSCode と Node.js**
+  - VSCode と、Node.js v24 以降(npm v11 以降)をインストールしておく(VSCode 拡張をビルドして入れるため)
 - **AIアシスタント**
   - MCP に対応した AIアシスタント(Claude Code・Codex・Cline・Cursor・Copilot など)を
     インストールしておく。どの AIアシスタントでも、インストールは AIアシスタントに頼んで進めます。

@@ -9,7 +9,7 @@
 | 共通 | macOS 26+ |
 | iOS をテストするなら | Xcode 26+、iOS Simulator、[xcodegen](https://github.com/yonaskolb/XcodeGen) |
 | Android をテストするなら | Android SDK(adb)、Emulator または実機 |
-| 拡張ビルド | Node.js v24 以降、npm v11 以降 |
+| VSCode 拡張のインストール | VSCode、Node.js v24 以降、npm v11 以降(拡張をビルドして入れるため) |
 
 
 ## 動作確認している UI フレームワーク
@@ -25,7 +25,7 @@
 
 ## Foundation Models を使う機能(任意)
 
-macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を使う機能をテストで使用することができます。
+Apple silicon の Mac・macOS 27+ で Apple Intelligence を有効化すると Foundation Models(FM) を使う機能をテストで使用することができます。
 
 - **`screenLooksLike`**
   - 画面と自然文の説明を照合する視覚検証です。

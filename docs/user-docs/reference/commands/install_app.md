@@ -8,9 +8,9 @@ Installs, uninstalls, or resets the data of the app under test.
 
 | function | description |
 |---|---|
-| `installApp(path?)` | Installs the app (iOS: `.app`, Android: `.apk` or `.apks`). Without a path, the run profile's `appPath` is used (an explicit path always wins over the profile). |
-| `removeApp(id?)` | Uninstalls the app. `id` defaults the same way as `launchApp()`'s `bundleID` when omitted. |
-| `clearAppData(bundleID?)` | Keeps the app installed but clears its data and permissions, so onboarding and permission dialogs reappear. `bundleID` defaults the same way as `launchApp()`'s `bundleID`. |
+| `installApp(appPackageFile?)` | Installs the app (iOS: `.app`, Android: `.apk` or `.apks`). Without `appPackageFile`, the run profile's `appPath` is used (an explicit path always wins over the profile). |
+| `removeApp(appID?)` | Uninstalls the app. `appID` defaults the same way as `launchApp()`'s `appID` when omitted. |
+| `clearAppData(appID?)` | Keeps the app installed but clears its data and permissions, so onboarding and permission dialogs reappear. `appID` defaults the same way as `launchApp()`'s `appID`. |
 
 ## Example
 

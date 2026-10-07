@@ -10,6 +10,12 @@
 
 ## 関数
 
+| 関数 | 説明 |
+|---|---|
+| `httpRequest(url, method:, headers:, body:, waitSeconds:)` | HTTP(S) のリクエストを送り、応答を待って `HTTPResponse` を返します。`method` の既定は `"GET"`、`headers` の既定は空です。 |
+
+宣言:
+
 ```swift
 httpRequest(_ url: String, method: String = "GET", headers: [String: String] = [:],
             body: String? = nil, waitSeconds: Double? = nil) -> HTTPResponse

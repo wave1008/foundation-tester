@@ -8,9 +8,9 @@ Starts, restarts, stops the app under test, or delivers a deep link URL to it.
 
 | function | description |
 |---|---|
-| `launchApp(bundleID?, url:?)` | Terminates the app if running, then launches it fresh, starting at the entry screen. With `url:`, delivers that URL right after launch (see `openURL` below for delivery details). Delivery waits for the first screen to render (until a tappable element appears, up to the default wait), because frameworks such as React Native discard a URL that arrives before the screen is up; if none appears, the URL is delivered anyway with the note `launch-url-before-interactive-ui`. `bundleID` defaults to the default app (see Notes). |
+| `launchApp(appID?, url:)` | Terminates the app if running, then launches it fresh, starting at the entry screen. With `url:`, delivers that URL right after launch (see `openURL` below for delivery details). Delivery waits for the first screen to render (until a tappable element appears, up to the default wait), because frameworks such as React Native discard a URL that arrives before the screen is up; if none appears, the URL is delivered anyway with the note `launch-url-before-interactive-ui`. `appID` defaults to the default app (see Notes). |
 | `openURL(url)` | Delivers a URL (deep link) to the already-running app without restarting it (warm delivery) — the transition is pushed on top of the current screen. Requires a custom URL scheme; Universal Links / App Links (`https://`) depend on AASA/assetlinks.json resolution and can fall through to Safari on a Simulator. |
-| `restartApp(bundleID?)` | Terminates and launches again, resetting in-process state. `bundleID` defaults the same way as `launchApp()`. |
+| `restartApp(appID?)` | Terminates and launches again, resetting in-process state. `appID` defaults the same way as `launchApp()`. |
 | `terminateApp()` | Terminates the app. |
 
 ## Example
@@ -28,7 +28,7 @@ terminateApp()
 
 - **`launchApp` always terminates first, even if the app is already running** — it never just
   brings the app to the foreground. Every call starts at the entry screen.
-- **Default app** (when `bundleID` is omitted, for `launchApp` / `restartApp` / `terminateApp` /
+- **Default app** (when `appID` is omitted, for `launchApp` / `restartApp` / `terminateApp` /
   `removeApp` / `clearAppData` / `appIs`): resolved in this order —
   1. `@TestClass(app: "...")` on the scenario, if present — this always wins.
   2. The run profile's `app`, then the app profile, then the current platform's `ios.app` /

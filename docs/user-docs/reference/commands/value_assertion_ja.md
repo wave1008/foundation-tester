@@ -14,7 +14,7 @@ select("#email"); lastElement.valueIs("test@example.com") // lastElement を明�
 select("#email"); valueIs("test@example.com")              // 暗黙(直前に掴んだ要素)
 ```
 
-引数は `(期待値, waitSeconds:)`(肯定形は `requireVisible:` も取ります)。セレクタを渡す形はありません。
+引数は `(期待値, strict:, waitSeconds:)`(肯定形は `requireVisible:` も取ります。`strict:` を取らない `valueMatchesDateFormat` を除く。下の表のとおり)。セレクタを渡す形はありません。
 
 ## 関数
 

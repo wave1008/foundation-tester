@@ -13,6 +13,7 @@ gesture builder for anything those three cannot express.
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:)` | Spreads two fingers apart = zoom in. `scale` must be greater than 1. `durationSeconds` is capped at 10 seconds by default — pass `maxGestureSeconds:` to allow up to 60 for this one call. |
 | `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:)` | Pinches two fingers together = zoom out. `scale` must be greater than 0 and less than 1. Same cap as `pinchOut`. |
 | `gesture(sel?, maxGestureSeconds:waitSeconds:) { FTFinger(x:y:).move(x:y:durationSeconds:).hold(seconds:) }` | Replays one or more finger paths as a single continuous touch — for a pattern-lock swipe, a long-press that then drags, a two-finger rotate, or anything `pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` cannot express. |
+| `hold(sel, holdSeconds: 3, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:) { … }` | Runs the block while the finger stays down (for checking a component that only shows while pressed). `holdSeconds` defaults to 3 seconds. See the `hold` section below. |
 
 See [swipe](./swipe.md) for `swipeBy(sel?, dxRatio:dyRatio:durationSeconds:)`, the panning
 gesture these are usually combined with.
@@ -47,7 +48,9 @@ are **ratios of the target's frame** (0...1 is inside it; a point outside is fin
 still on screen), so the same gesture works at any resolution. Omitting the selector targets the
 whole screen; loops and branches are allowed inside the block. Limits: 1–5 fingers, up to 625
 points per finger, total duration capped at 10 seconds by default (`maxGestureSeconds:` raises it
-to 60, same rule as the other gesture commands). An invalid spec (no fingers, an off-screen point,
+to 60, same rule as the other gesture commands). To put a finger down late, use `FTFinger(x:y:startSeconds:)` (`startSeconds` is the delay in seconds from
+the start of the gesture until that finger touches down; default 0 — meant for fingers after the first.
+It must be a finite value of 0 or more). An invalid spec (no fingers, an off-screen point,
 a non-positive duration, too long a gesture) fails the step without touching the device.
 
 **On iOS this command always runs through XCUITest, even under the default hybrid engine.** Use cases: pattern lock,

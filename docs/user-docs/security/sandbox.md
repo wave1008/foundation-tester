@@ -64,7 +64,7 @@ Only the scenario binary and its descendants are inside the sandbox. The followi
 | fleetest itself, the MCP server, the VSCode extension, the monitor | They prepare devices and provide the delegated operations and the proxy |
 | The app under test | Runs inside the Simulator, Emulator or device |
 | Evaluating `Package.swift` and building added dependencies | Runs in SwiftPM's and the compiler's own sandbox. Add only packages you trust |
-| `setup.sh` / `teardown.sh` run before and after a run | In MCP, a person accepts them through the confirmation (approval) of `ft_start_run` |
+| `setup.sh` / `teardown.sh` run before and after a run | They run with `fleetest run` and MCP's `ft_start_run`, not with `ft_run_scenario`. In MCP, a person accepts them through the confirmation (approval) of `ft_start_run` |
 
 ## Effect on speed
 

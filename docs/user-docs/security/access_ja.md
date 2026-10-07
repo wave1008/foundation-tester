@@ -21,7 +21,7 @@
 | 場所 | 用途 |
 |---|---|
 | レポートの出力先 | 結果・スクリーンショット・ログ |
-| プロジェクトと作業フォルダの `.fleetest/`、`~/.fleetest/` | fleetest の状態の記録。ただし、次の run やデバイスの用意で fleetest 本体が読んで実行・配布するもの(`hooks/`・ビルド済みのランナー・ブリッジの台帳など)は書けません |
+| プロジェクトと作業フォルダの `.fleetest/`、`~/.fleetest/` | fleetest の状態の記録。ただし、次の run やデバイスの用意で fleetest 本体が読んで実行・配布するもの(`hooks/` など)は書けません |
 | `~/Library/Logs/fleetest`・`~/Library/Caches/fleetest` | ログ、Apple Intelligence の呼び出しの直列化 |
 | `~/Library/Caches/<シナリオ実行バイナリ名>`・`~/Library/HTTPStorages/<シナリオ実行バイナリ名>` | 画像照合のモデルのキャッシュ、`URLSession` の既定の保存先 |
 | シナリオが使っている Simulator のアプリのデータ | `clearAppData` がデータを消すため(他の Simulator のものは書けません) |

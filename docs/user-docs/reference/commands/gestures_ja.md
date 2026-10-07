@@ -13,6 +13,7 @@
 | `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を開きます = 拡大。`scale` は 1 より大きい値のみ指定できます。`durationSeconds` の上限は既定 10 秒で、`maxGestureSeconds:` を渡すとこの1回だけ最大 60 秒まで上げられます。 |
 | `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5, maxGestureSeconds:)` | 2本指を閉じます = 縮小。`scale` は 0 より大きく 1 未満の値のみ指定できます。上限は `pinchOut` と同じです。 |
 | `gesture(sel?, maxGestureSeconds:waitSeconds:) { FTFinger(x:y:).move(x:y:durationSeconds:).hold(seconds:) }` | 指1本以上の経路を、離さない1本のタッチ列として再生します —— パターンロック・長押しからのドラッグ・2本指回転など、`pinchOut`/`pinchIn`/`doubleTap`/`swipeBy` で表せない動き用です。 |
+| `hold(sel, holdSeconds: 3, maxGestureSeconds:, waitSeconds:, scroll:, maxSwipes:) { … }` | 指を下げたままブロックを実行します(押している間だけ出る部品の確認用)。`holdSeconds` の既定は 3 秒です。下の「`hold`」の節を参照してください。 |
 
 これらとよく組み合わせるパンのジェスチャ `swipeBy(sel?, dxRatio:dyRatio:durationSeconds:)` は
 [swipe](./swipe_ja.md) を参照してください。
@@ -47,6 +48,8 @@ gesture("#pad_map") {                 // 指が2本 = 手組みのピンチ
 依存せず同じジェスチャが使えます。セレクタを省略すると画面全体が対象になり、ブロック内では
 ループや分岐も書けます。上限は 1〜5本・1本あたり最大625点・全体の秒数は既定10秒
 (`maxGestureSeconds:` で最大60秒まで、他のジェスチャ系コマンドと同じ規則で上げられます)。
+指を遅れて下ろすには `FTFinger(x:y:startSeconds:)` を使います(`startSeconds` はジェスチャの
+開始から指を置くまでの秒数で、既定 0。2本目以降の指をずらして置く用途です。0 以上の有限の値のみ)。
 不正な指定(指0本・画面外の点・0以下の秒数・長すぎるジェスチャ)は、デバイスに触れずステップを
 失敗させます。
 

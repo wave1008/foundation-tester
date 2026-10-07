@@ -5,6 +5,16 @@
 How to read a grabbed element's own data — its label, value, and identifier — instead of just
 asserting against it.
 
+## What you can read
+
+| property | description |
+|---|---|
+| `.text` | The grabbed element's displayed text (label). `String?` |
+| `.value` | The grabbed element's value. `String?` |
+| `.id` | The grabbed element's identifier. `String?` |
+| `.isEmpty` / `.isNotEmpty` | Whether the element was not grabbed / was grabbed |
+| `lastElement` | The element grabbed last (next section) |
+
 ## Grabbing an element's value (`.text` / `.value` / `.id`)
 
 The return value of `exist` (and `select`) exposes the value itself. Use this when the expected
