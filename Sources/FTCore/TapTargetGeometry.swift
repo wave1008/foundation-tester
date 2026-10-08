@@ -664,28 +664,52 @@ public enum TapTargetGeometry {
                                  minimumJump: minimumJump, margin: margin)
     }
 
-    /// 覆いを**矩形**で渡す版。ソフトキーボードのように木の要素として渡せない覆い用
-    /// (`KeyboardOcclusion.frame`)。操作可能かの判定は呼び手の責務 —— キーボードは
-    /// 常にタッチを飲むので、呼び手はその判定を持たない
     /// **容器の縁に貼り付いた名前つきの帯(`isPinnedTextBand`)が対象の中心を覆っているか**(覆っていればその帯)。
     /// 貼り付く見出しは木の並びでは行より前(= 奥)に出るので `OcclusionGeometry.overlayCovering` は拾えない
     /// (実測 E2EX-RN の sticky・XCUITest: 上へ探して止まった `#row_s_B1` 159..203 の中心が `#hdr_B` 157..190 の下で、
     /// 撃つと見出しに当たった)。撃つ前の送り(`StepExecutor.liftCoveredTarget`)だけが使う = 送るだけで撃たない。
-    /// 自分自身・祖先・子孫と、操作できる要素(縁に寄った行もこの形に見える)は覆いにしない
+    /// 自分自身・祖先・子孫と、操作できる要素(縁に寄った行もこの形に見える)は覆いにしない。
+    ///
+    /// **文字の幅しか申告しない見出しは帯を推定する**(`inferredPinnedBand`): Flutter の貼り付く見出しは木では文字
+    /// (`#hdr_F` 16,180 83x20)だけで、描画は容器の幅いっぱい・文字の上下に同じ余白の帯(実測 170..210)。返す要素の枠は
+    /// 推定した帯に置き換える(呼び手が送る量をその枠で測る)
     public static func pinnedBandCovering(_ element: ElementInfo, in elements: [ElementInfo],
                                           container: FTRect) -> ElementInfo? {
         let cx = element.frame.centerX, cy = element.frame.centerY
         let related = Set(ancestors(of: element, in: elements).map(\.ref))
             .union(LocatorResolver.descendants(of: element, in: elements).map(\.ref))
-        return elements.first { band in
-            band.ref != element.ref && !related.contains(band.ref)
-                && !BridgeSnapshotThinning.operableTypes.contains(band.type)
-                && isPinnedTextBand(band, in: container)
-                && cx >= band.frame.x && cx <= band.frame.x + band.frame.width
-                && cy >= band.frame.y && cy <= band.frame.y + band.frame.height
+        func covers(_ f: FTRect) -> Bool { cx >= f.x && cx <= f.x + f.width && cy >= f.y && cy <= f.y + f.height }
+        for band in elements where band.ref != element.ref && !related.contains(band.ref)
+            && !BridgeSnapshotThinning.operableTypes.contains(band.type) {
+            if isPinnedTextBand(band, in: container), covers(band.frame) { return band }
+            if let inferred = inferredPinnedBand(band, over: element, in: container), covers(inferred) {
+                var widened = band
+                widened.frame = inferred
+                return widened
+            }
         }
+        return nil
     }
 
+    /// 文字の幅しか申告しない貼り付く見出しの帯(容器の幅 × 文字の上下に同じ余白)。名前を持つ文字が**容器の上端から
+    /// 文字の高さ以内**に居て、**対象の枠と縦に重なる**ときだけ(重ならない見出しは普通の行の並びで、帯を推定する理由が無い)。
+    /// **対象自身のラベルの文字は除く** —— XCUITest の木は行のラベルを行の子でなく兄弟として出すことがあり、上端の行が自分の
+    /// ラベルを見出しと読むと、覆われていない行を送ってしまう
+    static func inferredPinnedBand(_ text: ElementInfo, over target: ElementInfo, in container: FTRect) -> FTRect? {
+        let name = text.label ?? text.identifier ?? ""
+        let gap = text.frame.y - container.y
+        // 幅のある文字は推定しない(縁に揃っているかは isPinnedTextBand の側で決まる)
+        guard !name.isEmpty, name != target.label, name != target.identifier,
+              text.frame.width < container.width * pinnedBandMinimumWidthRatio,
+              text.frame.height > 0, gap >= 0, gap <= text.frame.height,
+              text.frame.y < target.frame.y + target.frame.height,
+              text.frame.y + text.frame.height > target.frame.y else { return nil }
+        return FTRect(x: container.x, y: container.y, width: container.width, height: text.frame.height + gap * 2)
+    }
+
+    /// 覆いを**矩形**で渡す版。ソフトキーボードのように木の要素として渡せない覆い用
+    /// (`KeyboardOcclusion.frame`)。操作可能かの判定は呼び手の責務 —— キーボードは
+    /// 常にタッチを飲むので、呼び手はその判定を持たない
     /// 容器の上端か下端に**揃って**(差 `pinnedBandEdgeTolerance` 以内)、容器の幅の大半(`pinnedBandMinimumWidthRatio`)を
     /// 占める、**名前(ラベルか id)を持つ**帯か = 貼り付く見出し・固定の小見出し。名前の無い暗幕・縁から浮いたラベルは違う
     static func isPinnedTextBand(_ over: ElementInfo, in container: FTRect) -> Bool {
