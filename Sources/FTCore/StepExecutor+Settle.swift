@@ -136,10 +136,8 @@ extension StepExecutor {
                 if !Self.isClippedByViewport(element, screen: container),
                    TapTargetGeometry.offscreenScrollGateCentre(for: element,
                                                               screen: snapshot.screen) == nil {
-                    guard let rest = try await restingTarget(step: step, element: element, snapshot: snapshot,
-                                                             phase: &phase) else { continue }
-                    _ = try await settleAfterFind(step: step, element: rest.element,
-                                                  snapshot: rest.snapshot, phase: &phase)
+                    _ = try await settleAfterFind(step: step, element: element,
+                                                  snapshot: snapshot, phase: &phase)
                     // **連続2回一致まで待つ**(settleAfterScroll より強い)。逆走査のドラッグは
                     // 遅い代わりに離した後もしばらく減速しながら動き、**掴んだ座標が
                     // タップまでにずれる**(実測: 176px ずれて隣の行を叩いた)
@@ -188,7 +186,6 @@ extension StepExecutor {
         // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
         // (実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
         // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
-        // 木が動きに遅れるエンジンでは、呼び手が先に `restingTarget` で止まった位置へ引き直している
         let x: Double = element.frame.x + element.frame.width / 2
         let y: Double = min(element.frame.y + element.frame.height / 2,
                             snapshot.screen.y + snapshot.screen.height
@@ -201,24 +198,6 @@ extension StepExecutor {
             await emptyDrag(x: x, y: y, toX: end.x, toY: end.y)
         }
         return try await !settleAfterScroll(step: step, found: element, phase: &phase)
-    }
-
-    /// **木が動きに遅れるエンジン(XCUITest)で空打ちを撃つ対象は、止まるのを待って位置を引き直す**(`settleAfterFind` の前に
-    /// 呼び手が呼ぶ)。見つけた瞬間の木は慣性の途中なので、その座標で押すと隣の行の上で押して離し、クリックが成立する
-    /// (実測 E2EX-CMP / Flutter のホームの最下段: `#nav_infinite` を探して隣の `#nav_native` の画面へ移った。8 並列の run でだけ。
-    /// 木の取得が 2 秒だった間は見つけた時点で慣性が終わっていて隠れていた)。
-    /// **止まった後に木から消えていたら nil = 呼び手は探索を続ける**: 慣性の途中の空打ちは指が触れて慣性を
-    /// 止める役も担っていたので、待つと対象が流れ去ることがある(Flutter の sticky で `#row_s_F3` が見出しの下へ)。
-    /// **見切れ(容器の縁・ヘッダの裏)では探索へ戻さない** —— 戻すと伸縮するヘッダの画面で探索の終わり方が変わり、
-    /// 行がヘッダの裏に止まったまま撃った(E2EX-CMP の collapse・XCUITest で 4/4)。見切れは後段の送りが扱う
-    /// 引き直しの要らない形(遅れないエンジン・空打ちを撃たないアプリ)は渡した値をそのまま返す
-    func restingTarget(step: FlowStep, element: ElementInfo, snapshot: SnapshotResponse,
-                       phase: inout PhaseAccumulator) async throws -> (element: ElementInfo, snapshot: SnapshotResponse)? {
-        guard driver.treeLagsBehindMotion, shouldEmptyDrag(for: element) else { return (element, snapshot) }
-        _ = try await settleAfterScroll(step: step, found: element, phase: &phase)
-        let fresh = try await freshSnapshot(.afterOwnMove)
-        guard let (moved, _) = LocatorResolver.resolve(step: step, in: fresh, strictForAssert: true) else { return nil }
-        return (moved, fresh)
     }
 
     /// 掴んだ要素を可視域へ入れ直すために**次に送る向き**。
