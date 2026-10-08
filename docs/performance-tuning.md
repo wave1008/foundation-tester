@@ -323,7 +323,7 @@ screenLooksLike 51 回 / heal 34 回)。**occlusion 一択**。
 | ⑤ crop を縮めて送る | **効果ゼロ**(16k px と 1024k px で差なし) | 不採用 |
 | ⑥ プロンプト長(triage の木を絞る) | 40 行に切り詰めると **−46%**(8,052→4,372ms)だが、**分類が 36 件中 11 件で変わる**(`locatorDrift` が 7→0 件) | **不採用**(triage 自体が撤去済み。判断は記録として残す) |
 | ⑧ **FM の手前に Vision OCR の段**(RegionText。期待テキストが丸ごと読めたら FM を呼ばない) | 反転済み crop 167 枚で **判定 167/167 一致**。FM の段に届いた実 run の crop 163 枚では **97% が OCR で片付く**(残り 3% は FM へ = 誤った赤は増えない)・**p50 92ms**(FM の 1/14)。**読ませる言語を期待文字列から決める**のが要 —— ASCII の期待値に日本語モデルを載せると誤読が 29% に増え、所要も 2.3 倍になる。**「丸ごと読めなかった」だけを反転の根拠にしない**(反転するのは `OCROnlyVisibility` が言い切れた回 = FM を呼ばずに赤、か FM。§5.21) | **採用**(既定 on・殺しスイッチは `FT_OCCLUSION_OCR=0`。API は新しい `RecognizeTextRequest`・版指定なし = 旧 `VNRecognizeTextRequest` と読みは同じで 3.2 倍遅いが、FM を 2〜4 回省けば帳消し。docs/poc-fm-occlusion-guard.md §5.17) |
-| ⑨ **認識器のコンパイルキャッシュを run 開始時にコミットさせる**(`compile-ocr`。同じプロセス名の待てる子で 1 回) | シナリオ側のコンパイル **22,980ms → 218ms**・実 crop の初回読み **21,830ms → 98〜122ms**・E2E(local)で近道 43/54・予算切れ 0(修正前は最初のガード 1 件が 36〜108 秒 = 120 秒の打ち切り 7 件の正体)。コストはコミットのたびに SUT ごと 1 回(コールド 20〜45 秒 × 2 言語集合。背景・供給と並行) | **採用**(docs/design.md §Tier-2 の続き) |
+| ⑨ **認識器のコンパイルキャッシュを run 開始時にコミットさせる**(`compile-ocr`。同じプロセス名の待てる子で 1 回) | シナリオ側のコンパイル **22,980ms → 218ms**・実 crop の初回読み **21,830ms → 98〜122ms**・E2E(local)で近道 43/54・予算切れ 0(修正前は最初のガード 1 件が 36〜108 秒 = 120 秒の打ち切り 7 件の正体)。コストはコミットのたびに SUT ごと 1 回(コールド 20〜45 秒 × 2 言語集合。背景・供給と並行) | **採用**(docs/design.md §Tier-2 の続き。シナリオを直すたびに払い直す件と補助プロセスへ移す案は §3.33) |
 | ⑩ **occlusion は転写 1 欄だけ**(期待文字列を FM に渡さず、可否はホストの `TranscriptMatch`) | 見える回 p50 **0.89s**(②a の 1 段目 1.1s より速い)・反転する回 1.75s(2 倍で読み直す)。**速度ではなく正しさの修正** —— 期待文字列を渡す形は空白・別の文字で 20〜56% を見逃していた(docs/poc-fm-occlusion-guard.md §5.18) | **採用**(②a の 2 段化は撤去) |
 | ⑦ **溢れる木だけ切る**(FMPromptBudget) | 実アプリの密な木は 4,096 トークンを超えて**呼び出しごと失敗**していた(3枚 × 2 例で 6/6 失敗)。上限を掛けると 6/6 が答えを返す | 採用 → **撤去**(使っていた heal / triage の FM 版と共に撤去。コードに無い。maintainer-notes §22) |
 
@@ -1458,6 +1458,64 @@ iOS シミュレータ(iPhone 17 Pro・in-app)/ Android エミュレータ(Pixel
   更新されない(払った直後に 20〜40ms おきに取得: CMP 最大 134ms・RN 174ms・SwiftUI 125ms)ので、100ms 周期の 2 枚が途中で一致する。
   `AppDriver.treeLagsBehindMotion` が true のドライバ(XCUITest)だけ、整定の周期を `laggingTreeSettlePeriodMs`(350ms)以上にした
 
+### 3.33 OCR のコンパイル待ちはシナリオの実行ファイルを作り直すたびに払う(2026-10-08・**調査。対策は案のみ・未実装**)
+
+- **症状**: モニターの「Vision コンパイル中」(run の段階 `compiling`)が頻繁に出る。正体は §3.5.1 の表⑨の**実行時の OCR 認識器の
+  AOT コンパイル**で、run の開始時に `compile-ocr` を待っている間だけ出る。**Swift の Vision モジュール(`.pcm`)のビルドではない** ——
+  あちらは SDK とフラグの組ごとに 1 回で、テストやシナリオを直しても作り直されない(`.build/out/ModuleCache.noindex/*/Vision-*.pcm` の日時が
+  10/5 のまま、その後の何度ものビルドで変わっていないことで確認)
+- **キャッシュの中身**: `~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache/<OS のビルド番号>/<hash>/<hash>.bundle` が 3 つで、
+  **3 つとも TextRecognition のモデル**(`.e5` の先頭に元のモデルのパスがある): `cr_td_model_v3_e5`(文字の検出)・
+  `cr_orientation_model_v1_e5`(向き)・`cr_tr_model_latincyrillic_v3_e5`(ラテン・キリル文字の認識)。全 `fleetest-scenarios-*` と
+  `com.apple.dt.xctest.tool` で同じ 3 つ。日本語の `cr_tr_model_cj_v3` は `_e5` が無く、このキャッシュには入らない
+- **作り直すと無効になる**: 置き場所は増えず、同じ `.bundle` が焼き直される(E2E-CMP: 実行ファイルが 08:44 → `.bundle` が 10:12〜10:13)。
+  1 段目のディレクトリが OS のビルド番号なので、macOS を更新しても無効になる
+- **実測**(新しく作った実行ファイル・1 プロセスずつ・E2E 実行中の M2 Ultra):
+
+  | 処理 | 1 回目 | 2 回目以降 | 実行ファイルごとのキャッシュ |
+  |---|---|---|---|
+  | OCR(`en-US`) | **46,145ms** | 74ms | 作られる(`.e5` が 3 つ) |
+  | 同じ実行ファイルを起動し直した OCR | 118ms | 24ms | 既にある |
+  | 画像照合の特徴量(`VNGenerateImageFeaturePrintRequest`) | 106〜153ms | 4ms | 作られない |
+  | 分類器(`MLModel.compileModel` + 推論) | 15〜18ms | 13〜14ms | 作られない |
+  | `fleetest-scenarios-E2E-CMP compile-ocr`(2 言語集合・プロセスの起動込み) | 47.02s | **0.32s** | — |
+
+  → **実行ファイルごとにコンパイルし直すのは OCR だけ**。画像照合・分類器は同じ型ではない
+- **コンパイルの大半はプロセスの外で起きている**: 46 秒の間、プロセスは user 5.5 秒・CPU 12%。`.bundle` の中に `main_ane` と
+  `espressoc-component-ANECompiler` がある = `RegionText` が実行装置を CPU/GPU に寄せていても、コンパイルは ANE 向けにも走っている
+  (原因の切り分けはしていない)。→ どのプロセスに寄せても **1 回の所要は縮まない見込み。減らせるのは払う回数**
+- **案(未実装)**: OCR を補助プロセス `fleetest api vision-serve`(docs/maintainer-notes.md §67 の `VisionHelperServer`)へ移し、キャッシュの鍵を `fleetest` の
+  実行ファイルにする。シナリオを直してもコンパイルが起きなくなる(払うのは `fleetest` を作り直したとき・macOS を更新したときだけ)。
+  - **個々のプロセスがコンパイルする経路は残さない**(ユーザー決定 2026-10-08)。繋がらないときにプロセス内で読む形へ落とさない。
+    `compile-ocr`・`OCRModelCompileLock`・`modelCompileOnce`・`compileModelIfNeeded` は撤去。OCR の Vision API を書いてよいのは補助プロセスの
+    ファイルだけ、をソース走査のテストで固定する
+  - 変える場所は `RegionText.recognizeObservations` の 1 箇所(テキストの視覚検証・打鍵の読み戻し・linkText が全部ここを通る)
+  - 起動条件(今は「画像の見本があるとき」+ `executableName == "fleetest"`)に「OCR が off でないとき」を加える。
+    **MCP のシナリオ実行のツール(`ScenarioHost.run` を直接呼ぶ)は `RunOrchestrator` を通らない**ので、MCP サーバからも起動する
+    (セッションの間 1 本。キャッシュは run と共有)
+  - 起動するのはシナリオ一覧を取った直後(今 `compile-ocr` を起こしている所)。最初のシナリオは補助の準備を待つ
+    (シナリオの途中で待たない = 10/6 の決定のまま)
+  - 回復: 補助プロセスを起動した親が見張り、同じソケットのパス(`vision-<親 pid>.sock`)で 1 回だけ起動し直し、直後に疎通を測る。
+    効かなければ繰り返さず 1 行残す。混んでいるだけ(期限切れ)と `connect: errno 1`(サンドボックス)では起動し直さない
+  - 繋がらないときの扱い: テキストの視覚検証は既存の「読みが無い = 判定不能」(`applyOCROnlyVisibility` の `.undetermined`)で足り、
+    注記 `ocr-helper-unavailable` を足すだけ。linkText は事実を書いて失敗。**打鍵の読み戻しは今「読めない」を `visible=false` =
+    追送にしている**(`typedTextIsOnScreen`)ので、繋がらないことを同じに扱うと二重に打つ。「確かめられなかった」として追送せずに
+    失敗にする案を推奨(**未決**)
+  - **懸念: 待ち行列**。補助は 1 本ずつ処理し OCR 1 回は 100〜160ms。10 レーンで最悪約 1.5 秒待ち、`occlusionBudget`(1.3 秒)を超える。
+    試作で 10 台並列の待ちそのものと `ocr-budget-exhausted` の件数を測ってから、補助の中の並列度を決める
+- **補助を常駐(マシンに 1 つ)にする案は不採用**(§6)。根拠: 準備は 0.32 秒で、10 月の run 2,132 件の「`run.json` の `startedAt` →
+  最初のシナリオのイベント」は 最小 0.69 秒・5% 点 3.4 秒・中央値 9.3 秒(1 秒未満は 3 件、どれも 10/5 の E2EY-CMP 1 本ずつの run)。
+  `startedAt` は一覧を取った後(FM の確認の後)に記録されるので、この区間は重ねられる時間の**下限**。ただし秒単位の記録なので、
+  最短の数件だけは最悪 0.3 秒が待ちに乗った可能性を否定できない。シナリオ数 × 0.2〜0.3 秒の読み込み(今の形)は run ごとの補助で既に消える
+- **測り方**:
+  - 実行ファイルごとか: `swiftc` で毎回別名の小さな実行ファイルを作り、Vision の要求を 1 プロセスで 2〜3 回撃って 1 回目と比べる。
+    `~/Library/Caches/<実行ファイル名>/com.apple.e5rt.e5bundlecache` ができるかも見る(陽性対照に OCR を必ず並べる。
+    特徴量だけだと「差が出ない」を測り方の誤りと区別できない)。終わったら作ったキャッシュを消す
+  - どのモデルか: `strings -n 6 <.bundle>/H14D.bundle/H14D.e5 | grep mlmodelc`
+  - 補助の準備の所要: `fleetest-scenarios-<project> compile-ocr` を直接起動する(JSON 1 行に言語集合ごとの ms)
+  - 隠れる余地: `TestProjects/*/results/runs/*/run.json` の `startedAt` と `events/*.ndjson` の先頭行の `t` の差。
+    ミリ秒で取るなら試作で `FT_PHASE_LOG` に「補助の準備ができた」の印を足す
+
 ### 3.21 フル E2E の定常値(2026-08-04 実測・M2 Ultra・8 レーン)
 
 **450 シナリオ / 両スイート 9分37秒**(既定 409s + `--ios-inapp` 168s)。全プロファイル緑。
@@ -1739,6 +1797,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | 施策 | 不採用理由 | 再検討条件 |
 |---|---|---|
 | ホスト ANE 負荷率の計測(IOReport `DIE_n_ANE0` の ACT/INACT residency) | 2026-07-22 実測で**電源状態の1ビットしか返さないと確定**し、指標ごと廃止(IOReport 私有API 依存 約200行も削除)。実推論レートを 8→175 回/秒(22倍)振っても全水準で正確に 1.00、アイドルのみ 0.00。**推論0件で失敗した実行でも 1.00 になる**(モデルをロードして電源が入っただけで立つ)。代替候補も全滅: PMP の `0%..100%` バケットは負荷時も常時オール0、DVFS residency(`ANEn-{SLOW,FAST}-*`)は SLOW/FAST クロックドメイン間を仕事が移動するため非単調、`ANEn RD+WR`(帯域)だけは単調だが GB/s であって利用率ではなく分母が定義できない。Energy Model グループは SIGSEGV、powermetrics は root 必須。**FM のコストは ANE ではなく呼び出し回数とレイテンシで測る**(§4.2) | Apple が ANE の利用率を公開 API で出したら、または powermetrics 相当を非 root で取れるようになったら |
+| OCR の補助プロセスをマシンに 1 つ常駐させる(run ごと・MCP セッションごとに起動しない)(2026-10-08 検討) | 省けるのは準備の 0.32 秒(キャッシュ済みのモデルの読み込み)だけで、run の開始から最初のシナリオまで(下限で中央値 9.3 秒)に隠れる。常駐させると版の食い違い(`fleetest` を作り直したら入れ替える)・起動と停止の持ち主・孤児の掃除・複数の run と MCP の待ち行列の管理が増える。詳細は §3.33 | 補助の準備が最初のシナリオの開始を待たせていることが `FT_PHASE_LOG` のミリ秒の記録で確かめられたとき |
 | ランナー常駐化(stdin でシナリオ逐次投入) | 残存コスト ~0.2s/本(全体の1〜6%)に対し、プロトコル+クラッシュ隔離の複雑さが見合わない | ヒール多用ワークロード(FM 3B モデルのプロセス毎再ロードが効く)か、1 バッチ数十本規模 |
 | シナリオ毎の CoreSimulator 初期化(約 360ms)の排除 = ホストへ委譲 or プロセス再利用(2026-08-02 調査) | 得られるのは壁時計 **1.8s/プロファイル(3.4%)**。代償はクラッシュ隔離・確実な kill・状態の初期化(design.md §16.4 / ScenarioHost 冒頭)で、失敗モードが「遅い」から「デッドロック」「別シナリオの状態漏れ」へ変わる。**安い入口も無い**: `serviceContextForDeveloperDir:connectionType:` は type=0 が同等、type=1 は deviceSet が 6.4s、`standaloneConnectionWithError:` は context として使えない。`xcode-select` の 65ms だけは `DEVELOPER_DIR` 受け渡しで削除済み | 初期化が数倍に伸びるか、1プロセスあたりのシナリオ数を増やす別の動機(隔離を捨ててよい理由)が先に出たとき |
 | エミュレータ黒画面対策としての Wipe Data / キャッシュ削除の自動化(2026-07-17 精査)→ **同日ユーザー決定で実行プロファイルのオプションとして実装済み** | 精査結論: Wipe Data が効くのは「ブート時黒画面」(Quickboot スナップショット破損・userdata 破損)。本フリートの症状は正常ブート後数分の表示パイプライン凍結で adb reboot で一旦回復する=userdata 破損型と不一致(guest cache.img は 66MB で削除効果なし)。コールドブート保証(`-no-snapshot`。ロード+セーブ無効)を DeviceBooter に実装。**別発見: フリート AVD の userdata-qemu.img.qcow2 が 6〜12GB に肥大**(qcow2 差分は縮まない)。この肥大解消のため、ユーザー決定で実行プロファイルに `wipeDataOnBloat`(既定 true)/`wipeDataThresholdGB`(既定 8。wipe 直後の再構築だけで 2〜4GB になるため 4GB 以下はスラッシング)を追加し、実行開始時に超過 AVD を Wipe Data する(AndroidDataWiper.swift)。**Wipe はゲストを初期化するが、アプリは appPath があれば強制再インストール、ロケールは実行プロファイル `locale`(既定 ja_JP)が再ブート後にブリッジ /locale で自動適用される**(design.md §11.2) | **真因は切り分け済み(2026-07-17): `-gpu host`(§7)。Wipe は凍結には無効で確定** |
