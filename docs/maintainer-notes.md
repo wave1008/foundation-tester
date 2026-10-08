@@ -3955,3 +3955,86 @@ JSON-RPC 2.0 どおり -32700(読めない)/ -32600(オブジェクトでない)
   `--skip-build` を付けた・CLI ファズの `api run` に `--scenario` が無かった
 - **スコープ外で直したもの**: HEAD の `TemporaryDirectoryScanTests` が赤だった(144bb1cd の SandboxBroker.swift は親でしか動かず、
   親だけの一時領域を使うのが意図)。免除表へ理由つきで足した
+
+## 74. E2EX の XCUITest で決まって赤だった 13 本を潰して出た知見(2026-10-07〜08)
+
+`Scripts/e2ex.sh --ios-xcuitest` で既定エンジン(in-app)では緑なのに決まって赤だった 13 本を 1 本まで減らした
+(残りは CMP の `90_不具合の回帰` S0020 = 未修正と明記した証人)。ブリッジ iOS v150 → v157。数値は M1Ultra / この Mac の
+Simulator(iPhone 17 Pro・iOS 27.0・Xcode 27)での実測。
+
+### 74.1 遅さを消すと、その遅さが黙って担っていた待ちも消える(焦点の問い合わせの 2 秒)
+- **観測**: キーボードの出ていない画面で `/snapshot` が毎回約 2.05 秒(焦点のある画面だけ 0.06 秒)
+- **原因**: `withFocusedFlag` の `firstMatch.snapshot()`。**一致する要素が無いと約 2 秒待ってから失敗する**。
+  先に `exists` を聞いて 0.02 秒(v156・`RunnerQuerySnapshotGuardTests`)
+- **代償 1**: 同じ形の `focusMark` にも `exists` を入れたら、打つ前の焦点の確認(`requireKeyboardFocus`)が**その 2 秒を
+  「タップの後に焦点が立つまでの待ち」として使っていた**ことが分かった。焦点が遅れて立つ Flutter の入力欄を即座に
+  「焦点が無い」で断った(E2EX-Flutter の入力 S0010・S0040 がフル回帰で赤)。`FocusWait` の上限まで待つ形にした(v157)
+- **代償 2**: 74.2
+- **同型**: CLAUDE.md「読む回数を減らす最適化は、その読みが担っている砦を先に列挙する」の**時間**版。速くする変更は
+  「その時間の間に起きることを当てにしていた呼び手」を列挙してから入れる。触った経路だけの確認では出ず、フル回帰で初めて出た
+
+### 74.2 XCUITest の木は慣性の途中を 100〜170ms おきにしか映さない
+- **観測**: 取得が速くなった途端、探索の直後のタップがスクロールを止めるだけで飲まれた(E2EX-CMP / RN の sticky。
+  撃つ前の警告も撃った後の注記も無い)
+- **測り方**: 払った直後から `/snapshot` を 20〜40ms おきに叩き、枠の署名が変わった時刻を並べる(`/swipe` を別スレッドで挟む
+  python 1 本。ホストを通さずランナーへ直接)。動いている間の更新間隔は CMP 最大 134ms・RN 174ms・SwiftUI 125ms。
+  Flutter と CMP は払った後も 3 秒以上ほぼ毎回変わり続ける(こちらは変位のしきい値で止まる)
+- **原因**: 整定の「連続 2 枚が同じ = 静止」は 100ms 周期。取得に 2 秒かかっていた間は周期が実質 2 秒で隠れていた
+- **直し**: `AppDriver.treeLagsBehindMotion`(XCUITest の `BridgeClient` = true・`InAppDriver` / Android = false・包むドライバは転送。
+  `SnapshotCacheBypassForwardingTests`)が true のときだけ、周期を `laggingTreeSettlePeriodMs`(350ms = 実測の最大の 2 倍)以上にする
+
+### 74.3 Flutter の縮んだ木は、XCUITest では「容器は実の枠・先頭の子が縮む」形
+- オーバーレイ(Tooltip・Dialog)を一度出すと座標が 1/画面倍率に縮む(framework-differences の表)。in-app は v132 から補正済みで、
+  XCUITest は未補正だった
+- **XCUITest の形(調査用のランナーで実測)**: セマンティクスの**容器(子を持つ other)は FlutterView の枠 402x874 を申告し続け**、
+  容器の**先頭の子(容器自身のノード = 子の無い other・`UIAccessibilityElement`)が 134x291.3**、以降の兄弟と子孫が同じ比で縮む
+- **外した仮説が2つ**: ①縮んだ根は `UIAccessibilityElement` の門で拾える(v153。根は木に出ない other で、門の形が違った)
+  ②根のノード自身が縮む(v154。縮むのは先頭の子)。さらに容器まで写すと 1206x2622 になった
+- **`UIScreen.main.scale` はランナーのプロセスで当てにならない**(3 を返さず判定が1度も始まらなかった)。3・2 を順に当てる
+- **直し(v155)**: 先頭の子が「ちょうど画面 ÷ 倍率」なら容器の下を写し、画面と同じ枠を申告するノード(容器)は写さない
+
+### 74.4 木の並びから前後が分からない覆い(貼り付く見出し)
+- 貼り付く見出しは XCUITest の木で**行より前(= 奥)に出る**ので `OcclusionGeometry.overlayCovering` は拾えない。上へ探して止まった
+  行の中心が見出しの下にあり、撃つと見出しに当たった(RN の sticky)
+- 撃つ前の送り(`liftCoveredTarget`)にだけ「容器の縁に貼り付いた名前つきの帯(操作できない要素)が中心を覆う」形を足した
+  (`TapTargetGeometry.pinnedBandCovering`)。**操作できる要素を帯にしない** —— 容器の上端から 2pt の行もこの形に見える
+
+### 74.5 端の判定と「送りの副作用で変わる表示」
+- CMP の XCUITest は画面全体が 1 つの scrollView なので、引っ張って更新の `refresh=N` も「送っている容器の中」に入り、上端で払うたびに
+  署名が変わって scrollToEdge が 120 秒の締切まで払い続けた(Flutter の RefreshIndicator は容器の外なので既存の対処で足りていた)
+- 固有の id を持つ `staticText` は id だけで比べる。**一律に「固有の id ならラベルを外す」にしない** —— 1 面ずつ同じ位置へ並ぶ
+  ページャで id を使い回すと、早すぎる端の確定(誤った緑)になる
+
+### 74.6 SwiftUI の入力欄から始めたドラッグは動かない・キーボードの下は見えていない
+- 撃つ前の送りのドラッグは領域の下から 15% を始点にしており、そこが入力欄だと 0pt しか動かなかった(文字の行から始めると 91pt)。
+  始点が入力欄に乗るときだけずらす(`dragStartAvoidingTextInputs`)。**スクロール探索の他の呼び手は同じ形のまま**(失敗は
+  「動かなかった」で表に出るので、今回は送りの 1 箇所に絞った)
+- スクロール探索の「見えている範囲」がキーボードを差し引いておらず、打った後にキーボードの下へ残った echo を「見つけた」で止め、
+  視覚検証が描かれていないと赤にした(視覚検証の赤は正しかった)。探索の可視域からキーボードを外した
+
+### 74.7 iOS 26 の XCUITest の窓と浮いたバー(v150〜152)
+- キーボードは窓を 2 枚足す(`inputView`・`SystemInputAssistantView`・WebView の付属の `Toolbar`)。**閉じた後も中身の無い全画面の窓が残る**
+  ので、手前の窓は「要素を出した窓」だけ数える(`overlayWindowFrames`)
+- `_UIFloatingBarContainerView` は型 toolbar・枠が画面全体で、中のボタンとは別に手前に載る。ホストの覆いの判定が「全部が #Toolbar に
+  覆われている」と読んだので木から外した。**型名はランナーの中では正規化済みの小文字**(`"Toolbar"` と比べて 1 度も当たらなかった)
+
+### 74.8 赤の原因がツールでなかったもの(SUT・シナリオ・環境)
+- **SUT**: E2EXAppIOS のピンチは図形そのものに `scaleEffect` を掛けて切り取っておらず、2 倍で「元に戻す」を実際に覆っていた
+  (契約違反。ツールの「covered by #zoom_target」は正しい検知)
+- **シナリオ**: M1Ultra の Simulator は英語ロケールで、`*January 20*` が日付セル「Tuesday, January 20」より先に見出し
+  「January 2026」に当たった → `*January 20`(後方一致)。iOS の入力 S0030 は送った後の echo がキーボードの縁にかかる配置なので
+  `select(..., scroll: .down)`
+- **環境**: RN の入力画面で XCUITest の Return を撃つと `AutomaticMinimizationEnabled` が 1 に戻り、以後その台でソフトキーボードが
+  出ない(各シナリオの前に 0 へ書き直す)
+
+### 74.9 調査の道具と、踏んだ作業上の罠
+- **木に出ないノードを見る**: 調査用に `isEligible` を全部通し、ラベルへ判定の入力(子の数・枠・判定結果)を書いたランナーを、
+  手元の 1 台だけ `bridge down --port N` → `bridge up`(その udid とポート N を指定)で載せる。コミットしない・終わったら起動し直す
+- **判定を実物の木で確かめる**: 実測の枠で一時テストを書き、`advisoryKind` / `overlayCoveringForUncover` が何を返すかを見てから直す
+  (74.4 は「判定が nil を返す」ことをこれで先に確定した)
+- **リモートで調べるスクリプトは scp して `< /dev/null` で走らせる** —— 標準入力に流すと `fleetest run` が残りを食い、後片付けの
+  行が走らずクローンが別のコミットに残った
+- **run が使っている台へ MCP で触らない** —— 走行中の CMP の 1 本へ割り込み、その結果を捨てた。`ft_launch` の
+  「a fleetest run is using this device」の警告で気付ける
+- アラインの後、リモートの `fleetest-mcp` は古いまま(版の不一致で断られる)。`swift build --product fleetest-mcp` してから使う
+- 断続的な赤は 1 回の緑で判定しない(CMP の sticky は MCP で 8/8 緑でも run では 5 回中 1 回赤 = docs/open-issues.md)
