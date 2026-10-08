@@ -252,8 +252,11 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
     // 見たいのは「アプリの画面が back で変わったか」なので、対象アプリを映す driver が正しい。
     // 読めなければ黙る(判定材料が無いのに断定しない = MCP の ft_navigate と同じ規律)
     let observer = core.driver
+    let executor = core.executor
     var observedNote: StepNote?
     core.performCustom(description: "back", command: "back", file: file, line: line, note: { observedNote }) {
+        // 直前の hideKeyboard の待ちを先に消化する(StepExecutor.awaitPendingHideKeyboard)
+        try await executor.awaitPendingHideKeyboard()
         let before = try? await observer.snapshot()
         try await driver.back()
         guard let before, let after = try? await observer.snapshot() else { return }

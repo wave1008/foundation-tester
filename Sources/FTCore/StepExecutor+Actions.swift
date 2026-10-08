@@ -215,22 +215,8 @@ extension StepExecutor {
         }
         // hideKeyboard の後、木がまだキーボードを申告していれば消えるまで待つ(pendingHideKeyboardWait の doc)。
         // 消えた後は整定を見る(下端の要素が戻り、中身が伸びる)
-        if let cap = pendingHideKeyboardWait {
-            pendingHideKeyboardWait = nil
-            if Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
-                let deadline = clock.now + .milliseconds(Int(cap * 1000))
-                while clock.now < deadline,
-                      Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
-                    let waitStart = clock.now
-                    try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
-                    phase.waitMs += Self.ms(clock.now - waitStart)
-                    start = clock.now
-                    snapshot = try await freshSnapshot(.afterOwnMove)
-                    phase.snapshotMs += Self.ms(clock.now - start)
-                }
-                // **settledSignature が自分で phase へ計上する**(ここでは足さない)
-                snapshot = try await settledSignature(phase: &phase).snapshot
-            }
+        if pendingHideKeyboardWait != nil {
+            snapshot = try await consumePendingHideKeyboardWait(snapshot, phase: &phase)
         }
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
@@ -1674,6 +1660,38 @@ extension StepExecutor {
         }
         return StepOutcome(status: .passed,
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
+    }
+
+    /// `pendingHideKeyboardWait` を消化する: 木がまだキーボードを申告していれば消えるまで待ち、消えたら整定を見る
+    /// (下端の要素が戻り、中身が伸びる)。印が無ければ渡した木をそのまま返す。ロケータ操作の解決と、ロケータを
+    /// 持たない `back()`(`awaitPendingHideKeyboard`)が呼ぶ
+    func consumePendingHideKeyboardWait(_ snapshot: SnapshotResponse,
+                                        phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
+        guard let cap = pendingHideKeyboardWait else { return snapshot }
+        pendingHideKeyboardWait = nil
+        guard Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) else { return snapshot }
+        let clock = ContinuousClock()
+        var snapshot = snapshot
+        let deadline = clock.now + .milliseconds(Int(cap * 1000))
+        while clock.now < deadline, Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+            let waitStart = clock.now
+            try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
+            phase.waitMs += Self.ms(clock.now - waitStart)
+            let start = clock.now
+            snapshot = try await freshSnapshot(.afterOwnMove)
+            phase.snapshotMs += Self.ms(clock.now - start)
+        }
+        // **settledSignature が自分で phase へ計上する**(ここでは足さない)
+        return try await settledSignature(phase: &phase).snapshot
+    }
+
+    /// **ロケータを持たない `back()` の前に、hideKeyboard の後の待ちを消化する**。Android の戻るキーは、IME が
+    /// 閉じきる前に届くとキーボードを閉じる動作に吸われて画面が戻らない(E2EY-RN の戻るの横取り S0040 が、高負荷の
+    /// スイートでだけ「back が効いていない」で赤)。印が無ければ何も読まない(費用ゼロ)
+    public func awaitPendingHideKeyboard() async throws {
+        guard pendingHideKeyboardWait != nil else { return }
+        var phase = PhaseAccumulator()
+        _ = try await consumePendingHideKeyboardWait(try await freshSnapshot(.afterOwnMove), phase: &phase)
     }
 
     /// **縁の帯に潜っている対象を、容器を送って外す**(tap と type が共有する)。
