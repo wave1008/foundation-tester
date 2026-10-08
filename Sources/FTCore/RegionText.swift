@@ -657,6 +657,8 @@ public enum RegionText {
 
     /// `recognize` と `RegionText.locateLink` が共有する唯一の Vision 呼び出し(設定の二重実装を作らない)
     static func recognizeObservations(_ image: CGImage, languages: [String]) async throws -> [RecognizedTextObservation] {
+        // 陽性対照の注入口(OCRDeadInjection)。読み手の故障は意図的に起こせないので、観測だけを差し替える
+        if OCRDeadInjection.isActive(environment: ProcessInfo.processInfo.environment) { return [] }
         var request = RecognizeTextRequest()
         // 実測 p50 33ms なので速度のために fast へ落とさない(欠けを取りこぼすほうが高くつく)。
         request.recognitionLevel = .accurate
@@ -671,6 +673,54 @@ public enum RegionText {
         }
         return try await request.perform(on: image)
     }
+
+    /// **OCR そのものが働いているか**。OCR が「何も読めなかった」ときだけ呼ぶ(正常系では撃たない)。
+    /// 既知の文字(`livenessProbeText`)を描いた埋め込みの絵を、本番と同じ設定(`recognize`)で読ませる。
+    /// 読めなければ、その「何も読めなかった」は絵ではなく読み手の故障 —— Vision の文字認識が、文字のはっきり
+    /// 描かれた絵にも空を返し続ける状態がある(FM の死と同時に起きた。プロセスを替えても続き、他の Mac では読めた)。
+    /// その状態で「読めない = 描かれていない / 届いていない」と結論すると、リンク文字の tap は理由を誤り、打鍵の読み返しは
+    /// 届いた入力を追送する(二重入力)。絵はフォントを描かずに持つ(シナリオ実行バイナリは Seatbelt の中で動く)
+    public static func readerIsAlive() async -> Bool {
+        guard let source = CGImageSourceCreateWithData(livenessProbePNG as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+              let lines = try? await recognize(image, languages: ["en-US"]) else { return false }
+        return readable(expected: livenessProbeText, lines: lines)
+    }
+
+    /// `livenessProbePNG` に描いてある文字(Helvetica-Bold 30pt・260x56・白地に黒)
+    static let livenessProbeText = "OCR CHECK 2468"
+    static let livenessProbePNG = Data(base64Encoded:
+        "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")!
 
     /// 正規化した期待文字列が空なら false。行を返ってきた順に連結した文字列、または各行単体の
     /// いずれかが、正規化した期待文字列を丸ごと含むときだけ true。**先頭一致は採らない**
@@ -707,5 +757,15 @@ public enum RegionText {
 
     private static func isWordCharacter(_ c: Character) -> Bool {
         c.isASCII && (c.isLetter || c.isNumber)
+    }
+}
+
+/// **陽性対照の注入口**: Vision の文字認識が何を渡しても空を返す状態(`RegionText.readerIsAlive` の doc)は意図的に
+/// 起こせないので、これが無いと「OCR が働いていない」経路を一度も通せない。観測だけを差し替える(`FMNoVerdictInjection` と同じ規律)
+public enum OCRDeadInjection {
+    public static let environmentKey = "FT_FAKE_OCR_DEAD"
+
+    public static func isActive(environment: [String: String]) -> Bool {
+        environment[environmentKey] == "1"
     }
 }

@@ -1075,9 +1075,15 @@ extension StepExecutor {
                                                          deadline: deadline)
                     deadline = deadline.addingTimeInterval(seen.compileWaitSeconds)
                     screenCheckFact = seen.fact
-                    if seen.visible {
+                    if seen.visible == true {
                         noteCodesThisStep.insert(.typeReadbackUnchanged)
                         return nil
+                    }
+                    // **確かめられないなら追送しない**: 届いていればアプリへ同じ文字列が二度入る
+                    if seen.visible == nil {
+                        return "type reported success but the field's value did not change, and whether the text"
+                            + " reached the field could not be checked (\(seen.fact ?? Self.ocrDeadFact)) — not re-sent,"
+                            + " so the field does not receive the same text twice"
                     }
                 }
                 valueAtLastResend = actual
@@ -1122,8 +1128,9 @@ extension StepExecutor {
     /// 残り(新しい定数を置かない)。**ocrTextOcclusionCheck を見ない**(視覚検証の OCR 段のスイッチ。
     /// 近い誤読の読み直しと同じく精度側の用途)。撮れない・読めない・予算切れは visible=false。
     /// **`fact` は visible=false の内訳**(描かれていない / 読みが成立しなかった を混ぜない。値は含めない)
+    /// `visible` が nil = 分からない(OCR そのものが働いていない。RegionText.readerIsAlive)。呼び手は追送しない
     func typedTextIsOnScreen(_ driver: AppDriver, element: ElementInfo, text: String, deadline: Date) async
-        -> (visible: Bool, compileWaitSeconds: TimeInterval, fact: String?) {
+        -> (visible: Bool?, compileWaitSeconds: TimeInterval, fact: String?) {
         if let override = Self.typedTextOnScreenOverrideForTesting {
             let answer = override(text)
             return (answer.visible, 0, answer.fact)
@@ -1154,9 +1161,12 @@ extension StepExecutor {
         switch result {
         case .read(true, _): return (true, waited, nil)
         case .read(false, let read): reading = read
-        case .unreadable: return (false, waited, "the field's area could not be read (OCR returned no reading)")
+        case .unreadable:
+            if !(await RegionText.readerIsAlive()) { return (nil, waited, Self.ocrDeadFact) }
+            return (false, waited, "the field's area could not be read (OCR returned no reading)")
         case .budgetExhausted: return (false, waited, "reading the field's area ran out of time")
         }
+        if reading.lines.isEmpty, !(await RegionText.readerIsAlive()) { return (nil, waited, Self.ocrDeadFact) }
         let notFound = "OCR read \(reading.lines.count) line(s) in the field's area, none of them the typed text"
         // 英語モデルの同形異字(`ap` → `аpар`)は畳んでから見直す(OCRHomoglyphs)
         guard text.allSatisfy(\.isASCII) else { return (false, waited, notFound) }
@@ -1164,9 +1174,12 @@ extension StepExecutor {
         return (folded, waited, folded ? nil : notFound)
     }
 
+    static let ocrDeadFact = "OCR is not working on this machine right now — it read nothing from a built-in image"
+        + " with known text either"
+
     /// テスト用(本番では nil)。OCR を撃たずに「描かれていたか」を差し替える
     nonisolated(unsafe) static var typedTextOnScreenOverrideForTesting:
-        ((String) -> (visible: Bool, fact: String?))?
+        ((String) -> (visible: Bool?, fact: String?))?
 
     /// 値が期待値になる/変わらなくなる(stableSeconds)/期限切れ、のいずれかまで snapshot を撮り直して
     /// 読む。awaitCommit(BridgeRouter)と同じ二重終了条件だが、取得手段がスナップショット1枚

@@ -68,6 +68,36 @@ final class StepExecutorLinkTextTests: XCTestCase {
         guard case .failed(let message) = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
         XCTAssertTrue(message.contains("OCR read no text"), message)
         XCTAssertEqual(driver.screenshotCallCount, 3)
+        // 読めなかったのが絵のせい(一色)であることを事実として添え、OCR が見た絵を証跡に持ち帰る
+        XCTAssertTrue(message.contains("3 of the screenshots given to OCR was a single colour"), message)
+        XCTAssertNotNil(outcome.evidenceImage, "OCR へ渡した絵を失敗の証跡に持ち帰る")
+    }
+
+    /// 文字が描かれた絵で見つからなかったときは「一色」を言わない(上の事実の添え方が常に出ないこと)
+    func testDoesNotClaimABlankShotWhenTextWasDrawn() async throws {
+        let (outcome, _) = await run(screenshots: [try shot("Please accept the house rules")],
+                                     linkText: "Terms of Service")
+        guard case .failed(let message) = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
+        XCTAssertFalse(message.contains("single colour"), message)
+        XCTAssertNotNil(outcome.evidenceImage)
+    }
+
+    /// 文字の描かれた絵でも何も読めないなら、読み手の故障を確かめて理由に添える(注入口 FT_FAKE_OCR_DEAD)
+    func testNamesADeadReaderInsteadOfAMissingLinkText() async throws {
+        setenv(OCRDeadInjection.environmentKey, "1", 1)
+        defer { unsetenv(OCRDeadInjection.environmentKey) }
+        let (outcome, _) = await run(screenshots: [try shot("Please accept the Terms of Service")],
+                                     linkText: "Terms of Service")
+        guard case .failed(let message) = outcome.status else { XCTFail("実際は \(outcome.status)"); return }
+        XCTAssertTrue(message.contains("OCR is not working on this machine right now"), message)
+        XCTAssertFalse(message.contains("single colour"), message)
+    }
+
+    /// 生死の確認の絵そのものが、生きた読み手で読めること(読めない絵だと常に「故障」と言ってしまう)。
+    /// **この機械の OCR が死んでいると落ちる**(それ自体が事実の報告)
+    func testLivenessProbeImageIsReadableByAWorkingReader() async {
+        let alive = await RegionText.readerIsAlive()
+        XCTAssertTrue(alive, "埋め込みの絵が読めない = この Mac の Vision の文字認識が働いていないか、絵が壊れている")
     }
 
     func testOCRShotDefaultsArePinned() {

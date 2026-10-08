@@ -2249,7 +2249,9 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   `fleetest vision check`(警告だけ・exit 0)。**分類器の判定で落ちたステップと、見つからずに落ちた `existImage` は、判定に使ったスクリーンショット全体を
   レポートのそのステップ行に添える**(`StepOutcome.evidenceImage`。ファイル名の印は `image-judged-by-classifier` /
   `judged-by-findImage` = 24 文字で切られるので後者は短くしてある。切り出しではなく全体 = 判定した画面が失敗時の
-  画面と同じかを見比べられる。通ったステップ・分類器を使わずに落ちたステップは持たない)
+  画面と同じかを見比べられる。通ったステップ・分類器を使わずに落ちたステップは持たない)。
+  **`tap(sel, linkText:)` が OCR で文字を見つけられずに落ちたときも、OCR へ渡した最後の絵を添える**(印は
+  `read-by-link-text-ocr`。失敗時の絵は判定の後に撮るので、OCR が見た絵とは別物になりうる)
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
   View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。

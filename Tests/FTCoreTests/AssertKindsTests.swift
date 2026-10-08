@@ -385,6 +385,33 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(outcome.status)?.contains("element not found"), true)
     }
 
+    /// 待ちの途中で見えていた要素が**最後の読みで消えた**ら、途中の値で「不一致」「違反」と言わずに not-found で返す
+    /// (負荷テストの実例: expected "state=idle", actual "state=idle"・両方の比較が一致、なのに赤)
+    func testVanishedOnTheLastReadIsReportedAsNotFoundNotAsAMismatch() async {
+        let seen = [node(1, id: "txt_state", label: "state=busy"), node(2, id: "other")]
+        let gone = [node(2, id: "other")]
+        for assert in ["textEquals", "textIsEmpty"] {
+            let step = FlowStep(assert: assert, locator: FlowLocator(id: "txt_state"),
+                                expected: assert == "textEquals" ? "state=idle" : nil, timeout: 0.3)
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [seen, gone]), isAndroid: false,
+                                             tunables: RunTunables()).execute(step)
+            let reason = failureReason(outcome.status) ?? ""
+            XCTAssertTrue(reason.contains("element not found on the last read"), "\(assert): \(reason)")
+            XCTAssertTrue(reason.contains("state=busy"), "途中で見えた値を事実として添える: \(reason)")
+            XCTAssertEqual(outcome.failureKind, .notFound, assert)
+        }
+    }
+
+    /// 最後の読みで見えていれば従来どおり不一致で返す(上の判定が常に not-found へ倒れないこと)
+    func testStillPresentOnTheLastReadIsStillAMismatch() async {
+        let seen = [node(1, id: "txt_state", label: "state=busy")]
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_state"), expected: "state=idle", timeout: 0.3)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [seen]), isAndroid: false,
+                                         tunables: RunTunables()).execute(step)
+        let reason = failureReason(outcome.status) ?? ""
+        XCTAssertTrue(reason.contains("text does not equal"), reason)
+    }
+
     /// `scrollTo` は探索し尽くしても見つからなければ**失敗**する(空振りを許す逃げ道は無い)
     func testScrollToFailsWhenNotFound() async {
         let elements = [[node(1, id: "other")]]

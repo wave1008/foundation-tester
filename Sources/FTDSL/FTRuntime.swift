@@ -895,10 +895,12 @@ public final class FTDriveCore {
                    at: recordedAt,
                    notes: outcome?.notes ?? [], guarded: outcome?.guardEntered ?? false,
                    command: command, failureKind: failureKind,
-                   // 画像の判定(分類器・existImage)で落ちたときだけ入る(StepOutcome.evidenceImage)
+                   // 画像の判定(分類器・existImage)・リンク文字の OCR で落ちたときだけ入る(StepOutcome.evidenceImage)。
+                   // ラベルはファイル名に入って 24 文字で切られる(docs/design.md の該当節)
                    screenshotData: outcome?.evidenceImage,
                    screenshotLabel: outcome?.evidenceImage == nil ? nil
-                       : step.action == "existImage" ? "judged-by-findImage" : "image-judged-by-classifier")
+                       : step.action == "existImage" ? "judged-by-findImage"
+                       : step.linkText != nil ? "read-by-link-text-ocr" : "image-judged-by-classifier")
         captureStillFrameIfRecording(changedScreen: step.action != nil, status: status)
 
         // 修正提案。修復は指紋照合だけなので、`healedStep` は指紋で掴んだ要素を書けるセレクタへ

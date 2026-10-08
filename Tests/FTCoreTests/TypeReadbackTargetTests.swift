@@ -95,9 +95,11 @@ final class TypeReadbackTargetTests: XCTestCase {
 
     // ---- 値が入力を映さない欄と、届かなかった入力の判別(E2EX-CMP の 15_検索バー。2026-09-28) ----
 
-    private func typeStep(values: [String], text: String, onScreen: Bool?,
+    /// `unknown: true` = 画面を見ても分からなかった(OCR そのものが働いていない)
+    private func typeStep(values: [String], text: String, onScreen: Bool?, unknown: Bool = false,
                           fact: String? = nil) async -> (StepOutcome, ReadbackSequenceDriver) {
-        StepExecutor.typedTextOnScreenOverrideForTesting = onScreen.map { visible in { _ in (visible, fact) } }
+        StepExecutor.typedTextOnScreenOverrideForTesting = unknown ? { _ in (nil, fact) }
+            : onScreen.map { visible in { _ in (visible, fact) } }
         defer { StepExecutor.typedTextOnScreenOverrideForTesting = nil }
         let driver = ReadbackSequenceDriver(values: values)
         let outcome = await StepExecutor(driver: driver, isAndroid: false, tunables: RunTunables()).execute(
@@ -121,6 +123,16 @@ final class TypeReadbackTargetTests: XCTestCase {
         guard case .failed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertEqual(driver.typedTexts, ["hello", "hello"])
         XCTAssertFalse(outcome.notes.contains(.typeReadbackUnchanged), "\(outcome.notes)")
+    }
+
+    /// **OCR そのものが働いていなくて分からないなら追送しない**(届いていれば二重入力)。理由を言って失敗する
+    func testDoesNotResendWhenTheScreenCheckCannotTell() async {
+        let (outcome, driver) = await typeStep(values: ["", "", "", ""], text: "hello", onScreen: nil, unknown: true,
+                                               fact: StepExecutor.ocrDeadFact)
+        guard case .failed(let message) = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.typedTexts, ["hello"], "確かめられないまま追送してはいけない")
+        XCTAssertTrue(message.contains("not re-sent"), message)
+        XCTAssertTrue(message.contains("OCR is not working on this machine"), message)
     }
 
     /// 画面を見て読めなかった内訳は失敗の文言に出る(描かれていないのか、読みが成立しなかったのか)

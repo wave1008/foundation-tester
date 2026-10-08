@@ -495,6 +495,19 @@ extension StepExecutor {
         return " (the target is covered by \(label); the interaction may have been swallowed by it)"
     }
 
+    /// 待ちの途中で一度は見つかったが、**最後の読みでは木に無かった**ときの失敗。途中の値で「不一致」「違反」と
+    /// 言うと、最後の観測(要素が無い)と食い違う文言になる(負荷テストの実例: expected "state=idle", actual
+    /// "state=idle"・両方の比較が一致、なのに赤)。最後の観測を主に、途中で見えた値は事実として添える
+    func vanishedAfterSeenFailure(_ step: FlowStep, subject: String, lastActual: String?,
+                                  lastSnapshot: SnapshotResponse?) -> StepResult.Status {
+        failed(.notFound, "element not found on the last read: \(step.locatorSummary)"
+            + " (it was in the tree earlier in the wait, with \(subject) \"\(lastActual ?? "nil")\","
+            + " and then left it)"
+            + Self.truncationHint(lastSnapshot)
+            + Self.keyboardResizedHint(lastSnapshot)
+            + tapDiagnosisHint(lastSnapshot?.elements))
+    }
+
     /// スナップショットが上限で打ち切られていたときの注記。**要素数の上限に当たると
     /// 「見つかりません」と区別が付かない**(実在するのに送られていないだけ)ため、
     /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい。
@@ -947,6 +960,10 @@ extension StepExecutor {
         var lastSnapshotMs = 0
         var lastActual: String?
         var found = false
+        // 最後の周回で要素が木に無かったか(一度見つかった値で「不一致」と言わないため。vanishedAfterSeenFailure)
+        var missingOnLastRead = false
+        // 直近に見つけたのがフォールバック(システム UI)の木だったか
+        var lastFoundViaFallback = false
         var backoff = PollBackoff()
         var primaryMisses = 0
         var lastOcclusion: StepResult.Status?   // occlusion-guard: 可視化待ち(exists と同契約)
@@ -988,6 +1005,8 @@ extension StepExecutor {
             lastSnapshot = snapshot
             var candidate = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true)
             var fromFallbackDriver = false
+            // この周にフォールバックの木を見たか(下の間引きで見ない周は「消えた」の根拠にしない)
+            var consultedFallback = false
             if candidate == nil { primaryMisses += 1 }
             // driver フォールバック(ハイブリッド): primary で見つからなければシステム UI を確認。
             // 間引きの契約は exists ケース参照
@@ -997,6 +1016,7 @@ extension StepExecutor {
                 let fsnap = try await fb.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 candidate = LocatorResolver.resolve(step: step, in: fsnap, strictForAssert: true)
+                consultedFallback = true
                 fromFallbackDriver = candidate != nil
                 // **SpringBoard 側で解決した** = この検証はアラート自身が対象(exists と同じ)。
                 // 立てないと executeAssert の門が「覆われている」と読んで、いま検証した
@@ -1004,6 +1024,12 @@ extension StepExecutor {
                 // 不一致で落ちる回も同じ(閉じてしまうと理由が「不一致」から「不在」に化ける)
                 if fromFallbackDriver { resolvedViaSystemUIThisStep = true }
             }
+            // **見た木で無かったときだけ**消えたと数える: フォールバック(システム UI)で見つかっていた要素は、
+            // 間引きでフォールバックを見ない周に主ドライバの木で見つからないだけなので、前の判断を持ち越す
+            if candidate != nil || consultedFallback || fallbackDriver == nil || !lastFoundViaFallback {
+                missingOnLastRead = candidate == nil
+            }
+            lastFoundViaFallback = candidate != nil ? fromFallbackDriver : lastFoundViaFallback
             if let (element, fallback) = candidate {
                 found = true
                 // id は画面に描かれないので occlusion-guard は掛からない(DSL 側が
@@ -1105,6 +1131,10 @@ extension StepExecutor {
         let subject = assert == "idEquals" ? "id"
             : (assert.hasPrefix("value") ? "value" : "text")
         let relation = Self.textMismatchRelation(assert)
+        if found, missingOnLastRead {
+            return vanishedAfterSeenFailure(step, subject: subject, lastActual: lastActual,
+                                            lastSnapshot: lastSnapshot)
+        }
         return found
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
                       // **どちらの規則なら一致したか**を必ず添える(ユーザー指示)。
@@ -1290,6 +1320,8 @@ extension StepExecutor {
         var backoff = PollBackoff()
         var found = false
         var lastActual: String?
+        // 最後の周回で要素が木に無かったか(vanishedAfterSeenFailure)
+        var missingOnLastRead = false
         var lastElement: ElementInfo?
         var lastElements: [ElementInfo] = []
         var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
@@ -1322,8 +1354,9 @@ extension StepExecutor {
             }
             lastSeenElements = snapshot.elements
             lastSnapshot = snapshot
-            if let (element, fallback) = LocatorResolver.resolve(step: step, in: snapshot,
-                                                      strictForAssert: true) {
+            let resolvedNow = LocatorResolver.resolve(step: step, in: snapshot, strictForAssert: true)
+            missingOnLastRead = resolvedNow == nil
+            if let (element, fallback) = resolvedNow {
                 found = true
                 let actual = assert.hasPrefix("value") ? element.value : element.label
                 lastActual = actual
@@ -1365,10 +1398,14 @@ extension StepExecutor {
                            + Self.keyboardResizedHint(lastSnapshot)
                            + tapDiagnosisHint(lastSeenElements))
         }
+        let subject = assert.hasPrefix("value") ? "value" : "text"
+        if missingOnLastRead {
+            return vanishedAfterSeenFailure(step, subject: subject, lastActual: lastActual,
+                                            lastSnapshot: lastSnapshot)
+        }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
                                      screen: lastScreen)
             + tapDiagnosisHint(lastSeenElements)
-        let subject = assert.hasPrefix("value") ? "value" : "text"
         switch assert {
         case "textIsEmpty", "valueIsEmpty":
             return .failed("\(subject) is not empty: actual \"\(lastActual ?? "nil")\"" + hint)

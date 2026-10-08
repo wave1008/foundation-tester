@@ -11,6 +11,8 @@ extension StepExecutor {
         var point = LinkTextLocator.treePoint(linkText: linkText, element: element, in: snapshot.elements)
         var ocrLines: [String] = []
         var ocrAttempts = 0
+        // OCR へ渡した絵のうちアプリの領域が一色だった枚数(失敗文に事実として添える。読めないのが絵のせいか読みのせいかを分ける)
+        var blankShots = 0
         if point == nil {
             // コンパイルを待つ(待った分は DeadlineExclusion が締め切りから差し引く。テキストの視覚検証の OCR と同じ使い方)
             _ = await RegionText.awaitModelCompile(mode: .on)
@@ -20,6 +22,9 @@ extension StepExecutor {
                 let start = clock.now
                 let png = try await driver.screenshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                // 落ちたときの証跡は OCR が見た絵(StepOutcome.evidenceImage。失敗時の絵は判定の後に撮るので別物)
+                classifierScreenshotThisStep = png
+                if BlankFrameDetector.isUnjudgeable(pngData: png) { blankShots += 1 }
                 let frame = element.frame, screen = snapshot.screen
                 let outcome = await TaskBudget.run(LinkTextLocator.ocrBudget) {
                     await RegionText.locateLink(linkText: linkText, pngData: png, frame: frame, screen: screen)
@@ -38,9 +43,17 @@ extension StepExecutor {
                 if !ocrLines.isEmpty { break }
             }
         }
+        // 何も読めなかったのが読み手の故障か(描かれた絵が1枚でもあったときだけ確かめる。RegionText.readerIsAlive)
+        let readerDead = point == nil && ocrLines.isEmpty && ocrAttempts > 0
+            && blankShots < LinkTextLocator.ocrShotAttempts
+            ? !(await RegionText.readerIsAlive()) : false
         guard let point else {
-            let read = ocrLines.isEmpty ? "OCR read no text in the element"
-                : "OCR read: " + ocrLines.map { "\"\($0)\"" }.joined(separator: ", ")
+            let read = (ocrLines.isEmpty ? "OCR read no text in the element"
+                : "OCR read: " + ocrLines.map { "\"\($0)\"" }.joined(separator: ", "))
+                + (blankShots > 0 ? "; the app area of \(blankShots) of the screenshots given to OCR was a single colour"
+                    + " (nothing drawn yet, or the capture failed)" : "")
+                + (readerDead ? "; OCR is not working on this machine right now — it read nothing from a built-in image"
+                    + " with known text either, so this does not show that the link text is missing" : "")
             return StepOutcome(status: failed(.notFound,
                 "cannot find the link text \"\(linkText)\" inside \(TapTargetGeometry.describe(element)):"
                     + " no descendant in the tree has that label, and the text was not found in the element's pixels"
