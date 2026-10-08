@@ -79,7 +79,7 @@ MCP の **profile 無しの iOS 経路**(`ft_snapshot` 等を `platform: ios` �
 **E2EX(`Scripts/e2ex.sh`)も同じ仕組みで別の印 `.fleetest/<engine>-e2ex-verified` を書く**
 (全部成功したときだけ。`--on` で回した回の印は向こうのクローンに残る)。**警告は in-app の印にだけ出す**
 (`--ios-xcuitest` の実行のときだけ見る)—— E2EX の XCUITest は断続的な赤が残り
-(docs/framework-differences.md §5.1。決まって赤のものは 2026-10-08 に 0 本)で全部成功するとは限らない = 警告にすると下の節と同じ「鳴りっぱなし」になる。
+(docs/framework-differences.md §5.1。決まって赤のものは 2026-10-08 に 1 本 = 90_不具合の回帰 S0020)で全部成功するとは限らない = 警告にすると下の節と同じ「鳴りっぱなし」になる。
 XCUITest ブリッジの検証は E2E の `--ios-xcuitest` の印が担う。両方向は `vscode-fleetest/test/e2exGate.test.mjs` が固定する。
 
 ### xcuitest の digest 警告は 2026-09-14 まで「鳴りっぱなし」だった(打鍵の中抜けを v104 で直した)

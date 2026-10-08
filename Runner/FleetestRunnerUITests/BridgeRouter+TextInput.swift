@@ -225,8 +225,17 @@ extension BridgeRouter {
     /// first`)と揃える。**409 ではなく 422**(409 は requireApp() 専用という不変条件。
     /// ここは「セッションはあるが今は打てない」であってセッション消失ではない)
     @discardableResult
+    /// **焦点が立つまで `FocusWait` の上限だけ待つ**(タップの後に焦点が遅れて立つ欄がある = Flutter の入力欄・ダイアログ)。
+    /// 以前は `focusMark` の `snapshot()` が一致の無いとき約 2 秒待つ性質が、黙ってこの待ちを担っていた(v156 で
+    /// exists を先に聞くようにして消え、E2EX-Flutter の入力が「焦点が無い」で落ちた)。立っていれば最初の1回で返る
     private static func requireKeyboardFocus(_ app: XCUIApplication) throws -> FocusMark {
-        guard let focused = focusMark(app) else {
+        let deadline = Date().addingTimeInterval(FocusWait.waitSeconds)
+        var mark = focusMark(app)
+        while mark == nil, Date() < deadline {
+            Thread.sleep(forTimeInterval: FocusWait.pollSeconds)
+            mark = focusMark(app)
+        }
+        guard let focused = mark else {
             throw BridgeError(422, "nothing has keyboard focus, so there is nothing to type into."
                 + " If you passed a ref, it is probably not the input element itself — tapping a"
                 + " container does not move focus. Tap the field (or pass the ref of the element"

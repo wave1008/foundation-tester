@@ -355,9 +355,9 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 **残っている制約(`@Draft` の理由と対応)**: **E2EY**: RN の collapsible-tab-view でタブを替えた直後、iOS では行がヘッダの裏に居る(in-app の木に覆っている物が出ないので名指しも回避もできない。XCUITest の木には `#Toolbar` として出る)/ Flutter の `AnimatedSlide` で上へ逃げたバーを、セマンティクスが元の位置のまま申告し(木では見えている)、探索が送らずに撃って見た目には無いボタンを押す(どちらも木だけでは決められない。押す前に絵で確かめる検証は FM を使う UI の視覚検証にあたり新設しない)/ iOS で半分開いた gorhom のシートが一覧の上からの払いで伸びない(XCUITest の本物の払いでも同じ・見出しからなら伸びる。木にグラバーが出ないので伸ばす場所を決められない。Android は直した)(以上 E2EY の `@Draft`)/ Flutter の iOS で scrollToTop が引っ張って更新になる/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
-**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest`)**: 決まって赤のものは 2026-10-08 に 13 → 0。
+**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest`)**: 決まって赤のものは 2026-10-08 に 13 → 1(CMP の 90_不具合の回帰 S0020 = 上端の確かめの1本が引っ張って更新になる。未修正と明記した証人)。
 断続的に赤: CMP の sticky(13 回中 1 回・原因未特定。docs/open-issues.md)/ Flutter の dialogs S0020(4 回中 1 回・欄の焦点が立つ前の打鍵)。
-この日に直したもの: CMP の refresh(端の署名で固有 id の文字表示のラベルを比べない)/ Flutter の tooltip・menu(XCUITest の
+この日に直したもの: CMP の refresh S0010(端の署名で固有 id の文字表示のラベルを比べない)/ Flutter の tooltip・menu(XCUITest の
 縮んだ木の補正・木の取得の 2 秒の待ちの解消)/ RN の sticky(貼り付く見出しの下の行を撃つ前に送る)・date(英語ロケールのセレクタ)/
 SwiftUI の pinch(SUT が枠で切り取っていなかった)・inputs S0030/40(送りの始点を入力欄から外す・探索でキーボードの下を見えていないと数える)。
 それ以前に緑になったもの: CMP の inputs S0030/40(見切れた欄の送り・補完欄を先頭へ)・SwiftUI の sheet の探索・inputs S0020。
