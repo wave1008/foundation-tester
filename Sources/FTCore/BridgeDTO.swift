@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 158
+    public static let bridgeProtocolVersion = 159
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1477,10 +1477,36 @@ public struct OKResponse: Codable {
     /// ホストは true で「署名が2回続けて不変」を待たずに切り上げ、false で「動いた」と数える
     /// (`AppDriver.reachedEdgeOnLastSwipe`)。旧ブリッジ・答えられない経路は nil = 従来どおりの判定
     public var atEdge: Bool?
-    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil) {
+    /// in-app の ref タップ(`/tap` の ref 指定)だけが立てる(v159〜)。`TapHitAreaMiss` の doc
+    public var hitAreaMiss: TapHitAreaMiss?
+    public init(ok: Bool = true, note: String? = nil, atEdge: Bool? = nil, hitAreaMiss: TapHitAreaMiss? = nil) {
         self.ok = ok
         self.note = note
         self.atEdge = atEdge
+        self.hitAreaMiss = hitAreaMiss
+    }
+}
+
+/// in-app が ref タップで要素を直接撃ったとき(accessibilityActivate、または activate 不発の合成タッチ ——
+/// **合成タッチは要素が載っている窓へ直接送るので、手前の窓(inputAccessoryView 等)を素通りする**)、
+/// **撃った点(activate なら枠の中心 = 座標タップ・XCUITest が押す点)で本物のタッチを受ける view が、
+/// 要素ともその祖先・子孫とも無関係だった**という事実。判定はブリッジの1箇所(InAppBridge の
+/// `hitAreaMiss(node:at:)`)で、撃つ点1つにつき UIView の hitTest を1回だけ行う。**判定できない(要素が
+/// UIView に辿れない・点がどの窓にも入らない)ときと、届くときは nil**(判定不能を「外れ」に畳まない)。
+/// 撃つこと・撃ち直し・赤にすることには使わない(注記だけ = ホストは `StepNote.inAppTapOutsideHitArea` と
+/// MCP の ft_tap の文言へ写す)。
+/// SwiftUI の `.contentShape` 抜け(文字の部分しか押せない)はこの判定では出ない(UIView の hitTest も AX の
+/// 当たり判定も「届く」と答える。実測は docs/maintainer-notes.md §77)
+public struct TapHitAreaMiss: Codable, Equatable, Sendable {
+    /// 判定した点(スクリーン座標 pt = 保持している枠の中心)
+    public var x: Double
+    public var y: Double
+    /// その点でタッチを受けた view の型名(例: `ChatInputBar`)
+    public var receiver: String
+    public init(x: Double, y: Double, receiver: String) {
+        self.x = x
+        self.y = y
+        self.receiver = receiver
     }
 }
 

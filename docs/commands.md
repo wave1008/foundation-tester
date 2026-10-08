@@ -118,6 +118,24 @@ gesture { for dot in dots { … } }     // ブロック内はループ・分岐�
 
 これが無いと、空振りしたタップは**後段のアサーションが落ちて初めて**分かる(原因から遠い)。
 
+### iOS in-app の「本物のタッチは別の物に当たる」注記(`inapp-tap-outside-hit-area`)
+
+in-app エンジンの `tap` は要素を**直接**撃つ(`accessibilityActivate`、効かなければ**要素の窓へ直接送る**
+合成タッチ)。どちらも手前の窓・重なった view を素通りするので、**本物の指では押せない要素にも届く** ——
+アプリの押せる範囲の不具合が in-app では緑、XCUITest(枠の中心を座標で押す)では赤になる。
+
+撃った点(枠の中心)で本物のタッチを受ける view が、要素ともその祖先・子孫とも無関係なら、
+ステップは**緑のまま**注記が付く: `in-app operated the element directly, but a real touch at the centre of its
+frame lands on another view (ChatInputBar at (354, 845))`(機械可読は `inapp-tap-outside-hit-area`)。
+MCP の `ft_tap` も同じ事実を応答に載せる。
+
+- **判定を変えない**: 撃つのをやめない・撃ち直さない・赤にしない・XCUITest へ回さない(警告から入れた検知)
+- **判定できないときは何も言わない**: 要素が UIView に辿れない・点がどの窓にも入らない。Flutter は全部が
+  1枚の FlutterView なので常に「届く」になり、この経路では判定できない
+- **検出しないもの**: SwiftUI の `.plain` の Button(文字の部分しか押せない)。UIView の hitTest も AX の当たり判定も
+  「届く」と答えるため(docs/framework-differences.md §2.1・maintainer-notes §77)
+- iOS の in-app の ref タップだけ。Android と XCUITest は本物のタッチなので対象外
+
 ### `tap(入力欄)` → `type("文字列")`(Shirates 伝統の書き方)
 
 **両方書ける**。どちらも同じところへ入る。

@@ -106,10 +106,14 @@ final class FTInAppBridge {
 
     /// 応答を作る。整定が打ち切られていたら note に足す(ホストは driverFallback として記録する)。
     /// 打ち切りは失敗ではないので status は 200 のまま
-    private func ok(_ note: String? = nil, atEdge: Bool? = nil) -> InAppHTTPServer.Response {
-        guard lastSettleCapped else { return .json(OKResponse(note: note, atEdge: atEdge)) }
+    private func ok(_ note: String? = nil, atEdge: Bool? = nil,
+                    hitAreaMiss: TapHitAreaMiss? = nil) -> InAppHTTPServer.Response {
+        guard lastSettleCapped else {
+            return .json(OKResponse(note: note, atEdge: atEdge, hitAreaMiss: hitAreaMiss))
+        }
         let capped = "settle capped (screen kept animating)"
-        return .json(OKResponse(note: note.map { "\($0) / \(capped)" } ?? capped, atEdge: atEdge))
+        return .json(OKResponse(note: note.map { "\($0) / \(capped)" } ?? capped, atEdge: atEdge,
+                                hitAreaMiss: hitAreaMiss))
     }
 
     private func handle(_ req: InAppHTTPServer.Request) -> InAppHTTPServer.Response {
@@ -482,8 +486,8 @@ final class FTInAppBridge {
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         if let ref = req.ref {
-            let note = try tapByRef(ref, req: req)
-            return ok(note)
+            let (note, hitAreaMiss) = try tapByRef(ref, req: req)
+            return ok(note, hitAreaMiss: hitAreaMiss)
         }
         let clippedNote = NoteBox()
         try performWithSettle(operation: "the tap") { window in
@@ -561,10 +565,14 @@ final class FTInAppBridge {
     /// 再試行は activate が false のときだけ発生するので、通常経路のコストはゼロ。
     /// **撃ち直すのは自前描画のアプリだけ**(`AppUIFramework.retriesUnfiredActivate`)。
     /// それ以外は整定を待って取り直しを座標のためだけに 1 回行い、合成タッチへ落とす。
-    private func tapByRef(_ ref: Int, req: TapRequest) throws -> String? {
+    private func tapByRef(_ ref: Int, req: TapRequest) throws -> (note: String?, hitAreaMiss: TapHitAreaMiss?) {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
         var note: String?
+        // 撃った回だけ立てる(activate も合成タッチも。合成タッチは対象の窓へ直接送るので手前の窓を素通りする)
+        var hitAreaMiss: TapHitAreaMiss?
+        // 合成タッチの点での判定に使う(保持ノードが無い回は nil = 判定しない)
+        var targetNode: NSObject?
         // 取り直しで判明した現在 frame の中心。activate が不発でも合成タッチはこちらを使う
         // (stored frame はコールドラウンチ直後のレイアウト確定を跨ぐと古く、RN で1要素ぶん
         // 上のナビを叩いた実害。2026-08-08)
@@ -592,6 +600,7 @@ final class FTInAppBridge {
             let before: Int
             do {
                 let p = try freshTapPoint ?? self.resolvePoint(ref: ref, x: req.x, y: req.y)
+                hitAreaMiss = targetNode.flatMap { Self.hitAreaMiss(node: $0, at: p) }
                 before = InAppRenderCatchUp.pixelPrint(window)
                 FTSynthTap(window, p)
             } catch {
@@ -634,7 +643,10 @@ final class FTInAppBridge {
         func retry(_ remaining: Int, stale: NSObject, window: UIWindow) {
             if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window) {
                 adoptFreshFrame(fresh)
+                let miss = Self.hitAreaMiss(node: fresh.node,
+                                            at: CGPoint(x: fresh.frame.midX, y: fresh.frame.midY))
                 if fresh.node.accessibilityActivate() {
+                    hitAreaMiss = miss
                     note = "activate did not fire -> re-fetched the element and retried"
                     finish(window)
                     return
@@ -665,7 +677,11 @@ final class FTInAppBridge {
             // **合成タッチは対象が載っている窓へ撃つ**(別 UIWindow のモーダルを閉じられない
             // 原因がこれだった。Self.window(of:) の宣言参照)
             let window = Self.window(of: node) ?? Self.frontmostTouchableWindow(keyWindow: keyWindow)
+            targetNode = node
+            // **撃つ前に**判定する(activate が画面を動かした後の hitTest は別の画面を見る)
+            let miss = self.frames[ref].flatMap { Self.hitAreaMiss(node: node, at: CGPoint(x: $0.midX, y: $0.midY)) }
             if node.accessibilityActivate() {
+                hitAreaMiss = miss
                 finish(window)
                 return
             }
@@ -706,7 +722,7 @@ final class FTInAppBridge {
                 + " once the main thread frees up, so retry only after checking the screen")
         }
         if let thrown { throw thrown }
-        return note
+        return (note, hitAreaMiss)
     }
 
     /// 不発だった保持ノードの代わりを、取り直したツリーから探す(id 一致 → 無 id なら frame+label 一致)。
@@ -783,7 +799,23 @@ final class FTInAppBridge {
     private static func isReachable(_ hit: UIView, forNode node: NSObject) -> Bool {
         let anchor = (node as? UIView) ?? nearestView(of: node)
         guard let anchor else { return true }
-        return hit === anchor || hit.isDescendant(of: anchor) || anchor.isDescendant(of: hit)
+        return reaches(hit, anchor: anchor)
+    }
+
+    /// isReachable と `hitAreaMiss(node:at:)` が共有する関係の判定(片方だけ変えない)
+    private static func reaches(_ hit: UIView, anchor: UIView) -> Bool {
+        hit === anchor || hit.isDescendant(of: anchor) || anchor.isDescendant(of: hit)
+    }
+
+    /// `TapHitAreaMiss` の判定(唯一の置き場)。point は撃つ点(activate なら frame の中心 = ホストの座標タップ・
+    /// XCUITest が押す点、合成タッチなら合成した点)。**isReachable と違い、判定不能は「許可」ではなく nil
+    /// (何も言わない)**。撃つ要素1つにつき hitTest 1回(撃ち直しの取り直し・合成タッチへ落ちた回はその点で1回)
+    private static func hitAreaMiss(node: NSObject, at point: CGPoint) -> TapHitAreaMiss? {
+        guard let anchor = (node as? UIView) ?? nearestView(of: node),
+              let hit = topmostHitView(at: point)?.view,
+              !reaches(hit, anchor: anchor) else { return nil }
+        return TapHitAreaMiss(x: Double(point.x), y: Double(point.y),
+                              receiver: String(describing: type(of: hit)))
     }
 
     /// node から辿れる最も近い UIView。AX 専用ノード(SwiftUI 等)は accessibilityContainer を

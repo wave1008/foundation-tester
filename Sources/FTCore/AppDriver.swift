@@ -149,6 +149,11 @@ public protocol AppDriver {
     /// 推測(署名の比較)より強い。**プロトコル要件として宣言すること**(既定実装だけだと
     /// 存在型越しの呼び出しが静的ディスパッチで既定へ落ち、ドライバの答えが捨てられる)
     var reachedEdgeOnLastSwipe: Bool? { get }
+    /// 直前の `tap(ref:)` で in-app が activate した要素について、枠の中心で本物のタッチを受けるのが
+    /// 別の view だった事実(`TapHitAreaMiss`)。既定 nil = 言えない(in-app 以外・判定不能・届く)。
+    /// 「次の tap(ref:) でクリアする」規約(lastActionNote と同じ)。**包むドライバは素通しすること**、
+    /// **プロトコル要件として宣言すること**(reachedEdgeOnLastSwipe と同じ理由)
+    var lastTapHitAreaMiss: TapHitAreaMiss? { get }
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -438,6 +443,7 @@ public extension AppDriver {
     /// CDP 経路・in-app の contentOffset 経路)だけ。**包むドライバは中のドライバの答えを
     /// 素通しすること**(捨てると端送りが毎回ホストの署名判定まで回る)
     var reachedEdgeOnLastSwipe: Bool? { nil }
+    var lastTapHitAreaMiss: TapHitAreaMiss? { nil }
     /// 既定は「答えられない」。答えられるのは XCUITest ブリッジを話す BridgeClient だけ
     func hitTest(ref: Int) async throws -> HitTestAnswer { .unavailable }
     var lastLaunchTiming: LaunchTiming? { nil }

@@ -88,6 +88,7 @@ extension MCPServer {
                 // 捨てない。DSL は同じ note を StepExecutor+Actions.swift の driverFallback へ
                 // 載せるので、MCP だけがこれを黙って捨てて撃った実体を見せていなかった
                 + Self.driverFallbackNote(d)
+                + Self.tapHitAreaMissNote(d)
                 + reproductionNote(resolvedRef: target.ref, args: args)
                 + Self.changedHint(args) + waitForWithoutSnapshotAfterNote(args)
                 + (await snapshotAfterBody(args)))

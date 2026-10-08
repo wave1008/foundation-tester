@@ -14,6 +14,9 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
     /// 返す `lastActionNote` を差し替えられるようにする(実ブリッジの「activate 不発 → 合成タッチ」を模す)
     var scriptedActionNote: String?
     var lastActionNote: String?
+    /// 次回の `tap(ref:)` が返す `lastTapHitAreaMiss`(in-app の当たり判定の申告を模す)
+    var scriptedHitAreaMiss: TapHitAreaMiss?
+    var lastTapHitAreaMiss: TapHitAreaMiss?
 
     var statusResponse = StatusResponse(
         ready: true, device: "iPhone 17", osVersion: "26.0", sessionBundleID: "com.example.app")
@@ -167,8 +170,10 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     func tap(ref: Int) async throws {
         lastActionNote = nil
+        lastTapHitAreaMiss = nil
         try record("tap(ref:\(ref))", "tap")
         lastActionNote = scriptedActionNote
+        lastTapHitAreaMiss = scriptedHitAreaMiss
     }
 
     func tap(x: Double, y: Double) async throws {

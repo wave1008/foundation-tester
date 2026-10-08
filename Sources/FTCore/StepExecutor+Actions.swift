@@ -653,6 +653,12 @@ extension StepExecutor {
                     for: element, in: snapshot.elements, screen: snapshot.screen, isAndroid: isAndroid))
                 do {
                     try await actingDriver.tap(ref: element.ref)
+                    // 読むのは ref で撃った直後だけ(座標の経路は tap(ref:) を通らない = 前回の値が残る)
+                    if let miss = actingDriver.lastTapHitAreaMiss {
+                        noteCodesThisStep.insert(.inAppTapOutsideHitArea)
+                        driverFallback = Self.joinNotes(driverFallback, StepNote.inAppTapOutsideHitArea.text
+                            + " (\(miss.receiver) at (\(Int(miss.x.rounded())), \(Int(miss.y.rounded()))))")
+                    }
                 } catch {
                     // in-app が「activate 不発・合成タッチは効かない」(SwiftUI)で 501 を返したら、
                     // 今の木の枠の中心を XCUITest の座標タップで押す(ref は別名前空間なので渡さない)。

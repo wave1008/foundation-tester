@@ -44,6 +44,8 @@ public final class WebViewDelegatingDriver: AppDriver {
     private var sawWebContent = false
 
     private var note: String?
+    /// 直前の tap(ref:) を screenDriver が受けたか(lastTapHitAreaMiss の素通しの条件)
+    private var lastTapWentToScreen = false
 
     /// Web コンテンツが現れるまでの初回待ちの**上限**。XCUITest 側の WebView AX 活性化は
     /// **Simulator の実測 2.3s** で、これはそれに余裕を持たせた値。
@@ -228,6 +230,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
 
     public func tap(ref: Int) async throws {
+        lastTapWentToScreen = mode != .domInterop
         guard mode == .domInterop else { try await screenDriver.tap(ref: ref); return }
         let p = try domInteropPoint(ref: ref)
         await pingDelegatedBeforeEvent()
@@ -424,6 +427,8 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// 委譲中は自分の注記を優先し、無ければ実行したドライバのものを透過する
     public var lastActionNote: String? { note ?? screenDriver.lastActionNote }
     public var reachedEdgeOnLastSwipe: Bool? { screenDriver.reachedEdgeOnLastSwipe }
+    /// DOM 経路の tap は screenDriver を通らない = そちらの値は前回の tap のまま残っているので返さない
+    public var lastTapHitAreaMiss: TapHitAreaMiss? { lastTapWentToScreen ? screenDriver.lastTapHitAreaMiss : nil }
     /// launch は常に primary(in-app)固定(launch(bundleID:) 参照)。screenDriver/mode の状態には無関係
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }

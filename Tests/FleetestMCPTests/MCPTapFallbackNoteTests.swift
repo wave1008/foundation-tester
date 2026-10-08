@@ -43,4 +43,24 @@ final class MCPTapFallbackNoteTests: XCTestCase {
         XCTAssertTrue(text.hasPrefix("tap [1] done."), text)
         XCTAssertFalse(text.contains("()"), text)
     }
+
+    /// in-app の当たり判定の申告(`TapHitAreaMiss`)も MCP の応答に事実として載せる(DSL と同じ事実・文言は別)
+    func testRefTapSurfacesTheHitAreaMiss() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.scriptedHitAreaMiss = TapHitAreaMiss(x: 354, y: 844.8, receiver: "ChatInputBar")
+
+        let text = body(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("a real touch at the centre of its frame (354, 845) lands on ChatInputBar"),
+                      text)
+    }
+
+    /// 陰性: 申告が無ければ言わない
+    func testRefTapSaysNothingAboutHitAreaWithoutAMiss() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.scriptedHitAreaMiss = nil
+
+        let text = body(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("real touch"), text)
+    }
+
 }

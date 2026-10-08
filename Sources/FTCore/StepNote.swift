@@ -340,6 +340,14 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 書いた関数が別のデバイスへ配られた形でも立つ。**どこで書かれたかは推測しない**(事実だけ)
     case memoKeyNotFound = "memo-key-not-found"
 
+    /// in-app が ref タップで要素を直接撃ったが(activate か、要素の窓へ直接送る合成タッチ)、撃った点
+    /// (枠の中心 = 座標タップ・XCUITest が押す点)で本物のタッチを受けるのは別の view だった
+    /// (ブリッジの事実 `TapHitAreaMiss` を写すだけ)。
+    /// **判定は変えない**(撃つのをやめない・撃ち直さない・赤にしない)。原因は推測しない
+    /// (アプリの作り・重なった部品・遷移の途中、のどれかは言えない)。
+    /// **率が上がったら in-app では緑・XCUITest では赤になる操作が増えている**(docs/maintainer-notes.md §76.1)
+    case inAppTapOutsideHitArea = "inapp-tap-outside-hit-area"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -463,6 +471,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .launchActivatedBeforeForeground:
             return "the test runner did not see the app in the foreground after launching it, so it was"
                 + " asked to activate it anyway (which can make the runner relaunch the app)"
+        case .inAppTapOutsideHitArea:
+            return "in-app operated the element directly, but a real touch at the centre of its frame"
+                + " lands on another view"
         case .memoKeyNotFound:
             return "nothing was written under this key on this device in this run (the memo is per device)"
         case .unchangedTapBeforeFailure:

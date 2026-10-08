@@ -4125,3 +4125,28 @@ E2EY は既定で赤 10 本・XCUITest で赤 13 本)。負荷テストは実機
 ### 76.4 XCUITest の木の性質で直せないもの(`@Draft` と framework-differences §5.1)
 - SwiftUI で不透明度 0 にした部品は XCUITest の木に残る(`.accessibilityHidden` でも残った)/ シートが半分以上開いている間は背面が木に無い
 
+
+## 77. in-app の「本物のタッチは別の物に当たる」注記(`inapp-tap-outside-hit-area`)の信号の選定
+
+§76.1 の3例を「直す前」に戻した SUT(Simulator iOS 27・1台)で、撃つ点 = 枠の中心について3つの信号を採った。
+in-app ブリッジに一時的な測定口を足した worktree で測った(本線には入れていない)。
+
+| 例 | (a) UIView の hitTest と isReachable | (b) AX の当たり判定(accessibilityHitTest) | (c) XCUITest の isHittable |
+|---|---|---|---|
+| SwiftUI の `.plain` の行(row_main / row_l / queue_row / sw_row の 26 本) | 直す前も後も届く | 直す前も後も対象そのもの | 直す前も後も true |
+| UIKit の「最新へ」(inputAccessoryView の下) | **直す前は ChatInputBar(TextEffects の窓)= 無関係**、後は対象 | 直す前は nil、後は対象 | 直す前も後も true |
+| Flutter の隠れるバー(ClipRect 抜け) | 直す前も FlutterView = 届く | 直す前も対象 | 直す前も true |
+
+- **採ったのは (a) だけ**。(c) はどの例でも割れない(isHittable は activation point と AX の当たり判定を見る。ランナーのタップは枠の中心を座標で押すので、
+  isHittable が true でも外れる)。(b) は UIKit の例で割れたが (a) と同じ情報
+- **SwiftUI で割れたのは `accessibilityActivationPoint` だけ**(直す前は文字の上 = 中心から 122〜158pt、直した後は中心と 0.0pt で一致)。
+  ただし当たり判定そのものではなく、直した SUT でもボタン以外で 5 件ずれた(UIStepper 138pt・textView 168pt・文中リンクの staticText 41pt・
+  UIPageControl 2.5pt・activation point が `(inf, inf)` のメニューボタン)。避けるには型で絞るか閾値を置く必要があり、根拠のない絞り込みになるので
+  **入れていない**(入れるなら全 SUT と実アプリでずれの分布を数えてから)
+- **Flutter は判定できない**。加えて、直す前の形でも in-app の ref タップは activate が効かず合成タッチになり、既存の注記(画面が変わらなかった)が
+  既に出る = 「in-app だけ緑」の例ではなかった
+- **陽性対照で分かったこと**: UIKit の「最新へ」は activate が効かず、**合成タッチ**で届いていた。合成タッチ(`FTSynthTap`)は要素が載っている窓へ
+  直接送るので手前の窓を素通りする。判定を activate の回だけにすると取りこぼすので、合成タッチの回もその点で判定する
+- 誤検知の当たり(直した E2EY-iOS 13 画面・E2EX-iOS 26 画面の全要素で (a) を採った): 発火は 1 件 = 引き伸ばせるシートの `row_main_08`
+  (中心で当たるのはシートの `_UIGrabber`)。本物の指でもシートに当たるので事実として正しい
+- 実アプリのコーパス(Tests/Fixtures/RealAppSnapshots/)は木だけなので当てられない。**この検知はデバイス実行でのみ確かめた**

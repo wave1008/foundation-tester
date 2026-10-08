@@ -41,6 +41,15 @@ tap(x: 120, y: 640)                    // only when no selector is available
   when `#id` resolves to the input's wrapping container rather than the field itself, focus can
   fail to land in the field; `type` recovers by locating the single input inside the tapped
   container. See [type](./type.md).
+- **iOS in-app engine: "a real touch would land elsewhere" note.** The in-app engine operates the element
+  directly (its accessibility action, or a touch sent straight to the element's window), so it can reach an
+  element that a real finger cannot — for example a button hidden under a keyboard accessory bar. When a real
+  touch at the centre of the element's frame would land on another view, the step stays green and gets the
+  note `in-app operated the element directly, but a real touch at the centre of its frame lands on another view
+  (<view> at (x, y))` (machine-readable: `inapp-tap-outside-hit-area`). The tap is not retried and the step is
+  not failed. The same tap can fail on the XCUITest engine, which presses the centre of the frame. Nothing is
+  said when it cannot be determined (for example Flutter, which draws everything in one view). A SwiftUI
+  `.plain` button that is tappable only on its text is **not** detected.
 - Coordinate taps: use them only when the app exposes nothing selectable at that spot.
 
   | Use case | Guidance |

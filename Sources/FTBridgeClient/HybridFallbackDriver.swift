@@ -385,4 +385,6 @@ public final class HybridFallbackDriver: AppDriver {
     /// 読むと、古い申告か nil を返す)
     public var reachedEdgeOnLastSwipe: Bool? { (lastSwipeDriver ?? primary).reachedEdgeOnLastSwipe }
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
+    /// tap(ref:) と同じ `active` を読む(foreignApp 委譲中の XCUITest は常に nil)
+    public var lastTapHitAreaMiss: TapHitAreaMiss? { active.lastTapHitAreaMiss }
 }

@@ -15,6 +15,7 @@ public final class BridgeClient: AppDriver, Sendable {
         var resolvedBrowserDOMTarget: BrowserDOMTarget??
         var browserDOMCenters: [Int: (x: Double, y: Double)] = [:]
         var atEdgeOnLastSwipe: Bool?
+        var lastTapHitAreaMiss: TapHitAreaMiss?
         var originalOrientation: FTOrientation?
     }
     private let mutable: Mutex<Mutable>
@@ -827,6 +828,7 @@ public final class BridgeClient: AppDriver, Sendable {
 
     public func tap(ref: Int) async throws {
         lastActionNote = nil
+        lastTapHitAreaMiss = nil
         if let center = browserDOMCenters[ref] {
             try await tap(x: center.x, y: center.y)
             return
@@ -834,6 +836,13 @@ public final class BridgeClient: AppDriver, Sendable {
         let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, fast: fastFlag),
                                              timeout: interactionTimeout)
         lastActionNote = res.note
+        lastTapHitAreaMiss = res.hitAreaMiss
+    }
+
+    /// tap(ref:) が受け取った OKResponse.hitAreaMiss(AppDriver.lastTapHitAreaMiss)。tap(ref:) の冒頭でクリア
+    public private(set) var lastTapHitAreaMiss: TapHitAreaMiss? {
+        get { mutable.withLock { $0.lastTapHitAreaMiss } }
+        set { mutable.withLock { $0.lastTapHitAreaMiss = newValue } }
     }
 
     public func tap(x: Double, y: Double) async throws {

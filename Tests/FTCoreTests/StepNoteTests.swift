@@ -41,6 +41,7 @@ final class StepNoteTests: XCTestCase {
         XCTAssertEqual(StepNote.settledAfterLaunch.rawValue, "settled-after-launch")
         XCTAssertEqual(StepNote.blankScreenshotRetaken.rawValue, "blank-screenshot-retaken")
         XCTAssertEqual(StepNote.settledBeforeGesture.rawValue, "settled-before-gesture")
+        XCTAssertEqual(StepNote.inAppTapOutsideHitArea.rawValue, "inapp-tap-outside-hit-area")
     }
 
     // MARK: - 永続化(results/ まで運ばれるか)
