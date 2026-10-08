@@ -1447,6 +1447,17 @@ iOS シミュレータ(iPhone 17 Pro・in-app)/ Android エミュレータ(Pixel
 **限界**: 画質は OCR で代わりに測っただけ(人の目では見ていない)。シナリオ2種・各2〜5回。長いクリップ・
 モニター配信中の負荷下は測っていない。**測り方の落とし穴は §7**(OCR の基準を被験条件から作らない)
 
+### 3.32 XCUITest の木の取得が焦点の問い合わせで毎回 2 秒待っていた(2026-10-08・**改善**)
+
+- **症状**: キーボードの出ていない画面で `/snapshot` が毎回約 2.05 秒(Simulator・Xcode 27。キーボードが出ている = 焦点のある画面だけ 0.06 秒)。
+  MCP の `ft_snapshot` も DSL の各ステップも同じだけ払っていた
+- **原因**: `withFocusedFlag` の `firstMatch.snapshot()`。一致する要素が無いと約 2 秒待ってから失敗する。先に `exists` を聞いて 0.02 秒
+  (ブリッジ iOS v156。`focusMark` も同じ形。`RunnerQuerySnapshotGuardTests` が再発を落とす)
+- **表に出たもの**: E2EX-Flutter のツールチップ(表示 2 秒の間に `exist` → `textIs` が終わらない)が緑に。E2EX-RN の sticky は 28s → 11s
+- **代償(直した)**: 2 秒の取得が隠していた「整定の早すぎる静止判定」が出た。XCUITest の木は慣性で動いている間も 100〜170ms おきにしか
+  更新されない(払った直後に 20〜40ms おきに取得: CMP 最大 134ms・RN 174ms・SwiftUI 125ms)ので、100ms 周期の 2 枚が途中で一致する。
+  `AppDriver.treeLagsBehindMotion` が true のドライバ(XCUITest)だけ、整定の周期を `laggingTreeSettlePeriodMs`(350ms)以上にした
+
 ### 3.21 フル E2E の定常値(2026-08-04 実測・M2 Ultra・8 レーン)
 
 **450 シナリオ / 両スイート 9分37秒**(既定 409s + `--ios-inapp` 168s)。全プロファイル緑。

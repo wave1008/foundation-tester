@@ -312,7 +312,7 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | タブのラベル | Flutter `Tab`・RN material-top-tabs はラベルに「Tab 3 of 3」「tab, 2 of 3」が付く | B |
 | ドロワーを払って開く | Flutter `Drawer`・Android `DrawerLayout`・react-navigation drawer は端からの払いだけ。端は Android の戻るの帯 | B |
 | Flutter の戻る(iOS) | go_router + MaterialPage で、合成したエッジスワイプでは戻らない(始点 x=1〜19・0.25〜0.8 秒)。原因未特定 | B |
-| Flutter の iOS のオーバーレイ | オーバーレイ(Tooltip・Dialog)を一度出すと、次の画面遷移までその画面の a11y の矩形が 1/画面倍率に縮む(ルートのノードが「FlutterView ÷ 倍率」を申告し、その下が同じ比で縮む)。**in-app も XCUITest も同じ = Flutter 側の申告**。in-app ブリッジは補正する(`AXFrameRescale`・v132)。XCUITest エンジンは未補正 |
+| Flutter の iOS のオーバーレイ | オーバーレイ(Tooltip・Dialog)を一度出すと、次の画面遷移までその画面の a11y の矩形が 1/画面倍率に縮む(ルートのノードが「FlutterView ÷ 倍率」を申告し、その下が同じ比で縮む)。**in-app も XCUITest も同じ = Flutter 側の申告**。in-app ブリッジは補正する(`AXFrameRescale`・v132)。XCUITest ランナーも補正する(v155。縮むのは各容器の先頭の子 = 容器自身のノードと葉で、容器は FlutterView の枠のまま) |
 | Flutter `SearchAnchor` | バーを押すと別の入力欄(`#id` 無し)が開く。ツールは焦点の移った欄への type を断る(重複入力の安全策) | B |
 | CMP の iOS | 既定の `OnFocusBehavior.FocusableAboveKeyboard` がキーボードの高さぶん画面全体を押し上げる | B |
 | RN の iOS | `accessible` な祖先が子を1要素へ畳む(paper Tooltip・gorhom BottomSheetModal の既定)/ 1画面に Navigator を2つ置くと落ちる / paper Menu は Android の戻るを消費しない | B |
@@ -352,13 +352,15 @@ Android の4 SUT と RN iOS は、どの部品もオン/オフとも a11y が判
 | 一部しか見えていない段を scrollFrame に指した横の探索で、外側の縦の容器を先に送る `bringIntoView` が効かない(枠の中心が外側の一覧の下端の外 = 中心で外側を探していた)→ 縦に重なっていれば外側とみなす(E2EY-iOS の `#shelf_9`。末尾のカードは既定の 8 本で届かない距離なのでシナリオが `maxSwipes: 12`) | 共通(ホスト) |
 | 見つけた行が容器の縁で見切れたときの戻しが、in-app の Compose / Flutter では1ページ送りになり逆側へ飛び越して往復する(反転チャットで 8 本を使い切った)→ この経路では戻しを**必ず距離どおりのドラッグ**で撃ち(小さい量は 60pt へ広げる)、1pt 未満のはみ出し(浮動小数の差)は見つかったとする。SwiftUI は従来の容器基準の払い(E2EY-CMP の iOS) | iOS in-app(Compose・Flutter) |
 
-**残っている制約(`@Draft` の理由と対応)**: **E2EY**: RN の collapsible-tab-view でタブを替えた直後、iOS では行がヘッダの裏に居る(in-app の木に覆っている物が出ないので名指しも回避もできない。XCUITest の木には `#Toolbar` として出る)/ Flutter の `AnimatedSlide` で上へ逃げたバーを、セマンティクスが元の位置のまま申告し(木では見えている)、探索が送らずに撃って見た目には無いボタンを押す(どちらも木だけでは決められない。押す前に絵で確かめる検証は FM を使う UI の視覚検証にあたり新設しない)/ iOS で半分開いた gorhom のシートが一覧の上からの払いで伸びない(XCUITest の本物の払いでも同じ・見出しからなら伸びる。木にグラバーが出ないので伸ばす場所を決められない。Android は直した)(以上 E2EY の `@Draft`)/ Flutter の iOS で scrollToTop が引っ張って更新になる / Flutter iOS のオーバーレイ後の座標(XCUITest エンジンだけ未補正)/ Android の一部の欄で
+**残っている制約(`@Draft` の理由と対応)**: **E2EY**: RN の collapsible-tab-view でタブを替えた直後、iOS では行がヘッダの裏に居る(in-app の木に覆っている物が出ないので名指しも回避もできない。XCUITest の木には `#Toolbar` として出る)/ Flutter の `AnimatedSlide` で上へ逃げたバーを、セマンティクスが元の位置のまま申告し(木では見えている)、探索が送らずに撃って見た目には無いボタンを押す(どちらも木だけでは決められない。押す前に絵で確かめる検証は FM を使う UI の視覚検証にあたり新設しない)/ iOS で半分開いた gorhom のシートが一覧の上からの払いで伸びない(XCUITest の本物の払いでも同じ・見出しからなら伸びる。木にグラバーが出ないので伸ばす場所を決められない。Android は直した)(以上 E2EY の `@Draft`)/ Flutter の iOS で scrollToTop が引っ張って更新になる/ Android の一部の欄で
 ACTION_SET_TEXT が拒まれる / Android のツールチップ・一部のオートコンプリートの候補が木に出ない / Flutter iOS の
 スナックバーが見つからない(FM が止まった Mac で観測。帰属未確定)。
-**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest` で 9 本。2026-10-08 に 13 → 9)**: CMP の refresh S0020(上) /
-Flutter の tooltip・menu(オーバーレイ後の 1/3 座標は XCUITest では未補正)/ RN の sticky・date(XCUITest の木は全画面の
-`#Toolbar` を手前に置くので、覆いの判定が見出しでなく Toolbar を採り lift が効かない)/ SwiftUI の pinch reset・inputs S0030/40。
-緑になったもの: CMP の inputs S0030/40(見切れた欄の送り・補完欄を先頭へ)・SwiftUI の sheet の探索・inputs S0020。
+**XCUITest エンジンだけで赤(既定の in-app は緑・`Scripts/e2ex.sh --ios-xcuitest`)**: 決まって赤のものは 2026-10-08 に 13 → 0。
+断続的に赤: CMP の sticky(13 回中 1 回・原因未特定。docs/open-issues.md)/ Flutter の dialogs S0020(4 回中 1 回・欄の焦点が立つ前の打鍵)。
+この日に直したもの: CMP の refresh(端の署名で固有 id の文字表示のラベルを比べない)/ Flutter の tooltip・menu(XCUITest の
+縮んだ木の補正・木の取得の 2 秒の待ちの解消)/ RN の sticky(貼り付く見出しの下の行を撃つ前に送る)・date(英語ロケールのセレクタ)/
+SwiftUI の pinch(SUT が枠で切り取っていなかった)・inputs S0030/40(送りの始点を入力欄から外す・探索でキーボードの下を見えていないと数える)。
+それ以前に緑になったもの: CMP の inputs S0030/40(見切れた欄の送り・補完欄を先頭へ)・SwiftUI の sheet の探索・inputs S0020。
 
 **同じ型の残り(未対処・再現していない)**: テキストの視覚検証の OCR 段も英語モデルのキリル同形異字で読み違えうる
 (固定コーパス `Tests/Fixtures/OcclusionCrops/` の読みを1件ずつ見てから畳む)。

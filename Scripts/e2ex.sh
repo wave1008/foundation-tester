@@ -27,8 +27,8 @@
 # **プロファイルは -01〜-08 の8台を名前で指す(udid を持たない)**ので、同名のデバイスを持つどの機でも同じ
 # プロファイルで回る。常に `--runner local`(同名のデバイスがリモートにもあり、--runner を付けないと
 # リモートへ飛ぶ)。--align は持たない(Scripts/align.sh を先に)。
-# **`--ios-xcuitest` は既定エンジン(in-app)で緑のシナリオが 9 本赤のまま**(XCUITest エンジンだけの制約。
-# 一覧は docs/framework-differences.md §5.1 末尾の「残っている制約」)。代表は 90_不具合の回帰.swift S0020
+# **`--ios-xcuitest` は既定エンジン(in-app)で緑のシナリオのうち、決まって赤のものは 2026-10-08 に 0 本になった**が、
+# 断続的な赤が残る(一覧は docs/framework-differences.md §5.1 末尾の「残っている制約」・docs/open-issues.md)。代表は 90_不具合の回帰.swift S0020
 # (XCUITest は容器が「まだ送れるか」を申告しないので、scrollToTop の端の確認が上端で「引っ張る」になる)。
 set -euo pipefail
 
@@ -95,7 +95,7 @@ fi
 
 # 全部成功した回だけ、そのエンジンのブリッジ入力の digest を記録する(Scripts/e2e.sh と同じ仕組み。印は
 # `.fleetest/<engine>-e2ex-verified` で E2E の印とは別。--on で回した回は向こうのクローンに残る)。
-# **警告は in-app の印にだけ出す**: XCUITest は既定エンジンで緑のシナリオが 9 本赤のまま(上の注記)で、
+# **警告は in-app の印にだけ出す**: XCUITest は断続的な赤が残り(上の注記)、
 # 全部成功が条件の印は更新されない = 警告にすると鳴りっぱなしになる(E2E で 2026-08-30〜09-14 に実際に起きた形)。
 # XCUITest のブリッジの検証は E2E の `--ios-xcuitest` の印が担う
 engine_digest() { "$FLEETEST" api bridge-sources --bridge "$1" --digest 2>/dev/null; }
