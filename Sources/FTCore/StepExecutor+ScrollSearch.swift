@@ -657,7 +657,7 @@ extension StepExecutor {
                     if attempt > 0 {
                         // 止まった後に流れ去っていたら探索を続ける(restingTarget の doc)
                         guard let rest = try await restingTarget(step: step, element: element, snapshot: snapshot,
-                                                                 viewport: viewport, phase: &phase) else {
+                                                                 phase: &phase) else {
                             previousSnapshot = snapshot
                             continue
                         }
