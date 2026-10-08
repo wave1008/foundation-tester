@@ -7,6 +7,7 @@ import FTDSL
 @TestClass
 class スクロールで隠れるバーを扱えること {
 
+    @Draft("既知の制約: SwiftUI で不透明度 0 にした FAB・バーは XCUITest の木に残り(.accessibilityHidden を付けても残った)、XCUITest では notExist(\"#fab_hiding\") が赤になる。in-app は木から外すので緑。木だけでは見分けられない")
     @Test("下へ送ると隠れ、戻すと現れて押せる")
     func S0010() {
         scenario {

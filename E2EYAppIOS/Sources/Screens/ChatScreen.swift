@@ -75,7 +75,10 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITable
         table.accessibilityIdentifier = "list_chat"
         table.register(ChatCell.self, forCellReuseIdentifier: "cell")
         view.addSubview(table)
-        tableBottom = table.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        // **下端は keyboardLayoutGuide に繋ぐ**(入力バー = inputAccessoryView・キーボードの上端に追従する)。キーボードの
+        // 枠の通知で下端を上げる作りは、画面を開いたときに通知が来ないと一覧と #btn_jump_bottom が入力バーの下へ
+        // 潜ったままになった(XCUITest の実タッチは入力バーに当たって押せない)
+        tableBottom = table.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor)
         NSLayoutConstraint.activate([
             table.topAnchor.constraint(equalTo: view.topAnchor),
             table.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -100,8 +103,6 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITable
         ])
 
         bar.sendButton.addTarget(self, action: #selector(send), for: .touchUpInside)
-        NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)),
-                                               name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -151,13 +152,6 @@ final class ChatViewController: UIViewController, UITableViewDataSource, UITable
         }
         model.count = messages.count
         publishPosition()
-    }
-
-    @objc private func keyboardChanged(_ n: Notification) {
-        guard let end = n.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect, view.window != nil else { return }
-        let overlap = max(0, view.bounds.maxY - view.convert(end, from: nil).minY)
-        tableBottom.constant = -overlap
-        view.layoutIfNeeded()
     }
 
     // MARK: UITableView

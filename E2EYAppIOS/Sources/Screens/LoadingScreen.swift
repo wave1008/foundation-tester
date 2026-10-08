@@ -77,7 +77,7 @@ struct LoadingScreen: View {
                 if model.phase == .initial {
                     ForEach(0..<8, id: \.self) { i in
                         let name = "row_l_\(Tags.two(i))"
-                        Button { } label: { Text("記事 \(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading) }
+                        Button { } label: { Text("記事 \(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).contentShape(Rectangle()) }
                             .buttonStyle(.plain)
                             .disabled(true)
                             .opacity(0.4)
@@ -89,6 +89,7 @@ struct LoadingScreen: View {
                         let name = "row_l_\(Tags.two(i))"
                         Button { model.result = "loading=\(name)" } label: {
                             Text("記事 \(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier(name)

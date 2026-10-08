@@ -37,6 +37,7 @@ class 引き伸ばせるシートを操作できること {
         }
     }
 
+    @Draft("既知の制約: SwiftUI のシートが半分以上開いている間、iOS は背面をアクセシビリティから外すので、XCUITest の木に背面の #txt_player_result が無い(押した結果は画面に出ている)。in-app は背面も読めるので緑")
     @Test("半分の状態からキューを探索して押す")
     func S0020() {
         scenario {

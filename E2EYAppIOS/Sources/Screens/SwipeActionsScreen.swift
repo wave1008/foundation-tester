@@ -19,6 +19,7 @@ struct SwipeActionsScreen: View {
                     ForEach(rows, id: \.self) { n in
                         Button { result = "action=row\(n):open" } label: {
                             Text("スワイプ行 \(n)").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("sw_row_\(n)")

@@ -33,6 +33,7 @@ struct PlayerScreen: View {
                     let name = "row_main_\(Tags.two(i))"
                     Button { result = "player=main:\(name)" } label: {
                         Text("本文 \(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier(name)
@@ -93,6 +94,7 @@ struct PlayerScreen: View {
                         let name = "queue_row_\(Tags.two(i))"
                         Button { result = "player=queue:\(name)" } label: {
                             Text("キュー \(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier(name)

@@ -25,6 +25,7 @@ struct HideBarsScreen: View {
                             Button { result = "hide=\(name)" } label: {
                                 Text("行 H\(Tags.two(i))").frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                                     .padding(.horizontal, 16)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .accessibilityIdentifier(name)
