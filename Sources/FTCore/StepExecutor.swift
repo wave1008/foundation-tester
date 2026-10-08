@@ -693,6 +693,8 @@ public final class StepExecutor {
         let start = clock.now
         var phase = PhaseAccumulator()
         resetInterruptScope()
+        // 探索の注記は段ごと(消さないと、探索しなかった後続の段にも前の段の注記が付き続けた)
+        scrollSearchNote = nil
         suppressedInterruptionSeenThisStep = false
         observedCheckedThisStep = nil
         guardEnteredThisStep = false

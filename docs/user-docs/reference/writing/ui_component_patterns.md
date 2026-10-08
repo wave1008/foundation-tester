@@ -129,7 +129,10 @@ android { tap("Back") }       // Android View: target by label (no id)
 
 - Prove it opened with an element inside the sheet (the screen behind drops out of the tree)
 - A long list inside the sheet: `tap("#row_25", scroll: .down)` reaches it (the sheet expands first,
-  then its contents scroll)
+  then its contents scroll). When `scrollFrame:` points at the list inside the sheet and **the list does
+  not move at all inside a partially open sheet, the search drags once, further, inside that list to
+  expand the sheet and then searches again** (on XCUITest the short search swipe can be used up by the
+  sheet's own resizing and snap back; the step carries a note)
 - Pressing an option that closes the sheet works on every framework
 - Closing with a swipe: **move the finger from the title to a row near the bottom of the sheet**. Do
   not use `swipeBy` — its ratio is **relative to the target's size** and capped at 0.9 per side, so on

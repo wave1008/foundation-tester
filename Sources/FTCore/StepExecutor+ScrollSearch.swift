@@ -113,6 +113,26 @@ extension StepExecutor {
         var element: ElementInfo? = nil
     }
 
+    /// **半開きシートを広げるドラッグ**(探索が半開きシートの中で1度も動かずに止まったときに1回だけ撃つ)。
+    /// 探索の送りは短く遅い(容器基準・速度 50pt/s)ので、一覧の上の払いを先にシートの伸縮へ使う作り
+    /// (Compose の ModalBottomSheet・SwiftUI の detents)では、しきい値に届かず元の高さへ戻って「動かない」になる
+    /// (E2EY-CMP のシート S0020・XCUITest: 64pt を 1.3 秒で払って毎回戻った。同じ容器の中で 166pt を 0.3 秒で払うと
+    /// 全開になった)。始点は容器の下端(画面下端の a11y 空白帯は避ける)・終点は容器の上端 = 容器の高さぶん。
+    /// **利用者が scrollFrame で指した容器の中だけを払う**(当てずっぽうに画面を動かさない)。
+    /// 払える距離が無ければ nil
+    static func sheetExpandDrag(container: FTRect, screen: FTRect) -> (x: Double, fromY: Double, toY: Double)? {
+        let fromY = min(container.y + container.height - 1,
+                        screen.y + screen.height - bottomUncoveredBand - 1)
+        let toY = container.y + 1
+        guard fromY - toY >= minSheetExpandDistance else { return nil }
+        return (container.x + container.width / 2, fromY, toY)
+    }
+
+    /// 広げるドラッグの所要(秒)。根拠は sheetExpandDrag の doc の実測(0.3 秒で全開・探索の 1.3 秒では戻った)
+    static let sheetExpandDragSeconds: Double = 0.3
+    /// これより払える距離が短ければ撃たない(pt)。探索の1本(実測 64pt)より短い払いでは広げられない
+    static let minSheetExpandDistance: Double = 64
+
     /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
     /// 探索の打ち切りは文言が別(「after the search」)だが `settleCapped` として同じ棚で数える ——
     /// 集計側の関心は「動いている画面のまま進んだか」で、どの経路で起きたかではない
@@ -492,6 +512,8 @@ extension StepExecutor {
         var scrolledContainer: FTRect?
         // 横の探索の前に外側の縦の容器を送った回数(上限 2。送るたびに枠の位置が変わるので毎周測り直す)
         var bringIntoViewDrags = 0
+        // 半開きシートを広げるドラッグを撃ったか(1 探索に 1 回。sheetExpandDrag の doc)
+        var sheetExpandTried = false
         for attempt in 0...maxSwipes {
             // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
             // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
@@ -747,6 +769,31 @@ extension StepExecutor {
                             step: step, in: snapshot, vertical: vertical)
                             .map { SheetGeometry.looksLikeBottomSheet(frame: $0, screen: snapshot.screen) }
                             ?? SheetGeometry.declaredSheetExists(in: snapshot)
+                        // **半開きシートの中で1度も動かなかったら、1回だけシートを広げて探し直す**(sheetExpandDrag の doc)
+                        // 容器は scrollFrame で指した物だけ(scrollContainer は未指定なら nil・キーボードが出ていれば画面全体 =
+                        // シートの幾何に合わない)= 利用者が指していない画面は動かさない
+                        if !sheetExpandTried, !contentEverMoved, containerIsPartialHeight, direction == .up,
+                           !defersPartialSheetRecovery,
+                           let frame = scrollContainer(step: step, in: confirmed.snapshot, vertical: true)
+                               .flatMap({ ScrollGeometry.intersection($0, confirmed.snapshot.screen) }),
+                           let drag = Self.sheetExpandDrag(container: frame, screen: confirmed.snapshot.screen) {
+                            sheetExpandTried = true
+                            try await dragWithFallback(fromX: drag.x, fromY: drag.fromY, toX: drag.x, toY: drag.toY,
+                                                       pressSeconds: FlowStep.defaultDragPressSeconds,
+                                                       durationSeconds: Self.sheetExpandDragSeconds)
+                            swipes += 1
+                            let expanded = try await settledSignature(phase: &phase).snapshot
+                            if let grown = scrollContainer(step: step, in: expanded, vertical: true),
+                               grown.height > frame.height + 1 {
+                                if pendingScrollFrameNote == nil {
+                                    pendingScrollFrameNote = "the list sat in a partially open sheet and did not move,"
+                                        + " so the sheet was expanded by a drag inside the scrollFrame first"
+                                }
+                                unmovedRounds = 0
+                                previousSnapshot = expanded
+                                continue
+                            }
+                        }
                         // 打ち切り確定時点(confirmed)で引き直す —— ループ先頭の effectiveKeyboard は
                         // この settledSignature 呼び出しより前の木の情報なので使い回さない
                         let stoppedKeyboard = KeyboardOcclusion.resolve(
