@@ -233,7 +233,10 @@ final class TypeKeyboardSettleTests: XCTestCase {
                                                screen: screen, typedNewline: newline)
         }
         XCTAssertTrue(awaits())
-        XCTAssertFalse(awaits(android: false), "iOS の type は出現まで返る")
+        XCTAssertFalse(awaits(android: false), "iOS で申告が無い(nil)= そもそも出ない形は待たない")
+        XCTAssertTrue(awaits(android: false, after: hidden),
+                      "iOS でも画面の外の矩形で申告されたら出る直前 = 待つ(XCUITest の /type は出る前に返る)")
+        XCTAssertFalse(awaits(android: false, after: shown), "iOS で既に出ていれば待たない")
         XCTAssertFalse(awaits(before: shown), "打つ前から出ているなら出現待ちではない")
         XCTAssertFalse(awaits(after: shown), "次の木に既に出ている")
         XCTAssertFalse(awaits(newline: true), "Enter で閉じうる")
@@ -270,6 +273,16 @@ final class TypeKeyboardSettleTests: XCTestCase {
         XCTAssertTrue(result.notes.contains(.settledAfterKeyboard), "出現後の整定へつながるはず")
         XCTAssertFalse(result.notes.contains(.keyboardNotShownAfterType))
         XCTAssertGreaterThanOrEqual(result.count, 6, "type解決(1)+最初の解決(1)+撮り直し(1)+整定(3)")
+    }
+
+    /// ①' iOS: 打った直後は画面の外(出る直前)と申告され、後から上がる → 待って整定してから押す
+    /// (E2EY-Flutter の反転チャット: 待たずに下端の古い座標を押し、上がってきたキーボードに当たって送信が飲まれた)
+    func testIOSTapAfterTypeWaitsWhileTheKeyboardIsReportedBelowTheScreen() async throws {
+        let baseline = try await androidScript(isAndroid: false, keyboardFrames: [nil])
+        let result = try await androidScript(isAndroid: false, keyboardFrames: [nil, hidden, hidden, shown])
+        XCTAssertFalse(result.notes.contains(.keyboardNotShownAfterType), "上がったので尽きていない")
+        XCTAssertGreaterThan(result.count, baseline.count,
+                             "画面の外の申告の間は撮り直して待つ(申告が無い iOS = 待たない基準より多く撮る)")
     }
 
     /// ② 出ないまま → 上限で止まり注記。所要は壁時計(下限だけ厳しく、上限は負荷で落ちない緩さ)

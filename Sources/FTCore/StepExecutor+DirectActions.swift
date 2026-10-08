@@ -542,6 +542,12 @@ extension StepExecutor {
     // isEngineIncapable(501/ルート不明404): このエンジンでは原理的に非対応、という意味だから
     // (409 は「今フォーカス無し」等の一時的競合で、pressEnter/type の 409 とは事情が違う)
     func executeDirectHideKeyboard(step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        // **直前の type のキーボードが出るのを先に待つ**: type はキーボードの表示を待たずに返るので、すぐ閉じに行くと
+        // 「まだ出ていない = 閉じるものが無い」で何もせずに返り、その後に出たキーボードが次の back() を飲む
+        // (E2EY-RN の Android の戻るの横取り S0040: back が「画面が変わらない」で赤)
+        if pendingTypeKeyboardCheck {
+            _ = try await consumePendingTypeKeyboardCheck(try await freshSnapshot(.afterOwnMove), phase: &phase)
+        }
         let clock = ContinuousClock()
         let start = clock.now
         do {

@@ -163,55 +163,7 @@ extension StepExecutor {
             noteCodesThisStep.insert(.keyboardAppearedLate)
         }
         if pendingTypeKeyboardCheck {
-            pendingTypeKeyboardCheck = false
-            keyboardWaitExhausted = false
-            // 出し直しの途中で隠れているなら、戻るまで待ってから整定を見る(keyboardHiddenAfterType の doc)。
-            // 上限は焦点待ちの共有値(戻らなければ正当に閉じたと見てそのまま進む)
-            // 戻りを待った回は、戻った位置が打つ前と同じでも中身はこれから動くので必ず整定を見る
-            let waitedForKeyboard = Self.keyboardHiddenAfterType(
-                before: keyboardFrameBeforeType, after: snapshot.keyboardFrame,
-                screen: snapshot.screen, typedNewline: pendingTypeEndedWithNewline)
-            if waitedForKeyboard {
-                let deadline = clock.now + .milliseconds(Int(FocusWait.waitSeconds * 1000))
-                while clock.now < deadline,
-                      !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
-                    let waitStart = clock.now
-                    try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
-                    phase.waitMs += Self.ms(clock.now - waitStart)
-                    start = clock.now
-                    snapshot = try await freshSnapshot(.afterOwnMove)
-                    phase.snapshotMs += Self.ms(clock.now - start)
-                }
-            }
-            // Android の type は IME の表示を待たずに返る: 出るまで撮り直す(KeyboardWait の doc)。
-            // 出れば下の keyboardShifted(nil → 矩形)が true になり整定へつながる
-            if KeyboardWait.shouldAwaitAppearance(
-                isAndroid: isAndroid, before: keyboardFrameBeforeType, after: snapshot.keyboardFrame,
-                screen: snapshot.screen, typedNewline: pendingTypeEndedWithNewline) {
-                let deadline = clock.now + .milliseconds(Int(KeyboardWait.appearSeconds * 1000))
-                while clock.now < deadline,
-                      !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
-                    let waitStart = clock.now
-                    try await Task.sleep(for: .milliseconds(Int(KeyboardWait.pollSeconds * 1000)))
-                    phase.waitMs += Self.ms(clock.now - waitStart)
-                    start = clock.now
-                    snapshot = try await freshSnapshot(.afterOwnMove)
-                    phase.snapshotMs += Self.ms(clock.now - start)
-                }
-                if !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
-                    noteCodesThisStep.insert(.keyboardNotShownAfterType)
-                    keyboardWaitExhausted = true
-                }
-            }
-            if waitedForKeyboard
-                || Self.keyboardShifted(before: keyboardFrameBeforeType, after: snapshot.keyboardFrame) {
-                // **settledSignature が自分で phase へ計上する**ので、ここでは足さない
-                // (足すと待ち時間を snapshotMs へ二重計上する)
-                let settled = try await settledSignature(phase: &phase)
-                snapshot = settled.snapshot
-                // **待っている間に実際に木が変わった回だけ**数える(settledAfterKeyboard の doc)
-                if settled.changed { noteCodesThisStep.insert(.settledAfterKeyboard) }
-            }
+            snapshot = try await consumePendingTypeKeyboardCheck(snapshot, phase: &phase)
         }
         // hideKeyboard の後、木がまだキーボードを申告していれば消えるまで待つ(pendingHideKeyboardWait の doc)。
         // 消えた後は整定を見る(下端の要素が戻り、中身が伸びる)
@@ -1662,9 +1614,69 @@ extension StepExecutor {
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }
 
+    /// `pendingTypeKeyboardCheck` を消化する: 直前の type の前後でキーボードが動いた(出た・出る途中・出し直しで隠れた)なら、
+    /// 出きるまで待って整定を見る。ロケータ操作の解決と、ロケータを持たない `back()`(`awaitKeyboardBeforeBack`)・`hideKeyboard` が呼ぶ
+    /// —— back() が待たずに撃つと、上がってくる途中のキーボードの前に戻るが届き、横取りの確認ダイアログが出ない
+    /// (E2EY-iOS の XCUITest の戻るの横取り S0040)
+    func consumePendingTypeKeyboardCheck(_ snapshot: SnapshotResponse,
+                                         phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
+        guard pendingTypeKeyboardCheck else { return snapshot }
+        let clock = ContinuousClock()
+        var snapshot = snapshot
+        pendingTypeKeyboardCheck = false
+        keyboardWaitExhausted = false
+        // 出し直しの途中で隠れているなら、戻るまで待ってから整定を見る(keyboardHiddenAfterType の doc)。
+        // 上限は焦点待ちの共有値(戻らなければ正当に閉じたと見てそのまま進む)
+        // 戻りを待った回は、戻った位置が打つ前と同じでも中身はこれから動くので必ず整定を見る
+        let waitedForKeyboard = Self.keyboardHiddenAfterType(
+            before: keyboardFrameBeforeType, after: snapshot.keyboardFrame,
+            screen: snapshot.screen, typedNewline: pendingTypeEndedWithNewline)
+        if waitedForKeyboard {
+            let deadline = clock.now + .milliseconds(Int(FocusWait.waitSeconds * 1000))
+            while clock.now < deadline,
+                  !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                let waitStart = clock.now
+                try await Task.sleep(for: .milliseconds(Int(FocusWait.pollSeconds * 1000)))
+                phase.waitMs += Self.ms(clock.now - waitStart)
+                let start = clock.now
+                snapshot = try await freshSnapshot(.afterOwnMove)
+                phase.snapshotMs += Self.ms(clock.now - start)
+            }
+        }
+        // type はキーボードの表示を待たずに返る(Android・iOS は画面の外の申告のとき): 出るまで撮り直す(KeyboardWait の doc)。
+        // 出れば下の keyboardShifted(nil → 矩形)が true になり整定へつながる
+        if KeyboardWait.shouldAwaitAppearance(
+            isAndroid: isAndroid, before: keyboardFrameBeforeType, after: snapshot.keyboardFrame,
+            screen: snapshot.screen, typedNewline: pendingTypeEndedWithNewline) {
+            let deadline = clock.now + .milliseconds(Int(KeyboardWait.appearSeconds * 1000))
+            while clock.now < deadline,
+                  !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                let waitStart = clock.now
+                try await Task.sleep(for: .milliseconds(Int(KeyboardWait.pollSeconds * 1000)))
+                phase.waitMs += Self.ms(clock.now - waitStart)
+                let start = clock.now
+                snapshot = try await freshSnapshot(.afterOwnMove)
+                phase.snapshotMs += Self.ms(clock.now - start)
+            }
+            if !Self.keyboardOnScreen(snapshot.keyboardFrame, screen: snapshot.screen) {
+                noteCodesThisStep.insert(.keyboardNotShownAfterType)
+                keyboardWaitExhausted = true
+            }
+        }
+        if waitedForKeyboard
+            || Self.keyboardShifted(before: keyboardFrameBeforeType, after: snapshot.keyboardFrame) {
+            // **settledSignature が自分で phase へ計上する**ので、ここでは足さない
+            // (足すと待ち時間を snapshotMs へ二重計上する)
+            let settled = try await settledSignature(phase: &phase)
+            snapshot = settled.snapshot
+            // **待っている間に実際に木が変わった回だけ**数える(settledAfterKeyboard の doc)
+            if settled.changed { noteCodesThisStep.insert(.settledAfterKeyboard) }
+        }
+        return snapshot
+    }
+
     /// `pendingHideKeyboardWait` を消化する: 木がまだキーボードを申告していれば消えるまで待ち、消えたら整定を見る
-    /// (下端の要素が戻り、中身が伸びる)。印が無ければ渡した木をそのまま返す。ロケータ操作の解決と、ロケータを
-    /// 持たない `back()`(`awaitPendingHideKeyboard`)が呼ぶ
+    /// (下端の要素が戻り、中身が伸びる)。印が無ければ渡した木をそのまま返す。ロケータ操作の解決が呼ぶ
     func consumePendingHideKeyboardWait(_ snapshot: SnapshotResponse,
                                         phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
         guard let cap = pendingHideKeyboardWait else { return snapshot }
@@ -1685,13 +1697,13 @@ extension StepExecutor {
         return try await settledSignature(phase: &phase).snapshot
     }
 
-    /// **ロケータを持たない `back()` の前に、hideKeyboard の後の待ちを消化する**。Android の戻るキーは、IME が
-    /// 閉じきる前に届くとキーボードを閉じる動作に吸われて画面が戻らない(E2EY-RN の戻るの横取り S0040 が、高負荷の
-    /// スイートでだけ「back が効いていない」で赤)。印が無ければ何も読まない(費用ゼロ)
-    public func awaitPendingHideKeyboard() async throws {
-        guard pendingHideKeyboardWait != nil else { return }
+    /// **ロケータを持たない `back()` の前に、直前の type のキーボードが出きるのを待つ**(consumePendingTypeKeyboardCheck)。
+    /// iOS の XCUITest の /type はキーボードが出る前に返り、待たずに撃った戻るは上がってくる途中のキーボードの前に届いて
+    /// 横取りの確認ダイアログが出なかった(E2EY-iOS の XCUITest の戻るの横取り S0040)。印が無ければ何も読まない(費用ゼロ)
+    public func awaitKeyboardBeforeBack() async throws {
+        guard pendingTypeKeyboardCheck else { return }
         var phase = PhaseAccumulator()
-        _ = try await consumePendingHideKeyboardWait(try await freshSnapshot(.afterOwnMove), phase: &phase)
+        _ = try await consumePendingTypeKeyboardCheck(try await freshSnapshot(.afterOwnMove), phase: &phase)
     }
 
     /// **縁の帯に潜っている対象を、容器を送って外す**(tap と type が共有する)。
