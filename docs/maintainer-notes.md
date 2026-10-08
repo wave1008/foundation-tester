@@ -874,7 +874,7 @@ snapshot/action/wait のどれにも計上されていなかった。「負荷�
 
 ### 18.4 テストプロセスと素の CLI は、原因を隠していた
 
-Espresso のコンパイルキャッシュは**プロセス名とバイナリの素性ごと**で、xctest ホスト
+Espresso のコンパイルキャッシュは**プロセス名と署名 ID ごと**(docs/performance-tuning.md §3.33)で、xctest ホスト
 (`com.apple.dt.xctest.tool`)も素の CLI も 2 回目は 160ms。8 プロセス同時・シミュレータ稼働中・
 main を塞いだ状態・言語集合の切り替え、**どれも外からは再現しなかった**。決め手は
 **プロセス自身に 3 秒時点のスタックを採らせる**口(`FT_OCR_HANG_SAMPLE=1`)と、

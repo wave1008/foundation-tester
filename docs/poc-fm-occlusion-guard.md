@@ -478,7 +478,8 @@ E2E-iOS で 77 枚(34 本・34/34 緑)、日本語ラベルを持つ E2E-CMP `io
 
 「モデルがメモリに載っていない」ではなかった。プロセスで最初の 1 回だけ 20〜45 秒かかるのは
 **Espresso(認識器の実体)の AOT コンパイル**で、キャッシュは
-`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache` に**プロセス名とバイナリの素性で**鍵付けされ、
+`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache` に**プロセス名と署名 ID で**鍵付けされ
+(SwiftPM の Debug ビルドは ID に LC_UUID が入る。docs/performance-tuning.md §3.33)、
 **コンパイルがそのプロセスの生存中に終わったときだけ**コミットされる(途中で死ぬと `.tmp.<pid>` が残るだけ)。
 1 シナリオ = 1 プロセスの実行バイナリは 20〜60 秒で終わるのでほぼコミットできず
 (E2E-CMP で完了 1 / 放置 53)、**全プロセスが毎回ゼロから払っていた**。xctest ホストや素の CLI では
@@ -491,7 +492,8 @@ E2E-iOS で 77 枚(34 本・34/34 緑)、日本語ラベルを持つ E2E-CMP `io
 機械で同時に 1 本 = `OCRModelCompileLock`・親の死を生き延びる)/ **② シナリオ側の探りは同じロックを待ってから**
 読む(`RegionText.compileModelIfNeeded`。ガードが既定で効く executor の生成時に始める)/ **③ 探りが 1 行以上
 読めるまで近道は撃たない**(`isModelReady`。判定は FM が担うので損は無い)。読ませる言語集合は
-`languages(for:)` が返しうる 2 つ(モデルが別で、別々にコンパイルされる)。
+`languages(for:)` が返しうる 2 つ(2 つ目の日本語の認識器は旧形式で実行ファイルごとのコンパイルが無く、検出・向きは
+1 つ目と共有 = 1 つ目の後なら約 0.1 秒。docs/performance-tuning.md §3.33)。
 
 実測: シナリオ側のコンパイル 22,980ms → 218ms、実 crop の初回読み 21,830ms → 98〜122ms、
 E2E(local)でガード 54 件中 43 件が近道・予算切れ 0・guardMs 最大 456ms(修正前 107,720ms)。

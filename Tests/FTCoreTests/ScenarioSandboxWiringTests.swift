@@ -21,9 +21,9 @@ final class ScenarioSandboxWiringTests: XCTestCase {
     func testEveryLaunchOfTheScenarioRunnerGoesThroughTheSandboxEntry() throws {
         let host = try source("Sources/FTCore/ScenarioHost.swift")
         XCTAssertEqual(host.components(separatedBy: "try sandboxedLaunch(").count - 1, 3)
-        // ランナーの場所を引く箇所 = 起こす経路の数(増えたら、その経路も入口を通すこと)
-        XCTAssertEqual(host.components(separatedBy: "runnerURL(project: project)").count - 1, 4,
-                       "runnerURL の呼び出しが増減した(build の存在確認1 + 起こす3経路)")
+        // ランナーの場所を引く箇所 = 起こす経路の数 + 起こさない2箇所(増えたら、その経路も入口を通すこと)
+        XCTAssertEqual(host.components(separatedBy: "runnerURL(project: project)").count - 1, 5,
+                       "runnerURL の呼び出しが増減した(build の存在確認1 + build 後の署名 ID 揃え1 + 起こす3経路)")
 
         let run = try XCTUnwrap(host.range(of: "extraWritable: (dryRun ? nil : stillFramesDir)"))
         let launch = try XCTUnwrap(host.range(of: "try process.run()", range: run.upperBound..<host.endIndex))

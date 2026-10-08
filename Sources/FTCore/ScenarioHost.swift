@@ -169,8 +169,10 @@ public enum ScenarioHost {
         let fingerprint = BuildFingerprint.compute(repoRoot: root, scenariosDir: project.scenariosDir)
         if let fingerprint,
            fingerprint == BuildFingerprint.stored(productName: project.productName, repoRoot: root),
-           (try? runnerURL(project: project)) != nil {
+           let runner = try? runnerURL(project: project) {
             log?("→ No changes — skipping the scenario build")
+            // swift test も同じ product を作り直す(ID が UUID 入りに戻る)ので、省いた経路でも揃える
+            pinSigningIdentifier(binary: runner, productName: project.productName, log: log)
             return
         }
 
@@ -182,6 +184,34 @@ public enum ScenarioHost {
         if let fingerprint {
             BuildFingerprint.store(fingerprint, productName: project.productName, repoRoot: root)
         }
+        if let runner = try? runnerURL(project: project) {
+            pinSigningIdentifier(binary: runner, productName: project.productName, log: log)
+        }
+    }
+
+    /// シナリオ実行バイナリのコード署名の Identifier を製品名に揃える。
+    /// Vision の OCR のコンパイルキャッシュ(`~/Library/Caches/<名前>/com.apple.e5rt.e5bundlecache`)は
+    /// **実行ファイル名と Identifier の組**が鍵で、SwiftPM の Debug ビルドは Identifier が
+    /// `<名前>-55554944<LC_UUID>` = 中身が変わるたびに変わるので、揃えないと再ビルドのたびに 20〜45 秒の
+    /// コンパイルをやり直す(実測は docs/performance-tuning.md §3.33)。**LC_UUID は変えない**(dSYM・
+    /// クラッシュレポートの対応づけを壊さない)。`codesign -f` は新しい inode に置き換えるので、
+    /// 同じバイナリを実行中のプロセスを巻き込まない。失敗しても run は止めない(性能だけの問題)
+    static func pinSigningIdentifier(binary: URL, productName: String, log: ((String) -> Void)?) {
+        let current = (try? Shell.run(["/usr/bin/codesign", "-dv", binary.path], timeout: 30))?
+            .outputIfSucceeded.flatMap(signingIdentifier(fromCodesignOutput:))
+        guard current != productName else { return }
+        let result = try? Shell.run(["/usr/bin/codesign", "-f", "-s", "-", "--identifier", productName, binary.path],
+                                    timeout: 30)
+        guard result?.status != 0 else { return }
+        log?("⚠️ Could not set the code-signing identifier of \(productName) (codesign exit "
+             + "\(result.map { String($0.status) } ?? "-")) — Vision's OCR model will be recompiled after each rebuild")
+    }
+
+    /// `codesign -dv` の出力(stderr に出るので Shell.run の合流した出力)から `Identifier=` の値を取る。純粋関数
+    static func signingIdentifier(fromCodesignOutput output: String) -> String? {
+        output.split(separator: "\n")
+            .first { $0.hasPrefix("Identifier=") }
+            .map { String($0.dropFirst("Identifier=".count)) }
     }
 
     /// `--skip-build` はビルドを省いて、直前にビルドされたシナリオ実行バイナリをそのまま使う。

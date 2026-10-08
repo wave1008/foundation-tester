@@ -152,11 +152,11 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   **2026-10-06 のユーザー決定で、最初のシナリオを起こす前に `compile-ocr` の完了を待つ**(`ScenarioHost.awaitOCRModelCompile`。
   9/15 の「run の開始時には待たない」は取り消し。シナリオの中で待つとアプリの時間が進み、一時的な状態を確かめる手順が
   壊れた = E2EY-Android の骨組み。ステップ内の待ちは受け皿として残す。経緯は maintainer-notes §18・§20・§69.5): 認識器(Espresso)の
-  コンパイルキャッシュは**プロセス名とバイナリの素性ごと・コンパイルがプロセスの生存中に終わったときだけ
-  コミット**。**シナリオを実際に走らせる経路は `ScenarioHost.listForRun`**(run / api run / 機械分担の
+  コンパイルキャッシュは**プロセス名と署名 ID ごと(SwiftPM の Debug ビルドは ID に LC_UUID が入り中身が変わる
+  再ビルドでコールドに戻るので、`ScenarioHost.build` が ID を製品名に揃える。LC_UUID は変えない)・コンパイルがプロセスの生存中に終わったときだけコミット**(docs/performance-tuning.md §3.33)。**シナリオを実際に走らせる経路は `ScenarioHost.listForRun`**(run / api run / 機械分担の
   3 箇所。`OCRModelCompileWiringTests` が等号で固定)で同じプロセス名の待てる子 `compile-ocr` を背景で起こす。
   一覧だけの経路(dry-run / MCP / codegen)は `list`。**プロセス内のコンパイル(探り)は DSL ではシナリオ開始時に
-  FTRuntime が始める**(executor の既定ガードは off でステップごとに効かせるので、`StepExecutor.init` の
+  FTRuntime が始める・dry-run では始めない**(短命で途中で捨て、キャッシュの 1 モデルを上書きする。executor の既定ガードは off でステップごとに効かせるので、`StepExecutor.init` の
   条件だけに頼ると最初のガードの中で初めて始まり、全シナリオの最初のガードが近道を逃していた)。
   近道の直前で `RegionText.awaitModelCompile(cap:)` を待ち(上限 `modelCompileWaitCap` 120 秒 = 正当なコンパイルの
   実測最大 108 秒 + 1 割。超えたら ANE のハングと見て FM へ・注記 `ocr-compile-capped`)、
@@ -166,5 +166,6 @@ CLAUDE.md から移した規則(本文は移設前と同一)。この領域の�
   締め切りに当たる」事故を、待たないことではなく差し引くことで防ぐ)。
   近道を撃つのは **ready(探りが 1 行以上読めた)かつ 詰まった読みが無い**ときだけ(`shouldTakeShortcut`。
   純粋関数・配線は走査で固定)、予算 1.3 秒 = 置き換える相手の実測下限、**諦めても読みは止めない**。
-  認識器は ANE を避ける(定常の所要は同じ・装置で読みが変わる分はコーパスに固定)。
+  認識器は ANE を避ける(装置で読みが変わる分はコーパスに固定。**指定しても `_e5` の検出・向き・ラテンは ANE に読み込まれ、
+  指定が効くのは日本語の認識器だけ** = docs/performance-tuning.md §3.33)。
   **締め切り・予算のテストは戻り値でなく所要を直接測る**(`TaskBudgetTests`)

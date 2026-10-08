@@ -87,7 +87,8 @@ docs/maintainer-notes.md §18): ①**モデルが載って実際に読めるま�
 (`RegionText.occlusionBudget`。尽きたら FM へ落ち注記 `ocr-budget-exhausted`。**諦めても読みは止めない**
 = そのままコンパイルとして効く。合流点は `TaskBudget`)。判定は3つとも変えない(読めなかったのと同じ扱い)。
 コンパイルの実体は Espresso(認識器)の **AOT コンパイル**で、キャッシュは
-`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache` に**プロセス名とバイナリの素性で**鍵付けされ、
+`~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache` に**プロセス名と署名 ID で**鍵付けされ(SwiftPM の Debug ビルドは
+ID に LC_UUID が入るので、`ScenarioHost.build` が ID を製品名に揃える。docs/performance-tuning.md §3.33)、
 **コンパイル(コールド 20〜45 秒 × 言語集合 2)がそのプロセスの生存中に終わったときだけコミット**される。
 1 シナリオ = 1 プロセスの実行バイナリは終わる前に死んで `.tmp` を残すだけなので、
 **run の開始時に同じプロセス名の待てる子 `fleetest-scenarios-<project> compile-ocr` を背景で 1 本起こす**

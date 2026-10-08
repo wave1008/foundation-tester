@@ -1458,7 +1458,7 @@ iOS シミュレータ(iPhone 17 Pro・in-app)/ Android エミュレータ(Pixel
   更新されない(払った直後に 20〜40ms おきに取得: CMP 最大 134ms・RN 174ms・SwiftUI 125ms)ので、100ms 周期の 2 枚が途中で一致する。
   `AppDriver.treeLagsBehindMotion` が true のドライバ(XCUITest)だけ、整定の周期を `laggingTreeSettlePeriodMs`(350ms)以上にした
 
-### 3.33 OCR のコンパイル待ちはシナリオの実行ファイルを作り直すたびに払う(2026-10-08・**調査。対策は案のみ・未実装**)
+### 3.33 OCR のコンパイル待ちはシナリオの実行ファイルを作り直すたびに払う(2026-10-08・**原因は署名 ID。`ScenarioHost.build` で揃えて対策済み**)
 
 - **症状**: モニターの「Vision コンパイル中」(run の段階 `compiling`)が頻繁に出る。正体は §3.5.1 の表⑨の**実行時の OCR 認識器の
   AOT コンパイル**で、run の開始時に `compile-ocr` を待っている間だけ出る。**Swift の Vision モジュール(`.pcm`)のビルドではない** ——
@@ -1467,9 +1467,48 @@ iOS シミュレータ(iPhone 17 Pro・in-app)/ Android エミュレータ(Pixel
 - **キャッシュの中身**: `~/Library/Caches/<プロセス名>/com.apple.e5rt.e5bundlecache/<OS のビルド番号>/<hash>/<hash>.bundle` が 3 つで、
   **3 つとも TextRecognition のモデル**(`.e5` の先頭に元のモデルのパスがある): `cr_td_model_v3_e5`(文字の検出)・
   `cr_orientation_model_v1_e5`(向き)・`cr_tr_model_latincyrillic_v3_e5`(ラテン・キリル文字の認識)。全 `fleetest-scenarios-*` と
-  `com.apple.dt.xctest.tool` で同じ 3 つ。日本語の `cr_tr_model_cj_v3` は `_e5` が無く、このキャッシュには入らない
-- **作り直すと無効になる**: 置き場所は増えず、同じ `.bundle` が焼き直される(E2E-CMP: 実行ファイルが 08:44 → `.bundle` が 10:12〜10:13)。
-  1 段目のディレクトリが OS のビルド番号なので、macOS を更新しても無効になる
+  `com.apple.dt.xctest.tool` で同じ 3 つ。`.bundle` の中身は `main_ane/model.anehash`(ANE 側の実体へのハッシュ)で、
+  コンパイルは `aned` → `ANECompilerService` が行う(`aned` のログは呼び出し元の署名 ID を `csIdentity` として持つ)
+- **モデルの形式が2つある**(`/System/Library/PrivateFrameworks/TextRecognition.framework/Versions/A/Resources/`):
+  ML Program(名前に `_e5`・`model.mil`)= 検出・向き・ラテン/キリル・アラビア・デーヴァナーガリーの認識 /
+  旧形式の NeuralNetwork(`model.espresso.net`)= **日本語・中国語(`cr_tr_model_cj_v3`)**・韓国語・タイ語の認識。
+  **実行ファイルごとにコンパイル・キャッシュされるのは ML Program だけ**。cj は新しい実行ファイルでもコンパイラが呼ばれない
+  (ANE に載せるときのコンパイル済みの形はシステム側にあると推定。`/Library/Caches/com.apple.aned` は root でないと読めず未確認)
+- **キャッシュの鍵は「実行ファイル名(= 置き場所のディレクトリ)」と「コード署名の Identifier」の組**。中身(cdhash)・置き場所の
+  ディレクトリは見ない。1 段目のディレクトリが OS のビルド番号なので、macOS を更新しても無効になる。**モデルごとに最新の 1 つしか
+  持たない**(ID を A → B → A と戻すと、戻した A もコールド)。実測(2026-10-08・この Mac・`swiftc` の小さな実行ファイル。
+  1 回目の OCR(`en-US`)):
+
+  | 操作 | 署名 ID | 1 回目 |
+  |---|---|---|
+  | ソースを変えて `swiftc` で出力し直す(`-O` でも `-Onone -g` でも) | 出力ファイル名のまま | 188ms |
+  | 同じ名前のまま別のディレクトリに置く | 同じ | 213ms |
+  | 中身を差し替え、`codesign -f -s - --identifier <名前>` で ID を揃える | 同じ | 168ms |
+  | 別の名前でビルドしたものをこの名前へコピー | 元の出力ファイル名 | 45,138ms |
+  | 同じものを別の名前へコピー | 同じ(ディレクトリが別) | 44,978ms |
+  | **SwiftPM の Debug ビルドでソースを変えて再ビルド** | `<名前>-55554944<LC_UUID>` が変わる | **45,869ms** |
+  | SwiftPM の Debug ビルドで元のソースに戻して再ビルド | 元の ID に戻る | 46,175ms(最新の 1 つしか持たない) |
+  | SwiftPM の Release ビルドでソースを変えて再ビルド | `<名前>` のまま | 190ms |
+
+  **シナリオ実行バイナリは SwiftPM の Debug ビルド**(`.build/out/Products/Debug/`。ID は例えば
+  `fleetest-scenarios-E2E-CMP-55554944f6ff…`。`55554944` は ASCII の "UUID")なので、**中身が変わる再ビルドのたびに ID が変わり
+  コールドに戻る** —— これが「作り直すと無効になる」の正体(対策は下の「対策(実装済み)」)。`fleetest` 自身も Debug ビルドは同じ形の ID を持つ。
+  確かめ方: `codesign -dv <実行ファイル> 2>&1 | grep Identifier`
+- **コンパイルがプロセスの生存中に終わらないとコミットされない**(実測): OCR を呼んで 5 秒で終了 → 完成した `.bundle` 0・`.tmp` 1。
+  60 秒待っても完成しない(`aned` が裏で仕上げることは無い)。次の起動は 45,229ms でゼロから
+- **キャッシュの置き場に残る `.tmp` の出どころは `swift test`**(run の `compile-ocr` はコミットできている。E2E-iOS 等の
+  run でしか使わない SUT には `.tmp` が 1 個も無い): 10/8 の E2E-CMP の `.tmp` 16 個はコミットの直前(= `swift test`)と
+  時刻が揃う。`CrossLayerTerminationTests` が `api run --dry-run --debug --pause-on-start` で E2E-CMP の実行バイナリを起こし、
+  **この形の dry-run は FTRuntime がシナリオ開始時に OCR のコンパイルを始める**(`--debug` 無しの dry-run は始めない。
+  再現: 同じ引数で起こすとシナリオのプロセスのログに TextRecognition の `textResults` が出る)。テストは数秒で止めるので、ソースを変えた直後(= 署名 ID が新しくコールド)の
+  コンパイルは途中で捨てられる。害はコンパイルの空撃ち(`aned` の負荷)と、短いモデルだけ完成させてキャッシュを上書きすること。
+  **対策済み**: FTRuntime は dry-run では `compileModelIfNeeded` を呼ばない(`testDryRunDoesNotRequestTheOCRModelCompile`。
+  同じ引数の dry-run で OCR の開始 0 回・`aned` のコンパイル 0 回を確認)
+- **同じ実行ファイルを同時に起動すると、全部がコンパイルする**: 3 本同時で 1 回目が 78.7 / 97.4 / 116.2 秒(1 本なら 45 秒)。
+  3 本とも user 時間は単独と同じ約 5.4 秒 = 3 本ぶん焼いている。終わった後の `.bundle` は 3 つ(`.tmp` は残らない)
+- **コンパイルの内訳**: 英語の初回は `ANECompilerService` を 3 回(約 19.0 / 1.2 / 19.0 秒)。日本語だけの初回は 2 回で 23,276ms
+  (検出・向きだけ。cj はコンパイルしない)。だから `compileLanguageSets` の 2 つ目(`["ja-JP","en-US"]`)は 1 つ目の後なら追加の
+  コンパイルが無い(`compile-ocr` の出力: 1 つ目 45,013ms → 2 つ目 122ms)
 - **実測**(新しく作った実行ファイル・1 プロセスずつ・E2E 実行中の M2 Ultra):
 
   | 処理 | 1 回目 | 2 回目以降 | 実行ファイルごとのキャッシュ |
@@ -1482,10 +1521,39 @@ iOS シミュレータ(iPhone 17 Pro・in-app)/ Android エミュレータ(Pixel
 
   → **実行ファイルごとにコンパイルし直すのは OCR だけ**。画像照合・分類器は同じ型ではない
 - **コンパイルの大半はプロセスの外で起きている**: 46 秒の間、プロセスは user 5.5 秒・CPU 12%。`.bundle` の中に `main_ane` と
-  `espressoc-component-ANECompiler` がある = `RegionText` が実行装置を CPU/GPU に寄せていても、コンパイルは ANE 向けにも走っている
-  (原因の切り分けはしていない)。→ どのプロセスに寄せても **1 回の所要は縮まない見込み。減らせるのは払う回数**
+  `espressoc-component-ANECompiler` がある = `RegionText` が実行装置を CPU/GPU に寄せていても、コンパイルは ANE 向けにも走っている。
+  → どのプロセスに寄せても **1 回の所要は縮まない見込み。減らせるのは払う回数**
+- **計算装置の指定は ML Program のモデルを ANE から外さない**(`aned` のログの `ANE_ProgramCreate` を OCR 1 回ごとに数えた):
+  全段を `.cpu` にしても、検出(11.6MB)・向き(5.65MB)・ラテン(5.77MB)は Vision 任せのときと同じく ANE に読み込まれる
+  (実行まで ANE かはこのログでは分からない)。**指定どおりに動くのは cj だけ**(`.cpu` なら ANE に載らない・Vision 任せなら
+  `coreAnalyticsClientType=OCRUsingANE` の 2.9MB が載る)。定常の所要(2〜5 回目): 英語は CPU 116〜129ms / Vision 任せ 114〜117ms、
+  **日本語は CPU 130〜139ms / Vision 任せ(ANE)228〜242ms**
+- **対策(実装済み)**: `ScenarioHost.pinSigningIdentifier` がシナリオ実行バイナリの署名 ID を `fleetest-scenarios-<project>` に揃える
+  (`codesign -f -s - --identifier …`。**LC_UUID は変えない** = dSYM・クラッシュレポートの対応づけを壊さない)。呼ぶのは
+  `ScenarioHost.build` の**2つの出口**(ビルドした後・ビルドを省いたとき。`swift test` も同じ product を作り直して ID を UUID 入りに
+  戻すので、省いた run でも揃える)。揃っていれば `codesign -dv` で読むだけ。失敗しても run は止めず警告 1 行。
+  **`--skip-build` は揃えない**(ビルドに触らない口。`CrossLayerTerminationTests` が `swift test` 中に使う)。
+  シナリオを走らせる経路(run / api run / 機械分担 / フリート / MCP / コード生成)は全部 `ScenarioHost.build` を通る。
+  `ScenarioBinarySigningIdentifierTests`(本物の codesign を写した `/bin/echo` に掛ける・2つの出口の配線)。
+  確かめたこと(E2E-CMP の実バイナリ・約 80MB):
+  - 署名し直しの所要は **125ms**
+  - 署名し直した後に変更なしの `swift build --product` を 2 回撃っても**リンクし直さない**(ID・md5・mtime とも不変)
+  - **Seatbelt の枠の中でもコミットされる**: `api run --dry-run --debug --pause-on-start`(枠の中で OCR のコンパイルを始めて
+    止まったまま生きる)で、ID を揃えた直後のコールドから `aned` が 2 回(約 1.5 秒・約 35 秒)コンパイルし、`.bundle` が完成した
+  - **陽性対照**: ソースを変えて再ビルド(LC_UUID が変わる)→ ID を揃える → 同じ dry-run で `aned` のコンパイル **0 回**・
+    `.bundle` も `.tmp` も増えない
+  - **実装後の `fleetest` 経由**: `swift test` が作り直した(ID が UUID 入りに戻った)E2E-CMP を `fleetest run --dry-run` に通すと
+    ID が製品名に揃い、LC_UUID は変わらない。続く一時停止の dry-run では `aned` のコンパイルは**検出モデルの 1 回・1.25 秒だけ**
+    (向き・ラテンは効いた)。直前の `swift test` の `CrossLayerTerminationTests`(UUID 入りの ID のまま数秒生きる dry-run)が、
+    所要の短い検出モデルだけを完成させて上書きしたと推定(モデルごとに最新の 1 つしか持たない。途中の状態は見ていない)。
+    → FTRuntime は dry-run でコンパイルを始めないようにした(上の「`.tmp` の出どころ」)
+  - 実測の待ち(10/8 のログの「⏳ waited Ns for the OCR model」): フル E2E 29 プロファイル 2,013 秒のうち 3 回・計 56 秒 /
+    `--ios-xcuitest` 4 プロファイル 1,159〜1,211 秒のうち 計 72〜87 秒 / E2EX `--ios-xcuitest` 890 秒のうち 計 86 秒。
+    待ちは SUT ごとの最初のプロファイルでだけ出る(デバイスの準備が長い SUT では隠れて出ない)
+  - 確かめていないこと: リモートのランナー機・受け手の環境(Xcode の版)・実装後の E2E で待ちの行が消えること
 - **案(未実装)**: OCR を補助プロセス `fleetest api vision-serve`(docs/maintainer-notes.md §67 の `VisionHelperServer`)へ移し、キャッシュの鍵を `fleetest` の
-  実行ファイルにする。シナリオを直してもコンパイルが起きなくなる(払うのは `fleetest` を作り直したとき・macOS を更新したときだけ)。
+  実行ファイルにする。シナリオを直してもコンパイルが起きなくなる(払うのは `fleetest` を作り直したとき・macOS を更新したときだけ。
+  **`fleetest` も Debug ビルドなら署名 ID に LC_UUID が入る**ので、保守者は `fleetest` を作り直すたびに払う)。
   - **個々のプロセスがコンパイルする経路は残さない**(ユーザー決定 2026-10-08)。繋がらないときにプロセス内で読む形へ落とさない。
     `compile-ocr`・`OCRModelCompileLock`・`modelCompileOnce`・`compileModelIfNeeded` は撤去。OCR の Vision API を書いてよいのは補助プロセスの
     ファイルだけ、をソース走査のテストで固定する
@@ -1512,6 +1580,12 @@ iOS シミュレータ(iPhone 17 Pro・in-app)/ Android エミュレータ(Pixel
     `~/Library/Caches/<実行ファイル名>/com.apple.e5rt.e5bundlecache` ができるかも見る(陽性対照に OCR を必ず並べる。
     特徴量だけだと「差が出ない」を測り方の誤りと区別できない)。終わったら作ったキャッシュを消す
   - どのモデルか: `strings -n 6 <.bundle>/H14D.bundle/H14D.e5 | grep mlmodelc`
+  - **初回を作るときは署名 ID ごと新しくする**: 実行ファイル名を変えるだけでも初回になるが、`cp` で持ってきたファイルは ID が
+    コピー元の出力ファイル名のまま。ID を揃えたいなら出力先に直接 `swiftc -o` する(条件を混ぜると「効いた/効かない」を取り違える)
+  - コンパイルと ANE への読み込み: `/usr/bin/log show --info --debug --predicate 'process == "aned"'` の
+    `Calling ANECompilerService` / `Compilation success` / `ANE_ProgramCreate` / `coreAnalyticsClientType` / `modelSize`。
+    **zsh では `log` が組み込みコマンド**なので `/usr/bin/log` と書く(`too many arguments` で落ちる)。
+    時刻で切り出すと直前のプロセスの分が混ざるので、前後に 1 秒空ける
   - 補助の準備の所要: `fleetest-scenarios-<project> compile-ocr` を直接起動する(JSON 1 行に言語集合ごとの ms)
   - 隠れる余地: `TestProjects/*/results/runs/*/run.json` の `startedAt` と `events/*.ndjson` の先頭行の `t` の差。
     ミリ秒で取るなら試作で `FT_PHASE_LOG` に「補助の準備ができた」の印を足す

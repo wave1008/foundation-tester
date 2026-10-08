@@ -529,8 +529,9 @@ public final class FTDriveCore {
         // かかる)。StepExecutor.init の既定ゲート(executor 既定でガードが効くときだけ撃つ)は
         // DSL の経路では実質発火しない(executor 既定の occlusionGuard は常に false)ため、
         // ここで実行プロファイルのマスタースイッチだけを見て頼む。off のときは compileModelIfNeeded
-        // 自身が no-op(occlusionOCRResolvedMode の doc)
-        if fmTextOcclusionCheckEnabled || occlusionOCREnabled {
+        // 自身が no-op(occlusionOCRResolvedMode の doc)。**dry-run では頼まない**(ガードを撃たない。
+        // 短命なので途中で捨てた上にキャッシュの 1 モデルを上書きし、次の run に払い直させる = performance-tuning §3.33)
+        if !dryRun, fmTextOcclusionCheckEnabled || occlusionOCREnabled {
             RegionText.compileModelIfNeeded(mode: occlusionOCRResolvedMode)
         }
         // 画像照合の特徴量も同じくシナリオ開始時に(見本を持つプロジェクトだけ。FindImage+Prewarm.swift)
