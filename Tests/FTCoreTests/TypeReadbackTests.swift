@@ -275,4 +275,36 @@ final class TypeReadbackTests: XCTestCase {
         XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: "ab"), .resend("c"))
         XCTAssertEqual(TypeReadback.plan(expected: "abc", actual: ""), .resend("abc"))
     }
+
+    // MARK: - screenChangedOutsideField(全文が欠けたときに追送するか)
+
+    private func element(_ ref: Int, _ type: String, id: String?, label: String?, value: String?,
+                         y: Double) -> ElementInfo {
+        ElementInfo(ref: ref, type: type, identifier: id, label: label, value: value, placeholder: nil,
+                    enabled: true, frame: FTRect(x: 16, y: y, width: 370, height: 22), depth: 1)
+    }
+
+    /// OTP 欄: 6 桁そろうとアプリが送信して欄を空に戻す。欄の外の結果表示が変わっている = 届いている
+    func testOutsideChangeMeansTheAppConsumedTheInput() {
+        let field = element(11, "textField", id: "field_otp", label: nil, value: nil, y: 214)
+        let before = [element(1, "staticText", id: "txt_otp_result", label: "otp=none", value: nil, y: 122), field]
+        let after = [element(1, "staticText", id: "txt_otp_result", label: "otp=123456", value: nil, y: 122), field]
+        XCTAssertTrue(TypeReadback.screenChangedOutsideField(field, before: before, after: after))
+    }
+
+    /// 何も変わっていない = 打鍵が丸ごと落ちた側(追送してよい)
+    func testNoOutsideChangeMeansKeystrokesWereDropped() {
+        let field = element(11, "textField", id: "field_otp", label: nil, value: nil, y: 214)
+        let before = [element(1, "staticText", id: "txt_otp_result", label: "otp=none", value: nil, y: 122), field]
+        XCTAssertFalse(TypeReadback.screenChangedOutsideField(field, before: before, after: before))
+    }
+
+    /// 枠だけの変化(キーボードで押し上げられた)・ref の振り直し・欄自身の値の変化は反応と数えない
+    func testLayoutRefAndFieldChangesAreNotAReaction() {
+        let field = element(11, "textField", id: "field_otp", label: nil, value: nil, y: 214)
+        let before = [element(1, "staticText", id: "txt_otp_result", label: "otp=none", value: nil, y: 122), field]
+        let after = [element(7, "staticText", id: "txt_otp_result", label: "otp=none", value: nil, y: 40),
+                     element(3, "textField", id: "field_otp", label: nil, value: "12", y: 100)]
+        XCTAssertFalse(TypeReadback.screenChangedOutsideField(field, before: before, after: after))
+    }
 }

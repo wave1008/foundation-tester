@@ -683,14 +683,18 @@ extension StepExecutor {
             }
             // **縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す**。
             // 判定と手順は liftCoveredTarget の1箇所。type も同じものを通る
-            if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
-                                                        verb: "touching", phase: &phase) {
-                element = lifted.element
+            if let lifted = try await liftCoveredTarget(
+                element, in: snapshot, step: step, verb: "touching",
+                snapshotSource: switchedToFallbackDriver ? .driver(actingDriver) : .primary, phase: &phase) {
+                guard let liftedElement = lifted.element else {
+                    return StepOutcome(status: failed(.notFound, Self.coverLiftLostMessage(step, verb: "touching")))
+                }
+                element = liftedElement
                 snapshot = lifted.snapshot
                 // **飲まれたタップの基準を撮り直す**: 送った後の画面が「撃つ直前」なので、
                 // 古い基準のままだと自分のスクロールを「画面が変わった」と数えてしまう
-                recordInteraction(step: step, element: lifted.element, in: lifted.snapshot)
-                lastTapTarget = lifted.element
+                recordInteraction(step: step, element: liftedElement, in: lifted.snapshot)
+                lastTapTarget = liftedElement
                 driverFallback = Self.joinNotes(driverFallback, lifted.note)
             }
             start = clock.now
@@ -743,6 +747,7 @@ extension StepExecutor {
             }
             let held = try await executeHoldStart(element: element, snapshot: snapshot,
                                                   step: step, phase: &phase)
+            if let refusal = held.refusal { return StepOutcome(status: failed(.notFound, refusal)) }
             element = held.element
             snapshot = held.snapshot
             resolvedElementThisStep = element
@@ -796,9 +801,13 @@ extension StepExecutor {
             // (受け手の 4.7 インチ実機で実測: 市区町村の欄に住所が3回ぶん追記された。
             // 読み返しが 422 で止めるが、別の欄はすでに壊れている)。tap と同じ規則で
             // 容器を送り、外せたら送った後の木で解決し直す。外せなければそのまま撃つ
-            if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
-                                                        verb: "typing", phase: &phase) {
-                element = lifted.element
+            if let lifted = try await liftCoveredTarget(
+                element, in: snapshot, step: step, verb: "typing",
+                snapshotSource: switchedToFallbackDriver ? .driver(actingDriver) : .primary, phase: &phase) {
+                guard let liftedElement = lifted.element else {
+                    return StepOutcome(status: failed(.notFound, Self.coverLiftLostMessage(step, verb: "typing")))
+                }
+                element = liftedElement
                 snapshot = lifted.snapshot
                 driverFallback = Self.joinNotes(driverFallback, lifted.note)
             }
@@ -985,11 +994,9 @@ extension StepExecutor {
         // 判断は XCUITest の木で行う(in-app の木はキーボードを申告しない)。送った後は XCUITest の木で引き当て直す
         var note: String?
         if let lifted = try await liftCoveredTarget(resolved.element, in: snapshot, step: step,
-                                                    verb: "typing", phase: &phase) {
+                                                    verb: "typing", snapshotSource: .driver(td), phase: &phase) {
             note = lifted.note
-            start = clock.now
-            snapshot = try await td.snapshot()
-            phase.snapshotMs += Self.ms(clock.now - start)
+            snapshot = lifted.snapshot
             guard let again = LocatorResolver.resolveDetailed(step: step, in: snapshot) else { return (false, note) }
             resolved = again
         }
@@ -1659,8 +1666,13 @@ extension StepExecutor {
     /// **縁の帯に潜っている対象を、容器を送って外す**(tap と type が共有する)。
     /// 覆いは2種類: 木に載る操作可能な帯(タブバー・固定フッタ = `overlayCoveringForUncover`)と、
     /// 木に要素として渡せないソフトキーボード(`KeyboardOcclusion.frame`)。
-    /// 外せたら (送った後の要素, 送った後の木, 注記) を返し、外せなければ nil
-    /// (呼び手は警告付きで撃つ。**拒否はしない**)。
+    /// 何も送らなかったら nil(呼び手は警告付きで撃つ。**拒否はしない**)。
+    ///
+    /// **1回でも送ったら、撃つ前の木の ref は使えない**: 撮り直しでブリッジの ref の表が振り直される
+    /// (in-app は最後の `/snapshot` の表しか持たない)。外れきらなくても `.stillCovered` で撮り直した木の要素を
+    /// 返す —— 古い ref で撃つと表に無ければ 404、**有れば別の要素を黙って押す**(E2EY-iOS の OTP で 404 が
+    /// 3/3 再現)。撮り直しは**撃つドライバ**の木で行う(`snapshotSource`。既定値を置かない = 呼び手の渡し忘れを
+    /// コンパイルで止める。主ドライバで撮ると、フォールバックへ切り替えた回で in-app の ref を XCUITest へ撃つ)。
     ///
     /// **1回では足りないことがあるので、動いている限り最大 `maxLifts` 回送る**
     /// (実測: 191pt 要求して実際の移動は 144pt で、中心がまだ覆いの内側だった)。
@@ -1668,12 +1680,13 @@ extension StepExecutor {
     /// verb は注記の文言(touching / typing)。判定は共通で、言い回しだけ呼び手が持つ
     /// **private ではない**: StepExecutor+Hold.swift の executeHoldStart からも呼ぶ
     func liftCoveredTarget(_ element: ElementInfo, in snapshot: SnapshotResponse,
-                           step: FlowStep, verb: String, maxLifts: Int = 3,
-                           phase: inout PhaseAccumulator) async throws
-        -> (element: ElementInfo, snapshot: SnapshotResponse, note: String)? {
+                           step: FlowStep, verb: String, snapshotSource: CoverLiftSnapshotSource,
+                           maxLifts: Int = 3,
+                           phase: inout PhaseAccumulator) async throws -> CoverLift? {
         var current = element
         var currentSnapshot = snapshot
         var coverName: String?
+        var retook = false
         let clock = ContinuousClock()
         for _ in 0..<maxLifts {
             // 対象を含む容器が無い(隠れるバー等)なら、画面の主たる縦の容器を送り先にする
@@ -1684,7 +1697,9 @@ extension StepExecutor {
                 ? TapTargetGeometry.primaryScrollContainer(in: currentSnapshot.elements,
                                                            screen: currentSnapshot.screen)?.frame
                 : nil
-            guard let container = ownContainer ?? outsideContainer else { return nil }
+            guard let container = ownContainer ?? outsideContainer else {
+                return retook ? .stillCovered(element: current, snapshot: currentSnapshot) : nil
+            }
             let keyboard = KeyboardOcclusion.resolve(reported: currentSnapshot.keyboardFrame,
                                                      in: currentSnapshot.elements)
             var jump: Double?
@@ -1733,11 +1748,20 @@ extension StepExecutor {
                   let dragArea = TapTargetGeometry.uncoverDragArea(container: container,
                                                                    cover: coverRect),
                   await slowDrag(jump: jump, container: dragArea,
-                                 avoidingInputsIn: currentSnapshot.elements, phase: &phase) else { return nil }
+                                 avoidingInputsIn: currentSnapshot.elements, phase: &phase) else {
+                return retook ? .stillCovered(element: current, snapshot: currentSnapshot) : nil
+            }
             let start = clock.now
-            let after = try await freshSnapshot(.afterOwnMove)
+            let after: SnapshotResponse
+            switch snapshotSource {
+            case .primary: after = try await freshSnapshot(.afterOwnMove)
+            case .driver(let other): after = try await other.snapshot(bypassingCache: true)
+            }
             phase.snapshotMs += Self.ms(clock.now - start)
-            guard let (moved, _) = LocatorResolver.resolve(step: step, in: after) else { return nil }
+            retook = true
+            guard let (moved, _) = LocatorResolver.resolve(step: step, in: after) else {
+                return .lost(snapshot: after)
+            }
             let afterBand = KeyboardOcclusion.resolve(reported: after.keyboardFrame,
                                                       in: after.elements).frame
                 ?? TapTargetGeometry.keyboardBandFromChrome(in: after.elements, screen: after.screen)
@@ -1749,19 +1773,60 @@ extension StepExecutor {
                 || (!isAndroid && TapTargetGeometry.bottomEdgeClipLift(moved, in: after.elements) != nil)
                 || TapTargetGeometry.pinnedBandCovering(moved, in: after.elements, container: container) != nil
             if !stillCovered {
-                return (moved, after,
-                        "scrolled the container to bring the target out from under"
-                        + " \(coverName ?? "the cover") before \(verb) it")
+                return .lifted(element: moved, snapshot: after,
+                               note: "scrolled the container to bring the target out from under"
+                                   + " \(coverName ?? "the cover") before \(verb) it")
             }
             // 動かなくなったら諦める(端まで来ている・容器がスクロールしない画面)。
             // **y だけで比べない**: 容器の縁で切られた対象は、動いても y が縁のまま高さだけ変わる
             // (実測 RN Android: 行の上端が容器の上端 403 に張り付いたまま 109 へ伸びた)
             guard moved.frame.y != current.frame.y
-                || moved.frame.height != current.frame.height else { return nil }
+                || moved.frame.height != current.frame.height else {
+                return .stillCovered(element: moved, snapshot: after)
+            }
             current = moved
             currentSnapshot = after
         }
-        return nil
+        return retook ? .stillCovered(element: current, snapshot: currentSnapshot) : nil
+    }
+
+    /// 呼び手が撃つ ref を、送った後の木から取り直すための結果(`liftCoveredTarget` の doc)
+    enum CoverLift {
+        case lifted(element: ElementInfo, snapshot: SnapshotResponse, note: String)
+        /// 送ったが外れきらなかった。**要素と木は撮り直した後のもの**(撃つ前の ref は無効)
+        case stillCovered(element: ElementInfo, snapshot: SnapshotResponse)
+        /// 送った後の木で対象を引き当てられない(撃つ前の ref で撃ってはいけない)
+        case lost(snapshot: SnapshotResponse)
+
+        var element: ElementInfo? {
+            switch self {
+            case .lifted(let element, _, _), .stillCovered(let element, _): return element
+            case .lost: return nil
+            }
+        }
+        var snapshot: SnapshotResponse {
+            switch self {
+            case .lifted(_, let snapshot, _), .stillCovered(_, let snapshot), .lost(let snapshot): return snapshot
+            }
+        }
+        var note: String? {
+            if case .lifted(_, _, let note) = self { return note }
+            return nil
+        }
+    }
+
+    /// `liftCoveredTarget` が撮り直す木の取得元 = **撃つドライバ**(ref の名前空間を合わせる)
+    enum CoverLiftSnapshotSource {
+        /// 主ドライバ(`freshSnapshot` の迂回の規則を通す)
+        case primary
+        /// フォールバック・typeDriver で撃つとき
+        case driver(AppDriver)
+    }
+
+    /// 送った後に対象を見失ったときの失敗文(撃つ前の ref で撃たない理由を言う)
+    static func coverLiftLostMessage(_ step: FlowStep, verb: String) -> String {
+        "the target was covered, so the container was scrolled before \(verb) it, but the target could not be"
+            + " found on the screen afterwards: \(step.locatorSummary) (nothing was \(verb == "typing" ? "typed" : "touched"))"
     }
 
     /// 座標ドラッグを通常ドライバ →(501/ルート不明404 なら)typeDriver の順で撃つ。

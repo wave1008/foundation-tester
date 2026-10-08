@@ -9,17 +9,18 @@ final class TypeDriverLiftTests: XCTestCase {
 
     private let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
 
-    private func tree() -> [ElementInfo] {
+    private func tree(fieldY: Double = 550) -> [ElementInfo] {
         [ElementInfo(ref: 1, type: "scrollView", identifier: nil, label: nil, value: nil, placeholder: nil,
                      enabled: true, frame: screen, depth: 1, scrollable: true),
          ElementInfo(ref: 2, type: "textView", identifier: "field_multiline", label: "メモ", value: nil,
-                     placeholder: nil, enabled: true, frame: FTRect(x: 16, y: 550, width: 370, height: 112), depth: 2)]
+                     placeholder: nil, enabled: true, frame: FTRect(x: 16, y: fieldY, width: 370, height: 112), depth: 2)]
     }
 
     func testTypeRoutedToXCUITestLiftsAFieldUnderTheKeyboardFirst() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [tree()])
-        let xcui = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [tree()])
+        // 送った後の撮り直しは XCUITest の木(キーボードを申告するのはこちらだけ)= 欄がキーボードの上へ出た木
+        let xcui = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [tree(), tree(fieldY: 200)])
         xcui.keyboardFrame = FTRect(x: 0, y: 538, width: 402, height: 336)
         let executor = StepExecutor(driver: primary, typeDriver: xcui, preferTypeDriver: false, isAndroid: false,
                                     tunables: RunTunables())

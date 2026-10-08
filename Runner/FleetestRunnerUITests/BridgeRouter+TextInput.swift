@@ -115,6 +115,11 @@ extension BridgeRouter {
         var rounds = 0
         var retypes = 0
         var retypeAbandoned = false
+        var consumedByApp = false
+        // 直前の追送を撃った時点の値。追送の後も同じ値なら、それ以上撃っても重複するだけ(ホストの verifyTypedText と同じ規律)
+        var valueAtLastResend: String?
+        // 打つ前の木(ホストは /type の直前に snapshot を撮っている)。全文が欠けたときの判定にだけ使う
+        let elementsBeforeTyping = Array(refElements.values)
         let deadline = Date().addingTimeInterval(Self.typeBudgetSeconds)
         loop: while true {
             app.typeText(pending)
@@ -129,7 +134,22 @@ extension BridgeRouter {
             switch TypeReadback.plan(expected: readbackTarget, actual: actual) {
             case .done, .unverifiable:
                 break loop
+            case .resend where valueAtLastResend == actual:
+                // **追送しても値が動かなければ2回目は撃たない**(撃つたびにアプリへ同じ入力が届きうる)
+                throw BridgeError(422, "the field did not change after re-sending the missing text"
+                    + " (\(rounds) round(s) of keystrokes left \(actual.count) character(s)"
+                    + " against the expected \(expected.count)); not re-sent again so the app does not"
+                    + " receive the same input twice")
             case .resend(let missing):
+                // **全文が欠けた**(欄が打つ前の値のまま)ときは、欄の外の画面がアプリの反応で変わったかを見る。
+                // 変わっていれば届いて消費された(TypeReadback.screenChangedOutsideField)= 追送しない
+                if valueAtLastResend == nil, missing == main,
+                   TypeReadback.screenChangedOutsideField(target, before: elementsBeforeTyping,
+                                                          after: try captureOnce(app).elements) {
+                    consumedByApp = true
+                    break loop
+                }
+                valueAtLastResend = actual
                 pending = missing
             case .deleteExcess(let count):
                 pending = String(repeating: XCUIKeyboardKey.delete.rawValue, count: count)
@@ -153,6 +173,10 @@ extension BridgeRouter {
             }
         }
         // 打ち直した事実は注記で返す(ホストは driverFallback へ載せる = 緑の run で何回起きたかを数える口)
+        if consumedByApp {
+            return "the field was back to its previous value after typing, but the screen outside it changed —"
+                + " taken as the app consuming the input (e.g. submitting a complete code); not re-sent"
+        }
         if retypeAbandoned {
             return "retyped the whole text once, but the field still lost the same characters;"
                 + " accepted as input the app transforms"

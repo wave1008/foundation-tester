@@ -75,14 +75,14 @@ final class LiftClippedTargetTests: XCTestCase {
     /// scrollView(容器)・貼り付く見出し・行3件。**見出しの ref は行より大きくする**
     /// (`PaintOrder.drawnAbove` は z が無ければ ref の大小で塗り順を決める。実測の RN Android の
     /// witness でも見出しは行より後に塗られる = ref が大きい)
-    private func scene(rowFrame: FTRect) -> [ElementInfo] {
+    private func scene(rowFrame: FTRect, rowRef: Int = 10) -> [ElementInfo] {
         let scrollView = ElementInfo(ref: 1, type: "scrollView", identifier: nil, label: nil,
                                      value: nil, placeholder: nil, enabled: true,
                                      frame: container, depth: 1, scrollable: true)
         let header = ElementInfo(ref: 99, type: "staticText", identifier: "hdr_B", label: "セクション B",
                                  value: nil, placeholder: nil, enabled: true,
                                  frame: FTRect(x: 42, y: 403, width: 996, height: 96), depth: 2)
-        let row1 = ElementInfo(ref: 10, type: "button", identifier: "row_s_B1", label: "行 B1",
+        let row1 = ElementInfo(ref: rowRef, type: "button", identifier: "row_s_B1", label: "行 B1",
                                value: nil, placeholder: nil, enabled: true, frame: rowFrame, depth: 2)
         let row2 = ElementInfo(ref: 11, type: "button", identifier: "row_s_B2", label: "行 B2",
                                value: nil, placeholder: nil, enabled: true,
@@ -113,6 +113,38 @@ final class LiftClippedTargetTests: XCTestCase {
             outcome.driverFallback ?? "(注記なし)")
         XCTAssertGreaterThan(driver.lastTapCentre?.y ?? 0, 499,
                              "見出しの下端(499)より下を撃つはず")
+    }
+
+    /// **送って撮り直したら、外れなくても撮り直した木の ref で撃つ**。ブリッジは撮り直しで ref を振り直す
+    /// (in-app は最後の /snapshot の表しか持たない)ので、撃つ前の木の ref は表に無ければ 404、
+    /// 有れば別の要素を指す(E2EY-iOS の OTP の箱で 404 が 3/3 再現)
+    func testShootsTheRefFromTheRetakenTreeWhenStillCovered() async throws {
+        let driver = DragCountedDriver(screen: screen, statesByDragCount: [
+            scene(rowFrame: clippedByTop, rowRef: 10),
+            scene(rowFrame: clippedByTop, rowRef: 20),
+        ])
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
+
+        let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_s_B1")))
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.dragCallCount, 1)
+        XCTAssertEqual(driver.tapRefs, [20], "撃つ前の木の ref(10)で撃ってはいけない")
+    }
+
+    /// 送った後の木で対象を引き当てられなければ、撃つ前の ref で撃たずに失敗する
+    func testDoesNotShootWhenTheTargetIsGoneAfterTheLift() async throws {
+        let gone = scene(rowFrame: clippedByTop).filter { $0.identifier != "row_s_B1" }
+        let driver = DragCountedDriver(screen: screen, statesByDragCount: [
+            scene(rowFrame: clippedByTop), gone,
+        ])
+        let executor = StepExecutor(driver: driver, isAndroid: true, tunables: RunTunables())
+
+        let outcome = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_s_B1")))
+
+        guard case .failed(let message) = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertTrue(message.contains("could not be found on the screen afterwards"), message)
+        XCTAssertEqual(driver.tapRefs, [], "見失ったら撃たない")
     }
 
     /// 送っても本当に何も動かない(y も height も不変)なら 1 回で諦め、無警告のまま撃たない

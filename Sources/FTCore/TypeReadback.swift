@@ -147,4 +147,23 @@ public enum TypeReadback {
         if let placeholder = element.placeholder, value == placeholder { return "" }
         return value
     }
+
+    /// 打った後の欄が**打つ前の値のまま**(全文が欠けた)とき、**欄の外の画面が変わったか**。
+    /// 値だけでは「打鍵が丸ごと落ちた」と「届いてアプリが消費した」(6 桁そろうと送信して欄を空にする
+    /// OTP 欄 = E2EY の PIN と OTP)を区別できず、後者で追送すると**アプリへ二度目の入力**になる(送信の二重実行)。
+    /// 変わっていれば後者として追送しない。比べるのは欄以外の要素の (型, ラベル, 値) の多重集合だけ
+    /// (枠は見ない = キーボードで押し上げられた配置換えを反応と数えない)。欄は `value(of:in:)` と同じ規則で除く
+    public static func screenChangedOutsideField(_ field: ElementInfo, before: [ElementInfo],
+                                                 after: [ElementInfo]) -> Bool {
+        func isField(_ element: ElementInfo) -> Bool {
+            if let identifier = field.identifier, !identifier.isEmpty { return element.identifier == identifier }
+            return element.frame == field.frame
+        }
+        func signature(_ elements: [ElementInfo]) -> [String: Int] {
+            elements.filter { !isField($0) }.reduce(into: [:]) { counts, element in
+                counts["\(element.type)\u{1F}\(element.label ?? "")\u{1F}\(element.value ?? "")", default: 0] += 1
+            }
+        }
+        return signature(before) != signature(after)
+    }
 }

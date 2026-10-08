@@ -22,7 +22,7 @@ extension StepExecutor {
     /// 更新できるよう、更新後の値と注記を返す
     func executeHoldStart(element initialElement: ElementInfo, snapshot initialSnapshot: SnapshotResponse,
                           step: FlowStep, phase: inout PhaseAccumulator) async throws
-        -> (element: ElementInfo, snapshot: SnapshotResponse, driverFallback: String?) {
+        -> (element: ElementInfo, snapshot: SnapshotResponse, driverFallback: String?, refusal: String?) {
         var element = initialElement
         var snapshot = initialSnapshot
         var driverFallback: String?
@@ -45,9 +45,13 @@ extension StepExecutor {
         adviseTarget(TapTargetGeometry.disabledAdvisory(for: element))
         adviseTarget(duplicateRegionAdvisory(element, in: snapshot))
         // 縁の帯に潜っているだけなら、撃つ前に1回だけ送って外す(tap の長押し分岐と同じ手順)
+        // 座標で撃つ(ref を使わない)ので撮り直しは主ドライバでよい。見失ったら撃たない
         if let lifted = try await liftCoveredTarget(element, in: snapshot, step: step,
-                                                    verb: "touching", phase: &phase) {
-            element = lifted.element
+                                                    verb: "touching", snapshotSource: .primary, phase: &phase) {
+            guard let liftedElement = lifted.element else {
+                return (element, lifted.snapshot, driverFallback, Self.coverLiftLostMessage(step, verb: "touching"))
+            }
+            element = liftedElement
             snapshot = lifted.snapshot
             driverFallback = Self.joinNotes(driverFallback, lifted.note)
         }
@@ -83,7 +87,7 @@ extension StepExecutor {
         // **送れたときだけ**離し時刻を立てる(送れていなければ指は下がっていない)
         holdLiftsAt = sentAt.advanced(by: .seconds(duration))
         if viaXCUITest { driverFallback = Self.joinNotes(driverFallback, "fell back to XCUITest") }
-        return (element, snapshot, driverFallback)
+        return (element, snapshot, driverFallback, nil)
     }
 
     /// holdEnd の実体。ブリッジが `duration` 秒後に自分で指を離すので、ここでは
