@@ -186,6 +186,21 @@ extension StepExecutor {
         // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
         // (実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
         // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
+        // **木が動きに遅れるエンジン(XCUITest)は、押す直前に木を1枚だけ撮り直して座標を引き直す(待たない)**。
+        // 見つけた木は慣性の途中に撮られている。押すまでに一覧が止まっていると、古い座標は隣の行の上で、全幅の行は
+        // 縦に 4pt 抜くだけなので離す点も同じ行の中 = 隣の行のクリックが成立する(E2EX-CMP / Flutter のホームの最下段で
+        // 隣の画面へ移った)。**止まるのを待ってはいけない** —— 慣性の途中の空打ちは指が触れて慣性を止める役も担っていて、
+        // 待つと対象が流れ去る・ヘッダの裏に止まる(試して取り消した。maintainer-notes §74.10)。
+        // 撮り直した木に対象が居なければ見つけた木の座標のまま(従来どおり)
+        var element = element
+        var snapshot = snapshot
+        if driver.treeLagsBehindMotion, shouldEmptyDrag(for: element) {
+            let fresh = try await freshSnapshot(.afterOwnMove)
+            if let (moved, _) = LocatorResolver.resolve(step: step, in: fresh, strictForAssert: true) {
+                element = moved
+                snapshot = fresh
+            }
+        }
         let x: Double = element.frame.x + element.frame.width / 2
         let y: Double = min(element.frame.y + element.frame.height / 2,
                             snapshot.screen.y + snapshot.screen.height
