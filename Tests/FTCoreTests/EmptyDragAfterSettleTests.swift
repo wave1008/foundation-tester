@@ -82,4 +82,66 @@ final class EmptyDragAfterSettleTests: XCTestCase {
         XCTAssertEqual(driver.emptyDragStartY.count, 1)
         XCTAssertEqual(driver.emptyDragStartY.first ?? 0, 628, accuracy: 1)
     }
+
+    /// 止まるのを待つ間に対象が流れ去ったら、失敗せず探索を続けて見つけ直す(Flutter の sticky の実測の形)
+    func testSearchContinuesWhenTheTargetDriftsAwayWhileSettling() async {
+        let driver = DriftAwayDriver()
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "target"), direction: "up", maxSwipes: 4)
+        let outcome = await StepExecutor(driver: driver, releasesScrollTouch: true, isAndroid: false,
+                                         tunables: RunTunables(), uiFramework: .compose).execute(step)
+        XCTAssertTrue(StepExecutor.isSuccess(outcome.status), "\(outcome.status)")
+        XCTAssertGreaterThanOrEqual(driver.swipes, 2, "流れ去った後にもう一度送っていない")
+        XCTAssertEqual(driver.emptyDragStartY, [528], "見つけ直した後の止まった位置で1回だけ空打ちする")
+    }
+}
+
+/// 1本目の払いの直後の1枚だけ対象が見え(y=600)、止まると木から消える(流れ去った)。2本目の払いの後は y=500 で止まる
+private final class DriftAwayDriver: AppDriver {
+    private(set) var swipes = 0
+    private var snapsSinceSwipe = 0
+    private(set) var emptyDragStartY: [Double] = []
+    var treeLagsBehindMotion: Bool { true }
+
+    func status() async throws -> StatusResponse {
+        StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+    }
+    func install(packagePath: String) async throws {}
+    func uninstall(bundleID: String) async throws {}
+    func launch(bundleID: String) async throws {}
+    func isAppForeground(bundleID: String) async throws -> Bool { true }
+    func foregroundAppID() async throws -> String? { nil }
+    func terminate() async throws {}
+    func screenshot() async throws -> Data { Data() }
+    func type(ref: Int?, text: String) async throws {}
+    func tap(ref: Int) async throws {}
+    func tap(x: Double, y: Double) async throws {}
+    func press(ref: Int, duration: Double) async throws {}
+    func swipe(_ direction: FTSwipeDirection) async throws { swipes += 1; snapsSinceSwipe = 0 }
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {
+        swipes += 1; snapsSinceSwipe = 0
+    }
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws {
+        if fromY == toY || abs(toY - fromY) < 60 { emptyDragStartY.append(fromY) } else { swipes += 1; snapsSinceSwipe = 0 }
+    }
+
+    func snapshot() async throws -> SnapshotResponse {
+        snapsSinceSwipe += 1
+        var elements = [
+            ElementInfo(ref: 1, type: "other", identifier: "list", label: nil, value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 0, y: 100, width: 402, height: 700), depth: 1),
+            ElementInfo(ref: 2, type: "button", identifier: "row_a", label: "A", value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 16, y: 120, width: 370, height: 56), depth: 2),
+            ElementInfo(ref: 3, type: "button", identifier: "row_b", label: "B", value: nil, placeholder: nil,
+                        enabled: true, frame: FTRect(x: 16, y: 180, width: 370, height: 56), depth: 2),
+        ]
+        let y: Double? = swipes == 1 ? (snapsSinceSwipe == 1 ? 600 : nil) : (swipes >= 2 ? 500 : nil)
+        if let y {
+            elements.append(ElementInfo(ref: 4, type: "button", identifier: "target", label: "対象", value: nil,
+                                        placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 16, y: y, width: 370, height: 56), depth: 2))
+        }
+        return SnapshotResponse(sessionBundleID: nil, screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                elements: elements, truncatedCount: 0)
+    }
 }

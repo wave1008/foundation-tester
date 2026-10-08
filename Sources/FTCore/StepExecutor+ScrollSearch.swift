@@ -653,9 +653,17 @@ extension StepExecutor {
                 if TapTargetGeometry.offscreenScrollGateAdvisory(for: element, screen: snapshot.screen) == nil {
                     // **スワイプしたなら静止を待つ**(空打ち→静止待ちの順。settleAfterFind 参照)。
                     // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
+                    var element = element
                     if attempt > 0 {
-                        settleCapped = try await settleAfterFind(step: step, element: element,
-                                                                 snapshot: snapshot, phase: &phase)
+                        // 止まった後に流れ去っていたら探索を続ける(restingTarget の doc)
+                        guard let rest = try await restingTarget(step: step, element: element, snapshot: snapshot,
+                                                                 viewport: viewport, phase: &phase) else {
+                            previousSnapshot = snapshot
+                            continue
+                        }
+                        element = rest.element
+                        settleCapped = try await settleAfterFind(step: step, element: rest.element,
+                                                                 snapshot: rest.snapshot, phase: &phase)
                     }
                     // **成功時も swipes を載せる**: 失敗文にしか使わなかった頃は既定の 0 で
                     // 害が無かったが、MCP の ft_scroll_to が所要時間の内訳へ出すようになり、
