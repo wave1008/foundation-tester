@@ -684,6 +684,7 @@ final class BridgeRouter {
         // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
         // 残り(synth)を引き算で出す(FastInput.quiescenceMs の但し書きも読むこと)
         FastInput.resetTiming()
+        _ = FastInput.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         let start = DispatchTime.now()
         try FastInput.with(req.fast) {
             coordinate(app, point).tap()
@@ -696,7 +697,7 @@ final class BridgeRouter {
             NSLog("[fleetest] tapTiming total=%.0f quiesce=%.0f synth=%.0f", totalMs,
                   FastInput.quiescenceMs, totalMs - FastInput.quiescenceMs)
         }
-        return .json(OKResponse())
+        return .json(OKResponse(note: FastInput.takeCapNote()))
     }
 
     /// typeText("\n") は XCUITest 内部で Return キー相当に落ちる(ソフトキーボードの改行/送信
@@ -925,10 +926,11 @@ final class BridgeRouter {
                 orientation: appOrientation() == .landscape ? .landscapeLeft : .portrait)
             return .json(OKResponse())
         }
+        _ = FastInput.takeCapNote()
         try FastInput.with(req.fast) {
             coordinate(app, point).doubleTap()
         }
-        return .json(OKResponse())
+        return .json(OKResponse(note: FastInput.takeCapNote()))
     }
 
     /// 各タッチの接触時間[秒]。実測 2026-09-24 でこの長さのときだけ RN の PanResponder が拾った
@@ -1112,10 +1114,11 @@ final class BridgeRouter {
         }
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        _ = FastInput.takeCapNote()
         try FastInput.with(req.fast) {
             coordinate(app, point).press(forDuration: req.duration)
         }
-        return .json(OKResponse())
+        return .json(OKResponse(note: FastInput.takeCapNote()))
     }
 
     /// 指を置いたら応答を返し、duration 秒後に離れる(契約は BridgeDTO.HoldRequest)。/press は離すまで

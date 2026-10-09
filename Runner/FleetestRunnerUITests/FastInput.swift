@@ -7,6 +7,12 @@
 // - enabled はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
 // - 注意: type(typeText)には適用しない。キーボード出現待ちを quiescence に依存しているため
 //   (BridgeRouter.handleType のコメント参照)、スキップすると入力欠落の実害が出る。
+// - **飛ばさない回(既定)も、操作(FastInput.with の中 = タップ・長押し・スワイプ・ドラッグ)の間だけ待ちの上限を
+//   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
+//   切ると前面化そのものが完了せずホストが 45s で時間切れになった(実測)。XCTest の上限は
+//   全体で共有の `_XCTApplicationStateTimeout()`(既定 60s。起動・前面化・終了・URL も同じ値を使う)なので、
+//   待ちの直前だけ `_XCTSetApplicationStateTimeout` で差し替えて戻す(WDA と同じ形)。待ち自体を飛ばす案は
+//   判定できていない(docs/performance-tuning.md §8)ので、XCTest の完了の知らせは使い続ける
 
 import Foundation
 import ObjectiveC
@@ -25,6 +31,63 @@ enum FastInput {
 
     private static func addQuiescence(since start: DispatchTime) {
         quiescenceMs += Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
+    }
+
+    /// XCTest の「アプリが落ち着くまで待つ」の上限[秒](ユーザー決定)。実測(Simulator・ランナー5台のログ・約 1,400 回):
+    /// 正常な待ちは中央値 0.01〜0.1s・95% 点 1〜1.6s・最大 5.1s。知らせが来ないアプリ(Apple マップで観測)は
+    /// 既定の 60s まで止まり、その間ランナーは /status も返せない。尽きたら XCTest は知らせ無しで続行し
+    /// ("App animations complete notification not received")、整定は木の観察(captureSettled 等)が担う。
+    /// 尽きた回は応答の注記に出す(`takeCapNote`)。**正常な待ちの最大より短くしない** —— 上限は「イベントループが空いた」
+    /// 知らせの待ちにも効き、アプリが実際に忙しいときにそれを打ち切ると、続く処理が別の待ちで長く止まる(上限 0.3s の
+    /// 陽性対照で、打ち切りの後に元の待ちが戻るまで約 50s。アニメーション完了の知らせの打ち切りは問題なく続行した)
+    static let quiescenceCapSeconds: TimeInterval = 6
+
+    private typealias TimeoutGetter = @convention(c) () -> Double
+    private typealias TimeoutSetter = @convention(c) (Double) -> Void
+    /// XCUIAutomation の非公開 C 関数(nm で `__XCTApplicationStateTimeout`)。無い Xcode では nil = 縮めない
+    private static let timeoutGetter: TimeoutGetter? = dlsym(UnsafeMutableRawPointer(bitPattern: -2),
+                                                              "_XCTApplicationStateTimeout")
+        .map { unsafeBitCast($0, to: TimeoutGetter.self) }
+    private static let timeoutSetter: TimeoutSetter? = dlsym(UnsafeMutableRawPointer(bitPattern: -2),
+                                                              "_XCTSetApplicationStateTimeout")
+        .map { unsafeBitCast($0, to: TimeoutSetter.self) }
+    /// 入れ子の待ち(XCUIApplication → XCUIApplicationProcess)で、差し替えと戻しをいちばん外側だけで行う
+    private static var capDepth = 0
+    /// 上限まで待った回数(リクエストごとに takeCapNote が読んで消す)
+    private static var capHits = 0
+    /// true の間だけ待ちの上限を縮める(FastInput.with が操作の間だけ立てる)
+    private static var capArmed = false
+
+    /// 元の待ちを、上限を縮めた状態で呼ぶ。上限の関数が無ければそのまま呼ぶ
+    private static func cappedWait(_ wait: () -> Void) {
+        guard capArmed, let get = timeoutGetter, let set = timeoutSetter else { return wait() }
+        let outermost = capDepth == 0
+        var previous = 0.0
+        if outermost {
+            previous = get()
+            set(min(previous, quiescenceCapSeconds))
+        }
+        capDepth += 1
+        let start = DispatchTime.now()
+        wait()
+        capDepth -= 1
+        if outermost {
+            set(previous)
+            // 上限ちょうどで抜けた = 知らせが来なかった(XCTest の続行の処理ぶんの余裕を引いて判定する)
+            let elapsed = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e9
+            if elapsed >= quiescenceCapSeconds - 0.2 {
+                capHits += 1
+                NSLog("[fleetest] quiescence: no idle notification within %.0fs — continued", quiescenceCapSeconds)
+            }
+        }
+    }
+
+    /// 直前の操作で上限まで待ったなら注記を返して数え直す(応答の OKResponse.note へ載せる)
+    static func takeCapNote() -> String? {
+        defer { capHits = 0 }
+        guard capHits > 0 else { return nil }
+        return "XCTest did not report the app idle within \(Int(quiescenceCapSeconds))s (animations still running),"
+            + " so the action went ahead without waiting further"
     }
 
     /// ランナー起動時に1回だけ呼ぶ。既知の quiescence 待ちセレクタ候補を全て swizzle する
@@ -51,7 +114,7 @@ enum FastInput {
                 let block: @convention(block) (AnyObject, Bool, Bool) -> Void = { obj, a, b in
                     if FastInput.enabled { return }
                     let start = DispatchTime.now()
-                    orig(obj, sel, a, b)
+                    FastInput.cappedWait { orig(obj, sel, a, b) }
                     FastInput.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
@@ -61,7 +124,7 @@ enum FastInput {
                 let block: @convention(block) (AnyObject, Bool) -> Void = { obj, a in
                     if FastInput.enabled { return }
                     let start = DispatchTime.now()
-                    orig(obj, sel, a)
+                    FastInput.cappedWait { orig(obj, sel, a) }
                     FastInput.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
@@ -71,7 +134,7 @@ enum FastInput {
                 let block: @convention(block) (AnyObject) -> Void = { obj in
                     if FastInput.enabled { return }
                     let start = DispatchTime.now()
-                    orig(obj, sel)
+                    FastInput.cappedWait { orig(obj, sel) }
                     FastInput.addQuiescence(since: start)
                 }
                 method_setImplementation(method, imp_implementationWithBlock(block))
@@ -82,11 +145,18 @@ enum FastInput {
         if !available {
             NSLog("[fleetest] FastInput: quiescence セレクタが1つも見つかりません(無効・通常動作)")
         }
+        // 起動時に1行(上限の口が消えたことが run を待たずに分かる)
+        NSLog("[fleetest] quiescence cap: %@", (available && timeoutGetter != nil && timeoutSetter != nil)
+            ? "\(Int(quiescenceCapSeconds))s" : "unavailable (XCTest's own limit applies)")
     }
 
     /// リクエスト単位の一時有効化(available でなければ何もしない)
     static func with<T>(_ fast: Bool?, _ body: () throws -> T) rethrows -> T {
-        guard available, fast == true else { return try body() }
+        guard available, fast == true else {
+            capArmed = true
+            defer { capArmed = false }
+            return try body()
+        }
         NSLog("[fleetest] FastInput: engaged")  // 検証用(fast リクエストの発火確認)
         enabled = true
         defer { enabled = false }
