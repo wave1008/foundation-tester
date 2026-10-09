@@ -171,7 +171,8 @@ public enum ScenarioCodeGen {
                 return "type(\(literal(selector)), \(literal(step.text ?? ""))\(replaceArg)"
                     + "\(actionWaitArg(step))\(searchScrollArgs(step)))"
             case "swipe":
-                return "swipe(.\(step.direction ?? "up"))"
+                let lightSettleArg = step.lightSettle.map { ", lightSettle: \($0)" } ?? ""
+                return "swipe(.\(step.direction ?? "up")\(lightSettleArg))"
             case "rotateTo":
                 return "rotateTo(.\(step.direction ?? "landscape"))"
             case "home":
@@ -296,6 +297,7 @@ public enum ScenarioCodeGen {
                 var args = scrollFrameArgs(step)
                 // maxSwipes は scroll では「繰り返し回数」(scrollImpl 参照)。既定 1 は書かない
                 if let times = step.maxSwipes, times > 1 { args.append("repeat: \(times)") }
+                if let lightSettle = step.lightSettle { args.append("lightSettle: \(lightSettle)") }
                 return "scroll\(content.rawValue.capitalized)(\(args.joined(separator: ", ")))"
             case "scrollToEdge":
                 // 名前はコンテンツ基準(scrollToEdgeImpl の表と同じ写像。片方だけ変えない)
@@ -306,6 +308,7 @@ public enum ScenarioCodeGen {
                     .right: "scrollToRightEdge", .left: "scrollToLeftEdge",
                 ]
                 var args = scrollFrameArgs(step)
+                if let lightSettle = step.lightSettle { args.append("lightSettle: \(lightSettle)") }
                 // scrollToEdge の maxSwipes は暴走止めの上限。既定は書かない
                 if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxEdgeSwipes {
                     args.append("maxSwipes: \(maxSwipes)")
@@ -320,6 +323,7 @@ public enum ScenarioCodeGen {
                     args.append("direction: .\(scroll.rawValue)")
                 }
                 args += scrollFrameArgs(step)
+                if let lightSettle = step.lightSettle { args.append("lightSettle: \(lightSettle)") }
                 if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxSwipes {
                     args.append("maxSwipes: \(maxSwipes)")
                 }

@@ -482,7 +482,7 @@ enum BatchStepResolver {
         // swipePointToPoint の2点(単位は x / y と同じ)
         "startX", "startY", "endX", "endY",
     ]
-    static let boolKeys: Set<String> = ["replace"]
+    static let boolKeys: Set<String> = ["replace", "lightSettle"]
 
     private static func assign(_ raw: inout [String: Any], dictKey: String, value: BatchLineValue,
                                command: String, displayName: String) throws {

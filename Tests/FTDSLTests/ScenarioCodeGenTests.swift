@@ -247,6 +247,23 @@ final class ScenarioCodeGenTests: XCTestCase {
             .contains("repeat:"))
     }
 
+    /// lightSettle は true / false とも明示した値をそのまま出す(false = プロファイルが ON でもこの1回は待つ)。
+    /// 省略(nil)は出さない。引数の位置は DSL の並びと一致すること(ずれると生成物がコンパイルできない)
+    func testLightSettleIsEmittedInDSLArgumentOrder() {
+        XCTAssertTrue(render([FlowStep(action: "swipe", direction: "up", lightSettle: true)])
+            .contains("swipe(.up, lightSettle: true)"))
+        XCTAssertTrue(render([FlowStep(action: "scroll", direction: "up", maxSwipes: 3, lightSettle: false)])
+            .contains("scrollDown(repeat: 3, lightSettle: false)"))
+        XCTAssertTrue(render([FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 5, lightSettle: true)])
+            .contains("scrollToBottom(lightSettle: true, maxSwipes: 5)"))
+        XCTAssertTrue(render([FlowStep(action: "scrollTo", locator: FlowLocator(id: "footer"), direction: "up",
+                                       maxSwipes: 4, lightSettle: true)])
+            .contains("scrollTo(\"#footer\", lightSettle: true, maxSwipes: 4)"))
+        XCTAssertFalse(render([FlowStep(action: "swipe", direction: "up"),
+                               FlowStep(action: "scroll", direction: "up")])
+            .contains("lightSettle"))
+    }
+
     /// replace: true のステップだけ `replace: true` を出し、未指定/false は既定ケースとして
     /// 引数ごと出さない(両方向を確認: 出すべき/出してはいけない)
     func testTypeEmitsReplaceOnlyWhenTrue() {

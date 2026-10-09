@@ -8,13 +8,15 @@
 
 | 関数 | 説明 |
 |---|---|
-| `scrollTo(sel, direction: .down, containerInference:, maxSwipes: 8)` | 要素が見つかるまでスクロールします(見つかったら成功。タップはしません)。 |
-| `scrollDown(repeat: 1)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1画面ぶんスクロールします(`repeat:` 回繰り返します)。 |
-| `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送ります(画面が変化しなくなるまで)。`maxSwipes` は暴走を止める上限で、上限で打ち切るとステップに注記が付きます。 |
+| `scrollTo(sel, direction: .down, containerInference:, lightSettle:, maxSwipes: 8)` | 要素が見つかるまでスクロールします(見つかったら成功。タップはしません)。 |
+| `scrollDown(repeat: 1, lightSettle:)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1画面ぶんスクロールします(`repeat:` 回繰り返します)。 |
+| `scrollToBottom(lightSettle:, maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送ります(画面が変化しなくなるまで)。`maxSwipes` は暴走を止める上限で、上限で打ち切るとステップに注記が付きます。 |
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` / `hold` を**すべてスクロール探索**にします(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わります** —— 探索中に見つかった時点で失敗になります。 |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決します。 |
 | `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正(後述)を止めます。 |
 | `scroll: .noScroll`(`tap` / `type` / `clearInput` / `select` / `exist` / `notExist` / `findImage` / `existImage` / `hold` の引数) | `withScroll*` の中でも、この1コマンドだけスクロールしません(現在画面だけで解決します)。引数を省いた場合は、ブロックの向きに従います。 |
+
+**`lightSettle:`**(`swipe` / `scroll*` / `scrollToBottom` など / `scrollTo` / `flick*` の引数): 簡易整定モードをこの1回だけ切り替えます。省略すると実行プロファイルの `iosLightSettle` に従い、`true` / `false` を渡すとそちらが優先されます。効くのは iOS の XCUITest ブリッジのスワイプだけです(Android と in-app エンジンでは何もしません)。`swipePointToPoint` / `swipeBy` / `swipeElementToElement` はこの引数を取りません(drag の経路で、簡易整定モードの対象外です)。
 
 **スクロールの指定は、各コマンドの `scroll:` 引数だけで行います。** 向き(`.down` / `.up` / `.right` / `.left`)を渡すと
 その方向へスクロールしながら探し、`.noScroll` を渡すと `withScroll*` の中でもスクロールしません。省略した場合は

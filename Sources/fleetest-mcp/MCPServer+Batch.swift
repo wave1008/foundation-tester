@@ -141,12 +141,13 @@ extension MCPServer {
                                 timeout: raw["waitSeconds"] as? Double, maxSwipes: search.maxSwipes)
             return (step, selector.map { "clearInput \"\($0.text)\"" } ?? "clearInput")
         },
-        "swipe": BatchStepBuilder(keys: ["direction"]) { raw in
+        "swipe": BatchStepBuilder(keys: ["direction", "lightSettle"]) { raw in
             guard let text = raw["direction"] as? String, let direction = FTSwipeDirection(rawValue: text)
             else {
                 throw MCPError("swipe requires direction (one of up/down/left/right — finger direction)")
             }
-            return (FlowStep(action: "swipe", direction: direction.rawValue), "swipe \(direction.rawValue)")
+            return (FlowStep(action: "swipe", direction: direction.rawValue,
+                             lightSettle: raw["lightSettle"] as? Bool), "swipe \(direction.rawValue)")
         },
         "doubleTap": BatchStepBuilder(keys: ["selector", "waitSeconds"]) { raw in
             let selector = try optionalBatchSelector(raw)
@@ -215,7 +216,7 @@ extension MCPServer {
                 + " → (\(FTSeconds.format(endX)), \(FTSeconds.format(endY)))")
         },
         "scrollTo": BatchStepBuilder(
-            keys: ["selector", "direction", "maxSwipes", "scrollFrame"]
+            keys: ["selector", "direction", "lightSettle", "maxSwipes", "scrollFrame"]
         ) { raw in
             let selector = try requiredBatchSelector(raw, command: "scrollTo")
             guard let direction = FTScrollDirection(rawValue: raw["direction"] as? String ?? "down") else {
@@ -224,31 +225,32 @@ extension MCPServer {
             let step = FlowStep(action: "scrollTo", locator: selector.primary,
                                 fallbacks: batchFallbacks(selector), direction: direction.swipe.rawValue,
                                 maxSwipes: raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
+                                lightSettle: raw["lightSettle"] as? Bool,
                                 scrollFrame: try batchScrollFrame(raw))
             return (step, "scrollTo \"\(selector.text)\"")
         },
-        "scrollDown": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
+        "scrollDown": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
             try batchScrollStep(.down, raw: $0)
         },
-        "scrollUp": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
+        "scrollUp": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
             try batchScrollStep(.up, raw: $0)
         },
-        "scrollRight": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
+        "scrollRight": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
             try batchScrollStep(.right, raw: $0)
         },
-        "scrollLeft": BatchStepBuilder(keys: ["repeat", "scrollFrame"]) {
+        "scrollLeft": BatchStepBuilder(keys: ["repeat", "lightSettle", "scrollFrame"]) {
             try batchScrollStep(.left, raw: $0)
         },
-        "scrollToBottom": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
+        "scrollToBottom": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
             try batchScrollEdgeStep(.down, name: "scrollToBottom", raw: $0)
         },
-        "scrollToTop": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
+        "scrollToTop": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
             try batchScrollEdgeStep(.up, name: "scrollToTop", raw: $0)
         },
-        "scrollToRightEdge": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
+        "scrollToRightEdge": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
             try batchScrollEdgeStep(.right, name: "scrollToRightEdge", raw: $0)
         },
-        "scrollToLeftEdge": BatchStepBuilder(keys: ["maxSwipes", "scrollFrame"]) {
+        "scrollToLeftEdge": BatchStepBuilder(keys: ["maxSwipes", "lightSettle", "scrollFrame"]) {
             try batchScrollEdgeStep(.left, name: "scrollToLeftEdge", raw: $0)
         },
     ]
@@ -313,7 +315,8 @@ extension MCPServer {
         throws -> (step: FlowStep, summary: String) {
         let times = raw["repeat"] as? Int ?? 1
         let step = FlowStep(action: "scroll", direction: direction.swipe.rawValue,
-                            maxSwipes: max(1, times), scrollFrame: try batchScrollFrame(raw))
+                            maxSwipes: max(1, times), lightSettle: raw["lightSettle"] as? Bool,
+                            scrollFrame: try batchScrollFrame(raw))
         let name = "scroll\(direction.rawValue.capitalized)"
         return (step, times > 1 ? "\(name) ×\(times)" : name)
     }
@@ -322,6 +325,7 @@ extension MCPServer {
                                             raw: [String: Any]) throws -> (step: FlowStep, summary: String) {
         let step = FlowStep(action: "scrollToEdge", direction: direction.swipe.rawValue,
                             maxSwipes: raw["maxSwipes"] as? Int ?? FlowStep.defaultMaxEdgeSwipes,
+                            lightSettle: raw["lightSettle"] as? Bool,
                             scrollFrame: try batchScrollFrame(raw))
         return (step, name)
     }

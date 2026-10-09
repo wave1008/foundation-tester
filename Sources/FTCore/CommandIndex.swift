@@ -152,7 +152,7 @@ public enum DSLCommandIndex {
               "clearInput(selector, waitSeconds:, scroll:, maxSwipes:) / clearInput()",
               "Empties an input field. type appends, so clear first to replace."
                   + " The selector form returns the element it grabbed, so assertions chain directly."),
-        .init("swipe", "operation", "swipe(.up / .down / .left / .right)",
+        .init("swipe", "operation", "swipe(.up / .down / .left / .right, lightSettle:)",
               "Swipes the whole screen. The direction is the finger motion, unlike the scroll commands."),
         .init("rotateTo", "operation",
               "rotateTo(.portrait / .landscape)",
@@ -200,32 +200,32 @@ public enum DSLCommandIndex {
         // MARK: scroll
         .init("scrollTo", "scroll",
               "scrollTo(selector, direction:, scrollFrame:, startMarginRatio:, endMarginRatio:,"
-                  + " containerInference:, maxSwipes:)",
+                  + " containerInference:, lightSettle:, maxSwipes:)",
               "Scrolls until the element is found. Does not tap it. Returns the element it found,"
                   + " so assertions chain directly."),
         .init("scrollDown", "scroll",
-              "scrollDown(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:)",
+              "scrollDown(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
               "Scrolls one screen further down the content."),
         .init("scrollUp", "scroll",
-              "scrollUp(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:)",
+              "scrollUp(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
               "Scrolls one screen back up the content."),
         .init("scrollRight", "scroll",
-              "scrollRight(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:)",
+              "scrollRight(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
               "Scrolls one screen further right in the content."),
         .init("scrollLeft", "scroll",
-              "scrollLeft(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:)",
+              "scrollLeft(scrollFrame:, startMarginRatio:, endMarginRatio:, repeat:, lightSettle:)",
               "Scrolls one screen back left in the content."),
         .init("scrollToBottom", "scroll",
-              "scrollToBottom(scrollFrame:, startMarginRatio:, endMarginRatio:, maxSwipes:)",
+              "scrollToBottom(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
               "Scrolls until the screen stops changing. maxSwipes only caps a runaway."),
         .init("scrollToTop", "scroll",
-              "scrollToTop(scrollFrame:, startMarginRatio:, endMarginRatio:, maxSwipes:)",
+              "scrollToTop(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
               "Scrolls back to the top edge."),
         .init("scrollToRightEdge", "scroll",
-              "scrollToRightEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, maxSwipes:)",
+              "scrollToRightEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
               "Scrolls to the right edge."),
         .init("scrollToLeftEdge", "scroll",
-              "scrollToLeftEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, maxSwipes:)",
+              "scrollToLeftEdge(scrollFrame:, startMarginRatio:, endMarginRatio:, lightSettle:, maxSwipes:)",
               "Scrolls to the left edge."),
         .init("withScrollDown", "scroll", "withScrollDown(scrollFrame:) { }",
               "Makes every command in the block search by scrolling down."),
@@ -245,39 +245,39 @@ public enum DSLCommandIndex {
 
         // MARK: flick
         .init("flickCenterToTop", "flick",
-              "flickCenterToTop(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "flickCenterToTop(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the center towards the top edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToBottom", "flick",
-              "flickCenterToBottom(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "flickCenterToBottom(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the center towards the bottom edge. durationSeconds is capped at "
                   + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToLeft", "flick",
-              "flickCenterToLeft(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "flickCenterToLeft(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the center towards the left edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickCenterToRight", "flick",
-              "flickCenterToRight(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:)",
+              "flickCenterToRight(scrollFrame:, durationSeconds:, maxGestureSeconds:, repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the center towards the right edge. durationSeconds is capped at "
                   + "10s by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickLeftToRight", "flick",
               "flickLeftToRight(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:)",
+                  + " repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the left edge to the right edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickRightToLeft", "flick",
               "flickRightToLeft(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:)",
+                  + " repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the right edge to the left edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickBottomToTop", "flick",
               "flickBottomToTop(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:)",
+                  + " repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the bottom edge to the top edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
         .init("flickTopToBottom", "flick",
               "flickTopToBottom(scrollFrame:, startMarginRatio:, durationSeconds:, maxGestureSeconds:,"
-                  + " repeat:, intervalSeconds:)",
+                  + " repeat:, intervalSeconds:, lightSettle:)",
               "One fast stroke from the top edge to the bottom edge. durationSeconds is capped at 10s "
                   + "by default — pass maxGestureSeconds: (up to 60) to allow longer."),
 

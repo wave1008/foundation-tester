@@ -681,6 +681,14 @@ public final class StepExecutor {
     /// プライマリ → フォールバック → 指紋照合(アクションのみ)
     public func execute(_ original: FlowStep,
                         fingerprint rawFingerprint: LocatorFingerprint? = nil) async -> StepOutcome {
+        // nil でも withValue で入れる = 外側のステップの上書きを持ち越さない
+        await LightSettleOverride.$current.withValue(original.lightSettle) {
+            await executeStep(original, fingerprint: rawFingerprint)
+        }
+    }
+
+    private func executeStep(_ original: FlowStep,
+                             fingerprint rawFingerprint: LocatorFingerprint?) async -> StepOutcome {
         // **`heal=false` は指紋照合(= 自己修復)を止める**。入口の1箇所で落とす ——
         // 下流の分岐ごとに見ると、修復の層を足した日に門の掛け忘れが起きる
         let fingerprint = healingEnabled ? rawFingerprint : nil

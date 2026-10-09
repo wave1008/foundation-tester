@@ -62,10 +62,17 @@ public final class BridgeClient: AppDriver, Sendable {
         set { mutable.withLock { $0.tokenReloader = newValue } }
     }
     /// リクエストに載せる値(簡易整定モードのときだけ `true`。それ以外はキーごと省略)。ランナーはタップ・ダブルタップ・長押しを
-    /// 既定で XCTest の待ち無しにし、スワイプ(スクロールを含む)は `fast: true` のときだけ待ちを飛ばす(QuiescenceWait.around の doc)。
+    /// 既定で XCTest の待ち無しにし、スワイプ(スクロールを含む)は `skipQuiescence: true` のときだけ待ちを飛ばす(QuiescenceWait.around の doc)。
     /// スワイプを既定で飛ばさないのは、慣性の終わりを木で見届けられず探索直後の位置がずれるため
     /// (E2E-RN S0090・E2E-iOS S0080/S0060。docs/performance-tuning.md §8)
-    private var skipQuiescenceFlag: Bool? { lightSettle ? true : nil }
+    private var skipQuiescenceFlag: Bool? {
+        Self.skipQuiescence(profileLightSettle: lightSettle, override: LightSettleOverride.current)
+    }
+
+    /// コマンドの `lightSettle:` 上書きがあればそれ、無ければプロファイル。false はキーごと省略(nil)
+    static func skipQuiescence(profileLightSettle: Bool, override: Bool?) -> Bool? {
+        (override ?? profileLightSettle) ? true : nil
+    }
 
     /// tap(ref:) が受け取った OKResponse.note(AppDriver.lastActionNote 参照)。
     /// tap(ref:) 呼び出しの冒頭で必ずクリアする(残ると別ステップに誤って付く)。

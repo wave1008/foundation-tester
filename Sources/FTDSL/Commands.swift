@@ -439,9 +439,13 @@ private func clearInputImpl(_ selector: FTSelector, waitSeconds: Double?,
     return FTElement(selector: selector, matched: result.element)
 }
 
+/// `lightSettle:` 省略 = 実行プロファイルの `iosLightSettle` に従う。true/false でこの1回だけ上書き。
+/// iOS の XCUITest 経路の /swipe だけに効く(Android・in-app では何もしない)。
+/// scroll* / flick* / scrollTo の `lightSettle:` も同じ。
 public func swipe(_ direction: FTSwipeDirection,
+                  lightSettle: Bool? = nil,
                   file: StaticString = #filePath, line: UInt = #line) {
-    let step = FlowStep(action: "swipe", direction: direction.rawValue)
+    let step = FlowStep(action: "swipe", direction: direction.rawValue, lightSettle: lightSettle)
     FTRuntime.requireCore(command: "swipe")
         .perform(step: step, description: "swipe \(direction.rawValue)", command: "swipe", file: file, line: line)
 }
@@ -810,10 +814,11 @@ public func flickCenterToTop(scrollFrame: String? = nil,
                              maxGestureSeconds: Double? = nil,
                              repeat times: Int = 1,
                              intervalSeconds: Double? = nil,
+                             lightSettle: Bool? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.centerToTop, scrollFrame: scrollFrame, startMarginRatio: nil,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -822,10 +827,11 @@ public func flickCenterToBottom(scrollFrame: String? = nil,
                                 maxGestureSeconds: Double? = nil,
                                 repeat times: Int = 1,
                                 intervalSeconds: Double? = nil,
+                                lightSettle: Bool? = nil,
                                 file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.centerToBottom, scrollFrame: scrollFrame, startMarginRatio: nil,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -834,10 +840,11 @@ public func flickCenterToLeft(scrollFrame: String? = nil,
                               maxGestureSeconds: Double? = nil,
                               repeat times: Int = 1,
                               intervalSeconds: Double? = nil,
+                              lightSettle: Bool? = nil,
                               file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.centerToLeft, scrollFrame: scrollFrame, startMarginRatio: nil,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -846,10 +853,11 @@ public func flickCenterToRight(scrollFrame: String? = nil,
                                maxGestureSeconds: Double? = nil,
                                repeat times: Int = 1,
                                intervalSeconds: Double? = nil,
+                               lightSettle: Bool? = nil,
                                file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.centerToRight, scrollFrame: scrollFrame, startMarginRatio: nil,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -861,10 +869,11 @@ public func flickLeftToRight(scrollFrame: String? = nil,
                              maxGestureSeconds: Double? = nil,
                              repeat times: Int = 1,
                              intervalSeconds: Double? = nil,
+                             lightSettle: Bool? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.leftToRight, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -874,10 +883,11 @@ public func flickRightToLeft(scrollFrame: String? = nil,
                              maxGestureSeconds: Double? = nil,
                              repeat times: Int = 1,
                              intervalSeconds: Double? = nil,
+                             lightSettle: Bool? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.rightToLeft, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -887,10 +897,11 @@ public func flickBottomToTop(scrollFrame: String? = nil,
                              maxGestureSeconds: Double? = nil,
                              repeat times: Int = 1,
                              intervalSeconds: Double? = nil,
+                             lightSettle: Bool? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.bottomToTop, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -900,10 +911,11 @@ public func flickTopToBottom(scrollFrame: String? = nil,
                              maxGestureSeconds: Double? = nil,
                              repeat times: Int = 1,
                              intervalSeconds: Double? = nil,
+                             lightSettle: Bool? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     flickImpl(.topToBottom, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
              durationSeconds: durationSeconds, maxGestureSeconds: maxGestureSeconds,
-             times: times, intervalSeconds: intervalSeconds,
+             lightSettle: lightSettle, times: times, intervalSeconds: intervalSeconds,
              file: file, line: line)
 }
 
@@ -916,7 +928,7 @@ private let flickCommandNames: [FlickKind: String] = [
 
 private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio: Double?,
                        durationSeconds: Double?, maxGestureSeconds: Double?,
-                       times: Int, intervalSeconds: Double?,
+                       lightSettle: Bool?, times: Int, intervalSeconds: Double?,
                        file: StaticString, line: UInt) {
     let name = flickCommandNames[kind] ?? "flick"
     let core = FTRuntime.requireCore(command: name)
@@ -924,6 +936,7 @@ private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio
                         maxSwipes: max(1, times),
                         duration: durationSeconds,
                         maxGestureSeconds: maxGestureSeconds,
+                        lightSettle: lightSettle,
                         scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
                         startMarginRatio: startMarginRatio,
                         intervalSeconds: intervalSeconds)
@@ -942,41 +955,47 @@ private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio
 public func scrollDown(scrollFrame: String? = nil,
                        startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                        repeat times: Int = 1,
+                       lightSettle: Bool? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     scrollImpl(.down, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
+               endMarginRatio: endMarginRatio, lightSettle: lightSettle, times: times, file: file, line: line)
 }
 
 public func scrollUp(scrollFrame: String? = nil,
                      startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                      repeat times: Int = 1,
+                     lightSettle: Bool? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
     scrollImpl(.up, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
+               endMarginRatio: endMarginRatio, lightSettle: lightSettle, times: times, file: file, line: line)
 }
 
 public func scrollRight(scrollFrame: String? = nil,
                         startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                         repeat times: Int = 1,
+                        lightSettle: Bool? = nil,
                         file: StaticString = #filePath, line: UInt = #line) {
     scrollImpl(.right, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
+               endMarginRatio: endMarginRatio, lightSettle: lightSettle, times: times, file: file, line: line)
 }
 
 public func scrollLeft(scrollFrame: String? = nil,
                        startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                        repeat times: Int = 1,
+                       lightSettle: Bool? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     scrollImpl(.left, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
+               endMarginRatio: endMarginRatio, lightSettle: lightSettle, times: times, file: file, line: line)
 }
 
 private func scrollImpl(_ direction: FTScrollDirection, scrollFrame: String?,
-                        startMarginRatio: Double?, endMarginRatio: Double?, times: Int,
+                        startMarginRatio: Double?, endMarginRatio: Double?,
+                        lightSettle: Bool?, times: Int,
                         file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "scroll\(direction.rawValue.capitalized)")
     let step = FlowStep(action: "scroll", direction: direction.swipe.rawValue,
                         maxSwipes: max(1, times),
+                        lightSettle: lightSettle,
                         scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
                         startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
     core.perform(step: step,
@@ -989,39 +1008,43 @@ private func scrollImpl(_ direction: FTScrollDirection, scrollFrame: String?,
 /// 到達しなかったときはステップに注記が付く)
 public func scrollToBottom(scrollFrame: String? = nil,
                            startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                           lightSettle: Bool? = nil,
                            maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                            file: StaticString = #filePath, line: UInt = #line) {
     scrollToEdgeImpl(.down, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
+                     endMarginRatio: endMarginRatio, lightSettle: lightSettle, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func scrollToTop(scrollFrame: String? = nil,
                         startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                        lightSettle: Bool? = nil,
                         maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                         file: StaticString = #filePath, line: UInt = #line) {
     scrollToEdgeImpl(.up, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
+                     endMarginRatio: endMarginRatio, lightSettle: lightSettle, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func scrollToRightEdge(scrollFrame: String? = nil,
                               startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                              lightSettle: Bool? = nil,
                               maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                               file: StaticString = #filePath, line: UInt = #line) {
     scrollToEdgeImpl(.right, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
+                     endMarginRatio: endMarginRatio, lightSettle: lightSettle, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func scrollToLeftEdge(scrollFrame: String? = nil,
                              startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                             lightSettle: Bool? = nil,
                              maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                              file: StaticString = #filePath, line: UInt = #line) {
     scrollToEdgeImpl(.left, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
-                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
+                     endMarginRatio: endMarginRatio, lightSettle: lightSettle, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func scrollToEdgeImpl(_ direction: FTScrollDirection, scrollFrame: String?,
                               startMarginRatio: Double?, endMarginRatio: Double?,
-                              maxSwipes: Int, file: StaticString, line: UInt) {
+                              lightSettle: Bool?, maxSwipes: Int, file: StaticString, line: UInt) {
     let names: [FTScrollDirection: String] = [
         .down: "scrollToBottom", .up: "scrollToTop",
         .right: "scrollToRightEdge", .left: "scrollToLeftEdge",
@@ -1029,6 +1052,7 @@ private func scrollToEdgeImpl(_ direction: FTScrollDirection, scrollFrame: Strin
     let core = FTRuntime.requireCore(command: names[direction] ?? "scrollToEdge")
     let step = FlowStep(action: "scrollToEdge", direction: direction.swipe.rawValue,
                         maxSwipes: maxSwipes,
+                        lightSettle: lightSettle,
                         scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
                         startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
     core.perform(step: step, description: names[direction] ?? "scrollToEdge",
@@ -1076,12 +1100,13 @@ public func scrollTo(_ selector: String, direction: FTScrollDirection = .down,
                      scrollFrame: String? = nil,
                      startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                      containerInference: Bool? = nil,
+                     lightSettle: Bool? = nil,
                      maxSwipes: Int? = nil,
                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     scrollToImpl(FTSelector.parse(selector), direction: direction, scrollFrame: scrollFrame,
                  startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio,
                  maxSwipes: maxSwipes, containerInference: containerInference,
-                 file: file, line: line)
+                 lightSettle: lightSettle, file: file, line: line)
 }
 
 @discardableResult
@@ -1089,23 +1114,26 @@ public func scrollTo(_ selector: Sel, direction: FTScrollDirection = .down,
                      scrollFrame: String? = nil,
                      startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                      containerInference: Bool? = nil,
+                     lightSettle: Bool? = nil,
                      maxSwipes: Int? = nil,
                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     scrollToImpl(selector.ftSelector, direction: direction, scrollFrame: scrollFrame,
                  startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio,
                  maxSwipes: maxSwipes, containerInference: containerInference,
-                 file: file, line: line)
+                 lightSettle: lightSettle, file: file, line: line)
 }
 
 private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection,
                           scrollFrame: String?, startMarginRatio: Double?,
                           endMarginRatio: Double?, maxSwipes: Int?, containerInference: Bool?,
+                          lightSettle: Bool?,
                           file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "scrollTo")
     let frame = core.effectiveScrollFrame(scrollFrame)
     let step = FlowStep(action: "scrollTo", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         direction: direction.swipe.rawValue, maxSwipes: maxSwipes ?? core.tunables.defaultMaxSwipes,
+                        lightSettle: lightSettle,
                         containerInference: core.effectiveContainerInference(containerInference),
                         scrollFrame: frame.map(FTSelector.parse)?.primary,
                         startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)

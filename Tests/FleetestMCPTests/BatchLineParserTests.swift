@@ -279,6 +279,26 @@ final class BatchLineParserTests: XCTestCase {
         }
     }
 
+    // MARK: - lightSettle:
+
+    func testScrollDownLightSettleReachesTheStep() throws {
+        let raw = try resolve(command: "scrollDown", line: "scrollDown lightSettle: true")
+        let (step, _) = try MCPServer.batchStepBuilders["scrollDown"]!.build(raw)
+        XCTAssertEqual(step.lightSettle, true)
+    }
+
+    func testSwipeAndScrollToLightSettleFalseReachesTheStep() throws {
+        let swipeRaw = try resolve(command: "swipe", line: "swipe .up lightSettle: false")
+        XCTAssertEqual(try MCPServer.batchStepBuilders["swipe"]!.build(swipeRaw).step.lightSettle, false)
+        let toRaw = try resolve(command: "scrollTo", line: "scrollTo '#x' lightSettle: false")
+        XCTAssertEqual(try MCPServer.batchStepBuilders["scrollTo"]!.build(toRaw).step.lightSettle, false)
+    }
+
+    func testLightSettleOmittedLeavesNil() throws {
+        let raw = try resolve(command: "scrollToBottom", line: "scrollToBottom")
+        XCTAssertNil(try MCPServer.batchStepBuilders["scrollToBottom"]!.build(raw).step.lightSettle)
+    }
+
     // MARK: - 未知のラベル(シグネチャにも無い)は別の文言で弾く
 
     func testUnknownLabelIsRejectedWithADifferentMessage() {
