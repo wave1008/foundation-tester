@@ -202,6 +202,20 @@ reset_authoring() {
   find "$PKG/TestProjects/$PKG_PROJECT/reports" -mindepth 1 -delete 2>/dev/null || true
 }
 
+# 1 run ぶんの盤面を作り直す(システムアプリ): 起動中の全シミュレータでアプリを終了し、保存された画面の状態
+# (`Library/Saved Application State/<bundle>.savedState`)を消す。**Apple マップは起動し直しても前回の経路の画面を
+# 元に戻す**ので、消さないと前の run(や保守者の手作業)の経路から始まり、検索する工程を測れない(2026-10-09 に実際に
+# そうなった)。どのシミュレータを使うかはエージェントが選ぶので全台に掛ける。データは消さない(履歴・地図の位置は残る)
+reset_saved_state() {
+  local bundle="$1" udid container
+  for udid in $(xcrun simctl list devices booted -j \
+      | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")).devices;for(const k in d)for(const x of d[k])if(x.state==="Booted")console.log(x.udid)'); do
+    xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
+    container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)" || continue
+    rm -rf "$container/Library/Saved Application State/$bundle.savedState"
+  done
+}
+
 EMPTY=0
 INDEX="$OUT/index.json"
 echo '{"baseVariant":"'"${VARIANT_NAMES[0]}"'","runs":[' > "$INDEX"
@@ -260,6 +274,8 @@ drop: や lastN: で刈り込んでから、もう一度呼んでください。
       transcript="$vdir/$id-$n.jsonl"
       final=""
       [ "$kind" != authoring ] || [ "$DRY_RUN" = 1 ] || reset_authoring "$fixture"
+      reset_bundle="$(task_field "$f" resetSavedState)"
+      [ -z "$reset_bundle" ] || [ "$DRY_RUN" = 1 ] || reset_saved_state "$reset_bundle"
       set -- claude -p "$prompt" \
         --output-format stream-json --verbose \
         --mcp-config "$vdir/mcp.json" --strict-mcp-config \
