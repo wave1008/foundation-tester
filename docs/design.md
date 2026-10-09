@@ -4086,8 +4086,9 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 うち4台は入力で戻った)。予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への
 影響はほぼゼロ。UI は「プロファイル」タブの実行プロファイル設定。
 
-`iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジの入力で quiescence 待ちを
-飛ばす**(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
+`iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジのタップ・ダブルタップ・長押し・スワイプ(スクロールを含む)で
+quiescence 待ちを飛ばす**(type と /drag は対象外。type はキーボード出現待ちを quiescence に頼るため。操作後の木の整定
+`captureSettled` は `fast` と無関係に残る)(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
 `fleetest run --profile <名> --set iosFastInput=true`)。動きの激しい画面では整定前タップのフレークリスクを伴うので
 オプトイン。計測値は docs/performance-tuning.md。**効くのは XCUITest ランナーだけ**
 (`Runner/FleetestRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが

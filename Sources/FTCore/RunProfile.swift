@@ -419,8 +419,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// と src/monitorModel.ts の RunProfileFormFields
     public var locale: String?
     /// iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。true で FT_FAST_INPUT=1 を
-    /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
-    /// 整定前タップのフレークリスクを伴う(既定 false)
+    /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。効くのはタップ・ダブルタップ・
+    /// 長押し・スワイプ(スクロール含む)だけで **type と /drag は対象外**(FastInput.swift)。操作後の木の整定
+    /// (captureSettled)は残る。動きの激しい画面では整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
     /// **interop WebView 画面の委譲イベント直前にランナーへ1回接続確認(木を1回読ませる)するか**(既定 true)。
     /// attach したままの XCUITest セッションは放置後の座標イベントを 200 のまま届け損なう

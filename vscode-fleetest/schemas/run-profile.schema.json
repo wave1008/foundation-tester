@@ -154,7 +154,7 @@
     },
     "iosFastInput": {
       "type": "boolean",
-      "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"
+      "description": "iOS xcuitest ブリッジの高速入力(タップ・ダブルタップ・長押し・スワイプの quiescence 待ちスキップ。テキスト入力・drag は対象外)。動きの激しい画面ではフレークリスクあり(既定 false)"
     },
     "homeOnStart": {
       "type": "boolean",

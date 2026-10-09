@@ -144,8 +144,8 @@ export const panelsStrings = {
     en: "Use the fast in-app engine (Simulator only)",
   },
   "panels.runProfile.iosFastInputLabel": {
-    ja: "高速入力を有効にする(アニメーションの完了を待たずに操作するため、テストが不安定になることがあります)",
-    en: "Enable fast input (acts without waiting for animations, which may make tests unstable)",
+    ja: "高速操作を有効にする(アプリからの処理・アニメーション完了の通知を待たずに操作するため、テストが不安定になることがあります)",
+    en: "Enable fast actions (acts without waiting for the app's idle and animation-complete notifications, which may make tests unstable)",
   },
   "panels.runProfile.iosPreActionPingLabel": {
     ja: "WebView画面は直前の接続確認(ランナーへの問い合わせ)を行い安定性を向上させる",
