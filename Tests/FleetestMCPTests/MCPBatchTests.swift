@@ -141,6 +141,43 @@ final class MCPBatchTests: XCTestCase {
         XCTAssertEqual(driver.calls, [], "弾いた手はドライバへ触れないこと")
     }
 
+    // MARK: - launch: / waitFor:(1回の呼び出しに詰める)
+
+    /// **launch: は ft_launch の本体を手より先に通す**(起動の記憶・下書きの起点が ft_launch と同じになる)
+    func testLaunchRunsFtLaunchBeforeTheSteps() async throws {
+        let text = body(try await server.call(tool: "ft_batch",
+                                              args: ["steps": "tap '#login_btn'", "launch": "com.example.app"]))
+        XCTAssertTrue(text.contains("0. launch com.example.app — ok"), text)
+        let launchAt = try XCTUnwrap(driver.calls.firstIndex(of: "launch(com.example.app)"), "\(driver.calls)")
+        let tapAt = try XCTUnwrap(driver.calls.firstIndex { $0.hasPrefix("tap(") }, "\(driver.calls)")
+        XCTAssertLessThan(launchAt, tapAt, "\(driver.calls)")
+        let draft = body(try await server.call(tool: "ft_draft_scenario", args: [:]))
+        XCTAssertTrue(draft.contains("@TestClass(app: \"com.example.app\""), draft)
+    }
+
+    /// **起動し直す前に読んだ ref は使わせない**(起動後の画面に同じ ref は無い)。デバイスに触る前に断る
+    func testLaunchWithAFirstStepRefIsRefusedBeforeTouchingTheDevice() async {
+        do {
+            _ = try await server.call(tool: "ft_batch", args: ["steps": "tap ref: 1", "launch": "com.example.app"])
+            XCTFail("launch: と1手目の ref の併用が通った")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("before the relaunch"), error.localizedDescription)
+        }
+        XCTAssertFalse(driver.calls.contains("launch(com.example.app)"), "\(driver.calls)")
+    }
+
+    /// **waitFor: は最後の画面を読む前に待ち、出たか出なかったかを言う**(出なくても失敗にはしない = 他のツールの waitFor と同じ)
+    func testWaitForReportsWhetherTheSelectorAppeared() async throws {
+        let found = body(try await server.call(tool: "ft_batch",
+                                               args: ["steps": "tap '#login_btn'", "waitFor": "#login_btn"]))
+        XCTAssertTrue(found.contains("waitFor \"#login_btn\" appeared."), found)
+        let missing = body(try await server.call(tool: "ft_batch",
+                                                 args: ["steps": "tap '#login_btn'", "waitFor": "#no_such_id",
+                                                        "waitSeconds": 0.2]))
+        XCTAssertTrue(missing.contains("waitFor \"#no_such_id\" did not appear"), missing)
+        XCTAssertTrue(missing.contains("All 1 step(s) passed."), missing)
+    }
+
     /// **検証は実行より前に全手へ通す**。他の拒否テストは1手目が不正なので、検証を実行ループの
     /// 中へ移す変更を通してしまう —— その形だと**前半の手だけがデバイスに残る**(やり直せば
     /// 二重に押されるし、探索の前提も崩れる)。ここでは有効な手の後ろに不正な手を置く

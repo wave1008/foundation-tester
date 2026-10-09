@@ -22,7 +22,7 @@ extension MCPServer {
     /// app カテゴリ(ライフサイクル・破壊的)を弾いたときの具体的な代替。
     /// 「なぜ弾いたか + 代わりに何を呼ぶか」(CLAUDE.md の例: launchApp → ft_launch)
     private static let batchAppCommandAlternatives: [String: String] = [
-        "launchApp": "call ft_launch first, then batch the operations that follow it",
+        "launchApp": "pass launch: <bundle ID> to ft_batch instead (it runs ft_launch before the steps)",
         "openURL": "call ft_open_url instead",
         "restartApp": "call ft_terminate then ft_launch instead — there is no restart tool",
         "terminateApp": "call ft_terminate instead",
@@ -568,6 +568,30 @@ extension MCPServer {
             }
         }
 
+        // **launch: は ft_launch の本体をそのまま通す**(門・起動の記憶・下書きの起点を2つ持たない)。
+        // 起動し直した後の画面に、起動前に読んだ ref は残らないので、1手目の ref は断る
+        var lines: [String] = []
+        let clock = ContinuousClock()
+        if let launchBundle = args["launch"] as? String {
+            if plans[0].pendingRef != nil {
+                throw MCPError("step 1: a ref comes from the screen before the relaunch, which launch:"
+                    + " replaces — write the first step with a selector (give it waitSeconds: if the"
+                    + " first screen takes a while)")
+            }
+            var launchArgs = args
+            for key in ["steps", "launch", "waitFor", "waitSeconds", "snapshotAfter", "resume"] {
+                launchArgs[key] = nil
+            }
+            launchArgs["bundleId"] = launchBundle
+            let start = clock.now
+            do {
+                _ = try await ftLaunch(launchArgs)
+            } catch {
+                throw MCPError("launch \(launchBundle) failed — no step was run: \(error.localizedDescription)")
+            }
+            lines.append("0. launch \(launchBundle) — ok (\(Int((clock.now - start) / .milliseconds(1)))ms)")
+        }
+
         let batchDriver = try await driver(args)
         // **手が動く前の起点**(settle-lite の beforeAction と同じ役目)。ループ中は recordSnapshot
         // を呼ばない(呼ぶのは失敗時の throw 直前と成功時の末尾だけ)ので、ここで捕まえておけば
@@ -576,7 +600,6 @@ extension MCPServer {
         let (isAndroid, uiFrameworkHint) = await resolveExecutorHints(batchDriver, args: args)
         let executor = StepExecutor(driver: batchDriver, releasesScrollTouch: !isAndroid,
                                     isAndroid: isAndroid, tunables: RunTunables(), uiFramework: uiFrameworkHint)
-        let clock = ContinuousClock()
 
         // **1手目の ref はここで初めて解決する**(driver が要る: RefGuard の再照合と
         // SelectorNaming の一意性検査)。それでも実行ループの前 —— 「全手を実行前に検証する」を
@@ -590,7 +613,6 @@ extension MCPServer {
             refResolutionNote = resolved.note
         }
 
-        var lines: [String] = []
         for (index, plan) in plans.enumerated() {
             let start = clock.now
             let outcome = await executor.execute(plan.step)
@@ -642,6 +664,22 @@ extension MCPServer {
             }
             okLine += refNote
             lines.append(okLine)
+        }
+        // **waitFor は「変化なし」の撮り直しの代わり**(snapshotAfter と同じ = 待つ理由が同じなので両方は二重に待つだけ)
+        if let waitFor = args["waitFor"] as? String {
+            let seconds = try Self.doubleArgument(args, "waitSeconds") ?? Self.defaultWaitSeconds
+            let first = try await freshSnapshot(batchDriver, args: args)
+            let waited = try await Self.waitFor(waitFor, driver: batchDriver, first: first, seconds: seconds,
+                                                elementLimit: try pollElementLimit(args))
+            let final = waited.refetched ? adoptSnapshot(waited.snapshot, args: args) : waited.snapshot
+            recordSnapshot(final, batchDriver is AndroidDriver ? "android" : "ios", args)
+            let waitNote = waited.found ? "waitFor \"\(waitFor)\" appeared.\n"
+                : "waitFor \"\(waitFor)\" did not appear within \(Self.secondsText(seconds))"
+                    + Self.waitTimeoutRemedy + " — this is the screen as it is now"
+                    + Self.truncationHint(final) + Self.notationHint(waitFor, in: final)
+                    + Self.similarLabelsHint(waitFor, in: final) + "\n"
+            return text(lines.joined(separator: "\n") + "\n\nAll \(plans.count) step(s) passed.\n\n"
+                + waitNote + (await snapshotBody(final, driver: batchDriver, args: args)))
         }
         let (unchangedNote, final) = try await Self.batchUnchangedNote(
             beforeBatch: beforeBatch, final: try await freshSnapshot(batchDriver, args: args),

@@ -89,7 +89,7 @@ public enum ArgumentBounds {
     /// 呼び手ごとに「省略時の既定」が違う(フォーカス中の欄・セッションが繋がっているアプリ等)ので、
     /// ここで断るのは「明示したのに空」だけ
     public static let mustNotBeEmpty: Set<String> = [
-        "bundleId", "bundle", "url", "packagePath", "path", "id", "selector", "steps",
+        "bundleId", "bundle", "launch", "url", "packagePath", "path", "id", "selector", "steps",
         "label", "classifier", "name", "profile", "runner", "query", "since", "runId",
     ]
 

@@ -331,6 +331,15 @@ extension MCPServer {
             "steps": ["type": "string",
                       "description": "Up to \(batchStepLimit) DSL lines separated by ';' or newlines, "
                         + "e.g. \"tap ref: 12; type '#field' 'batch'\""],
+            "launch": ["type": "string",
+                       "description": "bundle ID / package to (re)launch before the steps, as ft_launch does "
+                        + "(saves a call). The first step then needs a selector, not a ref; give it "
+                        + "waitSeconds: if the first screen takes a while"],
+            "waitFor": ["type": "string",
+                        "description": "Selector to wait for before reading the final screen (a result "
+                         + "that loads after the last step)"],
+            "waitSeconds": ["type": "number",
+                            "description": "Max wait for waitFor (default \(number(defaultWaitSeconds)))"],
         ], extra: foldingProperties, required: ["steps"]),
         tool("ft_rotate", "Rotate the device and return the settled tree in the new orientation (new "
             + "coordinates; earlier refs no longer resolve; a note says if settling was not confirmed). "
