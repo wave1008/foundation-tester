@@ -1,5 +1,6 @@
 // QuiescenceWait.swift
-// XCUITest が操作の前後に行う暗黙の quiescence 待ち(アプリのアイドル + アニメーション整定)の扱い。
+// XCUITest が操作の前後に行う暗黙の quiescence 待ち(アプリからのアイドル・アニメーション完了の通知を待つ。XCTest の用語)の扱い。
+// **fleetest の「整定」(ホストが木の比較で見る)とは別物** —— ここで待ちを飛ばしても整定はホストが行う。
 // XCUIApplicationProcess の private メソッドを swizzle し、`skipping` が true の間は元実装を呼ばず即 return、
 // それ以外は上限を縮めて元実装を呼ぶ(cappedWait)。
 // - private API 依存: セレクタは Xcode バージョンで変わりうるため候補を全て試し、1つも
@@ -150,18 +151,19 @@ enum QuiescenceWait {
             ? "\(Int(quiescenceCapSeconds))s" : "unavailable (XCTest's own limit applies)")
     }
 
-    /// リクエスト単位の一時有効化(available でなければ何もしない)。`skipByDefault` はリクエストが `fast` を言わないときの既定:
+    /// リクエスト単位の一時有効化(available でなければ何もしない)。`skipByDefault` はリクエストが `skipQuiescence` を言わないときの既定:
     /// **タップ・ダブルタップ・長押しは true**(待ちを飛ばし、整定は木の観察 = captureSettled が担う)/
     /// **スワイプ(スクロールを含む)は false**(待ちを残す。慣性の終わりを木では見届けられず、RN の横スクロール E2E-RN S0090 が
     /// 6 回中 4 回落ちた —— 探索が対象を見つけて止まった後も慣性で流れて画面外へ出る。タップ系は 4 SUT で退行無し。
-    /// 実測と経緯は docs/performance-tuning.md §8)。`skipQuiescence: true`(簡易整定モード iosLightSettle=true)はどちらも飛ばす
+    /// 実測と経緯は docs/performance-tuning.md §8)。`skipQuiescence: true` はどちらも飛ばす(ホストは簡易整定モード = iosLightSettle / DSL の `lightSettle:` のときにこれを送る。
+    /// 簡易整定モード = 整定を木の比較だけに任せるモードで、そのために XCTest の待ちを外すのがこの欄)
     static func around<T>(_ skipQuiescence: Bool?, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
         guard available, skipQuiescence ?? skipByDefault else {
             capArmed = true
             defer { capArmed = false }
             return try body()
         }
-        // 検証用(簡易整定モードの発火確認)。タップ系は既定で毎回ここを通るので、明示の skipQuiescence: true のときだけ出す
+        // 検証用(簡易整定モードでホストが skipQuiescence: true を送ったことの確認)。タップ系は既定で毎回ここを通るので、明示の skipQuiescence: true のときだけ出す
         if skipQuiescence == true { NSLog("[fleetest] QuiescenceWait: skipping (light settle)") }
         skipping = true
         defer { skipping = false }

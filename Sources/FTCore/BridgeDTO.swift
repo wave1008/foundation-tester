@@ -1031,7 +1031,8 @@ public struct TapRequest: Codable {
     public var ref: Int?
     public var x: Double?
     public var y: Double?
-    /// true = この操作の quiescence 待ちを飛ばす(簡易整定モード)。nil = ランナーの既定(タップ・ダブルタップ・長押しは
+    /// true = この操作の XCTest の quiescence 待ち(完了通知の待ち。fleetest の整定 = 木の比較とは別物)を飛ばす。
+    /// ホストは簡易整定モード(iosLightSettle / DSL の `lightSettle:`)のときに送る。nil = ランナーの既定(タップ・ダブルタップ・長押しは
     /// 飛ばす・スワイプは待つ。QuiescenceWait.around)。省略可能な追加フィールドは bridgeProtocolVersion を据え置く方針
     /// (旧ランナーは無視して通常動作・旧ホストは未指定。bump すると稼働中の旧ホスト常駐プロセスが新ランナーを stale 判定して
     /// 再起動ループに入るため、追加フィールドでは上げない。欄の改名は別 = 版を上げる)

@@ -4095,7 +4095,8 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`QuiescenceWait.quiescenceCapSeconds`)。
 **簡易整定モード** `iosLightSettle`(既定 false)を true にすると**スワイプの待ちも飛ばす**(type と /drag は対象外。type はキーボード出現待ちを
 quiescence に頼るため)(`FT_IOS_LIGHT_SETTLE=1` を実行環境へ注入し、`BridgeClient.lightSettle` が受ける。CLI は
-`fleetest run --profile <名> --set iosLightSettle=true`)。慣性のあるスクロールの直後の操作がずれうるのでオプトイン。
+`fleetest run --profile <名> --set iosLightSettle=true`)。DSL のスワイプ・スクロール系コマンドの `lightSettle:` で1回ずつ上書きできる(`FlowStep.lightSettle` → `StepExecutor.execute` が TaskLocal `LightSettleOverride` に載せる)。慣性のあるスクロールの直後の操作がずれうるのでオプトイン。
+**quiescence(XCTest の完了通知の待ち)と fleetest の整定(木の比較)は別物** —— 簡易整定モードでも整定はホストが木で行い、外すのは XCTest の待ちだけ。
 計測値は docs/performance-tuning.md §8。**効くのは XCUITest ランナーだけ**
 (`Runner/FleetestRunnerUITests/QuiescenceWait.swift`。リクエストの `skipQuiescence` は in-app ブリッジにも送られるが
 あちらは解釈しない = quiescence の概念が無いため)。
