@@ -10,6 +10,7 @@ private enum Tab { case home, controls, about }
 struct FTE2EIOSApp: App {
     init() {
         LaunchCounter.shared.ensureCounted()
+        RenderProbe.startIfRequested()
     }
 
     var body: some Scene {
