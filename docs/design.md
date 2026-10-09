@@ -4086,11 +4086,13 @@ Android 実機はグローバル設定が**永続的に**書き換わるので�
 うち4台は入力で戻った)。予防として1回だけ入力を入れる。**デバイスあたり1回**なので実行時間への
 影響はほぼゼロ。UI は「プロファイル」タブの実行プロファイル設定。
 
-`iosFastInput`(既定 false)を true にすると **iOS xcuitest ブリッジのタップ・ダブルタップ・長押し・スワイプ(スクロールを含む)で
-quiescence 待ちを飛ばす**(type と /drag は対象外。type はキーボード出現待ちを quiescence に頼るため。操作後の木の整定
-`captureSettled` は `fast` と無関係に残る)(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
-`fleetest run --profile <名> --set iosFastInput=true`)。動きの激しい画面では整定前タップのフレークリスクを伴うので
-オプトイン。計測値は docs/performance-tuning.md。**効くのは XCUITest ランナーだけ**
+**XCUITest ランナーはタップ・ダブルタップ・長押しの前の quiescence 待ちを既定で飛ばし、整定は木の観察で行う**(操作後の
+`captureSettled`。ユーザー決定。4 SUT の A/B で退行無し)。**スワイプ(スクロールを含む)は待ちを残す**(慣性の終わりを木では
+見届けられない = E2E-RN S0090 が 6 回中 4 回落ちた)が、操作の間は待ちの上限を 6 秒に縮める(`FastInput.quiescenceCapSeconds`)。
+`iosFastInput`(既定 false)を true にすると**スワイプの待ちも飛ばす**(type と /drag は対象外。type はキーボード出現待ちを
+quiescence に頼るため)(`FT_FAST_INPUT=1` を実行環境へ注入し、`BridgeClient.fastInput` が受ける。CLI は
+`fleetest run --profile <名> --set iosFastInput=true`)。慣性のあるスクロールの直後の操作がずれうるのでオプトイン。
+計測値は docs/performance-tuning.md §8。**効くのは XCUITest ランナーだけ**
 (`Runner/FleetestRunnerUITests/FastInput.swift`。`fast` は in-app ブリッジにも送られるが
 あちらは解釈しない = quiescence の概念が無いため)。
 

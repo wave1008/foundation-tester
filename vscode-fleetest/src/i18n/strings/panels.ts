@@ -144,8 +144,8 @@ export const panelsStrings = {
     en: "Use the fast in-app engine (Simulator only)",
   },
   "panels.runProfile.iosFastInputLabel": {
-    ja: "高速操作を有効にする(アプリからの処理・アニメーション完了の通知を待たずに操作するため、テストが不安定になることがあります)",
-    en: "Enable fast actions (acts without waiting for the app's idle and animation-complete notifications, which may make tests unstable)",
+    ja: "スワイプ・スクロールでもアプリからの完了の通知を待たない(速くなりますが、慣性のあるスクロールの直後の操作がずれることがあります。タップ・長押しは常に待ちません)",
+    en: "Do not wait for the app's completion notifications on swipes and scrolls either (faster, but an action right after a scroll with momentum can land in the wrong place; taps and long presses never wait)",
   },
   "panels.runProfile.iosPreActionPingLabel": {
     ja: "WebView画面は直前の接続確認(ランナーへの問い合わせ)を行い安定性を向上させる",

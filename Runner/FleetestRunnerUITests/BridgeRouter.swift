@@ -686,7 +686,7 @@ final class BridgeRouter {
         FastInput.resetTiming()
         _ = FastInput.takeCapNote()  // 前の操作の数え残しを捨てる(応答の注記はこの操作の分だけ)
         let start = DispatchTime.now()
-        try FastInput.with(req.fast) {
+        try FastInput.with(req.fast, skipByDefault: true) {
             coordinate(app, point).tap()
         }
         let totalMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
@@ -927,7 +927,7 @@ final class BridgeRouter {
             return .json(OKResponse())
         }
         _ = FastInput.takeCapNote()
-        try FastInput.with(req.fast) {
+        try FastInput.with(req.fast, skipByDefault: true) {
             coordinate(app, point).doubleTap()
         }
         return .json(OKResponse(note: FastInput.takeCapNote()))
@@ -1115,7 +1115,7 @@ final class BridgeRouter {
         let app = try requireForegroundAppForGesture()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         _ = FastInput.takeCapNote()
-        try FastInput.with(req.fast) {
+        try FastInput.with(req.fast, skipByDefault: true) {
             coordinate(app, point).press(forDuration: req.duration)
         }
         return .json(OKResponse(note: FastInput.takeCapNote()))

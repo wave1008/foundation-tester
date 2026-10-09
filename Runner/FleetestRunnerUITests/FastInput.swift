@@ -7,12 +7,12 @@
 // - enabled はリクエスト処理(main queue 直列。BridgeHTTPServer 参照)からのみ触ること。
 // - 注意: type(typeText)には適用しない。キーボード出現待ちを quiescence に依存しているため
 //   (BridgeRouter.handleType のコメント参照)、スキップすると入力欠落の実害が出る。
-// - **飛ばさない回(既定)も、操作(FastInput.with の中 = タップ・長押し・スワイプ・ドラッグ)の間だけ待ちの上限を
+// - **タップ・ダブルタップ・長押しは既定で待ちを飛ばす**(FastInput.with の skipByDefault)。/drag(handleDrag)は FastInput を通らない
+// - **飛ばさない回(スワイプ = スクロールを含む)も、操作(FastInput.with の中)の間だけ待ちの上限を
 //   `quiescenceCapSeconds` に縮める**(cappedWait)。起動・前面化・入力の中の待ちは縮めない —— activate の中の待ちを
 //   切ると前面化そのものが完了せずホストが 45s で時間切れになった(実測)。XCTest の上限は
 //   全体で共有の `_XCTApplicationStateTimeout()`(既定 60s。起動・前面化・終了・URL も同じ値を使う)なので、
-//   待ちの直前だけ `_XCTSetApplicationStateTimeout` で差し替えて戻す(WDA と同じ形)。待ち自体を飛ばす案は
-//   判定できていない(docs/performance-tuning.md §8)ので、XCTest の完了の知らせは使い続ける
+//   待ちの直前だけ `_XCTSetApplicationStateTimeout` で差し替えて戻す(WDA と同じ形)
 
 import Foundation
 import ObjectiveC
@@ -150,9 +150,13 @@ enum FastInput {
             ? "\(Int(quiescenceCapSeconds))s" : "unavailable (XCTest's own limit applies)")
     }
 
-    /// リクエスト単位の一時有効化(available でなければ何もしない)
-    static func with<T>(_ fast: Bool?, _ body: () throws -> T) rethrows -> T {
-        guard available, fast == true else {
+    /// リクエスト単位の一時有効化(available でなければ何もしない)。`skipByDefault` はリクエストが `fast` を言わないときの既定:
+    /// **タップ・ダブルタップ・長押しは true**(待ちを飛ばし、整定は木の観察 = captureSettled が担う)/
+    /// **スワイプ(スクロールを含む)は false**(待ちを残す。慣性の終わりを木では見届けられず、RN の横スクロール E2E-RN S0090 が
+    /// 6 回中 4 回落ちた —— 探索が対象を見つけて止まった後も慣性で流れて画面外へ出る。タップ系は 4 SUT で退行無し。
+    /// 実測と経緯は docs/performance-tuning.md §8)。`fast: true`(iosFastInput=true)はどちらも飛ばす
+    static func with<T>(_ fast: Bool?, skipByDefault: Bool = false, _ body: () throws -> T) rethrows -> T {
+        guard available, fast ?? skipByDefault else {
             capArmed = true
             defer { capArmed = false }
             return try body()
