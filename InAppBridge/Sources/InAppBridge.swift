@@ -583,6 +583,8 @@ final class FTInAppBridge {
         // メインに入る前に読む(初回は裏の計算を錠で待つので、メインを塞がない)
         let retriesUnfiredActivate = AppUIFramework(rawValue: uiFramework)?.retriesUnfiredActivate ?? true
         let selfRendered = AppUIFramework(rawValue: uiFramework)?.isSelfRendered ?? false
+        // 不明は false(活性化の点の判定を黙る側)
+        let activationPointMarksHitArea = AppUIFramework(rawValue: uiFramework)?.activationPointMarksHitArea ?? false
 
         func finish(_ window: UIWindow) {
             InAppSettle.waitOnMain { converged in
@@ -645,6 +647,7 @@ final class FTInAppBridge {
                 adoptFreshFrame(fresh)
                 let miss = Self.hitAreaMiss(node: fresh.node,
                                             at: CGPoint(x: fresh.frame.midX, y: fresh.frame.midY))
+                    ?? (activationPointMarksHitArea ? Self.activationPointMiss(node: fresh.node) : nil)
                 if fresh.node.accessibilityActivate() {
                     hitAreaMiss = miss
                     note = "activate did not fire -> re-fetched the element and retried"
@@ -679,7 +682,10 @@ final class FTInAppBridge {
             let window = Self.window(of: node) ?? Self.frontmostTouchableWindow(keyWindow: keyWindow)
             targetNode = node
             // **撃つ前に**判定する(activate が画面を動かした後の hitTest は別の画面を見る)
-            let miss = self.frames[ref].flatMap { Self.hitAreaMiss(node: node, at: CGPoint(x: $0.midX, y: $0.midY)) }
+            let miss = self.frames[ref].flatMap {
+                Self.hitAreaMiss(node: node, at: CGPoint(x: $0.midX, y: $0.midY))
+                    ?? (activationPointMarksHitArea ? Self.activationPointMiss(node: node) : nil)
+            }
             if node.accessibilityActivate() {
                 hitAreaMiss = miss
                 finish(window)
@@ -816,6 +822,21 @@ final class FTInAppBridge {
               !reaches(hit, anchor: anchor) else { return nil }
         return TapHitAreaMiss(x: Double(point.x), y: Double(point.y),
                               receiver: String(describing: type(of: hit)))
+    }
+
+    /// `TapHitAreaMiss.Kind.activationPoint` を、activate で撃つ回だけ求める(合成タッチは枠の中心を押すので無関係)。
+    /// 幾何は `TapHitAreaMiss.activationPointMiss`(FTCore の純粋関数)。**UIView の要素は対象外**(hitTest が答える・
+    /// 活性化の点が中心に無いのが正常な部品がある)。呼び手は `activationPointMarksHitArea` で門を掛ける。
+    /// **枠も今の `accessibilityFrame` を読む**(保持している枠 = スナップショットの時刻と比べると、動いている要素
+    /// = 滑り込むスナックバーで時刻のずれだけ点が外れて見えた。E2EX-iOS で 6pt の誤検知)
+    private static func activationPointMiss(node: NSObject) -> TapHitAreaMiss? {
+        guard !(node is UIView) else { return nil }
+        let point = node.accessibilityActivationPoint
+        let frame = node.accessibilityFrame
+        return TapHitAreaMiss.activationPointMiss(
+            activationX: Double(point.x), activationY: Double(point.y),
+            frameX: Double(frame.minX), frameY: Double(frame.minY),
+            width: Double(frame.width), height: Double(frame.height))
     }
 
     /// node から辿れる最も近い UIView。AX 専用ノード(SwiftUI 等)は accessibilityContainer を

@@ -348,6 +348,12 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// **率が上がったら in-app では緑・XCUITest では赤になる操作が増えている**(docs/maintainer-notes.md §76.1)
     case inAppTapOutsideHitArea = "inapp-tap-outside-hit-area"
 
+    /// in-app が UIView でない AX 要素(SwiftUI 等)を activate で撃ったが、その活性化の点が枠の中心
+    /// (座標タップ・XCUITest が押す点)と違った(ブリッジの事実 `TapHitAreaMiss.Kind.activationPoint` を写すだけ)。
+    /// 典型は文字の部分しか押せない SwiftUI の `.plain` の Button(`.contentShape` 抜け)だが、**原因は推測しない**。
+    /// 判定は変えない。**率が上がったら in-app では緑・XCUITest では赤になる操作が増えている**(maintainer-notes §77)
+    case inAppActivationPointOffCentre = "inapp-activation-point-off-centre"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
@@ -474,6 +480,9 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
         case .inAppTapOutsideHitArea:
             return "in-app operated the element directly, but a real touch at the centre of its frame"
                 + " lands on another view"
+        case .inAppActivationPointOffCentre:
+            return "in-app activated the element at its activation point, which is not the centre of its"
+                + " frame that a coordinate tap presses"
         case .memoKeyNotFound:
             return "nothing was written under this key on this device in this run (the memo is per device)"
         case .unchangedTapBeforeFailure:

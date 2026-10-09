@@ -4140,13 +4140,25 @@ in-app ブリッジに一時的な測定口を足した worktree で測った(�
 - **採ったのは (a) だけ**。(c) はどの例でも割れない(isHittable は activation point と AX の当たり判定を見る。ランナーのタップは枠の中心を座標で押すので、
   isHittable が true でも外れる)。(b) は UIKit の例で割れたが (a) と同じ情報
 - **SwiftUI で割れたのは `accessibilityActivationPoint` だけ**(直す前は文字の上 = 中心から 122〜158pt、直した後は中心と 0.0pt で一致)。
-  ただし当たり判定そのものではなく、直した SUT でもボタン以外で 5 件ずれた(UIStepper 138pt・textView 168pt・文中リンクの staticText 41pt・
-  UIPageControl 2.5pt・activation point が `(inf, inf)` のメニューボタン)。避けるには型で絞るか閾値を置く必要があり、根拠のない絞り込みになるので
-  **入れていない**(入れるなら全 SUT と実アプリでずれの分布を数えてから)
+  v159 では見送り、v160 で `inapp-activation-point-off-centre` として入れた。決める前に iOS の 12 SUT の全画面(ホーム + 各画面の
+  上端と1回送った位置)で全要素の活性化の点を採った(直した形 7615 要素):
+  - **RN は使えない**: UIView でない文字の要素(`RCTAccessibilityElement`)の点が、押せる範囲と無関係に 12〜587pt ずれる
+    (E2E-RN 97/97・E2EX-RN 265/319・E2EY-RN 114/148)→ `AppUIFramework.activationPointMarksHitArea` を SwiftUI / UIKit だけ true
+  - **CMP・Flutter は常に中心**(1 画素を超えるずれ 0 件)= 情報が無い
+  - **1 画素の閾値は使えない**: SwiftUI の Toggle が 1.0pt ずれる(E2E-iOS の3件)。UIView の部品(UIStepper 138pt・UITextView 168〜180pt・
+    UIPageControl 2.5pt)は活性化の点が中心に無いのが正常 → UIView の要素は対象外(hitTest が答える)
+  - **採った規則(定数なし)**: 押せる範囲は活性化の点を中心とし枠に収まる、という前提から「その点を中心に枠へ収まる最大の範囲が
+    枠の中心に届かない」= 点が枠の外側 4 分の 1 にあるときだけ言う(`TapHitAreaMiss.activationPointMiss`)。直した SwiftUI の3 SUT
+    (1209 要素)で発火 0(Toggle・文中リンク 41pt は出ない)、直す前の E2EY-iOS で壊れた行 40 本が全部発火(読み込み 17・スワイプ 6・シート 17)
+  - 有限でない点(`(inf, inf)` のメニューボタン)・枠の外の点は判定不能 = 黙る
+  - **枠と点は同じ時刻で比べる**: 最初は保持している枠(スナップショットの時刻)と撃つ瞬間の点を比べていて、E2EX-iOS の
+    スナックバー(下から滑り込むアニメの途中)の「元に戻す」で 6pt の時刻ずれを外れと読んだ(誤検知)。枠も撃つ瞬間の
+    `accessibilityFrame` を読む
 - **Flutter は判定できない**。加えて、直す前の形でも in-app の ref タップは activate が効かず合成タッチになり、既存の注記(画面が変わらなかった)が
   既に出る = 「in-app だけ緑」の例ではなかった
 - **陽性対照で分かったこと**: UIKit の「最新へ」は activate が効かず、**合成タッチ**で届いていた。合成タッチ(`FTSynthTap`)は要素が載っている窓へ
   直接送るので手前の窓を素通りする。判定を activate の回だけにすると取りこぼすので、合成タッチの回もその点で判定する
 - 誤検知の当たり(直した E2EY-iOS 13 画面・E2EX-iOS 26 画面の全要素で (a) を採った): 発火は 1 件 = 引き伸ばせるシートの `row_main_08`
   (中心で当たるのはシートの `_UIGrabber`)。本物の指でもシートに当たるので事実として正しい
-- 実アプリのコーパス(Tests/Fixtures/RealAppSnapshots/)は木だけなので当てられない。**この検知はデバイス実行でのみ確かめた**
+- 実アプリのコーパス(Tests/Fixtures/RealAppSnapshots/)は木だけ(活性化の点が無い)なので当てられない。手元に SwiftUI の実アプリも無い。
+  **この2つの検知はデバイス実行と自前の SUT でのみ確かめた**

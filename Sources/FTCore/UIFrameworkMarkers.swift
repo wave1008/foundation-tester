@@ -40,6 +40,14 @@ public enum AppUIFramework: String, Codable, Sendable, CaseIterable {
     /// UIViewRepresentable の UIKit 部品)は合成タッチが効き、XCUITest へ回すとランナーが「アラートが手前」で
     /// 断るので対象外(E2E-iOS / E2EX-iOS のダイアログで退行した)。UIKit・RN・自前描画も対象外
     public func rejectsSyntheticTap(nodeIsView: Bool) -> Bool { self == .swiftUI && !nodeIsView }
+
+    /// UIView でない a11y 要素の `accessibilityActivationPoint` が「押せる範囲の中心」を表すか
+    /// (`TapHitAreaMiss.activationPointMiss` を使ってよいか)。**SwiftUI / UIKit だけ**: SwiftUI は content shape の
+    /// 中心を返す(直した E2E/E2EX/E2EY-iOS の 1209 要素で発火 0・直す前の `.plain` の行 40 本で全部発火)。
+    /// **RN は false** —— `RCTAccessibilityElement`(文字)の点は押せる範囲と無関係に 12〜587pt ずれ、
+    /// 直した SUT の 252/564 要素で発火した。自前描画は点が常に中心で情報が無い。新しい語彙は false(黙る側)
+    /// (maintainer-notes §77)
+    public var activationPointMarksHitArea: Bool { self == .swiftUI || self == .uikit }
 }
 
 /// in-app の contentOffset 経路が、指の払いの終わりを知らせる delegate 通知(WillBeginDragging /

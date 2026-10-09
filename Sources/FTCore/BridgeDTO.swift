@@ -44,7 +44,7 @@ public enum BridgeAPI {
     /// - ソースの分割・コメントだけの変更は指紋の貼り替えだけでよい(版は据え置き)
     /// - **撤去した版の番号は再利用しない**(37・48 は欠番): その版が稼働中の環境を確実に入れ替えるため
     /// 各版で何を変えたかは `git log -L '/bridgeProtocolVersion =/,+1:Sources/FTCore/BridgeDTO.swift'` で引く
-    public static let bridgeProtocolVersion = 159
+    public static let bridgeProtocolVersion = 160
 
     /// **ホームボタンの iPhone か**(画面の寸法だけで決まる純粋判定)。
     ///
@@ -1495,18 +1495,48 @@ public struct OKResponse: Codable {
 /// UIView に辿れない・点がどの窓にも入らない)ときと、届くときは nil**(判定不能を「外れ」に畳まない)。
 /// 撃つこと・撃ち直し・赤にすることには使わない(注記だけ = ホストは `StepNote.inAppTapOutsideHitArea` と
 /// MCP の ft_tap の文言へ写す)。
-/// SwiftUI の `.contentShape` 抜け(文字の部分しか押せない)はこの判定では出ない(UIView の hitTest も AX の
-/// 当たり判定も「届く」と答える。実測は docs/maintainer-notes.md §77)
+/// **もう1つの事実(v160〜)**: UIView でない AX 要素を activate で撃ったとき、**枠の中心が押せる範囲の外だと
+/// 活性化の点から言い切れた**(`.activationPoint`。判定は `activationPointMiss` = 純粋関数)。SwiftUI の
+/// `.contentShape` 抜け(文字の部分しか押せない)は hitTest にも AX の当たり判定にも出ず、割れたのはこの点だけ
+/// だった(docs/maintainer-notes.md §77)。使ってよいフレームワークは `AppUIFramework.activationPointMarksHitArea`。
+/// UIView の要素は hitTest が答えるので対象外(UIStepper・UITextView 等は活性化の点が中心に無いのが正常)
 public struct TapHitAreaMiss: Codable, Equatable, Sendable {
-    /// 判定した点(スクリーン座標 pt = 保持している枠の中心)
+    public enum Kind: Codable, Equatable, Sendable {
+        /// 枠の中心で本物のタッチを受けたのは無関係な view(型名。例: `ChatInputBar`)
+        case receivedBy(String)
+        /// activate が使う活性化の点(スクリーン座標 pt)。枠の中心からずれていた
+        case activationPoint(x: Double, y: Double)
+    }
+    /// 枠の中心(スクリーン座標 pt。座標タップ・XCUITest が押す点)。`.activationPoint` は撃つ瞬間の
+    /// `accessibilityFrame` の中心(活性化の点と同じ時刻の枠で比べる。保持している枠は動く要素で古い)
     public var x: Double
     public var y: Double
-    /// その点でタッチを受けた view の型名(例: `ChatInputBar`)
-    public var receiver: String
-    public init(x: Double, y: Double, receiver: String) {
+    public var kind: Kind
+    public init(x: Double, y: Double, kind: Kind) {
         self.x = x
         self.y = y
-        self.receiver = receiver
+        self.kind = kind
+    }
+    public init(x: Double, y: Double, receiver: String) {
+        self.init(x: x, y: y, kind: .receivedBy(receiver))
+    }
+
+    /// 活性化の点(押せる範囲の中心)から、**枠の中心がその範囲の外だと言い切れる**ときだけ事実を返す。
+    /// 押せる範囲は活性化の点を中心とし枠に収まる、という前提だけを使う: その点を中心に枠へ収まる最大の
+    /// 範囲(各軸で近い辺までの距離が半径)が枠の中心に届かなければ、本当の範囲も届かない
+    /// (= 活性化の点が枠の外側 4 分の 1 の帯にある)。**閾値の定数を持たない** —— 1 画素の許容では SwiftUI の
+    /// Toggle(1.0pt ずれ)で発火した。有限でない点(`(inf, inf)`)・枠の外の点・面積 0 の枠は判定不能 = nil
+    public static func activationPointMiss(activationX ax: Double, activationY ay: Double,
+                                           frameX x: Double, frameY y: Double,
+                                           width w: Double, height h: Double) -> TapHitAreaMiss? {
+        guard ax.isFinite, ay.isFinite, w > 0, h > 0 else { return nil }
+        let reachX = min(ax - x, x + w - ax)
+        let reachY = min(ay - y, y + h - ay)
+        guard reachX >= 0, reachY >= 0 else { return nil }
+        let cx = x + w / 2
+        let cy = y + h / 2
+        guard abs(cx - ax) > reachX || abs(cy - ay) > reachY else { return nil }
+        return TapHitAreaMiss(x: cx, y: cy, kind: .activationPoint(x: ax, y: ay))
     }
 }
 

@@ -16,12 +16,6 @@
   - 要る材料: 実例の木。ステータスバーの高さは木に載らない(画面の枠だけ)ので、定数で帯を決めると機種で黙って誤る。
     ブリッジが安全領域(safeAreaInsets / WindowInsets)を申告する形なら根拠のある判定になる
 
-- **SwiftUI の `.contentShape` 抜け(文字の部分しか押せない `.plain` の Button)を、in-app で検出できない**(2026-10-09)
-  - 場所: `inapp-tap-outside-hit-area`(maintainer-notes §77)は UIView の hitTest で判定するが、SwiftUI のジェスチャの当たり判定は
-    hitTest にも AX の当たり判定にも出ない。in-app は緑・XCUITest は赤のまま割れる
-  - 割れた信号は `accessibilityActivationPoint` と枠の中心のずれだけ。直した SUT でもボタン以外で 5 件ずれる(UIStepper・textView 等)
-  - 要る材料: E2E / E2EX の全 SUT と実アプリで、ずれの分布(型ごと・距離ごと)。型や閾値で絞る根拠がそこから出なければ入れない
-
 ## デバイスで赤のまま・原因未調査
 
 - **E2E-iOS の XCUITest で「WebViewの中身を操作できること」が赤になる(状態に依存)**(2026-10-08)

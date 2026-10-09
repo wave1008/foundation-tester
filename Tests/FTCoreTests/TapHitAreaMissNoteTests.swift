@@ -63,6 +63,21 @@ final class TapHitAreaMissNoteTests: XCTestCase {
         XCTAssertTrue(text.contains("ChatInputBar at (354, 845)"), text)
     }
 
+    /// 活性化の点のずれ(SwiftUI の `.contentShape` 抜け)は別のコードと事実の括弧書きで残す
+    func testActivationPointOffCentreIsNotedWithItsOwnCode() async {
+        let driver = MissReportingDriver(miss: TapHitAreaMiss(x: 201, y: 570.3,
+                                                              kind: .activationPoint(x: 44.3, y: 570.3)))
+        let outcome = await tap(driver)
+
+        guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
+        XCTAssertEqual(driver.refTaps, [1], "撃ち直さない")
+        XCTAssertEqual(driver.coordinateTaps, 0, "別の経路で撃ち直さない")
+        XCTAssertTrue(outcome.notes.contains(.inAppActivationPointOffCentre), "\(outcome.notes)")
+        XCTAssertFalse(outcome.notes.contains(.inAppTapOutsideHitArea), "\(outcome.notes)")
+        let text = outcome.driverFallback ?? ""
+        XCTAssertTrue(text.contains("activation point (44, 570), centre (201, 570)"), text)
+    }
+
     /// 陰性: 申告が無ければ(届く・判定不能・in-app 以外)何も言わない
     func testNoReportMeansNoNote() async {
         let driver = MissReportingDriver(miss: nil)
@@ -70,6 +85,7 @@ final class TapHitAreaMissNoteTests: XCTestCase {
 
         guard case .passed = outcome.status else { return XCTFail("\(outcome.status)") }
         XCTAssertFalse(outcome.notes.contains(.inAppTapOutsideHitArea), "\(outcome.notes)")
+        XCTAssertFalse(outcome.notes.contains(.inAppActivationPointOffCentre), "\(outcome.notes)")
         XCTAssertFalse((outcome.driverFallback ?? "").contains("lands on another view"),
                        outcome.driverFallback ?? "")
     }
@@ -79,6 +95,9 @@ final class TapHitAreaMissNoteTests: XCTestCase {
         let miss = TapHitAreaMiss(x: 1.5, y: 2, receiver: "_UIGrabber")
         let data = try JSONEncoder().encode(OKResponse(hitAreaMiss: miss))
         XCTAssertEqual(try JSONDecoder().decode(OKResponse.self, from: data).hitAreaMiss, miss)
+        let offCentre = TapHitAreaMiss(x: 201, y: 570, kind: .activationPoint(x: 44, y: 570))
+        let data2 = try JSONEncoder().encode(OKResponse(hitAreaMiss: offCentre))
+        XCTAssertEqual(try JSONDecoder().decode(OKResponse.self, from: data2).hitAreaMiss, offCentre)
         let plain = try JSONDecoder().decode(OKResponse.self, from: Data(#"{"ok":true}"#.utf8))
         XCTAssertNil(plain.hitAreaMiss)
     }

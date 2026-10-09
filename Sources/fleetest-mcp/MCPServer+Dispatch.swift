@@ -991,13 +991,21 @@ extension MCPServer {
         return " (\(note))"
     }
 
-    /// `AppDriver.lastTapHitAreaMiss` の MCP 向けの文言(DSL は `StepNote.inAppTapOutsideHitArea` が持つ。
+    /// `AppDriver.lastTapHitAreaMiss` の MCP 向けの文言(DSL は `StepNote.inAppTapOutsideHitArea` /
+    /// `inAppActivationPointOffCentre` が持つ。
     /// 判定はブリッジの1箇所で、ここは写すだけ)。事実だけを言い、原因は推測しない
     static func tapHitAreaMissNote(_ driver: AppDriver) -> String {
         guard let miss = driver.lastTapHitAreaMiss else { return "" }
-        return " Note: the in-app engine operated this element directly, but a real touch at the centre"
-            + " of its frame (\(Int(miss.x.rounded())), \(Int(miss.y.rounded()))) lands on \(miss.receiver),"
-            + " not on this element."
+        let centre = "(\(Int(miss.x.rounded())), \(Int(miss.y.rounded())))"
+        switch miss.kind {
+        case .receivedBy(let receiver):
+            return " Note: the in-app engine operated this element directly, but a real touch at the centre"
+                + " of its frame \(centre) lands on \(receiver), not on this element."
+        case .activationPoint(let x, let y):
+            return " Note: the in-app engine activated this element at its activation point"
+                + " (\(Int(x.rounded())), \(Int(y.rounded()))), which is not the centre of its frame \(centre)"
+                + " that a coordinate tap presses."
+        }
     }
 
     /// `ft_type` / `ft_clear_input` が入力欄でない ref(かつ内側に入力欄が

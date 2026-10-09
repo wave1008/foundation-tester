@@ -115,7 +115,7 @@ Flutter・React Native)によって、**木の見え方と操作の効き方が�
 | React Native(iOS in-app) | コールドラウンチ直後にレイアウトが確定し、保存時の座標が1要素ずれる | A | 合成タッチの直前に要素を1回取り直して、今の座標で撃つ |
 | SwiftUI(iOS in-app) | 合成タッチでは Button のジェスチャが発火しない | C | activate を最優先。座標指定も「その点を含む最小の要素」を activate する |
 | Compose(iOS) | 画面外の要素の枠がクランプされ、`isHittable` も壊れている | C | 座標タップを維持(`.tap()`・`isHittable` を使わない) |
-| 全部(iOS in-app) | activate も合成タッチ(要素の窓へ直接送る)も、手前の窓・重なった view を素通りして要素に届く(本物の指では押せない要素も押せる) | C | 撃った点で UIView の hitTest を1回行い、別の view が受けるなら注記 `inapp-tap-outside-hit-area`(判定は変えない)。**判定できるのは UIKit と、UIView に辿れる SwiftUI の要素**(重なった view・別の窓)。**SwiftUI の `.contentShape` 抜けは判定できない**(hitTest も AX の当たり判定も「届く」)。**Flutter は判定できない**(当たるのは常に FlutterView)(v159。maintainer-notes §77) |
+| 全部(iOS in-app) | activate も合成タッチ(要素の窓へ直接送る)も、手前の窓・重なった view を素通りして要素に届く(本物の指では押せない要素も押せる) | C | 撃った点で UIView の hitTest を1回行い、別の view が受けるなら注記 `inapp-tap-outside-hit-area`(判定は変えない)。**判定できるのは UIKit と、UIView に辿れる SwiftUI の要素**(重なった view・別の窓)。**SwiftUI の `.contentShape` 抜けは hitTest に出ない**(AX の当たり判定も「届く」)ので、活性化の点が枠の外側 4 分の 1 にあれば別の注記 `inapp-activation-point-off-centre`(SwiftUI / UIKit のアプリだけ。**RN は活性化の点が押せる範囲と無関係なので使わない**)。**Flutter は判定できない**(当たるのは常に FlutterView)(v159・v160。maintainer-notes §77) |
 
 ### 2.2 スクロール探索の直後のタップ(空打ち)
 

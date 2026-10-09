@@ -54,6 +54,17 @@ final class MCPTapFallbackNoteTests: XCTestCase {
                       text)
     }
 
+    /// 活性化の点のずれも、種類に応じた文言で載せる
+    func testRefTapSurfacesTheActivationPointOffCentre() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        driver.scriptedHitAreaMiss = TapHitAreaMiss(x: 201, y: 570.3, kind: .activationPoint(x: 44.3, y: 570.3))
+
+        let text = body(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("activation point (44, 570), which is not the centre of its frame (201, 570)"),
+                      text)
+        XCTAssertFalse(text.contains("lands on"), text)
+    }
+
     /// 陰性: 申告が無ければ言わない
     func testRefTapSaysNothingAboutHitAreaWithoutAMiss() async throws {
         _ = try await server.call(tool: "ft_snapshot", args: [:])

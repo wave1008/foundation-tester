@@ -47,7 +47,9 @@ tap(x: 120, y: 640)                    // セレクタで指せないときだ�
   frame lands on another view (<view> at (x, y))` の注記が付きます(機械可読は `inapp-tap-outside-hit-area`)。
   撃ち直しも失敗もしません。枠の中心を押す XCUITest エンジンでは、同じタップが赤になることがあります。
   判定できないとき(全部を1枚の view に描く Flutter など)は何も言いません。文字の部分しか押せない SwiftUI の
-  `.plain` のボタンは**検出しません**。
+  `.plain` のボタンには、代わりに別の注記 `in-app activated the element at its activation point, which is not the
+  centre of its frame that a coordinate tap presses (activation point (x, y), centre (x, y))` が付きます(機械可読は
+  `inapp-activation-point-off-centre`。SwiftUI と UIKit のアプリだけ)。
 - 座標タップは、その位置にアプリが選択可能な要素を1つも公開していないときだけ使います。
 
   | 用途 | 方針 |

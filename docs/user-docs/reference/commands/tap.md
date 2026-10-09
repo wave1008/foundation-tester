@@ -49,7 +49,9 @@ tap(x: 120, y: 640)                    // only when no selector is available
   (<view> at (x, y))` (machine-readable: `inapp-tap-outside-hit-area`). The tap is not retried and the step is
   not failed. The same tap can fail on the XCUITest engine, which presses the centre of the frame. Nothing is
   said when it cannot be determined (for example Flutter, which draws everything in one view). A SwiftUI
-  `.plain` button that is tappable only on its text is **not** detected.
+  `.plain` button that is tappable only on its text gets a separate note instead: `in-app activated the element at
+  its activation point, which is not the centre of its frame that a coordinate tap presses (activation point (x, y),
+  centre (x, y))` (machine-readable: `inapp-activation-point-off-centre`; SwiftUI and UIKit apps only).
 - Coordinate taps: use them only when the app exposes nothing selectable at that spot.
 
   | Use case | Guidance |

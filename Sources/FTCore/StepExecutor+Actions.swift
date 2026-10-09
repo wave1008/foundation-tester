@@ -655,9 +655,17 @@ extension StepExecutor {
                     try await actingDriver.tap(ref: element.ref)
                     // 読むのは ref で撃った直後だけ(座標の経路は tap(ref:) を通らない = 前回の値が残る)
                     if let miss = actingDriver.lastTapHitAreaMiss {
-                        noteCodesThisStep.insert(.inAppTapOutsideHitArea)
-                        driverFallback = Self.joinNotes(driverFallback, StepNote.inAppTapOutsideHitArea.text
-                            + " (\(miss.receiver) at (\(Int(miss.x.rounded())), \(Int(miss.y.rounded()))))")
+                        let centre = "(\(Int(miss.x.rounded())), \(Int(miss.y.rounded())))"
+                        switch miss.kind {
+                        case .receivedBy(let receiver):
+                            noteCodesThisStep.insert(.inAppTapOutsideHitArea)
+                            driverFallback = Self.joinNotes(driverFallback, StepNote.inAppTapOutsideHitArea.text
+                                + " (\(receiver) at \(centre))")
+                        case .activationPoint(let x, let y):
+                            noteCodesThisStep.insert(.inAppActivationPointOffCentre)
+                            driverFallback = Self.joinNotes(driverFallback, StepNote.inAppActivationPointOffCentre.text
+                                + " (activation point (\(Int(x.rounded())), \(Int(y.rounded()))), centre \(centre))")
+                        }
                     }
                 } catch {
                     // in-app が「activate 不発・合成タッチは効かない」(SwiftUI)で 501 を返したら、

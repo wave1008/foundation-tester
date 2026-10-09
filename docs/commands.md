@@ -132,9 +132,17 @@ MCP の `ft_tap` も同じ事実を応答に載せる。
 - **判定を変えない**: 撃つのをやめない・撃ち直さない・赤にしない・XCUITest へ回さない(警告から入れた検知)
 - **判定できないときは何も言わない**: 要素が UIView に辿れない・点がどの窓にも入らない。Flutter は全部が
   1枚の FlutterView なので常に「届く」になり、この経路では判定できない
-- **検出しないもの**: SwiftUI の `.plain` の Button(文字の部分しか押せない)。UIView の hitTest も AX の当たり判定も
-  「届く」と答えるため(docs/framework-differences.md §2.1・maintainer-notes §77)
 - iOS の in-app の ref タップだけ。Android と XCUITest は本物のタッチなので対象外
+
+**SwiftUI の押せる範囲が文字の部分だけ**(`.plain` の Button に `.contentShape` が無い)の形は hitTest に出ないので、
+別の注記で言う: `in-app activated the element at its activation point, which is not the centre of its frame that a
+coordinate tap presses (activation point (44, 570), centre (201, 570))`(機械可読は `inapp-activation-point-off-centre`)。
+
+- 対象は **UIView でない a11y 要素を activate で撃った回**で、アプリのフレームワークが **SwiftUI / UIKit** のときだけ
+  (`AppUIFramework.activationPointMarksHitArea`)。RN の文字の要素は活性化の点が押せる範囲と無関係にずれるので言わない
+- 言うのは「活性化の点を中心に枠へ収まる最大の範囲が、枠の中心に届かない」ときだけ(= 点が枠の外側 4 分の 1 にある)。
+  閾値の定数は無い。少しずれるだけ(SwiftUI の Toggle は 1pt)では言わない
+- 判定を変えない・撃ち直さないのは上と同じ
 
 ### `tap(入力欄)` → `type("文字列")`(Shirates 伝統の書き方)
 
