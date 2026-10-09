@@ -107,11 +107,13 @@ final class BridgeHTTPServer {
         lastRequestLock.unlock()
     }
 
-    /// 1リクエストの handler(main スレッド上の XCUITest 操作)の壁時計上限(秒)。超過は
-    /// "Wait for app to idle" 等で main が恒久ブロックした状態で、main は復帰不能。クライアントの
-    /// per-endpoint 上限(interaction 20s / session 45s)より長く、シナリオ watchdog(90s)より短く
-    /// 取り、504 を返してプロセス自死→ポート解放→start-device 再起動に委ねる。
-    static let handlerTimeout: TimeInterval = 60
+    /// 1リクエストの handler(main スレッド上の XCUITest 操作)の壁時計上限(秒)。超過は main が
+    /// 恒久ブロックした状態とみなし、504 を返してプロセス自死→ポート解放→start-device 再起動に委ねる。
+    /// **XCTest の「アプリが落ち着くのを待つ」の上限(実測 60.06s。過ぎると "App animations complete
+    /// notification not received, will attempt to continue" で続行する)より長く取る** —— 同じ 60 だと
+    /// 続行の直前に自死する競争になり、実際に落ちたランナーが戻らなかった(Apple マップ)。
+    /// クライアントの per-endpoint 上限(interaction 20s / session 45s)より長く、シナリオ watchdog(90s)より短く
+    static let handlerTimeout: TimeInterval = 75
 
     init(port: UInt16, handler: @escaping (Request) -> Response) {
         self.port = port
