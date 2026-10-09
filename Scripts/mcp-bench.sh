@@ -30,6 +30,10 @@
 # `mustNotContain`(最終ファイルに残っていてはいけない文字列)と `lastRunMustNotContain`(最後の
 # ft_run_scenario の応答に出てはいけない文字列。例: 自己修復の印 🔧)も見る。
 #
+# `--device <udid>` は**並列に回すとき**に使う: 課題の文面へ「このデバイスを使う」1行を添え、盤面の初期化
+# (resetSavedState)もそのデバイスだけに絞る。指定しないと全員が先頭のシミュレータを選び、初期化は全台の
+# アプリを落とすので、並列の別の run を壊す。文面が変わるので、比べるのは同じ --device 付きの run どうしだけ
+#
 # `--tool-root <dir>` で測る対象のクローンを差し替える(既定はこの台本のクローン)。変更前の
 # コミットを worktree に出して渡せば、同じタスク・同じ台本で前後を比べられる:
 #   git worktree add /tmp/before/foundation-tester <commit>   # 名前は foundation-tester 固定
@@ -50,6 +54,7 @@ REPEAT=3
 DRY_RUN=0
 LIST=0
 MODEL=""
+DEVICE=""
 OUT=""
 TASKS=()
 VARIANT_NAMES=()
@@ -69,6 +74,7 @@ while [ $# -gt 0 ]; do
       shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
     --model) MODEL="$2"; shift 2 ;;
+    --device) DEVICE="$2"; shift 2 ;;
     --tool-root) TOOL_ROOT="$(cd "$2" && pwd)"; shift 2 ;;
     --list) LIST=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -208,7 +214,7 @@ reset_authoring() {
 # そうなった)。どのシミュレータを使うかはエージェントが選ぶので全台に掛ける。データは消さない(履歴・地図の位置は残る)
 reset_saved_state() {
   local bundle="$1" udid container
-  for udid in $(xcrun simctl list devices booted -j \
+  for udid in $( [ -n "$DEVICE" ] && echo "$DEVICE" || xcrun simctl list devices booted -j \
       | node -e 'const d=JSON.parse(require("fs").readFileSync(0,"utf8")).devices;for(const k in d)for(const x of d[k])if(x.state==="Booted")console.log(x.udid)'); do
     xcrun simctl terminate "$udid" "$bundle" >/dev/null 2>&1 || true
     container="$(xcrun simctl get_app_container "$udid" "$bundle" data 2>/dev/null)" || continue
@@ -251,6 +257,12 @@ JSON
 最後に、RESULT の行を出す前に ft_draft_scenario を呼んで、いま行った操作を Swift シナリオの
 下書きへ書き戻してください(ファイルには保存しないでください)。回り道を記録していたら
 drop: や lastN: で刈り込んでから、もう一度呼んでください。"
+    fi
+
+    if [ -n "$DEVICE" ]; then
+      prompt="$prompt
+
+使うデバイスは udid $DEVICE の iOS シミュレータに決まっています(ft_list_devices で選ばずに、この udid を渡してください)。"
     fi
 
     kind="$(task_field "$f" kind)"
