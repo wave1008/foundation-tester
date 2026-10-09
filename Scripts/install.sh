@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # fleetest インストーラ。/fleetest-setup スキルの「機械作業」だけを1コマンドに固めたもの。
 #
-#   bash <SCRIPTS>/install.sh --work-dir <受け手ディレクトリ> [--name <ProjectName> [--app-id <bundleID>]]
+#   bash <SCRIPTS>/install.sh --work-dir <受け手ディレクトリ> [--name <ProjectName>]
 #   <SCRIPTS> = クローンの Scripts/(SKILL.md の3つ上。SKILL.md は常にクローンから読む)。
 #   TOOL_ROOT が無ければ clone から丸ごと(既定は隣)。**スキルからは curl | bash で呼ばない**
 #   (エージェントの安全確認に止められる。fleetest-setup SKILL.md ステップ0)
@@ -49,7 +49,6 @@ REF="${FLEETEST_REF:-}"
 WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
-APP_ID=""
 DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
@@ -69,7 +68,6 @@ Usage: install.sh [options]
   --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --name <name>      Create a project with this name (letters, digits, _ and -). Optional: without it no project is
                      created (only an empty TestProjects/); /fleetest-profiles creates TestProjects/project1 later
-  --app-id <id>      Bundle ID / package name of the app under test (only with --name; optional)
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-clone         Do not clone when missing (an existing clone is required)
   --no-pull          Do not update an existing clone (to pin a version, or while developing the tool)
@@ -100,7 +98,6 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --work-dir) WORK_DIR="${2:?--work-dir requires a value}"; shift 2 ;;
     --name) PROJECT_NAME="${2:?--name requires a value}"; shift 2 ;;
-    --app-id) APP_ID="${2:?--app-id requires a value}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root requires a value}"; shift 2 ;;
     --no-clone) ALLOW_CLONE=0; shift ;;
     --no-pull) ALLOW_PULL=0; shift ;;
@@ -544,8 +541,6 @@ project_exists() {
 }
 
 # 省略可能な引数は配列で渡す(空文字列を引数として渡さないため)
-APP_ARGS=()
-[ -n "$APP_ID" ] && APP_ARGS=(--app-id "$APP_ID")
 NAME_ARGS=()
 [ -n "$PROJECT_NAME" ] && NAME_ARGS=(--name "$PROJECT_NAME")
 
@@ -559,7 +554,7 @@ elif [ -z "$PROJECT_NAME" ] && { [ "$LAYOUT" = "clone" ] || [ -f "$WORK_DIR/Pack
   record "project" skip "no project requested (/fleetest-profiles creates TestProjects/project1)"
 elif [ "$LAYOUT" = "clone" ]; then
   echo "==> fleetest project create $PROJECT_NAME"
-  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
+  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME") \
       || die "project" "project create failed" 4
   record "project" ok "TestProjects/$PROJECT_NAME"
 elif [ -f "$WORK_DIR/Package.swift" ]; then
@@ -568,7 +563,7 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
     || die "project" "$WORK_DIR/Package.swift is not an fleetest package (run this in an empty, test-only directory)" 0
   # 受け手パッケージは確立済み。プロジェクトだけ追加する
   echo "==> fleetest project create $PROJECT_NAME"
-  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
+  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME") \
       || die "project" "project create failed" 4
   record "project" ok "TestProjects/$PROJECT_NAME (added to the existing package)"
 else
@@ -580,7 +575,7 @@ else
     record "project" ok "created the consumer package (no project yet — /fleetest-profiles creates TestProjects/project1)"
   else
     ( cd "$WORK_DIR" && "$FT" init --fleetest-path "$TOOL_ROOT" \
-        "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
+        "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" ) \
       || die "project" "fleetest init failed" 4
     record "project" ok "created the consumer package (TestProjects/$PROJECT_NAME)"
   fi

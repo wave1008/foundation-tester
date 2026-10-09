@@ -165,11 +165,9 @@ if [ "$DRY_RUN" = 0 ]; then
   prune_orphan_pkgs
 fi
 has_authoring=0
-pkg_app=""
 for id in "${TASKS[@]}"; do
   if [ "$(task_field "$TASK_DIR/$id.json" kind)" = authoring ]; then
     has_authoring=1
-    [ -n "$pkg_app" ] || pkg_app="$(task_field "$TASK_DIR/$id.json" appId)"
   fi
 done
 [ "$has_authoring" = 0 ] || [ "$(basename "$TOOL_ROOT")" = foundation-tester ] \
@@ -181,7 +179,7 @@ if [ "$has_authoring" = 1 ] && [ "$DRY_RUN" = 0 ] && [ ! -f "$PKG/Package.swift"
   (cd "$ROOT" && swift build --product fleetest) >>"$LOG" 2>&1 || die "fleetest のビルドに失敗($LOG)"
   mkdir -p "$PKG"
   (cd "$PKG" && "$ROOT/.build/debug/fleetest" init --fleetest-path "$TOOL_ROOT" \
-      --name "$PKG_PROJECT" --platform ios ${pkg_app:+--app-id "$pkg_app"}) >>"$LOG" 2>&1 \
+      --name "$PKG_PROJECT") >>"$LOG" 2>&1 \
       || die "fleetest init に失敗($LOG)"
 fi
 
