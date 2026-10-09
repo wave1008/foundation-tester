@@ -438,23 +438,41 @@ public enum LocatorResolver {
     /// 勧め、`#id` 指定にはラベル部分一致(`*foo*`)という**誤った記法**を勧める
     /// (MCP 側の無条件版で実測。id の部分一致は `#*foo*`)。
     /// **MCP もこれを呼ぶ**(fleetest-mcp/MCPServer の scrollTo/waitFor の失敗文)ので public
+    ///
+    /// **当たる相手を名指しする**: 部分一致は別の要素に当たりうる(Apple マップで「立川駅、立川市」を
+    /// 外したとき `*立川駅、立川市*` は「西武立川駅、立川市」= 別の駅に当たる形だった)。
+    /// 「would find it」とだけ言うと本命が見つかると読まれる
     public static func partialMatchHint(for locator: FlowLocator,
                                         in elements: [ElementInfo]) -> String? {
         if let label = locator.label, !label.isEmpty,
            (locator.labelMatch ?? .exact) == .exact,
-           !elements.contains(where: { $0.label == label }),
-           elements.contains(where: { ($0.label ?? "").contains(label) }) {
-            return "present as a partial match: writing \"*\(label)*\" would find it"
+           !elements.contains(where: { $0.label == label }) {
+            let hits = elements.filter { ($0.label ?? "").contains(label) }
+            if let first = hits.first {
+                return "present as a partial match: writing \"*\(label)*\" would find "
+                    + partialMatchTarget(first, count: hits.count, name: first.label ?? "", quoted: true)
+            }
         }
         // id も同じ形で拾う。**記法は `#*foo*`**(docs/design.md の idContains)であって
         // `*foo*` ではない —— `*foo*` はラベルの部分一致なので id には一生当たらない
         if let id = locator.id, !id.isEmpty,
            (locator.idMatch ?? .exact) == .exact,
-           !elements.contains(where: { $0.identifier == id }),
-           elements.contains(where: { ($0.identifier ?? "").contains(id) }) {
-            return "present as a partial id match: writing \"#*\(id)*\" would find it"
+           !elements.contains(where: { $0.identifier == id }) {
+            let hits = elements.filter { ($0.identifier ?? "").contains(id) }
+            if let first = hits.first {
+                return "present as a partial id match: writing \"#*\(id)*\" would find "
+                    + partialMatchTarget(first, count: hits.count, name: first.identifier ?? "", quoted: false)
+            }
         }
         return nil
+    }
+
+    /// `型 "ラベル"` / `型 #id`(複数なら件数と先頭)。名指しであってセレクタではない(エスケープしない)
+    private static func partialMatchTarget(_ element: ElementInfo, count: Int,
+                                           name: String, quoted: Bool) -> String {
+        let shown = SnapshotRenderer.truncate(FlowMatchMode.normalizeInvisibleCharacters(name), 40)
+        let target = "\(element.type) " + (quoted ? "\"\(shown)\"" : "#\(shown)")
+        return count == 1 ? target : "\(count) elements (first: \(target))"
     }
 
     /// 探している文字列が**隣り合う複数の要素に割れている**ときに、そのことを言う。

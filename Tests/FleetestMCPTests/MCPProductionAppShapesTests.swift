@@ -279,7 +279,27 @@ final class MCPProductionAppShapesTests: XCTestCase {
         let elements = [element(1, "search_omnibox_text_box", depth: 2, 0, 0, 100, 40)]
         let hint = LocatorResolver.partialMatchHint(for: FTSelector.parse("#omnibox").primary,
                                                  in: elements)
-        XCTAssertEqual(hint, "present as a partial id match: writing \"#*omnibox*\" would find it")
+        XCTAssertEqual(hint, "present as a partial id match: writing \"#*omnibox*\" would find "
+            + "button #search_omnibox_text_box")
+    }
+
+    /// **部分一致が別の要素に当たるときは、それを名指しする**(Apple マップで実測: 「立川駅、立川市」を
+    /// 外したとき、`*立川駅、立川市*` は「西武立川駅、立川市」= 別の駅に当たる形だった)
+    func testPartialMatchHintNamesWhatTheWildcardWouldHit() {
+        let elements = [
+            element(1, "MultiTextView", depth: 2, 0, 0, 100, 40, label: "立川駅、最近表示した項目 · 立川市"),
+            element(2, "MultiTextView", depth: 2, 0, 40, 100, 40, label: "西武立川駅、立川市"),
+        ]
+        let hint = LocatorResolver.partialMatchHint(for: FTSelector.parse("立川駅、立川市").primary,
+                                                 in: elements)
+        XCTAssertEqual(hint, "present as a partial match: writing \"*立川駅、立川市*\" would find "
+            + "button \"西武立川駅、立川市\"")
+        let two = elements + [element(3, "MultiTextView", depth: 2, 0, 80, 100, 40,
+                                      label: "東立川駅、立川市")]
+        XCTAssertEqual(LocatorResolver.partialMatchHint(for: FTSelector.parse("立川駅、立川市").primary,
+                                                      in: two),
+                       "present as a partial match: writing \"*立川駅、立川市*\" would find "
+                        + "2 elements (first: button \"西武立川駅、立川市\")")
     }
 
     /// **既に部分一致で書いてある相手には黙る**(同じものを勧め返さない)

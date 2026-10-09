@@ -140,8 +140,12 @@ extension MCPServer {
         one — running against the wrong device changes its real state, which no retry undoes.
 
         Coordinates (x/y and frames) are always in ft_snapshot units — iOS=pt / Android=px — never \
-        screenshot pixels. Selector arguments use the DSL syntax: #id, a label, .type, a||b; quotes \
-        wrapped around the whole selector are stripped.
+        screenshot pixels. Selector arguments use the DSL syntax: a label (exact match) / *part* / \
+        start* / *end / textMatches=<regex> (partial; ^…$ for the whole label) / #id (also #part*, \
+        #*part*, idMatches=<regex>) / .type / [n] (nth match, 1-based) / value= placeholder= \
+        (same Contains/StartsWith/EndsWith/Matches forms) checked= enabled= / a&&b (both) / \
+        scope>>child (inside) / a||b (first that matches) / !x (not); quotes wrapped around the \
+        whole selector are stripped.
 
         Tree options on tools that return an element list: expandBulk unfolds groups of 20+ \
         non-interactive leaves sharing one id (map pins and the like) that are folded into one \

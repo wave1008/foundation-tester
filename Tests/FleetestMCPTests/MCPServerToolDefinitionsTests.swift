@@ -1,4 +1,5 @@
 import XCTest
+@testable import FTCore
 @testable import fleetest_mcp
 
 /// デバイス選択プロパティの過不足を防ぐ。**「全ツールに付ける」ではなく「要るツールにだけ付ける」**
@@ -297,5 +298,27 @@ final class MCPServerIntegerArgumentPartitionTests: XCTestCase {
             XCTAssertTrue(all.contains(expected), "説明文に \(expected) が無い")
         }
         XCTAssertTrue(MCPServer.serverInstructions.contains("waitSeconds (default 5s;"))
+    }
+
+    /// **サーバ指示のセレクタ文法は全体を載せる**。部分だけ(`#id, a label, .type, a||b`)を載せていた頃、
+    /// エージェントはそれを全部だと読み「正規表現は無い」と結論した。
+    /// 読み取り側(`FTSelector`)がフィルタを足したら、ここが落ちて一覧へ足すのを促す
+    func testServerInstructionsListTheWholeSelectorGrammar() {
+        let text = MCPServer.serverInstructions
+        let shownByShortForm: Set<String> = ["text", "id", "type", "pos"]   // label / #id / .type / [n]
+        for name in FTSelector.baseFilterNames where !shownByShortForm.contains(name) {
+            XCTAssertTrue(text.contains("\(name)="), "サーバ指示にフィルタ \(name)= が無い")
+        }
+        for form in ["textMatches=", "idMatches=", "*part*", "start*", "*end", "#*part*", "#part*",
+                     ".type", "[n]", "a&&b", "scope>>child", "a||b", "!x"] {
+            XCTAssertTrue(text.contains(form), "サーバ指示に \(form) が無い")
+        }
+        // 載せた形が本当にその意味で読まれること(説明と実装の食い違いを止める)
+        XCTAssertEqual(FTSelector.parse("textMatches=^a$").primary.labelMatch, .matches)
+        XCTAssertEqual(FTSelector.parse("idMatches=^a$").primary.idMatch, .matches)
+        XCTAssertEqual(FTSelector.parse("#a*").primary.idMatch, .startsWith)
+        XCTAssertEqual(FTSelector.parse("#*a*").primary.idMatch, .contains)
+        XCTAssertEqual(FTSelector.parse("a*").primary.labelMatch, .startsWith)
+        XCTAssertEqual(FTSelector.parse("*a").primary.labelMatch, .endsWith)
     }
 }
