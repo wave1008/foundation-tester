@@ -120,7 +120,7 @@ let liveStallSent = false;
 // 途中で撃ち、長くすると追随が遅れる。
 // 尽きたとき: 画面が動かないまま内容だけ変わる場合は追随しない(一覧の「更新」で撮り直す)。
 const SETTLE_REFRESH_MS = 700;
-// 「バウンディングボックスを表示」を ON にしたときに静定を待つ上限(ms)。
+// 「バウンディングボックスを表示」を ON にしたときに整定を待つ上限(ms)。
 // **ループするアニメーションの画面は何秒待っても静まらない**ので必ず打ち切る —— DSL の整定
 // (Sources/FTCore/StepExecutor+Settle.swift・SettleMotion.swift)と同じ考え方で、あちらも
 // 基本予算 scrollSettleMaxPolls=6 周を超えて回すのは**減速が続いている間だけ**、絶対上限
@@ -137,9 +137,9 @@ let showBoxes = persistedState.liveShowBoxes === true;
 // (実害あり: タスクスイッチャーを出すと直前の画面の枠が出たまま残った)。
 let boxesStale = false;
 let settleRefreshTimer = null;
-// ON にした直後の静定待ちの打ち切りタイマー(BOXES_SETTLE_CAP_MS)。待っていない間は null。
+// ON にした直後の整定待ちの打ち切りタイマー(BOXES_SETTLE_CAP_MS)。待っていない間は null。
 let boxesSettleCapTimer = null;
-// 静定待ち中(deferBoxesUntilSettled が立て、静定後の木か打ち切りで畳む)。**操作の直後に返る木で
+// 整定待ち中(deferBoxesUntilSettled が立て、整定後の木か打ち切りで畳む)。**操作の直後に返る木で
 // 描かない**ための印 —— あの木はまだ慣性で動いている最中のことがあり、描くと中間の座標で一度出て
 // 止まってからもう一度出る(実害あり: 設定画面のスクロール)。
 let boxesAwaitSettle = false;
@@ -451,11 +451,11 @@ function cancelBoxesSettleCap() {
   }
 }
 
-/** 枠を出すのは画面が静定してからにする(ユーザー決定)。手元の木は最後に観測した
+/** 枠を出すのは画面が整定してからにする(ユーザー決定)。手元の木は最後に観測した
  * 時点のものなので、絵がまだ動いている間に描くと**前の画面の位置に枠が出る**。
- * 静定 = 絵が SETTLE_REFRESH_MS 動かないこと(scheduleSettleRefresh の予約は絵が動くたびに
+ * 整定 = 絵が SETTLE_REFRESH_MS 動かないこと(scheduleSettleRefresh の予約は絵が動くたびに
  * 先送りされる)。止まったら撮り直しが届き、applySnapshot が boxesStale を落として描く。
- * **ループするアニメーションは静定しない**ので BOXES_SETTLE_CAP_MS で打ち切り、その時点の
+ * **ループするアニメーションは整定しない**ので BOXES_SETTLE_CAP_MS で打ち切り、その時点の
  * 最新の木で描く(定数の doc 参照)。 */
 function deferBoxesUntilSettled() {
   boxesAwaitSettle = true;
@@ -464,7 +464,7 @@ function deferBoxesUntilSettled() {
   cancelBoxesSettleCap();
   armBoxesSettleCap(BOXES_SETTLE_CAP_MS);
 }
-// **busy 中に鳴ったら諦めずに待ち直す**(遅いデバイス = リモート・実機は1操作に数秒かかり、静定も打ち切りも
+// **busy 中に鳴ったら諦めずに待ち直す**(遅いデバイス = リモート・実機は1操作に数秒かかり、整定も打ち切りも
 // 必ず busy 中に鳴る)。諦めると、操作の結果が失敗(木が来ない)だった回は枠が永久に出ず、
 // トグルを入れ直しても撮り直しが飛ばなかった(実地で確認: M1Ultra 経由の iPhone wave)
 function armBoxesSettleCap(delayMs) {
@@ -609,7 +609,7 @@ function clearSnapshot() {
 function applySnapshot(message) {
   lastScreen = message.screen;
   lastElements = message.elements;
-  // 枠を描いてよいのは**静定してから観測した木**だけ(boxesAwaitSettle の doc)。待っていない
+  // 枠を描いてよいのは**整定してから観測した木**だけ(boxesAwaitSettle の doc)。待っていない
   // (操作もトグルも挟んでいない)ときは従来どおり届いた木で描く。
   if (settleRefreshRequested || !boxesAwaitSettle) {
     boxesStale = false;
@@ -953,7 +953,7 @@ showBoxesToggle.addEventListener('change', () => {
   setHot(null, false);
   hideHover();
   // **撮り直しの予約が残っている = 絵が動いた(動いている)**。その木はもう画面と合わないので
-  // 静定を待つ(deferBoxesUntilSettled)。予約が無ければ既に静定しているので即描く。
+  // 整定を待つ(deferBoxesUntilSettled)。予約が無ければ既に整定しているので即描く。
   // **枠を消したまま(boxesStale)で予約も無い**ときも撮り直しへ —— 失敗した操作のあとはこの形になり、
   // ON にしても renderBoxes が stale で何も描かず、黙ったままだった
   if (showBoxes && (settleRefreshTimer !== null || boxesStale)) {

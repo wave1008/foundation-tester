@@ -166,11 +166,11 @@ test("ON で全要素の枠を出し、OFF で消す", async (t) => {
   const checkbox = document.getElementById("live-show-boxes");
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
-  // ON にした時点では**まだ静定していない**(snapshot の直後は撮り直しの予約が残る)ので出さない。
-  // 静定してから届いた木で描く(「静定するまで出さない」の節を参照)
-  assert.equal(boxes(document).length, 0, "静定するまでは出さないこと");
+  // ON にした時点では**まだ整定していない**(snapshot の直後は撮り直しの予約が残る)ので出さない。
+  // 整定してから届いた木で描く(「整定するまで出さない」の節を参照)
+  assert.equal(boxes(document).length, 0, "整定するまでは出さないこと");
   await settle(QUIET_MS + 150); // 絵が止まった → 撮り直しが飛ぶ
-  sendToWebview(SNAPSHOT);      // その結果 = 静定後の木
+  sendToWebview(SNAPSHOT);      // その結果 = 整定後の木
 
   const drawn = boxes(document);
   assert.equal(drawn.length, ELEMENTS.length, "要素の数だけ枠を出すこと");
@@ -429,7 +429,7 @@ test("トグル ON: 一覧に赤枠の条件(.boxes-on)が付く", async (t) => 
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
   assert.ok(!list.classList.contains("boxes-on"),
-            "**枠が実際に出ているときだけ**付くこと(静定待ちの間は枠が無い)");
+            "**枠が実際に出ているときだけ**付くこと(整定待ちの間は枠が無い)");
   await settle(QUIET_MS + 150);
   sendToWebview(SNAPSHOT);
 
@@ -495,7 +495,7 @@ test("強調は最前面に重ねた別の枠で、元の枠は変えない", (t
 
 // 操作を撃ったら画面が変わる。**その前に枠を消す**(ユーザー決定 2026-09-22) —— 古い木から
 // 描いた枠が新しい画面の上に残ると、合っていない位置を指してしまう。
-test("操作を撃ったら(busy)枠を消し、静定後の木で引き直す", async (t) => {
+test("操作を撃ったら(busy)枠を消し、整定後の木で引き直す", async (t) => {
   const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
@@ -524,7 +524,7 @@ test("操作を撃ったら(busy)枠を消し、静定後の木で引き直す",
 
   await settle(QUIET_MS + 150);
   sendToWebview(SNAPSHOT);
-  assert.equal(boxes(document).length, ELEMENTS.length, "静定後の木で引き直すこと");
+  assert.equal(boxes(document).length, ELEMENTS.length, "整定後の木で引き直すこと");
 });
 
 // 撮り直し(操作後に画面が止まってから1回撮る)は**画面を変えない観測**なので、枠を消さない。
@@ -578,14 +578,14 @@ test("消したあとは、画像サイズが変わっても古い枠を復活�
 
   assert.equal(boxes(document).length, 0, "古い木の枠を復活させないこと");
 
-  // 静定後の木が届いたら描く
+  // 整定後の木が届いたら描く
   sendToWebview({ type: "live", message: { type: "busy", busy: false } });
   await settle(QUIET_MS + 150);
   sendToWebview(SNAPSHOT);
-  assert.equal(boxes(document).length, ELEMENTS.length, "静定後の木では描くこと");
+  assert.equal(boxes(document).length, ELEMENTS.length, "整定後の木では描くこと");
 });
 
-// ---- 静定するまで出さない(ユーザー決定 2026-09-23) --------------------------------------
+// ---- 整定するまで出さない(ユーザー決定 2026-09-23) --------------------------------------
 // 手元の木は最後に観測した時点のものなので、絵がまだ動いている間に描くと前の画面の位置に枠が出る。
 // **考え方は DSL の整定と揃える**(Sources/FTCore/StepExecutor+Settle.swift・SettleMotion.swift):
 // 静まるまで待つが、**等速で動き続けるアニメーションは待っても止まらない**ので必ず上限で打ち切る。
@@ -617,11 +617,11 @@ function sendChunk(window) {
   }));
 }
 
-test("静定してから ON にしたら待たずに出す", async (t) => {
+test("整定してから ON にしたら待たずに出す", async (t) => {
   const { window, document, sendToWebview } = createWebview();
   t.after(() => window.close());
 
-  // snapshot の直後は撮り直しの予約が残る。予約が撃たれて**その結果が届いた**時点が静定
+  // snapshot の直後は撮り直しの予約が残る。予約が撃たれて**その結果が届いた**時点が整定
   sendToWebview(SNAPSHOT);
   await settle(QUIET_MS + 150);
   sendToWebview(SNAPSHOT); // 撮り直しの結果(これ以上の予約はしない)
@@ -630,7 +630,7 @@ test("静定してから ON にしたら待たずに出す", async (t) => {
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  assert.equal(boxes(document).length, ELEMENTS.length, "静定済みなら即座に出すこと");
+  assert.equal(boxes(document).length, ELEMENTS.length, "整定済みなら即座に出すこと");
 });
 
 test("絵が動いている間は出さず、止まって木が届いたら出す", async (t) => {
@@ -641,7 +641,7 @@ test("絵が動いている間は出さず、止まって木が届いたら出�
   const checkbox = document.getElementById("live-show-boxes");
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
-  assert.equal(boxes(document).length, 0, "前提: 静定待ち");
+  assert.equal(boxes(document).length, 0, "前提: 整定待ち");
 
   // 絵が動き続けている間は撮り直しの予約が先送りされる = 枠も出ない
   for (let i = 0; i < 3; i += 1) {
@@ -653,13 +653,13 @@ test("絵が動いている間は出さず、止まって木が届いたら出�
   // **待っている間に届いた木でも描かない** —— 操作の結果として返る木は、まだ動いている最中の
   // 座標を持っている(これで描くと中間の位置に一度出てしまう)
   sendToWebview(SNAPSHOT);
-  assert.equal(boxes(document).length, 0, "静定前に届いた木では描かないこと");
+  assert.equal(boxes(document).length, 0, "整定前に届いた木では描かないこと");
 
   // 止まった → 撮り直しが飛び、その木で描く
   await settle(QUIET_MS + 150);
   assert.ok(
     liveMessages().some((m) => m.type === "refreshSnapshot"),
-    "静定したら撮り直しを要求すること",
+    "整定したら撮り直しを要求すること",
   );
   sendToWebview(SNAPSHOT);
   assert.equal(boxes(document).length, ELEMENTS.length, "届いた木で描くこと");
@@ -674,7 +674,7 @@ test("ループするアニメーションでは上限で打ち切って出す",
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
 
-  // 止まらない画面(= 静定の根拠が永久に来ない)。上限を跨ぐまで絵を動かし続ける
+  // 止まらない画面(= 整定の根拠が永久に来ない)。上限を跨ぐまで絵を動かし続ける
   const deadline = Date.now() + CAP_MS + 400;
   while (Date.now() < deadline) {
     sendChunk(window);
@@ -683,27 +683,27 @@ test("ループするアニメーションでは上限で打ち切って出す",
 
   assert.ok(
     liveMessages().some((m) => m.type === "refreshSnapshot"),
-    "静定しなくても上限で撮り直しを要求すること(永久に出ないまま待たない)",
+    "整定しなくても上限で撮り直しを要求すること(永久に出ないまま待たない)",
   );
   sendToWebview(SNAPSHOT);
   assert.equal(boxes(document).length, ELEMENTS.length, "打ち切ったら最新の木で描くこと");
 });
 
-// ---- 遅いデバイス(リモート・実機 = 1操作に数秒)。静定(700ms)も打ち切り(2800ms)も操作の最中に鳴る ----
+// ---- 遅いデバイス(リモート・実機 = 1操作に数秒)。整定(700ms)も打ち切り(2800ms)も操作の最中に鳴る ----
 // 実地 2026-09-24(M1Ultra 経由の iPhone wave): busy 中に鳴ったタイマーが諦めて再予約せず、
 // 操作の結果が失敗(木が来ない)だと枠が永久に出ず、トグルを入れ直しても撮り直しが飛ばなかった
 
 test("遅い台: 操作が失敗して木が来なくても、busy が明けたら撮り直して枠を出す", async (t) => {
   const { window, document, sendToWebview, liveMessages } = createWebview();
   t.after(() => window.close());
-  sendToWebview(SNAPSHOT); await settle(QUIET_MS + 150); sendToWebview(SNAPSHOT); // 静定済み
+  sendToWebview(SNAPSHOT); await settle(QUIET_MS + 150); sendToWebview(SNAPSHOT); // 整定済み
   const checkbox = document.getElementById("live-show-boxes");
   checkbox.checked = true;
   checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
   assert.equal(boxes(document).length, ELEMENTS.length, "前提: 出ている");
 
   sendToWebview({ type: "live", message: { type: "busy", busy: true } });
-  await settle(CAP_MS + 400); // 静定も打ち切りも busy 中に鳴る
+  await settle(CAP_MS + 400); // 整定も打ち切りも busy 中に鳴る
   const during = liveMessages().filter((m) => m.type === "refreshSnapshot").length;
   sendToWebview({ type: "live", message: { type: "actionError", message: "x" } });
   sendToWebview({ type: "live", message: { type: "busy", busy: false } });

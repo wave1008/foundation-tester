@@ -1503,7 +1503,7 @@ findImage / findImages(Shirates Vision の移植)を E2E-iOS だけで確かめ�
 Android では起きない)。木は新しい画面なので、findImage は**別の画面の画素**を要素の枠で切って「無い」と答えた。
 同じ絵は imageIs・checkIsON の分類器・occlusion-guard も使う。直し方で3回方針が動いた:
 「描画が止まるまで待つ」→ ループするアニメーションで毎回上限まで待つ(ユーザー指摘)→「操作の前に描画が
-続いていたかで分ける」→ ユーザー決定「a11y が静定し描画に反映されたらすぐ撮る。遷移は待たない」。
+続いていたかで分ける」→ ユーザー決定「a11y が整定し描画に反映されたらすぐ撮る。遷移は待たない」。
 実装で踏んだ罠: **描画の内部は観測できない**(`CAMetalLayer.nextDrawable` の差し替えは Compose で0件。
 `addPresentedHandler` はシミュレータの SDK に無い)/ **層の型で自前描画を判定できない**(`CMPMetalLayer < CALayer`。
 `is CAMetalLayer` は false = 門が1度も開かず、直したつもりの版が何もしていなかった。プローブの数字が変わらない
