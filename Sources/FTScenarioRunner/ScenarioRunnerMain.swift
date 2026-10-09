@@ -434,9 +434,7 @@ struct RunScenario: AsyncParsableCommand {
                     // preflight(未インストール検査)は fast launch の外側に置く。
                     // **実機は両方とも simctl 依存なので必ず外す**(engine=xcuitest なら実機で動く、と
                     // 誤認しやすい罠。素の XCUIApplication.launch() 経路に落とす)
-                    let noFastLaunch = ProcessInfo.processInfo.environment["FT_NO_FAST_LAUNCH"] == "1"
-                    let inner: AppDriver = (!noFastLaunch && !physical && udid != nil)
-                        ? FastLaunchDriver(base: client, udid: udid!) : client
+                    let inner = FastLaunchDriver.wrapping(client, simulatorUDID: physical ? nil : udid)
                     // SessionRecoveryDriver は最外側(回復時の activate に LaunchPreflightDriver の
                     // 未インストール検査を効かせるため)。in-app/hybrid 経路には入れない
                     // (InAppDriver は別プロトコルで 409 の意味が違う)。

@@ -1359,16 +1359,19 @@ extension MCPServer {
     static func iosDriver(provisioned: ProvisionedIOSDevice, bundleID: String?) async throws
         -> (driver: AppDriver, probePort: UInt16?, xcuiPort: UInt16?) {
         guard !provisioned.physical, provisioned.engine == "inapp" || provisioned.engine == "hybrid" else {
-            // xcuitest(と実機)は素のまま。resolve は接続先が in-app だったときの振り替えも担う
+            // xcuitest(と実機)は in-app を合成しない。resolve は接続先が in-app だったときの振り替えも担う
             let resolution = await XCUIBridgeResolver.resolve(
                 preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
             // **実機は UDID を渡す**: install/uninstall は simctl ではなく devicectl が要り、
             // clearAppData は「実機では不可」と即答できる(渡さないとデバイス名で simctl を
             // 撃つことになり、的外れな失敗になる)
-            let driver = SessionRecoveryDriver(base: BridgeClient(
+            let client = BridgeClient(
                 port: resolution.endpoint.port, host: resolution.endpoint.host,
-                physicalUDID: provisioned.physical ? provisioned.udid : nil))
+                physicalUDID: provisioned.physical ? provisioned.udid : nil)
+            // **launch はシナリオ実行と同じく FastLaunchDriver**(素の XCUIApplication.launch() は実測 6.6s)
+            let driver = SessionRecoveryDriver(
+                base: FastLaunchDriver.wrapping(client, simulatorUDID: provisioned.physical ? nil : provisioned.udid))
             // **実際に繋いだポート**を返す(preferred ではない)。実機は loopback ではないので nil
             let probe = (provisioned.physical || resolution.endpoint.host != BridgeEndpoint.loopbackHost)
                 ? nil : resolution.endpoint.port

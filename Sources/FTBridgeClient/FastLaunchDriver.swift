@@ -20,8 +20,24 @@ public final class FastLaunchDriver: AppDriver {
         self.udid = udid
     }
 
+    /// **被せるかの判定はここ1箇所**(シナリオ実行・MCP のプロファイル経路・MCP の直接経路が共有する)。
+    /// シミュレータの udid が分かるときだけ被せる —— 実機は CoreSimulator / simctl に依存できないので素の
+    /// `XCUIApplication.launch()` に落とす。`FT_NO_FAST_LAUNCH=1` で常に素へ戻す
+    public static func wrapping(_ client: BridgeClient, simulatorUDID: String?) -> AppDriver {
+        guard ProcessInfo.processInfo.environment["FT_NO_FAST_LAUNCH"] != "1",
+              let simulatorUDID, !simulatorUDID.isEmpty else { return client }
+        return FastLaunchDriver(base: client, udid: simulatorUDID)
+    }
+
     public func launch(bundleID: String) async throws {
         lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
+        // **springboard は起動し直さない**(ランナーの /session が「参照だけ」で特別扱いする。
+        // CoreSimulator で launch するとホームへ飛んでシステムアラートを消す)。MCP の
+        // `ft_launch com.apple.springboard` はホーム画面へつなぐ正規の経路
+        if bundleID == "com.apple.springboard" {
+            try await base.launch(bundleID: bundleID)
+            return
+        }
         // **terminate は別コールにしない**(--terminate-running-process で1往復に畳む。
         // InAppLauncher.relaunch と同じ形)。分けていた頃は simctl の往復がもう1回増え、
         // 実測で launch 1回あたり約 1.5s を捨てていた(8レーンの ios-xcuitest)。

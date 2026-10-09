@@ -106,8 +106,10 @@ public enum ExploreDriverResolver {
                 : nil
             // **XCUITest はセッション制**(ランナー再起動で全操作が 409)。実行側と同じ回復を
             // 与えておく = 探索中にランナーが落ちても次の操作から戻れる
+            // launch はシナリオ実行と同じく FastLaunchDriver(シミュレータと分かったときだけ。判定は wrapping の1箇所)
+            let client = BridgeClient(port: endpoint.port, host: endpoint.host, physicalUDID: physicalUDID)
             return Resolved(driver: SessionRecoveryDriver(
-                base: BridgeClient(port: endpoint.port, host: endpoint.host, physicalUDID: physicalUDID)),
+                base: FastLaunchDriver.wrapping(client, simulatorUDID: physicalUDID == nil ? udid : nil)),
                             engine: status?.engine ?? "xcuitest", udid: udid ?? physicalUDID)
         }
         // in-app が居る時点で XCUITest 側は必ず要る(合成のフォールバック先 or 振り替え先)
